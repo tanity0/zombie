@@ -148,8 +148,8 @@ let loading: Promise<void> | null = null;
 // 名前 `props/flame-0..7` で `getTexture` から引ける。
 export const FLAME_SHEET = 'props/flame';
 export const FLAME_FRAMES = 8;
-export const FLAME_FRAME_W = 184;
-export const FLAME_FRAME_H = 264;
+export const FLAME_FRAME_W = 46;  // v0.25.4588: シートを解凍(1472×264 → 368×66)したので1/4。旧184
+export const FLAME_FRAME_H = 66;  // 同上。旧264。★FLAME_FRAME_H は `* sc`(=containScale)で使うのでテクスチャ画素であることに注意
 /** 炎の**明るさの重心**が下端から何割の高さに来るか(8コマ平均の実測)。光を置く高さに使う。 */
 export const FLAME_LIGHT_FRAC = 0.3197;
 
@@ -161,7 +161,7 @@ export const FLAME_LIGHT_FRAC = 0.3197;
  * ——炎が手前に居るので、ここまで下げると根元が鉢の内側から出ているように見える。
  * (鉢は上から y=44〜87。y=68 あたりが手前のリム=実測)
  */
-export const TORCH_STAND_RIM_ABOVE_FOOT = 172 - 64;
+export const TORCH_STAND_RIM_ABOVE_FOOT = 43 - 16; // v0.25.4588: torch-stand を解凍(112×172 → 28×43)したので1/4。旧 172-64
 
 // M8改→§5.9-追補2(社長の事実訂正v0.25.1462「軍人も同じドット風素材・同じ処理でいい」)で置き換え:
 // プレイヤー4クラス(マークスマン=magnum/ヘビーガンナー=shotgun/スカベンジャー=striker/
@@ -1285,7 +1285,7 @@ export const ensureTextures = (): Promise<void> => {
     const breathStream = await loadOne('fx/breath-stream');
     if (breathStream) {
       breathStream.source.scaleMode = 'nearest';
-      textures.set('fx/breath-stream-trim', new Texture({ source: breathStream.source, frame: new Rectangle(0, 314, 666, 76) }));
+      textures.set('fx/breath-stream-trim', new Texture({ source: breathStream.source, frame: new Rectangle(0, 78, 167, 19) }));
     }
 
     // 敵スプライトのアスペクト(texH/texW)を登録(PHILLサークルの頭スナップを実描画に合わせる)。

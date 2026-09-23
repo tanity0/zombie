@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "839 files / 復号後 約657MB",
+ "generatedFor": "839 files / 復号後 約598MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -705,28 +705,28 @@
    "sha": "d597ddb2448ca4e0"
   },
   "sprites/castle-s1.png": {
-   "w": 1020,
-   "h": 1024,
-   "bytes": 118919,
-   "sha": "50762235a7951a23"
+   "w": 255,
+   "h": 256,
+   "bytes": 89528,
+   "sha": "15d2a4c932a876d7"
   },
   "sprites/castle-s3.png": {
-   "w": 1020,
-   "h": 1024,
-   "bytes": 113681,
-   "sha": "e71b9e3973ab3712"
+   "w": 255,
+   "h": 256,
+   "bytes": 82139,
+   "sha": "4462be4eb2ed1c4f"
   },
   "sprites/castle-s4.png": {
-   "w": 1060,
-   "h": 1024,
-   "bytes": 152768,
-   "sha": "81acda756bc4abe4"
+   "w": 265,
+   "h": 256,
+   "bytes": 105960,
+   "sha": "8ac0dd559e1121b7"
   },
   "sprites/castle-s5.png": {
-   "w": 960,
-   "h": 1024,
-   "bytes": 98195,
-   "sha": "0622671669fd9845"
+   "w": 240,
+   "h": 256,
+   "bytes": 70155,
+   "sha": "29c801f74bba0079"
   },
   "sprites/castle.png": {
    "w": 480,
@@ -735,10 +735,10 @@
    "sha": "8f8c9e98bc2b733b"
   },
   "sprites/decoy.png": {
-   "w": 520,
-   "h": 348,
-   "bytes": 4265,
-   "sha": "17075c4762085bf1"
+   "w": 260,
+   "h": 174,
+   "bytes": 9337,
+   "sha": "6ce46e3dd1c9c656"
   },
   "sprites/dog-walk-0.png": {
    "w": 96,
@@ -975,16 +975,16 @@
    "sha": "b9e3136671231966"
   },
   "sprites/fx/angel-eye.png": {
-   "w": 352,
-   "h": 328,
-   "bytes": 19549,
-   "sha": "e8d371a8bdb7d84b"
+   "w": 88,
+   "h": 82,
+   "bytes": 11067,
+   "sha": "4f76659d96a9dac2"
   },
   "sprites/fx/arrow.png": {
-   "w": 712,
-   "h": 112,
-   "bytes": 4129,
-   "sha": "028f8056a643b80c"
+   "w": 178,
+   "h": 28,
+   "bytes": 1466,
+   "sha": "96a1ea0805c35948"
   },
   "sprites/fx/bat-slam-0.png": {
    "w": 85,
@@ -1149,28 +1149,28 @@
    "sha": "6b65ebc0b7dd5530"
   },
   "sprites/fx/boss-cannon.png": {
-   "w": 520,
-   "h": 256,
-   "bytes": 11639,
-   "sha": "7620c7a86c25c10c"
+   "w": 130,
+   "h": 64,
+   "bytes": 7795,
+   "sha": "4698578e03456664"
   },
   "sprites/fx/boss-gun-1.png": {
-   "w": 200,
-   "h": 80,
-   "bytes": 2219,
-   "sha": "0523a612abddfd2d"
+   "w": 50,
+   "h": 20,
+   "bytes": 1657,
+   "sha": "af372e29a3aad7ab"
   },
   "sprites/fx/boss-gun-2.png": {
-   "w": 244,
-   "h": 112,
-   "bytes": 3733,
-   "sha": "eec3ce7a3cb69266"
+   "w": 61,
+   "h": 28,
+   "bytes": 2739,
+   "sha": "e67ede1efd5b072f"
   },
   "sprites/fx/boss-gun-3.png": {
-   "w": 428,
-   "h": 116,
-   "bytes": 5470,
-   "sha": "1b9710fcbeefe41a"
+   "w": 107,
+   "h": 29,
+   "bytes": 3987,
+   "sha": "789108c192c24b7a"
   },
   "sprites/fx/breath-sparkle.png": {
    "w": 426,
@@ -1179,10 +1179,10 @@
    "sha": "27007212394c8706"
   },
   "sprites/fx/breath-stream.png": {
-   "w": 1024,
-   "h": 592,
-   "bytes": 16906,
-   "sha": "11d5623d35cc1942"
+   "w": 256,
+   "h": 148,
+   "bytes": 4522,
+   "sha": "51cff26a64ba2abc"
   },
   "sprites/fx/claw-mark.png": {
    "w": 966,
@@ -1287,10 +1287,10 @@
    "sha": "53b7a88dc7bd9373"
   },
   "sprites/fx/dash-wind.png": {
-   "w": 932,
-   "h": 256,
-   "bytes": 29630,
-   "sha": "fca554ec997afde6"
+   "w": 233,
+   "h": 64,
+   "bytes": 17235,
+   "sha": "bd6eb1089d4cc540"
   },
   "sprites/fx/dust-puff.png": {
    "w": 512,
@@ -1311,46 +1311,46 @@
    "sha": "65b5c42133326f45"
   },
   "sprites/fx/ending-bomb.png": {
-   "w": 64,
-   "h": 256,
-   "bytes": 3193,
-   "sha": "d947f5500e4e0563"
+   "w": 16,
+   "h": 64,
+   "bytes": 1609,
+   "sha": "6208c9022daa946b"
   },
   "sprites/fx/explosion-0.png": {
-   "w": 324,
-   "h": 264,
-   "bytes": 3323,
-   "sha": "9218e2baa8746a55"
+   "w": 81,
+   "h": 66,
+   "bytes": 2008,
+   "sha": "8f251141c0247610"
   },
   "sprites/fx/explosion-1.png": {
-   "w": 324,
-   "h": 264,
-   "bytes": 6127,
-   "sha": "c83387ba6d5691c8"
+   "w": 81,
+   "h": 66,
+   "bytes": 3881,
+   "sha": "98bc29970aff0ac7"
   },
   "sprites/fx/explosion-2.png": {
-   "w": 324,
-   "h": 264,
-   "bytes": 10396,
-   "sha": "79c6e43beff36c4b"
+   "w": 81,
+   "h": 66,
+   "bytes": 6932,
+   "sha": "19a3b082b02de86b"
   },
   "sprites/fx/explosion-3.png": {
-   "w": 324,
-   "h": 264,
-   "bytes": 8103,
-   "sha": "e168d3a9b0622f5d"
+   "w": 81,
+   "h": 66,
+   "bytes": 5273,
+   "sha": "423b4e42483606c6"
   },
   "sprites/fx/explosion-4.png": {
-   "w": 324,
-   "h": 264,
-   "bytes": 5091,
-   "sha": "e7c5896949fd09bd"
+   "w": 81,
+   "h": 66,
+   "bytes": 3255,
+   "sha": "f6ef12fe7e53c4bb"
   },
   "sprites/fx/explosion-5.png": {
-   "w": 324,
-   "h": 264,
-   "bytes": 3865,
-   "sha": "114f2e50374ab9b6"
+   "w": 81,
+   "h": 66,
+   "bytes": 2312,
+   "sha": "eaf957e7ebdeeae5"
   },
   "sprites/fx/glen-crystal.png": {
    "w": 84,
@@ -1359,10 +1359,10 @@
    "sha": "e65276613df5c964"
   },
   "sprites/fx/glide-branch.png": {
-   "w": 276,
-   "h": 256,
-   "bytes": 6474,
-   "sha": "a3bc74ee4af0e750"
+   "w": 69,
+   "h": 64,
+   "bytes": 4201,
+   "sha": "0231789aef369866"
   },
   "sprites/fx/grenade-ball.png": {
    "w": 56,
@@ -1371,16 +1371,16 @@
    "sha": "258df80fa8e3cccc"
   },
   "sprites/fx/ground-crack.png": {
-   "w": 508,
-   "h": 512,
-   "bytes": 25613,
-   "sha": "394dac024f88e740"
+   "w": 127,
+   "h": 128,
+   "bytes": 12360,
+   "sha": "aea174e3b5b550b0"
   },
   "sprites/fx/hitfire-0.png": {
-   "w": 132,
-   "h": 128,
-   "bytes": 2760,
-   "sha": "d63705074d45c1af"
+   "w": 33,
+   "h": 32,
+   "bytes": 1529,
+   "sha": "84cf45e6d5e9d2f1"
   },
   "sprites/fx/hitfire-1.png": {
    "w": 120,
@@ -1389,130 +1389,130 @@
    "sha": "abaa97eaca29e2ac"
   },
   "sprites/fx/holo-circle-0.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 3710,
-   "sha": "4aab58ce99dc10f4"
+   "w": 76,
+   "h": 66,
+   "bytes": 2421,
+   "sha": "3b32e7db5be8e87f"
   },
   "sprites/fx/holo-circle-1.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 3704,
-   "sha": "5a1000ab93f1c5e1"
+   "w": 76,
+   "h": 66,
+   "bytes": 2347,
+   "sha": "a58f680d615f27f0"
   },
   "sprites/fx/holo-circle-2.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 4805,
-   "sha": "43155ac35bb44341"
+   "w": 76,
+   "h": 66,
+   "bytes": 3184,
+   "sha": "4f3d0e9748146e04"
   },
   "sprites/fx/holo-circle-3.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 5873,
-   "sha": "7a389e04967eb7a7"
+   "w": 76,
+   "h": 66,
+   "bytes": 3906,
+   "sha": "2b438a5233d78d30"
   },
   "sprites/fx/holo-circle-4.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 5540,
-   "sha": "24c924eede1a753b"
+   "w": 76,
+   "h": 66,
+   "bytes": 3607,
+   "sha": "aefb1f5b2c908982"
   },
   "sprites/fx/holo-circle-5.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 6689,
-   "sha": "31adb4f7665f013a"
+   "w": 76,
+   "h": 66,
+   "bytes": 4285,
+   "sha": "6cb87efadea5af01"
   },
   "sprites/fx/holo-circle-6.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 6387,
-   "sha": "4a18067627a3e103"
+   "w": 76,
+   "h": 66,
+   "bytes": 4085,
+   "sha": "d61d4d2e68ac662e"
   },
   "sprites/fx/holo-circle-7.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 7397,
-   "sha": "00fb24c22c29e82c"
+   "w": 76,
+   "h": 66,
+   "bytes": 4899,
+   "sha": "63b859087aad9386"
   },
   "sprites/fx/holo-mini-0.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 2476,
-   "sha": "7747ee424c5ee3f6"
+   "w": 76,
+   "h": 66,
+   "bytes": 1347,
+   "sha": "632d576c79054412"
   },
   "sprites/fx/holo-mini-1.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 1931,
-   "sha": "37460e38a0298040"
+   "w": 76,
+   "h": 66,
+   "bytes": 958,
+   "sha": "f56016bad4349db9"
   },
   "sprites/fx/holo-mini-2.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 2960,
-   "sha": "4b6860303039b3f9"
+   "w": 76,
+   "h": 66,
+   "bytes": 1731,
+   "sha": "03f9fbe1bf73c498"
   },
   "sprites/fx/holo-mini-3.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 1452,
-   "sha": "54ee20414e48e57d"
+   "w": 76,
+   "h": 66,
+   "bytes": 711,
+   "sha": "0336f060c7b12b51"
   },
   "sprites/fx/holo-mini-4.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 1624,
-   "sha": "8bba085f01a7aaf2"
+   "w": 76,
+   "h": 66,
+   "bytes": 812,
+   "sha": "a72b49e6ec4bfb87"
   },
   "sprites/fx/holo-mini-5.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 1295,
-   "sha": "a047ed3d17864614"
+   "w": 76,
+   "h": 66,
+   "bytes": 619,
+   "sha": "4b1dd69509198578"
   },
   "sprites/fx/holo-scan-0.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 1865,
-   "sha": "57520e3752b62791"
+   "w": 76,
+   "h": 66,
+   "bytes": 1048,
+   "sha": "752967119df3a782"
   },
   "sprites/fx/holo-scan-1.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 2092,
-   "sha": "40ece17269dc2bd3"
+   "w": 76,
+   "h": 66,
+   "bytes": 1257,
+   "sha": "14b13cf911deb232"
   },
   "sprites/fx/holo-scan-2.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 1755,
-   "sha": "869f8b91d1928576"
+   "w": 76,
+   "h": 66,
+   "bytes": 921,
+   "sha": "a46f8f3ded2af73f"
   },
   "sprites/fx/holo-scan-3.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 3824,
-   "sha": "d82f268bab8a2a2d"
+   "w": 76,
+   "h": 66,
+   "bytes": 2365,
+   "sha": "8e3af0e84c161a48"
   },
   "sprites/fx/holo-scan-4.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 3336,
-   "sha": "d72a44de0c8d1d9c"
+   "w": 76,
+   "h": 66,
+   "bytes": 2044,
+   "sha": "5f81ec7925c49f66"
   },
   "sprites/fx/holo-scan-5.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 3081,
-   "sha": "35feee84ab74e706"
+   "w": 76,
+   "h": 66,
+   "bytes": 1814,
+   "sha": "2f06cb7913d675cf"
   },
   "sprites/fx/holo-scan-6.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 2180,
-   "sha": "4db03871c627d36a"
+   "w": 76,
+   "h": 66,
+   "bytes": 1185,
+   "sha": "9a5563b6acfb6c5b"
   },
   "sprites/fx/idol-fist.png": {
    "w": 100,
@@ -1665,10 +1665,10 @@
    "sha": "e92d8d6d1dd74954"
   },
   "sprites/fx/muzzle-flash.png": {
-   "w": 172,
-   "h": 128,
-   "bytes": 2781,
-   "sha": "f226613a3ce49f67"
+   "w": 43,
+   "h": 32,
+   "bytes": 1435,
+   "sha": "335263d9e12c4653"
   },
   "sprites/fx/nihil-1.png": {
    "w": 512,
@@ -1689,10 +1689,10 @@
    "sha": "47672b0aa942dc87"
   },
   "sprites/fx/petal-0.png": {
-   "w": 148,
-   "h": 128,
-   "bytes": 2504,
-   "sha": "4ba00369f4a55a8e"
+   "w": 37,
+   "h": 32,
+   "bytes": 1669,
+   "sha": "6488d72758616298"
   },
   "sprites/fx/phill-feather.png": {
    "w": 66,
@@ -1713,28 +1713,28 @@
    "sha": "2330273feea4c905"
   },
   "sprites/fx/scissor-x-0.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 2123,
-   "sha": "06fda0bbbe5ee9dd"
+   "w": 76,
+   "h": 66,
+   "bytes": 918,
+   "sha": "5cddde474a6d9baa"
   },
   "sprites/fx/scissor-x-1.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 4589,
-   "sha": "6258d93e2d86b63a"
+   "w": 76,
+   "h": 66,
+   "bytes": 2375,
+   "sha": "07a7a3b093c436d2"
   },
   "sprites/fx/scissor-x-2.png": {
-   "w": 304,
-   "h": 264,
-   "bytes": 8827,
-   "sha": "b26d5a545e09c73c"
+   "w": 76,
+   "h": 66,
+   "bytes": 5403,
+   "sha": "481189482dc73ede"
   },
   "sprites/fx/shockwave.png": {
-   "w": 416,
-   "h": 256,
-   "bytes": 14182,
-   "sha": "b30d0fd139a3a86d"
+   "w": 104,
+   "h": 64,
+   "bytes": 7207,
+   "sha": "cdf00be20982d133"
   },
   "sprites/fx/skel-claw-0.png": {
    "w": 282,
@@ -2007,58 +2007,58 @@
    "sha": "597b75f080ac768e"
   },
   "sprites/fx/vine-whip-0.png": {
-   "w": 256,
-   "h": 188,
-   "bytes": 4058,
-   "sha": "8dffe8f3d20a0535"
+   "w": 64,
+   "h": 47,
+   "bytes": 2644,
+   "sha": "41b6e5776a1e0718"
   },
   "sprites/fx/vine-whip-1.png": {
-   "w": 212,
-   "h": 188,
-   "bytes": 2983,
-   "sha": "e512769b5103d93a"
+   "w": 53,
+   "h": 47,
+   "bytes": 1910,
+   "sha": "4ef6c4591df22a84"
   },
   "sprites/fx/vine-whip-2.png": {
-   "w": 156,
-   "h": 188,
-   "bytes": 2101,
-   "sha": "80b1251a6a5d4ec0"
+   "w": 39,
+   "h": 47,
+   "bytes": 1350,
+   "sha": "6edc543c74706734"
   },
   "sprites/fx/vine-whip-3.png": {
-   "w": 148,
-   "h": 188,
-   "bytes": 1843,
-   "sha": "42f0745fa87f0482"
+   "w": 37,
+   "h": 47,
+   "bytes": 1041,
+   "sha": "d46af356f0bd2743"
   },
   "sprites/fx/vine-whip-4.png": {
-   "w": 168,
-   "h": 188,
-   "bytes": 1591,
-   "sha": "dcf0915ae80b2c2b"
+   "w": 42,
+   "h": 47,
+   "bytes": 876,
+   "sha": "f144584b86f882fb"
   },
   "sprites/fx/vine-whip-full.png": {
-   "w": 1012,
-   "h": 100,
-   "bytes": 5666,
-   "sha": "eb75fae4fe1e1fe0"
+   "w": 253,
+   "h": 25,
+   "bytes": 3799,
+   "sha": "5fa30137dc0e6a81"
   },
   "sprites/fx/whip-smear-0.png": {
-   "w": 456,
-   "h": 264,
-   "bytes": 2672,
-   "sha": "3bcf17d91431b837"
+   "w": 114,
+   "h": 66,
+   "bytes": 1285,
+   "sha": "3573370cc97fea79"
   },
   "sprites/fx/whip-smear-1.png": {
-   "w": 456,
-   "h": 264,
-   "bytes": 5051,
-   "sha": "347ff0966e27c50d"
+   "w": 114,
+   "h": 66,
+   "bytes": 2855,
+   "sha": "722a095cee85f309"
   },
   "sprites/fx/whip-smear-2.png": {
-   "w": 456,
-   "h": 264,
-   "bytes": 6674,
-   "sha": "9d948fe7f583e0c6"
+   "w": 114,
+   "h": 66,
+   "bytes": 3946,
+   "sha": "f4e5127acdb4c39b"
   },
   "sprites/fx/wing-swipe.png": {
    "w": 499,
@@ -2157,10 +2157,10 @@
    "sha": "cd5f853b5ec29bd1"
   },
   "sprites/gold-chest.png": {
-   "w": 424,
-   "h": 256,
-   "bytes": 15229,
-   "sha": "f095f184239e847b"
+   "w": 106,
+   "h": 64,
+   "bytes": 10868,
+   "sha": "fd238a58ee4d6d99"
   },
   "sprites/helicopter-rotor.png": {
    "w": 2338,
@@ -2721,10 +2721,10 @@
    "sha": "25791989095bbace"
   },
   "sprites/npc/lauren-0.png": {
-   "w": 516,
-   "h": 690,
-   "bytes": 64868,
-   "sha": "8741b5e7498c1d1c"
+   "w": 172,
+   "h": 230,
+   "bytes": 44770,
+   "sha": "5e7f5ab0fa43d3a7"
   },
   "sprites/npc/lauren-1.png": {
    "w": 516,
@@ -2817,70 +2817,70 @@
    "sha": "252e5dc01e8eae74"
   },
   "sprites/npc/phill-heal-0.png": {
-   "w": 144,
-   "h": 256,
-   "bytes": 5657,
-   "sha": "a156d737fcfa5a54"
+   "w": 36,
+   "h": 64,
+   "bytes": 4321,
+   "sha": "8e47049e51d2ec56"
   },
   "sprites/npc/phill-heal-1.png": {
-   "w": 140,
-   "h": 224,
-   "bytes": 5172,
-   "sha": "28a986921e17cbde"
+   "w": 35,
+   "h": 56,
+   "bytes": 4055,
+   "sha": "72f7405900a0d5e9"
   },
   "sprites/npc/phill-heal-2.png": {
-   "w": 140,
-   "h": 212,
-   "bytes": 4871,
-   "sha": "83711f2a711e3c85"
+   "w": 35,
+   "h": 53,
+   "bytes": 3833,
+   "sha": "987d2e8ddbf2c29c"
   },
   "sprites/npc/phill-heal-3.png": {
-   "w": 136,
-   "h": 208,
-   "bytes": 4699,
-   "sha": "3bb5a4790efbbc8e"
+   "w": 34,
+   "h": 52,
+   "bytes": 3729,
+   "sha": "b69e57cc54ac01a9"
   },
   "sprites/npc/phill-heal-4.png": {
-   "w": 172,
-   "h": 208,
-   "bytes": 5134,
-   "sha": "e9b4648edf82b933"
+   "w": 43,
+   "h": 52,
+   "bytes": 3997,
+   "sha": "55408bb204a14e05"
   },
   "sprites/npc/phill-heal-5.png": {
-   "w": 132,
-   "h": 208,
-   "bytes": 4614,
-   "sha": "83772e9638b9ba1a"
+   "w": 33,
+   "h": 52,
+   "bytes": 3640,
+   "sha": "f545a12d058fb8fc"
   },
   "sprites/npc/phill-walk-0.png": {
-   "w": 164,
-   "h": 252,
-   "bytes": 5428,
-   "sha": "18f9582fd989a91b"
+   "w": 41,
+   "h": 63,
+   "bytes": 4033,
+   "sha": "520e515e5b9b2db1"
   },
   "sprites/npc/phill-walk-1.png": {
-   "w": 136,
-   "h": 252,
-   "bytes": 5099,
-   "sha": "2be5db416b6a558d"
+   "w": 34,
+   "h": 63,
+   "bytes": 3799,
+   "sha": "5be0a8d926e6c657"
   },
   "sprites/npc/phill-walk-2.png": {
-   "w": 176,
-   "h": 252,
-   "bytes": 5645,
-   "sha": "20e259a87f801698"
+   "w": 44,
+   "h": 63,
+   "bytes": 4197,
+   "sha": "62c77243363dab65"
   },
   "sprites/npc/soldier-fallen-0.png": {
-   "w": 524,
-   "h": 256,
-   "bytes": 17061,
-   "sha": "f09ff00264ce3a47"
+   "w": 131,
+   "h": 64,
+   "bytes": 12881,
+   "sha": "4a656cce308b0eb3"
   },
   "sprites/npc/soldier-watch-0.png": {
-   "w": 224,
-   "h": 256,
-   "bytes": 8018,
-   "sha": "741941c354eafe99"
+   "w": 56,
+   "h": 64,
+   "bytes": 6342,
+   "sha": "930ff51859c86101"
   },
   "sprites/phill-wing-attack.png": {
    "w": 109,
@@ -3399,10 +3399,10 @@
    "sha": "b233903ac4c83d18"
   },
   "sprites/props/flame.png": {
-   "w": 1472,
-   "h": 264,
-   "bytes": 39400,
-   "sha": "7ab5e3594806c969"
+   "w": 368,
+   "h": 66,
+   "bytes": 18469,
+   "sha": "3c5248fef4c2aec0"
   },
   "sprites/props/flower-0.png": {
    "w": 251,
@@ -3687,10 +3687,10 @@
    "sha": "d71124ac03bee64f"
   },
   "sprites/props/torch-stand.png": {
-   "w": 112,
-   "h": 172,
-   "bytes": 3367,
-   "sha": "f29a6d800e79fd29"
+   "w": 28,
+   "h": 43,
+   "bytes": 1559,
+   "sha": "ee0a016ae8f84e25"
   },
   "sprites/pumpkin-common-jump.png": {
    "w": 2355,
@@ -3711,10 +3711,10 @@
    "sha": "ce7c92e8152bf556"
   },
   "sprites/quest-futari.png": {
-   "w": 376,
-   "h": 264,
-   "bytes": 12117,
-   "sha": "2088ab51aac6d59c"
+   "w": 94,
+   "h": 66,
+   "bytes": 6684,
+   "sha": "f94dfbd7e434f90c"
   },
   "sprites/rafi-blade.png": {
    "w": 43,
@@ -3795,10 +3795,10 @@
    "sha": "35488627000ee533"
   },
   "sprites/scrap-icon.png": {
-   "w": 304,
-   "h": 256,
-   "bytes": 10057,
-   "sha": "e3948ce9a3657872"
+   "w": 76,
+   "h": 64,
+   "bytes": 5150,
+   "sha": "9f0dfadbb5480e27"
   },
   "sprites/screamer-common-walk.png": {
    "w": 1536,
@@ -3813,28 +3813,28 @@
    "sha": "2cd59aee3a9d4564"
   },
   "sprites/shield-down.png": {
-   "w": 202,
-   "h": 312,
-   "bytes": 3631,
-   "sha": "50c32f9de9397065"
+   "w": 101,
+   "h": 156,
+   "bytes": 8498,
+   "sha": "6377a3e1302a47b8"
   },
   "sprites/shield-left.png": {
-   "w": 172,
-   "h": 344,
-   "bytes": 3703,
-   "sha": "c208f412b93c60e3"
+   "w": 86,
+   "h": 172,
+   "bytes": 10056,
+   "sha": "01d1288446d290ce"
   },
   "sprites/shield-right.png": {
-   "w": 174,
-   "h": 344,
-   "bytes": 3807,
-   "sha": "2fbe68f90d40fe63"
+   "w": 87,
+   "h": 172,
+   "bytes": 9270,
+   "sha": "1a3af0f8960d9e07"
   },
   "sprites/shield-up.png": {
-   "w": 198,
-   "h": 312,
-   "bytes": 3772,
-   "sha": "6e970b3ffd04ad5d"
+   "w": 99,
+   "h": 156,
+   "bytes": 8918,
+   "sha": "8b53d143b4dfba48"
   },
   "sprites/skadi-ice-blade.png": {
    "w": 34,
@@ -3903,76 +3903,76 @@
    "sha": "d886890af0d1ac7b"
   },
   "sprites/skill/ghost-helper.png": {
-   "w": 124,
-   "h": 128,
-   "bytes": 2590,
-   "sha": "394d922d36ba6180"
+   "w": 31,
+   "h": 32,
+   "bytes": 1995,
+   "sha": "9b1759e86463bfaf"
   },
   "sprites/skill/ghost-slayer.png": {
-   "w": 124,
-   "h": 128,
-   "bytes": 2571,
-   "sha": "4f63242ea1e78e15"
+   "w": 31,
+   "h": 32,
+   "bytes": 1979,
+   "sha": "9c1d4bbe78aff2ad"
   },
   "sprites/skill/guardian-spirit.png": {
-   "w": 124,
-   "h": 128,
-   "bytes": 3466,
-   "sha": "6c6798b0ff87edba"
+   "w": 31,
+   "h": 32,
+   "bytes": 2000,
+   "sha": "666fb159f9ee0a04"
   },
   "sprites/skill/poi-bombing.png": {
-   "w": 128,
-   "h": 128,
-   "bytes": 2382,
-   "sha": "e681c2775c770959"
+   "w": 32,
+   "h": 32,
+   "bytes": 1136,
+   "sha": "3e2a623ad9dfda34"
   },
   "sprites/skill/poi-guard.png": {
-   "w": 136,
-   "h": 128,
-   "bytes": 3501,
-   "sha": "23339759b3bc13b1"
+   "w": 34,
+   "h": 32,
+   "bytes": 1706,
+   "sha": "65abc7caea538905"
   },
   "sprites/skill/poi-thrall.png": {
-   "w": 152,
-   "h": 256,
-   "bytes": 5766,
-   "sha": "41cbccdd89c56bf6"
+   "w": 38,
+   "h": 64,
+   "bytes": 2779,
+   "sha": "4c341867f9668fc9"
   },
   "sprites/skill/scrap-builder.png": {
-   "w": 136,
-   "h": 128,
-   "bytes": 4424,
-   "sha": "924c928fac6f8dff"
+   "w": 34,
+   "h": 32,
+   "bytes": 2772,
+   "sha": "a8e2e6539702cdd9"
   },
   "sprites/skill/skills-sheet.png": {
-   "w": 5472,
-   "h": 136,
-   "bytes": 89450,
-   "sha": "79df3a7fb59e63a5"
+   "w": 1368,
+   "h": 34,
+   "bytes": 50271,
+   "sha": "acb0173d4eec811d"
   },
   "sprites/skill/warm-up.png": {
-   "w": 148,
-   "h": 128,
-   "bytes": 3617,
-   "sha": "7d7b96c06f0cbf31"
+   "w": 37,
+   "h": 32,
+   "bytes": 1828,
+   "sha": "6aac087aef246745"
   },
   "sprites/stage3-enemies/giantbat.png": {
-   "w": 656,
-   "h": 600,
-   "bytes": 67640,
-   "sha": "c4e4587a11ffe554"
+   "w": 164,
+   "h": 150,
+   "bytes": 40440,
+   "sha": "772d57f8495a5688"
   },
   "sprites/stage4-enemies/giantbat.png": {
-   "w": 788,
-   "h": 800,
-   "bytes": 100762,
-   "sha": "a4c34573818cf413"
+   "w": 197,
+   "h": 200,
+   "bytes": 61185,
+   "sha": "16761d2a28da6798"
   },
   "sprites/stage5-enemies/giantbat.png": {
-   "w": 800,
-   "h": 800,
-   "bytes": 101201,
-   "sha": "07d9bee7e4c748bc"
+   "w": 200,
+   "h": 200,
+   "bytes": 59782,
+   "sha": "5182630a980ffcf9"
   },
   "sprites/stage5-props/prop-r1-c1.png": {
    "w": 178,
@@ -4623,10 +4623,10 @@
    "sha": "d6d338048c94ed36"
   },
   "sprites/weapons/anti-mutant-knife-t5.png": {
-   "w": 240,
-   "h": 244,
-   "bytes": 4830,
-   "sha": "de84c4875a8f10b2"
+   "w": 60,
+   "h": 61,
+   "bytes": 3241,
+   "sha": "98999b6372f79838"
   },
   "sprites/weapons/fire-knife-projectile.png": {
    "w": 427,
@@ -4635,232 +4635,232 @@
    "sha": "d5b8808170ea91d7"
   },
   "sprites/weapons/glauncher-t1-rocket.png": {
-   "w": 320,
-   "h": 216,
-   "bytes": 7101,
-   "sha": "b54f806b606793a7"
+   "w": 80,
+   "h": 54,
+   "bytes": 5239,
+   "sha": "48273be6df53ffbc"
   },
   "sprites/weapons/glauncher-t1.png": {
-   "w": 188,
-   "h": 96,
-   "bytes": 2460,
-   "sha": "426ab428ee20f116"
+   "w": 47,
+   "h": 24,
+   "bytes": 1763,
+   "sha": "32305be60e31ecdd"
   },
   "sprites/weapons/glauncher-t2-alchemy.png": {
-   "w": 296,
-   "h": 236,
-   "bytes": 9590,
-   "sha": "698a5ff367771148"
+   "w": 74,
+   "h": 59,
+   "bytes": 6879,
+   "sha": "258e06e0f17caa84"
   },
   "sprites/weapons/glauncher-t2.png": {
-   "w": 208,
-   "h": 124,
-   "bytes": 3392,
-   "sha": "a3261c3d9a17617d"
+   "w": 52,
+   "h": 31,
+   "bytes": 2421,
+   "sha": "f5c04b6843a01b4b"
   },
   "sprites/weapons/glauncher-t3-signal.png": {
-   "w": 308,
-   "h": 256,
-   "bytes": 8328,
-   "sha": "016c3cb730f81b01"
+   "w": 77,
+   "h": 64,
+   "bytes": 6284,
+   "sha": "efa6c5f4aef73a08"
   },
   "sprites/weapons/glauncher-t3.png": {
-   "w": 256,
-   "h": 136,
-   "bytes": 5009,
-   "sha": "119ed1239f827c97"
+   "w": 64,
+   "h": 34,
+   "bytes": 3596,
+   "sha": "5c8f6bb68c310023"
   },
   "sprites/weapons/handgun-t1-crossbow.png": {
-   "w": 288,
-   "h": 172,
-   "bytes": 7123,
-   "sha": "2905df27d66269e7"
+   "w": 72,
+   "h": 43,
+   "bytes": 5329,
+   "sha": "a64fb6a0389b4fb8"
   },
   "sprites/weapons/handgun-t1-derringer.png": {
-   "w": 196,
-   "h": 148,
-   "bytes": 3707,
-   "sha": "9726bad9cffacbd2"
+   "w": 49,
+   "h": 37,
+   "bytes": 2704,
+   "sha": "bd1b75f652c507e2"
   },
   "sprites/weapons/handgun-t1.png": {
-   "w": 168,
-   "h": 132,
-   "bytes": 3312,
-   "sha": "589a620ba9c05618"
+   "w": 42,
+   "h": 33,
+   "bytes": 2272,
+   "sha": "f92870421abb9050"
   },
   "sprites/weapons/handgun-t2-dualrange.png": {
-   "w": 272,
-   "h": 188,
-   "bytes": 6373,
-   "sha": "deffa3c8a02ed6c9"
+   "w": 68,
+   "h": 47,
+   "bytes": 4678,
+   "sha": "633ac783e65469ee"
   },
   "sprites/weapons/handgun-t2-handcannon.png": {
-   "w": 484,
-   "h": 256,
-   "bytes": 12721,
-   "sha": "04d27d1520396551"
+   "w": 121,
+   "h": 64,
+   "bytes": 9409,
+   "sha": "5e9667bff014de02"
   },
   "sprites/weapons/handgun-t2.png": {
-   "w": 196,
-   "h": 144,
-   "bytes": 4140,
-   "sha": "c6b06d7d40d19145"
+   "w": 49,
+   "h": 36,
+   "bytes": 2981,
+   "sha": "11a18d49b0f9b9cc"
   },
   "sprites/weapons/handgun-t3-gunblade.png": {
-   "w": 376,
-   "h": 256,
-   "bytes": 9297,
-   "sha": "4f58991357fbbda8"
+   "w": 94,
+   "h": 64,
+   "bytes": 6607,
+   "sha": "d19b0c1e661177d3"
   },
   "sprites/weapons/handgun-t3-piledriver.png": {
-   "w": 500,
-   "h": 228,
-   "bytes": 11714,
-   "sha": "6be423b167993605"
+   "w": 125,
+   "h": 57,
+   "bytes": 8625,
+   "sha": "ab35fa9d44910eec"
   },
   "sprites/weapons/handgun-t3.png": {
-   "w": 184,
-   "h": 128,
-   "bytes": 3935,
-   "sha": "cd9aadba82a9d4f7"
+   "w": 46,
+   "h": 32,
+   "bytes": 2803,
+   "sha": "6f97225e020fe0c0"
   },
   "sprites/weapons/hatchet-t2.png": {
-   "w": 220,
-   "h": 192,
-   "bytes": 3920,
-   "sha": "0a686a8794853849"
+   "w": 55,
+   "h": 48,
+   "bytes": 2470,
+   "sha": "7c7ed8bfb8e373f6"
   },
   "sprites/weapons/knife-t1.png": {
-   "w": 164,
-   "h": 180,
-   "bytes": 2684,
-   "sha": "8d92efe0b6bb2a69"
+   "w": 41,
+   "h": 45,
+   "bytes": 1811,
+   "sha": "25e9b75a2963dc04"
   },
   "sprites/weapons/machete-t3.png": {
-   "w": 256,
-   "h": 256,
-   "bytes": 5299,
-   "sha": "6cbda605af410610"
+   "w": 64,
+   "h": 64,
+   "bytes": 3440,
+   "sha": "407eba8de8bc402d"
   },
   "sprites/weapons/phill-revolver.png": {
-   "w": 268,
-   "h": 160,
-   "bytes": 6141,
-   "sha": "f3e8b95c49e321b7"
+   "w": 67,
+   "h": 40,
+   "bytes": 4814,
+   "sha": "9b9a07180c61ca91"
   },
   "sprites/weapons/rifle-t1-bolt.png": {
-   "w": 296,
-   "h": 220,
-   "bytes": 5268,
-   "sha": "ecfae63acb3769cc"
+   "w": 74,
+   "h": 55,
+   "bytes": 3568,
+   "sha": "50c67f9cfeaf5ca0"
   },
   "sprites/weapons/rifle-t1-deserttech.png": {
-   "w": 248,
-   "h": 180,
-   "bytes": 4856,
-   "sha": "47dfbdfdbbd2acd3"
+   "w": 62,
+   "h": 45,
+   "bytes": 3497,
+   "sha": "797f5a8b9eaf6524"
   },
   "sprites/weapons/rifle-t1.png": {
-   "w": 196,
-   "h": 124,
-   "bytes": 3009,
-   "sha": "4c26404d4b9fa0dd"
+   "w": 49,
+   "h": 31,
+   "bytes": 2129,
+   "sha": "2ed1b7e6b77ac084"
   },
   "sprites/weapons/rifle-t2-heavysniper.png": {
-   "w": 392,
-   "h": 256,
-   "bytes": 8175,
-   "sha": "e600737615abd047"
+   "w": 98,
+   "h": 64,
+   "bytes": 5499,
+   "sha": "84858664c12ed599"
   },
   "sprites/weapons/rifle-t2-icelance.png": {
-   "w": 352,
-   "h": 256,
-   "bytes": 6916,
-   "sha": "6c7546c7a16b20ee"
+   "w": 88,
+   "h": 64,
+   "bytes": 4478,
+   "sha": "bed556f2078ac263"
   },
   "sprites/weapons/rifle-t2.png": {
-   "w": 216,
-   "h": 124,
-   "bytes": 2975,
-   "sha": "1e31eb52b1e48022"
+   "w": 54,
+   "h": 31,
+   "bytes": 2011,
+   "sha": "5a62f8854bc088da"
   },
   "sprites/weapons/rifle-t3-eyelaser.png": {
-   "w": 292,
-   "h": 248,
-   "bytes": 7970,
-   "sha": "df2c7c8b51cbb11d"
+   "w": 73,
+   "h": 62,
+   "bytes": 5725,
+   "sha": "a6e1ff43da0d3f6a"
   },
   "sprites/weapons/rifle-t3-railgun.png": {
-   "w": 348,
-   "h": 252,
-   "bytes": 8021,
-   "sha": "9d1041d413352827"
+   "w": 87,
+   "h": 63,
+   "bytes": 5452,
+   "sha": "8b21eb51783f9f11"
   },
   "sprites/weapons/rifle-t3.png": {
-   "w": 476,
-   "h": 256,
-   "bytes": 10304,
-   "sha": "3ea8b8c426ec685c"
+   "w": 119,
+   "h": 64,
+   "bytes": 7100,
+   "sha": "8be004f83f34be2f"
   },
   "sprites/weapons/shotgun-t1-cycle.png": {
-   "w": 448,
-   "h": 204,
-   "bytes": 10316,
-   "sha": "4caa78023f81482f"
+   "w": 112,
+   "h": 51,
+   "bytes": 7795,
+   "sha": "23abcadd4979a2c3"
   },
   "sprites/weapons/shotgun-t1-focus.png": {
-   "w": 672,
-   "h": 232,
-   "bytes": 13557,
-   "sha": "d4309294ebe1d9e4"
+   "w": 168,
+   "h": 58,
+   "bytes": 9810,
+   "sha": "5768177372a58f91"
   },
   "sprites/weapons/shotgun-t1.png": {
-   "w": 196,
-   "h": 204,
-   "bytes": 3207,
-   "sha": "356a78192af4d311"
+   "w": 49,
+   "h": 51,
+   "bytes": 1970,
+   "sha": "61cc7f50b0aafaa7"
   },
   "sprites/weapons/shotgun-t2-coil.png": {
-   "w": 424,
-   "h": 216,
-   "bytes": 10577,
-   "sha": "d2dca8a546e448a5"
+   "w": 106,
+   "h": 54,
+   "bytes": 7475,
+   "sha": "26573600606ca806"
   },
   "sprites/weapons/shotgun-t2-suppress.png": {
-   "w": 744,
-   "h": 256,
-   "bytes": 17375,
-   "sha": "5bf2f7cda59edaf5"
+   "w": 186,
+   "h": 64,
+   "bytes": 12141,
+   "sha": "420ef05b698477db"
   },
   "sprites/weapons/shotgun-t2.png": {
-   "w": 188,
-   "h": 188,
-   "bytes": 2923,
-   "sha": "f19b69a01d68ecd7"
+   "w": 47,
+   "h": 47,
+   "bytes": 1976,
+   "sha": "f5639897bf928391"
   },
   "sprites/weapons/shotgun-t3-flamer.png": {
-   "w": 732,
-   "h": 256,
-   "bytes": 21154,
-   "sha": "72541645d54af324"
+   "w": 183,
+   "h": 64,
+   "bytes": 15566,
+   "sha": "fd0181e560135181"
   },
   "sprites/weapons/shotgun-t3-homing.png": {
-   "w": 444,
-   "h": 256,
-   "bytes": 12595,
-   "sha": "971601587100ce61"
+   "w": 111,
+   "h": 64,
+   "bytes": 8985,
+   "sha": "f55eaac1378210c7"
   },
   "sprites/weapons/shotgun-t3.png": {
-   "w": 216,
-   "h": 124,
-   "bytes": 3032,
-   "sha": "6f867c1136c7d12e"
+   "w": 54,
+   "h": 31,
+   "bytes": 2318,
+   "sha": "3d54adcbf298902b"
   },
   "sprites/weapons/tactical-knife-t4.png": {
-   "w": 216,
-   "h": 220,
-   "bytes": 3868,
-   "sha": "636058abbe526e35"
+   "w": 54,
+   "h": 55,
+   "bytes": 2558,
+   "sha": "08631ecea9ed1be6"
   },
   "sprites/werewolf-common-walk.png": {
    "w": 1716,
@@ -4881,10 +4881,10 @@
    "sha": "9329792b2b6d4464"
   },
   "sprites/whip.png": {
-   "w": 996,
-   "h": 132,
-   "bytes": 2314,
-   "sha": "38f65d4b906bfd3d"
+   "w": 498,
+   "h": 66,
+   "bytes": 3867,
+   "sha": "0e67d2d943d3f6c1"
   },
   "sprites/wire-anchor-tip.png": {
    "w": 480,
@@ -4917,10 +4917,10 @@
    "sha": "741bed0391098ac5"
   },
   "sprites/zoom-cloud.png": {
-   "w": 1024,
-   "h": 168,
-   "bytes": 23010,
-   "sha": "c02a0688bed9d815"
+   "w": 256,
+   "h": 42,
+   "bytes": 12514,
+   "sha": "08e05c49793434cb"
   },
   "tutorial/action-counter.gif": {
    "w": 400,
