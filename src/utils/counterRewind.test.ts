@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  COUNTER_REWIND_MS, counterRewindEase, counterRewindElapsed, counterRewindFrame,
-} from './counterRewind';
+import { COUNTER_REWIND_MS, counterRewindEase, counterRewindElapsed, counterRewindFrame, counterRewindIsFresh, COUNTER_REWIND_FRESH_MS } from './counterRewind';
 
 describe('★カウンターの巻き戻し(社長指示2026-09-23「跳ね返してる感じ」)', () => {
   it('イージングは 0→1 の単調増加で、両端がちょうど 0 と 1', () => {
@@ -66,5 +64,29 @@ describe('★カウンターの巻き戻し(社長指示2026-09-23「跳ね返�
     expect(counterRewindFrame(0, 50)).toBeNull();
     expect(counterRewindElapsed(0, 0)).toBeNull();
     expect(counterRewindElapsed(200, 10, 0)).toBeNull();
+  });
+});
+
+describe('counterRewindIsFresh（もう終わった技は巻き戻さない・社長報告2026-09-24）', () => {
+  it('打刻の直前に描かれたコマは対象（＝その技が中断された）', () => {
+    expect(counterRewindIsFresh(1000, 1000)).toBe(true);
+    expect(counterRewindIsFresh(1000, 1000 + COUNTER_REWIND_FRESH_MS)).toBe(true);
+  });
+
+  it('★窓より古いコマは対象外（技はもう終わっている）', () => {
+    expect(counterRewindIsFresh(1000, 1000 + COUNTER_REWIND_FRESH_MS + 1)).toBe(false);
+    // 実際に起きていた形: 着地の絵が出たのが2秒前、そのあとカウンターが刺さった
+    expect(counterRewindIsFresh(1000, 3000)).toBe(false);
+  });
+
+  it('打刻より後に描かれたコマ（次の技）も対象に見えない＝窓は片側だけ広げない', () => {
+    // 呼び手が `memo.at > at + 1` で先に弾く領域。ここでは真を返してよいが、
+    // 「未来のコマまで巻き戻す」ことが無いよう、値としては常に真になることを固定しておく。
+    expect(counterRewindIsFresh(3000, 1000)).toBe(true);
+  });
+
+  it('窓は呼び手が上書きできる', () => {
+    expect(counterRewindIsFresh(1000, 1200, 300)).toBe(true);
+    expect(counterRewindIsFresh(1000, 1400, 300)).toBe(false);
   });
 });

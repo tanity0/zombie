@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4617', items: ['跳びかかった敵が、隙を終えた後にもう一度小さく跳ぶ絵を見せることがあったのを直した'] },
   { version: '0.25.4616', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4615', items: ['伐採人の薙ぎが、武器の進む向きと同じ向きに振られるようになった'] },
   { version: '0.25.4614', items: ['伐採人が描き下ろしの絵で歩くようになった', '立ち絵を傾けて歩いて見せる代用もこれで外れる'] },

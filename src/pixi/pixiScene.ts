@@ -110,7 +110,7 @@ import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from 
 import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFrames, jumpLandDrawMs } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepBandDirX, sweepFaceMulFor } from '../utils/enemySweepSheet';
-import { counterRewindFrame, counterRewindEase, counterRewindElapsed, COUNTER_REWIND_MS } from '../utils/counterRewind';
+import { counterRewindFrame, counterRewindEase, counterRewindElapsed, COUNTER_REWIND_MS, counterRewindIsFresh } from '../utils/counterRewind';
 // ★武器の振りの軌跡(カウンターの「振りを戻す」用)。60fpsで窓140ms=約9枚なので16枚で足りる。
 const WEAPON_TRAIL_MAX = 16;
 interface WeaponDrawArgs {
@@ -29859,6 +29859,12 @@ export class PixiScene {
     if (at === undefined) { this.atkFrameMemo.delete(e.id); return null; }
     // カウンターより前に出ていたコマだけが対象(打刻より後に出たコマは「次の技」)。
     if (memo.at > at + 1) return null;
+    // ★★**もう終わった技は巻き戻さない**(社長報告2026-09-24「着地→硬直→なぜか見た目だけ
+    // 小ジャンプして戻る」)。覚えているコマは技が終わっても残るので、**その後で刺さった
+    // カウンター**が古いコマを掴み、**跳びのシートを逆再生**していた
+    // (実測: 着地のコマ10 → 滞空6 → しゃがみ3→1→0 を140msで遡る=もう一度小さく跳ぶ絵)。
+    // 打刻の直前に描かれたコマだけを対象にする。
+    if (!counterRewindIsFresh(memo.at, at)) { this.atkFrameMemo.delete(e.id); return null; }
     const i = counterRewindFrame(memo.i, now - at);
     if (i === null) { this.atkFrameMemo.delete(e.id); return null; }
     const slices = this.sheetSlices(memo.name, memo.frames);

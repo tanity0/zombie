@@ -61,3 +61,24 @@ export const counterRewindFrame = (
   const back = counterRewindEase(sinceCounterMs / durMs);
   return Math.max(0, Math.round(fromFrame * (1 - back)));
 };
+
+/**
+ * ★**もう終わった技を巻き戻さない**(社長報告2026-09-24
+ * 「ジャンプ攻撃してくる→着地→硬直→**なぜか見た目だけ小ジャンプして戻る**」)。
+ *
+ * 巻き戻しは「**カウンターで中断された技**」の絵を戻すためのもの。ところが覚えているコマは
+ * 技が終わっても残るので、**その後で刺さったカウンター**が古いコマを掴んで逆再生していた。
+ * 蜘蛛で起きると**着地のコマ → 滞空 → しゃがみ**と140msで遡り、
+ * **もう一度小さく跳んで戻ったように見える**(実測: コマ10→6→3→1→0)。
+ *
+ * ⇒ **打刻(カウンター成立)の直前に描かれたコマだけ**を巻き戻しの対象にする。
+ *   それより古ければ「その技はもう終わっている」= 戻す相手がいない。
+ *
+ * ★窓を広く取りすぎないこと。技が終わってから窓のぶんだけは**まだ掴める**ので、
+ *   「数フレームの取りこぼしを許す」以上には広げない(既定=120ms≒7フレーム)。
+ */
+export const COUNTER_REWIND_FRESH_MS = 120;
+
+export const counterRewindIsFresh = (
+  memoAtMs: number, counteredAtMs: number, freshMs: number = COUNTER_REWIND_FRESH_MS,
+): boolean => counteredAtMs - memoAtMs <= freshMs;
