@@ -40,8 +40,23 @@ export const LOGGER_SWEEP_PHASES: Readonly<Record<string, SweepPhase>> = {
   'logger-sweep-recover': 'recover',
 };
 
+/**
+ * ★**削岩型の突きも同じ3相**(社長支給2026-09-24「削岩機の突きのアニメーション」)。
+ * 溜めてドリルを引き込む → 突き出す → 出し切った姿で硬直、と**薙ぎと同じ形**なので
+ * **新しい仕組みを作らない**(区間の割り方も尺の読み方もそのまま借りる)。名前だけ違う。
+ */
+export const DRILLER_THRUST_PHASES: Readonly<Record<string, SweepPhase>> = {
+  'driller-thrust-windup': 'windup',
+  'driller-thrust-active': 'active',
+  'driller-thrust-recover': 'recover',
+};
+
+const THREE_PHASE_TECH: Readonly<Record<string, SweepPhase>> = {
+  ...LOGGER_SWEEP_PHASES, ...DRILLER_THRUST_PHASES,
+};
+
 export const sweepPhaseOf = (aiPhase: string | undefined): SweepPhase | null =>
-  (aiPhase !== undefined && LOGGER_SWEEP_PHASES[aiPhase]) || null;
+  (aiPhase !== undefined && THREE_PHASE_TECH[aiPhase]) || null;
 
 /**
  * コマ番号を返す。`null` = このシートを出さない(立ち絵/歩きへ戻す)。

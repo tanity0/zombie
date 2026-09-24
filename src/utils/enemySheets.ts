@@ -465,6 +465,16 @@ export const screamSheetFrames = (idleTexName: string | null | undefined): numbe
  * 攻撃の表へ入れても **`biteAt` が無く1コマも描かれない**(★実在確認の掟)。
  */
 export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
+  // 社長支給2026-09-24「削岩機の突きのアニメーション」(=`driller`)。14コマ
+  // (支給 2114×130 → **全幅で空の上2行だけ落として 151×128**。内容は1画素も削っていない)。
+  // 常駐 **1.03MB**。★**縮小していない**(描画は 120×102 で、絵に対する余裕が1.2倍しかない)。
+  // 足元は**全コマ下端127**。
+  // ★区間は **7 / 3 / 4**(実測で読んだ絵の中身に合わせた):
+  //   0〜6=ドリルを引き込んで溜める(幅 143→88 と縮む) / 7〜9=**突き出す**(88→142 と伸びる) /
+  //   10〜13=出し切った姿(145前後で微動)。
+  //   尺に写すと 溜め143ms/コマ・突き61ms/コマ・戻り83ms/コマ=**突きだけ速い**=突きに見える。
+  // ★掟③: **当たるのは「溜めの最後のコマが終わる瞬間」=突き区間の先頭コマ**(薙ぎと同じ)。
+  'driller-common': { windup: 7, active: 3, recover: 4 },
   // ★伐採人(`logger`)。立ち絵名は **`reaper-common`**——旧・死神の絵が v0.25.4004 で伐採人へ降格した
   //   ため(`ENEMY_VARIANT_SETS.logger = ['reaper-common']`)。**死神本体は `reaper2-common` で別人。**
   // 9コマ(支給 1296×130 → 余白を切って **134×128**)。常駐 0.59MB。切る矩形は全コマ共通(x4-137 / y2-129)。
@@ -476,7 +486,17 @@ export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
   'reaper-common': { windup: 1, active: 3, recover: 5 },
 };
 
-export const sweepSheetName = (idleTexName: string): string => `${idleTexName}-sweep`;
+/**
+ * ★3相の技のシート名。既定は `-sweep`。**絵が薙ぎでない型はここで名前を変える**
+ * (削岩型は「突き」なので `-thrust`。仕組みは薙ぎと同じものを借りているが、
+ *  **素材の名前まで嘘にしない**ための1行の表)。
+ */
+const SWEEP_SHEET_SUFFIX: Readonly<Record<string, string>> = {
+  'driller-common': 'thrust',
+};
+
+export const sweepSheetName = (idleTexName: string): string =>
+  `${idleTexName}-${SWEEP_SHEET_SUFFIX[idleTexName] ?? 'sweep'}`;
 
 /**
  * ★**薙ぎシートの「絵の中での振り抜き方向」**(社長報告2026-09-23「伐採人の攻撃モーションが、

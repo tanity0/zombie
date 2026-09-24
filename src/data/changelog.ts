@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4619', items: ['削岩型が突く動きを、描き下ろしの絵で見せるようになった'] },
   { version: '0.25.4618', items: ['跳びかかった敵が、着地の隙の途中でもう一度小さく跳んで見えることがあったのを直した'] },
   { version: '0.25.4617', items: ['跳びかかった敵が、隙を終えた後にもう一度小さく跳ぶ絵を見せることがあったのを直した'] },
   { version: '0.25.4616', items: ['ゲーム内容の変更はありません'] },

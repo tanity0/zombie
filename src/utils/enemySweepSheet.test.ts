@@ -155,3 +155,44 @@ describe('sweepFaceMulFor（薙ぎのミラーは「絵の振り」を「帯」�
     expect(sweepFaceMulFor(0, -1, 1)).toBe(1);
   });
 });
+
+describe('削岩型の突き（社長支給2026-09-24・薙ぎと同じ3相の枠に乗せる）', () => {
+  const split = ENEMY_SWEEP_SHEETS['driller-common'];
+
+  it('台帳に載っていて、コマ数の合計が14', () => {
+    expect(split).toBeDefined();
+    expect(sweepSplitFrames(split)).toBe(14);
+    expect(split).toEqual({ windup: 7, active: 3, recover: 4 });
+  });
+
+  it('突きの相が区間へ写る（薙ぎの相も従来どおり）', () => {
+    expect(sweepPhaseOf('driller-thrust-windup')).toBe('windup');
+    expect(sweepPhaseOf('driller-thrust-active')).toBe('active');
+    expect(sweepPhaseOf('driller-thrust-recover')).toBe('recover');
+    expect(sweepPhaseOf('logger-sweep-active')).toBe('active');
+    expect(sweepPhaseOf('crouch')).toBeNull();
+    expect(sweepPhaseOf(undefined)).toBeNull();
+  });
+
+  it('★当たるのは突き区間の先頭コマ（＝溜めの最後が終わる瞬間）', () => {
+    // 溜めの末尾は6コマ目、突きの先頭は7コマ目。境目でコマが飛ばない。
+    expect(enemySweepFrame(split, 'windup', 0.999)).toBe(6);
+    expect(enemySweepFrame(split, 'active', 0)).toBe(7);
+  });
+
+  it('全コマを1度は通る（どの区間も飛ばさない）', () => {
+    const seen = new Set<number>();
+    for (const ph of ['windup', 'active', 'recover'] as const) {
+      for (let k = 0; k <= 400; k++) {
+        const f = enemySweepFrame(split, ph, k / 400);
+        if (f !== null) seen.add(f);
+      }
+    }
+    expect(seen.size).toBe(14);
+  });
+
+  it('素材名は -thrust（薙ぎではないので名前を嘘にしない）', () => {
+    expect(sweepSheetName('driller-common')).toBe('driller-common-thrust');
+    expect(sweepSheetName('reaper-common')).toBe('reaper-common-sweep');
+  });
+});
