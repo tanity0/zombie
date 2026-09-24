@@ -162,7 +162,15 @@ describe('削岩型の突き（社長支給2026-09-24・薙ぎと同じ3相の�
   it('台帳に載っていて、コマ数の合計が14', () => {
     expect(split).toBeDefined();
     expect(sweepSplitFrames(split)).toBe(14);
-    expect(split).toEqual({ windup: 7, active: 3, recover: 4 });
+    expect(split.windup).toBe(8);
+    expect(split.active).toBe(2);
+    expect(split.recover).toBe(4);
+  });
+
+  it('★重みはコマ数ぶん在り、全部正（1つでも欠けると等分へ落ちて「ゆったり」に戻る）', () => {
+    expect(split.weights).toBeDefined();
+    expect(split.weights?.length).toBe(14);
+    for (const w of split.weights ?? []) expect(w).toBeGreaterThan(0);
   });
 
   it('突きの相が区間へ写る（薙ぎの相も従来どおり）', () => {
@@ -174,10 +182,24 @@ describe('削岩型の突き（社長支給2026-09-24・薙ぎと同じ3相の�
     expect(sweepPhaseOf(undefined)).toBeNull();
   });
 
-  it('★当たるのは突き区間の先頭コマ（＝溜めの最後が終わる瞬間）', () => {
-    // 溜めの末尾は6コマ目、突きの先頭は7コマ目。境目でコマが飛ばない。
-    expect(enemySweepFrame(split, 'windup', 0.999)).toBe(6);
-    expect(enemySweepFrame(split, 'active', 0)).toBe(7);
+  it('★当たるのは突き区間の先頭コマ＝「突き切った絵」（掟③は重みを入れても動かない）', () => {
+    // 溜めの末尾は7コマ目（出はじめ）、突きの先頭は8コマ目（突き切った姿）。境目でコマが飛ばない。
+    expect(enemySweepFrame(split, 'windup', 0.999)).toBe(7);
+    expect(enemySweepFrame(split, 'active', 0)).toBe(8);
+  });
+
+  it('★「出はじめ」の1枚は溜めの最後に一瞬だけ（＝突きが速く見える）', () => {
+    // 重みの合計16.6のうち7コマ目は0.6＝溜めの3.6%。実効1000msなら36ms。
+    const ws = split.weights ?? [];
+    const windupSum = ws.slice(0, 8).reduce((a, b) => a + b, 0);
+    expect(ws[7] / windupSum).toBeLessThan(0.05);
+    // 溜めの95%時点ではまだ「引き切った姿」（6コマ目）で待っている。
+    expect(enemySweepFrame(split, 'windup', 0.95)).toBe(6);
+  });
+
+  it('★溜めの引き込みは減速する（等分にしない＝慣性MUST）', () => {
+    const ws = split.weights ?? [];
+    for (let i = 0; i < 6; i++) expect(ws[i + 1]).toBeGreaterThan(ws[i]);
   });
 
   it('全コマを1度は通る（どの区間も飛ばさない）', () => {

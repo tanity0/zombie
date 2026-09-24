@@ -15,7 +15,7 @@
 //
 // ★**位相は線形**(加減速は絵の側に描かれている)。
 
-import { sectionFrame, sectionLastFrame, sectionsTotal, type SectionCounts } from './sheetSections';
+import { sectionFrame, sectionLastFrame, sectionsTotal, type SectionCounts, type SectionWeights } from './sheetSections';
 
 /** 1枚のシートを3区間へ割る。合計がコマ数と一致すること。 */
 export interface SweepSplit {
@@ -25,6 +25,12 @@ export interface SweepSplit {
   active: number;
   /** 戻り(硬直=反撃の窓)。末尾まで。 */
   recover: number;
+  /**
+   * ★**コマごとの表示の長さの比**(シート全体ぶん・省略=等分)。
+   * 社長指示2026-09-24「**普通に流すと突きがゆったりしてる**」——同じ姿勢のコマが並ぶ絵は
+   * 等分だと突きが伸びないので、**溜めは長く・突きは短く**配る。区間の境目は動かない。
+   */
+  weights?: SectionWeights;
 }
 
 const counts = (s: SweepSplit): SectionCounts => [s.windup, s.active, s.recover];
@@ -65,7 +71,7 @@ export const sweepPhaseOf = (aiPhase: string | undefined): SweepPhase | null =>
 export const enemySweepFrame = (
   split: SweepSplit, phase: SweepPhase, prog: number,
 ): number | null =>
-  sectionFrame(counts(split), phase === 'windup' ? 0 : phase === 'active' ? 1 : 2, prog);
+  sectionFrame(counts(split), phase === 'windup' ? 0 : phase === 'active' ? 1 : 2, prog, split.weights);
 
 /** ★当たる瞬間に出る最初のコマ(=薙ぎ区間の先頭)。検査が掟③を押さえるのに使う。 */
 export const sweepImpactFrame = (split: SweepSplit): number => split.windup;

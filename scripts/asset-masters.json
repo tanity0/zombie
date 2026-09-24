@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "842 files / 復号後 約590MB",
+ "generatedFor": "843 files / 復号後 約591MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -753,10 +753,16 @@
    "sha": "4cbeb25472447d96"
   },
   "sprites/driller-common-thrust.png": {
-   "w": 2114,
+   "w": 2044,
    "h": 128,
-   "bytes": 235336,
-   "sha": "5f326f48b6a6d212"
+   "bytes": 234469,
+   "sha": "a95c205001ae5780"
+  },
+  "sprites/driller-common-walk.png": {
+   "w": 2288,
+   "h": 128,
+   "bytes": 267379,
+   "sha": "4ccf7d1216c17235"
   },
   "sprites/driller-common.png": {
    "w": 143,
