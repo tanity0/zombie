@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "843 files / 復号後 約591MB",
+ "generatedFor": "844 files / 復号後 約594MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3763,6 +3763,12 @@
    "h": 128,
    "bytes": 15769,
    "sha": "73f8061d2f819c50"
+  },
+  "sprites/reaper2-common-walk.png": {
+   "w": 3424,
+   "h": 256,
+   "bytes": 649398,
+   "sha": "86c7bc9ab5cf3d9a"
   },
   "sprites/reaper2-common.png": {
    "w": 347,
