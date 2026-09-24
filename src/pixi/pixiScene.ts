@@ -21509,6 +21509,20 @@ export class PixiScene {
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DASH_DUST_SCALE]);
       if (stopL) this.drawDust(stopL.d[0], stopL.d[1], stopL.d[2], stopL.t, this.dustTintForStage(), this.dustAlpha(stopL.t), stopL.t0);
       if (dashing) this.dashWasOn.add(e.id); else this.dashWasOn.delete(e.id);
+      // ★★**突きの砂埃**(クリエイティブ監査2026-09-24・社長指示2026-09-24「削岩やって」)。
+      // ★**根拠は実測の描き直し**(最初に書いた「足幅が 88→136 に開く」は**誤り**——
+      //   地面の行を柱ごとに分けて数えると、右端の +48..+67 は足ではなく**ドリルの先端**だった。
+      //   足の幅そのものは 87→90 でほぼ変わらない)。**正しい根拠は「当たるコマでドリルの先端が
+      //   地面の行に着く」**——地面を噛むから埃が立つ。コマ8〜13でだけこの柱が現れる。
+      // **判定ゼロの「派手さの絵」**(攻撃ヴィジュアルの2分類②)。大きさは既存の `DUST_STOMP_SCALE` を
+      //   流用(新しい数値を作らない)。★**中心はいまアンカー(論理の足元)**なので、
+      //   **先端が地面を噛む位置とはズレている**——監査の指摘。直すなら帯の向きへ寄せる(★社長へ報告済み)。
+      // ★伐採人の薙ぎには付けていない。ただし**あちらは同じ測り方が使えない**(裾とチェーンソーが
+      //   地面の行で1つの塊になり、足を分離できない)=「動作が無い」ではなく「**測れていない**」。
+      const stepIn = e.aiPhase === 'driller-thrust-active';
+      const stepL = this.latchFx(`${e.id}:stepdust`, stepIn, DUST_MS, now,
+        () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DUST_STOMP_SCALE]);
+      if (stepL) this.drawDust(stepL.d[0], stepL.d[1], stepL.d[2], stepL.t, this.dustTintForStage(), this.dustAlpha(stepL.t), stepL.t0);
 
       // v0.25.2868: 溜めの後に本体が高速でコミットする州だけ、進行方向と逆へ短い速度線を引く。
       // 州名は移動/判定の状態機械そのものを読むため、active秒数を変えてもFXだけ遅れて残らない。

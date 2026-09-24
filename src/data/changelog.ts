@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4627', items: ['削岩型がドリルを突き込むと、地面から砂埃が上がる'] },
   { version: '0.25.4626', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4625', items: ['死神が呼ぶ使者が、描き下ろしの絵で揺れるようになった', '止まっていても縄に吊られて揺れ続ける'] },
   { version: '0.25.4624', items: ['起動時に読み込む絵を減らした', 'ボスの絵は、そのボスが姿を見せた時に読むようになった'] },
