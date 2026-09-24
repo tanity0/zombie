@@ -69,61 +69,67 @@ export const DRILLER_THRUST_PHASES: Readonly<Record<string, SweepPhase>> = {
   'driller-thrust-recover': 'recover',
 };
 
-/**
- * ★**城ボスの叩きつけも同じ3相**(社長支給2026-09-25「叩きつけ」)。
- * 蔓を振り上げて止まる → 地を叩く → 砂埃の中で硬直、と**薙ぎ・突きと同じ形**なので
- * **新しい仕組みを作らない**(区間の割り方も尺の読み方もそのまま借りる)。
- * ★当たりは `g-slam-windup` → `-active` の遷移で1回だけ積まれる=**掟③は区間の境目で満たされる**。
- */
-export const GIANT_SLAM_PHASES: Readonly<Record<string, SweepPhase>> = {
-  'g-slam-windup': 'windup',
-  'g-slam-active': 'active',
-  'g-slam-recover': 'recover',
-};
-
+// ★城ボスの相(`g-*`)は**ここには入れない**。城ボスは `giantMotionSpanOf`(下)が
+// 相の名前から区間を決める別経路で、こちらは伐採人・削岩型の2型だけが使う
+// (`sweepPhaseOf` は「薙ぎの震え」「帯の向き」の判定にも使われるので、混ぜると城ボスへ波及する)。
 const THREE_PHASE_TECH: Readonly<Record<string, SweepPhase>> = {
-  ...LOGGER_SWEEP_PHASES, ...DRILLER_THRUST_PHASES, ...GIANT_SLAM_PHASES,
+  ...LOGGER_SWEEP_PHASES, ...DRILLER_THRUST_PHASES,
 };
 
 /**
- * ★★**叩きつけのモーションを「跳ぶ」以外の技へ配る**(社長指示2026-09-25
- * 「モーションの叩きつけをジャンプ以外の技に入れたい」)。
+ * ★★**叩きつけのモーションを「跳ぶ」以外の技“全部”へ配る**(社長指示2026-09-25
+ * 「モーションの叩きつけをジャンプ以外の技に入れたい」→「**ジャンプ以外の攻撃全てだよ**」)。
  *
  * ★なぜ要ったか(★実在確認の掟): **叩きつけ(slam)の技は、どのステージにも割り当てられていない**
  * (`giantScript.GIANT_STAGE_UNIQUE_MOVE` / `_ULT_MOVE` のどちらにも 'slam' が無い。
  *  v0.25.2863 で stage-1 の大技が slam → wing へ移った時から)。
- * ⇒ **`g-slam-*` は実戦で一度も出ない**=せっかくのシートが1コマも画面に出ない。
- * ⇒ だから**実際に出る技**(踏み鳴らし・薙ぎ払い・翼撃)にこの絵を配る。
+ * ⇒ `g-slam-*` は実戦で一度も出ない=せっかくのシートが1コマも画面に出ない。
+ * ⇒ だから**実際に出る技の全部**へこの絵を配る。
  *
- * ★**技ごとに相の並びが違う**ので、1対1では写せない:
- *   - 叩きつけ / 翼撃 … 溜め → 当たり → 戻り(**尺まで同じ** 1440/312/1560)
- *   - 薙ぎ払い     … 溜め → 当たり → 戻り(尺だけ違う 840/264/840)
- *   - 踏み鳴らし   … 溜め → **戻り**(当たりの相が無い。**溜めの終わり=当たる瞬間**)
- * ⇒ 値は「シートのどの区間から どの区間まで」を表す。踏み鳴らしの戻りだけが
- *    **当たり+戻り**をまとめて受け持つ=**戻りの先頭コマ=砂埃の出るコマ=当たる瞬間**(掟③)。
+ * ★**表を作らず、相の名前で決める。** 城ボスの相は `g-<技>-<区間>` の形に揃っているので、
+ * 末尾だけを見れば「溜め/当たり/戻り」のどれかが決まる。**新しい技を足しても勝手に乗る**
+ * (書き忘れで絵が出ない、が起きない)。
+ *
+ * ★**跳ぶ技だけ外す**(社長指示の「ジャンプ以外」)。跳びは専用のシートを持っている。
+ *
+ * ★**当たりの相を持たない技**(踏み鳴らし・爪・祝福・薙ぎ抜け・急降下・虚無)は、
+ * **戻りの相が「当たり+戻り」をまとめて**受け持つ——それらは**溜めの終わりで当たる**ので、
+ * **戻りの先頭コマ=砂埃の出るコマ=当たる瞬間**になる(掟③)。
  */
 export type SweepSpan = readonly [SweepPhase, SweepPhase];
-export const GIANT_SLAM_MOTION_PHASES: Readonly<Record<string, SweepSpan>> = {
-  // 叩きつけ本体(今は出ないが、表へ戻せば即つながる)。
-  'g-slam-windup': ['windup', 'windup'],
-  'g-slam-active': ['active', 'active'],
-  'g-slam-recover': ['recover', 'recover'],
-  // 翼撃(ステージ1の大技)。尺が叩きつけと**完全に同じ**なので、そのまま乗る。
-  'g-wing-windup': ['windup', 'windup'],
-  'g-wing-active': ['active', 'active'],
-  'g-wing-recover': ['recover', 'recover'],
-  // 薙ぎ払い(全ステージ共通の基本技)。
-  'g-sweep-windup': ['windup', 'windup'],
-  'g-sweep-active': ['active', 'active'],
-  'g-sweep-recover': ['recover', 'recover'],
-  // 踏み鳴らし(全ステージ共通の基本技)。**当たりの相が無い**ので、戻りが当たり+戻りを受け持つ。
-  'g-stomp-windup': ['windup', 'windup'],
-  'g-stomp-recover': ['active', 'recover'],
-};
 
-/** その `aiPhase` が叩きつけモーションのどの範囲か(表に無ければ null=この絵を出さない)。 */
-export const giantMotionSpanOf = (aiPhase: string | undefined): SweepSpan | null =>
-  (aiPhase !== undefined && GIANT_SLAM_MOTION_PHASES[aiPhase]) || null;
+/** 跳ぶ技(専用シートを持つので配らない)。 */
+const GIANT_JUMP_TECHS = ['g-jump-', 'g-trijump-'];
+
+/**
+ * **当たりの相を持たない技**(= `-active` 等が無く、溜めの終わりで当たる)。
+ * ここに載っている技は、戻りの相が「当たり+戻り」を受け持つ。
+ */
+const GIANT_NO_ACTIVE_TECHS: readonly string[] = [
+  'g-stomp-', 'g-talon-', 'g-boon-', 'g-reach-', 'g-dive-', 'g-nihil-',
+];
+
+/** 溜めに当たる相の末尾(構える・狙う・唱える)。 */
+const GIANT_WINDUP_SUFFIX = ['-windup', '-hold', '-track', '-chant1', '-chant2', '-chant3'];
+/** 当たりに当たる相の末尾(判定が出ている・体をぶつけている)。 */
+const GIANT_ACTIVE_SUFFIX = ['-active', '-burst', '-volley', '-charge'];
+
+const WINDUP: SweepSpan = ['windup', 'windup'];
+const ACTIVE: SweepSpan = ['active', 'active'];
+const RECOVER: SweepSpan = ['recover', 'recover'];
+const ACTIVE_RECOVER: SweepSpan = ['active', 'recover'];
+
+/** その `aiPhase` が叩きつけモーションのどの範囲か(城ボス以外・跳ぶ技は null=この絵を出さない)。 */
+export const giantMotionSpanOf = (aiPhase: string | undefined): SweepSpan | null => {
+  if (aiPhase === undefined || !aiPhase.startsWith('g-')) return null;
+  if (GIANT_JUMP_TECHS.some(t => aiPhase.startsWith(t))) return null;
+  if (GIANT_WINDUP_SUFFIX.some(x => aiPhase.endsWith(x))) return WINDUP;
+  if (GIANT_ACTIVE_SUFFIX.some(x => aiPhase.endsWith(x))) return ACTIVE;
+  if (aiPhase.endsWith('-recover')) {
+    return GIANT_NO_ACTIVE_TECHS.some(t => aiPhase.startsWith(t)) ? ACTIVE_RECOVER : RECOVER;
+  }
+  return null;   // 区間名が付いていない相(台本の繋ぎ等)は出さない
+};
 
 /**
  * 区間の範囲(span)ぶんをひと続きに流した時のコマ番号。

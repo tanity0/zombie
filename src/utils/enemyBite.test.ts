@@ -878,3 +878,41 @@ describe('★liftUntil は Date.now 系。gameTime と比べない(v0.25.45xx・
     expect(GT < NOW - 1).toBe(true);
   });
 });
+
+// ★★**「重なっただけで痛い」敵の全一覧**(社長報告2026-09-25「重なっただけでダメージを受ける敵が
+// まだ残っていそう。削岩機や死神。他にもいるかも？」)。
+//
+// 接触ダメージは `combatTick.applyContactDamage` の1箇所でしか入らず、そこは
+// **`isBiteSubject` が true の敵を丸ごと飛ばす**。つまり「重なっただけで痛い」= `isBiteSubject` が false。
+// ここを表にして固定しておけば、**次に誰かが増えた/減った時にテストが止める**。
+describe('★重なっただけで痛い敵(接触ダメージが残っている型)', () => {
+  const ALL: EnemyType[] = ['bat', 'skeleton', 'zombie', 'plant', 'ghost', 'werewolf', 'pumpkin', 'driller',
+    'logger', 'giantbat', 'reaper', 'hangedman', 'lich', 'lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3',
+    'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
+    'idol', 'hunter', 'screamer', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
+    'guardian-phantom', 'phillboss'];
+  const restingContact = (t: EnemyType): boolean =>
+    !isBiteSubject({ type: t, damage: 10 } as unknown as Enemy, isBiteExemptType, 0);
+
+  it('平時に触れて痛いのは 死神 / 使者 / 幻影 の3型だけ(ここが増えたら社長へ報告)', () => {
+    expect(ALL.filter(restingContact)).toEqual(['reaper', 'hangedman', 'guardian-phantom']);
+  });
+
+  it('削岩型・伐採人・蜘蛛・ハンター・城ボスは平時に触れても痛くない(噛みつき台本へ移行済み)', () => {
+    for (const t of ['driller', 'logger', 'pumpkin', 'hunter', 'giantbat', 'lab-zombie-3'] as EnemyType[]) {
+      expect(restingContact(t), t).toBe(false);
+    }
+  });
+
+  // ★接触ダメージが戻るのは「**体をぶつけに行く技**」の最中だけ(社長2026-08-25)。
+  // ここが「重なっただけで痛い」に見える2つ目の道なので、一緒に固定しておく。
+  it('体をぶつけに行く技の最中だけは、どの型でも触れて痛い', () => {
+    for (const ph of ['charge', 'jump', 'g-dash-charge', 'g-jump-air', 'g-glide-active']) {
+      expect(restingContactWithPhase('driller', ph), ph).toBe(true);
+    }
+    expect(restingContactWithPhase('driller', 'driller-thrust-active')).toBe(false);
+  });
+  function restingContactWithPhase(t: EnemyType, aiPhase: string): boolean {
+    return !isBiteSubject({ type: t, damage: 10, aiPhase } as unknown as Enemy, isBiteExemptType, 0);
+  }
+});

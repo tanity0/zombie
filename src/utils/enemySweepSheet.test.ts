@@ -1,6 +1,6 @@
 // ★薙ぎ払いの絵の区間割り。社長支給2026-09-22「伐採人の薙払いの時のモーション」。
 import { describe, it, expect } from 'vitest';
-import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, GIANT_SLAM_MOTION_PHASES, sweepBandDirX, sweepFaceMulFor } from './enemySweepSheet';
+import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, sweepBandDirX, sweepFaceMulFor } from './enemySweepSheet';
 import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH } from './enemySheets';
 import { LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
@@ -240,10 +240,13 @@ describe('★城ボス3の叩きつけ(g-slam)', () => {
   const KEY = 'stage3-enemies/giantbat';
   const sp = ENEMY_SWEEP_SHEETS[KEY];
 
-  it('store の3つの州が区間へ写る', () => {
-    expect(sweepPhaseOf('g-slam-windup')).toBe('windup');
-    expect(sweepPhaseOf('g-slam-active')).toBe('active');
-    expect(sweepPhaseOf('g-slam-recover')).toBe('recover');
+  // ★城ボスは `sweepPhaseOf`(伐採人・削岩型の表)ではなく `giantMotionSpanOf` の別経路で写す。
+  // 混ぜると「薙ぎの震え」「帯の向き」の判定まで城ボスへ波及するので、表には入れない。
+  it('城ボスの相は伐採人・削岩型の表には入れない', () => {
+    for (const ph of ['g-slam-windup', 'g-slam-active', 'g-slam-recover']) {
+      expect(sweepPhaseOf(ph), ph).toBeNull();
+      expect(giantMotionSpanOf(ph), ph).not.toBeNull();
+    }
   });
 
   it('素材名は -slam(薙ぎでも突きでもない)', () => {
@@ -292,16 +295,34 @@ describe('★叩きつけモーションの配り方(城ボス)', () => {
     }
   });
 
-  it('移動・射撃の技にも配らない(叩きつけの絵が嘘になるので)', () => {
-    for (const ph of ['g-dash-charge', 'g-bolt-windup', 'g-glide-active', 'g-dive-windup',
-                      'g-quad-charge', 'g-trishot-windup', 'g-nova-active', 'g-sweepbeam-active']) {
-      expect(giantMotionSpanOf(ph), ph).toBeNull();
+  it('城ボス以外の相には配らない', () => {
+    for (const ph of ['logger-sweep-windup', 'driller-thrust-active', 'charge', 'crouch', 'recover', undefined]) {
+      expect(giantMotionSpanOf(ph), String(ph)).toBeNull();
     }
   });
 
-  it('配る先は 叩きつけ / 翼撃 / 薙ぎ払い / 踏み鳴らし', () => {
-    const techs = new Set(Object.keys(GIANT_SLAM_MOTION_PHASES).map(k => k.replace(/-(windup|active|recover)$/, '')));
-    expect([...techs].sort()).toEqual(['g-slam', 'g-stomp', 'g-sweep', 'g-wing']);
+  // ★社長指示2026-09-25「**ジャンプ以外の攻撃全てだよ**」。city ボスの相は `g-<技>-<区間>` に
+  // 揃っているので、**表を作らず相の名前で決める**。ここは「今ある全部の相」を並べて取りこぼしを止める。
+  it('★跳ぶ技以外の相は、全部どこかの区間へ写る', () => {
+    const WINDUP = ['g-slam-windup', 'g-wing-windup', 'g-sweep-windup', 'g-sweep-track', 'g-stomp-windup',
+      'g-bite-windup', 'g-bite-hold', 'g-bolt-windup', 'g-dash-windup', 'g-glide-windup', 'g-dive-windup',
+      'g-quad-windup', 'g-quad-breath-windup', 'g-nova-windup', 'g-trishot-windup', 'g-sweepbeam-windup',
+      'g-talon-windup', 'g-boon-windup', 'g-reach-windup', 'g-tailslam-windup',
+      'g-nihil-chant1', 'g-nihil-chant2', 'g-nihil-chant3'];
+    const ACTIVE = ['g-slam-active', 'g-wing-active', 'g-sweep-active', 'g-bite-active', 'g-bolt-burst',
+      'g-dash-charge', 'g-glide-active', 'g-quad-charge', 'g-quad-breath-active', 'g-nova-active',
+      'g-trishot-active', 'g-sweepbeam-active', 'g-tailslam-active', 'g-tailslam-volley'];
+    // 当たりの相を持たない技=戻りが「当たり+戻り」を受け持つ(溜めの終わりで当たるので、
+    // 戻りの先頭コマ=砂埃のコマ=当たる瞬間になる)。
+    const ACTIVE_RECOVER = ['g-stomp-recover', 'g-talon-recover', 'g-boon-recover', 'g-reach-recover',
+      'g-dive-recover', 'g-nihil-recover'];
+    const RECOVER = ['g-slam-recover', 'g-wing-recover', 'g-sweep-recover', 'g-bite-recover',
+      'g-bolt-recover', 'g-dash-recover', 'g-glide-recover', 'g-quad-recover', 'g-nova-recover',
+      'g-trishot-recover', 'g-sweepbeam-recover', 'g-tailslam-recover'];
+    for (const ph of WINDUP) expect(giantMotionSpanOf(ph), ph).toEqual(['windup', 'windup']);
+    for (const ph of ACTIVE) expect(giantMotionSpanOf(ph), ph).toEqual(['active', 'active']);
+    for (const ph of ACTIVE_RECOVER) expect(giantMotionSpanOf(ph), ph).toEqual(['active', 'recover']);
+    for (const ph of RECOVER) expect(giantMotionSpanOf(ph), ph).toEqual(['recover', 'recover']);
   });
 
   // ★掟③(消え切る時刻=当たる時刻)。当たりのコマ(=砂埃が初めて出る10コマ目)が
