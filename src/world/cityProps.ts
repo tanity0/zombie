@@ -200,10 +200,26 @@ const hash2 = (x: number, y: number): number => {
   return s - Math.floor(s);
 };
 
+/**
+ * ★散布オブジェクトを一切出さない一括ゲート(`trees.setTreesDisabled` /
+ * `torches.setTorchesDisabled` / `mines.setMinesDisabled` / `forestDecor.setFlowersDisabled` と同じ流儀)。
+ *
+ * ★何のために要ったか(社長「はい」2026-09-25・v0.25.4640): ボスメーカーの部屋は
+ * **「壁なし・障害物なし・ボス1体だけ」**(BOSS_MAKER.md §1-1)で、木・松明・地雷・花は既に消していた。
+ * ところが**城ボスの部屋はそのボスのステージで立つ**ようになった(v0.25.4639)ので、
+ * 森ではないステージの**散布オブジェクト(当たり判定あり)**が初めて部屋に入ってきた
+ * ——瓦礫・大砲・廃バス・監視塔など。弾が引っかかる/ボスが避ける/方眼が読めない、で
+ * 数字を詰める邪魔になる(木を消したのと同じ理由)。
+ * ★原点から `CITY_SAFE_RADIUS`(240px)は元から空いているが、城ボスの技は 380px 伸びるので足りない。
+ */
+let cityPropsDisabled = false;
+export const setCityPropsDisabled = (disabled: boolean): void => { cityPropsDisabled = disabled; };
+
 // farKey の散布カタログを区画ごとに決定的散布。カタログ無し(forest等)は空。
 export const cityPropsInRegion = (
   farKey: string, minX: number, minY: number, maxX: number, maxY: number
 ): CityProp[] => {
+  if (cityPropsDisabled) return [];
   const defs = STAGE_PROPS[farKey];
   if (!defs || defs.length === 0) return [];
   const [cmin, cextra] = STAGE_PROP_COUNT[farKey] ?? [3, 4];

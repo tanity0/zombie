@@ -282,7 +282,7 @@ import { strongestGuardian } from '../data/fixedGuardians';
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
 import { clearDestroyedObstacles } from '../world/destructibles';
-import { resolveCityPropCollision } from '../world/cityProps';
+import { resolveCityPropCollision, setCityPropsDisabled } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
 import { detourAngleOffset } from '../world/detourPoi';
 import { armoryPos as armorySpot, resolveArmoryCollision, isInArmoryCircle, tickArmoryDwell, ARMORY_SCRAP_COST } from '../world/armory';
@@ -20296,6 +20296,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       setMinesDisabled(farBackdrop === 'tutorial' || farBackdrop === 'ending' || corridorMode || bossMakerRoom);
       // 飾りの花(判定なし・だが128pxの大きな絵)も部屋では出さない=画面にはプレイヤーとボスだけ。
       setFlowersDisabled(bossMakerRoom);
+      // ★散布オブジェクト(瓦礫/大砲/廃バス/監視塔…当たり判定あり)も部屋では出さない
+      // (社長「はい」2026-09-25・v0.25.4640)。**城ボスの部屋がそのボスのステージで立つ**ように
+      // なった(v0.25.4639)ので、森以外のステージのこれらが初めて部屋へ入ってきた。
+      // 木を消したのと同じ理由=弾が引っかかる/ボスが避ける/方眼が読めない。
+      setCityPropsDisabled(bossMakerRoom);
       // 洋館通路の湧き方向ゲート(上=奥 主体・左右は湧かせない)。generateEnemy が参照(新規/リサイクル両方)。
       setCorridorSpawn(corridorMode);
       // 世界の距離スケール(v0.25.4293): 訓練ステージ(M0)だけ区域の境界を素の値(1500/3000/…)に据え置く(台本が境界に載っている)。

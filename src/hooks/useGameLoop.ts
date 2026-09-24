@@ -8066,7 +8066,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             bossMakerReadyRef.current = true;
             useGameStore.getState().setBossMaker({ active: true });
             const mcx = player.x + player.width / 2, mcy = player.y + player.height / 2;
-            const mk = spawnEnemyAt(BOSS_MAKER_BOSS, mcx - 20, mcy - 300, newGameTime);
+            // ★城ボスだけ手前に出す(社長「はい」2026-09-25・v0.25.4640)。
+            // 既定の -300 は**城ボスには遠すぎて、部屋が開いた瞬間は画面の外に居る**(実測: 部屋の寄りだと
+            // 見えている世界は縦300px弱しかなく、城ボスは絵だけで150〜250px使う)。**-120 で**
+            // ステージ1/3/5/7は**全部入る**(実測: stage-3 で上端0・下端284/720)。
+            // ★**ステージ4だけは -120 でも頭が切れる**(絵に 1.5倍 が掛かる型なので、部屋の寄りでは
+            //   どの距離でも全部は入らない。実測で上端 -104)。**歩いて近づけば数秒で収まる。**
+            //   全部入れたいなら**部屋のズームを引く**しかないが、それは部屋の見え方そのものを
+            //   変えるので社長に聞いてから(★未決)。
+            const mkUp = BOSS_MAKER_BOSS === 'giantbat' ? 120 : 300;
+            const mk = spawnEnemyAt(BOSS_MAKER_BOSS, mcx - 20, mcy - mkUp, newGameTime);
             mk.fromEvent = true; mk.dormant = false; mk.fixed = false;
             mk.bossState = 'chase'; mk.bossPhase = 1;
             mk.bossNextActionAt = newGameTime + 800;
