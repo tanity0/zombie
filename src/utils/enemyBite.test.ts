@@ -49,7 +49,8 @@ describe('噛みつきの台帳', () => {
   // 縛るべきは「**書いていない型は既定値のまま**」という不変条件の方。
   it('表に書いていない型は既定値のまま(=上書きは明示した型だけに効く)', () => {
     // ★skeletonは§16-Eでlungemsが足されたのでこの一覧から外した(検証は専用describeブロックで行う)。
-    for (const t of ['werewolf', 'bat', 'pumpkin'] as const) {
+    // ★pumpkinも v0.25.4645(強個体3種の溜め600ms)で表へ入ったので外した。
+    for (const t of ['werewolf', 'bat', 'ghost'] as const) {
       expect(BITE_BY_TYPE[t], t).toBeUndefined();
       expect(biteSpecFor(t), t).toEqual(BITE_DEFAULT);
     }
@@ -915,4 +916,42 @@ describe('★重なっただけで痛い敵(接触ダメージが残っている
   function restingContactWithPhase(t: EnemyType, aiPhase: string): boolean {
     return !isBiteSubject({ type: t, damage: 10, aiPhase } as unknown as Enemy, isBiteExemptType, 0);
   }
+});
+
+// ★★強個体3種の溜め(社長裁定2026-09-25「推薦で」・v0.25.4645)。
+// 社長報告「削岩機…重なっただけでダメージ食らってる気がする」の正体は**接触ダメージではなく
+// 溜めが0.3秒しかないこと**だった(平時に触れて痛いのは死神/使者/幻影の3型だけ=上のテストが固定)。
+describe('★強個体3種(蜘蛛/削岩型/伐採人)の噛みつきの溜め', () => {
+  const TIER: EnemyType[] = ['pumpkin', 'driller', 'logger'];
+
+  it('溜めは600ms・踏み込みは先頭300msで走り切る(=詰めてから0.3秒止まってから噛む)', () => {
+    for (const t of TIER) {
+      const sp = biteSpecFor(t);
+      expect(sp.windupMs, t).toBe(600);
+      expect(sp.lungeMs, t).toBe(300);
+      expect(sp.windupMs - (sp.lungeMs ?? sp.windupMs), `${t} の静止`).toBe(300);
+    }
+  });
+
+  it('★ゾンビと同じ形(§16-Dの型をそのまま借りている)', () => {
+    const z = biteSpecFor('zombie');
+    for (const t of TIER) {
+      const sp = biteSpecFor(t);
+      expect([sp.windupMs, sp.lungeMs], t).toEqual([z.windupMs, z.lungeMs]);
+    }
+  });
+
+  it('噛み・間合い・CD・踏み込み距離は既定のまま(溜めだけを動かした)', () => {
+    for (const t of TIER) {
+      const sp = biteSpecFor(t);
+      expect([sp.biteMs, sp.rangePx, sp.recoverMs, sp.lungePx], t)
+        .toEqual([BITE_DEFAULT.biteMs, BITE_DEFAULT.rangePx, BITE_DEFAULT.recoverMs, BITE_DEFAULT.lungePx]);
+    }
+  });
+
+  it('区分で固まっている(強個体は3型とも同じ・雑魚は既定のまま)', () => {
+    for (const t of ['bat', 'werewolf', 'ghost'] as EnemyType[]) {
+      expect(biteSpecFor(t).windupMs, t).toBe(BITE_DEFAULT.windupMs);
+    }
+  });
 });

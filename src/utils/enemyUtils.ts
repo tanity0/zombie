@@ -291,6 +291,14 @@ export const isHangedman = (t: EnemyType): boolean => t === 'hangedman';
  * 死神本体と同じ「触れたら終わり」の存在意義を共有するため、ここへ含めて即時の
  * damagePlayer経路(combatTick.tsのplayerEnemyCollisions)へ乗せる。
  */
+/**
+ * ★**再確認された裁定(2026-09-25)**: 社長報告「重なっただけでダメージを受ける敵がまだ残っていそう。
+ * 削岩機や死神」を受けて**全35型を機械で洗い**、平時に触れて痛いのは**この3型だけ**と確認した
+ * (削岩型は入っていない=あれは溜め0.3秒の噛みつきだった。溜めは v0.25.4645 で600msへ)。
+ * **3型はこのまま残す**(社長裁定2026-09-25「推薦で」)——上に書かれた存在意義そのものなので。
+ * 読みづらさが問題になった時に足すのは**予告**であって、接触ダメージを外すことではない。
+ * ※不変条件は `enemyBite.test.ts`「★重なっただけで痛い敵」が見張る(増えたら落ちる)。
+ */
 export const isBiteExemptType = (t: EnemyType): boolean =>
   isReaperFamily(t) || isGuardianPhantom(t) || isHangedman(t);
 

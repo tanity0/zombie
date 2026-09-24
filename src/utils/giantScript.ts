@@ -272,6 +272,9 @@ export const GIANT_STAGE_UNIQUE_MOVE: Partial<Record<string, GiantStageMoveId>> 
 // ステージ→大技(Phase2=HP60%からのみ解禁)。
 // ★v0.25.2863(社長裁定「叩きつけにしよう」): stage-1 の大技を **叩きつけ(slam) → 翼撃(wing)** へ。
 // slam の実装は残してある(どこにも割り当てていないだけ)ので、別ステージへ回すのは表の1行で済む。
+// ★**裁定(2026-09-25・社長「推薦で」): slam はどこにも戻さない。**
+// 叩きつけの**絵**は v0.25.4641/4643 で「跳ぶ技以外の全部」へ配ったので、**技を復活させなくても画面に出る**
+// (むしろ戻すと v0.25.2863 の「stage-1 の大技は翼撃」を覆すことになる)。実装はこのまま眠らせておく。
 export const GIANT_STAGE_ULT_MOVE: Partial<Record<string, GiantStageMoveId>> = {
   'stage-1': 'wing', 'stage-3': 'dive', 'stage-4': 'nova', 'stage-5': 'sweepbeam',
 };
