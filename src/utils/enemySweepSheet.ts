@@ -119,10 +119,15 @@ const ACTIVE: SweepSpan = ['active', 'active'];
 const RECOVER: SweepSpan = ['recover', 'recover'];
 const ACTIVE_RECOVER: SweepSpan = ['active', 'recover'];
 
-/** その `aiPhase` が叩きつけモーションのどの範囲か(城ボス以外・跳ぶ技は null=この絵を出さない)。 */
-export const giantMotionSpanOf = (aiPhase: string | undefined): SweepSpan | null => {
+/**
+ * その `aiPhase` が攻撃モーションのどの範囲か(城ボス以外・跳ぶ技・`skip` の技は null=この絵を出さない)。
+ * @param skip その立ち絵で**外したい技**の接頭辞(`enemySheets.giantMotionSkipFor`)。
+ *   例: 城ボス1は社長指示で**突進も外す**(「ジャンプと突進以外の攻撃モーション」)。
+ */
+export const giantMotionSpanOf = (aiPhase: string | undefined, skip: readonly string[] = []): SweepSpan | null => {
   if (aiPhase === undefined || !aiPhase.startsWith('g-')) return null;
   if (GIANT_JUMP_TECHS.some(t => aiPhase.startsWith(t))) return null;
+  if (skip.some(t => aiPhase.startsWith(t))) return null;
   if (GIANT_WINDUP_SUFFIX.some(x => aiPhase.endsWith(x))) return WINDUP;
   if (GIANT_ACTIVE_SUFFIX.some(x => aiPhase.endsWith(x))) return ACTIVE;
   if (aiPhase.endsWith('-recover')) {

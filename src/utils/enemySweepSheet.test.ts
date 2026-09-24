@@ -1,7 +1,7 @@
 // ★薙ぎ払いの絵の区間割り。社長支給2026-09-22「伐採人の薙払いの時のモーション」。
 import { describe, it, expect } from 'vitest';
 import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, sweepBandDirX, sweepFaceMulFor } from './enemySweepSheet';
-import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH } from './enemySheets';
+import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH, giantMotionSkipFor } from './enemySheets';
 import { LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
 const ALL = Object.entries(ENEMY_SWEEP_SHEETS);
@@ -293,6 +293,35 @@ describe('★叩きつけモーションの配り方(城ボス)', () => {
     for (const ph of ['g-jump-windup', 'g-jump-air', 'g-jump-recover', 'g-trijump-windup']) {
       expect(giantMotionSpanOf(ph), ph).toBeNull();
     }
+  });
+
+  // ★社長指示2026-09-25「城1のジャンプと**突進以外**の攻撃モーション」。
+  // 城ボス1だけ突進も外す(城ボス3は跳ぶ技だけ外す)。
+  it('★城ボス1は突進にも配らない(城ボス3は配る)', () => {
+    const SKIP1 = giantMotionSkipFor('giantbat');
+    const SKIP3 = giantMotionSkipFor('stage3-enemies/giantbat');
+    expect(SKIP3).toEqual([]);
+    for (const ph of ['g-dash-windup', 'g-dash-charge', 'g-dash-recover']) {
+      expect(giantMotionSpanOf(ph, SKIP1), `城1 ${ph}`).toBeNull();
+      expect(giantMotionSpanOf(ph, SKIP3), `城3 ${ph}`).not.toBeNull();
+    }
+    // 突進以外は城ボス1にも配る。
+    for (const ph of ['g-stomp-windup', 'g-sweep-active', 'g-bite-windup', 'g-bolt-burst', 'g-wing-active']) {
+      expect(giantMotionSpanOf(ph, SKIP1), `城1 ${ph}`).not.toBeNull();
+    }
+    // 跳ぶ技はどちらも外れる。
+    for (const ph of ['g-jump-windup', 'g-trijump-air']) {
+      expect(giantMotionSpanOf(ph, SKIP1), ph).toBeNull();
+      expect(giantMotionSpanOf(ph, SKIP3), ph).toBeNull();
+    }
+  });
+
+  it('城ボス1の攻撃シートは 10コマを 6/1/3 に割る(当たり=翼を薙ぎ抜く6コマ目)', () => {
+    const sp1 = ENEMY_SWEEP_SHEETS['giantbat'];
+    expect(sweepSplitFrames(sp1)).toBe(10);
+    expect([sp1.windup, sp1.active, sp1.recover]).toEqual([6, 1, 3]);
+    expect(sweepImpactFrame(sp1)).toBe(6);
+    expect(sweepSheetName('giantbat')).toBe('giantbat-attack');
   });
 
   it('城ボス以外の相には配らない', () => {

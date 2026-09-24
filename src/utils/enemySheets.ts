@@ -631,6 +631,17 @@ export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
   //   硬直1300ms(5コマ=260ms/コマ)。**等分**=絵に描かれた加減速をそのまま流す(weights は置かない)。
   // ★**縮小していない**(2×2の一致率 7.4%)。足元は全16コマ下端が cell の底。**左向き**=既定のまま。
   'stage3-enemies/giantbat': { windup: 10, active: 1, recover: 5, bodyH: 150 },
+  // ★城ボス1(搬送体)の**攻撃モーション**(社長支給2026-09-25「城1のジャンプと突進以外の攻撃モーション」)。
+  // 10コマ(支給 1280×130 → 全コマ共通の矩形 x2-125 / y2-129 で切って **124×128**)。常駐 **0.61MB**。
+  // 読み(翼を広げて薙ぐ。絵の高さ/一番広い行):
+  //   **0〜5=溜め**(128→117→101→101→110→110。翼をたたんだ姿から**頭上へ開き切る**まで)/
+  //   **6=当たり**(幅124=最大。開いた翼を前へ薙ぎ抜く瞬間)/
+  //   **7〜9=戻り**(106→101→114。翼をたたみ直して構えへ)。
+  // ★**縮小していない**(2×2の一致率 12.3%)。色数33・半透明0%。
+  // ★**歩き・跳びと同じ倍率で描かれている**(歩き0に重ねて 1.020倍・IoU 0.905。跳びは1.030)
+  //   ⇒ 城ボス3の跳びのような `bodyH` は要らない。
+  // ★足元は支給時点で揃っていた(全10コマの下端が cell の底)。中心も 63.0〜63.5(cell の中心 63.5)。
+  'giantbat': { windup: 6, active: 1, recover: 3 },
 };
 
 /**
@@ -642,7 +653,23 @@ const SWEEP_SHEET_SUFFIX: Readonly<Record<string, string>> = {
   'driller-common': 'thrust',
   // 城ボス3は「叩きつけ」(`g-slam-*`)。薙ぎでも突きでもないので名前を合わせる。
   'stage3-enemies/giantbat': 'slam',
+  // 城ボス1は社長の言葉どおり「攻撃モーション」(翼で薙ぐ。特定の技の名前を付けない)。
+  'giantbat': 'attack',
 };
+
+/**
+ * ★**この技には配らない**(立ち絵名 → 技の接頭辞)。**跳ぶ技は全個体で常に除外**(専用シートがある)。
+ * ここに書くのは**それ以外に外したい技**だけ。
+ * - 城ボス1: 社長指示2026-09-25「**ジャンプと突進以外の攻撃モーション**」⇒ 突進も外す。
+ * - 城ボス3: 社長指示2026-09-25「**ジャンプ以外の攻撃全て**」⇒ 外すのは跳ぶ技だけ(この表に載せない)。
+ */
+export const GIANT_MOTION_SKIP: Readonly<Record<string, readonly string[]>> = {
+  'giantbat': ['g-dash-'],
+};
+
+/** その立ち絵で「配らない技」の接頭辞(無ければ空)。 */
+export const giantMotionSkipFor = (idleTexName: string | null | undefined): readonly string[] =>
+  (idleTexName && GIANT_MOTION_SKIP[idleTexName]) || [];
 
 export const sweepSheetName = (idleTexName: string): string =>
   `${idleTexName}-${SWEEP_SHEET_SUFFIX[idleTexName] ?? 'sweep'}`;
@@ -740,7 +767,7 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   //     `hunterAlerted=true` で即追跡・`triggerAttention` を呼ばない)。**新規プレイヤーが初めて見る
   //     ハンター**で絵が一拍遅れる。通常ステージのイベント側にはカットインが在るが、M0には無い。
   'hunter': 'eager',
-  // 城ボス(ステージ1の搬送体)。歩き0.68+跳び0.95=1.63MB。カットインを挟んで出る。
+  // 城ボス(ステージ1の搬送体)。歩き0.68+跳び0.95+攻撃0.61=**2.24MB**。カットインを挟んで出る。
   // ★このシートはステージ1の絵(`giantbat`)。S3/4/5の城ボスは別名に解決されるので出ない。
   'giantbat': 'deferred',
   // ステージ3の城ボス。歩き1.54+跳び1.22+叩きつけ1.68=**4.44MB**。

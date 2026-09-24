@@ -105,7 +105,7 @@ import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, swe
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -29959,7 +29959,7 @@ export class PixiScene {
     //   (`scriptRestMs`)ので定数では合わない。`aiPhaseUntil` は相の頭で焼かれるので、
     //   **その相を最初に見たフレームの残り時間 = その相の実尺**になる。
     //   ⇒ 新しい技を足しても勝手に乗る/戻りが縮んだ回も絵が最後まで収まる。
-    const gSpan = giantMotionSpanOf(e.aiPhase);
+    const gSpan = giantMotionSpanOf(e.aiPhase, giantMotionSkipFor(idleTexKey));
     if (gSpan !== null && e.aiPhaseUntil !== undefined) {
       const key = `${e.aiPhase}@${e.aiPhaseUntil}`;
       let lat = this.giantPhaseSpan.get(e.id);
