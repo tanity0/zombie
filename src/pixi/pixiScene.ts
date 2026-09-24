@@ -105,7 +105,7 @@ import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, swe
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -18424,10 +18424,16 @@ export class PixiScene {
       const fitIdleTex = tex === walkTex ? getTexture(idleTexKey) : null;
       let fitBodyH = tex.height;
       if (fitIdleTex) {
-        const bh = sweepSheetBodyH(idleTexKey);
-        if (bh !== null) {
-          const sw = this.enemyWalkFrames.get(sweepSheetName(idleTexKey));
-          if (sw && sw.length > 0 && sw[0].source === tex.source) fitBodyH = bh;
+        // 枠より中身が小さいシートは2種類ある(どちらも `bodyH` を持つ):
+        //  ①技で枠の外へ伸びる部位がある(城ボス3の叩きつけ=振り上げた蔓)
+        //  ②**シートそのものが小さく描かれている**(城ボス3の跳び=0.815倍。社長報告2026-09-25)
+        for (const [bh, name] of [
+          [sweepSheetBodyH(idleTexKey), sweepSheetName(idleTexKey)] as const,
+          [jumpSheetBodyH(idleTexKey), jumpSheetName(idleTexKey)] as const,
+        ]) {
+          if (bh === null) continue;
+          const sl = this.enemyWalkFrames.get(name);
+          if (sl && sl.length > 0 && sl[0].source === tex.source) { fitBodyH = bh; break; }
         }
       }
       const sheetFit = fitIdleTex

@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4642', items: ['ステージ三のボスが飛び掛かる時、体が一回り小さく見えていたのを直した'] },
   { version: '0.25.4641', items: ['ステージ三のボスが、踏み鳴らしと薙ぎ払いでも描き下ろしの絵で動くようになった', '溜めから叩き込むまでが一続きの動きになり、地面を打つ瞬間に砂埃が上がる'] },
   { version: '0.25.4640', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4639', items: ['ゲーム内容の変更はありません'] },

@@ -172,3 +172,20 @@ describe('jumpLandDrawMs（着地の絵は相より長くしない・v0.25.4608�
     expect(seen.size).toBe(5);
   });
 });
+
+// ★社長報告2026-09-25「城3のジャンプの絵がやたら小さい」。
+describe('★跳びシートの bodyH(シートが小さく描かれていた分の補正)', () => {
+  it('城ボス3の跳びだけが bodyH を持つ(他のシートは枠いっぱいに描かれている)', () => {
+    expect(ENEMY_JUMP_SHEETS['stage3-enemies/giantbat'].bodyH).toBe(122);
+    for (const [n, sp] of Object.entries(ENEMY_JUMP_SHEETS)) {
+      if (n === 'stage3-enemies/giantbat') continue;
+      expect(sp.bodyH, n).toBeUndefined();
+    }
+  });
+
+  it('bodyH は区間の割り方に1ビットも影響しない(背丈だけの話)', () => {
+    const sp = ENEMY_JUMP_SHEETS['stage3-enemies/giantbat'];
+    expect(jumpSplitFrames(sp)).toBe(16);
+    expect([sp.crouch, sp.air, sp.land]).toEqual([4, 7, 5]);
+  });
+});

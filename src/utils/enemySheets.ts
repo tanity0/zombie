@@ -518,7 +518,16 @@ export const ENEMY_JUMP_SHEETS: Readonly<Record<string, JumpSplit>> = {
   //   実測(ヘッドレス・遠近スケールで割った値・3本): 歩き 153.3 / 跳ぶ16コマ 152.9〜153.4px=**ばらつき0.3%**。
   // ★足元は支給時点で揃っていた(**全16コマの下端が cell の底**。10コマ目だけ1px上)。
   //   中心も 67.0〜68.5(cell の中心 68.0)。**左向き**=既定のまま(立ち絵・歩きと並べて確認済み)。
-  'stage3-enemies/giantbat': { crouch: 4, air: 7, land: 5 },
+  // ★★**絵が小さく描かれていたので `bodyH` で揃える**(社長報告2026-09-25
+  //   「**城3のジャンプの絵がやたら小さい**」)。立ち姿のコマ(0)を立ち絵へ重ねると
+  //   **0.815倍で一番よく重なる(IoU 0.962=同じ姿勢)**。比較: 叩きつけ1.000(IoU 0.949)・歩きほぼ等倍。
+  //   画素数でも裏が取れる(立ち姿の不透明画素 立ち絵15053 / 叩き15262 に対し **跳び10157=67%**
+  //   ≒ 面積比の平方根 0.82)。⇒ **跳びだけが 18.5% 小さい**。
+  //   `bodyH = 150 × 0.815 ≒ 122`。枠の高さを揃えるだけでは直らない(枠は150で他と同じなので
+  //   補正が 1.000 になり、中身が小さいまま出る)。
+  //   ★代償: 絵は 1.23倍へ引き伸ばされる(1.0 → 0.81 ドット/px)。**等倍で描き直した版が届けば
+  //   この行を消すだけ**で戻る。
+  'stage3-enemies/giantbat': { crouch: 4, air: 7, land: 5, bodyH: 122 },
 };
 
 /** 着地の絵を流す長さ(ms)。立ち直り(recover)全体はもっと長いので、その頭だけを使う。 */
@@ -669,6 +678,10 @@ export const sweepSheetBodyH = (idleTexName: string | null | undefined): number 
 
 export const jumpSheetSplit = (idleTexName: string | null | undefined): JumpSplit | null =>
   (idleTexName && ENEMY_JUMP_SHEETS[idleTexName]) || null;
+
+/** 跳びシートの「立ち絵の枠に当たる高さ」(無指定=null=枠の高さで揃える=従来どおり)。 */
+export const jumpSheetBodyH = (idleTexName: string | null | undefined): number | null =>
+  (idleTexName && ENEMY_JUMP_SHEETS[idleTexName]?.bodyH) || null;
 
 export const jumpLandMs = (idleTexName: string | null | undefined): number =>
   (idleTexName && ENEMY_JUMP_LAND_MS[idleTexName]) || 420;
