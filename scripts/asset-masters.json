@@ -3999,10 +3999,10 @@
    "sha": "13d7ae615b2e5f41"
   },
   "sprites/stage3-enemies/giantbat-walk.png": {
-   "w": 2880,
+   "w": 2688,
    "h": 150,
-   "bytes": 470224,
-   "sha": "fe887c8c18b6d17c"
+   "bytes": 451835,
+   "sha": "717573b768becbac"
   },
   "sprites/stage3-enemies/giantbat.png": {
    "w": 164,
