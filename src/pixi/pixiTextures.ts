@@ -11,9 +11,7 @@
 
 import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ALL_VARIANT_TEXTURES, ENEMY_VARIANT_SETS } from '../utils/enemyVariant';
-import { ENEMY_WALK_SHEETS, walkSheetName } from '../utils/enemyWalkSheet';
-import { ENEMY_ATTACK_SHEETS, attackSheetName } from '../utils/enemyAttackSheet';
-import { ENEMY_SHOT_SHEETS, shotSheetName, ENEMY_IDLE_SHEETS, idleSheetName, ENEMY_JUMP_SHEETS, jumpSheetName, ENEMY_SWEEP_SHEETS, sweepSheetName , ENEMY_SCREAM_SHEETS, screamSheetName } from '../utils/enemySheets';
+import { allEnemySheets, sheetDeferred } from '../utils/enemySheets';
 import { ATLAS_PX2_OVERRIDES } from '../utils/atlasPxOverrides';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
@@ -46,6 +44,18 @@ const textures = new Map<string, Texture>();
  * ★ここへ足してよいのは「**常に画面に居るわけではない**素材」だけ。プレイヤー・雑魚ゾンビ・
  * 汎用エフェクトのように**いつでも出うるもの**は入れない(毎回の遅延読みが増えるだけで損)。
  */
+/**
+ * ★★**敵のアニメーションシートを「起動時」と「必要になってから」へ割る**(社長指示2026-09-24「乗せて」)。
+ * **1本の並びを2つに割る**ので、**どちらにも入らない/両方に入る**が起き得ない。
+ * どちらへ行くかの決定と理由は `utils/enemySheets.ts` の `SHEET_RESIDENCY`(テストが穴を塞いでいる)。
+ */
+const ENEMY_SHEETS = allEnemySheets();
+const EAGER_ENEMY_SHEETS = ENEMY_SHEETS.filter(s => !sheetDeferred(s.idle));
+const DEFERRED_ENEMY_SHEETS = ENEMY_SHEETS.filter(s => sheetDeferred(s.idle));
+/** 立ち絵 → その個体の遅延シート全部(`warmEnemySheets` が引く)。 */
+const DEFERRED_SHEETS_BY_IDLE_INIT: [string, string[]][] = [...new Set(DEFERRED_ENEMY_SHEETS.map(s => s.idle))]
+  .map(idle => [idle, DEFERRED_ENEMY_SHEETS.filter(s => s.idle === idle).map(s => s.sheet)]);
+
 const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear' | 'nearest' }[]> = {
   // 研究所ステージ(theme='lab')の背景3層と床。実測 約22MB。
   // ★`scaleMode` は起動マニフェストの記述と**1文字も違えない**(違えると見た目が変わる。
@@ -97,6 +107,12 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'bounty-maiko', scaleMode: 'nearest' },    // 660x800 = 2.0MB
     { name: 'bounty-ranged', scaleMode: 'nearest' },   // 592x800 = 1.8MB
   ],
+  /**
+   * ★ボス級の**アニメーションシート**(社長指示2026-09-24「乗せて」)。**所属は付けない=網だけで拾う**
+   * (立ち絵の `castle`/`bosses` と同じ理由)。**さらにシートは外れても立ち絵へ落ちる**ので、
+   * 立ち絵より失敗が軽い。中身は `SHEET_RESIDENCY` が決める(ここに手で名前を書かない)。
+   */
+  enemySheets: DEFERRED_ENEMY_SHEETS.map(s => ({ name: s.sheet, scaleMode: 'nearest' as const })),
 };
 
 /** 遅延組の索引(名前→scaleMode)。`getTexture` の網と `loadSpriteGroups` が引く。 */
@@ -106,6 +122,25 @@ const DEFERRED_SPRITE_INDEX = new Map<string, 'linear' | 'nearest' | undefined>(
 const DEFERRED_SPRITE_SET = new Set<string>(DEFERRED_SPRITE_INDEX.keys());
 /** 同じ素材を二重に取りに行かないための門(網は毎フレーム叩かれる)。 */
 const deferredInFlight = new Map<string, Promise<void>>();
+
+/**
+ * ★**その立ち絵が持つ遅延シートを、初めて描く時に全部取りに行く**(品質監査2026-09-24 の指摘)。
+ *
+ * ★なぜ要るか: 網(`getTexture`)は「**最初に見える瞬間**」ではなく「**最初に使う瞬間**」に発火する。
+ * 歩きはカットイン中に取りに行けるが、**跳び/薙ぎ/攻撃のシートは「最初にその技へ入った瞬間」まで
+ * 1度も引かれない**(`enemyJumpTexture` などは相の中でしか `sheetSlices` を呼ばない)。
+ * ⇒ **最初の1発だけ溜めのコマが欠ける**。姿が見えた時点でまとめて取りに行けば、技までの間に届く。
+ * ★**立ち絵が出ている個体にしか呼ばれない**(描画の入口)ので、出ないボスの絵は1枚も読まない。
+ */
+const DEFERRED_SHEETS_BY_IDLE = new Map<string, string[]>(DEFERRED_SHEETS_BY_IDLE_INIT);
+const warmedSheetIdles = new Set<string>();
+export const warmEnemySheets = (idleTexName: string): void => {
+  if (warmedSheetIdles.has(idleTexName)) return;
+  warmedSheetIdles.add(idleTexName);
+  for (const n of DEFERRED_SHEETS_BY_IDLE.get(idleTexName) ?? []) {
+    if (!textures.has(n)) void requestDeferredSprite(n);
+  }
+};
 
 const requestDeferredSprite = (name: string): Promise<void> => {
   const hit = deferredInFlight.get(name);
@@ -1017,13 +1052,9 @@ export const ensureTextures = (): Promise<void> => {
       // ★敵の歩きシート(社長支給2026-09-20)。表は `utils/enemyWalkSheet.ts` の1箇所。
       // ★**アスペクトは登録しない**(下の regAspect ループに入れない)——登録すると歩きシートの
       // 縦横比で `enemyHitStrip`(当たり判定)が動く。判定は立ち絵のまま据え置く。
-      ...Object.keys(ENEMY_WALK_SHEETS).map((name) => ({ name: walkSheetName(name), scaleMode: 'nearest' as const })),
-      ...Object.keys(ENEMY_ATTACK_SHEETS).map((name) => ({ name: attackSheetName(name), scaleMode: 'nearest' as const })),
-      ...Object.keys(ENEMY_SHOT_SHEETS).map((name) => ({ name: shotSheetName(name), scaleMode: 'nearest' as const })),
-      ...Object.keys(ENEMY_IDLE_SHEETS).map((name) => ({ name: idleSheetName(name), scaleMode: 'nearest' as const })),
-      ...Object.keys(ENEMY_JUMP_SHEETS).map((name) => ({ name: jumpSheetName(name), scaleMode: 'nearest' as const })),
-      ...Object.keys(ENEMY_SWEEP_SHEETS).map((name) => ({ name: sweepSheetName(name), scaleMode: 'nearest' as const })),
-      ...Object.keys(ENEMY_SCREAM_SHEETS).map((name) => ({ name: screamSheetName(name), scaleMode: 'nearest' as const })),
+      // ★★**ボス級のシートはここに入らない**(社長指示2026-09-24「乗せて」)。上の `DEFERRED_SPRITE_GROUPS`
+      //   の `enemySheets` 組へ回り、**描こうとした瞬間に網が読む**。割り方は `SHEET_RESIDENCY`。
+      ...EAGER_ENEMY_SHEETS.map((s) => ({ name: s.sheet, scaleMode: 'nearest' as const })),
     ];
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)のドット絵上書き名。後段で使うが、

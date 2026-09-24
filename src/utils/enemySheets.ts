@@ -610,3 +610,60 @@ export const hasAnimSheet = (idleTexName: string | null | undefined): boolean =>
 /** その立ち絵のシートが右向きか(シートが無ければ false=既定の左向き)。 */
 export const sheetFacesRight = (idleTexName: string | null | undefined): boolean =>
   !!(idleTexName && ENEMY_SHEET_FACES_RIGHT[idleTexName]);
+
+/**
+ * ★★**シートを起動時に読むか、必要になってから読むか**(社長指示2026-09-24「**乗せて**」)。
+ *
+ * ★なぜ要るか: `pixiTextures` の**起動マニフェストは上の7つの表のキーをそのまま全部展開する**ので、
+ * **表に1行足した瞬間、そのシートは全ステージで起動時に常駐する**。ボスは**そのステージにしか出ない**
+ * (裏ボスはS1ミーミル/S3ヨルムンガンド/S4スカディ/S5トール・城ボスもステージに1体)のに、
+ * ステージ1で遊んでいる間ずっと他ステージのボスの絵を抱えることになる。
+ * **ボスの立ち絵は既に遅延組**(`DEFERRED_SPRITE_GROUPS`)なのに、**シートだけがその外に在った。**
+ *
+ * ★**外れた時に何が起きるか(=遅延にしてよい根拠)**: シートが間に合わないと `sheetSlices()` が
+ * `null` を返し、描画は**立ち絵へフォールバックする**。**敵が消えることはなく「一拍だけ動かない」**。
+ * 立ち絵の遅延(外すと絵そのものが出ない)より**軽い失敗**なので、判断の敷居はそこまで高くない。
+ *
+ * ★**決め方は「登場に猶予があるか」**。カットイン/アテンションを挟んで出る個体は遅延でよい
+ * (既存の遅延組と同じ理由=寄り360ms+ホールド950ms+カットイン1100msの2.4秒で読み終わる)。
+ * **前触れなくその辺に居る敵**(雑魚・強個体)は猶予が無いので**起動時のまま**。
+ *
+ * ★**書き忘れ・書き間違いはテストが止める**(`sheetResidency.test.ts`):
+ * ①**常駐1.0MBを超えるシートを持つ立ち絵は、この表に必ず載っていること**
+ * ②**この表のキーは実在するシートを持つこと**(打ち間違えると黙って起動時常駐に戻るため)。
+ */
+export type SheetResidency = 'deferred' | 'eager';
+export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
+  // 死神(`reaper`)。歩き3.34MB。気配演出→カットインを挟んで出る。
+  'reaper2-common': 'deferred',
+  // ▼ハンター変異体(歩き0.82+跳び1.68=2.50MB)は**起動時のまま**。一度 'deferred' にしたが、
+  //   品質監査2026-09-24 の指摘で戻した。理由は2つ:
+  //   ①**全ステージで出る**ので、遅延にしても「そのステージのぶんだけ」にならない=常駐は減らない。
+  //     社長の前提「ボスはステージで出る種類が限られてる」が、この個体にだけ当てはまらない。
+  //   ②**M0(訓練)は予告なしで画面内に出る**(`useGameLoop` の `beat.id === 'hunter'`。
+  //     `hunterAlerted=true` で即追跡・`triggerAttention` を呼ばない)。**新規プレイヤーが初めて見る
+  //     ハンター**で絵が一拍遅れる。通常ステージのイベント側にはカットインが在るが、M0には無い。
+  'hunter': 'eager',
+  // 城ボス(ステージ1の搬送体)。歩き0.68+跳び0.95=1.63MB。カットインを挟んで出る。
+  // ★このシートはステージ1の絵(`giantbat`)。S3/4/5の城ボスは別名に解決されるので出ない。
+  'giantbat': 'deferred',
+  // ▼ここから下は**起動時のまま**。理由はどれも同じ=**前触れなくその辺に居る**(猶予が無い)。
+  'pumpkin-common': 'eager',   // 蜘蛛。跳び1.15MB
+  'driller-common': 'eager',   // 削岩型。歩き1.12MB
+  'reaper-common': 'eager',    // 伐採人(旧・死神の絵)。歩き1.02MB
+};
+
+/** そのシート群を起動時に読まない(=遅延組へ回す)か。表に無い立ち絵は**起動時**(既定)。 */
+export const sheetDeferred = (idleTexName: string): boolean =>
+  SHEET_RESIDENCY[idleTexName] === 'deferred';
+
+/** 7つのシート表を「立ち絵名 → シート名」の1本の並びにする(起動側と遅延側が**同じ並びを2つに割る**)。 */
+export const allEnemySheets = (): { idle: string; sheet: string }[] => [
+  ...Object.keys(ENEMY_WALK_SHEETS).map(idle => ({ idle, sheet: walkSheetName(idle) })),
+  ...Object.keys(ENEMY_ATTACK_SHEETS).map(idle => ({ idle, sheet: attackSheetName(idle) })),
+  ...Object.keys(ENEMY_SHOT_SHEETS).map(idle => ({ idle, sheet: shotSheetName(idle) })),
+  ...Object.keys(ENEMY_IDLE_SHEETS).map(idle => ({ idle, sheet: idleSheetName(idle) })),
+  ...Object.keys(ENEMY_JUMP_SHEETS).map(idle => ({ idle, sheet: jumpSheetName(idle) })),
+  ...Object.keys(ENEMY_SWEEP_SHEETS).map(idle => ({ idle, sheet: sweepSheetName(idle) })),
+  ...Object.keys(ENEMY_SCREAM_SHEETS).map(idle => ({ idle, sheet: screamSheetName(idle) })),
+];

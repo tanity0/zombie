@@ -103,6 +103,7 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
+import { warmEnemySheets } from './pixiTextures';
 import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs, sweepSheetSplit, sweepSheetName } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
@@ -17778,6 +17779,11 @@ export class PixiScene {
     // 表を持つ立ち絵だけ、**動いている間**シートのコマへ差し替える(止まれば立ち絵へ戻る=
     // プレイヤーの `playerWalkFrame` と同じ作法)。**判定・速度・AIは1msも触らない。**
     const idleTexKey = this.enemyTexKey(e.type, e.id);
+    // ★遅延シートの先読み(社長指示2026-09-24「乗せて」+品質監査の指摘)。**姿が見えた時点で**
+    // その個体のシートを全部取りに行く。網(`getTexture`)は「最初にその技へ入った瞬間」まで
+    // 跳び/薙ぎ/攻撃のシートを1度も引かないので、これが無いと**最初の1発だけ溜めのコマが欠ける**。
+    // 立ち絵を持たない個体・遅延シートが無い個体では**1回のSet照会で抜ける**(毎フレームでも無視できる)。
+    warmEnemySheets(idleTexKey);
     // 見た目の身長(=歩幅の基準)。判定の箱ではなく**描画の箱**(§drawEnemy が使うのと同じ fb)。
     const atkTex = this.enemyScreamTexture(idleTexKey, e, gameTime)
       ?? this.enemySweepTexture(idleTexKey, e, gameTime)
