@@ -1,5 +1,42 @@
 # Development Log
 
+## v0.25.4646 — 訂正: 幻影は触れても痛くない(社長質問で発覚)【2026-09-25 08:42 JST】
+
+社長質問「**幻影も触れたら痛いの？**」。**痛くない。v0.25.4643 の報告「3型」は誤りだった。**
+
+### 何を間違えたか
+`isBiteSubject` **1つだけ**を見て「重なっただけで痛い敵」を数えた。実際の門は
+`combatTick.applyContactDamage` で、そこは `isBiteSubject` の**手前で**
+`isGuardianPhantom` を**明示 return** している(research/GHOST_BOSS.md「幻影は接触では削らない」)。
+さらに `ENEMY_STATS['guardian-phantom'].damage` は **0**。**幻影が削るのは自前の技だけ。**
+
+`isBiteExemptType` に幻影が入っているのは「**噛みつき台本に乗せない**」という意味であって
+(理由も「プレイヤーの写しで自前の近接を既に持つ」)、「触れたら痛い」ではない。**2つを混ぜた。**
+
+| | 型 | damage |
+|---|---|---|
+| **平時に触れて痛い** | **死神(reaper)** / **使者(hangedman)** の**2型** | 77 / 999 |
+| 噛みつきの対象外だが触れても痛くない | 幻影(guardian-phantom) | **0** |
+
+### 直したもの(コードの挙動は1ビットも変えていない)
+- `enemyBite.test.ts` の判定を**接触ループの門そのまま**に作り替えた
+  (①幻影は素通り ②damage 0 は痛くない ③`isBiteSubject`)。期待値も **2型**へ。
+  **幻影は「噛みつき対象外だが触れても痛くない」を別テストで固定**した。
+- `enemyUtils.ts` の `isBiteExemptType` の上のコメントを訂正
+  (**この表は「触れたら痛い型」ではない**と明記+今回の誤りの経緯)。
+- 教訓: **述語を1つだけ見て「門」を語らない。**門は `applyContactDamage` の early return の並び全部。
+
+### 変わっていないもの
+- 死神・使者の接触ダメージは**そのまま**(v0.25.4645 の裁定どおり)。
+- 強個体3種の溜め600ms も**そのまま**。
+
+### 検証
+`npm run typecheck` / `npm run lint` エラー0。噛みつき135件+`enemyUtils` 緑。
+
+### 変更ファイル
+- `src/utils/enemyBite.test.ts`(門の写し+幻影の専用テスト)/ `src/utils/enemyUtils.ts`(コメント訂正)
+- `package.json` / `src/data/changelog.ts`
+
 ## v0.25.4645 — 持ち越しの裁定3件を推薦どおりに片付けた(社長「推薦で」)【2026-09-25 06:19 JST】
 
 ### ① 強個体3種の噛みつきの溜め 300 → 600ms(**やった**)

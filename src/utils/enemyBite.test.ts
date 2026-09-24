@@ -1,4 +1,4 @@
-import { isTrueBossType, isBossType, isBiteExemptType } from './enemyUtils';
+import { isTrueBossType, isBossType, isBiteExemptType, isGuardianPhantom, ENEMY_STATS } from './enemyUtils';
 import { describe, it, expect } from 'vitest';
 import {
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
@@ -892,11 +892,27 @@ describe('★重なっただけで痛い敵(接触ダメージが残っている
     'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel',
     'idol', 'hunter', 'screamer', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
     'guardian-phantom', 'phillboss'];
-  const restingContact = (t: EnemyType): boolean =>
-    !isBiteSubject({ type: t, damage: 10 } as unknown as Enemy, isBiteExemptType, 0);
+  // ★`applyContactDamage` の門を**そのまま写す**(v0.25.4646 で是正)。
+  // `isBiteSubject` だけを見ていた旧版は**幻影を「痛い」側に数えていた**——実際の接触ループは
+  // その手前で `isGuardianPhantom` を明示 return しており(research/GHOST_BOSS.md「幻影は接触では
+  // 削らない」)、`ENEMY_STATS['guardian-phantom'].damage` も 0。**社長質問2026-09-25
+  // 「幻影も触れたら痛いの？」で発覚。**述語を1つだけ見て「門」を語らない。
+  const restingContact = (t: EnemyType): boolean => {
+    if (isGuardianPhantom(t)) return false;                    // 接触ループの先頭で素通り
+    if ((ENEMY_STATS[t]?.damage ?? 0) <= 0) return false;      // 0ダメージは痛くない
+    return !isBiteSubject({ type: t, damage: ENEMY_STATS[t].damage } as unknown as Enemy, isBiteExemptType, 0);
+  };
 
-  it('平時に触れて痛いのは 死神 / 使者 / 幻影 の3型だけ(ここが増えたら社長へ報告)', () => {
-    expect(ALL.filter(restingContact)).toEqual(['reaper', 'hangedman', 'guardian-phantom']);
+  it('平時に触れて痛いのは 死神 / 使者 の2型だけ(ここが増えたら社長へ報告)', () => {
+    expect(ALL.filter(restingContact)).toEqual(['reaper', 'hangedman']);
+  });
+
+  // ★幻影は `isBiteExemptType`(=噛みつき台本に乗せない)には入っているが、**接触では削らない**。
+  // 「噛みつきの対象外」と「触れたら痛い」は別の話——ここを混ぜたのが v0.25.4643 の誤報だった。
+  it('幻影は噛みつきの対象外だが、触れても痛くない(自前の技だけで削る)', () => {
+    expect(isBiteExemptType('guardian-phantom')).toBe(true);
+    expect(ENEMY_STATS['guardian-phantom'].damage).toBe(0);
+    expect(restingContact('guardian-phantom')).toBe(false);
   });
 
   it('削岩型・伐採人・蜘蛛・ハンター・城ボスは平時に触れても痛くない(噛みつき台本へ移行済み)', () => {
