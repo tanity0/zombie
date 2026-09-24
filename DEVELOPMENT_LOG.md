@@ -47,9 +47,11 @@
   **次の一手として社長へ報告**。**巡は1巡**——(A)が「作った物を消す」に直結したので、
   同じ物への2巡目は意味が無い(次は別の実装に対して回す)。
 
-### 変更ファイル
+### 変更ファイル(`git show --stat` と突き合わせ済み)
 - `src/pixi/pixiScene.ts`(砂埃の latch を1つ追加・根拠のコメントを実測どおりに書き直し)
-- `src/utils/enemySweepSheet.ts` / `src/utils/enemySweepSheet.test.ts`(押し出しを入れて、同じ回に撤回)
+- `package.json` / `src/data/changelog.ts` / `DEVELOPMENT_LOG.md`
+- ※`src/utils/enemySweepSheet.ts` と同 `.test.ts` は**差分に出ない**——押し出しを入れてから
+  同じ作業ツリーで撤回したので、**行って来いで元のまま**。「触ったが残っていない」を明記しておく。
 
 ## v0.25.4626 — 1対1枠の死神が「本物の死神」になっていなかったのを直す【2026-09-24 20:23 JST】
 
