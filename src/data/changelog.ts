@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4618', items: ['跳びかかった敵が、着地の隙の途中でもう一度小さく跳んで見えることがあったのを直した'] },
   { version: '0.25.4617', items: ['跳びかかった敵が、隙を終えた後にもう一度小さく跳ぶ絵を見せることがあったのを直した'] },
   { version: '0.25.4616', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4615', items: ['伐採人の薙ぎが、武器の進む向きと同じ向きに振られるようになった'] },

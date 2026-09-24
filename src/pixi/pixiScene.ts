@@ -45,7 +45,7 @@ import {
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
-  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, SCREAMER_WINDUP_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_JUMP_HEIGHT, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, SCREAMER_WINDUP_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
@@ -17830,10 +17830,14 @@ export class PixiScene {
         // 生の `pumpkinRecoverMs` を引くと着地の瞬間が **R×(1-1/1.2)=R/6 だけ手前**にズレる
         // (蜘蛛で333ms・ハンターで167ms 早く着地の絵が始まっていた)。同じ割り方で引く。
         const recoverStart = (e.aiPhaseUntil ?? gameTime) - pumpkinRecoverMs(e.type) / ENEMY_ATTACK_SPEED_MULT; // ★v0.25.3960: パンプキンのみ2秒(判定と同じ出どころ)
-        const blockedFall = (e.aiStartedAt ?? -Infinity) >= recoverStart - 1;
+        // ★★同上(社長報告2026-09-24)。**空中高を預かっている個体だけ**が落下の対象。
+        // 既定値(`?? PUMPKIN_JUMP_HEIGHT * 0.6`)も外す——預かりが無いのに落とすということは、
+        // 弾かれてもいないのに**54px持ち上げて落とす**=「見た目だけの小ジャンプ」そのものだった。
+        const blockedFall = this.enemyJumpHop.has(e.id)
+          && (e.aiStartedAt ?? -Infinity) >= recoverStart - 1;
         if (blockedFall) {
           let fall = this.enemyBlockFall.get(e.id);
-          if (!fall) { fall = { from: this.enemyJumpHop.get(e.id) ?? PUMPKIN_JUMP_HEIGHT * 0.6, start: gameTime }; this.enemyBlockFall.set(e.id, fall); }
+          if (!fall) { fall = { from: this.enemyJumpHop.get(e.id) ?? 0, start: gameTime }; this.enemyBlockFall.set(e.id, fall); }
           const p = Math.max(0, Math.min(1, (gameTime - fall.start) / SHIELD_BLOCK_FALL_MS));
           aiHop = fall.from * (1 - p * p); // ease-in(加速して落下)。p>=1 で 0 になりそのまま。
           aiSqY = 1.05; aiSqX = 0.97;      // 落下中は少しだけ縦伸び
@@ -29763,7 +29767,14 @@ export class PixiScene {
       // ★v0.25.4565: `aiPhaseUntil` は倍速で割った後の時刻。生の値を引くと着地の瞬間が手前へズレる(上と同じ)。
       const recoverStart = (e.aiPhaseUntil ?? gameTime) - pumpkinRecoverMs(e.type) / ENEMY_ATTACK_SPEED_MULT;
       // ★盾で弾かれた落下中は、着地の絵(砂埃つき)を先に出さない=まだ落ちている最中だから。
-      const blockedFall = (e.aiStartedAt ?? -Infinity) >= recoverStart - 1;
+      // ★★社長報告2026-09-24「着地→硬直→なぜか見た目だけ小ジャンプして戻る」の是正:
+      // 判定の出どころは**時刻の比較だけ**だったので、硬直の途中で条件が真へ転ぶと
+      // **通常の着地でもこの枝に入り**、滞空のコマ+既定の浮き(`PUMPKIN_JUMP_HEIGHT*0.6`=54px)で
+      // **もう一度跳んだように見えて**いた(実測: y 34 → -20 = ちょうど54px)。
+      // ⇒ **空中高を預かっている個体だけ**を対象にする。通常の着地は下のホップ処理が
+      //   硬直の1フレーム目で `enemyJumpHop` を捨てるので、以後この枝へは二度と入れない。
+      const blockedFall = this.enemyJumpHop.has(e.id)
+        && (e.aiStartedAt ?? -Infinity) >= recoverStart - 1;
       // ★v0.25.4605(社長報告「パンプキン、ジャンプの後コマが変。小ジャンプしてるみたいなのが最後に混ざってる」):
       // 着地の絵が尽きたら**最後のコマで持たせる**。着地の絵(420ms)は**硬直(蜘蛛は実効1667ms)より短い**ので、
       // 従来は残り約1.25秒ぶん**立ち絵へ戻って**いた——実測で絵の高さが **80.5px → 87.8px(+9%)跳ね上がる**
