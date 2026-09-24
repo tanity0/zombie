@@ -4,7 +4,7 @@
 // ※アプリ配布(最終形)ではこの入口ごと非表示にする想定(TitleScreen側の1フラグで消せる)。
 import React, { useState } from 'react';
 import {
-  BOSS_TEST_ENTRIES, bossTestQuery, bossMakerQuery, BOSS_MAKER_BOSSES,
+  BOSS_TEST_ENTRIES, bossTestQuery, bossMakerQuery, BOSS_MAKER_BOSSES, BOSS_MAKER_CASTLE_STAGES,
   type BossTestEntry, type BossTestGhostMode,
 } from '../../utils/bossTest';
 import { VS_ENTRIES, vsQuery } from '../../utils/vsTest';
@@ -83,7 +83,7 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
             ボスメーカー(調整部屋)— 一騎打ちの訓練場。無敵・湧きなし・方眼。数字を画面で回してその場で反映。
           </div>
           <div className="grid grid-cols-2 gap-1">
-            {BOSS_MAKER_BOSSES.map(b => (
+            {BOSS_MAKER_BOSSES.filter(b => b !== 'giantbat').map(b => (
               <button
                 key={b}
                 className="border border-emerald-400/50 bg-emerald-500/10 px-2 py-2 text-left text-[12px] font-bold text-emerald-300"
@@ -92,6 +92,26 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
                 }}
               >
                 {bossCutinName(b) ?? enemyDeathLabel(b)}
+              </button>
+            ))}
+          </div>
+          {/* ★城ボス(社長指摘2026-09-25「ボスメーカーに城ボスたちがいない」)。
+              **1つの型(giantbat)でステージごとに別人**——絵も台本も stageId で決まるので、
+              上の並びに1つ置くと1体しか立たない。**ステージごとに1つ**並べ、部屋もそのステージで立てる。 */}
+          <div className="mt-2 mb-1 text-[10px] text-white/45">
+            城ボス — 同じ型でステージごとに別人(絵も技もステージで決まる)。部屋はそのステージで立つ。
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {BOSS_MAKER_CASTLE_STAGES.map(sid => (
+              <button
+                key={sid}
+                className="border border-emerald-400/50 bg-emerald-500/10 px-2 py-2 text-left text-[12px] font-bold text-emerald-300"
+                onClick={() => {
+                  window.location.search = bossMakerQuery({ characterClass: cls, ghostMode: null, ghostlog: false }, 'giantbat', sid);
+                }}
+              >
+                <span className="block">{bossCutinName('giantbat', sid) ?? '?'}</span>
+                <span className="block text-[8px] font-normal text-emerald-300/45">{getStage(sid)?.name ?? sid}</span>
               </button>
             ))}
           </div>

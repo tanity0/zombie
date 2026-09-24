@@ -4,7 +4,10 @@ import { describe, it, expect } from 'vitest';
 import {
   BOSS_TEST_ENTRIES, bossTestQuery, bossTestGhostSkill, parseBossTestMode,
   canForceGateBossNow, type GateBossGateState,
+  BOSS_MAKER_BOSSES, BOSS_MAKER_CASTLE_STAGES, BOSS_MAKER_STAGE, bossMakerQuery,
+  bossMakerStageFor, parseBossMakerBoss,
 } from './bossTest';
+import { CASTLE_BOSS_NAME_BY_STAGE, bossCutinName } from '../data/bossCutin';
 import { ENGAGEABLE_BOSS_TYPES } from './bossEngagement';
 import { getStage } from '../data/campaign';
 
@@ -141,5 +144,48 @@ describe('canForceGateBossNow — ?gateboss=1 の発火ゲート', () => {
     for (const k of keys) {
       expect(canForceGateBossNow({ ...ok(), [k]: true }), `${k} がガードになっていない`).toBe(false);
     }
+  });
+});
+
+// ★城ボスをボスメーカーへ(社長指摘2026-09-25「ボスメーカーに城ボスたちがいない」・v0.25.4639)。
+// 城ボスは**1つの型(giantbat)でステージごとに別人**(絵も台本も stageId で決まる)ので、
+// **部屋をそのステージで立てる**のがこの機能の肝。ここが崩れると「全部ステージ1のボス」に戻る。
+describe('★ボスメーカーの城ボス', () => {
+  const OPTS = { characterClass: 'warrior', ghostMode: null, ghostlog: false } as const;
+
+  it('城ボスの並びは表示名の台帳と同じ(2箇所に書かない)', () => {
+    expect([...BOSS_MAKER_CASTLE_STAGES]).toEqual(Object.keys(CASTLE_BOSS_NAME_BY_STAGE));
+    expect(BOSS_MAKER_CASTLE_STAGES.length).toBeGreaterThan(1);
+  });
+
+  it('どのステージにも表示名がある(ボタンが「?」にならない)', () => {
+    for (const sid of BOSS_MAKER_CASTLE_STAGES) {
+      expect(bossCutinName('giantbat', sid), sid).toBeTruthy();
+    }
+  });
+
+  it('giantbat は部屋のボスとして選べる(?makerboss= が通る)', () => {
+    expect(BOSS_MAKER_BOSSES).toContain('giantbat');
+    expect(parseBossMakerBoss('?makerboss=giantbat')).toBe('giantbat');
+  });
+
+  it('★部屋はそのボスのステージで立つ(城ボスだけ固定ステージを上書き)', () => {
+    for (const sid of BOSS_MAKER_CASTLE_STAGES) {
+      const q = new URLSearchParams(bossMakerQuery(OPTS, 'giantbat', sid));
+      expect(q.get('stage'), sid).toBe(sid);
+      expect(q.get('makerboss'), sid).toBe('giantbat');
+      expect(q.get('bossmaker'), sid).toBe('1');
+      expect(q.get('nospawn'), sid).toBe('1');
+    }
+  });
+
+  it('城ボス以外はステージを渡しても固定の部屋(森)のまま', () => {
+    expect(bossMakerStageFor('idol', 'stage-3')).toBe(BOSS_MAKER_STAGE);
+    expect(new URLSearchParams(bossMakerQuery(OPTS, 'idol', 'stage-3')).get('stage')).toBe(BOSS_MAKER_STAGE);
+  });
+
+  it('城ボスでも知らないステージなら固定の部屋へ落ちる(壊れたURLで出撃しない)', () => {
+    expect(bossMakerStageFor('giantbat', 'stage-999')).toBe(BOSS_MAKER_STAGE);
+    expect(bossMakerStageFor('giantbat')).toBe(BOSS_MAKER_STAGE);
   });
 });

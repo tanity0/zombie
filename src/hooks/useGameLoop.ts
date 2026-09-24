@@ -8089,6 +8089,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // ブロック)が座標を直接書く型で、**そのコントローラは `bossRef` の1スロットで相手を掴む**。
             // 部屋では「深度で出現+拘束」の実戦経路を通らないので、掴み直す手掛かり(bossId/巣/寸法)を
             // ここで置く=単体スポーンのまま同じ状態機械が回る(拘束サークルもゴースト週間も張らない)。
+            // ★城ボス(社長指摘2026-09-25「ボスメーカーに城ボスたちがいない」・v0.25.4639)。
+            // **1つの型でステージごとに別人**なので、部屋は**そのボスのステージ**で立っている
+            // (`bossMakerQuery` が `stage` を差し替える)。ここで要るのは実戦の出現ブロックと同じ3つ:
+            //   ①HP=そのステージの城ボスの体力(倍率は計測路なので1.0が返る) ②帰巣先 ③**待機を解く**
+            //     (実戦は城で眠って待つが、部屋は即戦闘=`dormant` を立てない・§1-1)。
+            // ★技の抽選ゲートは `aiReadyAt`(`bossNextActionAt` は城ボスでは読まれない)。
+            //   `spawnEnemyAt` は書かないので未設定=最初の判定でそのまま技へ入れる。
+            if (BOSS_MAKER_BOSS === 'giantbat') {
+              const cbMult = stageBossDiffMults();
+              mk.health = mk.maxHealth = Math.round(stageBossHealthFor(getSelectedStageId()) * cbMult.hp);
+              mk.damage = Math.round(mk.damage * cbMult.dmg);
+              mk.homeX = mk.x; mk.homeY = mk.y;
+              mk.aggroRange = GIANT_AGGRO_RANGE;
+            }
             if (isHiddenControllerBoss(BOSS_MAKER_BOSS)) {
               mk.homeX = mk.x; mk.homeY = mk.y; // 帰巣先=その場(部屋では inDeep 扱いなので帰らない)
               const hbs = bossRef.current;

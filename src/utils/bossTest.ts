@@ -7,6 +7,7 @@
 // 強制出現フラグ(bossnow等)はuseGameLoopの**モジュールロード時定数**なので、出撃はページ再読込
 // (location遷移)で行う=`?smoke=1`(タイトル/メニュー全スキップの既存クイックスタート)に相乗りする。
 import type { EnemyType, SkillKey } from '../types/game';
+import { CASTLE_BOSS_NAME_BY_STAGE } from '../data/bossCutin';
 
 /** 出撃1件の定義。param=useGameLoopに既にある強制出現フラグ(新しい召喚機構は作らない)。 */
 export interface BossTestEntry {
@@ -228,8 +229,25 @@ export const BOSS_MAKER_BOSSES: readonly EnemyType[] = [
   // PACING_PUZZLE.md §10-17(フィル・バッチ2・16体目): angelBossTickの7人目=天使6体と同じ枠組み
   // (isGate2AngelBoss編入)なので、部屋では天使6体と同じ通常の単体スポーンで立つ。
   'phillboss',
+  // ★城ボス(社長指摘2026-09-25「ボスメーカーに城ボスたちがいない」・v0.25.4639)。
+  // **1つの型(giantbat)でステージごとに別人**——絵(`stage3-enemies/giantbat` 等)も台本
+  // (`giantScript` のステージ別の技・重み・間合い)も **`stageId` で決まる**。だから部屋は
+  // **そのボスのステージで立てる**(下の `BOSS_MAKER_CASTLE_STAGES`)。この1件だけ、部屋の固定ステージ
+  // (`BOSS_MAKER_STAGE`)を上書きする=メニューのボタンも他と分けて並べる。
+  'giantbat',
 ];
 export const BOSS_MAKER_DEFAULT_BOSS: EnemyType = 'idol';
+
+/**
+ * ★城ボスが居るステージ(=部屋を立てられるステージ)。**表示名の台帳と同じ並びを引く**ので、
+ * ステージが増減しても勝手に追従する(2箇所に書かない)。
+ * stage-7 は「グレン」=同じ `giantbat` 型の別絵・別台本(storyBoss)。
+ */
+export const BOSS_MAKER_CASTLE_STAGES: readonly string[] = Object.keys(CASTLE_BOSS_NAME_BY_STAGE);
+
+/** 部屋を立てるステージ。城ボスだけ自分のステージ、それ以外は固定の部屋(森)。 */
+export const bossMakerStageFor = (bossType: EnemyType, stageId?: string): string =>
+  (bossType === 'giantbat' && stageId && BOSS_MAKER_CASTLE_STAGES.includes(stageId)) ? stageId : BOSS_MAKER_STAGE;
 
 /** `?makerboss=` を読む純関数(未知/未指定は既定=idol。window非依存でテストできる)。 */
 export const parseBossMakerBoss = (search: string): EnemyType => {
@@ -241,10 +259,14 @@ export const parseBossMakerBoss = (search: string): EnemyType => {
 export const bossMakerBossType = (): EnemyType =>
   parseBossMakerBoss(typeof window !== 'undefined' ? window.location.search : '');
 
-export const bossMakerQuery = (opts: BossTestOptions, bossType: EnemyType = BOSS_MAKER_DEFAULT_BOSS): string => {
+export const bossMakerQuery = (
+  opts: BossTestOptions, bossType: EnemyType = BOSS_MAKER_DEFAULT_BOSS,
+  // ★城ボス用。指定が無い/その型に効かない時は従来どおり固定の部屋(森)。
+  stageId?: string,
+): string => {
   const p = new URLSearchParams();
   p.set('smoke', '1');
-  p.set('stage', BOSS_MAKER_STAGE);
+  p.set('stage', bossMakerStageFor(bossType, stageId));
   p.set('nospawn', '1');
   p.set('bossmaker', '1');
   p.set('makerboss', bossType);
