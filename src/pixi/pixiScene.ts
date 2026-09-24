@@ -18380,6 +18380,10 @@ export class PixiScene {
     // ※当初の推薦は「1コマ区間では呼吸を許す」だったが、呼吸を止めること自体が
     //   「攻撃する時は息を止める」(社長指示2026-09-17)=**今だ、の合図**なので崩さない。
     //   既存の型で静止を解く方が、掟を1つも曲げずに済む。**描画オフセットのみ・判定は不変。**
+    // ★★**v0.25.4621まで、この震えは1度も画面に出ていなかった**(クリエイティブ監査2026-09-24が発見)。
+    //   下の条件の `aiStartedAt` を、store が `logger-sweep-windup` / `driller-thrust-windup` へ入る時に
+    //   **書いていなかった**ため、常に `undefined` → 震え0。**コードは在るのに画面には無い**の典型
+    //   (★実在確認の掟)。store 側で焼くようにして直した。**3相の技を足す時はこの焼き込みも確かめる。**
     const sweepWindupTremor = e.aiPhase !== undefined && sweepPhaseOf(e.aiPhase) === 'windup'
       && e.aiPhaseUntil !== undefined && e.aiStartedAt !== undefined
       ? windupTremorPx(

@@ -16048,6 +16048,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             return {
               ...enemy, vx: 0, vy: 0,
               aiPhase: 'driller-thrust-windup', aiPhaseUntil: atkUntil(DRILLER_THRUST_WINDUP_MS),
+              // ★**溜めの開始時刻を焼く**(v0.25.4621)。描画側の「溜め終盤の震え」(`windupTremorPx`)は
+              //   `aiStartedAt` が無いと**1度も出ない**。3相の技はどれも震える前提で作られているのに、
+              //   突き/薙ぎだけここを書いておらず**画面に出ていなかった**(★実在確認の掟)。
+              aiStartedAt: gameTime,
               aiFromX: ecx, aiFromY: ecy,
               aiTargetX: ecx + pux * DRILLER_THRUST_LENGTH, aiTargetY: ecy + puy * DRILLER_THRUST_LENGTH,
             };
@@ -16136,6 +16140,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             return {
               ...enemy, vx: 0, vy: 0,
               aiPhase: 'logger-sweep-windup', aiPhaseUntil: atkUntil(LOGGER_SWEEP_WINDUP_MS),
+              // ★**溜めの開始時刻を焼く**(v0.25.4621・削岩型の突きと同じ穴)。これが無いと
+              //   描画側の「溜め終盤の震え」が1度も出ず、**1コマ×1083msの完全な静止画**に戻る。
+              aiStartedAt: gameTime,
               aiFromX: band.fx, aiFromY: band.fy,
               aiTargetX: band.tx, aiTargetY: band.ty,
             };

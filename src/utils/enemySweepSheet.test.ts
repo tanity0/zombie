@@ -189,17 +189,33 @@ describe('削岩型の突き（社長支給2026-09-24・薙ぎと同じ3相の�
   });
 
   it('★「出はじめ」の1枚は溜めの最後に一瞬だけ（＝突きが速く見える）', () => {
-    // 重みの合計16.6のうち7コマ目は0.6＝溜めの3.6%。実効1000msなら36ms。
     const ws = split.weights ?? [];
     const windupSum = ws.slice(0, 8).reduce((a, b) => a + b, 0);
-    expect(ws[7] / windupSum).toBeLessThan(0.05);
-    // 溜めの95%時点ではまだ「引き切った姿」（6コマ目）で待っている。
-    expect(enemySweepFrame(split, 'windup', 0.95)).toBe(6);
+    expect(ws[7] / windupSum).toBeLessThan(0.07);          // 溜めのごく一部
+    // 溜めの93%時点（=930ms）ではまだ「引き切った姿」（6コマ目）で待っていて、
+    // 出はじめ（7コマ目）は残り57msになってから出る。
+    expect(enemySweepFrame(split, 'windup', 0.93)).toBe(6);
+    expect(enemySweepFrame(split, 'windup', 0.97)).toBe(7);
   });
 
-  it('★溜めの引き込みは減速する（等分にしない＝慣性MUST）', () => {
+  it('★★出はじめの1枚は30fpsの実機でも必ず1フレーム出る（＝端末で見えたり消えたりしない）', () => {
+    // 重みは「そのコマを出すms」をそのまま書いてある＝溜めの合計は実効尺1000msと一致する。
     const ws = split.weights ?? [];
-    for (let i = 0; i < 6; i++) expect(ws[i + 1]).toBeGreaterThan(ws[i]);
+    expect(ws.slice(0, 8).reduce((a, b) => a + b, 0)).toBe(1000);
+    expect(ws[7]).toBeGreaterThan(1000 / 30);              // 30fpsの1フレーム(33.3ms)より長い
+  });
+
+  it('★溜めは「引き込み→収まり→止め→出はじめ」の4段（一本の坂にしない）', () => {
+    const ws = split.weights ?? [];
+    for (let i = 0; i < 3; i++) expect(ws[i + 1]).toBeLessThan(ws[i]);   // ①引き込みは加速する
+    expect(ws[6]).toBeGreaterThan(ws[5] * 3);                           // ③止めの1枚に段差
+    expect(ws[7]).toBe(Math.min(...ws.slice(0, 8)));                    // ④出はじめが最短
+  });
+
+  it('★硬直はほぼ同じ姿勢の3枚を「減衰する小刻み」で送る（均等にしない）', () => {
+    const ws = split.weights ?? [];
+    expect(ws.slice(10).reduce((a, b) => a + b, 0)).toBe(333);
+    for (let i = 10; i < 13; i++) expect(ws[i + 1]).toBeGreaterThan(ws[i]);
   });
 
   it('全コマを1度は通る（どの区間も飛ばさない）', () => {
