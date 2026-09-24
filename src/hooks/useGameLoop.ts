@@ -107,7 +107,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // BOSS_MAKER.md §20-7-b「ラッシュは1体」: 練習は ?nospawn=1 で全部止め、城ボス/ストーリーボスを
 // 狙っている時だけこの判定が nospawn を上書きする。
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2, practiceBossType } from '../utils/bossPractice';
-import { vsEntryOfRun, isNoAmmoRun, idForVariant, VS_RESPAWN_MS, VS_SPAWN_DIST_MIN, VS_SPAWN_DIST_MAX } from '../utils/vsTest';
+import { vsEntryOfRun, isNoAmmoRun, idForVariant, vsBodyInit, VS_RESPAWN_MS, VS_SPAWN_DIST_MIN, VS_SPAWN_DIST_MAX } from '../utils/vsTest';
 import { pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity, phantomDisplayLabel, clearPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の人格(癖・ビルド・HP・名前を1人から)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
@@ -1335,6 +1335,11 @@ const FORCE_PHANTOM = evParam('phantomnow') === '1';
 // BOSS_MAKER.md §21(1対1の間合い): `?vs=<相手>` で、選んだ相手だけを1体出す開発用の枠。
 // 他の強制出現フラグと同じくモジュールロード時に1回だけ読む(切替は再読込)。
 const VS_ENTRY = vsEntryOfRun();
+// ★1対1枠で死神を相手にしている間は「帰巣(出撃地点へ戻ったら消える)」を外す。
+// 枠は**出撃地点のまま戦う**ので、そのままだと毎フレーム帰巣判定に当たって
+// **死神も使者も湧いた先から消される**(=人形が1体も出ない)。`?rp2=1`(REAPER2_TEST)が
+// 同じ理由で既に外している経路に相乗りする=**製品の経路は1バイトも変えない**。
+const VS_REAPER = VS_ENTRY?.type === 'reaper';
 // §21-4: 弾ゼロの回。**出撃時に0にするだけでは足りない**——キルのドロップ・エアドロップ・
 // レベルアップ特典の3経路から弾が戻るので、それぞれを止める(監査A-1)。
 const NO_AMMO_RUN = isNoAmmoRun();
@@ -5513,7 +5518,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // v0.25.2130の「死神なし」裁定を撤回。ゴール設置済みなので時間切れの圧として死神を使う)。
         // 区域バナー/壁踏破/ゲート予約は下の内側ゲート(!corridorMode)が引き続きスキップする。
         // PACING_PUZZLE.md §10-14#4(維持): 死神(深奥リスク)もEXでは出さない(側イベント抑止)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn) {
+        // ★★1対1枠で死神を選んだ時だけ `noSpawn` を跨ぐ(社長報告2026-09-24「**人形も出してこなくなっちゃった**」)。
+        //   枠は `?nospawn=1` 相当で走る(`noSpawnDebug` に `VS_ENTRY !== null` が入っている)ため、
+        //   **この節が丸ごとスキップされていた**——死神の系(リスク・気配・完全出現・鐘・**使者の召喚**・
+        //   `stepReaperBody` の専用移動)は全部この中に在る。**=枠では死神の技が1つも走っていなかった。**
+        //   既にある `(!noSpawn || practiceWantsCastleBoss())` と同じ作法の相乗りで、
+        //   **`?vs=reaper` の時だけ true**=製品の経路は1バイトも変わらない。
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && (!noSpawn || VS_REAPER)) {
           const rs = reaperRef.current;
           const pcx = player.x + player.width / 2;
           const pcy = player.y + player.height / 2;
@@ -5770,7 +5781,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // homeRadiusPx内=即帰巣消滅→次フレーム再出現、を無限に繰り返し出現アテンションが
             // 鳴り続けていた。REAPER2_TEST中はこの帰巣判定自体をスキップする(テスト専用ツマミの中だけの
             // 変更・製品挙動=REAPER2_TESTがfalseの経路は1バイトも変えない)。
-            if (!REAPER2_TEST && !rs.timeSpawned && Math.hypot(pcx, pcy) < REAPER_CONFIG.homeRadiusPx) {
+            if (!REAPER2_TEST && !VS_REAPER && !rs.timeSpawned && Math.hypot(pcx, pcy) < REAPER_CONFIG.homeRadiusPx) {
               const gsHome = useGameStore.getState();
               const goneIds = new Set(
                 gsHome.enemies.filter(e => isTerminalReaper(e) || isHangedman(e.type)).map(e => e.id)
@@ -8024,6 +8035,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 corridorRunInActive: useGameStore.getState().corridorRunInActive,
               });
               vsE.x = vsClamped.x; vsE.y = vsClamped.y;
+              // ★★**死神だけは「本物の状態」で出す**(社長報告2026-09-24「**なんか死神に当たり判定無いし、
+              //   人形も出してこなくなっちゃった**」)。`spawnEnemyAt('reaper')` は
+              //   **`reaperChaser` を立てない**ので `isTerminalReaper` が false のままになり、2つ壊れていた:
+              //   ①**プレイヤーの攻撃の対象から外れる**——直線帯/朱雀の爆風/狩人の近接/POI爆撃はどれも
+              //     `if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;` で弾く
+              //     (本来は「気配の横切り等、戦闘対象でない死神」を除くための述語)。**=当たり判定が無い。**
+              //   ②**本体ブロック(鐘・使者の召喚・`stepReaperBody` の専用移動)が丸ごと走らない**。
+              //     ブロックの入口が `enemies.filter(isTerminalReaper)` なので、1体も居ない扱いになる。
+              //     **=人形(使者)が1体も出てこない。**
+              //   ⇒ **本編の完全出現と同じ初期化をそのまま通す**(値の出どころは `REAPER2_CONFIG` の1箇所)。
+              const vsInit = vsBodyInit(vsE.type, REAPER2_CONFIG, player.speed);
+              if (vsInit) {
+                Object.assign(vsE, vsInit);
+                // 使者の波も本編と同じ歩進(開始1体 → servantAddIntervalMs ごとに+1・servantMaxで頭打ち)。
+                // ここを書かないと waveStartAt=0 のまま=出撃直後にいきなり上限まで湧く。
+                const rsv = reaperRef.current;
+                rsv.summonerId = vsE.id;
+                rsv.chaserId = vsE.id;
+                rsv.chaserSpawnAt = newGameTime;
+                rsv.waveStartAt = newGameTime;
+                rsv.ringOffset = Math.random() * Math.PI * 2;
+                rsv.castUntil = 0;
+              }
               addEnemy(vsE);
             }
           }

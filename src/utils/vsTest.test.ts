@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import {
+import { vsBodyInit,
   VS_ENTRIES, parseVsEntry, parseNoAmmo, idForVariant, vsQuery, VS_STAGE,
 } from './vsTest';
 import { ENEMY_VARIANT_SETS, spriteVariantIndex } from './enemyVariant';
 import { BOSS_TEST_ENTRIES } from './bossTest';
-import { ENEMY_STATS } from './enemyUtils';
+import { ENEMY_STATS, isTerminalReaper } from './enemyUtils';
 
 describe('vsTest（1対1の間合い・BOSS_MAKER.md §21）', () => {
   it('キーは重複しない', () => {
@@ -74,5 +74,33 @@ describe('vsTest（1対1の間合い・BOSS_MAKER.md §21）', () => {
     expect(q.get('class')).toBe('warrior');
     // 弾ゼロを外した時は付かない（既定の挙動を変えない）
     expect(new URLSearchParams(vsQuery(e, 'warrior', false)).get('noammo')).toBeNull();
+  });
+});
+
+// ★★社長報告2026-09-24「**なんか死神に当たり判定無いし、人形も出してこなくなっちゃった**」の再発防止。
+// 1対1枠で死神を素のまま湧かせると `reaperChaser` が立たず、`isTerminalReaper` が false になる。
+// **その1つのフラグで「攻撃の対象から外れる」と「使者が1体も出ない」が同時に起きる**ので、
+// ここは述語そのもので固定する(値の比較ではなく、**本編と同じ述語を満たすか**で見る)。
+describe('★1対1枠の死神は「本物の死神」として湧く', () => {
+  const CFG = { bodyHealth: 66666, bodyContactDamage: 999, bodySpeedMult: 0.8 };
+
+  it('死神は isTerminalReaper を満たす形になる(=攻撃の対象に入り、使者の召喚も走る)', () => {
+    const init = vsBodyInit('reaper', CFG, 200);
+    expect(init).not.toBeNull();
+    expect(isTerminalReaper({ type: 'reaper', ...init! })).toBe(true);
+  });
+
+  it('体力・接触ダメージ・速さは本編と同じ出どころ(枠が独自の値を持たない)', () => {
+    const init = vsBodyInit('reaper', CFG, 200)!;
+    expect(init.health).toBe(CFG.bodyHealth);
+    expect(init.maxHealth).toBe(CFG.bodyHealth);
+    expect(init.damage).toBe(CFG.bodyContactDamage);
+    expect(init.speed).toBe(200 * CFG.bodySpeedMult);
+  });
+
+  it('死神以外は素の湧きのまま(null)', () => {
+    for (const t of ['zombie', 'hunter', 'pumpkin', 'hangedman'] as const) {
+      expect(vsBodyInit(t, CFG, 200), t).toBeNull();
+    }
   });
 });

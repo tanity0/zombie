@@ -20,6 +20,43 @@ export const VS_RESPAWN_MS = 1500;
 export const VS_SPAWN_DIST_MIN = 380;
 export const VS_SPAWN_DIST_MAX = 500;
 
+/**
+ * ★★**1対1枠で「素の湧き」だと本物にならない型の初期化**
+ * (社長報告2026-09-24「**なんか死神に当たり判定無いし、人形も出してこなくなっちゃった**」)。
+ *
+ * 死神は `spawnEnemyAt('reaper')` だけでは **`reaperChaser` が立たない**ので `isTerminalReaper` が
+ * false のままになり、**2つ同時に壊れる**:
+ * ① **プレイヤーの攻撃の対象から外れる**——直線帯・朱雀の爆風・狩人の近接・POI爆撃はどれも
+ *    `isReaperFamily(type) && !isTerminalReaper(e)` で弾く(本来は「気配の横切り等、戦闘対象でない
+ *    死神」を除くための述語)。**=当たり判定が無いように見える。**
+ * ② **本体ブロック(鐘・使者の召喚・専用移動)が丸ごと走らない**——入口が
+ *    `enemies.filter(isTerminalReaper)` なので、1体も居ない扱いになる。**=人形が1体も出ない。**
+ *
+ * ★**値は持たない**(`REAPER2_CONFIG` を呼び手が渡す)。台帳を二重に持つと本編と枠でズレる。
+ * `null` = 素の湧きのままでよい型。
+ */
+export interface VsBodyInit {
+  reaperChaser: true;
+  health: number;
+  maxHealth: number;
+  damage: number;
+  speed: number;
+}
+
+export const vsBodyInit = (
+  type: EnemyType,
+  cfg: { bodyHealth: number; bodyContactDamage: number; bodySpeedMult: number },
+  playerSpeed: number,
+): VsBodyInit | null => (type === 'reaper'
+  ? {
+    reaperChaser: true,
+    health: cfg.bodyHealth,
+    maxHealth: cfg.bodyHealth,
+    damage: cfg.bodyContactDamage,
+    speed: playerSpeed * cfg.bodySpeedMult,
+  }
+  : null);
+
 export interface VsEntry {
   /** URLに載る名前(`?vs=`)。型名か、変種を持つ型は `型-添字`。 */
   key: string;
