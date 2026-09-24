@@ -1,7 +1,7 @@
 // ★薙ぎ払いの絵の区間割り。社長支給2026-09-22「伐採人の薙払いの時のモーション」。
 import { describe, it, expect } from 'vitest';
 import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, sweepBandDirX, sweepFaceMulFor } from './enemySweepSheet';
-import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit } from './enemySheets';
+import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH } from './enemySheets';
 import { LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
 const ALL = Object.entries(ENEMY_SWEEP_SHEETS);
@@ -232,5 +232,51 @@ describe('削岩型の突き（社長支給2026-09-24・薙ぎと同じ3相の�
   it('素材名は -thrust（薙ぎではないので名前を嘘にしない）', () => {
     expect(sweepSheetName('driller-common')).toBe('driller-common-thrust');
     expect(sweepSheetName('reaper-common')).toBe('reaper-common-sweep');
+  });
+});
+
+// ★城ボス3の叩きつけ(社長支給2026-09-25)。薙ぎ・突きと**同じ3相の仕組みを借りている**。
+describe('★城ボス3の叩きつけ(g-slam)', () => {
+  const KEY = 'stage3-enemies/giantbat';
+  const sp = ENEMY_SWEEP_SHEETS[KEY];
+
+  it('store の3つの州が区間へ写る', () => {
+    expect(sweepPhaseOf('g-slam-windup')).toBe('windup');
+    expect(sweepPhaseOf('g-slam-active')).toBe('active');
+    expect(sweepPhaseOf('g-slam-recover')).toBe('recover');
+  });
+
+  it('素材名は -slam(薙ぎでも突きでもない)', () => {
+    expect(sweepSheetName(KEY)).toBe('stage3-enemies/giantbat-slam');
+  });
+
+  it('16コマを 10/1/5 に割る', () => {
+    expect(sweepSplitFrames(sp)).toBe(16);
+    expect([sp.windup, sp.active, sp.recover]).toEqual([10, 1, 5]);
+  });
+
+  // ★掟③(消え切る時刻=当たる時刻)。当たりは windup→active の遷移で1回だけ積まれるので、
+  // **叩き区間の先頭コマ=当たる瞬間**。砂埃が初めて出るのは10コマ目(実測)なので、そこに一致する。
+  it('★当たる瞬間に出るのは10コマ目=砂埃が初めて出るコマ', () => {
+    expect(sweepImpactFrame(sp)).toBe(10);
+    expect(sweepWindupLastFrame(sp)).toBe(9);
+  });
+
+  it('★背丈は「枠」ではなく「本体150」で揃える(振り上げた蔓のぶん枠が20px高いため)', () => {
+    expect(sweepSheetBodyH(KEY)).toBe(150);
+    // 他のシートは持たない=従来どおり枠で揃う。
+    expect(sweepSheetBodyH('reaper-common')).toBeNull();
+    expect(sweepSheetBodyH('driller-common')).toBeNull();
+  });
+
+  it('全コマを1度は通る(どの区間も飛ばさない)', () => {
+    const seen = new Set<number>();
+    for (const ph of ['windup', 'active', 'recover'] as const) {
+      for (let k = 0; k <= 400; k++) {
+        const f = enemySweepFrame(sp, ph, k / 400);
+        if (f !== null) seen.add(f);
+      }
+    }
+    expect(seen.size).toBe(16);
   });
 });

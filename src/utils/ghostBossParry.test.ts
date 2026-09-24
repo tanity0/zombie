@@ -54,7 +54,7 @@ describe('isDashParryCounterPhase: プレイヤーのdashParried対象フェー�
 });
 
 describe('dashParriedEnemyPatch: 技の中断+攻め手から弾き飛ばす変換', () => {
-  it('技の状態を全解除し、攻め手の反対向きへ弾き飛ばす(aiReadyAt=gameTime+1200)', () => {
+  it('技の状態を全解除し、攻め手の反対向きへ弾き飛ばす', () => {
     const e = enemy({ aiPhase: 'charge', aiPhaseUntil: 999, aiTargetX: 1, aiFromX: 2, stunUntil: 500 } as Partial<Enemy>);
     // 攻め手=敵中心(120,120)の左(20,120)→ 右(+x)へ弾く。
     const r = dashParriedEnemyPatch(e, 20, 120, 5000, 3000);
@@ -63,13 +63,24 @@ describe('dashParriedEnemyPatch: 技の中断+攻め手から弾き飛ばす変�
     expect(r.aiTargetX).toBeUndefined();
     expect(r.aiFromX).toBeUndefined();
     expect(r.stunUntil).toBeUndefined();
-    expect(r.aiReadyAt).toBe(3000 + 1200);
     expect(r.x).toBeCloseTo(100 + COUNTER_KNOCKBACK_LAUNCH, 6);
     expect(r.y).toBeCloseTo(100, 6);
     expect(r.knockbackVx).toBeCloseTo(COUNTER_KNOCKBACK_SPEED, 6);
     expect(r.knockbackVy).toBeCloseTo(0, 6);
     expect(r.knockbackUntil).toBe(5000 + KNOCKBACK_DURATION);
     expect(r.knockbackImmuneUntil).toBe(0);
+  });
+  // ★v0.25.4592(社長裁定2026-09-23「でも台本は続ける」)で挙動が分かれた。
+  // `aiReadyAt` は城ボスの**技抽選ゲートそのもの**なので、ボスには書かない=カウンターは
+  // 出していた技を消すだけで、**次の技へ進む足は止めない**。雑魚は従来どおり +1200ms。
+  // ※この2件は v0.25.4592 で更新し忘れて赤のままだった(giantbat で +1200 を期待していた)。
+  it('抽選ゲート(aiReadyAt): ボスには書かない / 雑魚は gameTime+1200', () => {
+    const boss = dashParriedEnemyPatch(enemy({ type: 'giantbat', aiPhase: 'charge' } as Partial<Enemy>), 20, 120, 5000, 3000);
+    expect(boss.aiReadyAt).toBeUndefined();
+    // ※蜘蛛(pumpkin)は**強個体**で `isBossType` に入る(CLAUDE.md「敵の仕様は区分で固める」)ので、
+    //   雑魚側はゾンビで見る。
+    const mob = dashParriedEnemyPatch(enemy({ type: 'zombie', aiPhase: 'charge' } as Partial<Enemy>), 20, 120, 5000, 3000);
+    expect(mob.aiReadyAt).toBe(3000 + 1200);
   });
   it('攻め手と重なっている(距離<12)時は突進してきた向きの逆=aiFrom→現在の向きへ弾く', () => {
     // aiFrom(40,100)→現在(100,100)=+x向きに突進してきた → +xへ弾き返す。

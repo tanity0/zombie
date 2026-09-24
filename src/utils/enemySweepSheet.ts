@@ -31,6 +31,18 @@ export interface SweepSplit {
    * 等分だと突きが伸びないので、**溜めは長く・突きは短く**配る。区間の境目は動かない。
    */
   weights?: SectionWeights;
+  /**
+   * ★**このシートの中で「立ち絵の枠」に当たる高さ**(省略=シートの枠の高さ=従来どおり)。
+   *
+   * ★なぜ要るか(社長支給2026-09-25「叩きつけ」・高さが難しい と添えられていた):
+   * 背丈合わせ(`utils/sheetFit.ts`)は**枠の高さ**を揃えることで「1コマの1画素=立ち絵の1画素」を
+   * 保っている。これは**生き物が枠いっぱいに描かれている**間だけ正しい。城ボス3の叩きつけは
+   * **振り上げた蔓のぶんだけ枠が20px高い**(枠170・立ち姿135=立ち絵と同じ)ので、そのままでは
+   * **枠の差(150/170)がそのまま縮みになり、本体が11.8%小さくなる**。
+   * ⇒ **「立ち絵の枠150に当たるのはこの170のうち150」**と1つ書いて、そこで揃える。
+   * ★**書かなければ従来どおり**(既定=枠の高さ)。既存のシートは1ビットも変わらない。
+   */
+  bodyH?: number;
 }
 
 const counts = (s: SweepSplit): SectionCounts => [s.windup, s.active, s.recover];
@@ -57,8 +69,20 @@ export const DRILLER_THRUST_PHASES: Readonly<Record<string, SweepPhase>> = {
   'driller-thrust-recover': 'recover',
 };
 
+/**
+ * ★**城ボスの叩きつけも同じ3相**(社長支給2026-09-25「叩きつけ」)。
+ * 蔓を振り上げて止まる → 地を叩く → 砂埃の中で硬直、と**薙ぎ・突きと同じ形**なので
+ * **新しい仕組みを作らない**(区間の割り方も尺の読み方もそのまま借りる)。
+ * ★当たりは `g-slam-windup` → `-active` の遷移で1回だけ積まれる=**掟③は区間の境目で満たされる**。
+ */
+export const GIANT_SLAM_PHASES: Readonly<Record<string, SweepPhase>> = {
+  'g-slam-windup': 'windup',
+  'g-slam-active': 'active',
+  'g-slam-recover': 'recover',
+};
+
 const THREE_PHASE_TECH: Readonly<Record<string, SweepPhase>> = {
-  ...LOGGER_SWEEP_PHASES, ...DRILLER_THRUST_PHASES,
+  ...LOGGER_SWEEP_PHASES, ...DRILLER_THRUST_PHASES, ...GIANT_SLAM_PHASES,
 };
 
 export const sweepPhaseOf = (aiPhase: string | undefined): SweepPhase | null =>

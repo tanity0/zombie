@@ -26,14 +26,31 @@
  * @param boxW/boxH 枠(当たり判定 × 視覚倍率)。立ち絵とコマで同じものを渡すこと。
  * @param idleW/idleH 立ち絵のテクスチャ寸法
  * @param sheetW/sheetH **コマ1枚**のテクスチャ寸法(シート全体の幅ではない)
+ * @param bodyH ★**コマの枠の中で「立ち絵の枠」に当たる高さ**(省略=`sheetH`=枠いっぱい)。
+ *   下の「枠より本体が低いシート」を参照。
  */
 export const sheetHeightFix = (
   boxW: number, boxH: number,
   idleW: number, idleH: number,
   sheetW: number, sheetH: number,
+  bodyH: number = sheetH,
 ): number => {
-  if (!(boxW > 0 && boxH > 0 && idleW > 0 && idleH > 0 && sheetW > 0 && sheetH > 0)) return 1;
+  if (!(boxW > 0 && boxH > 0 && idleW > 0 && idleH > 0 && sheetW > 0 && sheetH > 0 && bodyH > 0)) return 1;
   const idleDrawn = Math.min(boxW / idleW, boxH / idleH) * idleH;
-  const sheetDrawn = Math.min(boxW / sheetW, boxH / sheetH) * sheetH;
+  const sheetDrawn = Math.min(boxW / sheetW, boxH / sheetH) * bodyH;
   return sheetDrawn > 0 && Number.isFinite(idleDrawn / sheetDrawn) ? idleDrawn / sheetDrawn : 1;
 };
+
+// ★★**枠より本体が低いシート**(社長支給2026-09-25「叩きつけ」・「高さが難しい」と添えられていた)。
+//
+// 上の補正は**枠の高さを揃える**ことで「コマの1画素 = 立ち絵の1画素」を保っている。これは
+// **生き物が枠いっぱいに描かれている**間だけ正しい。城ボス3の叩きつけは**振り上げた蔓のぶん枠が
+// 20px高い**(枠170 / 立ち姿の本体135px=立ち絵135・歩き134と同じ密度)ので、そのままでは
+// **枠の差(150/170)がまるごと縮みになり、本体が 137.8px → 121.6px(-11.8%)**になる。
+// リッチの -10.0%(この仕組みを入れる原因になった最悪値)より大きい。
+//
+// ★**出し直しでは直らない。** 全体を縮めて枠152へ収めても、枠に対する本体の比が変わらないので
+// **同じ11.8%縮む**。効くのは「本体の高さを教える」か「振り上げの蔓を枠内へ描き直す」かの2つだけ。
+//
+// ⇒ `bodyH` に「**この枠のうち、立ち絵の枠に当たるのは何px か**」を1つ書く。
+// **書かなければ従来どおり**(既定 = 枠の高さ)なので、既存の30シートは1ビットも変わらない。

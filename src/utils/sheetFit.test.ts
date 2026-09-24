@@ -39,6 +39,38 @@ describe('★シートの背丈を立ち絵へ合わせる', () => {
     expect(sheetHeightFix(400, 120, 100, 200, 130, 200)).toBeCloseTo(1, 6);
   });
 
+  // ★★社長支給2026-09-25「叩きつけ」。枠より本体が低いシート(振り上げた蔓のぶん枠が20px高い)。
+  describe('★枠より本体が低いシート(bodyH)', () => {
+    // 城ボス3の実寸: 枠=当たり判定60×60×2.325=139.5の正方形 / 立ち絵164×150 / 叩きつけ162×170(本体150)。
+    const B = 60 * 2.325;
+    const drawn = (sw: number, sh: number, body?: number): number =>
+      Math.min(B / sw, B / sh) * sh * sheetHeightFix(B, B, 164, 150, sw, sh, body);
+    const IDLE = idleH(B, B, 164, 150);
+
+    it('省略すると従来どおり=枠で揃える(=本体が 11.8% 縮む)', () => {
+      // 枠は立ち絵と同じ高さに揃う。だが中身(本体150)は枠170のうちの150しかないので縮む。
+      expect(drawn(162, 170)).toBeCloseTo(IDLE, 6);
+      const bodyOnScreen = drawn(162, 170) * (150 / 170);
+      expect(bodyOnScreen / IDLE).toBeCloseTo(150 / 170, 6);   // = 0.882 → -11.8%
+    });
+
+    it('bodyH=150 を渡すと**本体**が立ち絵と一致する(枠は立ち絵より高く出る)', () => {
+      const bodyOnScreen = drawn(162, 170, 150) * (150 / 170);
+      expect(bodyOnScreen).toBeCloseTo(IDLE, 6);
+      expect(drawn(162, 170, 150)).toBeCloseTo(IDLE * (170 / 150), 6); // 枠はそのぶん高い=蔓が伸びる
+    });
+
+    it('bodyH が枠と同じなら省略時と1ビットも変わらない(既存30シートは不変)', () => {
+      for (const [sw, sh] of [[180, 150], [133, 150], [143, 128], [214, 256]] as const) {
+        expect(sheetHeightFix(B, B, 164, 150, sw, sh, sh)).toBe(sheetHeightFix(B, B, 164, 150, sw, sh));
+      }
+    });
+
+    it('壊れた bodyH では何もしない', () => {
+      for (const bad of [0, -1, NaN]) expect(sheetHeightFix(B, B, 164, 150, 162, 170, bad)).toBe(1);
+    });
+  });
+
   it('壊れた寸法では何もしない(0や負で絵が消えない)', () => {
     for (const bad of [0, -1, NaN]) {
       expect(sheetHeightFix(120, 120, 143, 128, bad, 128)).toBe(1);

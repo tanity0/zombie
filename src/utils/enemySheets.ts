@@ -606,6 +606,22 @@ export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
   // ★★**0を溜めに、1を薙ぎの先頭に置いた**=**当たる瞬間に刃が走り出す**(掟③)。
   //   溜めは実効1083msを0コマ目で持つ(「武器を構えて一瞬止まる」の型。赤い帯もこの間に出ている)。
   'reaper-common': { windup: 1, active: 3, recover: 5 },
+  // ★城ボス3の**叩きつけ**(社長支給2026-09-25「叩きつけ」。州は `g-slam-*`)。16コマ
+  // (支給 2656×172 → 全コマ共通の矩形 x2-163 / y2-171 で切って **162×170**)。常駐 **1.68MB**。
+  // ★★**この技だけ枠が20px高い**——4コマ目で蔓を頭上まで振り上げるため。**絵の密度は他と同じ**
+  //   (立ち姿の本体 135px = 立ち絵135・歩き134と一致)。だから `bodyH: 150` で背丈を揃える(上の定義参照)。
+  // 読み(砂埃の画素数を数えて境目を決めた):
+  //   **0〜4=蔓を振り上げる**(絵の高さ 149→144→139→145→**170**=振り切り) /
+  //   **5〜9=振り下ろして溜め切り、構えたまま静止**(蔓の上端 36→43→44→46→43=ほぼ動かない。
+  //    store のコメント「立ち上がって静止」と同じ) /
+  //   **10=地を叩く**(砂埃が**ここで初めて出る**。9コマ目までは0、10で126画素) /
+  //   **11〜15=砂埃が広がって引く**(338→556→871→**1282**=最大→28=晴れる)。
+  // ★★**10コマ目が「叩き」区間の先頭**=**当たる瞬間に砂埃が出る**(掟③)。
+  //   当たりは `g-slam-windup` → `-active` の遷移で1回だけ積まれるので、区間の境目がそのまま一致する。
+  // ★尺は**判定側の時計そのまま**: 溜め実効1200ms(10コマ=120ms/コマ)/ 叩き260ms(1コマ)/
+  //   硬直1300ms(5コマ=260ms/コマ)。**等分**=絵に描かれた加減速をそのまま流す(weights は置かない)。
+  // ★**縮小していない**(2×2の一致率 7.4%)。足元は全16コマ下端が cell の底。**左向き**=既定のまま。
+  'stage3-enemies/giantbat': { windup: 10, active: 1, recover: 5, bodyH: 150 },
 };
 
 /**
@@ -615,6 +631,8 @@ export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
  */
 const SWEEP_SHEET_SUFFIX: Readonly<Record<string, string>> = {
   'driller-common': 'thrust',
+  // 城ボス3は「叩きつけ」(`g-slam-*`)。薙ぎでも突きでもないので名前を合わせる。
+  'stage3-enemies/giantbat': 'slam',
 };
 
 export const sweepSheetName = (idleTexName: string): string =>
@@ -641,6 +659,13 @@ export const sweepSwingDir = (idleTexName: string | null | undefined): 1 | -1 =>
 
 export const sweepSheetSplit = (idleTexName: string | null | undefined): SweepSplit | null =>
   (idleTexName && ENEMY_SWEEP_SHEETS[idleTexName]) || null;
+
+/**
+ * ★そのシートの中で「立ち絵の枠」に当たる高さ(無指定=null=シートの枠の高さで揃える=従来どおり)。
+ * 枠より本体が低いシート(=技で枠の外へ伸びる部位がある絵)だけがここに値を持つ。
+ */
+export const sweepSheetBodyH = (idleTexName: string | null | undefined): number | null =>
+  (idleTexName && ENEMY_SWEEP_SHEETS[idleTexName]?.bodyH) || null;
 
 export const jumpSheetSplit = (idleTexName: string | null | undefined): JumpSplit | null =>
   (idleTexName && ENEMY_JUMP_SHEETS[idleTexName]) || null;
@@ -705,7 +730,8 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   // 城ボス(ステージ1の搬送体)。歩き0.68+跳び0.95=1.63MB。カットインを挟んで出る。
   // ★このシートはステージ1の絵(`giantbat`)。S3/4/5の城ボスは別名に解決されるので出ない。
   'giantbat': 'deferred',
-  // ステージ3の城ボス。歩き1.65MB。カットインを挟んで出る+**ステージ3でしか出ない**。
+  // ステージ3の城ボス。歩き1.54+跳び1.22+叩きつけ1.68=**4.44MB**。
+  // カットインを挟んで出る+**ステージ3でしか出ない**ので、まるごと遅延。
   'stage3-enemies/giantbat': 'deferred',
   // ▼ここから下は**起動時のまま**。理由はどれも同じ=**前触れなくその辺に居る**(猶予が無い)。
   'pumpkin-common': 'eager',   // 蜘蛛。跳び1.15MB

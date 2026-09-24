@@ -51,7 +51,7 @@ import {
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
-  GIANT_SLAM_WINDUP_MS, GIANT_SLAM_HALF_WIDTH, GLEN_BOON_WINDUP_MS,
+  GIANT_SLAM_WINDUP_MS, GIANT_SLAM_ACTIVE_MS, GIANT_SLAM_RECOVER_MS, GIANT_SLAM_HALF_WIDTH, GLEN_BOON_WINDUP_MS,
   GIANT_GLIDE_WINDUP_MS, GIANT_GLIDE_ACTIVE_MS, GIANT_GLIDE_HALF_WIDTH,
   GIANT_DIVE_WINDUP_MS, GIANT_DIVE_RADIUS,
   GIANT_QUAD_BREATH_WINDUP_MS, GIANT_QUAD_BREATH_ACTIVE_MS, GIANT_QUAD_BREATH_LENGTH, GIANT_QUAD_BREATH_HALF_WIDTH, GIANT_QUAD_BREATH_SWEEP_RAD,
@@ -105,7 +105,7 @@ import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, swe
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs, sweepSheetSplit, sweepSheetName } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -18416,9 +18416,22 @@ export class PixiScene {
       //   **立ち絵そのものが別の絵**へ差し替わる経路に掛けると、別人の背丈へ合わせてしまう。
       // ★判定は1pxも動かない。`enemyHitStrip` は立ち絵の縦横比を見ているので**見た目と判定はむしろ近づく**。
       //   接地影は実スプライト幅から出しているので一緒に付いてくる。負荷 1/10(Map参照1回と割り算4つ)。
+      // ★★**枠より本体が低いシートだけ、揃える高さを別に渡す**(社長支給2026-09-25「叩きつけ」)。
+      // 城ボス3の叩きつけは**振り上げた蔓のぶん枠が20px高い**ので、枠で揃えると本体が11.8%縮む。
+      // 対象の型でなければ `null` で即抜け=**他の敵は1行も余計に走らない**(Map参照1回)。
+      // ★**そのシートのコマが出ている時だけ**掛ける(`source` が同じかで見るので、カウンターの
+      //   巻き戻しで技のコマが再生されている間も正しく掛かる)。
       const fitIdleTex = tex === walkTex ? getTexture(idleTexKey) : null;
+      let fitBodyH = tex.height;
+      if (fitIdleTex) {
+        const bh = sweepSheetBodyH(idleTexKey);
+        if (bh !== null) {
+          const sw = this.enemyWalkFrames.get(sweepSheetName(idleTexKey));
+          if (sw && sw.length > 0 && sw[0].source === tex.source) fitBodyH = bh;
+        }
+      }
       const sheetFit = fitIdleTex
-        ? sheetHeightFix(fb.boxW, fb.boxH, fitIdleTex.width, fitIdleTex.height, tex.width, tex.height) : 1;
+        ? sheetHeightFix(fb.boxW, fb.boxH, fitIdleTex.width, fitIdleTex.height, tex.width, tex.height, fitBodyH) : 1;
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * this.stageEnemyVisualMul(e.type) * sheetFit;
       // ★★**手で描いたコマが出ているフレームは、疑似呼吸(伸び縮み)を掛けない**
       // (社長指示2026-09-21「絵が入った敵のパターンには歪み入れないで」。歩行二次モーションの
@@ -23178,8 +23191,14 @@ export class PixiScene {
           : GLEN_BOON_WINDUP_MS;
         const gwProg = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (gwMs / ENEMY_ATTACK_SPEED_MULT)));
         view.sprite.position.x += windupTremorPx(gwProg, now);
-      } else if (gph === 'g-slam-windup') {
+      } else if (gph === 'g-slam-windup' && walkTex === null) {
         // しゃがみ(縦縮み)=のしかかりの溜め。
+        // ★★**手で描いたコマが出ている間は掛けない**(社長指示2026-09-22「モーション追加により外すのは
+        // 歪みだけです」の③=技のスカッシュ)。城ボス3には叩きつけのシートが入った(社長支給2026-09-25)ので、
+        // 溜めの構えは**絵の側に描かれている**——上から縦縮みを掛けると**二重にしゃがむ**うえ、
+        // 実測で背丈が 173.7 → 121.9px(-30%)まで潰れていた。シートを持たない城ボス(S1/S4/S5)は従来どおり。
+        // ※`aiSqX/aiSqY` 側は既に同じゲート(`aiSqXDraw`/`aiSqYDraw`)を持っている。ここは**後段の別の
+        //   `scale.set`** なのでゲートから漏れていた。
         const gwProg = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (GIANT_SLAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT)));
         view.sprite.scale.set(view.sprite.scale.x * (1 + 0.14 * gwProg), view.sprite.scale.y * (1 - 0.30 * gwProg));
       } else if (gph === 'g-dash-windup' || gph === 'g-quad-windup') {
@@ -29927,9 +29946,13 @@ export class PixiScene {
     // ★尺は**その型の技の時計**から引く(社長支給2026-09-24で削岩型の突きが同じ枠に乗った)。
     // 薙ぎ(伐採人)と突き(削岩型)は**区間の形は同じ・尺だけ別**なので、ここで型ごとに選ぶ。
     const isThrust = e.aiPhase !== undefined && e.aiPhase.startsWith('driller-thrust');
-    const durRaw = phase === 'windup' ? (isThrust ? DRILLER_THRUST_WINDUP_MS : LOGGER_SWEEP_WINDUP_MS)
-      : phase === 'active' ? (isThrust ? DRILLER_THRUST_ACTIVE_MS : LOGGER_SWEEP_ACTIVE_MS)
-        : (isThrust ? DRILLER_THRUST_RECOVER_MS : LOGGER_SWEEP_RECOVER_MS);
+    // ★城ボス3の叩きつけ(社長支給2026-09-25)も**同じ3相**なので、尺の選択に1本足すだけ。
+    const isSlam = e.aiPhase !== undefined && e.aiPhase.startsWith('g-slam');
+    const durRaw = phase === 'windup'
+      ? (isSlam ? GIANT_SLAM_WINDUP_MS : isThrust ? DRILLER_THRUST_WINDUP_MS : LOGGER_SWEEP_WINDUP_MS)
+      : phase === 'active'
+        ? (isSlam ? GIANT_SLAM_ACTIVE_MS : isThrust ? DRILLER_THRUST_ACTIVE_MS : LOGGER_SWEEP_ACTIVE_MS)
+        : (isSlam ? GIANT_SLAM_RECOVER_MS : isThrust ? DRILLER_THRUST_RECOVER_MS : LOGGER_SWEEP_RECOVER_MS);
     const dur = durRaw / ENEMY_ATTACK_SPEED_MULT;
     const i = enemySweepFrame(split, phase, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / dur);
     if (i === null) return null;
