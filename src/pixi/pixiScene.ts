@@ -104,6 +104,7 @@ import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
+import { sheetHeightFix } from '../utils/sheetFit';
 import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpLandMs, sweepSheetSplit, sweepSheetName } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
@@ -18406,7 +18407,19 @@ export class PixiScene {
       view.sprite.texture = tex;
       // ステージ3のボス(giantbat)だけ1.2倍/ステージ4(雪原)の全敵絵を1.5倍。足元アンカー(0.5,1)なので
       // 上方向に拡大。視覚のみ=hitbox不変。倍率の本体は stageEnemyVisualMul(死体と共有・v0.25.2383)。
-      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * this.stageEnemyVisualMul(e.type);
+      // ★★**シートのコマは「立ち絵と同じ背丈」へ合わせる**(社長指示2026-09-24「**倍率入れて**」)。
+      // 枠は当たり判定から決まる固定の矩形なので、**絵の縦横比が変わると内接倍率が変わり、背丈も変わる**
+      // ——腕を振る・武器を伸ばす・脚を開くコマは横が広いぶん**背が縮む**。実測で **-10%〜+9.2%** の幅があった
+      // (リッチの歩き-10.0 / 骸骨女の攻撃+9.2 / ステージ3の城ボス-8.9 / 蜘蛛の跳ぶ-8.0 / ハンターの跳ぶ-7.1 …)。
+      // ★**表は作らない**——立ち絵とコマの実寸から毎フレーム出すので、素材を差し替えてもシートを足しても自動で合う。
+      // ★掛けるのは**手で描いたコマが出ているフレームだけ**(`tex === walkTex`)。グレン形態2や幻影のように
+      //   **立ち絵そのものが別の絵**へ差し替わる経路に掛けると、別人の背丈へ合わせてしまう。
+      // ★判定は1pxも動かない。`enemyHitStrip` は立ち絵の縦横比を見ているので**見た目と判定はむしろ近づく**。
+      //   接地影は実スプライト幅から出しているので一緒に付いてくる。負荷 1/10(Map参照1回と割り算4つ)。
+      const fitIdleTex = tex === walkTex ? getTexture(idleTexKey) : null;
+      const sheetFit = fitIdleTex
+        ? sheetHeightFix(fb.boxW, fb.boxH, fitIdleTex.width, fitIdleTex.height, tex.width, tex.height) : 1;
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * this.stageEnemyVisualMul(e.type) * sheetFit;
       // ★★**手で描いたコマが出ているフレームは、疑似呼吸(伸び縮み)を掛けない**
       // (社長指示2026-09-21「絵が入った敵のパターンには歪み入れないで」。歩行二次モーションの
       //  傾ぎ・スカッシュを止めた v0.25.4546 と同じ理由の、呼吸版)。

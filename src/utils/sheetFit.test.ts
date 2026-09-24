@@ -1,0 +1,49 @@
+// 社長指示2026-09-24「倍率入れて」。**背丈を立ち絵へ合わせる**補正の不変条件。
+import { describe, it, expect } from 'vitest';
+import { sheetHeightFix } from './sheetFit';
+
+/** 補正を掛けた後のコマの描画高さ。 */
+const drawnH = (bw: number, bh: number, iw: number, ih: number, sw: number, sh: number): number =>
+  Math.min(bw / sw, bh / sh) * sh * sheetHeightFix(bw, bh, iw, ih, sw, sh);
+/** 立ち絵の描画高さ(合わせる先)。 */
+const idleH = (bw: number, bh: number, iw: number, ih: number): number => Math.min(bw / iw, bh / ih) * ih;
+
+describe('★シートの背丈を立ち絵へ合わせる', () => {
+  it('同じ寸法なら補正しない(1.0)', () => {
+    expect(sheetHeightFix(120, 120, 143, 128, 143, 128)).toBe(1);
+  });
+
+  it('★★補正後は必ず立ち絵と同じ背丈になる(実測で出た9件をそのまま入れる)', () => {
+    const CASES: [string, number, number, [number, number], [number, number]][] = [
+      // 名前, 枠W, 枠H, 立ち絵[w,h], コマ[w,h]
+      ['リッチの歩き', 40 * 3, 40 * 3, [150, 128], [135, 128]],
+      ['骸骨(女)の攻撃', 40 * 3, 40 * 3, [113, 128], [142, 130]],
+      ['ステージ3の城ボスの歩き', 60 * 2.325, 60 * 2.325, [164, 150], [180, 150]],
+      ['蜘蛛の跳ぶ', 40 * 2.925, 40 * 2.925, [256, 192], [157, 128]],
+      ['削岩型の突き', 40 * 3, 40 * 3, [143, 128], [146, 128]],
+    ];
+    for (const [name, bw, bh, [iw, ih], [sw, sh]] of CASES) {
+      expect(drawnH(bw, bh, iw, ih, sw, sh), name).toBeCloseTo(idleH(bw, bh, iw, ih), 6);
+    }
+  });
+
+  it('★横に広いコマは縮められ、細いコマは広げられる(向きが逆にならない)', () => {
+    // 立ち絵より横に広い＝そのままだと背が低くなる＝1より大きい倍率で戻す。
+    expect(sheetHeightFix(120, 120, 140, 128, 180, 128)).toBeGreaterThan(1);
+    // 立ち絵より細い＝そのままだと背が高くなる＝1より小さい倍率で戻す。
+    expect(sheetHeightFix(120, 120, 180, 128, 140, 128)).toBeLessThan(1);
+  });
+
+  it('★高さ側で内接している時は、幅が変わっても補正されない(背丈が変わらないので)', () => {
+    // 縦長の枠に縦長の絵＝どちらも高さ側で決まる＝背丈は同じ。
+    expect(sheetHeightFix(400, 120, 100, 200, 130, 200)).toBeCloseTo(1, 6);
+  });
+
+  it('壊れた寸法では何もしない(0や負で絵が消えない)', () => {
+    for (const bad of [0, -1, NaN]) {
+      expect(sheetHeightFix(120, 120, 143, 128, bad, 128)).toBe(1);
+      expect(sheetHeightFix(120, 120, bad, 128, 143, 128)).toBe(1);
+      expect(sheetHeightFix(bad, 120, 143, 128, 143, 128)).toBe(1);
+    }
+  });
+});
