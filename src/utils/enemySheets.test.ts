@@ -53,19 +53,27 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     const withSheet = ALL_SHEETED;
     expect(withSheet.size).toBeGreaterThan(0);
     for (const n of withSheet) expect(hasAnimSheet(n), n).toBe(true);
+    // ★★**2026-09-24(v0.25.4625)に、まだシートの無い絵が 0 枚になった**
+    //   (`ENEMY_VARIANT_SETS` に載っている絵が全部アニメーションを持った)。
+    //   ここには「1枚も無いならこの検査は空回り」という下限があったが、**素材が揃い切ると
+    //   その下限のせいでテストの方が落ちる**=進捗が「壊れた」ことにされる。⇒ 下限は外し、
+    //   **空回りの検知は「絶対にシートを持たない名前」で行う**(残りが0枚でも成立する形)。
     const noSheet = Object.values(ENEMY_VARIANT_SETS).flat().filter(n => !withSheet.has(n));
-    expect(noSheet.length, 'まだシートの無い絵が1枚も無いなら、この検査は何も言っていない').toBeGreaterThan(0);
     for (const n of noSheet) expect(hasAnimSheet(n), n).toBe(false);
+    expect(hasAnimSheet('__no-such-art__'), 'hasAnimSheet が何でも true を返していないか').toBe(false);
     expect(hasAnimSheet(null)).toBe(false);
+    expect(hasAnimSheet(undefined)).toBe(false);
   });
 
   // ★★名前を手書きしない(2026-09-21・3回続けて同じ壊れ方をしたため)。
   // 素材は1体ずつ届くので、「まだシートが無い絵」を列挙すると**届くたびにテストが落ちる**
   // (bat-male の歩き→攻撃→skeleton-male の歩き、で3回)。**表から導出する。**
   it('★シートを持たない立ち絵は従来どおり(型の設定のまま)', () => {
+    // ★2026-09-24: 上と同じ理由で下限を外した(**残りは現在0枚**)。素材が届くたびに減る側の数なので、
+    //   「まだ残っている」を前提にした検査は、揃い切った瞬間に必ず落ちる。
     const without = [...new Set(Object.values(ENEMY_VARIANT_SETS).flat())].filter(n => !ALL_SHEETED.has(n));
-    expect(without.length, 'まだシートの無い絵が1つも無い(この検算が空回りしている)').toBeGreaterThan(0);
     for (const n of without) expect(hasAnimSheet(n), n).toBe(false);
+    expect(hasAnimSheet('__no-such-art__')).toBe(false);
   });
 
   it('男女とも攻撃シートを持つ', () => {
