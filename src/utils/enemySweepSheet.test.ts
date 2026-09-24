@@ -1,6 +1,6 @@
 // ★薙ぎ払いの絵の区間割り。社長支給2026-09-22「伐採人の薙払いの時のモーション」。
 import { describe, it, expect } from 'vitest';
-import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, sweepBandDirX, sweepFaceMulFor } from './enemySweepSheet';
+import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, GIANT_SLAM_MOTION_PHASES, sweepBandDirX, sweepFaceMulFor } from './enemySweepSheet';
 import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH } from './enemySheets';
 import { LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
@@ -278,5 +278,85 @@ describe('★城ボス3の叩きつけ(g-slam)', () => {
       }
     }
     expect(seen.size).toBe(16);
+  });
+});
+
+// ★★叩きつけのモーションを「跳ぶ」以外の技へ配る(社長指示2026-09-25
+// 「モーションの叩きつけをジャンプ以外の技に入れたい」)。
+describe('★叩きつけモーションの配り方(城ボス)', () => {
+  const sp = ENEMY_SWEEP_SHEETS['stage3-enemies/giantbat'];   // 溜め10 / 当たり1 / 戻り5
+
+  it('跳ぶ技には配らない(社長指示の「ジャンプ以外」)', () => {
+    for (const ph of ['g-jump-windup', 'g-jump-air', 'g-jump-recover', 'g-trijump-windup']) {
+      expect(giantMotionSpanOf(ph), ph).toBeNull();
+    }
+  });
+
+  it('移動・射撃の技にも配らない(叩きつけの絵が嘘になるので)', () => {
+    for (const ph of ['g-dash-charge', 'g-bolt-windup', 'g-glide-active', 'g-dive-windup',
+                      'g-quad-charge', 'g-trishot-windup', 'g-nova-active', 'g-sweepbeam-active']) {
+      expect(giantMotionSpanOf(ph), ph).toBeNull();
+    }
+  });
+
+  it('配る先は 叩きつけ / 翼撃 / 薙ぎ払い / 踏み鳴らし', () => {
+    const techs = new Set(Object.keys(GIANT_SLAM_MOTION_PHASES).map(k => k.replace(/-(windup|active|recover)$/, '')));
+    expect([...techs].sort()).toEqual(['g-slam', 'g-stomp', 'g-sweep', 'g-wing']);
+  });
+
+  // ★掟③(消え切る時刻=当たる時刻)。当たりのコマ(=砂埃が初めて出る10コマ目)が
+  // **当たる瞬間**に出ること。技ごとに相の並びが違うので、ここが一番壊れやすい。
+  it('★当たりのコマは、どの技でも「当たる瞬間」に出る', () => {
+    // 溜め→当たり→戻り を持つ技: 当たりの相の先頭。
+    for (const ph of ['g-slam-active', 'g-wing-active', 'g-sweep-active']) {
+      expect(enemySweepSpanFrame(sp, giantMotionSpanOf(ph)!, 0), ph).toBe(10);
+    }
+    // 踏み鳴らしは**当たりの相が無く**、溜めの終わりで当たる=戻りの先頭コマがそれ。
+    expect(enemySweepSpanFrame(sp, giantMotionSpanOf('g-stomp-recover')!, 0)).toBe(10);
+  });
+
+  it('溜めは0コマ目から始まり、9コマ目で終わる(当たりの手前)', () => {
+    for (const ph of ['g-slam-windup', 'g-wing-windup', 'g-sweep-windup', 'g-stomp-windup']) {
+      expect(enemySweepSpanFrame(sp, giantMotionSpanOf(ph)!, 0), ph).toBe(0);
+      expect(enemySweepSpanFrame(sp, giantMotionSpanOf(ph)!, 0.999), ph).toBe(9);
+    }
+  });
+
+  it('踏み鳴らしの戻りは 当たり+戻り をまとめて流し切る(10→15)', () => {
+    const span = giantMotionSpanOf('g-stomp-recover')!;
+    const seen = new Set<number>();
+    for (let k = 0; k <= 400; k++) {
+      const f = enemySweepSpanFrame(sp, span, k / 400);
+      if (f !== null) seen.add(f);
+    }
+    expect([...seen].sort((a, b) => a - b)).toEqual([10, 11, 12, 13, 14, 15]);
+  });
+
+  // ★★**流し切ったら最後のコマで持つ**(立ち絵へは戻さない)。
+  // 城ボスの戻りは台本で伸び縮みする(`scriptRestMs`)ので、絵が先に尽きることがある。そこで立ち絵へ
+  // 戻すと**相がまだ続いているのに構えが解けて背丈も跳ねる**——蜘蛛の跳びで実際に起きた事故
+  // (v0.25.4605「ジャンプの後コマが変。小ジャンプしてるみたいなのが最後に混ざってる」)と同じ形。
+  // その時の裁定どおり「技の絵は技が終わるまで持たせる」に揃える。相が明ければ `giantMotionSpanOf` が
+  // null を返す=そこで初めて歩き/立ち絵へ戻る。
+  it('流し切っても絵を捨てない(最後のコマで持つ)', () => {
+    const last: Record<string, number> = {
+      'g-slam-windup': 9, 'g-wing-windup': 9, 'g-sweep-windup': 9, 'g-stomp-windup': 9,
+      'g-slam-active': 10, 'g-wing-active': 10, 'g-sweep-active': 10,
+      'g-slam-recover': 15, 'g-wing-recover': 15, 'g-sweep-recover': 15, 'g-stomp-recover': 15,
+    };
+    for (const [ph, f] of Object.entries(last)) {
+      expect(enemySweepSpanFrame(sp, giantMotionSpanOf(ph)!, 1.2), ph).toBe(f);
+    }
+  });
+
+  it('全コマを1度は通る(どの技の組でも飛ばさない)', () => {
+    const seen = new Set<number>();
+    for (const ph of ['g-sweep-windup', 'g-sweep-active', 'g-sweep-recover']) {
+      for (let k = 0; k <= 400; k++) {
+        const f = enemySweepSpanFrame(sp, giantMotionSpanOf(ph)!, k / 400);
+        if (f !== null) seen.add(f);
+      }
+    }
+    expect(seen.size).toBe(sweepSplitFrames(sp));
   });
 });

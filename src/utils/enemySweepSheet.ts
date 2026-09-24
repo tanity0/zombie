@@ -85,6 +85,73 @@ const THREE_PHASE_TECH: Readonly<Record<string, SweepPhase>> = {
   ...LOGGER_SWEEP_PHASES, ...DRILLER_THRUST_PHASES, ...GIANT_SLAM_PHASES,
 };
 
+/**
+ * ★★**叩きつけのモーションを「跳ぶ」以外の技へ配る**(社長指示2026-09-25
+ * 「モーションの叩きつけをジャンプ以外の技に入れたい」)。
+ *
+ * ★なぜ要ったか(★実在確認の掟): **叩きつけ(slam)の技は、どのステージにも割り当てられていない**
+ * (`giantScript.GIANT_STAGE_UNIQUE_MOVE` / `_ULT_MOVE` のどちらにも 'slam' が無い。
+ *  v0.25.2863 で stage-1 の大技が slam → wing へ移った時から)。
+ * ⇒ **`g-slam-*` は実戦で一度も出ない**=せっかくのシートが1コマも画面に出ない。
+ * ⇒ だから**実際に出る技**(踏み鳴らし・薙ぎ払い・翼撃)にこの絵を配る。
+ *
+ * ★**技ごとに相の並びが違う**ので、1対1では写せない:
+ *   - 叩きつけ / 翼撃 … 溜め → 当たり → 戻り(**尺まで同じ** 1440/312/1560)
+ *   - 薙ぎ払い     … 溜め → 当たり → 戻り(尺だけ違う 840/264/840)
+ *   - 踏み鳴らし   … 溜め → **戻り**(当たりの相が無い。**溜めの終わり=当たる瞬間**)
+ * ⇒ 値は「シートのどの区間から どの区間まで」を表す。踏み鳴らしの戻りだけが
+ *    **当たり+戻り**をまとめて受け持つ=**戻りの先頭コマ=砂埃の出るコマ=当たる瞬間**(掟③)。
+ */
+export type SweepSpan = readonly [SweepPhase, SweepPhase];
+export const GIANT_SLAM_MOTION_PHASES: Readonly<Record<string, SweepSpan>> = {
+  // 叩きつけ本体(今は出ないが、表へ戻せば即つながる)。
+  'g-slam-windup': ['windup', 'windup'],
+  'g-slam-active': ['active', 'active'],
+  'g-slam-recover': ['recover', 'recover'],
+  // 翼撃(ステージ1の大技)。尺が叩きつけと**完全に同じ**なので、そのまま乗る。
+  'g-wing-windup': ['windup', 'windup'],
+  'g-wing-active': ['active', 'active'],
+  'g-wing-recover': ['recover', 'recover'],
+  // 薙ぎ払い(全ステージ共通の基本技)。
+  'g-sweep-windup': ['windup', 'windup'],
+  'g-sweep-active': ['active', 'active'],
+  'g-sweep-recover': ['recover', 'recover'],
+  // 踏み鳴らし(全ステージ共通の基本技)。**当たりの相が無い**ので、戻りが当たり+戻りを受け持つ。
+  'g-stomp-windup': ['windup', 'windup'],
+  'g-stomp-recover': ['active', 'recover'],
+};
+
+/** その `aiPhase` が叩きつけモーションのどの範囲か(表に無ければ null=この絵を出さない)。 */
+export const giantMotionSpanOf = (aiPhase: string | undefined): SweepSpan | null =>
+  (aiPhase !== undefined && GIANT_SLAM_MOTION_PHASES[aiPhase]) || null;
+
+/**
+ * 区間の範囲(span)ぶんをひと続きに流した時のコマ番号。
+ * ★**既存の `sectionFrame` をそのまま使う**——[範囲より前 / 範囲 / 範囲より後] の3つに畳んで
+ * 真ん中を引くだけ。新しい割り算を書かない(区間の境目の定義を2箇所に持たない)。
+ * ※畳むと `weights` は区間をまたぐので**等分**になる(叩きつけのシートは weights を持たない)。
+ *
+ * ★★**流し切っても絵を捨てない(最後のコマで持つ)。** 城ボスの戻りは台本で伸び縮みする
+ * (`scriptRestMs`)ので絵が先に尽きることがあり、そこで立ち絵へ戻すと**相がまだ続いているのに
+ * 構えが解けて背丈も跳ねる**——蜘蛛の跳びで実際に起きた事故(v0.25.4605)と同じ形。
+ * 相が明ければ `giantMotionSpanOf` が null を返す=そこで初めて歩き/立ち絵へ戻る。
+ * (伐採人・削岩型が使う `enemySweepFrame` の「戻りが1を超えたら null」は**そのまま**。)
+ */
+export const enemySweepSpanFrame = (
+  split: SweepSplit, span: SweepSpan, prog: number,
+): number | null => {
+  const c = counts(split);
+  const idx = (p: SweepPhase): number => (p === 'windup' ? 0 : p === 'active' ? 1 : 2);
+  const i0 = idx(span[0]), i1 = idx(span[1]);
+  let before = 0, len = 0, after = 0;
+  for (let i = 0; i < c.length; i++) {
+    if (i < i0) before += c[i];
+    else if (i <= i1) len += c[i];
+    else after += c[i];
+  }
+  return sectionFrame([before, len, after], 1, prog);
+};
+
 export const sweepPhaseOf = (aiPhase: string | undefined): SweepPhase | null =>
   (aiPhase !== undefined && THREE_PHASE_TECH[aiPhase]) || null;
 

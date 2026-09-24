@@ -48,7 +48,7 @@ import {
   useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, SCREAMER_WINDUP_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_RECOVER_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
-  GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
+  GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_STOMP_RECOVER_MS, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_SWEEP_RECOVER_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
   // M66(PACING_PUZZLE.md §6.26-11): ステージ別 独自技/大技(stage-1/3/4/5限定)の予告描画に使う定数。
   GIANT_BITE_WINDUP_MS, GIANT_BITE_HALF_WIDTH,
   GIANT_SLAM_WINDUP_MS, GIANT_SLAM_ACTIVE_MS, GIANT_SLAM_RECOVER_MS, GIANT_SLAM_HALF_WIDTH, GLEN_BOON_WINDUP_MS,
@@ -111,7 +111,7 @@ import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GU
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
 import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFrames, jumpLandDrawMs } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
-import { enemySweepFrame, sweepPhaseOf, sweepSplitFrames, sweepBandDirX, sweepFaceMulFor } from '../utils/enemySweepSheet';
+import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepBandDirX, sweepFaceMulFor } from '../utils/enemySweepSheet';
 import { counterRewindFrame, counterRewindEase, counterRewindElapsed, COUNTER_REWIND_MS, counterRewindIsFresh } from '../utils/counterRewind';
 // ★武器の振りの軌跡(カウンターの「振りを戻す」用)。60fpsで窓140ms=約9枚なので16枚で足りる。
 const WEAPON_TRAIL_MAX = 16;
@@ -29941,6 +29941,24 @@ export class PixiScene {
   private enemySweepTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const split = sweepSheetSplit(idleTexKey);
     if (!split) return null;
+    // ★★城ボス: 叩きつけのモーションを「跳ぶ」以外の技へ配る(社長指示2026-09-25)。
+    // **技ごとに相の並びが違う**ので、どの区間を出すかは `GIANT_SLAM_MOTION_PHASES`(純関数側)が決め、
+    // **尺だけここで選ぶ**(判定側の時計をそのまま読む=絵が終わっているのに判定が続くが起きない)。
+    // ※戻りは台本で縮むことがある(`scriptRestMs`)。その回は絵が途中から始まる——伐採人の薙ぎと同じ扱い。
+    const gSpan = giantMotionSpanOf(e.aiPhase);
+    if (gSpan !== null) {
+      const gp = e.aiPhase ?? '';
+      const gDurRaw = gp.startsWith('g-slam') || gp.startsWith('g-wing')
+        ? (gp.endsWith('-windup') ? GIANT_SLAM_WINDUP_MS : gp.endsWith('-active') ? GIANT_SLAM_ACTIVE_MS : GIANT_SLAM_RECOVER_MS)
+        : gp.startsWith('g-sweep')
+          ? (gp.endsWith('-windup') ? GIANT_SWEEP_WINDUP_MS : gp.endsWith('-active') ? GIANT_SWEEP_ACTIVE_MS : GIANT_SWEEP_RECOVER_MS)
+          : (gp.endsWith('-windup') ? GIANT_STOMP_WINDUP_MS : GIANT_STOMP_RECOVER_MS);
+      const gi = enemySweepSpanFrame(split, gSpan, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (gDurRaw / ENEMY_ATTACK_SPEED_MULT));
+      if (gi === null) return null;
+      const gFrames = sweepSplitFrames(split);
+      const gSlices = this.sheetSlices(sweepSheetName(idleTexKey), gFrames);
+      return this.rememberAtkFrame(e, sweepSheetName(idleTexKey), gFrames, gi, gSlices);
+    }
     const phase = sweepPhaseOf(e.aiPhase);
     if (phase === null) return null;
     // ★尺は**その型の技の時計**から引く(社長支給2026-09-24で削岩型の突きが同じ枠に乗った)。
