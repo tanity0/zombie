@@ -2552,6 +2552,19 @@ const PLAYER_LIGHT_YIELD_MS = tsNum('lightyieldms', 220);  // 平滑の時定数
 // そこから2倍以上ズレていた。**同じ世界の光なのに、影と補助光で届き方が食い違っていた。**
 // さらに補助光は元々 α0.1 の淡い光なので、**3割減らしても画面上は0.03の差=見えない**。
 // ⇒ **近づいたら b が 1 へ飽和する**ように gain も上げる(「灯りの中に入ったら要らない」を作る)。
+// ★★**光の当たっていない所を少し暗くする**(社長指示2026-09-25「光が当たってない部分をやはり
+// 少し暗くできる?」→「試しにプレイヤーだけ、松明で」)。
+//
+// 作りは**研究所の暗幕(`updateLabVisibility`)と同じ**——全画面の暗幕を1枚焼き、光の位置を
+// **円形に消しゴムで抜いて**から重ねる。**新しい仕組みではない**(既に出荷済みの経路を屋外へ伸ばした)。
+// ★穴を開けるのは**プレイヤーの灯りと松明だけ**(社長指示)。強glow・爆発・ボスの光は**抜かない**。
+// ★**コストの形が投影影とは別**: 投影影は「光×世界のオブジェクト」で効く(実測 1光源2ms)が、
+//   こちらは**全画面1枚 + 光の数だけの円**=オブジェクト数に比例しない。負荷 **2/10**(推定)。
+// ★`?nightdim=0` で**描画ごと止まる**(1msも払わない)。既定も控えめ。実機で社長が濃さを決める。
+const NIGHT_VEIL_ALPHA = Math.max(0, Math.min(1, tsNum('nightdim', 0.28)));
+const NIGHT_VEIL_COLOR = tsNum('nightdimcolor', 0x04060c);   // 暗幕の色(暗いほど黒)
+// 光の穴の広さ。**描画に使っている半径をそのまま**使い、これを掛けるだけ(別の数式を作らない)。
+const NIGHT_VEIL_HOLE_MULT = tsNum('nightdimhole', 1.0);
 const TORCH_LIGHT_REACH_MULT = tsNum('torchreach', 3.0);   // 松明の届く距離=haloR×これ(92→約276px)
 const TORCH_LIGHT_GAIN = tsNum('torchgain', 4.0);          // haloA→明るさ。halo半径の内側で b が1へ飽和する量
 const GLOW_LIGHT_REACH_MULT = tsNum('glowlightreach', 5.0); // 強glowの届く距離=半径×これ(影の6.25に寄せる)
@@ -4359,6 +4372,8 @@ export class PixiScene {
   private assistBrightnessNow = 0;     // プレイヤー足元の明るさ(補助光用)
   private punchLights: PointLight[] = []; // パンチ用の光(松明だけ届く距離が短い)
   private torchPoolReqs: { x: number; y: number; r: number; life: number; tint?: number }[] = []; // 松明の光だまり(このフレーム)
+  // ★暗幕に穴を開ける光(このフレーム)。**松明だけ**がここへ積む(プレイヤーは描画時に足す)。
+  private veilLights: { x: number; y: number; r: number }[] = [];
   /**
    * 「世界の光」への登録口(社長指示2026-09-11「他の光にも」)。ここに積んだ光には ①補助光の譲り ②パンチ ③光だまり
    * (pool を渡した時)が自動で付く。★描画に使っている数値をそのまま渡す(別の数式を作ると絵と挙動がズレる・v0.25.2779)。
@@ -8938,6 +8953,9 @@ export class PixiScene {
     // 遠景の窓(フレーム+ガラス2層)。lab屋外限定・支給なしはno-op(社長指示v0.25.2199)。
     this.updateLabFarWindow(s.stageTheme === 'lab' && !s.indoorMode, s.camera.x, now);
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
+    // ★光の当たっていない所を少し暗くする(社長指示2026-09-25)。研究所スキンは自前の暗幕を
+    // 持っているので重ねない(二重に暗くなる)。`?nightdim=0` で描画ごと止まる。
+    this.updateNightVeil(s.stageTheme !== 'lab' && !s.indoorMode);
     this.updateLabDarkLights(s.stageTheme === 'lab' && !s.indoorMode, now); // 全体を少し暗く+等間隔の非常灯(v0.25.2263)
     // 移動可能帯の外を少し暗く(境目はグラデ)。M2(ラボ)は従来どおり画面上端まで。
     // M0(訓練)は**地面だけ**=地平(遠景の下端)で打ち止め、帯は縦±TUTORIAL_MOVE_Y_LIMIT_PX
@@ -10975,6 +10993,94 @@ export class PixiScene {
     botSolid.visible = botSolidH > 0;
   }
 
+  // ★★**光の当たっていない所を少し暗くする暗幕**(社長指示2026-09-25)。
+  // 研究所の暗幕(下の `updateLabVisibility`)と**同じ作り**——全画面の暗幕を1枚焼き、
+  // 光の位置を `erase` で円形に抜いてから重ねる。**穴はプレイヤーの灯りと松明だけ。**
+  // ★`NIGHT_VEIL_ALPHA === 0`(`?nightdim=0`)なら**この関数は何もしない**=描画ごと止まる。
+  // ★研究所スキンは自前の暗幕を持っているので**重ねない**(二重に暗くなる)。
+  private nightRT: RenderTexture | null = null;
+  private nightRTScene = new Container();
+  private nightDarkRect = new Sprite(Texture.WHITE);
+  private nightFade = new Sprite();
+  private nightVeilSprite: Sprite | null = null;
+  private nightHoles: Sprite[] = [];
+
+  private updateNightVeil(show: boolean) {
+    if (!show || NIGHT_VEIL_ALPHA <= 0 || !this.renderer) {
+      if (this.nightVeilSprite) this.nightVeilSprite.visible = false;
+      return;
+    }
+    const W = Math.max(1, Math.round(this.screenW));
+    const H = Math.max(1, Math.round(this.screenH));
+    if (!this.nightRT || this.nightRT.width !== W || this.nightRT.height !== H) {
+      releaseBakedTexture('other', this.nightRT);
+      this.nightRT = bakeRenderTexture('other', { width: W, height: H, antialias: false });
+      if (this.nightVeilSprite) this.nightVeilSprite.texture = this.nightRT;
+    }
+    if (this.nightDarkRect.parent !== this.nightRTScene) {
+      this.nightDarkRect.tint = NIGHT_VEIL_COLOR;
+      this.nightDarkRect.alpha = NIGHT_VEIL_ALPHA;
+      this.nightRTScene.addChild(this.nightDarkRect);
+    }
+    if (this.nightFade.parent !== this.nightRTScene) {
+      this.nightFade.texture = this.ensureVeilFadeTexture();
+      this.nightFade.tint = NIGHT_VEIL_COLOR;
+      this.nightFade.alpha = NIGHT_VEIL_ALPHA;
+      this.nightRTScene.addChild(this.nightFade);
+    }
+    // 暗幕は**地平より下=プレイ領域**だけ。遠景/地平帯(景色)は暗くしない(研究所の暗幕と同じ作法)。
+    // 上端はソフトなグラデ帯にする(硬い線を地平に置くと、揺れでズレて線に見える)。
+    const veilTop = this.farBackdropHeight();
+    const fadeH = Math.max(8, Math.round(H * 0.08));
+    this.nightFade.position.set(0, veilTop);
+    this.nightFade.width = W;
+    this.nightFade.height = fadeH;
+    this.nightDarkRect.position.set(0, veilTop + fadeH);
+    this.nightDarkRect.width = W;
+    this.nightDarkRect.height = Math.max(1, H - (veilTop + fadeH));
+    if (!this.nightVeilSprite) {
+      const sp = new Sprite(this.nightRT);
+      sp.position.set(0, 0);
+      this.L.uiLayer.addChildAt(sp, 0);   // ワールドの上・HUDの下(研究所の暗幕と同じ場所)
+      this.nightVeilSprite = sp;
+    }
+    // ★world→screen は**実トランスフォームから**引く(ズーム/シェイク込みで正確)。
+    // CLAUDE.md「ズーム引き考慮(必須)」——巨大ボスの最大引き(0.40)でも穴の位置と大きさが合う。
+    const gz = this.L.worldGroup.scale.x || 1;
+    const ox = this.L.world.position.x, oy = this.L.world.position.y;
+    const gx = this.L.worldGroup.position.x, gy = this.L.worldGroup.position.y;
+    const tex = getVisibilityLightTexture();
+    let n = 0;
+    const put = (wx: number, wy: number, wr: number) => {
+      const sx2 = (wx + ox) * gz + gx, sy2 = (wy + oy) * gz + gy;
+      const r = wr * gz;
+      if (r <= 0 || sx2 < -r || sx2 > W + r || sy2 < -r || sy2 > H + r) return;  // 画面外は積まない
+      while (this.nightHoles.length <= n) {
+        const sp = new Sprite(tex);
+        sp.anchor.set(0.5);
+        sp.blendMode = 'erase';   // 暗幕のアルファを削る=なだらかな円形の穴
+        this.nightRTScene.addChild(sp);
+        this.nightHoles.push(sp);
+      }
+      const sp = this.nightHoles[n++];
+      sp.visible = true;
+      sp.position.set(sx2, sy2);
+      sp.width = sp.height = r * 2;
+    };
+    // ①プレイヤーの灯り。**描画に使っている位置と半径をそのまま**読む(別の数式を作らない)。
+    if (this.playerLight.visible && this.playerLight.width > 0) {
+      put(this.playerLight.position.x, this.playerLight.position.y,
+        (this.playerLight.width / 2) * NIGHT_VEIL_HOLE_MULT);
+    }
+    // ②松明(このフレームぶん。`syncBreakableProps` が積んでいる)。
+    for (const l of this.veilLights) put(l.x, l.y, l.r);
+    for (let i = n; i < this.nightHoles.length; i++) this.nightHoles[i].visible = false;
+    this.renderer.render({ container: this.nightRTScene, target: this.nightRT, clear: true });
+    this.nightVeilSprite.visible = true;
+    this.nightVeilSprite.width = W;
+    this.nightVeilSprite.height = H;
+  }
+
   private updateLabVisibility(show: boolean, sx: number, sy: number) {
     if (!show || !this.renderer) {
       if (this.labVeilSprite) this.labVeilSprite.visible = false;
@@ -11422,6 +11528,7 @@ export class PixiScene {
     this.worldLights.length = 0; // ★v0.25.2779: このフレームの光を集め直す(松明はこの下の描画で積まれる)
     this.punchLights.length = 0;
     this.torchPoolReqs.length = 0;
+    this.veilLights.length = 0;
     const seen = new Set<string>();
     for (const prop of props) {
       seen.add(prop.id);
@@ -11972,6 +12079,9 @@ export class PixiScene {
       this.punchLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_PUNCH_REACH_MULT, strength: strength * TORCH_PUNCH_GAIN_MULT });
       // 光だまり(明るくなる側)。描画と同じ haloR/haloA を使う(別の数式を作ると絵と挙動がズレる)。
       if (TORCH_POOL_ALPHA_MULT > 0) this.torchPoolReqs.push({ x: flameX, y: flameY, r: haloR * TORCH_POOL_R_MULT, life: Math.min(1, (haloA / 0.62) * TORCH_POOL_ALPHA_MULT), tint: TORCH_POOL_TINT });
+      // ★暗幕の穴(社長指示2026-09-25「試しにプレイヤーだけ、松明で」)。**届く距離をそのまま**使う
+      // =明るさの計算と穴の大きさが同じ数字から出る(別の数式を作らない)。
+      if (NIGHT_VEIL_ALPHA > 0) this.veilLights.push({ x: flameX, y: flameY, r: haloR * TORCH_LIGHT_REACH_MULT * NIGHT_VEIL_HOLE_MULT });
     }
     const focusT = this.lightDefocus01(flameY);
     // ボケ側は**半径を広げるぶんαを下げる**(総光量を保つ=ボケて明るくならない)。
@@ -32574,6 +32684,8 @@ export class PixiScene {
     this.signalBombSprites.clear();
     try { this.labRT?.destroy(true); } catch { /* ignore */ }
     this.labRT = null;
+    try { this.nightRT?.destroy(true); } catch { /* ignore */ }
+    this.nightRT = null;
     this.zwarpSaved.length = 0;
     try { this.zwarpFilter?.destroy(); } catch { /* ignore */ }
     this.zwarpFilter = null;
