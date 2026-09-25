@@ -1,7 +1,7 @@
 // ★薙ぎ払いの絵の区間割り。社長支給2026-09-22「伐採人の薙払いの時のモーション」。
 import { describe, it, expect } from 'vitest';
 import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, sweepBandDirX, sweepFaceMulFor } from './enemySweepSheet';
-import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor
+import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantNoActiveExtraFor
 } from './enemySheets';
 import { LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
@@ -345,6 +345,23 @@ describe('★叩きつけモーションの配り方(城ボス)', () => {
     expect(s5('g-stomp-recover')?.split.windup).toBe(10); // 一撃のコマ(10)が立ち直りの頭に来る
     expect(s5('g-bolt-burst')).toBeNull();        // 撃つ技は既定(銃の連射)のまま
     expect(giantAltSweepFor('giantbat', 'g-sweep-windup')).toBeNull();
+  });
+
+  // ★社長報告2026-09-25「銃をうつモーションが静止画になってる」。扇撃ちは溜め→立ち直りで当たりの相を通らない。
+  // 城ボス5だけ、通常弾の立ち直りを「当たり+戻り」(1〜7コマ目)として流す。他の城ボスは動かさない。
+  it('城ボス5の通常弾は立ち直りで連射のコマが流れる(他の城ボスは従来どおり)', () => {
+    const x5 = giantNoActiveExtraFor('stage5-enemies/giantbat');
+    expect(giantMotionSpanOf('g-bolt-recover', [], x5)).toEqual(['active', 'recover']);
+    expect(giantMotionSpanOf('g-bolt-windup', [], x5)).toEqual(['windup', 'windup']);
+    expect(giantMotionSpanOf('g-bolt-burst', [], x5)).toEqual(['active', 'active']);
+    const sp5 = ENEMY_SWEEP_SHEETS['stage5-enemies/giantbat'];
+    const f = (p: number) => enemySweepSpanFrame(sp5, ['active', 'recover'], p);
+    expect(f(0)).toBe(1);                 // 弾が出た瞬間=1発目の閃光
+    expect(f(0.99)).toBe(7);              // 撃ち終わりまで流れ切る
+    for (const k of ['giantbat', 'stage3-enemies/giantbat', 'stage4-enemies/giantbat']) {
+      expect(giantNoActiveExtraFor(k), k).toEqual([]);
+      expect(giantMotionSpanOf('g-bolt-recover', [], giantNoActiveExtraFor(k)), k).toEqual(['recover', 'recover']);
+    }
   });
 
   // ★城ボス5の攻撃(社長支給2026-09-25)。閃光の画素数で境目を決めた

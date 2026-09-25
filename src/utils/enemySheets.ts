@@ -739,6 +739,24 @@ export const giantMotionSkipFor = (idleTexName: string | null | undefined): read
   (idleTexName && GIANT_MOTION_SKIP[idleTexName]) || [];
 
 /**
+ * ★**その立ち絵だけ「当たりの相を持たない技」として読む追加分**(社長報告2026-09-25
+ * 「**銃をうつモーションが静止画になってる**」)。
+ * 城ボス5の通常弾は**半分が扇撃ち**で、扇は `g-bolt-windup` → `g-bolt-recover` と**当たりの相を通らない**
+ * (弾は溜め→立ち直りの境目で出る)。攻撃の絵は 1(構え)/6(連射)/1(撃ち終わり)なので、
+ * 溜めも立ち直りも**1コマずつの静止画**になり、**連射の6コマが1度も出ていなかった**。
+ * ここに載せた技は、立ち直りを**当たり+戻り**(1〜7コマ目)として流す=**弾が出た瞬間から連射が走る**。
+ * ★連射撃ち(`g-bolt-burst`)の3発目も立ち直りの頭で出るので、同じ読み方で合う。
+ * ★全ステージ共通の `GIANT_NO_ACTIVE_TECHS` には入れない(城ボス1・3・4の通常弾の絵を動かさないため)。
+ */
+export const GIANT_NO_ACTIVE_EXTRA: Readonly<Record<string, readonly string[]>> = {
+  'stage5-enemies/giantbat': ['g-bolt-'],
+};
+
+/** その立ち絵で「当たりの相を持たない技」として読む追加分(無ければ空)。 */
+export const giantNoActiveExtraFor = (idleTexName: string | null | undefined): readonly string[] =>
+  (idleTexName && GIANT_NO_ACTIVE_EXTRA[idleTexName]) || [];
+
+/**
  * ★**技ごとに別の薙ぎシートへ差し替える**(社長指示2026-09-25)。
  * 城ボス4は絵が2枚あり、**技によってどちらを使うかが違う**:
  * - 既定(`SWEEP_SHEET_SUFFIX`/`ENEMY_SWEEP_SHEETS`)= 叩きつけの絵。薙ぎ払い・突進・三連突進・ノヴァ・

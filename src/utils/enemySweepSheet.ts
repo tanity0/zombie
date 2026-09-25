@@ -124,14 +124,20 @@ const ACTIVE_RECOVER: SweepSpan = ['active', 'recover'];
  * @param skip その立ち絵で**外したい技**の接頭辞(`enemySheets.giantMotionSkipFor`)。
  *   例: 城ボス1は社長指示で**突進も外す**(「ジャンプと突進以外の攻撃モーション」)。
  */
-export const giantMotionSpanOf = (aiPhase: string | undefined, skip: readonly string[] = []): SweepSpan | null => {
+export const giantMotionSpanOf = (
+  aiPhase: string | undefined, skip: readonly string[] = [],
+  // ★その立ち絵だけ「当たりの相を持たない技」として扱う追加分(`enemySheets.giantNoActiveExtraFor`)。
+  //   撃つ/叩く瞬間が**溜め→立ち直りの境目**にある技で、絵の当たり区間を立ち直りの頭から流すため。
+  noActiveExtra: readonly string[] = [],
+): SweepSpan | null => {
   if (aiPhase === undefined || !aiPhase.startsWith('g-')) return null;
   if (GIANT_JUMP_TECHS.some(t => aiPhase.startsWith(t))) return null;
   if (skip.some(t => aiPhase.startsWith(t))) return null;
   if (GIANT_WINDUP_SUFFIX.some(x => aiPhase.endsWith(x))) return WINDUP;
   if (GIANT_ACTIVE_SUFFIX.some(x => aiPhase.endsWith(x))) return ACTIVE;
   if (aiPhase.endsWith('-recover')) {
-    return GIANT_NO_ACTIVE_TECHS.some(t => aiPhase.startsWith(t)) ? ACTIVE_RECOVER : RECOVER;
+    return GIANT_NO_ACTIVE_TECHS.some(t => aiPhase.startsWith(t))
+      || noActiveExtra.some(t => aiPhase.startsWith(t)) ? ACTIVE_RECOVER : RECOVER;
   }
   return null;   // 区間名が付いていない相(台本の繋ぎ等)は出さない
 };
