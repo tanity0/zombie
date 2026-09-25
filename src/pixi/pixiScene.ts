@@ -18431,9 +18431,12 @@ export class PixiScene {
         // 枠より中身が小さいシートは2種類ある(どちらも `bodyH` を持つ):
         //  ①技で枠の外へ伸びる部位がある(城ボス3の叩きつけ=振り上げた蔓)
         //  ②**シートそのものが小さく描かれている**(城ボス3の跳び=0.815倍。社長報告2026-09-25)
+        // ★跳びは**コマによって値が違う**ことがある(城ボス3は着地の5コマだけさらに小さく
+        // 描かれていた・社長報告2026-09-25)。出ているコマ番号は `frame.x / width` で分かる。
+        const frameIdx = tex.width > 0 ? Math.round(tex.frame.x / tex.width) : 0;
         for (const [bh, name] of [
           [sweepSheetBodyH(idleTexKey), sweepSheetName(idleTexKey)] as const,
-          [jumpSheetBodyH(idleTexKey), jumpSheetName(idleTexKey)] as const,
+          [jumpSheetBodyH(idleTexKey, frameIdx), jumpSheetName(idleTexKey)] as const,
         ]) {
           if (bh === null) continue;
           const sl = this.enemyWalkFrames.get(name);

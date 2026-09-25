@@ -1,7 +1,7 @@
 // ★跳ぶ技の絵の区間割り。社長支給2026-09-21「パンプキン(蜘蛛)のジャンプ攻撃時」。
 import { describe, it, expect } from 'vitest';
 import { enemyJumpFrame, enemyJumpFallFrame, jumpSplitFrames, enemyJumpLandLastFrame, jumpLandDrawMs } from './enemyJumpSheet';
-import { ENEMY_JUMP_SHEETS, ENEMY_JUMP_LAND_MS, jumpSheetName, jumpSheetSplit } from './enemySheets';
+import { ENEMY_JUMP_SHEETS, ENEMY_JUMP_LAND_MS, jumpSheetName, jumpSheetSplit, jumpSheetBodyH } from './enemySheets';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
 import { PUMPKIN_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
@@ -180,6 +180,30 @@ describe('★跳びシートの bodyH(シートが小さく描かれていた分
     for (const [n, sp] of Object.entries(ENEMY_JUMP_SHEETS)) {
       if (n === 'stage3-enemies/giantbat') continue;
       expect(sp.bodyH, n).toBeUndefined();
+    }
+  });
+
+  // ★社長報告2026-09-25「城3ボス、ジャンプの**着地中の絵だけ**小さい」。
+  // シートの中で**同じ姿勢どうし**を重ねて測ったら、着地の5コマだけ 0.78倍だった
+  // (跳3→跳11 0.785 / →跳12 0.790 / 跳2→跳11 0.785 / 跳0→跳13〜15 0.740〜0.775)。
+  it('★着地の区間だけ別の値を返す(それ以外は bodyH)', () => {
+    const KEY = 'stage3-enemies/giantbat';
+    const sp = ENEMY_JUMP_SHEETS[KEY];
+    expect(sp.landBodyH).toBe(95);
+    // 溜め(0〜3)と滞空(4〜10)は 122。
+    for (const f of [0, 3, 4, 10]) expect(jumpSheetBodyH(KEY, f), `コマ${f}`).toBe(122);
+    // 着地(11〜15)は 95。
+    for (const f of [11, 12, 13, 14, 15]) expect(jumpSheetBodyH(KEY, f), `コマ${f}`).toBe(95);
+    // コマを渡さない呼び方はシート全体の値(=従来どおり)。
+    expect(jumpSheetBodyH(KEY)).toBe(122);
+  });
+
+  it('landBodyH を持たないシートは、どのコマでも bodyH のまま', () => {
+    for (const [n, sp] of Object.entries(ENEMY_JUMP_SHEETS)) {
+      if (sp.landBodyH !== undefined) continue;
+      for (const f of [0, sp.crouch + sp.air, jumpSplitFrames(sp) - 1]) {
+        expect(jumpSheetBodyH(n, f), `${n} コマ${f}`).toBe(sp.bodyH ?? null);
+      }
     }
   });
 

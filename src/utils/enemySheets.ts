@@ -527,7 +527,7 @@ export const ENEMY_JUMP_SHEETS: Readonly<Record<string, JumpSplit>> = {
   //   補正が 1.000 になり、中身が小さいまま出る)。
   //   ★代償: 絵は 1.23倍へ引き伸ばされる(1.0 → 0.81 ドット/px)。**等倍で描き直した版が届けば
   //   この行を消すだけ**で戻る。
-  'stage3-enemies/giantbat': { crouch: 4, air: 7, land: 5, bodyH: 122 },
+  'stage3-enemies/giantbat': { crouch: 4, air: 7, land: 5, bodyH: 122, landBodyH: 95 },
 };
 
 /** 着地の絵を流す長さ(ms)。立ち直り(recover)全体はもっと長いので、その頭だけを使う。 */
@@ -706,9 +706,20 @@ export const sweepSheetBodyH = (idleTexName: string | null | undefined): number 
 export const jumpSheetSplit = (idleTexName: string | null | undefined): JumpSplit | null =>
   (idleTexName && ENEMY_JUMP_SHEETS[idleTexName]) || null;
 
-/** 跳びシートの「立ち絵の枠に当たる高さ」(無指定=null=枠の高さで揃える=従来どおり)。 */
-export const jumpSheetBodyH = (idleTexName: string | null | undefined): number | null =>
-  (idleTexName && ENEMY_JUMP_SHEETS[idleTexName]?.bodyH) || null;
+/**
+ * 跳びシートの「立ち絵の枠に当たる高さ」(無指定=null=枠の高さで揃える=従来どおり)。
+ * ★`frame` を渡すと**着地の区間だけ別の値**(`landBodyH`)を返す
+ * ——城ボス3の跳びは着地の5コマだけさらに小さく描かれていた(社長報告2026-09-25)。
+ */
+export const jumpSheetBodyH = (
+  idleTexName: string | null | undefined, frame?: number,
+): number | null => {
+  const sp = idleTexName ? ENEMY_JUMP_SHEETS[idleTexName] : undefined;
+  if (!sp) return null;
+  const land = sp.landBodyH;
+  if (land !== undefined && frame !== undefined && frame >= sp.crouch + sp.air) return land;
+  return sp.bodyH ?? null;
+};
 
 export const jumpLandMs = (idleTexName: string | null | undefined): number =>
   (idleTexName && ENEMY_JUMP_LAND_MS[idleTexName]) || 420;
