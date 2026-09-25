@@ -553,6 +553,14 @@ export const ENEMY_JUMP_SHEETS: Readonly<Record<string, JumpSplit>> = {
   // ★この絵は**薙ぎ表からも同じファイルを引く**(下の `SWEEP_SHEET_SUFFIX` が 'jump')。
   //   飛び掛かりは3区間の跳びとして、それ以外の技は3区間の薙ぎとして、**同じ絵を2通りに読む**。
   'stage4-enemies/giantbat': { crouch: 3, air: 7, land: 6, bodyH: 136 },
+  // ★★城ボス5の跳び+叩きつけ(社長支給2026-09-25「ジャンプ及び叩きつけモーション」)。**15コマ**。
+  // 絵の読み: 0〜3しゃがみ(足元の幅が119→67へ絞られる) / 4で**腕を真上へ伸ばして踏み切る**(全体高150=最大) /
+  // 5〜9滞空(6,7は畳んで最小・8,9で鉤を振りかぶる) / **10で最も潰れる(全体高96=最小)=着地の一撃** /
+  // 11〜14で戻る(104→112)。⇒ **4(しゃがみ)/ 6(滞空)/ 5(着地)**。
+  // ★`bodyH: 140`。**コマ0と立ち絵は同じ立ち姿**なので照合が効き、**最良スケール1.425(IoU 0.944)**。
+  //   枠の比(立ち絵200 ÷ シート150 = 1.333)より**7%大きい**=絵が枠より小さく描かれている。
+  //   150 × 1.333 / 1.425 = 140.3。★着地だけ別倍率(`landBodyH`)かは実機で見て決める(城ボス3の前例)。
+  'stage5-enemies/giantbat': { crouch: 4, air: 6, land: 5, bodyH: 140 },
 };
 
 /** 着地の絵を流す長さ(ms)。立ち直り(recover)全体はもっと長いので、その頭だけを使う。 */
@@ -570,6 +578,8 @@ export const ENEMY_JUMP_LAND_MS: Readonly<Record<string, number>> = {
   'stage3-enemies/giantbat': 700,
   // 城ボス4も同じ(州も時計も城ボス1・3と共通)。
   'stage4-enemies/giantbat': 700,
+  // 城ボス5も同じ(州も時計も城ボス1・3・4と共通)。
+  'stage5-enemies/giantbat': 700,
 };
 
 export const jumpSheetName = (idleTexName: string): string => `${idleTexName}-jump`;
@@ -746,6 +756,18 @@ export const GIANT_ALT_SWEEP: Readonly<Record<string, readonly GiantAltSweep[]>>
       split: { windup: 6, active: 1, recover: 9, bodyH: 144 },
     },
   ],
+  // ★城ボス5は**既定が銃の連射**(`-attack`)。踏み鳴らしだけ**叩きつけの絵**(`-jump`)へ回す
+  // (社長支給2026-09-25「ジャンプ及び叩きつけモーション」=跳びと叩きつけが1枚)。
+  // 同じ絵を、飛び掛かりは跳びの3区間(4/6/5)、踏み鳴らしは薙ぎの3区間として読む。
+  // ★`g-stomp-` は `GIANT_NO_ACTIVE_TECHS` なので **溜め=0〜9 / 立ち直り=10〜14** になり、
+  //   **一撃のコマ(10)が立ち直りの頭=当たる瞬間**に来る(城ボス4と同じ合わせ方)。
+  'stage5-enemies/giantbat': [
+    {
+      techs: ['g-stomp-'],
+      suffix: 'jump',
+      split: { windup: 10, active: 1, recover: 4, bodyH: 140 },
+    },
+  ],
 };
 
 /** その相で使う差し替えシート(無ければ null=既定のシートを使う)。 */
@@ -882,7 +904,7 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   // ステージ4の城ボス。歩き1.51+跳び1.73+攻撃1.58=**4.82MB**。
   // カットインを挟んで出る+**ステージ4でしか出ない**ので、まるごと遅延。
   'stage4-enemies/giantbat': 'deferred',
-  // ステージ5の城ボス。攻撃0.93MB(跳び/叩きつけは後日追加予定)。
+  // ステージ5の城ボス。攻撃0.93+跳び/叩きつけ1.24=**2.17MB**。
   // カットインを挟んで出る+**ステージ5でしか出ない**ので、まるごと遅延。
   'stage5-enemies/giantbat': 'deferred',
   // ▼ここから下は**起動時のまま**。理由はどれも同じ=**前触れなくその辺に居る**(猶予が無い)。

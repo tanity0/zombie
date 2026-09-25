@@ -1,7 +1,8 @@
 // ★薙ぎ払いの絵の区間割り。社長支給2026-09-22「伐採人の薙払いの時のモーション」。
 import { describe, it, expect } from 'vitest';
 import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, sweepBandDirX, sweepFaceMulFor } from './enemySweepSheet';
-import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH, giantMotionSkipFor } from './enemySheets';
+import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor
+} from './enemySheets';
 import { LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
 const ALL = Object.entries(ENEMY_SWEEP_SHEETS);
@@ -316,17 +317,44 @@ describe('★叩きつけモーションの配り方(城ボス)', () => {
     }
   });
 
-  // ★城ボス4(衛生兵)の攻撃(社長支給2026-09-25「ジャンプ以外の攻撃」)。砂埃の画素数で境目を決めた
-  // (9コマ目まで0〜2 → **10コマ目で42** → 11で134 → 15で265)。城ボス3の叩きつけと同じ 10/1/5。
-  it('城ボス4の攻撃シートは 16コマを 10/1/5 に割る(当たり=砂埃が出る10コマ目)', () => {
+  // ★城ボス4(衛生兵)。**既定は叩きつけの絵**(`-jump` ファイル)。砂埃の画素数で境目を決めた
+  // (9コマ目まで0〜123 → **10コマ目で278** → 15で1061)。城ボス3の叩きつけと同じ 10/1/5。
+  // ★v0.25.4652 でシートの取り違えを是正したため、**薙ぎ表が引くのは `-jump`**(同じ絵を跳びとしても読む)。
+  it('城ボス4の薙ぎ表は叩きつけの絵を 16コマ 10/1/5 に割る(当たり=砂埃が出る10コマ目)', () => {
     const sp4 = ENEMY_SWEEP_SHEETS['stage4-enemies/giantbat'];
     expect(sweepSplitFrames(sp4)).toBe(16);
     expect([sp4.windup, sp4.active, sp4.recover]).toEqual([10, 1, 5]);
     expect(sweepImpactFrame(sp4)).toBe(10);
-    expect(sweepSheetName('stage4-enemies/giantbat')).toBe('stage4-enemies/giantbat-attack');
+    expect(sweepSheetName('stage4-enemies/giantbat')).toBe('stage4-enemies/giantbat-jump');
     expect(sweepSheetBodyH('stage4-enemies/giantbat')).toBe(136);
     // 城ボス4は突進も含めて「ジャンプ以外の全部」(外すのは城ボス1だけ)。
     expect(giantMotionSkipFor('stage4-enemies/giantbat')).toEqual([]);
+  });
+
+  // ★技ごとの差し替え(社長指示2026-09-25)。城ボス4=氷の横薙ぎ/通常弾だけ「腕を薙ぐ絵」。
+  // 城ボス5=既定が銃の連射で、踏み鳴らしだけ「叩きつけの絵」。
+  it('差し替えシートは指定した技だけに効く', () => {
+    const s4 = (ph: string) => giantAltSweepFor('stage4-enemies/giantbat', ph);
+    expect(s4('g-quad-breath-active')?.suffix).toBe('attack');
+    expect(s4('g-bolt-windup')?.suffix).toBe('attack');
+    expect(s4('g-sweep-windup')).toBeNull();      // 薙ぎ払いは既定(叩きつけ)のまま
+    expect(s4('g-quad-windup')).toBeNull();       // 三連突進の本体も既定のまま
+    expect(s4('g-stomp-windup')).toBeNull();
+    const s5 = (ph: string) => giantAltSweepFor('stage5-enemies/giantbat', ph);
+    expect(s5('g-stomp-windup')?.suffix).toBe('jump');
+    expect(s5('g-stomp-recover')?.split.windup).toBe(10); // 一撃のコマ(10)が立ち直りの頭に来る
+    expect(s5('g-bolt-burst')).toBeNull();        // 撃つ技は既定(銃の連射)のまま
+    expect(giantAltSweepFor('giantbat', 'g-sweep-windup')).toBeNull();
+  });
+
+  // ★城ボス5の攻撃(社長支給2026-09-25)。閃光の画素数で境目を決めた
+  // (0コマ目373 → 2681/1133/2483/1360/2328/1295 → 7コマ目207)=1〜6コマ目が撃っている。
+  it('城ボス5の攻撃シートは 8コマを 1/6/1 に割る(連射が当たりの区間に来る)', () => {
+    const sp5 = ENEMY_SWEEP_SHEETS['stage5-enemies/giantbat'];
+    expect(sweepSplitFrames(sp5)).toBe(8);
+    expect([sp5.windup, sp5.active, sp5.recover]).toEqual([1, 6, 1]);
+    expect(sweepSheetName('stage5-enemies/giantbat')).toBe('stage5-enemies/giantbat-attack');
+    expect(sweepSheetBodyH('stage5-enemies/giantbat')).toBeNull();
   });
 
   it('城ボス1の攻撃シートは 10コマを 6/1/3 に割る(当たり=翼を薙ぎ抜く6コマ目)', () => {
