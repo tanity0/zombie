@@ -174,7 +174,7 @@ import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimL
 import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
-import { setRenderStats } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347)
+import { setRenderStats, setFxDiag } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347)
 import { addBakedTexture, type BakeKind } from '../utils/renderStats'; // 焼いたテクスチャの実測(v0.25.4375)
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -3177,6 +3177,9 @@ const SWEEP_ICE_SPARK_H_FRAC = 0.55;
 const SWEEP_ICE_END_SPARK_H = 46;
 // ★大砲(社長支給素材v0.25.3114「なぎばらい素材 これで。s5の / これは左向き」)= 軍隊(変異・stage-5)の
 // 薙ぎ払い。**素材は左向き**(砲口が-X)なので、向ける角度に π を足して補正する。
+// ★居座りの名指し(renderStats.setFxDiag)。これ以上溜まった時だけ種類の上位を出す/これ以上長く出続けている技の絵を出す。
+const FX_DIAG_MIN_ITEMS = 40;
+const FX_DIAG_LATCH_AGE_MS = 4000;
 const SWEEP_CANNON_NATIVE_ANGLE = Math.PI;
 const SWEEP_CANNON_LEN_PX = 220;    // 砲の全長(帯310に対して約7割=砲口が帯の先端手前まで届く)
 const SWEEP_CANNON_OUT_PX = 40;     // 尾栓(後ろ端)をボス中心からどれだけ前に置くか
@@ -28731,7 +28734,28 @@ export class PixiScene {
     // ★店じまいの後の実数を画面へ(v0.25.4347)。store のエフェクト数と、実際に生きている表示物の数。
     // **この2つが揃って増え続けていたら解放漏れ**、storeだけ増えていたら発生側の問題、と切り分けられる。
     setRenderStats(this.effects.size, effects.length);
+    // ★居座りの名指し(1秒に1回だけ集計=毎フレームの負荷は無い)。溜まっていない時は空=表示は従来どおり。
+    if (now - this.fxDiagAt >= 1000) {
+      this.fxDiagAt = now;
+      const parts: string[] = [];
+      if (effects.length >= FX_DIAG_MIN_ITEMS) {
+        const by = new Map<string, number>();
+        for (const e of effects) by.set(e.kind, (by.get(e.kind) ?? 0) + 1);
+        const top = [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
+        parts.push(top.map(([k, n]) => `${k}×${n}`).join(','));
+      }
+      // 技の絵(latch)で、焼いてから長く描かれ続けているもの。鍵の先頭(個体ID)は落として技名だけ出す。
+      let worst: { key: string; age: number } | null = null;
+      for (const [key, L] of this.fxLatches) {
+        const age = now - L.t0;
+        if (age < FX_DIAG_LATCH_AGE_MS || age >= L.dur) continue;
+        if (!worst || age > worst.age) worst = { key, age };
+      }
+      if (worst) parts.push(`L:${worst.key.slice(worst.key.lastIndexOf(':') + 1)} ${Math.round(worst.age / 1000)}s`);
+      setFxDiag(parts.join(' '));
+    }
   }
+  private fxDiagAt = 0;
 
   // ---- 施策1: particle/ring/trail のプールsprite描画(旧 drawEffectGfx=per-frame Graphics を全廃) ----
   // 旧経路はエフェクト1個につき毎フレーム clear()+複数図形の再テッセレーションで、ベンチの

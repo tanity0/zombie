@@ -14,8 +14,18 @@ export const setRenderStats = (sprites: number, items: number): void => {
   effectItems = items;
 };
 
+/**
+ * ★居座りの犯人を名指しする補足(社長報告2026-09-25「なんかエフェクト残っちゃうバグがまだある」)。
+ * ボスメーカー(敵はボス1体だけ)で `fx 154/154` が出ていた=**何かが溜まっている**のに、
+ * 数字だけでは**何が**溜まっているか分からず、ヘッドレスでも再現できなかった。
+ * ⇒ 溜まった時だけ「多い種類の上位」と「長く出続けている技の絵(latch)」を同じ行に足す。
+ * 平時は空文字=表示は従来どおり。
+ */
+let fxDiag = '';
+export const setFxDiag = (s: string): void => { fxDiag = s; };
+
 /** 表示側(Game.tsx の ErrBeacon が1秒ごとに読む)。 */
-export const renderStatsText = (): string => `fx ${effectItems}/${effectSprites}`;
+export const renderStatsText = (): string => `fx ${effectItems}/${effectSprites}${fxDiag ? ` ${fxDiag}` : ''}`;
 
 /**
  * ★焼いたテクスチャ(RenderTexture)の実測(v0.25.4375)。
