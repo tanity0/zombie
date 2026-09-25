@@ -29,6 +29,13 @@ export const SHADOW_TOTAL_MESH_MAX = 90;
 export const SHADOW_RANK_FADE_FRAC = 0.2;
 /** 1キャスターが持つ爆発シルエットのスロット数(#x0 / #x1)。 */
 export const SHADOW_EXPL_SLOTS = 2;
+/**
+ * 1キャスターが持つ「**消えない光**」(松明/焚き火)シルエットのスロット数。
+ * ★爆発スロットとは**別枠**にする。同じ枠を使うと、松明は消えないので2枠を永久に占領し、
+ * `pickExplSlot` が3つ目を拒否する=**松明のそばで爆発しても爆発の影が出なくなる**。
+ * 総数は `SHADOW_TOTAL_MESH_MAX` で頭打ちなので、枠を分けても描くメッシュの天井は変わらない。
+ */
+export const SHADOW_STATIC_SLOTS = 2;
 
 /** 0..1 の smoothstep。a>=b なら x>=b で1、それ以外0(ゼロ幅でも NaN を出さない)。 */
 export const smoothstep01 = (a: number, b: number, x: number): number => {

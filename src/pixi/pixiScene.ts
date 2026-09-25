@@ -338,7 +338,7 @@ import { AVATARS, type AvatarPart } from '../data/avatars'; // アバターシ�
 import {
   glowFalloff, glowLenMult, glowScore, explosionSilAlpha, ambientSilAlpha,
   pickExplSlot, rankFade, shouldFreezeGeom,
-  SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS,
+  SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS, SHADOW_STATIC_SLOTS,
   canBakeSilhouette, planSilhouetteEviction,
 } from '../utils/shadowSlots';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
@@ -2554,6 +2554,11 @@ const PLAYER_LIGHT_YIELD_MS = tsNum('lightyieldms', 220);  // 平滑の時定数
 // ⇒ **近づいたら b が 1 へ飽和する**ように gain も上げる(「灯りの中に入ったら要らない」を作る)。
 const TORCH_LIGHT_REACH_MULT = tsNum('torchreach', 3.0);   // 松明の届く距離=haloR×これ(92→約276px)
 const TORCH_LIGHT_GAIN = tsNum('torchgain', 4.0);          // haloA→明るさ。halo半径の内側で b が1へ飽和する量
+// ★松明の落とす影の強さ(社長指示2026-09-25「一旦プレイヤーだけやって。松明」)。
+// 爆発の光は `life=1` で来るが、松明は焚き火1本ぶんなのでそれより弱い。炎の明るさ(haloA)を
+// 基準値0.62で正規化し、この係数を掛けたものを `life` として渡す=**炎の揺らぎに合わせて濃さが呼吸する**
+// (長さは falloff だけで決まるので伸び縮みはしない)。`?torchshadow=0` で松明の影だけ止まる。
+const TORCH_SHADOW_GAIN = Math.max(0, tsNum('torchshadow', 0.85));
 const GLOW_LIGHT_REACH_MULT = tsNum('glowlightreach', 5.0); // 強glowの届く距離=半径×これ(影の6.25に寄せる)
 const GLOW_LIGHT_GAIN = tsNum('glowlightgain', 2.5);       // 強glowの life→明るさ。半径の内側で飽和させる
 // ★v0.25.2784(社長「松明と焚き火、コントラスト上げるのはもう少し近づいたら」):
@@ -4209,6 +4214,8 @@ export class PixiScene {
   private lastShadowLdomNow = 0; // 平滑の dt 計算用
   /** ★v12: `collectShadowGlows` の使い回しバッファ(毎フレーム×キャスター数の配列生成を避ける)。 */
   private shadowGlowScratch: { key: string; dirX: number; dirY: number; falloff: number; score: number; dist: number; reach: number; inRange: boolean }[] = [];
+  /** 同上。**消えない光(松明)**用。爆発用と混ぜると `find` が別の光を拾う。 */
+  private shadowStaticScratch: { key: string; dirX: number; dirY: number; falloff: number; score: number; dist: number; reach: number; inRange: boolean }[] = [];
   // 地平線帯の詰め(§3-9-B確定)の平滑後の長さ。キャスターid別。
   private shadowHorizonTrimState = new Map<string, number>();
   // ★D-2b: footX の横寄せオフセット(平滑後)。キャスターid別。★なぜ平滑が要るか: プレイヤー/NPC/犬の
@@ -4354,6 +4361,10 @@ export class PixiScene {
   // ★v0.25.2779: このフレームの「世界の光」(松明/焚き火)。syncBreakableProps の描画中に積み、
   // プレイヤー光の更新(同フレームの後段)で読む。強glowは effects から直接足す。
   private worldLights: PointLight[] = [];
+  /** このフレームの**松明/焚き火だけ**の一覧(影の光源用)。`worldLights` は強glowも混ざるので分ける。
+   * ★プレイヤー自身の明かり(`playerLight`)は入れない——社長指示2026-09-25
+   * 「**プレイヤーの明りは現実にはない光なので影響させない**」。 */
+  private torchLights: { key: string; x: number; y: number; reach: number; life: number }[] = [];
   private assistLightMultSmoothed = 1; // 補助光に掛ける倍率(平滑後)
   private lastAssistLightNow = 0;      // 平滑の dt 計算用(既存の zdt と同じ作法)
   private assistBrightnessNow = 0;     // プレイヤー足元の明るさ(補助光用)
@@ -11420,6 +11431,7 @@ export class PixiScene {
 
   private syncBreakableProps(props: BreakableProp[], now: number) {
     this.worldLights.length = 0; // ★v0.25.2779: このフレームの光を集め直す(松明はこの下の描画で積まれる)
+    this.torchLights.length = 0; // 影の光源用(松明だけ)。同じくこの下の描画で積まれる
     this.punchLights.length = 0;
     this.torchPoolReqs.length = 0;
     const seen = new Set<string>();
@@ -11967,6 +11979,14 @@ export class PixiScene {
     if (haloA > 0 && haloR > 0) {
       const strength = haloA * TORCH_LIGHT_GAIN;
       this.worldLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_LIGHT_REACH_MULT, strength });
+      // 影の光源(松明だけ)。**描画と同じ haloR/haloA を使う**(別の数式を作ると絵と挙動がズレる)。
+      if (TORCH_SHADOW_GAIN > 0) {
+        this.torchLights.push({
+          key: 'torch:' + prop.id, x: flameX, y: flameY,
+          reach: haloR * TORCH_LIGHT_REACH_MULT,
+          life: Math.min(1, (haloA / 0.62) * TORCH_SHADOW_GAIN),
+        });
+      }
       // ★パンチ用は届く距離を短くする(近づいて初めてコントラストが上がる)+強さも下げる
       // (社長v0.25.2793「焚き火とか松明のコントラストだけ少し弱めて」)。爆発側の強さは別経路=不変。
       this.punchLights.push({ x: flameX, y: flameY, reach: haloR * TORCH_PUNCH_REACH_MULT, strength: strength * TORCH_PUNCH_GAIN_MULT });
@@ -12698,7 +12718,7 @@ export class PixiScene {
 
     const seen = new Set<string>();
     const place = (req: ShadowCasterReq) =>
-      this.placeShadowV9(req, seen, now, horizonTrimLerp, footXTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights);
+      this.placeShadowV9(req, seen, now, horizonTrimLerp, footXTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights, this.torchLights);
 
     // ---- プレイヤー ----
     // §3-9-B: 登場演出中も影を出す(旧実装の「introActive中はスキップ」を撤廃)。
@@ -13580,6 +13600,7 @@ export class PixiScene {
     horizonTrimLerp: number, footXTrimLerp: number,
     ambDirX: number, ambDirY: number, lenRatio: number, densityMult: number,
     glowLights: { key: string; x: number; y: number; reach: number; life: number }[],
+    staticLights: { key: string; x: number; y: number; reach: number; life: number }[],
   ) {
     const shadowFade = req.shadowFade ?? 1;
     const alpha = req.alpha * shadowFade;
@@ -13639,7 +13660,8 @@ export class PixiScene {
       outer.anchor.set(0.5, 0.5);
       this.shadowGroundLayer.addChild(outer, core); // 描画順: 1外側 → 2芯(仕様書の描画順)。バッチ用に別層(高9)
       const slots: ShadowMeshSlot[] = [];
-      for (let i = 0; i < 1 + SHADOW_EXPL_SLOTS; i++) slots.push(this.makeShadowSlot(req.id, i === 0 ? 'amb' : null));
+      // [0]=環境光 / [1..SHADOW_EXPL_SLOTS]=爆発 / その後ろ=消えない光(松明)。**枠を分けてある理由は shadowSlots.ts の定数コメント**。
+      for (let i = 0; i < 1 + SHADOW_EXPL_SLOTS + SHADOW_STATIC_SLOTS; i++) slots.push(this.makeShadowSlot(req.id, i === 0 ? 'amb' : null));
       entry = { core, outer, slots, lastSeenAt: now };
       this.shadowPoolV9.set(req.id, entry);
     }
@@ -13651,7 +13673,8 @@ export class PixiScene {
     const cands = this.shadowGlowScratch;
 
     // 1) 既存の爆発スロットを更新する / 光が消えていたらフェードアウトを始める(幾何は凍結したまま)
-    for (let i = 1; i < entry.slots.length; i++) {
+    //    ★爆発の枠だけを回す(後ろの「消えない光」の枠は下の 3) が別に面倒を見る)。
+    for (let i = 1; i <= SHADOW_EXPL_SLOTS; i++) {
       const sl = entry.slots[i];
       if (!sl.lightId) continue;
       const c = cands.find(v => v.key === sl.lightId);
@@ -13676,7 +13699,7 @@ export class PixiScene {
     const fresh = cands.filter(c => c.inRange && c.falloff > 0 && !entry.slots.some(sl => sl.lightId === c.key));
     fresh.sort((a, b) => b.score - a.score);
     for (const c of fresh) {
-      const view = entry.slots.slice(1).map(sl => ({ lightId: sl.lightId, score: sl.score, alpha: sl.alpha }));
+      const view = entry.slots.slice(1, 1 + SHADOW_EXPL_SLOTS).map(sl => ({ lightId: sl.lightId, score: sl.score, alpha: sl.alpha }));
       const d = pickExplSlot(view, c.key, c.score);
       if (d.kind === 'reject') continue; // 3つ目の濃い爆発は「出ないだけ」=ポップは起きない
       const sl = entry.slots[d.slot + 1];
@@ -13687,6 +13710,47 @@ export class PixiScene {
       sl.lenMult = glowLenMult(c.falloff, SHADOW_GLOW_WEIGHT, SHADOW_GLOW_STRETCH, SHADOW_GLOW_LEN_CAP);
       sl.frozen = false; sl.fadeOutAt = 0;
       sl.fadeInAt = 0; // ★点く側は即時。フェードインは付けない(通すと必ず150msかけて出てくる)
+    }
+
+    // ---- 3) ★消えない光(松明/焚き火)。社長指示2026-09-25「**一旦プレイヤーだけやって。松明**」 ----
+    // ★プレイヤーだけ。敵・静物へ広げるのは社長の指示を待つ(勝手に増やさない)。
+    // ★**凍結しない**(爆発と違う点): 松明は動かないので、向きが変わるのは**プレイヤーが動いた時だけ**
+    //   =社長裁定「光源から見て物体が動いたなら動かす。自然の法則に従う」そのもの。爆発の凍結は
+    //   「光の側が動く/消える」ための仕掛けなので、ここに持ち込むと逆に不自然になる。
+    // ★スロットは**据え置き**(強い順に並べ替えて番号を振り直さない)。2本の松明の遠近が入れ替わった
+    //   1フレームで影が丸ごと入れ替わる=飛んで見えるため。
+    if (staticLights.length > 0 && req.id === '__player__') {
+      const sBase = 1 + SHADOW_EXPL_SLOTS;
+      this.collectShadowGlows(footX, footY, staticLights, this.shadowStaticScratch);
+      const sCands = this.shadowStaticScratch.filter(c => c.inRange && c.falloff > 0).sort((a, b) => b.score - a.score);
+      const applyStatic = (sl: ShadowMeshSlot, c: typeof sCands[number]) => {
+        sl.lightId = c.key; sl.score = c.score;
+        sl.dirX = c.dirX; sl.dirY = c.dirY; sl.falloff = c.falloff;
+        sl.lenMult = glowLenMult(c.falloff, SHADOW_GLOW_WEIGHT, SHADOW_GLOW_STRETCH, SHADOW_GLOW_LEN_CAP);
+        sl.frozen = false; sl.fadeOutAt = 0; sl.fadeInAt = 0;
+      };
+      const taken = new Set<string>();
+      for (let k = 0; k < SHADOW_STATIC_SLOTS; k++) {
+        const sl = entry.slots[sBase + k];
+        if (!sl.lightId) continue;
+        const c = sCands.find(v => v.key === sl.lightId);
+        if (c) { applyStatic(sl, c); taken.add(c.key); } else { this.releaseShadowSlot(sl); }
+      }
+      for (const c of sCands) {
+        if (taken.has(c.key)) continue;
+        let free: ShadowMeshSlot | null = null;
+        for (let k = 0; k < SHADOW_STATIC_SLOTS; k++) {
+          const sl = entry.slots[sBase + k];
+          if (!sl.lightId) { free = sl; break; }
+        }
+        if (!free) break; // 3本目の松明は「出ないだけ」(既に出ている影は消さない=ポップは起きない)
+        applyStatic(free, c); taken.add(c.key);
+      }
+    } else {
+      for (let k = 0; k < SHADOW_STATIC_SLOTS; k++) {
+        const sl = entry.slots[1 + SHADOW_EXPL_SLOTS + k];
+        if (sl.lightId) this.releaseShadowSlot(sl);
+      }
     }
 
     // ---- 接地2枚(画面軸のまま=回さない。芯は足元ぴったり) ----
