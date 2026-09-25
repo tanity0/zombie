@@ -683,6 +683,14 @@ export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
   // から、ちゃんと戻して**」——薙ぎ払い/突進/三連突進/ノヴァはこの読み方のままにする。
   // 腕を前へ薙ぐ絵を使うのは**氷の横薙ぎと通常弾だけ**(下の `GIANT_ALT_SWEEP`)。
   'stage4-enemies/giantbat': { windup: 10, active: 1, recover: 5, bodyH: 136 },
+  // ★★城ボス5の攻撃(社長支給2026-09-25「城5ボスの攻撃モーション」。跳び/叩きつけは後日別途)。
+  // **8コマ・銃の連射**。閃光の画素数が **0 → 2681 / 1133 / 2483 / 1360 / 2328 / 1295 → 207** で、
+  // **1〜6コマ目が撃っている**(大小の波が3つ=3発)。⇒ **1(構え)/ 6(連射)/ 1(撃ち終わり)**。
+  // ★この個体は**撃つ相を持つ**(`g-bolt-burst` / `g-trishot-active` / `g-sweepbeam-active`)ので、
+  //   連射を**当たりの区間**に置くと、撃っている間だけ連射が流れる=絵と技が一致する。
+  // ★`bodyH` は不要。**下半身だけで測った倍率が 1.335** で、立ち絵200 ÷ シート150 = 1.333 と一致
+  //   (全身で測ると銃と腕が伸びるぶん 1.38 に出るが、それは構えの差)。
+  'stage5-enemies/giantbat': { windup: 1, active: 6, recover: 1 },
 };
 
 /**
@@ -698,6 +706,7 @@ const SWEEP_SHEET_SUFFIX: Readonly<Record<string, string>> = {
   'giantbat': 'attack',
   // 城ボス4も社長の言葉どおり「攻撃」(ジャンプ以外の全技で使う1枚)。
   'stage4-enemies/giantbat': 'jump',   // ★既定は叩きつけの絵。腕を薙ぐ 'attack' は `GIANT_ALT_SWEEP` の2技だけ
+  'stage5-enemies/giantbat': 'attack',
 
 };
 
@@ -873,6 +882,9 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   // ステージ4の城ボス。歩き1.51+跳び1.73+攻撃1.58=**4.82MB**。
   // カットインを挟んで出る+**ステージ4でしか出ない**ので、まるごと遅延。
   'stage4-enemies/giantbat': 'deferred',
+  // ステージ5の城ボス。攻撃0.93MB(跳び/叩きつけは後日追加予定)。
+  // カットインを挟んで出る+**ステージ5でしか出ない**ので、まるごと遅延。
+  'stage5-enemies/giantbat': 'deferred',
   // ▼ここから下は**起動時のまま**。理由はどれも同じ=**前触れなくその辺に居る**(猶予が無い)。
   'pumpkin-common': 'eager',   // 蜘蛛。跳び1.15MB
   'driller-common': 'eager',   // 削岩型。歩き1.12MB
