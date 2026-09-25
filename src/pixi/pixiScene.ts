@@ -105,7 +105,7 @@ import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, swe
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantJumpSheetTechsFor } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -17946,7 +17946,9 @@ export class PixiScene {
         if (remain > hopMs) {
           // ① 溜め: しゃがみが深くなる(従来の式のまま)+ 震えが強くなる。
           const p = Math.max(0, Math.min(1, 1 - (remain - hopMs) / Math.max(1, total - hopMs)));
-          aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり(T7・パンプキンcrouchと同じ式)
+          // ★シートがある個体では**歪みだけ外す**(社長指示2026-09-22「モーション追加により外すのは歪みだけ」)。
+          // 震え(`aiShake`)と跳び(`aiHop`)は**位置の移動**なので残す。
+          if (walkTex === null) { aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; } // しゃがんで縦縮み・横広がり(T7・パンプキンcrouchと同じ式)
           // 2つの周波数を混ぜる(単一sinだと「揺れ」に見えて「震え」にならない)。
           aiShake = (Math.sin(now / 23) * 0.6 + Math.sin(now / 11) * 0.4) * GIANT_STOMP_SHAKE_PX * p;
         } else {
@@ -17957,14 +17959,18 @@ export class PixiScene {
           if (t < RISE) {
             const u = t / RISE;
             aiHop = GIANT_STOMP_HOP_PX * Math.sin(u * Math.PI / 2); // 伸び上がり(頂点で緩む)
-            aiSqY = 0.58 + (1.10 - 0.58) * u; // しゃがみ切り→空中で縦伸び
-            aiSqX = 1.14 + (0.92 - 1.14) * u;
+            if (walkTex === null) {
+              aiSqY = 0.58 + (1.10 - 0.58) * u; // しゃがみ切り→空中で縦伸び
+              aiSqX = 1.14 + (0.92 - 1.14) * u;
+            }
           } else {
             const v = (t - RISE) / (1 - RISE);
             aiHop = GIANT_STOMP_HOP_PX * (1 - v * v);  // 加速しながら落ちる
             const k = v * v;                            // 潰れは着地の直前で一気に
-            aiSqY = 1.10 + (0.70 - 1.10) * k;
-            aiSqX = 0.92 + (1.20 - 0.92) * k;
+            if (walkTex === null) {
+              aiSqY = 1.10 + (0.70 - 1.10) * k;
+              aiSqX = 0.92 + (1.20 - 0.92) * k;
+            }
           }
         }
       } else if (e.aiPhase === 'g-jump-windup') {
@@ -29944,6 +29950,34 @@ export class PixiScene {
           ? enemyJumpFallFrame(split)
           : (enemyJumpFrame(split, 'land', sinceLand / landDur)
             ?? enemyJumpLandLastFrame(split));
+      }
+    } else if (giantJumpSheetTechsFor(idleTexKey).some(t => (e.aiPhase ?? '').startsWith(t))) {
+      // ★**跳びのシートで描く追加の技**(社長指示2026-09-25「その場で小ジャンプ…と同じ飛び上がって
+      // 踏みつぶすモーションに」)。いまは踏み鳴らし(`g-stomp-`)だけ。
+      const ph = e.aiPhase ?? '';
+      if (ph === 'g-stomp-windup') {
+        // 踏み鳴らしは**2拍**(震えながらしゃがむ → 最後の HOP_MS で跳ぶ)。絵もその2拍へ写す:
+        // **しゃがみ=溜め / 滞空=跳び**。★判定が出るのは**溜め終わり**なので、着地の絵は立ち直りの頭から
+        // (=絵の着地と当たる瞬間が1つになる。ここをずらすと「踏む前に砂埃」になる)。
+        const total = GIANT_STOMP_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT;
+        const hopMs = Math.min(GIANT_STOMP_HOP_MS / ENEMY_ATTACK_SPEED_MULT, total);
+        const remain = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
+        i = remain > hopMs
+          ? enemyJumpFrame(split, 'crouch', 1 - (remain - hopMs) / Math.max(1, total - hopMs))
+          : enemyJumpFrame(split, 'air', 1 - remain / Math.max(1, hopMs));
+      } else if (ph.endsWith('-recover')) {
+        const start = e.aiStartedAt ?? gameTime;
+        const landDur = jumpLandDrawMs(jumpLandMs(idleTexKey), (e.aiPhaseUntil ?? gameTime) - start);
+        i = enemyJumpFrame(split, 'land', (gameTime - start) / landDur) ?? enemyJumpLandLastFrame(split);
+      } else if (ph.endsWith('-windup')) {
+        // 予備(この表に技を足した時の既定): 溜め=しゃがみ+滞空を続けて1本に流す。
+        const cut = split.crouch / Math.max(1, split.crouch + split.air);
+        const start = e.aiStartedAt ?? gameTime;
+        const prog = Math.max(0, Math.min(1,
+          (gameTime - start) / Math.max(1, (e.aiPhaseUntil ?? gameTime) - start)));
+        i = prog < cut
+          ? enemyJumpFrame(split, 'crouch', prog / Math.max(1e-6, cut))
+          : enemyJumpFrame(split, 'air', (prog - cut) / Math.max(1e-6, 1 - cut));
       }
     }
     if (i === null) return null;

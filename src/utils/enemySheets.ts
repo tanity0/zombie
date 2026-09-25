@@ -547,7 +547,10 @@ export const ENEMY_JUMP_SHEETS: Readonly<Record<string, JumpSplit>> = {
   // ★**縮小していない**(2×2の一致率 6.1%)。色数33・半透明0%。
   // ★**描き込みは立ち絵の 0.720倍**(0コマ目を立ち絵へ重ねて **IoU 0.963**=ほぼ完全一致の測定)。
   //   ⇒ `bodyH = 200 × 0.720 = 144`。**着地だけ別倍率、は無い**(11/13/15コマ目も 0.71〜0.72)。
-  'stage4-enemies/giantbat': { crouch: 5, air: 6, land: 5, bodyH: 144 },
+  // ★★シートの取り違えを是正(社長報告2026-09-25「今は手を前に出すモーションがジャンプ攻撃に入っちゃってる」)。
+  // 支給された2枚を**逆に入れていた**。跳びの絵は「しゃがむ→跳び上がる→叩きつけて砂埃」で、
+  // 砂埃は**10コマ目で0〜123から278へ跳ねる**=そこが着地。⇒ 3(しゃがみ)/7(滞空)/6(着地)。
+  'stage4-enemies/giantbat': { crouch: 3, air: 7, land: 6, bodyH: 136 },
 };
 
 /** 着地の絵を流す長さ(ms)。立ち直り(recover)全体はもっと長いので、その頭だけを使う。 */
@@ -674,7 +677,9 @@ export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
   // ★**縮小していない**(2×2の一致率 6.1%)。色数33・半透明0%。
   // ★**描き込みは立ち絵の 0.680倍**(0コマ目を立ち絵へ重ねて **IoU 0.963**)。
   //   ⇒ `bodyH = 200 × 0.680 = 136`。これが無いと**9.3%小さく**出る。
-  'stage4-enemies/giantbat': { windup: 10, active: 1, recover: 5, bodyH: 136 },
+  // ★同じ是正(上記)。攻撃の絵は「腕を振り上げて前へ薙ぐ」で、**白い弧の画素数が6コマ目で最大**
+  // (0〜103 → 842 → **1539** → 917 → 325)=そこが振り抜き。⇒ 6(溜め)/1(当たり)/9(戻り)。
+  'stage4-enemies/giantbat': { windup: 6, active: 1, recover: 9, bodyH: 144 },
 };
 
 /**
@@ -700,7 +705,26 @@ const SWEEP_SHEET_SUFFIX: Readonly<Record<string, string>> = {
  */
 export const GIANT_MOTION_SKIP: Readonly<Record<string, readonly string[]>> = {
   'giantbat': ['g-dash-'],
+  // ★踏み鳴らし(`g-stomp-`)は**跳びのシート**で描く(下の `GIANT_JUMP_SHEET_TECHS`)。
+  // 攻撃のシートに配らないよう、こちらでは外す。
+  'stage4-enemies/giantbat': ['g-stomp-'],
 };
+
+/**
+ * ★**跳びのシートで描く追加の技**(既定の `g-jump-*` 以外)。社長指示2026-09-25
+ * 「**その場で小ジャンプとは別で、ジャンプ攻撃の配線も、この小ジャンプと同じ飛び上がって踏みつぶす
+ * モーションにして**」——踏み鳴らしは実際に `GIANT_STOMP_HOP_PX`(34px)跳ぶので、
+ * 跳びの絵(しゃがむ→跳び上がる→叩きつける)が正しい。
+ * 溜め=しゃがみ+滞空 / 立ち直り=着地、の2区間に写す(城ボスの踏み鳴らしは当たりの相を持たず、
+ * **立ち直りの頭で当たる**ので、着地の1コマ目が当たりの瞬間に来る)。
+ */
+export const GIANT_JUMP_SHEET_TECHS: Readonly<Record<string, readonly string[]>> = {
+  'stage4-enemies/giantbat': ['g-stomp-'],
+};
+
+/** その立ち絵で「跳びのシートに回す技」の接頭辞(無ければ空)。 */
+export const giantJumpSheetTechsFor = (idleTexName: string | null | undefined): readonly string[] =>
+  (idleTexName && GIANT_JUMP_SHEET_TECHS[idleTexName]) || [];
 
 /** その立ち絵で「配らない技」の接頭辞(無ければ空)。 */
 export const giantMotionSkipFor = (idleTexName: string | null | undefined): readonly string[] =>
