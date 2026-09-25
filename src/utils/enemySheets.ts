@@ -550,6 +550,8 @@ export const ENEMY_JUMP_SHEETS: Readonly<Record<string, JumpSplit>> = {
   // ★★シートの取り違えを是正(社長報告2026-09-25「今は手を前に出すモーションがジャンプ攻撃に入っちゃってる」)。
   // 支給された2枚を**逆に入れていた**。跳びの絵は「しゃがむ→跳び上がる→叩きつけて砂埃」で、
   // 砂埃は**10コマ目で0〜123から278へ跳ねる**=そこが着地。⇒ 3(しゃがみ)/7(滞空)/6(着地)。
+  // ★この絵は**薙ぎ表からも同じファイルを引く**(下の `SWEEP_SHEET_SUFFIX` が 'jump')。
+  //   飛び掛かりは3区間の跳びとして、それ以外の技は3区間の薙ぎとして、**同じ絵を2通りに読む**。
   'stage4-enemies/giantbat': { crouch: 3, air: 7, land: 6, bodyH: 136 },
 };
 
@@ -677,9 +679,10 @@ export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
   // ★**縮小していない**(2×2の一致率 6.1%)。色数33・半透明0%。
   // ★**描き込みは立ち絵の 0.680倍**(0コマ目を立ち絵へ重ねて **IoU 0.963**)。
   //   ⇒ `bodyH = 200 × 0.680 = 136`。これが無いと**9.3%小さく**出る。
-  // ★同じ是正(上記)。攻撃の絵は「腕を振り上げて前へ薙ぐ」で、**白い弧の画素数が6コマ目で最大**
-  // (0〜103 → 842 → **1539** → 917 → 325)=そこが振り抜き。⇒ 6(溜め)/1(当たり)/9(戻り)。
-  'stage4-enemies/giantbat': { windup: 6, active: 1, recover: 9, bodyH: 144 },
+  // ★既定は**叩きつけの絵**(`-jump` ファイル)。社長裁定2026-09-25「**絶妙にうまく絵を使ってくれてた
+  // から、ちゃんと戻して**」——薙ぎ払い/突進/三連突進/ノヴァはこの読み方のままにする。
+  // 腕を前へ薙ぐ絵を使うのは**氷の横薙ぎと通常弾だけ**(下の `GIANT_ALT_SWEEP`)。
+  'stage4-enemies/giantbat': { windup: 10, active: 1, recover: 5, bodyH: 136 },
 };
 
 /**
@@ -694,7 +697,8 @@ const SWEEP_SHEET_SUFFIX: Readonly<Record<string, string>> = {
   // 城ボス1は社長の言葉どおり「攻撃モーション」(翼で薙ぐ。特定の技の名前を付けない)。
   'giantbat': 'attack',
   // 城ボス4も社長の言葉どおり「攻撃」(ジャンプ以外の全技で使う1枚)。
-  'stage4-enemies/giantbat': 'attack',
+  'stage4-enemies/giantbat': 'jump',   // ★既定は叩きつけの絵。腕を薙ぐ 'attack' は `GIANT_ALT_SWEEP` の2技だけ
+
 };
 
 /**
@@ -705,30 +709,53 @@ const SWEEP_SHEET_SUFFIX: Readonly<Record<string, string>> = {
  */
 export const GIANT_MOTION_SKIP: Readonly<Record<string, readonly string[]>> = {
   'giantbat': ['g-dash-'],
-  // ★踏み鳴らし(`g-stomp-`)は**跳びのシート**で描く(下の `GIANT_JUMP_SHEET_TECHS`)。
-  // 攻撃のシートに配らないよう、こちらでは外す。
-  'stage4-enemies/giantbat': ['g-stomp-'],
 };
-
-/**
- * ★**跳びのシートで描く追加の技**(既定の `g-jump-*` 以外)。社長指示2026-09-25
- * 「**その場で小ジャンプとは別で、ジャンプ攻撃の配線も、この小ジャンプと同じ飛び上がって踏みつぶす
- * モーションにして**」——踏み鳴らしは実際に `GIANT_STOMP_HOP_PX`(34px)跳ぶので、
- * 跳びの絵(しゃがむ→跳び上がる→叩きつける)が正しい。
- * 溜め=しゃがみ+滞空 / 立ち直り=着地、の2区間に写す(城ボスの踏み鳴らしは当たりの相を持たず、
- * **立ち直りの頭で当たる**ので、着地の1コマ目が当たりの瞬間に来る)。
- */
-export const GIANT_JUMP_SHEET_TECHS: Readonly<Record<string, readonly string[]>> = {
-  'stage4-enemies/giantbat': ['g-stomp-'],
-};
-
-/** その立ち絵で「跳びのシートに回す技」の接頭辞(無ければ空)。 */
-export const giantJumpSheetTechsFor = (idleTexName: string | null | undefined): readonly string[] =>
-  (idleTexName && GIANT_JUMP_SHEET_TECHS[idleTexName]) || [];
 
 /** その立ち絵で「配らない技」の接頭辞(無ければ空)。 */
 export const giantMotionSkipFor = (idleTexName: string | null | undefined): readonly string[] =>
   (idleTexName && GIANT_MOTION_SKIP[idleTexName]) || [];
+
+/**
+ * ★**技ごとに別の薙ぎシートへ差し替える**(社長指示2026-09-25)。
+ * 城ボス4は絵が2枚あり、**技によってどちらを使うかが違う**:
+ * - 既定(`SWEEP_SHEET_SUFFIX`/`ENEMY_SWEEP_SHEETS`)= 叩きつけの絵。薙ぎ払い・突進・三連突進・ノヴァ・
+ *   踏み鳴らしはこちら(社長裁定「絶妙にうまく絵を使ってくれてたから、ちゃんと戻して」)。
+ * - ここに載せた技だけ = **腕を振り上げて前へ薙ぐ絵**。社長指示「**吹雪の薙ぎ、これは手を前に出す
+ *   モーションで**」「**通常弾飛ばすとき、これも手を前に出す方のモーション流用で**」。
+ * 区切りは**白い弧の画素数**で測った(0〜103 → 842 → **1539** → 917 → 325)=6コマ目が振り抜き。
+ */
+export interface GiantAltSweep {
+  readonly techs: readonly string[];
+  readonly suffix: string;
+  readonly split: SweepSplit;
+}
+export const GIANT_ALT_SWEEP: Readonly<Record<string, readonly GiantAltSweep[]>> = {
+  'stage4-enemies/giantbat': [
+    {
+      techs: ['g-quad-breath-', 'g-bolt-'],   // 氷の横薙ぎ / 通常弾
+      suffix: 'attack',
+      split: { windup: 6, active: 1, recover: 9, bodyH: 144 },
+    },
+  ],
+};
+
+/** その相で使う差し替えシート(無ければ null=既定のシートを使う)。 */
+export const giantAltSweepFor = (
+  idleTexName: string | null | undefined, aiPhase: string | null | undefined,
+): GiantAltSweep | null => {
+  const list = idleTexName ? GIANT_ALT_SWEEP[idleTexName] : undefined;
+  if (!list || !aiPhase) return null;
+  for (const alt of list) if (alt.techs.some(t => aiPhase.startsWith(t))) return alt;
+  return null;
+};
+
+/** その立ち絵が持つ差し替えシート全部(先読み・原盤台帳・描画倍率の照合に使う)。 */
+export const giantAltSweepSheets = (
+  idleTexName: string,
+): readonly { readonly name: string; readonly bodyH: number | null }[] =>
+  (GIANT_ALT_SWEEP[idleTexName] ?? []).map(alt => ({
+    name: `${idleTexName}-${alt.suffix}`, bodyH: alt.split.bodyH ?? null,
+  }));
 
 export const sweepSheetName = (idleTexName: string): string =>
   `${idleTexName}-${SWEEP_SHEET_SUFFIX[idleTexName] ?? 'sweep'}`;
@@ -865,4 +892,6 @@ export const allEnemySheets = (): { idle: string; sheet: string }[] => [
   ...Object.keys(ENEMY_JUMP_SHEETS).map(idle => ({ idle, sheet: jumpSheetName(idle) })),
   ...Object.keys(ENEMY_SWEEP_SHEETS).map(idle => ({ idle, sheet: sweepSheetName(idle) })),
   ...Object.keys(ENEMY_SCREAM_SHEETS).map(idle => ({ idle, sheet: screamSheetName(idle) })),
+  // ★差し替えシート(技ごとに別の絵を使う個体)。ここに入れないと**先読みも原盤台帳の照合も漏れる**。
+  ...Object.keys(GIANT_ALT_SWEEP).flatMap(idle => giantAltSweepSheets(idle).map(a => ({ idle, sheet: a.name }))),
 ];
