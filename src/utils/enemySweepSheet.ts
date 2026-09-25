@@ -143,6 +143,16 @@ export const giantMotionSpanOf = (
 };
 
 /**
+ * ★当たり区間を**一定の速さでループ**させた時のコマ番号(`enemySheets.GIANT_ACTIVE_LOOP`)。
+ * 相の長さに引き伸ばさない=**どの技でも同じ速さで流れる**。経過が負や非数なら当たりの先頭。
+ */
+export const sweepActiveLoopFrame = (split: SweepSplit, elapsedMs: number, frameMs: number): number => {
+  const n = Math.max(1, split.active);
+  const step = Number.isFinite(elapsedMs) && elapsedMs > 0 && frameMs > 0 ? Math.floor(elapsedMs / frameMs) : 0;
+  return split.windup + (step % n);
+};
+
+/**
  * 区間の範囲(span)ぶんをひと続きに流した時のコマ番号。
  * ★**既存の `sectionFrame` をそのまま使う**——[範囲より前 / 範囲 / 範囲より後] の3つに畳んで
  * 真ん中を引くだけ。新しい割り算を書かない(区間の境目の定義を2箇所に持たない)。

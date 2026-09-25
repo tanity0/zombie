@@ -1,7 +1,7 @@
 // ★薙ぎ払いの絵の区間割り。社長支給2026-09-22「伐採人の薙払いの時のモーション」。
 import { describe, it, expect } from 'vitest';
-import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, sweepBandDirX, sweepFaceMulFor } from './enemySweepSheet';
-import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantNoActiveExtraFor
+import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, sweepBandDirX, sweepFaceMulFor, sweepActiveLoopFrame } from './enemySweepSheet';
+import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantNoActiveExtraFor, giantActiveLoopMsFor
 } from './enemySheets';
 import { LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
@@ -362,6 +362,34 @@ describe('★叩きつけモーションの配り方(城ボス)', () => {
       expect(giantNoActiveExtraFor(k), k).toEqual([]);
       expect(giantMotionSpanOf('g-bolt-recover', [], giantNoActiveExtraFor(k)), k).toEqual(['recover', 'recover']);
     }
+  });
+
+  // ★社長報告2026-09-25「その他の同じ絵がでる技が乱射するモーションが…ぎこちなく流れたりする」。
+  // 当たりの6コマを相の長さに引き伸ばすと、220ms(薙ぎ払い・三連射)では速すぎ、900ms(掃射)では遅すぎた。
+  it('城ボス5の銃の連射は、当たりの間 一定の速さでループする(通常弾は従来どおり)', () => {
+    const sp5 = ENEMY_SWEEP_SHEETS['stage5-enemies/giantbat'];
+    const ms = giantActiveLoopMsFor('stage5-enemies/giantbat', 'g-sweepbeam-active');
+    expect(ms).toBe(45);
+    expect(giantActiveLoopMsFor('stage5-enemies/giantbat', 'g-trishot-active')).toBe(45);
+    expect(giantActiveLoopMsFor('stage5-enemies/giantbat', 'g-sweep-active')).toBe(45);
+    expect(giantActiveLoopMsFor('stage5-enemies/giantbat', 'g-bolt-burst')).toBeNull();   // 社長「合ってる」
+    expect(giantActiveLoopMsFor('stage4-enemies/giantbat', 'g-sweep-active')).toBeNull(); // 他の城ボスは不変
+    // 1〜6コマ目を 45ms ごとに進めて巡回する
+    const seq = [0, 44, 45, 134, 135, 269, 270, 315].map(t => sweepActiveLoopFrame(sp5, t, 45));
+    expect(seq).toEqual([1, 1, 2, 3, 4, 6, 1, 2]);
+    expect(sweepActiveLoopFrame(sp5, -5, 45)).toBe(1);
+    expect(sweepActiveLoopFrame(sp5, Number.NaN, 45)).toBe(1);
+    // 掃射(実効900ms)でも三連射(220ms)でも同じ速さ=1コマ45ms
+    expect(sweepActiveLoopFrame(sp5, 900, 45)).toBe(sweepActiveLoopFrame(sp5, 900 % 270, 45));
+  });
+
+  // ★社長指示2026-09-25「ダッシュはジャンプの着地の絵を使って(城4ボスみたいに)」。
+  it('城ボス5の突進は叩きつけの絵(城ボス4と同じ読み方)', () => {
+    const alt = giantAltSweepFor('stage5-enemies/giantbat', 'g-dash-charge');
+    expect(alt?.suffix).toBe('jump');
+    expect([alt?.split.windup, alt?.split.active, alt?.split.recover]).toEqual([10, 1, 4]);
+    expect(giantAltSweepFor('stage5-enemies/giantbat', 'g-dash-windup')?.suffix).toBe('jump');
+    expect(giantAltSweepFor('stage5-enemies/giantbat', 'g-dash-recover')?.suffix).toBe('jump');
   });
 
   // ★城ボス5の攻撃(社長支給2026-09-25)。閃光の画素数で境目を決めた

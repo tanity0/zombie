@@ -752,6 +752,30 @@ export const GIANT_NO_ACTIVE_EXTRA: Readonly<Record<string, readonly string[]>> 
   'stage5-enemies/giantbat': ['g-bolt-'],
 };
 
+/**
+ * ★**当たりの区間を「一定の速さでループ」させる**(社長報告2026-09-25「その他の同じ絵がでる技が
+ * 乱射するモーションが**ぎこちなく流れたりする**」)。
+ * 城ボス5の攻撃の絵は**銃の連射**(大小の閃光が交互に3回)=**繰り返す動き**なのに、
+ * 従来は当たりの6コマを**相の長さへ1回だけ引き伸ばして**いた。相の長さは技ごとにばらばらで、
+ * 薙ぎ払い・三連射は**220msに6コマ詰め込み(速すぎ)**、掃射ビームは**900msに6コマ(遅すぎ)**だった。
+ * ⇒ 当たりの間は**`frameMs` ごとに1コマ進めてループ**する。速さは、社長が「合ってる」と言った
+ *   通常弾(立ち直り300msで7コマ=約43ms/コマ)に揃えた。
+ * `exceptTechs` は従来どおり引き伸ばす技(通常弾は社長裁定で今のままが正)。
+ */
+export const GIANT_ACTIVE_LOOP: Readonly<Record<string, { readonly frameMs: number; readonly exceptTechs: readonly string[] }>> = {
+  'stage5-enemies/giantbat': { frameMs: 45, exceptTechs: ['g-bolt-'] },
+};
+
+/** その相で当たり区間をループさせるなら1コマの長さ(ms)、しないなら null。 */
+export const giantActiveLoopMsFor = (
+  idleTexName: string | null | undefined, aiPhase: string | null | undefined,
+): number | null => {
+  const cfg = idleTexName ? GIANT_ACTIVE_LOOP[idleTexName] : undefined;
+  if (!cfg || !aiPhase) return null;
+  if (cfg.exceptTechs.some(t => aiPhase.startsWith(t))) return null;
+  return cfg.frameMs;
+};
+
 /** その立ち絵で「当たりの相を持たない技」として読む追加分(無ければ空)。 */
 export const giantNoActiveExtraFor = (idleTexName: string | null | undefined): readonly string[] =>
   (idleTexName && GIANT_NO_ACTIVE_EXTRA[idleTexName]) || [];
@@ -785,7 +809,9 @@ export const GIANT_ALT_SWEEP: Readonly<Record<string, readonly GiantAltSweep[]>>
   //   **一撃のコマ(10)が立ち直りの頭=当たる瞬間**に来る(城ボス4と同じ合わせ方)。
   'stage5-enemies/giantbat': [
     {
-      techs: ['g-stomp-'],
+      // 突進も叩きつけの絵(社長指示2026-09-25「ダッシュはジャンプの着地の絵を使って(城4ボスみたいに)」)。
+      // 城ボス4と同じ読み方: 溜め=0〜9 / 走っている間(`g-dash-charge`=当たり)=10(着地の一撃) / 立ち直り=11〜14。
+      techs: ['g-stomp-', 'g-dash-'],
       suffix: 'jump',
       split: { windup: 10, active: 1, recover: 4, bodyH: 140 },
     },

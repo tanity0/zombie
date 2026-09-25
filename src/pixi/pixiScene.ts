@@ -105,13 +105,13 @@ import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, swe
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
-import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor } from '../utils/enemySheets';
+import { attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
 import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFrames, jumpLandDrawMs } from '../utils/enemyJumpSheet';
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
-import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepBandDirX, sweepFaceMulFor } from '../utils/enemySweepSheet';
+import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepBandDirX, sweepFaceMulFor, sweepActiveLoopFrame } from '../utils/enemySweepSheet';
 import { counterRewindFrame, counterRewindEase, counterRewindElapsed, COUNTER_REWIND_MS, counterRewindIsFresh } from '../utils/counterRewind';
 // ★武器の振りの軌跡(カウンターの「振りを戻す」用)。60fpsで窓140ms=約9枚なので16枚で足りる。
 const WEAPON_TRAIL_MAX = 16;
@@ -4339,7 +4339,7 @@ export class PixiScene {
   private enemyJumpHop = new Map<string, number>(); // ジャンプ中の最新ホップ高(px)。盾ブロック時の落下補間の起点に使う
   // ★城ボスの技の相の「実尺」を相の頭で1回だけ焼く(v0.25.4643)。`aiPhaseUntil` は相の頭で
   // 決まるので、その相を最初に見たフレームの残り時間がそのまま実尺になる=定数表が要らない。
-  private giantPhaseSpan = new Map<string, { key: string; dur: number }>();
+  private giantPhaseSpan = new Map<string, { key: string; dur: number; start: number }>();
   private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
   private rescueSweatGfx = new Graphics(); // パニック逃走の汗マーク(uiLayer=環境光の影響外・screen座標)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
@@ -30038,10 +30038,15 @@ export class PixiScene {
       const key = `${e.aiPhase}@${e.aiPhaseUntil}`;
       let lat = this.giantPhaseSpan.get(e.id);
       if (!lat || lat.key !== key) {
-        lat = { key, dur: Math.max(1, e.aiPhaseUntil - gameTime) };
+        lat = { key, dur: Math.max(1, e.aiPhaseUntil - gameTime), start: gameTime };
         this.giantPhaseSpan.set(e.id, lat);
       }
-      const gi = enemySweepSpanFrame(gSplit, gSpan, 1 - (e.aiPhaseUntil - gameTime) / lat.dur);
+      // ★当たりの間は一定の速さでループ(城ボス5の銃の連射・社長報告「ぎこちなく流れたりする」)。
+      // 差し替えシート(叩きつけの絵)の技には掛けない=ループは銃の絵だけの読み方。
+      const loopMs = alt ? null : giantActiveLoopMsFor(idleTexKey, e.aiPhase);
+      const gi = loopMs !== null && gSpan[0] === 'active' && gSpan[1] === 'active'
+        ? sweepActiveLoopFrame(gSplit, gameTime - lat.start, loopMs)
+        : enemySweepSpanFrame(gSplit, gSpan, 1 - (e.aiPhaseUntil - gameTime) / lat.dur);
       if (gi === null) return null;
       const gFrames = sweepSplitFrames(gSplit);
       const gSlices = this.sheetSlices(gName, gFrames);
