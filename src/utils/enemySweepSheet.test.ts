@@ -316,6 +316,19 @@ describe('★叩きつけモーションの配り方(城ボス)', () => {
     }
   });
 
+  // ★城ボス4(衛生兵)の攻撃(社長支給2026-09-25「ジャンプ以外の攻撃」)。砂埃の画素数で境目を決めた
+  // (9コマ目まで0〜2 → **10コマ目で42** → 11で134 → 15で265)。城ボス3の叩きつけと同じ 10/1/5。
+  it('城ボス4の攻撃シートは 16コマを 10/1/5 に割る(当たり=砂埃が出る10コマ目)', () => {
+    const sp4 = ENEMY_SWEEP_SHEETS['stage4-enemies/giantbat'];
+    expect(sweepSplitFrames(sp4)).toBe(16);
+    expect([sp4.windup, sp4.active, sp4.recover]).toEqual([10, 1, 5]);
+    expect(sweepImpactFrame(sp4)).toBe(10);
+    expect(sweepSheetName('stage4-enemies/giantbat')).toBe('stage4-enemies/giantbat-attack');
+    expect(sweepSheetBodyH('stage4-enemies/giantbat')).toBe(136);
+    // 城ボス4は突進も含めて「ジャンプ以外の全部」(外すのは城ボス1だけ)。
+    expect(giantMotionSkipFor('stage4-enemies/giantbat')).toEqual([]);
+  });
+
   it('城ボス1の攻撃シートは 10コマを 6/1/3 に割る(当たり=翼を薙ぎ抜く6コマ目)', () => {
     const sp1 = ENEMY_SWEEP_SHEETS['giantbat'];
     expect(sweepSplitFrames(sp1)).toBe(10);

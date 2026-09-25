@@ -175,12 +175,29 @@ describe('jumpLandDrawMs（着地の絵は相より長くしない・v0.25.4608�
 
 // ★社長報告2026-09-25「城3のジャンプの絵がやたら小さい」。
 describe('★跳びシートの bodyH(シートが小さく描かれていた分の補正)', () => {
-  it('城ボス3の跳びだけが bodyH を持つ(他のシートは枠いっぱいに描かれている)', () => {
+  // ★`bodyH` を持つのは「**枠いっぱいに描かれていない**シート」だけ。書いた値は**立ち絵へ重ねて測った
+  // 描き込み倍率 × 立ち絵の枠**(城3は 150×0.815=122 / 城4は 200×0.720=144)。
+  it('bodyH を持つのは実測で小さく描かれていたシートだけ', () => {
     expect(ENEMY_JUMP_SHEETS['stage3-enemies/giantbat'].bodyH).toBe(122);
+    expect(ENEMY_JUMP_SHEETS['stage4-enemies/giantbat'].bodyH).toBe(144);
+    const WITH = new Set(['stage3-enemies/giantbat', 'stage4-enemies/giantbat']);
     for (const [n, sp] of Object.entries(ENEMY_JUMP_SHEETS)) {
-      if (n === 'stage3-enemies/giantbat') continue;
+      if (WITH.has(n)) continue;
       expect(sp.bodyH, n).toBeUndefined();
     }
+  });
+
+  // ★城ボス4は**着地だけ別倍率、が無い**(11/13/15コマ目も 0.71〜0.72 で0コマ目と同じ)。
+  it('城ボス4の跳びは着地も同じ倍率(landBodyH を持たない)', () => {
+    const KEY = 'stage4-enemies/giantbat';
+    expect(ENEMY_JUMP_SHEETS[KEY].landBodyH).toBeUndefined();
+    for (const f of [0, 5, 10, 11, 15]) expect(jumpSheetBodyH(KEY, f), `コマ${f}`).toBe(144);
+  });
+
+  it('城ボス4の跳びは 16コマを 5/6/5 に割る(滞空の6コマだけ絵の高さが一定)', () => {
+    const sp = ENEMY_JUMP_SHEETS['stage4-enemies/giantbat'];
+    expect(jumpSplitFrames(sp)).toBe(16);
+    expect([sp.crouch, sp.air, sp.land]).toEqual([5, 6, 5]);
   });
 
   // ★社長報告2026-09-25「城3ボス、ジャンプの**着地中の絵だけ**小さい」。
