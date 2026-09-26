@@ -1,0 +1,23 @@
+[run] L10-melee (Lv10 / melee / standard / katana)
+  [build] Lv10 maxHP=160 crit=0 speed=87 weapons=ショットガン/対変異体ナイフ(近)
+  [spawn] 死神出現 7.7s dist=1299
+  [dead] プレイヤー死亡 13.7s (死神残HP=5973 敵構成={"reaper":1,"skeleton":2})
+[done] L10-melee: killed=false dealt=27/6000 (残100%) playerDead=true dps≈5 ammoOut=null errors=0
+[run] L10-gun (Lv10 / gun / kiter / support-sniper)
+  [build] Lv10 maxHP=240 crit=0 speed=87 weapons=グレネードランチャー/対変異体ナイフ(近)
+  [spawn] 死神出現 7.7s dist=1506
+  [dead] プレイヤー死亡 42.4s (死神残HP=3877 敵構成={"reaper":1,"bat":3})
+[done] L10-gun: killed=false dealt=2123/6000 (残65%) playerDead=true dps≈61 ammoOut=null errors=0
+[run] L20-melee (Lv20 / melee / standard / katana)
+  [build] Lv20 maxHP=240 crit=0 speed=87 weapons=ショットガン/対変異体ナイフ(近)
+  [spawn] 死神出現 15.5s dist=1302
+  [dead] プレイヤー死亡 21.2s (死神残HP=5959 敵構成={"zombie":1,"bat":1,"reaper":1,"skeleton":1})
+[done] L20-melee: killed=false dealt=41/6000 (残99%) playerDead=true dps≈7 ammoOut=null errors=0
+[run] L20-gun (Lv20 / gun / kiter / support-sniper)
+  [build] Lv20 maxHP=110 crit=0 speed=87 weapons=グレネードランチャー/対変異体ナイフ(近)
+  [spawn] 死神出現 15.6s dist=1518
+  [vanish] 28.6s dist=892 直前HP=4678 killsDelta=0 → killed=false
+[done] L20-gun: killed=false dealt=1322/6000 (残78%) playerDead=false dps≈102 ammoOut=null errors=0
+[run] L30-melee (Lv30 / melee / standard / katana)
+  [build] Lv30 maxHP=320 crit=0 speed=87 weapons=ショットガン/対変異体ナイフ(近)
+  [spawn] 死神出現 19.4s dist=1500

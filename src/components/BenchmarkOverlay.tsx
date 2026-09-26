@@ -1,20 +1,48 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { setShadowProbe, shadowProbeReport, resetShadowProbeTelemetry, type ShadowProbeMode } from '../pixi/shadowProbe';
 import { useGameStore } from '../store/gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
+import { mineRect } from '../world/mines';
+import {
+  canaryDriftMs,
+  driftAdjustedDeltaMs,
+  slowFrameRatio,
+  stageDeltaMs,
+  summarizeFrames,
+  type FrameStats,
+} from '../utils/benchmarkStats';
 import type { BreakableProp, EnemyType, Projectile, WeaponType } from '../types/game';
 
 const BENCHMARK_ATTEMPT_MS = 3600;
 const BENCHMARK_ATTEMPT_WARMUP_MS = 1200;
 const BENCHMARK_TICK_MS = 320;
-const BENCHMARK_SAMPLE_MS = 500;
 const BENCHMARK_ENEMY_HP = 999999;
 const BENCHMARK_PASS_AVG_FPS = 40;
 const BENCHMARK_PASS_MIN_FPS = 30;
 const BENCHMARK_EARLY_FAIL_FPS = 24;
 const BENCHMARK_EARLY_FAIL_AFTER_MS = 2200;
-const BENCHMARK_NET_SAMPLE_COUNT = 12;
-const BENCHMARK_NET_SAMPLE_GAP_MS = 650;
+const BENCHMARK_EARLY_FAIL_WINDOW_MS = 800;
+const BENCHMARK_NET_SAMPLE_COUNT = 8;
+const BENCHMARK_NET_SAMPLE_GAP_MS = 500;
 const BENCHMARK_MAIN_DELAY_SAMPLE_MS = 250;
+
+// ★計測の作法(v0.25.2690で追加。ここが無かったせいで同じ負荷が 35〜58fps に暴れていた)
+// ① 暖機(WARMUP): **計測しない**捨て段。端末が冷えている1本目は10〜13fps遅いと実測済みで、
+//    これまでは社長が手で「1本目は捨てる」運用をしていた。ベンチ自身にやらせる。
+// ② 基準段(CANARY): **系統が変わるたびに同じ負荷を測り直す**。熱で端末が遅くなっても、
+//    直前の基準段と比べれば「その負荷が1フレームに足したms(Δms)」は残る。
+//    これが「全系統の後半の段」と「単独計測の段」を比較可能にする唯一の量。
+// 尺は「1本の総時間」と相談して決めた叩き台。基準段は平均さえ取れればよく、1.6秒でも
+// フレームは60〜95個取れる(旧実装の1段ぶんの観測が2〜3個だったことを思えば十分)。
+const BENCHMARK_WARMUP_MS = 3000;       // 捨て段の長さ(計測しない)
+const BENCHMARK_CANARY_MS = 2200;       // 基準段の長さ
+const BENCHMARK_CANARY_SETTLE_MS = 600; // 基準段の頭(負荷が乗り切るまで)は捨てる
+
+const benchFlag = (key: string, def: boolean): boolean => {
+  if (typeof window === 'undefined') return def;
+  const v = new URLSearchParams(window.location.search).get(key);
+  return v == null ? def : !(v === '0' || v === 'off' || v === 'false');
+};
 // FX は寿命で消えるので、1tick(320ms)で撒いた分が次tickまで残るよう少し長めに出す
 // (ステディ状態で profile の指定数の約2倍が画面に乗り、実戦の「派手な瞬間」を模す)。
 const BENCHMARK_FX_DURATION_MS = 720;
@@ -39,6 +67,13 @@ type BenchmarkProfile = {
   projectileCount: number;
   yOscillation: number;
   shadowJitter: number;
+  mineCount: number;     // §5.24 M23: 緑卵(mine)。プールスプライト1枚+個別影キャスターの実パスを計測。
+  // ★v0.25.2737(影の作り替えの事前計測): 影プローブ。**見え方には関与しない計測専用**。
+  // 影の新方式(§3-9-B v7)は 1体1枚の PerspectiveMesh を前提にしているが、
+  // このプロジェクトはメッシュを1枚も描いたことがない=1枚の値段が未知。実装前にここだけ測る。
+  probeCount: number;
+  probeMode: ShadowProbeMode;
+  probeStretch: number;  // 0=伸びない / 1=決め打ちの脈動 / 2=★本物の連動(生きた強glowと毎フレーム突き合わせる)
 };
 
 const P = (
@@ -47,53 +82,179 @@ const P = (
   glowCount: number, ringCount: number, particleCount: number,
   slashCount: number, dmgCount: number, imageCount: number,
   torchCount: number, projectileCount: number,
-  yOscillation: number, shadowJitter: number
+  yOscillation: number, shadowJitter: number,
+  mineCount: number,
+  probeCount = 0, probeMode: ShadowProbeMode = 'mesh', probeStretch = 0
 ): BenchmarkProfile => ({
   id, category, label, enemyTarget, heavy,
   glowCount, ringCount, particleCount, slashCount, dmgCount, imageCount,
-  torchCount, projectileCount, yOscillation, shadowJitter,
+  torchCount, projectileCount, yOscillation, shadowJitter, mineCount,
+  probeCount, probeMode, probeStretch,
 });
 
-const BENCHMARK_PROFILES: BenchmarkProfile[] = [
-  //   id    cat     label  E   heavy  G   R   P   S   D   I   T   J   yOsc jit
-  P('B1',  'BASE',  'BASE', 10, false, 1,  1,  4,  0,  0,  0,  2,  0,  12,  4),
+// §5.24 M23(社長採用v0.25.1538): 「軽すぎる段を毎回律儀に走る」不満を解消するため、各カテゴリを
+// 重→軽(旧: 軽→重)に反転。nextProfileIndexが「余裕あり」なら残りの軽い段を飛ばして次カテゴリの
+// 最重段へ進む(下方の余裕ライン定数/ロジック参照)。単段カテゴリ(FX-G/R/P/S/D)は反転不要のため不変。
+export const BENCHMARK_PROFILES: BenchmarkProfile[] = [
+  //   id    cat     label  E   heavy  G   R   P   S   D   I   T   J   yOsc jit  mine
+  P('B1',  'BASE',  'BASE', 10, false, 1,  1,  4,  0,  0,  0,  2,  0,  12,  4,  0),
 
-  P('E1',  'ENEMY', 'E24',  24, true,  1,  1,  4,  0,  0,  0,  3,  0,  24,  10),
-  P('E2',  'ENEMY', 'E40',  40, true,  1,  1,  4,  0,  0,  0,  3,  0,  36,  16),
-  P('E3',  'ENEMY', 'E60',  60, true,  1,  1,  4,  0,  0,  0,  3,  0,  48,  22),
+  P('E3',  'ENEMY', 'E60',  60, true,  1,  1,  4,  0,  0,  0,  3,  0,  48,  22, 0),
+  P('E2',  'ENEMY', 'E40',  40, true,  1,  1,  4,  0,  0,  0,  3,  0,  36,  16, 0),
+  P('E1',  'ENEMY', 'E24',  24, true,  1,  1,  4,  0,  0,  0,  3,  0,  24,  10, 0),
 
-  P('PR1', 'PROJ',  'J40',  16, false, 1,  1,  4,  0,  0,  0,  2,  40,  16,  6),
-  P('PR2', 'PROJ',  'J80',  16, false, 1,  1,  4,  0,  0,  0,  2,  80,  16,  6),
-  P('PR3', 'PROJ',  'J130', 16, false, 1,  1,  4,  0,  0,  0,  2, 130,  16,  6),
+  P('PR3', 'PROJ',  'J130', 16, false, 1,  1,  4,  0,  0,  0,  2, 130,  16,  6, 0),
+  P('PR2', 'PROJ',  'J80',  16, false, 1,  1,  4,  0,  0,  0,  2,  80,  16,  6, 0),
+  P('PR1', 'PROJ',  'J40',  16, false, 1,  1,  4,  0,  0,  0,  2,  40,  16,  6, 0),
 
-  P('F1',  'FX',    'F1',   14, false, 6,  6,  40, 8,  8,  0,  2,  0,  16,  6),
-  P('F2',  'FX',    'F2',   14, false, 10, 10, 64, 12, 14, 0,  2,  0,  16,  6),
-  P('F3',  'FX',    'F3',   14, false, 14, 14, 96, 16, 20, 0,  2,  0,  16,  6),
+  P('F3',  'FX',    'F3',   14, false, 14, 14, 96, 16, 20, 0,  2,  0,  16,  6, 0),
+  P('F2',  'FX',    'F2',   14, false, 10, 10, 64, 12, 14, 0,  2,  0,  16,  6, 0),
+  P('F1',  'FX',    'F1',   14, false, 6,  6,  40, 8,  8,  0,  2,  0,  16,  6, 0),
 
-  // FX 単軸分解(F1の主犯特定用)。各々を独立カテゴリにして、FAILしても全部走らせる。
-  P('FXG', 'FX-G',  'G12',  14, false, 12, 0,  0,  0,  0,  0,  2,  0,  16,  6),
-  P('FXR', 'FX-R',  'R12',  14, false, 0,  12, 0,  0,  0,  0,  2,  0,  16,  6),
-  P('FXP', 'FX-P',  'P90',  14, false, 0,  0,  90, 0,  0,  0,  2,  0,  16,  6),
-  P('FXS', 'FX-S',  'S16',  14, false, 0,  0,  0,  16, 0,  0,  2,  0,  16,  6),
-  P('FXD', 'FX-D',  'D20',  14, false, 0,  0,  0,  0,  20, 0,  2,  0,  16,  6),
+  // FX 単軸分解(F1の主犯特定用)。各々を独立カテゴリにして、FAILしても全部走らせる(単段=反転不要)。
+  P('FXG', 'FX-G',  'G12',  14, false, 12, 0,  0,  0,  0,  0,  2,  0,  16,  6, 0),
+  // ★v0.25.2677: FX-G は長らく **G12 の1段だけ**で、`safe: not found` にしかならなかった
+  // (=「強glowは何個までなら耐えるか」が測れない)。実測(社長・実機 v0.25.2676)で
+  // 「塗り面積は主因の約3割・残る本命は**同時数のキャップ**」と分かったので、
+  // **キャップの数字を決めるために軽い段を足す**。他カテゴリと同じ重→軽の並び。
+  P('FXG10','FX-G', 'G10',  14, false, 10, 0,  0,  0,  0,  0,  2,  0,  16,  6, 0),
+  P('FXG8', 'FX-G', 'G8',   14, false,  8, 0,  0,  0,  0,  0,  2,  0,  16,  6, 0),
+  P('FXG6', 'FX-G', 'G6',   14, false,  6, 0,  0,  0,  0,  0,  2,  0,  16,  6, 0),
+  P('FXG4', 'FX-G', 'G4',   14, false,  4, 0,  0,  0,  0,  0,  2,  0,  16,  6, 0),
+  P('FXR', 'FX-R',  'R12',  14, false, 0,  12, 0,  0,  0,  0,  2,  0,  16,  6, 0),
+  P('FXP', 'FX-P',  'P90',  14, false, 0,  0,  90, 0,  0,  0,  2,  0,  16,  6, 0),
+  P('FXS', 'FX-S',  'S16',  14, false, 0,  0,  0,  16, 0,  0,  2,  0,  16,  6, 0),
+  P('FXD', 'FX-D',  'D20',  14, false, 0,  0,  0,  0,  20, 0,  2,  0,  16,  6, 0),
 
-  P('IM1', 'IMG',   'I4',   14, false, 2,  2,  6,  0,  4,  4,  2,  0,  16,  6),
-  P('IM2', 'IMG',   'I8',   14, false, 2,  2,  6,  0,  6,  8,  2,  0,  16,  6),
-  P('IM3', 'IMG',   'I12',  14, false, 2,  2,  6,  0,  8,  12, 2,  0,  16,  6),
+  P('IM3', 'IMG',   'I12',  14, false, 2,  2,  6,  0,  8,  12, 2,  0,  16,  6, 0),
+  P('IM2', 'IMG',   'I8',   14, false, 2,  2,  6,  0,  6,  8,  2,  0,  16,  6, 0),
+  P('IM1', 'IMG',   'I4',   14, false, 2,  2,  6,  0,  4,  4,  2,  0,  16,  6, 0),
 
-  P('L1',  'LIGHT', 'T8',   14, false, 6,  1,  4,  0,  0,  0,  8,  0,  16,  6),
-  P('L2',  'LIGHT', 'T16',  14, false, 10, 1,  4,  0,  0,  0,  16, 0,  16,  6),
-  P('L3',  'LIGHT', 'T24',  14, false, 14, 1,  4,  0,  0,  0,  24, 0,  16,  6),
+  P('L3',  'LIGHT', 'T24',  14, false, 14, 1,  4,  0,  0,  0,  24, 0,  16,  6, 0),
+  P('L2',  'LIGHT', 'T16',  14, false, 10, 1,  4,  0,  0,  0,  16, 0,  16,  6, 0),
+  P('L1',  'LIGHT', 'T8',   14, false, 6,  1,  4,  0,  0,  0,  8,  0,  16,  6, 0),
 
   // 純ライト(effectLayerのglowを足さず、松明=局所ライト+炎Graphicsだけ)。lightそのものの重さを切り分ける。
-  P('LP1', 'LIGHT-P','T8p',  14, false, 1,  1,  4,  0,  0,  0,  8,  0,  16,  6),
-  P('LP2', 'LIGHT-P','T16p', 14, false, 1,  1,  4,  0,  0,  0,  16, 0,  16,  6),
-  P('LP3', 'LIGHT-P','T24p', 14, false, 1,  1,  4,  0,  0,  0,  24, 0,  16,  6),
+  P('LP3', 'LIGHT-P','T24p', 14, false, 1,  1,  4,  0,  0,  0,  24, 0,  16,  6, 0),
+  P('LP2', 'LIGHT-P','T16p', 14, false, 1,  1,  4,  0,  0,  0,  16, 0,  16,  6, 0),
+  P('LP1', 'LIGHT-P','T8p',  14, false, 1,  1,  4,  0,  0,  0,  8,  0,  16,  6, 0),
 
-  P('A1',  'ALL',   'A1',   36, true,  8,  8,  64, 12, 12, 6,  12, 70,  36,  14),
-  P('A2',  'ALL',   'A2',   52, true,  10, 10, 80, 14, 16, 8,  18, 100, 42,  18),
-  P('A3',  'ALL',   'MAX',  72, true,  12, 12, 96, 16, 20, 10, 24, 140, 48,  24),
+  P('A3',  'ALL',   'MAX',  72, true,  12, 12, 96, 16, 20, 10, 24, 140, 48,  24, 0),
+  P('A2',  'ALL',   'A2',   52, true,  10, 10, 80, 14, 16, 8,  18, 100, 42,  18, 0),
+  P('A1',  'ALL',   'A1',   36, true,  8,  8,  64, 12, 12, 6,  12, 70,  36,  14, 0),
+
+  // §5.24 M23: 緑卵(mine)系統。M52=mineAmbushAroundの実数(最悪ケース)。卵自体はプールスプライト
+  // 1枚で安いが、卵1個ごとに影キャスターが付くため「多数同時+塊」の実パスを単独で切り分ける。
+  P('MI3', 'MINE',  'M52',  14, false, 1,  1,  4,  0,  0,  0,  0,  0,  16,  6, 52),
+  P('MI2', 'MINE',  'M32',  14, false, 1,  1,  4,  0,  0,  0,  0,  0,  16,  6, 32),
+  P('MI1', 'MINE',  'M16',  14, false, 1,  1,  4,  0,  0,  0,  0,  0,  16,  6, 16),
+
+  // ★v0.25.2737 影の作り替えの**事前計測**(社長指示「まずはベンチマークをつくってテスト」)。
+  // ここで測るのは **PerspectiveMesh 1枚の値段**だけ。これが高いと §3-9-B v7 の
+  // 「1体1枚のメッシュで台形」という前提が崩れ、設計ごと作り直しになる。
+  //
+  // ★段はすべて **glow=0(平常時)**。理由(監査指摘で計画を訂正):
+  //   旧投影影のコストは**爆発が生きている間だけ**の一過性だが、新方式のシルエットは
+  //   **強glowが1個も無い通常プレイの全フレーム**に載る。**測るべきはピークではなく平常時の増分。**
+  //
+  // 3モードで分解する(同じ枚数で比較すること):
+  //   SHD-S  = プール済みスプライト・共有テクスチャ(= 今の影の描き方。対照群)
+  //   SHD-M  = PerspectiveMesh・共有テクスチャ  ⇒ S との差 = **メッシュにした代金**
+  //   SHD-MT = PerspectiveMesh・1枚ずつ別テクスチャ ⇒ M との差 = **テクスチャバインドの代金**
+  //            (本番はキャラごとに別テクスチャなので、「全部同じ焼きテクスチャ=1バッチ」で
+  //             取った旧実測はそのまま持ち込めない)
+  //   他カテゴリと同じ重→軽の並び。最重段の90は v7 の最悪ケース見積りの上端。
+  P('SM3', 'SHD-M',  'M90',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 90, 'mesh'),
+  P('SM2', 'SHD-M',  'M60',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 60, 'mesh'),
+  P('SM1', 'SHD-M',  'M40',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 40, 'mesh'),
+  P('SM0', 'SHD-M',  'M20',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 20, 'mesh'),
+
+  P('ST3', 'SHD-S',  'S90',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 90, 'sprite'),
+  P('ST1', 'SHD-S',  'S40',  14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 40, 'sprite'),
+
+  P('SX3', 'SHD-MT', 'MT90', 14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 90, 'meshtex'),
+  P('SX1', 'SHD-MT', 'MT40', 14, false, 0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 40, 'meshtex'),
+
+  // ★v0.25.2740(社長指摘「これ影伸びてないけどそのテストは要らないの?」)。
+  // 上の3系統は**静止した90枚**しか測っていない=**いちばん重くなる瞬間を測っていない**。
+  // 「爆発で影が伸びる」は §3-9-B v8 の中核なので、伸びた状態を必ず測る。
+  // 伸びると増えるもの: ①**塗る面積が最大2.8倍**(フィルレート) ②**4隅の振れ幅**
+  //                    ③本番では**静止物(木/壁/建物)まで爆発中は全部4隅が動く**
+  //
+  // ★読み方(3つの差で読む):
+  //   SM3(M90・伸びなし・glow0)  → XS3(X90・**伸びあり**・glow0)  = **伸びの代金(面積+振れ)**
+  //   XS3(glow0)                → XG3(X90・伸びあり・**glow12**) = **爆発と同居した時の代金**
+  //   XG3 を `?evshadow=0` で1本、`=1` で1本 ⇒ **旧投影影を消した"あとの世界"との比較**
+  //     (`=1` は「新旧が二重に乗った状態」=実装途中でしか起きない。**判断に使うのは `=0`**)
+  P('XS3', 'SHD-X',  'X90',   14, false,  0, 0, 0, 0, 0, 0, 0, 0, 16, 6, 0, 90, 'meshtex', 1),
+  P('XG3', 'SHD-XG', 'XG90',  14, false, 12, 0, 0, 0, 0, 0, 2, 0, 16, 6, 0, 90, 'meshtex', 1),
+
+  // ★v0.25.2742(社長指摘「光と連動して伸び縮みしてないけど、その動きの負荷は計らなくて平気なの?」)
+  // X90/XG90 の伸びは **sin() の決め打ち**で、**光との連動計算をしていない**。
+  // 本番は**キャスター1体ごとに、生きている強glow全部との距離・減衰・ベクトル合成**を毎フレーム回す
+  // (90体×12個 = **1080回/フレーム**)。**これは別物なので独立して測る。**
+  //
+  // ★読み方: **XG90(決め打ち・glow12) → XL90(本物の連動・glow12) の差 = 連動計算の代金**
+  //   (枚数・伸び・glow数はすべて同じにしてあるので、差は連動計算だけ)
+  // XL60/XL30 は「体数×光源数」で効くかどうかの確認(体数を半分にすれば代金も半分のはず)。
+  P('XL3', 'SHD-XL', 'XL90',  14, false, 12, 0, 0, 0, 0, 0, 2, 0, 16, 6, 0, 90, 'meshtex', 2),
+  P('XL2', 'SHD-XL', 'XL60',  14, false, 12, 0, 0, 0, 0, 0, 2, 0, 16, 6, 0, 60, 'meshtex', 2),
+  P('XL1', 'SHD-XL', 'XL30',  14, false, 12, 0, 0, 0, 0, 0, 2, 0, 16, 6, 0, 30, 'meshtex', 2),
 ];
+
+// ★基準段(canary)の負荷。暖機と、系統の切れ目ごとの「端末の今の速さ」測定に使う。
+// 設計の要点:
+//  - **強glowを1個も入れない**。強glowは今まさに調整中(`?glowhalo=`)なので、基準段に入れると
+//    「端末の速さ」と「調整の効果」が混ざって、ビルドをまたいだ比較ができなくなる。
+//  - **60fpsで頭打ちにならないだけ重くする**。頭打ちだと熱で遅くなっても60のままで、
+//    ドリフトが見えない。
+//  - 中身は**固定**。ここを触るとビルドをまたいだ Δms が比較できなくなる(触るなら全部測り直し)。
+//
+// ★経緯(重要): 「頭打ちしない非glow基準段」は**この端末では作れないと実測で確定した**。
+//  - v0.25.2691(敵40+弾80+粒子64+松明8+画像4)→ **60.0 で頭打ち**
+//  - v0.25.2692(**ALL A1 から強glowだけ抜いた重さ**)→ **やはり 60.0**
+// つまり **この端末は強glow以外の負荷を全部60fpsで回す**。基準段でドリフトを測る路線は成立しない。
+// ⇒ 基準段の役割を**「vsync天井のアンカー(+ひどい熱ダレの警報)」に限定**し、ドリフトの補正は
+//   **検算段の実測 shift を経過時間で按分する**方式に移した(`driftAdjustedDeltaMs`・v0.25.2694)。
+//   どちらも 60.0 を返す以上 Δms の基準は同じなので、**自分で熱を作らない軽い方に戻す**。
+const CANARY_PROFILE: BenchmarkProfile =
+  //   id     cat      label   E   heavy  G  R  P   S  D  I  T  J   yOsc jit mine
+  P('CAL', 'CANARY', 'CAL', 40, true,  0, 0, 64, 0, 0, 4, 8, 80, 36,  14, 0);
+
+// §5.24-追補(社長報告v0.25.1542): 重い順化でALLカテゴリがMAX(A3・敵72+弾140+全FX+強glow=絶対
+// ピーク)から始まるようになり、スマホでは一度も食らったことのない負荷=天井超えでクラッシュ
+// (=データも取れない)。緑卵(MINE)は無罪(緑卵段は60fps実測)。既存のモバイル判定
+// (Game.tsx/OrientationGuard.tsxと同じ 'ontouchstart' in window || navigator.maxTouchPoints > 0)を
+// 流用し、モバイルではALLカテゴリの最重段(MAX=A3・A2)を除外する(ALLはA1のみ走る)。
+// 重い順スキップ自体は他系統で維持・デスクトップはMAXも回す。
+export const isMobileBenchDevice = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+};
+
+// ★1系統だけ回す絞り込み(社長指示v0.25.2675「テストって具体的になにやるの？」)。
+// 既定(パラメータ無し)は**従来どおり全部**。`?benchonly=FXG` のようにカテゴリIDを渡すと
+// **その系統だけ**を回す。A/B(例: `?glowhalo=1.3` の有無)を何度も測り比べる時、
+// 全系統(数分)を毎回待たずに済む。カンマ区切りで複数指定も可(`?benchonly=FXG,ALL`)。
+// 指定が1つも当たらなければ**無視して全部**(タイプミスで何も走らない事故を作らない)。
+const benchmarkOnlyFilter = (): string[] => {
+  if (typeof window === 'undefined') return [];
+  const raw = new URLSearchParams(window.location.search).get('benchonly');
+  if (!raw) return [];
+  return raw.split(',').map(v => v.trim().toUpperCase()).filter(Boolean);
+};
+
+export const activeBenchmarkProfiles = (mobile: boolean, only: string[] = []): BenchmarkProfile[] => {
+  const base = mobile
+    ? BENCHMARK_PROFILES.filter(p => !(p.category === 'ALL' && (p.id === 'A3' || p.id === 'A2')))
+    : BENCHMARK_PROFILES;
+  if (only.length === 0) return base;
+  // カテゴリ(例 FX-G / FXG)でも、段のID(例 G12)でも当てられるようにする。
+  const norm = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const wanted = new Set(only.map(norm));
+  const picked = base.filter(p => wanted.has(norm(p.category)) || wanted.has(norm(p.id)));
+  return picked.length > 0 ? picked : base;
+};
 
 // 軽量プール(雑魚スウォーム)と重量級プール(大スプライト=影/ライティング負荷)。
 const LIGHT_ENEMY_TYPES: EnemyType[] = ['zombie', 'skeleton', 'bat', 'ghost', 'plant'];
@@ -109,15 +270,30 @@ export type BenchmarkStageResult = {
   grade: BenchmarkGrade;
   avgFps: number;
   minFps: number;
+  /** 目標(40fps)より遅かったフレームの割合(0..1)。旧: 1秒サンプルの個数。 */
   drops: number;
   enemyTarget: number;
   stress: string;
   safeStress: string;
   adjusted: boolean;
   maxTorches: number;
+  maxMines: number;
   maxEnemies: number;
   maxFx: number;
+  /** 観測フレーム数(旧 sampleCount は1秒サンプルの個数=2〜3だった)。 */
   sampleCount: number;
+  /** ★この段の負荷が1フレームに足したms(直前の基準段との差)。実行順・熱をまたいで比較できる量。 */
+  deltaMs: number;
+  /** 熱ダレ補正後のΔms(検算段の shift を経過時間で按分して引いたもの)。検算段が無ければ生値と同じ。 */
+  deltaAdjMs: number;
+  /** この段が始まった時刻(最初の段の開始からのms)。熱ダレ補正の按分に使う。 */
+  elapsedAtStartMs: number;
+  /** この段の直前に測った基準段のfps(Δmsの基準)。 */
+  canaryFps: number;
+  /** フレーム時間の標準偏差(ms)=ばらつき。2つの計測の差が有意かの判断に使う。 */
+  sdMs: number;
+  /** 95パーセンタイルのフレーム時間(ms)=スパイクの指標。 */
+  p95Ms: number;
 };
 
 export type BenchmarkResult = {
@@ -130,11 +306,22 @@ export type BenchmarkResult = {
   maxProjectiles: number;
   maxPickups: number;
   maxTorches: number;
+  maxMines: number;
   stageCount: number;
   stages: BenchmarkStageResult[];
   categorySummary: string[];
   bottleneck: string;
   diagnostics: BenchmarkDiagnostics;
+  /** 基準段(canary)のfps系列。先頭=計測開始直後・末尾=計測終了時。 */
+  canaryFps: number[];
+  /** 計測中に端末が遅くなった量(1フレームあたりms)。正=遅くなった。 */
+  driftMs: number;
+  /**
+   * ★検算段: **最初に走った段を最後にもう一度**測ったもの(v0.25.2691)。
+   * 基準段は軽くて60fpsで頭打ちになりやすく、**軽い熱ダレを見逃す**。
+   * 同じ重い段を最初と最後で測れば、頭打ちに関係なく「この1本の中で数字が動いたか」が分かる。
+   */
+  repeatStage: BenchmarkStageResult | null;
 };
 
 export type BenchmarkDiagnostics = {
@@ -153,21 +340,32 @@ interface BenchmarkOverlayProps {
   onComplete: (result: BenchmarkResult) => void;
 }
 
-const objectCount = (profile: BenchmarkProfile) =>
-  profile.glowCount + profile.ringCount + profile.particleCount +
-  profile.slashCount + profile.dmgCount + profile.imageCount +
-  profile.torchCount + profile.projectileCount;
 
 const stressLabel = (profile: BenchmarkProfile) =>
-  `E${profile.enemyTarget} J${profile.projectileCount} G${profile.glowCount} R${profile.ringCount} P${profile.particleCount} I${profile.imageCount} T${profile.torchCount}`;
+  `E${profile.enemyTarget} J${profile.projectileCount} G${profile.glowCount} R${profile.ringCount} P${profile.particleCount} I${profile.imageCount} T${profile.torchCount} M${profile.mineCount}`;
 
-const nextProfileIndex = (currentIndex: number, currentGrade: BenchmarkGrade): number => {
-  if (currentGrade === 'PASS') return currentIndex + 1;
-  const currentCategory = BENCHMARK_PROFILES[currentIndex]?.category;
-  const nextCategoryIndex = BENCHMARK_PROFILES.findIndex((profile, index) =>
-    index > currentIndex && profile.category !== currentCategory
-  );
-  return nextCategoryIndex === -1 ? BENCHMARK_PROFILES.length : nextCategoryIndex;
+// §5.24 M23(社長採用v0.25.1538): 重→軽ランプ+余裕スキップ。「軽すぎる段を毎回走る」不満の解消。
+// 余裕ライン(現PASS=avg40/min30より明確に上の叩き台・実機調整前提)。
+export const BENCHMARK_MARGIN_AVG_FPS = 52;
+export const BENCHMARK_MARGIN_MIN_FPS = 45;
+
+export const hasBenchmarkMargin = (avgFps: number, minFps: number): boolean =>
+  avgFps >= BENCHMARK_MARGIN_AVG_FPS && minFps >= BENCHMARK_MARGIN_MIN_FPS;
+
+// 余裕あり(avg≥52&min≥45)→この系統の残り(軽い段)を飛ばして次カテゴリの先頭(最重段)へ。
+// 余裕未満(タイトPASS/CAUTION/FAILいずれも)→同系統の次の(軽い)段へ降りて安全ラインを探す。
+// 降り切ったら(currentIndex+1が次カテゴリへ跨ぐ)自然に次カテゴリへ移る。
+// §5.24-追補: 実際に走る系統(モバイルではALL MAX/A2抜き)を`profiles`で受け取る
+// (モバイル/デスクトップで指す配列が変わるため、固定のBENCHMARK_PROFILESを直接参照しない)。
+export const nextProfileIndex = (profiles: BenchmarkProfile[], currentIndex: number, avgFps: number, minFps: number): number => {
+  if (hasBenchmarkMargin(avgFps, minFps)) {
+    const currentCategory = profiles[currentIndex]?.category;
+    const nextCategoryIndex = profiles.findIndex((profile, index) =>
+      index > currentIndex && profile.category !== currentCategory
+    );
+    return nextCategoryIndex === -1 ? profiles.length : nextCategoryIndex;
+  }
+  return currentIndex + 1;
 };
 
 const gradeBenchmark = (avgFps: number, minFps: number): BenchmarkGrade => {
@@ -176,17 +374,15 @@ const gradeBenchmark = (avgFps: number, minFps: number): BenchmarkGrade => {
   return 'FAIL';
 };
 
-const summarizeSamples = (samples: number[]) => {
-  const valid = samples.filter(v => v > 0);
-  const avgFps = valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : 0;
-  const minFps = valid.length ? Math.min(...valid) : 0;
-  const drops = valid.filter(value => value < BENCHMARK_PASS_AVG_FPS).length;
-  return { avgFps, minFps, drops };
-};
-
-const recentAverage = (samples: number[], count = 8) => {
-  const recent = samples.slice(-count).filter(v => v > 0);
-  return recent.length ? recent.reduce((sum, value) => sum + value, 0) / recent.length : 60;
+/** 直近 windowMs のフレームから今の fps を出す(早期打ち切り判定用)。観測が薄い時は60を返す。 */
+const recentFps = (times: number[], windowMs = BENCHMARK_EARLY_FAIL_WINDOW_MS): number => {
+  if (times.length < 4) return 60;
+  const last = times[times.length - 1];
+  const from = last - windowMs;
+  let count = 0;
+  for (let i = times.length - 1; i >= 0 && times[i] >= from; i -= 1) count += 1;
+  const span = last - Math.max(times[0], from);
+  return span > 0 ? ((count - 1) * 1000) / span : 60;
 };
 
 const summarizeCategories = (attempts: BenchmarkStageResult[]) => {
@@ -273,6 +469,36 @@ const createBenchmarkTorches = (px: number, py: number, count: number, elapsed: 
   return torches;
 };
 
+// §5.24 M23: 緑卵(mine)ベンチ生成(createBenchmarkTorches同型)。実際のスポーン(mineRect)と同じ
+// footRect計算を使い、pooled sprite描画+個別影キャスターの実パスを計測する。health/typeは実際の
+// mine BreakableProp(gameStore.ts syncBreakableProps)と同じ値(health=1・type='mine')。
+export const createBenchmarkMines = (px: number, py: number, count: number, elapsed: number): BreakableProp[] => {
+  const mines: BreakableProp[] = [];
+  for (let i = 0; i < count; i++) {
+    const angle = (i / Math.max(1, count)) * Math.PI * 2 + Math.sin(elapsed * 0.0008) * 0.12;
+    const radius = 96 + (i % 5) * 22;
+    const footX = px + Math.cos(angle) * radius;
+    const footY = py + Math.sin(angle) * (radius * 0.72);
+    const scale = 0.82 + (i % 3) * 0.06;
+    const rect = mineRect({ footX, footY, scale });
+    mines.push({
+      id: `bench-mine-${i}`,
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      footX,
+      footY,
+      scale,
+      health: 1,
+      maxHealth: 1,
+      type: 'mine',
+      lastHit: 0,
+    });
+  }
+  return mines;
+};
+
 // 弾幕用のベンチ弾: プレイヤーの周りを周回(orbit)させて画面内に留め、移動更新・衝突判定・描画を
 // 毎フレーム走らせる。phill-bullet は壁カリングの対象外なので松明があっても消えない。
 const createBenchBullet = (px: number, py: number, idx: number, total: number): Projectile => {
@@ -300,16 +526,36 @@ const createBenchBullet = (px: number, py: number, idx: number, total: number): 
   };
 };
 
+/**
+ * 進行の段階。stage=本番の段 / warmup=捨て段 / canary=基準段 /
+ * repeat=**最初の段をもう一度**(ドリフト検算) / net=通信計測(全段終了後)。
+ */
+type BenchmarkPhase = 'warmup' | 'canary' | 'stage' | 'repeat' | 'net';
+
 const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) => {
+  // §5.24-追補: モバイルはALLカテゴリの最重段(MAX=A3・A2)を除外(=クラッシュしうる段を走らせない)。
+  // デバイス種別はセッション中に変わらない前提で一度だけ判定する。
+  const [profiles] = useState<BenchmarkProfile[]>(() => activeBenchmarkProfiles(isMobileBenchDevice(), benchmarkOnlyFilter()));
+  const [warmupEnabled] = useState(() => benchFlag('warm', true));
+  const [canaryEnabled] = useState(() => benchFlag('canary', true));
+  const [repeatEnabled] = useState(() => benchFlag('repeat', true));
   const [startedAt] = useState(() => performance.now());
   const [now, setNow] = useState(() => performance.now());
   const [result, setResult] = useState<BenchmarkResult | null>(null);
   const [activeAttempt, setActiveAttempt] = useState(0);
-  const fpsRef = useRef(fps);
+  const [phase, setPhase] = useState<BenchmarkPhase>(() =>
+    warmupEnabled ? 'warmup' : (canaryEnabled ? 'canary' : 'stage')
+  );
   const attemptStartedAtRef = useRef(performance.now());
-  const lastSampleAtRef = useRef(0);
-  const attemptSamplesRef = useRef<number[]>([]);
-  const allSamplesRef = useRef<number[]>([]);
+  // ★計測の実体: rAF で拾ったフレーム時刻。旧実装は1秒更新の fps 値を500msごとに拾っていたので
+  // 1段の独立観測が2〜3個しかなかった(=数字が暴れる原因)。ここに全フレームが入る。
+  const frameTimesRef = useRef<number[]>([]);
+  const canaryFpsRef = useRef<number[]>([]);
+  const lastCanaryFpsRef = useRef(0);
+  const finalCanaryRef = useRef(false);
+  const repeatStageRef = useRef<BenchmarkStageResult | null>(null);
+  /** 最初の**本番の段**が始まった時刻。熱ダレ補正の按分の原点。 */
+  const firstStageStartRef = useRef(0);
   const netRttSamplesRef = useRef<number[]>([]);
   const netFailuresRef = useRef(0);
   const mainDelaySamplesRef = useRef<number[]>([]);
@@ -323,11 +569,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     projectiles: 0,
     pickups: 0,
     torches: 0,
+    mines: 0,
   });
   const attemptMaxCountsRef = useRef({
     enemies: 0,
     fx: 0,
     torches: 0,
+    mines: 0,
   });
 
   const addEnemy = useGameStore(state => state.addEnemy);
@@ -340,165 +588,253 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
   const spawnDamageNumber = useGameStore(state => state.spawnDamageNumber);
   const spawnImageMark = useGameStore(state => state.spawnImageMark);
 
-  useEffect(() => {
-    fpsRef.current = fps;
-  }, [fps]);
-
   const cleanupBenchmarkObjects = useCallback(() => {
+    setShadowProbe(0, 'mesh', 0); // ★影プローブを必ず止める(ベンチ終了後にゲームへ持ち込まない)
     spawnedEnemyIdsRef.current.forEach(removeEnemy);
     spawnedEnemyIdsRef.current.clear();
     benchEnemyBaseRef.current = {};
     useGameStore.setState(state => ({
-      breakableProps: state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-')),
+      breakableProps: state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-') && !prop.id.startsWith('bench-mine-')),
       projectiles: state.projectiles.filter(p => !p.id.startsWith('bench-proj-')),
       effects: [],
     }));
   }, [removeEnemy]);
 
-  const buildAttemptResult = useCallback((profile: BenchmarkProfile, samples: number[]): BenchmarkStageResult => {
-    const summary = summarizeSamples(samples);
-    const grade = gradeBenchmark(summary.avgFps, summary.minFps);
+  const buildAttemptResult = useCallback((profile: BenchmarkProfile, stats: FrameStats, times: number[]): BenchmarkStageResult => {
+    const grade = gradeBenchmark(stats.avgFps, stats.minFps);
     return {
       id: profile.id,
       category: profile.category,
       label: profile.label,
       grade,
-      avgFps: summary.avgFps,
-      minFps: summary.minFps,
-      drops: summary.drops,
+      avgFps: stats.avgFps,
+      minFps: stats.minFps,
+      drops: slowFrameRatio(times, BENCHMARK_PASS_AVG_FPS),
       enemyTarget: profile.enemyTarget,
-      stress: stressLabel(profile),
+      // ★プローブの自己申告を段の行に焼き込む(社長指摘 v0.25.2744)。**推測で「測れています」と
+      // 言わない**ため、光源を何個拾い、距離判定を何回回し、Σがどこからどこまで動いたかを結果に残す。
+      stress: profile.probeCount > 0 ? `${stressLabel(profile)} | ${shadowProbeReport()}` : stressLabel(profile),
       safeStress: grade === 'PASS' ? stressLabel(profile) : 'not found',
-      adjusted: profile.id !== BENCHMARK_PROFILES[0].id,
+      adjusted: profile.id !== profiles[0].id,
       maxTorches: attemptMaxCountsRef.current.torches,
+      maxMines: attemptMaxCountsRef.current.mines,
       maxEnemies: attemptMaxCountsRef.current.enemies,
       maxFx: attemptMaxCountsRef.current.fx,
-      sampleCount: samples.length,
+      sampleCount: stats.frames,
+      deltaMs: stageDeltaMs(stats.avgFps, lastCanaryFpsRef.current),
+      // 補正は全段が出揃ってから(shift が分かるのは検算段の後)。ここでは生値を入れておく。
+      deltaAdjMs: stageDeltaMs(stats.avgFps, lastCanaryFpsRef.current),
+      elapsedAtStartMs: Math.max(0, attemptStartedAtRef.current - firstStageStartRef.current),
+      canaryFps: lastCanaryFpsRef.current,
+      sdMs: stats.sdMs,
+      p95Ms: stats.p95Ms,
     };
+  }, [profiles]);
+
+  /** 段を切り替える(計測のリセットはここ1箇所に集約する)。 */
+  const startPhase = useCallback((next: BenchmarkPhase) => {
+    frameTimesRef.current = [];
+    attemptStartedAtRef.current = performance.now();
+    attemptMaxCountsRef.current = { enemies: 0, fx: 0, torches: 0, mines: 0 };
+    cleanupBenchmarkObjects();
+    setPhase(next);
+  }, [cleanupBenchmarkObjects]);
+
+  // 通信計測は**全段が終わってから**回す(v0.25.2690)。旧実装は開始と同時に12回の fetch を
+  // 650ms間隔で撃っていたので、**暖機と最初の2段(=一番冷えていて一番大事な段)にモロに被っていた**。
+  const runNetworkSamples = useCallback(async () => {
+    const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+    const baseUrl = `${window.location.origin}${window.location.pathname}`;
+    for (let i = 0; i < BENCHMARK_NET_SAMPLE_COUNT; i += 1) {
+      const start = performance.now();
+      try {
+        await fetch(`${baseUrl}?bench-net=${Date.now()}-${i}`, { cache: 'no-store', credentials: 'same-origin' });
+        netRttSamplesRef.current.push(performance.now() - start);
+      } catch {
+        netFailuresRef.current += 1;
+      }
+      await sleep(BENCHMARK_NET_SAMPLE_GAP_MS);
+    }
   }, []);
 
-  const finishBenchmark = useCallback((finalAttempt?: BenchmarkStageResult) => {
+  const finishBenchmark = useCallback(() => {
     if (finalizedRef.current) return;
     finalizedRef.current = true;
-    const attempts = finalAttempt
-      ? [...completedAttemptsRef.current, finalAttempt]
-      : completedAttemptsRef.current;
-    const summary = summarizeSamples(allSamplesRef.current);
-    const passAttempt = attempts.filter(attempt => attempt.grade === 'PASS').at(-1);
-    const finalGrade: BenchmarkGrade = passAttempt ? 'PASS' : 'FAIL';
-    const displaySummary = passAttempt ?? summary;
-    const categorySummary = summarizeCategories(attempts);
-    const diagnostics = summarizeDiagnostics(
-      netRttSamplesRef.current,
-      netFailuresRef.current,
-      mainDelaySamplesRef.current
-    );
-    const maxCounts = maxCountsRef.current;
-    const nextResult: BenchmarkResult = {
-      grade: finalGrade,
-      avgFps: displaySummary.avgFps,
-      minFps: displaySummary.minFps,
-      drops: displaySummary.drops,
-      maxEnemies: maxCounts.enemies,
-      maxFx: maxCounts.fx,
-      maxProjectiles: maxCounts.projectiles,
-      maxPickups: maxCounts.pickups,
-      maxTorches: maxCounts.torches,
-      stageCount: attempts.length,
-      stages: attempts,
-      categorySummary: categorySummary.lines,
-      bottleneck: categorySummary.bottleneck,
-      diagnostics,
-    };
-    setResult(nextResult);
     cleanupBenchmarkObjects();
-    window.setTimeout(() => onComplete(nextResult), 450);
-  }, [cleanupBenchmarkObjects, onComplete]);
+    setPhase('net');
+    void (async () => {
+      await runNetworkSamples();
+      // ★熱ダレ補正: 検算段(最初の段の再測定)で実測した増加量を、経過時間で按分して各段から引く。
+      // 基準段が60fpsで頭打ちしてドリフトを打ち消せないため、こちらが実質の補正になっている。
+      const repeat = repeatStageRef.current;
+      const firstOfRepeat = repeat
+        ? completedAttemptsRef.current.find(stage => stage.id === repeat.id)
+        : undefined;
+      const shiftMs = repeat && firstOfRepeat ? repeat.deltaMs - firstOfRepeat.deltaMs : 0;
+      const spanMs = repeat ? repeat.elapsedAtStartMs : 0;
+      const attempts = completedAttemptsRef.current.map(stage => ({
+        ...stage,
+        deltaAdjMs: driftAdjustedDeltaMs(stage.deltaMs, stage.elapsedAtStartMs, spanMs, shiftMs),
+      }));
+      const passAttempt = attempts.filter(attempt => attempt.grade === 'PASS').at(-1);
+      const finalGrade: BenchmarkGrade = passAttempt ? 'PASS' : 'FAIL';
+      const displaySummary = passAttempt ?? attempts.at(-1) ?? { avgFps: 0, minFps: 0, drops: 0 };
+      const categorySummary = summarizeCategories(attempts);
+      const diagnostics = summarizeDiagnostics(
+        netRttSamplesRef.current,
+        netFailuresRef.current,
+        mainDelaySamplesRef.current
+      );
+      const maxCounts = maxCountsRef.current;
+      const nextResult: BenchmarkResult = {
+        grade: finalGrade,
+        avgFps: displaySummary.avgFps,
+        minFps: displaySummary.minFps,
+        drops: displaySummary.drops,
+        maxEnemies: maxCounts.enemies,
+        maxFx: maxCounts.fx,
+        maxProjectiles: maxCounts.projectiles,
+        maxPickups: maxCounts.pickups,
+        maxTorches: maxCounts.torches,
+        maxMines: maxCounts.mines,
+        stageCount: attempts.length,
+        stages: attempts,
+        categorySummary: categorySummary.lines,
+        bottleneck: categorySummary.bottleneck,
+        diagnostics,
+        canaryFps: [...canaryFpsRef.current],
+        driftMs: canaryDriftMs(canaryFpsRef.current),
+        repeatStage: repeatStageRef.current,
+      };
+      setResult(nextResult);
+      window.setTimeout(() => onComplete(nextResult), 450);
+    })();
+  }, [cleanupBenchmarkObjects, onComplete, runNetworkSamples]);
 
-  const completeAttempt = useCallback((profile: BenchmarkProfile) => {
-    const attemptResult = buildAttemptResult(profile, attemptSamplesRef.current);
-    const nextAttempt = nextProfileIndex(activeAttempt, attemptResult.grade);
-    const isDone = nextAttempt >= BENCHMARK_PROFILES.length;
-    if (isDone) {
-      finishBenchmark(attemptResult);
+  /** 暖機(捨て段)の終わり → 基準段へ(基準段OFFならそのまま本番へ)。 */
+  const completeWarmup = useCallback(() => {
+    startPhase(canaryEnabled ? 'canary' : 'stage');
+  }, [canaryEnabled, startPhase]);
+
+  /** 検算段で走らせる段(=最初に実際に走った段)。1段も走っていなければ null。 */
+  const repeatProfile = useCallback((): BenchmarkProfile | null => {
+    const firstId = completedAttemptsRef.current[0]?.id;
+    return firstId ? (profiles.find(p => p.id === firstId) ?? null) : null;
+  }, [profiles]);
+
+  /** 基準段の終わり → 記録して本番へ。最後の基準段だったら検算段へ(無ければ締める)。 */
+  const completeCanary = useCallback(() => {
+    const stats = summarizeFrames(frameTimesRef.current);
+    if (stats.avgFps > 0) {
+      canaryFpsRef.current = [...canaryFpsRef.current, stats.avgFps];
+      lastCanaryFpsRef.current = stats.avgFps;
+    }
+    if (finalCanaryRef.current) {
+      if (repeatEnabled && repeatProfile()) startPhase('repeat');
+      else finishBenchmark();
       return;
     }
+    startPhase('stage');
+  }, [finishBenchmark, repeatEnabled, repeatProfile, startPhase]);
 
+  /** 検算段の終わり → 記録して締める。**成績には入れない**(同じ段を二重に数えない)。 */
+  const completeRepeat = useCallback((profile: BenchmarkProfile) => {
+    const times = frameTimesRef.current;
+    repeatStageRef.current = buildAttemptResult(profile, summarizeFrames(times), times);
+    finishBenchmark();
+  }, [buildAttemptResult, finishBenchmark]);
+
+  /** 本番の段の終わり → 次の段へ。系統をまたぐ時だけ基準段を挟む。 */
+  const completeStage = useCallback((profile: BenchmarkProfile) => {
+    const times = frameTimesRef.current;
+    const attemptResult = buildAttemptResult(profile, summarizeFrames(times), times);
     completedAttemptsRef.current = [...completedAttemptsRef.current, attemptResult];
-    attemptSamplesRef.current = [];
-    attemptMaxCountsRef.current = { enemies: 0, fx: 0, torches: 0 };
-    attemptStartedAtRef.current = performance.now();
-    lastSampleAtRef.current = 0;
-    cleanupBenchmarkObjects();
+    const nextAttempt = nextProfileIndex(profiles, activeAttempt, attemptResult.avgFps, attemptResult.minFps);
+    if (nextAttempt >= profiles.length) {
+      if (canaryEnabled) {
+        finalCanaryRef.current = true;
+        startPhase('canary');
+      } else if (repeatEnabled && repeatProfile()) {
+        startPhase('repeat');
+      } else {
+        finishBenchmark();
+      }
+      return;
+    }
+    const crossesCategory = profiles[nextAttempt].category !== profiles[activeAttempt].category;
     setActiveAttempt(nextAttempt);
-  }, [activeAttempt, buildAttemptResult, cleanupBenchmarkObjects, finishBenchmark]);
+    startPhase(crossesCategory && canaryEnabled ? 'canary' : 'stage');
+  }, [activeAttempt, buildAttemptResult, canaryEnabled, finishBenchmark, profiles, repeatEnabled, repeatProfile, startPhase]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
-    const runNetworkSamples = async () => {
-      const baseUrl = `${window.location.origin}${window.location.pathname}`;
-      for (let i = 0; i < BENCHMARK_NET_SAMPLE_COUNT && !cancelled; i++) {
-        const start = performance.now();
-        try {
-          await fetch(`${baseUrl}?bench-net=${Date.now()}-${i}`, {
-            cache: 'no-store',
-            credentials: 'same-origin',
-          });
-          if (!cancelled) netRttSamplesRef.current.push(performance.now() - start);
-        } catch {
-          if (!cancelled) netFailuresRef.current += 1;
-        }
-        await sleep(BENCHMARK_NET_SAMPLE_GAP_MS);
-      }
-    };
-
-    void runNetworkSamples();
-
     let expected = performance.now() + BENCHMARK_MAIN_DELAY_SAMPLE_MS;
     const delayTimer = window.setInterval(() => {
       const tickNow = performance.now();
       mainDelaySamplesRef.current.push(Math.max(0, tickNow - expected));
       expected = tickNow + BENCHMARK_MAIN_DELAY_SAMPLE_MS;
     }, BENCHMARK_MAIN_DELAY_SAMPLE_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(delayTimer);
-    };
+    return () => window.clearInterval(delayTimer);
   }, []);
 
+  // ★計測の心臓部: rAF で**全フレームの時刻**を記録する(v0.25.2690)。
+  // 段の頭(負荷が乗り切るまで)は捨て、そこから終わりまでを1段の観測とする。
   useEffect(() => {
-    if (result) return;
-    const profile = BENCHMARK_PROFILES[activeAttempt] ?? BENCHMARK_PROFILES[BENCHMARK_PROFILES.length - 1];
+    if (result || phase === 'net') return;
+    const settleMs = phase === 'canary' ? BENCHMARK_CANARY_SETTLE_MS : BENCHMARK_ATTEMPT_WARMUP_MS;
+    let raf = 0;
+    const step = (t: number) => {
+      raf = window.requestAnimationFrame(step);
+      if (t - attemptStartedAtRef.current >= settleMs) frameTimesRef.current.push(t);
+    };
+    raf = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(raf);
+  }, [phase, result]);
+
+  useEffect(() => {
+    if (result || phase === 'net') return;
+    // 最初の**本番の段**の開始=熱ダレ補正の按分の原点(暖機・基準段は含めない)。
+    // startPhase ではなくここに置く: 暖機も基準段も切られている時は startPhase を通らずに
+    // いきなり 'stage' から始まるため(そのとき原点が2段目にズレる)。
+    if (phase === 'stage' && firstStageStartRef.current === 0) {
+      firstStageStartRef.current = attemptStartedAtRef.current;
+    }
+    const stageProfile = profiles[activeAttempt] ?? profiles[profiles.length - 1];
+    // 検算段は「最初に走った段」を再現する。暖機段・基準段は**常に同じ固定負荷**(CANARY_PROFILE)。
+    const replayProfile = phase === 'repeat' ? repeatProfile() : null;
+    const profile = phase === 'stage' ? stageProfile : (replayProfile ?? CANARY_PROFILE);
     const pool = enemyPool(profile);
+    const phaseTotalMs =
+      phase === 'warmup' ? BENCHMARK_WARMUP_MS : phase === 'canary' ? BENCHMARK_CANARY_MS : BENCHMARK_ATTEMPT_MS;
+    const completePhase = () => {
+      if (phase === 'warmup') completeWarmup();
+      else if (phase === 'canary') completeCanary();
+      else if (phase === 'repeat') completeRepeat(profile);
+      else completeStage(stageProfile);
+    };
+
+    // ★影プローブ(計測専用)。段ごとに枚数/モードを切り替える。
+    // 暖機・基準段・検算段は CANARY_PROFILE / 再現段の値を使うので、ここに置けば
+    // 「基準段では0枚」が自動で守られる(=段どうしの差がプローブの差だけになる)。
+    resetShadowProbeTelemetry(); // 段ごとに集計をリセット(前の段の数字が混ざらないように)
+    setShadowProbe(profile.probeCount, profile.probeMode, profile.probeStretch);
 
     const runBenchmarkTick = () => {
       const elapsed = performance.now() - startedAt;
       const tickNow = performance.now();
       const attemptElapsed = tickNow - attemptStartedAtRef.current;
-      if (
-        attemptElapsed >= BENCHMARK_ATTEMPT_WARMUP_MS &&
-        tickNow - lastSampleAtRef.current >= BENCHMARK_SAMPLE_MS &&
-        fpsRef.current > 0
-      ) {
-        attemptSamplesRef.current.push(fpsRef.current);
-        allSamplesRef.current.push(fpsRef.current);
-        lastSampleAtRef.current = tickNow;
-      }
-      if (attemptElapsed >= BENCHMARK_ATTEMPT_MS) {
-        completeAttempt(profile);
+      if (attemptElapsed >= phaseTotalMs) {
+        completePhase();
         return;
       }
 
-      const recentFps = recentAverage(attemptSamplesRef.current);
+      // 早期打ち切りは**本番の段だけ**(暖機/基準段は最後まで回す=基準がブレると全部ブレる)。
       if (
+        phase === 'stage' &&
         attemptElapsed >= BENCHMARK_EARLY_FAIL_AFTER_MS &&
-        attemptSamplesRef.current.length >= 3 &&
-        recentFps <= BENCHMARK_EARLY_FAIL_FPS
+        frameTimesRef.current.length >= 8 &&
+        recentFps(frameTimesRef.current) <= BENCHMARK_EARLY_FAIL_FPS
       ) {
-        completeAttempt(profile);
+        completePhase();
         return;
       }
 
@@ -538,11 +874,17 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           };
         }),
         breakableProps: [
-          ...state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-')),
+          ...state.breakableProps.filter(prop => !prop.id.startsWith('bench-torch-') && !prop.id.startsWith('bench-mine-')),
           ...createBenchmarkTorches(
             state.player.x + state.player.width / 2,
             state.player.y + state.player.height / 2,
             profile.torchCount,
+            elapsed
+          ),
+          ...createBenchmarkMines(
+            state.player.x + state.player.width / 2,
+            state.player.y + state.player.height / 2,
+            profile.mineCount,
             elapsed
           ),
         ],
@@ -554,6 +896,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
       const py = state.player.y + state.player.height / 2;
       const existingBenchEnemies = state.enemies.filter(e => spawnedEnemyIdsRef.current.has(e.id));
       const benchTorchCount = state.breakableProps.filter(prop => prop.id.startsWith('bench-torch-')).length;
+      const benchMineCount = state.breakableProps.filter(prop => prop.id.startsWith('bench-mine-')).length;
       const benchProjCount = state.projectiles.filter(p => p.id.startsWith('bench-proj-')).length;
       const missing = Math.max(0, profile.enemyTarget - existingBenchEnemies.length);
 
@@ -574,11 +917,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
         projectiles: Math.max(maxCountsRef.current.projectiles, state.projectiles.length),
         pickups: Math.max(maxCountsRef.current.pickups, state.pickups.length),
         torches: Math.max(maxCountsRef.current.torches, benchTorchCount),
+        mines: Math.max(maxCountsRef.current.mines, benchMineCount),
       };
       attemptMaxCountsRef.current = {
         enemies: Math.max(attemptMaxCountsRef.current.enemies, state.enemies.length),
         fx: Math.max(attemptMaxCountsRef.current.fx, state.effects.length),
         torches: Math.max(attemptMaxCountsRef.current.torches, benchTorchCount),
+        mines: Math.max(attemptMaxCountsRef.current.mines, benchMineCount),
       };
 
       for (let i = 0; i < missing; i++) {
@@ -668,7 +1013,13 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     activeAttempt,
     addEnemy,
     addProjectile,
-    completeAttempt,
+    completeCanary,
+    completeRepeat,
+    completeStage,
+    completeWarmup,
+    phase,
+    repeatProfile,
+    profiles,
     removeEnemy,
     result,
     spawnBurst,
@@ -684,10 +1035,20 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     cleanupBenchmarkObjects();
   }, [cleanupBenchmarkObjects]);
 
-  const profile = BENCHMARK_PROFILES[activeAttempt] ?? BENCHMARK_PROFILES[BENCHMARK_PROFILES.length - 1];
-  const attemptElapsed = Math.min(BENCHMARK_ATTEMPT_MS, now - attemptStartedAtRef.current);
-  const progress = result ? 100 : Math.round((attemptElapsed / BENCHMARK_ATTEMPT_MS) * 100);
-  const secondsLeft = Math.max(0, Math.ceil((BENCHMARK_ATTEMPT_MS - attemptElapsed) / 1000));
+  const profile = profiles[activeAttempt] ?? profiles[profiles.length - 1];
+  const phaseTotalMs =
+    phase === 'warmup' ? BENCHMARK_WARMUP_MS : phase === 'canary' ? BENCHMARK_CANARY_MS : BENCHMARK_ATTEMPT_MS;
+  const attemptElapsed = Math.min(phaseTotalMs, now - attemptStartedAtRef.current);
+  // 通信計測(net)の間は描画を止めているので `now` が進まない=**メーターが途中で固まって見える**
+  // (社長指摘v0.25.2691)。計測自体は正常なので、この段は満タン表示にして「終わって通信を測っている」
+  // ことを示す(見出しにも `net` と出る)。
+  const progress = result || phase === 'net' ? 100 : Math.round((attemptElapsed / phaseTotalMs) * 100);
+  const secondsLeft = Math.max(0, Math.ceil((phaseTotalMs - attemptElapsed) / 1000));
+  const phaseLabel =
+    phase === 'warmup' ? '暖機(捨て)'
+      : phase === 'canary' ? '基準段'
+        : phase === 'repeat' ? '検算段(最初の段を再測定)'
+          : phase === 'net' ? '通信計測' : null;
   const gradeStyle = useMemo(() => {
     switch (result?.grade) {
       case 'PASS':
@@ -708,7 +1069,7 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
     >
       <div className="flex items-center justify-between gap-2 text-[11px] font-bold">
         <span>BENCH</span>
-        <span>{result ? result.grade : `${secondsLeft}s`}</span>
+        <span>{result ? result.grade : phase === 'net' ? 'net' : `${secondsLeft}s`}</span>
       </div>
       <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
         <div
@@ -726,9 +1087,11 @@ const BenchmarkOverlay: React.FC<BenchmarkOverlayProps> = ({ fps, onComplete }) 
           </>
         ) : (
           <>
-            <div>try {activeAttempt + 1}/{BENCHMARK_PROFILES.length} fps {fps}</div>
-            <div>{profile.id} {profile.category} {profile.label}</div>
-            <div>{stressLabel(profile)}</div>
+            <div>try {activeAttempt + 1}/{profiles.length} fps {fps}</div>
+            {phaseLabel
+              ? <div>{phaseLabel}{phase === 'canary' && lastCanaryFpsRef.current > 0 ? ` (前回 ${lastCanaryFpsRef.current.toFixed(0)})` : ''}</div>
+              : <div>{profile.id} {profile.category} {profile.label}</div>}
+            <div>{stressLabel(phase === 'stage' ? profile : (phase === 'repeat' ? (repeatProfile() ?? CANARY_PROFILE) : CANARY_PROFILE))}</div>
           </>
         )}
       </div>

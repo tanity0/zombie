@@ -56,6 +56,12 @@ const currentMoveVec = (): { x: number; y: number } => {
 export const useGameControls = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // v0.25.2621(ボスメーカー): **入力欄にフォーカスがある間は移動/攻撃キーを食べない**。
+      // 数値を直接打っている最中に自機が走り出すと調整にならない(社長補足「動きながら数字を変える」)。
+      // フォーカスが外れれば即座に元どおり戦える。ボスメーカー以外でも同じ判定で無害。
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+
       const { key } = e;
 
       // 四神舞リズムモード中(PC): 移動キー=フリック(移動しない)、Space=タップ、Escape=終了。
@@ -117,7 +123,9 @@ export const useGameControls = () => {
       // (PCの主操作はマウス右クリック)。装備していない方は store 側が false を返すので無害。
       if (isFlickKey(key)) {
         e.preventDefault();
-        if (!e.repeat && !isGameTimeStopped()) {
+        // 二人組クエストv2 §2-8(納品ロック・入口4): isGameTimeStopped()だけでは塞がらない
+        // (この枝はisAttackLocked()を経由しない独自ゲート)ので deliveryLocked を1条件足す。
+        if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked) {
           const v = currentMoveVec();
           performFlickAction(v.x, v.y);
         }
@@ -129,13 +137,20 @@ export const useGameControls = () => {
         e.preventDefault();
         // First press only — auto-repeat shouldn't keep refiring the counter.
         // 会話/登場演出中(時間停止中)はカウンターを出さない。
-        if (!e.repeat && !isGameTimeStopped()) performTapAction();
+        // 二人組クエストv2 §2-8(納品ロック・入口4): 同上。
+        if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked) performTapAction();
       }
 
       useGameStore.setState({ inputState });
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      // v0.25.2621(ボスメーカー): **入力欄にフォーカスがある間は移動/攻撃キーを食べない**。
+      // 数値を直接打っている最中に自機が走り出すと調整にならない(社長補足「動きながら数字を変える」)。
+      // フォーカスが外れれば即座に元どおり戦える。ボスメーカー以外でも同じ判定で無害。
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+
       const { key } = e;
       const inputState = { ...useGameStore.getState().inputState };
 

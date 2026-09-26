@@ -1,0 +1,309 @@
+{
+  "generatedAt": "2026-08-14T11:56:00.244Z",
+  "config": {
+    "baseUrl": "local",
+    "runMs": 900000,
+    "headless": false,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "configs": [
+      {
+        "name": "baseline-1",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "guardian-spirit"
+        ]
+      },
+      {
+        "name": "baseline-2",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "guardian-spirit"
+        ]
+      },
+      {
+        "name": "baseline-3",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "guardian-spirit"
+        ]
+      }
+    ]
+  },
+  "results": [
+    {
+      "config": "baseline-1",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ],
+      "realSec": 326,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 220003,
+        "deathCause": "変異体(狩猟型)",
+        "kills": 55,
+        "playerLevel": 3,
+        "maxDepthPx": 3776,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 44
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 59,
+        "scrapSpent": 0,
+        "damageTaken": 157,
+        "goldEarned": 12,
+        "damageDealt": {
+          "gun": 649,
+          "melee": 1762,
+          "other": 1322,
+          "total": 3733
+        },
+        "finisherKills": 14,
+        "meleeSwings": 82,
+        "meleeHits": 126,
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 2,
+            "selectedByType": {
+              "skill": 1,
+              "consumable": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 1,
+            "maxTier": 3
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 40,
+              "poi": 0,
+              "levelup": 0,
+              "other": 19
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 3,
+            "maxAreaReached": 2,
+            "runTimeMs": 220003
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 33272.26991889906,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\nデンジャーゾーンのランク3 色欲 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n3832m\n怠\nR1\n暴\nR2\n色\n⚑R3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR3 色欲\n\n次の深さ 未確認汚染エリア まで あと 1168m\n\n死因：変異体(狩猟型)\n\nRESULT\n生存時間\n03:40\n撃破\n55\nLv\n3\n最大コンボ\n11\nSCORE\nHIGH SCORE\n24266\nKILLスコア 11200\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +12g\n所持 12g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "baseline-2",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ],
+      "realSec": 239,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 156565,
+        "deathCause": "地雷",
+        "kills": 48,
+        "playerLevel": 3,
+        "maxDepthPx": 3105,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 32
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 64,
+        "scrapSpent": 0,
+        "damageTaken": 143,
+        "goldEarned": 11,
+        "damageDealt": {
+          "gun": 1437,
+          "melee": 1078,
+          "other": 1557,
+          "total": 4072
+        },
+        "finisherKills": 12,
+        "meleeSwings": 57,
+        "meleeHits": 83,
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 2,
+            "selectedByType": {
+              "consumable": 1,
+              "skill": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 33,
+              "poi": 0,
+              "levelup": 0,
+              "other": 31
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 3,
+            "maxAreaReached": 2,
+            "runTimeMs": 156565
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 77460.28537294683,
+                "level": 3
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\nデンジャーゾーンのランク3 色欲 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n3105m\n怠\nR1\n暴\nR2\n色\n⚑R3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR3 色欲\n\n次の深さ 未確認汚染エリア まで あと 1895m\n\n死因：地雷\n\nRESULT\n生存時間\n02:36\n撃破\n48\nLv\n3\n最大コンボ\n7\nSCORE\nHIGH SCORE\n22606\nKILLスコア 9600\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +11g\n所持 11g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "baseline-3",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ],
+      "realSec": 228,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 150368,
+        "deathCause": "地雷",
+        "kills": 33,
+        "playerLevel": 2,
+        "maxDepthPx": 2491,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 31
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 36,
+        "scrapSpent": 0,
+        "damageTaken": 143,
+        "goldEarned": 9,
+        "damageDealt": {
+          "gun": 885,
+          "melee": 532,
+          "other": 518,
+          "total": 1935
+        },
+        "finisherKills": 9,
+        "meleeSwings": 37,
+        "meleeHits": 44,
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 1,
+            "selectedByType": {
+              "skill": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 36
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 2,
+            "maxAreaReached": 1,
+            "runTimeMs": 150368
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 39861.38421683008,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n研究対象区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n2540m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR2 暴食\n\n次の深さ デンジャーゾーン まで あと 460m\n\n死因：地雷\n\nRESULT\n生存時間\n02:31\n撃破\n33\nLv\n2\n最大コンボ\n4\nSCORE\nHIGH SCORE\n18229\n被ダメージスコア 8560\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +9g\n所持 9g\nもう一度プレイ\nメニューに戻る"
+    }
+  ]
+}

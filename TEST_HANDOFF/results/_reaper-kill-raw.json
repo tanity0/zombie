@@ -1,0 +1,240 @@
+{
+  "base": "http://localhost:5173/zombie/",
+  "config": [
+    {
+      "tag": "A-gun-invincible",
+      "persona": "kiter",
+      "subs": [
+        "support-sniper"
+      ],
+      "skills": [
+        "attack-shooter",
+        "overclock"
+      ],
+      "hp": 10000000,
+      "note": "銃DPS型・無敵プローブ(TTK測定)"
+    },
+    {
+      "tag": "B-melee-invincible",
+      "persona": "standard",
+      "subs": [
+        "katana"
+      ],
+      "skills": [
+        "knife-master",
+        "combo-master"
+      ],
+      "hp": 10000000,
+      "note": "近接5倍型・無敵プローブ(TTK測定)"
+    },
+    {
+      "tag": "C-gun-realistic",
+      "persona": "kiter",
+      "subs": [
+        "support-sniper"
+      ],
+      "skills": [
+        "attack-shooter",
+        "overclock"
+      ],
+      "hp": 300,
+      "note": "銃DPS型・実戦HP300"
+    }
+  ],
+  "results": [
+    {
+      "scenario": "A-gun-invincible",
+      "note": "銃DPS型・無敵プローブ(TTK測定)",
+      "persona": "kiter",
+      "subs": [
+        "support-sniper"
+      ],
+      "skills": [
+        "attack-shooter",
+        "overclock"
+      ],
+      "playerHp": 10000000,
+      "reaperSpawned": true,
+      "spawnGameTimeSec": 3.853,
+      "maxReapersAtOnce": 1,
+      "reaperMinHp": 114,
+      "damageDealtToReaper": 5886,
+      "killed": false,
+      "reaperGone": true,
+      "playerDead": false,
+      "engagedSec": 69.504,
+      "dpsVsReaper": 85,
+      "lastSample": {
+        "t": 73357,
+        "n": 0,
+        "hp": null,
+        "maxHp": null,
+        "php": 10000000,
+        "over": false,
+        "dist": 24164,
+        "ammoR": 9999
+      },
+      "errors": [],
+      "sampleCount": 132,
+      "hpCurve": [
+        "4s:6000",
+        "4s:6000",
+        "6s:6000",
+        "8s:6000",
+        "10s:5363",
+        "12s:5363",
+        "15s:5240",
+        "17s:5097",
+        "19s:5097",
+        "21s:5077",
+        "24s:5077",
+        "26s:4460",
+        "28s:4362",
+        "30s:3745",
+        "32s:3745",
+        "34s:3504",
+        "37s:3504",
+        "39s:3381",
+        "41s:3286",
+        "43s:3286",
+        "45s:2669",
+        "47s:2571",
+        "50s:2571",
+        "52s:2448",
+        "54s:2428",
+        "56s:1811",
+        "58s:1687",
+        "60s:1590",
+        "63s:1466",
+        "65s:829",
+        "67s:829",
+        "69s:212",
+        "71s:114"
+      ]
+    },
+    {
+      "scenario": "B-melee-invincible",
+      "note": "近接5倍型・無敵プローブ(TTK測定)",
+      "persona": "standard",
+      "subs": [
+        "katana"
+      ],
+      "skills": [
+        "knife-master",
+        "combo-master"
+      ],
+      "playerHp": 10000000,
+      "reaperSpawned": true,
+      "spawnGameTimeSec": 3.854,
+      "maxReapersAtOnce": 1,
+      "reaperMinHp": 75,
+      "damageDealtToReaper": 5925,
+      "killed": false,
+      "reaperGone": true,
+      "playerDead": false,
+      "engagedSec": 42.285,
+      "dpsVsReaper": 140,
+      "lastSample": {
+        "t": 46139,
+        "n": 0,
+        "hp": null,
+        "maxHp": null,
+        "php": 10000000,
+        "over": false,
+        "dist": 20162,
+        "ammoR": 9999
+      },
+      "errors": [],
+      "sampleCount": 93,
+      "hpCurve": [
+        "4s:6000",
+        "4s:6000",
+        "6s:6000",
+        "8s:6000",
+        "10s:6000",
+        "12s:6000",
+        "14s:6000",
+        "16s:6000",
+        "19s:6000",
+        "21s:6000",
+        "23s:5501",
+        "24s:4984",
+        "26s:4466",
+        "28s:3946",
+        "29s:2940",
+        "31s:2870",
+        "32s:1890",
+        "34s:1847",
+        "36s:1308",
+        "38s:779",
+        "39s:248",
+        "41s:202",
+        "44s:144",
+        "46s:75"
+      ]
+    },
+    {
+      "scenario": "C-gun-realistic",
+      "note": "銃DPS型・実戦HP300",
+      "persona": "kiter",
+      "subs": [
+        "support-sniper"
+      ],
+      "skills": [
+        "attack-shooter",
+        "overclock"
+      ],
+      "playerHp": 300,
+      "reaperSpawned": true,
+      "spawnGameTimeSec": 3.854,
+      "maxReapersAtOnce": 1,
+      "reaperMinHp": 13,
+      "damageDealtToReaper": 5987,
+      "killed": false,
+      "reaperGone": true,
+      "playerDead": false,
+      "engagedSec": 50.425,
+      "dpsVsReaper": 119,
+      "lastSample": {
+        "t": 54279,
+        "n": 0,
+        "hp": null,
+        "maxHp": null,
+        "php": 0,
+        "over": false,
+        "dist": 21751,
+        "ammoR": 9999
+      },
+      "errors": [],
+      "sampleCount": 103,
+      "hpCurve": [
+        "4s:6000",
+        "4s:6000",
+        "6s:6000",
+        "8s:5259",
+        "10s:5162",
+        "12s:5162",
+        "14s:5162",
+        "16s:4525",
+        "18s:4525",
+        "20s:4401",
+        "22s:4351",
+        "24s:4351",
+        "26s:3734",
+        "29s:3734",
+        "31s:3097",
+        "33s:3097",
+        "35s:3097",
+        "37s:2460",
+        "39s:1842",
+        "41s:1592",
+        "43s:1592",
+        "45s:975",
+        "47s:357",
+        "49s:260",
+        "51s:136",
+        "53s:13"
+      ]
+    }
+  ]
+}

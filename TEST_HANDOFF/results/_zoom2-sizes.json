@@ -1,0 +1,246 @@
+{
+  "base": "http://localhost:5173/zombie/",
+  "rows": [
+    {
+      "size": "p360x800",
+      "mode": "z080",
+      "label": "通常戦闘の最大引き(0.8)",
+      "vw": 360,
+      "vh": 800,
+      "scrollW": 360,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 900
+      },
+      "enemies": 0,
+      "t": 0,
+      "bad": false
+    },
+    {
+      "size": "p360x800",
+      "mode": "z070",
+      "label": "★ボス戦の引き=絶対最深(0.7)",
+      "vw": 360,
+      "vh": 800,
+      "scrollW": 360,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 900
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p360x800",
+      "mode": "z065",
+      "label": "実機調整の下限側(0.65)",
+      "vw": 360,
+      "vh": 800,
+      "scrollW": 360,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 900
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p375x667",
+      "mode": "z080",
+      "label": "通常戦闘の最大引き(0.8)",
+      "vw": 375,
+      "vh": 667,
+      "scrollW": 375,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 720.1918873999008
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p375x667",
+      "mode": "z070",
+      "label": "★ボス戦の引き=絶対最深(0.7)",
+      "vw": 375,
+      "vh": 667,
+      "scrollW": 375,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 720.1918873999008
+      },
+      "enemies": 0,
+      "t": 1,
+      "bad": false
+    },
+    {
+      "size": "p375x667",
+      "mode": "z065",
+      "label": "実機調整の下限側(0.65)",
+      "vw": 375,
+      "vh": 667,
+      "scrollW": 375,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 720.1918873999008
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p390x844",
+      "mode": "z080",
+      "label": "通常戦闘の最大引き(0.8)",
+      "vw": 390,
+      "vh": 844,
+      "scrollW": 390,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 875.5635382787289
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p390x844",
+      "mode": "z070",
+      "label": "★ボス戦の引き=絶対最深(0.7)",
+      "vw": 390,
+      "vh": 844,
+      "scrollW": 390,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 875.5635382787289
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p390x844",
+      "mode": "z065",
+      "label": "実機調整の下限側(0.65)",
+      "vw": 390,
+      "vh": 844,
+      "scrollW": 390,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 875.5635382787289
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p412x915",
+      "mode": "z080",
+      "label": "通常戦闘の最大引き(0.8)",
+      "vw": 412,
+      "vh": 915,
+      "scrollW": 412,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 899.6504974365234
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p412x915",
+      "mode": "z070",
+      "label": "★ボス戦の引き=絶対最深(0.7)",
+      "vw": 412,
+      "vh": 915,
+      "scrollW": 412,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 899.6504974365234
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p412x915",
+      "mode": "z065",
+      "label": "実機調整の下限側(0.65)",
+      "vw": 412,
+      "vh": 915,
+      "scrollW": 412,
+      "over": [],
+      "bounds": {
+        "width": 405,
+        "height": 899.6504974365234
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p430x932",
+      "mode": "z080",
+      "label": "通常戦闘の最大引き(0.8)",
+      "vw": 430,
+      "vh": 932,
+      "scrollW": 430,
+      "over": [],
+      "bounds": {
+        "width": 405.00000000000006,
+        "height": 876.9981537006784
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p430x932",
+      "mode": "z070",
+      "label": "★ボス戦の引き=絶対最深(0.7)",
+      "vw": 430,
+      "vh": 932,
+      "scrollW": 430,
+      "over": [],
+      "bounds": {
+        "width": 405.00000000000006,
+        "height": 876.9981537006784
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    },
+    {
+      "size": "p430x932",
+      "mode": "z065",
+      "label": "実機調整の下限側(0.65)",
+      "vw": 430,
+      "vh": 932,
+      "scrollW": 430,
+      "over": [],
+      "bounds": {
+        "width": 405.00000000000006,
+        "height": 876.9981537006784
+      },
+      "enemies": 0,
+      "t": 2,
+      "bad": false
+    }
+  ],
+  "consoleLog": []
+}

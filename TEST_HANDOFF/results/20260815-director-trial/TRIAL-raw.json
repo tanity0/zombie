@@ -1,0 +1,109 @@
+{
+  "cond": "TRIAL",
+  "extra": "",
+  "generatedAt": "2026-08-15T14:27:37.754Z",
+  "results": [
+    {
+      "name": "TRIAL-01",
+      "cond": "TRIAL",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&stage=stage-1&director=1",
+      "realSec": 280,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 197595,
+        "deathCause": "敵の飛び道具",
+        "kills": 44,
+        "playerLevel": 2,
+        "maxDepthPx": 2386,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 40
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 110,
+        "scrapSpent": 0,
+        "damageTaken": 143,
+        "goldEarned": 10,
+        "damageDealt": {
+          "gun": 1443,
+          "melee": 1043,
+          "other": 1276,
+          "total": 3762
+        },
+        "finisherKills": 6,
+        "meleeSwings": 63,
+        "meleeHits": 73,
+        "critStats": {
+          "total": {
+            "rngCrits": 35,
+            "guaranteedCrits": 5,
+            "hits": 269
+          },
+          "vsBoss": {
+            "rngCrits": 2,
+            "guaranteedCrits": 3,
+            "hits": 43
+          },
+          "vsTrash": {
+            "rngCrits": 33,
+            "guaranteedCrits": 2,
+            "hits": 226
+          },
+          "elapsedSec": 198
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 1,
+            "selectedByType": {
+              "skill": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 69,
+              "poi": 0,
+              "levelup": 0,
+              "other": 41
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 2,
+            "maxAreaReached": 1,
+            "runTimeMs": 197595
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 59942.54056194802,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "directorLast": "near 3 · danger 0.5 · dmgSince 0s · kill/s 0.25",
+      "version": "pixi · v0.25.3488 · floor:SGC · res:1.0000000149011612/1.0000000149011612",
+      "errors": [],
+      "finalBodySnippet": "03:18\n🔩 110\n0\nLv 2\n手榴弾\nLv1\n0/24\n👊\nAI Director (read-only)\nIntns\n1.00\nPerf\n0.33\nState\nPEAK\n3.2s\nnear 3 · danger 0.5 · dmgSince 0s · kill/s 0.23\nRank\n0\nbuildup2\nesc+0.00 · cap+0 · xp×1.00 · pity 0.21 · up+0\nstyle 遠距離 · prev[gate1] pk0wf0 pl0gh0 sc0ch3\nprogram relax\ngate gate-number maxRung3\nR3-/T10 cap10 · peak\nフィールドガイド\n1 / 3\n武器商人\nVIDEO GUIDE\n映像素材 準備中\n\n一部を除くスタート地点に拠点を構える謎の多い商人。ここでは装備を1つ持って帰れる「帰還」ができる他、弾薬の購入、開放済みのサブウェポン強化、回復などを、松明などを壊すと手に入るスクラップで購入可能。\n\n拠点\nVIDEO GUIDE\n映像素材 準備中\n\nステージによっては4人の軍人が各拠点へ進軍を開始する。拠点はデンジャーゾーンにあり、確保できると中継地点として機能する。また、その地方に存在する隠れた要素が見えるようになる。方法は、担当軍人を連れて行くと開放してくれる。\n\n目的\nVIDE"
+    }
+  ]
+}

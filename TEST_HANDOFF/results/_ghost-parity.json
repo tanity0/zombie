@@ -1,0 +1,141 @@
+[
+  {
+    "gun": {
+      "tag": "handgun-t1",
+      "name": "ハンドガン",
+      "cat": "handgun",
+      "count": 1,
+      "damage": 9,
+      "cooldown": 420,
+      "size": 8,
+      "spd": 520,
+      "mag": 12,
+      "reload": 900
+    },
+    "ghostN": 70,
+    "playerN": 91,
+    "ghostProps": {
+      "9x9 spd520 dmg9 passfalse critfalse": 70
+    },
+    "playerProps": {
+      "14x14 spd115 dmg42 passfalse critfalse": 6,
+      "8x8 spd780 dmg9 passfalse critfalse": 70,
+      "8x8 spd780 dmg9 passfalse crittrue": 6,
+      "14x14 spd112 dmg42 passfalse critfalse": 4,
+      "14x14 spd760 dmg100 passfalse critfalse": 2,
+      "14x14 spd600 dmg100 passfalse critfalse": 2,
+      "14x14 spd117 dmg42 passfalse critfalse": 1
+    },
+    "ghostBurst": {
+      "1": 70
+    },
+    "playerBurst": {
+      "1": 87,
+      "2": 2
+    },
+    "errs": []
+  },
+  {
+    "gun": {
+      "tag": "handgun-t2",
+      "name": "二丁ハンドガン",
+      "cat": "handgun",
+      "count": 2,
+      "damage": 9,
+      "cooldown": 420,
+      "size": 8,
+      "spd": 520,
+      "mag": 10,
+      "reload": 1100
+    },
+    "ghostN": 87,
+    "playerN": 158,
+    "ghostProps": {
+      "9x9 spd520 dmg9 passfalse critfalse": 87
+    },
+    "playerProps": {
+      "14x14 spd112 dmg42 passfalse critfalse": 5,
+      "8x8 spd780 dmg9 passfalse critfalse": 138,
+      "14x14 spd115 dmg42 passfalse critfalse": 6,
+      "8x8 spd780 dmg9 passfalse crittrue": 8,
+      "14x14 spd600 dmg100 passfalse critfalse": 1
+    },
+    "ghostBurst": {
+      "1": 87
+    },
+    "playerBurst": {
+      "1": 12,
+      "2": 73
+    },
+    "errs": []
+  },
+  {
+    "gun": {
+      "tag": "shotgun-t3",
+      "name": "オートショット",
+      "cat": "shotgun",
+      "count": 7,
+      "damage": 6,
+      "cooldown": 430,
+      "size": 7,
+      "spd": 480,
+      "mag": 3,
+      "reload": 1700
+    },
+    "ghostN": 16,
+    "playerN": 222,
+    "ghostProps": {
+      "9x9 spd480 dmg6 passfalse critfalse": 16
+    },
+    "playerProps": {
+      "14x14 spd115 dmg42 passfalse critfalse": 9,
+      "7x7 spd720 dmg6 passfalse critfalse": 200,
+      "14x14 spd112 dmg42 passfalse critfalse": 2,
+      "14x14 spd760 dmg100 passfalse critfalse": 1,
+      "7x7 spd720 dmg6 passfalse crittrue": 10
+    },
+    "ghostBurst": {
+      "1": 16
+    },
+    "playerBurst": {
+      "1": 10,
+      "7": 28,
+      "8": 2
+    },
+    "errs": []
+  },
+  {
+    "gun": {
+      "tag": "rifle-t2",
+      "name": "スナイパー",
+      "cat": "rifle",
+      "count": 1,
+      "damage": 55,
+      "cooldown": 1100,
+      "size": 8,
+      "spd": 1000,
+      "mag": 5,
+      "reload": 2000,
+      "passthrough": true
+    },
+    "ghostN": 29,
+    "playerN": 26,
+    "ghostProps": {
+      "9x9 spd1000 dmg55 passfalse critfalse": 29
+    },
+    "playerProps": {
+      "14x14 spd115 dmg42 passfalse critfalse": 9,
+      "8x8 spd1500 dmg55 passtrue critfalse": 13,
+      "8x8 spd1500 dmg55 passtrue crittrue": 2,
+      "14x14 spd117 dmg42 passfalse critfalse": 1,
+      "14x14 spd112 dmg42 passfalse critfalse": 1
+    },
+    "ghostBurst": {
+      "1": 29
+    },
+    "playerBurst": {
+      "1": 26
+    },
+    "errs": []
+  }
+]

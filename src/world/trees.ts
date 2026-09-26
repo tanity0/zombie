@@ -9,6 +9,7 @@
 // 32*scale).
 
 import { Rect, footRect, resolveAabb } from './obstacles';
+import { isObstacleDestroyed } from './destructibles';
 
 export const TREE_CELL = 220;
 
@@ -35,13 +36,24 @@ const treeInCell = (cx: number, cy: number): TreeInstance | null => {
   // Keep the spawn point (world origin) clear so the player never starts
   // trapped inside a trunk.
   if (Math.abs(footX) < 150 && Math.abs(footY) < 150) return null;
-  return { key: `${cx}_${cy}`, footX, footY, scale };
+  const key = `${cx}_${cy}`;
+  // 裏ボスに踏み潰されて破壊された木は欠番(描画・当たり判定とも同時に消える)。生成キーのみで判定=軽い。
+  if (isObstacleDestroyed(key)) return null;
+  return { key, footX, footY, scale };
 };
+
+// ステージ5(対変異体防衛本部)は木を出さない(社長指示2026-07-16: 木の代わりに残骸オブジェクト=
+// cityProps の STAGE5_PROPS を散布)。ここで空を返すことで、描画(pixiScene)・幹当たり判定
+// (resolveTreeCollision)・湧き/配置回避(trunkRect参照系)の全消費箇所が自動で一致して消える
+// (destructibles と同じ「world層のモジュール状態」方式)。gameStore.resetGame がラン開始ごとに設定。
+let treesDisabled = false;
+export const setTreesDisabled = (disabled: boolean): void => { treesDisabled = disabled; };
 
 // Every tree whose cell origin falls inside the given world rect.
 export const treesInRegion = (
   minX: number, minY: number, maxX: number, maxY: number
 ): TreeInstance[] => {
+  if (treesDisabled) return [];
   const startX = Math.floor(minX / TREE_CELL) * TREE_CELL;
   const startY = Math.floor(minY / TREE_CELL) * TREE_CELL;
   const out: TreeInstance[] = [];
@@ -63,8 +75,11 @@ const TRUNK_W = 16; // at scale 1
 // hitbox bottom (see renderSpec.playerFootBox), an actor approaching from the
 // north stops with its feet right at the trunk base — no per-actor fudge.
 const TRUNK_H = 8;
+// 見た目を1.5倍にしたのに合わせ、足元判定も拡大(社長指示): 横×1.5 / 縦は上へ×1.2。
+const TRUNK_FOOT_W_MULT = 1.5;
+const TRUNK_FOOT_H_MULT = 1.2;
 export const trunkRect = (t: TreeInstance): Rect =>
-  footRect(t.footX, t.footY, TRUNK_W * t.scale, TRUNK_H * t.scale);
+  footRect(t.footX, t.footY, TRUNK_W * t.scale * TRUNK_FOOT_W_MULT, TRUNK_H * t.scale * TRUNK_FOOT_H_MULT);
 
 // Rectangle (AABB) collision only. Push `rect` out of any nearby tree trunk and
 // return the corrected top-left. One cell of padding covers every reachable
