@@ -8113,15 +8113,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               mk.damage = Math.round(mk.damage * cbMult.dmg);
               mk.homeX = mk.x; mk.homeY = mk.y;
               mk.aggroRange = GIANT_AGGRO_RANGE;
-              // ★グレン第二形態(社長指摘2026-09-26「ボスメーカーに第二形態がいない」)。本編で第二形態が湧く時
-              // (このファイルの `glenForm2SpawnAt` の出現ブロック)と**同じ初期化**をそのまま通す:
-              //   ストーリーボスの印(=グレン台本が効く)/ 形態2 / 胴体弾の種付け / **当たり判定込み2倍**(中心維持)。
-              //   HPは上の「そのステージの城ボスの体力」=本編の形態2と同額(台帳の stage-7)。
-              if (BOSS_MAKER_GLEN_FORM2) {
+              // ★グレン(stage-7)は**本編のグレンと同じ初期化**を通す(社長指摘2026-09-26「ボスメーカーに第二形態が
+              // いない」→ 形態1も本編どおりに、の社長承認「はい」)。本編の出現ブロック(形態1=ストーリーボスの出現 /
+              // 形態2=`glenForm2SpawnAt` の出現)と同じ:
+              //   ストーリーボスの印(=グレン台本が効く)/ 形態の印 / **当たり判定込み2倍**(中心維持)/
+              //   形態1は最大HP×`GLEN_FORM1_HP_MULT` / 形態2は胴体弾の種付け。
+              // ★部屋の個体は `fromEvent`(進行を書かない印)のままなので、**形態1→形態2 への移行は起きない**
+              //   (`glenForm1TransitionReady` と移行予約が `!fromEvent` を見る)。第二形態は専用のボタンで立てる。
+              if (getSelectedStageId() === 'stage-7') {
                 mk.isStoryBoss = true;
                 mk.storyBossVariant = 'stage-7';
-                mk.glenForm = 2;
-                mk.glenVolleyAt = newGameTime;
+                mk.glenForm = BOSS_MAKER_GLEN_FORM2 ? 2 : 1;
+                if (mk.glenForm === 1) mk.health = mk.maxHealth = Math.round(mk.maxHealth * GLEN_FORM1_HP_MULT);
+                else mk.glenVolleyAt = newGameTime;
                 const gcx = mk.x + mk.width / 2, gcy = mk.y + mk.height / 2;
                 mk.width *= 2; mk.height *= 2;
                 mk.x = gcx - mk.width / 2; mk.y = gcy - mk.height / 2;
