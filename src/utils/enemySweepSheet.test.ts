@@ -1,8 +1,10 @@
 // ★薙ぎ払いの絵の区間割り。社長支給2026-09-22「伐採人の薙払いの時のモーション」。
 import { describe, it, expect } from 'vitest';
 import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepImpactFrame, sweepWindupLastFrame, LOGGER_SWEEP_PHASES, sweepBandDirX, sweepFaceMulFor, sweepActiveLoopFrame } from './enemySweepSheet';
-import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantNoActiveExtraFor, giantActiveLoopMsFor
+import { ENEMY_SWEEP_SHEETS, sweepSheetName, sweepSheetSplit, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantNoActiveExtraFor, giantActiveLoopMsFor,
+  jumpSheetSplit,
 } from './enemySheets';
+import { jumpSplitFrames } from './enemyJumpSheet';
 import { LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, ENEMY_ATTACK_SPEED_MULT } from '../store/gameStore';
 
 const ALL = Object.entries(ENEMY_SWEEP_SHEETS);
@@ -505,5 +507,28 @@ describe('★叩きつけモーションの配り方(城ボス)', () => {
       }
     }
     expect(seen.size).toBe(sweepSplitFrames(sp));
+  });
+});
+
+describe('★グレン形態1の踏み潰し=跳びの絵の後半(社長指示2026-09-26)', () => {
+  const alt = giantAltSweepFor('glen-boss', 'g-stomp-windup')!;
+  it('跳びの絵を 5コマ目から読み、合計が跳びのシートのコマ数と一致する(切り分けがずれない)', () => {
+    expect(alt).not.toBeNull();
+    expect(alt.suffix).toBe('jump');
+    expect(alt.from).toBe(5);
+    expect((alt.from ?? 0) + sweepSplitFrames(alt.split)).toBe(jumpSplitFrames(jumpSheetSplit('glen-boss')!));
+    expect(giantMotionSkipFor('glen-boss')).not.toContain('g-stomp-');
+  });
+  it('★溜めは 5,6(頂点→降下)、立ち直りの頭=一撃は 7(一番潰れるコマ)', () => {
+    const from = alt.from ?? 0;
+    const wind = giantMotionSpanOf('g-stomp-windup')!;
+    const rec = giantMotionSpanOf('g-stomp-recover')!;
+    expect(from + enemySweepSpanFrame(alt.split, wind, 0)!).toBe(5);
+    expect(from + enemySweepSpanFrame(alt.split, wind, 0.99)!).toBe(6);
+    expect(from + enemySweepSpanFrame(alt.split, rec, 0)!).toBe(7);
+    expect(from + enemySweepSpanFrame(alt.split, rec, 0.99)!).toBe(10);
+  });
+  it('踏み潰し以外(爪など)は差し替えない=攻撃の絵のまま', () => {
+    expect(giantAltSweepFor('glen-boss', 'g-talon-windup')).toBeNull();
   });
 });

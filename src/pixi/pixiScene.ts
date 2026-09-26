@@ -30117,9 +30117,11 @@ export class PixiScene {
         ? sweepActiveLoopFrame(gSplit, gameTime - lat.start, loopMs)
         : enemySweepSpanFrame(gSplit, gSpan, 1 - (e.aiPhaseUntil - gameTime) / lat.dur);
       if (gi === null) return null;
-      const gFrames = sweepSplitFrames(gSplit);
+      // ★差し替えが「シートの途中から読む」時(グレンの踏み潰し=跳びの後半)は、その分だけずらす。
+      const gFrom = alt?.from ?? 0;
+      const gFrames = gFrom + sweepSplitFrames(gSplit);
       const gSlices = this.sheetSlices(gName, gFrames);
-      return this.rememberAtkFrame(e, gName, gFrames, gi, gSlices);
+      return this.rememberAtkFrame(e, gName, gFrames, gFrom + gi, gSlices);
     }
     const phase = sweepPhaseOf(e.aiPhase);
     if (phase === null) return null;

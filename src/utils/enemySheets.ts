@@ -862,9 +862,6 @@ const SWEEP_SHEET_SUFFIX: Readonly<Record<string, string>> = {
  */
 export const GIANT_MOTION_SKIP: Readonly<Record<string, readonly string[]>> = {
   'giantbat': ['g-dash-'],
-  // ★グレン形態1: 踏み潰しは**跳び/踏み潰しの絵が別に来る**(社長支給2026-09-26「ジャンプや踏み潰しは後で」)。
-  //   攻撃の絵(触手を突き出す)で踏み潰すと技と絵が食い違うので配らない。跳ぶ技は `GIANT_JUMP_TECHS` で元から外れている。
-  'glen-boss': ['g-stomp-'],
 };
 
 /** その立ち絵で「配らない技」の接頭辞(無ければ空)。 */
@@ -926,6 +923,13 @@ export interface GiantAltSweep {
   readonly techs: readonly string[];
   readonly suffix: string;
   readonly split: SweepSplit;
+  /**
+   * ★**シートの何コマ目から読むか**(省略=0=先頭から)。`split` はこのコマから数える。
+   * 社長指示2026-09-26「**踏み潰し(ジャンプではなくその場で)もジャンプの後半モーション再利用して**」(グレン)。
+   * 跳びの絵の**後半だけ**(頂点→降下→着地→立ち直り)を使うため、前半(しゃがみ・踏み切り)を飛ばす。
+   * シートの総コマ数 = `from + split の合計` であること(切り分けがずれる)。
+   */
+  readonly from?: number;
 }
 export const GIANT_ALT_SWEEP: Readonly<Record<string, readonly GiantAltSweep[]>> = {
   'stage4-enemies/giantbat': [
@@ -948,6 +952,14 @@ export const GIANT_ALT_SWEEP: Readonly<Record<string, readonly GiantAltSweep[]>>
       suffix: 'jump',
       split: { windup: 10, active: 1, recover: 4, bodyH: 140 },
     },
+  ],
+  // ★グレン形態1: 踏み潰し(その場で)は**跳びの絵の後半**(社長指示2026-09-26)。跳び 11コマのうち 5〜10 を使う:
+  //   **5=腕を広げて一番高い / 6=脚を曲げて降りてくる**(溜め) → **7=一番潰れる(一撃)** → 8〜10=構え直す。
+  //   `g-stomp-` は当たりの相を持たない技(`GIANT_NO_ACTIVE_TECHS`)なので、溜め=5,6 / 立ち直り=7〜10 になり、
+  //   **一撃のコマ(7)が立ち直りの頭=当たる瞬間**に来る(城ボス4・5と同じ合わせ方)。その場の技なので浮きは付かない。
+  //   大きさは跳びの `frameBodyH`(コマ番号はシートの実番号)がそのまま掛かる。
+  'glen-boss': [
+    { techs: ['g-stomp-'], suffix: 'jump', from: 5, split: { windup: 2, active: 1, recover: 3 } },
   ],
 };
 
