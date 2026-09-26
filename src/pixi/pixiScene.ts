@@ -28753,6 +28753,24 @@ export class PixiScene {
         const top = [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
         parts.push(top.map(([k, n]) => `${k}×${n}`).join(','));
       }
+      // ★寿命切れなのに残っているもの(社長報告2026-09-26「減らない。増え続ける」)。
+      // store の掃除(`updateEffects`)は `now - createdAt > duration` で捨てる。ここに数が出たら
+      //  ・一部の種類だけ → その種類の寿命(duration/createdAt)が壊れている
+      //  ・ほぼ全部       → 掃除そのものが回っていない(ループのどこかで止まっている)
+      // の切り分けがスクショ1枚で付く。
+      {
+        let stale = 0; const staleBy = new Map<string, number>();
+        for (const e of effects) {
+          const age = now - e.createdAt;
+          if (!(Number.isFinite(age) && Number.isFinite(e.duration)) || age > e.duration + 1000) {
+            stale++; staleBy.set(e.kind, (staleBy.get(e.kind) ?? 0) + 1);
+          }
+        }
+        if (stale > 0) {
+          const k = [...staleBy.entries()].sort((a, b) => b[1] - a[1])[0];
+          parts.push(`古${stale}(${k[0]})`);
+        }
+      }
       // 技の絵(latch)で、焼いてから長く描かれ続けているもの。鍵の先頭(個体ID)は落として技名だけ出す。
       let worst: { key: string; age: number } | null = null;
       for (const [key, L] of this.fxLatches) {
