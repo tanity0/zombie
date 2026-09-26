@@ -9020,6 +9020,13 @@ export class PixiScene {
     this.updateMarksmanRangeMark(s.player, now);  // マークスマン射程上昇 発動の頭上ターゲットマーク
     this.updateFlareReadyMark(s.player, now);     // フレアガンCD明けの頭上炎マーク(一瞬・ブーメラン型)
     this.updateBenkeiReadyMark(s.player, now);    // 弁慶CD明けの頭上スキルアイコン(v0.25.3623・旧「閃き」)
+    // ★城ボスの銃のマズルフラッシュも**毎フレーム既定OFF**(社長報告2026-09-25「エフェクト残っちゃうバグ」・
+    // ステージ5の三連射の後に白い大きな楔が消えずに残っていた)。このプールは個体のビューではなく場面に1つで、
+    // `resetActorFxDefaults` の外にあった。消すのは描画側の「閃光の窓を過ぎた」分岐だけだったので、
+    // その分岐へ来ないフレーム(技の絵の時計が先に尽きる/カウンター・気絶で技が消える/コマ落ち/画面外)を
+    // 1回でも挟むと、**最後に点けた明るさのまま永久に残った**(ボスメーカーで再現・下の3経路が同じ穴)。
+    // 点けるのは各分岐(三連射の銃/通常弾の銃/エンディングの射撃)で、どれもこの後で毎フレーム点け直す。
+    for (const sp of this.bossGunMuzzleSprites.values()) sp.visible = false;
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     // §6.38 B2b: 舞妓の花びらpool更新(全体で1回・enemyループの外)。
     const petalDtSec = this.lastPetalStepAt === null ? 0 : Math.min(0.1, Math.max(0, (now - this.lastPetalStepAt) / 1000));
