@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { vsBodyInit,
   VS_ENTRIES, parseVsEntry, parseNoAmmo, idForVariant, vsQuery, VS_STAGE,
 } from './vsTest';
+import { labZombieSexOf, idForLabSex } from './labZombieSex';
 import { ENEMY_VARIANT_SETS, spriteVariantIndex } from './enemyVariant';
 import { BOSS_TEST_ENTRIES } from './bossTest';
 import { ENEMY_STATS, isTerminalReaper } from './enemyUtils';
@@ -101,6 +102,28 @@ describe('★1対1枠の死神は「本物の死神」として湧く', () => {
   it('死神以外は素の湧きのまま(null)', () => {
     for (const t of ['zombie', 'hunter', 'pumpkin', 'hangedman'] as const) {
       expect(vsBodyInit(t, CFG, 200), t).toBeNull();
+    }
+  });
+});
+
+// ★研究所ゾンビ(社長指摘2026-09-26「ボスメーカーに研究所の敵達がいない」)。
+describe('1対1: 研究所ゾンビ', () => {
+  it('研究所ゾンビ4行(Lv1女/Lv1男/Lv2/Lv3)があり、研究所(stage-2)で立つ', () => {
+    const lab = VS_ENTRIES.filter(e => e.type.startsWith('lab-zombie'));
+    expect(lab.map(e => e.key)).toEqual(['lab-zombie-1-f', 'lab-zombie-1-m', 'lab-zombie-2', 'lab-zombie-3']);
+    for (const e of lab) {
+      expect(e.stage, e.key).toBe('stage-2');
+      expect(new URLSearchParams(vsQuery(e, 'warrior', true)).get('stage'), e.key).toBe('stage-2');
+    }
+    // 森の相手は従来どおり森
+    const bat = VS_ENTRIES.find(e => e.key === 'bat-0')!;
+    expect(new URLSearchParams(vsQuery(bat, 'warrior', true)).get('stage')).toBe(VS_STAGE);
+  });
+  it('男女を選ぶと、その見た目になるIDへ寄る(描画と同じ式)', () => {
+    for (const base of ['enemy-lab-zombie-1-1', 'enemy-lab-zombie-1-abc', 'x', 'enemy-lab-zombie-1-1790381361972-b9vc3']) {
+      expect(labZombieSexOf(idForLabSex(base, 'male')), base).toBe('male');
+      expect(labZombieSexOf(idForLabSex(base, 'female')), base).toBe('female');
+      expect(idForLabSex(base, labZombieSexOf(base))).toBe(base); // 既に合っていれば触らない
     }
   });
 });

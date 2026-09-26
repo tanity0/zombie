@@ -174,6 +174,7 @@ import { sampleRim, rimBuckets, rimBucketDir, rimFollow, rimFollowDir, type RimL
 import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近接ヒットの炸裂(v0.25.4334)
 import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
+import { labZombieSexOf } from '../utils/labZombieSex';
 import { setRenderStats, setFxDiag } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347)
 import { addBakedTexture, type BakeKind } from '../utils/renderStats'; // 焼いたテクスチャの実測(v0.25.4375)
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
@@ -2915,11 +2916,7 @@ const SPRITE_PICKUPS = new Set(['experience', 'health', 'magnet', 'bomb', 'chest
 const labEnemyTextureName = (type: string, id: string): string | null => {
   if (type === 'lab-zombie-3') return 'lab-zombie/lab-zombie-lv3';
   if (type === 'lab-zombie-2') return 'lab-zombie/lab-zombie-lv2';
-  if (type === 'lab-zombie-1') {
-    let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
-    const sex = (h & 1) === 0 ? 'male' : 'female';
-    return `lab-zombie/lab-zombie-lv1-${sex}`;
-  }
+  if (type === 'lab-zombie-1') return `lab-zombie/lab-zombie-lv1-${labZombieSexOf(id)}`; // 式は utils/labZombieSex.ts の1箇所
   return null;
 };
 

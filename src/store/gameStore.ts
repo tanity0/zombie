@@ -253,7 +253,7 @@ import {
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { setFlowersDisabled } from '../world/forestDecor';
 import { bossTestGhostSkill, isBossMakerRun, getBossTestSkillInjection } from '../utils/bossTest';
-import { isNoAmmoRun, vsStartAmmo } from '../utils/vsTest';
+import { isNoAmmoRun, vsStartAmmo, vsEntryOfRun } from '../utils/vsTest';
 // research/GROWTH.md v4(永続育成「強化」)。**効果値の純関数と保存は utils 側**(AMMO_MAX は
 // 引数で渡す=utils→store の逆流を作らない)。計測路(ガントレット)の述語は依存ゼロの葉から読む。
 import {
@@ -20387,7 +20387,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 固定・休眠の敵を配置(距離カリング対象外=fixed)。aggroRange 内でプレイヤーが入ると起床。
       const runEnemies: Enemy[] = indoor
         ? LAB_ENEMIES.map(e => ({ ...spawnEnemyAt(e.type, e.x, e.y, 0), fixed: true, dormant: true, aggroRange: e.aggroRange, vx: 0, vy: 0, homeX: e.x, homeY: e.y }))
-        : labDoc
+        // ★ボスメーカーの1対1(`?vs=`)では置かない(社長指摘2026-09-26「ボスメーカーに研究所の敵達がいない」)。
+        //   置くと「敵1体だけ」にならず、しかも選んだ型が既に居る扱いになって**相手が湧かない**
+        //   (休眠のまま近寄って来ない)。書類の見張り3体+隠しボスは本編の配置なので、1対1の時だけ外す。
+        : (labDoc && !vsEntryOfRun())
           ? [
               mkGuard('lab-zombie-3', labDoc.x - labDoc.side * 170, labDoc.y),
               mkGuard('lab-zombie-2', labDoc.x - labDoc.side * 250, labDoc.y - 70),

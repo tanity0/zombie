@@ -108,6 +108,7 @@ import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 // 狙っている時だけこの判定が nospawn を上書きする。
 import { practiceWantsCastleBoss, practiceForces, isPracticeRun, practiceWantsGlenForm2, practiceBossType } from '../utils/bossPractice';
 import { vsEntryOfRun, isNoAmmoRun, idForVariant, vsBodyInit, VS_RESPAWN_MS, VS_SPAWN_DIST_MIN, VS_SPAWN_DIST_MAX } from '../utils/vsTest';
+import { idForLabSex } from '../utils/labZombieSex';
 import { pickPhantomIdentity, setPhantomIdentity, getPhantomIdentity, phantomDisplayLabel, clearPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の人格(癖・ビルド・HP・名前を1人から)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { bossCutinPayload, glenForm2CutinPayload } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン(オプトイン呼び出しのみ)
@@ -8025,6 +8026,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // §21-3: 変種(絵)は敵IDのハッシュで決まる。**選んだ絵になるIDへ寄せる**
               // (雄を選んで雌が出ると、攻撃シートのコマ数が違うので確認にならない)。
               vsE.id = idForVariant(vsE.id, VS_ENTRY.type, VS_ENTRY.variantIndex);
+              // 研究所ゾンビLv1は男女を敵IDの偶奇で決める(変種の表とは別の仕組み)=選んだ見た目へ寄せる。
+              if (VS_ENTRY.labSex) vsE.id = idForLabSex(vsE.id, VS_ENTRY.labSex);
               vsE.dormant = false;
               // CLAUDE.md MUST: 湧き位置も「行ける帯」へクランプ(プレイヤーが追えない場所に置かない)。
               const vsClamped = clampRectToPlayableArea(vsE.x, vsE.y, vsE.width, vsE.height, {

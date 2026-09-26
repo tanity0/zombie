@@ -9,6 +9,7 @@
 // 表示と遷移は tools/bossmaker/BossTestMenu.tsx。
 import type { EnemyType } from '../types/game';
 import { ENEMY_VARIANT_SETS, spriteVariantIndex } from './enemyVariant';
+import type { LabZombieSex } from './labZombieSex';
 
 /** 出撃先。森(平地)=非lab・非corridorで、既存のボス戦テストと同じ扱いの場。 */
 export const VS_STAGE = 'stage-1';
@@ -65,6 +66,10 @@ export interface VsEntry {
   variantIndex?: number;
   /** 一覧に出す注記。**敵の名前は enemyDeathLabel から引く**(ここに名前を書き写さない)。 */
   note?: string;
+  /** 出撃先(未指定=`VS_STAGE`=森)。**その型が本来いる場で立てる**(研究所ゾンビ=研究所)。 */
+  stage?: string;
+  /** 研究所ゾンビLv1の見た目(男女は敵IDの偶奇で決まる=`utils/labZombieSex.ts`)。 */
+  labSex?: LabZombieSex;
 }
 
 /**
@@ -74,8 +79,10 @@ export interface VsEntry {
  *   ボス16体はあちらが1体ずつ出せるので重複させない(§21-3)。
  * ★**変種を持つ型は変種ごとに1行**。絵が違うと攻撃シートのコマ数も違う(bat-female 6 / bat-male 7)ので、
  *   片方しか見られないと確認にならない。
+ * ★研究所ゾンビ(`lab-zombie-1/2/3`)は**研究所(ステージ2)で立てる**(社長指摘2026-09-26
+ *   「ボスメーカーに研究所の敵達がいない」)。森では場が違う(休眠・視界・起床が研究所の作り)。
+ *   Lv1 は男女で絵が違う(歩きのシートも別)ので**男女を別の行**にする。
  * ★載せていない型と理由:
- *   - `lab-zombie-1/2/3` = 研究所専用(森では場が違う)。別の場が要るので次段。
  *   - `hangedman` = 死神の技が呼ぶ据え物であって、単体で向かってくる相手ではない。
  *   - `giantbat` ほかボス16体 = 既存のボス戦テストにある。
  */
@@ -97,6 +104,10 @@ export const VS_ENTRIES: readonly VsEntry[] = [
   { key: 'pumpkin', type: 'pumpkin' },
   { key: 'hunter', type: 'hunter' },
   { key: 'reaper', type: 'reaper' },
+  { key: 'lab-zombie-1-f', type: 'lab-zombie-1', note: '女', stage: 'stage-2', labSex: 'female' },
+  { key: 'lab-zombie-1-m', type: 'lab-zombie-1', note: '男', stage: 'stage-2', labSex: 'male' },
+  { key: 'lab-zombie-2', type: 'lab-zombie-2', stage: 'stage-2' },
+  { key: 'lab-zombie-3', type: 'lab-zombie-3', stage: 'stage-2' },
 ];
 
 /** `?vs=` を読む純関数(未知/未指定は null=通常のラン)。window非依存。 */
@@ -143,7 +154,7 @@ export const idForVariant = (baseId: string, type: string, wantIndex: number | u
 export const vsQuery = (e: VsEntry, characterClass: string, noAmmo: boolean): string => {
   const p = new URLSearchParams();
   p.set('smoke', '1');
-  p.set('stage', VS_STAGE);
+  p.set('stage', e.stage ?? VS_STAGE);
   p.set('nospawn', '1');
   p.set('vs', e.key);
   if (noAmmo) p.set('noammo', '1');
