@@ -630,7 +630,17 @@ export const ENEMY_JUMP_SHEETS: Readonly<Record<string, JumpSplit>> = {
   // ★`bodyH: 140`。**コマ0と立ち絵は同じ立ち姿**なので照合が効き、**最良スケール1.425(IoU 0.944)**。
   //   枠の比(立ち絵200 ÷ シート150 = 1.333)より**7%大きい**=絵が枠より小さく描かれている。
   //   150 × 1.333 / 1.425 = 140.3。★着地だけ別倍率(`landBodyH`)かは実機で見て決める(城ボス3の前例)。
-  'stage5-enemies/giantbat': { crouch: 4, air: 6, land: 5, bodyH: 140 },
+  'stage5-enemies/giantbat': { crouch: 4, air: 6, land: 5, bodyH: 140 },  // ★研究所Lv3の跳び(社長支給2026-09-26「レベル3のジャンプ」)。16コマ
+  // (支給 2160×152 → 上の空き2行だけ落として **135×150**)。常駐 **1.30MB**。縮小なし(2×2一致率 4.2%)・半透明0%・左向き。
+  // 足元は全16コマが最下行(浮きはゲーム側が付ける=他の跳びと同じ)。
+  // ★区切りは **4/5/7**。足元の幅(最下10行の横幅・px)と絵の高さで読んだ:
+  //   **0〜3=しゃがみ**(0=立ち絵と同じ四つ足 → 2で沈み切る → 3で後ろ脚で立ち上がる。足元92/84/32/91)/
+  //   **4〜8=滞空**(4=つま先で伸び上がる踏み切り・高さ140 → 5〜7=腕を広げて脚を畳む(高さ88が最小)→
+  //    8=脚を下へ伸ばす。足元15/12/53/63/25=どれも地を踏んでいない)/
+  //   **9〜15=着地〜立ち直り**(**9で足を広く踏みしめる=足元94**=判定の着地と同じ瞬間 → 13〜15で四つ足へ戻る)。
+  // ★倍率: 0コマ目(立ち絵と同じ姿)を立ち絵へ重ねて **0.745倍(IoU 0.949)**。枠の比 150/200=0.75 と 0.7% 差
+  //   =`bodyH` は要らない。
+  'lab-zombie/lab-zombie-lv3': { crouch: 4, air: 5, land: 7 },
 };
 
 /** 着地の絵を流す長さ(ms)。立ち直り(recover)全体はもっと長いので、その頭だけを使う。 */
@@ -649,7 +659,9 @@ export const ENEMY_JUMP_LAND_MS: Readonly<Record<string, number>> = {
   // 城ボス4も同じ(州も時計も城ボス1・3と共通)。
   'stage4-enemies/giantbat': 700,
   // 城ボス5も同じ(州も時計も城ボス1・3・4と共通)。
-  'stage5-enemies/giantbat': 700,
+  'stage5-enemies/giantbat': 700,  // ★研究所Lv3は**立ち直りの全部**を使う(ハンターと同じ = `PUMPKIN_RECOVER_MS` 1000 ÷ 既定のゲームスピード 1.2)。
+  //   着地7コマに「踏みしめる→四つ足へ戻る」まで描いてあるので、立ち直りが明けて歩き出す瞬間まで流し切る。
+  'lab-zombie/lab-zombie-lv3': 833,
 };
 
 export const jumpSheetName = (idleTexName: string): string => `${idleTexName}-jump`;
@@ -1026,7 +1038,7 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   'driller-common': 'eager',   // 削岩型。歩き1.12MB
   'reaper-common': 'eager',    // 伐採人(旧・死神の絵)。歩き1.02MB
   'lab-zombie/lab-zombie-lv1-female': 'eager', // 研究所ゾンビLv1(女)。歩き1.03MB。休眠したまま最初から画面に居る
-  'lab-zombie/lab-zombie-lv3': 'eager', // 研究所ゾンビLv3。歩き1.43MB。同じく休眠したまま最初から地図に置かれている
+  'lab-zombie/lab-zombie-lv3': 'eager', // 研究所ゾンビLv3。歩き1.43MB+跳び1.30MB。同じく休眠したまま最初から地図に置かれている
 };
 
 /** そのシート群を起動時に読まない(=遅延組へ回す)か。表に無い立ち絵は**起動時**(既定)。 */

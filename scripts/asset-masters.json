@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "861 files / 復号後 約614MB",
+ "generatedFor": "862 files / 復号後 約615MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2473,6 +2473,12 @@
    "h": 131,
    "bytes": 21862,
    "sha": "52e6a59062891f59"
+  },
+  "sprites/lab-zombie/lab-zombie-lv3-jump.png": {
+   "w": 2160,
+   "h": 150,
+   "bytes": 228578,
+   "sha": "90187669ff5aaa2f"
   },
   "sprites/lab-zombie/lab-zombie-lv3-walk.png": {
    "w": 2384,
