@@ -47,6 +47,14 @@ export interface JumpSplit {
    *   **等倍で描き直した版が届けばこの行を消すだけ**。
    */
   landBodyH?: number;
+  /**
+   * ★**コマごとの「立ち絵の枠に当たる高さ」**(シート全体ぶん・省略=`bodyH`/`landBodyH` のまま)。
+   * 社長指示2026-09-26「**全コマ立ち絵と大きさ揃えて。全体的に小さい**」(グレン形態1)。
+   * グレンの跳びは**コマごとに人物の描かれる大きさが違う**(0コマ目は立ち絵と同じ 0.98倍、1コマ目以降は
+   * 0.66〜0.80倍)。区間単位の `landBodyH` では足りないので、**顔の大きさで測った倍率 × 枠の高さ**をコマごとに持つ。
+   * これがあれば `bodyH`/`landBodyH` より優先する。
+   */
+  frameBodyH?: readonly number[];
 }
 
 const counts = (s: JumpSplit): SectionCounts => [s.crouch, s.air, s.land];

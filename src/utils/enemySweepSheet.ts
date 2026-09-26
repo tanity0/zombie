@@ -42,7 +42,12 @@ export interface SweepSplit {
    * ⇒ **「立ち絵の枠150に当たるのはこの170のうち150」**と1つ書いて、そこで揃える。
    * ★**書かなければ従来どおり**(既定=枠の高さ)。既存のシートは1ビットも変わらない。
    */
-  bodyH?: number;
+  bodyH?: number;  /**
+   * ★**コマごとの「立ち絵の枠に当たる高さ」**(シート全体ぶん・省略=`bodyH` のまま)。
+   * 社長指示2026-09-26「**全コマ立ち絵と大きさ揃えて。全体的に小さい**」(グレン形態1)。
+   * 意味は `JumpSplit.frameBodyH` と同じ。あれば `bodyH` より優先する。
+   */
+  frameBodyH?: readonly number[];
 }
 
 const counts = (s: SweepSplit): SectionCounts => [s.windup, s.active, s.recover];

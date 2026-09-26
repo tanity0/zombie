@@ -18422,7 +18422,9 @@ export class PixiScene {
       // ★★**例外は作らない**(社長指示2026-09-22「**ミラーは全ての敵で適用します**」)。
       // 以前は「正面向きに描かれたシートはミラーしない」という例外を置いていたが(蜘蛛/咆哮型/
       // ハンターの3件)、社長指示で撤回した=**手で描かれた絵を持つ個体は全部ミラーする**。
-      const sheetMirror = hasAnimSheet(sheetKey);
+      // ★グレン形態2は立ち絵キーが形態1と同じ(`glen-boss`)なので、形態1のシートがあるだけでミラーの対象に
+      //   なってしまう。形態2の絵(`glen-boss2`)は手で描いたコマを持たない=**従来どおりミラーしない**。
+      const sheetMirror = hasAnimSheet(sheetKey) && !glenP2;
       const wantFaceMove = spec.faceMove || sheetMirror;
       if (wantFaceMove) {
         const cur = view.motFace ?? 1;
@@ -18510,7 +18512,7 @@ export class PixiScene {
         // 描かれていた・社長報告2026-09-25)。出ているコマ番号は `frame.x / width` で分かる。
         const frameIdx = tex.width > 0 ? Math.round(tex.frame.x / tex.width) : 0;
         for (const [bh, name] of [
-          [sweepSheetBodyH(idleTexKey), sweepSheetName(idleTexKey)] as const,
+          [sweepSheetBodyH(idleTexKey, frameIdx), sweepSheetName(idleTexKey)] as const,
           [jumpSheetBodyH(idleTexKey, frameIdx), jumpSheetName(idleTexKey)] as const,
           // ★歩きのシート(社長支給2026-09-26 研究員男=立ち絵より約1割小さく描かれていた)。
           [walkSheetBodyH(idleTexKey), walkSheetName(idleTexKey)] as const,

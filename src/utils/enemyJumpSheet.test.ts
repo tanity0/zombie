@@ -232,11 +232,25 @@ describe('★跳びシートの bodyH(シートが小さく描かれていた分
 
   it('landBodyH を持たないシートは、どのコマでも bodyH のまま', () => {
     for (const [n, sp] of Object.entries(ENEMY_JUMP_SHEETS)) {
-      if (sp.landBodyH !== undefined) continue;
+      if (sp.landBodyH !== undefined || sp.frameBodyH !== undefined) continue;
       for (const f of [0, sp.crouch + sp.air, jumpSplitFrames(sp) - 1]) {
         expect(jumpSheetBodyH(n, f), `${n} コマ${f}`).toBe(sp.bodyH ?? null);
       }
     }
+  });
+
+  it('★コマごとの大きさ合わせ(frameBodyH)はコマ数と同じ長さで、そのコマの値が返る', () => {
+    for (const [n, sp] of Object.entries(ENEMY_JUMP_SHEETS)) {
+      if (sp.frameBodyH === undefined) continue;
+      expect(sp.frameBodyH.length, n).toBe(jumpSplitFrames(sp));
+      sp.frameBodyH.forEach((v, f) => {
+        expect(v, `${n} コマ${f}`).toBeGreaterThan(0);
+        expect(jumpSheetBodyH(n, f), `${n} コマ${f}`).toBe(v);
+      });
+    }
+    // グレン形態1: 0コマ目はほぼ立ち絵どおり、1コマ目以降は人物が小さく描かれている=値が小さい(=拡大される)
+    const g = ENEMY_JUMP_SHEETS['glen-boss'].frameBodyH!;
+    expect(g[0]).toBeGreaterThan(g[2]);
   });
 
   it('bodyH は区間の割り方に1ビットも影響しない(背丈だけの話)', () => {

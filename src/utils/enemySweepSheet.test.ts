@@ -402,6 +402,17 @@ describe('★叩きつけモーションの配り方(城ボス)', () => {
     expect(sweepSheetBodyH('stage5-enemies/giantbat')).toBeNull();
   });
 
+  it('★コマごとの大きさ合わせ(frameBodyH)はコマ数と同じ長さで、そのコマの値が返る(グレン形態1)', () => {
+    for (const [n, sp] of Object.entries(ENEMY_SWEEP_SHEETS)) {
+      if (sp.frameBodyH === undefined) continue;
+      expect(sp.frameBodyH.length, n).toBe(sp.windup + sp.active + sp.recover);
+      sp.frameBodyH.forEach((v, f) => expect(sweepSheetBodyH(n, f), `${n} コマ${f}`).toBe(v));
+    }
+    expect(ENEMY_SWEEP_SHEETS['glen-boss'].frameBodyH).toBeDefined();
+    // コマを渡さない呼び方は従来どおり(bodyH が無ければ null)
+    expect(sweepSheetBodyH('glen-boss')).toBeNull();
+  });
+
   it('城ボス1の攻撃シートは 10コマを 6/1/3 に割る(当たり=翼を薙ぎ抜く6コマ目)', () => {
     const sp1 = ENEMY_SWEEP_SHEETS['giantbat'];
     expect(sweepSplitFrames(sp1)).toBe(10);

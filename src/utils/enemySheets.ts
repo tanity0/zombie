@@ -434,6 +434,10 @@ export const ENEMY_SHEET_FACES_RIGHT: Readonly<Record<string, boolean>> = {
   //   **既定の「左向き素材」として扱われ、向きが常に逆**になっていた(素材を足すと向きが反転する形の穴)。
   //   ⇒ **シートを足す回は、この表への登録も同時に確かめる。**
   'driller-common': true,
+  // ★グレン形態1(`glen-boss`)。**立ち絵も3枚のシートも右向き**(顔が右・右を見ている)。
+  //   社長報告2026-09-26「**向きが逆**」: シートを入れた時点でミラーの対象へ移り(`hasAnimSheet`)、
+  //   ここに無いので「左向き素材」扱い=**常に逆**を向いていた(v0.25.4619 削岩型と同じ穴)。
+  'glen-boss': true,
 };
 
 export const walkSheetName = (idleTexName: string): string => `${idleTexName}-walk`;
@@ -662,7 +666,12 @@ export const ENEMY_JUMP_SHEETS: Readonly<Record<string, JumpSplit>> = {
   //   **7〜10=着地〜立ち直り**(**7が一番潰れる 126=着地の一撃**=判定の着地と同じ瞬間 → 8〜10 で 130 のまま構え直す)。
   //   ★沈み切った後の**伸び上がり(3,4)は跳ぶ側**(研究所Lv3・ハンターで直した取り違えと同じ型を先に避けた)。
   // ★州と時計は城ボス共通(`g-jump-windup`/`-air`/`-recover`)。踏み潰し(`g-stomp-`)は別の絵が来るまで従来どおり。
-  'glen-boss': { crouch: 3, air: 4, land: 4 },
+  // ★★**コマごとの大きさ合わせ**(社長指示2026-09-26「全コマ立ち絵と大きさ揃えて。全体的に小さい」)。
+  //   顔の大きさで測った人物の倍率: 0.98 / 0.80(※1コマ目は顔が小さく隠れて測りにくく、前後の間を取った)/ 0.70 / 0.70 /
+  //   0.68 / 0.68 / 0.66 / 0.68 / 0.66 / 0.66 / 0.70 ⇒ 枠192 × 倍率 = 下の値。
+  //   ★代償: 1コマ目以降は **1.25〜1.52倍に引き伸ばされる**(ドットが粗くなる)。人物を枠いっぱいに描き直した版が
+  //   届けば、この配列を消すだけで戻る。
+  'glen-boss': { crouch: 3, air: 4, land: 4, frameBodyH: [188, 154, 134, 134, 131, 131, 127, 131, 127, 127, 134] },
 };
 
 /** 着地の絵を流す長さ(ms)。立ち直り(recover)全体はもっと長いので、その頭だけを使う。 */
@@ -820,7 +829,11 @@ export const ENEMY_SWEEP_SHEETS: Readonly<Record<string, SweepSplit>> = {
   // ★城ボス1・5と同じく、城ボス標準技+爪痕系(talon/boon/reach)の3相をこの1枚で描く。
   //   **跳ぶ技(`g-jump-`/`g-trijump-`/…)は `GIANT_JUMP_TECHS` で最初から外れる**=跳び/踏み潰しの絵が来るまで従来どおり。
   // ★倍率: 0コマ目を立ち絵へ重ねて 0.91(IoU 0.76)。枠の比 192/194=0.99 との差は約9%=1割未満なので `bodyH` は付けない。
-  'glen-boss': { windup: 5, active: 1, recover: 1 },
+  // ★★**コマごとの大きさ合わせ**(社長指示2026-09-26「全コマ立ち絵と大きさ揃えて。全体的に小さい」)。
+  //   人物の描かれる大きさを**顔の大きさ**で測った(立ち絵の顔をテンプレートにして倍率を振り、一番よく重なる倍率):
+  //   0.90 / 0.83 / 0.80 / 0.80 / 0.75 / 0.75 / 0.78 ⇒ 枠192 × 倍率 = 下の値(=そのコマを 1/倍率 へ拡大して立ち絵に揃える)。
+  //   ※上の「0.91・約9%」は**小さい側**の誤記だった(大きく出るのではなく、9%小さく出ていた)。
+  'glen-boss': { windup: 5, active: 1, recover: 1, frameBodyH: [173, 159, 154, 154, 144, 144, 150] },
 };
 
 /**
@@ -985,8 +998,12 @@ export const sweepSheetSplit = (idleTexName: string | null | undefined): SweepSp
  * ★そのシートの中で「立ち絵の枠」に当たる高さ(無指定=null=シートの枠の高さで揃える=従来どおり)。
  * 枠より本体が低いシート(=技で枠の外へ伸びる部位がある絵)だけがここに値を持つ。
  */
-export const sweepSheetBodyH = (idleTexName: string | null | undefined): number | null =>
-  (idleTexName && ENEMY_SWEEP_SHEETS[idleTexName]?.bodyH) || null;
+export const sweepSheetBodyH = (idleTexName: string | null | undefined, frame?: number): number | null => {
+  const sp = idleTexName ? ENEMY_SWEEP_SHEETS[idleTexName] : undefined;
+  if (!sp) return null;
+  const f = frame !== undefined ? sp.frameBodyH?.[frame] : undefined;
+  return f ?? sp.bodyH ?? null;
+};
 
 export const jumpSheetSplit = (idleTexName: string | null | undefined): JumpSplit | null =>
   (idleTexName && ENEMY_JUMP_SHEETS[idleTexName]) || null;
@@ -1001,6 +1018,8 @@ export const jumpSheetBodyH = (
 ): number | null => {
   const sp = idleTexName ? ENEMY_JUMP_SHEETS[idleTexName] : undefined;
   if (!sp) return null;
+  const f = frame !== undefined ? sp.frameBodyH?.[frame] : undefined;
+  if (f !== undefined) return f;
   const land = sp.landBodyH;
   if (land !== undefined && frame !== undefined && frame >= sp.crouch + sp.air) return land;
   return sp.bodyH ?? null;
