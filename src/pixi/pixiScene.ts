@@ -17874,8 +17874,11 @@ export class PixiScene {
     // 本体のコマの巻き戻しと**同じ時計・同じイージング**で、覚えた振りの軌跡を逆順に描き直す。
     // **敵の座標には一切触れない**(「位置はずらさない。その後の台本が空振りするから」)。
     this.drawCounterSwingRewind(e, now);
-    const walkTex = atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
-      ?? this.enemyIdleTexture(idleTexKey, e, now);
+    // ★グレン形態2は立ち絵キーが形態1と同じ(`glen-boss`)で、絵だけ下の `glenP2` で差し替わる。
+    // 形態1のシート(浮遊・攻撃)のコマをここで拾うと、**出ていない絵のせいで**形態2の疑似呼吸・技の
+    // 伸び縮み・傾ぎまで止まる(どれも `walkTex !== null` で止めている)。形態2は「手で描いたコマ無し」として扱う。
+    const walkTex = glenP2 ? null : (atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
+      ?? this.enemyIdleTexture(idleTexKey, e, now));
     const tex = e.type === 'guardian-phantom'
       ? this.guardianPhantomTexture(view, now)
       : glenP2
