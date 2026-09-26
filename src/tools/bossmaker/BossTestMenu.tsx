@@ -10,6 +10,7 @@ import {
 import { VS_ENTRIES, vsQuery } from '../../utils/vsTest';
 import { enemyDeathLabel } from '../../store/gameStore';
 import { bossCutinName } from '../../data/bossCutin';
+import { glenForm2CutinPayload } from '../../utils/attentionCutin';
 import { getStage } from '../../data/campaign';
 
 const CLASSES = [
@@ -114,6 +115,20 @@ const BossTestMenu: React.FC<Props> = ({ onClose }) => {
                 <span className="block text-[8px] font-normal text-emerald-300/45">{getStage(sid)?.name ?? sid}</span>
               </button>
             ))}
+            {/* ★グレン第二形態(社長指摘2026-09-26「ボスメーカーに第二形態がいない」)。本編では形態1を倒すと
+                別個体として湧くので、部屋では最初からその個体を立てる。 */}
+            {BOSS_MAKER_CASTLE_STAGES.includes('stage-7') && (
+              <button
+                key="stage-7-form2"
+                className="border border-emerald-400/50 bg-emerald-500/10 px-2 py-2 text-left text-[12px] font-bold text-emerald-300"
+                onClick={() => {
+                  window.location.search = bossMakerQuery({ characterClass: cls, ghostMode: null, ghostlog: false }, 'giantbat', 'stage-7', true);
+                }}
+              >
+                <span className="block">{glenForm2CutinPayload().name}</span>
+                <span className="block text-[8px] font-normal text-emerald-300/45">{getStage('stage-7')?.name ?? 'stage-7'}</span>
+              </button>
+            )}
           </div>
         </div>
         {/* BOSS_MAKER.md §21(1対1の間合い): 弾ゼロで相手1体だけと向き合う枠。挙動とカウンターの確認用。

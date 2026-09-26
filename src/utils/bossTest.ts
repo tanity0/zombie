@@ -255,6 +255,16 @@ export const parseBossMakerBoss = (search: string): EnemyType => {
   return BOSS_MAKER_BOSSES.find(b => b === raw) ?? BOSS_MAKER_DEFAULT_BOSS;
 };
 
+/**
+ * ★ボスメーカーで**グレン第二形態**を立てるか(`?bossmaker=1&makerboss=giantbat&stage=stage-7&glenform=2`)。
+ * 本編の第二形態は「形態1を倒した後に湧く別個体」なので、部屋では最初からその個体を出す。
+ */
+export const parseBossMakerGlenForm2 = (search: string): boolean => {
+  const q = new URLSearchParams(search);
+  return q.get('bossmaker') === '1' && q.get('makerboss') === 'giantbat'
+    && q.get('stage') === 'stage-7' && q.get('glenform') === '2';
+};
+
 /** いまの読込でボスメーカーが出すボス(ページ読込時のURLが真実)。 */
 export const bossMakerBossType = (): EnemyType =>
   parseBossMakerBoss(typeof window !== 'undefined' ? window.location.search : '');
@@ -263,6 +273,8 @@ export const bossMakerQuery = (
   opts: BossTestOptions, bossType: EnemyType = BOSS_MAKER_DEFAULT_BOSS,
   // ★城ボス用。指定が無い/その型に効かない時は従来どおり固定の部屋(森)。
   stageId?: string,
+  // ★グレン第二形態で立てる(社長指摘2026-09-26「ボスメーカーに第二形態がいない」)。stage-7 の城ボスだけ効く。
+  glenForm2 = false,
 ): string => {
   const p = new URLSearchParams();
   p.set('smoke', '1');
@@ -272,6 +284,7 @@ export const bossMakerQuery = (
   p.set('makerboss', bossType);
   p.set('class', opts.characterClass);
   p.set('retry', '1');
+  if (glenForm2 && bossType === 'giantbat' && stageId === 'stage-7') p.set('glenform', '2');
   if (opts.ghostMode) {
     p.set('ghost', '1');
     p.set('ghostmode', opts.ghostMode);

@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import {
   BOSS_TEST_ENTRIES, bossTestQuery, bossTestGhostSkill, parseBossTestMode,
   canForceGateBossNow, type GateBossGateState,
-  BOSS_MAKER_BOSSES, BOSS_MAKER_CASTLE_STAGES, BOSS_MAKER_STAGE, bossMakerQuery,
+  BOSS_MAKER_BOSSES, BOSS_MAKER_CASTLE_STAGES, BOSS_MAKER_STAGE, bossMakerQuery, parseBossMakerGlenForm2,
   bossMakerStageFor, parseBossMakerBoss,
 } from './bossTest';
 import { CASTLE_BOSS_NAME_BY_STAGE, bossCutinName } from '../data/bossCutin';
@@ -177,6 +177,18 @@ describe('★ボスメーカーの城ボス', () => {
       expect(q.get('bossmaker'), sid).toBe('1');
       expect(q.get('nospawn'), sid).toBe('1');
     }
+  });
+
+  it('★グレン第二形態は stage-7 の城ボスでだけ立つ(?glenform=2)', () => {
+    const q2 = bossMakerQuery(OPTS, 'giantbat', 'stage-7', true);
+    expect(new URLSearchParams(q2).get('glenform')).toBe('2');
+    expect(parseBossMakerGlenForm2(q2)).toBe(true);
+    // 形態1(既定)・他ステージ・他のボスでは付かない
+    expect(parseBossMakerGlenForm2(bossMakerQuery(OPTS, 'giantbat', 'stage-7'))).toBe(false);
+    expect(new URLSearchParams(bossMakerQuery(OPTS, 'giantbat', 'stage-3', true)).get('glenform')).toBeNull();
+    expect(new URLSearchParams(bossMakerQuery(OPTS, 'idol', 'stage-7', true)).get('glenform')).toBeNull();
+    // ボスメーカー以外のURLでは効かない
+    expect(parseBossMakerGlenForm2('?stage=stage-7&makerboss=giantbat&glenform=2')).toBe(false);
   });
 
   it('城ボス以外はステージを渡しても固定の部屋(森)のまま', () => {

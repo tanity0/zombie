@@ -173,7 +173,7 @@ import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE, guardianPhantomHealth }
 // research/STAGE_DIFFICULTY.md(ステージ難度の階段): 小ボスのステージ固定割当と、ボス個別適用の係数。
 import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
 import { stageBossDiffMults } from '../utils/stageDiffMults';
-import { canForceGateBossNow, bossMakerBossType } from '../utils/bossTest';
+import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
@@ -1351,6 +1351,8 @@ const BOSS_MAKER = evParam('bossmaker') === '1';
 // 部屋に出す1体(BOSS_MAKER.md §1-3 / v0.25.3558でフェーズ4=賞金首4種を追加)。既定=idol。
 // これも「どの部屋を立てるか」の情報なので stage と同じ扱い(数値は相変わらずURLで渡さない)。
 const BOSS_MAKER_BOSS = bossMakerBossType();
+// ★ボスメーカーのグレン第二形態(社長指摘2026-09-26「ボスメーカーに第二形態がいない」)。
+const BOSS_MAKER_GLEN_FORM2 = BOSS_MAKER && parseBossMakerGlenForm2(typeof window !== 'undefined' ? window.location.search : '');
 // ※敵モーション動物園はゲーム内モード(?zoo=1・v0.25.2900〜2902)を撤去し、独立ページ zoo.html へ
 //   移行した(v0.25.2903・社長指示「ステージそのまま使うと色々と不都合が出てくる」)。
 // idolのステータス(width/height/speed/health/damage)はenemyUtils.tsのENEMY_STATS.idolを唯一の出所とする
@@ -8111,6 +8113,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               mk.damage = Math.round(mk.damage * cbMult.dmg);
               mk.homeX = mk.x; mk.homeY = mk.y;
               mk.aggroRange = GIANT_AGGRO_RANGE;
+              // ★グレン第二形態(社長指摘2026-09-26「ボスメーカーに第二形態がいない」)。本編で第二形態が湧く時
+              // (このファイルの `glenForm2SpawnAt` の出現ブロック)と**同じ初期化**をそのまま通す:
+              //   ストーリーボスの印(=グレン台本が効く)/ 形態2 / 胴体弾の種付け / **当たり判定込み2倍**(中心維持)。
+              //   HPは上の「そのステージの城ボスの体力」=本編の形態2と同額(台帳の stage-7)。
+              if (BOSS_MAKER_GLEN_FORM2) {
+                mk.isStoryBoss = true;
+                mk.storyBossVariant = 'stage-7';
+                mk.glenForm = 2;
+                mk.glenVolleyAt = newGameTime;
+                const gcx = mk.x + mk.width / 2, gcy = mk.y + mk.height / 2;
+                mk.width *= 2; mk.height *= 2;
+                mk.x = gcx - mk.width / 2; mk.y = gcy - mk.height / 2;
+                const gPlaced = clampRectToPlayableArea(mk.x, mk.y, mk.width, mk.height, {
+                  farBackdrop: useGameStore.getState().farBackdrop,
+                  labTheme,
+                  corridorMode: useGameStore.getState().corridorMode,
+                  m0AdvanceLimitX: null,
+                  corridorRunInActive: false,
+                });
+                mk.x = gPlaced.x; mk.y = gPlaced.y;
+                mk.homeX = mk.x; mk.homeY = mk.y;
+              }
             }
             if (isHiddenControllerBoss(BOSS_MAKER_BOSS)) {
               mk.homeX = mk.x; mk.homeY = mk.y; // 帰巣先=その場(部屋では inDeep 扱いなので帰らない)
