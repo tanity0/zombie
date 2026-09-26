@@ -125,6 +125,14 @@ export const ENEMY_WALK_SHEETS: Readonly<Record<string, number>> = {
   //   頭と背中のランタンの模様合わせ 1.10。枠は立ち絵と同じ128なので、何もしないと歩き出した瞬間に
   //   1割縮んで見える。⇒ 下の `ENEMY_WALK_BODY_H` で 128/1.10 ≈ **116** を渡す。
   'lab-zombie/lab-zombie-lv1-male': 10,
+  // 社長支給2026-09-26「研究所のレベル2の歩行と突進用」(=`lab-zombie-2`・男女の区別なし)。16コマ
+  // (支給 1696×130 → 上の空き2行だけ落として **106×128**)。常駐 **0.83MB**(1.0MB未満=起動時のまま)。
+  // ★縮小なし(2×2一致率 3.7%)・色数32・半透明0%・左向き(既定)。足元は全コマ最下行で揃っていた。
+  // ★倍率: 立ち絵へ重ねて 1.03〜1.10(一番確かなコマ12=IoU 0.89 で 1.05)。枠の比の自動補正(131/128)を
+  //   引いた残りは約2.6%=「1割を超えたら載せる」に届かないので `ENEMY_WALK_BODY_H` には載せない。
+  // ★**突進も同じ絵**(社長「歩行と突進用」)。突進は3倍速なので、下の `ENEMY_WALK_DASH_GEAR` で
+  //   自転車と同じ「突時は倍速」(社長指示2026-09-21)にそろえる。
+  'lab-zombie/lab-zombie-lv2': 16,
   // 社長支給2026-09-22「**城ボス1 搬送隊の歩き**」(=ステージ1の城ボス。表示名「搬送体(変異)」・型は `giantbat`)。
   // ★**解像度を落として出し直した版**(v0.25.4580)。11コマ(支給 1441×130 → 余白を切って **127×128**)。
   //   常駐 **0.68MB**(初出の254×256=2.73MBの**1/4**)。**ドット/px 1.84 → 0.92**=1ドットも落ちない。
@@ -244,6 +252,9 @@ export const ENEMY_WALK_STRIDE_MUL: Readonly<Record<string, number>> = {
  */
 export const ENEMY_WALK_DASH_GEAR: Readonly<Record<string, number>> = {
   'werewolf-common': 1.5,
+  // 研究所ゾンビLv2(社長支給2026-09-26「歩行と突進用」=突進も歩きの絵で走る)。突進は同じ3倍速
+  // (`WEREWOLF_CHARGE_SPEED_MULT`)なので、自転車と同じ 1.5 で「突時は倍速」になる。
+  'lab-zombie/lab-zombie-lv2': 1.5,
 };
 
 export const walkStrideMul = (idleTexName: string | null | undefined, dashing: boolean): number => {

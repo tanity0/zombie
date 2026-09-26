@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4665', items: ['研究所の二段目の変異体が、描き下ろしの絵で這い寄ってくるようになった', '突進の時は同じ動きを倍の速さで刻む'] },
   { version: '0.25.4664', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4663', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4662', items: ['研究所で目を覚ました男性の研究員も、描き下ろしの絵で歩いて迫ってくるようになった'] },
