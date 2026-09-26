@@ -3177,6 +3177,7 @@ const SWEEP_ICE_END_SPARK_H = 46;
 // ★居座りの名指し(renderStats.setFxDiag)。これ以上溜まった時だけ種類の上位を出す/これ以上長く出続けている技の絵を出す。
 const FX_DIAG_MIN_ITEMS = 40;
 const FX_DIAG_LATCH_AGE_MS = 4000;
+const FX_DIAG_PEAK_WINDOW_MS = 5000; // 峰を覚えておく窓(この間の最大の瞬間の内訳を出す)
 const SWEEP_CANNON_NATIVE_ANGLE = Math.PI;
 const SWEEP_CANNON_LEN_PX = 220;    // 砲の全長(帯310に対して約7割=砲口が帯の先端手前まで届く)
 const SWEEP_CANNON_OUT_PX = 40;     // 尾栓(後ろ端)をボス中心からどれだけ前に置くか
@@ -28740,16 +28741,27 @@ export class PixiScene {
     // ★店じまいの後の実数を画面へ(v0.25.4347)。store のエフェクト数と、実際に生きている表示物の数。
     // **この2つが揃って増え続けていたら解放漏れ**、storeだけ増えていたら発生側の問題、と切り分けられる。
     setRenderStats(this.effects.size, effects.length);
+    // ★★峰(ピーク)を拾う(社長の実機スクショ2026-09-26: `fx 65/65` なのに種類名が出ていなかった)。
+    // 集計を1秒に1回にしていたので、**撃った/爆発した一瞬だけ数が跳ねる**と、表示(1秒ごと)は峰を拾うのに
+    // 集計は谷を拾って空になっていた。⇒ **毎フレーム数だけ見て、窓の中で一番多かった瞬間の内訳を覚える**
+    // (内訳を数えるのは新しい峰が出たフレームだけ=普段の負荷は比較1回)。表示は直近の窓(5秒)の峰。
+    if (effects.length > this.fxPeakN) {
+      this.fxPeakN = effects.length;
+      if (effects.length >= FX_DIAG_MIN_ITEMS) {
+        const by = new Map<string, number>();
+        for (const e of effects) by.set(e.kind, (by.get(e.kind) ?? 0) + 1);
+        this.fxPeakKinds = [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k, n]) => `${k}×${n}`).join(',');
+      }
+    }
+    if (now - this.fxPeakWindowAt >= FX_DIAG_PEAK_WINDOW_MS) {
+      this.fxPeakShown = this.fxPeakN >= FX_DIAG_MIN_ITEMS ? `峰${this.fxPeakN}(${this.fxPeakKinds})` : '';
+      this.fxPeakWindowAt = now; this.fxPeakN = 0; this.fxPeakKinds = '';
+    }
     // ★居座りの名指し(1秒に1回だけ集計=毎フレームの負荷は無い)。溜まっていない時は空=表示は従来どおり。
     if (now - this.fxDiagAt >= 1000) {
       this.fxDiagAt = now;
       const parts: string[] = [];
-      if (effects.length >= FX_DIAG_MIN_ITEMS) {
-        const by = new Map<string, number>();
-        for (const e of effects) by.set(e.kind, (by.get(e.kind) ?? 0) + 1);
-        const top = [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
-        parts.push(top.map(([k, n]) => `${k}×${n}`).join(','));
-      }
+      if (this.fxPeakShown) parts.push(this.fxPeakShown);
       // ★寿命切れなのに残っているもの(社長報告2026-09-26「減らない。増え続ける」)。
       // store の掃除(`updateEffects`)は `now - createdAt > duration` で捨てる。ここに数が出たら
       //  ・一部の種類だけ → その種類の寿命(duration/createdAt)が壊れている
@@ -28780,6 +28792,10 @@ export class PixiScene {
     }
   }
   private fxDiagAt = 0;
+  private fxPeakN = 0;            // 今の窓で見た最大の数
+  private fxPeakKinds = '';       // その瞬間の内訳(上位2つ)
+  private fxPeakWindowAt = 0;     // 窓の始まり
+  private fxPeakShown = '';       // 直近で閉じた窓の峰(表示用)
 
   // ---- 施策1: particle/ring/trail のプールsprite描画(旧 drawEffectGfx=per-frame Graphics を全廃) ----
   // 旧経路はエフェクト1個につき毎フレーム clear()+複数図形の再テッセレーションで、ベンチの
