@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4662', items: ['研究所で目を覚ました男性の研究員も、描き下ろしの絵で歩いて迫ってくるようになった'] },
   { version: '0.25.4661', items: ['研究所で目を覚ました女性の研究員が、描き下ろしの絵で歩いて迫ってくるようになった'] },
   { version: '0.25.4660', items: ['ステージ五のボスの三連射の後、銃口の白い閃光が消えずに画面に残ることがあったのを直した'] },
   { version: '0.25.4659', items: ['ゲーム内容の変更はありません'] },

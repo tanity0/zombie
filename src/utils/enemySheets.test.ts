@@ -7,7 +7,7 @@
 // = **手で描かれた絵を持つ個体は全部ミラーする**(型ではなく個体・例外なし)。素材が揃うたび自動で移る。
 import { describe, it, expect } from 'vitest';
 import {
-  ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_SHEET_FACES_RIGHT,
+  ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_SHEET_FACES_RIGHT, ENEMY_WALK_BODY_H, walkSheetBodyH,
   walkSheetName, attackSheetName, walkSheetFrames, attackSheetFrames,
   hasAnimSheet, sheetFacesRight, walkPlayback, attackImpactFrame,
   sheetHasWeapon, ENEMY_SHEET_HAS_WEAPON, ENEMY_ATTACK_IMPACT_FRAME,
@@ -207,5 +207,22 @@ describe('★★ミラーの対象は「型」ではなく「個体」', () => {
     // 表を直接組み替えずに、述語の論理だけを確かめる(将来どちらか片方だけの型が来る)。
     expect(walkSheetFrames('bat-female') > 1 || attackSheetFrames('bat-female') > 1).toBe(true);
     expect(hasAnimSheet('bat-female')).toBe(true);
+  });
+});
+
+// ★歩きのシートの bodyH(社長支給2026-09-26 研究員男=立ち絵より約1割小さく描かれていた)。
+describe('歩きのシートの bodyH(立ち絵より小さく描かれた歩きの補正)', () => {
+  it('載せた個体は歩きのシートを持ち、値は枠の高さより小さい正の数', () => {
+    for (const [idle, bh] of Object.entries(ENEMY_WALK_BODY_H)) {
+      expect(ENEMY_WALK_SHEETS[idle], idle).toBeGreaterThan(1);
+      expect(bh, idle).toBeGreaterThan(0);
+      expect(bh, idle).toBeLessThan(128);
+    }
+  });
+  it('研究員(男)は116、載せていない個体は null(従来どおり)', () => {
+    expect(walkSheetBodyH('lab-zombie/lab-zombie-lv1-male')).toBe(116);
+    expect(walkSheetBodyH('lab-zombie/lab-zombie-lv1-female')).toBeNull();
+    expect(walkSheetBodyH('stage4-enemies/giantbat')).toBeNull();
+    expect(walkSheetBodyH(undefined)).toBeNull();
   });
 });

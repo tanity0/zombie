@@ -116,6 +116,15 @@ export const ENEMY_WALK_SHEETS: Readonly<Record<string, number>> = {
   // ★**左向き**=既定のまま(研究所ゾンビの素材は左向き基準・立ち絵と同じ向きを確認済み)。
   // ★送りは前方ループ(歩様)。男性の見た目(`lv1-male`)の歩きはまだ無い=男性は従来どおり立ち絵。
   'lab-zombie/lab-zombie-lv1-female': 16,
+  // 社長支給2026-09-26「ステージ2の研究員男の歩行」(=`lab-zombie-1` の男性の見た目)。10コマ
+  // (支給 1400×130 → 上の空き2行だけ落として **140×128**)。常駐 **0.68MB**(1.0MB未満=起動時のまま)。
+  // ★**縮小していない**(不透明ブロックの2×2一致率 7.3%)。色数32・半透明0%。左向き=既定。
+  // ★**10コマ目だけ足元が6px浮いていた**(下端123・他は129)。そのままだと継ぎ目で毎周小ジャンプに見える
+  //   (社長報告2026-09-24のパンプキンと同じ見え方)ので、公開側のそのコマだけ6px下げて接地させた。原盤は無加工。
+  // ★**絵が立ち絵より約1割小さい**——3通りで測って揃った: 全身の重ね 1.14 / 下半身の重ね 1.10 /
+  //   頭と背中のランタンの模様合わせ 1.10。枠は立ち絵と同じ128なので、何もしないと歩き出した瞬間に
+  //   1割縮んで見える。⇒ 下の `ENEMY_WALK_BODY_H` で 128/1.10 ≈ **116** を渡す。
+  'lab-zombie/lab-zombie-lv1-male': 10,
   // 社長支給2026-09-22「**城ボス1 搬送隊の歩き**」(=ステージ1の城ボス。表示名「搬送体(変異)」・型は `giantbat`)。
   // ★**解像度を落として出し直した版**(v0.25.4580)。11コマ(支給 1441×130 → 余白を切って **127×128**)。
   //   常駐 **0.68MB**(初出の254×256=2.73MBの**1/4**)。**ドット/px 1.84 → 0.92**=1ドットも落ちない。
@@ -384,6 +393,19 @@ export const ENEMY_SHEET_FACES_RIGHT: Readonly<Record<string, boolean>> = {
 };
 
 export const walkSheetName = (idleTexName: string): string => `${idleTexName}-walk`;
+
+/**
+ * ★**歩きのシートの `bodyH`**(跳び/薙ぎの表と同じ意味=この枠の中で「立ち絵の枠いっぱい」に当たる高さ)。
+ * 歩きの表(`ENEMY_WALK_SHEETS`)はコマ数しか持てないので、要る個体だけここに書く。
+ * 載せない個体は従来どおり(枠の高さ=立ち絵の高さとみなす)。
+ * 前例: 城ボス4の歩きは2.7%小さいが載せていない(目で追えない差)。**1割を超えたら載せる**。
+ */
+export const ENEMY_WALK_BODY_H: Readonly<Record<string, number>> = {
+  'lab-zombie/lab-zombie-lv1-male': 116,   // 研究員(男)。立ち絵より約1割小さく描かれている(上の表の注記)
+};
+
+export const walkSheetBodyH = (idleTexName: string | null | undefined): number | null =>
+  (idleTexName && ENEMY_WALK_BODY_H[idleTexName]) || null;
 export const attackSheetName = (idleTexName: string): string => `${idleTexName}-attack`;
 
 export const walkSheetFrames = (idleTexName: string | null | undefined): number =>

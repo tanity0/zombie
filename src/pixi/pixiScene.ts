@@ -101,7 +101,7 @@ import {
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
-import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir } from '../utils/enemySheets';
+import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
@@ -18511,6 +18511,8 @@ export class PixiScene {
         for (const [bh, name] of [
           [sweepSheetBodyH(idleTexKey), sweepSheetName(idleTexKey)] as const,
           [jumpSheetBodyH(idleTexKey, frameIdx), jumpSheetName(idleTexKey)] as const,
+          // ★歩きのシート(社長支給2026-09-26 研究員男=立ち絵より約1割小さく描かれていた)。
+          [walkSheetBodyH(idleTexKey), walkSheetName(idleTexKey)] as const,
           // ★技ごとの差し替えシート。ここに並べないと**その技の間だけ倍率の補正が外れる**。
           ...giantAltSweepSheets(idleTexKey).map(a => [a.bodyH, a.name] as const),
         ]) {
