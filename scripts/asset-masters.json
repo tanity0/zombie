@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "865 files / 復号後 約625MB",
+ "generatedFor": "865 files / 復号後 約622MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2169,10 +2169,10 @@
    "sha": "5ac686099d605e40"
   },
   "sprites/glen-boss-walk.png": {
-   "w": 6416,
-   "h": 256,
-   "bytes": 1164735,
-   "sha": "19251487b7aa3a09"
+   "w": 4816,
+   "h": 192,
+   "bytes": 624575,
+   "sha": "f50c487f63d39f2a"
   },
   "sprites/glen-boss.png": {
    "w": 256,
