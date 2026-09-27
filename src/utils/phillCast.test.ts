@@ -19,7 +19,7 @@ describe('フィルの演出1(魔法の詠唱)', () => {
     for (const st of ['phill-lightrain-windup', 'phill-meteor-active', 'phill-summon-windup', 'phill-cage-windup', 'phill-cage-recover']) {
       expect(phillCastSpecFor(st)?.spec.name, st).toBe('phill-cast1');
     }
-    for (const st of ['phill-wingslash-active', 'phill-dive-windup', 'chase', undefined]) {
+    for (const st of ['phill-dive-windup', 'phill-dive-fall', 'chase', undefined]) {
       expect(phillCastTech(st), String(st)).toBeNull();
     }
   });
@@ -28,9 +28,15 @@ describe('フィルの演出1(魔法の詠唱)', () => {
 describe('フィルの演出2(手を前に出す)', () => {
   const SP = PHILL_CAST_SHEETS[1];
   it('手の先から前へ飛ばす技(槍の扇・羽根撃ち・金の輪・輪投げ)で使う', () => {
-    for (const st of ['phill-lancefan-windup', 'phill-feathershot-recover', 'phill-goldring-active', 'phill-ringtoss-out']) {
+    for (const st of ['phill-lancefan-windup', 'phill-feathershot-recover', 'phill-goldring-active', 'phill-ringtoss-out',
+      'phill-wingslash-windup', 'phill-wingthrust-active', 'phill-wingcombo-gap', 'phill-wingcombo-active2']) {
       expect(phillCastSpecFor(st)?.spec.name, st).toBe('phill-cast2');
     }
+  });
+  it('★13技のうち、演出の絵を持たないのは急降下だけ(社長選択「待機のまま」)', () => {
+    const moves = ['lightrain', 'lancefan', 'wingslash', 'wingthrust', 'wingcombo', 'summon', 'goldring', 'cage', 'meteor', 'ringtoss', 'feathershot', 'dive'];
+    const unwired = moves.filter(m => phillCastSpecFor(`phill-${m}-windup`) === null);
+    expect(unwired).toEqual(['dive']);
   });
   it('溜めの間は 0〜11 を割り付け、12 以降(放つ姿)は出さない', () => {
     const seen = new Set<number>();

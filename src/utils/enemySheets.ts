@@ -1152,7 +1152,8 @@ export const sheetDeferred = (idleTexName: string): boolean =>
  * **演出2(手を前に出す)**「演出バージョン2、これも最後発動と同時に数コマピンポンして」。
  *   16コマ(支給 2608×222 → 上の空き2行だけ落として **163×220**)。常駐 2.30MB。縮小なし(2×2一致率 4.5%)。
  *   読み: 0〜5=身を沈めて腕を引く / 6〜11=羽を広げ腕を前へ運ぶ / **12〜15=腕を前へ突き出し切る(放つ姿)**。
- *   使う技(v0.25.4685 で上げた想定どおり): 槍の扇・羽根撃ち・金の輪・輪投げ(=手の先から前へ飛ばす技)。
+ *   使う技: 槍の扇・羽根撃ち・金の輪・輪投げ(=手の先から前へ飛ばす技)+羽の3技(薙ぎ払い・突き・連撃)。
+ *   ★急降下(`phill-dive-`)だけは**待機のまま**(社長選択2026-09-27。落ちる動きは位置の移動で見せている)。
  *   送り(`release`): **溜めの長さに 0〜11 を割り付け**、**溜めが明けた瞬間=発動と同時に 12 を出し**、以後は技が終わるまで 12〜15 を往復。
  *
  * どちらも右向き(立ち絵と同じ)・足元は全コマ最下行。頭上の空きのぶん枠が高く、0コマ目を立ち絵(192×256)へ重ねると
@@ -1176,7 +1177,10 @@ export const PHILL_CAST_SHEETS: readonly PhillCastSpec[] = [
   },
   {
     idle: 'phill', name: 'phill-cast2', frames: 16, loopFrom: 12, bodyH: 187, sync: 'release',
-    techs: ['phill-lancefan-', 'phill-feathershot-', 'phill-goldring-', 'phill-ringtoss-'],
+    // ★羽の3技(薙ぎ払い・突き・連撃)も演出2(社長選択2026-09-27「演出2(手を前へ)」)。
+    //   羽そのものは別スプライト(`phill-wings`)が従来どおり速く大きく羽ばたく。急降下は待機のまま(社長選択)。
+    techs: ['phill-lancefan-', 'phill-feathershot-', 'phill-goldring-', 'phill-ringtoss-',
+      'phill-wingslash-', 'phill-wingthrust-', 'phill-wingcombo-'],
   },
 ];
 /** 旧名(演出1)。 */
