@@ -105,7 +105,7 @@ import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, swe
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
-import { PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
+import { ENEMY_FRAME_OFFSETS, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -18201,13 +18201,26 @@ export class PixiScene {
       // 帯幅→絵の実寸(縦横同率=歪まない)。さらに他敵と同じ擬似遠近スケールを掛ける(画面の前後で大小・視覚のみ)。
       // 当たり判定の帯(e.width×e.height)は不変=絵だけが前で大きく/奥で小さくなる(社長指示)。
       // §10-14#6: フィルは擬似遠近も対象外(専用レイヤー=浮遊ボスは遠近の演出に乗らないのが意図)。
-      const scale = ((e.width / fit.w) / tex.width) * (e.type === 'phillboss' ? 1 : this.depthScaleEnemy(fb.footY));
+      // ★★フィルの手で描いたコマ(待機/演出1/演出2)は**立ち絵と同じ大きさ・同じ足元**で置き、**胴が揃うだけずらす**
+      // (社長指示2026-09-27「フィル、モーションを体基準にして。ガタガタしてる」)。この経路は絵の**横幅**を帯へ合わせて
+      // 中心で置くので、コマの幅(154/182/163)が違うと**絵を替えるたびに体の大きさが変わり**、コマの中で体が動くと
+      // **そのまま画面でも跳ねていた**。⇒ 立ち絵(`phill`)を置いた時の大きさ・足元を基準にし、コマの倍率は
+      // 「立ち絵の高さ ÷ そのシートの本体の高さ(bodyH)」、位置は足元揃え+胴のずらし(`ENEMY_FRAME_OFFSETS`)で決める。
+      const phillSheet = e.type === 'phillboss' && walkTex !== null && tex === walkTex ? this.phillSheetFit(tex) : null;
+      const phillIdleTex = phillSheet ? getTexture('phill') : null;
+      const baseTex = phillIdleTex ?? tex;
+      const scale0 = ((e.width / fit.w) / baseTex.width) * (e.type === 'phillboss' ? 1 : this.depthScaleEnemy(fb.footY));
+      const scale = phillSheet && phillIdleTex ? scale0 * phillIdleTex.height / phillSheet.bodyH : scale0;
       const spriteW = scale * tex.width, spriteH = scale * tex.height;
       const stripCx = e.x + e.width / 2, stripCy = e.y + e.height / 2;
       // 絵の中心(アンカー)= 帯の中心から、帯が絵内のどこにあるか(fit.cx/cy)ぶん逆にずらす。
-      const spx = stripCx + (0.5 - fit.cx) * spriteW;
-      const spy = stripCy + (0.5 - fit.cy) * spriteH;
-      const breath = this.enemyBreath(e, now, view, gameTime);
+      const baseW = scale0 * baseTex.width, baseH = scale0 * baseTex.height;
+      const baseCx = stripCx + (0.5 - fit.cx) * baseW;
+      const baseCy = stripCy + (0.5 - fit.cy) * baseH;
+      const spx = phillSheet ? baseCx + phillSheet.off[0] * scale : baseCx;
+      const spy = phillSheet ? (baseCy + baseH / 2) - spriteH / 2 + phillSheet.off[1] * scale : baseCy;
+      // ★手で描いたコマの間は疑似呼吸(伸び縮み=歪み)を掛けない(社長指示「モーション追加により外すのは歪みだけ」)。
+      const breath = phillSheet ? { x: 1, y: 1 } : this.enemyBreath(e, now, view, gameTime);
       // PACING_PUZZLE.md §10-4(浮遊)+§10-19(登場シーン)。視覚のみ=e.y/当たり判定は不変
       // (CLAUDE.md Y方向5点チェック: 地平線フェード/擬似遠近は上で既に対象外化。可視域/移動可能帯は
       // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。
@@ -18655,6 +18668,21 @@ export class PixiScene {
       const scaleX = sc * breath.x * aiSqXDraw * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX * lichWarp.sqX * lichBlinkSq;
       view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqYDraw * motSqY * corpseSq.sqY * lichWarp.sqY * lichBlinkSq);
       if (corpseSq.alpha < 1) view.container.alpha *= corpseSq.alpha;
+      // ★体(胴)基準のずらし(社長指示2026-09-27「フィル、モーションを体基準にして。ガタガタしてる」)。
+      // そのコマが表に載っているシートのものなら、胴が揃うだけ描画位置をずらす(ミラー時は scaleX の符号で自動で左右反転)。
+      if (walkTex !== null && tex === walkTex) {
+        for (const name in ENEMY_FRAME_OFFSETS) {
+          const sl = this.enemyWalkFrames.get(name);
+          if (!sl || sl.length === 0 || sl[0].source !== tex.source) continue;
+          const fi = tex.width > 0 ? Math.round(tex.frame.x / tex.width) : 0;
+          const off = ENEMY_FRAME_OFFSETS[name][fi];
+          if (off) {
+            view.sprite.position.x += Math.round(off[0] * scaleX);
+            view.sprite.position.y += Math.round(off[1] * view.sprite.scale.y);
+          }
+          break;
+        }
+      }
       // ステージ4の足元ズレ補正: アンカー(0.5,1)は画像中心を footX に置くため、足の接地重心が
       // 中心からずれた個体は横に流れて見える。重心が footX に乗るよう x を寄せる(視覚のみ)。
       if (this.snowStage || this.battlefieldStage) {
@@ -30209,6 +30237,25 @@ export class PixiScene {
    * - 演出2(`release`): 溜めに 0〜11 を割り付け、**溜めが明けた瞬間(発動)に 12** → 以後は 12〜15 を往復。
    * 技を外れた(カウンターで中断・次の技へ)ら null=待機のコマへ戻る。
    */
+  /**
+   * ★フィルの手で描いたコマの「本体の高さ(bodyH)」と「胴のずらし」。そのコマが待機/演出1/演出2のどれでもなければ null。
+   * 待機は枠の高さ(200)がそのまま本体、演出1/2は頭上の空きを除いた 187(`PHILL_CAST_SHEETS`)。
+   */
+  private phillSheetFit(tex: Texture): { bodyH: number; off: readonly [number, number] } | null {
+    const fi = tex.width > 0 ? Math.round(tex.frame.x / tex.width) : 0;
+    const idleSl = this.enemyWalkFrames.get('phill-idle');
+    if (idleSl && idleSl.length > 0 && idleSl[0].source === tex.source) {
+      return { bodyH: tex.height, off: ENEMY_FRAME_OFFSETS['phill-idle']?.[fi] ?? [0, 0] };
+    }
+    for (const c of PHILL_CAST_SHEETS) {
+      const sl = this.enemyWalkFrames.get(c.name);
+      if (sl && sl.length > 0 && sl[0].source === tex.source) {
+        return { bodyH: c.bodyH, off: ENEMY_FRAME_OFFSETS[c.name]?.[fi] ?? [0, 0] };
+      }
+    }
+    return null;
+  }
+
   private phillCastTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const hit = phillCastSpecFor(e.bossState);
     if (hit === null || hit.spec.idle !== idleTexKey) { this.phillCastStart.delete(e.id); return null; }

@@ -1,6 +1,6 @@
 // ★フィルの「演出1」(魔法の詠唱)の送り。社長支給2026-09-27「最後数コマだけピンポンして(余韻)」。
 import { describe, it, expect } from 'vitest';
-import { PHILL_CAST_SHEET, PHILL_CAST_SHEETS, phillCastFrame, phillCastTech, phillCastSpecFor, phillReleaseFrame } from './enemySheets';
+import { ENEMY_FRAME_OFFSETS, PHILL_CAST_SHEET, PHILL_CAST_SHEETS, phillCastFrame, phillCastTech, phillCastSpecFor, phillReleaseFrame } from './enemySheets';
 
 describe('フィルの演出1(魔法の詠唱)', () => {
   it('0→15 を一方向に流し、その後は 11〜15 を往復する(継ぎ目で同じコマが2回続かない)', () => {
@@ -46,5 +46,15 @@ describe('フィルの演出2(手を前に出す)', () => {
   it('2枚とも同じ立ち絵・同じ背丈合わせ・16コマ', () => {
     for (const c of PHILL_CAST_SHEETS) { expect(c.idle).toBe('phill'); expect(c.bodyH).toBe(187); expect(c.frames).toBe(16); }
     expect(PHILL_CAST_SHEET.name).toBe('phill-cast1');
+  });
+});
+
+describe('★体(胴)基準のずらし(フィル・社長指示2026-09-27)', () => {
+  it('表のシートはコマ数と同じ長さ', () => {
+    const frames: Record<string, number> = { 'phill-idle': 14, 'phill-cast1': 16, 'phill-cast2': 16 };
+    for (const [name, offs] of Object.entries(ENEMY_FRAME_OFFSETS)) expect(offs.length, name).toBe(frames[name]);
+  });
+  it('基準(待機0コマ目)はずらさない', () => {
+    expect(ENEMY_FRAME_OFFSETS['phill-idle'][0]).toEqual([0, 0]);
   });
 });
