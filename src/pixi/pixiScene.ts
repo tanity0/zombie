@@ -329,7 +329,7 @@ import type { SceneLayers } from './layers';
 import {
   getTexture, PLAYER_ART_BASE_W,
   FLAME_SHEET, FLAME_FRAMES, FLAME_FRAME_W, FLAME_FRAME_H, FLAME_LIGHT_FRAC, TORCH_STAND_RIM_ABOVE_FOOT,
-  avatarHeadDeltaPx, avatarHeadCxDeltaPx, GLEN_PART_ANIM_FRAMES,
+  avatarHeadDeltaPx, avatarHeadCxDeltaPx, GLEN_PART_ANIM_FRAMES, GLEN2_BODY_ANIM_FRAMES,
 } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
@@ -3087,6 +3087,8 @@ const TAILSLAM_DROP_POW = 5;      // 落下カーブ。v0.25.3149: 3→5=最後�
 // ★グレン第二形態のパーツのアニメ(社長支給2026-09-26)。1周の長さと、スロットごとの位相のずれ(1周に対する割合)。
 const GLEN_PART_ANIM_PERIOD_MS = Math.max(200, tsNum('glenpartms', 1600));
 const GLEN_PART_ANIM_SLOT_PHASE = 0.13;
+// ★グレン第二形態の本体のアニメの1周(社長支給2026-09-27)。
+const GLEN2_BODY_ANIM_PERIOD_MS = Math.max(200, tsNum('glen2ms', 1400));
 const TAILSLAM_KICK_MS = 220;       // 1発ぶんの震えが収まるまで
 const TAILSLAM_KICK_BACK_PX = 16;   // 撃った反動で帯の逆へ押し戻される量
 const TAILSLAM_KICK_SHAKE_PX = 9;   // 震えの振幅
@@ -17880,12 +17882,15 @@ export class PixiScene {
     // ★グレン形態2は立ち絵キーが形態1と同じ(`glen-boss`)で、絵だけ下の `glenP2` で差し替わる。
     // 形態1のシート(浮遊・攻撃)のコマをここで拾うと、**出ていない絵のせいで**形態2の疑似呼吸・技の
     // 伸び縮み・傾ぎまで止まる(どれも `walkTex !== null` で止めている)。形態2は「手で描いたコマ無し」として扱う。
-    const walkTex = glenP2 ? null : (atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
+    // ★グレン第二形態の本体のアニメ(社長支給2026-09-27「第二形態の本体」)。形態2はこのコマを
+    // 「手で描いたコマ」として扱う=疑似呼吸・技の伸び縮み・傾ぎを掛けない(形態1のシートは拾わない)。
+    const glenP2Tex = glenP2 ? this.glenForm2BodyTexture(e.id, now) : null;
+    const walkTex = glenP2 ? glenP2Tex : (atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
       ?? this.enemyIdleTexture(idleTexKey, e, now));
     const tex = e.type === 'guardian-phantom'
       ? this.guardianPhantomTexture(view, now)
       : glenP2
-        ? (getTexture('glen-boss2') ?? getTexture(idleTexKey))
+        ? (glenP2Tex ?? getTexture('glen-boss2') ?? getTexture(idleTexKey))
         : (walkTex ?? getTexture(idleTexKey));
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
@@ -18505,7 +18510,8 @@ export class PixiScene {
       // 対象の型でなければ `null` で即抜け=**他の敵は1行も余計に走らない**(Map参照1回)。
       // ★**そのシートのコマが出ている時だけ**掛ける(`source` が同じかで見るので、カウンターの
       //   巻き戻しで技のコマが再生されている間も正しく掛かる)。
-      const fitIdleTex = tex === walkTex ? getTexture(idleTexKey) : null;
+      // ★形態2の本体のコマは**形態2の立ち絵**(`glen-boss2`)の背丈へ揃える(立ち絵キーは形態1と同じなので明示する)。
+      const fitIdleTex = tex === walkTex ? getTexture(glenP2 ? 'glen-boss2' : idleTexKey) : null;
       let fitBodyH = tex.height;
       if (fitIdleTex) {
         // 枠より中身が小さいシートは2種類ある(どちらも `bodyH` を持つ):
@@ -26822,6 +26828,17 @@ export class PixiScene {
    * ★スロットごとに位相を少しずつずらす=**連なりを波が伝わる**(全部が同じコマで揃うと機械的に見える)。
    *   周期は叩き台 1600ms(16コマ=10コマ/秒)。`?glenpartms=` で実機から触れる。
    */
+  /**
+   * ★グレン第二形態の本体のコマ(社長支給2026-09-27・7コマ)。無ければ null(=従来の立ち絵)。
+   * 前方ループ(継ぎ目7→1の重なり 0.69・隣どうし 0.73〜0.85)。周期は叩き台 1400ms(5コマ/秒)・`?glen2ms=`。
+   * 個体IDで位相をずらす(同時に2体いても揃わない)。
+   */
+  private glenForm2BodyTexture(id: string, now: number): ReturnType<typeof getTexture> {
+    const t = ((now / GLEN2_BODY_ANIM_PERIOD_MS + stablePhase(id) / (Math.PI * 2)) % 1 + 1) % 1;
+    const k = Math.min(GLEN2_BODY_ANIM_FRAMES - 1, Math.floor(t * GLEN2_BODY_ANIM_FRAMES));
+    return getTexture(`glen-boss2-f${k}`);
+  }
+
   private glenPartAnimTexture(part: number, slot: number, now: number): ReturnType<typeof getTexture> {
     if (part !== 0 && part !== 1) return null;
     const t = ((now / GLEN_PART_ANIM_PERIOD_MS + slot * GLEN_PART_ANIM_SLOT_PHASE) % 1 + 1) % 1;

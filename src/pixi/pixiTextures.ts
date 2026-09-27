@@ -21,6 +21,10 @@ import { setEnemyArtAspect } from './renderSpec';
 
 /** グレン第二形態のパーツのアニメのコマ数(砲身・中間の箱。社長支給2026-09-26)。 */
 export const GLEN_PART_ANIM_FRAMES = 16;
+/** グレン第二形態の本体のアニメのコマ数と1コマの寸法(社長支給2026-09-27「第二形態の本体」)。 */
+export const GLEN2_BODY_ANIM_FRAMES = 7;
+const GLEN2_BODY_FRAME_W = 268;
+const GLEN2_BODY_FRAME_H = 195;
 
 // ★素材ごとの読み込み省略(v0.25.4349・社長報告「落ちるとトップに戻る」の切り分け用)。
 // `?mhit=0` / `?skfx=0` は「出さない」だけでなく「**読まない**」にする=メモリが実際に減り、
@@ -1071,7 +1075,7 @@ export const ensureTextures = (): Promise<void> => {
     // ローディング%(社長指示v0.25.1776): このローダが読むファイル総数を先に一括登録する
     // (atlas 1 + standalone + 色キー5 + atlas-px上書き + 単発3=tree-new2/tree-snow/castle-church)。
     // 完了カウントは loadOne / loadKeyed の finally が1ずつ進める。
-    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 8); // +8=tree-new2/tree-snow/castle-church/glen-boss/glen-boss2/glen-boss2-parts/glen-boss2-part0-anim/glen-boss2-part1-anim
+    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 9); // +9=tree-new2/tree-snow/castle-church/glen-boss/glen-boss2/glen-boss2-parts/glen-boss2-part0-anim/glen-boss2-part1-anim/glen-boss2-anim
 
     // 1アセットのロード失敗が全体を巻き込まないよう個別に握りつぶす。失敗した絵は
     // 未登録(getTexture=null)になり、その描画だけスキップ/手続き描画にフォールバック。
@@ -1315,6 +1319,16 @@ export const ensureTextures = (): Promise<void> => {
     // ★グレン第二形態のパーツのアニメ(社長支給2026-09-26・砲身と中間の箱の16コマ。尾の鉤爪は「追従するだけでいい」=静止のまま)。
     // 支給PNGは上の空き2行だけ落として公開(砲身 64×64 / 箱 65×64 ×16コマ・足元は全コマ最下行・中心も揃っている)。
     // 登録名は `glen-boss2-part-<パーツ>-f<コマ>`。無ければ描画は従来の静止絵へ落ちる。
+    // ★グレン第二形態の本体のアニメ(社長支給2026-09-27「第二形態の本体」)。7コマ(支給 1876×202 → 全コマ空いていた
+    // 上の7行だけ落として 268×195)。立ち絵(`glen-boss2` 256×210)と同じ向き・同じ背丈(重ねた倍率 0.93=枠の比 0.93)。
+    // 登録名は `glen-boss2-f<コマ>`。無ければ従来の立ち絵へ落ちる。
+    const glen2Anim = await loadOne('glen-boss2-anim');
+    if (glen2Anim) {
+      glen2Anim.source.scaleMode = 'linear';
+      for (let k = 0; k < GLEN2_BODY_ANIM_FRAMES; k++) {
+        textures.set(`glen-boss2-f${k}`, new Texture({ source: glen2Anim.source, frame: new Rectangle(k * GLEN2_BODY_FRAME_W, 0, GLEN2_BODY_FRAME_W, GLEN2_BODY_FRAME_H) }));
+      }
+    }
     for (const [part, fw] of [[0, 64], [1, 65]] as const) {
       const anim = await loadOne(`glen-boss2-part${part}-anim`);
       if (!anim) continue;
