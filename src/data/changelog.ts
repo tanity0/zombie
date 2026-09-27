@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4685', items: ['PHILL(変異体)が空から魔法を降らせる時、手を天へ掲げて頭上に赤い魔法陣を灯すようになった。放った後も羽を広げたまま魔法陣が渦を巻く'] },
   { version: '0.25.4684', items: ['グレン第二形態の本体の動きが、途切れず行きつ戻りつするようになった'] },
   { version: '0.25.4683', items: ['PHILL(変異体)が、描き下ろしの絵で宙に浮かんで揺らめくようになった'] },
   { version: '0.25.4682', items: ['グレン第二形態の本体が、爪を蠢かせる描き下ろしの動きになった'] },
