@@ -329,7 +329,7 @@ import type { SceneLayers } from './layers';
 import {
   getTexture, PLAYER_ART_BASE_W,
   FLAME_SHEET, FLAME_FRAMES, FLAME_FRAME_W, FLAME_FRAME_H, FLAME_LIGHT_FRAC, TORCH_STAND_RIM_ABOVE_FOOT,
-  avatarHeadDeltaPx, avatarHeadCxDeltaPx,
+  avatarHeadDeltaPx, avatarHeadCxDeltaPx, GLEN_PART_ANIM_FRAMES,
 } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
@@ -3084,6 +3084,9 @@ const TAILSLAM_LIFT_PX = 76;      // 振り上げの高さ(先端ほど高く上
 const TAILSLAM_OVERSHOOT_PX = 18; // 叩きつけで地面より少し下まで行き過ぎる量。v0.25.3149: 10→18
 const TAILSLAM_DROP_POW = 5;      // 落下カーブ。v0.25.3149: 3→5=最後の一瞬でほぼ全部落ちる(鋭い)
 // 弾を1発撃つたびの反動(社長指示v0.25.3149「大きく震える。撃ってる感じ」)。**先のパーツほど大きい**。
+// ★グレン第二形態のパーツのアニメ(社長支給2026-09-26)。1周の長さと、スロットごとの位相のずれ(1周に対する割合)。
+const GLEN_PART_ANIM_PERIOD_MS = Math.max(200, tsNum('glenpartms', 1600));
+const GLEN_PART_ANIM_SLOT_PHASE = 0.13;
 const TAILSLAM_KICK_MS = 220;       // 1発ぶんの震えが収まるまで
 const TAILSLAM_KICK_BACK_PX = 16;   // 撃った反動で帯の逆へ押し戻される量
 const TAILSLAM_KICK_SHAKE_PX = 9;   // 震えの振幅
@@ -26813,6 +26816,19 @@ export class PixiScene {
     return 1 - since / TAILSLAM_KICK_MS;
   }
 
+  /**
+   * ★グレン第二形態のパーツのアニメ(社長支給2026-09-26・砲身と中間の箱の16コマ)。そのスロットで今出すコマ。
+   * 無ければ null(=従来の静止絵)。尾の鉤爪は「追従するだけでいい」(社長)=アニメなし。
+   * ★スロットごとに位相を少しずつずらす=**連なりを波が伝わる**(全部が同じコマで揃うと機械的に見える)。
+   *   周期は叩き台 1600ms(16コマ=10コマ/秒)。`?glenpartms=` で実機から触れる。
+   */
+  private glenPartAnimTexture(part: number, slot: number, now: number): ReturnType<typeof getTexture> {
+    if (part !== 0 && part !== 1) return null;
+    const t = ((now / GLEN_PART_ANIM_PERIOD_MS + slot * GLEN_PART_ANIM_SLOT_PHASE) % 1 + 1) % 1;
+    const k = Math.min(GLEN_PART_ANIM_FRAMES - 1, Math.floor(t * GLEN_PART_ANIM_FRAMES));
+    return getTexture(`glen-boss2-part-${part}-f${k}`);
+  }
+
   private syncGlenParts(
     view: ActorView, visibleCount: number,
     footX: number, footY: number, bodyHalfW: number, sc: number, alpha: number, now: number,
@@ -26835,8 +26851,13 @@ export class PixiScene {
     });
     for (let i = 0; i < show.length; i++) {
       const slot = show[i];
-      const tex = getTexture(`glen-boss2-part-${GLEN_CHAIN[slot]}`);
+      const staticTex = getTexture(`glen-boss2-part-${GLEN_CHAIN[slot]}`);
+      // ★アニメのコマがあればそれを出す。大きさは**静止絵と同じ背丈**に揃える(中間の箱は描き直しで
+      //   55→64 と大きくなっていた=0.86倍して従来の大きさへ。砲身は 64→64 で等倍)。間隔は静止絵の幅のまま。
+      const animTex = this.glenPartAnimTexture(GLEN_CHAIN[slot], slot, now);
+      const tex = animTex ?? staticTex;
       if (!tex) continue;
+      const animFit = animTex && staticTex && animTex.height > 0 ? staticTex.height / animTex.height : 1;
       let sp = view.glenParts[slot];
       if (!sp) {
         sp = new Sprite(tex);
@@ -26848,7 +26869,9 @@ export class PixiScene {
       if (sp.texture !== tex) sp.texture = tex;
       const pt = sampleGlenTrail(trail, footX, footY, dists[i]);
       const bob = Math.sin(now / 520 + slot * 1.7) * 3;
-      let px = pt.x, py = pt.y - bob, pscale = sc, prot = Math.sin(now / 700 + slot * 2.1) * 0.03;
+      // ★手で描いたコマが出ているパーツは**回転と伸び縮み(歪み)を掛けない**(社長指示2026-09-22
+      //   「モーション追加により外すのは歪みだけ」)。上下の揺れ(bob)・叩きつけの位置・反動の位置は残す。
+      let px = pt.x, py = pt.y - bob, pscale = sc, prot = animTex ? 0 : Math.sin(now / 700 + slot * 2.1) * 0.03;
       if (slam) {
         // 尻尾の叩きつけ(v0.25.3146): 軌跡どおりの位置と「帯に沿って一直線」の位置を混ぜる。
         // ★**先のパーツほど遅れて動く**(ムチの波)。根元は早く、尾は最後に振られて叩きつく。
@@ -26862,8 +26885,10 @@ export class PixiScene {
         py = (pt.y - bob) + (ey - (pt.y - bob)) * b;
         // 持ち上げは「伸ばし切っているパーツほど大きく」= 根元は上がらず、先が高く振り上がる。
         py -= slam.lift * b * (0.35 + 0.65 * (i / Math.max(1, show.length - 1)));
-        pscale = sc * (1 + (slam.swell - 1) * b);
-        prot += slam.ang * 0.05 * b; // わずかに帯の向きへ傾ぐ(倒し切らない=絵は立ったまま)
+        if (!animTex) {
+          pscale = sc * (1 + (slam.swell - 1) * b);
+          prot += slam.ang * 0.05 * b; // わずかに帯の向きへ傾ぐ(倒し切らない=絵は立ったまま)
+        }
         // v0.25.3149: 弾を1発撃つたびの反動。**先のパーツほど大きく震える**(付け根は踏ん張り、
         // 先が跳ねる)。向きは「帯の逆=撃った反動で押し戻される」+ 上下の細かい震え。
         if (slam.kick > 0) {
@@ -26873,11 +26898,13 @@ export class PixiScene {
           py -= Math.sin(slam.ang) * TAILSLAM_KICK_BACK_PX * k;
           py += Math.sin(now / TAILSLAM_KICK_SHAKE_MS + i * 1.9) * TAILSLAM_KICK_SHAKE_PX * k;
           px += Math.cos(now / TAILSLAM_KICK_SHAKE_MS * 1.3 + i * 2.7) * TAILSLAM_KICK_SHAKE_PX * 0.6 * k;
-          prot += Math.sin(now / TAILSLAM_KICK_SHAKE_MS + i) * 0.10 * k;
-          pscale *= 1 + TAILSLAM_KICK_SWELL * k;
+          if (!animTex) {
+            prot += Math.sin(now / TAILSLAM_KICK_SHAKE_MS + i) * 0.10 * k;
+            pscale *= 1 + TAILSLAM_KICK_SWELL * k;
+          }
         }
       }
-      sp.scale.set(pscale, pscale);
+      sp.scale.set(pscale * animFit, pscale * animFit);
       sp.rotation = prot;
       sp.position.set(Math.round(px), Math.round(py));
       sp.alpha = alpha;

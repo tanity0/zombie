@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4681', items: ['グレン第二形態の後ろに連なる砲身と箱が、描き下ろしの動きでうごめくようになった'] },
   { version: '0.25.4680', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4679', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4678', items: ['グレンのその場での踏み潰しが、跳びかかりの後半の絵に。腕を広げて伸び上がり、叩きつけるように踏み下ろす'] },

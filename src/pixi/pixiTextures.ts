@@ -19,6 +19,8 @@ import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 import { STAGE_PROPS } from '../world/cityProps';
 import { setEnemyArtAspect } from './renderSpec';
 
+/** グレン第二形態のパーツのアニメのコマ数(砲身・中間の箱。社長支給2026-09-26)。 */
+export const GLEN_PART_ANIM_FRAMES = 16;
 
 // ★素材ごとの読み込み省略(v0.25.4349・社長報告「落ちるとトップに戻る」の切り分け用)。
 // `?mhit=0` / `?skfx=0` は「出さない」だけでなく「**読まない**」にする=メモリが実際に減り、
@@ -1069,7 +1071,7 @@ export const ensureTextures = (): Promise<void> => {
     // ローディング%(社長指示v0.25.1776): このローダが読むファイル総数を先に一括登録する
     // (atlas 1 + standalone + 色キー5 + atlas-px上書き + 単発3=tree-new2/tree-snow/castle-church)。
     // 完了カウントは loadOne / loadKeyed の finally が1ずつ進める。
-    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 6); // +6=tree-new2/tree-snow/castle-church/glen-boss/glen-boss2/glen-boss2-parts
+    loadProgressBegin(1 + standalone.length + 5 + atlasPxNames.length + 8); // +8=tree-new2/tree-snow/castle-church/glen-boss/glen-boss2/glen-boss2-parts/glen-boss2-part0-anim/glen-boss2-part1-anim
 
     // 1アセットのロード失敗が全体を巻き込まないよう個別に握りつぶす。失敗した絵は
     // 未登録(getTexture=null)になり、その描画だけスキップ/手続き描画にフォールバック。
@@ -1309,6 +1311,17 @@ export const ensureTextures = (): Promise<void> => {
       frames.forEach(([x, y, w2, h2], i) => {
         textures.set(`glen-boss2-part-${i}`, new Texture({ source: glenParts.source, frame: new Rectangle(x, y, w2, h2) }));
       });
+    }
+    // ★グレン第二形態のパーツのアニメ(社長支給2026-09-26・砲身と中間の箱の16コマ。尾の鉤爪は「追従するだけでいい」=静止のまま)。
+    // 支給PNGは上の空き2行だけ落として公開(砲身 64×64 / 箱 65×64 ×16コマ・足元は全コマ最下行・中心も揃っている)。
+    // 登録名は `glen-boss2-part-<パーツ>-f<コマ>`。無ければ描画は従来の静止絵へ落ちる。
+    for (const [part, fw] of [[0, 64], [1, 65]] as const) {
+      const anim = await loadOne(`glen-boss2-part${part}-anim`);
+      if (!anim) continue;
+      anim.source.scaleMode = 'linear';
+      for (let k = 0; k < GLEN_PART_ANIM_FRAMES; k++) {
+        textures.set(`glen-boss2-part-${part}-f${k}`, new Texture({ source: anim.source, frame: new Rectangle(k * fw, 0, fw, 64) }));
+      }
     }
 
     // v0.25.3043: 冷気ブレス本体(社長支給2枚目・指示「透明の余計な要素が多いのでトリミングして使って」)。
