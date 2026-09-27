@@ -438,6 +438,9 @@ export const ENEMY_SHEET_FACES_RIGHT: Readonly<Record<string, boolean>> = {
   //   社長報告2026-09-26「**向きが逆**」: シートを入れた時点でミラーの対象へ移り(`hasAnimSheet`)、
   //   ここに無いので「左向き素材」扱い=**常に逆**を向いていた(v0.25.4619 削岩型と同じ穴)。
   'glen-boss': true,
+  // ★フィル(`phill`)。立ち絵も待機/浮遊のシートも**右向き**(顔が右上)。シートを入れた時点でミラーの対象へ移るので、
+  //   ここに無いと常に逆を向く(グレン・削岩型と同じ穴を先に塞ぐ)。
+  'phill': true,
 };
 
 export const walkSheetName = (idleTexName: string): string => `${idleTexName}-walk`;
@@ -516,6 +519,15 @@ export const ENEMY_IDLE_SHEETS: Readonly<Record<string, number>> = {
   // ★送りは**前方ループ**。継ぎ目(15→0)は隣の平均の **0.35倍**で、**15組ある隣が全部それより大きい**
   //   ——この表でいちばんきれいに閉じた1周期(比較: 卵体1.08 / 死神1.66)。
   'reaper2-hanged': 16,
+  // ★フィル(変異体・型は `phillboss`、立ち絵は `phill`)。社長支給2026-09-27「**フィルの待機と浮遊**」。14コマ
+  // (支給 2156×202 → 上の空き2行だけ落として **154×200**)。常駐 **1.72MB**(遅延組=下の常駐表)。
+  // 縮小なし(2×2一致率 4.8%)・半透明0%・色数32。足元は全コマ最下行。
+  // ★**待機と浮遊を1枚で兼ねる**: 歩きのシートを持たないので、動いている間もこの待機のコマが流れる
+  //   (`walkTex = 攻撃 ?? 歩き ?? 待機` の順)。
+  // ★倍率: 立ち絵(192×256)へ重ねて 0.75〜0.78(枠の比 200/256=0.78)=そのまま。
+  // ★**右向き**(顔が右上を向いている)=下の `ENEMY_SHEET_FACES_RIGHT` に載せる。
+  // ★羽(`phill-wings`)・後光・撒き羽根は**別スプライトなのでそのまま出る**(外していない)。
+  'phill': 14,
 };
 
 /**
@@ -526,6 +538,7 @@ export const ENEMY_IDLE_PLAYBACK: Readonly<Record<string, IdlePlayback>> = {
   'plant-common': 'pingpong',   // 花が開いて閉じる=行って戻る
   'ghost-common': 'loop',       // 髪と裾がなびく=流れ続ける
   'reaper2-hanged': 'loop',     // 吊られて一周する揺れ(先頭と末尾がほぼ同じ絵=閉じている)
+  'phill': 'loop',              // 浮遊の揺れ(継ぎ目14→1の重なり 0.71=隣どうし 0.66〜0.82 の範囲内)
 };
 
 /** 1周期(吸う→吐く→止まる)の長さ。★叩き台——`?idlebreath=` で実機から触れる。 */
@@ -540,6 +553,8 @@ export const ENEMY_IDLE_PERIOD_MS: Readonly<Record<string, number>> = {
   // T=2π√(L/g)≒2.0秒。人の背丈ほどの物が縄で揺れる速さがここ。16コマ=8コマ/秒。
   // ※置き換える前の浮遊ゆらぎは strideHz 0.6 × テンポ0.7 = 2.4秒周期だったので、ほぼ据え置き。
   'reaper2-hanged': 2000,
+  // フィル。**叩き台 1800ms**(14コマ=約7.8コマ/秒)。卵体と同じ「宙に浮く者の揺れ」の速さに揃えた。`?idlebreath=` で触れる。
+  'phill': 1800,
 };
 
 export const idleSheetName = (idleTexName: string): string => `${idleTexName}-idle`;
@@ -1106,6 +1121,8 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   // ステージ5の城ボス。歩き1.56+攻撃0.93+跳び/叩きつけ1.24=**3.73MB**。
   // カットインを挟んで出る+**ステージ5でしか出ない**ので、まるごと遅延。
   'stage5-enemies/giantbat': 'deferred',
+  // フィル(変異体)。待機/浮遊 1.72MB。EXステージでしか出ず、出現にカットインを挟むので遅延。
+  'phill': 'deferred',
   // グレン形態1。浮遊3.70+攻撃1.30+跳び2.21=**7.21MB**(全部 高さ192)。ステージ7でしか出ず、出現にカットインを挟むので遅延。
   'glen-boss': 'deferred',
   // ▼ここから下は**起動時のまま**。理由はどれも同じ=**前触れなくその辺に居る**(猶予が無い)。
