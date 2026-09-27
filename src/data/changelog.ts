@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4684', items: ['グレン第二形態の本体の動きが、途切れず行きつ戻りつするようになった'] },
   { version: '0.25.4683', items: ['PHILL(変異体)が、描き下ろしの絵で宙に浮かんで揺らめくようになった'] },
   { version: '0.25.4682', items: ['グレン第二形態の本体が、爪を蠢かせる描き下ろしの動きになった'] },
   { version: '0.25.4681', items: ['グレン第二形態の後ろに連なる砲身と箱が、描き下ろしの動きでうごめくようになった'] },

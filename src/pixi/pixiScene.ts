@@ -3087,8 +3087,8 @@ const TAILSLAM_DROP_POW = 5;      // 落下カーブ。v0.25.3149: 3→5=最後�
 // ★グレン第二形態のパーツのアニメ(社長支給2026-09-26)。1周の長さと、スロットごとの位相のずれ(1周に対する割合)。
 const GLEN_PART_ANIM_PERIOD_MS = Math.max(200, tsNum('glenpartms', 1600));
 const GLEN_PART_ANIM_SLOT_PHASE = 0.13;
-// ★グレン第二形態の本体のアニメの1周(社長支給2026-09-27)。
-const GLEN2_BODY_ANIM_PERIOD_MS = Math.max(200, tsNum('glen2ms', 1400));
+// ★グレン第二形態の本体のアニメの1往復(社長支給2026-09-27・社長指示で往復に)。
+const GLEN2_BODY_ANIM_PERIOD_MS = Math.max(200, tsNum('glen2ms', 2400));
 const TAILSLAM_KICK_MS = 220;       // 1発ぶんの震えが収まるまで
 const TAILSLAM_KICK_BACK_PX = 16;   // 撃った反動で帯の逆へ押し戻される量
 const TAILSLAM_KICK_SHAKE_PX = 9;   // 震えの振幅
@@ -26830,13 +26830,13 @@ export class PixiScene {
    */
   /**
    * ★グレン第二形態の本体のコマ(社長支給2026-09-27・7コマ)。無ければ null(=従来の立ち絵)。
-   * 前方ループ(継ぎ目7→1の重なり 0.69・隣どうし 0.73〜0.85)。周期は叩き台 1400ms(5コマ/秒)・`?glen2ms=`。
-   * 個体IDで位相をずらす(同時に2体いても揃わない)。
+   * **往復(ピンポン)**(社長指示2026-09-27「グレン第二形態の本体のモーション、ピンポンにして」)
+   * =0→6→0。端で止まる間は置かない(待機の呼吸と違い、息を吐き切って止まる絵ではない)。
+   * 1往復は叩き台 2400ms(1コマ約200ms=前方ループだった時と同じ速さ)・`?glen2ms=`。個体IDで位相をずらす。
    */
   private glenForm2BodyTexture(id: string, now: number): ReturnType<typeof getTexture> {
-    const t = ((now / GLEN2_BODY_ANIM_PERIOD_MS + stablePhase(id) / (Math.PI * 2)) % 1 + 1) % 1;
-    const k = Math.min(GLEN2_BODY_ANIM_FRAMES - 1, Math.floor(t * GLEN2_BODY_ANIM_FRAMES));
-    return getTexture(`glen-boss2-f${k}`);
+    const k = enemyIdleFrame(GLEN2_BODY_ANIM_FRAMES, now, stablePhase(id), GLEN2_BODY_ANIM_PERIOD_MS, 'pingpong', 0);
+    return k === null ? null : getTexture(`glen-boss2-f${k}`);
   }
 
   private glenPartAnimTexture(part: number, slot: number, now: number): ReturnType<typeof getTexture> {
