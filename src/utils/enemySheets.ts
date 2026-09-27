@@ -1121,7 +1121,7 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   // ステージ5の城ボス。歩き1.56+攻撃0.93+跳び/叩きつけ1.24=**3.73MB**。
   // カットインを挟んで出る+**ステージ5でしか出ない**ので、まるごと遅延。
   'stage5-enemies/giantbat': 'deferred',
-  // フィル(変異体)。待機/浮遊 1.72MB+演出1(詠唱)2.56MB。EXステージでしか出ず、出現にカットインを挟むので遅延。
+  // フィル(変異体)。待機/浮遊 1.72MB+演出1(詠唱)2.56MB+演出2(手を前へ)2.30MB。EXステージでしか出ず、出現にカットインを挟むので遅延。
   'phill': 'deferred',
   // グレン形態1。浮遊3.70+攻撃1.30+跳び2.21=**7.21MB**(全部 高さ192)。ステージ7でしか出ず、出現にカットインを挟むので遅延。
   'glen-boss': 'deferred',
@@ -1139,44 +1139,95 @@ export const sheetDeferred = (idleTexName: string): boolean =>
 
 /** 7つのシート表を「立ち絵名 → シート名」の1本の並びにする(起動側と遅延側が**同じ並びを2つに割る**)。 */
 /**
- * ★フィル(変異体)の「演出1」=魔法の詠唱(社長支給2026-09-27「フィルの演出1、最後数コマだけピンポンして。(余韻)」)。
- * 16コマ(支給 2912×222 → 上の空き2行だけ落として **182×220**)。常駐 2.56MB(立ち絵 `phill` と同じ遅延組)。
- * 縮小なし(2×2一致率 7.3%)・半透明0%・足元は全コマ最下行。
- * 読み: 0〜8=手を天へ掲げていく / 9,10=頭上に赤い魔法陣が灯る / **11〜15=羽を広げ切り、魔法陣が渦巻く(余韻)**。
- * ★使う技(社長選択2026-09-27「空から来る魔法4つ」): 光の雨・隕石・裁き・召喚。手を前に出す「演出2」は別の技へ回す予定。
- * ★送り: 溜めに入った瞬間から **0→15 を一定の速さ**(叩き台 75ms/コマ=1.2秒・`?phillcastms=`)で流し、
- *   その後は**技が終わるまで 11〜15 を往復**(余韻)。溜めの長さ(900〜2200ms)に引き伸ばさない。
- * ★大きさ: 頭上の魔法陣のぶん枠が高い(0コマ目は上に35pxの空き)。0コマ目を立ち絵(192×256)へ重ねると
- *   **0.73倍(IoU 0.65)**で、枠の比 220/256=0.86 のまま出すと本体が約15%縮む ⇒ `bodyH = 256×0.73 ≒ 187`。
+ * ★フィル(変異体)の技の演出シート(社長支給2026-09-27)。2枚ある:
+ *
+ * **演出1(魔法の詠唱)**「フィルの演出1、最後数コマだけピンポンして。(余韻)」。
+ *   16コマ(支給 2912×222 → 上の空き2行だけ落として **182×220**)。常駐 2.56MB。縮小なし(2×2一致率 7.3%)。
+ *   読み: 0〜8=手を天へ掲げていく / 9,10=頭上に赤い魔法陣が灯る / **11〜15=羽を広げ切り、魔法陣が渦巻く(余韻)**。
+ *   使う技(社長選択「空から来る魔法4つ」): 光の雨・隕石・召喚・**裁き**。
+ *   ★**裁きの光は `phill-cage-*` の州で動く**(v0.25.3740「裁きの光の中身を羽根の檻に差し替え」=`beginJudgment` が
+ *     `beginCage` を呼ぶ)。v0.25.4685 は `phill-judgment-` だけを見ていて**裁きで1度も出ていなかった**ので `phill-cage-` を足した。
+ *   送り(`fixed`): 溜めに入った瞬間から **0→15 を一定の速さ**(叩き台 75ms/コマ・`?phillcastms=`)→ 以後は技が終わるまで 11〜15 を往復。
+ *
+ * **演出2(手を前に出す)**「演出バージョン2、これも最後発動と同時に数コマピンポンして」。
+ *   16コマ(支給 2608×222 → 上の空き2行だけ落として **163×220**)。常駐 2.30MB。縮小なし(2×2一致率 4.5%)。
+ *   読み: 0〜5=身を沈めて腕を引く / 6〜11=羽を広げ腕を前へ運ぶ / **12〜15=腕を前へ突き出し切る(放つ姿)**。
+ *   使う技(v0.25.4685 で上げた想定どおり): 槍の扇・羽根撃ち・金の輪・輪投げ(=手の先から前へ飛ばす技)。
+ *   送り(`release`): **溜めの長さに 0〜11 を割り付け**、**溜めが明けた瞬間=発動と同時に 12 を出し**、以後は技が終わるまで 12〜15 を往復。
+ *
+ * どちらも右向き(立ち絵と同じ)・足元は全コマ最下行。頭上の空きのぶん枠が高く、0コマ目を立ち絵(192×256)へ重ねると
+ * 0.73倍(枠の比 0.86)=そのままだと本体が約15%縮む ⇒ **`bodyH = 256×0.73 ≒ 187`**(2枚とも同じ値)。
  */
-export const PHILL_CAST_SHEET = {
-  idle: 'phill',
-  name: 'phill-cast1',
-  frames: 16,
-  loopFrom: 11,
-  bodyH: 187,
-  techs: ['phill-lightrain-', 'phill-meteor-', 'phill-judgment-', 'phill-summon-'] as readonly string[],
-} as const;
+export interface PhillCastSpec {
+  readonly idle: string;
+  readonly name: string;
+  readonly frames: number;
+  /** 往復(余韻)の始まりのコマ。末コマまでを往復する。 */
+  readonly loopFrom: number;
+  readonly bodyH: number;
+  readonly techs: readonly string[];
+  /** `fixed`=溜め開始から一定の速さで流す / `release`=溜めに割り付け、発動と同時に往復へ */
+  readonly sync: 'fixed' | 'release';
+}
+export const PHILL_CAST_SHEETS: readonly PhillCastSpec[] = [
+  {
+    idle: 'phill', name: 'phill-cast1', frames: 16, loopFrom: 11, bodyH: 187, sync: 'fixed',
+    techs: ['phill-lightrain-', 'phill-meteor-', 'phill-summon-', 'phill-cage-', 'phill-judgment-'],
+  },
+  {
+    idle: 'phill', name: 'phill-cast2', frames: 16, loopFrom: 12, bodyH: 187, sync: 'release',
+    techs: ['phill-lancefan-', 'phill-feathershot-', 'phill-goldring-', 'phill-ringtoss-'],
+  },
+];
+/** 旧名(演出1)。 */
+export const PHILL_CAST_SHEET = PHILL_CAST_SHEETS[0];
 
-/** その州がフィルの「演出1」を使う技か。 */
-export const phillCastTech = (bossState: string | undefined): string | null => {
+/** その州が使うフィルの演出シート(無ければ null)。 */
+export const phillCastSpecFor = (bossState: string | undefined): { spec: PhillCastSpec; tech: string } | null => {
   if (!bossState) return null;
-  for (const t of PHILL_CAST_SHEET.techs) if (bossState.startsWith(t)) return t;
+  for (const spec of PHILL_CAST_SHEETS) for (const t of spec.techs) if (bossState.startsWith(t)) return { spec, tech: t };
   return null;
+};
+/** その州がフィルの演出を使う技か(技の接頭辞・無ければ null)。 */
+export const phillCastTech = (bossState: string | undefined): string | null => phillCastSpecFor(bossState)?.tech ?? null;
+
+/** 往復(余韻)。`step` 0 = 末コマの1つ前から戻り始める(末の直後に末が2回続かない)。 */
+const castPingPong = (spec: PhillCastSpec, step: number): number => {
+  const last = spec.frames - 1, from = spec.loopFrom;
+  const span = last - from;
+  if (span <= 0) return last;
+  const i = (((step % (span * 2)) + span * 2) % (span * 2));
+  return i < span ? last - 1 - i : from + 1 + (i - span);
 };
 
 /**
- * 「演出1」のコマ番号。溜めに入ってからの経過 `elapsedMs` と1コマの長さで決まる(状態を持たない純関数)。
- * 0→末まで一方向 → 以後は `loopFrom`〜末を往復(末の次は末-1へ戻る=継ぎ目で同じコマが2回続かない)。
+ * 演出1(`fixed`)のコマ。溜めに入ってからの経過と1コマの長さで決まる(状態を持たない純関数)。
+ * 0→末まで一方向 → 以後は `loopFrom`〜末を往復。
  */
-export const phillCastFrame = (elapsedMs: number, frameMs: number): number => {
-  const n = PHILL_CAST_SHEET.frames, last = n - 1, from = PHILL_CAST_SHEET.loopFrom;
+export const phillCastFrame = (elapsedMs: number, frameMs: number, spec: PhillCastSpec = PHILL_CAST_SHEET): number => {
+  const last = spec.frames - 1;
   const step = Number.isFinite(elapsedMs) && elapsedMs > 0 && frameMs > 0 ? Math.floor(elapsedMs / frameMs) : 0;
   if (step <= last) return step;
-  const span = last - from;             // 4(11〜15)
-  const cyc = span * 2;                 // 8
-  const i = (step - last) % cyc;        // 0..7
-  return i <= span ? last - i : from + (i - span);
+  return castPingPong(spec, step - last - 1);
+};
+
+/**
+ * 演出2(`release`)のコマ。
+ * - 溜めの間(`windupProg` 0..1): 0〜(`loopFrom`-1) を溜めの長さへ割り付ける。
+ * - 発動後(`sinceRelease` ≥ 0 ms): **発動の瞬間に `loopFrom`** → 以後は `loopFrom`〜末を往復。
+ */
+export const phillReleaseFrame = (
+  spec: PhillCastSpec, windupProg: number | null, sinceReleaseMs: number, frameMs: number,
+): number => {
+  if (windupProg !== null) {
+    const p = Number.isFinite(windupProg) ? Math.max(0, Math.min(0.999999, windupProg)) : 0;
+    return Math.floor(p * spec.loopFrom);
+  }
+  const step = Number.isFinite(sinceReleaseMs) && sinceReleaseMs > 0 && frameMs > 0 ? Math.floor(sinceReleaseMs / frameMs) : 0;
+  const last = spec.frames - 1, from = spec.loopFrom, span = last - from;
+  if (span <= 0) return from;
+  const i = step % (span * 2);
+  return i <= span ? from + i : last - (i - span);
 };
 
 export const allEnemySheets = (): { idle: string; sheet: string }[] => [
@@ -1189,6 +1240,6 @@ export const allEnemySheets = (): { idle: string; sheet: string }[] => [
   ...Object.keys(ENEMY_SCREAM_SHEETS).map(idle => ({ idle, sheet: screamSheetName(idle) })),
   // ★差し替えシート(技ごとに別の絵を使う個体)。ここに入れないと**先読みも原盤台帳の照合も漏れる**。
   ...Object.keys(GIANT_ALT_SWEEP).flatMap(idle => giantAltSweepSheets(idle).map(a => ({ idle, sheet: a.name }))),
-  // ★フィルの「演出1」(魔法の詠唱)。先読み・原盤台帳・常駐の決定(`phill` の行)に乗せる。
-  { idle: PHILL_CAST_SHEET.idle, sheet: PHILL_CAST_SHEET.name },
+  // ★フィルの演出シート(演出1・演出2)。先読み・原盤台帳・常駐の決定(`phill` の行)に乗せる。
+  ...PHILL_CAST_SHEETS.map(c => ({ idle: c.idle, sheet: c.name })),
 ];

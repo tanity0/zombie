@@ -105,7 +105,7 @@ import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, swe
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
-import { PHILL_CAST_SHEET, phillCastTech, phillCastFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
+import { PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -3091,6 +3091,8 @@ const GLEN_PART_ANIM_SLOT_PHASE = 0.13;
 const GLEN2_BODY_ANIM_PERIOD_MS = Math.max(200, tsNum('glen2ms', 2400));
 // ★フィルの「演出1」(魔法の詠唱)の1コマの長さ(叩き台 75ms=16コマで1.2秒)。
 const PHILL_CAST_FRAME_MS = Math.max(20, tsNum('phillcastms', 75));
+// ★フィルの「演出2」で、発動後に 12〜15 を往復する1コマの長さ(叩き台 90ms)。
+const PHILL_RELEASE_FRAME_MS = Math.max(20, tsNum('phillreleasems', 90));
 const TAILSLAM_KICK_MS = 220;       // 1発ぶんの震えが収まるまで
 const TAILSLAM_KICK_BACK_PX = 16;   // 撃った反動で帯の逆へ押し戻される量
 const TAILSLAM_KICK_SHAKE_PX = 9;   // 震えの振幅
@@ -4349,7 +4351,7 @@ export class PixiScene {
   // 決まるので、その相を最初に見たフレームの残り時間がそのまま実尺になる=定数表が要らない。
   private giantPhaseSpan = new Map<string, { key: string; dur: number; start: number }>();
   // ★フィルの「演出1」の起点(溜めに入った瞬間の gameTime)。技を外れたら消す。
-  private phillCastStart = new Map<string, { tech: string; key: string; start: number }>();
+  private phillCastStart = new Map<string, { tech: string; key: string; start: number; windupEnd: number }>();
   private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
   private rescueSweatGfx = new Graphics(); // パニック逃走の汗マーク(uiLayer=環境光の影響外・screen座標)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
@@ -18531,8 +18533,8 @@ export class PixiScene {
           [jumpSheetBodyH(idleTexKey, frameIdx), jumpSheetName(idleTexKey)] as const,
           // ★歩きのシート(社長支給2026-09-26 研究員男=立ち絵より約1割小さく描かれていた)。
           [walkSheetBodyH(idleTexKey), walkSheetName(idleTexKey)] as const,
-          // ★フィルの「演出1」(魔法の詠唱)。頭上の魔法陣のぶん枠が高いので本体の高さで揃える。
-          [idleTexKey === PHILL_CAST_SHEET.idle ? PHILL_CAST_SHEET.bodyH : null, PHILL_CAST_SHEET.name] as const,
+          // ★フィルの演出シート(演出1・演出2)。頭上の空きのぶん枠が高いので本体の高さで揃える。
+          ...PHILL_CAST_SHEETS.map(c => [idleTexKey === c.idle ? c.bodyH : null, c.name] as const),
           // ★技ごとの差し替えシート。ここに並べないと**その技の間だけ倍率の補正が外れる**。
           ...giantAltSweepSheets(idleTexKey).map(a => [a.bodyH, a.name] as const),
         ]) {
@@ -30201,25 +30203,32 @@ export class PixiScene {
    * 位相は個体ごとにずらす(`stablePhase`)ので、群れが同時に呼吸しない。
    */
   /**
-   * ★フィルの「演出1」=魔法の詠唱(社長支給2026-09-27)。光の雨・隕石・裁き・召喚の間だけ出す。
-   * 溜めに入った瞬間(= `-windup` の `bossStateUntil` が新しくなった時)を起点に、0→15 を一定の速さで流し、
-   * 以後は技が終わるまで 11〜15 を往復(余韻)。時計は `gameTime`(ヒットストップで止まる)。
+   * ★フィルの技の演出シート(社長支給2026-09-27・演出1=魔法の詠唱 / 演出2=手を前に出す)。表は `PHILL_CAST_SHEETS`。
+   * 溜めに入った瞬間(= `-windup` の `bossStateUntil` が新しくなった時)を起点にする。時計は `gameTime`(ヒットストップで止まる)。
+   * - 演出1(`fixed`): 0→15 を一定の速さ → 以後は技が終わるまで 11〜15 を往復(余韻)。
+   * - 演出2(`release`): 溜めに 0〜11 を割り付け、**溜めが明けた瞬間(発動)に 12** → 以後は 12〜15 を往復。
    * 技を外れた(カウンターで中断・次の技へ)ら null=待機のコマへ戻る。
    */
   private phillCastTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
-    if (idleTexKey !== PHILL_CAST_SHEET.idle) return null;
-    const tech = phillCastTech(e.bossState);
-    if (tech === null) { this.phillCastStart.delete(e.id); return null; }
+    const hit = phillCastSpecFor(e.bossState);
+    if (hit === null || hit.spec.idle !== idleTexKey) { this.phillCastStart.delete(e.id); return null; }
+    const { spec, tech } = hit;
     let lat = this.phillCastStart.get(e.id);
     const isWindup = (e.bossState ?? '').endsWith('-windup');
-    const key = `${tech}@${e.bossStateUntil ?? 0}`;
+    const until = e.bossStateUntil ?? gameTime;
+    const key = `${tech}@${until}`;
     if (!lat || lat.tech !== tech || (isWindup && lat.key !== key)) {
-      lat = { tech, key, start: gameTime };
+      lat = { tech, key, start: gameTime, windupEnd: isWindup ? until : gameTime };
       this.phillCastStart.set(e.id, lat);
     }
-    const i = phillCastFrame(gameTime - lat.start, PHILL_CAST_FRAME_MS);
-    const slices = this.sheetSlices(PHILL_CAST_SHEET.name, PHILL_CAST_SHEET.frames);
-    return this.rememberAtkFrame(e, PHILL_CAST_SHEET.name, PHILL_CAST_SHEET.frames, i, slices);
+    const i = spec.sync === 'fixed'
+      ? phillCastFrame(gameTime - lat.start, PHILL_CAST_FRAME_MS, spec)
+      : phillReleaseFrame(
+        spec,
+        isWindup ? (gameTime - lat.start) / Math.max(1, lat.windupEnd - lat.start) : null,
+        gameTime - lat.windupEnd, PHILL_RELEASE_FRAME_MS);
+    const slices = this.sheetSlices(spec.name, spec.frames);
+    return this.rememberAtkFrame(e, spec.name, spec.frames, i, slices);
   }
 
   private enemyIdleTexture(idleTexKey: string, e: Enemy, now: number): ReturnType<typeof getTexture> {
