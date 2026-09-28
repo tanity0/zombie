@@ -105,7 +105,7 @@ import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, swe
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
-import { ENEMY_FRAME_OFFSETS, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
+import { ENEMY_FRAME_OFFSETS, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -3093,6 +3093,8 @@ const GLEN2_BODY_ANIM_PERIOD_MS = Math.max(200, tsNum('glen2ms', 2400));
 const PHILL_CAST_FRAME_MS = Math.max(20, tsNum('phillcastms', 75));
 // ★フィルの「演出2」で、発動後に 12〜15 を往復する1コマの長さ(叩き台 90ms)。
 const PHILL_RELEASE_FRAME_MS = Math.max(20, tsNum('phillreleasems', 90));
+// ★州ごとに割り付けるシート(ミゲルの爪・剣)で、往復(`pingpong`)する州の1コマの長さ(叩き台 90ms)。
+const BOSS_PHASE_FRAME_MS = Math.max(20, tsNum('bossphasems', 90));
 const TAILSLAM_KICK_MS = 220;       // 1発ぶんの震えが収まるまで
 const TAILSLAM_KICK_BACK_PX = 16;   // 撃った反動で帯の逆へ押し戻される量
 const TAILSLAM_KICK_SHAKE_PX = 9;   // 震えの振幅
@@ -4352,6 +4354,8 @@ export class PixiScene {
   private giantPhaseSpan = new Map<string, { key: string; dur: number; start: number }>();
   // ★フィルの「演出1」の起点(溜めに入った瞬間の gameTime)。技を外れたら消す。
   private phillCastStart = new Map<string, { tech: string; key: string; start: number; windupEnd: number }>();
+  /** 州ごとに割り付けるシート(`BOSS_PHASE_SHEETS`)の「その州に入った瞬間」。キー=州@bossStateUntil。 */
+  private bossPhaseStart = new Map<string, { key: string; start: number; until: number }>();
   private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
   private rescueSweatGfx = new Graphics(); // パニック逃走の汗マーク(uiLayer=環境光の影響外・screen座標)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
@@ -14151,6 +14155,7 @@ export class PixiScene {
         this.enemyJumpHop.delete(id);
         this.giantPhaseSpan.delete(id);
         this.phillCastStart.delete(id);
+        this.bossPhaseStart.delete(id);
         this.enemyBlockFall.delete(id);
         const slashFx = this.thorSlashFx.get(id);
         if (slashFx) { slashFx.destroy({ children: true }); this.thorSlashFx.delete(id); }
@@ -17879,6 +17884,7 @@ export class PixiScene {
       ?? this.enemyJumpTexture(idleTexKey, e, gameTime)
       ?? this.enemyShotTexture(idleTexKey, e, now)
       ?? this.phillCastTexture(idleTexKey, e, gameTime)
+      ?? this.bossPhaseTexture(idleTexKey, e, gameTime)
       ?? this.enemyAttackTexture(idleTexKey, e, gameTime)
       // ★カウンターで技が消された直後だけ、出ていたコマを数コマぶん逆再生して「弾かれた」を見せる
       // (社長指示2026-09-23)。攻撃のコマが出ている間は当然こちらへ来ない=通常再生が優先。
@@ -18206,8 +18212,10 @@ export class PixiScene {
       // 中心で置くので、コマの幅(154/182/163)が違うと**絵を替えるたびに体の大きさが変わり**、コマの中で体が動くと
       // **そのまま画面でも跳ねていた**。⇒ 立ち絵(`phill`)を置いた時の大きさ・足元を基準にし、コマの倍率は
       // 「立ち絵の高さ ÷ そのシートの本体の高さ(bodyH)」、位置は足元揃え+胴のずらし(`ENEMY_FRAME_OFFSETS`)で決める。
-      const phillSheet = e.type === 'phillboss' && walkTex !== null && tex === walkTex ? this.phillSheetFit(tex) : null;
-      const phillIdleTex = phillSheet ? getTexture('phill') : null;
+      // ★ミゲルの手で描いたコマ(待機/爪/剣・社長支給2026-09-28)も同じ置き方にする。
+      const handSheetBoss = e.type === 'phillboss' || e.type === 'miguel';
+      const phillSheet = handSheetBoss && walkTex !== null && tex === walkTex ? this.phillSheetFit(tex, idleTexKey) : null;
+      const phillIdleTex = phillSheet ? getTexture(idleTexKey) : null;
       const baseTex = phillIdleTex ?? tex;
       const scale0 = ((e.width / fit.w) / baseTex.width) * (e.type === 'phillboss' ? 1 : this.depthScaleEnemy(fb.footY));
       const scale = phillSheet && phillIdleTex ? scale0 * phillIdleTex.height / phillSheet.bodyH : scale0;
@@ -30241,19 +30249,44 @@ export class PixiScene {
    * ★フィルの手で描いたコマの「本体の高さ(bodyH)」と「胴のずらし」。そのコマが待機/演出1/演出2のどれでもなければ null。
    * 待機は枠の高さ(200)がそのまま本体、演出1/2は頭上の空きを除いた 187(`PHILL_CAST_SHEETS`)。
    */
-  private phillSheetFit(tex: Texture): { bodyH: number; off: readonly [number, number] } | null {
+  private phillSheetFit(tex: Texture, idleKey = 'phill'): { bodyH: number; off: readonly [number, number] } | null {
     const fi = tex.width > 0 ? Math.round(tex.frame.x / tex.width) : 0;
-    const idleSl = this.enemyWalkFrames.get('phill-idle');
+    const idleName = idleSheetName(idleKey);
+    const idleSl = this.enemyWalkFrames.get(idleName);
     if (idleSl && idleSl.length > 0 && idleSl[0].source === tex.source) {
-      return { bodyH: tex.height, off: ENEMY_FRAME_OFFSETS['phill-idle']?.[fi] ?? [0, 0] };
+      return { bodyH: tex.height, off: ENEMY_FRAME_OFFSETS[idleName]?.[fi] ?? [0, 0] };
     }
-    for (const c of PHILL_CAST_SHEETS) {
+    // ★ミゲルの爪・剣(`BOSS_PHASE_SHEETS`)も同じ作法で置く(社長支給2026-09-28)。
+    const sheets: readonly { idle: string; name: string; bodyH: number }[] = [...PHILL_CAST_SHEETS, ...BOSS_PHASE_SHEETS];
+    for (const c of sheets) {
+      if (c.idle !== idleKey) continue;
       const sl = this.enemyWalkFrames.get(c.name);
       if (sl && sl.length > 0 && sl[0].source === tex.source) {
         return { bodyH: c.bodyH, off: ENEMY_FRAME_OFFSETS[c.name]?.[fi] ?? [0, 0] };
       }
     }
     return null;
+  }
+
+  /**
+   * ★州ごとにコマを割り付けるシート(ミゲルの爪・剣。表は `BOSS_PHASE_SHEETS`)。
+   * その州に入った瞬間(州名か `bossStateUntil` が変わった時)を起点に、州の長さへ並びを割り付ける。
+   * 時計は `gameTime`(ヒットストップで止まる=判定と同じ時計)。表に無い州なら null=待機のコマへ戻る。
+   */
+  private bossPhaseTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
+    const hit = bossPhaseFor(idleTexKey, e.bossState);
+    if (hit === null) { this.bossPhaseStart.delete(e.id); return null; }
+    const until = e.bossStateUntil ?? gameTime;
+    const key = `${e.bossState}@${until}`;
+    let lat = this.bossPhaseStart.get(e.id);
+    if (!lat || lat.key !== key) {
+      lat = { key, start: gameTime, until };
+      this.bossPhaseStart.set(e.id, lat);
+    }
+    const prog = (gameTime - lat.start) / Math.max(1, lat.until - lat.start);
+    const i = bossPhaseFrame(hit.phase, prog, gameTime - lat.start, BOSS_PHASE_FRAME_MS);
+    const slices = this.sheetSlices(hit.spec.name, hit.spec.frames);
+    return this.rememberAtkFrame(e, hit.spec.name, hit.spec.frames, i, slices);
   }
 
   private phillCastTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {

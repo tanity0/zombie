@@ -57,7 +57,10 @@ describe('フィルの演出2(手を前に出す)', () => {
 
 describe('★体(胴)基準のずらし(フィル・社長指示2026-09-27)', () => {
   it('表のシートはコマ数と同じ長さ', () => {
-    const frames: Record<string, number> = { 'phill-idle': 14, 'phill-cast1': 16, 'phill-cast2': 16 };
+    const frames: Record<string, number> = {
+      'phill-idle': 14, 'phill-cast1': 16, 'phill-cast2': 16,
+      'miguel-idle': 16, 'miguel-claw': 8, 'miguel-slash': 9,
+    };
     for (const [name, offs] of Object.entries(ENEMY_FRAME_OFFSETS)) expect(offs.length, name).toBe(frames[name]);
   });
   it('基準(待機0コマ目)はずらさない', () => {

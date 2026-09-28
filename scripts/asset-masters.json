@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "871 files / 復号後 約630MB",
+ "generatedFor": "874 files / 復号後 約633MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2701,6 +2701,24 @@
    "h": 1399,
    "bytes": 778932,
    "sha": "2a2e5f0f422da52a"
+  },
+  "sprites/miguel-claw.png": {
+   "w": 1000,
+   "h": 150,
+   "bytes": 125433,
+   "sha": "96029ac4379ad4eb"
+  },
+  "sprites/miguel-idle.png": {
+   "w": 2656,
+   "h": 150,
+   "bytes": 275317,
+   "sha": "52ee146bcf1f5e66"
+  },
+  "sprites/miguel-slash.png": {
+   "w": 1710,
+   "h": 148,
+   "bytes": 138424,
+   "sha": "2c5d59e4199a5860"
   },
   "sprites/miguel-sword.png": {
    "w": 30,

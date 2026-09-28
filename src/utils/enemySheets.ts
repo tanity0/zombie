@@ -528,6 +528,12 @@ export const ENEMY_IDLE_SHEETS: Readonly<Record<string, number>> = {
   // ★**右向き**(顔が右上を向いている)=下の `ENEMY_SHEET_FACES_RIGHT` に載せる。
   // ★羽(`phill-wings`)・後光・撒き羽根は**別スプライトなのでそのまま出る**(外していない)。
   'phill': 14,
+  // ★ミゲル(`miguel`)。社長支給2026-09-28「**ミゲルの歩き、待機**」。16コマ(支給 2656×152 → 上の空き2行だけ落として
+  // **166×150**)。常駐 **1.59MB**(遅延組)。半透明0%。足元は全コマ最下行。正面向き(羽ばたき2回→休み)。
+  // ★**待機と歩きを1枚で兼ねる**(フィルと同じ)。ミゲルは場の縁を回り続けるので、動いている間もこのコマが流れる。
+  // ★倍率: 立ち絵(134×200)へ重ねると本体の高さ 150(IoU 0.94)=枠の高さそのまま。
+  // ★剣(`miguel-sword`・横払いの別スプライト)は**別スプライトなのでそのまま出る**(外していない)。
+  'miguel': 16,
 };
 
 /**
@@ -539,6 +545,7 @@ export const ENEMY_IDLE_PLAYBACK: Readonly<Record<string, IdlePlayback>> = {
   'ghost-common': 'loop',       // 髪と裾がなびく=流れ続ける
   'reaper2-hanged': 'loop',     // 吊られて一周する揺れ(先頭と末尾がほぼ同じ絵=閉じている)
   'phill': 'loop',              // 浮遊の揺れ(継ぎ目14→1の重なり 0.71=隣どうし 0.66〜0.82 の範囲内)
+  'miguel': 'loop',             // 羽ばたき2回→休み(末の3コマが0コマ目とほぼ同じ絵=閉じている)
 };
 
 /** 1周期(吸う→吐く→止まる)の長さ。★叩き台——`?idlebreath=` で実機から触れる。 */
@@ -555,6 +562,8 @@ export const ENEMY_IDLE_PERIOD_MS: Readonly<Record<string, number>> = {
   'reaper2-hanged': 2000,
   // フィル。**叩き台 1800ms**(14コマ=約7.8コマ/秒)。卵体と同じ「宙に浮く者の揺れ」の速さに揃えた。`?idlebreath=` で触れる。
   'phill': 1800,
+  // ミゲル。**叩き台 2000ms**(16コマ=8コマ/秒)。1周で羽ばたき2回=1回約0.8秒。`?idlebreath=` で触れる。
+  'miguel': 2000,
 };
 
 export const idleSheetName = (idleTexName: string): string => `${idleTexName}-idle`;
@@ -1123,6 +1132,8 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   'stage5-enemies/giantbat': 'deferred',
   // フィル(変異体)。待機/浮遊 1.72MB+演出1(詠唱)2.56MB+演出2(手を前へ)2.30MB。EXステージでしか出ず、出現にカットインを挟むので遅延。
   'phill': 'deferred',
+  // ミゲル。待機1.59+爪0.60+剣1.01=**3.20MB**。天使の門でしか出ず、出現にカットインを挟むので遅延。
+  'miguel': 'deferred',
   // グレン形態1。浮遊3.70+攻撃1.30+跳び2.21=**7.21MB**(全部 高さ192)。ステージ7でしか出ず、出現にカットインを挟むので遅延。
   'glen-boss': 'deferred',
   // ▼ここから下は**起動時のまま**。理由はどれも同じ=**前触れなくその辺に居る**(猶予が無い)。
@@ -1235,6 +1246,88 @@ export const phillReleaseFrame = (
 };
 
 /**
+ * ★**州ごとにコマを割り付けるシート**(社長支給2026-09-28「ミゲルの 魔法系(爪を出す)/剣撃系(剣を振る)」)。
+ * フィルの演出(`PHILL_CAST_SHEETS`)は「溜め→発動→余韻」の1本道だったが、ミゲルの技は**州が細かく連なる**
+ * (払い→縦払いの溜め→縦払い→戻り、突進の溜め→移動+斬り抜け→戻り)ので、**州ごとに流すコマの並び**を持たせる。
+ * - `stretch`: その州の長さ(入った瞬間〜`bossStateUntil`)へ並びを均等に割り付ける=**州の終わりと絵の終わりが揃う**。
+ * - `pingpong`: 一定の速さで並びを往復する(長さが決まっていない/長い州の「構え続け」)。
+ * 州は**完全一致**で引く。表に無い州(chase・カウンター後など)は待機のコマへ戻る。
+ *
+ * **爪(`miguel-claw`・8コマ)**: 0=待機 / 1,2=爪が持ち上がる / 3〜6=爪を前へ伸ばし切る / 7=畳む。
+ *   連射(volley)に使う: 溜めで 0→3、撃っている間は 4〜6 を往復、戻りで 6→7。
+ * **剣(`miguel-slash`・9コマ)**: 0=剣を左上へ引く / 1=左下へ振りかぶる / 2=下を振り抜く / 3〜5=右へ払い切る / 6〜8=振り残し。
+ *   払い・縦払い・突進に使う。**当たる州(harai/tate・110ms)に振り抜き 2〜5 を収める**=絵の振りと判定が同じ時刻。
+ *   突進は移動(230ms)の間は振りかぶりで構え、斬り抜け(110ms)で振り抜く。
+ * 大きさ: 3枚とも同じ変換の高さ(152)で、**1ドットを同じ大きさで描く**(=`bodyH` 150 を揃える)。
+ */
+export type BossPhaseMode = 'stretch' | 'pingpong';
+export interface BossPhase {
+  readonly state: string;
+  readonly seq: readonly number[];
+  readonly mode: BossPhaseMode;
+}
+export interface BossPhaseSheetSpec {
+  readonly idle: string;
+  readonly name: string;
+  readonly frames: number;
+  readonly bodyH: number;
+  readonly phases: readonly BossPhase[];
+}
+export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
+  {
+    idle: 'miguel', name: 'miguel-claw', frames: 8, bodyH: 150,
+    phases: [
+      { state: 'volley-windup', seq: [0, 1, 2, 3], mode: 'stretch' },
+      { state: 'volley', seq: [4, 5, 6], mode: 'pingpong' },
+      { state: 'volley-recover', seq: [6, 7], mode: 'stretch' },
+    ],
+  },
+  {
+    idle: 'miguel', name: 'miguel-slash', frames: 9, bodyH: 150,
+    phases: [
+      { state: 'harai-windup', seq: [0, 1, 1], mode: 'stretch' },
+      { state: 'harai', seq: [2, 3, 4, 5], mode: 'stretch' },
+      // 払いを振り切った姿(6〜8)から、縦払いへ向けてもう一度振りかぶる。
+      { state: 'tate-windup', seq: [6, 7, 8, 0, 1, 1], mode: 'stretch' },
+      { state: 'tate', seq: [2, 3, 4, 5], mode: 'stretch' },
+      { state: 'tate-recover', seq: [6, 7, 8, 8, 8], mode: 'stretch' },
+      { state: 'mdash-windup', seq: [0, 1, 1], mode: 'stretch' },
+      // 移動(230ms)+斬り抜け(110ms)=340ms。14等分の10コマぶん(≒230ms)は振りかぶったまま、残りで振り抜く。
+      { state: 'mdash-move', seq: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 3, 4, 5], mode: 'stretch' },
+      { state: 'mdash-recover', seq: [6, 7, 8], mode: 'stretch' },
+    ],
+  },
+];
+
+/** その立ち絵・その州が使うシートとコマの並び(無ければ null)。州は完全一致。 */
+export const bossPhaseFor = (idle: string, bossState: string | undefined): { spec: BossPhaseSheetSpec; phase: BossPhase } | null => {
+  if (!bossState) return null;
+  for (const spec of BOSS_PHASE_SHEETS) {
+    if (spec.idle !== idle) continue;
+    for (const phase of spec.phases) if (phase.state === bossState) return { spec, phase };
+  }
+  return null;
+};
+
+/**
+ * 州の中のコマ。`prog` = 州の進み(0..1・`stretch` が使う)、`elapsedMs` = 州に入ってからの経過(`pingpong` が使う)。
+ * 状態を持たない純関数。
+ */
+export const bossPhaseFrame = (phase: BossPhase, prog: number, elapsedMs: number, frameMs: number): number => {
+  const seq = phase.seq, n = seq.length;
+  if (n === 0) return 0;
+  if (phase.mode === 'stretch') {
+    const p = Number.isFinite(prog) ? Math.max(0, Math.min(0.999999, prog)) : 0;
+    return seq[Math.floor(p * n)];
+  }
+  if (n === 1) return seq[0];
+  const step = Number.isFinite(elapsedMs) && elapsedMs > 0 && frameMs > 0 ? Math.floor(elapsedMs / frameMs) : 0;
+  const period = (n - 1) * 2;
+  const i = step % period;
+  return seq[i < n ? i : period - i];
+};
+
+/**
  * ★**体(胴)基準のコマのずらし**(社長指示2026-09-27「**フィル、モーションを体基準にして。ガタガタしてる**」)。
  * シートのコマは「枠の下端中央=足元」で置いているが、フィルは宙に浮く絵で、**コマごとに胴の位置が枠の中で動いている**
  * (演出2は手を突き出すにつれ体が上がる=胸が枠の中で最大40px上へ)。足元基準のままだと**胴がコマごとに跳ねる**。
@@ -1247,6 +1340,12 @@ export const phillReleaseFrame = (
 export const ENEMY_FRAME_OFFSETS: Readonly<Record<string, readonly (readonly [number, number])[]>> = {
   'phill-idle': [[0, 0], [-2, 0], [-3, 0], [-6, 0], [-4, 0], [-6, 0], [-2, -4], [-6, -8], [-4, -6], [-2, -3], [-1, -3], [2, -4], [3, -2], [2, -2]],
   'phill-cast1': [[-2, 1], [-1, 0], [3, -6], [4, -9], [9, -4], [10, -9], [3, -5], [4, -4], [3, -6], [-1, -6], [0, -7], [1, 7], [1, 6], [3, 8], [-3, 8], [3, 8]],
+  // ★ミゲル(社長支給2026-09-28)。待機は羽を広げるコマで**胴が枠の中を最大17px横へ動く**(羽の広がりに合わせて
+  //   枠の中央が寄っている)ので、胸〜腹を追って打ち消す。爪は胴がほぼ動かない。剣は**胸の紫の核**を追った
+  //   (振りにつれて胴が枠の中を左右へ約30px捻れる)。どれも立ち絵へ重ねた時の差(横−2・縦−3)を足してある。
+  'miguel-idle': [[-2, -3], [-8, -3], [-15, -2], [-11, -2], [-9, -2], [-8, -2], [-2, -2], [0, -3], [-14, -3], [-17, -3], [-15, -2], [-17, -2], [-9, -2], [-2, -2], [0, -2], [0, -2]],
+  'miguel-claw': [[-2, -4], [-2, -4], [-2, -4], [-2, -4], [-2, -4], [-1, -4], [0, -4], [-2, -4]],
+  'miguel-slash': [[-17, -3], [-18, -3], [-10, -3], [2, -3], [5, -3], [10, -3], [7, -3], [11, -3], [4, -3]],
   'phill-cast2': [[-5, 0], [-2, -11], [-2, -10], [-4, 3], [-4, 10], [-3, 14], [-11, 29], [-5, 29], [-10, 27], [-5, 30], [-10, 32], [-8, 30], [-2, 26], [6, 24], [6, 26], [6, 17]],
 };
 
@@ -1262,4 +1361,6 @@ export const allEnemySheets = (): { idle: string; sheet: string }[] => [
   ...Object.keys(GIANT_ALT_SWEEP).flatMap(idle => giantAltSweepSheets(idle).map(a => ({ idle, sheet: a.name }))),
   // ★フィルの演出シート(演出1・演出2)。先読み・原盤台帳・常駐の決定(`phill` の行)に乗せる。
   ...PHILL_CAST_SHEETS.map(c => ({ idle: c.idle, sheet: c.name })),
+  // ★州ごとにコマを割り付けるシート(ミゲルの爪・剣)。
+  ...BOSS_PHASE_SHEETS.map(c => ({ idle: c.idle, sheet: c.name })),
 ];
