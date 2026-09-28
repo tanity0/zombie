@@ -441,7 +441,25 @@ export const ENEMY_SHEET_FACES_RIGHT: Readonly<Record<string, boolean>> = {
   // ★フィル(`phill`)。立ち絵も待機/浮遊のシートも**右向き**(顔が右上)。シートを入れた時点でミラーの対象へ移るので、
   //   ここに無いと常に逆を向く(グレン・削岩型と同じ穴を先に塞ぐ)。
   'phill': true,
+  // ★ミゲル(`miguel`)。立ち絵・待機はほぼ正面だが、**爪も剣も右へ振り出す絵**(下の `SHEET_NAME_FACES_RIGHT`)。
+  //   待機を左向き扱いにすると、技に入った瞬間に剣と爪が左右入れ替わって見えるので、待機も右向きに揃える
+  //   (社長指示2026-09-29「ボスも全部ミラー」)。
+  'miguel': true,
 };
+
+/**
+ * ★**シート単位の素の向き**(立ち絵の向きと違うシートだけ書く)。
+ * ジブリルは待機/振るが**左向き**(頭巾とランタンが左)なのに、投げるは**ランタンを右へ投げる絵**。
+ * 技の向きを相手へ向けるには、投げる絵だけ右向きとして扱う(技の頭でランタンが左右入れ替わるのは受け入れる)。
+ */
+export const SHEET_NAME_FACES_RIGHT: Readonly<Record<string, boolean>> = {
+  'jibril-throw': true,
+  'miguel-claw': true,
+  'miguel-slash': true,
+};
+/** その絵(シート名。立ち絵そのものなら null)の素の向きが右か。シートの指定 → 立ち絵の指定 の順。 */
+export const sheetArtFacesRight = (idleTexName: string, sheetName: string | null): boolean =>
+  (sheetName !== null ? SHEET_NAME_FACES_RIGHT[sheetName] : undefined) ?? ENEMY_SHEET_FACES_RIGHT[idleTexName] === true;
 
 export const walkSheetName = (idleTexName: string): string => `${idleTexName}-walk`;
 
