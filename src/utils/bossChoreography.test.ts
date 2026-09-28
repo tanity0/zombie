@@ -21,7 +21,7 @@ describe('planBossChoreography', () => {
       thor: ['issen', 'tsuki', 'harai', 'jump', 'dash'],
       miguel: ['dash', 'harai', 'volley'],
       jibril: ['lantern', 'consecrate', 'volley'],
-      rafi: ['bone', 'jump', 'sweep'],
+      rafi: ['bone', 'jump', 'sweep', 'roll'],
       uri: ['sweep', 'downslash', 'thrust', 'bolt'],
       suriel: ['ringshot', 'ringspin', 'sweep', 'gaze'],
       acrasiel: ['spike', 'spear', 'warp', 'burst', 'gaze'],

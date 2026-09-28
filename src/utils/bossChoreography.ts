@@ -75,6 +75,10 @@ const SCRIPTS: Record<Exclude<ChoreographyBoss, 'giant' | 'glen'>, Record<string
   },
   rafi: {
     bone: ['bone', 'jump', 'sweep'], jump: ['jump', 'bone', 'sweep'], sweep: ['sweep', 'bone', 'jump'],
+    // ★ロール台本にも連携(社長指示2026-09-28「ラフィはいい感じに直して」)。ロールだけ行が無く単発だった。
+    //   後ろへ転がって骨刃2本を放ち、**その刃が残るうちに本体が跳んでくる**=§6.28-8 の主題「骨刃と本体の二正面」。
+    //   Phase1 は ロール→跳びかかり、Phase2 は →骨刃まで。
+    roll: ['roll', 'jump', 'bone'],
   },
   uri: {
     sweep: ['sweep', 'downslash', 'thrust'], downslash: ['downslash', 'thrust', 'bolt'],

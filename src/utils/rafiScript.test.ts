@@ -117,3 +117,12 @@ describe('pickRafiCombo — Phase2の骨刃→跳躍→薙ぎ', () => {
     expect(pickRafiCombo('sweep', 2, () => 0)).toBeNull();
   });
 });
+
+describe('★抽選結果→技キーの対応(社長報告2026-09-28・ロールが跳びかかりに化けていた取りこぼし)', () => {
+  it('4技すべてが自分の技キーへ行く(ロール→ロール台本)', async () => {
+    const { RAFI_MOVE_TO_KEY, ANGEL_MOVES_BY_TYPE } = await import('./angelBossTick');
+    expect(RAFI_MOVE_TO_KEY).toEqual({ bone: 'rf-bone', jump: 'rf-jump', sweep: 'rf-sweep', roll: 'rf-roll' });
+    // 表の技キーはボスメーカーの▸と同じ集合(=実戦で出ない技をボタンだけ持つ、を作らない)
+    expect(new Set(Object.values(RAFI_MOVE_TO_KEY))).toEqual(new Set(ANGEL_MOVES_BY_TYPE.rafi));
+  });
+});

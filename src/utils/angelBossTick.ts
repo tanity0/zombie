@@ -47,7 +47,7 @@ import { isBodySlamNow } from './enemyBite'; // ★カウンター憲法(v0.25.3
 import { npcSfxDistGain } from './npcSfx'; // v0.25.2480: 守護霊カウンターSEの距離減衰
 import { pickMiguelMove } from './miguelScript';
 import { pickJibrilMove, jibrilVolleyMode, JIBRIL_PHASE_HP_THRESHOLD, JIBRIL_EDGE_STICK_MS } from './jibrilScript';
-import { pickRafiMove, RAFI_PHASE_HP_THRESHOLD } from './rafiScript';
+import { pickRafiMove, RAFI_PHASE_HP_THRESHOLD, type RafiMove } from './rafiScript';
 import { pickUriMove, uriSweepInnerRadius, URI_PHASE_HP_THRESHOLD } from './uriScript';
 import { pickSurielMove, surielRingCount, SURIEL_PHASE_HP_THRESHOLD } from './surielScript';
 import {
@@ -472,6 +472,16 @@ export const ANGEL_MOVES_BY_TYPE: Readonly<Record<string, readonly AngelMoveKey[
     'ph-summon', 'ph-goldring', 'ph-judgment', 'ph-cage', 'ph-meteor', 'ph-ringtoss',
     'ph-dive', 'ph-feathershot',
   ],
+};
+
+/**
+ * ラフィの抽選結果(RafiMove)→ 技キー。実戦の抽選はこの1本を通る(フィルの `PHILL_MOVE_TO_KEY` と同じ作法)。
+ * ★社長報告2026-09-28(天使の攻撃パターン棚卸し)で見つかった取りこぼしの是正: 旧式は三項演算子で
+ *   roll を 'rf-jump' へ落としていた(v0.25.3592 でロール台本を足した時にここだけ直し漏れ)=**実戦でロールが1度も出ず、
+ *   Phase1の近距離(ロールしか選べない帯)では必ず跳んでいた**。表にして全技の対応をテストで固定する。
+ */
+export const RAFI_MOVE_TO_KEY: Readonly<Record<RafiMove, AngelMoveKey>> = {
+  bone: 'rf-bone', jump: 'rf-jump', sweep: 'rf-sweep', roll: 'rf-roll',
 };
 
 interface AngelPlayRequest { move: AngelMoveKey; solo: boolean; loop: boolean }
@@ -1747,7 +1757,10 @@ export const runRafiTick = (
       const move = scripted.move;
       patch.bossScriptQueue = scripted.remaining;
       if (move) {
-        startRafiMove(move === 'sweep' ? 'rf-sweep' : move === 'bone' ? 'rf-bone' : 'rf-jump');
+        // ★社長報告2026-09-28(天使の攻撃パターン棚卸し)で見つかった取りこぼし: 旧式は roll を 'rf-jump' へ
+        //   落としていた(v0.25.3592 でロール台本を足した時にここだけ直し漏れ)=**実戦でロールが1度も出ず、
+        //   Phase1の近距離(ロールしか選べない帯)では必ず跳んでいた**。ボスメーカーの▸だけがロールを出せた。
+        startRafiMove(RAFI_MOVE_TO_KEY[move]);
       }
     }
   } else if (st === 'backroll') {
