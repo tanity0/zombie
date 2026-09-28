@@ -539,6 +539,12 @@ export const ENEMY_IDLE_SHEETS: Readonly<Record<string, number>> = {
   // ★待機と歩きを1枚で兼ねる(ミゲル・フィルと同じ)。立ち絵(109×186)へ重ねて本体の高さ 150(IoU 0.92)。
   // ★手のランタン(`jibril-lantern`・別スプライト)は**そのまま出る**(外していない)。
   'jibril': 16,
+  // ★ラフィ(`rafi`)。社長支給2026-09-29「**ラフィの待機、歩き**」。13コマ(支給 1495×152 → 上の空き5行だけ落として **115×147**)。
+  // 常駐 **0.68MB**(遅延組)。半透明0%。足元は全コマ最下行。読み: 0,1=屈む / 2〜4=伸び上がる / 5〜12=前屈みで這い寄る。
+  // ★待機と歩きを1枚で兼ねる。★倍率: 0コマ目(屈んだ姿)を立ち絵(166×200)へ重ねると本体の高さ **114**(IoU 0.82)
+  //   =伸び上がるコマ(枠いっぱい)は立ち絵より約3割背が高く見える(絵のとおり)。
+  // ★胴のずらしは置かない: 体の横の位置はコマの中で ±5px 以内(足元・上半身とも)=這う揺れそのもの。
+  'rafi': 13,
 };
 
 /**
@@ -551,7 +557,8 @@ export const ENEMY_IDLE_PLAYBACK: Readonly<Record<string, IdlePlayback>> = {
   'reaper2-hanged': 'loop',     // 吊られて一周する揺れ(先頭と末尾がほぼ同じ絵=閉じている)
   'phill': 'loop',              // 浮遊の揺れ(継ぎ目14→1の重なり 0.71=隣どうし 0.66〜0.82 の範囲内)
   'miguel': 'loop',
-  'jibril': 'loop',             // 羽を開いて閉じる(末の数コマが0コマ目とほぼ同じ絵=閉じている)             // 羽ばたき2回→休み(末の3コマが0コマ目とほぼ同じ絵=閉じている)
+  'jibril': 'loop',
+  'rafi': 'loop',               // 屈む→伸び上がる→這う(継ぎ目12→0の重なり 0.80=隣どうし 0.57〜0.78 より大きい=閉じている)             // 羽を開いて閉じる(末の数コマが0コマ目とほぼ同じ絵=閉じている)             // 羽ばたき2回→休み(末の3コマが0コマ目とほぼ同じ絵=閉じている)
 };
 
 /** 1周期(吸う→吐く→止まる)の長さ。★叩き台——`?idlebreath=` で実機から触れる。 */
@@ -572,9 +579,18 @@ export const ENEMY_IDLE_PERIOD_MS: Readonly<Record<string, number>> = {
   'miguel': 2000,
   // ジブリル。**叩き台 2000ms**(16コマ=8コマ/秒・ミゲルと揃えた)。`?idlebreath=` で触れる。
   'jibril': 2000,
+  // ラフィ。**叩き台 1600ms**(13コマ=約8コマ/秒・ミゲル/ジブリルと同じ1コマの長さ)。`?idlebreath=` で触れる。
+  'rafi': 1600,
 };
 
 export const idleSheetName = (idleTexName: string): string => `${idleTexName}-idle`;
+/**
+ * ★**待機のシートの `bodyH`**(立ち絵の枠いっぱいに当たる、シートの中の高さ)。書いていない個体は**枠の高さ**(=そのまま)。
+ * ラフィは立ち絵が屈んだ姿で、シートの枠は伸び上がるコマに合わせて高い=枠の高さで合わせると本体が約2割縮む。
+ */
+export const ENEMY_IDLE_BODY_H: Readonly<Record<string, number>> = {
+  'rafi': 114,
+};
 
 export const idleSheetFrames = (idleTexName: string | null | undefined): number =>
   (idleTexName && ENEMY_IDLE_SHEETS[idleTexName]) || 0;
@@ -1144,6 +1160,8 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   'miguel': 'deferred',
   // ジブリル。待機1.19+振る0.80+投げる0.80=**2.79MB**。天使の門でしか出ず、出現にカットインを挟むので遅延。
   'jibril': 'deferred',
+  // ラフィ。待機/歩き0.68MB。天使の門でしか出ず、出現にカットインを挟むので遅延。
+  'rafi': 'deferred',
   // グレン形態1。浮遊3.70+攻撃1.30+跳び2.21=**7.21MB**(全部 高さ192)。ステージ7でしか出ず、出現にカットインを挟むので遅延。
   'glen-boss': 'deferred',
   // ▼ここから下は**起動時のまま**。理由はどれも同じ=**前触れなくその辺に居る**(猶予が無い)。

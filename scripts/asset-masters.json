@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "877 files / 復号後 約636MB",
+ "generatedFor": "878 files / 復号後 約637MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3871,6 +3871,12 @@
    "h": 128,
    "bytes": 6970,
    "sha": "0a30ecdf6ccbb80f"
+  },
+  "sprites/rafi-idle.png": {
+   "w": 1495,
+   "h": 147,
+   "bytes": 149760,
+   "sha": "a6103f30578ad969"
   },
   "sprites/rafi.png": {
    "w": 166,

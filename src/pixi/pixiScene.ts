@@ -105,7 +105,7 @@ import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, swe
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
-import { ENEMY_FRAME_OFFSETS, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
+import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -18339,7 +18339,10 @@ export class PixiScene {
       const idolMirror = (e.type === 'idol' && e.idolFacingLeft) ? -1 : 1;
       // ★予兆一括バッチ(v0.25.3344): aiSqX/aiSqYを乗せる(トール/ラフィの飛び掛かりしゃがみ用)。
       // 既定1・1なので他の裏ボス系(mimir/jormungand/skadi/miguel/jibril/uri/suriel/acrasiel/idol)は無変化。
-      view.sprite.scale.set(idolMirror * scale * breath.x * lungeSqX * flinchSqX * aiSqX, scale * breath.y * flinchSqY * aiSqY);
+      // ★手で描いたコマの間は技のスカッシュ(aiSqX/Y=歪み)を掛けない(社長指示「モーション追加により外すのは歪みだけ」・
+      //   ラフィの待機/歩きのシート 2026-09-29)。汎用の経路(`aiSqXDraw`)と同じ扱い。被弾のしなり(flinch)はそのまま。
+      const bossSqX = phillSheet ? 1 : aiSqX, bossSqY = phillSheet ? 1 : aiSqY;
+      view.sprite.scale.set(idolMirror * scale * breath.x * lungeSqX * flinchSqX * bossSqX, scale * breath.y * flinchSqY * bossSqY);
       // プレイヤーが帯(当たり判定)より奥=裏に回り込んだら、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
       // 二値判定ではなく「遠ざかるほど急激」な二乗カーブで透明度を距離に応じて連続変化させる。
       const ply = useGameStore.getState().player;
@@ -30255,7 +30258,7 @@ export class PixiScene {
     const idleName = idleSheetName(idleKey);
     const idleSl = this.enemyWalkFrames.get(idleName);
     if (idleSl && idleSl.length > 0 && idleSl[0].source === tex.source) {
-      return { bodyH: tex.height, off: ENEMY_FRAME_OFFSETS[idleName]?.[fi] ?? [0, 0] };
+      return { bodyH: ENEMY_IDLE_BODY_H[idleKey] ?? tex.height, off: ENEMY_FRAME_OFFSETS[idleName]?.[fi] ?? [0, 0] };
     }
     // ★ミゲルの爪・剣(`BOSS_PHASE_SHEETS`)も同じ作法で置く(社長支給2026-09-28)。
     const sheets: readonly { idle: string; name: string; bodyH: number }[] = [...PHILL_CAST_SHEETS, ...BOSS_PHASE_SHEETS];

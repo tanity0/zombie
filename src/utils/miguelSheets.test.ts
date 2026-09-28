@@ -56,3 +56,13 @@ describe('ミゲルの爪・剣のシート', () => {
     expect(seq).toEqual([4, 5, 6, 5, 4, 5, 6, 5, 4]);
   });
 });
+
+describe('待機のシートの bodyH(立ち絵と大きさを揃える)', () => {
+  it('表の個体は待機のシートを持ち、値は正', async () => {
+    const { ENEMY_IDLE_BODY_H, ENEMY_IDLE_SHEETS } = await import('./enemySheets');
+    for (const [k, v] of Object.entries(ENEMY_IDLE_BODY_H)) {
+      expect(ENEMY_IDLE_SHEETS[k], k).toBeGreaterThan(1);
+      expect(v).toBeGreaterThan(0);
+    }
+  });
+});
