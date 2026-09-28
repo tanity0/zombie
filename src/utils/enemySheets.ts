@@ -610,6 +610,16 @@ export const ENEMY_IDLE_BODY_H: Readonly<Record<string, number>> = {
   'rafi': 114,
 };
 
+/**
+ * ★**待機/歩きのコマに合わせた小ジャンプ**(社長2026-09-29「**ラフィの歩きは小ジャンプでピョンピョンしてる感じ**」→推薦で)。
+ * ラフィのシートは 0,1=屈む / 2〜4=伸び上がる / 5〜=前屈み。伸び上がるコマは足元が枠の底に着いたまま描かれているので、
+ * **伸び上がる3コマの間だけ体を宙へ浮かせて**跳ねをはっきりさせる(描画の位置だけ・判定と影の接地点は動かない)。
+ * 頂点 14 = シートの高さ(147)の約1割(叩き台・`?idlehop=` で倍率を触れる)。
+ */
+export const ENEMY_IDLE_HOP: Readonly<Record<string, { readonly from: number; readonly to: number; readonly peak: number }>> = {
+  'rafi': { from: 2, to: 5, peak: 14 },
+};
+
 export const idleSheetFrames = (idleTexName: string | null | undefined): number =>
   (idleTexName && ENEMY_IDLE_SHEETS[idleTexName]) || 0;
 

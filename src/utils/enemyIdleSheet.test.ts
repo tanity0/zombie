@@ -1,6 +1,6 @@
 // ★待機中(呼吸)の絵の拍。社長支給2026-09-21「プラントの待機中(呼吸)」。
 import { describe, it, expect } from 'vitest';
-import { enemyIdleFrame, IDLE_PAUSE_FRAC } from './enemyIdleSheet';
+import { enemyIdleFrame, enemyIdleLoopPos, idleHopLift, IDLE_PAUSE_FRAC } from './enemyIdleSheet';
 import {
   ENEMY_IDLE_SHEETS, ENEMY_IDLE_PERIOD_MS, ENEMY_IDLE_PLAYBACK,
   idleSheetFrames, idleSheetName, idleSheetPlayback,
@@ -131,5 +131,27 @@ describe('★★前方ループの待機(卵体)', () => {
     for (let t = 0; t < PP; t += 13) {
       expect(enemyIdleFrame(PF, t, 0.7, PP), `t=${t}`).toBe(enemyIdleFrame(PF, t, 0.7, PP, 'pingpong'));
     }
+  });
+});
+
+describe('待機/歩きのコマに合わせた小ジャンプ(ラフィ)', () => {
+  it('連続したコマ位置は送りと同じ時計で、整数部が enemyIdleFrame(loop) と一致する', () => {
+    for (let t = 0; t < 3200; t += 37) {
+      const pos = enemyIdleLoopPos(13, t, 1.3, 1600)!;
+      expect(Math.floor(pos)).toBe(enemyIdleFrame(13, t, 1.3, 1600, 'loop'));
+    }
+    expect(enemyIdleLoopPos(1, 0, 0, 1600)).toBeNull();
+  });
+  it('伸び上がるコマ(2〜4)の間だけ浮き、区間の真ん中が頂点・踏み切りと着地は0', async () => {
+    const { ENEMY_IDLE_HOP, ENEMY_IDLE_SHEETS } = await import('./enemySheets');
+    const hop = ENEMY_IDLE_HOP.rafi;
+    expect(hop.to).toBeLessThanOrEqual(ENEMY_IDLE_SHEETS.rafi);
+    expect(idleHopLift(hop, 1.99)).toBe(0);
+    expect(idleHopLift(hop, hop.from)).toBe(0);
+    expect(idleHopLift(hop, (hop.from + hop.to) / 2)).toBeCloseTo(hop.peak);
+    expect(idleHopLift(hop, hop.to)).toBe(0);
+    expect(idleHopLift(hop, null)).toBe(0);
+    // 放物線: 頂点の前後で対称
+    expect(idleHopLift(hop, hop.from + 0.5)).toBeCloseTo(idleHopLift(hop, hop.to - 0.5));
   });
 });

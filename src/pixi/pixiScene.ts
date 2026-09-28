@@ -106,8 +106,8 @@ import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../ut
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
 import { bossFaceWant } from '../utils/bossFacing';
-import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
-import { enemyIdleFrame } from '../utils/enemyIdleSheet';
+import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
+import { enemyIdleFrame, enemyIdleLoopPos, idleHopLift } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
 import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFrames, jumpLandDrawMs } from '../utils/enemyJumpSheet';
@@ -3096,6 +3096,8 @@ const PHILL_CAST_FRAME_MS = Math.max(20, tsNum('phillcastms', 75));
 const PHILL_RELEASE_FRAME_MS = Math.max(20, tsNum('phillreleasems', 90));
 // ★州ごとに割り付けるシート(ミゲルの爪・剣)で、往復(`pingpong`)する州の1コマの長さ(叩き台 90ms)。
 const BOSS_PHASE_FRAME_MS = Math.max(20, tsNum('bossphasems', 90));
+// ★待機/歩きのコマに合わせた小ジャンプの高さの倍率(ラフィ・叩き台1=`ENEMY_IDLE_HOP` のまま)。
+const IDLE_HOP_MUL = Math.max(0, tsNum('idlehop', 1));
 const TAILSLAM_KICK_MS = 220;       // 1発ぶんの震えが収まるまで
 const TAILSLAM_KICK_BACK_PX = 16;   // 撃った反動で帯の逆へ押し戻される量
 const TAILSLAM_KICK_SHAKE_PX = 9;   // 震えの振幅
@@ -18251,6 +18253,14 @@ export class PixiScene {
       const spy = phillSheet ? (baseCy + baseH / 2) - spriteH / 2 + phillSheet.off[1] * scale : baseCy;
       // ★手で描いたコマの間は疑似呼吸(伸び縮み=歪み)を掛けない(社長指示「モーション追加により外すのは歪みだけ」)。
       const breath = phillSheet ? { x: 1, y: 1 } : this.enemyBreath(e, now, view, gameTime);
+      // ★待機/歩きのコマに合わせた小ジャンプ(ラフィ・`ENEMY_IDLE_HOP`)。待機のシートのコマが出ている時だけ、
+      //   コマを選んだのと同じ時計・同じ位相(`enemyIdleTexture`)から位置を引く=絵の伸び上がりと浮きがズレない。
+      //   描画の位置だけ(判定・影の接地点は不変。影は浮いたぶん小さく薄くなる=shadowLiftPx)。
+      const hopSpec = phillSheet !== null && phillSheet.name === idleSheetName(idleTexKey) ? ENEMY_IDLE_HOP[idleTexKey] : undefined;
+      const idleHopPx = hopSpec
+        ? idleHopLift(hopSpec, enemyIdleLoopPos(idleSheetFrames(idleTexKey), now, stablePhase(e.id),
+          tsNum('idlebreath', idleSheetPeriodMs(idleTexKey)))) * scale * IDLE_HOP_MUL
+        : 0;
       // PACING_PUZZLE.md §10-4(浮遊)+§10-19(登場シーン)。視覚のみ=e.y/当たり判定は不変
       // (CLAUDE.md Y方向5点チェック: 地平線フェード/擬似遠近は上で既に対象外化。可視域/移動可能帯は
       // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。
@@ -18343,7 +18353,7 @@ export class PixiScene {
       // lungeSqXを一切含まない「素のscale」を使う。持ち上げ系(liftHop/kbHop/lungeOffY)だけを
       // heightPx相当(shadowLiftPx)として別途渡す(=殴るたびに影が跳ねる/静止時に呼吸で脈動する事故を防ぐ)。
       view.shadowScale = scale;
-      view.shadowLiftPx = liftHop + kbHop - lungeOffY;
+      view.shadowLiftPx = liftHop + kbHop - lungeOffY + idleHopPx;
       // ★検収差し戻し(中12): 「絵の下端」は単純な中心±テクスチャ高さ/2ではなく、テクスチャの
       // 実アルファ内容の下端(余白を除いた実体)を使う(社長報告: ヨルムンガルドで足元より80px級下に
       // 影が置かれていた=透明な余白を「絵の下端」と誤認していたため)。
@@ -18351,7 +18361,7 @@ export class PixiScene {
       view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5); // 論理の足元(実体下端。リフト/スカッシュ無し)
       view.sprite.position.set(
         Math.round(spx + liftShake + lungeOffX + biteShake),
-        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff),
+        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff - idleHopPx),
       );
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。

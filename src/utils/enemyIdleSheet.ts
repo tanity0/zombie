@@ -44,3 +44,30 @@ export const enemyIdleFrame = (
   const tri = u < 0.5 ? u * 2 : (1 - u) * 2;         // 往復(0→1→0)
   return Math.min(last, Math.max(0, Math.round(tri * last)));
 };
+
+/**
+ * ★待機/歩きのシートの**連続したコマ位置**(0..frames)。`loop` の送りと同じ時計・同じ位相で、端数まで返す
+ * (=コマの中のどこに居るか。コマに合わせて位置を動かす演出が使う)。`loop` 以外・不正な入力は null。
+ */
+export const enemyIdleLoopPos = (
+  frames: number, nowMs: number, phaseSeed: number, periodMs: number,
+): number | null => {
+  if (frames <= 1 || !(periodMs > 0) || !Number.isFinite(nowMs)) return null;
+  const t = (((nowMs / periodMs + phaseSeed / (Math.PI * 2)) % 1) + 1) % 1;
+  return t * frames;
+};
+
+/** 跳ねる区間(シートのコマ `from` の頭で踏み切り、`to` の頭で着地)と、頂点の高さ(シートの1画素単位)。 */
+export interface IdleHopSpec { readonly from: number; readonly to: number; readonly peak: number }
+
+/**
+ * ★コマに合わせた小ジャンプの高さ(シートの1画素単位・上が正)。区間の外は0。
+ * 放物線(4u(1-u))=踏み切りで一番速く、頂点で止まり、落ちながら加速する(慣性MUST=投げ上げの軌道そのもの)。
+ */
+export const idleHopLift = (spec: IdleHopSpec, pos: number | null): number => {
+  if (pos === null || !Number.isFinite(pos) || spec.to <= spec.from) return 0;
+  if (pos < spec.from || pos >= spec.to) return 0;
+  const u = (pos - spec.from) / (spec.to - spec.from);
+  return spec.peak * 4 * u * (1 - u);
+};
+
