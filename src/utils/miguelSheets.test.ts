@@ -16,8 +16,9 @@ describe('ミゲルの爪・剣のシート', () => {
       expect(bossPhaseFor('miguel', st)?.spec.name, st).toBe(want);
     }
     for (const st of ['chase', 'counter-leap', undefined]) expect(bossPhaseFor('miguel', st), String(st)).toBeNull();
-    // 同じ州名を使う別の天使には効かない(立ち絵で引く)。
-    expect(bossPhaseFor('jibril', 'volley')).toBeNull();
+    // 同じ州名を使う別の天使には、その天使のシートが引かれる(立ち絵で引く=ミゲルの絵は出ない)。
+    expect(bossPhaseFor('jibril', 'volley')?.spec.idle).toBe('jibril');
+    expect(bossPhaseFor('uri', 'volley')).toBeNull();
   });
   it('表の州名はミゲルの台本に実在する(州名を変えたら絵が黙って消える形を止める)', () => {
     const src = angelTickSrc;

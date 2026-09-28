@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "874 files / 復号後 約633MB",
+ "generatedFor": "877 files / 復号後 約636MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2276,11 +2276,29 @@
    "bytes": 45125,
    "sha": "5873f0e451932767"
   },
+  "sprites/jibril-idle.png": {
+   "w": 1984,
+   "h": 150,
+   "bytes": 226637,
+   "sha": "b0d69c7c9314d5d8"
+  },
   "sprites/jibril-lantern.png": {
    "w": 33,
    "h": 128,
    "bytes": 5014,
    "sha": "ca6058bcb8c0de41"
+  },
+  "sprites/jibril-swing.png": {
+   "w": 1330,
+   "h": 150,
+   "bytes": 154643,
+   "sha": "631831e5b643ec84"
+  },
+  "sprites/jibril-throw.png": {
+   "w": 1342,
+   "h": 149,
+   "bytes": 135836,
+   "sha": "5d8f3948527f7056"
   },
   "sprites/jibril.png": {
    "w": 109,

@@ -18212,8 +18212,9 @@ export class PixiScene {
       // 中心で置くので、コマの幅(154/182/163)が違うと**絵を替えるたびに体の大きさが変わり**、コマの中で体が動くと
       // **そのまま画面でも跳ねていた**。⇒ 立ち絵(`phill`)を置いた時の大きさ・足元を基準にし、コマの倍率は
       // 「立ち絵の高さ ÷ そのシートの本体の高さ(bodyH)」、位置は足元揃え+胴のずらし(`ENEMY_FRAME_OFFSETS`)で決める。
-      // ★ミゲルの手で描いたコマ(待機/爪/剣・社長支給2026-09-28)も同じ置き方にする。
-      const handSheetBoss = e.type === 'phillboss' || e.type === 'miguel';
+      // ★ミゲル・ジブリルの手で描いたコマ(社長支給2026-09-28/29)も同じ置き方にする
+      //   =待機のシートを持つ裏ボスは全部この置き方(素材が届くたびに自動でこちらへ移る)。
+      const handSheetBoss = idleSheetFrames(idleTexKey) > 1;
       const phillSheet = handSheetBoss && walkTex !== null && tex === walkTex ? this.phillSheetFit(tex, idleTexKey) : null;
       const phillIdleTex = phillSheet ? getTexture(idleTexKey) : null;
       const baseTex = phillIdleTex ?? tex;

@@ -534,6 +534,11 @@ export const ENEMY_IDLE_SHEETS: Readonly<Record<string, number>> = {
   // ★倍率: 立ち絵(134×200)へ重ねると本体の高さ 150(IoU 0.94)=枠の高さそのまま。
   // ★剣(`miguel-sword`・横払いの別スプライト)は**別スプライトなのでそのまま出る**(外していない)。
   'miguel': 16,
+  // ★ジブリル(`jibril`)。社長支給2026-09-29「**歩き、待機**」。16コマ(支給 1984×152 → 上の空き2行だけ落として **124×150**)。
+  // 常駐 **1.19MB**(遅延組)。半透明0%。足元は全コマ最下行。羽を大きく開いて閉じる。
+  // ★待機と歩きを1枚で兼ねる(ミゲル・フィルと同じ)。立ち絵(109×186)へ重ねて本体の高さ 150(IoU 0.92)。
+  // ★手のランタン(`jibril-lantern`・別スプライト)は**そのまま出る**(外していない)。
+  'jibril': 16,
 };
 
 /**
@@ -545,7 +550,8 @@ export const ENEMY_IDLE_PLAYBACK: Readonly<Record<string, IdlePlayback>> = {
   'ghost-common': 'loop',       // 髪と裾がなびく=流れ続ける
   'reaper2-hanged': 'loop',     // 吊られて一周する揺れ(先頭と末尾がほぼ同じ絵=閉じている)
   'phill': 'loop',              // 浮遊の揺れ(継ぎ目14→1の重なり 0.71=隣どうし 0.66〜0.82 の範囲内)
-  'miguel': 'loop',             // 羽ばたき2回→休み(末の3コマが0コマ目とほぼ同じ絵=閉じている)
+  'miguel': 'loop',
+  'jibril': 'loop',             // 羽を開いて閉じる(末の数コマが0コマ目とほぼ同じ絵=閉じている)             // 羽ばたき2回→休み(末の3コマが0コマ目とほぼ同じ絵=閉じている)
 };
 
 /** 1周期(吸う→吐く→止まる)の長さ。★叩き台——`?idlebreath=` で実機から触れる。 */
@@ -564,6 +570,8 @@ export const ENEMY_IDLE_PERIOD_MS: Readonly<Record<string, number>> = {
   'phill': 1800,
   // ミゲル。**叩き台 2000ms**(16コマ=8コマ/秒)。1周で羽ばたき2回=1回約0.8秒。`?idlebreath=` で触れる。
   'miguel': 2000,
+  // ジブリル。**叩き台 2000ms**(16コマ=8コマ/秒・ミゲルと揃えた)。`?idlebreath=` で触れる。
+  'jibril': 2000,
 };
 
 export const idleSheetName = (idleTexName: string): string => `${idleTexName}-idle`;
@@ -1134,6 +1142,8 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   'phill': 'deferred',
   // ミゲル。待機1.59+爪0.60+剣1.01=**3.20MB**。天使の門でしか出ず、出現にカットインを挟むので遅延。
   'miguel': 'deferred',
+  // ジブリル。待機1.19+振る0.80+投げる0.80=**2.79MB**。天使の門でしか出ず、出現にカットインを挟むので遅延。
+  'jibril': 'deferred',
   // グレン形態1。浮遊3.70+攻撃1.30+跳び2.21=**7.21MB**(全部 高さ192)。ステージ7でしか出ず、出現にカットインを挟むので遅延。
   'glen-boss': 'deferred',
   // ▼ここから下は**起動時のまま**。理由はどれも同じ=**前触れなくその辺に居る**(猶予が無い)。
@@ -1260,11 +1270,19 @@ export const phillReleaseFrame = (
  *   突進は移動(230ms)の間は振りかぶりで構え、斬り抜け(110ms)で振り抜く。
  * 大きさ: 3枚とも同じ変換の高さ(152)で、**1ドットを同じ大きさで描く**(=`bodyH` 150 を揃える)。
  */
-export type BossPhaseMode = 'stretch' | 'pingpong';
+export type BossPhaseMode = 'stretch' | 'pingpong' | 'cycle';
 export interface BossPhase {
   readonly state: string;
   readonly seq: readonly number[];
   readonly mode: BossPhaseMode;
+  /**
+   * `cycle` だけが使う: 並び1周の長さ(ms)。**州の頭から一定の周期で並びを繰り返す**
+   * (=技の中で一定間隔に起きる出来事——ジブリルのランタンを放つ瞬間——に、放つコマを毎回合わせる)。
+   */
+  readonly periodMs?: number;
+  /** `cycle`: 繰り返す回数。最後の1回は `finale` を流して末コマで止まる(省略=州が終わるまで繰り返す)。 */
+  readonly cycles?: number;
+  readonly finale?: readonly number[];
 }
 export interface BossPhaseSheetSpec {
   readonly idle: string;
@@ -1297,6 +1315,36 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       { state: 'mdash-recover', seq: [6, 7, 8], mode: 'stretch' },
     ],
   },
+  // ★ジブリル(社長支給2026-09-29「**ランタンを振る(その他全部)**」)。10コマ: 0〜2=ランタンを掲げる / 3〜6=羽を大きく開きランタンを振る /
+  //   7〜9=閉じて戻る。連射・聖別・転移に使う。
+  {
+    idle: 'jibril', name: 'jibril-swing', frames: 10, bodyH: 150,
+    phases: [
+      { state: 'volley-windup', seq: [0, 1, 2, 3, 4], mode: 'stretch' },
+      { state: 'volley', seq: [4, 5, 6], mode: 'pingpong' },
+      { state: 'volley-recover', seq: [7, 8, 9], mode: 'stretch' },
+      { state: 'consecrate-windup', seq: [0, 1, 2, 3, 4, 5], mode: 'stretch' },
+      { state: 'consecrate-recover', seq: [6, 7, 8, 9], mode: 'stretch' },
+      { state: 'warp-windup', seq: [0, 1, 2, 3, 4], mode: 'stretch' },
+      { state: 'warp-recover', seq: [6, 7, 8, 9], mode: 'stretch' },
+    ],
+  },
+  // ★ジブリル(社長支給2026-09-29「**ランタンを投げる(ランタンレーザー、ランタン爆弾)**」)。11コマ:
+  //   0〜2=ランタンを提げて光らせる / 3〜5=後ろへ引いて振りかぶる / **6,7=ランタンが手を離れて飛ぶ** / 8〜10=空の手で戻る。
+  //   **放つコマ(6)を、実際にランタン/火が出る瞬間へ毎回合わせる**(`cycle`):
+  //   - ランタンレーザー(`lance-windup`): 州の頭で1本目、以後1秒おきに計3本を射出(`ANGEL_JIBRIL_TUNING.lance`)。
+  //     3本目を放ったら空の手のまま(10)で、ランタンが縁でレーザーを撃つのを待つ。
+  //   - ランタン爆弾(`lantern`): 州の頭から0.7秒おきに火を置く(`lantern.fireGapMs`)。溜め(0.7秒)で振りかぶり、置く瞬間に放つ。
+  {
+    idle: 'jibril', name: 'jibril-throw', frames: 11, bodyH: 150,
+    phases: [
+      { state: 'lance-windup', seq: [6, 7, 8, 9, 1, 2, 3, 4, 5, 5], mode: 'cycle', periodMs: 1000, cycles: 3, finale: [6, 7, 8, 9, 10] },
+      { state: 'lance-recover', seq: [10, 10, 0], mode: 'stretch' },
+      { state: 'lantern-windup', seq: [0, 1, 2, 3, 4, 5], mode: 'stretch' },
+      { state: 'lantern', seq: [6, 7, 8, 9, 2, 3, 4, 5], mode: 'cycle', periodMs: 700, cycles: 8, finale: [6, 7, 8, 9, 10] },
+      { state: 'lantern-recover', seq: [9, 10], mode: 'stretch' },
+    ],
+  },
 ];
 
 /** その立ち絵・その州が使うシートとコマの並び(無ければ null)。州は完全一致。 */
@@ -1319,6 +1367,17 @@ export const bossPhaseFrame = (phase: BossPhase, prog: number, elapsedMs: number
   if (phase.mode === 'stretch') {
     const p = Number.isFinite(prog) ? Math.max(0, Math.min(0.999999, prog)) : 0;
     return seq[Math.floor(p * n)];
+  }
+  if (phase.mode === 'cycle') {
+    const period = Math.max(1, phase.periodMs ?? 1000);
+    const e = Number.isFinite(elapsedMs) && elapsedMs > 0 ? elapsedMs : 0;
+    const k = Math.floor(e / period);
+    const fin = phase.finale;
+    if (phase.cycles !== undefined && fin && fin.length > 0 && k >= phase.cycles - 1) {
+      const j = Math.floor((e - (phase.cycles - 1) * period) / (period / seq.length));
+      return fin[Math.min(fin.length - 1, j)];
+    }
+    return seq[Math.min(n - 1, Math.floor(((e - k * period) / period) * n))];
   }
   if (n === 1) return seq[0];
   const step = Number.isFinite(elapsedMs) && elapsedMs > 0 && frameMs > 0 ? Math.floor(elapsedMs / frameMs) : 0;
@@ -1345,6 +1404,11 @@ export const ENEMY_FRAME_OFFSETS: Readonly<Record<string, readonly (readonly [nu
   //   (振りにつれて胴が枠の中を左右へ約30px捻れる)。どれも立ち絵へ重ねた時の差(横−2・縦−3)を足してある。
   'miguel-idle': [[-2, -3], [-8, -3], [-15, -2], [-11, -2], [-9, -2], [-8, -2], [-2, -2], [0, -3], [-14, -3], [-17, -3], [-15, -2], [-17, -2], [-9, -2], [-2, -2], [0, -2], [0, -2]],
   'miguel-claw': [[-2, -4], [-2, -4], [-2, -4], [-2, -4], [-2, -4], [-1, -4], [0, -4], [-2, -4]],
+  // ★ジブリル(社長支給2026-09-29)。待機と「振る」は羽を大きく開くコマで**頭巾が枠の中を16px左へ動く**/「投げる」は
+  //   投げ切る所で体が最大19px捻れる。頭巾〜胸を追って打ち消した(立ち絵へ重ねた差 縦−3 を足してある)。
+  'jibril-idle': [[0, -3], [1, -3], [-1, -3], [-1, -3], [1, -3], [16, -3], [16, -3], [16, -3], [15, -3], [14, -3], [-1, -3], [-1, -3], [-1, -3], [0, -3], [-1, -3], [0, -3]],
+  'jibril-swing': [[0, -3], [0, -3], [4, -3], [16, -3], [16, -3], [16, -3], [16, -3], [2, -3], [0, -3], [2, -3]],
+  'jibril-throw': [[0, -3], [0, -3], [-2, -3], [-3, -3], [-3, -3], [4, -3], [15, -3], [19, -3], [-6, -3], [-5, -3], [-1, -3]],
   'miguel-slash': [[-17, -3], [-18, -3], [-10, -3], [2, -3], [5, -3], [10, -3], [7, -3], [11, -3], [4, -3]],
   'phill-cast2': [[-5, 0], [-2, -11], [-2, -10], [-4, 3], [-4, 10], [-3, 14], [-11, 29], [-5, 29], [-10, 27], [-5, 30], [-10, 32], [-8, 30], [-2, 26], [6, 24], [6, 26], [6, 17]],
 };
