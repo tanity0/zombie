@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "890 files / 復号後 約649MB",
+ "generatedFor": "892 files / 復号後 約650MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -710,11 +710,23 @@
    "bytes": 25599,
    "sha": "4a227950d14cb909"
   },
+  "sprites/bounty-ranged-flail.png": {
+   "w": 1680,
+   "h": 128,
+   "bytes": 187085,
+   "sha": "9d82e28ff2e89e72"
+  },
   "sprites/bounty-ranged-sign.png": {
    "w": 40,
    "h": 64,
    "bytes": 2392,
    "sha": "ac80937cdabfe65f"
+  },
+  "sprites/bounty-ranged-walk.png": {
+   "w": 1235,
+   "h": 128,
+   "bytes": 140869,
+   "sha": "adcf943fbab6c210"
   },
   "sprites/bounty-ranged.png": {
    "w": 148,

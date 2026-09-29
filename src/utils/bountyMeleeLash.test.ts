@@ -1,7 +1,7 @@
 // ★馬乗り(変異)の攻撃のシート(社長支給2026-09-29「馬乗りの攻撃全部」)。
 import { describe, it, expect } from 'vitest';
 import bountyTickSrc from './bountyTick.ts?raw';
-import { BOSS_PHASE_SHEETS, ENEMY_FRAME_OFFSETS, bossPhaseFor, bossPhaseFrame } from './enemySheets';
+import { BOSS_PHASE_SHEETS, ENEMY_FRAME_OFFSETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame } from './enemySheets';
 
 describe('馬乗りの攻撃', () => {
   const spec = BOSS_PHASE_SHEETS.find(s => s.name === 'bounty-melee-lash')!;
@@ -41,5 +41,25 @@ describe('鋏の攻撃', () => {
       expect(bossPhaseFrame(bossPhaseFor('bounty-balance', r)!.phase, 0, 0, 90), r).toBe(6);
     }
     expect(ENEMY_FRAME_OFFSETS['bounty-balance-slash']?.length).toBe(spec.frames);
+  });
+});
+
+describe('バス停の攻撃', () => {
+  const spec = BOSS_PHASE_SHEETS.find(s => s.name === 'bounty-ranged-flail')!;
+  it('全技(押しのけ・三段突き・レーザー)の州がこのシートを引き、州名は台本に実在する・ロールは引かない', () => {
+    for (const ph of spec.phases) {
+      expect(bountyTickSrc.includes(`'${ph.state}'`), ph.state).toBe(true);
+      expect(bossPhaseFor('bounty-ranged', ph.state)?.spec.name, ph.state).toBe('bounty-ranged-flail');
+    }
+    expect(bossPhaseFor('bounty-ranged', 'br-roll')).toBeNull();
+  });
+  it('★技ごとに1本(同じ group の州は時計を切らない)。最初の溜めで 0→7、明けたら 8〜15 を往復', () => {
+    for (const g of ['br-push', 'br-triple', 'br-laser']) {
+      const phs = spec.phases.filter(p => p.group === g);
+      expect(phs.length, g).toBeGreaterThan(1);
+    }
+    const ph = bossPhaseFor('bounty-ranged', 'br-triple-windup')!.phase;
+    expect(bossReleaseFrame(ph, 0.999, 0, 90)).toBe(7);
+    for (let t = 0; t < 3000; t += 41) expect(bossReleaseFrame(ph, null, t, 90)).toBeGreaterThanOrEqual(8);
   });
 });
