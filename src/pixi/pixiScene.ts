@@ -18264,7 +18264,10 @@ export class PixiScene {
       }
       const baseCx = stripCx + (0.5 - fit.cx) * baseW * bossM;
       const baseCy = stripCy + (0.5 - fit.cy) * baseH;
-      const spx = phillSheet ? baseCx + phillSheet.off[0] * scale * bossM : baseCx;
+      // ★アイドルはボス共通のミラー(bossM)の対象外で、独自の向き(`idolFacingLeft`=下の idolMirror)で反転する
+      //   ⇒ 胴のずらしの横も同じ向きで反転する(アイドルの狙撃シート・社長指示2026-09-29「身体の位置で合わせて」)。
+      const offMirror = e.type === 'idol' && e.idolFacingLeft ? -1 : 1;
+      const spx = phillSheet ? baseCx + phillSheet.off[0] * scale * bossM * offMirror : baseCx;
       const spy = phillSheet ? (baseCy + baseH / 2) - spriteH / 2 + phillSheet.off[1] * scale : baseCy;
       // ★手で描いたコマの間は疑似呼吸(伸び縮み=歪み)を掛けない(社長指示「モーション追加により外すのは歪みだけ」)。
       const breath = phillSheet ? { x: 1, y: 1 } : this.enemyBreath(e, now, view, gameTime);
