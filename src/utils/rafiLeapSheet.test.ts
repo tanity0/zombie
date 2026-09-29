@@ -28,3 +28,22 @@ describe('ラフィの飛び掛かり', () => {
     expect(bossPhaseFrame(wind, 0.999, 0, 90)).toBe(2); // 屈み切ったまま踏み切りへ
   });
 });
+
+describe('ラフィの魔法系', () => {
+  it('骨刃・ロール後の速い刃がこのシートを引く(薙ぎ払いとロールは待機のまま)。州名は台本に実在する', () => {
+    for (const st of ['bone-windup', 'bone', 'bone-recover', 'quickblades-windup', 'quickblades-recover']) {
+      expect(bossPhaseFor('rafi', st)?.spec.name, st).toBe('rafi-cast');
+      expect(angelTickSrc.includes(`'${st}'`), st).toBe(true);
+    }
+    for (const st of ['sweep-windup', 'sweep', 'sweep-recover', 'backroll']) expect(bossPhaseFor('rafi', st), st).toBeNull();
+  });
+  it('溜めの終わりで爪を掲げ切り(3)、硬直の終わりで屈んだ姿(0)へ戻る', () => {
+    const w = bossPhaseFor('rafi', 'bone-windup')!.phase;
+    expect(bossPhaseFrame(w, 0.999, 0, 90)).toBe(3);
+    const r = bossPhaseFor('rafi', 'bone-recover')!.phase;
+    expect(bossPhaseFrame(r, 0.999, 0, 90)).toBe(0);
+    const q = bossPhaseFor('rafi', 'quickblades-recover')!.phase;
+    expect(bossPhaseFrame(q, 0, 0, 90)).toBe(4);
+    expect(bossPhaseFrame(q, 0.999, 0, 90)).toBe(0);
+  });
+});

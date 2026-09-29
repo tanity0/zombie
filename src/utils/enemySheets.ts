@@ -1188,7 +1188,7 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   'miguel': 'deferred',
   // ジブリル。待機1.19+振る0.80+投げる0.80=**2.79MB**。天使の門でしか出ず、出現にカットインを挟むので遅延。
   'jibril': 'deferred',
-  // ラフィ。待機/歩き0.88+飛び掛かり1.54=2.42MB。天使の門でしか出ず、出現にカットインを挟むので遅延。
+  // ラフィ。待機/歩き0.88+飛び掛かり1.54+魔法0.69=3.11MB。天使の門でしか出ず、出現にカットインを挟むので遅延。
   'rafi': 'deferred',
   // グレン形態1。浮遊3.70+攻撃1.30+跳び2.21=**7.21MB**(全部 高さ192)。ステージ7でしか出ず、出現にカットインを挟むので遅延。
   'glen-boss': 'deferred',
@@ -1379,6 +1379,24 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       { state: 'jump-windup', seq: [0, 1, 2, 2], mode: 'stretch' },
       { state: 'jump-attack', seq: [3, 4, 5, 6, 7], mode: 'stretch', lift: 60 },
       { state: 'jump-recover', seq: [8, 9, 10, 11, 12, 13, 14, 15], mode: 'stretch' },
+    ],
+  },
+  // ★ラフィの魔法系(社長支給2026-09-29「**ラフィのその他魔法系**」)。8コマ(支給 1152×153 → 上の空き3行を落として **144×150**・0.69MB)。
+  //   読み: 0=屈む / 1=爪を前へ伸ばす / 2=爪を振り上げる / **3〜7=爪を高く掲げたまま**(爪先が小さく蠢く)。
+  //   使う技=魔法で刃を呼ぶ2つ: **骨刃**(`bone-*`・プレイヤーの周りへ骨の刃を7本)/ **ロール後の速い刃**(`quickblades-*`)。
+  //   薙ぎ払い(`sweep-*`=刀の別スプライトで斬る)とロール(`backroll`=転がる移動)は魔法ではないので待機のコマのまま。
+  //   ★**このシートは1ドットが大きく描かれている**: 0コマ目を飛び掛かりの0コマ目(同じ屈んだ姿)へ重ねると 0.82倍(IoU 0.87)
+  //     ⇒ bodyH = 114 ÷ 0.82 ≒ **139**(待機・飛び掛かりと同じ背丈に揃う)。
+  //   胴のずらしは置かない(爪の無い右半身の輪郭が全コマ枠の同じ位置=体は動いていない)。
+  {
+    idle: 'rafi', name: 'rafi-cast', frames: 8, bodyH: 139,
+    phases: [
+      { state: 'bone-windup', seq: [0, 1, 2, 3], mode: 'stretch' },
+      { state: 'bone', seq: [3, 4, 5, 6, 7], mode: 'pingpong' },
+      { state: 'bone-recover', seq: [3, 2, 1, 0], mode: 'stretch' },
+      { state: 'quickblades-windup', seq: [0, 1, 2, 3], mode: 'stretch' },
+      // 溜め明けに刃が出る(`launchDelayMs` 250 + 2本×120ms)間は掲げたまま、その後に爪を下ろす。
+      { state: 'quickblades-recover', seq: [4, 5, 6, 7, 3, 2, 1, 0], mode: 'stretch' },
     ],
   },
   // ★ジブリル(社長支給2026-09-29「**ランタンを振る(その他全部)**」)。10コマ: 0〜2=ランタンを掲げる / 3〜6=羽を大きく開きランタンを振る /
