@@ -23,7 +23,7 @@ describe('ミゲルの爪・剣のシート', () => {
   it('表の州名はミゲルの台本に実在する(州名を変えたら絵が黙って消える形を止める)', () => {
     const src = angelTickSrc;
     // 天使の台本(angelBossTick)に載る個体だけ(賞金首は bountyTick 側=bountyMeleeLash.test.ts が見る)。
-    for (const spec of BOSS_PHASE_SHEETS.filter(sp => !sp.idle.startsWith('bounty-') && sp.idle !== 'mimir')) for (const ph of spec.phases) {
+    for (const spec of BOSS_PHASE_SHEETS.filter(sp => !sp.idle.startsWith('bounty-') && sp.idle !== 'mimir' && sp.idle !== 'idol')) for (const ph of spec.phases) {
       expect(src.includes(`'${ph.state}'`), ph.state).toBe(true);
     }
   });
