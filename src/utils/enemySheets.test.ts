@@ -7,7 +7,7 @@
 // = **手で描かれた絵を持つ個体は全部ミラーする**(型ではなく個体・例外なし)。素材が揃うたび自動で移る。
 import { describe, it, expect } from 'vitest';
 import {
-  ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_SHEET_FACES_RIGHT, ENEMY_WALK_BODY_H, walkSheetBodyH,
+  ENEMY_WALK_SHEETS, ENEMY_ATTACK_SHEETS, ENEMY_SHEET_FACES_RIGHT, ENEMY_WALK_BODY_H, ENEMY_WALK_FRAME_BODY_H, walkSheetBodyH,
   walkSheetName, attackSheetName, walkSheetFrames, attackSheetFrames,
   hasAnimSheet, sheetFacesRight, walkPlayback, attackImpactFrame,
   sheetHasWeapon, ENEMY_SHEET_HAS_WEAPON, ENEMY_ATTACK_IMPACT_FRAME,
@@ -224,5 +224,17 @@ describe('歩きのシートの bodyH(立ち絵より小さく描かれた歩き
     expect(walkSheetBodyH('lab-zombie/lab-zombie-lv1-female')).toBeNull();
     expect(walkSheetBodyH('stage4-enemies/giantbat')).toBeNull();
     expect(walkSheetBodyH(undefined)).toBeNull();
+  });
+  it('★コマごとの bodyH(鋏): 全コマぶんあり、コマ番号で引ける・コマ番号なしは従来の1本(無ければ null)', () => {
+    for (const [idle, arr] of Object.entries(ENEMY_WALK_FRAME_BODY_H)) {
+      expect(arr.length, idle).toBe(ENEMY_WALK_SHEETS[idle]);
+      for (const v of arr) { expect(v).toBeGreaterThan(0); expect(v).toBeLessThanOrEqual(128); }
+    }
+    expect(walkSheetBodyH('bounty-balance', 0)).toBe(127);
+    expect(walkSheetBodyH('bounty-balance', 8)).toBe(108);
+    expect(walkSheetBodyH('bounty-balance')).toBeNull();
+    // 後ろのコマほど体が小さく描かれている=bodyH は減っていく(0→8)
+    const bb = ENEMY_WALK_FRAME_BODY_H['bounty-balance'];
+    expect(bb[8]).toBeLessThan(bb[0]);
   });
 });

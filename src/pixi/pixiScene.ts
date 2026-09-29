@@ -18603,7 +18603,8 @@ export class PixiScene {
           [sweepSheetBodyH(idleTexKey, frameIdx), sweepSheetName(idleTexKey)] as const,
           [jumpSheetBodyH(idleTexKey, frameIdx), jumpSheetName(idleTexKey)] as const,
           // ★歩きのシート(社長支給2026-09-26 研究員男=立ち絵より約1割小さく描かれていた)。
-          [walkSheetBodyH(idleTexKey), walkSheetName(idleTexKey)] as const,
+          // ★コマごとに体の大きさが違う歩き(鋏・社長指示2026-09-29「体でスケールを合わせて」)はコマ番号で引く。
+          [walkSheetBodyH(idleTexKey, frameIdx), walkSheetName(idleTexKey)] as const,
           // ★フィルの演出シート(演出1・演出2)。頭上の空きのぶん枠が高いので本体の高さで揃える。
           ...PHILL_CAST_SHEETS.map(c => [idleTexKey === c.idle ? c.bodyH : null, c.name] as const),
           // ★技ごとの差し替えシート。ここに並べないと**その技の間だけ倍率の補正が外れる**。

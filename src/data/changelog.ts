@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4706', items: ['鋏(変異)が描き下ろしの絵で、膝立ちのまま鋏を引きずって迫ってくるようになった'] },
   { version: '0.25.4705', items: ['馬乗り(変異)が描き下ろしの絵で這い寄ってくるようになった。進むと髪と裾がなびく'] },
   { version: '0.25.4704', items: ['本編で出会わないアクラシエルを、ボスモードと記録の一覧から外した'] },
   { version: '0.25.4703', items: ['スリィエルが描き下ろしの絵で宙に浮かび、ゆっくり沈んでは浮き上がりながら迫ってくる'] },

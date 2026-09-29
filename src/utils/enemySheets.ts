@@ -147,6 +147,12 @@ export const ENEMY_WALK_SHEETS: Readonly<Record<string, number>> = {
   //   ⇒ `ENEMY_WALK_BODY_H` には載せない(研究所Lv3と同じ扱い)。送りは前方ループ(継ぎ目11→0の重なり 0.78=隣どうし 0.69〜0.84 の範囲内)。
   // ★別スプライトの鞭(`bounty-melee-whip`)はそのまま出る。
   'bounty-melee': 12,
+  // ★鋏(変異)(`bounty-balance`・ステージ4の賞金首)。社長支給2026-09-29「**鋏の歩き** / 体の大きさがコマによってマチマチなので、
+  // 体でスケールを合わせて」。9コマ(支給 963×130 → 上の空き2行を落として **107×128**・0.49MB・起動時のまま)。縮小なし・半透明0%・
+  // 足元は全コマ最下行。左向き(既定)=嘴の面と腕が左。膝立ちのまま鋏を引きずって進む。
+  // ★**コマごとに体の大きさが違う**(変換で枠いっぱいに合わせた結果、後ろのコマほど体が小さい=頭の上端が 2→19 行目へ下がる)
+  //   ⇒ 各コマを0コマ目へ重ねて倍率を実測し(1.00→1.17)、**コマごとの bodyH**(`ENEMY_WALK_FRAME_BODY_H`)で体の大きさを揃える。
+  'bounty-balance': 9,
   // ★グレン形態1の浮遊移動。**社長支給2026-09-26「浮遊差し替え」で高さ192版へ差し替え**(初版は256・6.57MB)。
   // 16コマ(支給 4816×194 → 上の空き2行だけ落として **301×192**)。常駐 **3.70MB**=遅延組(下の常駐表)。
   // ★縮小なし: 2×2一致率は33%と高めだが**位相を1pxずらしても変わらない**=引き伸ばしの跡ではなく、
@@ -480,8 +486,23 @@ export const ENEMY_WALK_BODY_H: Readonly<Record<string, number>> = {
   'lab-zombie/lab-zombie-lv1-male': 116,   // 研究員(男)。立ち絵より約1割小さく描かれている(上の表の注記)
 };
 
-export const walkSheetBodyH = (idleTexName: string | null | undefined): number | null =>
-  (idleTexName && ENEMY_WALK_BODY_H[idleTexName]) || null;
+/**
+ * ★**歩きのシートのコマごとの `bodyH`**(社長指示2026-09-29「鋏の歩き、体の大きさがコマによってマチマチなので、体でスケールを合わせて」)。
+ * 変換で各コマを枠いっぱいに合わせた結果、**コマによって体の描かれた大きさが違う**シートのため。値の意味は `ENEMY_WALK_BODY_H` と同じ。
+ * 書いたら `ENEMY_WALK_BODY_H` より優先(その個体の全コマぶん書く)。
+ */
+export const ENEMY_WALK_FRAME_BODY_H: Readonly<Record<string, readonly number[]>> = {
+  // 鋏: 0コマ目は立ち絵と同じ大きさ(重ねて1.01倍・IoU 0.95)。各コマを0コマ目へ重ねた倍率 1.00/1.04/1.03/1.08/1.11/1.11/1.14/1.16/1.17
+  //   (体全体の重なりで実測。頭の高さと大きさが揃うのを並べて確認)⇒ bodyH = 128 ÷ (倍率×1.01)。
+  'bounty-balance': [127, 122, 123, 117, 114, 114, 111, 109, 108],
+};
+
+export const walkSheetBodyH = (idleTexName: string | null | undefined, frame?: number): number | null => {
+  if (!idleTexName) return null;
+  const per = ENEMY_WALK_FRAME_BODY_H[idleTexName];
+  if (per && frame !== undefined && per[frame] !== undefined) return per[frame];
+  return ENEMY_WALK_BODY_H[idleTexName] || null;
+};
 export const attackSheetName = (idleTexName: string): string => `${idleTexName}-attack`;
 
 export const walkSheetFrames = (idleTexName: string | null | undefined): number =>

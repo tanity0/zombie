@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "887 files / 復号後 約645MB",
+ "generatedFor": "888 files / 復号後 約646MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -655,6 +655,12 @@
    "h": 27,
    "bytes": 2318,
    "sha": "0749473f3eeb8799"
+  },
+  "sprites/bounty-balance-walk.png": {
+   "w": 963,
+   "h": 128,
+   "bytes": 99546,
+   "sha": "a27d08b659f5f279"
   },
   "sprites/bounty-balance.png": {
    "w": 103,
