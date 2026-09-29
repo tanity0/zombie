@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "894 files / 復号後 約652MB",
+ "generatedFor": "895 files / 復号後 約654MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2797,6 +2797,12 @@
    "h": 200,
    "bytes": 34882,
    "sha": "ed3ef9ccd48541cf"
+  },
+  "sprites/mimir-idle.png": {
+   "w": 2041,
+   "h": 198,
+   "bytes": 361082,
+   "sha": "e9f9602ff61faa87"
   },
   "sprites/mimir.png": {
    "w": 201,
