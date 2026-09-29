@@ -23,3 +23,23 @@ describe('馬乗りの攻撃', () => {
     }
   });
 });
+
+describe('鋏の攻撃', () => {
+  const spec = BOSS_PHASE_SHEETS.find(s => s.name === 'bounty-balance-slash')!;
+  it('全技(薙ぎ・3連薙ぎ・ロール後の高速弾・跳びかかり)の州がこのシートを引き、州名は台本に実在する', () => {
+    for (const ph of spec.phases) {
+      expect(bountyTickSrc.includes(`'${ph.state}'`), ph.state).toBe(true);
+      expect(bossPhaseFor('bounty-balance', ph.state)?.spec.name, ph.state).toBe('bounty-balance-slash');
+    }
+    expect(bossPhaseFor('bounty-balance', 'bb-backroll')).toBeNull(); // ロール(移動)は歩き/立ち絵
+  });
+  it('★溜めの終わりで振りかぶり切り(5)、当たった直後(硬直の頭)で振り下ろす(6)・ずらしはコマ数ぶん', () => {
+    for (const w of ['bb-sweep-windup', 'bb-triple1-windup', 'bb-triple2-windup', 'bb-triple3-windup', 'bb-quickshot-windup', 'leap-windup']) {
+      expect(bossPhaseFrame(bossPhaseFor('bounty-balance', w)!.phase, 0.999, 0, 90), w).toBe(5);
+    }
+    for (const r of ['bb-sweep-recover', 'bb-triple1-recover', 'bb-triple2-recover', 'bb-quickshot-recover', 'leap-recover']) {
+      expect(bossPhaseFrame(bossPhaseFor('bounty-balance', r)!.phase, 0, 0, 90), r).toBe(6);
+    }
+    expect(ENEMY_FRAME_OFFSETS['bounty-balance-slash']?.length).toBe(spec.frames);
+  });
+});

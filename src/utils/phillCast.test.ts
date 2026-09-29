@@ -63,7 +63,7 @@ describe('★体(胴)基準のずらし(フィル・社長指示2026-09-27)', ()
       'jibril-idle': 16, 'jibril-swing': 10, 'jibril-throw': 11,
       'uri-idle': 12, 'uri-cast': 16, 'uri-slash': 14,
       'suriel-idle': 16, 'suriel-cast1': 16, 'suriel-cast2': 16,
-      'bounty-melee-lash': 16,
+      'bounty-melee-lash': 16, 'bounty-balance-slash': 9,
     };
     for (const [name, offs] of Object.entries(ENEMY_FRAME_OFFSETS)) expect(offs.length, name).toBe(frames[name]);
   });
