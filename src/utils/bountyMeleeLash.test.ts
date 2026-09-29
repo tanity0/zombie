@@ -1,7 +1,7 @@
 // ★馬乗り(変異)の攻撃のシート(社長支給2026-09-29「馬乗りの攻撃全部」)。
 import { describe, it, expect } from 'vitest';
 import bountyTickSrc from './bountyTick.ts?raw';
-import { BOSS_PHASE_SHEETS, ENEMY_FRAME_OFFSETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame } from './enemySheets';
+import { BOSS_PHASE_SHEETS, ENEMY_FRAME_OFFSETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame, bossIntroFrame } from './enemySheets';
 
 describe('馬乗りの攻撃', () => {
   const spec = BOSS_PHASE_SHEETS.find(s => s.name === 'bounty-melee-lash')!;
@@ -61,5 +61,34 @@ describe('バス停の攻撃', () => {
     const ph = bossPhaseFor('bounty-ranged', 'br-triple-windup')!.phase;
     expect(bossReleaseFrame(ph, 0.999, 0, 90)).toBe(7);
     for (let t = 0; t < 3000; t += 41) expect(bossReleaseFrame(ph, null, t, 90)).toBeGreaterThanOrEqual(8);
+  });
+});
+
+describe('舞妓の技', () => {
+  const spec = BOSS_PHASE_SHEETS.find(s => s.name === 'bounty-maiko-cast')!;
+  it('全技(毬の薙ぎ単発/2連・毬回し・水鳥乱舞・手毬打ち)の州がこのシートを引き、州名は台本に実在する・バックロールと型切替は引かない', () => {
+    for (const ph of spec.phases) {
+      expect(bountyTickSrc.includes(`'${ph.state}'`), ph.state).toBe(true);
+      expect(bossPhaseFor('bounty-maiko', ph.state)?.spec.name, ph.state).toBe('bounty-maiko-cast');
+    }
+    expect(bossPhaseFor('bounty-maiko', 'mk-backroll')).toBeNull();
+    expect(bossPhaseFor('bounty-maiko', 'mk-repose')).toBeNull();
+  });
+  it('★1コマ目から入り(0→1→2を1回)、技が終わるまで4〜15コマ目(3〜14)を頭から繰り返す', () => {
+    const ph = bossPhaseFor('bounty-maiko', 'mk-spin')!.phase;
+    expect([0, 90, 180].map(t => bossIntroFrame(ph, t, 90))).toEqual([0, 1, 2]);
+    expect(bossIntroFrame(ph, 270, 90)).toBe(3);
+    expect(bossIntroFrame(ph, 270 + 11 * 90, 90)).toBe(14);
+    expect(bossIntroFrame(ph, 270 + 12 * 90, 90)).toBe(3);
+    for (let t = 270; t < 8000; t += 37) {
+      const f = bossIntroFrame(ph, t, 90);
+      expect(f).toBeGreaterThanOrEqual(3);
+      expect(f).toBeLessThanOrEqual(14);
+    }
+  });
+  it('同じ技の州は1つの group(2連の1段目と2段目で抱き寄せ直さない)', () => {
+    expect(bossPhaseFor('bounty-maiko', 'mk-naginata1-windup')!.phase.group)
+      .toBe(bossPhaseFor('bounty-maiko', 'mk-naginata2-recover')!.phase.group);
+    expect(ENEMY_FRAME_OFFSETS['bounty-maiko-cast']?.length).toBe(spec.frames);
   });
 });

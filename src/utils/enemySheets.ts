@@ -1261,6 +1261,8 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   // バス停(変異)。歩き0.63+攻撃0.86=1.49MB。ステージ1でしか出ず、出現時に告知を挟む=遅延。
   'bounty-ranged': 'deferred',
   // 鋏(変異)。歩き0.49+攻撃0.83=1.32MB。ステージ4でしか出ず、出現時に告知を挟む=遅延。
+  // 舞妓(変異)。技1.11MB。ステージ5でしか出ず、出現時に告知を挟む=遅延。
+  'bounty-maiko': 'deferred',
   'bounty-balance': 'deferred', // 研究所ゾンビLv3。歩き1.43MB+跳び1.30MB。同じく休眠したまま最初から地図に置かれている
 };
 
@@ -1380,7 +1382,7 @@ export const phillReleaseFrame = (
  *   突進は移動(230ms)の間は振りかぶりで構え、斬り抜け(110ms)で振り抜く。
  * 大きさ: 3枚とも同じ変換の高さ(152)で、**1ドットを同じ大きさで描く**(=`bodyH` 150 を揃える)。
  */
-export type BossPhaseMode = 'stretch' | 'pingpong' | 'cycle' | 'release';
+export type BossPhaseMode = 'stretch' | 'pingpong' | 'cycle' | 'release' | 'intro';
 export interface BossPhase {
   readonly state: string;
   readonly seq: readonly number[];
@@ -1405,6 +1407,8 @@ export interface BossPhase {
    */
   readonly group?: string;
   readonly loop?: readonly number[];
+  // `intro`(舞妓の技・社長支給2026-09-29「1コマ目から始まり、技が終わるまで4-15を繰り返す」): `group` の技に入った瞬間から
+  // `seq` を1コマずつ1回だけ流し、その後は技が終わるまで `loop` を頭から繰り返す(往復ではない)。溜めの長さに割り付けない。
 }
 export interface BossPhaseSheetSpec {
   readonly idle: string;
@@ -1612,6 +1616,26 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       { state: 'leap-recover', seq: [6, 7, 8, 8], mode: 'stretch' },
     ],
   },
+  // ★舞妓(変異)の技(社長支給2026-09-29「**舞妓の技モーション。1コマ目から始まり、技が終わるまで4-15を繰り返す**」)。
+  //   16コマ(支給 1984×142 → 上の空き2行を落として **124×140**・1.11MB)。読み: 0〜2=袖を広げた両腕を胸元へ抱き寄せる /
+  //   3〜15=抱いたまま身を揺らす(着物の赤が濃くなっていく)。**16コマ目(15)は指示の範囲外なので使わない。**
+  //   ⇒ `intro`: 技に入った瞬間に 0→1→2 を1回、以後は技が終わる(硬直明け)まで 3〜14 を頭から繰り返す。
+  //   技の中で州が替わっても(溜め→打つ→硬直、2連の1段目→2段目)同じ技の間は時計を切らない=途中で抱き寄せ直さない。
+  //   割り付け(舞妓の全技): 毬の薙ぎ(単発/2連)・毬回し・水鳥乱舞・手毬打ち。バックロール(移動)と型切替の間(`mk-repose`)は立ち絵のまま。
+  //   大きさ: 0コマ目を立ち絵(165×200)へ重ねて本体の高さ **133**(IoU 0.94)。裾から垂れる滴が立ち絵より長いぶん、
+  //   全コマ7px下げると裾の線が立ち絵と揃う(`ENEMY_FRAME_OFFSETS`)。体の位置は全コマで裾・頭とも±2px=ずらし不要。
+  //   毬の別スプライト(`bounty-maiko-temari`)はそのまま出る(外していない)。
+  {
+    idle: 'bounty-maiko', name: 'bounty-maiko-cast', frames: 16, bodyH: 133,
+    phases: ([
+      ['mk-naginata', ['mk-naginata-windup', 'mk-naginata-recover']],
+      ['mk-naginata2', ['mk-naginata1-windup', 'mk-naginata1-recover', 'mk-naginata2-windup', 'mk-naginata2-recover']],
+      ['mk-spin', ['mk-spin-windup', 'mk-spin', 'mk-spin-recover']],
+      ['mk-suiu', ['mk-suiu-windup', 'mk-suiu-hop1', 'mk-suiu-hop2', 'mk-suiu-hop3', 'mk-suiu-recover']],
+      ['mk-boom', ['mk-boom-windup', 'mk-boom-out', 'mk-boom-back', 'mk-boom-recover']],
+    ] as const).flatMap(([group, states]) => states.map(state =>
+      ({ state, seq: [0, 1, 2], loop: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], mode: 'intro' as const, group }))),
+  },
   // ★ジブリル(社長支給2026-09-29「**ランタンを振る(その他全部)**」)。10コマ: 0〜2=ランタンを掲げる / 3〜6=羽を大きく開きランタンを振る /
   //   7〜9=閉じて戻る。連射・聖別・転移に使う。
   {
@@ -1660,6 +1684,18 @@ export const bossReleaseFrame = (phase: BossPhase, windupProg: number | null, si
   const period = (n - 1) * 2;
   const i = step % period;
   return loop[i < n ? i : period - i];
+};
+
+/**
+ * `intro` の州のコマ(状態を持たない純関数)。`sinceStartMs` = 同じ `group` の技に入ってからの経過。
+ * `seq` を `frameMs` ごとに1回だけ流し、流し終えたら `loop` を頭から繰り返す。
+ */
+export const bossIntroFrame = (phase: BossPhase, sinceStartMs: number, frameMs: number): number => {
+  const step = Number.isFinite(sinceStartMs) && sinceStartMs > 0 && frameMs > 0 ? Math.floor(sinceStartMs / frameMs) : 0;
+  if (step < phase.seq.length) return phase.seq[step];
+  const loop = phase.loop && phase.loop.length > 0 ? phase.loop : phase.seq;
+  if (loop.length === 0) return 0;
+  return loop[(step - phase.seq.length) % loop.length];
 };
 
 /** その立ち絵・その州が使うシートとコマの並び(無ければ null)。州は完全一致。 */
@@ -1737,6 +1773,8 @@ export const ENEMY_FRAME_OFFSETS: Readonly<Record<string, readonly (readonly [nu
   // ★馬乗りの攻撃(社長支給2026-09-29「体の位置がコマによってマチマチなので、揃えて」)。足元の土台の左端(0コマ目=35)へ揃える。
   'bounty-melee-lash': [[0, 0], [0, 0], [-34, 0], [0, 0], [4, 0], [-1, 0], [0, 0], [0, 0], [0, 0], [0, 0], [3, 0], [7, 0], [1, 0], [16, 0], [5, 0], [3, 0]],
   // ★鋏の攻撃(社長支給2026-09-29「体の位置を固定」)。前の膝の左端(0コマ目=41)へ揃える。
+  // 舞妓の技: 裾から垂れる滴が立ち絵より長い ⇒ 全コマ7px下げて裾を立ち絵へ揃える(0コマ目を重ねた IoU 0.82→0.94)。
+  'bounty-maiko-cast': Array.from({ length: 16 }, () => [0, 7] as const),
   'bounty-balance-slash': [[0, 0], [3, 0], [6, 0], [15, 0], [23, 0], [31, 0], [15, 0], [-2, 0], [1, 0]],
   'uri-slash': [[2, -3], [2, -3], [0, -3], [1, -3], [1, -3], [4, -3], [7, -3], [6, -3], [-8, -3], [-13, -3], [-14, -3], [-16, -3], [-11, -3], [-7, -3]],
   'miguel-slash': [[-17, -3], [-18, -3], [-10, -3], [2, -3], [5, -3], [10, -3], [7, -3], [11, -3], [4, -3]],

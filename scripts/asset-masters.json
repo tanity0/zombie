@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "892 files / 復号後 約650MB",
+ "generatedFor": "893 files / 復号後 約651MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -673,6 +673,12 @@
    "h": 128,
    "bytes": 18247,
    "sha": "cbd55e4b3abd43db"
+  },
+  "sprites/bounty-maiko-cast.png": {
+   "w": 1984,
+   "h": 140,
+   "bytes": 191328,
+   "sha": "eb5f82a91d25e887"
   },
   "sprites/bounty-maiko-temari.png": {
    "w": 62,

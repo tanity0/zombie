@@ -107,7 +107,7 @@ import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
 import { bossFaceWant } from '../utils/bossFacing';
 import { bossStoppedForArt } from '../utils/bossStopArt';
-import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
+import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame, bossIntroFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame, enemyIdleLoopPos, idleHopLift } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -30425,7 +30425,7 @@ export class PixiScene {
   private bossPhaseTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const hit = bossPhaseFor(idleTexKey, e.bossState);
     if (hit === null) { this.bossPhaseStart.delete(e.id); this.bossPhaseGroup.delete(e.id); return null; }
-    if (hit.phase.mode === 'release' && hit.phase.group !== undefined) {
+    if ((hit.phase.mode === 'release' || hit.phase.mode === 'intro') && hit.phase.group !== undefined) {
       // 同じ group の間は時計を切らない(溜め↔硬直を何度往復しても、最初の溜めの頭から数える)。
       let gl = this.bossPhaseGroup.get(e.id);
       if (!gl || gl.group !== hit.phase.group) {
@@ -30433,7 +30433,9 @@ export class PixiScene {
         this.bossPhaseGroup.set(e.id, gl);
       }
       const windupProg = gameTime < gl.releaseAt ? (gameTime - gl.start) / Math.max(1, gl.releaseAt - gl.start) : null;
-      const ri = bossReleaseFrame(hit.phase, windupProg, gameTime - gl.releaseAt, BOSS_PHASE_FRAME_MS);
+      const ri = hit.phase.mode === 'intro'
+        ? bossIntroFrame(hit.phase, gameTime - gl.start, BOSS_PHASE_FRAME_MS)
+        : bossReleaseFrame(hit.phase, windupProg, gameTime - gl.releaseAt, BOSS_PHASE_FRAME_MS);
       const rslices = this.sheetSlices(hit.spec.name, hit.spec.frames);
       return this.rememberAtkFrame(e, hit.spec.name, hit.spec.frames, ri, rslices);
     }
