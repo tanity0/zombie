@@ -1138,7 +1138,9 @@ export const jumpLandMs = (idleTexName: string | null | undefined): number =>
  * 「全ての敵」に例外を作らないため、手で描かれた絵を持つ個体は全部ミラーする。
  */
 export const hasAnimSheet = (idleTexName: string | null | undefined): boolean =>
-  walkSheetFrames(idleTexName) > 1 || attackSheetFrames(idleTexName) > 1
+  // ★州ごとのシート(`BOSS_PHASE_SHEETS`)だけを持つ個体も「手で描いた絵を持つ」(スリィエルは待機より先に詠唱が届いた)。
+  (!!idleTexName && BOSS_PHASE_SHEETS.some(sp => sp.idle === idleTexName))
+  || walkSheetFrames(idleTexName) > 1 || attackSheetFrames(idleTexName) > 1
   || idleSheetFrames(idleTexName) > 1 || shotSheetFrames(idleTexName) > 1
   || jumpSheetSplit(idleTexName) !== null || sweepSheetSplit(idleTexName) !== null;
 
@@ -1199,6 +1201,8 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   'jibril': 'deferred',
   // ラフィ。待機/歩き0.88+飛び掛かり1.54+魔法0.69=3.11MB。天使の門でしか出ず、出現にカットインを挟むので遅延。
   'rafi': 'deferred',
+  // スリィエル。詠唱1 0.95MB(詠唱2が届けば増える)。天使の門でしか出ず、出現にカットインを挟むので遅延。
+  'suriel': 'deferred',
   // ウリ。待機/歩き0.72+詠唱1.02+斬撃1.35=3.09MB。天使の門でしか出ず、出現にカットインを挟むので遅延。
   'uri': 'deferred',
   // グレン形態1。浮遊3.70+攻撃1.30+跳び2.21=**7.21MB**(全部 高さ192)。ステージ7でしか出ず、出現にカットインを挟むので遅延。
@@ -1446,6 +1450,27 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       { state: 'thrust-recover', seq: [11, 12, 13, 13], mode: 'stretch' },
     ],
   },
+  // ★スリィエルの詠唱1・腕上げ(社長支給2026-09-29「**スリィエルの演唱1 腕上げ** / 2は後で渡すけど、手を前に出す」)。
+  //   16コマ(支給 1584×152 → 上の空き2行を落として **99×150**・0.95MB)。読み: 0〜5=手を下ろしたまま(頭上に環)/ 6〜11=片腕を
+  //   天へ掲げていく / 12〜15=掲げ切ったまま。**待機のシートはまだ無い**(先に詠唱が届いた)=技の間だけこの絵、それ以外は立ち絵。
+  //   使う技(推薦で割り付け・社長未裁定): **環を操る2技**=環の射出(`ring-*`)・環の回転斬(`ring-spin-*`)。
+  //   「手を前に出す」詠唱2が届いたら、単眼の凝視(`gaze-*`=弾を前へ撃つ)へ当てる想定。本体の薙ぎ(`sweep-*`)は体術なので待機のまま。
+  //   大きさ: 0コマ目を立ち絵(100×209)へ重ねて本体の高さ **152**(IoU 0.92)。胴のずらし: 腕を掲げると裾ごと体が枠の中を最大±8px
+  //   横へ動く ⇒ 裾〜胴を追って打ち消し(立ち絵へ重ねた差 横−3・縦−3 を足してある)。
+  {
+    idle: 'suriel', name: 'suriel-cast1', frames: 16, bodyH: 152,
+    phases: [
+      // 環の射出: 環が相手の反対側へ回り込む間に腕を掲げ切り、ビームの溜め〜発射の間は掲げたまま、戻りで下ろす。
+      { state: 'ring-move-windup', seq: [0, 2, 4, 6, 8, 10, 11], mode: 'stretch' },
+      { state: 'ring-beam-windup', seq: [12, 13, 14, 15], mode: 'pingpong' },
+      { state: 'ring-active', seq: [12, 13, 14, 15], mode: 'pingpong' },
+      { state: 'ring-recover', seq: [11, 10, 8, 6, 3, 0], mode: 'stretch' },
+      // 環の回転斬: 溜めで掲げ切り、回っている間は掲げたまま、戻りで下ろす。
+      { state: 'ring-spin-windup', seq: [0, 2, 4, 6, 8, 10, 11, 12], mode: 'stretch' },
+      { state: 'ring-spin', seq: [12, 13, 14, 15], mode: 'pingpong' },
+      { state: 'ring-spin-recover', seq: [11, 10, 8, 6, 3, 0], mode: 'stretch' },
+    ],
+  },
   // ★ジブリル(社長支給2026-09-29「**ランタンを振る(その他全部)**」)。10コマ: 0〜2=ランタンを掲げる / 3〜6=羽を大きく開きランタンを振る /
   //   7〜9=閉じて戻る。連射・聖別・転移に使う。
   {
@@ -1545,6 +1570,8 @@ export const ENEMY_FRAME_OFFSETS: Readonly<Record<string, readonly (readonly [nu
   // 詠唱も胸の炎の核が全コマ横±2px=体は動かない。立ち絵へ重ねた差(縦−3)だけ。
   'uri-cast': Array.from({ length: 16 }, () => [0, -3] as const),
   // 斬撃は光輪(頭)を追う: 待機の光輪の横位置(枠の中央から+9.7)へ揃える。
+  // ★スリィエルの詠唱1(社長支給2026-09-29)。裾〜胴を追った横のずらし+立ち絵へ重ねた差(横−3・縦−3)。
+  'suriel-cast1': [[-3, -3], [3, -3], [2, -3], [0, -3], [2, -3], [3, -3], [-7, -3], [-8, -3], [-9, -3], [-10, -3], [-11, -3], [-2, -3], [-3, -3], [-1, -3], [0, -3], [0, -3]],
   'uri-slash': [[2, -3], [2, -3], [0, -3], [1, -3], [1, -3], [4, -3], [7, -3], [6, -3], [-8, -3], [-13, -3], [-14, -3], [-16, -3], [-11, -3], [-7, -3]],
   'miguel-slash': [[-17, -3], [-18, -3], [-10, -3], [2, -3], [5, -3], [10, -3], [7, -3], [11, -3], [4, -3]],
   'phill-cast2': [[-5, 0], [-2, -11], [-2, -10], [-4, 3], [-4, 10], [-3, 14], [-11, 29], [-5, 29], [-10, 27], [-5, 30], [-10, 32], [-8, 30], [-2, 26], [6, 24], [6, 26], [6, 17]],

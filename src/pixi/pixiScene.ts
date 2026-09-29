@@ -18224,7 +18224,8 @@ export class PixiScene {
       // 「立ち絵の高さ ÷ そのシートの本体の高さ(bodyH)」、位置は足元揃え+胴のずらし(`ENEMY_FRAME_OFFSETS`)で決める。
       // ★ミゲル・ジブリルの手で描いたコマ(社長支給2026-09-28/29)も同じ置き方にする
       //   =待機のシートを持つ裏ボスは全部この置き方(素材が届くたびに自動でこちらへ移る)。
-      const handSheetBoss = idleSheetFrames(idleTexKey) > 1;
+      //   ★待機のシートが無く、技のシートだけを持つ個体(スリィエル)も同じ置き方にする(`hasAnimSheet` が州ごとのシートも数える)。
+      const handSheetBoss = hasAnimSheet(idleTexKey);
       const phillSheet = handSheetBoss && walkTex !== null && tex === walkTex ? this.phillSheetFit(tex, idleTexKey) : null;
       const phillIdleTex = phillSheet ? getTexture(idleTexKey) : null;
       const baseTex = phillIdleTex ?? tex;

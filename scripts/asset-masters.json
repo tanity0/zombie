@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "883 files / 復号後 約642MB",
+ "generatedFor": "884 files / 復号後 約643MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -4687,6 +4687,12 @@
    "h": 45,
    "bytes": 7300,
    "sha": "50509354a905b190"
+  },
+  "sprites/suriel-cast1.png": {
+   "w": 1584,
+   "h": 150,
+   "bytes": 220482,
+   "sha": "4206be1a1f4e24f9"
   },
   "sprites/suriel-ring.png": {
    "w": 76,
