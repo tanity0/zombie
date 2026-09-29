@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4707', items: ['馬乗り(変異)の攻撃が描き下ろしの絵に。頭上で鞭を振り回し、打つ瞬間に長く打ち出す'] },
   { version: '0.25.4706', items: ['鋏(変異)が描き下ろしの絵で、膝立ちのまま鋏を引きずって迫ってくるようになった'] },
   { version: '0.25.4705', items: ['馬乗り(変異)が描き下ろしの絵で這い寄ってくるようになった。進むと髪と裾がなびく'] },
   { version: '0.25.4704', items: ['本編で出会わないアクラシエルを、ボスモードと記録の一覧から外した'] },

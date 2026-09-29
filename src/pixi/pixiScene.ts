@@ -18607,6 +18607,8 @@ export class PixiScene {
           [walkSheetBodyH(idleTexKey, frameIdx), walkSheetName(idleTexKey)] as const,
           // ★フィルの演出シート(演出1・演出2)。頭上の空きのぶん枠が高いので本体の高さで揃える。
           ...PHILL_CAST_SHEETS.map(c => [idleTexKey === c.idle ? c.bodyH : null, c.name] as const),
+          // ★州ごとのシート(`BOSS_PHASE_SHEETS`)を雑魚の経路で出す個体(賞金首=馬乗りの攻撃)。鞭の振り幅のぶん枠が高い。
+          ...BOSS_PHASE_SHEETS.map(c => [idleTexKey === c.idle ? c.bodyH : null, c.name] as const),
           // ★技ごとの差し替えシート。ここに並べないと**その技の間だけ倍率の補正が外れる**。
           ...giantAltSweepSheets(idleTexKey).map(a => [a.bodyH, a.name] as const),
         ]) {
