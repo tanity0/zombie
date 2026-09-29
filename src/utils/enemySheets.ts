@@ -1527,12 +1527,32 @@ export const ENEMY_FRAME_OFFSETS: Readonly<Record<string, readonly (readonly [nu
 };
 
 /**
- * ★**剣先などを光らせるコマ**(社長指示2026-09-29「ウリの魔法演唱、後半、**剣がてっぺん超えたら剣先を光らせて**」)。
- * シート名 → コマ番号 → 光らせる点(**そのシートの1画素単位**・枠の左上が原点)。表に無いコマは光らせない。
- * 点は各コマの剣の先端を実測(右上へ最も突き出た画素)。描画だけ(判定を持たない=派手さの絵)。
+ * ★**剣先などを光らせるコマ**(社長指示2026-09-29「ウリの魔法演唱、**後半、剣がてっぺん超えたら剣先を光らせて**」)。
+ * - `points`: コマ番号 → [剣先の x, y(**そのシートの1画素単位**・枠の左上が原点), 剣の軸の向き(度・画面座標=下が正)]。
+ *   剣先は各コマの右上へ最も突き出た画素、軸は頭より上の刃の画素の主成分(実測)。
+ * - `levels`: 州 → コマ番号 → 明るさ(0..1)。表に無い組は0(=消えていく)。**州ではなく剣の動きで灯る**ように、
+ *   振り上げの終わり(9)で薄く灯り、てっぺんを越えて(10〜15)全開、振り下ろし(8)でまだ残る(クリエイティブ監査2026-09-29 #2)。
+ * - `pulse`: その州の中で弾を放つ瞬間(州の頭から `gapMs` おきに `shots` 回)。数は描画側が台本の実体から読む。
+ * 描画だけ(判定を持たない=派手さの絵)。
  */
-export const SHEET_TIP_GLOW: Readonly<Record<string, Readonly<Record<number, readonly [number, number]>>>> = {
-  'uri-cast': { 10: [76, 13], 11: [80, 22], 12: [72, 28], 13: [73, 28], 14: [72, 28], 15: [72, 28] },
+export interface TipGlowSpec {
+  readonly points: Readonly<Record<number, readonly [number, number, number]>>;
+  readonly levels: Readonly<Record<string, Readonly<Record<number, number>>>>;
+  readonly pulseState?: string;
+}
+export const SHEET_TIP_GLOW: Readonly<Record<string, TipGlowSpec>> = {
+  'uri-cast': {
+    points: {
+      8: [60, 6, -50], 9: [60, 0, -54],
+      10: [76, 13, -36], 11: [80, 22, -27], 12: [72, 28, -23], 13: [73, 28, -22], 14: [72, 28, -22], 15: [72, 28, -22],
+    },
+    levels: {
+      'bolt-windup': { 9: 0.35 },
+      'bolt': { 10: 1, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1 },
+      'bolt-recover': { 8: 0.6 },
+    },
+    pulseState: 'bolt',
+  },
 };
 
 export const allEnemySheets = (): { idle: string; sheet: string }[] => [

@@ -17,12 +17,17 @@ describe('ウリの詠唱', () => {
     const bolt = bossPhaseFor('uri', 'bolt')!.phase;
     for (let k = 0; k < 100; k++) expect(bossPhaseFrame(bolt, k / 100, 0, 90)).toBeGreaterThanOrEqual(10);
   });
-  it('★剣先が光るのは「てっぺんを越えた」コマ(10〜15)だけ・点は枠の中', () => {
-    const tips = SHEET_TIP_GLOW['uri-cast'];
-    expect(Object.keys(tips).map(Number).sort((a, b) => a - b)).toEqual([10, 11, 12, 13, 14, 15]);
-    for (const [x, y] of Object.values(tips)) {
+  it('★剣先が全開になるのは「てっぺんを越えた」コマ(10〜15)の撃つ間だけ・点は枠の中・明るさを持つコマは必ず点を持つ', () => {
+    const g = SHEET_TIP_GLOW['uri-cast'];
+    expect(Object.entries(g.levels.bolt).filter(([, v]) => v >= 1).map(([k]) => Number(k))).toEqual([10, 11, 12, 13, 14, 15]);
+    // 溜め・戻りは全開にならない(振り上げの終わりで薄く灯り、振り下ろしで尾を引く)
+    for (const st of ['bolt-windup', 'bolt-recover']) for (const v of Object.values(g.levels[st])) expect(v).toBeLessThan(1);
+    for (const lv of Object.values(g.levels)) for (const f of Object.keys(lv)) expect(g.points[Number(f)], f).toBeDefined();
+    for (const [x, y] of Object.values(g.points)) {
       expect(x).toBeGreaterThanOrEqual(0); expect(x).toBeLessThan(1504 / spec.frames);
       expect(y).toBeGreaterThanOrEqual(0); expect(y).toBeLessThan(170);
     }
+    // 光る州は台本の州名(州名を変えたら光が黙って消える形を止める)
+    for (const st of Object.keys(g.levels)) expect(angelTickSrc.includes(`'${st}'`), st).toBe(true);
   });
 });

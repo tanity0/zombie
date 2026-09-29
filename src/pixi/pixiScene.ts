@@ -4018,7 +4018,10 @@ export class PixiScene {
   // (振り演出ではなく「掲げたまま」なのでKatanaSlash系とは別の単純な1枚Sprite)。
   private jibrilLanternSprites = new Map<string, Sprite>();
   /** 剣先などの光(`SHEET_TIP_GLOW`)。個体ごとに4枚(にじみ/芯/十字の光条2本)を使い回す。 */
-  private sheetTipGlow = new Map<string, { halo: Sprite; core: Sprite; rayA: Sprite; rayB: Sprite; a: number; at: number; last: readonly [number, number] | null }>();
+  private sheetTipGlow = new Map<string, {
+    outer: Sprite; inner: Sprite; core: Sprite; rayLong: Sprite; rayShort: Sprite; bounce: Sprite;
+    a: number; at: number; last: readonly [number, number, number] | null;
+  }>();
   // §6.28-16 ②(差し戻し対応): ランタン火(bossFires)の各火の中心にもjibril-lanternを1枚重ねる
   // (「投げて地面に置く」=火床の中心にランタン絵を残す)。fire.id keyed。新しい描画方式は追加せず、
   // 既存のsyncBossFires(共有Graphics)へスプライトを添えるだけ。
@@ -14162,7 +14165,7 @@ export class PixiScene {
         this.phillCastStart.delete(id);
         this.bossPhaseStart.delete(id);
         const tipGlow = this.sheetTipGlow.get(id);
-        if (tipGlow) { for (const sp of [tipGlow.halo, tipGlow.core, tipGlow.rayA, tipGlow.rayB]) sp.destroy(); this.sheetTipGlow.delete(id); }
+        if (tipGlow) { for (const sp of [tipGlow.outer, tipGlow.inner, tipGlow.core, tipGlow.rayLong, tipGlow.rayShort, tipGlow.bounce]) sp.destroy(); this.sheetTipGlow.delete(id); }
         this.enemyBlockFall.delete(id);
         const slashFx = this.thorSlashFx.get(id);
         if (slashFx) { slashFx.destroy({ children: true }); this.thorSlashFx.delete(id); }
@@ -18423,7 +18426,7 @@ export class PixiScene {
       view.sprite.visible = true;
       }
       // ★剣先の光(ウリの詠唱・`SHEET_TIP_GLOW`)。位置・向き・透けが確定した後(透かしの両分岐の後)で、絵のその点へ置く。
-      this.syncSheetTipGlow(e.id, view, phillSheet?.name ?? null, tex, now);
+      this.syncSheetTipGlow(e.id, view, phillSheet?.name ?? null, tex, now, e, gameTime);
     } else {
     view.sprite.anchor.set(0.5, 1);
     // ---- 歩行二次モーション(①②③・v0.25.2899・視覚のみ) ----------------------------------------
@@ -30318,18 +30321,23 @@ export class PixiScene {
    */
   /**
    * ★**剣先の光**(社長指示2026-09-29「ウリの魔法演唱、**後半、剣がてっぺん超えたら剣先を光らせて**」)。
-   * 今出ているコマが `SHEET_TIP_GLOW` に載っていれば、そのコマの剣先(シートの1画素単位)を**絵と同じ変換**
-   * (中心アンカー・向きのミラー・倍率)で世界座標へ移し、加算の光を置く。判定を持たない=派手さの絵なので大きめに出す。
-   * - 慣性: 点く時は約90ms・消える時は約160msで追う(パッと出て消えない)。コマ間で剣先が動くと光もそのまま付いていく。
-   * - 芯がちらつき、十字の光条がゆっくり回る(止まった光にしない)。色はウリの炎の光輪に揃えた橙+白金の芯。
-   * - 投影影を落とす光源ではない(pooled sprite 4枚だけ・負荷 1/10)。
+   * 今のコマ・州が `SHEET_TIP_GLOW` で明るさを持てば、そのコマの剣先を**絵と同じ変換**(中心アンカー・向きのミラー・倍率)で
+   * 世界座標へ移し、加算の光を置く。判定を持たない=派手さの絵。投影影を落とす光源ではない(pooled sprite 6枚・負荷 1/10)。
+   * クリエイティブ監査(Fable・2026-09-29)の指摘を反映した形:
+   * - **弾を放つ瞬間に跳ねる**: 放つ瞬間(州の頭から `burst.gapMs` おき)に40msで×1.7へ → 220msで0.85へ痩せ → 次の弾まで1.0へ戻る(最後の後は0.85のまま)。
+   * - **剣の動きで灯り、尾を引いて冷える**: 明るさはコマ×州の表(`levels`)。点く約90ms・消える約420msの指数追従。
+   * - **炎のちらつき**: 非整数比の3本の正弦で芯の濃さ(0.75〜1.0)を揺らす。にじみの大きさの揺れは±4%まで。
+   * - **光条は剣の軸に沿う1本+直角の短い1本**(永久回転の定型をやめた)。放つ瞬間だけ±8°揺れて戻る。
+   * - **芯は小さく(11)切っ先の2画素外**、にじみは外(深い橙・刃の向きへ1.25倍)と内(明るい橙)の2層で色温度を変える。
+   * - **照り返し**: 剣先から胴へ35画素の所(兜〜肩)に薄いにじみを1枚。
    */
-  private syncSheetTipGlow(id: string, view: ActorView, sheetName: string | null, tex: Texture, now: number): void {
-    const table = sheetName !== null ? SHEET_TIP_GLOW[sheetName] : undefined;
+  private syncSheetTipGlow(id: string, view: ActorView, sheetName: string | null, tex: Texture, now: number, e?: Enemy, gameTime = 0): void {
+    const spec = sheetName !== null ? SHEET_TIP_GLOW[sheetName] : undefined;
     const fi = tex.width > 0 ? Math.round(tex.frame.x / tex.width) : 0;
-    const pt = table?.[fi] ?? null;
+    const level = spec?.levels[e?.bossState ?? '']?.[fi] ?? 0;
+    const pt = spec?.points[fi] ?? null;
     let g = this.sheetTipGlow.get(id);
-    if (pt === null && !g) return;
+    if (level <= 0 && !g) return;
     if (!g) {
       const mk = (tint: number): Sprite => {
         const sp = new Sprite(getSoftGlowTexture());
@@ -30337,29 +30345,54 @@ export class PixiScene {
         this.L.effectLayer.addChild(sp);
         return sp;
       };
-      g = { halo: mk(0xff8a2a), core: mk(0xfff2cc), rayA: mk(0xffd68a), rayB: mk(0xffd68a), a: 0, at: now, last: null };
+      g = {
+        outer: mk(0xff6a1e), inner: mk(0xffb050), core: mk(0xfff2cc), rayLong: mk(0xffd68a), rayShort: mk(0xffd68a), bounce: mk(0xff8a2a),
+        a: 0, at: now, last: null,
+      };
       this.sheetTipGlow.set(id, g);
     }
     const dt = Math.max(0, Math.min(100, now - g.at));
     g.at = now;
-    const target = pt !== null ? 1 : 0;
-    g.a += (target - g.a) * (1 - Math.exp(-dt / (target > g.a ? 90 : 160)));
-    if (pt !== null) g.last = pt;
-    const p = pt ?? g.last;
-    const sprites = [g.halo, g.core, g.rayA, g.rayB];
+    const target = pt !== null ? level : 0;
+    g.a += (target - g.a) * (1 - Math.exp(-dt / (target > g.a ? 90 : 420)));
+    if (pt !== null && level > 0) g.last = pt;
+    const p = g.last;
+    const sprites = [g.outer, g.inner, g.core, g.rayLong, g.rayShort, g.bounce];
     if (g.a < 0.01 || p === null || !view.sprite.visible) { for (const sp of sprites) sp.visible = false; return; }
+    // 放つ瞬間の跳ね(州の頭=`bossPhaseStart` の起点。時計は判定と同じ gameTime)。
+    let kick = 1, wobble = 0;
+    const lat = this.bossPhaseStart.get(id);
+    if (spec?.pulseState !== undefined && e?.bossState === spec.pulseState && lat) {
+      const gap = UR_T.common.burst.gapMs, shots = UR_T.common.burst.shots;
+      const el = Math.max(0, gameTime - lat.start);
+      const k = Math.min(shots - 1, Math.floor(el / gap));
+      const since = el - k * gap;
+      if (since < 40) kick = 1 + 0.7 * (since / 40);
+      else if (since < 260) kick = 1.7 - 0.85 * ((since - 40) / 220);
+      else kick = k >= shots - 1 ? 0.85 : 0.85 + 0.15 * Math.min(1, (since - 260) / Math.max(1, gap - 260));
+      wobble = since < 260 ? Math.sin(since / 26) * Math.exp(-since / 90) * (8 * Math.PI / 180) : 0;
+    }
     const body = view.sprite;
-    const x = body.x + (p[0] - tex.width / 2) * body.scale.x;
-    const y = body.y + (p[1] - tex.height / 2) * body.scale.y;
+    const mir = body.scale.x < 0 ? -1 : 1;
+    // 軸の向き(絵の中の角度をミラーへ合わせる)。
+    const axDeg = p[2];
+    const axRad = mir > 0 ? axDeg * Math.PI / 180 : Math.PI - axDeg * Math.PI / 180;
+    const ax = Math.cos(axRad), ay = Math.sin(axRad);
+    const tipX = body.x + (p[0] - tex.width / 2) * body.scale.x;
+    const tipY = body.y + (p[1] - tex.height / 2) * body.scale.y;
     const unit = Math.abs(body.scale.y);                   // シートの1画素 = 世界の unit px
-    const texW = Math.max(1, g.halo.texture.width);
-    const flick = 0.82 + 0.12 * Math.sin(now / 47) + 0.06 * Math.sin(now / 13);
+    const texW = Math.max(1, g.core.texture.width);
+    const flick = 0.5 + 0.5 * ((Math.sin(now / 61) + 0.6 * Math.sin(now / 137 + 1.3) + 0.35 * Math.sin(now / 23 + 2.1)) / 1.95);
     const a = g.a * body.alpha;
-    g.halo.position.set(x, y); g.halo.scale.set((70 * unit * (0.92 + 0.08 * flick)) / texW); g.halo.alpha = 0.75 * a;
-    g.core.position.set(x, y); g.core.scale.set((20 * unit * flick) / texW); g.core.alpha = a;
-    const rot = now * 0.0012;
-    g.rayA.position.set(x, y); g.rayA.rotation = rot; g.rayA.scale.set((110 * unit * flick) / texW, (5 * unit) / texW); g.rayA.alpha = 0.85 * a;
-    g.rayB.position.set(x, y); g.rayB.rotation = rot + Math.PI / 2; g.rayB.scale.set((80 * unit * flick) / texW, (5 * unit) / texW); g.rayB.alpha = 0.7 * a;
+    const cx = tipX + ax * 2 * unit, cy = tipY + ay * 2 * unit;   // 切っ先の2画素外(刃から漏れている読み)
+    const rot = axRad + wobble;
+    g.outer.position.set(tipX, tipY); g.outer.rotation = rot;
+    g.outer.scale.set((70 * 1.25 * unit * (0.96 + 0.08 * flick) * kick) / texW, (70 * unit * (0.96 + 0.08 * flick) * kick) / texW); g.outer.alpha = 0.35 * a;
+    g.inner.position.set(tipX, tipY); g.inner.scale.set((36 * unit * kick) / texW); g.inner.alpha = 0.6 * a;
+    g.core.position.set(cx, cy); g.core.scale.set((11 * unit * kick) / texW); g.core.alpha = (0.75 + 0.25 * flick) * a;
+    g.rayLong.position.set(cx, cy); g.rayLong.rotation = rot; g.rayLong.scale.set((180 * unit * kick) / texW, (7 * unit) / texW); g.rayLong.alpha = 0.9 * a;
+    g.rayShort.position.set(cx, cy); g.rayShort.rotation = rot + Math.PI / 2; g.rayShort.scale.set((60 * unit * kick) / texW, (5 * unit) / texW); g.rayShort.alpha = 0.5 * a;
+    g.bounce.position.set(tipX - ax * 35 * unit, tipY - ay * 35 * unit); g.bounce.scale.set((48 * unit) / texW); g.bounce.alpha = 0.22 * a * Math.min(1.3, kick);
     for (const sp of sprites) sp.visible = true;
   }
 
