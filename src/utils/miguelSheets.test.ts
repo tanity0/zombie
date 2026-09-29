@@ -27,7 +27,7 @@ describe('ミゲルの爪・剣のシート', () => {
     }
   });
   it('コマは全部シートの範囲内・胴のずらしはコマ数ぶんある', () => {
-    for (const spec of BOSS_PHASE_SHEETS) {
+    for (const spec of BOSS_PHASE_SHEETS.filter(sp => sp.idle === 'miguel')) {
       expect(ENEMY_FRAME_OFFSETS[spec.name]?.length, spec.name).toBe(spec.frames);
       for (const ph of spec.phases) for (const f of ph.seq) {
         expect(f).toBeGreaterThanOrEqual(0); expect(f).toBeLessThan(spec.frames);

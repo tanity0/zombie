@@ -18261,6 +18261,8 @@ export class PixiScene {
         ? idleHopLift(hopSpec, enemyIdleLoopPos(idleSheetFrames(idleTexKey), now, stablePhase(e.id),
           tsNum('idlebreath', idleSheetPeriodMs(idleTexKey)))) * scale * IDLE_HOP_MUL
         : 0;
+      // ★州ごとのシートに「跳ぶ高さ」が描かれていない技(ラフィの飛び掛かり・`BossPhase.lift`)は、州の進みに合わせて浮かせる。
+      const phaseLiftPx = phillSheet !== null ? this.bossPhaseLiftSheetPx(idleTexKey, e, gameTime) * scale : 0;
       // PACING_PUZZLE.md §10-4(浮遊)+§10-19(登場シーン)。視覚のみ=e.y/当たり判定は不変
       // (CLAUDE.md Y方向5点チェック: 地平線フェード/擬似遠近は上で既に対象外化。可視域/移動可能帯は
       // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。
@@ -18353,7 +18355,7 @@ export class PixiScene {
       // lungeSqXを一切含まない「素のscale」を使う。持ち上げ系(liftHop/kbHop/lungeOffY)だけを
       // heightPx相当(shadowLiftPx)として別途渡す(=殴るたびに影が跳ねる/静止時に呼吸で脈動する事故を防ぐ)。
       view.shadowScale = scale;
-      view.shadowLiftPx = liftHop + kbHop - lungeOffY + idleHopPx;
+      view.shadowLiftPx = liftHop + kbHop - lungeOffY + idleHopPx + phaseLiftPx;
       // ★検収差し戻し(中12): 「絵の下端」は単純な中心±テクスチャ高さ/2ではなく、テクスチャの
       // 実アルファ内容の下端(余白を除いた実体)を使う(社長報告: ヨルムンガルドで足元より80px級下に
       // 影が置かれていた=透明な余白を「絵の下端」と誤認していたため)。
@@ -18361,7 +18363,7 @@ export class PixiScene {
       view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5); // 論理の足元(実体下端。リフト/スカッシュ無し)
       view.sprite.position.set(
         Math.round(spx + liftShake + lungeOffX + biteShake),
-        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff - idleHopPx),
+        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff - idleHopPx - phaseLiftPx),
       );
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
@@ -30308,6 +30310,20 @@ export class PixiScene {
    * その州に入った瞬間(州名か `bossStateUntil` が変わった時)を起点に、州の長さへ並びを割り付ける。
    * 時計は `gameTime`(ヒットストップで止まる=判定と同じ時計)。表に無い州なら null=待機のコマへ戻る。
    */
+  /**
+   * 州ごとのシートの「跳ぶ高さ」(シートの1画素単位)。州に入った瞬間(`bossPhaseStart`)から `bossStateUntil` までを
+   * 放物線 4u(1-u) で=踏み切りで最も速く上がり、頂点で止まり、落ちながら加速して州の終わり(着地)で0。
+   * 時計は `gameTime`(判定と同じ・ヒットストップで止まる)。`lift` を持たない州なら0。
+   */
+  private bossPhaseLiftSheetPx(idleTexKey: string, e: Enemy, gameTime: number): number {
+    const peak = bossPhaseFor(idleTexKey, e.bossState)?.phase.lift;
+    if (!peak) return 0;
+    const lat = this.bossPhaseStart.get(e.id);
+    if (!lat) return 0;
+    const u = Math.max(0, Math.min(1, (gameTime - lat.start) / Math.max(1, lat.until - lat.start)));
+    return peak * 4 * u * (1 - u);
+  }
+
   private bossPhaseTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const hit = bossPhaseFor(idleTexKey, e.bossState);
     if (hit === null) { this.bossPhaseStart.delete(e.id); return null; }
