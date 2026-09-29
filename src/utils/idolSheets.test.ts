@@ -18,8 +18,8 @@ describe('アイドルの狙撃・追尾弾', () => {
     expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-orb-recover')!.phase, 0, 0, 90)).toBe(1);
     expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-snipe-recover')!.phase, 0.999, 0, 90)).toBe(15);
   });
-  it('他の技(狙い撃ち・扇撃ち・拳)は引かない', () => {
-    for (const st of ['idol-aim-windup', 'idol-fan-windup', 'idol-punch-windup', 'chase']) {  // 狙い撃ちの溜めは立ち絵のまま
+  it('他の技(狙い撃ちの溜め・拳)は引かない', () => {
+    for (const st of ['idol-aim-windup', 'idol-punch-windup', 'chase']) {  // 狙い撃ちの溜めは立ち絵のまま
       expect(bossPhaseFor('idol', st), st).toBeNull();
     }
   });
@@ -62,5 +62,16 @@ describe('アイドルの通常撃ち1(狙い撃ち)', () => {
     expect(lift.length).toBe(15);
     expect(lift[0]).toBeGreaterThan(0);
     expect(lift[3]).toBe(0);
+  });
+});
+
+describe('アイドルの射撃2(連射扇)', () => {
+  it('溜めで構え(0→5)、弾が出る瞬間=硬直の頭で撃つコマ(6)。2発目のコマ(11,12)は使わない', () => {
+    const w = bossPhaseFor('idol', 'idol-fan-windup')!;
+    expect(w.spec.name).toBe('idol-shot2');
+    expect(bossPhaseFrame(w.phase, 0.999, 0, 90)).toBe(5);
+    const r = bossPhaseFor('idol', 'idol-fan-recover')!;
+    expect(bossPhaseFrame(r.phase, 0, 0, 90)).toBe(6);
+    expect(r.phase.seq.includes(11) || r.phase.seq.includes(12)).toBe(false);
   });
 });
