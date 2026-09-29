@@ -106,6 +106,7 @@ import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../ut
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
 import { bossFaceWant } from '../utils/bossFacing';
+import { bossStoppedForArt } from '../utils/bossStopArt';
 import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame, enemyIdleLoopPos, idleHopLift } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
@@ -17892,7 +17893,10 @@ export class PixiScene {
     // 立ち絵を持たない個体・遅延シートが無い個体では**1回のSet照会で抜ける**(毎フレームでも無視できる)。
     warmEnemySheets(idleTexKey);
     // 見た目の身長(=歩幅の基準)。判定の箱ではなく**描画の箱**(§drawEnemy が使うのと同じ fb)。
-    const atkTex = this.enemyScreamTexture(idleTexKey, e, gameTime)
+    // ★ボスが止まっている間(紫の完全気絶・致命後の停止)は**立ち絵で止める**(社長指示2026-09-29「技の見た目で止めずに、立ち絵で止めて」)。
+    //   技/歩き/待機のコマを1枚も引かない=技の途中の姿で固まらない(`utils/bossStopArt.ts`)。
+    const bossStopped = bossStoppedForArt(e, gameTime, isHiddenBoss(e.type));
+    const atkTex = bossStopped ? null : this.enemyScreamTexture(idleTexKey, e, gameTime)
       ?? this.enemySweepTexture(idleTexKey, e, gameTime)
       ?? this.enemyJumpTexture(idleTexKey, e, gameTime)
       ?? this.enemyShotTexture(idleTexKey, e, now)
@@ -17911,8 +17915,8 @@ export class PixiScene {
     // 伸び縮み・傾ぎまで止まる(どれも `walkTex !== null` で止めている)。形態2は「手で描いたコマ無し」として扱う。
     // ★グレン第二形態の本体のアニメ(社長支給2026-09-27「第二形態の本体」)。形態2はこのコマを
     // 「手で描いたコマ」として扱う=疑似呼吸・技の伸び縮み・傾ぎを掛けない(形態1のシートは拾わない)。
-    const glenP2Tex = glenP2 ? this.glenForm2BodyTexture(e.id, now) : null;
-    const walkTex = glenP2 ? glenP2Tex : (atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
+    const glenP2Tex = glenP2 && !bossStopped ? this.glenForm2BodyTexture(e.id, now) : null;
+    const walkTex = glenP2 ? glenP2Tex : bossStopped ? null : (atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
       ?? this.enemyIdleTexture(idleTexKey, e, now));
     const tex = e.type === 'guardian-phantom'
       ? this.guardianPhantomTexture(view, now)
@@ -18385,7 +18389,7 @@ export class PixiScene {
       // 既定1・1なので他の裏ボス系(mimir/jormungand/skadi/miguel/jibril/uri/suriel/acrasiel/idol)は無変化。
       // ★手で描いたコマの間は技のスカッシュ(aiSqX/Y=歪み)を掛けない(社長指示「モーション追加により外すのは歪みだけ」・
       //   ラフィの待機/歩きのシート 2026-09-29)。汎用の経路(`aiSqXDraw`)と同じ扱い。被弾のしなり(flinch)はそのまま。
-      const bossSqX = phillSheet ? 1 : aiSqX, bossSqY = phillSheet ? 1 : aiSqY;
+      const bossSqX = phillSheet || bossStopped ? 1 : aiSqX, bossSqY = phillSheet || bossStopped ? 1 : aiSqY;
       view.sprite.scale.set(bossM * idolMirror * scale * breath.x * lungeSqX * flinchSqX * bossSqX, scale * breath.y * flinchSqY * bossSqY);
       // プレイヤーが帯(当たり判定)より奥=裏に回り込んだら、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
       // 二値判定ではなく「遠ざかるほど急激」な二乗カーブで透明度を距離に応じて連続変化させる。
@@ -18724,8 +18728,9 @@ export class PixiScene {
       // ★**跳ぶ高さ(aiHop)と震え(aiShake)は残す**——あれは位置の移動であって歪みではないし、
       //  絵は高さを持っていない。**砂埃などのエフェクトも一切触っていない**
       //  (社長指示2026-09-21「元々のエフェクトは消さないで」)。
-      const aiSqXDraw = walkTex !== null ? 1 : aiSqX;
-      const aiSqYDraw = walkTex !== null ? 1 : aiSqY;
+      // ★ボスが止まっている間(立ち絵で止める)も技のスカッシュは掛けない=溜めのしゃがみの形で固まらない。
+      const aiSqXDraw = walkTex !== null || bossStopped ? 1 : aiSqX;
+      const aiSqYDraw = walkTex !== null || bossStopped ? 1 : aiSqY;
       const scaleX = sc * breath.x * aiSqXDraw * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX * lichWarp.sqX * lichBlinkSq;
       view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqYDraw * motSqY * corpseSq.sqY * lichWarp.sqY * lichBlinkSq);
       if (corpseSq.alpha < 1) view.container.alpha *= corpseSq.alpha;
