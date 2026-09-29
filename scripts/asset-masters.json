@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "897 files / 復号後 約657MB",
+ "generatedFor": "899 files / 復号後 約663MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2359,6 +2359,18 @@
    "h": 186,
    "bytes": 29101,
    "sha": "08f4f8fb919299bc"
+  },
+  "sprites/jormungand-idle.png": {
+   "w": 5392,
+   "h": 150,
+   "bytes": 566740,
+   "sha": "9e60865bea769257"
+  },
+  "sprites/jormungand-roar.png": {
+   "w": 4800,
+   "h": 150,
+   "bytes": 227140,
+   "sha": "ce94bd062949a9ab"
   },
   "sprites/jormungand.png": {
    "w": 256,

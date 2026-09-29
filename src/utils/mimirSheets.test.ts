@@ -25,3 +25,19 @@ describe('ミーミルの攻撃', () => {
     expect(ENEMY_FRAME_OFFSETS['mimir-attack']?.length).toBe(spec.frames);
   });
 });
+
+describe('ヨルムンガルドの威嚇', () => {
+  const spec = BOSS_PHASE_SHEETS.find(s => s.name === 'jormungand-roar')!;
+  it('弾を出す技(3連射・全方位)と突進の溜めがこのシートを引き、州名は台本に実在する', () => {
+    for (const ph of spec.phases) {
+      expect(loopSrc.includes(`'${ph.state}'`), ph.state).toBe(true);
+      expect(bossPhaseFor('jormungand', ph.state)?.spec.name, ph.state).toBe('jormungand-roar');
+    }
+  });
+  it('突進の走り・うねり(薙ぎ払いは別途支給)・巣へ戻るは引かない(移動の絵のまま)', () => {
+    for (const st of ['dash', 'dash-recover', 'coil-windup', 'coil', 'coil-recover', 'return', 'chase']) {
+      expect(bossPhaseFor('jormungand', st), st).toBeNull();
+    }
+    expect(ENEMY_FRAME_OFFSETS['jormungand-idle']?.length).toBe(16);
+  });
+});
