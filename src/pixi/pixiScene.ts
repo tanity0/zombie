@@ -101,7 +101,7 @@ import {
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
-import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH } from '../utils/enemySheets';
+import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
@@ -3537,6 +3537,8 @@ interface ActorView {
   motSpeed?: number; motVx?: number;
   /** ★歩きシートの位相(進んだ距離で刻む)。`walkPrev*` は前フレームの論理位置。 */
   walkDist?: number; walkPrevX?: number; walkPrevY?: number;
+  /** 最後に位置が動いた時刻(Date.now 系)。止まったら立ち絵へ戻す歩きのシート(`ENEMY_WALK_STOP_TO_IDLE`)が読む。 */
+  walkMovedAt?: number;
   // 氷鈍化中に歩行テンポを落とすための仮想時計(ms蓄積)。位相が飛ばないよう実時計の代わりに
   // これをenemyMotionPoseへ渡す(社長指示v0.25.3277「動きモーションもスローにならないとわからん」)。
   motClock?: number;
@@ -30645,7 +30647,10 @@ export class PixiScene {
       const step = Math.hypot(e.x - px, e.y - py);
       // 1フレームで跳ぶ距離(転移・リサイクル・弾き飛ばし)は歩幅に積まない=脚が空回りしない。
       if (step <= ENEMY_WALK_MAX_STEP_PX && !gate.pushedOrLifted) view.walkDist = (view.walkDist ?? 0) + step;
+      if (step > 0.01) view.walkMovedAt = now;
     }
+    // ★止まったら立ち絵へ戻す個体(アイドル・社長指示2026-09-29)。一定時間動いていなければ null=立ち絵(待機のシートがあればそちら)。
+    if (walkStopsToIdle(idleTexKey) && (view.walkMovedAt === undefined || now - view.walkMovedAt > ENEMY_WALK_STOP_HOLD_MS)) return null;
     // ★★突進中はギアを上げる(社長指示2026-09-21「突時は倍速で」)。歩幅を長くするので、
     // **速度3倍 ÷ ギア1.5 = コマ送り2倍**になる。掛かるのは自転車の突進(`charge`)の間だけ。
     const i = enemyWalkFrame(e.id, frames, view.walkDist ?? 0, drawnHeightPx, gate,

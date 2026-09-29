@@ -166,7 +166,7 @@ export const ENEMY_WALK_SHEETS: Readonly<Record<string, number>> = {
   'bounty-maiko': 16,
   // ★アイドル(`idol`・ステージ2の隠しボス)。社長支給2026-09-29「**アイドル歩き**」。16コマ(支給 1872×142 → 上の空き2行を落として **117×140**・0.87MB=起動時のまま)。
   //   銃を前へ構えたまま、髪を揺らして歩く。素の向きは立ち絵と同じ右向き(アイドルは独自の向き `idolFacingLeft` で反転する)。
-  //   雑魚と同じ歩きの経路=**進んだ距離でコマを送る**(止まっている間はその時のコマで止まる=立ち絵には戻らない。他の歩きのシートを持つ敵と同じ)。
+  //   雑魚と同じ歩きの経路=**進んだ距離でコマを送る**。**止まったら立ち絵へ戻る**(`ENEMY_WALK_STOP_TO_IDLE`・社長指示2026-09-29。他の歩きのシートを持つ敵は止まったコマのまま)。
   //   絵のある技(狙撃線・追尾弾)の間は技のコマが優先。前方ループ(継ぎ目15→0の重なり 0.75=隣どうし 0.66〜0.91 の範囲内)。
   //   大きさ: 0コマ目を立ち絵(190×256)へ重ねて本体の高さ138(IoU 0.93)=枠の高さ140と約1%差=載せない。
   //   胴の横位置はコマで最大7px揺れる(歩きの体重移動として描かれた揺れ)=ずらし不要。銃の別スプライトはそのまま出る。
@@ -337,6 +337,19 @@ export const sheetFrontOn = (idleTexName: string | null | undefined): boolean =>
  * 男は襤褸で脚がほぼ隠れており、接地点から歩幅を読めないので、この指標で判断した。
  */
 export type SheetPlayback = 'loop' | 'pingpong';
+/**
+ * ★**止まったら立ち絵へ戻す**歩きのシート(立ち絵名)。既定(表に無い)は「止まっている間はその時のコマで止まる」。
+ * - アイドル: 社長指示2026-09-29(「止まっている間は立ち絵に戻す方がよいですか?」→「はい」)。
+ *   絵の無い技(狙い撃ち・連射扇・殴り・手榴弾)の溜めで、歩きの途中の姿で止まらず立ち絵(両手で構える姿)で撃つ。
+ */
+export const ENEMY_WALK_STOP_TO_IDLE: Readonly<Record<string, true>> = {
+  'idol': true,
+};
+/** 止まってからこの時間(ms)動かなければ「止まった」とみなす。1フレームの足踏み(移動の刻み)で立ち絵がちらつかないための猶予。 */
+export const ENEMY_WALK_STOP_HOLD_MS = 160;
+export const walkStopsToIdle = (idleTexName: string | null | undefined): boolean =>
+  !!idleTexName && ENEMY_WALK_STOP_TO_IDLE[idleTexName] === true;
+
 export const ENEMY_WALK_PLAYBACK: Readonly<Record<string, SheetPlayback>> = {
   'bat-male': 'pingpong',
 };

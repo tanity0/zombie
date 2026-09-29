@@ -24,3 +24,13 @@ describe('アイドルの狙撃・追尾弾', () => {
     }
   });
 });
+
+describe('アイドルの歩き', () => {
+  it('止まったら立ち絵へ戻す(アイドルだけ。他の歩きのシートを持つ敵は止まったコマのまま)', async () => {
+    const m = await import('./enemySheets');
+    expect(m.walkSheetFrames('idol')).toBe(16);
+    expect(m.walkStopsToIdle('idol')).toBe(true);
+    expect(m.walkStopsToIdle('bounty-maiko')).toBe(false);
+    expect(m.walkStopsToIdle('zombie-common')).toBe(false);
+  });
+});
