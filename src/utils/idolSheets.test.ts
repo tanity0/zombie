@@ -18,8 +18,8 @@ describe('アイドルの狙撃・追尾弾', () => {
     expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-orb-recover')!.phase, 0, 0, 90)).toBe(1);
     expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-snipe-recover')!.phase, 0.999, 0, 90)).toBe(15);
   });
-  it('他の技(狙い撃ち・扇撃ち・ロール・拳・手榴弾)は引かない', () => {
-    for (const st of ['idol-aim-windup', 'idol-fan-windup', 'idol-roll', 'idol-punch-windup', 'idol-nade-windup', 'chase']) {
+  it('他の技(狙い撃ち・扇撃ち・拳)は引かない', () => {
+    for (const st of ['idol-aim-windup', 'idol-fan-windup', 'idol-punch-windup', 'chase']) {
       expect(bossPhaseFor('idol', st), st).toBeNull();
     }
   });
@@ -32,5 +32,18 @@ describe('アイドルの歩き', () => {
     expect(m.walkStopsToIdle('idol')).toBe(true);
     expect(m.walkStopsToIdle('bounty-maiko')).toBe(false);
     expect(m.walkStopsToIdle('zombie-common')).toBe(false);
+  });
+});
+
+describe('アイドルの跳び退き(離脱ローリング・手榴弾)', () => {
+  it('両技の溜め/跳ぶ/硬直の州が idol-roll を引き、州名は台本に実在する', () => {
+    for (const m of ['roll', 'nade']) for (const st of [`idol-${m}-windup`, `idol-${m}`, `idol-${m}-recover`]) {
+      expect(tickSrc.includes(`'${st}'`) || st.endsWith('-recover'), st).toBe(true);
+      expect(bossPhaseFor('idol', st)?.spec.name, st).toBe('idol-roll');
+    }
+  });
+  it('跳ぶ州の頭で仰け反り始め(2)、硬直の末で立ち姿(0)へ戻る', () => {
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-roll')!.phase, 0, 0, 90)).toBe(2);
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-nade-recover')!.phase, 0.999, 0, 90)).toBe(0);
   });
 });
