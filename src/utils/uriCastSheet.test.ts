@@ -10,7 +10,8 @@ describe('ウリの詠唱', () => {
       expect(bossPhaseFor('uri', st)?.spec.name, st).toBe('uri-cast');
       expect(angelTickSrc.includes(`'${st}'`), st).toBe(true);
     }
-    for (const st of ['sweep-windup', 'downslash', 'thrust-windup', 'chase']) expect(bossPhaseFor('uri', st), st).toBeNull();
+    for (const st of ['sweep-windup', 'downslash', 'thrust-windup']) expect(bossPhaseFor('uri', st)?.spec.name, st).toBe('uri-slash');
+    expect(bossPhaseFor('uri', 'chase')).toBeNull();
   });
   it('溜めの終わりで真上(9)へ掲げ切り、撃つ間は必ず「てっぺんを越えた」コマ(10〜15)', () => {
     expect(bossPhaseFrame(bossPhaseFor('uri', 'bolt-windup')!.phase, 0.999, 0, 90)).toBe(9);
@@ -29,5 +30,24 @@ describe('ウリの詠唱', () => {
     }
     // 光る州は台本の州名(州名を変えたら光が黙って消える形を止める)
     for (const st of Object.keys(g.levels)) expect(angelTickSrc.includes(`'${st}'`), st).toBe(true);
+  });
+});
+
+describe('ウリの斬撃', () => {
+  const spec = BOSS_PHASE_SHEETS.find(s => s.name === 'uri-slash')!;
+  it('剣技3つの全州がこのシートを引き、州名は台本に実在する・コマは範囲内', () => {
+    for (const t of ['sweep', 'downslash', 'thrust']) for (const st of [`${t}-windup`, t, `${t}-recover`]) {
+      expect(bossPhaseFor('uri', st)?.spec.name, st).toBe('uri-slash');
+      expect(angelTickSrc.includes(`'${st}'`), st).toBe(true);
+    }
+    for (const ph of spec.phases) for (const f of ph.seq) { expect(f).toBeGreaterThanOrEqual(0); expect(f).toBeLessThan(spec.frames); }
+  });
+  it('★溜めの終わり=燃え上がる剣(8)、当たる州の中で振り下ろし(9〜11)を出し切る', () => {
+    for (const t of ['sweep', 'downslash', 'thrust']) {
+      expect(bossPhaseFrame(bossPhaseFor('uri', `${t}-windup`)!.phase, 0.999, 0, 90), t).toBe(8);
+      const act = bossPhaseFor('uri', t)!.phase;
+      const seen = new Set(Array.from({ length: 100 }, (_, k) => bossPhaseFrame(act, k / 100, 0, 90)));
+      for (const f of [9, 10, 11]) expect(seen.has(f), `${t} ${f}`).toBe(true);
+    }
   });
 });
