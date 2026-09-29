@@ -106,7 +106,7 @@ import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../ut
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
 import { bossFaceWant } from '../utils/bossFacing';
-import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
+import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame, enemyIdleLoopPos, idleHopLift } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -4364,6 +4364,8 @@ export class PixiScene {
   private phillCastStart = new Map<string, { tech: string; key: string; start: number; windupEnd: number }>();
   /** 州ごとに割り付けるシート(`BOSS_PHASE_SHEETS`)の「その州に入った瞬間」。キー=州@bossStateUntil。 */
   private bossPhaseStart = new Map<string, { key: string; start: number; until: number }>();
+  /** `release` の技(同じ group の州が交互に続く)の「技に入った瞬間」と「最初の溜めが明ける時刻」。 */
+  private bossPhaseGroup = new Map<string, { group: string; start: number; releaseAt: number }>();
   private enemyBlockFall = new Map<string, { from: number; start: number }>(); // 盾で弾かれて空中から落ちる演出(from→0へ補間)
   private rescueSweatGfx = new Graphics(); // パニック逃走の汗マーク(uiLayer=環境光の影響外・screen座標)
   private pumpkinTelegraph = new Graphics(); // パンプキン/lab-zombie-3 のジャンプ着地予告(赤い影)
@@ -14164,6 +14166,7 @@ export class PixiScene {
         this.giantPhaseSpan.delete(id);
         this.phillCastStart.delete(id);
         this.bossPhaseStart.delete(id);
+        this.bossPhaseGroup.delete(id);
         const tipGlow = this.sheetTipGlow.get(id);
         if (tipGlow) { for (const sp of [tipGlow.outer, tipGlow.inner, tipGlow.core, tipGlow.rayLong, tipGlow.rayShort, tipGlow.bounce]) sp.destroy(); this.sheetTipGlow.delete(id); }
         this.enemyBlockFall.delete(id);
@@ -30413,7 +30416,20 @@ export class PixiScene {
 
   private bossPhaseTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const hit = bossPhaseFor(idleTexKey, e.bossState);
-    if (hit === null) { this.bossPhaseStart.delete(e.id); return null; }
+    if (hit === null) { this.bossPhaseStart.delete(e.id); this.bossPhaseGroup.delete(e.id); return null; }
+    if (hit.phase.mode === 'release' && hit.phase.group !== undefined) {
+      // 同じ group の間は時計を切らない(溜め↔硬直を何度往復しても、最初の溜めの頭から数える)。
+      let gl = this.bossPhaseGroup.get(e.id);
+      if (!gl || gl.group !== hit.phase.group) {
+        gl = { group: hit.phase.group, start: gameTime, releaseAt: e.bossStateUntil ?? gameTime };
+        this.bossPhaseGroup.set(e.id, gl);
+      }
+      const windupProg = gameTime < gl.releaseAt ? (gameTime - gl.start) / Math.max(1, gl.releaseAt - gl.start) : null;
+      const ri = bossReleaseFrame(hit.phase, windupProg, gameTime - gl.releaseAt, BOSS_PHASE_FRAME_MS);
+      const rslices = this.sheetSlices(hit.spec.name, hit.spec.frames);
+      return this.rememberAtkFrame(e, hit.spec.name, hit.spec.frames, ri, rslices);
+    }
+    this.bossPhaseGroup.delete(e.id);
     const until = e.bossStateUntil ?? gameTime;
     const key = `${e.bossState}@${until}`;
     let lat = this.bossPhaseStart.get(e.id);

@@ -1201,7 +1201,7 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   'jibril': 'deferred',
   // ラフィ。待機/歩き0.88+飛び掛かり1.54+魔法0.69=3.11MB。天使の門でしか出ず、出現にカットインを挟むので遅延。
   'rafi': 'deferred',
-  // スリィエル。詠唱1 0.95MB(詠唱2が届けば増える)。天使の門でしか出ず、出現にカットインを挟むので遅延。
+  // スリィエル。詠唱1 0.95+詠唱2 0.88=1.83MB。天使の門でしか出ず、出現にカットインを挟むので遅延。
   'suriel': 'deferred',
   // ウリ。待機/歩き0.72+詠唱1.02+斬撃1.35=3.09MB。天使の門でしか出ず、出現にカットインを挟むので遅延。
   'uri': 'deferred',
@@ -1331,7 +1331,7 @@ export const phillReleaseFrame = (
  *   突進は移動(230ms)の間は振りかぶりで構え、斬り抜け(110ms)で振り抜く。
  * 大きさ: 3枚とも同じ変換の高さ(152)で、**1ドットを同じ大きさで描く**(=`bodyH` 150 を揃える)。
  */
-export type BossPhaseMode = 'stretch' | 'pingpong' | 'cycle';
+export type BossPhaseMode = 'stretch' | 'pingpong' | 'cycle' | 'release';
 export interface BossPhase {
   readonly state: string;
   readonly seq: readonly number[];
@@ -1349,6 +1349,13 @@ export interface BossPhase {
    * (ラフィの飛び掛かり「ジャンプ幅は入ってないので考慮して」)。州の進みに対して放物線 4u(1-u)。描画の位置だけ。
    */
   readonly lift?: number;
+  /**
+   * `release` だけが使う: **同じ `group` の州が交互に何度も続く技**(スリィエルの凝視=溜め↔硬直を10回)を1本として流す。
+   * 技に入った最初の溜めの間は `seq` をその長さへ割り付け、**最初の溜めが明けた瞬間(1発目)から** `loop` を往復し続ける。
+   * 州が替わっても(溜め→硬直→溜め…)同じ `group` の間は時計が途切れない=1発ごとに振りかぶり直さない。
+   */
+  readonly group?: string;
+  readonly loop?: readonly number[];
 }
 export interface BossPhaseSheetSpec {
   readonly idle: string;
@@ -1471,6 +1478,20 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       { state: 'ring-spin-recover', seq: [11, 10, 8, 6, 3, 0], mode: 'stretch' },
     ],
   },
+  // ★スリィエルの詠唱2・手を前へ(社長支給2026-09-29「**スリィエルの演唱2**」)。16コマ(支給 1472×152 → 上の空き2行を落として **92×150**・0.88MB)。
+  //   読み: 0〜5=手を下ろしたまま / 6〜8=両腕を前へ開き、衣の眼が灯り始める / **9〜15=両腕を開き切り、衣の全ての眼が紫に光る**。
+  //   使う技=**単眼の凝視**(`gaze-*`=弾を前へ10連射。溜め300ms↔硬直100msを10回くり返す)。
+  //   ★送り(`release`): **1発ごとに振りかぶり直さない**——技に入った最初の溜め(300ms)で 0→8 と腕を開き、1発目と同時に 9 へ、
+  //     以後は10発を撃ち終えるまで 9〜15(眼が光ったまま)を往復する。技を抜けたら立ち絵へ戻る。
+  //   大きさ: 詠唱1と同じ変換の高さ(0コマ目を立ち絵へ重ねて 149〜152)⇒ 詠唱1と同じ bodyH **152**(1ドットの大きさを揃える)。
+  //   胴のずらし: 腕を開くにつれ頭巾が枠の中を右へ最大10px ⇒ 頭巾を追って打ち消し+立ち絵との差(横−3・縦−3)。
+  {
+    idle: 'suriel', name: 'suriel-cast2', frames: 16, bodyH: 152,
+    phases: [
+      { state: 'gaze-windup', seq: [0, 1, 2, 3, 4, 5, 6, 7, 8], loop: [9, 10, 11, 12, 13, 14, 15], mode: 'release', group: 'gaze' },
+      { state: 'gaze-recover', seq: [0, 1, 2, 3, 4, 5, 6, 7, 8], loop: [9, 10, 11, 12, 13, 14, 15], mode: 'release', group: 'gaze' },
+    ],
+  },
   // ★ジブリル(社長支給2026-09-29「**ランタンを振る(その他全部)**」)。10コマ: 0〜2=ランタンを掲げる / 3〜6=羽を大きく開きランタンを振る /
   //   7〜9=閉じて戻る。連射・聖別・転移に使う。
   {
@@ -1502,6 +1523,24 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
     ],
   },
 ];
+
+/**
+ * `release` の州のコマ(状態を持たない純関数)。`windupProg` = 技の最初の溜めの進み(0..1・溜めが明けた後は null)、
+ * `sinceReleaseMs` = 最初の溜めが明けてからの経過。溜めの間は `seq` を割り付け、明けた後は `loop` を `frameMs` で往復する。
+ */
+export const bossReleaseFrame = (phase: BossPhase, windupProg: number | null, sinceReleaseMs: number, frameMs: number): number => {
+  if (windupProg !== null) {
+    const p = Number.isFinite(windupProg) ? Math.max(0, Math.min(0.999999, windupProg)) : 0;
+    return phase.seq[Math.floor(p * phase.seq.length)] ?? 0;
+  }
+  const loop = phase.loop && phase.loop.length > 0 ? phase.loop : phase.seq;
+  const n = loop.length;
+  if (n === 1) return loop[0];
+  const step = Number.isFinite(sinceReleaseMs) && sinceReleaseMs > 0 && frameMs > 0 ? Math.floor(sinceReleaseMs / frameMs) : 0;
+  const period = (n - 1) * 2;
+  const i = step % period;
+  return loop[i < n ? i : period - i];
+};
 
 /** その立ち絵・その州が使うシートとコマの並び(無ければ null)。州は完全一致。 */
 export const bossPhaseFor = (idle: string, bossState: string | undefined): { spec: BossPhaseSheetSpec; phase: BossPhase } | null => {
@@ -1572,6 +1611,7 @@ export const ENEMY_FRAME_OFFSETS: Readonly<Record<string, readonly (readonly [nu
   // 斬撃は光輪(頭)を追う: 待機の光輪の横位置(枠の中央から+9.7)へ揃える。
   // ★スリィエルの詠唱1(社長支給2026-09-29)。裾〜胴を追った横のずらし+立ち絵へ重ねた差(横−3・縦−3)。
   'suriel-cast1': [[-3, -3], [3, -3], [2, -3], [0, -3], [2, -3], [3, -3], [-7, -3], [-8, -3], [-9, -3], [-10, -3], [-11, -3], [-2, -3], [-3, -3], [-1, -3], [0, -3], [0, -3]],
+  'suriel-cast2': [[-3, -3], [-3, -3], [-5, -3], [-6, -3], [-6, -3], [-7, -3], [-7, -3], [-8, -3], [-9, -3], [-10, -3], [-9, -3], [-9, -3], [-9, -3], [-9, -3], [-8, -3], [-9, -3]],
   'uri-slash': [[2, -3], [2, -3], [0, -3], [1, -3], [1, -3], [4, -3], [7, -3], [6, -3], [-8, -3], [-13, -3], [-14, -3], [-16, -3], [-11, -3], [-7, -3]],
   'miguel-slash': [[-17, -3], [-18, -3], [-10, -3], [2, -3], [5, -3], [10, -3], [7, -3], [11, -3], [4, -3]],
   'phill-cast2': [[-5, 0], [-2, -11], [-2, -10], [-4, 3], [-4, 10], [-3, 14], [-11, 29], [-5, 29], [-10, 27], [-5, 30], [-10, 32], [-8, 30], [-2, 26], [6, 24], [6, 26], [6, 17]],
