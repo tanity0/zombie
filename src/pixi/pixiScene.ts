@@ -106,7 +106,7 @@ import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../ut
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
 import { bossFaceWant } from '../utils/bossFacing';
-import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
+import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame, enemyIdleLoopPos, idleHopLift } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -4017,6 +4017,8 @@ export class PixiScene {
   // §6.28-16: ジブリルのランタン(jibril-lantern)を常に手元に構えたまま表示する専用スプライト
   // (振り演出ではなく「掲げたまま」なのでKatanaSlash系とは別の単純な1枚Sprite)。
   private jibrilLanternSprites = new Map<string, Sprite>();
+  /** 剣先などの光(`SHEET_TIP_GLOW`)。個体ごとに4枚(にじみ/芯/十字の光条2本)を使い回す。 */
+  private sheetTipGlow = new Map<string, { halo: Sprite; core: Sprite; rayA: Sprite; rayB: Sprite; a: number; at: number; last: readonly [number, number] | null }>();
   // §6.28-16 ②(差し戻し対応): ランタン火(bossFires)の各火の中心にもjibril-lanternを1枚重ねる
   // (「投げて地面に置く」=火床の中心にランタン絵を残す)。fire.id keyed。新しい描画方式は追加せず、
   // 既存のsyncBossFires(共有Graphics)へスプライトを添えるだけ。
@@ -14159,6 +14161,8 @@ export class PixiScene {
         this.giantPhaseSpan.delete(id);
         this.phillCastStart.delete(id);
         this.bossPhaseStart.delete(id);
+        const tipGlow = this.sheetTipGlow.get(id);
+        if (tipGlow) { for (const sp of [tipGlow.halo, tipGlow.core, tipGlow.rayA, tipGlow.rayB]) sp.destroy(); this.sheetTipGlow.delete(id); }
         this.enemyBlockFall.delete(id);
         const slashFx = this.thorSlashFx.get(id);
         if (slashFx) { slashFx.destroy({ children: true }); this.thorSlashFx.delete(id); }
@@ -18418,6 +18422,8 @@ export class PixiScene {
       view.sprite.alpha = bossPositionAlpha(this.bossBehindAlpha * artFade) * phillIntroAlpha;
       view.sprite.visible = true;
       }
+      // ★剣先の光(ウリの詠唱・`SHEET_TIP_GLOW`)。位置・向き・透けが確定した後(透かしの両分岐の後)で、絵のその点へ置く。
+      this.syncSheetTipGlow(e.id, view, phillSheet?.name ?? null, tex, now);
     } else {
     view.sprite.anchor.set(0.5, 1);
     // ---- 歩行二次モーション(①②③・v0.25.2899・視覚のみ) ----------------------------------------
@@ -30310,6 +30316,53 @@ export class PixiScene {
    * その州に入った瞬間(州名か `bossStateUntil` が変わった時)を起点に、州の長さへ並びを割り付ける。
    * 時計は `gameTime`(ヒットストップで止まる=判定と同じ時計)。表に無い州なら null=待機のコマへ戻る。
    */
+  /**
+   * ★**剣先の光**(社長指示2026-09-29「ウリの魔法演唱、**後半、剣がてっぺん超えたら剣先を光らせて**」)。
+   * 今出ているコマが `SHEET_TIP_GLOW` に載っていれば、そのコマの剣先(シートの1画素単位)を**絵と同じ変換**
+   * (中心アンカー・向きのミラー・倍率)で世界座標へ移し、加算の光を置く。判定を持たない=派手さの絵なので大きめに出す。
+   * - 慣性: 点く時は約90ms・消える時は約160msで追う(パッと出て消えない)。コマ間で剣先が動くと光もそのまま付いていく。
+   * - 芯がちらつき、十字の光条がゆっくり回る(止まった光にしない)。色はウリの炎の光輪に揃えた橙+白金の芯。
+   * - 投影影を落とす光源ではない(pooled sprite 4枚だけ・負荷 1/10)。
+   */
+  private syncSheetTipGlow(id: string, view: ActorView, sheetName: string | null, tex: Texture, now: number): void {
+    const table = sheetName !== null ? SHEET_TIP_GLOW[sheetName] : undefined;
+    const fi = tex.width > 0 ? Math.round(tex.frame.x / tex.width) : 0;
+    const pt = table?.[fi] ?? null;
+    let g = this.sheetTipGlow.get(id);
+    if (pt === null && !g) return;
+    if (!g) {
+      const mk = (tint: number): Sprite => {
+        const sp = new Sprite(getSoftGlowTexture());
+        sp.anchor.set(0.5); sp.blendMode = 'add'; sp.tint = tint; sp.visible = false;
+        this.L.effectLayer.addChild(sp);
+        return sp;
+      };
+      g = { halo: mk(0xff8a2a), core: mk(0xfff2cc), rayA: mk(0xffd68a), rayB: mk(0xffd68a), a: 0, at: now, last: null };
+      this.sheetTipGlow.set(id, g);
+    }
+    const dt = Math.max(0, Math.min(100, now - g.at));
+    g.at = now;
+    const target = pt !== null ? 1 : 0;
+    g.a += (target - g.a) * (1 - Math.exp(-dt / (target > g.a ? 90 : 160)));
+    if (pt !== null) g.last = pt;
+    const p = pt ?? g.last;
+    const sprites = [g.halo, g.core, g.rayA, g.rayB];
+    if (g.a < 0.01 || p === null || !view.sprite.visible) { for (const sp of sprites) sp.visible = false; return; }
+    const body = view.sprite;
+    const x = body.x + (p[0] - tex.width / 2) * body.scale.x;
+    const y = body.y + (p[1] - tex.height / 2) * body.scale.y;
+    const unit = Math.abs(body.scale.y);                   // シートの1画素 = 世界の unit px
+    const texW = Math.max(1, g.halo.texture.width);
+    const flick = 0.82 + 0.12 * Math.sin(now / 47) + 0.06 * Math.sin(now / 13);
+    const a = g.a * body.alpha;
+    g.halo.position.set(x, y); g.halo.scale.set((70 * unit * (0.92 + 0.08 * flick)) / texW); g.halo.alpha = 0.75 * a;
+    g.core.position.set(x, y); g.core.scale.set((20 * unit * flick) / texW); g.core.alpha = a;
+    const rot = now * 0.0012;
+    g.rayA.position.set(x, y); g.rayA.rotation = rot; g.rayA.scale.set((110 * unit * flick) / texW, (5 * unit) / texW); g.rayA.alpha = 0.85 * a;
+    g.rayB.position.set(x, y); g.rayB.rotation = rot + Math.PI / 2; g.rayB.scale.set((80 * unit * flick) / texW, (5 * unit) / texW); g.rayB.alpha = 0.7 * a;
+    for (const sp of sprites) sp.visible = true;
+  }
+
   /**
    * 州ごとのシートの「跳ぶ高さ」(シートの1画素単位)。州に入った瞬間(`bossPhaseStart`)から `bossStateUntil` までを
    * 放物線 4u(1-u) で=踏み切りで最も速く上がり、頂点で止まり、落ちながら加速して州の終わり(着地)で0。
