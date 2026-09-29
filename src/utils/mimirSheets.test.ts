@@ -76,3 +76,12 @@ describe('トールの薙ぎ払い', () => {
     expect(m.sheetArtFacesRight('thor', 'thor-issen')).toBe(true);
   });
 });
+
+describe('トールの歩き', () => {
+  it('歩きのシートを持ち、止まったら立ち絵へ戻る・右向き', async () => {
+    const m = await import('./enemySheets');
+    expect(m.walkSheetFrames('thor')).toBe(16);
+    expect(m.walkStopsToIdle('thor')).toBe(true);
+    expect(m.sheetArtFacesRight('thor', 'thor-walk')).toBe(true);
+  });
+});
