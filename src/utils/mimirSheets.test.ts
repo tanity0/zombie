@@ -63,3 +63,16 @@ describe('トールの一閃', () => {
     expect(bossPhaseFor('thor', 'tsuki-windup')).toBeNull();
   });
 });
+
+describe('トールの薙ぎ払い', () => {
+  it('薙ぎ払いの3州がこのシートを引き、振り下ろし(7)=当たる州の頭。刀の向きに揃えて左向き扱い', async () => {
+    for (const st of ['harai-windup', 'harai', 'harai-recover']) {
+      expect(loopSrc.includes(`'${st}'`), st).toBe(true);
+      expect(bossPhaseFor('thor', st)?.spec.name, st).toBe('thor-harai');
+    }
+    expect(bossPhaseFrame(bossPhaseFor('thor', 'harai')!.phase, 0, 0, 90)).toBe(7);
+    const m = await import('./enemySheets');
+    expect(m.sheetArtFacesRight('thor', 'thor-harai')).toBe(false);
+    expect(m.sheetArtFacesRight('thor', 'thor-issen')).toBe(true);
+  });
+});
