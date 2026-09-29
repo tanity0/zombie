@@ -107,7 +107,7 @@ import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
 import { bossFaceWant } from '../utils/bossFacing';
 import { bossStoppedForArt } from '../utils/bossStopArt';
-import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame, bossIntroFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
+import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, SHEET_FRAME_LIFT, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame, bossIntroFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame, enemyIdleLoopPos, idleHopLift } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -18291,7 +18291,9 @@ export class PixiScene {
           tsNum('idlebreath', idleSheetPeriodMs(idleTexKey)))) * scale * IDLE_HOP_MUL
         : 0;
       // ★州ごとのシートに「跳ぶ高さ」が描かれていない技(ラフィの飛び掛かり・`BossPhase.lift`)は、州の進みに合わせて浮かせる。
-      const phaseLiftPx = phillSheet !== null ? this.bossPhaseLiftSheetPx(idleTexKey, e, gameTime) * scale : 0;
+      // ★コマごとの浮き(`SHEET_FRAME_LIFT`・アイドルの通常撃ち1「少し飛び跳ねる」)。跳ねる高さが絵に無いシートだけ、出ているコマで体を浮かせる。
+      const frameLift = phillSheet !== null && tex.width > 0 ? (SHEET_FRAME_LIFT[phillSheet.name]?.[Math.round(tex.frame.x / tex.width)] ?? 0) : 0;
+      const phaseLiftPx = phillSheet !== null ? (this.bossPhaseLiftSheetPx(idleTexKey, e, gameTime) + frameLift) * scale : 0;
       // PACING_PUZZLE.md §10-4(浮遊)+§10-19(登場シーン)。視覚のみ=e.y/当たり判定は不変
       // (CLAUDE.md Y方向5点チェック: 地平線フェード/擬似遠近は上で既に対象外化。可視域/移動可能帯は
       // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。

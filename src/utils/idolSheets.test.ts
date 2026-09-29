@@ -19,7 +19,7 @@ describe('アイドルの狙撃・追尾弾', () => {
     expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-snipe-recover')!.phase, 0.999, 0, 90)).toBe(15);
   });
   it('他の技(狙い撃ち・扇撃ち・拳)は引かない', () => {
-    for (const st of ['idol-aim-windup', 'idol-fan-windup', 'idol-punch-windup', 'chase']) {
+    for (const st of ['idol-aim-windup', 'idol-fan-windup', 'idol-punch-windup', 'chase']) {  // 狙い撃ちの溜めは立ち絵のまま
       expect(bossPhaseFor('idol', st), st).toBeNull();
     }
   });
@@ -45,5 +45,22 @@ describe('アイドルの跳び退き(離脱ローリング・手榴弾)', () =>
   it('跳ぶ州の頭で仰け反り始め(2)、硬直の末で立ち姿(0)へ戻る', () => {
     expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-roll')!.phase, 0, 0, 90)).toBe(2);
     expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-nade-recover')!.phase, 0.999, 0, 90)).toBe(0);
+  });
+});
+
+describe('アイドルの通常撃ち1(狙い撃ち)', () => {
+  it('狙い撃ちの硬直だけが idol-shot を引き(溜めは立ち絵)、硬直の頭=0・末=14', () => {
+    const ph = bossPhaseFor('idol', 'idol-aim-recover')!;
+    expect(ph.spec.name).toBe('idol-shot');
+    expect(bossPhaseFrame(ph.phase, 0, 0, 90)).toBe(0);
+    expect(bossPhaseFrame(ph.phase, 0.999, 0, 90)).toBe(14);
+    expect(bossPhaseFor('idol', 'idol-aim-windup')).toBeNull();
+  });
+  it('跳ねる浮きは全コマぶんあり、伸びるコマで浮き・屈むコマで着地', async () => {
+    const m = await import('./enemySheets');
+    const lift = m.SHEET_FRAME_LIFT['idol-shot'];
+    expect(lift.length).toBe(15);
+    expect(lift[0]).toBeGreaterThan(0);
+    expect(lift[3]).toBe(0);
   });
 });

@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "905 files / 復号後 約673MB",
+ "generatedFor": "906 files / 復号後 約674MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2323,6 +2323,12 @@
    "h": 140,
    "bytes": 119140,
    "sha": "3069479b4cd20ebc"
+  },
+  "sprites/idol-shot.png": {
+   "w": 1740,
+   "h": 140,
+   "bytes": 159325,
+   "sha": "13132451cc374ba7"
   },
   "sprites/idol-snipe.png": {
    "w": 1968,
