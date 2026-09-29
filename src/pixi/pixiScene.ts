@@ -30345,6 +30345,12 @@ export class PixiScene {
     if (idleSl && idleSl.length > 0 && idleSl[0].source === tex.source) {
       return { name: idleName, bodyH: ENEMY_IDLE_BODY_H[idleKey] ?? tex.height, off: ENEMY_FRAME_OFFSETS[idleName]?.[fi] ?? [0, 0] };
     }
+    // ★歩きのシート(`ENEMY_WALK_SHEETS`)を持つ裏ボス(アイドル・社長支給2026-09-29)。動いている間だけ出るコマも同じ作法で置く。
+    const walkName = walkSheetName(idleKey);
+    const walkSl = this.enemyWalkFrames.get(walkName);
+    if (walkSl && walkSl.length > 0 && walkSl[0].source === tex.source) {
+      return { name: walkName, bodyH: walkSheetBodyH(idleKey, fi) ?? tex.height, off: ENEMY_FRAME_OFFSETS[walkName]?.[fi] ?? [0, 0] };
+    }
     // ★ミゲルの爪・剣(`BOSS_PHASE_SHEETS`)も同じ作法で置く(社長支給2026-09-28)。
     const sheets: readonly { idle: string; name: string; bodyH: number }[] = [...PHILL_CAST_SHEETS, ...BOSS_PHASE_SHEETS];
     for (const c of sheets) {
