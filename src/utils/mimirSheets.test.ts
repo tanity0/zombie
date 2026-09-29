@@ -52,3 +52,14 @@ describe('ヨルムンガルドの薙ぎ払い(うねり)', () => {
     expect(bossPhaseFrame(bossPhaseFor('jormungand', 'coil')!.phase, 0, 0, 90)).toBe(8);
   });
 });
+
+describe('トールの一閃', () => {
+  it('一閃の4州がこのシートを引き、州名は台本に実在する。抜き放ち(3)=踏み込み斬りの頭', () => {
+    for (const st of ['issen-nihil', 'issen-windup', 'issen-dash', 'issen-recover']) {
+      expect(loopSrc.includes(`'${st}'`), st).toBe(true);
+      expect(bossPhaseFor('thor', st)?.spec.name, st).toBe('thor-issen');
+    }
+    expect(bossPhaseFrame(bossPhaseFor('thor', 'issen-dash')!.phase, 0, 0, 90)).toBe(3);
+    expect(bossPhaseFor('thor', 'tsuki-windup')).toBeNull();
+  });
+});

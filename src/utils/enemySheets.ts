@@ -489,6 +489,8 @@ export const ENEMY_SHEET_FACES_RIGHT: Readonly<Record<string, boolean>> = {
   //   待機を左向き扱いにすると、技に入った瞬間に剣と爪が左右入れ替わって見えるので、待機も右向きに揃える
   //   (社長指示2026-09-29「ボスも全部ミラー」)。
   'miguel': true,
+  // ★トール(`thor`)。立ち絵も一閃のシートも**右向き**(刀と爪を右へ構える)。シートが入るとミラーの対象へ移るので、ここに無いと常に逆を向く。
+  'thor': true,
 };
 
 /**
@@ -1294,6 +1296,8 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   'suriel': 'deferred',
   // ミーミル。移動1.54+攻撃2.10=3.64MB。ステージ1の裏ボス=カットインを挟んで出る=遅延。
   'mimir': 'deferred',
+  // トール。一閃1.91MB。ステージ5の裏ボス=カットインを挟んで出る=遅延。
+  'thor': 'deferred',
   // ヨルムンガルド。移動3.09+威嚇2.75+薙ぎ払い1.70=7.54MB。ステージ3の裏ボス=カットインを挟んで出る=遅延。
   'jormungand': 'deferred',
   // ウリ。待機/歩き0.72+詠唱1.02+斬撃1.35=3.09MB。天使の門でしか出ず、出現にカットインを挟むので遅延。
@@ -1713,6 +1717,22 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       ...(['idol-roll', 'idol-nade'] as const).map(state => ({ state, seq: [2, 3, 4, 5], mode: 'stretch' as const })),
       ...(['idol-roll-recover', 'idol-nade-recover'] as const).map(state =>
         ({ state, seq: [6, 7, 8, 8, 4, 2, 1, 0], mode: 'stretch' as const })),
+    ],
+  },
+  // ★トールの一閃(社長支給2026-09-29「**トールの一閃**」)。10コマ(支給 2500×202 → 上の空き2行を落として **250×200**・1.91MB)。
+  //   読み: 0〜2=低く沈んで刀に手を掛ける(居合の構え) / **3=抜き放つ(外套と爪が大きく翻る)** / 4=振り抜いて伸び切る / 5〜9=低く残心(刀を背へ掲げたまま)。
+  //   州(一閃は4段): 紫の構え(`issen-nihil`・2秒・振った相手へ即座に斬り返す)=0→1 / 赤の予告(`issen-windup`・0.5秒)=2 /
+  //   **踏み込み斬り(`issen-dash`・0.28秒・当たる)=3→4** / 硬直(`issen-recover`)=5→9。紫の構えから予告を飛ばして直接斬り込んでも、踏み込みの頭で抜き放つ。
+  //   大きさ: 0コマ目を立ち絵(256×240・同じ低い構え)へ重ねて本体の高さ **176**(IoU 0.79・ずれ0)。
+  //   残心(5〜9)は0コマ目より低く屈んだ姿勢=コマの中で体が小さく見えるが足の幅は同じ=倍率は揃えない。足の位置は踏み込み(3,4)で前へ出る=絵の動きのまま。
+  //   刀の別スプライト(`thor-katana`)はそのまま出る。
+  {
+    idle: 'thor', name: 'thor-issen', frames: 10, bodyH: 176,
+    phases: [
+      { state: 'issen-nihil', seq: [0, 1], mode: 'stretch' },
+      { state: 'issen-windup', seq: [2], mode: 'stretch' },
+      { state: 'issen-dash', seq: [3, 4], mode: 'stretch' },
+      { state: 'issen-recover', seq: [5, 6, 7, 8, 9], mode: 'stretch' },
     ],
   },
   // ★ヨルムンガルドの薙ぎ払い=うねり(`coil*`・社長支給2026-09-29「**ヨルムンガルドの薙払い**」)。13コマ(支給 2964×152 → 上の空き2行を落として
