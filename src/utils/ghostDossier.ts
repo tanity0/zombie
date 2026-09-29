@@ -29,7 +29,11 @@ export const GHOST_DOSSIER_SLOTS: readonly GhostDossierSlot[] = [
   { slotKey: 'rafi', bossType: 'rafi', stageId: null, category: 'gate' },
   { slotKey: 'uri', bossType: 'uri', stageId: null, category: 'gate' },
   { slotKey: 'suriel', bossType: 'suriel', stageId: null, category: 'gate' },
-  { slotKey: 'acrasiel', bossType: 'acrasiel', stageId: null, category: 'gate' },
+  // ★アクラシエルは**一旦ゲーム内から非表示**(社長指示2026-09-29「アクラシエルは出番が無いはずなので一旦ゲーム内から非表示」)。
+  //   ゲート2の割り当て(stage-6)は残っているが、stage-6 は洋館の通路(ゲートの仕組みが動かない)=本編では1度も出ない。
+  //   この台帳はボスモード(変異体対策室)・守護霊の記録・ミッション選択の記録・ボスラッシュが共通で引くので、ここから外せば全部から消える。
+  //   ボスメーカー・動物園(開発用)には残っている。戻す時はこの1行を戻すだけ(保存データのキー 'acrasiel' は変えていない)。
+  // { slotKey: 'acrasiel', bossType: 'acrasiel', stageId: null, category: 'gate' },
 
   { slotKey: 'mimir', bossType: 'mimir', stageId: null, category: 'hidden' },
   { slotKey: 'jormungand', bossType: 'jormungand', stageId: null, category: 'hidden' },

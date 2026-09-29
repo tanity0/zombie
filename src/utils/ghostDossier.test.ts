@@ -4,7 +4,9 @@ import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
 describe('GHOST_DOSSIER_SLOTS', () => {
   it('contains each playable record slot once', () => {
     const keys = GHOST_DOSSIER_SLOTS.map(slot => slot.slotKey);
-    expect(keys).toHaveLength(18);
+    // ★アクラシエルは一旦ゲーム内から非表示(社長指示2026-09-29)=18→17。
+    expect(keys).toHaveLength(17);
+    expect(keys).not.toContain('acrasiel');
     expect(new Set(keys).size).toBe(keys.length);
   });
 

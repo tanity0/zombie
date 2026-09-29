@@ -59,6 +59,8 @@ describe('ボスラッシュの台帳', () => {
 
   it('ゲート2ボスのステージが GATE2_BOSS_TYPE_BY_STAGE と一致する(写経しない)', () => {
     for (const [stageId, bossType] of Object.entries(GATE2_BOSS_TYPE_BY_STAGE)) {
+      // ★アクラシエルは一旦ゲーム内から非表示(社長指示2026-09-29)=枠が無いのが正。
+      if (bossType === 'acrasiel') { expect(PRACTICE_SLOTS.some(s => s.bossType === 'acrasiel')).toBe(false); continue; }
       const slot = PRACTICE_SLOTS.find(s => s.bossType === bossType);
       expect(slot, `${bossType} の枠が無い`).toBeTruthy();
       expect(slot!.stageId).toBe(stageId);
@@ -97,14 +99,16 @@ describe('ボスラッシュの台帳', () => {
 
   // 社長裁定 §20-10 = C(「?」のまま並べる)。外さずに置き、将来ボスが本編へ置かれたら
   // 遭遇の仕組みがそのまま働いて解放される。ここは「いま会えない枠がどれか」の記録。
-  it('本編で遭遇できない枠はちょうど3つ(台帳からは外さない)', () => {
+  it('本編で遭遇できない枠はちょうど2つ(アクラシエルは一旦ゲーム内から非表示=台帳から外した)', () => {
     const unreachable = PRACTICE_SLOTS.filter(s => !s.reachable).map(s => s.slotKey).sort();
     // 幻影(決闘)は**本編のどこにも置かれていない**ので reachable:false。ただし遭遇記録を待たずに
     // 選べる(alwaysUnlocked)ので、ここに載ることと解放されていることは矛盾しない。
     // PACING_PUZZLE.md §10-12#2/§10-14#9(ゲートボス交換): stage-6=acrasiel / stage-ex1=suriel。
     // storyBossOnlyがstage-ex1から外れたのでsurielは本編で遭遇可能になった(=unreachableから除外)。
     // 代わりにstage-6側のacrasielが不変で遭遇不能のまま残る(交換前後で「1体は遭遇不能」自体は不変・R9)。
-    expect(unreachable).toEqual(['acrasiel', 'giantbat@stage-2', GUARDIAN_PHANTOM_SLOT_KEY].sort());
+    // ★社長指示2026-09-29「アクラシエルは出番が無いはずなので一旦ゲーム内から非表示」: 遭遇不能のまま一覧に残していた
+    //   acrasiel を台帳(GHOST_DOSSIER_SLOTS)から外した=ここにも出ない。
+    expect(unreachable).toEqual(['giantbat@stage-2', GUARDIAN_PHANTOM_SLOT_KEY].sort());
     expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length); // 既存枠を外していない
   });
 });

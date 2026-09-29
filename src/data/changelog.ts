@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4704', items: ['本編で出会わないアクラシエルを、ボスモードと記録の一覧から外した'] },
   { version: '0.25.4703', items: ['スリィエルが描き下ろしの絵で宙に浮かび、ゆっくり沈んでは浮き上がりながら迫ってくる'] },
   { version: '0.25.4702', items: ['スリィエルが単眼で連射する時、両腕を広げ、衣の眼をすべて紫に光らせたまま撃ち続ける'] },
   { version: '0.25.4701', items: ['スリィエルが環を操る時、片腕を天へ掲げるようになった'] },
