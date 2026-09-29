@@ -3232,6 +3232,15 @@ const GUN_RECOIL_MS = 300;    // 撃った後に後ろへ下がりながら消�
 // 同じ「前進量」の見た目を共有しているため、この1本を変えれば全部揃って動く=挙動は従来どおり(値は不変)。
 const GUN_OUT_PX = GIANT_BOLT_MUZZLE_OUT_PX;
 const GUN_RECOIL_PX = 58;     // 反動で後ろへ下がる量
+/**
+ * アイドルの銃口の閃光(表示幅px・見える長さms)。派手さの絵だが、根元は銃身の先端から前へ出す(銃=赤い線の始点を塗り潰さない)。
+ * 狙撃線=大きく長く / 連射扇=広く / 単発(狙い撃ち・追尾弾・射撃部品)=小さく短い。城ボスの「大」(275px)は体ごと覆うので使わない。
+ */
+const IDOL_MUZZLE = {
+  snipe: { px: 150, ms: 140 },
+  fan: { px: 120, ms: 110 },
+  shot: { px: 90, ms: 80 },
+} as const;
 const GUN_MUZZLE_FLASH_MS = 110; // 技表GO: マズルフラッシュ大の可視窓(発射直後だけ)
 const FX_RING_ENABLED = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('fxring') !== '0';
@@ -14158,7 +14167,7 @@ export class PixiScene {
         this.maikoTrailLastAt.delete(id);
         // 技表GO(城ボス銃)のマズルフラッシュpoolも個体退場と同時に片付ける(キー=`${id}:gun:*`/`${id}:boltgun:*`)。
         for (const k of this.bossGunMuzzleSprites.keys()) {
-          if (k.startsWith(`${id}:gun:`) || k.startsWith(`${id}:boltgun:`)) {
+          if (k.startsWith(`${id}:gun:`) || k.startsWith(`${id}:boltgun:`) || k === `${id}:idolgun`) {
             this.bossGunMuzzleSprites.get(k)?.destroy(); this.bossGunMuzzleSprites.delete(k);
           }
         }
@@ -20766,6 +20775,25 @@ export class PixiScene {
                 gp.x - Math.cos(gunAng) * 8 * kickU, gp.y - Math.sin(gunAng) * 8 * kickU + ease.dy,
                 gunAng + (flip ? 1 : -1) * 0.35 * kickU, 42, 0.95 * ease.alphaMul * artFade, 1, flip,
               );
+              // ★撃つ瞬間の銃口の閃光(社長指示2026-09-29「**撃つ時に閃光を光らせて**」)。発射=溜め明け(`idolGunFireAt`)から
+              //   技ごとの窓(`IDOL_MUZZLE`)だけ、この銃の絵の銃口に閃光を焼く。銃の絵は絵のある技(狙撃線・追尾弾)でも出したまま
+              //   (社長指示2026-09-29「やはり銃の武器は出したままにして」)=閃光は常にこの銃の先端から出す。
+              //   銃を撃つ技は全部(狙い撃ち・連射扇・追尾弾・狙撃線・射撃部品)=「撃つ」という同じ動作を持つ全員に付ける。
+              //   派手さの絵(判定なし)なので銃(42px)より大きく出す。負荷 1/10(使い回しの Sprite 1枚・加算)。
+              //   ★クリエイティブ監査(2026-09-29)の是正: ①根元は銃身の**先端**(銃の絵は中心で置かれている=半身ぶん前へ)
+              //   ②銃の反動(後退+跳ね上がり)と同じ位置・角度に乗せる ③光り方は「1〜2コマで最大→急落」(線形のディマーにしない)
+              //   ④技で差を付ける(狙撃線=大きく長く/扇=広く/それ以外の単発=小さく短く) ⑤本体の薄れ(地平線・裏回り)を一緒に掛ける。
+              const mf = IDOL_MUZZLE[gunMove === 'snipe' ? 'snipe' : gunMove === 'fan' ? 'fan' : 'shot'];
+              if (fdt >= 0 && fdt <= mf.ms) {
+                const kAng = gunAng + (flip ? 1 : -1) * 0.35 * kickU;
+                const bx = gp.x - Math.cos(gunAng) * 8 * kickU, by = gp.y - Math.sin(gunAng) * 8 * kickU + ease.dy;
+                const u = fdt / mf.ms;
+                const life = u < 0.15 ? 1 : Math.pow(1 - (u - 0.15) / 0.85, 2.2);
+                this.drawBossGunMuzzle(`${e.id}:idolgun`, bx + Math.cos(kAng) * 21, by + Math.sin(kAng) * 21, kAng,
+                  life, mf.px, ease.alphaMul * artFade);
+              } else {
+                this.hideBossGunMuzzle(`${e.id}:idolgun`);
+              }
             }
           }
         }
@@ -26823,7 +26851,7 @@ export class PixiScene {
   private bossGunMuzzleSprites = new Map<string, Sprite>();
   // sizePx=閃光の基準表示幅(省略時=城ボスの「大」172×1.6)。エンディング兵士(表示高~65px)は
   // 実寸に合わせて小さく渡す(検収A-2: 既定のままだと275pxで兵士の4倍を覆っていた)。
-  private drawBossGunMuzzle(key: string, x: number, y: number, angle: number, life01: number, sizePx: number = 172 * 1.6): void {
+  private drawBossGunMuzzle(key: string, x: number, y: number, angle: number, life01: number, sizePx: number = 172 * 1.6, alphaMul: number = 1): void {
     if (!FX_RING_ENABLED || life01 <= 0.01) { this.hideBossGunMuzzle(key); return; }
     const tex = getTexture('fx/muzzle-flash');
     if (!tex) return;
@@ -26840,7 +26868,7 @@ export class PixiScene {
     sp.scale.set(s, s);
     sp.rotation = angle;
     sp.position.set(x, y);
-    sp.alpha = life01;
+    sp.alpha = life01 * alphaMul;
     sp.visible = true;
   }
   private hideBossGunMuzzle(key: string): void {
