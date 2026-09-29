@@ -34,10 +34,21 @@ describe('ヨルムンガルドの威嚇', () => {
       expect(bossPhaseFor('jormungand', ph.state)?.spec.name, ph.state).toBe('jormungand-roar');
     }
   });
-  it('突進の走り・うねり(薙ぎ払いは別途支給)・巣へ戻るは引かない(移動の絵のまま)', () => {
-    for (const st of ['dash', 'dash-recover', 'coil-windup', 'coil', 'coil-recover', 'return', 'chase']) {
+  it('突進の走り・巣へ戻るは引かない(移動の絵のまま)', () => {
+    for (const st of ['dash', 'dash-recover', 'return', 'chase']) {
       expect(bossPhaseFor('jormungand', st), st).toBeNull();
     }
     expect(ENEMY_FRAME_OFFSETS['jormungand-idle']?.length).toBe(16);
+  });
+});
+
+describe('ヨルムンガルドの薙ぎ払い(うねり)', () => {
+  it('うねりの3州がこのシートを引き、振り上げ切る(7)=溜めの末・振り下ろす(8)=判定の州の頭', () => {
+    for (const st of ['coil-windup', 'coil', 'coil-recover']) {
+      expect(loopSrc.includes(`'${st}'`), st).toBe(true);
+      expect(bossPhaseFor('jormungand', st)?.spec.name, st).toBe('jormungand-sweep');
+    }
+    expect(bossPhaseFrame(bossPhaseFor('jormungand', 'coil-windup')!.phase, 0.999, 0, 90)).toBe(7);
+    expect(bossPhaseFrame(bossPhaseFor('jormungand', 'coil')!.phase, 0, 0, 90)).toBe(8);
   });
 });
