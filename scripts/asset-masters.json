@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "910 files / 復号後 約680MB",
+ "generatedFor": "911 files / 復号後 約683MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2857,6 +2857,12 @@
    "h": 198,
    "bytes": 361082,
    "sha": "e9f9602ff61faa87"
+  },
+  "sprites/mimir-laser.png": {
+   "w": 2970,
+   "h": 200,
+   "bytes": 444933,
+   "sha": "4864c42731c92466"
   },
   "sprites/mimir.png": {
    "w": 201,

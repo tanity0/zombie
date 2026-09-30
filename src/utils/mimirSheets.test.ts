@@ -10,8 +10,8 @@ describe('ミーミルの攻撃', () => {
       expect(bossPhaseFor('mimir', ph.state)?.spec.name, ph.state).toBe('mimir-attack');
     }
   });
-  it('レーザーと巣へ戻る間は引かない(移動の絵のまま)', () => {
-    for (const st of ['laser-windup', 'laser-fire', 'laser-recover', 'laser-broken', 'return', 'chase']) {
+  it('巣へ戻る間は引かない(移動の絵のまま)', () => {
+    for (const st of ['return', 'chase']) {
       expect(bossPhaseFor('mimir', st), st).toBeNull();
     }
   });
@@ -107,5 +107,18 @@ describe('スカジの歩き', () => {
     const m = await import('./enemySheets');
     expect(m.walkSheetFrames('skadi')).toBe(11);
     expect(m.walkStopsToIdle('skadi')).toBe(true);
+  });
+});
+
+describe('ミーミルのレーザー', () => {
+  it('溜めで瞳を絞り(0→11)、撃つ間は最後の3コマ(12〜14)を往復、撃ち終わりと中断で戻す', () => {
+    for (const st of ['laser-windup', 'laser-fire', 'laser-recover', 'laser-broken']) {
+      expect(loopSrc.includes(`'${st}'`), st).toBe(true);
+      expect(bossPhaseFor('mimir', st)?.spec.name, st).toBe('mimir-laser');
+    }
+    expect(bossPhaseFrame(bossPhaseFor('mimir', 'laser-windup')!.phase, 0.999, 0, 90)).toBe(11);
+    const fire = bossPhaseFor('mimir', 'laser-fire')!.phase;
+    for (let t = 0; t < 3000; t += 37) expect([12, 13, 14]).toContain(bossPhaseFrame(fire, 0, t, 90));
+    expect(bossPhaseFrame(bossPhaseFor('mimir', 'laser-recover')!.phase, 0.999, 0, 90)).toBe(0);
   });
 });
