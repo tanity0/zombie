@@ -28053,10 +28053,13 @@ export class PixiScene {
         // 「中心が円の内側なら当たる」)と厳密一致(分類1)。信管が進むほど濃く。
         if (p.hostile) {
           // ★v0.25.4206(§11-2c 全数へ): 敵の手榴弾の爆発円も流星文法へ(信管 fu が進行)。
+          // ★**紫**(社長指示2026-09-30「そしたら紫にしよう」): 手榴弾は打ち返せない(転がる物で体に触れない・爆発の円だけが当たる)
+          //   =色の文法「紫=カウンターできない攻撃」へ揃える。色はミーミルのレーザーと同じ紫(塗り 0x9333ea / 縁 0xc084fc)。
+          //   円の大きさ・流星の進み方(信管)・判定は不変。
           const nadeMask = CIRCLE_SWEEP_ON
-            ? this.drawSweepCircleFill(g, 0, 0, HEAVY_GRENADE_RADIUS, fu, 0xef4444, 0.22)
-            : (g.circle(0, 0, HEAVY_GRENADE_RADIUS).fill({ color: 0xef4444, alpha: 0.08 + 0.14 * t }), 1);
-          g.circle(0, 0, HEAVY_GRENADE_RADIUS).stroke({ color: 0xef4444, alpha: (0.5 + 0.4 * t) * nadeMask, width: 2 });
+            ? this.drawSweepCircleFill(g, 0, 0, HEAVY_GRENADE_RADIUS, fu, 0x9333ea, 0.22)
+            : (g.circle(0, 0, HEAVY_GRENADE_RADIUS).fill({ color: 0x9333ea, alpha: 0.08 + 0.14 * t }), 1);
+          g.circle(0, 0, HEAVY_GRENADE_RADIUS).stroke({ color: 0xc084fc, alpha: (0.5 + 0.4 * t) * nadeMask, width: 2 });
         }
         // 社長指示v0.25.3450「ちゃんと飛び跳ねて(飛び跳ねだけ戻して)」: v3447で消した影+跳ねを復活。
         const hopEnvelope = Math.max(0, 1 - t * 0.58);
