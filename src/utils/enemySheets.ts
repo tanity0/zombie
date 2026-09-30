@@ -503,8 +503,9 @@ export const ENEMY_SHEET_FACES_RIGHT: Readonly<Record<string, boolean>> = {
   //   待機を左向き扱いにすると、技に入った瞬間に剣と爪が左右入れ替わって見えるので、待機も右向きに揃える
   //   (社長指示2026-09-29「ボスも全部ミラー」)。
   'miguel': true,
-  // ★トール(`thor`)。立ち絵も一閃のシートも**右向き**(刀と爪を右へ構える)。シートが入るとミラーの対象へ移るので、ここに無いと常に逆を向く。
-  'thor': true,
+  // ★トール(`thor`)は**左向き**(既定)=ここに載せない。★v0.25.4739 訂正: 当初「右向き」と載せていたが誤り。
+  //   突き(刀を左へ突き出す)・薙ぎ払い・一閃の振り抜きが全て左=刀を向ける側が前。爪の外套は背中側(右)。
+  //   右向きと扱っていたため、立ち絵/歩き/一閃/跳びの間は**常にプレイヤーへ背を向けていた**(社長指摘「背中を向けて逃げていく」)。
   // ★アイドル(`idol`)。立ち絵も全シートも**右向き**(銃を右へ構える)。戦闘中はボス共通のミラーでプレイヤーの側を向く
   //   (社長指摘2026-09-30「アイドルの向きが逆」=設置時の固定向きのまま戦っていた)。休眠中だけ設置時の向き(`idolFacingLeft`)。
   'idol': true,
@@ -519,10 +520,6 @@ export const SHEET_NAME_FACES_RIGHT: Readonly<Record<string, boolean>> = {
   'jibril-throw': true,
   'miguel-claw': true,
   'miguel-slash': true,
-  // トールの薙ぎ払い: 体は右向きだが刀を左へ振り抜く絵=刀の向きを帯へ揃えるため「左向き」扱い(トールの既定=右向きを上書き)。
-  'thor-harai': false,
-  // トールの突き: 刀を左へ突き出す絵=刀の向きを帯へ揃えるため「左向き」扱い(薙ぎ払いと同じ理由)。
-  'thor-tsuki': false,
 };
 /** その絵(シート名。立ち絵そのものなら null)の素の向きが右か。シートの指定 → 立ち絵の指定 の順。 */
 export const sheetArtFacesRight = (idleTexName: string, sheetName: string | null): boolean =>

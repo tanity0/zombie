@@ -73,7 +73,7 @@ describe('トールの薙ぎ払い', () => {
     expect(bossPhaseFrame(bossPhaseFor('thor', 'harai')!.phase, 0, 0, 90)).toBe(7);
     const m = await import('./enemySheets');
     expect(m.sheetArtFacesRight('thor', 'thor-harai')).toBe(false);
-    expect(m.sheetArtFacesRight('thor', 'thor-issen')).toBe(true);
+    expect(m.sheetArtFacesRight('thor', 'thor-issen')).toBe(false);
   });
 });
 
@@ -82,7 +82,7 @@ describe('トールの歩き', () => {
     const m = await import('./enemySheets');
     expect(m.walkSheetFrames('thor')).toBe(16);
     expect(m.walkStopsToIdle('thor')).toBe(true);
-    expect(m.sheetArtFacesRight('thor', 'thor-walk')).toBe(true);
+    expect(m.sheetArtFacesRight('thor', 'thor-walk')).toBe(false); // トールは全部左向き(v0.25.4739 訂正)
   });
 });
 

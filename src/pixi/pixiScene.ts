@@ -101,6 +101,7 @@ import {
 import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../utils/spriteFoot';
 import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
+import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
 import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
@@ -18559,9 +18560,15 @@ export class PixiScene {
         // 伐採人の絵は素の状態で「左→右」に振る(実測)ので、帯が右向きなら**ミラーしない**。
         // (旧: `bandDir > 0 ? toRight` = 体を帯の方へ向けていた=絵の振りが毎回帯と逆になっていた。)
         const sweepSwing = sweepSwingDir(sheetKey);
+        // ★後ずさり(社長指示2026-09-30「こちらを向きながら後退る」): プレイヤーから遠ざかる向きへ動いている間は
+        //   進む向きへ振り向かず、プレイヤーの側を向いたまま下がる。逃走中(ハンター)・休眠中は対象外(狙っていない)。
+        const bpPl = useGameStore.getState().player;
+        const bpSide = e.hunterFleeing || e.dormant ? 0
+          : backpedalFaceSide(vx, e.x + e.width / 2, bpPl.x + bpPl.width / 2);
         const want = kbFacingLock ? cur
           : bandDir !== 0 ? sweepFaceMulFor(bandDir, sweepSwing, cur)
-            : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
+            : bpSide !== 0 ? (bpSide > 0 ? toRight : -toRight)
+              : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
         if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
         const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;
         const from = view.motFaceFrom ?? (view.motFace ?? 1);
@@ -30653,7 +30660,11 @@ export class PixiScene {
     if (px !== undefined && py !== undefined && !gate.corpse) {
       const step = Math.hypot(e.x - px, e.y - py);
       // 1フレームで跳ぶ距離(転移・リサイクル・弾き飛ばし)は歩幅に積まない=脚が空回りしない。
-      if (step <= ENEMY_WALK_MAX_STEP_PX && !gate.pushedOrLifted) view.walkDist = (view.walkDist ?? 0) + step;
+      // ★後ずさり中は歩きのコマを逆に送る(社長指示2026-09-30「こちらを向きながら後退る」=前へ踏み出す足取りのまま下がらない)。
+      const wpl = useGameStore.getState().player;
+      const backing = !e.hunterFleeing && !e.dormant && isBackingAway(e.x - px, e.y - py,
+        (wpl.x + wpl.width / 2) - (e.x + e.width / 2), (wpl.y + wpl.height / 2) - (e.y + e.height / 2));
+      if (step <= ENEMY_WALK_MAX_STEP_PX && !gate.pushedOrLifted) view.walkDist = (view.walkDist ?? 0) + (backing ? -step : step);
       if (step > 0.01) view.walkMovedAt = now;
     }
     // ★止まったら立ち絵へ戻す個体(アイドル・社長指示2026-09-29)。一定時間動いていなければ null=立ち絵(待機のシートがあればそちら)。
