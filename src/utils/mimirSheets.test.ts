@@ -122,3 +122,14 @@ describe('ミーミルのレーザー', () => {
     expect(bossPhaseFrame(bossPhaseFor('mimir', 'laser-recover')!.phase, 0.999, 0, 90)).toBe(0);
   });
 });
+
+describe('トールのジャンプ攻撃', () => {
+  it('溜め/滞空/硬直がこのシートを引き、滞空は浮く・着地の突き立て(8)=硬直の頭', () => {
+    for (const st of ['jump-windup', 'jump-attack', 'jump-recover']) {
+      expect(loopSrc.includes(`'${st}'`), st).toBe(true);
+      expect(bossPhaseFor('thor', st)?.spec.name, st).toBe('thor-jump');
+    }
+    expect(bossPhaseFor('thor', 'jump-attack')!.phase.lift).toBeGreaterThan(0);
+    expect(bossPhaseFrame(bossPhaseFor('thor', 'jump-recover')!.phase, 0, 0, 90)).toBe(8);
+  });
+});
