@@ -75,3 +75,12 @@ describe('アイドルの射撃2(連射扇)', () => {
     expect(r.phase.seq.includes(11) || r.phase.seq.includes(12)).toBe(false);
   });
 });
+
+describe('アイドルの向き', () => {
+  it('絵は右向き=戦闘中はボス共通のミラーでプレイヤーの側を向く(社長指摘「アイドルの向きが逆」)', async () => {
+    const m = await import('./enemySheets');
+    for (const n of [null, 'idol-snipe', 'idol-roll', 'idol-shot', 'idol-shot2', 'idol-walk']) {
+      expect(m.sheetArtFacesRight('idol', n), String(n)).toBe(true);
+    }
+  });
+});

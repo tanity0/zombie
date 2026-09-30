@@ -498,6 +498,9 @@ export const ENEMY_SHEET_FACES_RIGHT: Readonly<Record<string, boolean>> = {
   'miguel': true,
   // ★トール(`thor`)。立ち絵も一閃のシートも**右向き**(刀と爪を右へ構える)。シートが入るとミラーの対象へ移るので、ここに無いと常に逆を向く。
   'thor': true,
+  // ★アイドル(`idol`)。立ち絵も全シートも**右向き**(銃を右へ構える)。戦闘中はボス共通のミラーでプレイヤーの側を向く
+  //   (社長指摘2026-09-30「アイドルの向きが逆」=設置時の固定向きのまま戦っていた)。休眠中だけ設置時の向き(`idolFacingLeft`)。
+  'idol': true,
 };
 
 /**

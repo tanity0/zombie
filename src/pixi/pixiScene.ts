@@ -18260,7 +18260,8 @@ export class PixiScene {
       //   (シートが替わる瞬間に振り向きの潰れが走らない)。**アンカーのずらし(fit.cx)と胴のずらしも一緒に反転**する。
       //   idol は独自の向き(`idolFacingLeft`)があるので対象外。判定・技の向き・弾は1つも変えない。
       let bossM = 1;
-      if (hasAnimSheet(idleTexKey) && e.type !== 'idol') {
+      // ★アイドルも戦闘中はプレイヤーの居る側を向く(社長指摘2026-09-30「アイドルの向きが逆」)。設置時の固定向き(`idolFacingLeft`)は**休眠中だけ**使う。
+      if (hasAnimSheet(idleTexKey) && !(e.type === 'idol' && e.dormant)) {
         const pl = useGameStore.getState().player;
         const cur: 1 | -1 = (view.motFace ?? 1) >= 0 ? 1 : -1;
         const kbLock = e.knockbackUntil !== undefined && now < e.knockbackUntil + 180;
@@ -18277,7 +18278,7 @@ export class PixiScene {
       const baseCy = stripCy + (0.5 - fit.cy) * baseH;
       // ★アイドルはボス共通のミラー(bossM)の対象外で、独自の向き(`idolFacingLeft`=下の idolMirror)で反転する
       //   ⇒ 胴のずらしの横も同じ向きで反転する(アイドルの狙撃シート・社長指示2026-09-29「身体の位置で合わせて」)。
-      const offMirror = e.type === 'idol' && e.idolFacingLeft ? -1 : 1;
+      const offMirror = e.type === 'idol' && e.dormant && e.idolFacingLeft ? -1 : 1;
       const spx = phillSheet ? baseCx + phillSheet.off[0] * scale * bossM * offMirror : baseCx;
       const spy = phillSheet ? (baseCy + baseH / 2) - spriteH / 2 + phillSheet.off[1] * scale : baseCy;
       // ★手で描いたコマの間は疑似呼吸(伸び縮み=歪み)を掛けない(社長指示「モーション追加により外すのは歪みだけ」)。
@@ -18400,7 +18401,8 @@ export class PixiScene {
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
       // スケールXの符号だけを反転する見た目専用の変更で、hitbox(e.x/y/width/height)・座標・攻撃方向・
       // 弾の発射方向には一切触れない(CLAUDE.md「Visual vs. hitbox」)。
-      const idolMirror = (e.type === 'idol' && e.idolFacingLeft) ? -1 : 1;
+      // ★戦闘中(休眠していない)は上のボス共通のミラー(bossM)がプレイヤーの側を向ける=ここは休眠中の設置向きだけ(社長指摘2026-09-30)。
+      const idolMirror = (e.type === 'idol' && e.dormant && e.idolFacingLeft) ? -1 : 1;
       // ★予兆一括バッチ(v0.25.3344): aiSqX/aiSqYを乗せる(トール/ラフィの飛び掛かりしゃがみ用)。
       // 既定1・1なので他の裏ボス系(mimir/jormungand/skadi/miguel/jibril/uri/suriel/acrasiel/idol)は無変化。
       // ★手で描いたコマの間は技のスカッシュ(aiSqX/Y=歪み)を掛けない(社長指示「モーション追加により外すのは歪みだけ」・
