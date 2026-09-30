@@ -3521,38 +3521,38 @@
   "sprites/player-striker-run-0.png": {
    "w": 78,
    "h": 66,
-   "bytes": 3436,
-   "sha": "ef853f4875cde484"
+   "bytes": 3438,
+   "sha": "8d73a8c1e7822c94"
   },
   "sprites/player-striker-run-1.png": {
    "w": 78,
    "h": 66,
-   "bytes": 3282,
-   "sha": "4406b75ff0100d27"
+   "bytes": 3284,
+   "sha": "1ca1e6c214d0839a"
   },
   "sprites/player-striker-run-2.png": {
    "w": 78,
    "h": 66,
-   "bytes": 3465,
-   "sha": "7a54a1463ec2edfd"
+   "bytes": 3461,
+   "sha": "f53e5120c4868db0"
   },
   "sprites/player-striker-run-3.png": {
    "w": 78,
    "h": 66,
-   "bytes": 3470,
-   "sha": "7b9fe5360a65aed7"
+   "bytes": 3468,
+   "sha": "b0fcb0c1509b6db4"
   },
   "sprites/player-striker-run-4.png": {
    "w": 78,
    "h": 66,
-   "bytes": 3448,
-   "sha": "ff65060f72423499"
+   "bytes": 3447,
+   "sha": "6fcf9144071ec163"
   },
   "sprites/player-striker-run-5.png": {
    "w": 78,
    "h": 66,
-   "bytes": 3264,
-   "sha": "4b4a17615579a78c"
+   "bytes": 3263,
+   "sha": "5036eda6f13fd272"
   },
   "sprites/player-striker-walk-0.png": {
    "w": 78,

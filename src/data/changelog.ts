@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4738', items: ['スカベンジャーが走る時、体をわずかに前へ出した'] },
   { version: '0.25.4737', items: ['スカベンジャーの走りを描き直した。体が前へ跳ねるコマが無くなり、滑らかに駆けるようになった'] },
   { version: '0.25.4736', items: ['トールの突きが描き下ろしの絵に。低く構えた刀を一気に突き出し、ゆっくり引き戻す'] },
   { version: '0.25.4735', items: ['アイドルの至近の殴りが描き下ろしの絵に。低く踏み込んで腕を伸ばし切り、引いて構え直す'] },
