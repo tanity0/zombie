@@ -345,15 +345,15 @@ const measureHeadTop = async (name: string): Promise<void> => {
 
 // クラス→立ち絵接頭辞(playerTextureName/PLAYER_IDLE_SPRITEと同じ対応・入れ替えない)。
 const AVATAR_HEAD_TRACK_CLASS_PREFIXES = ['magnum', 'shotgun', 'striker', 'scavenger'];
-// 走りコマ数はクラスにより4種5コマ/ヘビーガンナー(shotgun)だけ6コマ(RUN_SEQ_6・playerWalkSheets参照)。
+// 走りコマ数はクラスにより5コマ/ヘビーガンナー(shotgun)とスカベンジャー(striker・2026-09-30差し替え)は6コマ(RUN_SEQ_6・playerWalkSheets参照)。
 const AVATAR_HEAD_TRACK_NAMES: string[] = [
   ...AVATAR_HEAD_TRACK_CLASS_PREFIXES.flatMap((prefix) => [
     `player-${prefix}-idle`,
     `player-${prefix}-walk-0`, `player-${prefix}-walk-1`, `player-${prefix}-walk-2`, `player-${prefix}-walk-3`, `player-${prefix}-walk-4`,
     // しゃがみ(死亡固定絵)/攻撃ポーズ(近接構え→振り抜き。死亡固定絵は`-ready`を共有)。
     `player-${prefix}-melee-ready`, `player-${prefix}-melee-swing`,
-    ...(prefix === 'shotgun'
-      ? ['player-shotgun-run-0', 'player-shotgun-run-1', 'player-shotgun-run-2', 'player-shotgun-run-3', 'player-shotgun-run-4', 'player-shotgun-run-5']
+    ...(prefix === 'shotgun' || prefix === 'striker'
+      ? [`player-${prefix}-run-0`, `player-${prefix}-run-1`, `player-${prefix}-run-2`, `player-${prefix}-run-3`, `player-${prefix}-run-4`, `player-${prefix}-run-5`]
       : [`player-${prefix}-run-0`, `player-${prefix}-run-1`, `player-${prefix}-run-2`, `player-${prefix}-run-3`, `player-${prefix}-run-4`]),
   ]),
   // 武将セット(特殊3点フル装備)立ち絵。frame0=待機相当(playerWalkFrameは!walkingでframe0を返す)。
@@ -446,6 +446,7 @@ export const ensureTextures = (): Promise<void> => {
       'player-striker-run-2',
       'player-striker-run-3',
       'player-striker-run-4',
+      'player-striker-run-5',
       'player-striker-walk-0',
       'player-striker-walk-1',
       'player-striker-walk-2',

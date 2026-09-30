@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "914 files / 復号後 約688MB",
+ "generatedFor": "915 files / 復号後 約688MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3521,32 +3521,38 @@
   "sprites/player-striker-run-0.png": {
    "w": 78,
    "h": 66,
-   "bytes": 3716,
-   "sha": "3550ee5b02919316"
+   "bytes": 3436,
+   "sha": "ef853f4875cde484"
   },
   "sprites/player-striker-run-1.png": {
    "w": 78,
    "h": 66,
-   "bytes": 4413,
-   "sha": "9aa680b550639936"
+   "bytes": 3282,
+   "sha": "4406b75ff0100d27"
   },
   "sprites/player-striker-run-2.png": {
    "w": 78,
    "h": 66,
-   "bytes": 4152,
-   "sha": "3881a0845e988c2a"
+   "bytes": 3465,
+   "sha": "7a54a1463ec2edfd"
   },
   "sprites/player-striker-run-3.png": {
    "w": 78,
    "h": 66,
-   "bytes": 3976,
-   "sha": "a7f58870e21442eb"
+   "bytes": 3470,
+   "sha": "7b9fe5360a65aed7"
   },
   "sprites/player-striker-run-4.png": {
    "w": 78,
    "h": 66,
-   "bytes": 3967,
-   "sha": "67b6bc0f377fcfd1"
+   "bytes": 3448,
+   "sha": "ff65060f72423499"
+  },
+  "sprites/player-striker-run-5.png": {
+   "w": 78,
+   "h": 66,
+   "bytes": 3264,
+   "sha": "4b4a17615579a78c"
   },
   "sprites/player-striker-walk-0.png": {
    "w": 78,

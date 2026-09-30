@@ -16,7 +16,7 @@ export const WALK_SEQ_2: readonly number[] = [0, 1];
 export const WALK_SEQ_WARLORD: readonly number[] = [0, 1, 2, 1];
 /** 走り5コマ(マークスマン/ストライカー/スカベンジャー)= 前方ループ(折り返さない)。 */
 export const RUN_SEQ_5: readonly number[] = [0, 1, 2, 3, 4];
-/** 走り6コマ(ヘビーガンナー)= 前方ループ。 */
+/** 走り6コマ(ヘビーガンナー・スカベンジャー)= 前方ループ。 */
 export const RUN_SEQ_6: readonly number[] = [0, 1, 2, 3, 4, 5];
 
 /**
@@ -30,7 +30,8 @@ export const WALK_SHEET_SEQUENCES: ReadonlyArray<{ prefix: string; sequence: rea
   { prefix: 'player-striker-walk', sequence: WALK_SEQ_5 },
   { prefix: 'player-scavenger-walk', sequence: WALK_SEQ_5 },
   { prefix: 'player-magnum-run', sequence: RUN_SEQ_5 },
-  { prefix: 'player-striker-run', sequence: RUN_SEQ_5 },
+  // スカベンジャー(necromancer=striker接頭辞)の走り: 社長支給2026-09-30で6コマへ差し替え。
+  { prefix: 'player-striker-run', sequence: RUN_SEQ_6 },
   { prefix: 'player-scavenger-run', sequence: RUN_SEQ_5 },
   { prefix: 'player-shotgun-run', sequence: RUN_SEQ_6 },
   // 武将セット(特殊3点)フル装備の立ち絵。小烏丸ありは刀(赤)・無しは銃(青)の**別シート**

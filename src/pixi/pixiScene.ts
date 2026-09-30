@@ -1564,11 +1564,11 @@ const PLAYER_RUN_SWIPE_THRESHOLD = tsNum('runthreshold', 0.98); // ほぼ最大�
 const usesRunAnimation = (p: Player): boolean =>
   PLAYER_RUN_ENABLED && (p.characterClass === 'mage' || p.characterClass === 'rogue' || p.characterClass === 'warrior' || p.characterClass === 'necromancer');
 // 走りのコマ並び: ストライカー(rogue)=5コマ前方ループ・ヘビーガンナー(warrior)=6コマ前方ループ・
-// スカベンジャー(necromancer=striker接頭辞)=5コマ前方ループ(いずれも折り返さない=社長指示)。
+// スカベンジャー(necromancer=striker接頭辞)=6コマ前方ループ(社長支給2026-09-30差し替え・いずれも折り返さない=社長指示)。
 // マークスマン(mage)=5コマ前方ループ(社長指示v0.25.1639「走りピンポンやめる」。旧=歩きと同じ8段ping-pong)。
 // ※歩きのコマ並び(playerWalkSequence)は不変=ピンポンのまま。走りだけ前方ループにする。
 const playerRunSequence = (p: Player): readonly number[] =>
-  p.characterClass === 'warrior' ? RUN_SEQ_6 : RUN_SEQ_5;
+  p.characterClass === 'warrior' || p.characterClass === 'necromancer' ? RUN_SEQ_6 : RUN_SEQ_5;
 const playerWalkFrame = (p: Player, now: number, walking: boolean, running = false): number => {
   if (!walking) return 0;
   const runAnim = running && usesRunAnimation(p);
