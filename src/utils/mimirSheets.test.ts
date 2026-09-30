@@ -85,3 +85,19 @@ describe('トールの歩き', () => {
     expect(m.sheetArtFacesRight('thor', 'thor-walk')).toBe(true);
   });
 });
+
+describe('スカジの魔法1・魔法2', () => {
+  it('即発動(檻・全方位)=魔法1、続けて放つ(氷塊・氷の刃・3連射)=魔法2。州名は台本に実在する', () => {
+    for (const st of ['cage-windup', 'cage-recover', 'aim-radial', 'radial-recover']) {
+      expect(loopSrc.includes(`'${st}'`), st).toBe(true);
+      expect(bossPhaseFor('skadi', st)?.spec.name, st).toBe('skadi-cast1');
+    }
+    for (const st of ['skadi-ice-windup', 'skadi-ice', 'skadi-ice-recover', 'skadi-blade-windup', 'skadi-blade', 'skadi-blade-recover', 'aim-burst', 'burst', 'burst-recover']) {
+      expect(loopSrc.includes(`'${st}'`), st).toBe(true);
+      expect(bossPhaseFor('skadi', st)?.spec.name, st).toBe('skadi-cast2');
+    }
+    expect(bossPhaseFor('skadi', 'dash')).toBeNull();
+    // 魔法1: 氷の弧(6)=出る瞬間(硬直の頭)
+    expect(bossPhaseFrame(bossPhaseFor('skadi', 'cage-recover')!.phase, 0, 0, 90)).toBe(6);
+  });
+});
