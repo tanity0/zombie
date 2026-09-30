@@ -60,7 +60,7 @@ describe('トールの一閃', () => {
       expect(bossPhaseFor('thor', st)?.spec.name, st).toBe('thor-issen');
     }
     expect(bossPhaseFrame(bossPhaseFor('thor', 'issen-dash')!.phase, 0, 0, 90)).toBe(3);
-    expect(bossPhaseFor('thor', 'tsuki-windup')).toBeNull();
+    expect(bossPhaseFor('thor', 'tsuki-windup')?.spec.name).toBe('thor-tsuki');
   });
 });
 
@@ -131,5 +131,18 @@ describe('トールのジャンプ攻撃', () => {
     }
     expect(bossPhaseFor('thor', 'jump-attack')!.phase.lift).toBeGreaterThan(0);
     expect(bossPhaseFrame(bossPhaseFor('thor', 'jump-recover')!.phase, 0, 0, 90)).toBe(8);
+  });
+});
+
+describe('トールの突き', () => {
+  it('溜めは構え(0)、突きの州で突き出し(1→5)、硬直で引き戻す(5→0)=ピンポン。左向き扱い', async () => {
+    for (const st of ['tsuki-windup', 'tsuki', 'tsuki-recover']) {
+      expect(loopSrc.includes(`'${st}'`), st).toBe(true);
+      expect(bossPhaseFor('thor', st)?.spec.name, st).toBe('thor-tsuki');
+    }
+    expect(bossPhaseFrame(bossPhaseFor('thor', 'tsuki')!.phase, 0.999, 0, 90)).toBe(5);
+    expect(bossPhaseFrame(bossPhaseFor('thor', 'tsuki-recover')!.phase, 0.999, 0, 90)).toBe(0);
+    const m = await import('./enemySheets');
+    expect(m.sheetArtFacesRight('thor', 'thor-tsuki')).toBe(false);
   });
 });
