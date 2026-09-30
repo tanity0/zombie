@@ -101,3 +101,11 @@ describe('スカジの魔法1・魔法2', () => {
     expect(bossPhaseFrame(bossPhaseFor('skadi', 'cage-recover')!.phase, 0, 0, 90)).toBe(6);
   });
 });
+
+describe('スカジの歩き', () => {
+  it('歩きのシートを持ち、止まったら立ち絵へ戻る', async () => {
+    const m = await import('./enemySheets');
+    expect(m.walkSheetFrames('skadi')).toBe(11);
+    expect(m.walkStopsToIdle('skadi')).toBe(true);
+  });
+});
