@@ -18,8 +18,8 @@ describe('アイドルの狙撃・追尾弾', () => {
     expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-orb-recover')!.phase, 0, 0, 90)).toBe(1);
     expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-snipe-recover')!.phase, 0.999, 0, 90)).toBe(15);
   });
-  it('他の技(狙い撃ちの溜め・拳)は引かない', () => {
-    for (const st of ['idol-aim-windup', 'idol-punch-windup', 'chase']) {  // 狙い撃ちの溜めは立ち絵のまま
+  it('他の州(狙い撃ちの溜め・待機)は引かない', () => {
+    for (const st of ['idol-aim-windup', 'chase']) {  // 狙い撃ちの溜めは立ち絵のまま
       expect(bossPhaseFor('idol', st), st).toBeNull();
     }
   });
@@ -82,5 +82,14 @@ describe('アイドルの向き', () => {
     for (const n of [null, 'idol-snipe', 'idol-roll', 'idol-shot', 'idol-shot2', 'idol-walk']) {
       expect(m.sheetArtFacesRight('idol', n), String(n)).toBe(true);
     }
+  });
+});
+
+describe('アイドルのパンチ', () => {
+  it('溜めで 0→3、当たる瞬間(硬直の頭)で腕を伸ばし切る 4', () => {
+    const w = bossPhaseFor('idol', 'idol-punch-windup')!;
+    expect(w.spec.name).toBe('idol-punch');
+    expect(bossPhaseFrame(w.phase, 0.999, 0, 90)).toBe(3);
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-punch-recover')!.phase, 0, 0, 90)).toBe(4);
   });
 });
