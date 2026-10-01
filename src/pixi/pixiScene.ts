@@ -20042,7 +20042,7 @@ export class PixiScene {
         const nprog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / HB_TH.issen.nihilMs));
         const ntr = windupTremorPx(nprog, now);
         view.sprite.position.x += ntr;
-        // 居合腰の構えは段1から始める(狙いは段1でロック済み=段2で取り直さない)。
+        // 居合腰の構えは段1から始める(狙いは段2=赤の出始めでロックし、以後取り直さない・2026-10-01)。
         {
           const nfx = e.aiFromX ?? cx, nfy = e.aiFromY ?? cy;
           const ntx = e.aiTargetX ?? cx, nty = e.aiTargetY ?? cy;

@@ -885,7 +885,7 @@ describe('★突進のカウンター(弾き返し)の配線の不変条件(§5-
 //   足すこと(手間だが、「行き先を後から上書きする」構造を二度と作らせないための本数固定)。
 // =================================================================================================
 /**
- * `patch.ai(From|Target)(X|Y)` へ**代入**してよい形と本数(useGameLoop.ts 全域・**合計64本**)。
+ * `patch.ai(From|Target)(X|Y)` へ**代入**してよい形と本数(useGameLoop.ts 全域・**合計72本**(2026-10-01 一閃の本決まりで+4。数は下の count の合計))。
  * ★単位は**行ではなく代入**(`;` で割った後の1文)。★全て完全アンカー(`^…$`)=部分一致で通さない。
  */
 const AI_WRITE_LEDGER: { where: string; match: RegExp; count: number }[] = [
@@ -899,9 +899,9 @@ const AI_WRITE_LEDGER: { where: string; match: RegExp; count: number }[] = [
     match: /^patch\.aiTargetX = bcx \+ bs\.dashDirX \* travel$/, count: 1 },
   { where: '同上(Y)', match: /^patch\.aiTargetY = bcy \+ bs\.dashDirY \* travel$/, count: 1 },
   { where: '各州の照準ロック: 起点X=フレーム頭のボス中心(bcx)',
-    match: /^patch\.aiFromX = bcx$/, count: 11 },
+    match: /^patch\.aiFromX = bcx$/, count: 12 }, // ★+1(2026-10-01): 一閃の本決まり=赤が出る瞬間(issen-nihil の出口)
   { where: '各州の照準ロック: 起点Y=フレーム頭のボス中心(bcy)',
-    match: /^patch\.aiFromY = bcy$/, count: 11 },
+    match: /^patch\.aiFromY = bcy$/, count: 12 },
   { where: '各州の照準ロック: 到達点X=ロックした狙い点(aim.x)',
     match: /^patch\.aiTargetX = aim\.x$/, count: 6 },
   { where: '各州の照準ロック: 到達点Y=ロックした狙い点(aim.y)',
@@ -918,6 +918,8 @@ const AI_WRITE_LEDGER: { where: string; match: RegExp; count: number }[] = [
   // ---- 方向×レンジで置く到達点(★v0.25.3810: `[^;]+` をやめて式を書き下した=係数の差し込みが落ちる) ----
   { where: '一閃(台本ON)の到達点X', match: /^patch\.aiTargetX = bcx \+ \(ddx0 \/ ddl0\) \* HB_TH\.issen\.range$/, count: 1 },
   { where: '一閃(台本ON)の到達点Y', match: /^patch\.aiTargetY = bcy \+ \(ddy0 \/ ddl0\) \* HB_TH\.issen\.range$/, count: 1 },
+  { where: '一閃の本決まり(赤が出る瞬間・2026-10-01)の到達点X', match: /^patch\.aiTargetX = bcx \+ \(rdx \/ rdl\) \* HB_TH\.issen\.range$/, count: 1 },
+  { where: '同上(Y)', match: /^patch\.aiTargetY = bcy \+ \(rdy \/ rdl\) \* HB_TH\.issen\.range$/, count: 1 },
   { where: '一閃(?thorscript=0)の到達点X', match: /^patch\.aiTargetX = bcx \+ \(gdx \/ gdl\) \* HB_TH\.issen\.range$/, count: 1 },
   { where: '一閃(?thorscript=0)の到達点Y', match: /^patch\.aiTargetY = bcy \+ \(gdy \/ gdl\) \* HB_TH\.issen\.range$/, count: 1 },
   { where: '突きの到達点X', match: /^patch\.aiTargetX = bcx \+ \(ddx \/ ddl\) \* HB_TH\.tsuki\.range$/, count: 1 },

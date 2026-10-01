@@ -6751,7 +6751,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const aim = lockAttackAim();
                 if (move === 'issen') {
                   // ★一閃は必ず2段(research/THOR_ISSEN_REWORK.md §1)。段1=無の境地(紫の円・300ms)。
-                  // 狙いのロックは**ここで1回だけ**行い、段2で取り直さない(居合の型=「もう振り向かない」)。
+                  // ★ここでのロックは**仮**(紫の間の向きの基準)。本決まりは赤が出る瞬間(issen-nihil の出口)で、
+                  // その後は取り直さない(居合の型=「もう振り向かない」・2026-10-01で時刻だけ移した)。
                   // ?thorscript=0 でも紫の段は出す(§5-8: 技の見た目そのもの。台本フラグが切るのは硬直と連携キューだけ)。
                   // ★州名は**文字列リテラルで書く**(定数を代入しない)。ghostTelegraph.test.ts の
                   // 完全性検査が useGameLoop.ts をソース走査して州名を拾うため、定数にすると
@@ -7436,10 +7437,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 } else if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'issen-windup';
                   patch.bossStateUntil = newGameTime + HB_TH.issen.windup;
+                  // ★狙いは**赤が出る瞬間**に決める(社長指示2026-10-01「はい」)。紫(無の境地)が 300→2000ms へ
+                  // 伸びた(2026-08-27)後も段1の開始でロックしていたため、斬られる約2.5秒前の位置を狙っていた。
+                  // 紫の間は向きを示す絵を出していない(円だけ)ので、ここで決め直しても見た目と食い違わない。
+                  // 決めた後は取り直さない=居合の「もう振り向かない」はそのまま(赤0.5秒を見て避ける)。
+                  // 起点もこの瞬間のボス中心(紫の間に押されていても、赤い帯が体から出る)。
+                  const redAim = lockAttackAim();
+                  const rdx = redAim.x - bcx, rdy = redAim.y - bcy;
+                  const rdl = Math.hypot(rdx, rdy) || 1;
+                  patch.aiFromX = bcx; patch.aiFromY = bcy;
+                  patch.aiTargetX = bcx + (rdx / rdl) * HB_TH.issen.range;
+                  patch.aiTargetY = bcy + (rdy / rdl) * HB_TH.issen.range;
                 }
               } else if (st === 'issen-windup') {
                 // 一閃の段2(赤500ms)・静止(赤い明滅は描画側=pixiSceneがbossStateを見て演出・社長指示)。
-                // 方向は段1の開始時に既にロック済み=段2で取り直さない(居合の型・社長修正指示)。
+                // 方向は段2の開始(紫→赤の切り替わり)でロック済み=赤の間は取り直さない(居合の型・社長修正指示)。
+                // ★2026-10-01: ロックの時刻を段1の開始→段2の開始へ移した(上の issen-nihil の出口)。
                 // カウンターは**赤い帯**で成立する(§8-2。判定は上の共通ブロック=counterReach の宣言表)。
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   // research/AI_HUMANIZE.md B1(コマ台帳・記録専用・挙動不変): ①declared
