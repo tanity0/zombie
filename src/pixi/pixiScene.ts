@@ -6444,7 +6444,12 @@ export class PixiScene {
   // (useGameLoop がwindup時に一度設定して以降触らない)ので、dashWindDirと違い毎フレーム
   // fx/fy/tx/tyを撮り直す必要は無い=coil中は据え置き、明けたら最後の帯のまま endAt まで減衰。
   private coilBodyState = new Map<string, { fx: number; fy: number; tx: number; ty: number; endAt: number }>();
-  private latchFx(key: string, active: boolean, durMs: number, now: number, data: () => number[]):
+  private latchFx(key: string, active: boolean, durMs: number, now: number, data: () => number[],
+    // ★カウンターで終えた技の絵は出し切らない(社長指示2026-10-01「カウンターのエフェクト絵だけまだ消えない」)。
+    // 技の絵のラッチにだけ `Enemy.lastCounteredAt` を渡す。焼いた後にカウンターが入り、技が既に終わって
+    // いる(active=false)なら、着弾の前後を問わずラッチを捨てる。省略=従来どおり出し切る
+    // (移動の砂埃・ワープ・予約で本当に当たる印・赤い予告の消し、などは渡さない)。
+    counteredAt?: number):
     { t: number; d: number[]; t0: number; dur: number } | null {
     let L = this.fxLatches.get(key);
     if (active) {
@@ -6455,6 +6460,7 @@ export class PixiScene {
       L.armed = false; // active が明けた=次の立ち上がりで撮り直してよい
     }
     if (!L) return null;
+    if (!active && counteredAt !== undefined && counteredAt >= L.t0) { this.fxLatches.delete(key); return null; }
     const t = (now - L.t0) / L.dur;
     if (t >= 1) { if (!L.armed) this.fxLatches.delete(key); return null; }
     // t0=焼き付けた時刻。V1(4)の砂埃ジッター等「出現ごとに固定・フレーム間で不変」の種に使える。
@@ -6481,12 +6487,13 @@ export class PixiScene {
    * 戻り: `null`=カウンター無し(通常再生) / 数値=巻き戻し中の経過ms / `'drop'`=もう出さない(ラッチも捨てる)。
    */
   private latchCounterRewind(
-    key: string, L: { t0: number; dur: number }, impactMs: number,
+    key: string, L: { t0: number; dur: number }, _impactMs: number,
     counteredAt: number | undefined, now: number,
   ): number | null | 'drop' {
     if (counteredAt === undefined || counteredAt < L.t0) return null;
-    // 着弾後のカウンターは従来どおり振り切る(v0.25.3115「出し切る約束」)。
-    if (counteredAt >= L.t0 + Math.max(0, impactMs) - FX_IMPACT_TOLERANCE_MS) return null;
+    // ★着弾の前後を問わず戻す(社長指示2026-10-01「カウンターのエフェクト絵だけまだ消えない」)。
+    // カウンターは攻撃の判定と窓が重なった瞬間に成立する(v0.25.3947)ので、ほぼ全部が「着弾の瞬間」=
+    // 旧規則(着弾後は振り切る・v0.25.3115)では振りが最後まで出ていた。`_impactMs` は使わなくなった(呼び出し側の形は変えない)。
     const rewound = counterRewindElapsed(counteredAt - L.t0, now - counteredAt);
     if (rewound === null) { this.fxLatches.delete(key); return 'drop'; }
     return rewound;
@@ -6539,8 +6546,8 @@ export class PixiScene {
     extra: () => number[] = () => [],
   ): { wp: number | null; ap: number; fx: number; fy: number; tx: number; ty: number; d: number[] } | null {
     const bake = (): number[] => [e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy, ...extra()];
-    const post = this.latchFx(`${e.id}:${key}art`, armPost, postMs, now, bake);
-    let cmp = this.latchFx(`${e.id}:${key}cmp`, armWindup, windEff + postMs, now, bake);
+    const post = this.latchFx(`${e.id}:${key}art`, armPost, postMs, now, bake, e.lastCounteredAt);
+    let cmp = this.latchFx(`${e.id}:${key}cmp`, armWindup, windEff + postMs, now, bake, e.lastCounteredAt);
     // ★v0.25.3986: 溜め中(着弾=windEff経過より前)にカウンターされた技は、完了保険で再生しない
     // (発生しなかった攻撃を見た目だけ撃たせない)。実行まで出た技(post)は従来どおり出し切る。
     if (cmp && this.latchCounterCancelled(`${e.id}:${key}cmp`, cmp, windEff, e.lastCounteredAt, armWindup || armPost)) {
@@ -19219,7 +19226,7 @@ export class PixiScene {
           const bl = biteTelegraphLine(e, gameTime);
           return [bDirX, bDirY, bl?.tx ?? (cx + bDirX * 30), bl?.ty ?? (cy + bDirY * 30),
             e.biteAt ?? gameTime, batSlamCounterable(e) ? 1 : 0];
-        },
+        }, e.lastCounteredAt,
       );
       if (L) {
         const [dx, , ax, ay, at0, ctr] = L.d;   // 縦成分は使わない(上下は画面で固定=重力)
@@ -19271,7 +19278,7 @@ export class PixiScene {
           const bl = biteTelegraphLine(e, gameTime);
           return [sDirX, bl?.tx ?? (cx + sDirX * 36), bl?.ty ?? (cy + sDirY * 36),
             e.biteAt ?? gameTime, skeletonClawCounterable(e) ? 1 : 0];
-        },
+        }, e.lastCounteredAt,
       );
       if (SL) {
         const [sdx, sax, say, sat0, sctr] = SL.d;
@@ -19321,7 +19328,7 @@ export class PixiScene {
           const bl = biteTelegraphLine(e, gameTime);
           return [zDirX, bl?.tx ?? (cx + zDirX * 35), bl?.ty ?? (cy + zDirY * 35),
             e.biteAt ?? gameTime, zombieBiteCounterable(e) ? 1 : 0];
-        },
+        }, e.lastCounteredAt,
       );
       if (ZL) {
         const [zdx, zax, zay, zat0, zctr] = ZL.d;
@@ -19372,7 +19379,7 @@ export class PixiScene {
       const CL = this.latchFx(
         `${e.id}:coffin`, cRun, coffinLeadMs() + coffinTotalMs() + 200, now,
         () => [e.aiPhaseUntil ?? gameTime, (e.aiTargetX ?? cx) >= cx ? 1 : -1,
-          e.aiTargetX ?? cx, e.aiTargetY ?? (e.y + e.height)],
+          e.aiTargetX ?? cx, e.aiTargetY ?? (e.y + e.height)], e.lastCounteredAt,
       );
       if (CL) {
         const [cAt, cSgn, ctx2, cty2] = CL.d;
@@ -20346,7 +20353,7 @@ export class PixiScene {
           e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy,
           bs === 'issen-dash' ? HB_TH.issen.halfWidth : bs === 'tsuki' ? HB_TH.tsuki.halfWidth : HB_TH.harai.halfWidth,
           bs === 'issen-dash' ? 0 : bs === 'tsuki' ? 1 : bs === 'harai' ? 2 : 3, // 技の種別(柄の軸の付け方が違う)
-        ]);
+        ], e.lastCounteredAt);
         if (swL) {
           const [sfx, sfy, stx, sty, hw, kind] = swL.d;
           if (kind === 0) this.drawThorSlash(e.id, sfx, sfy, stx, sty, hw, swL.t, true, true, sfx, sfy, 'draw');
@@ -20516,7 +20523,7 @@ export class PixiScene {
         const toBite = biteWind ? Math.max(0, (e.bossStateUntil ?? gameTime) - gameTime) : 0;
         const biteTotal = toBite + BITE_SNAP_MS;
         const biteL = this.latchFx(`${e.id}:mimirjaw`, biteWind, biteTotal, now,
-          () => [cx, cy, biteTotal > 0 ? toBite / biteTotal : 0]);
+          () => [cx, cy, biteTotal > 0 ? toBite / biteTotal : 0], e.lastCounteredAt);
         // ★v0.25.3986: 噛む前(着弾=closeFより前)にカウンターされたら噛み切らない(絵だけの噛みつき禁止)。
         if (biteL && !this.latchCounterCancelled(`${e.id}:mimirjaw`, biteL, biteL.d[2] * biteL.dur, e.lastCounteredAt, biteWind)) {
           // 予告の赤円が出ている間は**毎フレームの実位置**(=赤円と同じ cx,cy)に付き、
@@ -20684,7 +20691,7 @@ export class PixiScene {
         // 伸び方をテーブルから引く。**伸び切る瞬間は判定の瞬間のまま**で、動き出す時刻だけが変わる。
         const punchTotal = toPunch + IDOL_TUNING.fx.punchFistHoldMs;
         const fistL = this.latchFx(`${e.id}:idolfist`, punchWind, punchTotal, now,
-          () => [punchTotal > 0 ? toPunch / punchTotal : 0]);
+          () => [punchTotal > 0 ? toPunch / punchTotal : 0], e.lastCounteredAt);
         if (fistL && view.punchAim !== undefined) {
           const hitF = fistL.d[0];
           const reach = hitF > 0
@@ -21547,7 +21554,7 @@ export class PixiScene {
               b2 = [e.ring2X, e.ring2Y, e.ring2X + d2x * MIMIR_LASER_VIS_RANGE, e.ring2Y + d2y * MIMIR_LASER_VIS_RANGE];
             }
             return [beamWind ? swordRemain : 0, beamWind ? SR_T.ringshot.active : Math.max(1, swordRemain), swordFx, swordFy, beamEx, beamEy, ...b2];
-          },
+          }, e.lastCounteredAt,
         );
         if (beamL && !(beamWind || beamActive || bs === 'ring-recover')) {
           const elapsed = now - beamL.t0, impactAt = beamL.d[0], activeMs = Math.max(1, beamL.d[1]);
@@ -21567,7 +21574,7 @@ export class PixiScene {
           `${e.id}:suriel-spin-complete`, spinWind || spinActive,
           (spinWind ? swordRemain : 0) + (spinWind ? SR_T.ringspin.active : spinActive ? swordRemain : SR_T.ringspin.active),
           now,
-          () => [spinWind ? swordRemain : 0, spinWind ? SR_T.ringspin.active : Math.max(1, swordRemain), cx, cy],
+          () => [spinWind ? swordRemain : 0, spinWind ? SR_T.ringspin.active : Math.max(1, swordRemain), cx, cy], e.lastCounteredAt,
         );
         if (spinL && !(spinWind || spinActive || bs === 'ring-spin-recover')) {
           const elapsed = now - spinL.t0;
@@ -21594,7 +21601,7 @@ export class PixiScene {
           `${e.id}:suriel-sweep-complete`, sweepWind || sweepActive,
           (sweepWind ? swordRemain : 0) + (sweepWind ? SR_T.sweep.active : sweepActive ? swordRemain : SR_T.sweep.active),
           now,
-          () => [sweepWind ? swordRemain : 0, sweepWind ? SR_T.sweep.active : Math.max(1, swordRemain), swordFx, swordFy, swordTx, swordTy],
+          () => [sweepWind ? swordRemain : 0, sweepWind ? SR_T.sweep.active : Math.max(1, swordRemain), swordFx, swordFy, swordTx, swordTy], e.lastCounteredAt,
         );
         if (sweepL && !(sweepWind || sweepActive || bs === 'sweep-recover')) {
           const elapsed = now - sweepL.t0;
@@ -21904,7 +21911,7 @@ export class PixiScene {
         const r = (triAir ? GLEN_TRIJUMP_RADIUS : genericAir ? PUMPKIN_EXPLOSION_RADIUS : HB_TH.jump.radius) * DUST_SCALE;
         const frac = (jToImpact + DUST_MS) > 0 ? jToImpact / (jToImpact + DUST_MS) : 0;
         return [jx, jy, r, frac];
-      });
+      }, e.lastCounteredAt);
       // ★v0.25.3986: 着地(=着弾)前にカウンターされたら土煙も出さない(着地は起きなかった)。
       if (jL && !this.latchCounterCancelled(`${e.id}:jdust${triAir ? triIdx : ''}`, jL, jL.d[3] * jL.dur, e.lastCounteredAt, airNow) && jL.t >= jL.d[3]) {
         const dp = jL.d[3] < 1 ? (jL.t - jL.d[3]) / (1 - jL.d[3]) : 0;
@@ -22053,7 +22060,7 @@ export class PixiScene {
         for (let ci = 1; ci <= 3; ci++) {
           // 中心も焼き付ける(中断で aiTarget が undefined 化しても円が本体へ寄らない)。
           const L = this.latchFx(`${e.id}:nihil${ci}`, livePhase === ci, chantEff + NIHIL_TAIL_MS, now,
-            () => [e.aiTargetX ?? cx, e.aiTargetY ?? cy]);
+            () => [e.aiTargetX ?? cx, e.aiTargetY ?? cy], e.lastCounteredAt);
           if (livePhase === ci) {
             const chantRemain = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
             chantIdx = ci;
@@ -22134,7 +22141,7 @@ export class PixiScene {
           // 4つ目=「この latch 全体のうち、どこが着弾の瞬間か」。溜め中は砂埃を出さないための境目。
           const impactFrac = (toImpact + DUST_MS) > 0 ? toImpact / (toImpact + DUST_MS) : 0;
           return [dx, dy, dr, impactFrac];
-        });
+        }, e.lastCounteredAt);
         // ★v0.25.3986: 着弾前にカウンターされたら砂埃も出さない(叩き/着地は起きなかった)。
         if (dustL && !this.latchCounterCancelled(`${e.id}:dust`, dustL, dustL.d[3] * dustL.dur, e.lastCounteredAt, dustMove !== null) && dustL.t >= dustL.d[3]) {
           const dp = dustL.d[3] < 1 ? (dustL.t - dustL.d[3]) / (1 - dustL.d[3]) : 0;
@@ -22175,7 +22182,7 @@ export class PixiScene {
           const stx = e.aiTargetX ?? cx, sty = e.aiTargetY ?? cy;
           const frac = (swToImpact + swActive) > 0 ? swToImpact / (swToImpact + swActive) : 0;
           return [sfx, sfy, Math.atan2(sty - sfy, stx - sfx), Math.hypot(stx - sfx, sty - sfy) || 1, frac];
-        });
+        }, e.lastCounteredAt);
         // ★v0.25.3986: 振る前(着弾前)にカウンターされたら弧を出さない(=「斬撃の弧だけ残る」の正体)。
         if (swL && !this.latchCounterCancelled(`${e.id}:sweepslash`, swL, swL.d[4] * swL.dur, e.lastCounteredAt, swWind) && swL.t >= swL.d[4]) {
           const sp = swL.d[4] < 1 ? (swL.t - swL.d[4]) / (1 - swL.d[4]) : 0;
@@ -22201,7 +22208,7 @@ export class PixiScene {
         const bjL = this.latchFx(`${e.id}:giantjaw`, biteWind, biteTotal, now, () => [
           e.aiFromX ?? cx, e.aiFromY ?? cy, e.aiTargetX ?? cx, e.aiTargetY ?? cy,
           biteTotal > 0 ? biteToClose / biteTotal : 0,
-        ]);
+        ], e.lastCounteredAt);
         // ★v0.25.3986: 噛む前(着弾前)にカウンターされたら噛み切らない(mimirjawと同じ規則)。
         if (bjL && !this.latchCounterCancelled(`${e.id}:giantjaw`, bjL, bjL.d[4] * bjL.dur, e.lastCounteredAt, biteWind)) {
           const [bfx2, bfy2, btx2, bty2, closeF] = bjL.d;
@@ -22232,7 +22239,7 @@ export class PixiScene {
           const ttx = e.aiTargetX ?? cx, tty = e.aiTargetY ?? cy;
           return [tfx, tfy, Math.atan2(tty - tfy, ttx - tfx), Math.hypot(ttx - tfx, tty - tfy) || 1,
             talonTotal > 0 ? talonTo / talonTotal : 0];
-        });
+        }, e.lastCounteredAt);
         // ★v0.25.3986: 振り切る前(溜め中)にカウンターされたら爪の振りを続けない(爪痕=判定側は
         // 予約(talonmark)が実態どおり描くので不変)。
         if (clL && !this.latchCounterCancelled(`${e.id}:talonclaw`, clL, clL.d[4] * clL.dur, e.lastCounteredAt, talonWind)) {
@@ -22997,7 +23004,7 @@ export class PixiScene {
         for (let ri = 0; ri < GLEN_REACH_SHOTS; ri++) {
           const sh = (e.gReachShots ?? []).find(x => x.idx === ri);
           const live = sh !== undefined && !sh.fired;
-          const rcL = this.latchFx(`${e.id}:reachart${ri}`, live, rTotal, now, () => [cx, cy, 0, 1]);
+          const rcL = this.latchFx(`${e.id}:reachart${ri}`, live, rTotal, now, () => [cx, cy, 0, 1], e.lastCounteredAt);
           if (!rcL) continue;
           // ★v0.25.3986: 発射(=着弾)前にカウンターされたら触手の絵を続けない。
           if (this.latchCounterCancelled(`${e.id}:reachart${ri}`, rcL, rHitF * rcL.dur, e.lastCounteredAt, live)) continue;
@@ -23484,7 +23491,7 @@ export class PixiScene {
           const frac = (toImpact + SHOCKWAVE_MS + SHOCKWAVE_TAIL_MS) > 0 ? toImpact / (toImpact + SHOCKWAVE_MS + SHOCKWAVE_TAIL_MS) : 0;
           // [frac, 本数, 帯1(5値), 帯2(5値)...] の平たい配列(latchFx の payload は number[])。
           return [frac, bandsThisFrame.length, ...bandsThisFrame.flat()];
-        });
+        }, e.lastCounteredAt);
         // ★v0.25.3986: 実行(着弾)前にカウンターされたら衝撃波を飛ばさない(出なかった攻撃の衝撃波禁止)。
         if (shL && !this.latchCounterCancelled(`${e.id}:shock`, shL, shL.d[0] * shL.dur, e.lastCounteredAt, bandWindup) && shL.t >= shL.d[0]) {
           const prog = shL.d[0] < 1 ? (shL.t - shL.d[0]) / (1 - shL.d[0]) : 1;
@@ -24084,7 +24091,7 @@ export class PixiScene {
       const dustL = this.latchFx(`${id}:phill-dive-dust`, isFall, toImpact + DUST_MS, now, () => {
         const impactFrac = (toImpact + DUST_MS) > 0 ? toImpact / (toImpact + DUST_MS) : 0;
         return [e.aiTargetX ?? bodyX, e.aiTargetY ?? groundY, PH_T.dive.radius * DUST_STOMP_SCALE, impactFrac];
-      });
+      }, e.lastCounteredAt);
       // ★v0.25.3986: 着地(=着弾)前にカウンターで落下が中断されたら砂埃を出さない。
       if (dustL && !this.latchCounterCancelled(`${id}:phill-dive-dust`, dustL, dustL.d[3] * dustL.dur, e.lastCounteredAt, isFall) && dustL.t >= dustL.d[3]) {
         const dp = dustL.d[3] < 1 ? (dustL.t - dustL.d[3]) / (1 - dustL.d[3]) : 0;
@@ -27500,7 +27507,7 @@ export class PixiScene {
     const L = this.latchFx(key, active, total, now, () => {
       const [x, y, r] = at();
       return [x, y, r, total > 0 ? toImpact / total : 0];
-    });
+    }, counteredAt);
     // 着弾(=叩く瞬間)前にカウンターされたら地割れも出さない(叩きは起きなかった)。
     if (L && this.latchCounterCancelled(key, L, L.d[3] * L.dur, counteredAt, active)) return;
     if (L && L.t >= L.d[3]) {
@@ -31551,7 +31558,7 @@ export class PixiScene {
       }
       // 着地の瞬間(t>0.93): 砂埃+花びら(旧: ホップ開始時に散っていた=毬が届く前で意味が逆だった)。
       const landL = this.latchFx(`${e.id}:suiu-land:${hopKey}`, tH > 0.93, DUST_MS, now,
-        () => [lx, ly, radius * 1.3]);
+        () => [lx, ly, radius * 1.3], e.lastCounteredAt);
       if (landL) this.drawDust(landL.d[0], landL.d[1], landL.d[2], landL.t, this.dustTintForStage(), this.dustAlpha(landL.t), landL.t0);
       if (tH > 0.93) this.triggerPetalOnce(e.id, `suiu-land:${hopKey}`, lx, ly, petalCount, now);
       return;
