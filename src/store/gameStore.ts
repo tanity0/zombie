@@ -4931,7 +4931,11 @@ const openShukuchiWindow = (get: () => GameState): void => {
   const p = get().player;
   if (!hasSkill(p, 'shukuchi')) return;
   const { windowMs } = shukuchiParams(skillLevel(p, 'shukuchi'));
-  const chain = p.shukuchiStriking ? (p.shukuchiChain ?? 0) + 1 : 0;
+  // 連鎖: ワープ斬撃の撃破=+1 / それ以外の撃破は、窓が開いている間なら**そのまま残す**(社長裁定2026-10-01:
+  // 「途切れたらリセット」=窓が切れるかワープ斬撃で倒せなかった時だけ0) / 窓が閉じていれば0から。
+  const chain = p.shukuchiStriking
+    ? (p.shukuchiChain ?? 0) + 1
+    : shukuchiWindowOpen(p.shukuchiWindowUntil, get().gameTime) ? (p.shukuchiChain ?? 0) : 0;
   useGameStore.setState(st => ({ player: {
     ...st.player, shukuchiWindowUntil: st.gameTime + windowMs, shukuchiChain: chain,
   } }));
@@ -7422,7 +7426,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     let { swung, hit, finish, killed } = r;
     // 刀を持っている時は振りが攻撃しない(刀はオート斬撃)=相手へ刀の一閃を直接出す(届く時だけ)。
     if (target && reachable && isKatanaMode(get().player)) {
-      const k = get().performKatanaStrike([target.id], p0.shukuchiStrikeMult ?? 1, false);
+      // 社長裁定(2026-10-01): 刀のワープ斬撃は**一閃**(一閃の倍率・処刑可=死神も乗る)。
+      const k = get().performKatanaStrike([target.id], KATANA_DASH_DAMAGE_MULT * (p0.shukuchiStrikeMult ?? 1), true);
       swung = true; hit = hit || k.hit; finish = finish || k.finish; killed += k.killed;
     }
     // スラッシャーのジャストリング(追撃の受付)はワープ斬撃では出さない(社長指定)。
@@ -9662,7 +9667,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
-    grantMeleeKillRewards(get, killed, player, gun, true, undefined, !ghostId /* 縮地: 本人の刀だけ(守護霊の刀では開かない) */);
+    grantMeleeKillRewards(get, killed, player, gun, true, undefined, !ghostId && allowFinisher /* 縮地: 本人の一閃だけ(オート斬撃・守護霊の刀では開かない=社長裁定2026-10-01) */);
     let katanaFinishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301)
     // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも出す(?ghostzoom=0で従来=除外1へ)。
     if ((finisherHit || bossFinishHit) && (!isGhost || GHOST_ZOOM_TRIAL_ENABLED)) {

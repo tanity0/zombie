@@ -193,6 +193,37 @@ describe('縮地: 行けない場所へは出ない', () => {
   });
 });
 
+describe('縮地: 刀は一閃に限る / 窓が開いている間の連鎖(社長裁定2026-10-01)', () => {
+  const katana = () => useGameStore.setState(st => ({ player: { ...st.player, subWeapons: [...st.player.subWeapons, 'katana'] } }));
+  it('刀のワープ斬撃は一閃(気絶中の敵を処刑できる)', () => {
+    setup(); katana();
+    const gt = useGameStore.getState().gameTime;
+    const z = zombieAt(300, 0, 99999, 'z');
+    useGameStore.setState({ enemies: [{ ...z, stunUntil: gt + 5000 }] });
+    openWindow();
+    const r = warpAndStrike();
+    expect(r?.finish).toBe(true);
+  });
+  it('刀のオート斬撃で倒しても窓は開かない。一閃で倒すと開く', () => {
+    setup(); katana();
+    useGameStore.setState({ enemies: [zombieAt(20, 0, 1, 'a')] });
+    useGameStore.getState().performKatanaStrike(['a'], 1, false);
+    expect(useGameStore.getState().player.shukuchiWindowUntil ?? 0).toBe(0);
+    useGameStore.setState({ enemies: [zombieAt(20, 0, 1, 'b')] });
+    useGameStore.getState().performKatanaStrike(['b'], 3, true);
+    expect(useGameStore.getState().player.shukuchiWindowUntil ?? 0).toBeGreaterThan(useGameStore.getState().gameTime);
+  });
+  it('窓が開いている間のワープ以外の撃破は、窓を延ばして連鎖は残す', () => {
+    setup();
+    openWindow(3);
+    useGameStore.setState({ enemies: [zombieAt(10, 0)] });
+    useGameStore.getState().triggerCounter(Date.now()); // 前隙の解決=通常の振り(ワープの予約に入らない)
+    const p = useGameStore.getState().player;
+    expect(p.shukuchiChain).toBe(3);
+    expect(p.shukuchiWindowUntil ?? 0).toBeGreaterThan(useGameStore.getState().gameTime);
+  });
+});
+
 describe('縮地: 台帳とガチャ', () => {
   it('超レアで、眠っておらず、ガチャの超レア枠から出る', async () => {
     const c = await import('../data/campaign');
