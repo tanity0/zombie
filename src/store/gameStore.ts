@@ -7730,7 +7730,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
     // 縮地(§32): ワープ斬撃の連鎖の上乗せ(2発目から+20%ずつ)。ワープ斬撃以外では 1。
-    const meleeDamage = meleeSwingBaseDamage(melee, player) * (player.shukuchiStrikeMult ?? 1); // キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率
+    // 振りの素ダメージ(キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率)。振りから出る**他のもの**(ブーメラン・物壊し・
+    // 設置物・死神の波及・救難信号)はこちら。敵への斬撃だけ、縮地(§32)の連鎖の上乗せを掛けた meleeDamage を使う。
+    const swingBaseDamage = meleeSwingBaseDamage(melee, player);
+    const meleeDamage = swingBaseDamage * (player.shukuchiStrikeMult ?? 1); // ワープ斬撃以外は ×1
     // ★処刑(気絶敵フィニッシュ/ボス5×/強個体3×)は skillOutgoingDamageMult を通らない経路なので、
     // 永続育成の攻撃力(research/GROWTH.md v4・社長裁定Q1)は**素ダメージへ前掛け**して渡す。
     // applyBrokenMeleeFatal は `baseDamage×5 + 報酬予算の残量` なので、前掛けにすると育成は
@@ -7751,7 +7754,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // ドローンブーメラン: 近接攻撃(このスイング)と同じ入力で発動(自動ではない)。5秒クールダウン中は不可。
     // ※発火経路を近接攻撃と統一(以前の「立ち止まり中」専用ゲートは廃止=近接と同ロジック)。
-    fireDroneBoomerangOnSwing(get, player, swingOwner, gameTime, meleeDamage);
+    fireDroneBoomerangOnSwing(get, player, swingOwner, gameTime, swingBaseDamage);
 
     // 金環(gold-ring・UNIQUE_WEAPONS.md §19): ブーメランと同じ「近接スイング相乗り」入口(§19-3)。
     fireGoldRingOnSwing(get, player, swingOwner, gameTime);
@@ -7864,7 +7867,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §8裁定済み#16: swingAt=「指を離した瞬間」(前隙が有れば実測でそれだけ早い・無ければnowと同じ)。
       get().noteMeleeSwingPressedAt(swingAt);
       // 刀でも松明・卵を破壊できる(刀の間合いの円)。
-      get().breakPropsAlong(pcx, pcy, 1, 0, 0, katanaRange(player), meleeDamage * 2.5);
+      get().breakPropsAlong(pcx, pcy, 1, 0, 0, katanaRange(player), swingBaseDamage * 2.5);
       return { swung: false, hit: false, finish: false, killed: 0 };
     }
 
@@ -7910,7 +7913,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         color: 'rgba(125,211,252,1)', createdAt: now, duration: WHIP_DRAW_MS,
       });
       // 鞭でも松明・卵を破壊できる(線=カプセル範囲。ハリケーン有無に関わらず毎振り)。
-      get().breakPropsAlong(pcx, pcy, ux, uy, reach, WHIP_HIT_HALF_WIDTH, meleeDamage * 2.5);
+      get().breakPropsAlong(pcx, pcy, ux, uy, reach, WHIP_HIT_HALF_WIDTH, swingBaseDamage * 2.5);
       // 鞭でもスキルの手榴弾を起爆できる(鞭の当たり範囲=線カプセル内の手榴弾を即起爆)。通常近接と同じ挙動。
       {
         const whipGrenadeIds = get().projectiles
@@ -8028,7 +8031,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 近接スイングの合流点はここ1箇所なので、刀/鞭/ナイフのどれで振っても同じ1本を通る。
     // 自分の設置物は `hostile !== true` なので対象外(誤爆で自分のタレットを壊さない)。
     {
-      const brokenPlaced = get().damageHostilePlacements(pcx, pcy, meleeRange, meleeDamage);
+      const brokenPlaced = get().damageHostilePlacements(pcx, pcy, meleeRange, swingBaseDamage);
       if (brokenPlaced > 0) {
         // 壊した手応え(既存プールのみ・新規素材なし)。判定は上で済んでいるので絵だけ。
         get().spawnBurst(pcx, pcy, '#fbbf24', 10 * brokenPlaced);
@@ -8600,9 +8603,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // スキル: リーパー(フィニッシュ波及=スイング範囲内の敵を全員フィニッシュ)/ カウンターマスター(成立時ノックバック)。
-    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, meleeRange, meleeDamage, meleeFinisherAt(killed));
+    applyMeleeFinishSkillSpread(get, player, killed.some(k => k.finisher), pcx, pcy, meleeRange, swingBaseDamage, meleeFinisherAt(killed));
     // スキル: 救難信号(近接ヒット時、一定確率で味方が援護攻撃=必中・倍率1)。
-    applyRescueSignalProc(get, player, meleeDamage, meleeHitEnemyIds, pcx, pcy);
+    applyRescueSignalProc(get, player, swingBaseDamage, meleeHitEnemyIds, pcx, pcy);
     // 吸血覚醒(Lv3・v0.25.3300): 近接ヒットでも1%回復(1スイング1回・控えめdrain)。
     applyVampireMeleeHeal(get, player, meleeHitEnemyIds, pcx, pcy);
     get().registerMultiHit(slashAt.length); // キャラ固有 ヘビーガンナー: 近接が2体以上に当たれば爆発範囲バフ
@@ -8632,7 +8635,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
-    const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, meleeDamage * 2.5);
+    const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, swingBaseDamage * 2.5);
 
     // 分身(サブウェポン): READY(分身なし＆CD明け)で近接攻撃すると、攻撃位置に分身を1体生成(固定)。
     // 以後は分身が自律的に1秒ごと×5秒の近接攻撃を繰り返す(tickShadowClone)。ここに到達するのは通常
@@ -9712,8 +9715,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const gun = getActiveGun(player);
     const meleeWeapon = player.weapons.find(w => w.isMelee);
-    // 近接の素ダメージ。鞭は通常0.25倍。縮地(§32)のワープ斬撃なら連鎖の上乗せも掛ける(ワープ斬撃以外は 1)。
-    const meleeBase = (meleeWeapon?.damage ?? 6) * (player.shukuchiStrikeMult ?? 1);
+    const meleeBase = meleeWeapon?.damage ?? 6;     // 近接の素ダメージ。鞭は通常0.25倍
+    // 敵への打撃だけ縮地(§32)の連鎖の上乗せを掛ける(ワープ斬撃以外は ×1)。救難信号・死神の波及は meleeBase のまま。
+    const strikeBase = meleeBase * (player.shukuchiStrikeMult ?? 1);
     const meleeCritChance = meleeWeapon?.critChance ?? 0;
     // ハリケーン発動中の吸引半径内にいる敵は「巻き込み中」とみなし、鞭を通常倍率(1.0)で当てる。
     const hurricaneR2 = hurricane ? hurricane.radius * hurricane.radius : 0;
@@ -9773,7 +9777,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const whipMult = inHurricane(ecx, ecy) ? 1 : WHIP_DAMAGE_MULT;
       // 処刑(ボス5×/強個体3×/致命の一撃)は skillOutgoingDamageMult を通らないので、育成の攻撃力は
       // 素ダメージへ前掛けする(research/GROWTH.md v4・ナイフ/分身/刀/守護霊と同じ扱い)。
-      const whipExecBase = meleeBase * whipMult * (player.growthAtkMult ?? 1) * gpDmgScale;
+      const whipExecBase = strikeBase * whipMult * (player.growthAtkMult ?? 1) * gpDmgScale;
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil;
       if (stunned) {
         // 近接フィニッシュ: スタン敵は即時処刑(ボスは5×でスタン解除。§6.22 M47でネームド/questTarget/
@@ -9815,7 +9819,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      let dmg = meleeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
       // ★SAME_ARENA §9(検収監査 重大③): 鞭にも致命(×5+最大HP25%)とmelee削り(site1と同型・鞭はプレイヤー本人のみの武器)。
       let pvpMeleePatch: Partial<Enemy> = {};
       if (isGuardianPhantom(enemy.type)) {

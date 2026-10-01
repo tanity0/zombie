@@ -160,6 +160,22 @@ describe('縮地: 入口と不成立(検収監査の是正)', () => {
   });
 });
 
+describe('縮地: 上乗せはワープ斬撃の打撃だけ', () => {
+  it('同じ振りで投げるドローンブーメランには上乗せが乗らない', () => {
+    const boomDamage = (chain: number) => {
+      setup();
+      useGameStore.setState(st => ({ player: { ...st.player, subWeapons: ['drone-boomerang'], subWeaponCooldowns: {} } }));
+      useGameStore.setState({ enemies: [zombieAt(300, 0, 99999)] });
+      openWindow(chain);
+      warpAndStrike();
+      return useGameStore.getState().projectiles.find(pr => pr.weaponType === 'drone-boomerang-projectile')?.damage;
+    };
+    const base = boomDamage(0);
+    expect(base).toBeGreaterThan(0);
+    expect(boomDamage(4)).toBe(base);
+  });
+});
+
 describe('縮地: 台帳とガチャ', () => {
   it('超レアで、眠っておらず、ガチャの超レア枠から出る', async () => {
     const c = await import('../data/campaign');
