@@ -44,9 +44,14 @@ describe('フィルの演出2(手を前に出す)', () => {
     expect(Math.min(...seen)).toBe(0);
     expect(Math.max(...seen)).toBe(SP.loopFrom - 1);
   });
-  it('★発動と同時に 12(放つ姿)→ 以後は 12〜15 を往復', () => {
+  it('★発動と同時に 12(放つ姿)→ 15 まで突き出し切って、末コマで止める(社長指示2026-10-01)', () => {
     expect(phillReleaseFrame(SP, null, 0, 90)).toBe(SP.loopFrom);
     const seq = Array.from({ length: 13 }, (_, s) => phillReleaseFrame(SP, null, s * 90 + 1, 90));
+    expect(seq).toEqual([12, 13, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]);
+  });
+  it('holdLast を付けない release は従来どおり往復', () => {
+    const pp = { ...SP, holdLast: false };
+    const seq = Array.from({ length: 13 }, (_, s) => phillReleaseFrame(pp, null, s * 90 + 1, 90));
     expect(seq).toEqual([12, 13, 14, 15, 14, 13, 12, 13, 14, 15, 14, 13, 12]);
   });
   it('2枚とも同じ立ち絵・同じ背丈合わせ・16コマ', () => {

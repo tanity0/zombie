@@ -1364,7 +1364,8 @@ export const sheetDeferred = (idleTexName: string): boolean =>
  *   読み: 0〜5=身を沈めて腕を引く / 6〜11=羽を広げ腕を前へ運ぶ / **12〜15=腕を前へ突き出し切る(放つ姿)**。
  *   使う技: 槍の扇・羽根撃ち・金の輪・輪投げ(=手の先から前へ飛ばす技)+羽の3技(薙ぎ払い・突き・連撃)。
  *   ★急降下(`phill-dive-`)だけは**待機のまま**(社長選択2026-09-27。落ちる動きは位置の移動で見せている)。
- *   送り(`release`): **溜めの長さに 0〜11 を割り付け**、**溜めが明けた瞬間=発動と同時に 12 を出し**、以後は技が終わるまで 12〜15 を往復。
+ *   送り(`release`): **溜めの長さに 0〜11 を割り付け**、**溜めが明けた瞬間=発動と同時に 12 を出し**、12→15 と突き出し切って
+ *   **末コマ(15)で止める**(社長指示2026-10-01「技中は数コマピンポンしてるっぽいけど、最後のコマでストップで」。旧=12〜15 を往復)。
  *
  * どちらも右向き(立ち絵と同じ)・足元は全コマ最下行。頭上の空きのぶん枠が高く、0コマ目を立ち絵(192×256)へ重ねると
  * 0.73倍(枠の比 0.86)=そのままだと本体が約15%縮む ⇒ **`bodyH = 256×0.73 ≒ 187`**(2枚とも同じ値)。
@@ -1379,6 +1380,8 @@ export interface PhillCastSpec {
   readonly techs: readonly string[];
   /** `fixed`=溜め開始から一定の速さで流す / `release`=溜めに割り付け、発動と同時に往復へ */
   readonly sync: 'fixed' | 'release';
+  /** `release` の発動後、往復せず**末コマで止める**(省略=往復)。 */
+  readonly holdLast?: boolean;
 }
 export const PHILL_CAST_SHEETS: readonly PhillCastSpec[] = [
   {
@@ -1386,7 +1389,7 @@ export const PHILL_CAST_SHEETS: readonly PhillCastSpec[] = [
     techs: ['phill-lightrain-', 'phill-meteor-', 'phill-summon-', 'phill-cage-', 'phill-judgment-'],
   },
   {
-    idle: 'phill', name: 'phill-cast2', frames: 16, loopFrom: 12, bodyH: 187, sync: 'release',
+    idle: 'phill', name: 'phill-cast2', frames: 16, loopFrom: 12, bodyH: 187, sync: 'release', holdLast: true,
     // ★羽の3技(薙ぎ払い・突き・連撃)も演出2(社長選択2026-09-27「演出2(手を前へ)」)。
     //   羽そのものは別スプライト(`phill-wings`)が従来どおり速く大きく羽ばたく。急降下は待機のまま(社長選択)。
     techs: ['phill-lancefan-', 'phill-feathershot-', 'phill-goldring-', 'phill-ringtoss-',
@@ -1428,7 +1431,7 @@ export const phillCastFrame = (elapsedMs: number, frameMs: number, spec: PhillCa
 /**
  * 演出2(`release`)のコマ。
  * - 溜めの間(`windupProg` 0..1): 0〜(`loopFrom`-1) を溜めの長さへ割り付ける。
- * - 発動後(`sinceRelease` ≥ 0 ms): **発動の瞬間に `loopFrom`** → 以後は `loopFrom`〜末を往復。
+ * - 発動後(`sinceRelease` ≥ 0 ms): **発動の瞬間に `loopFrom`** → 以後は `loopFrom`〜末を往復(`holdLast` なら末コマで止める)。
  */
 export const phillReleaseFrame = (
   spec: PhillCastSpec, windupProg: number | null, sinceReleaseMs: number, frameMs: number,
@@ -1440,6 +1443,7 @@ export const phillReleaseFrame = (
   const step = Number.isFinite(sinceReleaseMs) && sinceReleaseMs > 0 && frameMs > 0 ? Math.floor(sinceReleaseMs / frameMs) : 0;
   const last = spec.frames - 1, from = spec.loopFrom, span = last - from;
   if (span <= 0) return from;
+  if (spec.holdLast) return Math.min(last, from + step); // 突き出し切って末コマで止める
   const i = step % (span * 2);
   return i <= span ? from + i : last - (i - span);
 };
