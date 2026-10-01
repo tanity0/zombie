@@ -16,6 +16,7 @@
 // 時間の単位(重要・§6.28-1-0): このファイルの天使勢は「壁時計系」。定数はそのまま実効msで書く
 // (giantbatのようにENEMY_ATTACK_SPEED_MULTを掛けも割りもしない)。
 import { COUNTER_CUT_GAP_MS } from './counterCut';
+import { counterClashPoint } from './counterClash';
 import type { Enemy, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
 import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
@@ -277,6 +278,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   st.spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
   st.spawnBurst(hitX, hitY, '#38bdf8', 14);
   st.spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+  { const cl = counterClashPoint(cp.x + cp.width / 2, cp.y + cp.height / 2, hitX, hitY); st.spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
   // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
   useGameStore.setState(stt => ({ player: {
     ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,

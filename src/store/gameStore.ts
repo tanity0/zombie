@@ -1,4 +1,5 @@
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
+import { counterClashPoint } from '../utils/counterClash';
 import { create } from 'zustand';
 import type { TutorialSlide } from '../data/tutorials';
 import { isAvatarId, type AvatarId } from '../data/avatars';
@@ -2389,9 +2390,8 @@ export const KILL_SLASH_SCALE = KILL_SLASH_TARGET_WIDTH_PX / (130 * (KILL_SLASH_
 // ★カウンター成立のガラスの砕け(社長支給VFX 2026-10-01「カウンター時のVFX」)。分類②=派手さの絵(判定なし)。
 // 原盤は art-masters/fx-counter-shatter-4x4-15f-3456x2112.png(4×4に15コマ・透過あり)。配信は共通の外枠
 // (744×408)で切って 272×149 に縮めた横並び15コマ(4080×149・メモリ約2.4MB)。透過があるので通常合成。
-// 出す場所は「Counter!」の文字と同じ=成立の全経路(プレイヤー/守護霊/幻影の15箇所)が spawnCallout を通るので、
-// そこで1本に束ねる(1経路だけに書くと取りこぼす=CLAUDE.md「同じ動作を持つ全員に付ける」)。
-export const COUNTER_CALLOUT_TEXT = 'Counter!';
+// 出す場所は**カウンターした地点**(社長指示2026-10-01)=`counterClashPoint`。成立の全経路
+// (プレイヤー/守護霊/幻影)が `spawnCounterShatter` を自分で呼ぶ(「Counter!」の文字の位置とは別)。
 export const COUNTER_SHATTER_TEXTURE = 'fx/counter-shatter';
 export const COUNTER_SHATTER_COLS = 15;
 // ★クリエイティブ監査(2026-10-01)を受けて: 尺はカウンターのスロー(700ms)より長く=文字より先に消えない。
@@ -6273,6 +6273,8 @@ interface GameState {
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
+  // カウンター成立のガラスの砕け(社長支給2026-10-01)。x/y=カウンターした地点(counterClashPoint)。
+  spawnCounterShatter: (x: number, y: number) => void;
   // rot(v0.25.4202): 絵の向き(rad)。VisualEffect側は元から rot を持っていたが、この入口が渡していなかった。
   // cols/additive(社長指示2026-09-16・fx/kill-slash): 横並びシートのコマ送り/加算合成。未指定=従来どおり。
   spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number }) => void;
@@ -8392,6 +8394,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
       get().spawnBurst(p.x, p.y, '#38bdf8', 14);
       get().spawnCallout(p.x, p.y - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
+      { const pl = get().player; const cl = counterClashPoint(pl.x + pl.width / 2, pl.y + pl.height / 2, p.x, p.y); get().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
     }
     for (const p of bossFatalHits) {
       showBossFatalPresentation(get, p.x, p.y, p.labelY);
@@ -9505,6 +9508,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
       get().spawnBurst(p.x, p.y, '#38bdf8', 14);
       get().spawnCallout(p.x, p.y - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
+      { const pl = get().player; const cl = counterClashPoint(pl.x + pl.width / 2, pl.y + pl.height / 2, p.x, p.y); get().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
     }
     for (const p of katanaBossFatalHits) {
       showBossFatalPresentation(get, p.x, p.y, p.labelY);
@@ -9781,6 +9785,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnRing(p.x, p.y, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
       get().spawnBurst(p.x, p.y, '#38bdf8', 14);
       get().spawnCallout(p.x, p.y - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb });
+      { const pl = get().player; const cl = counterClashPoint(pl.x + pl.width / 2, pl.y + pl.height / 2, p.x, p.y); get().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
     }
     for (const p of whipBossFatalHits) {
       showBossFatalPresentation(get, p.x, p.y, p.labelY);
@@ -21519,6 +21524,21 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // Big bold floating callout (e.g. "Kill!", "Counter!"). Rises and fades like
   // a damage number but larger.
+  // ★カウンター成立のガラスの砕け(上の COUNTER_SHATTER_*)。x/y=**カウンターした地点**
+  // (`counterClashPoint`=弾いた側から攻撃が来た方へ出た点)。成立の全経路が自分の2点から地点を出して呼ぶ。
+  spawnCounterShatter: (x, y) => {
+    get().spawnImageMark(x, y, COUNTER_SHATTER_TEXTURE, {
+      scale: COUNTER_SHATTER_SCALE,
+      duration: COUNTER_SHATTER_DURATION_MS,
+      cols: COUNTER_SHATTER_COLS,
+      noPop: true,
+      fadeFrom: COUNTER_SHATTER_FADE_FROM,
+      frameEaseOut: true,
+      tint: COUNTER_SHATTER_TINT,
+      rot: (Math.random() * 2 - 1) * COUNTER_SHATTER_ROT_JITTER + (Math.random() < 0.5 ? Math.PI : 0),
+    });
+  },
+
   spawnCallout: (x, y, text, color, opts) => {
     const now = Date.now();
     const effect: VisualEffect = {
@@ -21540,20 +21560,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
     });
-    // カウンター成立のガラスの砕け(上の COUNTER_SHATTER_*)。呼び出し側は全て「成立点の12px上」に
-    // 文字を置いているので、砕けは成立点そのもの(y+12)に出す。
-    if (text === COUNTER_CALLOUT_TEXT) {
-      get().spawnImageMark(x, y + 12, COUNTER_SHATTER_TEXTURE, {
-        scale: COUNTER_SHATTER_SCALE,
-        duration: COUNTER_SHATTER_DURATION_MS,
-        cols: COUNTER_SHATTER_COLS,
-        noPop: true,
-        fadeFrom: COUNTER_SHATTER_FADE_FROM,
-        frameEaseOut: true,
-        tint: COUNTER_SHATTER_TINT,
-        rot: (Math.random() * 2 - 1) * COUNTER_SHATTER_ROT_JITTER + (Math.random() < 0.5 ? Math.PI : 0),
-      });
-    }
   },
 
   // 爆発の6コマflipbook(社長支給v0.25.3283「爆発 全部用」)。全ての爆発FXがこれを呼ぶ

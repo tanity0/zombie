@@ -130,6 +130,7 @@ import {
   type CombatEffects, type CombatTunables,
 } from '../utils/combatTick';
 import { COUNTER_CUT_GAP_MS, scriptResumeFlag } from '../utils/counterCut';
+import { counterClashPoint } from '../utils/counterClash';
 // SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の判定値・確率テーブル(純関数・rng注入でテスト済み)。
 // vampire/gravity-shot/execution-shock/blood-treadsの判定はgameStore.ts側(damageEnemy/
 // applyMeleeFinishSkillSpread/tickBloodSpikesという既存の合流点)に乗せてあるので、ここでは
@@ -6502,6 +6503,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
                 spawnBurst(hitX, hitY, '#38bdf8', 14);
                 useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+                { const cl = counterClashPoint(pcx, pcy, hitX, hitY); useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
                 // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
                 useGameStore.setState(stt => ({ player: {
                   ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
@@ -6601,6 +6603,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
                 spawnBurst(hitX, hitY, '#38bdf8', 14);
                 useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+                { const cl = counterClashPoint(pcx, pcy, hitX, hitY); useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
                 // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
                 useGameStore.setState(stt => ({ player: {
                   ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
@@ -13732,6 +13735,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().spawnGlow(gcx, gcy, 43, 'rgba(56,189,248,', 360);
             // 「Counter!」の文字も出す(社長裁定2026-08-20「幻影パリィにも文字出して」=v9未決の決着)。
             useGameStore.getState().spawnCallout(gcx, gcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+            { const cl = counterClashPoint(gcx, gcy, projectile.x + projectile.width / 2, projectile.y + projectile.height / 2); useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // 幻影が弾を弾いた地点
             useGameStore.getState().triggerHitImpact(
               COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, gcx, gcy,
             );

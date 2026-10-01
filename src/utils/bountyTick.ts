@@ -15,6 +15,7 @@
 //    werewolf定数)を複製して使う(=誤学習防止。複製である旨は各定数のコメントに明記)。
 //  - ★v0.25.3558: 数値は bountyScript.ts の可変テーブル(BR_T/BM_T/BB_T/MK_T)へ移した。werewolf/
 //    pumpkin 由来の値は**テーブル側で複製**し、実体との一致を bountyScript.test.ts が機械検査する。
+import { counterClashPoint } from './counterClash';
 import type { Enemy, EnemyType, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
 import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
@@ -548,6 +549,7 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
   g.spawnRing(hx, hy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
   g.spawnBurst(hx, hy, '#38bdf8', 14);
   g.spawnCallout(hx, hy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+  { const cl = counterClashPoint(cp.x + cp.width / 2, cp.y + cp.height / 2, hx, hy); g.spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
   useGameStore.setState(stt => ({ player: {
     ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
     counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),

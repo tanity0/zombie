@@ -26,6 +26,7 @@
 
 import type { Enemy, Player } from '../types/game';
 import { scriptResumeFlag, shouldCutBossMove } from './counterCut';
+import { counterClashPoint } from './counterClash';
 import { GLOW_R_L, GLOW_R_S } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
@@ -367,6 +368,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     fx.spawnRing(bpcx, bpcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
     fx.spawnBurst(bpcx, bpcy, '#38bdf8', 14);
     fx.spawnCallout(bpcx, bpcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+    { const b0 = parriedEnemyIds[0]; const cl = counterClashPoint(bpcx, bpcy, b0.bx, b0.by); useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点(弾いた爆風/帯の方へ)
     useGameStore.setState(st => ({
       // 弾いた直後は敵がプレイヤーに重なっている(着地)ので、通常接触ダメージで被弾しないよう
       // 短い無敵(i-frame)を付与。これで「カウンターしたのに被弾」を防ぐ。
@@ -743,6 +745,7 @@ export const applyEnemyProjectileHits = (
   const liveProjectiles = useGameStore.getState().projectiles;
   const incoming = checkProjectilePlayerCollisions(liveProjectiles, player);
   let reflectedAny = false;
+  let reflectedAt: { x: number; y: number } | null = null; // 最初に打ち返した弾の位置(カウンターした地点の向き)
   for (const proj of incoming) {
     const currentPlayer = useGameStore.getState().player;
     // ★紫の文法(SAME_ARENA O-3): `noCounter` の弾は**打ち返せない**。既定(未設定)は従来どおり反射する
@@ -753,6 +756,7 @@ export const applyEnemyProjectileHits = (
       // 反射1回分は共有関数(主語=プレイヤー。ghostId未指定=従来と1bit同値)。
       applyCounterReflect(proj.id, now, currentPlayer, tunables);
       reflectedAny = true;
+      if (reflectedAt === null) reflectedAt = { x: proj.x + proj.width / 2, y: proj.y + proj.height / 2 };
     } else {
       const wasVulnerable = !useGameStore.getState().player.invulnerable;
       const rnMult = redNightActive ? 2 : 1;
@@ -861,6 +865,7 @@ export const applyEnemyProjectileHits = (
     fx.spawnRing(pcx, pcy, 14, 135, 'rgba(56,189,248,0.9)', 3, tunables.counterReflectSlowMs);
     fx.spawnBurst(pcx, pcy, '#38bdf8', 14);
     fx.spawnCallout(pcx, pcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+    { const cl = reflectedAt ? counterClashPoint(pcx, pcy, reflectedAt.x, reflectedAt.y) : { x: pcx, y: pcy }; useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // 弾を打ち返した地点
   }
 };
 
@@ -1844,6 +1849,11 @@ export const applyContactDamage = (
     fx.spawnRing(ppx, ppy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
     fx.spawnBurst(ppx, ppy, '#38bdf8', 14);
     fx.spawnCallout(ppx, ppy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+    {
+      const de = useGameStore.getState().enemies.find(e => e.id === dashParried[0]);
+      const cl = de ? counterClashPoint(ppx, ppy, de.x + de.width / 2, de.y + de.height / 2) : { x: ppx, y: ppy };
+      useGameStore.getState().spawnCounterShatter(cl.x, cl.y); // カウンターした地点(弾いた敵の方へ)
+    }
     useGameStore.setState(st => ({
       // 弾いた直後は突進してきた敵が重なっているので、短い無敵で次フレームの接触被弾を防ぐ。
       // counter-master v2: カウンター成立(突進パリィ)時のみCDリファンド(未所持は無変換)。

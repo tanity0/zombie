@@ -24,6 +24,7 @@
 //    `knockbackShoveUntil` / `liftUntil` / decideGhost の内部CD・リロードは `Date.now()`。
 //    **混ぜて比較しない**。このファイルは両方を引数で受け取り、それぞれの世界の中だけで比較する。
 //  - 慣性: 振りの絵(踏み込み→戻り)は描画側(pixiScene)がイーズで出す。判定は即発の1回。
+import { counterClashPoint } from './counterClash';
 import type { Enemy, EnemyType, Player, Projectile, SubWeaponKey, Weapon, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
 import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
@@ -630,6 +631,7 @@ const counteredByPlayer = (
   g.spawnBurst(bcx, bcy, '#38bdf8', 14);
   g.spawnGlow(bcx, bcy, 43, 'rgba(56,189,248,', 360);
   g.spawnCallout(bcx, bcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+  { const cl = counterClashPoint(pcx, pcy, bcx, bcy); g.spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
   g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, bcx, bcy);
 };
 
@@ -792,6 +794,7 @@ const consumePhantomParry = (
   // 「Counter!」の文字も出す(社長裁定2026-08-20「幻影パリィにも文字出して」=v9未決の決着)。
   // 体裁はプレイヤー/守護霊成立と同値(combatTick 289 / ghostCounterBlueLayer)。
   g.spawnCallout(bcx, bcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+  { const cl = counterClashPoint(bcx, bcy, player.x + player.width / 2, player.y + player.height / 2); g.spawnCounterShatter(cl.x, cl.y); } // 幻影が弾いた地点
   g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, bcx, bcy);
   // ★v0.25.3665(社長報告「すごい距離から斬撃っぽいの」): パリィされるのは**分身・守護霊の近接**の
   // こともあり、その時プレイヤー本人は遠くにいる。反撃スイング(絵は距離無関係に出る)と

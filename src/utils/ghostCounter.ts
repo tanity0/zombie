@@ -16,6 +16,7 @@
 //   - プレイヤーのシステム値(無敵/counterCooldownEnd/counter-masterリファンド/コンボ/
 //     lastCounterSuccessTime/計測notify)は1bitも触らない=per-bossハンドラのghost分岐でスキップする。
 //   - 成立演出(青Counter!+金クリ層)はハンドラ側=成立が確定した時だけ出す(嘘のCounter!を出さない)。
+import { counterClashPoint } from './counterClash';
 import type { Player } from '../types/game';
 import {
   useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage, COUNTER_ACCEPT_MS,
@@ -237,6 +238,7 @@ export const applyGhostReflectCounterFx = (
   // 「Counter!」の文字はプレイヤーの弾反射と同じ(社長裁定v0.25.2528「文字は出して欲しい」=
   // 除外1は停止/スロー/ズームの演出だけで、文字calloutは除外に含めない)。
   useGameStore.getState().spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+  useGameStore.getState().spawnCounterShatter(hitX, hitY); // 守護霊が弾を打ち返した地点(hitX/hitY=反射した位置)
 };
 
 /** 消費側がハンドラへ渡す1回分(請求+SEの距離減衰ゲイン。ゲインは消費時のカメラで算出)。 */
@@ -269,6 +271,10 @@ export const applyGhostCounterEffect = (
   const bcx = boss.x + boss.width / 2;
   // 青カウンター層(成立の合図)+SE+シェイク(全ゴースト成立経路の共通部)
   ghostCounterBlueLayer(hitX, hitY, fire.sfxGain, playSfxGain);
+  { // 守護霊がカウンターした地点(守護霊の振りの位置から、弾いたボスの方へ)
+    const cl = counterClashPoint(fire.claim.ghostX, fire.claim.ghostY, bcx, boss.y + boss.height / 2);
+    st.spawnCounterShatter(cl.x, cl.y);
+  }
   // v0.25.2489: カウンター成立の付与無敵(プレイヤーのinvulnerable+invulnerableTime相当=INVULN_MS)。
   // 全per-bossハンドラ+城ボス系パリィがこの共通変換を通るので、ここ1箇所で全経路に効く。
   // GHOST-CMD-2A(§2.18追補 隙コマンド): カウンター成立の打刻(ghostLastCounterAt)。プレイヤー側の
