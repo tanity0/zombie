@@ -3,8 +3,14 @@ import { describe, it, expect } from 'vitest';
 import { ENEMY_FRAME_OFFSETS, PHILL_CAST_SHEET, PHILL_CAST_SHEETS, phillCastFrame, phillCastTech, phillCastSpecFor, phillReleaseFrame } from './enemySheets';
 
 describe('フィルの演出1(魔法の詠唱)', () => {
-  it('0→15 を一方向に流し、その後は 11〜15 を往復する(継ぎ目で同じコマが2回続かない)', () => {
+  it('★0→15 を一方向に流し、末コマ(15)で止める(社長指示2026-10-01「手を挙げる方も」)', () => {
     const seq = Array.from({ length: 32 }, (_, s) => phillCastFrame(s * 100 + 1, 100));
+    expect(seq.slice(0, 16)).toEqual(Array.from({ length: 16 }, (_, i) => i));
+    expect(seq.slice(16)).toEqual(Array.from({ length: 16 }, () => 15));
+  });
+  it('holdLast を付けない fixed は従来どおり 11〜15 を往復する(継ぎ目で同じコマが2回続かない)', () => {
+    const pp = { ...PHILL_CAST_SHEET, holdLast: false };
+    const seq = Array.from({ length: 32 }, (_, s) => phillCastFrame(s * 100 + 1, 100, pp));
     expect(seq.slice(0, 16)).toEqual(Array.from({ length: 16 }, (_, i) => i));
     expect(seq.slice(16, 28)).toEqual([14, 13, 12, 11, 12, 13, 14, 15, 14, 13, 12, 11]);
     for (let i = 1; i < seq.length; i++) expect(seq[i]).not.toBe(seq[i - 1]);

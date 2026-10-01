@@ -1357,7 +1357,8 @@ export const sheetDeferred = (idleTexName: string): boolean =>
  *   使う技(社長選択「空から来る魔法4つ」): 光の雨・隕石・召喚・**裁き**。
  *   ★**裁きの光は `phill-cage-*` の州で動く**(v0.25.3740「裁きの光の中身を羽根の檻に差し替え」=`beginJudgment` が
  *     `beginCage` を呼ぶ)。v0.25.4685 は `phill-judgment-` だけを見ていて**裁きで1度も出ていなかった**ので `phill-cage-` を足した。
- *   送り(`fixed`): 溜めに入った瞬間から **0→15 を一定の速さ**(叩き台 75ms/コマ・`?phillcastms=`)→ 以後は技が終わるまで 11〜15 を往復。
+ *   送り(`fixed`): 溜めに入った瞬間から **0→15 を一定の速さ**(叩き台 75ms/コマ・`?phillcastms=`)→ **末コマ(15)で止める**
+ *   (社長指示2026-10-01「手を挙げる方も」=演出2と同じく止める。旧=技が終わるまで 11〜15 を往復)。
  *
  * **演出2(手を前に出す)**「演出バージョン2、これも最後発動と同時に数コマピンポンして」。
  *   16コマ(支給 2608×222 → 上の空き2行だけ落として **163×220**)。常駐 2.30MB。縮小なし(2×2一致率 4.5%)。
@@ -1380,12 +1381,12 @@ export interface PhillCastSpec {
   readonly techs: readonly string[];
   /** `fixed`=溜め開始から一定の速さで流す / `release`=溜めに割り付け、発動と同時に往復へ */
   readonly sync: 'fixed' | 'release';
-  /** `release` の発動後、往復せず**末コマで止める**(省略=往復)。 */
+  /** 末コマまで流した後、往復せず**末コマで止める**(省略=往復)。`fixed`/`release` の両方に効く。 */
   readonly holdLast?: boolean;
 }
 export const PHILL_CAST_SHEETS: readonly PhillCastSpec[] = [
   {
-    idle: 'phill', name: 'phill-cast1', frames: 16, loopFrom: 11, bodyH: 187, sync: 'fixed',
+    idle: 'phill', name: 'phill-cast1', frames: 16, loopFrom: 11, bodyH: 187, sync: 'fixed', holdLast: true,
     techs: ['phill-lightrain-', 'phill-meteor-', 'phill-summon-', 'phill-cage-', 'phill-judgment-'],
   },
   {
@@ -1419,12 +1420,13 @@ const castPingPong = (spec: PhillCastSpec, step: number): number => {
 
 /**
  * 演出1(`fixed`)のコマ。溜めに入ってからの経過と1コマの長さで決まる(状態を持たない純関数)。
- * 0→末まで一方向 → 以後は `loopFrom`〜末を往復。
+ * 0→末まで一方向 → 以後は `loopFrom`〜末を往復(`holdLast` なら末コマで止める)。
  */
 export const phillCastFrame = (elapsedMs: number, frameMs: number, spec: PhillCastSpec = PHILL_CAST_SHEET): number => {
   const last = spec.frames - 1;
   const step = Number.isFinite(elapsedMs) && elapsedMs > 0 && frameMs > 0 ? Math.floor(elapsedMs / frameMs) : 0;
   if (step <= last) return step;
+  if (spec.holdLast) return last; // 末コマで止める
   return castPingPong(spec, step - last - 1);
 };
 
