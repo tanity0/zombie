@@ -311,6 +311,9 @@ export interface Player extends DashLocomotionState {
   fireShooterCdUntil: number;  // ファイアシューター: 爆発弾化の裏CD(gameTime)
   reflexCdUntil: number;       // 反射神経: 反撃CD(gameTime)
   slasherChainReadyAt: number; // スラッシャー: 次のチェーン攻撃が撃てる realGameTime(slow-mo非依存。0=非アクティブ)
+  // 縮地(SKILL_BUILD_REDESIGN.md §32): 追撃の窓の締め切り(gameTime・0=閉)と、いまの連鎖数(ワープ斬撃の何発目まで出たか)。
+  shukuchiWindowUntil?: number;
+  shukuchiChain?: number;
   slasherStrikeStep: number;   // スラッシャー: 既に出した追撃回数(0..2)
   slasherReach: number;        // スラッシャー: 追撃に使う近接射程(初撃時の射程を記録=溜め延長が消費されても追撃は伸びたまま。0=未設定)
   slasherQueuedTap: boolean;   // スラッシャー: チェーンCD中の先行入力予約(CD明けに自動発動・v0.25.3254)
@@ -1932,6 +1935,8 @@ export interface EscortSoldier {
 export type SkillKey =
   // 超レア。SKILL_BUILD_REDESIGN.md §4(社長承認・確定): crit-up/sniperはここへ昇格。
   | 'reaper' | 'berserker' | 'skater' | 'overclock' | 'crit-up' | 'sniper'
+  // SKILL_BUILD_REDESIGN.md §32(社長仕様2026-10-01): 縮地。超レア・通常ガチャ枠。
+  | 'shukuchi'
   // BOT_AND_GHOST.md G3: 守護霊(ゴースト助っ人)。ガチャからは出ない+最初から所持(社長指示)。
   | 'guardian-spirit' | 'ghost-helper' | 'ghost-slayer'
   // レア

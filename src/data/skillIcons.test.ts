@@ -127,7 +127,9 @@ describe('SKILL_SINGLE_ICON(単体ファイルのアイコン)', () => {
 describe('アイコンの取りこぼしゼロ', () => {
   it('表示対象の全スキルがシートか単体ファイルのどちらかを持つ', () => {
     const covered = new Set<string>([...SKILL_ICON_ORDER, ...Object.keys(SKILL_SINGLE_ICON)]);
-    const missing = Object.keys(SKILL_ICON).filter(k => !covered.has(k));
+    // ★絵が未支給のスキル(絵文字で出る)。絵が届いたら台帳へ入れてここから消す。
+    const ICON_PENDING = new Set<string>(['shukuchi']); // 縮地(SKILL_BUILD_REDESIGN.md §32・2026-10-01)
+    const missing = Object.keys(SKILL_ICON).filter(k => !covered.has(k) && !ICON_PENDING.has(k));
     expect(missing).toEqual([]);
   });
   it('シートと単体で二重に定義されているスキルが無い(どちらが出るか不定にしない)', () => {

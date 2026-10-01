@@ -27,6 +27,7 @@ export const parseRailMult = (raw: string | null | undefined): number => {
 const RAIL_SKILL_CLASS: Partial<Record<SkillKey, RailKind>> = {
   // judge(処刑/近接系): 近接フィニッシュ・近接コンボ・カウンター周りが主効果のスキル。
   'reaper': 'judge',           // 近接フィニッシュ時、範囲内の敵を全員フィニッシュ
+  'shukuchi': 'judge',         // 近接撃破から最寄りの敵へ瞬間移動して斬る(§32)
   'execution-shock': 'judge',  // 「処刑」= 近接フィニッシュ時に爆発
   'combo-master': 'judge',     // 近接フィニッシュのコンボ窓延長
   'knife-master': 'judge',     // 近接コンボダメージ増加(主効果は近接)

@@ -731,6 +731,8 @@ export const SUB_WEAPON_KEYS: SubWeaponKey[] = [
 export type SkillRarity = 'normal' | 'rare' | 'super';
 export const SKILL_KEYS: SkillKey[] = [
   'reaper', 'berserker', 'skater', 'overclock',
+  // SKILL_BUILD_REDESIGN.md §32(社長仕様2026-10-01): 縮地(超レア・通常ガチャ枠)。
+  'shukuchi',
   // BOT_AND_GHOST.md G3: 守護霊。ガチャからは出ない(GACHA_EXCLUDED_SKILLS)+最初から所持
   // (社長指示v0.25.2452「守護霊スキルは最初から解禁しとこうか」→DEFAULT_OWNED_SKILLS)。
   'guardian-spirit', 'ghost-helper', 'ghost-slayer',
@@ -760,6 +762,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'reaper':       { name: '死神',           desc: '近接フィニッシュ時、その攻撃範囲内の敵を全員フィニッシュ（ボスは即死せず5倍ダメージ）', rarity: 'super' },
   'berserker':    { name: 'バーサーカー',   desc: '失ったHP%だけ全攻撃が増加。代償として被ダメージ+20%', rarity: 'super' },
   'skater':       { name: 'スケーター',     desc: '移動速度3倍。ただし慣性が強くなり操作が難しくなる', rarity: 'super' },
+  'shukuchi':     { name: '縮地',           desc: '近接で敵を倒すと短い間、近接を振ると射程内の最寄りの敵の手前へ瞬間移動して斬る。続けて倒せば何度でも続き、2発目から一撃ずつ重くなる', rarity: 'super' },
   'overclock':    { name: 'オーバークロック', desc: 'サブウェポン発動時、20%の確率でクールダウンを即リセット(Lvで25%/30%)', rarity: 'super' },
   'guardian-spirit': { name: '守護霊',       desc: 'ボス戦が始まると、自分の過去のプレイを写した霊が現れる。ボスHP×1.6、獲得ゴールド×0.5', rarity: 'super' },
   // 社長決定v0.25.3163: 3つとも「誰の守護霊か」が違うだけなので、**守護霊(◯◯)の形で揃える**。
@@ -834,6 +837,7 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
 const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, string, string] }>> = {
   // 超レア
   'reaper':       { base: '近接フィニッシュ時、攻撃範囲内の敵を全員フィニッシュ（ボスは即死せず5倍ダメージ）' },
+  'shukuchi':     { base: '近接で倒すと追撃の間が開き、その間に振ると射程内の最寄りの敵へ瞬間移動して斬る(移動直後は少しの間無敵)。斬って倒せば続き、2発目から一撃ずつ+20%', lv: ['射程400・2.0秒', '射程500・2.0秒', '射程600・2.5秒'] },
   'berserker':    { base: '失ったHP%だけ全攻撃が増加。代償として被ダメージ+20%', lv: ['増加量×1.0', '増加量×1.25', '増加量×1.5・覚醒=HP40%以下で銃の連射+10%'] },
   'skater':       { base: '移動速度3倍。ただし慣性が強く操作が難しくなる', lv: ['慣性 強', '慣性 中', '慣性 弱（最も扱いやすい）・覚醒=降車投擲が大爆発'] },
   'overclock':    { base: 'サブウェポン発動時、一定確率でクールダウンを即リセット', lv: ['発動20%', '25%', '30%・覚醒=リセット発動時に弾もクイックリロード'] },
@@ -971,7 +975,7 @@ export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル
 // 左下HUD(RunHud)とレベルアップ選択(UpgradeMenu)が同じ台帳を引く。画像素材が来たらここを
 // 画像パスの台帳に差し替えるだけで両方に反映される。未定義キーは✨フォールバック。
 export const SKILL_ICON: Partial<Record<SkillKey, string>> = {
-  reaper: '💀', berserker: '😡', skater: '🛹', overclock: '⏩',
+  reaper: '💀', berserker: '😡', skater: '🛹', overclock: '⏩', shukuchi: '👣',
   'guardian-spirit': '👻', 'ghost-helper': '🤝', 'ghost-slayer': '🗡️',
   'crit-up': '⚡', sniper: '🔭', knight: '🛡️', exploder: '💥', bomber: '🧨',
   'fire-shooter': '🔥', 'bomb-counter': '💣', 'combo-master': '🔗', 'knife-master': '🔪',
@@ -998,7 +1002,8 @@ export const POLICE_REWARD_SKILLS: SkillKey[] = ['poi-bombing', 'poi-guard', 'po
 // RUN_DRAFT_EXCLUDED_SKILLS/GACHA_EXCLUDED_SKILLSの両方へ ...NEW_SLEEPING_SKILLS でスプレッド
 // されているだけなので、ここを空にするだけで両方から自動的に外れる(§28-2点3)。
 // 型(定数)自体は将来また眠らせるスキルが出た時のために残す(RETIRED_SKILLSと対の仕組み)。
-export const NEW_SLEEPING_SKILLS: SkillKey[] = [];
+// ★縮地(§32・2026-10-01): 効果の配線が着地するまで眠らせる(効果の無い当たりを引かせない)。配線の回で外す。
+export const NEW_SLEEPING_SKILLS: SkillKey[] = ['shukuchi'];
 
 // SKILL_BUILD_REDESIGN.md §23-1裁定(2026-08-13): scrap-builder/warm-upは消費カードへ転生し、
 // スキル台帳から退役。ドラフト(RUN_DRAFT_EXCLUDED_SKILLS)・ガチャ(GACHA_EXCLUDED_SKILLS)からは
