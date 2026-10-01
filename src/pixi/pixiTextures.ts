@@ -697,6 +697,9 @@ export const ensureTextures = (): Promise<void> => {
       // 常にステージ限定ではない(近接なら全ステージで出る)ので DEFERRED_SPRITE_GROUPS ではなく
       // ここ(起動マニフェスト)。scaleMode未指定=既定linear(ピクセルアートではないため)。
       { name: 'fx/kill-slash' },
+      // カウンター成立のガラスの砕け(社長支給2026-10-01)。15コマの横並び(4080×149・1コマ272×149)・透過あり。
+      // カウンターは全ステージで出るので起動マニフェスト。写実のVFXなので既定linear。
+      { name: 'fx/counter-shatter' },
       { name: 'props/stage4-campfire' }, // ステージ4の焚き火(松明置き換え。詳細絵=linear既定)
       // 炎(8コマ)と松明の台座(社長支給v0.25.2641)。ドット絵=**nearest**。
       // 炎は松明だけでなく**火炎瓶・焚き火・フレアガン**でも同じものを使う(社長指示)。

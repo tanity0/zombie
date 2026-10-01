@@ -2386,6 +2386,20 @@ export const KILL_SLASH_TARGET_WIDTH_PX = 120; // 画面上の開始幅(設計�
 // 「もっと大きく」と言ったらここだけ動かせばいい。
 // drawImageEffect(pixiScene.ts)の targetH = 130 * scale という式から、上の目標幅になる scale を逆算する。
 export const KILL_SLASH_SCALE = KILL_SLASH_TARGET_WIDTH_PX / (130 * (KILL_SLASH_FRAME_W / KILL_SLASH_FRAME_H));
+// ★カウンター成立のガラスの砕け(社長支給VFX 2026-10-01「カウンター時のVFX」)。分類②=派手さの絵(判定なし)。
+// 原盤は art-masters/fx-counter-shatter-4x4-15f-3456x2112.png(4×4に15コマ・透過あり)。配信は共通の外枠
+// (744×408)で切って 272×149 に縮めた横並び15コマ(4080×149・メモリ約2.4MB)。透過があるので通常合成。
+// 出す場所は「Counter!」の文字と同じ=成立の全経路(プレイヤー/守護霊/幻影の15箇所)が spawnCallout を通るので、
+// そこで1本に束ねる(1経路だけに書くと取りこぼす=CLAUDE.md「同じ動作を持つ全員に付ける」)。
+export const COUNTER_CALLOUT_TEXT = 'Counter!';
+export const COUNTER_SHATTER_TEXTURE = 'fx/counter-shatter';
+export const COUNTER_SHATTER_COLS = 15;
+export const COUNTER_SHATTER_DURATION_MS = 600;
+// 画面上の幅(world px)。成立のリング(半径135=直径270)より一回り外まで散らす=派手側。
+// 社長が実機で「もっと大きく/小さく」と言ったらここだけ動かす。
+export const COUNTER_SHATTER_WIDTH_PX = 320;
+// drawImageEffect(pixiScene.ts)の targetH = 130 * scale から、上の幅になる scale を逆算する。
+export const COUNTER_SHATTER_SCALE = COUNTER_SHATTER_WIDTH_PX / (130 * (272 / 149));
 export const COUNTER_ZOOM_MAG = 1.0;
 // ダイナミック・カメラワーク(v0.25.4294・CINEMATIC_CAMERA v2 台本): カウンター成立の寄りは短く硬く(スロー700とは別の時間構造)。
 export const COUNTER_ZOOM_MS = 320;
@@ -21515,6 +21529,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (next.length > 400) next.splice(0, next.length - 400);
       return { effects: next };
     });
+    // カウンター成立のガラスの砕け(上の COUNTER_SHATTER_*)。呼び出し側は全て「成立点の12px上」に
+    // 文字を置いているので、砕けは成立点そのもの(y+12)に出す。
+    if (text === COUNTER_CALLOUT_TEXT) {
+      get().spawnImageMark(x, y + 12, COUNTER_SHATTER_TEXTURE, {
+        scale: COUNTER_SHATTER_SCALE,
+        duration: COUNTER_SHATTER_DURATION_MS,
+        cols: COUNTER_SHATTER_COLS,
+      });
+    }
   },
 
   // 爆発の6コマflipbook(社長支給v0.25.3283「爆発 全部用」)。全ての爆発FXがこれを呼ぶ

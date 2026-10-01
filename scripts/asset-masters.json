@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "915 files / 復号後 約688MB",
+ "generatedFor": "916 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1345,6 +1345,12 @@
    "h": 341,
    "bytes": 175468,
    "sha": "53b7a88dc7bd9373"
+  },
+  "sprites/fx/counter-shatter.png": {
+   "w": 4080,
+   "h": 149,
+   "bytes": 335236,
+   "sha": "570421ed1f804b7b"
   },
   "sprites/fx/dash-wind.png": {
    "w": 233,
