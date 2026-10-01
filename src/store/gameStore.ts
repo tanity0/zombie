@@ -2394,7 +2394,14 @@ export const KILL_SLASH_SCALE = KILL_SLASH_TARGET_WIDTH_PX / (130 * (KILL_SLASH_
 export const COUNTER_CALLOUT_TEXT = 'Counter!';
 export const COUNTER_SHATTER_TEXTURE = 'fx/counter-shatter';
 export const COUNTER_SHATTER_COLS = 15;
-export const COUNTER_SHATTER_DURATION_MS = 600;
+// ★クリエイティブ監査(2026-10-01)を受けて: 尺はカウンターのスロー(700ms)より長く=文字より先に消えない。
+// コマ送りは ease-out(衝撃で速く散り、減速して宙に残る)。フェードは素材自身が消えていくので最後の12%だけ。
+// 出だしの「大きく出て縮む」は外へ飛ぶ絵と逆向きの動きになるので掛けない。色は成立の青へ少し寄せる。
+// 毎回同じ割れ方に見えないよう、向きを ±15° 散らし、半分は180°返す(放射状の絵なので返しても破綻しない)。
+export const COUNTER_SHATTER_DURATION_MS = 900;
+export const COUNTER_SHATTER_FADE_FROM = 0.88;
+export const COUNTER_SHATTER_TINT = 0xd6ecff;
+export const COUNTER_SHATTER_ROT_JITTER = (15 * Math.PI) / 180;
 // 画面上の幅(world px)。成立のリング(半径135=直径270)より一回り外まで散らす=派手側。
 // 社長が実機で「もっと大きく/小さく」と言ったらここだけ動かす。
 export const COUNTER_SHATTER_WIDTH_PX = 320;
@@ -6268,7 +6275,7 @@ interface GameState {
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
   // rot(v0.25.4202): 絵の向き(rad)。VisualEffect側は元から rot を持っていたが、この入口が渡していなかった。
   // cols/additive(社長指示2026-09-16・fx/kill-slash): 横並びシートのコマ送り/加算合成。未指定=従来どおり。
-  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean }) => void;
+  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
@@ -21451,6 +21458,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       rot: opts?.rot,
       cols: opts?.cols,
       additive: opts?.additive,
+      noPop: opts?.noPop,
+      fadeFrom: opts?.fadeFrom,
+      frameEaseOut: opts?.frameEaseOut,
+      tint: opts?.tint,
       createdAt: now,
       duration: opts?.duration ?? 900,
     };
@@ -21536,6 +21547,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         scale: COUNTER_SHATTER_SCALE,
         duration: COUNTER_SHATTER_DURATION_MS,
         cols: COUNTER_SHATTER_COLS,
+        noPop: true,
+        fadeFrom: COUNTER_SHATTER_FADE_FROM,
+        frameEaseOut: true,
+        tint: COUNTER_SHATTER_TINT,
+        rot: (Math.random() * 2 - 1) * COUNTER_SHATTER_ROT_JITTER + (Math.random() < 0.5 ? Math.PI : 0),
       });
     }
   },

@@ -32129,7 +32129,7 @@ export class PixiScene {
     const spr = sp as Sprite;
     const t = Math.min(1, (now - e.createdAt) / e.duration);
     const targetH = 130 * (e.scale ?? 1);            // 表示高さ(world px)
-    const pop = 1 + Math.max(0, 1 - t * 4) * 0.18;   // 出だしを少し大きく
+    const pop = e.noPop ? 1 : 1 + Math.max(0, 1 - t * 4) * 0.18;   // 出だしを少し大きく(noPop=掛けない)
     spr.visible = true;
     // cols指定=横並びシート(例: fx/kill-slash・17コマ)。経過進捗からコマを選び、
     // そのコマだけを切り出したTextureを使う(高さは全コマ共通=フル幅シートの高さと同じなので
@@ -32148,7 +32148,8 @@ export class PixiScene {
         }
         this.imageEffectFrameCache.set(cacheKey, frames);
       }
-      const idx = pickImageEffectFrame(t, e.cols);
+      // frameEaseOut: 衝撃で速く進み、減速して滞空する(慣性。カウンターのガラスの砕け用)。
+      const idx = pickImageEffectFrame(e.frameEaseOut ? 1 - (1 - t) * (1 - t) : t, e.cols);
       frameTex = frames[idx] ?? tex;
     }
     spr.texture = frameTex;
@@ -32156,11 +32157,13 @@ export class PixiScene {
     // アルファ無し(黒背景)の実写VFX素材向け: 加算合成で描くと黒が自然に透ける(乗算tintで沈めると
     // 真っ黒な四角が出る=このプロジェクトの既知事故。fx/kill-slash用に追加)。未指定=従来の通常合成。
     spr.blendMode = e.additive ? 'add' : 'normal';
+    spr.tint = e.tint ?? 0xffffff;
     // v0.25.3078: 向き+外へ流れる動き(未指定なら従来どおり回転0・その場)。
     spr.rotation = e.rot ?? 0;
     const driftSec = (now - e.createdAt) / 1000;
     spr.position.set(e.x + (e.driftX ?? 0) * driftSec, e.y + (e.driftY ?? 0) * driftSec);
-    spr.alpha = t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.3); // 後半でフェード
+    const fadeFrom = Math.max(0, Math.min(0.99, e.fadeFrom ?? 0.7));
+    spr.alpha = t < fadeFrom ? 1 : Math.max(0, 1 - (t - fadeFrom) / (1 - fadeFrom)); // 後半でフェード
   }
 
   // ---- player FX: counter ring + reload meter (world space) ----------------
