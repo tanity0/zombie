@@ -100,6 +100,14 @@ describe('スカジの魔法1・魔法2', () => {
     // 魔法1: 氷の弧(6)=出る瞬間(硬直の頭)
     expect(bossPhaseFrame(bossPhaseFor('skadi', 'cage-recover')!.phase, 0, 0, 90)).toBe(6);
   });
+  it('★魔法2は放ち始めに 4→15 を1回流し、末コマ(15)で止める(社長指示2026-10-01)', () => {
+    for (const st of ['skadi-ice', 'skadi-blade', 'burst']) {
+      const ph = bossPhaseFor('skadi', st)!.phase;
+      expect(bossPhaseFrame(ph, 0, 0, 90), st).toBe(4);
+      expect(bossPhaseFrame(ph, 0, 600, 90), st).toBe(10);
+      for (const ms of [1199, 1300, 2500, 6000]) expect(bossPhaseFrame(ph, 0, ms, 90), `${st}@${ms}`).toBe(15);
+    }
+  });
 });
 
 describe('スカジの歩き', () => {

@@ -1792,7 +1792,7 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
   //   - **魔法1=溜め明けの1回で出し切る技**: 氷結の檻(`cage-*`・溜め明けに氷塊の輪を一度に置く)/全方位(`aim-radial`→`radial-recover`・溜め明けに全方位へ一斉)。
   //     溜めで 0→5 と振りかぶり、**出る瞬間(硬直の頭)に 6→7 の氷の弧**、硬直で 8→15 と戻る。
   //   - **魔法2=続けて放つ技**: 氷塊(`skadi-ice*`・1秒おきに5個)/氷の刃(`skadi-blade*`・0.4秒おきに7本)/3連射(`aim-burst`→`burst`→`burst-recover`)。
-  //     溜めで 0→3 と杖を掲げ、**放っている間は 4〜15 を回し続け**、硬直で 3→0 と下ろす。
+  //     溜めで 0→3 と杖を掲げ、**放ち始めに 4→15 を1回流して15で止め**(2026-10-01・旧=回し続け)、硬直で 3→0 と下ろす。
   //   - 突進(`dash-*`)と巣へ戻る(`return`)は立ち絵のまま。
   //   大きさ: 0コマ目を立ち絵(206×222)へ重ねて本体の高さ 魔法1 **177**(IoU 0.88)/魔法2 **159**(IoU 0.84・杖を高く掲げる頭上の空きのぶん体が小さく描かれている)。
   //   体の位置: 胴の横位置は氷の弧・冷気が重なって測れないが、足元の中心は全コマ±10px以内=ずらし不要。素の向きは既定(左向き扱い)。
@@ -1808,8 +1808,11 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
     idle: 'skadi', name: 'skadi-cast2', frames: 16, bodyH: 159,
     phases: [
       ...(['skadi-ice-windup', 'skadi-blade-windup', 'aim-burst'] as const).map(state => ({ state, seq: [0, 1, 2, 3], mode: 'stretch' as const })),
+      // ★1周(1.2秒)流したら**末コマで止める**(社長指示2026-10-01「スカジの杖を振るモーションも最後のコマでストップ」。
+      //   旧=放っている間ずっと 4〜15 を繰り返す)。`cycles: 1` + `finale` = 並び1回 → 末コマで止まる(既存の型)。
       ...(['skadi-ice', 'skadi-blade', 'burst'] as const).map(state =>
-        ({ state, seq: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], mode: 'cycle' as const, periodMs: 1200 })),
+        ({ state, seq: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], mode: 'cycle' as const, periodMs: 1200,
+          cycles: 1, finale: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] })),
       ...(['skadi-ice-recover', 'skadi-blade-recover', 'burst-recover'] as const).map(state =>
         ({ state, seq: [3, 2, 1, 0], mode: 'stretch' as const })),
     ],
