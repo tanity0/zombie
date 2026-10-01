@@ -176,6 +176,23 @@ describe('縮地: 上乗せはワープ斬撃の打撃だけ', () => {
   });
 });
 
+describe('縮地: 行けない場所へは出ない', () => {
+  it('囲いの円の外の敵へ飛んでも、体は円の内側に留まる(着地は通常の移動と同じクランプを通る)', () => {
+    setup();
+    const c = center();
+    const gt = useGameStore.getState().gameTime;
+    useGameStore.setState({
+      activeEvent: { kind: 'horde', x: c.x, y: c.y, radius: 150, startedAt: gt, endsAt: gt + 60000, holdMs: 0 } as never,
+      enemies: [zombieAt(300, 0, 99999)],
+    });
+    openWindow();
+    warpAndStrike();
+    const after = center();
+    expect(after.x - c.x).toBeGreaterThan(100); // 飛んではいる(円の縁まで)
+    expect(Math.hypot(after.x - c.x, after.y - c.y)).toBeLessThanOrEqual(150);
+  });
+});
+
 describe('縮地: 台帳とガチャ', () => {
   it('超レアで、眠っておらず、ガチャの超レア枠から出る', async () => {
     const c = await import('../data/campaign');
