@@ -2137,6 +2137,22 @@ export const runBountyTick = (
     return;
   }
 
+  // ---- カウンターで「出していた1手だけ」を終わらせる(社長指示2026-10-01・counterCut.ts) ------------
+  // 爆風/帯のパリィ(combatTick)が立てた旗を引き取る。中身は下のカウンター成立(接触)と同じ
+  // =技を捨てて追跡へ戻し、中立の間を置く。このフレームはここで終える(手元の bounty は旗を
+  // 立てる前の州のままなので、続けるとノックバックの時計ずらしが古い値で上書きする)。
+  if (bounty.bossMoveCutPending) {
+    cancelBountyTechnique(s);
+    applyPatch(bounty.id, {
+      bossMoveCutPending: undefined,
+      bossState: 'chase',
+      bossStateUntil: undefined,
+      bossNextActionAt: newGameTime + BOUNTY_NEUTRAL_MS,
+      bountyLastEngagedAt: newGameTime,
+    });
+    return;
+  }
+
   // ---- 気絶・拘束・浮き・ノックバックのガード(B1.5-2・致命) ------------------------------------
   // 社長確定指示v0.25.3476「ノックバックしたら技は中断」: フルスタン(紫)と同じ扱いに統一。
   // x/yやknockbackVx/Vy等の座標系は一切書かない(カウンターのノックバック座標を上書きしない=

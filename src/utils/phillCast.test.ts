@@ -64,6 +64,8 @@ describe('★体(胴)基準のずらし(フィル・社長指示2026-09-27)', ()
       'uri-idle': 12, 'uri-cast': 16, 'uri-slash': 14,
       'suriel-idle': 16, 'suriel-cast1': 16, 'suriel-cast2': 16,
       'bounty-melee-lash': 16, 'bounty-balance-slash': 9,
+      'bounty-maiko-cast': 16, 'mimir-attack': 16, 'mimir-laser': 15, 'jormungand-idle': 16,
+      'idol-snipe': 16, 'idol-punch': 12, 'thor-tsuki': 6,
     };
     for (const [name, offs] of Object.entries(ENEMY_FRAME_OFFSETS)) expect(offs.length, name).toBe(frames[name]);
   });

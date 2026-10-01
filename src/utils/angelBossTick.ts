@@ -15,6 +15,7 @@
 //
 // 時間の単位(重要・§6.28-1-0): このファイルの天使勢は「壁時計系」。定数はそのまま実効msで書く
 // (giantbatのようにENEMY_ATTACK_SPEED_MULTを掛けも割りもしない)。
+import { COUNTER_CUT_GAP_MS } from './counterCut';
 import type { Enemy, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
 import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
@@ -254,8 +255,9 @@ export const createAngelBossState = (): AngelBossState => ({
  * **判定が出続ける技をこの先足す時も、成立したら必ず状態を進めること。**
  */
 const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, sfx: AngelSfx, ghost?: GhostCounterFire): void => {
-  // カウンターは台本の割り込み成功。残り手を破棄し、次は新しい始動から組み直す。
-  useGameStore.setState(st => ({ enemies: st.enemies.map(e => e.id === boss.id ? { ...e, bossScriptQueue: [] } : e) }));
+  // ★カウンターで終わるのは出していた1手だけ(社長指示2026-10-01「その台本の中の1つを終了して
+  // 間を設ける」)。台本の残りは捨てない=間が明けたら chooseScriptMove が残りから出す。
+  // (旧: 残り手を破棄して新しい始動から組み直していた。)
   if (ghost) {
     applyGhostCounterEffect(boss, hitX, hitY, ghost, (key, gain) => (key === 'counter' ? sfx.counter(gain) : sfx.reward(gain)));
     return;
@@ -3756,6 +3758,18 @@ export const runAngelBossTick = (
 ): void => {
   const angel = useGameStore.getState().enemies.find(e => isGate2AngelBoss(e.type) && e.bossState != null);
   if (!angel) return;
+  // ★カウンターで「出していた1手だけ」を終わらせる(社長指示2026-10-01・counterCut.ts)。
+  // 爆風/帯のパリィ(combatTick)が立てた旗を引き取り、追跡へ戻して間を置く。台本の残りは捨てない
+  // (間が明けたら chooseScriptMove が残りから出す)。このフレームは tick を回さない
+  // (手元の angel は旗を立てる前の州のままなので、回すと技の続きを書き戻す)。
+  if (angel.bossMoveCutPending) {
+    applyPatch(angel.id, {
+      bossMoveCutPending: undefined, bossState: 'chase', bossStateUntil: undefined,
+      bossNextActionAt: newGameTime + COUNTER_CUT_GAP_MS, bossBurstLeft: 0,
+    });
+    settleAngelPlayback('chase');
+    return;
+  }
   // トラップ(root)中は他のボスと揃えて「停止」(社長裁定v0.25.1690。v0.25.1688の移動半減から改訂)。
   // 天使は updateEnemies のroot分岐(vx=0)を素通りする(isHiddenBoss=スキップ)ため、ここで止める。
   // 裏ボスのfrozen相当: 平常時(chase=移動/次攻撃の起点)のみtickを止める=移動も新規攻撃も停止。

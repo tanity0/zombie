@@ -25,6 +25,7 @@
 // gameOver遷移だけが起きない。
 
 import type { Enemy, Player } from '../types/game';
+import { scriptResumeFlag, shouldCutBossMove } from './counterCut';
 import { GLOW_R_L, GLOW_R_S } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
@@ -410,6 +411,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           // 「弾いた」のに型によって硬直の有無が割れる)。長さは #H-7 で 350 → 2000ms
           // (通常の技後硬直より短いとカウンターを取るほど損になるため)。
           biteRecoverUntil: st.gameTime + COUNTER_RECOVER_STILL_MS,
+          // ★カウンターで「出していた1手だけ」を終わらせる(社長指示2026-10-01・counterCut.ts)。
+          // 上の aiPhase 系は城ボス・雑魚にしか効かない。技を bossState で持つボス(裏ボス/天使/
+          // アイドル/賞金首)へは旗を渡し、各ボスの制御が自分の持ち越しを捨てて追跡へ戻す。
+          ...(shouldCutBossMove(e, hit.noDamage) ? { bossMoveCutPending: true } : {}),
           // 【ジャンプカウンターのノックバック不発の根治】
           // ① 速度ノックバックは updateEnemies が「翌フレーム以降」に適用する=ジャンプ着地で
           //    付与される stun/lift/recover に上書きされて「その場で痺れる」だけになっていた。
@@ -486,6 +491,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           // 旧Date.now()(絶対時刻≒1.7e12)だと出口判定 newGameTime >= bossStateUntil が永久に
           // 到達せず、**counter-leapが導入以来一度も終わっていなかった**(=パリィ後退が機能せず)。
           bossStateUntil: useGameStore.getState().gameTime + tunables.thorCounterLeapMs,
+          // ★台本は続ける(社長指示2026-10-01): 跳び退いて間が明けたら、台本の残りから出す。
+          bossScriptResume: scriptResumeFlag(en.bossScriptQueue),
           aiFromX: leapFrom.x, aiFromY: leapFrom.y,
           aiTargetX: leapTo.x, aiTargetY: leapTo.y,
         } : en),
@@ -493,8 +500,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     }
     // ★PACING_PUZZLE.md §10-14#2(R2)/§10-15#2/#4: フィル(bossState駆動)はこのblastレールの
     // パリィpatch(aiPhase系のみ書く)が効かない=技が止まらず赤も消えなかった。**後追い分岐**として
-    // bossState='phill-<move>-recover'+bossScriptQueue:[](天使正規経路angelCounterHitと同じ=台本の
-    // 続きを止める)を明示的に書き、G1計測(notifyCounterHit)もここで揃える(blastレール側の
+    // bossState='phill-<move>-recover' を明示的に書き(台本の残りは2026-10-01から捨てない)、G1計測(notifyCounterHit)もここで揃える(blastレール側の
     // notifyMoveCounterだけだとフィル戦がcounterChance計測の母数から抜けるため)。
     for (const hit of parriedEnemyIds) {
       const pe = useGameStore.getState().enemies.find(en => en.id === hit.id);
@@ -507,7 +513,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         enemies: st.enemies.map(en => en.id === hit.id ? {
           // ★v0.25.3721(検収監査・実バグ級): gameTime基準に修正。旧Date.now()だとrecoverの出口が
           // 永久に来ず、カウンター成立1回でフィルが停止し続けていた(thor分岐の同型バグを写した事故)。
-          ...en, bossState: recoverState, bossStateUntil: useGameStore.getState().gameTime + PHILL_COUNTER_RECOVER_MS, bossScriptQueue: [],
+          // ★台本は捨てない(社長指示2026-10-01「その台本の中の1つを終了」)=硬直が明けたら残りから出す。
+          ...en, bossState: recoverState, bossStateUntil: useGameStore.getState().gameTime + PHILL_COUNTER_RECOVER_MS,
         } : en),
       }));
     }

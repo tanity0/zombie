@@ -1243,6 +1243,13 @@ export interface Enemy {
   lastRangedShotAt?: number;
   // 攻撃開始時に確定した短い連携台本の残り。各recoverで先頭を消費し、空になった時だけ通常硬直へ戻る。
   bossScriptQueue?: string[];
+  // ★カウンターで「出していた1手だけ」を終わらせる受け渡し(社長指示2026-10-01・counterCut.ts)。
+  // 爆風/帯のパリィ(combatTick)が立て、各ボスの制御(裏ボス/天使/アイドル/賞金首)が次のフレームで
+  // 引き取って下ろす。時計ではなく旗にしてある(凍結で繰り下げる対象ではないため)。
+  bossMoveCutPending?: boolean;
+  // ★カウンターで1手を終えた後、間が明けたら**台本の残り(bossScriptQueue)から再開する**印。
+  // 追跡(chase)の抽選は通常この台本を上書きして新しく組むので、この印がある時だけ残りを先に出す。
+  bossScriptResume?: boolean;
   bossLeashSince?: number;  // フィールドボスが離脱距離の外に出続けた起点(gameTime)。3秒予兆用
   // PACING_PUZZLE.md §6.38(賞金首・B1): 直近で「交戦中」だった gameTime(bountyEngagedNow参照)。
   // 滞在1分(BOUNTY_LINGER_MS)の起点=これ(未設定ならspawnedAt)。交戦中は毎フレーム現在時刻へ更新。

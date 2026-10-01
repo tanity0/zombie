@@ -6,6 +6,7 @@
 //
 // 状態文法(監査レポート§3-1): NEUTRAL(主戦帯を維持) → STRING(連段) → REST(休符) → NEUTRAL。
 // 懲罰(PUNISH)は中立中いつでも割り込む。**休符は必ず入る**(プレイヤーのターンを消さない)。
+import { COUNTER_CUT_GAP_MS } from './counterCut';
 import type { Enemy, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
 import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
@@ -549,6 +550,18 @@ export const runIdolTick = (
     patch.bossNextActionAt = newGameTime + IDOL_TUNING.neutral.minMs;
     s.seq = []; s.step = 0; s.wavePending = false;
     s.shotWavesLeft = 0; s.shotSlot = null;
+    patch.bossMoveCutPending = undefined; // 紫が勝つ(技は既に全部捨てた)
+  } else if (idol.bossMoveCutPending) {
+    // ★カウンターで「出していた1手だけ」を終わらせる(社長指示2026-10-01・counterCut.ts)。
+    // 爆風/帯のパリィ(combatTick)が立てた旗を引き取る。行き先は休符(=間)。休符は中立と同じ
+    // 語彙で動く(裁定2026-08-27「アイドルは止まらない」)ので、技の絵は消えて歩き/立ち絵へ戻る。
+    // ★ストリングの残り(s.seq/s.step)は捨てない=間が明けたら次の段から出す(v0.25.4592「台本は続ける」)。
+    // 段の途中の持ち越し(第二波・射撃部品の残り波)だけ捨てる(残すと間が明けた瞬間に暴発する)。
+    patch.bossMoveCutPending = undefined;
+    s.wavePending = false;
+    s.shotWavesLeft = 0; s.shotSlot = null;
+    patch.bossState = IDOL_REST_STATE;
+    patch.bossStateUntil = newGameTime + COUNTER_CUT_GAP_MS;
   } else if (rooted && st === 'chase') {
     // トラップ拘束中(chaseのみ凍結): 移動も新規攻撃も出さない。patchには何も積まず、
     // そのまま末尾のクランプ/setStateへ抜ける。fullStunと違い連射持ち越しの暴発経路は無いので
@@ -607,7 +620,11 @@ export const runIdolTick = (
       else if (verb === 'retreat') { patch.x = idol.x - ux * spd; patch.y = idol.y - uy * spd; }
       else { patch.x = idol.x + (-uy * s.strafeDir) * spd; patch.y = idol.y + (ux * s.strafeDir) * spd; }
     }
-    if (newGameTime >= (idol.bossStateUntil ?? 0)) {
+    if (newGameTime >= (idol.bossStateUntil ?? 0) && s.step < s.seq.length) {
+      // ★カウンターで1手を終えた後の間(社長指示2026-10-01): ストリングの残りがあれば次の段から出す。
+      // 通常の休符はストリング終端で入る(s.seq=[])のでここへは来ない。
+      beginMove(s.seq[s.step++]);
+    } else if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       // 休符明け=即・次の行動抽選が可能(間合い調整は休符中に済ませた。旧: さらに中立0.7〜1.3秒を足していた)。
       patch.bossState = 'chase';
       patch.bossNextActionAt = newGameTime;

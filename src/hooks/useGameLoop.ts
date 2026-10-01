@@ -129,6 +129,7 @@ import {
   applyGlenFloorDamage, applyGhostAllyCapsuleHit, applyGhostBossParry, tryGhostContactParry,
   type CombatEffects, type CombatTunables,
 } from '../utils/combatTick';
+import { COUNTER_CUT_GAP_MS, scriptResumeFlag } from '../utils/counterCut';
 // SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の判定値・確率テーブル(純関数・rng注入でテスト済み)。
 // vampire/gravity-shot/execution-shock/blood-treadsの判定はgameStore.ts側(damageEnemy/
 // applyMeleeFinishSkillSpread/tickBloodSpikesという既存の合流点)に乗せてあるので、ここでは
@@ -6313,7 +6314,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 bs.vy += (desVy - bs.vy) * k;
                 patch.x = boss.x + bs.vx * bossMoveDt; patch.y = boss.y + bs.vy * bossMoveDt;
               };
-              if (frozen) {
+              if (boss.bossMoveCutPending) {
+                // ★カウンターで「出していた1手だけ」を終わらせる(社長指示2026-10-01・counterCut.ts)。
+                // 爆風/帯のパリィ(combatTick)が立てた旗をここで引き取る。追跡へ戻して間を置き、
+                // 台本の残りは捨てない(間が明けたら chase の抽選が残りから出す)。連射の残数は捨てる
+                // (凍結からの復帰と同じ理由=持ち越すと間が明けた瞬間に暴発する)。
+                bs.vx = 0; bs.vy = 0;
+                patch.bossMoveCutPending = undefined;
+                patch.bossState = 'chase';
+                patch.bossStateUntil = undefined;
+                patch.bossNextActionAt = newGameTime + COUNTER_CUT_GAP_MS;
+                patch.bossBurstLeft = 0;
+                patch.bossScriptResume = scriptResumeFlag(boss.bossScriptQueue);
+              } else if (frozen) {
                 bs.vx = 0; bs.vy = 0;
                 // ★社長裁定v0.25.3497「ノックバックもだけど、技だけキャンセルされなければええで」:
                 // **ノックバック"だけ"で止まっている間は技を中断しない**(v0.25.3476で紫と同じ扱いに
@@ -6380,6 +6393,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossState = 'chase';
                   patch.bossNextActionAt = newGameTime + HB_C.actionMinMs;
                   patch.bossBurstLeft = 0;
+                  // 崩された(気絶等)時は台本の再開を取り消す=従来どおり新しく組み直す。
+                  patch.bossScriptResume = undefined;
                 }
               } else {
               // 画面外/帰巣中は bossState='return' になる。チェイス状態機械に 'return' のケースが無いため、
@@ -6455,7 +6470,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 hitX: number, hitY: number, ghost?: GhostCounterFire,
                 opts?: { aimAt?: { x: number; y: number }; fromAt?: { x: number; y: number } },
               ) => {
-                patch.bossScriptQueue = [];
+                // ★台本は捨てない(社長指示2026-10-01「その台本の中の1つを終了して間を設ける」)。
+                // 跳び退き(counter-leap)→間が明けたら、chase の抽選が台本の残りから出す。
+                patch.bossScriptResume = scriptResumeFlag(boss.bossScriptQueue);
                 // ★v0.25.3784(検収監査 中5): 突進の**専用CD**は「突進が潰れた」全経路で立てる。
                 // 旧実装は ①thor-dash-recover 明け ②走行中のカウンター ③?thorscript=0 の chase 復帰 の
                 // 3箇所にしか無く、**共通カウンターブロックが thor-dash-windup で成立した経路**が
@@ -6565,7 +6582,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // `BOSS_COUNTER_ENABLED`(既定true・`?bosscounter=0`で無効)の時だけ各windup状態から呼ばれる
               // (呼び出し側でゲート済み=このヘルパ自体は常に定義するだけで無条件には呼ばない)。
               const hiddenBossCounterHit = (hitX: number, hitY: number, ghost?: GhostCounterFire) => {
-                patch.bossScriptQueue = [];
+                // ★台本は捨てない(社長指示2026-10-01)=間が明けたら残りから出す。
+                patch.bossScriptResume = scriptResumeFlag(boss.bossScriptQueue);
                 if (ghost) {
                   // v0.25.2480(★未決1解消): 守護霊カウンター成立(thorCounterHitのghost分岐と同じ扱い)。
                   applyGhostCounterEffect(boss, hitX, hitY, ghost, (k, g) => playSfx(k, g));
@@ -6981,7 +6999,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.aiTargetY = bcy + tuy * HB_TH.orbitStep.distPx;
                   bs.vx = 0; bs.vy = 0;
                 } else if (boss.type === 'thor') {
-                  if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
+                  if (boss.bossScriptResume && newGameTime >= (boss.bossNextActionAt ?? 0)) {
+                    // ★カウンターで1手を終えた後の再開(社長指示2026-10-01): 台本の残りから出す。
+                    patch.bossScriptResume = undefined;
+                    thorRecoverAdvance();
+                  } else if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
                     // トール専用: 弾を使わない刀技+突進を距離帯の役割から選ぶ。
                     // 払いは250px以内、一閃は遠距離ほど重く、突きは中距離の主砲、突進は中〜遠の間合い詰め。
                     const dpx = chaseTgt.x - bcx, dpy = chaseTgt.y - bcy;
@@ -6994,6 +7016,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // windup開始のセットアップ(方向ロック等)はbeginThorMoveへ集約(値は不変・純関数化のみ)。
                     beginThorMove(pick);
                   }
+                } else if (boss.bossScriptResume && newGameTime >= (boss.bossNextActionAt ?? 0)) {
+                  // ★カウンターで1手を終えた後の再開(社長指示2026-10-01): 台本の残りから出す
+                  // (硬直明けの連携と同じ1本=レーザーの中断CDもそのまま効く)。
+                  patch.bossScriptResume = undefined;
+                  hiddenRecoverAdvance('counter-cut');
                 } else if (newGameTime >= (boss.bossNextActionAt ?? 0)) {
                   // PACING_PUZZLE.md §6.28-5/7/9(バッチM54/M56/M58): 間合い+フェーズ+CD明けから技を選ぶ
                   // 判断はmimirScript.ts/jormungandScript.ts/skadiScript.tsの純関数へ委譲(実装精度の規律4)。
