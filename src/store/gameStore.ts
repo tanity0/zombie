@@ -4924,8 +4924,8 @@ export const SLASHER_FORCE_KB_PX = 25;  // 社長指示v0.25.3297: スラッシ�
 // チェーン演出だけ出ていた=「1撃目のはずなのに2撃目が発動」の一因)。
 /**
  * ★縮地(SKILL_BUILD_REDESIGN.md §32): 追撃の窓を開く(プレイヤー本人の近接での撃破の後に呼ぶ)。
- * ワープ斬撃の解決中(`shukuchiStriking`)の撃破なら連鎖を+1、それ以外の撃破なら連鎖を0から開き直す
- * (=通常の振りで倒した後のワープは必ず1発目から)。窓の時計は gameTime(ヒットストップ/スロー中は止まる)。
+ * ワープ斬撃の解決中(`shukuchiStriking`)の撃破なら連鎖を+1、それ以外の撃破は窓が開いていれば連鎖を残し
+ * (窓だけ延ばす)、閉じていれば0から(社長裁定2026-10-01)。窓の時計は gameTime(ヒットストップ/スロー中は止まる)。
  */
 const openShukuchiWindow = (get: () => GameState): void => {
   const p = get().player;
@@ -5909,7 +5909,8 @@ interface GameState {
   // triggerKatanaDash starts the invulnerable dash and cuts along its path.
   // v0.25.2518(裁定2): 末尾の ghostId は**主語(オーナー)**。未指定=プレイヤー(従来と完全同一)。
   // 指定すると守護霊(kind='ghost-ally')が同じ状態機械・同じ定数・同じ式で刀/ワイヤーを使う。
-  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string) => { hit: boolean; finish: boolean; killed: number };
+  // strikeMult=敵への打撃だけに掛ける上乗せ(縮地の連鎖・§32)。damageMult と違い、死神の波及・救難信号の基準には入れない。
+  performKatanaStrike: (targetIds: string[], damageMult: number, allowFinisher: boolean, ghostId?: string, strikeMult?: number) => { hit: boolean; finish: boolean; killed: number };
   triggerKatanaDash: (dirX: number, dirY: number, ghostId?: string) => boolean;
   // ワイヤーアンカー: フリックでフリック方向に刺す(true=発動)。1秒後に startWireDash で高速移動。
   triggerWireAnchor: (dirX: number, dirY: number, ghostId?: string) => boolean;
@@ -7427,7 +7428,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 刀を持っている時は振りが攻撃しない(刀はオート斬撃)=相手へ刀の一閃を直接出す(届く時だけ)。
     if (target && reachable && isKatanaMode(get().player)) {
       // 社長裁定(2026-10-01): 刀のワープ斬撃は**一閃**(一閃の倍率・処刑可=死神も乗る)。
-      const k = get().performKatanaStrike([target.id], KATANA_DASH_DAMAGE_MULT * (p0.shukuchiStrikeMult ?? 1), true);
+      // 連鎖の上乗せは strikeMult(敵への打撃だけ)。一閃の倍率は damageMult(死神の波及・救難信号の基準も一閃と同じ)。
+      const k = get().performKatanaStrike([target.id], KATANA_DASH_DAMAGE_MULT, true, undefined, p0.shukuchiStrikeMult ?? 1);
       swung = true; hit = hit || k.hit; finish = finish || k.finish; killed += k.killed;
     }
     // スラッシャーのジャストリング(追撃の受付)はワープ斬撃では出さない(社長指定)。
@@ -9362,7 +9364,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  performKatanaStrike: (targetIds, damageMult, allowFinisher, ghostId) => {
+  performKatanaStrike: (targetIds, damageMult, allowFinisher, ghostId, strikeMult = 1) => {
     const now = Date.now();
     const { gameTime, enemies } = get();
     // v0.25.2518(裁定2): 主語(オーナー)。ghostId 未指定=プレイヤー本体(従来と完全同一)。
@@ -9378,7 +9380,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const baseDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(player)];
     // 処刑(ボス5×/強個体3×/致命の一撃)は skillOutgoingDamageMult を通らないので、育成の攻撃力は
     // 素ダメージへ前掛けする(research/GROWTH.md v4・ナイフ/分身/鞭/守護霊と同じ扱い)。
-    const katanaExecBase = baseDamage * damageMult * (player.growthAtkMult ?? 1);
+    const katanaExecBase = baseDamage * damageMult * strikeMult * (player.growthAtkMult ?? 1);
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
@@ -9489,7 +9491,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeHitCritChance(KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)], player, gameTime, enemy);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
-      let dmg = baseDamage * damageMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
       // ★SAME_ARENA §9(検収監査 重大③): 刀にも致命(×5+最大HP25%)とmelee削り(site1と同型)。
       // 本人由来のみ=守護霊の刀(isGhost)は削らない・致命も出さない。
       let pvpMeleePatch: Partial<Enemy> = {};

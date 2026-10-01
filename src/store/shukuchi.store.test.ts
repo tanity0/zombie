@@ -204,6 +204,19 @@ describe('縮地: 刀は一閃に限る / 窓が開いている間の連鎖(社�
     const r = warpAndStrike();
     expect(r?.finish).toBe(true);
   });
+  it('刀のワープ一閃にも連鎖の上乗せが乗る(3発目=×1.4)', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999); // クリティカルを出さない
+    const dealt = (chain: number) => {
+      setup(); katana();
+      useGameStore.setState({ enemies: [zombieAt(300, 0, 999999, 'z')] });
+      openWindow(chain);
+      warpAndStrike();
+      return 999999 - (useGameStore.getState().enemies.find(e => e.id === 'z')?.health ?? 999999);
+    };
+    const base = dealt(0);
+    expect(base).toBeGreaterThan(0);
+    expect(dealt(2) / base).toBeCloseTo(1.4, 1);
+  });
   it('刀のオート斬撃で倒しても窓は開かない。一閃で倒すと開く', () => {
     setup(); katana();
     useGameStore.setState({ enemies: [zombieAt(20, 0, 1, 'a')] });
