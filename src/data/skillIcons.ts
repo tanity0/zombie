@@ -119,6 +119,7 @@ export const SKILL_SINGLE_ICON: Partial<Record<SkillKey, string>> = {
   'scrap-builder': 'skill/scrap-builder',     // 106 スクラップビルダー
   'warm-up': 'skill/warm-up',                 // 107 ウォームアップ
   'big-bullet': 'skill/big-bullet',           // 108 ビッグバレット(横長140×68=contain表示前提)
+  'shukuchi': 'skill/shukuchi',               // 縮地(社長支給2026-10-01・40×34=contain表示前提)
 };
 
 /** 単体ファイルのアイコン名(無ければ null)。 */

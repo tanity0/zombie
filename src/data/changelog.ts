@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4752', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4751', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4750', items: ['ボス戦で引いた時、横に居るボスが画面の端で切れていたのを直した。大きなボスも体の端まで映るようにカメラが寄る'] },
   { version: '0.25.4749', items: ['スカジが杖を掲げて氷を放ち続ける技は、構えを1回回し切った姿で止まるようになった'] },

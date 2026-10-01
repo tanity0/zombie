@@ -92,10 +92,10 @@ describe('skillIconStyle(切り出し)', () => {
 // v0.25.3500: POI報酬3種(101 爆撃 / 102 防衛 / 103 使役)は1枚シートに入らない単体ファイル。
 // 対応の正は「社長の番号=支給ファイル名の番号」。ここを取り違えると別のスキルの絵が出るので固定する。
 describe('SKILL_SINGLE_ICON(単体ファイルのアイコン)', () => {
-  it('単体アイコンを持つのはシートに入らない9種だけ', () => {
+  it('単体アイコンを持つのはシートに入らない10種だけ', () => {
     expect(Object.keys(SKILL_SINGLE_ICON).sort())
       .toEqual(['big-bullet', 'ghost-helper', 'ghost-slayer', 'guardian-spirit', 'poi-bombing',
-        'poi-guard', 'poi-thrall', 'scrap-builder', 'warm-up']);
+        'poi-guard', 'poi-thrall', 'scrap-builder', 'shukuchi', 'warm-up']);
   });
   it('101=爆撃 / 102=防衛 / 103=使役 / 104=守護霊 の対応', () => {
     expect(skillSingleIconName('poi-bombing')).toBe('skill/poi-bombing');
@@ -127,9 +127,7 @@ describe('SKILL_SINGLE_ICON(単体ファイルのアイコン)', () => {
 describe('アイコンの取りこぼしゼロ', () => {
   it('表示対象の全スキルがシートか単体ファイルのどちらかを持つ', () => {
     const covered = new Set<string>([...SKILL_ICON_ORDER, ...Object.keys(SKILL_SINGLE_ICON)]);
-    // ★絵が未支給のスキル(絵文字で出る)。絵が届いたら台帳へ入れてここから消す。
-    const ICON_PENDING = new Set<string>(['shukuchi']); // 縮地(SKILL_BUILD_REDESIGN.md §32・2026-10-01)
-    const missing = Object.keys(SKILL_ICON).filter(k => !covered.has(k) && !ICON_PENDING.has(k));
+    const missing = Object.keys(SKILL_ICON).filter(k => !covered.has(k));
     expect(missing).toEqual([]);
   });
   it('シートと単体で二重に定義されているスキルが無い(どちらが出るか不定にしない)', () => {

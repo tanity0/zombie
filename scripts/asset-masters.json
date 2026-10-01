@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "916 files / 復号後 約690MB",
+ "generatedFor": "917 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -4285,6 +4285,12 @@
    "h": 32,
    "bytes": 2772,
    "sha": "a8e2e6539702cdd9"
+  },
+  "sprites/skill/shukuchi.png": {
+   "w": 40,
+   "h": 34,
+   "bytes": 2458,
+   "sha": "6aa4bf19d6cf8f74"
   },
   "sprites/skill/skills-sheet.png": {
    "w": 1368,
