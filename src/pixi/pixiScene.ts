@@ -8534,6 +8534,15 @@ export class PixiScene {
         const k = inT * (1 - outT);
         gradNow = TILT_SHIFT_GRADIENT * (1 + (tsNum('tsattgrad', 2.5) - 1) * k);
       }
+      // ★引きの被写界深度(社長指示2026-10-02): ズームを引くほど勾配を広げる(広角ほど深い被写界深度)。
+      // 引きの絵はボス全身を読むための画面なので、画面に収めたボスの上半身を上のボケ帯で潰さない。
+      // 倍率=1/zoom(等倍・寄りでは1=従来どおり)、上限はアテンションと同じ(?tszoomgrad=で調整)。
+      // アテンションの広げと重なった時は大きい方(掛け合わせて上限を超えない)。
+      {
+        const zoomGradCap = Math.max(1, tsNum('tszoomgrad', 2.5));
+        const zoomGradMul = Math.min(zoomGradCap, Math.max(1, 1 / tz));
+        gradNow = Math.max(gradNow, TILT_SHIFT_GRADIENT * zoomGradMul);
+      }
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: this.screenW * vpScale, y: bandY };
       this.tiltShift.gradientBlur = gradNow * vpScale;

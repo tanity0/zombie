@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4761', items: ['カメラが引くほど、画面の上下のぼけが浅くなる。引いた画面に収まった大きなボスが、頭までくっきり見える'] },
   { version: '0.25.4760', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4759', items: ['刀の縮地で続けて斬った重さが、死神の波及や処刑の衝撃波、救難信号の援護にまで乗っていたのを直した'] },
   { version: '0.25.4758', items: ['ゲーム内容の変更はありません'] },
