@@ -396,3 +396,24 @@ describe('bossCameraLeadX(横のボス先読み・目標ライン式)', () => {
     expect(bossCameraLeadX(-10_000, W, 0.5)).toBeCloseTo(-bossCameraLeadX(10_000, W, 0.5), 6);
   });
 });
+
+describe('★横は絵の端まで収める(社長指示2026-10-01「ボスが見切れてる」)', () => {
+  const phone = { width: 390, height: 844 };
+  it('半幅を渡すと横の可視条件が絵の遠い方の端で効く(半幅0=従来どおり)', () => {
+    const base = bossDistanceZoomTarget('mimir', 600, false, { dxCenter: 400, dyCenter: 0, viewport: phone });
+    const wide = bossDistanceZoomTarget('mimir', 600, false, { dxCenter: 400, dyCenter: 0, viewport: phone, halfW: 200 });
+    expect(wide).toBeLessThan(base);
+    expect(bossDistanceZoomTarget('mimir', 600, false, { dxCenter: 400, dyCenter: 0, viewport: phone, halfW: 0 })).toBeCloseTo(base, 9);
+  });
+  it('横の先読みは、中心を目標ラインへ寄せても端が出る時は端が入るまで寄せる(上限は従来どおり)', () => {
+    const z = 0.6;
+    const center = bossCameraLeadX(300, phone.width, z);
+    const edge = bossCameraLeadX(300, phone.width, z, 150);
+    expect(edge).toBeGreaterThan(center);
+    expect(edge * z).toBeLessThanOrEqual((0.5 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * phone.width + 1e-6);
+    // 左も鏡映
+    expect(bossCameraLeadX(-300, phone.width, z, 150)).toBeCloseTo(-edge, 9);
+    // 半幅0=従来どおり
+    expect(bossCameraLeadX(300, phone.width, z, 0)).toBeCloseTo(center, 9);
+  });
+});

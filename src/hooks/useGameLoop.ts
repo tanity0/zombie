@@ -490,6 +490,7 @@ import {
   bossWideShotZoom,
   bossCameraLeadX, // v0.25.3063: 横のボス先読み(社長裁定「2をまず揃える」)
 } from '../utils/cameraZoom';
+import { bossFramingFor } from '../utils/bossFraming';
 import {
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, bossRetreatKeepRadiusPx,
   facilitiesLocked, // v0.25.3054: ボス戦中の施設ロック(発火ゲート)
@@ -6128,7 +6129,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bossZoomExcluded = labTheme || (useGameStore.getState().corridorMode && !isExStageRun());
             const bossViewZoom = bossZoomExcluded ? 1 : bossDistanceZoomTarget(
               boss.type, aabbGapDistance(player, boss), boss.isStoryBoss === true,
-              { dxCenter: bcx - (player.x + player.width / 2), dyCenter: bcy - (player.y + player.height / 2), viewport: gb },
+              // ★横は絵の端で測る(2026-10-01・描画と同じ1本=判定と絵の不一致を作らない)。
+              bossFramingFor(boss, player.x + player.width / 2, player.y + player.height / 2, gb),
             );
             // v0.25.3018(社長裁定・案A): 帰巣の圏内判定は**プレイヤー中心の一律距離**(正方形・
             // 半径=画面長辺の半分+余白・引きズームで1/z拡大)。旧カメラ窓基準(v3005の正方形化を含む)は、
@@ -8650,6 +8652,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           let bossTargetNow: number | null = null;
           let bossNearD2 = Infinity, bossNearDy = 0; // §6.37 v7: 最近接ボスの縦中心差(縦カメラ先読み用)
           let bossNearDx = 0; // v0.25.3063: 横中心差(横カメラ先読み用・社長裁定「2をまず揃える」)
+          let bossNearHalfW = 0; // ★2026-10-01: 最近接ボスの絵の半幅(横の先読みが絵の端まで収める)
           if (!indoor && !labTheme && !useGameStore.getState().corridorMode) {
             for (const e of enemies) {
               if (!isEngageableBoss(e.type) || e.dormant === true || e.bossState === 'return') continue;
@@ -8657,13 +8660,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const dx = e.x + e.width / 2 - pcCamX, dy = e.y + e.height / 2 - pcCamY;
               const d2 = dx * dx + dy * dy;
               if (d2 > limit * limit) continue;
-              if (d2 < bossNearD2) { bossNearD2 = d2; bossNearDy = dy; bossNearDx = dx; }
+              // ★横は**絵の中心と半幅**(2026-10-01「ボスが見切れてる」)。縦は従来どおり判定の帯の中心。
+              const fr = bossFramingFor(e, pcCamX, pcCamY, gameBounds);
+              if (d2 < bossNearD2) { bossNearD2 = d2; bossNearDy = dy; bossNearDx = fr.dxCenter; bossNearHalfW = fr.halfW ?? 0; }
               // v0.25.3021(社長スクショ「ボスが上に居るのにプレイヤー中心・下の余白が無駄」の真因):
               // 描画(pixiScene)と同じく**フレーミング項込み**で目標ズームを出す。ボスが画面端の外に
               // 遠い時は距離カーブでなくフレーミング項が実ズームを決めるため、ここに無いと推定だけ
               // 浅くなり、カメラ下げ(均衡)も北先読みも実画角に対して大幅に不足していた。
-              const tDist = bossDistanceZoomTarget(e.type, aabbGapDistance(player, e), e.isStoryBoss === true,
-                { dxCenter: dx, dyCenter: dy, viewport: gameBounds });
+              const tDist = bossDistanceZoomTarget(e.type, aabbGapDistance(player, e), e.isStoryBoss === true, fr);
               // v0.25.3081: 描画側(pixiScene)と**同じ式**で技ドリブンの引きを掛ける(推定と実画角を割らない)。
               const tWide = bossWideShotZoom(e.type, e.bossState);
               const t = tWide != null ? Math.min(tDist, tWide) : tDist;
@@ -8698,7 +8702,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           camBossLeadYRef.current += (wantLead - camBossLeadYRef.current) * lk;
           // v0.25.3063(社長裁定「2をまず揃えるべきでは?」): 横のボス先読みも縦と同じ目標ライン式・
           // 同じ時定数でカメラ本体に掛ける(旧・描画側の横パンは退役=機構を1本化)。
-          const wantLeadX = est.engaged ? bossCameraLeadX(bossNearDx, gameBounds.width, est.z) : 0;
+          const wantLeadX = est.engaged ? bossCameraLeadX(bossNearDx, gameBounds.width, est.z, bossNearHalfW) : 0;
           camBossLeadXRef.current += (wantLeadX - camBossLeadXRef.current) * lk;
         }
         // プレイヤーを中央より下へ(屋内/ラボは中央維持=スポーン補正と一致)。上(進行先)の視界を広げる。
@@ -8741,7 +8745,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         let camY = prevCam.y + (targetCameraY - prevCam.y) * fk;
         // 強制中心復帰: プレイヤーが画面中心から離れすぎたらクランプ(見失い防止)。
         const maxLag = gameBounds.width * CAMERA_CENTER_CLAMP_FRAC;
-        const offX = (pcCamX - camX) - gameBounds.width / 2;
+        // ★横もボス先読みのぶんを基準に測る(2026-10-01「ボスが見切れてる」)。縦(offY)は camDownOff に
+        // 縦の先読みが入っているので先読みを差し引いて測れていたが、横は差し引いておらず、**先読みそのものを
+        // 遅れとみなして画面幅の7%へ引き戻していた**(実測: 先読みが欲しい量222wpxに対し実際22wpx)。
+        const offX = (pcCamX - camX) - gameBounds.width / 2 + camBossLeadXRef.current;
         const offY = (pcCamY - camY) - gameBounds.height / 2 - camDownOff; // 下げ量を基準に(=ずらした構図からのラグを測る)
         const offD = Math.hypot(offX, offY);
         if (offD > maxLag && maxLag > 0) { const s2 = 1 - maxLag / offD; camX += offX * s2; camY += offY * s2; }

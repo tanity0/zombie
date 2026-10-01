@@ -13,6 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
+import { bossFramingFor } from '../utils/bossFraming';
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
 import { heliRotorFrame, HELI_ROTOR_FRAMES } from '../utils/heliRotor';
@@ -8232,8 +8233,9 @@ export class PixiScene {
       if (d2 < bossBiasD2) { bossBiasD2 = d2; bossBiasDx = dx; bossBiasDy = dy; }
       const bodyDistance = aabbGapDistance(s.player, e);
       // v0.25.2954: フレーミング項(被写体が画面端に迫ったら早めに引く)。dx/dyは上の交戦判定と同じ中心差。
+      // ★横は絵の端で測る(2026-10-01「ボスが見切れてる」)。store側の推定・先読みと同じ1本(bossFramingFor)。
       const distTarget = bossDistanceZoomTarget(e.type, bodyDistance, e.isStoryBoss === true,
-        { dxCenter: dx, dyCenter: dy, viewport: s.gameBounds });
+        bossFramingFor(e, zpx, zpy, s.gameBounds));
       // v0.25.3081(社長指示): 刃を撒く技の間は**距離に関わらず引く**(飛んでくる刃を画面内に収める)。
       const wide = bossWideShotZoom(e.type, e.bossState);
       const target = wide != null ? Math.min(distTarget, wide) : distTarget;

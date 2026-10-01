@@ -151,7 +151,14 @@ export const bossVisibilityZoomX = (dxCenter: number, viewW: number): number => 
   (1 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewW - BOSS_FRAME_EDGE_MARGIN_PX,
 ) / Math.max(1, Math.abs(dxCenter));
 
-export interface BossFramingInput { dxCenter: number; dyCenter: number; viewport: { width: number; height: number } }
+// ★横は「絵の端」まで画面に収める(社長指示2026-10-01「ボスとの戦いでズームが引の時、ボスが見切れてる。
+// 画面にできるだけ収めたい」)。実測(縦持ち390×844・ミーミル): ボスが真横500pxで**絵の33%しか映っていなかった**
+// (真上・真下は100%)。旧式は「判定の帯の中心が端から40px内側」しか見ておらず、絵の幅(ミーミル≈405wpx)の
+// 半分以上が外へ出ていた。`halfW`=絵の半幅(world px)・`dxCenter`=**絵の中心**の横差で渡すと、
+// 横の可視条件と横の寄せが「絵の遠い方の端」で効く。省略(halfW=0)=従来どおり。縦は従来どおり(社長が調整した構図)。
+export interface BossFramingInput { dxCenter: number; dyCenter: number; viewport: { width: number; height: number }; halfW?: number }
+
+// 入力の組み立て(絵の寸法を引く)は `bossFraming.ts` の `bossFramingFor`(renderSpec→cameraZoom の循環を避けて別ファイル)。
 
 export const bossDistanceZoomTarget = (
   type: EnemyType, bodyDistancePx: number, isStoryBoss = false,
@@ -173,13 +180,15 @@ export const bossDistanceZoomTarget = (
   // v0.25.3067: 横の可視条件は**薄めずに**掛ける硬い上限(bossVisibilityZoomX の説明を参照)。
   // |dx|の連続関数なので NEAR帯へそのまま掛けても段差は出ない(近ければ1を超えて効かない=
   // 足元の等倍はそのまま)。床(profile.far)は従来どおりこれより優先=引きすぎない。
-  const hardX = bossVisibilityZoomX(framing.dxCenter, framing.viewport.width);
+  // ★横は絵の**遠い方の端**で測る(|中心差|+半幅・2026-10-01)。
+  const farDx = Math.abs(framing.dxCenter) + Math.max(0, framing.halfW ?? 0);
+  const hardX = bossVisibilityZoomX(farDx, framing.viewport.width);
   // 足元(NEAR以内)は等倍のまま(社長裁定v0.25.2947「足元では等倍」不変)。それより外では
   // アンカー曲線とフレーミング要求の**引きが強い方**を採る(=見えなくなるより早めに引く)。床はfar。
   // v0.25.2964: 縦のフレーミング項はNEAR→MIDの間で滑らかに効かせる(旧: NEAR境界の外側で即フル適用=
   // 境界をまたぐたびに目標が段差で飛び、ぎこちなさの一因だった)。
   if (bodyDistancePx <= BOSS_DISTANCE_ZOOM_NEAR_PX) return Math.max(profile.far, Math.min(anchor, hardX));
-  const frame = bossFramingZoom(framing.dxCenter, framing.dyCenter, framing.viewport);
+  const frame = bossFramingZoom(farDx, framing.dyCenter, framing.viewport);
   const w = smooth01((bodyDistancePx - BOSS_DISTANCE_ZOOM_NEAR_PX)
     / (BOSS_DISTANCE_ZOOM_MID_PX - BOSS_DISTANCE_ZOOM_NEAR_PX));
   const blended = anchor + (Math.min(anchor, frame) - anchor) * w; // frameが強い分だけwで効かせる
@@ -334,19 +343,26 @@ export const BOSS_LEAD_PLAYER_MAX_FRAC = 0.78;        // 北側: プレイヤー
 // ラインへボスを引き込み、プレイヤーは反対側 BOSS_LEAD_X_PLAYER_EDGE_FRAC までしか寄せない。
 export const BOSS_LEAD_X_TARGET_SCREEN_FRAC = 0.76; // ボス側の目標ライン(縦の南0.76と同値)
 export const BOSS_LEAD_X_PLAYER_EDGE_FRAC = 0.28;   // プレイヤーを画面端からこの幅比より外に出さない
-export const bossCameraLeadX = (dxCenter: number, viewW: number, zoom: number): number => {
+export const bossCameraLeadX = (dxCenter: number, viewW: number, zoom: number, halfW = 0): number => {
   const z = Math.max(ZOOM_MIN_ABS, Math.min(1, zoom));
   const bossBasePx = 0.5 * viewW + dxCenter * z;      // 先読み無しのボス画面X(プレイヤー=中央)
+  // ★絵の遠い方の端(2026-10-01): 中心を目標ラインへ寄せても、幅の広い絵は端が画面外に残る。
+  // 端が「画面端からマージン内側」へ入るまでのシフトも求め、**大きい方**を採る(上限は従来どおり)。
+  const hw = Math.max(0, halfW) * z;
   // カメラを東(正)へSだけ寄せると、ボスの画面Xは bossBasePx − S·z へ動く(縦とは向きが逆なことに注意)。
   if (dxCenter >= 0) {
     // ボスが右: ボスを右目標ライン(0.76W)まで引き込む東シフト(正)。プレイヤーは左端0.28Wまで。
     // 目標ラインより内側に居るボスには寄せない(want<0→0)。
-    const wantShiftPx = bossBasePx - BOSS_LEAD_X_TARGET_SCREEN_FRAC * viewW;
+    const wantCenterPx = bossBasePx - BOSS_LEAD_X_TARGET_SCREEN_FRAC * viewW;
+    const wantEdgePx = (bossBasePx + hw) - (viewW - BOSS_FRAME_EDGE_MARGIN_PX);
+    const wantShiftPx = Math.max(wantCenterPx, wantEdgePx);
     const maxShiftPx = (0.5 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewW;
     return Math.max(0, Math.min(maxShiftPx, wantShiftPx)) / z;
   }
   // ボスが左: 鏡映(左目標ライン=(1−0.76)W。西シフト=負)。
-  const wantShiftPx = bossBasePx - (1 - BOSS_LEAD_X_TARGET_SCREEN_FRAC) * viewW;
+  const wantCenterPx = bossBasePx - (1 - BOSS_LEAD_X_TARGET_SCREEN_FRAC) * viewW;
+  const wantEdgePx = (bossBasePx - hw) - BOSS_FRAME_EDGE_MARGIN_PX;
+  const wantShiftPx = Math.min(wantCenterPx, wantEdgePx);
   const minShiftPx = -(0.5 - BOSS_LEAD_X_PLAYER_EDGE_FRAC) * viewW;
   return Math.max(minShiftPx, Math.min(0, wantShiftPx)) / z;
 };
