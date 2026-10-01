@@ -4958,6 +4958,52 @@ const findShukuchiTarget = (get: () => GameState, p: Player): Enemy | null => {
   return pickShukuchiTarget(cands, rangePx)?.e ?? null;
 };
 
+/**
+ * ★縮地(SKILL_BUILD_REDESIGN.md §32): 追撃の窓の中の振り=射程内の最寄りの敵の手前へ瞬間移動して斬る、の**予約**。
+ * 振れる時だけ(通常の近接CD明け・前隙中でない・攻撃封印なし=triggerCounter の門と同じ)。
+ * 予約したら true(着地は movePlayer、斬撃は resolveShukuchiStrike)。飛べる相手が居なければ false=呼び出し側の通常経路へ(窓は消費しない)。
+ * 入口は2本: タッチ(beginMeleeSwing)と PC/ボット(triggerCounter の直呼び)。
+ */
+const reserveShukuchiWarp = (get: () => GameState, now: number): boolean => {
+  const p = get().player;
+  const gt = get().gameTime;
+  if (!hasSkill(p, 'shukuchi')) return false;
+  if (isPvpIncapacitated(p.pvpPosture, gt) || isPlayerGrabbed(p, gt)) return false;
+  if (now < p.counterCooldownEnd || p.pendingSwingAt !== 0 || (p.shukuchiStrikeAt ?? 0) > 0) return false;
+  if (SKATER_LOCK_ENABLED && p.skaterRiding) return false;
+  if (isSeekerActive(p, gt) && skillLevel(p, 'seeker') < 3) return false;
+  if (!get().m0Unlocked.melee) return false;
+  if (!shukuchiWindowOpen(p.shukuchiWindowUntil, gt)) return false;
+  const target = findShukuchiTarget(get, p);
+  if (!target) return false;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  // 着地=相手の判定の帯の最近点から、近接が確実に入る手前(射程の4割・最大24px)。
+  const land = shukuchiLandingPoint(pcx, pcy, enemyRangeRect(target), Math.min(24, huntingMeleeRadius(p) * 0.4));
+  const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
+  const dl = Math.hypot(ecx - land.x, ecy - land.y) || 1;
+  const chainIndex = (p.shukuchiChain ?? 0) + 1; // この一撃が何発目か(1始まり)
+  if (hasSkill(p, 'slasher') && p.slasherChainReadyAt > 0) get().setSlasherCombo(0, 0);
+  useGameStore.setState(state => ({
+    player: {
+      ...state.player,
+      shukuchiWarpTo: { x: land.x - state.player.width / 2, y: land.y - state.player.height / 2 },
+      shukuchiStrikeAt: now,
+      shukuchiTargetId: target.id,
+      shukuchiStrikeMult: shukuchiChainMult(chainIndex),
+      // 通常の振りと同じ近接CD(解決までの1フレームに次の振りを受け付けない。斬撃の解決でも同じ値が張り直される)。
+      counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
+      meleeSwingAt: now,
+      lastDirection: { x: (ecx - land.x) / dl, y: (ecy - land.y) / dl },
+      // ワープ直後の無敵(0.5秒)。既に長い無敵が残っていれば縮めない。
+      invulnerable: true,
+      invulnerableTime: state.player.invulnerable
+        ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - SHUKUCHI_INVULN_MS))
+        : now - Math.max(0, INVULN_MS - SHUKUCHI_INVULN_MS),
+    },
+  }));
+  return true;
+};
+
 const applySlasherChainStrike = (
   get: () => GameState,
   player: Player,
@@ -7360,12 +7406,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dl = Math.hypot(ecx - pcx, ecy - pcy) || 1;
       set(state => ({ player: { ...state.player, lastDirection: { x: (ecx - pcx) / dl, y: (ecy - pcy) / dl } } }));
     }
-    set(state => ({ player: { ...state.player, shukuchiStrikeAt: 0, shukuchiStriking: true } }));
+    // 着地が押し出された(壁・建物・行ける帯の端)等で相手に刃が届かない=ワープ斬撃は不成立。
+    // 通常の振りとして出し(上乗せなし)、窓と連鎖はそのまま残す(落ち度の無い空振りで窓を閉じない)。
+    const pNow = get().player;
+    const reachable = !!target
+      && enemyMeleeDist(pNow.x + pNow.width / 2, pNow.y + pNow.height / 2, target) <= huntingMeleeRadius(pNow);
+    // 鞭のハリケーン(チャージ満タンの一振り)は撃破が後から来るので、この回では窓を閉じない。
+    const hurricaneRound = pNow.subWeapons.includes('whip') && !!pNow.whipCharged;
+    set(state => ({ player: {
+      ...state.player, shukuchiStrikeAt: 0, shukuchiStriking: reachable,
+      ...(reachable ? {} : { shukuchiStrikeMult: undefined }),
+    } }));
     // 斬撃=**通常の近接の振りそのもの**(前隙なし=押した時刻を渡す)。ダメージの上乗せは triggerCounter が読む。
     const r = get().triggerCounter(pressAt);
     let { swung, hit, finish, killed } = r;
-    // 刀を持っている時は振りが攻撃しない(刀はオート斬撃)=相手へ刀の一閃を直接出す。
-    if (target && isKatanaMode(get().player)) {
+    // 刀を持っている時は振りが攻撃しない(刀はオート斬撃)=相手へ刀の一閃を直接出す(届く時だけ)。
+    if (target && reachable && isKatanaMode(get().player)) {
       const k = get().performKatanaStrike([target.id], p0.shukuchiStrikeMult ?? 1, false);
       swung = true; hit = hit || k.hit; finish = finish || k.finish; killed += k.killed;
     }
@@ -7374,7 +7430,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({ player: {
       ...state.player, shukuchiStriking: false, shukuchiStrikeMult: undefined, shukuchiTargetId: undefined,
       // 倒せなかった(ボスを斬っただけも含む)=窓を閉じて連鎖も0。倒せていれば撃破の側(openShukuchiWindow)が開き直し済み。
-      ...(killed > 0 ? {} : { shukuchiWindowUntil: 0, shukuchiChain: 0 }),
+      // 届かなかった回・ハリケーンの回は閉じない(上)。
+      ...(killed > 0 || !reachable || hurricaneRound ? {} : { shukuchiWindowUntil: 0, shukuchiChain: 0 }),
     } }));
     return { swung, hit, finish, killed };
   },
@@ -7529,45 +7586,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const p = get().player;
     if (isPvpIncapacitated(p.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中は振れない(窓も開かない)
     if (isPlayerGrabbed(p, get().gameTime)) return false; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は振れない
-    // ★縮地(SKILL_BUILD_REDESIGN.md §32): 追撃の窓の中の振り=射程内の最寄りの敵の手前へ瞬間移動して斬る。
-    // 振れる時だけ(通常の近接CD明け・前隙中でない・攻撃封印なし=triggerCounter の門と同じ3つ)。
-    // スラッシャーの追撃より**先**に見る(窓が開いていて飛べる相手が居ればワープを優先し、チェーンは破棄)。
-    // 飛べる相手が居なければ下の通常経路へ落とす(窓は消費しない)。
-    if (hasSkill(p, 'shukuchi') && now >= p.counterCooldownEnd && p.pendingSwingAt === 0 && !((p.shukuchiStrikeAt ?? 0) > 0)
-      && !(SKATER_LOCK_ENABLED && p.skaterRiding)
-      && !(isSeekerActive(p, get().gameTime) && skillLevel(p, 'seeker') < 3)
-      && get().m0Unlocked.melee) {
-      const open = shukuchiWindowOpen(p.shukuchiWindowUntil, get().gameTime);
-      const target = open ? findShukuchiTarget(get, p) : null;
-      if (target) {
-        const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
-        // 着地=相手の判定の帯の最近点から、近接が確実に入る手前(射程の4割・最大24px)。
-        const land = shukuchiLandingPoint(pcx, pcy, enemyRangeRect(target), Math.min(24, huntingMeleeRadius(p) * 0.4));
-        const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
-        const dl = Math.hypot(ecx - land.x, ecy - land.y) || 1;
-        const chainIndex = (p.shukuchiChain ?? 0) + 1; // この一撃が何発目か(1始まり)
-        if (hasSkill(p, 'slasher') && p.slasherChainReadyAt > 0) get().setSlasherCombo(0, 0);
-        set(state => ({
-          player: {
-            ...state.player,
-            shukuchiWarpTo: { x: land.x - state.player.width / 2, y: land.y - state.player.height / 2 },
-            shukuchiStrikeAt: now,
-            shukuchiTargetId: target.id,
-            shukuchiStrikeMult: shukuchiChainMult(chainIndex),
-            // 通常の振りと同じ近接CD(解決までの1フレームに次の振りを受け付けない。斬撃の解決でも同じ値が張り直される)。
-            counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
-            meleeSwingAt: now,
-            lastDirection: { x: (ecx - land.x) / dl, y: (ecy - land.y) / dl },
-            // ワープ直後の無敵(0.5秒)。既に長い無敵が残っていれば縮めない。
-            invulnerable: true,
-            invulnerableTime: state.player.invulnerable
-              ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - SHUKUCHI_INVULN_MS))
-              : now - Math.max(0, INVULN_MS - SHUKUCHI_INVULN_MS),
-          },
-        }));
-        return true;
-      }
-    }
+    // ★縮地(SKILL_BUILD_REDESIGN.md §32): 窓の中の振りはワープ斬撃の予約へ(飛べる相手が居なければ下の通常経路)。
+    // スラッシャーの追撃より**先**に見る(ワープを優先し、チェーンは破棄)。
+    if (reserveShukuchiWarp(get, now)) return true;
     // ★v0.25.4003(社長報告2026-08-28「スラッシャーが連撃うまくできない」): チェーン受付は
     // triggerCounter側(PC直呼び)にしか無く、タッチのタップは下の通常CD門(820ms)が先に飲むため、
     // チェーンCD(300ms)のリズムのタップが**予約もされずに捨てられていた**=タッチだけ連撃が
@@ -7659,6 +7680,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 訓練(M0)の封印(社長指示v0.25.2293): **近接チュートリアルで解禁されるまで振れない**。
     // 教わっていない技が先に暴発すると、説明と体験の順序が崩れる(=台本が成立しない)。
     if (!get().m0Unlocked.melee) return { swung: false, hit: false, finish: false, killed: 0 };
+    // ★縮地(§32): PC/ボットの直呼び(前隙なし)もタッチと同じくワープ斬撃の予約へ。斬撃と音は
+    // useGameLoop の resolveShukuchiStrike が出すので、ここでは振っていない扱いで返す。
+    if (swingStartAt === undefined && reserveShukuchiWarp(get, now)) return { swung: false, hit: false, finish: false, killed: 0 };
     // スキル スラッシャー: 使い切っていないチェーンが有効な間は、タップをチェーン継続へ回す
     // (通常CDより短い専用CD=SLASHER_CHAIN_CD_MSだけで消化。タイミング精度は問わない=CD明けなら即成立)。
     // チェーンCD中のタップは通常の近接CDと同じ「不発」扱い(連数は減らない・コンボは終わらない)。
@@ -9688,7 +9712,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const gun = getActiveGun(player);
     const meleeWeapon = player.weapons.find(w => w.isMelee);
-    const meleeBase = meleeWeapon?.damage ?? 6;     // 近接の素ダメージ。鞭は通常0.25倍
+    // 近接の素ダメージ。鞭は通常0.25倍。縮地(§32)のワープ斬撃なら連鎖の上乗せも掛ける(ワープ斬撃以外は 1)。
+    const meleeBase = (meleeWeapon?.damage ?? 6) * (player.shukuchiStrikeMult ?? 1);
     const meleeCritChance = meleeWeapon?.critChance ?? 0;
     // ハリケーン発動中の吸引半径内にいる敵は「巻き込み中」とみなし、鞭を通常倍率(1.0)で当てる。
     const hurricaneR2 = hurricane ? hurricane.radius * hurricane.radius : 0;

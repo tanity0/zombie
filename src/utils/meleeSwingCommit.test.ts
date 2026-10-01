@@ -44,21 +44,21 @@ interface WriteSite {
  * `stamped: true` の集合が打刻の集合。**打刻の集合 ⊆ 書く場所の集合** を宣言で固定する。
  */
 const WRITE_SITES: readonly WriteSite[] = [
-  { field: 'counterWindowEnd', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
   {
     field: 'counterWindowEnd', where: '対人体勢の紫入り(playerPvpChipPatch)', stamped: false,
     why: '★SAME_ARENA §9: 紫に入った瞬間、開いている窓を破棄(0へ)=閉じる側・振っていない',
   },
+  // ★縮地(SKILL_BUILD_REDESIGN.md §32・2026-10-01): 窓の中の振り=ワープ斬撃の受付。斬撃は直後に
+  // triggerCounter(押した時刻)で解決するので、**打刻もそちらで1回だけ**(前隙の起点と同じ形)。
+  {
+    field: 'meleeSwingAt', where: '縮地のワープ斬撃の予約(reserveShukuchiWarp・タッチ/PC共通)', stamped: false,
+    why: '同じ振りを resolveShukuchiStrike→triggerCounter 側で1回打刻する。ここでも打つと1振り2打刻になる',
+  },
+  { field: 'counterWindowEnd', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
   { field: 'meleeSwingAt', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
   // ★v0.25.3869(社長裁定「近接前隙を200にして」・SAME_ARENA.md §7): 指を離した瞬間の起点。
   // 判定は MELEE_WINDUP_MS 後に triggerCounter が解決するので、**打刻もそちらで1回だけ**打つ。
   // 前隙中にカウンターされた振りは解決されない=打刻も出ない(振りが中断されたのだから正しい)。
-  // ★縮地(SKILL_BUILD_REDESIGN.md §32・2026-10-01): 窓の中の振り=ワープ斬撃の受付。斬撃は直後に
-  // triggerCounter(押した時刻)で解決するので、**打刻もそちらで1回だけ**(前隙の起点と同じ形)。
-  {
-    field: 'meleeSwingAt', where: '縮地のワープ斬撃の受付(beginMeleeSwing)', stamped: false,
-    why: '同じ振りを resolveShukuchiStrike→triggerCounter 側で1回打刻する。ここでも打つと1振り2打刻になる',
-  },
   {
     field: 'meleeSwingAt', where: '前隙の起点(beginMeleeSwing)', stamped: false,
     why: '同じ振りを triggerCounter 側(前隙の解決)で1回打刻する。ここでも打つと1振り2打刻になる',

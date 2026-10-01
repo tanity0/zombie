@@ -113,6 +113,53 @@ describe('縮地: 窓の中の振り', () => {
   });
 });
 
+describe('縮地: 入口と不成立(検収監査の是正)', () => {
+  it('PC/ボットの直呼び(triggerCounter())でもワープして斬る', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(300, 0)] });
+    openWindow();
+    const before = center();
+    const r0 = useGameStore.getState().triggerCounter();
+    expect(r0.swung).toBe(false); // 予約のみ(斬撃は解決で出る)
+    expect(useGameStore.getState().player.shukuchiWarpTo).toBeDefined();
+    useGameStore.getState().movePlayer(NO_INPUT, 0.016);
+    const r = useGameStore.getState().resolveShukuchiStrike();
+    expect(center().x - before.x).toBeGreaterThan(200);
+    expect(r?.killed ?? 0).toBeGreaterThan(0);
+    expect(useGameStore.getState().player.shukuchiChain).toBe(1);
+  });
+  it('着地が押し出されて刃が届かなければ、窓と連鎖は残る', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(300, 0, 99999)] });
+    openWindow(2);
+    const until = useGameStore.getState().player.shukuchiWindowUntil;
+    expect(useGameStore.getState().beginMeleeSwing()).toBe(true);
+    useGameStore.getState().movePlayer(NO_INPUT, 0.016);
+    // 押し出された体で解決する(相手から遠ざける)。
+    useGameStore.setState(st => ({ player: { ...st.player, x: st.player.x - 200 } }));
+    const r = useGameStore.getState().resolveShukuchiStrike();
+    expect(r?.killed).toBe(0);
+    const p = useGameStore.getState().player;
+    expect(p.shukuchiWindowUntil).toBe(until);
+    expect(p.shukuchiChain).toBe(2);
+  });
+  it('鞭でも連鎖の上乗せが乗る(3発目=×1.4)', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999); // クリティカルを出さない
+    const dealt = (chain: number) => {
+      setup();
+      useGameStore.setState(st => ({ player: { ...st.player, subWeapons: ['whip'], whipCharged: false, whipHitCount: 0 } }));
+      useGameStore.setState({ enemies: [zombieAt(300, 0, 99999, 'z')] });
+      openWindow(chain);
+      warpAndStrike();
+      const z = useGameStore.getState().enemies.find(e => e.id === 'z');
+      return 99999 - (z?.health ?? 99999);
+    };
+    const base = dealt(0);
+    expect(base).toBeGreaterThan(0);
+    expect(dealt(2) / base).toBeCloseTo(1.4, 1);
+  });
+});
+
 describe('縮地: 台帳とガチャ', () => {
   it('超レアで、眠っておらず、ガチャの超レア枠から出る', async () => {
     const c = await import('../data/campaign');
