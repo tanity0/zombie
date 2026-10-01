@@ -750,8 +750,8 @@ describe('§28 新スキル9種はB7で目覚めている(NEW_SLEEPING_SKILLSが
     'gravity-shot', 'echo-shot', 'barrage-king', 'blood-treads',
   ];
 
-  it('NEW_SLEEPING_SKILLSに§28の9種は残っていない(§28-2点3。縮地=§32は配線待ちで眠り中)', () => {
-    for (const k of NEW_SKILLS) expect(NEW_SLEEPING_SKILLS).not.toContain(k);
+  it('NEW_SLEEPING_SKILLSは空配列(§28-2点3。縮地=§32も配線済みで目覚めている)', () => {
+    expect(NEW_SLEEPING_SKILLS).toEqual([]);
   });
 
   it('台帳(SKILLS)には完成形の文章で存在する', () => {

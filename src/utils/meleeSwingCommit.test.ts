@@ -53,6 +53,12 @@ const WRITE_SITES: readonly WriteSite[] = [
   // ★v0.25.3869(社長裁定「近接前隙を200にして」・SAME_ARENA.md §7): 指を離した瞬間の起点。
   // 判定は MELEE_WINDUP_MS 後に triggerCounter が解決するので、**打刻もそちらで1回だけ**打つ。
   // 前隙中にカウンターされた振りは解決されない=打刻も出ない(振りが中断されたのだから正しい)。
+  // ★縮地(SKILL_BUILD_REDESIGN.md §32・2026-10-01): 窓の中の振り=ワープ斬撃の受付。斬撃は直後に
+  // triggerCounter(押した時刻)で解決するので、**打刻もそちらで1回だけ**(前隙の起点と同じ形)。
+  {
+    field: 'meleeSwingAt', where: '縮地のワープ斬撃の受付(beginMeleeSwing)', stamped: false,
+    why: '同じ振りを resolveShukuchiStrike→triggerCounter 側で1回打刻する。ここでも打つと1振り2打刻になる',
+  },
   {
     field: 'meleeSwingAt', where: '前隙の起点(beginMeleeSwing)', stamped: false,
     why: '同じ振りを triggerCounter 側(前隙の解決)で1回打刻する。ここでも打つと1振り2打刻になる',

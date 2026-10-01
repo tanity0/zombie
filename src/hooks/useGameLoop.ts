@@ -8373,6 +8373,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             : inputState,
           deltaTime * MOVE_SPEED_MULT * (endingStage ? endingPhillVelMult * ENDING_PHILL_SPEED_MULT : 1),
         );
+        // ★縮地(SKILL_BUILD_REDESIGN.md §32): ワープが移動処理で解決された直後に斬る(移動より前に斬ると
+        // 元の位置で振ってしまう)。SEは前隙明けの振りと同じ条件。
+        {
+          const sk = useGameStore.getState().resolveShukuchiStrike();
+          if (sk) {
+            const isWhipSk = useGameStore.getState().player.subWeapons.includes('whip');
+            const kfxSk = useGameStore.getState().killFx;
+            const killFxSk = !!kfxSk && Date.now() - kfxSk.startAt < KILLFX_TOTAL_MS;
+            if (sk.swung && !isWhipSk && !killFxSk) playSfx('melee');
+            if (sk.finish && !killFxSk) playSfx('melee-finish');
+            else if (sk.hit && !isWhipSk && !killFxSk) playSfx('slash-damage');
+            if (sk.killed > 0) playEnemyDeath();
+          }
+        }
         if (corridorRunIn) {
           const runSt = useGameStore.getState();
           if (runSt.player.y <= 0 || runSt.gameTime > 6000) runSt.clearCorridorRunIn();

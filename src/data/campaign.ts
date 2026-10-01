@@ -1002,8 +1002,8 @@ export const POLICE_REWARD_SKILLS: SkillKey[] = ['poi-bombing', 'poi-guard', 'po
 // RUN_DRAFT_EXCLUDED_SKILLS/GACHA_EXCLUDED_SKILLSの両方へ ...NEW_SLEEPING_SKILLS でスプレッド
 // されているだけなので、ここを空にするだけで両方から自動的に外れる(§28-2点3)。
 // 型(定数)自体は将来また眠らせるスキルが出た時のために残す(RETIRED_SKILLSと対の仕組み)。
-// ★縮地(§32・2026-10-01): 効果の配線が着地するまで眠らせる(効果の無い当たりを引かせない)。配線の回で外す。
-export const NEW_SLEEPING_SKILLS: SkillKey[] = ['shukuchi'];
+// 縮地(§32)は v0.25.4751 で眠らせ、効果の配線(v0.25.4753)で外した。
+export const NEW_SLEEPING_SKILLS: SkillKey[] = [];
 
 // SKILL_BUILD_REDESIGN.md §23-1裁定(2026-08-13): scrap-builder/warm-upは消費カードへ転生し、
 // スキル台帳から退役。ドラフト(RUN_DRAFT_EXCLUDED_SKILLS)・ガチャ(GACHA_EXCLUDED_SKILLS)からは

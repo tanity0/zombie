@@ -1,4 +1,5 @@
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
+import { SHUKUCHI_INVULN_MS, pickShukuchiTarget, shukuchiChainMult, shukuchiLandingPoint, shukuchiParams, shukuchiWindowOpen } from '../utils/shukuchi';
 import { counterClashPoint } from '../utils/counterClash';
 import { create } from 'zustand';
 import type { TutorialSlide } from '../data/tutorials';
@@ -4136,8 +4137,12 @@ const grantMeleeKillRewards = (
   player: Player,
   gun: Weapon | undefined,
   suppressKillCallout = false,
-  ammoChanceOverride?: number
+  ammoChanceOverride?: number,
+  // 縮地(§32-3): **プレイヤー本人の近接**の撃破だけ true(通常の振り/カウンター・刀・鞭)。
+  // 分身・投擲スケボーは同じ player を渡すので関数の中では見分けられない=呼び手が決める。
+  opensShukuchi = false,
 ) => {
+  if (opensShukuchi && killed.length > 0) openShukuchiWindow(get);
   // 叫喚型(screamer)を近接で倒したら強化バフを即座に打ち切る(社長指示)。全ての近接キル経路が
   // このヘルパーを通るので、ここ1箇所で拾える(gun/接触/爆発側は damageEnemy 内で同様に処理)。
   const screamerCutPatch = screamerBuffCutOnKillPatch(killed.map(k => k.enemy.type), get().screamerBuffUntil, get().gameTime);
@@ -4917,6 +4922,42 @@ export const SLASHER_FORCE_KB_PX = 25;  // 社長指示v0.25.3297: スラッシ�
 // 返り値 null = 射程内に敵が居なかった(★v0.25.3616): チェーンを破棄し、呼び出し側は**通常経路へ
 // 落とす**(このタップは追撃ではなく新しい初撃の候補になる。旧: 空振りでも連数を消費して
 // チェーン演出だけ出ていた=「1撃目のはずなのに2撃目が発動」の一因)。
+/**
+ * ★縮地(SKILL_BUILD_REDESIGN.md §32): 追撃の窓を開く(プレイヤー本人の近接での撃破の後に呼ぶ)。
+ * ワープ斬撃の解決中(`shukuchiStriking`)の撃破なら連鎖を+1、それ以外の撃破なら連鎖を0から開き直す
+ * (=通常の振りで倒した後のワープは必ず1発目から)。窓の時計は gameTime(ヒットストップ/スロー中は止まる)。
+ */
+const openShukuchiWindow = (get: () => GameState): void => {
+  const p = get().player;
+  if (!hasSkill(p, 'shukuchi')) return;
+  const { windowMs } = shukuchiParams(skillLevel(p, 'shukuchi'));
+  const chain = p.shukuchiStriking ? (p.shukuchiChain ?? 0) + 1 : 0;
+  useGameStore.setState(st => ({ player: {
+    ...st.player, shukuchiWindowUntil: st.gameTime + windowMs, shukuchiChain: chain,
+  } }));
+};
+
+/**
+ * ★縮地: 飛ぶ相手を選ぶ。通常の近接と同じ除外(死体・横切りの死神・跳躍中=無敵)+眠っているボス・倒れた敵を外し、
+ * 距離は近接と同じ `enemyMeleeDist`(判定の帯の最近点)、壁越しは近接と同じ `meleeWallsAround`+`segmentBlocked`。
+ */
+const findShukuchiTarget = (get: () => GameState, p: Player): Enemy | null => {
+  const { rangePx } = shukuchiParams(skillLevel(p, 'shukuchi'));
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const walls = meleeWallsAround(get, pcx, pcy, rangePx);
+  const cands: { id: string; dist: number; blocked: boolean; e: Enemy }[] = [];
+  for (const e of get().enemies) {
+    if (e.health <= 0 || isCorpse(e) || e.dormant === true) continue;
+    if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
+    if (e.aiPhase === 'jump') continue;
+    const dist = enemyMeleeDist(pcx, pcy, e);
+    if (dist > rangePx) continue;
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    cands.push({ id: e.id, dist, blocked: walls.length > 0 && segmentBlocked(pcx, pcy, ecx, ecy, walls), e });
+  }
+  return pickShukuchiTarget(cands, rangePx)?.e ?? null;
+};
+
 const applySlasherChainStrike = (
   get: () => GameState,
   player: Player,
@@ -4999,6 +5040,7 @@ const applySlasherChainStrike = (
     get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫(v0.25.2026)
     if (k) {
       killed += 1;
+      openShukuchiWindow(get); // 縮地: スラッシャーの追撃(プレイヤー本人の近接)での撃破も窓を開く(§32-3)
       get().spawnBurst(ecx, ecy, '#bef264', 10);
     } else {
       const d = Math.max(0.001, Math.hypot(dx, dy));
@@ -5809,6 +5851,8 @@ interface GameState {
   triggerCounter: (swingStartAt?: number) => CounterTriggerResult;
   /** ★前隙の起点。窓/CD/絵だけを打ち、判定は `MELEE_WINDUP_MS` 後に useGameLoop が解決する。 */
   beginMeleeSwing: () => boolean;
+  // 縮地(SKILL_BUILD_REDESIGN.md §32): ワープ後の斬撃を解決する(ループが movePlayer の直後に呼ぶ)。待ちが無ければ null。
+  resolveShukuchiStrike: () => CounterTriggerResult | null;
   // Katana actions. performKatanaStrike cuts the given enemies with katana
   // melee rules (crit, knockback, shared kill rewards). 近接フィニッシュは
   // 一閃のみ: allowFinisher は dash 経由でだけ true になる。
@@ -7053,7 +7097,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 壁解決。屋内は labMap の壁(+閉ドア)のみ。屋外は従来の木/トーチ/城。
       let newX: number;
       let newY: number;
-      const candidate = { x: player.x + vx * deltaTime, y: player.y + vy * deltaTime, width: player.width, height: player.height };
+      // ★縮地(§32): ワープ先が渡されていれば、このフレームの移動先をそこにする=壁・行ける帯・城ボス戦の円・
+      // 囲いの円の解決を**通常の移動と同じ鎖で**通す(自前で座標を書かない)。1回きり(下で消す)。
+      const warpTo = player.shukuchiWarpTo;
+      const candidate = warpTo
+        ? { x: warpTo.x, y: warpTo.y, width: player.width, height: player.height }
+        : { x: player.x + vx * deltaTime, y: player.y + vy * deltaTime, width: player.width, height: player.height };
       if (state.indoorMode) {
         const openIds = state.labDoors.filter(d => d.open).map(d => d.id);
         const r = resolveAabb(candidate, [...labBlockingWalls(openIds), ...state.labProps.map(p => p.rect)]);
@@ -7291,12 +7340,43 @@ export const useGameStore = create<GameState>((set, get) => ({
           phillReticleDX,
           phillReticleDY,
           phillSnapEnemyId,
-          lastDirection,
+          lastDirection: warpTo ? player.lastDirection : lastDirection, // ワープの回は相手の方を向いたまま
           aimX,
-          aimY
+          aimY,
+          shukuchiWarpTo: undefined,
         }
       };
     });
+  },
+  resolveShukuchiStrike: () => {
+    const p0 = get().player;
+    const pressAt = p0.shukuchiStrikeAt ?? 0;
+    if (!(pressAt > 0) || p0.shukuchiWarpTo) return null; // 待ちが無い/まだワープしていない
+    const target = get().enemies.find(e => e.id === p0.shukuchiTargetId);
+    // 相手の方を向き直す(鞭は lastDirection の向きへ振るため)。
+    if (target) {
+      const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
+      const pcx = p0.x + p0.width / 2, pcy = p0.y + p0.height / 2;
+      const dl = Math.hypot(ecx - pcx, ecy - pcy) || 1;
+      set(state => ({ player: { ...state.player, lastDirection: { x: (ecx - pcx) / dl, y: (ecy - pcy) / dl } } }));
+    }
+    set(state => ({ player: { ...state.player, shukuchiStrikeAt: 0, shukuchiStriking: true } }));
+    // 斬撃=**通常の近接の振りそのもの**(前隙なし=押した時刻を渡す)。ダメージの上乗せは triggerCounter が読む。
+    const r = get().triggerCounter(pressAt);
+    let { swung, hit, finish, killed } = r;
+    // 刀を持っている時は振りが攻撃しない(刀はオート斬撃)=相手へ刀の一閃を直接出す。
+    if (target && isKatanaMode(get().player)) {
+      const k = get().performKatanaStrike([target.id], p0.shukuchiStrikeMult ?? 1, false);
+      swung = true; hit = hit || k.hit; finish = finish || k.finish; killed += k.killed;
+    }
+    // スラッシャーのジャストリング(追撃の受付)はワープ斬撃では出さない(社長指定)。
+    if (get().player.slasherChainReadyAt > 0) get().setSlasherCombo(0, 0);
+    set(state => ({ player: {
+      ...state.player, shukuchiStriking: false, shukuchiStrikeMult: undefined, shukuchiTargetId: undefined,
+      // 倒せなかった(ボスを斬っただけも含む)=窓を閉じて連鎖も0。倒せていれば撃破の側(openShukuchiWindow)が開き直し済み。
+      ...(killed > 0 ? {} : { shukuchiWindowUntil: 0, shukuchiChain: 0 }),
+    } }));
+    return { swung, hit, finish, killed };
   },
 
   // スケボー(新仕様): ダブルタップで乗車。skater 未装備/既に乗車中は無視。
@@ -7449,6 +7529,45 @@ export const useGameStore = create<GameState>((set, get) => ({
     const p = get().player;
     if (isPvpIncapacitated(p.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中は振れない(窓も開かない)
     if (isPlayerGrabbed(p, get().gameTime)) return false; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は振れない
+    // ★縮地(SKILL_BUILD_REDESIGN.md §32): 追撃の窓の中の振り=射程内の最寄りの敵の手前へ瞬間移動して斬る。
+    // 振れる時だけ(通常の近接CD明け・前隙中でない・攻撃封印なし=triggerCounter の門と同じ3つ)。
+    // スラッシャーの追撃より**先**に見る(窓が開いていて飛べる相手が居ればワープを優先し、チェーンは破棄)。
+    // 飛べる相手が居なければ下の通常経路へ落とす(窓は消費しない)。
+    if (hasSkill(p, 'shukuchi') && now >= p.counterCooldownEnd && p.pendingSwingAt === 0 && !((p.shukuchiStrikeAt ?? 0) > 0)
+      && !(SKATER_LOCK_ENABLED && p.skaterRiding)
+      && !(isSeekerActive(p, get().gameTime) && skillLevel(p, 'seeker') < 3)
+      && get().m0Unlocked.melee) {
+      const open = shukuchiWindowOpen(p.shukuchiWindowUntil, get().gameTime);
+      const target = open ? findShukuchiTarget(get, p) : null;
+      if (target) {
+        const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+        // 着地=相手の判定の帯の最近点から、近接が確実に入る手前(射程の4割・最大24px)。
+        const land = shukuchiLandingPoint(pcx, pcy, enemyRangeRect(target), Math.min(24, huntingMeleeRadius(p) * 0.4));
+        const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
+        const dl = Math.hypot(ecx - land.x, ecy - land.y) || 1;
+        const chainIndex = (p.shukuchiChain ?? 0) + 1; // この一撃が何発目か(1始まり)
+        if (hasSkill(p, 'slasher') && p.slasherChainReadyAt > 0) get().setSlasherCombo(0, 0);
+        set(state => ({
+          player: {
+            ...state.player,
+            shukuchiWarpTo: { x: land.x - state.player.width / 2, y: land.y - state.player.height / 2 },
+            shukuchiStrikeAt: now,
+            shukuchiTargetId: target.id,
+            shukuchiStrikeMult: shukuchiChainMult(chainIndex),
+            // 通常の振りと同じ近接CD(解決までの1フレームに次の振りを受け付けない。斬撃の解決でも同じ値が張り直される)。
+            counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
+            meleeSwingAt: now,
+            lastDirection: { x: (ecx - land.x) / dl, y: (ecy - land.y) / dl },
+            // ワープ直後の無敵(0.5秒)。既に長い無敵が残っていれば縮めない。
+            invulnerable: true,
+            invulnerableTime: state.player.invulnerable
+              ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - SHUKUCHI_INVULN_MS))
+              : now - Math.max(0, INVULN_MS - SHUKUCHI_INVULN_MS),
+          },
+        }));
+        return true;
+      }
+    }
     // ★v0.25.4003(社長報告2026-08-28「スラッシャーが連撃うまくできない」): チェーン受付は
     // triggerCounter側(PC直呼び)にしか無く、タッチのタップは下の通常CD門(820ms)が先に飲むため、
     // チェーンCD(300ms)のリズムのタップが**予約もされずに捨てられていた**=タッチだけ連撃が
@@ -7586,7 +7705,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const melee = player.weapons.find(w => w.isMelee);
     const gun = getActiveGun(player); // finisher refunds into the active gun
-    const meleeDamage = meleeSwingBaseDamage(melee, player); // キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率
+    // 縮地(§32): ワープ斬撃の連鎖の上乗せ(2発目から+20%ずつ)。ワープ斬撃以外では 1。
+    const meleeDamage = meleeSwingBaseDamage(melee, player) * (player.shukuchiStrikeMult ?? 1); // キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率
     // ★処刑(気絶敵フィニッシュ/ボス5×/強個体3×)は skillOutgoingDamageMult を通らない経路なので、
     // 永続育成の攻撃力(research/GROWTH.md v4・社長裁定Q1)は**素ダメージへ前掛け**して渡す。
     // applyBrokenMeleeFatal は `baseDamage×5 + 報酬予算の残量` なので、前掛けにすると育成は
@@ -8403,7 +8523,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Per-kill rewards. Finishers grant bonus XP + gold VFX. EVERY melee kill
     // also DROPS an ammo box for the active gun's family — melee is the run's
     // main way to scavenge rounds, but you have to walk over the drop.
-    grantMeleeKillRewards(get, killed, player, gun);
+    grantMeleeKillRewards(get, killed, player, gun, false, undefined, true /* 縮地: 本人の近接 */);
     let finishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301 社長「CD中は画面揺れだけ入れて」。〜4300 はフル演出の回だけ)
     if (finisherHit || bossFinishHit) {
       const [ztx, zty] = bossFatalHits[0]
@@ -8693,7 +8813,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
     for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     // CRIT-UNIFY §9.4: 分身のクリで完全気絶が発動したら他の近接経路と同じ紫FX+STUN!コールアウト。
-    grantMeleeKillRewards(get, killed, player, gun);
+    grantMeleeKillRewards(get, killed, player, gun); // 分身=本人の近接ではない(縮地の窓は開かない)
     get().spawnSlash(ccx, ccy, 'rgba(226,232,240,0.95)');
     get().spawnRing(ccx, ccy, 6, 40, 'rgba(203,213,225,0.7)', 3, 240);
     // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも停止/スロー/寄りズームを出す(?ghostzoom=0で従来へ)。
@@ -9515,7 +9635,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
-    grantMeleeKillRewards(get, killed, player, gun, true);
+    grantMeleeKillRewards(get, killed, player, gun, true, undefined, !ghostId /* 縮地: 本人の刀だけ(守護霊の刀では開かない) */);
     let katanaFinishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301)
     // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも出す(?ghostzoom=0で従来=除外1へ)。
     if ((finisherHit || bossFinishHit) && (!isGhost || GHOST_ZOOM_TRIAL_ENABLED)) {
@@ -9791,7 +9911,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       showBossFatalPresentation(get, p.x, p.y, p.labelY);
     }
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
-    grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE);
+    grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE, true /* 縮地: 本人の近接 */);
     // スキル: 救難信号(§6.10 M33⑦: 鞭のヒットでも発動判定。基本近接/刀と同条件。アライの一撃は
     // 鞭の通常打撃基準=meleeBase×WHIP_DAMAGE_MULT を素通し)。
     applyRescueSignalProc(get, player, meleeBase * WHIP_DAMAGE_MULT, whipHitEnemyIds, pcx, pcy);
