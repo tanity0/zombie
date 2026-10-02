@@ -8133,6 +8133,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (isGate2AngelBoss(BOSS_MAKER_BOSS)) {
               mk.homeX = mcx; mk.homeY = mcy;
             }
+            // ★フィル(社長報告2026-10-02「ボスモードのフィルのHPやたら低くない?」): 型の既定HPは仮置きの500で、
+            // **出す経路は必ず台帳(stage-ex1)で上書きする**決まり(config/bossHealth.ts)。本編の出現ブロックは
+            // 上書きしていたが、部屋のこの経路だけ抜けていて500のまま戦っていた。倍率は計測路なので1.0。
+            if (BOSS_MAKER_BOSS === 'phillboss') {
+              const phMult = stageBossDiffMults();
+              mk.health = mk.maxHealth = Math.round(stageBossHealthFor('stage-ex1') * phMult.hp);
+              mk.damage = Math.round(mk.damage * phMult.dmg);
+            }
             // 賞金首(§6.38)はHPが「基準値×実効難易度倍率」で後から決まる型なので、自然湧き
             // (spawnBountyEncounter)と同じ式をここでも通す。帰巣(リーシュ)の原点も置いておく。
             if (isBountyType(BOSS_MAKER_BOSS)) {

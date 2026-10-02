@@ -19442,7 +19442,9 @@ export class PixiScene {
           this.drawSkelClawSprite(
             this.coffinSwingSprites, `fx/coffin-swing-${sw}`, e.id,
             fb.footX + cSgn * fb.boxW * 0.35, fb.footY - fb.boxH * 0.45,
-            COFFIN_SWING_W_PX / COFFIN_SWING_REF_W, cSgn < 0, coffinSwingAlpha(cSince) * artFade,
+            // ★素材の弧は**左向きの振り**(左へ膨らみ右へ開く)なので、右向き(cSgn>0)の時に反転する
+            // (社長報告2026-10-02「棺桶を振る時の斬撃エフェクト、左右が逆」。旧: 右向き前提で cSgn<0 を反転していた)。
+            COFFIN_SWING_W_PX / COFFIN_SWING_REF_W, cSgn > 0, coffinSwingAlpha(cSince) * artFade,
           );
         }
         const sl = coffinSlamFrame(cSince);
