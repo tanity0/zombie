@@ -76,13 +76,14 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-stretch justify-center"
+      className="fixed inset-0 z-50 flex items-stretch justify-center landscape:items-center"
       style={{ background: 'rgba(11, 11, 18, 0.6)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
       onTouchStart={preventTouchEvent}
       onTouchMove={preventTouchEvent}
       onTouchEnd={preventTouchEvent}
     >
-      <div className="glass-panel command-panel rounded-none w-full h-full overflow-hidden flex flex-col justify-center">
+      {/* PC の横長(research/PC_SUPPORT.md 段3): 全幅の2列が間延びするので、中央のカードにまとめる(縦持ちは従来どおり全面)。 */}
+      <div className="glass-panel command-panel rounded-none w-full h-full overflow-hidden flex flex-col justify-center landscape:h-auto landscape:max-h-full landscape:max-w-[860px] landscape:py-6">
         <div className="px-5 pt-4 pb-2">
           <div className="text-[13px] font-semibold tracking-[0.14em] text-white/70 gt-emboss">一時停止</div>
         </div>

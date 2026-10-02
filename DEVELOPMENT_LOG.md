@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4779 — PC版対応 段3-1: ゲーム中の HUD とメニューを枠の高さに合わせて拡大【2026-10-02 23:23 JST】
+- 社長「はい」(段3から)。`hudScaleFor`(横長だけ 枠の高さ/760・1〜2)+ `HudScale`(transform で拡大・倍率1は包まない=スマホは不変)。
+  包むもの: HUD・スキル列・会話・説明画面・一時停止・帰還確認・レベルアップ・ショップ。一時停止は横長で中央のカード(最大860)。
+- 実画(ヘッドレス 1920×1080): HUD がゲーム画面に見合う大きさ/一時停止が中央のカード。
+- 品質監査・クリエイティブ監査は走行中=指摘は次の版で反映(巻き戻り対策で先に push)。
+- 検証: typecheck / lint(0 errors)/ viewport.test 12。
+- 変更: src/components/HudScale.tsx(新)/ src/components/Game.tsx / src/components/PauseMenu.tsx / src/utils/viewport.ts(.test)/ research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4778 — PC版対応 段1: 設計監査の反映【2026-10-02 23:04 JST】
 - 設計監査(Fable 5.1): (A)2 → A-1 タッチ+マウス端末でキーボードが無いと移動手段ゼロ → 操作層を「最後に触れた入力」で切り替え(`usePointerKind`・utils/inputDevice.ts)/
   A-2 洋館通路(S6/EX)は PC で壁の絵と行ける範囲がずれる → 既知として設計書の段1に明記(直しは段2)。

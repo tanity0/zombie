@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeViewport, VIEW_CORE_W, VIEW_CORE_H, VIEW_MAX_W, VIEW_MAX_H, VIEW_PC_H, VIEW_PC_MAX_W } from './viewport';
+import { computeViewport, VIEW_CORE_W, VIEW_CORE_H, VIEW_MAX_W, VIEW_MAX_H, VIEW_PC_H, VIEW_PC_MAX_W, hudScaleFor } from './viewport';
 
 // 本作は縦持ち専用。固定ビューの不変条件:
 //  ・論理寸法×scale = 実寸(=画面をちょうど埋める。黒帯が出ない)。
@@ -79,5 +79,17 @@ describe('computeViewport (横長=PC・research/PC_SUPPORT.md)', () => {
     expect(a.logicalH).toBeCloseTo(b.logicalH, 3);
     expect(computeViewport(1000, 1000).logicalW).toBeCloseTo(720, 3);
     expect(Math.abs(computeViewport(1000, 1001).logicalW - computeViewport(1000, 999).logicalW)).toBeLessThan(3); // 窓が1px変わっても数px
+  });
+});
+
+describe('hudScaleFor(PC の HUD の倍率)', () => {
+  it('縦持ちは常に1(スマホの HUD は変えない)', () => {
+    expect(hudScaleFor(430, 932)).toBe(1);
+    expect(hudScaleFor(1080, 2340)).toBe(1);
+  });
+  it('横長は枠の高さに合わせて1〜2', () => {
+    expect(hudScaleFor(1280, 720)).toBe(1);
+    expect(hudScaleFor(1920, 1080)).toBeCloseTo(1080 / 760, 6);
+    expect(hudScaleFor(3840, 2160)).toBe(2);
   });
 });

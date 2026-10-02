@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { HudScale, HudScaleProvider } from './HudScale';
+import { hudScaleFor } from '../utils/viewport';
 import { usePointerKind } from '../utils/inputDevice';
 import { useGameStore } from '../store/gameStore';
 import GameCanvas from './GameCanvas';
@@ -210,7 +212,10 @@ const Game: React.FC<GameProps> = ({
   // upgrade menu). Page scrolling is already disabled via
   // `touch-action: none` in the global CSS.
   
+  // PC の横長: HUD とゲーム中のメニューを枠の高さに合わせて拡大(research/PC_SUPPORT.md 段3)。スマホは1=従来どおり。
+  const hudScale = hudScaleFor(windowSize.width, windowSize.height);
   return (
+    <HudScaleProvider value={hudScale}>
     <div 
       ref={containerRef} 
       className="game-frame relative w-full h-full bg-gray-900"
@@ -238,9 +243,9 @@ const Game: React.FC<GameProps> = ({
       {/* PC(非タッチ): マウス照準 + 左クリック=タップ / 右クリック=フリック。HUDより手前(z低)に置く。 */}
       {!isTouch && <MouseControls />}
 
-      {!makerHideHud && <GameHUD />}
+      {!makerHideHud && <HudScale z={40}><GameHUD /></HudScale>}
       {/* SKILL_BUILD_REDESIGN.md §23-2条件5: 消費カード発動中は残秒を常時表示(統計トグルとは独立)。 */}
-      {!makerHideHud && <RunHud />}
+      {!makerHideHud && <HudScale z={40}><RunHud /></HudScale>}
       {/* PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出(中格=帯/大格=銘打ち)。 */}
       <WallBand />
       <WallInscription />
@@ -271,9 +276,9 @@ const Game: React.FC<GameProps> = ({
       <BossCutin />
 
       {/* チュートリアルの操作説明ポップアップ(表示中はisPaused=trueだがPauseMenuは出さない=ポップアップ優先) */}
-      <TutorialPopup />
+      {tutorialPopupOpen && <HudScale z={90} interactive><TutorialPopup /></HudScale>}
       {isPaused && !tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible && (
-        <PauseMenu
+        <HudScale z={50} interactive><PauseMenu
           onResume={() => setPaused(false)}
           // ★v0.25.3561(社長報告「ボスメーカー、メニューボタンが効いてない」): ボスメーカーの部屋では
           // 「メニューに戻る」で**出撃メニュー(ボス選択)へ戻す**。従来は onGameOver → bare の
@@ -281,24 +286,24 @@ const Game: React.FC<GameProps> = ({
           // v0.25.3558で5体になり、ボスを切り替えるにはメニューへ戻る必要が生まれて露呈)。
           // クエリを消せばメニューが出る(tools/bossmaker/main.tsx の出し分け=URLに出撃フラグがあるか)。
           onQuit={() => { if (isBossMakerRun()) { window.location.search = ''; return; } onGameOver(); }}
-        />
+        /></HudScale>
       )}
 
-      <StoryReturnPrompt />
+      {storyReturnPromptVisible && <HudScale z={60} interactive><StoryReturnPrompt /></HudScale>}
       
       {showUpgradeOverlay && (
-        <UpgradeMenu />
+        <HudScale z={50} interactive><UpgradeMenu /></HudScale>
       )}
 
       {showShopMenu && (
-        <ShopMenu />
+        <HudScale z={50} interactive><ShopMenu /></HudScale>
       )}
 
       {/* 二人組(クエストNPC)の会話ポップアップは廃止(社長指示v0.25.1681)。
           受領=会話サークル3秒滞在(拠点解放式メーター)+左上NPC会話へ移行。 */}
 
       {/* 登場時のセリフ(時間停止・オートタイプ)。表示中だけ自前 raf で更新。 */}
-      <IntroDialogue />
+      <HudScale z={50}><IntroDialogue /></HudScale>
 
       {/* 洋館再訪: 保存槽接近中の［投与する］(統合正本9.3・修正差分メモD-09)。 */}
       <MedicinePrompt />
@@ -329,6 +334,7 @@ const Game: React.FC<GameProps> = ({
         <ErrBeacon />
       </div>
     </div>
+    </HudScaleProvider>
   );
 };
 

@@ -53,3 +53,10 @@ export const computeViewport = (realW: number, realH: number): Viewport => {
   const scale = Math.max(sContain, sCap);
   return { scale, logicalW: w / scale, logicalH: h / scale };
 };
+
+/**
+ * PC の横長で HUD・ゲーム中のメニューを拡大する倍率(research/PC_SUPPORT.md 段3・components/HudScale.tsx)。
+ * 枠の高さ/760(スマホの HUD とゲーム画面の比 ≈1.06 に近づける)。横長だけ。1未満にはしない(1280×720 で等倍)。上限2。
+ */
+export const hudScaleFor = (frameW: number, frameH: number): number =>
+  frameW > frameH ? Math.max(1, Math.min(2, frameH / 760)) : 1;
