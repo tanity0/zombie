@@ -1000,6 +1000,9 @@ const TILT_SHIFT_BLUR = tsNum('tsblur', 14);       // max blur strength at the e
 // 近い森2)のブラー強度をまとめて上下する本パラメータへ付け替え。前景森(frontForest)は手前ボケなので対象外。1=従来。
 const FAR_DOF_MULT = Math.max(0, tsNum('fardof', 1));
 const TILT_SHIFT_GRADIENT = tsNum('tsgrad', 440);  // px over which sharp ramps into blur
+// ★ボス戦のピント(社長指示2026-10-02): ボスの絵の遠い端を勾配のこの割合の地点(smoothstep≈0.1=最大ボケの約1割)に置く。
+const BOSS_DOF_EDGE_FRAC = Math.max(0.05, tsNum('tsbossedge', 0.2));
+const BOSS_DOF_EASE_MS = 220; // ピントの寄せ(指数で寄る時定数)。段差で抜けない=慣性
 const TILT_SHIFT_BAND = tsNum('tsband', 0.54);     // sharp-band centre as a fraction of height(camdown=0.08でプレイヤーが0.58へ下がるのに合わせ下げる)
 
 // --- フェーズ1: 環境(地面・森・遠景・木)だけを暗く沈める「ベースの闇」----------
@@ -3796,6 +3799,9 @@ export class PixiScene {
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
   private enemies = new Map<string, ActorView>();
+  // ★ボス戦のピント(社長指示2026-10-02): ボスの絵の遠い端までピントへ入れる勾配(画面px・慣性つきで追従)。
+  private bossDofGrad = 0;
+  private bossDofLastNow = 0;
   // 錬金術の召喚ユニット(味方)。敵と同じ actor プールを使い、シアンtintで描く。
   private summonViews = new Map<string, ActorView>();
   // スキル 救難信号: 飛来する援護アライ(一過性)。同時に生きるのは基本1体程度なので per-id プールで十分軽い。
@@ -8542,6 +8548,34 @@ export class PixiScene {
         const zoomGradCap = Math.max(1, tsNum('tszoomgrad', 2.5));
         const zoomGradMul = Math.min(zoomGradCap, Math.max(1, 1 / tz));
         gradNow = Math.max(gradNow, TILT_SHIFT_GRADIENT * zoomGradMul);
+      }
+      // ★ボス戦はボスにピント(社長指示2026-10-02「小さめのボスの時の方が目立つ。割と早めにピンボケ出る」)。
+      // 小さいボスはカメラがほぼ引かない=上の引き連動が効かず、構えが上下のボケ帯に入っていた。
+      // 画面に映っている交戦中のボスの**絵の遠い端**(画面内に切り詰め)が、ボケの立ち上がり
+      // (smoothstep の 0.2 地点=最大ボケの約1割)より内側に入るまで勾配を広げる。焦点はプレイヤーのまま
+      // (プレイヤーはボケ0=v0.25.1758)。目標値へは慣性つきで寄せる(ボスが画面に入った瞬間に段差で抜けない)。
+      // ボスと反対側の端・雑魚戦は従来どおり(勾配が広がるのはボスが離れている間だけ)。?tsbossfocus=0 で無効。
+      {
+        let need = 0;
+        if (tsNum('tsbossfocus', 1) > 0) {
+          const scrH = this.screenH * vpScale;
+          for (const e of s.enemies) {
+            if (!isEngageableBoss(e.type) || e.dormant === true || e.bossState === 'return' || e.health <= 0) continue;
+            const v = this.enemies.get(e.id);
+            if (!v || !v.sprite.visible || v.container.alpha <= 0.01 || !v.container.visible) continue;
+            const bb = v.sprite.getBounds();
+            if (bb.height <= 0) continue;
+            const top = Math.max(0, bb.y), bot = Math.min(scrH, bb.y + bb.height);
+            if (bot <= top) continue; // 画面外
+            const far = Math.max(Math.abs(top - bandY), Math.abs(bot - bandY));
+            need = Math.max(need, far / (BOSS_DOF_EDGE_FRAC * vpScale));
+          }
+        }
+        const dtMs = this.bossDofLastNow ? Math.min(100, Math.max(0, realNow - this.bossDofLastNow)) : 16;
+        this.bossDofLastNow = realNow;
+        const k = 1 - Math.exp(-dtMs / BOSS_DOF_EASE_MS);
+        this.bossDofGrad += (need - this.bossDofGrad) * k;
+        gradNow = Math.max(gradNow, this.bossDofGrad);
       }
       this.tiltShift.start = { x: 0, y: bandY };
       this.tiltShift.end = { x: this.screenW * vpScale, y: bandY };
