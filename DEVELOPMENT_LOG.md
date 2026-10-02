@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.4780 — PC版対応 段3-1: 品質監査・クリエイティブ監査の反映【2026-10-02 23:41 JST】
+- 品質監査(Fable 5.1) (A)5: 拡大の包みの中で窓の単位(vh/dvh/svh/vw)が二重に効き、一時停止の右列・ショップ・レベルアップ・説明画面が枠からはみ出して
+  「閉じる」等が押せない/戦況ラインが横いっぱい → `calc(○vw / var(--hud-s, 1))` で全部割った(規約を HudScale.tsx と設計書 §7-1 に)。［投与する］も包んだ。(B)は設計書。
+- クリエイティブ監査(Fable 5.1) 11件: 倍率を720基準の段(1/1.25/1.5/2)/ 横長で武器の列を右下・会話を画面の下・音を一時停止の左隣 / **PC にも一時停止の入口** /
+  一時停止は全面のまま左にボタンの帯・右の戦況は幅を絞る(中央カードをやめた)/ 帯は夜の森より暗い黒。
+- 実画(1920×1080・21:9): 会話が下の字幕の位置・右下に武器と音と一時停止・帯が黒・一時停止が左右非対称。
+- 巡の判断: 品質 (A) は全部直した/クリエイティブは見せ方 → 止めて実機へ。
+- 検証: typecheck / lint(0 errors)/ viewport.test。
+- 変更: src/components/HudScale.tsx / Game.tsx / GameHUD.tsx / NpcDialogue.tsx / PauseMenu.tsx / RunHud.tsx / DirectorLine.tsx / TutorialPopup.tsx / UpgradeMenu.tsx / ShopMenu.tsx /
+  src/utils/viewport.ts(.test)/ src/index.css / research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4779 — PC版対応 段3-1: ゲーム中の HUD とメニューを枠の高さに合わせて拡大【2026-10-02 23:23 JST】
 - 社長「はい」(段3から)。`hudScaleFor`(横長だけ 枠の高さ/760・1〜2)+ `HudScale`(transform で拡大・倍率1は包まない=スマホは不変)。
   包むもの: HUD・スキル列・会話・説明画面・一時停止・帰還確認・レベルアップ・ショップ。一時停止は横長で中央のカード(最大860)。

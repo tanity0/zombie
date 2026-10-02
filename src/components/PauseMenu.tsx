@@ -76,18 +76,19 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-stretch justify-center landscape:items-center"
+      className="fixed inset-0 z-50 flex items-stretch justify-center"
       style={{ background: 'rgba(11, 11, 18, 0.6)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
       onTouchStart={preventTouchEvent}
       onTouchMove={preventTouchEvent}
       onTouchEnd={preventTouchEvent}
     >
-      {/* PC の横長(research/PC_SUPPORT.md 段3): 全幅の2列が間延びするので、中央のカードにまとめる(縦持ちは従来どおり全面)。 */}
-      <div className="glass-panel command-panel rounded-none w-full h-full overflow-hidden flex flex-col justify-center landscape:h-auto landscape:max-h-full landscape:max-w-[860px] landscape:py-6">
+      {/* PC の横長(research/PC_SUPPORT.md 段3): 全面のまま、左にボタンの帯を寄せ、右の戦況は幅を絞る(全幅に間延びさせない・
+          中央のカードの汎用ダイアログにもしない=クリエイティブ監査 #5)。縦持ちは従来どおり。 */}
+      <div className="glass-panel command-panel rounded-none w-full h-full overflow-hidden flex flex-col justify-center landscape:pl-16">
         <div className="px-5 pt-4 pb-2">
           <div className="text-[13px] font-semibold tracking-[0.14em] text-white/70 gt-emboss">一時停止</div>
         </div>
-        <div className="px-5 pb-5 grid grid-cols-[auto_1px_minmax(0,1fr)] gap-x-5 gap-y-4">
+        <div className="px-5 pb-5 grid grid-cols-[auto_1px_minmax(0,1fr)] landscape:grid-cols-[280px_1px_minmax(0,520px)] landscape:gap-x-10 gap-x-5 gap-y-4">
           {/* 左: メニュー(幅は文字幅・2本を同じ幅に揃える)。
               クリエイティブ監査第2回・第2手 B-6: grid+self-start/content-start=右列の高さに引かれない
               (flex-colのままだと親グリッドの行高にstretchされ「続ける」が縦に伸びる)。 */}
@@ -108,7 +109,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
           <div className="block bg-[var(--menu-line)]" />
 
           {/* 右: 戦況(開いた時点の値・1回読み)。 */}
-          <div className="min-w-0 flex flex-col gap-3 text-[11px] max-h-[78vh] overflow-y-auto no-scrollbar">
+          <div className="min-w-0 flex flex-col gap-3 text-[11px] max-h-[calc(78vh/var(--hud-s,1))] overflow-y-auto no-scrollbar">
             <div className="flex items-center justify-between">
               <span className="tracking-[0.16em] text-white/35">経過時間</span>
               <span className="text-[20px] font-semibold tabular-nums text-white/90">{formatTime(snap.gameTimeSec)}</span>

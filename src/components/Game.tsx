@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { HudScale, HudScaleProvider } from './HudScale';
+import { HudScale, HudScaleProvider, HudLandscapeProvider } from './HudScale';
 import { hudScaleFor } from '../utils/viewport';
 import { usePointerKind } from '../utils/inputDevice';
 import { useGameStore } from '../store/gameStore';
@@ -216,6 +216,7 @@ const Game: React.FC<GameProps> = ({
   const hudScale = hudScaleFor(windowSize.width, windowSize.height);
   return (
     <HudScaleProvider value={hudScale}>
+    <HudLandscapeProvider value={windowSize.width > windowSize.height}>
     <div 
       ref={containerRef} 
       className="game-frame relative w-full h-full bg-gray-900"
@@ -270,7 +271,8 @@ const Game: React.FC<GameProps> = ({
       {benchmarkMode && onBenchmarkComplete && (
         <BenchmarkOverlay fps={fps} onComplete={onBenchmarkComplete} />
       )}
-      {isTouch && !makerHideHud && !endingStage && <MobileControls />}
+      {/* 一時停止の入口: タッチは従来どおり。PC にも出す(マウスだけで遊ぶ人が Esc を知らずに詰まない=クリエイティブ監査 #3)。 */}
+      {!makerHideHud && !endingStage && <HudScale z={30}><MobileControls /></HudScale>}
       
       {/* §6.36 ボス出現カットイン(HUDより最前面・cutin窓の1.1秒だけ) */}
       <BossCutin />
@@ -306,7 +308,7 @@ const Game: React.FC<GameProps> = ({
       <HudScale z={50}><IntroDialogue /></HudScale>
 
       {/* 洋館再訪: 保存槽接近中の［投与する］(統合正本9.3・修正差分メモD-09)。 */}
-      <MedicinePrompt />
+      <HudScale z={50}><MedicinePrompt /></HudScale>
 
       {/* In-play version marker (bottom-left): same source as the title's
           top-right badge (__APP_VERSION__ = package.json version) so the
@@ -334,6 +336,7 @@ const Game: React.FC<GameProps> = ({
         <ErrBeacon />
       </div>
     </div>
+    </HudLandscapeProvider>
     </HudScaleProvider>
   );
 };

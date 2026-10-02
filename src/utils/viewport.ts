@@ -56,7 +56,11 @@ export const computeViewport = (realW: number, realH: number): Viewport => {
 
 /**
  * PC の横長で HUD・ゲーム中のメニューを拡大する倍率(research/PC_SUPPORT.md 段3・components/HudScale.tsx)。
- * 枠の高さ/760(スマホの HUD とゲーム画面の比 ≈1.06 に近づける)。横長だけ。1未満にはしない(1280×720 で等倍)。上限2。
+ * ゲーム画面と同じ 720 基準(枠の高さ/720)を **1 / 1.25 / 1.5 / 2 の段**に丸める(連続値だとドット絵のアイコンの
+ * ドットが列ごとに不揃いになる=クリエイティブ監査 #8)。横長だけ。1366×768 は 1、1080p は 1.5、1440p は 2。
  */
-export const hudScaleFor = (frameW: number, frameH: number): number =>
-  frameW > frameH ? Math.max(1, Math.min(2, frameH / 760)) : 1;
+export const hudScaleFor = (frameW: number, frameH: number): number => {
+  if (frameW <= frameH) return 1;
+  const r = frameH / 720;
+  return r >= 2 ? 2 : r >= 1.5 ? 1.5 : r >= 1.25 ? 1.25 : 1;
+};

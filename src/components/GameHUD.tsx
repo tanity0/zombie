@@ -9,6 +9,7 @@ import { resolveDesertTechAmmoType } from '../utils/desertTechAmmo'; // UNIQUE_W
 import { spritePath } from '../utils/spriteLoader';
 import VitalsOrb from './VitalsOrb';
 import { NpcDialogue } from './NpcDialogue';
+import { useHudLandscape } from './HudScale';
 import SubquestHud from './SubquestHud';
 import { LowHpVignette } from './LowHpVignette';
 import type { AmmoType } from '../types/game';
@@ -65,6 +66,7 @@ const RescueQuestGoalPill: React.FC = () => {
 };
 
 const GameHUD: React.FC = () => {
+  const hudLandscape = useHudLandscape(); // PC の横長=武器の列・音のボタンを置き直す(research/PC_SUPPORT.md 段3)
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
   // player 全体ではなく HUD が使うフィールドだけを shallow 購読(移動で毎フレーム再描画しないように)。
   const player = useGameStore(s => ({
@@ -157,7 +159,7 @@ const GameHUD: React.FC = () => {
       {itemGetVisible && (
         <div
           className="absolute left-1/2 -translate-x-1/2"
-          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 118px)', maxWidth: 'min(88vw, 360px)' }}
+          style={{ top: 'calc(max(env(safe-area-inset-top), 8px) + 118px)', maxWidth: 'min(calc(88vw / var(--hud-s, 1)), 360px)' }}
         >
           <div className="glass-pill px-4 py-2 flex items-center gap-2 animate-pulse">
             {isTreasureGet && lastWeaponGet!.treasureVariant
@@ -208,7 +210,7 @@ const GameHUD: React.FC = () => {
             transition: 'top 0.25s ease',
             // 長い文言(護衛が居ない出撃でPOIの通信がここへフォールバックする時)でも画面外へはみ出さない。
             // 既存のバナーはどれも短いので見た目は変わらない。
-            maxWidth: 'min(70vw, 320px)',
+            maxWidth: 'min(calc(70vw / var(--hud-s, 1)), 320px)',
           }}
         >
           <div
@@ -330,7 +332,11 @@ const GameHUD: React.FC = () => {
         return (
           <div
             className="absolute flex flex-col items-end gap-1.5 pointer-events-none"
-            style={{
+            // 58% はスマホで親指が届く高さ。PC の横長は右下(一時停止・音の上)へ落とす(クリエイティブ監査 #2)。
+            style={hudLandscape ? {
+              right: 16,
+              bottom: 'calc(24px + 56px)',
+            } : {
               right: 'max(env(safe-area-inset-right), 12px)',
               top: '58%',
               transform: 'translateY(-50%)'
@@ -433,7 +439,11 @@ const GameHUD: React.FC = () => {
         type="button"
         onPointerDown={toggleBgm}
         className="pointer-events-auto absolute w-9 h-9 rounded-full hud-translucent flex items-center justify-center text-white/70 active:text-white"
-        style={{
+        style={hudLandscape ? {
+          // PC: 一時停止(II)の左隣に並べる(スマホは II の上=縦に積む)。
+          right: 16 + 40 + 10,
+          bottom: 24 + 2,
+        } : {
           right: 'max(env(safe-area-inset-right), 16px)',
           bottom: 'calc(max(env(safe-area-inset-bottom), 24px) + 48px)'
         }}

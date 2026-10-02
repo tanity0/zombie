@@ -1,5 +1,6 @@
 import { useGameStore } from '../store/gameStore';
 import { spritePath } from '../utils/spriteLoader';
+import { useHudLandscape } from './HudScale';
 
 // 話者名 → 立ち絵のベースパス(spritePathの`${base}-0`)+枠幅。セリフ表示時に上半身(バスト)を出す。
 // 用語(社長決定v0.25.1851): この左上のモデル付き吹き出し=**「会話」**。会話は必ずモデル入り
@@ -44,6 +45,7 @@ export const NpcDialogue = () => {
   const npc = useGameStore(s => s.npcDialogue);
   const comboActive = useGameStore(s => s.meleeHitComboCount >= 2 && s.meleeHitComboUntil >= s.gameTime); // HUD の COMBO(近接ヒット表示)と同じ条件
   const bannerActive = useGameStore(s => !!s.eventBannerText && s.eventBannerUntil >= s.gameTime);
+  const landscape = useHudLandscape();
   if (!npc) return null;
   const topPx = 132 + (comboActive ? 58 : 0) + (bannerActive ? 58 : 0);
   // 話者の立ち絵(あれば)。portrait指定があれば名前より優先(例: 変異後グレンの頭部)。
@@ -53,11 +55,17 @@ export const NpcDialogue = () => {
   return (
     <div
       className="absolute text-left"
-      style={{
+      // PC の横長は画面の下(字幕の位置)へ。視線の落ち着く所・HUD の隙間に浮かせない(クリエイティブ監査 #10)。
+      style={landscape ? {
+        bottom: 28,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        maxWidth: 520,
+      } : {
         top: `calc(max(env(safe-area-inset-top), 8px) + ${topPx}px)`,
         left: 'max(env(safe-area-inset-left), 18px)',
         transition: 'top 0.25s ease',
-        maxWidth: 'min(66vw, 300px)',
+        maxWidth: 'min(calc(66vw / var(--hud-s, 1)), 300px)',
       }}
     >
       {/* 枠なし・上半身絵と文字を同一の右フェード背景に。高さは文字に合わせ、上半身絵は上にはみ出してOK。 */}

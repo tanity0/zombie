@@ -69,7 +69,7 @@ const RunHud: React.FC = () => {
       }}
     >
       {buffs.length > 0 && (
-        <div className="flex flex-row flex-wrap gap-1 max-w-[60vw]">
+        <div className="flex flex-row flex-wrap gap-1 max-w-[calc(60vw/var(--hud-s,1))]">
           {buffs.map(b => (
             <div
               key={b.key}
@@ -99,7 +99,7 @@ const RunHud: React.FC = () => {
         </div>
       )}
       {runBuild.length > 0 && (
-        <div className="flex flex-row flex-wrap gap-1 max-w-[60vw]">
+        <div className="flex flex-row flex-wrap gap-1 max-w-[calc(60vw/var(--hud-s,1))]">
           {runBuild.map((k, i) => (
             <div
               key={k}

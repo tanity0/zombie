@@ -89,7 +89,7 @@ const TutorialPopup: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-6 py-8">
-      <div className="relative flex max-h-[calc(100svh-40px)] w-full max-w-sm flex-col overflow-hidden" style={PANEL_STYLE}>
+      <div className="relative flex max-h-[calc(100svh/var(--hud-s,1)-40px)] w-full max-w-sm flex-col overflow-hidden" style={PANEL_STYLE}>
         <div className="px-5 pt-5 text-white/85" style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}>
           {multiple && (
             <div className="flex items-center justify-between border-b border-purple-300/35 pb-1.5">

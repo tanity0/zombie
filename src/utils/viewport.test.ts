@@ -87,9 +87,12 @@ describe('hudScaleFor(PC の HUD の倍率)', () => {
     expect(hudScaleFor(430, 932)).toBe(1);
     expect(hudScaleFor(1080, 2340)).toBe(1);
   });
-  it('横長は枠の高さに合わせて1〜2', () => {
+  it('横長は枠の高さ/720 を 1 / 1.25 / 1.5 / 2 の段に丸める(ドット絵のアイコンを不揃いにしない)', () => {
     expect(hudScaleFor(1280, 720)).toBe(1);
-    expect(hudScaleFor(1920, 1080)).toBeCloseTo(1080 / 760, 6);
+    expect(hudScaleFor(1366, 768)).toBe(1);
+    expect(hudScaleFor(1600, 900)).toBe(1.25);
+    expect(hudScaleFor(1920, 1080)).toBe(1.5);
+    expect(hudScaleFor(2560, 1440)).toBe(2);
     expect(hudScaleFor(3840, 2160)).toBe(2);
   });
 });

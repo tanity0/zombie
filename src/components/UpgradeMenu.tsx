@@ -82,7 +82,7 @@ const UpgradeMenu: React.FC = () => {
       className="fixed inset-0 z-50 flex items-center justify-center px-6 upgrade-menu-backdrop"
       style={{ background: 'rgba(11, 11, 18, 0.55)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
     >
-      <div className="glass-panel command-panel rounded-none w-full max-w-md overflow-hidden upgrade-menu-panel flex flex-col max-h-[88dvh]">
+      <div className="glass-panel command-panel rounded-none w-full max-w-md overflow-hidden upgrade-menu-panel flex flex-col max-h-[calc(88dvh/var(--hud-s,1))]">
         <div className="px-5 pt-5 pb-3 text-center shrink-0 relative">
           <h2 className="text-xl font-semibold tracking-tight text-white">レベルアップ</h2>
           <p className="text-xs text-white/60 mt-1">強化を選んでください</p>

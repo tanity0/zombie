@@ -53,7 +53,7 @@ const DirectorLine: React.FC = () => {
     top: LINE_TOP_SAFE_AREA ? 'env(safe-area-inset-top)' : 0,
     left: '50%',
     transform: 'translateX(-50%)',
-    width: `${fillPct}vw`,
+    width: `calc(${fillPct}vw / var(--hud-s, 1))`, // PC の HUD 拡大の包みの中=窓幅を倍率で割る
     height: 1,
     backgroundImage: backgroundImg,
     maskImage: maskImg,
@@ -78,7 +78,7 @@ const DirectorLine: React.FC = () => {
           top: LINE_TOP_SAFE_AREA ? 'env(safe-area-inset-top)' : 0,
           left: '50%',
           transform: 'translateX(-50%)',
-          width: `${fillPct}vw`,
+          width: `calc(${fillPct}vw / var(--hud-s, 1))`, // PC の HUD 拡大の包みの中=窓幅を倍率で割る
           height: 1,
           background: mainColor,
           // ★検収監査(A)-1: baseはopacity:0(VitalsOrbの白フラッシュと同型)。これが無いと
