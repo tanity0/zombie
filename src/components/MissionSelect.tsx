@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal as createReactPortal } from 'react-dom';
 import './commandHome.css';
-import { COMMAND_UI_ENABLED, REGION_ART } from '../config/uiDesign';
+import { COMMAND_UI_ENABLED, REGION_ART, regionArtWideClass } from '../config/uiDesign';
 import { useHudPortalRoot } from './HudScale';
 
 // ポータルも同じテーマを継承。ラッパーは含有ブロックを作るCSSを持たない。
@@ -909,7 +909,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         }`}
         style={unlocked ? { animationDelay: `${index * 50}ms` } : undefined}
       >
-        {COMMAND_UI_ENABLED && REGION_ART[stage.id] && <img className="command-stage-art" src={`${import.meta.env.BASE_URL}backgrounds/${REGION_ART[stage.id]}`} alt="" loading="lazy" />}
+        {COMMAND_UI_ENABLED && REGION_ART[stage.id] && <img className={`command-stage-art ${regionArtWideClass(REGION_ART[stage.id])}`} src={`${import.meta.env.BASE_URL}backgrounds/${REGION_ART[stage.id]}`} alt="" loading="lazy" />}
         {/* 親見出し(日付+場所)=ボタンの顔。右にシェブロン/ロック。 */}
         <span className="flex items-center gap-3">
           <span className="flex-1 min-w-0">
@@ -982,7 +982,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <div className="relative flex-1 overflow-hidden" style={{ minHeight: 'calc(36vh / var(--hud-s, 1))' }}>
           {art && (
             <img
-              className="absolute inset-0 h-full w-full object-cover"
+              className={`absolute inset-0 h-full w-full object-cover ${regionArtWideClass(art)}`}
               src={`${import.meta.env.BASE_URL}backgrounds/${art}`}
               alt=""
               loading="lazy"

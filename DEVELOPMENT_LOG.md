@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4783 — PC版対応: 洞窟地帯の絵の繰り返しを横長で隠す【2026-10-03 02:32 JST】
+- 社長「はい」(推薦=横長では絵の片側だけを映す)。`tutorial-far.jpg` は左右に同じ景色が2回並ぶ絵(差分の実測で周期=幅の半分。ほかの地域の絵は周期なし)。
+- `config/uiDesign.ts` に `REGION_ART_TWICE` / `regionArtWideClass`(横長だけ幅200%=左の1周だけ映す)。作戦地域のカードと作戦説明の絵に付けた。
+- 実画: 1920×1080 の一覧・作戦説明で繰り返しが消えた / 430×932 の作戦説明は変更前と同じ。
+- 検証: typecheck / lint(0 errors)。監査: 既存の絵の映し方の調整のみ(新しい仕組みではない)のため付けない。
+- 変更: src/config/uiDesign.ts / src/components/MissionSelect.tsx / research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4782 — PC版対応 段3-2(前半): 品質監査・クリエイティブ監査の反映【2026-10-03 01:23 JST】
 - 品質監査(Fable 5.1) (A)3: ①`HudScale` が倍率1で Fragment・それ以外で div → 窓のリサイズで段を跨ぐと子が作り直され、結果画面のゴールド二重加算/メニューがホームへ戻る
   → 常に同じ div(倍率1は `display:contents`)。実画: 強化画面で 1080→990 にリサイズしても強化画面のまま。②`document.body` へのポータル6箇所(資料/操作記録/守護霊の小窓・技ガチャ3画面)が拡大の外
