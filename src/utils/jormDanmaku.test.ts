@@ -125,6 +125,14 @@ describe('弾幕B: 降り注ぐ星弓', () => {
       }
     }
   });
+  it('既定値で: 体に密着(体から30px以内)していれば撒かれた弾に当たらない/離れると安全ではない', async () => {
+    const { HIDDEN_JORMUNGAND_TUNING } = await import('./hiddenBossScript');
+    const R = HIDDEN_JORMUNGAND_TUNING.rain;
+    // 弾は体から rMin の外で生まれ外向きにしか飛ばない=体から rMin−弾の半径(8)−自機の半身(14) までは弾が届かない。
+    expect(R.rMin - 8 - 14).toBeGreaterThanOrEqual(30);
+    // 「密着してれば」=安全な帯は狭い(体から100pxも離れれば弾の生まれる帯に入る)。
+    expect(R.rMin).toBeLessThan(100);
+  });
   it('光弾は弧を描いて落下点へ着く', () => {
     const mid = jormRainLobPos(0, 0, 100, 0, 0.5, 160);
     expect(mid.y).toBeCloseTo(-160);

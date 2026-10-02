@@ -191,7 +191,8 @@ export const HIDDEN_JORMUNGAND_TUNING: HiddenJormungandTuning = {
   wave: { openMs: 700, durationMs: 4000, gapMs: 100, arms: 5, omega0: 1.6, alpha: 0.15, speed: 160, lifeMs: 5500, recover: withRecoverFloor(1200) },
   rain: {
     openMs: 700, durationMs: 3600, launchGapMs: 80, flightMs: 1000, peakPx: 170,
-    rMin: 200, rMax: 560, avoidR: 120, burstCount: 5, burstSpread: 50 * Math.PI / 180, speed: 115, recover: withRecoverFloor(1200),
+    // 社長指示2026-10-02「もう少し手前。密着してれば避けれるくらい」: 200〜560 → 70〜420(体のそば≈50px以内だけが安全)。
+    rMin: 70, rMax: 420, avoidR: 120, burstCount: 5, burstSpread: 50 * Math.PI / 180, speed: 115, recover: withRecoverFloor(1200),
   },
   // 輪の隙間 2π·170/20−16 = 37px > 自機28px=凍った牙の間から歩いて出られる(テストで固定)。
   freeze: {

@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4768 — ヨルムンガルドの降り注ぐ星弓: 落ちる帯を体の近くへ(社長指示)【2026-10-02 20:01 JST】
+- 社長指示「降り注ぐ星弓、もう少し手前がいい。ヨルムンガルドに密着してれば避けれるくらいの」。
+- `HIDDEN_JORMUNGAND_TUNING.rain` の落下帯 rMin/rMax を 200/560 → **70/420**(体の矩形からの距離)。弾は外向きにしか飛ばない=体から約50px以内(密着)だけが安全。
+- テスト: 既定値で「密着(体から30px)なら当たらない」「体から100px離れれば安全ではない」を固定(jormDanmaku.test.ts)。設計書 §4・§6 の数字を更新。
+- 数値の変更のみ=監査は付けない(CLAUDE.md「★付けない仕事」)。検証: typecheck / lint(0 errors)/ jormDanmaku.test 18 通過。
+- 変更: src/utils/hiddenBossScript.ts / src/utils/jormDanmaku.test.ts / research/JORM_DANMAKU.md / changelog / package.json。
+
 ## v0.25.4767 — ミーミルの新技「紫の車輪」+ 凍てつく牙の検収/クリエイティブ監査の反映【2026-10-02 19:56 JST】
 ### ミーミル「紫の車輪」(research/MIMIR_WHEEL.md・社長指示2026-10-02)
 社長「紫レーザーなんだけど、360度に発射して、そのレーザーが回転する。その中で移動すれば避けれるってやつ。HP減ってきたらこの技が変化して、レーザー中に追跡弾を撃ってくる。これはカウンター可能」。
