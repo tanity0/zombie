@@ -26,7 +26,7 @@ import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { RAMP_FULL_MS } from '../utils/speedRamp';
 import type { Pickup } from '../types/game';
 import { rollSkillLevel, skillMaxLevel, rarityWeightsForPity, levelWeightsFor,
-  gachaPullCost, gachaPullCostFor, GACHA_PRICE_STEPS, GACHA_PULL_COST_CAP, GACHA_REFUND_BY_RARITY,
+  gachaPullCost, gachaPullCostFor, GACHA_PRICE_STEPS, GACHA_PULL_COST_CAP, gachaRefundFor,
   gachaSuperPercent, gachaPityRemaining, gachaPromotePercent, skillDescForLevel,
   rollGachaSkill, GACHA_EXCLUDED_SKILLS, SKILLS, RETIRED_SKILLS,
   DEFAULT_OWNED_SKILLS, ensureDefaultOwnedSkills,
@@ -156,12 +156,23 @@ describe('ガチャ価格とゴールドのシンク', () => {
     expect(gachaPullCostFor(0, -1)).toBe(0);
   });
 
-  // 返金は**固定額**(価格に対する割合ではない)。天井50では超レアの被り返金50gが
-  // ちょうど1回ぶんになる=被りの救済が強い、という前提でコンプ距離を見積もってある。
-  it('返金は固定額で、天井1回ぶんを超えない', () => {
-    expect(GACHA_REFUND_BY_RARITY.normal).toBeLessThan(GACHA_REFUND_BY_RARITY.rare);
-    expect(GACHA_REFUND_BY_RARITY.rare).toBeLessThan(GACHA_REFUND_BY_RARITY.super);
-    expect(GACHA_REFUND_BY_RARITY.super).toBeLessThanOrEqual(GACHA_PULL_COST_CAP);
+  // 返金は**払った額×レア度の割合**(v0.25.4786・社長報告「返金されると、むしろ増える」)。
+  it('どの段でも返金は払った額を超えない(引くほど増える、が起きない)', () => {
+    for (let n = 0; n < 60; n++) {
+      const price = gachaPullCost(n);
+      for (const r of ['normal', 'rare', 'super'] as const) {
+        expect(gachaRefundFor(r, price)).toBeLessThanOrEqual(price);
+        expect(gachaRefundFor(r, price)).toBeGreaterThan(0); // 被って何も戻らない、もしない
+      }
+      expect(gachaRefundFor('normal', price)).toBeLessThan(gachaRefundFor('rare', price));
+      expect(gachaRefundFor('rare', price)).toBeLessThan(gachaRefundFor('super', price));
+      expect(gachaRefundFor('super', price)).toBe(price); // 超レアの被り=1回ぶんがタダ
+    }
+  });
+  it('天井(50)では旧の固定額 10/30/50 と同じ=後半の経済は動かない', () => {
+    expect(gachaRefundFor('normal', GACHA_PULL_COST_CAP)).toBe(10);
+    expect(gachaRefundFor('rare', GACHA_PULL_COST_CAP)).toBe(30);
+    expect(gachaRefundFor('super', GACHA_PULL_COST_CAP)).toBe(50);
   });
 });
 

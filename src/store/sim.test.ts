@@ -580,6 +580,7 @@ describe('headless simulation invariants', () => {
       // level never exceeds the skill cap; refund only when not promoted.
       expect(r.newLevel).toBeLessThanOrEqual(3);
       expect(r.refund > 0).toBe(!r.promoted);
+      expect(r.refund).toBeLessThanOrEqual(r.price); // 返金で増えない(v0.25.4786)
     }
   });
 

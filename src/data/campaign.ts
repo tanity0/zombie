@@ -924,6 +924,7 @@ export const skillsByRarity = (r: SkillRarity): SkillKey[] => SKILL_KEYS.filter(
 // 参考(N=1200シミュレート・返金込みの中央値): 全31種**所持**まで 3,675g / 全種**MAX**まで 12,205g。
 // 同じ収入モデルで 全種所持42ラン / 全種MAX107ラン。
 //
+// ※v0.25.4786 で返金は「払った額×割合(2割/6割/全額)」に変わった(gachaRefundFor)。天井50では下と同じ 10/30/50。以下は当時の記録。
 // 返金(10/30/50)は**固定額のまま据え置き**。天井50では超レアの被り返金50gが「ちょうど1回ぶん」に
 // なるが、**これは意図的**(社長裁定v0.25.2345)。10g固定へ下げる案を検討した上で却下している:
 //   却下の理由 = **超レアが嬉しくなくなる**。破裂演出まで出して被りが+10gでは拍子抜けする。
@@ -966,7 +967,19 @@ export const gachaPullCostFor = (totalPulls: number, count: number): number => {
   return sum;
 };
 
+/** 退役スキルの補償額の表(retiredSkillsRefundTotal)。ガチャの被り返金は v0.25.4786 から下の割合制(この表は使わない)。 */
 export const GACHA_REFUND_BY_RARITY: Record<SkillRarity, number> = { normal: 10, rare: 30, super: 50 };
+/**
+ * ガチャの被り返金=**その回に払った額**×レア度の割合(社長「はい」2026-10-02・v0.25.4786)。
+ * 旧: 固定 10/30/50 → 序盤(10g/20g/35g の段)はレア・超レアの被りで払った額より多く戻り、引くほどゴールドが増えた(社長報告「返金されると、むしろ増える」)。
+ * 割合にすると **返金 ≤ 払った額**(超レア=全額=「1回ぶんがタダ」)。天井50では 10/30/50 で旧と同じ=後半の経済(コンプ距離の見積もり)は動かない。
+ */
+export const GACHA_REFUND_RATE_BY_RARITY: Record<SkillRarity, number> = { normal: 0.2, rare: 0.6, super: 1 };
+/** 払った額 price の回の、レア度 rarity の被り返金(払った額を超えない)。 */
+export const gachaRefundFor = (rarity: SkillRarity, price: number): number => {
+  const p = Number.isFinite(price) ? Math.max(0, price) : 0;
+  return Math.min(p, Math.round(p * GACHA_REFUND_RATE_BY_RARITY[rarity]));
+};
 // レア度ごとの表示ラベルと色(装備UI/ガチャ結果で共用)。
 export const RARITY_LABEL: Record<SkillRarity, string> = { normal: 'ノーマル', rare: 'レア', super: '超レア' };
 
