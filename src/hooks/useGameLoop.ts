@@ -305,6 +305,9 @@ import {
   jormungandPhaseForHealth, pickJormungandMove, jormRadialSpinAngle, type JormungandMove,
 } from '../utils/jormungandScript';
 import {
+  jormSlamHitAt, jormSlamReach, jormSlamBand, jormWaveAngle, jormWaveTheta0, jormRainLandingPoint, jormRainBurstAngles,
+} from '../utils/jormDanmaku';
+import {
   skadiPhaseForHealth, pickSkadiMove, type SkadiMove,
 } from '../utils/skadiScript';
 import { pickThorMove, thorPhaseForHealth, type ThorMove } from '../utils/thorScript';
@@ -6355,6 +6358,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 飛ぶ**(上の `aiStartedAt` と同じ型の事故で、軸が位置ではなく発射間隔)。
                   // トールは `bossBurstNextAt` を読まないので、この行でトールの挙動は変わらない。
                   if (boss.bossBurstNextAt !== undefined) patch.bossBurstNextAt = boss.bossBurstNextAt + kbDtMs;
+                  // ★弾幕技(research/JORM_DANMAKU.md・設計監査 B-3): 導入の時刻表・波の撃ち始め・打ち上げた光弾の
+                  // 着弾も同じだけ繰り下げる(凍結中に着弾して弾が湧く/段の時刻表が詰まる、を作らない)。
+                  if (boss.jormSlamAt !== undefined) patch.jormSlamAt = boss.jormSlamAt + kbDtMs;
+                  if (boss.jormWaveAt !== undefined) patch.jormWaveAt = boss.jormWaveAt + kbDtMs;
+                  if (boss.jormRainLobs && boss.jormRainLobs.length > 0) {
+                    patch.jormRainLobs = boss.jormRainLobs.map(l => ({ ...l, launchAt: l.launchAt + kbDtMs, landAt: l.landAt + kbDtMs }));
+                  }
                   // ★§9-9(社長裁定2026-08-30=推薦(b)「線ごと平行移動」・対象はまず突進だけ):
                   // 凍結中は状態機械が丸ごとスキップされるので位置は書かれないが、`updateEnemies` の
                   // 押し出し(バッシュ714 / 鞭600)は**ボスを実際に横へ滑らせる**。解除の瞬間に突進
@@ -6693,6 +6703,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.aiFromY = aim.y - ty0 * (HB_JO.coil.range / 2);
                   patch.aiTargetX = aim.x + tx0 * (HB_JO.coil.range / 2);
                   patch.aiTargetY = aim.y + ty0 * (HB_JO.coil.range / 2);
+                } else if (move === 'slam2' || move === 'slam3') {
+                  // ★弾幕の導入=叩きつけ(research/JORM_DANMAKU.md §2)。段の命中時刻は開始時刻から引く(積み上げない=ずれない)。
+                  // 全段の赤い円がこの瞬間に出る(描画は jormSlamAt/jormSlamCount を読む)=段数が弾幕の予兆。
+                  lockAttackAim();
+                  patch.bossState = 'jslam-windup';
+                  patch.bossStateUntil = jormSlamHitAt(newGameTime, 1, HB_JO.slam.windup, HB_JO.slam.interval);
+                  patch.jormSlamAt = newGameTime;
+                  patch.jormSlamCount = move === 'slam3' ? 3 : 2;
+                  patch.jormSlamDone = 0;
+                  // 弾幕2種で共有のCD(導入を打ち切られて弾幕が出なかった時も連発しないよう、頭でも張る)。
+                  patch.jormDanmakuReadyAt = newGameTime + HB_JO.slam.cdMs;
+                  bs.vx = 0; bs.vy = 0;
+                } else if (move === 'wave' || move === 'rain') {
+                  // ★弾幕(research/JORM_DANMAKU.md §3/§4)。口=発射点を溜めの頭で固定(向きは相手の居る側)。
+                  const aim = lockAttackAim();
+                  const side = aim.x >= bcx ? 1 : -1;
+                  const mx = bcx + side * HB_JO.mouth.dx, my = bcy + HB_JO.mouth.dy;
+                  patch.jormMouthX = mx; patch.jormMouthY = my;
+                  if (move === 'wave') {
+                    patch.bossState = 'jwave-open';
+                    patch.bossStateUntil = newGameTime + HB_JO.wave.openMs;
+                    patch.jormWaveTheta0 = jormWaveTheta0(Math.atan2(aim.y - my, aim.x - mx), HB_JO.wave.arms);
+                  } else {
+                    patch.bossState = 'jrain-open';
+                    patch.bossStateUntil = newGameTime + HB_JO.rain.openMs;
+                    patch.jormRainLobs = [];
+                  }
+                  bs.vx = 0; bs.vy = 0;
                 } else if (move === 'dash') {
                   beginHiddenDash();
                 } else if (move === 'burst') {
@@ -6832,6 +6870,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   case 'jo-dash': beginJormungandMove('dash'); break;
                   case 'jo-burst': beginJormungandMove('burst'); break;
                   case 'jo-radial': beginJormungandMove('radial'); break;
+                  // 弾幕技は導入→弾幕まで(台本の2手目を積む=実戦と同じ2手)。
+                  case 'jo-slam2': beginJormungandMove('slam2'); patch.bossScriptQueue = ['wave']; break;
+                  case 'jo-slam3': beginJormungandMove('slam3'); patch.bossScriptQueue = ['rain']; break;
                   case 'sk-ice': beginSkadiMove('ice'); break;
                   case 'sk-blade': beginSkadiMove('blade'); break;
                   case 'sk-cage': beginSkadiMove('cage'); break;
@@ -7050,6 +7091,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const phase = (boss.bossPhase ?? 1) as 1 | 2;
                     const ready: Record<JormungandMove, boolean> = {
                       radial: true, burst: true, dash: true, coil: newGameTime >= (boss.jormCoilReadyAt ?? 0),
+                      // 弾幕技: 導入だけが抽選に乗る(弾幕は台本の2手目)。CDは2種で共有。
+                      slam2: newGameTime >= (boss.jormDanmakuReadyAt ?? 0),
+                      slam3: newGameTime >= (boss.jormDanmakuReadyAt ?? 0),
+                      wave: false, rain: false,
                     };
                     const move = pickJormungandMove(dist, phase, ready);
                     if (move) {
@@ -7365,6 +7410,122 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.jormCoilReadyAt = newGameTime + HB_JO.coil.cdMs;
                   hiddenRecoverAdvance('coil');
+                }
+              } else if (st === 'jslam-windup' || st === 'jslam-rewind') {
+                // ★弾幕の導入=叩きつけ(research/JORM_DANMAKU.md §2)。段の命中=**体の矩形を広げた枠**を1件だけ積む
+                // (うねりと同じ pumpkinBlasts の帯判定=distToBandRect。赤い枠も同じ jormSlamBand を読む=判定と一致)。
+                // 爆風パリィ・カウンターの切りは既存のまま。
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  const k = (boss.jormSlamDone ?? 0) + 1;
+                  const band = jormSlamBand(boss, jormSlamReach(k, HB_JO.slam.reaches));
+                  useGameStore.setState(state => ({
+                    pumpkinBlasts: [...state.pumpkinBlasts, {
+                      x: bcx, y: bcy, radius: band.halfWidth, damage: boss.damage, enemyId: boss.id, moveKey: 'jo-slam',
+                      capsule: { fx: band.fx, fy: band.fy, tx: band.tx, ty: band.ty, halfWidth: band.halfWidth },
+                    }],
+                  }));
+                  playSfx('heavy-impact');
+                  useGameStore.getState().triggerShake(260, 6 + k * 2);
+                  patch.jormSlamDone = k;
+                  patch.bossState = 'jslam-hit';
+                  patch.bossStateUntil = newGameTime + HB_JO.slam.hitMs;
+                }
+              } else if (st === 'jslam-hit') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  const done = boss.jormSlamDone ?? 0;
+                  const cnt = boss.jormSlamCount ?? 2;
+                  if (done < cnt) {
+                    patch.bossState = 'jslam-rewind';
+                    patch.bossStateUntil = jormSlamHitAt(boss.jormSlamAt ?? newGameTime, done + 1, HB_JO.slam.windup, HB_JO.slam.interval);
+                  } else {
+                    patch.bossState = 'jslam-recover';
+                    patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_JO.slam.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
+                  }
+                }
+              } else if (st === 'jslam-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) hiddenRecoverAdvance('slam');
+              } else if (st === 'jwave-open') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'jwave';
+                  patch.jormWaveAt = newGameTime;
+                  patch.bossBurstNextAt = newGameTime;
+                  patch.bossStateUntil = newGameTime + HB_JO.wave.durationMs;
+                }
+              } else if (st === 'jwave') {
+                // ★弾幕A「波と粒の境界」(§3): gapMsごとに arms 方向。角は ω0·t+½α·t² で時計回りに加速。
+                // 低fpsでも発射の時刻表を飛ばさない(遅れた分はまとめて撃つ=形が崩れない)。
+                const W = HB_JO.wave;
+                const t0 = boss.jormWaveAt ?? newGameTime;
+                const end = boss.bossStateUntil ?? newGameTime;
+                const mx = boss.jormMouthX ?? bcx, my = boss.jormMouthY ?? bcy;
+                const theta0 = boss.jormWaveTheta0 ?? 0;
+                let next = boss.bossBurstNextAt ?? newGameTime;
+                let volleys = 0;
+                while (next <= newGameTime && next < end && volleys < 20) {
+                  for (let k = 0; k < Math.max(1, Math.round(W.arms)); k++) {
+                    const a = jormWaveAngle(theta0, k, next - t0, W);
+                    // 寿命だけ技側で延ばす(既定4秒だと口から640pxで消える=「遠くの隙間」が画面の端まで届かない)。
+                    addProjectile({ ...createEnemyProjectile(boss, player, mx + Math.cos(a) * 100, my + Math.sin(a) * 100, mx, my, { speed: W.speed }), duration: W.lifeMs });
+                  }
+                  next += Math.max(16, W.gapMs);
+                  volleys++;
+                }
+                patch.bossBurstNextAt = next;
+                if (volleys > 0 && Math.floor((next - t0) / Math.max(16, W.gapMs)) % 3 === 0) playSfx('handgun-fire');
+                if (newGameTime >= end) {
+                  patch.bossState = 'jwave-recover';
+                  patch.bossStateUntil = newGameTime + choreographyRecoverMs(W.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
+                }
+              } else if (st === 'jrain-open') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'jrain';
+                  patch.jormWaveAt = newGameTime;
+                  patch.bossBurstNextAt = newGameTime;
+                  patch.bossStateUntil = newGameTime + HB_JO.rain.durationMs;
+                  patch.jormRainLobs = [];
+                }
+              } else if (st === 'jrain') {
+                // ★弾幕B「降り注ぐ星弓」(§4): 口から打ち上げ→flightMs後に本体中心から rMin〜rMax へ落ち、外向きに撒く。
+                // 光弾と影は判定なし(派手さの絵)。弾は落ちた所で生まれ、本体から遠ざかる向きにしか飛ばない。
+                const R = HB_JO.rain;
+                const end = boss.bossStateUntil ?? newGameTime;
+                const mx = boss.jormMouthX ?? bcx, my = boss.jormMouthY ?? bcy;
+                let lobs = [...(boss.jormRainLobs ?? [])];
+                let next = boss.bossBurstNextAt ?? newGameTime;
+                let launched = 0;
+                const rainSt = useGameStore.getState();
+                while (next <= newGameTime && next < end && launched < 20) {
+                  // 打ち上げた瞬間の相手の足元には落とさない(予告ゼロで弾が湧かない・avoidR)。行ける帯の外にも落とさない。
+                  const lp = jormRainLandingPoint(boss, R, Math.random, { x: pcx, y: pcy }, R.avoidR);
+                  if (lp) {
+                    const lc = clampRectToPlayableArea(lp.x - 1, lp.y - 1, 2, 2, thorPlayableAreaCtx(rainSt));
+                    lobs.push({ fromX: mx, fromY: my, x: lc.x + 1, y: lc.y + 1, launchAt: next, landAt: next + R.flightMs });
+                  }
+                  next += Math.max(16, R.launchGapMs);
+                  launched++;
+                }
+                if (launched > 0) playSfx('boomerang-throw');
+                const landed = lobs.filter(l => l.landAt <= newGameTime);
+                if (landed.length > 0) {
+                  lobs = lobs.filter(l => l.landAt > newGameTime);
+                  for (const l of landed) {
+                    for (const a of jormRainBurstAngles(l.x, l.y, boss, R)) {
+                      addProjectile(createEnemyProjectile(boss, player, l.x + Math.cos(a) * 100, l.y + Math.sin(a) * 100, l.x, l.y, { speed: R.speed }));
+                    }
+                  }
+                  playSfx('handgun-fire');
+                }
+                patch.jormRainLobs = lobs;
+                patch.bossBurstNextAt = next;
+                if (newGameTime >= end && lobs.length === 0) {
+                  patch.bossState = 'jrain-recover';
+                  patch.bossStateUntil = newGameTime + choreographyRecoverMs(R.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
+                }
+              } else if (st === 'jwave-recover' || st === 'jrain-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.jormDanmakuReadyAt = newGameTime + HB_JO.slam.cdMs;
+                  patch.jormRainLobs = undefined;
+                  hiddenRecoverAdvance(st === 'jwave-recover' ? 'wave' : 'rain');
                 }
               } else if (st === 'cage-windup') {
                 // スカジ「氷結の檻」(§6.28-9・全帯・Phase3限定): ジブリル聖別(JIBRIL_CONSECRATE_*)と同じ

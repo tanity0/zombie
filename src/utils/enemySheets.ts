@@ -1731,6 +1731,13 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
         ({ state, seq: [8, 9, 10, 11, 12, 13, 14, 15], mode: 'pingpong' as const })),
       ...(['burst-recover', 'radial-recover'] as const).map(state =>
         ({ state, seq: [7, 5, 3, 2, 1, 0], mode: 'stretch' as const })),
+      // 弾幕(research/JORM_DANMAKU.md・社長指示「弾幕は口を広げる方」): 溜めで開き切り、撃つ間は唸って往復、締めで閉じる。
+      ...(['jwave-open', 'jrain-open'] as const).map(state =>
+        ({ state, seq: [0, 1, 2, 3, 4, 5, 6, 7], mode: 'stretch' as const })),
+      ...(['jwave', 'jrain'] as const).map(state =>
+        ({ state, seq: [8, 9, 10, 11, 12, 13, 14, 15], mode: 'pingpong' as const })),
+      ...(['jwave-recover', 'jrain-recover'] as const).map(state =>
+        ({ state, seq: [7, 5, 3, 2, 1, 0], mode: 'stretch' as const })),
     ],
   },
   // ★アイドルの通常撃ち1(社長支給2026-09-29「**アイドルの通常撃ち1** / 少し飛び跳ねる感じね」)。15コマ(支給 1740×142 → 上の空き2行を落として **116×140**・0.93MB)。
@@ -1894,6 +1901,12 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       { state: 'coil-windup', seq: [0, 1, 2, 3, 4, 5, 6, 7], mode: 'stretch' },
       { state: 'coil', seq: [8, 9], mode: 'stretch' },
       { state: 'coil-recover', seq: [10, 11, 12, 12], mode: 'stretch' },
+      // 弾幕の導入=叩きつけ(research/JORM_DANMAKU.md・社長指示「導入技のモーションは薙ぎ払いと同じやつ」):
+      // 1段目は溜めで振り上げ切り(0→7)、叩く瞬間に振り下ろす(8→9)。次の段へは振り上げ直し(5→7)、締めで巻き付く(10→12)。
+      { state: 'jslam-windup', seq: [0, 1, 2, 3, 4, 5, 6, 7], mode: 'stretch' },
+      { state: 'jslam-hit', seq: [8, 9], mode: 'stretch' },
+      { state: 'jslam-rewind', seq: [5, 6, 7], mode: 'stretch' },
+      { state: 'jslam-recover', seq: [10, 11, 12, 12], mode: 'stretch' },
     ],
   },
   // ★ミーミルのレーザー(社長支給2026-09-30「**レーザー撃ってる時は最後の3コマくらいをパチンコ**」)。15コマ(支給 2970×202 → 上の空き2行を落として **198×200**・2.27MB)。

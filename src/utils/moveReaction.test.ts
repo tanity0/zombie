@@ -550,6 +550,9 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
     //     chase等になっていて技と紐づかないため。BULLET_STATE_TO_MOVE では拾えない
     //     (拾うには gameStore の 'g-parts' と同じ「生成後に srcMoveKey を後付けする」経路が要る)。
     //     **捕まえられない形が残っていることを、ここに事実として残す。** 合計21。
+    // ★research/JORM_DANMAKU.md(ヨルムンガルドの弾幕技)で useGameLoop.ts に **+2**:
+    //   ①波と粒の境界(state='jwave'=分類済み) ②降り注ぐ星弓の着弾で撒く弾(state='jrain'=分類済み。
+    //   落ちるのは必ず 'jrain' の間=全弾が落ちてから硬直へ進む)。合計23。
     let sites = 0;
     for (const text of Object.values(BULLET_SOURCES)) {
       for (const line of text.split('\n')) {
@@ -558,7 +561,7 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
         sites += (line.match(/createEnemyProjectile\(/g) ?? []).length;
       }
     }
-    expect(sites).toBe(21);
+    expect(sites).toBe(23);
   });
 });
 

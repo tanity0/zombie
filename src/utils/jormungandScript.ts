@@ -11,7 +11,9 @@
 // 対策: 城ボス裁定(BOSS_RANGE_REWORK.md v0.25.2455)の「ゾーン×重み表」を適用。
 import { pickComboFollowup, phaseForHealth, pickWeightedMove, bossZoneForDistance, type BossMoveWeights } from './bossScript';
 
-export type JormungandMove = 'radial' | 'burst' | 'dash' | 'coil';
+// ★slam2/slam3/wave/rain = 弾幕技(research/JORM_DANMAKU.md)。slam2→wave / slam3→rain の2手台本(bossChoreography)。
+// wave/rain は**台本の2手目としてだけ出る**(重み0=単独では抽選されない)。
+export type JormungandMove = 'radial' | 'burst' | 'dash' | 'coil' | 'slam2' | 'slam3' | 'wave' | 'rain';
 
 export const JORM_PHASE_HP_THRESHOLD = 0.6;
 export const jormungandPhaseForHealth = (healthFrac: number): 1 | 2 => phaseForHealth(healthFrac, [JORM_PHASE_HP_THRESHOLD]) as 1 | 2;
@@ -27,6 +29,11 @@ export const JORM_MOVE_WEIGHTS: BossMoveWeights<JormungandMove> = {
   burst:  { melee: 20, near: 25, mid: 30, far: 10 },
   radial: { melee: 25, near: 35, mid: 40, far: 25 },
   dash:   { melee: 0,  near: 0,  mid: 30, far: 65 },
+  // 弾幕の導入(research/JORM_DANMAKU.md §2)。全帯・全フェーズ。CD(弾幕2種で共有)は呼び出し側の ready が持つ。
+  slam2:  { melee: 15, near: 20, mid: 20, far: 10 },
+  slam3:  { melee: 15, near: 20, mid: 20, far: 10 },
+  wave:   { melee: 0,  near: 0,  mid: 0,  far: 0 },
+  rain:   { melee: 0,  near: 0,  mid: 0,  far: 0 },
 };
 
 /** 技×距離→実効重み(ヨルムンガルドはフェーズで重みが変わらない=帯はフェーズ非依存の裁定どおり)。 */
@@ -41,7 +48,7 @@ export const jormungandMoveWeight = (
 export const jormungandMoveEligible = (move: JormungandMove, distance: number, _phase: 1 | 2 = 1): boolean =>
   jormungandMoveWeight(move, distance) > 0;
 
-const POOL: JormungandMove[] = ['dash', 'burst', 'radial', 'coil'];
+const POOL: JormungandMove[] = ['dash', 'burst', 'radial', 'coil', 'slam2', 'slam3'];
 
 /** CD明けかつ現在ゾーンの重み>0の技から重み比例で1つ。該当無しはnull。 */
 export const pickJormungandMove = (

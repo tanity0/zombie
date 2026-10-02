@@ -46,6 +46,8 @@ const SCRIPTS: Record<Exclude<ChoreographyBoss, 'giant' | 'glen'>, Record<string
   jormungand: {
     dash: ['dash', 'coil', 'burst'], coil: ['coil', 'burst', 'radial'],
     burst: ['burst', 'radial', 'dash'], radial: ['radial', 'dash', 'coil'],
+    // 弾幕技(research/JORM_DANMAKU.md): 導入の段数が予兆=2連→波と粒の境界 / 3連→降り注ぐ星弓。2手で固定。
+    slam2: ['slam2', 'wave'], slam3: ['slam3', 'rain'],
   },
   skadi: {
     ice: ['ice', 'dash', 'blade'], blade: ['blade', 'burst', 'ice'],

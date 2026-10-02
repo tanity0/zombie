@@ -38,6 +38,7 @@ export const MOVE_REACTION_KEYS = [
   // 裏ボス3体(useGameLoop.ts)。burst/radial は弾台帳に既出なのでここには入れない。
   'mimir-bite', 'mimir-laser', 'mimir-dash',
   'jormungand-coil', 'jormungand-dash',
+  'jormungand-slam', // research/JORM_DANMAKU.md: 弾幕の導入=叩きつけ(2連/3連の全段を1つの技へ)
   'skadi-ice', 'skadi-blade', 'skadi-cage', 'skadi-dash',
   // 天使6体(angelBossTick.ts)。volley/bolt/gaze は弾台帳に既出。
   'miguel-mdash', 'miguel-tate', 'miguel-harai',
@@ -84,6 +85,7 @@ export const MOVE_REACTION_KEYS = [
 export const BULLET_MOVE_KEYS = [
   'mimir-burst', 'mimir-radial',
   'jormungand-burst', 'jormungand-radial',
+  'jormungand-wave', 'jormungand-rain', // research/JORM_DANMAKU.md: 弾幕A(波と粒の境界)/弾幕B(降り注ぐ星弓)
   'skadi-burst', 'skadi-radial',
   'thor-burst', 'thor-radial',
   'miguel-volley', 'jibril-volley', 'uri-bolt', 'suriel-gaze', 'acrasiel-gaze',
@@ -169,6 +171,7 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
   jormungand: {
     'coil-windup': 'jormungand-coil', coil: 'jormungand-coil', 'coil-recover': 'jormungand-coil',
     'dash-windup': 'jormungand-dash', dash: 'jormungand-dash', 'dash-recover': 'jormungand-dash',
+    'jslam-windup': 'jormungand-slam', 'jslam-hit': 'jormungand-slam', 'jslam-rewind': 'jormungand-slam', 'jslam-recover': 'jormungand-slam',
   },
   skadi: {
     'skadi-ice-windup': 'skadi-ice', 'skadi-ice': 'skadi-ice', 'skadi-ice-recover': 'skadi-ice',
@@ -286,6 +289,8 @@ const BULLET_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<stri
   jormungand: {
     'aim-burst': 'jormungand-burst', burst: 'jormungand-burst', 'burst-recover': 'jormungand-burst',
     'aim-radial': 'jormungand-radial', radial: 'jormungand-radial', 'radial-recover': 'jormungand-radial',
+    'jwave-open': 'jormungand-wave', jwave: 'jormungand-wave', 'jwave-recover': 'jormungand-wave',
+    'jrain-open': 'jormungand-rain', jrain: 'jormungand-rain', 'jrain-recover': 'jormungand-rain',
   },
   skadi: {
     'aim-burst': 'skadi-burst', burst: 'skadi-burst', 'burst-recover': 'skadi-burst',

@@ -1150,6 +1150,12 @@ export interface Enemy {
     | 'skadi-ice-windup' | 'skadi-blade-windup' | 'skadi-ice-recover' | 'skadi-blade-recover'
     | 'bite-windup' | 'bite' | 'bite-recover'
     | 'coil-windup' | 'coil' | 'coil-recover'
+    // research/JORM_DANMAKU.md(社長指示2026-10-02): ヨルムンガルドの弾幕技。導入の叩きつけ(2連/3連)→弾幕。
+    //  jslam-windup = 1段目の溜め(全段の赤い円が同時に出る) / jslam-hit = 各段の叩く瞬間 / jslam-rewind = 次の段への振り上げ。
+    //  jwave-open/jwave/jwave-recover = 弾幕A「波と粒の境界」。jrain-open/jrain/jrain-recover = 弾幕B「降り注ぐ星弓」。
+    //  ★弾幕の溜めは語尾 '-windup' を**付けない**(語尾ルールが「カウンターできる赤い帯」と誤読するため=issen-nihil と同じ理由)。
+    | 'jslam-windup' | 'jslam-hit' | 'jslam-rewind' | 'jslam-recover'
+    | 'jwave-open' | 'jwave' | 'jwave-recover' | 'jrain-open' | 'jrain' | 'jrain-recover'
     | 'cage-windup' | 'cage' | 'cage-recover'
     | 'issen-recover' | 'tsuki-recover' | 'harai-recover'
     | 'issen-nihil'
@@ -1296,6 +1302,19 @@ export interface Enemy {
   // 通常成功時は従来どおりCDなし(=このフィールドは中断時のみ前へ進む)。
   mimirLaserReadyAt?: number;
   jormCoilReadyAt?: number;     // ヨルムンガルド うねり専用CD(7000ms・Phase2)
+  // research/JORM_DANMAKU.md: 弾幕技の状態。jormSlamAt=導入の開始時刻(gameTime・全段の命中時刻と赤い円はここから引く)/
+  // jormSlamCount=段数(2|3)/jormSlamDone=叩き終えた段数/jormDanmakuReadyAt=弾幕2種で共有のCD/
+  // jormMouthX/Y=発射点(口・溜めの頭で固定)/jormWaveAt=弾幕の撃ち始め(gameTime)/jormWaveTheta0=波の最初の向き/
+  // jormRainLobs=打ち上げた光弾(着弾で外向きに撒く。判定なし=描画は弧と影だけ)。
+  jormSlamAt?: number;
+  jormSlamCount?: number;
+  jormSlamDone?: number;
+  jormDanmakuReadyAt?: number;
+  jormMouthX?: number;
+  jormMouthY?: number;
+  jormWaveAt?: number;
+  jormWaveTheta0?: number;
+  jormRainLobs?: { fromX: number; fromY: number; x: number; y: number; launchAt: number; landAt: number }[];
   skadiCageReadyAt?: number;    // スカジ 氷結の檻専用CD(12000ms・Phase3)
   // research/THOR_ISSEN_REWORK.md §4: トール「突進」専用CD(6000ms・ミゲルの mDashReadyAt と同じ作法)。
   thorDashReadyAt?: number;

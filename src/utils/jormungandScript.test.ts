@@ -6,7 +6,10 @@ import {
 import { BOSS_RANGE } from './bossScript';
 
 const ALL_MOVES: JormungandMove[] = ['radial', 'burst', 'dash', 'coil'];
-const allReady = (): Record<JormungandMove, boolean> => ({ radial: true, burst: true, dash: true, coil: true });
+// 既存4技の役割テストは「弾幕の導入がCD中」の場面で見る(弾幕は下の専用テストで見る)。
+const allReady = (): Record<JormungandMove, boolean> => ({
+  radial: true, burst: true, dash: true, coil: true, slam2: false, slam3: false, wave: false, rain: false,
+});
 const BAND_SAMPLES = [60, 200, 450, 900]; // 密着/近/中/遠
 
 describe('jormungandPhaseForHealth — 2相(60%)', () => {
@@ -67,7 +70,7 @@ describe('pickJormungandMove', () => {
   });
 
   it('CD明けの技が1つも無ければnull', () => {
-    const ready: Record<JormungandMove, boolean> = { radial: false, burst: false, dash: false, coil: false };
+    const ready: Record<JormungandMove, boolean> = { radial: false, burst: false, dash: false, coil: false, slam2: false, slam3: false, wave: false, rain: false };
     expect(pickJormungandMove(60, 1, ready)).toBeNull();
   });
 
@@ -120,5 +123,44 @@ describe('jormRadialSpinAngle — §6.28-7「螺旋の回転方向を常に時�
     const withNegativeConst = jormRadialSpinAngle(5, -Math.PI / 16);
     expect(withNegativeConst).toBeGreaterThan(0);
     expect(withNegativeConst).toBeCloseTo(5 * (Math.PI / 16));
+  });
+});
+
+// ==== 弾幕技(research/JORM_DANMAKU.md) =====================================================
+describe('弾幕技の抽選', () => {
+  const ready = (): Record<JormungandMove, boolean> => ({
+    radial: true, burst: true, dash: true, coil: true, slam2: true, slam3: true, wave: true, rain: true,
+  });
+  it('弾幕(wave/rain)は単独では抽選されない=台本の2手目としてだけ出る', () => {
+    for (const d of [...BAND_SAMPLES, 5000]) {
+      expect(jormungandMoveWeight('wave', d)).toBe(0);
+      expect(jormungandMoveWeight('rain', d)).toBe(0);
+    }
+    for (let i = 0; i < 2000; i++) {
+      const m = pickJormungandMove(BAND_SAMPLES[i % 4], 1, ready());
+      expect(m === 'wave' || m === 'rain').toBe(false);
+    }
+  });
+  it('導入(slam2/slam3)は全帯・Phase1から出る', () => {
+    for (const d of BAND_SAMPLES) {
+      expect(jormungandMoveEligible('slam2', d, 1)).toBe(true);
+      expect(jormungandMoveEligible('slam3', d, 1)).toBe(true);
+    }
+  });
+  it('導入がCD中なら出ない', () => {
+    const r = ready(); r.slam2 = false; r.slam3 = false;
+    for (let i = 0; i < 500; i++) {
+      const m = pickJormungandMove(450, 1, r);
+      expect(m === 'slam2' || m === 'slam3').toBe(false);
+    }
+  });
+});
+describe('弾幕技の台本(導入の段数が予兆)', () => {
+  it('slam2→wave / slam3→rain の2手で固定(フェーズで切れない)', async () => {
+    const { planBossChoreography } = await import('./bossChoreography');
+    for (const ph of [1, 2]) {
+      expect(planBossChoreography('jormungand', 'slam2', ph)).toEqual(['slam2', 'wave']);
+      expect(planBossChoreography('jormungand', 'slam3', ph)).toEqual(['slam3', 'rain']);
+    }
   });
 });

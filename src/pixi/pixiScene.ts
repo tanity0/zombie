@@ -133,6 +133,7 @@ import {
   HIDDEN_SKADI_TUNING as HB_SK,
   HIDDEN_THOR_TUNING as HB_TH,
 } from '../utils/hiddenBossScript';
+import { jormSlamBand, jormSlamReach, jormSlamTelegraphProgress, jormRainLobPos } from '../utils/jormDanmaku';
 // research/THOR_ISSEN_REWORK.md §1: 紫円の**半径は台帳の1定数**(判定・ボット・絵が同じ値を読む)。
 import { THOR_NIHIL_STATE, thorNihilRadius } from '../utils/thorNihil';
 import { biteJawFrame } from '../utils/biteJawMotion';
@@ -18318,7 +18319,14 @@ export class PixiScene {
         const pl = useGameStore.getState().player;
         const cur: 1 | -1 = (view.motFace ?? 1) >= 0 ? 1 : -1;
         const kbLock = e.knockbackUntil !== undefined && now < e.knockbackUntil + 180;
-        const want = kbLock ? cur : bossFaceWant(cur, stripCx, pl.x + pl.width / 2);
+        // ★弾幕の間は口(発射点)の側を向いたまま(research/JORM_DANMAKU.md・設計監査 B-2): 発射点は溜めの頭で固定なので、
+        //   撃っている最中に相手が反対側へ回っても振り向かない(振り向くと弾が尻尾から出て見える)。
+        const jMouthLock = e.type === 'jormungand' && e.jormMouthX !== undefined
+          && (e.bossState === 'jwave-open' || e.bossState === 'jwave' || e.bossState === 'jwave-recover'
+            || e.bossState === 'jrain-open' || e.bossState === 'jrain' || e.bossState === 'jrain-recover');
+        const want = kbLock ? cur
+          : jMouthLock ? ((e.jormMouthX ?? stripCx) >= stripCx ? 1 : -1)
+          : bossFaceWant(cur, stripCx, pl.x + pl.width / 2);
         if (view.motFace === undefined) { view.motFace = want; view.motFaceFrom = want; view.motFaceAt = undefined; }
         else if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
         const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;
@@ -20504,10 +20512,12 @@ export class PixiScene {
         'burst-recover', 'radial-recover', 'dash-recover', 'laser-recover',
         'skadi-ice-recover', 'skadi-blade-recover', 'bite-recover', 'coil-recover', 'cage-recover',
         'laser-broken', // §6.33: レーザー中断のパニッシュ窓=硬直色(青白)で「好機」を示す
+        'jslam-recover', 'jwave-recover', 'jrain-recover', // research/JORM_DANMAKU.md
       ];
       const HIDDEN_BOSS_FLASH_TAIL_STATES: string[] = [
         'aim-burst', 'aim-radial', 'dash-windup', 'laser-windup', 'bite-windup', 'coil-windup', 'cage-windup',
         'skadi-ice-windup', 'skadi-blade-windup',
+        'jslam-windup', 'jslam-rewind', 'jwave-open', 'jrain-open', // research/JORM_DANMAKU.md
       ];
       if (bs && HIDDEN_BOSS_RECOVER_STATES.includes(bs)) {
         view.sprite.tint = BOSS_RECOVER_TINT;
@@ -20608,6 +20618,63 @@ export class PixiScene {
         const ddx = tx - fx, ddy = ty - fy; const ddl = Math.hypot(ddx, ddy) || 1;
         const off = windupBackstepOffset(prog, now, -ddx / ddl, -ddy / ddl, 7);
         view.sprite.position.x += off.x; view.sprite.position.y += off.y;
+      }
+      // ★弾幕の導入=叩きつけ(research/JORM_DANMAKU.md §2)。**全段の赤い枠が導入の頭で同時に出る**(段数=次の弾幕の予兆)。
+      // 段kの枠は「導入の開始→その段の命中」の溜めとして流星で流れ、命中の瞬間に消え切る(掟②③=段ごとに別々の時刻)。
+      // 判定と同じ jormSlamBand(体の矩形を広げた枠)を描く。**導入の州の間だけ描く**(カウンターで切られたら
+      // 州が chase へ戻る=残りの段の枠も同時に消える。設計監査 A-4「赤いのに当たらない」を作らない)。
+      if (e.type === 'jormungand' && (bs === 'jslam-windup' || bs === 'jslam-hit' || bs === 'jslam-rewind')
+          && e.jormSlamAt !== undefined) {
+        const cnt = e.jormSlamCount ?? 2;
+        // 外側(後の段)から描く=内側の枠が上に重なって、段の入れ子が数えられる。
+        const jStyle = telegraphStyleFor(e.type);
+        const jPulse = 0.5 + 0.5 * Math.sin(now / jStyle.pulseMs);
+        for (let k = cnt; k >= 1; k--) {
+          const sp = jormSlamTelegraphProgress(gameTime, e.jormSlamAt, k, HB_JO.slam.windup, HB_JO.slam.interval);
+          if (sp === null) continue;
+          const reach = jormSlamReach(k, HB_JO.slam.reaches);
+          const band = jormSlamBand(e, reach);
+          // 判定の矩形=帯(始点→終点・半幅)。体の矩形を reach だけ広げたもの(jormSlamBand と同じ式)。
+          const outer = { x: band.fx, y: band.fy - band.halfWidth, w: band.tx - band.fx, h: band.halfWidth * 2 };
+          const mask = this.drawSweepRectFill(o, { x: e.x, y: e.y, w: e.width, h: e.height }, reach, sp, 0xff2a2a,
+            telFillA(sp, jPulse) * TELEGRAPH_FILL_MULT, jStyle);
+          o.rect(outer.x, outer.y, outer.w, outer.h).stroke({ width: 2.5, color: 0xff3b3b, alpha: telStrokeA(sp, jPulse) * mask });
+        }
+      }
+      // 叩いた瞬間の砂埃(派手さの絵=判定より大きく)。段ごとに1回(鍵に段番号)。
+      if (e.type === 'jormungand') {
+        const slamOn = bs === 'jslam-hit';
+        const sk = e.jormSlamDone ?? 0;
+        const dL = this.latchFx(`${e.id}:jslamdust:${sk}`, slamOn, DUST_MS, now,
+          () => [cx, e.y + e.height, (e.width / 2 + jormSlamReach(sk, HB_JO.slam.reaches)) * 1.1]);
+        if (dL) this.drawDust(dL.d[0], dL.d[1], dL.d[2], dL.t, this.dustTintForStage(), this.dustAlpha(dL.t), dL.t0);
+      }
+      // 弾幕の口の光(派手さの絵): 口を開く溜めで灯り、撃つ間は脈打つ。
+      if (e.type === 'jormungand' && e.jormMouthX !== undefined && e.jormMouthY !== undefined
+          && (bs === 'jwave-open' || bs === 'jwave' || bs === 'jrain-open' || bs === 'jrain')) {
+        const opening = bs === 'jwave-open' || bs === 'jrain-open';
+        const openMs = bs === 'jwave-open' ? HB_JO.wave.openMs : HB_JO.rain.openMs;
+        const u = opening ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / Math.max(1, openMs))) : 1;
+        const grow = u * u * (3 - 2 * u);
+        const beat = opening ? 1 : 0.8 + 0.2 * Math.sin(now / 55);
+        const mR = (14 + 16 * grow) * beat;
+        o.circle(e.jormMouthX, e.jormMouthY, mR * 2.2).fill({ color: 0x8a5cff, alpha: 0.18 * grow });
+        o.circle(e.jormMouthX, e.jormMouthY, mR).fill({ color: 0xd8c8ff, alpha: 0.55 * grow });
+      }
+      // 弾幕B: 打ち上げた光弾(弧)と落下点の影(判定なし=派手さの絵。赤は使わない=落ちた所自体は痛くない)。
+      if (e.type === 'jormungand' && bs === 'jrain' && e.jormRainLobs && e.jormRainLobs.length > 0) {
+        for (const l of e.jormRainLobs) {
+          const span = Math.max(1, l.landAt - l.launchAt);
+          const u = (gameTime - l.launchAt) / span;
+          if (u < 0 || u > 1) continue;
+          // 影: 落ちるほど濃く小さく締まる(慣性=落下の加速に合わせて二乗で寄せる)。
+          const uu = u * u;
+          o.ellipse(l.x, l.y, 26 - 12 * uu, (26 - 12 * uu) * 0.45).fill({ color: 0x0b0716, alpha: 0.18 + 0.32 * uu });
+          o.ellipse(l.x, l.y, 30 - 18 * uu, (30 - 18 * uu) * 0.45).stroke({ width: 1.5, color: 0xe9e2ff, alpha: 0.25 + 0.45 * uu });
+          const p = jormRainLobPos(l.fromX, l.fromY, l.x, l.y, u, HB_JO.rain.peakPx);
+          o.circle(p.x, p.y, 13).fill({ color: 0x9a7bff, alpha: 0.28 });
+          o.circle(p.x, p.y, 6.5).fill({ color: 0xf4efff, alpha: 0.95 });
+        }
       }
       // ★予兆一括バッチ(v0.25.3344): スカジ 氷弾/氷刃/檻の設置前windupに震え(社長要望どおり
       // 「震え」のみ=設置技なので後ずさりは付けない)。既存の赤テレグラフ(氷塊マーカーの2秒サークル等・
@@ -26525,6 +26592,32 @@ export class PixiScene {
       }
     }
     return CIRCLE_SWEEP_RING_ALWAYS ? 1 : circleSweepAlphaAt(radius, band, halfW);
+  }
+
+  /**
+   * ★体を広げた矩形の流星マスク(research/JORM_DANMAKU.md・ヨルムンガルドの叩きつけ)。
+   * `drawSweepCircleFill` と**同じ帯**(同じ純関数 `circleSweepBand`/`circleSweepAlphaAt`・同じ段数・同じ ease)を、
+   * 円の代わりに「体の矩形を ρ だけ広げた矩形」で描く。ρ=reach(外の縁)→0(体の縁)へ流れて、体の縁で消え切った瞬間=当たり
+   * (円の「縁→中心」と同じ文脈=外から内へ)。**新しい意匠は作らない**(扇の §11-2 裁定と同じ)。
+   */
+  private drawSweepRectFill(
+    o: Graphics, body: { x: number; y: number; w: number; h: number }, reach: number, prog: number, color: number, peakAlpha: number,
+    style?: TelegraphStyle,
+  ): number {
+    const halfW = Math.max(1, reach * (style?.haloRel ?? CIRCLE_SWEEP_W));
+    const band = circleSweepBand(prog, reach, halfW, CIRCLE_SWEEP_EASE, style?.easePow);
+    const lo = Math.max(0, band - halfW);
+    const hi = Math.min(reach, band + halfW);
+    if (hi > lo) {
+      const step = (hi - lo) / CIRCLE_SWEEP_STEPS;
+      for (let i = 0; i < CIRCLE_SWEEP_STEPS; i++) {
+        const r = lo + step * (i + 0.5);
+        const a = Math.min(1, peakAlpha * CIRCLE_SWEEP_A) * circleSweepAlphaAt(r, band, halfW);
+        if (a <= 0.003) continue;
+        o.rect(body.x - r, body.y - r, body.w + 2 * r, body.h + 2 * r).stroke({ width: step + 0.6, color, alpha: a });
+      }
+    }
+    return CIRCLE_SWEEP_RING_ALWAYS ? 1 : circleSweepAlphaAt(reach, band, halfW);
   }
 
   /**

@@ -129,6 +129,25 @@ export interface HiddenJormungandTuning extends HiddenSharedHolder {
    * **別の欄として持つ**(揃っていることは hiddenBossTuning.test.ts が既定値で機械検査する)。
    */
   coil: { windup: number; active: number; recover: number; cdMs: number; range: number; halfWidth: number };
+  /**
+   * ★弾幕技(research/JORM_DANMAKU.md・社長指示2026-10-02)。導入の叩きつけ→弾幕の台本。
+   * 叩きつけ: 段k(1始まり)の命中=開始+windup+(k−1)×interval・判定は**体の矩形を reaches[k-1] だけ広げた矩形**
+   * (蛇は横長=円だと脇と先端で逃げる距離が5倍違う。体の形で広げて、どこに居ても同じ距離で逃げられるようにする)。
+   * **全段の赤い円が導入の開始で同時に出る**(=段数が予兆)。cdMs=弾幕が終わってから次の導入まで(2種で共有)。
+   */
+  slam: { windup: number; interval: number; hitMs: number; reaches: number[]; recover: number; cdMs: number };
+  /** 口(発射点)=本体中心から向いている側へ dx、上へ dy(ワールドpx)。 */
+  mouth: { dx: number; dy: number };
+  /** 弾幕A「波と粒の境界」: gapMsごとに arms 方向・角は ω0·t+½α·t² で時計回りに加速。lifeMs=弾の寿命(既定の4秒より長く=画面の端まで届かせる)。 */
+  wave: { openMs: number; durationMs: number; gapMs: number; arms: number; omega0: number; alpha: number; speed: number; lifeMs: number; recover: number };
+  /**
+   * 弾幕B「降り注ぐ星弓」: launchGapMsごとに打ち上げ→flightMsで**体の矩形から rMin〜rMax** へ落ち、外向きに burstCount 発。
+   * avoidR=打ち上げた瞬間の相手の位置からこの距離以内には落とさない(足元に予告ゼロで弾が湧かない)。
+   */
+  rain: {
+    openMs: number; durationMs: number; launchGapMs: number; flightMs: number; peakPx: number;
+    rMin: number; rMax: number; avoidR: number; burstCount: number; burstSpread: number; speed: number; recover: number;
+  };
 }
 
 export const HIDDEN_JORMUNGAND_TUNING: HiddenJormungandTuning = {
@@ -136,6 +155,16 @@ export const HIDDEN_JORMUNGAND_TUNING: HiddenJormungandTuning = {
   burst: { volleys: 5, fanSpread: 0.18, gapMs: 500, recover: withRecoverFloor(500) },
   radial: { volleys: 8, gapMs: 300, spin: Math.PI / 16, recover: withRecoverFloor(900) },
   coil: { windup: 700, active: 220, recover: withRecoverFloor(700), cdMs: 7000, range: 310, halfWidth: 40 },
+  // 叩き台(research/JORM_DANMAKU.md §2〜4)。実機で社長が詰める前提。
+  // 体の外への届き 90/170/250(体のすぐ脇からでも1段目は 90px 走れば抜けられる=1000msで足りる)。
+  slam: { windup: 1000, interval: 650, hitMs: 180, reaches: [90, 170, 250], recover: withRecoverFloor(600), cdMs: 18000 },
+  mouth: { dx: 145, dy: -75 }, // 威嚇のシートの口(画で合わせた・縦持ち/引き0.4で実測)
+  // 「離れるほど安全」の境目≈口から 300px(粒の横間隔 r·ω·gap が自機+弾の幅 44px+余裕を超える距離・ω≈1.6〜2.2)。
+  wave: { openMs: 700, durationMs: 4000, gapMs: 100, arms: 5, omega0: 1.6, alpha: 0.15, speed: 160, lifeMs: 5500, recover: withRecoverFloor(1200) },
+  rain: {
+    openMs: 700, durationMs: 3600, launchGapMs: 80, flightMs: 1000, peakPx: 170,
+    rMin: 200, rMax: 560, avoidR: 120, burstCount: 5, burstSpread: 50 * Math.PI / 180, speed: 115, recover: withRecoverFloor(1200),
+  },
 };
 
 // =================================================================================================

@@ -23,6 +23,7 @@ import type { Enemy } from '../types/game';
 import { bandThreat, circleThreat, DODGE_BAND_HALF_WIDTH, type DodgeThreat } from './botSkill';
 import { IDOL_SHOT_SLOTS } from './idolScript';
 import { MIMIR_BITE_RADIUS } from './bodyCenteredAoe';
+import { HIDDEN_JORMUNGAND_TUNING } from './hiddenBossScript';
 
 /**
  * GHOST-CMD-1B(§2.18-2/-3): この台帳が返す脅威。`shape: 'circle'` = 円形の危険域
@@ -44,6 +45,9 @@ const DIVE_RADIUS_MIRROR = 220;          // = gameStore.GIANT_DIVE_RADIUS(急降
 // 守護霊が実際の半分以下の円で回避していた(=噛まれる)。bodyCenteredAoe は純関数モジュールなので
 // store/hook非依存の掟は破らない。
 const MIMIR_BITE_RADIUS_MIRROR = MIMIR_BITE_RADIUS; // = bodyCenteredAoe.MIMIR_BITE_RADIUS(群体の噛みつき円)
+// research/JORM_DANMAKU.md: 叩きつけ=体の矩形を広げた枠。円で近似する時は**体の半幅+最後の段の届き**(=枠を丸ごと含む・安全側)。
+// テーブルは store 非依存の葉なので直に読む。体の寸法(519×90)は enemyUtils.ENEMY_STATS の写し(移動すると ghostTelegraph.test が見張る網は無い=寸法を変えたらここも)。
+const JORM_SLAM_RADIUS_MAX_MIRROR = Math.hypot(519 / 2, 90 / 2) + Math.max(...HIDDEN_JORMUNGAND_TUNING.slam.reaches);
 const SURIEL_RINGSPIN_RADIUS_MIRROR = 92;// = angelBossTick.SURIEL_RINGSPIN_RADIUS(回転斬りの円)
 const SURIEL_BEAM_RANGE_MIRROR = 2600;   // = angelBossTick.SURIEL_BEAM_RANGE(環ビームの射程)
 const ACRASIEL_SPIKE_RANGE_MIRROR = 310; // = angelBossTick.ACRASIEL_SPIKE_RANGE_PX(放射8本の長さ)
@@ -238,6 +242,11 @@ put(LEDGER, ['bite-windup'], {
   types: ['mimir'],
   note: 'ミーミルの群体の噛みつき=本体直下の円AoE(踏み鳴らしと同じ作法)。',
 });
+put(LEDGER, ['jslam-windup', 'jslam-hit', 'jslam-rewind'], {
+  coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: JORM_SLAM_RADIUS_MAX_MIRROR },
+  types: ['jormungand'],
+  note: 'ヨルムンガルドの弾幕の導入=叩きつけ(research/JORM_DANMAKU.md)。体を広げた枠が段ごとに大きくなる=**最後の段の枠を含む円**の外へ出る(安全側)。',
+});
 put(LEDGER, ['idol-punch-windup'], {
   coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: IDOL_PUNCH_RANGE_MIRROR },
   note: 'idolの殴打。溜め中は向きが未確定なので、届く距離の円として外へ出す(安全側)。',
@@ -328,6 +337,7 @@ put(LEDGER, [
   'phill-judgment-active', 'phill-judgment-recover',
   'phill-cage-active', 'phill-cage-recover',
   'phill-ringtoss-recover', 'phill-dive-recover', 'phill-summon-recover', 'phill-feathershot-recover',
+  'jslam-recover', 'jwave-recover', 'jrain-recover', // research/JORM_DANMAKU.md
 ], {
   coverage: 'none',
   note: '硬直(技は終わっている)=避ける図形は無い。ここはむしろカウンターの窓側の話。',
@@ -341,6 +351,8 @@ put(LEDGER, [
   // PACING_PUZZLE.md §10(フィル・バッチ2): 光槍の扇/エルデの流星=共通赤弾のみ(地面に図形なし)。
   'phill-lancefan-windup', 'phill-lancefan-active', 'phill-lancefan-recover',
   'phill-meteor-windup', 'phill-meteor-active', 'phill-meteor-recover',
+  // research/JORM_DANMAKU.md: ヨルムンガルドの弾幕(波と粒の境界/降り注ぐ星弓)=共通赤弾のみ。光弾と影は判定なし。
+  'jwave-open', 'jwave', 'jrain-open', 'jrain',
 ], {
   coverage: 'none',
   note: '弾を撃つだけの技=地面に図形が出ない。飛んだ弾は projectileDodge が別経路で避ける。',

@@ -116,12 +116,16 @@ const MI_HELP: Record<string, string> = {
 const JO_SEC = {
   move: '動き', burst: '3-way扇(jo-burst)', radial: '螺旋の全方位(jo-radial)',
   dash: '突進(jo-dash)', coil: 'うねり(jo-coil)',
+  slam: '弾幕の導入=叩きつけ(jo-slam2/3)', wave: '弾幕A 波と粒の境界(2連のあと)', rain: '弾幕B 降り注ぐ星弓(3連のあと)',
 };
 
 const jormungandFields = (): TuningField[] => {
   const bu = mk(JO_SEC.burst, 'move');
   const ra = mk(JO_SEC.radial, 'move');
   const co = mk(JO_SEC.coil, 'move');
+  const sl = mk(JO_SEC.slam, 'move');
+  const wv = mk(JO_SEC.wave, 'move');
+  const rn = mk(JO_SEC.rain, 'move');
   return [
     ...neutralFields(JO_SEC.move, true),
 
@@ -146,6 +150,39 @@ const jormungandFields = (): TuningField[] => {
     co('coil.cdMs', 'クールダウン', 'ms', 0, 30000, 500),
     co('coil.range', '帯の長さ', 'px', 10, 800, 10, '赤い帯=判定。既定はトールの払いと同値'),
     co('coil.halfWidth', '帯の半幅', 'px', 4, 200, 10, '赤い帯=判定'),
+
+    sl('slam.windup', '1段目の溜め', 'ms', 100, 5000, 50, HINT_WINDUP),
+    sl('slam.interval', '段の間隔', 'ms', 200, 3000, 50, '段kの命中=開始+溜め+(k−1)×間隔'),
+    sl('slam.hitMs', '叩く瞬間の絵', 'ms', 50, 1000, 10, '叩いた絵を見せる時間(判定は命中の1点)'),
+    sl('slam.reaches.0', '1段目の届き', 'px', 40, 600, 10, '赤い枠=判定(体の矩形をこれだけ広げる)'),
+    sl('slam.reaches.1', '2段目の届き', 'px', 40, 600, 10, '赤い枠=判定(体の矩形をこれだけ広げる)'),
+    sl('slam.reaches.2', '3段目の届き', 'px', 40, 600, 10, '赤い枠=判定(3連だけ)'),
+    sl('slam.recover', '弾幕までの間', 'ms', 0, 3000, 50, '台本の途中なので短く切られる(最大300)'),
+    sl('slam.cdMs', 'クールダウン', 'ms', 0, 60000, 500, '弾幕が終わってから次の導入まで(2種共有)'),
+    sl('mouth.dx', '口の横位置', 'px', 0, 400, 5, '発射点=本体中心から向いている側へ'),
+    sl('mouth.dy', '口の縦位置', 'px', -200, 200, 5, '発射点=本体中心から(負=上)'),
+
+    wv('wave.openMs', '口を開く溜め', 'ms', 0, 3000, 50),
+    wv('wave.durationMs', '撃つ時間', 'ms', 500, 10000, 100),
+    wv('wave.gapMs', '撃つ間隔', 'ms', 30, 500, 10, '小さいほど粒が詰まる'),
+    wv('wave.arms', '方向の数', 'num', 2, 16, 1),
+    wv('wave.omega0', '回転の初速', 'frac', 0, 5, 0.05, 'rad/s。時計回り'),
+    wv('wave.alpha', '回転の加速', 'frac', 0, 5, 0.05, 'rad/s²。大きいほど後半が速い壁になる'),
+    wv('wave.speed', '弾速', 'num', 40, 400, 5),
+    wv('wave.lifeMs', '弾の寿命', 'ms', 1000, 12000, 100, '弾速×寿命=届く距離'),
+    wv('wave.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+
+    rn('rain.openMs', '口を開く溜め', 'ms', 0, 3000, 50),
+    rn('rain.durationMs', '打ち上げる時間', 'ms', 500, 10000, 100),
+    rn('rain.launchGapMs', '打ち上げの間隔', 'ms', 20, 500, 10),
+    rn('rain.flightMs', '落ちるまで', 'ms', 200, 3000, 50),
+    rn('rain.rMin', '落ちる範囲(内)', 'px', 40, 900, 10, '体からこの距離の内側には弾が入らない=安全地帯'),
+    rn('rain.rMax', '落ちる範囲(外)', 'px', 100, 1200, 10, '体からの距離'),
+    rn('rain.avoidR', '足元を避ける', 'px', 0, 400, 10, '打ち上げた瞬間の相手の位置からこの距離には落とさない'),
+    rn('rain.burstCount', '1か所の弾数', 'num', 1, 12, 1),
+    rn('rain.burstSpread', '撒く開き(片側)', 'frac', 0, 1.5, 0.01, 'rad。外向きを中心に'),
+    rn('rain.speed', '弾速', 'num', 40, 400, 5),
+    rn('rain.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
   ];
 };
 
@@ -155,6 +192,9 @@ const JO_HELP: Record<string, string> = {
   [JO_SEC.radial]: '全方位を何度も撃ちながら少しずつ回す=螺旋。回転を0にすると同じ隙間が続く(避け方が変わる)。',
   [JO_SEC.dash]: '一直線に突っ込む。値は4体共通(ミーミル/スカジと同じ実体)。',
   [JO_SEC.coil]: '近接専用の薙ぎ。長さ/半幅の既定はトールの払いと同値だが、**ここを動かしてもトールは変わらない**(別の欄)。',
+  [JO_SEC.slam]: '体のまわりの叩きつけを2連か3連。**全段の赤い枠が最初に同時に出る**=枠の数で次の弾幕が読める(2つ→波と粒の境界/3つ→降り注ぐ星弓)。',
+  [JO_SEC.wave]: '口から全方向へ撃ち続け、角を加速しながら回す。近いと粒が詰まった壁、離れると粒の隙間を抜けられる。',
+  [JO_SEC.rain]: '口から打ち上げた光弾が体から離れた所へ降り、外向きに散る。体から「内」の距離より近くには弾が入らない=離れない方が安全。',
 };
 
 // ================================================================================================
@@ -330,6 +370,8 @@ const JO_PLAYABLES: readonly PlayableAction[] = [
   play('jo-radial', '螺旋の全方位', JO_SEC.radial),
   play('jo-dash', '突進', JO_SEC.dash),
   play('jo-coil', 'うねり', JO_SEC.coil),
+  play('jo-slam2', '叩きつけ2連→波と粒の境界', JO_SEC.wave),
+  play('jo-slam3', '叩きつけ3連→降り注ぐ星弓', JO_SEC.rain),
 ];
 const SK_PLAYABLES: readonly PlayableAction[] = [
   play('sk-ice', '氷塊', SK_SEC.ice),
