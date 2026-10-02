@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { latticeBands, latticeStageCount, latticeAxisForStage, latticeHitSource } from '../utils/skadiLattice';
+import { latticeBands, latticeStageCount, latticeAxisForStage, latticeHitSource, latticeCenter } from '../utils/skadiLattice';
 import { mimirWheelTheta0, mimirWheelSpokeAngle, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
@@ -6783,13 +6783,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               };
               // ★氷の格子(research/SKADI_LATTICE.md): k 段目の溜めを始める(段の中心=今のヘイトの相手・4本側はランダム)。
-              const beginLatticeStage = (k: number, aimNow?: { x: number; y: number }) => {
+              const beginLatticeStage = (k: number, aimNow?: { x: number; y: number; side: string }) => {
                 // 1段目は技の頭で決めたヘイトの相手をそのまま使う(同じtickで lockedAttackAim を読むと patch 前=1tick古い側を読む・検収 A-1)。
                 const tgt = aimNow ?? lockedAttackAim();
+                // 中心=当たる瞬間の居場所の予測(今の位置+速度×溜め・社長裁定2026-10-02「推薦で」)。守護霊は速度を持たない=今の位置。
+                const pc = tgt.side === 'player'
+                  ? latticeCenter(tgt.x, tgt.y, player.vx, player.vy, HB_SK.lattice.windupMs)
+                  : { x: tgt.x, y: tgt.y };
                 patch.bossState = 'lattice-windup';
                 patch.bossStateUntil = newGameTime + HB_SK.lattice.windupMs;
                 patch.skadiLatticeStage = k;
-                patch.skadiLatticeCx = tgt.x; patch.skadiLatticeCy = tgt.y;
+                patch.skadiLatticeCx = pc.x; patch.skadiLatticeCy = pc.y;
                 patch.skadiLatticeSide = Math.random() < 0.5 ? 1 : -1;
                 // 拍の頭: 刃が現れる音(段が進むほど高く=6段で積み上がる)。
                 playSfx('skadi-ice', 0.3, undefined, [0.8, 0.88, 0.95, 1.05, 1.12, 1.22][Math.min(5, k)]);

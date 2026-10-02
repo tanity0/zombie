@@ -61,3 +61,12 @@ export const latticeHitSource = (
   const y = Math.abs(py - band.fy) < 1 ? py + side : band.fy;
   return { x: px, y };
 };
+
+/**
+ * 段の中心=相手が**溜めの終わり(当たる瞬間)に居る場所**の予測(社長裁定2026-10-02「推薦で」)。
+ * 今の位置 + 速度 × 溜め。止まっていれば今の位置(=中心の1本が真上)、歩き続ければ行き先の真上に刃が来る
+ * =斜めに歩き続けるだけで全段を抜ける、を潰し、毎段「止まる/切り返す」を迫る。速度を持たない相手(守護霊)は今の位置。
+ */
+export const latticeCenter = (
+  x: number, y: number, vx: number, vy: number, windupMs: number,
+): { x: number; y: number } => ({ x: x + vx * (windupMs / 1000), y: y + vy * (windupMs / 1000) });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { latticeBands, latticeStageCount, latticeAxisForStage, walkTimeMs, latticeHitSource } from './skadiLattice';
+import { latticeBands, latticeStageCount, latticeAxisForStage, walkTimeMs, latticeHitSource, latticeCenter } from './skadiLattice';
 import { distToBandRect } from './geometry';
 import { HIDDEN_SKADI_TUNING } from './hiddenBossScript';
 
@@ -62,5 +62,27 @@ describe('氷の格子: 弾く向き(設計監査 A-4)', () => {
     expect(Math.sign(100 - on.x)).toBe(-1); // 自機−源 が −side 向き=開けている側へ押される
     const h = { fx: -480, fy: 50, tx: 480, ty: 50 };
     expect(latticeHitSource(h, 7, 60, -1)).toEqual({ x: 7, y: 50 });
+  });
+});
+
+describe('氷の格子: 段の中心=当たる瞬間の居場所の予測(社長裁定2026-10-02)', () => {
+  const L = HIDDEN_SKADI_TUNING.lattice;
+  const onBand = (x: number, y: number, c: { x: number; y: number }, axis: 'v' | 'h') =>
+    latticeBands(c.x, c.y, axis, 1, L).some(r => distToBandRect({ x, y }, { x: r.fx, y: r.fy }, { x: r.tx, y: r.ty }, L.halfWidth) <= 14);
+  it('止まっていれば今の位置', () => {
+    expect(latticeCenter(10, 20, 0, 0, L.windupMs)).toEqual({ x: 10, y: 20 });
+  });
+  it('斜めに歩き続けると、縦の段も横の段も当たる(旧: 全段抜けられた)', () => {
+    const v = 104.4 / Math.SQRT2;
+    for (const axis of ['v', 'h'] as const) {
+      const c = latticeCenter(0, 0, v, v, L.windupMs);
+      const t = L.windupMs / 1000;
+      expect(onBand(v * t, v * t, c, axis)).toBe(true);
+    }
+  });
+  it('歩いていても、溜めの間に止まれば(慣性込み)隙間に居られる', () => {
+    // 右へ歩いていた相手が段の頭で止まる=慣性で約6px(104.4×0.06)だけ進んで止まる → 予測の中心(約68px先)の刃から離れている。
+    const c = latticeCenter(0, 0, 104.4, 0, L.windupMs);
+    expect(onBand(104.4 * 0.06, 0, c, 'v')).toBe(false);
   });
 });
