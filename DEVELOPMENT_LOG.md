@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4787 — スマホの見え方の回帰チェックを作った(PC版の作業の安全網)【2026-10-03 08:42 JST】
+- 社長「全て進めて。ただ、絶対スマホ用の現状が壊れないように分けて作業してね」→ `scripts/phone-guard.mjs`(baseline/check)。
+  スマホ2機種×7画面の要素の配置を基準(v0.25.4786)と比べる。同じ版で2回撮って差0(会話の吹き出しだけ乱数で揺れる → NpcDialogue に `data-phone-guard-skip`)。
+- 規約: CLAUDE.md「★PC版の作業はスマホを1pxも動かさない」/ research/PC_SUPPORT.md §9。
+- phone-guard: check 14画面 OK。検証: typecheck / lint(0 errors)。
+- 変更: scripts/phone-guard.mjs / src/components/NpcDialogue.tsx / CLAUDE.md / research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4786 — ガチャの被り返金を「払った額×レア度の割合」に【2026-10-03 07:50 JST】
 - 社長報告「ガチャ、返金されると、むしろ増える」→ 原因: 返金が固定 10/30/50 で、序盤の値段(10/20/35)より大きい(1〜5回目でレア+20・超レア+40 等)。
   社長「はい」(推薦=割合制)。`gachaRefundFor(rarity, price)` = 払った額×(ノーマル0.2/レア0.6/超レア1.0)・払った額が上限。天井50では 10/30/50 で旧と同じ=後半の経済は不変。

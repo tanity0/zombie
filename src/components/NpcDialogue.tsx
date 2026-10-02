@@ -54,6 +54,7 @@ export const NpcDialogue = () => {
   const portraitBoxW = portrait?.boxW ?? 40;
   return (
     <div
+      data-phone-guard-skip // 会話は乱数で文言と長さが変わる=スマホの回帰チェック(scripts/phone-guard.mjs)の対象外
       className="absolute text-left"
       // PC の横長は画面の下(字幕の位置)へ。視線の落ち着く所・HUD の隙間に浮かせない(クリエイティブ監査 #10)。
       style={landscape ? {

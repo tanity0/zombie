@@ -119,6 +119,13 @@ Top-down HD-2D survival game. React + Zustand (simulation) + PixiJS (rendering).
     「バージョン番号で版を確認する」流れに毒。ロード問題は製品では同梱により消える)。
   - 起動ローディング(全素材の確認往復+展開)は開発チャネルの宿命として許容する。
 
+## ★PC版の作業はスマホを1pxも動かさない(社長指示2026-10-02・MUST)
+社長の言葉: 「**絶対スマホ用の現状が壊れないように分けて作業してね**」。
+- PC の分岐は**横長の時だけ**効く書き方にする(CSS は `landscape:` / `@media (orientation: landscape)`、JS は `w > h` の判定。スマホの横向きは OrientationGuard が塞いでいるので横長=PC)。
+  ゲームの判定(湧き・回収・ズーム等)を変える時は、**スマホの寸法で結果が変わらないことをユニットテストで固定**する。
+- **push 前に `node scripts/phone-guard.mjs check`**(dev サーバ 5199 番)。スマホ 430×932 / 375×667 の7画面の配置が基準と1pxでも違えば落ちる。
+  基準の作り方・消えた時の撮り直しはスクリプトの冒頭。設計は research/PC_SUPPORT.md。
+
 ## Renderer
 - **PixiJS is the default and the only actively-developed renderer.** The legacy
   Canvas2D renderer is still reachable via `?renderer=canvas` as a fallback/
