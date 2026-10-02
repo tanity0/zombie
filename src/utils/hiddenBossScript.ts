@@ -114,7 +114,7 @@ export interface HiddenMimirTuning extends HiddenSharedHolder {
   wheel: {
     windupMs: number; fireMs: number; spokes: number; halfWidth: number; damage: number;
     omegaWindup: number; omegaMax: number; rampMs: number; decelMs: number; recover: number; cdMs: number;
-    homing: { startMs: number; pairGapMs: number; restMs: number; speed: number; turnRadS: number; homingMs: number; lifeMs: number; damage: number };
+    homing: { startMs: number; burstCount: number; gapMs: number; restMs: number; speed: number; turnRadS: number; homingMs: number; lifeMs: number; damage: number };
   };
 }
 
@@ -129,9 +129,10 @@ export const HIDDEN_MIMIR_TUNING: HiddenMimirTuning = {
     windupMs: 1500, fireMs: 5000, spokes: 6, halfWidth: 22, damage: 30,
     // cdMs は溜めの頭から数える(溜め+発射≈6.5秒ぶんを含む=撃ち終わってから約13秒)。潰されても CD は残る。
     omegaWindup: 0.10, omegaMax: 0.42, rampMs: 900, decelMs: 600, recover: withRecoverFloor(900), cdMs: 20000,
-    // 追跡弾は「2連(間250ms=1振りで2つ返せる間合い)→休み1500ms」の組。旋回 0.75rad/s=約140px手前から横へ切れば外れる(テストで固定)。
+    // 追跡弾は「3連(間150ms=1振りで3つとも返せる間合い)→休み1300ms」の組。旋回 0.75rad/s=約140px手前から横へ切れば外れる(テストで固定)。
     // 威力はレーザーと同じ(弾をわざと受けて無敵の間にレーザーを横切る、を得にしない)。
-    homing: { startMs: 500, pairGapMs: 250, restMs: 1500, speed: 170, turnRadS: 0.75, homingMs: 2200, lifeMs: 5000, damage: 30 },
+    // 社長指示2026-10-02「覚醒後の追尾弾の弾速を上げて、もう少し連射して」: 速さ 170→230 / 2連・休み1500 → 3連・休み1300(5秒で6発→9発)。
+    homing: { startMs: 500, burstCount: 3, gapMs: 150, restMs: 1300, speed: 230, turnRadS: 0.75, homingMs: 2200, lifeMs: 5000, damage: 30 },
   },
 };
 

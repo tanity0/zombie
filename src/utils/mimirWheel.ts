@@ -87,9 +87,13 @@ export const steerDirToward = (
 };
 
 /**
- * 変化(HP60%以下)の追跡弾 k 発目(0始まり)を撃つ時刻(発射の頭からのms)。「2連 → 休み」の組:
- * startMs + ⌊k/2⌋·(pairGapMs + restMs) + (k mod 2)·pairGapMs。2連の間は1振りで2つ返せる間合い。
+ * 変化(HP60%以下)の追跡弾 k 発目(0始まり)を撃つ時刻(発射の頭からのms)。「n連(間 gapMs)→ 休み」の組:
+ * startMs + ⌊k/n⌋·((n−1)·gapMs + restMs) + (k mod n)·gapMs。n連の間は1振りで全部返せる間合い。
  */
 export const mimirWheelShotOffsetMs = (
-  k: number, h: { startMs: number; pairGapMs: number; restMs: number },
-): number => h.startMs + Math.floor(Math.max(0, k) / 2) * (h.pairGapMs + h.restMs) + (Math.max(0, k) % 2) * h.pairGapMs;
+  k: number, h: { startMs: number; burstCount: number; gapMs: number; restMs: number },
+): number => {
+  const n = Math.max(1, Math.round(h.burstCount));
+  const kk = Math.max(0, k);
+  return h.startMs + Math.floor(kk / n) * ((n - 1) * h.gapMs + h.restMs) + (kk % n) * h.gapMs;
+};

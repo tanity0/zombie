@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4772 — ミーミルの紫の車輪: 出る頻度2倍・覚醒後の追跡弾を速く3連に(社長指示)【2026-10-02 20:37 JST】
+- 社長「はい」(重み2倍)= wheel の重み 15/20/20/10 → 30/40/40/20(mimirScript.ts)。
+- 社長「覚醒後の追尾弾の弾速を上げて、もう少し連射して」= 速さ 170→230、「2連(250ms)→休み1500」→「3連(150ms)→休み1300」(5秒で6発→9発)。
+  `homing.pairGapMs` を `burstCount` + `gapMs` に一般化(mimirWheelShotOffsetMs・テスト・ボスメーカーの欄・赤い光の数=1組の弾数)。3連は1振りで全部返せる間合い(最初→最後 300ms < 窓400ms・テストで固定)。
+- 数値の変更=監査は付けない。見た目(赤い光が3つ・3連の弾)はヘッドレスで撮って確認。
+- 検証: typecheck / lint / mimirWheel・mimirScript・bossmaker のテスト 373 通過。
+- 変更: src/utils/hiddenBossScript.ts / mimirWheel.ts(.test)/ mimirScript.ts / src/tools/bossmaker/hiddenBossTuning.ts / src/pixi/pixiScene.ts / src/hooks/useGameLoop.ts / research/MIMIR_WHEEL.md / changelog / package.json。
+
 ## v0.25.4771 — 文書のみ: 凍てつく牙の「崩したら飛んでいない牙が砕ける」を社長了承【2026-10-02 20:27 JST】
 - 社長「ヨルムンガルド ok」= v0.25.4767 で入れた「州を抜けたら(気絶・紫・罠・カウンターの切り)まだ飛んでいない牙は砕けて消える」を了承。設計書 §10-2 に記録。
 - 変更: research/JORM_DANMAKU.md / changelog / package.json(ゲーム内容の変更なし)。

@@ -68,13 +68,15 @@ describe('追跡弾の旋回', () => {
 
 describe('変化の追跡弾(既定値で「外せる・返せる」)', () => {
   const H = HIDDEN_MIMIR_TUNING.wheel.homing;
-  it('2連→休みの組', () => {
+  it('n連→休みの組', () => {
+    const n = H.burstCount;
     expect(mimirWheelShotOffsetMs(0, H)).toBe(H.startMs);
-    expect(mimirWheelShotOffsetMs(1, H)).toBe(H.startMs + H.pairGapMs);
-    expect(mimirWheelShotOffsetMs(2, H)).toBe(H.startMs + H.pairGapMs + H.restMs);
+    expect(mimirWheelShotOffsetMs(1, H)).toBe(H.startMs + H.gapMs);
+    expect(mimirWheelShotOffsetMs(n, H)).toBe(H.startMs + (n - 1) * H.gapMs + H.restMs);
+    expect(mimirWheelShotOffsetMs(2, { startMs: 0, burstCount: 2, gapMs: 250, restMs: 1500 })).toBe(1750);
   });
-  it('2連は1回のカウンター窓(400ms)に両方入る間合い=弾の間隔が窓で進む距離より短い', () => {
-    expect(H.speed * H.pairGapMs / 1000).toBeLessThan(H.speed * 400 / 1000);
+  it('n連は1回のカウンター窓(400ms)に全部入る間合い(最初の1発から最後の1発まで < 400ms)', () => {
+    expect((H.burstCount - 1) * H.gapMs).toBeLessThan(400);
   });
   it('組と組の間はカウンターの1周期(820ms)より長い=返した後に次の組を返せる', () => {
     expect(H.restMs).toBeGreaterThan(820);

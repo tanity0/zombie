@@ -7465,7 +7465,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const fireAt = (boss.mimirWheelAt ?? newGameTime) + W.windupMs;
                   let k = boss.mimirWheelShots ?? 0;
                   let shots = 0;
-                  while (shots < 2 && fireAt + mimirWheelShotOffsetMs(k, W.homing) <= newGameTime
+                  while (shots < 3 && fireAt + mimirWheelShotOffsetMs(k, W.homing) <= newGameTime
                     && mimirWheelShotOffsetMs(k, W.homing) < W.fireMs) {
                     const aim = lockedAttackAim();
                     // 弾は眼から出る(描画の赤い光=眼のまわり、と同じ出どころ)。

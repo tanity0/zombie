@@ -40,7 +40,8 @@ export const MIMIR_MOVE_WEIGHTS: BossMoveWeights<MimirMove> = {
   laser:  { melee: 15, near: 20, mid: 35, far: 30 },
   dash:   { melee: 0,  near: 0,  mid: 15, far: 60 },
   // ★紫の車輪(research/MIMIR_WHEEL.md・社長指示2026-10-02): 全方位に届くので全ゾーンで出す。CD は呼び出し側(readyAt)。
-  wheel:  { melee: 15, near: 20, mid: 20, far: 10 },
+  // 社長指示2026-10-02「(実戦で出にくいので)重みを2倍」: 15/20/20/10 → 30/40/40/20。
+  wheel:  { melee: 30, near: 40, mid: 40, far: 20 },
 };
 
 // フェーズ表(§6.28-5)の「レーザーの抽選確率が0.34→0.50へ上がる」を、専用の確率ロールではなく

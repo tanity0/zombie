@@ -20106,12 +20106,12 @@ export class PixiScene {
             .stroke({ width: width * (1 - 0.22 * q), color: 0xa855f7, alpha: alpha * Math.pow(0.5, q) });
         }
       };
-      // 変化の合図(赤い光): 溜めで眼のまわりへ寄り集まり、撃つ間は2連を撃つたびに1つずつ飛び出して消え、休みでまた灯る。
+      // 変化の合図(赤い光): 溜めで眼のまわりへ寄り集まり、撃つ間は連射の1発ごとに1つずつ飛び出して消え、休みでまた灯る。
       const drawHomingOrbs = (count: number, grow: number) => {
         const eyeY = cy - e.height * MIMIR_WHEEL_EYE_UP; // 絵の眼(立ち絵は足元から上へ描くので、判定の中心より上)
         const sp = 0.6 + 2.4 * grow * grow; // 寄り集まるほど速く回る(加速)
         for (let q = 0; q < count; q++) {
-          const oa = (gameTime / 1000) * sp + q * (Math.PI * 0.82) + (q === 1 ? 0.4 : 0);
+          const oa = (gameTime / 1000) * sp + q * ((Math.PI * 2) / Math.max(1, count)) * 0.86 + (q % 2 === 1 ? 0.4 : 0);
           const orR = 170 - 90 * grow;
           const ox = cx + Math.cos(oa) * orR, oy = eyeY + Math.sin(oa) * orR * 0.55;
           const rr = 24 + 16 * grow; // 判定ゼロの派手さの絵=大きく(引いた画面でも読める)
@@ -20149,7 +20149,7 @@ export class PixiScene {
             o.moveTo(cx, cy).lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R).stroke({ width: 10, color: 0xffffff, alpha: 0.15 + 0.5 * k1 * k1, cap: 'round' });
           }
         }
-        if (e.mimirWheelHoming) drawHomingOrbs(2, 1 - (1 - prog) * (1 - prog));
+        if (e.mimirWheelHoming) drawHomingOrbs(Math.max(1, Math.round(W.homing.burstCount)), 1 - (1 - prog) * (1 - prog));
       } else if (e.bossState === 'wheel-fire') {
         const fireT = tW - W.windupMs;
         const fl0 = Math.max(0, 1 - fireT / 260);
@@ -20170,14 +20170,15 @@ export class PixiScene {
         o.circle(cx, cy, hub).fill({ color: 0xc084fc, alpha: 0.22 + 0.2 * omegaK + 0.3 * flare });
         o.circle(cx, cy, hub * 0.45).fill({ color: 0xffffff, alpha: 0.55 + 0.2 * omegaK + 0.25 * flare });
         if (e.mimirWheelHoming) {
-          // 2連の1発ごとに光が1つ減り、組を撃ち切ったら休みの間にまた灯る。
+          // 連射の1発ごとに光が1つ減り、組を撃ち切ったら休みの間にまた灯る。
           const H = W.homing;
+          const nB = Math.max(1, Math.round(H.burstCount));
           const shots = e.mimirWheelShots ?? 0;
-          const inPair = shots % 2;
-          const lastPairEnd = shots >= 2 && inPair === 0 ? mimirWheelShotOffsetMs(shots - 1, H) : -1;
-          const regrow = lastPairEnd >= 0 ? Math.max(0, Math.min(1, (fireT - lastPairEnd) / Math.max(1, H.restMs * 0.7))) : 1;
+          const inGroup = shots % nB;
+          const lastGroupEnd = shots >= nB && inGroup === 0 ? mimirWheelShotOffsetMs(shots - 1, H) : -1;
+          const regrow = lastGroupEnd >= 0 ? Math.max(0, Math.min(1, (fireT - lastGroupEnd) / Math.max(1, H.restMs * 0.7))) : 1;
           const allDone = mimirWheelShotOffsetMs(shots, H) >= W.fireMs;
-          if (!allDone) drawHomingOrbs(2 - inPair, inPair === 0 ? regrow * regrow * (3 - 2 * regrow) : 1);
+          if (!allDone) drawHomingOrbs(nB - inGroup, inGroup === 0 ? regrow * regrow * (3 - 2 * regrow) : 1);
         }
       } else {
         // 撃ち終わり: 紫の帯が芯へ畳まれ(ease-in)、芯が細って消える。判定は無い。
