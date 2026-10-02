@@ -305,6 +305,7 @@ import {
   jormungandPhaseForHealth, pickJormungandMove, jormRadialSpinAngle, type JormungandMove,
 } from '../utils/jormungandScript';
 import {
+  jormFreezeState, jormFreezeSlot, jormFreezeAimPoint,
   jormSlamHitAt, jormSlamReach, jormSlamBand, jormBodyRectDist, jormWaveAngle, jormWaveTheta0, jormRainLandingPoint, jormRainBurstAngles,
 } from '../utils/jormDanmaku';
 import {
@@ -6320,6 +6321,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 bs.vy += (desVy - bs.vy) * k;
                 patch.x = boss.x + bs.vx * bossMoveDt; patch.y = boss.y + bs.vy * bossMoveDt;
               };
+              // ★弾幕C(§10)の後始末: 'jfreeze' 以外の州へ移った(気絶・紫・帰巣・カウンターの切り等)のに凍った弾が残っていたら、
+              // 今の向きのまま放す(凍ったまま空中に残さない=設計 §10-2)。
+              if (boss.jormFreezeRings && boss.jormFreezeRings.length > 0 && boss.bossState !== 'jfreeze') {
+                const relIds = new Set(boss.jormFreezeRings.flatMap(r => r.ids).filter(id => id !== ''));
+                const relSpeed = HB_JO.freeze.speed;
+                useGameStore.setState(stp => ({
+                  projectiles: stp.projectiles.map(pr => (relIds.has(pr.id) && pr.hostile && !pr.reflected && pr.speed < relSpeed)
+                    ? { ...pr, speed: relSpeed } : pr),
+                }));
+                patch.jormFreezeRings = undefined;
+              }
               if (boss.bossMoveCutPending) {
                 // ★カウンターで「出していた1手だけ」を終わらせる(社長指示2026-10-01・counterCut.ts)。
                 // 爆風/帯のパリィ(combatTick)が立てた旗をここで引き取る。追跡へ戻して間を置き、
@@ -6362,6 +6374,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 着弾も同じだけ繰り下げる(凍結中に着弾して弾が湧く/段の時刻表が詰まる、を作らない)。
                   if (boss.jormSlamAt !== undefined) patch.jormSlamAt = boss.jormSlamAt + kbDtMs;
                   if (boss.jormWaveAt !== undefined) patch.jormWaveAt = boss.jormWaveAt + kbDtMs;
+                  if (boss.jormFreezeRings && boss.jormFreezeRings.length > 0) {
+                    patch.jormFreezeRings = boss.jormFreezeRings.map(r => ({ ...r, emitAt: r.emitAt + kbDtMs }));
+                  }
                   if (boss.jormRainLobs && boss.jormRainLobs.length > 0) {
                     patch.jormRainLobs = boss.jormRainLobs.map(l => ({ ...l, launchAt: l.launchAt + kbDtMs, landAt: l.landAt + kbDtMs }));
                   }
@@ -6703,19 +6718,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.aiFromY = aim.y - ty0 * (HB_JO.coil.range / 2);
                   patch.aiTargetX = aim.x + tx0 * (HB_JO.coil.range / 2);
                   patch.aiTargetY = aim.y + ty0 * (HB_JO.coil.range / 2);
-                } else if (move === 'slam2' || move === 'slam3') {
+                } else if (move === 'slam1' || move === 'slam2' || move === 'slam3') {
                   // ★弾幕の導入=叩きつけ(research/JORM_DANMAKU.md §2)。段の命中時刻は開始時刻から引く(積み上げない=ずれない)。
                   // 全段の赤い円がこの瞬間に出る(描画は jormSlamAt/jormSlamCount を読む)=段数が弾幕の予兆。
                   lockAttackAim();
                   patch.bossState = 'jslam-windup';
                   patch.bossStateUntil = jormSlamHitAt(newGameTime, 1, HB_JO.slam.windup, HB_JO.slam.interval);
                   patch.jormSlamAt = newGameTime;
-                  patch.jormSlamCount = move === 'slam3' ? 3 : 2;
+                  patch.jormSlamCount = move === 'slam3' ? 3 : move === 'slam1' ? 1 : 2;
                   patch.jormSlamDone = 0;
                   // 弾幕2種で共有のCD(導入を打ち切られて弾幕が出なかった時も連発しないよう、頭でも張る)。
                   patch.jormDanmakuReadyAt = newGameTime + HB_JO.slam.cdMs;
                   bs.vx = 0; bs.vy = 0;
-                } else if (move === 'wave' || move === 'rain') {
+                } else if (move === 'wave' || move === 'rain' || move === 'freeze') {
                   // ★弾幕(research/JORM_DANMAKU.md §3/§4)。口=発射点を溜めの頭で固定(向きは相手の居る側)。
                   const aim = lockAttackAim();
                   const side = aim.x >= bcx ? 1 : -1;
@@ -6725,10 +6740,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     patch.bossState = 'jwave-open';
                     patch.bossStateUntil = newGameTime + HB_JO.wave.openMs;
                     patch.jormWaveTheta0 = jormWaveTheta0(Math.atan2(aim.y - my, aim.x - mx), HB_JO.wave.arms);
-                  } else {
+                  } else if (move === 'rain') {
                     patch.bossState = 'jrain-open';
                     patch.bossStateUntil = newGameTime + HB_JO.rain.openMs;
                     patch.jormRainLobs = [];
+                  } else {
+                    // 弾幕C「凍てつく牙」(§10): 輪の中心は放つたびに相手の位置を取り直す(ここでは口を開くだけ)。
+                    patch.bossState = 'jfreeze-open';
+                    patch.bossStateUntil = newGameTime + HB_JO.freeze.openMs;
+                    patch.jormFreezeRings = [];
                   }
                   bs.vx = 0; bs.vy = 0;
                 } else if (move === 'dash') {
@@ -6874,6 +6894,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 弾幕技は導入→弾幕まで(台本の2手目を積む=実戦と同じ2手)。
                   case 'jo-slam2': beginJormungandMove('slam2'); patch.bossScriptQueue = ['wave']; break;
                   case 'jo-slam3': beginJormungandMove('slam3'); patch.bossScriptQueue = ['rain']; break;
+                  case 'jo-slam1': beginJormungandMove('slam1'); patch.bossScriptQueue = ['freeze']; break; // ▸はHPに関係なく出す(部屋は訓練場)
                   case 'sk-ice': beginSkadiMove('ice'); break;
                   case 'sk-blade': beginSkadiMove('blade'); break;
                   case 'sk-cage': beginSkadiMove('cage'); break;
@@ -7096,6 +7117,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       slam2: newGameTime >= (boss.jormDanmakuReadyAt ?? 0),
                       slam3: newGameTime >= (boss.jormDanmakuReadyAt ?? 0),
                       wave: false, rain: false,
+                      // 弾幕C(§10): HP60%以下(フェーズ2)でだけ解禁。
+                      slam1: phase === 2 && newGameTime >= (boss.jormDanmakuReadyAt ?? 0),
+                      freeze: false,
                     };
                     const move = pickJormungandMove(dist, phase, ready);
                     if (move) {
@@ -7528,6 +7552,105 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (newGameTime >= end && lobs.length === 0) {
                   patch.bossState = 'jrain-recover';
                   patch.bossStateUntil = newGameTime + choreographyRecoverMs(R.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
+                }
+              } else if (st === 'jfreeze-open') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'jfreeze';
+                  patch.jormWaveAt = newGameTime;
+                  patch.bossBurstLeft = Math.max(1, Math.round(HB_JO.freeze.rings));
+                  patch.bossBurstNextAt = newGameTime;
+                  patch.jormFreezeRings = [];
+                }
+              } else if (st === 'jfreeze') {
+                // ★弾幕C「凍てつく牙」(§10・殺人ドールの翻案): ringGapMsごとに、**放った瞬間の相手の位置**を中心に
+                // 半径 radius の輪の上で霜が結晶(formMs・当たらない)→ 牙が現れて凍る(速さ0)→ 時計回りに順番に、
+                // 偶数番は相手の今の位置・奇数番は相手の動きから読んだ先へ向き直って加速。
+                // 弾の速さ/向きはこの州が毎フレーム書く(移動そのものは既存の updateProjectiles)。
+                const F = HB_JO.freeze;
+                const mx = boss.jormMouthX ?? bcx, my = boss.jormMouthY ?? bcy;
+                const n = Math.max(1, Math.round(F.count));
+                let rings = (boss.jormFreezeRings ?? []).map(r => ({ ...r, ids: [...r.ids], launched: [...r.launched] }));
+                let left = boss.bossBurstLeft ?? 0;
+                let next = boss.bossBurstNextAt ?? newGameTime;
+                const totalRings = Math.max(1, Math.round(F.rings));
+                let emitted = 0;
+                while (left > 0 && next <= newGameTime && emitted < 4) {
+                  const tgt = lockedAttackAim();
+                  // 最初の牙=口の側(口から放った冷気が相手のまわりで凍る、と読める起点)。そこから時計回りに飛ぶ。
+                  rings.push({
+                    emitAt: next, cx: tgt.x, cy: tgt.y, ring: totalRings - left,
+                    theta0: Math.atan2(my - tgt.y, mx - tgt.x), ids: [], launched: [],
+                  });
+                  next += Math.max(50, F.ringGapMs);
+                  left--; emitted++;
+                }
+                if (emitted > 0) playSfx('skadi-ice', 0.45, undefined, 0.7);
+                // 結晶し終えた輪に牙を置く(速さ0・輪の中心を向く)。相手の真上の枠は飛ばす(予告の無い所で当てない)。
+                const tNow = lockedAttackAim();
+                let formedNow = 0;
+                for (const r of rings) {
+                  if (r.ids.length > 0 || newGameTime - r.emitAt < F.formMs) continue;
+                  for (let i = 0; i < n; i++) {
+                    const sl = jormFreezeSlot(r.cx, r.cy, r.ring, i, F, r.theta0);
+                    if (Math.hypot(sl.x - pcx, sl.y - pcy) < 30) { r.ids.push(''); r.launched.push(true); continue; }
+                    const pr = createEnemyProjectile(boss, player, r.cx, r.cy, sl.x, sl.y, { speed: 0 });
+                    r.ids.push(pr.id); r.launched.push(false);
+                    addProjectile({ ...pr, duration: F.lifeMs, reflectBaseSpeed: F.speed });
+                  }
+                  formedNow++;
+                }
+                if (formedNow > 0) playSfx('skadi-ice', 0.4, undefined, 1.0);
+                // 凍った牙の飛び出し(時計回りに順番)と加速。反射された弾(もう敵弾ではない)は触らない。
+                const tvx = tNow.side === 'player' ? player.vx : 0, tvy = tNow.side === 'player' ? player.vy : 0;
+                const upd = new Map<string, { speed: number; aim?: boolean; lead?: boolean }>();
+                let launchedNow = 0;
+                for (const r of rings) {
+                  if (r.ids.length === 0) continue;
+                  const t = newGameTime - r.emitAt;
+                  r.ids.forEach((id, i) => {
+                    if (id === '') return;
+                    const fs = jormFreezeState(i, t, F);
+                    if (fs.phase === 'go' && !r.launched[i]) {
+                      r.launched[i] = true;
+                      launchedNow++;
+                      upd.set(id, { speed: fs.speed, aim: true, lead: i % 2 === 1 });
+                    } else {
+                      upd.set(id, { speed: fs.speed });
+                    }
+                  });
+                }
+                if (upd.size > 0) {
+                  useGameStore.setState(stp => ({
+                    projectiles: stp.projectiles.map(pr => {
+                      const u = upd.get(pr.id);
+                      if (!u || !pr.hostile || pr.reflected) return pr;
+                      if (u.aim) {
+                        // 偶数番=相手の今の位置 / 奇数番=届くまでの時間ぶん先(小さなぶれ=全部が1点に重ならない)。
+                        const px0 = pr.x + pr.width / 2, py0 = pr.y + pr.height / 2;
+                        const ap = jormFreezeAimPoint(px0, py0, tNow.x, tNow.y, tvx, tvy, F, u.lead === true);
+                        const ang = Math.atan2(ap.y - py0, ap.x - px0) + (Math.random() * 2 - 1) * F.spread;
+                        return { ...pr, speed: u.speed, direction: { x: Math.cos(ang), y: Math.sin(ang) } };
+                      }
+                      return pr.speed === u.speed ? pr : { ...pr, speed: u.speed };
+                    }),
+                  }));
+                }
+                if (launchedNow > 0 && Math.random() < 0.35) playSfx('skadi-ice', 0.3, undefined, 1.3);
+                // 全部飛んで加速し切った輪は手放す(以後はふつうの弾として飛ぶ)。
+                const doneT = F.formMs + F.holdMs + F.sweepMs + F.accMs;
+                rings = rings.filter(r => newGameTime - r.emitAt <= doneT);
+                patch.jormFreezeRings = rings;
+                patch.bossBurstLeft = left;
+                patch.bossBurstNextAt = next;
+                if (left <= 0 && rings.length === 0) {
+                  patch.bossState = 'jfreeze-recover';
+                  patch.bossStateUntil = newGameTime + choreographyRecoverMs(F.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
+                }
+              } else if (st === 'jfreeze-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.jormDanmakuReadyAt = newGameTime + HB_JO.slam.cdMs;
+                  patch.jormFreezeRings = undefined;
+                  hiddenRecoverAdvance('freeze');
                 }
               } else if (st === 'jwave-recover' || st === 'jrain-recover') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {

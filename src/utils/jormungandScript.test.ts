@@ -8,7 +8,7 @@ import { BOSS_RANGE } from './bossScript';
 const ALL_MOVES: JormungandMove[] = ['radial', 'burst', 'dash', 'coil'];
 // 既存4技の役割テストは「弾幕の導入がCD中」の場面で見る(弾幕は下の専用テストで見る)。
 const allReady = (): Record<JormungandMove, boolean> => ({
-  radial: true, burst: true, dash: true, coil: true, slam2: false, slam3: false, wave: false, rain: false,
+  radial: true, burst: true, dash: true, coil: true, slam2: false, slam3: false, wave: false, rain: false, slam1: false, freeze: false,
 });
 const BAND_SAMPLES = [60, 200, 450, 900]; // 密着/近/中/遠
 
@@ -70,7 +70,7 @@ describe('pickJormungandMove', () => {
   });
 
   it('CD明けの技が1つも無ければnull', () => {
-    const ready: Record<JormungandMove, boolean> = { radial: false, burst: false, dash: false, coil: false, slam2: false, slam3: false, wave: false, rain: false };
+    const ready: Record<JormungandMove, boolean> = { radial: false, burst: false, dash: false, coil: false, slam2: false, slam3: false, wave: false, rain: false, slam1: false, freeze: false };
     expect(pickJormungandMove(60, 1, ready)).toBeNull();
   });
 
@@ -129,7 +129,7 @@ describe('jormRadialSpinAngle — §6.28-7「螺旋の回転方向を常に時�
 // ==== 弾幕技(research/JORM_DANMAKU.md) =====================================================
 describe('弾幕技の抽選', () => {
   const ready = (): Record<JormungandMove, boolean> => ({
-    radial: true, burst: true, dash: true, coil: true, slam2: true, slam3: true, wave: true, rain: true,
+    radial: true, burst: true, dash: true, coil: true, slam2: true, slam3: true, wave: true, rain: true, slam1: true, freeze: true,
   });
   it('弾幕(wave/rain)は単独では抽選されない=台本の2手目としてだけ出る', () => {
     for (const d of [...BAND_SAMPLES, 5000]) {
@@ -138,7 +138,7 @@ describe('弾幕技の抽選', () => {
     }
     for (let i = 0; i < 2000; i++) {
       const m = pickJormungandMove(BAND_SAMPLES[i % 4], 1, ready());
-      expect(m === 'wave' || m === 'rain').toBe(false);
+      expect(m === 'wave' || m === 'rain' || m === 'freeze').toBe(false);
     }
   });
   it('導入(slam2/slam3)は全帯・Phase1から出る', () => {
@@ -162,5 +162,17 @@ describe('弾幕技の台本(導入の段数が予兆)', () => {
       expect(planBossChoreography('jormungand', 'slam2', ph)).toEqual(['slam2', 'wave']);
       expect(planBossChoreography('jormungand', 'slam3', ph)).toEqual(['slam3', 'rain']);
     }
+  });
+});
+
+describe('弾幕C「凍てつく牙」(§10)', () => {
+  it('slam1→freeze の2手・freeze は単独で抽選されない', async () => {
+    const { planBossChoreography } = await import('./bossChoreography');
+    expect(planBossChoreography('jormungand', 'slam1', 2)).toEqual(['slam1', 'freeze']);
+    for (const d of [60, 200, 450, 900]) expect(jormungandMoveWeight('freeze', d)).toBe(0);
+  });
+  it('slam1 は ready が閉じていれば出ない(HP60%以下だけ開く=呼び出し側)', () => {
+    const r: Record<JormungandMove, boolean> = { radial: true, burst: true, dash: true, coil: true, slam2: false, slam3: false, wave: false, rain: false, slam1: false, freeze: false };
+    for (let i = 0; i < 500; i++) expect(pickJormungandMove(450, 2, r)).not.toBe('slam1');
   });
 });

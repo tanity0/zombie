@@ -4,6 +4,7 @@ import {
   jormSlamHitAt, jormSlamReach, jormSlamBand, jormSlamRect, jormBodyRectDist, jormSlamTelegraphProgress,
   jormWaveAngle, jormWaveTheta0, jormWaveParticleGapPx,
   jormRainLandingPoint, jormRainBurstAngles, jormRainLobPos,
+  jormFreezeState, jormFreezeLaunchOffsetMs, jormFreezeSlot, jormFreezeAimPoint,
 } from './jormDanmaku';
 
 describe('叩きつけの時刻表と赤い円(赤い予告の掟②③)', () => {
@@ -129,5 +130,35 @@ describe('弾幕B: 降り注ぐ星弓', () => {
     expect(mid.y).toBeCloseTo(-160);
     const end = jormRainLobPos(0, 0, 100, 0, 1, 160);
     expect(end).toEqual({ x: 100, y: 0, groundY: 0 });
+  });
+});
+
+describe('弾幕C: 凍てつく牙(相手のまわりで凍る→順番に飛ぶ)', () => {
+  const spec = { count: 20, radius: 170, formMs: 350, holdMs: 450, sweepMs: 300, accMs: 300, speed: 320 };
+  it('輪は相手を中心に半径 radius・回ごとに半発ずれる', () => {
+    const p = jormFreezeSlot(100, 50, 0, 0, spec);
+    expect(Math.hypot(p.x - 100, p.y - 50)).toBeCloseTo(170);
+    expect(jormFreezeSlot(0, 0, 1, 0, spec).angle - jormFreezeSlot(0, 0, 0, 0, spec).angle).toBeCloseTo(Math.PI / 20);
+  });
+  it('既定値で、凍った牙の隙間を体(28)+弾(16)が抜けられる(輪から歩いて出る道がある)', async () => {
+    const { HIDDEN_JORMUNGAND_TUNING } = await import('./hiddenBossScript');
+    const F = HIDDEN_JORMUNGAND_TUNING.freeze;
+    expect((2 * Math.PI * F.radius) / F.count - 16).toBeGreaterThan(28);
+  });
+  it('結晶→凍る(速さ0)→順番に飛び出して加速(慣性)', () => {
+    expect(jormFreezeState(0, 100, spec).phase).toBe('form');
+    expect(jormFreezeState(0, 500, spec)).toEqual({ phase: 'hold', speed: 0, k: 1 });
+    const L = jormFreezeLaunchOffsetMs(0, spec);
+    expect(L).toBe(800);
+    expect(jormFreezeState(0, L, spec).speed).toBe(0);
+    expect(jormFreezeState(0, L + 150, spec).speed).toBeCloseTo(80);
+    expect(jormFreezeState(0, L + 400, spec).speed).toBe(320);
+    expect(jormFreezeLaunchOffsetMs(10, spec)).toBeCloseTo(950);
+  });
+  it('読みの狙点: 偶数=今の位置 / 奇数=届くまでの時間ぶん先(歩き続けるだけでは抜けられない)', () => {
+    expect(jormFreezeAimPoint(0, 0, 170, 0, 0, 100, spec, false)).toEqual({ x: 170, y: 0 });
+    const lead = jormFreezeAimPoint(0, 0, 170, 0, 0, 100, spec, true);
+    expect(lead.x).toBe(170);
+    expect(lead.y).toBeCloseTo(100 * (170 / 320 + 0.15));
   });
 });

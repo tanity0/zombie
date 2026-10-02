@@ -151,3 +151,57 @@ export const jormRainLobPos = (
   const gy = fromY + (toY - fromY) * k;
   return { x: gx, y: gy - 4 * peakPx * k * (1 - k), groundY: gy };
 };
+
+// =================================================================================================
+// 弾幕C: 凍てつく牙(十六夜咲夜「殺人ドール」の翻案・research/JORM_DANMAKU.md §10)
+// ★原典どおり**相手のまわりで**止まる: 輪は「放つ瞬間の相手の位置」を中心に、半径 radius の上で牙が凍りつく
+// (霜が結晶する formMs → 牙が現れて凍る holdMs)→ 時計回りに順番に(1周 sweepMs)向き直って accMs で speed へ加速。
+// 偶数番は「その瞬間の相手の位置」、奇数番は「相手の動きから読んだ先」を狙う(=歩き続けるだけでは抜けられない)。
+// =================================================================================================
+export interface JormFreezeSpec {
+  count: number; radius: number; formMs: number; holdMs: number; sweepMs: number; accMs: number; speed: number;
+}
+
+/** 輪のi番目(0始まり)の位置。輪ごとに半発ずつ角をずらす。 */
+export const jormFreezeSlot = (
+  cx: number, cy: number, ring: number, i: number, spec: Pick<JormFreezeSpec, 'count' | 'radius'>, theta0 = 0,
+): { x: number; y: number; angle: number } => {
+  const n = Math.max(1, Math.round(spec.count));
+  const a = theta0 + (Math.PI * 2 * i) / n + (ring % 2) * (Math.PI / n);
+  return { x: cx + Math.cos(a) * spec.radius, y: cy + Math.sin(a) * spec.radius, angle: a };
+};
+
+/** 輪のi番目が飛び出す時刻(輪を放った時刻からのms)。時計回りに順番=1周で sweepMs。 */
+export const jormFreezeLaunchOffsetMs = (i: number, spec: JormFreezeSpec): number =>
+  spec.formMs + spec.holdMs + (Math.max(0, i) / Math.max(1, Math.round(spec.count))) * Math.max(0, spec.sweepMs);
+
+/**
+ * 輪のi番目の、放ってから t ms の時の状態。
+ * - 'form': 霜が結晶している(まだ弾は無い=当たらない)。k=0..1
+ * - 'hold': 牙が凍って止まっている(速さ0・触れると当たる)
+ * - 'go'  : 飛び出した(速さ speed·min(1,経過/accMs)²=慣性)
+ */
+export const jormFreezeState = (
+  i: number, tMs: number, spec: JormFreezeSpec,
+): { phase: 'form' | 'hold' | 'go'; speed: number; k: number } => {
+  const t = Math.max(0, tMs);
+  if (t < spec.formMs) return { phase: 'form', speed: 0, k: t / Math.max(1, spec.formMs) };
+  const launch = jormFreezeLaunchOffsetMs(i, spec);
+  if (t < launch) return { phase: 'hold', speed: 0, k: 1 };
+  const u = Math.min(1, (t - launch) / Math.max(1, spec.accMs));
+  return { phase: 'go', speed: spec.speed * u * u, k: 1 };
+};
+
+/**
+ * 飛び出す牙の狙点。lead=false はその瞬間の相手の位置、lead=true は相手の速度から**届くまでの時間ぶん先**を読む
+ * (届くまで≈距離/speed + 加速の遅れ accMs/2)。速度が無い相手(召喚など)は lead でも今の位置。
+ */
+export const jormFreezeAimPoint = (
+  fromX: number, fromY: number, tx: number, ty: number, tvx: number, tvy: number,
+  spec: Pick<JormFreezeSpec, 'speed' | 'accMs'>, lead: boolean,
+): { x: number; y: number } => {
+  if (!lead) return { x: tx, y: ty };
+  const d = Math.hypot(tx - fromX, ty - fromY);
+  const tArr = d / Math.max(1, spec.speed) + spec.accMs / 2000;
+  return { x: tx + tvx * tArr, y: ty + tvy * tArr };
+};

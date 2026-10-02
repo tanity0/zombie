@@ -17369,7 +17369,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // p.speedが0で置いてある(fireWeaponのフック)。ここをp.speedのまま反射すると
         // 「反射されたのに速度0=永久にその場で止まる弾」になる。溜め中は本来の飛翔速度
         // (rocketLaunchSpeed)を基準に反射する(反射弾=直進・溜め状態も持ち越さない)。
-        const reflectBaseSpeed = (p.rocketChargeUntil !== undefined || p.rocketEaseUntil !== undefined) ? (p.rocketLaunchSpeed ?? p.speed) : p.speed;
+        // ヨルムンガルドの凍てつく牙(§10)も同じ理由: 凍って止まっている(速さ0)間に打ち返されたら本来の速さを基準にする。
+        const reflectBaseSpeed = Math.max(
+          (p.rocketChargeUntil !== undefined || p.rocketEaseUntil !== undefined) ? (p.rocketLaunchSpeed ?? p.speed) : p.speed,
+          p.reflectBaseSpeed ?? 0,
+        );
         return {
           ...p,
           direction: { x: -p.direction.x, y: -p.direction.y },
@@ -17406,6 +17410,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (§16-5c A-9・発射直後のease-in)も同時に落とす——残したままだと反射直後の速度
           // (REFLECT_SPEED_MULTIPLIER適用済み)をease-inの補間tickが毎フレーム上書きしてしまう。
           rocketChargeUntil: undefined, rocketLaunchSpeed: undefined, rocketEaseUntil: undefined,
+          reflectBaseSpeed: undefined,
           // UNIQUE_WEAPONS.md §17-10(#U16裁定・レールガン): 手動射撃の頭部判定フラグも同じ理由で落とす
           // (打ち返された弾は敵対弾としてプレイヤーへ向かう=「頭部確定クリ」の判定対象がプレイヤー側
           // ではないため無意味な上、敵弾にPHILL/レールガン専用の頭部判定を紛れ込ませない)。
@@ -17466,6 +17471,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // プラントが死んだら、そのプラントが撃った在弾(敵弾)を消す(社長指示)。発射元の個体IDで判定。
       // 反射済み(=カウンターでプレイヤー側になった弾)は対象外。生存プラントのIDだけ集めて参照する。
       const livePlantIds = new Set(enemies.filter(e => e.type === 'plant').map(e => e.id));
+      // ヨルムンガルドの凍てつく牙(§10): 撃った本体が倒れたら、凍って止まっている牙は砕けて消える
+      // (止まったまま空中に残さない)。飛び出した牙はふつうの弾として飛び切る。
+      const liveOwnerIds = projectiles.some(p => p.srcMoveKey === 'jormungand-freeze')
+        ? new Set(enemies.filter(e => e.health > 0).map(e => e.id)) : null;
 
       const updatedProjectiles = projectiles
         .filter(p => {
@@ -17475,6 +17484,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (currentTime - p.createdAt > p.duration + 500) return false;
           if (p.weaponType === 'enemy_bolt' && p.ownerType === 'plant' && p.hostile && !p.reflected
               && !livePlantIds.has(p.ownerId ?? '')) return false; // 発射元プラントが消滅=在弾も消す
+          if (liveOwnerIds && p.srcMoveKey === 'jormungand-freeze' && p.hostile && !p.reflected && p.speed === 0
+              && !liveOwnerIds.has(p.ownerId ?? '')) return false;
           // Garlic / bibles follow the player and shouldn't be culled by
           // their static spawn position; check distance from player.
           const px = p.x + p.width / 2;

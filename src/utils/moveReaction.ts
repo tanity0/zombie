@@ -86,6 +86,7 @@ export const BULLET_MOVE_KEYS = [
   'mimir-burst', 'mimir-radial',
   'jormungand-burst', 'jormungand-radial',
   'jormungand-wave', 'jormungand-rain', // research/JORM_DANMAKU.md: 弾幕A(波と粒の境界)/弾幕B(降り注ぐ星弓)
+  'jormungand-freeze', // §10: 弾幕C(凍てつく牙)
   'skadi-burst', 'skadi-radial',
   'thor-burst', 'thor-radial',
   'miguel-volley', 'jibril-volley', 'uri-bolt', 'suriel-gaze', 'acrasiel-gaze',
@@ -291,6 +292,7 @@ const BULLET_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<stri
     'aim-radial': 'jormungand-radial', radial: 'jormungand-radial', 'radial-recover': 'jormungand-radial',
     'jwave-open': 'jormungand-wave', jwave: 'jormungand-wave', 'jwave-recover': 'jormungand-wave',
     'jrain-open': 'jormungand-rain', jrain: 'jormungand-rain', 'jrain-recover': 'jormungand-rain',
+    'jfreeze-open': 'jormungand-freeze', jfreeze: 'jormungand-freeze', 'jfreeze-recover': 'jormungand-freeze',
   },
   skadi: {
     'aim-burst': 'skadi-burst', burst: 'skadi-burst', 'burst-recover': 'skadi-burst',

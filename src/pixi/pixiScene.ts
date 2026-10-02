@@ -133,7 +133,7 @@ import {
   HIDDEN_SKADI_TUNING as HB_SK,
   HIDDEN_THOR_TUNING as HB_TH,
 } from '../utils/hiddenBossScript';
-import { jormSlamRect, jormSlamReach, jormSlamTelegraphProgress, jormRainLobPos } from '../utils/jormDanmaku';
+import { jormSlamRect, jormSlamReach, jormSlamTelegraphProgress, jormRainLobPos, jormFreezeState, jormFreezeLaunchOffsetMs, jormFreezeSlot } from '../utils/jormDanmaku';
 // research/THOR_ISSEN_REWORK.md §1: 紫円の**半径は台帳の1定数**(判定・ボット・絵が同じ値を読む)。
 import { THOR_NIHIL_STATE, thorNihilRadius } from '../utils/thorNihil';
 import { biteJawFrame } from '../utils/biteJawMotion';
@@ -18329,7 +18329,8 @@ export class PixiScene {
         //   撃っている最中に相手が反対側へ回っても振り向かない(振り向くと弾が尻尾から出て見える)。
         const jMouthLock = e.type === 'jormungand' && e.jormMouthX !== undefined
           && (e.bossState === 'jwave-open' || e.bossState === 'jwave' || e.bossState === 'jwave-recover'
-            || e.bossState === 'jrain-open' || e.bossState === 'jrain' || e.bossState === 'jrain-recover');
+            || e.bossState === 'jrain-open' || e.bossState === 'jrain' || e.bossState === 'jrain-recover'
+            || e.bossState === 'jfreeze-open' || e.bossState === 'jfreeze' || e.bossState === 'jfreeze-recover');
         const want = kbLock ? cur
           : jMouthLock ? ((e.jormMouthX ?? stripCx) >= stripCx ? 1 : -1)
           : bossFaceWant(cur, stripCx, pl.x + pl.width / 2);
@@ -20518,12 +20519,12 @@ export class PixiScene {
         'burst-recover', 'radial-recover', 'dash-recover', 'laser-recover',
         'skadi-ice-recover', 'skadi-blade-recover', 'bite-recover', 'coil-recover', 'cage-recover',
         'laser-broken', // §6.33: レーザー中断のパニッシュ窓=硬直色(青白)で「好機」を示す
-        'jslam-recover', 'jwave-recover', 'jrain-recover', // research/JORM_DANMAKU.md
+        'jslam-recover', 'jwave-recover', 'jrain-recover', 'jfreeze-recover', // research/JORM_DANMAKU.md
       ];
       const HIDDEN_BOSS_FLASH_TAIL_STATES: string[] = [
         'aim-burst', 'aim-radial', 'dash-windup', 'laser-windup', 'bite-windup', 'coil-windup', 'cage-windup',
         'skadi-ice-windup', 'skadi-blade-windup',
-        'jslam-windup', 'jslam-rewind', 'jwave-open', 'jrain-open', // research/JORM_DANMAKU.md
+        'jslam-windup', 'jslam-rewind', 'jwave-open', 'jrain-open', 'jfreeze-open', // research/JORM_DANMAKU.md
       ];
       if (bs && HIDDEN_BOSS_RECOVER_STATES.includes(bs)) {
         view.sprite.tint = BOSS_RECOVER_TINT;
@@ -20679,13 +20680,13 @@ export class PixiScene {
       // 弾幕の口の光(派手さの絵): 口を開く溜めで灯り(開き切る瞬間に少し行き過ぎて戻る)、撃つ間は**発射ごとに蹴って減衰**
       // (#5: 発射と無関係なサイン波=LEDの点滅、をやめた)。色は蛇の体の氷青(#1: 紫=カウンター不可の文法と衝突させない)。
       if (e.type === 'jormungand' && e.jormMouthX !== undefined && e.jormMouthY !== undefined
-          && (bs === 'jwave-open' || bs === 'jwave' || bs === 'jrain-open' || bs === 'jrain')) {
-        const opening = bs === 'jwave-open' || bs === 'jrain-open';
-        const openMs = bs === 'jwave-open' ? HB_JO.wave.openMs : HB_JO.rain.openMs;
+          && (bs === 'jwave-open' || bs === 'jwave' || bs === 'jrain-open' || bs === 'jrain' || bs === 'jfreeze-open' || bs === 'jfreeze')) {
+        const opening = bs === 'jwave-open' || bs === 'jrain-open' || bs === 'jfreeze-open';
+        const openMs = bs === 'jwave-open' ? HB_JO.wave.openMs : bs === 'jfreeze-open' ? HB_JO.freeze.openMs : HB_JO.rain.openMs;
         const u = opening ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / Math.max(1, openMs))) : 1;
         const um = u - 1;
         const grow = opening ? 1 + 1.9 * um * um * um + 0.9 * um * um : 1; // 行き過ぎて戻る(easeOutBack相当・約8%)
-        const gap = Math.max(16, bs === 'jwave' ? HB_JO.wave.gapMs : HB_JO.rain.launchGapMs);
+        const gap = Math.max(16, bs === 'jwave' ? HB_JO.wave.gapMs : bs === 'jfreeze' ? HB_JO.freeze.ringGapMs : HB_JO.rain.launchGapMs);
         const phi = opening ? 1 : (((gameTime - (e.jormWaveAt ?? gameTime)) % gap) + gap) % gap / gap;
         const kick = (1 - phi) * (1 - phi);
         const beat = 1 + 0.5 * kick;
@@ -25164,7 +25165,7 @@ export class PixiScene {
         }
         // ★ヨルムンガルドの弾幕の弾(research/JORM_DANMAKU.md)は寿命切れで爆ぜない(クリエイティブ監査 #12:
         //   何にも当たらずに口から遠い円周上で爆ぜ続ける=「見えない壁」に読める)。命中・盾・反射の爆ぜは従来どおり。
-        const danmaku = p.srcMoveKey === 'jormungand-wave' || p.srcMoveKey === 'jormungand-rain';
+        const danmaku = p.srcMoveKey === 'jormungand-wave' || p.srcMoveKey === 'jormungand-rain' || p.srcMoveKey === 'jormungand-freeze';
         this.boltLast.set(p.id, { x: bx, y: by, exp: danmaku ? p.createdAt + p.duration : undefined });
       } else if (this.boltLast.has(p.id)) {
         // 反射などで敵弾でなくなった(弾自体は存続): 爆ぜは出さない(カウンター反射のFXは既存・別経路)。
@@ -26680,6 +26681,77 @@ export class PixiScene {
       const eo = 1 - (1 - t) * (1 - t) * (1 - t);
       a.circle(f.x, f.y, 40 * (1 - t)).fill({ color: 0x9fd8ff, alpha: 0.7 * (1 - t) });
       a.circle(f.x, f.y, 8 + 52 * eo).stroke({ width: 2.5, color: 0xe8f6ff, alpha: 0.9 * (1 - eo) });
+    }
+    // ★弾幕C「凍てつく牙」(§10): 相手のまわりに霜が結晶する(牙が現れる前ぶれ=派手さの絵・判定なし)→
+    //   凍った牙に氷の殻(判定は弾そのもの=赤い二重丸のまま)→ 飛び出す瞬間に殻が砕けて散る輪。
+    //   結晶は「霜の輪がすっと締まって(行き過ぎて戻る)、各枠に六花が開く」=どこに牙が来るかを先に見せる。
+    if (bs === 'jfreeze' && e.jormFreezeRings && e.jormFreezeRings.length > 0) {
+      const F = HB_JO.freeze;
+      const n = Math.max(1, Math.round(F.count));
+      const projs = useGameStore.getState().projectiles;
+      const byId = new Map<string, (typeof projs)[number]>();
+      for (const pr of projs) byId.set(pr.id, pr);
+      for (const r of e.jormFreezeRings) {
+        const t = gameTime - r.emitAt;
+        if (t < F.formMs || r.ids.length === 0) {
+          const k = Math.max(0, Math.min(1, t / Math.max(1, F.formMs)));
+          const eo = 1 - (1 - k) * (1 - k) * (1 - k);
+          // 霜の輪: 外から締まってきて半径で止まる(少し内へ行き過ぎて戻る=慣性)。
+          const over = k > 0.6 ? Math.sin(((k - 0.6) / 0.4) * Math.PI) * 0.06 : 0;
+          const rr = F.radius * (1.35 - 0.35 * eo - over);
+          a.circle(r.cx, r.cy, rr).stroke({ width: 1.5 + 2.5 * eo, color: 0x9fd8ff, alpha: 0.18 + 0.4 * eo });
+          for (let i = 0; i < n; i++) {
+            const sl = jormFreezeSlot(r.cx, r.cy, r.ring, i, F, r.theta0);
+            // 枠ごとに少しずつ遅れて開く(時計回り=飛ぶ順と同じ向きで読ませる)。
+            const ki = Math.max(0, Math.min(1, (k - (i / n) * 0.35) / 0.65));
+            if (ki <= 0) continue;
+            const ke = 1 - (1 - ki) * (1 - ki);
+            const cl = 3 + 9 * ke;
+            for (let arm = 0; arm < 3; arm++) {
+              const aa = sl.angle + (arm * Math.PI) / 3;
+              const dx = Math.cos(aa) * cl, dy = Math.sin(aa) * cl;
+              a.moveTo(sl.x - dx, sl.y - dy).lineTo(sl.x + dx, sl.y + dy);
+            }
+            a.stroke({ width: 1.6, color: 0xe8f6ff, alpha: 0.35 + 0.55 * ke });
+            a.circle(sl.x, sl.y, 4 + 10 * ke).fill({ color: 0x5fb8ff, alpha: 0.10 + 0.18 * ke });
+          }
+          continue;
+        }
+        r.ids.forEach((id, i) => {
+          if (id === '') return;
+          const pr = byId.get(id);
+          if (!pr || !pr.hostile || pr.reflected) return;
+          const px = pr.x + pr.width / 2, py = pr.y + pr.height / 2;
+          const fs = jormFreezeState(i, t, F);
+          if (fs.phase === 'hold') {
+            const th = t - F.formMs; // 凍ってからの経過
+            const snap = Math.max(0, 1 - th / 120); // 張った瞬間の行き過ぎ
+            const glint = 0.5 + 0.5 * Math.sin(now / 70 + i * 1.7);
+            // 飛ぶ直前(残り150ms)は殻が軋んで明るむ=次に飛ぶ牙が読める。
+            const toGo = jormFreezeLaunchOffsetMs(i, F) - t;
+            const creak = toGo < 150 ? 1 - toGo / 150 : 0;
+            const rr = 13 + 6 * snap + 3 * creak;
+            a.circle(px, py, rr).stroke({ width: 2 + creak, color: 0xbfe8ff, alpha: 0.55 + 0.3 * glint + 0.15 * creak });
+            a.circle(px, py, rr * 1.5).fill({ color: 0x5fb8ff, alpha: 0.12 + 0.1 * glint + 0.12 * creak });
+            const cl = 7 + 3 * glint;
+            a.moveTo(px - cl, py).lineTo(px + cl, py).moveTo(px, py - cl).lineTo(px, py + cl)
+              .stroke({ width: 1.2, color: 0xffffff, alpha: 0.5 * glint });
+          } else if (fs.phase === 'go') {
+            const tg = t - jormFreezeLaunchOffsetMs(i, F);
+            if (tg < 220) {
+              const u = tg / 220;
+              const eo = 1 - (1 - u) * (1 - u);
+              a.circle(px, py, 10 + 24 * eo).stroke({ width: 2, color: 0xe8f6ff, alpha: 0.85 * (1 - eo) });
+              // 砕けた殻の欠片(4片・外へ減速しながら散る)。
+              for (let f = 0; f < 4; f++) {
+                const fa = i * 2.4 + f * (Math.PI / 2);
+                const fr = 6 + 22 * eo;
+                a.circle(px + Math.cos(fa) * fr, py + Math.sin(fa) * fr, 2.2 * (1 - u)).fill({ color: 0xe8f6ff, alpha: 0.9 * (1 - u) });
+              }
+            }
+          }
+        });
+      }
     }
   }
 

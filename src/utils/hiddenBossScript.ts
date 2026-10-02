@@ -148,6 +148,15 @@ export interface HiddenJormungandTuning extends HiddenSharedHolder {
     openMs: number; durationMs: number; launchGapMs: number; flightMs: number; peakPx: number;
     rMin: number; rMax: number; avoidR: number; burstCount: number; burstSpread: number; speed: number; recover: number;
   };
+  /**
+   * 弾幕C「凍てつく牙」(§10・HP60%以下): ringGapMsごとに rings 回、**放つ瞬間の相手の位置**を中心に半径 radius の輪で
+   * count 本の牙が結晶(formMs)→凍る(holdMs)→時計回りに sweepMs かけて順番に飛ぶ(accMs で speed へ加速)。
+   * 偶数番は相手の今の位置、奇数番は相手の動きから読んだ先を狙う。spread=狙いのぶれ(rad)。
+   */
+  freeze: {
+    openMs: number; rings: number; ringGapMs: number; count: number; radius: number; formMs: number;
+    holdMs: number; sweepMs: number; accMs: number; speed: number; spread: number; lifeMs: number; recover: number;
+  };
 }
 
 export const HIDDEN_JORMUNGAND_TUNING: HiddenJormungandTuning = {
@@ -164,6 +173,11 @@ export const HIDDEN_JORMUNGAND_TUNING: HiddenJormungandTuning = {
   rain: {
     openMs: 700, durationMs: 3600, launchGapMs: 80, flightMs: 1000, peakPx: 170,
     rMin: 200, rMax: 560, avoidR: 120, burstCount: 5, burstSpread: 50 * Math.PI / 180, speed: 115, recover: withRecoverFloor(1200),
+  },
+  // 輪の隙間 2π·170/20−16 = 37px > 自機28px=凍った牙の間から歩いて出られる(テストで固定)。
+  freeze: {
+    openMs: 600, rings: 3, ringGapMs: 1200, count: 20, radius: 170, formMs: 350,
+    holdMs: 450, sweepMs: 300, accMs: 300, speed: 320, spread: 0.04, lifeMs: 6000, recover: withRecoverFloor(1300),
   },
 };
 

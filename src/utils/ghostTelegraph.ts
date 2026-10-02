@@ -338,7 +338,7 @@ put(LEDGER, [
   'phill-judgment-active', 'phill-judgment-recover',
   'phill-cage-active', 'phill-cage-recover',
   'phill-ringtoss-recover', 'phill-dive-recover', 'phill-summon-recover', 'phill-feathershot-recover',
-  'jslam-recover', 'jwave-recover', 'jrain-recover', // research/JORM_DANMAKU.md
+  'jslam-recover', 'jwave-recover', 'jrain-recover', 'jfreeze-recover', // research/JORM_DANMAKU.md
 ], {
   coverage: 'none',
   note: '硬直(技は終わっている)=避ける図形は無い。ここはむしろカウンターの窓側の話。',
@@ -353,7 +353,7 @@ put(LEDGER, [
   'phill-lancefan-windup', 'phill-lancefan-active', 'phill-lancefan-recover',
   'phill-meteor-windup', 'phill-meteor-active', 'phill-meteor-recover',
   // research/JORM_DANMAKU.md: ヨルムンガルドの弾幕(波と粒の境界/降り注ぐ星弓)=共通赤弾のみ。光弾と影は判定なし。
-  'jwave-open', 'jwave', 'jrain-open', 'jrain',
+  'jwave-open', 'jwave', 'jrain-open', 'jrain', 'jfreeze-open', 'jfreeze',
 ], {
   coverage: 'none',
   note: '弾を撃つだけの技=地面に図形が出ない。飛んだ弾は projectileDodge が別経路で避ける。',

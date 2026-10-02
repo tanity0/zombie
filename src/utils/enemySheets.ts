@@ -1732,12 +1732,12 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       ...(['burst-recover', 'radial-recover'] as const).map(state =>
         ({ state, seq: [7, 5, 3, 2, 1, 0], mode: 'stretch' as const })),
       // 弾幕(research/JORM_DANMAKU.md・社長指示「弾幕は口を広げる方」): 溜めで開き切り、撃つ間は唸って往復、締めで閉じる。
-      ...(['jwave-open', 'jrain-open'] as const).map(state =>
+      ...(['jwave-open', 'jrain-open', 'jfreeze-open'] as const).map(state =>
         ({ state, seq: [0, 1, 2, 3, 4, 5, 6, 7], mode: 'stretch' as const })),
       // 撃つ間は**開き切ったまま震わせる**(クリエイティブ監査 #6: 8↔15 の大往復=閉じた口から弾が出る瞬間が周期的に来る)。
-      ...(['jwave', 'jrain'] as const).map(state =>
+      ...(['jwave', 'jrain', 'jfreeze'] as const).map(state =>
         ({ state, seq: [13, 14, 15], mode: 'pingpong' as const })),
-      ...(['jwave-recover', 'jrain-recover'] as const).map(state =>
+      ...(['jwave-recover', 'jrain-recover', 'jfreeze-recover'] as const).map(state =>
         ({ state, seq: [7, 5, 3, 2, 1, 0], mode: 'stretch' as const })),
     ],
   },

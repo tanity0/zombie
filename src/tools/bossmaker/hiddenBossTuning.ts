@@ -116,7 +116,8 @@ const MI_HELP: Record<string, string> = {
 const JO_SEC = {
   move: '動き', burst: '3-way扇(jo-burst)', radial: '螺旋の全方位(jo-radial)',
   dash: '突進(jo-dash)', coil: 'うねり(jo-coil)',
-  slam: '弾幕の導入=叩きつけ(jo-slam2/3)', wave: '弾幕A 波と粒の境界(2連のあと)', rain: '弾幕B 降り注ぐ星弓(3連のあと)',
+  slam: '弾幕の導入=叩きつけ(jo-slam1/2/3)', wave: '弾幕A 波と粒の境界(2連のあと)', rain: '弾幕B 降り注ぐ星弓(3連のあと)',
+  freeze: '弾幕C 凍てつく牙(1連のあと・HP60%以下)',
 };
 
 const jormungandFields = (): TuningField[] => {
@@ -126,6 +127,7 @@ const jormungandFields = (): TuningField[] => {
   const sl = mk(JO_SEC.slam, 'move');
   const wv = mk(JO_SEC.wave, 'move');
   const rn = mk(JO_SEC.rain, 'move');
+  const fz = mk(JO_SEC.freeze, 'move');
   return [
     ...neutralFields(JO_SEC.move, true),
 
@@ -183,6 +185,20 @@ const jormungandFields = (): TuningField[] => {
     rn('rain.burstSpread', '撒く開き(片側)', 'frac', 0, 1.5, 0.01, 'rad。外向きを中心に'),
     rn('rain.speed', '弾速', 'num', 40, 400, 5),
     rn('rain.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+
+    fz('freeze.openMs', '口を開く溜め', 'ms', 0, 3000, 50),
+    fz('freeze.rings', '輪の数', 'num', 1, 8, 1),
+    fz('freeze.ringGapMs', '輪の間隔', 'ms', 200, 4000, 50, '短いほど前の輪と重なる'),
+    fz('freeze.count', '1つの輪の牙の数', 'num', 4, 64, 1, '多いほど隙間が詰まる(体28+弾16より広い隙間が要る)'),
+    fz('freeze.radius', '輪の半径', 'px', 60, 500, 5, '相手を中心に'),
+    fz('freeze.formMs', '霜が結晶する時間', 'ms', 0, 2000, 25, '牙が現れるまで(当たらない)'),
+    fz('freeze.holdMs', '凍る時間', 'ms', 0, 3000, 50),
+    fz('freeze.sweepMs', '順番に飛ぶ1周', 'ms', 0, 2000, 10, '0=一斉に飛ぶ'),
+    fz('freeze.accMs', '飛び出しの加速', 'ms', 10, 2000, 10),
+    fz('freeze.speed', '弾速', 'num', 40, 600, 5),
+    fz('freeze.spread', '狙いのぶれ', 'frac', 0, 0.5, 0.01, 'rad'),
+    fz('freeze.lifeMs', '弾の寿命', 'ms', 1000, 15000, 100),
+    fz('freeze.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
   ];
 };
 
@@ -193,6 +209,7 @@ const JO_HELP: Record<string, string> = {
   [JO_SEC.dash]: '一直線に突っ込む。値は4体共通(ミーミル/スカジと同じ実体)。',
   [JO_SEC.coil]: '近接専用の薙ぎ。長さ/半幅の既定はトールの払いと同値だが、**ここを動かしてもトールは変わらない**(別の欄)。',
   [JO_SEC.slam]: '体のまわりの叩きつけを2連か3連。**全段の赤い枠が最初に同時に出る**=枠の数で次の弾幕が読める(2つ→波と粒の境界/3つ→降り注ぐ星弓)。',
+  [JO_SEC.freeze]: '相手のまわりに牙の輪が凍りつき、時計回りに順番に飛ぶ(殺人ドールの翻案)。半分は今の位置、半分は動いた先を狙う。輪は重なって3回。HP60%以下でだけ抽選に乗る。',
   [JO_SEC.wave]: '口から全方向へ撃ち続け、角を加速しながら回す。近いと粒が詰まった壁、離れると粒の隙間を抜けられる。',
   [JO_SEC.rain]: '口から打ち上げた光弾が体から離れた所へ降り、外向きに散る。体から「内」の距離より近くには弾が入らない=離れない方が安全。',
 };
@@ -372,6 +389,7 @@ const JO_PLAYABLES: readonly PlayableAction[] = [
   play('jo-coil', 'うねり', JO_SEC.coil),
   play('jo-slam2', '叩きつけ2連→波と粒の境界', JO_SEC.wave),
   play('jo-slam3', '叩きつけ3連→降り注ぐ星弓', JO_SEC.rain),
+  play('jo-slam1', '叩きつけ1連→凍てつく牙', JO_SEC.freeze),
 ];
 const SK_PLAYABLES: readonly PlayableAction[] = [
   play('sk-ice', '氷塊', SK_SEC.ice),

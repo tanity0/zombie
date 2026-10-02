@@ -1,5 +1,23 @@
 # Development Log
 
+## v0.25.4766 — ヨルムンガルドの弾幕C「凍てつく牙」(HP60%以下・叩きつけ1連の後)【2026-10-02 18:57 JST】
+社長指示「HPが減ってきた時に解禁される技で、1連叩きつけの後に発動。先の2つよりも難しい、楽しいやつで」。設計=research/JORM_DANMAKU.md §10。
+- 原典=十六夜咲夜「殺人ドール」。**相手のまわり**(放った瞬間のヘイトの相手の位置)に半径170・20本の輪: 霜が結晶(350ms・当たらない)→牙が凍る(速さ0)→
+  口の側から時計回りに順番(1周300ms)に、偶数番=今の位置/奇数番=動きから読んだ先へ加速して飛ぶ。1200msごとに3輪。
+- 台本 `slam1 → freeze`(フェーズ2のみ抽選)。導入の叩きつけは2連/3連と同じ部品(1段・届き90)。
+- 凍った牙の打ち返し: Projectile `reflectBaseSpeed` を足し、reflectProjectile は max(速さ, これ) を基準に(止まったまま残らない)。
+- 後始末: 州を抜けたら凍った牙を放す(useGameLoop)/本体が倒れたら凍った牙を消す(updateProjectiles)。
+- 着手前監査(Fable 5.1): 初版(口から輪を放って260pxで止める)に(A)4件=輪の外を歩けば全弾外れる/口の近くが予告なしの壁/凍った弾の反射が止まる/本体が倒れても残る。
+  原典どおり相手のまわりに輪を作る形へ作り直し、4件とも反映。(B)記録=ノックバック停止中は牙の速さの書き換えも止まる。
+- 見た目: ヘッドレスで jo-slam1 を撮って確認(霜の輪の結晶→凍った輪→時計回りの飛び出し→次の輪の結晶、の流れが出ている)。
+- 検証: typecheck / lint(0 errors)/ src/utils・src/tools のテスト 5925 通過。
+- 検収監査とクリエイティブ監査は走行中=指摘は次の版で反映する(巻き戻り対策で先に push)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(裏ボスのHP60%以下でだけ出る技)。
+- 負荷 2/10(最大60発の速さ書き換え+小図形。投影影なし)。
+- 変更: src/utils/jormDanmaku.ts(.test) / hiddenBossScript.ts / jormungandScript.ts(.test) / bossChoreography.ts / hiddenBossPlayback.ts / enemySheets.ts /
+  ghostTelegraph.ts / moveReaction.ts(.test) / src/tools/bossmaker/hiddenBossTuning.ts / src/types/game.ts / src/hooks/useGameLoop.ts / src/store/gameStore.ts /
+  src/pixi/pixiScene.ts / research/JORM_DANMAKU.md / changelog / package.json。
+
 ## v0.25.4765 — ヨルムンガルドの弾幕技: 検収監査とクリエイティブ監査の反映【2026-10-02 17:48 JST】
 
 ### 検収監査(Fable 5.1・v0.25.4764)
