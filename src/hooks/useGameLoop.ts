@@ -6783,21 +6783,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               };
               // ★氷の格子(research/SKADI_LATTICE.md): k 段目の溜めを始める(段の中心=今のヘイトの相手・4本側はランダム)。
-              const beginLatticeStage = (k: number) => {
-                const tgt = lockedAttackAim();
+              const beginLatticeStage = (k: number, aimNow?: { x: number; y: number }) => {
+                // 1段目は技の頭で決めたヘイトの相手をそのまま使う(同じtickで lockedAttackAim を読むと patch 前=1tick古い側を読む・検収 A-1)。
+                const tgt = aimNow ?? lockedAttackAim();
                 patch.bossState = 'lattice-windup';
                 patch.bossStateUntil = newGameTime + HB_SK.lattice.windupMs;
                 patch.skadiLatticeStage = k;
                 patch.skadiLatticeCx = tgt.x; patch.skadiLatticeCy = tgt.y;
                 patch.skadiLatticeSide = Math.random() < 0.5 ? 1 : -1;
+                // 拍の頭: 刃が現れる音(段が進むほど高く=6段で積み上がる)。
+                playSfx('skadi-ice', 0.3, undefined, [0.8, 0.88, 0.95, 1.05, 1.12, 1.22][Math.min(5, k)]);
               };
               const beginSkadiMove = (move: SkadiMove) => {
                 playSfx(BOSS_ALERT_SFX_KEY);
                 if (move === 'lattice') {
-                  lockAttackAim();
+                  const aim0 = lockAttackAim();
                   patch.skadiLatticeStages = latticeStageCount(boss.bossPhase ?? 1, HB_SK.lattice.roundsP1, HB_SK.lattice.roundsAwake);
                   patch.skadiLatticeReadyAt = newGameTime + HB_SK.lattice.cdMs; // 溜めの頭から数える。潰されても残る
-                  beginLatticeStage(0);
+                  beginLatticeStage(0, aim0);
                   bs.vx = 0; bs.vy = 0;
                 } else if (move === 'ice') {
                   lockAttackAim();
@@ -7816,9 +7819,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const died = damagePlayer(L.damage, 'スカジの氷の格子', hitAt.x, hitAt.y, undefined, undefined, 'skadi-lattice');
                     if (died) triggerPlayerDeath(ppx, ppy);
                   }
-                  playSfx('skadi-ice', 0.55, undefined, latticeAxisForStage(k) === 'v' ? 1.25 : 1.4);
-                  useGameStore.getState().triggerShake(120, 3);
                   const total = boss.skadiLatticeStages ?? 2;
+                  const finalStage = k + 1 >= total;
+                  // 命中の音と揺れは段ごとに積み上げ、締めの段は大きく(クリエイティブ監査 #17/#18/#14)。
+                  playSfx(finalStage ? 'heavy-impact' : 'skadi-ice', finalStage ? 0.6 : 0.55, undefined, finalStage ? 1.1 : [1.15, 1.22, 1.3, 1.36, 1.45][Math.min(4, k)]);
+                  useGameStore.getState().triggerShake(finalStage ? 260 : 140, finalStage ? 9 : 3 + k * 1.2);
                   if (k + 1 < total) beginLatticeStage(k + 1);
                   else {
                     patch.bossState = 'lattice-recover';

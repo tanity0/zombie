@@ -1816,8 +1816,10 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
     idle: 'skadi', name: 'skadi-cast2', frames: 16, bodyH: 159,
     phases: [
       ...(['skadi-ice-windup', 'skadi-blade-windup', 'aim-burst'] as const).map(state => ({ state, seq: [0, 1, 2, 3], mode: 'stretch' as const })),
-      // 氷の格子(research/SKADI_LATTICE.md): 段ごとに杖を振る=溜め(550ms)で構えから振り下ろしまで一息に流す(段が替わるたびに頭から)。
-      { state: 'lattice-windup', seq: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], mode: 'stretch' as const },
+      // 氷の格子(research/SKADI_LATTICE.md): 段ごとに杖を振る。州は段をまたいで続くので、**州の頭からの周期**で
+      //   偶数段(縦)=0→15 と振り下ろし、奇数段(横)=15→0 と振り上げる(段の替わり目でコマが跳ばない・クリエイティブ監査 #15)。
+      //   periodMs = 2 × lattice.windupMs(650)。溜めの長さを変えたらここも合わせる。
+      { state: 'lattice-windup', seq: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0], mode: 'cycle' as const, periodMs: 1300 },
       { state: 'lattice-recover', seq: [3, 2, 1, 0], mode: 'stretch' as const },
       // ★1周(1.2秒)流したら**末コマで止める**(社長指示2026-10-01「スカジの杖を振るモーションも最後のコマでストップ」。
       //   旧=放っている間ずっと 4〜15 を繰り返す)。`cycles: 1` + `finale` = 並び1回 → 末コマで止まる(既存の型)。

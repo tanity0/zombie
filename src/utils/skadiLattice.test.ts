@@ -25,7 +25,8 @@ describe('氷の格子: 並び', () => {
   });
   it('止まっていると当たる/1歩(半幅+自機の半身)ずれれば隙間', () => {
     const b = latticeBands(0, 0, 'v', 1, spec);
-    const hit = (x: number) => b.some(r => distToBandRect({ x, y: 0 }, { x: r.fx, y: r.fy }, { x: r.tx, y: r.ty }, r.fx === r.tx ? spec.halfWidth : spec.halfWidth) <= 14);
+    // 判定=描いている四角(帯の端点を半幅ぶん伸ばした矩形)。自機は半身14の円で見る(useGameLoop と同じ)。
+    const hit = (x: number) => b.some(r => distToBandRect({ x, y: 0 }, { x: r.fx, y: r.fy }, { x: r.tx, y: r.ty }, spec.halfWidth) <= 14);
     expect(hit(0)).toBe(true);
     expect(hit(spec.halfWidth + 14 + 1)).toBe(false);
     expect(hit(-(spec.halfWidth + 14 + 1))).toBe(false);

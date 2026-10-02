@@ -26989,77 +26989,126 @@ export class PixiScene {
     }
   }
 
-  /** スカジの氷の格子: 前に見た段(当たった段の刃を走らせるため)と、走っている刃。 */
-  private skadiLatticeSeen = new Map<string, { k: number; stages: number; cx: number; cy: number; side: 1 | -1; until: number }>();
-  private skadiLatticeFx: { bands: { fx: number; fy: number; tx: number; ty: number }[]; axis: 'v' | 'h'; at: number; seed: number }[] = [];
+  /** スカジの氷の格子: 前に見た段(当たった段の刃を走らせるため)と、走っている刃・地面に残る霜。 */
+  private skadiLatticeSeen = new Map<string, { k: number; stages: number; cx: number; cy: number; side: 1 | -1; until: number; bx: number; by: number }>();
+  private skadiLatticeFx: { bands: { fx: number; fy: number; tx: number; ty: number }[]; axis: 'v' | 'h'; at: number; seed: number; flip: boolean; final: boolean; cx: number; cy: number }[] = [];
   private drawSkadiLattice(o: Graphics, e: Enemy, gameTime: number): void {
     const L = HB_SK.lattice;
+    // 色: 作品の「紫=カウンター不可」の1組(ミーミルのレーザー・トールの無と同じ)。刃は作品の氷の階調(白→氷青→青)。
+    const PURPLE = 0x9333ea, PURPLE_L = 0xc084fc;
+    const ICE_W = 0xffffff, ICE_M = 0xbfe8ff, ICE_D = 0x5fb8ff;
+    const hash = (k: number) => { const x = Math.sin(k * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
+    const bossX = e.x + e.width / 2, bossY = e.y + e.height / 2;
     const seen = this.skadiLatticeSeen.get(e.id);
     const cur = e.bossState === 'lattice-windup' && e.skadiLatticeCx !== undefined && e.skadiLatticeCy !== undefined
-      ? { k: e.skadiLatticeStage ?? 0, stages: e.skadiLatticeStages ?? 2, cx: e.skadiLatticeCx, cy: e.skadiLatticeCy, side: e.skadiLatticeSide ?? 1, until: e.bossStateUntil ?? gameTime }
+      ? { k: e.skadiLatticeStage ?? 0, stages: e.skadiLatticeStages ?? 2, cx: e.skadiLatticeCx, cy: e.skadiLatticeCy, side: e.skadiLatticeSide ?? 1, until: e.bossStateUntil ?? gameTime, bx: bossX, by: bossY }
       : null;
+    // 流れの起点=術者(スカジ)の側の端(縦の段=スカジが上なら上から、横の段=スカジが左なら左から)。座標系で固定しない(凍C#6相当)。
+    const flipFor = (axis: 'v' | 'h', cx: number, cy: number, bx: number, by: number) => (axis === 'v' ? by > cy : bx > cx);
     // 前に見ていた段が終わった(次の段へ替わった/硬直へ)=その段は今当たった → 刃を走らせる。潰されて追跡へ戻った時は走らせない。
-    if (seen && (!cur || cur.k !== seen.k || cur.until !== seen.until) && gameTime >= seen.until - 34
-        && (cur !== null || e.bossState === 'lattice-recover')) {
+    // 期限(until)の差は見ない: ノックバック停止中は期限が毎tick繰り下がるので、見ると「まだ当たっていないのに刃が走る」(検収 A-2)。
+    if (seen && (cur ? cur.k !== seen.k : e.bossState === 'lattice-recover')) {
+      const axis = latticeAxisForStage(seen.k);
       this.skadiLatticeFx.push({
-        bands: latticeBands(seen.cx, seen.cy, latticeAxisForStage(seen.k), seen.side, L),
-        axis: latticeAxisForStage(seen.k), at: gameTime, seed: seen.k * 7 + 3,
+        bands: latticeBands(seen.cx, seen.cy, axis, seen.side, L), axis, at: gameTime, seed: seen.k * 7 + 3,
+        flip: flipFor(axis, seen.cx, seen.cy, seen.bx, seen.by), final: seen.k >= seen.stages - 1, cx: seen.cx, cy: seen.cy,
       });
     }
     if (cur) this.skadiLatticeSeen.set(e.id, cur); else this.skadiLatticeSeen.delete(e.id);
-    // 溜め: 10本の紫の帯。**溜めの頭の1フレーム目から**判定と同じ四角を薄く敷き(掟②・設計監査 A-3: 窓だけだと頭の約85msが空白)、
-    //   その上を既存の帯と同じ窓(bandSweepCenter/AlphaAt)が流れて、抜け切った瞬間=当たる(掟③)。
-    //   10本ぶんなので縁の焼き素材(1本30枚のスプライト)は使わず、1本10スライスの塗りだけ(設計監査 C-4: 図形数を抑える)。
+    // ---- 溜め: 10本の紫の帯 ----
+    // 判定と同じ四角を溜めの1フレーム目から敷き(掟②)、出始めは薄く置いて数十msで濃くなる(出現にも慣性)。縁は線で切らず、外側へ溶かす。
+    // その上を既存の帯と同じ窓(30スライス)が術者の側から流れ、抜け切った瞬間=当たる(掟③)。
+    // **中心の1本(必ず相手の真上を通る刃)**だけは芯を通して主役にする(当たる時刻は同じ)。
     if (cur) {
       const prog = Math.max(0, Math.min(1, 1 - (cur.until - gameTime) / Math.max(1, L.windupMs)));
-      const bands = latticeBands(cur.cx, cur.cy, latticeAxisForStage(cur.k), cur.side, L);
+      const appear = 0.4 + 0.6 * Math.min(1, (prog * L.windupMs) / 70);
+      const base = (0.06 + 0.14 * (1 - (1 - prog) * (1 - prog))) * appear;
+      const axis = latticeAxisForStage(cur.k);
+      const bands = latticeBands(cur.cx, cur.cy, axis, cur.side, L);
+      const flip = flipFor(axis, cur.cx, cur.cy, cur.bx, cur.by);
       const style = telegraphStyleFor(e.type);
       const halfWin = Math.max(0.02, style?.bandHalfW ?? 0.34);
       const center = bandSweepCenter(prog, halfWin, true, style?.easePow);
-      const SL = 10;
+      const SL = 30;
       const hw = L.halfWidth;
       for (const b of bands) {
+        const vert = b.fx === b.tx;
+        const isCenter = vert ? Math.abs(b.fx - cur.cx) < 0.5 : Math.abs(b.fy - cur.cy) < 0.5;
         const x0 = Math.min(b.fx, b.tx) - hw, y0 = Math.min(b.fy, b.ty) - hw;
         const w = Math.abs(b.tx - b.fx) + 2 * hw, h = Math.abs(b.ty - b.fy) + 2 * hw;
-        o.rect(x0, y0, w, h).fill({ color: 0x7e22ce, alpha: 0.10 + 0.10 * prog });
-        o.rect(x0, y0, w, h).stroke({ width: 1.5, color: 0xc084fc, alpha: 0.35 + 0.3 * prog });
-        const vert = b.fx === b.tx;
+        // 外側へ溶ける縁(線で切らない): 少し広い四角を薄く重ねる。
+        if (vert) o.rect(x0 - 5, y0, w + 10, h).fill({ color: PURPLE, alpha: base * 0.35 });
+        else o.rect(x0, y0 - 5, w, h + 10).fill({ color: PURPLE, alpha: base * 0.35 });
+        o.rect(x0, y0, w, h).fill({ color: PURPLE, alpha: base * (isCenter ? 1.25 : 1) });
         for (let i = 0; i < SL; i++) {
-          const a = Math.min(1, 0.55 * 2.5) * bandSweepAlphaAt((i + 0.5) / SL, center, halfWin);
+          const s = (i + 0.5) / SL;
+          const a = bandSweepAlphaAt(flip ? 1 - s : s, center, halfWin);
           if (a <= 0.01) continue;
-          if (vert) o.rect(x0, y0 + (h * i) / SL, w, h / SL + 0.5).fill({ color: 0xa855f7, alpha: a * 0.6 });
-          else o.rect(x0 + (w * i) / SL, y0, w / SL + 0.5, h).fill({ color: 0xa855f7, alpha: a * 0.6 });
+          if (vert) o.rect(x0, y0 + (h * i) / SL, w, h / SL + 0.5).fill({ color: PURPLE_L, alpha: a * 0.55 });
+          else o.rect(x0 + (w * i) / SL, y0, w / SL + 0.5, h).fill({ color: PURPLE_L, alpha: a * 0.55 });
+        }
+        if (isCenter) {
+          const cw = 2 + 2 * prog;
+          if (vert) o.rect(b.fx - cw / 2, y0, cw, h).fill({ color: PURPLE_L, alpha: (0.35 + 0.45 * prog) * appear });
+          else o.rect(x0, b.fy - cw / 2, w, cw).fill({ color: PURPLE_L, alpha: (0.35 + 0.45 * prog) * appear });
         }
       }
     }
-    // 当たった段: 氷の刃が帯をなぞって走る(160ms・速く出て減速)+ 破片(400msで散って消える)。
-    const RUN_MS = 160, LIFE_MS = 420;
-    this.skadiLatticeFx = this.skadiLatticeFx.filter(f => gameTime - f.at < LIFE_MS);
+    // ---- 当たった段: 氷の刃が術者の側から帯をなぞって走る → 地面に霜が残る ----
+    // 中心の1本が先に走り、外側ほど遅れる。先端の光は走っている間だけ(走り終えたら端を抜けて消える)。
+    // 霜は次の段が当たる頃まで残る=縦と横が地面で重なって**格子が完成する**瞬間を見せる。最終段は大きく。
+    const RUN_MS = 170, FROST_MS = L.windupMs + 380;
+    this.skadiLatticeFx = this.skadiLatticeFx.filter(f => gameTime - f.at < FROST_MS);
     for (const f of this.skadiLatticeFx) {
       const t = gameTime - f.at;
-      const run = Math.min(1, t / RUN_MS);
-      const re = 1 - (1 - run) * (1 - run) * (1 - run);
-      const fade = Math.max(0, 1 - Math.max(0, t - RUN_MS) / (LIFE_MS - RUN_MS));
+      const big = f.final ? 1.35 : 1;
       f.bands.forEach((b, i) => {
-        const h = Math.sin((f.seed + i) * 12.9898) * 43758.5453; const r01 = h - Math.floor(h);
-        const head = re * (0.92 + 0.08 * r01);
-        const hx = b.fx + (b.tx - b.fx) * head, hy = b.fy + (b.ty - b.fy) * head;
-        const tailK = Math.max(0, head - 0.35);
-        const tx0 = b.fx + (b.tx - b.fx) * tailK, ty0 = b.fy + (b.ty - b.fy) * tailK;
-        // 刃の筋: 太い冷たい青 → 白い芯。頭ほど明るい。
-        o.moveTo(tx0, ty0).lineTo(hx, hy).stroke({ width: L.halfWidth * 2.2, color: 0x7dd3fc, alpha: 0.35 * fade, cap: 'round' });
-        o.moveTo(tx0, ty0).lineTo(hx, hy).stroke({ width: L.halfWidth * 0.9, color: 0xe0f2fe, alpha: 0.85 * fade, cap: 'round' });
-        o.circle(hx, hy, L.halfWidth * (1.2 + 0.6 * (1 - run))).fill({ color: 0xffffff, alpha: 0.9 * fade });
-        // 破片: 帯の脇へ、片ごとに違う向き・距離で散る。
-        for (let q = 0; q < 4; q++) {
-          const hq = Math.sin((f.seed + i * 5 + q) * 78.233) * 43758.5453; const rq = hq - Math.floor(hq);
-          const along = (q + 0.5 + (rq - 0.5) * 0.6) / 4;
-          if (along > head) continue;
-          const px = b.fx + (b.tx - b.fx) * along, py = b.fy + (b.ty - b.fy) * along;
-          const sgn = q % 2 === 0 ? 1 : -1;
-          const dist = (10 + 34 * rq) * (1 - (1 - Math.min(1, t / LIFE_MS)) ** 2);
-          const ox = f.axis === 'v' ? sgn * dist : (rq - 0.5) * 10, oy = f.axis === 'v' ? (rq - 0.5) * 10 : sgn * dist;
-          o.circle(px + ox, py + oy, (1.6 + 2 * rq) * fade).fill({ color: 0xe0f2fe, alpha: 0.85 * fade });
+        const vert = b.fx === b.tx;
+        const off = vert ? b.fx - f.cx : b.fy - f.cy;
+        const lane = Math.round(Math.abs(off) / Math.max(1, L.spacing)); // 0=中心の1本
+        const delay = lane * 16 + hash(f.seed + i) * 10;
+        const tr = t - delay;
+        if (tr < 0) return;
+        const run = Math.min(1, tr / RUN_MS);
+        const re = 1 - (1 - run) * (1 - run) * (1 - run);
+        // 始点/終点(術者の側から)
+        const sx = f.flip ? b.tx : b.fx, sy = f.flip ? b.ty : b.fy;
+        const ex = f.flip ? b.fx : b.tx, ey = f.flip ? b.fy : b.ty;
+        const hx = sx + (ex - sx) * re, hy = sy + (ey - sy) * re;
+        // 霜: 走った所に残る(ease-out で薄れ、次の段の頃まで見える)
+        const fk = Math.max(0, (tr - RUN_MS) / Math.max(1, FROST_MS - RUN_MS - delay));
+        const frostA = (1 - fk) * (1 - fk) * (f.final ? 0.55 : 0.4);
+        o.moveTo(sx, sy).lineTo(hx, hy).stroke({ width: L.halfWidth * 1.6 * big, color: ICE_D, alpha: frostA * 0.45 });
+        o.moveTo(sx, sy).lineTo(hx, hy).stroke({ width: L.halfWidth * 0.5 * big, color: ICE_M, alpha: frostA });
+        if (run < 1) {
+          // 刃の筋(頭ほど明るい・白→氷青→青)と、走っている間だけ光る先端
+          const tailK = Math.max(0, re - 0.4);
+          const tx0 = sx + (ex - sx) * tailK, ty0 = sy + (ey - sy) * tailK;
+          o.moveTo(tx0, ty0).lineTo(hx, hy).stroke({ width: L.halfWidth * 2.4 * big, color: ICE_D, alpha: 0.35, cap: 'round' });
+          o.moveTo(tx0, ty0).lineTo(hx, hy).stroke({ width: L.halfWidth * 1.1 * big, color: ICE_M, alpha: 0.75, cap: 'round' });
+          o.moveTo((tx0 + hx) / 2, (ty0 + hy) / 2).lineTo(hx, hy).stroke({ width: L.halfWidth * 0.5 * big, color: ICE_W, alpha: 0.95, cap: 'round' });
+          o.circle(hx, hy, L.halfWidth * (1.1 + 0.5 * (1 - run)) * big).fill({ color: ICE_W, alpha: 0.85 * (1 - run * run) });
+        }
+        // 欠片: 1本に2〜3片、細長い氷の欠片が刃の進む向きへ流れながら回って落ちる(大きめ・地面に少し残る)。
+        const nShard = 2 + (hash(f.seed * 3 + i) < 0.5 ? 1 : 0);
+        const dirx = (ex - sx) / (Math.hypot(ex - sx, ey - sy) || 1), diry = (ey - sy) / (Math.hypot(ex - sx, ey - sy) || 1);
+        for (let q = 0; q < nShard; q++) {
+          const rq = hash(f.seed * 11 + i * 5 + q);
+          const along = 0.15 + 0.7 * rq;
+          if (along > re) continue;
+          const born = along * RUN_MS;
+          const age = Math.max(0, tr - born);
+          const life = 520;
+          if (age > life) continue;
+          const u = age / life, ue = 1 - (1 - u) * (1 - u);
+          const sideSgn = hash(i * 17 + q) < 0.5 ? -1 : 1;
+          const px = sx + (ex - sx) * along + dirx * 40 * ue - diry * sideSgn * (12 + 30 * rq) * ue;
+          const py = sy + (ey - sy) * along + diry * 40 * ue + dirx * sideSgn * (12 + 30 * rq) * ue;
+          const len = (8 + 10 * rq) * big;
+          const ang = Math.atan2(diry, dirx) + sideSgn * (0.6 + 4 * ue) + rq;
+          const ca = Math.cos(ang) * len / 2, sa = Math.sin(ang) * len / 2;
+          o.moveTo(px - ca, py - sa).lineTo(px + ca, py + sa)
+            .stroke({ width: 3 + 2 * rq, color: q === 0 ? ICE_W : ICE_M, alpha: 0.9 * (1 - u * u), cap: 'round' });
         }
       });
     }
