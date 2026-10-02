@@ -20,7 +20,7 @@
 // ゾーン×重み表」をそのまま適用。ゾーン境界は全ボス共通の BOSS_RANGE(120/300/600・上限なし)。
 import { pickComboFollowup, phaseForHealth, pickWeightedMove, bossZoneForDistance, type BossMoveWeights } from './bossScript';
 
-export type MimirMove = 'bite' | 'radial' | 'burst' | 'laser' | 'dash';
+export type MimirMove = 'bite' | 'radial' | 'burst' | 'laser' | 'dash' | 'wheel';
 
 export const MIMIR_PHASE_HP_THRESHOLD = 0.6;
 export const mimirPhaseForHealth = (healthFrac: number): 1 | 2 => phaseForHealth(healthFrac, [MIMIR_PHASE_HP_THRESHOLD]) as 1 | 2;
@@ -39,6 +39,8 @@ export const MIMIR_MOVE_WEIGHTS: BossMoveWeights<MimirMove> = {
   burst:  { melee: 15, near: 20, mid: 25, far: 10 },
   laser:  { melee: 15, near: 20, mid: 35, far: 30 },
   dash:   { melee: 0,  near: 0,  mid: 15, far: 60 },
+  // ★紫の車輪(research/MIMIR_WHEEL.md・社長指示2026-10-02): 全方位に届くので全ゾーンで出す。CD は呼び出し側(readyAt)。
+  wheel:  { melee: 15, near: 20, mid: 20, far: 10 },
 };
 
 // フェーズ表(§6.28-5)の「レーザーの抽選確率が0.34→0.50へ上がる」を、専用の確率ロールではなく
@@ -64,7 +66,7 @@ export const mimirMoveWeight = (
 export const mimirMoveEligible = (move: MimirMove, distance: number, phase: 1 | 2 = 1): boolean =>
   mimirMoveWeight(move, distance, phase) > 0;
 
-const ALL_MOVES: MimirMove[] = ['bite', 'radial', 'burst', 'laser', 'dash'];
+const ALL_MOVES: MimirMove[] = ['bite', 'radial', 'burst', 'laser', 'dash', 'wheel'];
 
 /** CD明けかつ現在ゾーンの重み>0の技から重み比例で1つ。該当無しはnull(=通常チェイスへ)。 */
 export const pickMimirMove = (

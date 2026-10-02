@@ -1922,6 +1922,10 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       { state: 'laser-windup', seq: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], mode: 'stretch' },
       { state: 'laser-fire', seq: [12, 13, 14], mode: 'pingpong' },
       ...(['laser-recover', 'laser-broken'] as const).map(state => ({ state, seq: [11, 9, 7, 5, 3, 1, 0], mode: 'stretch' as const })),
+      // 紫の車輪(research/MIMIR_WHEEL.md)も同じ紫のレーザー=同じ絵(溜めで瞳を絞り、撃つ間は往復、戻りで開く)。
+      { state: 'wheel-windup', seq: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], mode: 'stretch' },
+      { state: 'wheel-fire', seq: [12, 13, 14], mode: 'pingpong' },
+      { state: 'wheel-recover', seq: [11, 9, 7, 5, 3, 1, 0], mode: 'stretch' },
     ],
   },
   // ★ミーミルの攻撃(社長支給2026-09-29「**ミーミルのレーザー以外の攻撃用**」)。16コマ(支給 2752×202 → 上の空き2行を落として **172×200**・2.10MB)。

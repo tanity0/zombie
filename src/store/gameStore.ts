@@ -1,4 +1,5 @@
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
+import { steerDirToward } from '../utils/mimirWheel';
 import { SHUKUCHI_INVULN_MS, pickShukuchiTarget, shukuchiChainMult, shukuchiLandingPoint, shukuchiParams, shukuchiWindowOpen } from '../utils/shukuchi';
 import { counterClashPoint } from '../utils/counterClash';
 import { create } from 'zustand';
@@ -17411,6 +17412,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (REFLECT_SPEED_MULTIPLIER適用済み)をease-inの補間tickが毎フレーム上書きしてしまう。
           rocketChargeUntil: undefined, rocketLaunchSpeed: undefined, rocketEaseUntil: undefined,
           reflectBaseSpeed: undefined,
+          hostileHomingTurn: undefined, hostileHomingUntil: undefined, // 追跡弾も打ち返したら直進(research/MIMIR_WHEEL.md)
           // UNIQUE_WEAPONS.md §17-10(#U16裁定・レールガン): 手動射撃の頭部判定フラグも同じ理由で落とす
           // (打ち返された弾は敵対弾としてプレイヤーへ向かう=「頭部確定クリ」の判定対象がプレイヤー側
           // ではないため無意味な上、敵弾にPHILL/レールガン専用の頭部判定を紛れ込ませない)。
@@ -17471,8 +17473,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // プラントが死んだら、そのプラントが撃った在弾(敵弾)を消す(社長指示)。発射元の個体IDで判定。
       // 反射済み(=カウンターでプレイヤー側になった弾)は対象外。生存プラントのIDだけ集めて参照する。
       const livePlantIds = new Set(enemies.filter(e => e.type === 'plant').map(e => e.id));
-      // ヨルムンガルドの凍てつく牙(§10): 撃った本体が倒れたら、凍って止まっている牙は砕けて消える
-      // (止まったまま空中に残さない)。飛び出した牙はふつうの弾として飛び切る。
+      // ヨルムンガルドの凍てつく牙(§10): 撃った本体が倒れたら、凍って止まっている牙と加速し切っていない牙は消える
+      // (止まったまま/這うまま空中に残さない)。全速に乗った牙はふつうの弾として飛び切る。
+      // (州を抜けた時の砕け=useGameLoop は本体が生きている間だけ走るので、死んだ時はここが受け持つ)
       const liveOwnerIds = projectiles.some(p => p.srcMoveKey === 'jormungand-freeze')
         ? new Set(enemies.filter(e => e.health > 0).map(e => e.id)) : null;
 
@@ -17484,7 +17487,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (currentTime - p.createdAt > p.duration + 500) return false;
           if (p.weaponType === 'enemy_bolt' && p.ownerType === 'plant' && p.hostile && !p.reflected
               && !livePlantIds.has(p.ownerId ?? '')) return false; // 発射元プラントが消滅=在弾も消す
-          if (liveOwnerIds && p.srcMoveKey === 'jormungand-freeze' && p.hostile && !p.reflected && p.speed === 0
+          if (liveOwnerIds && p.srcMoveKey === 'jormungand-freeze' && p.hostile && !p.reflected && p.speed < (p.reflectBaseSpeed ?? 0)
               && !liveOwnerIds.has(p.ownerId ?? '')) return false;
           // Garlic / bibles follow the player and shouldn't be culled by
           // their static spawn position; check distance from player.
@@ -17493,7 +17496,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (Math.hypot(px - playerCX, py - playerCY) > cullRadius) return false;
           return true;
         })
-        .map(p => {
+        .map(pIn => {
+          // ミーミルの紫の車輪(research/MIMIR_WHEEL.md)の追跡弾: 追跡の間だけ、向きをプレイヤーへ旋回上限つきで寄せる
+          // (横へ切れば外せる)。移動そのものは下の直進のまま。打ち返された弾は reflected で外れる。
+          const p = (pIn.hostileHomingTurn !== undefined && pIn.hostile && !pIn.reflected && currentTime < (pIn.hostileHomingUntil ?? 0))
+            ? { ...pIn, direction: steerDirToward(pIn.direction.x, pIn.direction.y, pIn.x + pIn.width / 2, pIn.y + pIn.height / 2,
+                playerCX, playerCY, pIn.hostileHomingTurn * deltaTime) }
+            : pIn;
           // Orbital motion (bibles): position relative to the player using
           // a continuously-updated angle. Doesn't use direction/speed.
           if (p.orbitRadius !== undefined && p.orbitAngle !== undefined) {

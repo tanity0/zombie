@@ -1157,6 +1157,7 @@ export interface Enemy {
     | 'jslam-windup' | 'jslam-hit' | 'jslam-rewind' | 'jslam-recover'
     | 'jwave-open' | 'jwave' | 'jwave-recover' | 'jrain-open' | 'jrain' | 'jrain-recover'
     | 'jfreeze-open' | 'jfreeze' | 'jfreeze-recover' // 弾幕C「凍てつく牙」(§10・HP60%以下で解禁)
+    | 'wheel-windup' | 'wheel-fire' | 'wheel-recover' // ミーミルの紫の車輪(research/MIMIR_WHEEL.md)
     | 'cage-windup' | 'cage' | 'cage-recover'
     | 'issen-recover' | 'tsuki-recover' | 'harai-recover'
     | 'issen-nihil'
@@ -1318,6 +1319,18 @@ export interface Enemy {
   jormRainLobs?: { fromX: number; fromY: number; x: number; y: number; launchAt: number; landAt: number }[];
   // 弾幕C「凍てつく牙」(§10): 輪ごとの放った時刻(gameTime)・中心(放った瞬間の相手の位置)・何回目か・
   // 最初の牙の角・牙の弾ID(結晶する前は空。相手の真上で飛ばした枠は '')・飛び出し済みか。
+  // ミーミルの紫の車輪(research/MIMIR_WHEEL.md): 溜めの頭の時刻(gameTime・角度関数の t=0)・最初の角・回る向き・
+  // 追跡弾を撃つ変化か(溜めの頭のフェーズで決めて持つ)・次に撃てる時刻(CD)。
+  mimirWheelAt?: number;
+  mimirWheelTheta0?: number;
+  mimirWheelDir?: 1 | -1;
+  mimirWheelHoming?: boolean;
+  mimirWheelReadyAt?: number;
+  /** 変化の追跡弾を何発撃ったか(撃つ時刻は mimirWheelShotOffsetMs)。 */
+  mimirWheelShots?: number;
+  /** 最後に当たったレーザーの番号と時刻(gameTime)。1本の通過で当たるのは1回=近くで止まっていても1本で2回当たらない。 */
+  mimirWheelLastHitK?: number;
+  mimirWheelLastHitAt?: number;
   jormFreezeRings?: { emitAt: number; cx: number; cy: number; ring: number; theta0: number; ids: string[]; launched: boolean[] }[];
   skadiCageReadyAt?: number;    // スカジ 氷結の檻専用CD(12000ms・Phase3)
   // research/THOR_ISSEN_REWORK.md §4: トール「突進」専用CD(6000ms・ミゲルの mDashReadyAt と同じ作法)。
@@ -2306,6 +2319,10 @@ export interface Projectile {
   // ヨルムンガルドの弾幕C「凍てつく牙」(research/JORM_DANMAKU.md §10): 凍って速さ0で止まっている間に打ち返されても
   // 止まったままにならないよう、反射の基準速度の下限を持つ(reflectProjectile が max(speed, これ) を使う)。
   reflectBaseSpeed?: number;
+  // ミーミルの紫の車輪(research/MIMIR_WHEEL.md)の追跡弾: 旋回の上限(rad/s)と、追跡をやめる時刻(Date.now ms)。
+  // updateProjectiles が向きだけを毎フレーム寄せる。打ち返されたら捨てる(反射弾=直進)。
+  hostileHomingTurn?: number;
+  hostileHomingUntil?: number;
   // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-9是正): 溜め終わり(発射)からROCKET_LAUNCH_EASE_MS(150ms)
   // の間、rocketLaunchSpeedを目標速度としてease-inする(0→本来速度)。rocketEaseUntilが設定されている
   // 間はp.speedを毎フレーム補間で書き換える(useGameLoopの専用tick)。ease完了で両方undefinedに戻す。

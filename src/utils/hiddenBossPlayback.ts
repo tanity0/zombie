@@ -17,7 +17,7 @@
 
 /** ▸で再生できる技のキー(パネルのボタンと1対1)。 */
 export type HiddenMoveKey =
-  | 'mi-bite' | 'mi-laser' | 'mi-dash' | 'mi-burst' | 'mi-radial'
+  | 'mi-bite' | 'mi-laser' | 'mi-dash' | 'mi-burst' | 'mi-radial' | 'mi-wheel'
   | 'jo-coil' | 'jo-dash' | 'jo-burst' | 'jo-radial' | 'jo-slam2' | 'jo-slam3' | 'jo-slam1'
   | 'sk-ice' | 'sk-blade' | 'sk-cage' | 'sk-dash' | 'sk-burst' | 'sk-radial'
   | 'th-issen' | 'th-tsuki' | 'th-harai' | 'th-jump' | 'th-dash';
@@ -27,7 +27,7 @@ export type HiddenMoveKey =
  * (1つの出どころ=「ボタンは出ているのに何も起きない」を原理的に作らない)。
  */
 export const HIDDEN_MOVES_BY_TYPE: Readonly<Record<string, readonly HiddenMoveKey[]>> = {
-  mimir: ['mi-bite', 'mi-laser', 'mi-dash', 'mi-burst', 'mi-radial'],
+  mimir: ['mi-bite', 'mi-laser', 'mi-dash', 'mi-burst', 'mi-radial', 'mi-wheel'],
   jormungand: ['jo-coil', 'jo-dash', 'jo-burst', 'jo-radial', 'jo-slam2', 'jo-slam3', 'jo-slam1'],
   skadi: ['sk-ice', 'sk-blade', 'sk-cage', 'sk-dash', 'sk-burst', 'sk-radial'],
   thor: ['th-issen', 'th-tsuki', 'th-harai', 'th-jump', 'th-dash'],

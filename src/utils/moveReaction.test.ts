@@ -554,6 +554,7 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
     //   ①波と粒の境界(state='jwave'=分類済み) ②降り注ぐ星弓の着弾で撒く弾(state='jrain'=分類済み。
     //   落ちるのは必ず 'jrain' の間=全弾が落ちてから硬直へ進む)。合計23。
     // ★§10(弾幕C 凍てつく牙)で useGameLoop.ts に **+1**(輪を放つ・state='jfreeze'=分類済み)。合計24。
+    // ★research/MIMIR_WHEEL.md(ミーミルの紫の車輪の変化=追跡弾)で useGameLoop.ts に **+1**(state='wheel-fire'=分類済み)。合計25。
     let sites = 0;
     for (const text of Object.values(BULLET_SOURCES)) {
       for (const line of text.split('\n')) {
@@ -562,7 +563,7 @@ describe('GHOST-BULLET-TECH: 発射経路の網羅(ソース走査)', () => {
         sites += (line.match(/createEnemyProjectile\(/g) ?? []).length;
       }
     }
-    expect(sites).toBe(24);
+    expect(sites).toBe(25);
   });
 });
 

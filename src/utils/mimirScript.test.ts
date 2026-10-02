@@ -5,8 +5,8 @@ import {
 } from './mimirScript';
 import { BOSS_RANGE } from './bossScript';
 
-const ALL_MOVES: MimirMove[] = ['bite', 'radial', 'burst', 'laser', 'dash'];
-const allReady = (): Record<MimirMove, boolean> => ({ bite: true, radial: true, burst: true, laser: true, dash: true });
+const ALL_MOVES: MimirMove[] = ['bite', 'radial', 'burst', 'laser', 'dash', 'wheel'];
+const allReady = (): Record<MimirMove, boolean> => ({ bite: true, radial: true, burst: true, laser: true, dash: true, wheel: true });
 // 密着/近/中/遠の代表距離(BOSS_RANGE 120/300/600 基準)。
 const BAND_SAMPLES = [60, 200, 450, 900];
 
@@ -84,7 +84,7 @@ describe('pickMimirMove', () => {
   });
 
   it('CD明けの技が1つも無ければnull', () => {
-    const ready: Record<MimirMove, boolean> = { bite: false, radial: false, burst: false, laser: false, dash: false };
+    const ready: Record<MimirMove, boolean> = { bite: false, radial: false, burst: false, laser: false, dash: false, wheel: false };
     expect(pickMimirMove(60, 1, ready)).toBeNull();
   });
 
@@ -93,13 +93,13 @@ describe('pickMimirMove', () => {
     for (let i = 0; i < 200; i++) expect(pickMimirMove(450, 1, ready)).not.toBe('laser');
   });
 
-  it('密着帯で4技すべてが顔を出す', () => {
+  it('密着帯で5技すべてが顔を出す(紫の車輪を含む)', () => {
     const seen = new Set<MimirMove>();
     for (let i = 0; i < 600; i++) {
       const m = pickMimirMove(60, 1, allReady());
       if (m) seen.add(m);
     }
-    expect([...seen].sort()).toEqual(['bite', 'burst', 'laser', 'radial']);
+    expect([...seen].sort()).toEqual(['bite', 'burst', 'laser', 'radial', 'wheel']);
   });
 });
 

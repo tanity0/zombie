@@ -69,7 +69,7 @@ const dashFields = (section: string): TuningField[] => {
 // ================================================================================================
 const MI_SEC = {
   move: '動き', burst: '弾3連(mi-burst)', radial: '全方位(mi-radial)', dash: '突進(mi-dash)',
-  bite: '群体の噛みつき(mi-bite)', laser: 'レーザー(mi-laser)',
+  bite: '群体の噛みつき(mi-bite)', laser: 'レーザー(mi-laser)', wheel: '紫の車輪(mi-wheel)',
 };
 
 const mimirFields = (): TuningField[] => {
@@ -77,6 +77,7 @@ const mimirFields = (): TuningField[] => {
   const ra = mk(MI_SEC.radial, 'move');
   const bi = mk(MI_SEC.bite, 'move');
   const la = mk(MI_SEC.laser, 'move');
+  const wh = mk(MI_SEC.wheel, 'move');
   return [
     ...neutralFields(MI_SEC.move, true),
 
@@ -98,6 +99,25 @@ const mimirFields = (): TuningField[] => {
     la('laser.damage', 'ダメージ', 'num', 0, 200, 1, '直撃したときの威力'),
     la('laser.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
     la('laser.shakeMag', '発射中の揺れ', 'num', 0, 30, 1, '画面シェイクの振幅(演出のみ)'),
+
+    wh('wheel.windupMs', '予告(溜め)', 'ms', 200, 5000, 50, `${HINT_WINDUP}。紫の線が溜まり切った瞬間に撃つ`),
+    wh('wheel.fireMs', '撃っている時間', 'ms', 500, 12000, 100),
+    wh('wheel.spokes', 'レーザーの本数', 'num', 2, 12, 1, '多いほど隙間が細くなる'),
+    wh('wheel.halfWidth', '1本の半分の太さ', 'px', 4, 80, 1, '判定と絵の太さ'),
+    wh('wheel.damage', 'ダメージ', 'num', 0, 200, 1, '1本の通過で当たるのは1回'),
+    wh('wheel.omegaWindup', '溜めの終わりの回る速さ', 'frac', 0, 2, 0.01, 'rad/秒。予告線がじわっと回り始めて向きが読める'),
+    wh('wheel.omegaMax', '回る速さ(最高)', 'frac', 0.05, 2, 0.01, 'rad/秒。速いほど遠くでは歩いて追いつけない(歩速÷これ=追いつける半径)'),
+    wh('wheel.rampMs', '加速の時間', 'ms', 0, 3000, 50),
+    wh('wheel.decelMs', '減速の時間', 'ms', 0, 3000, 50),
+    wh('wheel.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    wh('wheel.cdMs', 'クールダウン', 'ms', 0, 60000, 500, '溜めの頭から数える'),
+    wh('wheel.homing.startMs', '[変化] 最初の追跡弾', 'ms', 0, 5000, 50, 'HP60%以下だけ。撃ち始めてからの時間'),
+    wh('wheel.homing.pairGapMs', '[変化] 2連の間', 'ms', 50, 1500, 25, '短いほど1振りで2つ返しやすい'),
+    wh('wheel.homing.restMs', '[変化] 組と組の休み', 'ms', 200, 5000, 50),
+    wh('wheel.homing.speed', '[変化] 弾の速さ', 'px', 40, 600, 5, 'px/秒'),
+    wh('wheel.homing.turnRadS', '[変化] 曲がる強さ', 'frac', 0, 6, 0.05, 'rad/秒。強いほど横へ切っても外しにくい'),
+    wh('wheel.homing.homingMs', '[変化] 追う時間', 'ms', 0, 6000, 100, '過ぎたら真っ直ぐ飛ぶ'),
+    wh('wheel.homing.damage', '[変化] 弾の威力', 'num', 0, 200, 1),
   ];
 };
 
@@ -108,6 +128,7 @@ const MI_HELP: Record<string, string> = {
   [MI_SEC.dash]: '溜めながら少し下がってから一直線に突っ込む。突進中も体当たりカウンターで止められる。',
   [MI_SEC.bite]: '本体直下の群体が一斉に噛む密着専用の円。**赤い円の半径は体格から決まる固定値**(bodyCenteredAoe.tsが正本)で、ここでは触れない。',
   [MI_SEC.laser]: '追尾する赤い線が溜まり、ロックしてから太い光線。**寸法と溜めは mimirLaserTrack.ts が正本**(バス停のレーザーと共有)なので、ここで触れるのは威力・硬直・揺れだけ。',
+  [MI_SEC.wheel]: '体から放射状に紫のレーザーを撃ち、ゆっくり回す。隙間に入って回転に合わせて歩けば避けられる(近いほど楽・遠いと追いつけない)。HP60%以下では撃っている間に追跡弾を2連ずつ撃つ(カウンター可)。変化を見たい時はボスのHPを下げてから▸。',
 };
 
 // ================================================================================================
@@ -381,6 +402,7 @@ const MI_PLAYABLES: readonly PlayableAction[] = [
   play('mi-dash', '突進', MI_SEC.dash),
   play('mi-bite', '噛みつき', MI_SEC.bite),
   play('mi-laser', 'レーザー', MI_SEC.laser),
+  play('mi-wheel', '紫の車輪', MI_SEC.wheel),
 ];
 const JO_PLAYABLES: readonly PlayableAction[] = [
   play('jo-burst', '3-way扇', JO_SEC.burst),

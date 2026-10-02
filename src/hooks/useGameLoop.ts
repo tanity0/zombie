@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { mimirWheelTheta0, mimirWheelSpokeAngle, mimirWheelShotOffsetMs } from '../utils/mimirWheel';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
@@ -305,7 +306,7 @@ import {
   jormungandPhaseForHealth, pickJormungandMove, jormRadialSpinAngle, type JormungandMove,
 } from '../utils/jormungandScript';
 import {
-  jormFreezeState, jormFreezeSlot, jormFreezeAimPoint,
+  jormFreezeState, jormFreezeSlot, jormFreezeAimPoint, jormFreezeLaunchOffsetMs,
   jormSlamHitAt, jormSlamReach, jormSlamBand, jormBodyRectDist, jormWaveAngle, jormWaveTheta0, jormRainLandingPoint, jormRainBurstAngles,
 } from '../utils/jormDanmaku';
 import {
@@ -6321,15 +6322,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 bs.vy += (desVy - bs.vy) * k;
                 patch.x = boss.x + bs.vx * bossMoveDt; patch.y = boss.y + bs.vy * bossMoveDt;
               };
-              // ★弾幕C(§10)の後始末: 'jfreeze' 以外の州へ移った(気絶・紫・帰巣・カウンターの切り等)のに凍った弾が残っていたら、
-              // 今の向きのまま放す(凍ったまま空中に残さない=設計 §10-2)。
+              // ★弾幕C(§10)の後始末: 'jfreeze' 以外の州へ移った(気絶・紫・罠・カウンターの切り等)のに凍った牙が残っていたら、
+              // **まだ飛んでいない牙は砕けて消える**(術が解けた=崩した手柄が目に見える。検収監査 A-3 の推薦(a))。
+              // 飛び出した牙はふつうの弾として飛び切る。
               if (boss.jormFreezeRings && boss.jormFreezeRings.length > 0 && boss.bossState !== 'jfreeze') {
-                const relIds = new Set(boss.jormFreezeRings.flatMap(r => r.ids).filter(id => id !== ''));
-                const relSpeed = HB_JO.freeze.speed;
-                useGameStore.setState(stp => ({
-                  projectiles: stp.projectiles.map(pr => (relIds.has(pr.id) && pr.hostile && !pr.reflected && pr.speed < relSpeed)
-                    ? { ...pr, speed: relSpeed } : pr),
-                }));
+                const shatterIds = new Set<string>();
+                for (const r of boss.jormFreezeRings) r.ids.forEach((id, i) => { if (id !== '' && !r.launched[i]) shatterIds.add(id); });
+                if (shatterIds.size > 0) {
+                  const live = useGameStore.getState().projectiles.filter(pr => shatterIds.has(pr.id) && pr.hostile && !pr.reflected);
+                  for (const pr of live) spawnBurst(pr.x + pr.width / 2, pr.y + pr.height / 2, '#e8f6ff', 5);
+                  useGameStore.setState(stp => ({ projectiles: stp.projectiles.filter(pr => !(shatterIds.has(pr.id) && pr.hostile && !pr.reflected)) }));
+                  if (live.length > 0) playSfx('skadi-ice', 0.5, undefined, 1.6);
+                }
                 patch.jormFreezeRings = undefined;
               }
               if (boss.bossMoveCutPending) {
@@ -6373,6 +6377,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // ★弾幕技(research/JORM_DANMAKU.md・設計監査 B-3): 導入の時刻表・波の撃ち始め・打ち上げた光弾の
                   // 着弾も同じだけ繰り下げる(凍結中に着弾して弾が湧く/段の時刻表が詰まる、を作らない)。
                   if (boss.jormSlamAt !== undefined) patch.jormSlamAt = boss.jormSlamAt + kbDtMs;
+                  // ミーミルの紫の車輪(research/MIMIR_WHEEL.md): 角度関数の t=0 も繰り下げる(凍結明けに輪が跳ばない)。
+                  if (boss.mimirWheelAt !== undefined) patch.mimirWheelAt = boss.mimirWheelAt + kbDtMs;
                   if (boss.jormWaveAt !== undefined) patch.jormWaveAt = boss.jormWaveAt + kbDtMs;
                   if (boss.jormFreezeRings && boss.jormFreezeRings.length > 0) {
                     patch.jormFreezeRings = boss.jormFreezeRings.map(r => ({ ...r, emitAt: r.emitAt + kbDtMs }));
@@ -6681,9 +6687,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patch.aiFromX = bcx; patch.aiFromY = bcy;
                 patch.aiTargetX = bcx + bs.dashDirX * travel; patch.aiTargetY = bcy + bs.dashDirY * travel;
               };
-              const beginMimirMove = (move: MimirMove) => {
+              const beginMimirMove = (move: MimirMove, forceHoming?: boolean) => {
                 playSfx(BOSS_ALERT_SFX_KEY);
-                if (move === 'bite') {
+                if (move === 'wheel') {
+                  // ★紫の車輪(research/MIMIR_WHEEL.md): 向き(±1)・最初の角(相手が隙間の真ん中)・変化(追跡弾)をここで決めて持つ。
+                  const aim = lockAttackAim();
+                  patch.bossState = 'wheel-windup';
+                  patch.bossStateUntil = newGameTime + HB_MI.wheel.windupMs;
+                  patch.mimirWheelAt = newGameTime;
+                  patch.mimirWheelTheta0 = mimirWheelTheta0(Math.atan2(aim.y - bcy, aim.x - bcx), HB_MI.wheel.spokes);
+                  patch.mimirWheelDir = Math.random() < 0.5 ? 1 : -1;
+                  patch.mimirWheelHoming = forceHoming ?? ((boss.bossPhase ?? 1) >= 2);
+                  patch.mimirWheelReadyAt = newGameTime + HB_MI.wheel.cdMs; // 溜めの頭から数える。潰されても残る
+                  patch.mimirWheelShots = 0;
+                  patch.mimirWheelLastHitK = undefined; patch.mimirWheelLastHitAt = undefined;
+                  bs.vx = 0; bs.vy = 0;
+                } else if (move === 'bite') {
                   patch.bossState = 'bite-windup';
                   patch.bossStateUntil = newGameTime + HB_MI.bite.windup;
                 } else if (move === 'laser') {
@@ -6887,6 +6906,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   case 'mi-dash': beginMimirMove('dash'); break;
                   case 'mi-burst': beginMimirMove('burst'); break;
                   case 'mi-radial': beginMimirMove('radial'); break;
+                  case 'mi-wheel': beginMimirMove('wheel'); break; // 変化(追跡弾)はボスのHPで決まる=メーカーでHPを下げて確かめる
                   case 'jo-coil': beginJormungandMove('coil'); break;
                   case 'jo-dash': beginJormungandMove('dash'); break;
                   case 'jo-burst': beginJormungandMove('burst'); break;
@@ -7103,6 +7123,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       // §6.33-2-4: 弱点窓で中断された時だけ8秒CD(通常成功時はreadyAt未設定=常にtrue)。
                       laser: newGameTime >= (boss.mimirLaserReadyAt ?? 0),
                       dash: true, burst: true, radial: true,
+                      wheel: newGameTime >= (boss.mimirWheelReadyAt ?? 0), // research/MIMIR_WHEEL.md
                     };
                     const move = pickMimirMove(dist, phase, ready);
                     if (move) {
@@ -7393,6 +7414,69 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) hiddenRecoverAdvance('dash');
               } else if (st === 'laser-recover') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) hiddenRecoverAdvance('laser');
+              } else if (st === 'wheel-windup') {
+                // ★紫の車輪(research/MIMIR_WHEEL.md): 溜め=静止。予告線は描画が mimirWheelSpokeAngle で回す(判定と同じ式)。
+                bs.vx = 0; bs.vy = 0;
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'wheel-fire';
+                  patch.bossStateUntil = newGameTime + HB_MI.wheel.fireMs;
+                  playSfx('heavy-impact');
+                  useGameStore.getState().triggerShake(HB_MI.wheel.fireMs, HB_MI.laser.shakeMag * 0.6);
+                }
+              } else if (st === 'wheel-fire') {
+                // 6本の紫レーザー(中心=今のボスの中心)。どれかの帯(線分±半太さ)に居れば継続ダメージ(i-frameで間引く)。
+                const W = HB_MI.wheel;
+                bs.vx = 0; bs.vy = 0;
+                const tW = newGameTime - (boss.mimirWheelAt ?? newGameTime);
+                const th0 = boss.mimirWheelTheta0 ?? 0, wdir = boss.mimirWheelDir ?? 1;
+                const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
+                const prr = Math.max(player.width, player.height) / 2;
+                let hitDone = false;
+                for (let k = 0; k < Math.max(1, Math.round(W.spokes)); k++) {
+                  const ang = mimirWheelSpokeAngle(th0, wdir, k, tW, W);
+                  const ux = Math.cos(ang), uy = Math.sin(ang);
+                  const ex = bcx + ux * MIMIR_LASER_RANGE, ey = bcy + uy * MIMIR_LASER_RANGE;
+                  if (!hitDone) {
+                    const tproj = Math.max(0, Math.min(MIMIR_LASER_RANGE, (ppx - bcx) * ux + (ppy - bcy) * uy));
+                    const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
+                    if (Math.hypot(ppx - cxp, ppy - cyp) <= W.halfWidth + prr) {
+                      hitDone = true;
+                      // 1本の通過で当たるのは1回(近くでは1本が1秒以上かけて通るので、無敵明けにもう1回、を作らない)。
+                      const again = boss.mimirWheelLastHitK === k && newGameTime - (boss.mimirWheelLastHitAt ?? -1e9) < W.fireMs;
+                      if (!again) {
+                        const died = damagePlayer(W.damage, 'ミーミルの回る光輪', cxp, cyp, undefined, undefined, 'mimir-wheel');
+                        if (died) triggerPlayerDeath(ppx, ppy);
+                        patch.mimirWheelLastHitK = k; patch.mimirWheelLastHitAt = newGameTime;
+                      }
+                    }
+                  }
+                  applyGhostAllyCapsuleHit(bcx, bcy, ex, ey, W.halfWidth, W.damage, (x, y) => spawnBurst(x, y, '#d8b4fe', 3), 'capsule:mimir-wheel');
+                }
+                // 変化(HP60%以下で始まった回): 追跡弾。赤い二重丸(カウンター可)。追跡は相手がプレイヤーの時だけ(守護霊へは直進)。
+                if (boss.mimirWheelHoming) {
+                  // 撃つ時刻は発射の頭(=溜めの頭+windupMs・ノックバックで繰り下がる)からの mimirWheelShotOffsetMs。
+                  const fireAt = (boss.mimirWheelAt ?? newGameTime) + W.windupMs;
+                  let k = boss.mimirWheelShots ?? 0;
+                  let shots = 0;
+                  while (shots < 2 && fireAt + mimirWheelShotOffsetMs(k, W.homing) <= newGameTime
+                    && mimirWheelShotOffsetMs(k, W.homing) < W.fireMs) {
+                    const aim = lockedAttackAim();
+                    const pr = createEnemyProjectile(boss, player, aim.x, aim.y, undefined, undefined, { speed: W.homing.speed, damage: W.homing.damage });
+                    addProjectile({
+                      ...pr, duration: W.homing.lifeMs,
+                      ...(aim.side === 'player' ? { hostileHomingTurn: W.homing.turnRadS, hostileHomingUntil: Date.now() + W.homing.homingMs } : {}),
+                    });
+                    k++; shots++;
+                  }
+                  if (shots > 0) playSfx('shoot', 0.35, undefined, 0.75);
+                  patch.mimirWheelShots = k;
+                }
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  patch.bossState = 'wheel-recover';
+                  patch.bossStateUntil = newGameTime + choreographyRecoverMs(W.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
+                }
+              } else if (st === 'wheel-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) hiddenRecoverAdvance('wheel');
               } else if (st === 'skadi-ice-recover') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) hiddenRecoverAdvance('ice');
               } else if (st === 'skadi-blade-recover') {
@@ -7600,9 +7684,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   formedNow++;
                 }
                 if (formedNow > 0) playSfx('skadi-ice', 0.4, undefined, 1.0);
+                // 輪ごとに、最初の牙が飛び出す瞬間に1回だけ鳴らす(輪が進むほど高く=乱数で鳴らさない・凍C#13)。
+                const sweepSfx = rings.some(r => {
+                  const L = jormFreezeLaunchOffsetMs(0, F);
+                  return r.ids.length > 0 && newGameTime - r.emitAt >= L && newGameTime - r.emitAt - deltaTime * 1000 < L;
+                });
                 // 凍った牙の飛び出し(時計回りに順番)と加速。反射された弾(もう敵弾ではない)は触らない。
                 const tvx = tNow.side === 'player' ? player.vx : 0, tvy = tNow.side === 'player' ? player.vy : 0;
-                const upd = new Map<string, { speed: number; aim?: boolean; lead?: boolean }>();
+                const upd = new Map<string, { speed: number; aim?: boolean; lead?: boolean; flying?: boolean }>();
                 let launchedNow = 0;
                 for (const r of rings) {
                   if (r.ids.length === 0) continue;
@@ -7615,7 +7704,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       launchedNow++;
                       upd.set(id, { speed: fs.speed, aim: true, lead: i % 2 === 1 });
                     } else {
-                      upd.set(id, { speed: fs.speed });
+                      upd.set(id, { speed: fs.speed, flying: r.launched[i] });
                     }
                   });
                 }
@@ -7631,11 +7720,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                         const ang = Math.atan2(ap.y - py0, ap.x - px0) + (Math.random() * 2 - 1) * F.spread;
                         return { ...pr, speed: u.speed, direction: { x: Math.cos(ang), y: Math.sin(ang) } };
                       }
-                      return pr.speed === u.speed ? pr : { ...pr, speed: u.speed };
+                      // 飛び出した牙は減速させない(ノックバック停止で時計がずれても空中で止まらない・検収監査 A-2)。
+                      const sp = u.flying ? Math.max(pr.speed, u.speed) : u.speed;
+                      return pr.speed === sp ? pr : { ...pr, speed: sp };
                     }),
                   }));
                 }
-                if (launchedNow > 0 && Math.random() < 0.35) playSfx('skadi-ice', 0.3, undefined, 1.3);
+                if (sweepSfx && launchedNow > 0) {
+                  const ringNo = Math.max(...rings.map(r => r.ring));
+                  playSfx('skadi-ice', 0.42, undefined, 1.1 + 0.15 * ringNo);
+                }
                 // 全部飛んで加速し切った輪は手放す(以後はふつうの弾として飛ぶ)。
                 const doneT = F.formMs + F.holdMs + F.sweepMs + F.accMs;
                 rings = rings.filter(r => newGameTime - r.emitAt <= doneT);

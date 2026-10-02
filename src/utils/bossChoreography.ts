@@ -42,6 +42,7 @@ const SCRIPTS: Record<Exclude<ChoreographyBoss, 'giant' | 'glen'>, Record<string
   mimir: {
     dash: ['dash', 'bite', 'burst'], bite: ['bite', 'burst', 'laser'],
     radial: ['radial', 'laser', 'dash'], burst: ['burst', 'dash', 'bite'], laser: ['laser', 'dash', 'bite'],
+    wheel: ['wheel', 'dash', 'bite'], // research/MIMIR_WHEEL.md: 回り終わって離れた相手へ突進→噛みつき
   },
   jormungand: {
     dash: ['dash', 'coil', 'burst'], coil: ['coil', 'burst', 'radial'],

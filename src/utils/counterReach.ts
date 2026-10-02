@@ -162,6 +162,7 @@ export const COUNTER_REACH_DECL: Readonly<Record<string, CounterReachKind>> = {
   'hidden:dash-recover': 'body',
   'hidden:laser-windup': 'body',          // レーザーは紫だが「発射直前だけ体当てで壊せる」専用機構(§6.33)
   'hidden:laser-recover': 'body',
+  'hidden:wheel-recover': 'body',         // 紫の車輪の硬直(溜め/発射は紫=カウンター不可=載せない)
   'hidden:bite-windup': 'circle',         // ミーミル 群体の噛みつき=自分中心円 r=216(監査 B-3)
   'hidden:bite-recover': 'body',
   'hidden:coil-windup': 'band',           // ヨルムンガルド うねり=帯 310×40(監査 B-2)
@@ -253,6 +254,7 @@ export const HIDDEN_COUNTER_WINDUP_STATES: readonly string[] = [
 ];
 export const HIDDEN_COUNTER_RECOVER_STATES: readonly string[] = [
   'burst-recover', 'radial-recover', 'dash-recover', 'laser-recover',
+  'wheel-recover', // ミーミルの紫の車輪(research/MIMIR_WHEEL.md)。溜め/発射は紫=カウンター不可なので載せない
   'skadi-ice-recover', 'skadi-blade-recover', 'bite-recover', 'coil-recover', 'cage-recover',
   // ★v0.25.3780(§8-2): トールの硬直(従来どおり「体の重なり」で成立=宣言は 'body')。
   'issen-recover', 'tsuki-recover', 'harai-recover', 'jump-recover', 'thor-dash-recover',

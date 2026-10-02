@@ -37,6 +37,7 @@ export const MOVE_REACTION_KEYS = [
   // 出せなかった。状態名は各ボスの状態機械から全数を洗って対応させる(下の *_STATE_TO_MOVE)。
   // 裏ボス3体(useGameLoop.ts)。burst/radial は弾台帳に既出なのでここには入れない。
   'mimir-bite', 'mimir-laser', 'mimir-dash',
+  'mimir-wheel', // research/MIMIR_WHEEL.md: 紫の車輪(回る全方位レーザー)
   'jormungand-coil', 'jormungand-dash',
   'jormungand-slam', // research/JORM_DANMAKU.md: 弾幕の導入=叩きつけ(2連/3連の全段を1つの技へ)
   'skadi-ice', 'skadi-blade', 'skadi-cage', 'skadi-dash',
@@ -84,6 +85,7 @@ export const MOVE_REACTION_KEYS = [
 // ※弾を撃たない技(acrasielのburst=自己中心の爆発、rafiの骨=別エンティティ)は**入れない**。
 export const BULLET_MOVE_KEYS = [
   'mimir-burst', 'mimir-radial',
+  'mimir-wheel-shot', // research/MIMIR_WHEEL.md: 紫の車輪の変化(HP60%以下)で撃つ追跡弾
   'jormungand-burst', 'jormungand-radial',
   'jormungand-wave', 'jormungand-rain', // research/JORM_DANMAKU.md: 弾幕A(波と粒の境界)/弾幕B(降り注ぐ星弓)
   'jormungand-freeze', // §10: 弾幕C(凍てつく牙)
@@ -168,6 +170,7 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
     'laser-windup': 'mimir-laser', 'laser-fire': 'mimir-laser', 'laser-recover': 'mimir-laser',
     'laser-broken': 'mimir-laser', // §6.33: 中断硬直もレーザーの一フェーズ(掟: 全フェーズを同じキーへ)
     'dash-windup': 'mimir-dash', dash: 'mimir-dash', 'dash-recover': 'mimir-dash',
+    'wheel-windup': 'mimir-wheel', 'wheel-fire': 'mimir-wheel', 'wheel-recover': 'mimir-wheel',
   },
   jormungand: {
     'coil-windup': 'jormungand-coil', coil: 'jormungand-coil', 'coil-recover': 'jormungand-coil',
@@ -286,6 +289,7 @@ const BULLET_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<stri
   mimir: {
     'aim-burst': 'mimir-burst', burst: 'mimir-burst', 'burst-recover': 'mimir-burst',
     'aim-radial': 'mimir-radial', radial: 'mimir-radial', 'radial-recover': 'mimir-radial',
+    'wheel-fire': 'mimir-wheel-shot',
   },
   jormungand: {
     'aim-burst': 'jormungand-burst', burst: 'jormungand-burst', 'burst-recover': 'jormungand-burst',

@@ -106,6 +106,16 @@ export interface HiddenMimirTuning extends HiddenSharedHolder {
   /** 弾3連/全方位の硬直(ボスごとに違う値なのでボス別に持つ)。 */
   burstRecover: number;
   radialRecover: number;
+  /**
+   * ★紫の車輪(research/MIMIR_WHEEL.md・社長指示2026-10-02): 体の中心から spokes 本の紫レーザーを放射状に撃ち、ゆっくり回す
+   * (溜めで 0→omegaWindup、発射の頭 rampMs で omegaMax、最後の decelMs で 0 へ=慣性)。halfWidth=1本の半太さ。
+   * homing=フェーズ2(HP60%以下)だけ、発射中に撃つ追跡弾(赤い二重丸・カウンター可)。
+   */
+  wheel: {
+    windupMs: number; fireMs: number; spokes: number; halfWidth: number; damage: number;
+    omegaWindup: number; omegaMax: number; rampMs: number; decelMs: number; recover: number; cdMs: number;
+    homing: { startMs: number; pairGapMs: number; restMs: number; speed: number; turnRadS: number; homingMs: number; lifeMs: number; damage: number };
+  };
 }
 
 export const HIDDEN_MIMIR_TUNING: HiddenMimirTuning = {
@@ -114,6 +124,15 @@ export const HIDDEN_MIMIR_TUNING: HiddenMimirTuning = {
   bite: { windup: 700, recover: withRecoverFloor(800), cdMs: 6000 },
   burstRecover: withRecoverFloor(300),
   radialRecover: withRecoverFloor(500),
+  // 隙間: 体の縁(112px)で 2π·112/6−44−28 = 45px。歩いて追いつける半径 104.4/0.42 ≈ 250px(テストで固定)。
+  wheel: {
+    windupMs: 1500, fireMs: 5000, spokes: 6, halfWidth: 22, damage: 30,
+    // cdMs は溜めの頭から数える(溜め+発射≈6.5秒ぶんを含む=撃ち終わってから約13秒)。潰されても CD は残る。
+    omegaWindup: 0.10, omegaMax: 0.42, rampMs: 900, decelMs: 600, recover: withRecoverFloor(900), cdMs: 20000,
+    // 追跡弾は「2連(間250ms=1振りで2つ返せる間合い)→休み1500ms」の組。旋回 0.75rad/s=約140px手前から横へ切れば外れる(テストで固定)。
+    // 威力はレーザーと同じ(弾をわざと受けて無敵の間にレーザーを横切る、を得にしない)。
+    homing: { startMs: 500, pairGapMs: 250, restMs: 1500, speed: 170, turnRadS: 0.75, homingMs: 2200, lifeMs: 5000, damage: 30 },
+  },
 };
 
 // =================================================================================================
