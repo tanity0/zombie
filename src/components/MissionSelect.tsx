@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal as createReactPortal } from 'react-dom';
 import './commandHome.css';
 import { COMMAND_UI_ENABLED, REGION_ART } from '../config/uiDesign';
+import { useHudPortalRoot } from './HudScale';
 
 // ポータルも同じテーマを継承。ラッパーは含有ブロックを作るCSSを持たない。
 const createPortal = (children: React.ReactNode, container: Element | DocumentFragment, key?: string | null) =>
@@ -282,11 +283,14 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
     // safe-areaは外周paddingのまま(帯・罫はパネル幅いっぱいでモックの計器感は成立)。
     // ★禁止プロパティ(監査A-3): このラッパー以下の祖先に transform/filter/backdrop-filter/
     // contain/will-change を付けない(glass-panelも使わない)=fixedモーダル2種が全画面に出る。
+    // ※PC の横長では App の HudScale(transform: scale)がこの外側の祖先になる=fixed の基準はゲームの枠。これは設計どおり
+    //   (小窓のポータル先も useHudPortalRoot で同じ包みの中・research/PC_SUPPORT.md 段3-2)。外さないこと。
     // 内容列は max-width 420px 中央寄せ(監査B-8: モック=340px電話判の構図保持)。
     // 縦に入らない端末(監査B-6)はパネル内スクロールを許容(overflow-y-auto)。
     <div
       data-screen={testScreen}
-      className={`screen-in ds-home relative h-full w-full flex flex-col items-center justify-start overflow-hidden ${COMMAND_PREVIEW && loadout ? 'command-shell' : ''}`}
+      // 横長(PC)はスマホのホームバー避けの下余白(40px)を持ち込まない=盤の上下を揃える(クリエイティブ監査 #13)。
+      className={`screen-in ds-home relative h-full w-full flex flex-col items-center justify-start overflow-hidden landscape:!pb-4 ${COMMAND_PREVIEW && loadout ? 'command-shell' : ''}`}
       style={{
         maxHeight: 'calc(100svh / var(--hud-s, 1))',
         paddingTop: 'max(env(safe-area-inset-top), 16px)',
@@ -301,7 +305,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
           常に固定で、ブラウザのページスクロール感を出さない。 */}
       {/* PC横長(PC_SUPPORT.md 段3-2): ホームだけ2列(左=計器と出撃/右=行リスト)にするので列を広げる。
           スマホは横向きを塞いでいる(OrientationGuard)ので landscape: はPCだけに効く。 */}
-      <div className={`relative h-full w-full overflow-hidden ${loadout ? '' : 'landscape:!max-w-[880px]'}`} style={{ maxWidth: COMMAND_PREVIEW && loadout ? 1180 : 420 }}>{children}</div>
+      <div className={`relative h-full w-full overflow-hidden ${loadout ? '' : 'landscape:!max-w-[1080px]'}`} style={{ maxWidth: COMMAND_PREVIEW && loadout ? 1180 : 420 }}>{children}</div>
     </div>
   ) : COMMAND_UI_ENABLED ? (
     <div data-screen={testScreen} className="command-page-shell h-full w-full flex flex-col items-center overflow-hidden" style={{
@@ -489,6 +493,8 @@ const testScreenIdFor = (name: Screen['name']): TestScreenId => {
 };
 
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen, onStartPractice }) => {
+  // 小窓のポータル先: PC の拡大の包みの中(包みの外=body)。fixed の基準も包み=ゲームの枠になる(段3-2 品質監査 A-2)。
+  const portalRoot = useHudPortalRoot();
   const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
 
   // ★テストブリッジ(TEST_HANDOFF/REQUEST-devbridge.md A)へ今の枝を報告する。
@@ -771,30 +777,45 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             (上段/飾り計器/マップ/出撃)とフッタは**固定**。スクロールするのは行リスト領域
             (ds-rows・flex-1)だけで、通常の端末では行も全部収まる=何もスクロールしない。
             短い可視域(iPhone SE級・監査B-6)でも動くのはリストだけ。入り=menu-item-inカスケード(監査B-7)。 */}
-        {/* PC横長(段3-2): 縦720では行リストが入り切らずスクロールになる → 2列を上下中央に置く。
-            左=上段/マップ/出撃/フッタ、右=行リスト(全行が入る)。縦持ちは列の箱を display:contents で
-            消して従来の1列のまま(フッタは order-last で行リストの下へ)。 */}
-        <div className="flex h-full w-full flex-col landscape:flex-row landscape:items-center landscape:gap-x-10" style={{ padding: '10px 12px' }}>
-          <div className="contents landscape:flex landscape:min-w-0 landscape:flex-1 landscape:flex-col">
+        {/* PC横長(段3-2・クリエイティブ監査 #1〜#4/#9〜#11): 上段(OPERATIONS ROOM/G)とフッタは盤の上辺・下辺に全幅で取り付き、
+            その間に2列(左=マップ/出撃・右=行リスト)を上辺を揃えて上下中央に置く。縦720の1列では行リストが入り切らなかった。
+            縦持ちは列の箱を display:contents で消して従来の1列のまま(DOM の順=上から下)。 */}
+        <div className="flex h-full w-full flex-col" style={{ padding: '10px 12px' }}>
           <div className="ds-top menu-item-in" style={{ animationDelay: '0ms' }}>
             <span className="ds-top-big gt-emboss">OPERATIONS ROOM</span>
             {/* 実データが引ける物だけ実値(§3-0): G=goldBalance。RANK等の嘘の数字は出さない。 */}
             <span>G <span className="ds-top-v">{goldBalance.toLocaleString()}</span></span>
           </div>
-          {showDay && <div className="ds-deco menu-item-in" style={{ animationDelay: '25ms' }}>
-            <span>DAY {nextStage.day}</span>
-          </div>}
-          <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
-            <DsContourMap stageId={nextStage?.id ?? 'stage-tutorial'} sectorLabel={nextStage?.locationTitle ?? '—'} />
+          <div className="contents landscape:my-auto landscape:flex landscape:min-h-0 landscape:items-start landscape:gap-x-14">
+            <div className="contents landscape:flex landscape:min-w-0 landscape:flex-[58] landscape:flex-col">
+              {showDay && <div className="ds-deco menu-item-in" style={{ animationDelay: '25ms' }}>
+                <span>DAY {nextStage.day}</span>
+              </div>}
+              <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
+                <DsContourMap stageId={nextStage?.id ?? 'stage-tutorial'} sectorLabel={nextStage?.locationTitle ?? '—'} />
+              </div>
+              {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
+                  サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
+                  =マップのSECTORタグが同じ情報を持つため重複)。 */}
+              <button type="button" data-testid="ops-sortie" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goStageSelect}>
+                <span className="ds-sortie-t1 block">出 撃</span>
+                <PixelIcon name="chevron-right" size={18} />
+              </button>
+            </div>
+            {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。
+                続き矢印は作戦室色=アンバー。 */}
+            <NoBounceScroller className="ds-home-rows flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar landscape:max-h-full landscape:min-w-0 landscape:flex-[42]" style={{ touchAction: 'pan-y' }} moreColor="rgba(255, 179, 64, 0.85)">
+              <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
+              {dsRow('装備', 'LOADOUT', '銃 / サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
+              {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
+              {dsRow('開発施設', 'R&D', 'スキル / サブ解放', () => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }, 175)}
+              <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
+              {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
+              {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
+              {dsRow('変異体対策室', 'DRILLS', 'ボス再戦・演習', goBossRush, 275)}
+            </NoBounceScroller>
           </div>
-          {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
-              サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
-              =マップのSECTORタグが同じ情報を持つため重複)。 */}
-          <button type="button" data-testid="ops-sortie" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goStageSelect}>
-            <span className="ds-sortie-t1 block">出 撃</span>
-            <PixelIcon name="chevron-right" size={18} />
-          </button>
-          <div className="ds-foot menu-item-in order-last landscape:order-none landscape:!mt-8" style={{ animationDelay: '300ms' }}>
+          <div className="ds-foot menu-item-in landscape:!mt-0" style={{ animationDelay: '300ms' }}>
             <button
               type="button"
               className="ds-foot-options"
@@ -805,19 +826,6 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </button>
             <span>SYSTEM v{__APP_VERSION__}</span>
           </div>
-          </div>
-          {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。
-              続き矢印は作戦室色=アンバー。 */}
-          <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar landscape:max-h-full landscape:min-w-0 landscape:flex-none landscape:basis-[calc(50%-20px)]" style={{ touchAction: 'pan-y' }} moreColor="rgba(255, 179, 64, 0.85)">
-            <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
-            {dsRow('装備', 'LOADOUT', '銃 / サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
-            {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
-            {dsRow('開発施設', 'R&D', 'スキル / サブ解放', () => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }, 175)}
-            <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
-            {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
-            {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
-            {dsRow('変異体対策室', 'DRILLS', 'ボス再戦・演習', goBossRush, 275)}
-          </NoBounceScroller>
         </div>
         {renderHomeNotices()}
       </>
@@ -1711,7 +1719,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         </div>
         {/* 資料本文モーダル(既存GameOverScreenの回収資料モーダルと同トーン=glass-panel・金色明朝見出し)。
             v0.25.2146(社長報告「スクロール中はその場に出ない」): menu-stagger等のtransform祖先の中では
-            fixedが画面基準にならずページ上部に張り付くため、他モーダルと同じくbody直下へポータル。 */}
+            fixedが画面基準にならずページ上部に張り付くため、他モーダルと同じくbody直下へポータル。
+            ※段3-2: ポータル先は useHudPortalRoot(スマホ=body / PC=拡大の包みの直下=枠いっぱい・拡大つき)。 */}
         {openRecord && createPortal(
           <div
             className="fixed inset-0 z-50 flex items-center justify-center px-3"
@@ -1745,7 +1754,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               </div>
             </NoBounceScroller>
           </div>,
-          document.body
+          portalRoot
         )}
         {/* 操作記録の本文(社長指示v0.25.2252)。ゲーム中のポップアップと同じ台帳(src/data/tutorials.ts)を
             引くので、文章は常に一致する。挿絵(img)があれば同じものを出す。 */}
@@ -1802,7 +1811,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               </div>
             </NoBounceScroller>
           </div>,
-          document.body
+          portalRoot
         )}
       </>
     );
@@ -1890,7 +1899,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <GhostCommentSettings />
       </div>
       {/* §2.15 置き場所の訂正③: 同行者の名前タップ→ビルド/ステータスのポップアップ。
-          他のモーダルと同じくbody直下へポータル(menu-stagger等のtransform祖先の影響を受けないため)。 */}
+          他のモーダルと同じくbody直下へポータル(menu-stagger等のtransform祖先の影響を受けないため)。
+          ※段3-2: ポータル先は useHudPortalRoot(スマホ=body / PC=拡大の包みの直下)。 */}
       {openAlly && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
@@ -1909,7 +1919,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </div>
           </NoBounceScroller>
         </div>,
-        document.body
+        portalRoot
       )}
     </>
   );
@@ -2283,6 +2293,7 @@ const BURST_FX: Record<SkillRarity, BurstCfg> = {
 const lvText = (key: SkillKey, level: number): string => (level >= skillMaxLevel(key) ? 'MAX' : `Lv${level}`);
 
 const SkillGacha: React.FC = () => {
+  const portalRoot = useHudPortalRoot(); // 演出のポータル先(PC の拡大の包みの中・段3-2 品質監査 A-2)
   // 毎フレーム購読しない: プリミティブ/派生のみ購読(CLAUDE.md React再レンダー規律)。
   const goldBalance = useGameStore(s => s.goldBalance);
   const ownedCount = useGameStore(s => s.ownedSkills.length);
@@ -2420,7 +2431,7 @@ const SkillGacha: React.FC = () => {
             })}
           </div>
         </div>,
-        document.body
+        portalRoot
       );
     }
   }
@@ -2573,7 +2584,7 @@ const SkillGacha: React.FC = () => {
           )}
         </div>
       </div>,
-      document.body
+      portalRoot
     );
   }
 
@@ -2635,7 +2646,7 @@ const SkillGacha: React.FC = () => {
           {noGold && <p className="text-[11px] text-rose-300">ゴールドが足りません。</p>}
         </div>
       </div>,
-      document.body
+      portalRoot
     );
   }
 

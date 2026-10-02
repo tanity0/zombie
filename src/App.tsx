@@ -595,7 +595,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     <HudScaleProvider value={menuScale}>
     <div data-screen={appScreenId ?? undefined} className={`relative w-full h-full bg-gray-900 text-white ${COMMAND_UI_ENABLED ? 'command-ui' : ''}`}>
       {!bare && gameState === 'title' && (
-        <TitleScreen
+        // PC の横長: タイトルの文字物(START・四隅のボタン・更新情報)もホームと同じ倍率に揃える(段3-2 品質 A-3/クリエイティブ #6)。
+        <HudScale z={0} interactive><TitleScreen
           onStart={() => { unlockDanceAudio(); setBgmScene('menu'); }} // タップ瞬間にBGM解禁
           // 更新情報OK直後にオープニングを再生(社長指示v0.25.2022)。音声はOKのジェスチャで解禁し、
           // メニューBGMはオープニング終了後(onDone)に開始=OP中のアリーナ音源と被らない。
@@ -604,7 +605,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
           onNoticeOk={() => { setBgmScene('off'); unlockDanceAudio(); primeMenuBgm(); setShowOpening(true); }}
           waitForAssets={ensurePreload}                                // 同意後の本物ローディング(完了待ち)
           onDone={() => setGameState('menu')}                          // 暗転し切ったらセレクトへ
-        />
+        /></HudScale>
       )}
 
       {!bare && gameState === 'menu' && (

@@ -6,6 +6,7 @@
 // - ルート・マーカー・ラベルは固定(監査A-9: シードで動かすとラベルの接続線が何も指さなくなる)。
 // - `?dsmap=0` でマップ非表示(切り分け用・LowHpVignette.tsx:5と同型のモジュール定数)。
 import React, { useEffect, useRef } from 'react';
+import { useHudScale } from './HudScale';
 import {
   CONTOUR_BAND_EPS, CONTOUR_H, CONTOUR_STEP, CONTOUR_THRESHOLDS, CONTOUR_W,
   contourField, contourHills,
@@ -18,12 +19,18 @@ const DS_MAP_DISABLED = typeof window !== 'undefined'
 // ラベルの固定px位置は旧箱で校正されていたので、丘の目印(threat=H*0.42/goal=H*0.72)からの
 // オンスクリーン座標(canvas座標×箱の縦スケール)を再計算し、旧箱での余白(29px/8px)を保つ。
 const CONTOUR_H_STRETCH_BOX = 210;
-const CONTOUR_BOX_SCALE = CONTOUR_H_STRETCH_BOX / CONTOUR_H;
-const THREAT_LABEL_TOP = Math.round(CONTOUR_H * 0.42 * CONTOUR_BOX_SCALE - 29);
-const GOAL_LABEL_BOTTOM = Math.round(CONTOUR_H_STRETCH_BOX - CONTOUR_H * 0.72 * CONTOUR_BOX_SCALE + 8);
+// 段3-2: 箱の高さが変わっても丘の目印に付いていくよう、割合+固定余白で持つ(210箱で旧値と一致: top=0.42·210−29=59 / bottom=0.28·210+8≈67)。
+const THREAT_TOP_FRAC = 0.42;
+const THREAT_TOP_PAD = 29;
+const GOAL_FRAC = 0.72;
+const GOAL_BOTTOM_PAD = 8;
 
 const DsContourMap: React.FC<{ stageId: string; sectorLabel: string }> = ({ stageId, sectorLabel }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // PC の横長(HUD の倍率>1)だけ、バッキングを端末pxへ合わせて描く(632×300 を 1.5〜2倍の箱へ引き伸ばすと点描が滲む=段3-2 監査 #8)。
+  // スマホは倍率1=従来どおり 632×300(「拡縮で馴染む」判断はスマホの小箱のもの)。座標系は ctx の拡大で 632×300 のまま=定数はそのまま。
+  const hudS = useHudScale();
+  const res = hudS > 1 ? Math.min(3, Math.max(2, Math.ceil(hudS * (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)))) : 1;
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
@@ -32,6 +39,7 @@ const DsContourMap: React.FC<{ stageId: string; sectorLabel: string }> = ({ stag
     const W = CONTOUR_W;
     const H = CONTOUR_H;
     const field = contourField(contourHills(stageId));
+    ctx.setTransform(res, 0, 0, res, 0, 0);
     ctx.clearRect(0, 0, W, H);
     // マーチングスクエア風の簡易等高線(サンプリング+しきい値の縁を点描・モック原典のまま)。
     for (let li = 0; li < CONTOUR_THRESHOLDS.length; li++) {
@@ -73,7 +81,7 @@ const DsContourMap: React.FC<{ stageId: string; sectorLabel: string }> = ({ stag
     dot(W * 0.08, H * 0.86, 'you');
     dot(W * 0.66, H * 0.42, 'threat');
     dot(W * 0.82, H * 0.72, 'goal');
-  }, [stageId]);
+  }, [stageId, res]);
   if (DS_MAP_DISABLED) return null;
   // クリエイティブ監査第2回・第2手 B-4: 箱を約1.4倍(150→210px)に伸ばして空白を埋める(.ds-mapの
   // height:150pxはindex.css側=編集不可のCSSファイルなので、ここでinline styleで上書きする)。
@@ -82,14 +90,16 @@ const DsContourMap: React.FC<{ stageId: string; sectorLabel: string }> = ({ stag
   // 相対位置を再計算しておく(見た目だけの調整・当たり判定等には無関係)。
   const MAP_BOX_H = Math.round(CONTOUR_H_STRETCH_BOX);
   return (
-    <div className="ds-map" style={{ height: MAP_BOX_H }}>
-      <canvas ref={canvasRef} width={CONTOUR_W} height={CONTOUR_H} />
+    // PC の横長: 列が広い(約580)ので箱を原寸の縦横比(632×300)まで伸ばす(210のままだと横長に潰れる)。ラベルは箱の高さの割合で置く
+    // (下の calc は旧 THREAT_LABEL_TOP/GOAL_LABEL_BOTTOM と 210 で同じ値)。縦の短い窓では箱を縮めて出撃とフッタを枠に残す(品質監査 B-3)。
+    <div className="ds-map landscape:!h-[clamp(120px,calc(100svh/var(--hud-s,1)_-_250px),275px)]" style={{ height: MAP_BOX_H }}>
+      <canvas ref={canvasRef} width={CONTOUR_W * res} height={CONTOUR_H * res} />
       <span className="ds-map-tag">SECTOR — {sectorLabel}</span>
       {/* ラベル2つ=DOM固定位置・確定文字列(監査A-10)。 */}
-      <span className="ds-map-label" style={{ right: 14, top: THREAT_LABEL_TOP }}>変異体 目撃地点<i>THREAT REPORT</i></span>
+      <span className="ds-map-label" style={{ right: 14, top: `calc(${THREAT_TOP_FRAC * 100}% - ${THREAT_TOP_PAD}px)` }}>変異体 目撃地点<i>THREAT REPORT</i></span>
       {/* bottom = ◆(goal・H*0.72)の少し上に置く(旧150px箱でのbottom:50=8pxの余白を維持)。旧 bottom:22 は
           ◆がラベル1文字目に重なっていた(クリエイティブ監査2026-09-11 #1「『の』が壊れて見える」の正体)。 */}
-      <span className="ds-map-label" style={{ right: 26, bottom: GOAL_LABEL_BOTTOM }}>次の目標<i>SURVEY POINT</i></span>
+      <span className="ds-map-label" style={{ right: 26, bottom: `calc(${(1 - GOAL_FRAC) * 100}% + ${GOAL_BOTTOM_PAD}px)` }}>次の目標<i>SURVEY POINT</i></span>
     </div>
   );
 };

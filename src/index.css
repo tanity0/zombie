@@ -749,8 +749,20 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   inset: 0;
   pointer-events: none;
   opacity: 0.35;
-  background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255, 255, 255, 0.012) 3px 4px);
+  /* PC の拡大(--hud-s=1.25/1.5)の中でも端末px で4px周期を保つ(割らないと 5/6px 周期でモアレ=クリエイティブ監査 #7)。スマホは未定義=1。 */
+  background: repeating-linear-gradient(0deg, transparent 0 calc(3px / var(--hud-s, 1)), rgba(255, 255, 255, 0.012) calc(3px / var(--hud-s, 1)) calc(4px / var(--hud-s, 1)));
 }
+/* PC横長のホーム(段3-2): 2列の上辺を揃える(右列の最初の見出しの上余白を消してマップの上端に合わせる)/
+   入りの順は左列と右列を並走(出撃が右列の後に来て目が左右を往復しない=クリエイティブ監査 #2/#11)/ マウスの反応(#12)。 */
+@media (orientation: landscape) {
+  .ds-home-rows > .ds-glabel:first-child { margin-top: 0; }
+  .ds-home .ds-map { margin-top: 0; }
+  .ds-home .ds-sortie.menu-item-in { animation-delay: 100ms !important; }
+}
+.ds-sortie { transition: filter 160ms cubic-bezier(.2,.7,.3,1), box-shadow 160ms cubic-bezier(.2,.7,.3,1); }
+.ds-sortie:hover { filter: brightness(1.08); box-shadow: inset 0 1px 0 rgba(255,244,214,.75), inset 0 -2px 0 rgba(80,45,8,.35), 0 0 18px rgba(255,179,64,.18); }
+.ds-foot-options { transition: color 160ms ease-out; }
+.ds-foot-options:hover { color: var(--ds-ink); }
 
 /* 上段: OPERATION ROOM + G(実値)。 */
 .ds-top {

@@ -354,7 +354,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
         draggable={false}
         // PC の横長: 絵(1672×941=ほぼ16:9)を画面いっぱいに敷く(正方形に切ってから拡大するとロゴの上が切れる・research/PC_SUPPORT.md 段3)。
         className="pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover landscape:!h-full landscape:!w-full landscape:!aspect-auto"
-        style={{ width: 'min(150vw, 150svh)' }}
+        style={{ width: 'min(calc(150vw / var(--hud-s, 1)), calc(150svh / var(--hud-s, 1)))' }}
       />
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
 
@@ -370,7 +370,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           読む機会が無かった。落ちた直後に**最初に見る画面**がここなので、ここへ出す。
           記録が無い初回は何も出ない。 */}
       {phase === 'title' && !showNotice && prevBeatText() && (
-        <div className="absolute bottom-12 left-3 max-w-[92vw] pointer-events-none">
+        <div className="absolute bottom-12 left-3 max-w-[calc(92vw/var(--hud-s,1))] pointer-events-none">
           <span className="px-2 py-1 text-[9px] leading-tight tabular-nums text-purple-200/55" style={{ fontFamily: 'var(--game-font), sans-serif' }}>
             前回最後 {prevBeatText()}
           </span>
@@ -396,7 +396,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
 
       {/* クラッシュ診断: 前回セッション末尾の状態(社長報告のスマホ真っ白現象の手がかり用・読むだけ)。 */}
       {heartbeatLine && (
-        <span className="absolute top-16 right-3 max-w-[92vw] px-2 py-0.5 text-[9px] tabular-nums text-purple-200/45" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.6), rgba(9,8,14,0.1))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}>
+        <span className="absolute top-16 right-3 max-w-[calc(92vw/var(--hud-s,1))] px-2 py-0.5 text-[9px] tabular-nums text-purple-200/45" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.6), rgba(9,8,14,0.1))', borderLeft: '2px solid rgba(168,85,247,0.4)' }}>
           {heartbeatLine}
         </span>
       )}
@@ -447,7 +447,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       {/* タイトル(the ONE): STARTタップ待機 */}
       {phase === 'title' && !showNotice && (
         <div
-          className="absolute inset-x-0 flex flex-col items-center"
+          // PC の横長: 絵が全面なので下13%は人物の脚の間に刺さる → 足元の影の帯まで下げる(段3-2 クリエイティブ監査 #14)。
+          className="absolute inset-x-0 flex flex-col items-center landscape:!bottom-[3%]"
           style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 12%), 13%)' }}
         >
           {/* クリーンな START: 細い紫ヘアラインを上下に添えるだけ(発光は控えめ)。 */}

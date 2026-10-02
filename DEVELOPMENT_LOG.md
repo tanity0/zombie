@@ -1,8 +1,19 @@
 # Development Log
 
+## v0.25.4782 — PC版対応 段3-2(前半): 品質監査・クリエイティブ監査の反映【2026-10-03 01:23 JST】
+- 品質監査(Fable 5.1) (A)3: ①`HudScale` が倍率1で Fragment・それ以外で div → 窓のリサイズで段を跨ぐと子が作り直され、結果画面のゴールド二重加算/メニューがホームへ戻る
+  → 常に同じ div(倍率1は `display:contents`)。実画: 強化画面で 1080→990 にリサイズしても強化画面のまま。②`document.body` へのポータル6箇所(資料/操作記録/守護霊の小窓・技ガチャ3画面)が拡大の外
+  → `useHudPortalRoot()`(包みの直下)。③タイトルの文字物が1倍 → タイトルも包む。(C)2: v0.25.4781 の記述(小窓は包みの外だった)と Shell・ポータルのコメントを直した。
+- クリエイティブ監査(Fable 5.1) 15件: ホームを「上下辺に取り付く盤」に(上段・下段が全幅、2列は上辺を揃えて中央・左58/右42・最大1080)/ マップは原寸比275(窓が短ければ縮む)・ラベルは割合・canvas は倍率>1で高解像度 /
+  `hudScaleFor` の 1.25 段を r≥1.05 へ(1366×768・1536×864)/ 走査線を端末px 4px 周期 / 出撃とオプションにマウスの反応 / 入りの順 / 横長の下余白 / タイトルの START を足元の影へ。
+- (B)記録・社長へ戻す件: research/PC_SUPPORT.md §8-1(ドット絵アイコンの非整数倍・洞窟の絵の繰り返し 等)。巡の判断: (A)は全部直した → 止めて実機へ。
+- 実画(ヘッドレス): 1920×1080 / 1366×768 のホームとタイトル、430×932 のホームとタイトル(変更前と同じ)。
+- 検証: typecheck / lint(0 errors)/ viewport.test。
+- 変更: src/components/HudScale.tsx / MissionSelect.tsx / DsContourMap.tsx / TitleScreen.tsx / src/App.tsx / src/index.css / src/utils/viewport.ts(.test)/ research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4781 — PC版対応 段3-2(前半): タイトル・ホーム・作戦説明・結果を横長向けに【2026-10-03 01:08 JST】
 - App.tsx: ゲームの外の画面にも `HudScaleProvider`(窓の大きさから `hudScaleFor`・resize で追従)。ホーム/練習の結果/結果画面を `<HudScale z={0} interactive>` で包む(倍率1=スマホは包まない)。
-- 包みの中の窓の単位は `calc(○vh / var(--hud-s, 1))`(段3-1の規約): MissionSelect(Shell の maxHeight 3箇所・作戦説明の絵 36vh・資料/操作記録/守護霊の小窓・技の的 46svh)/ GameOverScreen。
+- 包みの中の窓の単位は `calc(○vh / var(--hud-s, 1))`(段3-1の規約): MissionSelect(Shell の maxHeight 3箇所・作戦説明の絵 36vh・資料/操作記録/守護霊の小窓・技の的 46svh)/ GameOverScreen。※小窓と技の的は当時 body へのポータル=包みの外で効いていなかった(v0.25.4782 で包みの中へ)。
 - **ホームは横長で2列**(左=上段/マップ/出撃/フッタ、右=行リスト。上下中央)。縦720に1列のままだと行リストが入り切らずスクロールになっていた(1920×1080の実画で確認)。
   縦持ちは列の箱を `display:contents` で消して従来どおり(フッタは `order-last`)。列幅 420→880 はホームだけ(装備は対象外)。
 - タイトル: 横長で絵を画面いっぱいに(`landscape:!h-full !w-full !aspect-auto`)。
