@@ -1,7 +1,7 @@
 // 固定設計ビュー(固定FOV)の計算。レンダラ非依存の純粋関数で、描画(Pixi)・シミュレーション(画面外判定)・
 // 入力(タップ→ワールド)の3系統が同じ論理座標を共有するための単一の真実。
 //
-// ★本作は【縦持ち専用】(OrientationGuard が横持ちを全面ブロック / PCのみ横だが切り捨て)。基準は 9:16 縦。
+// 基準は 9:16 縦(スマホは縦持ち専用=OrientationGuard が横持ちを止める)。PC の横長は下の VIEW_PC_* の分岐(research/PC_SUPPORT.md)。
 // 設計思想(SerialGames「スマホゲーム画面デザイン」+ アクション向けの追加):
 //  ・基準は 9:16 の「コア」(VIEW_CORE_W×VIEW_CORE_H)。これは【必ず全部見える】=重要物の安全領域。
 //  ・コアを contain した上で、余った軸だけ世界を伸ばして画面を埋める(★黒帯を出さない)。
@@ -37,8 +37,10 @@ export interface Viewport {
 export const computeViewport = (realW: number, realH: number): Viewport => {
   const w = Math.max(1, realW);
   const h = Math.max(1, realH);
-  if (w > h) {
-    // 横長(PC): 縦=720 固定。横は比率なり(枠が 16:9 に絞られていれば 1280。万一絞られていなくても 1280 で頭打ち=見せ過ぎない)。
+  if (w * VIEW_PC_H >= h * VIEW_MAX_W) {
+    // 横長(PC)と、それに近い窓(幅/高さ ≥ 540/720=3:4): 縦=720 固定。横は比率なり(枠が 16:9 に絞られていれば 1280。
+    // 万一絞られていなくても 1280 で頭打ち=見せ過ぎない)。境目を 3:4 に置くのは縦持ちの式と**ちょうど同じ値(540×720)で繋がる**
+    // から(正方形の窓で 540×540 ⇔ 720×720 と視野が跳ぶ、を作らない=設計監査 B-3)。縦持ちのスマホ(9:16〜9:21)はこの分岐に入らない。
     const scale = Math.max(h / VIEW_PC_H, w / VIEW_PC_MAX_W);
     return { scale, logicalW: w / scale, logicalH: h / scale };
   }

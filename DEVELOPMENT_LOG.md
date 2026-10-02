@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4778 — PC版対応 段1: 設計監査の反映【2026-10-02 23:04 JST】
+- 設計監査(Fable 5.1): (A)2 → A-1 タッチ+マウス端末でキーボードが無いと移動手段ゼロ → 操作層を「最後に触れた入力」で切り替え(`usePointerKind`・utils/inputDevice.ts)/
+  A-2 洋館通路(S6/EX)は PC で壁の絵と行ける範囲がずれる → 既知として設計書の段1に明記(直しは段2)。
+- (B) B-3 正方形付近で視野が540⇔720と跳ぶ → 縦持ち⇔横長の境目を3:4へ(両方の式が540×720で一致・テスト)/ ほか段3の一覧・タブレット・ラン中のサイズ変化を設計書へ。(C)4件を直した。
+- 巡の判断: (A)は直した/既知として明記 → 止めて実機へ。
+- 検証: typecheck / lint(0 errors)/ viewport・deviceCoverage のテスト 27。
+- 変更: src/utils/inputDevice.ts / src/utils/viewport.ts(.test)/ src/components/Game.tsx / src/components/BenchmarkOverlay.tsx(注記)/ src/index.css(注記)/ research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4777 — PC版対応 段1: 見える範囲(縦720・16:9枠)+ タッチ画面つきPC(research/PC_SUPPORT.md)【2026-10-02 22:56 JST】
 - 社長「PC版への対応も検討したい。懸念は操作方法と、画面崩れ」→ 調査(走査2本+実画)→ 方針「中身は1本、配る物を分ける」(前例 Vampire Survivors)→
   見える範囲は社長裁定「縦はスマホが必ず見せている高さ(720)・横は16:9で1280・それより横長は左右に帯」(「やってみよか推薦で」)。

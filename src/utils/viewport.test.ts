@@ -69,5 +69,15 @@ describe('computeViewport (横長=PC・research/PC_SUPPORT.md)', () => {
   it('縦持ちの結果は変わらない(430×932)', () => {
     const v = computeViewport(430, 932);
     expect(v.logicalW).toBeCloseTo(VIEW_CORE_W, 3);
+    expect(v.logicalH).toBeCloseTo(932 / (430 / VIEW_CORE_W), 3);
+    expect(v.scale).toBeCloseTo(430 / VIEW_CORE_W, 6);
+  });
+  it('縦持ち⇔横長の境目で視野が跳ばない(3:4で両方の式が540×720に一致・正方形は720×720)', () => {
+    const a = computeViewport(1080, 1440 + 1e-6);   // ほぼ3:4(縦持ち側)
+    const b = computeViewport(1080, 1440 - 1e-6);   // ほぼ3:4(横長側)
+    expect(a.logicalW).toBeCloseTo(b.logicalW, 3);
+    expect(a.logicalH).toBeCloseTo(b.logicalH, 3);
+    expect(computeViewport(1000, 1000).logicalW).toBeCloseTo(720, 3);
+    expect(Math.abs(computeViewport(1000, 1001).logicalW - computeViewport(1000, 999).logicalW)).toBeLessThan(3); // 窓が1px変わっても数px
   });
 });

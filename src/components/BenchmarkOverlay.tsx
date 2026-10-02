@@ -224,7 +224,8 @@ const CANARY_PROFILE: BenchmarkProfile =
 // §5.24-追補(社長報告v0.25.1542): 重い順化でALLカテゴリがMAX(A3・敵72+弾140+全FX+強glow=絶対
 // ピーク)から始まるようになり、スマホでは一度も食らったことのない負荷=天井超えでクラッシュ
 // (=データも取れない)。緑卵(MINE)は無罪(緑卵段は60fps実測)。既存のモバイル判定
-// (Game.tsx/OrientationGuard.tsxと同じ 'ontouchstart' in window || navigator.maxTouchPoints > 0)を
+// (旧 Game.tsx/OrientationGuard.tsx と同じ 'ontouchstart' in window || navigator.maxTouchPoints > 0。両者は v0.25.4778 から
+// utils/inputDevice.ts を読む=ここは「タッチ画面がある端末は重い段を外す」の別の意図のまま)を
 // 流用し、モバイルではALLカテゴリの最重段(MAX=A3・A2)を除外する(ALLはA1のみ走る)。
 // 重い順スキップ自体は他系統で維持・デスクトップはMAXも回す。
 export const isMobileBenchDevice = (): boolean => {
