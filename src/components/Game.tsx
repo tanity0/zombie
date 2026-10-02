@@ -195,7 +195,8 @@ const Game: React.FC<GameProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'p') {
-        if (!showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible) {
+        // 説明画面(チュートリアル)は自分で一時停止を掛けて出る=ここで切り替えると、説明画面が出たままゲームが動き出す(PC版対応の調査で判明)。
+        if (!tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible) {
           setPaused(!isPaused);
         }
       }
@@ -203,7 +204,7 @@ const Game: React.FC<GameProps> = ({
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPaused, setPaused, showEventQuestMenu, showShopMenu, showUpgradeMenu, storyReturnPromptVisible]);
+  }, [isPaused, setPaused, showEventQuestMenu, showShopMenu, showUpgradeMenu, storyReturnPromptVisible, tutorialPopupOpen]);
 
   useEffect(() => {
     if (!showUpgradeMenu) {

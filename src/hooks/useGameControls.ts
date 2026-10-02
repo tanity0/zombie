@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useGameStore, isGameTimeStopped } from '../store/gameStore';
+import { useGameStore, isGameTimeStopped, isAttackLocked } from '../store/gameStore';
 import { performTapAction, performFlickAction } from '../utils/inputActions';
 
 // Keyboard fallback — the game is touch-first, but we keep a PC-optimized
@@ -125,7 +125,9 @@ export const useGameControls = () => {
         e.preventDefault();
         // 二人組クエストv2 §2-8(納品ロック・入口4): isGameTimeStopped()だけでは塞がらない
         // (この枝はisAttackLocked()を経由しない独自ゲート)ので deliveryLocked を1条件足す。
-        if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked) {
+        // PC版対応の調査(2026-10-02): 一時停止中(ポーズ/説明画面/レベルアップ等)にも通っていた → タッチの指離しと同じ
+        // 共通ゲート isAttackLocked(一時停止・死亡・時間停止・納品ロック・アテンション)で止める。
+        if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked && !isAttackLocked()) {
           const v = currentMoveVec();
           performFlickAction(v.x, v.y);
         }
@@ -138,7 +140,8 @@ export const useGameControls = () => {
         // First press only — auto-repeat shouldn't keep refiring the counter.
         // 会話/登場演出中(時間停止中)はカウンターを出さない。
         // 二人組クエストv2 §2-8(納品ロック・入口4): 同上。
-        if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked) performTapAction();
+        // 一時停止中(ポーズ/説明画面/レベルアップ等)に Space/J で攻撃が出ていた → タッチと同じ共通ゲートで止める(同上)。
+        if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked && !isAttackLocked()) performTapAction();
       }
 
       useGameStore.setState({ inputState });
