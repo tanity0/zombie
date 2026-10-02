@@ -28,7 +28,7 @@ export default function WallBand() {
       style={{
         top: 'calc(11% + env(safe-area-inset-top))',
         left: '50%',
-        maxWidth: 'min(86vw, 480px)',
+        maxWidth: 'min(calc(86vw / var(--hud-s, 1)), 480px)',
       }}
     >
       <div

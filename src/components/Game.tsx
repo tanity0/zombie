@@ -248,10 +248,11 @@ const Game: React.FC<GameProps> = ({
       {/* SKILL_BUILD_REDESIGN.md §23-2条件5: 消費カード発動中は残秒を常時表示(統計トグルとは独立)。 */}
       {!makerHideHud && <HudScale z={40}><RunHud /></HudScale>}
       {/* PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出(中格=帯/大格=銘打ち)。 */}
-      <WallBand />
-      <WallInscription />
+      {/* PC の横長: 帯・銘打ち・カットインも HUD と同じ倍率で拡大(段3-2)。スマホは倍率1=箱を作らない(display:contents)。 */}
+      <HudScale z={35}><WallBand /></HudScale>
+      <HudScale z={35}><WallInscription /></HudScale>
       {/* SKILL_BUILD_REDESIGN.md §24: スキル覚醒(Lv3到達)のカットイン帯。ゲームは止めない。 */}
-      <AwakenCutin />
+      <HudScale z={92}><AwakenCutin /></HudScale>
       {/* 撃破/DMG/SCRAP + FPS/負荷表示は TOP画面のトグルで有り/無し(既定=無し)。 */}
       {showStatsOverlay && <StatsHud />}
       {showStatsOverlay && <PerfOverlay fps={fps} />}
@@ -275,7 +276,7 @@ const Game: React.FC<GameProps> = ({
       {!makerHideHud && !endingStage && <HudScale z={30}><MobileControls /></HudScale>}
       
       {/* §6.36 ボス出現カットイン(HUDより最前面・cutin窓の1.1秒だけ) */}
-      <BossCutin />
+      <HudScale z={95}><BossCutin /></HudScale>
 
       {/* チュートリアルの操作説明ポップアップ(表示中はisPaused=trueだがPauseMenuは出さない=ポップアップ優先) */}
       {tutorialPopupOpen && <HudScale z={90} interactive><TutorialPopup /></HudScale>}

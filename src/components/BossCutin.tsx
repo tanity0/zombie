@@ -91,15 +91,15 @@ const BossCutin: React.FC = () => {
             // (絵そのものは1ドットも変わっていないので、**枠の指定が上限だったのが原因**)。
             // ⇒ `h/w` で枠を固定し、`object-contain` で**枠いっぱいまで拡大**する=解凍前と同じ見え方。
             // ドット絵なので拡大は `imageRendering: pixelated`(下)でくっきり出る。
-            className="h-[78vh] w-[86vw] object-contain"
+            className="h-[calc(78vh/var(--hud-s,1))] w-[calc(86vw/var(--hud-s,1))] object-contain"
             style={{ imageRendering: 'pixelated', animation: 'bossCutinArt 240ms cubic-bezier(0.16,1,0.3,1) both' }}
           />
         </div>
       )}
       {/* 名前がバン! */}
-      <div className="absolute inset-x-0 bottom-[16vh] flex flex-col items-center gap-2">
+      <div className="absolute inset-x-0 bottom-[calc(16vh/var(--hud-s,1))] flex flex-col items-center gap-2">
         <div
-          className="h-px w-[52vw] origin-center bg-red-500/70"
+          className="h-px w-[calc(52vw/var(--hud-s,1))] origin-center bg-red-500/70"
           style={{ animation: 'bossCutinRule 220ms ease-out both' }}
         />
         <div
@@ -107,7 +107,7 @@ const BossCutin: React.FC = () => {
           style={{
             // 書体はエリア/地名系と同じ明朝スタック(社長指示「ボス名前の表示はエリアとかと同じ文字で」)。
             fontFamily: CUTIN_SERIF_STACK,
-            fontSize: 'clamp(28px, 7.5vw, 64px)',
+            fontSize: 'clamp(28px, calc(7.5vw / var(--hud-s, 1)), 64px)',
             letterSpacing: '0.14em',
             textShadow: '0 0 18px rgba(239,68,68,0.85), 0 2px 0 rgba(127,29,29,0.9), 0 0 46px rgba(239,68,68,0.4)',
             animation: 'bossCutinName 300ms cubic-bezier(0.16,1,0.3,1) both',
@@ -116,7 +116,7 @@ const BossCutin: React.FC = () => {
           {cutin.name}
         </div>
         <div
-          className="h-px w-[52vw] origin-center bg-red-500/70"
+          className="h-px w-[calc(52vw/var(--hud-s,1))] origin-center bg-red-500/70"
           style={{ animation: 'bossCutinRule 220ms ease-out both' }}
         />
       </div>

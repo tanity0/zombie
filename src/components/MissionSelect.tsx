@@ -428,10 +428,8 @@ const CharPortrait: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
       alt={alt}
       draggable={false}
       onLoad={() => setLoaded(true)}
-      // PC の横長(段3-2): 全面に cover すると縦長の立ち絵(2:3)の胸から上しか映らない → 高さいっぱいに全身を出し、
-      // 少し右(左下の説明と重ねない)に置いて左右の縁を地の黒へ溶かす(絵の地は #121314〜#1e1e1e で、枠の黒と段差が出るため)。
-      // 位置は translate(個別プロパティ)で持つ=入りの portrait-rise(transform)と打ち消し合わない。
-      className={`pointer-events-none absolute inset-0 h-full w-full object-cover object-top landscape:!w-auto landscape:!left-[56%] landscape:[translate:-50%_0] landscape:[mask-image:linear-gradient(90deg,transparent,#000_16%,#000_84%,transparent)] landscape:[-webkit-mask-image:linear-gradient(90deg,transparent,#000_16%,#000_84%,transparent)] ${loaded ? 'portrait-rise' : 'opacity-0'}`}
+      // PC の横長(段3-2): 全面に cover すると縦長の立ち絵(2:3)の胸から上しか映らない → 高さいっぱいに全身(index.css の .char-portrait)。
+      className={`char-portrait pointer-events-none absolute inset-0 h-full w-full object-cover object-top ${loaded ? 'portrait-rise' : 'opacity-0'}`}
     />
   );
 };
@@ -443,7 +441,7 @@ const CHAR_PARTICLE_COUNT = 20;
 const CharSelectParticles: React.FC = () => {
   const rnd = (i: number, s: number) => { const x = Math.sin(i * 12.9898 + s * 78.233) * 43758.5453; return x - Math.floor(x); };
   return (
-    <div className="pointer-events-none absolute inset-0 z-[5] overflow-hidden">
+    <div className="char-particles pointer-events-none absolute inset-0 z-[5] overflow-hidden">
       {Array.from({ length: CHAR_PARTICLE_COUNT }).map((_, i) => {
         const left = 5 + rnd(i, 1) * 90;          // %
         const size = 2 + rnd(i, 2) * 4;           // px
@@ -1148,12 +1146,12 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // iOSのURLバー表示中に可視域より縦長になり、下部UI(START/チップ帯)が画面外へ落ちる。
     // Shellと同じく可視ビューポートでクランプ(未対応ブラウザでは無視=安全)。
     return (
-      <div data-screen="charSelect" className={`screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none ${COMMAND_UI_ENABLED ? 'command-character' : ''}`} style={{ maxHeight: 'calc(100svh / var(--hud-s, 1))' }}>
+      <div data-screen="charSelect" className={`char-select screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none ${COMMAND_UI_ENABLED ? 'command-character' : ''}`} style={{ maxHeight: 'calc(100svh / var(--hud-s, 1))' }}>
         {/* 全画面=選択中キャラの立ち絵。クラス切替=key 再マウント。ロード完了後に下からスッと表示。 */}
         <CharPortrait key={effectiveClass} src={portraitSrcFor(effectiveClass)} alt={c.name} />
         {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/70 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[56%] bg-gradient-to-t from-black/95 via-black/72 to-transparent" />
+        <div className="char-scrim-top pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/70 to-transparent" />
+        <div className="char-scrim-bottom pointer-events-none absolute inset-x-0 bottom-0 h-[56%] bg-gradient-to-t from-black/95 via-black/72 to-transparent" />
 
         {/* 立ち絵の発光と同系の光の粒(足元から立ち上る) */}
         <CharSelectParticles />

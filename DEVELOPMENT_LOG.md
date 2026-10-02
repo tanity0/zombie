@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4785 — PC版対応 段3-2: キャラ選択のクリエイティブ監査反映・カットインの拡大【2026-10-03 02:53 JST】
+- クリエイティブ監査(Fable 5.1) 10件: 直した 9(地を立ち絵の地へ・縁のフェードを絵の外側だけ・位置は中央+90px・暗幕は文字の所だけ・光の粒は絵の柱の中・洞窟の絵は1.45周/左へ12%/縦40%)。
+  (B)記録 1(横長の境目が orientation で、ゲームの3:4と違う)。巡の判断: 見せ方の範囲だけで(A)相当なし → 止めて実機へ。
+- カットイン: ボス出現・覚醒・到達の帯/銘打ちを HudScale で包み、vw/vh を倍率で割った(Game.tsx / BossCutin / AwakenCutin / WallBand)。
+- 実画: キャラ選択 1920×1080(2人)/ 1366×768 / 430×932(変更前と同じ)、作戦地域の一覧、ボス出現・覚醒カットイン(1920×1080)。
+- 検証: typecheck / lint(0 errors)。
+- 変更: src/components/MissionSelect.tsx / Game.tsx / BossCutin.tsx / AwakenCutin.tsx / WallBand.tsx / src/config/uiDesign.ts / src/index.css / research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4784 — PC版対応 段3-2: キャラ選択の立ち絵を横長で全身に【2026-10-03 02:40 JST】
 - 横長だけ `CharPortrait` を高さいっぱい・幅は絵の比率(全身)・中心56%・左右の縁を mask で黒へ溶かす(research/PC_SUPPORT.md §8-3)。縦持ちは従来の cover。
 - 実画: 1920×1080(ヘビーガンナー・マークスマン)/ 1366×768 で全身・説明と START に重ならない / 430×932 は変更前と同じ。

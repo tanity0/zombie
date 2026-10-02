@@ -52,7 +52,7 @@ const AwakenCutin: React.FC = () => {
           className="font-bold tracking-[0.32em]"
           style={{
             fontFamily: CUTIN_SERIF_STACK,
-            fontSize: 'clamp(20px, 5.4vw, 34px)',
+            fontSize: 'clamp(20px, calc(5.4vw / var(--hud-s, 1)), 34px)',
             color: '#ffe58a',
             textShadow: '0 0 18px rgba(255,215,0,0.85), 0 2px 0 rgba(120,80,0,0.9), 0 0 40px rgba(255,215,0,0.4)',
           }}
@@ -63,7 +63,7 @@ const AwakenCutin: React.FC = () => {
           className="text-center font-semibold whitespace-nowrap"
           style={{
             fontFamily: CUTIN_SERIF_STACK,
-            fontSize: 'clamp(14px, 3.6vw, 20px)',
+            fontSize: 'clamp(14px, calc(3.6vw / var(--hud-s, 1)), 20px)',
             color: '#fff7e0',
             letterSpacing: '0.08em',
             textShadow: '0 1px 3px rgba(0,0,0,0.9)',

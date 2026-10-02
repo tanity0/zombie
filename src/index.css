@@ -451,6 +451,26 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   .portrait-rise { animation: none; }
 }
 
+/* PC の横長のキャラ選択(段3-2・クリエイティブ監査 A-1〜A-6): 縦長の立ち絵を高さいっぱいの全身で出す。
+   - 地を立ち絵の地(4枚の平均 #151617)に合わせてから縁を消す(黒地のままだと灰の柱が立つ)。縁のフェードは絵の外側だけ・外で速く内で遅く。
+   - 位置は画面中央から右へ固定の px(幅の%で決めると画面比で漂う)。左の説明列と START の間に置く。
+   - 暗幕は文字のある所だけ(下=左の説明列 / 上=戻るの周り)。脚や髪の光を沈めない。光の粒は絵の柱の中だけ。
+   - 位置は個別プロパティ translate(入りの portrait-rise の transform と打ち消し合わない)。 */
+@media (orientation: landscape) {
+  .char-select { background: #151617 !important; }
+  .char-select .char-portrait {
+    left: calc(50% + 90px);
+    right: auto;
+    width: auto;
+    translate: -50% 0;
+    -webkit-mask-image: linear-gradient(90deg, transparent, rgba(0,0,0,.45) 2.5%, rgba(0,0,0,.85) 5%, #000 8%, #000 93%, rgba(0,0,0,.85) 95.5%, transparent);
+    mask-image: linear-gradient(90deg, transparent, rgba(0,0,0,.45) 2.5%, rgba(0,0,0,.85) 5%, #000 8%, #000 93%, rgba(0,0,0,.85) 95.5%, transparent);
+  }
+  .char-select .char-scrim-top { right: auto; width: 320px; -webkit-mask-image: linear-gradient(90deg, #000 55%, transparent); mask-image: linear-gradient(90deg, #000 55%, transparent); }
+  .char-select .char-scrim-bottom { right: auto; width: 46%; -webkit-mask-image: linear-gradient(90deg, #000 70%, transparent); mask-image: linear-gradient(90deg, #000 70%, transparent); }
+  .char-select .char-particles { left: calc(50% + 90px - 260px); right: auto; width: 520px; }
+}
+
 /* キャラ選択 左下の情報テキストも、立ち絵に合わせてフワッとフェードイン(切替で都度再生) */
 @keyframes info-rise {
   from { opacity: 0; transform: translateY(10px); }
