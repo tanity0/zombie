@@ -217,6 +217,10 @@ put(LEDGER, ['laser-fire'], {
   coverage: 'ghost', ghostShape: { kind: 'band' },
   note: 'ミーミルのレーザー。発射中も aiTarget がゆっくり追尾する=毎tickの帯を読む(避けられる技)。',
 });
+put(LEDGER, ['lattice-windup'], {
+  coverage: 'none',
+  note: 'スカジの氷の格子(research/SKADI_LATTICE.md)。相手を中心に10本の平行な刃=帯1本でも円でもない(隙間へ一歩ずれる読みは持たせない)。守護霊は既存の被弾規則で受ける。',
+});
 put(LEDGER, ['wheel-windup', 'wheel-fire'], {
   coverage: 'none',
   note: 'ミーミルの紫の車輪(research/MIMIR_WHEEL.md)。全方位に届く回るレーザー=外へ抜ける円も帯1本も当てはまらない(隙間に入って回る読みは持たせない)。守護霊は既存の被弾規則で受ける。',
@@ -344,6 +348,7 @@ put(LEDGER, [
   'phill-ringtoss-recover', 'phill-dive-recover', 'phill-summon-recover', 'phill-feathershot-recover',
   'jslam-recover', 'jwave-recover', 'jrain-recover', 'jfreeze-recover', // research/JORM_DANMAKU.md
   'wheel-recover', // research/MIMIR_WHEEL.md
+  'lattice-recover', // research/SKADI_LATTICE.md
 ], {
   coverage: 'none',
   note: '硬直(技は終わっている)=避ける図形は無い。ここはむしろカウンターの窓側の話。',

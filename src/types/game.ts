@@ -1158,6 +1158,7 @@ export interface Enemy {
     | 'jwave-open' | 'jwave' | 'jwave-recover' | 'jrain-open' | 'jrain' | 'jrain-recover'
     | 'jfreeze-open' | 'jfreeze' | 'jfreeze-recover' // 弾幕C「凍てつく牙」(§10・HP60%以下で解禁)
     | 'wheel-windup' | 'wheel-fire' | 'wheel-recover' // ミーミルの紫の車輪(research/MIMIR_WHEEL.md)
+    | 'lattice-windup' | 'lattice-recover' // スカジの氷の格子(research/SKADI_LATTICE.md)
     | 'cage-windup' | 'cage' | 'cage-recover'
     | 'issen-recover' | 'tsuki-recover' | 'harai-recover'
     | 'issen-nihil'
@@ -1322,6 +1323,14 @@ export interface Enemy {
   // ミーミルの紫の車輪(research/MIMIR_WHEEL.md): 溜めの頭の時刻(gameTime・角度関数の t=0)・最初の角・回る向き・
   // 追跡弾を撃つ変化か(溜めの頭のフェーズで決めて持つ)・次に撃てる時刻(CD)。
   mimirWheelAt?: number;
+  // スカジの氷の格子(research/SKADI_LATTICE.md): 今の段の番号(0始まり)・全段数(溜めの頭のフェーズで決めて持つ)・
+  // 段の中心(段の溜めの頭のヘイトの相手の位置)・4本側の向き・次に撃てる時刻(CD)。
+  skadiLatticeStage?: number;
+  skadiLatticeStages?: number;
+  skadiLatticeCx?: number;
+  skadiLatticeCy?: number;
+  skadiLatticeSide?: 1 | -1;
+  skadiLatticeReadyAt?: number;
   mimirWheelTheta0?: number;
   mimirWheelDir?: 1 | -1;
   mimirWheelHoming?: boolean;

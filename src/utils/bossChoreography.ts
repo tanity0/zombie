@@ -55,6 +55,7 @@ const SCRIPTS: Record<Exclude<ChoreographyBoss, 'giant' | 'glen'>, Record<string
     ice: ['ice', 'dash', 'blade'], blade: ['blade', 'burst', 'ice'],
     dash: ['dash', 'ice', 'blade'], burst: ['burst', 'radial', 'blade'],
     radial: ['radial', 'dash', 'ice'], cage: ['cage', 'burst', 'radial'],
+    lattice: ['lattice', 'dash', 'ice'], // research/SKADI_LATTICE.md: 格子で散らした相手へ突進→氷塊
   },
   thor: {
     issen: ['issen', 'harai', 'tsuki'], tsuki: ['tsuki', 'issen', 'harai'],

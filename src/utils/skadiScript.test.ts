@@ -5,8 +5,8 @@ import {
 } from './skadiScript';
 import { BOSS_RANGE } from './bossScript';
 
-const ALL_MOVES: SkadiMove[] = ['ice', 'blade', 'dash', 'burst', 'radial', 'cage'];
-const allReady = (): Record<SkadiMove, boolean> => ({ ice: true, blade: true, dash: true, burst: true, radial: true, cage: true });
+const ALL_MOVES: SkadiMove[] = ['ice', 'blade', 'dash', 'burst', 'radial', 'cage', 'lattice'];
+const allReady = (): Record<SkadiMove, boolean> => ({ ice: true, blade: true, dash: true, burst: true, radial: true, cage: true, lattice: true });
 const BAND_SAMPLES = [60, 200, 450, 900]; // 密着/近/中/遠
 
 describe('skadiPhaseForHealth — 3相(70%/35%)', () => {
@@ -95,7 +95,7 @@ describe('pickSkadiMove', () => {
   });
 
   it('CD明けの技が1つも無ければnull', () => {
-    const ready: Record<SkadiMove, boolean> = { ice: false, blade: false, dash: false, burst: false, radial: false, cage: false };
+    const ready: Record<SkadiMove, boolean> = { ice: false, blade: false, dash: false, burst: false, radial: false, cage: false, lattice: false };
     expect(pickSkadiMove(60, 1, ready)).toBeNull();
   });
 

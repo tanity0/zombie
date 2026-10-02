@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { latticeBands, latticeStageCount, latticeAxisForStage, latticeHitSource } from '../utils/skadiLattice';
 import { mimirWheelTheta0, mimirWheelSpokeAngle, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
@@ -6781,9 +6782,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossStateUntil = newGameTime + HB_C.aimRadialMs;
                 }
               };
+              // ★氷の格子(research/SKADI_LATTICE.md): k 段目の溜めを始める(段の中心=今のヘイトの相手・4本側はランダム)。
+              const beginLatticeStage = (k: number) => {
+                const tgt = lockedAttackAim();
+                patch.bossState = 'lattice-windup';
+                patch.bossStateUntil = newGameTime + HB_SK.lattice.windupMs;
+                patch.skadiLatticeStage = k;
+                patch.skadiLatticeCx = tgt.x; patch.skadiLatticeCy = tgt.y;
+                patch.skadiLatticeSide = Math.random() < 0.5 ? 1 : -1;
+              };
               const beginSkadiMove = (move: SkadiMove) => {
                 playSfx(BOSS_ALERT_SFX_KEY);
-                if (move === 'ice') {
+                if (move === 'lattice') {
+                  lockAttackAim();
+                  patch.skadiLatticeStages = latticeStageCount(boss.bossPhase ?? 1, HB_SK.lattice.roundsP1, HB_SK.lattice.roundsAwake);
+                  patch.skadiLatticeReadyAt = newGameTime + HB_SK.lattice.cdMs; // 溜めの頭から数える。潰されても残る
+                  beginLatticeStage(0);
+                  bs.vx = 0; bs.vy = 0;
+                } else if (move === 'ice') {
                   lockAttackAim();
                   patch.bossState = 'skadi-ice-windup';
                   patch.bossStateUntil = newGameTime + HB_SK.preWindup;
@@ -6918,6 +6934,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   case 'sk-ice': beginSkadiMove('ice'); break;
                   case 'sk-blade': beginSkadiMove('blade'); break;
                   case 'sk-cage': beginSkadiMove('cage'); break;
+                  case 'sk-lattice': beginSkadiMove('lattice'); break; // 覚醒後の3連はボスのHPで決まる=メーカーでHPを70%以下に下げて確かめる
                   case 'sk-dash': beginSkadiMove('dash'); break;
                   case 'sk-burst': beginSkadiMove('burst'); break;
                   case 'sk-radial': beginSkadiMove('radial'); break;
@@ -7152,6 +7169,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const ready: Record<SkadiMove, boolean> = {
                       ice: true, blade: true, dash: true, burst: true, radial: true,
                       cage: newGameTime >= (boss.skadiCageReadyAt ?? 0),
+                      lattice: newGameTime >= (boss.skadiLatticeReadyAt ?? 0), // research/SKADI_LATTICE.md
                     };
                     const move = pickSkadiMove(dist, phase, ready);
                     if (move) {
@@ -7775,6 +7793,40 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   patch.bossState = 'cage-recover';
                   patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_SK.cage.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
                 }
+              } else if (st === 'lattice-windup') {
+                // ★氷の格子(research/SKADI_LATTICE.md): 段の溜め=静止。溜めの終わりの1フレームで10本の帯に当たる(1段1回)。
+                // 次の段があれば同じフレームで取り直して次の溜めへ(=直後に)。
+                bs.vx = 0; bs.vy = 0;
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                  const L = HB_SK.lattice;
+                  const k = boss.skadiLatticeStage ?? 0;
+                  const bands = latticeBands(boss.skadiLatticeCx ?? pcx, boss.skadiLatticeCy ?? pcy, latticeAxisForStage(k), boss.skadiLatticeSide ?? 1, L);
+                  const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
+                  const prr = Math.max(player.width, player.height) / 2;
+                  let hitAt: { x: number; y: number } | null = null;
+                  for (const b of bands) {
+                    if (!hitAt && distToBandRect({ x: ppx, y: ppy }, { x: b.fx, y: b.fy }, { x: b.tx, y: b.ty }, L.halfWidth) <= prr) {
+                      // 刃に直交して弾く(真上に居たら開けている側へ・設計監査 A-4)。
+                      hitAt = latticeHitSource(b, ppx, ppy, boss.skadiLatticeSide ?? 1);
+                    }
+                    // 守護霊も同じ帯(線分±半幅。帯の端の伸びは半幅ぶん=カプセルとの差は端の角だけ)。
+                    applyGhostAllyCapsuleHit(b.fx, b.fy, b.tx, b.ty, L.halfWidth, L.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:skadi-lattice');
+                  }
+                  if (hitAt) {
+                    const died = damagePlayer(L.damage, 'スカジの氷の格子', hitAt.x, hitAt.y, undefined, undefined, 'skadi-lattice');
+                    if (died) triggerPlayerDeath(ppx, ppy);
+                  }
+                  playSfx('skadi-ice', 0.55, undefined, latticeAxisForStage(k) === 'v' ? 1.25 : 1.4);
+                  useGameStore.getState().triggerShake(120, 3);
+                  const total = boss.skadiLatticeStages ?? 2;
+                  if (k + 1 < total) beginLatticeStage(k + 1);
+                  else {
+                    patch.bossState = 'lattice-recover';
+                    patch.bossStateUntil = newGameTime + choreographyRecoverMs(L.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
+                  }
+                }
+              } else if (st === 'lattice-recover') {
+                if (newGameTime >= (boss.bossStateUntil ?? 0)) hiddenRecoverAdvance('lattice');
               } else if (st === 'cage-recover') {
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.skadiCageReadyAt = newGameTime + HB_SK.cage.cdMs;

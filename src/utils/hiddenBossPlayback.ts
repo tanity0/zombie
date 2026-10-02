@@ -19,7 +19,7 @@
 export type HiddenMoveKey =
   | 'mi-bite' | 'mi-laser' | 'mi-dash' | 'mi-burst' | 'mi-radial' | 'mi-wheel'
   | 'jo-coil' | 'jo-dash' | 'jo-burst' | 'jo-radial' | 'jo-slam2' | 'jo-slam3' | 'jo-slam1'
-  | 'sk-ice' | 'sk-blade' | 'sk-cage' | 'sk-dash' | 'sk-burst' | 'sk-radial'
+  | 'sk-ice' | 'sk-blade' | 'sk-cage' | 'sk-dash' | 'sk-burst' | 'sk-radial' | 'sk-lattice'
   | 'th-issen' | 'th-tsuki' | 'th-harai' | 'th-jump' | 'th-dash';
 
 /**
@@ -29,7 +29,7 @@ export type HiddenMoveKey =
 export const HIDDEN_MOVES_BY_TYPE: Readonly<Record<string, readonly HiddenMoveKey[]>> = {
   mimir: ['mi-bite', 'mi-laser', 'mi-dash', 'mi-burst', 'mi-radial', 'mi-wheel'],
   jormungand: ['jo-coil', 'jo-dash', 'jo-burst', 'jo-radial', 'jo-slam2', 'jo-slam3', 'jo-slam1'],
-  skadi: ['sk-ice', 'sk-blade', 'sk-cage', 'sk-dash', 'sk-burst', 'sk-radial'],
+  skadi: ['sk-ice', 'sk-blade', 'sk-cage', 'sk-dash', 'sk-burst', 'sk-radial', 'sk-lattice'],
   thor: ['th-issen', 'th-tsuki', 'th-harai', 'th-jump', 'th-dash'],
 };
 

@@ -241,7 +241,7 @@ const JO_HELP: Record<string, string> = {
 // ================================================================================================
 const SK_SEC = {
   move: '動き', ice: '氷塊(sk-ice)', blade: '氷の刃(sk-blade)', cage: '氷結の檻(sk-cage)',
-  burst: '弾3連(sk-burst)', radial: '全方位(sk-radial)', dash: '突進(sk-dash)',
+  burst: '弾3連(sk-burst)', radial: '全方位(sk-radial)', dash: '突進(sk-dash)', lattice: '氷の格子(sk-lattice)',
 };
 
 const skadiFields = (): TuningField[] => {
@@ -250,8 +250,19 @@ const skadiFields = (): TuningField[] => {
   const ca = mk(SK_SEC.cage, 'move');
   const bu = mk(SK_SEC.burst, 'move');
   const ra = mk(SK_SEC.radial, 'move');
+  const la = mk(SK_SEC.lattice, 'move');
   return [
     ...neutralFields(SK_SEC.move, true),
+
+    la('lattice.windupMs', '1段の予告', 'ms', 150, 3000, 25, `${HINT_WINDUP}。紫の帯が流れ切った瞬間に当たる`),
+    la('lattice.bands', '刃の本数', 'num', 2, 20, 1, '中心の1本は相手の真上を通る'),
+    la('lattice.spacing', '刃の間隔', 'px', 40, 300, 2, '狭いほど隙間が細い(間隔−太さ が自機より広いこと)'),
+    la('lattice.halfWidth', '刃の半分の太さ', 'px', 4, 80, 1, '判定と帯の太さ'),
+    la('lattice.damage', 'ダメージ', 'num', 0, 200, 1, '1段で当たるのは1回'),
+    la('lattice.roundsP1', '覚醒前の回数', 'num', 1, 6, 1, '縦→横を何回(HP70%より上)'),
+    la('lattice.roundsAwake', '覚醒後の回数', 'num', 1, 8, 1, '縦→横を何回(HP70%以下)'),
+    la('lattice.recover', '硬直', 'ms', 0, 5000, 50, HINT_RECOVER),
+    la('lattice.cdMs', 'クールダウン', 'ms', 0, 60000, 500, '溜めの頭から数える'),
 
     ic('preWindup', '設置前の予告', 'ms', 0, 3000, 50, `${HINT_WINDUP}。★氷塊と氷の刃で共通`),
     ic('ice.count', '個数', 'num', 1, 20, 1),
@@ -290,6 +301,7 @@ const SK_HELP: Record<string, string> = {
   [SK_SEC.ice]: '相手の足元へ氷塊を置き、少し置いてから起爆する。置いてから爆ぜるまでが避けどころ。',
   [SK_SEC.blade]: '周囲の輪の上に刃を置き、少し置いてから内向きに発射する。刃の速さ/寿命はゲーム側の共通値で、ここでは触れない。',
   [SK_SEC.cage]: '相手を囲む輪に氷塊を並べ、1箇所だけ隙間を空ける(Phase3専用)。起爆までの時間は氷塊の設定を読む。',
+  [SK_SEC.lattice]: '相手を中心に縦の氷の刃を並べて落とし、直後に取り直して横の刃。中心の1本は相手の真上=毎段一歩ずれる。覚醒後(HP70%以下)は縦→横を3回。紫=カウンター不可。',
   [SK_SEC.burst]: '立ち止まって狙い撃つ3連発。発数と間隔は4体共通の設定。',
   [SK_SEC.radial]: '立ち止まって全方位へ一斉射。',
   [SK_SEC.dash]: '一直線に突っ込む。値は4体共通(ミーミル/ヨルムンガルドと同じ実体)。',
@@ -421,6 +433,7 @@ const SK_PLAYABLES: readonly PlayableAction[] = [
   play('sk-burst', '弾3連', SK_SEC.burst),
   play('sk-radial', '全方位', SK_SEC.radial),
   play('sk-dash', '突進', SK_SEC.dash),
+  play('sk-lattice', '氷の格子', SK_SEC.lattice),
 ];
 const TH_PLAYABLES: readonly PlayableAction[] = [
   play('th-issen', '一閃', TH_SEC.issen),

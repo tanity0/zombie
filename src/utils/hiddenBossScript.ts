@@ -216,6 +216,14 @@ export interface HiddenSkadiTuning extends HiddenSharedHolder {
   cage: { windup: number; recover: number; cdMs: number; ringRadius: number; count: number };
   burstRecover: number;
   radialRecover: number;
+  /**
+   * ★氷の格子(research/SKADI_LATTICE.md・社長指示2026-10-02): 相手を中心に縦の刃 bands 本 → 取り直して横の刃 bands 本。
+   * 覚醒後(フェーズ2以降)は roundsAwake 回くり返す。1段の溜め windupMs の終わりに1回だけ当たる。カウンター不可(紫)。
+   */
+  lattice: {
+    windupMs: number; bands: number; spacing: number; halfWidth: number; damage: number;
+    roundsP1: number; roundsAwake: number; recover: number; cdMs: number;
+  };
 }
 
 export const HIDDEN_SKADI_TUNING: HiddenSkadiTuning = {
@@ -226,6 +234,11 @@ export const HIDDEN_SKADI_TUNING: HiddenSkadiTuning = {
   cage: { windup: 1000, recover: withRecoverFloor(900), cdMs: 12000, ringRadius: 180, count: 8 },
   burstRecover: withRecoverFloor(300),
   radialRecover: withRecoverFloor(500),
+  // 隙間 96−32=64px(自機28が入る)。抜けるのに要る (16+14)px を静止から慣性つきで歩いて約0.35秒+反応0.25秒 ≤ 溜め0.65秒(テストで固定)。
+  lattice: {
+    windupMs: 650, bands: 10, spacing: 96, halfWidth: 16, damage: 28,
+    roundsP1: 1, roundsAwake: 3, recover: withRecoverFloor(900), cdMs: 16000,
+  },
 };
 
 // =================================================================================================

@@ -134,6 +134,7 @@ import {
   HIDDEN_THOR_TUNING as HB_TH,
 } from '../utils/hiddenBossScript';
 import { mimirWheelSpokeAngle, mimirWheelOmega, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
+import { latticeBands, latticeAxisForStage } from '../utils/skadiLattice';
 import { jormSlamRect, jormSlamReach, jormSlamTelegraphProgress, jormRainLobPos, jormFreezeState, jormFreezeLaunchOffsetMs, jormFreezeSlot } from '../utils/jormDanmaku';
 // research/THOR_ISSEN_REWORK.md §1: 紫円の**半径は台帳の1定数**(判定・ボット・絵が同じ値を読む)。
 import { THOR_NIHIL_STATE, thorNihilRadius } from '../utils/thorNihil';
@@ -20083,6 +20084,9 @@ export class PixiScene {
         o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97 * fade, cap: 'round' });
       }
     }
+    // ★スカジの氷の格子(research/SKADI_LATTICE.md): 段ごとに10本の紫の帯(カウンター不可=紫)。帯の流星は既存の帯の窓(drawSweepBand)を紫で。
+    //   溜めの頭に出て、窓が抜け切った瞬間=当たる(段ごとに別々の時刻)。当たった段は氷の刃が帯をなぞって走り、破片が散る(派手さの絵・判定なし)。
+    if (e.type === 'skadi') this.drawSkadiLattice(o, e, gameTime);
     // ★ミーミルの紫の車輪(research/MIMIR_WHEEL.md): 角度は判定と同じ純関数 mimirWheelSpokeAngle(溜めの頭からの経過)。
     //   溜め=全長の紫の線と判定幅の薄い帯(溜めの頭に出る)+根元から伸びる塗り(既存レーザーと同じカラオケ)。距離の物差しは1本の線ではなく
     //   **自分の距離へ広がる輪**(輪が自分に届いた瞬間に撃つ)。回る向きは各本の後ろに引く残光で言う(角度が小さい溜め中でも読める)。
@@ -20636,6 +20640,7 @@ export class PixiScene {
         'laser-broken', // §6.33: レーザー中断のパニッシュ窓=硬直色(青白)で「好機」を示す
         'jslam-recover', 'jwave-recover', 'jrain-recover', 'jfreeze-recover', // research/JORM_DANMAKU.md
         'wheel-recover', // research/MIMIR_WHEEL.md(溜め/発射は紫=カウンター不可なので赤フラッシュには載せない)
+        'lattice-recover', // research/SKADI_LATTICE.md(溜めは紫=カウンター不可なので赤フラッシュには載せない)
       ];
       const HIDDEN_BOSS_FLASH_TAIL_STATES: string[] = [
         'aim-burst', 'aim-radial', 'dash-windup', 'laser-windup', 'bite-windup', 'coil-windup', 'cage-windup',
@@ -26981,6 +26986,82 @@ export class PixiScene {
           }
         });
       }
+    }
+  }
+
+  /** スカジの氷の格子: 前に見た段(当たった段の刃を走らせるため)と、走っている刃。 */
+  private skadiLatticeSeen = new Map<string, { k: number; stages: number; cx: number; cy: number; side: 1 | -1; until: number }>();
+  private skadiLatticeFx: { bands: { fx: number; fy: number; tx: number; ty: number }[]; axis: 'v' | 'h'; at: number; seed: number }[] = [];
+  private drawSkadiLattice(o: Graphics, e: Enemy, gameTime: number): void {
+    const L = HB_SK.lattice;
+    const seen = this.skadiLatticeSeen.get(e.id);
+    const cur = e.bossState === 'lattice-windup' && e.skadiLatticeCx !== undefined && e.skadiLatticeCy !== undefined
+      ? { k: e.skadiLatticeStage ?? 0, stages: e.skadiLatticeStages ?? 2, cx: e.skadiLatticeCx, cy: e.skadiLatticeCy, side: e.skadiLatticeSide ?? 1, until: e.bossStateUntil ?? gameTime }
+      : null;
+    // 前に見ていた段が終わった(次の段へ替わった/硬直へ)=その段は今当たった → 刃を走らせる。潰されて追跡へ戻った時は走らせない。
+    if (seen && (!cur || cur.k !== seen.k || cur.until !== seen.until) && gameTime >= seen.until - 34
+        && (cur !== null || e.bossState === 'lattice-recover')) {
+      this.skadiLatticeFx.push({
+        bands: latticeBands(seen.cx, seen.cy, latticeAxisForStage(seen.k), seen.side, L),
+        axis: latticeAxisForStage(seen.k), at: gameTime, seed: seen.k * 7 + 3,
+      });
+    }
+    if (cur) this.skadiLatticeSeen.set(e.id, cur); else this.skadiLatticeSeen.delete(e.id);
+    // 溜め: 10本の紫の帯。**溜めの頭の1フレーム目から**判定と同じ四角を薄く敷き(掟②・設計監査 A-3: 窓だけだと頭の約85msが空白)、
+    //   その上を既存の帯と同じ窓(bandSweepCenter/AlphaAt)が流れて、抜け切った瞬間=当たる(掟③)。
+    //   10本ぶんなので縁の焼き素材(1本30枚のスプライト)は使わず、1本10スライスの塗りだけ(設計監査 C-4: 図形数を抑える)。
+    if (cur) {
+      const prog = Math.max(0, Math.min(1, 1 - (cur.until - gameTime) / Math.max(1, L.windupMs)));
+      const bands = latticeBands(cur.cx, cur.cy, latticeAxisForStage(cur.k), cur.side, L);
+      const style = telegraphStyleFor(e.type);
+      const halfWin = Math.max(0.02, style?.bandHalfW ?? 0.34);
+      const center = bandSweepCenter(prog, halfWin, true, style?.easePow);
+      const SL = 10;
+      const hw = L.halfWidth;
+      for (const b of bands) {
+        const x0 = Math.min(b.fx, b.tx) - hw, y0 = Math.min(b.fy, b.ty) - hw;
+        const w = Math.abs(b.tx - b.fx) + 2 * hw, h = Math.abs(b.ty - b.fy) + 2 * hw;
+        o.rect(x0, y0, w, h).fill({ color: 0x7e22ce, alpha: 0.10 + 0.10 * prog });
+        o.rect(x0, y0, w, h).stroke({ width: 1.5, color: 0xc084fc, alpha: 0.35 + 0.3 * prog });
+        const vert = b.fx === b.tx;
+        for (let i = 0; i < SL; i++) {
+          const a = Math.min(1, 0.55 * 2.5) * bandSweepAlphaAt((i + 0.5) / SL, center, halfWin);
+          if (a <= 0.01) continue;
+          if (vert) o.rect(x0, y0 + (h * i) / SL, w, h / SL + 0.5).fill({ color: 0xa855f7, alpha: a * 0.6 });
+          else o.rect(x0 + (w * i) / SL, y0, w / SL + 0.5, h).fill({ color: 0xa855f7, alpha: a * 0.6 });
+        }
+      }
+    }
+    // 当たった段: 氷の刃が帯をなぞって走る(160ms・速く出て減速)+ 破片(400msで散って消える)。
+    const RUN_MS = 160, LIFE_MS = 420;
+    this.skadiLatticeFx = this.skadiLatticeFx.filter(f => gameTime - f.at < LIFE_MS);
+    for (const f of this.skadiLatticeFx) {
+      const t = gameTime - f.at;
+      const run = Math.min(1, t / RUN_MS);
+      const re = 1 - (1 - run) * (1 - run) * (1 - run);
+      const fade = Math.max(0, 1 - Math.max(0, t - RUN_MS) / (LIFE_MS - RUN_MS));
+      f.bands.forEach((b, i) => {
+        const h = Math.sin((f.seed + i) * 12.9898) * 43758.5453; const r01 = h - Math.floor(h);
+        const head = re * (0.92 + 0.08 * r01);
+        const hx = b.fx + (b.tx - b.fx) * head, hy = b.fy + (b.ty - b.fy) * head;
+        const tailK = Math.max(0, head - 0.35);
+        const tx0 = b.fx + (b.tx - b.fx) * tailK, ty0 = b.fy + (b.ty - b.fy) * tailK;
+        // 刃の筋: 太い冷たい青 → 白い芯。頭ほど明るい。
+        o.moveTo(tx0, ty0).lineTo(hx, hy).stroke({ width: L.halfWidth * 2.2, color: 0x7dd3fc, alpha: 0.35 * fade, cap: 'round' });
+        o.moveTo(tx0, ty0).lineTo(hx, hy).stroke({ width: L.halfWidth * 0.9, color: 0xe0f2fe, alpha: 0.85 * fade, cap: 'round' });
+        o.circle(hx, hy, L.halfWidth * (1.2 + 0.6 * (1 - run))).fill({ color: 0xffffff, alpha: 0.9 * fade });
+        // 破片: 帯の脇へ、片ごとに違う向き・距離で散る。
+        for (let q = 0; q < 4; q++) {
+          const hq = Math.sin((f.seed + i * 5 + q) * 78.233) * 43758.5453; const rq = hq - Math.floor(hq);
+          const along = (q + 0.5 + (rq - 0.5) * 0.6) / 4;
+          if (along > head) continue;
+          const px = b.fx + (b.tx - b.fx) * along, py = b.fy + (b.ty - b.fy) * along;
+          const sgn = q % 2 === 0 ? 1 : -1;
+          const dist = (10 + 34 * rq) * (1 - (1 - Math.min(1, t / LIFE_MS)) ** 2);
+          const ox = f.axis === 'v' ? sgn * dist : (rq - 0.5) * 10, oy = f.axis === 'v' ? (rq - 0.5) * 10 : sgn * dist;
+          o.circle(px + ox, py + oy, (1.6 + 2 * rq) * fade).fill({ color: 0xe0f2fe, alpha: 0.85 * fade });
+        }
+      });
     }
   }
 

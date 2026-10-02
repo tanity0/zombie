@@ -12,7 +12,7 @@
 // 「cageの無条件優先」と「氷攻撃50%の専用ロール」を**重みへ畳み込む**(抽選の入口を1本にする)。
 import { pickComboFollowup, phaseForHealth, pickWeightedMove, bossZoneForDistance, type BossMoveWeights } from './bossScript';
 
-export type SkadiMove = 'ice' | 'blade' | 'dash' | 'burst' | 'radial' | 'cage';
+export type SkadiMove = 'ice' | 'blade' | 'dash' | 'burst' | 'radial' | 'cage' | 'lattice';
 
 // 3相(§6.28-9フェーズ表): Phase1=100〜70% / Phase2=70〜35% / Phase3=35〜0%。
 export const SKADI_PHASE_HP_THRESHOLDS = [0.7, 0.35] as const;
@@ -38,6 +38,8 @@ export const SKADI_MOVE_WEIGHTS: BossMoveWeights<SkadiMove> = {
   radial: { melee: 15, near: 20, mid: 25, far: 15 },
   dash:   { melee: 0,  near: 0,  mid: 20, far: 55 },
   cage:   { melee: 12, near: 12, mid: 12, far: 12 },
+  // ★氷の格子(research/SKADI_LATTICE.md・社長指示2026-10-02): 相手の位置に出る技=どの距離でも出す。CD は呼び出し側(readyAt)。
+  lattice: { melee: 15, near: 20, mid: 25, far: 25 },
 };
 
 /** 技×距離×フェーズ→実効重み。cageはPhase3限定(§6.28-9)。 */
@@ -55,7 +57,7 @@ export const skadiMoveWeight = (
 export const skadiMoveEligible = (move: SkadiMove, distance: number, phase: 1 | 2 | 3): boolean =>
   skadiMoveWeight(move, distance, phase) > 0;
 
-const ALL_MOVES: SkadiMove[] = ['ice', 'blade', 'dash', 'burst', 'radial', 'cage'];
+const ALL_MOVES: SkadiMove[] = ['ice', 'blade', 'dash', 'burst', 'radial', 'cage', 'lattice'];
 
 /** CD明けかつ現在ゾーンの重み>0の技から重み比例で1つ。該当無しはnull。 */
 export const pickSkadiMove = (

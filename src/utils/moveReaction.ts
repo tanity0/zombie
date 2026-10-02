@@ -41,6 +41,7 @@ export const MOVE_REACTION_KEYS = [
   'jormungand-coil', 'jormungand-dash',
   'jormungand-slam', // research/JORM_DANMAKU.md: 弾幕の導入=叩きつけ(2連/3連の全段を1つの技へ)
   'skadi-ice', 'skadi-blade', 'skadi-cage', 'skadi-dash',
+  'skadi-lattice', // research/SKADI_LATTICE.md: 氷の格子(縦→横の刃)
   // 天使6体(angelBossTick.ts)。volley/bolt/gaze は弾台帳に既出。
   'miguel-mdash', 'miguel-tate', 'miguel-harai',
   'jibril-consecrate', 'jibril-lantern',
@@ -181,6 +182,7 @@ const MELEE_STATE_TO_MOVE: Readonly<Partial<Record<string, Readonly<Record<strin
     'skadi-ice-windup': 'skadi-ice', 'skadi-ice': 'skadi-ice', 'skadi-ice-recover': 'skadi-ice',
     'skadi-blade-windup': 'skadi-blade', 'skadi-blade': 'skadi-blade', 'skadi-blade-recover': 'skadi-blade',
     'cage-windup': 'skadi-cage', 'cage-recover': 'skadi-cage',
+    'lattice-windup': 'skadi-lattice', 'lattice-recover': 'skadi-lattice',
     'dash-windup': 'skadi-dash', dash: 'skadi-dash', 'dash-recover': 'skadi-dash',
   },
   // ---- 天使6体(angelBossTick.ts) ----
