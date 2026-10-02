@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { isTouchPrimary } from '../utils/inputDevice';
 import { useGameStore } from '../store/gameStore';
 import GameCanvas from './GameCanvas';
 import PixiStage from '../pixi/PixiStage';
@@ -79,10 +80,7 @@ const Game: React.FC<GameProps> = ({
   // WebGLコンテキストロスト時の再構築世代(v0.25.2160): PixiStageがロストを通知したらkeyを変えて
   // 再マウント=レンダラ/シーン/テクスチャを作り直す。シミュ状態はstoreにあるためゲームは続きから。
   const [pixiEpoch, setPixiEpoch] = useState(0);
-  const [isTouch, setIsTouch] = useState(
-    typeof window !== 'undefined' &&
-      ('ontouchstart' in window || navigator.maxTouchPoints > 0)
-  );
+  const [isTouch, setIsTouch] = useState(typeof window !== 'undefined' && isTouchPrimary());
 
   const isPaused = useGameStore(state => state.isPaused);
   const tutorialPopupOpen = useGameStore(state => state.tutorialPopup !== null); // boolean派生=開閉時のみ再描画
@@ -121,7 +119,7 @@ const Game: React.FC<GameProps> = ({
   // Detect touch capability (re-checks if device profile changes mid-session)
   useEffect(() => {
     const check = () => {
-      setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      setIsTouch(isTouchPrimary());
     };
     check();
     window.addEventListener('resize', check);
@@ -224,7 +222,7 @@ const Game: React.FC<GameProps> = ({
   return (
     <div 
       ref={containerRef} 
-      className="relative w-full h-full bg-gray-900"
+      className="game-frame relative w-full h-full bg-gray-900"
       style={{ 
         touchAction: 'none',
         overflow: 'hidden'

@@ -20,6 +20,13 @@ export const VIEW_CORE_H = 720;
 export const VIEW_MAX_W = 540;
 export const VIEW_MAX_H = 960;
 
+// ★PC版(横長の画面・research/PC_SUPPORT.md・社長裁定2026-10-02「やってみよか推薦で」):
+//   横長では**縦をスマホが必ず見せている高さ(VIEW_CORE_H=720)に固定**し、横は画面の比率なり(16:9 で 1280)。
+//   16:9 より横に広い画面はゲームの枠そのものを 16:9 に絞る(左右に帯=Game.tsx の .game-frame)ので、横は 1280 を超えない
+//   (ウルトラワイドで横が見え過ぎて有利になる、を作らない=Vampire Survivors と同じ考え)。
+export const VIEW_PC_H = VIEW_CORE_H;
+export const VIEW_PC_MAX_W = Math.round((VIEW_PC_H * 16) / 9); // 1280
+
 export interface Viewport {
   scale: number;     // ワールドpx → デバイスpx(= app.stage.scale 兼 入力の割り算係数)
   logicalW: number;  // シーン/シムが使う論理画面幅(ワールドpx)
@@ -30,6 +37,11 @@ export interface Viewport {
 export const computeViewport = (realW: number, realH: number): Viewport => {
   const w = Math.max(1, realW);
   const h = Math.max(1, realH);
+  if (w > h) {
+    // 横長(PC): 縦=720 固定。横は比率なり(枠が 16:9 に絞られていれば 1280。万一絞られていなくても 1280 で頭打ち=見せ過ぎない)。
+    const scale = Math.max(h / VIEW_PC_H, w / VIEW_PC_MAX_W);
+    return { scale, logicalW: w / scale, logicalH: h / scale };
+  }
   // コアを contain する最大スケール: scale ≤ これ で「コアが全部見える」。余った軸は世界が伸びる(黒帯なし)。
   const sContain = Math.min(w / VIEW_CORE_W, h / VIEW_CORE_H);
   // 伸ばし軸を MAX 以下に収める最小スケール: scale ≥ これ で「見せ過ぎない」。

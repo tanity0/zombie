@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { isTouchPrimary } from '../utils/inputDevice';
 
 // 縦持ち専用ガード: タッチ端末を横向きにしたら「縦にしてください」を全面表示してプレイを止める。
 // 本作は縦持ち前提のレイアウト/遠近なので、横向きの崩れを丸ごと無効化する(社長指示)。
 // PC(非タッチ)は横向きのウィンドウ＋マウスで遊ぶため対象外=ガードしない。
+// タッチ画面つきのPC(マウス/トラックパッドがある)も PC として扱う=ガードしない(research/PC_SUPPORT.md・isTouchPrimary)。
 // 表示中はゲームをポーズし、縦に戻したら元の状態へ復帰(メニュー等で元々ポーズ中なら据え置き)。
 const OrientationGuard: React.FC = () => {
   const [show, setShow] = useState(false);
@@ -11,8 +13,7 @@ const OrientationGuard: React.FC = () => {
   const pausedByGuardRef = useRef(false);
 
   useEffect(() => {
-    const isTouch = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    const check = () => setShow(isTouch() && window.innerWidth > window.innerHeight);
+    const check = () => setShow(isTouchPrimary() && window.innerWidth > window.innerHeight);
     check();
     window.addEventListener('resize', check);
     window.addEventListener('orientationchange', check);

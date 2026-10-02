@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeViewport, VIEW_CORE_W, VIEW_CORE_H, VIEW_MAX_W, VIEW_MAX_H } from './viewport';
+import { computeViewport, VIEW_CORE_W, VIEW_CORE_H, VIEW_MAX_W, VIEW_MAX_H, VIEW_PC_H, VIEW_PC_MAX_W } from './viewport';
 
 // 本作は縦持ち専用。固定ビューの不変条件:
 //  ・論理寸法×scale = 実寸(=画面をちょうど埋める。黒帯が出ない)。
@@ -45,5 +45,29 @@ describe('computeViewport (portrait)', () => {
       expect(v.logicalW).toBeLessThanOrEqual(VIEW_MAX_W + 1e-6);
       expect(v.logicalH).toBeLessThanOrEqual(VIEW_MAX_H + 1e-6);
     }
+  });
+});
+
+describe('computeViewport (横長=PC・research/PC_SUPPORT.md)', () => {
+  it('16:9 は 1280×720(縦はスマホが必ず見せている高さと同じ)', () => {
+    for (const [w, h] of [[1920, 1080], [1280, 720], [2560, 1440], [1366, 768]]) {
+      const v = computeViewport(w, h);
+      expect(v.logicalH).toBeCloseTo(VIEW_PC_H, 0);
+      expect(v.logicalW).toBeCloseTo(VIEW_PC_MAX_W, 0);
+    }
+    expect(VIEW_PC_H).toBe(VIEW_CORE_H);
+  });
+  it('16:10・4:3 は縦720のまま横が狭くなる', () => {
+    expect(computeViewport(1920, 1200).logicalW).toBeCloseTo(1152, 0);
+    expect(computeViewport(1024, 768).logicalW).toBeCloseTo(960, 0);
+    expect(computeViewport(1024, 768).logicalH).toBeCloseTo(720, 0);
+  });
+  it('枠が絞られていないウルトラワイドでも横は1280で頭打ち(見せ過ぎない)', () => {
+    const v = computeViewport(3440, 1440);
+    expect(v.logicalW).toBeLessThanOrEqual(VIEW_PC_MAX_W + 1e-6);
+  });
+  it('縦持ちの結果は変わらない(430×932)', () => {
+    const v = computeViewport(430, 932);
+    expect(v.logicalW).toBeCloseTo(VIEW_CORE_W, 3);
   });
 });

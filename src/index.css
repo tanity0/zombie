@@ -1037,3 +1037,10 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   .ds-loadout-body .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ds-loadout-body button[aria-pressed] { flex-wrap: wrap; }
 }
+
+/* ★PC版(横長・research/PC_SUPPORT.md): 16:9 より横に広い画面は、ゲームの枠を 16:9 に絞って中央に置く(左右は帯)。
+   見える範囲(縦720・横1280)の上限と、描画・判定・入力が読む枠の寸法を一致させる。縦持ちには掛からない。 */
+.game-frame { margin-inline: auto; }
+@media (orientation: landscape) and (min-aspect-ratio: 16/9) {
+  .game-frame { max-width: calc(100dvh * 16 / 9); }
+}
