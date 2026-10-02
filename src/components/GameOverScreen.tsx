@@ -577,11 +577,11 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       // ★社長報告2026-08-26「リザルト画面がボタンのところが切れちゃってる。ギリギリ押せるって感じ」:
       // 旧: 外枠が min-h-screen(=100vh)。モバイルのブラウザUI(URLバー等)ぶん実表示より縦長になり、
       // 中央寄せの結果パネル下端(=ボタン)が画面外へはみ出していた。動的ビューポート(100dvh)へ。
-      className="screen-in min-h-[100dvh] w-full flex items-center justify-center px-3"
+      className="screen-in min-h-[calc(100dvh/var(--hud-s,1))] w-full flex items-center justify-center px-3"
       style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
     >
       {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。リザルトは最長画面) */}
-      <NoBounceScroller className="glass-panel command-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
+      <NoBounceScroller className="glass-panel command-panel max-h-[calc(100dvh/var(--hud-s,1)-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
         <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight gt-emboss ui-head-serif ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
@@ -1167,7 +1167,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
-          <NoBounceScroller className="glass-panel command-panel max-h-[calc(100dvh-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
+          <NoBounceScroller className="glass-panel command-panel max-h-[calc(100dvh/var(--hud-s,1)-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
             {openRecord ? (
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">回収資料</div>

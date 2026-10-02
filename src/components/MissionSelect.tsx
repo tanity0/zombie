@@ -288,7 +288,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
       data-screen={testScreen}
       className={`screen-in ds-home relative h-full w-full flex flex-col items-center justify-start overflow-hidden ${COMMAND_PREVIEW && loadout ? 'command-shell' : ''}`}
       style={{
-        maxHeight: '100svh',
+        maxHeight: 'calc(100svh / var(--hud-s, 1))',
         paddingTop: 'max(env(safe-area-inset-top), 16px)',
         paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 24px), 40px)',
         paddingLeft: 'max(env(safe-area-inset-left), 12px)',
@@ -299,11 +299,13 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
       {/* ★固定化(社長指示2026-08-29「基本固定するところは固定して」): ラッパーはスクロールさせない。
           スクロールするのは renderDsHome 内のリスト領域(ds-rows)だけ=計器(上段/マップ/出撃/フッタ)は
           常に固定で、ブラウザのページスクロール感を出さない。 */}
-      <div className="relative h-full w-full overflow-hidden" style={{ maxWidth: COMMAND_PREVIEW && loadout ? 1180 : 420 }}>{children}</div>
+      {/* PC横長(PC_SUPPORT.md 段3-2): ホームだけ2列(左=計器と出撃/右=行リスト)にするので列を広げる。
+          スマホは横向きを塞いでいる(OrientationGuard)ので landscape: はPCだけに効く。 */}
+      <div className={`relative h-full w-full overflow-hidden ${loadout ? '' : 'landscape:!max-w-[880px]'}`} style={{ maxWidth: COMMAND_PREVIEW && loadout ? 1180 : 420 }}>{children}</div>
     </div>
   ) : COMMAND_UI_ENABLED ? (
     <div data-screen={testScreen} className="command-page-shell h-full w-full flex flex-col items-center overflow-hidden" style={{
-      maxHeight: '100svh', paddingTop: 'max(env(safe-area-inset-top), 12px)',
+      maxHeight: 'calc(100svh / var(--hud-s, 1))', paddingTop: 'max(env(safe-area-inset-top), 12px)',
       paddingBottom: 'max(env(safe-area-inset-bottom), 16px)',
       paddingLeft: 'max(env(safe-area-inset-left), 12px)', paddingRight: 'max(env(safe-area-inset-right), 12px)',
     }}>
@@ -319,7 +321,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
       // 100% が可視領域より大きい。パネル(max-h-full)の下端が画面外に落ち、スクロール自体は末尾まで
       // 行けても「見える範囲」に最後の数十pxが入らない。可視ビューポート(svh)でクランプして直す
       // (svh未対応ブラウザでは無効値として無視され従来どおり=安全なフォールバック)。
-      maxHeight: '100svh',
+      maxHeight: 'calc(100svh / var(--hud-s, 1))',
       backgroundImage: `linear-gradient(rgba(8,7,14,0.6), rgba(8,7,14,0.82)), url(${import.meta.env.BASE_URL}backgrounds/title-the-one.png)`,
       backgroundSize: 'cover',
       backgroundPosition: 'center top',
@@ -769,7 +771,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             (上段/飾り計器/マップ/出撃)とフッタは**固定**。スクロールするのは行リスト領域
             (ds-rows・flex-1)だけで、通常の端末では行も全部収まる=何もスクロールしない。
             短い可視域(iPhone SE級・監査B-6)でも動くのはリストだけ。入り=menu-item-inカスケード(監査B-7)。 */}
-        <div className="flex h-full w-full flex-col" style={{ padding: '10px 12px' }}>
+        {/* PC横長(段3-2): 縦720では行リストが入り切らずスクロールになる → 2列を上下中央に置く。
+            左=上段/マップ/出撃/フッタ、右=行リスト(全行が入る)。縦持ちは列の箱を display:contents で
+            消して従来の1列のまま(フッタは order-last で行リストの下へ)。 */}
+        <div className="flex h-full w-full flex-col landscape:flex-row landscape:items-center landscape:gap-x-10" style={{ padding: '10px 12px' }}>
+          <div className="contents landscape:flex landscape:min-w-0 landscape:flex-1 landscape:flex-col">
           <div className="ds-top menu-item-in" style={{ animationDelay: '0ms' }}>
             <span className="ds-top-big gt-emboss">OPERATIONS ROOM</span>
             {/* 実データが引ける物だけ実値(§3-0): G=goldBalance。RANK等の嘘の数字は出さない。 */}
@@ -788,19 +794,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <span className="ds-sortie-t1 block">出 撃</span>
             <PixelIcon name="chevron-right" size={18} />
           </button>
-          {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。
-              続き矢印は作戦室色=アンバー。 */}
-          <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar" style={{ touchAction: 'pan-y' }} moreColor="rgba(255, 179, 64, 0.85)">
-            <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
-            {dsRow('装備', 'LOADOUT', '銃 / サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
-            {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
-            {dsRow('開発施設', 'R&D', 'スキル / サブ解放', () => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }, 175)}
-            <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
-            {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
-            {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
-            {dsRow('変異体対策室', 'DRILLS', 'ボス再戦・演習', goBossRush, 275)}
-          </NoBounceScroller>
-          <div className="ds-foot menu-item-in" style={{ animationDelay: '300ms' }}>
+          <div className="ds-foot menu-item-in order-last landscape:order-none landscape:!mt-8" style={{ animationDelay: '300ms' }}>
             <button
               type="button"
               className="ds-foot-options"
@@ -811,6 +805,19 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </button>
             <span>SYSTEM v{__APP_VERSION__}</span>
           </div>
+          </div>
+          {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。
+              続き矢印は作戦室色=アンバー。 */}
+          <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar landscape:max-h-full landscape:min-w-0 landscape:flex-none landscape:basis-[calc(50%-20px)]" style={{ touchAction: 'pan-y' }} moreColor="rgba(255, 179, 64, 0.85)">
+            <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
+            {dsRow('装備', 'LOADOUT', '銃 / サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
+            {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
+            {dsRow('開発施設', 'R&D', 'スキル / サブ解放', () => { playSfx('ui-select'); setScreen({ name: 'weaponDev' }); }, 175)}
+            <div className="ds-glabel menu-item-in" style={{ animationDelay: '200ms' }}>RECORDS ── 記録</div>
+            {dsRow('資料室', 'ARCHIVE', '記録・変異体資料', goArchive, 225, unreadArchiveCount > 0 ? 'NEW' : undefined)}
+            {dsRow('守護霊', 'GUARDIANS', '名前・討伐記録', goGhost, 250)}
+            {dsRow('変異体対策室', 'DRILLS', 'ボス再戦・演習', goBossRush, 275)}
+          </NoBounceScroller>
         </div>
         {renderHomeNotices()}
       </>
@@ -964,7 +971,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <div className="flex min-h-full flex-col">
         {/* ブリーフィング(監査B-5): 上部36vhに地域の絵(無いステージは絵を敷かず地=パネル色のまま)。
             戻るは絵の上に浮かせる小ボタン(Headerの帯は使わない=絵を目一杯に見せる)。 */}
-        <div className="relative flex-1 overflow-hidden" style={{ minHeight: '36vh' }}>
+        <div className="relative flex-1 overflow-hidden" style={{ minHeight: 'calc(36vh / var(--hud-s, 1))' }}>
           {art && (
             <img
               className="absolute inset-0 h-full w-full object-cover"
@@ -1130,7 +1137,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // iOSのURLバー表示中に可視域より縦長になり、下部UI(START/チップ帯)が画面外へ落ちる。
     // Shellと同じく可視ビューポートでクランプ(未対応ブラウザでは無視=安全)。
     return (
-      <div data-screen="charSelect" className={`screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none ${COMMAND_UI_ENABLED ? 'command-character' : ''}`} style={{ maxHeight: '100svh' }}>
+      <div data-screen="charSelect" className={`screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none ${COMMAND_UI_ENABLED ? 'command-character' : ''}`} style={{ maxHeight: 'calc(100svh / var(--hud-s, 1))' }}>
         {/* 全画面=選択中キャラの立ち絵。クラス切替=key 再マウント。ロード完了後に下からスッと表示。 */}
         <CharPortrait key={effectiveClass} src={portraitSrcFor(effectiveClass)} alt={c.name} />
         {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
@@ -1710,7 +1717,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             className="fixed inset-0 z-50 flex items-center justify-center px-3"
             style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
           >
-            <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
+            <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh/var(--hud-s,1)-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">資料</div>
                 <h3
@@ -1747,7 +1754,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             className="fixed inset-0 z-50 flex items-center justify-center px-3"
             style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
           >
-            <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
+            <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh/var(--hud-s,1)-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">操作記録・{openTutorial.where}</div>
                 <h3
@@ -1889,7 +1896,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
-          <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
+          <NoBounceScroller className="glass-panel command-panel max-h-[calc(100svh/var(--hud-s,1)-36px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none">
             <div className="px-4 py-5">
               <GhostAllyCard ally={openAlly} />
               <button
@@ -2617,7 +2624,7 @@ const SkillGacha: React.FC = () => {
             // ★v0.25.4599: `max-h` は**上限**なので、的の素材を軽くした(1254→74)瞬間に
             // **素の74pxで出る**(BossCutin と同型の事故)。高さを固定して枠いっぱいに出す。
             // ドット絵になったので `pixelated`——無いと4.7倍拡大でぼやける。
-            className="h-[46svh] w-auto max-w-[72%] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.75)]"
+            className="h-[calc(46svh/var(--hud-s,1))] w-auto max-w-[72%] object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.75)]"
             style={{ imageRendering: 'pixelated' }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
           />

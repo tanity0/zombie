@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.4781 — PC版対応 段3-2(前半): タイトル・ホーム・作戦説明・結果を横長向けに【2026-10-03 01:08 JST】
+- App.tsx: ゲームの外の画面にも `HudScaleProvider`(窓の大きさから `hudScaleFor`・resize で追従)。ホーム/練習の結果/結果画面を `<HudScale z={0} interactive>` で包む(倍率1=スマホは包まない)。
+- 包みの中の窓の単位は `calc(○vh / var(--hud-s, 1))`(段3-1の規約): MissionSelect(Shell の maxHeight 3箇所・作戦説明の絵 36vh・資料/操作記録/守護霊の小窓・技の的 46svh)/ GameOverScreen。
+- **ホームは横長で2列**(左=上段/マップ/出撃/フッタ、右=行リスト。上下中央)。縦720に1列のままだと行リストが入り切らずスクロールになっていた(1920×1080の実画で確認)。
+  縦持ちは列の箱を `display:contents` で消して従来どおり(フッタは `order-last`)。列幅 420→880 はホームだけ(装備は対象外)。
+- タイトル: 横長で絵を画面いっぱいに(`landscape:!h-full !w-full !aspect-auto`)。
+- 実画(ヘッドレス): 1920×1080 / 2560×1080 は2列が中央に収まり全行が見える。430×932・375×667 は変更前と同じ(SE はもともと行リストだけスクロール)。
+- 検証: typecheck / lint(0 errors)。監査(品質・クリエイティブ)は次の版で反映。
+- 変更: src/App.tsx / src/components/MissionSelect.tsx / GameOverScreen.tsx / TitleScreen.tsx / changelog / package.json。
+
 ## v0.25.4780 — PC版対応 段3-1: 品質監査・クリエイティブ監査の反映【2026-10-02 23:41 JST】
 - 品質監査(Fable 5.1) (A)5: 拡大の包みの中で窓の単位(vh/dvh/svh/vw)が二重に効き、一時停止の右列・ショップ・レベルアップ・説明画面が枠からはみ出して
   「閉じる」等が押せない/戦況ラインが横いっぱい → `calc(○vw / var(--hud-s, 1))` で全部割った(規約を HudScale.tsx と設計書 §7-1 に)。［投与する］も包んだ。(B)は設計書。

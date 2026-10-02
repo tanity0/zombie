@@ -1,4 +1,6 @@
 import { COMMAND_UI_ENABLED } from './config/uiDesign';
+import { HudScale, HudScaleProvider } from './components/HudScale';
+import { hudScaleFor } from './utils/viewport';
 import './components/commandTheme.css';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Game from './components/Game';
@@ -79,6 +81,13 @@ interface AppProps {
 
 function App({ playingOverlay, bare = false }: AppProps = {}) {
   const [gameState, setGameState] = useState<GameState>('title'); // 最初にタイトル(the ONE)を即表示
+  // PC の横長: メニュー(出撃メニュー・リザルト)を HUD と同じ倍率で拡大する(research/PC_SUPPORT.md 段3-2)。スマホは1。
+  const [menuScale, setMenuScale] = useState(() => (typeof window === 'undefined' ? 1 : hudScaleFor(window.innerWidth, window.innerHeight)));
+  useEffect(() => {
+    const on = () => setMenuScale(hudScaleFor(window.innerWidth, window.innerHeight));
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
   // オープニングシーン(社長支給v0.25.2002): 当面 ?opening=1 でプレビュー再生(タイトルの上に全画面オーバーレイ)。
   // ?opening=2 は射撃シーンから開始(調整用ショートカット)。?opening=3 は蘇生処置パート(字幕)から開始。
   // 本番の再生タイミングは後で確定。
@@ -583,7 +592,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   };
 
   return (
-    <div data-screen={appScreenId ?? undefined} className={`w-full h-full bg-gray-900 text-white ${COMMAND_UI_ENABLED ? 'command-ui' : ''}`}>
+    <HudScaleProvider value={menuScale}>
+    <div data-screen={appScreenId ?? undefined} className={`relative w-full h-full bg-gray-900 text-white ${COMMAND_UI_ENABLED ? 'command-ui' : ''}`}>
       {!bare && gameState === 'title' && (
         <TitleScreen
           onStart={() => { unlockDanceAudio(); setBgmScene('menu'); }} // タップ瞬間にBGM解禁
@@ -598,12 +608,13 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       )}
 
       {!bare && gameState === 'menu' && (
-        <MissionSelect
+        // PC の横長: メニューも HUD と同じ倍率で拡大(research/PC_SUPPORT.md 段3-2)。スマホは倍率1=包まない。
+        <HudScale z={0} interactive><MissionSelect
           initialScreen={menuScreen}
           onStartPractice={startPractice}
           onStartGame={(characterClass) => startGame(characterClass, false)}
           onStartBenchmark={(characterClass) => startGame(characterClass, true)}
-        />
+        /></HudScale>
       )}
 
       {!bare && gameState === 'loading' && <LoadingScreen startup />}
@@ -643,22 +654,22 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
           既存のリザルトは報酬・ハイスコア・記録が並ぶが、練習ではそれらを全て封じてあるので
           **実際には何も増えていない**のに増えたように読めてしまう。 */}
       {!bare && !GAUNTLET_MODE && isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
-        <PracticeResult
+        <HudScale z={0} interactive><PracticeResult
           won={gameState === 'victory'}
           onRetry={() => { void startGame(useGameStore.getState().characterClass, false, true); }}
           onBackToList={leavePracticeToList}
-        />
+        /></HudScale>
       )}
 
       {!bare && !GAUNTLET_MODE && !isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
-        <GameOverScreen
+        <HudScale z={0} interactive><GameOverScreen
           won={gameState === 'victory'}
           withdraw={gameState === 'returned'}
           stats={gameStats}
           benchmarkResult={benchmarkResult}
           onReturnToMenu={returnToMenu}
           onPlayAgain={() => startGame(useGameStore.getState().characterClass, false, true)}
-        />
+        /></HudScale>
       )}
 
       {/* 出撃直後、Pixiレンダラ初期化(WebGL init＋テクスチャGPUアップロード)が終わるまでの繋ぎ。
@@ -684,6 +695,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}
       <OrientationGuard />
     </div>
+    </HudScaleProvider>
   );
 }
 

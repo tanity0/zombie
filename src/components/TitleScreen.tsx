@@ -352,7 +352,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
         src={assetUrl('backgrounds/title-the-one.png')}
         alt=""
         draggable={false}
-        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover"
+        // PC の横長: 絵(1672×941=ほぼ16:9)を画面いっぱいに敷く(正方形に切ってから拡大するとロゴの上が切れる・research/PC_SUPPORT.md 段3)。
+        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover landscape:!h-full landscape:!w-full landscape:!aspect-auto"
         style={{ width: 'min(150vw, 150svh)' }}
       />
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
