@@ -133,7 +133,7 @@ import {
   HIDDEN_SKADI_TUNING as HB_SK,
   HIDDEN_THOR_TUNING as HB_TH,
 } from '../utils/hiddenBossScript';
-import { mimirWheelSpokeAngle } from '../utils/mimirWheel';
+import { mimirWheelSpokeAngle, mimirWheelOmega, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
 import { jormSlamRect, jormSlamReach, jormSlamTelegraphProgress, jormRainLobPos, jormFreezeState, jormFreezeLaunchOffsetMs, jormFreezeSlot } from '../utils/jormDanmaku';
 // research/THOR_ISSEN_REWORK.md §1: 紫円の**半径は台帳の1定数**(判定・ボット・絵が同じ値を読む)。
 import { THOR_NIHIL_STATE, thorNihilRadius } from '../utils/thorNihil';
@@ -20084,8 +20084,10 @@ export class PixiScene {
       }
     }
     // ★ミーミルの紫の車輪(research/MIMIR_WHEEL.md): 角度は判定と同じ純関数 mimirWheelSpokeAngle(溜めの頭からの経過)。
-    //   溜め=全長の紫の線(溜めの頭に出る)+根元から**自分の距離まで**伸びる塗り(既存レーザーと同じ物差し=先端が足元に届いた瞬間に撃つ)。
-    //   線は溜めの間もじわっと回り始める=回る向きが撃つ前に読める。発射=6本の紫の光線。撃ち終わり=芯だけ細って消える(判定なし)。
+    //   溜め=全長の紫の線と判定幅の薄い帯(溜めの頭に出る)+根元から伸びる塗り(既存レーザーと同じカラオケ)。距離の物差しは1本の線ではなく
+    //   **自分の距離へ広がる輪**(輪が自分に届いた瞬間に撃つ)。回る向きは各本の後ろに引く残光で言う(角度が小さい溜め中でも読める)。
+    //   発射=6本の紫の光線(本ごとに位相をずらした揺らぎ・後ろへ引く残光・回転の速さで脈打つ根元)。
+    //   撃ち終わり=紫の帯が芯へ畳まれ(ease-in)、芯が細って消える(判定なし・慣性)。
     if (e.type === 'mimir' && e.mimirWheelAt !== undefined
         && (e.bossState === 'wheel-windup' || e.bossState === 'wheel-fire' || e.bossState === 'wheel-recover')) {
       const W = HB_MI.wheel;
@@ -20094,68 +20096,103 @@ export class PixiScene {
       const endT = W.windupMs + W.fireMs;
       const tW = Math.min(gameTime - e.mimirWheelAt, endT);
       const R = MIMIR_LASER_VIS_RANGE;
+      const omega = mimirWheelOmega(tW, W);
+      const omegaK = Math.min(1, omega / Math.max(0.01, W.omegaMax));
+      // 回る向きの残光: 後ろ(回転と逆)へ数本、だんだん薄く。溜め中も最低限の角を引く(向きが読める)。
+      const trail = (ang: number, width: number, alpha: number, spread: number) => {
+        for (let q = 1; q <= 3; q++) {
+          const ta = ang - wdir * spread * q;
+          o.moveTo(cx, cy).lineTo(cx + Math.cos(ta) * R, cy + Math.sin(ta) * R)
+            .stroke({ width: width * (1 - 0.22 * q), color: 0xa855f7, alpha: alpha * Math.pow(0.5, q) });
+        }
+      };
+      // 変化の合図(赤い光): 溜めで眼のまわりへ寄り集まり、撃つ間は2連を撃つたびに1つずつ飛び出して消え、休みでまた灯る。
+      const drawHomingOrbs = (count: number, grow: number) => {
+        const eyeY = cy - e.height * MIMIR_WHEEL_EYE_UP; // 絵の眼(立ち絵は足元から上へ描くので、判定の中心より上)
+        const sp = 0.6 + 2.4 * grow * grow; // 寄り集まるほど速く回る(加速)
+        for (let q = 0; q < count; q++) {
+          const oa = (gameTime / 1000) * sp + q * (Math.PI * 0.82) + (q === 1 ? 0.4 : 0);
+          const orR = 170 - 90 * grow;
+          const ox = cx + Math.cos(oa) * orR, oy = eyeY + Math.sin(oa) * orR * 0.55;
+          const rr = 24 + 16 * grow; // 判定ゼロの派手さの絵=大きく(引いた画面でも読める)
+          o.circle(ox, oy, rr * 2.2).fill({ color: 0xff3b3b, alpha: 0.12 * grow });
+          o.circle(ox, oy, rr).stroke({ width: 3, color: 0xff3b3b, alpha: 0.4 + 0.5 * grow });
+          o.circle(ox, oy, rr * 0.45).fill({ color: 0xffd0d0, alpha: 0.5 + 0.45 * grow });
+        }
+      };
       if (e.bossState === 'wheel-windup') {
         const prog = Math.max(0, Math.min(1, tW / Math.max(1, W.windupMs)));
-        const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+        const fillE = 1 - (1 - prog) * (1 - prog); // 塗りは速く出て終盤でためる
+        const thick = prog * prog * prog;           // 線の太りは最後に一気に
         const plyW = useGameStore.getState().player;
         const pDist = Math.min(Math.hypot(plyW.x + plyW.width / 2 - cx, plyW.y + plyW.height / 2 - cy), R);
-        const fillLen = pDist * prog;
         for (let k = 0; k < n; k++) {
           const ang = mimirWheelSpokeAngle(th0, wdir, k, tW, W);
           const ux = Math.cos(ang), uy = Math.sin(ang);
           const ex2 = cx + ux * R, ey2 = cy + uy * R;
-          // 当たる幅(判定の太さ)の薄い帯=隙間の本当の広さを撃つ前に読ませる(検収監査 B-2・危険を伝える絵は判定に揃える)。
           o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: W.halfWidth * 2, color: 0x7e22ce, alpha: 0.10 + 0.14 * prog });
-          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xa855f7, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
-          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xf3e8ff, alpha: 0.45 + 0.45 * prog, cap: 'round' });
-          const fx2 = cx + ux * fillLen, fy2 = cy + uy * fillLen;
-          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 7, color: 0xc084fc, alpha: 0.85, cap: 'round' });
-          o.moveTo(cx, cy).lineTo(fx2, fy2).stroke({ width: 2.5, color: 0xffffff, alpha: 0.9, cap: 'round' });
-          o.circle(fx2, fy2, 5).fill({ color: 0xffffff, alpha: 0.95 });
+          trail(ang, 2 + 6 * thick, 0.25 + 0.35 * prog, 0.05);
+          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 8 * thick, color: 0xa855f7, alpha: 0.2 + 0.55 * prog, cap: 'round' });
+          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * thick, color: 0xf3e8ff, alpha: 0.45 + 0.45 * prog, cap: 'round' });
+          const fl = pDist * fillE;
+          o.moveTo(cx, cy).lineTo(cx + ux * fl, cy + uy * fl).stroke({ width: 7, color: 0xc084fc, alpha: 0.85, cap: 'round' });
+          o.moveTo(cx, cy).lineTo(cx + ux * fl, cy + uy * fl).stroke({ width: 2.5, color: 0xffffff, alpha: 0.9, cap: 'round' });
         }
-        // 溜めの終わり(残り150ms)は線全体が白く走る=今から撃つ(既存レーザーのロックの合図と同じ)。
+        // 自分の距離へ広がる輪=物差し(輪が自分に届いた瞬間に撃つ)。
+        o.circle(cx, cy, Math.max(4, pDist * fillE)).stroke({ width: 2 + 2 * thick, color: 0xe9d5ff, alpha: 0.35 + 0.5 * prog });
+        // 溜めの終わり(残り150ms)は線全体が白く走る=今から撃つ。
         const remain = W.windupMs - tW;
         if (remain <= 150) {
-          const flick = 0.5 + 0.5 * Math.sin(now / 45);
+          const k1 = 1 - remain / 150;
           for (let k = 0; k < n; k++) {
             const ang = mimirWheelSpokeAngle(th0, wdir, k, tW, W);
-            o.moveTo(cx, cy).lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R).stroke({ width: 10, color: 0xffffff, alpha: 0.2 + 0.4 * flick, cap: 'round' });
+            o.moveTo(cx, cy).lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R).stroke({ width: 10, color: 0xffffff, alpha: 0.15 + 0.5 * k1 * k1, cap: 'round' });
           }
         }
-        // 変化(追跡弾を撃つ回): 眼のまわりに赤い光が2つ寄り集まる=この回は返せる弾が来る、を撃つ前に見せる。
-        if (e.mimirWheelHoming) {
-          const eyeY = cy - e.height * 0.5;
-          const orR = 70 - 40 * (1 - (1 - prog) * (1 - prog));
-          for (let q = 0; q < 2; q++) {
-            const oa = now / 260 + q * Math.PI;
-            const ox = cx + Math.cos(oa) * orR, oy = eyeY + Math.sin(oa) * orR * 0.6;
-            o.circle(ox, oy, 7 + 3 * prog).stroke({ width: 2, color: 0xff3b3b, alpha: 0.35 + 0.5 * prog });
-            o.circle(ox, oy, 3 + prog).fill({ color: 0xff6b6b, alpha: 0.4 + 0.5 * prog });
-          }
-        }
+        if (e.mimirWheelHoming) drawHomingOrbs(2, 1 - (1 - prog) * (1 - prog));
       } else if (e.bossState === 'wheel-fire') {
         const fireT = tW - W.windupMs;
-        const flick = 0.9 + 0.1 * Math.sin(now / 40);
-        const w = W.halfWidth * 2 * flick;
-        const flare = Math.max(0, 1 - fireT / 220); // 撃った瞬間の根元の閃光(減衰)
+        const fl0 = Math.max(0, 1 - fireT / 260);
+        const flare = fl0 * fl0; // 撃った瞬間の閃光(加減速つきで退く)
         for (let k = 0; k < n; k++) {
           const ang = mimirWheelSpokeAngle(th0, wdir, k, tW, W);
+          const flick = 0.92 + 0.08 * Math.sin(gameTime / 47 + k * 1.9); // 本ごとに位相をずらす
+          const w = W.halfWidth * 2 * flick;
           const ex2 = cx + Math.cos(ang) * R, ey2 = cy + Math.sin(ang) * R;
+          trail(ang, w * 0.7, 0.35 * (0.4 + 0.6 * omegaK), 0.035 + 0.05 * omegaK);
           o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w * (1 + 0.6 * flare), color: 0x9333ea, alpha: 0.45, cap: 'round' });
           o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: w * 0.5, color: 0xc084fc, alpha: 0.85, cap: 'round' });
           o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(3, w * 0.18), color: 0xffffff, alpha: 0.97, cap: 'round' });
         }
-        o.circle(cx, cy, 40 + 50 * flare).fill({ color: 0xc084fc, alpha: 0.35 + 0.4 * flare });
-        o.circle(cx, cy, 18 + 20 * flare).fill({ color: 0xffffff, alpha: 0.6 + 0.35 * flare });
+        // 根元: 回転の速さで脈打つ(速いほど明るく大きい)。縁は層を重ねて溶かす。
+        const hub = 34 + 18 * omegaK + 50 * flare;
+        o.circle(cx, cy, hub * 1.6).fill({ color: 0x9333ea, alpha: 0.12 + 0.12 * omegaK });
+        o.circle(cx, cy, hub).fill({ color: 0xc084fc, alpha: 0.22 + 0.2 * omegaK + 0.3 * flare });
+        o.circle(cx, cy, hub * 0.45).fill({ color: 0xffffff, alpha: 0.55 + 0.2 * omegaK + 0.25 * flare });
+        if (e.mimirWheelHoming) {
+          // 2連の1発ごとに光が1つ減り、組を撃ち切ったら休みの間にまた灯る。
+          const H = W.homing;
+          const shots = e.mimirWheelShots ?? 0;
+          const inPair = shots % 2;
+          const lastPairEnd = shots >= 2 && inPair === 0 ? mimirWheelShotOffsetMs(shots - 1, H) : -1;
+          const regrow = lastPairEnd >= 0 ? Math.max(0, Math.min(1, (fireT - lastPairEnd) / Math.max(1, H.restMs * 0.7))) : 1;
+          const allDone = mimirWheelShotOffsetMs(shots, H) >= W.fireMs;
+          if (!allDone) drawHomingOrbs(2 - inPair, inPair === 0 ? regrow * regrow * (3 - 2 * regrow) : 1);
+        }
       } else {
+        // 撃ち終わり: 紫の帯が芯へ畳まれ(ease-in)、芯が細って消える。判定は無い。
         const rt = gameTime - (e.mimirWheelAt + endT);
-        if (rt >= 0 && rt < 180) {
-          const u = rt / 180, k1 = (1 - u) * (1 - u);
+        if (rt >= 0 && rt < 260) {
+          const u = rt / 260;
+          const fold = 1 - u * u;              // 帯は ease-in で畳む
+          const core = 1 - Math.pow(u, 0.6);   // 芯は少し遅れて細る
           for (let k = 0; k < n; k++) {
             const ang = mimirWheelSpokeAngle(th0, wdir, k, endT, W);
-            o.moveTo(cx, cy).lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R)
-              .stroke({ width: Math.max(0.5, W.halfWidth * 0.5 * k1), color: 0xf3e8ff, alpha: 0.9 * k1, cap: 'round' });
+            const ex2 = cx + Math.cos(ang) * R, ey2 = cy + Math.sin(ang) * R;
+            o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(0.5, W.halfWidth * 2 * fold), color: 0x9333ea, alpha: 0.45 * fold, cap: 'round' });
+            o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: Math.max(0.5, W.halfWidth * 0.6 * core), color: 0xf3e8ff, alpha: 0.9 * core, cap: 'round' });
           }
+          o.circle(cx, cy, 34 * fold).fill({ color: 0xc084fc, alpha: 0.3 * fold });
         }
       }
     }
@@ -20771,15 +20808,25 @@ export class PixiScene {
         const mR = (14 + 16 * grow) * beat;
         const freezing = bs === 'jfreeze-open' || bs === 'jfreeze';
         if (freezing) {
-          // 凍てつく牙だけは冷たく絞った口(白い芯を細く・外の青を薄く広く)+口から吐く白い息の筋(凍C#14)。
-          o.circle(e.jormMouthX, e.jormMouthY, mR * 2.8).fill({ color: 0x9fd8ff, alpha: 0.12 * Math.min(1, grow) });
-          o.circle(e.jormMouthX, e.jormMouthY, mR * 0.55).fill({ color: 0xffffff, alpha: 0.85 * Math.min(1, grow) });
+          // 凍てつく牙だけは冷たく絞った口: 光は息の向きへ偏って流れ(円ではない)、縁は層を重ねて溶かす(凍C2#J-1)。
+          // 白い息は口を離れて漂い、膨らみながら薄れて消える(位置が時間で外へ流れる・大きさと間隔はふぞろい・凍C2#J-2)。
           const side = Math.sign(e.jormMouthX - cx) || 1;
-          for (let b = 0; b < 3; b++) {
-            const bl = (18 + 26 * b) * (0.6 + 0.4 * Math.min(1, grow)) * (1 + 0.6 * kick);
-            const by = e.jormMouthY + (b - 1) * 7;
-            o.moveTo(e.jormMouthX + side * mR * 0.4, by).lineTo(e.jormMouthX + side * (mR * 0.4 + bl), by + (b - 1) * 4)
-              .stroke({ width: 2.2 - 0.5 * b, color: 0xe8f6ff, alpha: (0.45 - 0.1 * b) * Math.min(1, grow) });
+          const gk = Math.min(1, grow);
+          for (let L = 0; L < 4; L++) {
+            const off = side * mR * (0.35 + 0.45 * L);
+            o.circle(e.jormMouthX + off, e.jormMouthY + L * 1.5, mR * (1.6 - 0.25 * L) * (1 + 0.3 * kick))
+              .fill({ color: L === 0 ? 0xbfe8ff : 0x9fd8ff, alpha: (0.16 - 0.03 * L) * gk });
+          }
+          o.circle(e.jormMouthX + side * mR * 0.2, e.jormMouthY, mR * 0.42).fill({ color: 0xffffff, alpha: 0.55 * gk });
+          o.circle(e.jormMouthX + side * mR * 0.25, e.jormMouthY, mR * 0.75).fill({ color: 0xe8f6ff, alpha: 0.25 * gk });
+          const BREATH_MS = [1100, 1400, 900, 1250, 1600];
+          for (let b = 0; b < BREATH_MS.length; b++) {
+            const per = BREATH_MS[b];
+            const ph = (((gameTime + b * 377) % per) + per) % per / per;
+            const drift = 1 - (1 - ph) * (1 - ph); // 吐き出されて減速しながら漂う
+            const bx = e.jormMouthX + side * (mR * 0.5 + (40 + 22 * b) * drift);
+            const by = e.jormMouthY + (b % 2 === 0 ? -1 : 1) * (3 + 5 * b) * drift - 10 * drift * drift;
+            o.circle(bx, by, (3 + 2.5 * b) * (0.5 + 1.3 * drift)).fill({ color: 0xe8f6ff, alpha: (0.32 - 0.04 * b) * (1 - ph) * gk });
           }
         } else {
           o.circle(e.jormMouthX, e.jormMouthY, mR * 2.2).fill({ color: 0x5fb8ff, alpha: 0.18 * Math.min(1, grow) });
@@ -20788,8 +20835,8 @@ export class PixiScene {
         // 撃つたびに口と逆へ反る(#10: 4秒の完全静止をやめる)。描画オフセットのみ。
         // 凍てつく牙は輪を吐くたびに頭ごと沈んで戻る大きな吐息(凍C#12: 小さくて見えない動きをやめる)。
         if (!opening) {
-          view.sprite.position.x -= Math.sign(e.jormMouthX - cx) * (freezing ? 10 : 3) * kick;
-          if (freezing) view.sprite.position.y += 6 * kick;
+          view.sprite.position.x -= Math.sign(e.jormMouthX - cx) * (freezing ? 34 : 3) * kick;
+          if (freezing) view.sprite.position.y += 16 * kick;
         }
       }
       // 弾幕B: 打ち上げた光弾(弧)・落下点の影と光溜まり・着弾の閃光。判定なし=派手さの絵。赤も紫も使わない
@@ -26802,7 +26849,7 @@ export class PixiScene {
           const rr = F.radius * (1.35 - 0.35 * eo - over);
           for (let sgi = 0; sgi < n; sgi++) {
             const a0s = r.theta0 + (Math.PI * 2 * sgi) / n + (r.ring % 2) * (Math.PI / n);
-            const lead = Math.min(sgi, n - sgi) / (n / 2); // 0=口の側 → 1=反対側
+            const lead = sgi / n; // 口の側から時計回り(結晶・飛ぶ順と同じ向き・凍C2#J-8)
             const kk = Math.max(0, Math.min(1, (k - lead * 0.35) / 0.65));
             if (kk <= 0) continue;
             const span = (Math.PI * 2 / n) * (0.45 + 0.4 * hash(sgi + r.ring * 31));
@@ -26815,10 +26862,23 @@ export class PixiScene {
             const head = Math.min(1, k / 0.55);
             const he = 1 - (1 - head) * (1 - head);
             const tail = Math.max(0, (k - 0.35) / 0.65);
-            const hx = e.jormMouthX + (s0.x - e.jormMouthX) * he, hy = e.jormMouthY + (s0.y - e.jormMouthY) * he;
-            const tx = e.jormMouthX + (s0.x - e.jormMouthX) * tail, ty = e.jormMouthY + (s0.y - e.jormMouthY) * tail;
-            a.moveTo(tx, ty).lineTo(hx, hy).stroke({ width: 5, color: 0x9fd8ff, alpha: 0.22 * (1 - tail) });
-            a.moveTo(tx, ty).lineTo(hx, hy).stroke({ width: 1.6, color: 0xffffff, alpha: 0.6 * (1 - tail) });
+            // 息の塊が弧を描いて飛ぶ(定規の直線にしない・凍C2#J-4): 2次ベジェ上を、頭が膨らみ尾がちぎれながら進む。
+            const mx0 = e.jormMouthX, my0 = e.jormMouthY;
+            const ddx = s0.x - mx0, ddy = s0.y - my0;
+            const qx = (mx0 + s0.x) / 2 - ddy * 0.22, qy = (my0 + s0.y) / 2 + ddx * 0.22 - 40;
+            const bez = (u: number) => {
+              const v = 1 - u;
+              return { x: v * v * mx0 + 2 * v * u * qx + u * u * s0.x, y: v * v * my0 + 2 * v * u * qy + u * u * s0.y };
+            };
+            for (let q = 0; q < 9; q++) {
+              const u = tail + (he - tail) * (q / 8);
+              if (u <= 0) continue;
+              const pt = bez(u);
+              const near = q / 8; // 1=頭
+              const torn = hash(q * 7 + r.ring) < 0.25 && near < 0.5 ? 0 : 1; // 尾はところどころちぎれる
+              a.circle(pt.x, pt.y, (2 + 7 * near * near) * (0.8 + 0.4 * hash(q + 3)))
+                .fill({ color: near > 0.85 ? 0xffffff : 0x9fd8ff, alpha: (0.12 + 0.4 * near) * (1 - tail) * torn });
+            }
           }
         }
         if (!formed) {
@@ -26829,8 +26889,10 @@ export class PixiScene {
             if (ki <= 0) continue;
             const ke = 1 - (1 - ki) * (1 - ki);
             const cl = (3 + 9 * ke) * (0.8 + 0.4 * hash(i * 3 + r.ring));
-            for (let arm = 0; arm < 3; arm++) {
-              const aa = sl.angle + (arm * Math.PI) / 3;
+            const arms = 2 + Math.floor(hash(i * 19 + r.ring * 5) * 3); // 2〜4本
+            const rot = hash(i * 23 + 1) * Math.PI;                       // 向きは枠ごとにばらす(凍C2#J-5)
+            for (let arm = 0; arm < arms; arm++) {
+              const aa = rot + (arm * Math.PI) / arms;
               const dx = Math.cos(aa) * cl, dy = Math.sin(aa) * cl;
               a.moveTo(sl.x - dx, sl.y - dy).lineTo(sl.x + dx, sl.y + dy);
             }
@@ -26866,15 +26928,26 @@ export class PixiScene {
             const toGo = jormFreezeLaunchOffsetMs(i, F) - t;
             const win = step * 3 + 20;
             const creak = toGo < win ? Math.pow(1 - toGo / win, 2) : 0;
-            const pre = toGo < step + 15 ? 1 - toGo / (step + 15) : 0;
+            const preW = step * 2 + 30;
+            const pre = toGo < preW ? Math.pow(1 - toGo / preW, 3) : 0; // 飛ぶ前の縮み(ease-in で深く・凍C2#J-9)
             const shade = 0.75 + 0.25 * hash(i * 17 + r.ring); // 枠ごとの濃淡(周期の瞬きはしない・凍C#6)
-            const rr = 12 + 6 * snap + 3 * creak - 3 * pre * pre;
+            const size = 0.85 + 0.35 * hash(i * 29 + r.ring * 3); // 殻の大きさも枠ごとに違う(凍C2#J-6)
+            const rr = (12 + 6 * snap + 3 * creak) * size - 6 * pre;
             a.circle(px, py, rr).stroke({ width: 2 + creak, color: 0xbfe8ff, alpha: (0.6 + 0.3 * snap + 0.25 * creak) * shade });
             a.circle(px, py, rr + 4).stroke({ width: 4, color: 0x5fb8ff, alpha: (0.14 + 0.1 * creak) * shade });
+            if (hash(i * 31 + r.ring * 7) < 0.3) {
+              // 最初からひびの入った殻(何個かだけ)。
+              const ca = hash(i + 41) * Math.PI * 2;
+              a.moveTo(px + Math.cos(ca) * rr, py + Math.sin(ca) * rr)
+                .lineTo(px + Math.cos(ca + 0.5) * rr * 0.55, py + Math.sin(ca + 0.5) * rr * 0.55)
+                .lineTo(px + Math.cos(ca + 0.2) * rr * 0.2, py + Math.sin(ca + 0.2) * rr * 0.2)
+                .stroke({ width: 1.2, color: 0xffffff, alpha: 0.6 * shade });
+            }
             // 霜の刺: 枠の角(放射)に揃えて外側にだけ(弾の上を塗らない・凍C#7)。
             const cl = 5 + 3 * creak + 4 * snap;
+            const spRot = sl.angle + (hash(i * 37 + r.ring) - 0.5) * 1.6;
             for (let sp = 0; sp < 3; sp++) {
-              const sa = sl.angle + (sp * Math.PI * 2) / 3;
+              const sa = spRot + (sp * Math.PI * 2) / 3 + (hash(i * 3 + sp) - 0.5) * 0.5;
               a.moveTo(px + Math.cos(sa) * (rr + 1), py + Math.sin(sa) * (rr + 1))
                 .lineTo(px + Math.cos(sa) * (rr + 1 + cl), py + Math.sin(sa) * (rr + 1 + cl));
             }
@@ -26897,12 +26970,12 @@ export class PixiScene {
             // 加速の間の冷気の尾(派手さの絵・凍C#11)。
             if (tg < F.accMs + 250) {
               const fade = Math.max(0, 1 - tg / (F.accMs + 250));
-              const len = 10 + 34 * Math.min(1, fs.speed / Math.max(1, F.speed));
-              for (let q = 1; q <= 4; q++) {
-                const back = (len * q) / 4;
-                a.circle(px - pr.direction.x * back, py - pr.direction.y * back, 3.4 - 0.6 * q)
-                  .fill({ color: q === 1 ? 0xffffff : 0x9fd8ff, alpha: (0.5 - 0.1 * q) * fade });
-              }
+              // 先細りの1本の筋(速さで伸び、少し揺らぐ・凍C2#J-7)。
+              const len = 14 + 60 * Math.min(1, fs.speed / Math.max(1, F.speed));
+              const wob = Math.sin(gameTime / 60 + i * 1.3) * 3;
+              const bx = px - pr.direction.x * len - pr.direction.y * wob, by = py - pr.direction.y * len + pr.direction.x * wob;
+              a.moveTo(px, py).lineTo(bx, by).stroke({ width: 9, color: 0x9fd8ff, alpha: 0.18 * fade, cap: 'round' });
+              a.moveTo(px, py).lineTo((px + bx) / 2, (py + by) / 2).stroke({ width: 4, color: 0xe8f6ff, alpha: 0.5 * fade, cap: 'round' });
             }
           }
         });

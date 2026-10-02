@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { mimirWheelTheta0, mimirWheelSpokeAngle, mimirWheelShotOffsetMs } from '../utils/mimirWheel';
+import { mimirWheelTheta0, mimirWheelSpokeAngle, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
 import { placeLabSpawn, isAwayFromLabGoal } from '../utils/labSpawn';
 import { shouldShowPhillTutorial, shouldShowScoutTutorial } from '../utils/labTutorial';
@@ -7417,6 +7417,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               } else if (st === 'wheel-windup') {
                 // ★紫の車輪(research/MIMIR_WHEEL.md): 溜め=静止。予告線は描画が mimirWheelSpokeAngle で回す(判定と同じ式)。
                 bs.vx = 0; bs.vy = 0;
+                // 線が白く走る瞬間(残り150ms)に1回だけ: 「今から撃つ」の音(既存レーザーのロックの合図と同じ考え)。
+                if ((boss.bossStateUntil ?? 0) - newGameTime <= 150 && bs.mimirLockSfxUntil !== boss.bossStateUntil) {
+                  bs.mimirLockSfxUntil = boss.bossStateUntil ?? 0;
+                  playSfx('homing-lock2', 0.6);
+                }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'wheel-fire';
                   patch.bossStateUntil = newGameTime + HB_MI.wheel.fireMs;
@@ -7463,14 +7468,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   while (shots < 2 && fireAt + mimirWheelShotOffsetMs(k, W.homing) <= newGameTime
                     && mimirWheelShotOffsetMs(k, W.homing) < W.fireMs) {
                     const aim = lockedAttackAim();
-                    const pr = createEnemyProjectile(boss, player, aim.x, aim.y, undefined, undefined, { speed: W.homing.speed, damage: W.homing.damage });
+                    // 弾は眼から出る(描画の赤い光=眼のまわり、と同じ出どころ)。
+                    const pr = createEnemyProjectile(boss, player, aim.x, aim.y, bcx, bcy - boss.height * MIMIR_WHEEL_EYE_UP, { speed: W.homing.speed, damage: W.homing.damage });
                     addProjectile({
                       ...pr, duration: W.homing.lifeMs,
                       ...(aim.side === 'player' ? { hostileHomingTurn: W.homing.turnRadS, hostileHomingUntil: Date.now() + W.homing.homingMs } : {}),
                     });
                     k++; shots++;
                   }
-                  if (shots > 0) playSfx('shoot', 0.35, undefined, 0.75);
+                  if (shots > 0) playSfx('homing-fire', 0.45, undefined, 0.85);
                   patch.mimirWheelShots = k;
                 }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
@@ -7730,7 +7736,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 if (sweepSfx && launchedNow > 0) {
                   const ringNo = Math.max(...rings.map(r => r.ring));
-                  playSfx('skadi-ice', 0.42, undefined, 1.1 + 0.15 * ringNo);
+                  // 砕けて飛ぶ瞬間は凍る音と別の質感(風を切る音)。高さは輪ごとに不揃いに上げる(凍C2#J-10)。
+                  playSfx('thor-thrust', 0.4, undefined, [1.05, 1.18, 1.4][Math.min(2, ringNo)]);
                 }
                 // 全部飛んで加速し切った輪は手放す(以後はふつうの弾として飛ぶ)。
                 const doneT = F.formMs + F.holdMs + F.sweepMs + F.accMs;

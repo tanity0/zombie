@@ -1,6 +1,12 @@
 // ★ミーミルの「紫の車輪」(回る全方位レーザー・research/MIMIR_WHEEL.md)の純関数。
 // 予告線(pixiScene)・判定(useGameLoop)・追跡弾(gameStore)が**同じ式**を読む。store / pixi 非依存の葉。
 
+/**
+ * 絵の眼の高さ=判定の中心から体の高さの何倍上か(立ち絵は足元から上へ描くので眼は判定の中心より上にある)。
+ * 変化の赤い光(描画)と追跡弾の出どころ(判定)が同じ値を読む。実測: 立ち絵の眼は判定の中心から約160px上(高さ124の約1.3倍)。
+ */
+export const MIMIR_WHEEL_EYE_UP = 1.3;
+
 export interface MimirWheelSpec {
   windupMs: number; fireMs: number; spokes: number;
   /** 溜めの終わりで届く角速度(rad/s)=予告線がじわっと回り始める。 */
