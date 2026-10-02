@@ -428,7 +428,10 @@ const CharPortrait: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
       alt={alt}
       draggable={false}
       onLoad={() => setLoaded(true)}
-      className={`pointer-events-none absolute inset-0 h-full w-full object-cover object-top ${loaded ? 'portrait-rise' : 'opacity-0'}`}
+      // PC の横長(段3-2): 全面に cover すると縦長の立ち絵(2:3)の胸から上しか映らない → 高さいっぱいに全身を出し、
+      // 少し右(左下の説明と重ねない)に置いて左右の縁を地の黒へ溶かす(絵の地は #121314〜#1e1e1e で、枠の黒と段差が出るため)。
+      // 位置は translate(個別プロパティ)で持つ=入りの portrait-rise(transform)と打ち消し合わない。
+      className={`pointer-events-none absolute inset-0 h-full w-full object-cover object-top landscape:!w-auto landscape:!left-[56%] landscape:[translate:-50%_0] landscape:[mask-image:linear-gradient(90deg,transparent,#000_16%,#000_84%,transparent)] landscape:[-webkit-mask-image:linear-gradient(90deg,transparent,#000_16%,#000_84%,transparent)] ${loaded ? 'portrait-rise' : 'opacity-0'}`}
     />
   );
 };

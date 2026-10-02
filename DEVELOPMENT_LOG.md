@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.4784 — PC版対応 段3-2: キャラ選択の立ち絵を横長で全身に【2026-10-03 02:40 JST】
+- 横長だけ `CharPortrait` を高さいっぱい・幅は絵の比率(全身)・中心56%・左右の縁を mask で黒へ溶かす(research/PC_SUPPORT.md §8-3)。縦持ちは従来の cover。
+- 実画: 1920×1080(ヘビーガンナー・マークスマン)/ 1366×768 で全身・説明と START に重ならない / 430×932 は変更前と同じ。
+- 検証: typecheck / lint(0 errors)。クリエイティブ監査は次の版で反映。
+- 変更: src/components/MissionSelect.tsx / research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4783 — PC版対応: 洞窟地帯の絵の繰り返しを横長で隠す【2026-10-03 02:32 JST】
 - 社長「はい」(推薦=横長では絵の片側だけを映す)。`tutorial-far.jpg` は左右に同じ景色が2回並ぶ絵(差分の実測で周期=幅の半分。ほかの地域の絵は周期なし)。
 - `config/uiDesign.ts` に `REGION_ART_TWICE` / `regionArtWideClass`(横長だけ幅200%=左の1周だけ映す)。作戦地域のカードと作戦説明の絵に付けた。
