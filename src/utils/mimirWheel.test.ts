@@ -86,3 +86,11 @@ describe('変化の追跡弾(既定値で「外せる・返せる」)', () => {
     expect(H.damage).toBeGreaterThanOrEqual(HIDDEN_MIMIR_TUNING.wheel.damage);
   });
 });
+
+describe('追跡弾の技キー', () => {
+  it('撃っている間(wheel-fire)の弾には車輪の弾のキーが付く', async () => {
+    const { projectileMoveKeyForEnemy, anyMoveKeyForEnemy } = await import('./moveReaction');
+    expect(projectileMoveKeyForEnemy({ type: 'mimir', bossState: 'wheel-fire' })).toBe('mimir-wheel-shot');
+    expect(anyMoveKeyForEnemy({ type: 'mimir', bossState: 'wheel-fire' })).toBe('mimir-wheel'); // 技のエピソードは光線のまま
+  });
+});

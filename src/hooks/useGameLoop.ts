@@ -7442,6 +7442,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     if (Math.hypot(ppx - cxp, ppy - cyp) <= W.halfWidth + prr) {
                       hitDone = true;
                       // 1本の通過で当たるのは1回(近くでは1本が1秒以上かけて通るので、無敵明けにもう1回、を作らない)。
+                      // 抜けてからもう一度その本に入れば、また当たる(下で「どの本にも居ない」フレームに記録を消す)。
                       const again = boss.mimirWheelLastHitK === k && newGameTime - (boss.mimirWheelLastHitAt ?? -1e9) < W.fireMs;
                       if (!again) {
                         const died = damagePlayer(W.damage, 'ミーミルの回る光輪', cxp, cyp, undefined, undefined, 'mimir-wheel');
@@ -7452,6 +7453,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   }
                   applyGhostAllyCapsuleHit(bcx, bcy, ex, ey, W.halfWidth, W.damage, (x, y) => spawnBurst(x, y, '#d8b4fe', 3), 'capsule:mimir-wheel');
                 }
+                if (!hitDone && boss.mimirWheelLastHitK !== undefined) { patch.mimirWheelLastHitK = undefined; patch.mimirWheelLastHitAt = undefined; }
                 // 変化(HP60%以下で始まった回): 追跡弾。赤い二重丸(カウンター可)。追跡は相手がプレイヤーの時だけ(守護霊へは直進)。
                 if (boss.mimirWheelHoming) {
                   // 撃つ時刻は発射の頭(=溜めの頭+windupMs・ノックバックで繰り下がる)からの mimirWheelShotOffsetMs。

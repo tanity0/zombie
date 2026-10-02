@@ -20104,6 +20104,8 @@ export class PixiScene {
           const ang = mimirWheelSpokeAngle(th0, wdir, k, tW, W);
           const ux = Math.cos(ang), uy = Math.sin(ang);
           const ex2 = cx + ux * R, ey2 = cy + uy * R;
+          // 当たる幅(判定の太さ)の薄い帯=隙間の本当の広さを撃つ前に読ませる(検収監査 B-2・危険を伝える絵は判定に揃える)。
+          o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: W.halfWidth * 2, color: 0x7e22ce, alpha: 0.10 + 0.14 * prog });
           o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 2 + 7 * prog, color: 0xa855f7, alpha: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse), cap: 'round' });
           o.moveTo(cx, cy).lineTo(ex2, ey2).stroke({ width: 1 + 2 * prog, color: 0xf3e8ff, alpha: 0.45 + 0.45 * prog, cap: 'round' });
           const fx2 = cx + ux * fillLen, fy2 = cy + uy * fillLen;

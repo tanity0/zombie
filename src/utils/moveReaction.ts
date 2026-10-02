@@ -428,7 +428,9 @@ export const isProjectileMoveKey = (key: string): boolean => PROJECTILE_MOVE_KEY
 export const projectileMoveKeyForEnemy = (
   e: Pick<MoveReactionEnemy, 'type' | 'aiPhase' | 'bossState'>,
 ): MoveReactionKey | undefined => {
-  const key = anyMoveKeyForEnemy(e);
+  // 弾の台帳を先に引く: 近接の台帳にも載っている州(ミーミルの紫の車輪 'wheel-fire'=光線と追跡弾を同時に出す)で、
+  // 弾に近接のキーが付いて捨てられる(=弾のキーが1度も付かない)のを防ぐ。両方に載る州が無ければ従来と同じ結果。
+  const key = bulletMoveKeyForEnemy(e) ?? anyMoveKeyForEnemy(e);
   return key !== null && PROJECTILE_MOVE_KEY_SET.has(key) ? key : undefined;
 };
 

@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.4769 — ミーミルの紫の車輪: 検収監査の反映【2026-10-02 20:03 JST】
+- 検収監査(Fable 5.1): (A)0・(C)6・(B)9。直した: C-1 追跡弾に技キー 'mimir-wheel-shot' が付かなかった(近接の台帳にも 'wheel-fire' があり、
+  弾のキー導出 projectileMoveKeyForEnemy が近接を先に引いていた)→ 弾の台帳を先に引く(両方に載る州は wheel-fire だけ=他の挙動は不変・テストで固定)/
+  C-2 「1本の通過で1回」が実装は「発射中ずっと1回」→ どの本にも居ないフレームで記録を消す / C-3 負荷の記述 / B-2 溜めの線が判定より細く隙間が広く見えた →
+  判定と同じ太さの薄い帯を溜めの間に敷く(危険を伝える絵は判定に揃える)。C-4〜6 は監査時点の作業ツリーの話(対応済み)。
+- (B) 記録は設計書 §11(社長の判断材料: 真上/真下で棒立ちは発射の瞬間に当たる/近距離の変化の弾は返すのが答え 等)。
+- 巡の判断: (A)0 なので検収はここで止めて実機へ。クリエイティブ監査(2巡目・凍てつく牙と一緒)は走行中。
+- 検証: typecheck / mimirWheel.test・moveReaction.test 71 通過。
+- 変更: src/utils/moveReaction.ts / src/utils/mimirWheel.test.ts / src/hooks/useGameLoop.ts / src/pixi/pixiScene.ts / research/MIMIR_WHEEL.md / changelog / package.json。
+
 ## v0.25.4768 — ヨルムンガルドの降り注ぐ星弓: 落ちる帯を体の近くへ(社長指示)【2026-10-02 20:01 JST】
 - 社長指示「降り注ぐ星弓、もう少し手前がいい。ヨルムンガルドに密着してれば避けれるくらいの」。
 - `HIDDEN_JORMUNGAND_TUNING.rain` の落下帯 rMin/rMax を 200/560 → **70/420**(体の矩形からの距離)。弾は外向きにしか飛ばない=体から約50px以内(密着)だけが安全。
