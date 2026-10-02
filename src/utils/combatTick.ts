@@ -299,7 +299,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         // 検収監査#6: 死因の技名はmoveKeyで分ける(削岩型の突きが「落下攻撃」と表示されていた)。
         // 検収監査#6の継承(§14-2): 死因の技名はmoveKeyで分ける(伐採人の薙ぎ払いが「落下攻撃」と
         // 表示される取りこぼしを防ぐ)。
-        const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い' : '落下攻撃';
+        const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
+          : b.moveKey === 'jo-slam' ? '叩きつけ' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey);
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。

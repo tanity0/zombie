@@ -47,7 +47,8 @@ const DIVE_RADIUS_MIRROR = 220;          // = gameStore.GIANT_DIVE_RADIUS(急降
 const MIMIR_BITE_RADIUS_MIRROR = MIMIR_BITE_RADIUS; // = bodyCenteredAoe.MIMIR_BITE_RADIUS(群体の噛みつき円)
 // research/JORM_DANMAKU.md: 叩きつけ=体の矩形を広げた枠。円で近似する時は**体の半幅+最後の段の届き**(=枠を丸ごと含む・安全側)。
 // テーブルは store 非依存の葉なので直に読む。体の寸法(519×90)は enemyUtils.ENEMY_STATS の写し(移動すると ghostTelegraph.test が見張る網は無い=寸法を変えたらここも)。
-const JORM_SLAM_RADIUS_MAX_MIRROR = Math.hypot(519 / 2, 90 / 2) + Math.max(...HIDDEN_JORMUNGAND_TUNING.slam.reaches);
+// 円で近似する時は**枠の四隅まで含む**半径(検収監査 B-1: 体の半幅+届き を足しただけでは角が外へ出る)。
+const JORM_SLAM_RADIUS_MAX_MIRROR = Math.hypot(519 / 2 + Math.max(...HIDDEN_JORMUNGAND_TUNING.slam.reaches), 90 / 2 + Math.max(...HIDDEN_JORMUNGAND_TUNING.slam.reaches));
 const SURIEL_RINGSPIN_RADIUS_MIRROR = 92;// = angelBossTick.SURIEL_RINGSPIN_RADIUS(回転斬りの円)
 const SURIEL_BEAM_RANGE_MIRROR = 2600;   // = angelBossTick.SURIEL_BEAM_RANGE(環ビームの射程)
 const ACRASIEL_SPIKE_RANGE_MIRROR = 310; // = angelBossTick.ACRASIEL_SPIKE_RANGE_PX(放射8本の長さ)

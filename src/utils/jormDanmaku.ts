@@ -10,17 +10,26 @@ export const jormSlamHitAt = (startAt: number, k: number, windupMs: number, inte
 export const jormSlamReach = (k: number, reaches: readonly number[]): number =>
   reaches[Math.min(reaches.length, Math.max(1, k)) - 1] ?? 0;
 
+/** 段kの叩きつけの範囲=**体の矩形を reach だけ広げた矩形**(左上・幅・高さ)。赤い枠はこれを描く。 */
+export const jormSlamRect = (
+  body: { x: number; y: number; width: number; height: number }, reach: number,
+): { x: number; y: number; w: number; h: number } =>
+  ({ x: body.x - reach, y: body.y - reach, w: body.width + 2 * reach, h: body.height + 2 * reach });
+
 /**
- * 段kの叩きつけの判定=**体の矩形を reach だけ広げた矩形**(帯: 始点→終点・半幅)。
- * ★`pumpkinBlasts` の帯判定(`distToBandRect`)と、赤い予告の帯(`drawSweepBand`)が**同じ矩形**を読む
- * =「赤いのに当たらない/赤くないのに当たる」を作らない。蛇は横長(519×90)なので、円にすると
- * 脇(上下)と先端で逃げる距離が5倍違う=**どこに居ても同じ距離で逃げられる**ように体の形で広げる。
+ * 段kの叩きつけの判定(`pumpkinBlasts` の帯=始点→終点・半幅)。**判定の長方形がちょうど `jormSlamRect` になる**ように置く。
+ * ★`distToBandRect` は帯の端点を**半幅ぶん軸方向へ伸ばした**長方形を判定する(=既存の「描いてある四角」の契約)。
+ *   だから端点は矩形の両端から半幅ぶん内側(検収監査 A-1: 端点を矩形の端に置くと判定が左右に半幅ぶんはみ出し、
+ *   「赤くないのに当たる」になっていた)。蛇は横長(519×90)=幅 ≥ 高さなので常に成り立つ。
  */
 export const jormSlamBand = (
   body: { x: number; y: number; width: number; height: number }, reach: number,
 ): { fx: number; fy: number; tx: number; ty: number; halfWidth: number } => {
-  const cy = body.y + body.height / 2;
-  return { fx: body.x - reach, fy: cy, tx: body.x + body.width + reach, ty: cy, halfWidth: body.height / 2 + reach };
+  const r = jormSlamRect(body, reach);
+  const hw = r.h / 2;
+  const cy = r.y + hw;
+  const inset = Math.min(hw, r.w / 2);
+  return { fx: r.x + inset, fy: cy, tx: r.x + r.w - inset, ty: cy, halfWidth: hw };
 };
 
 /** 点から体の矩形までの距離(中なら0)と、矩形上の最寄り点。 */

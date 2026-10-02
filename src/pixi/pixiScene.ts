@@ -133,7 +133,7 @@ import {
   HIDDEN_SKADI_TUNING as HB_SK,
   HIDDEN_THOR_TUNING as HB_TH,
 } from '../utils/hiddenBossScript';
-import { jormSlamBand, jormSlamReach, jormSlamTelegraphProgress, jormRainLobPos } from '../utils/jormDanmaku';
+import { jormSlamRect, jormSlamReach, jormSlamTelegraphProgress, jormRainLobPos } from '../utils/jormDanmaku';
 // research/THOR_ISSEN_REWORK.md §1: 紫円の**半径は台帳の1定数**(判定・ボット・絵が同じ値を読む)。
 import { THOR_NIHIL_STATE, thorNihilRadius } from '../utils/thorNihil';
 import { biteJawFrame } from '../utils/biteJawMotion';
@@ -3800,6 +3800,12 @@ export class PixiScene {
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
   private enemies = new Map<string, ActorView>();
+  // ★ヨルムンガルドの星弓(research/JORM_DANMAKU.md §4)の絵: 地面の層(影/光溜まり)と効果の層(光弾/着弾の閃光)。
+  private jormRainGround: Graphics | null = null;
+  private jormRainAir: Graphics | null = null;
+  private jormRainDrawnAt = -1;
+  private jormLobSeen = new Map<string, Map<number, { x: number; y: number }>>();
+  private jormLandFx: { x: number; y: number; at: number }[] = [];
   // ★ボス戦のピント(社長指示2026-10-02): ボスの絵の遠い端までピントへ入れる勾配(画面px・慣性つきで追従)。
   private bossDofGrad = 0;
   private bossDofLastNow = 0;
@@ -20621,61 +20627,78 @@ export class PixiScene {
       }
       // ★弾幕の導入=叩きつけ(research/JORM_DANMAKU.md §2)。**全段の赤い枠が導入の頭で同時に出る**(段数=次の弾幕の予兆)。
       // 段kの枠は「導入の開始→その段の命中」の溜めとして流星で流れ、命中の瞬間に消え切る(掟②③=段ごとに別々の時刻)。
-      // 判定と同じ jormSlamBand(体の矩形を広げた枠)を描く。**導入の州の間だけ描く**(カウンターで切られたら
+      // 判定と同じ矩形 jormSlamRect(体の矩形を広げた枠)を描く。**導入の州の間だけ描く**(カウンターで切られたら
       // 州が chase へ戻る=残りの段の枠も同時に消える。設計監査 A-4「赤いのに当たらない」を作らない)。
       if (e.type === 'jormungand' && (bs === 'jslam-windup' || bs === 'jslam-hit' || bs === 'jslam-rewind')
           && e.jormSlamAt !== undefined) {
         const cnt = e.jormSlamCount ?? 2;
-        // 外側(後の段)から描く=内側の枠が上に重なって、段の入れ子が数えられる。
+        const nextK = (e.jormSlamDone ?? 0) + 1; // 次に当たる段
         const jStyle = telegraphStyleFor(e.type);
-        const jPulse = 0.5 + 0.5 * Math.sin(now / jStyle.pulseMs);
+        // 外側(後の段)から描く=内側の枠が上に重なって、段の入れ子が数えられる。
         for (let k = cnt; k >= 1; k--) {
           const sp = jormSlamTelegraphProgress(gameTime, e.jormSlamAt, k, HB_JO.slam.windup, HB_JO.slam.interval);
           if (sp === null) continue;
           const reach = jormSlamReach(k, HB_JO.slam.reaches);
-          const band = jormSlamBand(e, reach);
-          // 判定の矩形=帯(始点→終点・半幅)。体の矩形を reach だけ広げたもの(jormSlamBand と同じ式)。
-          const outer = { x: band.fx, y: band.fy - band.halfWidth, w: band.tx - band.fx, h: band.halfWidth * 2 };
+          // 判定と同じ矩形(jormSlamRect=判定の帯 jormSlamBand がちょうどこの矩形になる・テストで固定)。
+          const outer = jormSlamRect(e, reach);
+          // 段ごとに位相をずらして脈打たせ、**次に当たる段**を一番太く(クリエイティブ監査 #11: 全段一斉の呼吸=均質)。
+          const kPulse = 0.5 + 0.5 * Math.sin(now / jStyle.pulseMs + k * 0.9);
           const mask = this.drawSweepRectFill(o, { x: e.x, y: e.y, w: e.width, h: e.height }, reach, sp, 0xff2a2a,
-            telFillA(sp, jPulse) * TELEGRAPH_FILL_MULT, jStyle);
-          o.rect(outer.x, outer.y, outer.w, outer.h).stroke({ width: 2.5, color: 0xff3b3b, alpha: telStrokeA(sp, jPulse) * mask });
+            telFillA(sp, kPulse) * TELEGRAPH_FILL_MULT, jStyle);
+          const lineW = k === nextK ? 3.4 : Math.max(1.4, 2.6 - 0.5 * (k - nextK));
+          o.rect(outer.x, outer.y, outer.w, outer.h).stroke({ width: lineW, color: 0xff3b3b, alpha: telStrokeA(sp, kPulse) * mask });
         }
       }
-      // 叩いた瞬間の砂埃(派手さの絵=判定より大きく)。段ごとに1回(鍵に段番号)。
       if (e.type === 'jormungand') {
+        // 叩いた瞬間: 枠の縁に沿って土が噴く(派手さの絵・体の形の枠と同じ形=円の流用をやめた・クリエイティブ監査 #8)。
         const slamOn = bs === 'jslam-hit';
         const sk = e.jormSlamDone ?? 0;
-        const dL = this.latchFx(`${e.id}:jslamdust:${sk}`, slamOn, DUST_MS, now,
-          () => [cx, e.y + e.height, (e.width / 2 + jormSlamReach(sk, HB_JO.slam.reaches)) * 1.1]);
-        if (dL) this.drawDust(dL.d[0], dL.d[1], dL.d[2], dL.t, this.dustTintForStage(), this.dustAlpha(dL.t), dL.t0);
+        const dL = this.latchFx(`${e.id}:jslamdust:${sk}`, slamOn, DUST_MS, now, () => {
+          const b = jormSlamRect(e, jormSlamReach(sk, HB_JO.slam.reaches));
+          return [b.x, b.y, b.w, b.h];
+        });
+        if (dL) {
+          const [rx, ry, rw, rh] = dL.d;
+          const pts: [number, number][] = [
+            [rx, ry], [rx + rw / 2, ry], [rx + rw, ry], [rx + rw, ry + rh / 2],
+            [rx + rw, ry + rh], [rx + rw / 2, ry + rh], [rx, ry + rh], [rx, ry + rh / 2],
+            [rx + rw / 4, ry + rh], [rx + rw * 3 / 4, ry + rh],
+          ];
+          for (let i = 0; i < pts.length; i++) {
+            this.drawDust(pts[i][0], pts[i][1], 70 + (i % 3) * 18, dL.t, this.dustTintForStage(), this.dustAlpha(dL.t), (dL.t0 ?? 0) + i * 97);
+          }
+        }
+        // 叩く瞬間の本体の反動(沈んで戻る+小さな横の震え・#9「動きは大きく」)。位置の描画オフセットのみ。
+        if (slamOn) {
+          const tHit = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / Math.max(1, HB_JO.slam.hitMs)));
+          const k1 = (1 - tHit) * (1 - tHit);
+          view.sprite.position.y += 12 * k1;
+          view.sprite.position.x += Math.sin(now / 17) * 2.5 * k1;
+        }
       }
-      // 弾幕の口の光(派手さの絵): 口を開く溜めで灯り、撃つ間は脈打つ。
+      // 弾幕の口の光(派手さの絵): 口を開く溜めで灯り(開き切る瞬間に少し行き過ぎて戻る)、撃つ間は**発射ごとに蹴って減衰**
+      // (#5: 発射と無関係なサイン波=LEDの点滅、をやめた)。色は蛇の体の氷青(#1: 紫=カウンター不可の文法と衝突させない)。
       if (e.type === 'jormungand' && e.jormMouthX !== undefined && e.jormMouthY !== undefined
           && (bs === 'jwave-open' || bs === 'jwave' || bs === 'jrain-open' || bs === 'jrain')) {
         const opening = bs === 'jwave-open' || bs === 'jrain-open';
         const openMs = bs === 'jwave-open' ? HB_JO.wave.openMs : HB_JO.rain.openMs;
         const u = opening ? Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / Math.max(1, openMs))) : 1;
-        const grow = u * u * (3 - 2 * u);
-        const beat = opening ? 1 : 0.8 + 0.2 * Math.sin(now / 55);
+        const um = u - 1;
+        const grow = opening ? 1 + 1.9 * um * um * um + 0.9 * um * um : 1; // 行き過ぎて戻る(easeOutBack相当・約8%)
+        const gap = Math.max(16, bs === 'jwave' ? HB_JO.wave.gapMs : HB_JO.rain.launchGapMs);
+        const phi = opening ? 1 : (((gameTime - (e.jormWaveAt ?? gameTime)) % gap) + gap) % gap / gap;
+        const kick = (1 - phi) * (1 - phi);
+        const beat = 1 + 0.5 * kick;
         const mR = (14 + 16 * grow) * beat;
-        o.circle(e.jormMouthX, e.jormMouthY, mR * 2.2).fill({ color: 0x8a5cff, alpha: 0.18 * grow });
-        o.circle(e.jormMouthX, e.jormMouthY, mR).fill({ color: 0xd8c8ff, alpha: 0.55 * grow });
+        o.circle(e.jormMouthX, e.jormMouthY, mR * 2.2).fill({ color: 0x5fb8ff, alpha: 0.18 * Math.min(1, grow) });
+        o.circle(e.jormMouthX, e.jormMouthY, mR).fill({ color: 0xe8f6ff, alpha: 0.6 * Math.min(1, grow) });
+        // 撃つたびに口と逆へ小さく反る(#10: 4秒の完全静止をやめる)。描画オフセットのみ。
+        if (!opening) view.sprite.position.x -= Math.sign(e.jormMouthX - cx) * 3 * kick;
       }
-      // 弾幕B: 打ち上げた光弾(弧)と落下点の影(判定なし=派手さの絵。赤は使わない=落ちた所自体は痛くない)。
-      if (e.type === 'jormungand' && bs === 'jrain' && e.jormRainLobs && e.jormRainLobs.length > 0) {
-        for (const l of e.jormRainLobs) {
-          const span = Math.max(1, l.landAt - l.launchAt);
-          const u = (gameTime - l.launchAt) / span;
-          if (u < 0 || u > 1) continue;
-          // 影: 落ちるほど濃く小さく締まる(慣性=落下の加速に合わせて二乗で寄せる)。
-          const uu = u * u;
-          o.ellipse(l.x, l.y, 26 - 12 * uu, (26 - 12 * uu) * 0.45).fill({ color: 0x0b0716, alpha: 0.18 + 0.32 * uu });
-          o.ellipse(l.x, l.y, 30 - 18 * uu, (30 - 18 * uu) * 0.45).stroke({ width: 1.5, color: 0xe9e2ff, alpha: 0.25 + 0.45 * uu });
-          const p = jormRainLobPos(l.fromX, l.fromY, l.x, l.y, u, HB_JO.rain.peakPx);
-          o.circle(p.x, p.y, 13).fill({ color: 0x9a7bff, alpha: 0.28 });
-          o.circle(p.x, p.y, 6.5).fill({ color: 0xf4efff, alpha: 0.95 });
-        }
-      }
+      // 弾幕B: 打ち上げた光弾(弧)・落下点の影と光溜まり・着弾の閃光。判定なし=派手さの絵。赤も紫も使わない
+      // (落ちた所自体は痛くない=「赤いのに当たらない」を作らない / 紫=カウンター不可の文法と衝突させない)。
+      // ★重なり順(#14): 影と光溜まりは地面の層、飛んでいる光弾と閃光は効果の層(本体のY並びの裏を通らない)。
+      if (e.type === 'jormungand') this.drawJormRain(e, bs, gameTime, now);
       // ★予兆一括バッチ(v0.25.3344): スカジ 氷弾/氷刃/檻の設置前windupに震え(社長要望どおり
       // 「震え」のみ=設置技なので後ずさりは付けない)。既存の赤テレグラフ(氷塊マーカーの2秒サークル等・
       // syncSkadiHazards)はそのまま・触らない。
@@ -25139,7 +25162,10 @@ export class PixiScene {
         if (!this.boltLast.has(p.id)) {
           this.pushBoltFx(bx, by, false, now);
         }
-        this.boltLast.set(p.id, { x: bx, y: by });
+        // ★ヨルムンガルドの弾幕の弾(research/JORM_DANMAKU.md)は寿命切れで爆ぜない(クリエイティブ監査 #12:
+        //   何にも当たらずに口から遠い円周上で爆ぜ続ける=「見えない壁」に読める)。命中・盾・反射の爆ぜは従来どおり。
+        const danmaku = p.srcMoveKey === 'jormungand-wave' || p.srcMoveKey === 'jormungand-rain';
+        this.boltLast.set(p.id, { x: bx, y: by, exp: danmaku ? p.createdAt + p.duration : undefined });
       } else if (this.boltLast.has(p.id)) {
         // 反射などで敵弾でなくなった(弾自体は存続): 爆ぜは出さない(カウンター反射のFXは既存・別経路)。
         this.boltLast.delete(p.id);
@@ -25160,10 +25186,12 @@ export class PixiScene {
     for (const [id, pos] of this.boltLast) {
       if (!seen.has(id)) {
         this.boltLast.delete(id);
+        if (pos.exp !== undefined && now >= pos.exp - 120) continue; // 寿命切れ=静かに消える(弾幕の弾のみ)
         this.pushBoltFx(pos.x, pos.y, true, now);
       }
     }
     this.drawBoltFx(now);
+    this.jormRainBeginFrame(now); // 星弓の層: このフレームで誰も描いていなければ消す
   }
 
   // ── FX-V3V4(V3-6): 植物の種弾 ────────────────────────────────────────────
@@ -25199,7 +25227,7 @@ export class PixiScene {
   // 全てプールsprite(共有tex/加算合成)。弾色(0xb91c1c/0xfca5a5)に合わせた赤系。強glowは不使用
   // (半径は最大でも~22px ≪ STRONG_GLOW_RADIUS 44)。画面境界の新判定は足さない=最大引きズームでも
   // world座標のままカメラに従うだけで破綻しない。
-  private boltLast = new Map<string, { x: number; y: number }>();
+  private boltLast = new Map<string, { x: number; y: number; exp?: number }>();
   private boltFx: { x: number; y: number; pop: boolean; t0: number; seed: number }[] = [];
   private boltFxPool: Sprite[] = [];
   private boltFxUsed = 0;
@@ -26592,6 +26620,67 @@ export class PixiScene {
       }
     }
     return CIRCLE_SWEEP_RING_ALWAYS ? 1 : circleSweepAlphaAt(radius, band, halfW);
+  }
+
+  /** 星弓の層を、このフレームでまだ描いていなければ消す(ボスが居なくなった時に光弾が残らない)。 */
+  private jormRainBeginFrame(now: number): void {
+    if (this.jormRainDrawnAt === now) return;
+    this.jormRainDrawnAt = now;
+    this.jormRainGround?.clear();
+    this.jormRainAir?.clear();
+  }
+
+  /**
+   * ★星弓の光弾・影・着弾の閃光(research/JORM_DANMAKU.md §4・クリエイティブ監査 #1〜#4/#14)。
+   * 光弾は放物線(打ち上げは速く、降りは緩む)・高さで大きく・短い尾。着地した光弾(リストから消えた物)は閃光+輪で弾ける。
+   */
+  private drawJormRain(e: Enemy, bs: string | undefined, gameTime: number, now: number): void {
+    this.jormRainBeginFrame(now);
+    if (!this.jormRainGround) { this.jormRainGround = new Graphics(); this.L.groundLayer.addChild(this.jormRainGround); }
+    if (!this.jormRainAir) { this.jormRainAir = new Graphics(); this.L.effectLayer.addChild(this.jormRainAir); }
+    const g = this.jormRainGround, a = this.jormRainAir;
+    const raining = bs === 'jrain' || bs === 'jrain-recover';
+    const seen = this.jormLobSeen.get(e.id) ?? new Map<number, { x: number; y: number }>();
+    const cur = new Set<number>();
+    if (bs === 'jrain' && e.jormRainLobs) {
+      for (const l of e.jormRainLobs) {
+        cur.add(l.landAt);
+        seen.set(l.landAt, { x: l.x, y: l.y });
+        const span = Math.max(1, l.landAt - l.launchAt);
+        const u = (gameTime - l.launchAt) / span;
+        if (u < 0 || u > 1) continue;
+        // 影(暗い)+光溜まり(光弾の色が地面に落ちる)=落ちるほど締まって濃くなる(二乗=落下の加速)。
+        const uu = u * u;
+        const sr = 26 - 12 * uu;
+        g.ellipse(l.x, l.y, sr, sr * 0.45).fill({ color: 0x0b0716, alpha: 0.18 + 0.32 * uu });
+        g.ellipse(l.x, l.y, sr * 1.25, sr * 0.55).fill({ color: 0x5fb8ff, alpha: 0.08 + 0.17 * uu });
+        // 光弾: 描画の進みは打ち上げで速く降りで緩む(着地の時刻は変えない)。高さで芯が大きくなり、尾を3つ引く。
+        const ud = 1 - Math.pow(1 - u, 1.25);
+        for (let tr = 3; tr >= 0; tr--) {
+          const uu2 = Math.max(0, ud - tr * 0.03);
+          const p = jormRainLobPos(l.fromX, l.fromY, l.x, l.y, uu2, HB_JO.rain.peakPx);
+          const h = 4 * uu2 * (1 - uu2);
+          const core = 6.5 + 3 * h;
+          const fade = tr === 0 ? 1 : [1, 0.5, 0.3, 0.15][tr];
+          if (tr === 0) a.circle(p.x, p.y, core * 2).fill({ color: 0x5fb8ff, alpha: 0.28 });
+          a.circle(p.x, p.y, core * (tr === 0 ? 1 : 0.8)).fill({ color: 0xe8f6ff, alpha: 0.95 * fade });
+        }
+      }
+    }
+    // リストから消えた光弾=着地した(撃ち終わりの硬直へ移った後も含めて拾う)。
+    for (const [k, pos] of seen) {
+      if (!cur.has(k)) { seen.delete(k); if (raining) this.jormLandFx.push({ x: pos.x, y: pos.y, at: now }); }
+    }
+    if (raining) this.jormLobSeen.set(e.id, seen); else this.jormLobSeen.delete(e.id);
+    // 着地の閃光(240ms・減速して広がる輪+しぼむ光)。
+    const LAND_MS = 240;
+    this.jormLandFx = this.jormLandFx.filter(f => now - f.at < LAND_MS);
+    for (const f of this.jormLandFx) {
+      const t = (now - f.at) / LAND_MS;
+      const eo = 1 - (1 - t) * (1 - t) * (1 - t);
+      a.circle(f.x, f.y, 40 * (1 - t)).fill({ color: 0x9fd8ff, alpha: 0.7 * (1 - t) });
+      a.circle(f.x, f.y, 8 + 52 * eo).stroke({ width: 2.5, color: 0xe8f6ff, alpha: 0.9 * (1 - eo) });
+    }
   }
 
   /**

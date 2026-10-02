@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { distToBandRect } from './geometry';
 import {
-  jormSlamHitAt, jormSlamReach, jormSlamBand, jormBodyRectDist, jormSlamTelegraphProgress,
+  jormSlamHitAt, jormSlamReach, jormSlamBand, jormSlamRect, jormBodyRectDist, jormSlamTelegraphProgress,
   jormWaveAngle, jormWaveTheta0, jormWaveParticleGapPx,
   jormRainLandingPoint, jormRainBurstAngles, jormRainLobPos,
 } from './jormDanmaku';
@@ -25,12 +26,24 @@ describe('叩きつけの時刻表と赤い円(赤い予告の掟②③)', () =>
     expect(jormSlamReach(3, [90, 170, 250])).toBe(250);
     expect(jormSlamReach(4, [90, 170, 250])).toBe(250);
   });
-  it('判定の枠=体の矩形をちょうど届きだけ広げた矩形(体のどこからでも同じ距離で抜けられる)', () => {
+  it('★判定(帯判定 distToBandRect)=赤い枠(jormSlamRect)と完全に同じ矩形(赤くないのに当たる/赤いのに当たらない、を作らない)', () => {
     const body = { x: 100, y: 200, width: 519, height: 90 };
-    const b = jormSlamBand(body, 90);
-    // 帯(始点→終点・半幅)が表す矩形
-    expect(b.fx).toBe(10); expect(b.tx).toBe(100 + 519 + 90);
-    expect(b.fy).toBe(245); expect(b.halfWidth).toBe(45 + 90);
+    for (const reach of [90, 170, 250]) {
+      const b = jormSlamBand(body, reach);
+      const r = jormSlamRect(body, reach);
+      const d = (x: number, y: number) => distToBandRect({ x, y }, { x: b.fx, y: b.fy }, { x: b.tx, y: b.ty }, b.halfWidth);
+      // 枠の四隅と四辺の中点は判定の縁ちょうど(距離0)、そのすぐ外は外(距離>0)、すぐ内は内。
+      for (const [x, y] of [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h], [r.x + r.w / 2, r.y], [r.x, r.y + r.h / 2]]) {
+        expect(d(x, y)).toBeCloseTo(0, 6);
+      }
+      expect(d(r.x - 1, r.y + r.h / 2)).toBeGreaterThan(0.99);       // 左の外(検収監査 A-1 の再発防止)
+      expect(d(r.x + r.w + 1, r.y + r.h / 2)).toBeGreaterThan(0.99); // 右の外
+      expect(d(r.x + r.w / 2, r.y - 1)).toBeGreaterThan(0.99);       // 上の外
+      expect(d(r.x + 1, r.y + 1)).toBe(0);                            // 内
+      // 体の外への届きはどの向きにも reach(体のどこからでも同じ距離で抜けられる)
+      expect(body.x - r.x).toBe(reach); expect(r.x + r.w - (body.x + body.width)).toBe(reach);
+      expect(body.y - r.y).toBe(reach); expect(r.y + r.h - (body.y + body.height)).toBe(reach);
+    }
   });
   it('既定の届きは体の外へ十分(どの段も40px以上)', async () => {
     const { HIDDEN_JORMUNGAND_TUNING } = await import('./hiddenBossScript');
@@ -42,24 +55,24 @@ describe('叩きつけの時刻表と赤い円(赤い予告の掟②③)', () =>
 });
 
 describe('弾幕A: 波と粒の境界', () => {
-  const spec = { arms: 6, omega0: 0.5, alpha: 0.6 };
+  const spec = { arms: 5, omega0: 1.6, alpha: 0.15 }; // 既定値と同じ(hiddenBossScript の wave)
   it('回転は常に時計回り(角が時間とともに増える・符号を反転しても同じ)', () => {
     const a0 = jormWaveAngle(0, 0, 0, spec), a1 = jormWaveAngle(0, 0, 1000, spec), a2 = jormWaveAngle(0, 0, 2000, spec);
     expect(a1).toBeGreaterThan(a0);
     expect(a2 - a1).toBeGreaterThan(a1 - a0); // 加速している
-    expect(jormWaveAngle(0, 0, 2000, { arms: 6, omega0: -0.5, alpha: -0.6 })).toBeCloseTo(a2);
+    expect(jormWaveAngle(0, 0, 2000, { arms: 5, omega0: -1.6, alpha: -0.15 })).toBeCloseTo(a2);
   });
   it('腕は等間隔', () => {
-    expect(jormWaveAngle(0, 1, 0, spec) - jormWaveAngle(0, 0, 0, spec)).toBeCloseTo(Math.PI / 3);
+    expect(jormWaveAngle(0, 1, 0, spec) - jormWaveAngle(0, 0, 0, spec)).toBeCloseTo(Math.PI * 2 / 5);
   });
   it('最初は相手が腕と腕の間(相手の方角から最寄りの腕までが腕の間隔の半分)', () => {
     const aim = 1.2;
-    const t0 = jormWaveTheta0(aim, 6);
-    const dists = [0, 1, 2, 3, 4, 5].map(k => {
+    const t0 = jormWaveTheta0(aim, 5);
+    const dists = [0, 1, 2, 3, 4].map(k => {
       const d = Math.abs(((jormWaveAngle(t0, k, 0, spec) - aim) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI);
       return d;
     });
-    expect(Math.min(...dists)).toBeCloseTo(Math.PI / 6);
+    expect(Math.min(...dists)).toBeCloseTo(Math.PI / 5);
   });
   it('離れるほど粒の隙間が開く(近いと壁・遠いと抜けられる)', () => {
     const near = jormWaveParticleGapPx(100, 2500, 100, spec);

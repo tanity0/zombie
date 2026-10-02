@@ -305,7 +305,7 @@ import {
   jormungandPhaseForHealth, pickJormungandMove, jormRadialSpinAngle, type JormungandMove,
 } from '../utils/jormungandScript';
 import {
-  jormSlamHitAt, jormSlamReach, jormSlamBand, jormWaveAngle, jormWaveTheta0, jormRainLandingPoint, jormRainBurstAngles,
+  jormSlamHitAt, jormSlamReach, jormSlamBand, jormBodyRectDist, jormWaveAngle, jormWaveTheta0, jormRainLandingPoint, jormRainBurstAngles,
 } from '../utils/jormDanmaku';
 import {
   skadiPhaseForHealth, pickSkadiMove, type SkadiMove,
@@ -1844,7 +1844,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // bossId=現在の敵id、lastX/Y=死亡位置検出用の直近座標。
   // thorPrevHealth/thorRangedHits: トール専用(ジャンプ攻撃のトリガー判定=遠距離からの連続被弾を数える)。
   // 他の裏ボス(mimir/jormungand/skadi)では未使用のまま(無害)。
-  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; disengageSince: number | undefined; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number; thorPrevSwingCommitAt: number; thorNihilFiredFor: number; mimirAimVX: number; mimirAimVY: number; mimirLockSfxUntil: number; mimirBrokenSfxUntil: number }>(
+  const bossRef = useRef<{ spawned: boolean; bossId: string | null; homeX: number; homeY: number; lastX: number; lastY: number; w: number; h: number; retreating: boolean; disengageSince: number | undefined; lastCrushFxAt: number; warpUntil: number; vx: number; vy: number; dashDirX: number; dashDirY: number; thorPrevHealth: number; thorRangedHits: number[]; thorNextBackstepAt: number; thorNextOrbitStepAt: number; thorNextSlowWalkAt: number; thorSlowWalkUntil: number; thorPrevSwingCommitAt: number; thorNihilFiredFor: number; mimirAimVX: number; mimirAimVY: number; mimirLockSfxUntil: number; mimirBrokenSfxUntil: number; jormLandSfxCount?: number }>(
     // mimirAimVX/VY=§6.33追尾照準の速度(dashDirX/Yと同じ「コントローラ内スクラッチ」扱い=storeへは
     // 位置aiTargetX/Yのみ書く)。mimirLockSfxUntil/mimirBrokenSfxUntil=ロックSE/中断SEの重複再生防止打刻。
     { spawned: false, bossId: null, homeX: 0, homeY: 0, lastX: 0, lastY: 0, w: 0, h: 0, retreating: false, disengageSince: undefined, lastCrushFxAt: 0, warpUntil: 0, vx: 0, vy: 0, dashDirX: 0, dashDirY: 0, thorPrevHealth: -1, thorRangedHits: [], thorNextBackstepAt: 0, thorNextOrbitStepAt: 0, thorNextSlowWalkAt: 0, thorSlowWalkUntil: 0, thorPrevSwingCommitAt: 0, thorNihilFiredFor: -1, mimirAimVX: 0, mimirAimVY: 0, mimirLockSfxUntil: 0, mimirBrokenSfxUntil: 0 }
@@ -6858,6 +6858,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               };
               // ボスメーカー ▸(BOSS_MAKER.md §6-1): 技を1つだけ再生する入口。**実戦の抽選と同じ begin* の束**
               // を通す(写さない)。連携の台本は積まない(=▸は1技だけを最後まで再生して chase へ戻る)。
+              // ★例外: ヨルムンガルドの弾幕(jo-slam2/3)は「導入→弾幕」で1技なので、台本の2手目まで積む。
               const startHiddenMove = (k: HiddenMoveKey): void => {
                 patch.bossScriptQueue = [];
                 switch (k) {
@@ -7471,7 +7472,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   volleys++;
                 }
                 patch.bossBurstNextAt = next;
-                if (volleys > 0 && Math.floor((next - t0) / Math.max(16, W.gapMs)) % 3 === 0) playSfx('handgun-fire');
+                // 音: 氷の高音を低く(海蛇の吐く氷弾・クリエイティブ監査 #13)。毎回だと鳴りっぱなしなので3回に1回。
+                if (volleys > 0 && Math.floor((next - t0) / Math.max(16, W.gapMs)) % 3 === 0) playSfx('skadi-ice', 0.35, undefined, 0.8);
                 if (newGameTime >= end) {
                   patch.bossState = 'jwave-recover';
                   patch.bossStateUntil = newGameTime + choreographyRecoverMs(W.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
@@ -7499,12 +7501,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const lp = jormRainLandingPoint(boss, R, Math.random, { x: pcx, y: pcy }, R.avoidR);
                   if (lp) {
                     const lc = clampRectToPlayableArea(lp.x - 1, lp.y - 1, 2, 2, thorPlayableAreaCtx(rainSt));
-                    lobs.push({ fromX: mx, fromY: my, x: lc.x + 1, y: lc.y + 1, launchAt: next, landAt: next + R.flightMs });
+                    const lx = lc.x + 1, ly = lc.y + 1;
+                    // クランプで動いた点は、安全地帯(体から rMin)と足元(avoidR)を検査し直す(検収監査 B-2)。
+                    if (jormBodyRectDist(lx, ly, boss).dist >= R.rMin && Math.hypot(lx - pcx, ly - pcy) >= R.avoidR) {
+                      lobs.push({ fromX: mx, fromY: my, x: lx, y: ly, launchAt: next, landAt: next + R.flightMs });
+                    }
                   }
                   next += Math.max(16, R.launchGapMs);
                   launched++;
                 }
-                if (launched > 0) playSfx('boomerang-throw');
+                if (launched > 0 && Math.floor((next - (boss.jormWaveAt ?? next)) / Math.max(16, R.launchGapMs)) % 3 === 0) playSfx('skadi-ice', 0.3, undefined, 1.15);
                 const landed = lobs.filter(l => l.landAt <= newGameTime);
                 if (landed.length > 0) {
                   lobs = lobs.filter(l => l.landAt > newGameTime);
@@ -7513,7 +7519,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       addProjectile(createEnemyProjectile(boss, player, l.x + Math.cos(a) * 100, l.y + Math.sin(a) * 100, l.x, l.y, { speed: R.speed }));
                     }
                   }
-                  playSfx('handgun-fire');
+                  // 着地(小さく・高めに)。毎回だと連打になるので、着地した数を数えて3つに1回(検収監査 B-5)。
+                  bs.jormLandSfxCount = (bs.jormLandSfxCount ?? 0) + landed.length;
+                  if (bs.jormLandSfxCount >= 3) { bs.jormLandSfxCount = 0; playSfx('heavy-impact', 0.25, undefined, 1.3); }
                 }
                 patch.jormRainLobs = lobs;
                 patch.bossBurstNextAt = next;
