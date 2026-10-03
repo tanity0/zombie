@@ -87,9 +87,12 @@ export const navMove = (dir: NavDir): boolean => {
 };
 
 const BACK_LABEL = /^(戻る|閉じる|とじる|キャンセル|×|✕|back|close)$/i;
-/** 「戻る/閉じる」を押す(Esc・パッドの B)。一番手前に見えている物だけ。 */
+/** 「戻る/閉じる」を押す(Esc・パッドの B)。一番手前に見えている物だけ。data-nav-back を付けたボタンを優先し、無ければ名前の完全一致。 */
 export const navBack = (): boolean => {
-  const btn = candidates().find(el => {
+  const cands = candidates();
+  const marked = cands.find(el => el.hasAttribute('data-nav-back'));
+  if (marked) { marked.click(); return true; }
+  const btn = cands.find(el => {
     const label = (el.getAttribute('aria-label') ?? '').trim();
     const text = (el.textContent ?? '').replace(/\s+/g, '').trim();
     // 完全一致だけ(「メニューに戻る」=出撃を終える、を Esc で押さない・品質監査 A-8)
@@ -100,10 +103,13 @@ export const navBack = (): boolean => {
   return true;
 };
 
-/** 押す(パッドの A)。フォーカスしている要素が無ければ最初の候補へ入るだけ。 */
+/** 押す(パッドの A)。何も選んでいなければ、画面の主役(data-nav-default)をそのまま押す(決定を2回押させない)。無ければ選ぶだけ。 */
 export const navActivate = (): boolean => {
+  const cands = candidates();
   const cur = document.activeElement as HTMLElement | null;
-  if (cur && cur !== document.body && candidates().includes(cur)) { cur.click(); return true; }
+  if (cur && cur !== document.body && cands.includes(cur)) { cur.click(); return true; }
+  const preferred = cands.find(c => c.hasAttribute('data-nav-default'));
+  if (preferred) { focusEl(preferred); preferred.click(); return true; }
   return navMove('down');
 };
 

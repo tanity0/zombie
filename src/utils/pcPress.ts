@@ -16,6 +16,10 @@ let owner: PressSource | null = null;
 let downAt = 0;
 let lastWasTap = false;
 let lastUpAt = 0;
+let flickedThisPress = false; // 四神舞: 押している間にフリックを出したら、離した時のタップは出さない(タッチの flickFired と同じ・検収 B-1)
+
+/** 四神舞でフリックを出した(右クリック/移動キー/パッド B)。押している間なら、その押下の離しはタップにしない。 */
+export const markPcFlick = (): void => { if (pressing) flickedThisPress = true; };
 
 export const isPcPressing = (): boolean => pressing;
 
@@ -25,6 +29,7 @@ export const pcPressDown = (src: PressSource): void => {
   if (isInputLocked()) return; // 操作不可(会話/一時停止/死亡等)中は置かない=受理しない=離しも効かない(タッチと同じ・監査 A-1)
   pressing = true;
   owner = src;
+  flickedThisPress = false;
   const gs = useGameStore.getState();
   gs.setTouchActive(true);
   const now = performance.now();
@@ -48,7 +53,7 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
   if (fire && !returnPromptOpened && !isAttackLocked()) {
     // マウスがある時は離した瞬間の向き=カーソルの方向(鞭・ナイフの振りと踏み込みがカーソルへ・§11-2)。キーで振っても同じ
     // (照準サークルはカーソルを向いているので、振りだけ歩いた向き、を作らない=監査 B-5)。世界が止まっている間は書き換えない。
-    if (gs.mouseAim && !isWorldFrozen()) {
+    if (gs.mouseAim && !isWorldFrozen() && !gs.rhythm.active) { // 四神舞中は向きを回さない(タッチと同じ・検収 B-2)
       const p = gs.player;
       const dx = gs.camera.x + gs.mouseAim.x - (p.x + p.width / 2);
       const dy = gs.camera.y + gs.mouseAim.y - (p.y + p.height / 2);
@@ -56,7 +61,7 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
       if (m > 1) gs.setLastDirection({ x: dx / m, y: dy / m });
     }
     if (gs.rhythm.active) {
-      gs.rhythmInput('tap');
+      if (!flickedThisPress) gs.rhythmInput('tap');
     } else {
       const gun = gs.player.weapons.find(w => w.id === gs.player.activeWeaponId);
       if (gun?.key === 'phill-revolver') {
@@ -86,7 +91,7 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
 };
 
 /** テスト用: 状態を初期化する。 */
-export const resetPcPressForTest = (): void => { pressing = false; owner = null; downAt = 0; lastWasTap = false; lastUpAt = 0; };
+export const resetPcPressForTest = (): void => { pressing = false; owner = null; downAt = 0; lastWasTap = false; lastUpAt = 0; flickedThisPress = false; };
 
 // 窓が裏へ行った・タブが隠れた=押しっぱなしの離しは来ない → 撃たずに離す(監査 A-4)。1回だけ付ける。
 if (typeof window !== 'undefined') {

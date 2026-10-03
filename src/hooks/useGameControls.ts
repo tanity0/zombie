@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { useGameStore, isGameTimeStopped, isAttackLocked } from '../store/gameStore';
 import { performFlickAction } from '../utils/inputActions';
-import { pcPressDown, pcPressUp } from '../utils/pcPress';
+import { pcPressDown, pcPressUp, markPcFlick } from '../utils/pcPress';
+import { isMenuContext } from '../utils/menuNav';
 
 // Keyboard fallback — the game is touch-first, but we keep a PC-optimized
 // scheme so a laptop is fully playable.
@@ -91,11 +92,15 @@ export const useGameControls = () => {
         const md = moveDirFromKey(key);
         if (md) {
           e.preventDefault();
-          if (!e.repeat) useGameStore.getState().rhythmInput('flick', DIR_VECTORS[md]);
+          if (!e.repeat) { useGameStore.getState().rhythmInput('flick', DIR_VECTORS[md]); markPcFlick(); }
           return;
         }
         return; // その他のキーはリズム中は無視
       }
+
+      // 一時停止・説明・レベルアップ・帰還確認などの窓が出ている間は、矢印/WASD/Space はメニューの操作(utils/menuNav・ボタンの標準動作)。
+      // 移動・向き・指には何も書かない(窓の下でプレイヤーが振り向く/再開した瞬間に歩き出す、を防ぐ・検収 A-2/C-1)。
+      if (isMenuContext()) return;
 
       const inputState = { ...useGameStore.getState().inputState };
 
@@ -153,8 +158,9 @@ export const useGameControls = () => {
         // 会話/登場演出中(時間停止中)はカウンターを出さない。
         // 二人組クエストv2 §2-8(納品ロック・入口4): 同上。
         // 一時停止中(ポーズ/説明画面/レベルアップ等)に Space/J で攻撃が出ていた → タッチと同じ共通ゲートで止める(同上)。
-        // §11-1: 押した=指を置く。攻撃は離した時(pcPressUp が isAttackLocked で同じく止める)。
-        if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked && !isAttackLocked()) pcPressDown('key');
+        // §11-1: 押した=指を置く(受理の門はタッチ・マウス・パッドと同じ isInputLocked=pcPressDown の中・検収 C-3)。
+        // 攻撃は離した時(pcPressUp が isAttackLocked で止める)。
+        if (!e.repeat) pcPressDown('key');
       }
 
       useGameStore.setState({ inputState });
@@ -168,7 +174,8 @@ export const useGameControls = () => {
       if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
 
       const key = keyIdOf(e);
-      if (isCounterKey(key)) { e.preventDefault(); pcPressUp('key', true); } // 指を離す(§11-1)。preventDefault=フォーカスの残ったボタンが Space で押されない(監査 B-4)
+      // 指を離す(§11-1)。ゲーム中は preventDefault=フォーカスの残ったボタンが Space で押されない(監査 B-4)。窓の中では Space でボタンを押せる(検収 C-1)。
+      if (isCounterKey(key)) { if (!isMenuContext()) e.preventDefault(); pcPressUp('key', true); }
       const inputState = { ...useGameStore.getState().inputState };
 
       switch (key.toLowerCase()) {

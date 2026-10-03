@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.4793 — PC版対応 段4: 検収監査・クリエイティブ監査の反映【2026-10-03 10:19 JST】
+- 検収(Fable 5.1) (A)2/(C)3/(B)5、クリエイティブ(Fable 5.1) 17件 → research/PC_SUPPORT.md §11-10。品質の(A)は全部直した。
+- 主な変更: StoryReturnPrompt(Enter をボタンに任せる)/ useGameControls(窓の間は移動・向き・指を書かない・受理の門をそろえる・窓の中の Space)/ pcPress(四神舞のフリック後はタップにしない)/
+  inputDevice `usePlayDevice`(タッチ/マウス/パッド=言葉用・操作層の切り替えとは別)/ tutorials の padLines / TapWord(クリック・ボタン)/ 選択の見え方(:where で各画面の規則を優先)/
+  menuNav(data-nav-back・未選択の決定は主役を押す)/ 既定の選択(タイトル・更新情報の OK・説明画面の OK・一時停止の再開)/ 更新情報 v0.25.4791 の書き直し。
+- 確かめたこと: 模擬パッドで 更新情報→タイトル→ホーム→出撃→B で戻る / ホームの出撃の選択の見え方(暗い内枠のまま)。phone-guard: check 14画面 OK。
+- 巡の判断: (A)は全部直した → 止めて実機へ。
+- 検証: typecheck / lint(0 errors)/ pcPress・menuNav・gamepad のテスト(14)。
+- 変更: src/utils/pcPress.ts(.test)/ menuNav.ts / gamepad.ts / inputDevice.ts / src/hooks/useGameControls.ts / useGameLoop.ts / src/store/gameStore.ts / src/data/tutorials.ts / changelog /
+  src/components/StoryReturnPrompt.tsx / TutorialPopup.tsx / TitleScreen.tsx / MissionSelect.tsx / MouseControls.tsx / TapWord.tsx / src/index.css / research/PC_SUPPORT.md / package.json。
+
 ## v0.25.4792 — PC版対応 段5: 配布(Electron の入れ物)【2026-10-03 10:03 JST】
 - `electron/`(独立の package.json・main.cjs・.gitignore)。中身は dist/ をそのまま app:// で読む。F11 全画面・二重起動なし・userData にセーブ・自動再生可。
   ルートに `pc:start` / `pc:dist`。eslint は electron/ を対象外。research/PC_SUPPORT.md §12。

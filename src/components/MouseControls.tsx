@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect } from 'react';
 import { useGameStore, isInputLocked } from '../store/gameStore';
 import { performFlickAction } from '../utils/inputActions';
-import { pcPressDown, pcPressUp } from '../utils/pcPress';
+import { pcPressDown, pcPressUp, markPcFlick } from '../utils/pcPress';
 import { computeViewport } from '../utils/viewport';
 import { screenToCameraLocal } from '../utils/viewTransform';
 
@@ -73,7 +73,7 @@ const MouseControls: React.FC = () => {
       e.preventDefault();
       const d = cursorDir(e, e.currentTarget);
       const gs = useGameStore.getState();
-      if (gs.rhythm.active) gs.rhythmInput('flick', d);
+      if (gs.rhythm.active) { gs.rhythmInput('flick', d); markPcFlick(); }
       else performFlickAction(d.x, d.y);
     }
   }, [updateAim, cursorDir]);

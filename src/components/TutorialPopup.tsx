@@ -2,7 +2,7 @@
 // 操作方法を説明してくれるやつ」の試作)。更新情報ダイアログと同じFF7R風パネル+Ff7rButton。
 // 挿絵(art)は現状インラインSVG('move'=ドラッグ移動の図解)。実スクショ画像に差し替える場合は
 // art部を <img> に置き換えるだけの構造にしてある。表示中はゲーム停止(showTutorialPopupがisPaused=true)。
-import { usePointerKind } from '../utils/inputDevice';
+import { usePlayDevice } from '../utils/inputDevice';
 import { tutorialLinesFor } from '../data/tutorials';
 import React, { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
@@ -68,7 +68,7 @@ const SlideMedia: React.FC<{ slide: TutorialSlide }> = ({ slide }) => {
 
 const TutorialPopup: React.FC = () => {
   const popup = useGameStore(s => s.tutorialPopup); // ポップアップ本体のみ購読(開閉時だけ再描画)
-  const pointerKind = usePointerKind(); // PC は PC の言葉で(research/PC_SUPPORT.md §11-6)
+  const playDevice = usePlayDevice(); // PC は今手にある物の言葉で(research/PC_SUPPORT.md §11-6)
   const close = useGameStore(s => s.closeTutorialPopup);
   const [page, setPage] = useState(0);
   const touchStartX = useRef<number | null>(null);
@@ -78,7 +78,7 @@ const TutorialPopup: React.FC = () => {
 
   const slides: TutorialSlide[] = popup.slides?.length
     ? popup.slides
-    : [{ title: popup.title, lines: tutorialLinesFor(popup, pointerKind === 'mouse'), art: popup.art, img: popup.img }];
+    : [{ title: popup.title, lines: tutorialLinesFor(popup, playDevice), art: popup.art, img: popup.img }];
   const multiple = slides.length > 1;
   const last = page === slides.length - 1;
   const go = (next: number) => setPage(Math.max(0, Math.min(slides.length - 1, next)));
@@ -152,6 +152,7 @@ const TutorialPopup: React.FC = () => {
             className="w-full"
             ariaLabel={multiple && !last ? '次のページ' : 'チュートリアルを閉じる'}
             emphasis
+            navDefault
           >
             {multiple && !last ? '次へ' : multiple ? 'はじめる' : 'OK'}
           </Ff7rButton>

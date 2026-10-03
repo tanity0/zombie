@@ -1079,6 +1079,8 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   .game-frame { max-width: calc(100dvh * 16 / 9); box-shadow: 0 0 0 100vmax #030306; }
 }
 
-/* PC のキーボード・パッドでのメニュー操作(research/PC_SUPPORT.md §11-5): 矢印で選んだボタンに琥珀の枠。
-   html.kbnav は矢印を押した時だけ付き、マウス/タッチで触ると外れる=スマホでは付かない。 */
-html.kbnav :focus { outline: 2px solid #ffb340 !important; outline-offset: 2px; box-shadow: 0 0 0 4px rgba(255, 179, 64, 0.18); }
+/* PC のキーボード・パッドでのメニュー操作(research/PC_SUPPORT.md §11-5)。
+   選んだボタンの見え方は**各画面の :focus-visible をそのまま使う**(ホームの行=ホバーと同じ点灯と琥珀の◆ / 出撃=暗い内枠 /
+   コマンドのボタン=内枠)。決めていないボタンにだけ、内側へ引いた細い琥珀の線を足す(外へはみ出さない・影は触らない)。
+   :where() で詳細度を0にしてある=各画面の規則が常に勝つ。html.kbnav は矢印を押した時だけ付く=スマホでは付かない。 */
+:where(html.kbnav) :where(button, [role="button"], a):focus-visible { outline: 1px solid rgba(255, 179, 64, 0.85); outline-offset: -2px; }

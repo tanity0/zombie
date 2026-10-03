@@ -30,13 +30,18 @@ export interface TutorialEntry {
   img?: string;      // 事前収録の手本画像/GIF(public/ 以下の相対パス)
   slides?: TutorialSlide[]; // 複数ページを横スライドで見せる場合だけ指定
   where: string;     // 資料室の一覧に出す出典(どこで出たか)
-  /** PC(マウス・キーボード・パッド)で遊んでいる時の本文(research/PC_SUPPORT.md §11-6)。無ければ lines。スマホは常に lines。 */
+  /** マウス・キーボードで遊んでいる時の本文(research/PC_SUPPORT.md §11-6)。無ければ lines。スマホは常に lines。 */
   pcLines?: string[];
+  /** ゲームパッドで遊んでいる時の本文。無ければ pcLines → lines。今その人の手にある物だけに向けて書く(機器を並べない)。 */
+  padLines?: string[];
 }
 
-/** いまの操作で読む本文(PC=マウスの時だけ pcLines)。 */
-export const tutorialLinesFor = (e: { lines: string[]; pcLines?: string[] }, pc: boolean): string[] =>
-  pc && e.pcLines ? e.pcLines : e.lines;
+/** いまの操作で読む本文(スマホ=lines / マウス=pcLines / パッド=padLines)。 */
+export const tutorialLinesFor = (
+  e: { lines: string[]; pcLines?: string[]; padLines?: string[] },
+  device: 'touch' | 'mouse' | 'pad',
+): string[] =>
+  device === 'pad' ? (e.padLines ?? e.pcLines ?? e.lines) : device === 'mouse' ? (e.pcLines ?? e.lines) : e.lines;
 
 export const STAGE1_GUIDE_SLIDES: TutorialSlide[] = [
   {
@@ -68,7 +73,8 @@ export const TUTORIALS: TutorialEntry[] = [
     title: '移動',
     // v0.25.2302: 帰還サークルを廃止したので「緑のマーク」の案内は嘘になる。行き先だけを言う。
     lines: ['指でなぞった方向に移動。', '右へ進め。'],
-    pcLines: ['WASDか矢印キーで移動。パッドなら左スティック。', '右へ進め。'],
+    pcLines: ['WASDで移動。', '右へ進め。'],
+    padLines: ['左スティックで移動。', '右へ進め。'],
     art: 'move', // ドラッグ方向を示す矢印の注釈(動画の上に重ねる)。不要になったらこの行を消すだけ。
     // 手本(**実機収録・社長撮影v0.25.2268**)。訓練の洞窟を右へ歩き、随行NPCが付いてくるところ。
     // 旧 `move.gif` は 1.4秒・10fps・14コマの古いヘッドレス収録でカクついていた(社長指摘v0.25.2266
@@ -101,8 +107,13 @@ export const TUTORIALS: TutorialEntry[] = [
       '弾を使わない。貼り付かれたらこれで剥がせ。',
       '当て続けろ。手応えが変わる瞬間が来る。'
     ],
+    padLines: [
+      '決定ボタンを離した瞬間に、近接で薙ぐ。',
+      '弾を使わない。貼り付かれたらこれで剥がせ。',
+      '当て続けろ。手応えが変わる瞬間が来る。'
+    ],
     pcLines: [
-      '左クリックを離した瞬間に、カーソルの方へ近接で薙ぐ。スペースやパッドのAでも同じ。',
+      'クリックを離した瞬間、カーソルの方へ薙ぐ。',
       '弾を使わない。貼り付かれたらこれで剥がせ。',
       '当て続けろ。手応えが変わる瞬間が来る。'
     ],
@@ -203,7 +214,13 @@ export const TUTORIALS: TutorialEntry[] = [
       '弾は貴重。頭を狙って一撃で仕留めろ。',
     ],
     pcLines: [
-      '狙いサークルはカーソルの位置に出る(パッドはスティックを倒した向き)。撃つのは左クリックを離した瞬間。',
+      '押している間は狙い、離して撃つ。サークルはカーソルの位置に出る。',
+      '【通常】立ち止まって撃つ。サークルの向きへ弾が飛び、頭に当たればヘッドショット。',
+      '【吸い付き】サークルが敵の頭に近づくと、自動で頭に吸い付く。この状態なら移動中でも撃てて、ヘッドショットが確定する。',
+      '弾は貴重。頭を狙って一撃で仕留めろ。',
+    ],
+    padLines: [
+      '狙いサークルはスティックを倒した向きに出る。決定ボタンを離して撃つ。',
       '【通常】立ち止まって撃つ。サークルの向きへ弾が飛び、頭に当たればヘッドショット。',
       '【吸い付き】サークルが敵の頭に近づくと、自動で頭に吸い付く。この状態なら移動中でも撃てて、ヘッドショットが確定する。',
       '弾は貴重。頭を狙って一撃で仕留めろ。',

@@ -5,7 +5,8 @@
 // 接続中だけ毎フレーム読む。負荷 1/10(ボタン十数個と軸2本の比較だけ)。タッチだけの端末では接続が無いので何も起きない。
 import { useGameStore, isInputLocked, isWorldFrozen } from '../store/gameStore';
 import { performFlickAction } from './inputActions';
-import { pcPressDown, pcPressUp } from './pcPress';
+import { pcPressDown, pcPressUp, markPcFlick } from './pcPress';
+import { setPadActive } from './inputDevice';
 import { isMenuContext, isGameplayMounted, navMove, navActivate, navBack, type NavDir } from './menuNav';
 
 export const PAD_DEAD_ZONE = 0.2;
@@ -59,9 +60,12 @@ export const installGamepad = (): (() => void) => {
     const up = (i: number) => !btn[i] && prev[i];
     const ax = gp.axes[0] ?? 0, ay = gp.axes[1] ?? 0;
     const anyInput = btn.some(Boolean) || Math.hypot(ax, ay) > PAD_DEAD_ZONE;
-    if (anyInput && !usedPad) {
-      usedPad = true;
-      useGameStore.getState().setMouseAim(null); // パッドで遊ぶ間はマウスの照準を外す(照準=移動の向き=タッチと同じ)
+    if (anyInput) {
+      setPadActive(true); // 画面の言葉をパッドの言葉へ(マウス/キーに触れたら戻る・utils/inputDevice)
+      if (!usedPad) {
+        usedPad = true;
+        useGameStore.getState().setMouseAim(null); // パッドで遊ぶ間はマウスの照準を外す(照準=移動の向き=タッチと同じ)
+      }
     }
 
     // オープニングの廊下(矢印で歩く場面): 十字キー/スティックの左右を矢印キーとして送る。
@@ -124,7 +128,7 @@ export const installGamepad = (): (() => void) => {
     if ((down(B.B) || down(B.RB)) && !isInputLocked()) {
       const g = useGameStore.getState();
       const d = sw?.dir ?? g.player.lastDirection ?? { x: 1, y: 0 };
-      if (g.rhythm.active) g.rhythmInput('flick', d);
+      if (g.rhythm.active) { g.rhythmInput('flick', d); markPcFlick(); }
       else performFlickAction(d.x, d.y);
     }
     if (down(B.START) || down(B.BACK)) escapeKey();

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { usePlayDevice } from '../utils/inputDevice';
 import { prevBeatText } from '../utils/crashWatch'; // 前回の最後の状態(落ちた直後にここで読む・v0.25.4351)
 import { assetUrl } from '../config/assetUrl';
 import { playSfx } from '../audio/audioManager';
@@ -325,6 +326,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
     });
   };
 
+  const playDevice = usePlayDevice(); // 読み上げの言葉も今手にある物に合わせる(PC版 §11-6)
   const handleKey = (e: React.KeyboardEvent) => {
     // 中のボタン(更新情報の OK・カメラ・ニュース)で押した Enter/Space は、そのボタンに任せる(ここで止めると押せない・PC版 §11-5)
     if (e.target !== e.currentTarget) return;
@@ -344,9 +346,10 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       onKeyDown={handleKey}
       role={titleInteractive ? 'button' : undefined}
       tabIndex={titleInteractive ? 0 : -1}
-      aria-label={titleInteractive ? 'タップして開始' : undefined}
+      aria-label={titleInteractive ? `${playDevice === 'mouse' ? 'クリック' : playDevice === 'pad' ? 'ボタン' : 'タップ'}して開始` : undefined}
       data-screen={showNotice ? 'updateModal' : 'title'}
       data-testid={titleInteractive ? 'title-start' : undefined}
+      data-nav-default={titleInteractive ? '' : undefined} // パッドの A 1回で始まる(utils/menuNav・PC版 §11-5)
       className="relative h-full w-full overflow-hidden bg-[#06070d] select-none outline-none"
       style={{ cursor: titleInteractive ? 'pointer' : 'default' }}
     >
@@ -435,6 +438,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
                 onClick={(e) => { e.stopPropagation(); agree(); }}
                 ariaLabel="OK"
                 testId="changelog-ok"
+                navDefault
                 emphasis
                 fade="both"
                 paddingY="0.75rem"

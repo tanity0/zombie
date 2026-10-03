@@ -5371,7 +5371,8 @@ export const buildCorpseFromKill = (
 interface TutorialPopupPayload {
   title: string;
   lines: string[];
-  pcLines?: string[]; // PC で遊んでいる時の本文(data/tutorials.ts)
+  pcLines?: string[]; // マウス・キーで遊んでいる時の本文(data/tutorials.ts)
+  padLines?: string[]; // パッドで遊んでいる時の本文
   art?: 'move';
   img?: string;
   slides?: TutorialSlide[];

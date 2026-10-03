@@ -15,6 +15,9 @@ const StoryReturnPrompt: React.FC = () => {
   useEffect(() => {
     if (!visible) return;
     const handleKeyDown = (event: KeyboardEvent) => {
+      // 矢印で選んだボタンの上の Enter はそのボタンに任せる(「いいえ」を選んで Enter が「はい」になっていた・PC版 §11-5 検収 A-1)
+      const tgt = event.target as HTMLElement | null;
+      if (event.key === 'Enter' && tgt && tgt.tagName === 'BUTTON') return;
       if (event.key === 'Enter') {
         event.preventDefault();
         choose(true);

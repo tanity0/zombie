@@ -121,7 +121,7 @@ import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
 import { TUTORIALS, tutorialLinesFor, type TutorialId } from '../data/tutorials';
-import { usePointerKind } from '../utils/inputDevice';
+import { usePlayDevice } from '../utils/inputDevice';
 import TutorialMedia from './TutorialMedia';
 import { loadSeenTutorials } from '../utils/tutorialArchive';
 import { loadPlayerName, savePlayerName, normalizePlayerNameInput, PLAYER_NAME_MAX_LEN, PLAYER_NAME_WHEN_BLANK } from '../utils/playerName';
@@ -358,7 +358,7 @@ const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }
   return (
   COMMAND_UI_ENABLED ? (
     <header className="command-page-header sticky top-0 z-20">
-      {back && <button type="button" onClick={back} className="command-page-back" aria-label="戻る"><PixelIcon name="chevron-left" size={18} /><span>戻る</span></button>}
+      {back && <button type="button" onClick={back} className="command-page-back" aria-label="戻る" data-nav-back><PixelIcon name="chevron-left" size={18} /><span>戻る</span></button>}
       <div><h1 className="gt-emboss">{title}</h1>{subtitle && <p>{subtitle}</p>}</div>
     </header>
   ) : (
@@ -367,7 +367,7 @@ const Header: React.FC<{ title: string; subtitle?: string; onBack?: () => void }
       <button
         onClick={back}
         className="absolute top-3 left-3 h-9 px-2 text-purple-100/80 flex items-center gap-1 active:text-white"
-        aria-label="戻る"
+        aria-label="戻る" data-nav-back
       >
         <PixelIcon name="chevron-left" size={16} /><span className="text-[12px] tracking-wide">戻る</span>
       </button>
@@ -497,7 +497,7 @@ const testScreenIdFor = (name: Screen['name']): TestScreenId => {
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen, onStartPractice }) => {
   // 小窓のポータル先: PC の拡大の包みの中(包みの外=body)。fixed の基準も包み=ゲームの枠になる(段3-2 品質監査 A-2)。
   const portalRoot = useHudPortalRoot();
-  const pointerKind = usePointerKind(); // 資料室の操作記録も PC は PC の言葉で(§11-6)
+  const playDevice = usePlayDevice(); // 資料室の操作記録も PC は今手にある物の言葉で(§11-6)
   const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
 
   // ★テストブリッジ(TEST_HANDOFF/REQUEST-devbridge.md A)へ今の枝を報告する。
@@ -999,7 +999,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             onClick={() => { playSfx('ui-back'); setScreen({ name: 'stageSelect' }); }}
             className="absolute z-10 flex h-9 items-center gap-1 px-2.5 text-white/85"
             style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
-            aria-label="戻る"
+            aria-label="戻る" data-nav-back
           >
             <PixelIcon name="chevron-left" size={16} className="gt-icon-outline" /><span className="gt-outline text-[12px]">戻る</span>
           </button>
@@ -1163,7 +1163,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           onClick={() => { playSfx('ui-back'); setGhostPickerOpen(false); setScreen({ name: 'missionDetail', stageId, mission: missionKind }); }}
           className="absolute z-20 h-9 px-2.5 rounded-none bg-black/45 text-white/85 flex items-center gap-1 active:bg-black/65"
           style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
-          aria-label="戻る"
+          aria-label="戻る" data-nav-back
         >
           <PixelIcon name="chevron-left" size={16} /><span className="text-[12px]">戻る</span>
         </button>
@@ -1800,7 +1800,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       </div>
                     )}
                     <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
-                      {tutorialLinesFor(openTutorial, pointerKind === 'mouse').map((line, i) => <p key={i}>{line}</p>)}
+                      {tutorialLinesFor(openTutorial, playDevice).map((line, i) => <p key={i}>{line}</p>)}
                     </div>
                   </>
                 )}

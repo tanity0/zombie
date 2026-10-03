@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../audio/audioManager', () => ({ playSfx: vi.fn() }));
 import { useGameStore } from '../store/gameStore';
-import { pcPressDown, pcPressUp, resetPcPressForTest, isPcPressing } from './pcPress';
+import { pcPressDown, pcPressUp, resetPcPressForTest, isPcPressing, markPcFlick } from './pcPress';
 
 // research/PC_SUPPORT.md §11-1: PC の「指」(マウス左・Space/J・パッドA)。タッチの指置き/指離しと同じ行為を呼ぶ。
 describe('PC の指(pcPress)', () => {
@@ -54,5 +54,28 @@ describe('PC の指(pcPress)', () => {
     pcPressUp('mouse', true);
     pcPressDown('mouse');
     expect(mount).toHaveBeenCalledTimes(1);
+  });
+  it('離した時の順はタッチの指離しと同じ(PHILL→シグナル→レールガン→錬金砲→ホーミング→近接→降車)', () => {
+    const order: string[] = [];
+    const rec = (n: string) => vi.fn(() => { order.push(n); return true; });
+    useGameStore.setState({
+      fireSignalLauncher: rec('signal'), fireRailgunShot: rec('rail'), detonateAlchemyStones: rec('alch'),
+      fireHoming: rec('homing'), beginMeleeSwing: rec('melee'), dismountSkater: rec('dismount'),
+    } as never);
+    pcPressDown('key');
+    pcPressUp('key', true);
+    expect(order).toEqual(['signal', 'rail', 'alch', 'homing', 'melee', 'dismount']);
+  });
+  it('四神舞: 押している間にフリックを出したら、離してもタップにしない', () => {
+    const rhythmInput = vi.fn();
+    useGameStore.setState({ rhythm: { ...useGameStore.getState().rhythm, active: true }, rhythmInput } as never);
+    pcPressDown('mouse');
+    markPcFlick();
+    pcPressUp('mouse', true);
+    expect(rhythmInput).not.toHaveBeenCalled();
+    pcPressDown('mouse');
+    pcPressUp('mouse', true);
+    expect(rhythmInput).toHaveBeenCalledWith('tap');
+    useGameStore.setState({ rhythm: { ...useGameStore.getState().rhythm, active: false } } as never);
   });
 });
