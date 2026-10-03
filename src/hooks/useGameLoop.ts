@@ -191,7 +191,8 @@ import {
   phantomSupportsSub, // ★幻影が主語になれるサブの白リスト(未実装の種は自爆するのでプレイヤーへ落とす)
 } from '../utils/phantomTick';
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
-import { heroOnScreen, applyContactToHero, setThirdPartySfx } from '../utils/heroBlast';
+import { heroZoomEligible } from '../utils/heroScript';
+import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties } from '../utils/heroBlast';
 // 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
 setThirdPartySfx((key, gain) => playSfx(key, gain));
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -9207,7 +9208,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           let bossNearHalfW = 0; // ★2026-10-01: 最近接ボスの絵の半幅(横の先読みが絵の端まで収める)
           if (!indoor && !labTheme && !useGameStore.getState().corridorMode) {
             for (const e of enemies) {
-              if (!isEngageableBoss(e.type) || e.dormant === true || e.bossState === 'return') continue;
+              if (!(isEngageableBoss(e.type) || heroZoomEligible(e)) || e.dormant === true || e.bossState === 'return') continue; // 英雄はプレイヤーを狙う間だけ(MUTANT_HERO)
               const limit = bossEngagementDistancePx(e.type, est.engaged, e.isStoryBoss === true);
               const dx = e.x + e.width / 2 - pcCamX, dy = e.y + e.height / 2 - pcCamY;
               const d2 = dx * dx + dy * dy;
@@ -9821,6 +9822,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const pdSt = useGameStore.getState();
               const ppx = pdSt.player.x + pdSt.player.width / 2;
               const ppy = pdSt.player.y + pdSt.player.height / 2;
+              // research/MUTANT_HERO.md §4-2: 同じ噛みの円で守護霊と英雄にも(プレイヤーの「1回だけ」の掛け金 bitten とは独立。英雄は700ms間引き)。
+              hitThirdParties({ kind: 'circle', cx: dx, cy: dy, r: DOG_BITE_RADIUS },
+                Math.max(1, Math.round(DOG_BITE_DAMAGE * PVP_DAMAGE_SCALE)), ownerGhostId(pdOwner), 'phantom-dog');
               if (!job.bitten.has('__player__') && Math.hypot(ppx - dx, ppy - dy) <= DOG_BITE_RADIUS) {
                 job.bitten.add('__player__');
                 const bite = Math.max(1, Math.round(DOG_BITE_DAMAGE * PVP_DAMAGE_SCALE));
@@ -12549,6 +12553,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const tWalls = aoeWalls(tcx, tcy);
               if (tHostile) {
                 // ★幻影のタレットの消滅爆発はプレイヤーへ(壁越し不可・距離減衰は味方版と同じ式)。
+                // research/MUTANT_HERO.md §4-2: 同じ爆発円で守護霊と英雄にも(プレイヤーの判定は不変)。量は距離減衰の中間(固定の代表値)。
+                hitThirdParties({ kind: 'circle', cx: tcx, cy: tcy, r: tBlastR },
+                  Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * tExMult * (0.55 + 0.5 * 0.45) * PVP_DAMAGE_SCALE)), turret.ownerId, 'phantom-turret');
                 const pdist = Math.hypot(tgtCx - tcx, tgtCy - tcy);
                 if (pdist <= tBlastR && !(tWalls.length > 0 && segmentBlocked(tcx, tcy, tgtCx, tgtCy, tWalls))) {
                   const pfall = 1 - pdist / tBlastR;
@@ -12768,6 +12775,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const hgPx = hgPl.x + hgPl.width / 2, hgPy = hgPl.y + hgPl.height / 2;
             const hgDist = Math.hypot(hgPx - gx, hgPy - gy);
             const hgWalls = aoeWalls(gx, gy);
+            // research/MUTANT_HERO.md §4-2: 同じ爆発円で守護霊と英雄にも(プレイヤーの判定・壁越し判定は不変)。
+            // 量は距離減衰の中間(0.55+0.5×0.45)。プレイヤー個別の距離は相手ごとに違うので固定の代表値。
+            hitThirdParties({ kind: 'circle', cx: gx, cy: gy, r: HEAVY_GRENADE_RADIUS },
+              Math.max(1, Math.round(grenade.damage * (0.55 + 0.5 * 0.45))), grenade.ownerId, 'idol-nade');
             if (hgDist <= HEAVY_GRENADE_RADIUS && !(hgWalls.length > 0 && segmentBlocked(gx, gy, hgPx, hgPy, hgWalls))) {
               const falloff = 1 - hgDist / HEAVY_GRENADE_RADIUS;
               const dmg = Math.max(1, Math.round(grenade.damage * (0.55 + falloff * 0.45)));
@@ -12990,6 +13001,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const smP = useGameStore.getState().player;
                 const spx = smP.x + smP.width / 2, spy = smP.y + smP.height / 2;
                 const sdist = Math.hypot(spx - mine.x, spy - mine.y);
+                // research/MUTANT_HERO.md §4-2: 同じ爆発円で守護霊と英雄にも(プレイヤーの判定は不変)。量は距離減衰の中間(固定の代表値)。
+                hitThirdParties({ kind: 'circle', cx: mine.x, cy: mine.y, r: smBlastR },
+                  Math.max(1, Math.round(SENSOR_MINE_DAMAGE * (0.55 + 0.5 * 0.45) * PVP_DAMAGE_SCALE)), smGhostId, 'phantom-mine');
                 if (sdist <= smBlastR && !(smWalls.length > 0 && segmentBlocked(mine.x, mine.y, spx, spy, smWalls))) {
                   const sfall = 1 - sdist / smBlastR;
                   const sdmg = Math.max(1, Math.round(SENSOR_MINE_DAMAGE * (0.55 + sfall * 0.45) * PVP_DAMAGE_SCALE));

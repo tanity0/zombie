@@ -152,3 +152,15 @@ describe('絵のコマ', () => {
     expect(heroLiftPx({ bossState: 'hero-motion', heroMove: 'charge', heroStateAt: 0, bossStateUntil: 400 }, 200)).toBe(0);
   });
 });
+
+describe('寄りズーム(社長裁定: プレイヤーを狙っている間だけ)', () => {
+  it('プレイヤーか守護霊を狙っている時だけ寄る', async () => {
+    const { heroZoomEligible } = await import('./heroScript');
+    expect(heroZoomEligible({ type: 'mutant-hero', heroTargetId: 'player', health: 10 })).toBe(true);
+    expect(heroZoomEligible({ type: 'mutant-hero', heroTargetId: 'ghost', health: 10 })).toBe(true);
+    expect(heroZoomEligible({ type: 'mutant-hero', heroTargetId: 'enemy-zombie-1', health: 10 })).toBe(false);
+    expect(heroZoomEligible({ type: 'mutant-hero', heroTargetId: undefined, health: 10 })).toBe(false);
+    expect(heroZoomEligible({ type: 'mutant-hero', heroTargetId: 'player', health: 0 })).toBe(false);
+    expect(heroZoomEligible({ type: 'zombie', heroTargetId: 'player', health: 10 })).toBe(false);
+  });
+});

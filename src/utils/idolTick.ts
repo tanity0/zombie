@@ -16,6 +16,7 @@ import {
   useGameStore, bossCritCdMult, bossSlowMult, enemyDeathLabel,
   knockbackSpeedFor } from '../store/gameStore';
 import { createEnemyProjectile } from './enemyUtils';
+import { hitThirdParties } from './heroBlast'; // research/MUTANT_HERO.md §4-2: 守護霊と英雄にも同じ形で当てる
 // v0.25.2617(社長報告「m2は移動できる範囲が限られてるのに、ボスだけその外に移動してる」):
 // プレイヤーの移動クランプと**同じ純関数**を使う。`playableArea.ts` は「行ける帯」の唯一の出どころで、
 // プレイヤー移動・湧き制限・帯の外の減光が全てここから導かれている。ボスだけがこれを通っていなかった。
@@ -731,6 +732,8 @@ export const runIdolTick = (
     const fx = idol.aiFromX ?? icx, fy = idol.aiFromY ?? icy;
     const tx = idol.aiTargetX ?? icx, ty = idol.aiTargetY ?? icy;
     const pr = Math.max(player.width, player.height) / 2;
+    // research/MUTANT_HERO.md §4-2: 同じ帯で守護霊と英雄にも当てる(プレイヤーの判定は不変)。
+    hitThirdParties({ kind: 'capsule', fx, fy, tx, ty, hw: IDOL_TUNING.shape.snipeHalfWidth }, IDOL_TUNING.moveDamage.snipe, idol.id, 'idol-snipe');
     if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, IDOL_TUNING.shape.snipeHalfWidth) <= pr) {
       const died = useGameStore.getState().damagePlayer(IDOL_TUNING.moveDamage.snipe, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy, undefined, undefined, 'idol-snipe'); // G4a計測タグ(記録専用)
       if (died) onPlayerDeath(pcx, pcy);

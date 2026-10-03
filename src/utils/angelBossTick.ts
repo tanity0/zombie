@@ -47,6 +47,7 @@ import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの合流
 import { isBodySlamNow } from './enemyBite'; // ★カウンター憲法(v0.25.3947): 面成立は体当たり技の最中のみ
 import { npcSfxDistGain } from './npcSfx'; // v0.25.2480: 守護霊カウンターSEの距離減衰
+import { hitThirdParties, hitHeroShape, type ThirdPartyShape } from './heroBlast'; // research/MUTANT_HERO.md §4-2: 守護霊と英雄にも同じ形で当てる
 import { pickMiguelMove } from './miguelScript';
 import { pickJibrilMove, jibrilVolleyMode, JIBRIL_PHASE_HP_THRESHOLD, JIBRIL_EDGE_STICK_MS } from './jibrilScript';
 import { pickRafiMove, RAFI_PHASE_HP_THRESHOLD, type RafiMove } from './rafiScript';
@@ -360,6 +361,16 @@ const ghostAllyBodyFor = (bossId: string): { x: number; y: number; r: number } |
   if (!g) return null;
   return { x: g.x + g.width / 2, y: g.y + g.height / 2, r: Math.max(g.width, g.height) / 2 };
 };
+/**
+ * research/MUTANT_HERO.md §4-2: 同じ形・同じダメージで守護霊と英雄にも当てる(プレイヤーの判定は不変)。
+ * その振りがカウンターで中断された時(プレイヤー成立=守護霊の請求を消費しない/守護霊成立=請求を消費済み)は、
+ * 守護霊には当てない(英雄だけ)。プレイヤー優先の規則を崩さないため。
+ */
+const hitOthers = (counteredNow: boolean, s: ThirdPartyShape, amount: number, srcId: string, key: string): void => {
+  if (counteredNow) hitHeroShape(s, amount, srcId, key);
+  else hitThirdParties(s, amount, srcId, key);
+};
+
 const fireGhostStrikeCounter = (
   boss: Enemy, hitX: number, hitY: number,
   sfx: { counter: (gain?: number) => void; reward: (gain?: number) => void },
@@ -806,6 +817,8 @@ export const runMiguelTick = (
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
       }
     }
+    // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
+    hitOthers(countered, { kind: 'capsule', fx: fx0, fy: fy0, tx: tx0, ty: ty0, hw: MG_T.harai.halfWidth }, miguel.damage, miguel.id, st === 'harai' ? 'miguel-harai' : 'miguel-tate');
     if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
       if (st === 'harai') {
         sfx.alert();
@@ -924,6 +937,8 @@ export const runMiguelTick = (
           patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, miguel);
         }
       }
+      // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
+      hitOthers(countered, { kind: 'capsule', fx: sx, fy: sy, tx: ex, ty: ey, hw: MG_T.harai.halfWidth }, miguel.damage, miguel.id, 'miguel-mdash');
     }
     if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
       patch.bossState = 'mdash-recover';
@@ -1080,6 +1095,8 @@ export const runMiguelTickLegacy = (
         }
       }
     }
+    // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
+    hitOthers(countered, { kind: 'test', hits: (hx, hy, hr) => distToSegment({ x: hx, y: hy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }) <= MG_T.harai.halfWidth + hr, fx: fx0, fy: fy0 }, miguel.damage, miguel.id, st === 'harai' ? 'miguel-harai' : 'miguel-tate');
     if (!countered && newGameTime >= (miguel.bossStateUntil ?? 0)) {
       if (st === 'harai') {
         patch.bossState = 'tate-windup';
@@ -2283,6 +2300,8 @@ export const runUriTick = (
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
       }
     }
+    // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
+    hitOthers(countered, { kind: 'capsule', fx: fx0, fy: fy0, tx: tx0, ty: ty0, hw: UR_T.sweep.halfWidth }, uri.damage, uri.id, 'uri-sweep');
     if (!countered && newGameTime >= (uri.bossStateUntil ?? 0)) {
       patch.bossState = 'sweep-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(UR_T.sweep.recover, (uri.bossScriptQueue?.length ?? 0) > 0);
     }
@@ -2329,6 +2348,8 @@ export const runUriTick = (
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
       }
     }
+    // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
+    hitOthers(countered, { kind: 'capsule', fx: fx0, fy: fy0, tx: tx0, ty: ty0, hw: UR_T.downslash.halfWidth }, uri.damage, uri.id, 'uri-downslash');
     if (!countered && newGameTime >= (uri.bossStateUntil ?? 0)) {
       patch.bossState = 'downslash-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(UR_T.downslash.recover, (uri.bossScriptQueue?.length ?? 0) > 0);
     }
@@ -2398,6 +2419,8 @@ export const runUriTick = (
           patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri);
         }
       }
+      // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
+      hitOthers(countered, { kind: 'capsule', fx: sx, fy: sy, tx: ex, ty: ey, hw: UR_T.thrust.halfWidth }, uri.damage, uri.id, 'uri-thrust');
     }
     if (!countered && newGameTime >= (uri.bossStateUntil ?? 0)) {
       patch.bossState = 'thrust-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(UR_T.thrust.recover, (uri.bossScriptQueue?.length ?? 0) > 0);
@@ -2661,6 +2684,8 @@ export const runSurielTick = (
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
       }
     }
+    // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
+    hitOthers(countered, { kind: 'test', hits: (hx, hy, hr) => distToSegment({ x: hx, y: hy }, { x: fx0, y: fy0 }, { x: ex, y: ey }) <= SR_T.beam.halfWidth + hr, fx: fx0, fy: fy0 }, suriel.damage, suriel.id, 'suriel-ring');
     // v0.25.3200: Phase2の2本目のビーム(2本目の環→同じロック対象)。判定・威力・カウンターとも1本目と同一。
     // 二重ヒットは被弾i-frameが吸収する(1本目と同じ経路)。
     if (!countered && suriel.ring2X !== undefined && suriel.ring2Y !== undefined) {
@@ -2686,6 +2711,8 @@ export const runSurielTick = (
           patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
         }
       }
+      // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
+      hitOthers(countered, { kind: 'test', hits: (hx, hy, hr) => distToSegment({ x: hx, y: hy }, { x: f2x, y: f2y }, { x: e2x, y: e2y }) <= SR_T.beam.halfWidth + hr, fx: f2x, fy: f2y }, suriel.damage, suriel.id, 'suriel-ring');
     }
     if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
       patch.bossState = 'ring-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SR_T.ringshot.recover, (suriel.bossScriptQueue?.length ?? 0) > 0);
@@ -2740,6 +2767,8 @@ export const runSurielTick = (
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
       }
     }
+    // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
+    hitOthers(countered, { kind: 'circle', cx: scx, cy: scy, r: SR_T.ringspin.radius }, suriel.damage, suriel.id, 'suriel-ring');
     if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
       patch.bossState = 'ring-spin-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SR_T.ringspin.recover, (suriel.bossScriptQueue?.length ?? 0) > 0);
     }
@@ -2792,6 +2821,8 @@ export const runSurielTick = (
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
       }
     }
+    // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
+    hitOthers(countered, { kind: 'capsule', fx: fx0, fy: fy0, tx: tx0, ty: ty0, hw: SR_T.sweep.halfWidth }, suriel.damage, suriel.id, 'suriel-sweep');
     if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
       patch.bossState = 'sweep-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SR_T.sweep.recover, (suriel.bossScriptQueue?.length ?? 0) > 0);
     }
@@ -2920,6 +2951,15 @@ export const runAcrasielTick = (
     if (isCounterActive(useGameStore.getState().player, Date.now())) { counter(px, py); return; }
     if (useGameStore.getState().damagePlayer(boss.damage, label, px, py, undefined, undefined, tag)) onPlayerDeath(px, py);
   };
+  // research/MUTANT_HERO.md §4-2: 同じ形・同じダメージで守護霊と英雄にも当てる(プレイヤーの判定は不変)。
+  const hitOthersAc = (shape: ThirdPartyShape, tag: string): void => { hitThirdParties(shape, boss.damage, boss.id, tag); };
+  // 放射棘の形(8方位の扇のうち空きでないもの)。プレイヤーの判定と同じ式を円(中心・半径)で再評価する。
+  const spikeShape = (pl2: NonNullable<typeof plan>): ThirdPartyShape => ({
+    kind: 'test', fx: pl2.x, fy: pl2.y,
+    hits: (hx, hy, hr) => Array.from({ length: 8 }, (_, sector) => sector).some(sector =>
+      !isSpikeGapSector(pl2.gapMask, sector) && acrasielPolygonHitsCircle(
+        acrasielSectorPolygon(pl2.x, pl2.y, pl2.rotation, sector, AC_T.spike.range), hx, hy, hr)),
+  });
   // forced=true はボスメーカーの個別再生(▸)。★「安全な扇を置けないので棘→転移へ差し替える」
   // 保険を**再生では効かせない**(▸は「その技を必ず出す」ための口なので、差し替えると
   // `angelPlayback.test.ts` が確率で落ちる=実際に3回に1回落ちていた・v0.25.4204)。
@@ -3057,6 +3097,7 @@ export const runAcrasielTick = (
       !isSpikeGapSector(plan.gapMask, sector) && acrasielPolygonHitsCircle(
         acrasielSectorPolygon(plan.x, plan.y, plan.rotation, sector, AC_T.spike.range), px, py, Math.max(pl.width, pl.height) / 2)),
     'アクラシエルの放射棘', 'acrasiel-spike');
+    if (plan) hitOthersAc(spikeShape(plan), 'acrasiel-spike'); // 初回activeも同じ形で守護霊と英雄へ(§4-2)
   } else if (st === 'spike') {
     if (remaining <= 0) {
       // ★2波目(Phase2以降・社長指示「もっと激しく」): 空きを45°隣へずらして、もう一度フルのリードで撃つ。
@@ -3070,10 +3111,13 @@ export const runAcrasielTick = (
         enter('spike-windup', AC_T.spike.windup);
       } else recover('spike');
     }
-    else if (plan) damage(Array.from({ length: 8 }, (_, sector) => sector).some(sector =>
-      !isSpikeGapSector(plan.gapMask, sector) && acrasielPolygonHitsCircle(
-        acrasielSectorPolygon(plan.x, plan.y, plan.rotation, sector, AC_T.spike.range), px, py, Math.max(pl.width, pl.height) / 2)),
-    'アクラシエルの放射棘', 'acrasiel-spike');
+    else if (plan) {
+      damage(Array.from({ length: 8 }, (_, sector) => sector).some(sector =>
+        !isSpikeGapSector(plan.gapMask, sector) && acrasielPolygonHitsCircle(
+          acrasielSectorPolygon(plan.x, plan.y, plan.rotation, sector, AC_T.spike.range), px, py, Math.max(pl.width, pl.height) / 2)),
+      'アクラシエルの放射棘', 'acrasiel-spike');
+      hitOthersAc(spikeShape(plan), 'acrasiel-spike'); // 同じ形で守護霊と英雄にも(§4-2)
+    }
   } else if (st === 'spear-windup' && remaining <= 0 && plan) {
     const fireAt = now + AC_T.spear.detonateMs;
     for (const target of plan.targets) store.spawnAcrasielSpear(target.x, target.y, target.angle, now, fireAt, boss.damage, boss.id);
@@ -3108,10 +3152,14 @@ export const runAcrasielTick = (
     }
     damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + Math.max(pl.width, pl.height) / 2,
       'アクラシエルの転移衝撃', 'acrasiel-warp');
+    hitOthersAc({ kind: 'circle', cx: boss.aiTargetX ?? cx, cy: boss.aiTargetY ?? cy, r: AC_T.warp.impactRadius }, 'acrasiel-warp'); // §4-2
   } else if (st === 'warp-active') {
     if (remaining <= 0) recover('warp');
-    else damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + playerRadius,
-      'アクラシエルの転移衝撃', 'acrasiel-warp');
+    else {
+      damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + playerRadius,
+        'アクラシエルの転移衝撃', 'acrasiel-warp');
+      hitOthersAc({ kind: 'circle', cx: boss.aiTargetX ?? cx, cy: boss.aiTargetY ?? cy, r: AC_T.warp.impactRadius }, 'acrasiel-warp'); // §4-2
+    }
   }
   else if (st === 'burst-windup' && remaining <= 0) {
     enter('burst', AC_T.burst.active); sfx.shot();
@@ -3124,8 +3172,11 @@ export const runAcrasielTick = (
   }
   else if (st === 'burst') {
     if (remaining <= 0) recover('burst');
-    else damage(Math.hypot(px - (plan?.x ?? cx), py - (plan?.y ?? cy)) <= AC_T.burst.radius + Math.max(pl.width, pl.height) / 2,
-      'アクラシエルの爆発', 'acrasiel-burst');
+    else {
+      damage(Math.hypot(px - (plan?.x ?? cx), py - (plan?.y ?? cy)) <= AC_T.burst.radius + Math.max(pl.width, pl.height) / 2,
+        'アクラシエルの爆発', 'acrasiel-burst');
+      hitOthersAc({ kind: 'circle', cx: plan?.x ?? cx, cy: plan?.y ?? cy, r: AC_T.burst.radius }, 'acrasiel-burst'); // §4-2
+    }
   } else if (st === 'gaze-windup' && remaining <= 0) {
     // ★社長指示「紅ライン予告出る割に弾が1発出るだけ」。複数ある眼が同時に光る絵に合わせ、
     // 扇状の多射線へ(Phase1=5本 / P2=7本 / P3=9本)。**角度は予告(pixiScene)と同じ純関数**を読む。
@@ -3822,6 +3873,8 @@ export const tickAngelBossFires = (newGameTime: number, onPlayerDeath: (x: numbe
   for (const f of bf) {
     if (newGameTime >= f.expireAt) continue;
     const active = newGameTime >= f.activateAt;
+    // research/MUTANT_HERO.md §4-2: 同じ円・同じダメージで守護霊と英雄にも(プレイヤーの被弾/無敵/1フレーム1ヒットとは独立)。
+    if (active) hitThirdParties({ kind: 'circle', cx: f.x, cy: f.y, r: JB_T.fire.radius }, JB_T.fire.damage, undefined, 'jibril-lantern');
     if (active && !pl.invulnerable && !died && !struck && Math.hypot(plcx - f.x, plcy - f.y) <= hitR) {
       struck = true;
       const d = useGameStore.getState().damagePlayer(JB_T.fire.damage, 'ジブリルのランタン火', f.x, f.y, undefined, undefined, 'jibril-lantern'); // G4a計測タグ(記録専用・置いた火はランタンの技に帰属)
@@ -3856,6 +3909,8 @@ export const tickAcrasielSpears = (
   for (const sp of spears) {
     if (newGameTime >= sp.fireAt) {
       const inCircle = Math.hypot(plcx - sp.x, plcy - sp.y) <= AC_T.spear.radius + pr;
+      // research/MUTANT_HERO.md §4-2: 起爆の円で守護霊と英雄にも(プレイヤーのカウンター潰し/無敵とは独立)。
+      hitThirdParties({ kind: 'circle', cx: sp.x, cy: sp.y, r: AC_T.spear.radius }, sp.damage, sp.enemyId, 'acrasiel-spear');
       if (inCircle && !counteredThisFrame && isCounterActive(pl, Date.now())) {
         const owner = useGameStore.getState().enemies.find(e => e.id === sp.enemyId);
         if (owner) {

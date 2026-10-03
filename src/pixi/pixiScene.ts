@@ -241,7 +241,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } from '../utils/telegraphStyle';
-import { heroFrameFor, heroLiftPx, HERO_SHEETS, HERO_STRIKE_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
+import { heroFrameFor, heroLiftPx, heroZoomEligible, HERO_SHEETS, HERO_STRIKE_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine } from '../utils/biteTelegraph';
 // ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
 import {
@@ -8243,7 +8243,7 @@ export class PixiScene {
       // 指摘12: 帰巣中(bossState==='return')のボスは交戦していないので除外する。dormantしか見ていないと
       // 「離脱してるっぽいのにズームが戻らない」(帰巣中も交戦画角を保持し続ける)。視点バイアス
       // (bossBiasD2/最近ボス選定)も同じループなので一緒に外れる。
-      if (bossZoomExcluded || !isEngageableBoss(e.type) || e.dormant === true || e.bossState === 'return') continue;
+      if (bossZoomExcluded || !(isEngageableBoss(e.type) || heroZoomEligible(e)) || e.dormant === true || e.bossState === 'return') continue; // 英雄はプレイヤーを狙う間だけ(MUTANT_HERO)
       const bossEngageLimit = bossEngagementDistancePx(e.type, this.bossCameraEngaged, e.isStoryBoss === true);
       const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
       if (dx * dx + dy * dy > bossEngageLimit * bossEngageLimit) continue;
@@ -8574,7 +8574,7 @@ export class PixiScene {
         if (tsNum('tsbossfocus', 1) > 0) {
           const scrH = this.screenH * vpScale;
           for (const e of s.enemies) {
-            if (!isEngageableBoss(e.type) || e.dormant === true || e.bossState === 'return' || e.health <= 0) continue;
+            if (!(isEngageableBoss(e.type) || heroZoomEligible(e)) || e.dormant === true || e.bossState === 'return' || e.health <= 0) continue;
             const v = this.enemies.get(e.id);
             if (!v || !v.sprite.visible || v.container.alpha <= 0.01 || !v.container.visible) continue;
             const bb = v.sprite.getBounds();

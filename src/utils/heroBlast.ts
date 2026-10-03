@@ -3,7 +3,7 @@
 // - 敵の攻撃(持ち主が英雄以外の爆風・弾・接触・技)を**英雄にも**当てる(第三者の的)。
 // 判定は全部 store 側(描画は読むだけ)。プレイヤーへの判定・ダメージは1bitも変えない(全て独立の追加分岐)。
 import type { Enemy } from '../types/game';
-import { useGameStore, knockbackSpeedFor, type PumpkinBlast } from '../store/gameStore';
+import { useGameStore, knockbackSpeedFor, setThirdPartyHook, type PumpkinBlast } from '../store/gameStore';
 import { isCorpse, isMutantHero, resistsChipKnockback } from './enemyUtils';
 import { isPointInZoomedViewport } from './cameraZoom';
 import { distToBandRect } from './geometry';
@@ -242,3 +242,6 @@ export const hitThirdParties = (s: ThirdPartyShape, amount: number, srcEnemyId: 
   hitGhostShape(s, amount, srcEnemyId, key);
   hitHeroShape(s, amount, srcEnemyId, key);
 };
+
+// gameStore 内の技(城ボスの継続技など)が当てに来る入口を登録する(gameStore は heroBlast を import できない=循環)。
+setThirdPartyHook(hitThirdParties);

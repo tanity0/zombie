@@ -59,6 +59,7 @@ import { rectsOverlap } from '../world/obstacles'; // ★B6(盾押し・§6)
 import { pushShieldRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { createEnemyProjectile } from './enemyUtils';
 import { distToBandRect } from './geometry';
+import { hitThirdParties } from './heroBlast'; // research/MUTANT_HERO.md §4-2: 守護霊と英雄にも同じ形で当てる
 import {
   createWeapon, effectiveFireCooldown, beginWeaponReload, finishWeaponReload,
   projectileFlightStats, gunEffectiveRangePx,
@@ -648,6 +649,10 @@ const swingPhantomMelee = (
   // ここで打ち直すと窓が前隙ぶん後ろへずれ、「後出しが勝つ」が壊れる(v0.25.3869で踏んだ実バグ)。
   sfx.swing(); // 刃が走る音は判定と同時(プレイヤーの近接SEも解決地点で鳴らしている)
   const playerRadius = Math.max(player.width, player.height) / 2;
+  // research/MUTANT_HERO.md §4-2: 同じ帯で守護霊と英雄にも当てる(プレイヤーの判定・カウンター・クリは不変)。
+  // 量は基準(クリ抽選前)の近接ダメージ=乱数を引かない(プレイヤー側の抽選順を変えない)。
+  hitThirdParties({ kind: 'capsule', fx: bcx, fy: bcy, tx, ty, hw: GP_T.melee.halfWidth },
+    phantomMeleeDamage(growthAtkMult, phantomId) * PVP_DAMAGE_SCALE, phantomId, GUARDIAN_PHANTOM_TYPE);
   if (distToBandRect({ x: pcx, y: pcy }, { x: bcx, y: bcy }, { x: tx, y: ty }, GP_T.melee.halfWidth) > playerRadius) return;
   // fromX/fromY を渡さないとプレイヤーのノックバックが出ない(GHOST_BOSS.md 監査4周目#1)。
   // ★v0.25.3640(成果物監査Q1-3): damagePlayer の戻り値は「プレイヤーが死んだか」であって

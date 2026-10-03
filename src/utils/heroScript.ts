@@ -415,3 +415,11 @@ export const heroLiftPx = (e: { bossState?: string; heroMove?: HeroMoveKey; hero
   const u = (gameTime - e.heroStateAt) / Math.max(1, e.bossStateUntil - e.heroStateAt);
   return heroLeapLift(u, 90);
 };
+
+/**
+ * 寄りズーム(ボスの距離ズーム・カメラの先読み・ピント)の対象にするか(社長裁定2026-10-03)。
+ * 英雄はボス戦の判定から外してあるので、**プレイヤーか守護霊を狙っている間だけ**ボスと同じく寄る。
+ * ゾンビと斬り合っているだけなら寄らない(プレイヤーの戦いと関係ない方へ画を引っ張らない)。
+ */
+export const heroZoomEligible = (e: { type: string; heroTargetId?: string; health: number }): boolean =>
+  e.type === HERO_TYPE && e.health > 0 && (e.heroTargetId === 'player' || e.heroTargetId === 'ghost');

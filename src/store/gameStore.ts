@@ -393,6 +393,12 @@ import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS, isEliteFatalStun } from '../utils/meleeExecute';
 import { killSlashNeckPosition } from '../utils/killSlashFx'; // KILL時の首元斬撃(fx/kill-slash・社長指示2026-09-16)
+import type { ThirdPartyShape } from '../utils/heroBlast'; // 型のみ(実体は heroBlast が gameStore を読むので循環させない)
+
+// research/MUTANT_HERO.md §4-2: 「今プレイヤーにしか当たっていない技」を守護霊と英雄にも当てる入口。
+// 実体は utils/heroBlast.ts の hitThirdParties(あちらが gameStore を import するので、ここは遅延フックで受ける)。
+let thirdPartyHook: ((s: ThirdPartyShape, amount: number, src: string | undefined, key: string) => void) | null = null;
+export const setThirdPartyHook = (fn: typeof thirdPartyHook): void => { thirdPartyHook = fn; };
 
 // 四神舞(リズム)の初期状態。新規ラン/リセットで使い回す。
 const initialRhythm = (): RhythmState => ({
@@ -8893,9 +8899,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcy = player.y + player.height / 2;
     // 射程は**既存の分身と同じ式**(huntingMeleeRadius)。標的だけプレイヤー1点にする。
     const meleeRange = huntingMeleeRadius(actor);
-    if (Math.hypot(pcx - ccx, pcy - ccy) > meleeRange) return;
-    const walls = meleeWallsAround(get, ccx, ccy, meleeRange);
-    if (walls.length > 0 && segmentBlocked(ccx, ccy, pcx, pcy, walls)) return;
     const melee = actor.weapons.find(w => w.isMelee);
     const base = meleeSwingBaseDamage(melee, actor);
     // O-2(写すな、共通化しろ): phantomAtkMults と同じ二重掛け防止——combatActorPlayer が返す
@@ -8904,6 +8907,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const outgoing = skillOutgoingDamageMult({ ...actor, growthAtkMult: 1, levelAtkMult: 1 })
       * (actor.equipBonus?.damageMult ?? 1) * (player.growthAtkMult ?? 1);
     const dmg = Math.max(1, Math.round(base * outgoing * PVP_DAMAGE_SCALE));
+    // research/MUTANT_HERO.md §4-2: 同じ円・同じダメージで守護霊と英雄にも当てる(プレイヤーの判定は不変)。
+    thirdPartyHook?.({ kind: 'circle', cx: ccx, cy: ccy, r: meleeRange }, dmg, phantomId, 'phantom-clone');
+    if (Math.hypot(pcx - ccx, pcy - ccy) > meleeRange) return;
+    const walls = meleeWallsAround(get, ccx, ccy, meleeRange);
+    if (walls.length > 0 && segmentBlocked(ccx, ccy, pcx, pcy, walls)) return;
     const hpBefore = player.health;
     get().damagePlayer(dmg, `${phantomDisplayLabel()}の分身`, ccx, ccy);
     const landed = get().player.health < hpBefore;
@@ -12943,6 +12951,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     //  全件処理して空にする。updateEnemies と消費の間に脱出経路は無い=useGameLoop 7209→7240。)
     const pumpkinBlasts: PumpkinBlast[] = [];
     const giantBoltFires: Enemy[] = []; // M51: ジャイアント新スクリプトの咆哮弾。set() 後に post-set で addProjectile する。
+    // research/MUTANT_HERO.md §4-2: 城ボスの継続技(g-quad/g-nova/g-sweepbeam)を守護霊と英雄にも当てる。
+    // set 内は再入 set 禁止(英雄/守護霊へのダメージは set を呼ぶ)ので、積んでおいて set 後に当てる。
+    const thirdPartyHits: { shape: ThirdPartyShape; dmg: number; src: string; key: string }[] = [];
     // v0.25.3700(社長指示「ボスの技にも対応するSEを」): 発動の瞬間にプレイヤー近似SEを鳴らすための
     // post-setフラグ(set内は再入set禁止+audioManagerは静的importできない=pumpkinLanded/jump-landと同じ作法)。
     let giantNovaFired = false;      // g-nova発動 → skadi-ice(氷結波=氷の近似)
@@ -14595,6 +14606,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                   quadBreathSparkles.push({ x: bfx + Math.cos(qa) * qr, y: bfy + Math.sin(qa) * qr });
                 }
               }
+              // 同じ帯で守護霊と英雄にも(プレイヤーの1回だけの掛け金 giantActiveHit とは独立。英雄は700ms間引き)。
+              thirdPartyHits.push({ shape: { kind: 'capsule', fx: bfx, fy: bfy, tx: farX, ty: farY, hw: GIANT_QUAD_BREATH_HALF_WIDTH }, dmg: enemy.damage, src: enemy.id, key: 'g-quad' });
               const playerR = Math.max(player.width, player.height) / 2;
               const hitNow = !enemy.giantActiveHit &&
                 distToBandRect({ x: pcx, y: pcy }, { x: bfx, y: bfy }, { x: farX, y: farY }, GIANT_QUAD_BREATH_HALF_WIDTH) <= playerR;
@@ -14685,6 +14698,11 @@ export const useGameStore = create<GameState>((set, get) => ({
               const curR = GIANT_NOVA_RADIUS_START + (GIANT_NOVA_RADIUS_END - GIANT_NOVA_RADIUS_START) * nt;
               const playerR = Math.max(player.width, player.height) / 2;
               const pdist = Math.hypot(pcx - ecx, pcy - ecy);
+              // 同じ輪で守護霊と英雄にも(giantActiveHit とは独立)。
+              thirdPartyHits.push({
+                shape: { kind: 'test', hits: (hx, hy, hr) => Math.abs(Math.hypot(hx - ecx, hy - ecy) - curR) <= GIANT_NOVA_BAND_THICKNESS + hr, fx: ecx, fy: ecy },
+                dmg: enemy.damage, src: enemy.id, key: 'g-nova',
+              });
               const hitNow = !enemy.giantActiveHit && Math.abs(pdist - curR) <= GIANT_NOVA_BAND_THICKNESS + playerR;
               if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-nova' });
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
@@ -14814,6 +14832,8 @@ export const useGameStore = create<GameState>((set, get) => ({
               const nearX = sbfx + Math.cos(curAngle) * GIANT_SWEEPBEAM_INNER_RADIUS, nearY = sbfy + Math.sin(curAngle) * GIANT_SWEEPBEAM_INNER_RADIUS;
               const farX = sbfx + Math.cos(curAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH),
                 farY = sbfy + Math.sin(curAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH);
+              // 同じ帯で守護霊と英雄にも(giantActiveHit とは独立)。
+              thirdPartyHits.push({ shape: { kind: 'capsule', fx: nearX, fy: nearY, tx: farX, ty: farY, hw: GIANT_SWEEPBEAM_HALF_WIDTH }, dmg: enemy.damage, src: enemy.id, key: 'g-sweepbeam' });
               const playerR = Math.max(player.width, player.height) / 2;
               const hitNow = !enemy.giantActiveHit &&
                 distToBandRect({ x: pcx, y: pcy }, { x: nearX, y: nearY }, { x: farX, y: farY }, GIANT_SWEEPBEAM_HALF_WIDTH) <= playerR;
@@ -16654,6 +16674,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...(screamerActivatedAt.length > 0 ? { screamerBuffUntil: gameTime + SCREAMER_BUFF_MS } : {}),
       };
     });
+    // research/MUTANT_HERO.md §4-2: set 後に守護霊・英雄へ当てる(積んだ分だけ=毎フレーム数件)。
+    if (thirdPartyHits.length > 0) for (const h of thirdPartyHits) thirdPartyHook?.(h.shape, h.dmg, h.src, h.key);
     // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)+設計チャットの追補: ボス突入スナップショット
     // (装備スキル/Lv/プレイヤーLv/装備スロット別Tier+系統+特殊フラグ/straps)。イベント時のみ
     // (per-frame走査ではない=この呼び出し自体が「交戦フラグが立った1フレーム」でしか起きない)。

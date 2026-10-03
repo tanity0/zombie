@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.4809 — 英雄(変異)実装・段2後半: プレイヤーにしか当たっていなかった技を守護霊と英雄へ・寄りズーム【2026-10-04 03:00 JST】
+- 実装(サブエージェント Sonnet・設計チャットが差分を確認): `hitThirdParties`(守護霊+英雄)を約30か所へ。プレイヤーの判定は追加分岐のみ(値・順序・return不変)。
+  - angelBossTick: ミゲル(払い/縦払い×2経路・踏み込み)/ ウリ(大薙ぎ・振り下ろし・突き)/ スリィエル(環の光線2本・回転斬・本体の薙ぎ)/ アクラシエル(棘=既存の多角形判定を流用・転移・炸裂・結晶の槍)/ ジブリルの灯火。
+    既存の守護霊カウンター(fireGhostStrikeCounter)を持つ技は、そのフレームにカウンターされていたら英雄だけに当てる(プレイヤー優先の既存テスト ghostAngelCounter を壊さない)。
+  - bountyTick: レーザー / 360度の鞭(1回だけの掛け金の外)/ 狙撃 / 毬回し / 手毬打ち。idolTick: 狙撃。phantomTick: 幻影の近接。gameStore: 幻影の分身・城ボスの g-quad / g-nova / g-sweepbeam(set の中は再入禁止=積んで set 後に当てる)。
+  - useGameLoop: 偶像の手榴弾 / 幻影の犬・タレット・地雷(距離で減るダメージは第三者には中間の値で当てる)。
+  - gameStore→heroBlast の循環を避けるため、gameStore は遅延フック `setThirdPartyHook`(heroBlast が登録)。
+- 寄りズーム(社長裁定): `heroScript.heroZoomEligible`=英雄がプレイヤーか守護霊を狙っている間だけ、ボスの距離ズーム・カメラの先読み・ピントの対象(useGameLoop の推定と pixiScene の両方)。
+- テスト: `heroLure.test.ts`(雑魚は近くの英雄を追う・ボスは見ない・未指定なら従来と同じ)/ heroScript.test に寄りズーム。
+- 画で確認(ヘッドレス・練習ラン): 英雄がコウモリ・骸骨へ乗り換えて斬る / 英雄の周り360px内に雑魚が最大7体集まる / 英雄のHPが雑魚の接触とプレイヤーの銃で減る / 例外なし。
+- 検証: typecheck / lint(0 errors)/ vitest 全件(6992 passed)。
+- 状態変化: 英雄(変異) → 実装済み・検収監査とクリエイティブ監査へ(残り: 監査の反映・実機)。
+
 ## v0.25.4808 — 英雄(変異)実装・段2前半: 雑魚の狙い・接触・弾・帯・床【2026-10-04 02:35 JST】
 - コード本体はコミット 47ad4bfa(この版上げの直前)。
 - 雑魚・強個体の狙い: `resolveEnemyTarget` に英雄の引数(画面内の英雄だけ・ボスは見ない)。追跡(updateEnemies)と射撃(applyEnemyFire)の両方。判定は `heroScript.mobPrefersHero`(360px以内でプレイヤーより近い)。

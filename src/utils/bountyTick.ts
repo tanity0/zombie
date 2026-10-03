@@ -112,6 +112,7 @@ import { BOUNTY_NEUTRAL_RULED_MS } from './bossRebuild'; // ★社長裁定2026-
 import { consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter'; // ★v0.25.3962: 守護霊カウンターの消費(賞金首側の配線)
 import { resolveBossHateAim, resolveBossLockedHateAim } from './bossHate'; // ★v0.25.3971: 賞金首もヘイト制で守護霊を狙う
 import { npcSfxDistGain } from './npcSfx';
+import { hitThirdParties } from './heroBlast'; // research/MUTANT_HERO.md §4-2: 守護霊と英雄にも同じ形で当てる
 import { getActiveGun } from './weaponUtils';
 import { GLOW_R_L } from './glowTiers';
 // §4②輸入=ミーミル型レーザー: mimirLaserTrack.tsの純関数をそのまま使う(複製しない=誤学習防止)。
@@ -967,6 +968,14 @@ const tickRanged = (
     const pr = Math.max(player.width, player.height) / 2;
     const tproj = Math.max(0, Math.min(BR_LASER_RANGE, (ppx - bcx) * ux + (ppy - bcy) * uy));
     const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
+    // research/MUTANT_HERO.md §4-2: 同じ線分+半幅で守護霊と英雄にも当てる(プレイヤーの判定は不変)。
+    hitThirdParties({
+      kind: 'test', fx: bcx, fy: bcy,
+      hits: (hx, hy, hr) => {
+        const tp = Math.max(0, Math.min(BR_LASER_RANGE, (hx - bcx) * ux + (hy - bcy) * uy));
+        return Math.hypot(hx - (bcx + ux * tp), hy - (bcy + uy * tp)) <= BR_LASER_HALFWIDTH + hr;
+      },
+    }, BR_T.laser.damage, bounty.id, 'br-laser');
     if (Math.hypot(ppx - cxp, ppy - cyp) <= BR_LASER_HALFWIDTH + pr) {
       useGameStore.getState().damagePlayer(BR_T.laser.damage, `${enemyDeathLabel(bounty.type)}のレーザー`, ppx, ppy, undefined, undefined, 'br-laser'); // G4a計測タグ(記録専用)
     }
@@ -1253,6 +1262,8 @@ const tickMelee = (
   if (st === 'bm-whip360') {
     // 判定=自分中心の円(鞭の届く範囲)。**1回の振りで1度だけ**当たる(多段にしない)。
     const pr = Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2;
+    // research/MUTANT_HERO.md §4-2: 同じ円で守護霊と英雄にも(プレイヤーの「1振り1回」の掛け金 whip360Hit とは独立。英雄は700ms間引き)。
+    hitThirdParties({ kind: 'circle', cx: bcx, cy: bcy, r: BM_T.whip360.radius }, BM_T.whip360.damage, bounty.id, 'bm-whip360');
     if (!s.whip360Hit && Math.hypot(pcx - bcx, pcy - bcy) <= BM_T.whip360.radius + pr) {
       s.whip360Hit = true;
       useGameStore.getState().damagePlayer(BM_T.whip360.damage, `${enemyDeathLabel(bounty.type)}の鞭薙ぎ`, pcx, pcy, undefined, undefined, 'bm-whip360'); // G4a計測タグ(記録専用・v0.25.3607裁定)
@@ -1334,6 +1345,8 @@ const tickMelee = (
     const player = useGameStore.getState().player;
     const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
     const pr = Math.max(player.width, player.height) / 2;
+    // research/MUTANT_HERO.md §4-2: 同じ帯で守護霊と英雄にも当てる(プレイヤーの判定は不変)。
+    hitThirdParties({ kind: 'capsule', fx, fy, tx, ty, hw: BM_T.snipe.halfWidth }, BM_T.snipe.damage, bounty.id, 'bm-snipe');
     if (distToBandRect({ x: ppx, y: ppy }, { x: fx, y: fy }, { x: tx, y: ty }, BM_T.snipe.halfWidth) <= pr) {
       useGameStore.getState().damagePlayer(BM_T.snipe.damage, `${enemyDeathLabel(bounty.type)}の狙撃`, ppx, ppy, undefined, undefined, 'bm-snipe'); // G4a計測タグ(記録専用)
     }
@@ -1805,6 +1818,8 @@ const tickMaiko = (
       // 判定は**動いた後の中心**で取る(絵と判定を同じ位置に揃える)。
       bcx = c.x + bounty.width / 2; bcy = c.y + bounty.height / 2;
     }
+    // research/MUTANT_HERO.md §4-2: 動いた後の同じ円で守護霊と英雄にも(プレイヤーのカウンター/被弾とは独立)。
+    hitThirdParties({ kind: 'circle', cx: bcx, cy: bcy, r: MK_T.spin.radius }, MK_T.spin.damage, bounty.id, 'mk-spin');
     if (Math.hypot(pcx - bcx, pcy - bcy) <= MK_T.spin.radius + Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2) {
       // ★v0.25.3591: 判定円が自分を掃く**最初のフレーム**は、runBountyTickのカウンター判定(移動前の
       // 位置で見る)では届いていない=不成立のまま被弾し、被弾で窓が閉じて以後も成立しなかった。
@@ -1907,6 +1922,8 @@ const tickMaiko = (
     const px2 = st === 'mk-boom-out' ? fx + (tx - fx) * t : tx + (fx - tx) * t;
     const py2 = st === 'mk-boom-out' ? fy + (ty - fy) * t : ty + (fy - ty) * t;
     const pr = Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2;
+    // research/MUTANT_HERO.md §4-2: 毬の同じ円で守護霊と英雄にも(プレイヤーのカウンター/被弾とは独立)。
+    hitThirdParties({ kind: 'circle', cx: px2, cy: py2, r: MK_T.boom.hitRadius }, MK_T.boom.damage, bounty.id, 'mk-boom');
     if (Math.hypot(pcx - px2, pcy - py2) <= MK_T.boom.hitRadius + pr) {
       // ★v0.25.3591(監査 A-5「毬の円reachでカウンター可にする=打ち返す」): 毬は弾ではないので反射経路に
       // 乗らず、カウンター手段が1つも無かった。**毬の円**(=描いてある毬そのもの)で成立させる。
