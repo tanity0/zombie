@@ -132,6 +132,11 @@ const EX_BACK_MAX_FINAL_H_MULT = 1.6; // ★4巡目#7: 最終合成後(投影×�
 
 /** pixiScene.tsから毎フレーム渡すEX(stage-ex1)固有の描画オプション(§10-20#2/#8/#11)。省略時=M6と1バイトも変わらない。 */
 export interface CorridorLayerFrameOpts {
+  /**
+   * 実際の画面幅(PC の横長だけ渡す・research/PC_SUPPORT.md 段2)。通路の幾何は W(=スマホ相当の幅)で組み、
+   * 黒の背景と遠方フェードだけを実際の画面幅まで広げる。未指定=W と同じ(スマホは従来どおり)。
+   */
+  screenW?: number;
   /** trueならEX固有分岐(奥壁のworld固定+ハッチ床の抑止)を有効化。 */
   isEx?: boolean;
   /** EXの奥壁を置くtravel-space位置(北端-6000の300px奥。exHallTravel(EX_BACK_WORLD_Y)。§10-20#2)。
@@ -349,8 +354,10 @@ export class CorridorLayer {
     //   その外側はこの bg の単色(0x0a0709=遠方の闇と同色)が受け持つ。
     this.bg.visible = !CORRIDOR_DEBUG.noBg; // ★切り分け用(?nobg=1)
     const bgOverscanY = H; // 上下それぞれ画面1つ分
-    this.bg.position.set(-CORRIDOR_BG_X_OVERSCAN, -bgOverscanY);
-    this.bg.width = W + CORRIDOR_BG_X_OVERSCAN * 2;
+    // PC の横長: 幾何はスマホ相当の幅 W で組み、黒は実際の画面幅まで(左右の外を闇で埋める)。スマホは +0。
+    const overscanX = CORRIDOR_BG_X_OVERSCAN + Math.max(0, ((opts?.screenW ?? W) - W) / 2);
+    this.bg.position.set(-overscanX, -bgOverscanY);
+    this.bg.width = W + overscanX * 2;
     this.bg.height = H + bgOverscanY * 2;
     const horizonY = H * CFG.horizonYr;
     if (!this.ready) return;
@@ -372,11 +379,11 @@ export class CorridorLayer {
     const hy = Math.round(horizonY);
     this.floorDark.visible = !CORRIDOR_DEBUG.noDark;
     this.ceilDark.visible = !CORRIDOR_DEBUG.noDark;
-    this.floorDark.position.set(-CORRIDOR_BG_X_OVERSCAN, hy - DARK_SEAM_OVERLAP_PX);
-    this.floorDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2;
+    this.floorDark.position.set(-overscanX, hy - DARK_SEAM_OVERLAP_PX);
+    this.floorDark.width = W + overscanX * 2;
     this.floorDark.height = H - hy + DARK_SEAM_OVERLAP_PX;
-    this.ceilDark.position.set(-CORRIDOR_BG_X_OVERSCAN, 0);
-    this.ceilDark.width = W + CORRIDOR_BG_X_OVERSCAN * 2;
+    this.ceilDark.position.set(-overscanX, 0);
+    this.ceilDark.width = W + overscanX * 2;
     this.ceilDark.height = hy + DARK_SEAM_OVERLAP_PX;
 
     this.updateWallLamps(travel, W, H, now, opts);

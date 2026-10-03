@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4790', items: ['PCで、洋館の通路が実際に歩ける幅より広く描かれていたのを直した。左右には巨大な柱が並ぶ'] },
   { version: '0.25.4789', items: ['PCの横長の画面では、敵は上下から多く、左右からは少なめに来る。遠い左右の道に敵が溜まらない'] },
   { version: '0.25.4788', items: ['PCでも、オープニングとエンディングの文字が画面に合わせて大きくなる'] },
   { version: '0.25.4787', items: ['ゲーム内容の変更はありません'] },

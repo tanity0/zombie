@@ -13,6 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
+import { VIEW_CORE_W } from '../utils/viewport';
 import { bossFramingFor } from '../utils/bossFraming';
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
@@ -10459,7 +10460,11 @@ export class PixiScene {
     const dispScale = ex ? hallS * gz : 1;
     // 支点(pivot): 横=world x=0の画面位置(既存)。縦=通路の内部基準点(H*footYr。scale=1時に
     // 旧来のcontainer.y代入と数値一致させるための「ローカル」参照点)。
-    const pivotLocalX = this.screenW / 2;
+    // PC の横長(research/PC_SUPPORT.md 段2): 通路の幾何は画面幅に比例して組まれている(柱・カーペットの幅=W×比率)ので、
+    // 横1280のまま組むと通路が行ける幅(±170)の約3倍に描かれる。横長はスマホ相当の幅(VIEW_CORE_W=405・縦720=9:16)で組み、
+    // 画面の中央に置く(左右の外は闇)。縦持ちは従来どおり画面幅そのもの。
+    const corridorW = this.screenW > this.screenH ? VIEW_CORE_W : this.screenW;
+    const pivotLocalX = corridorW / 2;
     let pivotLocalY = this.screenH * CORRIDOR_GAME_CFG.footYr;
     const targetScreenX = worldZeroScreenX;
     // v0.25.3202(社長報告「スリィエル討伐時、本人だけ揺れてる。カメラ揺れてない」の正体):
@@ -10495,11 +10500,13 @@ export class PixiScene {
     // 求めるため、rawTravelを別扱いする必要が無くなった=exBackRawTravelは廃止)。
     const travelForCorridor = ex ? exHallTravel(playerCenterY) : -s.player.y;
     const exBackTravel = ex ? exHallTravel(EX_BACK_WORLD_Y) : 0;
-    this.corridorBackdrop.update(travelForCorridor, this.screenW, this.screenH, now, ex ? {
+    const pcWide = corridorW !== this.screenW ? { screenW: this.screenW } : {};
+    this.corridorBackdrop.update(travelForCorridor, corridorW, this.screenH, now, ex ? {
       isEx: true,
       exBackTravel,
       exDispScaleForCap: dispScale,
-    } : undefined);
+      ...pcWide,
+    } : (corridorW !== this.screenW ? pcWide : undefined));
   }
 
   // 最前面の天井帯オーバーレイ: screen-space で画面上端に上寄せ配置。半透明(LAB_CEILING_ALPHA)。

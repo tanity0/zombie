@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4790 — PC版対応 段2: 洋館通路の絵を行ける幅に揃える・画面の大きさで決まる判定の洗い出し【2026-10-03 09:34 JST】
+- 洋館通路(ステージ6・EX): 柱・カーペットの幅が画面幅に比例 → PC は行ける幅の約3倍に描かれていた。横長は幅405で組んで中央へ・左右の黒を実画面幅まで
+  (pixiScene `corridorW`・corridorLayer `opts.screenW`)。縦持ちは引数も値も従来どおり。実画 1280×720 / 430×932。
+- 画面の大きさで決まる判定の全数走査(Sonnet)→ ほぼ全部「画面の外」の意味=PC で広がるのが正しい → 変えない。気になったら触る候補を research/PC_SUPPORT.md §10-1 に記録。
+- phone-guard: check 14画面 OK。検証: typecheck / lint(0 errors)。
+- 変更: src/pixi/pixiScene.ts / src/pixi/corridorLayer.ts / research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4789 — PC版対応 段2: 左右の湧く距離(湧く辺の割合を道のりに反比例)【2026-10-03 09:26 JST】
 - 社長「全て進めて」→ ★未決 #PC-1「左右の湧く距離」を (a) の形で: `spawnSideFromRoll`(enemyUtils.ts)。横長だけ 上下 約3割・左右 約2割(PC 1280×720)。
   縦持ちは `floor(roll*4)` と全乱数で一致・乱数の回数も同じ(テスト)。research/PC_SUPPORT.md §10。
