@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4807', items: ['変異体対策室の「中立」の棚に英雄(変異)。近くにいる者を、ゾンビでもこちらでも区別なく斬る騎馬', 'この棚だけは演習中もゾンビが湧く', '守護霊がパンプキンたちの着地の衝撃も受ける'] },
   { version: '0.25.4806', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4805', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4804', items: ['ゲーム内容の変更はありません'] },
