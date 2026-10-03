@@ -662,3 +662,33 @@ describe('spawnEnemyAtWithTier (§17-12・forcedColorTierをForcedColorTierへ�
     expect(e.colorTier).toBe('red');
   });
 });
+
+// research/PC_SUPPORT.md 段2「左右の湧く距離」: スマホは均等のまま(1つも変えない)・PC は近い辺から多く。
+import { spawnSideFromRoll as sideFromRoll } from './enemyUtils';
+describe('湧く辺(spawnSideFromRoll)', () => {
+  it('縦持ち(スマホ)は従来の floor(roll*4) と全ての乱数で一致', () => {
+    for (const [w, h] of [[405, 878], [405, 720], [540, 720]]) {
+      for (let i = 0; i < 1000; i++) {
+        const r = i / 1000;
+        expect(sideFromRoll(r, w, h)).toBe(Math.floor(r * 4));
+      }
+    }
+  });
+  it('横長(PC 1280×720)は辺までの距離に反比例(上下が多く・左右が少ない)', () => {
+    const n = [0, 0, 0, 0];
+    for (let i = 0; i < 10000; i++) n[sideFromRoll(i / 10000, 1280, 720)]++;
+    const top = n[0] / 10000, right = n[1] / 10000;
+    expect(n[0]).toBe(n[2]);
+    expect(Math.abs(n[1] - n[3])).toBeLessThanOrEqual(1);
+    // 距離 500 と 780 の反比例: 上下 ≈ 0.305 / 左右 ≈ 0.195
+    expect(top).toBeCloseTo(0.305, 2);
+    expect(right).toBeCloseTo(0.195, 2);
+    // 「歩いて来る途中の数」=割合 × 道のり が上下と左右で揃う
+    expect(top * 500).toBeCloseTo(right * 780, 0);
+  });
+  it('乱数1.0や負でも範囲内', () => {
+    expect(sideFromRoll(1, 1280, 720)).toBe(3);
+    expect(sideFromRoll(-0.1, 1280, 720)).toBe(0);
+    expect(sideFromRoll(1, 405, 878)).toBe(3);
+  });
+});

@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4789 — PC版対応 段2: 左右の湧く距離(湧く辺の割合を道のりに反比例)【2026-10-03 09:26 JST】
+- 社長「全て進めて」→ ★未決 #PC-1「左右の湧く距離」を (a) の形で: `spawnSideFromRoll`(enemyUtils.ts)。横長だけ 上下 約3割・左右 約2割(PC 1280×720)。
+  縦持ちは `floor(roll*4)` と全乱数で一致・乱数の回数も同じ(テスト)。research/PC_SUPPORT.md §10。
+- 段3-2 の記録の訂正: 「ボスが地平線フェードで消える」は 1920 ヘッドレスの描画の遅さによる誤認(1280×720 で寄り1.0・不透明度1.0)。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩)=スマホは不変。PC は湧く数・種類・時刻は同じで、来る辺の割合だけ。
+- 検証: typecheck / lint(0 errors)/ enemyUtils.test(84)。phone-guard は湧かない画面なので対象外(スマホの式が同一なことをテストで固定)。
+- 変更: src/utils/enemyUtils.ts(.test)/ research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4788 — PC版対応 段3-2: オープニング・エンディング・ボスメーカー【2026-10-03 09:17 JST】
 - オープニング・エンディング(聴取記録/通常/EX)を HudScale で包み、vh/vw を倍率で割った(App.tsx / OpeningScene / EndingScreen / ExEndingScreen)。
 - ボスメーカーの下シートを横長では右下に幅480(BossMakerPanel)。

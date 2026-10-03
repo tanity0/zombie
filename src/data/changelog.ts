@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4789', items: ['PCの横長の画面では、敵は上下から多く、左右からは少なめに来る。遠い左右の道に敵が溜まらない'] },
   { version: '0.25.4788', items: ['PCでも、オープニングとエンディングの文字が画面に合わせて大きくなる'] },
   { version: '0.25.4787', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4786', items: ['強化訓練で被った時の返金は、その回に払った額の一部。超レアなら全額戻る', '最初のうち、被りの返金で払った額より多く戻っていたのを直した'] },

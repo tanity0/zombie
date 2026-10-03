@@ -868,6 +868,25 @@ const buildEnemy = (
 // Generate a single enemy at a random point outside the camera viewport but
 // close enough that it will plausibly reach the player. Used by both the
 // continuous spawner and the wave/elite spawner.
+/**
+ * 湧く辺(0=上 / 1=右 / 2=下 / 3=左)を乱数1本から決める(research/PC_SUPPORT.md 段2・★未決 #PC-1「左右の湧く距離」)。
+ * - 縦持ち(幅 ≤ 高さ)=**従来どおり4辺均等**(`floor(roll*4)` と完全に同じ=スマホは1つも変わらない)。
+ * - 横長(PC)=辺までの距離に反比例の重み。PC(1280×720)は左右の湧く距離が約780・上下が約500で、均等だと左右から来る敵は
+ *   着くまで1.5倍かかり、左右の道中に敵が溜まる(=広い画面で遠くから眺めている時間が長い)。割合を道のりに反比例させて
+ *   「歩いて来る途中の数」(割合×道のり)を4辺で揃える(上下 約3割ずつ・左右 約2割ずつ)。
+ */
+export const spawnSideFromRoll = (roll: number, viewportW: number, viewportH: number, margin = OFFSCREEN_SPAWN_MARGIN): number => {
+  const r = Math.min(0.999999, Math.max(0, roll));
+  if (!(viewportW > viewportH)) return Math.floor(r * 4);
+  const wTB = 1 / (viewportH / 2 + margin); // 上・下
+  const wLR = 1 / (viewportW / 2 + margin); // 左・右
+  const total = 2 * wTB + 2 * wLR;
+  // 並びは 上 → 右 → 下 → 左(従来の 0..3 の順)
+  const cuts = [wTB, wTB + wLR, 2 * wTB + wLR];
+  const x = r * total;
+  return x < cuts[0] ? 0 : x < cuts[1] ? 1 : x < cuts[2] ? 2 : 3;
+};
+
 export const generateEnemy = (
   gameTime: number,
   player: Player,
@@ -906,7 +925,7 @@ export const generateEnemy = (
   const dirMag = pressureDirection
     ? Math.hypot(pressureDirection.x, pressureDirection.y)
     : 0;
-  let spawnSide = Math.floor(spawnRng() * 4);
+  let spawnSide = spawnSideFromRoll(spawnRng(), viewportWidth, viewportHeight, margin);
   // ★引く回数を固定する(TEST_HANDOFF/REQUEST-devbridge.md C・ランの再現性)。
   // 分岐の中で引くと「通路かどうか」「プレイヤーがどちらを向いているか」で流れの位置がズレ、
   // 同じseedでも以降の並びが揃わなくなる。**確率も使い道も従来どおり**で、引く場所を前へ出しただけ。
