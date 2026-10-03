@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.4802 — 英雄(変異)のいななきの音を保管【2026-10-04 01:09 JST】
+- 社長支給「馬のヒヒーーン!って音」→ `public/audio/sfx/hero-neigh.mp3`(1.52秒・44.1kHz・平均-19.5dB/最大-7.4dB=既存の boss-appear(-16.3/-4.6)と同程度なので加工なし)。
+  まだ SfxKey に登録していない(鳴らすのは本体の実装時)。設計書 §7-2・★未決 #5 を更新(残り=蹄・鼻息)。
+- 変更: public/audio/sfx/hero-neigh.mp3 / research/MUTANT_HERO.md / changelog / package.json。
+
 ## v0.25.4801 — 英雄(変異)はHPを回復しない【2026-10-04 01:08 JST】
 - 社長「英雄はHP回復しない」。設計書 §6-1(帰巣中の毎秒10回復を英雄には掛けない・回復手段なし)・§0・受け入れ条件 5d を更新。
 - 変更: research/MUTANT_HERO.md / changelog / package.json。
