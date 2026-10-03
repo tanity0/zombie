@@ -134,7 +134,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
           積まれ、古い行は上へ流れて上端でフェードアウト(マスク)。長文で下が切れないよう窓を固定高に。 */}
       {phase === 'script' && (
         <div className="flex h-full w-full items-center justify-center px-6">
-          <div className="flex w-full max-w-md flex-col" style={{ height: '50svh' }}>
+          <div className="flex w-full max-w-md flex-col" style={{ height: 'calc(50svh / var(--hud-s, 1))' }}>
             <p
               className="shrink-0 mb-4 text-center text-[13px] tracking-[0.2em] text-white/55"
               style={{ fontFamily: CUTIN_SERIF_STACK }}
@@ -180,7 +180,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
       {phase === 'word' && (
         <div className="flex h-full w-full items-center justify-center px-6">
           <style>{`@keyframes endSegOut{to{opacity:0}}`}</style>
-          <div className="flex w-full max-w-md flex-col" style={{ height: '50svh' }}>
+          <div className="flex w-full max-w-md flex-col" style={{ height: 'calc(50svh / var(--hud-s, 1))' }}>
             <p
               className="shrink-0 mb-4 text-center text-[13px] tracking-[0.2em] text-white/55"
               style={{ fontFamily: CUTIN_SERIF_STACK, animation: 'endSegOut .7s ease forwards' }}

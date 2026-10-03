@@ -822,7 +822,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     `\n@keyframes opconfT{0%{transform:translate(0,0);opacity:0;animation-timing-function:cubic-bezier(0.16,1,0.3,1)}2%{opacity:1}16%{transform:translate(var(--cx1),var(--cy1));animation-timing-function:linear}100%{transform:translate(var(--cx2),var(--cy2))}}` +
     `\n@keyframes opconfS{0%{transform:rotateZ(0) rotateX(0) translateX(0)}25%{transform:rotateZ(var(--r1)) rotateX(72deg) translateX(var(--sw))}50%{transform:rotateZ(calc(var(--r1)*1.6)) rotateX(160deg) translateX(0)}75%{transform:rotateZ(var(--r1)) rotateX(250deg) translateX(calc(var(--sw)*-1))}100%{transform:rotateZ(0) rotateX(344deg) translateX(0)}}` +
     // キラキラ層: 画面(スクリーン)上端の外から下端の外まで通過するループ落下+きらめき(不透明度パルス+回転)。
-    `\n@keyframes opconfK{from{transform:translateY(-4vh)}to{transform:translateY(106vh)}}` +
+    `\n@keyframes opconfK{from{transform:translateY(calc(-4vh / var(--hud-s, 1)))}to{transform:translateY(calc(106vh / var(--hud-s, 1)))}}` +
     `\n@keyframes opconfW{0%{opacity:0.25;transform:rotateZ(0) rotateX(0)}50%{opacity:1;transform:rotateZ(var(--r1)) rotateX(170deg)}100%{opacity:0.25;transform:rotateZ(0) rotateX(340deg)}}` +
     // ペンライトの振り(足元起点で左右へ)と会場グローの明滅。
     `\n@keyframes oppl{from{transform:rotate(calc(var(--pa)*-1))}to{transform:rotate(var(--pa))}}` +
@@ -990,7 +990,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               style={{
                 top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
                 left: 'max(env(safe-area-inset-left), 18px)',
-                maxWidth: 'min(66vw, 300px)', zIndex: 40,
+                maxWidth: 'min(calc(66vw / var(--hud-s, 1)), 300px)', zIndex: 40,
               }}
             >
               <div
@@ -1263,7 +1263,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               style={{
                 top: 'calc(max(env(safe-area-inset-top), 8px) + 132px)',
                 left: 'max(env(safe-area-inset-left), 18px)',
-                maxWidth: 'min(66vw, 300px)', zIndex: 40,
+                maxWidth: 'min(calc(66vw / var(--hud-s, 1)), 300px)', zIndex: 40,
               }}
             >
               <div

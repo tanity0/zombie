@@ -7,8 +7,8 @@
 // 前提: `npm run dev -- --port 5199` が動いていること(PHONE_GUARD_URL で変更可)。
 // 出力先: PHONE_GUARD_DIR(既定 /tmp/phone-guard)。**PNG はリポジトリに入れない**(CLAUDE.md「リポジトリを重くしない」)。
 // 基準が消えていたら(コンテナの作り直し等)、基準の版を別の作業木で起動して baseline を撮り直す:
-//   git worktree add /tmp/pg-base c4dc20d4 && (cd /tmp/pg-base && npm ci && npm run dev -- --port 5198) → PHONE_GUARD_URL=http://localhost:5198/zombie/ node scripts/phone-guard.mjs baseline
-//   (c4dc20d4 = v0.25.4786。PC の段3-2 までが入り、スマホが変わっていないことを実画で確かめた版)
+//   git worktree add /tmp/pg-base 41f393cf && (cd /tmp/pg-base && npm ci && npm run dev -- --port 5198) → PHONE_GUARD_URL=http://localhost:5198/zombie/ node scripts/phone-guard.mjs baseline
+//   (41f393cf = v0.25.4787。スマホの見え方は v0.25.4786 と同じ。作業中の変更だけを外して撮るなら `git stash` → baseline → `git stash pop` でもよい)
 //
 // 見るもの(2つ):
 //   ① DOM の配置 … 画面内の要素の位置と大きさ(タグ+クラス+矩形)の一覧。1px でも動けば出る(本命)。
@@ -39,6 +39,8 @@ const dumpRects = (page) => page.evaluate(() => {
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) continue;
     if (el.closest('[data-phone-guard-skip]')) continue;
+    // 数字を出す文字の葉(版の番号・経過時間・戦況の数)は値で幅が揺れるので見ない(入れ物の箱は見る)
+    if (el.childElementCount === 0 && /\d/.test(el.textContent ?? '')) continue;
     const cls = (typeof el.className === 'string' ? el.className : '').split(/\s+/).filter(c => c && !c.startsWith('menu-item-in')).slice(0, 4).join('.');
     out.push(`${el.tagName.toLowerCase()}${cls ? '.' + cls : ''} @ ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)} fs=${cs.fontSize}`);
   }
@@ -74,7 +76,8 @@ for (const [dev, vp] of DEVICES) {
   await p.close();
   // ゲーム中: 敵なしでステージ1に入り HUD と一時停止
   const g = await ctx.newPage();
-  await g.goto(`${BASE}?smoke=1&stage=stage-1&nospawn=1&class=warrior`);
+  // autotut=1: 説明の小窓を自動で閉じる(出る時刻が端末の速さで揺れ、一時停止の撮影と取り合うため)
+  await g.goto(`${BASE}?smoke=1&stage=stage-1&nospawn=1&class=warrior&autotut=1`);
   await g.waitForTimeout(30000);
   await shot(g, dev, 'ingame');
   await g.keyboard.press('Escape'); await g.waitForTimeout(2000);

@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.4788 — PC版対応 段3-2: オープニング・エンディング・ボスメーカー【2026-10-03 09:17 JST】
+- オープニング・エンディング(聴取記録/通常/EX)を HudScale で包み、vh/vw を倍率で割った(App.tsx / OpeningScene / EndingScreen / ExEndingScreen)。
+- ボスメーカーの下シートを横長では右下に幅480(BossMakerPanel)。
+- phone-guard の揺れの除外(数字の葉・経過時間の箱・autotut=1)。基準を v0.25.4787 で撮り直し → 今回の変更込みで check 14画面 OK。
+- 実画: 1920×1080 のオープニング3場面・エンディング・ボスメーカー / スマホのオープニングは画素差0.1%。
+- 見つけた PC の問題(段2): ボスが自分の上 約270 に居ると地平線フェードでほぼ消える(research/PC_SUPPORT.md §8-5)。
+- 検証: typecheck / lint(0 errors)/ phone-guard。
+- 変更: src/App.tsx / src/components/OpeningScene.tsx / EndingScreen.tsx / ExEndingScreen.tsx / GameHUD.tsx / src/tools/bossmaker/BossMakerPanel.tsx / scripts/phone-guard.mjs / research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4787 — スマホの見え方の回帰チェックを作った(PC版の作業の安全網)【2026-10-03 08:42 JST】
 - 社長「全て進めて。ただ、絶対スマホ用の現状が壊れないように分けて作業してね」→ `scripts/phone-guard.mjs`(baseline/check)。
   スマホ2機種×7画面の要素の配置を基準(v0.25.4786)と比べる。同じ版で2回撮って差0(会話の吹き出しだけ乱数で揺れる → NpcDialogue に `data-phone-guard-skip`)。

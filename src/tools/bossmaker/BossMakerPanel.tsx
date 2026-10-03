@@ -750,10 +750,11 @@ export const BossMakerPanel = () => {
         </div>
       </div>
 
-      {/* ── ボトムシート: つまみをドラッグして高さを変える(社長実機報告v0.25.2655で連続px化) ── */}
+      {/* ── ボトムシート: つまみをドラッグして高さを変える(社長実機報告v0.25.2655で連続px化) ──
+          PC の横長(research/PC_SUPPORT.md 段3-2): 全幅だとゲーム画面の下半分が隠れる → 右下に幅480の縦長パネル(高さのつまみは同じ)。 */}
       <div
         ref={sheetRef}
-        className="pointer-events-auto absolute bottom-0 left-0 right-0 flex flex-col rounded-t-xl bg-black/85 backdrop-blur-sm transition-[height] duration-150"
+        className="pointer-events-auto absolute bottom-0 left-0 right-0 flex flex-col rounded-t-xl bg-black/85 backdrop-blur-sm transition-[height] duration-150 landscape:left-auto landscape:w-[480px]"
         style={{ height: `${sheetPx}px` }}
       >
         {/* ③ ピン行: **シートを閉じても残る**(これを回しながら戦う)。シートの上に浮かせる。

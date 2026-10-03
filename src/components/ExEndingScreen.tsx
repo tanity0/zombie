@@ -110,7 +110,7 @@ const ExEndingScreen: React.FC<ExEndingScreenProps> = ({ onDone }) => {
           {finished && (
             <p className="screen-in mt-10 pb-6 text-center text-[11px] tracking-widest text-white/40">タップで終了</p>
           )}
-          <div style={{ height: '26svh' }} />
+          <div style={{ height: 'calc(26svh / var(--hud-s, 1))' }} />
         </div>
       </div>
     </div>

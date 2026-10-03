@@ -626,16 +626,17 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
 
       {/* the ONE 通常エンディング(聴取記録→成し得なかった+the/ONEが順に消える)。終了でメニューへ。
           本経路は聴取記録オーバーレイ(下のscenic)へ移行済みだが、フォールバックとして残す。 */}
-      {!bare && gameState === 'ending' && <EndingScreen onDone={finishEnding} />}
+      {/* PC の横長: エンディング・オープニングの文字物もメニューと同じ倍率で拡大(段3-2)。倍率1=スマホは箱を作らない。 */}
+      {!bare && gameState === 'ending' && <HudScale z={50} interactive><EndingScreen onDone={finishEnding} /></HudScale>}
 
       {/* ★社長指示2026-08-29: 聴取記録をエンディングステージ(戦場)の上に薄い黒スクリムで重ねる。
           終了で従来と同じ finishEnding(endingSeen/資料解放)→メニューへ(Gameはアンマウント)。 */}
       {!bare && endingOverlay && gameState === 'playing' && (
-        <EndingScreen scenic onDone={() => { setEndingOverlay(false); finishEnding(); }} />
+        <HudScale z={110} interactive><EndingScreen scenic onDone={() => { setEndingOverlay(false); finishEnding(); }} /></HudScale>
       )}
 
       {/* ★v0.25.3743: EXエンディング(フィル撃破後・最終調査記録のタイプライター)。終了でリザルトへ。 */}
-      {!bare && gameState === 'exEnding' && <ExEndingScreen onDone={() => setGameState('victory')} />}
+      {!bare && gameState === 'exEnding' && <HudScale z={50} interactive><ExEndingScreen onDone={() => setGameState('victory')} /></HudScale>}
       
       {/* プレイ中の差し込み口(BOSS_MAKER.md §19-5)。道具ページだけがボスメーカーUIを渡す。
           本編は undefined なので何も描かない=本編の負荷は変わらない。 */}
@@ -684,7 +685,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       {/* オープニングシーン(?opening=1でプレビュー)。タイトルの上に全画面。暗転し切ったら onDone で外れる。 */}
       {/* BGMはオープニング完全終了(onDone=タイトルフェードイン明け)で開始(社長指示v0.25.2067
           「BGM流れるのは蘇生シーン終わってから」=フェードイン開始と同時のBGM開始を廃止)。 */}
-      {!bare && showOpening && <OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} />}
+      {!bare && showOpening && <HudScale z={9990} interactive><OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} /></HudScale>}
 
       {/* ステージ6(洋館)通路プレビュー(?corridor=1)。タイトル等の上に全画面。 */}
       {!bare && corridorPreview && <MansionCorridorPreview />}

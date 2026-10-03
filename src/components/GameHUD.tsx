@@ -268,6 +268,7 @@ const GameHUD: React.FC = () => {
 
       {/* Timer(中央)=両サイドフェードの黒背景(枠なし) */}
       <div
+        data-phone-guard-skip // 経過時間の数字で幅が揺れる=スマホの回帰チェックの対象外
         className="absolute left-1/2 -translate-x-1/2 glass-pill-both px-5 py-1 text-[13px] font-semibold tabular-nums gt-solid"
         style={{ top: 'max(env(safe-area-inset-top), 8px)' }}
       >
