@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4795 — 中立の騎手(新キャラ)の原画を保管【2026-10-04 00:35 JST】
+- 社長支給の3枚を `art-masters/` へ保管(まだゲームには入れていない=配信物ではない)。社長「はい」(近い方を斬る・敵も彼を狙う・ボスの技も当たる・彼の技は敵にも当たる)を受けて、設計書の前に原画を失わないよう先に push。
+  - `pale-rider-walk-10f-1800x202.png`(駆け足・社長指定「歩きこっちで」=16コマ版は不採用)/ `pale-rider-rear-16f-2960x202.png`(棹立ち→前脚の叩きつけ)/ `pale-rider-slash-16f-2976x202.png`(振りかぶって薙ぐ)。
+  - 実測: 3枚とも全コマ下端=セルの底、絵の中心のぶれ1px以内(位置合わせ不要)。`pale-rider` は内部の仮名(名前は未定)。
+- 検証: typecheck / lint。
+- 変更: art-masters/pale-rider-*.png ×3 / changelog / package.json。
+
 ## v0.25.4794 — タブレットの横持ちを開ける(スマホは縦のまま)【2026-10-03 11:15 JST】
 - 社長「はい」(推薦=タブレットだけ横持ち)。`inputDevice.isLandscapeBlocked`=タッチが主 かつ 画面の短い辺<600 の時だけ止める(`blocksLandscape` のテスト3本)。OrientationGuard はこれを読む。
 - 実画: iPad 横 1024×768(タイトル・ホーム2列・ゲーム中の HUD と仮想スティックで移動)/ スマホ横 844×390 は「画面を縦にしてください」のまま。phone-guard: check 14画面 OK。
