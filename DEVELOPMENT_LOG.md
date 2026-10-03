@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.4808 — 英雄(変異)実装・段2前半: 雑魚の狙い・接触・弾・帯・床【2026-10-04 02:35 JST】
+- コード本体はコミット 47ad4bfa(この版上げの直前)。
+- 雑魚・強個体の狙い: `resolveEnemyTarget` に英雄の引数(画面内の英雄だけ・ボスは見ない)。追跡(updateEnemies)と射撃(applyEnemyFire)の両方。判定は `heroScript.mobPrefersHero`(360px以内でプレイヤーより近い)。
+- 接触: `heroBlast.applyContactToHero`(英雄に触れている敵の最大の接触ダメージを450msに1回・×3)。守護霊の接触の当て手から英雄(damage 0)を外した(`checkEnemySummonCollisions`)。
+- 敵弾: プレイヤーの解決の後に残った敵弾は英雄にも当たる。守護霊は**雑魚の弾**にも当たる(旧: ボスの弾だけ)。
+- 帯の技(トール・ミーミル・スカディの7か所)は `applyGhostAllyCapsuleHit` の入口で英雄にも当てる(同じ技から700msに1回)。グレンの血溜まりの床も英雄に。
+- 第三者の入口 `hitThirdParties`(守護霊+英雄・形=円/帯/矩形/扇/既存の判定関数)を新設。プレイヤーにしか当たっていない約20か所への配線は作業中(次版)。
+- 検証: typecheck。状態変化: 英雄(変異) → 実装中(段2前半済み・残り: 約20か所の配線・寄りズーム・監査)。
+
 ## v0.25.4807 — 英雄(変異)実装・段1: 本体・技9本・霧・対策室の枠【2026-10-04 02:20 JST】
 - ※コード本体は直前のコミット b054e400 に入っている(その時 package.json の版上げと記録が抜けた=このコミットで補った)。
 - research/MUTANT_HERO.md の段取り3〜4の大部分(本体・技・描画)を先に入れた。新規: `utils/heroScript.ts`(葉・台本/図形/狙い/コマ)・`utils/heroTick.ts`(制御)・`utils/heroBlast.ts`(当たりの配線)・`heroScript.test.ts`。
