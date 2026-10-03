@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "zombie-coop-signaling",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-22",
+  "send_metrics": false,
+  "dev": {
+    "ip": "127.0.0.1",
+    "port": 8787
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SIGNALING_LOBBY",
+        "class_name": "SignalingLobby"
+      },
+      {
+        "name": "GHOST_RATE_LIMITER",
+        "class_name": "GhostRateLimiter"
+      }
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "GHOST_DB",
+      "database_name": "zombie-ghost-online",
+      "database_id": "17c1e7dd-3c0b-4102-8109-51264a0c3d76",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["17 3 * * *"]
+  },
+  "workers_dev": true,
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SignalingLobby"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["GhostRateLimiter"]
+    }
+  ]
+}

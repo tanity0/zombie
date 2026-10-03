@@ -1,0 +1,6 @@
+{
+ "seen": {},
+ "errors": [
+  "[console] [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://localhost:5173/zombie/node_modules/.vite/deps/chunk-PHKVVWK"
+ ]
+}

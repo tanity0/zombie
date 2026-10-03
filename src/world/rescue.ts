@@ -4,13 +4,13 @@
 import type { Circle } from './arena';
 
 // ---- 決め打ち定数(実機調整前提) ----
-export const RESCUE_RADIUS = 150;            // サークル半径
+export const RESCUE_RADIUS = 175;            // サークル半径(社長指示で少し拡大: 150→175)
 export const RESCUE_HOLD_NEED_MS = 25000;    // 累計ホールド成功時間
 export const RESCUE_FLEE_TRIGGER = 120;      // この距離内に敵が入ったら逃走
 export const RESCUE_SURVIVOR_SPEED = 40;     // 逃走速度(通常敵 ~60 の約2/3)
 export const RESCUE_SEPARATION = 30;         // NPC同士の最小間隔(団子化回避)
 export const RESCUE_ATTACKERS = 3;           // 常時維持する攻撃者数
-export const RESCUE_SURVIVOR_SIZE = 22;      // NPC当たり/描画の基準
+export const RESCUE_SURVIVOR_SIZE = 26;      // NPC当たり/描画の基準。社長指示で 22→26(×1.2・描画と同率)
 export const RESCUE_RETURN_DEADZONE = 18;    // 中央帰還の停止半径
 
 // shooter(自衛射撃)の控えめ射撃。単独では敵を倒しきれない程度。

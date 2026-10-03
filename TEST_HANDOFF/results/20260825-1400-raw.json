@@ -1,0 +1,235 @@
+{
+  "generatedAt": "2026-08-25T14:23:12.525Z",
+  "config": {
+    "baseUrl": "local",
+    "headless": false,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "minVersion": "0.25.3928",
+    "note": "2026-08-25追試。噛みつきが実際に当たっている直接証拠を取るのが目的。configs配列=botrun-local.mjs がそのまま読める形(前回この形になっておらず手作業回避が発生した)。stage はランごとに指定できる(v0.25.3929でスクリプト側を対応)。Bのガントレットは今回不要。",
+    "configs": [
+      {
+        "name": "bite-evidence-stage1-a",
+        "persona": "standard",
+        "stage": "stage-1",
+        "extraQuery": "autotut=1"
+      },
+      {
+        "name": "bite-evidence-stage1-b",
+        "persona": "rusher",
+        "stage": "stage-1",
+        "extraQuery": "autotut=1"
+      },
+      {
+        "name": "bite-evidence-stage2",
+        "persona": "standard",
+        "stage": "stage-2",
+        "extraQuery": "autotut=1"
+      }
+    ]
+  },
+  "results": [
+    {
+      "config": "bite-evidence-stage1-a",
+      "realSec": 363,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 272927,
+        "deathCause": "変異体(狩猟型)の落下攻撃",
+        "kills": 67,
+        "playerLevel": 3,
+        "maxDepthPx": 3537,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 55
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 85,
+        "scrapSpent": 0,
+        "damageTaken": 175,
+        "goldEarned": 9,
+        "damageDealt": {
+          "gun": 1122,
+          "melee": 1897,
+          "other": 4881,
+          "total": 7900
+        },
+        "finisherKills": 6,
+        "meleeSwings": 145,
+        "meleeHits": 130,
+        "critStats": {
+          "total": {
+            "rngCrits": 43,
+            "guaranteedCrits": 6,
+            "hits": 340
+          },
+          "vsBoss": {
+            "rngCrits": 2,
+            "guaranteedCrits": 4,
+            "hits": 35
+          },
+          "vsTrash": {
+            "rngCrits": 41,
+            "guaranteedCrits": 2,
+            "hits": 305
+          },
+          "elapsedSec": 273
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 2,
+            "selectedByType": {
+              "skill": 1,
+              "consumable": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 41,
+              "poi": 0,
+              "levelup": 0,
+              "other": 44
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 3,
+            "maxAreaReached": 2,
+            "runTimeMs": 272927
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 71709.69471982673,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\nデンジャーゾーンのランク4 強欲 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n3537m\n怠\nR1\n暴\nR2\n色\nR3\n強\n⚑R4\n嫉\nR5\n憤\nR6\n傲\nR7\nR4 強欲\n\n次の深さ 未確認汚染エリア まで あと 1463m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n04:33\n撃破\n67\nLv\n3\n最大コンボ\n5\nSCORE\nHIGH SCORE\n19414\n被ダメージスコア 6016\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +9g\n所持 29g\nサブクエスト達成 1件\n+20g(獲得済み)\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "bite-evidence-stage1-b",
+      "realSec": 79,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "rusher",
+        "outcome": "death",
+        "survivedMs": 60125,
+        "deathCause": "噛みつき",
+        "kills": 2,
+        "playerLevel": 1,
+        "maxDepthPx": 5010,
+        "maxAreaReached": 3,
+        "subUses": {
+          "heavy-grenade": 13
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 5,
+        "scrapSpent": 0,
+        "damageTaken": 163,
+        "goldEarned": 3,
+        "damageDealt": {
+          "gun": 336,
+          "melee": 0,
+          "other": 243,
+          "total": 579
+        },
+        "finisherKills": 0,
+        "meleeSwings": 4,
+        "meleeHits": 0,
+        "critStats": {
+          "total": {
+            "rngCrits": 8,
+            "guaranteedCrits": 0,
+            "hits": 52
+          },
+          "vsBoss": {
+            "rngCrits": 0,
+            "guaranteedCrits": 0,
+            "hits": 3
+          },
+          "vsTrash": {
+            "rngCrits": 8,
+            "guaranteedCrits": 0,
+            "hits": 49
+          },
+          "elapsedSec": 60
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 0,
+            "selectedByType": {}
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 5
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 1,
+            "maxAreaReached": 3,
+            "runTimeMs": 60125
+          },
+          "slotFillTiming": {
+            "filledAt": [],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n未確認汚染エリアのランク1 怠惰 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n5010m\n怠\n⚑R1\n暴\nR2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\nR1 怠惰\n\n次の深さ 深層域 まで あと 2490m\n\n死因：噛みつき\n\nRESULT\n生存時間\n01:01\n撃破\n2\nLv\n1\n最大コンボ\n0\nSCORE\nHIGH SCORE\n4888\n被ダメージスコア 4640\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +2g\n所持 2g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "bite-evidence-stage2",
+      "realSec": 902,
+      "smokeFallback": false,
+      "botReport": null,
+      "errors": [],
+      "finalBodySnippet": "14:48\n115\n被験体Lv1 1/30\n被験体Lv2 0/15\n62\nLv 1\n手榴弾\nLv1\n3/24\n10/48\npixi · v0.25.3929 · floor:SGC · res:1.0000000149011612/1.0000000149011612"
+    }
+  ]
+}

@@ -1,0 +1,605 @@
+{
+  "generatedAt": "2026-08-14T15:27:25.336Z",
+  "config": {
+    "baseUrl": "local",
+    "runMs": 900000,
+    "headless": false,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "configs": [
+      {
+        "name": "crit-base-1",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "guardian-spirit"
+        ]
+      },
+      {
+        "name": "crit-base-2",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "guardian-spirit"
+        ]
+      },
+      {
+        "name": "crit-base-3",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "guardian-spirit"
+        ]
+      },
+      {
+        "name": "crit-boss-1",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "guardian-spirit"
+        ],
+        "extraQuery": "bountynow=1&bountytype=melee"
+      },
+      {
+        "name": "crit-boss-2",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "guardian-spirit"
+        ],
+        "extraQuery": "bountynow=1&bountytype=melee"
+      }
+    ]
+  },
+  "results": [
+    {
+      "config": "crit-base-1",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ],
+      "realSec": 216,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 124893,
+        "deathCause": "吸血コウモリ",
+        "kills": 41,
+        "playerLevel": 3,
+        "maxDepthPx": 3143,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 26
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 47,
+        "scrapSpent": 0,
+        "damageTaken": 111,
+        "goldEarned": 11,
+        "damageDealt": {
+          "gun": 1281,
+          "melee": 903,
+          "other": 790,
+          "total": 2974
+        },
+        "finisherKills": 12,
+        "meleeSwings": 60,
+        "meleeHits": 69,
+        "critStats": {
+          "total": {
+            "rngCrits": 35,
+            "guaranteedCrits": 6,
+            "hits": 271
+          },
+          "vsBoss": {
+            "rngCrits": 3,
+            "guaranteedCrits": 5,
+            "hits": 35
+          },
+          "vsTrash": {
+            "rngCrits": 32,
+            "guaranteedCrits": 1,
+            "hits": 236
+          },
+          "elapsedSec": 125
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 2,
+            "selectedByType": {
+              "skill": 1,
+              "consumable": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 67
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 3,
+            "maxAreaReached": 2,
+            "runTimeMs": 124893
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 46870.15665808683,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\nデンジャーゾーンのランク3 色欲 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n3143m\n怠\nR1\n暴\nR2\n色\n⚑R3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR3 色欲\n\n次の深さ 未確認汚染エリア まで あと 1857m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:05\n撃破\n41\nLv\n3\n最大コンボ\n5\nSCORE\nHIGH SCORE\n19294\nKILLスコア 9600\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +9g\n所持 9g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "crit-base-2",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ],
+      "realSec": 239,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 152580,
+        "deathCause": "変異体(獣化型)",
+        "kills": 30,
+        "playerLevel": 2,
+        "maxDepthPx": 5171,
+        "maxAreaReached": 3,
+        "subUses": {
+          "heavy-grenade": 31
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 20,
+        "scrapSpent": 0,
+        "damageTaken": 113,
+        "goldEarned": 10,
+        "damageDealt": {
+          "gun": 282,
+          "melee": 802,
+          "other": 1086,
+          "total": 2170
+        },
+        "finisherKills": 9,
+        "meleeSwings": 44,
+        "meleeHits": 62,
+        "critStats": {
+          "total": {
+            "rngCrits": 15,
+            "guaranteedCrits": 6,
+            "hits": 111
+          },
+          "vsBoss": {
+            "rngCrits": 0,
+            "guaranteedCrits": 6,
+            "hits": 13
+          },
+          "vsTrash": {
+            "rngCrits": 15,
+            "guaranteedCrits": 0,
+            "hits": 98
+          },
+          "elapsedSec": 153
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 1,
+            "selectedByType": {
+              "skill": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 20
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 2,
+            "maxAreaReached": 3,
+            "runTimeMs": 152580
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 36809.83742222116,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n未確認汚染エリアのランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n5187m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR2 暴食\n\n次の深さ 深層域 まで あと 2313m\n\n死因：吸血コウモリ\n\nRESULT\n生存時間\n02:33\n撃破\n30\nLv\n2\n最大コンボ\n5\nSCORE\nHIGH SCORE\n16962\n被ダメージスコア 7280\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +8g\n所持 8g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "crit-base-3",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ],
+      "realSec": 249,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 168683,
+        "deathCause": "変異体(狩猟型)",
+        "kills": 38,
+        "playerLevel": 2,
+        "maxDepthPx": 3219,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 34
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 52,
+        "scrapSpent": 0,
+        "damageTaken": 204,
+        "goldEarned": 10,
+        "damageDealt": {
+          "gun": 1011,
+          "melee": 651,
+          "other": 1190,
+          "total": 2852
+        },
+        "finisherKills": 14,
+        "meleeSwings": 54,
+        "meleeHits": 55,
+        "critStats": {
+          "total": {
+            "rngCrits": 27,
+            "guaranteedCrits": 4,
+            "hits": 181
+          },
+          "vsBoss": {
+            "rngCrits": 1,
+            "guaranteedCrits": 4,
+            "hits": 33
+          },
+          "vsTrash": {
+            "rngCrits": 26,
+            "guaranteedCrits": 0,
+            "hits": 148
+          },
+          "elapsedSec": 169
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 1,
+            "selectedByType": {
+              "consumable": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 52
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 2,
+            "maxAreaReached": 2,
+            "runTimeMs": 168683
+          },
+          "slotFillTiming": {
+            "filledAt": [],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "ハンターに発見された！\n02:49\n🔩 52\n0\nLv 2\n手榴弾\nLv1\n2/1\nフィールドガイド\n1 / 3\n武器商人\nVIDEO GUIDE\n映像素材 準備中\n\n一部を除くスタート地点に拠点を構える謎の多い商人。ここでは装備を1つ持って帰れる「帰還」ができる他、弾薬の購入、開放済みのサブウェポン強化、回復などを、松明などを壊すと手に入るスクラップで購入可能。\n\n拠点\nVIDEO GUIDE\n映像素材 準備中\n\nステージによっては4人の軍人が各拠点へ進軍を開始する。拠点はデンジャーゾーンにあり、確保できると中継地点として機能する。また、その地方に存在する隠れた要素が見えるようになる。方法は、担当軍人を連れて行くと開放してくれる。\n\n目的\nVIDEO GUIDE\n映像素材 準備中\n\n各ステージにはメインとサブのミッションが存在するが、オープンフィールドとなっており、どう動くかは自由。ひ"
+    },
+    {
+      "config": "crit-boss-1",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ],
+      "realSec": 279,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 198207,
+        "deathCause": "吸血コウモリ",
+        "kills": 20,
+        "playerLevel": 2,
+        "maxDepthPx": 2994,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 40
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 174,
+        "scrapSpent": 0,
+        "damageTaken": 236,
+        "goldEarned": 6,
+        "damageDealt": {
+          "gun": 702,
+          "melee": 1398,
+          "other": 478,
+          "total": 2578
+        },
+        "finisherKills": 4,
+        "meleeSwings": 57,
+        "meleeHits": 54,
+        "critStats": {
+          "total": {
+            "rngCrits": 12,
+            "guaranteedCrits": 14,
+            "hits": 141
+          },
+          "vsBoss": {
+            "rngCrits": 0,
+            "guaranteedCrits": 0,
+            "hits": 0
+          },
+          "vsTrash": {
+            "rngCrits": 12,
+            "guaranteedCrits": 14,
+            "hits": 141
+          },
+          "elapsedSec": 198
+        },
+        "runTelemetry": {
+          "bossEntries": [
+            {
+              "bossType": "bounty-melee",
+              "gameTimeMs": 16668.999999999924,
+              "playerLevel": 1,
+              "skills": [],
+              "skillLevels": {},
+              "equip": {
+                "body": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "arms": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                },
+                "accessory": {
+                  "tier": 0,
+                  "line": null,
+                  "special": false
+                }
+              },
+              "straps": 0
+            }
+          ],
+          "upgrades": {
+            "offered": 1,
+            "selectedByType": {
+              "consumable": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 2,
+            "maxTier": 4
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 86,
+              "poi": 0,
+              "levelup": 0,
+              "other": 88
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 2,
+            "maxAreaReached": 1,
+            "runTimeMs": 198207
+          },
+          "slotFillTiming": {
+            "filledAt": [],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "チェン\n前線が停滞している。君が入れば、綺麗に崩せるはずだ。\n03:18\n🔩 174\n0\nLv 2\n手榴弾\nLv1\n3/24\n🛡️ 61s\nフィールドガイド\n1 / 3\n武器商人\nVIDEO GUIDE\n映像素材 準備中\n\n一部を除くスタート地点に拠点を構える謎の多い商人。ここでは装備を1つ持って帰れる「帰還」ができる他、弾薬の購入、開放済みのサブウェポン強化、回復などを、松明などを壊すと手に入るスクラップで購入可能。\n\n拠点\nVIDEO GUIDE\n映像素材 準備中\n\nステージによっては4人の軍人が各拠点へ進軍を開始する。拠点はデンジャーゾーンにあり、確保できると中継地点として機能する。また、その地方に存在する隠れた要素が見えるようになる。方法は、担当軍人を連れて行くと開放してくれる。\n\n目的\nVIDEO GUIDE\n映像素材 準備中\n\n各ステージにはメインとサブのミッションが存在す"
+    },
+    {
+      "config": "crit-boss-2",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "guardian-spirit"
+      ],
+      "realSec": 219,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 135158,
+        "deathCause": "地雷",
+        "kills": 46,
+        "playerLevel": 3,
+        "maxDepthPx": 2736,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 28
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 55,
+        "scrapSpent": 0,
+        "damageTaken": 125,
+        "goldEarned": 12,
+        "damageDealt": {
+          "gun": 1143,
+          "melee": 581,
+          "other": 752,
+          "total": 2476
+        },
+        "finisherKills": 13,
+        "meleeSwings": 47,
+        "meleeHits": 50,
+        "critStats": {
+          "total": {
+            "rngCrits": 44,
+            "guaranteedCrits": 3,
+            "hits": 224
+          },
+          "vsBoss": {
+            "rngCrits": 2,
+            "guaranteedCrits": 3,
+            "hits": 14
+          },
+          "vsTrash": {
+            "rngCrits": 42,
+            "guaranteedCrits": 0,
+            "hits": 210
+          },
+          "elapsedSec": 135
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 2,
+            "selectedByType": {
+              "consumable": 2
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 55
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 3,
+            "maxAreaReached": 1,
+            "runTimeMs": 135158
+          },
+          "slotFillTiming": {
+            "filledAt": [],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n研究対象区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n2736m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR2 暴食\n\n次の深さ デンジャーゾーン まで あと 264m\n\n死因：地雷\n\nRESULT\n生存時間\n02:16\n撃破\n46\nLv\n3\n最大コンボ\n6\nSCORE\nHIGH SCORE\n24056\nKILLスコア 10400\n詳細\n▾\nAIディレクター\n開く▾\n獲得 +12g\n所持 12g\nもう一度プレイ\nメニューに戻る"
+    }
+  ]
+}

@@ -12,14 +12,13 @@
 // per-file loader at `public/sprites/<name>.png`.
 
 import { ATLAS_RECTS } from './spriteAtlas';
+import { assetUrl } from '../config/assetUrl';
 
 const cache = new Map<string, HTMLImageElement | null>();
 
-const base = import.meta.env.BASE_URL; // resolves to '/vs/' in production
-const spriteAssetVersion = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
-
-export const spritePath = (name: string): string =>
-  `${base}sprites/${name}.png?v=${encodeURIComponent(spriteAssetVersion)}`;
+// ファイル内容ハッシュでキャッシュバスト(v0.25.2277)。差し替えた1枚のURLだけが変わるので、
+// 他のスプライトは端末のキャッシュがそのまま効く(旧: 版数1個=1枚のために81MB全再DL)。
+export const spritePath = (name: string): string => assetUrl(`sprites/${name}.png`);
 
 const ATLAS_NAME = 'atlas';
 

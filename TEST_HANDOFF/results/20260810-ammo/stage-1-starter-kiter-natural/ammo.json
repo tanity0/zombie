@@ -1,0 +1,8017 @@
+{
+ "stage": "stage-1",
+ "keepalive": false,
+ "sologhost": false,
+ "startBuild": {
+  "lv": 1,
+  "hp": 110,
+  "guns": [
+   "shotgun-t1"
+  ],
+  "melee": [
+   "hatchet-t2"
+  ],
+  "subs": [
+   "heavy-grenade"
+  ],
+  "subLv": {
+   "heavy-grenade": 1
+  },
+  "equip": {
+   "body": null,
+   "arms": null,
+   "accessory": null
+  },
+  "ammo": {
+   "handgun": 60,
+   "shotgun": 18,
+   "rifle": 24,
+   "phill": 24
+  }
+ },
+ "url": "http://localhost:5173/zombie/?smoke=1&stage=stage-1&bot=kiter&botskill=master&botgoal=campaign&autotut=1",
+ "rows": [
+  {
+   "t": 0,
+   "lv": 1,
+   "hp": 110,
+   "kills": 0,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {},
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 0
+  },
+  {
+   "t": 1,
+   "lv": 1,
+   "hp": 110,
+   "kills": 0,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {},
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 1
+  },
+  {
+   "t": 2,
+   "lv": 1,
+   "hp": 110,
+   "kills": 0,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {},
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 2
+  },
+  {
+   "t": 3,
+   "lv": 1,
+   "hp": 110,
+   "kills": 0,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {},
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 3
+  },
+  {
+   "t": 4,
+   "lv": 1,
+   "hp": 110,
+   "kills": 0,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {},
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 4
+  },
+  {
+   "t": 5,
+   "lv": 1,
+   "hp": 110,
+   "kills": 0,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {},
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 5
+  },
+  {
+   "t": 6,
+   "lv": 1,
+   "hp": 110,
+   "kills": 0,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 1
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 7
+  },
+  {
+   "t": 7,
+   "lv": 1,
+   "hp": 110,
+   "kills": 1,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 2
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 8
+  },
+  {
+   "t": 8,
+   "lv": 1,
+   "hp": 110,
+   "kills": 1,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 2
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 9
+  },
+  {
+   "t": 9,
+   "lv": 1,
+   "hp": 110,
+   "kills": 1,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 2
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 10
+  },
+  {
+   "t": 10,
+   "lv": 1,
+   "hp": 110,
+   "kills": 1,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 3
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 11
+  },
+  {
+   "t": 11,
+   "lv": 1,
+   "hp": 110,
+   "kills": 1,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 18,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 3
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 12
+  },
+  {
+   "t": 12,
+   "lv": 1,
+   "hp": 110,
+   "kills": 2,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 15,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 3
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 13
+  },
+  {
+   "t": 13,
+   "lv": 1,
+   "hp": 110,
+   "kills": 2,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 15,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 4
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 14
+  },
+  {
+   "t": 14,
+   "lv": 1,
+   "hp": 110,
+   "kills": 2,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 15,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 4
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 15
+  },
+  {
+   "t": 15,
+   "lv": 1,
+   "hp": 110,
+   "kills": 2,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 15,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 4
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 16
+  },
+  {
+   "t": 16,
+   "lv": 1,
+   "hp": 110,
+   "kills": 2,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 15,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 4
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 17
+  },
+  {
+   "t": 17,
+   "lv": 1,
+   "hp": 110,
+   "kills": 3,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 15,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 4
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 18
+  },
+  {
+   "t": 18,
+   "lv": 1,
+   "hp": 110,
+   "kills": 3,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 15,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 5
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 19
+  },
+  {
+   "t": 19,
+   "lv": 1,
+   "hp": 110,
+   "kills": 3,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 15,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 5
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 20
+  },
+  {
+   "t": 20,
+   "lv": 1,
+   "hp": 110,
+   "kills": 4,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 12,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 5
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 21
+  },
+  {
+   "t": 22,
+   "lv": 1,
+   "hp": 110,
+   "kills": 4,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 12,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 5
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 22
+  },
+  {
+   "t": 23,
+   "lv": 1,
+   "hp": 110,
+   "kills": 5,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 12,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 5
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 23
+  },
+  {
+   "t": 24,
+   "lv": 1,
+   "hp": 110,
+   "kills": 6,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 12,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 7
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 24
+  },
+  {
+   "t": 25,
+   "lv": 1,
+   "hp": 110,
+   "kills": 6,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 12,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 7
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 25
+  },
+  {
+   "t": 26,
+   "lv": 1,
+   "hp": 110,
+   "kills": 6,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 12,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 7
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 26
+  },
+  {
+   "t": 27,
+   "lv": 1,
+   "hp": 110,
+   "kills": 6,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 12,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 7
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 27
+  },
+  {
+   "t": 28,
+   "lv": 1,
+   "hp": 110,
+   "kills": 7,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 12,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 8
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 28
+  },
+  {
+   "t": 29,
+   "lv": 1,
+   "hp": 110,
+   "kills": 7,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 12,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 8
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 30
+  },
+  {
+   "t": 30,
+   "lv": 1,
+   "hp": 110,
+   "kills": 7,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 9,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 8
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 31
+  },
+  {
+   "t": 31,
+   "lv": 1,
+   "hp": 110,
+   "kills": 7,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 9,
+     "mag": 3,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 8
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 33
+  },
+  {
+   "t": 32,
+   "lv": 1,
+   "hp": 110,
+   "kills": 8,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 9,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 9
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 34
+  },
+  {
+   "t": 33,
+   "lv": 1,
+   "hp": 110,
+   "kills": 9,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 9,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 9
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 35
+  },
+  {
+   "t": 34,
+   "lv": 1,
+   "hp": 110,
+   "kills": 9,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 9,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 10
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 36
+  },
+  {
+   "t": 35,
+   "lv": 1,
+   "hp": 110,
+   "kills": 9,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 9,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 10
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 37
+  },
+  {
+   "t": 36,
+   "lv": 1,
+   "hp": 110,
+   "kills": 9,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 9,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 10
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 38
+  },
+  {
+   "t": 38,
+   "lv": 1,
+   "hp": 110,
+   "kills": 10,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 9,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 11
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 39
+  },
+  {
+   "t": 39,
+   "lv": 1,
+   "hp": 110,
+   "kills": 10,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 9,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 11
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 40
+  },
+  {
+   "t": 40,
+   "lv": 1,
+   "hp": 110,
+   "kills": 10,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 9,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 11
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 41
+  },
+  {
+   "t": 41,
+   "lv": 1,
+   "hp": 104,
+   "kills": 11,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 6,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 11
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 42
+  },
+  {
+   "t": 42,
+   "lv": 1,
+   "hp": 104,
+   "kills": 11,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 6,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 12
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 43
+  },
+  {
+   "t": 43,
+   "lv": 1,
+   "hp": 104,
+   "kills": 12,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 6,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 13
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 44
+  },
+  {
+   "t": 44,
+   "lv": 1,
+   "hp": 104,
+   "kills": 12,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 6,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 13
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 45
+  },
+  {
+   "t": 45,
+   "lv": 1,
+   "hp": 104,
+   "kills": 14,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 3,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {},
+    "shots": {
+     "shotgun": 13
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 46
+  },
+  {
+   "t": 46,
+   "lv": 1,
+   "hp": 104,
+   "kills": 15,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 3,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 14
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 47
+  },
+  {
+   "t": 47,
+   "lv": 1,
+   "hp": 104,
+   "kills": 15,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 3,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 15
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 48
+  },
+  {
+   "t": 48,
+   "lv": 1,
+   "hp": 104,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 3,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 15
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 49
+  },
+  {
+   "t": 49,
+   "lv": 1,
+   "hp": 104,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 15
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 50
+  },
+  {
+   "t": 50,
+   "lv": 1,
+   "hp": 104,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 15
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 51
+  },
+  {
+   "t": 51,
+   "lv": 1,
+   "hp": 104,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 16
+    },
+    "dryMs": {},
+    "gone": 0
+   },
+   "report": null,
+   "real": 52
+  },
+  {
+   "t": 52,
+   "lv": 1,
+   "hp": 104,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 467
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 53
+  },
+  {
+   "t": 53,
+   "lv": 1,
+   "hp": 104,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 1518.199999999997
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 54
+  },
+  {
+   "t": 54,
+   "lv": 1,
+   "hp": 104,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 2535.699999999997
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 55
+  },
+  {
+   "t": 55,
+   "lv": 1,
+   "hp": 104,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 3553.5
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 56
+  },
+  {
+   "t": 56,
+   "lv": 1,
+   "hp": 98,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 4604.600000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 57
+  },
+  {
+   "t": 57,
+   "lv": 1,
+   "hp": 98,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 5655.600000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 58
+  },
+  {
+   "t": 58,
+   "lv": 1,
+   "hp": 98,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 6690
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 59
+  },
+  {
+   "t": 59,
+   "lv": 1,
+   "hp": 92,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 7707.599999999991
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 61
+  },
+  {
+   "t": 60,
+   "lv": 1,
+   "hp": 92,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 8675.399999999994
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 62
+  },
+  {
+   "t": 61,
+   "lv": 1,
+   "hp": 92,
+   "kills": 16,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 9726.399999999994
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 63
+  },
+  {
+   "t": 63,
+   "lv": 1,
+   "hp": 92,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 11177.5
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 65
+  },
+  {
+   "t": 64,
+   "lv": 1,
+   "hp": 92,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 12228.300000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 66
+  },
+  {
+   "t": 65,
+   "lv": 1,
+   "hp": 92,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 13246
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 67
+  },
+  {
+   "t": 66,
+   "lv": 1,
+   "hp": 92,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 14280.300000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 68
+  },
+  {
+   "t": 67,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 15314.800000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 69
+  },
+  {
+   "t": 68,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 16365.699999999997
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 70
+  },
+  {
+   "t": 69,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 17383.399999999994
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 71
+  },
+  {
+   "t": 70,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 18401.09999999999
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 72
+  },
+  {
+   "t": 71,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 19435.499999999985
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 73
+  },
+  {
+   "t": 72,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 20453.09999999999
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 74
+  },
+  {
+   "t": 73,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 21487.499999999985
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 75
+  },
+  {
+   "t": 74,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 22521.59999999999
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 76
+  },
+  {
+   "t": 75,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 23539.399999999994
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 77
+  },
+  {
+   "t": 76,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 24573.79999999999
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 78
+  },
+  {
+   "t": 77,
+   "lv": 1,
+   "hp": 86,
+   "kills": 19,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 25574.79999999999
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 79
+  },
+  {
+   "t": 78,
+   "lv": 1,
+   "hp": 86,
+   "kills": 21,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 26625.999999999985
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 80
+  },
+  {
+   "t": 79,
+   "lv": 1,
+   "hp": 86,
+   "kills": 21,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 27643.39999999998
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 81
+  },
+  {
+   "t": 80,
+   "lv": 1,
+   "hp": 86,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 28661.199999999983
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 82
+  },
+  {
+   "t": 81,
+   "lv": 1,
+   "hp": 86,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 29695.499999999985
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 83
+  },
+  {
+   "t": 82,
+   "lv": 1,
+   "hp": 86,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 30713.29999999999
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 84
+  },
+  {
+   "t": 83,
+   "lv": 1,
+   "hp": 80,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 31764.39999999998
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 85
+  },
+  {
+   "t": 84,
+   "lv": 1,
+   "hp": 80,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 32798.89999999998
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 86
+  },
+  {
+   "t": 85,
+   "lv": 1,
+   "hp": 80,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 33816.499999999985
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 87
+  },
+  {
+   "t": 86,
+   "lv": 1,
+   "hp": 80,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 34834.19999999998
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 88
+  },
+  {
+   "t": 87,
+   "lv": 1,
+   "hp": 80,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 35868.59999999999
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 89
+  },
+  {
+   "t": 88,
+   "lv": 1,
+   "hp": 46,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 36902.89999999998
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 90
+  },
+  {
+   "t": 89,
+   "lv": 1,
+   "hp": 46,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 37920.59999999998
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 91
+  },
+  {
+   "t": 90,
+   "lv": 1,
+   "hp": 46,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 38938.299999999974
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 92
+  },
+  {
+   "t": 91,
+   "lv": 1,
+   "hp": 46,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 39955.999999999985
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 93
+  },
+  {
+   "t": 92,
+   "lv": 1,
+   "hp": 46,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 40973.69999999998
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 94
+  },
+  {
+   "t": 94,
+   "lv": 1,
+   "hp": 46,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 42308
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 96
+  },
+  {
+   "t": 95,
+   "lv": 1,
+   "hp": 46,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 43325.7
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 97
+  },
+  {
+   "t": 96,
+   "lv": 1,
+   "hp": 46,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 44343.5
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 98
+  },
+  {
+   "t": 97,
+   "lv": 1,
+   "hp": 46,
+   "kills": 23,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 45377.899999999994
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 99
+  },
+  {
+   "t": 98,
+   "lv": 1,
+   "hp": 46,
+   "kills": 24,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 46395.7
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 100
+  },
+  {
+   "t": 99,
+   "lv": 1,
+   "hp": 46,
+   "kills": 24,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 47429.899999999994
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 101
+  },
+  {
+   "t": 100,
+   "lv": 1,
+   "hp": 46,
+   "kills": 24,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 48447.600000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 102
+  },
+  {
+   "t": 101,
+   "lv": 1,
+   "hp": 46,
+   "kills": 24,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 49448.600000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 103
+  },
+  {
+   "t": 102,
+   "lv": 1,
+   "hp": 46,
+   "kills": 24,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 50466.30000000002
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 104
+  },
+  {
+   "t": 103,
+   "lv": 1,
+   "hp": 46,
+   "kills": 26,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 51500.70000000001
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 105
+  },
+  {
+   "t": 104,
+   "lv": 1,
+   "hp": 46,
+   "kills": 26,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 52518.40000000001
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 106
+  },
+  {
+   "t": 105,
+   "lv": 1,
+   "hp": 46,
+   "kills": 26,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 53536.20000000001
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 107
+  },
+  {
+   "t": 106,
+   "lv": 1,
+   "hp": 46,
+   "kills": 26,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 54553.80000000002
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 108
+  },
+  {
+   "t": 107,
+   "lv": 1,
+   "hp": 46,
+   "kills": 26,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 55571.3
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 109
+  },
+  {
+   "t": 108,
+   "lv": 1,
+   "hp": 46,
+   "kills": 26,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 56605.8
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 110
+  },
+  {
+   "t": 109,
+   "lv": 1,
+   "hp": 46,
+   "kills": 26,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 57640.100000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 111
+  },
+  {
+   "t": 110,
+   "lv": 1,
+   "hp": 46,
+   "kills": 26,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 58657.8
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 112
+  },
+  {
+   "t": 111,
+   "lv": 1,
+   "hp": 46,
+   "kills": 26,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 59658.8
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 113
+  },
+  {
+   "t": 112,
+   "lv": 1,
+   "hp": 46,
+   "kills": 26,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 60660.000000000015
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 114
+  },
+  {
+   "t": 113,
+   "lv": 1,
+   "hp": 46,
+   "kills": 27,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 61677.60000000002
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 115
+  },
+  {
+   "t": 114,
+   "lv": 1,
+   "hp": 46,
+   "kills": 27,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 62712.10000000002
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 116
+  },
+  {
+   "t": 115,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 63729.60000000002
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 118
+  },
+  {
+   "t": 116,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 64747.200000000026
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 119
+  },
+  {
+   "t": 117,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 65764.90000000001
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 120
+  },
+  {
+   "t": 118,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 66799.30000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 121
+  },
+  {
+   "t": 119,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 67817.00000000001
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 122
+  },
+  {
+   "t": 120,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 68834.70000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 123
+  },
+  {
+   "t": 121,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 69852.60000000002
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 124
+  },
+  {
+   "t": 122,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 70853.70000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 125
+  },
+  {
+   "t": 123,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 71904.40000000001
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 126
+  },
+  {
+   "t": 125,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 73722.70000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 128
+  },
+  {
+   "t": 126,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 74757.10000000002
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 129
+  },
+  {
+   "t": 127,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 75758.10000000002
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 130
+  },
+  {
+   "t": 128,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 76792.40000000004
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 131
+  },
+  {
+   "t": 129,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 77793.50000000004
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 132
+  },
+  {
+   "t": 130,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 78811.20000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 133
+  },
+  {
+   "t": 131,
+   "lv": 1,
+   "hp": 46,
+   "kills": 28,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 79845.60000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 134
+  },
+  {
+   "t": 132,
+   "lv": 1,
+   "hp": 46,
+   "kills": 29,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 80879.90000000008
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 135
+  },
+  {
+   "t": 133,
+   "lv": 1,
+   "hp": 46,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 81914.30000000008
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 136
+  },
+  {
+   "t": 134,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 82915.10000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 137
+  },
+  {
+   "t": 135,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 83565.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 138
+  },
+  {
+   "t": 135,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 83565.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 139
+  },
+  {
+   "t": 135,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 83565.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 140
+  },
+  {
+   "t": 135,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 83565.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 141
+  },
+  {
+   "t": 135,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 83565.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 142
+  },
+  {
+   "t": 135,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 83565.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 143
+  },
+  {
+   "t": 135,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 83565.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 144
+  },
+  {
+   "t": 135,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 83565.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 145
+  },
+  {
+   "t": 135,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 83565.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 146
+  },
+  {
+   "t": 135,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 83565.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 147
+  },
+  {
+   "t": 136,
+   "lv": 1,
+   "hp": 12,
+   "kills": 30,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 84283.10000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 148
+  },
+  {
+   "t": 137,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 85300.80000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 149
+  },
+  {
+   "t": 138,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 86268.20000000007
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 150
+  },
+  {
+   "t": 139,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 87302.60000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 151
+  },
+  {
+   "t": 140,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 88337.00000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 153
+  },
+  {
+   "t": 141,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 89371.40000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 154
+  },
+  {
+   "t": 142,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": false
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17
+    },
+    "dryMs": {
+     "shotgun": 90372.40000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 155
+  },
+  {
+   "t": 143,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 11,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 1
+    },
+    "dryMs": {
+     "shotgun": 91423.90000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 156
+  },
+  {
+   "t": 144,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 10,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 2
+    },
+    "dryMs": {
+     "shotgun": 92457.70000000004
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 157
+  },
+  {
+   "t": 145,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 4
+    },
+    "dryMs": {
+     "shotgun": 93492.10000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 158
+  },
+  {
+   "t": 146,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 6,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 6
+    },
+    "dryMs": {
+     "shotgun": 94843.30000000005
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 160
+  },
+  {
+   "t": 147,
+   "lv": 1,
+   "hp": 12,
+   "kills": 31,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 3,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 9
+    },
+    "dryMs": {
+     "shotgun": 95861.10000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 161
+  },
+  {
+   "t": 148,
+   "lv": 1,
+   "hp": 12,
+   "kills": 33,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 2,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 10
+    },
+    "dryMs": {
+     "shotgun": 96895.50000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 162
+  },
+  {
+   "t": 149,
+   "lv": 1,
+   "hp": 12,
+   "kills": 33,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 12
+    },
+    "dryMs": {
+     "shotgun": 97446.10000000003
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 163
+  },
+  {
+   "t": 150,
+   "lv": 1,
+   "hp": 12,
+   "kills": 33,
+   "ammo": {
+    "handgun": {
+     "reserve": 60,
+     "mag": 0,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 12
+    },
+    "dryMs": {
+     "shotgun": 98479.60000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 164
+  },
+  {
+   "t": 151,
+   "lv": 1,
+   "hp": 12,
+   "kills": 33,
+   "ammo": {
+    "handgun": {
+     "reserve": 48,
+     "mag": 10,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 1
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 13
+    },
+    "dryMs": {
+     "shotgun": 99497.40000000008
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 165
+  },
+  {
+   "t": 152,
+   "lv": 1,
+   "hp": 12,
+   "kills": 34,
+   "ammo": {
+    "handgun": {
+     "reserve": 48,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 15
+    },
+    "dryMs": {
+     "shotgun": 100548.50000000006
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 166
+  },
+  {
+   "t": 153,
+   "lv": 2,
+   "hp": 12,
+   "kills": 35,
+   "ammo": {
+    "handgun": {
+     "reserve": 48,
+     "mag": 6,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 17
+    },
+    "dryMs": {
+     "shotgun": 101436.58559533907
+    },
+    "gone": 0
+   },
+   "report": null,
+   "real": 167
+  },
+  {
+   "t": 154,
+   "lv": 2,
+   "hp": 12,
+   "kills": 35,
+   "ammo": {
+    "handgun": {
+     "reserve": 48,
+     "mag": 3,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 20
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 168
+  },
+  {
+   "t": 155,
+   "lv": 2,
+   "hp": 12,
+   "kills": 36,
+   "ammo": {
+    "handgun": {
+     "reserve": 48,
+     "mag": 2,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 21
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 169
+  },
+  {
+   "t": 156,
+   "lv": 2,
+   "hp": 12,
+   "kills": 36,
+   "ammo": {
+    "handgun": {
+     "reserve": 48,
+     "mag": 0,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 23
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 170
+  },
+  {
+   "t": 157,
+   "lv": 2,
+   "hp": 12,
+   "kills": 36,
+   "ammo": {
+    "handgun": {
+     "reserve": 48,
+     "mag": 0,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 23
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 171
+  },
+  {
+   "t": 158,
+   "lv": 2,
+   "hp": 12,
+   "kills": 37,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 10,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 24
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 172
+  },
+  {
+   "t": 159,
+   "lv": 2,
+   "hp": 12,
+   "kills": 37,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 9,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 25
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 173
+  },
+  {
+   "t": 160,
+   "lv": 2,
+   "hp": 12,
+   "kills": 37,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 9,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 25
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 174
+  },
+  {
+   "t": 161,
+   "lv": 2,
+   "hp": 12,
+   "kills": 37,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 9,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 25
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 175
+  },
+  {
+   "t": 162,
+   "lv": 2,
+   "hp": 12,
+   "kills": 37,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "handgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 176
+  },
+  {
+   "t": 163,
+   "lv": 2,
+   "hp": 12,
+   "kills": 37,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 177
+  },
+  {
+   "t": 164,
+   "lv": 2,
+   "hp": 12,
+   "kills": 37,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 10,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 178
+  },
+  {
+   "t": 165,
+   "lv": 2,
+   "hp": 12,
+   "kills": 37,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 7,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 17,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 179
+  },
+  {
+   "t": 166,
+   "lv": 2,
+   "hp": 12,
+   "kills": 37,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 7,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 18,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 180
+  },
+  {
+   "t": 167,
+   "lv": 2,
+   "hp": 12,
+   "kills": 38,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 7,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 19,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 181
+  },
+  {
+   "t": 168,
+   "lv": 2,
+   "hp": 12,
+   "kills": 39,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 7,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 19,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 182
+  },
+  {
+   "t": 169,
+   "lv": 2,
+   "hp": 12,
+   "kills": 39,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 4,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 19,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 183
+  },
+  {
+   "t": 170,
+   "lv": 2,
+   "hp": 2,
+   "kills": 39,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 4,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 20,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 184
+  },
+  {
+   "t": 171,
+   "lv": 2,
+   "hp": 2,
+   "kills": 39,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 4,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 21,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 185
+  },
+  {
+   "t": 172,
+   "lv": 2,
+   "hp": 2,
+   "kills": 39,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 4,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 21,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 186
+  },
+  {
+   "t": 173,
+   "lv": 2,
+   "hp": 2,
+   "kills": 40,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 1,
+     "mag": 2,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 21,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 187
+  },
+  {
+   "t": 174,
+   "lv": 2,
+   "hp": 2,
+   "kills": 40,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 1,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 22,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 188
+  },
+  {
+   "t": 175,
+   "lv": 2,
+   "hp": 2,
+   "kills": 41,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 1,
+     "mag": 0,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 23,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": null,
+   "real": 189
+  },
+  {
+   "t": 176,
+   "lv": 2,
+   "hp": 0,
+   "kills": 41,
+   "ammo": {
+    "handgun": {
+     "reserve": 36,
+     "mag": 8,
+     "owns": true
+    },
+    "shotgun": {
+     "reserve": 0,
+     "mag": 1,
+     "owns": true
+    },
+    "rifle": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    },
+    "phill": {
+     "reserve": 24,
+     "mag": 0,
+     "owns": false
+    }
+   },
+   "activeGun": "shotgun-t1",
+   "ammoDropBonus": 0,
+   "equipAmmoBonus": 0,
+   "acc": {
+    "drops": {
+     "ammo-shotgun": 2
+    },
+    "shots": {
+     "shotgun": 23,
+     "handgun": 26
+    },
+    "dryMs": {
+     "shotgun": 101905.54810096553
+    },
+    "gone": 1
+   },
+   "report": {
+    "outcome": "death"
+   },
+   "real": 191
+  }
+ ],
+ "errors": []
+}
