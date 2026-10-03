@@ -1,3 +1,4 @@
+import { mobPrefersHero } from './heroScript';
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 import { makeSeededRng } from './seededRng';
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
@@ -745,11 +746,19 @@ export const resolveEnemyTarget = (
   // v0.25.2490(雑魚ヘイト): ghostHateUntil の期限判定に使う現在gameTime。未指定(旧呼び出し)は
   // ラッチ無効=雑魚はゴーストを狙わない側に倒れる(既定候補からの除外は常に効く)。
   gameTimeNow?: number,
+  // research/MUTANT_HERO.md §3-2(社長「敵の近くにいたら、敵も彼を狙う」): 画面内に居る英雄(中立)。
+  // 雑魚・強個体は、英雄が HERO_LURE_RANGE 以内でプレイヤーより近い時は英雄を追う/撃つ。ボスは見ない(狙いは今のまま)。
+  // 未指定=英雄なし=従来と1bit同じ。呼び手は英雄が画面外なら渡さない。
+  hero?: { id: string; x: number; y: number; width: number; height: number } | null,
 ): { x: number; y: number; isSummon: boolean; hidden: boolean } => {
   const ex = enemy.x + enemy.width / 2;
   const ey = enemy.y + enemy.height / 2;
   const px = player.x + player.width / 2;
   const py = player.y + player.height / 2;
+  if (hero && hero.id !== enemy.id && !isBossType(enemy.type)) {
+    const hx = hero.x + hero.width / 2, hy = hero.y + hero.height / 2;
+    if (mobPrefersHero(ex, ey, hx, hy, playerHidden ? Infinity : px, py)) return { x: hx, y: hy, isSummon: true, hidden: false };
+  }
   // v0.25.2490(社長裁定「雑魚はプレイヤーを優先して狙う。守護霊に攻撃されたら守護霊に向く」):
   // 雑魚(非ボス)はゴーストを**既定のターゲット候補に入れない**。ゴースト起因ダメージを受けた個体
   // (ghostHateUntil期限内)だけ、距離を問わずゴーストへ向く(ハードラッチ・被弾のたび5秒更新)。

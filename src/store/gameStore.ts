@@ -12975,6 +12975,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (召喚と完全に同じ効き方=専用ヘイト機構なし)。ループ外で一度だけ合成する。
       const flareTargets = state.flareGunFlares.length > 0 ? activeFlareTargets(state.flareGunFlares, gameTime) : [];
       const targetSummons = flareTargets.length > 0 ? [...summons, ...flareTargets] : summons;
+      // research/MUTANT_HERO.md §3-2: 画面内の英雄(中立)。雑魚・強個体は近ければ英雄を追う(resolveEnemyTarget)。
+      const heroLure = (() => {
+        const h = state.enemies.find(e => isMutantHero(e.type) && !isCorpse(e) && e.health > 0);
+        return h && isPointInZoomedViewport(h.x + h.width / 2, h.y + h.height / 2, state.camera, state.gameBounds, state.viewZoom) ? h : null;
+      })();
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
       const now = Date.now();
       // 特殊攻撃(突進/ジャンプ)の溜め・CD・動作を ENEMY_ATTACK_SPEED_MULT 倍速にする。
@@ -15373,7 +15378,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // シーカー: プレイヤー半透明中は敵から狙われない(社長裁定v0.25.3268「シーカーはボスも対象」
         // =旧・ボス除外を撤去。ボスの技の照準・台本は各コントローラ側の判定=ここはチェイス/射撃の的のみ)。
         const playerHidden = isSeekerActive(player, gameTime);
-        let tgt = resolveEnemyTarget(enemy, player, targetSummons, ALCHEMY_AGGRO_RANGE, playerHidden, gameTime); // v0.25.2490: 雑魚ヘイトのラッチ判定にgameTimeを渡す
+        let tgt = resolveEnemyTarget(enemy, player, targetSummons, ALCHEMY_AGGRO_RANGE, playerHidden, gameTime, heroLure); // v0.25.2490: 雑魚ヘイトのラッチ判定にgameTimeを渡す / 英雄(MUTANT_HERO §3-2)
         if (enemy.escortTarget && !enemy.meleeAggro && rescueSurvivors.length > 0) {
           let sv = rescueSurvivors.find(s => s.id === enemy.escortTarget);
           if (!sv) {

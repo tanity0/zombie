@@ -191,7 +191,9 @@ import {
   phantomSupportsSub, // ★幻影が主語になれるサブの白リスト(未実装の種は自爆するのでプレイヤーへ落とす)
 } from '../utils/phantomTick';
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
-import { heroOnScreen } from '../utils/heroBlast';
+import { heroOnScreen, applyContactToHero, setThirdPartySfx } from '../utils/heroBlast';
+// 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
+setThirdPartySfx((key, gain) => playSfx(key, gain));
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -15352,6 +15354,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 被弾頻度の制限は damageSummon 側の無敵時間(プレイヤーと同じ INVULN_MS
         // 構造)に集約。同フレーム内の重複は 1 体 1 回(最大ダメージ)へ畳む。
         const liveSummonsForHit = useGameStore.getState().summons;
+        applyContactToHero(gameTime); // research/MUTANT_HERO.md §4-2-5: 雑魚の接触は英雄にも当たる(召喚の有無と無関係)
         if (liveSummonsForHit.length > 0) {
           const summonHits = checkEnemySummonCollisions(enemies, liveSummonsForHit);
           if (summonHits.length > 0) {

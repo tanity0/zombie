@@ -7,6 +7,9 @@ import { useGameStore, knockbackSpeedFor, type PumpkinBlast } from '../store/gam
 import { isCorpse, isMutantHero, resistsChipKnockback } from './enemyUtils';
 import { isPointInZoomedViewport } from './cameraZoom';
 import { distToBandRect } from './geometry';
+import { enemyContactBox } from './collisionUtils';
+import { consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter';
+import { npcSfxDistGain } from './npcSfx';
 import { circleHitsFan, HERO_INCOMING_MULT, HERO_VS_ENEMY_MULT } from './heroScript';
 
 /** 当たり半径(矩形の長い辺の半分=守護霊・プレイヤーと同じ流儀)。 */
@@ -131,4 +134,111 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
 /** 英雄の今の技で、だれかに当たったことを英雄に書く(つなぎと休みの判定)。 */
 export const markHeroHit = (heroId: string): void => {
   useGameStore.setState(s2 => ({ enemies: s2.enemies.map(e => (e.id === heroId && !e.heroHitSomething ? { ...e, heroHitSomething: true } : e)) }));
+};
+
+/** 英雄が雑魚の接触を受ける間隔(gameTime ms)。プレイヤーの被弾無敵と同じ考え方=毎フレーム削られない。 */
+export const HERO_CONTACT_INTERVAL_MS = 450;
+let heroContactAt = -1e9;
+export const resetHeroContactForTest = (): void => { heroContactAt = -1e9; };
+
+/**
+ * 雑魚・強個体の接触を英雄にも当てる(§4-2-5)。英雄に触れている敵のうち一番大きい接触ダメージを1回だけ。
+ * ボス級・終端の本体接触も含む(敵の攻撃は全部当たる)。英雄自身と死体・眠っている敵は除く。
+ */
+export const applyContactToHero = (gameTime: number): boolean => {
+  const h = heroAsTarget();
+  if (!h || gameTime - heroContactAt < HERO_CONTACT_INTERVAL_MS) return false;
+  let best = 0, src: string | undefined;
+  for (const e of useGameStore.getState().enemies) {
+    if (e.id === h.id || isCorpse(e) || e.dormant || e.damage <= 0) continue;
+    const b = enemyContactBox(e);
+    if (b.x + b.width < h.x || h.x + h.width < b.x || b.y + b.height < h.y || h.y + h.height < b.y) continue;
+    if (e.damage > best) { best = e.damage; src = e.id; }
+  }
+  if (best <= 0) return false;
+  heroContactAt = gameTime;
+  damageHeroByEnemy(h.id, best, src);
+  return true;
+};
+
+// =================================================================================================
+// 第三者の的(守護霊+英雄)— research/MUTANT_HERO.md §4-1 / §4-2-1・2
+// 「今プレイヤーにしか当たっていない技」を、同じ形・同じダメージ・同じ時刻で守護霊と英雄にも当てる入口。
+// プレイヤーへの判定は呼び手のまま(ここは独立の追加分岐)。
+// =================================================================================================
+/** 音の注入口(headless で audioManager を読まない=bountyTick/combatTick と同じ作法)。useGameLoop が差し込む。 */
+let thirdPartySfx: (key: 'counter' | 'headshot', gain: number) => void = () => {};
+export const setThirdPartySfx = (fn: (key: 'counter' | 'headshot', gain: number) => void): void => { thirdPartySfx = fn; };
+
+export type ThirdPartyShape =
+  | { kind: 'circle'; cx: number; cy: number; r: number }
+  | { kind: 'capsule'; fx: number; fy: number; tx: number; ty: number; hw: number }
+  | { kind: 'rect'; x: number; y: number; w: number; h: number }
+  | { kind: 'fan'; cx: number; cy: number; angle: number; halfArc: number; radius: number }
+  /** 既存の当たり判定の関数をそのまま使いたい時(多角形など)。hits(相手の中心x, y, 当たり半径)。fx/fy=被弾の向きの源。 */
+  | { kind: 'test'; hits: (cx: number, cy: number, r: number) => boolean; fx: number; fy: number };
+
+/** 円(中心・半径)の相手に形が触れるか。 */
+export const shapeHitsCircle = (s: ThirdPartyShape, cx: number, cy: number, r: number): boolean => {
+  if (s.kind === 'circle') return Math.hypot(cx - s.cx, cy - s.cy) <= s.r + r;
+  if (s.kind === 'capsule') return distToBandRect({ x: cx, y: cy }, { x: s.fx, y: s.fy }, { x: s.tx, y: s.ty }, s.hw) <= r;
+  if (s.kind === 'fan') return circleHitsFan(cx, cy, r, s.cx, s.cy, s.angle, s.halfArc, s.radius);
+  if (s.kind === 'test') return s.hits(cx, cy, r);
+  const nx = Math.max(s.x, Math.min(cx, s.x + s.w)), ny = Math.max(s.y, Math.min(cy, s.y + s.h));
+  return Math.hypot(cx - nx, cy - ny) <= r;
+};
+
+/**
+ * 英雄は無敵時間を持たない(敵なので)。続けて当たり続ける技(帯の持続・床・360度の鞭など)が毎フレーム削らないよう、
+ * 同じ技(key)からの当たりは HERO_REHIT_MS に1回(プレイヤーの被弾無敵と同じ長さ)。
+ */
+export const HERO_REHIT_MS = 700;
+const heroRehit = new Map<string, number>();
+export const resetHeroRehitForTest = (): void => { heroRehit.clear(); };
+
+/** 形が英雄に触れたら当てる(同じ技から700msに1回)。 */
+export const hitHeroShape = (s: ThirdPartyShape, amount: number, srcEnemyId: string | undefined, key: string): boolean => {
+  const h = heroAsTarget();
+  if (!h || h.id === srcEnemyId || amount <= 0) return false;
+  if (!shapeHitsCircle(s, h.x + h.width / 2, h.y + h.height / 2, radiusOf(h))) return false;
+  const gt = useGameStore.getState().gameTime;
+  const k = `${srcEnemyId ?? '?'}:${key}`;
+  if (gt - (heroRehit.get(k) ?? -1e9) < HERO_REHIT_MS) return false;
+  heroRehit.set(k, gt);
+  if (heroRehit.size > 64) { for (const [kk, t] of heroRehit) if (gt - t > HERO_REHIT_MS) heroRehit.delete(kk); }
+  damageHeroByEnemy(h.id, amount, srcEnemyId);
+  return true;
+};
+
+/**
+ * 形が守護霊に触れたら当てる。窓が生きていれば弾く(守護霊のカウンター=ダメージなし+成立の演出)。
+ * 被弾の間引きは damageSummon の無敵時間(プレイヤーと同じ)。技そのものは止めない(新しく当たる技の扱い・§10a)。
+ */
+export const hitGhostShape = (s: ThirdPartyShape, amount: number, srcEnemyId: string | undefined, key: string): boolean => {
+  const st = useGameStore.getState();
+  const g = st.summons.find(su => su.kind === 'ghost-ally');
+  if (!g || amount <= 0) return false;
+  const gx = g.x + g.width / 2, gy = g.y + g.height / 2;
+  if (!shapeHitsCircle(s, gx, gy, radiusOf(g))) return false;
+  if (srcEnemyId) {
+    const claim = consumeGhostCounterClaim(srcEnemyId, Date.now());
+    const owner = claim ? st.enemies.find(e => e.id === srcEnemyId) : undefined;
+    if (claim && owner) {
+      const p = st.player;
+      applyGhostCounterEffect(owner, gx, gy,
+        { claim, sfxGain: npcSfxDistGain(gx, gy, p.x + p.width / 2, p.y + p.height / 2, st.camera, st.gameBounds) },
+        (k, gain) => thirdPartySfx(k, gain));
+      return true;
+    }
+  }
+  const fromX = s.kind === 'circle' ? s.cx : s.kind === 'capsule' || s.kind === 'test' ? s.fx : s.kind === 'fan' ? s.cx : s.x + s.w / 2;
+  const fromY = s.kind === 'circle' ? s.cy : s.kind === 'capsule' || s.kind === 'test' ? s.fy : s.kind === 'fan' ? s.cy : s.y + s.h / 2;
+  st.damageSummon(g.id, amount, fromX, fromY, `tp:${key}`);
+  return true;
+};
+
+/** 守護霊と英雄の両方へ(今プレイヤーにしか当たっていない技の追加分岐)。 */
+export const hitThirdParties = (s: ThirdPartyShape, amount: number, srcEnemyId: string | undefined, key: string): void => {
+  hitGhostShape(s, amount, srcEnemyId, key);
+  hitHeroShape(s, amount, srcEnemyId, key);
 };

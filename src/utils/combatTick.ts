@@ -48,7 +48,6 @@ import {
   isInBiteCircle, // ★§16-C(転移噛み・C-3-a1): この技だけ判定を円で取る
 } from './enemyBite';
 import { LICH_BLINK_RADIUS_PX } from './lichBlink'; // §16-C: 予告円の半径=判定円の半径(C-4)
-import { isEngageableBoss } from './bossEngagement'; // G4b: 「ボスの技」の正本テーブル(BOT_AND_GHOST.mdの対象ボス群)
 import { BAT_GRAB_HOLD_MS } from './chaffMoves'; // ★PACING_PUZZLE.md §16-1(bat の掴み)
 import { EGG_BLAST_RADIUS } from '../world/mines';
 import {
@@ -70,7 +69,7 @@ import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_A
 // v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
 import { distToBandRect } from './geometry';
 import { circleHitsFan } from './heroScript';
-import { applyBlastToHero, applyHeroBlastToEnemies, markHeroHit } from './heroBlast'; // research/MUTANT_HERO.md
+import { applyBlastToHero, applyHeroBlastToEnemies, markHeroHit, heroAsTarget, damageHeroByEnemy, hitHeroShape } from './heroBlast'; // research/MUTANT_HERO.md
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
@@ -187,6 +186,8 @@ export const applyGhostAllyCapsuleHit = (
   // 呼び出し元はプレイヤー成立フレームでは undefined を渡す(プレイヤー優先=同フレーム二重成立禁止)。
   counterBossId?: string,
 ): GhostCapsuleHitResult => {
+  // research/MUTANT_HERO.md §4-1: 同じ帯は英雄(第三者の的)にも当たる(守護霊の有無と無関係・同じ技から700msに1回)。
+  hitHeroShape({ kind: 'capsule', fx: fx0, fy: fy0, tx: tx0, ty: ty0, hw: halfWidth }, damage, counterBossId, source ?? 'capsule');
   const ghost = findGhostAlly();
   if (!ghost) return { kind: 'miss' };
   const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
@@ -588,6 +589,13 @@ export const applyGlenFloorDamage = (fx: CombatEffects): void => {
       }
     }
   }
+  // research/MUTANT_HERO.md §4: 血溜まりの床は英雄も踏めば食らう(同じ床から700msに1回)。
+  for (const e of enemies) {
+    for (const h of e.giantDelayedHits ?? []) {
+      if (h.floorUntil === undefined || gameTime < h.fireAt || gameTime >= h.floorUntil) continue;
+      hitHeroShape({ kind: 'circle', cx: h.x, cy: h.y, r: h.radius }, e.damage, e.id, `floor:${h.moveKey ?? 'giant'}`);
+    }
+  }
   for (const e of enemies) {
     const hits = e.giantDelayedHits;
     if (!hits || hits.length === 0) continue;
@@ -625,6 +633,7 @@ export const applyEnemyFire = (now: number): void => {
   const liveSummonsForFire = liveFlareTargets.length > 0
     ? [...useGameStore.getState().summons, ...liveFlareTargets]
     : useGameStore.getState().summons;
+  const heroForFire = heroAsTarget() ?? null; // research/MUTANT_HERO.md §3-2
   liveEnemies.forEach(enemy => {
     // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2-2): 死体は発砲しない。
     if (isCorpse(enemy)) return;
@@ -653,7 +662,7 @@ export const applyEnemyFire = (now: number): void => {
     // 錬金術: aggro内の通常召喚を撃つ。いなければ従来どおりプレイヤー。
     // シーカー: 半透明中は通常敵(ボス/死神/イベントボス級を除く)はプレイヤーを撃たない。
     const playerHidden = isSeekerActive(livePlayer, liveGameTime) && !isBossType(enemy.type);
-    const tgt = resolveEnemyTarget(enemy, livePlayer, liveSummonsForFire, ALCHEMY_AGGRO_RANGE, playerHidden, liveGameTime); // v0.25.2490: 雑魚ヘイト=ラッチ中の射手はゴーストを撃つ
+    const tgt = resolveEnemyTarget(enemy, livePlayer, liveSummonsForFire, ALCHEMY_AGGRO_RANGE, playerHidden, liveGameTime, heroForFire); // v0.25.2490: 雑魚ヘイト=ラッチ中の射手はゴーストを撃つ / 英雄を追う雑魚は英雄を撃つ(MUTANT_HERO §3-2)
     if (tgt.hidden) return; // 標的なし=非発砲
     const dx = tgt.x - (enemy.x + enemy.width / 2);
     const dy = tgt.y - (enemy.y + enemy.height / 2);
@@ -832,6 +841,19 @@ export const applyEnemyProjectileHits = (
       }
     }
   }
+  // research/MUTANT_HERO.md §4-2-3: プレイヤーの解決の後に残っている敵弾は、英雄(画面内)にも当たる(英雄自身の弾は無い)。
+  {
+    const hero = heroAsTarget();
+    if (hero) {
+      const rnMult = redNightActive ? 2 : 1;
+      for (const proj of useGameStore.getState().projectiles) {
+        if (!proj.hostile || proj.ownerId === hero.id || !checkCollision(proj, hero)) continue;
+        damageHeroByEnemy(hero.id, proj.damage * rnMult, proj.ownerId);
+        useGameStore.getState().removeProjectile(proj.id);
+        fx.spawnBurst(proj.x + proj.width / 2, proj.y + proj.height / 2, '#7f1d1d', 4);
+      }
+    }
+  }
   // G4b: ボス(isEngageableBoss)の弾はゴーストにも当たる(g-bolt=咆哮弾、裏ボスのバースト/全方位、
   // 天使/idolの射撃など、ownerTypeがボスの敵弾全部)。**プレイヤー解決の後**に残っている弾だけを
   // 見る(反射された弾はhostile:false化済み/プレイヤーに当たった弾はremoveProjectile済み)=
@@ -843,7 +865,8 @@ export const applyEnemyProjectileHits = (
     if (ghostAlly) {
       const rnMult = redNightActive ? 2 : 1;
       const ghostHits = useGameStore.getState().projectiles.filter(p =>
-        p.hostile && p.ownerType !== undefined && isEngageableBoss(p.ownerType) && checkCollision(p, ghostAlly));
+        // research/MUTANT_HERO.md §4-2-3(社長「守護霊も含めて当たる様に」): 雑魚の弾も守護霊に当てる(旧: ボスの弾だけ)。
+        p.hostile && checkCollision(p, ghostAlly));
       // v0.25.2525(発注A・台帳§4-1「弾反射」): 守護霊も**プレイヤーと同じ窓・同じ条件・同じ反射弾生成**で
       // 打ち返す。窓は近接スイング(通常スイング/一閃)起点で開く ghostCounterWindowEnd(=COUNTER_WINDOW)。
       // 反射が成立した弾は当然ダメージにならない(プレイヤーの反射と同じ二択)。
