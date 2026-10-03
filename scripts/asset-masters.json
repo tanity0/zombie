@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "917 files / 復号後 約690MB",
+ "generatedFor": "918 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2887,6 +2887,12 @@
    "h": 256,
    "bytes": 35084,
    "sha": "b95bbb3f93d44d9f"
+  },
+  "sprites/mutant-hero-fog.png": {
+   "w": 912,
+   "h": 22,
+   "bytes": 24398,
+   "sha": "6df1aa25ae4d09fa"
   },
   "sprites/npc/chen-0.png": {
    "w": 297,

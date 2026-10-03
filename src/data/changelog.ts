@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4797', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4796', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4795', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4794', items: ['タブレットは横持ちでも遊べる。スマホは今までどおり縦持ち'] },
