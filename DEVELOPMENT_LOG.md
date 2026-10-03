@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4792 — PC版対応 段5: 配布(Electron の入れ物)【2026-10-03 10:03 JST】
+- `electron/`(独立の package.json・main.cjs・.gitignore)。中身は dist/ をそのまま app:// で読む。F11 全画面・二重起動なし・userData にセーブ・自動再生可。
+  ルートに `pc:start` / `pc:dist`。eslint は electron/ を対象外。research/PC_SUPPORT.md §12。
+- 確かめたこと: npm run build → xvfb で `electron .` と Linux 配布物(--dir)が起動し更新情報の画面まで出た。スマホ・ウェブは無変更(ルートの依存は増やしていない)。
+- 検証: typecheck / lint(0 errors)。
+- 変更: electron/package.json / electron/package-lock.json / electron/main.cjs / electron/.gitignore / eslint.config.js / package.json / research/PC_SUPPORT.md / changelog。
+
 ## v0.25.4791 — PC版対応 段4: 操作(指の押す/離す・パッド・メニューのキー操作・照準・文言)【2026-10-03 09:59 JST】
 - 設計 research/PC_SUPPORT.md §11。設計監査(Fable 5.1)(A)11/(B)5/(C)2 → (A)は全部設計に入れてから実装(§11-8)。
 - PC の主ボタン(左クリック/Space・J/パッドA)=タッチの指: 押す=指を置く(ホーミングのロック・スケボー2度押し)/ 離す=タッチの指離しと同じ順で近接(前隙つき)ほか。

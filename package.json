@@ -1,7 +1,7 @@
 {
   "name": "zombie",
   "private": true,
-  "version": "0.25.4791",
+  "version": "0.25.4792",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,9 @@
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "assets:check": "node scripts/asset-masters.mjs",
     "assets:ledger": "node scripts/asset-masters.mjs --write",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pc:start": "npm run build && npm --prefix electron install && npm --prefix electron start",
+    "pc:dist": "npm run build && npm --prefix electron install && npm --prefix electron run dist"
   },
   "dependencies": {
     "lucide-react": "^0.344.0",
