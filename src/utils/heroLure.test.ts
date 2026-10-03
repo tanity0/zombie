@@ -30,3 +30,16 @@ describe('雑魚が英雄を狙う', () => {
     expect(t.x).toBeCloseTo(20);
   });
 });
+
+describe('ボス級の名指しの既定(ボス戦の判定の外でも付けるもの)', () => {
+  it('体勢値(紫)は付き、最大は賞金首と同じ90 / 画面外の矢印も出す', async () => {
+    const { usesPostureSystem, bossPostureMax } = await import('./bossPosture');
+    const { isMarkedBoss } = await import('./bossMarker');
+    const { isEngageableBoss } = await import('./bossEngagement');
+    const h = spawnEnemyAt('mutant-hero', 0, 0, 0);
+    expect(isEngageableBoss(h.type)).toBe(false); // ボス戦にはしない(社長裁定 #1)
+    expect(usesPostureSystem(h)).toBe(true);
+    expect(bossPostureMax(h)).toBe(90);
+    expect(isMarkedBoss(h)).toBe(true);
+  });
+});

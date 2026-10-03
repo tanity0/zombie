@@ -1355,6 +1355,11 @@ const FORCE_BOUNTY = evParam('bountynow') === '1';
 const FORCE_PHANTOM = evParam('phantomnow') === '1';
 // research/MUTANT_HERO.md(英雄(変異)): デバッグ出現 `?heronow=1`。練習出撃(変異体対策室の枠)は practiceForces('heronow') で相乗り。
 const FORCE_HERO = evParam('heronow') === '1';
+/**
+ * research/MUTANT_HERO.md §2-0(社長裁定 #6「対策室でもゾンビを湧かせる」): 英雄の演習だけ**雑魚の湧き**(通常の湧き・盤面の維持)を開ける。
+ * 城ボス・イベント・紅き夜・ハンター・死神などは練習ランのまま止める(noSpawn は従来どおり)=雑魚だけ。
+ */
+const HERO_PRACTICE_MOBS = !NOSPAWN && isPracticeRun() && practiceForces('heronow');
 // BOSS_MAKER.md §21(1対1の間合い): `?vs=<相手>` で、選んだ相手だけを1体出す開発用の枠。
 // 他の強制出現フラグと同じくモジュールロード時に1回だけ読む(切替は再読込)。
 const VS_ENTRY = vsEntryOfRun();
@@ -2857,8 +2862,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const runningIn = loopState.corridorRunInActive;
         // 以降の湧きゲートは NOSPAWN ではなく noSpawn を見る(?nospawn=1 と同じ止め方に相乗り)。
         // 練習ラン(ボスラッシュ)も湧きを全部止める=狙った1体だけ(社長「ラッシュは1体」)。
-        // research/MUTANT_HERO.md §2-0(社長裁定 #6): 対策室の英雄の枠だけは雑魚を湧かせる(三つ巴=この敵の芯を演習で見られるように)。
-        const noSpawnDebug = NOSPAWN || runningIn || (isPracticeRun() && !practiceForces('heronow')) || VS_ENTRY !== null;
+        const noSpawnDebug = NOSPAWN || runningIn || isPracticeRun() || VS_ENTRY !== null;
         // ★v4追補: 二人組の通信の静けさ(10秒前〜終了)も同じ止め方に合流(店側の duoCommQuiet=前tickの二人組ブロックが変化時に書く)。
         const noSpawn = noSpawnDebug || useGameStore.getState().duoCommQuiet;
 
@@ -8830,7 +8834,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hAc = bossArtCenter(activeHero);
               useGameStore.getState().triggerAttention(hAc.x, hAc.y, bossCutinPayload('mutant-hero'));
               useGameStore.setState({ eventBannerText: '蹄の音が止まらない', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
-              playSfx('hero-neigh');
+              HERO_SFX.neigh(npcSfxDistGain(hAc.x, hAc.y, player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
             }
             runHeroTick(activeHero, heroStateRef.current, newGameTime, deltaTime, Date.now(), HERO_SFX, isPracticeRun());
           } else {
@@ -16327,7 +16331,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (
           !danceTest &&
           !indoor &&
-          !noSpawn && // ?nospawn=1 デバッグ: 旧スポナーも止める(社長試作v0.25.1861)
+          (!noSpawn || HERO_PRACTICE_MOBS) && // ?nospawn=1 デバッグ: 旧スポナーも止める(社長試作v0.25.1861)/ 英雄の演習は雑魚だけ湧かせる(MUTANT_HERO #6)
           // PACING_PUZZLE.md §10-20#9(旧注記を訂正): 上のコメントは「storyBossOnly廃止によりEXは
           // コード変更なしで自然に解放される」としていたが、これはEXの敵完全封鎖(社長指示2026-08-21
           // 「このステージは雑魚敵も封鎖」)と矛盾する。この旧経路はboss-phase窓でのみ有効化される
@@ -16673,7 +16677,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ★★§17-11 B3(監査A-1・MUST): ウェルカム台本中(welcomeActive)はここも止める
         // (puzzleActiveNowはfalseにしない=旧スポナーの復活を防ぐための別ゲート。下の旧スポナーの
         // 枝にも同じ !welcomeActive が要る=片方だけでは通常湧きが止まらない)。
-        if (!noSpawn && !isExStageRun() && !welcomeActive) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
+        if ((!noSpawn || HERO_PRACTICE_MOBS) && !isExStageRun() && !welcomeActive) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
           {
             puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef,
             rankPaceRef,

@@ -43,6 +43,8 @@ const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   //   40(判定幅) × 1.95 / texW = 78 / texW = PLAYER_ART_BASE_W / texW
   // となって **playerBaseScale と同じ倍率**になる(立ち絵78×64・歩き96×80のどちらでも一致)。
   'guardian-phantom': 1.3,
+  // research/MUTANT_HERO.md §1: 英雄(変異)。判定の足元 110×60 に対して絵(高さ202)を約230pxで出す(実機で社長が詰める)。
+  'mutant-hero': 2.4,
 };
 
 // A foot-anchored draw box in WORLD space. `footX/footY` is the bottom-centre

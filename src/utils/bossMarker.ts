@@ -28,7 +28,9 @@ import { isHiddenBoss, isBountyType } from './enemyUtils';
 export const isMarkedBoss = (e: Pick<Enemy, 'type' | 'isStoryBoss'>): boolean =>
   // ★ステージ2の裏ボス(idol=偶像)はマークを出さない(社長指示2026-08-29
   // 「ステージ2の裏ボス(アイドル)はマーク出さない」)。isHiddenBoss には残す(射程矩形等は従来どおり)。
-  (isHiddenBoss(e.type) && e.type !== 'idol') || e.isStoryBoss === true || isBountyType(e.type);
+  (isHiddenBoss(e.type) && e.type !== 'idol') || e.isStoryBoss === true || isBountyType(e.type)
+  // research/MUTANT_HERO.md §6-2: 英雄も画面外の矢印を出す(ボス級の既定)。
+  || e.type === 'mutant-hero';
 
 /** 賞金首の矢印マーカー有効距離(§6.38 B1.5-5)。
  * ★2026-08-26 社長指示「いる間はマーク表示。近づいたらじゃなくて」で**距離ゲートは撤廃**

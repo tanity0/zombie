@@ -23,7 +23,16 @@ export const HERO_VS_ENEMY_MULT = 6;
 /** 技の間の休み(直前の結果で変える)。 */
 export const HERO_REST_MS = { hit: 1800, miss: 700, countered: 2400 } as const;
 /** 後半(HP半分)へ移る時の立ち上がり。技ではない=赤なし。 */
-export const HERO_ROAR_MS = 900;
+export const HERO_ROAR_MS = 1700;
+/** 立ち上がりの割り付け: 0→7 で立ち上がる(400ms)→ 7で止まっていななく(1000ms)→ 8→12 で降りる(300ms)。降りた瞬間に霧が膨らむ。 */
+export const HERO_ROAR_RISE_MS = 400;
+export const HERO_ROAR_HOLD_MS = 1000;
+/** カウンターされた直後の怯み(低く構えて後ずさる絵)。休み(2400ms)の頭に置く。 */
+export const HERO_FLINCH_MS = 700;
+/** 乗り換えの鼻息の最短間隔(群れの中で鳴り続けない)。 */
+export const HERO_SNORT_COOLDOWN_MS = 4500;
+/** 駆け足の歩幅(1コマで進む距離 px)。走りのコマは進んだ距離で送る=足が滑らない。 */
+export const HERO_STRIDE_PX = 26;
 /** 歩く速さ(px/秒)と、帰巣中の倍率。 */
 export const HERO_WALK_SPEED = 95;
 export const HERO_HOMING_SPEED_MULT = 0.5;
@@ -324,7 +333,13 @@ const windupHold = (seq: readonly number[], u: number, holdFrom = 0.6): number =
 const SLASH_POSE: Readonly<Record<'overhead' | 'horizontal' | 'upper', { windup: readonly number[]; strike: readonly number[]; recover: readonly number[] }>> = {
   overhead: { windup: [8, 9, 10], strike: [11, 12], recover: [13, 14, 15] },
   horizontal: { windup: [0, 1, 2, 3], strike: [4, 5, 6], recover: [7] },
-  upper: { windup: [13, 14, 15], strike: [12, 11, 10], recover: [10] },
+  // 払い上げ: 逆再生は2コマだけ(12→10・11を飛ばして速さで逆回しを隠す)。戻りは 9→8→0 で構えを解く。
+  upper: { windup: [13, 14, 15], strike: [12, 10], recover: [9, 8, 0] },
+};
+/** 三連の段つなぎ: 前の段の終わりのコマから、次の段の構えへ途切れずに入る並び。 */
+const COMBO_WINDUP: Readonly<Record<number, readonly number[]>> = {
+  1: [13, 14, 15, 0, 1, 2, 3], // 1段目の振り下ろし(刃は左下=12)から、下段を通って水平の構えへ
+  2: [7, 8, 9, 10],            // 2段目の横薙ぎ(6)から、頭上へ振りかぶり直す
 };
 
 /** その段が斬撃のどの構えか。 */
@@ -344,7 +359,21 @@ export interface HeroFrameInput {
   u: number;
   /** 州に入ってからの経過ms。 */
   sinceMs: number;
+  /** 走り・踏み込みで進んだ距離(px)。駆け足のコマは距離で送る。 */
+  travelPx?: number;
+  /** 佇みの位相をずらす個体の値(0..1)。 */
+  phase?: number;
 }
+
+/** 佇み: 2〜3回掻いて止まり、間を置いてまた掻く(周期に揺らぎ)。 */
+const idlePawFrame = (sinceMs: number, phase: number): number => {
+  const period = 2600 + Math.round(phase * 900);
+  const t = (sinceMs + phase * 1700) % period;
+  const paws = phase < 0.5 ? 2 : 3;
+  const pawMs = 300;
+  if (t >= paws * pawMs) return 0;
+  return [0, 1, 2, 1][Math.floor((t % pawMs) / (pawMs / 4))];
+};
 
 /**
  * 今のコマ。null=歩き/立ち絵の既定の仕組みへ任せる(追いかけ・帰巣の間)。
@@ -352,18 +381,23 @@ export interface HeroFrameInput {
  */
 export const heroFrameFor = (inp: HeroFrameInput): HeroFrame | null => {
   const { state, move, step, u } = inp;
-  if (state === 'hero-idle') {
-    // 前脚で地面を掻く(棹立ち 0→2 を往復・ゆっくり)。
-    const i = Math.floor(inp.sinceMs / 260) % 4;
-    return { sheet: 'rear', frame: [0, 1, 2, 1][i] };
+  if (state === 'hero-idle') return { sheet: 'rear', frame: idlePawFrame(inp.sinceMs, inp.phase ?? 0) };
+  if (state === 'hero-roar') {
+    const t = inp.sinceMs;
+    if (t < HERO_ROAR_RISE_MS) return { sheet: 'rear', frame: seqAt([0, 1, 2, 3, 4, 5, 6, 7], t / HERO_ROAR_RISE_MS) };
+    if (t < HERO_ROAR_RISE_MS + HERO_ROAR_HOLD_MS) return { sheet: 'rear', frame: 7 };
+    const d = (t - HERO_ROAR_RISE_MS - HERO_ROAR_HOLD_MS) / Math.max(1, HERO_ROAR_MS - HERO_ROAR_RISE_MS - HERO_ROAR_HOLD_MS);
+    return { sheet: 'rear', frame: d < 1 ? seqAt([8, 9, 10, 11, 12], d) : seqAt([13, 14, 15], Math.min(0.999, d - 1)) };
   }
-  if (state === 'hero-roar') return { sheet: 'rear', frame: seqAt([0, 1, 2, 3, 4, 5, 6, 7, 7, 7, 6, 4, 2, 0], u) };
-  if (state === 'hero-turn') return { sheet: 'walk', frame: 0 };
+  // 怯み: 低い構え(斬撃8)で止まり、終わりで下段(13)へ。
+  if (state === 'hero-flinch') return { sheet: 'slash', frame: u < 0.75 ? 8 : 13 };
+  // 向き直り: 呼び手(描画)が直前のコマを保つ。ここは何も返さない。
+  if (state === 'hero-turn') return null;
   if (!move) return null;
   const pose = heroSlashPose(move, step);
   if (pose) {
     const p = SLASH_POSE[pose];
-    if (state === 'hero-windup') return { sheet: 'slash', frame: windupHold(p.windup, u) };
+    if (state === 'hero-windup') return { sheet: 'slash', frame: windupHold(move === 'combo' ? (COMBO_WINDUP[step] ?? p.windup) : p.windup, u) };
     if (state === 'hero-strike') return { sheet: 'slash', frame: seqAt(p.strike, u) };
     if (state === 'hero-recover') return { sheet: 'slash', frame: seqAt(p.recover, u) };
     return { sheet: 'slash', frame: p.windup[p.windup.length - 1] };
@@ -387,11 +421,12 @@ export const heroFrameFor = (inp: HeroFrameInput): HeroFrame | null => {
     return { sheet: 'rear', frame: seqAt([13, 14, 15], u) };
   }
   if (move === 'charge') {
-    if (state === 'hero-windup') return { sheet: 'rear', frame: [0, 1, 2, 1][Math.floor(inp.sinceMs / 150) % 4] }; // 前脚を掻く
+    // 溜め: 2回掻いてから、前脚を浮かせたまま(棹立ち2)体を沈めて止まる=「そっちへ行く」を体で言う。
+    if (state === 'hero-windup') return { sheet: 'rear', frame: u < 0.55 ? [0, 1, 2, 1][Math.floor(inp.sinceMs / 140) % 4] : 2 };
     if (state === 'hero-motion') {
-      // 駆け足(速く回す)→ 終点の手前2割で刃を頭上へ構える。
+      // 駆け足(進んだ距離で送る=足が滑らない)→ 終点の手前2割で刃を頭上へ構える。
       if (u > 0.8) return { sheet: 'slash', frame: seqAt([9, 10], (u - 0.8) / 0.2) };
-      return { sheet: 'walk', frame: Math.floor(inp.sinceMs / 45) % 10 };
+      return { sheet: 'walk', frame: Math.floor((inp.travelPx ?? 0) / HERO_STRIDE_PX) % 10 };
     }
     if (state === 'hero-strike') return { sheet: 'slash', frame: seqAt([11, 12], u) };
     return { sheet: 'slash', frame: seqAt([13, 14, 15], u) };
@@ -401,10 +436,11 @@ export const heroFrameFor = (inp: HeroFrameInput): HeroFrame | null => {
   if (state === 'hero-motion') {
     return move === 'tackle'
       ? { sheet: 'walk', frame: seqAt([0, 1, 2], u) }
-      : { sheet: 'walk', frame: Math.floor(inp.sinceMs / 45) % 10 };
+      : { sheet: 'walk', frame: Math.floor((inp.travelPx ?? 0) / HERO_STRIDE_PX) % 10 };
   }
-  if (state === 'hero-strike') return { sheet: 'walk', frame: 2 };
-  return { sheet: 'walk', frame: 0 };
+  // 当たりの1枚: 頭を落として前脚を畳む(棹立ち3→4)=体ごとぶつかった絵。
+  if (state === 'hero-strike') return { sheet: 'rear', frame: seqAt([3, 4], u) };
+  return { sheet: 'rear', frame: seqAt([2, 1, 0], u) };
 };
 
 /** 跳躍の滞空中の高さ(描画だけ・px)。滞空でなければ 0。 */
@@ -423,3 +459,8 @@ export const heroLiftPx = (e: { bossState?: string; heroMove?: HeroMoveKey; hero
  */
 export const heroZoomEligible = (e: { type: string; heroTargetId?: string; health: number }): boolean =>
   e.type === HERO_TYPE && e.health > 0 && (e.heroTargetId === 'player' || e.heroTargetId === 'ghost');
+
+/** 描画のピント(被写界深度)を英雄に合わせるか: 寄りズームの対象の間+技の溜め〜当たりの間(狙いが誰でも)。 */
+export const heroFocusEligible = (e: { type: string; heroTargetId?: string; health: number; bossState?: string }): boolean =>
+  heroZoomEligible(e) || (e.type === HERO_TYPE && e.health > 0
+    && (e.bossState === 'hero-windup' || e.bossState === 'hero-motion' || e.bossState === 'hero-strike'));

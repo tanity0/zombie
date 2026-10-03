@@ -141,7 +141,9 @@ export type SfxKey =
   | 'thor-thrust'    // 裏ボス トールの突きSE(社長提供)
   | 'glen-nihil'    // グレン「虚無の三唱」(お墓技)SE(社長提供・壊れたラジオ加工)。長尺→フェードで止める
   // research/MUTANT_HERO.md(英雄(変異)・社長支給2026-10-03): いななき / 鼻息 / 蹄(駆け足のループ=setHeroGallop が鳴らす)。
-  | 'hero-neigh' | 'hero-snort' | 'hero-gallop';
+  | 'hero-neigh' | 'hero-snort' | 'hero-gallop'
+  // 英雄の命中音(既存素材を低く回して別物にする=phill-skylight-low と同じ作法): 叩きつけ / 体当たり / 斬撃。
+  | 'hero-slam' | 'hero-tackle-hit' | 'hero-slash';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // UI選択音(社長提供SE)。レベルアップの選択肢タップ等に使用。
@@ -441,6 +443,10 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'hero-snort': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-snort.mp3`, volume: 1.0, minIntervalMs: 600 },
   // 蹄はループ専用(playSfx では鳴らさない)。末尾の約0.1秒の無音を切ってループする(setHeroGallop)。
   'hero-gallop': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-gallop.mp3`, volume: 0.9, minIntervalMs: 200 },
+  // 巨体の騎馬の一撃は雑魚の着地と同じ音にしない: 同じ素材を遅く(=低く重く)回す。
+  'hero-slam': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.9, minIntervalMs: 80, playbackRate: 0.7 },
+  'hero-tackle-hit': { src: `${import.meta.env.BASE_URL}audio/sfx/jump-land.mp3`, volume: 1.2, minIntervalMs: 80, playbackRate: 0.85 },
+  'hero-slash': { src: `${import.meta.env.BASE_URL}audio/sfx/thor-sweep.mp3`, volume: 1.0, minIntervalMs: 60, playbackRate: 0.9 },
   // グレン「虚無の三唱」(お墓技)のSE(社長提供・v0.25.3141)。壊れたラジオから流れる籠った音に加工済み
   // (低音カット+高音カット+歪み+不規則な音量の揺れ+砂嵐/放電音、テンポ112%)。
   // ★v0.25.3162(社長報告「お経聞こえない」): 初版は**2.2kHz以上を落としていて実機で聞こえなかった**。

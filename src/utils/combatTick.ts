@@ -244,9 +244,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   if (blasts.length === 0) return;
   // スカジ氷=専用SE(社長提供) / それ以外(パンプキン着地等)=heavy-impact。
   // research/MUTANT_HERO.md: 英雄の斬撃・タックルは自分の音(下)。叩きつけ(棹立ち・跳躍)は重い音のまま。
-  if (blasts.some(b => !b.ice && b.moveKey !== 'hero-slash' && b.moveKey !== 'hero-tackle')) fx.playSfx('heavy-impact');
-  if (blasts.some(b => b.moveKey === 'hero-slash')) fx.playSfx('thor-sweep');
-  if (blasts.some(b => b.moveKey === 'hero-tackle')) fx.playSfx('jump-land');
+  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-'))) fx.playSfx('heavy-impact');
+  if (blasts.some(b => b.moveKey === 'hero-slam')) fx.playSfx('hero-slam');
+  if (blasts.some(b => b.moveKey === 'hero-slash')) fx.playSfx('hero-slash');
+  if (blasts.some(b => b.moveKey === 'hero-tackle')) fx.playSfx('hero-tackle-hit');
   if (blasts.some(b => b.ice)) fx.playSfx('skadi-ice');
   const bp = useGameStore.getState().player;
   const bpcx = bp.x + bp.width / 2;

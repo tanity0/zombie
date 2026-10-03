@@ -1237,7 +1237,7 @@ export interface Enemy {
     | 'phill-dive-windup' | 'phill-dive-fall' | 'phill-dive-recover'
     | 'phill-feathershot-windup' | 'phill-feathershot-recover'
     // research/MUTANT_HERO.md: 英雄(変異)。技の種類は heroMove、段は heroStep が持つ(州は技をまたいで共通)。
-    | 'hero-idle' | 'hero-turn' | 'hero-roar' | 'hero-windup' | 'hero-motion' | 'hero-strike' | 'hero-recover';
+    | 'hero-idle' | 'hero-turn' | 'hero-roar' | 'hero-flinch' | 'hero-windup' | 'hero-motion' | 'hero-strike' | 'hero-recover';
     // research/GHOST_BOSS.md v6: 幻影(guardian-phantom)の `gp-*` 州は**全廃**した。
     // 予告(windup)も硬直(recover)も持たない=プレイヤーと同じ即発なので、bossState を使わない
     // (=幻影に対してプレイヤーのカウンターは成立しない。弾の打ち返しだけが残る、が v5/v6 の裁定)。

@@ -241,7 +241,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } from '../utils/telegraphStyle';
-import { heroFrameFor, heroLiftPx, heroZoomEligible, HERO_SHEETS, HERO_STRIKE_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
+import { heroFrameFor, heroLiftPx, heroZoomEligible, heroFocusEligible, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine } from '../utils/biteTelegraph';
 // ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
 import {
@@ -8237,6 +8237,7 @@ export class PixiScene {
     // する。corridorLayer側はzoomを受けて「広間S×worldズーム」の1式で合成するのでズレない)。
     // M6(stage-6)は従来どおり除外のまま=1バイトも変えない。
     const bossZoomExcluded = s.stageTheme === 'lab' || (s.corridorMode && !isExStageRun());
+    this.tickHeroLeftFog(now); // research/MUTANT_HERO.md §2: 去った英雄の霧を3秒残す
     let bossDistanceTarget: number | null = null;
     let bossBiasDx = 0, bossBiasDy = 0, bossBiasD2 = Infinity; // 最も近い交戦ボスへの中心差(カメラ寄せ用)
     for (const e of s.enemies) {
@@ -8574,7 +8575,7 @@ export class PixiScene {
         if (tsNum('tsbossfocus', 1) > 0) {
           const scrH = this.screenH * vpScale;
           for (const e of s.enemies) {
-            if (!(isEngageableBoss(e.type) || heroZoomEligible(e)) || e.dormant === true || e.bossState === 'return' || e.health <= 0) continue;
+            if (!(isEngageableBoss(e.type) || heroFocusEligible(e)) || e.dormant === true || e.bossState === 'return' || e.health <= 0) continue; // 英雄: 技の溜め〜当たりは狙いが誰でもピントを外さない
             const v = this.enemies.get(e.id);
             if (!v || !v.sprite.visible || v.container.alpha <= 0.01 || !v.container.visible) continue;
             const bb = v.sprite.getBounds();
@@ -18983,7 +18984,9 @@ export class PixiScene {
       const hf = view.hitFlash;
       const flashT = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1
         // ★量と連動(2026-09-17)。小さいダメージほど薄く光る(旧は量によらず満額だった)。
-        ? Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS) * flashMul(enemyHitReaction(e)) : 0;
+        ? Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS) * flashMul(enemyHitReaction(e))
+          // research/MUTANT_HERO.md: 英雄は三つ巴で常に誰かに殴られる巨体=全身白で構え(技の見分け)が消えないよう薄く。
+          * (e.type === 'mutant-hero' ? 0.35 : 1) : 0;
       // 延焼中の薄い赤点滅(社長指示v0.25.3272)/氷鈍化中の薄い水色点滅(社長指示v0.25.3276)。
       // 被弾フラッシュと同じシルエット機構を流用し、被弾(白)が出ていない間だけ弱い明滅を乗せる
       // (読むだけ・判定はstoreのburnUntil/iceSlowUntil)。
@@ -31155,7 +31158,31 @@ export class PixiScene {
    * 時計は `gameTime`(判定と同じ・ヒットストップで止まる)。`lift` を持たない州なら0。
    */
   /** 英雄の足元の霧(本体の container の一番下に置く=本体と一緒に消える)と黒い粒。 */
-  private heroFogNodes = new Map<string, { fog: Sprite; trail: Sprite; motes: Graphics; drift: number; trailAt: number; trailX: number; trailY: number; landSwellAt: number; wasAir: boolean }>();
+  private heroFogNodes = new Map<string, { fog: Sprite; trail: Sprite; motes: Graphics; drift: number; trailAt: number; trailX: number; trailY: number; landSwellAt: number; wasAir: boolean; roarSwelled: boolean }>();
+  /** 去った英雄の霧を3秒その場に残すための最後の位置(描画だけ)。 */
+  private heroFogLast: { at: number; x: number; y: number; w: number; h: number; depart: boolean; tex: Texture } | null = null;
+  private heroFogLeft: { sp: Sprite; at: number } | null = null;
+
+  /** 去った英雄の霧だけを、居た場所に3秒残して薄れさせる(本体の container と一緒に消えないように別の絵で)。毎フレーム呼ぶ。 */
+  private tickHeroLeftFog(now: number): void {
+    const last = this.heroFogLast;
+    if (last && last.depart && now - last.at > 80 && !this.heroFogLeft) {
+      const sp = new Sprite(last.tex);
+      sp.anchor.set(0.5, 0.82);
+      sp.position.set(last.x, last.y);
+      sp.scale.set(last.w / Math.max(1, last.tex.width), last.h / Math.max(1, last.tex.height));
+      sp.zIndex = last.y - 1;
+      this.L.actorLayer.addChild(sp);
+      this.heroFogLeft = { sp, at: now };
+      this.heroFogLast = null;
+    }
+    const left = this.heroFogLeft;
+    if (left) {
+      const u = (now - left.at) / 3000;
+      if (u >= 1) { left.sp.destroy(); this.heroFogLeft = null; }
+      else { left.sp.alpha = 0.6 * (1 - u) * (1 - u); left.sp.scale.x *= 1.0006; }
+    }
+  }
 
   /**
    * research/MUTANT_HERO.md §7-1。素材は横1列16コマ(57×22)を約5倍に**線形補間で**拡大(ぼかしの絵なので劣化しない)。
@@ -31174,7 +31201,7 @@ export class PixiScene {
       view.container.addChildAt(trail, 0);
       view.container.addChildAt(fog, 1);
       view.container.addChild(motes);
-      n = { fog, trail, motes, drift: 0, trailAt: -1e9, trailX: 0, trailY: 0, landSwellAt: -1e9, wasAir: false };
+      n = { fog, trail, motes, drift: 0, trailAt: -1e9, trailX: 0, trailY: 0, landSwellAt: -1e9, wasAir: false, roarSwelled: false };
       this.heroFogNodes.set(e.id, n);
     }
     if (!slices) { n.fog.visible = false; n.trail.visible = false; n.motes.clear(); return; }
@@ -31193,6 +31220,11 @@ export class PixiScene {
     if (air && !n.wasAir) { n.trailAt = now; n.trailX = (e.heroFromX ?? footX); n.trailY = footY; }
     if (!air && n.wasAir) n.landSwellAt = now;
     n.wasAir = air;
+    // 後半へ移る立ち上がりで、前脚が降りた瞬間にも膨らむ。
+    const roarLand = e.bossState === 'hero-roar' && gameTime - (e.heroStateAt ?? gameTime) >= HERO_ROAR_RISE_MS + HERO_ROAR_HOLD_MS + 300;
+    if (roarLand && !n.roarSwelled) { n.landSwellAt = now; n.roarSwelled = true; }
+    if (e.bossState !== 'hero-roar') n.roarSwelled = false;
+    this.heroFogLast = { at: now, x: footX + n.drift, y: footY + 2, w: w0, h: h0, depart: e.heroDepartAt !== undefined, tex };
     // 着地の膨らみ ×1.4 → 1.0(400ms・ease-out)。
     const sw = Math.max(0, Math.min(1, (now - n.landSwellAt) / 400));
     const swell = 1 + 0.4 * (1 - sw) * (1 - sw);
@@ -31201,6 +31233,10 @@ export class PixiScene {
     n.fog.position.set(footX + n.drift, footY + 2);
     n.fog.scale.set((w0 / Math.max(1, tex.width)) * breathX * swell, (h0 / Math.max(1, tex.height)) * breathY * swell);
     n.fog.alpha = 0.6;
+    // 霧の縁だけ、わずかに明るい灰(骨色)を重ねて輪郭を出す=影の滲みと見分ける。
+    n.motes.clear();
+    n.motes.ellipse(footX + n.drift, footY + 2 - h0 * 0.3, w0 * 0.42 * breathX * swell, h0 * 0.36 * breathY * swell)
+      .stroke({ width: Math.max(6, h0 * 0.22), color: 0xe7dccb, alpha: air ? 0 : 0.07 });
     // 跳んだ所に残る霧(800msで薄れる)。
     const tu = (now - n.trailAt) / 800;
     if (tu >= 0 && tu < 1) {
@@ -31210,9 +31246,8 @@ export class PixiScene {
       n.trail.scale.set(w0 / Math.max(1, tex.width) * (1 + 0.15 * tu), h0 / Math.max(1, tex.height) * (1 + 0.1 * tu));
       n.trail.alpha = 0.6 * (1 - tu) * (1 - tu);
     } else n.trail.visible = false;
-    // 黒い粒: 霧の上辺から常に立ち上る(1.2〜2.0秒・上へ40〜90px・横に揺らぐ)。
-    n.motes.clear();
-    const count = p2 ? 10 : 5;
+    // 黒い粒: 霧の上辺から常に立ち上る(1.2〜2.0秒・上へ40〜90px・横に揺らぐ)。派手さの絵=見える大きさ(4〜6px)。
+    const count = p2 ? 14 : 7;
     for (let i = 0; i < count; i++) {
       const life = 1200 + ((i * 397) % 800);
       const ph = ((now + i * 733) % life) / life;
@@ -31223,7 +31258,7 @@ export class PixiScene {
       const y = footY - h0 * 0.35 - ph * rise * depth - heroLiftPx(e, gameTime);
       const a = 0.6 * (ph < 0.15 ? ph / 0.15 : 1 - (ph - 0.15) / 0.85);
       if (a <= 0.01) continue;
-      n.motes.circle(x, y, (2.6 - ph * 1.2) * depth).fill({ color: 0x0b0808, alpha: a });
+      n.motes.circle(x, y, (5.5 - ph * 2.2 + (i % 3) * 0.6) * depth).fill({ color: 0x0b0808, alpha: a });
     }
   }
 
@@ -31253,10 +31288,15 @@ export class PixiScene {
         if (len > 1) {
           const ux = dx / len, uy = dy / len;
           const passed = st === 'hero-motion' ? Math.hypot(e.x + e.width / 2 - e.heroFromX, e.y + e.height / 2 - e.heroFromY) : 0;
-          for (let d = passed; d < len; d += 26) {
-            const d2 = Math.min(len, d + 13);
-            o.moveTo(e.heroFromX + ux * d, e.heroFromY + uy * d).lineTo(e.heroFromX + ux * d2, e.heroFromY + uy * d2)
-              .stroke({ width: 3, color: 0x2a2222, alpha: 0.45 });
+          // 蹄跡の連なり(骨色・左右に互い違い)。赤にしない=道筋は当たらない。溜めが進むほど少し濃く。
+          const nx = -uy, ny = ux;
+          const a = 0.22 + 0.25 * prog;
+          let k = 0;
+          for (let d = 30; d < len - 10; d += 34, k++) {
+            if (d < passed) continue;
+            const side = (k % 2 === 0 ? 1 : -1) * 14;
+            const px = e.heroFromX + ux * d + nx * side, py = e.heroFromY + uy * d + ny * side;
+            o.ellipse(px, py, 7, 4.5).fill({ color: 0xe7dccb, alpha: a });
           }
         }
       }
@@ -31287,17 +31327,27 @@ export class PixiScene {
       const fade = u < 0.45 ? 1 : 1 - (u - 0.45) / 0.55;
       const s2 = m.shape;
       if (s2.kind === 'fan') {
-        const r = s2.radius * 1.12;
+        const r = s2.radius * 1.1;
         const a0 = s2.angle - s2.halfArc * 1.1;
-        const sweep = s2.halfArc * 2.2 * grow;
+        const total = s2.halfArc * 2.2;
         // 払い上げは下から上へ=逆回り。
         const rev = m.move === 'upper';
-        const from = rev ? a0 + s2.halfArc * 2.2 : a0, to = rev ? from - sweep : from + sweep;
-        for (let i = 0; i < 4; i++) {
-          const rr = r * (1 - i * 0.06);
-          o.moveTo(s2.cx + Math.cos(from) * rr, s2.cy + Math.sin(from) * rr).arc(s2.cx, s2.cy, rr, from, to, rev)
-            .stroke({ width: 14 - i * 3, color: i === 0 ? 0x7f1d1d : 0xe7dccb, alpha: (i === 0 ? 0.55 : 0.75) * fade });
+        const dir = rev ? -1 : 1;
+        const start = rev ? a0 + total : a0;
+        // 刃の通った跡: 刃先(いま)が太く濃く、通り過ぎた根元ほど細く薄い(1本の弧を濃淡で引く)。
+        const N = 12;
+        const head = total * grow;
+        for (let i = 0; i < N; i++) {
+          const t0 = i / N, t1 = (i + 1) / N;
+          const s0 = start + dir * head * t0, s1 = start + dir * head * t1;
+          const w = 4 + 16 * t1 * t1;
+          o.moveTo(s2.cx + Math.cos(s0) * r, s2.cy + Math.sin(s0) * r).arc(s2.cx, s2.cy, r, s0, s1, rev)
+            .stroke({ width: w, color: 0xe7dccb, alpha: (0.15 + 0.7 * t1) * fade });
         }
+        // 刃先の縁だけ血の色。
+        const tip = start + dir * head;
+        o.moveTo(s2.cx + Math.cos(tip - dir * 0.18) * r * 1.04, s2.cy + Math.sin(tip - dir * 0.18) * r * 1.04)
+          .arc(s2.cx, s2.cy, r * 1.04, tip - dir * 0.18, tip, rev).stroke({ width: 4, color: 0x7f1d1d, alpha: 0.7 * fade });
       } else if (s2.kind === 'band') {
         const dx = s2.tx - s2.fx, dy = s2.ty - s2.fy;
         const len = Math.hypot(dx, dy) * 1.15 * grow;
@@ -31324,7 +31374,16 @@ export class PixiScene {
     const st = e.bossState ?? 'chase';
     const since = gameTime - (e.heroStateAt ?? gameTime);
     const span = Math.max(1, (e.bossStateUntil ?? gameTime) - (e.heroStateAt ?? gameTime));
-    const f = heroFrameFor({ state: st, move: e.heroMove, step: e.heroStep ?? 0, u: Math.max(0, Math.min(1, since / span)), sinceMs: since });
+    if (st === 'hero-turn') {
+      // 向き直りの一拍は直前のコマを保つ(反転の瞬間だけ変わる)。
+      const m = this.atkFrameMemo.get(e.id);
+      if (m) { const sl = this.sheetSlices(m.name, m.frames); return sl?.[m.i] ?? null; }
+      return null;
+    }
+    const travel = e.heroFromX !== undefined && e.heroFromY !== undefined
+      ? Math.hypot(e.x + e.width / 2 - e.heroFromX, e.y + e.height / 2 - e.heroFromY) : 0;
+    const f = heroFrameFor({ state: st, move: e.heroMove, step: e.heroStep ?? 0, u: Math.max(0, Math.min(1, since / span)), sinceMs: since,
+      travelPx: travel, phase: stablePhase(e.id) / (Math.PI * 2) });
     if (!f) return null;
     const spec = HERO_SHEETS[f.sheet];
     const slices = this.sheetSlices(spec.name, spec.frames);

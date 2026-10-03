@@ -8,8 +8,6 @@ import { isCorpse, isMutantHero, resistsChipKnockback } from './enemyUtils';
 import { isPointInZoomedViewport } from './cameraZoom';
 import { distToBandRect } from './geometry';
 import { enemyContactBox } from './collisionUtils';
-import { consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounter';
-import { npcSfxDistGain } from './npcSfx';
 import { circleHitsFan, HERO_INCOMING_MULT, HERO_VS_ENEMY_MULT } from './heroScript';
 
 /** 当たり半径(矩形の長い辺の半分=守護霊・プレイヤーと同じ流儀)。 */
@@ -102,7 +100,8 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
   if (!hero || !isMutantHero(hero.type)) return 0;
   const hx = hero.x + hero.width / 2, hy = hero.y + hero.height / 2;
   const dmg = Math.round(b.damage * HERO_VS_ENEMY_MULT);
-  const victims = st.enemies.filter(e => e.id !== hero.id && !isCorpse(e) && e.health > 0
+  // 眠っている個体(休眠中のボス等)には当てない(英雄の狙いの候補と同じ=起こさない)。
+  const victims = st.enemies.filter(e => e.id !== hero.id && !isCorpse(e) && e.health > 0 && !e.dormant
     && blastHitsCircle(b, e.x + e.width / 2, e.y + e.height / 2, radiusOf(e)));
   for (const e of victims) {
     const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
@@ -166,9 +165,8 @@ export const applyContactToHero = (gameTime: number): boolean => {
 // 「今プレイヤーにしか当たっていない技」を、同じ形・同じダメージ・同じ時刻で守護霊と英雄にも当てる入口。
 // プレイヤーへの判定は呼び手のまま(ここは独立の追加分岐)。
 // =================================================================================================
-/** 音の注入口(headless で audioManager を読まない=bountyTick/combatTick と同じ作法)。useGameLoop が差し込む。 */
-let thirdPartySfx: (key: 'counter' | 'headshot', gain: number) => void = () => {};
-export const setThirdPartySfx = (fn: (key: 'counter' | 'headshot', gain: number) => void): void => { thirdPartySfx = fn; };
+/** (旧: 守護霊の弾きの音の注入口。弾きを外したので何もしない。呼び手の互換のために残す。) */
+export const setThirdPartySfx = (_fn: (key: 'counter' | 'headshot', gain: number) => void): void => {};
 
 export type ThirdPartyShape =
   | { kind: 'circle'; cx: number; cy: number; r: number }
@@ -214,23 +212,15 @@ export const hitHeroShape = (s: ThirdPartyShape, amount: number, srcEnemyId: str
  * 形が守護霊に触れたら当てる。窓が生きていれば弾く(守護霊のカウンター=ダメージなし+成立の演出)。
  * 被弾の間引きは damageSummon の無敵時間(プレイヤーと同じ)。技そのものは止めない(新しく当たる技の扱い・§10a)。
  */
-export const hitGhostShape = (s: ThirdPartyShape, amount: number, srcEnemyId: string | undefined, key: string): boolean => {
+export const hitGhostShape = (s: ThirdPartyShape, amount: number, _srcEnemyId: string | undefined, key: string): boolean => {
   const st = useGameStore.getState();
   const g = st.summons.find(su => su.kind === 'ghost-ally');
   if (!g || amount <= 0) return false;
   const gx = g.x + g.width / 2, gy = g.y + g.height / 2;
   if (!shapeHitsCircle(s, gx, gy, radiusOf(g))) return false;
-  if (srcEnemyId) {
-    const claim = consumeGhostCounterClaim(srcEnemyId, Date.now());
-    const owner = claim ? st.enemies.find(e => e.id === srcEnemyId) : undefined;
-    if (claim && owner) {
-      const p = st.player;
-      applyGhostCounterEffect(owner, gx, gy,
-        { claim, sfxGain: npcSfxDistGain(gx, gy, p.x + p.width / 2, p.y + p.height / 2, st.camera, st.gameBounds) },
-        (k, gain) => thirdPartySfx(k, gain));
-      return true;
-    }
-  }
+  // ★守護霊のカウンター(弾き)はここでは成立させない(検収監査 A-5): この入口に来るのは「今までプレイヤーにしか当たって
+  // いなかった技」で、紫(カウンター不可)の技や間合い条件を持つ技が混ざる。無条件に弾けると色の文法(紫=弾けない)と
+  // 守護霊のプレイヤーと同条件が崩れる。守護霊は当たったら受ける(被弾の間引きは damageSummon の無敵時間)。
   const fromX = s.kind === 'circle' ? s.cx : s.kind === 'capsule' || s.kind === 'test' ? s.fx : s.kind === 'fan' ? s.cx : s.x + s.w / 2;
   const fromY = s.kind === 'circle' ? s.cy : s.kind === 'capsule' || s.kind === 'test' ? s.fy : s.kind === 'fan' ? s.cy : s.y + s.h / 2;
   st.damageSummon(g.id, amount, fromX, fromY, `tp:${key}`);

@@ -16,6 +16,7 @@ import { npcSfxDistGain as npcGain } from './npcSfx';
 import {
   HERO_MOVES, HERO_RETARGET_PAUSE_MS, HERO_FLIP_PAUSE_MS, HERO_TARGET_LATCH_MS, HERO_ROAR_MS, HERO_WALK_SPEED,
   HERO_HOMING_SPEED_MULT, HERO_LOITER_RADIUS, HERO_LOITER_MIN_MS, HERO_LOITER_MAX_MS, HERO_STRIKE_MS, HERO_NEAR, HERO_MID,
+  HERO_FLINCH_MS, HERO_SNORT_COOLDOWN_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS,
   heroStepShape, heroStepHitDelay, pickHeroMove, pickHeroTarget, heroFollowUp, heroRestMs, easeInOut,
   type HeroMoveKey, type HeroShape, type HeroTargetCand,
 } from './heroScript';
@@ -44,8 +45,15 @@ export interface HeroTickState {
   homing: boolean;
   homeIdleSince: number | null;
   lastPos: { x: number; y: number } | null;
+  /** 出現直後: 姿が画面に入るまでプレイヤーの方へ歩いて寄る(音が先・姿が後)。入ったら巣をそこへ置く。 */
+  introDone: boolean;
+  lastSnortAt: number;
+  roarLanded: boolean;
 }
-export const createHeroTickState = (): HeroTickState => ({ activeId: null, disengageSince: null, homing: false, homeIdleSince: null, lastPos: null });
+export const createHeroTickState = (): HeroTickState => ({ activeId: null, disengageSince: null, homing: false, homeIdleSince: null, lastPos: null, introDone: false, lastSnortAt: -1e9, roarLanded: false });
+
+/** 蹄の拍は速さに比例(歩幅と拍を合わせる)。 */
+const gallopRate = (speed: number): number => Math.max(0.6, Math.min(1.2, (speed / HERO_WALK_SPEED) * 0.85));
 
 const applyPatch = (id: string, patch: Partial<Enemy>): void => {
   if (Object.keys(patch).length === 0) return;
@@ -208,7 +216,8 @@ export const runHeroTick = (
   // ---- 去る(駆け去って消える) ----------------------------------------------------------------
   if (hero.heroDepartAt !== undefined) {
     const u = (gt - hero.heroDepartAt) / HERO_DEPART_RUN_MS;
-    if (u >= 1) {
+    // 見えている間は走らせ、画面の外へ出たら消す(時間で消すと画面の中で蒸発する)。保険で長くても4倍の尺。
+    if ((u >= 1 && !heroOnScreen(hero)) || u >= 4) {
       ENEMY_REMOVE_CAUSE.set(hero.id, 'heroGone');
       useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.id !== hero.id) }));
       sfx.gallop(0, 1);
@@ -216,7 +225,7 @@ export const runHeroTick = (
     }
     const away = Math.sign(hx - pcx) || 1;
     Object.assign(patch, placeCenter(hero, hx + away * 300 * dt * Math.min(1, u * 3), hy), { heroFaceX: away as 1 | -1, vx: away * 300, vy: 0 });
-    sfx.gallop(sfxGain, 1);
+    sfx.gallop(sfxGain, gallopRate(300));
     applyPatch(hero.id, patch);
     return;
   }
@@ -224,7 +233,10 @@ export const runHeroTick = (
   // ---- 崩し(紫・気絶)/カウンター/ノックバック ------------------------------------------------
   const fullStun = hero.bossFullStunUntil !== undefined && gt < hero.bossFullStunUntil;
   if (hero.bossMoveCutPending) {
-    applyPatch(hero.id, { ...cancelMove(gt, heroRestMs('countered')), heroLastMove: hero.heroMove ?? hero.heroLastMove });
+    // カウンターされた: 低く構えて後ずさる(怯み)→ 長めの休み。
+    applyPatch(hero.id, { ...cancelMove(gt, heroRestMs('countered')), heroLastMove: hero.heroMove ?? hero.heroLastMove,
+      bossState: 'hero-flinch', bossStateUntil: gt + HERO_FLINCH_MS, heroStateAt: gt,
+      heroFromX: hx, heroFromY: hy, heroToX: hx - (hero.heroFaceX ?? -1) * 40, heroToY: hy });
     sfx.gallop(0, 1);
     return;
   }
@@ -252,7 +264,7 @@ export const runHeroTick = (
   // ---- 後半(HP半分)へ。技の間には割り込まない ---------------------------------------------------
   if (!hero.heroPhase2 && hero.health <= hero.maxHealth * 0.5 && !IN_MOVE.has(state)) {
     applyPatch(hero.id, { heroPhase2: true, bossState: 'hero-roar', bossStateUntil: gt + HERO_ROAR_MS, heroStateAt: gt, vx: 0, vy: 0, heroShape: undefined });
-    sfx.neigh(sfxGain);
+    s.roarLanded = false;
     sfx.gallop(0, 1);
     return;
   }
@@ -331,8 +343,26 @@ export const runHeroTick = (
   }
 
   // ---- 立ち上がり(後半へ)・向き直り ---------------------------------------------------------------
-  if (state === 'hero-roar' || state === 'hero-turn') {
-    if (gt >= (hero.bossStateUntil ?? gt)) Object.assign(patch, { bossState: 'chase', bossStateUntil: undefined, heroStateAt: gt });
+  if (state === 'hero-roar' || state === 'hero-turn' || state === 'hero-flinch') {
+    if (state === 'hero-roar') {
+      // 立ち上がって止まった所でいななき、降りた瞬間に砂埃(派手さの絵・判定なし)。
+      const since = gt - (hero.heroStateAt ?? gt);
+      if (since >= HERO_ROAR_RISE_MS && !s.roarLanded && since < HERO_ROAR_RISE_MS + 60) sfx.neigh(sfxGain);
+      if (since >= HERO_ROAR_RISE_MS + HERO_ROAR_HOLD_MS + 300 && !s.roarLanded) {
+        s.roarLanded = true;
+        const g = useGameStore.getState();
+        g.spawnRing(hx, hy + hero.height / 2, 10, 210, 'rgba(120,96,72,0.85)', 7, 620);
+        g.spawnRing(hx, hy + hero.height / 2, 6, 130, 'rgba(20,14,12,0.7)', 5, 520);
+        g.spawnBurst(hx, hy + hero.height / 2, '#6b5444', 26);
+        g.triggerShake?.(220, 6);
+      }
+    }
+    if (state === 'hero-flinch' && hero.heroFromX !== undefined && hero.heroToX !== undefined) {
+      const u = Math.min(1, (gt - (hero.heroStateAt ?? gt)) / HERO_FLINCH_MS);
+      const e = 1 - Math.pow(1 - u, 3);
+      Object.assign(patch, placeCenter(hero, hero.heroFromX + (hero.heroToX - hero.heroFromX) * e, hero.heroFromY ?? hy));
+    }
+    if (gt >= (hero.bossStateUntil ?? gt)) { Object.assign(patch, { bossState: 'chase', bossStateUntil: undefined, heroStateAt: gt }); s.roarLanded = false; }
     applyPatch(hero.id, patch);
     sfx.gallop(0, 1);
     return;
@@ -340,6 +370,19 @@ export const runHeroTick = (
 
   // ---- 狙い(中立): プレイヤー/守護霊/敵のうち一番近い ------------------------------------------------
   const onScreen = heroOnScreen(hero);
+  // 出現直後(音が先・姿が後): 画面に入るまでプレイヤーの方へ速歩で寄る=蹄の音が近づく。入った所を巣にする。
+  if (!s.introDone) {
+    if (onScreen) {
+      s.introDone = true;
+      Object.assign(patch, { homeX: hero.x, homeY: hero.y });
+    } else {
+      walkToward({ ...hero, ...patch } as Enemy, pcx, pcy, HERO_WALK_SPEED * 1.4, dt, gt, patch, 0);
+      if (patch.bossState === undefined && state !== 'chase') patch.bossState = 'chase';
+      sfx.gallop(sfxGain, gallopRate(HERO_WALK_SPEED * 1.4));
+      applyPatch(hero.id, patch);
+      return;
+    }
+  }
   const cands = targetCands(hero);
   const picked = s.homing
     // 帰巣中は巣のそば(200px)で狙ってくる相手にだけ斬り返す(プレイヤーへは振り向かない)。
@@ -351,7 +394,7 @@ export const runHeroTick = (
     if (wasTargeting) {
       // 乗り換えの合図: 止まって向き直る間+鼻息。
       Object.assign(patch, faceTowards(hero, picked.x), { bossState: 'hero-turn', bossStateUntil: gt + HERO_RETARGET_PAUSE_MS, heroStateAt: gt, vx: 0, vy: 0 });
-      sfx.snort(sfxGain);
+      if (gt - s.lastSnortAt >= HERO_SNORT_COOLDOWN_MS) { s.lastSnortAt = gt; sfx.snort(sfxGain); }
       sfx.gallop(0, 1);
       applyPatch(hero.id, patch);
       return;
@@ -382,7 +425,7 @@ export const runHeroTick = (
   if (s.homing && !tgt) {
     walkToward({ ...hero, ...patch } as Enemy, homeCx, homeCy, HERO_WALK_SPEED * HERO_HOMING_SPEED_MULT, dt, gt, patch, HERO_HOME_ARRIVE_PX * 0.5);
     if (patch.bossState === undefined) patch.bossState = 'chase';
-    sfx.gallop(sfxGain * 0.6, 0.8);
+    sfx.gallop(sfxGain * 0.6, gallopRate(HERO_WALK_SPEED * HERO_HOMING_SPEED_MULT));
     applyPatch(hero.id, patch);
     return;
   }
@@ -410,12 +453,14 @@ export const runHeroTick = (
     // 休みの間: 遠ければ中距離まで歩いて詰める(近すぎる時は止まる)。
     if (d > HERO_MID) {
       walkToward({ ...hero, ...patch } as Enemy, tgt.x, tgt.y, HERO_WALK_SPEED, dt, gt, patch, HERO_MID * 0.8);
-      sfx.gallop(sfxGain * 0.7, 0.8);
+      sfx.gallop(sfxGain * 0.7, gallopRate(HERO_WALK_SPEED));
     } else if (d > HERO_NEAR) {
       walkToward({ ...hero, ...patch } as Enemy, tgt.x, tgt.y, HERO_WALK_SPEED * 0.6, dt, gt, patch, HERO_NEAR);
-      sfx.gallop(sfxGain * 0.5, 0.8);
+      sfx.gallop(sfxGain * 0.5, gallopRate(HERO_WALK_SPEED * 0.6));
     } else {
+      // 間合いの内で休む間は佇み(前脚を掻く)。石像にしない。
       Object.assign(patch, { vx: 0, vy: 0 }, faceTowardsNoPause(hero, tgt.x));
+      if (state !== 'hero-idle') Object.assign(patch, { bossState: 'hero-idle', heroStateAt: gt });
       sfx.gallop(0, 1);
     }
     if (patch.bossState === undefined && state !== 'chase') patch.bossState = 'chase';
@@ -428,6 +473,8 @@ export const runHeroTick = (
     if (s.homeIdleSince === null) s.homeIdleSince = gt;
     if (gt - s.homeIdleSince >= HERO_DEPART_IDLE_MS) {
       applyPatch(hero.id, { heroDepartAt: gt, heroShape: undefined });
+      // 見えている時だけ一言(見えない所で去るなら何も言わない)。
+      if (onScreen) useGameStore.setState({ eventBannerText: '蹄の音が遠ざかる', eventBannerUntil: gt + 2400 });
       return;
     }
   } else {
@@ -451,7 +498,7 @@ export const runHeroTick = (
     sfx.gallop(0, 1);
   } else {
     if (patch.bossState === undefined) patch.bossState = 'chase';
-    sfx.gallop(sfxGain * 0.45, 0.8);
+    sfx.gallop(sfxGain * 0.45, gallopRate(HERO_WALK_SPEED * 0.45));
   }
   applyPatch(hero.id, patch);
 };

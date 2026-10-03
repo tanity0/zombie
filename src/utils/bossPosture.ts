@@ -47,7 +47,9 @@ export const usesPostureSystem = (e: PostureSubject): boolean =>
   // 裁定「殴り続けても止まらない」を裏口から壊す)。ここ1箇所で外すと、紫ゲージUI・ブレイク・
   // 紫の報酬予算・5倍処刑は全て postureBoss ガード経由で自動的に出なくなる。
   !isGuardianPhantom(e.type)
-  && (isEngageableBoss(e.type) || POSTURE_ELITE_TYPES.has(e.type) || e.colorTier === 'red');
+  && (isEngageableBoss(e.type) || POSTURE_ELITE_TYPES.has(e.type) || e.colorTier === 'red'
+    // research/MUTANT_HERO.md §10a: 英雄はボス戦の判定(ENGAGEABLE)の外だが、ボス級の体勢値(紫・処刑)は付ける=名指しで足す。
+    || e.type === 'mutant-hero');
 
 export type BossPostureImpact = 'counter' | 'melee' | 'heavy' | 'gun-crit' | 'reflect';
 
@@ -102,6 +104,7 @@ export const bossPostureMax = (e: PostureSubject): number => {
   // POSTURE_ELITE_TYPESには入れない(usesPostureSystemはisEngageableBoss経由で既に付くため。
   // 入れると60分岐に当たって×1.5にならない=このif分岐を専用に足す)。
   if (isBountyType(type)) return 90;
+  if (type === 'mutant-hero') return 90; // research/MUTANT_HERO.md §1: 賞金首と同じ90
   return 100;
 };
 
