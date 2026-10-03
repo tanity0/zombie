@@ -121,7 +121,7 @@ Top-down HD-2D survival game. React + Zustand (simulation) + PixiJS (rendering).
 
 ## ★PC版の作業はスマホを1pxも動かさない(社長指示2026-10-02・MUST)
 社長の言葉: 「**絶対スマホ用の現状が壊れないように分けて作業してね**」。
-- PC の分岐は**横長の時だけ**効く書き方にする(CSS は `landscape:` / `@media (orientation: landscape)`、JS は `w > h` の判定。スマホの横向きは OrientationGuard が塞いでいるので横長=PC)。
+- PC の分岐は**横長の時だけ**効く書き方にする(CSS は `landscape:` / `@media (orientation: landscape)`、JS は `w > h` の判定。スマホの横向きは OrientationGuard が塞いでいるので横長=PC か**タブレットの横持ち**(v0.25.4794〜・タッチ操作のまま横の並べ方を使う))。
   ゲームの判定(湧き・回収・ズーム等)を変える時は、**スマホの寸法で結果が変わらないことをユニットテストで固定**する。
 - **push 前に `node scripts/phone-guard.mjs check`**(dev サーバ 5199 番)。スマホ 430×932 / 375×667 の7画面の配置が基準と1pxでも違えば落ちる。
   基準の作り方・消えた時の撮り直しはスクリプトの冒頭。設計は research/PC_SUPPORT.md。

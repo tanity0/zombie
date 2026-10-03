@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4794 — タブレットの横持ちを開ける(スマホは縦のまま)【2026-10-03 11:15 JST】
+- 社長「はい」(推薦=タブレットだけ横持ち)。`inputDevice.isLandscapeBlocked`=タッチが主 かつ 画面の短い辺<600 の時だけ止める(`blocksLandscape` のテスト3本)。OrientationGuard はこれを読む。
+- 実画: iPad 横 1024×768(タイトル・ホーム2列・ゲーム中の HUD と仮想スティックで移動)/ スマホ横 844×390 は「画面を縦にしてください」のまま。phone-guard: check 14画面 OK。
+- 監査: 判定の1行の付け替え(既存の横長の並べ方をタブレットにも使うだけ・新しい見え方は足していない)のため付けない。
+- 検証: typecheck / lint(0 errors)/ inputDevice.test。
+- 変更: src/utils/inputDevice.ts(.test)/ src/components/OrientationGuard.tsx / CLAUDE.md / research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4793 — PC版対応 段4: 検収監査・クリエイティブ監査の反映【2026-10-03 10:19 JST】
 - 検収(Fable 5.1) (A)2/(C)3/(B)5、クリエイティブ(Fable 5.1) 17件 → research/PC_SUPPORT.md §11-10。品質の(A)は全部直した。
 - 主な変更: StoryReturnPrompt(Enter をボタンに任せる)/ useGameControls(窓の間は移動・向き・指を書かない・受理の門をそろえる・窓の中の Space)/ pcPress(四神舞のフリック後はタップにしない)/

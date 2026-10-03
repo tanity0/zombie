@@ -15,6 +15,18 @@ const hasFinePointer = (): boolean =>
  */
 export const isTouchPrimary = (): boolean => hasTouchScreen() && !hasFinePointer();
 
+/**
+ * 横持ちを止めるか(research/PC_SUPPORT.md §13・社長「はい」2026-10-03=タブレットだけ横持ちを開ける)。
+ * 止めるのは「タッチが主」かつ「画面の短い辺が600未満=スマホ」の時だけ。タブレット(iPad mini の短い辺744〜)は横でも遊べる。
+ * スマホは従来どおり止める(短い辺 360〜430)。マウス/トラックパッドのある端末は従来どおり止めない。
+ */
+export const TABLET_MIN_SHORT_SIDE = 600;
+export const blocksLandscape = (touchPrimary: boolean, screenShortSide: number): boolean =>
+  touchPrimary && screenShortSide < TABLET_MIN_SHORT_SIDE;
+export const isLandscapeBlocked = (): boolean =>
+  typeof window !== 'undefined' &&
+  blocksLandscape(isTouchPrimary(), Math.min(window.screen?.width ?? 0, window.screen?.height ?? 0));
+
 // ---- いま使っている操作の種類(タッチ/マウス) ----
 // タッチとマウスの両方がある端末(Surface・タブレット+マウス等)は、**最後に触れた入力**で操作層を切り替える
 // (設計監査 A-1: 片方に決め打つと、キーボードの無い構成で移動手段がゼロになる)。片方しか無い端末は固定。
