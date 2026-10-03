@@ -241,6 +241,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } from '../utils/telegraphStyle';
+import { heroFrameFor, heroLiftPx, HERO_SHEETS, HERO_STRIKE_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine } from '../utils/biteTelegraph';
 // ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
 import {
@@ -17984,6 +17985,7 @@ export class PixiScene {
       ?? this.enemyJumpTexture(idleTexKey, e, gameTime)
       ?? this.enemyShotTexture(idleTexKey, e, now)
       ?? this.phillCastTexture(idleTexKey, e, gameTime)
+      ?? this.heroTexture(e, gameTime) // research/MUTANT_HERO.md: 英雄の技・佇みのコマ(技ごとに割り付けが違う)
       ?? this.bossPhaseTexture(idleTexKey, e, gameTime)
       ?? this.enemyAttackTexture(idleTexKey, e, gameTime)
       // ★カウンターで技が消された直後だけ、出ていたコマを数コマぶん逆再生して「弾かれた」を見せる
@@ -18250,6 +18252,8 @@ export class PixiScene {
     // 他敵は従来どおり足元アンカー＋遠近スケール。
     const bossFixed = isHiddenBoss(e.type);
     view.container.zIndex = fb.footY;
+    // research/MUTANT_HERO.md §7-1: 英雄の足元に常に湧く黒い霧(本体の下)と、立ち上る黒い粒(本体にかぶってよい)。
+    if (e.type === 'mutant-hero') this.drawHeroFog(e, view, fb.footX, fb.footY, gameTime, now);
     // PACING_PUZZLE.md §10-14#6(フィルは専用レイヤー=filteredWorldの外なので地平線フェードの対象外
     // =外すのが意図。浮遊ボスは遠近/地平線の演出そのものに乗らない)。
     // §14-4-3(使者・hangedman): 北側(画面奥)へ湧いた使者が地平線フェードで見えないまま迫ると
@@ -18644,7 +18648,10 @@ export class PixiScene {
         const bpPl = useGameStore.getState().player;
         const bpSide = e.hunterFleeing || e.dormant ? 0
           : backpedalFaceSide(vx, e.x + e.width / 2, bpPl.x + bpPl.width / 2);
+        // research/MUTANT_HERO.md: 英雄の向きは制御(heroTick)が決める(左右が入れ替わる前に一拍止まってから)。
+        const heroFace = e.type === 'mutant-hero' && e.heroFaceX !== undefined ? (e.heroFaceX > 0 ? toRight : -toRight) : 0;
         const want = kbFacingLock ? cur
+          : heroFace !== 0 ? heroFace
           : bandDir !== 0 ? sweepFaceMulFor(bandDir, sweepSwing, cur)
             : bpSide !== 0 ? (bpSide > 0 ? toRight : -toRight)
               : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
@@ -18674,8 +18681,10 @@ export class PixiScene {
         now,
       )
       : 0;
+    // research/MUTANT_HERO.md: 英雄の跳躍の高さ(見た目だけ・判定は地面のまま=CLAUDE.md「Y方向」の掟)。
+    const heroLift = e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : 0;
     view.sprite.position.set(Math.round(fb.footX + liftShake + sweepWindupTremor),
-      Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx));
+      Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx - heroLift));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
 
@@ -18819,7 +18828,7 @@ export class PixiScene {
       // ★検収差し戻し(中11)対応: 影の寸法は呼吸/被弾スカッシュ/crouch・jump(aiSqX/Y)を含まない
       // 「素のscale」(sc)を使う。持ち上げ系(liftHop/aiHop/kbHop/lungeOffY)は heightPx 相当として渡す。
       view.shadowScale = sc;
-      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY;
+      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY + (e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : 0);
       // faceMul(③振り向き)は符号を持つ=ミラー。歩幅スカッシュ(motSqX/Y)は他の変形と同じ掛け算合成。
       // ★死体は**縦に潰れて横に広がりながら**消える(社長指示2026-08-25「突然パっと消えちゃうので、
       // すこし吹っ飛んで潰れて消えるようにして」)。判定には一切関与しない純粋な描画。
@@ -19496,6 +19505,8 @@ export class PixiScene {
     // usesMimirLaser経由で下のブロックがそのまま効くのでここには書かない。
     // §6.38 B2b(持ち越し①): 武器スプライト(バス停=標識/馬乗り=鞭/鋏=裁ち鋏/舞妓=毬)を各技へ配線する
     // (「判定が正しくても絵が出ていなければ未達」。派手側に倒す=大きめのlengthPx)。
+    // research/MUTANT_HERO.md: 英雄の赤い予告(溜めの開始で出て、当たる瞬間に消え切る)と斬撃の弧。
+    if (e.type === 'mutant-hero') this.drawHeroTelegraph(e, view, o, gameTime, now);
     if (isBountyType(e.type)) {
       const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
       const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
@@ -31143,6 +31154,183 @@ export class PixiScene {
    * 放物線 4u(1-u) で=踏み切りで最も速く上がり、頂点で止まり、落ちながら加速して州の終わり(着地)で0。
    * 時計は `gameTime`(判定と同じ・ヒットストップで止まる)。`lift` を持たない州なら0。
    */
+  /** 英雄の足元の霧(本体の container の一番下に置く=本体と一緒に消える)と黒い粒。 */
+  private heroFogNodes = new Map<string, { fog: Sprite; trail: Sprite; motes: Graphics; drift: number; trailAt: number; trailX: number; trailY: number; landSwellAt: number; wasAir: boolean }>();
+
+  /**
+   * research/MUTANT_HERO.md §7-1。素材は横1列16コマ(57×22)を約5倍に**線形補間で**拡大(ぼかしの絵なので劣化しない)。
+   * α0.6・通常の重ね(乗算にしない)/ 大きさは2つの周期でゆっくり伸び縮み / 動くと進む向きの逆へ尾を引く /
+   * 跳んだら霧は地面に残って薄れ、着地で大きく膨らんでから落ち着く / 後半は大きく・粒を倍・尾を長く。
+   * 判定ゼロ(派手さの絵)。負荷: スプライト2枚+粒10個以下の Graphics(強glowではない=投影影を落とさない)。
+   */
+  private drawHeroFog(e: Enemy, view: ActorView, footX: number, footY: number, gameTime: number, now: number): void {
+    const slices = this.sheetSlices('mutant-hero-fog', 16);
+    let n = this.heroFogNodes.get(e.id);
+    if (!n || n.fog.parent !== view.container) {
+      if (n) { n.fog.destroy(); n.trail.destroy(); n.motes.destroy(); }
+      const fog = new Sprite(); fog.anchor.set(0.5, 0.82);
+      const trail = new Sprite(); trail.anchor.set(0.5, 0.82); trail.visible = false;
+      const motes = new Graphics();
+      view.container.addChildAt(trail, 0);
+      view.container.addChildAt(fog, 1);
+      view.container.addChild(motes);
+      n = { fog, trail, motes, drift: 0, trailAt: -1e9, trailX: 0, trailY: 0, landSwellAt: -1e9, wasAir: false };
+      this.heroFogNodes.set(e.id, n);
+    }
+    if (!slices) { n.fog.visible = false; n.trail.visible = false; n.motes.clear(); return; }
+    const tex = slices[Math.floor(now / 100) % 16];
+    const p2 = e.heroPhase2 === true;
+    const depth = this.depthScaleEnemy(footY);
+    const w0 = e.width * 2.6 * depth * (p2 ? 1.3 : 1);
+    const h0 = w0 * (tex.height / Math.max(1, tex.width));
+    const breathX = 1 + 0.06 * Math.sin((now / 3200) * Math.PI * 2);
+    const breathY = 1 + 0.06 * Math.sin((now / 2700) * Math.PI * 2 + 1.3);
+    // 尾: 進む速さに比例して、進む向きの逆へ最大40px(後半は64px)。慣性で戻る。
+    const vxNorm = Math.max(-1, Math.min(1, (e.vx ?? 0) / 300));
+    const driftTarget = -vxNorm * (p2 ? 64 : 40);
+    n.drift += (driftTarget - n.drift) * 0.08;
+    const air = heroLiftPx(e, gameTime) > 0;
+    if (air && !n.wasAir) { n.trailAt = now; n.trailX = (e.heroFromX ?? footX); n.trailY = footY; }
+    if (!air && n.wasAir) n.landSwellAt = now;
+    n.wasAir = air;
+    // 着地の膨らみ ×1.4 → 1.0(400ms・ease-out)。
+    const sw = Math.max(0, Math.min(1, (now - n.landSwellAt) / 400));
+    const swell = 1 + 0.4 * (1 - sw) * (1 - sw);
+    n.fog.texture = tex;
+    n.fog.visible = !air;
+    n.fog.position.set(footX + n.drift, footY + 2);
+    n.fog.scale.set((w0 / Math.max(1, tex.width)) * breathX * swell, (h0 / Math.max(1, tex.height)) * breathY * swell);
+    n.fog.alpha = 0.6;
+    // 跳んだ所に残る霧(800msで薄れる)。
+    const tu = (now - n.trailAt) / 800;
+    if (tu >= 0 && tu < 1) {
+      n.trail.visible = true;
+      n.trail.texture = tex;
+      n.trail.position.set(n.trailX, n.trailY + 2);
+      n.trail.scale.set(w0 / Math.max(1, tex.width) * (1 + 0.15 * tu), h0 / Math.max(1, tex.height) * (1 + 0.1 * tu));
+      n.trail.alpha = 0.6 * (1 - tu) * (1 - tu);
+    } else n.trail.visible = false;
+    // 黒い粒: 霧の上辺から常に立ち上る(1.2〜2.0秒・上へ40〜90px・横に揺らぐ)。
+    n.motes.clear();
+    const count = p2 ? 10 : 5;
+    for (let i = 0; i < count; i++) {
+      const life = 1200 + ((i * 397) % 800);
+      const ph = ((now + i * 733) % life) / life;
+      const seed = Math.sin(i * 12.9898) * 43758.5453;
+      const rx = (seed - Math.floor(seed)) - 0.5;
+      const x = footX + n.drift * 0.6 + rx * w0 * 0.7 + Math.sin(now / 520 + i * 1.7) * 6;
+      const rise = 40 + ((i * 53) % 50);
+      const y = footY - h0 * 0.35 - ph * rise * depth - heroLiftPx(e, gameTime);
+      const a = 0.6 * (ph < 0.15 ? ph / 0.15 : 1 - (ph - 0.15) / 0.85);
+      if (a <= 0.01) continue;
+      n.motes.circle(x, y, (2.6 - ph * 1.2) * depth).fill({ color: 0x0b0808, alpha: a });
+    }
+  }
+
+  /** 英雄の最後の予告の形(当たった後の斬撃の弧を、予告と同じ場所に出すため)。描画だけの覚え。 */
+  private heroShapeMemo = new Map<string, { shape: HeroShape; move: HeroMoveKey; step: number }>();
+
+  /**
+   * research/MUTANT_HERO.md §5: 英雄の赤い予告。形(heroShape)は溜め開始で決まって動かない=判定と同じ。
+   * 進み=溜め開始(bossWindupStartAt)→当たる瞬間(heroHitAt)。走る技は溜め+走りの通しで流れ、終点の一撃で消え切る。
+   * 走る道筋は**赤くしない**(灰の点線)=道筋そのものは当たらないので、赤くすると「赤いのに当たらない」になる。
+   * 当たった後(hero-strike)は、斬撃の技だけ刃の弧を判定より一回り大きく出す(派手さの絵=判定ゼロ)。
+   */
+  private drawHeroTelegraph(e: Enemy, view: ActorView, o: Graphics, gameTime: number, now: number): void {
+    const st = e.bossState;
+    const sh = e.heroShape;
+    const style = telegraphStyleFor(e.type);
+    if (sh && (st === 'hero-windup' || st === 'hero-motion') && e.heroHitAt !== undefined && e.bossWindupStartAt !== undefined && e.heroMove) {
+      this.heroShapeMemo.set(e.id, { shape: sh, move: e.heroMove, step: e.heroStep ?? 0 });
+      const prog = Math.max(0, Math.min(1, (gameTime - e.bossWindupStartAt) / Math.max(1, e.heroHitAt - e.bossWindupStartAt)));
+      const fillA = telFillA(prog, 1) * TELEGRAPH_FILL_MULT;
+      const strokeA = telStrokeA(prog, 1);
+      const runs = e.heroMove === 'charge' || (e.heroMove === 'leapcharge' && (e.heroStep ?? 0) === 1);
+      if (runs && e.heroFromX !== undefined && e.heroToX !== undefined && e.heroFromY !== undefined && e.heroToY !== undefined) {
+        // 道筋(灰の点線・当たらない)。走り出したら通り過ぎた所から消える。
+        const dx = e.heroToX - e.heroFromX, dy = e.heroToY - e.heroFromY;
+        const len = Math.hypot(dx, dy);
+        if (len > 1) {
+          const ux = dx / len, uy = dy / len;
+          const passed = st === 'hero-motion' ? Math.hypot(e.x + e.width / 2 - e.heroFromX, e.y + e.height / 2 - e.heroFromY) : 0;
+          for (let d = passed; d < len; d += 26) {
+            const d2 = Math.min(len, d + 13);
+            o.moveTo(e.heroFromX + ux * d, e.heroFromY + uy * d).lineTo(e.heroFromX + ux * d2, e.heroFromY + uy * d2)
+              .stroke({ width: 3, color: 0x2a2222, alpha: 0.45 });
+          }
+        }
+      }
+      if (sh.kind === 'circle') {
+        const mask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(o, sh.cx, sh.cy, sh.radius, prog, 0xff2a2a, fillA, style)
+          : (o.circle(sh.cx, sh.cy, sh.radius).fill({ color: 0xff2a2a, alpha: fillA }), 1);
+        o.circle(sh.cx, sh.cy, sh.radius).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: strokeA * mask });
+      } else if (sh.kind === 'fan') {
+        const a0 = sh.angle - sh.halfArc, a1 = sh.angle + sh.halfArc;
+        const mask = this.drawSweepSectorFill(o, sh.cx, sh.cy, sh.radius, a0, a1, prog, 0xff2a2a, fillA, style);
+        o.moveTo(sh.cx, sh.cy).lineTo(sh.cx + Math.cos(a0) * sh.radius, sh.cy + Math.sin(a0) * sh.radius)
+          .arc(sh.cx, sh.cy, sh.radius, a0, a1).lineTo(sh.cx, sh.cy)
+          .stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: strokeA * mask });
+      } else {
+        this.drawAngelZoneCapsule(view, o, sh.fx, sh.fy, sh.tx, sh.ty, sh.halfWidth, prog, now, 0, undefined, style);
+      }
+      return;
+    }
+    if (st === 'hero-strike') {
+      const m = this.heroShapeMemo.get(e.id);
+      if (!m) return;
+      const slash = m.move === 'overhead' || m.move === 'combo' || m.move === 'upper' || m.move === 'sweep' || m.move === 'charge';
+      if (!slash) return;
+      // 刃の弧(くすんだ骨色+赤の縁)。振り抜きの尺で 0→1、出だしで一気に伸び、終わりで薄れる(慣性)。
+      const u = Math.max(0, Math.min(1, (gameTime - (e.heroStateAt ?? gameTime)) / HERO_STRIKE_MS));
+      const grow = 1 - Math.pow(1 - Math.min(1, u * 2.2), 3);
+      const fade = u < 0.45 ? 1 : 1 - (u - 0.45) / 0.55;
+      const s2 = m.shape;
+      if (s2.kind === 'fan') {
+        const r = s2.radius * 1.12;
+        const a0 = s2.angle - s2.halfArc * 1.1;
+        const sweep = s2.halfArc * 2.2 * grow;
+        // 払い上げは下から上へ=逆回り。
+        const rev = m.move === 'upper';
+        const from = rev ? a0 + s2.halfArc * 2.2 : a0, to = rev ? from - sweep : from + sweep;
+        for (let i = 0; i < 4; i++) {
+          const rr = r * (1 - i * 0.06);
+          o.moveTo(s2.cx + Math.cos(from) * rr, s2.cy + Math.sin(from) * rr).arc(s2.cx, s2.cy, rr, from, to, rev)
+            .stroke({ width: 14 - i * 3, color: i === 0 ? 0x7f1d1d : 0xe7dccb, alpha: (i === 0 ? 0.55 : 0.75) * fade });
+        }
+      } else if (s2.kind === 'band') {
+        const dx = s2.tx - s2.fx, dy = s2.ty - s2.fy;
+        const len = Math.hypot(dx, dy) * 1.15 * grow;
+        const ang = Math.atan2(dy, dx);
+        const ux = Math.cos(ang), uy = Math.sin(ang);
+        const nx = -uy, ny = ux;
+        // 縦の一撃: 刃の通り道に細長い三日月(根元が太く先が細い)。
+        const w = s2.halfWidth * 1.3;
+        o.moveTo(s2.fx + nx * w * 0.2, s2.fy + ny * w * 0.2)
+          .quadraticCurveTo(s2.fx + ux * len * 0.5 + nx * w, s2.fy + uy * len * 0.5 + ny * w, s2.fx + ux * len, s2.fy + uy * len)
+          .quadraticCurveTo(s2.fx + ux * len * 0.5 + nx * w * 0.25, s2.fy + uy * len * 0.5 + ny * w * 0.25, s2.fx + nx * w * 0.2, s2.fy + ny * w * 0.2)
+          .fill({ color: 0xe7dccb, alpha: 0.7 * fade });
+        o.moveTo(s2.fx, s2.fy).lineTo(s2.fx + ux * len, s2.fy + uy * len).stroke({ width: 3, color: 0x7f1d1d, alpha: 0.6 * fade });
+      }
+    }
+  }
+
+  /**
+   * research/MUTANT_HERO.md §5-1: 英雄のコマ。技ごとに構えの絵が違う(振り下ろし=頭上・横薙ぎ=水平・払い上げ=下段)ので、
+   * 州の表ではなく `heroFrameFor`(純関数)が決める。null=歩き/立ち絵の既定へ任せる(追いかけ・帰巣の間)。
+   */
+  private heroTexture(e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
+    if (e.type !== 'mutant-hero') return null;
+    const st = e.bossState ?? 'chase';
+    const since = gameTime - (e.heroStateAt ?? gameTime);
+    const span = Math.max(1, (e.bossStateUntil ?? gameTime) - (e.heroStateAt ?? gameTime));
+    const f = heroFrameFor({ state: st, move: e.heroMove, step: e.heroStep ?? 0, u: Math.max(0, Math.min(1, since / span)), sinceMs: since });
+    if (!f) return null;
+    const spec = HERO_SHEETS[f.sheet];
+    const slices = this.sheetSlices(spec.name, spec.frames);
+    return this.rememberAtkFrame(e, spec.name, spec.frames, f.frame, slices);
+  }
+
   private bossPhaseLiftSheetPx(idleTexKey: string, e: Enemy, gameTime: number): number {
     const peak = bossPhaseFor(idleTexKey, e.bossState)?.phase.lift;
     if (!peak) return 0;

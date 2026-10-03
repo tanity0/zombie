@@ -69,6 +69,8 @@ import {
 import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_ARENA §9: クリ被弾の2/3減速+紫中の弾パリィ停止
 // v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
 import { distToBandRect } from './geometry';
+import { circleHitsFan } from './heroScript';
+import { applyBlastToHero, applyHeroBlastToEnemies, markHeroHit } from './heroBlast'; // research/MUTANT_HERO.md
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
@@ -240,7 +242,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   const blasts = useGameStore.getState().pumpkinBlasts;
   if (blasts.length === 0) return;
   // スカジ氷=専用SE(社長提供) / それ以外(パンプキン着地等)=heavy-impact。
-  if (blasts.some(b => !b.ice)) fx.playSfx('heavy-impact');
+  // research/MUTANT_HERO.md: 英雄の斬撃・タックルは自分の音(下)。叩きつけ(棹立ち・跳躍)は重い音のまま。
+  if (blasts.some(b => !b.ice && b.moveKey !== 'hero-slash' && b.moveKey !== 'hero-tackle')) fx.playSfx('heavy-impact');
+  if (blasts.some(b => b.moveKey === 'hero-slash')) fx.playSfx('thor-sweep');
+  if (blasts.some(b => b.moveKey === 'hero-tackle')) fx.playSfx('jump-land');
   if (blasts.some(b => b.ice)) fx.playSfx('skadi-ice');
   const bp = useGameStore.getState().player;
   const bpcx = bp.x + bp.width / 2;
@@ -264,6 +269,16 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       fx.spawnRing(b.x, b.y, 6, b.radius, 'rgba(150,210,255,0.9)', 4, 300);
       fx.spawnBurst(b.x, b.y, '#bfe6ff', 16);
       fx.spawnGlow(b.x, b.y, b.radius, 'rgba(150,210,255,', 280);
+    } else if (b.moveKey?.startsWith('hero-')) {
+      // research/MUTANT_HERO.md: 英雄の一撃。斬撃の弧は描画(pixiScene)が出す。叩きつけ・タックルは砂埃と土の色の輪
+      // (派手さの絵=判定より大きく。全画面の橙のフラッシュは出さない=爆発ではない)。
+      if (b.moveKey === 'hero-slam' || b.moveKey === 'hero-tackle') {
+        const r0 = b.fan ? b.fan.radius : b.capsule ? b.capsule.halfWidth * 2 : b.radius;
+        const sx = b.fan ? b.fan.cx : b.capsule ? b.capsule.tx : b.x, sy = b.fan ? b.fan.cy : b.capsule ? b.capsule.ty : b.y;
+        fx.spawnRing(sx, sy, 10, r0 * 1.35, 'rgba(120,96,72,0.85)', 6, 520);
+        fx.spawnRing(sx, sy, 6, r0 * 0.9, 'rgba(40,30,26,0.75)', 4, 420);
+        fx.spawnBurst(sx, sy, '#6b5444', 22);
+      }
     } else if (b.moveKey === 'driller-thrust') {
       // 削岩型の突き(検収監査#5): 雑魚の通常攻撃なので**全画面フラッシュは出さない**(3.5秒ごとに
       // 画面全体が明滅するのはうるさい)。判定終端の小さな火花+リングだけ(色はドリル=琥珀寄り)。
@@ -284,7 +299,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     const pr = Math.max(bp.width, bp.height) / 2;
     // M51: 薙ぎ払い(capsule付き)は円ではなく直線+半幅のカプセル判定(distToSegment流用)。
     // それ以外(パンプキン着地/スカジ氷等)は既存どおり円形(爆心からの距離<=半径+双方の当たり半径)。
-    const inBlast = b.capsule
+    const inBlast = b.fan
+      ? circleHitsFan(bpcx, bpcy, pr, b.fan.cx, b.fan.cy, b.fan.angle, b.fan.halfArc, b.fan.radius)
+      : b.capsule
       ? distToBandRect({ x: bpcx, y: bpcy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }, b.capsule.halfWidth) <= pr
       : Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr;
     if (inBlast) {
@@ -300,6 +317,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         // 検収監査#6の継承(§14-2): 死因の技名はmoveKeyで分ける(伐採人の薙ぎ払いが「落下攻撃」と
         // 表示される取りこぼしを防ぐ)。
         const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
+          : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
           : b.moveKey === 'jo-slam' ? '叩きつけ' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey);
         fx.playSfx('player-damage');
@@ -317,6 +335,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           knockbackMs: kbMs,
         } }));
         if (died) fx.triggerPlayerDeath(bpcx, bpcy);
+        if (b.moveKey?.startsWith('hero-')) markHeroHit(b.enemyId);
       }
     }
     // G4b: 同じ爆発をゴーストにも(プレイヤーと同じ幾何・同じ量・同じ解決ループ内)。
@@ -327,8 +346,12 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     // 請求が無い/期限切れなら従来どおり食らう(ゴーストは弾けない=居れば食らう。i-frameはdamageSummon側)。
     if (ghostAlly) {
       const owner = enemiesForGhost.find(e => e.id === b.enemyId);
-      if (owner && isEngageableBoss(owner.type)) {
-        const inBlastGhost = b.capsule
+      // research/MUTANT_HERO.md §4-2-4(社長「守護霊も含めて当たる様に」): 雑魚の爆風(パンプキン・削岩型・伐採人)と
+      // 英雄の技も守護霊に当てる(旧: ボスの爆風だけ)。
+      if (owner) {
+        const inBlastGhost = b.fan
+          ? circleHitsFan(gacx, gacy, gar, b.fan.cx, b.fan.cy, b.fan.angle, b.fan.halfArc, b.fan.radius)
+          : b.capsule
           ? distToBandRect({ x: gacx, y: gacy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }, b.capsule.halfWidth) <= gar
           : Math.hypot(gacx - b.x, gacy - b.y) <= b.radius + gar;
         if (inBlastGhost) {
@@ -350,9 +373,16 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           } else {
             damageGhostAllyByBossMove(ghostAlly.id, b.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3), b.x, b.y,
               `blast:${b.moveKey ?? (b.capsule ? 'capsule' : 'circle')}`);
+            if (b.moveKey?.startsWith('hero-')) markHeroHit(b.enemyId);
           }
         }
       }
+    }
+    // research/MUTANT_HERO.md §4: 英雄の一撃は予告の中の敵にも当たる / 英雄以外の爆風は英雄にも当たる(第三者の的)。
+    if (b.moveKey?.startsWith('hero-')) {
+      if (applyHeroBlastToEnemies(b, fx) > 0) markHeroHit(b.enemyId);
+    } else {
+      applyBlastToHero(b);
     }
   }
   if (parriedEnemyIds.length > 0) {

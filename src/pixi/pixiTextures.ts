@@ -112,6 +112,8 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'miguel', scaleMode: 'nearest' },          // 536x800 = 1.6MB
     { name: 'bounty-maiko', scaleMode: 'nearest' },    // 660x800 = 2.0MB
     { name: 'bounty-ranged', scaleMode: 'nearest' },   // 592x800 = 1.8MB
+    { name: 'mutant-hero', scaleMode: 'nearest' },     // 180x202 = 0.15MB(英雄(変異)の立ち絵=駆け足の0コマ目)
+    { name: 'mutant-hero-fog', scaleMode: 'linear' },  // 912x22 = 0.08MB(足元の黒い霧。ぼかしの絵を約5倍へ拡大=線形補間)
   ],
   /**
    * ★ボス級の**アニメーションシート**(社長指示2026-09-24「乗せて」)。**所属は付けない=網だけで拾う**

@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "918 files / 復号後 約690MB",
+ "generatedFor": "922 files / 復号後 約696MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2893,6 +2893,30 @@
    "h": 22,
    "bytes": 24398,
    "sha": "6df1aa25ae4d09fa"
+  },
+  "sprites/mutant-hero-rear.png": {
+   "w": 2960,
+   "h": 202,
+   "bytes": 487518,
+   "sha": "f0f8135b4c6b5d73"
+  },
+  "sprites/mutant-hero-slash.png": {
+   "w": 2976,
+   "h": 202,
+   "bytes": 455431,
+   "sha": "697aec9523f78ace"
+  },
+  "sprites/mutant-hero-walk.png": {
+   "w": 1800,
+   "h": 202,
+   "bytes": 338898,
+   "sha": "a04abaa1e695008a"
+  },
+  "sprites/mutant-hero.png": {
+   "w": 180,
+   "h": 202,
+   "bytes": 46956,
+   "sha": "12d73aa5e6b7e2bc"
   },
   "sprites/npc/chen-0.png": {
    "w": 297,

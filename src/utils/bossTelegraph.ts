@@ -190,6 +190,11 @@ export const AOE_TELEGRAPH_AUDIT: readonly AoeTelegraphEntry[] = [
   // angelBossTick.ts: ACRASIEL_WARP_TELEGRAPH_MS(v0.25.2609で800→1000へ是正) / ACRASIEL_WARP_IMPACT_RADIUS=92
   // 旧800msでは83.5pxしか歩けず半径92pxから**構造的に**出られなかった(監査で発見・換算式②違反)。
   { name: 'acrasiel-warp(転移衝撃)', escapeMs: 1000, radiusPx: 92 },
+  // research/MUTANT_HERO.md(英雄(変異)): heroScript.HERO_MOVES の値の複製。
+  // 棹立ち=前脚の着く点(中心から45px前)の円 r160・溜め1000ms。中距離(≥150px=HERO_NEAR)でだけ選ぶ=起点150。
+  { name: 'mutant-hero-rear(棹立ちの叩きつけ)', escapeMs: 1000, radiusPx: 160, standDistPx: 150 },
+  // 跳躍=相手の位置に置く着地円 r180・溜め1350+滞空450=1800ms(着地円は溜め開始から出る)。
+  { name: 'mutant-hero-leap(跳躍の着地)', escapeMs: 1800, radiusPx: 180 },
 
   // --- 下限未満だが「意図」として据え置くもの(v0.25.2609では直さず記録に留める) ---
   // useGameLoop.ts: MIMIR_BITE_WINDUP_MS=700 / bodyCenteredAoe.MIMIR_BITE_RADIUS=216(v0.25.2612で

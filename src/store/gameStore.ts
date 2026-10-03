@@ -165,7 +165,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
@@ -219,7 +219,7 @@ import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreo
 import { stampMeleeSwingCommit } from '../utils/thorNihil';
 // research/AI_HUMANIZE.md B1(コマ台帳・記録専用): giantbat系の州満了エッジに1行差す。
 import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
-import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
+import { ZOOM_MIN_ABS, isPointInZoomedViewport } from '../utils/cameraZoom';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
@@ -1733,6 +1733,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'bounty-melee': '馬乗り(変異)',
   'bounty-balance': '鋏(変異)',
   'bounty-maiko': '舞妓(変異)',
+  'mutant-hero': '英雄(変異)', // research/MUTANT_HERO.md(社長命名2026-10-03)
 };
 // 社長指示v0.25.3451「なぜUIによって名前の出し方を変えるの?全部の箇所で統一に決まってる」:
 // 城ボス(giantbat)もステージ別の台帳名(bossCutin=名前の正本)で表示する。死因・討伐バナー・歴史年表の
@@ -5217,6 +5218,8 @@ export interface WallInscriptionEvent {
 export interface PumpkinBlast {
   x: number; y: number; radius: number; damage: number; enemyId: string; ice?: boolean;
   capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number };
+  /** research/MUTANT_HERO.md: 扇の形(英雄の薙ぎ・払い・突進の終点)。指定時は円・帯より優先して扇で判定する。 */
+  fan?: { cx: number; cy: number; angle: number; halfArc: number; radius: number };
   moveKey?: string;
   /**
    * **この技だけの押し出し**(v0.25.2653・BOSS_MAKER.md §9-2)。未指定=全ゲーム共通の
@@ -5981,7 +5984,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide, postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾=飛翔時間つきの形。null=従来の導出・v0.25.3640監査A)
+  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾=飛翔時間つきの形。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -12399,6 +12402,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 溜め(crouch)・着地後(recover)は通常どおり被弾する(空中だけ無敵)。
       if (enemy.aiPhase === 'jump') return { enemies };
 
+      // research/MUTANT_HERO.md §6-2(社長「画面に映っていない時は…喰らわないでよい」): 画面外の英雄は
+      // どの攻撃も受けない。入口はここ1か所(銃・近接・爆発・継続の全経路が通る)。
+      if (isMutantHero(enemy.type) && !isPointInZoomedViewport(
+        enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, state.camera, state.gameBounds, state.viewZoom)) {
+        return { enemies };
+      }
+
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統①): 適用順は**早期returnの直後・
       // 紫の報酬予算(applyBrokenGunReward/applyBrokenMeleeFatal)と紅き夜補正より前**
       // (0ダメージ化したヒットが報酬予算を食わないこと)。damageEnemy へ来るのは銃/サブ/爆発と
@@ -12491,6 +12501,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const hatePatch = (eff > 0 && isHateTrackedBossType(enemy.type))
         ? (hateSource === 'ghost'
             ? { hateGhostBuckets: addHateDamage(enemy.hateGhostBuckets, state.gameTime, eff) }
+            // research/MUTANT_HERO.md: 英雄(中立)の一撃は誰のヘイトにも積まない。
+            : hateSource === 'neutral' ? {}
             : { hatePlayerBuckets: addHateDamage(enemy.hatePlayerBuckets, state.gameTime, eff) })
         : {};
       // v0.25.2490(社長裁定「守護霊に攻撃されたら守護霊に向く」): ゴースト起因ダメージを受けた
@@ -12542,7 +12554,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // `'dot'` は「画面を揺らさない」の箱で**犬の噛みつき・タレット・味方の射撃まで入っていた**ため、
       // 量で決める形へ置き換えた。**`lastHit` は従来どおり書く**=点滅・跳ね・光は変えない。
       const hitAt = Date.now();
-      const dotPatch = { lastHitDmg: eff };
+      const dotPatch = { lastHitDmg: eff,
+        // research/MUTANT_HERO.md §10a: 英雄の帰巣は「プレイヤーからの被弾」だけを見る(lastHit はゾンビの被弾でも打たれる)。
+        ...(isMutantHero(enemy.type) && hateSource === 'player' && eff > 0 ? { heroPlayerHitAt: state.gameTime } : {}) };
       const updatedEnemies = enemies.map(e =>
         e.id === id ? { ...e, health: newHealth, lastHit: hitAt, ...dotPatch, ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
       );
@@ -13297,7 +13311,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.38 B1(賞金首): idol等と同じ「専用コントローラ(bountyTick.ts)で動く」型なので同様に抜ける。
         // research/GHOST_BOSS.md(幻影): 専用コントローラ(phantomTick.ts)だけが動かす=二重駆動の禁止。
         // ここを抜けないと、通常追跡AI(接近/接触)と phantomTick が同じフレームで座標を奪い合う。
-        if (isHiddenBoss(enemy.type) || isBountyType(enemy.type) || isGuardianPhantom(enemy.type)) return enemy;
+        // research/MUTANT_HERO.md(英雄): 専用コントローラ(heroTick.ts)だけが動かす。
+        if (isHiddenBoss(enemy.type) || isBountyType(enemy.type) || isGuardianPhantom(enemy.type) || isMutantHero(enemy.type)) return enemy;
 
         // Bosses pop up briefly when they take melee finisher-grade damage;
         // while airborne they should read as caught, not still advancing.
@@ -17778,6 +17793,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   dropEnemyXp: (enemy, x, y, idPrefix, value) => {
+    // research/MUTANT_HERO.md: 英雄は倒れても何も落とさない(社長「倒された時は、一旦保留で無し」)。全ての撃破経路がここを通る。
+    if (isMutantHero(enemy.type)) return;
     // 難易度⑤(DirectorRank): HARVEST相当のフェーズ中だけ有効な倍率(通常は1)。useGameLoopが毎フレーム更新。
     const v = Math.round((value ?? enemy.experienceValue) * getDirectorRewardMult());
     const base = xpOrbCountForEnemy(enemy);
@@ -17789,6 +17806,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   dropEnemyCurrency: (enemy, x, y) => {
+    if (isMutantHero(enemy.type)) return; // research/MUTANT_HERO.md: 英雄は何も落とさない(上と同じ)
     // PACING_PUZZLE.md §7-11c(3): レール(elite)のドロップバイアス=トレジャー。既定(rail未指定)は
     // railTreasureDropMultが1を返すため無改変。トレジャー抽選の唯一の出どころ(dropEnemyCurrency)に乗算。
     const treasureChance = Math.max(0, Math.min(1,

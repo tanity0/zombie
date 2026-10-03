@@ -164,6 +164,9 @@ export const ENEMY_WALK_SHEETS: Readonly<Record<string, number>> = {
   //   体の大きさは全コマ同じ(頭の幅・裾の位置が±4px)。送りは前方ループ(継ぎ目15→0の重なり 0.78=隣どうし 0.72〜0.84 の範囲内)。
   // ★毬の別スプライト(`bounty-maiko-temari`)はそのまま出る。
   'bounty-maiko': 16,
+  // ★英雄(変異)(`mutant-hero`・research/MUTANT_HERO.md)。社長支給2026-10-03「歩きこっちで」。10コマ(1800×202・縮小なし・1.39MB=遅延組)。
+  //   足元は全コマ最下行・絵の中心 89〜90(1px以内)=ずらし不要。左向き(既定)=馬首が左。
+  'mutant-hero': 10,
   // ★アイドル(`idol`・ステージ2の隠しボス)。社長支給2026-09-29「**アイドル歩き**」。16コマ(支給 1872×142 → 上の空き2行を落として **117×140**・1.00MB。※当初0.87MBと誤記=v0.25.4727で訂正。遅延組=下の常駐表)。
   //   銃を前へ構えたまま、髪を揺らして歩く。素の向きは立ち絵と同じ右向き(アイドルは独自の向き `idolFacingLeft` で反転する)。
   //   雑魚と同じ歩きの経路=**進んだ距離でコマを送る**。**止まったら立ち絵へ戻る**(`ENEMY_WALK_STOP_TO_IDLE`・社長指示2026-09-29。他の歩きのシートを持つ敵は止まったコマのまま)。
@@ -1340,6 +1343,8 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   // 鋏(変異)。歩き0.49+攻撃0.83=1.32MB。ステージ4でしか出ず、出現時に告知を挟む=遅延。
   // 舞妓(変異)。歩き1.16+技1.11=2.27MB。ステージ5でしか出ず、出現時に告知を挟む=遅延。
   'bounty-maiko': 'deferred',
+  // 英雄(変異)。駆け足1.39+棹立ち2.28+斬撃2.29=**5.96MB**。今は変異体対策室だけに置く(社長指示2026-10-03)+姿が見えてからカットイン=遅延。
+  'mutant-hero': 'deferred',
   'bounty-balance': 'deferred', // 研究所ゾンビLv3。歩き1.43MB+跳び1.30MB。同じく休眠したまま最初から地図に置かれている
 };
 
@@ -2001,6 +2006,12 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       { state: 'lantern-recover', seq: [9, 10], mode: 'stretch' },
     ],
   },
+  // ★英雄(変異)(`mutant-hero`・research/MUTANT_HERO.md)。社長支給2026-10-03。棹立ち16コマ・斬撃16コマ(高さ202・縮小なし)。
+  //   州とコマの割り付けは**技ごとに違う**(同じ州 `hero-windup` でも、振り下ろしは頭上・横薙ぎは水平で止まる)ので、
+  //   ここでは州を表に書かず(phases 空)、コマは `heroScript.heroFrameFor` が決める(描画は pixiScene の heroTexture)。
+  //   この表に載せるのは**読み込み・常駐の決定・原盤台帳の照合に乗せるため**。足元は全コマ最下行・絵の中心のぶれ1px以内(実測)。
+  { idle: 'mutant-hero', name: 'mutant-hero-rear', frames: 16, bodyH: 200, phases: [] },
+  { idle: 'mutant-hero', name: 'mutant-hero-slash', frames: 16, bodyH: 200, phases: [] },
 ];
 
 /**

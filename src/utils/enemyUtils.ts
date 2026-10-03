@@ -162,11 +162,19 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // STAGE_BOSS_HEALTH_BY_STAGE['stage-ex1']で必ず上書きされる**。CONSTANT_STRENGTH_TYPES編入により
   // その上書きが唯一の実効HP。damage=38は他の天使/裏ボスと同じ叩き台(接触・技はバッチ2)。
   phillboss: { width: 60, height: 30, speed: 70, health: 500, damage: 38, experienceValue: 0 },
+  // research/MUTANT_HERO.md(英雄(変異)・中立の騎馬ボス): 判定=足元の矩形 110×60(馬の胴)。
+  //  ・damage=0 = **接触では削らない**(人を傷つけるのは赤い予告のある技だけ=中立)。
+  //  ・speed は heroTick が自分で動かす(歩き95px/s)ので参照されない。health はスポーン側が上書きする。
+  //  ・experienceValue=0。倒れても経験値・コインは落とさない(ドロップ関数を呼ばない=社長「保留で無し」)。
+  'mutant-hero': { width: 110, height: 60, speed: 142, health: 2000, damage: 0, experienceValue: 0 },
 };
 
 /** PACING_PUZZLE.md §6.38(賞金首・B1): 4型の集合。texture名=type規約(getTexture(e.type))。 */
 export const BOUNTY_ENEMY_TYPES = new Set<EnemyType>(['bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko']);
 export const isBountyType = (t: EnemyType): boolean => BOUNTY_ENEMY_TYPES.has(t);
+
+/** research/MUTANT_HERO.md: 英雄(変異)か。動かすのは heroTick だけ(updateEnemies の追跡AI・接触は素通り)。 */
+export const isMutantHero = (t: EnemyType): boolean => t === 'mutant-hero';
 
 /**
  * research/GHOST_BOSS.md: 守護霊ボス「幻影」か。
@@ -321,7 +329,10 @@ export const isBossType = (t: EnemyType): boolean =>
   t === 'uri' || t === 'suriel' || t === 'acrasiel' || t === 'idol' || t === 'phillboss' || t === 'hunter' || isBountyType(t) ||
   // research/GHOST_BOSS.md: 幻影もボス扱いの全既定(HPバー/体勢値=紫/致命の一撃/崩壊演出/
   // 弾の小突きノックバック耐性…)をこの1テーブルから受け取る。
-  isGuardianPhantom(t);
+  isGuardianPhantom(t) ||
+  // research/MUTANT_HERO.md: 英雄もボス級(会心・崩れ落ちる死・HPバー・押されなさ)。★「ボス戦」には入れない
+  // (ENGAGEABLE_BOSS_TYPES の外=湧き抑制・施設ロック・守護霊召喚・撃破記録が付かない・社長裁定 #1)。
+  isMutantHero(t);
 
 /**
  * 囲い/救助イベント開始時の周辺一掃(`beginArenaEvent`/`beginRescueEvent`)で残す(=消さない)個体か。
@@ -669,7 +680,9 @@ const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'hange
   // PACING_PUZZLE.md §10-14#3(フィル): HPはスポーン時にSTAGE_BOSS_HEALTH_BY_STAGE['stage-ex1']で
   // 上書きするのが唯一の実効値。ここへ入れないとエリア/色補正でENEMY_STATSの500(プレースホルダ)が
   // 変動してしまう(上書き前提が崩れる)。
-  'phillboss']);
+  'phillboss',
+  // research/MUTANT_HERO.md(英雄): HPはスポーン時に賞金首と同じ式で上書きする。
+  'mutant-hero']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
 const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。

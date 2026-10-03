@@ -45,6 +45,8 @@ const NAMED_BOSS_CUTIN_NAME: Partial<Record<EnemyType, string>> = {
   // 死神=完全出現アテンション/ハンター=発見アテンション(1波1回)にカットインが乗る(useGameLoop)。
   reaper: '礼賛',
   hunter: '監視者',
+  // research/MUTANT_HERO.md: 社長命名2026-10-03。
+  'mutant-hero': '英雄(変異)',
 };
 
 /**

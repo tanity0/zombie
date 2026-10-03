@@ -190,6 +190,8 @@ import {
   runPhantomTick, createPhantomTickState, pickActivePhantom, type PhantomSfx,
   phantomSupportsSub, // ★幻影が主語になれるサブの白リスト(未実装の種は自爆するのでプレイヤーへ落とす)
 } from '../utils/phantomTick';
+import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
+import { heroOnScreen } from '../utils/heroBlast';
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
@@ -512,7 +514,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
-import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow } from '../audio/audioManager';
+import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -1021,6 +1023,12 @@ const BOUNTY_SFX: BountySfx = {
   spin: () => playSfx('hurricane'),             // 舞妓の毬回し(回転技=ハリケーン近似)
   summon: () => playSfx('summon'),              // バス停の取り巻き召喚(プレイヤー召喚と同じ)
 };
+// research/MUTANT_HERO.md(英雄(変異)): 音は社長支給の3つ(いななき・鼻息・蹄)。gain=距離減衰(npcSfxDistGain)。
+const HERO_SFX: HeroSfx = {
+  neigh: (gain) => { if (gain > 0.01) playSfx('hero-neigh', gain); },
+  snort: (gain) => { if (gain > 0.01) playSfx('hero-snort', gain); },
+  gallop: (gain, rate) => setHeroGallop(gain, rate),
+};
 // research/GHOST_BOSS.md v6(幻影): 音は既存の共通キーを流用する(専用素材は作らない=「ではない」条件)。
 // 銃は**プレイヤーの自動発砲と同じ銃種別の写像**(v0.25.2479パリティの並びをそのまま使う)。
 const PHANTOM_SFX: PhantomSfx = {
@@ -1342,6 +1350,8 @@ const FORCE_BOUNTY = evParam('bountynow') === '1';
 // (=既存のURL経路はそのまま。賞金首と同じ4点セット: ①この定数 ②`||practiceForces` ③forceRef
 //  ④gameTime巻き戻しでの再アーム)。
 const FORCE_PHANTOM = evParam('phantomnow') === '1';
+// research/MUTANT_HERO.md(英雄(変異)): デバッグ出現 `?heronow=1`。練習出撃(変異体対策室の枠)は practiceForces('heronow') で相乗り。
+const FORCE_HERO = evParam('heronow') === '1';
 // BOSS_MAKER.md §21(1対1の間合い): `?vs=<相手>` で、選んだ相手だけを1体出す開発用の枠。
 // 他の強制出現フラグと同じくモジュールロード時に1回だけ読む(切替は再読込)。
 const VS_ENTRY = vsEntryOfRun();
@@ -1378,6 +1388,7 @@ let idolCtrlErrLogged = false;                       // idol制御例外のロ�
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
 let phantomCtrlErrLogged = false;                    // 守護霊ボス「幻影」制御例外のログも初回だけ(本体はphantomTick.ts)
+let heroCtrlErrLogged = false;                       // 英雄(変異)制御例外のログも初回だけ(本体はheroTick.ts)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 /**
  * 上の「1回きり」フラグを**全部**再アームする(research/BOSS_GAUNTLET.md 検出器5)。
@@ -1391,6 +1402,7 @@ export const rearmLoopErrorFlags = (): void => {
   angelCtrlErrLogged = false;
   bountyCtrlErrLogged = false;
   phantomCtrlErrLogged = false;
+  heroCtrlErrLogged = false;
   loopErrLogged = false;
 };
 // (屋内の固定敵の「画面外」復帰余白 LAB_RETURN_HOME_MARGIN は src/utils/directorTick.ts へ移設)
@@ -1864,6 +1876,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const vsNextSpawnRef = useRef(0);
   // 幻影のラン内状態(頭脳の持ち越し/休み/踏み込みの焼き付け)。同時1体なので単一refでよい。
   const phantomStateRef = useRef(createPhantomTickState());
+  // research/MUTANT_HERO.md(英雄): 強制出現1回のフラグ / ラン内状態 / 姿が見えた時のカットインを出した個体。
+  const heroForceRef = useRef(false);
+  const heroStateRef = useRef(createHeroTickState());
+  const heroCutinIdRef = useRef<string | null>(null);
   // §6.38 B2a: 賞金首のラン内状態(照準速度/懲罰タイマ/コンボ進行/取り巻き召喚済みか)。
   // idolStateRefと同じ流儀(idolTick.tsを手本・bountyTick.ts参照)。同時1体なので単一refでよい。
   const bountyStateRef = useRef(createBountyTickState());
@@ -2838,7 +2854,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const runningIn = loopState.corridorRunInActive;
         // 以降の湧きゲートは NOSPAWN ではなく noSpawn を見る(?nospawn=1 と同じ止め方に相乗り)。
         // 練習ラン(ボスラッシュ)も湧きを全部止める=狙った1体だけ(社長「ラッシュは1体」)。
-        const noSpawnDebug = NOSPAWN || runningIn || isPracticeRun() || VS_ENTRY !== null;
+        // research/MUTANT_HERO.md §2-0(社長裁定 #6): 対策室の英雄の枠だけは雑魚を湧かせる(三つ巴=この敵の芯を演習で見られるように)。
+        const noSpawnDebug = NOSPAWN || runningIn || (isPracticeRun() && !practiceForces('heronow')) || VS_ENTRY !== null;
         // ★v4追補: 二人組の通信の静けさ(10秒前〜終了)も同じ止め方に合流(店側の duoCommQuiet=前tickの二人組ブロックが変化時に書く)。
         const noSpawn = noSpawnDebug || useGameStore.getState().duoCommQuiet;
 
@@ -3134,6 +3151,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
+          heroForceRef.current = false; heroStateRef.current = createHeroTickState(); heroCutinIdRef.current = null; setHeroGallop(0); // 英雄(research/MUTANT_HERO.md)
           // ★SAME_ARENA O-5: 幻影の人格も新ランで捨てる。持ち越すと**前のランの他人**の癖・名前で
           // 戦うことになる(v0.25.3838のボスリラックス跨ぎと同型の"ラン跨ぎの漏れ")。
           clearPhantomIdentity();
@@ -8461,6 +8479,36 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 賞金首と同じ4点セットの②(`FORCE_PHANTOM || practiceForces('phantomnow')`)。
           // 休眠は使わない=即戦闘(一騎打ちの枠なので「探しに行く」段が無い)。出現演出は
           // pixiScene が e.spawnedAt 基準で描く(足元の簡易魔法陣+下から立ち上がるフェードイン)。
+          // research/MUTANT_HERO.md §2-0: 英雄(変異)の強制出現(`?heronow=1` / 対策室の枠)。開始から少し待って(=3秒)出す。
+          // 置き場所=プレイヤーの向いている先の画面の外(画面端から200px外)。**音が先・姿が後**: 出現の告知は出さず、
+          // 蹄の音が近づき、姿が画面に入った最初のフレームでカットイン(下の「英雄(変異)」の制御ブロック)。
+          if ((FORCE_HERO || practiceForces('heronow')) && !heroForceRef.current && newGameTime >= 3000) {
+            heroForceRef.current = true;
+            const hPcx = player.x + player.width / 2, hPcy = player.y + player.height / 2;
+            const ld = player.lastDirection ?? { x: 0, y: -1 };
+            const ldl = Math.hypot(ld.x, ld.y) || 1;
+            const st0 = useGameStore.getState();
+            const z0 = Math.max(0.3, Math.min(1, st0.viewZoom || 1));
+            const hDist = Math.hypot(st0.gameBounds.width, st0.gameBounds.height) / 2 / z0 + 200;
+            const hx0 = hPcx + (ld.x / ldl) * hDist, hy0 = hPcy + (ld.y / ldl) * hDist;
+            const hE = spawnEnemyAt('mutant-hero', hx0 - 55, hy0 - 30, newGameTime);
+            const hClamped = clampRectToPlayableArea(hE.x, hE.y, hE.width, hE.height, {
+              farBackdrop: st0.farBackdrop, labTheme, corridorMode: st0.corridorMode,
+              m0AdvanceLimitX: st0.m0AdvanceLimitX, corridorRunInActive: st0.corridorRunInActive,
+            });
+            hE.x = hClamped.x; hE.y = hClamped.y;
+            const hArea = areaIndexForPos(hE.x + hE.width / 2, hE.y + hE.height / 2);
+            const hHp = Math.round(bountyMaxHealth(hArea, newGameTime) * stageBossDiffMults().hp);
+            hE.health = hHp; hE.maxHealth = hHp;
+            hE.dormant = false;
+            hE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない
+            hE.bossState = 'chase';
+            hE.homeX = hE.x; hE.homeY = hE.y;
+            hE.heroFaceX = hPcx >= hE.x + hE.width / 2 ? 1 : -1;
+            useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.type !== 'mutant-hero') }));
+            addEnemy(hE);
+            heroCutinIdRef.current = null;
+          }
           if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
             phantomForceRef.current = true;
             // ★research/SAME_ARENA.md O-5: 幻影の「中身」をここで1回だけ決める。
@@ -8764,6 +8812,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          } catch (err) {
           if (!bountyCtrlErrLogged) { bountyCtrlErrLogged = true; console.error('[bounty] controller error (suppressed after first):', err); }
           reportSuppressedError('bounty', err);
+         }
+        }
+
+        // --- 英雄(変異)(research/MUTANT_HERO.md)コントローラ ---
+        // ★この1体を動かすのはここだけ(gameStore.updateEnemies は isMutantHero で素通りする)。
+        if (!danceTest && !useGameStore.getState().gameWon) {
+         try {
+          const activeHero = pickActiveHero(useGameStore.getState().enemies);
+          if (activeHero && !useGameStore.getState().bossMaker.paused) {
+            // 姿が画面に入った最初のフレームでカットイン(時刻ではなく見えた瞬間・§2/§10a)。1体につき1回。
+            if (heroCutinIdRef.current !== activeHero.id && heroOnScreen(activeHero) && !useGameStore.getState().attention) {
+              heroCutinIdRef.current = activeHero.id;
+              const hAc = bossArtCenter(activeHero);
+              useGameStore.getState().triggerAttention(hAc.x, hAc.y, bossCutinPayload('mutant-hero'));
+              useGameStore.setState({ eventBannerText: '蹄の音が止まらない', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              playSfx('hero-neigh');
+            }
+            runHeroTick(activeHero, heroStateRef.current, newGameTime, deltaTime, Date.now(), HERO_SFX, isPracticeRun());
+          } else {
+            setHeroGallop(0);
+          }
+         } catch (err) {
+          if (!heroCtrlErrLogged) { heroCtrlErrLogged = true; console.error('[hero] controller error (suppressed after first):', err); }
+          reportSuppressedError('hero', err);
          }
         }
 

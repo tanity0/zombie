@@ -124,7 +124,7 @@ export const isBossTestOrPracticeRun = (): boolean =>
 // 台帳: 守護霊メニューと同じ基礎台帳(GHOST_DOSSIER_SLOTS)+形態別の派生枠
 // ---------------------------------------------------------------------------------------------
 /** 出撃のさせ方。`param=null` = 強制出現パラメータ不要(ステージへ出撃すれば勝手に出る)。 */
-export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'phillnow' | null;
+export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow' | null;
 
 export interface PracticeSlot {
   slotKey: string;              // 基本はGHOST_DOSSIER_SLOTS.slotKeyと同一。形態別掲載だけ固有キー。
@@ -283,16 +283,33 @@ const GUARDIAN_PHANTOM_SLOT: PracticeSlot = {
   alwaysUnlocked: true,
 };
 
+// research/MUTANT_HERO.md §2-0(社長指示2026-10-03「出てくるステージはまだ考え中なので、ボスモード、対策室にだけ一旦入れておいて」):
+// 英雄(変異)。本編のどこにも置かれていない=遭遇記録で開く輪が無いので常時解放(幻影の枠と同じ入口)。
+// 出撃先はステージ6(仮・HPに乗るステージ難度の係数のため。本編の置き場所が決まったらそこへ差し替える)。
+// この枠だけ雑魚が湧く(社長裁定 #6=三つ巴を演習で見られるように・useGameLoop の noSpawn ゲート)。
+export const MUTANT_HERO_SLOT_KEY = 'mutant-hero@practice';
+const MUTANT_HERO_SLOT: PracticeSlot = {
+  slotKey: MUTANT_HERO_SLOT_KEY,
+  encounterSlotKey: 'mutant-hero',
+  bossType: 'mutant-hero',
+  stageId: 'stage-6',
+  param: 'heronow',
+  label: '英雄(変異)',
+  reachable: false,
+  alwaysUnlocked: true,
+};
+
 // 表示順=小ボス(賞金首)が一番上(社長指示v0.25.3444「小ボスは一番上だろ」。旧: 既存ボス群の後ろ)。
 // 幻影(決闘)は最下段。
-export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT];
+export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, MUTANT_HERO_SLOT, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT];
 
 // ★変異体対策室のカテゴリ表示順の正(社長指示v0.25.3444「小ボスは一番上だろ」)。
 // v3444では上の PRACTICE_SLOTS の並びだけを直したが、画面(BossRush.tsx)は**カテゴリごとに区切って
 // 描く**ので並びが変わっていなかった(社長再指摘v0.25.3457)。順番の定義はここ1箇所にして、
 // 画面はこれをそのまま回す=同じ取りこぼしを繰り返さない(bossPractice.testで先頭を機械化)。
 // research/GHOST_BOSS.md: 'duel'(決闘=幻影)は**末尾**(実験枠)。
-export const PRACTICE_CATEGORY_ORDER = ['bounty', 'story', 'gate', 'hidden', 'duel'] as const;
+// research/MUTANT_HERO.md: 'neutral'(中立=英雄)は賞金首のすぐ下。
+export const PRACTICE_CATEGORY_ORDER = ['bounty', 'neutral', 'story', 'gate', 'hidden', 'duel'] as const;
 
 export const practiceSlotByKey = (slotKey: string): PracticeSlot | undefined =>
   PRACTICE_SLOTS.find(s => s.slotKey === slotKey);
@@ -319,6 +336,8 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
   // §6.38(賞金首): 実効HPは基準値(BOUNTY_BASE_HP)×スポーン時の実効難易度倍率(bountyMaxHealth)で
   // 変動するため、台帳の固定値ではなく**基準値をそのまま**出す(掲載裁定「基準値2000を出す」)。
   if (isBountyType(slot.bossType)) return BOUNTY_BASE_HP;
+  // research/MUTANT_HERO.md: 英雄は賞金首と同じ式(基準値×スポーン時の難易度)=一覧も基準値。
+  if (slot.bossType === 'mutant-hero') return BOUNTY_BASE_HP;
   // research/GHOST_BOSS.md(幻影): 裏ボス方式=倍率を一切通さないので、スポーン時に書く値=実効HP。
   // その値は「初期プレイヤーHP+育成の体力加算」(装備補正なし)なので、表示も同じ式で出す。
   // ★基準クラスの注意(GROWTH.md v4): 実戦は「そのランのプレイヤーのクラス」(player.ddaBaseHp)、

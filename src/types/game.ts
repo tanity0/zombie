@@ -1235,7 +1235,9 @@ export interface Enemy {
     | 'phill-meteor-windup' | 'phill-meteor-active' | 'phill-meteor-recover'
     | 'phill-ringtoss-windup' | 'phill-ringtoss-out' | 'phill-ringtoss-back' | 'phill-ringtoss-recover'
     | 'phill-dive-windup' | 'phill-dive-fall' | 'phill-dive-recover'
-    | 'phill-feathershot-windup' | 'phill-feathershot-recover';
+    | 'phill-feathershot-windup' | 'phill-feathershot-recover'
+    // research/MUTANT_HERO.md: 英雄(変異)。技の種類は heroMove、段は heroStep が持つ(州は技をまたいで共通)。
+    | 'hero-idle' | 'hero-turn' | 'hero-roar' | 'hero-windup' | 'hero-motion' | 'hero-strike' | 'hero-recover';
     // research/GHOST_BOSS.md v6: 幻影(guardian-phantom)の `gp-*` 州は**全廃**した。
     // 予告(windup)も硬直(recover)も持たない=プレイヤーと同じ即発なので、bossState を使わない
     // (=幻影に対してプレイヤーのカウンターは成立しない。弾の打ち返しだけが残る、が v5/v6 の裁定)。
@@ -1281,6 +1283,36 @@ export interface Enemy {
   // **被弾では交戦に戻らない**(プレイヤーが BOUNTY_AGGRO_RANGE_DEFAULT 以内へ近づいた時だけ戻る)。
   // 判定の正本は src/utils/bountyTick.ts の decideBountyLeash(純関数)。
   bountyHoming?: boolean;
+  // research/MUTANT_HERO.md(英雄(変異)・中立の騎馬ボス)。heroTick.ts だけが書く。
+  heroMove?: import('../utils/heroScript').HeroMoveKey;
+  heroStep?: number;
+  /** 今の州に入った gameTime(絵の進みと予告の進みの起点)。 */
+  heroStateAt?: number;
+  /** 今の段の当たる時刻(gameTime)。予告はここで消え切る。 */
+  heroHitAt?: number;
+  /** 今の段の当たりの形(溜め開始で決めて動かさない)。描画はこれを読んで赤い予告を出す。 */
+  heroShape?: import('../utils/heroScript').HeroShape;
+  /** 動きの始点と終点(踏み込み・跳躍・走り)。 */
+  heroFromX?: number; heroFromY?: number; heroToX?: number; heroToY?: number;
+  /** 狙っている相手('player' / 'ghost' / 敵のid)と、変えない期限。 */
+  heroTargetId?: string;
+  heroTargetUntil?: number;
+  /** 左右の向き(1=右・-1=左)。描画はこれで反転する。 */
+  heroFaceX?: 1 | -1;
+  /** 佇み: 次に歩いて移る点と時刻。 */
+  heroLoiterX?: number; heroLoiterY?: number; heroLoiterAt?: number;
+  /** 後半(HP半分から)に入ったか。 */
+  heroPhase2?: boolean;
+  /** 直前の技の結果(休みの長さ)。 */
+  heroLastMove?: import('../utils/heroScript').HeroMoveKey;
+  /** 今の技でだれかに当たったか(つなぎと休みの判定)。 */
+  heroHitSomething?: boolean;
+  /** 鼻息の次の時刻(佇みの合間)。 */
+  heroSnortAt?: number;
+  /** プレイヤー(本人の攻撃)から最後に削られた gameTime。帰巣の判定に使う。 */
+  heroPlayerHitAt?: number;
+  /** 去る時刻(巣で60秒だれも来ない → 画面の外へ駆け去る)。 */
+  heroDepartAt?: number;
   // PACING_PUZZLE.md §6.38 B2(バス停「取り巻き召喚」): この敵が賞金首の取り巻きなら親bounty.idを持つ
   // (交戦開始時に1回だけ2体・再召喚なし)。bountyTick.tsが賞金首の退場時にこのidを一緒に片付ける。
   bountyEscortId?: string;
@@ -1695,7 +1727,9 @@ export type EnemyType =
   // 内部型ID=`phillboss`(`'phill'`はPHILL銃/PHILLガンの語で既使用のため衝突回避・§10-12#5)。
   // stage-ex1の最奥ボス。★v0.25.3721訂正(検収監査#3): バッチ2で isGate2AngelBoss に**編入済み**
   // (angelBossTickの7人目としてtickされる根拠)。関所ボスではないが器はゲート2天使と共通。
-  | 'phillboss';
+  | 'phillboss'
+  // research/MUTANT_HERO.md: 英雄(変異)。中立の騎馬ボス(プレイヤーも敵も、近い方を斬る)。
+  | 'mutant-hero';
 
 // Weapon types
 export interface Weapon {

@@ -25,9 +25,9 @@ import type { CharacterClass } from '../types/game';
 // §6.38 掲載裁定: 賞金首4種はGHOST_DOSSIER_SLOTS由来ではないので、この画面だけの区分「bounty」を
 // 追加する(ghostDossier.tsのGhostDossierCategory自体は変えない=守護霊メニュー側は無関係のまま)。
 // research/GHOST_BOSS.md: 守護霊ボス「幻影」の区分「duel」(決闘)も同様にこの画面だけの追加。
-type PracticeCategory = GhostDossierCategory | 'bounty' | 'duel';
+type PracticeCategory = GhostDossierCategory | 'bounty' | 'duel' | 'neutral';
 const PRACTICE_CATEGORY_LABEL: Record<PracticeCategory, string> = {
-  ...GHOST_DOSSIER_CATEGORY_LABEL, bounty: '賞金首', duel: '決闘',
+  ...GHOST_DOSSIER_CATEGORY_LABEL, bounty: '賞金首', duel: '決闘', neutral: '中立',
 };
 const CATEGORY_OF = new Map(GHOST_DOSSIER_SLOTS.map(s => [s.slotKey, s.category]));
 // ★未知キーは 'story' に落ちる。新しい独立枠を足したら**必ずここに分岐を書く**
@@ -36,6 +36,7 @@ const categoryOf = (slot: PracticeSlot): PracticeCategory =>
   CATEGORY_OF.get(slot.encounterSlotKey)
   ?? (isBountyType(slot.bossType) ? 'bounty'
     : slot.bossType === 'guardian-phantom' ? 'duel'
+    : slot.bossType === 'mutant-hero' ? 'neutral'
     : 'story');
 
 const bossName = (slot: PracticeSlot): string => slot.label ?? enemyDeathLabel(slot.bossType);

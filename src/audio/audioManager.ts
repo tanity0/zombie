@@ -139,7 +139,9 @@ export type SfxKey =
   | 'rank-down'      // ランク降格ジングル(社長提供・約3.4s。旧: 無音だった)
   | 'thor-sweep'     // 裏ボス トールの払い(横払い)SE(社長提供)
   | 'thor-thrust'    // 裏ボス トールの突きSE(社長提供)
-  | 'glen-nihil';    // グレン「虚無の三唱」(お墓技)SE(社長提供・壊れたラジオ加工)。長尺→フェードで止める
+  | 'glen-nihil'    // グレン「虚無の三唱」(お墓技)SE(社長提供・壊れたラジオ加工)。長尺→フェードで止める
+  // research/MUTANT_HERO.md(英雄(変異)・社長支給2026-10-03): いななき / 鼻息 / 蹄(駆け足のループ=setHeroGallop が鳴らす)。
+  | 'hero-neigh' | 'hero-snort' | 'hero-gallop';
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // UI選択音(社長提供SE)。レベルアップの選択肢タップ等に使用。
@@ -434,6 +436,11 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // トール(ステージ5裏ボス)の払い/突きSE(社長提供)。攻撃実行タイミングで1回。
   'thor-sweep': { src: `${import.meta.env.BASE_URL}audio/sfx/thor-sweep.mp3`, volume: 1.0, minIntervalMs: 60 },
   'thor-thrust': { src: `${import.meta.env.BASE_URL}audio/sfx/thor-thrust.mp3`, volume: 1.0, minIntervalMs: 60 },
+  // 英雄(変異)(社長支給2026-10-03・加工なし=音量は既存のボス登場音と同程度)。
+  'hero-neigh': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-neigh.mp3`, volume: 1.0, minIntervalMs: 600 },
+  'hero-snort': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-snort.mp3`, volume: 1.0, minIntervalMs: 600 },
+  // 蹄はループ専用(playSfx では鳴らさない)。末尾の約0.1秒の無音を切ってループする(setHeroGallop)。
+  'hero-gallop': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-gallop.mp3`, volume: 0.9, minIntervalMs: 200 },
   // グレン「虚無の三唱」(お墓技)のSE(社長提供・v0.25.3141)。壊れたラジオから流れる籠った音に加工済み
   // (低音カット+高音カット+歪み+不規則な音量の揺れ+砂嵐/放電音、テンポ112%)。
   // ★v0.25.3162(社長報告「お経聞こえない」): 初版は**2.2kHz以上を落としていて実機で聞こえなかった**。
@@ -1705,6 +1712,53 @@ export const setHeartbeatLoop = (active: boolean) => {
       heartbeatActive = false;
       stopHeartbeatNode();
     }, 300);
+  }
+};
+
+// --- 英雄(変異)の蹄(research/MUTANT_HERO.md §7-2)。動いている間だけ鳴るループ。心音と同じ「ネイティブループ1本+gain」。
+// gain=距離減衰(画面外の遠くは0)×速さ。rate=歩き0.8 / 駆け足1.0。毎フレーム呼んでよい(値が変わった時だけ ramp)。
+const HERO_GALLOP_LOOP_END_S = 3.74; // 支給 3.84秒の末尾約0.1秒は無音=ループの継ぎ目で拍が抜けないよう手前で折り返す
+let heroGallopSource: AudioBufferSourceNode | null = null;
+let heroGallopGain: GainNode | null = null;
+let heroGallopLast = { gain: -1, rate: -1 };
+export const setHeroGallop = (gainMult: number, rate = 1): void => {
+  const want = muted ? 0 : Math.max(0, Math.min(1, gainMult));
+  const context = sfxContext ?? (want > 0 ? ensureSfxContext() : null);
+  if (!context) return;
+  if (want <= 0.001) {
+    if (heroGallopSource && heroGallopGain) {
+      const now = context.currentTime;
+      try { heroGallopGain.gain.cancelScheduledValues(now); heroGallopGain.gain.setTargetAtTime(0, now, 0.15); } catch { /* ignore */ }
+      const src = heroGallopSource;
+      try { src.stop(now + 0.6); } catch { /* ignore */ }
+      heroGallopSource = null; heroGallopGain = null; heroGallopLast = { gain: -1, rate: -1 };
+    }
+    return;
+  }
+  if (!heroGallopSource) {
+    const buffer = sfxBuffers.get('hero-gallop');
+    if (!buffer) { loadSfxBuffer('hero-gallop'); return; }
+    resumeSfxContext();
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    source.loopStart = 0;
+    source.loopEnd = Math.min(buffer.duration, HERO_GALLOP_LOOP_END_S);
+    source.connect(gain);
+    gain.connect(context.destination);
+    gain.gain.setValueAtTime(0, context.currentTime);
+    try { source.start(); } catch { /* ignore */ }
+    heroGallopSource = source; heroGallopGain = gain;
+  }
+  const vol = want * 0.9 * sfxVolume;
+  if (Math.abs(vol - heroGallopLast.gain) > 0.02 && heroGallopGain) {
+    try { heroGallopGain.gain.setTargetAtTime(vol, context.currentTime, 0.12); } catch { /* ignore */ }
+    heroGallopLast.gain = vol;
+  }
+  if (Math.abs(rate - heroGallopLast.rate) > 0.02 && heroGallopSource) {
+    try { heroGallopSource.playbackRate.setTargetAtTime(rate, context.currentTime, 0.15); } catch { /* ignore */ }
+    heroGallopLast.rate = rate;
   }
 };
 
