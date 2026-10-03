@@ -1078,3 +1078,7 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   /* 帯: 夜の森の最暗部より暗い黒で枠の外を塗る(親の灰色が板のように浮かない=クリエイティブ監査 #9)。 */
   .game-frame { max-width: calc(100dvh * 16 / 9); box-shadow: 0 0 0 100vmax #030306; }
 }
+
+/* PC のキーボード・パッドでのメニュー操作(research/PC_SUPPORT.md §11-5): 矢印で選んだボタンに琥珀の枠。
+   html.kbnav は矢印を押した時だけ付き、マウス/タッチで触ると外れる=スマホでは付かない。 */
+html.kbnav :focus { outline: 2px solid #ffb340 !important; outline-offset: 2px; box-shadow: 0 0 0 4px rgba(255, 179, 64, 0.18); }

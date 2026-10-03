@@ -670,8 +670,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     let npcLeaveT = 0;          // leave経過(歩きコマ+フェード用)
     let last = performance.now();
     const key = (e: KeyboardEvent, down: boolean) => {
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') walkDirRef.current = down ? 1 : (walkDirRef.current === 1 ? 0 : walkDirRef.current);
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') walkDirRef.current = down ? -1 : (walkDirRef.current === -1 ? 0 : walkDirRef.current);
+      // 物理キーも見る(日本語入力オンでも D/A が効く・research/PC_SUPPORT.md §11-3)。パッドは utils/gamepad が矢印キーを送る。
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D' || e.code === 'KeyD') walkDirRef.current = down ? 1 : (walkDirRef.current === 1 ? 0 : walkDirRef.current);
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A' || e.code === 'KeyA') walkDirRef.current = down ? -1 : (walkDirRef.current === -1 ? 0 : walkDirRef.current);
     };
     const kd = (e: KeyboardEvent) => key(e, true);
     const ku = (e: KeyboardEvent) => key(e, false);
@@ -863,6 +864,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
         //    タップは歩行操作なのでOPスキップ(root onClick)へは伝播させない。 ──
         <div
           ref={walkSceneRef}
+          data-kbnav-off // 廊下は矢印で歩く=メニューの矢印操作(utils/menuNav)を止める
+          
           onClick={e => e.stopPropagation()}
           // ジョイスティック式(v0.25.2124・社長報告「左にやたら歩きたがる」対策): 押した点を起点に、
           // 12px以上ドラッグした方向へ歩く(本編の仮想スティックと同じ感覚)。タップ位置(画面半分)では決めない。

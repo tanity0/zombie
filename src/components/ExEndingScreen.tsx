@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import TapWord from './TapWord';
 import { EX_ENDING_TITLE, EX_ENDING_SECTIONS } from '../data/exEnding';
 import { setEndingBgm } from '../audio/audioManager';
 
@@ -108,7 +109,7 @@ const ExEndingScreen: React.FC<ExEndingScreenProps> = ({ onDone }) => {
             </div>
           ))}
           {finished && (
-            <p className="screen-in mt-10 pb-6 text-center text-[11px] tracking-widest text-white/40">タップで終了</p>
+            <p className="screen-in mt-10 pb-6 text-center text-[11px] tracking-widest text-white/40"><TapWord />で終了</p>
           )}
           <div style={{ height: 'calc(26svh / var(--hud-s, 1))' }} />
         </div>

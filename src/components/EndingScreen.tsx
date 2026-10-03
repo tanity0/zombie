@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import TapWord from './TapWord';
 import { CUTIN_SERIF_STACK } from '../config/font';
 import { ENDING_HEADER, ENDING_SCRIPT, ENDING_FINAL_WORD } from '../data/ending';
 import { setEndingBgm } from '../audio/audioManager';
@@ -168,7 +169,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                 ))}
               </div>
             </div>
-            <p className="shrink-0 mt-4 text-center text-[10px] tracking-widest text-white/25">タップで進む</p>
+            <p className="shrink-0 mt-4 text-center text-[10px] tracking-widest text-white/25"><TapWord />で進む</p>
           </div>
         </div>
       )}
@@ -237,7 +238,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                 })}
               </div>
             </div>
-            <p className="shrink-0 mt-4 text-center text-[10px] tracking-widest text-white/25" style={{ animation: 'endSegOut .7s ease forwards' }}>タップで進む</p>
+            <p className="shrink-0 mt-4 text-center text-[10px] tracking-widest text-white/25" style={{ animation: 'endSegOut .7s ease forwards' }}><TapWord />で進む</p>
           </div>
         </div>
       )}

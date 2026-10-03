@@ -1716,7 +1716,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     seenTutorials().add(id);
     markTutorialSeen(id);
     useGameStore.getState().showTutorialPopup({
-      title: entry.title, lines: entry.lines, art: entry.art, img: entry.img, slides: entry.slides,
+      title: entry.title, lines: entry.lines, pcLines: entry.pcLines, art: entry.art, img: entry.img, slides: entry.slides,
     });
   }, [seenTutorials]);
   // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告(この先——{区域名})」を壁ごとにラン1回だけ出すためのフラグ。

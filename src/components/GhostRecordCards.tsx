@@ -6,6 +6,7 @@
 // - **描くだけ**。保存・決算・ゲーム挙動には一切触らない(採用チェックの状態は呼び出し側が持つ)。
 // - store購読を持たない純表示コンポーネント=毎フレーム再描画しない(CLAUDE.md React再描画規律)。
 // - 文言・レイアウト・並びは**叩き台**(実機で社長調整前提)。数値の意味は台帳(playerTraits)のまま。
+import TapWord from './TapWord';
 import React from 'react';
 import type { BossClearCard, ClearTrend } from '../utils/ghostAlbum';
 import { formatClearTime, formatPerMin, formatPerfScore, formatRatePercent, trendHigherBetter, trendLowerBetter } from '../utils/ghostAlbum';
@@ -84,7 +85,7 @@ const AllyLine: React.FC<{
       )}
       <span className="min-w-0 truncate">
         同行 <span className="font-semibold">{ally.name}</span>
-        {onAllyTap && <span className="ml-1 text-[10px] text-white/40">（タップでビルド）</span>}
+        {onAllyTap && <span className="ml-1 text-[10px] text-white/40">（<TapWord />でビルド）</span>}
       </span>
     </span>
   );

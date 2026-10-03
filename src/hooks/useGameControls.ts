@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { useGameStore, isGameTimeStopped, isAttackLocked } from '../store/gameStore';
-import { performTapAction, performFlickAction } from '../utils/inputActions';
+import { performFlickAction } from '../utils/inputActions';
+import { pcPressDown, pcPressUp } from '../utils/pcPress';
 
 // Keyboard fallback — the game is touch-first, but we keep a PC-optimized
 // scheme so a laptop is fully playable.
 //   移動(指移動): WASD / 矢印(同時押しで斜めOK)
-//   タップ/離す(カウンター・近接・PHILL発砲): Space / J
+//   指を置く/離す(タッチと同じ: 押している間ホーミングのロック、離すと近接・PHILL発砲。2度押しでスケボー): Space / J
+//     (research/PC_SUPPORT.md §11-1。マウスの左ボタン・パッドの A と同じ utils/pcPress を呼ぶ)
 //   フリック(一閃ダッシュ・ワイヤーアンカー): K / Shift … 押した瞬間に「今の移動方向」へ発動。
 //     斜めも出せる(WASD合成方向を使う)。二連打方式は廃止(斜めに行けないため)。
 const isCounterKey = (key: string) => {
@@ -17,6 +19,16 @@ const isFlickKey = (key: string) => {
   const k = key.toLowerCase();
   return k === 'k' || k === 'shift';
 };
+
+// 物理キー(e.code)で判定する(research/PC_SUPPORT.md §11-3): 日本語入力オンや JIS/AZERTY 配列でも WASD/Space が効く。
+// e.code が無い/知らないキーは e.key の小文字を使う(従来どおり)。返す値は従来の e.key 小文字と同じ綴り。
+const CODE_TO_KEY: Record<string, string> = {
+  KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', KeyJ: 'j', KeyK: 'k', KeyP: 'p',
+  ArrowUp: 'arrowup', ArrowDown: 'arrowdown', ArrowLeft: 'arrowleft', ArrowRight: 'arrowright',
+  Space: ' ', ShiftLeft: 'shift', ShiftRight: 'shift', Escape: 'escape',
+};
+export const keyIdOf = (e: { code?: string; key: string }): string =>
+  (e.code && CODE_TO_KEY[e.code]) || e.key.toLowerCase();
 
 type MoveDir = 'up' | 'down' | 'left' | 'right';
 const DIR_VECTORS: Record<MoveDir, { x: number; y: number }> = {
@@ -62,7 +74,7 @@ export const useGameControls = () => {
       const tgt = e.target as HTMLElement | null;
       if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
 
-      const { key } = e;
+      const key = keyIdOf(e);
 
       // 四神舞リズムモード中(PC): 移動キー=フリック(移動しない)、Space=タップ、Escape=終了。
       // 攻撃実行/効果音は useGameLoop 側が担当。移動入力は出さない(立ち止まりを維持)。
@@ -73,7 +85,7 @@ export const useGameControls = () => {
         }
         if (isCounterKey(key)) {
           e.preventDefault();
-          if (!e.repeat) useGameStore.getState().rhythmInput('tap');
+          if (!e.repeat) pcPressDown('key'); // 離した時にリズムのタップ(pcPressUp)=タッチと同じ
           return;
         }
         const md = moveDirFromKey(key);
@@ -141,7 +153,8 @@ export const useGameControls = () => {
         // 会話/登場演出中(時間停止中)はカウンターを出さない。
         // 二人組クエストv2 §2-8(納品ロック・入口4): 同上。
         // 一時停止中(ポーズ/説明画面/レベルアップ等)に Space/J で攻撃が出ていた → タッチと同じ共通ゲートで止める(同上)。
-        if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked && !isAttackLocked()) performTapAction();
+        // §11-1: 押した=指を置く。攻撃は離した時(pcPressUp が isAttackLocked で同じく止める)。
+        if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked && !isAttackLocked()) pcPressDown('key');
       }
 
       useGameStore.setState({ inputState });
@@ -154,7 +167,8 @@ export const useGameControls = () => {
       const tgt = e.target as HTMLElement | null;
       if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
 
-      const { key } = e;
+      const key = keyIdOf(e);
+      if (isCounterKey(key)) { e.preventDefault(); pcPressUp('key', true); } // 指を離す(§11-1)。preventDefault=フォーカスの残ったボタンが Space で押されない(監査 B-4)
       const inputState = { ...useGameStore.getState().inputState };
 
       switch (key.toLowerCase()) {
@@ -179,12 +193,26 @@ export const useGameControls = () => {
       useGameStore.setState({ inputState });
     };
 
+    // 窓が裏へ行った/ページを離れた: 押しっぱなしのキーの keyup は来ない → 移動を全部離し、指も「撃たずに離す」(§11-1)。
+    const handleBlur = () => {
+      const s = useGameStore.getState();
+      if (s.inputState.up || s.inputState.down || s.inputState.left || s.inputState.right) {
+        useGameStore.setState({ inputState: { ...s.inputState, up: false, down: false, left: false, right: false } });
+      }
+      pcPressUp('key', false);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('pagehide', handleBlur);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('pagehide', handleBlur);
+      pcPressUp('key', false); // ゲームを抜けた=押しっぱなしを撃たずに離す
     };
   }, []);
 };

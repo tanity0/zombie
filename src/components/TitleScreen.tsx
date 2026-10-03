@@ -326,6 +326,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
+    // 中のボタン(更新情報の OK・カメラ・ニュース)で押した Enter/Space は、そのボタンに任せる(ここで止めると押せない・PC版 §11-5)
+    if (e.target !== e.currentTarget) return;
     if ((e.key === 'Enter' || e.key === ' ') && phase === 'title') { e.preventDefault(); tapStart(); }
   };
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import TapWord from './TapWord';
 import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore, topScoreItem } from '../utils/resultScoring';
@@ -1114,7 +1115,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   ? '次のランに持ち越されます（死亡で全ロスト）'
                   : carriedPick === '__none__'
                     ? '持ち帰りません'
-                    : 'タップで選択。未選択なら持ち帰りなし'}
+                    : <><TapWord />で選択。未選択なら持ち帰りなし</>}
               </div>
             </div>
           )}

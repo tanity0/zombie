@@ -120,7 +120,8 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
-import { TUTORIALS, type TutorialId } from '../data/tutorials';
+import { TUTORIALS, tutorialLinesFor, type TutorialId } from '../data/tutorials';
+import { usePointerKind } from '../utils/inputDevice';
 import TutorialMedia from './TutorialMedia';
 import { loadSeenTutorials } from '../utils/tutorialArchive';
 import { loadPlayerName, savePlayerName, normalizePlayerNameInput, PLAYER_NAME_MAX_LEN, PLAYER_NAME_WHEN_BLANK } from '../utils/playerName';
@@ -496,6 +497,7 @@ const testScreenIdFor = (name: Screen['name']): TestScreenId => {
 const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBenchmark, initialScreen, onStartPractice }) => {
   // 小窓のポータル先: PC の拡大の包みの中(包みの外=body)。fixed の基準も包み=ゲームの枠になる(段3-2 品質監査 A-2)。
   const portalRoot = useHudPortalRoot();
+  const pointerKind = usePointerKind(); // 資料室の操作記録も PC は PC の言葉で(§11-6)
   const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
 
   // ★テストブリッジ(TEST_HANDOFF/REQUEST-devbridge.md A)へ今の枝を報告する。
@@ -798,7 +800,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
                   サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
                   =マップのSECTORタグが同じ情報を持つため重複)。 */}
-              <button type="button" data-testid="ops-sortie" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goStageSelect}>
+              <button type="button" data-testid="ops-sortie" data-nav-default className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goStageSelect}>
                 <span className="ds-sortie-t1 block">出 撃</span>
                 <PixelIcon name="chevron-right" size={18} />
               </button>
@@ -1798,7 +1800,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       </div>
                     )}
                     <div className="space-y-2 text-[13px] leading-relaxed text-white/85">
-                      {openTutorial.lines.map((line, i) => <p key={i}>{line}</p>)}
+                      {tutorialLinesFor(openTutorial, pointerKind === 'mouse').map((line, i) => <p key={i}>{line}</p>)}
                     </div>
                   </>
                 )}

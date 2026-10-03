@@ -36,6 +36,8 @@ import { isPracticeRun, beginPracticeRun, endPracticeRun, setNoProgressRun, type
 import PracticeResult from './components/PracticeResult';
 import GauntletRunner from './components/GauntletRunner';
 import { isGauntletRun } from './utils/gauntletMode';
+import { installMenuKeyNav } from './utils/menuNav';
+import { installGamepad } from './utils/gamepad';
 
 const LOADING_MIN_MS = 650;
 
@@ -124,6 +126,9 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   const [loadOverlayTimedOut, setLoadOverlayTimedOut] = useState(false);
   // 音声のジェスチャ復帰保険(v0.25.2160): どのタップ/キーでも「context resume+止まったBGMの拾い直し」。
   useEffect(() => { attachAudioGestureRecovery(); }, []);
+  // PC: メニューのキーボード操作とゲームパッド(research/PC_SUPPORT.md §11-4/§11-5)。タッチだけの端末では何も起きない。
+  useEffect(() => installMenuKeyNav(), []);
+  useEffect(() => installGamepad(), []);
 
   // ★ローカルテスト用の読み取り口(TEST_HANDOFF/REQUEST-devbridge.md A・`utils/testBridge.ts`)。
   // `?testbridge=1` の時だけ窓が生える。無指定では何も起きない(installTestBridge が即returnする)。

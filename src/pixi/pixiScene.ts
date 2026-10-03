@@ -14,6 +14,7 @@
 // outside that filter so they stay crisp.
 
 import { VIEW_CORE_W } from '../utils/viewport';
+import { setViewTransform } from '../utils/viewTransform';
 import { bossFramingFor } from '../utils/bossFraming';
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
@@ -8471,6 +8472,8 @@ export class PixiScene {
       this.L.worldGroup.position.set(0, 0);
       this.zoomApplied = false;
     }
+    // PC のマウス照準の変換用(utils/viewTransform・描画の情報=ゲームの状態ではない)。
+    setViewTransform(this.L.worldGroup.scale.x, this.L.worldGroup.position.x, this.L.worldGroup.position.y);
     // 近景の板(§6・v0.25.4296): 演目・モード・包絡線をそのまま渡す(描画のみ)。
     this.syncCinePlates(cineToggleOn('cineplates') ? cineEv : null, cam, cineMode, zoomDecayCine, now, cineSideX);
     // §6.37 v6: hzFixed(遠景森1/森2+地平付帯層)は**ボス寄せバイアス(bossPan)だけ**打ち消す。

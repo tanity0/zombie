@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { keyIdOf } from '../hooks/useGameControls';
 import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
 import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
@@ -58,7 +59,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
   // Ensure pause menu handles events correctly
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key === 'p') {
+      if (keyIdOf(e) === 'escape' || keyIdOf(e) === 'p') { // 物理キー(日本語入力オンでも P が効く・§11-3)
         onResume();
       }
     };
@@ -93,7 +94,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
               クリエイティブ監査第2回・第2手 B-6: grid+self-start/content-start=右列の高さに引かれない
               (flex-colのままだと親グリッドの行高にstretchされ「続ける」が縦に伸びる)。 */}
           <div className="grid gap-2 self-start content-start">
-            <Ff7rButton onClick={() => { playSfx('ui-select'); onResume(); }} emphasis fade="both" paddingY="0.8rem">
+            <Ff7rButton onClick={() => { playSfx('ui-select'); onResume(); }} emphasis fade="both" paddingY="0.8rem" navDefault>
               続ける
             </Ff7rButton>
             {/* 出撃を捨てる不可逆の決定=「戻る」音ではない(B-15)。 */}

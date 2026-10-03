@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.4791 — PC版対応 段4: 操作(指の押す/離す・パッド・メニューのキー操作・照準・文言)【2026-10-03 09:59 JST】
+- 設計 research/PC_SUPPORT.md §11。設計監査(Fable 5.1)(A)11/(B)5/(C)2 → (A)は全部設計に入れてから実装(§11-8)。
+- PC の主ボタン(左クリック/Space・J/パッドA)=タッチの指: 押す=指を置く(ホーミングのロック・スケボー2度押し)/ 離す=タッチの指離しと同じ順で近接(前隙つき)ほか。
+  仮想の指は1本・受理された押下だけ離せる・強制離しは撃たない。照準はズーム込み・毎フレーム。離した時の向き=カーソル。キーは物理キー。パッド(標準配置)。メニューの矢印/Enter/Esc。
+  チュートリアル3件の PC 版の文・「タップで〜」の6か所は PC で「クリック」。タイトルの Enter が中のボタンを止めていたのを直した。
+- 確かめたこと: §11-9(ヘッドレスでキー・マウス・模擬パッド)。VirtualJoystick.tsx は無変更。phone-guard: check 14画面 OK。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩)=スマホは不変。PC は近接が「押した瞬間」→「離して前隙ののち」になる(タッチと同じ)。
+- 検証: typecheck / lint(0 errors)/ pcPress・menuNav・viewTransform・gamepad・enemyUtils のテスト。
+- 変更: src/utils/pcPress.ts(.test)/ viewTransform.ts(.test)/ menuNav.ts(.test)/ gamepad.ts(.test)/ src/components/TapWord.tsx / MouseControls.tsx / Game.tsx / PauseMenu.tsx / TitleScreen.tsx /
+  TutorialPopup.tsx / MissionSelect.tsx / ff7r.tsx / OpeningScene.tsx / EndingScreen.tsx / ExEndingScreen.tsx / GameOverScreen.tsx / GhostBossDossier.tsx / GhostRecordCards.tsx /
+  src/hooks/useGameControls.ts / useGameLoop.ts / src/store/gameStore.ts / src/pixi/pixiScene.ts / src/data/tutorials.ts / src/App.tsx / src/index.css / research/PC_SUPPORT.md / changelog / package.json。
+
 ## v0.25.4790 — PC版対応 段2: 洋館通路の絵を行ける幅に揃える・画面の大きさで決まる判定の洗い出し【2026-10-03 09:34 JST】
 - 洋館通路(ステージ6・EX): 柱・カーペットの幅が画面幅に比例 → PC は行ける幅の約3倍に描かれていた。横長は幅405で組んで中央へ・左右の黒を実画面幅まで
   (pixiScene `corridorW`・corridorLayer `opts.screenW`)。縦持ちは引数も値も従来どおり。実画 1280×720 / 430×932。

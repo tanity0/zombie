@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import TapWord from './TapWord';
 import { PixelIcon } from './PixelIcon';
 import { CHARACTER_CLASSES, SKILLS } from '../data/campaign';
 import { playSfx } from '../audio/audioManager';
@@ -146,7 +147,7 @@ const FixedLeaderGrid: React.FC<{
         <div className="text-[9px] font-semibold tracking-[0.18em] text-purple-200/65">TOP GUARDIANS</div>
         <div className="text-[10px] text-white/35">このボスを得意とする先人</div>
       </div>
-      <span className="text-[9px] text-white/25">タップでビルド</span>
+      <span className="text-[9px] text-white/25"><TapWord />でビルド</span>
     </div>
     <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
       {fixedGuardianLeadersForBoss(slotKey).map((guardian, index) => {

@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { setGameplayMounted } from '../utils/menuNav';
+import { keyIdOf } from '../hooks/useGameControls';
 import { HudScale, HudScaleProvider, HudLandscapeProvider } from './HudScale';
 import { hudScaleFor } from '../utils/viewport';
 import { usePointerKind } from '../utils/inputDevice';
@@ -115,6 +117,8 @@ const Game: React.FC<GameProps> = ({
 
   // Set up game controls
   useGameControls();
+  // メニューのキーボード操作(utils/menuNav): ゲームが動いている間は矢印=移動なので出さない(一時停止中だけ出す)。
+  useEffect(() => { setGameplayMounted(true); return () => setGameplayMounted(false); }, []);
 
   // Start game loop
   const { fps } = useGameLoop(onGameOver, { benchmarkMode });
@@ -185,7 +189,7 @@ const Game: React.FC<GameProps> = ({
   // Handle keyboard pause toggle
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key === 'p') {
+      if (keyIdOf(e) === 'escape' || keyIdOf(e) === 'p') { // 物理キー(日本語入力オンでも P が効く・§11-3)
         // 説明画面(チュートリアル)は自分で一時停止を掛けて出る=ここで切り替えると、説明画面が出たままゲームが動き出す(PC版対応の調査で判明)。
         if (!tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible) {
           setPaused(!isPaused);

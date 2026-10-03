@@ -19,13 +19,16 @@ interface Ff7rButtonProps {
    *  文言(textContent)頼みだと、文字を1つ変えた日に黙って空振りする(空振りしても画面が進まない
    *  だけなので気づくのが遅れる)。渡さなければ属性ごと付かない。 */
   testId?: string;
+  /** キーボード・パッドでこの画面に入った時、最初に選ばれるボタン(utils/menuNav・PC版 §11-5)。属性を足すだけ=見た目は不変。 */
+  navDefault?: boolean;
 }
 
 export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
-  children, onClick, className = '', paddingY = '0.7rem', active = false, ariaLabel, emphasis = false, fade = 'right', testId,
+  children, onClick, className = '', paddingY = '0.7rem', active = false, ariaLabel, emphasis = false, fade = 'right', testId, navDefault,
 }) => {
+  const nav = navDefault ? { 'data-nav-default': '' } : {};
   if (COMMAND_UI_ENABLED) return (
-    <button type="button" onClick={onClick} aria-label={ariaLabel} data-testid={testId}
+    <button type="button" onClick={onClick} aria-label={ariaLabel} data-testid={testId} {...nav}
       className={`command-button ${emphasis ? 'command-button-primary' : ''} ${active ? 'command-button-selected' : ''} ${className}`}
       style={{ paddingTop: paddingY, paddingBottom: paddingY }}>{children}</button>
   );
@@ -40,7 +43,7 @@ export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
     : 'linear-gradient(95deg, rgba(168,85,247,0.26) 0%, transparent 70%)';
   const base = `${hi}, ${dark}`; // 紫発色を常時ベイク=ノーマルが既に「選択時の明るさ」
   return (
-    <button onClick={onClick} aria-label={ariaLabel} data-testid={testId} className={`group relative block overflow-hidden ${className}`}>
+    <button onClick={onClick} aria-label={ariaLabel} data-testid={testId} {...nav} className={`group relative block overflow-hidden ${className}`}>
       <span className="relative block" style={{ paddingTop: paddingY, paddingBottom: paddingY, background: base }}>
         {/* 押下/選択時のごく僅かな明るさ足し(基準はノーマルで既に明るい) */}
         <span
