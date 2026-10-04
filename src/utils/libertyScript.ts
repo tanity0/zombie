@@ -163,7 +163,7 @@ export const LIB_VOLLEY_SPAN_MS = 1800;
 export const LIB_ARROW_WINDUP_MS = 1000;
 /** 1本の当たりの半径・ダメージ。 */
 export const LIB_ARROW_RADIUS = 34;
-export const LIB_ARROW_DAMAGE = 8;
+export const LIB_ARROW_DAMAGE = 28; // 社長裁定2026-10-04「8は低い。無敵時間で基本1発・エンドコンテンツなので強め」=英雄の跳躍の着地と同じ重さ
 /** 号令の構え(旗手が立ち止まる時間)・号令の間隔・見つけてから最初の号令まで。 */
 export const LIB_VOLLEY_CAST_MS = 700;
 export const LIB_VOLLEY_COOLDOWN_MS = 9000;
