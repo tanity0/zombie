@@ -1311,6 +1311,9 @@ export interface Enemy {
   heroSnortAt?: number;
   /** プレイヤー(本人の攻撃)から最後に削られた gameTime。帰巣の判定に使う。 */
   heroPlayerHitAt?: number;
+  /** research/MUTANT_HERO.md §2-1(社長指示2026-10-04): 本編の英雄はデンジャーゾーンの真ん中の輪(半径=この値・原点中心)を
+   * 反時計回りに周回する。undefined=周回しない(対策室・ボステストの強制出現)。 */
+  heroPatrolR?: number;
   /** 去る時刻(巣で60秒だれも来ない → 画面の外へ駆け去る)。 */
   heroDepartAt?: number;
   // PACING_PUZZLE.md §6.38 B2(バス停「取り巻き召喚」): この敵が賞金首の取り巻きなら親bounty.idを持つ

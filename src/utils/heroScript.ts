@@ -481,6 +481,32 @@ export const heroSwingArc = (angle: number, halfArc: number, rising: boolean, fa
 export const heroBodyWallRect = (e: { x: number; y: number; width: number; height: number }): { x: number; y: number; width: number; height: number } =>
   ({ x: e.x, y: e.y, width: e.width, height: e.height });
 
+/**
+ * ★本編の出現(社長指示2026-10-04「1.3.4.5のステージに出現。場所はデンジャーゾーンのy軸真ん中、
+ * x軸を反時計回りにずっと周回している。速度はゆっくり」)。
+ * 区域は原点(スタート地点)からの距離の輪なので、**デンジャーゾーンの輪の幅の真ん中**(内縁と外縁の中間)を半径にして、
+ * 画面で見て反時計回りに回り続ける。
+ */
+export const HERO_PATROL_STAGES: readonly string[] = ['stage-1', 'stage-3', 'stage-4', 'stage-5'];
+/** 周回の速さ(px/s)。歩き(95)の半分=ゆっくり。半径6000の輪を1周するのに約13分。 */
+export const HERO_PATROL_SPEED = HERO_WALK_SPEED * 0.5;
+/** 区域の境界(原点からの距離・小さい順)から、デンジャーゾーン(区域2)の輪の真ん中の半径。 */
+export const heroPatrolRadius = (areaThresholds: readonly number[]): number =>
+  (areaThresholds[1] + areaThresholds[2]) / 2;
+/**
+ * 周回の次の目標点。今いる所から輪の上で反時計回りに `lookahead` px 先の点(輪から外れていれば輪へ寄りながら)。
+ * 画面は下ほど y が大きいので、**見た目の反時計回り=角度が減る向き**。
+ */
+export const heroPatrolNext = (x: number, y: number, R: number, lookahead: number): { x: number; y: number } => {
+  const a = Math.atan2(y, x) - lookahead / Math.max(1, R);
+  return { x: Math.cos(a) * R, y: Math.sin(a) * R };
+};
+/** 輪の上でいちばん近い点(帰る先)。 */
+export const heroPatrolNearest = (x: number, y: number, R: number): { x: number; y: number } => {
+  const a = Math.atan2(y, x);
+  return { x: Math.cos(a) * R, y: Math.sin(a) * R };
+};
+
 export const heroZoomEligible = (e: { type: string; heroTargetId?: string; health: number }): boolean =>
   e.type === HERO_TYPE && e.health > 0 && (e.heroTargetId === 'player' || e.heroTargetId === 'ghost');
 

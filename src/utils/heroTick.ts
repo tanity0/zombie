@@ -18,6 +18,7 @@ import {
   HERO_HOMING_SPEED_MULT, HERO_LOITER_RADIUS, HERO_LOITER_MIN_MS, HERO_LOITER_MAX_MS, HERO_STRIKE_MS, HERO_NEAR, HERO_MID,
   HERO_FLINCH_MS, HERO_SNORT_COOLDOWN_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS,
   heroStepShape, heroStepHitDelay, pickHeroMove, pickHeroTarget, heroFollowUp, heroRestMs, easeInOut,
+  HERO_PATROL_SPEED, heroPatrolNext, heroPatrolNearest,
   type HeroMoveKey, type HeroShape, type HeroTargetCand,
 } from './heroScript';
 
@@ -371,6 +372,8 @@ export const runHeroTick = (
   // ---- 狙い(中立): プレイヤー/守護霊/敵のうち一番近い ------------------------------------------------
   const onScreen = heroOnScreen(hero);
   // 出現直後(音が先・姿が後): 画面に入るまでプレイヤーの方へ速歩で寄る=蹄の音が近づく。入った所を巣にする。
+  // 本編の周回(heroPatrolR)はプレイヤーへ寄らない=輪の上をゆっくり回っている所へこちらが出会う。
+  if (!s.introDone && hero.heroPatrolR !== undefined) s.introDone = true;
   if (!s.introDone) {
     if (onScreen) {
       s.introDone = true;
@@ -405,12 +408,16 @@ export const runHeroTick = (
   }
 
   // ---- 範囲外=帰巣(§6-1 / §10a) -------------------------------------------------------------------
-  const homeCx = (hero.homeX ?? hero.x) + hero.width / 2, homeCy = (hero.homeY ?? hero.y) + hero.height / 2;
+  // 本編の周回では「巣」=輪の上のいちばん近い点(輪から1200px以上は追わずに輪へ帰り、また回り始める)。
+  const ring = hero.heroPatrolR !== undefined ? heroPatrolNearest(hx, hy, hero.heroPatrolR) : null;
+  const homeCx = ring ? ring.x : (hero.homeX ?? hero.x) + hero.width / 2;
+  const homeCy = ring ? ring.y : (hero.homeY ?? hero.y) + hero.height / 2;
   const fromHome = Math.hypot(hx - homeCx, hy - homeCy);
   const playerDist = Math.hypot(pcx - hx, pcy - hy);
   const playerHitRecently = hero.heroPlayerHitAt !== undefined && gt - hero.heroPlayerHitAt <= HERO_PLAYER_HIT_ENGAGE_MS;
   if (!s.homing) {
-    const out = fromHome > HERO_HOME_LIMIT_PX || (playerDist > HERO_LEASH_PLAYER_PX && !picked && !playerHitRecently);
+    // 周回中は「プレイヤーが遠い」だけでは帰らない(相手がいなければ周回の歩き自体が輪へ戻る)。輪から1200px以上で帰る。
+    const out = fromHome > HERO_HOME_LIMIT_PX || (!ring && playerDist > HERO_LEASH_PLAYER_PX && !picked && !playerHitRecently);
     if (out) {
       if (s.disengageSince === null) s.disengageSince = gt;
       if (fromHome > HERO_HOME_LIMIT_PX || gt - s.disengageSince >= HERO_DISENGAGE_GRACE_MS) { s.homing = true; s.disengageSince = null; }
@@ -464,6 +471,21 @@ export const runHeroTick = (
       sfx.gallop(0, 1);
     }
     if (patch.bossState === undefined && state !== 'chase') patch.bossState = 'chase';
+    applyPatch(hero.id, patch);
+    return;
+  }
+
+  // ---- 相手がいない(本編の周回): 輪の上を反時計回りにゆっくり歩き続ける。去らない ------------------------
+  if (hero.heroPatrolR !== undefined) {
+    s.homeIdleSince = null;
+    const nx = heroPatrolNext(hx, hy, hero.heroPatrolR, 240);
+    walkToward({ ...hero, ...patch } as Enemy, nx.x, nx.y, HERO_PATROL_SPEED, dt, gt, patch, 0);
+    if (patch.bossState === undefined && state !== 'chase') patch.bossState = 'chase';
+    if (hero.heroSnortAt === undefined || gt >= hero.heroSnortAt) {
+      if (hero.heroSnortAt !== undefined) sfx.snort(sfxGain);
+      patch.heroSnortAt = gt + 12000 + Math.random() * 12000;
+    }
+    sfx.gallop(sfxGain * 0.4, gallopRate(HERO_PATROL_SPEED));
     applyPatch(hero.id, patch);
     return;
   }

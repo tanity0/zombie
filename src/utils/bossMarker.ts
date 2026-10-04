@@ -42,7 +42,7 @@ export const BOUNTY_MARK_MAX_DIST_PX = 1200;
  * pixiScene側はこれ1本を呼ぶだけにする(CLAUDE.md 実装精度の規律4=配線に判定を直書きしない)。
  */
 export const isMarkedBossVisible = (
-  e: Pick<Enemy, 'type' | 'isStoryBoss' | 'bossState' | 'lastHit' | 'x' | 'y' | 'width' | 'height'>,
+  e: Pick<Enemy, 'type' | 'isStoryBoss' | 'bossState' | 'lastHit' | 'x' | 'y' | 'width' | 'height'> & Partial<Pick<Enemy, 'heroPatrolR' | 'heroTargetId'>>,
   now: number,
   playerCx: number,
   playerCy: number,
@@ -53,6 +53,12 @@ export const isMarkedBossVisible = (
   // 賞金首は**滞在中ずっと**出す——距離1200pxゲートと交戦ゲートの両方を外す(去り(return)中も、
   // 消えるまでは「いる」)。なお v§6.38 B1.5-5 では「有効距離1200px」と裁定されていた(事実)。
   if (isBountyType(e.type)) return true;
+  // research/MUTANT_HERO.md §2-1: 本編で輪を周回している英雄は、**こちら(プレイヤー/守護霊)と斬り合っている間**か
+  // 直近に殴った間だけ(裏ボスの「マークは交戦中だけ」と同じ)。出会う前から矢印が出続けると、輪の上で偶然出会う驚きが消える。
+  // 対策室・ボステストの英雄(heroPatrolR なし)は従来どおり常に出す。
+  if (e.type === 'mutant-hero' && e.heroPatrolR !== undefined) {
+    return e.heroTargetId === 'player' || e.heroTargetId === 'ghost' || now - e.lastHit <= BOSS_ENGAGE_GRACE_MS;
+  }
   return isEngagedBoss(e, now);
 };
 

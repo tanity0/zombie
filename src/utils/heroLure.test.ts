@@ -50,3 +50,17 @@ describe('英雄の体の壁(社長報告2026-10-04「重なって延々とダ�
     expect(heroBodyWallRect({ x: 10, y: 20, width: 110, height: 60 })).toEqual({ x: 10, y: 20, width: 110, height: 60 });
   });
 });
+
+describe('本編で周回する英雄の画面外マーク(交戦中だけ)', () => {
+  it('出会う前は出さず、プレイヤー/守護霊を狙っている間と直近に殴られた間だけ出す。対策室の英雄は常に出す', async () => {
+    const { isMarkedBossVisible, BOSS_ENGAGE_GRACE_MS } = await import('./bossMarker');
+    const base = { type: 'mutant-hero' as const, bossState: 'chase', lastHit: 0, x: 0, y: 0, width: 110, height: 60 };
+    const now = 1_000_000;
+    expect(isMarkedBossVisible({ ...base, heroPatrolR: 6000 }, now, 0, 0)).toBe(false);
+    expect(isMarkedBossVisible({ ...base, heroPatrolR: 6000, heroTargetId: 'some-zombie' }, now, 0, 0)).toBe(false);
+    expect(isMarkedBossVisible({ ...base, heroPatrolR: 6000, heroTargetId: 'player' }, now, 0, 0)).toBe(true);
+    expect(isMarkedBossVisible({ ...base, heroPatrolR: 6000, heroTargetId: 'ghost' }, now, 0, 0)).toBe(true);
+    expect(isMarkedBossVisible({ ...base, heroPatrolR: 6000, lastHit: now - BOSS_ENGAGE_GRACE_MS + 10 }, now, 0, 0)).toBe(true);
+    expect(isMarkedBossVisible(base, now, 0, 0)).toBe(true);
+  });
+});

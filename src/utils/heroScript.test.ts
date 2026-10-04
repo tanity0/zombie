@@ -1,7 +1,7 @@
 // research/MUTANT_HERO.md: 英雄(変異)の台本(純関数)のテスト。
 import { describe, it, expect } from 'vitest';
 import {
-  heroSwingArc,
+  heroSwingArc, heroPatrolRadius, heroPatrolNext, heroPatrolNearest, HERO_PATROL_STAGES, HERO_PATROL_SPEED, HERO_WALK_SPEED,
   HERO_MOVES, HERO_NEAR, HERO_MID, HERO_AGGRO_RANGE, HERO_LURE_RANGE, heroMoveCandidates, pickHeroMove, pickHeroTarget,
   heroFollowUp, heroStepShape, heroStepHitDelay, circleHitsHeroShape, circleHitsFan, mobPrefersHero, heroFrameFor, heroLiftPx, HERO_SHEETS,
 } from './heroScript';
@@ -189,5 +189,30 @@ describe('扇の振りの道(heroSwingArc)', () => {
       const { start, end } = heroSwingArc(ang, 50 * D, true);
       expect(upper(start)).toBeGreaterThanOrEqual(upper(end));
     }
+  });
+});
+
+describe('本編の周回(社長指示2026-10-04)', () => {
+  it('出るのはステージ1・3・4・5だけ', () => {
+    expect([...HERO_PATROL_STAGES].sort()).toEqual(['stage-1', 'stage-3', 'stage-4', 'stage-5']);
+  });
+  it('半径はデンジャーゾーン(区域2)の輪の真ん中', () => {
+    expect(heroPatrolRadius([2250, 4500, 7500, 11250])).toBe(6000);
+  });
+  it('画面で見て反時計回り(角度が減る向き)に進み、輪の上に乗る', () => {
+    const R = 6000;
+    for (const a0 of [0, 1, 2.5, -2]) {
+      const n = heroPatrolNext(Math.cos(a0) * R, Math.sin(a0) * R, R, 200);
+      let d = Math.atan2(n.y, n.x) - a0; d = Math.atan2(Math.sin(d), Math.cos(d));
+      expect(d).toBeLessThan(0);
+      expect(Math.hypot(n.x, n.y)).toBeCloseTo(R, 6);
+    }
+  });
+  it('輪から外れた所からは、同じ向きの輪の上へ帰る', () => {
+    const p = heroPatrolNearest(3000, 4000, 6000);
+    expect(p.x).toBeCloseTo(3600, 6); expect(p.y).toBeCloseTo(4800, 6);
+  });
+  it('ゆっくり(歩きより遅い)', () => {
+    expect(HERO_PATROL_SPEED).toBeLessThan(HERO_WALK_SPEED);
   });
 });

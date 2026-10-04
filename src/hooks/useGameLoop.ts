@@ -191,7 +191,7 @@ import {
   phantomSupportsSub, // ★幻影が主語になれるサブの白リスト(未実装の種は自爆するのでプレイヤーへ落とす)
 } from '../utils/phantomTick';
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
-import { heroZoomEligible } from '../utils/heroScript';
+import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties } from '../utils/heroBlast';
 // 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
 setThirdPartySfx((key, gain) => playSfx(key, gain));
@@ -1360,6 +1360,12 @@ const FORCE_HERO = evParam('heronow') === '1';
  * 城ボス・イベント・紅き夜・ハンター・死神などは練習ランのまま止める(noSpawn は従来どおり)=雑魚だけ。
  */
 const HERO_PRACTICE_MOBS = !NOSPAWN && isPracticeRun() && practiceForces('heronow');
+/**
+ * research/MUTANT_HERO.md §2-1(社長指示2026-10-04): 本編の英雄=ステージ1・3・4・5でデンジャーゾーンの真ん中の輪を周回。
+ * ボス戦テスト・ボスメーカー・湧き止め(nospawn)の読込では出さない(テストの相手が増えないように)。
+ */
+const HERO_PATROL_BLOCKED = NOSPAWN
+  || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bountynow', 'phantomnow', 'phillnow', 'heronow', 'bossmaker', 'vs'].some(k => evParam(k) !== null);
 // BOSS_MAKER.md §21(1対1の間合い): `?vs=<相手>` で、選んだ相手だけを1体出す開発用の枠。
 // 他の強制出現フラグと同じくモジュールロード時に1回だけ読む(切替は再読込)。
 const VS_ENTRY = vsEntryOfRun();
@@ -8516,6 +8522,27 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             addEnemy(hE);
             heroCutinIdRef.current = null;
           }
+          // research/MUTANT_HERO.md §2-1(社長指示2026-10-04): 本編の英雄。ステージ1・3・4・5で、デンジャーゾーンの輪の真ん中
+          // (原点からの距離=内縁と外縁の中間)に1体置き、輪を反時計回りにゆっくり回り続ける(heroTick の周回)。置く角度はランごとに無作為。
+          // プレイヤーへは寄らない・去らない。体力は「初めて姿が見えた時」に決め直す(下の制御ブロック)。
+          if (!HERO_PATROL_BLOCKED && !heroForceRef.current && newGameTime >= 3000 && !isPracticeRun() && !isBossMakerRun()
+            && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '')) {
+            heroForceRef.current = true;
+            const R = heroPatrolRadius(AREA_THRESHOLDS);
+            const a0 = Math.random() * Math.PI * 2;
+            const hE = spawnEnemyAt('mutant-hero', Math.cos(a0) * R - 55, Math.sin(a0) * R - 30, newGameTime);
+            const hHp = Math.round(bountyMaxHealth(areaIndexForPos(hE.x + hE.width / 2, hE.y + hE.height / 2), newGameTime) * stageBossDiffMults().hp);
+            hE.health = hHp; hE.maxHealth = hHp;
+            hE.dormant = false;
+            hE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない
+            hE.bossState = 'chase';
+            hE.heroPatrolR = R;
+            hE.homeX = hE.x; hE.homeY = hE.y;
+            hE.heroFaceX = Math.sin(a0) >= 0 ? 1 : -1; // 反時計回りに進む向き(接線)の左右
+            useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.type !== 'mutant-hero') }));
+            addEnemy(hE);
+            heroCutinIdRef.current = null;
+          }
           if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
             phantomForceRef.current = true;
             // ★research/SAME_ARENA.md O-5: 幻影の「中身」をここで1回だけ決める。
@@ -8831,6 +8858,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 姿が画面に入った最初のフレームでカットイン(時刻ではなく見えた瞬間・§2/§10a)。1体につき1回。
             if (heroCutinIdRef.current !== activeHero.id && heroOnScreen(activeHero) && !useGameStore.getState().attention) {
               heroCutinIdRef.current = activeHero.id;
+              // 本編の周回の英雄は、出会った時刻の強さで体力を決め直す(置いたのはランの頭=まだ手を付けられていない時だけ)。
+              if (activeHero.heroPatrolR !== undefined && activeHero.health >= activeHero.maxHealth) {
+                const hp2 = Math.round(bountyMaxHealth(areaIndexForPos(activeHero.x + activeHero.width / 2, activeHero.y + activeHero.height / 2), newGameTime) * stageBossDiffMults().hp);
+                useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === activeHero.id ? { ...e, health: hp2, maxHealth: hp2 } : e) }));
+              }
               const hAc = bossArtCenter(activeHero);
               useGameStore.getState().triggerAttention(hAc.x, hAc.y, bossCutinPayload('mutant-hero'));
               useGameStore.setState({ eventBannerText: '蹄の音が止まらない', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
