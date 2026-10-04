@@ -2117,14 +2117,6 @@ const HERO_SWORD_BLADE_LEN_FRAC = Math.hypot(
   (HERO_SWORD_TIP_FRAC.y - HERO_SWORD_GRIP_FRAC.y) * HERO_SWORD_H,
 ) / HERO_SWORD_W;
 // 手の位置(立ち絵の左向き基準・足元からの比率)。シートのコマで手は動くので近似。
-const HERO_HAND_FRAC = { x: -0.135, y: 0.70 }; // 斬撃シート以外のコマの近似(背丈に対する比・左向き基準)
-// 斬撃シート(mutant-hero-slash・1コマ186×202・左向き)の各コマで**描かれた剣の柄(手)**の位置(実測・コマの左上基準)。
-// 重ねるサーベルの柄をここへ置く=シートの剣と柄が離れて2本に見えない。
-const HERO_SLASH_HAND: readonly (readonly [number, number])[] = [
-  [72, 64], [76, 55], [75, 39], [77, 49], [75, 62], [88, 75], [100, 85], [87, 80],
-  [67, 47], [84, 37], [65, 40], [64, 64], [75, 97], [101, 80], [100, 92], [79, 75],
-];
-const HERO_SLASH_FRAME_W = 186, HERO_SLASH_FRAME_H = 202;
 // 振りは「当たる瞬間」を挟んで動く: 当たる110ms前に振り始め(加速)、当たった後150msで振り抜く(減速)。
 const HERO_SWING_LEAD_MS = 110, HERO_SWING_TAIL_MS = 150;
 
@@ -31304,13 +31296,12 @@ export class PixiScene {
 
   /**
    * research/MUTANT_HERO.md: 英雄のサーベル(構え→振り→残心)。社長指摘2026-10-04「剣の見た目大きさと攻撃範囲の
-   * スケール感と動きが合ってない」への回答。**剣は判定の図形と同じ大きさ・同じ角度を、手の高さで振る**:
+   * スケール感と動きが合ってない」+「持ち手に固定しないで」への回答。**剣は判定の図形の起点を軸に、同じ大きさ・同じ角度で振る**:
    *  - 扇: 刃渡り=扇の半径、振る角度=扇の端から端(上側の縁→下側の縁・払い上げは逆・`heroSwingArc`)。
    *  - 帯(縦の一撃): 刃渡り=帯の長さ、頭上(斬る向きと反対へ倒す)→帯の向きへ振り下ろす。
-   *  刃渡りは技の間ずっと一定(伸び縮みしない)。中心は手=赤い範囲(地面)と同じ形を手の高さで描く(奥行きの見え方)。
-   *  - 柄は**描かれた剣の柄**(斬撃シートはコマごとの実測表・それ以外は近似)。
+   *  刃渡りは技の間ずっと一定(伸び縮みしない)。軸=扇の中心/帯の始点=切っ先が赤い範囲の縁をなぞる。
    *  - 振りは当たる瞬間を挟む: 110ms前に加速して振り始め、当たった後150msで減速して振り抜く(赤が消え切る瞬間に刃が中ほどを通る)。
-   *  - 刃の跡も同じ道・同じ角度で描く(先回りしない)。切っ先が手より上(奥)にある間は体の後ろへ回す。
+   *  - 刃の跡も同じ道・同じ角度で描く(先回りしない)。切っ先が軸より上(奥)にある間は体の後ろへ回す。
    * 斬る技(振り下ろし・三連・払い上げ・横薙ぎ・突進の終点)だけ。棹立ち・跳躍・タックルは蹄と体の技なので出さない。描画のみ・判定は不変。
    */
   private drawHeroSword(e: Enemy, view: ActorView, gameTime: number, now: number): void {
@@ -31327,22 +31318,16 @@ export class PixiScene {
     if (s.kind === 'circle') return;
     const DEG = Math.PI / 180;
     const sp = view.sprite;
-    const bodyH = Math.abs(sp.height);
     const faceMul = sp.scale.y !== 0 ? sp.scale.x / Math.abs(sp.scale.y) : 1;
     const faceSign = (e.heroFaceX ?? (faceMul >= 0 ? -1 : 1)) >= 0 ? 1 : -1; // +1=右向き
-    // 柄: 斬撃シートのコマなら描かれた柄の実測、それ以外は近似。
-    let hx: number, hy: number;
-    const fm = this.atkFrameMemo.get(e.id);
-    const slashSlices = fm && fm.name === HERO_SHEETS.slash.name ? this.sheetSlices(fm.name, fm.frames) : null;
-    if (fm && slashSlices && slashSlices[fm.i] === sp.texture && HERO_SLASH_HAND[fm.i]) {
-      const [px, py] = HERO_SLASH_HAND[fm.i];
-      const k = bodyH / HERO_SLASH_FRAME_H;
-      hx = sp.x + (px - HERO_SLASH_FRAME_W / 2) * k * faceMul;
-      hy = sp.y - (HERO_SLASH_FRAME_H - py) * k;
-    } else {
-      hx = sp.x + HERO_HAND_FRAC.x * bodyH * faceMul;
-      hy = sp.y - HERO_HAND_FRAC.y * bodyH;
-    }
+    // 振りの軸=**判定の図形の起点**(扇=中心・帯=始点)。手には固定しない(社長指示2026-10-04
+    // 「剣の位置を英雄の持ち手に固定にしないで。ミゲルとかは攻撃範囲に沿って剣が振られてる様にちゃんと見える」)。
+    // 切っ先が赤い範囲の縁をそのままなぞる。突進の溜め・駆け足の間(扇が終点にあって体から離れている)は体の中心で構える。
+    const ox = s.kind === 'fan' ? s.cx : s.fx, oy = s.kind === 'fan' ? s.cy : s.fy;
+    const bcx = e.x + e.width / 2, bcy = e.y + e.height / 2;
+    const off = Math.hypot(ox - bcx, oy - bcy);
+    const w = Math.max(0, Math.min(1, 1 - (off - 60) / 100));
+    const hx = ox * w + bcx * (1 - w), hy = oy * w + bcy * (1 - w);
     // 時計: hitT=当たる時刻(溜め中は heroHitAt、振り抜き中は州の頭、残心中は州の頭−振り抜きの尺)。
     const hitT = st === 'hero-strike' ? (e.heroStateAt ?? gameTime)
       : st === 'hero-recover' ? (e.heroStateAt ?? gameTime) - HERO_STRIKE_MS
