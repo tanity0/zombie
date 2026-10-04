@@ -117,3 +117,36 @@ export const libRetreatDir = (
   const l = Math.hypot(dx, dy);
   return l > 1e-6 ? { x: dx / l, y: dy / l } : { x: 1, y: 0 };
 };
+
+// ---- 旗振り(社長指示2026-10-04「120px以内に近づいてきたら、この旗を振って来る範囲攻撃」・LIBERTY_HORDE §4b) ----
+/** 振り始める距離: 体(判定の矩形)の縁からプレイヤー中心まで。 */
+export const LIB_FLAG_TRIGGER_PX = 120;
+/** 扇の半径(体の中心から)。縁から120pxの相手に届く(体の半幅55+120)+余裕。 */
+export const LIB_FLAG_RADIUS = 200;
+/** 扇の開き(度)。 */
+export const LIB_FLAG_ARC_DEG = 140;
+/** 溜め(赤い予告が出て、消え切る=当たるまで)。 */
+export const LIB_FLAG_WINDUP_MS = 800;
+/** 振り抜いた後の残心。 */
+export const LIB_FLAG_RECOVER_MS = 600;
+/** 次に振れるまで(残心の終わりから)。 */
+export const LIB_FLAG_COOLDOWN_MS = 2500;
+/** 当たった時のダメージ(叩き台・英雄の横薙ぎ22より軽い)。 */
+export const LIB_FLAG_DAMAGE = 16;
+
+/** 点 (px,py) から矩形の縁までの距離(中なら0)。 */
+export const edgeDistToRectPt = (
+  rect: { x: number; y: number; width: number; height: number }, px: number, py: number,
+): number => {
+  const nx = Math.max(rect.x, Math.min(px, rect.x + rect.width));
+  const ny = Math.max(rect.y, Math.min(py, rect.y + rect.height));
+  return Math.hypot(px - nx, py - ny);
+};
+
+/** 旗振りの扇(体の中心から相手の方へ)。 */
+export const libFlagFan = (
+  rect: { x: number; y: number; width: number; height: number }, tx: number, ty: number,
+): { kind: 'fan'; cx: number; cy: number; angle: number; halfArc: number; radius: number } => {
+  const cx = rect.x + rect.width / 2, cy = rect.y + rect.height / 2;
+  return { kind: 'fan', cx, cy, angle: Math.atan2(ty - cy, tx - cx), halfArc: (LIB_FLAG_ARC_DEG / 2) * (Math.PI / 180), radius: LIB_FLAG_RADIUS };
+};

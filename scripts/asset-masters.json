@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "925 files / 復号後 約698MB",
+ "generatedFor": "926 files / 復号後 約698MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2929,6 +2929,12 @@
    "h": 202,
    "bytes": 364472,
    "sha": "c829ed8745d4314a"
+  },
+  "sprites/mutant-liberty-weapon.png": {
+   "w": 70,
+   "h": 86,
+   "bytes": 5724,
+   "sha": "6cb9539b2f1461ad"
   },
   "sprites/mutant-liberty.png": {
    "w": 150,

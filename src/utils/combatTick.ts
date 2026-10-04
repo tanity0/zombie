@@ -244,9 +244,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   if (blasts.length === 0) return;
   // スカジ氷=専用SE(社長提供) / それ以外(パンプキン着地等)=heavy-impact。
   // research/MUTANT_HERO.md: 英雄の斬撃・タックルは自分の音(下)。叩きつけ(棹立ち・跳躍)は重い音のまま。
-  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-'))) fx.playSfx('heavy-impact');
+  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-') && b.moveKey !== 'liberty-flag')) fx.playSfx('heavy-impact');
   if (blasts.some(b => b.moveKey === 'hero-slam')) fx.playSfx('hero-slam');
-  if (blasts.some(b => b.moveKey === 'hero-slash')) fx.playSfx('hero-slash');
+  if (blasts.some(b => b.moveKey === 'hero-slash' || b.moveKey === 'liberty-flag')) fx.playSfx('hero-slash'); // 旗振り(解放軍群)も振り抜きの風切り
   if (blasts.some(b => b.moveKey === 'hero-tackle')) fx.playSfx('hero-tackle-hit');
   if (blasts.some(b => b.ice)) fx.playSfx('skadi-ice');
   const bp = useGameStore.getState().player;
@@ -280,6 +280,15 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         fx.spawnRing(sx, sy, 10, r0 * 1.35, 'rgba(120,96,72,0.85)', 6, 520);
         fx.spawnRing(sx, sy, 6, r0 * 0.9, 'rgba(40,30,26,0.75)', 4, 420);
         fx.spawnBurst(sx, sy, '#6b5444', 22);
+      }
+    } else if (b.moveKey === 'liberty-flag') {
+      // research/LIBERTY_HORDE.md §4b: 旗振り。振りの跡は描画(pixiScene)が旗と同じ道で出す。ここは扇の縁に巻き上がる
+      // 血と土の色の輪だけ(派手さの絵=判定より大きく。全画面の橙のフラッシュは出さない=爆発ではない)。
+      const f = b.fan;
+      if (f) {
+        const ex = f.cx + Math.cos(f.angle) * f.radius * 0.7, ey = f.cy + Math.sin(f.angle) * f.radius * 0.7;
+        fx.spawnRing(f.cx, f.cy, f.radius * 0.5, f.radius * 1.25, 'rgba(110,30,26,0.7)', 5, 460);
+        fx.spawnBurst(ex, ey, '#5b1d1d', 18);
       }
     } else if (b.moveKey === 'driller-thrust') {
       // 削岩型の突き(検収監査#5): 雑魚の通常攻撃なので**全画面フラッシュは出さない**(3.5秒ごとに
@@ -320,7 +329,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         // 表示される取りこぼしを防ぐ)。
         const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
-          : b.moveKey === 'jo-slam' ? '叩きつけ' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
+          : b.moveKey === 'jo-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗振り' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey);
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。

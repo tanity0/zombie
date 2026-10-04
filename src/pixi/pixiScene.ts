@@ -2119,6 +2119,22 @@ const HERO_SWORD_BLADE_LEN_FRAC = Math.hypot(
   (HERO_SWORD_TIP_FRAC.x - HERO_SWORD_GRIP_FRAC.x) * HERO_SWORD_W,
   (HERO_SWORD_TIP_FRAC.y - HERO_SWORD_GRIP_FRAC.y) * HERO_SWORD_H,
 ) / HERO_SWORD_W;
+/**
+ * 扇/帯をなぞって振る武器の絵(英雄のサーベル・解放軍群の旗)。握り=回す軸、先=範囲の縁をなぞる点。
+ * 刃渡り(握り→先のpx)と、絵の中での握り→先の向き(intrinsic)は絵の寸法から出す。trail=振りの跡の色。
+ */
+interface SwingWeaponArt { tex: string; grip: { x: number; y: number }; intrinsic: number; bladePx: number; trail: number }
+const swingWeaponArt = (tex: string, W: number, H: number, grip: { x: number; y: number }, tip: { x: number; y: number }, trail: number): SwingWeaponArt => ({
+  tex, grip, trail,
+  intrinsic: Math.atan2((tip.y - grip.y) * H, (tip.x - grip.x) * W),
+  bladePx: Math.hypot((tip.x - grip.x) * W, (tip.y - grip.y) * H),
+});
+const SWING_WEAPON_ART: Readonly<Record<string, SwingWeaponArt>> = {
+  'mutant-hero': { tex: 'mutant-hero-weapon', grip: HERO_SWORD_GRIP_FRAC, intrinsic: HERO_SWORD_INTRINSIC_ANGLE, bladePx: HERO_SWORD_BLADE_LEN_FRAC * HERO_SWORD_W, trail: 0xe7dccb },
+  // research/LIBERTY_HORDE.md §4b: 旗手の旗(社長支給2026-10-04・70×86)。握り=竿の下端(実測 31,85.5)・先=竿の上端(実測 60.5,0.5)。
+  // 振りの跡は旗の布の色(暗い赤)。
+  'mutant-liberty': swingWeaponArt('mutant-liberty-weapon', 70, 86, { x: 31 / 70, y: 85.5 / 86 }, { x: 60.5 / 70, y: 0.5 / 86 }, 0x6b1f1a),
+};
 // 手の位置(立ち絵の左向き基準・足元からの比率)。シートのコマで手は動くので近似。
 // 振りは「当たる瞬間」を挟んで動く: 当たる110ms前に振り始め(加速)、当たった後150msで振り抜く(減速)。
 const HERO_SWING_LEAD_MS = 110, HERO_SWING_TAIL_MS = 150;
@@ -17873,9 +17889,9 @@ export class PixiScene {
     if (view.coilBody) view.coilBody.visible = false;
     // ゲート2ボス6体専用の武器/ランタン/構えスプライト(Mapで個体id管理)も同じ作法で既定OFF。
     // 該当ステートの分岐だけが下(drawEnemy側)で再表示する。
-    if (e.type === 'mutant-hero') {
+    if (e.type === 'mutant-hero' || e.type === 'mutant-liberty') {
       const heroSw = this.heroSwordFx.get(e.id);
-      if (heroSw) heroSw.visible = false; // 点けるのは drawHeroSword だけ
+      if (heroSw) heroSw.visible = false; // 点けるのは drawHeroSword だけ(旗手の旗も同じ器)
     }
     if (isGate2AngelBoss(e.type)) {
       const slashFx = this.miguelSlashFx.get(e.id);
@@ -19549,7 +19565,8 @@ export class PixiScene {
     // §6.38 B2b(持ち越し①): 武器スプライト(バス停=標識/馬乗り=鞭/鋏=裁ち鋏/舞妓=毬)を各技へ配線する
     // (「判定が正しくても絵が出ていなければ未達」。派手側に倒す=大きめのlengthPx)。
     // research/MUTANT_HERO.md: 英雄の赤い予告(溜めの開始で出て、当たる瞬間に消え切る)と斬撃の弧。
-    if (e.type === 'mutant-hero') {
+    // research/LIBERTY_HORDE.md §4b: 解放軍群の旗手の旗振りも同じ器(赤い扇の予告+扇をなぞる振り)。
+    if (e.type === 'mutant-hero' || e.type === 'mutant-liberty') {
       this.drawHeroTelegraph(e, view, o, gameTime, now);
       this.drawHeroSword(e, view, gameTime, now);
     }
@@ -31320,7 +31337,9 @@ export class PixiScene {
    */
   private drawHeroSword(e: Enemy, view: ActorView, gameTime: number, now: number): void {
     // 姿が出た時点で剣の絵を取りに行く(網は「最初に使う瞬間」に発火する=初回の溜めに間に合わせる)。
-    const tex = getTexture('mutant-hero-weapon');
+    const art = SWING_WEAPON_ART[e.type];
+    if (!art) return;
+    const tex = getTexture(art.tex);
     const st = e.bossState;
     const live = (st === 'hero-windup' || st === 'hero-motion') && e.heroShape && e.heroMove
       ? { shape: e.heroShape, move: e.heroMove, step: e.heroStep ?? 0 } : null;
@@ -31413,7 +31432,7 @@ export class PixiScene {
             .lineTo(hx + Math.cos(b0) * ro, hy + Math.sin(b0) * ro)
             .lineTo(hx + Math.cos(b1) * ro, hy + Math.sin(b1) * ro)
             .lineTo(hx + Math.cos(b1) * ri, hy + Math.sin(b1) * ri)
-            .closePath().fill({ color: 0xe7dccb, alpha: aa });
+            .closePath().fill({ color: art.trail, alpha: aa });
         }
         // 切っ先の縁だけ血の色。
         const tb = head - dir * 0.2;
@@ -31425,7 +31444,7 @@ export class PixiScene {
     let c = this.heroSwordFx.get(e.id);
     if (!c || c.destroyed) {
       c = new Container();
-      const ksp = new Sprite(); ksp.anchor.set(HERO_SWORD_GRIP_FRAC.x, HERO_SWORD_GRIP_FRAC.y);
+      const ksp = new Sprite(); ksp.anchor.set(art.grip.x, art.grip.y);
       c.addChild(ksp);
       this.heroSwordFx.set(e.id, c);
     }
@@ -31441,13 +31460,13 @@ export class PixiScene {
     }
     const ksp = c.children[0] as Sprite;
     if (ksp.texture !== tex) ksp.texture = tex;
-    const ksc = R / (HERO_SWORD_BLADE_LEN_FRAC * HERO_SWORD_W);
+    const ksc = R / art.bladePx;
     const len = Math.hypot(tipX - hx, tipY - hy);
     const lenMul = R > 0 ? len / R : 1; // 段の継ぎ目の補間の間だけ R から外れる
     // 反りは向いている側で固定(段の継ぎ目で裏返らない)。
     const flip = faceSign > 0 ? -1 : 1;
     ksp.scale.set(ksc * lenMul, ksc * flip);
-    ksp.rotation = Math.atan2(tipY - hy, tipX - hx) - HERO_SWORD_INTRINSIC_ANGLE * flip;
+    ksp.rotation = Math.atan2(tipY - hy, tipX - hx) - art.intrinsic * flip;
     const ease = this.weaponAppearEase(`hero-sword:${e.id}`, now);
     ksp.position.set(hx, hy + ease.dy);
     ksp.alpha = (inWindup && m.step === 0 ? swordFadeInAlpha(el) : 1) * ease.alphaMul;

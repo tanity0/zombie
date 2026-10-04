@@ -6,16 +6,18 @@
 //  - 移動は必ず ①障害物(resolveBountyMove)→ ②行ける帯(clampRectToPlayableArea)の順で通す。
 //  - 旗手は自分では攻撃しない。叫ぶのは画面に入っている時だけ(見つける条件に「画面内」を含む)。
 import type { Enemy } from '../types/game';
-import { useGameStore, resolveBountyMove, SCREAMER_WINDUP_MS, SCREAMER_BUFF_MS, screamerWindupFx, screamerCryFx, cancelScreamerWindupFx } from '../store/gameStore';
+import { useGameStore, resolveBountyMove, SCREAMER_WINDUP_MS, SCREAMER_BUFF_MS, screamerWindupFx, screamerCryFx, cancelScreamerWindupFx, type PumpkinBlast } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { isCorpse, spawnEnemyAtWithTier } from './enemyUtils';
 import { isPointInZoomedViewport } from './cameraZoom';
-import { HERO_AGGRO_RANGE, HERO_PATROL_SPEED, heroPatrolNext } from './heroScript';
+import { HERO_AGGRO_RANGE, HERO_PATROL_SPEED, HERO_STRIKE_MS, heroPatrolNext } from './heroScript';
 import { HERO_PATROL_DETOUR_PX, HERO_PATROL_DETOUR_MS } from './heroTick';
 import {
   LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_STEP_PX, LIB_TRAIL_MAX, LIB_LOSE_RANGE_MULT, LIB_LOSE_MS,
   LIB_RETURN_SPEED, LIB_RETURN_ARRIVE_PX, LIB_REFILL_BEHIND_PX, LIB_RETURN_EASE_PER_S, LIB_BEARER_ACCEL,
-  LIB_HEAD_PX, LIB_SCREAM_FX_SCALE, LIB_HIT_ALERT_MS, LIB_RETREAT_RANGE_PX, LIB_RETREAT_SPEED, LIB_TURN_PER_S, libRetreatDir, trailPointAt, maleBatId, hordeJitter,
+  LIB_HEAD_PX, LIB_SCREAM_FX_SCALE, LIB_HIT_ALERT_MS, LIB_RETREAT_RANGE_PX, LIB_RETREAT_SPEED, LIB_TURN_PER_S, libRetreatDir,
+  LIB_FLAG_TRIGGER_PX, LIB_FLAG_WINDUP_MS, LIB_FLAG_RECOVER_MS, LIB_FLAG_COOLDOWN_MS, LIB_FLAG_DAMAGE, edgeDistToRectPt, libFlagFan,
+  trailPointAt, maleBatId, hordeJitter,
 } from './libertyScript';
 
 export interface LibertyTickState {
@@ -152,6 +154,41 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     s.dirX = hx / hl; s.dirY = hy / hl;
     s.speed = Math.min(LIB_RETREAT_SPEED, s.speed + LIB_BEARER_ACCEL * dt);
   };
+  // ---- 旗振り(社長指示2026-10-04・LIBERTY_HORDE §4b) ----
+  // プレイヤーが体の縁から120px以内に来たら、溜め(赤い扇の予告=溜めの開始で出て、当たる瞬間に消え切る)→
+  // 振り抜き(扇の爆風=カウンターできる赤)→残心→間隔。州と形は英雄の器(hero-windup/strike/recover・heroShape)を使う
+  // =予告と旗の振りの絵は英雄と同じ描画が出す。崩し(紫)・気絶で溜めは消える。振っている間は動かない。
+  const atk = bearer.bossState;
+  const stunned = (bearer.bossFullStunUntil !== undefined && gt < bearer.bossFullStunUntil)
+    || (bearer.stunUntil !== undefined && gt < bearer.stunUntil);
+  let attacking = false;
+  if (atk === 'hero-windup' || atk === 'hero-strike' || atk === 'hero-recover') {
+    if (stunned) {
+      Object.assign(patch, { bossState: undefined, heroShape: undefined, heroHitAt: undefined, libFlagReadyAt: gt + LIB_FLAG_COOLDOWN_MS });
+    } else {
+      attacking = true;
+      if (atk === 'hero-windup' && bearer.heroHitAt !== undefined && gt >= bearer.heroHitAt) {
+        if (bearer.heroShape) pushFlagBlast(bearer, bearer.heroShape);
+        Object.assign(patch, { bossState: 'hero-strike', heroStateAt: gt, bossStateUntil: gt + HERO_STRIKE_MS, heroShape: undefined, heroHitAt: undefined });
+      } else if (atk === 'hero-strike' && gt >= (bearer.bossStateUntil ?? 0)) {
+        Object.assign(patch, { bossState: 'hero-recover', heroStateAt: gt, bossStateUntil: gt + LIB_FLAG_RECOVER_MS });
+      } else if (atk === 'hero-recover' && gt >= (bearer.bossStateUntil ?? 0)) {
+        Object.assign(patch, { bossState: undefined, libFlagReadyAt: gt + LIB_FLAG_COOLDOWN_MS });
+        attacking = false;
+      }
+    }
+  } else if (!frozen && pl.health > 0 && onScreen && gt >= (bearer.libFlagReadyAt ?? 0)) {
+    const pcx2 = pl.x + pl.width / 2, pcy2 = pl.y + pl.height / 2;
+    if (edgeDistToRectPt(bearer, pcx2, pcy2) <= LIB_FLAG_TRIGGER_PX) {
+      Object.assign(patch, {
+        bossState: 'hero-windup', heroMove: 'sweep', heroStep: 0, heroShape: libFlagFan(bearer, pcx2, pcy2),
+        bossWindupStartAt: gt, heroStateAt: gt, heroHitAt: gt + LIB_FLAG_WINDUP_MS, bossStateUntil: gt + LIB_FLAG_WINDUP_MS,
+        heroFaceX: (pcx2 >= bx ? 1 : -1) as 1 | -1,
+      });
+      attacking = true;
+    }
+  }
+
   /** 今の向き(dirX/dirY)へ speed で1フレーム進む(障害物→行ける帯)。 */
   const stepAlong = () => {
     const step = s.speed * dt;
@@ -177,10 +214,14 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   } else if (alerted) {
     // その場に止まり(歩きの勢いを0.3秒ほどで殺す)、見つけた相手の方を向いて叫ぶ。
     // 見つけた瞬間の1回目は無条件で溜めへ(全体で1本のバフに握られない)。
-    if (away) retreatStep();
-    else s.speed = Math.max(0, s.speed - LIB_BEARER_ACCEL * dt);
-    stepAlong();
-    patch.heroFaceX = (sight.x >= bx ? 1 : -1) as 1 | -1; // 下がる間も相手を向いたまま(後ずさり)
+    if (attacking) {
+      s.speed = 0; Object.assign(patch, { vx: 0, vy: 0 }); // 振っている間は動かない(向きは振り始めに決めたまま)
+    } else {
+      if (away) retreatStep();
+      else s.speed = Math.max(0, s.speed - LIB_BEARER_ACCEL * dt);
+      stepAlong();
+      patch.heroFaceX = (sight.x >= bx ? 1 : -1) as 1 | -1; // 下がる間も相手を向いたまま(後ずさり)
+    }
     const screamUntil = bearer.libScreamUntil;
     if (screamUntil !== undefined) {
       if (gt >= screamUntil) {
@@ -196,7 +237,9 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     }
   } else {
     cancelWindup();
-    if (away) {
+    if (attacking) {
+      s.speed = 0; Object.assign(patch, { vx: 0, vy: 0 });
+    } else if (away) {
       // 周回中でも詰められたら距離を取る(相手の方を向いたまま後ずさる)。
       retreatStep();
       stepAlong();
@@ -319,3 +362,13 @@ export const releaseOrphanHorde = (): void => {
 /** いま場にいる旗手(死体・倒れた個体は除く)。 */
 export const pickActiveLiberty = (enemies: readonly Enemy[]): Enemy | undefined =>
   enemies.find(e => e.type === 'mutant-liberty' && !isCorpse(e) && e.health > 0);
+
+/** 旗振りの当たり(扇の爆風)。解決は combatTick.applyPumpkinBlastDamage(カウンターできる赤・プレイヤーへ)。 */
+const pushFlagBlast = (bearer: Enemy, shape: NonNullable<Enemy['heroShape']>): void => {
+  if (shape.kind !== 'fan') return;
+  const b: PumpkinBlast = {
+    x: shape.cx, y: shape.cy, radius: shape.radius, damage: LIB_FLAG_DAMAGE, enemyId: bearer.id, moveKey: 'liberty-flag',
+    fan: { cx: shape.cx, cy: shape.cy, angle: shape.angle, halfArc: shape.halfArc, radius: shape.radius },
+  };
+  useGameStore.setState(st => ({ pumpkinBlasts: [...st.pumpkinBlasts, b] }));
+};

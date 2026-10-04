@@ -1320,6 +1320,8 @@ export interface Enemy {
   libAlerted?: boolean;
   /** 旗手の叫喚の溜めが終わる時刻(gameTime)。undefined=溜めていない。 */
   libScreamUntil?: number;
+  /** research/LIBERTY_HORDE.md §4b: 旗振りの次に振れる時刻(gameTime)。 */
+  libFlagReadyAt?: number;
   /** バット男(取り巻き)が属する旗手のID。★既存の bountyEscortId は使わない(親の退場で一掃する意味を持つため)。 */
   hordeLeaderId?: string;
   /** 取り巻きの状態: follow=列に並ぶ / chase=通常AIで向かう / return=列の自分の位置へ戻る。follow/return は通常AIを素通り。 */

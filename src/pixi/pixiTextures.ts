@@ -116,6 +116,7 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'mutant-hero-fog', scaleMode: 'linear' },  // 912x22 = 0.08MB(足元の黒い霧。ぼかしの絵を約5倍へ拡大=線形補間)
     { name: 'mutant-hero-weapon', scaleMode: 'nearest' }, // 211x32 = 0.03MB(英雄のサーベル・社長支給のドット版)
     { name: 'mutant-liberty', scaleMode: 'nearest' },  // 150x202 = 0.12MB(解放軍群(変異)の旗手の立ち絵=歩きの1コマ目)
+    { name: 'mutant-liberty-weapon', scaleMode: 'nearest' }, // 70x86 = 0.02MB(旗手の旗・社長支給のドット絵)
   ],
   /**
    * ★ボス級の**アニメーションシート**(社長指示2026-09-24「乗せて」)。**所属は付けない=網だけで拾う**

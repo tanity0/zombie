@@ -1,6 +1,6 @@
 // research/LIBERTY_HORDE.md: 解放軍群(変異)の純関数のテスト。
 import { describe, it, expect } from 'vitest';
-import { libRetreatDir, LIB_RETREAT_RANGE_PX, libPatrolRadius, trailPointAt, maleBatId, ringPointBehind, hordeJitter, LIB_JITTER_PX, LIB_ESCORTS, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX, LIB_SLOT_GAP_PX } from './libertyScript';
+import { libFlagFan, edgeDistToRectPt, LIB_FLAG_RADIUS, LIB_FLAG_TRIGGER_PX, libRetreatDir, LIB_RETREAT_RANGE_PX, libPatrolRadius, trailPointAt, maleBatId, ringPointBehind, hordeJitter, LIB_JITTER_PX, LIB_ESCORTS, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX, LIB_SLOT_GAP_PX } from './libertyScript';
 import { variantTextureName } from './enemyVariant';
 import { countsTowardEnemyCap, isBossType } from './enemyUtils';
 
@@ -47,6 +47,15 @@ describe('解放軍群(変異)', () => {
     expect(d.x).toBeCloseTo(0); expect(d.y).toBeCloseTo(-1);
     const left = libRetreatDir(rect, -50, 30, LIB_RETREAT_RANGE_PX)!;
     expect(left.x).toBeCloseTo(1);
+  });
+  it('旗振りの扇は、振り始める距離の相手に必ず届く(赤いのに当たらない、を作らない)', () => {
+    const rect = { x: 0, y: 0, width: 110, height: 60 };
+    // 縁から120の点のうち、体の中心からいちばん遠いのは角の斜め外。そこまで扇の半径が届くこと。
+    const corner = { x: 110 + LIB_FLAG_TRIGGER_PX / Math.SQRT2, y: 60 + LIB_FLAG_TRIGGER_PX / Math.SQRT2 };
+    expect(edgeDistToRectPt(rect, corner.x, corner.y)).toBeCloseTo(LIB_FLAG_TRIGGER_PX, 6);
+    expect(Math.hypot(corner.x - 55, corner.y - 30)).toBeLessThanOrEqual(LIB_FLAG_RADIUS);
+    const f = libFlagFan(rect, 55, 200);
+    expect(f.angle).toBeCloseTo(Math.PI / 2);
   });
   it('旗手と取り巻きは盤面の上限に数えない。旗手はボス級', () => {
     expect(countsTowardEnemyCap({ type: 'mutant-liberty' })).toBe(false);
