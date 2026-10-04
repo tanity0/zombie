@@ -1,7 +1,7 @@
 // research/MUTANT_HERO.md: 英雄(変異)の台本(純関数)のテスト。
 import { describe, it, expect } from 'vitest';
 import {
-  heroSwingArc, heroPatrolRadius, heroPatrolNext, heroPatrolNearest, HERO_PATROL_STAGES, HERO_PATROL_SPEED, HERO_WALK_SPEED,
+  heroSwingArc, heroPatrolRadius, heroPatrolNext, heroPatrolNearest, HERO_PATROL_STAGES, HERO_PATROL_SPEED, HERO_WALK_SPEED, HERO_GALLOP_SPEED,
   HERO_MOVES, HERO_NEAR, HERO_MID, HERO_AGGRO_RANGE, HERO_LURE_RANGE, heroMoveCandidates, pickHeroMove, pickHeroTarget,
   heroFollowUp, heroStepShape, heroStepHitDelay, circleHitsHeroShape, circleHitsFan, mobPrefersHero, heroFrameFor, heroLiftPx, HERO_SHEETS,
 } from './heroScript';
@@ -212,7 +212,8 @@ describe('本編の周回(社長指示2026-10-04)', () => {
     const p = heroPatrolNearest(3000, 4000, 6000);
     expect(p.x).toBeCloseTo(3600, 6); expect(p.y).toBeCloseTo(4800, 6);
   });
-  it('ゆっくり(歩きより遅い)', () => {
+  it('ゆっくり(歩きより遅い)。見つけた/戻る時は駆ける(歩きより速い)', () => {
     expect(HERO_PATROL_SPEED).toBeLessThan(HERO_WALK_SPEED);
+    expect(HERO_GALLOP_SPEED).toBeGreaterThan(HERO_WALK_SPEED * 2);
   });
 });

@@ -490,6 +490,11 @@ export const heroBodyWallRect = (e: { x: number; y: number; width: number; heigh
 export const HERO_PATROL_STAGES: readonly string[] = ['stage-1', 'stage-3', 'stage-4', 'stage-5'];
 /** 周回の速さ(px/s)。歩き(95)の半分=ゆっくり。半径6000の輪を1周するのに約13分。 */
 export const HERO_PATROL_SPEED = HERO_WALK_SPEED * 0.5;
+/**
+ * 周回中の英雄が相手を見つけた時/輪から離れすぎて戻る時の駆け足(px/s)。社長指示2026-10-04
+ * 「見つけると速度を上げて駆け寄ってくる(ツリーガードと一緒)」「一定距離…離れると駆けて戻っていく」。歩き(95)の約2.5倍。叩き台。
+ */
+export const HERO_GALLOP_SPEED = 240;
 /** 区域の境界(原点からの距離・小さい順)から、デンジャーゾーン(区域2)の輪の真ん中の半径。 */
 export const heroPatrolRadius = (areaThresholds: readonly number[]): number =>
   (areaThresholds[1] + areaThresholds[2]) / 2;

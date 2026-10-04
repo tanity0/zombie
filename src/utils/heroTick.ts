@@ -18,7 +18,7 @@ import {
   HERO_HOMING_SPEED_MULT, HERO_LOITER_RADIUS, HERO_LOITER_MIN_MS, HERO_LOITER_MAX_MS, HERO_STRIKE_MS, HERO_NEAR, HERO_MID,
   HERO_FLINCH_MS, HERO_SNORT_COOLDOWN_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS,
   heroStepShape, heroStepHitDelay, pickHeroMove, pickHeroTarget, heroFollowUp, heroRestMs, easeInOut,
-  HERO_PATROL_SPEED, heroPatrolNext, heroPatrolNearest,
+  HERO_PATROL_SPEED, HERO_GALLOP_SPEED, heroPatrolNext, heroPatrolNearest,
   type HeroMoveKey, type HeroShape, type HeroTargetCand,
 } from './heroScript';
 
@@ -406,6 +406,11 @@ export const runHeroTick = (
     patch.heroTargetId = undefined;
     patch.heroTargetUntil = undefined;
   }
+  // 周回中に相手を見つけた瞬間: いななきを上げて駆け出す合図(ツリーガードの「気づかれた」)。続けて鳴らない。
+  if (hero.heroPatrolR !== undefined && picked && hero.heroTargetId === undefined && gt - s.lastSnortAt >= HERO_SNORT_COOLDOWN_MS) {
+    s.lastSnortAt = gt;
+    sfx.neigh(sfxGain);
+  }
 
   // ---- 範囲外=帰巣(§6-1 / §10a) -------------------------------------------------------------------
   // 本編の周回では「巣」=輪の上のいちばん近い点(輪から1200px以上は追わずに輪へ帰り、また回り始める)。
@@ -430,9 +435,11 @@ export const runHeroTick = (
 
   const tgt = picked;
   if (s.homing && !tgt) {
-    walkToward({ ...hero, ...patch } as Enemy, homeCx, homeCy, HERO_WALK_SPEED * HERO_HOMING_SPEED_MULT, dt, gt, patch, HERO_HOME_ARRIVE_PX * 0.5);
+    // 周回中の英雄は輪から離れすぎたら**駆けて**戻る(社長指示)。対策室の英雄は従来どおり半分の速さで巣へ。
+    const homeSpeed = ring ? HERO_GALLOP_SPEED : HERO_WALK_SPEED * HERO_HOMING_SPEED_MULT;
+    walkToward({ ...hero, ...patch } as Enemy, homeCx, homeCy, homeSpeed, dt, gt, patch, HERO_HOME_ARRIVE_PX * 0.5);
     if (patch.bossState === undefined) patch.bossState = 'chase';
-    sfx.gallop(sfxGain * 0.6, gallopRate(HERO_WALK_SPEED * HERO_HOMING_SPEED_MULT));
+    sfx.gallop(sfxGain * (ring ? 0.9 : 0.6), gallopRate(homeSpeed));
     applyPatch(hero.id, patch);
     return;
   }
@@ -459,8 +466,10 @@ export const runHeroTick = (
     }
     // 休みの間: 遠ければ中距離まで歩いて詰める(近すぎる時は止まる)。
     if (d > HERO_MID) {
-      walkToward({ ...hero, ...patch } as Enemy, tgt.x, tgt.y, HERO_WALK_SPEED, dt, gt, patch, HERO_MID * 0.8);
-      sfx.gallop(sfxGain * 0.7, gallopRate(HERO_WALK_SPEED));
+      // 周回中の英雄は見つけた相手へ**駆け寄る**(ツリーガードと同じ)。対策室の英雄は従来どおり歩いて詰める。
+      const closeSpeed = ring ? HERO_GALLOP_SPEED : HERO_WALK_SPEED;
+      walkToward({ ...hero, ...patch } as Enemy, tgt.x, tgt.y, closeSpeed, dt, gt, patch, HERO_MID * 0.8);
+      sfx.gallop(sfxGain * (ring ? 1 : 0.7), gallopRate(closeSpeed));
     } else if (d > HERO_NEAR) {
       walkToward({ ...hero, ...patch } as Enemy, tgt.x, tgt.y, HERO_WALK_SPEED * 0.6, dt, gt, patch, HERO_NEAR);
       sfx.gallop(sfxGain * 0.5, gallopRate(HERO_WALK_SPEED * 0.6));

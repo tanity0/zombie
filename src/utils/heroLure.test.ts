@@ -54,7 +54,7 @@ describe('英雄の体の壁(社長報告2026-10-04「重なって延々とダ�
 describe('本編で周回する英雄の画面外マーク(交戦中だけ)', () => {
   it('出会う前は出さず、プレイヤー/守護霊を狙っている間と直近に殴られた間だけ出す。対策室の英雄は常に出す', async () => {
     const { isMarkedBossVisible, BOSS_ENGAGE_GRACE_MS } = await import('./bossMarker');
-    const base = { type: 'mutant-hero' as const, bossState: 'chase', lastHit: 0, x: 0, y: 0, width: 110, height: 60 };
+    const base = { type: 'mutant-hero' as const, bossState: 'chase' as const, lastHit: 0, x: 0, y: 0, width: 110, height: 60 };
     const now = 1_000_000;
     expect(isMarkedBossVisible({ ...base, heroPatrolR: 6000 }, now, 0, 0)).toBe(false);
     expect(isMarkedBossVisible({ ...base, heroPatrolR: 6000, heroTargetId: 'some-zombie' }, now, 0, 0)).toBe(false);
