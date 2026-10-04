@@ -21,8 +21,10 @@ export interface BossTestEntry {
    * phantomnow=守護霊ボス「幻影」(research/GHOST_BOSS.md)をプレイヤーの近くへ即出現(休眠なし) /
    * phillnow=EXボス「フィル(変異体)」(PACING_PUZZLE.md §10)を出現条件(gate2Cleared+深度)を
    * 無視してプレイヤーの近くへ即出現。
+   * heronow=中立の騎馬「英雄(変異)」(research/MUTANT_HERO.md)を開始3秒後に画面の外から出す
+   * (ゾンビは通常どおり湧く=三つ巴を試せる)。
    */
-  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow' | 'phantomnow' | 'phillnow';
+  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow';
   /** param==='bountynow'の時だけ意味を持つ副パラメータ(?bountytype=)。4種の型を選ぶ。 */
   bountyType?: 'ranged' | 'melee' | 'balance' | 'maiko';
 }
@@ -55,6 +57,9 @@ export const BOSS_TEST_ENTRIES: readonly BossTestEntry[] = [
   // research/GHOST_BOSS.md(守護霊ボス「幻影」): デバッグ出現のみ(?phantomnow=1)。
   // ENGAGEABLE へ編入した型は**この表に1件以上必要**(bossTest.test.ts の網羅検査)。
   { boss: 'guardian-phantom', stageId: 'stage-1', param: 'phantomnow' },
+  // research/MUTANT_HERO.md(英雄(変異)): デバッグ出現のみ(?heronow=1)。中立=ボス戦ではない(ENGAGEABLE に入れない)
+  // ので、守護霊の交戦対象の網羅検査からは外してある(bossTest.test.ts)。
+  { boss: 'mutant-hero', stageId: 'stage-1', param: 'heronow' },
 ];
 
 export interface BossTestOptions {
@@ -107,7 +112,7 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
 // ---- 現在モードの表示(社長指示2026-07-31「いまどのモードになってるか出しといて」) ---------------
 // パラメータ残留事故(v0.25.2576で修正)の再発をその場で見抜くための可視化。強制出現フラグは
 // モジュールロード時定数なので、**ページ読込時のURL**が今セッションの真実=それを解析して表示する。
-export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker', 'bountynow'] as const;
+export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker', 'bountynow', 'heronow'] as const;
 
 export interface BossTestModeInfo {
   active: boolean;                          // いずれかのテスト系パラメータが生きているか

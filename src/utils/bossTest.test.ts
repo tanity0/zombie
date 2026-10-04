@@ -25,7 +25,8 @@ describe('BOSS_TEST_ENTRIES(カタログの整合)', () => {
   });
 
   it('掲載ボスは全て守護霊の交戦対象(ENGAGEABLE)=守護霊テストの対象網羅', () => {
-    for (const e of BOSS_TEST_ENTRIES) {
+    // 英雄(変異)は中立=ボス戦ではない(research/MUTANT_HERO.md §9 #1)ので除く。
+    for (const e of BOSS_TEST_ENTRIES.filter(e => e.boss !== 'mutant-hero')) {
       expect(ENGAGEABLE_BOSS_TYPES.has(e.boss), e.boss).toBe(true);
     }
   });
