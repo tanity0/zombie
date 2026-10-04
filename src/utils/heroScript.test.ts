@@ -178,6 +178,12 @@ describe('扇の振りの道(heroSwingArc)', () => {
       expect(Math.abs(Math.atan2(Math.sin(mid - ang), Math.cos(mid - ang)))).toBeLessThan(1e-9);
     }
   });
+  it('真上・真下へ斬る時は向いている側の縁から振る(狙いが少し動いても入れ替わらない)', () => {
+    for (const ang of [-Math.PI / 2, -Math.PI / 2 + 5 * D, Math.PI / 2 - 5 * D]) {
+      expect(Math.cos(heroSwingArc(ang, 70 * D, false, 1).start)).toBeGreaterThan(0);
+      expect(Math.cos(heroSwingArc(ang, 70 * D, false, -1).start)).toBeLessThan(0);
+    }
+  });
   it('払い上げだけは下側から上側へ', () => {
     for (const ang of [0, Math.PI]) {
       const { start, end } = heroSwingArc(ang, 50 * D, true);

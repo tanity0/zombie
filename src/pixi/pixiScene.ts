@@ -2117,7 +2117,16 @@ const HERO_SWORD_BLADE_LEN_FRAC = Math.hypot(
   (HERO_SWORD_TIP_FRAC.y - HERO_SWORD_GRIP_FRAC.y) * HERO_SWORD_H,
 ) / HERO_SWORD_W;
 // 手の位置(立ち絵の左向き基準・足元からの比率)。シートのコマで手は動くので近似。
-const HERO_HAND_FRAC = { x: -0.135, y: 0.70 }; // x は背丈に対する比(立ち絵 180×202 で幅の -0.15 相当)
+const HERO_HAND_FRAC = { x: -0.135, y: 0.70 }; // 斬撃シート以外のコマの近似(背丈に対する比・左向き基準)
+// 斬撃シート(mutant-hero-slash・1コマ186×202・左向き)の各コマで**描かれた剣の柄(手)**の位置(実測・コマの左上基準)。
+// 重ねるサーベルの柄をここへ置く=シートの剣と柄が離れて2本に見えない。
+const HERO_SLASH_HAND: readonly (readonly [number, number])[] = [
+  [72, 64], [76, 55], [75, 39], [77, 49], [75, 62], [88, 75], [100, 85], [87, 80],
+  [67, 47], [84, 37], [65, 40], [64, 64], [75, 97], [101, 80], [100, 92], [79, 75],
+];
+const HERO_SLASH_FRAME_W = 186, HERO_SLASH_FRAME_H = 202;
+// 振りは「当たる瞬間」を挟んで動く: 当たる110ms前に振り始め(加速)、当たった後150msで振り抜く(減速)。
+const HERO_SWING_LEAD_MS = 110, HERO_SWING_TAIL_MS = 150;
 
 // ラフィの薙ぎ(Phase2新規)は既存の骨刃素材(rafi-blade.png)を「振る」用途でも流用する
 // (§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。katanaSlash系のグリップ扱いは新規(叩き台)。
@@ -14281,7 +14290,7 @@ export class PixiScene {
         const uriFx = this.uriSlashFx.get(id);
         if (uriFx) { uriFx.destroy({ children: true }); this.uriSlashFx.delete(id); }
         const heroSw = this.heroSwordFx.get(id);
-        if (heroSw) { heroSw.destroy({ children: true }); this.heroSwordFx.delete(id); }
+        if (heroSw) { if (!heroSw.destroyed) heroSw.destroy({ children: true }); this.heroSwordFx.delete(id); }
         this.heroSwordLastTip.delete(id);
         const rafiFx = this.rafiSlashFx.get(id);
         if (rafiFx) { rafiFx.destroy({ children: true }); this.rafiSlashFx.delete(id); }
@@ -31295,9 +31304,13 @@ export class PixiScene {
 
   /**
    * research/MUTANT_HERO.md: 英雄のサーベル(構え→振り→残心)。社長指摘2026-10-04「剣の見た目大きさと攻撃範囲の
-   * スケール感と動きが合ってない」→ **切っ先が赤い範囲の縁をなぞる**作りにした(危険を伝える絵=判定に揃える)。
-   * 柄は手元、切っ先は判定の図形の上: 扇=半径の縁を上側の縁から下側の縁へ(払い上げは逆・骨色の弧と同じ道 `heroSwingArc`)、
-   * 帯=頭上から帯の先端へ振り下ろす。刃の長さは「手元→切っ先」で毎フレーム決まる(縁が遠い向きほど長く見える=遠近)。
+   * スケール感と動きが合ってない」への回答。**剣は判定の図形と同じ大きさ・同じ角度を、手の高さで振る**:
+   *  - 扇: 刃渡り=扇の半径、振る角度=扇の端から端(上側の縁→下側の縁・払い上げは逆・`heroSwingArc`)。
+   *  - 帯(縦の一撃): 刃渡り=帯の長さ、頭上(斬る向きと反対へ倒す)→帯の向きへ振り下ろす。
+   *  刃渡りは技の間ずっと一定(伸び縮みしない)。中心は手=赤い範囲(地面)と同じ形を手の高さで描く(奥行きの見え方)。
+   *  - 柄は**描かれた剣の柄**(斬撃シートはコマごとの実測表・それ以外は近似)。
+   *  - 振りは当たる瞬間を挟む: 110ms前に加速して振り始め、当たった後150msで減速して振り抜く(赤が消え切る瞬間に刃が中ほどを通る)。
+   *  - 刃の跡も同じ道・同じ角度で描く(先回りしない)。切っ先が手より上(奥)にある間は体の後ろへ回す。
    * 斬る技(振り下ろし・三連・払い上げ・横薙ぎ・突進の終点)だけ。棹立ち・跳躍・タックルは蹄と体の技なので出さない。描画のみ・判定は不変。
    */
   private drawHeroSword(e: Enemy, view: ActorView, gameTime: number, now: number): void {
@@ -31312,84 +31325,136 @@ export class PixiScene {
     if (!slashes) return;
     const s = m.shape;
     if (s.kind === 'circle') return;
-    // 手元: 本体の絵の足元と背丈から。向きは scale.x の実値(振り向きの途中は連続に動く)。
+    const DEG = Math.PI / 180;
     const sp = view.sprite;
     const bodyH = Math.abs(sp.height);
     const faceMul = sp.scale.y !== 0 ? sp.scale.x / Math.abs(sp.scale.y) : 1;
-    const hx = sp.x + HERO_HAND_FRAC.x * bodyH * faceMul;
-    const hy = sp.y - HERO_HAND_FRAC.y * bodyH;
-    const easeOut = (x: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, x)), 3);
-    const DEG = Math.PI / 180;
-    // 相ごとの進み: 構え(k=引き込み 0→1)/ 振り(u=0→1)/ 残心(r=0→1)。
-    const span = Math.max(1, (e.heroHitAt ?? gameTime) - (e.bossWindupStartAt ?? gameTime));
-    const el = Math.max(0, gameTime - (e.bossWindupStartAt ?? gameTime));
-    const inWindup = st === 'hero-windup' || st === 'hero-motion';
-    const k = inWindup ? easeOut(el / Math.min(700, span * 0.6)) : 1;
-    const u = st === 'hero-strike' ? easeOut(((gameTime - (e.heroStateAt ?? gameTime)) / HERO_STRIKE_MS) / 0.55) : st === 'hero-recover' ? 1 : 0;
-    const recSpan = Math.max(1, (e.bossStateUntil ?? gameTime) - (e.heroStateAt ?? gameTime));
-    const r = st === 'hero-recover' ? easeOut((gameTime - (e.heroStateAt ?? gameTime)) / recSpan) : 0;
-    let tipX: number, tipY: number, sweepSign: number;
-    if (s.kind === 'fan') {
-      const { start, end } = heroSwingArc(s.angle, s.halfArc, m.move === 'upper');
-      sweepSign = Math.sign(end - start) || 1;
-      // 扇の中心が体から離れている間(突進の溜め・駆け足=扇は終点)は、手元から同じ向き・同じ半径で構える。
-      const bcx = e.x + e.width / 2, bcy = e.y + e.height / 2;
-      const off = Math.hypot(s.cx - bcx, s.cy - bcy);
-      const w = Math.max(0, Math.min(1, 1 - (off - 60) / 100));
-      const cx = s.cx * w + hx * (1 - w), cy = s.cy * w + hy * (1 - w);
-      // 構え=上側の縁よりさらに25度後ろへ振りかぶる(初段は少し前から引いていく)。残心=下側の縁で切っ先を少し下ろす。
-      const theta = inWindup ? start - sweepSign * DEG * (25 * k - 8 * (1 - k)) : start + (end - start) * u + sweepSign * DEG * 6 * r;
-      const rad = s.radius * (inWindup ? 0.9 : 1 - 0.18 * r);
-      tipX = cx + Math.cos(theta) * rad; tipY = cy + Math.sin(theta) * rad;
+    const faceSign = (e.heroFaceX ?? (faceMul >= 0 ? -1 : 1)) >= 0 ? 1 : -1; // +1=右向き
+    // 柄: 斬撃シートのコマなら描かれた柄の実測、それ以外は近似。
+    let hx: number, hy: number;
+    const fm = this.atkFrameMemo.get(e.id);
+    const slashSlices = fm && fm.name === HERO_SHEETS.slash.name ? this.sheetSlices(fm.name, fm.frames) : null;
+    if (fm && slashSlices && slashSlices[fm.i] === sp.texture && HERO_SLASH_HAND[fm.i]) {
+      const [px, py] = HERO_SLASH_HAND[fm.i];
+      const k = bodyH / HERO_SLASH_FRAME_H;
+      hx = sp.x + (px - HERO_SLASH_FRAME_W / 2) * k * faceMul;
+      hy = sp.y - (HERO_SLASH_FRAME_H - py) * k;
     } else {
-      // 帯(縦の一撃): 頭上(斬る向きと反対へ20度倒す)から帯の先端へ。長さは手元→帯の先端。
-      const L = Math.hypot(s.tx - hx, s.ty - hy);
-      const aEnd = Math.atan2(s.ty - hy, s.tx - hx);
-      const back = Math.cos(aEnd) >= 0 ? -1 : 1;
-      const aUp = -Math.PI / 2 + back * 20 * DEG * k;
-      let d = aEnd - aUp; d = Math.atan2(Math.sin(d), Math.cos(d));
-      sweepSign = Math.sign(d) || 1;
-      const theta = inWindup ? aUp : aUp + d * u;
-      const len = L * (inWindup ? 0.85 + 0.15 * u : 1 - 0.15 * r) * (st === 'hero-strike' ? 0.85 + 0.15 * u : 1);
-      tipX = hx + Math.cos(theta) * len; tipY = hy + Math.sin(theta) * len;
+      hx = sp.x + HERO_HAND_FRAC.x * bodyH * faceMul;
+      hy = sp.y - HERO_HAND_FRAC.y * bodyH;
     }
-    // 溜めの終盤は切っ先が震える(斬る向きに直交)。
-    if (st === 'hero-windup') {
-      const tr = windupTremorPx(Math.min(1, el / span), now);
-      const a = Math.atan2(tipY - hy, tipX - hx);
-      tipX += -Math.sin(a) * tr; tipY += Math.cos(a) * tr;
+    // 時計: hitT=当たる時刻(溜め中は heroHitAt、振り抜き中は州の頭、残心中は州の頭−振り抜きの尺)。
+    const hitT = st === 'hero-strike' ? (e.heroStateAt ?? gameTime)
+      : st === 'hero-recover' ? (e.heroStateAt ?? gameTime) - HERO_STRIKE_MS
+        : (e.heroHitAt ?? gameTime + 1e6);
+    const wStart = e.bossWindupStartAt ?? gameTime;
+    const inWindup = st === 'hero-windup' || st === 'hero-motion';
+    const el = Math.max(0, gameTime - wStart);
+    const span = Math.max(1, hitT - wStart);
+    const ts = gameTime - (hitT - HERO_SWING_LEAD_MS); // 振り始めからの経過(負=まだ構え)
+    const swingMs = HERO_SWING_LEAD_MS + HERO_SWING_TAIL_MS;
+    const easeInOut = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+    const easeSine = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * Math.max(0, Math.min(1, x)));
+    const swing = easeInOut(ts / swingMs);            // 振り: 加速→減速
+    const pull = easeSine(el / Math.min(700, span * 0.6)); // 構え: ゆっくり引いて止まる
+    const recU = st === 'hero-recover'
+      ? Math.max(0, Math.min(1, (gameTime - (e.heroStateAt ?? gameTime)) / Math.max(1, (e.bossStateUntil ?? gameTime) - (e.heroStateAt ?? gameTime))))
+      : 0;
+    const sink = 1 - Math.pow(1 - recU, 2);           // 残心: 惰性で沈む(長い尾)
+    // 道: 始まりの角 a0・終わりの角 a1・刃渡り R。
+    let a0: number, a1: number, R: number;
+    if (s.kind === 'fan') {
+      const sw = heroSwingArc(s.angle, s.halfArc, m.move === 'upper', faceSign);
+      a0 = sw.start; a1 = sw.end; R = s.radius;
+    } else {
+      R = Math.hypot(s.tx - s.fx, s.ty - s.fy);
+      a1 = Math.atan2(s.ty - s.fy, s.tx - s.fx);
+      const back = Math.cos(a1) >= 0 ? -1 : 1;           // 斬る向きと反対へ倒して振りかぶる
+      a0 = -Math.PI / 2 + back * 20 * DEG;
+      let d = a1 - a0; d = Math.atan2(Math.sin(d), Math.cos(d)); a1 = a0 + d;
     }
-    // 三連の2段目以降: 前の段で振り抜いた切っ先から、減速しながら次の構えへ(剣が跳ばない)。
-    const lastKey = e.id;
-    const prev = this.heroSwordLastTip.get(lastKey);
+    const dir = Math.sign(a1 - a0) || 1;
+    // 角度: 構え=始まりの角より25度振りかぶる(初段は少し前から引いていく)/ 振り=a0→a1 / 残心=さらに35度沈める。
+    let theta: number;
+    if (ts < 0) theta = a0 - dir * DEG * (25 * pull - 8 * (1 - pull));
+    else theta = (a0 - dir * 25 * DEG) + (a1 - a0 + dir * 25 * DEG) * swing + dir * 35 * DEG * sink;
+    // 溜めの終盤は刃が震える(角度で揺らす=切っ先で数px)。
+    if (st === 'hero-windup' && ts < 0) {
+      const p = Math.min(1, el / span);
+      if (p > 0.65) theta += Math.sin(now / 24) * 1.3 * DEG * ((p - 0.65) / 0.35);
+    }
+    let tipX = hx + Math.cos(theta) * R, tipY = hy + Math.sin(theta) * R;
+    // 三連の2段目以降: 前の段で振り抜いた切っ先(手からの向き)から、減速しながら次の構えへ(剣が跳ばない)。
+    const prev = this.heroSwordLastTip.get(e.id);
     if (inWindup && m.step > 0 && prev && el < 300) {
-      const b2 = easeOut(el / 300);
-      tipX = (prev.x - prev.hx + hx) * (1 - b2) + tipX * b2;
-      tipY = (prev.y - prev.hy + hy) * (1 - b2) + tipY * b2;
+      const b2 = easeSine(el / 300);
+      const pa = Math.atan2(prev.y - prev.hy, prev.x - prev.hx);
+      let dd = theta - pa; dd = Math.atan2(Math.sin(dd), Math.cos(dd));
+      const pr = Math.hypot(prev.x - prev.hx, prev.y - prev.hy);
+      const ang = pa + dd * b2, rr = pr + (R - pr) * b2;
+      tipX = hx + Math.cos(ang) * rr; tipY = hy + Math.sin(ang) * rr;
     }
-    this.heroSwordLastTip.set(lastKey, { x: tipX, y: tipY, hx, hy });
+    this.heroSwordLastTip.set(e.id, { x: tipX, y: tipY, hx, hy });
+    // ---- 刃の跡(派手さの絵): 振り始めから今の刃の角度までを、切っ先の外側の帯で塗る(新しい所ほど太く濃い)。先回りしない。 ----
+    if (ts > 0 && ts < swingMs + 260) {
+      const o = view.tele;
+      const head = (a0 - dir * 25 * DEG) + (a1 - a0 + dir * 25 * DEG) * swing;
+      const from = a0 - dir * 10 * DEG;
+      const fade = ts < swingMs ? 1 : 1 - (ts - swingMs) / 260;
+      const N = 14;
+      const span2 = head - from;
+      if (span2 * dir > 0) {
+        for (let i = 0; i < N; i++) {
+          const t0 = i / N, t1 = (i + 1) / N;
+          const b0 = from + span2 * t0, b1 = from + span2 * t1;
+          // 根元ほど細く(刃の外側だけが空気を裂く)、新しい所ほど濃い。古い所は先に薄れる。
+          const ri = R * (0.9 - 0.18 * t1), ro = R * 1.02;
+          const aa = (0.03 + 0.3 * t1 * t1 * t1) * fade * (ts < swingMs ? 1 : t1);
+          o.moveTo(hx + Math.cos(b0) * ri, hy + Math.sin(b0) * ri)
+            .lineTo(hx + Math.cos(b0) * ro, hy + Math.sin(b0) * ro)
+            .lineTo(hx + Math.cos(b1) * ro, hy + Math.sin(b1) * ro)
+            .lineTo(hx + Math.cos(b1) * ri, hy + Math.sin(b1) * ri)
+            .closePath().fill({ color: 0xe7dccb, alpha: aa });
+        }
+        // 切っ先の縁だけ血の色。
+        const tb = head - dir * 0.2;
+        o.moveTo(hx + Math.cos(tb) * R * 1.02, hy + Math.sin(tb) * R * 1.02)
+          .arc(hx, hy, R * 1.02, tb, head, dir < 0).stroke({ width: 4, color: 0x7f1d1d, alpha: 0.75 * fade });
+      }
+    }
+    // ---- 剣のスプライト ----
     let c = this.heroSwordFx.get(e.id);
-    if (!c) {
+    if (!c || c.destroyed) {
       c = new Container();
       const ksp = new Sprite(); ksp.anchor.set(HERO_SWORD_GRIP_FRAC.x, HERO_SWORD_GRIP_FRAC.y);
       c.addChild(ksp);
-      this.L.effectLayer.addChild(c);
       this.heroSwordFx.set(e.id, c);
+    }
+    // 前後: 切っ先が手より上(奥)にある間は体の後ろ、それ以外は前(被弾の白い光より上)。
+    const behind = tipY < hy - 12;
+    const vc = view.container;
+    const wantIdx = () => vc.getChildIndex(behind ? sp : view.hitFlash) + (behind ? 0 : 1);
+    if (c.parent !== vc) { c.parent?.removeChild(c); vc.addChildAt(c, wantIdx()); }
+    else {
+      const cur = vc.getChildIndex(c);
+      const spI = vc.getChildIndex(sp);
+      if (behind !== (cur < spI)) { vc.removeChild(c); vc.addChildAt(c, wantIdx()); }
     }
     const ksp = c.children[0] as Sprite;
     if (ksp.texture !== tex) ksp.texture = tex;
-    const len = Math.max(20, Math.hypot(tipX - hx, tipY - hy));
-    const ksc = len / (HERO_SWORD_BLADE_LEN_FRAC * HERO_SWORD_W);
-    // 反りの外側が振りの先へ来るよう、振る向きで上下を返す。
-    ksp.scale.set(ksc, ksc * sweepSign);
-    ksp.rotation = Math.atan2(tipY - hy, tipX - hx) - HERO_SWORD_INTRINSIC_ANGLE * sweepSign;
+    const ksc = R / (HERO_SWORD_BLADE_LEN_FRAC * HERO_SWORD_W);
+    const len = Math.hypot(tipX - hx, tipY - hy);
+    const lenMul = R > 0 ? len / R : 1; // 段の継ぎ目の補間の間だけ R から外れる
+    // 反りは向いている側で固定(段の継ぎ目で裏返らない)。
+    const flip = faceSign > 0 ? -1 : 1;
+    ksp.scale.set(ksc * lenMul, ksc * flip);
+    ksp.rotation = Math.atan2(tipY - hy, tipX - hx) - HERO_SWORD_INTRINSIC_ANGLE * flip;
     const ease = this.weaponAppearEase(`hero-sword:${e.id}`, now);
     ksp.position.set(hx, hy + ease.dy);
-    const alpha = inWindup ? (0.7 + 0.3 * Math.min(1, el / span)) * (m.step > 0 ? 1 : swordFadeInAlpha(el))
-      : st === 'hero-strike' ? 1 : swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime);
-    ksp.alpha = alpha * ease.alphaMul;
+    ksp.alpha = (inWindup && m.step === 0 ? swordFadeInAlpha(el) : 1) * ease.alphaMul;
     ksp.visible = true;
     c.visible = true;
+    // 残心が終わって描かれなくなったら、統一型で沈みながら消える。
     this.trackWeaponVanish(`hero-sword:${e.id}`, now, [{ sp: ksp, alpha: ksp.alpha, y: ksp.position.y }], c);
   }
   private heroSwordLastTip = new Map<string, { x: number; y: number; hx: number; hy: number }>();
@@ -31439,53 +31504,7 @@ export class PixiScene {
       }
       return;
     }
-    if (st === 'hero-strike') {
-      const m = this.heroShapeMemo.get(e.id);
-      if (!m) return;
-      const slash = m.move === 'overhead' || m.move === 'combo' || m.move === 'upper' || m.move === 'sweep' || m.move === 'charge';
-      if (!slash) return;
-      // 刃の弧(くすんだ骨色+赤の縁)。振り抜きの尺で 0→1、出だしで一気に伸び、終わりで薄れる(慣性)。
-      const u = Math.max(0, Math.min(1, (gameTime - (e.heroStateAt ?? gameTime)) / HERO_STRIKE_MS));
-      const grow = 1 - Math.pow(1 - Math.min(1, u * 2.2), 3);
-      const fade = u < 0.45 ? 1 : 1 - (u - 0.45) / 0.55;
-      const s2 = m.shape;
-      if (s2.kind === 'fan') {
-        const r = s2.radius * 1.1;
-        // 剣と同じ道(上側の縁→下側の縁・払い上げは逆)。左右どちらへ斬っても同じ読みになる。
-        const sw = heroSwingArc(s2.angle, s2.halfArc * 1.1, m.move === 'upper');
-        const total = Math.abs(sw.end - sw.start);
-        const dir = Math.sign(sw.end - sw.start) || 1;
-        const rev = dir < 0;
-        const start = sw.start;
-        // 刃の通った跡: 刃先(いま)が太く濃く、通り過ぎた根元ほど細く薄い(1本の弧を濃淡で引く)。
-        const N = 12;
-        const head = total * grow;
-        for (let i = 0; i < N; i++) {
-          const t0 = i / N, t1 = (i + 1) / N;
-          const s0 = start + dir * head * t0, s1 = start + dir * head * t1;
-          const w = 4 + 16 * t1 * t1;
-          o.moveTo(s2.cx + Math.cos(s0) * r, s2.cy + Math.sin(s0) * r).arc(s2.cx, s2.cy, r, s0, s1, rev)
-            .stroke({ width: w, color: 0xe7dccb, alpha: (0.15 + 0.7 * t1) * fade });
-        }
-        // 刃先の縁だけ血の色。
-        const tip = start + dir * head;
-        o.moveTo(s2.cx + Math.cos(tip - dir * 0.18) * r * 1.04, s2.cy + Math.sin(tip - dir * 0.18) * r * 1.04)
-          .arc(s2.cx, s2.cy, r * 1.04, tip - dir * 0.18, tip, rev).stroke({ width: 4, color: 0x7f1d1d, alpha: 0.7 * fade });
-      } else if (s2.kind === 'band') {
-        const dx = s2.tx - s2.fx, dy = s2.ty - s2.fy;
-        const len = Math.hypot(dx, dy) * 1.15 * grow;
-        const ang = Math.atan2(dy, dx);
-        const ux = Math.cos(ang), uy = Math.sin(ang);
-        const nx = -uy, ny = ux;
-        // 縦の一撃: 刃の通り道に細長い三日月(根元が太く先が細い)。
-        const w = s2.halfWidth * 1.3;
-        o.moveTo(s2.fx + nx * w * 0.2, s2.fy + ny * w * 0.2)
-          .quadraticCurveTo(s2.fx + ux * len * 0.5 + nx * w, s2.fy + uy * len * 0.5 + ny * w, s2.fx + ux * len, s2.fy + uy * len)
-          .quadraticCurveTo(s2.fx + ux * len * 0.5 + nx * w * 0.25, s2.fy + uy * len * 0.5 + ny * w * 0.25, s2.fx + nx * w * 0.2, s2.fy + ny * w * 0.2)
-          .fill({ color: 0xe7dccb, alpha: 0.7 * fade });
-        o.moveTo(s2.fx, s2.fy).lineTo(s2.fx + ux * len, s2.fy + uy * len).stroke({ width: 3, color: 0x7f1d1d, alpha: 0.6 * fade });
-      }
-    }
+    // 振り抜きの跡は drawHeroSword が剣と同じ道で描く(刃が通った跡=剣より先回りしない)。
   }
 
   /**
@@ -34188,7 +34207,7 @@ export class PixiScene {
     for (const o of this.thorSlashFx.values()) o.destroy({ children: true });
     for (const o of this.miguelSlashFx.values()) o.destroy({ children: true });
     for (const o of this.uriSlashFx.values()) o.destroy({ children: true });
-    for (const o of this.heroSwordFx.values()) o.destroy({ children: true });
+    for (const o of this.heroSwordFx.values()) if (!o.destroyed) o.destroy({ children: true });
     for (const o of this.rafiSlashFx.values()) o.destroy({ children: true });
     for (const o of this.jibrilLanternSprites.values()) o.destroy();
     for (const o of this.jibrilLanternFirePool.values()) o.destroy();

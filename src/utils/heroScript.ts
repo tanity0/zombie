@@ -461,11 +461,16 @@ export const heroLiftPx = (e: { bossState?: string; heroMove?: HeroMoveKey; hero
  * 扇の斬撃を「どちらの縁から、どちらの縁へ」振るか(剣と骨色の弧が同じ道をなぞるための1本)。
  * 振り下ろす技は**画面の上側の縁から**中心線を通って下側の縁へ(左右どちらへ斬っても同じ読み=上から前へ)。
  * 払い上げ(rising)だけは下側から上側へ。返す start→end は中心線(angle)を通る向き。
+ * 真上・真下へ斬る時(中心線が垂直から15度以内)は上下が決まらないので、**向いている側(faceX)の縁から**振る
+ * (狙いが1px動いただけで振る向きが入れ替わらない)。
  */
-export const heroSwingArc = (angle: number, halfArc: number, rising: boolean): { start: number; end: number } => {
+export const heroSwingArc = (angle: number, halfArc: number, rising: boolean, faceX = 1): { start: number; end: number } => {
   const e1 = angle - halfArc, e2 = angle + halfArc;
-  const e1Upper = Math.sin(e1) <= Math.sin(e2);
-  return (rising ? !e1Upper : e1Upper) ? { start: e1, end: e2 } : { start: e2, end: e1 };
+  const nearVertical = Math.abs(Math.cos(angle)) < Math.sin(15 * DEG);
+  const e1First = nearVertical
+    ? (Math.sign(Math.cos(e1)) || 1) === (faceX >= 0 ? 1 : -1)
+    : Math.sin(e1) <= Math.sin(e2);
+  return (rising ? !e1First : e1First) ? { start: e1, end: e2 } : { start: e2, end: e1 };
 };
 
 export const heroZoomEligible = (e: { type: string; heroTargetId?: string; health: number }): boolean =>
