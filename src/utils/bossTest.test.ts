@@ -202,3 +202,12 @@ describe('★ボスメーカーの城ボス', () => {
     expect(bossMakerStageFor('giantbat')).toBe(BOSS_MAKER_STAGE);
   });
 });
+
+describe('ボス戦テスト: 解放軍群(変異)は雑魚を湧かせない(社長指示2026-10-04)', () => {
+  it('解放軍群の枠だけ ?nospawn=1 が付く(取り巻きのコウモリは旗手が出すので湧き止めに掛からない)', () => {
+    const lib = BOSS_TEST_ENTRIES.find(e => e.boss === 'mutant-liberty')!;
+    expect(new URLSearchParams(bossTestQuery(lib, { characterClass: 'warrior' } as never).slice(1)).get('nospawn')).toBe('1');
+    const hero = BOSS_TEST_ENTRIES.find(e => e.boss === 'mutant-hero')!;
+    expect(new URLSearchParams(bossTestQuery(hero, { characterClass: 'warrior' } as never).slice(1)).get('nospawn')).toBeNull();
+  });
+});

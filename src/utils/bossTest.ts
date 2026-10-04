@@ -28,6 +28,11 @@ export interface BossTestEntry {
   param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow' | 'libertynow';
   /** param==='bountynow'の時だけ意味を持つ副パラメータ(?bountytype=)。4種の型を選ぶ。 */
   bountyType?: 'ranged' | 'melee' | 'balance' | 'maiko';
+  /**
+   * 雑魚を湧かせない(`?nospawn=1` を付ける)。社長指示2026-10-04「ボステストで解放軍は雑魚敵封印のモードにして
+   * (連れてるバット男たちのみ)」=取り巻きのコウモリは旗手の制御が出すので湧き止めに掛からない。
+   */
+  noMobs?: boolean;
 }
 
 // 掲載順=裏ボス4 → idol → 天使6 → 城ボス。ステージ対応は campaign.ts の hiddenBoss と
@@ -62,7 +67,7 @@ export const BOSS_TEST_ENTRIES: readonly BossTestEntry[] = [
   // ので、守護霊の交戦対象の網羅検査からは外してある(bossTest.test.ts)。
   { boss: 'mutant-hero', stageId: 'stage-1', param: 'heronow' },
   // research/LIBERTY_HORDE.md §9: 解放軍群(変異)。ボス戦ではない(ENGAGEABLE の外)=守護霊の網羅検査からは外す(bossTest.test.ts)。
-  { boss: 'mutant-liberty', stageId: 'stage-1', param: 'libertynow' },
+  { boss: 'mutant-liberty', stageId: 'stage-1', param: 'libertynow', noMobs: true },
 ];
 
 export interface BossTestOptions {
@@ -101,6 +106,7 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
   p.set('stage', e.stageId);
   p.set(e.param, '1');
   if (e.param === 'bountynow' && e.bountyType) p.set('bountytype', e.bountyType);
+  if (e.noMobs) p.set('nospawn', '1');
   p.set('class', opts.characterClass);
   p.set('retry', '1');
   if (opts.ghostMode) {

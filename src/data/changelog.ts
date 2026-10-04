@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4843', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4842', items: ['矢の雨の一本がずっと重くなった'] },
   { version: '0.25.4841', items: ['号令の瞬間、旗手は旗を天へ突き出し、旗の先端が光ってから消える', '旗手を討っても、放たれた矢は最後まで降り注ぐ'] },
   { version: '0.25.4840', items: ['矢の雨の間、旗手が旗を振りかざして号令をかけ続ける動きが付いた'] },
