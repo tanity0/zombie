@@ -176,6 +176,11 @@ export const isBountyType = (t: EnemyType): boolean => BOUNTY_ENEMY_TYPES.has(t)
 
 /** research/MUTANT_HERO.md: 英雄(変異)か。動かすのは heroTick だけ(updateEnemies の追跡AI・接触は素通り)。 */
 export const isMutantHero = (t: EnemyType): boolean => t === 'mutant-hero';
+/**
+ * 盤面の敵の上限(湧き・上限の間引き・ピンチ判定)に数えるか。research/MUTANT_HERO.md §2-1(品質監査 A-2):
+ * 英雄は本編で出撃直後から最後まで遠くの輪を回っているので、数えると**上限の枠を1つずっと食う**(初心者ゾーンの密度まで下がる)。
+ */
+export const countsTowardEnemyCap = (e: { type: EnemyType }): boolean => e.type !== 'mutant-hero';
 
 /**
  * research/GHOST_BOSS.md: 守護霊ボス「幻影」か。

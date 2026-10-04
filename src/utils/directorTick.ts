@@ -32,6 +32,7 @@ import {
   isReaperFamily,
   isTerminalReaper,
   isHangedman,
+  countsTowardEnemyCap,
 } from './enemyUtils';
 import { resolvePumpkinTier, allowDrillerForRun, allowLoggerForRun, isKiteMidAttackPhase } from './drillerAi'; // PACING_PUZZLE.md §9/§14
 // ★ランの再現性(TEST_HANDOFF/REQUEST-devbridge.md C): 湧きの意思決定の乱数。
@@ -281,7 +282,7 @@ export function runPityUpkeep(refs: PityUpkeepRefs, ctx: PityUpkeepCtx): void {
   const { player, enemyCap, deltaTime, gameTime } = ctx;
   refs.pinchRef.current = stepPinch(refs.pinchRef.current, {
     hpFrac: player.maxHealth > 0 ? player.health / player.maxHealth : 0,
-    enemyCount: useGameStore.getState().enemies.length,
+    enemyCount: useGameStore.getState().enemies.filter(countsTowardEnemyCap).length, // 英雄は数えない(MUTANT_HERO §2-1)
     enemyCap, // 本方式ON時はpuzzleの実効上限(dirCountCapのままだと過大なピンチ誤検知)。
     dtMs: deltaTime * 1000,
   });
@@ -1324,7 +1325,8 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
   // grace period before they're eligible (otherwise a boss wave gets
   // deleted the instant it spawns under the low cap).
   const currentEnemiesForCap = useGameStore.getState().enemies;
-  if (currentEnemiesForCap.length > enemyCap) {
+  const capCount = currentEnemiesForCap.filter(countsTowardEnemyCap).length; // 英雄は数えない(MUTANT_HERO §2-1)
+  if (capCount > enemyCap) {
     const isProtected = (e: typeof currentEnemiesForCap[number]): boolean => isEnemyCapProtected(e, gameTime);
     // PACING_PUZZLE.md §5.7(M6追補2・実機バグ対処): パズルON時、査定でr7Cap/ランクが
     // 縮小して enemyCap が瞬時に下がっても、画面内の敵は消さない(仕様「在席は強制消去しない・
@@ -1346,7 +1348,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
 
     const toRemoveIds = new Set(
       cullable
-        .slice(0, currentEnemiesForCap.length - enemyCap)
+        .slice(0, capCount - enemyCap)
         .map(enemy => enemy.id)
     );
     if (toRemoveIds.size > 0) {

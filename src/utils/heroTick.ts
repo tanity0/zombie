@@ -31,6 +31,9 @@ export const HERO_HOME_ARRIVE_PX = 60;
 export const HERO_HOME_DEFEND_PX = 200;
 export const HERO_DEPART_IDLE_MS = 60000;
 export const HERO_DEPART_RUN_MS = 1500;
+/** 周回で障害物に詰まった時の回り込み(輪からずらす量・続ける時間)。品質監査 A-1。 */
+export const HERO_PATROL_DETOUR_PX = 180;
+export const HERO_PATROL_DETOUR_MS = 7000;
 
 export interface HeroSfx {
   neigh: (gain: number) => void;
@@ -50,8 +53,16 @@ export interface HeroTickState {
   introDone: boolean;
   lastSnortAt: number;
   roarLanded: boolean;
+  /** 周回の迂回(品質監査 A-1): 輪から外側(+)/内側(-)へずらす量・いつまで。 */
+  detourR: number;
+  detourUntil: number;
+  /** 周回が進んでいるかの見張り(この時刻・この角度から、どれだけ進んだか)。 */
+  stallRefAt: number;
+  stallRefAng: number;
+  stallRefX: number;
+  stallRefY: number;
 }
-export const createHeroTickState = (): HeroTickState => ({ activeId: null, disengageSince: null, homing: false, homeIdleSince: null, lastPos: null, introDone: false, lastSnortAt: -1e9, roarLanded: false });
+export const createHeroTickState = (): HeroTickState => ({ activeId: null, disengageSince: null, homing: false, homeIdleSince: null, lastPos: null, introDone: false, lastSnortAt: -1e9, roarLanded: false, detourR: 0, detourUntil: 0, stallRefAt: -1e9, stallRefAng: 0, stallRefX: 0, stallRefY: 0 });
 
 /** 蹄の拍は速さに比例(歩幅と拍を合わせる)。 */
 const gallopRate = (speed: number): number => Math.max(0.6, Math.min(1.2, (speed / HERO_WALK_SPEED) * 0.85));
@@ -193,8 +204,21 @@ const walkToward = (hero: Enemy, tx: number, ty: number, speed: number, dt: numb
     return false;
   }
   const step = Math.min(d - stopDist, speed * dt);
-  const nx = hx + (dx / d) * step, ny = hy + (dy / d) * step;
-  Object.assign(patch, placeCenter(hero, nx, ny), { vx: (dx / d) * speed, vy: (dy / d) * speed });
+  const ux = dx / d, uy = dy / d;
+  // 木・瓦礫・施設に正面から当たって止まらないよう、まっすぐ進めない時は斜めへ逸れて回り込む(品質監査 A-1:
+  // 輪の上に武器庫や木があると、押し戻されたまま永久に止まっていた)。逸れる角は浅い順に試し、目標へ近づく量が一番大きいものを取る。
+  let best = placeCenter(hero, hx + ux * step, hy + uy * step);
+  const gain = (p: Partial<Enemy>) => ((p.x ?? hero.x) + hero.width / 2 - hx) * ux + ((p.y ?? hero.y) + hero.height / 2 - hy) * uy;
+  if (step > 0.3 && gain(best) < step * 0.35) {
+    for (const deg of [40, -40, 75, -75, 105, -105]) {
+      const a = (deg * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
+      const rx = ux * ca - uy * sa, ry = ux * sa + uy * ca;
+      const cand = placeCenter(hero, hx + rx * step, hy + ry * step);
+      const moved = Math.hypot((cand.x ?? hero.x) + hero.width / 2 - hx, (cand.y ?? hero.y) + hero.height / 2 - hy);
+      if (moved > step * 0.6) { best = cand; break; }
+    }
+  }
+  Object.assign(patch, best, { vx: ux * speed, vy: uy * speed });
   return false;
 };
 
@@ -487,7 +511,25 @@ export const runHeroTick = (
   // ---- 相手がいない(本編の周回): 輪の上を反時計回りにゆっくり歩き続ける。去らない ------------------------
   if (hero.heroPatrolR !== undefined) {
     s.homeIdleSince = null;
-    const nx = heroPatrolNext(hx, hy, hero.heroPatrolR, 240);
+    // 詰まりの見張り(品質監査 A-1): 0.8秒で輪の上を15pxも進めていなければ、武器庫・木・瓦礫に当たっている。
+    // 輪の外側へ180pxずれて回り込み(それでも動けなければ内側へ)、7秒たったら輪へ戻る。
+    // 回り込みの最中は輪の上を進まない(横へずれている)ので、その間は「体が動いていない」時だけ詰まりと見る。
+    const ang = Math.atan2(hy, hx);
+    const resetRef = () => { s.stallRefAt = gt; s.stallRefAng = ang; s.stallRefX = hx; s.stallRefY = hy; };
+    if (gt - s.stallRefAt > 2000) resetRef(); // 久しぶりの周回=見張りをやり直す
+    else if (gt - s.stallRefAt >= 800) {
+      let adv = s.stallRefAng - ang; adv = Math.atan2(Math.sin(adv), Math.cos(adv)); // 反時計回り=角度が減る=正
+      const moved = Math.hypot(hx - s.stallRefX, hy - s.stallRefY);
+      const detouring = gt < s.detourUntil;
+      const stuck = detouring ? moved < 10 : adv * hero.heroPatrolR < 15;
+      if (stuck) {
+        s.detourR = detouring && s.detourR > 0 ? -HERO_PATROL_DETOUR_PX : HERO_PATROL_DETOUR_PX;
+        s.detourUntil = gt + HERO_PATROL_DETOUR_MS;
+      }
+      resetRef();
+    }
+    if (gt >= s.detourUntil) s.detourR = 0;
+    const nx = heroPatrolNext(hx, hy, hero.heroPatrolR + s.detourR, 240);
     walkToward({ ...hero, ...patch } as Enemy, nx.x, nx.y, HERO_PATROL_SPEED, dt, gt, patch, 0);
     if (patch.bossState === undefined && state !== 'chase') patch.bossState = 'chase';
     if (hero.heroSnortAt === undefined || gt >= hero.heroSnortAt) {

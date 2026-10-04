@@ -259,6 +259,7 @@ import {
   isPumpkinTier, // PACING_PUZZLE.md §9-7#1(削岩型): pumpkinの特別扱いをdrillerと共有する述語
   isReaperFamily, isTerminalReaper, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
   pickNearestTarget, // UNIQUE_WEAPONS.md §19-3: 金環の対象取得(各金環が独立に最寄りの敵を取る)
+  countsTowardEnemyCap, // research/MUTANT_HERO.md §2-1: 英雄は湧き上限に数えない
 } from '../utils/enemyUtils';
 import { killChainSfxRate, recoilSpecForWeapon, casingSpecFor , GUN_STOP_BASE_MS, GUN_STOP_MAX_MULT, GUN_STOP_AWAKEN_MULT, GUN_STOP_DUTY } from '../utils/combatFeel';
 import { comboMilestoneCrossed, milestoneSfxRate } from '../utils/comboMilestone';
@@ -16052,8 +16053,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Continuous spawner — drip enemies onto the field from off-screen.
         // rescue 中はイベント攻撃者(fromEvent)を除いた通常敵の数で上限判定し、通常通りの密度を維持。
         const allEnemiesNow = useGameStore.getState().enemies;
-        const enemyCountBeforeSpawn = allEnemiesNow.length;
-        const fieldCount = ae ? allEnemiesNow.filter(e => !e.fromEvent).length : enemyCountBeforeSpawn;
+        const enemyCountBeforeSpawn = allEnemiesNow.filter(countsTowardEnemyCap).length; // 英雄は上限に数えない(MUTANT_HERO §2-1)
+        const fieldCount = ae ? allEnemiesNow.filter(e => !e.fromEvent && countsTowardEnemyCap(e)).length : enemyCountBeforeSpawn;
         // 通常湧きは「裏ボスが画面内で追跡してきている間(bossChasing)」だけ止める(社長指摘: 出現中ずっと
         // 敵が沸かないのは寂しい)。画面外/帰巣中(=非追跡)は通常どおり湧かせる。追跡中は他敵が一斉逃走する演出と
         // 整合させ、湧きも止める。
