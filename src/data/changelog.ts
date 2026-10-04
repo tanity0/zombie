@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4822', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4821', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4820', items: ['英雄(変異)の体をすり抜けなくなった。重なったまま被弾し続けるのが直った'] },
   { version: '0.25.4819', items: ['ゲーム内容の変更はありません'] },
