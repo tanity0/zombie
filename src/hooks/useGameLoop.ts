@@ -8923,9 +8923,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               const lAc = bossArtCenter(activeLib);
               useGameStore.getState().triggerAttention(lAc.x, lAc.y, bossCutinPayload('mutant-liberty'));
-              useGameStore.setState({ eventBannerText: '旗が揺れている', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              // 遠くで叫んでいる群れの声(英雄の嘶きと同じ場所・距離で減衰)。
+              playSfx('screamer-cry', npcSfxDistGain(lAc.x, lAc.y, useGameStore.getState().player.x + useGameStore.getState().player.width / 2,
+                useGameStore.getState().player.y + useGameStore.getState().player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
+              useGameStore.setState({ eventBannerText: '死者が列をなして来る', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
-            runLibertyTick(activeLib, libertyStateRef.current, newGameTime, deltaTime, Date.now());
+            // カットイン(時間停止)を出したフレームは進めない=溜めの予兆(実時間)と溜め(ゲーム時間)をずらさない。
+            if (!useGameStore.getState().attention) runLibertyTick(activeLib, libertyStateRef.current, newGameTime, deltaTime, Date.now());
           }
           releaseOrphanHorde();
          } catch (err) {

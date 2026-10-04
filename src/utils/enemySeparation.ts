@@ -35,7 +35,8 @@ export const SEPARATION_RADIUS_FRAC = 0.62;
 export const isSeparationExempt = (e: Enemy, nowMs: number): boolean =>
   isHiddenBoss(e.type) ||
   isBossType(e.type) ||
-  e.fixed === true ||
+  // 解放軍群のコウモリは向かっていく間だけ押し合う(5体が1点に重ならない・品質監査 B-1)。
+  (e.fixed === true && !(e.hordeLeaderId !== undefined && e.hordeState === 'chase')) ||
   e.dormant === true ||
   (e.knockbackUntil !== undefined && nowMs < e.knockbackUntil);
 

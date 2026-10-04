@@ -14,8 +14,20 @@ export const LIB_LOSE_RANGE_MULT = 1.5;
 export const LIB_LOSE_MS = 3000;
 /** 列へ戻るバット男の歩き(px/s)。 */
 export const LIB_RETURN_SPEED = 150;
-/** 戻り切ったとみなす距離。 */
-export const LIB_RETURN_ARRIVE_PX = 30;
+/** 戻り切ったとみなす距離(手前で減速して寄せるので小さくてよい=列へ吸い付く跳びを作らない)。 */
+export const LIB_RETURN_ARRIVE_PX = 6;
+/** 戻りの減速: 残り距離×この係数(/s)を速さの上限にする(手前でゆるむ=慣性MUST)。 */
+export const LIB_RETURN_EASE_PER_S = 4;
+/** 旗手の歩き出し/止まりの加減速(px/s²)。周回の速さ(約48px/s)まで約0.3秒。 */
+export const LIB_BEARER_ACCEL = 150;
+/** 叫喚の発生点=足元からこの高さ(絵の口〜旗の根元あたり。絵は約230px)。 */
+export const LIB_HEAD_PX = 185;
+/** 叫喚の輪・発光の寸法の倍率(叫喚型の絵は約105px・旗手は約230px)。 */
+export const LIB_SCREAM_FX_SCALE = 1.7;
+/** 殴られてからこの間(ms・実時間=lastHit と同じ時計)は「見つけた」扱い。 */
+export const LIB_HIT_ALERT_MS = 600;
+/** 列のばらつき(1体ごとに決まった遅れ・横ズレの最大量)。同じ個体はいつも同じだけずれる=癖。 */
+export const LIB_JITTER_PX = 10;
 /** 補充は旗手の真後ろ(向きの反対側)へこの距離。 */
 export const LIB_REFILL_BEHIND_PX = 60;
 
@@ -71,4 +83,15 @@ export const maleBatId = (baseId: string): string => {
 export const ringPointBehind = (angle: number, R: number, back: number): { x: number; y: number } => {
   const a = angle + back / Math.max(1, R);
   return { x: Math.cos(a) * R, y: Math.sin(a) * R };
+};
+
+/**
+ * 列の1体ごとの癖(遅れ・横ズレ。どちらも ±LIB_JITTER_PX)。敵IDから決まる=同じ個体はいつも同じ。
+ * 定規で引いたような等間隔の列にしない(クリエイティブ監査 #6)。
+ */
+export const hordeJitter = (id: string): { gap: number; lat: number } => {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619); }
+  const a = ((h >>> 0) % 1000) / 999, b = (((h >>> 10) >>> 0) % 1000) / 999;
+  return { gap: (a * 2 - 1) * LIB_JITTER_PX, lat: (b * 2 - 1) * LIB_JITTER_PX };
 };

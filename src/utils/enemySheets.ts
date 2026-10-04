@@ -364,6 +364,8 @@ export const ENEMY_WALK_STOP_TO_IDLE: Readonly<Record<string, true>> = {
   'thor': true,
   // スカジ: 同上(2026-09-30)。
   'skadi': true,
+  // 解放軍群の旗手: 止まって叫ぶ間は立ち絵(片足を上げたまま叫び続けない・LIBERTY_HORDE §8)。
+  'mutant-liberty': true,
 };
 /** 止まってからこの時間(ms)動かなければ「止まった」とみなす。1フレームの足踏み(移動の刻み)で立ち絵がちらつかないための猶予。 */
 export const ENEMY_WALK_STOP_HOLD_MS = 160;

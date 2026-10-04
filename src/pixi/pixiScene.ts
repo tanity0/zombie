@@ -1919,6 +1919,9 @@ const GUARDIAN_PHANTOM_EYE_PX = 15;
 const GUARDIAN_PHANTOM_EYE_H_FRAC = 0.78;
 /** 出現演出の長さ(ms・gameTime基準/e.spawnedAt起点)。賞金首の魔法陣と同じ尺感。 */
 const GUARDIAN_PHANTOM_SUMMON_MS = 900;
+/** 解放軍群の補充コウモリが足元から這い上がる尺(ms・gameTime)と、持ち上がる量(world px)。 */
+const HORDE_REFILL_RISE_MS = 420;
+const HORDE_REFILL_RISE_PX = 34;
 /** 出現時に「下から立ち上がる」量(world px)。ease-out で 0 へ収束する(慣性MUST)。 */
 const GUARDIAN_PHANTOM_RISE_PX = 46;
 // 分身(shadow-clone)1体ぶんの描画スプライト一式。§2.11追補(v0.25.2541)で分身が**主語ごと**に
@@ -19140,6 +19143,16 @@ export class PixiScene {
     // research/GHOST_BOSS.md(守護霊ボス「幻影」): 出現演出・赤い目・技の予告(赤帯/赤ライン)。
     // ★**判定・状態は一切書かない**(store を読むだけ)。ここを通るのは幻影1体だけ。
     if (e.type === 'guardian-phantom') this.drawGuardianPhantom(view, e, gameTime, now, fb, cx, cy);
+    // research/LIBERTY_HORDE.md §5(クリエイティブ監査 #4): 補充されたコウモリは**旗手の足元から這い上がる**
+    // (下から持ち上がる ease-out+フェードイン=慣性MUST「パッと出ない」)。描くだけ・判定は store のまま。
+    if (e.hordeRefill && e.spawnedAt !== undefined) {
+      const t = (gameTime - e.spawnedAt) / HORDE_REFILL_RISE_MS;
+      if (t >= 0 && t < 1) {
+        const ease = 1 - Math.pow(1 - t, 3);
+        view.sprite.position.y += (1 - ease) * HORDE_REFILL_RISE_PX * this.depthScaleEnemy(fb.footY);
+        view.sprite.alpha *= ease;
+      }
+    }
     // PACING_PUZZLE.md §9-4(削岩型の突き): windup中はaiFrom→aiTargetの赤帯予告(判定と同寸=
     // 長さ200×半幅12・分類①=判定と厳密一致)。active中は「突きが走る絵」(下のease-out伸長。
     // 検収監査#5/Bで追加=当たる瞬間の絵+慣性MUST)。

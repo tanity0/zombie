@@ -3651,23 +3651,34 @@ const meleeWallsAround = (get: () => GameState, cx: number, cy: number, range: n
 
 // 叫喚型の予兆(溜め開始)と発動の演出。research/LIBERTY_HORDE.md の旗手も**同じ関数**を呼ぶ(同じ叫び=同じ見え方)。
 // 予兆: 2秒かけて広がるリング＋発光(優先処理を促すテレグラフ)。
-export const screamerWindupFx = (x: number, y: number): void => {
+export const screamerWindupFx = (x: number, y: number, scale = 1): string[] => {
   const g = useGameStore.getState();
-  g.spawnRing(x, y, 8, 130, 'rgba(190,242,100,0.5)', 3, SCREAMER_WINDUP_MS);
-  g.spawnGlow(x, y, GLOW_R_M, 'rgba(163,230,53,', SCREAMER_WINDUP_MS);
+  const before = g.effects.length;
+  g.spawnRing(x, y, 8 * scale, 130 * scale, 'rgba(190,242,100,0.5)', 3, SCREAMER_WINDUP_MS);
+  g.spawnGlow(x, y, GLOW_R_M * scale, 'rgba(163,230,53,', SCREAMER_WINDUP_MS);
+  // 返り値=いま足した予兆のID(解放軍群の旗手は溜めを崩されたら予兆ごと消す=LIBERTY_HORDE §4)。
+  return useGameStore.getState().effects.slice(before).map(e => e.id);
+};
+/** 溜めを崩された時に、予兆(リング・発光)を消す。予告が完成して何も起きない嘘を作らない。 */
+export const cancelScreamerWindupFx = (ids: readonly string[]): void => {
+  if (ids.length === 0) return;
+  const kill = new Set(ids);
+  useGameStore.setState(st => ({ effects: st.effects.filter(e => !kill.has(e.id)) }));
 };
 // 発動: 強い衝撃リング＋発光＋コールアウト＋画面揺れ。「叫んだ」感を強めるため(社長指示)、
 // 外側にもう一段リング(遅れて届く音波のイメージ)＋画面全体がわずかに緑へ明滅するフラッシュ。
 // 揺れは他の一撃系演出(パンプキン着地mag9/盾バッシュmag10)に並ぶ強さ。音は useGameLoop が screamerBuffUntil の更新で鳴らす。
-export const screamerCryFx = (x: number, y: number): void => {
+// scale=寸法の倍率(旗手は巨体なので広げる)。repeat=同じ相手の2回目以降(フラッシュ無し・揺れ半分。叫喚型は使わない)。
+export const screamerCryFx = (x: number, y: number, opts: { scale?: number; repeat?: boolean } = {}): void => {
   const g = useGameStore.getState();
-  g.spawnRing(x, y, 10, 240, 'rgba(190,242,100,0.72)', 4, 480);
-  g.spawnRing(x, y, 6, 150, 'rgba(255,255,255,0.85)', 3, 340);
-  g.spawnRing(x, y, 20, 330, 'rgba(163,230,53,0.5)', 3, 620); // 一段外側=音波が遅れて届くイメージ
-  g.spawnGlow(x, y, GLOW_R_XL, 'rgba(163,230,53,', 520);
+  const k = opts.scale ?? 1;
+  g.spawnRing(x, y, 10 * k, 240 * k, 'rgba(190,242,100,0.72)', 4, 480);
+  g.spawnRing(x, y, 6 * k, 150 * k, 'rgba(255,255,255,0.85)', 3, 340);
+  g.spawnRing(x, y, 20 * k, 330 * k, 'rgba(163,230,53,0.5)', 3, 620); // 一段外側=音波が遅れて届くイメージ
+  g.spawnGlow(x, y, GLOW_R_XL * k, 'rgba(163,230,53,', 520);
   g.spawnCallout(x, y - 30, '叫喚!', '#bef264', { scale: 1.1 });
-  g.spawnFlash('rgba(163,230,53,0.22)', 260); // 叫びが画面全体に響くイメージの淡い緑フラッシュ
-  g.triggerShake(260, 10);
+  if (!opts.repeat) g.spawnFlash('rgba(163,230,53,0.22)', 260); // 叫びが画面全体に響くイメージの淡い緑フラッシュ
+  g.triggerShake(260, opts.repeat ? 5 : 10);
 };
 
 // 叫喚型(screamer)を倒したら強化バフを即座に打ち切る(社長指示、残り時間を待たず即失効)。
