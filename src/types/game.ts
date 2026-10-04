@@ -1682,6 +1682,7 @@ export interface Summon {
   /** research/LUNGE_DODGE.md: 守護霊の踏み込み回避の持ち越し(選んだコマの向き・既定の抜けを使った予告)。 */
   ghostMicroHabitSwingLg?: 0 | 1 | 2 | 3;
   ghostMicroEscapeArmKey?: string;
+  ghostMicroHabitEscaped?: boolean;
 }
 
 export type DifficultyRank = 'normal' | 'strong' | 'elite' | 'danger';

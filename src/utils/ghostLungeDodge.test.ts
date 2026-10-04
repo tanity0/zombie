@@ -105,3 +105,25 @@ describe('段2・3: 既定の「当たる直前に外へ一直線」', () => {
     expect(c.lungeDir).toBeUndefined();
   });
 });
+
+describe('段1の位置取り(品質監査 A-1): 抜けの記録は「抜ける前の位置」に立つ', () => {
+  const prof = (lg: 0 | 1 | 2 | 3 | undefined, pressOfs = -600): GhostProfile => ({
+    ...PROFILE, counterChance: 0,
+    moveHabits: { 'thor:issen-windup': [0, 1, 2].map(() => ep({ posA: 50, posB: 80, pressOfs, lg })) },
+  });
+  it('外へ抜けた記録の目標は、着弾時の位置から踏み込みの距離ぶん内側', () => {
+    const plain = decideGhost(input({ profile: prof(undefined), gameTime: T - 900, nowMs: T - 900 }));
+    resetGhostCommandBags();
+    const esc = decideGhost(input({ profile: prof(1), gameTime: T - 900, nowMs: T - 900 }));
+    expect(plain.microHabitTargetX).toBeDefined();
+    const dx = (esc.microHabitTargetX ?? 0) - (plain.microHabitTargetX ?? 0);
+    const dy = (esc.microHabitTargetY ?? 0) - (plain.microHabitTargetY ?? 0);
+    expect(Math.hypot(dx, dy)).toBeCloseTo(30, 3);
+  });
+  it('抜けの振りを出した後は、着弾時の位置を引き直す', () => {
+    const d = decideGhost(input({ profile: prof(1), gameTime: T - 500, nowMs: T - 500 }));
+    expect(d.action).toBe('melee');
+    expect(d.microHabitEscaped).toBe(true);
+    expect(d.microHabitTargetX).toBeUndefined();
+  });
+});

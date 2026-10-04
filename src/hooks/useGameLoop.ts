@@ -11685,7 +11685,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   microHabitResolved: ghostNow.ghostMicroHabitResolved,
                   microHabitSeqCounts: ghostNow.ghostMicroHabitSeqCounts,
                   microHabitArmKey: ghostNow.ghostMicroHabitArmKey,
-                  microHabitSwingLg: ghostNow.ghostMicroHabitSwingLg, microEscapeArmKey: ghostNow.ghostMicroEscapeArmKey,
+                  microHabitSwingLg: ghostNow.ghostMicroHabitSwingLg, microEscapeArmKey: ghostNow.ghostMicroEscapeArmKey, microHabitEscaped: ghostNow.ghostMicroHabitEscaped,
                 },
                 // ★AI_HUMANIZE.md B3(§4「専用乱数流」・シード=召喚id): 既存randとは別系統。
                 microSeed: hashSeed(ghostNow.id),
@@ -11915,7 +11915,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostMicroHabitResolved: decision.microHabitResolved,
                   ghostMicroHabitSeqCounts: decision.microHabitSeqCounts,
                   ghostMicroHabitArmKey: decision.microHabitArmKey,
-                  ghostMicroHabitSwingLg: decision.microHabitSwingLg, ghostMicroEscapeArmKey: decision.microEscapeArmKey,
+                  ghostMicroHabitSwingLg: decision.microHabitSwingLg, ghostMicroEscapeArmKey: decision.microEscapeArmKey, ghostMicroHabitEscaped: decision.microHabitEscaped,
                 } : s),
               }));
 
