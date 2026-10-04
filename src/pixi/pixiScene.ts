@@ -2102,6 +2102,24 @@ const URI_SWORD_INTRINSIC_ANGLE = Math.atan2(URI_SWORD_TIP_FRAC.y - URI_SWORD_GR
 const URI_SWORD_BLADE_LEN_FRAC = Math.hypot(URI_SWORD_TIP_FRAC.x - URI_SWORD_GRIP_FRAC.x, URI_SWORD_TIP_FRAC.y - URI_SWORD_GRIP_FRAC.y);
 const URI_SWORD_LENGTH = 85; // 社長確認「絵が大きすぎる」: 130→85px。判定・射程は変更しない。
 
+// research/MUTANT_HERO.md: 英雄(変異)のサーベル(社長支給2026-10-04「トールやミゲル、ウリなどと同じ使い道」)。
+// 原盤は mutant-hero-sabre.png(2172×724)。配信用はそこから縮めた mutant-hero-weapon.png(268×79・横長で
+// 切っ先が左・柄が右)。横長なので角度と刃渡りは**画素で**出す(比率のまま atan2 すると縦横比のぶん狂う)。
+const HERO_SWORD_W = 268, HERO_SWORD_H = 79;
+const HERO_SWORD_GRIP_FRAC = { x: 0.885, y: 0.38 }; // 握り(柄の巻きの中央)
+const HERO_SWORD_TIP_FRAC = { x: 0.0075, y: 0.42 };  // 切っ先
+const HERO_SWORD_INTRINSIC_ANGLE = Math.atan2(
+  (HERO_SWORD_TIP_FRAC.y - HERO_SWORD_GRIP_FRAC.y) * HERO_SWORD_H,
+  (HERO_SWORD_TIP_FRAC.x - HERO_SWORD_GRIP_FRAC.x) * HERO_SWORD_W,
+);
+const HERO_SWORD_BLADE_LEN_FRAC = Math.hypot(
+  (HERO_SWORD_TIP_FRAC.x - HERO_SWORD_GRIP_FRAC.x) * HERO_SWORD_W,
+  (HERO_SWORD_TIP_FRAC.y - HERO_SWORD_GRIP_FRAC.y) * HERO_SWORD_H,
+) / HERO_SWORD_W;
+const HERO_SWORD_LENGTH = 130; // 柄→切っ先(px・見た目のみ)。シートに描かれた剣(約75px)より大きく=振りが読める大きさ。叩き台
+// 手の位置(立ち絵の左向き基準・足元からの比率)。シートのコマで手は動くので近似。
+const HERO_HAND_FRAC = { x: -0.15, y: 0.70 };
+
 // ラフィの薙ぎ(Phase2新規)は既存の骨刃素材(rafi-blade.png)を「振る」用途でも流用する
 // (§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。katanaSlash系のグリップ扱いは新規(叩き台)。
 const RAFI_BLADE_GRIP_FRAC = { x: 0.50, y: 0.85 };
@@ -3991,6 +4009,7 @@ export class PixiScene {
   // 振り演出コンテナ。thorSlashFx/miguelSlashFxと全く同じ仕組み(drawKatanaSlash/drawKatanaReadyの
   // 汎用ヘルパを別武器テクスチャで流用)。
   private uriSlashFx = new Map<string, Container>();
+  private heroSwordFx = new Map<string, Container>(); // research/MUTANT_HERO.md: 英雄のサーベル
   private rafiSlashFx = new Map<string, Container>();
   // PACING_PUZZLE.md §7-15: 「常時携行」武器(振る/構えるたびに毎フレーム描かれ続けるが、
   // どのbossStateで出るかが1箇所にまとまっていない=ranged-window方式が組みづらい武器)向けの
@@ -14262,6 +14281,8 @@ export class PixiScene {
         if (miguelFx) { miguelFx.destroy({ children: true }); this.miguelSlashFx.delete(id); }
         const uriFx = this.uriSlashFx.get(id);
         if (uriFx) { uriFx.destroy({ children: true }); this.uriSlashFx.delete(id); }
+        const heroSw = this.heroSwordFx.get(id);
+        if (heroSw) { heroSw.destroy({ children: true }); this.heroSwordFx.delete(id); }
         const rafiFx = this.rafiSlashFx.get(id);
         if (rafiFx) { rafiFx.destroy({ children: true }); this.rafiSlashFx.delete(id); }
         // v0.25.3522: 弧の錨(小さな記録だが、個体が消えたら一緒に片付ける=IDの使い回しで
@@ -17848,6 +17869,10 @@ export class PixiScene {
     if (view.coilBody) view.coilBody.visible = false;
     // ゲート2ボス6体専用の武器/ランタン/構えスプライト(Mapで個体id管理)も同じ作法で既定OFF。
     // 該当ステートの分岐だけが下(drawEnemy側)で再表示する。
+    if (e.type === 'mutant-hero') {
+      const heroSw = this.heroSwordFx.get(e.id);
+      if (heroSw) heroSw.visible = false; // 点けるのは drawHeroSword だけ
+    }
     if (isGate2AngelBoss(e.type)) {
       const slashFx = this.miguelSlashFx.get(e.id);
       if (slashFx) slashFx.visible = false;
@@ -19509,7 +19534,10 @@ export class PixiScene {
     // §6.38 B2b(持ち越し①): 武器スプライト(バス停=標識/馬乗り=鞭/鋏=裁ち鋏/舞妓=毬)を各技へ配線する
     // (「判定が正しくても絵が出ていなければ未達」。派手側に倒す=大きめのlengthPx)。
     // research/MUTANT_HERO.md: 英雄の赤い予告(溜めの開始で出て、当たる瞬間に消え切る)と斬撃の弧。
-    if (e.type === 'mutant-hero') this.drawHeroTelegraph(e, view, o, gameTime, now);
+    if (e.type === 'mutant-hero') {
+      this.drawHeroTelegraph(e, view, o, gameTime, now);
+      this.drawHeroSword(e, view, gameTime, now);
+    }
     if (isBountyType(e.type)) {
       const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
       const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
@@ -31266,6 +31294,59 @@ export class PixiScene {
   private heroShapeMemo = new Map<string, { shape: HeroShape; move: HeroMoveKey; step: number }>();
 
   /**
+   * research/MUTANT_HERO.md: 英雄のサーベル。トール/ミゲル/ウリと同じ型(構え→振り→残心)。
+   * 斬る技(振り下ろし・三連・払い上げ・横薙ぎ・突進の終点)だけに出す。棹立ち・跳躍・タックルは蹄と体の技なので出さない。
+   * 構え=溜めの間(突進は駆けている間も握ったまま)/ 振り=当たった瞬間からの振り抜き / 残心=硬直の間に沈んで消える。
+   * 攻撃線は予告の図形から取る(帯=始点→終点・扇=中心→中心線の先)=刃は赤の向きへ振られる。描画のみ・判定は不変。
+   */
+  private drawHeroSword(e: Enemy, view: ActorView, gameTime: number, now: number): void {
+    const st = e.bossState;
+    const live = (st === 'hero-windup' || st === 'hero-motion') && e.heroShape && e.heroMove
+      ? { shape: e.heroShape, move: e.heroMove, step: e.heroStep ?? 0 } : null;
+    const m = live ?? ((st === 'hero-strike' || st === 'hero-recover') ? this.heroShapeMemo.get(e.id) : undefined);
+    if (!m) return;
+    const style: SwordSwingStyle | null =
+      m.move === 'overhead' ? 'overhead'
+        : m.move === 'combo' ? (m.step === 1 ? 'wide' : 'overhead')
+          : m.move === 'upper' || m.move === 'sweep' || m.move === 'charge' ? 'wide'
+            : null;
+    if (!style) return;
+    const s = m.shape;
+    let fx: number, fy: number, tx: number, ty: number, halfW: number;
+    if (s.kind === 'band') { fx = s.fx; fy = s.fy; tx = s.tx; ty = s.ty; halfW = s.halfWidth; }
+    else if (s.kind === 'fan') {
+      fx = s.cx; fy = s.cy; tx = s.cx + Math.cos(s.angle) * s.radius; ty = s.cy + Math.sin(s.angle) * s.radius;
+      halfW = Math.min(60, s.radius * Math.sin(s.halfArc) * 0.35);
+    } else return;
+    // 手元: 本体の絵の足元と背丈から(左向きの絵が基準・反転していれば手も反対側)。
+    const sp = view.sprite;
+    const facing = sp.scale.x >= 0 ? 1 : -1;
+    const hx = sp.x + HERO_HAND_FRAC.x * Math.abs(sp.width) * facing;
+    const hy = sp.y - HERO_HAND_FRAC.y * Math.abs(sp.height);
+    if (st === 'hero-windup' || st === 'hero-motion') {
+      const span = Math.max(1, (e.heroHitAt ?? gameTime) - (e.bossWindupStartAt ?? gameTime));
+      const el = gameTime - (e.bossWindupStartAt ?? gameTime);
+      const prog = Math.max(0, Math.min(1, el / span));
+      const alpha = (0.45 + 0.55 * prog) * swordFadeInAlpha(el);
+      this.drawKatanaReady(
+        this.heroSwordFx, HERO_SWORD_GRIP_FRAC, HERO_SWORD_INTRINSIC_ANGLE, HERO_SWORD_BLADE_LEN_FRAC, HERO_SWORD_LENGTH, 'mutant-hero-weapon',
+        e.id, hx, hy, fx, fy, tx, ty, alpha, style, 0, st === 'hero-windup' ? windupTremorPx(prog, now) : 0, now,
+      );
+    } else if (st === 'hero-strike') {
+      const t = Math.max(0, Math.min(1, (gameTime - (e.heroStateAt ?? gameTime)) / HERO_STRIKE_MS));
+      this.drawKatanaSlash(
+        this.heroSwordFx, HERO_SWORD_GRIP_FRAC, HERO_SWORD_INTRINSIC_ANGLE, HERO_SWORD_BLADE_LEN_FRAC, HERO_SWORD_LENGTH, 'mutant-hero-weapon',
+        e.id, fx, fy, tx, ty, halfW, t, true, true, hx, hy, style,
+      );
+    } else {
+      this.drawKatanaReady(
+        this.heroSwordFx, HERO_SWORD_GRIP_FRAC, HERO_SWORD_INTRINSIC_ANGLE, HERO_SWORD_BLADE_LEN_FRAC, HERO_SWORD_LENGTH, 'mutant-hero-weapon',
+        e.id, hx, hy, fx, fy, tx, ty, swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime), style, 1, 0, now,
+      ); // 硬直中も剣を消さない(掟W9)
+    }
+  }
+
+  /**
    * research/MUTANT_HERO.md §5: 英雄の赤い予告。形(heroShape)は溜め開始で決まって動かない=判定と同じ。
    * 進み=溜め開始(bossWindupStartAt)→当たる瞬間(heroHitAt)。走る技は溜め+走りの通しで流れ、終点の一撃で消え切る。
    * 走る道筋は**赤くしない**(灰の点線)=道筋そのものは当たらないので、赤くすると「赤いのに当たらない」になる。
@@ -34065,6 +34146,7 @@ export class PixiScene {
     for (const o of this.thorSlashFx.values()) o.destroy({ children: true });
     for (const o of this.miguelSlashFx.values()) o.destroy({ children: true });
     for (const o of this.uriSlashFx.values()) o.destroy({ children: true });
+    for (const o of this.heroSwordFx.values()) o.destroy({ children: true });
     for (const o of this.rafiSlashFx.values()) o.destroy({ children: true });
     for (const o of this.jibrilLanternSprites.values()) o.destroy();
     for (const o of this.jibrilLanternFirePool.values()) o.destroy();
