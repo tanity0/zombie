@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth,
-  practiceSlotUnlocked, GUARDIAN_PHANTOM_SLOT_KEY, MUTANT_HERO_SLOT_KEY, GUARDIAN_PHANTOM_LABEL, GUARDIAN_PHANTOM_PRACTICE_LABEL,
+  practiceSlotUnlocked, GUARDIAN_PHANTOM_SLOT_KEY, MUTANT_HERO_SLOT_KEY, MUTANT_LIBERTY_SLOT_KEY, GUARDIAN_PHANTOM_LABEL, GUARDIAN_PHANTOM_PRACTICE_LABEL,
 } from './bossPractice';
 import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
@@ -25,14 +25,14 @@ const bountySlots = () => PRACTICE_SLOTS.filter(s => isBountyType(s.bossType));
 const duelSlots = () => PRACTICE_SLOTS.filter(s => s.bossType === 'guardian-phantom');
 const ghostDerivedSlots = () =>
   // 英雄(research/MUTANT_HERO.md)も独立追記枠=比較から除く。
-  PRACTICE_SLOTS.filter(s => !isBountyType(s.bossType) && s.bossType !== 'guardian-phantom' && s.bossType !== 'mutant-hero');
+  PRACTICE_SLOTS.filter(s => !isBountyType(s.bossType) && s.bossType !== 'guardian-phantom' && s.bossType !== 'mutant-hero' && s.bossType !== 'mutant-liberty');
 
 describe('ボスラッシュの台帳', () => {
   it('守護霊メニューと同じ台帳をそのまま使う(形態別の独立枠は置かない)', () => {
     expect(ghostDerivedSlots().map(s => s.slotKey)).toEqual(GHOST_DOSSIER_SLOTS.map(s => s.slotKey));
-    // 台帳の総数 = 守護霊メニュー由来 + 賞金首4 + 決闘1(幻影)+ 中立1(英雄・research/MUTANT_HERO.md)。
+    // 台帳の総数 = 守護霊メニュー由来 + 賞金首4 + 決闘1(幻影)+ 中立1(英雄・research/MUTANT_HERO.md)+ 解放軍群1(research/LIBERTY_HORDE.md)。
     expect(duelSlots()).toHaveLength(1);
-    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length + BOUNTY_ENEMY_TYPES.size + 1 + 1);
+    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length + BOUNTY_ENEMY_TYPES.size + 1 + 1 + 1);
   });
 
   // ★社長裁定v0.25.3600「第二形態は第一形態と合体させて。第一倒したら第二に移行」。
@@ -110,7 +110,7 @@ describe('ボスラッシュの台帳', () => {
     // ★社長指示2026-09-29「アクラシエルは出番が無いはずなので一旦ゲーム内から非表示」: 遭遇不能のまま一覧に残していた
     //   acrasiel を台帳(GHOST_DOSSIER_SLOTS)から外した=ここにも出ない。
     // 英雄(research/MUTANT_HERO.md §2-0)も本編のステージは社長検討中=対策室だけに置く(常時解放)。
-    expect(unreachable).toEqual(['giantbat@stage-2', GUARDIAN_PHANTOM_SLOT_KEY, MUTANT_HERO_SLOT_KEY].sort());
+    expect(unreachable).toEqual(['giantbat@stage-2', GUARDIAN_PHANTOM_SLOT_KEY, MUTANT_HERO_SLOT_KEY, MUTANT_LIBERTY_SLOT_KEY].sort());
     expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length); // 既存枠を外していない
   });
 });
@@ -248,7 +248,7 @@ describe('決闘(幻影)の掲載枠', () => {
     expect(slot.alwaysUnlocked).toBe(true);
     expect(practiceSlotUnlocked(slot, new Set())).toBe(true);
     // 英雄の枠(research/MUTANT_HERO.md §2-0)も同じ入口で常時解放=除いて数える。
-    for (const other of PRACTICE_SLOTS.filter(s => s.slotKey !== GUARDIAN_PHANTOM_SLOT_KEY && s.slotKey !== MUTANT_HERO_SLOT_KEY)) {
+    for (const other of PRACTICE_SLOTS.filter(s => s.slotKey !== GUARDIAN_PHANTOM_SLOT_KEY && s.slotKey !== MUTANT_HERO_SLOT_KEY && s.slotKey !== MUTANT_LIBERTY_SLOT_KEY)) {
       expect(practiceSlotUnlocked(other, new Set()), other.slotKey).toBe(false);
     }
   });

@@ -37,6 +37,8 @@ const categoryOf = (slot: PracticeSlot): PracticeCategory =>
   ?? (isBountyType(slot.bossType) ? 'bounty'
     : slot.bossType === 'guardian-phantom' ? 'duel'
     : slot.bossType === 'mutant-hero' ? 'neutral'
+    // research/LIBERTY_HORDE.md §9: 解放軍群(変異)は本編の野に居るボス級=「ステージボス」の棚(明示)。
+    : slot.bossType === 'mutant-liberty' ? 'story'
     : 'story');
 
 const bossName = (slot: PracticeSlot): string => slot.label ?? enemyDeathLabel(slot.bossType);

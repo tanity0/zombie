@@ -18676,7 +18676,8 @@ export class PixiScene {
         const bpSide = e.hunterFleeing || e.dormant ? 0
           : backpedalFaceSide(vx, e.x + e.width / 2, bpPl.x + bpPl.width / 2);
         // research/MUTANT_HERO.md: 英雄の向きは制御(heroTick)が決める(左右が入れ替わる前に一拍止まってから)。
-        const heroFace = e.type === 'mutant-hero' && e.heroFaceX !== undefined ? (e.heroFaceX > 0 ? toRight : -toRight) : 0;
+        // research/LIBERTY_HORDE.md: 解放軍群の旗手も、止まって叫ぶ間は相手の方を向く(制御が heroFaceX を書く)。
+        const heroFace = (e.type === 'mutant-hero' || e.type === 'mutant-liberty') && e.heroFaceX !== undefined ? (e.heroFaceX > 0 ? toRight : -toRight) : 0;
         const want = kbFacingLock ? cur
           : heroFace !== 0 ? heroFace
           : bandDir !== 0 ? sweepFaceMulFor(bandDir, sweepSwing, cur)

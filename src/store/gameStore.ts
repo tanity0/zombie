@@ -165,7 +165,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
@@ -1741,6 +1741,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'bounty-balance': '鋏(変異)',
   'bounty-maiko': '舞妓(変異)',
   'mutant-hero': '英雄(変異)', // research/MUTANT_HERO.md(社長命名2026-10-03)
+  'mutant-liberty': '解放軍群(変異)', // research/LIBERTY_HORDE.md(社長命名2026-10-04)
 };
 // 社長指示v0.25.3451「なぜUIによって名前の出し方を変えるの?全部の箇所で統一に決まってる」:
 // 城ボス(giantbat)もステージ別の台帳名(bossCutin=名前の正本)で表示する。死因・討伐バナー・歴史年表の
@@ -3428,7 +3429,7 @@ const EGGCARRIER_ORBIT_RADIUS = 220;     // プレイヤーから保つ周回半
 const SCREAMER_FIRST_MS = 5000;       // 出現してから初回の溜め開始までの待ち。
 const SCREAMER_INTERVAL_MS = 10000;   // 以降の叫喚間隔(発動から次の溜め開始まで)。
 export const SCREAMER_WINDUP_MS = 2000; // 叫喚の溜め(予兆)時間。これを倒し切れば阻止=バフ無し。
-const SCREAMER_BUFF_MS = 7000;        // 強化の持続(発動から)。
+export const SCREAMER_BUFF_MS = 7000; // 強化の持続(発動から)。research/LIBERTY_HORDE.md の旗手も同じ値を引く。
 export const SCREAMER_BUFF_MULT = 1.2; // 通常敵の移動速度・与ダメージ倍率。
 const SCREAMER_KEEP_RADIUS = 260;     // プレイヤーから保つ距離(px)。直進せず一定距離を保つ。
 const MINE_AMBUSH_TIME_MS = 150000;
@@ -3648,6 +3649,27 @@ const meleeWallsAround = (get: () => GameState, cx: number, cy: number, range: n
   return treesInRegion(cx - range - 40, cy - range - 40, cx + range + 40, cy + range + 40).map(trunkRect);
 };
 
+// 叫喚型の予兆(溜め開始)と発動の演出。research/LIBERTY_HORDE.md の旗手も**同じ関数**を呼ぶ(同じ叫び=同じ見え方)。
+// 予兆: 2秒かけて広がるリング＋発光(優先処理を促すテレグラフ)。
+export const screamerWindupFx = (x: number, y: number): void => {
+  const g = useGameStore.getState();
+  g.spawnRing(x, y, 8, 130, 'rgba(190,242,100,0.5)', 3, SCREAMER_WINDUP_MS);
+  g.spawnGlow(x, y, GLOW_R_M, 'rgba(163,230,53,', SCREAMER_WINDUP_MS);
+};
+// 発動: 強い衝撃リング＋発光＋コールアウト＋画面揺れ。「叫んだ」感を強めるため(社長指示)、
+// 外側にもう一段リング(遅れて届く音波のイメージ)＋画面全体がわずかに緑へ明滅するフラッシュ。
+// 揺れは他の一撃系演出(パンプキン着地mag9/盾バッシュmag10)に並ぶ強さ。音は useGameLoop が screamerBuffUntil の更新で鳴らす。
+export const screamerCryFx = (x: number, y: number): void => {
+  const g = useGameStore.getState();
+  g.spawnRing(x, y, 10, 240, 'rgba(190,242,100,0.72)', 4, 480);
+  g.spawnRing(x, y, 6, 150, 'rgba(255,255,255,0.85)', 3, 340);
+  g.spawnRing(x, y, 20, 330, 'rgba(163,230,53,0.5)', 3, 620); // 一段外側=音波が遅れて届くイメージ
+  g.spawnGlow(x, y, GLOW_R_XL, 'rgba(163,230,53,', 520);
+  g.spawnCallout(x, y - 30, '叫喚!', '#bef264', { scale: 1.1 });
+  g.spawnFlash('rgba(163,230,53,0.22)', 260); // 叫びが画面全体に響くイメージの淡い緑フラッシュ
+  g.triggerShake(260, 10);
+};
+
 // 叫喚型(screamer)を倒したら強化バフを即座に打ち切る(社長指示、残り時間を待たず即失効)。
 // gun/接触/爆発(damageEnemy)と近接キル全般(grantMeleeKillRewards)の両経路から同じ判定を使う。
 const screamerBuffCutOnKillPatch = (
@@ -3655,7 +3677,8 @@ const screamerBuffCutOnKillPatch = (
   screamerBuffUntil: number,
   gameTime: number
 ): { screamerBuffUntil: number } | Record<string, never> =>
-  killedTypes.includes('screamer') && screamerBuffUntil > gameTime
+  // research/LIBERTY_HORDE.md §7: 解放軍群の旗手も叫喚型と同じく、倒したらバフは即失効。
+  (killedTypes.includes('screamer') || killedTypes.includes('mutant-liberty')) && screamerBuffUntil > gameTime
     ? { screamerBuffUntil: gameTime }
     : {};
 
@@ -7202,7 +7225,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           for (const en of state.enemies) {
             if (isCorpse(en)) continue;
             // research/MUTANT_HERO.md: 英雄も体で塞ぐ(接触ダメージを持たない=重なると技を全部浴びるだけになる)。
-            if (isMutantHero(en.type)) {
+            // research/LIBERTY_HORDE.md §7: 解放軍群の旗手も同じ(接触ダメージ0のボス級)。
+            if (isBodyWallBoss(en.type)) {
               if (en.health <= 0) continue;
               const hb = heroBodyWallRect(en);
               if (Math.abs(hb.x - newX) > 300 || Math.abs(hb.y - newY) > 300) continue;
@@ -12421,7 +12445,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // research/MUTANT_HERO.md §6-2(社長「画面に映っていない時は…喰らわないでよい」): 画面外の英雄は
       // どの攻撃も受けない。入口はここ1か所(銃・近接・爆発・継続の全経路が通る)。
-      if (isMutantHero(enemy.type) && !isPointInZoomedViewport(
+      if (isBodyWallBoss(enemy.type) && !isPointInZoomedViewport( // 解放軍群の旗手も同じ(LIBERTY_HORDE §7)
         enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, state.camera, state.gameBounds, state.viewZoom)) {
         return { enemies };
       }
@@ -13338,6 +13362,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ここを抜けないと、通常追跡AI(接近/接触)と phantomTick が同じフレームで座標を奪い合う。
         // research/MUTANT_HERO.md(英雄): 専用コントローラ(heroTick.ts)だけが動かす。
         if (isHiddenBoss(enemy.type) || isBountyType(enemy.type) || isGuardianPhantom(enemy.type) || isMutantHero(enemy.type)) return enemy;
+        // research/LIBERTY_HORDE.md: 旗手と、列に並んでいる/戻っている取り巻きは libertyTick だけが動かす(二重駆動の禁止)。
+        if (isLibertyBearer(enemy.type) || isHordeFollower(enemy)) return enemy;
 
         // Bosses pop up briefly when they take melee finisher-grade damage;
         // while airborne they should read as caught, not still advancing.
@@ -16844,21 +16870,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 叫喚型の予兆(溜め開始): 2秒かけて広がるリング＋発光(優先処理を促すテレグラフ)。
     if (screamerWindupAt.length > 0) {
       const { x, y } = screamerWindupAt[0];
-      get().spawnRing(x, y, 8, 130, 'rgba(190,242,100,0.5)', 3, SCREAMER_WINDUP_MS);
-      get().spawnGlow(x, y, GLOW_R_M, 'rgba(163,230,53,', SCREAMER_WINDUP_MS);
+      screamerWindupFx(x, y);
     }
     // 叫喚発動: 強い衝撃リング＋発光＋コールアウト＋画面揺れ。「叫んだ」感を強めるため(社長指示)、
     // 外側にもう一段リング(遅れて届く音波のイメージ)＋画面全体がわずかに緑へ明滅するフラッシュを追加し、
     // 揺れも他の一撃系演出(パンプキン着地mag9/盾バッシュmag10)に並ぶ強さへ上げる(旧: 220ms/mag5)。
     if (screamerActivatedAt.length > 0) {
       const { x, y } = screamerActivatedAt[0];
-      get().spawnRing(x, y, 10, 240, 'rgba(190,242,100,0.72)', 4, 480);
-      get().spawnRing(x, y, 6, 150, 'rgba(255,255,255,0.85)', 3, 340);
-      get().spawnRing(x, y, 20, 330, 'rgba(163,230,53,0.5)', 3, 620); // 一段外側=音波が遅れて届くイメージ
-      get().spawnGlow(x, y, GLOW_R_XL, 'rgba(163,230,53,', 520);
-      get().spawnCallout(x, y - 30, '叫喚!', '#bef264', { scale: 1.1 });
-      get().spawnFlash('rgba(163,230,53,0.22)', 260); // 叫びが画面全体に響くイメージの淡い緑フラッシュ
-      get().triggerShake(260, 10);
+      screamerCryFx(x, y);
     }
     // パニッシャーの巻き込みダメージ(近接の半分)を正規経路で適用(死亡処理/演出込み)。
     // v0.25.3299 一拍目(接触)の小FX: ぶつかった衝撃の読み。二拍目(下)の大シェイク/数字と区別する。
@@ -17831,6 +17850,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   dropEnemyXp: (enemy, x, y, idPrefix, value) => {
     // research/MUTANT_HERO.md: 英雄は倒れても何も落とさない(社長「倒された時は、一旦保留で無し」)。全ての撃破経路がここを通る。
     if (isMutantHero(enemy.type)) return;
+    // research/LIBERTY_HORDE.md §5: 補充されたバット男は何も落とさない(社長裁定)。旗手は★未決 #2「旗手の報酬」の裁定まで落とさない。
+    if (enemy.hordeRefill || isLibertyBearer(enemy.type)) return;
     // 難易度⑤(DirectorRank): HARVEST相当のフェーズ中だけ有効な倍率(通常は1)。useGameLoopが毎フレーム更新。
     const v = Math.round((value ?? enemy.experienceValue) * getDirectorRewardMult());
     const base = xpOrbCountForEnemy(enemy);
@@ -17843,6 +17864,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   dropEnemyCurrency: (enemy, x, y) => {
     if (isMutantHero(enemy.type)) return; // research/MUTANT_HERO.md: 英雄は何も落とさない(上と同じ)
+    if (enemy.hordeRefill || isLibertyBearer(enemy.type)) return; // research/LIBERTY_HORDE.md §5(上と同じ)
     // PACING_PUZZLE.md §7-11c(3): レール(elite)のドロップバイアス=トレジャー。既定(rail未指定)は
     // railTreasureDropMultが1を返すため無改変。トレジャー抽選の唯一の出どころ(dropEnemyCurrency)に乗算。
     const treasureChance = Math.max(0, Math.min(1,

@@ -1646,7 +1646,7 @@ export const applyContactDamage = (
   playerEnemyCollisions.forEach(enemy => {
     // research/MUTANT_HERO.md: 英雄は接触ダメージを持たない(damage 0)。ここを通すと0ダメージの被弾が
     // 毎フレーム入り続けていた(社長報告2026-10-04「重なって延々とダメージ受けちゃう」)。当たるのは技だけ。
-    if (isMutantHero(enemy.type)) return;
+    if (isMutantHero(enemy.type) || enemy.type === 'mutant-liberty') return; // 解放軍群の旗手も接触ダメージ0(LIBERTY_HORDE §7)
     // PACING_PUZZLE.md §14-4-8b(A-3): 神付きは1tickにつき1体。既に発火していたら、この関数呼び出し
     // (=このtick)の残りの接触解決を丸ごと打ち切る(forEachの実質break)。
     if (kamitsukiTriggeredThisTick) return;

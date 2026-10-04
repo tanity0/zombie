@@ -47,6 +47,8 @@ const NAMED_BOSS_CUTIN_NAME: Partial<Record<EnemyType, string>> = {
   hunter: '監視者',
   // research/MUTANT_HERO.md: 社長命名2026-10-03。
   'mutant-hero': '英雄(変異)',
+  // research/LIBERTY_HORDE.md: 社長命名2026-10-04。
+  'mutant-liberty': '解放軍群(変異)',
 };
 
 /**

@@ -45,6 +45,8 @@ const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   'guardian-phantom': 1.3,
   // research/MUTANT_HERO.md §1: 英雄(変異)。判定の足元 110×60 に対して絵(高さ202)を約230pxで出す(実機で社長が詰める)。
   'mutant-hero': 2.4,
+  // research/LIBERTY_HORDE.md §8: 解放軍群の旗手。英雄と同じボス帯の背丈(判定の足元も英雄と同じ 110×60)。
+  'mutant-liberty': 2.4,
 };
 
 // A foot-anchored draw box in WORLD space. `footX/footY` is the bottom-centre

@@ -30,7 +30,9 @@ export const isMarkedBoss = (e: Pick<Enemy, 'type' | 'isStoryBoss'>): boolean =>
   // 「ステージ2の裏ボス(アイドル)はマーク出さない」)。isHiddenBoss には残す(射程矩形等は従来どおり)。
   (isHiddenBoss(e.type) && e.type !== 'idol') || e.isStoryBoss === true || isBountyType(e.type)
   // research/MUTANT_HERO.md §6-2: 英雄も画面外の矢印を出す(ボス級の既定)。
-  || e.type === 'mutant-hero';
+  || e.type === 'mutant-hero'
+  // research/LIBERTY_HORDE.md §7: 解放軍群の旗手も(ただし交戦中だけ=下の isMarkedBossVisible)。
+  || e.type === 'mutant-liberty';
 
 /** 賞金首の矢印マーカー有効距離(§6.38 B1.5-5)。
  * ★2026-08-26 社長指示「いる間はマーク表示。近づいたらじゃなくて」で**距離ゲートは撤廃**
@@ -42,7 +44,7 @@ export const BOUNTY_MARK_MAX_DIST_PX = 1200;
  * pixiScene側はこれ1本を呼ぶだけにする(CLAUDE.md 実装精度の規律4=配線に判定を直書きしない)。
  */
 export const isMarkedBossVisible = (
-  e: Pick<Enemy, 'type' | 'isStoryBoss' | 'bossState' | 'lastHit' | 'x' | 'y' | 'width' | 'height'> & Partial<Pick<Enemy, 'heroPatrolR' | 'heroTargetId'>>,
+  e: Pick<Enemy, 'type' | 'isStoryBoss' | 'bossState' | 'lastHit' | 'x' | 'y' | 'width' | 'height'> & Partial<Pick<Enemy, 'heroPatrolR' | 'heroTargetId' | 'libAlerted'>>,
   now: number,
   playerCx: number,
   playerCy: number,
@@ -56,6 +58,8 @@ export const isMarkedBossVisible = (
   // research/MUTANT_HERO.md §2-1: 本編で輪を周回している英雄は、**こちら(プレイヤー/守護霊)と斬り合っている間**か
   // 直近に殴った間だけ(裏ボスの「マークは交戦中だけ」と同じ)。出会う前から矢印が出続けると、輪の上で偶然出会う驚きが消える。
   // 対策室・ボステストの英雄(heroPatrolR なし)は従来どおり常に出す。
+  // 解放軍群の旗手は周回でも確認用の枠でも、**見つけている間と直近に殴られた間だけ**。
+  if (e.type === 'mutant-liberty') return e.libAlerted === true || now - e.lastHit <= BOSS_ENGAGE_GRACE_MS;
   if (e.type === 'mutant-hero' && e.heroPatrolR !== undefined) {
     return e.heroTargetId === 'player' || e.heroTargetId === 'ghost' || now - e.lastHit <= BOSS_ENGAGE_GRACE_MS;
   }

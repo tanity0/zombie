@@ -1314,6 +1314,20 @@ export interface Enemy {
   /** research/MUTANT_HERO.md §2-1(社長指示2026-10-04): 本編の英雄はデンジャーゾーンの真ん中の輪(半径=この値・原点中心)を
    * 反時計回りに周回する。undefined=周回しない(対策室・ボステストの強制出現)。 */
   heroPatrolR?: number;
+  /** research/LIBERTY_HORDE.md: 旗手の周回の半径(原点中心)。undefined=周回しない(対策室・ボス戦テスト)。 */
+  libPatrolR?: number;
+  /** 旗手が相手を見つけている間 true(止まって叫ぶ)。 */
+  libAlerted?: boolean;
+  /** 旗手の叫喚の溜めが終わる時刻(gameTime)。undefined=溜めていない。 */
+  libScreamUntil?: number;
+  /** バット男(取り巻き)が属する旗手のID。★既存の bountyEscortId は使わない(親の退場で一掃する意味を持つため)。 */
+  hordeLeaderId?: string;
+  /** 取り巻きの状態: follow=列に並ぶ / chase=通常AIで向かう / return=列の自分の位置へ戻る。follow/return は通常AIを素通り。 */
+  hordeState?: 'follow' | 'chase' | 'return';
+  /** 列の何番目か(0〜4)。 */
+  hordeSlot?: number;
+  /** 補充されたバット男(=何も落とさない・社長裁定)。 */
+  hordeRefill?: boolean;
   /** 去る時刻(巣で60秒だれも来ない → 画面の外へ駆け去る)。 */
   heroDepartAt?: number;
   // PACING_PUZZLE.md §6.38 B2(バス停「取り巻き召喚」): この敵が賞金首の取り巻きなら親bounty.idを持つ
@@ -1732,7 +1746,9 @@ export type EnemyType =
   // (angelBossTickの7人目としてtickされる根拠)。関所ボスではないが器はゲート2天使と共通。
   | 'phillboss'
   // research/MUTANT_HERO.md: 英雄(変異)。中立の騎馬ボス(プレイヤーも敵も、近い方を斬る)。
-  | 'mutant-hero';
+  | 'mutant-hero'
+  // research/LIBERTY_HORDE.md: 解放軍群(変異)の旗手。叫んで周りの敵を強化する(自分は攻撃しない)。後ろにバット男5体。
+  | 'mutant-liberty';
 
 // Weapon types
 export interface Weapon {

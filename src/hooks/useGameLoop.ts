@@ -191,6 +191,8 @@ import {
   phantomSupportsSub, // ★幻影が主語になれるサブの白リスト(未実装の種は自爆するのでプレイヤーへ落とす)
 } from '../utils/phantomTick';
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
+import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
+import { libPatrolRadius, ringPointBehind, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties } from '../utils/heroBlast';
 // 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
@@ -501,6 +503,7 @@ import {
   springSmoothZoom, BOSS_DISTANCE_ZOOM_RETURN_TAU, zoomCameraDownFrac, bossCameraLeadY,
   bossWideShotZoom,
   bossCameraLeadX, // v0.25.3063: 横のボス先読み(社長裁定「2をまず揃える」)
+  isPointInZoomedViewport, // research/LIBERTY_HORDE.md: 旗手が画面に入った最初のフレーム(カットイン)
 } from '../utils/cameraZoom';
 import { bossFramingFor } from '../utils/bossFraming';
 import {
@@ -1360,13 +1363,15 @@ const FORCE_HERO = evParam('heronow') === '1';
  * research/MUTANT_HERO.md §2-0(社長裁定 #6「対策室でもゾンビを湧かせる」): 英雄の演習だけ**雑魚の湧き**(通常の湧き・盤面の維持)を開ける。
  * 城ボス・イベント・紅き夜・ハンター・死神などは練習ランのまま止める(noSpawn は従来どおり)=雑魚だけ。
  */
-const HERO_PRACTICE_MOBS = !NOSPAWN && isPracticeRun() && practiceForces('heronow');
+const HERO_PRACTICE_MOBS = !NOSPAWN && isPracticeRun() && (practiceForces('heronow') || practiceForces('libertynow')); // 解放軍群の枠も雑魚だけ開ける(LIBERTY_HORDE §9)
+// research/LIBERTY_HORDE.md §9: 解放軍群のデバッグ出現 `?libertynow=1`(対策室の枠は practiceForces('libertynow') で相乗り)。
+const FORCE_LIBERTY = evParam('libertynow') === '1';
 /**
  * research/MUTANT_HERO.md §2-1(社長指示2026-10-04): 本編の英雄=ステージ1・3・4・5でデンジャーゾーンの真ん中の輪を周回。
  * ボス戦テスト・ボスメーカー・湧き止め(nospawn)の読込では出さない(テストの相手が増えないように)。
  */
 const HERO_PATROL_BLOCKED = NOSPAWN
-  || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bountynow', 'phantomnow', 'phillnow', 'heronow', 'bossmaker', 'vs'].some(k => evParam(k) !== null);
+  || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bountynow', 'phantomnow', 'phillnow', 'heronow', 'libertynow', 'bossmaker', 'vs'].some(k => evParam(k) !== null);
 // BOSS_MAKER.md §21(1対1の間合い): `?vs=<相手>` で、選んだ相手だけを1体出す開発用の枠。
 // 他の強制出現フラグと同じくモジュールロード時に1回だけ読む(切替は再読込)。
 const VS_ENTRY = vsEntryOfRun();
@@ -1403,6 +1408,7 @@ let idolCtrlErrLogged = false;                       // idol制御例外のロ�
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
 let phantomCtrlErrLogged = false;                    // 守護霊ボス「幻影」制御例外のログも初回だけ(本体はphantomTick.ts)
+let libertyCtrlErrLogged = false;                    // 解放軍群(変異)制御例外のログも初回だけ(本体はlibertyTick.ts)
 let heroCtrlErrLogged = false;                       // 英雄(変異)制御例外のログも初回だけ(本体はheroTick.ts)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
 /**
@@ -1895,6 +1901,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const heroForceRef = useRef(false);
   const heroStateRef = useRef(createHeroTickState());
   const heroCutinIdRef = useRef<string | null>(null);
+  const libertyForceRef = useRef(false);
+  const libertyStateRef = useRef(createLibertyTickState());
+  const libertyCutinIdRef = useRef<string | null>(null);
   // §6.38 B2a: 賞金首のラン内状態(照準速度/懲罰タイマ/コンボ進行/取り巻き召喚済みか)。
   // idolStateRefと同じ流儀(idolTick.tsを手本・bountyTick.ts参照)。同時1体なので単一refでよい。
   const bountyStateRef = useRef(createBountyTickState());
@@ -3166,6 +3175,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
           heroForceRef.current = false; heroStateRef.current = createHeroTickState(); heroCutinIdRef.current = null; setHeroGallop(0); // 英雄(research/MUTANT_HERO.md)
+          libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
           // ★SAME_ARENA O-5: 幻影の人格も新ランで捨てる。持ち越すと**前のランの他人**の癖・名前で
           // 戦うことになる(v0.25.3838のボスリラックス跨ぎと同型の"ラン跨ぎの漏れ")。
           clearPhantomIdentity();
@@ -8544,6 +8554,52 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             addEnemy(hE);
             heroCutinIdRef.current = null;
           }
+          // research/LIBERTY_HORDE.md §2/§9: 解放軍群(変異)。本編=ステージ1・3・4・5で深層域の輪(半径12750)に旗手+バット男5体を置き、
+          // 反時計回りに回る(libertyTick)。確認用の枠(?libertynow=1 / 対策室)=プレイヤーの上・画面の端のすぐ外に置き、その場で索敵。
+          {
+            const forceLib = FORCE_LIBERTY || practiceForces('libertynow');
+            const patrolLib = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
+              && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+            if ((forceLib || patrolLib) && !libertyForceRef.current && newGameTime >= 3000) {
+              libertyForceRef.current = true;
+              const st0 = useGameStore.getState();
+              let cx: number, cy: number, R: number | undefined, a0 = 0;
+              if (forceLib) {
+                const z0 = Math.max(0.3, Math.min(1, st0.viewZoom || 1));
+                cx = player.x + player.width / 2;
+                cy = player.y + player.height / 2 - (st0.gameBounds.height / 2 / z0 + 140);
+              } else {
+                R = libPatrolRadius(AREA_THRESHOLDS);
+                a0 = Math.random() * Math.PI * 2;
+                cx = Math.cos(a0) * R; cy = Math.sin(a0) * R;
+              }
+              const lE = spawnEnemyAt('mutant-liberty', cx - 55, cy - 30, newGameTime);
+              const lHp = Math.round(bountyMaxHealth(areaIndexForPos(cx, cy), newGameTime) * stageBossDiffMults().hp);
+              lE.health = lHp; lE.maxHealth = lHp;
+              lE.dormant = false;
+              lE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない(別カウント・§6)
+              lE.bossState = 'chase';
+              lE.libPatrolR = R;
+              lE.heroFaceX = R !== undefined ? (Math.sin(a0) >= 0 ? 1 : -1) : -1;
+              // 取り巻き5体: 置いた瞬間は足跡が無いので、後ろ(周回なら輪の時計回り側・確認用なら上)へ仮の位置に並べる(品質監査 A-4)。
+              const bats = Array.from({ length: LIB_ESCORTS }, (_, i) => {
+                const back = (i + 1) * LIB_SLOT_GAP_PX;
+                const p = R !== undefined ? ringPointBehind(a0, R, back) : { x: cx + back, y: cy }; // 確認用=左を向いて立ち、列は右(背中側)へ
+                return makeHordeBat(lE, i, p.x, p.y, newGameTime, false, false);
+              });
+              useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.type !== 'mutant-liberty' && e.hordeLeaderId === undefined) }));
+              addEnemy(lE);
+              useGameStore.setState(stt => ({ enemies: [...stt.enemies, ...bats] }));
+              libertyStateRef.current = createLibertyTickState();
+              // 足跡も同じ後ろ側へ敷いておく(古い→新しいの順)。無いと最初のフレームで列が真下へ並び直ってしまう。
+              libertyStateRef.current.activeId = lE.id;
+              libertyStateRef.current.trail = Array.from({ length: LIB_TRAIL_MAX }, (_, k) => {
+                const back = (LIB_TRAIL_MAX - k) * LIB_TRAIL_STEP_PX;
+                return R !== undefined ? ringPointBehind(a0, R, back) : { x: cx + back, y: cy };
+              });
+              libertyCutinIdRef.current = null;
+            }
+          }
           if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
             phantomForceRef.current = true;
             // ★research/SAME_ARENA.md O-5: 幻影の「中身」をここで1回だけ決める。
@@ -8847,6 +8903,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          } catch (err) {
           if (!bountyCtrlErrLogged) { bountyCtrlErrLogged = true; console.error('[bounty] controller error (suppressed after first):', err); }
           reportSuppressedError('bounty', err);
+         }
+        }
+
+        // --- 解放軍群(変異)(research/LIBERTY_HORDE.md)コントローラ ---
+        // ★旗手と、列に並ぶ/戻るバット男を動かすのはここだけ(gameStore.updateEnemies は素通りする)。
+        if (!danceTest && !useGameStore.getState().gameWon) {
+         try {
+          const activeLib = pickActiveLiberty(useGameStore.getState().enemies);
+          if (activeLib && !useGameStore.getState().bossMaker.paused) {
+            // 姿が画面に入った最初のフレームでカットイン(英雄と同じ・1体につき1回)。体力は出会った時刻で決め直す(手付かずの時だけ)。
+            const libOnScreen = isPointInZoomedViewport(activeLib.x + activeLib.width / 2, activeLib.y + activeLib.height / 2,
+              useGameStore.getState().camera, useGameStore.getState().gameBounds, useGameStore.getState().viewZoom);
+            if (libertyCutinIdRef.current !== activeLib.id && libOnScreen && !useGameStore.getState().attention) {
+              libertyCutinIdRef.current = activeLib.id;
+              if (activeLib.health >= activeLib.maxHealth) {
+                const hp2 = Math.round(bountyMaxHealth(areaIndexForPos(activeLib.x + activeLib.width / 2, activeLib.y + activeLib.height / 2), newGameTime) * stageBossDiffMults().hp);
+                useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === activeLib.id ? { ...e, health: hp2, maxHealth: hp2 } : e) }));
+              }
+              const lAc = bossArtCenter(activeLib);
+              useGameStore.getState().triggerAttention(lAc.x, lAc.y, bossCutinPayload('mutant-liberty'));
+              useGameStore.setState({ eventBannerText: '旗が揺れている', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+            }
+            runLibertyTick(activeLib, libertyStateRef.current, newGameTime, deltaTime, Date.now());
+          }
+          releaseOrphanHorde();
+         } catch (err) {
+          if (!libertyCtrlErrLogged) { libertyCtrlErrLogged = true; console.error('[liberty] controller error (suppressed after first):', err); }
+          reportSuppressedError('liberty', err);
          }
         }
 

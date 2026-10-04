@@ -168,6 +168,10 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   //  ・speed は heroTick が自分で動かす(歩き95px/s)ので参照されない。health はスポーン側が上書きする。
   //  ・experienceValue=0。倒れても経験値・コインは落とさない(ドロップ関数を呼ばない=社長「保留で無し」)。
   'mutant-hero': { width: 110, height: 60, speed: 142, health: 2000, damage: 0, experienceValue: 0 },
+  // research/LIBERTY_HORDE.md(解放軍群(変異)の旗手・ボス級): 判定=英雄に揃えた足元 110×60。自分では攻撃しない(damage 0)。
+  //  ・speed は libertyTick が自分で動かす(周回=英雄と同じ速さ)。health はスポーン側が上書きする(英雄と同じ式)。
+  //  ・experienceValue=0(★未決 #2「旗手の報酬」の裁定まで)。
+  'mutant-liberty': { width: 110, height: 60, speed: 48, health: 2000, damage: 0, experienceValue: 0 },
 };
 
 /** PACING_PUZZLE.md §6.38(賞金首・B1): 4型の集合。texture名=type規約(getTexture(e.type))。 */
@@ -180,7 +184,15 @@ export const isMutantHero = (t: EnemyType): boolean => t === 'mutant-hero';
  * 盤面の敵の上限(湧き・上限の間引き・ピンチ判定)に数えるか。research/MUTANT_HERO.md §2-1(品質監査 A-2):
  * 英雄は本編で出撃直後から最後まで遠くの輪を回っているので、数えると**上限の枠を1つずっと食う**(初心者ゾーンの密度まで下がる)。
  */
-export const countsTowardEnemyCap = (e: { type: EnemyType }): boolean => e.type !== 'mutant-hero';
+export const countsTowardEnemyCap = (e: { type: EnemyType; hordeLeaderId?: string }): boolean =>
+  e.type !== 'mutant-hero' && e.type !== 'mutant-liberty' && e.hordeLeaderId === undefined; // 解放軍群(旗手+取り巻き)も別カウント(LIBERTY_HORDE §6)
+/** research/LIBERTY_HORDE.md: 解放軍群の旗手か。動かすのは libertyTick だけ(updateEnemies は素通り)。 */
+export const isLibertyBearer = (t: EnemyType): boolean => t === 'mutant-liberty';
+/** 体で塞ぐボス(接触ダメージ0=重なると被弾処理だけが走る事故を避ける・英雄 v0.25.4820 と同じ)。 */
+export const isBodyWallBoss = (t: EnemyType): boolean => t === 'mutant-hero' || t === 'mutant-liberty';
+/** 列に並んでいる/戻っている取り巻き(通常AIを素通りし、旗手の制御が座標を書く)。 */
+export const isHordeFollower = (e: { hordeLeaderId?: string; hordeState?: string }): boolean =>
+  e.hordeLeaderId !== undefined && (e.hordeState === 'follow' || e.hordeState === 'return');
 
 /**
  * research/GHOST_BOSS.md: 守護霊ボス「幻影」か。
@@ -338,7 +350,9 @@ export const isBossType = (t: EnemyType): boolean =>
   isGuardianPhantom(t) ||
   // research/MUTANT_HERO.md: 英雄もボス級(会心・崩れ落ちる死・HPバー・押されなさ)。★「ボス戦」には入れない
   // (ENGAGEABLE_BOSS_TYPES の外=湧き抑制・施設ロック・守護霊召喚・撃破記録が付かない・社長裁定 #1)。
-  isMutantHero(t);
+  isMutantHero(t) ||
+  // research/LIBERTY_HORDE.md: 解放軍群の旗手もボス級(社長裁定2026-10-04)。英雄と同じく「ボス戦」には入れない。
+  isLibertyBearer(t);
 
 /**
  * 囲い/救助イベント開始時の周辺一掃(`beginArenaEvent`/`beginRescueEvent`)で残す(=消さない)個体か。
@@ -688,7 +702,9 @@ const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'hange
   // 変動してしまう(上書き前提が崩れる)。
   'phillboss',
   // research/MUTANT_HERO.md(英雄): HPはスポーン時に賞金首と同じ式で上書きする。
-  'mutant-hero']);
+  'mutant-hero',
+  // research/LIBERTY_HORDE.md(旗手): 同上。
+  'mutant-liberty']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
 const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。

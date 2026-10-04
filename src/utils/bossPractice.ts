@@ -124,7 +124,7 @@ export const isBossTestOrPracticeRun = (): boolean =>
 // 台帳: 守護霊メニューと同じ基礎台帳(GHOST_DOSSIER_SLOTS)+形態別の派生枠
 // ---------------------------------------------------------------------------------------------
 /** 出撃のさせ方。`param=null` = 強制出現パラメータ不要(ステージへ出撃すれば勝手に出る)。 */
-export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow' | null;
+export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow' | 'libertynow' | null;
 
 export interface PracticeSlot {
   slotKey: string;              // 基本はGHOST_DOSSIER_SLOTS.slotKeyと同一。形態別掲載だけ固有キー。
@@ -301,7 +301,20 @@ const MUTANT_HERO_SLOT: PracticeSlot = {
 
 // 表示順=小ボス(賞金首)が一番上(社長指示v0.25.3444「小ボスは一番上だろ」。旧: 既存ボス群の後ろ)。
 // 幻影(決闘)は最下段。
-export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, MUTANT_HERO_SLOT, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT];
+// research/LIBERTY_HORDE.md §9: 解放軍群(変異)。確認用の枠(常時解放・出撃先はステージ1=本編の置き場所の1つ)。
+// この枠も雑魚が湧く(英雄の枠と同じ「雑魚だけ開ける」=バフの効きを見られるように)。
+export const MUTANT_LIBERTY_SLOT_KEY = 'mutant-liberty@practice';
+const MUTANT_LIBERTY_SLOT: PracticeSlot = {
+  slotKey: MUTANT_LIBERTY_SLOT_KEY,
+  encounterSlotKey: 'mutant-liberty',
+  bossType: 'mutant-liberty',
+  stageId: 'stage-1',
+  param: 'libertynow',
+  label: '解放軍群(変異)',
+  reachable: false,
+  alwaysUnlocked: true,
+};
+export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, MUTANT_HERO_SLOT, MUTANT_LIBERTY_SLOT, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT];
 
 // ★変異体対策室のカテゴリ表示順の正(社長指示v0.25.3444「小ボスは一番上だろ」)。
 // v3444では上の PRACTICE_SLOTS の並びだけを直したが、画面(BossRush.tsx)は**カテゴリごとに区切って
@@ -337,7 +350,7 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
   // 変動するため、台帳の固定値ではなく**基準値をそのまま**出す(掲載裁定「基準値2000を出す」)。
   if (isBountyType(slot.bossType)) return BOUNTY_BASE_HP;
   // research/MUTANT_HERO.md: 英雄は賞金首と同じ式(基準値×スポーン時の難易度)=一覧も基準値。
-  if (slot.bossType === 'mutant-hero') return BOUNTY_BASE_HP;
+  if (slot.bossType === 'mutant-hero' || slot.bossType === 'mutant-liberty') return BOUNTY_BASE_HP; // 解放軍群も同じ式
   // research/GHOST_BOSS.md(幻影): 裏ボス方式=倍率を一切通さないので、スポーン時に書く値=実効HP。
   // その値は「初期プレイヤーHP+育成の体力加算」(装備補正なし)なので、表示も同じ式で出す。
   // ★基準クラスの注意(GROWTH.md v4): 実戦は「そのランのプレイヤーのクラス」(player.ddaBaseHp)、

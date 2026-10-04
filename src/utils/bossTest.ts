@@ -23,8 +23,9 @@ export interface BossTestEntry {
    * 無視してプレイヤーの近くへ即出現。
    * heronow=中立の騎馬「英雄(変異)」(research/MUTANT_HERO.md)を開始3秒後に画面の外から出す
    * (ゾンビは通常どおり湧く=三つ巴を試せる)。
+   * libertynow=解放軍群(変異)(research/LIBERTY_HORDE.md)を開始3秒後に画面の上のすぐ外へ旗手+バット男5体で置く。
    */
-  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow';
+  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow' | 'libertynow';
   /** param==='bountynow'の時だけ意味を持つ副パラメータ(?bountytype=)。4種の型を選ぶ。 */
   bountyType?: 'ranged' | 'melee' | 'balance' | 'maiko';
 }
@@ -60,6 +61,8 @@ export const BOSS_TEST_ENTRIES: readonly BossTestEntry[] = [
   // research/MUTANT_HERO.md(英雄(変異)): デバッグ出現のみ(?heronow=1)。中立=ボス戦ではない(ENGAGEABLE に入れない)
   // ので、守護霊の交戦対象の網羅検査からは外してある(bossTest.test.ts)。
   { boss: 'mutant-hero', stageId: 'stage-1', param: 'heronow' },
+  // research/LIBERTY_HORDE.md §9: 解放軍群(変異)。ボス戦ではない(ENGAGEABLE の外)=守護霊の網羅検査からは外す(bossTest.test.ts)。
+  { boss: 'mutant-liberty', stageId: 'stage-1', param: 'libertynow' },
 ];
 
 export interface BossTestOptions {
@@ -112,7 +115,7 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
 // ---- 現在モードの表示(社長指示2026-07-31「いまどのモードになってるか出しといて」) ---------------
 // パラメータ残留事故(v0.25.2576で修正)の再発をその場で見抜くための可視化。強制出現フラグは
 // モジュールロード時定数なので、**ページ読込時のURL**が今セッションの真実=それを解析して表示する。
-export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker', 'bountynow', 'heronow'] as const;
+export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker', 'bountynow', 'heronow', 'libertynow'] as const;
 
 export interface BossTestModeInfo {
   active: boolean;                          // いずれかのテスト系パラメータが生きているか

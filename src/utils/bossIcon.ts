@@ -24,6 +24,8 @@ const BOSS_ICON: Record<string, string> = {
   reaper: 'reaper2-common', hunter: 'hunter',
   // research/MUTANT_HERO.md: 立ち絵(駆け足の0コマ目)。
   'mutant-hero': 'mutant-hero',
+  // research/LIBERTY_HORDE.md: 立ち絵(歩きの1コマ目)。
+  'mutant-liberty': 'mutant-liberty',
 };
 
 // 城ボス(giantbat)だけは**全ステージに出る同じ敵**で、絵はステージごとに差し替わる
