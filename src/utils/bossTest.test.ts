@@ -211,3 +211,11 @@ describe('ボス戦テスト: 解放軍群(変異)は雑魚を湧かせない(�
     expect(new URLSearchParams(bossTestQuery(hero, { characterClass: 'warrior' } as never).slice(1)).get('nospawn')).toBeNull();
   });
 });
+
+describe('ボス戦テスト: 英雄(変異)はウェルカムイベントを出さない(社長指示2026-10-04)', () => {
+  it('英雄の枠だけ ?welcome=0 が付く', () => {
+    const q = (boss: string) => new URLSearchParams(bossTestQuery(BOSS_TEST_ENTRIES.find(e => e.boss === boss)!, { characterClass: 'warrior' } as never).slice(1));
+    expect(q('mutant-hero').get('welcome')).toBe('0');
+    expect(q('thor').get('welcome')).toBeNull();
+  });
+});

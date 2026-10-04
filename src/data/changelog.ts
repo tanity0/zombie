@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4845', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4844', items: ['解放軍群(変異)の旗手の歩き姿が新しくなった'] },
   { version: '0.25.4843', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4842', items: ['矢の雨の一本がずっと重くなった'] },

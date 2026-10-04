@@ -29,7 +29,7 @@ const PARAM_NOTE: Record<BossTestEntry['param'], string> = {
   bountynow: '700〜1000px先へdormant出現(§6.38 B1)',
   phantomnow: '近くへ即出現(決闘・research/GHOST_BOSS.md)',
   phillnow: '前方へ即出現(EXボス「フィル(変異体)」・PACING_PUZZLE.md §10)',
-  heronow: '3秒後に画面外から出現・ゾンビも湧く(中立・research/MUTANT_HERO.md)',
+  heronow: '3秒後に画面外から出現・ゾンビも湧く・ウェルカムイベントなし(中立・research/MUTANT_HERO.md)',
   libertynow: '3秒後に画面の上へ旗手+バット男5体・雑魚は湧かない(連れているコウモリだけ・research/LIBERTY_HORDE.md)',
 };
 

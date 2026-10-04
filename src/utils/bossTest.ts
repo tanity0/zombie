@@ -33,6 +33,8 @@ export interface BossTestEntry {
    * (連れてるバット男たちのみ)」=取り巻きのコウモリは旗手の制御が出すので湧き止めに掛からない。
    */
   noMobs?: boolean;
+  /** ウェルカムイベント(出撃直後の囲い)を出さない(`?welcome=0`)。社長指示2026-10-04「ボステストの英雄で、ウェルカムイベントは出さないで」。 */
+  noWelcome?: boolean;
 }
 
 // 掲載順=裏ボス4 → idol → 天使6 → 城ボス。ステージ対応は campaign.ts の hiddenBoss と
@@ -65,7 +67,7 @@ export const BOSS_TEST_ENTRIES: readonly BossTestEntry[] = [
   { boss: 'guardian-phantom', stageId: 'stage-1', param: 'phantomnow' },
   // research/MUTANT_HERO.md(英雄(変異)): デバッグ出現のみ(?heronow=1)。中立=ボス戦ではない(ENGAGEABLE に入れない)
   // ので、守護霊の交戦対象の網羅検査からは外してある(bossTest.test.ts)。
-  { boss: 'mutant-hero', stageId: 'stage-1', param: 'heronow' },
+  { boss: 'mutant-hero', stageId: 'stage-1', param: 'heronow', noWelcome: true },
   // research/LIBERTY_HORDE.md §9: 解放軍群(変異)。ボス戦ではない(ENGAGEABLE の外)=守護霊の網羅検査からは外す(bossTest.test.ts)。
   { boss: 'mutant-liberty', stageId: 'stage-1', param: 'libertynow', noMobs: true },
 ];
@@ -107,6 +109,7 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
   p.set(e.param, '1');
   if (e.param === 'bountynow' && e.bountyType) p.set('bountytype', e.bountyType);
   if (e.noMobs) p.set('nospawn', '1');
+  if (e.noWelcome) p.set('welcome', '0');
   p.set('class', opts.characterClass);
   p.set('retry', '1');
   if (opts.ghostMode) {
