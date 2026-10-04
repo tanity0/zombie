@@ -2119,6 +2119,9 @@ const HERO_SWORD_BLADE_LEN_FRAC = Math.hypot(
 // 手の位置(立ち絵の左向き基準・足元からの比率)。シートのコマで手は動くので近似。
 // 振りは「当たる瞬間」を挟んで動く: 当たる110ms前に振り始め(加速)、当たった後150msで振り抜く(減速)。
 const HERO_SWING_LEAD_MS = 110, HERO_SWING_TAIL_MS = 150;
+// 比較用(社長「白い弧に戻すってどう言う事？今と並べて見せて」): `?heroarc=1` でトール/ミゲル/ウリと同じ白い斬撃の弧
+// (fx/slash-arc・加算)を英雄の振りにも重ねる。既定=出さない(骨色の刃の跡だけ)。
+const HERO_WHITE_ARC = tsBool('heroarc', false);
 
 // ラフィの薙ぎ(Phase2新規)は既存の骨刃素材(rafi-blade.png)を「振る」用途でも流用する
 // (§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。katanaSlash系のグリップ扱いは新規(叩き台)。
@@ -31427,6 +31430,22 @@ export class PixiScene {
     }
     const ksp = c.children[0] as Sprite;
     if (ksp.texture !== tex) ksp.texture = tex;
+    // 白い弧(比較用・既定OFF): ミゲルたちと同じ素材・同じ出し方(振りの12%までは消しておき、35%から薄れる)。
+    if (HERO_WHITE_ARC) {
+      let arcSp = c.children[1] as Sprite | undefined;
+      if (!arcSp) { arcSp = new Sprite(); arcSp.anchor.set(0.5, 0.5); arcSp.blendMode = 'add'; c.addChild(arcSp); }
+      const arcTex = getTexture('fx/slash-arc');
+      const tt = ts / (swingMs + 150);
+      if (arcTex && tt >= 0 && tt <= 1) {
+        if (arcSp.texture !== arcTex) arcSp.texture = arcTex;
+        const mid = s.kind === 'fan' ? s.angle : a1;
+        arcSp.rotation = mid + Math.PI; // 素材の膨らみ(-x側)を斬る向きへ
+        arcSp.width = R * 2; arcSp.height = R * 2;
+        arcSp.position.set(hx, hy);
+        arcSp.alpha = tt < 0.12 ? 0 : 0.95 * (1 - Math.max(0, (tt - 0.35) / 0.65));
+        arcSp.visible = arcSp.alpha > 0.01;
+      } else arcSp.visible = false;
+    }
     const ksc = R / (HERO_SWORD_BLADE_LEN_FRAC * HERO_SWORD_W);
     const len = Math.hypot(tipX - hx, tipY - hy);
     const lenMul = R > 0 ? len / R : 1; // 段の継ぎ目の補間の間だけ R から外れる
