@@ -2127,6 +2127,8 @@ const HERO_SWING_LEAD_MS = 110, HERO_SWING_TAIL_MS = 150;
 const LIB_ARROW_FALL_MS = 520, LIB_ARROW_FALL_SLANT = 0.27;
 /** 号令の絵(16コマ)の1コマの尺。16コマ=約1.4秒で再生し切り、技が続く間は最後の3コマを繰り返す。 */
 const LIB_VOLLEY_FRAME_MS = 85;
+/** 号令で突き出した旗の先端の光の直径(world px・最大)。派手さの絵=大きめ。 */
+const LIB_FLAG_TIP_GLOW_PX = 120;
 const LIB_ARROW_STUCK_FADE_START = 1100, LIB_ARROW_STUCK_FADE_MS = 400;
 /**
  * 扇/帯をなぞって振る武器の絵(英雄のサーベル・解放軍群の旗)。握り=回す軸、先=範囲の縁をなぞる点。
@@ -9230,7 +9232,7 @@ export class PixiScene {
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime, now);
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
-    this.syncLibertyArrows(s.enemies, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
+    this.syncLibertyArrows(s.enemies, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top, s.libertyOrphanArrows); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
@@ -14345,6 +14347,8 @@ export class PixiScene {
         if (uriFx) { uriFx.destroy({ children: true }); this.uriSlashFx.delete(id); }
         const heroSw = this.heroSwordFx.get(id);
         if (heroSw) { if (!heroSw.destroyed) heroSw.destroy({ children: true }); this.heroSwordFx.delete(id); }
+        const libTipGlow = this.libFlagTipGlow.get(id);
+        if (libTipGlow) { if (!libTipGlow.destroyed) libTipGlow.destroy({ children: true }); this.libFlagTipGlow.delete(id); }
         this.heroSwordLastTip.delete(id);
         const rafiFx = this.rafiSlashFx.get(id);
         if (rafiFx) { rafiFx.destroy({ children: true }); this.rafiSlashFx.delete(id); }
@@ -15351,7 +15355,8 @@ export class PixiScene {
    * 予告=赤い円の流星(予告の出た瞬間に出て、刺さる瞬間に消え切る)。刺さる直前に矢が上から加速して落ち、刺さった矢は少し残って消える。
    * 旗手の体の描画とは別の通し(旗手が画面外にいても、画面内に落ちる矢の予告は必ず描く=赤くないのに当たる、を作らない)。
    */
-  private syncLibertyArrows(enemies: readonly Enemy[], gameTime: number, viewTopWorld: number): void {
+  private syncLibertyArrows(enemies: readonly Enemy[], gameTime: number, viewTopWorld: number,
+    orphan: { ownerX: number; hits: { x: number; y: number; radius: number; bornAt: number; fireAt: number }[]; stuck: { x: number; y: number; at: number; tilt: number }[] } | null): void {
     const g = this.libArrowGroundGfx, a = this.libArrowGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);
     if (!a.parent) this.L.effectLayer.addChild(a);
@@ -15372,13 +15377,10 @@ export class PixiScene {
     };
     // 1本ごとの決まったばらつき(座標から決まる=毎フレーム揺れない)。
     const hash01 = (x: number, y: number, k: number) => { const v = Math.sin(x * 12.9898 + y * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
-    for (const e of enemies) {
-      if (e.type !== 'mutant-liberty') continue;
-      const ex = e.x + e.width / 2;
-      // 旗手が倒れたら矢は刺さらない(libertyTick が止まる)=予告も描かない(赤いのに当たらない、を作らない・品質監査 A-1)。
-      const dead = isCorpse(e) || e.health <= 0;
-      for (const h of dead ? [] : e.giantDelayedHits ?? []) {
-        if (h.moveKey !== 'liberty-arrow' || gameTime < h.bornAt) continue;
+    const drawSet = (ex: number, hits: readonly { x: number; y: number; radius: number; bornAt: number; fireAt: number; moveKey?: string }[],
+      stuckList: readonly { x: number; y: number; at: number; tilt: number }[]) => {
+      for (const h of hits) {
+        if ((h.moveKey !== undefined && h.moveKey !== 'liberty-arrow') || gameTime < h.bornAt) continue;
         const t = Math.max(0, Math.min(1, (gameTime - h.bornAt) / Math.max(1, h.fireAt - h.bornAt)));
         const mask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(g, h.x, h.y, h.radius, t, 0xff2a2a, 0.26, style)
@@ -15397,7 +15399,7 @@ export class PixiScene {
         }
       }
       // 刺さった矢(#4/#6): 地面の層(人の下)。長さ・傾き・薄れ始めを1本ずつばらす。根元に接地の影。
-      for (const s2 of e.libArrowStuck ?? []) {
+      for (const s2 of stuckList) {
         const age = gameTime - s2.at;
         const r1 = hash01(s2.x, s2.y, 1), r2 = hash01(s2.x, s2.y, 2);
         const fadeStart = LIB_ARROW_STUCK_FADE_START - 300 * r2;
@@ -15408,7 +15410,13 @@ export class PixiScene {
         g.ellipse(s2.x, s2.y + 1, 5, 2).fill({ color: 0x000000, alpha: 0.35 * fade });
         drawArrow(g, s2.x, s2.y + 2, ang, 26 + 14 * r1, fade * 0.95);
       }
+    };
+    for (const e of enemies) {
+      if (e.type !== 'mutant-liberty') continue;
+      drawSet(e.x + e.width / 2, e.giantDelayedHits ?? [], e.libArrowStuck ?? []);
     }
+    // 社長指示2026-10-04「矢は倒しても落とす」: 倒れた旗手から引き継いだ矢(亡骸が消えた後も落ちる)。
+    if (orphan) drawSet(orphan.ownerX, orphan.hits, orphan.stuck);
   }
 
   // 火炎瓶(molotov)の地面の火。lifetime/DoTは gameStore(groundFires/tickGroundFires)側の仕事、
@@ -18000,6 +18008,8 @@ export class PixiScene {
     if (e.type === 'mutant-hero' || e.type === 'mutant-liberty') {
       const heroSw = this.heroSwordFx.get(e.id);
       if (heroSw) heroSw.visible = false; // 点けるのは drawHeroSword だけ(旗手の旗も同じ器)
+      const tipGlow = this.libFlagTipGlow.get(e.id);
+      if (tipGlow) tipGlow.visible = false; // 点けるのは drawLibertyRaise だけ
     }
     if (isGate2AngelBoss(e.type)) {
       const slashFx = this.miguelSlashFx.get(e.id);
@@ -31601,10 +31611,11 @@ export class PixiScene {
 
   /** 旗手の号令: 旗を体の上へ突き上げる(竿はほぼ垂直・向いている側へ少し倒す)。旗振りと同じ器(heroSwordFx)を使う。 */
   private drawLibertyRaise(e: Enemy, view: ActorView, art: SwingWeaponArt, tex: NonNullable<ReturnType<typeof getTexture>>, gameTime: number, now: number): void {
-    // 突き上げは号令の頭の LIB_VOLLEY_CAST_MS だけ(技全体は最後の矢が刺さるまで続く)。
+    // 社長指示2026-10-04「号令の時だけ、旗を上に突き出し、先端を光らせてから消える」: 号令の頭の LIB_VOLLEY_CAST_MS だけ出す。
+    // 突き出し=最初の30%で速く(ease-out)→ 突き出したまま先端が光る(35〜90%で膨らんでしぼむ)→ 終わりで描くのをやめる
+    // =統一型の消え方(沈みながらフェード・trackWeaponVanish)で消える。
     const u = Math.max(0, Math.min(1, (gameTime - (e.libVolleyCastAt ?? gameTime)) / LIB_VOLLEY_CAST_MS));
-    // 上げ=最初の25%で速く(ease-out)・保持・最後の30%でゆっくり下ろす(ease-in)。
-    const lift = u < 0.25 ? 1 - Math.pow(1 - u / 0.25, 3) : u > 0.7 ? 1 - Math.pow((u - 0.7) / 0.3, 2) : 1;
+    const lift = u < 0.3 ? 1 - Math.pow(1 - u / 0.3, 3) : 1;
     const face = (e.heroFaceX ?? -1) >= 0 ? 1 : -1;
     const sc = art.fixedScale ?? 1.15;
     const footY = e.y + e.height;
@@ -31630,7 +31641,28 @@ export class PixiScene {
     ksp.visible = true;
     c.visible = true;
     this.trackWeaponVanish(`hero-sword:${e.id}`, now, [{ sp: ksp, alpha: ksp.alpha, y: ksp.position.y }], c);
+    // 先端の光(派手さの絵・小glowスプライト=投影影なし)。竿の先=握りから竿の長さぶん。
+    const gl = Math.max(0, Math.sin(Math.PI * Math.max(0, Math.min(1, (u - 0.35) / 0.55))));
+    let glow = this.libFlagTipGlow.get(e.id);
+    if (!glow) {
+      glow = new Container();
+      for (const [tint, alphaMul] of [[0xffe2a8, 0.85], [0xffffff, 1]] as const) {
+        const sp = new Sprite(getSoftGlowTexture()); sp.anchor.set(0.5); sp.blendMode = 'add'; sp.tint = tint; sp.alpha = alphaMul;
+        glow.addChild(sp);
+      }
+      this.L.effectLayer.addChild(glow);
+      this.libFlagTipGlow.set(e.id, glow);
+    }
+    const tipX = gx + Math.cos(ang) * art.bladePx * sc, tipY = gy + ease.dy + Math.sin(ang) * art.bladePx * sc;
+    glow.position.set(tipX, tipY);
+    const outer = glow.children[0] as Sprite, core = glow.children[1] as Sprite;
+    outer.width = outer.height = LIB_FLAG_TIP_GLOW_PX * (0.6 + 0.8 * gl);
+    core.width = core.height = LIB_FLAG_TIP_GLOW_PX * 0.32 * (0.5 + 0.8 * gl);
+    glow.alpha = gl * ease.alphaMul;
+    glow.visible = gl > 0.01;
   }
+  /** 号令の旗の先端の光(個体ごと)。号令の外では既定OFF(resetActorFxDefaults)。 */
+  private libFlagTipGlow = new Map<string, Container>();
 
   private drawHeroTelegraph(e: Enemy, view: ActorView, o: Graphics, gameTime: number, now: number): void {
     const st = e.bossState;

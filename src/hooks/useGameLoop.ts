@@ -191,7 +191,7 @@ import {
   phantomSupportsSub, // ★幻影が主語になれるサブの白リスト(未実装の種は自爆するのでプレイヤーへ落とす)
 } from '../utils/phantomTick';
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
-import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
+import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties } from '../utils/heroBlast';
@@ -3175,7 +3175,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
           heroForceRef.current = false; heroStateRef.current = createHeroTickState(); heroCutinIdRef.current = null; setHeroGallop(0); // 英雄(research/MUTANT_HERO.md)
-          libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
+          libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); resetOrphanLibertyArrows(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
           // ★SAME_ARENA O-5: 幻影の人格も新ランで捨てる。持ち越すと**前のランの他人**の癖・名前で
           // 戦うことになる(v0.25.3838のボスリラックス跨ぎと同型の"ラン跨ぎの漏れ")。
           clearPhantomIdentity();
@@ -8932,6 +8932,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (!useGameStore.getState().attention) runLibertyTick(activeLib, libertyStateRef.current, newGameTime, deltaTime, Date.now());
           }
           releaseOrphanHorde();
+          runOrphanLibertyArrows(libertyStateRef.current, newGameTime); // 社長指示「矢は倒しても落とす」
          } catch (err) {
           if (!libertyCtrlErrLogged) { libertyCtrlErrLogged = true; console.error('[liberty] controller error (suppressed after first):', err); }
           reportSuppressedError('liberty', err);

@@ -38,11 +38,16 @@ export interface LibertyTickState {
   /** 矢の雨: まだ予告が出ていない矢(予告の出る時刻順)・見つけた時刻(最初の号令の起点)。 */
   volleyQueue: LibArrow[];
   alertSince: number | null;
+  /** 旗手が生きている間の矢の写し(倒れた瞬間に引き継ぐため・亡骸は0.5秒で場から消える)。 */
+  liveHits: { x: number; y: number; radius: number; bornAt: number; fireAt: number }[];
+  liveStuck: { x: number; y: number; at: number; tilt: number }[];
+  ownerX: number;
 }
 export const createLibertyTickState = (): LibertyTickState => ({
   activeId: null, trail: [], lostSince: null,
   stallRefAt: -1e9, stallRefAng: 0, stallRefX: 0, stallRefY: 0, detourR: 0, detourUntil: 0,
   speed: 0, dirX: 0, dirY: 0, windupFx: [], cries: 0, volleyQueue: [], alertSince: null,
+  liveHits: [], liveStuck: [], ownerX: 0,
 });
 
 const playCtx = (): PlayableAreaCtx => {
@@ -247,25 +252,8 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     if (bearer.libVolleyCastUntil !== undefined && gt < bearer.libVolleyCastUntil) patch.libVolleyCastUntil = gt; // 号令の絵も終わる
   }
   {
-    // 書き戻しは**最新の**配列から(このフレームの途中で崩しの処理が予告を消していたら、消えたまま=復活させない)。
-    const hits = useGameStore.getState().enemies.find(e => e.id === bearer.id)?.giantDelayedHits ?? [];
-    let changed = false;
-    const keep: NonNullable<Enemy['giantDelayedHits']> = [];
-    let stuck = (bearer.libArrowStuck ?? []).filter(a => gt - a.at < LIB_ARROW_STUCK_MS);
-    if (stuck.length !== (bearer.libArrowStuck ?? []).length) changed = true;
-    for (const h of hits) {
-      if (h.moveKey === 'liberty-arrow' && gt >= h.fireAt) {
-        pushArrowBlast(bearer, h.x, h.y, h.radius);
-        stuck = [...stuck, { x: h.x, y: h.y, at: gt, tilt: (Math.random() - 0.5) * 0.5 }];
-        changed = true;
-      } else keep.push(h);
-    }
-    while (s.volleyQueue.length > 0 && s.volleyQueue[0].bornAt <= gt) {
-      const a = s.volleyQueue.shift()!;
-      keep.push({ x: a.x, y: a.y, radius: LIB_ARROW_RADIUS, bornAt: a.bornAt, fireAt: a.fireAt, moveKey: 'liberty-arrow', damage: LIB_ARROW_DAMAGE });
-      changed = true;
-    }
-    if (changed) Object.assign(patch, { giantDelayedHits: keep, libArrowStuck: stuck });
+    const ap = stepLibertyArrows(bearer, s, gt);
+    if (ap) Object.assign(patch, ap);
   }
 
   /** 今の向き(dirX/dirY)へ speed で1フレーム進む(障害物→行ける帯)。 */
@@ -468,3 +456,90 @@ const pushArrowBlast = (bearer: Enemy, x: number, y: number, r: number): void =>
   const b: PumpkinBlast = { x, y, radius: r, damage: LIB_ARROW_DAMAGE, enemyId: bearer.id, moveKey: 'liberty-arrow', parryNoDamage: true, parryLocal: true };
   useGameStore.setState(st => ({ pumpkinBlasts: [...st.pumpkinBlasts, b] }));
 };
+
+/**
+ * 矢の雨の矢を1フレーム進める(予告の出る時刻が来た矢を `giantDelayedHits` へ載せ、刺さる時刻の来た矢を当てる)。
+ * 書き戻しは**最新の**配列から(このフレームの途中で崩しの処理が予告を消していたら、消えたまま=復活させない)。
+ * 変化が無ければ null。旗手が生きている間は runLibertyTick が、倒れた後は runOrphanLibertyArrows が呼ぶ。
+ */
+const stepLibertyArrows = (bearer: Enemy, s: LibertyTickState, gt: number): Partial<Enemy> | null => {
+  const cur = useGameStore.getState().enemies.find(e => e.id === bearer.id) ?? bearer;
+  const hits = cur.giantDelayedHits ?? [];
+  let changed = false;
+  const keep: NonNullable<Enemy['giantDelayedHits']> = [];
+  let stuck = (cur.libArrowStuck ?? []).filter(a => gt - a.at < LIB_ARROW_STUCK_MS);
+  if (stuck.length !== (cur.libArrowStuck ?? []).length) changed = true;
+  for (const h of hits) {
+    if (h.moveKey === 'liberty-arrow' && gt >= h.fireAt) {
+      pushArrowBlast(cur, h.x, h.y, h.radius);
+      stuck = [...stuck, { x: h.x, y: h.y, at: gt, tilt: (Math.random() - 0.5) * 0.5 }];
+      changed = true;
+    } else keep.push(h);
+  }
+  while (s.volleyQueue.length > 0 && s.volleyQueue[0].bornAt <= gt) {
+    const a = s.volleyQueue.shift()!;
+    keep.push({ x: a.x, y: a.y, radius: LIB_ARROW_RADIUS, bornAt: a.bornAt, fireAt: a.fireAt, moveKey: 'liberty-arrow', damage: LIB_ARROW_DAMAGE });
+    changed = true;
+  }
+  s.liveHits = keep.filter(h => h.moveKey === 'liberty-arrow').map(h => ({ x: h.x, y: h.y, radius: h.radius, bornAt: h.bornAt, fireAt: h.fireAt }));
+  s.liveStuck = stuck;
+  s.ownerX = cur.x + cur.width / 2;
+  return changed ? { giantDelayedHits: keep, libArrowStuck: stuck } : null;
+};
+
+/** 倒れた旗手から引き継いだ、まだ予告の出ていない矢(新しい旗手が来て状態が作り直されても失わない)。 */
+let orphanQueue: LibArrow[] = [];
+
+/**
+ * 社長指示2026-10-04「矢は倒しても落とす」: 旗手が倒れた後も、号令で放たれた矢(予告の出た矢も、まだ出ていない矢も)は
+ * 最後まで落ちて刺さる。倒れた瞬間に旗手の矢を店の `libertyOrphanArrows` へ引き継ぎ(亡骸は0.5秒で場から消えるため)、
+ * 以後は毎フレームここで進める(予告の出る時刻が来た矢を載せ、刺さる時刻の来た矢を当てる)。
+ */
+export const runOrphanLibertyArrows = (s: LibertyTickState, gt: number): void => {
+  // ① 引き継ぎ: 今の旗手が倒れた(死体/体力0)か、場から消えた。
+  if (s.activeId !== null) {
+    const e = useGameStore.getState().enemies.find(en => en.id === s.activeId);
+    if (!e || isCorpse(e) || e.health <= 0) {
+      const prev = useGameStore.getState().libertyOrphanArrows;
+      const fromBody = e ? (e.giantDelayedHits ?? []).filter(h => h.moveKey === 'liberty-arrow')
+        .map(h => ({ x: h.x, y: h.y, radius: h.radius, bornAt: h.bornAt, fireAt: h.fireAt })) : s.liveHits;
+      const stuck = e ? (e.libArrowStuck ?? []) : s.liveStuck;
+      if (fromBody.length > 0 || s.volleyQueue.length > 0 || stuck.length > 0) {
+        useGameStore.setState(st => ({
+          libertyOrphanArrows: {
+            ownerId: s.activeId as string, ownerX: e ? e.x + e.width / 2 : s.ownerX,
+            hits: [...(prev?.hits ?? []), ...fromBody], stuck: [...(prev?.stuck ?? []), ...stuck],
+          },
+          // 亡骸の側からは外す(二重に描かない・二重に当てない)。
+          enemies: e ? st.enemies.map(en => (en.id === e.id
+            ? { ...en, giantDelayedHits: (en.giantDelayedHits ?? []).filter(h => h.moveKey !== 'liberty-arrow'), libArrowStuck: [] }
+            : en)) : st.enemies,
+        }));
+        orphanQueue = [...orphanQueue, ...s.volleyQueue].sort((a, b) => a.bornAt - b.bornAt);
+      }
+      Object.assign(s, createLibertyTickState()); // この旗手の引き継ぎは1回だけ
+    }
+  }
+  // ② 進める。
+  const cur = useGameStore.getState().libertyOrphanArrows;
+  if (!cur && orphanQueue.length === 0) return;
+  const hits = [...(cur?.hits ?? [])];
+  let stuck = (cur?.stuck ?? []).filter(a => gt - a.at < LIB_ARROW_STUCK_MS);
+  const keep: typeof hits = [];
+  for (const h of hits) {
+    if (gt >= h.fireAt) {
+      const b: PumpkinBlast = { x: h.x, y: h.y, radius: h.radius, damage: LIB_ARROW_DAMAGE, enemyId: cur?.ownerId ?? '', moveKey: 'liberty-arrow', parryNoDamage: true, parryLocal: true };
+      useGameStore.setState(st => ({ pumpkinBlasts: [...st.pumpkinBlasts, b] }));
+      stuck = [...stuck, { x: h.x, y: h.y, at: gt, tilt: (Math.random() - 0.5) * 0.5 }];
+    } else keep.push(h);
+  }
+  while (orphanQueue.length > 0 && orphanQueue[0].bornAt <= gt) {
+    const a = orphanQueue.shift()!;
+    keep.push({ x: a.x, y: a.y, radius: LIB_ARROW_RADIUS, bornAt: a.bornAt, fireAt: a.fireAt });
+  }
+  const done = keep.length === 0 && stuck.length === 0 && orphanQueue.length === 0;
+  useGameStore.setState({ libertyOrphanArrows: done ? null : { ownerId: cur?.ownerId ?? '', ownerX: cur?.ownerX ?? 0, hits: keep, stuck } });
+};
+
+/** ラン境界で引き継ぎの待ち行列を空にする(店の libertyOrphanArrows は resetGame が空にする)。 */
+export const resetOrphanLibertyArrows = (): void => { orphanQueue = []; };

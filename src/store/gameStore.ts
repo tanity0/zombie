@@ -5903,6 +5903,12 @@ interface GameState {
   // iceLanceFloorsと同じ役割分担)。描画は spawnRing/spawnGlow の既存演出だけで賄い、
   // 専用の描画状態は持たない(=pixiSceneに新しい読み口を足さない)。
   signalStrikes: SignalStrike[];
+  /**
+   * research/LIBERTY_HORDE.md §4c(社長指示2026-10-04「矢は倒しても落とす」): 旗手が倒れた後も落ち続ける矢の雨。
+   * 旗手が生きている間の矢は旗手の `giantDelayedHits`(守護霊の回避が読む)に載り、倒れたらここへ引き継ぐ
+   * (亡骸は0.5秒で場から消えるため)。判定は libertyTick.runOrphanLibertyArrows、描画は pixiScene.syncLibertyArrows。
+   */
+  libertyOrphanArrows: { ownerId: string; ownerX: number; hits: { x: number; y: number; radius: number; bornAt: number; fireAt: number }[]; stuck: { x: number; y: number; at: number; tilt: number }[] } | null;
   setSignalStrikes: (strikes: readonly SignalStrike[]) => void;
   spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
@@ -6771,6 +6777,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   eyeLaserBeam: null,
   flamerCone: null,
   signalStrikes: [],
+  libertyOrphanArrows: null,
   firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
@@ -20987,6 +20994,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         eyeLaserBeam: null, // ★同上(検収監査A-3是正の新フィールド)
         flamerCone: null, // ★同上
         signalStrikes: [], // ★同上(シグナルランチャーの予約済み空爆。UNIQUE_WEAPONS.md §16-5受け入れ条件5)
+        libertyOrphanArrows: null, // 旗手が倒れた後の矢の雨(ランを跨がない)
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},
