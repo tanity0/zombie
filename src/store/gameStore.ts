@@ -10149,13 +10149,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       // レア: 既存の通常個体を全消去し、レア1体を召喚(枠を専有)。
       const rare = buildSummon(lvl, 'rare', sx, sy);
       set({ summons: [...persistentPets, rare] });
-      get().spawnRing(sx, sy, 16, 120, 'rgba(125,211,252,0.85)', 3, 360);
-      get().spawnGlow(sx, sy, GLOW_R_M, 'rgba(125,211,252,', 420);
-      // 召喚完了演出(レアは強め): 暗転 + スロー + パーティクル(死神=黒も混ぜる)。
+      // 召喚は金色=味方の文法(v0.25.3179)なので、迎えの輪・光・粒も金系に揃える(2026-10-04・レアがハンターになった回)。
+      get().spawnRing(sx, sy, 16, 120, 'rgba(245,197,66,0.85)', 3, 360);
+      get().spawnGlow(sx, sy, GLOW_R_M, 'rgba(255,215,0,', 420);
+      // 召喚完了演出(レアは強め): 暗転 + スロー + パーティクル(金に、棺桶の木の焦げ茶を混ぜる)。
       get().triggerTimeSlow(0.3, 480);
       get().spawnFlash('rgba(0,0,0,0.5)', 260);
-      get().spawnBurst(sx, sy, '#38bdf8', 34);
-      get().spawnBurst(sx, sy, '#0a0a0a', 16);
+      get().spawnBurst(sx, sy, '#f5c542', 34);
+      get().spawnBurst(sx, sy, '#5a3a1a', 16);
       return;
     }
     // 通常: 最大3体、超えたら最古をFIFOで入れ替え。
@@ -10165,12 +10166,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       : normals;
     const unit = buildSummon(lvl, 'normal', sx, sy, skillSummonHpMult(player)); // スキル: ナイト=召喚HP×1.5
     set({ summons: [...persistentPets, ...kept, unit] });
-    get().spawnGlow(sx, sy, GLOW_R_S, 'rgba(125,211,252,', 360);
-    // 召喚完了演出: 暗転 + スロー + シアンのパーティクル。
+    get().spawnGlow(sx, sy, GLOW_R_S, 'rgba(255,215,0,', 360);
+    // 召喚完了演出: 暗転 + スロー + 金のパーティクル(召喚の金色に揃える)。
     get().triggerTimeSlow(0.4, 320);
     get().spawnFlash('rgba(0,0,0,0.4)', 200);
-    get().spawnBurst(sx, sy, '#38bdf8', 22);
-    get().spawnBurst(sx, sy, '#bae6fd', 10);
+    get().spawnBurst(sx, sy, '#f5c542', 22);
+    get().spawnBurst(sx, sy, '#fff1b8', 10);
   },
 
   updateSummons: (deltaTime) => {
