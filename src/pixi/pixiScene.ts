@@ -2119,25 +2119,49 @@ const HERO_SWORD_BLADE_LEN_FRAC = Math.hypot(
   (HERO_SWORD_TIP_FRAC.x - HERO_SWORD_GRIP_FRAC.x) * HERO_SWORD_W,
   (HERO_SWORD_TIP_FRAC.y - HERO_SWORD_GRIP_FRAC.y) * HERO_SWORD_H,
 ) / HERO_SWORD_W;
+// 振りは「当たる瞬間」を挟んで動く: 当たる110ms前に振り始め(加速)、当たった後150msで振り抜く(減速)。
+const HERO_SWING_LEAD_MS = 110, HERO_SWING_TAIL_MS = 150;
 /**
  * 扇/帯をなぞって振る武器の絵(英雄のサーベル・解放軍群の旗)。握り=回す軸、先=範囲の縁をなぞる点。
  * 刃渡り(握り→先のpx)と、絵の中での握り→先の向き(intrinsic)は絵の寸法から出す。trail=振りの跡の色。
  */
-interface SwingWeaponArt { tex: string; grip: { x: number; y: number }; intrinsic: number; bladePx: number; trail: number }
-const swingWeaponArt = (tex: string, W: number, H: number, grip: { x: number; y: number }, tip: { x: number; y: number }, trail: number): SwingWeaponArt => ({
-  tex, grip, trail,
+interface SwingWeaponArt {
+  tex: string; grip: { x: number; y: number }; intrinsic: number; bladePx: number;
+  /** 振りの跡の色・帯(Rに対する内/外)・最大の濃さ・振り抜き後に残る長さ(ms)。 */
+  trail: number; trailIn: number; trailOut: number; trailA: number; trailLingerMs: number;
+  /** 先の縁に血の線を引くか(刃だけ)。 */
+  tipBlood: boolean;
+  /** 振り始め(当たる何ms前)と、当たった後に振り切るまで(ms)。重い物ほど長い。 */
+  leadMs: number; tailMs: number;
+  /** 残心で沈む角度(度)・溜めの終盤に震えるか(刃の緊張)。 */
+  sinkDeg: number; tremor: boolean;
+  /**
+   * 絵の片側に布など(空気を受ける側)があるか。true=振りの進む向きの**後ろ**へ流す(鏡像の向きを振りの向きで決める)。
+   * false=刃の反りを向きで固定(サーベル)。旗の布は竿の左(握り→先の向きの反時計回り側)に垂れている。
+   */
+  trailsCloth: boolean;
+}
+type SwingWeaponLook = Omit<SwingWeaponArt, 'tex' | 'grip' | 'intrinsic' | 'bladePx'>;
+const swingWeaponArt = (tex: string, W: number, H: number, grip: { x: number; y: number }, tip: { x: number; y: number }, look: SwingWeaponLook): SwingWeaponArt => ({
+  tex, grip, ...look,
   intrinsic: Math.atan2((tip.y - grip.y) * H, (tip.x - grip.x) * W),
   bladePx: Math.hypot((tip.x - grip.x) * W, (tip.y - grip.y) * H),
 });
 const SWING_WEAPON_ART: Readonly<Record<string, SwingWeaponArt>> = {
-  'mutant-hero': { tex: 'mutant-hero-weapon', grip: HERO_SWORD_GRIP_FRAC, intrinsic: HERO_SWORD_INTRINSIC_ANGLE, bladePx: HERO_SWORD_BLADE_LEN_FRAC * HERO_SWORD_W, trail: 0xe7dccb },
+  'mutant-hero': {
+    tex: 'mutant-hero-weapon', grip: HERO_SWORD_GRIP_FRAC, intrinsic: HERO_SWORD_INTRINSIC_ANGLE, bladePx: HERO_SWORD_BLADE_LEN_FRAC * HERO_SWORD_W,
+    trail: 0xe7dccb, trailIn: 0.9, trailOut: 1.02, trailA: 0.33, trailLingerMs: 260, tipBlood: true,
+    leadMs: HERO_SWING_LEAD_MS, tailMs: HERO_SWING_TAIL_MS, sinkDeg: 35, tremor: true, trailsCloth: false,
+  },
   // research/LIBERTY_HORDE.md §4b: 旗手の旗(社長支給2026-10-04・70×86)。握り=竿の下端(実測 31,85.5)・先=竿の上端(実測 60.5,0.5)。
-  // 振りの跡は旗の布の色(暗い赤)。
-  'mutant-liberty': swingWeaponArt('mutant-liberty-weapon', 70, 86, { x: 31 / 70, y: 85.5 / 86 }, { x: 60.5 / 70, y: 0.5 / 86 }, 0x6b1f1a),
+  // クリエイティブ監査2026-10-04: 空気を裂くのは布=跡は布の高さ(0.35〜0.95R)に布の骨色で太く長く。重いので振りは遅く尾を引く
+  // (振り始め180ms前・振り切り300ms・残心で深く沈む)。刃の震え・切っ先の血は無し。布は振りの後ろへ流れる。
+  'mutant-liberty': swingWeaponArt('mutant-liberty-weapon', 70, 86, { x: 31 / 70, y: 85.5 / 86 }, { x: 60.5 / 70, y: 0.5 / 86 }, {
+    trail: 0xd8c8b0, trailIn: 0.35, trailOut: 0.97, trailA: 0.42, trailLingerMs: 420, tipBlood: false,
+    leadMs: 180, tailMs: 300, sinkDeg: 55, tremor: false, trailsCloth: true,
+  }),
 };
 // 手の位置(立ち絵の左向き基準・足元からの比率)。シートのコマで手は動くので近似。
-// 振りは「当たる瞬間」を挟んで動く: 当たる110ms前に振り始め(加速)、当たった後150msで振り抜く(減速)。
-const HERO_SWING_LEAD_MS = 110, HERO_SWING_TAIL_MS = 150;
 
 // ラフィの薙ぎ(Phase2新規)は既存の骨刃素材(rafi-blade.png)を「振る」用途でも流用する
 // (§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。katanaSlash系のグリップ扱いは新規(叩き台)。
@@ -31369,8 +31393,8 @@ export class PixiScene {
     const inWindup = st === 'hero-windup' || st === 'hero-motion';
     const el = Math.max(0, gameTime - wStart);
     const span = Math.max(1, hitT - wStart);
-    const ts = gameTime - (hitT - HERO_SWING_LEAD_MS); // 振り始めからの経過(負=まだ構え)
-    const swingMs = HERO_SWING_LEAD_MS + HERO_SWING_TAIL_MS;
+    const ts = gameTime - (hitT - art.leadMs); // 振り始めからの経過(負=まだ構え)
+    const swingMs = art.leadMs + art.tailMs;
     const easeInOut = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
     const easeSine = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * Math.max(0, Math.min(1, x)));
     const swing = easeInOut(ts / swingMs);            // 振り: 加速→減速
@@ -31395,9 +31419,9 @@ export class PixiScene {
     // 角度: 構え=始まりの角より25度振りかぶる(初段は少し前から引いていく)/ 振り=a0→a1 / 残心=さらに35度沈める。
     let theta: number;
     if (ts < 0) theta = a0 - dir * DEG * (25 * pull - 8 * (1 - pull));
-    else theta = (a0 - dir * 25 * DEG) + (a1 - a0 + dir * 25 * DEG) * swing + dir * 35 * DEG * sink;
+    else theta = (a0 - dir * 25 * DEG) + (a1 - a0 + dir * 25 * DEG) * swing + dir * art.sinkDeg * DEG * sink;
     // 溜めの終盤は刃が震える(角度で揺らす=切っ先で数px)。
-    if (st === 'hero-windup' && ts < 0) {
+    if (art.tremor && st === 'hero-windup' && ts < 0) {
       const p = Math.min(1, el / span);
       if (p > 0.65) theta += Math.sin(now / 24) * 1.3 * DEG * ((p - 0.65) / 0.35);
     }
@@ -31414,11 +31438,11 @@ export class PixiScene {
     }
     this.heroSwordLastTip.set(e.id, { x: tipX, y: tipY, hx, hy });
     // ---- 刃の跡(派手さの絵): 振り始めから今の刃の角度までを、切っ先の外側の帯で塗る(新しい所ほど太く濃い)。先回りしない。 ----
-    if (ts > 0 && ts < swingMs + 260) {
+    if (ts > 0 && ts < swingMs + art.trailLingerMs) {
       const o = view.tele;
       const head = (a0 - dir * 25 * DEG) + (a1 - a0 + dir * 25 * DEG) * swing;
       const from = a0 - dir * 10 * DEG;
-      const fade = ts < swingMs ? 1 : 1 - (ts - swingMs) / 260;
+      const fade = ts < swingMs ? 1 : 1 - (ts - swingMs) / art.trailLingerMs;
       const N = 14;
       const span2 = head - from;
       if (span2 * dir > 0) {
@@ -31426,18 +31450,20 @@ export class PixiScene {
           const t0 = i / N, t1 = (i + 1) / N;
           const b0 = from + span2 * t0, b1 = from + span2 * t1;
           // 根元ほど細く(刃の外側だけが空気を裂く)、新しい所ほど濃い。古い所は先に薄れる。
-          const ri = R * (0.9 - 0.18 * t1), ro = R * 1.02;
-          const aa = (0.03 + 0.3 * t1 * t1 * t1) * fade * (ts < swingMs ? 1 : t1);
+          const ri = R * (art.trailIn - 0.18 * t1), ro = R * art.trailOut;
+          const aa = (0.03 + art.trailA * t1 * t1 * t1) * fade * (ts < swingMs ? 1 : t1);
           o.moveTo(hx + Math.cos(b0) * ri, hy + Math.sin(b0) * ri)
             .lineTo(hx + Math.cos(b0) * ro, hy + Math.sin(b0) * ro)
             .lineTo(hx + Math.cos(b1) * ro, hy + Math.sin(b1) * ro)
             .lineTo(hx + Math.cos(b1) * ri, hy + Math.sin(b1) * ri)
             .closePath().fill({ color: art.trail, alpha: aa });
         }
-        // 切っ先の縁だけ血の色。
-        const tb = head - dir * 0.2;
-        o.moveTo(hx + Math.cos(tb) * R * 1.02, hy + Math.sin(tb) * R * 1.02)
-          .arc(hx, hy, R * 1.02, tb, head, dir < 0).stroke({ width: 4, color: 0x7f1d1d, alpha: 0.75 * fade });
+        // 切っ先の縁だけ血の色(刃だけ)。
+        if (art.tipBlood) {
+          const tb = head - dir * 0.2;
+          o.moveTo(hx + Math.cos(tb) * R * 1.02, hy + Math.sin(tb) * R * 1.02)
+            .arc(hx, hy, R * 1.02, tb, head, dir < 0).stroke({ width: 4, color: 0x7f1d1d, alpha: 0.75 * fade });
+        }
       }
     }
     // ---- 剣のスプライト ----
@@ -31464,7 +31490,8 @@ export class PixiScene {
     const len = Math.hypot(tipX - hx, tipY - hy);
     const lenMul = R > 0 ? len / R : 1; // 段の継ぎ目の補間の間だけ R から外れる
     // 反りは向いている側で固定(段の継ぎ目で裏返らない)。
-    const flip = faceSign > 0 ? -1 : 1;
+    // 布のある絵(旗)は、振りの進む向きの後ろへ布を流す(鏡像を振りの向きで決める=布が前に出て板に見えない)。
+    const flip = art.trailsCloth ? (dir > 0 ? 1 : -1) : (faceSign > 0 ? -1 : 1);
     ksp.scale.set(ksc * lenMul, ksc * flip);
     ksp.rotation = Math.atan2(tipY - hy, tipX - hx) - art.intrinsic * flip;
     const ease = this.weaponAppearEase(`hero-sword:${e.id}`, now);

@@ -4,7 +4,7 @@
 //
 // 掟:
 //  - 移動は必ず ①障害物(resolveBountyMove)→ ②行ける帯(clampRectToPlayableArea)の順で通す。
-//  - 旗手は自分では攻撃しない。叫ぶのは画面に入っている時だけ(見つける条件に「画面内」を含む)。
+//  - 旗手の攻撃は旗振りだけ(プレイヤーが体の縁から120px以内・§4b)。叫ぶのは画面に入っている時だけ(見つける条件に「画面内」を含む)。
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, SCREAMER_WINDUP_MS, SCREAMER_BUFF_MS, screamerWindupFx, screamerCryFx, cancelScreamerWindupFx, type PumpkinBlast } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
@@ -162,6 +162,9 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   const stunned = (bearer.bossFullStunUntil !== undefined && gt < bearer.bossFullStunUntil)
     || (bearer.stunUntil !== undefined && gt < bearer.stunUntil);
   let attacking = false;
+  // カウンターで弾かれた印(共通のパリィ処理が書く)。旗手は怯みを持たないので、印を消すだけ(残しておくと
+  // 「反応待ち」と読む処理が将来付いた時に誤動作する・品質監査 B-2)。
+  if (bearer.bossMoveCutPending) patch.bossMoveCutPending = false;
   if (atk === 'hero-windup' || atk === 'hero-strike' || atk === 'hero-recover') {
     if (stunned) {
       Object.assign(patch, { bossState: undefined, heroShape: undefined, heroHitAt: undefined, libFlagReadyAt: gt + LIB_FLAG_COOLDOWN_MS });
