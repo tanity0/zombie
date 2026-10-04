@@ -5276,6 +5276,11 @@ export interface PumpkinBlast {
    * ボス本体の技(薙ぎ・着地・踏み鳴らし等)のパリィは従来どおりダメージが入る。
    */
   parryNoDamage?: boolean;
+  /**
+   * research/LIBERTY_HORDE.md §4c(矢の雨): 弾けるが、**弾いた効果はプレイヤー側だけ**(Counter!・無敵・CD返還)。
+   * 持ち主(遠くで号令した旗手)には何も起きない=吹き飛ばない・怯まない・体勢も削らない(矢を弾いただけ)。
+   */
+  parryLocal?: boolean;
 }
 
 /**

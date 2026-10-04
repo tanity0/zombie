@@ -2121,6 +2121,10 @@ const HERO_SWORD_BLADE_LEN_FRAC = Math.hypot(
 ) / HERO_SWORD_W;
 // 振りは「当たる瞬間」を挟んで動く: 当たる110ms前に振り始め(加速)、当たった後150msで振り抜く(減速)。
 const HERO_SWING_LEAD_MS = 110, HERO_SWING_TAIL_MS = 150;
+// research/LIBERTY_HORDE.md §4c: 矢の雨の矢が落ちてくる尺と、落ち始めの位置(刺さる点から左上へ)。刺さった矢が薄れ始める時刻と薄れる尺
+// (合計は libertyScript.LIB_ARROW_STUCK_MS=1500 と同じ)。
+const LIB_ARROW_FALL_MS = 380, LIB_ARROW_FALL_DX = 150, LIB_ARROW_FALL_DY = 560;
+const LIB_ARROW_STUCK_FADE_START = 1100, LIB_ARROW_STUCK_FADE_MS = 400;
 /**
  * 扇/帯をなぞって振る武器の絵(英雄のサーベル・解放軍群の旗)。握り=回す軸、先=範囲の縁をなぞる点。
  * 刃渡り(握り→先のpx)と、絵の中での握り→先の向き(intrinsic)は絵の寸法から出す。trail=振りの跡の色。
@@ -4253,6 +4257,9 @@ export class PixiScene {
   // §6.28-19(バッチM63): アクラシエルの結晶の槍(acrasielSpears)。設置中の槍スプライト+T5円テレグラフ
   // (ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
   private acrasielSpearGfx = new Graphics();
+  // research/LIBERTY_HORDE.md §4c: 解放軍群の矢の雨。赤い円(地面)と、降ってくる矢・刺さった矢(上の層)。共有Graphics2枚。
+  private libArrowGroundGfx = new Graphics();
+  private libArrowGfx = new Graphics();
   private acrasielSpearPool = new Map<string, Sprite>();
   // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の頭上名前ラベル。同時1体・生成は湧き時1回だけ
   // なのでPixi Text可(CLAUDE.mdの「まれなcallout枠」)。毎フレーム再生成はしない=位置追従のみ。
@@ -9220,6 +9227,7 @@ export class PixiScene {
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime, now);
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
+    this.syncLibertyArrows(s.enemies, s.gameTime); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
@@ -15333,6 +15341,59 @@ export class PixiScene {
       }
     }
     for (const [id, vsp] of this.acrasielSpearPool) { if (!seen.has(id)) { vsp.destroy(); this.acrasielSpearPool.delete(id); } }
+  }
+
+  /**
+   * research/LIBERTY_HORDE.md §4c: 矢の雨。旗手の `giantDelayedHits`(moveKey='liberty-arrow')を読むだけ(判定は libertyTick)。
+   * 予告=赤い円の流星(予告の出た瞬間に出て、刺さる瞬間に消え切る)。刺さる直前に矢が上から加速して落ち、刺さった矢は少し残って消える。
+   * 旗手の体の描画とは別の通し(旗手が画面外にいても、画面内に落ちる矢の予告は必ず描く=赤くないのに当たる、を作らない)。
+   */
+  private syncLibertyArrows(enemies: readonly Enemy[], gameTime: number): void {
+    const g = this.libArrowGroundGfx, a = this.libArrowGfx;
+    if (!g.parent) this.L.groundLayer.addChild(g);
+    if (!a.parent) this.L.effectLayer.addChild(a);
+    g.clear(); a.clear();
+    const style = telegraphStyleFor('mutant-liberty');
+    const drawArrow = (tx: number, ty: number, ang: number, len: number, alpha: number) => {
+      const cx = Math.cos(ang), cy = Math.sin(ang);
+      const bx = tx - cx * len, by = ty - cy * len;
+      a.moveTo(bx, by).lineTo(tx - cx * 7, ty - cy * 7).stroke({ width: 2.5, color: 0x3b2a1e, alpha });
+      // 鏃(鉄の色)
+      a.moveTo(tx, ty).lineTo(tx - cx * 9 - cy * 4, ty - cy * 9 + cx * 4).lineTo(tx - cx * 9 + cy * 4, ty - cy * 9 - cx * 4).closePath()
+        .fill({ color: 0x9ca3af, alpha });
+      // 矢羽(骨色)
+      for (const sgn of [1, -1]) {
+        a.moveTo(bx + cx * 2, by + cy * 2).lineTo(bx - cx * 5 + (-cy) * 5 * sgn, by - cy * 5 + cx * 5 * sgn)
+          .stroke({ width: 2, color: 0xd8c8b0, alpha });
+      }
+    };
+    for (const e of enemies) {
+      if (e.type !== 'mutant-liberty') continue;
+      for (const h of e.giantDelayedHits ?? []) {
+        if (h.moveKey !== 'liberty-arrow' || gameTime < h.bornAt) continue;
+        const t = Math.max(0, Math.min(1, (gameTime - h.bornAt) / Math.max(1, h.fireAt - h.bornAt)));
+        const mask = CIRCLE_SWEEP_ON
+          ? this.drawSweepCircleFill(g, h.x, h.y, h.radius, t, 0xff2a2a, 0.26, style)
+          : (g.circle(h.x, h.y, h.radius).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * t }), 1);
+        g.circle(h.x, h.y, h.radius).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * mask });
+        // 落ちてくる矢: 刺さる LIB_ARROW_FALL_MS 前に左上の高い所から、加速しながら(重力)刺さる点へ。
+        const left = h.fireAt - gameTime;
+        if (left <= LIB_ARROW_FALL_MS) {
+          const u = 1 - left / LIB_ARROW_FALL_MS;
+          const k = u * u;
+          const sx = h.x - LIB_ARROW_FALL_DX, sy = h.y - LIB_ARROW_FALL_DY;
+          const px = sx + (h.x - sx) * k, py = sy + (h.y - sy) * k;
+          drawArrow(px, py, Math.atan2(LIB_ARROW_FALL_DY, LIB_ARROW_FALL_DX), 44, Math.min(1, u * 3));
+        }
+      }
+      // 刺さった矢: 斜めに突き立ったまま少し残り、最後に薄れて消える(鏃は地面の中=見えない長さで描く)。
+      for (const s2 of e.libArrowStuck ?? []) {
+        const age = gameTime - s2.at;
+        const fade = age < LIB_ARROW_STUCK_FADE_START ? 1 : Math.max(0, 1 - (age - LIB_ARROW_STUCK_FADE_START) / LIB_ARROW_STUCK_FADE_MS);
+        if (fade <= 0) continue;
+        drawArrow(s2.x, s2.y + 2, Math.atan2(LIB_ARROW_FALL_DY, LIB_ARROW_FALL_DX) + s2.tilt, 34, fade * 0.95);
+      }
+    }
   }
 
   // 火炎瓶(molotov)の地面の火。lifetime/DoTは gameStore(groundFires/tickGroundFires)側の仕事、

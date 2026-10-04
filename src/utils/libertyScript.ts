@@ -150,3 +150,49 @@ export const libFlagFan = (
   const cx = rect.x + rect.width / 2, cy = rect.y + rect.height / 2;
   return { kind: 'fan', cx, cy, angle: Math.atan2(ty - cy, tx - cx), halfArc: (LIB_FLAG_ARC_DEG / 2) * (Math.PI / 180), radius: LIB_FLAG_RADIUS };
 };
+
+// ---- 矢の雨(社長指示2026-10-04「全射程で、上から矢がランダムに沢山振って来る広範囲攻撃」・LIBERTY_HORDE §4c) ----
+/** 1回の号令で降る矢の数・うち相手の近くを狙う本数。 */
+export const LIB_VOLLEY_ARROWS = 30;
+export const LIB_VOLLEY_NEAR = 10;
+/** 相手の近くを狙う矢の散らばり(相手の位置から)。 */
+export const LIB_VOLLEY_NEAR_SPREAD_PX = 150;
+/** 矢を落とし始める間隔の合計(最初の矢から最後の矢の予告が出るまで)。 */
+export const LIB_VOLLEY_SPAN_MS = 1800;
+/** 1本ごとの予告(赤い円が出てから刺さるまで)。 */
+export const LIB_ARROW_WINDUP_MS = 1000;
+/** 1本の当たりの半径・ダメージ。 */
+export const LIB_ARROW_RADIUS = 34;
+export const LIB_ARROW_DAMAGE = 8;
+/** 号令の構え(旗手が立ち止まる時間)・号令の間隔・見つけてから最初の号令まで。 */
+export const LIB_VOLLEY_CAST_MS = 700;
+export const LIB_VOLLEY_COOLDOWN_MS = 9000;
+export const LIB_VOLLEY_FIRST_DELAY_MS = 2500;
+/** 刺さった矢が残る時間(描画だけ)。 */
+export const LIB_ARROW_STUCK_MS = 1500;
+
+export interface LibArrow { x: number; y: number; bornAt: number; fireAt: number }
+
+/**
+ * 号令1回ぶんの矢(全射程=いま見えている画面いっぱい+相手の近く)。rng は 0..1。
+ * 予告が出る時刻(bornAt)は start から SPAN の間にばらし、刺さる時刻は bornAt+WINDUP(1本ごとに別々=多段は段ごと)。
+ */
+export const libVolleyArrows = (
+  bounds: { left: number; right: number; top: number; bottom: number },
+  target: { x: number; y: number }, start: number, rng: () => number,
+): LibArrow[] => {
+  const out: LibArrow[] = [];
+  for (let i = 0; i < LIB_VOLLEY_ARROWS; i++) {
+    let x: number, y: number;
+    if (i < LIB_VOLLEY_NEAR) {
+      const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * LIB_VOLLEY_NEAR_SPREAD_PX;
+      x = target.x + Math.cos(a) * r; y = target.y + Math.sin(a) * r;
+    } else {
+      x = bounds.left + rng() * (bounds.right - bounds.left);
+      y = bounds.top + rng() * (bounds.bottom - bounds.top);
+    }
+    const bornAt = start + Math.round(rng() * LIB_VOLLEY_SPAN_MS);
+    out.push({ x, y, bornAt, fireAt: bornAt + LIB_ARROW_WINDUP_MS });
+  }
+  return out.sort((a, b) => a.bornAt - b.bornAt);
+};

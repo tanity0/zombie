@@ -1,6 +1,6 @@
 // research/LIBERTY_HORDE.md: 解放軍群(変異)の純関数のテスト。
 import { describe, it, expect } from 'vitest';
-import { libFlagFan, edgeDistToRectPt, LIB_FLAG_RADIUS, LIB_FLAG_TRIGGER_PX, libRetreatDir, LIB_RETREAT_RANGE_PX, libPatrolRadius, trailPointAt, maleBatId, ringPointBehind, hordeJitter, LIB_JITTER_PX, LIB_ESCORTS, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX, LIB_SLOT_GAP_PX } from './libertyScript';
+import { libVolleyArrows, LIB_VOLLEY_ARROWS, LIB_VOLLEY_NEAR, LIB_VOLLEY_NEAR_SPREAD_PX, LIB_VOLLEY_SPAN_MS, LIB_ARROW_WINDUP_MS, libFlagFan, edgeDistToRectPt, LIB_FLAG_RADIUS, LIB_FLAG_TRIGGER_PX, libRetreatDir, LIB_RETREAT_RANGE_PX, libPatrolRadius, trailPointAt, maleBatId, ringPointBehind, hordeJitter, LIB_JITTER_PX, LIB_ESCORTS, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX, LIB_SLOT_GAP_PX } from './libertyScript';
 import { variantTextureName } from './enemyVariant';
 import { countsTowardEnemyCap, isBossType } from './enemyUtils';
 
@@ -56,6 +56,22 @@ describe('解放軍群(変異)', () => {
     expect(Math.hypot(corner.x - 55, corner.y - 30)).toBeLessThanOrEqual(LIB_FLAG_RADIUS);
     const f = libFlagFan(rect, 55, 200);
     expect(f.angle).toBeCloseTo(Math.PI / 2);
+  });
+  it('矢の雨: 画面いっぱい+相手の近く・矢ごとに予告と刺さる時刻を持つ', () => {
+    let seed = 1;
+    const rng = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const b = { left: 0, right: 1000, top: 0, bottom: 2000 };
+    const arrows = libVolleyArrows(b, { x: 500, y: 1000 }, 10_000, rng);
+    expect(arrows.length).toBe(LIB_VOLLEY_ARROWS);
+    const near = arrows.filter(a => Math.hypot(a.x - 500, a.y - 1000) <= LIB_VOLLEY_NEAR_SPREAD_PX + 1e-6);
+    expect(near.length).toBeGreaterThanOrEqual(LIB_VOLLEY_NEAR);
+    for (const a of arrows) {
+      expect(a.bornAt).toBeGreaterThanOrEqual(10_000);
+      expect(a.bornAt).toBeLessThanOrEqual(10_000 + LIB_VOLLEY_SPAN_MS);
+      expect(a.fireAt - a.bornAt).toBe(LIB_ARROW_WINDUP_MS);
+    }
+    for (let i = 1; i < arrows.length; i++) expect(arrows[i].bornAt).toBeGreaterThanOrEqual(arrows[i - 1].bornAt);
+    expect(new Set(arrows.map(a => a.fireAt)).size).toBeGreaterThan(10); // 一斉ではなくばらけて刺さる
   });
   it('旗手と取り巻きは盤面の上限に数えない。旗手はボス級', () => {
     expect(countsTowardEnemyCap({ type: 'mutant-liberty' })).toBe(false);

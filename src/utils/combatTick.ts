@@ -244,7 +244,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   if (blasts.length === 0) return;
   // スカジ氷=専用SE(社長提供) / それ以外(パンプキン着地等)=heavy-impact。
   // research/MUTANT_HERO.md: 英雄の斬撃・タックルは自分の音(下)。叩きつけ(棹立ち・跳躍)は重い音のまま。
-  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-') && b.moveKey !== 'liberty-flag')) fx.playSfx('heavy-impact');
+  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-') && b.moveKey !== 'liberty-flag' && b.moveKey !== 'liberty-arrow')) fx.playSfx('heavy-impact');
+  if (blasts.some(b => b.moveKey === 'liberty-arrow')) fx.playSfx('whip-swing', 0.45); // 矢の雨: 刺さる音は軽く(同じフレームに何本刺さっても1回)
   if (blasts.some(b => b.moveKey === 'hero-slam')) fx.playSfx('hero-slam');
   if (blasts.some(b => b.moveKey === 'hero-slash')) fx.playSfx('hero-slash');
   if (blasts.some(b => b.moveKey === 'liberty-flag')) fx.playSfx('whip-swing'); // 旗(解放軍群): 刃の風切りではなく布が鳴る音
@@ -256,6 +257,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   const counterActive = isCounterActive(bp, Date.now());
   // ★v0.25.3591: noDamage=この爆風のパリィは**体勢だけ削ってHPダメージは0**(飛んでくる刃を弾いた時)。
   const parriedEnemyIds: { id: string; bx: number; by: number; noDamage?: boolean }[] = [];
+  // 持ち主に効果を返さない弾き(矢の雨=parryLocal)。演出・無敵・CD返還はプレイヤー側で通常どおり出す。
+  const localParries: { bx: number; by: number }[] = [];
   // G4b: 爆発/カプセルの合流点=ここでゴーストも受ける(タグ付き21箇所超を一括カバー)。対象は
   // **ボス(isEngageableBoss)の爆発のみ**(パンプキン/lab-zombie-3の着地爆発=非ボスは従来どおり
   // プレイヤーのみ)。ゴースト不在ならfind1回で抜ける=コストゼロ。位置/半径はループ前のスナップ
@@ -294,6 +297,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           fx.spawnBurst(f.cx + Math.cos(a) * r, f.cy + Math.sin(a) * r, i % 3 === 1 ? '#7f1d1d' : '#8a6e58', 9);
         }
       }
+    } else if (b.moveKey === 'liberty-arrow') {
+      // research/LIBERTY_HORDE.md §4c: 矢が刺さる。土の粒だけ(矢の絵と刺さった跡は描画が出す)。全画面フラッシュなし。
+      fx.spawnBurst(b.x, b.y, '#8a6e58', 6);
     } else if (b.moveKey === 'driller-thrust') {
       // 削岩型の突き(検収監査#5): 雑魚の通常攻撃なので**全画面フラッシュは出さない**(3.5秒ごとに
       // 画面全体が明滅するのはうるさい)。判定終端の小さな火花+リングだけ(色はドリル=琥珀寄り)。
@@ -324,7 +330,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         // カウンター成立は無敵中でも弾く(=確実にノックバック+クリ反撃)。
         // ※以前は !invulnerable を前提にしていたため、被弾i-frame中だとパリィが
         //   丸ごとスキップされ「カウンターしたのにノックバックしない」が起きていた。
-        parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y, ...(b.parryNoDamage ? { noDamage: true } : {}) });
+        if (b.parryLocal) localParries.push({ bx: b.x, by: b.y });
+        else parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y, ...(b.parryNoDamage ? { noDamage: true } : {}) });
       } else if (!bp.invulnerable) {
         const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
         // G4a: b.moveKey=どの技の爆発か(記録専用タグ・未設定なら従来どおりundefined)。
@@ -333,7 +340,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         // 表示される取りこぼしを防ぐ)。
         const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
-          : b.moveKey === 'jo-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
+          : b.moveKey === 'jo-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey);
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
@@ -382,7 +389,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           //   ⇒ **「パリティが揃っていない」という理由でここを直さないこと。**
           // ★判定時置換ミラー(2026-08-27): 位置ゲートは既定OFFになった(inAttackZone opts は
           // contactGate へ反転。この経路は inBlastGhost がゾーン幾何で確認済み=opts不要)。
-          const gClaim = consumeGhostCounterClaim(b.enemyId, Date.now());
+          const gClaim = b.parryLocal ? null : consumeGhostCounterClaim(b.enemyId, Date.now()); // 矢の雨(parryLocal)で旗手への請求を使わない
           if (gClaim) {
             applyGhostCounterEffect(owner, gacx, gacy, { claim: gClaim, sfxGain: npcSfxDistGain(gacx, gacy, bpcx, bpcy, useGameStore.getState().camera, useGameStore.getState().gameBounds) }, (key, gain) => fx.playSfx(key, gain));
           } else {
@@ -400,7 +407,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       applyBlastToHero(b);
     }
   }
-  if (parriedEnemyIds.length > 0) {
+  if (parriedEnemyIds.length > 0 || localParries.length > 0) {
     // G4a(§2.9・記録専用): カウンター成立(②ジャンプ着地パリィ)を技への反応表へ通知。
     // ※G1のnotifyCounterHitはここには足さない(既存counterChanceノブの計測を変えないため)。
     notifyMoveCounter();
@@ -414,7 +421,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     fx.spawnRing(bpcx, bpcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
     fx.spawnBurst(bpcx, bpcy, '#38bdf8', 14);
     fx.spawnCallout(bpcx, bpcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-    { const b0 = parriedEnemyIds[0]; const cl = counterClashPoint(bpcx, bpcy, b0.bx, b0.by); useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点(弾いた爆風/帯の方へ)
+    { const b0 = parriedEnemyIds[0] ?? localParries[0]; const cl = counterClashPoint(bpcx, bpcy, b0.bx, b0.by); useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点(弾いた爆風/帯の方へ)
     useGameStore.setState(st => ({
       // 弾いた直後は敵がプレイヤーに重なっている(着地)ので、通常接触ダメージで被弾しないよう
       // 短い無敵(i-frame)を付与。これで「カウンターしたのに被弾」を防ぐ。

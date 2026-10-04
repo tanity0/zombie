@@ -9,13 +9,15 @@ import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, SCREAMER_WINDUP_MS, SCREAMER_BUFF_MS, screamerWindupFx, screamerCryFx, cancelScreamerWindupFx, type PumpkinBlast } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { isCorpse, spawnEnemyAtWithTier } from './enemyUtils';
-import { isPointInZoomedViewport } from './cameraZoom';
+import { isPointInZoomedViewport, zoomedViewportBounds } from './cameraZoom';
 import { HERO_AGGRO_RANGE, HERO_PATROL_SPEED, HERO_STRIKE_MS, HERO_FLINCH_MS, heroPatrolNext, heroRestMs } from './heroScript';
 import { HERO_PATROL_DETOUR_PX, HERO_PATROL_DETOUR_MS } from './heroTick';
 import {
   LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_STEP_PX, LIB_TRAIL_MAX, LIB_LOSE_RANGE_MULT, LIB_LOSE_MS,
   LIB_RETURN_SPEED, LIB_RETURN_ARRIVE_PX, LIB_REFILL_BEHIND_PX, LIB_RETURN_EASE_PER_S, LIB_BEARER_ACCEL,
   LIB_HEAD_PX, LIB_SCREAM_FX_SCALE, LIB_HIT_ALERT_MS, LIB_RETREAT_RANGE_PX, LIB_RETREAT_SPEED, LIB_TURN_PER_S, libRetreatDir,
+  LIB_VOLLEY_CAST_MS, LIB_VOLLEY_COOLDOWN_MS, LIB_VOLLEY_FIRST_DELAY_MS, LIB_ARROW_RADIUS, LIB_ARROW_DAMAGE, LIB_ARROW_STUCK_MS,
+  libVolleyArrows, type LibArrow,
   LIB_FLAG_TRIGGER_PX, LIB_FLAG_WINDUP_MS, LIB_FLAG_RECOVER_MS, LIB_FLAG_COOLDOWN_MS, LIB_FLAG_DAMAGE, edgeDistToRectPt, libFlagFan,
   trailPointAt, maleBatId, hordeJitter,
 } from './libertyScript';
@@ -32,11 +34,14 @@ export interface LibertyTickState {
   windupFx: string[];
   /** 今の交戦で叫んだ回数(2回目以降は画面の明滅・揺れを弱める)。 */
   cries: number;
+  /** 矢の雨: まだ予告が出ていない矢(予告の出る時刻順)・見つけた時刻(最初の号令の起点)。 */
+  volleyQueue: LibArrow[];
+  alertSince: number | null;
 }
 export const createLibertyTickState = (): LibertyTickState => ({
   activeId: null, trail: [], lostSince: null,
   stallRefAt: -1e9, stallRefAng: 0, stallRefX: 0, stallRefY: 0, detourR: 0, detourUntil: 0,
-  speed: 0, dirX: 0, dirY: 0, windupFx: [], cries: 0,
+  speed: 0, dirX: 0, dirY: 0, windupFx: [], cries: 0, volleyQueue: [], alertSince: null,
 });
 
 const playCtx = (): PlayableAreaCtx => {
@@ -208,6 +213,47 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
       });
       attacking = true;
     }
+  }
+
+  // ---- 矢の雨(社長指示2026-10-04「全射程で、上から矢がランダムに沢山振って来る広範囲攻撃」・LIBERTY_HORDE §4c) ----
+  // 見つけている間、間隔ごとに旗手が立ち止まって号令(0.7秒)→ 見えている画面いっぱい+相手の近くへ矢が降る。
+  // 1本ごとに赤い円(流星)が出て、消え切った瞬間に刺さる(予告が出る時刻=その矢の溜めの開始・刺さる時刻は矢ごと)。
+  // 予告の出た矢は `giantDelayedHits`(守護霊の回避が読む既存の器)に載せ、刺さったら扇ではなく小円の爆風を積む。
+  if (alerted && s.alertSince === null) s.alertSince = gt;
+  if (!alerted) s.alertSince = null;
+  const casting = bearer.libVolleyCastUntil !== undefined && gt < bearer.libVolleyCastUntil;
+  if (casting) attacking = true;
+  else if (alerted && !attacking && !stunned && onScreen && s.alertSince !== null
+    && gt >= (bearer.libVolleyReadyAt ?? s.alertSince + LIB_VOLLEY_FIRST_DELAY_MS)) {
+    const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
+    s.volleyQueue.push(...libVolleyArrows(vb, { x: pl.x + pl.width / 2, y: pl.y + pl.height / 2 }, gt, Math.random));
+    s.volleyQueue.sort((a, b) => a.bornAt - b.bornAt);
+    Object.assign(patch, { libVolleyCastUntil: gt + LIB_VOLLEY_CAST_MS, libVolleyReadyAt: gt + LIB_VOLLEY_COOLDOWN_MS, vx: 0, vy: 0 });
+    attacking = true;
+    // 号令の合図(派手さの絵): 旗の高さから骨色の輪が二重に広がる。
+    const g0 = useGameStore.getState();
+    g0.spawnRing(bx, bearer.y + bearer.height - LIB_HEAD_PX, 12, 300, 'rgba(216,200,176,0.8)', 4, 560);
+    g0.spawnRing(bx, bearer.y + bearer.height - LIB_HEAD_PX, 8, 190, 'rgba(127,29,29,0.75)', 3, 420);
+  }
+  {
+    const hits = bearer.giantDelayedHits ?? [];
+    let changed = false;
+    const keep: NonNullable<Enemy['giantDelayedHits']> = [];
+    let stuck = (bearer.libArrowStuck ?? []).filter(a => gt - a.at < LIB_ARROW_STUCK_MS);
+    if (stuck.length !== (bearer.libArrowStuck ?? []).length) changed = true;
+    for (const h of hits) {
+      if (h.moveKey === 'liberty-arrow' && gt >= h.fireAt) {
+        pushArrowBlast(bearer, h.x, h.y, h.radius);
+        stuck = [...stuck, { x: h.x, y: h.y, at: gt, tilt: (Math.random() - 0.5) * 0.5 }];
+        changed = true;
+      } else keep.push(h);
+    }
+    while (s.volleyQueue.length > 0 && s.volleyQueue[0].bornAt <= gt) {
+      const a = s.volleyQueue.shift()!;
+      keep.push({ x: a.x, y: a.y, radius: LIB_ARROW_RADIUS, bornAt: a.bornAt, fireAt: a.fireAt, moveKey: 'liberty-arrow', damage: LIB_ARROW_DAMAGE });
+      changed = true;
+    }
+    if (changed) Object.assign(patch, { giantDelayedHits: keep, libArrowStuck: stuck });
   }
 
   /** 今の向き(dirX/dirY)へ speed で1フレーム進む(障害物→行ける帯)。 */
@@ -395,5 +441,11 @@ const pushFlagBlast = (bearer: Enemy, shape: NonNullable<Enemy['heroShape']>): v
     x: shape.cx, y: shape.cy, radius: shape.radius, damage: LIB_FLAG_DAMAGE, enemyId: bearer.id, moveKey: 'liberty-flag',
     fan: { cx: shape.cx, cy: shape.cy, angle: shape.angle, halfArc: shape.halfArc, radius: shape.radius },
   };
+  useGameStore.setState(st => ({ pumpkinBlasts: [...st.pumpkinBlasts, b] }));
+};
+
+/** 矢1本の当たり(小円の爆風)。カウンターで弾ける赤。弾いた効果はプレイヤー側だけ(遠くの旗手は吹き飛ばない・怯まない)=矢を弾くだけ。 */
+const pushArrowBlast = (bearer: Enemy, x: number, y: number, r: number): void => {
+  const b: PumpkinBlast = { x, y, radius: r, damage: LIB_ARROW_DAMAGE, enemyId: bearer.id, moveKey: 'liberty-arrow', parryNoDamage: true, parryLocal: true };
   useGameStore.setState(st => ({ pumpkinBlasts: [...st.pumpkinBlasts, b] }));
 };
