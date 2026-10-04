@@ -125,7 +125,8 @@ export const enemyHitStrip = (e: Enemy): { x: number; y: number; width: number; 
 
 // 召喚ユニットは流用元の敵タイプと同じ視覚スケールで描く(敵と大きさを揃える)。
 export const summonFootBox = (s: Summon): FootBox => {
-  const scale = ENEMY_VISUAL_SCALE[s.reusedType] ?? 2;
+  // 社長指示2026-10-04(召喚を今の敵の絵とモーションへ): フィールドの同じ敵と同じ大きさ(ENEMY_SIZE_MULT も掛ける=enemyFootBox と同じ式)。
+  const scale = (ENEMY_VISUAL_SCALE[s.reusedType] ?? 2) * ENEMY_SIZE_MULT;
   return {
     footX: s.x + s.width / 2,
     footY: s.y + s.height,

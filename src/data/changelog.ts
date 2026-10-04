@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4846', items: ['錬金術で呼び出す仲間の変異体が、今の姿で歩いて付いて来る', 'まれに現れる召喚が死神からハンターに替わり、棺桶を振り回して竜巻を起こす'] },
   { version: '0.25.4845', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4844', items: ['解放軍群(変異)の旗手の歩き姿が新しくなった'] },
   { version: '0.25.4843', items: ['ゲーム内容の変更はありません'] },

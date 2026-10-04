@@ -333,7 +333,7 @@ import {
   ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryCircleCenter,
 } from '../world/armory';
 import { POLICE_FADE_MS, POLICE_DISPLAY_H } from '../world/police';
-import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
+import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
@@ -765,6 +765,11 @@ const EVENT_NPC_FADE_MS = 1100;
 // 鞭ハリケーン竜巻スプライト(視覚のみ。吸引半径/ダメージは store 定義のまま)。
 const WHIP_HURRICANE_ANCHOR_Y = 0.92;   // テクスチャ内の地面の渦(根元)位置(縦長竜巻)
 const WHIP_HURRICANE_WIDTH_MULT = 3.0;  // 描画幅 = 吸引半径 × この倍率
+// 社長指示2026-10-04: 召喚の歩きのコマの尺・レア召喚(ハンター)の棺桶の振り回し(1秒の回転数・出だし/終わりの加減速の尺・
+// 斜め上から見た楕円のつぶれ・棺桶の大きさ)・足元の竜巻の幅(吸い込みの見た目の半径×倍率)。
+const SUMMON_WALK_FRAME_MS = 110;
+const RARE_SPIN_TURNS_PER_S = 1.4, RARE_SPIN_RAMP_MS = 600, RARE_SPIN_ELLIPSE = 0.45, RARE_COFFIN_SCALE = 0.9;
+const RARE_TORNADO_WIDTH_MULT = 1.4;
 const WHIP_HURRICANE_FADE_IN_MS = 160;  // 立ち上がりフェード
 const WHIP_HURRICANE_FADE_OUT_MS = 280; // 消滅フェード
 const WHIP_HURRICANE_FLIP_MS = 100;     // 左右反転の周期(0.1秒毎にミラー)
@@ -15928,6 +15933,9 @@ export class PixiScene {
         view.light.destroy();
         view.container.destroy({ children: true });
         this.summonViews.delete(id);
+        this.summonMotionMemo.delete(id);
+        const rfx = this.rareSummonFx.get(id);
+        if (rfx) { if (!rfx.coffin.destroyed) rfx.coffin.destroy(); if (!rfx.tornado.destroyed) rfx.tornado.destroy(); this.rareSummonFx.delete(id); }
       }
     }
   }
@@ -15989,7 +15997,21 @@ export class PixiScene {
     if (s.kind === 'ghost-ally') { this.drawGhostAlly(view, s, now); return; }
     // 敵と同じ視覚スケールの足元ボックスで描く(大きさを揃える)。
     const fb = summonFootBox(s);
-    const tex = getTexture(s.reusedType);
+    // 社長指示2026-10-04「召喚変異体が古い絵のまま・モーションも無い」: フィールドの敵と同じ絵(見た目の種類・ステージ別の絵)と
+    // 歩きのコマで描く。動いている間は歩きのシート、止まっている間は立ち絵。向きは動いた向き。
+    const key = this.enemyTexKey(s.reusedType, s.id);
+    const last = this.summonMotionMemo.get(s.id);
+    const dxm = last ? s.x - last.x : 0;
+    const moving = !!last && Math.hypot(dxm, last ? s.y - last.y : 0) > 0.15;
+    const faceRight = Math.abs(dxm) > 0.05 ? dxm > 0 : (last?.faceRight ?? true);
+    this.summonMotionMemo.set(s.id, { x: s.x, y: s.y, faceRight });
+    const walkN = walkSheetFrames(key);
+    let tex: ReturnType<typeof getTexture> = null;
+    if (moving && walkN > 1) {
+      const slices = this.sheetSlices(walkSheetName(key), walkN);
+      if (slices) tex = slices[Math.floor(now / SUMMON_WALK_FRAME_MS) % walkN] ?? null;
+    }
+    tex = tex ?? getTexture(key) ?? getTexture(s.reusedType);
     view.light.visible = false;
     // 被弾シェイク(攻撃されている表現): 直近ヒットから短時間、減衰する横揺れ。lastHit は Date.now 基準。
     const sinceHit = Date.now() - s.lastHit;
@@ -16000,16 +16022,21 @@ export class PixiScene {
     // v0.25.3179(社長指示): 召喚は**金色半透明**=「半透明の金色=味方」の文法(敵は常に不透明)。
     // 2026-08-28の裁定で守護霊は等倍になったため、透明度は召喚専用定数(SUMMON_ALLY_ALPHA)を使う。
     view.container.alpha = SUMMON_ALLY_ALPHA;
+    let drawnH = fb.boxH;
     if (tex) {
       view.sprite.texture = tex;
       const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
-      view.sprite.scale.set(sc, sc);
+      const mirror = faceRight === sheetFacesRight(key) ? 1 : -1;
+      view.sprite.scale.set(sc * mirror, sc);
+      drawnH = tex.height * sc;
       // 被弾直後は赤白フラッシュ、それ以外は味方識別の金色(v0.25.3179)。
       view.sprite.tint = hitT > 0.35 ? 0xffd0d0 : ALCHEMY_SUMMON_TINT;
       view.sprite.visible = true;
     } else {
       view.sprite.visible = false;
     }
+    // レア(ハンター): 棺桶をグルグル振り回し、足元に既存のハリケーン(竜巻)を立てる。
+    if (s.kind === 'rare') this.drawRareSummonSpin(view, s, fb, drawnH, now);
     // 背面: レアは渦っぽいシアンの円(吸引が分かる軽い表現)。
     const r = view.reticle;
     r.clear();
@@ -16030,6 +16057,72 @@ export class PixiScene {
       const by = s.y - 6;
       o.rect(bx, by, s.width, 3).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
       o.rect(bx, by, s.width * frac, 3).fill({ color: STATUS_ALLY });
+    }
+  }
+
+  /** 召喚の動き(前のフレームの位置・向き)。歩きのコマと向きを決める。 */
+  private summonMotionMemo = new Map<string, { x: number; y: number; faceRight: boolean }>();
+  /** レア召喚(ハンター)の棺桶と竜巻(個体ごと)。 */
+  private rareSummonFx = new Map<string, { coffin: Sprite; tornado: Sprite }>();
+
+  /**
+   * 社長指示2026-10-04「死神をやめてハンターに。棺桶グルグル回してハリケーン(既存)」: レア召喚の見た目。
+   * ①足元に既存の鞭ハリケーンの竜巻(体の後ろ・金色)②棺桶を体のまわりで水平に振り回す(斜め上から見た楕円=手前では体の前・奥では後ろ)。
+   * 回転は出だしで加速し、消える前に減速する(慣性)。判定・吸い込み・巻き込みは既存のまま(描くだけ)。
+   */
+  private drawRareSummonSpin(view: ActorView, s: Summon, fb: { footX: number; footY: number }, drawnH: number, now: number): void {
+    let fx = this.rareSummonFx.get(s.id);
+    if (!fx || fx.coffin.destroyed) {
+      const coffin = new Sprite(); coffin.anchor.set(COFFIN_GRIP_X, COFFIN_GRIP_Y);
+      const tornado = new Sprite(); tornado.anchor.set(0.5, 0.92);
+      fx = { coffin, tornado };
+      this.rareSummonFx.set(s.id, fx);
+    }
+    const ctex = getTexture('hunter-coffin'), ttex = getTexture('whip-hurricane');
+    const vc = view.container;
+    const dsc = this.depthScaleEnemy(fb.footY);
+    const born = now - s.createdAt, left = (s.expiresAt ?? now + 1e9) - now;
+    const spinIn = Math.min(1, born / RARE_SPIN_RAMP_MS), spinOut = Math.min(1, Math.max(0, left) / RARE_SPIN_RAMP_MS);
+    // 回転角: 速さ=最大×(出だしの加速・終わりの減速)。角度は速さの積分の近似(出だしは二次で立ち上がる)。
+    const t = born / 1000;
+    const ramp = RARE_SPIN_RAMP_MS / 1000;
+    const theta = 2 * Math.PI * RARE_SPIN_TURNS_PER_S * (t < ramp ? (t * t) / (2 * ramp) : t - ramp / 2) * (0.35 + 0.65 * spinOut);
+    // 竜巻(体の後ろ)
+    if (ttex) {
+      const tw = ALCHEMY_RARE_SUCTION_PULL_RANGE * RARE_TORNADO_WIDTH_MULT * dsc; // 実際に吸い込む距離に合わせる(鞭のハリケーンと同じくらいの大きさ)
+      const tt = fx.tornado;
+      if (tt.texture !== ttex) tt.texture = ttex;
+      if (tt.parent !== vc) { tt.parent?.removeChild(tt); vc.addChildAt(tt, 0); }
+      tt.position.set(fb.footX, fb.footY + 6);
+      const flip = Math.floor(now / WHIP_HURRICANE_FLIP_MS) % 2 === 0 ? 1 : -1;
+      tt.width = tw; tt.height = tw;
+      tt.scale.x = Math.abs(tt.scale.x) * flip * (1 + 0.05 * Math.sin(now / 80));
+      tt.tint = 0xffe6a0;
+      tt.alpha = 0.7 * Math.min(spinIn, spinOut);
+      tt.visible = true;
+    }
+    // 棺桶(水平に振り回す=楕円)
+    if (ctex) {
+      const cf = fx.coffin;
+      if (cf.texture !== ctex) cf.texture = ctex;
+      const k = RARE_SPIN_ELLIPSE;
+      const cx = Math.cos(theta), cy = Math.sin(theta) * k;
+      const behind = Math.sin(theta) < 0; // 奥側(画面の上)にある間は体の後ろ
+      const wantIdx = behind ? Math.max(0, vc.getChildIndex(view.sprite)) : vc.children.length;
+      if (cf.parent !== vc) { cf.parent?.removeChild(cf); vc.addChildAt(cf, Math.min(wantIdx, vc.children.length)); }
+      else {
+        const cur = vc.getChildIndex(cf), spI = vc.getChildIndex(view.sprite);
+        if (behind !== (cur < spI)) { vc.removeChild(cf); vc.addChildAt(cf, behind ? vc.getChildIndex(view.sprite) : vc.children.length); }
+      }
+      const len = COFFIN_LEN_PX * dsc * RARE_COFFIN_SCALE;
+      const lenNow = Math.hypot(cx, cy);
+      const sc = len / Math.max(1, ctex.width);
+      cf.scale.set(sc * lenNow, sc);
+      cf.rotation = Math.atan2(cy, cx) - COFFIN_INTRINSIC_ANGLE;
+      cf.position.set(fb.footX, fb.footY - drawnH * 0.5);
+      cf.tint = ALCHEMY_SUMMON_TINT;
+      cf.alpha = Math.min(1, spinIn * 1.5) * Math.min(1, spinOut * 1.5);
+      cf.visible = true;
     }
   }
 
