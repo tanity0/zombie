@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "923 files / 復号後 約696MB",
+ "generatedFor": "924 files / 復号後 約698MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2923,6 +2923,12 @@
    "h": 202,
    "bytes": 46956,
    "sha": "12d73aa5e6b7e2bc"
+  },
+  "sprites/mutant-liberty-walk.png": {
+   "w": 2100,
+   "h": 202,
+   "bytes": 364472,
+   "sha": "c829ed8745d4314a"
   },
   "sprites/npc/chen-0.png": {
    "w": 297,
