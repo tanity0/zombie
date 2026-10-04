@@ -245,7 +245,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   // スカジ氷=専用SE(社長提供) / それ以外(パンプキン着地等)=heavy-impact。
   // research/MUTANT_HERO.md: 英雄の斬撃・タックルは自分の音(下)。叩きつけ(棹立ち・跳躍)は重い音のまま。
   if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-') && b.moveKey !== 'liberty-flag' && b.moveKey !== 'liberty-arrow')) fx.playSfx('heavy-impact');
-  if (blasts.some(b => b.moveKey === 'liberty-arrow')) fx.playSfx('whip-swing', 0.45); // 矢の雨: 刺さる音は軽く(同じフレームに何本刺さっても1回)
+  if (blasts.some(b => b.moveKey === 'liberty-arrow')) fx.playSfx('anchor-plant', 0.5); // 矢の雨: 土に突き立つ音(旗振りと耳で区別できるように。同じフレームに何本刺さっても1回)
   if (blasts.some(b => b.moveKey === 'hero-slam')) fx.playSfx('hero-slam');
   if (blasts.some(b => b.moveKey === 'hero-slash')) fx.playSfx('hero-slash');
   if (blasts.some(b => b.moveKey === 'liberty-flag')) fx.playSfx('whip-swing'); // 旗(解放軍群): 刃の風切りではなく布が鳴る音
@@ -298,8 +298,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         }
       }
     } else if (b.moveKey === 'liberty-arrow') {
-      // research/LIBERTY_HORDE.md §4c: 矢が刺さる。土の粒だけ(矢の絵と刺さった跡は描画が出す)。全画面フラッシュなし。
-      fx.spawnBurst(b.x, b.y, '#8a6e58', 6);
+      // research/LIBERTY_HORDE.md §4c: 矢が刺さる。土が跳ねる粒と小さな土煙の輪(矢の絵と刺さった跡は描画が出す)。全画面フラッシュなし。
+      fx.spawnBurst(b.x, b.y, '#a08a70', 12);
+      fx.spawnRing(b.x, b.y, 4, b.radius * 0.9, 'rgba(160,138,112,0.6)', 3, 300);
     } else if (b.moveKey === 'driller-thrust') {
       // 削岩型の突き(検収監査#5): 雑魚の通常攻撃なので**全画面フラッシュは出さない**(3.5秒ごとに
       // 画面全体が明滅するのはうるさい)。判定終端の小さな火花+リングだけ(色はドリル=琥珀寄り)。

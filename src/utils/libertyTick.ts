@@ -10,6 +10,7 @@ import { useGameStore, resolveBountyMove, SCREAMER_WINDUP_MS, SCREAMER_BUFF_MS, 
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { isCorpse, spawnEnemyAtWithTier } from './enemyUtils';
 import { isPointInZoomedViewport, zoomedViewportBounds } from './cameraZoom';
+import { playSfx } from '../audio/audioManager';
 import { HERO_AGGRO_RANGE, HERO_PATROL_SPEED, HERO_STRIKE_MS, HERO_FLINCH_MS, heroPatrolNext, heroRestMs } from './heroScript';
 import { HERO_PATROL_DETOUR_PX, HERO_PATROL_DETOUR_MS } from './heroTick';
 import {
@@ -202,6 +203,7 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
       }
     }
   } else if (!stunned && !(bearer.liftUntil !== undefined && nowMs < bearer.liftUntil)
+    && !(bearer.libVolleyCastUntil !== undefined && gt < bearer.libVolleyCastUntil) // 号令の最中は振らない(1つの体は1つの動作・品質監査 A-3)
     && pl.health > 0 && onScreen && gt >= (bearer.libFlagReadyAt ?? 0)) {
     // 社長裁定2026-10-04「7は殴られながらでも振る」: 殴られた時の短いノックバック中でも振り始める(崩し・気絶・打ち上げ中は振らない)。
     const pcx2 = pl.x + pl.width / 2, pcy2 = pl.y + pl.height / 2;
@@ -224,19 +226,23 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   const casting = bearer.libVolleyCastUntil !== undefined && gt < bearer.libVolleyCastUntil;
   if (casting) attacking = true;
   else if (alerted && !attacking && !stunned && onScreen && s.alertSince !== null
-    && gt >= (bearer.libVolleyReadyAt ?? s.alertSince + LIB_VOLLEY_FIRST_DELAY_MS)) {
+    && gt >= Math.max(bearer.libVolleyReadyAt ?? 0, s.alertSince + LIB_VOLLEY_FIRST_DELAY_MS)) { // 見つけ直した時も2.5秒置く(品質監査 C-2)
     const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
     s.volleyQueue.push(...libVolleyArrows(vb, { x: pl.x + pl.width / 2, y: pl.y + pl.height / 2 }, gt, Math.random));
     s.volleyQueue.sort((a, b) => a.bornAt - b.bornAt);
     Object.assign(patch, { libVolleyCastUntil: gt + LIB_VOLLEY_CAST_MS, libVolleyReadyAt: gt + LIB_VOLLEY_COOLDOWN_MS, vx: 0, vy: 0 });
     attacking = true;
-    // 号令の合図(派手さの絵): 旗の高さから骨色の輪が二重に広がる。
+    // 号令の合図(派手さの絵): 旗の高さから骨色の輪が二重に広がる。声は叫喚の低い遠鳴り(号令の叫び)。
+    playSfx('screamer-cry', 0.45, undefined, 0.78);
     const g0 = useGameStore.getState();
     g0.spawnRing(bx, bearer.y + bearer.height - LIB_HEAD_PX, 12, 300, 'rgba(216,200,176,0.8)', 4, 560);
     g0.spawnRing(bx, bearer.y + bearer.height - LIB_HEAD_PX, 8, 190, 'rgba(127,29,29,0.75)', 3, 420);
   }
+  // 体勢崩し(紫)・気絶=号令ごと取り消す(まだ予告の出ていない矢も捨てる。予告の出た矢は崩しの共通処理が消す=全技キャンセルの裁定と同じ・品質監査 A-2)。
+  if (stunned) s.volleyQueue = [];
   {
-    const hits = bearer.giantDelayedHits ?? [];
+    // 書き戻しは**最新の**配列から(このフレームの途中で崩しの処理が予告を消していたら、消えたまま=復活させない)。
+    const hits = useGameStore.getState().enemies.find(e => e.id === bearer.id)?.giantDelayedHits ?? [];
     let changed = false;
     const keep: NonNullable<Enemy['giantDelayedHits']> = [];
     let stuck = (bearer.libArrowStuck ?? []).filter(a => gt - a.at < LIB_ARROW_STUCK_MS);
@@ -281,7 +287,11 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   } else if (alerted) {
     // その場に止まり(歩きの勢いを0.3秒ほどで殺す)、見つけた相手の方を向いて叫ぶ。
     // 見つけた瞬間の1回目は無条件で溜めへ(全体で1本のバフに握られない)。
-    if (attacking) {
+    if (attacking && casting && s.speed > 0) {
+      // 号令は予備動作=歩きの勢いを0.2秒ほどで殺してから立ち止まる(急停止しない・慣性)。
+      s.speed = Math.max(0, s.speed - LIB_BEARER_ACCEL * 2.5 * dt);
+      stepAlong();
+    } else if (attacking) {
       s.speed = 0; Object.assign(patch, { vx: 0, vy: 0 }); // 振っている間は動かない(向きは振り始めに決めたまま)
     } else {
       if (away) retreatStep();
@@ -308,7 +318,10 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     }
   } else {
     cancelWindup();
-    if (attacking) {
+    if (attacking && casting && s.speed > 0) {
+      s.speed = Math.max(0, s.speed - LIB_BEARER_ACCEL * 2.5 * dt);
+      stepAlong();
+    } else if (attacking) {
       s.speed = 0; Object.assign(patch, { vx: 0, vy: 0 });
     } else if (away) {
       // 周回中でも詰められたら距離を取る(相手の方を向いたまま後ずさる)。

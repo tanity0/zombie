@@ -221,7 +221,8 @@ import { airHopHeight01 } from '../utils/airHop';
 // ★v0.25.3818(§9-6「突進の走行中の体当たり」裁定(B)): 突進の走行中の赤い帯は「AABB の掃過領域」=判定と厳密に同じ形で描く。
 import { dashLineStrikeEnd, dashLineEraseRescale } from '../utils/geometry';
 import { SKADI_BLADE_NATIVE_ANGLE, RAFI_BLADE_NATIVE_ANGLE, PHILL_FEATHER_NATIVE_ANGLE } from '../utils/bladeArt';
-import { bossWideShotZoom } from '../utils/cameraZoom';
+import { bossWideShotZoom, zoomedViewportBounds } from '../utils/cameraZoom';
+import { LIB_VOLLEY_CAST_MS } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md §4c: 号令の旗の突き上げの尺
 import {
   GLEN_CHAIN, GLEN_SLOT_COUNT, GLEN_VISIBLE_BY_COUNT, glenPartCountFull,
   pushGlenTrail, sampleGlenTrail, glenChainDistances,
@@ -2121,9 +2122,9 @@ const HERO_SWORD_BLADE_LEN_FRAC = Math.hypot(
 ) / HERO_SWORD_W;
 // 振りは「当たる瞬間」を挟んで動く: 当たる110ms前に振り始め(加速)、当たった後150msで振り抜く(減速)。
 const HERO_SWING_LEAD_MS = 110, HERO_SWING_TAIL_MS = 150;
-// research/LIBERTY_HORDE.md §4c: 矢の雨の矢が落ちてくる尺と、落ち始めの位置(刺さる点から左上へ)。刺さった矢が薄れ始める時刻と薄れる尺
+// research/LIBERTY_HORDE.md §4c: 矢の雨の矢が落ちてくる尺(画面の上端の外から)と、落ちる向きの傾き(旗手=射手の側から・高さ1に対する横)。刺さった矢が薄れ始める時刻と薄れる尺
 // (合計は libertyScript.LIB_ARROW_STUCK_MS=1500 と同じ)。
-const LIB_ARROW_FALL_MS = 380, LIB_ARROW_FALL_DX = 150, LIB_ARROW_FALL_DY = 560;
+const LIB_ARROW_FALL_MS = 520, LIB_ARROW_FALL_SLANT = 0.27;
 const LIB_ARROW_STUCK_FADE_START = 1100, LIB_ARROW_STUCK_FADE_MS = 400;
 /**
  * 扇/帯をなぞって振る武器の絵(英雄のサーベル・解放軍群の旗)。握り=回す軸、先=範囲の縁をなぞる点。
@@ -9227,7 +9228,7 @@ export class PixiScene {
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime, now);
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
-    this.syncLibertyArrows(s.enemies, s.gameTime); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
+    this.syncLibertyArrows(s.enemies, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
@@ -15348,50 +15349,62 @@ export class PixiScene {
    * 予告=赤い円の流星(予告の出た瞬間に出て、刺さる瞬間に消え切る)。刺さる直前に矢が上から加速して落ち、刺さった矢は少し残って消える。
    * 旗手の体の描画とは別の通し(旗手が画面外にいても、画面内に落ちる矢の予告は必ず描く=赤くないのに当たる、を作らない)。
    */
-  private syncLibertyArrows(enemies: readonly Enemy[], gameTime: number): void {
+  private syncLibertyArrows(enemies: readonly Enemy[], gameTime: number, viewTopWorld: number): void {
     const g = this.libArrowGroundGfx, a = this.libArrowGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);
     if (!a.parent) this.L.effectLayer.addChild(a);
     g.clear(); a.clear();
     const style = telegraphStyleFor('mutant-liberty');
-    const drawArrow = (tx: number, ty: number, ang: number, len: number, alpha: number) => {
+    // 矢(クリエイティブ監査 #3: 暗い地面で読める色=木の竿に暗い縁・小さくくすんだ赤茶の矢羽・鉄の鏃)。
+    const drawArrow = (o: Graphics, tx: number, ty: number, ang: number, len: number, alpha: number) => {
       const cx = Math.cos(ang), cy = Math.sin(ang);
       const bx = tx - cx * len, by = ty - cy * len;
-      a.moveTo(bx, by).lineTo(tx - cx * 7, ty - cy * 7).stroke({ width: 2.5, color: 0x3b2a1e, alpha });
-      // 鏃(鉄の色)
-      a.moveTo(tx, ty).lineTo(tx - cx * 9 - cy * 4, ty - cy * 9 + cx * 4).lineTo(tx - cx * 9 + cy * 4, ty - cy * 9 - cx * 4).closePath()
-        .fill({ color: 0x9ca3af, alpha });
-      // 矢羽(骨色)
+      o.moveTo(bx, by).lineTo(tx - cx * 6, ty - cy * 6).stroke({ width: 4.5, color: 0x1a120c, alpha: alpha * 0.8 });
+      o.moveTo(bx, by).lineTo(tx - cx * 6, ty - cy * 6).stroke({ width: 2.5, color: 0x9a7b5c, alpha });
+      o.moveTo(tx, ty).lineTo(tx - cx * 10 - cy * 4.5, ty - cy * 10 + cx * 4.5).lineTo(tx - cx * 10 + cy * 4.5, ty - cy * 10 - cx * 4.5).closePath()
+        .fill({ color: 0xb8bec6, alpha });
       for (const sgn of [1, -1]) {
-        a.moveTo(bx + cx * 2, by + cy * 2).lineTo(bx - cx * 5 + (-cy) * 5 * sgn, by - cy * 5 + cx * 5 * sgn)
-          .stroke({ width: 2, color: 0xd8c8b0, alpha });
+        o.moveTo(bx + cx * 3, by + cy * 3).lineTo(bx - cx * 3 + (-cy) * 4 * sgn, by - cy * 3 + cx * 4 * sgn)
+          .stroke({ width: 2, color: 0x7f3a2a, alpha });
       }
     };
+    // 1本ごとの決まったばらつき(座標から決まる=毎フレーム揺れない)。
+    const hash01 = (x: number, y: number, k: number) => { const v = Math.sin(x * 12.9898 + y * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
     for (const e of enemies) {
       if (e.type !== 'mutant-liberty') continue;
-      for (const h of e.giantDelayedHits ?? []) {
+      const ex = e.x + e.width / 2;
+      // 旗手が倒れたら矢は刺さらない(libertyTick が止まる)=予告も描かない(赤いのに当たらない、を作らない・品質監査 A-1)。
+      const dead = isCorpse(e) || e.health <= 0;
+      for (const h of dead ? [] : e.giantDelayedHits ?? []) {
         if (h.moveKey !== 'liberty-arrow' || gameTime < h.bornAt) continue;
         const t = Math.max(0, Math.min(1, (gameTime - h.bornAt) / Math.max(1, h.fireAt - h.bornAt)));
         const mask = CIRCLE_SWEEP_ON
           ? this.drawSweepCircleFill(g, h.x, h.y, h.radius, t, 0xff2a2a, 0.26, style)
           : (g.circle(h.x, h.y, h.radius).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * t }), 1);
         g.circle(h.x, h.y, h.radius).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * mask });
-        // 落ちてくる矢: 刺さる LIB_ARROW_FALL_MS 前に左上の高い所から、加速しながら(重力)刺さる点へ。
+        // 落ちてくる矢(クリエイティブ監査 #4/#8): 画面の上端の外から、旗手のいる側(射手の側)から斜めに、加速しながら刺さる点へ。
         const left = h.fireAt - gameTime;
         if (left <= LIB_ARROW_FALL_MS) {
           const u = 1 - left / LIB_ARROW_FALL_MS;
           const k = u * u;
-          const sx = h.x - LIB_ARROW_FALL_DX, sy = h.y - LIB_ARROW_FALL_DY;
+          const sy = Math.min(h.y - 220, viewTopWorld - 80);
+          const side = ex >= h.x ? 1 : -1;
+          const sx = h.x + side * (h.y - sy) * LIB_ARROW_FALL_SLANT;
           const px = sx + (h.x - sx) * k, py = sy + (h.y - sy) * k;
-          drawArrow(px, py, Math.atan2(LIB_ARROW_FALL_DY, LIB_ARROW_FALL_DX), 44, Math.min(1, u * 3));
+          drawArrow(a, px, py, Math.atan2(h.y - sy, h.x - sx), 46, 1);
         }
       }
-      // 刺さった矢: 斜めに突き立ったまま少し残り、最後に薄れて消える(鏃は地面の中=見えない長さで描く)。
+      // 刺さった矢(#4/#6): 地面の層(人の下)。長さ・傾き・薄れ始めを1本ずつばらす。根元に接地の影。
       for (const s2 of e.libArrowStuck ?? []) {
         const age = gameTime - s2.at;
-        const fade = age < LIB_ARROW_STUCK_FADE_START ? 1 : Math.max(0, 1 - (age - LIB_ARROW_STUCK_FADE_START) / LIB_ARROW_STUCK_FADE_MS);
+        const r1 = hash01(s2.x, s2.y, 1), r2 = hash01(s2.x, s2.y, 2);
+        const fadeStart = LIB_ARROW_STUCK_FADE_START - 300 * r2;
+        const fade = age < fadeStart ? 1 : Math.max(0, 1 - (age - fadeStart) / LIB_ARROW_STUCK_FADE_MS);
         if (fade <= 0) continue;
-        drawArrow(s2.x, s2.y + 2, Math.atan2(LIB_ARROW_FALL_DY, LIB_ARROW_FALL_DX) + s2.tilt, 34, fade * 0.95);
+        const side = ex >= s2.x ? 1 : -1;
+        const ang = Math.atan2(1, -side * LIB_ARROW_FALL_SLANT) + s2.tilt * 2;
+        g.ellipse(s2.x, s2.y + 1, 5, 2).fill({ color: 0x000000, alpha: 0.35 * fade });
+        drawArrow(g, s2.x, s2.y + 2, ang, 26 + 14 * r1, fade * 0.95);
       }
     }
   }
@@ -31433,6 +31446,12 @@ export class PixiScene {
     const art = SWING_WEAPON_ART[e.type];
     if (!art) return;
     const tex = getTexture(art.tex);
+    // research/LIBERTY_HORDE.md §4c(クリエイティブ監査 #1): 矢の雨の号令=旗を天へ突き上げる(速く上げ→静止→ゆっくり下ろす)。
+    if (e.type === 'mutant-liberty' && tex && e.libVolleyCastUntil !== undefined && gameTime < e.libVolleyCastUntil
+      && e.bossState !== 'hero-windup' && e.bossState !== 'hero-strike' && e.bossState !== 'hero-recover') {
+      this.drawLibertyRaise(e, view, art, tex, gameTime, now);
+      return;
+    }
     const st = e.bossState;
     const live = (st === 'hero-windup' || st === 'hero-motion') && e.heroShape && e.heroMove
       ? { shape: e.heroShape, move: e.heroMove, step: e.heroStep ?? 0 } : null;
@@ -31575,6 +31594,39 @@ export class PixiScene {
     this.trackWeaponVanish(`hero-sword:${e.id}`, now, [{ sp: ksp, alpha: ksp.alpha, y: ksp.position.y }], c);
   }
   private heroSwordLastTip = new Map<string, { x: number; y: number; hx: number; hy: number }>();
+
+  /** 旗手の号令: 旗を体の上へ突き上げる(竿はほぼ垂直・向いている側へ少し倒す)。旗振りと同じ器(heroSwordFx)を使う。 */
+  private drawLibertyRaise(e: Enemy, view: ActorView, art: SwingWeaponArt, tex: NonNullable<ReturnType<typeof getTexture>>, gameTime: number, now: number): void {
+    const until = e.libVolleyCastUntil ?? gameTime;
+    const u = Math.max(0, Math.min(1, 1 - (until - gameTime) / LIB_VOLLEY_CAST_MS));
+    // 上げ=最初の25%で速く(ease-out)・保持・最後の30%でゆっくり下ろす(ease-in)。
+    const lift = u < 0.25 ? 1 - Math.pow(1 - u / 0.25, 3) : u > 0.7 ? 1 - Math.pow((u - 0.7) / 0.3, 2) : 1;
+    const face = (e.heroFaceX ?? -1) >= 0 ? 1 : -1;
+    const sc = art.fixedScale ?? 1.15;
+    const footY = e.y + e.height;
+    const gx = e.x + e.width / 2 + face * 22, gy = footY - 70 - 90 * lift;
+    const ang = -Math.PI / 2 + face * (0.12 + 0.35 * (1 - lift));
+    let c = this.heroSwordFx.get(e.id);
+    if (!c || c.destroyed) {
+      c = new Container();
+      const ksp = new Sprite(); ksp.anchor.set(art.grip.x, art.grip.y);
+      c.addChild(ksp);
+      this.heroSwordFx.set(e.id, c);
+    }
+    const vc = view.container;
+    if (c.parent !== vc) { c.parent?.removeChild(c); vc.addChild(c); }
+    const ksp = c.children[0] as Sprite;
+    if (ksp.texture !== tex) ksp.texture = tex;
+    const flip = face > 0 ? 1 : -1; // 布は向いている側の反対へなびく
+    ksp.scale.set(sc, sc * flip);
+    ksp.rotation = ang - art.intrinsic * flip;
+    const ease = this.weaponAppearEase(`hero-sword:${e.id}`, now);
+    ksp.position.set(gx, gy + ease.dy);
+    ksp.alpha = Math.min(1, 0.25 + lift) * ease.alphaMul;
+    ksp.visible = true;
+    c.visible = true;
+    this.trackWeaponVanish(`hero-sword:${e.id}`, now, [{ sp: ksp, alpha: ksp.alpha, y: ksp.position.y }], c);
+  }
 
   private drawHeroTelegraph(e: Enemy, view: ActorView, o: Graphics, gameTime: number, now: number): void {
     const st = e.bossState;

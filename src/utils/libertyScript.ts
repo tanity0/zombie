@@ -170,6 +170,13 @@ export const LIB_VOLLEY_COOLDOWN_MS = 9000;
 export const LIB_VOLLEY_FIRST_DELAY_MS = 2500;
 /** 刺さった矢が残る時間(描画だけ)。 */
 export const LIB_ARROW_STUCK_MS = 1500;
+/**
+ * 画面の上のこの割合は空と遠景(プレイヤーが立てない地平線の帯)=矢を落とさない(クリエイティブ監査 #5)。
+ * 「全射程」は「プレイヤーが居られる所すべて」と読む。
+ */
+export const LIB_VOLLEY_SKY_FRAC = 0.3;
+/** 遅れて落ちる矢(斉射の尾)の本数。 */
+export const LIB_VOLLEY_STRAGGLERS = 3;
 
 export interface LibArrow { x: number; y: number; bornAt: number; fireAt: number }
 
@@ -188,10 +195,14 @@ export const libVolleyArrows = (
       const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * LIB_VOLLEY_NEAR_SPREAD_PX;
       x = target.x + Math.cos(a) * r; y = target.y + Math.sin(a) * r;
     } else {
+      const top = bounds.top + (bounds.bottom - bounds.top) * LIB_VOLLEY_SKY_FRAC;
       x = bounds.left + rng() * (bounds.right - bounds.left);
-      y = bounds.top + rng() * (bounds.bottom - bounds.top);
+      y = top + rng() * (bounds.bottom - top);
     }
-    const bornAt = start + Math.round(rng() * LIB_VOLLEY_SPAN_MS);
+    // 斉射の形(クリエイティブ監査 #10): 最初の数本→中ほどが密→遅れて数本。一様にばらさない。
+    const straggler = i >= LIB_VOLLEY_ARROWS - LIB_VOLLEY_STRAGGLERS;
+    const u = straggler ? 0.9 + 0.1 * rng() : 0.85 * (rng() + rng()) / 2;
+    const bornAt = start + Math.round(u * LIB_VOLLEY_SPAN_MS);
     out.push({ x, y, bornAt, fireAt: bornAt + LIB_ARROW_WINDUP_MS });
   }
   return out.sort((a, b) => a.bornAt - b.bornAt);
