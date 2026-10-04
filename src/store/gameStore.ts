@@ -394,7 +394,7 @@ import { GAME_SPEED } from '../config/gameSpeed';
 import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS, isEliteFatalStun } from '../utils/meleeExecute';
 import { killSlashNeckPosition } from '../utils/killSlashFx'; // KILL時の首元斬撃(fx/kill-slash・社長指示2026-09-16)
 import { heroBodyWallRect } from '../utils/heroScript'; // research/MUTANT_HERO.md: 英雄の体の壁(葉モジュール=循環しない)
-import type { ThirdPartyShape } from '../utils/heroBlast'; // 型のみ(実体は heroBlast が gameStore を読むので循環させない)
+import type { ThirdPartyShape } from '../utils/thirdPartyShape'; // 依存ゼロの葉(heroBlast は gameStore を読むので、そこから型を引くと循環する)
 
 // research/MUTANT_HERO.md §4-2: 「今プレイヤーにしか当たっていない技」を守護霊と英雄にも当てる入口。
 // 実体は utils/heroBlast.ts の hitThirdParties(あちらが gameStore を import するので、ここは遅延フックで受ける)。

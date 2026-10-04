@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.4830 — CI の赤を直す(循環import: gameStore → heroBlast → gameStore)【2026-10-04 15:50 JST】
+- CI の「Circular imports」が英雄の段2(gameStore が `ThirdPartyShape` の型を heroBlast から引いた・v0.25.4809 前後)から落ち続けていた。push 前に循環チェックを回していなかった=気づかなかった。
+- 型を依存ゼロの葉 `utils/thirdPartyShape.ts` へ移し、heroBlast は再輸出。`node scripts/check-circular-imports.mjs` 緑(新規なし・既知2本)。
+- 検証: typecheck / lint(0 errors)/ 循環チェック / assets:check / build をローカルで通した。
+
 ## v0.25.4829 — 新敵「解放軍群(変異)」実装(旗手+バット男5体・深層域の周回・叫喚・補充)【2026-10-04 15:46 JST】
 - 設計書 research/LIBERTY_HORDE.md(着手前の品質監査を反映済み)どおり。
 - 型 `mutant-liberty`(ボス級・接触ダメージ0・技なし)。登録: ENEMY_STATS/isBossType/CONSTANT_STRENGTH/名前/カットイン/アイコン/ヒント/体勢値90/画面外の印(交戦中だけ)/表示倍率2.4/立ち絵とシート(14コマ・遅延組)/体の壁/画面外の被弾ゲート/接触の素通り(プレイヤー・召喚)/倒したら叫喚バフ即失効(`screamerBuffCutOnKillPatch`)。

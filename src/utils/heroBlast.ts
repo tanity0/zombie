@@ -168,13 +168,9 @@ export const applyContactToHero = (gameTime: number): boolean => {
 /** (旧: 守護霊の弾きの音の注入口。弾きを外したので何もしない。呼び手の互換のために残す。) */
 export const setThirdPartySfx = (_fn: (key: 'counter' | 'headshot', gain: number) => void): void => {};
 
-export type ThirdPartyShape =
-  | { kind: 'circle'; cx: number; cy: number; r: number }
-  | { kind: 'capsule'; fx: number; fy: number; tx: number; ty: number; hw: number }
-  | { kind: 'rect'; x: number; y: number; w: number; h: number }
-  | { kind: 'fan'; cx: number; cy: number; angle: number; halfArc: number; radius: number }
-  /** 既存の当たり判定の関数をそのまま使いたい時(多角形など)。hits(相手の中心x, y, 当たり半径)。fx/fy=被弾の向きの源。 */
-  | { kind: 'test'; hits: (cx: number, cy: number, r: number) => boolean; fx: number; fy: number };
+// 形の型は葉モジュールに置く(gameStore がこの型を使う=ここに置くと循環importになる)。
+export type { ThirdPartyShape } from './thirdPartyShape';
+import type { ThirdPartyShape } from './thirdPartyShape';
 
 /** 円(中心・半径)の相手に形が触れるか。 */
 export const shapeHitsCircle = (s: ThirdPartyShape, cx: number, cy: number, r: number): boolean => {
