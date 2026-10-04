@@ -2933,8 +2933,8 @@
   "sprites/mutant-liberty-walk.png": {
    "w": 2100,
    "h": 202,
-   "bytes": 364472,
-   "sha": "c829ed8745d4314a"
+   "bytes": 349020,
+   "sha": "1517a25cdb6bf527"
   },
   "sprites/mutant-liberty-weapon.png": {
    "w": 70,
@@ -2945,8 +2945,8 @@
   "sprites/mutant-liberty.png": {
    "w": 150,
    "h": 202,
-   "bytes": 33201,
-   "sha": "178648c6b6a9a761"
+   "bytes": 30572,
+   "sha": "a33bced96c8cbde5"
   },
   "sprites/npc/chen-0.png": {
    "w": 297,
