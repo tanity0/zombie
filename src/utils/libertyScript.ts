@@ -95,3 +95,25 @@ export const hordeJitter = (id: string): { gap: number; lat: number } => {
   const a = ((h >>> 0) % 1000) / 999, b = (((h >>> 10) >>> 0) % 1000) / 999;
   return { gap: (a * 2 - 1) * LIB_JITTER_PX, lat: (b * 2 - 1) * LIB_JITTER_PX };
 };
+
+/** 社長指示2026-10-04「プレイヤーが100px以内に近づくとゆっくり距離を取る」: 体(判定の矩形)の縁からの距離。 */
+export const LIB_RETREAT_RANGE_PX = 100;
+/** 距離を取る歩きの速さ(px/s)=周回と同じゆっくりした歩き。 */
+export const LIB_RETREAT_SPEED = 48;
+/** 向きを変える速さ(1秒あたりの寄せ率)。急に向きが跳ばない=慣性。 */
+export const LIB_TURN_PER_S = 6;
+
+/**
+ * 旗手の体(矩形)の縁からプレイヤー中心までが range 以内なら、離れる向き(単位ベクトル)。外なら null。
+ * 向きは体の中心からプレイヤーの反対側(重なっている時も中心基準で決まる)。
+ */
+export const libRetreatDir = (
+  rect: { x: number; y: number; width: number; height: number }, px: number, py: number, range: number,
+): { x: number; y: number } | null => {
+  const nx = Math.max(rect.x, Math.min(px, rect.x + rect.width));
+  const ny = Math.max(rect.y, Math.min(py, rect.y + rect.height));
+  if (Math.hypot(px - nx, py - ny) > range) return null;
+  const dx = rect.x + rect.width / 2 - px, dy = rect.y + rect.height / 2 - py;
+  const l = Math.hypot(dx, dy);
+  return l > 1e-6 ? { x: dx / l, y: dy / l } : { x: 1, y: 0 };
+};

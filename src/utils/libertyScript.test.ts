@@ -1,6 +1,6 @@
 // research/LIBERTY_HORDE.md: 解放軍群(変異)の純関数のテスト。
 import { describe, it, expect } from 'vitest';
-import { libPatrolRadius, trailPointAt, maleBatId, ringPointBehind, hordeJitter, LIB_JITTER_PX, LIB_ESCORTS, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX, LIB_SLOT_GAP_PX } from './libertyScript';
+import { libRetreatDir, LIB_RETREAT_RANGE_PX, libPatrolRadius, trailPointAt, maleBatId, ringPointBehind, hordeJitter, LIB_JITTER_PX, LIB_ESCORTS, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX, LIB_SLOT_GAP_PX } from './libertyScript';
 import { variantTextureName } from './enemyVariant';
 import { countsTowardEnemyCap, isBossType } from './enemyUtils';
 
@@ -39,6 +39,14 @@ describe('解放軍群(変異)', () => {
       seen.add(Math.round(j.gap));
     }
     expect(seen.size).toBeGreaterThan(5);
+  });
+  it('体の縁から100px以内に来たら、プレイヤーの反対側へ離れる', () => {
+    const rect = { x: 0, y: 0, width: 110, height: 60 };
+    expect(libRetreatDir(rect, 55, 60 + LIB_RETREAT_RANGE_PX + 1, LIB_RETREAT_RANGE_PX)).toBeNull();
+    const d = libRetreatDir(rect, 55, 60 + LIB_RETREAT_RANGE_PX - 1, LIB_RETREAT_RANGE_PX)!;
+    expect(d.x).toBeCloseTo(0); expect(d.y).toBeCloseTo(-1);
+    const left = libRetreatDir(rect, -50, 30, LIB_RETREAT_RANGE_PX)!;
+    expect(left.x).toBeCloseTo(1);
   });
   it('旗手と取り巻きは盤面の上限に数えない。旗手はボス級', () => {
     expect(countsTowardEnemyCap({ type: 'mutant-liberty' })).toBe(false);

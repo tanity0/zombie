@@ -15,7 +15,7 @@ import { HERO_PATROL_DETOUR_PX, HERO_PATROL_DETOUR_MS } from './heroTick';
 import {
   LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_STEP_PX, LIB_TRAIL_MAX, LIB_LOSE_RANGE_MULT, LIB_LOSE_MS,
   LIB_RETURN_SPEED, LIB_RETURN_ARRIVE_PX, LIB_REFILL_BEHIND_PX, LIB_RETURN_EASE_PER_S, LIB_BEARER_ACCEL,
-  LIB_HEAD_PX, LIB_SCREAM_FX_SCALE, LIB_HIT_ALERT_MS, trailPointAt, maleBatId, hordeJitter,
+  LIB_HEAD_PX, LIB_SCREAM_FX_SCALE, LIB_HIT_ALERT_MS, LIB_RETREAT_RANGE_PX, LIB_RETREAT_SPEED, LIB_TURN_PER_S, libRetreatDir, trailPointAt, maleBatId, hordeJitter,
 } from './libertyScript';
 
 export interface LibertyTickState {
@@ -137,6 +137,21 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     if (bearer.libScreamUntil !== undefined) patch.libScreamUntil = undefined;
     cancelScreamerWindupFx(s.windupFx); s.windupFx = [];
   };
+  // 社長指示2026-10-04: プレイヤーが体の縁から100px以内に来たら、ゆっくり距離を取る(見つけている時も周回中も)。
+  // 向きはプレイヤーの反対側へ少しずつ寄せる(急に向きが跳ばない)。叫びの溜めは続く(下がりながら叫ぶ)。
+  const pl = st.player;
+  const away = pl.health > 0
+    ? libRetreatDir(bearer, pl.x + pl.width / 2, pl.y + pl.height / 2, LIB_RETREAT_RANGE_PX)
+    : null;
+  const retreatStep = (): void => {
+    if (!away) return;
+    const k = Math.min(1, LIB_TURN_PER_S * dt);
+    const hx = s.speed > 1 ? s.dirX + (away.x - s.dirX) * k : away.x;
+    const hy = s.speed > 1 ? s.dirY + (away.y - s.dirY) * k : away.y;
+    const hl = Math.hypot(hx, hy) || 1;
+    s.dirX = hx / hl; s.dirY = hy / hl;
+    s.speed = Math.min(LIB_RETREAT_SPEED, s.speed + LIB_BEARER_ACCEL * dt);
+  };
   /** 今の向き(dirX/dirY)へ speed で1フレーム進む(障害物→行ける帯)。 */
   const stepAlong = () => {
     const step = s.speed * dt;
@@ -162,9 +177,10 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   } else if (alerted) {
     // その場に止まり(歩きの勢いを0.3秒ほどで殺す)、見つけた相手の方を向いて叫ぶ。
     // 見つけた瞬間の1回目は無条件で溜めへ(全体で1本のバフに握られない)。
-    s.speed = Math.max(0, s.speed - LIB_BEARER_ACCEL * dt);
+    if (away) retreatStep();
+    else s.speed = Math.max(0, s.speed - LIB_BEARER_ACCEL * dt);
     stepAlong();
-    patch.heroFaceX = (sight.x >= bx ? 1 : -1) as 1 | -1;
+    patch.heroFaceX = (sight.x >= bx ? 1 : -1) as 1 | -1; // 下がる間も相手を向いたまま(後ずさり)
     const screamUntil = bearer.libScreamUntil;
     if (screamUntil !== undefined) {
       if (gt >= screamUntil) {
@@ -180,7 +196,12 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     }
   } else {
     cancelWindup();
-    if (bearer.libPatrolR !== undefined) {
+    if (away) {
+      // 周回中でも詰められたら距離を取る(相手の方を向いたまま後ずさる)。
+      retreatStep();
+      stepAlong();
+      patch.heroFaceX = (pl.x + pl.width / 2 >= bx ? 1 : -1) as 1 | -1;
+    } else if (bearer.libPatrolR !== undefined) {
       // 周回: 英雄と同じ速さ・同じ回り込み(輪の外/内へずらして障害物を抜ける)。
       const R = bearer.libPatrolR;
       const ang = Math.atan2(by, bx);
