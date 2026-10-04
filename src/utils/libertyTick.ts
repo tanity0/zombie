@@ -10,7 +10,7 @@ import { useGameStore, resolveBountyMove, SCREAMER_WINDUP_MS, SCREAMER_BUFF_MS, 
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
 import { isCorpse, spawnEnemyAtWithTier } from './enemyUtils';
 import { isPointInZoomedViewport } from './cameraZoom';
-import { HERO_AGGRO_RANGE, HERO_PATROL_SPEED, HERO_STRIKE_MS, heroPatrolNext } from './heroScript';
+import { HERO_AGGRO_RANGE, HERO_PATROL_SPEED, HERO_STRIKE_MS, HERO_FLINCH_MS, heroPatrolNext, heroRestMs } from './heroScript';
 import { HERO_PATROL_DETOUR_PX, HERO_PATROL_DETOUR_MS } from './heroTick';
 import {
   LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_STEP_PX, LIB_TRAIL_MAX, LIB_LOSE_RANGE_MULT, LIB_LOSE_MS,
@@ -162,10 +162,26 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   const stunned = (bearer.bossFullStunUntil !== undefined && gt < bearer.bossFullStunUntil)
     || (bearer.stunUntil !== undefined && gt < bearer.stunUntil);
   let attacking = false;
-  // カウンターで弾かれた印(共通のパリィ処理が書く)。旗手は怯みを持たないので、印を消すだけ(残しておくと
-  // 「反応待ち」と読む処理が将来付いた時に誤動作する・品質監査 B-2)。
-  if (bearer.bossMoveCutPending) patch.bossMoveCutPending = false;
-  if (atk === 'hero-windup' || atk === 'hero-strike' || atk === 'hero-recover') {
+  if (bearer.bossMoveCutPending) {
+    // カウンターで弾かれた(社長裁定2026-10-04「英雄と同じく」): 怯んで少し後ずさる(700ms・40px)→ 長めの休み。
+    const back = -((bearer.heroFaceX ?? -1) as number) * 40;
+    Object.assign(patch, {
+      bossMoveCutPending: false, bossState: 'hero-flinch', bossStateUntil: gt + HERO_FLINCH_MS, heroStateAt: gt,
+      heroShape: undefined, heroHitAt: undefined, libFlagReadyAt: gt + HERO_FLINCH_MS + heroRestMs('countered'),
+      heroFromX: bx, heroFromY: by, heroToX: bx + back, heroToY: by,
+    });
+    attacking = true;
+  } else if (atk === 'hero-flinch') {
+    // 怯み: 弾かれた勢いで後ずさる(速く出てゆっくり止まる=慣性)。終わったら元の動きへ。
+    if (gt >= (bearer.bossStateUntil ?? 0)) patch.bossState = undefined;
+    else {
+      attacking = true;
+      const u = Math.min(1, (gt - (bearer.heroStateAt ?? gt)) / HERO_FLINCH_MS);
+      const e2 = 1 - Math.pow(1 - u, 3);
+      const fx = bearer.heroFromX ?? bx, fy = bearer.heroFromY ?? by, tx = bearer.heroToX ?? bx, ty = bearer.heroToY ?? by;
+      Object.assign(patch, placeAt(bearer, fx + (tx - fx) * e2, fy + (ty - fy) * e2));
+    }
+  } else if (atk === 'hero-windup' || atk === 'hero-strike' || atk === 'hero-recover') {
     if (stunned) {
       Object.assign(patch, { bossState: undefined, heroShape: undefined, heroHitAt: undefined, libFlagReadyAt: gt + LIB_FLAG_COOLDOWN_MS });
     } else {
@@ -180,7 +196,9 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
         attacking = false;
       }
     }
-  } else if (!frozen && pl.health > 0 && onScreen && gt >= (bearer.libFlagReadyAt ?? 0)) {
+  } else if (!stunned && !(bearer.liftUntil !== undefined && nowMs < bearer.liftUntil)
+    && pl.health > 0 && onScreen && gt >= (bearer.libFlagReadyAt ?? 0)) {
+    // 社長裁定2026-10-04「7は殴られながらでも振る」: 殴られた時の短いノックバック中でも振り始める(崩し・気絶・打ち上げ中は振らない)。
     const pcx2 = pl.x + pl.width / 2, pcy2 = pl.y + pl.height / 2;
     if (edgeDistToRectPt(bearer, pcx2, pcy2) <= LIB_FLAG_TRIGGER_PX) {
       Object.assign(patch, {
@@ -206,7 +224,7 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     // 消す時は予兆も消す(輪が完成して叫ばない=予告の嘘を作らない)。
     Object.assign(patch, { vx: 0, vy: 0 });
     s.speed = 0;
-    if (bearer.bossFullStunUntil !== undefined && gt < bearer.bossFullStunUntil) cancelWindup();
+    if ((bearer.bossFullStunUntil !== undefined && gt < bearer.bossFullStunUntil) || attacking) cancelWindup();
     else if (alerted && bearer.libScreamUntil !== undefined && gt >= bearer.libScreamUntil) {
       patch.libScreamUntil = undefined;
       s.windupFx = [];
@@ -226,7 +244,11 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
       patch.heroFaceX = (sight.x >= bx ? 1 : -1) as 1 | -1; // 下がる間も相手を向いたまま(後ずさり)
     }
     const screamUntil = bearer.libScreamUntil;
-    if (screamUntil !== undefined) {
+    if (attacking) {
+      // 社長裁定2026-10-04「3は推薦」: 旗を振っている(怯んでいる)間は叫ばない=1つの体は1つの動作。
+      // 叫びの溜めの途中で振り始めたら溜めは消す(予兆も消す)。振り終われば次のフレームから溜め直す。
+      cancelWindup();
+    } else if (screamUntil !== undefined) {
       if (gt >= screamUntil) {
         patch.libScreamUntil = undefined;
         s.windupFx = [];

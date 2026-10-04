@@ -138,8 +138,18 @@ export const IMPACT_AT_WINDUP_END_BOSS_STATES: readonly string[] = [
   'uri:sweep-windup', 'uri:downslash-windup',
   'suriel:sweep-windup', 'suriel:ring-spin-windup', 'suriel:ring-beam-windup',
 ];
+/**
+ * 社長裁定2026-10-04「5は推薦で」: 英雄(変異)の技と解放軍群(変異)の旗振り(担当=blast)。守護霊が着弾逆算で構える対象。
+ * 英雄の踏み込み・跳躍・走りは溜めの後に動いてから当たる=当たる時刻は州の終わりではなく `heroHitAt`(ghostDriver が優先して読む)。
+ * **コマ台帳(EPISODE_KEYS)には入れない**(図形の宣言・記録の対象を広げない=構えの時刻だけ)。
+ */
+export const HERO_IMPACT_STATES: readonly string[] = [
+  'mutant-hero:hero-windup', 'mutant-hero:hero-motion',
+  'mutant-liberty:hero-windup',
+];
 export const impactAtWindupEnd = (enemyType: string, bossState: string | undefined): boolean =>
-  bossState !== undefined && IMPACT_AT_WINDUP_END_BOSS_STATES.includes(`${enemyType}:${bossState}`);
+  bossState !== undefined && (IMPACT_AT_WINDUP_END_BOSS_STATES.includes(`${enemyType}:${bossState}`)
+    || HERO_IMPACT_STATES.includes(`${enemyType}:${bossState}`));
 
 /**
  * 逆算の判定: 「ダメージが出る瞬間」までの残りが実効先行時間以内なら、今このtickで振る。

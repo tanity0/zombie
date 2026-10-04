@@ -24,10 +24,11 @@ import type { Enemy } from '../types/game';
 //  - angelBossTick.ts : 天使6体(ミゲル/ジブリル/ラフィ/ウリ/スリィエル/アクラシエル)の bossState
 //  - useGameLoop.ts   : 裏ボス4体(ミーミル/ヨルムンガルド/スカジ/トール)の bossState
 //  - idolTick.ts      : idol の bossState(v0.25.2613でuseGameLoopから移設)
+//  - heroTick.ts / libertyTick.ts: 英雄(変異)の hero-* と、それを流用する解放軍群(変異)の旗振り(2026-10-04)
 //  - mimirLaserTrack.ts: §6.33 LASER-TRACK の遷移パッチ('laser-broken' はここが正本。
 //    v0.25.2938 監査指摘8: 状態名が純関数側に書かれると走査の外に出る=足し忘れると網が破れる)
 const SOURCES = import.meta.glob<string>(
-  ['../store/gameStore.ts', './angelBossTick.ts', '../hooks/useGameLoop.ts', './idolTick.ts', './mimirLaserTrack.ts'],
+  ['../store/gameStore.ts', './angelBossTick.ts', '../hooks/useGameLoop.ts', './idolTick.ts', './mimirLaserTrack.ts', './heroTick.ts', './libertyTick.ts'],
   { query: '?raw', import: 'default', eager: true },
 );
 
@@ -100,6 +101,7 @@ const probe = (state: string, entry: TelegraphLedgerEntry): Enemy => {
   if (shape === 'circle-target' || entry.ghostShape?.kind === 'circle-target') {
     return { ...base, aiTargetX: 100, aiTargetY: 0 };
   }
+  if (entry.ghostShape?.kind === 'hero-shape') return { ...base, heroShape: { kind: 'circle', cx: 0, cy: 0, radius: 150 } } as unknown as Enemy;
   if (shape === 'stomp') return { ...base, gStompRadius: 92 };
   if (shape === 'tri-jump') return { ...base, gTriJumpPts: [80, 0, 160, 0], gTriJumpIdx: 0 };
   if (shape === 'delayed') {

@@ -67,7 +67,12 @@ export type SharedShape = 'band' | 'circle-target' | 'stomp' | 'tri-jump' | 'del
 export type GhostShape =
   | { kind: 'band'; range?: number }
   | { kind: 'circle-self'; radius: number }
-  | { kind: 'circle-target'; radius: number; targetIsTopLeft?: boolean };
+  | { kind: 'circle-target'; radius: number; targetIsTopLeft?: boolean }
+  /**
+   * 敵が今持っている判定の図形(`heroShape`)をそのまま読む(英雄・解放軍群の旗手)。円=円・扇=扇の半径の円(安全側)・
+   * 帯=帯。図形は溜めの開始で確定して当たるまで動かない=判定と同じ物を避ける。
+   */
+  | { kind: 'hero-shape' };
 
 export type TelegraphCoverage = 'shared' | 'ghost' | 'both' | 'none';
 
@@ -245,6 +250,16 @@ put(LEDGER, ['burst-windup', 'burst'], {
   coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: ACRASIEL_BURST_RADIUS_MIRROR },
   types: ['acrasiel'],
   note: 'アクラシエルの大円。**裏ボスの同名 burst は弾3連**なので type で分ける(弾は projectileDodge)。',
+});
+// 社長裁定2026-10-04「5は推薦で」: 英雄(変異)の技と、解放軍群(変異)の旗振りを守護霊も避ける(英雄の器=heroShape を読む)。
+put(LEDGER, ['hero-windup', 'hero-motion'], {
+  coverage: 'ghost', ghostShape: { kind: 'hero-shape' },
+  types: ['mutant-hero', 'mutant-liberty'],
+  note: '英雄の振り下ろし・薙ぎ・払い・突進・叩きつけと、旗手の旗振り。判定の図形(heroShape)をそのまま読む(扇は扇の半径の円=安全側)。',
+});
+put(LEDGER, ['hero-turn', 'hero-flinch', 'hero-roar', 'hero-recover', 'hero-idle', 'hero-strike'], {
+  coverage: 'none',
+  note: '英雄・旗手の向き直り/怯み/咆哮/残心/佇み/振り抜き。判定は溜め(hero-windup)と動き(hero-motion)の終わりに積む爆風だけ=ここで避ける図形は無い。',
 });
 put(LEDGER, ['bite-windup'], {
   coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: MIMIR_BITE_RADIUS_MIRROR },
@@ -468,6 +483,12 @@ const threatFor = (
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
   // GHOST-CMD-1B: 円形はタグを付ける(避け方向の癖の回転対象)。帯はタグ無しのまま。
   if (shape.kind === 'circle-self') return tagCircle(circleThreat(pcx, pcy, ecx, ecy, shape.radius));
+  if (shape.kind === 'hero-shape') {
+    const hs = e.heroShape;
+    if (!hs) return null;
+    if (hs.kind === 'circle' || hs.kind === 'fan') return tagCircle(circleThreat(pcx, pcy, hs.cx, hs.cy, hs.radius));
+    return bandThreat(pcx, pcy, hs.fx, hs.fy, hs.tx, hs.ty, hs.halfWidth);
+  }
   if (shape.kind === 'circle-target') {
     const half = shape.targetIsTopLeft ? { x: e.width / 2, y: e.height / 2 } : { x: 0, y: 0 };
     const tx = (e.aiTargetX ?? e.x) + half.x, ty = (e.aiTargetY ?? e.y) + half.y;

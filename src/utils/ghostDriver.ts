@@ -1138,7 +1138,8 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // でしか始まらず、g-stomp/g-trishot/g-bolt等の予告は請求ゼロでゾーン被弾するだけだった)。
   // 消費側は爆風パリィ(blast)と弾反射(窓)が元から居る=構え側だけの写し漏れ。
   const windupImpactAt = impactAtWindupEnd(target.type, target.bossState)
-    ? target.bossStateUntil
+    // 英雄・旗手は当たる時刻を `heroHitAt` に持つ(動いてから当たる技は州の終わりと一致しない)。
+    ? (target.heroHitAt ?? target.bossStateUntil)
     : (aimWindup ? target.aiPhaseUntil : undefined);
   // ★社長報告2026-08-27「やはり守護霊はカウンターを取ってない」(v0.25.3979): 表の予告中の構えを
   // **近接間合い(74px)でゲートしない**——守護霊は普段 preferredDist(180〜300px)で立つため、

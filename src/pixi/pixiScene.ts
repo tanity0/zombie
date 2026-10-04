@@ -2140,6 +2140,11 @@ interface SwingWeaponArt {
    * false=刃の反りを向きで固定(サーベル)。旗の布は竿の左(握り→先の向きの反時計回り側)に垂れている。
    */
   trailsCloth: boolean;
+  /**
+   * 絵の倍率を固定する時(world px / 絵の px)。省略=握り→先が範囲の半径Rになるまで拡大し、握りを範囲の起点に置く(サーベル)。
+   * 指定=**軸を持たない**: 絵はこの倍率のまま、先を範囲の縁(R)に置き、竿を半径の線に重ねる(社長指示2026-10-04 旗)。
+   */
+  fixedScale?: number;
 }
 type SwingWeaponLook = Omit<SwingWeaponArt, 'tex' | 'grip' | 'intrinsic' | 'bladePx'>;
 const swingWeaponArt = (tex: string, W: number, H: number, grip: { x: number; y: number }, tip: { x: number; y: number }, look: SwingWeaponLook): SwingWeaponArt => ({
@@ -2157,8 +2162,11 @@ const SWING_WEAPON_ART: Readonly<Record<string, SwingWeaponArt>> = {
   // クリエイティブ監査2026-10-04: 空気を裂くのは布=跡は布の高さ(0.35〜0.95R)に布の骨色で太く長く。重いので振りは遅く尾を引く
   // (振り始め180ms前・振り切り300ms・残心で深く沈む)。刃の震え・切っ先の血は無し。布は振りの後ろへ流れる。
   'mutant-liberty': swingWeaponArt('mutant-liberty-weapon', 70, 86, { x: 31 / 70, y: 85.5 / 86 }, { x: 60.5 / 70, y: 0.5 / 86 }, {
-    trail: 0xd8c8b0, trailIn: 0.35, trailOut: 0.97, trailA: 0.42, trailLingerMs: 420, tipBlood: false,
+    trail: 0xd8c8b0, trailA: 0.42, trailLingerMs: 420, tipBlood: false,
     leadMs: 180, tailMs: 300, sinkDeg: 55, tremor: false, trailsCloth: true,
+    // 社長指示2026-10-04「軸無し、振る範囲にRと旗の同線を合わせる」: 体と同じドット密度(立ち絵202px→約230px=1.15倍)で、
+    // 先を範囲の縁に置いて竿を半径の線に重ねる。足元から生える竿にしない。跡は布のある外側(0.5〜1.0R)。
+    fixedScale: 1.15, trailIn: 0.5, trailOut: 1.0,
   }),
 };
 // 手の位置(立ち絵の左向き基準・足元からの比率)。シートのコマで手は動くので近似。
@@ -31486,16 +31494,19 @@ export class PixiScene {
     }
     const ksp = c.children[0] as Sprite;
     if (ksp.texture !== tex) ksp.texture = tex;
-    const ksc = R / art.bladePx;
     const len = Math.hypot(tipX - hx, tipY - hy);
-    const lenMul = R > 0 ? len / R : 1; // 段の継ぎ目の補間の間だけ R から外れる
+    const ksc = art.fixedScale ?? R / art.bladePx;
+    const lenMul = art.fixedScale !== undefined ? 1 : (R > 0 ? len / R : 1); // 段の継ぎ目の補間の間だけ R から外れる
+    // 軸を持たない絵: 握りは「先(範囲の縁)から絵の竿の長さぶん内側」=半径の線の上。
+    const gripOff = art.fixedScale !== undefined ? Math.max(0, len - art.bladePx * ksc) : 0;
+    const gx = len > 0 ? hx + ((tipX - hx) / len) * gripOff : hx, gy = len > 0 ? hy + ((tipY - hy) / len) * gripOff : hy;
     // 反りは向いている側で固定(段の継ぎ目で裏返らない)。
     // 布のある絵(旗)は、振りの進む向きの後ろへ布を流す(鏡像を振りの向きで決める=布が前に出て板に見えない)。
     const flip = art.trailsCloth ? (dir > 0 ? 1 : -1) : (faceSign > 0 ? -1 : 1);
     ksp.scale.set(ksc * lenMul, ksc * flip);
     ksp.rotation = Math.atan2(tipY - hy, tipX - hx) - art.intrinsic * flip;
     const ease = this.weaponAppearEase(`hero-sword:${e.id}`, now);
-    ksp.position.set(hx, hy + ease.dy);
+    ksp.position.set(gx, gy + ease.dy);
     ksp.alpha = (inWindup && m.step === 0 ? swordFadeInAlpha(el) : 1) * ease.alphaMul;
     ksp.visible = true;
     c.visible = true;
