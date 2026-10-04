@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4827', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4826', items: ['巡っている英雄(変異)が、武器庫や木に引っかかって止まらなくなった', '英雄(変異)がいる間も、周りに出る敵の数は減らない'] },
   { version: '0.25.4825', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4824', items: ['デンジャーゾーンの英雄(変異)は、獲物を見つけるといななき、駆け寄ってくる', '巡る道から離れすぎると、駆けて戻っていく'] },
