@@ -2103,11 +2103,11 @@ const URI_SWORD_BLADE_LEN_FRAC = Math.hypot(URI_SWORD_TIP_FRAC.x - URI_SWORD_GRI
 const URI_SWORD_LENGTH = 85; // 社長確認「絵が大きすぎる」: 130→85px。判定・射程は変更しない。
 
 // research/MUTANT_HERO.md: 英雄(変異)のサーベル(社長支給2026-10-04「トールやミゲル、ウリなどと同じ使い道」)。
-// 原盤は mutant-hero-sabre.png(2172×724)。配信用はそこから縮めた mutant-hero-weapon.png(268×79・横長で
+// 原盤は mutant-hero-sabre.png(2172×724)。ゲームで使うのは社長支給のドット版 mutant-hero-weapon.png(211×32・横長で
 // 切っ先が左・柄が右)。横長なので角度と刃渡りは**画素で**出す(比率のまま atan2 すると縦横比のぶん狂う)。
-const HERO_SWORD_W = 268, HERO_SWORD_H = 79;
-const HERO_SWORD_GRIP_FRAC = { x: 0.885, y: 0.38 }; // 握り(柄の巻きの中央)
-const HERO_SWORD_TIP_FRAC = { x: 0.0075, y: 0.42 };  // 切っ先
+const HERO_SWORD_W = 211, HERO_SWORD_H = 32;
+const HERO_SWORD_GRIP_FRAC = { x: 0.91, y: 0.34 };   // 握り(柄の巻きの中央・実測 192,11)
+const HERO_SWORD_TIP_FRAC = { x: 0.0024, y: 0.47 };  // 切っ先(実測 0,15)
 const HERO_SWORD_INTRINSIC_ANGLE = Math.atan2(
   (HERO_SWORD_TIP_FRAC.y - HERO_SWORD_GRIP_FRAC.y) * HERO_SWORD_H,
   (HERO_SWORD_TIP_FRAC.x - HERO_SWORD_GRIP_FRAC.x) * HERO_SWORD_W,
@@ -2116,9 +2116,10 @@ const HERO_SWORD_BLADE_LEN_FRAC = Math.hypot(
   (HERO_SWORD_TIP_FRAC.x - HERO_SWORD_GRIP_FRAC.x) * HERO_SWORD_W,
   (HERO_SWORD_TIP_FRAC.y - HERO_SWORD_GRIP_FRAC.y) * HERO_SWORD_H,
 ) / HERO_SWORD_W;
-const HERO_SWORD_LENGTH = 130; // 柄→切っ先(px・見た目のみ)。シートに描かれた剣(約75px)より大きく=振りが読める大きさ。叩き台
+// 柄→切っ先(px・見た目のみ・背丈230pxの時)。シートに描かれた剣(約75px)より大きく=振りが読める大きさ。叩き台(`?herosword=` で実機調整)
+const HERO_SWORD_LENGTH = tsNum('herosword', 110);
 // 手の位置(立ち絵の左向き基準・足元からの比率)。シートのコマで手は動くので近似。
-const HERO_HAND_FRAC = { x: -0.15, y: 0.70 };
+const HERO_HAND_FRAC = { x: -0.135, y: 0.70 }; // x は背丈に対する比(立ち絵 180×202 で幅の -0.15 相当)
 
 // ラフィの薙ぎ(Phase2新規)は既存の骨刃素材(rafi-blade.png)を「振る」用途でも流用する
 // (§6.28-16「設置と薙ぎで同じ絵=あの刃が来るが一貫する」)。katanaSlash系のグリップ扱いは新規(叩き台)。
@@ -30340,6 +30341,10 @@ export class PixiScene {
     // PACING_PUZZLE.md §10-12#10(フィル専用レイヤー): 既定はeffectLayer(全角度共通の従来挙動を維持)。
     // フィルの羽攻撃だけphillLayer(filteredWorldの外=DoF対象外)へ差し替える。
     targetLayer?: Container,
+    // research/MUTANT_HERO.md(英雄): 振りの回転を鏡に(左へ斬る時も「上から前へ」振り下ろす)。既定=従来どおり。
+    mirror = false,
+    // 英雄: 汎用の白い筋・弧・突きの風圧を出さない(英雄は専用の骨色の弧を持つ=二重にしない)。既定=従来どおり出す。
+    extras = true,
   ) {
     let c = fxMap.get(id);
     if (!c) {
@@ -30442,6 +30447,7 @@ export class PixiScene {
     } else {
       burstSp.visible = false;
     }
+    if (!extras) { streak.visible = false; hideSwingExtraFx(c); }
     // 社長提供の刀/剣(横払い/突きの視認性を上げる追加ビジュアル)。柄(グリップ)を判定ラインの始点
     // (fx,fy)に置き、刀身が実際の当たり判定ラインの方向を向くよう回転させる。streakと同じt(0-0.5
     // 伸び/0.5-1縮み)でフェードし、ライン自体の見た目(赤ゾーン/斬撃ピクセル)は変えない=あくまで
@@ -30452,14 +30458,14 @@ export class PixiScene {
         if (katana.texture !== kref) katana.texture = kref;
         const pose = swordSwingPose(style, tt);
         const kscale = katanaLength / (bladeLenFrac * Math.max(1, kref.width));
-        katana.scale.set(kscale * pose.scaleMult);
+        katana.scale.set(kscale * pose.scaleMult, kscale * pose.scaleMult * (mirror ? -1 : 1));
         // 旧方式は「判定線上の接触点へ剣先を向ける」だけで回転角が小さく、剣を運んでいるように
         // 見えていた。柄は手元に固定し、攻撃方向を基準に160〜200度を明確に振り切る。
         // 突きだけは角度を固定して、柄を後ろから前へ50px押し出す。
         const ux = length > 0 ? (tx - fx) / length : Math.cos(angle);
         const uy = length > 0 ? (ty - fy) / length : Math.sin(angle);
         const px = pivotX ?? fx, py = pivotY ?? fy;
-        katana.rotation = angle + pose.angleOffset - intrinsicAngle;
+        katana.rotation = angle + (mirror ? -pose.angleOffset : pose.angleOffset) - intrinsicAngle;
         katana.position.set(px + ux * pose.pushPx, py + uy * pose.pushPx);
         // 剣は斬撃ストリークより先に消さない。実行後はrecover姿勢へ同じ不透明度で繋ぎ、
         // recover末尾の90msだけを呼び出し側でフェードアウトする。
@@ -30610,6 +30616,8 @@ export class PixiScene {
     now = 0,
     // PACING_PUZZLE.md §10-12#10(フィル専用レイヤー): 既定はeffectLayer(従来挙動を維持)。
     targetLayer?: Container,
+    // research/MUTANT_HERO.md(英雄): 振りの回転を鏡に(drawKatanaSlash の mirror と対)。既定=従来どおり。
+    mirror = false,
   ) {
     let c = fxMap.get(id);
     if (!c) {
@@ -30633,8 +30641,8 @@ export class PixiScene {
     const kscale = katanaLength / (bladeLenFrac * Math.max(1, kref.width));
     const baseAngle = swordAttackAngle(attackFromX, attackFromY, attackToX, attackToY);
     const pose = swordSwingPose(style, poseProgress);
-    katana.scale.set(kscale * pose.scaleMult);
-    katana.rotation = baseAngle + pose.angleOffset - intrinsicAngle;
+    katana.scale.set(kscale * pose.scaleMult, kscale * pose.scaleMult * (mirror ? -1 : 1));
+    katana.rotation = baseAngle + (mirror ? -pose.angleOffset : pose.angleOffset) - intrinsicAngle;
     // 震え(社長要望「震えながら構える」・issen/tsukiと同じく攻撃線に直交する向きへ小刻みに揺らす)。
     const tnx = -Math.sin(baseAngle), tny = Math.cos(baseAngle);
     // §7-15: 構えに入って初めて(または長い中断の後)握った瞬間だけ、下からズレ上がり+フェードイン。
@@ -31300,6 +31308,8 @@ export class PixiScene {
    * 攻撃線は予告の図形から取る(帯=始点→終点・扇=中心→中心線の先)=刃は赤の向きへ振られる。描画のみ・判定は不変。
    */
   private drawHeroSword(e: Enemy, view: ActorView, gameTime: number, now: number): void {
+    // 姿が出た時点で剣の絵を取りに行く(網は「最初に使う瞬間」に発火する=初回の溜めに間に合わせる)。
+    getTexture('mutant-hero-weapon');
     const st = e.bossState;
     const live = (st === 'hero-windup' || st === 'hero-motion') && e.heroShape && e.heroMove
       ? { shape: e.heroShape, move: e.heroMove, step: e.heroStep ?? 0 } : null;
@@ -31312,46 +31322,56 @@ export class PixiScene {
             : null;
     if (!style) return;
     const s = m.shape;
-    let fx: number, fy: number, tx: number, ty: number, halfW: number;
-    if (s.kind === 'band') { fx = s.fx; fy = s.fy; tx = s.tx; ty = s.ty; halfW = s.halfWidth; }
-    else if (s.kind === 'fan') {
-      fx = s.cx; fy = s.cy; tx = s.cx + Math.cos(s.angle) * s.radius; ty = s.cy + Math.sin(s.angle) * s.radius;
-      halfW = Math.min(60, s.radius * Math.sin(s.halfArc) * 0.35);
-    } else return;
-    // 手元: 本体の絵の足元と背丈から(左向きの絵が基準・反転していれば手も反対側)。
+    let fx: number, fy: number, tx: number, ty: number;
+    if (s.kind === 'band') { fx = s.fx; fy = s.fy; tx = s.tx; ty = s.ty; }
+    else if (s.kind === 'fan') { fx = s.cx; fy = s.cy; tx = s.cx + Math.cos(s.angle) * s.radius; ty = s.cy + Math.sin(s.angle) * s.radius; }
+    else return;
+    // 振りの回転は**斬る向きで鏡に**する(共通の型は右へ斬る時に「上から前へ」振り下ろす。左へ斬る時に
+    // そのままだと「後ろ下から空へ」振り上がって見える)。払い上げだけは下から上へ=逆にする(骨色の弧と同じ回り)。
+    const mirror = (tx - fx < 0) !== (m.move === 'upper');
+    // 手元: 本体の絵の足元と背丈から。向きは scale.x の実値(振り向きの途中は連続に動く)、
+    // 横の距離は背丈基準(コマごとに幅が違っても柄が跳ばない)。
     const sp = view.sprite;
-    const facing = sp.scale.x >= 0 ? 1 : -1;
-    const hx = sp.x + HERO_HAND_FRAC.x * Math.abs(sp.width) * facing;
-    const hy = sp.y - HERO_HAND_FRAC.y * Math.abs(sp.height);
+    const bodyH = Math.abs(sp.height);
+    const faceMul = sp.scale.y !== 0 ? sp.scale.x / Math.abs(sp.scale.y) : 1;
+    const hx = sp.x + HERO_HAND_FRAC.x * bodyH * faceMul;
+    const hy = sp.y - HERO_HAND_FRAC.y * bodyH;
+    // 刃渡りは体の大きさに追従(奥へ行けば剣も小さく)。基準は背丈230pxの時の長さ。
+    const len = HERO_SWORD_LENGTH * (bodyH / 230);
+    const draw = (ready: boolean, alpha: number, pose: number, tremor: number, t = 0, burst = false) => {
+      if (ready) {
+        this.drawKatanaReady(
+          this.heroSwordFx, HERO_SWORD_GRIP_FRAC, HERO_SWORD_INTRINSIC_ANGLE, HERO_SWORD_BLADE_LEN_FRAC, len, 'mutant-hero-weapon',
+          e.id, hx, hy, fx, fy, tx, ty, alpha, style, pose, tremor, now, undefined, mirror,
+        );
+      } else {
+        this.drawKatanaSlash(
+          this.heroSwordFx, HERO_SWORD_GRIP_FRAC, HERO_SWORD_INTRINSIC_ANGLE, HERO_SWORD_BLADE_LEN_FRAC, len, 'mutant-hero-weapon',
+          e.id, fx, fy, tx, ty, s.kind === 'band' ? s.halfWidth : 40, t, burst, true, hx, hy, style, undefined, mirror, false,
+        );
+      }
+    };
     if (st === 'hero-windup' || st === 'hero-motion') {
       const span = Math.max(1, (e.heroHitAt ?? gameTime) - (e.bossWindupStartAt ?? gameTime));
-      const el = gameTime - (e.bossWindupStartAt ?? gameTime);
-      const prog = Math.max(0, Math.min(1, el / span));
-      const alpha = (0.45 + 0.55 * prog) * swordFadeInAlpha(el);
-      this.drawKatanaReady(
-        this.heroSwordFx, HERO_SWORD_GRIP_FRAC, HERO_SWORD_INTRINSIC_ANGLE, HERO_SWORD_BLADE_LEN_FRAC, HERO_SWORD_LENGTH, 'mutant-hero-weapon',
-        e.id, hx, hy, fx, fy, tx, ty, alpha, style, 0, st === 'hero-windup' ? windupTremorPx(prog, now) : 0, now,
-      );
+      const el = Math.max(0, gameTime - (e.bossWindupStartAt ?? gameTime));
+      const prog = Math.min(1, el / span);
+      // 構えへ「引いていく」: 三連の2段目以降は前の段の振り抜いた所(=1)から、初段は少し前(0.15)から、
+      // 減速しながら振りかぶりの位置(0)へ戻す=段の継ぎ目で剣が跳ばない・溜めの間も手が動いている。
+      const from = m.step > 0 ? 1 : 0.15;
+      const pullMs = m.step > 0 ? 260 : Math.min(700, span * 0.6);
+      const k = Math.min(1, el / pullMs);
+      const pose = from * Math.pow(1 - k, 3);
+      const alpha = (0.7 + 0.3 * prog) * (m.step > 0 ? 1 : swordFadeInAlpha(el));
+      draw(true, alpha, pose, st === 'hero-windup' ? windupTremorPx(prog, now) : 0);
     } else if (st === 'hero-strike') {
       const t = Math.max(0, Math.min(1, (gameTime - (e.heroStateAt ?? gameTime)) / HERO_STRIKE_MS));
-      this.drawKatanaSlash(
-        this.heroSwordFx, HERO_SWORD_GRIP_FRAC, HERO_SWORD_INTRINSIC_ANGLE, HERO_SWORD_BLADE_LEN_FRAC, HERO_SWORD_LENGTH, 'mutant-hero-weapon',
-        e.id, fx, fy, tx, ty, halfW, t, true, true, hx, hy, style,
-      );
+      // 爆ぜは帯の先(縦の一撃が届く所)だけ。扇は中心線の先に出すと「そこだけ当たる」絵になるので出さない。
+      draw(false, 1, 0, 0, t, s.kind === 'band');
     } else {
-      this.drawKatanaReady(
-        this.heroSwordFx, HERO_SWORD_GRIP_FRAC, HERO_SWORD_INTRINSIC_ANGLE, HERO_SWORD_BLADE_LEN_FRAC, HERO_SWORD_LENGTH, 'mutant-hero-weapon',
-        e.id, hx, hy, fx, fy, tx, ty, swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime), style, 1, 0, now,
-      ); // 硬直中も剣を消さない(掟W9)
+      draw(true, swordFadeOutAlpha((e.bossStateUntil ?? gameTime) - gameTime), 1, 0); // 硬直中も剣を消さない(掟W9)
     }
   }
 
-  /**
-   * research/MUTANT_HERO.md §5: 英雄の赤い予告。形(heroShape)は溜め開始で決まって動かない=判定と同じ。
-   * 進み=溜め開始(bossWindupStartAt)→当たる瞬間(heroHitAt)。走る技は溜め+走りの通しで流れ、終点の一撃で消え切る。
-   * 走る道筋は**赤くしない**(灰の点線)=道筋そのものは当たらないので、赤くすると「赤いのに当たらない」になる。
-   * 当たった後(hero-strike)は、斬撃の技だけ刃の弧を判定より一回り大きく出す(派手さの絵=判定ゼロ)。
-   */
   private drawHeroTelegraph(e: Enemy, view: ActorView, o: Graphics, gameTime: number, now: number): void {
     const st = e.bossState;
     const sh = e.heroShape;

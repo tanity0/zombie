@@ -2919,10 +2919,10 @@
    "sha": "a04abaa1e695008a"
   },
   "sprites/mutant-hero-weapon.png": {
-   "w": 268,
-   "h": 79,
-   "bytes": 13346,
-   "sha": "607ee40c71c41f1e"
+   "w": 211,
+   "h": 32,
+   "bytes": 4548,
+   "sha": "6aa9d9a2bfef9b84"
   },
   "sprites/mutant-hero.png": {
    "w": 180,
