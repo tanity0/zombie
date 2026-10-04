@@ -43,3 +43,10 @@ describe('ボス級の名指しの既定(ボス戦の判定の外でも付ける
     expect(isMarkedBoss(h)).toBe(true);
   });
 });
+
+describe('英雄の体の壁(社長報告2026-10-04「重なって延々とダメージ」)', () => {
+  it('壁は英雄の当たり判定そのもの', async () => {
+    const { heroBodyWallRect } = await import('./heroScript');
+    expect(heroBodyWallRect({ x: 10, y: 20, width: 110, height: 60 })).toEqual({ x: 10, y: 20, width: 110, height: 60 });
+  });
+});

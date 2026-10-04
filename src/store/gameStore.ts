@@ -393,6 +393,7 @@ import { computeTimeSlowScale } from '../utils/timeSlowCurve';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { stunnedMeleeOutcome, usesBossStunnedMelee, ELITE_MELEE_STUN_MULT, resolveStunnedMeleeHit, MELEE_STUN_LIFT_MS, isEliteFatalStun } from '../utils/meleeExecute';
 import { killSlashNeckPosition } from '../utils/killSlashFx'; // KILL時の首元斬撃(fx/kill-slash・社長指示2026-09-16)
+import { heroBodyWallRect } from '../utils/heroScript'; // research/MUTANT_HERO.md: 英雄の体の壁(葉モジュール=循環しない)
 import type { ThirdPartyShape } from '../utils/heroBlast'; // 型のみ(実体は heroBlast が gameStore を読むので循環させない)
 
 // research/MUTANT_HERO.md §4-2: 「今プレイヤーにしか当たっていない技」を守護霊と英雄にも当てる入口。
@@ -7200,6 +7201,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           const blockers: Rect[] = [];
           for (const en of state.enemies) {
             if (isCorpse(en)) continue;
+            // research/MUTANT_HERO.md: 英雄も体で塞ぐ(接触ダメージを持たない=重なると技を全部浴びるだけになる)。
+            if (isMutantHero(en.type)) {
+              if (en.health <= 0) continue;
+              const hb = heroBodyWallRect(en);
+              if (Math.abs(hb.x - newX) > 300 || Math.abs(hb.y - newY) > 300) continue;
+              blockers.push(hb);
+              continue;
+            }
             if (!isBiteSubject(en, isBiteExemptType, state.gameTime)) continue;
             // ★噛みつきの踏み込み中は壁を開ける(社長裁定2026-08-25「この際、壁判定は通過可能になり、
             // 当たり判定の瞬間に被っていたらダメージ、壁判定に戻す」)。開けないと覆いかぶされない。

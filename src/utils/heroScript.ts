@@ -473,6 +473,14 @@ export const heroSwingArc = (angle: number, halfArc: number, rising: boolean, fa
   return (rising ? !e1First : e1First) ? { start: e1, end: e2 } : { start: e2, end: e1 };
 };
 
+/**
+ * 英雄の体の壁(社長報告2026-10-04「英雄に壁判定がなく、重なって延々とダメージ受けちゃう」)。
+ * 英雄は接触ダメージを持たない(当たるのは技だけ)ので、雑魚の噛みつき側と同じく**体で塞ぐ**側に入れる。
+ * 塞ぐ箱=当たり判定そのもの(馬の足元 110×60)。プレイヤーの移動だけがこれで止まる(英雄が駆けて来た時は押されない)。
+ */
+export const heroBodyWallRect = (e: { x: number; y: number; width: number; height: number }): { x: number; y: number; width: number; height: number } =>
+  ({ x: e.x, y: e.y, width: e.width, height: e.height });
+
 export const heroZoomEligible = (e: { type: string; heroTargetId?: string; health: number }): boolean =>
   e.type === HERO_TYPE && e.health > 0 && (e.heroTargetId === 'player' || e.heroTargetId === 'ghost');
 

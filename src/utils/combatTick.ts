@@ -31,7 +31,7 @@ import { GLOW_R_L, GLOW_R_S } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
   isBossType, isHiddenBoss, isBountyType, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
-  isGuardianPhantom, isBiteExemptType, isHangedman, isTerminalReaper, isTrueBossType,
+  isGuardianPhantom, isBiteExemptType, isHangedman, isTerminalReaper, isTrueBossType, isMutantHero,
 } from './enemyUtils';
 // PACING_PUZZLE.md §14-4-8/8b(神付き): ?rp2kami=/?rp2kamims=(判定側=生URLSearchParams・中12の作法)。
 import { KAMITSUKI_ENABLED, REAPER2_CONFIG } from '../config/reaper';
@@ -1644,6 +1644,9 @@ export const applyContactDamage = (
   }
 
   playerEnemyCollisions.forEach(enemy => {
+    // research/MUTANT_HERO.md: 英雄は接触ダメージを持たない(damage 0)。ここを通すと0ダメージの被弾が
+    // 毎フレーム入り続けていた(社長報告2026-10-04「重なって延々とダメージ受けちゃう」)。当たるのは技だけ。
+    if (isMutantHero(enemy.type)) return;
     // PACING_PUZZLE.md §14-4-8b(A-3): 神付きは1tickにつき1体。既に発火していたら、この関数呼び出し
     // (=このtick)の残りの接触解決を丸ごと打ち切る(forEachの実質break)。
     if (kamitsukiTriggeredThisTick) return;
