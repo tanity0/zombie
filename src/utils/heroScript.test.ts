@@ -1,6 +1,7 @@
 // research/MUTANT_HERO.md: 英雄(変異)の台本(純関数)のテスト。
 import { describe, it, expect } from 'vitest';
 import {
+  heroSwingArc,
   HERO_MOVES, HERO_NEAR, HERO_MID, HERO_AGGRO_RANGE, HERO_LURE_RANGE, heroMoveCandidates, pickHeroMove, pickHeroTarget,
   heroFollowUp, heroStepShape, heroStepHitDelay, circleHitsHeroShape, circleHitsFan, mobPrefersHero, heroFrameFor, heroLiftPx, HERO_SHEETS,
 } from './heroScript';
@@ -162,5 +163,25 @@ describe('寄りズーム(社長裁定: プレイヤーを狙っている間だ�
     expect(heroZoomEligible({ type: 'mutant-hero', heroTargetId: undefined, health: 10 })).toBe(false);
     expect(heroZoomEligible({ type: 'mutant-hero', heroTargetId: 'player', health: 0 })).toBe(false);
     expect(heroZoomEligible({ type: 'zombie', heroTargetId: 'player', health: 10 })).toBe(false);
+  });
+});
+
+describe('扇の振りの道(heroSwingArc)', () => {
+  const D = Math.PI / 180;
+  const upper = (a: number) => Math.sin(a);
+  it('左右どちらへ斬っても、上側の縁から下側の縁へ振り下ろす', () => {
+    for (const ang of [0, Math.PI, 30 * D, 150 * D, -150 * D]) {
+      const { start, end } = heroSwingArc(ang, 70 * D, false);
+      expect(upper(start)).toBeLessThanOrEqual(upper(end)); // 画面は下ほど y が大きい
+      // 中心線を通る(start→end の途中に angle がある)
+      const mid = (start + end) / 2;
+      expect(Math.abs(Math.atan2(Math.sin(mid - ang), Math.cos(mid - ang)))).toBeLessThan(1e-9);
+    }
+  });
+  it('払い上げだけは下側から上側へ', () => {
+    for (const ang of [0, Math.PI]) {
+      const { start, end } = heroSwingArc(ang, 50 * D, true);
+      expect(upper(start)).toBeGreaterThanOrEqual(upper(end));
+    }
   });
 });
