@@ -825,6 +825,8 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       meleeSwingPressedAt: player.meleeSwingPressedAt,
       // ★AI_HUMANIZE.md B3(§4⑧⑫の入力源是正): キー/タッチ両方が更新する唯一の実在源。
       lastDirection: player.lastDirection,
+      // research/LUNGE_DODGE.md §2-1: 踏み込み(押した瞬間に書かれる速度と終わる時刻)。コマの `lg` 用。
+      lungeVx: player.lungeVx, lungeVy: player.lungeVy, lungeUntil: player.lungeUntil,
     },
     // v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元。写し取りはplayerTraits側の
     // 純関数(snapshotPlayerBuild)がボス交戦中のtickだけ行う=ここは本人オブジェクトを渡すだけ。

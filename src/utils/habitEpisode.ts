@@ -20,6 +20,7 @@
 import type { Rect } from '../world/obstacles';
 import type { Enemy } from '../types/game';
 import { distToBandRect } from './geometry';
+import { lungeDirClass, type LungeDirClass } from './lungeDodge';
 import {
   counterReachShapeFor, counterReachKindFor, type CounterReachShape, type CounterReachCtx,
 } from './counterReach';
@@ -324,6 +325,11 @@ export interface HabitEpisode {
   ctxHit: 0 | 1;
   /** そのランでこの州の着弾に遭った何回目か(1..20でカンスト)。 */
   seq: number;
+  /**
+   * research/LUNGE_DODGE.md §2-1: 帰属した押下の踏み込みの向き(0=踏み込まない/1=外/2=横/3=内)。
+   * 押していない(pressOfs=null)・旧データ・踏み込み情報の無い呼び出しでは欠ける(=再生は今どおり)。
+   */
+  lg?: LungeDirClass;
 }
 
 /** リング保存件数(§1・ラン跨ぎ)。 */
@@ -405,7 +411,10 @@ const ATTRIBUTION_LEAD_MS = 300;
 /** §1-3: 帰属窓は[T-1500ms, T+300ms]。 */
 const WINDOW_BEFORE_MS = 1500;
 
-let pressRing: number[] = []; // gameTime(押下エッジ時刻)。古い→新しいの順。
+/** 押下に添える踏み込みの情報(research/LUNGE_DODGE.md §2-1)。向きが0なら踏み込まなかった。 */
+export interface PressLunge { dirX: number; dirY: number; x: number; y: number }
+interface PressEntry { t: number; lunge?: PressLunge }
+let pressRing: PressEntry[] = []; // gameTime(押下エッジ時刻)+踏み込み。古い→新しいの順。
 let lastSeenCommitAt: number | null = null;
 
 /**
@@ -422,29 +431,29 @@ let lastSeenCommitAt: number | null = null;
  * `noteMeleeSwingPressedAt` 呼び出し側コメント)。第3引数省略(旧呼び出し/テスト)=`commitAt`と
  * 同値扱い=シフト0(後方互換)。
  */
-export const notePressEdge = (gameTime: number, commitAt: number, pressedAt: number = commitAt): void => {
+export const notePressEdge = (gameTime: number, commitAt: number, pressedAt: number = commitAt, lunge?: PressLunge): void => {
   if (lastSeenCommitAt !== null && commitAt !== lastSeenCommitAt) {
     const windupShiftMs = commitAt - pressedAt;
-    pressRing.push(gameTime - windupShiftMs);
+    pressRing.push({ t: gameTime - windupShiftMs, lunge });
     if (pressRing.length > PRESS_RING_SIZE) pressRing.shift();
   }
   lastSeenCommitAt = commitAt;
 };
 
 /** 帰属窓[T-1500,T+300]内でTに最も近い押下を1件引いて消費する(タイは早い方)。無ければnull。 */
-const attributePress = (T: number): number | null => {
+const attributePress = (T: number): { ofs: number; lunge?: PressLunge } | null => {
   let bestIdx = -1, bestAbs = Infinity, bestT = 0;
   for (let i = 0; i < pressRing.length; i++) {
-    const t = pressRing[i];
+    const t = pressRing[i].t;
     const ofs = t - T;
     if (ofs < -WINDOW_BEFORE_MS || ofs > ATTRIBUTION_LEAD_MS) continue;
     const abs = Math.abs(ofs);
     if (abs < bestAbs || (abs === bestAbs && t < bestT)) { bestAbs = abs; bestIdx = i; bestT = t; }
   }
   if (bestIdx === -1) return null;
-  const matchedT = pressRing[bestIdx];
+  const matched = pressRing[bestIdx];
   pressRing.splice(bestIdx, 1); // §1-3: 1つの押下は最も近い1コマにだけ帰属(消費)
-  return clamp(matchedT - T, -1500, 500);
+  return { ofs: clamp(matched.t - T, -1500, 500), lunge: matched.lunge };
 };
 
 // =================================================================================================
@@ -457,6 +466,8 @@ interface PendingHabitSettle {
   posA: number; posB: number; sub: number;
   ctxHp: 0 | 1; ctxHit: 0 | 1; seq: number;
   family: HabitFamilyKey;
+  /** research/LUNGE_DODGE.md §2-1: 踏み込みの向きを外向きと比べるための図形とボスの体(T時点)。 */
+  shape: CounterReachShape; bossRect: Rect;
 }
 let pendingSettles: PendingHabitSettle[] = [];
 
@@ -475,12 +486,18 @@ const familyRaw: Record<HabitFamilyKey, HabitFamilyRaw> = {
 let runIsGhost = false;
 
 
-const finalizeSettle = (p: PendingHabitSettle, pressOfs: number | null): void => {
+const finalizeSettle = (p: PendingHabitSettle, press: { ofs: number; lunge?: PressLunge } | null): void => {
+  const pressOfs = press === null ? null : press.ofs;
   const ep: HabitEpisode = {
     posA: quantizePosA(p.posA), posB: quantizePosB(p.posB), sub: p.sub,
     pressOfs: pressOfs === null ? null : Math.round(clamp(pressOfs, -1500, 500)),
     ctxHp: p.ctxHp, ctxHit: p.ctxHit, seq: p.seq,
   };
+  // research/LUNGE_DODGE.md §2-1: 押した瞬間の位置で、踏み込みの向きを図形の外向きと比べて分類する。
+  if (press?.lunge) {
+    const l = press.lunge;
+    ep.lg = lungeDirClass(p.shape, p.bossRect, l.x, l.y, l.dirX, l.dirY);
+  }
   const arr = runEpisodes.get(p.episodeKey) ?? [];
   arr.push(ep);
   if (arr.length > HABIT_RING_SIZE) arr.shift();
@@ -553,6 +570,7 @@ export const settleEpisode = (input: SettleEpisodeInput): void => {
     episodeKey, T: input.gameTime, attributeAt: input.gameTime + ATTRIBUTION_LEAD_MS,
     posA: pos.posA, posB: pos.posB, sub: pos.sub, ctxHp, ctxHit,
     seq: nextSeq(episodeKey), family: habitFamilyOfShape(shape),
+    shape, bossRect: input.bossRect,
   });
 };
 

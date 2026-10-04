@@ -61,7 +61,7 @@ export { bossStyleSlotKey } from './ghostSlot';
 import {
   notePressEdge, tickHabitEpisodeMaintenance, markHabitGhostRun, takeRunHabitFold, resetRunHabitState,
   HABIT_FAMILY_KEYS, HABIT_RING_SIZE, HABIT_EPISODE_FORMAT_VERSION, familyRawToStat,
-  type HabitEpisode, type HabitFamilyKey, type HabitFamilyStat, type HabitFamilyRaw,
+  type HabitEpisode, type HabitFamilyKey, type HabitFamilyStat, type HabitFamilyRaw, type PressLunge,
 } from './habitEpisode';
 // research/AI_HUMANIZE.md B3(§4①②④⑥⑧・マイクロリズム=操作の指紋の録り+保存形+ブレンド)。
 import {
@@ -875,6 +875,8 @@ export interface PlayerTraitsTickInput {
      * マイクロリズム(①⑧)の方向判定はこちらを使う。省略(旧呼び出し/テスト)=方向不明扱い。
      */
     lastDirection?: { x: number; y: number } | null;
+    /** research/LUNGE_DODGE.md §2-1: 踏み込みの速度と終わる時刻(Date.now)。省略=踏み込みを記録しない。 */
+    lungeVx?: number; lungeVy?: number; lungeUntil?: number;
   };
   /** v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元になる本人オブジェクト。
    * 省略可(旧呼び出し/テスト)=その場合はビルド項目なしの旧snapshot相当だけを記録する。 */
@@ -892,6 +894,14 @@ export interface PlayerTraitsTickInput {
   movementInput: boolean;
 }
 
+// research/LUNGE_DODGE.md §2-1: 直近の踏み込みの始まり(押した瞬間)の位置と向き。
+let lungeSeenUntil: number | undefined;
+let lungeStart: { startedAt: number; lunge: PressLunge } | null = null;
+/** 踏み込みの長さ(gameStore.MELEE_LUNGE_MS と同じ値。gameStore を import しないため写す・テストで一致を固定)。 */
+export const MELEE_LUNGE_MS_REC = 90;
+/** 押した時刻と踏み込みの始まりのずれの許容(同じ押下とみなす)。 */
+const LUNGE_PRESS_MATCH_MS = 50;
+
 /** 毎tick1回、directorTickから呼ぶ。無効条件(非交戦/ゴースト同伴)ではスカラー比較のみで即return。 */
 export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   // AI_HUMANIZE.md B1: 押下リングのエッジ検知+帰属確定は交戦の有無に関わらず毎tick走らせる
@@ -899,9 +909,24 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   // notePressEdge→tickHabitEpisodeMaintenanceの順(同tickの押下を帰属候補に含めるため)。
   // research/AI_HUMANIZE.md §8 裁定済み#16: pressedAtは「実際に押した時刻」。省略(旧呼び出し/テスト)は
   // commitAtと同値=前隙シフト無しの既定へ落ちる(notePressEdge側のデフォルト引数と同じ意味)。
+  // research/LUNGE_DODGE.md §2-1: 押した瞬間(=踏み込みが書かれた瞬間)の位置と向きを控える。打刻(commit)は
+  // 前隙の後=踏み込みが終わった後なので、そこで位置を読むと「抜けた後の位置」になってしまう。
+  const pl = input.player;
+  if (pl.lungeUntil !== undefined && pl.lungeUntil !== lungeSeenUntil) {
+    lungeSeenUntil = pl.lungeUntil;
+    lungeStart = {
+      startedAt: pl.lungeUntil - MELEE_LUNGE_MS_REC,
+      lunge: { dirX: pl.lungeVx ?? 0, dirY: pl.lungeVy ?? 0, x: pl.x + pl.width / 2, y: pl.y + pl.height / 2 },
+    };
+  }
+  const pressedAtMs = pl.meleeSwingPressedAt ?? pl.meleeSwingCommitAt ?? 0;
+  // 押した時刻と踏み込みの始まりが揃っている時だけ、その踏み込みをこの押下のものとみなす(別経路の振りに混ぜない)。
+  const pressLunge = lungeStart && Math.abs(lungeStart.startedAt - pressedAtMs) <= LUNGE_PRESS_MATCH_MS
+    ? lungeStart.lunge : undefined;
   notePressEdge(
-    input.gameTime, input.player.meleeSwingCommitAt ?? 0,
-    input.player.meleeSwingPressedAt ?? input.player.meleeSwingCommitAt ?? 0,
+    input.gameTime, pl.meleeSwingCommitAt ?? 0,
+    pressedAtMs,
+    pressLunge,
   );
   tickHabitEpisodeMaintenance(input.gameTime);
   if (input.ghostActive || input.ghostRunActive) {

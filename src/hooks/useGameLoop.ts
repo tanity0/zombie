@@ -11685,6 +11685,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   microHabitResolved: ghostNow.ghostMicroHabitResolved,
                   microHabitSeqCounts: ghostNow.ghostMicroHabitSeqCounts,
                   microHabitArmKey: ghostNow.ghostMicroHabitArmKey,
+                  microHabitSwingLg: ghostNow.ghostMicroHabitSwingLg, microEscapeArmKey: ghostNow.ghostMicroEscapeArmKey,
                 },
                 // ★AI_HUMANIZE.md B3(§4「専用乱数流」・シード=召喚id): 既存randとは別系統。
                 microSeed: hashSeed(ghostNow.id),
@@ -11914,6 +11915,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ghostMicroHabitResolved: decision.microHabitResolved,
                   ghostMicroHabitSeqCounts: decision.microHabitSeqCounts,
                   ghostMicroHabitArmKey: decision.microHabitArmKey,
+                  ghostMicroHabitSwingLg: decision.microHabitSwingLg, ghostMicroEscapeArmKey: decision.microEscapeArmKey,
                 } : s),
               }));
 
@@ -12024,9 +12026,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // ★踏み込み(社長裁定2026-08-24・同条件原則): プレイヤー・幻影と同じ距離/時間で
                   // 標的の方へ滑る。守護霊の移動は下の resolved で「行ける帯」を通るので、
                   // 座標を直に書かず **次フレーム以降の移動へ足す速度** として持たせる。
-                  {
-                    const tdx = (boundBoss ? boundBoss.x + boundBoss.width / 2 : ghostNow.x) - (ghostNow.x + ghostNow.width / 2);
-                    const tdy = (boundBoss ? boundBoss.y + boundBoss.height / 2 : ghostNow.y) - (ghostNow.y + ghostNow.height / 2);
+                  // research/LUNGE_DODGE.md: 向きは決定どおり(外・横へ抜ける/踏み込まない)。省略=今どおりボスの方へ。
+                  if (decision.lungeDir !== 'none') {
+                    const ld = decision.lungeDir;
+                    const tdx = ld ? ld.x : (boundBoss ? boundBoss.x + boundBoss.width / 2 : ghostNow.x) - (ghostNow.x + ghostNow.width / 2);
+                    const tdy = ld ? ld.y : (boundBoss ? boundBoss.y + boundBoss.height / 2 : ghostNow.y) - (ghostNow.y + ghostNow.height / 2);
                     const tl = Math.hypot(tdx, tdy);
                     if (tl > 0.001) {
                       const lspd = knockbackSpeedFor(meleeLungePx(ghostOwner), MELEE_LUNGE_MS); // 守護霊も装備どおり(鞭=20px)

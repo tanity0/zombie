@@ -24,7 +24,8 @@ import type { Enemy, Projectile, SkillKey } from '../types/game';
 import { dodgeVector, pickTarget, botSkillProfile, type BotSkillProfile } from './botSkill';
 // v0.25.2470: 雑魚回避(非ボス判定)用 / ENEMY_PROJECTILE_DURATION=弾の寿命(tankした弾技の弾を無視し続ける長さ)
 import { isBossType, aimEnemyDist2, ENEMY_PROJECTILE_DURATION } from './enemyUtils';
-import { isCounterOpportunityNow } from './counterReach'; // ★憲法(v0.25.3948)
+import { isCounterOpportunityNow, inCounterReach } from './counterReach'; // ★憲法(v0.25.3948)
+import { lungeOutward, type LungeDirClass } from './lungeDodge'; // research/LUNGE_DODGE.md(踏み込み回避)
 import {
   isGiantAimWindup, isGiantDeadWindup, impactAtWindupEnd,
   ghostAimSwingNow, ghostAimLeadMs, ghostAimSlowness01,
@@ -686,6 +687,10 @@ export interface GhostSelf {
   microHabitSeqCounts?: Readonly<Record<string, number>>;
   /** どのepisodeKeyについて位置取り目標/凍結Tをキャッシュしているか(§2-1新しい機会の検知に使う。counterArmKeyとは別枠=counterWatching開始前の早期位置取り#13にも対応)。 */
   microHabitArmKey?: string;
+  /** research/LUNGE_DODGE.md §3-1: T-500msで選んだコマの踏み込みの向き(`lg`)。振るまで持ち越す。 */
+  microHabitSwingLg?: LungeDirClass;
+  /** research/LUNGE_DODGE.md §3-2: 既定の「外へ抜ける」を使った予告(1つの予告につき1回)。 */
+  microEscapeArmKey?: string;
 }
 
 export interface GhostDriverInput {
@@ -780,6 +785,13 @@ export interface GhostDecision {
   microHabitResolved?: boolean;
   microHabitSeqCounts?: Readonly<Record<string, number>>;
   microHabitArmKey?: string;
+  microHabitSwingLg?: LungeDirClass;
+  microEscapeArmKey?: string;
+  /**
+   * research/LUNGE_DODGE.md: action==='melee' の踏み込みの向き(単位ベクトル)。'none'=踏み込まない(その場で振る)。
+   * 省略=今どおり標的(ボス)の方へ。
+   */
+  lungeDir?: { x: number; y: number } | 'none';
 }
 
 /** ④回り方の利きの再抽選タイマー(叩き台=旧`GHOST_ORBIT_FLIP_CHANCE`の平均反転間隔@60fpsに寄せる)。 */
@@ -905,6 +917,24 @@ export const habitSwingAtFromPressOfs = (T: number, pressOfs: number | null): nu
 export const habitSwingWindowCoversT = (swingAt: number, T: number): boolean =>
   swingAt <= T && T <= swingAt + COUNTER_ACCEPT_MS;
 
+/** research/LUNGE_DODGE.md §3-2: 既定の抜けを出す、着弾までの残り(ms)。踏み込み90ms+余裕。 */
+export const GHOST_ESCAPE_LUNGE_LEAD_MS = 180;
+/** 外・横へ踏み込んだ記録か(=抜けるための振り)。 */
+export const isEscapeLg = (lg: LungeDirClass | undefined): boolean => lg === 1 || lg === 2;
+/**
+ * research/LUNGE_DODGE.md §3-1: コマの `lg` → 守護霊の踏み込みの向き。
+ * 1=外向き / 2=外向きを回る側へ90° / 0=踏み込まない / 3・欠け・外向きが決められない=undefined(今どおりボスの方へ)。
+ */
+export const lungeDirForLg = (
+  lg: LungeDirClass | undefined, shape: CounterReachShape, bossRect: Rect, x: number, y: number, orbitSign: 1 | -1,
+): { x: number; y: number } | 'none' | undefined => {
+  if (lg === 0) return 'none';
+  if (lg !== 1 && lg !== 2) return undefined;
+  const o = lungeOutward(shape, bossRect, x, y);
+  if (!o) return undefined;
+  return lg === 1 ? o : { x: -o.y * orbitSign, y: o.x * orbitSign };
+};
+
 /** 毎tick1回呼ぶ純関数。次tickへ持ち越す自己状態(lastShotAt等)も戻り値に含めて返す。 */
 export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   const { ghost, player, enemies, projectiles, profile, weapon, gameTime, nowMs } = input;
@@ -969,6 +999,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       microHabitTargetX: undefined, microHabitTargetY: undefined,
       microHabitTFrozen: undefined, microHabitSwingAt: undefined, microHabitResolved: undefined,
       microHabitSeqCounts: ghost.microHabitSeqCounts, microHabitArmKey: undefined,
+      microHabitSwingLg: undefined, microEscapeArmKey: ghost.microEscapeArmKey,
     };
   }
 
@@ -1045,6 +1076,10 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   let microHabitResolved = ghost.microHabitResolved;
   let microHabitSeqCounts = ghost.microHabitSeqCounts;
   let microHabitArmKey = ghost.microHabitArmKey;
+  // research/LUNGE_DODGE.md: 踏み込み回避の持ち越し(選んだコマの向き・既定の抜けを使った予告)とこのtickの向き。
+  let microHabitSwingLg = ghost.microHabitSwingLg;
+  let microEscapeArmKey = ghost.microEscapeArmKey;
+  let lungeDir: GhostDecision['lungeDir'];
 
   // GHOST-CMD-2A(§2.18追補 隙コマンド): 標的の隙(気絶/技後硬直/自分のカウンター成立直後)の窓。
   // 判定は計測側(playerTraits)と**共有の純関数**(punishWindow.ts)=気絶/硬直の判定を発明しない。
@@ -1175,7 +1210,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     // 後退しうる=賞金首KB中)。episodeKey州はwindupImpactAtが必ず定義済み(EPISODE_KEYSは
     // IMPACT_AT_WINDUP_END_BOSS_STATES/GIANT_IMPACT_AT_WINDUP_ENDの部分集合そのもの)。
     microHabitTFrozen = windupImpactAt;
-    microHabitSwingAt = undefined; microHabitResolved = false;
+    microHabitSwingAt = undefined; microHabitResolved = false; microHabitSwingLg = undefined;
     const prevSeq = microHabitSeqCounts?.[habitArmKeyNext] ?? 0;
     microHabitSeqCounts = { ...(microHabitSeqCounts ?? {}), [habitArmKeyNext]: Math.min(20, prevSeq + 1) };
   }
@@ -1443,7 +1478,26 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
   // 「カウンターするつもりの振り」だった時だけ true にする(counterWatching分岐の成立時のみ)。
   let meleeIsCounterAttempt = false;
 
-  if (counterWatching) {
+  // ---- research/LUNGE_DODGE.md §3-2: 段2・段3の既定の「当たる直前に外へ一直線」 ----
+  // 避けるロールの予告で、その図形の中にいて着弾が迫ったら、近接を出して外へ踏み込む(予告につき1回)。
+  // 段1(コマ3件以上)はコマの癖どおり(上の分岐)なので使わない。刀の霊は一閃になるので使わない。
+  const escapeArmKeyNow = windupImpactAt !== undefined && counterArmKeyNow !== undefined
+    ? `${target.id}:${counterArmKeyNow}:${Math.round(windupImpactAt)}` : undefined;
+  const escapeBossRect: Rect = { x: target.x, y: target.y, width: target.width, height: target.height };
+  const escapeOut = habitStage !== 1 && reaction === 'dodge' && !input.isKatanaEquipped
+    && escapeArmKeyNow !== undefined && escapeArmKeyNow !== microEscapeArmKey
+    && windupImpactAt !== undefined && windupImpactAt > gameTime
+    && windupImpactAt - gameTime <= GHOST_ESCAPE_LUNGE_LEAD_MS
+    && meleeReady && habitShape !== null && habitShape.kind !== 'none'
+    && inCounterReach(habitShape, { x: ghost.x, y: ghost.y, width: ghost.width, height: ghost.height }, escapeBossRect)
+    ? lungeOutward(habitShape, escapeBossRect, gcx, gcy)
+    : null;
+  if (escapeOut) {
+    action = 'melee'; lastMeleeAt = nowMs;
+    lungeDir = escapeOut;
+    microEscapeArmKey = escapeArmKeyNow;
+    // カウンターの請求は積まない(meleeIsCounterAttempt=false のまま)。
+  } else if (counterWatching) {
     // カウンター相当: reactionMs(反応遅延・clamp済み)+counterChance(試行確率)で抽選
     // (playtestBotのCounterThreatStateの流儀を軽く再実装。1機会=1回だけ試みる)。
     // G4b: 技ロールがある時はロールの3分類が排他に決める: 'counter'=必ず試みる /
@@ -1494,6 +1548,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
           if (local) {
             const ep = pickHabitSwingEpisode(habitEpisodesForKey, local.posA, local.posB, local.sub, seqNow, ctxHpNow, ctxHitNow);
             pressOfs = ep ? ep.pressOfs : null;
+            microHabitSwingLg = ep?.lg; // research/LUNGE_DODGE.md §3-1: 同じコマの踏み込みの向き
           }
         }
         // §8裁定済み#16: T + pressOfs(記録が押下基準なので再生は減算しない)。
@@ -1504,7 +1559,8 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
         // microHabitSwingAtそのもので判定する)。覆えない記録は pressOfs===null と同じ
         // 「振らない」へ確定させる(=毎tick窓の再判定で偶然coverしても振り直さない。この機会は
         // このコマで確定済み=別のコマを発明しない)。
-        if (microHabitSwingAt !== undefined && !habitSwingWindowCoversT(microHabitSwingAt, TFrozen)) {
+        // research/LUNGE_DODGE.md §3-1: 外・横へ踏み込んだ記録は「抜ける」ための振り=#17の例外(窓がTを覆わなくても振る)。
+        if (microHabitSwingAt !== undefined && !isEscapeLg(microHabitSwingLg) && !habitSwingWindowCoversT(microHabitSwingAt, TFrozen)) {
           microHabitSwingAt = undefined;
         }
         microHabitResolved = true;
@@ -1520,19 +1576,28 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       // 決定時のチェック(上)は理想時刻=microHabitSwingAt自身で判定済みなので、ここで初めて
       // 割れるのはCD待ちの遅延だけ——見つけたらこの機会も確定して終える(microHabitSwingAtを消し、
       // 以後gameTimeが窓へ再び入っても振り直さない=遅れて偶然合うのを狙い撃ちにしない)。
-      if (habitAimReady && TFrozen !== undefined && !habitSwingWindowCoversT(gameTime, TFrozen)) {
+      // 抜けの記録(外・横)は、CD待ちで着弾を過ぎたら振らない(抜ける意味が無い)。
+      const escapeLg = isEscapeLg(microHabitSwingLg);
+      if (habitAimReady && TFrozen !== undefined
+        && (escapeLg ? gameTime >= TFrozen : !habitSwingWindowCoversT(gameTime, TFrozen))) {
         counterWillAttempt = false;
         microHabitSwingAt = undefined;
       } else if (counterWillAttempt && microHabitResolved && habitAimReady && habitMeleeReady && counterMeleeReady) {
         action = 'melee'; lastMeleeAt = nowMs; lastCounterAttemptAt = nowMs;
         counterPendingAt = undefined; counterWillAttempt = false;
+        // research/LUNGE_DODGE.md §3-1: 踏み込みの向きはコマの `lg` どおり。
+        lungeDir = habitShape
+          ? lungeDirForLg(microHabitSwingLg, habitShape, { x: target.x, y: target.y, width: target.width, height: target.height }, gcx, gcy, orbitSign)
+          : undefined;
         // ★検収是正#5: microHabitTFrozenはここで消さない——「その州(counterArmKey)が続く間は保持する」
         // (§2-8確定事項#4)。振り解決だけをリセットして次の機会に備える(counterPendingAt=undefinedで
         // 同じ州のまま次tickに再度「新しい機会」として構え直ることがある=A6の凍結が効かないと、
         // その再構えが生のwindupImpactAt(賞金首KB等で後退しうる)を拾ってしまう)。
         // 凍結は habitNewArm(=counterArmKeyNowが実際に変わった時)だけが張り直す。
         microHabitResolved = false; microHabitSwingAt = undefined;
-        meleeIsCounterAttempt = true;
+        // 抜けの振りは、窓が着弾を覆う時だけカウンターの請求を積む(覆わない=抜けるだけ=積まない)。
+        meleeIsCounterAttempt = !escapeLg || (TFrozen !== undefined && habitSwingWindowCoversT(gameTime, TFrozen));
+        microHabitSwingLg = undefined;
       }
     } else {
       // 段3=現行モデル。§8裁定済み#18(A-1是正)により**段2もここに合流する**(コマ<3・族<5・
@@ -1612,6 +1677,9 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
     // research/AI_HUMANIZE.md B2(§2守護霊再生): 位置取り目標キャッシュ+振り解決の凍結状態。
     microHabitTargetX, microHabitTargetY, microHabitTFrozen, microHabitSwingAt, microHabitResolved,
     microHabitSeqCounts, microHabitArmKey,
+    // research/LUNGE_DODGE.md: 踏み込み回避。
+    microHabitSwingLg, microEscapeArmKey,
+    lungeDir: action === 'melee' ? lungeDir : undefined,
   };
 };
 
