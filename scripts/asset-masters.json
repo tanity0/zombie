@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "924 files / 復号後 約702MB",
+ "generatedFor": "923 files / 復号後 約696MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2899,12 +2899,6 @@
    "h": 202,
    "bytes": 487518,
    "sha": "f0f8135b4c6b5d73"
-  },
-  "sprites/mutant-hero-sabre.png": {
-   "w": 2172,
-   "h": 724,
-   "bytes": 729217,
-   "sha": "33c432e5ac534c2a"
   },
   "sprites/mutant-hero-slash.png": {
    "w": 2976,

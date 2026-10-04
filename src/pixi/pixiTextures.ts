@@ -114,7 +114,7 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'bounty-ranged', scaleMode: 'nearest' },   // 592x800 = 1.8MB
     { name: 'mutant-hero', scaleMode: 'nearest' },     // 180x202 = 0.15MB(英雄(変異)の立ち絵=駆け足の0コマ目)
     { name: 'mutant-hero-fog', scaleMode: 'linear' },  // 912x22 = 0.08MB(足元の黒い霧。ぼかしの絵を約5倍へ拡大=線形補間)
-    { name: 'mutant-hero-weapon', scaleMode: 'nearest' }, // 211x32 = 0.03MB(英雄のサーベル・社長支給のドット版。原盤は mutant-hero-sabre.png)
+    { name: 'mutant-hero-weapon', scaleMode: 'nearest' }, // 211x32 = 0.03MB(英雄のサーベル・社長支給のドット版)
   ],
   /**
    * ★ボス級の**アニメーションシート**(社長指示2026-09-24「乗せて」)。**所属は付けない=網だけで拾う**

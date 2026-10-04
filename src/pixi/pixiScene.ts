@@ -2103,7 +2103,7 @@ const URI_SWORD_BLADE_LEN_FRAC = Math.hypot(URI_SWORD_TIP_FRAC.x - URI_SWORD_GRI
 const URI_SWORD_LENGTH = 85; // 社長確認「絵が大きすぎる」: 130→85px。判定・射程は変更しない。
 
 // research/MUTANT_HERO.md: 英雄(変異)のサーベル(社長支給2026-10-04「トールやミゲル、ウリなどと同じ使い道」)。
-// 原盤は mutant-hero-sabre.png(2172×724)。ゲームで使うのは社長支給のドット版 mutant-hero-weapon.png(211×32・横長で
+// 絵は社長支給のドット版 mutant-hero-weapon.png(211×32・横長で
 // 切っ先が左・柄が右)。横長なので角度と刃渡りは**画素で**出す(比率のまま atan2 すると縦横比のぶん狂う)。
 const HERO_SWORD_W = 211, HERO_SWORD_H = 32;
 const HERO_SWORD_GRIP_FRAC = { x: 0.91, y: 0.34 };   // 握り(柄の巻きの中央・実測 192,11)
