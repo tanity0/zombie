@@ -228,9 +228,12 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   else if (alerted && !attacking && !stunned && onScreen && s.alertSince !== null
     && gt >= Math.max(bearer.libVolleyReadyAt ?? 0, s.alertSince + LIB_VOLLEY_FIRST_DELAY_MS)) { // 見つけ直した時も2.5秒置く(品質監査 C-2)
     const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
-    s.volleyQueue.push(...libVolleyArrows(vb, { x: pl.x + pl.width / 2, y: pl.y + pl.height / 2 }, gt, Math.random));
+    const arrows = libVolleyArrows(vb, { x: pl.x + pl.width / 2, y: pl.y + pl.height / 2 }, gt, Math.random);
+    s.volleyQueue.push(...arrows);
     s.volleyQueue.sort((a, b) => a.bornAt - b.bornAt);
-    Object.assign(patch, { libVolleyCastUntil: gt + LIB_VOLLEY_CAST_MS, libVolleyReadyAt: gt + LIB_VOLLEY_COOLDOWN_MS, vx: 0, vy: 0 });
+    // 技の間=号令から最後の矢が刺さるまで(社長支給の号令の絵は「最後まで再生してまだ技中なら最後の3コマを繰り返す」)。
+    const lastHit = arrows.reduce((m, a) => Math.max(m, a.fireAt), gt + LIB_VOLLEY_CAST_MS);
+    Object.assign(patch, { libVolleyCastAt: gt, libVolleyCastUntil: lastHit, libVolleyReadyAt: gt + LIB_VOLLEY_COOLDOWN_MS, vx: 0, vy: 0 });
     attacking = true;
     // 号令の合図(派手さの絵): 旗の高さから骨色の輪が二重に広がる。声は叫喚の低い遠鳴り(号令の叫び)。
     playSfx('screamer-cry', 0.45, undefined, 0.78);
@@ -239,7 +242,10 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     g0.spawnRing(bx, bearer.y + bearer.height - LIB_HEAD_PX, 8, 190, 'rgba(127,29,29,0.75)', 3, 420);
   }
   // 体勢崩し(紫)・気絶=号令ごと取り消す(まだ予告の出ていない矢も捨てる。予告の出た矢は崩しの共通処理が消す=全技キャンセルの裁定と同じ・品質監査 A-2)。
-  if (stunned) s.volleyQueue = [];
+  if (stunned) {
+    s.volleyQueue = [];
+    if (bearer.libVolleyCastUntil !== undefined && gt < bearer.libVolleyCastUntil) patch.libVolleyCastUntil = gt; // 号令の絵も終わる
+  }
   {
     // 書き戻しは**最新の**配列から(このフレームの途中で崩しの処理が予告を消していたら、消えたまま=復活させない)。
     const hits = useGameStore.getState().enemies.find(e => e.id === bearer.id)?.giantDelayedHits ?? [];

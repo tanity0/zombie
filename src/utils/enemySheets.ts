@@ -917,6 +917,24 @@ export const ENEMY_SCREAM_SHEETS: Readonly<Record<string, number>> = {
 
 export const screamSheetName = (idleTexName: string): string => `${idleTexName}-scream`;
 
+/**
+ * ★**解放軍群(変異)の矢の雨の号令の絵**(社長支給2026-10-04「矢の雨の時用モーション。最後まで再生してまだ技中であれば
+ * 最後の3コマを繰り返す」)。シート名は `<立ち絵名>-volley`。16コマ(2112×202・132×202/コマ・縮小なし・1.71MB=遅延組)。
+ * 足元は全コマ最下行(y=202)。技の間(号令から最後の矢が刺さるまで)はこのコマを出す。尺は描画側の定数(`LIB_VOLLEY_FRAME_MS`)。
+ */
+export const ENEMY_VOLLEY_SHEETS: Readonly<Record<string, number>> = {
+  'mutant-liberty': 16,
+};
+export const volleySheetName = (idleTexName: string): string => `${idleTexName}-volley`;
+/** 最後まで再生したら、技が続く間は最後の3コマを繰り返す(社長指示)。 */
+export const VOLLEY_LOOP_TAIL = 3;
+export const volleyFrameAt = (frames: number, elapsedMs: number, frameMs: number): number => {
+  const i = Math.max(0, Math.floor(elapsedMs / frameMs));
+  if (i < frames) return i;
+  const tail = Math.min(VOLLEY_LOOP_TAIL, frames);
+  return frames - tail + ((i - frames) % tail);
+};
+
 export const screamSheetFrames = (idleTexName: string | null | undefined): number =>
   (idleTexName && ENEMY_SCREAM_SHEETS[idleTexName]) || 0;
 
@@ -2196,6 +2214,7 @@ export const allEnemySheets = (): { idle: string; sheet: string }[] => [
   ...Object.keys(ENEMY_JUMP_SHEETS).map(idle => ({ idle, sheet: jumpSheetName(idle) })),
   ...Object.keys(ENEMY_SWEEP_SHEETS).map(idle => ({ idle, sheet: sweepSheetName(idle) })),
   ...Object.keys(ENEMY_SCREAM_SHEETS).map(idle => ({ idle, sheet: screamSheetName(idle) })),
+  ...Object.keys(ENEMY_VOLLEY_SHEETS).map(idle => ({ idle, sheet: volleySheetName(idle) })),
   // ★差し替えシート(技ごとに別の絵を使う個体)。ここに入れないと**先読みも原盤台帳の照合も漏れる**。
   ...Object.keys(GIANT_ALT_SWEEP).flatMap(idle => giantAltSweepSheets(idle).map(a => ({ idle, sheet: a.name }))),
   // ★フィルの演出シート(演出1・演出2)。先読み・原盤台帳・常駐の決定(`phill` の行)に乗せる。

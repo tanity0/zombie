@@ -105,7 +105,7 @@ import { spriteFootRow, spriteTopRow, spriteLeftCol, spriteRightCol } from '../u
 import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
-import { walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
+import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
@@ -2125,6 +2125,8 @@ const HERO_SWING_LEAD_MS = 110, HERO_SWING_TAIL_MS = 150;
 // research/LIBERTY_HORDE.md §4c: 矢の雨の矢が落ちてくる尺(画面の上端の外から)と、落ちる向きの傾き(旗手=射手の側から・高さ1に対する横)。刺さった矢が薄れ始める時刻と薄れる尺
 // (合計は libertyScript.LIB_ARROW_STUCK_MS=1500 と同じ)。
 const LIB_ARROW_FALL_MS = 520, LIB_ARROW_FALL_SLANT = 0.27;
+/** 号令の絵(16コマ)の1コマの尺。16コマ=約1.4秒で再生し切り、技が続く間は最後の3コマを繰り返す。 */
+const LIB_VOLLEY_FRAME_MS = 85;
 const LIB_ARROW_STUCK_FADE_START = 1100, LIB_ARROW_STUCK_FADE_MS = 400;
 /**
  * 扇/帯をなぞって振る武器の絵(英雄のサーベル・解放軍群の旗)。握り=回す軸、先=範囲の縁をなぞる点。
@@ -18137,6 +18139,7 @@ export class PixiScene {
       ?? this.enemyJumpTexture(idleTexKey, e, gameTime)
       ?? this.enemyShotTexture(idleTexKey, e, now)
       ?? this.phillCastTexture(idleTexKey, e, gameTime)
+      ?? this.libertyVolleyTexture(idleTexKey, e, gameTime) // research/LIBERTY_HORDE.md §4c: 矢の雨の号令の絵
       ?? this.heroTexture(e, gameTime) // research/MUTANT_HERO.md: 英雄の技・佇みのコマ(技ごとに割り付けが違う)
       ?? this.bossPhaseTexture(idleTexKey, e, gameTime)
       ?? this.enemyAttackTexture(idleTexKey, e, gameTime)
@@ -31448,6 +31451,7 @@ export class PixiScene {
     const tex = getTexture(art.tex);
     // research/LIBERTY_HORDE.md §4c(クリエイティブ監査 #1): 矢の雨の号令=旗を天へ突き上げる(速く上げ→静止→ゆっくり下ろす)。
     if (e.type === 'mutant-liberty' && tex && e.libVolleyCastUntil !== undefined && gameTime < e.libVolleyCastUntil
+      && gameTime < (e.libVolleyCastAt ?? gameTime) + LIB_VOLLEY_CAST_MS
       && e.bossState !== 'hero-windup' && e.bossState !== 'hero-strike' && e.bossState !== 'hero-recover') {
       this.drawLibertyRaise(e, view, art, tex, gameTime, now);
       return;
@@ -31597,8 +31601,8 @@ export class PixiScene {
 
   /** 旗手の号令: 旗を体の上へ突き上げる(竿はほぼ垂直・向いている側へ少し倒す)。旗振りと同じ器(heroSwordFx)を使う。 */
   private drawLibertyRaise(e: Enemy, view: ActorView, art: SwingWeaponArt, tex: NonNullable<ReturnType<typeof getTexture>>, gameTime: number, now: number): void {
-    const until = e.libVolleyCastUntil ?? gameTime;
-    const u = Math.max(0, Math.min(1, 1 - (until - gameTime) / LIB_VOLLEY_CAST_MS));
+    // 突き上げは号令の頭の LIB_VOLLEY_CAST_MS だけ(技全体は最後の矢が刺さるまで続く)。
+    const u = Math.max(0, Math.min(1, (gameTime - (e.libVolleyCastAt ?? gameTime)) / LIB_VOLLEY_CAST_MS));
     // 上げ=最初の25%で速く(ease-out)・保持・最後の30%でゆっくり下ろす(ease-in)。
     const lift = u < 0.25 ? 1 - Math.pow(1 - u / 0.25, 3) : u > 0.7 ? 1 - Math.pow((u - 0.7) / 0.3, 2) : 1;
     const face = (e.heroFaceX ?? -1) >= 0 ? 1 : -1;
@@ -31819,6 +31823,20 @@ export class PixiScene {
    * ★予兆のリング・SE・揺れには一切触っていない(「元々のエフェクトは消さない」)。
    */
   private screamEndMemo = new Map<string, number>();
+
+  /**
+   * research/LIBERTY_HORDE.md §4c: 矢の雨の号令の絵(社長支給2026-10-04)。技の間(号令→最後の矢が刺さるまで)は
+   * 0コマ目から再生し、最後まで再生してまだ技中なら最後の3コマを繰り返す(`volleyFrameAt`)。
+   * 旗振り(hero-*)の最中は出さない(号令の最中は旗振りが始まらない作り=重ならない)。
+   */
+  private libertyVolleyTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
+    if (e.type !== 'mutant-liberty' || e.libVolleyCastUntil === undefined || gameTime >= e.libVolleyCastUntil) return null;
+    const frames = ENEMY_VOLLEY_SHEETS[idleTexKey] ?? 0;
+    if (frames <= 1) return null;
+    const i = volleyFrameAt(frames, gameTime - (e.libVolleyCastAt ?? gameTime), LIB_VOLLEY_FRAME_MS);
+    const slices = this.sheetSlices(volleySheetName(idleTexKey), frames);
+    return this.rememberAtkFrame(e, volleySheetName(idleTexKey), frames, i, slices);
+  }
 
   private enemyScreamTexture(idleTexKey: string, e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     const frames = screamSheetFrames(idleTexKey);

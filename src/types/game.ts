@@ -1325,6 +1325,8 @@ export interface Enemy {
   /** research/LIBERTY_HORDE.md §4c 矢の雨: 次に号令できる時刻・号令の構えが終わる時刻(gameTime)・刺さった矢(描画用)。 */
   libVolleyReadyAt?: number;
   libVolleyCastUntil?: number;
+  /** 号令を始めた時刻(gameTime)=号令の絵(`-volley`)のコマの起点。 */
+  libVolleyCastAt?: number;
   libArrowStuck?: { x: number; y: number; at: number; tilt: number }[];
   /** バット男(取り巻き)が属する旗手のID。★既存の bountyEscortId は使わない(親の退場で一掃する意味を持つため)。 */
   hordeLeaderId?: string;
