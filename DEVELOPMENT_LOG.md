@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4865 — 偶像(アイドル)の断末魔(社長提供の音)【2026-10-05 16:48 JST】
+- 社長提供の音(wav・5.9秒・叫びは0.25〜3.25秒で0dB近く、後ろは残響)→ 4.6秒で切って後ろ1.1秒フェード(mp3 128kbps)→ `public/audio/sfx/idol-death.mp3`。SEキー `idol-death`(音量0.85)。
+- gameStore `triggerDramaticDeath`(ボス級の崩れ落ち=近接・銃/爆発の両方の撃破経路が通る)の頭で、偶像なら1回鳴らす(動的 import=gameStore↔audioManager の循環を作らない既存の作法)。
+- 検証: typecheck / lint(0 errors)/ 循環import / assets:check / idolTick のテスト。
+- 監査: 素材の入れ込み=付けない。
+- 状態変化: なし
+
 ## v0.25.4864 — アイドルの笑い声(社長提供の音)【2026-10-05 16:43 JST】
 - 社長提供の音(wav・4.5秒・山は0.25〜2秒で0dB近く、後ろは残響の尾)→ 頭の無音0.12秒を詰め、3.3秒で切って後ろ0.7秒フェード(mp3 128kbps・54KB)→ `public/audio/sfx/idol-laugh.mp3`。SEキー `idol-laugh`(音量0.85・連続は3秒空ける)。
 - idolTick: 眠りから覚めた最初のフレームで1回(1体につき1回=登場)。技を出すたびに数え、3つ目の技ごと・前の笑いから9秒以上なら笑う(`IDOL_LAUGH_EVERY_MOVES`/`IDOL_LAUGH_MIN_GAP_MS`・乱数を使わない=既存テストの再現性を崩さない)。`IdolSfx.laugh` は任意(既存の NOOP はそのまま)。

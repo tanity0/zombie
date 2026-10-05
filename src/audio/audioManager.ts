@@ -130,6 +130,7 @@ export type SfxKey =
   | 'base-capture'   // 拠点開放SE
   | 'hunter-alert'   // ハンター変異体の検知(視界に入った=見られている)警告SE
   | 'screamer-cry'   // 変異体(叫喚型)の叫喚(発動)SE
+  | 'idol-death'     // 偶像(アイドル)が倒れる時の叫び声(社長提供2026-10-05)
   | 'idol-laugh'     // アイドルの笑い声(社長提供2026-10-05・登場と、技の時にたまに)
   | 'liberty-crow'   // 解放軍群(変異)に見つかった時のカラスの群れ(社長提供2026-10-05・25秒の素材の頭3.5秒を切り出しフェードアウト)
   | 'gate-clear'     // 強襲(関所)を生きて凌いだ時の突破ジングル
@@ -274,6 +275,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/screamer-cry.wav`,
     volume: 1.3, // 叫喚の音量を上げる(社長指示: 1.0→1.3)
     minIntervalMs: 400,
+  },
+  // 偶像(アイドル)が倒れる時の叫び声(社長提供2026-10-05)。素材は5.9秒=叫びの後の残響を1.1秒で畳んで4.6秒。
+  'idol-death': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/idol-death.mp3`,
+    volume: 0.85, // 素材の山が0dB近く
+    minIntervalMs: 3000,
   },
   // アイドルの笑い声(社長提供2026-10-05「登場シーンとか、技の時にたまに」)。素材は4.5秒=頭の無音を詰め、残響の尾を0.7秒で切った3.3秒。
   'idol-laugh': {

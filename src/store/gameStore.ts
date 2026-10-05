@@ -3768,6 +3768,9 @@ const hexToRgba = (hex: string, alpha: number): string => {
 // 'boss-death'を1回鳴らす)。HARD PERF CONSTRAINT: 強glow(spawnGlow大径)は使わない=pooled sprite
 // (spawnRing/spawnBurst)とscreen-space spawnFlash/triggerShake/triggerTimeSlowのみ。
 const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: number): void => {
+  // 偶像(アイドル)が倒れる時の叫び声(社長提供2026-10-05)。近接・銃/爆発の両方の撃破経路がここを通る。
+  // 音は他と同じく動的 import で鳴らす(gameStore ↔ audioManager の循環を作らない=11555行と同じ作法)。
+  if (enemy.type === 'idol') void import('../audio/audioManager').then(m => m.playSfx('idol-death'));
   // ★練習ラン(ボスラッシュ)は**狙った1体を倒したら終わり**(BOSS_MAKER.md §20-7-c)。
   // ゲート2/裏ボスは倒してもクリアにならない(帰還サークルは城ボス撃破が条件)ため、放っておくと
   // 「倒したのに終われない」=練習で一番使う導線が無い状態になる。勝ちにしてリザルトへ送る。
