@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.4868 — PC: マウスの向きは照準を持つ銃だけ(社長指示)【2026-10-05 19:44 JST】
+- 社長指示「マウスのある方向に近接振るのは難しいのでやめたい。マウス方向はフィルガンなどのターゲットある武器のみ対応」。
+- `weaponUtils.mouseSetsAim(player)`=`hasManualAimGunKey(getActiveGun)`(PHILL/シグナル/レールガン)。
+  - `pcPress.pcPressUp`: カーソルへ向きを合わせるのはこれが真の時だけ(近接の振り・踏み込みは歩いた向き)。
+  - `gameStore` の照準ベクトル(aimX/Y): マウス即時方向はこれが真の時だけ。それ以外はタッチ・キーボードと同じスティック慣性。
+- タッチ(mouseAim=null)は経路ごと不変。フリック(一閃/ワイヤー)の向き=カーソルは触っていない(指示の範囲外)。
+- 検証: typecheck / lint(0 errors)/ 循環import / pcPress のテスト8本(近接だけ=向きを書き換えない・PHILL=カーソルへ、を追加)/ ヘッドレスPC(1280×720): 近接中はカーソル右でも aim が歩いた下向きへ、PHILLに持ち替えるとカーソル方向(1.00,-0.07)・照準がカーソル位置に出るのを画で確認。
+- 監査: 既存の分岐の条件を狭めるだけ=付けない。
+- 状態変化: なし
+
 ## v0.25.4867 — 焼きの天井をスマホ/PCで分ける(社長「はい」)【2026-10-05 19:30 JST】
 - 新設 `src/utils/memoryTier.ts`: 端末の格 `phone`/`pc`(判定は PixiStage の解像度上限が v0.25.1447 から使ってきた uaData.mobile → `(pointer: coarse)` と同じ1本へ寄せた)。`rimBakeBudgetMb` スマホ32/PC64・`whiteBakeBudgetMb` スマホ16/PC32・`resolutionCapFor` スマホ1/PC2。
 - PixiStage の `resolutionCap` と pixiScene の `RIM_BAKE_BUDGET_MB`/`WHITE_BAKE_BUDGET_MB` がここを読む(`?rescap=`/`?rimbudget=`/`?whitebudget=` の上書きは従来どおり)。素材は増やさない=アプリの容量は不変。

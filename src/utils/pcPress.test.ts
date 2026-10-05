@@ -66,6 +66,22 @@ describe('PC の指(pcPress)', () => {
     pcPressUp('key', true);
     expect(order).toEqual(['signal', 'rail', 'alch', 'homing', 'melee', 'dismount']);
   });
+  it('マウスの向きは照準を持つ銃の時だけ効く。近接の振りは歩いた向きのまま(社長指示2026-10-05)', () => {
+    const setDir = vi.fn();
+    const walked = { x: 0, y: 1 };
+    const base = { x: 100, y: 100, width: 20, height: 20, lastDirection: walked };
+    // 近接だけ(銃を構えていない): カーソルが右にあっても向きを書き換えない
+    useGameStore.setState({ mouseAim: { x: 400, y: 110 }, camera: { x: 0, y: 0 }, setLastDirection: setDir,
+      rhythm: { active: false }, player: { ...base, weapons: [{ id: 'k', key: 'knife-t1' }], activeWeaponId: 'k' } } as never);
+    pcPressDown('mouse'); pcPressUp('mouse', true);
+    expect(setDir).not.toHaveBeenCalled();
+    expect(swing).toHaveBeenCalledTimes(1);
+    // PHILL を構えている: カーソルの方へ向く
+    useGameStore.setState({ player: { ...base, weapons: [{ id: 'p', key: 'phill-revolver', category: 'gun' }], activeWeaponId: 'p' } } as never);
+    pcPressDown('mouse'); pcPressUp('mouse', true);
+    expect(setDir).toHaveBeenCalledTimes(1);
+    expect(setDir.mock.calls[0][0].x).toBeGreaterThan(0.99);
+  });
   it('四神舞: 押している間にフリックを出したら、離してもタップにしない', () => {
     const rhythmInput = vi.fn();
     useGameStore.setState({ rhythm: { ...useGameStore.getState().rhythm, active: true }, rhythmInput } as never);

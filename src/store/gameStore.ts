@@ -133,7 +133,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, gunShotBaseDamage } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
 import { alchemyStoneDetonateDamage, alchemyStoneDetonateRadius } from '../utils/alchemyStone';
 import { type SignalStrike, SIGNAL_STRIKE_DELAY_MS, SIGNAL_STRIKE_RADIUS_PX } from '../utils/signalLauncher';
@@ -7378,7 +7378,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const ldl = Math.max(0.001, Math.hypot(ld.x, ld.y));
       const aimAlpha = inertiaAlpha(deltaTime, AIM_INERTIA_TAU);
       // PC(マウス)照準: スクリーン座標 mouseAim をワールドへ(camera を足す)。タッチ時は null。
-      const mouseWorld = state.mouseAim
+      // ★照準を持つ銃(PHILL等)を構えている時だけ(社長指示2026-10-05)。近接はマウスを見ない=歩いた向き。
+      const mouseWorld = state.mouseAim && mouseSetsAim(player)
         ? { x: state.camera.x + state.mouseAim.x, y: state.camera.y + state.mouseAim.y }
         : null;
       // aim ベクトル: マウス時は「プレイヤー→カーソル」の即時方向(慣性なし・360度)。

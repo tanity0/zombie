@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4868', items: ['PCのマウス操作で、近接の振りがカーソルの方へ向かず、歩いている向きへ出るようになった。カーソルが狙いになるのはPHILLガンなど照準を持つ銃だけ'] },
   { version: '0.25.4867', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4866', items: ['長く遊んでいると落ちることがあった不具合を軽くした'] },
   { version: '0.25.4865', items: ['アイドルが倒れる時、断末魔の叫びが響く'] },

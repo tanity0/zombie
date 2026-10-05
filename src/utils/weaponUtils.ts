@@ -587,6 +587,13 @@ export const isManualOnlyGunKey = (key: string | undefined | null): boolean =>
 export const hasManualAimGunKey = (key: string | undefined | null): boolean =>
   isManualOnlyGunKey(key) || key === RAILGUN_WEAPON_KEY;
 
+/**
+ * PC のマウスが向きを決めるか(社長指示2026-10-05「マウスのある方向に近接振るのは難しいのでやめたい。
+ * マウス方向はフィルガンなどのターゲットある武器のみ対応」)。照準を持つ銃(PHILL/シグナル/レールガン)を
+ * 構えている時だけ true。それ以外(近接の振り・踏み込み)は歩いた向き=キーボード・タッチと同じ。
+ */
+export const mouseSetsAim = (player: Player): boolean => hasManualAimGunKey(getActiveGun(player)?.key);
+
 // 手動専用銃(§16-3b)のフォールバック先(守護霊/ボット用)。無ければ undefined
 // (PHILLは横=既定同カテゴリ銃が存在しないスロット外武器なので、従来どおり素通し=「撃たない」のまま
 // ——これはPHILLが研究所固定銃であることに由来する既存の雑な形で、今回のバッチはそこへ手を入れない)。

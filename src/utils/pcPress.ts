@@ -5,6 +5,7 @@
 // 数値はタッチと同じ(VirtualJoystick の SKATER_* と同値。タッチ側の定数を動かしたらここも揃える)。
 import { playSfx } from '../audio/audioManager';
 import { useGameStore, isAttackLocked, isInputLocked, isWorldFrozen } from '../store/gameStore';
+import { mouseSetsAim } from './weaponUtils';
 
 export const PC_SKATER_DOUBLETAP_MS = 300; // 1回目の離し→2回目の押下 までの許容間隔(タッチと同値)
 export const PC_SKATER_TAP_MAX_MS = 220;   // 「タップ」とみなす最大の押下時間(タッチと同値)
@@ -53,7 +54,9 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
   if (fire && !returnPromptOpened && !isAttackLocked()) {
     // マウスがある時は離した瞬間の向き=カーソルの方向(鞭・ナイフの振りと踏み込みがカーソルへ・§11-2)。キーで振っても同じ
     // (照準サークルはカーソルを向いているので、振りだけ歩いた向き、を作らない=監査 B-5)。世界が止まっている間は書き換えない。
-    if (gs.mouseAim && !isWorldFrozen() && !gs.rhythm.active) { // 四神舞中は向きを回さない(タッチと同じ・検収 B-2)
+    // ★v0.25.4868(社長指示「マウスのある方向に近接振るのは難しいのでやめたい。マウス方向はフィルガンなどのターゲットある武器のみ」):
+    // 照準を持つ銃を構えている時だけ。近接の振りは歩いた向き(キーボード・タッチと同じ)。
+    if (gs.mouseAim && mouseSetsAim(gs.player) && !isWorldFrozen() && !gs.rhythm.active) { // 四神舞中は向きを回さない(タッチと同じ・検収 B-2)
       const p = gs.player;
       const dx = gs.camera.x + gs.mouseAim.x - (p.x + p.width / 2);
       const dy = gs.camera.y + gs.mouseAim.y - (p.y + p.height / 2);
