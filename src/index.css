@@ -936,12 +936,12 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 }
 .ds-row:hover,
 .ds-row:focus-visible,
-.ds-row:active {
+.ds-row:active , .ds-row.navfocus {
   background: rgba(255, 179, 64, 0.06);
 }
 .ds-row:hover::before,
 .ds-row:focus-visible::before,
-.ds-row:active::before {
+.ds-row:active::before , .ds-row.navfocus::before {
   background: var(--ds-amber);
   border-color: var(--ds-amber);
 }
@@ -1008,11 +1008,11 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 .ds-foot { flex-shrink: 0; }
 .ds-row:focus-visible,
 .ds-foot-gear:focus-visible,
-.ds-loadout button:focus-visible {
+.ds-loadout button:focus-visible , .ds-row.navfocus, .ds-foot-gear.navfocus, .ds-loadout button.navfocus {
   outline: 2px solid var(--ds-amber);
   outline-offset: -2px;
 }
-.ds-sortie:focus-visible {
+.ds-sortie:focus-visible , .ds-sortie.navfocus {
   outline: 2px solid #12100a;
   outline-offset: -4px;
 }
@@ -1083,4 +1083,5 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
    選んだボタンの見え方は**各画面の :focus-visible をそのまま使う**(ホームの行=ホバーと同じ点灯と琥珀の◆ / 出撃=暗い内枠 /
    コマンドのボタン=内枠)。決めていないボタンにだけ、内側へ引いた細い琥珀の線を足す(外へはみ出さない・影は触らない)。
    :where() で詳細度を0にしてある=各画面の規則が常に勝つ。html.kbnav は矢印を押した時だけ付く=スマホでは付かない。 */
-:where(html.kbnav) :where(button, [role="button"], a):focus-visible { outline: 1px solid rgba(255, 179, 64, 0.85); outline-offset: -2px; }
+:where(html.kbnav) :where(button, [role="button"], a):focus-visible,
+:where(html.kbnav) :where(button, [role="button"], a).navfocus { outline: 1px solid rgba(255, 179, 64, 0.85); outline-offset: -2px; }

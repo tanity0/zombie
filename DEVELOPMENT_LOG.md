@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4874 — パッドのメニュー操作で選択の印が出ない(社長報告)【2026-10-05 20:50 JST】
+- 社長報告「マウスやキーボードであれば大丈夫なんだけど、ゲームコントローラーだとだめ」。原因: 選択の見た目は全部 `:focus-visible` 頼みで、パッドの操作はキーボードの入力ではない=ブラウザがスクリプトの focus() に `:focus-visible` を付けない。ヘッドレス Chromium 141 で再現(マウスの後に navMove → `:focus-visible=false`・outline none)。`focus({focusVisible:true})` も効かなかった。
+- `menuNav.focusEl` が `.navfocus` を付ける(前の物から外す・pointerdown と focusout で外す)。CSS は各 `:focus-visible` の規則の選択子に `.navfocus` を機械的に並べた(18か所・3ファイル)。
+- 検証: typecheck / lint(0 errors)/ ヘッドレスPC: マウスの後に navMove → `.navfocus` 付き・outline 2px(更新情報の OK)/ 1px(タイトルの CAMERA)を画で確認=キーボードの時と同じ見え方。
+- スマホ: `.navfocus` は navMove(矢印・パッド)でしか付かない=タッチでは付かない。
+- 監査: 付けない(既存の見え方をパッドにも出すだけ・新しい見え方ではない)。
+- 状態変化: なし
+
 ## v0.25.4873 — PC・パッド: スキップを Esc/スタートで押せる(社長報告)【2026-10-05 20:47 JST】
 - 社長報告「スキップも押せない」。オープニング・登場の会話・エンディングのスキップは onClick/onPointerDown だけ=キーボード・パッドから届かなかった(オープニングの廊下は `data-kbnav-off`、会話中は isPaused でない=menuNav が効かない)。
 - `menuNav.pressVisibleSkip()` + `installMenuKeyNav` に捕捉段の Esc 受け(出ているスキップを押したら stopImmediatePropagation=一時停止は開かない)。3つのスキップに `data-skip`。エンディングは onClick も足した(finish は二重呼びを弾く)。パッドのスタート/バックは既存どおり Esc を送るので同じ道を通る。

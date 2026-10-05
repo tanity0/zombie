@@ -60,8 +60,17 @@ const candidates = (): HTMLElement[] =>
 
 const rectOf = (el: Element): NavRect => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
 
+// ★選んでいるボタンに `navfocus` を付ける(v0.25.4874・社長報告「ゲームコントローラーだとだめ」)。
+//   パッドは「キーを押した」事にならないので、ブラウザはスクリプトの focus() に選択の枠(:focus-visible)を付けない
+//   (Chrome 141 の実測: マウスの後に navMove すると :focus-visible=false・FocusOptions.focusVisible も効かない)。
+//   CSS は各画面の `:focus-visible` の規則に `.navfocus` を並べてある=キーボードでもパッドでも同じ見え方。
+let navFocused: HTMLElement | null = null;
+const clearNavFocus = () => { navFocused?.classList.remove('navfocus'); navFocused = null; };
 const focusEl = (el: HTMLElement) => {
   document.documentElement.classList.add('kbnav');
+  clearNavFocus();
+  el.classList.add('navfocus');
+  navFocused = el;
   el.focus({ preventScroll: true });
   el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 };
@@ -156,11 +165,15 @@ export const installMenuKeyNav = (): (() => void) => {
       if (navBack()) e.preventDefault();
     }
   };
-  const onPointer = () => document.documentElement.classList.remove('kbnav');
+  const onPointer = () => { document.documentElement.classList.remove('kbnav'); clearNavFocus(); };
+  // 選択が他へ移った/消えた時は目印も外す(窓が閉じてボタンが消えた時も残らない)。
+  const onFocusOut = (e: FocusEvent) => { if (e.target === navFocused) clearNavFocus(); };
   window.addEventListener('keydown', onSkipKey, true);
   window.addEventListener('keydown', onKey);
   window.addEventListener('pointerdown', onPointer, true);
+  document.addEventListener('focusout', onFocusOut, true);
   return () => {
+    document.removeEventListener('focusout', onFocusOut, true);
     window.removeEventListener('keydown', onSkipKey, true);
     window.removeEventListener('keydown', onKey);
     window.removeEventListener('pointerdown', onPointer, true);

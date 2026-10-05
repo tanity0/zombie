@@ -62,8 +62,8 @@
 .command-record-grid button:hover { background: var(--menu-hover); border-color: var(--menu-muted); }
 .command-footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid var(--menu-line); font-size: 10px; color: var(--menu-muted); letter-spacing: .1em; }
 .command-footer a { min-height: 44px; display: inline-flex; align-items: center; color: var(--menu-accent); font: 12px system-ui; }
-.command-home button:focus-visible, .command-home a:focus-visible { outline: 2px solid var(--menu-accent-hi); outline-offset: -4px; }
-.command-home .command-sortie:focus-visible { outline-color: #171208; }
+.command-home button:focus-visible, .command-home a:focus-visible , .command-home button.navfocus, .command-home a.navfocus { outline: 2px solid var(--menu-accent-hi); outline-offset: -4px; }
+.command-home .command-sortie:focus-visible , .command-home .command-sortie.navfocus { outline-color: #171208; }
 .command-shell .ds-loadout-header { padding: 8px 0 14px; gap: 18px; }
 .command-shell .ds-loadout-header h1 { font-size: 24px; }
 .command-shell .ds-loadout-body > .p-3 { padding: 20px 0; }
@@ -96,7 +96,7 @@
 }
 
 .ds-foot-options { min-height:44px; padding:0 12px; border:1px solid currentColor; color:inherit; font:inherit; }
-.ds-foot-options:focus-visible { outline:2px solid var(--menu-accent-hi, #ffd28a); outline-offset:3px; }
+.ds-foot-options:focus-visible , .ds-foot-options.navfocus { outline:2px solid var(--menu-accent-hi, #ffd28a); outline-offset:3px; }
 .command-shell .weapon-slot-guide { color:var(--menu-muted); font:13px/1.7 system-ui; margin-bottom:12px; }
 .command-shell .weapon-category + .weapon-category { margin-top:28px; }
 .command-shell .weapon-category-title { font:500 20px/1.5 system-ui; color:var(--menu-accent); margin-bottom:12px; }

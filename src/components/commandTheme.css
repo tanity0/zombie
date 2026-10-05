@@ -14,7 +14,7 @@
 .command-ui .command-weapon-tabs { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:0; margin:16px 0 12px; border-bottom:1px solid var(--menu-line); }
 .command-ui .command-weapon-tabs button { min-width:0; min-height:44px; padding:10px 4px; border:0; border-bottom:2px solid transparent; font:clamp(10px,2.5vw,13px)/1.5 system-ui; color:var(--menu-muted); background:transparent; white-space:normal; overflow-wrap:anywhere; }
 .command-ui .command-weapon-tabs button[aria-pressed='true'] { color:var(--menu-accent-hi); background:var(--menu-selected); box-shadow:none; border-bottom-color:var(--menu-accent); }
-.command-ui .command-weapon-tabs button:focus-visible { outline:2px solid var(--menu-accent-hi); outline-offset:-2px; }
+.command-ui .command-weapon-tabs button:focus-visible , .command-ui .command-weapon-tabs button.navfocus { outline:2px solid var(--menu-accent-hi); outline-offset:-2px; }
 .command-ui .development-toolbar { padding-top:16px; padding-bottom:16px; }
 .command-ui .development-balance { display:flex; justify-content:space-between; align-items:center; color:var(--menu-muted); font:13px system-ui; margin-bottom:16px; }
 .command-ui .development-balance strong { color:var(--menu-accent); font-size:22px; }
@@ -64,7 +64,7 @@
 .command-ui .command-page .truncate { white-space: normal; overflow-wrap: anywhere; }
 .command-ui .command-page input[type='range'] { accent-color: var(--command-accent); min-height: 32px; }
 .command-ui .command-page input[type='text'] { background: var(--menu-bg); border: 1px solid var(--menu-line); color: var(--command-ink); min-height: 44px; padding: 10px 12px; }
-.command-ui .command-page button:focus-visible, .command-ui .command-character button:focus-visible, .command-ui .command-panel button:focus-visible, .command-ui .command-panel input:focus-visible { outline: 2px solid var(--menu-accent-hi); outline-offset: -3px; }
+.command-ui .command-page button:focus-visible, .command-ui .command-character button:focus-visible, .command-ui .command-panel button:focus-visible, .command-ui .command-panel input:focus-visible , .command-ui .command-page button.navfocus, .command-ui .command-character button.navfocus, .command-ui .command-panel button.navfocus, .command-ui .command-panel input.navfocus { outline: 2px solid var(--menu-accent-hi); outline-offset: -3px; }
 .command-ui .command-button { min-height: 48px; padding-left: 18px; padding-right: 18px; display: block; border: 1px solid var(--menu-line); background: var(--menu-panel); color: var(--menu-ink); font: 500 14px/1.5 'Rajdhani', system-ui, sans-serif; letter-spacing: .1em; text-align: center; transition: background 160ms ease-out, border-color 160ms ease-out, transform 160ms cubic-bezier(.2,.9,.3,1.2); }
 .command-ui .command-button:hover { background: var(--menu-hover); border-color: var(--menu-muted); }
 /* クリエイティブ監査第2回・第2手A-2+A-3(research/CREATIVE_AUDIT_2026-09-11.md):
@@ -92,8 +92,8 @@
 @media (prefers-reduced-motion: reduce) { .command-ui .command-button-primary:active::after { animation: none; } }
 .command-ui .command-button:active { transform: translateY(1.5px); }
 .command-ui .command-button-selected { border-color: var(--command-accent); box-shadow: inset 3px 0 var(--command-accent); }
-.command-ui .command-button:focus-visible { outline: 2px solid var(--menu-accent-hi); outline-offset: -4px; }
-.command-ui .command-button-primary:focus-visible { outline-color: #171208; }
+.command-ui .command-button:focus-visible , .command-ui .command-button.navfocus { outline: 2px solid var(--menu-accent-hi); outline-offset: -4px; }
+.command-ui .command-button-primary:focus-visible , .command-ui .command-button-primary.navfocus { outline-color: #171208; }
 .command-ui .command-page .command-stage-card { position: relative; overflow: hidden; min-height: 172px; padding: 24px; isolation: isolate; background: var(--menu-panel); }
 .command-ui .command-stage-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
 .command-ui .command-stage-card::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #071116ed, #07111677 70%, #07111655); }
