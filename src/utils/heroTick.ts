@@ -23,6 +23,7 @@ import {
   type HeroMoveKey, type HeroShape, type HeroTargetCand,
 } from './heroScript';
 import { STRUCK_NOTICE_MS } from './frontSight';
+import { saveHeroAscended } from './heroAscended';
 
 /** 帰巣(社長「範囲外はボスと同じ」・§6-1 / §10a)。賞金首と同じ数字。 */
 export const HERO_LEASH_PLAYER_PX = 700;
@@ -337,6 +338,7 @@ export const runHeroTick = (
     // スキル「英雄」(社長指示2026-10-05「昇天させた場合のみゲットできる」)。死神と同じ形=未所持の時だけ告知。
     const hadHeroSkill = g.ownedSkills.includes('hero');
     g.grantSkill('hero');
+    saveHeroAscended(); // 社長指示「解放された後は2度と出ない(昇天のみ)」=本編の周回の英雄はもう置かない
     if (!hadHeroSkill) g.spawnCallout(hx, hero.y - 40, 'スキル「英雄」習得！', '#fde68a', { scale: 1.2 });
     sfx.ascend?.(Math.max(0.5, sfxGain * 0.8));
     sfx.gallop(0, 1);

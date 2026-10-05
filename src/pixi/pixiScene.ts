@@ -768,6 +768,8 @@ const WHIP_HURRICANE_WIDTH_MULT = 3.0;  // 描画幅 = 吸引半径 × この倍
 // 社長指示2026-10-04: 召喚の歩きのコマの尺・レア召喚(ハンター)の棺桶の振り回し(1秒の回転数・出だし/終わりの加減速の尺・
 // 斜め上から見た楕円のつぶれ・棺桶の大きさ)・足元の竜巻の幅(吸い込みの見た目の半径×倍率)。
 // 召喚の出入り(ms): 出る時は下から浮き上がりながら濃くなり、レアが消える時は沈みながら薄れる(慣性MUST・パッと出ない/消えない)。
+/** 叫びで強くなった敵の頭上の光の大きさ(px・外側の暈)。旗の先の光(120px)より小さく。 */
+const SCREAM_BUFF_MARK_PX = 42;
 const SUMMON_FADE_IN_MS = 360, SUMMON_FADE_OUT_MS = 600, SUMMON_RISE_PX = 10;
 /** 噛んだ後、次の噛みまでの間に加えて敵の方を向き続ける猶予(ms)。噛みが続く間は向きが揺れない。 */
 const SUMMON_BITE_FACE_GRACE_MS = 200;
@@ -14360,6 +14362,8 @@ export class PixiScene {
         if (heroSw) { if (!heroSw.destroyed) heroSw.destroy({ children: true }); this.heroSwordFx.delete(id); }
         const libTipGlow = this.libFlagTipGlow.get(id);
         if (libTipGlow) { if (!libTipGlow.destroyed) libTipGlow.destroy({ children: true }); this.libFlagTipGlow.delete(id); }
+        const sbm = this.screamBuffMarks.get(id);
+        if (sbm) { if (!sbm.c.destroyed) sbm.c.destroy({ children: true }); this.screamBuffMarks.delete(id); }
         const ascFx = this.heroAscendFx.get(id);
         if (ascFx) { if (!ascFx.beam.destroyed) ascFx.beam.destroy(); if (!ascFx.glow.destroyed) ascFx.glow.destroy(); if (!ascFx.body.destroyed) ascFx.body.destroy(); this.heroAscendFx.delete(id); }
         this.heroSwordLastTip.delete(id);
@@ -19826,6 +19830,7 @@ export class PixiScene {
       this.drawHeroSword(e, view, gameTime, now);
     }
     if (e.type === 'mutant-hero') this.drawHeroAscend(e, view, gameTime);
+    this.drawScreamBuffMark(e, view, gameTime, now);
     if (isBountyType(e.type)) {
       const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
       const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
@@ -31803,6 +31808,42 @@ export class PixiScene {
   }
   /** 号令の旗の先端の光(個体ごと)。号令の外では既定OFF(resetActorFxDefaults)。 */
   private libFlagTipGlow = new Map<string, Container>();
+
+  /** 叫びで強くなっている敵の頭上の小さな光(個体ごと)。 */
+  private screamBuffMarks = new Map<string, { c: Container; shownAt: number }>();
+  /**
+   * 社長指示2026-10-05「叫びをした時、効果がついた敵の頭上を小さく光らせて(旗みたいに)」: 叫喚型・解放軍群の旗手の叫び
+   * (どちらも同じ強化の窓 `screamerBuffUntil`)が効いている敵=ボス級と叫喚型以外の生きている敵の頭上に、旗の先と同じ
+   * 二重の柔らかい光を小さく灯す。灯る時は下から浮かんで濃くなり、切れる前に薄れる(慣性)。派手さの絵=判定なし。
+   */
+  private drawScreamBuffMark(e: Enemy, view: ActorView, gameTime: number, now: number): void {
+    const until = useGameStore.getState().screamerBuffUntil;
+    const on = gameTime < until && !isBossType(e.type) && e.type !== 'screamer' && !isCorpse(e) && e.health > 0
+      && view.sprite.visible && !e.dormant;
+    let m = this.screamBuffMarks.get(e.id);
+    if (!on) { if (m) { m.c.visible = false; m.shownAt = -1; } return; }
+    if (!m || m.c.destroyed) {
+      const c = new Container();
+      for (const [tint, alphaMul] of [[0xffc966, 0.8], [0xfff6dc, 1]] as const) {
+        const sp = new Sprite(getSoftGlowTexture()); sp.anchor.set(0.5); sp.blendMode = 'add'; sp.tint = tint; sp.alpha = alphaMul;
+        c.addChild(sp);
+      }
+      this.L.effectLayer.addChild(c);
+      m = { c, shownAt: -1 };
+      this.screamBuffMarks.set(e.id, m);
+    }
+    if (m.shownAt < 0) m.shownAt = now;
+    const fin = 1 - (1 - Math.min(1, (now - m.shownAt) / 320)) ** 3;
+    const fout = Math.min(1, Math.max(0, (until - gameTime) / 500));
+    const pulse = 0.8 + 0.2 * Math.sin(now / 180 + stablePhase(e.id));
+    const headY = view.sprite.position.y - Math.abs(view.sprite.height) - 6;
+    m.c.position.set(view.sprite.position.x, headY + 10 * (1 - fin));
+    const outer = m.c.children[0] as Sprite, core = m.c.children[1] as Sprite;
+    outer.width = outer.height = SCREAM_BUFF_MARK_PX * pulse;
+    core.width = core.height = SCREAM_BUFF_MARK_PX * 0.34 * (0.85 + 0.15 * pulse);
+    m.c.alpha = fin * fout;
+    m.c.visible = m.c.alpha > 0.01;
+  }
 
   /** 英雄の昇天の光(個体ごと): 天からの光の柱(Graphics)・体の外の金の暈(加算の柔らかい光)・体そのものが光る白いシルエット。 */
   private heroAscendFx = new Map<string, { beam: Graphics; glow: Sprite; body: Sprite }>();

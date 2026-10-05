@@ -193,6 +193,7 @@ import {
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
+import { loadHeroAscended } from '../utils/heroAscended';
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties } from '../utils/heroBlast';
 // 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
@@ -8538,7 +8539,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // (原点からの距離=内縁と外縁の中間)に1体置き、輪を反時計回りにゆっくり回り続ける(heroTick の周回)。置く角度はランごとに無作為。
           // プレイヤーへは寄らない・去らない。体力は固定(上限20000・出てくる時10000=社長指示2026-10-05)。
           if (!HERO_PATROL_BLOCKED && !heroForceRef.current && newGameTime >= 3000 && !isPracticeRun() && !isBossMakerRun()
-            && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '')) {
+            && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '')
+            && !loadHeroAscended()) { // 社長指示2026-10-05: 一度昇天させたら本編には二度と出ない(対策室・ボステストには出る)
             heroForceRef.current = true;
             const R = heroPatrolRadius(AREA_THRESHOLDS);
             const a0 = Math.random() * Math.PI * 2;
