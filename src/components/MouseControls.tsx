@@ -4,6 +4,7 @@ import { performFlickAction } from '../utils/inputActions';
 import { pcPressDown, pcPressUp, markPcFlick } from '../utils/pcPress';
 import { computeViewport } from '../utils/viewport';
 import { screenToCameraLocal } from '../utils/viewTransform';
+import { pcCycleGun } from '../utils/weaponCycle';
 
 // PC(マウス)操作レイヤー。スマホの4操作に対応(research/PC_SUPPORT.md §11):
 //   移動(指移動): WASD / 矢印(キーボード)
@@ -98,12 +99,28 @@ const MouseControls: React.FC = () => {
     };
   }, []);
 
+  // ホイール=銃の持ち替え(下=次 / 上=前)。トラックパッドは細かい量を連打で送ってくるので、量を溜めて一段ずつ・間を空ける。
+  const wheelAcc = React.useRef(0);
+  const wheelLast = React.useRef(0); // 最後に持ち替えた時刻
+  const wheelEvt = React.useRef(0);  // 最後にホイールが来た時刻(止まっていたら溜めを捨てる)
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const now = performance.now();
+    if (now - wheelEvt.current > 400) wheelAcc.current = 0;
+    wheelEvt.current = now;
+    wheelAcc.current += e.deltaY;
+    if (Math.abs(wheelAcc.current) < 40 || now - wheelLast.current < 160) return;
+    pcCycleGun(wheelAcc.current > 0 ? 1 : -1);
+    wheelAcc.current = 0;
+    wheelLast.current = now;
+  }, []);
+
   return (
     <div
       className="absolute inset-0 z-20"
       style={{ touchAction: 'none', cursor: 'crosshair' }}
       onMouseMove={updateAim}
       onMouseDown={handleMouseDown}
+      onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()}
     />
   );

@@ -3,6 +3,7 @@ import { useGameStore, isGameTimeStopped, isAttackLocked } from '../store/gameSt
 import { performFlickAction } from '../utils/inputActions';
 import { pcPressDown, pcPressUp, markPcFlick } from '../utils/pcPress';
 import { isMenuContext } from '../utils/menuNav';
+import { pcCycleGun, pcSelectGunSlot } from '../utils/weaponCycle';
 
 // Keyboard fallback — the game is touch-first, but we keep a PC-optimized
 // scheme so a laptop is fully playable.
@@ -11,6 +12,7 @@ import { isMenuContext } from '../utils/menuNav';
 //     (research/PC_SUPPORT.md §11-1。マウスの左ボタン・パッドの A と同じ utils/pcPress を呼ぶ)
 //   フリック(一閃ダッシュ・ワイヤーアンカー): K … 押した瞬間に「今の移動方向」へ発動。
 //   歩き: Shift(押している間だけ・社長指示2026-10-05。それまで Shift はフリックだった)。
+//   銃の持ち替え: Q=次の銃 / 1〜9=その枠の銃(社長指示2026-10-05・utils/weaponCycle)。
 //     斜めも出せる(WASD合成方向を使う)。二連打方式は廃止(斜めに行けないため)。
 const isCounterKey = (key: string) => {
   const k = key.toLowerCase();
@@ -101,6 +103,13 @@ export const useGameControls = () => {
       // 一時停止・説明・レベルアップ・帰還確認などの窓が出ている間は、矢印/WASD/Space はメニューの操作(utils/menuNav・ボタンの標準動作)。
       // 移動・向き・指には何も書かない(窓の下でプレイヤーが振り向く/再開した瞬間に歩き出す、を防ぐ・検収 A-2/C-1)。
       if (isMenuContext()) return;
+
+      // 銃の持ち替え(押した瞬間だけ・押しっぱなしの連打は無視)。
+      if (!e.repeat) {
+        if (e.code === 'KeyQ' || (!e.code && key === 'q')) { pcCycleGun(1); return; }
+        const slot = /^Digit([1-9])$/.exec(e.code ?? '');
+        if (slot) { pcSelectGunSlot(Number(slot[1]) - 1); return; }
+      }
 
       const inputState = { ...useGameStore.getState().inputState };
 

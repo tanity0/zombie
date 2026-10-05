@@ -1,19 +1,20 @@
 // ゲームパッド(標準配置・Gamepad API)(research/PC_SUPPORT.md §11-4)。
 // ゲーム中: 左スティック=移動(タッチのスティックと同じ「方向+強さ」)/ 十字キー=移動(全速)/ A=指(押す/離す=utils/pcPress)/
-//          B・RB=フリック(スティックの向き、倒していなければ向いている向き)/ Start・Back=一時停止(Esc と同じ)。
+//          B・RB=フリック(スティックの向き、倒していなければ向いている向き)/ Y=次の銃・LB=前の銃(utils/weaponCycle)/ Start・Back=一時停止(Esc と同じ)。
 // メニュー(utils/menuNav の isMenuContext): 十字キー・左スティック=ボタン間の移動 / A=押す / B=戻る(ゲームの一時停止中は再開)。
 // 接続中だけ毎フレーム読む。負荷 1/10(ボタン十数個と軸2本の比較だけ)。タッチだけの端末では接続が無いので何も起きない。
 import { useGameStore, isInputLocked, isWorldFrozen } from '../store/gameStore';
 import { performFlickAction } from './inputActions';
 import { pcPressDown, pcPressUp, markPcFlick } from './pcPress';
 import { setPadActive } from './inputDevice';
+import { pcCycleGun } from './weaponCycle';
 import { isMenuContext, isGameplayMounted, navMove, navActivate, navBack, type NavDir } from './menuNav';
 
 export const PAD_DEAD_ZONE = 0.2;
 const MENU_STICK_ON = 0.6;
 const MENU_REPEAT_FIRST_MS = 380;
 const MENU_REPEAT_MS = 150;
-const B = { A: 0, B: 1, RB: 5, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
+const B = { A: 0, B: 1, Y: 3, LB: 4, RB: 5, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
 
 /** スティックの値 → 移動の方向と強さ(デッドゾーンを0・外周を1)。デッドゾーン内は null。 */
 export const padStickToSwipe = (ax: number, ay: number, dead = PAD_DEAD_ZONE): { dir: { x: number; y: number }; strength: number } | null => {
@@ -131,6 +132,9 @@ export const installGamepad = (): (() => void) => {
       if (g.rhythm.active) { g.rhythmInput('flick', d); markPcFlick(); }
       else performFlickAction(d.x, d.y);
     }
+    // Y=次の銃 / LB=前の銃
+    if (down(B.Y)) pcCycleGun(1);
+    if (down(B.LB)) pcCycleGun(-1);
     if (down(B.START) || down(B.BACK)) escapeKey();
     prev = btn;
   };
