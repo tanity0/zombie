@@ -157,7 +157,8 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   // 社長指示2026-10-04: プレイヤーが体の縁から100px以内に来たら、ゆっくり距離を取る(見つけている時も周回中も)。
   // 向きはプレイヤーの反対側へ少しずつ寄せる(急に向きが跳ばない)。叫びの溜めは続く(下がりながら叫ぶ)。
   const pl = st.player;
-  const away = pl.health > 0
+  // 社長裁定2026-10-05「気付くまで出さない」: 気づいていない間は詰められても下がらない(背後から張り付ける)。
+  const away = pl.health > 0 && alerted
     ? libRetreatDir(bearer, pl.x + pl.width / 2, pl.y + pl.height / 2, LIB_RETREAT_RANGE_PX)
     : null;
   const retreatStep = (): void => {
@@ -213,7 +214,7 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     }
   } else if (!stunned && !(bearer.liftUntil !== undefined && nowMs < bearer.liftUntil)
     && !(bearer.libVolleyCastUntil !== undefined && gt < bearer.libVolleyCastUntil) // 号令の最中は振らない(1つの体は1つの動作・品質監査 A-3)
-    && pl.health > 0 && onScreen && gt >= (bearer.libFlagReadyAt ?? 0)) {
+    && pl.health > 0 && onScreen && alerted && gt >= (bearer.libFlagReadyAt ?? 0)) { // 気づくまで旗は振らない(社長裁定2026-10-05)
     // 社長裁定2026-10-04「7は殴られながらでも振る」: 殴られた時の短いノックバック中でも振り始める(崩し・気絶・打ち上げ中は振らない)。
     const pcx2 = pl.x + pl.width / 2, pcy2 = pl.y + pl.height / 2;
     if (edgeDistToRectPt(bearer, pcx2, pcy2) <= LIB_FLAG_TRIGGER_PX) {
