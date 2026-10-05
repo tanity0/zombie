@@ -30,6 +30,8 @@ export const HERO_HOME_LIMIT_PX = 1200;
 export const HERO_DISENGAGE_GRACE_MS = 1200;
 export const HERO_PLAYER_HIT_ENGAGE_MS = 3000;
 export const HERO_HOME_ARRIVE_PX = 60;
+/** 昇天に見とれて立ち止まる範囲(英雄の中心から・画面くらい)。 */
+export const HERO_AWE_RANGE_PX = 900;
 export const HERO_HOME_DEFEND_PX = 200;
 export const HERO_DEPART_IDLE_MS = 60000;
 export const HERO_DEPART_RUN_MS = 1500;
@@ -297,6 +299,21 @@ export const runHeroTick = (
       g.spawnBurst(hx, hy, '#fff4d6', 26);
       if (heroOnScreen(hero)) useGameStore.setState({ eventBannerText: '蹄の音が止んだ', eventBannerUntil: gt + 3000 });
       sfx.ascendClimax?.(Math.max(0.7, sfxGain));
+    }
+    // 周りの雑魚・強個体は英雄の方を向いたまま立ち止まる(社長裁定2026-10-05「3は代案がおもろい」)。昇天が終わるまで。
+    {
+      const untilNow = Date.now() + Math.max(0, HERO_ASCEND_MS - since);
+      const r2 = HERO_AWE_RANGE_PX * HERO_AWE_RANGE_PX;
+      let touched = false;
+      const next = useGameStore.getState().enemies.map(e => {
+        if (e.id === hero.id || isBossType(e.type) || isCorpse(e) || e.dormant || e.health <= 0) return e;
+        const ex = e.x + e.width / 2 - hx, ey = e.y + e.height / 2 - hy;
+        if (ex * ex + ey * ey > r2) return e;
+        if (e.aweUntil === untilNow && e.aweFaceX === hx) return e;
+        touched = true;
+        return { ...e, aweUntil: untilNow, aweFaceX: hx };
+      });
+      if (touched) useGameStore.setState({ enemies: next });
     }
     // 走っていた勢いは滑って止める(瞬間停止しない=慣性)。
     const k = Math.exp(-dt / 0.12);

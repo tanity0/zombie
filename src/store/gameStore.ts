@@ -13252,6 +13252,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (!committed && !attacking && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
           return enemy;
         }
+        // ★英雄の昇天に見とれる(社長裁定2026-10-05「3は代案がおもろい」): 周りの雑魚は英雄の方を向いたまま立ち止まる。
+        // 技を出している最中の個体はやり切ってから止まる(予告した攻撃は必ず実行=掟W4)。時計は硬直と同じく据え置く(enemyClocks)。
+        if (!committed && !attacking && enemy.aweUntil !== undefined && now < enemy.aweUntil) {
+          return { ...enemy, vx: 0, vy: 0 };
+        }
         // ★噛みつき直後の硬直(社長指摘2026-09-17「**噛みつき直後の硬直があるはずだけど？**」)。
         // 台帳(`BiteSpec.recoverMs`)には「硬直600ms」と書いてあったのに、実装は
         // **「次の噛みつきを構え始められない」ゲートだけ**で、**移動は1msも止まっていなかった**。

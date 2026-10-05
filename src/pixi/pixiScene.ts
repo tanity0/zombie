@@ -18948,7 +18948,11 @@ export class PixiScene {
         // research/MUTANT_HERO.md: 英雄の向きは制御(heroTick)が決める(左右が入れ替わる前に一拍止まってから)。
         // research/LIBERTY_HORDE.md: 解放軍群の旗手も、止まって叫ぶ間は相手の方を向く(制御が heroFaceX を書く)。
         const heroFace = (e.type === 'mutant-hero' || e.type === 'mutant-liberty') && e.heroFaceX !== undefined ? (e.heroFaceX > 0 ? toRight : -toRight) : 0;
+        // 英雄の昇天に見とれている間は英雄の方を向く(社長裁定2026-10-05)。向き直りは通常の振り向き(ENEMY_TURN_MS)で滑らかに。
+        const aweFace = e.aweUntil !== undefined && now < e.aweUntil && e.aweFaceX !== undefined
+          ? (e.aweFaceX >= e.x + e.width / 2 ? toRight : -toRight) : 0;
         const want = kbFacingLock ? cur
+          : aweFace !== 0 ? aweFace
           : heroFace !== 0 ? heroFace
           : bandDir !== 0 ? sweepFaceMulFor(bandDir, sweepSwing, cur)
             : bpSide !== 0 ? (bpSide > 0 ? toRight : -toRight)

@@ -1316,6 +1316,9 @@ export interface Enemy {
   heroPlayerHitAt?: number;
   /** 守護霊から / 誰からか分からない被弾(雑魚など)で最後に削られた gameTime(社長裁定2026-10-05「攻撃されると気付く」)。 */
   heroGhostHitAt?: number;
+  /** 英雄の昇天に見とれて立ち止まる期限(Date.now)と、向く先(英雄の中心x)。社長裁定2026-10-05「3は代案がおもろい」。 */
+  aweUntil?: number;
+  aweFaceX?: number;
   heroMobHitAt?: number;
   /** research/MUTANT_HERO.md §2-1(社長指示2026-10-04): 本編の英雄はデンジャーゾーンの真ん中の輪(半径=この値・原点中心)を
    * 反時計回りに周回する。undefined=周回しない(対策室・ボステストの強制出現)。 */

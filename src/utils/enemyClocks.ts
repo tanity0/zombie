@@ -74,6 +74,9 @@ export const isEnemyFrozenForClocks = (e: Enemy, gameTime: number, nowMs: number
   // (c)被弾硬直(攻撃中スーパーアーマー=技を出している個体は止まらない・Date.now系)
   if (!committed && e.hitStunUntil !== undefined && nowMs < e.hitStunUntil
     && !isEnemyAttacking(e, gameTime)) return true;
+  // (c')英雄の昇天に見とれて立ち止まっている間(Date.now系・updateEnemies と同じ式)
+  if (!committed && e.aweUntil !== undefined && nowMs < e.aweUntil
+    && !isEnemyAttacking(e, gameTime)) return true;
   // (b)噛みつき直後の硬直(§16の技は専用の硬直相を持つので掛けない=updateEnemies と同じ式)
   if (!committed && e.chaffMove === undefined
     && e.biteRecoverUntil !== undefined && gameTime < e.biteRecoverUntil) return true;
