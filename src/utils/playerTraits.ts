@@ -215,6 +215,11 @@ export interface PlayerProfile {
    */
   moveHabits?: Record<string, HabitEpisode[]>;
   /**
+   * research/LUNGE_DODGE.md §4-2(案2): 共有プロファイルにだけ載る「抜け方」の要約(`moveHabits` は共有しない)。
+   * 送る時に `moveHabits` から作り(`ghostOnline.shareableProfile`)、幻影の踏み込み回避が読む。
+   */
+  lungeStyle?: { chance: number; sideFrac: number; leadMs: number; n: number };
+  /**
    * research/AI_HUMANIZE.md B1(§1-4・族別集計): band/circle/bodyの3族ごとの代表値
    * (発動条件=**累計**コマ総数>=5。未達の族はキー自体が無い)。**検収是正(中5)**: 旧実装は
    * ラン内件数へしきい値を掛けていた(1ランに5件出ない族は永久に積まれない穴)。ここは表示用の完成品

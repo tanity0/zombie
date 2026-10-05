@@ -194,6 +194,15 @@ const sanitizeDodge = (raw) => isObject(raw) ? {
   lateralRate: finite(raw.lateralRate) ? clamp(raw.lateralRate, 0, 1) : 0,
 } : undefined;
 
+// research/LUNGE_DODGE.md §4-2(案2): 幻影の踏み込み回避が写す「抜け方」の要約(コマそのものは送らない)。
+// 抜ける割合・横の割合・構えの先読み(ms)・元になったコマの数。
+const sanitizeLungeStyle = (raw) => (isObject(raw) && finite(raw.chance) && finite(raw.sideFrac) && finite(raw.leadMs)) ? {
+  chance: clamp(raw.chance, 0, 1),
+  sideFrac: clamp(raw.sideFrac, 0, 1),
+  leadMs: clamp(raw.leadMs, 120, 400),
+  n: int(raw.n, 0, 1_000_000),
+} : undefined;
+
 const sanitizePunish = (raw) => {
   if (!isObject(raw)) return undefined;
   const out = {};
@@ -250,6 +259,8 @@ export const sanitizeSharedProfile = (raw, expectedSlot) => {
   if (dodgeDir) out.dodgeDir = dodgeDir;
   const punish = sanitizePunish(raw.punish);
   if (punish) out.punish = punish;
+  const lungeStyle = sanitizeLungeStyle(raw.lungeStyle);
+  if (lungeStyle) out.lungeStyle = lungeStyle;
   const srcName = displayNameFrom(raw.srcName);
   if (srcName) out.srcName = srcName;
   const arrivalComment = sanitizeGhostComment(raw.arrivalComment);

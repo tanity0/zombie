@@ -32193,9 +32193,11 @@ export class PixiScene {
         sp.position.set(cx + Math.cos(ang) * GP_T.melee.reach / 2, cy + Math.sin(ang) * GP_T.melee.reach / 2);
         sp.alpha = 1 - swingT * swingT; // 刃が通った瞬間が最大で、あとは消えるだけ
         // 本体の踏み込み→戻り(両端で速度0のイーズ=(1-cos)/2)。**視覚のみ**(判定・座標は不変)。
+        // 抜けの振り(research/LUNGE_DODGE.md §4)は体が滑る向き(gpLungeAngle)へ出す=体と絵が逆へ割れない。
         const lunge = (1 - Math.cos(2 * Math.PI * swingT)) / 2 * PixiScene.GP_LUNGE_PX * dsc;
-        view.sprite.position.x += Math.cos(ang) * lunge;
-        view.sprite.position.y += Math.sin(ang) * lunge;
+        const lAng = e.gpLungeAngle ?? ang;
+        view.sprite.position.x += Math.cos(lAng) * lunge;
+        view.sprite.position.y += Math.sin(lAng) * lunge;
       } else if (sp) sp.visible = false;
     }
 

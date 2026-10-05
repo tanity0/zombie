@@ -557,3 +557,62 @@ describe('⑥ 【不変条件】撤去したものが戻ってこない', () => 
     expect(pickActivePhantom([fake('zombie', 'a'), fake(GUARDIAN_PHANTOM_TYPE, 'gp')])?.id).toBe('gp');
   });
 });
+
+describe('research/LUNGE_DODGE.md §4(段L3): 幻影の踏み込み回避', () => {
+  it('プレイヤーが走って詰めてくると、届く直前にプレイヤーから離れる向きへ踏み込みながら振る(既定の人格)', () => {
+    const b = setup(150); // 縁から約110px(普段の振りの届く74pxの外)
+    const p0 = useGameStore.getState().player;
+    // プレイヤーが幻影の方(-x)へ走っている
+    useGameStore.setState({ player: { ...p0, speed: 200, vx: -200, vy: 0 } });
+    let gt = START_GT;
+    let swung: Enemy | null = null;
+    for (let i = 0; i < 120 && !swung; i++) {
+      gt += 16;
+      // プレイヤーを実際に幻影へ寄せる(幻影も自分で歩くので、速度だけ立てて止めておくと距離が開いて不安定になる)
+      const pl = useGameStore.getState().player;
+      const ph = b.cur();
+      const dir = Math.sign((ph.x + ph.width / 2) - (pl.x + pl.width / 2)) || -1;
+      useGameStore.setState({ gameTime: gt, player: { ...pl, x: pl.x + dir * 200 * 0.016, vx: dir * 200, vy: 0 } });
+      runPhantomTick(b.cur(), b.state, gt, 0.016, 1, gt, NOOP_PHANTOM_SFX, () => 0); // 抽選は必ず「抜ける」
+      if (b.cur().gpPendingSwingAt !== undefined) swung = b.cur();
+    }
+    expect(swung).not.toBeNull();
+    // 滑る向き=プレイヤーから離れる向き。振る向き(当たり)はプレイヤーの方のまま=2つは逆向き。
+    const pl = useGameStore.getState().player;
+    const toPlayerX = Math.sign((pl.x + pl.width / 2) - (swung!.x + swung!.width / 2));
+    expect(Math.sign(swung!.knockbackVx ?? 0)).toBe(-toPlayerX);
+    expect(Math.sign(Math.cos(swung!.gpSwingAngle ?? 0))).toBe(toPlayerX);
+    expect(swung!.gpLungeAngle).toBeDefined();
+    // 詰め始めから反応の下限(250ms)より前には出ない
+    expect((swung!.gpSwingAt ?? 0) - START_GT).toBeGreaterThanOrEqual(HUMAN_REACTION_MS);
+  });
+  it('抽選で抜けない時は今のまま(抜けの振りは出ない)', () => {
+    let escaped = false;
+    const b = setup(150);
+    const p0 = useGameStore.getState().player;
+    useGameStore.setState({ player: { ...p0, vx: -p0.speed, vy: 0 } });
+    let gt = START_GT;
+    for (let i = 0; i < 40; i++) {
+      gt += 16;
+      useGameStore.setState({ gameTime: gt });
+      runPhantomTick(b.cur(), b.state, gt, 0.016, 1, gt, NOOP_PHANTOM_SFX, () => 0.999);
+      if (b.cur().gpLungeAngle !== undefined) escaped = true;
+    }
+    // 幻影が自分で歩いて74px以内に入れば普段どおり振る(それは今のまま)。抜けの振りだけが出ない。
+    expect(escaped).toBe(false);
+  });
+  it('止まっているプレイヤーには抜けの踏み込みを出さない', () => {
+    let escaped = false;
+    const b = setup(150);
+    const p0 = useGameStore.getState().player;
+    useGameStore.setState({ player: { ...p0, vx: 0, vy: 0 } });
+    let gt = START_GT;
+    for (let i = 0; i < 40; i++) {
+      gt += 16;
+      useGameStore.setState({ gameTime: gt });
+      runPhantomTick(b.cur(), b.state, gt, 0.016, 1, gt, NOOP_PHANTOM_SFX, () => 0);
+      if (b.cur().gpLungeAngle !== undefined) escaped = true;
+    }
+    expect(escaped).toBe(false);
+  });
+});

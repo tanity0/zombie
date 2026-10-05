@@ -40,6 +40,7 @@ import {
   MELEE_WINDUP_MS,                              // 近接の前隙(プレイヤーと同じ1本を読む)
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
   meleeLungePx, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ関数=武器別も揃う)
+  MELEE_RADIUS, WHIP_LENGTH_BY_LEVEL, whipLevel, // research/LUNGE_DODGE.md §4(b): プレイヤーの近接の届く距離(武器別)
   playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
   showPvpFatalOnPlayerPresentation,             // ★2026-08-27: 幻影→プレイヤーの致命もKILL演出(ズーム)
   skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
@@ -82,6 +83,10 @@ import { GUARDIAN_PHANTOM_LABEL } from './bossPractice';
 import { actorBuildFor } from './ghostBuild';
 import { getPhantomIdentity, phantomDisplayLabel, phantomClassId } from './phantomIdentity'; // SAME_ARENA O-5: その回の人格 // SAME_ARENA: 記録どおりの武器を守護霊と同じ道具で引く
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
+import {
+  phantomEscapeStyleOf, phantomEscapeDir, closeInEtaMs, phantomBulletLungeDir, PHANTOM_CLOSE_IN_SPEED_FRAC,
+  type PhantomEscapeStyle,
+} from './phantomLunge'; // research/LUNGE_DODGE.md §4(段L3): 幻影の踏み込み回避
 import { isTrapDebuffed, TRAP_ROOT_CRIT_BONUS } from './trapDebuff';
 import { critDecayOnHit } from './critDecay'; // ★§13-3e クリ減衰(SAME_ARENA対称)
 
@@ -352,6 +357,12 @@ export interface PhantomTickState {
    * 硬直の間だけ預かる袋。書き手は `tickModuleClockFreeze` だけ。
    */
   clockFreeze?: EnemyClockStash;
+  /**
+   * research/LUNGE_DODGE.md §4(段L3): 踏み込み回避の持ち越し。
+   * closingSince=プレイヤーが詰め始めた時刻(gameTime・詰めていなければ null) / closeInJudged=この詰めで抽選済み /
+   * dodgedProjIds=踏み込みで抜けた弾(1発1回・直近だけ持つ)。
+   */
+  lunge?: { closingSince: number | null; closeInJudged: boolean; dodgedProjIds: string[] };
 }
 
 export const createPhantomTickState = (): PhantomTickState => ({
@@ -374,6 +385,68 @@ const resetPhantomRunState = (s: PhantomTickState): void => {
   s.reloadEndsAt = 0;
   s.reloadingWeaponId = '';
   s.growthAtkMult = 1;
+  s.lunge = undefined;
+};
+
+/** 人格ごとの抜け方(記録から写す・人格は個体ごとに固定なので名前で1回だけ組む)。 */
+let escapeStyleCache: { key: string; value: PhantomEscapeStyle } | null = null;
+const currentEscapeStyle = (): PhantomEscapeStyle => {
+  const identity = getPhantomIdentity();
+  const key = identity?.name ?? '__strongest__';
+  if (escapeStyleCache && escapeStyleCache.key === key) return escapeStyleCache.value;
+  const value = phantomEscapeStyleOf(identity?.profile ?? strongestGuardian().profile);
+  escapeStyleCache = { key, value };
+  return value;
+};
+/** 踏み込みで抜けた弾を覚えておく数(古いものから捨てる)。 */
+const PHANTOM_DODGED_PROJ_MAX = 24;
+
+/**
+ * research/LUNGE_DODGE.md §4: 今のtickで抜けの踏み込みを出すなら、その向き(単位ベクトル)。
+ * (a)弾が優先(線から外れる向き)、(b)詰め(人格の記録どおりの割合・向き・先読み)。
+ * 振れる時(周期明け・前隙中でない)だけ呼ぶ。状態(s.lunge)はここで進める。
+ */
+const pickPhantomEscapeLunge = (
+  phantom: Enemy, s: PhantomTickState, player: Player, projectiles: readonly Projectile[],
+  bcx: number, bcy: number, walkSpeed: number, gt: number, nowMs: number, rand: () => number, canSwing: boolean,
+): { x: number; y: number } | null => {
+  const L = s.lunge ?? (s.lunge = { closingSince: null, closeInJudged: false, dodgedProjIds: [] });
+  const reactionMs = phantomProfile().reactionMs;
+  // ---- (b)詰め: 状態は振れない時も進める(詰め始めの時刻を取りこぼさない) ----
+  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+  const tx = bcx - pcx, ty = bcy - pcy;
+  const tl = Math.hypot(tx, ty);
+  const closing = tl > 1e-6 ? ((player.vx ?? 0) * tx + (player.vy ?? 0) * ty) / tl : 0;
+  const isClosing = player.health > 0 && closing >= player.speed * PHANTOM_CLOSE_IN_SPEED_FRAC;
+  if (!isClosing) { L.closingSince = null; L.closeInJudged = false; }
+  else if (L.closingSince === null) L.closingSince = gt;
+  if (!canSwing) return null;
+  const lungePx = meleeLungePx(combatActorPlayer(phantom.id) ?? player);
+  // ---- (a)弾 ----
+  const radius = Math.max(phantom.width, phantom.height) / 2;
+  for (const p of projectiles) {
+    if (p.hostile) continue; // プレイヤーの弾だけ
+    if (nowMs - p.createdAt < reactionMs) continue; // 出てから反応の下限が経っていない
+    if (L.dodgedProjIds.includes(p.id)) continue;
+    const dir = phantomBulletLungeDir(bcx, bcy, radius, walkSpeed, lungePx, MELEE_LUNGE_MS, p);
+    if (!dir) continue;
+    L.dodgedProjIds.push(p.id);
+    if (L.dodgedProjIds.length > PHANTOM_DODGED_PROJ_MAX) L.dodgedProjIds.shift();
+    return dir;
+  }
+  // ---- (b)詰め ----
+  if (isClosing && !L.closeInJudged && L.closingSince !== null && gt - L.closingSince >= reactionMs) {
+    const style = currentEscapeStyle();
+    // 届く距離=プレイヤーの近接の届く距離(鞭は鞭の長さ)+走りの踏み込み(武器別)。
+    const reachP = (player.subWeapons.includes('whip') ? WHIP_LENGTH_BY_LEVEL[whipLevel(player)] : MELEE_RADIUS)
+      + meleeLungePx(player);
+    const eta = closeInEtaMs(edgeDistTo(pcx, pcy, phantom), closing, reachP);
+    if (eta <= style.leadMs) {
+      L.closeInJudged = true;
+      if (rand() < style.chance) return phantomEscapeDir(style, rand(), bcx, bcy, pcx, pcy, s.ghost.orbitSign ?? 1);
+    }
+  }
+  return null;
 };
 
 // =================================================================================================
@@ -1012,10 +1085,14 @@ export const runPhantomTick = (
   //   reach160の外側が死ぬ(GHOST_BOSS.md v6 2.)。距離は decideGhost へ注入したのと同じ edgeDistTo。
   // ★前隙(社長裁定2026-08-24・SAME_ARENA.md §7): 振り**始め**にカウンター窓(gpSwingAt)を開き、
   // 判定は MELEE_WINDUP_MS 後に解決する=プレイヤーと同条件。
-  if (!parried
-    && phantom.gpPendingSwingAt === undefined
-    && newGameTime >= s.nextMeleeAt
-    && edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach) {
+  const canSwing = !parried && phantom.gpPendingSwingAt === undefined && newGameTime >= s.nextMeleeAt;
+  // research/LUNGE_DODGE.md §4(段L3): 抜けの踏み込み(弾/詰め)。振りそのものなので届かなくても振る。
+  const escapeDir = pickPhantomEscapeLunge(
+    phantom, s, player, st0.projectiles, bcx, bcy,
+    phantom.speed * moveSpeedMult * phantomSlowMult(phantom, newGameTime) * pvpMoveMult(phantom.pvpPosture, newGameTime),
+    newGameTime, nowMs, rand, canSwing,
+  );
+  if (canSwing && (escapeDir !== null || edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach)) {
     // 振り始め: 窓・絵・SE だけ(プレイヤーの beginMeleeSwing と同じ分割)。
     patch.gpSwingAt = newGameTime;
     patch.gpSwingAngle = Math.atan2((player.y + player.height / 2) - bcy, (player.x + player.width / 2) - bcx);
@@ -1026,7 +1103,9 @@ export const runPhantomTick = (
     // (v0.25.3875 で帯クランプを足した経路。自前で座標を書くとまた同じ穴を開ける)。
     {
       const lspd = knockbackSpeedFor(meleeLungePx(combatActorPlayer(phantom.id) ?? player), MELEE_LUNGE_MS);
-      const la = patch.gpSwingAngle ?? 0;
+      // 抜けの踏み込みは滑る向きだけ抜ける向き(振る向き=当たりはプレイヤーの方のまま・§4-3)。
+      const la = escapeDir ? Math.atan2(escapeDir.y, escapeDir.x) : (patch.gpSwingAngle ?? 0);
+      patch.gpLungeAngle = escapeDir ? la : undefined; // 描画の踏み込みも滑る向きへ(体と絵が割れない)
       const lnow = Date.now();
       patch.knockbackVx = Math.cos(la) * lspd;
       patch.knockbackVy = Math.sin(la) * lspd;

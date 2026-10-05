@@ -57,4 +57,18 @@ describe('G6 online guardian rules', () => {
     expect([...(safe?.arrivalComment ?? '')]).toHaveLength(30);
     expect(safe?.departureComment).toBe('またね！');
   });
+
+  it('research/LUNGE_DODGE.md §4-2: 抜け方の要約(lungeStyle)は範囲へ収めて通し、コマ(moveHabits)は通さない', () => {
+    const raw = {
+      v: 1, runs: 1, moveReactions: {}, subStyles: {},
+      lungeStyle: { chance: 1.7, sideFrac: 0.25, leadMs: 9999, n: 6 },
+      moveHabits: { 'thor:tsuki-windup': [{ posA: 1, posB: 0, sub: 0, pressOfs: -200, ctxHp: 0, ctxHit: 0, seq: 1, lg: 1 }] },
+      bossStyles: { thor: { ...GHOST_PROFILE_DEFAULTS, subStyles: {}, at: 1 } },
+    };
+    const safe = sanitizeSharedProfile(raw, 'thor') as { lungeStyle?: unknown; moveHabits?: unknown } | null;
+    expect(safe?.lungeStyle).toEqual({ chance: 1, sideFrac: 0.25, leadMs: 400, n: 6 });
+    expect(safe?.moveHabits).toBeUndefined();
+    const bad = sanitizeSharedProfile({ ...raw, lungeStyle: { chance: 'x' } }, 'thor') as { lungeStyle?: unknown } | null;
+    expect(bad?.lungeStyle).toBeUndefined();
+  });
 });

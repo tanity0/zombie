@@ -934,6 +934,8 @@ export interface Enemy {
   gpPendingSwingAt?: number;
   /** その振りの向き(rad)。判定に使ったカプセルと同じ角度を描画へ渡す。 */
   gpSwingAngle?: number;
+  /** research/LUNGE_DODGE.md §4: 抜けの振りの滑る向き(rad)。普段の振りは undefined(=gpSwingAngle の向きへ滑る)。描画の踏み込みもこの向き。 */
+  gpLungeAngle?: number;
   /** 銃を撃った時刻(描画=マズルフラッシュ+反動の起点)。 */
   gpShotAt?: number;
   /** その射撃の向き(rad)。 */

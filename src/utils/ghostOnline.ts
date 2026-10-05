@@ -1,4 +1,5 @@
 import type { SkillKey } from '../types/game';
+import { lungeStyleForShare } from './phantomLunge';
 import type { PlayerProfile } from './playerTraits';
 import { bossStyleSlotKey } from './ghostSlot';
 import { isGhostEligibleBoss, ENGAGEABLE_BOSS_TYPES } from './bossEngagement';
@@ -204,9 +205,11 @@ export const shareableProfile = (profile: PlayerProfile, localSlot: string): Pla
   if (!slot) return null;
   const networkSlot = ghostNetworkSlotKey(localSlot);
   const comments = loadGhostComments();
+  const lungeStyle = lungeStyleForShare(profile.moveHabits); // research/LUNGE_DODGE.md §4-2: コマは送らず要約だけ
   const raw = {
     ...profile,
     ...comments,
+    ...(lungeStyle ? { lungeStyle } : {}),
     bossStyles: {
       [networkSlot]: {
         ...slot,
