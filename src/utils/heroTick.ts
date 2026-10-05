@@ -19,6 +19,7 @@ import {
   HERO_FLINCH_MS, HERO_SNORT_COOLDOWN_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS,
   heroStepShape, heroStepHitDelay, pickHeroMove, pickHeroTarget, heroNotices, heroFollowUp, heroRestMs, easeInOut,
   HERO_PATROL_SPEED, HERO_GALLOP_SPEED, heroPatrolNext, heroPatrolNearest,
+  HERO_ASCEND_MS, HERO_PHASE2_HP, heroShouldAscend,
   type HeroMoveKey, type HeroShape, type HeroTargetCand,
 } from './heroScript';
 import { STRUCK_NOTICE_MS } from './frontSight';
@@ -40,6 +41,8 @@ export interface HeroSfx {
   neigh: (gain: number) => void;
   snort: (gain: number) => void;
   gallop: (gain: number, rate: number) => void;
+  /** 昇天の光が差す音。 */
+  ascend?: (gain: number) => void;
 }
 export const NOOP_HERO_SFX: HeroSfx = { neigh: () => {}, snort: () => {}, gallop: () => {} };
 
@@ -256,6 +259,34 @@ export const runHeroTick = (
     return;
   }
 
+  // ---- 昇天(社長指示2026-10-05: 全回復=正規ルートで倒した)。5秒かけて光に包まれて消える。何も落とさない ----
+  if (state === 'hero-ascend') {
+    if (gt - (hero.heroStateAt ?? gt) >= HERO_ASCEND_MS) {
+      ENEMY_REMOVE_CAUSE.set(hero.id, 'heroGone');
+      useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.id !== hero.id) }));
+      sfx.gallop(0, 1);
+      return;
+    }
+    applyPatch(hero.id, { vx: 0, vy: 0 });
+    sfx.gallop(0, 1);
+    return;
+  }
+  if (heroShouldAscend(hero)) {
+    // 技・気絶・狙いは全部ここで終わる(予告も消える)。以後は被弾しない(damageEnemy)・敵の的にもならない(heroAsTarget)。
+    applyPatch(hero.id, {
+      bossState: 'hero-ascend', heroStateAt: gt, bossStateUntil: gt + HERO_ASCEND_MS,
+      heroShape: undefined, heroHitAt: undefined, heroMove: undefined, heroTargetId: undefined, heroTargetUntil: undefined,
+      bossFullStunUntil: undefined, bossMoveCutPending: false, vx: 0, vy: 0,
+    });
+    const g = useGameStore.getState();
+    g.spawnBurst(hx, hy, '#fff1b8', 30);
+    g.spawnRing(hx, hero.y + hero.height, 12, 170, 'rgba(255,236,170,0.75)', 4, 900);
+    if (heroOnScreen(hero)) useGameStore.setState({ eventBannerText: '英雄が光に還る', eventBannerUntil: gt + 3200 });
+    sfx.ascend?.(Math.max(0.6, sfxGain));
+    sfx.gallop(0, 1);
+    return;
+  }
+
   // ---- 崩し(紫・気絶)/カウンター/ノックバック ------------------------------------------------
   const fullStun = hero.bossFullStunUntil !== undefined && gt < hero.bossFullStunUntil;
   if (hero.bossMoveCutPending) {
@@ -287,8 +318,8 @@ export const runHeroTick = (
     return;
   }
 
-  // ---- 後半(HP半分)へ。技の間には割り込まない ---------------------------------------------------
-  if (!hero.heroPhase2 && hero.health <= hero.maxHealth * 0.5 && !IN_MOVE.has(state)) {
+  // ---- 後半へ。技の間には割り込まない(社長指示2026-10-05で出てくる体力が上限の半分になったので、境を5000へ) ----
+  if (!hero.heroPhase2 && hero.health <= HERO_PHASE2_HP && !IN_MOVE.has(state)) {
     applyPatch(hero.id, { heroPhase2: true, bossState: 'hero-roar', bossStateUntil: gt + HERO_ROAR_MS, heroStateAt: gt, vx: 0, vy: 0, heroShape: undefined });
     s.roarLanded = false;
     sfx.gallop(0, 1);

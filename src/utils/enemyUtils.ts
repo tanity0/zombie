@@ -450,6 +450,7 @@ export const pickNearestTarget = (
   let bestStunnedD2 = Infinity;
   for (const e of enemies) {
     if (isCorpse(e)) continue;
+    if (e.bossState === 'hero-ascend') continue; // 英雄の昇天中(社長指示2026-10-05)は狙わない=被弾もしない
     const d2 = aimEnemyDist2(pcx, pcy, e);
     if (d2 > maxDist2) continue;
     const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;

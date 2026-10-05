@@ -242,7 +242,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } from '../utils/telegraphStyle';
-import { heroFrameFor, heroLiftPx, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
+import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine } from '../utils/biteTelegraph';
 // ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
 import {
@@ -14360,6 +14360,8 @@ export class PixiScene {
         if (heroSw) { if (!heroSw.destroyed) heroSw.destroy({ children: true }); this.heroSwordFx.delete(id); }
         const libTipGlow = this.libFlagTipGlow.get(id);
         if (libTipGlow) { if (!libTipGlow.destroyed) libTipGlow.destroy({ children: true }); this.libFlagTipGlow.delete(id); }
+        const ascFx = this.heroAscendFx.get(id);
+        if (ascFx) { if (!ascFx.beam.destroyed) ascFx.beam.destroy(); if (!ascFx.glow.destroyed) ascFx.glow.destroy({ children: true }); this.heroAscendFx.delete(id); }
         this.heroSwordLastTip.delete(id);
         const rafiFx = this.rafiSlashFx.get(id);
         if (rafiFx) { rafiFx.destroy({ children: true }); this.rafiSlashFx.delete(id); }
@@ -19819,6 +19821,7 @@ export class PixiScene {
       this.drawHeroTelegraph(e, view, o, gameTime, now);
       this.drawHeroSword(e, view, gameTime, now);
     }
+    if (e.type === 'mutant-hero') this.drawHeroAscend(e, view, gameTime);
     if (isBountyType(e.type)) {
       const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
       const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
@@ -31793,6 +31796,51 @@ export class PixiScene {
   }
   /** 号令の旗の先端の光(個体ごと)。号令の外では既定OFF(resetActorFxDefaults)。 */
   private libFlagTipGlow = new Map<string, Container>();
+
+  /** 英雄の昇天の光(個体ごと): 天からの光の柱(Graphics)と体を包む光(加算の柔らかい光2枚)。 */
+  private heroAscendFx = new Map<string, { beam: Graphics; glow: Container }>();
+  /**
+   * 社長指示2026-10-05「昇天モーションは、踏み潰しの馬が足を高く上げているところまで回して、固定し、眩しい光とともに
+   * 消えていく。5秒くらい掛けて」: 天から光の柱が差し、体が光に包まれて浮き、薄れて消える(見え方は heroAscendLook)。
+   * 柱はフィルの祝福と同じ描き方(足元ほど濃く、上へ薄れる)。派手さの絵=判定なし。
+   */
+  private drawHeroAscend(e: Enemy, view: ActorView, gameTime: number): void {
+    let fx = this.heroAscendFx.get(e.id);
+    if (e.bossState !== 'hero-ascend') {
+      if (fx) { fx.beam.visible = false; fx.glow.visible = false; }
+      return;
+    }
+    if (!fx || fx.beam.destroyed) {
+      const beam = new Graphics();
+      const glow = new Container();
+      for (const [tint, alphaMul] of [[0xffe2a8, 0.9], [0xffffff, 1]] as const) {
+        const sp = new Sprite(getSoftGlowTexture()); sp.anchor.set(0.5); sp.blendMode = 'add'; sp.tint = tint; sp.alpha = alphaMul;
+        glow.addChild(sp);
+      }
+      this.L.effectLayer.addChild(beam);
+      this.L.effectLayer.addChild(glow);
+      fx = { beam, glow };
+      this.heroAscendFx.set(e.id, fx);
+    }
+    const look = heroAscendLook(gameTime - (e.heroStateAt ?? gameTime));
+    // 体: 光に溶けるように薄れる(位置の浮きは heroLiftPx が持つ)。
+    view.sprite.alpha *= look.alpha;
+    const footX = e.x + e.width / 2, footY = e.y + e.height;
+    const bodyH = Math.abs(view.sprite.height) || e.height * 2;
+    const bodyW = Math.abs(view.sprite.width) || e.width * 2;
+    const zoom = this.L.worldGroup.scale.x || 1;
+    fx.beam.clear();
+    if (look.beam > 0.002) this.drawPhillSkylightColumn(fx.beam, footX, footY, Math.min(bodyW, e.width * 2.2) * 1.15, footY - this.screenH / zoom, look.beam);
+    fx.beam.visible = look.beam > 0.002;
+    const cy = view.sprite.position.y - bodyH * 0.5;
+    fx.glow.position.set(view.sprite.position.x, cy);
+    const outer = fx.glow.children[0] as Sprite, core = fx.glow.children[1] as Sprite;
+    // 体の背丈に合わせる(大きすぎると画面が白く飛ぶ=実寸で確認)。芯は体に重なる白、外は金の暈。
+    outer.width = outer.height = bodyH * (0.7 + 0.45 * look.flare);
+    core.width = core.height = bodyH * (0.28 + 0.3 * look.flare);
+    fx.glow.alpha = 0.85 * look.flare;
+    fx.glow.visible = look.flare > 0.01;
+  }
 
   private drawHeroTelegraph(e: Enemy, view: ActorView, o: Graphics, gameTime: number, now: number): void {
     const st = e.bossState;

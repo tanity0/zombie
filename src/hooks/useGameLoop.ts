@@ -193,7 +193,7 @@ import {
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
-import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius } from '../utils/heroScript';
+import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties } from '../utils/heroBlast';
 // 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
 setThirdPartySfx((key, gain) => playSfx(key, gain));
@@ -1035,6 +1035,7 @@ const HERO_SFX: HeroSfx = {
   neigh: (gain) => { if (gain > 0.01) playSfx('hero-neigh', gain); },
   snort: (gain) => { if (gain > 0.01) playSfx('hero-snort', gain); },
   gallop: (gain, rate) => setHeroGallop(gain, rate),
+  ascend: (gain) => playSfx('phill-skylight', gain), // 昇天の光(天から光が差す音=フィルの祝福の素材)
 };
 // research/GHOST_BOSS.md v6(幻影): 音は既存の共通キーを流用する(専用素材は作らない=「ではない」条件)。
 // 銃は**プレイヤーの自動発砲と同じ銃種別の写像**(v0.25.2479パリティの並びをそのまま使う)。
@@ -8521,9 +8522,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               m0AdvanceLimitX: st0.m0AdvanceLimitX, corridorRunInActive: st0.corridorRunInActive,
             });
             hE.x = hClamped.x; hE.y = hClamped.y;
-            const hArea = areaIndexForPos(hE.x + hE.width / 2, hE.y + hE.height / 2);
-            const hHp = Math.round(bountyMaxHealth(hArea, newGameTime) * stageBossDiffMults().hp);
-            hE.health = hHp; hE.maxHealth = hHp;
+            // 社長指示2026-10-05: 体力は固定の上限20000・出てくる時は半分の10000(ステージ・時刻で変えない)。
+            hE.health = HERO_START_HP; hE.maxHealth = HERO_MAX_HP;
             hE.dormant = false;
             hE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない
             hE.bossState = 'chase';
@@ -8542,8 +8542,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const R = heroPatrolRadius(AREA_THRESHOLDS);
             const a0 = Math.random() * Math.PI * 2;
             const hE = spawnEnemyAt('mutant-hero', Math.cos(a0) * R - 55, Math.sin(a0) * R - 30, newGameTime);
-            const hHp = Math.round(bountyMaxHealth(areaIndexForPos(hE.x + hE.width / 2, hE.y + hE.height / 2), newGameTime) * stageBossDiffMults().hp);
-            hE.health = hHp; hE.maxHealth = hHp;
+            hE.health = HERO_START_HP; hE.maxHealth = HERO_MAX_HP; // 社長指示2026-10-05: 固定20000・出てくる時は10000
             hE.dormant = false;
             hE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない
             hE.bossState = 'chase';
@@ -8948,11 +8947,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 姿が画面に入った最初のフレームでカットイン(時刻ではなく見えた瞬間・§2/§10a)。1体につき1回。
             if (heroCutinIdRef.current !== activeHero.id && heroOnScreen(activeHero) && !useGameStore.getState().attention) {
               heroCutinIdRef.current = activeHero.id;
-              // 本編の周回の英雄は、出会った時刻の強さで体力を決め直す(置いたのはランの頭=まだ手を付けられていない時だけ)。
-              if (activeHero.heroPatrolR !== undefined && activeHero.health >= activeHero.maxHealth) {
-                const hp2 = Math.round(bountyMaxHealth(areaIndexForPos(activeHero.x + activeHero.width / 2, activeHero.y + activeHero.height / 2), newGameTime) * stageBossDiffMults().hp);
-                useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === activeHero.id ? { ...e, health: hp2, maxHealth: hp2 } : e) }));
-              }
+              // (旧: 本編の周回の英雄は出会った時刻の強さで体力を決め直していた。社長指示2026-10-05で体力は固定=決め直さない。)
               const hAc = bossArtCenter(activeHero);
               useGameStore.getState().triggerAttention(hAc.x, hAc.y, bossCutinPayload('mutant-hero'));
               useGameStore.setState({ eventBannerText: '蹄の音が止まらない', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });

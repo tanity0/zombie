@@ -1,7 +1,8 @@
 // research/MUTANT_HERO.md: 英雄(変異)の台本(純関数)のテスト。
 import { describe, it, expect } from 'vitest';
 import {
-  heroNotices,
+  heroNotices, heroHealAfterKills, heroShouldAscend, heroAscendLook,
+  HERO_MAX_HP, HERO_START_HP, HERO_HEAL_PER_KILL, HERO_ASCEND_MS, HERO_ASCEND_RISE_MS, HERO_ASCEND_LIFT_PX,
   heroSwingArc, heroPatrolRadius, heroPatrolNext, heroPatrolNearest, HERO_PATROL_STAGES, HERO_PATROL_SPEED, HERO_WALK_SPEED, HERO_GALLOP_SPEED,
   HERO_MOVES, HERO_NEAR, HERO_MID, HERO_AGGRO_RANGE, HERO_LURE_RANGE, heroMoveCandidates, pickHeroMove, pickHeroTarget,
   heroFollowUp, heroStepShape, heroStepHitDelay, circleHitsHeroShape, circleHitsFan, mobPrefersHero, heroFrameFor, heroLiftPx, HERO_SHEETS,
@@ -242,5 +243,39 @@ describe('英雄の気づき(社長裁定2026-10-05「前方扇状で、後方�
   it('今の相手は1350pxまでは扇の外でも追う', () => {
     expect(heroNotices(0, 0, 1, 0, c('player', -1000, 0), { ...none, currentId: 'player' })).toBe(true);
     expect(heroNotices(0, 0, 1, 0, c('player', -1400, 0), { ...none, currentId: 'player' })).toBe(false);
+  });
+});
+
+describe('英雄の体力と昇天(社長指示2026-10-05)', () => {
+  it('上限20000・出てくる時は半分の10000', () => {
+    expect(HERO_MAX_HP).toBe(20000);
+    expect(HERO_START_HP).toBe(HERO_MAX_HP / 2);
+  });
+  it('敵を倒すたびに100回復し、上限で止まる', () => {
+    expect(HERO_HEAL_PER_KILL).toBe(100);
+    expect(heroHealAfterKills(10000, HERO_MAX_HP, 3)).toBe(10300);
+    expect(heroHealAfterKills(19950, HERO_MAX_HP, 2)).toBe(HERO_MAX_HP);
+    expect(heroHealAfterKills(10000, HERO_MAX_HP, 0)).toBe(10000);
+  });
+  it('全回復で昇天する(昇天中はもう一度は始まらない・固定の上限でない英雄は昇天しない)', () => {
+    expect(heroShouldAscend({ health: HERO_MAX_HP, maxHealth: HERO_MAX_HP })).toBe(true);
+    expect(heroShouldAscend({ health: HERO_MAX_HP - 1, maxHealth: HERO_MAX_HP })).toBe(false);
+    expect(heroShouldAscend({ health: HERO_MAX_HP, maxHealth: HERO_MAX_HP, bossState: 'hero-ascend' })).toBe(false);
+    expect(heroShouldAscend({ health: 4000, maxHealth: 4000 })).toBe(false);
+  });
+  it('昇天: 踏み潰しの前脚を上げる所(棹立ち7)まで回して止める', () => {
+    expect(heroFrameFor({ state: 'hero-ascend', step: 0, u: 0, sinceMs: 0 })).toEqual({ sheet: 'rear', frame: 0 });
+    expect(heroFrameFor({ state: 'hero-ascend', step: 0, u: 0, sinceMs: HERO_ASCEND_RISE_MS * 0.99 })).toEqual({ sheet: 'rear', frame: 7 });
+    expect(heroFrameFor({ state: 'hero-ascend', step: 0, u: 0, sinceMs: 4000 })).toEqual({ sheet: 'rear', frame: 7 });
+  });
+  it('昇天の見え方: 光の柱が差し、体は浮いて薄れ、5秒で消え切る(どれも滑らかに)', () => {
+    const at0 = heroAscendLook(0), mid = heroAscendLook(2500), end = heroAscendLook(HERO_ASCEND_MS);
+    expect(at0.alpha).toBe(1); expect(at0.beam).toBe(0); expect(at0.lift).toBe(0);
+    expect(mid.beam).toBe(1); expect(mid.alpha).toBe(1); expect(mid.flare).toBeGreaterThan(0.3);
+    expect(end.alpha).toBe(0); expect(end.beam).toBe(0); expect(end.lift).toBe(HERO_ASCEND_LIFT_PX);
+    expect(heroLiftPx({ bossState: 'hero-ascend', heroStateAt: 0 }, HERO_ASCEND_MS)).toBe(HERO_ASCEND_LIFT_PX);
+    // 単調: 体は薄れる一方
+    let prev = 1;
+    for (let t = 0; t <= HERO_ASCEND_MS; t += 100) { const a = heroAscendLook(t).alpha; expect(a).toBeLessThanOrEqual(prev + 1e-9); prev = a; }
   });
 });

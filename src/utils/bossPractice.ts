@@ -5,6 +5,7 @@
 //
 // ★このモジュールが持つのは**台帳と判定だけ**。UIは components/BossRush.tsx、
 //   遭遇の記録は utils/bossEncounter.ts。ボスの挙動・HP・技には一切触らない。
+import { HERO_MAX_HP } from './heroScript';
 import type { CharacterClass, EnemyType } from '../types/game';
 import { bossCutinName } from '../data/bossCutin';
 import { GHOST_DOSSIER_SLOTS, type GhostDossierSlot } from './ghostDossier';
@@ -350,7 +351,8 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
   // 変動するため、台帳の固定値ではなく**基準値をそのまま**出す(掲載裁定「基準値2000を出す」)。
   if (isBountyType(slot.bossType)) return BOUNTY_BASE_HP;
   // research/MUTANT_HERO.md: 英雄は賞金首と同じ式(基準値×スポーン時の難易度)=一覧も基準値。
-  if (slot.bossType === 'mutant-hero' || slot.bossType === 'mutant-liberty') return BOUNTY_BASE_HP; // 解放軍群も同じ式
+  if (slot.bossType === 'mutant-hero') return HERO_MAX_HP; // 社長指示2026-10-05: 固定の上限20000(出てくる時は半分)
+  if (slot.bossType === 'mutant-liberty') return BOUNTY_BASE_HP; // 解放軍群は賞金首と同じ式
   // research/GHOST_BOSS.md(幻影): 裏ボス方式=倍率を一切通さないので、スポーン時に書く値=実効HP。
   // その値は「初期プレイヤーHP+育成の体力加算」(装備補正なし)なので、表示も同じ式で出す。
   // ★基準クラスの注意(GROWTH.md v4): 実戦は「そのランのプレイヤーのクラス」(player.ddaBaseHp)、
@@ -387,5 +389,6 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
  */
 export const practiceBossHealth = (slot: PracticeSlot): number | null => {
   const base = practiceBossBaseHealth(slot);
+  if (slot.bossType === 'mutant-hero') return base; // 英雄は固定(ステージ係数を通さない=実戦と同じ)
   return base === null ? null : Math.round(base * stageHpMult(slot.stageId));
 };

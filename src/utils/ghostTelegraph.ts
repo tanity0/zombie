@@ -257,7 +257,7 @@ put(LEDGER, ['hero-windup', 'hero-motion'], {
   types: ['mutant-hero', 'mutant-liberty'],
   note: '英雄の振り下ろし・薙ぎ・払い・突進・叩きつけと、旗手の旗振り。判定の図形(heroShape)をそのまま読む(扇は扇の半径の円=安全側)。',
 });
-put(LEDGER, ['hero-turn', 'hero-flinch', 'hero-roar', 'hero-recover', 'hero-idle', 'hero-strike'], {
+put(LEDGER, ['hero-turn', 'hero-flinch', 'hero-roar', 'hero-recover', 'hero-idle', 'hero-strike', 'hero-ascend'], {
   coverage: 'none',
   note: '英雄・旗手の向き直り/怯み/咆哮/残心/佇み/振り抜き。判定は溜め(hero-windup)と動き(hero-motion)の終わりに積む爆風だけ=ここで避ける図形は無い。',
 });

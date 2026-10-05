@@ -2,6 +2,7 @@
 // - 英雄の技(持ち主が英雄の爆風)を、プレイヤー・守護霊に加えて**敵にも**当てる。
 // - 敵の攻撃(持ち主が英雄以外の爆風・弾・接触・技)を**英雄にも**当てる(第三者の的)。
 // 判定は全部 store 側(描画は読むだけ)。プレイヤーへの判定・ダメージは1bitも変えない(全て独立の追加分岐)。
+import { heroHealAfterKills } from './heroScript';
 import type { Enemy } from '../types/game';
 import { useGameStore, knockbackSpeedFor, setThirdPartyHook, type PumpkinBlast } from '../store/gameStore';
 import { isCorpse, isMutantHero, resistsChipKnockback } from './enemyUtils';
@@ -26,7 +27,8 @@ export const heroOnScreen = (e: Enemy): boolean => {
 /** 第三者の的としての英雄(画面内に居る時だけ)。 */
 export const heroAsTarget = (): Enemy | undefined => {
   const h = findHero(useGameStore.getState().enemies);
-  return h && heroOnScreen(h) ? h : undefined;
+  // 昇天中(社長指示2026-10-05)は的にならない=敵はプレイヤーへ戻る。
+  return h && heroOnScreen(h) && h.bossState !== 'hero-ascend' ? h : undefined;
 };
 
 /**
@@ -103,9 +105,11 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
   // 眠っている個体(休眠中のボス等)には当てない(英雄の狙いの候補と同じ=起こさない)。
   const victims = st.enemies.filter(e => e.id !== hero.id && !isCorpse(e) && e.health > 0 && !e.dormant
     && blastHitsCircle(b, e.x + e.width / 2, e.y + e.height / 2, radiusOf(e)));
+  let kills = 0;
   for (const e of victims) {
     const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
     const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, null, 'neutral');
+    if (killed) kills++;
     fx.spawnDamageNumber(ex, e.y, dmg, false);
     // 派手さの絵(判定ゼロ): 英雄から外へ向かう大きい血しぶき=ボスの命中と同じ大きさ。
     const ang = Math.atan2(ey - hy, ex - hx);
@@ -125,6 +129,18 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
           ? { ...en, knockbackVx: ((ex - hx) / d) * kb, knockbackVy: ((ey - hy) / d) * kb, knockbackUntil: Date.now() + kbMs }
           : en),
       }));
+    }
+  }
+  // 社長指示2026-10-05「敵を倒すと100ずつ回復する」(誰の撃破か=英雄自身が倒した敵・推薦の案A): 倒した数ぶん回復。
+  // 満タンになったら次のtickで昇天(heroTick)。回復は緑の数字で見せる(派手さの絵・判定なし)。
+  if (kills > 0) {
+    const cur = useGameStore.getState().enemies.find(e => e.id === hero.id);
+    if (cur && cur.bossState !== 'hero-ascend' && cur.health > 0) {
+      const healed = heroHealAfterKills(cur.health, cur.maxHealth, kills);
+      if (healed > cur.health) {
+        useGameStore.setState(s2 => ({ enemies: s2.enemies.map(en => en.id === hero.id ? { ...en, health: healed } : en) }));
+        useGameStore.getState().spawnCallout(hx, hero.y - 18, `+${healed - cur.health}`, '#86efac');
+      }
     }
   }
   return victims.length;

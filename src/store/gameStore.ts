@@ -12468,6 +12468,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ジャンプ攻撃で敵が空中(aiPhase==='jump')の間は無敵。被弾もヒット表示もしない。
       // 溜め(crouch)・着地後(recover)は通常どおり被弾する(空中だけ無敵)。
       if (enemy.aiPhase === 'jump') return { enemies };
+      // 英雄の昇天中(社長指示2026-10-05=正規ルートで倒した後の5秒)は何も通らない。
+      if (isMutantHero(enemy.type) && enemy.bossState === 'hero-ascend') return { enemies };
 
       // research/MUTANT_HERO.md §6-2(社長「画面に映っていない時は…喰らわないでよい」): 画面外の英雄は
       // どの攻撃も受けない。入口はここ1か所(銃・近接・爆発・継続の全経路が通る)。

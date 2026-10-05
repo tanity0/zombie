@@ -8,6 +8,56 @@ import { frontConeSees, FRONT_SIGHT_PX, FRONT_SIGHT_LOSE_PX } from './frontSight
 
 export const HERO_TYPE = 'mutant-hero' as const;
 
+// ---------------------------------------------------------------------------------------------
+// 体力と昇天(社長指示2026-10-05「英雄のHPは固定で20000。但し、スタートでは10000。敵を倒すと100ずつ回復する。
+// 全回復すると英雄に光が刺し、昇天する。これが英雄を倒す正規ルート」/「昇天モーションは、踏み潰しの馬が足を
+// 高く上げているところまで回して、固定し、眩しい光とともに消えていく。5秒くらい掛けて」)
+// ---------------------------------------------------------------------------------------------
+/** 体力の上限(固定・ステージや時刻で変えない)。 */
+export const HERO_MAX_HP = 20000;
+/** 出てくる時の体力(上限の半分)。 */
+export const HERO_START_HP = 10000;
+/** 英雄が敵を1体倒すごとの回復。 */
+export const HERO_HEAL_PER_KILL = 100;
+/** 後半(棹立ちのいななき→技が増える)へ移る体力。旧=上限の半分(出てきた瞬間に後半になるので下げた)。 */
+export const HERO_PHASE2_HP = 5000;
+/** 昇天の長さ(ms)。 */
+export const HERO_ASCEND_MS = 5000;
+/** 昇天の頭で棹立ち(踏み潰しの前脚を上げる 0→7)まで回す長さ(ms)。 */
+export const HERO_ASCEND_RISE_MS = 900;
+/** 昇天で体が浮く高さ(描画だけ・px)。 */
+export const HERO_ASCEND_LIFT_PX = 70;
+
+/** 敵を倒した数ぶん回復した体力(上限で止まる)。 */
+export const heroHealAfterKills = (health: number, maxHealth: number, kills: number): number =>
+  Math.min(maxHealth, health + Math.max(0, kills) * HERO_HEAL_PER_KILL);
+/** 全回復=昇天する(固定の上限の英雄だけ)。 */
+export const heroShouldAscend = (e: { health: number; maxHealth: number; bossState?: string }): boolean =>
+  e.bossState !== 'hero-ascend' && e.maxHealth >= HERO_MAX_HP && e.health >= e.maxHealth;
+
+const smooth01 = (t: number): number => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
+export interface HeroAscendLook {
+  /** 体の濃さ(1→0)。 */ alpha: number;
+  /** 体が浮く高さ(px)。 */ lift: number;
+  /** 天からの光の柱の濃さ(0..1)。 */ beam: number;
+  /** 体を包む光の強さ(0..1)。 */ flare: number;
+}
+/**
+ * 昇天の見え方(経過ms→)。慣性: どれも滑らかに立ち上がり、滑らかに消える。
+ * 光の柱が差す(0〜1.2秒)→ 体が光に包まれ、浮き始める(1.5秒〜)→ 体が薄れて消える(3〜5秒)。柱は体より少し先に引く。
+ */
+export const heroAscendLook = (sinceMs: number): HeroAscendLook => {
+  const t = Math.max(0, sinceMs);
+  const beamIn = smooth01(t / 1200), beamOut = 1 - smooth01((t - 4200) / 800);
+  const fade = 1 - smooth01((t - 3000) / (HERO_ASCEND_MS - 3000));
+  return {
+    alpha: fade,
+    lift: HERO_ASCEND_LIFT_PX * smooth01((t - 1500) / (HERO_ASCEND_MS - 1500)),
+    beam: beamIn * beamOut,
+    flare: smooth01((t - 800) / 2800) * (0.35 + 0.65 * fade),
+  };
+};
+
 /** 英雄が狙う相手を探す距離(中心から)。 */
 export const HERO_AGGRO_RANGE = 480;
 /** 一度決めた相手を変えない時間。 */
@@ -407,6 +457,10 @@ const idlePawFrame = (sinceMs: number, phase: number): number => {
 export const heroFrameFor = (inp: HeroFrameInput): HeroFrame | null => {
   const { state, move, step, u } = inp;
   if (state === 'hero-idle') return { sheet: 'rear', frame: idlePawFrame(inp.sinceMs, inp.phase ?? 0) };
+  // 昇天: 踏み潰しの前脚を高く上げる所(棹立ち 0→7)まで回して、7で止める。
+  if (state === 'hero-ascend') {
+    return { sheet: 'rear', frame: inp.sinceMs < HERO_ASCEND_RISE_MS ? seqAt([0, 1, 2, 3, 4, 5, 6, 7], inp.sinceMs / HERO_ASCEND_RISE_MS) : 7 };
+  }
   if (state === 'hero-roar') {
     const t = inp.sinceMs;
     if (t < HERO_ROAR_RISE_MS) return { sheet: 'rear', frame: seqAt([0, 1, 2, 3, 4, 5, 6, 7], t / HERO_ROAR_RISE_MS) };
@@ -470,6 +524,7 @@ export const heroFrameFor = (inp: HeroFrameInput): HeroFrame | null => {
 
 /** 跳躍の滞空中の高さ(描画だけ・px)。滞空でなければ 0。 */
 export const heroLiftPx = (e: { bossState?: string; heroMove?: HeroMoveKey; heroStep?: number; heroStateAt?: number; bossStateUntil?: number }, gameTime: number): number => {
+  if (e.bossState === 'hero-ascend') return heroAscendLook(gameTime - (e.heroStateAt ?? gameTime)).lift;
   if (e.bossState !== 'hero-motion' || e.heroStateAt === undefined || e.bossStateUntil === undefined) return 0;
   const leap = e.heroMove === 'leap' || (e.heroMove === 'leapcharge' && (e.heroStep ?? 0) === 0);
   if (!leap) return 0;
