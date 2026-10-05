@@ -10291,6 +10291,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (sage) {
           const aoe2 = SAGE_NORMAL_AOE_RADIUS * SAGE_NORMAL_AOE_RADIUS;
           let hitAny = false;
+          let faceX = 0, faceD2 = Infinity; // 噛む向き=巻き込んだ中で一番近い敵
           for (const e of enemiesNext) {
             if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
             if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 賢者の石AoEの対象から除外
@@ -10298,8 +10299,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (d2 > aoe2) continue;
             attackHits.push({ id: e.id, amount: s.damage, x: e.x + e.width / 2, y: e.y });
             hitAny = true;
+            if (d2 < faceD2) { faceD2 = d2; faceX = e.x + e.width / 2; }
           }
-          if (hitAny) s = { ...s, lastContactAt: now };
+          if (hitAny) s = { ...s, lastContactAt: now, biteTargetX: faceX };
         } else {
           let nearestId: string | null = null;
           let nd2 = ALCHEMY_ATTACK_RANGE * ALCHEMY_ATTACK_RANGE;
@@ -10310,7 +10312,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
             if (d2 <= nd2) { nd2 = d2; nearestId = e.id; nx = e.x + e.width / 2; ny = e.y; }
           }
-          if (nearestId) { attackHits.push({ id: nearestId, amount: s.damage, x: nx, y: ny }); s = { ...s, lastContactAt: now }; }
+          if (nearestId) { attackHits.push({ id: nearestId, amount: s.damage, x: nx, y: ny }); s = { ...s, lastContactAt: now, biteTargetX: nx }; }
         }
       }
       nextSummons.push(moveFollow(s));

@@ -1551,6 +1551,8 @@ export interface Summon {
   expiresAt?: number;     // rare のみ
   lastHit: number;
   lastContactAt?: number; // 召喚→敵 接触ダメージの throttle
+  /** 最後に噛んだ敵の中心x(描画が噛む間その敵の方を向く・社長指示2026-10-05)。 */
+  biteTargetX?: number;
   // PACING_PUZZLE.md §6.24 M48「使役」: 警察署アリーナ報酬で倒した敵の20%が復活したもの。
   // 錬金術の距離消滅(ALCHEMY_DESPAWN_DIST)を適用しない/最大1体(先着維持)の識別に使う。
   persistent?: boolean;

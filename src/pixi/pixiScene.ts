@@ -333,7 +333,7 @@ import {
   ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryCircleCenter,
 } from '../world/armory';
 import { POLICE_FADE_MS, POLICE_DISPLAY_H } from '../world/police';
-import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE } from '../utils/summonUtils';
+import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE, ALCHEMY_ATTACK_INTERVAL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
@@ -769,6 +769,8 @@ const WHIP_HURRICANE_WIDTH_MULT = 3.0;  // 描画幅 = 吸引半径 × この倍
 // 斜め上から見た楕円のつぶれ・棺桶の大きさ)・足元の竜巻の幅(吸い込みの見た目の半径×倍率)。
 // 召喚の出入り(ms): 出る時は下から浮き上がりながら濃くなり、レアが消える時は沈みながら薄れる(慣性MUST・パッと出ない/消えない)。
 const SUMMON_FADE_IN_MS = 360, SUMMON_FADE_OUT_MS = 600, SUMMON_RISE_PX = 10;
+/** 噛んだ後、次の噛みまでの間に加えて敵の方を向き続ける猶予(ms)。噛みが続く間は向きが揺れない。 */
+const SUMMON_BITE_FACE_GRACE_MS = 200;
 const RARE_TORNADO_WIDTH_MULT = 1.4;
 /** 竜巻の高さ(幅に対する割合)。正方のままだと頂が地平線の先の空まで届く。 */
 const RARE_TORNADO_HEIGHT_FRAC = 0.62;
@@ -16006,7 +16008,12 @@ export class PixiScene {
     const key = this.enemyTexKey(s.reusedType, s.id);
     const last = this.summonMotionMemo.get(s.id);
     const dxm = last ? s.x - last.x : 0;
-    const faceRight = Math.abs(dxm) > 0.05 ? dxm > 0 : (last?.faceRight ?? true);
+    // 噛んでいる間(次の噛みまで)は噛んだ敵の方を向く(社長指示2026-10-05「仲間は敵の方を向いて噛む」)。それ以外は動いた向き。
+    const biting = s.kind === 'normal' && s.biteTargetX !== undefined && s.lastContactAt !== undefined
+      && Date.now() - s.lastContactAt < ALCHEMY_ATTACK_INTERVAL_MS + SUMMON_BITE_FACE_GRACE_MS;
+    const faceRight = biting
+      ? (s.biteTargetX as number) >= s.x + s.width / 2
+      : Math.abs(dxm) > 0.05 ? dxm > 0 : (last?.faceRight ?? true);
     this.summonMotionMemo.set(s.id, { x: s.x, y: s.y, faceRight });
     const idleTex = getTexture(key) ?? getTexture(s.reusedType);
     // 歩きのコマはフィールドの敵と同じ式(進んだ距離で刻む・止まったら立ち絵/コマを保持)。時計で刻むと足が滑る。
