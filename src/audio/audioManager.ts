@@ -130,6 +130,7 @@ export type SfxKey =
   | 'base-capture'   // 拠点開放SE
   | 'hunter-alert'   // ハンター変異体の検知(視界に入った=見られている)警告SE
   | 'screamer-cry'   // 変異体(叫喚型)の叫喚(発動)SE
+  | 'liberty-crow'   // 解放軍群(変異)に見つかった時のカラスの群れ(社長提供2026-10-05・25秒の素材の頭3.5秒を切り出しフェードアウト)
   | 'gate-clear'     // 強襲(関所)を生きて凌いだ時の突破ジングル
   | 'subquest-clear' // サブクエスト達成ジングル(社長提供・約2.8s。旧: event-clearの流用だった)
   | 'reaper-pass'    // 死神の横切り(気配演出)音(社長提供・約1.0s。v0.25.3665で配線待ちの席に配置)
@@ -272,6 +273,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/screamer-cry.wav`,
     volume: 1.3, // 叫喚の音量を上げる(社長指示: 1.0→1.3)
     minIntervalMs: 400,
+  },
+  // 解放軍群(変異)に見つかった瞬間のカラスの群れ(社長提供2026-10-05)。素材は25秒あったので頭3.5秒+後ろ1.2秒のフェードアウト。
+  'liberty-crow': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/liberty-crow.mp3`,
+    volume: 1.0,
+    minIntervalMs: 2000,
   },
   // レベルアップSE(社長提供)。レベルが上がった瞬間に1回。
   'level-up': {

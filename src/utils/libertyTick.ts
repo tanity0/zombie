@@ -11,6 +11,7 @@ import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playable
 import { isCorpse, spawnEnemyAtWithTier } from './enemyUtils';
 import { isPointInZoomedViewport, zoomedViewportBounds } from './cameraZoom';
 import { playSfx } from '../audio/audioManager';
+import { npcSfxDistGain } from './npcSfx';
 import { HERO_PATROL_SPEED, HERO_STRIKE_MS, HERO_FLINCH_MS, heroPatrolNext, heroRestMs } from './heroScript';
 import { HERO_PATROL_DETOUR_PX, HERO_PATROL_DETOUR_MS } from './heroTick';
 import {
@@ -147,7 +148,14 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     } else s.lostSince = null;
   }
   if (alerted !== wasAlerted) patch.libAlerted = alerted;
-  if (alerted && !wasAlerted) s.cries = 0;
+  if (alerted && !wasAlerted) {
+    s.cries = 0;
+    // 見つかった瞬間、カラスの群れが鳴き立つ(社長提供2026-10-05)。距離で減衰=画面の外で見つかれば遠くから聞こえる。
+    const pl0 = st.player;
+    const pcx0 = pl0.x + pl0.width / 2, pcy0 = pl0.y + pl0.height / 2;
+    const crowGain = npcSfxDistGain(bx, by, pcx0, pcy0, st.camera, st.gameBounds);
+    if (crowGain > 0.01) playSfx('liberty-crow', crowGain);
+  }
   // 叫喚の発生点=口のあたり(足元から上)。寸法は旗手の背丈に合わせて広げる。
   const fxX = bx, fxY = bearer.y + bearer.height - LIB_HEAD_PX;
   const cancelWindup = () => {
