@@ -18,6 +18,8 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
 ]);
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+// 内蔵GPUと外付けGPUの2つを持つノートPCで、ゲーム用の外付けGPUで描く(v0.25.4872・社長の RTX 4070 ノートで Chrome が内蔵GPUのまま重かった)。
+app.commandLine.appendSwitch('force_high_performance_gpu');
 
 if (!app.requestSingleInstanceLock()) app.quit();
 

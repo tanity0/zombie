@@ -96,6 +96,9 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
           && new URLSearchParams(window.location.search).get('bgtest') === '1') ? 0xff00ff : 0x0b0b12,
         resolution: Math.min(window.devicePixelRatio || 1, resolutionCap()),
         autoDensity: true,
+        // ★PC はゲーム用の強いGPUを頼む(v0.25.4872・社長実機: RTX 4070 のノートで Chrome が Intel 内蔵GPUで描いていて重かった)。
+        //   内蔵と外付けの2つを持つノートPCは、頼まないと省電力側で描く。スマホは従来どおり(指定しない=既定)。
+        ...(memoryTier() === 'pc' ? { powerPreference: 'high-performance' as const } : {}),
       });
       setAppliedResolution(app.renderer.resolution); // 診断表示用(実際に効いている値)
       if (cancelled) return;

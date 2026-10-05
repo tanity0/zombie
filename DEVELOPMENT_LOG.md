@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.4872 — PC: 外付けGPUを頼む(社長実機で Chrome が内蔵GPUだった)【2026-10-05 20:38 JST】
+- 社長報告「PCのChromeでやたら重い」(Acer Predator・RTX 4070 Laptop)。`chrome://gpu` の写真で `GL_RENDERER = ANGLE (Intel, Intel(R) UHD Graphics …)`=**外付けの4070ではなく内蔵GPUで描いていた**(GPU1=Intel が *ACTIVE*)。塗る画素の量の推定は外れ(4070なら効かない)。
+- `PixiStage`: PC(`memoryTier()==='pc'`)だけ `powerPreference: 'high-performance'`。スマホは指定しない(従来どおり)。※Windows の Chrome がこれで外付けへ切り替えるかは端末とドライバ次第=**確実なのは Windows の設定**(グラフィック→Chrome=高パフォーマンス)。
+- `electron/main.cjs`: `app.commandLine.appendSwitch('force_high_performance_gpu')`(製品版はこれで外付けGPU)。
+- ENGINEERING_NOTES §0 に症状の行を追加。
+- 検証: typecheck / lint(0 errors)/ 循環import。実機での効き目は社長確認待ち(本物のGPUはここに無い)。
+- 監査: 付けない(既存の初期化に1オプション)。
+- 状態変化: なし
+
 ## v0.25.4871 — PC・パッド: 銃の持ち替え(社長指示)【2026-10-05 20:16 JST】
 - 社長指示「武器の切り替えも入れて」(案: Q/数字/ホイール/パッドY・LB に「はい」相当)。それまで PC はHUDの枠をクリックするだけ、パッドは持ち替える手段が無かった。
 - 新設 `utils/weaponCycle.ts`: `cycledGunId`(純関数・循環)/ `pcCycleGun(±1)` / `pcSelectGunSlot(i)`。並びは HUD の銃の枠と同じ(`weapons.filter(!isMelee)`)。`isInputLocked`・四神舞の間は効かない。HUD タップと同じ `setActiveWeapon` を呼ぶだけ。
