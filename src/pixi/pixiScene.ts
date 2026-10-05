@@ -246,6 +246,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } from '../utils/telegraphStyle';
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine } from '../utils/biteTelegraph';
+import { enemyContactBox } from '../utils/collisionUtils'; // 確認用 ?hitbox=1
 // ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
 import {
   batLanternPose, batSlamFrameWithWindup, batBiteTiming, usesBatLantern,
@@ -812,6 +813,8 @@ const WHIP_SPRITE_TIP_X = 0.99;     // テクスチャ内の鞭先端位置
 // ステージ2(ラボ)の暗闇=可視ゾーン(フラッシュライト)演出。社長指示で廃止(既定OFF)。?labveil=1 で参照用に復活可。
 // (いきなり暗転する/画面固定の暗幕が登場ヘリのズーム等でズレる、という課題のため通常照明へ)。
 const LAB_VISIBILITY_VEIL = tsBool('labveil', false);
+/** 確認用: `?hitbox=1` で当たり判定を画面に出す(社長報告2026-10-05「絵と当たり範囲が合ってない」の切り分け用・普段は出ない)。 */
+const SHOW_HITBOX = tsBool('hitbox', false);
 // 遠景森2(ラボ)の明るさ。暗幕を地平下だけにした(載せ替え廃止)後、白tint(全明)だと元素材より眩し過ぎたので下げる。
 // グレー乗算tint。?nhbright=0..1 で現地調整(既定0.55)。
 const LAB_NEAR_HORIZON_TINT = (() => {
@@ -9242,6 +9245,7 @@ export class PixiScene {
     this.syncBreakableProps(s.breakableProps, now);
     this.syncPickups(s.pickups, now);
     this.syncPumpkinTelegraph(s.enemies, now, s.gameTime); // ジャンプ攻撃の着地予告(赤い影)
+    if (SHOW_HITBOX) this.syncHitboxDebug(s.enemies, s.player, s.gameTime);
     this.updateBoomerangReadyMark(s.player, now); // ブーメランCD明けの頭上マーク
     // ★**fxNow(実時計)で回す**(v0.25.4342)。`now` は `hitstopFreezeNow` で凍る時計で、
     // store 側の `at` は `Date.now()` なので、ヒットストップ中は dt が負になり
@@ -11582,6 +11586,28 @@ export class PixiScene {
   private static readonly BITE_TG_RED = [0xff2a2a, 0xff5a5a, 0xff8a8a] as const;
 
   // 特殊行動の予告。ジャンプ着地点(赤い影)＋ダッシュの移動先(赤ライン=直線距離)。
+  /**
+   * 確認用(`?hitbox=1`): 敵の接触の箱(黄・攻撃の構え〜噛みの間は赤)とプレイヤーの箱(緑)、雑魚の技の狙う点(白)。
+   * 判定は combatTick の `enemyContactBox`(敵)× `player`(x/y/width/height)の重なり。描くだけ。
+   */
+  private hitboxDebugGfx: Graphics | null = null;
+  private syncHitboxDebug(enemies: readonly Enemy[], player: Player, gameTime: number): void {
+    if (!this.hitboxDebugGfx) { this.hitboxDebugGfx = new Graphics(); this.hitboxDebugGfx.zIndex = 1e9; this.L.effectLayer.addChild(this.hitboxDebugGfx); }
+    const g = this.hitboxDebugGfx;
+    g.clear();
+    for (const e of enemies) {
+      if (isCorpse(e)) continue;
+      const b = enemyContactBox(e);
+      const biting = e.biteAt !== undefined && e.biteAt > 0;
+      g.rect(b.x, b.y, b.width, b.height).stroke({ width: 1.5, color: biting ? 0xff3030 : 0xffd400, alpha: 0.95 });
+      if (biting) {
+        const bl = biteTelegraphLine(e, gameTime);
+        if (bl) g.circle(bl.tx, bl.ty, 3).fill({ color: 0xffffff, alpha: 0.95 });
+      }
+    }
+    g.rect(player.x, player.y, player.width, player.height).stroke({ width: 1.5, color: 0x22ff66, alpha: 0.95 });
+  }
+
   private syncPumpkinTelegraph(enemies: Enemy[], now: number, gameTime: number) {
     const g = this.pumpkinTelegraph;
     g.clear();
