@@ -11,6 +11,7 @@ import { preloadCorridorTextures, CORRIDOR_TEXTURE_NAMES } from './corridorLayer
 import { SORTIE_STAGE_TEXTURE_PATHS, sortieTexturesNeeded, sortieSpriteGroups } from './stageTextures';
 
 import { setAppliedResolution } from '../config/renderer';
+import { memoryTier, resolutionCapFor } from '../utils/memoryTier';
 import { renderErrorFlags } from './renderErrorFlags';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
@@ -20,16 +21,11 @@ const resolutionCap = (): number => {
     const q = Number(new URLSearchParams(window.location.search).get('rescap'));
     if (Number.isFinite(q) && q > 0) return q; // 明示指定が最優先
   }
-  let mobile = false;
-  if (typeof navigator !== 'undefined') {
-    const uaData = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
-    if (uaData && typeof uaData.mobile === 'boolean') mobile = uaData.mobile;
-    else if (typeof window !== 'undefined' && window.matchMedia) mobile = window.matchMedia('(pointer: coarse)').matches;
-  }
+  // 判定は utils/memoryTier(焼きの天井と同じ1本・v0.25.4867)。
   // スマホ=1(社長裁定 v0.25.1447): 粗ドット規格のキャラは1ドット≈4画面pxで解像度差のにじみを
   // 呑み込めるため、実機比較(rescap 1/1.5/2/3)で「1は3とほぼ同等・1.5と2はまだら」と判定。
   // 電池・発熱も最軽(塗り面積は1.5比44%)。PC=2.0(高画質)は据え置き。?rescap= で随時上書き可。
-  return mobile ? 1 : 2;
+  return resolutionCapFor(memoryTier());
 };
 
 // (実解像度の診断値は config/renderer.ts の setAppliedResolution 経由で公開する)

@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4867 — 焼きの天井をスマホ/PCで分ける(社長「はい」)【2026-10-05 19:30 JST】
+- 新設 `src/utils/memoryTier.ts`: 端末の格 `phone`/`pc`(判定は PixiStage の解像度上限が v0.25.1447 から使ってきた uaData.mobile → `(pointer: coarse)` と同じ1本へ寄せた)。`rimBakeBudgetMb` スマホ32/PC64・`whiteBakeBudgetMb` スマホ16/PC32・`resolutionCapFor` スマホ1/PC2。
+- PixiStage の `resolutionCap` と pixiScene の `RIM_BAKE_BUDGET_MB`/`WHITE_BAKE_BUDGET_MB` がここを読む(`?rescap=`/`?rimbudget=`/`?whitebudget=` の上書きは従来どおり)。素材は増やさない=アプリの容量は不変。
+- スマホの値は v0.25.4866 のまま(テストで固定)。
+- 検証: typecheck / lint(0 errors)/ 循環import / memoryTier のテスト3本 / phone-guard: briefing・charselect・home・stages・title は OK。ingame・pause は左下のデバッグ行(ヘッドレスで ERR loop-stall が付くと2行に折れる)1件だけ差が出たが、**変更を外した状態でも同じ差**=既存の揺れ。
+- 監査: 既存の仕組みの値を端末で分けるだけ=付けない。
+- 状態変化: なし
+
 ## v0.25.4866 — 焼きの天井: 縁 64→32MB・白に16MBの天井(社長実機の落ち t488s)【2026-10-05 18:24 JST】
 - 社長実機 v0.25.4865 が約8分で落ちてタイトルへ戻った。前回最後の行 `tex194MB((直下)85+fx58) bake103MB(縁64/影28/白10/他2)1964枚 en14`=合計約300MB(iOSが落とす帯の内側)。例外ではなくメモリ圧kill。縁が天井64MBに張り付いていた(漏れではなく満杯)。白は上限も退避も無かった。
 - `RIM_BAKE_BUDGET_MB` 64→32(`?rimbudget=` は従来どおり)。

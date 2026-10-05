@@ -387,6 +387,7 @@ import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt, loopSweepProg as csLoopSweepProg } from '../utils/circleSweep';
 import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, bandSweepSliceAlpha, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
 import { giantSweepWindowProg, giantNovaWindupProg } from '../utils/giantRedTelegraph';
+import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb } from '../utils/memoryTier'; // 焼きの天井をスマホ/PCで分ける(v0.25.4867)
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
 /**
@@ -2714,13 +2715,14 @@ const RIM_TAU_MS = tsNum('rimtau', 110);               // 濃さの追従(慣性
  * (=スラッシング)ことになり、落ちる代わりにカクつくだけになるため。天井は
  * 「歩き去った後の物が積み上がり続ける」のを止めるための物で、今描いている物を削る物ではない。
  */
-const RIM_BAKE_BUDGET_MB = tsNum('rimbudget', 32); // v0.25.4866: 64→32(社長実機 t488s で縁64MB張り付きのまま合計約300MBで落ちた)
+// v0.25.4866: 64→32(社長実機 t488s で縁64MB張り付きのまま合計約300MBで落ちた)→ v0.25.4867: スマホ32 / PC64(utils/memoryTier)。
+const RIM_BAKE_BUDGET_MB = tsNum('rimbudget', rimBakeBudgetMb(memoryTier()));
 /**
  * ★白シルエット(被弾フラッシュ・昇天の白い体)の焼きの天井(MB・v0.25.4866)。`?whitebudget=` で変えられる。
  * それまで上限も退避も無かった。捨て方は縁と同じ=**RIM_BAKE_KEEP_MS 以上使われていない物だけ**を古い順に。
  * 呼び側は毎回 `whiteSilhouette()` を引き直して貼るので、捨てた物は次に光る時に焼き直されるだけ。
  */
-const WHITE_BAKE_BUDGET_MB = tsNum('whitebudget', 16);
+const WHITE_BAKE_BUDGET_MB = tsNum('whitebudget', whiteBakeBudgetMb(memoryTier())); // スマホ16 / PC32(v0.25.4867)
 /** この時間だけ使われていない焼きは捨ててよい(画面に出ている物を捨てないための安全域)。 */
 const RIM_BAKE_KEEP_MS = 2000;
 /**
