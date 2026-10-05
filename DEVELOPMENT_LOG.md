@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4879 — 英雄の回復: 当てると1体100・倒すと1体300(社長指示)【2026-10-06 01:11 JST】
+- 社長指示「英雄、攻撃を当てると100回復に変更。一気に3体当たれば300。倒すと1体につき300回復」。
+- `heroScript`: `HERO_HEAL_PER_HIT=100`/`HERO_HEAL_PER_KILL=300`/`heroHealAfterHits(hp,max,hits,kills)`(旧 heroHealAfterKills を置き換え)。`heroBlast.applyHeroBlastToEnemies`(英雄が敵に当てる唯一の経路)で、当たって生き残った数×100+倒した数×300。**倒した1体は300(100と足さない)**と読んだ。
+- research/MUTANT_HERO.md の回復の行を更新。
+- 検証: typecheck / lint(0 errors)/ heroScript のテスト。
+- 状態変化: なし
+
 ## v0.25.4878 — 矢の雨: クリエイティブ監査の反映【2026-10-06 01:09 JST】
 - クリエイティブ監査(Fable)=指摘14/直した10/社長へ戻す3(輪の共通の減速・矢を3つの束に・棚の一言の来歴)/見送り1(⑭以外の文言)。詳細は research/ARROW_RAIN.md §4b。
 - 最重要: 矢が画面の上の外=敵の向こうから降りてきて「北に別の射手」に見えていた → `RainArrow.fromY` を足し、**プレイヤーの手元から山なり**(水平等速+高さは放物線=重力・向きは接線)で刺さる点へ。刺さる点・時刻は不変(判定は触らない)。

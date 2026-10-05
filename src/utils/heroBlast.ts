@@ -2,7 +2,7 @@
 // - 英雄の技(持ち主が英雄の爆風)を、プレイヤー・守護霊に加えて**敵にも**当てる。
 // - 敵の攻撃(持ち主が英雄以外の爆風・弾・接触・技)を**英雄にも**当てる(第三者の的)。
 // 判定は全部 store 側(描画は読むだけ)。プレイヤーへの判定・ダメージは1bitも変えない(全て独立の追加分岐)。
-import { heroHealAfterKills } from './heroScript';
+import { heroHealAfterHits } from './heroScript';
 import type { Enemy } from '../types/game';
 import { useGameStore, knockbackSpeedFor, setThirdPartyHook, type PumpkinBlast } from '../store/gameStore';
 import { isCorpse, isMutantHero, resistsChipKnockback } from './enemyUtils';
@@ -131,12 +131,13 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
       }));
     }
   }
-  // 社長指示2026-10-05「敵を倒すと100ずつ回復する」(誰の撃破か=英雄自身が倒した敵・推薦の案A): 倒した数ぶん回復。
-  // 満タンになったら次のtickで昇天(heroTick)。回復は緑の数字で見せる(派手さの絵・判定なし)。
-  if (kills > 0) {
+  // 社長指示2026-10-05「攻撃を当てると100回復に変更。一気に3体当たれば300。倒すと1体につき300回復」:
+  // 当てた敵1体=100、倒した敵1体=300(その1体は100ではなく300)。満タンになったら次のtickで昇天(heroTick)。
+  // 回復は数字で見せる(派手さの絵・判定なし)。
+  if (victims.length > 0) {
     const cur = useGameStore.getState().enemies.find(e => e.id === hero.id);
     if (cur && cur.bossState !== 'hero-ascend' && cur.health > 0) {
-      const healed = heroHealAfterKills(cur.health, cur.maxHealth, kills);
+      const healed = heroHealAfterHits(cur.health, cur.maxHealth, victims.length - kills, kills);
       if (healed > cur.health) {
         useGameStore.setState(s2 => ({ enemies: s2.enemies.map(en => en.id === hero.id ? { ...en, health: healed } : en) }));
         useGameStore.getState().spawnCallout(hx, hero.y - 18, `+${healed - cur.health}`, '#e7dccb'); // 英雄の色(骨色)=プレイヤーの回復の緑と分ける

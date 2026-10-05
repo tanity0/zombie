@@ -17,8 +17,10 @@ export const HERO_TYPE = 'mutant-hero' as const;
 export const HERO_MAX_HP = 20000;
 /** 出てくる時の体力(上限の半分)。 */
 export const HERO_START_HP = 10000;
-/** 英雄が敵を1体倒すごとの回復。 */
-export const HERO_HEAL_PER_KILL = 100;
+/** 英雄の攻撃が敵1体に当たるごとの回復(社長指示2026-10-05「攻撃を当てると100回復に変更。一気に3体当たれば300」)。 */
+export const HERO_HEAL_PER_HIT = 100;
+/** 英雄の攻撃で敵1体を倒した時の回復(同「倒すと1体につき300回復」)。その1体は当てた分の100ではなく300。 */
+export const HERO_HEAL_PER_KILL = 300;
 /** 後半(棹立ちのいななき→技が増える)へ移る体力。旧=上限の半分(出てきた瞬間に後半になるので下げた)。 */
 export const HERO_PHASE2_HP = 5000;
 /** 昇天の長さ(ms)。 */
@@ -28,9 +30,9 @@ export const HERO_ASCEND_RISE_MS = 900;
 /** 昇天の山場(消える直前の一番強い光・閃光・音)の時刻(ms)。 */
 export const HERO_ASCEND_CLIMAX_MS = 4500;
 
-/** 敵を倒した数ぶん回復した体力(上限で止まる)。 */
-export const heroHealAfterKills = (health: number, maxHealth: number, kills: number): number =>
-  Math.min(maxHealth, health + Math.max(0, kills) * HERO_HEAL_PER_KILL);
+/** 1回の攻撃で、当てた(倒さなかった)数と倒した数ぶん回復した体力(上限で止まる)。 */
+export const heroHealAfterHits = (health: number, maxHealth: number, hits: number, kills: number): number =>
+  Math.min(maxHealth, health + Math.max(0, hits) * HERO_HEAL_PER_HIT + Math.max(0, kills) * HERO_HEAL_PER_KILL);
 /** 全回復=昇天する(固定の上限の英雄だけ)。 */
 export const heroShouldAscend = (e: { health: number; maxHealth: number; bossState?: string }): boolean =>
   e.bossState !== 'hero-ascend' && e.maxHealth >= HERO_MAX_HP && e.health >= e.maxHealth;

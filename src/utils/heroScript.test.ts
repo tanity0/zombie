@@ -1,8 +1,8 @@
 // research/MUTANT_HERO.md: 英雄(変異)の台本(純関数)のテスト。
 import { describe, it, expect } from 'vitest';
 import {
-  heroNotices, heroHealAfterKills, heroShouldAscend, heroAscendLook,
-  HERO_MAX_HP, HERO_START_HP, HERO_HEAL_PER_KILL, HERO_ASCEND_MS, HERO_ASCEND_RISE_MS, HERO_ASCEND_CLIMAX_MS,
+  heroNotices, heroHealAfterHits, heroShouldAscend, heroAscendLook,
+  HERO_MAX_HP, HERO_START_HP, HERO_HEAL_PER_HIT, HERO_HEAL_PER_KILL, HERO_ASCEND_MS, HERO_ASCEND_RISE_MS, HERO_ASCEND_CLIMAX_MS,
   heroSwingArc, heroPatrolRadius, heroPatrolNext, heroPatrolNearest, HERO_PATROL_STAGES, HERO_PATROL_SPEED, HERO_WALK_SPEED, HERO_GALLOP_SPEED,
   HERO_MOVES, HERO_NEAR, HERO_MID, HERO_AGGRO_RANGE, HERO_LURE_RANGE, heroMoveCandidates, pickHeroMove, pickHeroTarget,
   heroFollowUp, heroStepShape, heroStepHitDelay, circleHitsHeroShape, circleHitsFan, mobPrefersHero, heroFrameFor, heroLiftPx, HERO_SHEETS,
@@ -251,11 +251,14 @@ describe('英雄の体力と昇天(社長指示2026-10-05)', () => {
     expect(HERO_MAX_HP).toBe(20000);
     expect(HERO_START_HP).toBe(HERO_MAX_HP / 2);
   });
-  it('敵を倒すたびに100回復し、上限で止まる', () => {
-    expect(HERO_HEAL_PER_KILL).toBe(100);
-    expect(heroHealAfterKills(10000, HERO_MAX_HP, 3)).toBe(10300);
-    expect(heroHealAfterKills(19950, HERO_MAX_HP, 2)).toBe(HERO_MAX_HP);
-    expect(heroHealAfterKills(10000, HERO_MAX_HP, 0)).toBe(10000);
+  it('当てると1体100・倒すと1体300回復し、上限で止まる', () => {
+    // 社長指示2026-10-05: 当てると1体100(3体なら300)・倒すと1体300。
+    expect(HERO_HEAL_PER_HIT).toBe(100);
+    expect(HERO_HEAL_PER_KILL).toBe(300);
+    expect(heroHealAfterHits(10000, HERO_MAX_HP, 3, 0)).toBe(10300);
+    expect(heroHealAfterHits(10000, HERO_MAX_HP, 1, 2)).toBe(10700);
+    expect(heroHealAfterHits(19950, HERO_MAX_HP, 2, 0)).toBe(HERO_MAX_HP);
+    expect(heroHealAfterHits(10000, HERO_MAX_HP, 0, 0)).toBe(10000);
   });
   it('全回復で昇天する(昇天中はもう一度は始まらない・固定の上限でない英雄は昇天しない)', () => {
     expect(heroShouldAscend({ health: HERO_MAX_HP, maxHealth: HERO_MAX_HP })).toBe(true);
