@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.4869 — PC: Shift=押している間だけ歩く(社長指示)【2026-10-05 19:56 JST】
+- 社長指示「shiftを歩きにして、振りはスペースキー」→ 2回押し案と比べて Shift 押下を採用(「たしかに。ではそうしわ」)。
+- `useGameControls`: Shift をフリックから外し `inputState.walk`(押下/離し・窓が裏へ行ったら false)。フリックは K と右クリック(パッド B・RB)のまま。振り=左クリック/Space/J/パッドA は不変。
+- `gameStore.locoSpeedScale`(純関数へ切り出し): キーボード移動で walk の間は、スティックの浅い傾き(`PC_WALK_STRENGTH=0.4`)と同じ式=約0.52倍。スティック・特殊移動は不変。走りの踏み込み判定(0.75倍以上)にも掛からない=スティックで歩いた時と同じ。
+- pixiScene: キーボード歩きの間は走りのコマを出さない(歩きのコマ)。
+- tutorials: PC版の移動に Shift の1文を足し、近接の「カーソルの方へ薙ぐ」(v0.25.4868 で嘘になった)を「進む向きへ」に直した。
+- 検証: typecheck / lint(0 errors)/ 循環import / `pcWalk.test.ts` 3本 / ヘッドレスPC: D押しっぱなしで 87px/s → Shift併用で 46px/s・離すと walk=false・歩きのコマを画で確認。
+- 監査: 文言の書き換えを含むのでクリエイティブ監査(Fable)を出した(結果は次のエントリで反映)。
+- 状態変化: なし
+
 ## v0.25.4868 — PC: マウスの向きは照準を持つ銃だけ(社長指示)【2026-10-05 19:44 JST】
 - 社長指示「マウスのある方向に近接振るのは難しいのでやめたい。マウス方向はフィルガンなどのターゲットある武器のみ対応」。
 - `weaponUtils.mouseSetsAim(player)`=`hasManualAimGunKey(getActiveGun)`(PHILL/シグナル/レールガン)。

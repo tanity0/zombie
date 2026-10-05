@@ -9,17 +9,17 @@ import { isMenuContext } from '../utils/menuNav';
 //   移動(指移動): WASD / 矢印(同時押しで斜めOK)
 //   指を置く/離す(タッチと同じ: 押している間ホーミングのロック、離すと近接・PHILL発砲。2度押しでスケボー): Space / J
 //     (research/PC_SUPPORT.md §11-1。マウスの左ボタン・パッドの A と同じ utils/pcPress を呼ぶ)
-//   フリック(一閃ダッシュ・ワイヤーアンカー): K / Shift … 押した瞬間に「今の移動方向」へ発動。
+//   フリック(一閃ダッシュ・ワイヤーアンカー): K … 押した瞬間に「今の移動方向」へ発動。
+//   歩き: Shift(押している間だけ・社長指示2026-10-05。それまで Shift はフリックだった)。
 //     斜めも出せる(WASD合成方向を使う)。二連打方式は廃止(斜めに行けないため)。
 const isCounterKey = (key: string) => {
   const k = key.toLowerCase();
   return k === ' ' || k === 'spacebar' || k === 'space' || k === 'j';
 };
-// フリック発動キー(右手の定番ボタン想定 K、左手ピンキー Shift も可)。
-const isFlickKey = (key: string) => {
-  const k = key.toLowerCase();
-  return k === 'k' || k === 'shift';
-};
+// フリック発動キー(右手の定番ボタン想定 K。マウスは右クリック)。
+const isFlickKey = (key: string) => key.toLowerCase() === 'k';
+// 歩きキー(左手の小指。押している間だけ歩く=離せば走りへ戻る)。
+const isWalkKey = (key: string) => key.toLowerCase() === 'shift';
 
 // 物理キー(e.code)で判定する(research/PC_SUPPORT.md §11-3): 日本語入力オンや JIS/AZERTY 配列でも WASD/Space が効く。
 // e.code が無い/知らないキーは e.key の小文字を使う(従来どおり)。返す値は従来の e.key 小文字と同じ綴り。
@@ -122,6 +122,7 @@ export const useGameControls = () => {
           inputState.right = true;
           break;
       }
+      if (isWalkKey(key)) inputState.walk = true;
 
       // 移動キーで向きを更新(フリックを「止まってから」押した時に最新の向きを使えるように)。
       if (moveDirFromKey(key)) {
@@ -196,6 +197,7 @@ export const useGameControls = () => {
           inputState.right = false;
           break;
       }
+      if (isWalkKey(key)) inputState.walk = false;
 
       useGameStore.setState({ inputState });
     };
@@ -203,8 +205,8 @@ export const useGameControls = () => {
     // 窓が裏へ行った/ページを離れた: 押しっぱなしのキーの keyup は来ない → 移動を全部離し、指も「撃たずに離す」(§11-1)。
     const handleBlur = () => {
       const s = useGameStore.getState();
-      if (s.inputState.up || s.inputState.down || s.inputState.left || s.inputState.right) {
-        useGameStore.setState({ inputState: { ...s.inputState, up: false, down: false, left: false, right: false } });
+      if (s.inputState.up || s.inputState.down || s.inputState.left || s.inputState.right || s.inputState.walk) {
+        useGameStore.setState({ inputState: { ...s.inputState, up: false, down: false, left: false, right: false, walk: false } });
       }
       pcPressUp('key', false);
     };

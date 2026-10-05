@@ -1670,6 +1670,15 @@ export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カ�
 // 狙い距離(ワイヤーアンカー/PHILLレティクル): 弱い傾き=近く(最低 STICK_AIM_MIN_FACTOR 倍)。
 export const STICK_WALK_MIN_FACTOR = 0.20; // 歩行速度の最低倍率(強度0時。弱タッチ=さらにゆっくり)
 export const STICK_AIM_MIN_FACTOR = 0.25;  // 狙い距離の最低倍率(強度0時)
+/** PC: Shift で歩く時の「スティックの傾き」相当(0..1)。速さは STICK_WALK_MIN_FACTOR から同じ式で出す=約0.52倍。 */
+export const PC_WALK_STRENGTH = 0.4;
+/** 歩きの速さの倍率。スティック=傾きで / キーボード=Shift の間だけ PC_WALK_STRENGTH 相当 / それ以外(特殊移動含む)は1。 */
+export const locoSpeedScale = (stick: boolean, strength: number, kbWalk: boolean, plainLoco: boolean): number => {
+  if (!plainLoco) return 1;
+  if (stick) return STICK_WALK_MIN_FACTOR + (1 - STICK_WALK_MIN_FACTOR) * Math.max(0, Math.min(1, strength));
+  if (kbWalk) return STICK_WALK_MIN_FACTOR + (1 - STICK_WALK_MIN_FACTOR) * PC_WALK_STRENGTH;
+  return 1;
+};
 // 傾き強度 → 係数への共通リマップ(レンダラと共有して見た目と挙動を一致させる)。
 export const stickAimFactor = (strength: number) =>
   STICK_AIM_MIN_FACTOR + (1 - STICK_AIM_MIN_FACTOR) * Math.max(0, Math.min(1, strength));
@@ -7163,10 +7172,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // タッチ歩行のみアナログ速度: スティックの傾きが弱いとゆっくり歩く。
       // キーボードと特殊ロコモーション(ダッシュ等)はフル速度(speedScale=1)。
-      const speedScale =
-        swipeDirection && !wireDashing && !wireHopping && !dashing && !recovering && !sliding
-          ? STICK_WALK_MIN_FACTOR + (1 - STICK_WALK_MIN_FACTOR) * Math.max(0, Math.min(1, swipeStrength))
-          : 1;
+      // ★PC: Shift を押している間のキーボード移動は、スティックを浅く倒した時と同じ速さ(社長指示2026-10-05)。
+      const plainLoco = !wireDashing && !wireHopping && !dashing && !recovering && !sliding;
+      const speedScale = locoSpeedScale(!!swipeDirection, swipeStrength, !!state.inputState.walk, plainLoco);
 
       // Inertia: ease the velocity toward the target. Player tau is 0 → fully
       // instant, responsive control. スキル: スケーター = 慣性1.2sで滑る(高リスク操作。

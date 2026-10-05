@@ -17074,7 +17074,10 @@ export class PixiScene {
     // スカッシュ/踏み込みリーンも walking=false で自動的に止まる。
     const walking = p.isMoving && p.direction !== 'idle' && !p.skaterRiding;
     // 走りモーション: 移動レバー(swipeStrength)を目一杯倒している時だけ(マークスマン先行実装)。
-    const running = walking && useGameStore.getState().swipeStrength >= PLAYER_RUN_SWIPE_THRESHOLD;
+    // ★PC: Shift で歩いている間(キーボードの移動)は歩きのコマ(社長指示2026-10-05)。スティックの浅い傾きと同じ見え方。
+    const gsRun = useGameStore.getState();
+    const kbWalking = !gsRun.swipeDirection && !!gsRun.inputState.walk;
+    const running = walking && !kbWalking && gsRun.swipeStrength >= PLAYER_RUN_SWIPE_THRESHOLD;
     const frame = playerWalkFrame(p, now, walking, running);
     // 武将セット(特殊3点)フル装備時は立ち絵を差し替え。小烏丸(村雨)も装備していれば刀バージョン、
     // 揃っていなければ通常クラス絵へ戻す。立ち絵は高さ基準で正規化する(刀が横に伸びても体の大きさを保つ)。

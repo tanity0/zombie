@@ -2616,6 +2616,8 @@ export interface InputState {
   down: boolean;
   left: boolean;
   right: boolean;
+  /** PC: Shift を押している間だけ歩く(社長指示2026-10-05・キーボードの移動にだけ効く)。 */
+  walk?: boolean;
 }
 
 // Game area bounds
