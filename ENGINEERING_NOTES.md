@@ -340,7 +340,7 @@ find / -xdev -iname "*.png" -newermt "-6 hours" 2>/dev/null | grep uploads
   画面左下の `bake<MB>(縁<MB>/影<MB>/白<MB>/他<MB>)<枚数>枚` は、**読み込んだ素材(`tex`)とは別腹**で
   積まれる焼き直しテクスチャ。実測は `tex268MB` + `bake83MB(縁25/影49/白9)734枚` = **約351MB**。
   - **各キャッシュの上限(現状)**: 縁 `RIM_BAKE_BUDGET_MB=64`(`?rimbudget=`)/ 影
-    `SHADOW_SIL_CACHE_BUDGET_BYTES=32MB` / **白 `whiteTexCache` は上限も退避も無い** /
+    `SHADOW_SIL_CACHE_BUDGET_BYTES=32MB` / **白 `whiteTexCache` は上限も退避も無い**(→ **v0.25.4866 で天井16MB `?whitebudget=`・縁の天井も64→32MB**。社長実機 v0.25.4865 が t488s・`tex194+bake103(縁64張り付き)`≒300MB で落ちたため) /
     **灰 `grayTexCache` も上限も退避も無い**。
   - ⇒ **設計上の最悪値が 268 + 64 + 32 + ∞ で、落ちる帯(200〜400MB)を最初から超えている。**
     個々の予算はそれぞれ妥当に見えても、**合計を誰も見ていない**のが穴。

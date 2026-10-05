@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4866', items: ['長く遊んでいると落ちることがあった不具合を軽くした'] },
   { version: '0.25.4865', items: ['アイドルが倒れる時、断末魔の叫びが響く'] },
   { version: '0.25.4864', items: ['アイドルが現れると笑い声が響く。技を繰り出す合間にも、ときおり笑う'] },
   { version: '0.25.4863', items: ['解放軍群(変異)に見つかった瞬間、カラスの群れが一斉に鳴き立つ'] },

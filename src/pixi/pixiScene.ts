@@ -2714,7 +2714,13 @@ const RIM_TAU_MS = tsNum('rimtau', 110);               // 濃さの追従(慣性
  * (=スラッシング)ことになり、落ちる代わりにカクつくだけになるため。天井は
  * 「歩き去った後の物が積み上がり続ける」のを止めるための物で、今描いている物を削る物ではない。
  */
-const RIM_BAKE_BUDGET_MB = tsNum('rimbudget', 64);
+const RIM_BAKE_BUDGET_MB = tsNum('rimbudget', 32); // v0.25.4866: 64→32(社長実機 t488s で縁64MB張り付きのまま合計約300MBで落ちた)
+/**
+ * ★白シルエット(被弾フラッシュ・昇天の白い体)の焼きの天井(MB・v0.25.4866)。`?whitebudget=` で変えられる。
+ * それまで上限も退避も無かった。捨て方は縁と同じ=**RIM_BAKE_KEEP_MS 以上使われていない物だけ**を古い順に。
+ * 呼び側は毎回 `whiteSilhouette()` を引き直して貼るので、捨てた物は次に光る時に焼き直されるだけ。
+ */
+const WHITE_BAKE_BUDGET_MB = tsNum('whitebudget', 16);
 /** この時間だけ使われていない焼きは捨ててよい(画面に出ている物を捨てないための安全域)。 */
 const RIM_BAKE_KEEP_MS = 2000;
 /**
@@ -4003,7 +4009,8 @@ export class PixiScene {
   private grayTexCache = new Map<string, Texture>();
   // 被弾フラッシュ用「真っ白シルエット」テクスチャのキャッシュ(元Texture→白ベイク)。加算で重ねると、
   // 暗い敵でも全面が白く光る(加算は元の色しか足せないので、白ベイクしないと暗部が光らない)。実行時はフィルタ不要=安い。
-  private whiteTexCache = new Map<Texture, Texture>();
+  private whiteTexCache = new Map<Texture, { rt: RenderTexture; usedAt: number; bytes: number }>();
+  private whiteBakeBytes = 0;
   // 向きの縁(§6)。焼いた縁テクスチャ: 元テクスチャ → 8方向ぶん。
   /**
    * ★焼いた縁のキャッシュ(v0.25.4378 で**天井つき**に変更)。
@@ -17583,8 +17590,9 @@ export class PixiScene {
   // これを加算オーバーレイすると、暗い敵でも全面が白く光る。実行時はフィルタ不要(キャッシュ済みを貼るだけ)=安い。
   private whiteSilhouette(src: Texture | null): Texture | null {
     if (!src || src.width <= 1 || !this.renderer) return null;
+    const now = Date.now();
     const cached = this.whiteTexCache.get(src);
-    if (cached) return cached;
+    if (cached) { cached.usedAt = now; return cached.rt; }
     const tmp = new Sprite(src);
     const wrap = new Container();
     wrap.addChild(tmp);
@@ -17595,8 +17603,24 @@ export class PixiScene {
     const rt = bakeRenderTexture('silhouette', { width: Math.max(1, src.width), height: Math.max(1, src.height) });
     this.renderer.render({ container: wrap, target: rt, clear: true });
     wrap.destroy({ children: true });
-    this.whiteTexCache.set(src, rt);
+    const bytes = (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0) * 4;
+    this.whiteTexCache.set(src, { rt, usedAt: now, bytes });
+    this.whiteBakeBytes += bytes;
+    this.enforceWhiteBudget(now);
     return rt;
+  }
+
+  /** 白シルエットの天井を守る(v0.25.4866)。いま使っている物は捨てない(縁の enforceRimBudget と同じ考え方)。 */
+  private enforceWhiteBudget(now: number): void {
+    const limit = Math.max(1, WHITE_BAKE_BUDGET_MB) * 1024 * 1024;
+    if (this.whiteBakeBytes <= limit) return;
+    for (const [src, e] of this.whiteTexCache) { // Map は入れた順=古い順
+      if (this.whiteBakeBytes <= limit) break;
+      if (now - e.usedAt < RIM_BAKE_KEEP_MS) continue;
+      this.whiteTexCache.delete(src);
+      releaseBakedTexture('silhouette', e.rt);
+      this.whiteBakeBytes -= e.bytes;
+    }
   }
 
   // ===== 向きの縁ライティング(§6) =========================================================
