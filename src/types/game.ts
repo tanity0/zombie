@@ -2062,6 +2062,8 @@ export type SkillKey =
   | 'reaper' | 'berserker' | 'skater' | 'overclock' | 'crit-up' | 'sniper'
   // SKILL_BUILD_REDESIGN.md §32(社長仕様2026-10-01): 縮地。超レア・通常ガチャ枠。
   | 'shukuchi'
+  // research/MUTANT_HERO.md §1b(社長指示2026-10-05): 英雄。英雄を昇天させた時だけ手に入る(ガチャから出ない)。
+  | 'hero'
   // BOT_AND_GHOST.md G3: 守護霊(ゴースト助っ人)。ガチャからは出ない+最初から所持(社長指示)。
   | 'guardian-spirit' | 'ghost-helper' | 'ghost-slayer'
   // レア

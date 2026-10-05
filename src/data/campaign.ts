@@ -733,6 +733,8 @@ export const SKILL_KEYS: SkillKey[] = [
   'reaper', 'berserker', 'skater', 'overclock',
   // SKILL_BUILD_REDESIGN.md §32(社長仕様2026-10-01): 縮地(超レア・通常ガチャ枠)。
   'shukuchi',
+  // research/MUTANT_HERO.md §1b: 英雄(英雄を昇天させた時だけ手に入る=GACHA_EXCLUDED_SKILLS)。
+  'hero',
   // BOT_AND_GHOST.md G3: 守護霊。ガチャからは出ない(GACHA_EXCLUDED_SKILLS)+最初から所持
   // (社長指示v0.25.2452「守護霊スキルは最初から解禁しとこうか」→DEFAULT_OWNED_SKILLS)。
   'guardian-spirit', 'ghost-helper', 'ghost-slayer',
@@ -763,6 +765,8 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'berserker':    { name: 'バーサーカー',   desc: '失ったHP%だけ全攻撃が増加。代償として被ダメージ+20%', rarity: 'super' },
   'skater':       { name: 'スケーター',     desc: '移動速度3倍。ただし慣性が強くなり操作が難しくなる', rarity: 'super' },
   'shukuchi':     { name: '縮地',           desc: '近接で敵を倒すと短い間、近接を振ると射程内の最寄りの敵の手前へ瞬間移動して斬る。続けて倒せば何度でも続き、2発目から一撃ずつ重くなる', rarity: 'super' },
+  // research/MUTANT_HERO.md §1b(社長指示2026-10-05): 英雄を昇天させた時だけ手に入る。
+  'hero':         { name: '英雄',           desc: 'HPが満タンの間、移動速度とダメージが30%上がる。代わりに受けるダメージも30%増える', rarity: 'super' },
   'overclock':    { name: 'オーバークロック', desc: 'サブウェポン発動時、20%の確率でクールダウンを即リセット(Lvで25%/30%)', rarity: 'super' },
   'guardian-spirit': { name: '守護霊',       desc: 'ボス戦が始まると、自分の過去のプレイを写した霊が現れる。ボスHP×1.6、獲得ゴールド×0.5', rarity: 'super' },
   // 社長決定v0.25.3163: 3つとも「誰の守護霊か」が違うだけなので、**守護霊(◯◯)の形で揃える**。
@@ -1058,7 +1062,7 @@ export const OBTAINABLE_SKILL_KEYS: SkillKey[] =
 // NEW_SLEEPING_SKILLS(§14の新9種)は台帳掲載のみで効果配線がB7まで無いため、ここでも除外して
 // 完全に眠らせる。
 export const GACHA_EXCLUDED_SKILLS: SkillKey[] = [
-  'reaper', 'guardian-spirit', 'ghost-helper', 'ghost-slayer', ...POLICE_REWARD_SKILLS,
+  'reaper', 'hero', 'guardian-spirit', 'ghost-helper', 'ghost-slayer', ...POLICE_REWARD_SKILLS,
   ...RETIRED_SKILLS,
   ...NEW_SLEEPING_SKILLS,
 ];

@@ -1899,8 +1899,15 @@ export const heavyGunnerExplosionMult = (player: Player, gameTime: number): numb
 export const skillIncomingDamageMult = (player: Player, gameTime: number): number => {
   const kl = skillLevel(player, 'knight');
   return (kl ? [1, 0.8, 0.7, 0.6][kl] : 1) * (hasSkill(player, 'berserker') ? 1.2 : 1)
-    * consumableProtectionMult(player, gameTime);
+    * consumableProtectionMult(player, gameTime) * skillHeroMult(player);
 };
+// research/MUTANT_HERO.md §1b(社長指示2026-10-05)スキル「英雄」: HPが満タンの間だけ、移動速度・与ダメージ・被ダメージが ×1.3。
+// 満タンでない時は1(=効かない)。Lv不問の固定。
+export const HERO_SKILL_MULT = 1.3;
+export const skillHeroActive = (player: Pick<Player, 'skills' | 'health' | 'maxHealth'>): boolean =>
+  player.skills.includes('hero') && player.maxHealth > 0 && player.health >= player.maxHealth;
+export const skillHeroMult = (player: Pick<Player, 'skills' | 'health' | 'maxHealth'>): number =>
+  skillHeroActive(player) ? HERO_SKILL_MULT : 1;
 // 社長指示v0.25.3303 カウンターマスター覚醒(Lv3): カウンター成立直後3秒間、全攻撃力+30%。
 // バフの付与=カウンター成立の全7箇所(refundCounterCooldownを呼ぶ場所)がplayerパッチに広げる。
 export const COUNTER_MASTER_AWAKEN_BUFF_MS = 3000;
@@ -1928,10 +1935,11 @@ export const skillOutgoingDamageMult = (player: Player): number => {
     && skillLevel(player, 'counter-master') >= 3
     ? COUNTER_MASTER_AWAKEN_DMG_MULT
     : 1;
+  const heroMult = skillHeroMult(player); // スキル「英雄」: HP満タンの間 ×1.3
   const bl = skillLevel(player, 'berserker');
-  if (!bl || player.maxHealth <= 0) return alcMult * cmMult * growthMult;
+  if (!bl || player.maxHealth <= 0) return alcMult * cmMult * growthMult * heroMult;
   const k = [0, 1, 1.25, 1.5][bl];
-  return alcMult * cmMult * growthMult * (1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth) * k);
+  return alcMult * cmMult * growthMult * heroMult * (1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth) * k);
 };
 // クリティカルD上昇: crit倍率 +0.5/0.75/1.0(Lv)。
 export const skillCritMult = (player: Player, base: number): number => {
@@ -7097,7 +7105,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // スケーター×3はランプ対象外(即応のまま)。
       const skaterActive = hasSkill(player, 'skater') && player.skaterRiding;
       const bonusMult = skillRunnerSpeedMult(player, reloading) * standardSpeedBonusMult(player)
-        * consumableSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1);
+        * consumableSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1)
+        * skillHeroMult(player); // スキル「英雄」: HP満タンの間 ×1.3
       const moveSpeed = computeEffectiveMoveSpeed({
         dashOverrideSpeed: dashOv ? dashOv.speed : null,
         slidingSpeed: sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000) : null,

@@ -279,6 +279,10 @@ export const runHeroTick = (
       bossFullStunUntil: undefined, bossMoveCutPending: false, vx: 0, vy: 0,
     });
     const g = useGameStore.getState();
+    // スキル「英雄」(社長指示2026-10-05「昇天させた場合のみゲットできる」)。死神と同じ形=未所持の時だけ告知。
+    const hadHeroSkill = g.ownedSkills.includes('hero');
+    g.grantSkill('hero');
+    if (!hadHeroSkill) g.spawnCallout(hx, hero.y - 40, 'スキル「英雄」習得！', '#fde68a', { scale: 1.2 });
     g.spawnBurst(hx, hy, '#fff1b8', 30);
     g.spawnRing(hx, hero.y + hero.height, 12, 170, 'rgba(255,236,170,0.75)', 4, 900);
     if (heroOnScreen(hero)) useGameStore.setState({ eventBannerText: '英雄が光に還る', eventBannerUntil: gt + 3200 });

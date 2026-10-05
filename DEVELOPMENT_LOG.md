@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4854 — スキル「英雄」(英雄を昇天させた時だけ)・回復の主語を英雄自身で確定(社長指示)【2026-10-05 11:36 JST】
+- 社長「案Aの英雄が倒した敵だけ」→ 回復の主語は英雄自身で確定(v0.25.4853 のまま・設計書の★を外した)。
+- 社長「スキル 英雄。HPが満タンの時、移動速度とダメージが30%アップ 被ダメージも30%上がる。(満タン時のみ)昇天させた場合のみゲットできる」→ `SkillKey 'hero'`・`SKILLS.hero`(超レア)・`SKILL_KEYS`・`GACHA_EXCLUDED_SKILLS`。効果 `skillHeroMult`(満タンの間だけ ×1.3)を移動速度の倍率の積(movePlayer と pixiScene のランプ線判定)・`skillOutgoingDamageMult`・`skillIncomingDamageMult` へ。習得は昇天の開始(heroTick・死神と同じ形=未所持の時だけ告知)。アイコンは未支給(POI専用と同じく無し)。
+- 検証: typecheck / lint(0 errors)/ 循環import / utils+data 5889 passed(新テスト heroSkill.test.ts 3本)。絵の変更なし(習得の告知は既存の文字)。
+- 監査: v0.25.4853 の品質監査・クリエイティブ監査を実行中(この版の差分も合わせて見てもらう)。
+- 自己点検: 憲法第4条・第5条に触れない(英雄を昇天させた者だけのスキル)。
+- 状態変化: 英雄 → 実機確認待ち(残り: 監査の反映)
+
 ## v0.25.4853 — 英雄の体力を固定20000・出てくる時10000・敵を倒すと回復・満タンで昇天(社長指示)【2026-10-05 11:30 JST】
 - 社長「英雄のHPは固定で20000。但し、スタートでは10000。敵を倒すと100ずつ回復する。全回復すると英雄に光が刺し、昇天する。これが英雄を倒す正規ルート」+「昇天モーションは、踏み潰しの馬が足を高く上げているところまで回して、固定し、眩しい光とともに消えていく。5秒くらい掛けて」。
 - heroScript: `HERO_MAX_HP`/`HERO_START_HP`/`HERO_HEAL_PER_KILL`/`HERO_PHASE2_HP`(5000)/`HERO_ASCEND_*`・`heroHealAfterKills`・`heroShouldAscend`・`heroAscendLook`(柱・光・浮き・薄れの時刻表)・`heroFrameFor('hero-ascend')`(棹立ち0→7で止める)・`heroLiftPx` に昇天の浮き。テスト5本。
