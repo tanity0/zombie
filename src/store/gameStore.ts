@@ -12623,7 +12623,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const hitAt = Date.now();
       const dotPatch = { lastHitDmg: eff,
         // research/MUTANT_HERO.md §10a: 英雄の帰巣は「プレイヤーからの被弾」だけを見る(lastHit はゾンビの被弾でも打たれる)。
-        ...(isMutantHero(enemy.type) && hateSource === 'player' && eff > 0 ? { heroPlayerHitAt: state.gameTime } : {}) };
+        ...(isMutantHero(enemy.type) && hateSource === 'player' && eff > 0 ? { heroPlayerHitAt: state.gameTime } : {}),
+        // 社長裁定2026-10-05「攻撃されると気付く」: 守護霊からと、誰からか分からない被弾も打つ(英雄の気づき=heroTick)。
+        ...(isMutantHero(enemy.type) && hateSource === 'ghost' && eff > 0 ? { heroGhostHitAt: state.gameTime } : {}),
+        ...(isMutantHero(enemy.type) && hateSource === 'neutral' && eff > 0 ? { heroMobHitAt: state.gameTime } : {}) };
       const updatedEnemies = enemies.map(e =>
         e.id === id ? { ...e, health: newHealth, lastHit: hitAt, ...dotPatch, ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
       );

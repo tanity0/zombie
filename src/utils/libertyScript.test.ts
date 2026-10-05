@@ -1,6 +1,6 @@
 // research/LIBERTY_HORDE.md: 解放軍群(変異)の純関数のテスト。
 import { describe, it, expect } from 'vitest';
-import { libSees, LIB_SIGHT_FRONT_PX, LIB_SIGHT_NEAR_PX, libVolleyArrows, LIB_VOLLEY_ARROWS, LIB_VOLLEY_NEAR, LIB_VOLLEY_NEAR_SPREAD_PX, LIB_VOLLEY_SPAN_MS, LIB_ARROW_WINDUP_MS, libFlagFan, edgeDistToRectPt, LIB_FLAG_RADIUS, LIB_FLAG_TRIGGER_PX, libRetreatDir, LIB_RETREAT_RANGE_PX, libPatrolRadius, trailPointAt, maleBatId, ringPointBehind, hordeJitter, LIB_JITTER_PX, LIB_ESCORTS, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX, LIB_SLOT_GAP_PX } from './libertyScript';
+import { libSees, LIB_SIGHT_FRONT_PX, libVolleyArrows, LIB_VOLLEY_ARROWS, LIB_VOLLEY_NEAR, LIB_VOLLEY_NEAR_SPREAD_PX, LIB_VOLLEY_SPAN_MS, LIB_ARROW_WINDUP_MS, libFlagFan, edgeDistToRectPt, LIB_FLAG_RADIUS, LIB_FLAG_TRIGGER_PX, libRetreatDir, LIB_RETREAT_RANGE_PX, libPatrolRadius, trailPointAt, maleBatId, ringPointBehind, hordeJitter, LIB_JITTER_PX, LIB_ESCORTS, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX, LIB_SLOT_GAP_PX } from './libertyScript';
 import { variantTextureName } from './enemyVariant';
 import { countsTowardEnemyCap, isBossType } from './enemyUtils';
 
@@ -81,21 +81,19 @@ describe('解放軍群(変異)', () => {
   });
 });
 
-describe('解放軍群(変異)の索敵(前は遠く、後ろは近い)', () => {
-  it('前方の扇(左右60度)は900pxまで、それ以外は350pxまで', () => {
-    // 右を向いて(1,0)進む旗手
+describe('解放軍群(変異)の索敵(前方の扇だけ・後ろは見ない)', () => {
+  it('前方の扇(左右60度)は900pxまで見つける', () => {
     expect(libSees(0, 0, 1, 0, LIB_SIGHT_FRONT_PX - 1, 0)).toBe(true);
     expect(libSees(0, 0, 1, 0, LIB_SIGHT_FRONT_PX + 1, 0)).toBe(false);
-    // 前方55度・800px=見える / 65度・800px=見えない
     const at = (deg: number, r: number) => [Math.cos(deg * Math.PI / 180) * r, Math.sin(deg * Math.PI / 180) * r] as const;
     expect(libSees(0, 0, 1, 0, ...at(55, 800))).toBe(true);
     expect(libSees(0, 0, 1, 0, ...at(65, 800))).toBe(false);
-    // 真後ろは近くだけ
-    expect(libSees(0, 0, 1, 0, -(LIB_SIGHT_NEAR_PX - 1), 0)).toBe(true);
-    expect(libSees(0, 0, 1, 0, -(LIB_SIGHT_NEAR_PX + 1), 0)).toBe(false);
   });
-  it('向きが無い時は近くだけ', () => {
-    expect(libSees(0, 0, 0, 0, LIB_SIGHT_NEAR_PX - 1, 0)).toBe(true);
-    expect(libSees(0, 0, 0, 0, LIB_SIGHT_NEAR_PX + 1, 0)).toBe(false);
+  it('後ろと横は、すぐ隣でも見ない', () => {
+    expect(libSees(0, 0, 1, 0, -20, 0)).toBe(false);
+    expect(libSees(0, 0, 1, 0, 0, 30)).toBe(false);
+  });
+  it('向きが無い時は何も見えない', () => {
+    expect(libSees(0, 0, 0, 0, 50, 0)).toBe(false);
   });
 });

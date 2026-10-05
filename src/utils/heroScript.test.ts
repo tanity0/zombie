@@ -1,6 +1,7 @@
 // research/MUTANT_HERO.md: 英雄(変異)の台本(純関数)のテスト。
 import { describe, it, expect } from 'vitest';
 import {
+  heroNotices,
   heroSwingArc, heroPatrolRadius, heroPatrolNext, heroPatrolNearest, HERO_PATROL_STAGES, HERO_PATROL_SPEED, HERO_WALK_SPEED, HERO_GALLOP_SPEED,
   HERO_MOVES, HERO_NEAR, HERO_MID, HERO_AGGRO_RANGE, HERO_LURE_RANGE, heroMoveCandidates, pickHeroMove, pickHeroTarget,
   heroFollowUp, heroStepShape, heroStepHitDelay, circleHitsHeroShape, circleHitsFan, mobPrefersHero, heroFrameFor, heroLiftPx, HERO_SHEETS,
@@ -215,5 +216,31 @@ describe('本編の周回(社長指示2026-10-04)', () => {
   it('ゆっくり(歩きより遅い)。見つけた/戻る時は駆ける(歩きより速い)', () => {
     expect(HERO_PATROL_SPEED).toBeLessThan(HERO_WALK_SPEED);
     expect(HERO_GALLOP_SPEED).toBeGreaterThan(HERO_WALK_SPEED * 2);
+  });
+});
+
+describe('英雄の気づき(社長裁定2026-10-05「前方扇状で、後方は見ない。攻撃されると気付く」)', () => {
+  const c = (id: string, x: number, y: number, onScreen = true) => ({ id, x, y, onScreen });
+  const none = { currentId: undefined, struckPlayer: false, struckGhost: false, struckMob: false };
+  it('プレイヤーは前方の扇(900px)なら画面外でも見つけ、後ろはすぐ隣でも見ない', () => {
+    expect(heroNotices(0, 0, 1, 0, c('player', 800, 0, false), none)).toBe(true);
+    expect(heroNotices(0, 0, 1, 0, c('player', 950, 0), none)).toBe(false);
+    expect(heroNotices(0, 0, 1, 0, c('player', -40, 0), none)).toBe(false);
+    expect(heroNotices(0, 0, 1, 0, c('player', 0, 60), none)).toBe(false);
+  });
+  it('殴られたら後ろでも気づく(守護霊も同じ)', () => {
+    expect(heroNotices(0, 0, 1, 0, c('player', -40, 0), { ...none, struckPlayer: true })).toBe(true);
+    expect(heroNotices(0, 0, 1, 0, c('ghost', -40, 0), { ...none, struckGhost: true })).toBe(true);
+    expect(heroNotices(0, 0, 1, 0, c('ghost', -40, 0), { ...none, struckPlayer: true })).toBe(false);
+  });
+  it('敵は画面内だけ。誰からか分からない被弾では近く(480px)の敵に気づく', () => {
+    expect(heroNotices(0, 0, 1, 0, c('z1', 300, 0, false), none)).toBe(false);
+    expect(heroNotices(0, 0, 1, 0, c('z1', 300, 0), none)).toBe(true);
+    expect(heroNotices(0, 0, 1, 0, c('z1', -100, 0), none)).toBe(false);
+    expect(heroNotices(0, 0, 1, 0, c('z1', -100, 0), { ...none, struckMob: true })).toBe(true);
+  });
+  it('今の相手は1350pxまでは扇の外でも追う', () => {
+    expect(heroNotices(0, 0, 1, 0, c('player', -1000, 0), { ...none, currentId: 'player' })).toBe(true);
+    expect(heroNotices(0, 0, 1, 0, c('player', -1400, 0), { ...none, currentId: 'player' })).toBe(false);
   });
 });

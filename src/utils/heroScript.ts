@@ -4,6 +4,8 @@
 // 掟(設計書 §5): 全技が赤(カウンター可)。赤い予告は「溜めの開始で出て、当たる瞬間に消え切る」。
 // 突進・タックルは走る体では当てず、走り終わりの一撃だけで当てる(=当たる瞬間が1点に決まる)。
 
+import { frontConeSees, FRONT_SIGHT_PX, FRONT_SIGHT_LOSE_PX } from './frontSight';
+
 export const HERO_TYPE = 'mutant-hero' as const;
 
 /** 英雄が狙う相手を探す距離(中心から)。 */
@@ -189,9 +191,11 @@ export interface HeroTargetCand { id: string; x: number; y: number; onScreen: bo
 export const pickHeroTarget = (
   hx: number, hy: number, cands: readonly HeroTargetCand[], currentId: string | undefined,
   latchUntil: number | undefined, now: number, range = HERO_AGGRO_RANGE,
+  // 社長裁定2026-10-05: 前方の扇で見つける形では、呼び手が見えている相手だけを渡し、画面内かは問わない(false)。
+  needOnScreen = true,
 ): HeroTargetCand | null => {
   const r2 = range * range;
-  const live = cands.filter(c => c.onScreen && (c.x - hx) ** 2 + (c.y - hy) ** 2 <= r2);
+  const live = cands.filter(c => (!needOnScreen || c.onScreen) && (c.x - hx) ** 2 + (c.y - hy) ** 2 <= r2);
   if (live.length === 0) return null;
   if (currentId !== undefined && latchUntil !== undefined && now < latchUntil) {
     const keep = live.find(c => c.id === currentId);
@@ -203,6 +207,27 @@ export const pickHeroTarget = (
     if (d < bd) { bd = d; best = c; }
   }
   return best;
+};
+
+/**
+ * 社長裁定2026-10-05「解放軍と英雄、見つけるのは前方扇状で、後方は見ない。攻撃されると気付く」:
+ * 英雄がこの相手に気づいているか。
+ *  - プレイヤー/守護霊: 前方の扇(900px)で見つける。画面の外でも見つける(技は画面に入ってから=heroTick)。殴られたら気づく。
+ *  - 敵(雑魚・強個体): 今までどおり画面内の相手だけ。前方の扇で見つける。殴られたら(誰からか分からない被弾)近く(480px)の敵に気づく。
+ *  - 今の相手: 見失う距離(1350px)までは扇の外でも追う(気づいた後は相手の方を向く)。敵は画面内の間だけ。
+ */
+export const heroNotices = (
+  hx: number, hy: number, faceX: number, faceY: number, c: HeroTargetCand,
+  ctx: { currentId?: string; struckPlayer: boolean; struckGhost: boolean; struckMob: boolean },
+): boolean => {
+  const d = Math.hypot(c.x - hx, c.y - hy);
+  const isMob = c.id !== 'player' && c.id !== 'ghost';
+  if (isMob && !c.onScreen) return false;
+  if (c.id === ctx.currentId && d <= FRONT_SIGHT_LOSE_PX) return true;
+  if (c.id === 'player' && ctx.struckPlayer && d <= FRONT_SIGHT_LOSE_PX) return true;
+  if (c.id === 'ghost' && ctx.struckGhost && d <= FRONT_SIGHT_LOSE_PX) return true;
+  if (isMob && ctx.struckMob && d <= HERO_AGGRO_RANGE) return true;
+  return frontConeSees(hx, hy, faceX, faceY, c.x, c.y, FRONT_SIGHT_PX);
 };
 
 /**

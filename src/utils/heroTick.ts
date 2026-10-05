@@ -17,10 +17,11 @@ import {
   HERO_MOVES, HERO_RETARGET_PAUSE_MS, HERO_FLIP_PAUSE_MS, HERO_TARGET_LATCH_MS, HERO_ROAR_MS, HERO_WALK_SPEED,
   HERO_HOMING_SPEED_MULT, HERO_LOITER_RADIUS, HERO_LOITER_MIN_MS, HERO_LOITER_MAX_MS, HERO_STRIKE_MS, HERO_NEAR, HERO_MID,
   HERO_FLINCH_MS, HERO_SNORT_COOLDOWN_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS,
-  heroStepShape, heroStepHitDelay, pickHeroMove, pickHeroTarget, heroFollowUp, heroRestMs, easeInOut,
+  heroStepShape, heroStepHitDelay, pickHeroMove, pickHeroTarget, heroNotices, heroFollowUp, heroRestMs, easeInOut,
   HERO_PATROL_SPEED, HERO_GALLOP_SPEED, heroPatrolNext, heroPatrolNearest,
   type HeroMoveKey, type HeroShape, type HeroTargetCand,
 } from './heroScript';
+import { STRUCK_NOTICE_MS } from './frontSight';
 
 /** 帰巣(社長「範囲外はボスと同じ」・§6-1 / §10a)。賞金首と同じ数字。 */
 export const HERO_LEASH_PLAYER_PX = 700;
@@ -411,10 +412,20 @@ export const runHeroTick = (
     }
   }
   const cands = targetCands(hero);
+  // 社長裁定2026-10-05「見つけるのは前方扇状で、後方は見ない。攻撃されると気付く」: 向き=進む向き(止まっていれば顔の左右)。
+  const hvx = hero.vx ?? 0, hvy = hero.vy ?? 0;
+  const moving = Math.hypot(hvx, hvy) > 10;
+  const faceX = moving ? hvx : (hero.heroFaceX ?? -1), faceY = moving ? hvy : 0;
+  const struckWithin = (at: number | undefined) => at !== undefined && gt - at <= STRUCK_NOTICE_MS;
+  const noticeCtx = {
+    currentId: hero.heroTargetId,
+    struckPlayer: struckWithin(hero.heroPlayerHitAt), struckGhost: struckWithin(hero.heroGhostHitAt), struckMob: struckWithin(hero.heroMobHitAt),
+  };
   const picked = s.homing
     // 帰巣中は巣のそば(200px)で狙ってくる相手にだけ斬り返す(プレイヤーへは振り向かない)。
     ? pickHeroTarget(hx, hy, cands.filter(c => c.id !== 'player'), hero.heroTargetId, hero.heroTargetUntil, gt, HERO_HOME_DEFEND_PX)
-    : pickHeroTarget(hx, hy, onScreen ? cands : [], hero.heroTargetId, hero.heroTargetUntil, gt);
+    : pickHeroTarget(hx, hy, cands.filter(c => heroNotices(hx, hy, faceX, faceY, c, noticeCtx)), hero.heroTargetId, hero.heroTargetUntil, gt,
+      Infinity, false);
   if (picked && picked.id !== hero.heroTargetId) {
     const wasTargeting = hero.heroTargetId !== undefined;
     Object.assign(patch, { heroTargetId: picked.id, heroTargetUntil: gt + HERO_TARGET_LATCH_MS });

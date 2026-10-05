@@ -1,5 +1,6 @@
 // 解放軍群(変異)の純関数(research/LIBERTY_HORDE.md)。store も PixiJS も読まない=ヘッドレスでテストする。
 import { variantTextureName } from './enemyVariant';
+import { frontConeSees, FRONT_SIGHT_PX } from './frontSight';
 
 /** 後ろに連なるバット男の数(社長「常にコイツの後ろに赤レアのバット男が5体連なっている」)。 */
 export const LIB_ESCORTS = 5;
@@ -11,26 +12,15 @@ export const LIB_TRAIL_STEP_PX = 20;
 export const LIB_TRAIL_MAX = Math.ceil(((LIB_ESCORTS + 1) * LIB_SLOT_GAP_PX) / LIB_TRAIL_STEP_PX) + 4;
 /** 見失う: 前方の索敵距離のこの倍より外が続いたら(画面外かどうかは問わない=画面外から見つけるため)。 */
 export const LIB_LOSE_RANGE_MULT = 1.5;
-// ★索敵(社長裁定2026-10-05「解放軍、見つける距離は推薦で」=案A「前は遠く、後ろは近い」):
-// 進む向きの前方(左右60度)は900px先まで見つけ、それ以外の向きは350pxまで。画面の外でも見つける
-// (叫びとコウモリが先に来て、旗手の姿は後から)。技(旗振り・矢の雨)は今までどおり旗手が画面に入っている時だけ。
-export const LIB_SIGHT_FRONT_PX = 900;
-export const LIB_SIGHT_NEAR_PX = 350;
-export const LIB_SIGHT_HALF_DEG = 60;
-const LIB_SIGHT_COS = Math.cos((LIB_SIGHT_HALF_DEG * Math.PI) / 180);
+// ★索敵(社長裁定2026-10-05 2回目「解放軍と英雄、見つけるのは前方扇状で、後方は見ない。攻撃されると気付く」):
+// 進む向きの前方(左右60度)・900pxまでだけを見る。後ろと横は、すぐ隣でも見ない(殴られたら気づく=libertyTick の struck)。
+// 画面の外でも見つける。技(旗振り・矢の雨)は今までどおり旗手が画面に入っている時だけ。
+// 旧(同日1回目): 前方900+それ以外350。式は英雄と共通の `frontConeSees`(utils/frontSight.ts)。
+export const LIB_SIGHT_FRONT_PX = FRONT_SIGHT_PX;
 
-/**
- * (fx,fy)にいて(faceX,faceY)を向く旗手が、(tx,ty)を見つけるか。向きが0なら前方の扇は無し(近くだけ)。
- */
-export const libSees = (fx: number, fy: number, faceX: number, faceY: number, tx: number, ty: number): boolean => {
-  const dx = tx - fx, dy = ty - fy;
-  const d = Math.hypot(dx, dy);
-  if (d <= LIB_SIGHT_NEAR_PX) return true;
-  if (d > LIB_SIGHT_FRONT_PX) return false;
-  const fl = Math.hypot(faceX, faceY);
-  if (fl < 1e-6) return false;
-  return (dx * faceX + dy * faceY) / (d * fl) >= LIB_SIGHT_COS;
-};
+/** (fx,fy)にいて(faceX,faceY)を向く旗手が、(tx,ty)を見つけるか(前方の扇だけ)。 */
+export const libSees = (fx: number, fy: number, faceX: number, faceY: number, tx: number, ty: number): boolean =>
+  frontConeSees(fx, fy, faceX, faceY, tx, ty, LIB_SIGHT_FRONT_PX);
 export const LIB_LOSE_MS = 3000;
 /** 列へ戻るバット男の歩き(px/s)。 */
 export const LIB_RETURN_SPEED = 150;
