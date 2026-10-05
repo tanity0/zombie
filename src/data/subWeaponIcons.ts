@@ -17,6 +17,7 @@ const SUB_ICON: Partial<Record<SubWeaponKey, string>> = {
   'drone-boomerang': 'drone-boomerang',
   'wire-anchor': 'wire-anchor-tip',
   'first-aid-kit': 'first-aid-kit',
+  'arrow-rain': 'fx/arrow', // 仮(社長の素材待ち)。旗手の矢と同じ矢の絵
 };
 export const subWeaponIconName = (key: SubWeaponKey): string | null => SUB_ICON[key] ?? null;
 

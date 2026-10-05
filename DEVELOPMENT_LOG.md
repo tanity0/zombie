@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.4877 — 新サブウェポン「矢の雨」(社長指示)【2026-10-06 01:03 JST】
+- 社長「解放群を倒すと手に入る新ウェポン 矢の雨」「エンドコンテンツなので10%くらい上振れでもいいよ の前提で進めて」。設計 research/ARROW_RAIN.md(LIBERTY_HORDE ★未決 #2「旗手を倒した時の報酬」の決着)。
+- 入手: `SUB_BOSS_UNLOCK['mutant-liberty']='arrow-rain'`(既存のボス撃破→設計図の1か所)。矢の雨だけ**初入手でLv1を持つ**(購入台帳が1未満の時だけ1)・トースト「矢の雨 入手」。Lv2/3は開発施設。
+- 効果(`utils/arrowRain.ts` 純関数+テスト5本): Lv1 12本/9秒・Lv2 18本/8秒・Lv3 26本/7秒・1本17(×与ダメスキル)。足元から420px内で一番固まった所を的(半径110)、7割は敵の足元を**落ち始めまで追い直して**狙う・3割は円の中。体の矩形まで24pxで当たる。落ち始めを1.1秒にばらし0.42秒で刺さる。死体・昇天中・非終端の死神は的にしない。刀モード・帰還の円では撃たない。スローなし・赤い予告なし。
+- 配線: useGameLoop(火炎瓶の次)。store `arrowRainShots/arrowRainStuck`(resetGameで空)。描画 `pixiScene.syncPlayerArrowRain`(旗手の矢の描き方を `drawRainArrow` へ切り出して共用・プレイヤー側から斜めに加速して落ちる・刺さった矢は1.5秒)。開始に金色の輪・刺さった所に砂埃・弦の音(既存のクロスボウ)3回。
+- データ: SubWeaponKey/SUB_WEAPON_KEYS/表示名/強化の一言/棚の一言/アイコン(仮=fx/arrow)/ghostSanitize(※サーバー側は再デプロイまで守護霊のアップロードで矢の雨が落ちる)。
+- 検証: typecheck / lint(0 errors)/ 循環import / arrowRain・data・phantomSubs・devTestKnobs・ghostOnline・skills のテスト / ヘッドレス(`?sub=arrow-rain`・ゾンビ5体): 12本降って刺さり体力が減る・倒せる・金色の輪と斜めに落ちる矢を画で確認。
+- 監査: 品質監査(Fable・着手前)=(A)3件(当たりの幾何/狙いの時刻/再撃破でLvが下がる)全て反映・(B)は反映(進行リセットで設計図台帳が残る件=既存の穴・別案件)。クリエイティブ監査は次のエントリ。
+- 状態変化: 解放軍群 ★未決 #2 → 決着(矢の雨)
+
 ## v0.25.4876 — 湧く向きを歩き続けている方向へ寄せる(社長「推薦で」)【2026-10-06 00:44 JST】
 - PACING_PUZZLE.md §20。社長報告「歩いてると全然敵と出会わない時がある。ピークタイムでも」→ 計測で原因3つ(湧く辺がほぼ均等/置き去りが盤面の枠を取る/テンポ一定)。①だけを推薦どおり実装。
 - 新設 `utils/spawnWalkBias.ts`(純関数+1本の状態): `stepWalkHeading`(同じ向き=cos≥0.8・基礎速度の半分以上で2秒溜まると最大/止まると3倍速で抜ける/向きを変えると数え直し)・`pickWalkBiasedSide`(進む先70%/左右12.5%ずつ/後ろ5%)。`gameStore` の移動更新で毎tick `tickSpawnWalk`、`resetGame` で `resetSpawnWalk`。

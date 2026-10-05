@@ -2721,7 +2721,7 @@ const SHELF_UNLOCK_COST_BY_LEVEL = [20, 50, 100] as const;
 // ユニーク武器(銃スロット)の購入価格(社長裁定2026-09-05「全部同じ価格でいい。200gにしよう」・
 // UNIQUE_WEAPONS.md §11-6-2)。設計図(ボス撃破)/店売りのどちらでも一律。
 const GUN_SLOT_PURCHASE_COST = 200;
-// UNIQUE_WEAPONS.md §19-6項目4: ボス撃破で設計図を得るサブウェポン(現状=金環のみ)は、
+// UNIQUE_WEAPONS.md §19-6項目4: ボス撃破で設計図を得るサブウェポン(現状=金環・矢の雨)は、
 // 設計図を持っていなければ棚に並べない。★「設計図が無いサブは載せない」と書いてはいけない
 // (既存サブは台帳を持たないので全部消える)——ゲート対象は SUB_BOSS_UNLOCK の値だけ(互換のため)。
 const SUB_BOSS_UNLOCK_KEYS = new Set<SubWeaponKey>(Object.values(SUB_BOSS_UNLOCK));
@@ -2769,7 +2769,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </button>
         {/* 社長指示v0.25.3323: 固定(クラス固有)サブは自クラス専用+最初から上限解放(v0.25.3322)のため
             陳列解放リストから除外(買っても意味のないG消費を並べない)。
-            UNIQUE_WEAPONS.md §19-6項目4: ボス撃破解放のサブ(SUB_BOSS_UNLOCKの値=現状は金環のみ)は、
+            UNIQUE_WEAPONS.md §19-6項目4: ボス撃破解放のサブ(SUB_BOSS_UNLOCKの値=現状は金環・矢の雨。矢の雨は入手と同時にLv1)は、
             設計図が無ければ棚に並べない。対象外のキーは従来どおり無条件で並ぶ(互換)。 */}
         {SUB_WEAPON_KEYS.filter(k =>
           !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k)

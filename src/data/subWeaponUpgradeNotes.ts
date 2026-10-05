@@ -197,6 +197,11 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
     lv2: 'レーザーの威力が上がる',
     lv3: 'レーザーの威力が上がる',
   },
+  // 根拠: src/utils/arrowRain.ts ARROW_RAIN_COUNT_BY_LEVEL=[0,12,18,26]・ARROW_RAIN_CD_MS_BY_LEVEL=[0,9000,8000,7000]
+  'arrow-rain': {
+    lv2: '降る矢が増え、間が詰まる',
+    lv3: '降る矢が増え、間が詰まる',
+  },
 };
 
 /**

@@ -85,6 +85,7 @@ export const BOSS_UNLOCK: Record<string, string> = {
 // BOSS_UNLOCK の判定と**同じガード・同じ1箇所**で分岐させる(経路を2本にしない・§19-6項目3)。
 export const SUB_BOSS_UNLOCK: Partial<Record<EnemyType, SubWeaponKey>> = {
   suriel: 'gold-ring', // スリィエル(ゲート2ボス)撃破→金環の設計図(UNIQUE_WEAPONS.md §19)
+  'mutant-liberty': 'arrow-rain', // 解放軍群の旗手→矢の雨(research/ARROW_RAIN.md・入手と同時にLv1を持つ)
 };
 
 // 「店売り」の明示リスト(UNIQUE_WEAPONS.md §11-6-2・監査A-2の是正)。**「BOSS_UNLOCKに無い=店売り」

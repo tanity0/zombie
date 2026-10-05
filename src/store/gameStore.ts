@@ -1,4 +1,5 @@
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
+import type { RainArrow } from '../utils/arrowRain';
 import { tickSpawnWalk, resetSpawnWalk } from '../utils/spawnWalkBias';
 import { steerDirToward } from '../utils/mimirWheel';
 import { SHUKUCHI_INVULN_MS, pickShukuchiTarget, shukuchiChainMult, shukuchiLandingPoint, shukuchiParams, shukuchiWindowOpen } from '../utils/shukuchi';
@@ -3648,6 +3649,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'flare-gun': return 'フレアガン';
     case 'junk-weapon': return 'ジャンクウェポン';
     case 'gold-ring': return '金環';
+    case 'arrow-rain': return '矢の雨';
     default: return 'サブウェポン';
   }
 };
@@ -3873,11 +3875,16 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     // EnemyType キーの Partial<Record> なので、複合キーの参照だけ EnemyType へキャストする。
     const subUnlockKey = SUB_BOSS_UNLOCK[`${enemy.type}@${getSelectedStageId() ?? ''}` as EnemyType] ?? SUB_BOSS_UNLOCK[enemy.type];
     const subBlueprintNew = subUnlockKey ? markSubBlueprint(subUnlockKey) : false;
+    // research/ARROW_RAIN.md §1: 矢の雨は入手と同時に Lv1 を持つ(開発施設で買わなくても装備できる)。トーストも「入手」。
+    const subOwnedOnGet = subUnlockKey === 'arrow-rain';
+    if (subUnlockKey && subBlueprintNew && subOwnedOnGet && (get().purchasedSubLevels[subUnlockKey] ?? 0) < 1) {
+      get().setPurchasedSubLevel(subUnlockKey, 1);
+    }
     if (subUnlockKey && subBlueprintNew && !isTestWeaponUnlockAll()) { // 同上(サブは購入台帳が無いので解放ALLだけ見る)
       useGameStore.setState({
         lastWeaponGet: {
           // ★トーストの名前はサブ名の表(subWeaponDisplayName)から引く(銃のweaponDisplayNameではない・§19-6項目5)。
-          name: `${subWeaponDisplayName(subUnlockKey)} 設計図入手`,
+          name: `${subWeaponDisplayName(subUnlockKey)} ${subOwnedOnGet ? '入手' : '設計図入手'}`,
           at: Date.now(),
           color: '#facc15',
           kind: 'weapon',
@@ -5874,6 +5881,9 @@ interface GameState {
   // 火炎瓶(molotov)サブウェポン。現在のサイクルの投下進捗(純関数 computeMolotovTick の状態)。
   // null=アイドル(次サイクルはCD明けで開始)。判定自体は src/utils/molotov.ts、ここは適用のみ。
   molotovCycle: MolotovCycleState | null;
+  /** サブウェポン「矢の雨」(research/ARROW_RAIN.md): 落ちてくる矢(刺さる前)と、刺さって残っている矢。判定は useGameLoop、描画は pixiScene。 */
+  arrowRainShots: RainArrow[];
+  arrowRainStuck: { x: number; y: number; at: number; fromX: number }[];
   setMolotovCycle: (cycle: MolotovCycleState | null) => void; // useGameLoop が computeMolotovTick の結果を反映するだけ
 
   // センサー地雷(sensor-mine)サブウェポン(PACING_PUZZLE.md §6.4 M27)。設置は triggerCounter(近接スイング)、
@@ -6791,6 +6801,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   homingLocks: [],
   shadowClone: null,
   molotovCycle: null,
+  arrowRainShots: [],
+  arrowRainStuck: [],
   sensorMines: [],
   sensorMineCharges: [],
   supportSniperCdMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[1],
@@ -21025,6 +21037,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         rescueAllies: [],
         thrownBags: [],
         molotovCycle: null,
+        arrowRainShots: [],
+        arrowRainStuck: [],
         sensorMines: [],
         sensorMineCharges: [],
         supportSniperCdMs: SUPPORT_SNIPER_CD_MS_BY_LEVEL[1],

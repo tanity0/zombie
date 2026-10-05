@@ -13,6 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
+import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform } from '../utils/viewTransform';
 import { bossFramingFor } from '../utils/bossFraming';
@@ -2150,6 +2151,22 @@ const LIB_VOLLEY_FRAME_MS = 85;
 /** 号令で突き出した旗の先端の光の直径(world px・最大)。派手さの絵=大きめ。 */
 const LIB_FLAG_TIP_GLOW_PX = 120;
 const LIB_ARROW_STUCK_FADE_START = 1100, LIB_ARROW_STUCK_FADE_MS = 400;
+// 矢(クリエイティブ監査 #3: 暗い地面で読める色=木の竿に暗い縁・小さくくすんだ赤茶の矢羽・鉄の鏃)。
+// 旗手の矢の雨と、プレイヤーのサブウェポン「矢の雨」(research/ARROW_RAIN.md)が同じ描き方を使う。
+const drawRainArrow = (o: Graphics, tx: number, ty: number, ang: number, len: number, alpha: number) => {
+  const cx = Math.cos(ang), cy = Math.sin(ang);
+  const bx = tx - cx * len, by = ty - cy * len;
+  o.moveTo(bx, by).lineTo(tx - cx * 6, ty - cy * 6).stroke({ width: 4.5, color: 0x1a120c, alpha: alpha * 0.8 });
+  o.moveTo(bx, by).lineTo(tx - cx * 6, ty - cy * 6).stroke({ width: 2.5, color: 0x9a7b5c, alpha });
+  o.moveTo(tx, ty).lineTo(tx - cx * 10 - cy * 4.5, ty - cy * 10 + cx * 4.5).lineTo(tx - cx * 10 + cy * 4.5, ty - cy * 10 - cx * 4.5).closePath()
+    .fill({ color: 0xb8bec6, alpha });
+  for (const sgn of [1, -1]) {
+    o.moveTo(bx + cx * 3, by + cy * 3).lineTo(bx - cx * 3 + (-cy) * 4 * sgn, by - cy * 3 + cx * 4 * sgn)
+      .stroke({ width: 2, color: 0x7f3a2a, alpha });
+  }
+};
+// 1本ごとの決まったばらつき(座標から決まる=毎フレーム揺れない)。
+const rainHash01 = (x: number, y: number, k: number) => { const v = Math.sin(x * 12.9898 + y * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
 /**
  * 扇/帯をなぞって振る武器の絵(英雄のサーベル・解放軍群の旗)。握り=回す軸、先=範囲の縁をなぞる点。
  * 刃渡り(握り→先のpx)と、絵の中での握り→先の向き(intrinsic)は絵の寸法から出す。trail=振りの跡の色。
@@ -9261,6 +9278,7 @@ export class PixiScene {
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
     this.syncLibertyArrows(s.enemies, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top, s.libertyOrphanArrows); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
+    this.syncPlayerArrowRain(s.arrowRainShots, s.arrowRainStuck, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top); // research/ARROW_RAIN.md
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
@@ -15394,21 +15412,8 @@ export class PixiScene {
     if (!a.parent) this.L.effectLayer.addChild(a);
     g.clear(); a.clear();
     const style = telegraphStyleFor('mutant-liberty');
-    // 矢(クリエイティブ監査 #3: 暗い地面で読める色=木の竿に暗い縁・小さくくすんだ赤茶の矢羽・鉄の鏃)。
-    const drawArrow = (o: Graphics, tx: number, ty: number, ang: number, len: number, alpha: number) => {
-      const cx = Math.cos(ang), cy = Math.sin(ang);
-      const bx = tx - cx * len, by = ty - cy * len;
-      o.moveTo(bx, by).lineTo(tx - cx * 6, ty - cy * 6).stroke({ width: 4.5, color: 0x1a120c, alpha: alpha * 0.8 });
-      o.moveTo(bx, by).lineTo(tx - cx * 6, ty - cy * 6).stroke({ width: 2.5, color: 0x9a7b5c, alpha });
-      o.moveTo(tx, ty).lineTo(tx - cx * 10 - cy * 4.5, ty - cy * 10 + cx * 4.5).lineTo(tx - cx * 10 + cy * 4.5, ty - cy * 10 - cx * 4.5).closePath()
-        .fill({ color: 0xb8bec6, alpha });
-      for (const sgn of [1, -1]) {
-        o.moveTo(bx + cx * 3, by + cy * 3).lineTo(bx - cx * 3 + (-cy) * 4 * sgn, by - cy * 3 + cx * 4 * sgn)
-          .stroke({ width: 2, color: 0x7f3a2a, alpha });
-      }
-    };
-    // 1本ごとの決まったばらつき(座標から決まる=毎フレーム揺れない)。
-    const hash01 = (x: number, y: number, k: number) => { const v = Math.sin(x * 12.9898 + y * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
+    const drawArrow = drawRainArrow;
+    const hash01 = rainHash01;
     const drawSet = (ex: number, hits: readonly { x: number; y: number; radius: number; bornAt: number; fireAt: number; moveKey?: string }[],
       stuckList: readonly { x: number; y: number; at: number; tilt: number }[]) => {
       for (const h of hits) {
@@ -15449,6 +15454,41 @@ export class PixiScene {
     }
     // 社長指示2026-10-04「矢は倒しても落とす」: 倒れた旗手から引き継いだ矢(亡骸が消えた後も落ちる)。
     if (orphan) drawSet(orphan.ownerX, orphan.hits, orphan.stuck);
+  }
+
+  /**
+   * research/ARROW_RAIN.md: サブウェポン「矢の雨」。判定は useGameLoop、ここは store の矢を読むだけ。
+   * 旗手の矢と同じ描き方。**赤い予告は描かない**(自分の攻撃=プレイヤーへの危険ではない)。
+   * 矢はプレイヤーの側(fromX)から斜めに、画面の上の外から加速して落ちる。刺さった矢は少し残って薄れる。
+   */
+  private playerRainGroundGfx = new Graphics();
+  private playerRainGfx = new Graphics();
+  private syncPlayerArrowRain(shots: readonly RainArrow[], stuckList: readonly { x: number; y: number; at: number; fromX: number }[], gameTime: number, viewTopWorld: number): void {
+    const g = this.playerRainGroundGfx, a = this.playerRainGfx;
+    if (!g.parent) this.L.groundLayer.addChild(g);
+    if (!a.parent) this.L.effectLayer.addChild(a);
+    g.clear(); a.clear();
+    if (shots.length === 0 && stuckList.length === 0) return;
+    for (const h of shots) {
+      if (gameTime < h.bornAt) continue;
+      const u = Math.max(0, Math.min(1, (gameTime - h.bornAt) / Math.max(1, h.landAt - h.bornAt)));
+      const k = u * u; // 加速して落ちる(慣性MUST)
+      const sy = Math.min(h.y - 220, viewTopWorld - 80);
+      const side = h.fromX >= h.x ? 1 : -1;
+      const sx = h.x + side * (h.y - sy) * LIB_ARROW_FALL_SLANT;
+      drawRainArrow(a, sx + (h.x - sx) * k, sy + (h.y - sy) * k, Math.atan2(h.y - sy, h.x - sx), 46, 1);
+    }
+    for (const s2 of stuckList) {
+      const age = gameTime - s2.at;
+      const r1 = rainHash01(s2.x, s2.y, 1), r2 = rainHash01(s2.x, s2.y, 2), r3 = rainHash01(s2.x, s2.y, 3);
+      const fadeStart = LIB_ARROW_STUCK_FADE_START - 300 * r2;
+      const fade = age < fadeStart ? 1 : Math.max(0, 1 - (age - fadeStart) / LIB_ARROW_STUCK_FADE_MS);
+      if (fade <= 0) continue;
+      const side = s2.fromX >= s2.x ? 1 : -1;
+      const ang = Math.atan2(1, -side * LIB_ARROW_FALL_SLANT) + (r3 - 0.5) * 0.3;
+      g.ellipse(s2.x, s2.y + 1, 5, 2).fill({ color: 0x000000, alpha: 0.35 * fade });
+      drawRainArrow(g, s2.x, s2.y + 2, ang, 26 + 14 * r1, fade * 0.95);
+    }
   }
 
   // 火炎瓶(molotov)の地面の火。lifetime/DoTは gameStore(groundFires/tickGroundFires)側の仕事、

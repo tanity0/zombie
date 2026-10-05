@@ -72,7 +72,7 @@ const SUB_WEAPONS = new Set([
   'heavy-grenade', 'marksman-trap', 'striker-quick-mag', 'striker-hunting', 'dog', 'katana', 'murasame',
   'decoy', 'shield', 'whip', 'alchemy', 'turret', 'shijin', 'fire-knife', 'drone-boomerang', 'wire-anchor',
   'sage-stone', 'homing', 'shadow-clone', 'molotov', 'first-aid-kit', 'sensor-mine', 'support-sniper',
-  'flare-gun', 'junk-weapon',
+  'flare-gun', 'junk-weapon', 'arrow-rain',
 ]);
 const GUNS = new Set([
   'handgun-t1', 'handgun-t2', 'handgun-t3', 'shotgun-t1', 'shotgun-t2', 'shotgun-t3',

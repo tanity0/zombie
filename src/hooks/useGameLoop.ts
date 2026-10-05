@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isUntouchable } from '../utils/enemyUtils';
+import { arrowRainLevel, pickArrowRainCenter, planArrowRain, reaimArrow, arrowRainHits, ARROW_RAIN_ZONE_PX, ARROW_RAIN_COUNT_BY_LEVEL, ARROW_RAIN_CD_MS_BY_LEVEL, ARROW_RAIN_DAMAGE, ARROW_RAIN_STUCK_MS, type RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { latticeBands, latticeStageCount, latticeAxisForStage, latticeHitSource, latticeCenter } from '../utils/skadiLattice';
 import { mimirWheelTheta0, mimirWheelSpokeAngle, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
@@ -10462,6 +10464,66 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const footX = ownerCenterX(playerOwner);
             const footY = ownerFootY(playerOwner);
             useGameStore.getState().spawnGroundFire(footX, footY);
+          }
+        }
+
+        // research/ARROW_RAIN.md: サブウェポン「矢の雨」。間隔が明けていて、近くに敵がいれば、一番固まっている所へ矢を降らせる。
+        // 間隔は普通に進む(明けても敵がいなければ撃たずに待ち、敵が来た瞬間に撃つ)。刀モード中は止まる。プレイヤー専用(守護霊・幻影は後の段)。
+        {
+          const arState = useGameStore.getState();
+          const arTargetable = (e: Enemy) => !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e));
+          if (
+            !inReturnCircle &&
+            subWeaponPlayer.subWeapons.includes('arrow-rain') &&
+            !subWeaponBlockedByKatana(subWeaponPlayer, 'arrow-rain') &&
+            gameTime >= (subWeaponPlayer.subWeaponCooldowns['arrow-rain'] ?? 0)
+          ) {
+            const lv = arrowRainLevel(subWeaponPlayer.subWeaponLevels['arrow-rain']);
+            const pcx = subWeaponPlayer.x + subWeaponPlayer.width / 2;
+            const pfy = subWeaponPlayer.y + subWeaponPlayer.height;
+            const feet = arState.enemies.filter(arTargetable).map(e => ({ id: e.id, x: e.x + e.width / 2, y: e.y + e.height }));
+            const center = pickArrowRainCenter(pcx, pfy, feet);
+            if (center) {
+              const inZone = feet.filter(f => Math.hypot(f.x - center.x, f.y - center.y) <= ARROW_RAIN_ZONE_PX);
+              const shots = planArrowRain(center, inZone, ARROW_RAIN_COUNT_BY_LEVEL[lv], gameTime, pcx, Math.random);
+              useGameStore.setState({ arrowRainShots: [...arState.arrowRainShots, ...shots] });
+              setSubWeaponCooldown('arrow-rain', gameTime + ARROW_RAIN_CD_MS_BY_LEVEL[lv]);
+              // 派手さの絵: 的の円に薄い金色の輪が広がって消える(当たっても痛くないと分かる色・赤は使わない)。
+              spawnRing(center.x, center.y, 16, ARROW_RAIN_ZONE_PX, 'rgba(250,204,21,0.55)', 3, 650);
+            }
+          }
+          // 飛んでいる矢: 落ち始めるまで狙い直す/弦の音/刺さったら当てる。
+          const shotsNow = useGameStore.getState().arrowRainShots;
+          if (shotsNow.length > 0 || arState.arrowRainStuck.length > 0) {
+            const live = useGameStore.getState().enemies;
+            const byId = new Map(live.map(e => [e.id, e] as const));
+            const footOf = (id: string) => { const e = byId.get(id); return e && arTargetable(e) ? { x: e.x + e.width / 2, y: e.y + e.height } : null; };
+            const keep: RainArrow[] = [];
+            const landed: RainArrow[] = [];
+            for (const a0 of shotsNow) {
+              const a = reaimArrow(a0, gameTime, footOf);
+              if (a.sfx && gameTime >= a.bornAt) { playSfx('crossbow-fire', 0.7); keep.push({ ...a, sfx: false }); continue; }
+              if (gameTime >= a.landAt) landed.push(a); else keep.push(a);
+            }
+            let stuck = useGameStore.getState().arrowRainStuck.filter(s => gameTime - s.at < ARROW_RAIN_STUCK_MS);
+            if (landed.length > 0) {
+              const outMult = skillOutgoingDamageMult(useGameStore.getState().player);
+              const dmg = Math.max(1, Math.round(ARROW_RAIN_DAMAGE * outMult));
+              for (const a of landed) {
+                stuck = [...stuck, { x: a.x, y: a.y, at: gameTime, fromX: a.fromX }];
+                spawnBurst(a.x, a.y, '#8a7a62', 3); // 刺さった所の砂埃
+                const bodies = useGameStore.getState().enemies.filter(arTargetable);
+                for (const id of arrowRainHits(a, bodies)) {
+                  const enemy = bodies.find(b => b.id === id);
+                  if (!enemy) continue;
+                  const killed = damageEnemy(id, dmg);
+                  const ex = enemy.x + enemy.width / 2, ey = enemy.y + enemy.height / 2;
+                  spawnDamageNumber(ex, enemy.y, dmg, false);
+                  if (killed) { playEnemyDeath(); dropEnemyXp(enemy, ex, ey, `pickup-xp-arrow-rain-${a.landAt}`); }
+                }
+              }
+            }
+            useGameStore.setState({ arrowRainShots: keep, arrowRainStuck: stuck });
           }
         }
 

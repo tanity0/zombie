@@ -21,6 +21,7 @@ const BLURB: Partial<Record<SubWeaponKey, string>> = {
   'first-aid-kit': '開けると補給が出る鞄',
   'sensor-mine': '踏まれる前に感知して爆ぜる地雷',
   'support-sniper': '呼ぶと、遠くから一発入る',
+  'arrow-rain': '群れの頭上に、矢が降りそそぐ',
   'flare-gun': '撃ち込んだ炎が敵の目を引く',
   'junk-weapon': 'スクラップを弾にして撃つ',
   'gold-ring': '敵の両脇に二基据え、線で挟んで焼く',
