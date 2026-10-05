@@ -2166,6 +2166,8 @@ const drawRainArrow = (o: Graphics, tx: number, ty: number, ang: number, len: nu
   }
 };
 // 1本ごとの決まったばらつき(座標から決まる=毎フレーム揺れない)。
+// research/ARROW_RAIN.md: プレイヤーの矢の雨の軌道(手元の高さ・頂点の高さの基本)と、刺さった直後のめり込みの戻り(ms)。
+const PLAYER_RAIN_HAND_PX = 34, PLAYER_RAIN_APEX_PX = 140, PLAYER_RAIN_SETTLE_MS = 120;
 const rainHash01 = (x: number, y: number, k: number) => { const v = Math.sin(x * 12.9898 + y * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
 /**
  * 扇/帯をなぞって振る武器の絵(英雄のサーベル・解放軍群の旗)。握り=回す軸、先=範囲の縁をなぞる点。
@@ -9278,7 +9280,7 @@ export class PixiScene {
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
     this.syncLibertyArrows(s.enemies, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top, s.libertyOrphanArrows); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
-    this.syncPlayerArrowRain(s.arrowRainShots, s.arrowRainStuck, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top); // research/ARROW_RAIN.md
+    this.syncPlayerArrowRain(s.arrowRainShots, s.arrowRainStuck, s.gameTime); // research/ARROW_RAIN.md
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
     this.syncBossFires(s.bossFires, s.gameTime, now); // ジブリルのランタン火(紫の単発火・0.7秒予告→2秒)
@@ -15463,20 +15465,29 @@ export class PixiScene {
    */
   private playerRainGroundGfx = new Graphics();
   private playerRainGfx = new Graphics();
-  private syncPlayerArrowRain(shots: readonly RainArrow[], stuckList: readonly { x: number; y: number; at: number; fromX: number }[], gameTime: number, viewTopWorld: number): void {
+  private syncPlayerArrowRain(shots: readonly RainArrow[], stuckList: readonly { x: number; y: number; at: number; fromX: number; fromY: number }[], gameTime: number): void {
     const g = this.playerRainGroundGfx, a = this.playerRainGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);
     if (!a.parent) this.L.effectLayer.addChild(a);
     g.clear(); a.clear();
     if (shots.length === 0 && stuckList.length === 0) return;
+    // クリエイティブ監査 #1/#2: 自分の矢は自分から出す。プレイヤーの手元から山なりに射ち上げ、頂点で緩み、加速して落ちる
+    // (水平は等速・高さは放物線=重力そのまま)。向きは軌道の接線。刺さる点と時刻は判定(useGameLoop)と同じ。
+    const arc = (sx: number, sy: number, ex: number, ey: number) => ({ H: PLAYER_RAIN_APEX_PX + Math.hypot(ex - sx, ey - sy) * 0.35 });
     for (const h of shots) {
       if (gameTime < h.bornAt) continue;
       const u = Math.max(0, Math.min(1, (gameTime - h.bornAt) / Math.max(1, h.landAt - h.bornAt)));
-      const k = u * u; // 加速して落ちる(慣性MUST)
-      const sy = Math.min(h.y - 220, viewTopWorld - 80);
-      const side = h.fromX >= h.x ? 1 : -1;
-      const sx = h.x + side * (h.y - sy) * LIB_ARROW_FALL_SLANT;
-      drawRainArrow(a, sx + (h.x - sx) * k, sy + (h.y - sy) * k, Math.atan2(h.y - sy, h.x - sx), 46, 1);
+      const sx = h.fromX, sy = h.fromY - PLAYER_RAIN_HAND_PX;
+      const { H } = arc(sx, sy, h.x, h.y);
+      const gx = sx + (h.x - sx) * u, gy = sy + (h.y - sy) * u; // 真下の地面
+      const lift = H * 4 * u * (1 - u);
+      const ang = Math.atan2((h.y - sy) - H * 4 * (1 - 2 * u), h.x - sx);
+      const ds = this.depthScale(gy); // 監査 #11: 敵と同じ地面の遠近
+      const size = ds * (1 - 0.15 * 4 * u * (1 - u)); // 頂点で少し縮む
+      // 監査 #10: 落ちる先に縮んで濃くなる影(危険の色ではない=黒)。
+      const gsy = h.y + (gy - h.y) * (1 - u);
+      g.ellipse(gx, gsy + 1, (9 - 4 * u) * ds, (3.6 - 1.6 * u) * ds).fill({ color: 0x000000, alpha: 0.08 + 0.3 * u });
+      drawRainArrow(a, gx, gy - lift, ang, 46 * size, 1);
     }
     for (const s2 of stuckList) {
       const age = gameTime - s2.at;
@@ -15484,10 +15495,15 @@ export class PixiScene {
       const fadeStart = LIB_ARROW_STUCK_FADE_START - 300 * r2;
       const fade = age < fadeStart ? 1 : Math.max(0, 1 - (age - fadeStart) / LIB_ARROW_STUCK_FADE_MS);
       if (fade <= 0) continue;
-      const side = s2.fromX >= s2.x ? 1 : -1;
-      const ang = Math.atan2(1, -side * LIB_ARROW_FALL_SLANT) + (r3 - 0.5) * 0.3;
-      g.ellipse(s2.x, s2.y + 1, 5, 2).fill({ color: 0x000000, alpha: 0.35 * fade });
-      drawRainArrow(g, s2.x, s2.y + 2, ang, 26 + 14 * r1, fade * 0.95);
+      const sx = s2.fromX, sy = s2.fromY - PLAYER_RAIN_HAND_PX;
+      const { H } = arc(sx, sy, s2.x, s2.y);
+      const ang = Math.atan2((s2.y - sy) + H * 4, s2.x - sx) + (r3 - 0.5) * 0.3; // 刺さった時の軌道の向き
+      const ds = this.depthScale(s2.y);
+      // 監査 #13: 刺さった直後だけ少し深くめり込んで戻る(瞬停にしない)+鏃に白い光の1点。
+      const settle = age < PLAYER_RAIN_SETTLE_MS ? 1.15 - 0.15 * (1 - (1 - age / PLAYER_RAIN_SETTLE_MS) ** 2) : 1;
+      g.ellipse(s2.x, s2.y + 1, 5 * ds, 2 * ds).fill({ color: 0x000000, alpha: 0.35 * fade });
+      drawRainArrow(g, s2.x, s2.y + 2, ang, (26 + 14 * r1) * ds * settle, fade * 0.95);
+      if (age < 160) a.circle(s2.x, s2.y + 1, 2.2 * ds).fill({ color: 0xffffff, alpha: 0.8 * (1 - age / 160) });
     }
   }
 

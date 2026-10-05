@@ -33,6 +33,8 @@ export interface RainBody { id: string; x: number; y: number; width: number; hei
  */
 export interface RainArrow {
   x: number; y: number; bornAt: number; landAt: number; fromX: number;
+  /** 射ち出す点(プレイヤーの足元Y)。矢はここから山なりに上がって落ちる(クリエイティブ監査 #1: 自分の矢は自分から出す)。 */
+  fromY: number;
   targetId?: string; ox: number; oy: number;
   /** この矢が落ち始める時に弦の音を鳴らすか(1回の雨で数本だけ)。 */
   sfx?: boolean;
@@ -63,7 +65,7 @@ export const pickArrowRainCenter = (px: number, py: number, targets: readonly Ra
  * 弦の音は1本目・1/3・2/3の3本だけ(鳴らし過ぎない)。
  */
 export const planArrowRain = (
-  center: RainPoint, inZone: readonly RainTarget[], count: number, start: number, fromX: number, rng: () => number,
+  center: RainPoint, inZone: readonly RainTarget[], count: number, start: number, fromX: number, fromY: number, rng: () => number,
 ): RainArrow[] => {
   const out: RainArrow[] = [];
   for (let i = 0; i < count; i++) {
@@ -72,10 +74,10 @@ export const planArrowRain = (
       const t = inZone[Math.min(inZone.length - 1, Math.floor(rng() * inZone.length))];
       const a = rng() * Math.PI * 2, r = rng() * 10;
       const ox = Math.cos(a) * r, oy = Math.sin(a) * r;
-      out.push({ x: t.x + ox, y: t.y + oy, bornAt, landAt: bornAt + ARROW_RAIN_FALL_MS, fromX, targetId: t.id, ox, oy });
+      out.push({ x: t.x + ox, y: t.y + oy, bornAt, landAt: bornAt + ARROW_RAIN_FALL_MS, fromX, fromY, targetId: t.id, ox, oy });
     } else {
       const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * ARROW_RAIN_ZONE_PX;
-      out.push({ x: center.x + Math.cos(a) * r, y: center.y + Math.sin(a) * r, bornAt, landAt: bornAt + ARROW_RAIN_FALL_MS, fromX, ox: 0, oy: 0 });
+      out.push({ x: center.x + Math.cos(a) * r, y: center.y + Math.sin(a) * r, bornAt, landAt: bornAt + ARROW_RAIN_FALL_MS, fromX, fromY, ox: 0, oy: 0 });
     }
   }
   out.sort((a, b) => a.bornAt - b.bornAt);

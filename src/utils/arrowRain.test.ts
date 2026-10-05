@@ -15,7 +15,7 @@ describe('矢の雨(ARROW_RAIN.md)', () => {
     expect(pickArrowRainCenter(0, 0, [{ id: 'far', x: ARROW_RAIN_SEEK_PX + 10, y: 0 }])).toBeNull();
   });
   it('落ち始めは SPAN の間にばらけ、刺さるのは落ち始め+FALL。弦の音は3本だけ', () => {
-    const arrows = planArrowRain({ x: 0, y: 0 }, [{ id: 'e', x: 20, y: 0 }], 26, 1000, -50, Math.random);
+    const arrows = planArrowRain({ x: 0, y: 0 }, [{ id: 'e', x: 20, y: 0 }], 26, 1000, -50, 0, Math.random);
     expect(arrows).toHaveLength(26);
     for (const a of arrows) {
       expect(a.bornAt).toBeGreaterThanOrEqual(1000);
@@ -30,7 +30,7 @@ describe('矢の雨(ARROW_RAIN.md)', () => {
     const zs = [0, 1, 2].map(i => ({ id: `z${i}`, x0: 300 + i * 40, y: 100 + i * 20 }));
     const at = (t: number) => zs.map(z => ({ id: z.id, x: z.x0 - 80 * (t / 1000) - 15, y: z.y - 60, width: 30, height: 60 }));
     const foot = (t: number) => (id: string) => { const b = at(t).find(q => q.id === id)!; return { x: b.x + 15, y: b.y + 60 }; };
-    let arrows = planArrowRain({ x: 315, y: 120 }, zs.map(z => ({ id: z.id, ...foot(0)(z.id) })), 26, 0, 0, Math.random);
+    let arrows = planArrowRain({ x: 315, y: 120 }, zs.map(z => ({ id: z.id, ...foot(0)(z.id) })), 26, 0, 0, 0, Math.random);
     let aimed = 0, hitAimed = 0;
     for (let t = 0; t <= ARROW_RAIN_SPAN_MS + ARROW_RAIN_FALL_MS; t += 16) {
       arrows = arrows.map(a => reaimArrow(a, t, foot(t)));

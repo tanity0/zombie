@@ -10485,11 +10485,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const center = pickArrowRainCenter(pcx, pfy, feet);
             if (center) {
               const inZone = feet.filter(f => Math.hypot(f.x - center.x, f.y - center.y) <= ARROW_RAIN_ZONE_PX);
-              const shots = planArrowRain(center, inZone, ARROW_RAIN_COUNT_BY_LEVEL[lv], gameTime, pcx, Math.random);
+              const shots = planArrowRain(center, inZone, ARROW_RAIN_COUNT_BY_LEVEL[lv], gameTime, pcx, pfy, Math.random);
               useGameStore.setState({ arrowRainShots: [...arState.arrowRainShots, ...shots] });
               setSubWeaponCooldown('arrow-rain', gameTime + ARROW_RAIN_CD_MS_BY_LEVEL[lv]);
-              // 派手さの絵: 的の円に薄い金色の輪が広がって消える(当たっても痛くないと分かる色・赤は使わない)。
-              spawnRing(center.x, center.y, 16, ARROW_RAIN_ZONE_PX, 'rgba(250,204,21,0.55)', 3, 650);
+              // 派手さの絵: 的の円より大きい二重の輪(白の速い細輪+古びた金の遅い太輪=速さの差で減速して見せる)。
+              // 色は世界の光の金(UIの黄色にしない)・赤は使わない(当たっても痛くないと分かる)。クリエイティブ監査 #3/#4/#5。
+              spawnRing(center.x, center.y, 20, ARROW_RAIN_ZONE_PX * 1.6, 'rgba(255,248,230,0.75)', 2, 380);
+              spawnRing(center.x, center.y, 30, ARROW_RAIN_ZONE_PX * 1.75, 'rgba(226,184,96,0.7)', 6, 820);
             }
           }
           // 飛んでいる矢: 落ち始めるまで狙い直す/弦の音/刺さったら当てる。
@@ -10502,23 +10504,30 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const landed: RainArrow[] = [];
             for (const a0 of shotsNow) {
               const a = reaimArrow(a0, gameTime, footOf);
-              if (a.sfx && gameTime >= a.bornAt) { playSfx('crossbow-fire', 0.7); keep.push({ ...a, sfx: false }); continue; }
+              // 弦の音: 主武器のクロスボウと耳で分けるため低め・1本ごとに少しずつ違う高さ(監査 #7)。
+              if (a.sfx && gameTime >= a.bornAt) { playSfx('crossbow-fire', 0.7, undefined, 0.84 + ((a.bornAt * 7) % 10) / 100); keep.push({ ...a, sfx: false }); continue; }
               if (gameTime >= a.landAt) landed.push(a); else keep.push(a);
             }
             let stuck = useGameStore.getState().arrowRainStuck.filter(s => gameTime - s.at < ARROW_RAIN_STUCK_MS);
             if (landed.length > 0) {
               const outMult = skillOutgoingDamageMult(useGameStore.getState().player);
               const dmg = Math.max(1, Math.round(ARROW_RAIN_DAMAGE * outMult));
+              playSfx('anchor-plant', 0.4); // 刺さる音(このフレームに刺さった分をまとめて1回・旗手の矢と同じ束ね方・監査 #6)
               for (const a of landed) {
-                stuck = [...stuck, { x: a.x, y: a.y, at: gameTime, fromX: a.fromX }];
-                spawnBurst(a.x, a.y, '#8a7a62', 3); // 刺さった所の砂埃
+                stuck = [...stuck, { x: a.x, y: a.y, at: gameTime, fromX: a.fromX, fromY: a.fromY }];
+                // 刺さった所の砂埃(派手さの絵・監査 #8): 矢の進む向きへ、土と乾いた草の色を混ぜて。足元に小さな砂の輪。
+                const dl = Math.hypot(a.x - a.fromX, a.y - a.fromY) || 1;
+                const ddx = (a.x - a.fromX) / dl, ddy = (a.y - a.fromY) / dl;
+                spawnBurst(a.x, a.y, '#8a7a62', 4, ddx, ddy);
+                spawnBurst(a.x, a.y, '#6b6a45', 3, ddx, ddy);
+                spawnRing(a.x, a.y, 8, 26, 'rgba(176,156,120,0.45)', 2, 260);
                 const bodies = useGameStore.getState().enemies.filter(arTargetable);
                 for (const id of arrowRainHits(a, bodies)) {
                   const enemy = bodies.find(b => b.id === id);
                   if (!enemy) continue;
                   const killed = damageEnemy(id, dmg);
                   const ex = enemy.x + enemy.width / 2, ey = enemy.y + enemy.height / 2;
-                  spawnDamageNumber(ex, enemy.y, dmg, false);
+                  spawnDamageNumber(ex + (((a.landAt * 13) % 25) - 12), enemy.y, dmg, false); // 同じ所に数字が積み重ならないよう横へ揺らす(監査 #12)
                   if (killed) { playEnemyDeath(); dropEnemyXp(enemy, ex, ey, `pickup-xp-arrow-rain-${a.landAt}`); }
                 }
               }

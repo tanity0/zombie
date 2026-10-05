@@ -5883,7 +5883,7 @@ interface GameState {
   molotovCycle: MolotovCycleState | null;
   /** サブウェポン「矢の雨」(research/ARROW_RAIN.md): 落ちてくる矢(刺さる前)と、刺さって残っている矢。判定は useGameLoop、描画は pixiScene。 */
   arrowRainShots: RainArrow[];
-  arrowRainStuck: { x: number; y: number; at: number; fromX: number }[];
+  arrowRainStuck: { x: number; y: number; at: number; fromX: number; fromY: number }[];
   setMolotovCycle: (cycle: MolotovCycleState | null) => void; // useGameLoop が computeMolotovTick の結果を反映するだけ
 
   // センサー地雷(sensor-mine)サブウェポン(PACING_PUZZLE.md §6.4 M27)。設置は triggerCounter(近接スイング)、
