@@ -773,6 +773,9 @@ const WHIP_HURRICANE_WIDTH_MULT = 3.0;  // 描画幅 = 吸引半径 × この倍
 const SCREAM_BUFF_MARK_PX = 42;
 /** 頭上の光が灯っている長さ(ms・叫びが効いた瞬間から)。 */
 const SCREAM_BUFF_FLASH_MS = 900;
+/** 叫びの音波が届く速さ(px/ms・叫びのリングの広がりと揃える)と、遅れの上限(ms)。 */
+const SCREAM_BUFF_WAVE_PX_PER_MS = 0.5;
+const SCREAM_BUFF_WAVE_MAX_DELAY_MS = 900;
 const SUMMON_FADE_IN_MS = 360, SUMMON_FADE_OUT_MS = 600, SUMMON_RISE_PX = 10;
 /** 噛んだ後、次の噛みまでの間に加えて敵の方を向き続ける猶予(ms)。噛みが続く間は向きが揺れない。 */
 const SUMMON_BITE_FACE_GRACE_MS = 200;
@@ -19833,7 +19836,8 @@ export class PixiScene {
       this.drawHeroSword(e, view, gameTime, now);
     }
     if (e.type === 'mutant-hero') this.drawHeroAscend(e, view, gameTime);
-    this.drawScreamBuffMark(e, view, gameTime, now);
+    // 頭上=他の頭上の印(賢者の石の点)と同じ基準(当たり箱の天井+跳び)。
+    this.drawScreamBuffMark(e, view, gameTime, fb.footX, fb.footY - fb.boxH - 14 - liftHop - aiHop - kbHop, this.depthScaleEnemy(fb.footY));
     if (isBountyType(e.type)) {
       const bfx = e.aiFromX ?? cx, bfy = e.aiFromY ?? cy;
       const btx = e.aiTargetX ?? cx, bty = e.aiTargetY ?? cy;
@@ -31820,16 +31824,23 @@ export class PixiScene {
    * 頭上に、旗の先と同じ二重の柔らかい光を小さく灯す(下から浮かんで灯り、少し昇りながら消える・0.9秒)。
    * 叫び直すたびに窓が延びる=その瞬間にまた灯る。派手さの絵=判定なし。
    */
-  private drawScreamBuffMark(e: Enemy, view: ActorView, gameTime: number, now: number): void {
-    const until = useGameStore.getState().screamerBuffUntil;
-    const t = gameTime - (until - SCREAMER_BUFF_MS); // 効いた瞬間からの経過
-    const on = t >= 0 && t < SCREAM_BUFF_FLASH_MS && !isBossType(e.type) && e.type !== 'screamer' && !isCorpse(e) && e.health > 0
-      && view.sprite.visible && !e.dormant;
+  private drawScreamBuffMark(e: Enemy, view: ActorView, gameTime: number, headX: number, headY: number, dsc: number): void {
+    const st = useGameStore.getState();
+    const until = st.screamerBuffUntil;
+    // 叫んだ所から音波が届くまで点灯を遅らせる(叫びのリングの広がり=約0.5px/ms と合わせる・効果の時刻は変えない=見せ方だけ)。
+    const fx = st.screamerBuffFromX, fy = st.screamerBuffFromY;
+    const delay = fx !== undefined && fy !== undefined ? Math.min(SCREAM_BUFF_WAVE_MAX_DELAY_MS, Math.hypot(headX - fx, headY - fy) / SCREAM_BUFF_WAVE_PX_PER_MS) : 0;
+    const t = gameTime - (until - SCREAMER_BUFF_MS) - delay; // この敵に届いた瞬間からの経過
     let m = this.screamBuffMarks.get(e.id);
+    const alive = e.health > 0 && !isCorpse(e);
+    // 灯り始めた後に倒れた個体は、光だけ最後まで消え切る(パッと消さない)。
+    const on = t >= 0 && t < SCREAM_BUFF_FLASH_MS && !isBossType(e.type) && e.type !== 'screamer' && !e.dormant
+      && (alive ? view.sprite.visible : !!(m && m.c.visible));
     if (!on) { if (m) m.c.visible = false; return; }
     if (!m || m.c.destroyed) {
       const c = new Container();
-      for (const [tint, alphaMul] of [[0xffc966, 0.8], [0xfff6dc, 1]] as const) {
+      // 叫びの色(予兆・発動のリングと同じ緑)。光り方は旗の先と同じ二重の柔らかい光。
+      for (const [tint, alphaMul] of [[0xbef264, 0.85], [0xf4ffe0, 1]] as const) {
         const sp = new Sprite(getSoftGlowTexture()); sp.anchor.set(0.5); sp.blendMode = 'add'; sp.tint = tint; sp.alpha = alphaMul;
         c.addChild(sp);
       }
@@ -31840,15 +31851,13 @@ export class PixiScene {
     const u = t / SCREAM_BUFF_FLASH_MS;
     const fin = 1 - (1 - Math.min(1, u / 0.2)) ** 3;              // 灯り: 急に立ち上がって止まる
     const fout = u < 0.5 ? 1 : 1 - ((u - 0.5) / 0.5) ** 2;          // 消え: ゆっくり始まり、最後に抜ける
-    const headY = view.sprite.position.y - Math.abs(view.sprite.height) - 6;
-    m.c.position.set(view.sprite.position.x, headY + 10 * (1 - fin) - 8 * Math.max(0, u - 0.5));
+    m.c.position.set(headX, headY + 10 * (1 - fin) * dsc - 8 * Math.max(0, u - 0.5) * dsc);
     const outer = m.c.children[0] as Sprite, core = m.c.children[1] as Sprite;
-    const swell = 0.85 + 0.25 * fin * (1 - Math.max(0, u - 0.3));
+    const swell = (0.85 + 0.25 * fin * (1 - Math.max(0, u - 0.3))) * dsc; // 遠近に合わせる(奥の小さな敵には小さく)
     outer.width = outer.height = SCREAM_BUFF_MARK_PX * swell;
     core.width = core.height = SCREAM_BUFF_MARK_PX * 0.34 * swell;
     m.c.alpha = fin * fout;
     m.c.visible = m.c.alpha > 0.01;
-    void now;
   }
 
   /** 英雄の昇天の光(個体ごと): 天からの光の柱(Graphics)・体の外の金の暈(加算の柔らかい光)・体そのものが光る白いシルエット。 */

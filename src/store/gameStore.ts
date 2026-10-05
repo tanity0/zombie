@@ -5518,6 +5518,9 @@ interface GameState {
   redNight: RedNight | null;
   // 叫喚型(screamer)の強化が有効な gameTime(ms)。これを過ぎるまで通常敵の移動速度・与ダメージ×1.2。
   screamerBuffUntil: number;
+  /** 叫喚が発動した位置(描画: 頭上の光を音波の広がりに合わせて順に灯す・社長指示2026-10-05)。 */
+  screamerBuffFromX?: number;
+  screamerBuffFromY?: number;
   weaponMerchant: WeaponMerchant;
   // 商人サークル内の連続滞在時間(ms)。MERCHANT_TALK_DWELL_MSで満了=話しかける(ショップ/紅き夜やり過ごし)。
   // pixiSceneが進捗アーク描画に読む。円外/メニュー中/再開待ちで0リセット。
@@ -16751,7 +16754,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           : {}),
         // 叫喚発動: 画面内の通常敵を SCREAMER_BUFF_MS の間 強化する窓を張る。
-        ...(screamerActivatedAt.length > 0 ? { screamerBuffUntil: gameTime + SCREAMER_BUFF_MS } : {}),
+        ...(screamerActivatedAt.length > 0 ? { screamerBuffUntil: gameTime + SCREAMER_BUFF_MS, screamerBuffFromX: screamerActivatedAt[0].x, screamerBuffFromY: screamerActivatedAt[0].y } : {}),
       };
     });
     // research/MUTANT_HERO.md §4-2: set 後に守護霊・英雄へ当てる(積んだ分だけ=毎フレーム数件)。

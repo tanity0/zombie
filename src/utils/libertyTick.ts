@@ -279,7 +279,7 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     else if (alerted && bearer.libScreamUntil !== undefined && gt >= bearer.libScreamUntil) {
       patch.libScreamUntil = undefined;
       s.windupFx = [];
-      useGameStore.setState({ screamerBuffUntil: gt + SCREAMER_BUFF_MS });
+      useGameStore.setState({ screamerBuffUntil: gt + SCREAMER_BUFF_MS, screamerBuffFromX: fxX, screamerBuffFromY: fxY });
       screamerCryFx(fxX, fxY, { scale: LIB_SCREAM_FX_SCALE, repeat: s.cries > 0 });
       s.cries++;
     }
@@ -307,7 +307,7 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
       if (gt >= screamUntil) {
         patch.libScreamUntil = undefined;
         s.windupFx = [];
-        useGameStore.setState({ screamerBuffUntil: gt + SCREAMER_BUFF_MS });
+        useGameStore.setState({ screamerBuffUntil: gt + SCREAMER_BUFF_MS, screamerBuffFromX: fxX, screamerBuffFromY: fxY });
         screamerCryFx(fxX, fxY, { scale: LIB_SCREAM_FX_SCALE, repeat: s.cries > 0 });
         s.cries++;
       }
