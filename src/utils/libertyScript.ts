@@ -9,8 +9,28 @@ export const LIB_SLOT_GAP_PX = 56;
 export const LIB_TRAIL_STEP_PX = 20;
 /** 足跡を持つ数(5体ぶん+余り)。 */
 export const LIB_TRAIL_MAX = Math.ceil(((LIB_ESCORTS + 1) * LIB_SLOT_GAP_PX) / LIB_TRAIL_STEP_PX) + 4;
-/** 見失う: 索敵範囲のこの倍より外、または画面外が続いたら。 */
+/** 見失う: 前方の索敵距離のこの倍より外が続いたら(画面外かどうかは問わない=画面外から見つけるため)。 */
 export const LIB_LOSE_RANGE_MULT = 1.5;
+// ★索敵(社長裁定2026-10-05「解放軍、見つける距離は推薦で」=案A「前は遠く、後ろは近い」):
+// 進む向きの前方(左右60度)は900px先まで見つけ、それ以外の向きは350pxまで。画面の外でも見つける
+// (叫びとコウモリが先に来て、旗手の姿は後から)。技(旗振り・矢の雨)は今までどおり旗手が画面に入っている時だけ。
+export const LIB_SIGHT_FRONT_PX = 900;
+export const LIB_SIGHT_NEAR_PX = 350;
+export const LIB_SIGHT_HALF_DEG = 60;
+const LIB_SIGHT_COS = Math.cos((LIB_SIGHT_HALF_DEG * Math.PI) / 180);
+
+/**
+ * (fx,fy)にいて(faceX,faceY)を向く旗手が、(tx,ty)を見つけるか。向きが0なら前方の扇は無し(近くだけ)。
+ */
+export const libSees = (fx: number, fy: number, faceX: number, faceY: number, tx: number, ty: number): boolean => {
+  const dx = tx - fx, dy = ty - fy;
+  const d = Math.hypot(dx, dy);
+  if (d <= LIB_SIGHT_NEAR_PX) return true;
+  if (d > LIB_SIGHT_FRONT_PX) return false;
+  const fl = Math.hypot(faceX, faceY);
+  if (fl < 1e-6) return false;
+  return (dx * faceX + dy * faceY) / (d * fl) >= LIB_SIGHT_COS;
+};
 export const LIB_LOSE_MS = 3000;
 /** 列へ戻るバット男の歩き(px/s)。 */
 export const LIB_RETURN_SPEED = 150;

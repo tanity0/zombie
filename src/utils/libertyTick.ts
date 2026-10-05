@@ -11,7 +11,7 @@ import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playable
 import { isCorpse, spawnEnemyAtWithTier } from './enemyUtils';
 import { isPointInZoomedViewport, zoomedViewportBounds } from './cameraZoom';
 import { playSfx } from '../audio/audioManager';
-import { HERO_AGGRO_RANGE, HERO_PATROL_SPEED, HERO_STRIKE_MS, HERO_FLINCH_MS, heroPatrolNext, heroRestMs } from './heroScript';
+import { HERO_PATROL_SPEED, HERO_STRIKE_MS, HERO_FLINCH_MS, heroPatrolNext, heroRestMs } from './heroScript';
 import { HERO_PATROL_DETOUR_PX, HERO_PATROL_DETOUR_MS } from './heroTick';
 import {
   LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_STEP_PX, LIB_TRAIL_MAX, LIB_LOSE_RANGE_MULT, LIB_LOSE_MS,
@@ -20,7 +20,7 @@ import {
   LIB_VOLLEY_CAST_MS, LIB_VOLLEY_COOLDOWN_MS, LIB_VOLLEY_FIRST_DELAY_MS, LIB_ARROW_RADIUS, LIB_ARROW_DAMAGE, LIB_ARROW_STUCK_MS,
   libVolleyArrows, type LibArrow,
   LIB_FLAG_TRIGGER_PX, LIB_FLAG_WINDUP_MS, LIB_FLAG_RECOVER_MS, LIB_FLAG_COOLDOWN_MS, LIB_FLAG_DAMAGE, edgeDistToRectPt, libFlagFan,
-  trailPointAt, maleBatId, hordeJitter,
+  trailPointAt, maleBatId, hordeJitter, libSees, LIB_SIGHT_FRONT_PX,
 } from './libertyScript';
 
 export interface LibertyTickState {
@@ -74,23 +74,23 @@ const isFrozen = (e: Enemy, gt: number, nowMs: number): boolean =>
   || (e.knockbackUntil !== undefined && nowMs < e.knockbackUntil);
 
 /** 旗手のいちばん近い見つける相手(プレイヤー/守護霊)までの距離と、その相手のx。画面内の者だけ。 */
-const sightDist = (bx: number, by: number): { d: number; x: number } => {
+/**
+ * 相手(プレイヤー・守護霊)のうち一番近い者の距離と x、そして向き付きの視界(`libSees`)で見つけたか。
+ * 画面の内外は問わない(LIBERTY_HORDE §11 #1 の裁定=案A)。
+ */
+const sightDist = (bx: number, by: number, faceX: number, faceY: number): { d: number; x: number; seen: boolean } => {
   const st = useGameStore.getState();
-  const vis = (x: number, y: number) => isPointInZoomedViewport(x, y, st.camera, st.gameBounds, st.viewZoom);
-  let best = Infinity, bestX = bx;
+  let best = Infinity, bestX = bx, seen = false;
+  const look = (x: number, y: number) => {
+    const d = Math.hypot(x - bx, y - by);
+    if (d < best) { best = d; bestX = x; }
+    if (libSees(bx, by, faceX, faceY, x, y)) seen = true;
+  };
   const p = st.player;
-  if (p.health > 0) {
-    const px = p.x + p.width / 2, py = p.y + p.height / 2;
-    const d = Math.hypot(px - bx, py - by);
-    if (vis(px, py) && d < best) { best = d; bestX = px; }
-  }
+  if (p.health > 0) look(p.x + p.width / 2, p.y + p.height / 2);
   const g = st.summons.find(s => s.kind === 'ghost-ally');
-  if (g) {
-    const gx = g.x + g.width / 2, gy = g.y + g.height / 2;
-    const d = Math.hypot(gx - bx, gy - by);
-    if (vis(gx, gy) && d < best) { best = d; bestX = gx; }
-  }
-  return { d: best, x: bestX };
+  if (g) look(g.x + g.width / 2, g.y + g.height / 2);
+  return { d: best, x: bestX, seen };
 };
 
 /** 取り巻きのバット男を1体作る(赤レア・男の見た目・旗手のIDを持つ)。 */
@@ -127,7 +127,11 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
 
   // ---- 見つける / 見失う ----
   const onScreen = isPointInZoomedViewport(bx, by, st.camera, st.gameBounds, st.viewZoom);
-  const sight = onScreen ? sightDist(bx, by) : { d: Infinity, x: bx };
+  // 向き=進む向き(周回・後ずさりの s.dir)。止まっていて向きが無ければ顔の左右。
+  const faceLen = Math.hypot(s.dirX, s.dirY);
+  const sight = faceLen > 0.5
+    ? sightDist(bx, by, s.dirX, s.dirY)
+    : sightDist(bx, by, (bearer.heroFaceX ?? -1) as number, 0);
   const d = sight.d;
   const wasAlerted = bearer.libAlerted === true;
   let alerted = wasAlerted;
@@ -135,9 +139,9 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   const hitRecently = (e: Enemy) => nowMs - (e.lastHit ?? 0) <= LIB_HIT_ALERT_MS;
   const struck = hitRecently(bearer)
     || st.enemies.some(e => e.hordeLeaderId === bearer.id && !isCorpse(e) && e.health > 0 && hitRecently(e));
-  if (d <= HERO_AGGRO_RANGE || struck) { alerted = true; s.lostSince = null; }
+  if (sight.seen || struck) { alerted = true; s.lostSince = null; }
   else if (wasAlerted) {
-    if (d > HERO_AGGRO_RANGE * LIB_LOSE_RANGE_MULT || !onScreen) {
+    if (d > LIB_SIGHT_FRONT_PX * LIB_LOSE_RANGE_MULT) {
       if (s.lostSince === null) s.lostSince = gt;
       if (gt - s.lostSince >= LIB_LOSE_MS) { alerted = false; s.lostSince = null; }
     } else s.lostSince = null;
