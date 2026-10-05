@@ -8,7 +8,7 @@
 //  - 自動射撃と同じ優先順位: **スタン中の敵は後回し**(最後の手段=一閃のフィニッシュ余地を残す)。
 //  - 通常リーパー(reaperChaser でない reaper)は対象外。
 import type { Enemy } from '../types/game';
-import { isCorpse, isReaperFamily, isTerminalReaper } from './enemyUtils';
+import { isCorpse, isUntouchable, isReaperFamily, isTerminalReaper } from './enemyUtils';
 
 export const pickKatanaSlashTarget = (
   cx: number,
@@ -22,7 +22,7 @@ export const pickKatanaSlashTarget = (
   let bestStunned: { id: string; d2: number } | null = null;
   for (const e of enemies) {
     if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-    if (isCorpse(e)) continue; // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): オート斬撃の標的から除外
+    if (isCorpse(e) || isUntouchable(e)) continue; // 英雄の昇天中も除外 / KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): オート斬撃の標的から除外
     const d = meleeDist(cx, cy, e);
     if (d > rangePx) continue;
     const d2 = d * d;

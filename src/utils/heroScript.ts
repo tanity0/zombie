@@ -25,8 +25,8 @@ export const HERO_PHASE2_HP = 5000;
 export const HERO_ASCEND_MS = 5000;
 /** 昇天の頭で棹立ち(踏み潰しの前脚を上げる 0→7)まで回す長さ(ms)。 */
 export const HERO_ASCEND_RISE_MS = 900;
-/** 昇天で体が浮く高さ(描画だけ・px)。 */
-export const HERO_ASCEND_LIFT_PX = 70;
+/** 昇天の山場(消える直前の一番強い光・閃光・音)の時刻(ms)。 */
+export const HERO_ASCEND_CLIMAX_MS = 4500;
 
 /** 敵を倒した数ぶん回復した体力(上限で止まる)。 */
 export const heroHealAfterKills = (health: number, maxHealth: number, kills: number): number =>
@@ -35,26 +35,33 @@ export const heroHealAfterKills = (health: number, maxHealth: number, kills: num
 export const heroShouldAscend = (e: { health: number; maxHealth: number; bossState?: string }): boolean =>
   e.bossState !== 'hero-ascend' && e.maxHealth >= HERO_MAX_HP && e.health >= e.maxHealth;
 
-const smooth01 = (t: number): number => { const x = Math.max(0, Math.min(1, t)); return x * x * (3 - 2 * x); };
+const clamp01 = (t: number): number => Math.max(0, Math.min(1, t));
+const easeOut3 = (t: number): number => 1 - (1 - clamp01(t)) ** 3;
+const easeIn3 = (t: number): number => clamp01(t) ** 3;
+const bump = (t: number): number => { const x = clamp01(t); return Math.sin(Math.PI * x); };
 export interface HeroAscendLook {
   /** 体の濃さ(1→0)。 */ alpha: number;
-  /** 体が浮く高さ(px)。 */ lift: number;
-  /** 天からの光の柱の濃さ(0..1)。 */ beam: number;
-  /** 体を包む光の強さ(0..1)。 */ flare: number;
+  /** 天からの光の柱の濃さ(0..1.35・山場で一瞬強まる)。 */ beam: number;
+  /** 体が光になる強さ(白いシルエットの重ね・0..1)。 */ flare: number;
 }
 /**
- * 昇天の見え方(経過ms→)。慣性: どれも滑らかに立ち上がり、滑らかに消える。
- * 光の柱が差す(0〜1.2秒)→ 体が光に包まれ、浮き始める(1.5秒〜)→ 体が薄れて消える(3〜5秒)。柱は体より少し先に引く。
+ * 昇天の見え方(経過ms→)。社長「眩しい光とともに消えていく」=**消える所が山**(クリエイティブ監査 #1/#10)。
+ * 頭は静か(光の柱が差すだけ)→ 体が光を帯び始める(0.7秒〜・立ち上がりは急で、あとは長く満ちる)→
+ * 山場(4.5秒前後)で柱が一瞬強まり体が光そのものになる → 体は最後に一気に抜け、柱も引いて消える。
+ * 体は浮かない(社長「固定し」)。カーブは区間ごとに形を変える(全部同じ smoothstep にしない)。
  */
 export const heroAscendLook = (sinceMs: number): HeroAscendLook => {
   const t = Math.max(0, sinceMs);
-  const beamIn = smooth01(t / 1200), beamOut = 1 - smooth01((t - 4200) / 800);
-  const fade = 1 - smooth01((t - 3000) / (HERO_ASCEND_MS - 3000));
+  const beamIn = easeOut3(t / 1200);
+  const beamSurge = 1 + 0.35 * bump((t - 4100) / 700);
+  const beamOut = 1 - easeIn3((t - 4600) / 400);
+  // 体の光り方: 0.7秒で淡く灯り(急に立ち上がって止まる)、そこから山場へ向けてじわじわ満ちる。早くから真っ白に飛ばさない(撮影で確認)。
+  const flareRise = 0.22 * easeOut3((t - 700) / 900) + 0.78 * clamp01((t - 1600) / (HERO_ASCEND_CLIMAX_MS - 1600)) ** 1.8;
+  const flareDrop = 1 - easeIn3((t - HERO_ASCEND_CLIMAX_MS) / (HERO_ASCEND_MS - HERO_ASCEND_CLIMAX_MS));
   return {
-    alpha: fade,
-    lift: HERO_ASCEND_LIFT_PX * smooth01((t - 1500) / (HERO_ASCEND_MS - 1500)),
-    beam: beamIn * beamOut,
-    flare: smooth01((t - 800) / 2800) * (0.35 + 0.65 * fade),
+    alpha: 1 - easeIn3((t - 2000) / 2800),
+    beam: beamIn * beamSurge * beamOut,
+    flare: flareRise * flareDrop,
   };
 };
 
@@ -459,7 +466,8 @@ export const heroFrameFor = (inp: HeroFrameInput): HeroFrame | null => {
   if (state === 'hero-idle') return { sheet: 'rear', frame: idlePawFrame(inp.sinceMs, inp.phase ?? 0) };
   // 昇天: 踏み潰しの前脚を高く上げる所(棹立ち 0→7)まで回して、7で止める。
   if (state === 'hero-ascend') {
-    return { sheet: 'rear', frame: inp.sinceMs < HERO_ASCEND_RISE_MS ? seqAt([0, 1, 2, 3, 4, 5, 6, 7], inp.sinceMs / HERO_ASCEND_RISE_MS) : 7 };
+    // 勢いよく上がり、頂点で減速して止まる(慣性・クリエイティブ監査 #7)。
+    return { sheet: 'rear', frame: inp.sinceMs < HERO_ASCEND_RISE_MS ? seqAt([0, 1, 2, 3, 4, 5, 6, 7], easeOut3(inp.sinceMs / HERO_ASCEND_RISE_MS)) : 7 };
   }
   if (state === 'hero-roar') {
     const t = inp.sinceMs;
@@ -524,7 +532,6 @@ export const heroFrameFor = (inp: HeroFrameInput): HeroFrame | null => {
 
 /** 跳躍の滞空中の高さ(描画だけ・px)。滞空でなければ 0。 */
 export const heroLiftPx = (e: { bossState?: string; heroMove?: HeroMoveKey; heroStep?: number; heroStateAt?: number; bossStateUntil?: number }, gameTime: number): number => {
-  if (e.bossState === 'hero-ascend') return heroAscendLook(gameTime - (e.heroStateAt ?? gameTime)).lift;
   if (e.bossState !== 'hero-motion' || e.heroStateAt === undefined || e.bossStateUntil === undefined) return 0;
   const leap = e.heroMove === 'leap' || (e.heroMove === 'leapcharge' && (e.heroStep ?? 0) === 0);
   if (!leap) return 0;
@@ -592,8 +599,8 @@ export const heroPatrolNearest = (x: number, y: number, R: number): { x: number;
   return { x: Math.cos(a) * R, y: Math.sin(a) * R };
 };
 
-export const heroZoomEligible = (e: { type: string; heroTargetId?: string; health: number }): boolean =>
-  e.type === HERO_TYPE && e.health > 0 && (e.heroTargetId === 'player' || e.heroTargetId === 'ghost');
+export const heroZoomEligible = (e: { type: string; heroTargetId?: string; health: number; bossState?: string }): boolean =>
+  e.type === HERO_TYPE && e.health > 0 && (e.heroTargetId === 'player' || e.heroTargetId === 'ghost' || e.bossState === 'hero-ascend'); // 昇天の5秒も寄る(見せ場)
 
 /** 描画のピント(被写界深度)を英雄に合わせるか: 寄りズームの対象の間+技の溜め〜当たりの間(狙いが誰でも)。 */
 export const heroFocusEligible = (e: { type: string; heroTargetId?: string; health: number; bossState?: string }): boolean =>

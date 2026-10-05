@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   heroNotices, heroHealAfterKills, heroShouldAscend, heroAscendLook,
-  HERO_MAX_HP, HERO_START_HP, HERO_HEAL_PER_KILL, HERO_ASCEND_MS, HERO_ASCEND_RISE_MS, HERO_ASCEND_LIFT_PX,
+  HERO_MAX_HP, HERO_START_HP, HERO_HEAL_PER_KILL, HERO_ASCEND_MS, HERO_ASCEND_RISE_MS, HERO_ASCEND_CLIMAX_MS,
   heroSwingArc, heroPatrolRadius, heroPatrolNext, heroPatrolNearest, HERO_PATROL_STAGES, HERO_PATROL_SPEED, HERO_WALK_SPEED, HERO_GALLOP_SPEED,
   HERO_MOVES, HERO_NEAR, HERO_MID, HERO_AGGRO_RANGE, HERO_LURE_RANGE, heroMoveCandidates, pickHeroMove, pickHeroTarget,
   heroFollowUp, heroStepShape, heroStepHitDelay, circleHitsHeroShape, circleHitsFan, mobPrefersHero, heroFrameFor, heroLiftPx, HERO_SHEETS,
@@ -268,13 +268,13 @@ describe('英雄の体力と昇天(社長指示2026-10-05)', () => {
     expect(heroFrameFor({ state: 'hero-ascend', step: 0, u: 0, sinceMs: HERO_ASCEND_RISE_MS * 0.99 })).toEqual({ sheet: 'rear', frame: 7 });
     expect(heroFrameFor({ state: 'hero-ascend', step: 0, u: 0, sinceMs: 4000 })).toEqual({ sheet: 'rear', frame: 7 });
   });
-  it('昇天の見え方: 光の柱が差し、体は浮いて薄れ、5秒で消え切る(どれも滑らかに)', () => {
-    const at0 = heroAscendLook(0), mid = heroAscendLook(2500), end = heroAscendLook(HERO_ASCEND_MS);
-    expect(at0.alpha).toBe(1); expect(at0.beam).toBe(0); expect(at0.lift).toBe(0);
-    expect(mid.beam).toBe(1); expect(mid.alpha).toBe(1); expect(mid.flare).toBeGreaterThan(0.3);
-    expect(end.alpha).toBe(0); expect(end.beam).toBe(0); expect(end.lift).toBe(HERO_ASCEND_LIFT_PX);
-    expect(heroLiftPx({ bossState: 'hero-ascend', heroStateAt: 0 }, HERO_ASCEND_MS)).toBe(HERO_ASCEND_LIFT_PX);
-    // 単調: 体は薄れる一方
+  it('昇天の見え方: 頭は静かに柱が差し、山場(消える直前)で一番強く光り、5秒で消え切る。体は浮かない', () => {
+    const at0 = heroAscendLook(0), climax = heroAscendLook(HERO_ASCEND_CLIMAX_MS), end = heroAscendLook(HERO_ASCEND_MS);
+    expect(at0.alpha).toBe(1); expect(at0.beam).toBe(0); expect(at0.flare).toBe(0);
+    expect(climax.flare).toBeGreaterThan(heroAscendLook(2500).flare); // 消える所が山
+    expect(heroAscendLook(4400).beam).toBeGreaterThan(1);            // 柱が一瞬強まる
+    expect(end.alpha).toBe(0); expect(end.beam).toBe(0); expect(end.flare).toBe(0);
+    expect(heroLiftPx({ bossState: 'hero-ascend', heroStateAt: 0 }, 3000)).toBe(0);
     let prev = 1;
     for (let t = 0; t <= HERO_ASCEND_MS; t += 100) { const a = heroAscendLook(t).alpha; expect(a).toBeLessThanOrEqual(prev + 1e-9); prev = a; }
   });

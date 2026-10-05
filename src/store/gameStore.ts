@@ -165,7 +165,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
@@ -4504,7 +4504,7 @@ const applyMeleeFinishSkillSpread = (
     get().spawnExplosionFx(fcx, fcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
     for (const e of get().enemies) {
       if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-      if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象外
+      if (isCorpse(e) || isUntouchable(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象外 / 英雄の昇天中
       const ecx = e.x + e.width / 2;
       const ecy = e.y + e.height / 2;
       const dx = ecx - fcx, dy = ecy - fcy;
@@ -5004,7 +5004,7 @@ const findShukuchiTarget = (get: () => GameState, p: Player): Enemy | null => {
   for (const e of get().enemies) {
     if (e.health <= 0 || isCorpse(e) || e.dormant === true) continue;
     if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-    if (e.aiPhase === 'jump') continue;
+    if (e.aiPhase === 'jump' || isUntouchable(e)) continue;
     const dist = enemyMeleeDist(pcx, pcy, e);
     if (dist > rangePx) continue;
     const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
@@ -7259,7 +7259,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // research/MUTANT_HERO.md: 英雄も体で塞ぐ(接触ダメージを持たない=重なると技を全部浴びるだけになる)。
             // research/LIBERTY_HORDE.md §7: 解放軍群の旗手も同じ(接触ダメージ0のボス級)。
             if (isBodyWallBoss(en.type)) {
-              if (en.health <= 0) continue;
+              if (en.health <= 0 || isUntouchable(en)) continue; // 昇天中の英雄は光に溶けていく=塞がない
               const hb = heroBodyWallRect(en);
               if (Math.abs(hb.x - newX) > 300 || Math.abs(hb.y - newY) > 300) continue;
               blockers.push(hb);
@@ -7575,7 +7575,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(s => {
       const out: Enemy[] = [];
       for (const enemy of s.enemies) {
-        if (enemy.aiPhase === 'jump') { out.push(enemy); continue; }
+        if (enemy.aiPhase === 'jump' || isUntouchable(enemy)) { out.push(enemy); continue; }
         if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) { out.push(enemy); continue; }
         if (isCorpse(enemy)) { out.push(enemy); continue; } // KILL吹き飛び(死体・§26-2): バッシュ対象から除外
         const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
@@ -8788,7 +8788,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     for (const enemy of enemies) {
       if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) { survivors.push(enemy); continue; }
-      if (isCorpse(enemy)) { survivors.push(enemy); continue; } // KILL吹き飛び(死体・§26-2): 分身の攻撃対象から除外
+      if (isCorpse(enemy) || isUntouchable(enemy)) { survivors.push(enemy); continue; } // KILL吹き飛び(死体・§26-2): 分身の攻撃対象から除外 / 英雄の昇天中
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
       // ノックバック方向用の中心差分(分身中心→敵)。
@@ -9417,7 +9417,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 半径内の敵に falloff ダメージ+押し出し(中心=b.fromX/Yではなく着弾点基準)。
       for (const e of get().enemies) {
         if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-        if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 救急鞄爆発の対象から除外
+        if (isCorpse(e) || isUntouchable(e)) continue; // KILL吹き飛び(死体・§26-2): 救急鞄爆発の対象から除外 / 英雄の昇天中
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
         const dx = ecx - cx, dy = ecy - cy;
@@ -9487,7 +9487,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     for (const enemy of enemies) {
       // ジャンプ攻撃中(空中)はあらゆる近接の当たり判定を外す(=無敵。盾は敵AI側で別処理)。
-      if (enemy.aiPhase === 'jump') { survivors.push(enemy); continue; }
+      if (enemy.aiPhase === 'jump' || isUntouchable(enemy)) { survivors.push(enemy); continue; } // 英雄の昇天中も当たらない
       if (!targetIds.includes(enemy.id) || (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) || isCorpse(enemy)) {
         // KILL吹き飛び(死体・§26-2): 死体は標的から除外(targetIds選定側で既に除いてあるが二重ガード)
         survivors.push(enemy);
@@ -10621,7 +10621,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     {
       let bestProj = Infinity;
       for (const e of get().enemies) {
-        if (e.aiPhase === 'jump') continue;           // 空中無敵は刺さらない
+        if (e.aiPhase === 'jump' || isUntouchable(e)) continue;           // 空中無敵・英雄の昇天中は刺さらない
         if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): ワイヤーの刺さり先から除外
         const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
         const rx = ecx - pcx, ry = ecy - pcy;
@@ -13061,7 +13061,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const targetSummons = flareTargets.length > 0 ? [...summons, ...flareTargets] : summons;
       // research/MUTANT_HERO.md §3-2: 画面内の英雄(中立)。雑魚・強個体は近ければ英雄を追う(resolveEnemyTarget)。
       const heroLure = (() => {
-        const h = state.enemies.find(e => isMutantHero(e.type) && !isCorpse(e) && e.health > 0);
+        const h = state.enemies.find(e => isMutantHero(e.type) && !isCorpse(e) && e.health > 0 && !isUntouchable(e)); // 昇天中は誘わない
         return h && isPointInZoomedViewport(h.x + h.width / 2, h.y + h.height / 2, state.camera, state.gameBounds, state.viewZoom) ? h : null;
       })();
       const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');

@@ -433,6 +433,8 @@ export const getsDramaticDeath = (enemy: Enemy): boolean =>
 // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26): この個体が「死体」(corpseUntil付き)か。
 // これが唯一の判定=AI/攻撃/照準/被弾/対象選定の全経路がこの1関数で除外する(§26-2)。
 export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUntil !== undefined;
+/** 何も当たらない個体(英雄の昇天中=社長指示2026-10-05)。死体と同じく攻撃・照準の対象から外す。 */
+export const isUntouchable = (e: Pick<Enemy, 'bossState'>): boolean => e.bossState === 'hero-ascend';
 
 // UNIQUE_WEAPONS.md §19-3(監査A2・A9の是正): 銃の自動照準(weaponUtils.ts の module-local
 // `pickTarget`)と**同じ選び方**を、Player型に縛られない座標引数の形へ切り出したもの。
@@ -450,7 +452,7 @@ export const pickNearestTarget = (
   let bestStunnedD2 = Infinity;
   for (const e of enemies) {
     if (isCorpse(e)) continue;
-    if (e.bossState === 'hero-ascend') continue; // 英雄の昇天中(社長指示2026-10-05)は狙わない=被弾もしない
+    if (isUntouchable(e)) continue; // 英雄の昇天中(社長指示2026-10-05)は狙わない=被弾もしない
     const d2 = aimEnemyDist2(pcx, pcy, e);
     if (d2 > maxDist2) continue;
     const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
@@ -702,7 +704,7 @@ const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'hange
   // 上書きするのが唯一の実効値。ここへ入れないとエリア/色補正でENEMY_STATSの500(プレースホルダ)が
   // 変動してしまう(上書き前提が崩れる)。
   'phillboss',
-  // research/MUTANT_HERO.md(英雄): HPはスポーン時に賞金首と同じ式で上書きする。
+  // research/MUTANT_HERO.md(英雄): HPはスポーン時に固定値(上限20000・出てくる時10000)で上書きする(§1b)。
   'mutant-hero',
   // research/LIBERTY_HORDE.md(旗手): 同上。
   'mutant-liberty']);

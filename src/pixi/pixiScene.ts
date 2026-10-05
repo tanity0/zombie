@@ -14361,7 +14361,7 @@ export class PixiScene {
         const libTipGlow = this.libFlagTipGlow.get(id);
         if (libTipGlow) { if (!libTipGlow.destroyed) libTipGlow.destroy({ children: true }); this.libFlagTipGlow.delete(id); }
         const ascFx = this.heroAscendFx.get(id);
-        if (ascFx) { if (!ascFx.beam.destroyed) ascFx.beam.destroy(); if (!ascFx.glow.destroyed) ascFx.glow.destroy({ children: true }); this.heroAscendFx.delete(id); }
+        if (ascFx) { if (!ascFx.beam.destroyed) ascFx.beam.destroy(); if (!ascFx.glow.destroyed) ascFx.glow.destroy(); if (!ascFx.body.destroyed) ascFx.body.destroy(); this.heroAscendFx.delete(id); }
         this.heroSwordLastTip.delete(id);
         const rafiFx = this.rafiSlashFx.get(id);
         if (rafiFx) { rafiFx.destroy({ children: true }); this.rafiSlashFx.delete(id); }
@@ -24461,7 +24461,7 @@ export class PixiScene {
   }
 
   /** 天から降りる光の柱1本(祝福/裁きの光で共用・v0.25.3740)。footW=地面の光だまり幅。 */
-  private drawPhillSkylightColumn(g: Graphics, footX: number, footY: number, footW: number, topY: number, a: number): void {
+  private drawPhillSkylightColumn(g: Graphics, footX: number, footY: number, footW: number, topY: number, a: number, footPoolMul = 1): void {
     const topW = footW * 0.45; // 天側は絞る=スポットライトの円錐
     // ★社長指示2026-09-11「上に向かってフェードアウトしてる見た目にして(足元ほどハッキリ)」。
     // 従来は台形1枚を**均一のアルファ**で塗っていたので、天井まで同じ濃さの板に見えていた。
@@ -24488,8 +24488,9 @@ export class PixiScene {
       ]).fill({ color: 0xffffff, alpha: 0.17 * a * k });
     }
     // 足元の楕円は**減衰を掛けない**=ここが一番ハッキリ(社長「足元ほどハッキリ」の底)。
-    g.ellipse(footX, footY, footW * 0.78, footW * 0.24).fill({ color: 0xfff7dc, alpha: 0.32 * a });
-    g.ellipse(footX, footY, footW * 0.42, footW * 0.13).fill({ color: 0xffffff, alpha: 0.22 * a });
+    // footPoolMul: 足元の光だまりの濃さ(英雄の昇天=馬が立つ地面なので薄く滲ませる)。
+    g.ellipse(footX, footY, footW * 0.78, footW * 0.24).fill({ color: 0xfff7dc, alpha: 0.32 * a * footPoolMul });
+    g.ellipse(footX, footY, footW * 0.42, footW * 0.13).fill({ color: 0xffffff, alpha: 0.22 * a * footPoolMul });
   }
 
   /**
@@ -31542,13 +31543,15 @@ export class PixiScene {
     const swell = 1 + 0.4 * (1 - sw) * (1 - sw);
     n.fog.texture = tex;
     n.fog.visible = !air;
+    // 昇天中は霧も体と一緒に薄れて消える(削除の瞬間にパッと消えない)。
+    const ascA = e.bossState === 'hero-ascend' ? heroAscendLook(gameTime - (e.heroStateAt ?? gameTime)).alpha : 1;
     n.fog.position.set(footX + n.drift, footY + 2);
     n.fog.scale.set((w0 / Math.max(1, tex.width)) * breathX * swell, (h0 / Math.max(1, tex.height)) * breathY * swell);
-    n.fog.alpha = 0.6;
+    n.fog.alpha = 0.6 * ascA;
     // 霧の縁だけ、わずかに明るい灰(骨色)を重ねて輪郭を出す=影の滲みと見分ける。
     n.motes.clear();
     n.motes.ellipse(footX + n.drift, footY + 2 - h0 * 0.3, w0 * 0.42 * breathX * swell, h0 * 0.36 * breathY * swell)
-      .stroke({ width: Math.max(6, h0 * 0.22), color: 0xe7dccb, alpha: air ? 0 : 0.07 });
+      .stroke({ width: Math.max(6, h0 * 0.22), color: 0xe7dccb, alpha: air ? 0 : 0.07 * ascA });
     // 跳んだ所に残る霧(800msで薄れる)。
     const tu = (now - n.trailAt) / 800;
     if (tu >= 0 && tu < 1) {
@@ -31568,7 +31571,7 @@ export class PixiScene {
       const x = footX + n.drift * 0.6 + rx * w0 * 0.7 + Math.sin(now / 520 + i * 1.7) * 6;
       const rise = 40 + ((i * 53) % 50);
       const y = footY - h0 * 0.35 - ph * rise * depth - heroLiftPx(e, gameTime);
-      const a = 0.6 * (ph < 0.15 ? ph / 0.15 : 1 - (ph - 0.15) / 0.85);
+      const a = 0.6 * ascA * (ph < 0.15 ? ph / 0.15 : 1 - (ph - 0.15) / 0.85);
       if (a <= 0.01) continue;
       n.motes.circle(x, y, (5.5 - ph * 2.2 + (i % 3) * 0.6) * depth).fill({ color: 0x0b0808, alpha: a });
     }
@@ -31797,49 +31800,60 @@ export class PixiScene {
   /** 号令の旗の先端の光(個体ごと)。号令の外では既定OFF(resetActorFxDefaults)。 */
   private libFlagTipGlow = new Map<string, Container>();
 
-  /** 英雄の昇天の光(個体ごと): 天からの光の柱(Graphics)と体を包む光(加算の柔らかい光2枚)。 */
-  private heroAscendFx = new Map<string, { beam: Graphics; glow: Container }>();
+  /** 英雄の昇天の光(個体ごと): 天からの光の柱(Graphics)・体の外の金の暈(加算の柔らかい光)・体そのものが光る白いシルエット。 */
+  private heroAscendFx = new Map<string, { beam: Graphics; glow: Sprite; body: Sprite }>();
   /**
    * 社長指示2026-10-05「昇天モーションは、踏み潰しの馬が足を高く上げているところまで回して、固定し、眩しい光とともに
-   * 消えていく。5秒くらい掛けて」: 天から光の柱が差し、体が光に包まれて浮き、薄れて消える(見え方は heroAscendLook)。
-   * 柱はフィルの祝福と同じ描き方(足元ほど濃く、上へ薄れる)。派手さの絵=判定なし。
+   * 消えていく。5秒くらい掛けて」: 天から光の柱が差し、体そのものが光になり(白いシルエットの加算=被弾フラッシュと同じ焼き)、
+   * 消える直前に一番強く光って抜ける(見え方の時刻表は heroAscendLook)。柱はフィルの祝福と同じ描き方(足元の光だまりは薄く)。
+   * 派手さの絵=判定なし。体の白い玉を置かない(姿が隠れる=クリエイティブ監査 #2)。
    */
   private drawHeroAscend(e: Enemy, view: ActorView, gameTime: number): void {
     let fx = this.heroAscendFx.get(e.id);
     if (e.bossState !== 'hero-ascend') {
-      if (fx) { fx.beam.visible = false; fx.glow.visible = false; }
+      if (fx) { fx.beam.visible = false; fx.glow.visible = false; fx.body.visible = false; }
       return;
     }
     if (!fx || fx.beam.destroyed) {
       const beam = new Graphics();
-      const glow = new Container();
-      for (const [tint, alphaMul] of [[0xffe2a8, 0.9], [0xffffff, 1]] as const) {
-        const sp = new Sprite(getSoftGlowTexture()); sp.anchor.set(0.5); sp.blendMode = 'add'; sp.tint = tint; sp.alpha = alphaMul;
-        glow.addChild(sp);
-      }
+      const glow = new Sprite(getSoftGlowTexture()); glow.anchor.set(0.5); glow.blendMode = 'add'; glow.tint = 0xffe2a8;
+      const body = new Sprite(); body.blendMode = 'add'; body.tint = 0xfff4dc;
       this.L.effectLayer.addChild(beam);
       this.L.effectLayer.addChild(glow);
-      fx = { beam, glow };
+      fx = { beam, glow, body };
       this.heroAscendFx.set(e.id, fx);
     }
     const look = heroAscendLook(gameTime - (e.heroStateAt ?? gameTime));
-    // 体: 光に溶けるように薄れる(位置の浮きは heroLiftPx が持つ)。
+    // 体: 最後に一気に抜ける(位置は動かさない=社長「固定し」)。
     view.sprite.alpha *= look.alpha;
     const footX = e.x + e.width / 2, footY = e.y + e.height;
     const bodyH = Math.abs(view.sprite.height) || e.height * 2;
     const bodyW = Math.abs(view.sprite.width) || e.width * 2;
     const zoom = this.L.worldGroup.scale.x || 1;
     fx.beam.clear();
-    if (look.beam > 0.002) this.drawPhillSkylightColumn(fx.beam, footX, footY, Math.min(bodyW, e.width * 2.2) * 1.15, footY - this.screenH / zoom, look.beam);
+    if (look.beam > 0.002) this.drawPhillSkylightColumn(fx.beam, footX, footY, Math.min(bodyW, e.width * 2.2) * 1.15, footY - this.screenH / zoom, Math.min(1.35, look.beam), 0.35);
     fx.beam.visible = look.beam > 0.002;
-    const cy = view.sprite.position.y - bodyH * 0.5;
-    fx.glow.position.set(view.sprite.position.x, cy);
-    const outer = fx.glow.children[0] as Sprite, core = fx.glow.children[1] as Sprite;
-    // 体の背丈に合わせる(大きすぎると画面が白く飛ぶ=実寸で確認)。芯は体に重なる白、外は金の暈。
-    outer.width = outer.height = bodyH * (0.7 + 0.45 * look.flare);
-    core.width = core.height = bodyH * (0.28 + 0.3 * look.flare);
-    fx.glow.alpha = 0.85 * look.flare;
-    fx.glow.visible = look.flare > 0.01;
+    // 体そのものが光る: 同じ絵の白いシルエットを加算で重ねる(体と同じ所・同じ大きさ・同じ向き)。
+    const sil = view.sprite.visible ? this.whiteSilhouette(view.sprite.texture) : null;
+    if (sil && look.flare > 0.01) {
+      const b = fx.body;
+      if (b.parent !== view.sprite.parent && view.sprite.parent) { b.parent?.removeChild(b); view.sprite.parent.addChild(b); }
+      b.texture = sil;
+      b.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
+      b.position.set(view.sprite.position.x, view.sprite.position.y);
+      b.scale.set(view.sprite.scale.x, view.sprite.scale.y);
+      b.rotation = view.sprite.rotation;
+      b.alpha = Math.min(1, look.flare * 0.9);
+      b.visible = true;
+    } else {
+      fx.body.visible = false;
+    }
+    // 外の金の暈(体を包む光の滲み。玉に見えないよう体より大きく薄く)。
+    const g = fx.glow;
+    g.position.set(view.sprite.position.x, view.sprite.position.y - bodyH * 0.5);
+    g.width = bodyW * (0.9 + 0.5 * look.flare); g.height = bodyH * (1.0 + 0.5 * look.flare);
+    g.alpha = 0.45 * look.flare;
+    g.visible = look.flare > 0.01;
   }
 
   private drawHeroTelegraph(e: Enemy, view: ActorView, o: Graphics, gameTime: number, now: number): void {

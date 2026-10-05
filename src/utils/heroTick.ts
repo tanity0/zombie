@@ -19,7 +19,7 @@ import {
   HERO_FLINCH_MS, HERO_SNORT_COOLDOWN_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS,
   heroStepShape, heroStepHitDelay, pickHeroMove, pickHeroTarget, heroNotices, heroFollowUp, heroRestMs, easeInOut,
   HERO_PATROL_SPEED, HERO_GALLOP_SPEED, heroPatrolNext, heroPatrolNearest,
-  HERO_ASCEND_MS, HERO_PHASE2_HP, heroShouldAscend,
+  HERO_ASCEND_MS, HERO_ASCEND_RISE_MS, HERO_ASCEND_CLIMAX_MS, HERO_PHASE2_HP, heroShouldAscend,
   type HeroMoveKey, type HeroShape, type HeroTargetCand,
 } from './heroScript';
 import { STRUCK_NOTICE_MS } from './frontSight';
@@ -41,8 +41,10 @@ export interface HeroSfx {
   neigh: (gain: number) => void;
   snort: (gain: number) => void;
   gallop: (gain: number, rate: number) => void;
-  /** 昇天の光が差す音。 */
+  /** 昇天の光が差す音(頭=静か)。 */
   ascend?: (gain: number) => void;
+  /** 昇天の山場の音(消える瞬間=一番強い一打)。 */
+  ascendClimax?: (gain: number) => void;
 }
 export const NOOP_HERO_SFX: HeroSfx = { neigh: () => {}, snort: () => {}, gallop: () => {} };
 
@@ -57,6 +59,8 @@ export interface HeroTickState {
   introDone: boolean;
   lastSnortAt: number;
   roarLanded: boolean;
+  /** 昇天の進行(いななき・山場・立ち昇る粒)。 */
+  ascendNeighed?: boolean; ascendClimaxed?: boolean; ascendMoteAt?: number;
   /** 周回の迂回(品質監査 A-1): 輪から外側(+)/内側(-)へずらす量・いつまで。 */
   detourR: number;
   detourUntil: number;
@@ -260,33 +264,64 @@ export const runHeroTick = (
   }
 
   // ---- 昇天(社長指示2026-10-05: 全回復=正規ルートで倒した)。5秒かけて光に包まれて消える。何も落とさない ----
+  // 見せ方(クリエイティブ監査): 頭は静か(光の柱と小さな音)→ 前脚が上がり切った所で最後のいななき →
+  // 光の粒が柱の中を立ち昇る → 山場(4.5秒)で閃光・外へ抜ける輪・強い音・帯「蹄の音が止んだ」→ 消える。
   if (state === 'hero-ascend') {
-    if (gt - (hero.heroStateAt ?? gt) >= HERO_ASCEND_MS) {
+    const since = gt - (hero.heroStateAt ?? gt);
+    if (since >= HERO_ASCEND_MS) {
       ENEMY_REMOVE_CAUSE.set(hero.id, 'heroGone');
       useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.id !== hero.id) }));
       sfx.gallop(0, 1);
       return;
     }
-    applyPatch(hero.id, { vx: 0, vy: 0 });
+    const g = useGameStore.getState();
+    if (!s.ascendNeighed && since >= HERO_ASCEND_RISE_MS) { s.ascendNeighed = true; sfx.neigh(Math.max(0.7, sfxGain)); }
+    // 立ち昇る光の粒(柱の中をゆっくり上へ・山場まで)。
+    if (since < HERO_ASCEND_CLIMAX_MS && gt >= (s.ascendMoteAt ?? 0)) {
+      s.ascendMoteAt = gt + 110;
+      const now = Date.now();
+      for (let i = 0; i < 2; i++) {
+        g.spawnEffect({
+          kind: 'particle', id: `fx-hero-ascend-${now}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          x: hx + (Math.random() - 0.5) * hero.width * 1.2, y: hero.y + hero.height - Math.random() * 30,
+          vx: (Math.random() - 0.5) * 14, vy: -(45 + Math.random() * 55),
+          color: Math.random() < 0.6 ? '#fff4d6' : '#e7dccb', size: 1.8 + Math.random() * 2.2,
+          createdAt: now, duration: 1500 + Math.random() * 900, drag: 0.4,
+        });
+      }
+    }
+    if (!s.ascendClimaxed && since >= HERO_ASCEND_CLIMAX_MS) {
+      s.ascendClimaxed = true;
+      g.spawnFlash('rgba(255,248,228,0.42)', 420);
+      g.spawnRing(hx, hy, 18, 260, 'rgba(255,244,214,0.9)', 5, 700);
+      g.spawnBurst(hx, hy, '#fff4d6', 26);
+      if (heroOnScreen(hero)) useGameStore.setState({ eventBannerText: '蹄の音が止んだ', eventBannerUntil: gt + 3000 });
+      sfx.ascendClimax?.(Math.max(0.7, sfxGain));
+    }
+    // 走っていた勢いは滑って止める(瞬間停止しない=慣性)。
+    const k = Math.exp(-dt / 0.12);
+    const vx0 = hero.vx ?? 0, vy0 = hero.vy ?? 0;
+    if (Math.abs(vx0) > 2 || Math.abs(vy0) > 2) Object.assign(patch, placeCenter(hero, hx + vx0 * dt, hy + vy0 * dt), { vx: vx0 * k, vy: vy0 * k });
+    else Object.assign(patch, { vx: 0, vy: 0 });
+    applyPatch(hero.id, patch);
     sfx.gallop(0, 1);
     return;
   }
   if (heroShouldAscend(hero)) {
     // 技・気絶・狙いは全部ここで終わる(予告も消える)。以後は被弾しない(damageEnemy)・敵の的にもならない(heroAsTarget)。
+    // 走っていた勢い(vx/vy)は残す=昇天の中で滑って止まる。
     applyPatch(hero.id, {
       bossState: 'hero-ascend', heroStateAt: gt, bossStateUntil: gt + HERO_ASCEND_MS,
       heroShape: undefined, heroHitAt: undefined, heroMove: undefined, heroTargetId: undefined, heroTargetUntil: undefined,
-      bossFullStunUntil: undefined, bossMoveCutPending: false, vx: 0, vy: 0,
+      bossFullStunUntil: undefined, bossMoveCutPending: false, heroFromX: undefined, heroFromY: undefined,
     });
+    s.ascendNeighed = false; s.ascendClimaxed = false; s.ascendMoteAt = gt;
     const g = useGameStore.getState();
     // スキル「英雄」(社長指示2026-10-05「昇天させた場合のみゲットできる」)。死神と同じ形=未所持の時だけ告知。
     const hadHeroSkill = g.ownedSkills.includes('hero');
     g.grantSkill('hero');
     if (!hadHeroSkill) g.spawnCallout(hx, hero.y - 40, 'スキル「英雄」習得！', '#fde68a', { scale: 1.2 });
-    g.spawnBurst(hx, hy, '#fff1b8', 30);
-    g.spawnRing(hx, hero.y + hero.height, 12, 170, 'rgba(255,236,170,0.75)', 4, 900);
-    if (heroOnScreen(hero)) useGameStore.setState({ eventBannerText: '英雄が光に還る', eventBannerUntil: gt + 3200 });
-    sfx.ascend?.(Math.max(0.6, sfxGain));
+    sfx.ascend?.(Math.max(0.5, sfxGain * 0.8));
     sfx.gallop(0, 1);
     return;
   }

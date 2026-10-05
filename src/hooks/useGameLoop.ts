@@ -1035,7 +1035,8 @@ const HERO_SFX: HeroSfx = {
   neigh: (gain) => { if (gain > 0.01) playSfx('hero-neigh', gain); },
   snort: (gain) => { if (gain > 0.01) playSfx('hero-snort', gain); },
   gallop: (gain, rate) => setHeroGallop(gain, rate),
-  ascend: (gain) => playSfx('phill-skylight', gain), // 昇天の光(天から光が差す音=フィルの祝福の素材)
+  ascend: (gain) => playSfx('phill-skylight-low', gain), // 昇天の頭=光が差す(静か・低く)
+  ascendClimax: (gain) => playSfx('phill-skylight', gain), // 昇天の山場=消える瞬間の一番強い一打
 };
 // research/GHOST_BOSS.md v6(幻影): 音は既存の共通キーを流用する(専用素材は作らない=「ではない」条件)。
 // 銃は**プレイヤーの自動発砲と同じ銃種別の写像**(v0.25.2479パリティの並びをそのまま使う)。
@@ -8535,7 +8536,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           // research/MUTANT_HERO.md §2-1(社長指示2026-10-04): 本編の英雄。ステージ1・3・4・5で、デンジャーゾーンの輪の真ん中
           // (原点からの距離=内縁と外縁の中間)に1体置き、輪を反時計回りにゆっくり回り続ける(heroTick の周回)。置く角度はランごとに無作為。
-          // プレイヤーへは寄らない・去らない。体力は「初めて姿が見えた時」に決め直す(下の制御ブロック)。
+          // プレイヤーへは寄らない・去らない。体力は固定(上限20000・出てくる時10000=社長指示2026-10-05)。
           if (!HERO_PATROL_BLOCKED && !heroForceRef.current && newGameTime >= 3000 && !isPracticeRun() && !isBossMakerRun()
             && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '')) {
             heroForceRef.current = true;

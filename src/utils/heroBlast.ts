@@ -139,7 +139,7 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
       const healed = heroHealAfterKills(cur.health, cur.maxHealth, kills);
       if (healed > cur.health) {
         useGameStore.setState(s2 => ({ enemies: s2.enemies.map(en => en.id === hero.id ? { ...en, health: healed } : en) }));
-        useGameStore.getState().spawnCallout(hx, hero.y - 18, `+${healed - cur.health}`, '#86efac');
+        useGameStore.getState().spawnCallout(hx, hero.y - 18, `+${healed - cur.health}`, '#e7dccb'); // 英雄の色(骨色)=プレイヤーの回復の緑と分ける
       }
     }
   }

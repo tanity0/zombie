@@ -113,6 +113,7 @@ export interface SubAimEnemyLike {
   height: number;
   type: string;
   reaperChaser?: boolean;
+  bossState?: string;
 }
 
 export const pickSubAimTarget = <E extends SubAimEnemyLike>(
@@ -127,7 +128,7 @@ export const pickSubAimTarget = <E extends SubAimEnemyLike>(
   const cx = ownerCenterX(owner);
   const cy = ownerCenterY(owner);
   return enemies
-    .filter(e => e.type !== 'reaper' || e.reaperChaser)
+    .filter(e => (e.type !== 'reaper' || e.reaperChaser) && e.bossState !== 'hero-ascend') // 英雄の昇天中は狙わない
     .map(e => ({ e, dist: Math.hypot(e.x + e.width / 2 - cx, e.y + e.height / 2 - cy) }))
     .sort((a, b) => a.dist - b.dist)[0]?.e;
 };
