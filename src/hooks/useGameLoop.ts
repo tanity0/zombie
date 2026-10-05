@@ -1014,6 +1014,7 @@ const IDOL_SFX: IdolSfx = {
   shot: () => playSfx('handgun-fire'),               // 狙い撃ち/扇/オーブの発射
   snipe: () => playSfx('rifle-fire'),                // 狙撃線(ライフル近似)
   throwNade: () => playSfx('grenade-launcher-fire'), // 手榴弾投擲(グレネードランチャー近似)
+  laugh: () => playSfx('idol-laugh'),                // 笑い声(社長提供2026-10-05・登場と、技の時にたまに)
 };
 // 賞金首(§6.38 B2a)の音。予兆SEは全ボス共通のhunter-alert流用(§6.26-9 #5)。fireはレーザー発射の
 // 一撃SE(ミーミルと同じ'heavy-impact'流用=useGameLoop.tsのlaser-windup→laser-fire遷移箇所と同一)。

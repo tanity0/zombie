@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4864 — アイドルの笑い声(社長提供の音)【2026-10-05 16:43 JST】
+- 社長提供の音(wav・4.5秒・山は0.25〜2秒で0dB近く、後ろは残響の尾)→ 頭の無音0.12秒を詰め、3.3秒で切って後ろ0.7秒フェード(mp3 128kbps・54KB)→ `public/audio/sfx/idol-laugh.mp3`。SEキー `idol-laugh`(音量0.85・連続は3秒空ける)。
+- idolTick: 眠りから覚めた最初のフレームで1回(1体につき1回=登場)。技を出すたびに数え、3つ目の技ごと・前の笑いから9秒以上なら笑う(`IDOL_LAUGH_EVERY_MOVES`/`IDOL_LAUGH_MIN_GAP_MS`・乱数を使わない=既存テストの再現性を崩さない)。`IdolSfx.laugh` は任意(既存の NOOP はそのまま)。
+- 検証: typecheck / lint(0 errors)/ 循環import / assets:check / idolTick のテスト36本(登場で1回だけ笑うテストを追加)。
+- 監査: 素材の入れ込み=付けない。
+- 状態変化: なし
+
 ## v0.25.4863 — 解放軍群: 見つかった瞬間のカラスの群れの声(社長提供の音)【2026-10-05 15:53 JST】
 - 社長提供の音(25秒・カラスの群れが鳴き続ける)→ ffmpeg で頭3.5秒を切り出し、入り30ms・後ろ1.2秒のフェード(128kbps・56KB)→ `public/audio/sfx/liberty-crow.mp3`。SEキー `liberty-crow`(音量1.0・連続は2秒空ける)。
 - libertyTick: 見つけた瞬間(`alerted && !wasAlerted`)に距離で減衰した音量で1回(`npcSfxDistGain`=英雄のいななきと同じ減衰)。

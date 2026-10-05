@@ -43,7 +43,12 @@ export interface IdolSfx {
   shot: () => void;
   snipe: () => void;
   throwNade: () => void;
+  /** 笑い声(社長提供2026-10-05「登場シーンとか、技の時にたまに」)。 */
+  laugh?: () => void;
 }
+/** 技で笑う頻度: 前に笑ってからこの数の技を出し、かつこの時間が経っていたら笑う(乱数を使わない=テストの再現性を崩さない)。 */
+export const IDOL_LAUGH_EVERY_MOVES = 3;
+export const IDOL_LAUGH_MIN_GAP_MS = 9000;
 export const NOOP_IDOL_SFX: IdolSfx = {
   alert: () => {}, counter: () => {}, reward: () => {},
   shot: () => {}, snipe: () => {}, throwNade: () => {},
@@ -69,6 +74,8 @@ export interface IdolTickState {
   shotWaveIdx: number;            // 何斉射目か(waveTurnDeg の回転に使う)
   // ---- 偏差撃ち(aimMode=2)のためのプレイヤー速度 ----
   lastPx: number; lastPy: number; playerVx: number; playerVy: number;
+  /** 笑い声: 登場で笑った個体・最後に笑った時刻・それから出した技の数。 */
+  laughedIdolId?: string; lastLaughAt?: number; movesSinceLaugh?: number;
   /**
    * ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。**Enemy に無い時計**
    * (ここの `shotNextAt`)を硬直の間だけ預かる袋。書き手は `tickModuleClockFreeze` だけ。
@@ -212,6 +219,12 @@ export const runIdolTick = (
     return;
   }
 
+  // 登場(眠りから覚めた最初のフレーム)で笑う=1体につき1回。
+  if (s.laughedIdolId !== idol.id) {
+    s.laughedIdolId = idol.id; s.lastLaughAt = newGameTime; s.movesSinceLaugh = 0;
+    sfx.laugh?.();
+  }
+
   // v0.25.2624(社長報告「反撃してワープするとかならず消える」)の**保険**。
   // 本体の修正は useGameLoop 側(アイドルを汎用ボスのカウンターワープから除外)だが、
   // 汎用側が alpha を 0 にする経路は他にも増えうる。**専用コントローラで動く以上、
@@ -318,6 +331,12 @@ export const runIdolTick = (
   // ---- 技の開始(ストリングの1段を出す) --------------------------------------------------------
   const beginMove = (m: IdolMove): void => {
     sfx.alert();
+    // 技の時にたまに笑う(3つ目の技ごと・前の笑いから9秒以上)。
+    s.movesSinceLaugh = (s.movesSinceLaugh ?? 0) + 1;
+    if (s.movesSinceLaugh >= IDOL_LAUGH_EVERY_MOVES && newGameTime - (s.lastLaughAt ?? -1e9) >= IDOL_LAUGH_MIN_GAP_MS) {
+      s.movesSinceLaugh = 0; s.lastLaughAt = newGameTime;
+      sfx.laugh?.();
+    }
     s.wavePending = idolWaveActive(m, phase);
     patch.bossState = windupState(m);
     patch.bossStateUntil = newGameTime + idolMoveTiming(m).windup;

@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4864', items: ['アイドルが現れると笑い声が響く。技を繰り出す合間にも、ときおり笑う'] },
   { version: '0.25.4863', items: ['解放軍群(変異)に見つかった瞬間、カラスの群れが一斉に鳴き立つ'] },
   { version: '0.25.4862', items: ['叫喚の声が届いた順に、敵の頭上へ緑の光が一瞬灯る'] },
   { version: '0.25.4861', items: ['叫喚の光は、敵が強くなったその瞬間にだけ灯って消える'] },

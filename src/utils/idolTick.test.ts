@@ -586,3 +586,24 @@ describe('拳/狙い撃ちの予告向き: tickが書くaiTarget(ヘイト対象
     expect(useGameStore.getState().enemies[0].aiTargetX).toBeDefined();
   });
 });
+
+describe('アイドルの笑い声(社長提供2026-10-05「登場シーンとか、技の時にたまに」)', () => {
+  it('目覚めた最初のフレームで1回だけ笑う', () => {
+    useGameStore.getState().resetGame('assault');
+    const e = spawnEnemyAt('idol', 0, -400, 0);
+    e.fromEvent = true; e.dormant = false; e.bossState = 'chase'; e.bossPhase = 1;
+    e.bossNextActionAt = Number.MAX_SAFE_INTEGER;
+    useGameStore.setState(s => ({ enemies: [e], projectiles: [], pumpkinBlasts: [], player: { ...s.player, x: 0, y: 0, health: 9999, maxHealth: 9999 } }));
+    const st = createIdolTickState();
+    let laughs = 0;
+    const sfx = { ...NOOP_IDOL_SFX, laugh: () => { laughs++; } };
+    let gt = 0;
+    for (let i = 0; i < 30; i++) {
+      gt += 16;
+      useGameStore.setState({ gameTime: gt });
+      const cur = useGameStore.getState().enemies[0];
+      if (cur) runIdolTick(cur, st, gt, 0.016, 1, sfx, false, () => {});
+    }
+    expect(laughs).toBe(1);
+  });
+});
