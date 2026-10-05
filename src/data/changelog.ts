@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4873', items: ['オープニング、出撃時の会話、エンディングは、Escかパッドのスタートでも飛ばせる'] },
   { version: '0.25.4872', items: ['ゲーム用のグラフィックボードを積んだPCでは、そちらで描くよう頼むようにした'] },
   { version: '0.25.4871', items: ['銃の持ち替えがキーボードとパッドでも。キーボードはQかホイール、数字キーで番号の銃へ。パッドは右の上ボタンと左の肩ボタン'] },
   { version: '0.25.4870', items: ['近接の操作説明を短く言い直した'] },

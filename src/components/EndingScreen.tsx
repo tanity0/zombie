@@ -250,6 +250,8 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
       {phase !== 'finale' && (
         <button
           type="button"
+          data-skip // Esc・パッドのスタートでも押せる(utils/menuNav.pressVisibleSkip)。クリックでも同じ終わり方
+          onClick={(e) => { e.stopPropagation(); finish(); }}
           onPointerDown={(e) => { e.stopPropagation(); finish(); }}
           style={{
             position: 'absolute', bottom: 18, right: 18, zIndex: 10,

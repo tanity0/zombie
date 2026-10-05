@@ -118,8 +118,30 @@ const KEY_DIR: Record<string, NavDir> = {
   KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
 };
 
+/**
+ * 画面に出ている「スキップ」(`data-skip` の付いたボタン)を押す(v0.25.4873・社長報告「スキップも押せない」)。
+ * オープニング・登場の会話・エンディングのスキップはクリック/タップしか受けておらず、キーボードとパッドでは押す手段が無かった。
+ * Esc(パッドのスタート・バックは Esc を送る=utils/gamepad)で押す。出ていなければ何もしない(false)=Esc は従来どおり一時停止へ。
+ */
+export const pressVisibleSkip = (): boolean => {
+  if (typeof document === 'undefined') return false;
+  const btn = Array.from(document.querySelectorAll<HTMLElement>('[data-skip]')).find(el => {
+    const r = el.getBoundingClientRect();
+    return r.width > 1 && r.height > 1 && getComputedStyle(el).visibility !== 'hidden';
+  });
+  if (!btn) return false;
+  btn.click();
+  return true;
+};
+
 /** キーボードの入口(App が1回だけ付ける)。 */
 export const installMenuKeyNav = (): (() => void) => {
+  // スキップは一時停止より先に拾う(捕捉段で取り、他の Esc の受け手へ渡さない)。
+  const onSkipKey = (e: KeyboardEvent) => {
+    if (e.code !== 'Escape' && e.key !== 'Escape') return;
+    if (e.repeat) return;
+    if (pressVisibleSkip()) { e.preventDefault(); e.stopImmediatePropagation(); }
+  };
   const onKey = (e: KeyboardEvent) => {
     const tgt = e.target as HTMLElement | null;
     if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
@@ -135,9 +157,11 @@ export const installMenuKeyNav = (): (() => void) => {
     }
   };
   const onPointer = () => document.documentElement.classList.remove('kbnav');
+  window.addEventListener('keydown', onSkipKey, true);
   window.addEventListener('keydown', onKey);
   window.addEventListener('pointerdown', onPointer, true);
   return () => {
+    window.removeEventListener('keydown', onSkipKey, true);
     window.removeEventListener('keydown', onKey);
     window.removeEventListener('pointerdown', onPointer, true);
   };

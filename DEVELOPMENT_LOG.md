@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4873 — PC・パッド: スキップを Esc/スタートで押せる(社長報告)【2026-10-05 20:47 JST】
+- 社長報告「スキップも押せない」。オープニング・登場の会話・エンディングのスキップは onClick/onPointerDown だけ=キーボード・パッドから届かなかった(オープニングの廊下は `data-kbnav-off`、会話中は isPaused でない=menuNav が効かない)。
+- `menuNav.pressVisibleSkip()` + `installMenuKeyNav` に捕捉段の Esc 受け(出ているスキップを押したら stopImmediatePropagation=一時停止は開かない)。3つのスキップに `data-skip`。エンディングは onClick も足した(finish は二重呼びを弾く)。パッドのスタート/バックは既存どおり Esc を送るので同じ道を通る。
+- 検証: typecheck / lint(0 errors)/ ヘッドレスPC: `?opening=1` で Esc→スキップが消える(オープニング終了)/ 会話を出して Esc→会話終了・一時停止は開かない / マウスでクリックしても押せる。
+- 気づき(未対応): 会話中のスキップのボタンが右下の音のボタンにかぶさる(PC 1280×720)。
+- 監査: 付けない(既存ボタンへの入口を足すだけ・見た目不変)。
+- 状態変化: なし
+
 ## v0.25.4872 — PC: 外付けGPUを頼む(社長実機で Chrome が内蔵GPUだった)【2026-10-05 20:38 JST】
 - 社長報告「PCのChromeでやたら重い」(Acer Predator・RTX 4070 Laptop)。`chrome://gpu` の写真で `GL_RENDERER = ANGLE (Intel, Intel(R) UHD Graphics …)`=**外付けの4070ではなく内蔵GPUで描いていた**(GPU1=Intel が *ACTIVE*)。塗る画素の量の推定は外れ(4070なら効かない)。
 - `PixiStage`: PC(`memoryTier()==='pc'`)だけ `powerPreference: 'high-performance'`。スマホは指定しない(従来どおり)。※Windows の Chrome がこれで外付けへ切り替えるかは端末とドライバ次第=**確実なのは Windows の設定**(グラフィック→Chrome=高パフォーマンス)。

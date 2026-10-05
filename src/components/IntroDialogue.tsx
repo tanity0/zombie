@@ -87,6 +87,7 @@ const IntroDialogue: React.FC = () => {
   // タップで会話を即終了→ゲーム再開。タップが下層の攻撃入力に伝播しないよう stopPropagation。
   const skipButton = (
     <button
+      data-skip // Esc・パッドのスタートでも押せる(utils/menuNav.pressVisibleSkip)
       onClick={(e) => { e.stopPropagation(); endIntroDialogue(); }}
       className="pointer-events-auto absolute z-50 rounded-full border border-white/25 bg-black/55 px-4 py-2 text-[12px] text-white/80 shadow-lg backdrop-blur-sm active:bg-black/75"
       style={{ right: 'max(env(safe-area-inset-right), 16px)', bottom: 'max(calc(env(safe-area-inset-bottom) + 16px), 20px)' }}

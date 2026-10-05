@@ -1349,6 +1349,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       {!titleReveal && <button
         type="button"
         data-testid="opening-skip"
+        data-skip // Esc・パッドのスタートでも押せる(utils/menuNav.pressVisibleSkip)
         onClick={(e) => { e.stopPropagation(); finish(); }}
         style={{
           position: 'absolute', bottom: 18, right: 18, zIndex: 60,
