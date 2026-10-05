@@ -21,12 +21,14 @@ interface Ff7rButtonProps {
   testId?: string;
   /** キーボード・パッドでこの画面に入った時、最初に選ばれるボタン(utils/menuNav・PC版 §11-5)。属性を足すだけ=見た目は不変。 */
   navDefault?: boolean;
+  /** Esc・パッドの B(キャンセル)で押されるボタン(utils/menuNav.findBackButton)。属性を足すだけ=見た目は不変。 */
+  navBack?: boolean;
 }
 
 export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
-  children, onClick, className = '', paddingY = '0.7rem', active = false, ariaLabel, emphasis = false, fade = 'right', testId, navDefault,
+  children, onClick, className = '', paddingY = '0.7rem', active = false, ariaLabel, emphasis = false, fade = 'right', testId, navDefault, navBack,
 }) => {
-  const nav = navDefault ? { 'data-nav-default': '' } : {};
+  const nav = { ...(navDefault ? { 'data-nav-default': '' } : {}), ...(navBack ? { 'data-nav-back': '' } : {}) };
   if (COMMAND_UI_ENABLED) return (
     <button type="button" onClick={onClick} aria-label={ariaLabel} data-testid={testId} {...nav}
       className={`command-button ${emphasis ? 'command-button-primary' : ''} ${active ? 'command-button-selected' : ''} ${className}`}

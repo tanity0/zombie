@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4875', items: ['ゲーム中のショップや説明の窓も、Escやパッドのキャンセルで閉じる'] },
   { version: '0.25.4874', items: ['パッドでメニューを動かした時も、選んでいるボタンに印が付く'] },
   { version: '0.25.4873', items: ['オープニング、出撃時の会話、エンディングは、Escかパッドのスタートでも飛ばせる'] },
   { version: '0.25.4872', items: ['ゲーム用のグラフィックボードを積んだPCでは、そちらで描くよう頼むようにした'] },

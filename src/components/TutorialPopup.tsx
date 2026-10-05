@@ -153,6 +153,7 @@ const TutorialPopup: React.FC = () => {
             ariaLabel={multiple && !last ? '次のページ' : 'チュートリアルを閉じる'}
             emphasis
             navDefault
+            navBack={!multiple} // 1枚だけの説明はキャンセル(B・Esc)でも閉じる。複数枚は B=前のページ(「戻る」)
           >
             {multiple && !last ? '次へ' : multiple ? 'はじめる' : 'OK'}
           </Ff7rButton>

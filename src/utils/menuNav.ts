@@ -97,16 +97,20 @@ export const navMove = (dir: NavDir): boolean => {
 
 const BACK_LABEL = /^(戻る|閉じる|とじる|キャンセル|×|✕|back|close)$/i;
 /** 「戻る/閉じる」を押す(Esc・パッドの B)。一番手前に見えている物だけ。data-nav-back を付けたボタンを優先し、無ければ名前の完全一致。 */
-export const navBack = (): boolean => {
+/** 今 Esc・パッドの B で押される「戻る/閉じる」(無ければ null)。押さずに探すだけ(走査・テスト用にも使う)。 */
+export const findBackButton = (): HTMLElement | null => {
   const cands = candidates();
   const marked = cands.find(el => el.hasAttribute('data-nav-back'));
-  if (marked) { marked.click(); return true; }
-  const btn = cands.find(el => {
+  if (marked) return marked;
+  return cands.find(el => {
     const label = (el.getAttribute('aria-label') ?? '').trim();
     const text = (el.textContent ?? '').replace(/\s+/g, '').trim();
     // 完全一致だけ(「メニューに戻る」=出撃を終える、を Esc で押さない・品質監査 A-8)
     return BACK_LABEL.test(label) || BACK_LABEL.test(text);
-  });
+  }) ?? null;
+};
+export const navBack = (): boolean => {
+  const btn = findBackButton();
   if (!btn) return false;
   btn.click();
   return true;
@@ -149,7 +153,11 @@ export const installMenuKeyNav = (): (() => void) => {
   const onSkipKey = (e: KeyboardEvent) => {
     if (e.code !== 'Escape' && e.key !== 'Escape') return;
     if (e.repeat) return;
-    if (pressVisibleSkip()) { e.preventDefault(); e.stopImmediatePropagation(); }
+    if (pressVisibleSkip()) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    // ★ゲーム中の窓(ショップ・説明・帰還の確認など)は、キャンセル(Esc・パッドの B)で「閉じる/戻る」を押す
+    //   (v0.25.4875・社長「キャンセルボタンもちゃんと対応してほしい」)。それまでは Esc が一時停止の切り替えへ行くだけで、
+    //   窓が開いている間は何も起きなかった。押せる物が無ければ従来どおり(一時停止の切り替え/再開)。
+    if (gameplayMounted && isMenuContext() && navBack()) { e.preventDefault(); e.stopImmediatePropagation(); }
   };
   const onKey = (e: KeyboardEvent) => {
     const tgt = e.target as HTMLElement | null;
