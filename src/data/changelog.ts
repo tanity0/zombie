@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4861', items: ['叫びの光は、敵が強くなったその瞬間にだけ頭の上で灯って消える'] },
   { version: '0.25.4860', items: ['叫びで強くなった敵は、頭の上に小さな光が灯る', '一度天へ還した英雄は、もう戦場に現れない'] },
   { version: '0.25.4859', items: ['変異体対策室の解放軍群(変異)も、その場で小さく巡り歩くようになった。正面に回られるまでは気づかれない'] },
   { version: '0.25.4858', items: ['ゲーム内容の変更はありません'] },
