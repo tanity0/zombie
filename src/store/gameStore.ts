@@ -1,4 +1,5 @@
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
+import { tickSpawnWalk, resetSpawnWalk } from '../utils/spawnWalkBias';
 import { steerDirToward } from '../utils/mimirWheel';
 import { SHUKUCHI_INVULN_MS, pickShukuchiTarget, shukuchiChainMult, shukuchiLandingPoint, shukuchiParams, shukuchiWindowOpen } from '../utils/shukuchi';
 import { counterClashPoint } from '../utils/counterClash';
@@ -7406,6 +7407,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // キャラ固有 マークスマン: 連続移動の開始時刻を追跡(停止で0=解除)。動き出した瞬間にだけ更新。
       // (スケーターバッシュの発動条件=SKATER_BASH_RUN_MS判定でも使う。速度倍率自体からは分離済み。)
       const marksmanMovingSince = isMoving ? (player.isMoving ? player.marksmanMovingSince : state.gameTime) : 0;
+      // 湧く向きを歩き続けている方向へ寄せるための記録(PACING_PUZZLE.md §20・湧きの側が読む)。
+      tickSpawnWalk(vx, vy, moveSpeed, deltaTime * 1000);
       // UNIQUE_WEAPONS.md §16-2(バッチB・大型狙撃銃): 連続静止msの蓄積(heavySniperCharge.ts)。
       // 移動していれば即0へリセット、静止していれば進める(deltaTimeは秒単位=×1000でms化)。
       const heavySniperStillMs = stepHeavySniperStillMs(player.heavySniperStillMs, deltaTime * 1000, isMoving);
@@ -20403,6 +20406,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   resetGame: (characterClass) => {
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)
+    resetSpawnWalk(); // 湧く向きの寄せ(PACING_PUZZLE §20)も前ランから持ち越さない
     const state = get();
     // v0.25.2476: 前ランのサブ様式集計(fold)+プロファイル保存の決算は、リザルト画面を閉じる操作
     // (GameOverScreenのsettlePendingTraits)へ移動した(社長裁定「今回のプレイを守護霊に反映しない」を

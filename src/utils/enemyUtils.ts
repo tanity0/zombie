@@ -1,4 +1,5 @@
 import { mobPrefersHero } from './heroScript';
+import { currentSpawnWalk, walkBiasStrength, pickWalkBiasedSide } from './spawnWalkBias';
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 import { makeSeededRng } from './seededRng';
 import { normalizeChaffMix, type ChaffMix } from './chaffMix';
@@ -977,10 +978,18 @@ export const generateEnemy = (
   // 同じseedでも以降の並びが揃わなくなる。**確率も使い道も従来どおり**で、引く場所を前へ出しただけ。
   const corridorSideRoll = spawnRng();
   const dirBiasRoll = spawnRng();
+  // ★歩き続けている方向へ寄せる(PACING_PUZZLE.md §20)。引く回数を固定するため、使わない時も毎回引く。
+  const walkUseRoll = spawnRng();
+  const walkSideRoll = spawnRng();
+  const walkSpreadRoll = spawnRng();
+  const walk = currentSpawnWalk();
+  const walkPick = corridorSpawnEnabled ? null : pickWalkBiasedSide(walk, walkBiasStrength(walk), walkUseRoll, walkSideRoll);
   if (corridorSpawnEnabled) {
     // 洋館通路: 左右(壁)からは湧かせない。上(奥=side0)主体・一部下(手前=side2)。
     // pressureDirection(移動方向バイアス)は無視=通路の向きに固定。上下端の散布(x/y)は従来式を流用。
     spawnSide = corridorSideRoll < CORRIDOR_SPAWN_TOP_RATIO ? 0 : 2;
+  } else if (walkPick) {
+    spawnSide = walkPick.side;
   } else if (dirMag > 0.25 && dirBiasRoll < 0.34) {
     const nx = pressureDirection!.x / dirMag;
     const ny = pressureDirection!.y / dirMag;
@@ -990,26 +999,31 @@ export const generateEnemy = (
   }
   let x = 0;
   let y = 0;
+  // 辺に沿った位置(0..1)。進む先の辺へ寄せた時だけ正面寄り(三角分布・中心=プレイヤーの正面)。
+  const along = (): number => {
+    const r = spawnRng();
+    return walkPick?.front ? (r + walkSpreadRoll) / 2 : r;
+  };
   // (v0.25.2151) v2139の通路湧き距離の深掘り(halfH/CONTEXT_ZOOM_MIN)は撤回=最初の距離へ復帰。
   // 当時「最大引きで湧きが見える」と診断したが実測の真因は敵フェード境界のバグ(v2149で根治)で、
   // 素の halfH+margin(292px)は最大引きの可視半径(190px)より元々外=食い込みは無かった。
   // 各辺の「外側」(半幅/半高+margin)へ。直交方向は画面幅/高いっぱいに散らす(歩いて入ってくる)。
   switch (spawnSide) {
     case 0: // 上辺の外
-      x = player.x - halfW + spawnRng() * viewportWidth;
+      x = player.x - halfW + along() * viewportWidth;
       y = vy0 - halfH - margin;
       break;
     case 1: // 右辺の外
       x = player.x + halfW + margin;
-      y = vy0 - halfH + spawnRng() * viewportHeight;
+      y = vy0 - halfH + along() * viewportHeight;
       break;
     case 2: // 下辺の外
-      x = player.x - halfW + spawnRng() * viewportWidth;
+      x = player.x - halfW + along() * viewportWidth;
       y = vy0 + halfH + margin;
       break;
     case 3: // 左辺の外
       x = player.x - halfW - margin;
-      y = vy0 - halfH + spawnRng() * viewportHeight;
+      y = vy0 - halfH + along() * viewportHeight;
       break;
   }
   return buildEnemy(type, x, y, gameTime, false, esc, rareMult, forcedColorTier, noRedTier);
