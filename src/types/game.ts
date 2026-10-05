@@ -1325,6 +1325,9 @@ export interface Enemy {
   heroPatrolR?: number;
   /** research/LIBERTY_HORDE.md: 旗手の周回の半径(原点中心)。undefined=周回しない(対策室・ボス戦テスト)。 */
   libPatrolR?: number;
+  /** 周回の輪の中心(未設定=原点=本編の深層域の輪)。ボスモードの小さな輪は置いた場所のそば(社長「はい」2026-10-05)。 */
+  libPatrolCx?: number;
+  libPatrolCy?: number;
   /** 旗手が相手を見つけている間 true(止まって叫ぶ)。 */
   libAlerted?: boolean;
   /** 旗手の叫喚の溜めが終わる時刻(gameTime)。undefined=溜めていない。 */

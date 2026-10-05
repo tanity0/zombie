@@ -330,7 +330,9 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
     } else if (bearer.libPatrolR !== undefined) {
       // 周回: 英雄と同じ速さ・同じ回り込み(輪の外/内へずらして障害物を抜ける)。
       const R = bearer.libPatrolR;
-      const ang = Math.atan2(by, bx);
+      // 輪の中心(本編=原点 / ボスモード=置いた場所のそば)。計算は中心から見た座標で行う。
+      const pcx0 = bearer.libPatrolCx ?? 0, pcy0 = bearer.libPatrolCy ?? 0;
+      const ang = Math.atan2(by - pcy0, bx - pcx0);
       const resetRef = () => { s.stallRefAt = gt; s.stallRefAng = ang; s.stallRefX = bx; s.stallRefY = by; };
       if (gt - s.stallRefAt > 2000) resetRef();
       else if (gt - s.stallRefAt >= 800) {
@@ -344,7 +346,8 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
         resetRef();
       }
       if (gt >= s.detourUntil) s.detourR = 0;
-      const nx = heroPatrolNext(bx, by, R + s.detourR, 240);
+      const nxl = heroPatrolNext(bx - pcx0, by - pcy0, R + s.detourR, Math.min(240, R * 0.6));
+      const nx = { x: nxl.x + pcx0, y: nxl.y + pcy0 };
       const dx = nx.x - bx, dy = nx.y - by, l = Math.hypot(dx, dy) || 1;
       // 歩き出しは加速(見失って周回へ戻る時も、止まった所から0.3秒ほどで周回の速さへ)。
       s.speed = Math.min(HERO_PATROL_SPEED, s.speed + LIB_BEARER_ACCEL * dt);

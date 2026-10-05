@@ -192,7 +192,7 @@ import {
 } from '../utils/phantomTick';
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
-import { libPatrolRadius, ringPointBehind, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
+import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties } from '../utils/heroBlast';
 // 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
@@ -8564,10 +8564,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               libertyForceRef.current = true;
               const st0 = useGameStore.getState();
               let cx: number, cy: number, R: number | undefined, a0 = 0;
+              let ringCx = 0, ringCy = 0; // 輪の中心(本編=原点)
               if (forceLib) {
                 const z0 = Math.max(0.3, Math.min(1, st0.viewZoom || 1));
                 cx = player.x + player.width / 2;
                 cy = player.y + player.height / 2 - (st0.gameBounds.height / 2 / z0 + 140);
+                // 社長「はい」2026-10-05: ボスモードでも置いた場所のそばで小さく回る(前方だけの索敵=向きが変わらないと試せない)。
+                // 置いた場所を輪の下端にする(中心はその上)=輪の大半は画面の上の外、近い側を通る時に画面へ入る。
+                R = LIB_PRACTICE_PATROL_R; a0 = Math.PI / 2;
+                ringCx = cx; ringCy = cy - R;
               } else {
                 R = libPatrolRadius(AREA_THRESHOLDS);
                 a0 = Math.random() * Math.PI * 2;
@@ -8580,11 +8585,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               lE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない(別カウント・§6)
               lE.bossState = 'chase';
               lE.libPatrolR = R;
+              if (forceLib) { lE.libPatrolCx = ringCx; lE.libPatrolCy = ringCy; }
               lE.heroFaceX = R !== undefined ? (Math.sin(a0) >= 0 ? 1 : -1) : -1;
               // 取り巻き5体: 置いた瞬間は足跡が無いので、後ろ(周回なら輪の時計回り側・確認用なら上)へ仮の位置に並べる(品質監査 A-4)。
               const bats = Array.from({ length: LIB_ESCORTS }, (_, i) => {
                 const back = (i + 1) * LIB_SLOT_GAP_PX;
-                const p = R !== undefined ? ringPointBehind(a0, R, back) : { x: cx + back, y: cy }; // 確認用=左を向いて立ち、列は右(背中側)へ
+                const rp = R !== undefined ? ringPointBehind(a0, R, back) : null;
+                const p = rp ? { x: rp.x + ringCx, y: rp.y + ringCy } : { x: cx + back, y: cy };
                 return makeHordeBat(lE, i, p.x, p.y, newGameTime, false, false);
               });
               useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.type !== 'mutant-liberty' && e.hordeLeaderId === undefined) }));
@@ -8595,7 +8602,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               libertyStateRef.current.activeId = lE.id;
               libertyStateRef.current.trail = Array.from({ length: LIB_TRAIL_MAX }, (_, k) => {
                 const back = (LIB_TRAIL_MAX - k) * LIB_TRAIL_STEP_PX;
-                return R !== undefined ? ringPointBehind(a0, R, back) : { x: cx + back, y: cy };
+                const rp = R !== undefined ? ringPointBehind(a0, R, back) : null;
+                return rp ? { x: rp.x + ringCx, y: rp.y + ringCy } : { x: cx + back, y: cy };
               });
               libertyCutinIdRef.current = null;
             }

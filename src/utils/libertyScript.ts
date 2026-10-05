@@ -90,6 +90,9 @@ export const maleBatId = (baseId: string): string => {
 };
 
 /** 輪の上で、ある角度から時計回り側(=反時計回りに進む旗手の後ろ)へ弧長 `back` px の点。出現時の仮の足跡用。 */
+/** ボスモード(対策室・ボステスト)の旗手が回る小さな輪の半径(社長「はい」2026-10-05=前方だけの索敵を試せるように向きが変わる)。 */
+export const LIB_PRACTICE_PATROL_R = 360;
+
 export const ringPointBehind = (angle: number, R: number, back: number): { x: number; y: number } => {
   const a = angle + back / Math.max(1, R);
   return { x: Math.cos(a) * R, y: Math.sin(a) * R };
