@@ -57,7 +57,7 @@
 .command-ui .command-page > .p-3, .command-ui .command-page > .px-3 { padding-left: 20px; padding-right: 20px; }
 .command-ui .command-page > .p-3 { padding-top: 20px; padding-bottom: 20px; }
 .command-ui .command-page .ff7r-fade-right { border: 1px solid var(--command-line); border-image: none; background: var(--menu-panel); padding: 16px; min-height: 52px; }
-.command-ui .command-page button.ff7r-fade-right:not(:disabled):hover { background: var(--menu-hover); border-color: var(--menu-muted); }
+@media (hover: hover) { .command-ui .command-page button.ff7r-fade-right:not(:disabled):hover { background: var(--menu-hover); border-color: var(--menu-muted); } }
 .command-ui .command-page .ff7r-fade-right.is-on { background: var(--menu-selected); border-color: var(--command-accent); box-shadow: inset 3px 0 var(--command-accent); }
 .command-ui .command-page .ff7r-fade-right.is-off { opacity: .65; }
 .command-ui .command-page .ff7r-fade-right:disabled { opacity: .5; cursor: not-allowed; }
@@ -66,7 +66,8 @@
 .command-ui .command-page input[type='text'] { background: var(--menu-bg); border: 1px solid var(--menu-line); color: var(--command-ink); min-height: 44px; padding: 10px 12px; }
 .command-ui .command-page button:focus-visible, .command-ui .command-character button:focus-visible, .command-ui .command-panel button:focus-visible, .command-ui .command-panel input:focus-visible , .command-ui .command-page button.navfocus, .command-ui .command-character button.navfocus, .command-ui .command-panel button.navfocus, .command-ui .command-panel input.navfocus { outline: 2px solid var(--menu-accent-hi); outline-offset: -3px; }
 .command-ui .command-button { min-height: 48px; padding-left: 18px; padding-right: 18px; display: block; border: 1px solid var(--menu-line); background: var(--menu-panel); color: var(--menu-ink); font: 500 14px/1.5 'Rajdhani', system-ui, sans-serif; letter-spacing: .1em; text-align: center; transition: background 160ms ease-out, border-color 160ms ease-out, transform 160ms cubic-bezier(.2,.9,.3,1.2); }
-.command-ui .command-button:hover { background: var(--menu-hover); border-color: var(--menu-muted); }
+/* タッチ端末では :hover が押した後も残る(=琥珀ボタンが暗い地色に塗り替わったまま)ので、マウスのある端末だけに効かせる。琥珀ボタンは自前のhoverを持つので除外 */
+@media (hover: hover) { .command-ui .command-button:not(.command-button-primary):hover { background: var(--menu-hover); border-color: var(--menu-muted); } }
 /* クリエイティブ監査第2回・第2手A-2+A-3(research/CREATIVE_AUDIT_2026-09-11.md):
    琥珀ボタン=松明の光(上明・下焦げの縦グラデ)。幅は文字幅(中央/右寄せは呼び出し側)。
    右端の斜め切り(4234で追加)は社長指示2026-09-12「ダサいので戻して」で撤去=矩形。
@@ -98,7 +99,7 @@
 .command-ui .command-stage-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
 .command-ui .command-stage-card::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #071116ed, #07111677 70%, #07111655); }
 .command-ui .command-stage-card > span:first-of-type > span > .text-\[16px\] { font: 500 23px/1.4 system-ui; margin-top: 8px; }
-.command-ui .command-page .command-stage-card:hover { background: var(--menu-panel); border-color: var(--command-accent); }
+@media (hover: hover) { .command-ui .command-page .command-stage-card:hover { background: var(--menu-panel); border-color: var(--command-accent); } }
 .command-ui .command-panel { background: linear-gradient(150deg, color-mix(in srgb, var(--menu-panel) 97%, transparent), color-mix(in srgb, var(--menu-bg) 97%, transparent)); border: 1px solid var(--menu-line); border-radius: 0; box-shadow: 0 24px 80px #0009; color: var(--command-ink); font-family: 'Rajdhani', system-ui, sans-serif; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .command-ui .command-panel h2 { font-size: 26px; letter-spacing: .08em; line-height: 1.4; }
 .command-ui .command-character button[aria-pressed] { background: color-mix(in srgb, var(--menu-panel) 91%, transparent) !important; border: 1px solid var(--menu-line) !important; border-image: none !important; }
