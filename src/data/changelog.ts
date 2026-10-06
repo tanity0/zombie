@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4887', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4886', items: ['ボスと戦っている間、ハンターは現れない。追ってきていたハンターも、ボス戦が始まると退いていく'] },
   { version: '0.25.4885', items: ['スマホで「次へ」などの金色のボタンを押した後、ボタンが暗い色のまま残っていたのを直した'] },
   { version: '0.25.4884', items: ['ボスの真上や真下に回り込んだ時、ボスが左右に小刻みに振り向き続けていたのを直した'] },
