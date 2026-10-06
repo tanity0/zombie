@@ -247,7 +247,7 @@ import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } 
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine } from '../utils/biteTelegraph';
 import { enemyContactBox } from '../utils/collisionUtils'; // 確認用 ?hitbox=1
-import { biteFxHitRadius } from '../utils/biteFxHit'; // 確認用 ?hitbox=1
+import { biteFxRect, playerArtRect } from '../utils/biteFxHit'; // 確認用 ?hitbox=1
 // ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
 import {
   batLanternPose, batSlamFrameWithWindup, batBiteTiming, usesBatLantern,
@@ -11601,17 +11601,21 @@ export class PixiScene {
       const b = enemyContactBox(e);
       const biting = e.biteAt !== undefined && e.biteAt > 0;
       g.rect(b.x, b.y, b.width, b.height).stroke({ width: 1.5, color: biting ? 0xff3030 : 0xffd400, alpha: 0.95 });
-      if (biting) {
-        const bl = biteTelegraphLine(e, gameTime);
+      // 判定の四角は当たった後も少し残す(エフェクトと重なっているかを撮って確かめるため)。
+      const fxShow = e.biteTgtAt !== undefined && e.biteTgtAt > 0 && gameTime - e.biteTgtAt < 1500;
+      if (biting || fxShow) {
+        const bl = biting ? biteTelegraphLine(e, gameTime) : null;
         if (bl) g.circle(bl.tx, bl.ty, 3).fill({ color: 0xffffff, alpha: 0.95 });
-        // エフェクトの芯で当てる技の判定の円(utils/biteFxHit)。
-        const fr = biteFxHitRadius(e.chaffMove);
-        if (fr !== null && e.biteTgtAt === e.biteAt && e.biteTgtX !== undefined && e.biteTgtY !== undefined) {
-          g.circle(e.biteTgtX, e.biteTgtY, fr).stroke({ width: 1.5, color: 0xff3030, alpha: 0.95 });
+        // エフェクトの絵の四角=判定(utils/biteFxHit)。
+        if (e.biteTgtX !== undefined && e.biteTgtY !== undefined) {
+          const fr = biteFxRect(e.chaffMove, e.biteTgtX, e.biteTgtY, (e.biteDirX ?? 1) >= 0);
+          if (fr) g.rect(fr.x, fr.y, fr.w, fr.h).stroke({ width: 1.5, color: 0xff3030, alpha: 0.95 });
         }
       }
     }
     g.rect(player.x, player.y, player.width, player.height).stroke({ width: 1.5, color: 0x22ff66, alpha: 0.95 });
+    const pa = playerArtRect(player); // 雑魚の技を受ける時のキャラの絵の四角(utils/biteFxHit)
+    g.rect(pa.x, pa.y, pa.w, pa.h).stroke({ width: 1, color: 0x22ff66, alpha: 0.5 });
   }
 
   private syncPumpkinTelegraph(enemies: Enemy[], now: number, gameTime: number) {

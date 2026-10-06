@@ -24,7 +24,7 @@
 // no-op(何もしない関数)を渡す=ヘッドレスでは判定条件はそのまま評価されるが、見た目/音/
 // gameOver遷移だけが起きない。
 
-import { biteFxHitRadius, biteFxHitsPlayer } from './biteFxHit';
+import { biteFxRect, playerArtRect, rectsOverlap } from './biteFxHit';
 import { biteTelegraphLine } from './biteTelegraph';
 import type { Enemy, Player } from '../types/game';
 import { scriptResumeFlag, shouldCutBossMove } from './counterCut';
@@ -1516,8 +1516,8 @@ export const applyContactDamage = (
       }
       // ★雑魚の技(ゾンビ2連・スケルトンの爪・コウモリの叩きつけ)は、エフェクトの出る点(予告の線の終点)を
       //   噛みごとに焼く(社長指示2026-10-06「エフェクトの方に合わせてほしい」・utils/biteFxHit)。
-      const fxR = biteFxHitRadius(e.chaffMove);
-      if (fxR !== null && e.biteTgtAt !== e.biteAt) {
+      const fxTarget = e.chaffMove === 'zombie-double' || e.chaffMove === 'skel-bite' || e.chaffMove === 'bat-grab';
+      if (fxTarget && e.biteTgtAt !== e.biteAt) {
         const bl0 = biteTelegraphLine(e, gameTime);
         if (bl0) biteTgtLatches.push({ id: e.id, x: bl0.tx, y: bl0.ty, at: e.biteAt ?? 0 });
       }
@@ -1532,9 +1532,10 @@ export const applyContactDamage = (
       const lichBlinkHit = e.chaffMove === 'lich-blink'
         && e.lichBlinkAtX !== undefined && e.lichBlinkAtY !== undefined
         && isInBiteCircle(e.lichBlinkAtX, e.lichBlinkAtY, bcx, bcy, LICH_BLINK_RADIUS_PX);
-      // ★エフェクトの芯で当てる技(焼いた点がある時)。無ければ従来の体の重なり。
-      const fxHit = fxR !== null && e.biteTgtAt === e.biteAt && e.biteTgtX !== undefined && e.biteTgtY !== undefined
-        ? biteFxHitsPlayer(e.biteTgtX, e.biteTgtY, fxR, collPlayer) : null;
+      // ★エフェクトの絵とキャラの絵が重なったら当たり(焼いた点がある時)。無ければ従来の体の重なり。
+      const fxRect = fxTarget && e.biteTgtAt === e.biteAt && e.biteTgtX !== undefined && e.biteTgtY !== undefined
+        ? biteFxRect(e.chaffMove, e.biteTgtX, e.biteTgtY, (e.biteDirX ?? 1) >= 0) : null;
+      const fxHit = fxRect ? rectsOverlap(fxRect, playerArtRect(collPlayer)) : null;
       if (e.chaffMove === 'lich-blink' ? lichBlinkHit : (fxHit ?? biteBodyOverlapsPlayer(eb, collPlayer))) {
         // 接触ダメージと同じ倍率の掛け方(紅き夜×2 / 叫喚の強化窓)。
         const rn = redNightActive ? 2 : 1;
