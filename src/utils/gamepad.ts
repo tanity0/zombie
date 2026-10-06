@@ -8,7 +8,7 @@ import { performFlickAction } from './inputActions';
 import { pcPressDown, pcPressUp, markPcFlick } from './pcPress';
 import { setPadActive } from './inputDevice';
 import { pcCycleGun } from './weaponCycle';
-import { isMenuContext, isGameplayMounted, navMove, navActivate, navBack, type NavDir } from './menuNav';
+import { isMenuContext, isGameplayMounted, navMove, navActivate, navBack, pressVisibleSkip, type NavDir } from './menuNav';
 
 export const PAD_DEAD_ZONE = 0.2;
 const MENU_STICK_ON = 0.6;
@@ -22,6 +22,32 @@ export const padStickToSwipe = (ax: number, ay: number, dead = PAD_DEAD_ZONE): {
   if (!(m > dead)) return null;
   const strength = Math.max(0, Math.min(1, (Math.min(1, m) - dead) / (1 - dead)));
   return { dir: { x: ax / m, y: ay / m }, strength };
+};
+
+/**
+ * 十字キーを読む(v0.25.4881・社長報告「コントローラーの矢印キーが反応しない」)。
+ * 標準配置(mapping='standard')のパッドはボタン12〜15で送ってくるが、**標準配置として認識されないパッド**
+ * (DirectInput の汎用パッド等)は十字キーを**ハットスイッチ**=1本の軸(多くは axes[9])で送る:
+ * 8方向+中立を値で入れる(上=-1・右上=-0.71・右=-0.43・右下=-0.14・下=0.14・左下=0.43・左=0.71・左上=1・中立は範囲外)。
+ * ★値がこの刻み(2/7)に乗っている時だけハットとみなす=普通の軸が0で止まっていても「下」と読まない。
+ *   2本の軸(axes[6]/[7])で送る型は、止まっている時の値がパッドごとに違い誤入力になるので読まない。
+ */
+export const readDpad = (
+  mapping: string, buttons: readonly boolean[], axes: readonly number[],
+): { up: boolean; down: boolean; left: boolean; right: boolean } => {
+  const d = { up: !!buttons[12], down: !!buttons[13], left: !!buttons[14], right: !!buttons[15] };
+  if (mapping === 'standard') return d;
+  const hat = axes[9];
+  const step = hat === undefined ? NaN : (hat + 1) / (2 / 7);
+  if (hat !== undefined && hat >= -1.05 && hat <= 1.05 && Math.abs(step - Math.round(step)) < 0.08) {
+    // 8方向: -1(上)から 2/7 刻みで時計回り。
+    const idx = Math.round(step); // 0..7
+    const dirs = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]];
+    const v = dirs[((idx % 8) + 8) % 8];
+    if (v[1] < 0) d.up = true; if (v[1] > 0) d.down = true;
+    if (v[0] < 0) d.left = true; if (v[0] > 0) d.right = true;
+  }
+  return d;
 };
 
 const escapeKey = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
@@ -57,6 +83,9 @@ export const installGamepad = (): (() => void) => {
     if (!gp) { prev = []; return; }
     const now = performance.now();
     const btn = gp.buttons.map(b => b.pressed);
+    // 十字キーは配置の違うパッドでも読めるよう、ボタン12〜15へ揃えてから使う(軸で送ってくるパッドがある)。
+    const dp = readDpad(gp.mapping, btn, gp.axes);
+    btn[B.UP] = dp.up; btn[B.DOWN] = dp.down; btn[B.LEFT] = dp.left; btn[B.RIGHT] = dp.right;
     const down = (i: number) => btn[i] && !prev[i];
     const up = (i: number) => !btn[i] && prev[i];
     const ax = gp.axes[0] ?? 0, ay = gp.axes[1] ?? 0;
@@ -68,6 +97,12 @@ export const installGamepad = (): (() => void) => {
         useGameStore.getState().setMouseAim(null); // パッドで遊ぶ間はマウスの照準を外す(照準=移動の向き=タッチと同じ)
       }
     }
+
+    // ★スキップ(オープニング・出撃時の会話・エンディング)は B・スタート・バックのどれでも押せる
+    //   (v0.25.4881・社長報告「スキップがゲームコントローラーで押すすべがない」)。
+    //   旧: スタート→Esc の道はあったが、オープニングの廊下(下の分岐)は先に return していて届かず、
+    //   キャンセル(B)は戻る/払いへ行くだけだった。スキップが出ていなければ何もしない=下の従来の割り当てへ。
+    if ((down(B.B) || down(B.START) || down(B.BACK)) && pressVisibleSkip()) { prev = btn; return; }
 
     // オープニングの廊下(矢印で歩く場面): 十字キー/スティックの左右を矢印キーとして送る。
     if (document.querySelector('[data-kbnav-off]')) {
