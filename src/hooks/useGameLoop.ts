@@ -8562,7 +8562,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             addEnemy(hE);
             heroCutinIdRef.current = null;
           }
-          // research/LIBERTY_HORDE.md §2/§9: 解放軍群(変異)。本編=ステージ1・3・4・5で深層域の輪(半径12750)に旗手+バット男5体を置き、
+          // research/LIBERTY_HORDE.md §2/§9: 解放軍群(変異)。本編=ステージ1・3・4・5で未確認汚染エリアの輪(半径9375)に旗手+バット男5体を置き、
           // 反時計回りに回る(libertyTick)。確認用の枠(?libertynow=1 / 対策室)=プレイヤーの上・画面の端のすぐ外に置き、その場で索敵。
           {
             const forceLib = FORCE_LIBERTY || practiceForces('libertynow');

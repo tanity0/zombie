@@ -5,8 +5,8 @@ import { variantTextureName } from './enemyVariant';
 import { countsTowardEnemyCap, isBossType } from './enemyUtils';
 
 describe('解放軍群(変異)', () => {
-  it('周回の半径=深層域に(デンジャーゾーンの幅の半分)入った所=12750', () => {
-    expect(libPatrolRadius([2250, 4500, 7500, 11250])).toBe(12750);
+  it('周回の半径=未確認汚染エリアの真ん中=9375(社長指示2026-10-06)', () => {
+    expect(libPatrolRadius([2250, 4500, 7500, 11250])).toBe(9375);
   });
   it('後ろに5体', () => {
     expect(LIB_ESCORTS).toBe(5);
@@ -24,7 +24,7 @@ describe('解放軍群(変異)', () => {
     for (let i = 0; i < 50; i++) expect(variantTextureName('bat', maleBatId(`e-${i}-${i * 7}`))).toBe('bat-male');
   });
   it('出現時の仮の足跡は旗手の後ろ(反時計回りに進む=角度が減るので、後ろは角度が増える側)', () => {
-    const R = 12750;
+    const R = 9375;
     const p = ringPointBehind(0, R, 56);
     expect(Math.atan2(p.y, p.x)).toBeGreaterThan(0);
     expect(Math.hypot(p.x, p.y)).toBeCloseTo(R, 6);

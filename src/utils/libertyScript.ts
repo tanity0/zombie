@@ -42,11 +42,12 @@ export const LIB_JITTER_PX = 10;
 export const LIB_REFILL_BEHIND_PX = 60;
 
 /**
- * 周回の半径(社長裁定2026-10-04「深層域の位置は推薦で」)= **深層域に (デンジャーゾーンの幅の半分) 入った所**。
- * 英雄(デンジャーゾーンの入口からその幅の半分=輪の真ん中)と同じ取り方。今の境界なら 11250 + 1500 = 12750。
+ * 周回の半径(社長指示2026-10-06「解放軍は未確認に移設」)= **未確認汚染エリアの輪の幅の真ん中**。
+ * 英雄(デンジャーゾーンの真ん中・heroPatrolRadius)と同じ取り方。今の境界なら (7500 + 11250) / 2 = 9375。
+ * 旧(2026-10-04): 深層域に1500入った所=12750。
  */
 export const libPatrolRadius = (areaThresholds: readonly number[]): number =>
-  areaThresholds[3] + (areaThresholds[2] - areaThresholds[1]) / 2;
+  (areaThresholds[2] + areaThresholds[3]) / 2;
 
 /**
  * 足跡(古い→新しいの順。最後が旗手のいちばん近く)を、新しい側から `dist` px たどった点。
