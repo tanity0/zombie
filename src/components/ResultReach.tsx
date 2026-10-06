@@ -277,7 +277,7 @@ const ResultReach: React.FC<ResultReachProps> = ({
       {/* ================= 次の一手 ================= */}
       <div className="mt-2.5 border-l-2 border-amber-300/60 bg-amber-400/[0.06] px-2.5 py-2 text-left">
         {goal.maxedOut ? (
-          <p className="text-[12px] font-semibold text-amber-100">掘りきった —— この先はもう無い</p>
+          <p className="text-[12px] font-semibold text-amber-100">最も深い区域まで到達した</p>
         ) : (
           <div className="space-y-0.5 text-[11px] leading-snug text-white/70">
             {goal.meters !== null && goal.zoneName && (

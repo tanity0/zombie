@@ -24,8 +24,8 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
   // 手榴弾: レベルで同時に投げる発数が1→2→3に増える(拡散)。爆発力・半径は変わらない。
   // 根拠: src/hooks/useGameLoop.ts:542-546 GRENADE_SPREAD_BY_LEVEL
   'heavy-grenade': {
-    lv2: '同時に投げる本数が増える',
-    lv3: '同時に投げる本数が増える',
+    lv2: '同時に投げる数が増える',
+    lv3: '同時に投げる数が増える',
   },
   // マークスマントラップ: レベルで捕縛範囲だけが広がる(スタン時間・クリ補正・CDは全Lv共通)。
   // 根拠: src/hooks/useGameLoop.ts:426 MARKSMAN_TRAP_RADIUS_BY_LEVEL=[0,50,78,106]
@@ -42,22 +42,22 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
   // ハンティング(近接強化): レベルで溜め時間が短縮され、間合いも伸びる。
   // 根拠: src/config/hunting.ts:1-2 HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL / HUNTING_CHARGE_MS_BY_LEVEL
   'striker-hunting': {
-    lv2: '溜めが速く間合いも伸びる',
-    lv3: '溜めが速く間合いも伸びる',
+    lv2: '溜めが速くなり、近接の間合いも広がる',
+    lv3: '溜めが速くなり、近接の間合いも広がる',
   },
   // ドッグ: レベルで回収の再出発が速くなり、捜索範囲・回収範囲も広がる。
   // 根拠: src/hooks/useGameLoop.ts:430,432,433
   // DOG_PICKUP_COOLDOWN_BY_LEVEL / DOG_FETCH_TARGET_RADIUS_BY_LEVEL / DOG_COLLECT_RADIUS_BY_LEVEL
   dog: {
-    lv2: '回収が速く範囲も広くなる',
-    lv3: '回収が速く範囲も広くなる',
+    lv2: '拾いに行く間隔が短くなり、範囲も広がる',
+    lv3: '拾いに行く間隔が短くなり、範囲も広がる',
   },
   // 刀: レベルで射程・威力・会心率がすべて上がる。
   // 根拠: src/store/gameStore.ts:1211-1221
   // KATANA_RANGE_BY_LEVEL / KATANA_DAMAGE_BY_LEVEL / KATANA_CRIT_CHANCE_BY_LEVEL
   katana: {
-    lv2: '射程・威力・会心率が上がる',
-    lv3: '射程・威力・会心率が上がる',
+    lv2: '射程・威力・クリティカル率が上がる',
+    lv3: '射程・威力・クリティカル率が上がる',
   },
   // 小烏丸(murasame): 刀Lv3到達で商人に1回だけ並ぶ特殊枠。unlockedShopSkillCards['murasame']は
   // 常に1で止まる(それ以上の陳列レベルは発行されない)ため、購入後にLv2/Lv3へ上げる動線自体が
@@ -71,22 +71,22 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
   // 根拠: src/hooks/useGameLoop.ts:444,450(DECOY_DURATION_BY_LEVEL/DECOY_RANGE_BY_LEVEL),
   // 453-459,7136(Lv3限定の自爆=DECOY_LV3_EXPLOSION_*)
   decoy: {
-    lv2: '持続時間と迎撃範囲が伸びる',
-    lv3: '消える時に爆発が追加される',
+    lv2: '置いている時間と、敵の弾を消せる範囲が伸びる',
+    lv3: 'さらに伸び、消える時に爆発する',
   },
   // 設置シールド: レベルで耐久力だけが上がる(設置間隔・持続は全Lv共通)。
   // 根拠: src/hooks/useGameLoop.ts:460-465(コメントに明記)/465 SHIELD_HP_BY_LEVEL=[0,10,30,60]
   shield: {
-    lv2: '耐久力が上がる',
-    lv3: '耐久力が上がる',
+    lv2: '盾が壊れにくくなる',
+    lv3: '盾が壊れにくくなる',
   },
   // 鞭: レベルでハリケーン(奥義)に必要なヒット数が減り(出しやすくなる)、
   // ハリケーンの吸引範囲・持続時間も伸びる。鞭本体の射程は全Lv共通。
   // 根拠: src/store/gameStore.ts:1367-1369
   // WHIP_CHARGE_HITS_BY_LEVEL / HURRICANE_RADIUS_BY_LEVEL / HURRICANE_DURATION_MS_BY_LEVEL
   whip: {
-    lv2: '奥義が出しやすく範囲も伸びる',
-    lv3: '奥義が出しやすく範囲も伸びる',
+    lv2: '竜巻が出やすくなり、範囲と時間も伸びる',
+    lv3: '竜巻が出やすくなり、範囲と時間も伸びる',
   },
   // 錬金術: レベルで召喚する仲間の種類がより強力なものに変わり、耐久HPも上がる。
   // 根拠: src/utils/summonUtils.ts:11-12
@@ -103,34 +103,34 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
     // 社長裁定v0.25.3482: Lv1=10秒 / Lv2=13秒 / Lv3=15秒+たまに爆発弾。
     // 社長指示v0.25.3512: 発射間隔もLvの階段(現行値=Lv3がMAX)。
     // (src/utils/turretTuning.ts が唯一の出どころ / TURRET_GRENADE_CHANCE のLv3ゲート)
-    lv2: '設置していられる時間が延び、連射も速くなる',
-    lv3: 'さらに長持ちして連射も最速になり、たまに爆発弾を撃つ',
+    lv2: '砲台が長く残り、連射も速くなる',
+    lv3: 'さらに長く残り連射も最速。ときどき爆発弾を撃つ',
   },
   // 四神舞(shijin): レベルでリズムのテンポ(BPM)が上がり、こなせる手数が増える。
   // 根拠: src/config/shijin.ts:7-8 RHYTHM_BPM_BY_LEVEL=[120,100,120,140](コメントに明記)
   shijin: {
-    lv2: 'リズムが速くなり手数が増える',
-    lv3: 'リズムが速くなり手数が増える',
+    lv2: 'テンポが速くなり、手数が増える',
+    lv3: 'テンポが速くなり、手数が増える',
   },
   // 火炎ナイフ: レベルで再使用間隔が短くなり、爆発範囲も広がる。
   // 根拠: src/hooks/useGameLoop.ts:533,535
   // FIRE_KNIFE_COOLDOWN_BY_LEVEL / FIRE_KNIFE_RADIUS_BY_LEVEL
   'fire-knife': {
-    lv2: '再使用が速く爆発範囲も広がる',
-    lv3: '再使用が速く爆発範囲も広がる',
+    lv2: '投げる間隔が短くなり、爆発範囲も広がる',
+    lv3: '投げる間隔が短くなり、爆発範囲も広がる',
   },
   // ドローンブーメラン: レベルで飛距離が伸び、先端での滞留時間(=攻撃機会)も長くなる。
   // 根拠: src/store/gameStore.ts:2409-2410
   // DRONE_BOOM_STOP_MS_BY_LEVEL / DRONE_BOOM_DIST_BY_LEVEL
   'drone-boomerang': {
-    lv2: '飛距離と滞留時間が伸びる',
-    lv3: '飛距離と滞留時間が伸びる',
+    lv2: '飛ぶ距離と、先で止まっている時間が伸びる',
+    lv3: '飛ぶ距離と、先で止まっている時間が伸びる',
   },
   // ワイヤーアンカー: レベルで刺す距離(移動距離)が伸びる(再使用CDは全Lv共通)。
   // 根拠: src/store/gameStore.ts:1234,1239 WIRE_DIST_BY_LEVEL / WIRE_COOLDOWN_BY_LEVEL
   'wire-anchor': {
-    lv2: '刺す距離が伸びる',
-    lv3: '刺す距離が伸びる',
+    lv2: 'ワイヤーの届く距離が伸びる',
+    lv3: 'さらに遠くへ届き、通った敵と着地点が爆発する',
   },
   // 賢者の石(sage-stone): 錬金術Lv3到達で商人に1回だけ並ぶ特殊枠。murasameと同じ仕組みで
   // unlockedShopSkillCards['sage-stone']は常に1で止まる=購入後にLv2/Lv3へ上げる動線が無い
@@ -143,40 +143,40 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
   // ホーミング: レベルで同時ロックできる数が増える(=一斉発射の弾数が増える)。
   // 根拠: src/utils/homing.ts:12 HOMING_MAX_LOCKS_BY_LEVEL=[0,3,6,10]
   homing: {
-    lv2: '同時ロック数が増える',
-    lv3: '同時ロック数が増える',
+    lv2: 'ロックできる数が増える',
+    lv3: 'ロックできる数が増える',
   },
   // 分身: レベルで再出現までのクールダウンが短くなる。
   // 根拠: src/store/gameStore.ts:1026 SHADOW_CLONE_COOLDOWN_MS_BY_LEVEL=[3000,3000,2000,1000]
   'shadow-clone': {
-    lv2: '再出現が速くなる',
-    lv3: '再出現が速くなる',
+    lv2: '次の分身が出るまでの間隔が短くなる',
+    lv3: '次の分身が出るまでの間隔が短くなる',
   },
   // 火炎瓶: レベルで1サイクルに設置する本数が増える。
   // 根拠: src/utils/molotov.ts:10 MOLOTOV_FIRES_BY_LEVEL=[0,3,5,7]
   molotov: {
-    lv2: '一度に置く本数が増える',
-    lv3: '一度に置く本数が増える',
+    lv2: '置ける火の数が増える',
+    lv3: '置ける火の数が増える',
   },
   // 救急鞄: レベルで払い出せる中身の種類が増える。Lv2で回復、Lv3でさらに爆弾が対象になる
   // (Lv1は弾薬のみ)。
   // 根拠: src/utils/firstAidKit.ts:82-83(healApplicable=level>=2 / bombApplicable=level>=3),
   // src/hooks/useGameLoop.ts:7465コメント「Lv1=弾薬のみ/Lv2=+回復/Lv3=+爆弾」
   'first-aid-kit': {
-    lv2: '回復も払い出すようになる',
-    lv3: '爆弾も払い出すようになる',
+    lv2: '体力が減ると、回復アイテムも出す',
+    lv3: '敵が多いと、爆弾も出す',
   },
   // センサー地雷: レベルで同時に設置できる数が増える。
   // 根拠: src/utils/sensorMine.ts:12 SENSOR_MINE_CAP_BY_LEVEL=[0,3,4,5]
   'sensor-mine': {
-    lv2: '同時設置数が増える',
-    lv3: '同時設置数が増える',
+    lv2: '同時に置ける数が増える',
+    lv3: '同時に置ける数が増える',
   },
   // 援護狙撃: レベルで呼べる間隔(クールダウン)が短くなる。
   // 根拠: src/utils/supportSniper.ts:7 SUPPORT_SNIPER_CD_MS_BY_LEVEL=[0,6000,5000,4000]
   'support-sniper': {
-    lv2: '呼べる間隔が短くなる',
-    lv3: '呼べる間隔が短くなる',
+    lv2: '狙撃の間隔が短くなる',
+    lv3: '狙撃の間隔が短くなる',
   },
   // フレアガン: レベルで再使用間隔(クールダウン)が短くなる。
   // 根拠: src/utils/flareGun.ts:9 FLARE_GUN_CD_MS_BY_LEVEL=[0,9000,7000,5000]
@@ -188,8 +188,8 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
   // 根拠: src/utils/junkWeapon.ts:9-10,24-30
   // JUNK_WEAPON_SCRAP_PER_PELLET_BY_LEVEL / JUNK_WEAPON_DAMAGE_PER_SCRAP / computeJunkShot
   'junk-weapon': {
-    lv2: '一発の威力が上がる(消費も増)',
-    lv3: '一発の威力が上がる(消費も増)',
+    lv2: '一発の威力が上がり、スクラップの消費も増える',
+    lv3: '一発の威力が上がり、スクラップの消費も増える',
   },
   // 金環: レベルで1パルスのダメージだけが上がる(持続3秒・本数2本・CDは全Lv共通=社長仕様の骨格)。
   // 根拠: src/utils/goldRing.ts GOLD_RING_DAMAGE_BY_LEVEL=[0,6,8,10]・UNIQUE_WEAPONS.md §19-2
@@ -199,8 +199,8 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
   },
   // 根拠: src/utils/arrowRain.ts ARROW_RAIN_COUNT_BY_LEVEL=[0,12,18,26]・ARROW_RAIN_CD_MS_BY_LEVEL=[0,9000,8000,7000]
   'arrow-rain': {
-    lv2: '降る矢が増え、間が詰まる',
-    lv3: '降る矢が増え、間が詰まる',
+    lv2: '降る矢が増え、間隔も短くなる',
+    lv3: '降る矢が増え、間隔も短くなる',
   },
 };
 

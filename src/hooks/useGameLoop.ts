@@ -3653,7 +3653,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 出られない(「戦闘中はもうゲートで締めちゃって、この広間から出ることはない」)。
             useGameStore.setState({ exBarrier: { northLockY: EX_SURIEL_NORTH_LOCK_Y, southLockY: EX_SURIEL_SOUTH_LOCK_Y } });
             // バナー/SEは既存gate2の発火演出を流用(§10-20#4「文言は実装時に既存を流用」)。
-            useGameStore.setState({ eventBannerText: '深層への扉が閉ざされた', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            useGameStore.setState({ eventBannerText: 'ボスを倒すまで深層から出られない', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             playSfx('event-start');
             const sAc = bossArtCenter(sBoss);
             useGameStore.getState().triggerAttention(sAc.x, sAc.y, bossCutinPayload('suriel'));
@@ -4044,7 +4044,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               else useGameStore.getState().triggerAttention(g2Ac.x, g2Ac.y, g2Cutin);
             }
             activeGateRef.current = 2;
-            useGameStore.setState({ eventBannerText: '深層への扉が閉ざされた', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            useGameStore.setState({ eventBannerText: 'ボスを倒すまで深層から出られない', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
             playSfx('event-start');
             const gate2RingColor = 'rgba(239,68,68,0.9)'; // 赤=ハードゲートを示唆
             spawnRing(g2pcx, g2pcy, GATE_ARENA_RADIUS * 0.2, GATE_ARENA_RADIUS, gate2RingColor, 6, 700);
@@ -4520,7 +4520,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const nx = ae.x + toOriginX * pushDist, ny = ae.y + toOriginY * pushDist;
                 useGameStore.setState(s => ({ player: { ...s.player, x: nx - s.player.width / 2, y: ny - s.player.height / 2 } }));
                 areaZoneRef.current = areaZoneIndexFor(Math.hypot(nx, ny)); // prevZoneを内側へ=再クロスで踏破を再検知
-                useGameStore.setState({ eventBannerText: 'ゲート突破失敗 — 押し戻された', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                useGameStore.setState({ eventBannerText: 'ゲートを突破できず、外へ押し戻された', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                 useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
               }
               activeGateRef.current = null;
@@ -4596,7 +4596,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (nearBase) {
                 rnGs.skipRedNight();
                 useGameStore.setState({
-                  eventBannerText: 'やり過ごした',
+                  eventBannerText: '紅き夜をやり過ごした',
                   eventBannerUntil: newGameTime + EVENT_BANNER_MS,
                   hitstopUntil: Date.now() + 450,
                 });
@@ -6213,7 +6213,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             bs.disengageSince = disengage.since;
             if (disengage.started && !bossInTechnique) {
               useGameStore.setState({
-                eventBannerText: '危険：ボスが戦闘域を離れようとしている',
+                eventBannerText: '危険：ボスから離れすぎ。間もなく引き返す',
                 eventBannerUntil: newGameTime + 2000,
               });
             }
@@ -8942,7 +8942,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 遠くで叫んでいる群れの声(英雄の嘶きと同じ場所・距離で減衰)。
               playSfx('screamer-cry', npcSfxDistGain(lAc.x, lAc.y, useGameStore.getState().player.x + useGameStore.getState().player.width / 2,
                 useGameStore.getState().player.y + useGameStore.getState().player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
-              useGameStore.setState({ eventBannerText: '死者が列をなして来る', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              useGameStore.setState({ eventBannerText: '解放軍群(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
             // カットイン(時間停止)を出したフレームは進めない=溜めの予兆(実時間)と溜め(ゲーム時間)をずらさない。
             if (!useGameStore.getState().attention) runLibertyTick(activeLib, libertyStateRef.current, newGameTime, deltaTime, Date.now());
@@ -8967,7 +8967,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (旧: 本編の周回の英雄は出会った時刻の強さで体力を決め直していた。社長指示2026-10-05で体力は固定=決め直さない。)
               const hAc = bossArtCenter(activeHero);
               useGameStore.getState().triggerAttention(hAc.x, hAc.y, bossCutinPayload('mutant-hero'));
-              useGameStore.setState({ eventBannerText: '蹄の音が止まらない', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              useGameStore.setState({ eventBannerText: '蹄の音。英雄(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
               HERO_SFX.neigh(npcSfxDistGain(hAc.x, hAc.y, player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
             }
             runHeroTick(activeHero, heroStateRef.current, newGameTime, deltaTime, Date.now(), HERO_SFX, isPracticeRun());

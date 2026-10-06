@@ -62,15 +62,15 @@ const L = {
   blue: '青い変異体を{n}体倒す',
   purple: '紫の変異体を{n}体倒す',
   red: '赤い変異体を{n}体倒す',
-  lab1: '研究所Lv1の被験体を{n}体倒す',
-  lab2: '研究所Lv2の被験体を{n}体倒す',
-  lab3: '研究所Lv3の被験体を{n}体倒す',
+  lab1: '研究施設Lv1の変異体を{n}体倒す',
+  lab2: '研究施設Lv2の変異体を{n}体倒す',
+  lab3: '研究施設Lv3の変異体を{n}体倒す',
   rescue: '生存者の救助を{n}回成功させる',
   miniboss: '賞金首を{n}体討伐する',
   wanted: '宿敵を{n}体討伐する',
-  horde: '大量発生の最中に{n}体倒す',
-  rednight: '紅き夜の最中に{n}体倒す',
-  hunter: 'ハンターの追跡を{n}秒生き延びる',
+  horde: '大量発生が起きている間に{n}体倒す',
+  rednight: '紅き夜が起きている間に{n}体倒す',
+  hunter: 'ハンターに追われ続けて{n}秒生き延びる',
 } as const;
 
 /**
@@ -158,12 +158,12 @@ export const subquestShortLabel = (def: SubquestDef): string => {
     case 'kill-colored': return '色付き変異体';
     case 'kill-tier':
       return def.tier === 'blue' ? '青変異体' : def.tier === 'purple' ? '紫変異体' : '赤変異体';
-    case 'kill-lab': return `被験体Lv${def.labLevel ?? 1}`;
+    case 'kill-lab': return `研究施設Lv${def.labLevel ?? 1}で倒す`;
     case 'rescue': return '生存者救助';
     case 'miniboss': return '賞金首討伐';
     case 'wanted': return '宿敵討伐';
-    case 'horde-kills': return '大量発生中キル';
-    case 'rednight-kills': return '紅き夜キル';
+    case 'horde-kills': return '大量発生中に倒す';
+    case 'rednight-kills': return '紅き夜に倒す';
     case 'hunter-survive': return 'ハンター生存(秒)';
   }
 };

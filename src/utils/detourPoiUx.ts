@@ -33,12 +33,12 @@ export const POI_DWELL_SEC = Math.round(DETOUR_DWELL_MS / 1000);
 export const poiIntelLine = (kind: PoiKind): string => {
   switch (kind) {
     case 'hospital':
-      return `廃病院だ。サークルで${POI_DWELL_SEC}秒待てばワクチンが手に入る——死んでも一度だけ立ち上がれる`;
+      return `廃病院だ。サークルの中で${POI_DWELL_SEC}秒待つとワクチンが手に入る。死んでも一度だけ復活できる`;
     case 'armory':
       // §6.24-W(社長裁定v0.25.2533): 報酬は装備→**銃(Tier3)**へ変更。文言も銃に合わせる。
-      return `武器庫だ。スクラップ${ARMORY_SCRAP_COST}で軍用銃と交換できる。サークルで${POI_DWELL_SEC}秒待て`;
+      return `武器庫だ。スクラップ${ARMORY_SCRAP_COST}で軍用の銃と交換できる。サークルの中で${POI_DWELL_SEC}秒待つ`;
     case 'police':
-      return '警察署だ。囲まれるぞ——全滅させれば警察の特殊装備をこの出撃の間使える';
+      return '警察署だ。近づくと敵に囲まれる。全滅させると、警察署だけのスキルをこの出撃の間だけ使える';
   }
 };
 

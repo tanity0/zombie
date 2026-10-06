@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.4888 — 説明文の総書き直し(社長指示・クリエイティブ監査2巡)【2026-10-06 15:24 JST】
+- 社長指示「ゲーム全体で、説明系の文章、変に世界観に寄せていて意味がわからなかったり、AIっぽいのでAI監査を通しつつ書き直して。全体」。物差しは research/TEXT_REWRITE_2026-10.md(§5に結果)。
+- 対象22ファイル: tutorials.ts / bossHints.ts / detourPoiUx.ts / campaign.ts(SKILLS・SKILL_LEVEL_INFO・CHARACTER_CLASSES・BESTIARY・ステージ概要・救助サブ)/ weaponUtils.ts / subWeaponBlurbs.ts / subWeaponUpgradeNotes.ts / equipment.ts / consumables.ts / upgradeUtils.ts / subquests.ts / MissionSelect・ShopMenu・BossRush・GameOverScreen・ResultReach・PracticeResult・GhostBossDossier / useGameLoop・gameStore・heroTick のバナー / storyCanon.test.ts(救助サブの完全一致を更新)。文字列のみ・ロジック/数値/配置は無変更。
+- 実装との食い違いを文側で直した主なもの: 武器商人の「装備を持ち帰る」(機能停止済み)/ 火炎瓶・砲台・追尾弾・援護狙撃は自動発動 / 攻撃ドーピングは銃のダメージのみ / マークスマン専用スキルに爆発は無い / スケーターの乗り方 / 延焼弾・血の履帯は毎秒換算 / 英雄の振り下ろしは体当たりが当たった時だけ / 武器庫の「返金」は実際は未消費 / ガチャの「確定」は実装に無い(上限まで)。
+- クリエイティブ監査(Fable): 1巡目58件(A52/S6)全A反映 → 2巡目24件(A23/S1)反映(2件据え置き・理由は設計書§5)。3巡目は回さない(2巡目の(A)は全て反映・新しい角度なし)。S は社長へ5件(設計書§5)。
+- 検証: typecheck / lint 0 errors / 関係テスト17ファイル326件 / phone-guard 14画面 OK(キャラ選択・ポーズの画を目視)。
+- 自己点検: 憲法第4条・第5条に触れない(文言のみ)。
+- 状態変化: 説明文の総書き直し → 実機確認待ち(残り: 社長判断S5件)。
+
 ## v0.25.4887 — 説明文の総書き直し: 書き方の物差し(文書のみ)【2026-10-06 14:18 JST】
 - 社長指示「ゲーム全体で、説明系の文章、変に世界観に寄せていて意味がわからなかったり、AIっぽいのでAI監査を通しつつ書き直して。全体」。
 - `research/TEXT_REWRITE_2026-10.md` を新設(物差し11項・対象/対象外・進め方・「ではない」)。2026-09-11 監査が文言を世界観語/体言止めへ寄せた事実を併記し、今回は「意味が1回で読める」を最優先にする。

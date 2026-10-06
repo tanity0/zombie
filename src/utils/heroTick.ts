@@ -300,7 +300,7 @@ export const runHeroTick = (
       g.spawnFlash('rgba(255,248,228,0.42)', 420);
       g.spawnRing(hx, hy, 18, 260, 'rgba(255,244,214,0.9)', 5, 700);
       g.spawnBurst(hx, hy, '#fff4d6', 26);
-      if (heroOnScreen(hero)) useGameStore.setState({ eventBannerText: '蹄の音が止んだ', eventBannerUntil: gt + 3000 });
+      if (heroOnScreen(hero)) useGameStore.setState({ eventBannerText: '蹄の音が止み、英雄(変異)が昇天した', eventBannerUntil: gt + 3000 });
       sfx.ascendClimax?.(Math.max(0.7, sfxGain));
     }
     // 周りの雑魚・強個体は英雄の方を向いたまま立ち止まる(社長裁定2026-10-05「3は代案がおもろい」)。昇天が終わるまで。
@@ -649,7 +649,7 @@ export const runHeroTick = (
     if (gt - s.homeIdleSince >= HERO_DEPART_IDLE_MS) {
       applyPatch(hero.id, { heroDepartAt: gt, heroShape: undefined });
       // 見えている時だけ一言(見えない所で去るなら何も言わない)。
-      if (onScreen) useGameStore.setState({ eventBannerText: '蹄の音が遠ざかる', eventBannerUntil: gt + 2400 });
+      if (onScreen) useGameStore.setState({ eventBannerText: '蹄の音が遠ざかり、英雄(変異)が去っていく', eventBannerUntil: gt + 2400 });
       return;
     }
   } else {

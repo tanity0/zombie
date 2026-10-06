@@ -515,7 +515,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
         ))}
       </div>
       {adoptedSlots.size === 0 && (
-        <p className="mt-2 text-[10px] text-white/45">全て未採用＝今回のプレイを守護霊に反映しません。</p>
+        <p className="mt-2 text-[10px] text-white/45">すべて外すと、今回のプレイは守護霊に反映されない。</p>
       )}
     </div>
   ) : null;
@@ -972,7 +972,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                     <div className="border-t border-white/10 pt-2 text-[11px] text-white/65">
                       <span className="text-white/45">昇格度</span>{' '}
                       <span className="font-semibold tabular-nums" style={{ color: '#ffd700' }}>{Math.round(promotion.total)}</span>
-                      <span className="text-white/40"> —— 阻んだのは</span>{' '}
+                      <span className="text-white/40"> 一番低かった項目</span>{' '}
                       <span className="font-semibold text-rose-200">
                         {PROMOTION_BOTTLENECK_LABEL[promotion.bottleneck]}({Math.round(promotion[promotion.bottleneck])})
                       </span>

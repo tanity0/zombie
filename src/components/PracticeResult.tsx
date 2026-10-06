@@ -65,7 +65,7 @@ export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) 
         </div>
 
         <p className="mt-3 text-[10px] leading-relaxed text-white/35">
-          練習なので、討伐記録・ステージ解放・所持金・スコアには残りません。
+          練習なので、討伐記録・ステージ解放・所持金・スコアには残らない。
         </p>
 
         <div className="mt-4 space-y-2">

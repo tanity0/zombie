@@ -12328,7 +12328,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (get().redNight?.phase === 'active') {
       get().skipRedNight();
       set(state => ({
-        eventBannerText: 'やり過ごした',
+        eventBannerText: '紅き夜をやり過ごした',
         eventBannerUntil: state.gameTime + 3500,
         hitstopUntil: Date.now() + 450,
       }));
@@ -16776,7 +16776,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 短縮した際、バナーの「— 3秒」が置き去りになっていた(表示が嘘)。秒数は定数から導出=再ドリフト防止。
         ...(bossLeashWarning
           ? {
-            eventBannerText: `危険：ボスが戦闘域を離れようとしている — ${BOSS_DISENGAGE_GRACE_MS / 1000}秒`,
+            eventBannerText: `危険：ボスから離れすぎ。あと${BOSS_DISENGAGE_GRACE_MS / 1000}秒で引き返す`,
             eventBannerUntil: gameTime + BOSS_DISENGAGE_GRACE_MS,
           }
           : {}),
@@ -18590,7 +18590,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             [ammoField]: Math.min(player.growthAmmoMax[ammoType] ?? AMMO_MAX[ammoType], player[ammoField] + amount)
           },
         lastWeaponGet: {
-          name: `${weaponTierLabel(weapon.tier)} ${weapon.name} -> 弾薬 +${amount}`,
+          name: `${weaponTierLabel(weapon.tier)} ${weapon.name} (同種を所持済み) 弾薬 +${amount}`,
           at: Date.now(),
           color: weaponTierColor(weapon.tier),
           kind: 'weapon',
@@ -19360,7 +19360,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         return {
           ...intel,
           armoryDwellMs: dwellMs,
-          eventBannerText: `武器庫: スクラップ${ARMORY_SCRAP_COST}が必要 (所持 ${Math.floor(state.player.straps)})`,
+          eventBannerText: `武器庫にはスクラップ${ARMORY_SCRAP_COST}が必要 (所持 ${Math.floor(state.player.straps)})`,
           eventBannerUntil: state.gameTime + 2200,
         };
       }
@@ -19381,7 +19381,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             armoryDwellMs: dwellMs,
             armoryTaken: true,
             armoryTakenAt: state.gameTime,
-            eventBannerText: '武器庫: 既に全ての銃が最高位 — スクラップは返金された',
+            eventBannerText: '武器庫: 銃はすべて最高位。スクラップは減らない',
             eventBannerUntil: state.gameTime + 2600,
             wallBandText: poiUnlockBandText('armory'),
             wallBandUntil: Date.now() + POI_BAND_MS,

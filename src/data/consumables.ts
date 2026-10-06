@@ -16,8 +16,8 @@ export interface ConsumableDef {
 }
 
 export const CONSUMABLES: Record<ConsumableKey, ConsumableDef> = {
-  'scrap-boost':   { key: 'scrap-boost',   name: 'スクラップブースト', effect: 'スクラップ入手 +50%' },
-  'attack-doping': { key: 'attack-doping', name: 'アタックドーピング', effect: '攻撃力 +20%' },
+  'scrap-boost':   { key: 'scrap-boost',   name: 'スクラップブースト', effect: 'スクラップ取得量 +50%' },
+  'attack-doping': { key: 'attack-doping', name: 'アタックドーピング', effect: '銃のダメージ +20%' },
   'speed-boost':   { key: 'speed-boost',   name: 'スピードブースト',   effect: '移動速度 +15%' },
   'xp-boost':      { key: 'xp-boost',      name: '経験値ブースト',     effect: '経験値 ×1.5' },
   'protection':    { key: 'protection',    name: 'プロテクション',     effect: '被ダメージ -30%' },
@@ -27,4 +27,4 @@ export const CONSUMABLE_KEYS: ConsumableKey[] = Object.keys(CONSUMABLES) as Cons
 
 /** カード面/取得トーストの文言(§23-2条件5:「60秒・使い切り」が必ず伝わること)。 */
 export const consumableCardDescription = (key: ConsumableKey): string =>
-  `${CONSUMABLES[key].effect}(60秒・使い切り)`;
+  `${CONSUMABLES[key].effect}(取得から60秒・使い切り)`;

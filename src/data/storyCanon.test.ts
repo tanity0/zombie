@@ -267,7 +267,7 @@ describe('二人組の確定会話(指示書4章)', () => {
   });
   it('任意サブ共通カード(3本とも同じタイトル・説明)がステージ1/3/4に付く', () => {
     expect(SUB_RESCUE_MISSION.title).toBe('身元不明民間人の救助');
-    expect(SUB_RESCUE_MISSION.desc).toBe('変異体出没地にて2名の民間人の目撃証言有り。念の為救助に当たれ。');
+    expect(SUB_RESCUE_MISSION.desc).toBe('変異体の出没地で、民間人2名が目撃されている。念のため救助に向かえ。');
     for (const id of ['stage-1', 'stage-3', 'stage-4']) {
       expect(st(id).subs, id).toEqual([SUB_RESCUE_MISSION]);
     }

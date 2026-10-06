@@ -171,9 +171,9 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
             ))}
           </div>
           <p className="mt-2 text-[10px] leading-relaxed text-white/35">
-            装備・スキル・サブウェポンは装備画面のものがそのまま使えます。<br />
-            守護霊はここでの選択が本編にも反映されます。<br />
-            練習の結果は記録・進行・所持金に一切残りません。
+            装備・スキル・サブウェポンは装備画面の設定のまま。<br />
+            守護霊はここで選んだものが本編にも反映される。<br />
+            練習の結果は記録・進行・所持金に残らない。
           </p>
         </section>
 

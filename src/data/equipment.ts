@@ -192,13 +192,13 @@ export const equipStatLabel = (st: EquipStat): string => {
   switch (st.key) {
     case 'maxHealth': return `最大体力 +${st.value}`;
     case 'moveSpeed': return `移動速度 ${pct(st.value)}`;
-    case 'killGrace': return `KILL猶予 ${pct(st.value)}`;
+    case 'killGrace': return `コンボ猶予 ${pct(st.value)}`;
     case 'damage': return `ダメージ ${pct(st.value)}`;
-    case 'fireRate': return `連射 ${pct(st.value)}`;
-    case 'reload': return `リロード -${Math.round(st.value * 100)}%`;
-    case 'critChance': return `クリ率 ${pct(st.value)}`;
-    case 'ammoDrop': return `弾薬ドロップ ${pct(st.value)}`;
-    case 'scrap': return `スクラップ ${pct(st.value)}`;
+    case 'fireRate': return `連射速度 ${pct(st.value)}`;
+    case 'reload': return `リロード時間 -${Math.round(st.value * 100)}%`;
+    case 'critChance': return `クリティカル率 ${pct(st.value)}`;
+    case 'ammoDrop': return `弾薬ドロップ率 ${pct(st.value)}`;
+    case 'scrap': return `スクラップ取得量 ${pct(st.value)}`;
   }
 };
 

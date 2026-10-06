@@ -677,7 +677,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {/* SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止): スキルの持ち込みは撤去。ここで選ぶのは
             サブウェポンと同行者(守護霊)のみ。ラン中のスキルは全てレベルアップの抽選で組む。 */}
         <HubButton icon={<PixelIcon name="check" size={18} />} label="装備" desc="サブウェポン1 / アバター" onClick={() => setScreen({ name: 'loadout' })} delay={50} />
-        <HubButton icon={<PixelIcon name="wrench" size={18} />} label="開発施設" desc="スキル/サブウェポンの解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={100} />
+        <HubButton icon={<PixelIcon name="wrench" size={18} />} label="開発施設" desc="銃・サブウェポン・スキル解放" onClick={() => setScreen({ name: 'weaponDev' })} delay={100} />
         {/* research/GROWTH.md v4(永続育成): ゴールドで4系統を段階購入。有効段数は次の出撃から反映。 */}
         <HubButton icon={<PixelIcon name="trending-up" size={18} />} label="強化" desc="体力・攻撃力・弾数・ゴールド" onClick={() => setScreen({ name: 'growth' })} delay={125} />
         <HubButton icon={<PixelIcon name="book" size={18} />} label="資料室" desc="記録・変異体資料" onClick={goArchive} delay={150} badge={unreadArchiveCount > 0 ? 'NEW' : undefined} />
@@ -712,7 +712,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               新しい資料が資料室に追加されました
             </h3>
             <p className="mb-4 text-[12px] leading-relaxed text-white/75">
-              資料室に新しい記録が{newRecordsNotice.length}件届いています。
+              追加された記録は{newRecordsNotice.length}件
             </p>
             <button
               type="button"
@@ -734,7 +734,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <div className="glass-panel command-panel w-full max-w-sm rounded-none px-4 py-5 text-center">
             <div className="mb-1 text-[10px] uppercase tracking-widest text-purple-200/70">お知らせ</div>
             <p className="mb-4 text-[13px] leading-relaxed text-white/85">
-              グレンとミラとの関係を深めると、新たな資料が見つかるかもしれない。
+              サブミッション「身元不明民間人の救助」をすべて達成すると、新しい資料が見つかる。
             </p>
             <button
               type="button"
@@ -1407,11 +1407,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               SLOT_CANDIDATES[cat][tier].filter(k => k === SLOT_CANDIDATES[cat][tier][0] || unlockedNow.has(k));
             const categories = SLOT_CATEGORIES.filter(cat => SLOT_TIERS.some(t => visibleCandidates(cat, t).length > 1));
             if (categories.length === 0) return COMMAND_UI_ENABLED && loadoutSection === 'guns'
-              ? <p className="weapon-slot-guide">まだ切り替えられる銃がありません。開発施設で銃を開発すると、ここで選べます。</p> : null;
+              ? <p className="weapon-slot-guide">切り替えられる銃がまだない。開発施設で銃を開発すると、ここで選べる。</p> : null;
             const activeCategory = categories.includes(weaponCategory) ? weaponCategory : categories[0];
             return (
               <div hidden={COMMAND_UI_ENABLED && loadoutSection !== 'guns'}>
-                <p className="weapon-slot-guide">各Tierで1挺を装備。出撃時はTier 1から。</p>
+                <p className="weapon-slot-guide">Tierごとに銃を1つ選ぶ。出撃はTier 1から。</p>
                 {COMMAND_UI_ENABLED && <nav className="command-weapon-tabs" aria-label="武器種">
                   {categories.map(cat => <button type="button" key={cat} aria-pressed={cat === activeCategory}
                     onClick={() => { playSfx('ui-move'); setWeaponCategory(cat); }}>{GUN_CATEGORY_LABEL[cat]}</button>)}
@@ -1472,7 +1472,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             {/* キャラ固有スキル(職スキル枠)はトップの装備メニューには載せない(自動付与・選択不可)。
                 退役サブ(ダンスフロア)も載せない(社長裁定2026-08-20)。未購入も載せない(上のvisibleSubs)。 */}
             {visibleSubs.length === 0 ? (
-              <p className="px-1 text-[11px] text-white/40">まだありません（開発施設で解放）</p>
+              <p className="px-1 text-[11px] text-white/40">まだない（開発施設で解放）</p>
             ) : (
               <div className="menu-stagger weapon-candidates grid grid-cols-2 gap-2">
                 {visibleSubs.map(k => {
@@ -1542,7 +1542,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               <span className="text-[10px] text-white/40 tabular-nums">{ownedSkills.length}/{OBTAINABLE_SKILL_KEYS.length}</span>
             </div>
             {ownedSkills.length === 0 ? (
-              <p className="px-1 text-[11px] text-white/40">まだありません（強化訓練で解禁）</p>
+              <p className="px-1 text-[11px] text-white/40">まだない（開発施設のスキル強化訓練で解放）</p>
             ) : (
               /* 1列(社長指示2026-09-12「改行ずれないで」): 2列だと名前の幅が7字しか無く「クリティカルダメージ上\n昇」と折れていた。
                  銃・サブと同じ weapon-candidates の枡(絵の列+本文)に揃える。 */
@@ -1883,7 +1883,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </p>
           )}
           <div className="flex items-center justify-between text-[10px] text-white/40">
-            <span>{ghostSyncState === 'error' ? '通信できませんでした（保存済みの値を表示）' : 'ボスごとの内訳は討伐記録に表示'}</span>
+            <span>{ghostSyncState === 'error' ? '通信できなかった（保存済みの値を表示）' : 'ボスごとの内訳は討伐記録に表示'}</span>
             <span>最終更新 {ghostSyncTimeLabel}</span>
           </div>
         </Section>
@@ -2110,8 +2110,8 @@ const PlayerNameSettings: React.FC = () => {
       </div>
       <p className="text-[11px] leading-relaxed text-white/45">
         守護霊(スキル)の頭上に表示される名前。最大{PLAYER_NAME_MAX_LEN}文字。
-        絵文字は使えません(記号は <span className="whitespace-nowrap">_ - . ・ ' ! ?</span> と空白のみ)。
-        空のまま確定すると「{PLAYER_NAME_WHEN_BLANK}」になります。
+        絵文字は使えない(記号は <span className="whitespace-nowrap">_ - . ・ ' ! ?</span> と空白のみ)。
+        空のまま確定すると「{PLAYER_NAME_WHEN_BLANK}」になる。
       </p>
     </Section>
   );
@@ -2159,8 +2159,8 @@ const GhostCommentSettings: React.FC = () => {
         保存
       </button>
       <p className="text-[11px] leading-relaxed text-white/45">
-        各{GHOST_COMMENT_MAX_LEN}文字まで。登場・帰還時の通信に表示され、他のプレイヤーにも公開されます。
-        空欄で保存すると既定文に戻ります。
+        各{GHOST_COMMENT_MAX_LEN}文字まで。登場・退場時に画面左上へ出て、他のプレイヤーにも公開される。
+        空欄で保存すると既定文に戻る。
       </p>
     </Section>
   );
@@ -2480,9 +2480,9 @@ const SkillGacha: React.FC = () => {
                       <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wider ${RARITY_TEXT[rr.rarity]}`}>{RARITY_LABEL[rr.rarity]}</span>
                     </div>
                     <p className={`mt-0.5 text-[10px] font-semibold ${rr.promoted ? 'text-emerald-300' : 'text-amber-200'}`}>
-                      {rr.firstAcquire ? `新規解禁！ Lv${rr.newLevel}`
+                      {rr.firstAcquire ? `新規解放！ Lv${rr.newLevel}`
                         : rr.promoted ? `Lv${rr.prevLevel} → Lv${rr.newLevel} 昇格！`
-                        : `現Lv${rr.prevLevel}以下/上限 → ${rr.refund}G返金`}
+                        : `Lvは上がらず ${rr.refund}G返金`}
                     </p>
                   </div>
                 );
@@ -2524,9 +2524,9 @@ const SkillGacha: React.FC = () => {
             </div>
             <p className="mt-2 text-[12px] leading-snug text-white/60">{skillDescForLevel(r.key, r.promoted ? r.newLevel : r.prevLevel)}</p>
             <p className={`mt-2 text-[13px] font-semibold ${r.promoted ? 'text-emerald-300' : 'text-amber-200'}`}>
-              {r.firstAcquire ? `新規解禁！ ${lvText(r.key, r.newLevel)}`
+              {r.firstAcquire ? `新規解放！ ${lvText(r.key, r.newLevel)}`
                 : r.promoted ? `${lvText(r.key, r.prevLevel)} → ${lvText(r.key, r.newLevel)} 昇格！`
-                : `抽選Lv${r.rolledLevel}（現${lvText(r.key, r.prevLevel)}以下/上限）→ ${r.refund}G返金`}
+                : `Lvは上がらず ${r.refund}G返金（抽選Lv${r.rolledLevel}）`}
             </p>
             <p className="mt-1 text-[11px] leading-snug text-white/45">
               被り {r.dupeCount + 1}回{r.newLevel < maxLv ? ` ／ 次の昇格確率 ${nextPromote}%` : ' ／ 最大Lv'}
@@ -2646,7 +2646,7 @@ const SkillGacha: React.FC = () => {
           <span className={`pl-[0.4em] text-[30px] font-extrabold tracking-[0.4em] drop-shadow-[0_2px_10px_rgba(0,0,0,0.95)] ${cantPull ? 'text-white/30' : 'text-white gacha-shoot-text'}`}>
             撃つ
           </span>
-          {noGold && <p className="text-[11px] text-rose-300">ゴールドが足りません。</p>}
+          {noGold && <p className="text-[11px] text-rose-300">ゴールドが足りない。</p>}
         </div>
       </div>,
       portalRoot
@@ -2705,10 +2705,10 @@ const SkillGacha: React.FC = () => {
       </div>
       <div className="mt-2 flex items-center justify-between rounded-none bg-black/20 px-2 py-1 text-[10px]">
         <span className="text-fuchsia-100/80">{RARITY_LABEL.super}の確率 <span className="font-semibold text-fuchsia-200">{superPct}%</span></span>
-        <span className="text-white/55">{pityLeft > 0 ? `確定まであと${pityLeft}回` : `次は${RARITY_LABEL.super}確定`}</span>
+        <span className="text-white/55">{pityLeft > 0 ? `確率上昇はあと${pityLeft}回` : '確率は最大'}</span>
       </div>
       <p className="mt-2 text-[10px] leading-snug text-white/50">
-        外すほど{RARITY_LABEL.super}に近づき、同じ物が出るほど上のLvに寄る。被ってLvが上がらなければ返金。習得 {ownedCount}/{OBTAINABLE_SKILL_KEYS.length}
+        外すほど{RARITY_LABEL.super}が出やすくなり、被るほど高いLvに寄る。被ってLvが上がらなければ返金。習得 {ownedCount}/{OBTAINABLE_SKILL_KEYS.length}
       </p>
     </div>
   );
@@ -2759,7 +2759,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <SkillGacha />
       </div>
       <div hidden={COMMAND_UI_ENABLED && department !== 'subs'}>
-      {COMMAND_UI_ENABLED && <p className="development-guide px-3">Lv1で装備可能に。Lv2・3で商人の陳列上限を解放します。</p>}
+      {COMMAND_UI_ENABLED && <p className="development-guide px-3">Lv1で装備できる。Lv2・3にすると、商人でそのLvまで強化できる。</p>}
       {/* 解放(購入)リスト: 2列表示(社長指示v0.25.2147)。テスト用トグルだけ全幅。 */}
       <div className="development-subs menu-stagger px-3 pb-3 grid grid-cols-2 gap-2">
         <button type="button" onClick={() => { playSfx('ui-move'); setStartWithTestStraps(!startWithTestStraps); }}
@@ -2796,10 +2796,10 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       </div>
       </div>
       <div hidden={COMMAND_UI_ENABLED && department !== 'guns'} className="development-guns">
-      {COMMAND_UI_ENABLED && <div className="px-3 development-guide"><p>開発後、「装備」で選択できます。</p>
+      {COMMAND_UI_ENABLED && <div className="px-3 development-guide"><p>開発した銃は「装備」で選べる。</p>
         <nav className="command-weapon-tabs" aria-label="開発する武器種">{shelfCategories.map(cat => <button type="button" key={cat} aria-pressed={cat === activeShelfCategory}
           onClick={() => { playSfx('ui-move'); setShelfCategory(cat); }}>{GUN_CATEGORY_LABEL[cat]}</button>)}</nav>
-        {orderedGunShelfKeys.length === 0 && <p>現在、開発できる銃はありません。新しい設計図を入手するとここに並びます。</p>}
+        {orderedGunShelfKeys.length === 0 && <p>今は開発できる銃がない。新しい設計図を入手すると、ここに並ぶ。</p>}
       </div>}
       {/* 銃スロット(ユニーク武器)の棚(UNIQUE_WEAPONS.md §11-6): (設計図 ∪ 店売り) − 購入済み。
           購入すると markWeaponUnlocked で「購入済み」台帳へ移り、棚から消える(装備設定で選べるようになる)。 */}
@@ -2854,7 +2854,7 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           「強化補正 ×0.xx」と同じ値=有効メーターに応じて growthScoreMult をその場で再計算。 */}
       <div className="px-3 pb-1 flex items-center justify-between text-[11px] tabular-nums">
         {(() => { const m = growthScoreMult(playerUpgrades); return (
-          <span className={m < 1 ? 'text-rose-300/90' : 'text-white/40'}>スコア補正 ×{m.toFixed(2)}{m < 1 ? '（強化ぶんスコア・換金が減ります）' : ''}</span>
+          <span className={m < 1 ? 'text-rose-300/90' : 'text-white/40'}>スコア補正 ×{m.toFixed(2)}{m < 1 ? '（強化したぶん、スコアと獲得ゴールドが減る）' : ''}</span>
         ); })()}
         <span className="text-amber-200/80">所持 {goldBalance}G</span>
       </div>

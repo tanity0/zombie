@@ -109,8 +109,8 @@ export const STAT_CARD_ATK = 0.06;   // 攻撃力カード: 与ダメージ +6%(
 // 名前は言葉・数字はバッジ(強化画面 data/playerUpgrades.ts の label/perLevelLabel と同じ文法)。説明も同じ声で書く(句点なし)。
 export const statBadge = (kind: 'hp' | 'atk'): string => (kind === 'hp' ? `+${STAT_CARD_HP}` : `+${Math.round(STAT_CARD_ATK * 100)}%`);
 export const statOption = (kind: 'hp' | 'atk'): UpgradeOption => (kind === 'hp'
-  ? { id: 'stat-hp', name: '体力', description: '一撃を余分にもらっても立っていられる。いまの体力も同じだけ戻る', type: 'stat', level: 0, statKind: 'hp' }
-  : { id: 'stat-atk', name: '攻撃力', description: '同じ弾数で、相手が早く倒れる', type: 'stat', level: 0, statKind: 'atk' });
+  ? { id: 'stat-hp', name: '体力', description: '最大体力が増え、増えた分だけ今の体力も回復する', type: 'stat', level: 0, statKind: 'hp' }
+  : { id: 'stat-atk', name: '攻撃力', description: '与えるダメージが増える', type: 'stat', level: 0, statKind: 'atk' });
 
 const cardToUpgradeOption = (card: DraftedCard): UpgradeOption => {
   if (card.cardKind === 'consumable') return consumableCardToUpgradeOption(card.key);

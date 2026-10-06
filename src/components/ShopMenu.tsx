@@ -169,14 +169,14 @@ const ShopMenu: React.FC = () => {
     {
       key: 'medkit',
       name: '救急セット',
-      description: player.health >= player.maxHealth ? '満タン' : '即時にHP30%回復',
+      description: player.health >= player.maxHealth ? '満タン' : '最大体力の30%回復',
       cost: SHOP_MEDKIT_COST,
       disabled: player.health >= player.maxHealth
     },
     {
       key: 'vaccine',
       name: 'ワクチン',
-      description: vaccinePurchased ? '購入済み' : '一度だけ死亡時に復活',
+      description: vaccinePurchased ? '購入済み' : '死亡時に1回だけ復活',
       cost: SHOP_VACCINE_COST,
       disabled: vaccinePurchased
     }
@@ -356,7 +356,7 @@ const ShopMenu: React.FC = () => {
             className="w-full rounded-none bg-amber-400/15 py-2.5 text-sm font-bold text-amber-100"
           >
             帰還する
-            <span className="block text-[10px] font-normal text-amber-100/70">撤収（スコア計上・進行/クリアボーナスなし）</span>
+            <span className="block text-[10px] font-normal text-amber-100/70">撤収（スコアは残る。クリアにはならない）</span>
           </button>
           <button
             onClick={closeShop}

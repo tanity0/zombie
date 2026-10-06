@@ -127,7 +127,7 @@ const LockedDossier: React.FC<{ cleared: number; total: number }> = ({ cleared, 
     <div className="relative mt-5 text-[9px] font-semibold tracking-[0.32em] text-purple-200/40">NO RECORD</div>
     <h3 className="relative mt-2 text-[16px] font-semibold text-white/75">未討伐のボス</h3>
     <p className="relative mt-2 max-w-[240px] text-[11px] leading-relaxed text-white/40">
-      討伐した者と、その戦いの記録がここに残る。
+      討伐すると、その時のビルドと記録がここに残る。
     </p>
     <div className="relative mt-6 h-1 w-36 overflow-hidden bg-white/5">
       <div className="h-full bg-purple-300/50" style={{ width: `${Math.round((cleared / total) * 100)}%` }} />
