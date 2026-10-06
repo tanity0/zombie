@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4886 — ボスと交戦中はハンターを出さない(社長指示)【2026-10-06 12:14 JST】
+- 社長指示「ボスと交戦中はハンター出ないようにして」。
+- 変更: ハンター・ディレクター(useGameLoop)の「出さない場面」に**ボスと交戦中(`bossFightNow`=ENGAGEABLE_BOSS_TYPES:城ボス/裏ボス/ゲート2ボス/隠しボス/EXボス/賞金首/幻影)**を足した。追われ中(`bossChasing`)と同じ扱い=①新しく出さない(凶悪ハンターの待ちも解除) ②索敵中なら立ち去る ③追跡中なら「ハンターが退いていく」で撤退。
+- 判定を純関数 `utils/hunterGate.ts`(`hunterCinematic`/`hunterRetreatCinematic`)へ切り出し、テスト `hunterGate.test.ts` で固定(交戦中=出さない・退く/アテンションは出現だけ止める/従来の場面はそのまま)。
+- 対象外: 錬金術のレア召喚(味方のハンター)・M0訓練のハンター(ボス戦が無い)。
+- 検証: typecheck / lint 0 errors / hunterGate.test 4件。描画は変えていない。
+- 自己点検: 憲法第4条・第5条に触れない(ボス戦中の割り込みを減らす方向)。
+
 ## v0.25.4885 — 「次へ」等のボタンが押した後も暗いまま(社長報告)【2026-10-06 12:12 JST】
 - 社長報告「次へ みたいなボタンを押すと、その後ボタンの色が変わったまま 暗い」。
 - 原因: `commandTheme.css` の汎用 `.command-button:hover`(暗い地色 `--menu-hover`)が `@media (hover: hover)` で囲まれていなかった。タッチ端末は押した後も `:hover` が残るため、琥珀ボタン(`command-button-primary`)の金のグラデを `background` ごと上書きし、暗い紫地+暗い文字のまま残っていた(琥珀ボタン自身の hover は囲み済みだったが、詳細度の高い汎用 hover が勝っていた)。

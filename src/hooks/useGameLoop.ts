@@ -364,6 +364,7 @@ import { shouldFireBoredomArena, BOREDOM_ARENA_START_MS, BOREDOM_ARENA_CD_MS } f
 import {
   isHunterSafeBaseNearby, shouldTriggerViciousHunter, pickViciousSpawnPoint, VICIOUS_REARM_MS,
 } from '../utils/viciousHunter';
+import { hunterCinematic, hunterRetreatCinematic } from '../utils/hunterGate';
 import {
   eventGateOk, redNightPhaseGateOk, screamerPhaseGateOk, hunterBoredomReady, eventSizeMult,
 } from '../utils/eventProducer';
@@ -4785,9 +4786,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // 「ボス/リーパー/演出中」= 出現禁止＆追跡中なら撤退。activeEvent は出現禁止のみ(追跡中は元々他イベント出ない)。
           const giantOrReaper = hs.enemies.some(e => e.type === 'giantbat' || isReaperFamily(e.type));
-          const cinematic = hs.bossChasing || !!hs.attention || hs.redNight?.phase === 'active' || giantOrReaper;
+          // ボスと交戦中(bossFightNow)も追われ中と同じく出さない・居るなら退く(社長指示2026-10-06)。
+          const hunterScene = { bossChasing: hs.bossChasing, bossFightNow: hs.bossFightNow, attention: !!hs.attention, redNightActive: hs.redNight?.phase === 'active', giantOrReaper };
+          const cinematic = hunterCinematic(hunterScene);
           // 撤退トリガ用は attention を除外(ハンター発見時に自分で出すアテンションで即撤退しないように)。
-          const retreatCinematic = hs.bossChasing || hs.redNight?.phase === 'active' || giantOrReaper;
+          const retreatCinematic = hunterRetreatCinematic(hunterScene);
           const spawnBlocked = cinematic || !!hs.activeEvent || nearAnyBase;
 
           // 画面外スポーン地点(プレイヤー近場の画面端〜外)。
