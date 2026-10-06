@@ -51,7 +51,7 @@ export const ZOMBIE_BITE_FADE_MS = 110;
 /** 正規化の基準幅(素材の幅)。 */
 export const ZOMBIE_BITE_REF_W = 246;
 /** 見かけの横幅(px)。判定(接触35px)より大きく出す=②派手さの絵。 */
-export const ZOMBIE_BITE_W_PX = 190;
+export const ZOMBIE_BITE_W_PX = 142; // 190→142(社長「CとAの折衷案」2026-10-06: 判定をこの絵の芯に揃えるため4分の3へ・utils/biteFxHit)
 
 export const zombieBiteFrame = (sinceImpactMs: number): number | null =>
   frameByHold(sinceImpactMs, ZOMBIE_BITE_HOLD_MS, ZOMBIE_BITE_IMPACT_FRAME);

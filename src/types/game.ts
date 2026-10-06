@@ -599,6 +599,10 @@ export interface Enemy {
    */
   biteDirX?: number;
   biteDirY?: number;
+  /** 雑魚の技の当たりの中心(=エフェクトの出る点・予告の線の終点)を噛みごとに焼いたもの。`biteTgtAt===biteAt` の間だけ有効(utils/biteFxHit)。 */
+  biteTgtX?: number;
+  biteTgtY?: number;
+  biteTgtAt?: number;
   /**
    * ★§16の技(bat-grab/skel-bite/zombie-double)専用: 踏み込みの**距離**も向きと同じく
    * 発火の瞬間に焼く(PACING_PUZZLE.md §16-A「★踏み込みの終点」・社長指摘2026-09-17

@@ -247,6 +247,7 @@ import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase } 
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine } from '../utils/biteTelegraph';
 import { enemyContactBox } from '../utils/collisionUtils'; // 確認用 ?hitbox=1
+import { biteFxHitRadius } from '../utils/biteFxHit'; // 確認用 ?hitbox=1
 // ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
 import {
   batLanternPose, batSlamFrameWithWindup, batBiteTiming, usesBatLantern,
@@ -11603,6 +11604,11 @@ export class PixiScene {
       if (biting) {
         const bl = biteTelegraphLine(e, gameTime);
         if (bl) g.circle(bl.tx, bl.ty, 3).fill({ color: 0xffffff, alpha: 0.95 });
+        // エフェクトの芯で当てる技の判定の円(utils/biteFxHit)。
+        const fr = biteFxHitRadius(e.chaffMove);
+        if (fr !== null && e.biteTgtAt === e.biteAt && e.biteTgtX !== undefined && e.biteTgtY !== undefined) {
+          g.circle(e.biteTgtX, e.biteTgtY, fr).stroke({ width: 1.5, color: 0xff3030, alpha: 0.95 });
+        }
       }
     }
     g.rect(player.x, player.y, player.width, player.height).stroke({ width: 1.5, color: 0x22ff66, alpha: 0.95 });

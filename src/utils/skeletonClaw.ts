@@ -53,7 +53,7 @@ export const SKEL_CLAW_REF_W = 282;
  * ★社長指示2026-09-18「もう少し両方大きく出してもいいかも」で 104→**150**
  * (CLAUDE.md「迷ったら派手側に倒す/足りないより出し過ぎの方が直しやすい」)。
  */
-export const SKEL_CLAW_W_PX = 150;
+export const SKEL_CLAW_W_PX = 112; // 150→112(社長「CとAの折衷案」2026-10-06: 判定をこの絵の芯に揃えるため4分の3へ・utils/biteFxHit)
 
 export const skelClawFrame = (sinceImpactMs: number): number | null =>
   frameByHold(sinceImpactMs, SKEL_CLAW_HOLD_MS, SKEL_CLAW_IMPACT_FRAME);
@@ -92,7 +92,7 @@ export const SKEL_CLAW_FX_REF_W = 273;
  * ★社長報告2026-09-18「爪は出てる。エフェクトが出てるかはわからない」を受けて 126→**168**。
  * 素材が**暗い赤の飛沫**で、夜の森の上では通常合成だと沈む。下の加算合成と合わせて見えるようにする。
  */
-export const SKEL_CLAW_FX_W_PX = 210;   // 126→168(見えない対策)→**210**(社長「もう少し両方大きく」)
+export const SKEL_CLAW_FX_W_PX = 158;   // 126→168(見えない対策)→210(社長「もう少し両方大きく」)→**158**(爪と揃えて4分の3・2026-10-06)
 
 /**
  * ★VFXは**加算合成**で出す(社長報告2026-09-18「エフェクトが出てるかはわからない」の是正)。

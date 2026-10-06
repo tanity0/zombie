@@ -109,7 +109,7 @@ export const BAT_SLAM_HOLD_MS: readonly number[] = [14, 14, 14, 14, 14, 14, 80, 
 /** 正規化の基準幅(炸裂コマの幅)。 */
 export const BAT_SLAM_REF_W = 337;
 /** 炸裂コマの見かけの横幅(px)。判定(接触30px)より大きく出す=②派手さの絵。 */
-export const BAT_SLAM_W_PX = 118;
+export const BAT_SLAM_W_PX = 88; // 118→88(社長「CとAの折衷案」2026-10-06: 判定をこの絵の芯に揃えるため4分の3へ・utils/biteFxHit)
 /** 各コマの接地点の横位置(コマ幅に対する割合・実測)。縦は全コマ下端で揃えてある。 */
 export const BAT_SLAM_ANCHOR_X: readonly number[] =
   [0.403, 0.482, 0.589, 0.535, 0.503, 0.496, 0.491, 0.491, 0.515];

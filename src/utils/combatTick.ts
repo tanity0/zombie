@@ -24,6 +24,8 @@
 // no-op(何もしない関数)を渡す=ヘッドレスでは判定条件はそのまま評価されるが、見た目/音/
 // gameOver遷移だけが起きない。
 
+import { biteFxHitRadius, biteFxHitsPlayer } from './biteFxHit';
+import { biteTelegraphLine } from './biteTelegraph';
 import type { Enemy, Player } from '../types/game';
 import { scriptResumeFlag, shouldCutBossMove } from './counterCut';
 import { counterClashPoint } from './counterClash';
@@ -1467,6 +1469,7 @@ export const applyContactDamage = (
   const bcx = collPlayer.x + collPlayer.width / 2;
   const bcy = collPlayer.y + collPlayer.height / 2;
   const biteStarts: { id: string; dirX: number; dirY: number }[] = [];
+  const biteTgtLatches: { id: string; x: number; y: number; at: number }[] = []; // エフェクトの出る点(utils/biteFxHit)
   // ★検収監査A-1: `chaffMove`(と `aiPhase`)は下の setState(biteClears)より前にここで捕まえて
   // 持ち回る。setState後に getState() で読み直すと、biteClears が既に chaffMove を消した後の
   // 値を読んでしまい `counterable:true` が一度も読まれない(=赤い技が全部返せなくなる)。
@@ -1511,6 +1514,13 @@ export const applyContactDamage = (
         biteClears.push(e.id);
         continue;
       }
+      // ★雑魚の技(ゾンビ2連・スケルトンの爪・コウモリの叩きつけ)は、エフェクトの出る点(予告の線の終点)を
+      //   噛みごとに焼く(社長指示2026-10-06「エフェクトの方に合わせてほしい」・utils/biteFxHit)。
+      const fxR = biteFxHitRadius(e.chaffMove);
+      if (fxR !== null && e.biteTgtAt !== e.biteAt) {
+        const bl0 = biteTelegraphLine(e, gameTime);
+        if (bl0) biteTgtLatches.push({ id: e.id, x: bl0.tx, y: bl0.ty, at: e.biteAt ?? 0 });
+      }
       if (!isBiteResolveDue(e, gameTime)) continue;              // まだ台本の途中
       // ★判定=**噛みの瞬間に敵の体とプレイヤーが重なっているか**(社長裁定2026-08-25)。
       // 踏み込み中は壁が開いているので、敵は赤く光ったままプレイヤーへ覆いかぶさる。
@@ -1522,7 +1532,10 @@ export const applyContactDamage = (
       const lichBlinkHit = e.chaffMove === 'lich-blink'
         && e.lichBlinkAtX !== undefined && e.lichBlinkAtY !== undefined
         && isInBiteCircle(e.lichBlinkAtX, e.lichBlinkAtY, bcx, bcy, LICH_BLINK_RADIUS_PX);
-      if (e.chaffMove === 'lich-blink' ? lichBlinkHit : biteBodyOverlapsPlayer(eb, collPlayer)) {
+      // ★エフェクトの芯で当てる技(焼いた点がある時)。無ければ従来の体の重なり。
+      const fxHit = fxR !== null && e.biteTgtAt === e.biteAt && e.biteTgtX !== undefined && e.biteTgtY !== undefined
+        ? biteFxHitsPlayer(e.biteTgtX, e.biteTgtY, fxR, collPlayer) : null;
+      if (e.chaffMove === 'lich-blink' ? lichBlinkHit : (fxHit ?? biteBodyOverlapsPlayer(eb, collPlayer))) {
         // 接触ダメージと同じ倍率の掛け方(紅き夜×2 / 叫喚の強化窓)。
         const rn = redNightActive ? 2 : 1;
         const sc = (screamerBuffUntil > gameTime && e.type !== 'screamer') ? SCREAMER_BUFF_MULT : 1;
@@ -1545,6 +1558,10 @@ export const applyContactDamage = (
         biteStarts.push({ id: e.id, dirX: (bcx - ecx) / dl, dirY: (bcy - ecy) / dl });
       }
     }
+  }
+  if (biteTgtLatches.length > 0) {
+    const lm = new Map(biteTgtLatches.map(l => [l.id, l] as const));
+    useGameStore.setState(st => ({ enemies: st.enemies.map(e => { const l = lm.get(e.id); return l ? { ...e, biteTgtX: l.x, biteTgtY: l.y, biteTgtAt: l.at } : e; }) }));
   }
   if (biteStarts.length > 0 || biteClears.length > 0) {
     useGameStore.setState(st => ({
