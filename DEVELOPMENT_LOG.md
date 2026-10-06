@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.4889 — 同種の銃を拾った時の表示を「(所持済み)」に(社長指示)【2026-10-06 15:37 JST】
+- 社長指示「同種武器拾った時に弾に変換する際の説明長いので、(所持済み)でいいとおもう」。
+- `gameStore.ts` の lastWeaponGet.name「… (同種を所持済み) 弾薬 +N」→「… (所持済み) 弾薬 +N」。弾薬の増分は残した。
+- 検証: typecheck / lint 0 errors。
+
 ## v0.25.4888 — 説明文の総書き直し(社長指示・クリエイティブ監査2巡)【2026-10-06 15:24 JST】
 - 社長指示「ゲーム全体で、説明系の文章、変に世界観に寄せていて意味がわからなかったり、AIっぽいのでAI監査を通しつつ書き直して。全体」。物差しは research/TEXT_REWRITE_2026-10.md(§5に結果)。
 - 対象22ファイル: tutorials.ts / bossHints.ts / detourPoiUx.ts / campaign.ts(SKILLS・SKILL_LEVEL_INFO・CHARACTER_CLASSES・BESTIARY・ステージ概要・救助サブ)/ weaponUtils.ts / subWeaponBlurbs.ts / subWeaponUpgradeNotes.ts / equipment.ts / consumables.ts / upgradeUtils.ts / subquests.ts / MissionSelect・ShopMenu・BossRush・GameOverScreen・ResultReach・PracticeResult・GhostBossDossier / useGameLoop・gameStore・heroTick のバナー / storyCanon.test.ts(救助サブの完全一致を更新)。文字列のみ・ロジック/数値/配置は無変更。

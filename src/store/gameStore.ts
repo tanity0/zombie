@@ -18590,7 +18590,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             [ammoField]: Math.min(player.growthAmmoMax[ammoType] ?? AMMO_MAX[ammoType], player[ammoField] + amount)
           },
         lastWeaponGet: {
-          name: `${weaponTierLabel(weapon.tier)} ${weapon.name} (同種を所持済み) 弾薬 +${amount}`,
+          name: `${weaponTierLabel(weapon.tier)} ${weapon.name} (所持済み) 弾薬 +${amount}`,
           at: Date.now(),
           color: weaponTierColor(weapon.tier),
           kind: 'weapon',
