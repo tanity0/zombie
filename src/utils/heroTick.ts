@@ -6,6 +6,7 @@
 //  - 当たりは全部 pumpkinBlasts へ積む(プレイヤー・守護霊・カウンター・吹き飛ばし・敵への当たりは解決側=combatTick)。
 //  - 赤い予告=heroShape。溜め開始で置き場所を決め、heroHitAt(当たる瞬間)まで動かさない。
 //  - 画面外では技を始めない(始まった技は最後まで出して当てる=赤いのに当たらない、を作らない)。
+import { bossFaceDeadzonePx } from './bossFacing';
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, knockbackSpeedFor, ENEMY_REMOVE_CAUSE, type PumpkinBlast } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
@@ -209,7 +210,8 @@ const walkToward = (hero: Enemy, tx: number, ty: number, speed: number, dt: numb
   const d = Math.hypot(dx, dy);
   if (d <= Math.max(2, stopDist)) { patch.vx = 0; patch.vy = 0; return true; }
   const wantFace: 1 | -1 = dx >= 0 ? 1 : -1;
-  if (Math.abs(dx) > 8 && wantFace !== (hero.heroFaceX ?? -1)) {
+  // ★振り向くのは相手が体の幅の35%より外へ回り込んだ時だけ(社長報告2026-10-06「右向いたり左向いたりを高速で繰り返す」・旧8px)。
+  if (Math.abs(dx) > bossFaceDeadzonePx(hero.width) && wantFace !== (hero.heroFaceX ?? -1)) {
     // 左右が入れ替わる前に止まる(体の大きい騎馬が1フレームで裏返らない=慣性)。
     Object.assign(patch, { bossState: 'hero-turn', bossStateUntil: gt + HERO_FLIP_PAUSE_MS, heroStateAt: gt, heroFaceX: wantFace, vx: 0, vy: 0 });
     return false;
@@ -688,7 +690,7 @@ const easeRun = (u: number): number => 1 - Math.pow(1 - u, 2.2);
 
 const faceTowards = (hero: Enemy, tx: number): Partial<Enemy> => {
   const hx = hero.x + hero.width / 2;
-  if (Math.abs(tx - hx) < 8) return {};
+  if (Math.abs(tx - hx) < bossFaceDeadzonePx(hero.width)) return {}; // 体の真上・真下なら今の向きのまま(旧8px)
   return { heroFaceX: tx >= hx ? 1 : -1 };
 };
 /** 止まっている間に向きだけ合わせる(反転が要る時は合わせない=一拍の間は技の前に取る)。 */

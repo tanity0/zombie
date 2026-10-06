@@ -111,7 +111,7 @@ import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, w
 import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
-import { bossFaceWant } from '../utils/bossFacing';
+import { bossFaceWant, bossFaceDeadzonePx, BOSS_TURN_MIN_MS } from '../utils/bossFacing';
 import { bossStoppedForArt } from '../utils/bossStopArt';
 import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, SHEET_FRAME_LIFT, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame, bossIntroFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame, enemyIdleLoopPos, idleHopLift } from '../utils/enemyIdleSheet';
@@ -18777,9 +18777,10 @@ export class PixiScene {
             || e.bossState === 'jfreeze-open' || e.bossState === 'jfreeze' || e.bossState === 'jfreeze-recover');
         const want = kbLock ? cur
           : jMouthLock ? ((e.jormMouthX ?? stripCx) >= stripCx ? 1 : -1)
-          : bossFaceWant(cur, stripCx, pl.x + pl.width / 2);
+          : bossFaceWant(cur, stripCx, pl.x + pl.width / 2, bossFaceDeadzonePx(e.width));
         if (view.motFace === undefined) { view.motFace = want; view.motFaceFrom = want; view.motFaceAt = undefined; }
-        else if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
+        // ★一度振り向いたら BOSS_TURN_MIN_MS は振り向かない(境目の上で相手が揺れても連続で裏返らない・社長報告2026-10-06)。
+        else if (want !== cur && (view.motFaceAt === undefined || now - view.motFaceAt >= BOSS_TURN_MIN_MS)) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
         const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;
         const from = view.motFaceFrom ?? (view.motFace ?? 1);
         const dirNow = from + ((view.motFace ?? 1) - from) * t;
@@ -19074,7 +19075,10 @@ export class PixiScene {
         // ★後ずさり(社長指示2026-09-30「こちらを向きながら後退る」): プレイヤーから遠ざかる向きへ動いている間は
         //   進む向きへ振り向かず、プレイヤーの側を向いたまま下がる。逃走中(ハンター)・休眠中は対象外(狙っていない)。
         const bpPl = useGameStore.getState().player;
-        const bpSide = e.hunterFleeing || e.dormant ? 0
+        // ★ボス級は相手が体の真上・真下(体の幅の35%以内)なら後ずさりの向きを決めない(左右が入れ替わり続ける=パタパタ・社長報告2026-10-06)。
+        const bpBoss = isBossType(e.type);
+        const bpNear = bpBoss && Math.abs(bpPl.x + bpPl.width / 2 - (e.x + e.width / 2)) < bossFaceDeadzonePx(e.width);
+        const bpSide = e.hunterFleeing || e.dormant || bpNear ? 0
           : backpedalFaceSide(vx, e.x + e.width / 2, bpPl.x + bpPl.width / 2);
         // research/MUTANT_HERO.md: 英雄の向きは制御(heroTick)が決める(左右が入れ替わる前に一拍止まってから)。
         // research/LIBERTY_HORDE.md: 解放軍群の旗手も、止まって叫ぶ間は相手の方を向く(制御が heroFaceX を書く)。
@@ -19088,7 +19092,9 @@ export class PixiScene {
           : bandDir !== 0 ? sweepFaceMulFor(bandDir, sweepSwing, cur)
             : bpSide !== 0 ? (bpSide > 0 ? toRight : -toRight)
               : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
-        if (want !== cur) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
+        // ★ボス級は一度振り向いたら BOSS_TURN_MIN_MS は振り向かない(連続で裏返らない・社長報告2026-10-06)。雑魚は従来どおり。
+        const turnOk = !bpBoss || view.motFaceAt === undefined || now - view.motFaceAt >= BOSS_TURN_MIN_MS;
+        if (want !== cur && turnOk) { view.motFaceFrom = cur; view.motFace = want; view.motFaceAt = now; }
         const t = view.motFaceAt !== undefined ? Math.min(1, (now - view.motFaceAt) / ENEMY_TURN_MS) : 1;
         const from = view.motFaceFrom ?? (view.motFace ?? 1);
         faceMul = from + ((view.motFace ?? 1) - from) * t;

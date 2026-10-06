@@ -14,6 +14,10 @@ import { playSfx } from '../audio/audioManager';
 import { npcSfxDistGain } from './npcSfx';
 import { HERO_PATROL_SPEED, HERO_STRIKE_MS, HERO_FLINCH_MS, heroPatrolNext, heroRestMs } from './heroScript';
 import { HERO_PATROL_DETOUR_PX, HERO_PATROL_DETOUR_MS } from './heroTick';
+import { bossFaceWant, bossFaceDeadzonePx } from './bossFacing';
+/** 旗手が相手の方を向く。相手が体の真上・真下(体の幅の35%以内)なら今の向きのまま(社長報告2026-10-06「右向いたり左向いたりを高速で繰り返す」)。 */
+const libFaceToward = (bearer: Enemy, bx: number, targetX: number): 1 | -1 =>
+  bossFaceWant(((bearer.heroFaceX ?? -1) >= 0 ? 1 : -1), bx, targetX, bossFaceDeadzonePx(bearer.width));
 import {
   LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_STEP_PX, LIB_TRAIL_MAX, LIB_LOSE_RANGE_MULT, LIB_LOSE_MS,
   LIB_RETURN_SPEED, LIB_RETURN_ARRIVE_PX, LIB_REFILL_BEHIND_PX, LIB_RETURN_EASE_PER_S, LIB_BEARER_ACCEL,
@@ -229,7 +233,7 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
       Object.assign(patch, {
         bossState: 'hero-windup', heroMove: 'sweep', heroStep: 0, heroShape: libFlagFan(bearer, pcx2, pcy2),
         bossWindupStartAt: gt, heroStateAt: gt, heroHitAt: gt + LIB_FLAG_WINDUP_MS, bossStateUntil: gt + LIB_FLAG_WINDUP_MS,
-        heroFaceX: (pcx2 >= bx ? 1 : -1) as 1 | -1,
+        heroFaceX: libFaceToward(bearer, bx, pcx2),
       });
       attacking = true;
     }
@@ -304,7 +308,7 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
       if (away) retreatStep();
       else s.speed = Math.max(0, s.speed - LIB_BEARER_ACCEL * dt);
       stepAlong();
-      patch.heroFaceX = (sight.x >= bx ? 1 : -1) as 1 | -1; // 下がる間も相手を向いたまま(後ずさり)
+      patch.heroFaceX = libFaceToward(bearer, bx, sight.x); // 下がる間も相手を向いたまま(後ずさり)
     }
     const screamUntil = bearer.libScreamUntil;
     if (attacking) {
@@ -334,7 +338,7 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
       // 周回中でも詰められたら距離を取る(相手の方を向いたまま後ずさる)。
       retreatStep();
       stepAlong();
-      patch.heroFaceX = (pl.x + pl.width / 2 >= bx ? 1 : -1) as 1 | -1;
+      patch.heroFaceX = libFaceToward(bearer, bx, pl.x + pl.width / 2);
     } else if (bearer.libPatrolR !== undefined) {
       // 周回: 英雄と同じ速さ・同じ回り込み(輪の外/内へずらして障害物を抜ける)。
       const R = bearer.libPatrolR;
@@ -373,7 +377,8 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
         }
       }
       Object.assign(patch, p, { vx: s.dirX * s.speed, vy: s.dirY * s.speed });
-      patch.heroFaceX = (dx >= 0 ? 1 : -1) as 1 | -1;
+      // 周回は進む向き。ほぼ縦に進む間(横成分が3割未満)は今の向きのまま(輪の上下でパタパタしない・社長報告2026-10-06)。
+      patch.heroFaceX = Math.abs(dx) / l < 0.3 ? ((bearer.heroFaceX ?? -1) as 1 | -1) : (dx >= 0 ? 1 : -1) as 1 | -1;
     } else {
       s.speed = Math.max(0, s.speed - LIB_BEARER_ACCEL * dt);
       stepAlong();
