@@ -365,7 +365,7 @@ const AVATAR_HEAD_TRACK_NAMES: string[] = [
   ...AVATAR_HEAD_TRACK_CLASS_PREFIXES.flatMap((prefix) => [
     `player-${prefix}-idle`,
     `player-${prefix}-walk-0`, `player-${prefix}-walk-1`, `player-${prefix}-walk-2`, `player-${prefix}-walk-3`, `player-${prefix}-walk-4`,
-    ...(prefix === 'magnum' ? [`player-${prefix}-walk-5`, `player-${prefix}-walk-6`] : []), // マークスマンの歩きは7コマ
+    ...(prefix === 'magnum' ? [`player-${prefix}-walk-5`, `player-${prefix}-walk-6`, `player-${prefix}-walk-7`, `player-${prefix}-run-5`, `player-${prefix}-run-6`] : []), // マークスマンの歩き8コマ・走り7コマ
     // しゃがみ(死亡固定絵)/攻撃ポーズ(近接構え→振り抜き。死亡固定絵は`-ready`を共有)。
     `player-${prefix}-melee-ready`, `player-${prefix}-melee-swing`,
     ...(prefix === 'shotgun' || prefix === 'striker'
@@ -432,8 +432,9 @@ export const ensureTextures = (): Promise<void> => {
       'player-magnum-walk-2',
       'player-magnum-walk-3',
       'player-magnum-walk-4',
-      'player-magnum-walk-5', // マークスマンの歩きは7コマ(社長支給2026-10-08)
+      'player-magnum-walk-5', // マークスマンの歩きは8コマ・走りは7コマ(社長支給2026-10-08)
       'player-magnum-walk-6',
+      'player-magnum-walk-7',
       'player-magnum-idle',
       'player-magnum-game-0',
       'player-magnum-game-1',
@@ -447,6 +448,8 @@ export const ensureTextures = (): Promise<void> => {
       'player-magnum-run-2',
       'player-magnum-run-3',
       'player-magnum-run-4',
+      'player-magnum-run-5',
+      'player-magnum-run-6',
       'player-scavenger-run-0',
       'player-scavenger-run-1',
       'player-scavenger-run-2',
