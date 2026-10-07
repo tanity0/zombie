@@ -3245,92 +3245,92 @@
   "sprites/player-magnum-run-0.png": {
    "w": 78,
    "h": 67,
-   "bytes": 5163,
-   "sha": "5e203ee1be18217d"
+   "bytes": 5283,
+   "sha": "e9e7c9f084bf4a75"
   },
   "sprites/player-magnum-run-1.png": {
    "w": 78,
    "h": 67,
-   "bytes": 4849,
-   "sha": "2c9b4d75a28d11d9"
+   "bytes": 5256,
+   "sha": "23c0dfa3d71d1648"
   },
   "sprites/player-magnum-run-2.png": {
    "w": 78,
    "h": 67,
-   "bytes": 4762,
-   "sha": "257c28b75aacf704"
+   "bytes": 5174,
+   "sha": "213a378bc252989d"
   },
   "sprites/player-magnum-run-3.png": {
    "w": 78,
    "h": 67,
-   "bytes": 5010,
-   "sha": "c9099da29ed37466"
+   "bytes": 5196,
+   "sha": "d9956c7bbd141cc3"
   },
   "sprites/player-magnum-run-4.png": {
    "w": 78,
    "h": 67,
-   "bytes": 4917,
-   "sha": "a03453c0f441867f"
+   "bytes": 5352,
+   "sha": "85e686ab1b11e1d9"
   },
   "sprites/player-magnum-run-5.png": {
    "w": 78,
    "h": 67,
-   "bytes": 4919,
-   "sha": "0c4d9a493fabfd4b"
+   "bytes": 5192,
+   "sha": "f35248e7345c9d30"
   },
   "sprites/player-magnum-run-6.png": {
    "w": 78,
    "h": 67,
-   "bytes": 4884,
-   "sha": "9d6bee320727aede"
+   "bytes": 5137,
+   "sha": "8ebfa79aef130b39"
+  },
+  "sprites/player-magnum-run-7.png": {
+   "w": 78,
+   "h": 67,
+   "bytes": 5204,
+   "sha": "03d8543a786a6ee4"
   },
   "sprites/player-magnum-walk-0.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5276,
-   "sha": "b5ea47d26012f8bb"
+   "bytes": 5157,
+   "sha": "c22087f370305e29"
   },
   "sprites/player-magnum-walk-1.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5250,
-   "sha": "f58e2f64459b7ba7"
+   "bytes": 4843,
+   "sha": "d9b1bd9984b4974d"
   },
   "sprites/player-magnum-walk-2.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5166,
-   "sha": "a47d95f685786016"
+   "bytes": 4755,
+   "sha": "35c6a488882362c3"
   },
   "sprites/player-magnum-walk-3.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5190,
-   "sha": "fc81f9e4f7869986"
+   "bytes": 5003,
+   "sha": "d376983358f9ae59"
   },
   "sprites/player-magnum-walk-4.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5345,
-   "sha": "8857bb7ccc64336f"
+   "bytes": 4910,
+   "sha": "07fc9ee7f4eb90eb"
   },
   "sprites/player-magnum-walk-5.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5185,
-   "sha": "5d5b04dacebda5e8"
+   "bytes": 4911,
+   "sha": "53ab510bf423c92f"
   },
   "sprites/player-magnum-walk-6.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5130,
-   "sha": "a61b5921b880811d"
-  },
-  "sprites/player-magnum-walk-7.png": {
-   "w": 78,
-   "h": 64,
-   "bytes": 5197,
-   "sha": "c9d8069defe2b54d"
+   "bytes": 4878,
+   "sha": "36a20e2ce7667ec7"
   },
   "sprites/player-scavenger-game-0.png": {
    "w": 96,
