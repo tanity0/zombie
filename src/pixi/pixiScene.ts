@@ -29091,9 +29091,10 @@ export class PixiScene {
    * 進軍NPCの歩きシートの1コマの時間(ms)。シートは8コマ=1周(左右1歩ずつ)で、16コマのシートは同じ1周が2回描かれている
    * (脚の開きを実測: 8コマごとに同じ並び)=コマ数によらず1コマの時間を揃える。旧=1周800msを16コマで割っていて、
    * ジョセフ/ムハンマド/ローレンだけ倍速だった(社長指摘2026-10-07「駆け足モーションが早すぎる」)。
-   * 140ms=1周1.12秒(プレイヤーの歩き0.9秒より少しゆっくり)。`?escortframems=` で実機から詰める。
+   * 1周(8コマ)=プレイヤーの歩きの1周(PINGPONG_WALK_CYCLE_MS=0.9秒)と同じ(社長指示2026-10-08「NPCのモーション速度、
+   * プレイヤーと合わせて欲しい」・旧140ms=1.12秒)。プレイヤー側の周期を変えれば一緒に変わる。`?escortframems=` で実機から詰める。
    */
-  private static readonly ESCORT_SHEET_FRAME_MS = tsNum('escortframems', 140);
+  private static readonly ESCORT_SHEET_FRAME_MS = tsNum('escortframems', PINGPONG_WALK_CYCLE_MS / 8);
   /** 1周(左右1歩ずつ)のコマ数。上下の揺れ(位置)の周期の基準。 */
   private static readonly ESCORT_SHEET_STRIDE_FRAMES = 8;
   private static readonly ESCORT_WALK_SEQ_2 = [0, 1];          // 2コマ立ち絵の歩行
