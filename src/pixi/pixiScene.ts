@@ -344,7 +344,7 @@ import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
 import {
-  getTexture, PLAYER_ART_BASE_W,
+  getTexture, PLAYER_ART_BASE_W, ESCORT_WALK_SHEETS,
   FLAME_SHEET, FLAME_FRAMES, FLAME_FRAME_W, FLAME_FRAME_H, FLAME_LIGHT_FRAC, TORCH_STAND_RIM_ABOVE_FOOT,
   avatarHeadDeltaPx, avatarHeadCxDeltaPx, GLEN_PART_ANIM_FRAMES, GLEN2_BODY_ANIM_FRAMES,
 } from './pixiTextures';
@@ -26766,7 +26766,14 @@ export class PixiScene {
       const animate = esc.moving !== false;
       const idleFrame = esc.soldierIndex === TUTORIAL_MEDIC_INDEX ? 2 : 0;
       const walkFrame = animate ? seq[step % seq.length] : idleFrame;
-      const tex = getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
+      // 社長支給の歩きシート(2026-10-07・8/16コマ)がある人はそちらで歩く(1周 ESCORT_SHEET_CYCLE_MS・順送り)。
+      // 止まっている時は0コマ目。シートの無い人は従来の3コマ(ピンポン)。
+      const sheetFrames = getTexture(`${base}-walk-0`) ? (ESCORT_WALK_SHEETS[`${base}-walk`] ?? 0) : 0;
+      const sheetFrame = sheetFrames > 0 && animate
+        ? Math.floor(now / (PixiScene.ESCORT_SHEET_CYCLE_MS / sheetFrames)) % sheetFrames : 0;
+      const tex = sheetFrames > 0
+        ? (getTexture(`${base}-walk-${sheetFrame}`) ?? getTexture(`${base}-walk-0`))
+        : (getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0'));
       // クロスフェード補間(対象NPCのみ): コマ内の進行率 frac で「次コマ」を上に α=frac で重ね、
       // 170msごとのパッ切り替えを連続化する。隣接コマは常に接地↔通過なので混色=中間歩に見える。
       const crossfade = ESCORT_CROSSFADE_SOLDIERS.has(esc.soldierIndex);
@@ -26777,13 +26784,16 @@ export class PixiScene {
       // 徒歩の自然化(プレイヤーと同じ二次モーション・視覚のみ・判定不変)。護衛は常時行進なので位相は
       // 時間から連続生成し、コマ周期(seq.length×フレーム時間)に同期させてスカッシュ&ストレッチの山を
       // 通過コマに合わせる。接地(lift=0)で縦に潰れ横に広がり、遊脚(lift=1)で縦に伸び横が締まる＋左右リーン。
-      const cycleMs = seq.length * PixiScene.RESCUE_WALK_FRAME_MS;
+      const cycleMs = sheetFrames > 0 ? PixiScene.ESCORT_SHEET_CYCLE_MS : seq.length * PixiScene.RESCUE_WALK_FRAME_MS; // 上下の揺れ(位置)を歩きの周期に合わせる
       const phase = (now / cycleMs) * Math.PI * 2;
       const stepS = animate ? Math.sin(phase) : 0;
       const lift = Math.abs(stepS); // 0=接地 / 1=遊脚中(最高点)。静止中は常に接地扱い
-      const walkSqY = animate ? 1 + PLAYER_WALK_SQUASH * lift - PLAYER_WALK_SQUASH * 0.5 * (1 - lift) : 1;
-      const walkSqX = animate ? 1 - PLAYER_WALK_SQUASH * 0.8 * lift + PLAYER_WALK_SQUASH * 0.4 * (1 - lift) : 1;
-      const walkLean = stepS * PLAYER_WALK_LEAN_RAD;
+      // 歩きシートのある人は、伸び縮み・傾ぎ(歪みの代用モーション)を外す(社長指示2026-09-22「モーション追加により外すのは歪みだけ」)。
+      // 上下の揺れ(bob=位置)は残す。
+      const distortWalk = animate && sheetFrames === 0;
+      const walkSqY = distortWalk ? 1 + PLAYER_WALK_SQUASH * lift - PLAYER_WALK_SQUASH * 0.5 * (1 - lift) : 1;
+      const walkSqX = distortWalk ? 1 - PLAYER_WALK_SQUASH * 0.8 * lift + PLAYER_WALK_SQUASH * 0.4 * (1 - lift) : 1;
+      const walkLean = distortWalk ? stepS * PLAYER_WALK_LEAN_RAD : 0;
 
       const bob = lift * PLAYER_WALK_BOB_PX * this.depthScale(esc.y); // 接地↔遊脚の上下動(遠近スケール連動)
       // research/ESCORT_TARGETED.md §6・§7: 倒れた姿=足元を沈める(止めコマのまま・位置だけ)+透明度の呼吸+起き上がり後の点滅。
@@ -29054,6 +29064,8 @@ export class PixiScene {
   // HPバー/コールアウトは rescueGfx(常に最前)。本体スプライトは id ごとにプール/プルーン。
   private static readonly RESCUE_NPC_DISPLAY_H = 65; // 表示の基準高さ(px)。社長指示で 54→65(×1.2)。当たり判定(RESCUE_SURVIVOR_SIZE)も同率で拡大。
   private static readonly RESCUE_WALK_FRAME_MS = 170;
+  /** 進軍NPCの歩きシート(8/16コマ)の1周の時間。8コマ=1コマ100ms・16コマ=50ms(歩幅は同じ周期)。叩き台。 */
+  private static readonly ESCORT_SHEET_CYCLE_MS = 800;
   private static readonly ESCORT_WALK_SEQ_2 = [0, 1];          // 2コマ立ち絵の歩行
   private static readonly ESCORT_WALK_SEQ_3 = [0, 1, 2, 1];    // 3コマ立ち絵(社長提供): 接地A→通過→接地B→通過
   private static readonly ESCORT_WALK_SEQ_4 = [0, 1, 2, 3, 2, 1]; // 4コマ立ち絵(衛生兵): ピンポン(社長指定)

@@ -192,6 +192,12 @@ let loading: Promise<void> | null = null;
 // `props/flame` = 1472×264 の1枚。**1コマ 184×264 が8つ**横に並ぶ。炎の根元は全コマ**下端(y=263)**、
 // 中心は**キャンバス中央**で揃っている(実測)= どのコマへ切り替えても炎が跳ねない。
 // 名前 `props/flame-0..7` で `getTexture` から引ける。
+// 進軍NPC(護衛軍人)の歩きシート(社長支給2026-10-07・横並びの等幅コマ・右向き・下端=接地)。
+// 松明と同じ作法=画像は加工せず、枠だけ切って `${name}-${i}` で登録(同じ source を共有=追加メモリなし)。
+// 値=コマ数。描画(pixiScene drawEscorts)は `${base}-walk-0` があればこちらを使う(無い人は旧3コマ)。
+export const ESCORT_WALK_SHEETS: Readonly<Record<string, number>> = {
+  'npc/edgar-walk': 8, 'npc/joseph-walk': 16, 'npc/elizabeth-walk': 8, 'npc/musashi-walk': 8, 'npc/muhammad-walk': 16,
+};
 export const FLAME_SHEET = 'props/flame';
 export const FLAME_FRAMES = 8;
 export const FLAME_FRAME_W = 46;  // v0.25.4588: シートを解凍(1472×264 → 368×66)したので1/4。旧184
@@ -803,6 +809,12 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/edgar-0', scaleMode: 'nearest' },
       { name: 'npc/edgar-1', scaleMode: 'nearest' },
       { name: 'npc/edgar-2', scaleMode: 'nearest' },     // 3コマ歩行(社長提供)
+      // 進軍NPCの歩きシート(社長支給2026-10-07・ESCORT_WALK_SHEETS で枠を切って登録)。
+      { name: 'npc/edgar-walk', scaleMode: 'nearest' },
+      { name: 'npc/joseph-walk', scaleMode: 'nearest' },
+      { name: 'npc/elizabeth-walk', scaleMode: 'nearest' },
+      { name: 'npc/musashi-walk', scaleMode: 'nearest' },
+      { name: 'npc/muhammad-walk', scaleMode: 'nearest' },
       { name: 'npc/medic-walk-0', scaleMode: 'nearest' }, // 衛生兵(チュートリアル随行・4コマピンポン)
       { name: 'npc/medic-walk-1', scaleMode: 'nearest' },
       { name: 'npc/medic-walk-2', scaleMode: 'nearest' },
@@ -1219,6 +1231,13 @@ export const ensureTextures = (): Promise<void> => {
         // 松明(社長支給・炎つき3コマの横並び1枚)。**画像は加工せず、枠だけ切って登録**する
         // (社長指示v0.25.2640「切り出さないで」)。アトラスと同じ作法=同じ source を共有する
         // サブテクスチャなので、追加のメモリもデコードも発生しない。
+        const walkFrames = ESCORT_WALK_SHEETS[name];
+        if (walkFrames) {
+          const fw = Math.floor(tex.width / walkFrames);
+          for (let i = 0; i < walkFrames; i++) {
+            textures.set(`${name}-${i}`, new Texture({ source: tex.source, frame: new Rectangle(i * fw, 0, fw, tex.height) }));
+          }
+        }
         if (name === FLAME_SHEET) {
           for (let i = 0; i < FLAME_FRAMES; i++) {
             textures.set(`${FLAME_SHEET}-${i}`, new Texture({

@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "927 files / 復号後 約700MB",
+ "generatedFor": "932 files / 復号後 約700MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2984,6 +2984,12 @@
    "bytes": 97667,
    "sha": "af0e88d709fe848d"
   },
+  "sprites/npc/edgar-walk.png": {
+   "w": 424,
+   "h": 66,
+   "bytes": 21849,
+   "sha": "72e9dfc254201dd7"
+  },
   "sprites/npc/elizabeth-0.png": {
    "w": 294,
    "h": 423,
@@ -3001,6 +3007,12 @@
    "h": 423,
    "bytes": 137818,
    "sha": "7f647e6bcb241746"
+  },
+  "sprites/npc/elizabeth-walk.png": {
+   "w": 408,
+   "h": 66,
+   "bytes": 22236,
+   "sha": "b493e9fd2e7fb3ec"
   },
   "sprites/npc/futari-man-0.png": {
    "w": 103,
@@ -3037,6 +3049,12 @@
    "h": 325,
    "bytes": 79863,
    "sha": "25791989095bbace"
+  },
+  "sprites/npc/joseph-walk.png": {
+   "w": 864,
+   "h": 66,
+   "bytes": 41524,
+   "sha": "6c98b1396ed104b9"
   },
   "sprites/npc/lauren-0.png": {
    "w": 172,
@@ -3098,6 +3116,12 @@
    "bytes": 121047,
    "sha": "f36b4e74ca7c8b7e"
   },
+  "sprites/npc/muhammad-walk.png": {
+   "w": 848,
+   "h": 66,
+   "bytes": 39656,
+   "sha": "fa62e91f84fb20cc"
+  },
   "sprites/npc/musashi-0.png": {
    "w": 226,
    "h": 367,
@@ -3115,6 +3139,12 @@
    "h": 367,
    "bytes": 96080,
    "sha": "993ad7ac68675f9a"
+  },
+  "sprites/npc/musashi-walk.png": {
+   "w": 432,
+   "h": 66,
+   "bytes": 20427,
+   "sha": "d29f344ab67c7d2b"
   },
   "sprites/npc/phaser-0.png": {
    "w": 243,
