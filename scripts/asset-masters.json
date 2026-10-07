@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "940 files / 復号後 約701MB",
+ "generatedFor": "943 files / 復号後 約701MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2966,6 +2966,12 @@
    "bytes": 110568,
    "sha": "aceff564b27a42c2"
   },
+  "sprites/npc/chen-down.png": {
+   "w": 110,
+   "h": 66,
+   "bytes": 7030,
+   "sha": "c23b8f503a7cf376"
+  },
   "sprites/npc/chen-walk.png": {
    "w": 440,
    "h": 66,
@@ -3098,6 +3104,12 @@
    "bytes": 60871,
    "sha": "c0a54a030866cf0d"
   },
+  "sprites/npc/lauren-down.png": {
+   "w": 102,
+   "h": 66,
+   "bytes": 7312,
+   "sha": "eece8747f32ce628"
+  },
   "sprites/npc/lauren-walk.png": {
    "w": 816,
    "h": 66,
@@ -3205,6 +3217,12 @@
    "h": 330,
    "bytes": 99065,
    "sha": "252e5dc01e8eae74"
+  },
+  "sprites/npc/phaser-down.png": {
+   "w": 112,
+   "h": 66,
+   "bytes": 7172,
+   "sha": "fc10a79c43c5631f"
   },
   "sprites/npc/phaser-walk.png": {
    "w": 440,
