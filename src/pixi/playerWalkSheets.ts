@@ -10,6 +10,8 @@
 
 /** 5コマ立ち絵(全4クラス)の歩き: 端(0,4)を重複させずに往復してループ=滑らかな折り返し。 */
 export const WALK_SEQ_5: readonly number[] = [0, 1, 2, 3, 4, 3, 2, 1];
+/** マークスマンの歩き7コマ(社長支給2026-10-08): 1周を7コマで描いた順送り(折り返さない)。0コマ目=立ち絵と同じ絵。 */
+export const WALK_SEQ_7: readonly number[] = [0, 1, 2, 3, 4, 5, 6];
 /** 立ち絵が2コマしか無い場合の既定(不明クラス等)。 */
 export const WALK_SEQ_2: readonly number[] = [0, 1];
 /** 武将立ち絵(3コマ: 0=接地A / 1=中割り / 2=接地B)の歩き。5コマ勢と同じ「端を重複させない往復」。 */
@@ -25,7 +27,7 @@ export const RUN_SEQ_6: readonly number[] = [0, 1, 2, 3, 4, 5];
  * ここに載っていない並びを pixiScene 側で直書きしない(直書きすると検査から漏れる)。
  */
 export const WALK_SHEET_SEQUENCES: ReadonlyArray<{ prefix: string; sequence: readonly number[] }> = [
-  { prefix: 'player-magnum-walk', sequence: WALK_SEQ_5 },
+  { prefix: 'player-magnum-walk', sequence: WALK_SEQ_7 },
   { prefix: 'player-shotgun-walk', sequence: WALK_SEQ_5 },
   { prefix: 'player-striker-walk', sequence: WALK_SEQ_5 },
   { prefix: 'player-scavenger-walk', sequence: WALK_SEQ_5 },
