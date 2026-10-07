@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4911 — 会話の顔絵・援護射撃の軍人を新しいシートへ・旧3コマ24枚を削除(社長「通信のキャラ絵が古い」「古い絵の方は削除して」)【2026-10-07 19:42 JST】
+- NpcDialogue.tsx: 軍人8人の顔絵を歩きシート(`npc/<名>-walk`)の1コマ目(足が閉じた通過姿勢=全員で脚の広がりが最小のコマを実測)から切り出す `SheetPortrait` を追加。コマ幅は読み込んだ画像の実寸÷コマ数(シートの寸法を二重に持たない)。置き方(足元=上から2行分・中央・高さ58)は従来どおり。
+- pixiScene.ts drawSupportSniper: 援護射撃の軍人も歩きシートの0コマ目で描く(倍率は護衛と同じ `ESCORT_SHEET_DISPLAY_MULT`)。
+- 削除: public/sprites/npc/{edgar,joseph,elizabeth,musashi,muhammad,chen,lauren,phaser}-{0,1,2}.png(24枚)と pixiTextures の読み込み行24行。原盤台帳を更新(943→919枚・assets:check OK)。社長の明示指示による削除。
+- 古い絵の残りの参照: 護衛の描画の `${base}-${walkFrame}` はシートが読み込まれていれば通らない(未読込時は rescue/shooter へ落ちる)。assetVersion.ts のコメントは履歴なので残した。
+- 検証: typecheck / lint 0 errors / 循環import 新規なし / sheetResidency テスト OK / ヘッドレスで4人(エドガー・ジョセフ・エリザベス・ローレン)の会話を撮り、新しい絵で出ていることを確認。素材の入れ込み=監査なし。
+- 状態変化: なし。
+
 ## v0.25.4910 — 軍人の最大体力を出撃中もプレイヤーの伸びに比例させる(社長「軍人のHPはプレイヤーに比例して増える で(伸び率が比例)」)【2026-10-07 19:37 JST】
 - utils/escortHealth.ts `syncEscortMaxHealth`(純関数・新規): 最大体力=いつもプレイヤー最大体力×0.6。上がった時はプレイヤーと同じく増えた分だけ今の体力も足す(倒れている間は0のまま)、下がった時は新しい最大へ収める。体力なし(M0の随行)・変化なしは同じ参照。
 - gameStore.ts: 通常の軍人・洋館通路の4人の両ループで `stepEscortLife` の前に通す(プレイヤーの最大体力を変える経路=強化カード/装備/強化が複数あるので、1か所で毎フレーム揃える)。

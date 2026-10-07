@@ -27343,7 +27343,9 @@ export class PixiScene {
     }
     // 軍人立ち絵の静止コマ0(未提供indexは護衛と同じ rescue/shooter フォールバック)。
     const base = ESCORT_SPRITE_BASE[npc.soldierIndex] ?? 'rescue/shooter';
-    const tex = getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
+    // 支給の歩きシートがある軍人はその0コマ目(旧3コマの立ち絵は2026-10-07に削除=社長指示「古い絵の方は削除して」)。
+    const sheetTex = getTexture(`${base}-walk-0`);
+    const tex = sheetTex ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
     if (!tex) { sp.visible = false; return; }
     // スライド位置: 縁の交点(npc.x/y)を基準に、向き(dir=敵の方向)の軸上で 外(-START_OUT)→内(+INSET)。
     let offset: number;
@@ -27365,7 +27367,7 @@ export class PixiScene {
     // ★O-3b-2(SAME_ARENA §3-d-4): 幻影が呼んだNPCは紫(PHANTOM_SUB_TINT・カウンター不可のサブ共通文法)。
     sp.tint = npc.hostile ? PHANTOM_SUB_TINT : 0xffffff;
     // スケール=護衛軍人と同じ humanNpcScale(プレイヤー同寸・遠近込み)。
-    const sc = this.humanNpcScale(tex.width, tex.height, py);
+    const sc = this.humanNpcScale(tex.width, tex.height, py) * (sheetTex ? ESCORT_SHEET_DISPLAY_MULT : 1); // シートは護衛と同じ係数で旧立ち絵の見た目に揃える
     const faceSign = npc.dirX >= 0 ? 1 : -1; // 向き=敵の方向。発射後も変えない(そのまま後退)
     sp.scale.set(sc * faceSign, sc);
     sp.alpha = alpha * this.horizonActorAlpha(py);

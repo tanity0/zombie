@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { spritePath } from '../utils/spriteLoader';
 import { useHudLandscape } from './HudScale';
@@ -11,15 +12,17 @@ import { useHudLandscape } from './HudScale';
 // 護衛3コマ歩きは1=足閉じ(通過姿勢)/shooterは0/medic-walk(4コマ)は2/futariはバストアップ=0のみ。
 // imgH=表示高さ(既定64)。
 // NPC8人(出撃している護衛8人)は全表示0.9倍(社長指示v0.25.1859・0.8→0.9)=会話立ち絵imgH58(64×0.9)・枠36。
-const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number; imgH?: number }> = {
-  'エドガー': { base: 'npc/edgar', boxW: 36, frame: 1, imgH: 58 },
-  'ジョセフ': { base: 'npc/joseph', boxW: 36, frame: 1, imgH: 58 },
-  'エリザベス': { base: 'npc/elizabeth', boxW: 36, frame: 1, imgH: 58 },
-  '武蔵': { base: 'npc/musashi', boxW: 36, frame: 1, imgH: 58 },
-  'ムハンマド': { base: 'npc/muhammad', boxW: 36, frame: 1, imgH: 58 },
-  'チェン': { base: 'npc/chen', boxW: 36, frame: 1, imgH: 58 },
-  'ローレン': { base: 'npc/lauren', boxW: 36, frame: 1, imgH: 58 },
-  'フェイザー': { base: 'npc/phaser', boxW: 36, frame: 1, imgH: 58 },
+// sheet=横並びのシート(`${base}.png`)からコマ frame を切り出す時のコマ数(社長支給の歩きシート2026-10-07)。
+// 軍人8人は歩きシートの1コマ目=足が閉じた通過姿勢(旧3コマの「足閉じ」と同じ役)。
+const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number; imgH?: number; sheet?: number }> = {
+  'エドガー': { base: 'npc/edgar-walk', boxW: 36, frame: 1, imgH: 58, sheet: 8 },
+  'ジョセフ': { base: 'npc/joseph-walk', boxW: 36, frame: 1, imgH: 58, sheet: 16 },
+  'エリザベス': { base: 'npc/elizabeth-walk', boxW: 36, frame: 1, imgH: 58, sheet: 8 },
+  '武蔵': { base: 'npc/musashi-walk', boxW: 36, frame: 1, imgH: 58, sheet: 8 },
+  'ムハンマド': { base: 'npc/muhammad-walk', boxW: 36, frame: 1, imgH: 58, sheet: 16 },
+  'チェン': { base: 'npc/chen-walk', boxW: 36, frame: 1, imgH: 58, sheet: 8 },
+  'ローレン': { base: 'npc/lauren-walk', boxW: 36, frame: 1, imgH: 58, sheet: 16 },
+  'フェイザー': { base: 'npc/phaser-walk', boxW: 36, frame: 1, imgH: 58, sheet: 8 },
   // 二人組(クエストNPC)。話者名=社長命名(v0.25.1719): グレン(男)/ミラ(女) → 専用バストアップ
   // (社長素材v0.25.1716・sprites/npc/futari-*-0.png=頭〜胸の切り出し)。肩まで入る=枠広め(v0.25.1719)。
   'グレン': { base: 'npc/futari-man', boxW: 62, frame: 0 },
@@ -36,6 +39,31 @@ const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number; 
   // ジュンのboxWは可視域採寸で46(素材78pxのうち左19/右13pxは透明マージン=枠を素材幅で取ると
   // 左に余白が空く・社長報告v0.25.1855)。
   'ジュン': { base: 'npc/medic-walk', boxW: 46, frame: 2 },
+};
+
+// 横並びシートから1コマを切り出して、旧立ち絵と同じ置き方(足元=上から2行分・中央)で出す。
+// コマ幅は読み込んだ画像の実寸から決める(シートの寸法を二重に持たない)。読み込み前は幅0=出ない。
+const SheetPortrait = ({ src, frames, frame, h, alt }: { src: string; frames: number; frame: number; h: number; alt: string }) => {
+  const [fw, setFw] = useState(0);
+  return (
+    <div
+      style={{
+        position: 'absolute', left: '50%', top: 42, transform: 'translate(-50%, -100%)',
+        width: fw, height: h, overflow: 'hidden',
+      }}
+    >
+      <img
+        src={src}
+        alt={alt}
+        draggable={false}
+        onLoad={e => { const im = e.currentTarget; if (im.naturalHeight > 0) setFw((h * im.naturalWidth) / im.naturalHeight / frames); }}
+        style={{
+          position: 'absolute', top: 0, left: -fw * frame,
+          height: h, width: 'auto', maxWidth: 'none', imageRendering: 'pixelated',
+        }}
+      />
+    </div>
+  );
 };
 
 // NPCリアルタイムセリフのHUD表示(時間停止なし・軽量)。表示位置はアテンションバナーと同じ左上ゾーンで、
@@ -77,23 +105,27 @@ export const NpcDialogue = () => {
         {portraitBase && (
           // バストは背景の高さ(=文字)に対して背が高く、下端を背景下端に合わせて上へはみ出させる。
           <div className="relative self-stretch shrink-0" style={{ width: portraitBoxW }}>
-            <img
-              src={spritePath(`${portraitBase}-${portrait?.frame ?? 0}`)}
-              alt={npc.name}
-              draggable={false}
-              style={{
-                position: 'absolute',
-                left: '50%',
-                // 足元を「上から2行分」の位置に固定(社長指示v0.25.2072・会話UI共通)。
-                // 旧: bottom:0=箱の下端揃えのため、文字数で箱が伸びると立ち絵が上下に動いて目障りだった。
-                top: 42,
-                transform: 'translate(-50%, -100%)',
-                height: portrait?.imgH ?? 64,
-                width: 'auto',
-                maxWidth: 'none',
-                imageRendering: 'pixelated',
-              }}
-            />
+            {portrait?.sheet ? (
+              <SheetPortrait key={portraitBase} src={spritePath(portraitBase)} frames={portrait.sheet} frame={portrait.frame} h={portrait.imgH ?? 64} alt={npc.name} />
+            ) : (
+              <img
+                src={spritePath(`${portraitBase}-${portrait?.frame ?? 0}`)}
+                alt={npc.name}
+                draggable={false}
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  // 足元を「上から2行分」の位置に固定(社長指示v0.25.2072・会話UI共通)。
+                  // 旧: bottom:0=箱の下端揃えのため、文字数で箱が伸びると立ち絵が上下に動いて目障りだった。
+                  top: 42,
+                  transform: 'translate(-50%, -100%)',
+                  height: portrait?.imgH ?? 64,
+                  width: 'auto',
+                  maxWidth: 'none',
+                  imageRendering: 'pixelated',
+                }}
+              />
+            )}
           </div>
         )}
         <div className="self-center" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>

@@ -809,10 +809,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'lab-zombie/lab-zombie-lv1-female', scaleMode: 'nearest' },
       { name: 'lab-zombie/lab-zombie-lv2', scaleMode: 'nearest' }, // v0.25.2914: 男女廃止・1種へ(社長指示)
       { name: 'lab-zombie/lab-zombie-lv3', scaleMode: 'nearest' },
-      // 進軍用NPC(護衛軍人)のユニーク立ち絵(2コマ歩行・透過済み)。soldierIndex で出し分け。
-      { name: 'npc/edgar-0', scaleMode: 'nearest' },
-      { name: 'npc/edgar-1', scaleMode: 'nearest' },
-      { name: 'npc/edgar-2', scaleMode: 'nearest' },     // 3コマ歩行(社長提供)
+      // 進軍用NPC(護衛軍人)のユニーク立ち絵。soldierIndex で出し分け。旧3コマ(npc/<名>-0..2)は2026-10-07に削除(社長指示)。
       // 進軍NPCの歩きシート(社長支給2026-10-07・ESCORT_WALK_SHEETS で枠を切って登録)。
       { name: 'npc/edgar-walk', scaleMode: 'nearest' },
       { name: 'npc/joseph-walk', scaleMode: 'nearest' },
@@ -851,27 +848,6 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/ending-bomb', scaleMode: 'nearest' },
       // しゃがみ兵士(受領2026-08-29・片膝・**素材は右向き**=使用側で左向きへ反転)。224×256・内容bboxトリム済み。
       { name: 'npc/soldier-watch-0', scaleMode: 'nearest' },
-      { name: 'npc/joseph-0', scaleMode: 'nearest' },
-      { name: 'npc/joseph-1', scaleMode: 'nearest' },
-      { name: 'npc/joseph-2', scaleMode: 'nearest' },    // 3コマ歩行(社長提供)
-      { name: 'npc/elizabeth-0', scaleMode: 'nearest' },
-      { name: 'npc/elizabeth-1', scaleMode: 'nearest' },
-      { name: 'npc/elizabeth-2', scaleMode: 'nearest' }, // 3コマ歩行(社長提供)
-      { name: 'npc/musashi-0', scaleMode: 'nearest' },
-      { name: 'npc/musashi-1', scaleMode: 'nearest' },
-      { name: 'npc/musashi-2', scaleMode: 'nearest' }, // 3コマ歩行(社長提供)
-      { name: 'npc/chen-0', scaleMode: 'nearest' },
-      { name: 'npc/chen-1', scaleMode: 'nearest' },
-      { name: 'npc/chen-2', scaleMode: 'nearest' }, // 3コマ歩行(社長提供)
-      { name: 'npc/lauren-0', scaleMode: 'nearest' },
-      { name: 'npc/lauren-1', scaleMode: 'nearest' },
-      { name: 'npc/lauren-2', scaleMode: 'nearest' },    // 3コマ歩行(社長提供)
-      { name: 'npc/phaser-0', scaleMode: 'nearest' },
-      { name: 'npc/phaser-1', scaleMode: 'nearest' },
-      { name: 'npc/phaser-2', scaleMode: 'nearest' }, // 3コマ歩行(社長提供)
-      { name: 'npc/muhammad-0', scaleMode: 'nearest' },
-      { name: 'npc/muhammad-1', scaleMode: 'nearest' },
-      { name: 'npc/muhammad-2', scaleMode: 'nearest' },  // 3コマ歩行(社長提供)
 
       // ステージ別(廃都/雪原)の散布オブジェクト。詳細イラスト調なので linear で滑らかに縮小。
       ...Object.values(STAGE_PROPS).flat().map((p) => ({ name: p.tex, scaleMode: 'linear' as const })),
