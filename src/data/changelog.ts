@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4898', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4897', items: ['目の前で拠点が解放された時は通信が入らず、解放した軍人の一言だけになった'] },
   { version: '0.25.4896', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4895', items: ['ゲーム内容の変更はありません'] },
