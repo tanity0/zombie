@@ -2093,7 +2093,7 @@ export interface EscortSoldier {
 
   // ---- research/ESCORT_TARGETED.md: 体力・倒れる・起こす(判定はすべて store/utils。描画は読むだけ) ----
   // 時計はすべて gameTime(ms)。M0の随行2人(farBackdrop==='tutorial')には付けない(undefined=体力なし=従来どおり)。
-  /** 体力(0..maxHealth)。出撃時のプレイヤー最大体力×0.6で固定(出撃中は変わらない)。 */
+  /** 体力(0..maxHealth)。プレイヤー最大体力×0.6(出撃中もプレイヤーの伸びに比例する)。 */
   health?: number;
   maxHealth?: number;
   /** 直近フレームの速度(px/s)。ボスの偏差撃ち(idolTick)が軍人の移動先を読むのに使う。 */

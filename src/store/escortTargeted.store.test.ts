@@ -32,7 +32,8 @@ const setup = (dx = 100, dy = 40, over: Partial<EscortSoldier> = {}) => {
     enemies: [],
     projectiles: [],
     pumpkinBlasts: [],
-    player: { ...s.player, x: ORIGIN - 14, y: ORIGIN - 14, health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0 },
+    player: { ...s.player, x: ORIGIN - 14, y: ORIGIN - 14, health: 9999, maxHealth: 120, // 120×0.6=72=軍人の最大体力(出撃中もプレイヤーに比例する)
+      invulnerable: false, invulnerableTime: 0 },
     baseSites: s.baseSites.map(b => (b.id === 'base-0' ? { ...b, x: ORIGIN + 3000, y: ORIGIN + 40 } : b)),
     escorts: s.escorts.map((e, i) => (i === 0
       ? { ...e, x: ORIGIN + dx, y: ORIGIN + dy, health: 72, maxHealth: 72, ...over }

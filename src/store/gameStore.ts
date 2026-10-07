@@ -196,7 +196,7 @@ import { escortOffscreenStep, escortOffscreenPace, baseDirectionLabel, ESCORT_ST
 import { welcomeAppliesToRun } from '../utils/welcomeScript';
 // research/ESCORT_TARGETED.md: 進軍NPCの体力・倒れる・起こす / 画面内の定義 / 敵の狙い。
 import {
-  applyEscortHit, escortAdvanceSlowMult, escortHasHealth, escortMaxHealthFor, escortSlidePosition, clearEscortSlide,
+  applyEscortHit, escortAdvanceSlowMult, escortHasHealth, escortMaxHealthFor, syncEscortMaxHealth, escortSlidePosition, clearEscortSlide,
   healEscortFull, isEscortDowned, isEscortLowHealth, stepEscortVitals,
   ESCORT_BODY_SIZE, ESCORT_DOWN_SLIDE_MS, ESCORT_FALL_IMPACT_FRAC, ESCORT_LOST_SIGHT_MS, ESCORT_RETREAT_SPEED_MULT,
 } from '../utils/escortHealth';
@@ -754,7 +754,7 @@ const makeTutorialCompanions = (px: number, py: number): EscortSoldier[] => [
 const CORRIDOR_ESCORT_ROW_X = [-110, -55, 55, 110];
 const makeEscorts = (px: number, py: number, corridorRow = false, playerMaxHealth = 0): EscortSoldier[] => {
   const arr: EscortSoldier[] = [];
-  // research/ESCORT_TARGETED.md §3: 体力=出撃時のプレイヤー最大体力×0.6(出撃中は固定)。playerMaxHealth=0(未指定)は体力なし=従来どおり。
+  // research/ESCORT_TARGETED.md §3: 体力=プレイヤー最大体力×0.6(出撃中もプレイヤーの伸びに比例=syncEscortMaxHealth)。playerMaxHealth=0(未指定)は体力なし=従来どおり。
   const escortHp = playerMaxHealth > 0 ? escortMaxHealthFor(playerMaxHealth) : undefined;
   // 名簿(素性)= フェイザー(7)を除く全軍人プールから、出撃ごとに BASE_SITE_COUNT 人をランダム抽選
   // (Fisher-Yates)。これで顔ぶれが毎回変わる(以前は 0..3 固定で常に同じ4人だった)。
@@ -19701,7 +19701,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const corridorLandEvents: { x: number; y: number }[] = []; // 倒れ込みが地面に着いた瞬間(砂埃)
       const corridorHaters = escortBossHaters(state.enemies);
       const nextEsc = state.escorts.map((escIn, i) => {
-        const lf = stepEscortLife(escIn, now, deltaTime, pcx, pcy, corridorAreaCtx);
+        const lf = stepEscortLife(syncEscortMaxHealth(escIn, state.player.maxHealth), now, deltaTime, pcx, pcy, corridorAreaCtx); // 最大体力はプレイヤーの伸びに比例
         if (lf.esc !== escIn) escChanged = true;
         if (lf.event) corridorSceneEvents.push({ id: escIn.id, kind: 'revived', silent: lf.event === 'selfRevived' });
         let esc = lf.esc;
@@ -19865,7 +19865,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const escortLandEvents: { x: number; y: number }[] = []; // 倒れ込みが地面に着いた瞬間(砂埃)
     const bossHatersOf = escortBossHaters(state.enemies);
     const nextEscortsRaw: EscortSoldier[] = state.escorts.map(escIn => {
-      const lf = stepEscortLife(escIn, now, deltaTime, px, py, escortAreaCtx);
+      const lf = stepEscortLife(syncEscortMaxHealth(escIn, state.player.maxHealth), now, deltaTime, px, py, escortAreaCtx); // 最大体力はプレイヤーの伸びに比例
       if (lf.esc !== escIn) escortsChanged = true;
       if (lf.event) escortSceneEvents.push({ id: escIn.id, kind: 'revived', silent: lf.event === 'selfRevived' });
       let esc = lf.esc;

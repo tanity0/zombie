@@ -5,7 +5,7 @@
 // 数値はすべて叩き台(設計書§10「実機で絞る」)。ここが唯一の出どころ=他所に数値を書き写さない。
 import type { EscortSoldier } from '../types/game';
 
-/** 体力 = 出撃時のプレイヤー最大体力 × この割合(§3)。 */
+/** 体力 = プレイヤー最大体力 × この割合(§3・出撃中も追従)。 */
 export const ESCORT_HP_RATIO = 0.6;
 /** 被弾後の無敵(プレイヤーの INVULN_MS と同じ考え方=連続ヒットで溶けない)。 */
 export const ESCORT_HIT_INVULN_MS = 1000;
@@ -64,9 +64,24 @@ export const escortHitbox = (e: Pick<EscortSoldier, 'x' | 'y'>): Box => {
 /** 円(爆風/帯の当たり)に使う体の半径(プレイヤー/守護霊と同じ「長い辺の半分」=BODY/2)。 */
 export const ESCORT_BODY_RADIUS = ESCORT_BODY_SIZE / 2;
 
-/** 出撃時のプレイヤー最大体力から軍人の最大体力(§3)。最低1。 */
+/** プレイヤーの最大体力から軍人の最大体力(§3)。最低1。 */
 export const escortMaxHealthFor = (playerMaxHealth: number): number =>
   Math.max(1, Math.round(Math.max(0, playerMaxHealth) * ESCORT_HP_RATIO));
+
+/**
+ * 出撃中もプレイヤーの最大体力の伸びに比例させる(社長指示2026-10-07「軍人のHPはプレイヤーに比例して増える」)。
+ * 最大体力=いつもプレイヤーの最大体力×割合。上がった時はプレイヤーと同じく増えた分だけ今の体力も足す(倒れている間は0のまま)。
+ * 下がった時は今の体力を新しい最大へ収める。体力を持たない軍人(M0の随行)・変化なしは同じ参照を返す。
+ */
+export const syncEscortMaxHealth = (e: EscortSoldier, playerMaxHealth: number): EscortSoldier => {
+  if (!escortHasHealth(e) || !(playerMaxHealth > 0)) return e;
+  const max = e.maxHealth as number;
+  const target = escortMaxHealthFor(playerMaxHealth);
+  if (target === max) return e;
+  const hp = e.health ?? max;
+  const health = isEscortDowned(e) ? hp : Math.min(target, hp + Math.max(0, target - max));
+  return { ...e, maxHealth: target, health };
+};
 
 /** 体力を持つ軍人か(M0の随行2人は持たない=従来どおり)。 */
 export const escortHasHealth = (e: Pick<EscortSoldier, 'maxHealth'>): boolean => (e.maxHealth ?? 0) > 0;

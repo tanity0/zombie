@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { EscortSoldier } from '../types/game';
 import {
-  applyEscortHit, stepEscortVitals, escortSlidePosition, escortMaxHealthFor, escortCenter, escortHitbox, escortBodyRect,
+  applyEscortHit, stepEscortVitals, escortSlidePosition, escortMaxHealthFor, syncEscortMaxHealth, escortCenter, escortHitbox, escortBodyRect,
   isEscortDowned, isEscortLowHealth, isEscortInvulnerable, canEscortBeHit, isEscortTargetableBody, healEscortFull, escortAdvanceSlowMult,
   escortReviveProgress, clearEscortSlide,
   ESCORT_HP_RATIO, ESCORT_HIT_INVULN_MS, ESCORT_HIT_FIRE_HOLD_MS, ESCORT_REVIVE_RADIUS_PX, ESCORT_REVIVE_NEED_MS, ESCORT_REVIVE_DECAY,
@@ -21,6 +21,18 @@ describe('体力(§3)', () => {
     expect(escortMaxHealthFor(100)).toBe(60);
     expect(escortMaxHealthFor(1)).toBe(1);
     expect(escortMaxHealthFor(0)).toBe(1);
+  });
+  it('出撃中もプレイヤーの最大体力の伸びに比例する(上がった分は今の体力にも足す・倒れ中は0のまま・下がれば収める)', () => {
+    const e = mk({ health: 40, maxHealth: 60 });
+    const up = syncEscortMaxHealth(e, 150); // 60→90
+    expect(up.maxHealth).toBe(90); expect(up.health).toBe(70);
+    expect(syncEscortMaxHealth(e, 100)).toBe(e); // 変化なし=同じ参照
+    const down = syncEscortMaxHealth(mk({ health: 60, maxHealth: 60 }), 50); // 60→30
+    expect(down.maxHealth).toBe(30); expect(down.health).toBe(30);
+    const dn = syncEscortMaxHealth(mk({ health: 0, maxHealth: 60, downedAt: 5 }), 150);
+    expect(dn.maxHealth).toBe(90); expect(dn.health).toBe(0);
+    const m0 = mk({ health: undefined, maxHealth: undefined });
+    expect(syncEscortMaxHealth(m0, 150)).toBe(m0);
   });
   it('M0の随行(maxHealthなし)は体力なし=被弾しない・狙われない(従来どおり)', () => {
     const m0 = mk({ health: undefined, maxHealth: undefined });

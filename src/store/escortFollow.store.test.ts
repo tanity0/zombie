@@ -32,7 +32,8 @@ const setup = (o: { captured: boolean; ex: number; ey: number; px: number; py: n
   useGameStore.setState(s => ({
     gameTime: GT, gameBounds: { width: 430, height: 932 }, viewZoom: 1,
     enemies: [], projectiles: [], pumpkinBlasts: [],
-    player: { ...s.player, health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0 },
+    player: { ...s.player, health: 9999, maxHealth: 120, // 120×0.6=72=軍人の最大体力(出撃中もプレイヤーに比例する)
+      invulnerable: false, invulnerableTime: 0 },
     baseSites: s.baseSites.map(b => (b.id === 'base-0' ? { ...b, status: o.captured ? 'captured' : 'open' } : b)),
     escorts: s.escorts.map((e, i) => (i === 0
       ? { ...e, x: o.ex, y: o.ey, face: 1, health: 72, maxHealth: 72, ...o.over }
