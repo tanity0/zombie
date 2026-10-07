@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4893', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4892', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4891', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4890', items: ['解放軍群(変異)は、深層域ではなく未確認汚染エリアを回るようになった'] },
