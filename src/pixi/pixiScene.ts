@@ -764,6 +764,8 @@ const EVENT_NPC_TARGET_HEIGHT = 108;
 // グレッグ/ジュン(チュートリアル随行)・商人・二人組・救助NPCは対象外。
 // 視覚のみ=当たり判定は不変(CLAUDE.md「Visual vs. hitbox」)。会話立ち絵はNpcDialogue側で適用。
 const NPC8_SCALE = 0.9; // 0.8→0.9(社長指示v0.25.1859)
+// 進軍NPCの支給シート(66px枠)の表示倍率。旧立ち絵と見た目の大きさ(不透明部の面積・体高)を揃える係数(2026-10-07)。
+const ESCORT_SHEET_DISPLAY_MULT = 1.1;
 // v2(EVENT_QUEST_DESIGN.md §2-2B・B2): 旧v1の白い滞在アーク(このpixiScene側の複製定数を分母に
 // 使っていた)を撤去したため不要になった。§2-14「★納品の3秒滞在のメーターを描く場所」により、
 // B4が足す帰還サークル側の新しいアークはstore側のEVENT_QUEST_DWELL_MSを分母にする(この複製は
@@ -26808,10 +26810,13 @@ export class PixiScene {
       // 体力を持たない軍人(M0の随行)は pose が恒等=従来と1ビットも変わらない。滑り(被弾/倒れる)の位置は store が x,y に書く。
       // 沈みの量=曲線(基準px単位)を体の表示高に比例させる(社長裁定2026-10-07「腰まで沈めて座り込んだように」§13c-1)。
       // 表示高は下の sc と同じ式(テクスチャが無い時は従来の基準px×遠近)。
+      // 支給シート(歩き/倒れ)は旧立ち絵より体の上の余白が広く頭身も細い=同じ枠高だと見た目が約8%小さい
+      // (社長指摘2026-10-07「小さくなってる」)。シートを使う時だけ枠ごと拡大して旧立ち絵の見た目に揃える。
+      const sheetMult = downSheet || sheetFrames > 0 ? ESCORT_SHEET_DISPLAY_MULT : 1;
       const sinkScaleBase = tex
         ? (esc.soldierIndex === TUTORIAL_MEDIC_INDEX
           ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y)
-          : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1)) * tex.height * walkSqY
+          : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1) * sheetMult) * tex.height * walkSqY
         : 0;
       // 本体の沈みだけ体高比・食い込みの超過/起き上がりの行き過ぎ/呼吸は基準px×遠近(体高比に乗せると約8pxの跳ね=R2 A-3)。
       const sinkWorld = downSheet
@@ -26835,7 +26840,7 @@ export class PixiScene {
         const sc = esc.soldierIndex === TUTORIAL_MEDIC_INDEX
           ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y)
           // NPC8人(index0..7)のみ0.8倍(社長指示v0.25.1858)。チュートリアル随行(100/101)は等倍。
-          : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1);
+          : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1) * sheetMult;
         sp.scale.set(sc * walkSqX * faceSign, sc * walkSqY);
         sp.rotation = walkLean;
         // 倒れた姿の「沈み」: 足元を sinkWorld だけ下げ、地面の線より下の部分は切って見せる(足が地面に埋まる)。
