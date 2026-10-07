@@ -197,6 +197,7 @@ let loading: Promise<void> | null = null;
 // 値=コマ数。描画(pixiScene drawEscorts)は `${base}-walk-0` があればこちらを使う(無い人は旧3コマ)。
 export const ESCORT_WALK_SHEETS: Readonly<Record<string, number>> = {
   'npc/edgar-walk': 8, 'npc/joseph-walk': 16, 'npc/elizabeth-walk': 8, 'npc/musashi-walk': 8, 'npc/muhammad-walk': 16,
+  'npc/chen-walk': 8, 'npc/lauren-walk': 16, 'npc/phaser-walk': 8,
 };
 export const FLAME_SHEET = 'props/flame';
 export const FLAME_FRAMES = 8;
@@ -815,6 +816,9 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/elizabeth-walk', scaleMode: 'nearest' },
       { name: 'npc/musashi-walk', scaleMode: 'nearest' },
       { name: 'npc/muhammad-walk', scaleMode: 'nearest' },
+      { name: 'npc/chen-walk', scaleMode: 'nearest' },
+      { name: 'npc/lauren-walk', scaleMode: 'nearest' },
+      { name: 'npc/phaser-walk', scaleMode: 'nearest' },
       { name: 'npc/medic-walk-0', scaleMode: 'nearest' }, // 衛生兵(チュートリアル随行・4コマピンポン)
       { name: 'npc/medic-walk-1', scaleMode: 'nearest' },
       { name: 'npc/medic-walk-2', scaleMode: 'nearest' },

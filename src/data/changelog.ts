@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4904', items: ['チェン、ローレン、フェイザーの歩く姿も新しくなり、拠点へ向かう軍人8人がそろった'] },
   { version: '0.25.4903', items: ['拠点へ向かう軍人のうち、エドガー、ジョセフ、エリザベス、武蔵、ムハンマドの歩く姿が新しくなった'] },
   { version: '0.25.4902', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4901', items: ['ゲーム内容の変更はありません'] },

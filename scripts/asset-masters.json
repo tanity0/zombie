@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "932 files / 復号後 約700MB",
+ "generatedFor": "935 files / 復号後 約701MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2966,6 +2966,12 @@
    "bytes": 110568,
    "sha": "aceff564b27a42c2"
   },
+  "sprites/npc/chen-walk.png": {
+   "w": 440,
+   "h": 66,
+   "bytes": 21102,
+   "sha": "aaf1a78412e615ec"
+  },
   "sprites/npc/edgar-0.png": {
    "w": 264,
    "h": 293,
@@ -3074,6 +3080,12 @@
    "bytes": 60871,
    "sha": "c0a54a030866cf0d"
   },
+  "sprites/npc/lauren-walk.png": {
+   "w": 816,
+   "h": 66,
+   "bytes": 45518,
+   "sha": "831e2941c9b018ab"
+  },
   "sprites/npc/medic-walk-0.png": {
    "w": 78,
    "h": 64,
@@ -3163,6 +3175,12 @@
    "h": 330,
    "bytes": 99065,
    "sha": "252e5dc01e8eae74"
+  },
+  "sprites/npc/phaser-walk.png": {
+   "w": 440,
+   "h": 66,
+   "bytes": 21259,
+   "sha": "bfa12f4d3462f82b"
   },
   "sprites/npc/phill-heal-0.png": {
    "w": 36,
