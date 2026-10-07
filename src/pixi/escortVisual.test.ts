@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   escortPose, escortDownK, escortBarWant, escortDownDotAlpha, escortReviveLitTarget,
   ESCORT_SINK_PX, ESCORT_OVERSHOOT_PX, ESCORT_FALL_MS, ESCORT_FALL_IMPACT_AT, ESCORT_FALL_THUD_K, ESCORT_RISE_MS, ESCORT_RISE_SELF_MS,
-  ESCORT_FLASH_MS, ESCORT_FLASH_ALPHA, ESCORT_BLINK_MS, ESCORT_BAR_SHOW_MS, ESCORT_BAR_FADE_MS, ESCORT_BAR_HEAL_SHOW_MS, ESCORT_BREATH_BOB_PX, ESCORT_DOWN_PULSE_MS,
+  ESCORT_FLASH_MS, ESCORT_FLASH_ALPHA, ESCORT_BLINK_MS, ESCORT_BAR_SHOW_MS, ESCORT_BAR_FADE_MS, ESCORT_BAR_HEAL_SHOW_MS, ESCORT_HIT_CROUCH_MS, ESCORT_BREATH_BOB_PX, ESCORT_DOWN_PULSE_MS,
 } from './escortVisual';
 
 const stand = { maxHealth: 78, health: 78 };
@@ -10,7 +10,7 @@ const stand = { maxHealth: 78, health: 78 };
 describe('escortVisual: 倒れる・起き上がり(位置・影・透明度だけ=歪みなし)', () => {
   it('体力を持たない軍人(M0の随行)は恒等=従来と同じ', () => {
     const p = escortPose({ downedAt: 0, riseAt: 0 }, 1234);
-    expect(p).toEqual({ downK: 0, sinkPx: 0, sinkBodyK: 0, sinkExtraPx: 0, alphaMul: 1, shadowW: 1, shadowLen: 1, shadowAlpha: 1, flash: 0 });
+    expect(p).toEqual({ downK: 0, sinkPx: 0, sinkBodyK: 0, sinkExtraPx: 0, alphaMul: 1, shadowW: 1, shadowLen: 1, shadowAlpha: 1, flash: 0, hitCrouch: false });
   });
   it('沈みは本体(0..1・体高比で描く)と上乗せ(基準px)に分かれ、起き上がりの行き過ぎは上乗せ側=体高比に乗らない(R2 A-3)', () => {
     const e = { maxHealth: 100, downedAt: undefined, riseAt: 0, riseKind: 'player' as const, lastHitAt: undefined };
@@ -87,6 +87,17 @@ describe('escortVisual: 倒れる・起き上がり(位置・影・透明度だ�
     expect(escortPose(e, 500).flash).toBeGreaterThan(0.9);
     expect(escortPose(e, 500 + ESCORT_FLASH_MS / 2).flash).toBeLessThan(escortPose(e, 500).flash);
     expect(escortPose(e, 500 + ESCORT_FLASH_MS).flash).toBe(0);
+  });
+});
+
+describe('攻撃を受けた直後のしゃがみ(社長指示2026-10-08)', () => {
+  const st = { maxHealth: 100 } as const;
+  it('受けてから ESCORT_HIT_CROUCH_MS の間だけしゃがむ。倒れている間・体力なしはしゃがまない', () => {
+    expect(escortPose({ ...st, lastHitAt: 1000 }, 1000).hitCrouch).toBe(true);
+    expect(escortPose({ ...st, lastHitAt: 1000 }, 1000 + ESCORT_HIT_CROUCH_MS - 1).hitCrouch).toBe(true);
+    expect(escortPose({ ...st, lastHitAt: 1000 }, 1000 + ESCORT_HIT_CROUCH_MS).hitCrouch).toBe(false);
+    expect(escortPose({ ...st, lastHitAt: 1000, downedAt: 1000 }, 1100).hitCrouch).toBe(false);
+    expect(escortPose({ lastHitAt: 1000 }, 1100).hitCrouch).toBe(false);
   });
 });
 

@@ -39,6 +39,8 @@ export const ESCORT_DOWN_SHADOW_DARKEN = 0.25;
 /** 被弾の白フラッシュ(従)。敵の被弾フラッシュと同じ強さ(弱いと色が倍になるだけで白くならない=DC-1 #5)。尺は短く絞る。 */
 export const ESCORT_FLASH_MS = 120;
 export const ESCORT_FLASH_ALPHA = 1;
+/** 攻撃を受けた直後、倒れる絵の0コマ目(片膝のしゃがみ)を見せる時間(ms)。撃つ手が止まる時間(ESCORT_HIT_FIRE_HOLD_MS=300)と同じ(社長指示2026-10-08「NPC攻撃食らったら、しゃがみの絵」)。 */
+export const ESCORT_HIT_CROUCH_MS = 300;
 /** 起き上がり後の無敵の間の点滅(store の ESCORT_REVIVE_INVULN_MS=2000ms と同じ長さ・周期は短く)。 */
 export const ESCORT_BLINK_MS = 2000;
 export const ESCORT_BLINK_PERIOD_MS = 200;
@@ -96,6 +98,8 @@ export interface EscortPose {
   sinkBodyK: number;
   /** 沈みの上乗せ(基準px): 着地の食い込みの超過・起き上がりの行き過ぎ(負)・呼吸。描画は遠近だけ掛ける(体高比に乗せると跳ねが大きすぎる)。 */
   sinkExtraPx: number;
+  /** 攻撃を受けた直後のしゃがみ(倒れていない時だけ・ESCORT_HIT_CROUCH_MS の間)。 */
+  hitCrouch: boolean;
   /** 立ち絵の透明度に掛ける倍率(起き上がり後の無敵の点滅だけ。倒れている間は 1=透明度の呼吸はしない)。 */
   alphaMul: number;
   /** 影の幅に掛ける倍率(1=立っている時・倒れるほど広がる)。 */
@@ -109,7 +113,7 @@ export interface EscortPose {
 }
 
 export const escortPose = (e: Pick<EscortSoldier, 'maxHealth' | 'downedAt' | 'riseAt' | 'riseKind' | 'lastHitAt'>, now: number): EscortPose => {
-  if (!hasVitals(e)) return { downK: 0, sinkPx: 0, sinkBodyK: 0, sinkExtraPx: 0, alphaMul: 1, shadowW: 1, shadowLen: 1, shadowAlpha: 1, flash: 0 };
+  if (!hasVitals(e)) return { downK: 0, sinkPx: 0, sinkBodyK: 0, sinkExtraPx: 0, alphaMul: 1, shadowW: 1, shadowLen: 1, shadowAlpha: 1, flash: 0, hitCrouch: false };
   const downK = escortDownK(e, now);
   // 呼吸: 透明度ではなく体の上下(位置だけ)。倒れた瞬間は0から始まり、息で少し浮いて戻る(頭上の点・画面端の印と同じ周期と位相)。
   let breathPx = 0;
@@ -137,6 +141,7 @@ export const escortPose = (e: Pick<EscortSoldier, 'maxHealth' | 'downedAt' | 'ri
     shadowLen: 1 - ESCORT_DOWN_SHADOW_FLATTEN * dk,
     shadowAlpha: 1 + ESCORT_DOWN_SHADOW_DARKEN * dk,
     flash,
+    hitCrouch: e.downedAt === undefined && age >= 0 && age < ESCORT_HIT_CROUCH_MS,
   };
 };
 

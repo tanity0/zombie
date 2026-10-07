@@ -26782,7 +26782,10 @@ export class PixiScene {
       // 社長支給の倒れる2コマ(2026-10-07): 0=崩れかけ/1=倒れた姿。倒れ込み(downK 0→1)・倒れ中・起き上がり(1→0)の
       // 途中を2コマで見せる(半分までは0コマ目)。この絵がある人は「腰まで沈める」代用を使わない。
       const downSheet = !!getTexture(`${base}-down-1`) && pose.downK > 0.02;
-      const tex = downSheet
+      // 攻撃を受けた直後(倒れていない時)は倒れる絵の0コマ目=片膝のしゃがみ(社長指示2026-10-08)。
+      const hitCrouch = !downSheet && pose.hitCrouch && !!getTexture(`${base}-down-0`);
+      const tex = hitCrouch ? getTexture(`${base}-down-0`)
+        : downSheet
         ? (getTexture(`${base}-down-${pose.downK >= 0.5 ? 1 : 0}`) ?? getTexture(`${base}-down-1`))
         : sheetFrames > 0
         ? (getTexture(`${base}-walk-${sheetFrame}`) ?? getTexture(`${base}-walk-0`))
@@ -26815,7 +26818,7 @@ export class PixiScene {
       // 表示高は下の sc と同じ式(テクスチャが無い時は従来の基準px×遠近)。
       // 支給シート(歩き/倒れ)は旧立ち絵より体の上の余白が広く頭身も細い=同じ枠高だと見た目が約8%小さい
       // (社長指摘2026-10-07「小さくなってる」)。シートを使う時だけ枠ごと拡大して旧立ち絵の見た目に揃える。
-      const sheetMult = downSheet || sheetFrames > 0 ? ESCORT_SHEET_DISPLAY_MULT : 1;
+      const sheetMult = downSheet || hitCrouch || sheetFrames > 0 ? ESCORT_SHEET_DISPLAY_MULT : 1;
       const sinkScaleBase = tex
         ? (esc.soldierIndex === TUTORIAL_MEDIC_INDEX
           ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y)
