@@ -26768,11 +26768,11 @@ export class PixiScene {
       const animate = esc.moving !== false;
       const idleFrame = esc.soldierIndex === TUTORIAL_MEDIC_INDEX ? 2 : 0;
       const walkFrame = animate ? seq[step % seq.length] : idleFrame;
-      // 社長支給の歩きシート(2026-10-07・8/16コマ)がある人はそちらで歩く(1周 ESCORT_SHEET_CYCLE_MS・順送り)。
+      // 社長支給の歩きシート(2026-10-07・8/16コマ)がある人はそちらで歩く(1コマ ESCORT_SHEET_FRAME_MS・順送り)。
       // 止まっている時は0コマ目。シートの無い人は従来の3コマ(ピンポン)。
       const sheetFrames = getTexture(`${base}-walk-0`) ? (ESCORT_WALK_SHEETS[`${base}-walk`] ?? 0) : 0;
       const sheetFrame = sheetFrames > 0 && animate
-        ? Math.floor(now / (PixiScene.ESCORT_SHEET_CYCLE_MS / sheetFrames)) % sheetFrames : 0;
+        ? Math.floor(now / PixiScene.ESCORT_SHEET_FRAME_MS) % sheetFrames : 0;
       // research/ESCORT_TARGETED.md §6・§7: 倒れた姿の曲線(体力を持たない M0 の随行は恒等=従来と同じ)。
       const pose = escortPose(esc, gameTime);
       this.escortPoseById.set(esc.id, pose);
@@ -26794,7 +26794,7 @@ export class PixiScene {
       // 徒歩の自然化(プレイヤーと同じ二次モーション・視覚のみ・判定不変)。護衛は常時行進なので位相は
       // 時間から連続生成し、コマ周期(seq.length×フレーム時間)に同期させてスカッシュ&ストレッチの山を
       // 通過コマに合わせる。接地(lift=0)で縦に潰れ横に広がり、遊脚(lift=1)で縦に伸び横が締まる＋左右リーン。
-      const cycleMs = sheetFrames > 0 ? PixiScene.ESCORT_SHEET_CYCLE_MS : seq.length * PixiScene.RESCUE_WALK_FRAME_MS; // 上下の揺れ(位置)を歩きの周期に合わせる
+      const cycleMs = sheetFrames > 0 ? PixiScene.ESCORT_SHEET_STRIDE_FRAMES * PixiScene.ESCORT_SHEET_FRAME_MS : seq.length * PixiScene.RESCUE_WALK_FRAME_MS; // 上下の揺れ(位置)を歩きの周期に合わせる
       const phase = (now / cycleMs) * Math.PI * 2;
       const stepS = animate ? Math.sin(phase) : 0;
       const lift = Math.abs(stepS); // 0=接地 / 1=遊脚中(最高点)。静止中は常に接地扱い
@@ -29079,8 +29079,15 @@ export class PixiScene {
   // HPバー/コールアウトは rescueGfx(常に最前)。本体スプライトは id ごとにプール/プルーン。
   private static readonly RESCUE_NPC_DISPLAY_H = 65; // 表示の基準高さ(px)。社長指示で 54→65(×1.2)。当たり判定(RESCUE_SURVIVOR_SIZE)も同率で拡大。
   private static readonly RESCUE_WALK_FRAME_MS = 170;
-  /** 進軍NPCの歩きシート(8/16コマ)の1周の時間。8コマ=1コマ100ms・16コマ=50ms(歩幅は同じ周期)。叩き台。 */
-  private static readonly ESCORT_SHEET_CYCLE_MS = 800;
+  /**
+   * 進軍NPCの歩きシートの1コマの時間(ms)。シートは8コマ=1周(左右1歩ずつ)で、16コマのシートは同じ1周が2回描かれている
+   * (脚の開きを実測: 8コマごとに同じ並び)=コマ数によらず1コマの時間を揃える。旧=1周800msを16コマで割っていて、
+   * ジョセフ/ムハンマド/ローレンだけ倍速だった(社長指摘2026-10-07「駆け足モーションが早すぎる」)。
+   * 140ms=1周1.12秒(プレイヤーの歩き0.9秒より少しゆっくり)。`?escortframems=` で実機から詰める。
+   */
+  private static readonly ESCORT_SHEET_FRAME_MS = tsNum('escortframems', 140);
+  /** 1周(左右1歩ずつ)のコマ数。上下の揺れ(位置)の周期の基準。 */
+  private static readonly ESCORT_SHEET_STRIDE_FRAMES = 8;
   private static readonly ESCORT_WALK_SEQ_2 = [0, 1];          // 2コマ立ち絵の歩行
   private static readonly ESCORT_WALK_SEQ_3 = [0, 1, 2, 1];    // 3コマ立ち絵(社長提供): 接地A→通過→接地B→通過
   private static readonly ESCORT_WALK_SEQ_4 = [0, 1, 2, 3, 2, 1]; // 4コマ立ち絵(衛生兵): ピンポン(社長指定)
