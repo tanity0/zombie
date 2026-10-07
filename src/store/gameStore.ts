@@ -201,6 +201,11 @@ import {
   ESCORT_BODY_SIZE, ESCORT_DOWN_SLIDE_MS, ESCORT_FALL_IMPACT_FRAC, ESCORT_LOST_SIGHT_MS, ESCORT_RETREAT_SPEED_MULT,
 } from '../utils/escortHealth';
 import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscortSource } from '../utils/escortView';
+// research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils の純関数)。
+import {
+  followZoneContains, stepFollowMachine, stepEscortFollow, escortFollowProfile, followSpeedCap, followHeal, followLineMuted,
+  nextFollowHeading, FOLLOW_PLAYER_SPEED_CEIL_MULT, FOLLOW_PLAYER_SPEED_FLOOR_MULT, type FollowHeading,
+} from '../utils/escortFollow';
 import { setHateEscortProvider } from '../utils/bossHate';
 import { escortSceneLine, type EscortScene } from '../data/escortSceneLines';
 import { escortHitFx, escortRiseFx, escortLandFx, type EscortFxApi, type EscortFxView } from '../utils/escortFx'; // 軍人の血と音(被弾/倒れる/起き上がり)
@@ -19873,6 +19878,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         const prevBusy = esc.hatedByBossIds ?? [];
         if (hbBusy.length !== prevBusy.length || hbBusy.some((id, i) => id !== prevBusy[i])) { esc = { ...esc, hatedByBossIds: hbBusy }; escortsChanged = true; }
         if (lf.landed) escortLandEvents.push({ x: esc.x, y: esc.y });
+        // ついてくる動きの慣性は持ち越さない(起き上がったら止まった所から。反応の遅れも数え直し)。
+        // 倒れている間は「ついてくる/帰る/見送り」も畳む(起きた後に、もう居ないプレイヤーを見送らない=検収D1 B-4)。
+        // 被弾の滑り(短い busy)では畳まない=ついてくる/帰るはそのまま続く(検収R2 A-1/A-2)。
+        const downedNow = isEscortDowned(esc);
+        if (esc.followSpeed !== undefined || esc.followWakeAt !== undefined || (downedNow && (esc.followState !== undefined || esc.followPauseUntil !== undefined))) {
+          escortsChanged = true;
+          return downedNow
+            ? { ...esc, moving: false, vx: 0, vy: 0, followSpeed: undefined, followWakeAt: undefined, followState: undefined, followPauseUntil: undefined }
+            : { ...esc, moving: false, vx: 0, vy: 0, followSpeed: undefined, followWakeAt: undefined };
+        }
         return { ...esc, moving: false, vx: 0, vy: 0 };
       }
       // 「ボスの赤い予告が自分に掛かった瞬間」(ボスが狙いをこの軍人に決めた=hateTarget が escort:<id> に新しく変わった)。
@@ -19893,9 +19908,37 @@ export const useGameStore = create<GameState>((set, get) => ({
         const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
         npcRetreatEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'pushback', sol.pushback) });
       }
+      // ★research/ESCORT_FOLLOW.md: 解放済みの拠点の軍人は、プレイヤーが担当区域の中に居る間だけついてくる(区域を出たら見送ってから帰る)。
+      // 状態の優先順位は 倒れ/滑り(上で抜けた) > 後ずさり > ウェルカム待機 > ついてくる/帰る > 巡回 > 前進(設計書§2-2)。
+      // 画面の外か内かより**先**に判定する=ついてくる/帰る軍人は画面の内外で同じ動き(速さの継ぎ目を画面端に置かない)。
+      let fol: ReturnType<typeof stepFollowMachine> | null = null;
+      if (base.status !== 'captured' && (esc.followState !== undefined || esc.followInZone !== undefined || esc.followSpeed !== undefined)) {
+        // 拠点が陥落して未解放へ戻った: ついてくる状態を全部畳む(前進へ戻る)。
+        esc = { ...esc, followState: undefined, followInZone: undefined, followSpeed: undefined, followPauseUntil: undefined, followWakeAt: undefined };
+        escortsChanged = true;
+      }
+      if (base.status === 'captured' && !escortWelcomeHold) {
+        const zoneIn = followZoneContains(px, py, poiSectorIndex(base), esc.followInZone ?? false, AREA_THRESHOLDS[0]);
+        fol = stepFollowMachine({
+          captured: true, zoneIn, prev: esc.followState,
+          inBaseCircle: Math.hypot(esc.x - base.x, esc.y - base.y) <= BASE_CAPTURE_RADIUS,
+          pauseUntil: esc.followPauseUntil, now,
+        });
+        if (zoneIn !== (esc.followInZone ?? false) || fol.state !== esc.followState || fol.pauseUntil !== esc.followPauseUntil) {
+          esc = { ...esc, followInZone: zoneIn, followState: fol.state, followPauseUntil: fol.pauseUntil };
+          escortsChanged = true;
+        }
+        if (fol.started && !followLineMuted(esc.capturedAt, now) && !(esc.riseAt !== undefined && now - esc.riseAt < 3000)) { // 起き上がった直後は「ついてき始めた」台詞を出さない(R2 S・推薦)
+          // ついてき始めた時: その人の「並走」台詞を1回(既存の間隔=tryNpcLine のCDが明けていれば。新しい台詞は作らない=§5b S-3)。
+          const solF = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+          npcCompanionEvents.push({ id: esc.id, name: solF.name, text: pickNpcLine(esc.soldierIndex, 'companion', solF.companion) });
+        }
+      }
+      const followDrives = fol?.state !== undefined;
       // 画面外=索敵・射撃なしで担当拠点へ遅く自動進行(社長指示2026-10-07「NPCは自動で少しずつ進む」。
       // 旧: 前進停止・座標保持)。苦戦の通信から20秒は止まる。たどり着いて10秒居れば画面内と同じく解放。
-      if (!onScreen(esc.x, esc.y)) {
+      // (ついてくる/帰る軍人は上の判定で自分の動きを持つ=この自動進行は使わない・触らない)
+      if (!followDrives && !onScreen(esc.x, esc.y)) {
         const off = escortOffscreenStep({
           x: esc.x, y: esc.y, baseX: base.x, baseY: base.y,
           baseOpen: base.status === 'open', holdForWelcome: escortWelcomeHold,
@@ -19914,7 +19957,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 制圧後は進軍目標がないため全方位を前方扱い。巡回中に背後だけ無視して進み続けない。
       // §17-14: ウェルカムの輪が出ている間は出撃地点(esc.x/y=現在地)を目標にして前進させない。
       const goal = (escortWelcomeHold || base.status === 'captured') ? { x: esc.x, y: esc.y } : { x: base.x, y: base.y };
-      const advance = escortAdvance(esc, goal, state.enemies, {
+      // ついてくる/帰る軍人が画面外に居る間は索敵しない(射撃・索敵は画面内だけ=設計書§2-2・監査C-3)。
+      const followOffscreen = followDrives && !onScreen(esc.x, esc.y);
+      const advance = escortAdvance(esc, goal, followOffscreen ? [] : state.enemies, {
         detectRadius,
         surroundRadius: SURROUND_RADIUS,
         surroundCount: SURROUND_COUNT,
@@ -19923,8 +19968,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         strongNearExit: 150,
         now,
       });
-      if (advance.surroundedNow) npcSurroundEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
-      if (advance.rescuedNow) npcRescuedEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
+      if (advance.surroundedNow && !followOffscreen) npcSurroundEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
+      if (advance.rescuedNow && !followOffscreen) npcRescuedEvents.push( // 画面外は敵を渡さないので「助かった」の偽の立ち上がりを出さない(検収D1 B-1)
+       { id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
       // 拠点が見えてきた時: 未制圧の担当拠点中心へ近づいた(あと少し)。
       if (base.status === 'open' && Math.hypot(esc.x - base.x, esc.y - base.y) < NEAR_BASE_DIST) {
         npcBaseNearEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'baseNear', sol.baseNear) });
@@ -19941,6 +19987,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         companionMs = 0; // 離れたらリセット(連続並走のみ)
       }
       let { x, y, fireAt, dwellMs, face } = esc;
+      let followHeadOut: FollowHeading | undefined = esc.followHead;
+      let followSpeedOut: number | undefined, followWakeOut: number | undefined; // ついてくる枝が動かした時だけ値が入る(他の枝が動かしたら消える)
+      let healthOut = esc.health;
+      let movingOut = !escortWelcomeHold; // §17-14受け入れ条件19: ウェルカム中は moving=false を保つ。ついてくる枝は止まったフレームも false。
       let retreatDirX = esc.retreatDirX ?? 0, retreatDirY = esc.retreatDirY ?? 0;
       // ★§13b-2 瀕死(最大の30%未満)の間は、最寄りの敵(検知範囲内)から**撃ちながら後ずさる**(速さは既存の「後方」=70%)。
       //   前進の規則の作り直しではなく、瀕死の時だけの1規則。帯の外へ出ないよう clampRectToPlayableArea を通す。
@@ -19972,6 +20022,42 @@ export const useGameStore = create<GameState>((set, get) => ({
         x = rc.x + half; y = rc.y + ESCORT_BODY_SIZE;
       } else if (escortWelcomeHold) {
         // §17-14: 出撃地点で待機(前進しない)。射撃は下のブロックでそのまま続く。
+      } else if (followDrives && fol?.state) {
+        // ★ESCORT_FOLLOW: ついてくる(follow)/帰る(return)。速さはプレイヤーの今の速さ×1.15(follow)・今の前進と同じ(return)で、
+        // 画面の内外で同じ。壁判定はしない(clampRectToPlayableArea だけ)。escortAdvance の speedMult は使わない(target と立ち上がりだけ)。
+        // 自力で起きた直後の減速(escortAdvanceSlowMult)は効かせる。
+        const slow = escortAdvanceSlowMult(esc, now);
+        const pFeetY = p.y + p.height;
+        // 追う速さの基準=プレイヤーの今の速さ。ただし人の足の範囲に収める(刀のダッシュ・スケーター等で飛びつかない/硬直中も歩ける=検収D1 A-1)。
+        const playerSpeed = Math.min(FOLLOW_PLAYER_SPEED_CEIL_MULT, Math.max(FOLLOW_PLAYER_SPEED_FLOOR_MULT, (p.effectiveMoveSpeed ?? PLAYER_BASE_SPEED) / PLAYER_BASE_SPEED)) * PLAYER_BASE_SPEED * GAME_SPEED;
+        // 後ろ斜めの基準の向き=プレイヤーが同じ向きへ一定距離動いた時だけ更新(その場で向きを変えるだけでは踊らない=検収D1 A-2)。
+        const fh = nextFollowHeading(esc.followHead, { x: px, y: pFeetY }, p.lastDirection);
+        followHeadOut = fh;
+        const prevSpeed = esc.followSpeed ?? Math.hypot(esc.vx ?? 0, esc.vy ?? 0); // 他の枝(巡回など)から入る時は、動いていた速さから続ける
+        const st = stepEscortFollow({
+          state: fol.state, x, y, speed: prevSpeed, wakeAt: esc.followWakeAt, now, dtSec: deltaTime,
+          player: { x: px, y: pFeetY }, playerDir: { x: fh.dx, y: fh.dy },
+          base: { x: base.x, y: base.y }, profile: escortFollowProfile(esc.id),
+          followVmax: followSpeedCap(playerSpeed) * slow, returnVmax: escortSpeed() * slow,
+          pauseUntil: fol.pauseUntil, heading: { x: esc.vx ?? 0, y: esc.vy ?? 0 },
+        });
+        const halfF = ESCORT_BODY_SIZE / 2;
+        const rcF = clampRectToPlayableArea(st.x - halfF, st.y - ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, escortAreaCtx, x - halfF);
+        x = rcF.x + halfF; y = rcF.y + ESCORT_BODY_SIZE;
+        followSpeedOut = st.speed;
+        followWakeOut = st.wakeAt;
+        movingOut = st.moved; // 止まったフレームは止めコマ(その場足踏みしない)
+        if (st.moved) {
+          if (Math.abs(st.dirX) > 0.1) face = st.dirX < 0 ? -1 : 1;
+        } else if (advance.target) {
+          face = (advance.target.x + advance.target.width / 2 - x) < 0 ? -1 : 1; // 止まった時=近くの敵の方
+        } else if (st.seeingOff) {
+          face = (px - x) < 0 ? -1 : 1; // 見送り=プレイヤーの方を向いたまま
+        } else {
+          face = fh.dx < 0 ? -1 : fh.dx > 0 ? 1 : face; // 敵が居なければプレイヤーの進む向き(なましたもの)
+        }
+        // 回復(§5b S-1): ついてくる間、直近の被弾から8秒たったらゆっくり。倒れている間・帰る間は回復しない。
+        healthOut = followHeal(esc, fol.state, now, deltaTime);
       } else if (base.status === 'captured') {
         // 制圧後: 円の縁を巡回(社長指示)。半径を patrolR へ寄せつつ角度を進める=滑らかに周回。
         const cx0 = x - base.x, cy0 = y - base.y;
@@ -20020,12 +20106,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // §17-14受け入れ条件19: ウェルカム中は moving=false を保つ(止まっているのに歩行アニメが回らない)。
       // 輪が閉じたら true に戻り、従来どおりのアニメ(esc.moving!==false=常時行進)に戻る。
-      const moving = !escortWelcomeHold;
+      const moving = movingOut;
       // 速度(px/s)=ボスの偏差撃ちが軍人の移動先を読むのに使う。
       const evx = deltaTime > 0.0001 ? (x - esc.x) / deltaTime : 0, evy = deltaTime > 0.0001 ? (y - esc.y) / deltaTime : 0;
       if (Math.abs(evx - (esc.vx ?? 0)) > 0.5 || Math.abs(evy - (esc.vy ?? 0)) > 0.5) escortsChanged = true;
       if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face || companionMs !== (esc.companionMs ?? 0) ||
-        moving !== (esc.moving ?? true) ||
+        moving !== (esc.moving ?? true) || followSpeedOut !== esc.followSpeed || followWakeOut !== esc.followWakeAt || healthOut !== esc.health ||
         advance.zone !== (esc.advanceZone ?? 'none') || advance.speedMult !== esc.advanceSpeedMult || advance.speedTarget !== esc.advanceSpeedTarget ||
         advance.advanceDirX !== esc.advanceDirX || advance.advanceDirY !== esc.advanceDirY || advance.advanceRampFrom !== esc.advanceRampFrom || advance.advanceRampAt !== esc.advanceRampAt ||
         advance.strongNear !== (esc.strongNear ?? false) || advance.wasSurrounded !== (esc.wasSurrounded ?? false) ||
@@ -20033,6 +20119,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         retreating !== (esc.lowRetreat ?? false) || retreatK !== (esc.retreatK ?? 0)) escortsChanged = true;
       return {
         ...esc, x, y, fireAt, dwellMs, face, companionMs, moving, vx: evx, vy: evy, lowRetreat: retreating,
+        followSpeed: followSpeedOut, followWakeAt: followWakeOut, health: healthOut, followHead: followHeadOut,
         retreatK, retreatDirX: retreatK > 0 ? retreatDirX : 0, retreatDirY: retreatK > 0 ? retreatDirY : 0,
         advanceZone: advance.zone,
         advanceDirX: advance.advanceDirX,
@@ -20156,7 +20243,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★§13b-3 担当拠点の確保で、その担当の軍人は体力が全快する(体力の線は満ちてから消える=healedAt が起点)。
     if (capturedThisFrame) {
       const capId = (capturedThisFrame as { id: string }).id;
-      nextEscorts = nextEscortsRaw.map(e => (e.baseId === capId ? healEscortFull(e, now) : e));
+      nextEscorts = nextEscortsRaw.map(e => (e.baseId === capId ? { ...healEscortFull(e, now), capturedAt: now } : e)); // capturedAt=解放の直後はついてき始めの台詞を出さない(ESCORT_FOLLOW)
       if (nextEscorts.some((e, i) => e !== nextEscortsRaw[i])) escortsChanged = true;
     }
     if (changed || capturedThisFrame || removeAttackerIds.length || escortsChanged) {

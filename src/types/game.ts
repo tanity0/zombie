@@ -2133,6 +2133,22 @@ export interface EscortSoldier {
   lastScene?: { kind: 'downed' | 'revived' | 'targeted'; at: number };
   /** このフレームにこの軍人を狙っているボスのid(「ボスの赤い予告が自分に掛かった瞬間」の検出用・新規に増えた時だけ場面を打つ)。 */
   hatedByBossIds?: string[];
+
+  // ---- research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils/escortFollow.ts・描画は読むだけ) ----
+  /** 'follow'=プレイヤーについて歩く / 'return'=区域を出たので拠点へ帰る。未設定=通常(拠点の縁を巡回)。 */
+  followState?: 'follow' | 'return';
+  /** ついてくる時の後ろ斜めの基準の向き(なましたもの・utils/escortFollow.ts nextFollowHeading)。 */
+  followHead?: { dx: number; dy: number; ax: number; ay: number };
+  /** 区域の判定(入りの余白/出の余白のヒステリシス保持)。 */
+  followInZone?: boolean;
+  /** ついてくる/帰る動きの慣性の現在の速さ(px/s)。この枝が動かした直後のフレームだけ値がある(他の枝が動かしたら消える)。 */
+  followSpeed?: number;
+  /** 帰る前の見送りの期限(gameTime ms)。 */
+  followPauseUntil?: number;
+  /** 止まっている所から動き出す反応の遅れの期限(gameTime ms・個体で150〜250ms)。 */
+  followWakeAt?: number;
+  /** 担当拠点を解放した時刻(gameTime ms)。解放の直後に始まるついてくる動きでは台詞を出さない判定に使う。 */
+  capturedAt?: number;
 }
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
