@@ -34153,17 +34153,20 @@ export class PixiScene {
     // この**カウンター窓のリング+クレセント**。KILL全停止中は now が凍る=約140msで消えるはずの
     // フラッシュが停止の間ずっと最大表示で固まっていた。KILL処刑演出中は出さない(窓の判定は不変)。
     // ★ここは「近接の攻撃範囲テレグラフ(振りの絵)」であってカウンター判定ではない。
-    // v0.25.3943(隻狼型): 受付窓は [押した瞬間, +200ms] になった。絵は従来どおり振り始め
-    // (=counterWindowStart=押した瞬間)から出す。
-    if (now <= player.counterWindowEnd && counterFxVisible && !this.killFxActive()) {
+    // v0.25.3943(隻狼型): 受付窓は [押した瞬間, +200ms] になった(現在は+300ms)。
+    // ★社長指摘2026-10-08「真円の弧の方のエフェクトが出るタイミングが早くない？」→「はい」: 輪は**当たる瞬間**
+    // (前隙が明けて判定が出た時刻=meleeSwingCommitAt・5経路すべてで打刻)から出す。旧=押した瞬間から140msで
+    // 消え切り、判定(押して200ms後)の前に居なくなっていた。窓が開いている間(前隙中)は他の輪を出さないのは従来どおり。
+    const reachRingAt = player.meleeSwingCommitAt || 0;
+    const reachRingOn = reachRingAt > 0 && now >= reachRingAt && now - reachRingAt < 140;
+    if ((now <= player.counterWindowEnd || reachRingOn) && counterFxVisible && !this.killFxActive()) {
       // 元の黄色い攻撃範囲テレグラフ(社長指示で復活)。細いリーチリング + さっと出て
       // 速く消える静止クレセント。クレセントは狙い方向を向き、腹が太く先端が細い。
       // ※近接スイングの見た目は別途2枚画像差し替えで描画(本ブロックは攻撃範囲の表示)。
       const dir = player.lastDirection;
       const head = dir ? Math.atan2(dir.y, dir.x) : -Math.PI / 2;
-      const openAt = player.counterWindowStart; // 隻狼型(v0.25.3943): start=押した瞬間
-      const ft = (now - openAt) / 140; // blade life ~140ms (a quick flash)
-      if (ft < 1) {
+      const ft = (now - reachRingAt) / 140; // blade life ~140ms (a quick flash)・起点=当たる瞬間
+      if (reachRingOn && ft < 1) {
         const fade = Math.max(0, 1 - ft);
         // リーチリング(v0.25.2464→v0.25.2468): 旧64線分の手描き円は破線状にガタついた。
         // 社長指示「進行方向寄りが太く、背面寄りに徐々に細い月食の月のようなデザイン」を、

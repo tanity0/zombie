@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4918', items: ['近接攻撃の届く範囲を示す輪が、敵に当たる瞬間に光るようになった'] },
   { version: '0.25.4917', items: ['拠点へ向かう軍人は、攻撃を受けると一瞬片膝をついてしゃがむ'] },
   { version: '0.25.4916', items: ['マークスマンの歩く姿と走る姿の絵が逆になっていたのを直した'] },
   { version: '0.25.4915', items: ['マークスマンの走る姿も新しい絵になり、歩く姿は歩き用の絵に入れ替わった'] },
