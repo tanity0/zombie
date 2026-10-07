@@ -203,7 +203,7 @@ import {
 import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscortSource } from '../utils/escortView';
 // research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils の純関数)。
 import {
-  followZoneContains, stepFollowMachine, stepEscortFollow, escortFollowProfile, followSpeedCap, followHeal, followLineMuted,
+  followZoneContains, stepFollowMachine, stepEscortFollow, escortFollowProfile, followSpeedCap, followHeal, followHealMarks, followLineMuted,
   nextFollowHeading, FOLLOW_PLAYER_SPEED_CEIL_MULT, FOLLOW_PLAYER_SPEED_FLOOR_MULT, type FollowHeading,
 } from '../utils/escortFollow';
 import { setHateEscortProvider } from '../utils/bossHate';
@@ -19990,6 +19990,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       let followHeadOut: FollowHeading | undefined = esc.followHead;
       let followSpeedOut: number | undefined, followWakeOut: number | undefined; // ついてくる枝が動かした時だけ値が入る(他の枝が動かしたら消える)
       let healthOut = esc.health;
+      let healMarks: { healingAt?: number; healedAt?: number } = { healingAt: esc.healingAt, healedAt: esc.healedAt };
       let movingOut = !escortWelcomeHold; // §17-14受け入れ条件19: ウェルカム中は moving=false を保つ。ついてくる枝は止まったフレームも false。
       let retreatDirX = esc.retreatDirX ?? 0, retreatDirY = esc.retreatDirY ?? 0;
       // ★§13b-2 瀕死(最大の30%未満)の間は、最寄りの敵(検知範囲内)から**撃ちながら後ずさる**(速さは既存の「後方」=70%)。
@@ -20058,6 +20059,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         // 回復(§5b S-1): ついてくる間、直近の被弾から8秒たったらゆっくり。倒れている間・帰る間は回復しない。
         healthOut = followHeal(esc, fol.state, now, deltaTime);
+        healMarks = followHealMarks(esc.health, healthOut, esc.maxHealth, now, healMarks);
       } else if (base.status === 'captured') {
         // 制圧後: 円の縁を巡回(社長指示)。半径を patrolR へ寄せつつ角度を進める=滑らかに周回。
         const cx0 = x - base.x, cy0 = y - base.y;
@@ -20120,6 +20122,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return {
         ...esc, x, y, fireAt, dwellMs, face, companionMs, moving, vx: evx, vy: evy, lowRetreat: retreating,
         followSpeed: followSpeedOut, followWakeAt: followWakeOut, health: healthOut, followHead: followHeadOut,
+        healingAt: healMarks.healingAt, healedAt: healMarks.healedAt,
         retreatK, retreatDirX: retreatK > 0 ? retreatDirX : 0, retreatDirY: retreatK > 0 ? retreatDirY : 0,
         advanceZone: advance.zone,
         advanceDirX: advance.advanceDirX,

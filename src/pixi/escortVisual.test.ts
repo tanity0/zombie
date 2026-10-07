@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   escortPose, escortDownK, escortBarWant, escortDownDotAlpha, escortReviveLitTarget,
   ESCORT_SINK_PX, ESCORT_OVERSHOOT_PX, ESCORT_FALL_MS, ESCORT_FALL_IMPACT_AT, ESCORT_FALL_THUD_K, ESCORT_RISE_MS, ESCORT_RISE_SELF_MS,
-  ESCORT_FLASH_MS, ESCORT_FLASH_ALPHA, ESCORT_BLINK_MS, ESCORT_BAR_SHOW_MS, ESCORT_BAR_FADE_MS, ESCORT_BREATH_BOB_PX, ESCORT_DOWN_PULSE_MS,
+  ESCORT_FLASH_MS, ESCORT_FLASH_ALPHA, ESCORT_BLINK_MS, ESCORT_BAR_SHOW_MS, ESCORT_BAR_FADE_MS, ESCORT_BAR_HEAL_SHOW_MS, ESCORT_BREATH_BOB_PX, ESCORT_DOWN_PULSE_MS,
 } from './escortVisual';
 
 const stand = { maxHealth: 78, health: 78 };
@@ -112,6 +112,10 @@ describe('escortBarWant: 体力の線の出し方', () => {
     expect(escortBarWant({ ...base, healedAt: 100 }, 200)).toBe(1);
     expect(escortBarWant({ ...base, health: 60, riseAt: 100 }, 200)).toBe(1);
     expect(escortBarWant({ health: 3, lastHitAt: 0 }, 1)).toBe(0);
+  });
+  it('ついてくる間の回復中は出たまま(healingAt が毎フレーム更新)・止まると消えていく', () => {
+    expect(escortBarWant({ ...base, health: 80, healingAt: 1000 }, 1000)).toBe(1);
+    expect(escortBarWant({ ...base, health: 80, healingAt: 1000 }, 1000 + ESCORT_BAR_HEAL_SHOW_MS + ESCORT_BAR_FADE_MS + 1)).toBe(0);
   });
 });
 

@@ -290,6 +290,19 @@ export const followHeal = (
   return Math.min(max, e.health + max * FOLLOW_HEAL_PER_SEC * dtSec);
 };
 
+/**
+ * 回復の見せ方(社長裁定2026-10-07「はい」): 回復で体力が増えたフレームは healingAt を打ち(線を出す)、
+ * 満タンに達したフレームは healedAt を打つ(拠点の確保と同じ「満ちてから消える」見せ方)。増えていなければ前の値のまま。
+ */
+export const followHealMarks = (
+  prevHealth: number | undefined, nextHealth: number | undefined, max: number | undefined, now: number,
+  prev: { healingAt?: number; healedAt?: number },
+): { healingAt?: number; healedAt?: number } => {
+  if (prevHealth === undefined || nextHealth === undefined || !(nextHealth > prevHealth)) return prev;
+  const full = (max ?? 0) > 0 && nextHealth >= (max as number) && prevHealth < (max as number);
+  return { healingAt: now, healedAt: full ? now : prev.healedAt };
+};
+
 // ── 台詞(§2-3) ────────────────────────────────────────────────
 /** 解放の直後(この時間以内)に始まるついてくる動きでは台詞を出さない(解放の台詞がその役をする・監査A-7)。 */
 export const FOLLOW_LINE_MUTE_AFTER_CAPTURE_MS = 3000;

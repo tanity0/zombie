@@ -3,7 +3,7 @@
 // 画面の寸法を受け取らない関数なので「スマホの寸法で結果が変わらない」は型で保証される(座標の平行移動で同じ結果になることも確かめる)。
 import { describe, it, expect } from 'vitest';
 import {
-  followZoneContains, plainSectorOf, stepFollowMachine, escortFollowProfile, followBehindPoint, stepEscortFollow, followSpeedCap, followHeal,
+  followZoneContains, plainSectorOf, stepFollowMachine, escortFollowProfile, followBehindPoint, stepEscortFollow, followSpeedCap, followHeal, followHealMarks,
   followLineMuted,
   FOLLOW_SEE_OFF_MS, FOLLOW_GAP_MIN_PX, FOLLOW_GAP_MAX_PX, FOLLOW_WAKE_MIN_MS, FOLLOW_WAKE_MAX_MS, FOLLOW_OVERLAP_PX,
   FOLLOW_STEP_BACK_PX, FOLLOW_HEAL_DELAY_MS, FOLLOW_HEAL_PER_SEC, FOLLOW_ACCEL_SEC, FOLLOW_SPEED_MULT,
@@ -318,6 +318,14 @@ describe('回復(§5b S-1)', () => {
     expect(followHeal({ ...e, health: 99 }, 'follow', 20000, 5)).toBe(100);
     expect(followHeal({ health: 50, maxHealth: 100 }, 'follow', 0, 1)).toBeGreaterThan(50);
     expect(followHeal({}, 'follow', 20000, 1)).toBeUndefined(); // M0の随行(体力なし)は何もしない
+  });
+  it('見せ方: 増えたフレームは healingAt を打ち、満タンに達したフレームだけ healedAt を打つ', () => {
+    const prev = { healingAt: 10, healedAt: 5 };
+    expect(followHealMarks(30, 30, 100, 500, prev)).toBe(prev); // 増えていない=そのまま
+    expect(followHealMarks(30, 29, 100, 500, prev)).toBe(prev); // 減った(被弾)=そのまま
+    expect(followHealMarks(30, 31, 100, 500, prev)).toEqual({ healingAt: 500, healedAt: 5 });
+    expect(followHealMarks(99.5, 100, 100, 600, prev)).toEqual({ healingAt: 600, healedAt: 600 });
+    expect(followHealMarks(undefined, undefined, undefined, 600, prev)).toBe(prev); // 体力なし(M0)
   });
 });
 

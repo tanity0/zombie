@@ -145,7 +145,7 @@ export const escortPose = (e: Pick<EscortSoldier, 'maxHealth' | 'downedAt' | 'ri
  * 倒れている間と、半分以下は常設。それ以外は被弾/全快/起き上がりの直後だけ出て、数秒でフェードして消える。
  */
 export const escortBarWant = (
-  e: Pick<EscortSoldier, 'maxHealth' | 'health' | 'downedAt' | 'lastHitAt' | 'healedAt' | 'riseAt'>, now: number,
+  e: Pick<EscortSoldier, 'maxHealth' | 'health' | 'downedAt' | 'lastHitAt' | 'healedAt' | 'healingAt' | 'riseAt'>, now: number,
 ): number => {
   if (!hasVitals(e)) return 0;
   if (e.downedAt !== undefined) return 1;
@@ -159,7 +159,8 @@ export const escortBarWant = (
     if (age < showMs) return 1;
     return clamp01(1 - (age - showMs) / ESCORT_BAR_FADE_MS);
   };
-  return Math.max(fade(e.lastHitAt, ESCORT_BAR_SHOW_MS), fade(e.healedAt, ESCORT_BAR_HEAL_SHOW_MS), fade(e.riseAt, ESCORT_BAR_SHOW_MS));
+  // healingAt=ついてくる間の回復で体力が増えている間は毎フレーム更新される=回復中は線が出たまま(満タンで healedAt に引き継ぐ)。
+  return Math.max(fade(e.lastHitAt, ESCORT_BAR_SHOW_MS), fade(e.healedAt, ESCORT_BAR_HEAL_SHOW_MS), fade(e.healingAt, ESCORT_BAR_HEAL_SHOW_MS), fade(e.riseAt, ESCORT_BAR_SHOW_MS));
 };
 
 /**
