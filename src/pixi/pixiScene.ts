@@ -26771,7 +26771,15 @@ export class PixiScene {
       const sheetFrames = getTexture(`${base}-walk-0`) ? (ESCORT_WALK_SHEETS[`${base}-walk`] ?? 0) : 0;
       const sheetFrame = sheetFrames > 0 && animate
         ? Math.floor(now / (PixiScene.ESCORT_SHEET_CYCLE_MS / sheetFrames)) % sheetFrames : 0;
-      const tex = sheetFrames > 0
+      // research/ESCORT_TARGETED.md §6・§7: 倒れた姿の曲線(体力を持たない M0 の随行は恒等=従来と同じ)。
+      const pose = escortPose(esc, gameTime);
+      this.escortPoseById.set(esc.id, pose);
+      // 社長支給の倒れる2コマ(2026-10-07): 0=崩れかけ/1=倒れた姿。倒れ込み(downK 0→1)・倒れ中・起き上がり(1→0)の
+      // 途中を2コマで見せる(半分までは0コマ目)。この絵がある人は「腰まで沈める」代用を使わない。
+      const downSheet = !!getTexture(`${base}-down-1`) && pose.downK > 0.02;
+      const tex = downSheet
+        ? (getTexture(`${base}-down-${pose.downK >= 0.5 ? 1 : 0}`) ?? getTexture(`${base}-down-1`))
+        : sheetFrames > 0
         ? (getTexture(`${base}-walk-${sheetFrame}`) ?? getTexture(`${base}-walk-0`))
         : (getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0'));
       // クロスフェード補間(対象NPCのみ): コマ内の進行率 frac で「次コマ」を上に α=frac で重ね、
@@ -26798,8 +26806,6 @@ export class PixiScene {
       const bob = lift * PLAYER_WALK_BOB_PX * this.depthScale(esc.y); // 接地↔遊脚の上下動(遠近スケール連動)
       // research/ESCORT_TARGETED.md §6・§7: 倒れた姿=足元を沈める(止めコマのまま・位置だけ)+透明度の呼吸+起き上がり後の点滅。
       // 体力を持たない軍人(M0の随行)は pose が恒等=従来と1ビットも変わらない。滑り(被弾/倒れる)の位置は store が x,y に書く。
-      const pose = escortPose(esc, gameTime);
-      this.escortPoseById.set(esc.id, pose);
       // 沈みの量=曲線(基準px単位)を体の表示高に比例させる(社長裁定2026-10-07「腰まで沈めて座り込んだように」§13c-1)。
       // 表示高は下の sc と同じ式(テクスチャが無い時は従来の基準px×遠近)。
       const sinkScaleBase = tex
@@ -26808,7 +26814,9 @@ export class PixiScene {
           : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1)) * tex.height * walkSqY
         : 0;
       // 本体の沈みだけ体高比・食い込みの超過/起き上がりの行き過ぎ/呼吸は基準px×遠近(体高比に乗せると約8pxの跳ね=R2 A-3)。
-      const sinkWorld = tex
+      const sinkWorld = downSheet
+        ? 0 // 倒れ絵がある人は絵そのものが倒れている=沈めない(食い込み/呼吸の小さな上下も絵に任せる)
+        : tex
         ? pose.sinkBodyK * ESCORT_SINK_FRAC * sinkScaleBase + pose.sinkExtraPx * this.depthScale(esc.y)
         : pose.sinkPx * this.depthScale(esc.y);
       // 下端を切った版(沈み)を使う時は、切った行の下端=地面(esc.y)に置く(位置まで下げると二重に沈む=頭上の線が浮く)。

@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "935 files / 復号後 約701MB",
+ "generatedFor": "940 files / 復号後 約701MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2990,6 +2990,12 @@
    "bytes": 97667,
    "sha": "af0e88d709fe848d"
   },
+  "sprites/npc/edgar-down.png": {
+   "w": 110,
+   "h": 66,
+   "bytes": 6763,
+   "sha": "3d495ef37b42f5b3"
+  },
   "sprites/npc/edgar-walk.png": {
    "w": 424,
    "h": 66,
@@ -3013,6 +3019,12 @@
    "h": 423,
    "bytes": 137818,
    "sha": "7f647e6bcb241746"
+  },
+  "sprites/npc/elizabeth-down.png": {
+   "w": 104,
+   "h": 66,
+   "bytes": 7593,
+   "sha": "b57df6550f413dc8"
   },
   "sprites/npc/elizabeth-walk.png": {
    "w": 408,
@@ -3055,6 +3067,12 @@
    "h": 325,
    "bytes": 79863,
    "sha": "25791989095bbace"
+  },
+  "sprites/npc/joseph-down.png": {
+   "w": 106,
+   "h": 66,
+   "bytes": 7041,
+   "sha": "18fefa636268e96e"
   },
   "sprites/npc/joseph-walk.png": {
    "w": 864,
@@ -3128,6 +3146,12 @@
    "bytes": 121047,
    "sha": "f36b4e74ca7c8b7e"
   },
+  "sprites/npc/muhammad-down.png": {
+   "w": 108,
+   "h": 66,
+   "bytes": 6683,
+   "sha": "908bf506677e01f5"
+  },
   "sprites/npc/muhammad-walk.png": {
    "w": 848,
    "h": 66,
@@ -3151,6 +3175,12 @@
    "h": 367,
    "bytes": 96080,
    "sha": "993ad7ac68675f9a"
+  },
+  "sprites/npc/musashi-down.png": {
+   "w": 112,
+   "h": 66,
+   "bytes": 7112,
+   "sha": "6dd1cec3ddd0e777"
   },
   "sprites/npc/musashi-walk.png": {
    "w": 432,

@@ -198,6 +198,8 @@ let loading: Promise<void> | null = null;
 export const ESCORT_WALK_SHEETS: Readonly<Record<string, number>> = {
   'npc/edgar-walk': 8, 'npc/joseph-walk': 16, 'npc/elizabeth-walk': 8, 'npc/musashi-walk': 8, 'npc/muhammad-walk': 16,
   'npc/chen-walk': 8, 'npc/lauren-walk': 16, 'npc/phaser-walk': 8,
+  // 倒れる2コマ(社長支給2026-10-07・0=崩れかけ/1=倒れた姿。歩きと同じ高さ66・下端=接地)。
+  'npc/edgar-down': 2, 'npc/joseph-down': 2, 'npc/elizabeth-down': 2, 'npc/musashi-down': 2, 'npc/muhammad-down': 2,
 };
 export const FLAME_SHEET = 'props/flame';
 export const FLAME_FRAMES = 8;
@@ -819,6 +821,11 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/chen-walk', scaleMode: 'nearest' },
       { name: 'npc/lauren-walk', scaleMode: 'nearest' },
       { name: 'npc/phaser-walk', scaleMode: 'nearest' },
+      { name: 'npc/edgar-down', scaleMode: 'nearest' },
+      { name: 'npc/joseph-down', scaleMode: 'nearest' },
+      { name: 'npc/elizabeth-down', scaleMode: 'nearest' },
+      { name: 'npc/musashi-down', scaleMode: 'nearest' },
+      { name: 'npc/muhammad-down', scaleMode: 'nearest' },
       { name: 'npc/medic-walk-0', scaleMode: 'nearest' }, // 衛生兵(チュートリアル随行・4コマピンポン)
       { name: 'npc/medic-walk-1', scaleMode: 'nearest' },
       { name: 'npc/medic-walk-2', scaleMode: 'nearest' },
