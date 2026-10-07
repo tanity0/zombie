@@ -5,7 +5,7 @@
 // cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill
 export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = [
   // base_captured (拠点解放時)
-  { idx: 0, cat: 'baseCaptured', text: '東部拠点、確保。ここから東を押し返す。' },        // dlg_000001
+  { idx: 0, cat: 'baseCaptured', text: '拠点、確保。ここから押し返す。' },        // dlg_000001
   { idx: 0, cat: 'baseCaptured', text: 'ここを前線にする。補給を回せ、休むのは後だ。' },        // dlg_000002
   { idx: 0, cat: 'baseCaptured', text: 'ここは俺たちの前線だ。……よく持ったな、全員。' },  // dlg_000050
   { idx: 1, cat: 'baseCaptured', text: '取った取った！いやー、こういう瞬間のために生きてるよな！' }, // dlg_000051

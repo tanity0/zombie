@@ -2035,7 +2035,7 @@ export interface BaseSite {
 }
 
 // 護衛軍人NPC(社長指示): スタート時にプレイヤーと同時に4人配置。HPなし。担当拠点(東西南北)へ前進し、
-// 近くに敵が居れば停止して射撃、拠点サークルに10秒留まると解放(制圧)。プレイヤーの画面外では前進停止(座標のみ保持)。
+// 近くに敵が居れば停止して射撃、拠点サークルに10秒留まると解放(制圧)。プレイヤーの画面外では索敵・射撃なしで1/5の速さで自動進行(社長指示2026-10-07・旧: 前進停止)。
 export interface EscortSoldier {
   id: string;
   baseId: string;      // 担当拠点(base-0..3)
@@ -2063,6 +2063,8 @@ export interface EscortSoldier {
   // ウェルカム終了で`pendingEscorts`から出陣した個体だけに打刻し、短いフェードインを掛ける
   // (pixiScene.ts drawEscorts が参照。慣性MUST=パッと出て止まるは禁止)。
   appearedAt?: number;
+  /** 苦戦の通信(後退/放置のセリフ)が流れた時、画面外の自動進行をこの gameTime まで止める(社長指示2026-10-07・utils/escortOffscreen.ts)。 */
+  stallUntil?: number;
 }
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。

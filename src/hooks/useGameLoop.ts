@@ -2727,7 +2727,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               pois: botObjectivePois(loopState),
               scrap: player.straps,
               baseCaptureRadius: BASE_CAPTURE_RADIUS,
-              escorts: loopState.escorts, // ★拠点を制圧するのは escort(付き添わないと前進しない)
+              escorts: loopState.escorts, // ★拠点を制圧するのは escort(付き添うと5倍速い。画面外は1/5で自動進行=2026-10-07〜)
             })
           : null;
         const botGunForRange = BOT_PERSONA ? getActiveGun(player) : undefined;

@@ -192,6 +192,7 @@ import { stageBossDiffMults } from '../utils/stageDiffMults';
 // 共有import。旧B3コメントの「bountyTick.tsを直接importすると循環」は解消していない=それは今も避け、
 // 代わりにbountyTick.tsもgameStore.tsも共通の葉から取る形にした)。
 import { escortAdvance, escortShouldHoldForWelcome } from '../utils/escortAdvance';
+import { escortOffscreenStep, escortOffscreenPace, baseDirectionLabel, ESCORT_STRUGGLE_STALL_MS } from '../utils/escortOffscreen';
 import { welcomeAppliesToRun } from '../utils/welcomeScript';
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
@@ -669,7 +670,7 @@ const SUPP_BASE_ATTACKS_ENABLED: boolean = false;
 // ここで GAME_SPEED を掛けて同じ px/s にする(旧48→104.4=約2.2倍)。PLAYER_BASE_SPEED は後方で宣言されるため関数で遅延評価。
 // ★v0.25.4292(社長指示「NPCの速度いまの0.7倍で」): 歩きmaxの0.7倍=約73px/s(旧48の約1.5倍)。
 const ESCORT_WALK_MULT = 0.7;
-const escortSpeed = (): number => PLAYER_BASE_SPEED * GAME_SPEED * ESCORT_WALK_MULT; // 前進速度。画面内のときだけ前進。
+const escortSpeed = (): number => PLAYER_BASE_SPEED * GAME_SPEED * ESCORT_WALK_MULT; // 前進速度(画面内)。画面外はこの1/5で自動進行(utils/escortOffscreen.ts)。
 const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
 const ESCORT_DMG = 8;                   // 1射のダメージ
 // フェイザー(名簿index7)は特別: 2丁拳銃で1射につき2発撃つ=合計ダメージ2倍(1発は通常と同じ)。
@@ -810,7 +811,6 @@ const COMPANION_HOLD_MS = 5000;       // この時間 連続で並走したら�
 const COMPANION_CHANCE_PER_SEC = 0.03; // 並走成立後に漏らす毎秒確率(低め)
 const COMPANION_CAT_CD_MS = 60000;    // 並走カテゴリの再発話CD(管理表 60秒以上)
 // 「拠点解放時」(Critical): 制圧と同時に1回。バナー/SEと併用。
-const BASE_CAPTURED_CAT_CD_MS = 8000; // 拠点解放カテゴリの再発話CD(拠点は順次なので短め)
 // 「遠方で放置(隣NPCのみ)」(社長確定条件): 誰も進軍を手伝っていない(プレイヤーが全護衛から遠い)時、
 // プレイヤーの現在エリア起点で時計回りに最初の未開放エリアのNPCが1人だけ低頻度で反応。
 const HELPING_DIST = 600;             // プレイヤーがこの距離内に護衛が居れば「手伝っている」とみなす
@@ -13027,10 +13027,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (gt - (s.npcSpokeAt[name] ?? -1e9) < NPC_SAME_NPC_CD_MS) return false;       // 同一NPCのCD
     if (gt - (s.npcCatAt[category] ?? -1e9) < categoryCdMs) return false;            // 同一カテゴリのCD
     if (s.npcDialogueQueue.length >= 3) return false;                                // 詰まり防止。表示1+キュー最大3=同フレームに複数イベント(拠点解放+包囲+救助等)が重なっても取りこぼさず順次再生。各カテゴリ/同一NPCのCDで連発は別途抑止
+    // 苦戦の通信(後退/放置)が実際に流れたら、その軍人の画面外の自動進行を20秒止める
+    // (社長指示2026-10-07「通信で苦戦してる！みたいの入る時、20秒間進行が止まる」)。
+    const struggle = category === 'pushback' || category === 'neglectFar';
     set({
       npcDialogueQueue: [...s.npcDialogueQueue, { name, text }],
       npcSpokeAt: { ...s.npcSpokeAt, [name]: gt },
       npcCatAt: { ...s.npcCatAt, [category]: gt },
+      ...(struggle ? {
+        escorts: s.escorts.map(e => BASE_SOLDIERS[((e.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length]?.name === name
+          ? { ...e, stallUntil: gt + ESCORT_STRUGGLE_STALL_MS } : e),
+      } : {}),
     });
     return true;
   },
@@ -19628,7 +19635,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let changed = false;
 
     // ── 護衛軍人NPC: 担当拠点へ四方位索敵しながら前進・射撃→サークル内10秒で解放。
-    //    プレイヤーの画面外では前進停止・座標のみ保持。HPなし(被弾しても何も起きない=今回のコア)。
+    //    プレイヤーの画面外では索敵・射撃なしで1/5の速さで自動進行(社長指示2026-10-07・旧: 前進停止・座標のみ保持)。HPなし。
     const detectRadius = huntingMeleeRadius(p) * ESCORT_DETECT_MULT;
     const escortCaptures = new Map<string, number>(); // baseId -> soldierIndex(このフレーム占拠完了)
     let escortsChanged = false;
@@ -19645,7 +19652,22 @@ export const useGameStore = create<GameState>((set, get) => ({
         const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
         npcRetreatEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'pushback', sol.pushback) });
       }
-      if (!onScreen(esc.x, esc.y)) return esc; // 画面外=前進停止(座標保持)
+      // 画面外=索敵・射撃なしで担当拠点へ遅く自動進行(社長指示2026-10-07「NPCは自動で少しずつ進む」。
+      // 旧: 前進停止・座標保持)。苦戦の通信から20秒は止まる。たどり着いて10秒居れば画面内と同じく解放。
+      if (!onScreen(esc.x, esc.y)) {
+        const off = escortOffscreenStep({
+          x: esc.x, y: esc.y, baseX: base.x, baseY: base.y,
+          baseOpen: base.status === 'open', holdForWelcome: escortWelcomeHold,
+          stalled: now < (esc.stallUntil ?? 0),
+          speedPxPerSec: escortSpeed() * escortOffscreenPace(esc.id), dtSec: deltaTime, dwellMs: esc.dwellMs,
+          captureRadius: BASE_CAPTURE_RADIUS, captureHoldMs: BASE_CAPTURE_HOLD_MS,
+          captureFrozen: facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime),
+        });
+        if (off.capture && !escortCaptures.has(base.id)) escortCaptures.set(base.id, esc.soldierIndex);
+        if (off.x === esc.x && off.y === esc.y && off.dwellMs === esc.dwellMs) return esc;
+        escortsChanged = true;
+        return { ...esc, x: off.x, y: off.y, dwellMs: off.dwellMs };
+      }
       const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
       // 制圧後は進軍目標がないため全方位を前方扱い。巡回中に背後だけ無視して進み続けない。
       // §17-14: ウェルカムの輪が出ている間は出撃地点(esc.x/y=現在地)を目標にして前進させない。
@@ -19870,12 +19892,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       const c = capturedThisFrame as { id: string; x: number; y: number; soldierIndex: number };
       get().spawnRing(c.x, c.y, 14, BASE_CAPTURE_RADIUS, 'rgba(251,191,36,0.9)', 4, 560);
       get().spawnGlow(c.x, c.y, GLOW_R_M, 'rgba(251,191,36,', 600);
-      // 社長指示v0.25.3440「拠点占拠したら、アテンションイベントで教えて」: 現地へカメラアテンション
-      // (時間停止で高速パン→ホールド→戻る)。バナー/SE/セリフは従来どおり併用。
-      get().triggerAttention(c.x, c.y);
-      // 拠点解放時セリフ(Critical): 時間停止なしのHUDセリフに置換(管理表 baseCaptured)。バナー/SEは併用。
+      // 社長指示2026-10-07「拠点解放のアテンションイベントは排除。その代わり、通信で拠点解放の知らせが届く
+      // セリフ その後各自の拠点解放セリフが流れる」(旧 v0.25.3440: 現地へカメラアテンション)。
+      // 画面外で自動解放される(utils/escortOffscreen.ts)ので、カメラは飛ばさず通信だけで知らせる。
+      // 知らせ=重要な通信の帯(社長指示2026-09-14「重要な通信の時はタイトルコール(通信)」と同じ型・色)。
+      // 会話の箱は立ち絵のある人物だけが話す(v0.25.1851)ので、知らせは帯の副題に方位つきで載せる。
+      // 続いて解放した軍人本人の解放セリフ(CDを通さずキューへ直接=取りこぼさない。拠点をまたいで近い時刻に
+      // 続くことはある)。バナー/SEは従来どおり併用。
       const sol = BASE_SOLDIERS[c.soldierIndex % BASE_SOLDIERS.length];
-      get().tryNpcLine(sol.name, 'baseCaptured', pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured), BASE_CAPTURED_CAT_CD_MS);
+      get().enqueueWallEvent('comm', '通信', `${baseDirectionLabel(c.x, c.y)}拠点の解放を確認`, '#bfe3ff');
+      get().enqueueNpcDialogue([{ name: sol.name, text: pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured) }]);
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
       // 歴史年表: 拠点解放は**ゲーム全体で初回のみ**「初めて拠点を開放」を載せる(社長裁定2026-07-31
       // 「初めて拠点を開放した のみ拠点系は記録」。旧: 各ステージ×4拠点で方位付きを毎回記録=廃止。
