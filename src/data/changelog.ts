@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4896', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4895', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4894', items: ['拠点へ向かう軍人は、プレイヤーが見ていない所でもゆっくり進み、たどり着けば自分で拠点を解放する。苦戦の通信が入った軍人はしばらく足が止まる', '拠点の解放はカメラが飛ぶ演出をやめ、通信で知らせる。続いて解放した軍人が一言'] },
   { version: '0.25.4893', items: ['ゲーム内容の変更はありません'] },
