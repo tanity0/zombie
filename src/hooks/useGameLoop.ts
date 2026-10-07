@@ -198,6 +198,8 @@ import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, L
 import { loadHeroAscended } from '../utils/heroAscended';
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties } from '../utils/heroBlast';
+import { hateEscortSource } from '../utils/escortView';
+import { applyContactToEscorts } from '../utils/escortHit'; // research/ESCORT_TARGETED.md §3: 進軍NPCの接触被弾
 // 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
 setThirdPartySfx((key, gain) => playSfx(key, gain));
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
@@ -472,7 +474,7 @@ import { rampVelocity } from '../utils/motionRamp'; // research/AI_HUMANIZE.md B
 import { playerAsOwner, ghostAsOwner, phantomAsOwner, isHostileOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, pickSubAimTarget, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化+v0.25.2472 照準の合流点
 import { refundCounterCooldown } from '../utils/counterMaster'; // counter-master v2(CD_REWORK.md 確定2)
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化
-import { resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
+import { escortHateSide, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate'; // BOT_AND_GHOST.md §2.8 G2.5
 import { calculateResultScore } from '../utils/resultScoring';
 import type { KillBucket } from '../utils/killTelemetry';
 import { isInRefractory } from '../utils/killTelemetry';
@@ -6342,7 +6344,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 boss, player,
                 bossFlareTargets.length > 0 ? [...useGameStore.getState().summons, ...bossFlareTargets] : useGameStore.getState().summons,
                 BOSS_SUMMON_AGGRO,
-                false, newGameTime // v0.25.2490: 引数追加(裏ボスはisBossType=雑魚ヘイト規則の対象外・挙動不変)
+                false, newGameTime, // v0.25.2490: 引数追加(裏ボスはisBossType=雑魚ヘイト規則の対象外・挙動不変)
+                // 進軍NPCは「召喚への吸い付き(BOSS_SUMMON_AGGRO=距離だけ)」の候補には入れない(ヘイトの点数を素通りさせない・ESCORT_TARGETED §5)。
+                // ここで渡すのは「ボスの狙い(hateTarget='escort:<id>')を引く」ための見えていて倒れていない軍人の一覧だけ(isEscortAggroMob でない=距離規則には使われない)。
+                // 画面外へ出た軍人は追わない(ボスが軍人に引かれて戦場から離れない)。技の途中の照準(resolveBossLockedHateAim)は画面外でもロックした相手を引く。
+                undefined, hateEscortSource(useGameStore.getState()).inView,
               );
               // 攻撃の向きは通常召喚/フレアの移動挑発と分離し、プレイヤー対守護霊のG2.5ヘイトで決める。
               // 技開始時にsideを固定し、連射/設置/弱追尾中は同じ側の現在位置だけを追う。
@@ -6834,12 +6840,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               };
               // ★氷の格子(research/SKADI_LATTICE.md): k 段目の溜めを始める(段の中心=今のヘイトの相手・4本側はランダム)。
-              const beginLatticeStage = (k: number, aimNow?: { x: number; y: number; side: string }) => {
+              const beginLatticeStage = (k: number, aimNow?: { x: number; y: number; side: string; escort?: { vx: number; vy: number } }) => {
                 // 1段目は技の頭で決めたヘイトの相手をそのまま使う(同じtickで lockedAttackAim を読むと patch 前=1tick古い側を読む・検収 A-1)。
                 const tgt = aimNow ?? lockedAttackAim();
                 // 中心=当たる瞬間の居場所の予測(今の位置+速度×溜め・社長裁定2026-10-02「推薦で」)。守護霊は速度を持たない=今の位置。
+                // 相手は3択(research/ESCORT_TARGETED.md §5): プレイヤー=プレイヤーの速度で先読み / 進軍NPC=軍人の速度で先読み / 守護霊=今の位置。
                 const pc = tgt.side === 'player'
                   ? latticeCenter(tgt.x, tgt.y, player.vx, player.vy, HB_SK.lattice.windupMs)
+                  : tgt.escort
+                  ? latticeCenter(tgt.x, tgt.y, tgt.escort.vx, tgt.escort.vy, HB_SK.lattice.windupMs)
                   : { x: tgt.x, y: tgt.y };
                 patch.bossState = 'lattice-windup';
                 patch.bossStateUntil = newGameTime + HB_SK.lattice.windupMs;
@@ -7774,7 +7783,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   return r.ids.length > 0 && newGameTime - r.emitAt >= L && newGameTime - r.emitAt - deltaTime * 1000 < L;
                 });
                 // 凍った牙の飛び出し(時計回りに順番)と加速。反射された弾(もう敵弾ではない)は触らない。
-                const tvx = tNow.side === 'player' ? player.vx : 0, tvy = tNow.side === 'player' ? player.vy : 0;
+                const tvx = tNow.side === 'player' ? player.vx : (tNow.escort?.vx ?? 0), tvy = tNow.side === 'player' ? player.vy : (tNow.escort?.vy ?? 0); // 進軍NPCは軍人の速度(research/ESCORT_TARGETED.md §5)
                 const upd = new Map<string, { speed: number; aim?: boolean; lead?: boolean; flying?: boolean }>();
                 let launchedNow = 0;
                 for (const r of rings) {
@@ -14424,7 +14433,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // BOT_AND_GHOST.md §2.8 G2.5: ゴースト銃弾(weaponKey='ghost-gun')と守護霊の反射弾
           // ('ghost-reflect'・v0.25.2525)だけヘイトの起因を'ghost'にする(escort等それ以外は既定
           // 'player'=「1つの財布」の側という扱い・本バッチのスコープ外)。
-          const hateShotSource: HateSide = isGhostShot ? 'ghost' : 'player';
+          // research/ESCORT_TARGETED.md §5: 軍人の弾は撃った軍人ごとのバケツへ(旧: 'player' のバケツ=軍人4人の射撃がプレイヤーの
+          // 割合を水増しして、軍人の割合は常に0だった)。escortId を持たない旧い弾は従来どおり 'player'。
+          const hateShotSource: HateSide = isGhostShot
+            ? 'ghost'
+            : (isEscortShot && projectile?.escortId ? escortHateSide(projectile.escortId) : 'player');
           // ★GHOST_BOSS.md v9(弾パリィ=反応時間モデル): 弾のゲートは damageEnemy の内側で呼ばれ、
           // 橋は弾を受け取らない。**飛翔時間はここで出して打撃種別と一緒に運ぶ**(距離÷速度なので
           // 時計を跨がない・スロー/ヒットストップの影響も受けない)。速度0や発射点=着弾点の弾は
@@ -15580,6 +15593,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 構造)に集約。同フレーム内の重複は 1 体 1 回(最大ダメージ)へ畳む。
         const liveSummonsForHit = useGameStore.getState().summons;
         applyContactToHero(gameTime); // research/MUTANT_HERO.md §4-2-5: 雑魚の接触は英雄にも当たる(召喚の有無と無関係)
+        // research/ESCORT_TARGETED.md §3(接触): 同じ接触を進軍NPCにも(見えていて倒れていない軍人・召喚の有無と無関係)。噛みつき個体の噛みは combatTick の解決が当てる。
+        applyContactToEscorts(gameTime, loopState.redNight?.phase === 'active' || RN_ENEMY_FORCE, loopState.screamerBuffUntil);
         if (liveSummonsForHit.length > 0) {
           const summonHits = checkEnemySummonCollisions(enemies, liveSummonsForHit);
           if (summonHits.length > 0) {

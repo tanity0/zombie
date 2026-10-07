@@ -167,7 +167,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
@@ -194,8 +194,18 @@ import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { escortAdvance, escortShouldHoldForWelcome } from '../utils/escortAdvance';
 import { escortOffscreenStep, escortOffscreenPace, baseDirectionLabel, ESCORT_STRUGGLE_STALL_MS } from '../utils/escortOffscreen';
 import { welcomeAppliesToRun } from '../utils/welcomeScript';
+// research/ESCORT_TARGETED.md: 進軍NPCの体力・倒れる・起こす / 画面内の定義 / 敵の狙い。
+import {
+  applyEscortHit, escortAdvanceSlowMult, escortHasHealth, escortMaxHealthFor, escortSlidePosition, clearEscortSlide,
+  healEscortFull, isEscortDowned, isEscortLowHealth, stepEscortVitals,
+  ESCORT_BODY_SIZE, ESCORT_DOWN_SLIDE_MS, ESCORT_FALL_IMPACT_FRAC, ESCORT_LOST_SIGHT_MS, ESCORT_RETREAT_SPEED_MULT,
+} from '../utils/escortHealth';
+import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscortSource } from '../utils/escortView';
+import { setHateEscortProvider } from '../utils/bossHate';
+import { escortSceneLine, type EscortScene } from '../data/escortSceneLines';
+import { escortHitFx, escortRiseFx, escortLandFx, type EscortFxApi, type EscortFxView } from '../utils/escortFx'; // 軍人の血と音(被弾/倒れる/起き上がり)
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
-import { addHateDamage, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
+import { addHateDamage, escortIdOfSide, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
 import { computeEnemySeparation } from '../utils/enemySeparation';
 // M51: 城ボス「ジャイアント」新スクリプトの純関数(間合い/CD/HP段階から次の技を選ぶ・PACING_PUZZLE.md §6.26)。
@@ -670,6 +680,8 @@ const SUPP_BASE_ATTACKS_ENABLED: boolean = false;
 // ここで GAME_SPEED を掛けて同じ px/s にする(旧48→104.4=約2.2倍)。PLAYER_BASE_SPEED は後方で宣言されるため関数で遅延評価。
 // ★v0.25.4292(社長指示「NPCの速度いまの0.7倍で」): 歩きmaxの0.7倍=約73px/s(旧48の約1.5倍)。
 const ESCORT_WALK_MULT = 0.7;
+/** 瀕死の後ずさりの速さを立ち上げ/畳む時間(秒・慣性MUST=検収R2 A-2)。 */
+const ESCORT_RETREAT_RAMP_SEC = 0.35;
 const escortSpeed = (): number => PLAYER_BASE_SPEED * GAME_SPEED * ESCORT_WALK_MULT; // 前進速度(画面内)。画面外はこの1/5で自動進行(utils/escortOffscreen.ts)。
 const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
 const ESCORT_DMG = 8;                   // 1射のダメージ
@@ -735,8 +747,10 @@ const makeTutorialCompanions = (px: number, py: number): EscortSoldier[] => [
 // 護衛軍人NPCを4人生成(各拠点 base-0..3 担当)。プレイヤー出撃地点の近傍に少し散らして配置。
 // 洋館通路の護衛初期配置(v0.25.2123・社長指示): プレイヤーの真ん中を開けて横一列(重ならない)。
 const CORRIDOR_ESCORT_ROW_X = [-110, -55, 55, 110];
-const makeEscorts = (px: number, py: number, corridorRow = false): EscortSoldier[] => {
+const makeEscorts = (px: number, py: number, corridorRow = false, playerMaxHealth = 0): EscortSoldier[] => {
   const arr: EscortSoldier[] = [];
+  // research/ESCORT_TARGETED.md §3: 体力=出撃時のプレイヤー最大体力×0.6(出撃中は固定)。playerMaxHealth=0(未指定)は体力なし=従来どおり。
+  const escortHp = playerMaxHealth > 0 ? escortMaxHealthFor(playerMaxHealth) : undefined;
   // 名簿(素性)= フェイザー(7)を除く全軍人プールから、出撃ごとに BASE_SITE_COUNT 人をランダム抽選
   // (Fisher-Yates)。これで顔ぶれが毎回変わる(以前は 0..3 固定で常に同じ4人だった)。
   // レアでフェイザー(7)が1枠だけ差し込まれる(社長指示・PHASER_APPEAR_CHANCE は据え置き)。位置は baseId(base-i)で固定。
@@ -764,10 +778,51 @@ const makeEscorts = (px: number, py: number, corridorRow = false): EscortSoldier
       dwellMs: 0,
       wasSurrounded: false,
       companionMs: 0,
+      ...(escortHp !== undefined ? { health: escortHp, maxHealth: escortHp } : {}),
     });
   }
   return arr;
 };
+// ---- research/ESCORT_TARGETED.md: 進軍NPCの時計(倒れる/起こす/被弾の滑り) -----------------------------------------
+// 毎フレーム1回、前進・射撃・滞在の処理より**前**に呼ぶ(通常拠点ルートと洋館通路ルートの両方)。
+// busy=倒れている/被弾の滑りの最中=呼び手は前進・射撃・滞在・台詞をすべて止める(進んだ滞在は保つ)。
+// 滑りの位置は clampRectToPlayableArea を通す(Y方向の副作用チェック: 帯の外・可視域の外へ滑り出さない)。
+const stepEscortLife = (
+  esc: EscortSoldier, now: number, dtSec: number, playerX: number, playerY: number, ctx: PlayableAreaCtx,
+): { esc: EscortSoldier; busy: boolean; event?: 'revived' | 'selfRevived'; landed?: boolean } => {
+  if (!escortHasHealth(esc)) return { esc, busy: false };
+  const v = stepEscortVitals(esc, { now, dtSec, playerX, playerY });
+  let e = v.next;
+  let busy = isEscortDowned(e);
+  // 倒れ込みが地面に着いた瞬間(downedAt から倒れる動きの尺が経った1回)=砂埃の起点。下の滑りで位置を確定した後の足元を使う。
+  const landed = e.downedAt !== undefined && !e.landedFx && now - e.downedAt >= ESCORT_DOWN_SLIDE_MS * ESCORT_FALL_IMPACT_FRAC; // 絵の最深点と同じ瞬間(R2 A-1)
+  if (landed) e = { ...e, landedFx: true };
+  const sp = escortSlidePosition(e, now);
+  if (sp) {
+    const half = ESCORT_BODY_SIZE / 2;
+    const c = clampRectToPlayableArea(sp.x - half, sp.y - ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ctx, e.x - half);
+    e = { ...e, x: c.x + half, y: c.y + ESCORT_BODY_SIZE };
+    busy = true;
+  } else if (e.slideUntil !== undefined) {
+    // 滑りが終わった: 終点(被弾の時にクランプ済み)へ確定してフィールドを落とす。
+    e = { ...clearEscortSlide(e), x: e.slideToX ?? e.x, y: e.slideToY ?? e.y };
+  }
+  return { esc: e, busy, event: v.event, ...(landed ? { landed: true } : {}) };
+};
+// 軍人の血と音の出口(utils/escortFx.ts)。音は audioManager を動的 import(store から playSfx を直 import しない作法)。
+const escortFxApi = (get: () => { spawnBlood: (x: number, y: number, angle: number, len: number) => void; spawnBurst: (x: number, y: number, color: string, count?: number) => void }): EscortFxApi => ({
+  spawnBlood: (x, y, angle, len) => get().spawnBlood(x, y, angle, len),
+  playSfx: (key, gain, opts) => { void import('../audio/audioManager').then(m => m.playSfx(key, gain, opts?.ms, opts?.rate)); },
+  spawnBurst: (x, y, color, count) => get().spawnBurst(x, y, color, count),
+});
+const escortFxView = (s: { player: { x: number; y: number; width: number; height: number }; camera: { x: number; y: number }; gameBounds: { width: number; height: number }; gameTime: number }): EscortFxView => ({
+  playerX: s.player.x + s.player.width / 2, playerY: s.player.y + s.player.height / 2, camera: s.camera, gameBounds: s.gameBounds, gameTime: s.gameTime,
+});
+const escortSceneName = (soldierIndex: number): string => {
+  const n = BASE_SOLDIERS.length;
+  return BASE_SOLDIERS[((soldierIndex % n) + n) % n].name;
+};
+
 // 各拠点(base-0..7)の駐留軍人。名前/セリフは「制圧時」「撤退時(拠点喪失)」にコールアウトで出るのみ。
 // 拠点を失っても死亡ではなく撤退する(実体はもともと描画のみ)。
 // sortie=出撃時 / surrounded=敵に囲まれた時 / rescued=囲まれから助けてもらった時 / pushback=後退する時 /
@@ -792,6 +847,7 @@ export const NPC_DIALOGUE_GAP_MS = 500;  // 行間の空き(連続表示でも�
 // 尺を張り直すための1bit(モジュール変数=保存不要の揮発でよい)。
 let npcDialogueFrozeByAttention = false;
 const NPC_SAME_NPC_CD_MS = 10000; // 同一NPCの連続発話を抑制(管理表 8〜12秒)
+const ESCORT_TARGETED_CAT_CD_MS = 20000; // 「ボスの赤い予告が自分に掛かった」場面の再発話CD(叩き台。ボスは技のたびに狙いを替えるので間引く)
 // 「敵に囲まれた時」検知/抑制(社長指示・管理表 High=危機/カテゴリCD必須)。
 const SURROUND_RADIUS = 200;      // この距離内の敵数で「囲まれ」を判定
 const SURROUND_COUNT = 3;         // 周囲この数以上で囲まれと判定(社長指示で4→3)
@@ -6040,6 +6096,14 @@ interface GameState {
   // (プレイヤーのdamagePlayerと同じ引数の意味・v0.25.2514 監査項目7)。
   // source=被弾源タグ(記録専用・?ghostlog=1のconsole出力にだけ使う。判定・挙動には一切影響しない)。
   damageSummon: (id: string, amount: number, fromX?: number, fromY?: number, source?: string) => void;
+  // research/ESCORT_TARGETED.md §3: 進軍NPC(軍人)への被弾の唯一の入口。無敵(被弾後1秒/起き上がり後2秒)・倒れ中・体力なしは何も起きない(dealt=0)。
+  // 実際に減ったら: 体力減算・被弾後無敵・射撃300ms停止・fromX/Y から離れる向きへ滑る(ease-out・clampRectToPlayableArea済み)。体力が尽きたら倒れる
+  // (死なない)=狙っていた敵は進行中の技を振り切って1秒立ち止まる/ボスの狙いはプレイヤーへ戻る/「倒れた」台詞(CDを通さない)。
+  // 「見えている範囲の中だけ」は呼び手(hittableEscorts)が絞る=ここは見ない。血・音・フラッシュは載せていない(描画担当が lastHitAt/downedAt の立ち上がりで出す)。
+  damageEscort: (id: string, amount: number, fromX?: number, fromY?: number, source?: string) => { dealt: number; downedNow: boolean };
+  // 軍人の台詞の場面(倒れた/起こしてもらった/ボスの赤い予告が自分に掛かった)を記録し、文言(data/escortSceneLines.ts)があれば出す。
+  // downed/revived は tryNpcLine のCD(同一NPC10秒・カテゴリ)を通さずキューへ直接積む。targeted は通常のCDを通る。silent=自力で起きた時(無言)。
+  noteEscortScene: (id: string, scene: EscortScene, opts?: { silent?: boolean }) => void;
 
   // Weapon actions
   fireWeapons: (currentTime: number) => void;
@@ -6079,7 +6143,8 @@ interface GameState {
   enqueueNpcDialogue: (lines: { name: string; text: string; portrait?: string }[]) => void;
   updateNpcDialogue: (gameTime: number) => void;
   // 状況反応セリフをCD(同一NPC/同一カテゴリ)を守って投入。通れば true。
-  tryNpcLine: (name: string, category: string, text: string, categoryCdMs: number) => boolean;
+  // escortId: 進軍NPC起点の呼び出しは軍人の id を渡す(その軍人が倒れている間は黙る・同名の別人=駐留兵の台詞は落とさない)。
+  tryNpcLine: (name: string, category: string, text: string, categoryCdMs: number, escortId?: string) => boolean;
   // 護衛弾が敵を倒した地点(x,y)に最も近い護衛NPCに「自分で倒した」セリフを出す(A案)。
   npcKillReact: (x: number, y: number) => void;
   // イベント系クリア地点(x,y)に対応する地域NPC(最寄り拠点担当)に「作戦準備が進んだ」セリフを出す。
@@ -10453,6 +10518,63 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
+  damageEscort: (id, amount, fromX, fromY, _source) => {
+    const st = get();
+    const esc = st.escorts.find(e => e.id === id);
+    if (!esc) return { dealt: 0, downedNow: false };
+    const now = st.gameTime;
+    const r = applyEscortHit(esc, amount, now, fromX, fromY);
+    if (r.dealt <= 0) return { dealt: 0, downedNow: false };
+    let next = r.next;
+    // 滑りの終点を「行ける帯」へ(CLAUDE.md Y方向5チェック: 帯の外・可視域の外へ滑り出さない)。
+    if (next.slideToX !== undefined && next.slideToY !== undefined) {
+      const half = ESCORT_BODY_SIZE / 2;
+      const ctx: PlayableAreaCtx = {
+        farBackdrop: st.farBackdrop, labTheme: st.stageTheme === 'lab',
+        corridorMode: st.corridorMode, m0AdvanceLimitX: st.m0AdvanceLimitX, corridorRunInActive: st.corridorRunInActive,
+      };
+      const c = clampRectToPlayableArea(next.slideToX - half, next.slideToY - ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ctx, esc.x - half);
+      next = { ...next, slideToX: c.x + half, slideToY: c.y + ESCORT_BODY_SIZE };
+    }
+    set(s => ({
+      escorts: s.escorts.map(e => (e.id === id ? next : e)),
+      ...(r.downedNow ? {
+        enemies: s.enemies.map(e => {
+          // §13b-1: この軍人を狙っていた雑魚・強個体・ハンターは進行中の技を振り切り(倒れた軍人には当たらない)、1秒立ち止まってから次の相手を探す。
+          if (e.targetEscortId === id) return { ...e, targetEscortId: undefined, escortLostUntil: now + ESCORT_LOST_SIGHT_MS };
+          // §6: ボスが倒れた軍人に狙いを決めていたら、決めた狙いはプレイヤーへ戻す(守護霊が消えた時と同じ扱い)。
+          if (escortIdOfSide(e.hateTarget) === id) return { ...e, hateTarget: 'player' as const };
+          return e;
+        }),
+      } : {}),
+    }));
+    // 血と音(§7)。被弾1回=1回(damageEscort が dealt>0 を返した時だけここへ来る=立ち上がりの検出点)。白フラッシュ・滑り・沈みは描画が lastHitAt/downedAt/x,y を読んで出す。
+    escortHitFx(escortFxApi(get), next, r.downedNow, escortFxView(get()));
+    if (r.downedNow) get().noteEscortScene(id, 'downed');
+    return { dealt: r.dealt, downedNow: r.downedNow };
+  },
+
+  noteEscortScene: (id, scene, opts) => {
+    const esc = get().escorts.find(e => e.id === id);
+    if (!esc) return;
+    set(s => ({ escorts: s.escorts.map(e => (e.id === id ? { ...e, lastScene: { kind: scene, at: s.gameTime } } : e)) }));
+    // 起き上がりの音(riseAt の立ち上がり=この場面フックが1回だけ呼ばれる)。自力(silent)は音を小さく。
+    if (scene === 'revived') escortRiseFx(escortFxApi(get), esc, !!opts?.silent, escortFxView(get()));
+    if (opts?.silent) return;
+    const text = escortSceneLine(esc.soldierIndex, scene);
+    if (!text) return;
+    const name = escortSceneName(esc.soldierIndex);
+    // 倒れた/起こしてもらった=一番大事な一言なので CD を通さず、キューの**先頭へ割り込ませる**(末尾だと囲まれ/称賛/並走の3本の後=最大10秒後
+    // に出て、2秒で起こした後に「いってえ……」が流れる)。表示中の行は今の尺で畳ませ(通常の行間を挟んで)次に出す。
+    if (scene === 'targeted') get().tryNpcLine(name, 'escortTargeted', text, ESCORT_TARGETED_CAT_CD_MS, id);
+    else {
+      set(s => ({
+        npcDialogueQueue: [{ name, text }, ...s.npcDialogueQueue],
+        ...(s.npcDialogue ? { npcDialogue: { ...s.npcDialogue, until: Math.min(s.npcDialogue.until, s.gameTime) } } : {}),
+      }));
+    }
+  },
+
   triggerKatanaDash: (dirX, dirY, ghostId) => {
     const now = Date.now();
     // 敵・破壊オブジェクトはここでは読まない(★着地時に実経路で取り直す=SAME_ARENA.md §7-2)。
@@ -12467,7 +12589,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSource = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
+  damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSourceIn = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
+    // research/ESCORT_TARGETED.md §5: 進軍NPCの弾は起因側 `escort:<id>`。**ヘイトのバケツだけ**軍人ごとに積み(下の hatePatch)、
+    // それ以外の判定(揺れ・クリ・撃破カウント・英雄の被弾記録 …)はこれまでどおり 'player' 扱いのまま=軍人の弾の挙動は1bitも変えない。
+    const hateEscortId = escortIdOfSide(hateSourceIn === 'neutral' ? undefined : hateSourceIn);
+    const hateSource: 'player' | 'ghost' | 'neutral' = hateEscortId !== undefined ? 'player' : (hateSourceIn as 'player' | 'ghost' | 'neutral');
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
@@ -12607,7 +12733,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ダメージ(eff)を起因側(プレイヤー/ゴースト)のバケツへ積む。計測のみ=挙動を変えない
       // (読み出しは各ボスのwindupロック箇所=resolveBossHateAimのみ)。
       const hatePatch = (eff > 0 && isHateTrackedBossType(enemy.type))
-        ? (hateSource === 'ghost'
+        ? (hateEscortId !== undefined
+            // ★軍人ごとのバケツ(§5): プレイヤーのバケツへ積まない=軍人4人の射撃がプレイヤーの割合を水増ししない。
+            ? { hateEscortBuckets: { ...enemy.hateEscortBuckets, [hateEscortId]: addHateDamage(enemy.hateEscortBuckets?.[hateEscortId], state.gameTime, eff) } }
+            : hateSource === 'ghost'
             ? { hateGhostBuckets: addHateDamage(enemy.hateGhostBuckets, state.gameTime, eff) }
             // research/MUTANT_HERO.md: 英雄(中立)の一撃は誰のヘイトにも積まない。
             : hateSource === 'neutral' ? {}
@@ -12974,7 +13103,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (!best) return;
     const sol = BASE_SOLDIERS[best.soldierIndex % BASE_SOLDIERS.length];
-    get().tryNpcLine(sol.name, 'npcKill', pickNpcLine(best.soldierIndex, 'npcKill', sol.npcKill), NPC_KILL_CAT_CD_MS);
+    get().tryNpcLine(sol.name, 'npcKill', pickNpcLine(best.soldierIndex, 'npcKill', sol.npcKill), NPC_KILL_CAT_CD_MS, best.id);
   },
   // イベント系クリア地点(x,y)に対応する地域NPC(最寄り拠点担当)が反応。救助成功は「救助者保護(rescueReturned)」を出す。
   npcOpPrepReact: (x, y) => {
@@ -12994,7 +13123,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
     const sol = BASE_SOLDIERS[idx];
     const line = pickNpcLine(idx, 'rescueReturned', '');
-    if (line) get().tryNpcLine(sol.name, 'rescueReturned', line, OP_PREP_CAT_CD_MS);
+    if (line) get().tryNpcLine(sol.name, 'rescueReturned', line, OP_PREP_CAT_CD_MS, esc.id);
   },
   npcPraiseReact: () => {
     const s = get();
@@ -13007,7 +13136,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (!best) return;
     const sol = BASE_SOLDIERS[best.soldierIndex % BASE_SOLDIERS.length];
-    get().tryNpcLine(sol.name, 'praise', pickNpcLine(best.soldierIndex, 'praise', sol.praise), PRAISE_CAT_CD_MS);
+    get().tryNpcLine(sol.name, 'praise', pickNpcLine(best.soldierIndex, 'praise', sol.praise), PRAISE_CAT_CD_MS, best.id);
   },
   // 担当エリア(セクター)に入った時=その担当NPCが「遠い時用(neglectFar)」コメント(社長指示・#1と連動)。
   npcAreaEnterReact: (sectorIdx) => {
@@ -13019,11 +13148,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!esc) return;
     const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
     const sol = BASE_SOLDIERS[idx];
-    get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(idx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS);
+    get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(idx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS, esc.id);
   },
-  tryNpcLine: (name, category, text, categoryCdMs) => {
+  tryNpcLine: (name, category, text, categoryCdMs, escortId) => {
     const s = get();
     const gt = s.gameTime;
+    // 倒れている軍人は台詞(囲まれた/苦戦/並走/称賛 …)を出さない・苦戦の通信で stallUntil も付けない(research/ESCORT_TARGETED.md §3)。
+    // 名前では弾かない(同名の駐留兵の台詞まで落ちる)=進軍NPC起点の呼び出しが渡す id で、その軍人だけを見る。
+    if (escortId !== undefined && s.escorts.some(e => e.id === escortId && isEscortDowned(e))) return false;
     if (gt - (s.npcSpokeAt[name] ?? -1e9) < NPC_SAME_NPC_CD_MS) return false;       // 同一NPCのCD
     if (gt - (s.npcCatAt[category] ?? -1e9) < categoryCdMs) return false;            // 同一カテゴリのCD
     if (s.npcDialogueQueue.length >= 3) return false;                                // 詰まり防止。表示1+キュー最大3=同フレームに複数イベント(拠点解放+包囲+救助等)が重なっても取りこぼさず順次再生。各カテゴリ/同一NPCのCDで連発は別途抑止
@@ -13035,7 +13167,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       npcSpokeAt: { ...s.npcSpokeAt, [name]: gt },
       npcCatAt: { ...s.npcCatAt, [category]: gt },
       ...(struggle ? {
-        escorts: s.escorts.map(e => BASE_SOLDIERS[((e.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length]?.name === name
+        escorts: s.escorts.map(e => (escortId !== undefined ? e.id === escortId
+          : BASE_SOLDIERS[((e.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length]?.name === name)
           ? { ...e, stallUntil: gt + ESCORT_STRUGGLE_STALL_MS } : e),
       } : {}),
     });
@@ -13134,6 +13267,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (移動/近接の視線判定は既に両方を含めている。視線だけ壁のみだった取りこぼしを統一)。
       const losWalls = indoor ? indoorWalls : (labTheme ? [...labWallRects, ...labPropRects] : labWallRects);
 
+      // research/ESCORT_TARGETED.md §4: 狙われる軍人の候補(見えていて倒れていない・体の中心)。軍人が居なければ空=以下は全部素通り。
+      const escortCands = escortAggroCandidates(state);
+      const escortAimById = new Map(escortCands.map(c => [c.id, c] as const));
       // 体勢回復/紫窓終了は専用AIから除外される裏ボスも含め、全ボスへ毎フレーム適用する。
       const postureUpdatedEnemies = enemies.map(enemy => {
         const patch = tickBossPosture(enemy, gameTime, deltaTime);
@@ -13145,7 +13281,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 死体は行動しない=対象外。
         if (isCorpse(base)) return base;
         const clocks = tickEnemyClockFreeze(base, gameTime, now);
-        return clocks ? { ...base, ...clocks } : base;
+        const ticked = clocks ? { ...base, ...clocks } : base;
+        // ★軍人の狙い(§4): 今追う軍人(targetEscortId)をここで1回だけ決め直して敵に持たせる(粘着20%の基準)。下の移動・技の目標点
+        //   (apx/apy)・combatTick の射撃は同じ値を読む。救助イベントの攻撃者(escortTarget=生存者を追う)は対象外。
+        //   ★技の最中(aiPhase あり=溜め/突進/跳び/硬直)は追う相手を決め直さない(突進の弱ホーミング・技の目標点が途中で別の相手へ跳ばない)。
+        //   倒れた/見失った軍人から外すのは damageEscort 側(技を振り切る)で行う。
+        if ((escortCands.length > 0 || ticked.targetEscortId !== undefined) && isEscortAggroMob(ticked.type) && !ticked.escortTarget && ticked.aiPhase === undefined) {
+          const want = escortCands.length > 0
+            ? resolveEnemyTarget(ticked, player, targetSummons, ALCHEMY_AGGRO_RANGE, isSeekerActive(player, gameTime), gameTime, heroLure, escortCands).escortId
+            : undefined;
+          if (want !== ticked.targetEscortId) return { ...ticked, targetEscortId: want };
+        }
+        return ticked;
       });
       // ★§16-1「同時に構えられるのは2体」の枠(PACING_PUZZLE.md §16-8b手順4・手順5)。
       // 写像(.map)の外=このフレームの enemies 全体を見て1回だけ導出する(個体ごとの写像の中では
@@ -15318,11 +15465,26 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ダッシュ(突進)AI: 溜め中に「赤ライン」で移動先(直線距離)を予告→確定した狙い点へ3倍速で直進(曲がらない)。
         // 犬型(werewolf)・研究所Lv2(lab-zombie-2)・ジャイアントバット共通。狙い点は溜め開始時に確定(=赤ラインの終点)。
         // 発動トリガーは werewolf/lab-zombie-2 は射程ベース、giantbat は専用スケジューラ(下)が起動する。
+        // ★research/ESCORT_TARGETED.md §4(品質監査QA-2 A-3「技の目標点」): 雑魚・強個体・ハンターは、**技の開始時の目標点・
+        // 発動距離・踏み込みの向きも、歩く相手(resolveEnemyTarget)と同じ相手**にする。ここから下の mob 用ブロック
+        // (突進/跳び/ハンターの間合い/リッチの転移/ゾンビ・コウモリ・スケルトン/保つ層/削岩型・伐採人の発動)が
+        // プレイヤー中心を直読みしていたので、軍人を追っている間は軍人の体の中心(apx/apy)に差し替える。
+        // 軍人を追っていない個体は apx/apy = pcx/pcy(1bitも変わらない)。例外=削岩型・伐採人の「離脱」(プレイヤーの近接打撃が起点なので
+        // 逃げる向きは実プレイヤー)だけ pcx/pcy のまま。赤い予告は技の中で aiTarget から出る=同じ予告が同じ時刻に出る(新しい予告は作らない)。
+        const escortAim = enemy.targetEscortId !== undefined ? escortAimById.get(enemy.targetEscortId) : undefined;
+        const apx = escortAim ? escortAim.x : pcx;
+        const apy = escortAim ? escortAim.y : pcy;
+        // ★§13b-1: 狙っていた軍人が倒れた直後は1秒立ち止まる(進行中の技は下の各ブロックが最後まで振り切る=倒れた軍人には当たらない)。
+        // 新しい技・噛み・踏み込みを始めない。速度だけ減衰させる(慣性・シーカーで標的を見失った時と同じ作法)。
+        if (enemy.escortLostUntil !== undefined && gameTime < enemy.escortLostUntil
+          && !enemy.aiPhase && !(enemy.biteAt !== undefined && enemy.biteAt > 0) && enemy.chaffMove === undefined) {
+          return { ...enemy, vx: (enemy.vx ?? 0) * 0.85, vy: (enemy.vy ?? 0) * 0.85 };
+        }
         const isDashType = enemy.type === 'werewolf' || enemy.type === 'lab-zombie-2' || enemy.type === 'giantbat' || enemy.type === 'hunter';
         if (isDashType) {
           const ecx = enemy.x + enemy.width / 2;
           const ecy = enemy.y + enemy.height / 2;
-          const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          const dist = Math.hypot(apx - ecx, apy - ecy);
           // ★社長指示2026-08-26「自転車、着地後1秒硬直」: 突進明けの硬直中はその場で停止(移動もチェイスもしない)。
           if (enemy.aiPhase === 'dash-recover') {
             // ★§16-H #H-6(社長裁定2026-09-19「800ms」): 突進の硬直が**明けた瞬間**に、噛みつきにも
@@ -15338,15 +15500,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             ? { aiPhase: 'dash-recover', aiPhaseUntil: atkUntil(WEREWOLF_DASH_RECOVER_MS), aiStartedAt: gameTime }
             : { aiPhase: undefined };
           if (enemy.aiPhase === 'charge') {
-            const tx = enemy.aiTargetX ?? pcx;
-            const ty = enemy.aiTargetY ?? pcy;
+            const tx = enemy.aiTargetX ?? apx;
+            const ty = enemy.aiTargetY ?? apy;
             const cdx = tx - ecx, cdy = ty - ecy;
             const cdist = Math.hypot(cdx, cdy);
             if (cdist < 12 || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
               return { ...enemy, vx: 0, vy: 0, ...dashEndPatch, aiReadyAt: atkCdUntil(WEREWOLF_COOLDOWN_MS + werewolfExtraCd(enemy.type)) };
             }
             // 基本は固定ターゲットへ直進。毎フレームほんの少しだけ現在のプレイヤー位置へ寄せる(弱いホーミング・社長指示)。
-            const hpx = pcx - ecx, hpy = pcy - ecy;
+            const hpx = apx - ecx, hpy = apy - ecy;
             const hl = Math.hypot(hpx, hpy) || 1;
             let cdirx = cdx / cdist + (hpx / hl) * DASH_ATTACK_HOMING;
             let cdiry = cdy / cdist + (hpy / hl) * DASH_ATTACK_HOMING;
@@ -15376,7 +15538,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               return { ...enemy, aiPhase: 'charge', aiPhaseUntil: atkUntil(WEREWOLF_CHARGE_MAX_MS), vx: 0, vy: 0 };
             }
             // ゆっくり後退り(プレイヤーから離れる方向)してからダッシュ(社長指示)。壁/木はすり抜けず resolveMove で止める。
-            const bdx = ecx - pcx, bdy = ecy - pcy;
+            const bdx = ecx - apx, bdy = ecy - apy;
             const bl = Math.hypot(bdx, bdy) || 1;
             const back = enemy.speed * DASH_WINDUP_BACKSTEP_MULT * deltaTime;
             const moved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
@@ -15387,7 +15549,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 溜め開始時に狙い点を確定(=赤ラインの終点)。
             // 突進距離 = プレイヤーまでの距離 + 80px(プレイヤーの少し先で止まる。社長指示)。
             const reach = dist + DASH_OVERSHOOT_PX;
-            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: ecx + ((pcx - ecx) / dist) * reach, aiTargetY: ecy + ((pcy - ecy) / dist) * reach, vx: 0, vy: 0 };
+            return { ...enemy, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: ecx + ((apx - ecx) / dist) * reach, aiTargetY: ecy + ((apy - ecy) / dist) * reach, vx: 0, vy: 0 };
           }
           // それ以外は通常チェイス(下へフォールスルー)。
         }
@@ -15398,17 +15560,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.type === 'pumpkin' || enemy.type === 'lab-zombie-3' || enemy.type === 'giantbat' || enemy.type === 'hunter') {
           const ecx = enemy.x + enemy.width / 2;
           const ecy = enemy.y + enemy.height / 2;
-          const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          const dist = Math.hypot(apx - ecx, apy - ecy);
           if (enemy.aiPhase === 'crouch') {
             if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
               // 溜め終了 → ジャンプ開始(この瞬間のプレイヤー位置へ。アークは描画側)。
               // ハンターは「視界サークルの外には飛ばない」(社長指示): 溜め中にプレイヤーが視界範囲外へ出ても、
               // 着地は視界サークルの縁までにクランプ(プレイヤーを追って円の外まで飛ばない)。
-              let jtx = pcx, jty = pcy;
+              let jtx = apx, jty = apy;
               if (enemy.type === 'hunter' && dist > HUNTER_VISION_RANGE) {
                 const k = HUNTER_VISION_RANGE / (dist || 1);
-                jtx = ecx + (pcx - ecx) * k;
-                jty = ecy + (pcy - ecy) * k;
+                jtx = ecx + (apx - ecx) * k;
+                jty = ecy + (apy - ecy) * k;
               } else if (
                 PUMPKIN_JUMP_CAP_ENABLED && (enemy.type === 'pumpkin' || enemy.type === 'lab-zombie-3') &&
                 dist > PUMPKIN_JUMP_MAX_DIST
@@ -15416,8 +15578,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 // §5.16 M16: 密着圏で溜めた後に逃げられても、着地は発動位置から最大距離までにクランプ
                 // (ハンターの視界サークルクランプと同じ式)。溜め・爆発・行動パターンは不変。
                 const k = PUMPKIN_JUMP_MAX_DIST / (dist || 1);
-                jtx = ecx + (pcx - ecx) * k;
-                jty = ecy + (pcy - ecy) * k;
+                jtx = ecx + (apx - ecx) * k;
+                jty = ecy + (apy - ecy) * k;
               }
               return {
                 ...enemy, aiPhase: 'jump', vx: 0, vy: 0,
@@ -15483,7 +15645,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             return { ...enemy, vx: 0, vy: 0, gbDashReadyAt: atkUntil(2000), gbJumpReadyAt: atkUntil(3500) };
           }
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
-          const dist = Math.hypot(pcx - ecx, pcy - ecy);
+          const dist = Math.hypot(apx - ecx, apy - ecy);
           const opts: ('dash' | 'jump')[] = [];
           // ダッシュ発動距離: ハンターは HUNTER_DASH_RANGE(=1300・社長裁定v0.25.2429(a))、他は従来1000。
           const dashRange = enemy.type === 'hunter' ? HUNTER_DASH_RANGE : 1000;
@@ -15497,7 +15659,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (pick === 'dash') {
               // 突進距離を2倍に(giantbat も同様にオーバーシュート)。
               // ダッシュ頻度を抑える(社長指示): 通常CD(±20%)にランダム追加CD(3〜10秒)を上乗せ=犬と同様。
-              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * pcx - (enemy.x + enemy.width / 2), aiTargetY: 2 * pcy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: atkCdUntil(jitter(GIANTBAT_DASH_CD_MS) + (WEREWOLF_EXTRA_CD_MIN_MS + Math.random() * (WEREWOLF_EXTRA_CD_MAX_MS - WEREWOLF_EXTRA_CD_MIN_MS))) };
+              return { ...enemy, aiPhase: 'windup', aiPhaseUntil: atkUntil(WEREWOLF_WINDUP_MS), aiFromX: enemy.x, aiFromY: enemy.y, aiTargetX: 2 * apx - (enemy.x + enemy.width / 2), aiTargetY: 2 * apy - (enemy.y + enemy.height / 2), vx: 0, vy: 0, gbDashReadyAt: atkCdUntil(jitter(GIANTBAT_DASH_CD_MS) + (WEREWOLF_EXTRA_CD_MIN_MS + Math.random() * (WEREWOLF_EXTRA_CD_MAX_MS - WEREWOLF_EXTRA_CD_MIN_MS))) };
             }
             return { ...enemy, aiPhase: 'crouch', aiPhaseUntil: atkUntil(PUMPKIN_CROUCH_MS), vx: 0, vy: 0, gbJumpReadyAt: atkCdUntil(jitter(GIANTBAT_JUMP_CD_MS)) };
           }
@@ -15515,7 +15677,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // シーカー: プレイヤー半透明中は敵から狙われない(社長裁定v0.25.3268「シーカーはボスも対象」
         // =旧・ボス除外を撤去。ボスの技の照準・台本は各コントローラ側の判定=ここはチェイス/射撃の的のみ)。
         const playerHidden = isSeekerActive(player, gameTime);
-        let tgt = resolveEnemyTarget(enemy, player, targetSummons, ALCHEMY_AGGRO_RANGE, playerHidden, gameTime, heroLure); // v0.25.2490: 雑魚ヘイトのラッチ判定にgameTimeを渡す / 英雄(MUTANT_HERO §3-2)
+        let tgt = resolveEnemyTarget(enemy, player, targetSummons, ALCHEMY_AGGRO_RANGE, playerHidden, gameTime, heroLure, escortCands); // v0.25.2490: 雑魚ヘイトのラッチ判定にgameTimeを渡す / 英雄(MUTANT_HERO §3-2) / 進軍NPC(ESCORT_TARGETED §4)
         if (enemy.escortTarget && !enemy.meleeAggro && rescueSurvivors.length > 0) {
           let sv = rescueSurvivors.find(s => s.id === enemy.escortTarget);
           if (!sv) {
@@ -15565,9 +15727,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★リッチの技「転移噛み」(§16-C・社長確定2026-09-18)。中心間140px以内・CD明け
         // (`biteReadyAt`)・まだ何も構えていなければ発火する。**プレイヤーとの距離で見る**
         // (`tgt`ではない=召喚/救助対象ではなくプレイヤー本人。C-1)。
-        if (lichBlinkShouldFire(enemy, gameTime, Math.hypot(pcx - (enemy.x + enemy.width / 2), pcy - (enemy.y + enemy.height / 2)))) {
+        if (lichBlinkShouldFire(enemy, gameTime, Math.hypot(apx - (enemy.x + enemy.width / 2), apy - (enemy.y + enemy.height / 2)))) {
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
-          const target = lichBlinkTargetPoint(pcx, pcy, ecx, ecy);
+          const target = lichBlinkTargetPoint(apx, apy, ecx, ecy);
           const lbCtx: PlayableAreaCtx = {
             farBackdrop: state.farBackdrop, labTheme,
             corridorMode: state.corridorMode,
@@ -15619,10 +15781,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 未定義なら線を描かない=ファイルを分けずにここ1箇所で線を封じる。
           const isLichBlink = enemy.type === 'lich' && enemy.chaffMove === 'lich-blink';
           if (bitePh === 'windup' && !isLichBlink) {
-            const tdx = pcx - (enemy.x + enemy.width / 2);
-            const tdy = pcy - (enemy.y + enemy.height / 2);
-            const td = Math.hypot(tdx, tdy);
-            if (td > 0.001) { enemy = { ...enemy, biteDirX: tdx / td, biteDirY: tdy / td }; }
+            // 構え始めた相手を追う(軍人へ向けた噛みは軍人を追う。その軍人が倒れた/見えなくなったら向きは動かさない=進行中の技は振り切る)。
+            const follow = enemy.biteAimEscortId === undefined ? { x: pcx, y: pcy } : escortAimById.get(enemy.biteAimEscortId);
+            if (follow) {
+              const tdx = follow.x - (enemy.x + enemy.width / 2);
+              const tdy = follow.y - (enemy.y + enemy.height / 2);
+              const td = Math.hypot(tdx, tdy);
+              if (td > 0.001) { enemy = { ...enemy, biteDirX: tdx / td, biteDirY: tdy / td }; }
+            }
           }
           const fNow = biteLungeFrac(enemy, gameTime);
           const fPrev = biteLungeFrac(enemy, gameTime - deltaTime * 1000);
@@ -15660,7 +15826,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 動きを担当するのでここへは来ない(biteAtが立っている間は常にそちら側)。
         if (enemy.type === 'zombie') {
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
-          const pdist = Math.hypot(pcx - ecx, pcy - ecy); // 実プレイヤーとの距離(§16の帯/紫ループはこれで判定)
+          const pdist = Math.hypot(apx - ecx, apy - ecy); // 狙い(=軍人を追っていなければ実プレイヤー)との距離(§16の帯/紫ループはこれで判定)
           let phase = enemy.aiPhase;
           let phaseUntil = enemy.aiPhaseUntil ?? 0;
           // ★Y方向副作用チェック(CLAUDE.md): z-retreat(§16-A7条目で新しく動かす方向=後退)は
@@ -15692,12 +15858,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             // (向きはchaffTraitsのflankSignで固定=決定的。大きさは§16-3z②「2発目の角度にも
             // spawnedAtを混ぜる」=zombieBite2AngleRadがid+spawnedAt由来で±30%散らす)。
             const bl = Math.max(0.001, pdist);
-            const bdx = (pcx - ecx) / bl, bdy = (pcy - ecy) / bl;
+            const bdx = (apx - ecx) / bl, bdy = (apy - ecy) / bl;
             const spin = chaffTraits(enemy.id).flankSign;
             const bite2Angle = zombieBite2AngleRad(enemy.id, enemy.spawnedAt, spin);
             const ca = Math.cos(bite2Angle), sa = Math.sin(bite2Angle);
             return {
-              ...enemy, vx: 0, vy: 0, aiPhase: 'z-bite2', biteAt: gameTime,
+              ...enemy, vx: 0, vy: 0, aiPhase: 'z-bite2', biteAt: gameTime, biteAimEscortId: escortAim?.id,
               biteDirX: bdx * ca - bdy * sa, biteDirY: bdx * sa + bdy * ca,
               // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
               biteLungePx: biteLungeDistanceAtFire('zombie', bl),
@@ -15725,7 +15891,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // プレイヤー)の逆を使う(bat の b-release / skeleton の s-retreat と同じ作法)。
               let awayX: number, awayY: number;
               if (pdist > 0.5) {
-                awayX = -(pcx - ecx) / pdist; awayY = -(pcy - ecy) / pdist;
+                awayX = -(apx - ecx) / pdist; awayY = -(apy - ecy) / pdist;
               } else {
                 // ★社長報告2026-09-19(動画)「skeletonの攻撃しなくなるの直ってない」の**1本目の真因**。
                 // 焼いた向きは**定義されていてもゼロに潰れる**: 発火時の正規化は
@@ -15783,15 +15949,15 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 上のisBiteSubject分岐で引き継ぐので、位置(x/y)はここでは動かさない(従来どおり)。
               const bl = Math.max(0.001, pdist);
               return {
-                ...enemy, aiPhase: 'z-bite1', biteAt: gameTime,
-                biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl,
+                ...enemy, aiPhase: 'z-bite1', biteAt: gameTime, biteAimEscortId: escortAim?.id,
+                biteDirX: (apx - ecx) / bl, biteDirY: (apy - ecy) / bl,
                 // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
                 biteLungePx: biteLungeDistanceAtFire('zombie', bl),
               };
             }
             // 2倍速で実プレイヤーへ直進(zrushと同じ書き味=フラフラ込み)。紫の追尾(旧zrush)は
             // 汎用の接近ターゲット(dx/dy=tgt基準)を追うが、こちらは「赤が来る」と確定した後の
-            // 踏み込みなので実プレイヤー座標(pcx/pcy)を直接使う(decoy/summonに逸れない)。
+            // 踏み込みなので狙いの座標(apx/apy=軍人を追っていなければ実プレイヤー)を直接使う(decoy/summonに逸れない)。
             const zTraits = chaffTraits(enemy.id);
             // ★②踏み込みの出足(§16-3z「立ち上がり360msの加速」): z-lunge-inへ入った瞬間
             // (`chaffMoveAt`)からsmoothstepで0→満速。0→満速の1フレーム段差を消す。
@@ -15802,7 +15968,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             let lh = 0;
             for (let i = 0; i < enemy.id.length; i++) lh = (lh * 31 + enemy.id.charCodeAt(i)) | 0;
             const bl2 = Math.max(0.001, pdist);
-            const lHead = chaffHeading((pcx - ecx) / bl2, (pcy - ecy) / bl2, zTraits, pdist);
+            const lHead = chaffHeading((apx - ecx) / bl2, (apy - ecy) / bl2, zTraits, pdist);
             // ★②踏み込みは真っ直ぐ(§16-3z「歩きの千鳥足を踏み込み中は振幅1/4・周期2倍へ」):
             // 飛びかかる体は真っ直ぐになる。歩きと同じ揺れ方のままにしない。
             const lwob = Math.sin(gameTime / 400 + (lh % 628) / 100) * (ZOMBIE_WOBBLE / 4);
@@ -15853,7 +16019,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
           // ── 旧仕様: 紫の停止/追尾ループ(境界をMELEE_RADIUS(74)→100pxへ統一・§16-3) ─────────
           const inMelee = pdist <= ZOMBIE_BAND_INNER_PX;
-          let biteKickoff: { biteAt: number; biteDirX: number; biteDirY: number } | null = null;
+          let biteKickoff: { biteAt: number; biteDirX: number; biteDirY: number; biteAimEscortId: string | undefined } | null = null;
           const inCycle = phase === 'zpause' || phase === 'zrush';
           if (inCycle && gameTime < phaseUntil) {
             // 進行中の停止/突進はそのまま継続(突進2秒は範囲外へ出ても完遂する)。
@@ -15885,7 +16051,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             const zrushStartedAt = phaseUntil - ZOMBIE_RUSH_MS;
             if (gameTime - zrushStartedAt >= ZOMBIE_RUSH_BODY_SLAM_MS && canZombieRushBite(enemy, gameTime, now)) {
               const bl = Math.max(0.001, pdist);
-              biteKickoff = { biteAt: gameTime, biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl };
+              biteKickoff = { biteAt: gameTime, biteDirX: (apx - ecx) / bl, biteDirY: (apy - ecy) / bl, biteAimEscortId: escortAim?.id };
             }
           }
           // v0.25.3176(案4+案3): 個体差(±12%)と役割(直進/回り込み/遅れて来る)をゾンビにも掛ける。
@@ -15919,7 +16085,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ══════════════════════════════════════════════════════════════════════════════════
         if (enemy.type === 'bat') {
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
-          const pdist = Math.hypot(pcx - ecx, pcy - ecy);
+          const pdist = Math.hypot(apx - ecx, apy - ecy);
           const phase = enemy.aiPhase;
           // ★Y方向副作用チェック(CLAUDE.md): 新しく動かすアクターはclampRectToPlayableAreaを通す
           // (driller/loggerと同じ作法)。
@@ -15950,7 +16116,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 敵→プレイヤー)の逆を使う(掴んだ直後は必ずこの向きが立っている)。
               let awayX: number, awayY: number;
               if (pdist > 0.5) {
-                awayX = -(pcx - ecx) / pdist; awayY = -(pcy - ecy) / pdist;
+                awayX = -(apx - ecx) / pdist; awayY = -(apy - ecy) / pdist;
               } else {
                 // ★社長報告2026-09-19(動画)「skeletonの攻撃しなくなるの直ってない」の**1本目の真因**。
                 // 焼いた向きは**定義されていてもゼロに潰れる**: 発火時の正規化は
@@ -15988,15 +16154,15 @@ export const useGameStore = create<GameState>((set, get) => ({
               const bl = Math.max(0.001, pdist);
               return {
                 ...enemy, vx: 0, vy: 0, aiPhase: 'b-windup', chaffMove: 'bat-grab', chaffMoveAt: gameTime,
-                biteAt: gameTime, biteDirX: (pcx - ecx) / bl, biteDirY: (pcy - ecy) / bl,
+                biteAt: gameTime, biteDirX: (apx - ecx) / bl, biteDirY: (apy - ecy) / bl, biteAimEscortId: escortAim?.id,
                 // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
                 biteLungePx: biteLungeDistanceAtFire('bat', bl),
               };
             }
             // 円の中心をプレイヤー座標へ一次遅れで追従(生の座標だと「ロックオン軌道」になる・§16-1)。
             const a = 1 - Math.exp(-deltaTime / BAT_ORBIT_TAU_S);
-            const cx = (enemy.chaffOrbitCx ?? pcx) + (pcx - (enemy.chaffOrbitCx ?? pcx)) * a;
-            const cy = (enemy.chaffOrbitCy ?? pcy) + (pcy - (enemy.chaffOrbitCy ?? pcy)) * a;
+            const cx = (enemy.chaffOrbitCx ?? apx) + (apx - (enemy.chaffOrbitCx ?? apx)) * a;
+            const cy = (enemy.chaffOrbitCy ?? apy) + (apy - (enemy.chaffOrbitCy ?? apy)) * a;
             const rdx = ecx - cx, rdy = ecy - cy;
             const rdist = Math.max(0.001, Math.hypot(rdx, rdy));
             const rx = rdx / rdist, ry = rdy / rdist; // 半径方向(中心→敵)
@@ -16031,7 +16197,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: 'b-orbit',
               aiPhaseUntil: gameTime + batOrbitDurationMs(enemy.id, enemy.spawnedAt),
-              chaffOrbitCx: pcx, chaffOrbitCy: pcy,
+              chaffOrbitCx: apx, chaffOrbitCy: apy,
             };
           }
           // それ以外(枠が無い/間合い外)は§16-1「旧挙動のまま歩いて詰める」——ここでreturnせず、
@@ -16044,7 +16210,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ══════════════════════════════════════════════════════════════════════════════════
         if (enemy.type === 'skeleton') {
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
-          const pdist = Math.hypot(pcx - ecx, pcy - ecy);
+          const pdist = Math.hypot(apx - ecx, apy - ecy);
           const phase = enemy.aiPhase;
           const skelClampMove = (mx: number, my: number): { x: number; y: number } => {
             const moved = resolveMove(mx, my);
@@ -16075,7 +16241,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // (batのb-releaseと同じ作法)。
               let awayX: number, awayY: number;
               if (pdist > 0.5) {
-                awayX = -(pcx - ecx) / pdist; awayY = -(pcy - ecy) / pdist;
+                awayX = -(apx - ecx) / pdist; awayY = -(apy - ecy) / pdist;
               } else {
                 // ★社長報告2026-09-19(動画)「skeletonの攻撃しなくなるの直ってない」の**1本目の真因**。
                 // 焼いた向きは**定義されていてもゼロに潰れる**: 発火時の正規化は
@@ -16110,7 +16276,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ★向きの潰しは「回る側の選び方」で避ける(クリエイティブ監査#16)。「いま向いている側」=
             // 直前まで接近していた向き(プレイヤーへのdx符号)で決める(添字ではない・§16-2)。
             // ★立つ位置(§16-7b): chaffMoveはここ(s-crouchの次の踏み込み=s-arcの頭)で立てる。
-            const side = (pcx - ecx) >= 0;
+            const side = (apx - ecx) >= 0;
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: 's-arc', aiPhaseUntil: gameTime + SKELETON_ARC_MS,
               chaffMove: 'skel-bite', chaffMoveAt: gameTime, chaffArcSide: side,
@@ -16129,16 +16295,16 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ままになり「弧の終点」に居ない状態でs-biteへ入ってしまう。)
             // aiFromX/Yは中心座標(§16-7b「立つ位置」の注記どおり、上のs-crouch→s-arc遷移で焼く)。
             const fromX = enemy.aiFromX ?? ecx, fromY = enemy.aiFromY ?? ecy;
-            const target = skeletonArcPoint(fromX, fromY, pcx, pcy, enemy.chaffArcSide ?? true, uEased); // 中心座標
+            const target = skeletonArcPoint(fromX, fromY, apx, apy, enemy.chaffArcSide ?? true, uEased); // 中心座標
             const smoved = skelClampMove(target.x - enemy.width / 2, target.y - enemy.height / 2); // top-leftへ変換
             if (uRaw >= 1) {
               // 弧の終点(プレイヤー中心から100pxの横)に到達=噛みへ。向きは踏み込みの瞬間(ここ)に
               // 焼く(追尾しない=§12と同じ作法)。位置は上で計算した終点(smoved)を採用する。
               const necx = smoved.x + enemy.width / 2, necy = smoved.y + enemy.height / 2;
-              const bl = Math.max(0.001, Math.hypot(pcx - necx, pcy - necy));
+              const bl = Math.max(0.001, Math.hypot(apx - necx, apy - necy));
               return {
-                ...enemy, vx: 0, vy: 0, x: smoved.x, y: smoved.y, aiPhase: 's-bite', biteAt: gameTime,
-                biteDirX: (pcx - necx) / bl, biteDirY: (pcy - necy) / bl,
+                ...enemy, vx: 0, vy: 0, x: smoved.x, y: smoved.y, aiPhase: 's-bite', biteAt: gameTime, biteAimEscortId: escortAim?.id,
+                biteDirX: (apx - necx) / bl, biteDirY: (apy - necy) / bl,
                 // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
                 biteLungePx: biteLungeDistanceAtFire('skeleton', bl),
               };
@@ -16195,8 +16361,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             : PUMPKIN_TRIGGER_RANGE; // pumpkin / lab-zombie-3
           const kBand = keepBandFor(enemy.type, enemy.id, enemy.spawnedAt, keepOuter);
           if (kBand) {
-            const kpx = pcx - (enemy.x + enemy.width / 2);
-            const kpy = pcy - (enemy.y + enemy.height / 2);
+            const kpx = apx - (enemy.x + enemy.width / 2);
+            const kpy = apy - (enemy.y + enemy.height / 2);
             const kd = Math.max(0.001, Math.hypot(kpx, kpy));
             // ★真上に重なった時(パンプキンの跳躍はプレイヤー中心へ着地する=距離が厳密に0)は
             // 「的へ向かう向き」が定義できず、その場に固まる(実測2026-09-17)。個体ごとに固定の
@@ -16370,15 +16536,18 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           // 発動判定(§9-4)は常にプレイヤー基準の距離で見る(社長の言葉「プレイヤーへ...ヤリ攻撃を
           // してくる」・離脱もプレイヤーの近接打撃が起点=どちらもtgt(召喚誘引)ではなくpcx/pcyで判定)。
-          const pDx = pcx - ecx, pDy = pcy - ecy;
+          const pDx = apx - ecx, pDy = apy - ecy;
           const pDist = Math.hypot(pDx, pDy);
+          // 離脱だけは実プレイヤーから離れる(逃げる起点=プレイヤーの近接打撃。軍人を追っている最中でも向きは変えない)。
+          const rDx = pcx - ecx, rDy = pcy - ecy;
+          const rDist = Math.hypot(rDx, rDy);
           // ★離脱は**新規の突き発動より先**に判定する(検収監査#2)。旧順序だと「近接で殴られた瞬間は
           // 必ず200px以内=CD明けなら突きを開始→1320msその場に静止」で、社長ゴール「1.5倍速で2秒間
           // 距離を離す」が実質1/3に削れていた(体験が「殴ったら反撃してくる」に化ける)。
           if (isDrillerRetreating(enemy.drillerRetreatUntil, gameTime)) {
-            const rl = Math.max(0.001, pDist);
-            const rtvx = -(pDx / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
-            const rtvy = -(pDy / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
+            const rl = Math.max(0.001, rDist);
+            const rtvx = -(rDx / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
+            const rtvy = -(rDy / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
             const ra = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed));
             const rvx = (enemy.vx ?? rtvx) + (rtvx - (enemy.vx ?? rtvx)) * ra;
             const rvy = (enemy.vy ?? rtvy) + (rtvy - (enemy.vy ?? rtvy)) * ra;
@@ -16459,13 +16628,16 @@ export const useGameStore = create<GameState>((set, get) => ({
             return { ...enemy, vx: 0, vy: 0 };
           }
           // 発動判定は常にプレイヤー基準の距離で見る(driller-thrustと同じ理由=§9-4踏襲)。
-          const pDx = pcx - ecx, pDy = pcy - ecy;
+          const pDx = apx - ecx, pDy = apy - ecy;
           const pDist = Math.hypot(pDx, pDy);
+          // 離脱だけは実プレイヤーから離れる(driller版と同じ)。
+          const rDx = pcx - ecx, rDy = pcy - ecy;
+          const rDist = Math.hypot(rDx, rDy);
           // 離脱は新規の薙ぎ払い発動より先に判定する(driller版の検収監査#2をそのまま踏襲)。
           if (isDrillerRetreating(enemy.drillerRetreatUntil, gameTime)) {
-            const rl = Math.max(0.001, pDist);
-            const rtvx = -(pDx / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
-            const rtvy = -(pDy / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
+            const rl = Math.max(0.001, rDist);
+            const rtvx = -(rDx / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
+            const rtvy = -(rDy / rl) * speed * DRILLER_RETREAT_SPEED_MULT;
             const ra = inertiaAlpha(deltaTime, inertiaTauForSpeed(speed));
             const rvx = (enemy.vx ?? rtvx) + (rtvx - (enemy.vx ?? rtvx)) * ra;
             const rvy = (enemy.vy ?? rtvy) + (rtvy - (enemy.vy ?? rtvy)) * ra;
@@ -19511,11 +19683,41 @@ export const useGameStore = create<GameState>((set, get) => ({
       const pcy = p.y + p.height / 2;
       const now = state.gameTime;
       const detectRadius = huntingMeleeRadius(p) * ESCORT_DETECT_MULT;
-      const shots: { x: number; y: number; dx: number; dy: number; soldierIndex: number }[] = [];
-      const surroundEvents: { name: string; text: string }[] = [];
-      const rescuedEvents: { name: string; text: string }[] = [];
+      const shots: { x: number; y: number; dx: number; dy: number; soldierIndex: number; id: string }[] = [];
+      const surroundEvents: { name: string; text: string; id: string }[] = [];
+      const rescuedEvents: { name: string; text: string; id: string }[] = [];
       let escChanged = false;
-      const nextEsc = state.escorts.map((esc, i) => {
+      // research/ESCORT_TARGETED.md: 軍人の時計(倒れる/起こす/滑り)・台詞の場面(洋館の通路の4人も同じ)。
+      const corridorAreaCtx: PlayableAreaCtx = {
+        farBackdrop: state.farBackdrop, labTheme: false,
+        corridorMode: state.corridorMode, m0AdvanceLimitX: state.m0AdvanceLimitX, corridorRunInActive: state.corridorRunInActive,
+      };
+      const corridorSceneEvents: { id: string; kind: EscortScene; silent?: boolean }[] = [];
+      const corridorLandEvents: { x: number; y: number }[] = []; // 倒れ込みが地面に着いた瞬間(砂埃)
+      const corridorHaters = escortBossHaters(state.enemies);
+      const nextEsc = state.escorts.map((escIn, i) => {
+        const lf = stepEscortLife(escIn, now, deltaTime, pcx, pcy, corridorAreaCtx);
+        if (lf.esc !== escIn) escChanged = true;
+        if (lf.event) corridorSceneEvents.push({ id: escIn.id, kind: 'revived', silent: lf.event === 'selfRevived' });
+        let esc = lf.esc;
+        if (lf.busy) {
+          // 倒れている/被弾で滑っている間は、隊列へ戻る歩き・射撃・台詞を全部止める(歩行アニメは止めコマ)。
+          if (esc.moving !== false || (esc.vx ?? 0) !== 0 || (esc.vy ?? 0) !== 0) escChanged = true;
+          const hbBusy = corridorHaters.get(esc.id) ?? [];
+          const prevBusy = esc.hatedByBossIds ?? [];
+          if (hbBusy.length !== prevBusy.length || hbBusy.some((id, k) => id !== prevBusy[k])) { esc = { ...esc, hatedByBossIds: hbBusy }; escChanged = true; }
+          if (lf.landed) corridorLandEvents.push({ x: esc.x, y: esc.y });
+          return { ...esc, moving: false, vx: 0, vy: 0 };
+        }
+        {
+          const hb = corridorHaters.get(esc.id) ?? [];
+          const prevHb = esc.hatedByBossIds ?? [];
+          if (hb.length !== prevHb.length || hb.some((id, k) => id !== prevHb[k])) {
+            if (hb.some(id => !prevHb.includes(id))) corridorSceneEvents.push({ id: esc.id, kind: 'targeted' });
+            esc = { ...esc, hatedByBossIds: hb };
+            escChanged = true;
+          }
+        }
         const targetX = pcx + (CORRIDOR_ESCORT_ROW_X[i % CORRIDOR_ESCORT_ROW_X.length] ?? 0);
         const targetY = pcy + 26; // プレイヤーのやや後ろの列
         const advance = escortAdvance(esc, { x: targetX, y: targetY }, state.enemies, {
@@ -19528,36 +19730,39 @@ export const useGameStore = create<GameState>((set, get) => ({
           now,
         });
         const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
-        if (advance.surroundedNow) surroundEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
-        if (advance.rescuedNow) rescuedEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
+        if (advance.surroundedNow) surroundEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
+        if (advance.rescuedNow) rescuedEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
 
         const dx = targetX - esc.x, dy = targetY - esc.y;
         const dist = Math.hypot(dx, dy);
         let x = esc.x, y = esc.y, face = esc.face, fireAt = esc.fireAt;
         const moving = dist >= 3 && advance.speedMult > 0;
         if (moving) {
-          const k = Math.min(1, (escortSpeed() * advance.speedMult * deltaTime) / dist);
+          const k = Math.min(1, (escortSpeed() * advance.speedMult * escortAdvanceSlowMult(esc, now) * deltaTime) / dist);
           x += dx * k;
           y += dy * k;
           if (Math.abs(dx) > 6) face = dx < 0 ? -1 : 1;
         }
         // 射撃は全方位。移動後の位置から撃ち、顔向きは射撃方向を優先する。
-        if (advance.target && now >= fireAt) {
+        if (advance.target && now >= fireAt && now >= (esc.fireHoldUntil ?? 0)) {
           fireAt = now + ESCORT_FIRE_INTERVAL_MS;
           const tx = advance.target.x + advance.target.width / 2, ty = advance.target.y + advance.target.height / 2;
           let shotDx = tx - x, shotDy = ty - y; const dl = Math.hypot(shotDx, shotDy) || 1; shotDx /= dl; shotDy /= dl;
           if (esc.soldierIndex === PHASER_INDEX) {
             const ox = -shotDy * PHASER_GUN_OFFSET, oy = shotDx * PHASER_GUN_OFFSET;
-            shots.push({ x: x + ox, y: y + oy, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex });
-            shots.push({ x: x - ox, y: y - oy, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex });
+            shots.push({ x: x + ox, y: y + oy, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex, id: esc.id });
+            shots.push({ x: x - ox, y: y - oy, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex, id: esc.id });
           } else {
-            shots.push({ x, y, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex });
+            shots.push({ x, y, dx: shotDx, dy: shotDy, soldierIndex: esc.soldierIndex, id: esc.id });
           }
           face = shotDx < 0 ? -1 : 1;
         }
+        // 速度(px/s)=ボスの偏差撃ちが軍人の移動先を読むのに使う。
+        const evx = deltaTime > 0.0001 ? (x - esc.x) / deltaTime : 0, evy = deltaTime > 0.0001 ? (y - esc.y) / deltaTime : 0;
+        if (Math.abs(evx - (esc.vx ?? 0)) > 0.5 || Math.abs(evy - (esc.vy ?? 0)) > 0.5) escChanged = true;
         const next = {
           ...esc,
-          x, y, face, fireAt, moving,
+          x, y, face, fireAt, moving, vx: evx, vy: evy,
           advanceZone: advance.zone,
           advanceDirX: advance.advanceDirX,
           advanceDirY: advance.advanceDirY,
@@ -19585,16 +19790,18 @@ export const useGameStore = create<GameState>((set, get) => ({
           x: sh.x - 4.5, y: sh.y - 30, width: 9, height: 9, // 胸の高さから発射(足元アンカーなので少し上)
           speed: 680, damage: ESCORT_DMG,
           direction: { x: sh.dx, y: sh.dy },
-          weaponType: 'handgun', weaponKey: 'escort',
+          weaponType: 'handgun', weaponKey: 'escort', escortId: sh.id,
           duration: 1200, createdAt: Date.now(),
           passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
         });
       }
+      for (const ev of corridorSceneEvents) get().noteEscortScene(ev.id, ev.kind, { silent: ev.silent });
+      for (const ev of corridorLandEvents) escortLandFx(escortFxApi(get), ev.x, ev.y, escortFxView(get()));
       for (const ev of surroundEvents) {
-        if (get().tryNpcLine(ev.name, 'surrounded', ev.text, SURROUND_CAT_CD_MS)) break;
+        if (get().tryNpcLine(ev.name, 'surrounded', ev.text, SURROUND_CAT_CD_MS, ev.id)) break;
       }
       for (const ev of rescuedEvents) {
-        if (get().tryNpcLine(ev.name, 'rescued', ev.text, RESCUED_CAT_CD_MS)) break;
+        if (get().tryNpcLine(ev.name, 'rescued', ev.text, RESCUED_CAT_CD_MS, ev.id)) break;
       }
       return shots.map(s => ({ x: s.x, y: s.y }));
     }
@@ -19605,9 +19812,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const p = state.player;
     const px = p.x + p.width / 2;
     const py = p.y + p.height / 2;
-    const cam = state.camera, gb = state.gameBounds;
-    const M = 100; // 画面外この距離まで=この内側だけ実体(攻撃者/護衛)を動かす。社長指示で 250→100=画面外ですぐ停止
-    const onScreen = (x: number, y: number) => x >= cam.x - M && x <= cam.x + gb.width + M && y >= cam.y - M && y <= cam.y + gb.height + M;
+    // ★画面内の定義は1本(research/ESCORT_TARGETED.md §3・品質監査QA-2 A-2): ズーム込みの可視域(isPointInZoomedViewport・英雄と同じ)+100px。
+    // 旧: camera+gameBounds±100(ズームを見ない)=ボス戦のズーム引き(0.4)で見えている軍人/拠点が「画面外」扱いになっていた(ズーム引き考慮の不具合)。
+    // この内側だけ実体(攻撃者/護衛)を動かす=画面外は索敵・射撃なしの自動進行。被弾・狙われる候補は余白0の可視域(escortView.ts)。
+    const onScreen = (x: number, y: number) => escortInMotionView(state, x, y);
     const aliveIds = new Set(state.enemies.map(e => e.id));
     // 裏ボスが拠点を「通過」(当たり判定=帯AABBが拠点サークルに重なる)したら一撃陥落させる(社長指示)。
     // 円(拠点)対AABB(ボス)の最近接点距離で判定。商人拠点(safe)は対象外(安全地帯を維持)。
@@ -19623,13 +19831,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const removeAttackerIds: string[] = [];
     const soldierShots: { fromX: number; fromY: number; toX: number; toY: number }[] = [];
     const damageShots: { id: string; dmg: number }[] = [];
-    const escortShots: { x: number; y: number; dx: number; dy: number; soldierIndex: number }[] = []; // 護衛NPCの発砲(プレイヤーと同じ実弾)。soldierIndex=フェイザー2倍判定用
+    const escortShots: { x: number; y: number; dx: number; dy: number; soldierIndex: number; id: string }[] = []; // 護衛NPCの発砲(プレイヤーと同じ実弾)。soldierIndex=フェイザー2倍判定用 / id=撃った軍人(ボスのヘイトを軍人ごとのバケツへ積む起因)
     const fallen: { x: number; y: number; id: string; soldierIndex: number }[] = [];
-    const npcSurroundEvents: { name: string; text: string }[] = []; // 「敵に囲まれた」発話候補(CDはset後にtryNpcLineで適用)
-    const npcRescuedEvents: { name: string; text: string }[] = [];   // 「囲まれから助けられた」発話候補
-    const npcRetreatEvents: { name: string; text: string }[] = [];    // 「後退する時」(放置×ランダム)発話候補
-    const npcBaseNearEvents: { name: string; text: string }[] = [];   // 「拠点が見えてきた時」発話候補
-    const npcCompanionEvents: { name: string; text: string }[] = [];  // 「並走時」発話候補(頻度低め)
+    const npcSurroundEvents: { name: string; text: string; id: string }[] = []; // 「敵に囲まれた」発話候補(CDはset後にtryNpcLineで適用)
+    const npcRescuedEvents: { name: string; text: string; id: string }[] = [];   // 「囲まれから助けられた」発話候補
+    const npcRetreatEvents: { name: string; text: string; id: string }[] = [];    // 「後退する時」(放置×ランダム)発話候補
+    const npcBaseNearEvents: { name: string; text: string; id: string }[] = [];   // 「拠点が見えてきた時」発話候補
+    const npcCompanionEvents: { name: string; text: string; id: string }[] = [];  // 「並走時」発話候補(頻度低め)
     let capturedThisFrame: { id: string; x: number; y: number; soldierIndex: number } | null = null;
     let captureCount = state.suppressionCaptureCount; // 制圧累計回数(SE検出用)。名簿indexはランダム割当に変更。
     let changed = false;
@@ -19643,14 +19851,47 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ウェルカムの輪が開く場所そのものなので、輪が出ている間は護衛の前進を止め出撃地点で待機させる。
     // 射撃は止めない(輪の中の敵を撃つのは自然)。輪が閉じた瞬間から従来どおり前進=出陣。
     const escortWelcomeHold = escortShouldHoldForWelcome(state.activeEvent?.kind);
-    const nextEscorts: EscortSoldier[] = state.escorts.map(esc => {
+    // research/ESCORT_TARGETED.md: 軍人の時計(倒れる/起こす/滑り)・台詞の場面・「ボスの赤い予告が自分に掛かった」の検出。
+    const escortAreaCtx: PlayableAreaCtx = {
+      farBackdrop: state.farBackdrop, labTheme: false, // ラボはこの関数の冒頭で除外済み(軍人は居ない)
+      corridorMode: state.corridorMode, m0AdvanceLimitX: state.m0AdvanceLimitX, corridorRunInActive: state.corridorRunInActive,
+    };
+    const escortSceneEvents: { id: string; kind: EscortScene; silent?: boolean }[] = [];
+    const escortLandEvents: { x: number; y: number }[] = []; // 倒れ込みが地面に着いた瞬間(砂埃)
+    const bossHatersOf = escortBossHaters(state.enemies);
+    const nextEscortsRaw: EscortSoldier[] = state.escorts.map(escIn => {
+      const lf = stepEscortLife(escIn, now, deltaTime, px, py, escortAreaCtx);
+      if (lf.esc !== escIn) escortsChanged = true;
+      if (lf.event) escortSceneEvents.push({ id: escIn.id, kind: 'revived', silent: lf.event === 'selfRevived' });
+      let esc = lf.esc;
+      if (lf.busy) {
+        // 倒れている/被弾で滑っている間: 前進・射撃・拠点の滞在(進んだぶんは保つ)・台詞・stallUntil を全部止める。歩行アニメは止めコマ。
+        if (esc.moving !== false || (esc.vx ?? 0) !== 0 || (esc.vy ?? 0) !== 0) escortsChanged = true;
+        // 「狙っているボス」の一覧は倒れている間も追従させる(台詞は出さない)。止めると、倒れる前から居たボスが起きた直後に狙い直しても
+        // 「新しく増えた」と数えられず、予告の一言が1回抜ける。
+        const hbBusy = bossHatersOf.get(esc.id) ?? [];
+        const prevBusy = esc.hatedByBossIds ?? [];
+        if (hbBusy.length !== prevBusy.length || hbBusy.some((id, i) => id !== prevBusy[i])) { esc = { ...esc, hatedByBossIds: hbBusy }; escortsChanged = true; }
+        if (lf.landed) escortLandEvents.push({ x: esc.x, y: esc.y });
+        return { ...esc, moving: false, vx: 0, vy: 0 };
+      }
+      // 「ボスの赤い予告が自分に掛かった瞬間」(ボスが狙いをこの軍人に決めた=hateTarget が escort:<id> に新しく変わった)。
+      {
+        const hb = bossHatersOf.get(esc.id) ?? [];
+        const prevHb = esc.hatedByBossIds ?? [];
+        if (hb.length !== prevHb.length || hb.some((id, i) => id !== prevHb[i])) {
+          if (hb.some(id => !prevHb.includes(id))) escortSceneEvents.push({ id: esc.id, kind: 'targeted' });
+          esc = { ...esc, hatedByBossIds: hb };
+          escortsChanged = true;
+        }
+      }
       const base = state.baseSites.find(b => b.id === esc.baseId);
       if (!base) return esc;
       // 後退(放置)セリフ: 後退システム未実装の代理。プレイヤーが遠く放置していて未制圧の担当NPCが、
       // たまにランダムで「押されている」旨を漏らす(画面外でも判定=放置の通知)。CDで更に間引く。
       if (base.status === 'open' && Math.hypot(esc.x - px, esc.y - py) > NEGLECT_DIST && Math.random() < RETREAT_CHANCE_PER_SEC * deltaTime) {
         const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
-        npcRetreatEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'pushback', sol.pushback) });
+        npcRetreatEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'pushback', sol.pushback) });
       }
       // 画面外=索敵・射撃なしで担当拠点へ遅く自動進行(社長指示2026-10-07「NPCは自動で少しずつ進む」。
       // 旧: 前進停止・座標保持)。苦戦の通信から20秒は止まる。たどり着いて10秒居れば画面内と同じく解放。
@@ -19659,9 +19900,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           x: esc.x, y: esc.y, baseX: base.x, baseY: base.y,
           baseOpen: base.status === 'open', holdForWelcome: escortWelcomeHold,
           stalled: now < (esc.stallUntil ?? 0),
-          speedPxPerSec: escortSpeed() * escortOffscreenPace(esc.id), dtSec: deltaTime, dwellMs: esc.dwellMs,
+          speedPxPerSec: escortSpeed() * escortOffscreenPace(esc.id) * escortAdvanceSlowMult(esc, now), dtSec: deltaTime, dwellMs: esc.dwellMs,
           captureRadius: BASE_CAPTURE_RADIUS, captureHoldMs: BASE_CAPTURE_HOLD_MS,
           captureFrozen: facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime),
+          downed: isEscortDowned(esc), // 倒れている軍人は上の busy で既に抜けている=ここは保険(research/ESCORT_TARGETED.md §6)
         });
         if (off.capture && !escortCaptures.has(base.id)) escortCaptures.set(base.id, esc.soldierIndex);
         if (off.x === esc.x && off.y === esc.y && off.dwellMs === esc.dwellMs) return esc;
@@ -19681,25 +19923,54 @@ export const useGameStore = create<GameState>((set, get) => ({
         strongNearExit: 150,
         now,
       });
-      if (advance.surroundedNow) npcSurroundEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
-      if (advance.rescuedNow) npcRescuedEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
+      if (advance.surroundedNow) npcSurroundEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
+      if (advance.rescuedNow) npcRescuedEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
       // 拠点が見えてきた時: 未制圧の担当拠点中心へ近づいた(あと少し)。
       if (base.status === 'open' && Math.hypot(esc.x - base.x, esc.y - base.y) < NEAR_BASE_DIST) {
-        npcBaseNearEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'baseNear', sol.baseNear) });
+        npcBaseNearEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'baseNear', sol.baseNear) });
       }
       // 並走時: プレイヤーと近距離の連続時間を計測し、一定時間越えたら低確率で漏らす(頻度かなり低め)。
       let companionMs = esc.companionMs ?? 0;
       if (Math.hypot(esc.x - px, esc.y - py) <= COMPANION_DIST) {
         companionMs += deltaTime * 1000;
         if (companionMs >= COMPANION_HOLD_MS && Math.random() < COMPANION_CHANCE_PER_SEC * deltaTime) {
-          npcCompanionEvents.push({ name: sol.name, text: pickNpcLine(esc.soldierIndex, 'companion', sol.companion) });
+          npcCompanionEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'companion', sol.companion) });
           companionMs = 0; // 一度漏らしたら再蓄積
         }
       } else {
         companionMs = 0; // 離れたらリセット(連続並走のみ)
       }
       let { x, y, fireAt, dwellMs, face } = esc;
-      if (escortWelcomeHold) {
+      let retreatDirX = esc.retreatDirX ?? 0, retreatDirY = esc.retreatDirY ?? 0;
+      // ★§13b-2 瀕死(最大の30%未満)の間は、最寄りの敵(検知範囲内)から**撃ちながら後ずさる**(速さは既存の「後方」=70%)。
+      //   前進の規則の作り直しではなく、瀕死の時だけの1規則。帯の外へ出ないよう clampRectToPlayableArea を通す。
+      const retreating = !escortWelcomeHold && isEscortLowHealth(esc) && advance.target !== undefined;
+      // 慣性MUST(検収R2 A-2): 後ずさりの速さも 0→1 を加減速で立ち上げ/畳む(瞬間に70%で動き出さない・瞬間に止まらない)。
+      const retreatK = Math.max(0, Math.min(1, (esc.retreatK ?? 0) + (retreating ? 1 : -1) * deltaTime / ESCORT_RETREAT_RAMP_SEC));
+      const retreatEase = retreatK * retreatK * (3 - 2 * retreatK);
+      if (retreating && advance.target) {
+        const rtx = advance.target.x + advance.target.width / 2, rty = advance.target.y + advance.target.height / 2;
+        const rdx0 = x - rtx, rdy0 = (y - ESCORT_BODY_SIZE / 2) - rty; // 体の中心から見て敵の反対へ
+        const rl = Math.hypot(rdx0, rdy0) || 1;
+        const rdx = rdx0 / rl, rdy = rdy0 / rl;
+        retreatDirX = rdx; retreatDirY = rdy;
+        const rmv = escortSpeed() * ESCORT_RETREAT_SPEED_MULT * retreatEase * deltaTime;
+        const half = ESCORT_BODY_SIZE / 2;
+        // 社長裁定2026-10-07(設計書§13c-4): 後ずさりを**始めた瞬間**に、その人の「下がる」台詞を1回(既存の間隔に従う)。
+        if (!esc.lowRetreat) {
+          const solR = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+          npcRetreatEvents.push({ name: solR.name, text: pickNpcLine(esc.soldierIndex, 'pushback', solR.pushback), id: esc.id });
+        }
+        const rc = clampRectToPlayableArea(x + rdx * rmv - half, y + rdy * rmv - ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, escortAreaCtx, x - half);
+        x = rc.x + half; y = rc.y + ESCORT_BODY_SIZE;
+        face = (rtx - x) < 0 ? -1 : 1; // 敵の方を向いたまま下がる
+      } else if (retreatK > 0 && (retreatDirX !== 0 || retreatDirY !== 0)) {
+        // 後ずさりが終わった直後: 同じ向きへ減速しながら止まる(瞬間に止まらない=慣性MUST)。前進はその後から。
+        const rmv = escortSpeed() * ESCORT_RETREAT_SPEED_MULT * retreatEase * deltaTime;
+        const half = ESCORT_BODY_SIZE / 2;
+        const rc = clampRectToPlayableArea(x + retreatDirX * rmv - half, y + retreatDirY * rmv - ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, escortAreaCtx, x - half);
+        x = rc.x + half; y = rc.y + ESCORT_BODY_SIZE;
+      } else if (escortWelcomeHold) {
         // §17-14: 出撃地点で待機(前進しない)。射撃は下のブロックでそのまま続く。
       } else if (base.status === 'captured') {
         // 制圧後: 円の縁を巡回(社長指示)。半径を patrolR へ寄せつつ角度を進める=滑らかに周回。
@@ -19716,20 +19987,22 @@ export const useGameStore = create<GameState>((set, get) => ({
         x = nx; y = ny;
       } else {
         // 前方=停止、左右=50%、後方=70%。減速は即時、加速は1秒ランプ。
+        // §13b-4: 自力で起きた直後(4秒)は前進×0.5。
         const dx = base.x - x, dy = base.y - y; const d = Math.hypot(dx, dy);
-        if (d > 2 && advance.speedMult > 0) { const mv = Math.min(escortSpeed() * advance.speedMult * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
+        const advMult = advance.speedMult * escortAdvanceSlowMult(esc, now);
+        if (d > 2 && advMult > 0) { const mv = Math.min(escortSpeed() * advMult * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
       }
-      // 射撃対象は全方位から最寄り。ジャンプ中だけ除外し、移動中も撃ち続ける。
-      if (advance.target && now >= fireAt) {
+      // 射撃対象は全方位から最寄り。ジャンプ中だけ除外し、移動中も撃ち続ける。被弾の直後(300ms)は撃つ手が止まる(§7 項8)。
+      if (advance.target && now >= fireAt && now >= (esc.fireHoldUntil ?? 0)) {
         fireAt = now + ESCORT_FIRE_INTERVAL_MS;
         const tx = advance.target.x + advance.target.width / 2, ty = advance.target.y + advance.target.height / 2;
         let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
         if (esc.soldierIndex === PHASER_INDEX) {
           const ox = -dy * PHASER_GUN_OFFSET, oy = dx * PHASER_GUN_OFFSET;
-          escortShots.push({ x: x + ox, y: y + oy, dx, dy, soldierIndex: esc.soldierIndex });
-          escortShots.push({ x: x - ox, y: y - oy, dx, dy, soldierIndex: esc.soldierIndex });
+          escortShots.push({ x: x + ox, y: y + oy, dx, dy, soldierIndex: esc.soldierIndex, id: esc.id });
+          escortShots.push({ x: x - ox, y: y - oy, dx, dy, soldierIndex: esc.soldierIndex, id: esc.id });
         } else {
-          escortShots.push({ x, y, dx, dy, soldierIndex: esc.soldierIndex });
+          escortShots.push({ x, y, dx, dy, soldierIndex: esc.soldierIndex, id: esc.id });
         }
         face = dx < 0 ? -1 : 1;
       }
@@ -19748,14 +20021,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §17-14受け入れ条件19: ウェルカム中は moving=false を保つ(止まっているのに歩行アニメが回らない)。
       // 輪が閉じたら true に戻り、従来どおりのアニメ(esc.moving!==false=常時行進)に戻る。
       const moving = !escortWelcomeHold;
+      // 速度(px/s)=ボスの偏差撃ちが軍人の移動先を読むのに使う。
+      const evx = deltaTime > 0.0001 ? (x - esc.x) / deltaTime : 0, evy = deltaTime > 0.0001 ? (y - esc.y) / deltaTime : 0;
+      if (Math.abs(evx - (esc.vx ?? 0)) > 0.5 || Math.abs(evy - (esc.vy ?? 0)) > 0.5) escortsChanged = true;
       if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face || companionMs !== (esc.companionMs ?? 0) ||
         moving !== (esc.moving ?? true) ||
         advance.zone !== (esc.advanceZone ?? 'none') || advance.speedMult !== esc.advanceSpeedMult || advance.speedTarget !== esc.advanceSpeedTarget ||
         advance.advanceDirX !== esc.advanceDirX || advance.advanceDirY !== esc.advanceDirY || advance.advanceRampFrom !== esc.advanceRampFrom || advance.advanceRampAt !== esc.advanceRampAt ||
         advance.strongNear !== (esc.strongNear ?? false) || advance.wasSurrounded !== (esc.wasSurrounded ?? false) ||
-        advance.helpRequested !== (esc.helpRequested ?? false) || advance.rescuedUntil !== (esc.rescuedUntil ?? 0)) escortsChanged = true;
+        advance.helpRequested !== (esc.helpRequested ?? false) || advance.rescuedUntil !== (esc.rescuedUntil ?? 0) ||
+        retreating !== (esc.lowRetreat ?? false) || retreatK !== (esc.retreatK ?? 0)) escortsChanged = true;
       return {
-        ...esc, x, y, fireAt, dwellMs, face, companionMs, moving,
+        ...esc, x, y, fireAt, dwellMs, face, companionMs, moving, vx: evx, vy: evy, lowRetreat: retreating,
+        retreatK, retreatDirX: retreatK > 0 ? retreatDirX : 0, retreatDirY: retreatK > 0 ? retreatDirY : 0,
         advanceZone: advance.zone,
         advanceDirX: advance.advanceDirX,
         advanceDirY: advance.advanceDirY,
@@ -19769,6 +20047,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         rescuedUntil: advance.rescuedUntil,
       };
     });
+    let nextEscorts: EscortSoldier[] = nextEscortsRaw; // 拠点の確保で担当の軍人が全快する時だけ、下で差し替える(§13b-3)
 
     const next: BaseSite[] = state.baseSites.map(s => {
       const inCircle = Math.hypot(s.x - px, s.y - py) <= BASE_CAPTURE_RADIUS;
@@ -19874,6 +20153,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { ...s, hp, attackerId, attackerRespawnAt, soldierFireAt, soldiers };
     });
 
+    // ★§13b-3 担当拠点の確保で、その担当の軍人は体力が全快する(体力の線は満ちてから消える=healedAt が起点)。
+    if (capturedThisFrame) {
+      const capId = (capturedThisFrame as { id: string }).id;
+      nextEscorts = nextEscortsRaw.map(e => (e.baseId === capId ? healEscortFull(e, now) : e));
+      if (nextEscorts.some((e, i) => e !== nextEscortsRaw[i])) escortsChanged = true;
+    }
     if (changed || capturedThisFrame || removeAttackerIds.length || escortsChanged) {
       const removeSet = new Set(removeAttackerIds);
       set(st => ({
@@ -19910,25 +20195,28 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 既存セーブの旧形式エントリも「初回」と数える=recordChronicleGlobalFirstのkindガード)。
       recordChronicleGlobalFirst(getSelectedStageId(), 'base', c.id, '初めて拠点を開放');
     }
+    // 軍人の台詞の場面(起こしてもらった/ボスの赤い予告が自分に掛かった)。倒れた瞬間は damageEscort が打つ。
+    for (const ev of escortSceneEvents) get().noteEscortScene(ev.id, ev.kind, { silent: ev.silent });
+    for (const ev of escortLandEvents) escortLandFx(escortFxApi(get), ev.x, ev.y, escortFxView(get()));
     // 「敵に囲まれた時」セリフ(時間停止なしHUD)。同一NPC/同一カテゴリのCDを守って1件だけ通す。
     for (const ev of npcSurroundEvents) {
-      if (get().tryNpcLine(ev.name, 'surrounded', ev.text, SURROUND_CAT_CD_MS)) break;
+      if (get().tryNpcLine(ev.name, 'surrounded', ev.text, SURROUND_CAT_CD_MS, ev.id)) break;
     }
     // 「囲まれから助けてもらった時」セリフ。援護実感を出す(High)。同上CD。
     for (const ev of npcRescuedEvents) {
-      if (get().tryNpcLine(ev.name, 'rescued', ev.text, RESCUED_CAT_CD_MS)) break;
+      if (get().tryNpcLine(ev.name, 'rescued', ev.text, RESCUED_CAT_CD_MS, ev.id)) break;
     }
     // 「後退する時」セリフ(放置×ランダム)。同上CD。
     for (const ev of npcRetreatEvents) {
-      if (get().tryNpcLine(ev.name, 'pushback', ev.text, RETREAT_CAT_CD_MS)) break;
+      if (get().tryNpcLine(ev.name, 'pushback', ev.text, RETREAT_CAT_CD_MS, ev.id)) break;
     }
     // 「拠点が見えてきた時」セリフ(あと少し感・High)。同上CD。
     for (const ev of npcBaseNearEvents) {
-      if (get().tryNpcLine(ev.name, 'baseNear', ev.text, BASE_NEAR_CAT_CD_MS)) break;
+      if (get().tryNpcLine(ev.name, 'baseNear', ev.text, BASE_NEAR_CAT_CD_MS, ev.id)) break;
     }
     // 「並走時」セリフ(頻度低め・Low)。同上CD。
     for (const ev of npcCompanionEvents) {
-      if (get().tryNpcLine(ev.name, 'companion', ev.text, COMPANION_CAT_CD_MS)) break;
+      if (get().tryNpcLine(ev.name, 'companion', ev.text, COMPANION_CAT_CD_MS, ev.id)) break;
     }
     // 「遠方で放置(隣NPCのみ)」セリフ(社長確定条件)。誰も進軍を手伝っていない(全護衛から遠い)時、
     // プレイヤーの現在エリア起点で時計回りに最初の未開放エリアのNPCが1人だけ低頻度で反応。
@@ -19950,7 +20238,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (esc) {
             const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
             const sol = BASE_SOLDIERS[idx];
-            get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(idx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS);
+            get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(idx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS, esc.id);
           }
         }
       }
@@ -19968,7 +20256,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         x: sh.x - 4.5, y: sh.y - 30, width: 9, height: 9, // 胸の高さから発射(足元アンカーなので少し上)
         speed: 680, damage: ESCORT_DMG, // フェイザーは2発撃つ(2丁拳銃)ことで合計2倍。1発は通常と同じ。
         direction: { x: sh.dx, y: sh.dy },
-        weaponType: 'handgun', weaponKey: 'escort',
+        weaponType: 'handgun', weaponKey: 'escort', escortId: sh.id,
         duration: 1200, createdAt: Date.now(),
         passthrough: false, hitEnemies: [], hostile: false, reflected: false, critChance: 0,
       });
@@ -20856,7 +21144,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // エンディング(仮組み)も護衛NPCを出さない=NPC0(見せるだけのステージ・ENDING_SCENE.md)。
       const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss || BOSS_TEST_RUN || isPracticeRun() || (corridorMode && isExStageRun()) || farBackdrop === 'ending') ? []
         : farBackdrop === 'tutorial' ? makeTutorialCompanions(spawnTL.x, spawnTL.y)
-        : makeEscorts(spawnTL.x, spawnTL.y, corridorMode);
+        : makeEscorts(spawnTL.x, spawnTL.y, corridorMode, maxHealth);
       const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
       const sortieSol = sortieEsc ? BASE_SOLDIERS[((sortieEsc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length] : null;
       // PACING_PUZZLE.md §17-14(社長指示「ウェルカム終わるまでは画面に存在させない」):
@@ -22068,6 +22356,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   dequeueWallEvent: () => set(state => ({ wallEventQueue: state.wallEventQueue.slice(1) })),
 }));
+
+// research/ESCORT_TARGETED.md §5: ボスの狙いロック(約50箇所)が軍人を候補に入れる提供口(bossHate.ts は store を import しない葉)。
+setHateEscortProvider(() => hateEscortSource(useGameStore.getState()));
 
 // DEVビルド限定のデバッグハンドル(__pixiSceneと同じ趣旨・v0.25.1831)。ヘッドレス実機テストが
 // page.evaluateからstoreの実値を読む/captureFrameを叩くために使う。本番ビルドでは付かない。

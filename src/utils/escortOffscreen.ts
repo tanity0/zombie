@@ -21,6 +21,8 @@ export interface EscortOffscreenInput {
   captureRadius: number;
   captureHoldMs: number;
   captureFrozen: boolean;   // ボス戦中(+復帰猶予)は解放を凍結(画面内と同じ)
+  /** 倒れている(research/ESCORT_TARGETED.md §6): 進まない・滞在も進まず(進んだぶんは保つ)・解放も成立しない。 */
+  downed?: boolean;
 }
 
 export interface EscortOffscreenResult {
@@ -30,6 +32,7 @@ export interface EscortOffscreenResult {
 }
 
 export const escortOffscreenStep = (i: EscortOffscreenInput): EscortOffscreenResult => {
+  if (i.downed) return { x: i.x, y: i.y, dwellMs: i.dwellMs, capture: false };
   let { x, y } = i;
   if (i.baseOpen && !i.holdForWelcome && !i.stalled) {
     const dx = i.baseX - x, dy = i.baseY - y;

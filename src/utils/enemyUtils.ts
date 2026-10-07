@@ -1,4 +1,6 @@
 import { mobPrefersHero } from './heroScript';
+import { isHateTrackedBossType, escortIdOfSide } from './bossHate'; // research/ESCORT_TARGETED.md §4/§5: 軍人を狙う対象の述語と、ボスの狙い(escort:<id>)の読み出し
+import { chooseEscortAggro, type EscortAggroCandidate } from './escortAggro';
 import { currentSpawnWalk, walkBiasStrength, pickWalkBiasedSide } from './spawnWalkBias';
 import { DifficultyRank, EnemyColorTier, Enemy, EnemyType, GameBounds, Player, Projectile, Summon } from '../types/game';
 import { makeSeededRng } from './seededRng';
@@ -747,6 +749,14 @@ export const getEnemyBaseSize = (type: EnemyType): { width: number; height: numb
 
 // resolveEnemyTarget が必要とする最小形(実召喚 Summon のほか、フレアガンの疑似召喚
 // FlarePseudoSummon=utils/flareGun.ts も構造的に一致する。§6.6 M29)。
+/**
+ * research/ESCORT_TARGETED.md §4: 進軍NPC(軍人)を狙う側か。ボスのヘイト表(HATE_TRACKED_BOSS_TYPES)に**入っていない敵全部**
+ * =雑魚・強個体(パンプキン/削岩型/伐採人)・ハンター。ボス級はヘイト表(§5=ダメージの割合+近さ)で決めるのでここでは扱わない。
+ * 除外(狙いは今のまま): 英雄(変異)・解放軍群の旗手=中立 / 死神系(本体・使者)=プレイヤーを追う終端 / 幻影=プレイヤーの写し(自前の近接を持つ決闘相手)。
+ */
+export const isEscortAggroMob = (t: EnemyType): boolean =>
+  !isHateTrackedBossType(t) && !isBodyWallBoss(t) && !isReaperFamily(t) && !isHangedman(t) && !isGuardianPhantom(t);
+
 export interface SummonTargetLike {
   kind: Summon['kind'];
   /** 守護霊が紐付いているボスのid(v0.25.3862: ボスのヘイト追従で「自分に紐付いた霊か」を見る)。 */
@@ -775,7 +785,12 @@ export const resolveEnemyTarget = (
   // 雑魚・強個体は、英雄が HERO_LURE_RANGE 以内でプレイヤーより近い時は英雄を追う/撃つ。ボスは見ない(狙いは今のまま)。
   // 未指定=英雄なし=従来と1bit同じ。呼び手は英雄が画面外なら渡さない。
   hero?: { id: string; x: number; y: number; width: number; height: number } | null,
-): { x: number; y: number; isSummon: boolean; hidden: boolean } => {
+  // research/ESCORT_TARGETED.md §4/§5: 進軍NPC(軍人)の候補(画面内で倒れていない・体の中心座標)。
+  // 雑魚・強個体・ハンター(isEscortAggroMob)は、気づく距離(aggroRange)の内側でプレイヤー/召喚より近い軍人を追う
+  // (今の相手 enemy.targetEscortId に20%の粘着)。ボスは hateTarget が 'escort:<id>' ならその軍人を追う(ヘイトは技のロック時に決まる)。
+  // 未指定/空=従来と1bit同じ。
+  escorts?: readonly EscortAggroCandidate[],
+): { x: number; y: number; isSummon: boolean; hidden: boolean; escortId?: string } => {
   const ex = enemy.x + enemy.width / 2;
   const ey = enemy.y + enemy.height / 2;
   const px = player.x + player.width / 2;
@@ -805,6 +820,12 @@ export const resolveEnemyTarget = (
     const g = summons.find(s => s.kind === 'ghost-ally' && (s.ghostBossId === undefined || s.ghostBossId === enemy.id));
     if (g) return { x: g.x + g.width / 2, y: g.y + g.height / 2, isSummon: true, hidden: false };
   }
+  // 進軍NPCが狙われているボス(§5): 移動の狙いも軍人へ(技と移動の主語を揃える=v0.25.3862)。倒れた/居なくなったら距離規則へ落ちる。
+  if (!mobGhostRules && escorts && escorts.length > 0) {
+    const eid = escortIdOfSide(enemy.hateTarget);
+    const e = eid !== undefined ? escorts.find(c => c.id === eid) : undefined;
+    if (e) return { x: e.x, y: e.y, isSummon: true, hidden: false, escortId: e.id };
+  }
   let bestX = px;
   let bestY = py;
   let bestD2 = playerHidden ? Infinity : (px - ex) * (px - ex) + (py - ey) * (py - ey);
@@ -823,6 +844,12 @@ export const resolveEnemyTarget = (
     const sy = s.y + s.height / 2;
     const d2 = (sx - ex) * (sx - ex) + (sy - ey) * (sy - ey);
     if (d2 <= aggro2 && d2 < bestD2) { bestD2 = d2; bestX = sx; bestY = sy; isSummon = true; }
+  }
+  // 進軍NPC(軍人)も候補に加える(§4・④距離規則): プレイヤー/召喚のうち最寄りより近い軍人を追う。隠れているプレイヤーは Infinity。
+  if (escorts && escorts.length > 0 && isEscortAggroMob(enemy.type)) {
+    const pick = chooseEscortAggro(ex, ey, Math.sqrt(bestD2), escorts, enemy.targetEscortId, aggroRange);
+    const c = pick !== undefined ? escorts.find(e => e.id === pick) : undefined;
+    if (c) return { x: c.x, y: c.y, isSummon: true, hidden: false, escortId: c.id };
   }
   // プレイヤーが隠れていて召喚も射程外 → 標的なし。
   if (playerHidden && !isSummon) return { x: px, y: py, isSummon: false, hidden: true };

@@ -101,6 +101,9 @@ const setup = (distance: number) => {
   e.bossNextActionAt = Number.MAX_SAFE_INTEGER; // 自発的な抽選を止める=強制発動だけを見る
   useGameStore.setState(s => ({
     enemies: [e], projectiles: [], pumpkinBlasts: [],
+    // 進軍NPC(出撃地点の周り=画面内)はボスの狙いの候補になる(research/ESCORT_TARGETED.md §5・開幕は一番近い相手)。この試験は
+    // 「狙い=プレイヤー」の予告向きだけを見るので外す(軍人の狙いは escortTargeted.store.test.ts / bossHateEscort.test.ts)。
+    escorts: [],
     player: { ...s.player, x: 0, y: 0, health: 9999, maxHealth: 9999 },
   }));
   const st = createIdolTickState();

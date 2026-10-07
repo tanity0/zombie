@@ -187,17 +187,11 @@ export const setThirdPartySfx = (_fn: (key: 'counter' | 'headshot', gain: number
 
 // 形の型は葉モジュールに置く(gameStore がこの型を使う=ここに置くと循環importになる)。
 export type { ThirdPartyShape } from './thirdPartyShape';
-import type { ThirdPartyShape } from './thirdPartyShape';
+import { shapeHitsCircle, type ThirdPartyShape } from './thirdPartyShape';
+import { hitEscortShape } from './escortHit';
 
-/** 円(中心・半径)の相手に形が触れるか。 */
-export const shapeHitsCircle = (s: ThirdPartyShape, cx: number, cy: number, r: number): boolean => {
-  if (s.kind === 'circle') return Math.hypot(cx - s.cx, cy - s.cy) <= s.r + r;
-  if (s.kind === 'capsule') return distToBandRect({ x: cx, y: cy }, { x: s.fx, y: s.fy }, { x: s.tx, y: s.ty }, s.hw) <= r;
-  if (s.kind === 'fan') return circleHitsFan(cx, cy, r, s.cx, s.cy, s.angle, s.halfArc, s.radius);
-  if (s.kind === 'test') return s.hits(cx, cy, r);
-  const nx = Math.max(s.x, Math.min(cx, s.x + s.w)), ny = Math.max(s.y, Math.min(cy, s.y + s.h));
-  return Math.hypot(cx - nx, cy - ny) <= r;
-};
+// 円(中心・半径)の相手に形が触れるか=葉モジュール(thirdPartyShape)へ移した(進軍NPCの被弾 escortHit.ts も同じ式を使う)。
+export { shapeHitsCircle } from './thirdPartyShape';
 
 /**
  * 英雄は無敵時間を持たない(敵なので)。続けて当たり続ける技(帯の持続・床・360度の鞭など)が毎フレーム削らないよう、
@@ -244,6 +238,8 @@ export const hitGhostShape = (s: ThirdPartyShape, amount: number, _srcEnemyId: s
 export const hitThirdParties = (s: ThirdPartyShape, amount: number, srcEnemyId: string | undefined, key: string): void => {
   hitGhostShape(s, amount, srcEnemyId, key);
   hitHeroShape(s, amount, srcEnemyId, key);
+  // research/ESCORT_TARGETED.md §3: 進軍NPC(見えていて倒れていない軍人)も同じ形・同じダメージ・同じ時刻で。入口はここ1本=約27箇所が自動で拾う。
+  hitEscortShape(s, amount, srcEnemyId, key);
 };
 
 // gameStore 内の技(城ボスの継続技など)が当てに来る入口を登録する(gameStore は heroBlast を import できない=循環)。

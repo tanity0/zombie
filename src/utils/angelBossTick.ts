@@ -47,7 +47,8 @@ import { refundCounterCooldown } from './counterMaster'; // counter-master v2(CD
 import { consumeGhostCounterClaim, applyGhostCounterEffect, type GhostCounterFire } from './ghostCounter'; // v0.25.2480: 守護霊カウンターの合流
 import { isBodySlamNow } from './enemyBite'; // ★カウンター憲法(v0.25.3947): 面成立は体当たり技の最中のみ
 import { npcSfxDistGain } from './npcSfx'; // v0.25.2480: 守護霊カウンターSEの距離減衰
-import { hitThirdParties, hitHeroShape, type ThirdPartyShape } from './heroBlast'; // research/MUTANT_HERO.md §4-2: 守護霊と英雄にも同じ形で当てる
+import { hitThirdParties, hitHeroShape, type ThirdPartyShape } from './heroBlast';
+import { hitEscortShape } from './escortHit'; // research/MUTANT_HERO.md §4-2: 守護霊と英雄にも同じ形で当てる
 import { pickMiguelMove } from './miguelScript';
 import { pickJibrilMove, jibrilVolleyMode, JIBRIL_PHASE_HP_THRESHOLD, JIBRIL_EDGE_STICK_MS } from './jibrilScript';
 import { pickRafiMove, RAFI_PHASE_HP_THRESHOLD, type RafiMove } from './rafiScript';
@@ -367,7 +368,7 @@ const ghostAllyBodyFor = (bossId: string): { x: number; y: number; r: number } |
  * 守護霊には当てない(英雄だけ)。プレイヤー優先の規則を崩さないため。
  */
 const hitOthers = (counteredNow: boolean, s: ThirdPartyShape, amount: number, srcId: string, key: string): void => {
-  if (counteredNow) hitHeroShape(s, amount, srcId, key);
+  if (counteredNow) { hitHeroShape(s, amount, srcId, key); hitEscortShape(s, amount, srcId, key); } // 進軍NPC(ESCORT_TARGETED §3)も英雄と同じ扱い=カウンターの有無に左右されない
   else hitThirdParties(s, amount, srcId, key);
 };
 
@@ -1491,7 +1492,8 @@ export const runJibrilTick = (
         const ghost = aim.side === 'ghost'
           ? store.summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === jibril.id)
           : undefined;
-        const fpx = aim.x, fpy = ghost ? ghost.y + ghost.height : player.y + player.height;
+        // 火の設置先=相手の足元。3択(research/ESCORT_TARGETED.md §5): 守護霊=その足元 / 進軍NPC=軍人の足元(escort.footY) / プレイヤー=足元。
+        const fpx = aim.x, fpy = ghost ? ghost.y + ghost.height : aim.escort ? aim.escort.footY : player.y + player.height;
         useGameStore.getState().spawnBossFire(fpx, fpy, newGameTime, newGameTime + JB_T.fire.telegraphMs, newGameTime + JB_T.fire.telegraphMs + JB_T.fire.lifeMs);
         jr.nextFireAt = newGameTime + JB_T.lantern.fireGapMs;
       }

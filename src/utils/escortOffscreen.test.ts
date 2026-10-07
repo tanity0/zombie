@@ -65,3 +65,19 @@ describe('escortOffscreenPace', () => {
     expect(new Set(v.map(x => x.toFixed(3))).size).toBeGreaterThan(1);
   });
 });
+
+describe('escortOffscreenStep: 倒れている軍人(research/ESCORT_TARGETED.md §6)', () => {
+  it('倒れている間は画面外でも進まない・滞在も進まず(進んだぶんは保つ)・解放も成立しない', () => {
+    const r = escortOffscreenStep({ ...base, downed: true });
+    expect(r.x).toBe(0);
+    expect(r.y).toBe(0);
+    const inside = escortOffscreenStep({ ...base, x: 1000, downed: true, dwellMs: 9990, dtSec: 1 });
+    expect(inside.dwellMs).toBe(9990);
+    expect(inside.capture).toBe(false);
+    // 円の外でも滞在は0へ戻さない(起きたら続きから)
+    expect(escortOffscreenStep({ ...base, x: 0, downed: true, dwellMs: 4000 }).dwellMs).toBe(4000);
+  });
+  it('起きれば(downed=false)また進む', () => {
+    expect(escortOffscreenStep({ ...base, downed: false }).x).toBeGreaterThan(0);
+  });
+});

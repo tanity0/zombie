@@ -499,6 +499,13 @@ export interface EquipBonus {
 export type Direction = 'up' | 'down' | 'left' | 'right' | 'idle';
 
 // Enemy types
+/**
+ * ボスの狙いの相手(research/ESCORT_TARGETED.md §5)。'player' / 'ghost'(守護霊) / `escort:<EscortSoldier.id>`(進軍NPC)。
+ * 文字列のテンプレートリテラル型にしたのは、既存の `aim.side` を素通しで運ぶ約50箇所(hateTarget への書き戻し)を
+ * 1行も変えずに3択へ広げるため。相手ごとの分岐が要る所(座標を引く箇所)は bossHate.ts の `escortIdOfSide` で読む。
+ */
+export type HateSideKey = 'player' | 'ghost' | `escort:${string}`;
+
 export interface Enemy {
   id: string;
   x: number;
@@ -1477,7 +1484,19 @@ export interface Enemy {
   // 各ボスのwindup開始点(beginGiantMove等)がresolveBossHateAim経由で読む。
   hatePlayerBuckets?: { idx: number; dmg: number }[];
   hateGhostBuckets?: { idx: number; dmg: number }[];
-  hateTarget?: 'player' | 'ghost';
+  // research/ESCORT_TARGETED.md §5: 進軍NPC(軍人)ごとの直近6秒ダメージのバケツ(キー=EscortSoldier.id)。
+  // プレイヤー/守護霊のバケツと同じ形・同じ6秒窓。damageEnemy(hateSource='escort:<id>')が積む。
+  hateEscortBuckets?: Record<string, { idx: number; dmg: number }[]>;
+  hateTarget?: HateSideKey;
+  // research/ESCORT_TARGETED.md §4: 雑魚・強個体・ハンターが今追っている進軍NPCのid(粘着20%の基準・resolveEnemyTarget が読む)。
+  // 既存の `escortTarget`(救助イベントの攻撃者が追う生存者のid)とは**別物**。
+  targetEscortId?: string;
+  // research/ESCORT_TARGETED.md §13b-1: 狙っていた軍人が倒れた時に立てる「見失い」の期限(gameTime)。
+  // この間は新しい技を始めず立ち止まる(進行中の技は振り切る=倒れた軍人には当たらない)。
+  escortLostUntil?: number;
+  // research/ESCORT_TARGETED.md §3: 構えている噛みつき(biteAt>0)が向いている軍人のid。未設定=プレイヤーへ向けた噛み。
+  // 溜めの間は向きが相手を追う(updateEnemies)ので、構え始めた相手を最後まで追わせるために持つ。
+  biteAimEscortId?: string;
   // v0.25.2490(社長裁定「雑魚はプレイヤーを優先して狙う。守護霊に攻撃されたら守護霊に向く」):
   // 雑魚(非ボス)専用のゴーストヘイト終了時刻(gameTime基準)。damageEnemyがhateSource='ghost'の
   // 被弾のたびに更新し、resolveEnemyTargetが期限内ならゴーストを狙わせる。ボスはG2.5のバケツ側(上)。
@@ -2065,6 +2084,55 @@ export interface EscortSoldier {
   appearedAt?: number;
   /** 苦戦の通信(後退/放置のセリフ)が流れた時、画面外の自動進行をこの gameTime まで止める(社長指示2026-10-07・utils/escortOffscreen.ts)。 */
   stallUntil?: number;
+  /** 瀕死の後ずさり中(後ずさりを始めた瞬間の「下がる」台詞の立ち上がり検出用・設計書§13c-4)。 */
+  lowRetreat?: boolean;
+  /** 後ずさりの速さの立ち上がり 0..1 と、最後に下がった向き(畳む間も同じ向きへ減速する)。 */
+  retreatK?: number;
+  retreatDirX?: number;
+  retreatDirY?: number;
+
+  // ---- research/ESCORT_TARGETED.md: 体力・倒れる・起こす(判定はすべて store/utils。描画は読むだけ) ----
+  // 時計はすべて gameTime(ms)。M0の随行2人(farBackdrop==='tutorial')には付けない(undefined=体力なし=従来どおり)。
+  /** 体力(0..maxHealth)。出撃時のプレイヤー最大体力×0.6で固定(出撃中は変わらない)。 */
+  health?: number;
+  maxHealth?: number;
+  /** 直近フレームの速度(px/s)。ボスの偏差撃ち(idolTick)が軍人の移動先を読むのに使う。 */
+  vx?: number;
+  vy?: number;
+  /** 倒れた時刻。undefined=立っている。倒れている間は前進/射撃/滞在が止まり、狙われず・技も当たらない。 */
+  downedAt?: number;
+  /** 倒れ込みが地面に着いた瞬間の砂埃を出し済みか(store の stepEscortLife が1回だけ立てる。起きる/再び倒れるで落とす)。 */
+  landedFx?: boolean;
+  /** 起こす進み具合(ms・0..ESCORT_REVIVE_NEED_MS)。プレイヤーが半径内に居る間だけ伸び、離れると毎秒0.5秒ぶん戻る。 */
+  reviveMs?: number;
+  /** プレイヤーが起こす半径に入っているか(入った瞬間に軍人がプレイヤーの方を向く・進みの縁取りが灯る)。 */
+  reviveNear?: boolean;
+  /** この gameTime まで無敵(被弾後1秒/起き上がり後2秒)。 */
+  invulnUntil?: number;
+  /** 最後に被弾した時刻と被弾の向き(体の外向き単位ベクトル=描画の滑り・血・体力の線の表示に使う)。 */
+  lastHitAt?: number;
+  lastHitDirX?: number;
+  lastHitDirY?: number;
+  /** 被弾で射撃を止める期限(300ms)。 */
+  fireHoldUntil?: number;
+  /** 被弾の滑り(ノックバック): 始点→終点を ease-out で運ぶ。slideUntil を過ぎたら終わり。 */
+  slideFromX?: number;
+  slideFromY?: number;
+  slideToX?: number;
+  slideToY?: number;
+  slideStartAt?: number;
+  slideUntil?: number;
+  /** 起き上がった時刻と起こし方('player'=起こされた/'self'=自力。自力は尺2倍で無言)。 */
+  riseAt?: number;
+  riseKind?: 'player' | 'self';
+  /** 自力で起きた後の前進×0.5の期限。 */
+  slowUntil?: number;
+  /** 担当拠点の確保で全快した時刻(体力の線が満ちてから消える見せ方の起点)。 */
+  healedAt?: number;
+  /** 台詞のフック(§7): 直近に入った場面。次の担当が文言を載せる。倒れた/起こされた/ボスの赤い予告が自分に掛かった。 */
+  lastScene?: { kind: 'downed' | 'revived' | 'targeted'; at: number };
+  /** このフレームにこの軍人を狙っているボスのid(「ボスの赤い予告が自分に掛かった瞬間」の検出用・新規に増えた時だけ場面を打つ)。 */
+  hatedByBossIds?: string[];
 }
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備画面で所持から2枠選択。
@@ -2216,6 +2284,8 @@ export interface Projectile {
   weaponKey?: string;
   ownerType?: EnemyType; // 敵弾の発射元タイプ(盾への被ダメージ算定などに使用)。
   ownerId?: string;      // 敵弾の発射元の個体ID(発射元が倒れたら在弾を消す等に使用)。
+  /** research/ESCORT_TARGETED.md §5: 進軍NPCの弾(weaponKey='escort')を撃った軍人のid。ボスのヘイト(軍人ごとのバケツ)へ積む起因。 */
+  escortId?: string;
   /** ★SAME_ARENA §9: 幻影の弾のクリ旗(ダメージは焼き込み済み=旗は被弾側の体勢削り+2/3減速の合図だけ)。 */
   pvpCrit?: boolean;
   // GHOST-BULLET-TECH(BOT_AND_GHOST.md §2.9・**記録専用**): 発射元の技キー(moveReaction.tsの台帳)。

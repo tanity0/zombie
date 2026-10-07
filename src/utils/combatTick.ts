@@ -72,6 +72,9 @@ import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_A
 import { distToBandRect } from './geometry';
 import { circleHitsFan } from './heroScript';
 import { applyBlastToHero, applyHeroBlastToEnemies, markHeroHit, heroAsTarget, damageHeroByEnemy, hitHeroShape } from './heroBlast'; // research/MUTANT_HERO.md
+import { applyBlastToEscorts, applyEnemyProjectilesToEscorts, hitEscortShape } from './escortHit'; // research/ESCORT_TARGETED.md §3: 進軍NPCも同じ入口で被弾
+import { escortBodyRect, escortCenter, ESCORT_BODY_SIZE } from './escortHealth';
+import { escortAggroCandidates, hittableEscorts } from './escortView';
 import { notifyCounterHit, notifyMoveCounter } from './playerTraits'; // BOT_AND_GHOST.md G1/G4a(計測専用・挙動不変)
 import { recordCritHit } from './botTelemetry'; // PACING_PUZZLE.md §7-11c(4): クリ計測口(計測専用・挙動不変)
 import { contactDamageMoveKey } from './moveReaction'; // G4a(§2.9): 接触被弾の技キー導出(記録専用)
@@ -190,6 +193,7 @@ export const applyGhostAllyCapsuleHit = (
 ): GhostCapsuleHitResult => {
   // research/MUTANT_HERO.md §4-1: 同じ帯は英雄(第三者の的)にも当たる(守護霊の有無と無関係・同じ技から700msに1回)。
   hitHeroShape({ kind: 'capsule', fx: fx0, fy: fy0, tx: tx0, ty: ty0, hw: halfWidth }, damage, counterBossId, source ?? 'capsule');
+  hitEscortShape({ kind: 'capsule', fx: fx0, fy: fy0, tx: tx0, ty: ty0, hw: halfWidth }, damage, counterBossId, source ?? 'capsule'); // research/ESCORT_TARGETED.md §3: 進軍NPCも(守護霊=下の分岐/英雄と同じ入口)
   const ghost = findGhostAlly();
   if (!ghost) return { kind: 'miss' };
   const gcx = ghost.x + ghost.width / 2, gcy = ghost.y + ghost.height / 2;
@@ -409,6 +413,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     } else {
       applyBlastToHero(b);
     }
+    // research/ESCORT_TARGETED.md §3(爆風): 同じ爆発を進軍NPC(見えていて倒れていない軍人)にも。守護霊と同じく英雄の技の爆風も当たる。
+    // 軍人にカウンターは無い=窓(counterActive)にも請求にも関係なく、触れたら食らう(無敵の間は damageEscort が弾く)。
+    if (applyBlastToEscorts(b) > 0 && b.moveKey?.startsWith('hero-')) markHeroHit(b.enemyId);
   }
   if (parriedEnemyIds.length > 0 || localParries.length > 0) {
     // G4a(§2.9・記録専用): カウンター成立(②ジャンプ着地パリィ)を技への反応表へ通知。
@@ -618,6 +625,8 @@ export const applyGlenFloorDamage = (fx: CombatEffects): void => {
     for (const h of e.giantDelayedHits ?? []) {
       if (h.floorUntil === undefined || gameTime < h.fireAt || gameTime >= h.floorUntil) continue;
       hitHeroShape({ kind: 'circle', cx: h.x, cy: h.y, r: h.radius }, e.damage, e.id, `floor:${h.moveKey ?? 'giant'}`);
+      // research/ESCORT_TARGETED.md §3(床): 判定を持つ床(血溜まり)は軍人も踏めば食らう(被弾後1秒の無敵が連続ヒットを止める)。
+      hitEscortShape({ kind: 'circle', cx: h.x, cy: h.y, r: h.radius }, e.damage, e.id, `floor:${h.moveKey ?? 'giant'}`);
     }
   }
   for (const e of enemies) {
@@ -658,6 +667,7 @@ export const applyEnemyFire = (now: number): void => {
     ? [...useGameStore.getState().summons, ...liveFlareTargets]
     : useGameStore.getState().summons;
   const heroForFire = heroAsTarget() ?? null; // research/MUTANT_HERO.md §3-2
+  const escortsForFire = escortAggroCandidates(useGameStore.getState()); // research/ESCORT_TARGETED.md §4: 狙われる軍人の候補(見えていて倒れていない)
   liveEnemies.forEach(enemy => {
     // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2-2): 死体は発砲しない。
     if (isCorpse(enemy)) return;
@@ -671,6 +681,8 @@ export const applyEnemyFire = (now: number): void => {
     if (enemy.stunUntil !== undefined && liveGameTime < enemy.stunUntil) return;
     // 特殊行動中(ジャンプ/ダッシュの溜め・動作中)は発砲しない(giantbat の弾/ジャンプ/ダッシュを排他に)。
     if (enemy.aiPhase) return;
+    // 狙っていた軍人が倒れた直後の1秒は撃たない(research/ESCORT_TARGETED.md §13b-1: 立ち止まってから次の相手を探す)。
+    if (enemy.escortLostUntil !== undefined && liveGameTime < enemy.escortLostUntil) return;
     const profile = getEnemyFireProfile(enemy);
     if (!profile) return;
     // 発砲間隔も攻撃倍速で短縮(1/MULT)=より速く撃つ。1.0で従来等速。
@@ -686,7 +698,7 @@ export const applyEnemyFire = (now: number): void => {
     // 錬金術: aggro内の通常召喚を撃つ。いなければ従来どおりプレイヤー。
     // シーカー: 半透明中は通常敵(ボス/死神/イベントボス級を除く)はプレイヤーを撃たない。
     const playerHidden = isSeekerActive(livePlayer, liveGameTime) && !isBossType(enemy.type);
-    const tgt = resolveEnemyTarget(enemy, livePlayer, liveSummonsForFire, ALCHEMY_AGGRO_RANGE, playerHidden, liveGameTime, heroForFire); // v0.25.2490: 雑魚ヘイト=ラッチ中の射手はゴーストを撃つ / 英雄を追う雑魚は英雄を撃つ(MUTANT_HERO §3-2)
+    const tgt = resolveEnemyTarget(enemy, livePlayer, liveSummonsForFire, ALCHEMY_AGGRO_RANGE, playerHidden, liveGameTime, heroForFire, escortsForFire); // 進軍NPC(ESCORT_TARGETED §4): 追っている軍人を撃つ / v0.25.2490: 雑魚ヘイト=ラッチ中の射手はゴーストを撃つ / 英雄を追う雑魚は英雄を撃つ(MUTANT_HERO §3-2)
     if (tgt.hidden) return; // 標的なし=非発砲
     const dx = tgt.x - (enemy.x + enemy.width / 2);
     const dy = tgt.y - (enemy.y + enemy.height / 2);
@@ -927,6 +939,8 @@ export const applyEnemyProjectileHits = (
       }
     }
   }
+  // research/ESCORT_TARGETED.md §3(敵弾): 軍人にも。プレイヤー・守護霊の解決の後に残っている敵弾だけ(反射された弾は hostile:false 化済み)。
+  applyEnemyProjectilesToEscorts(redNightActive, screamerBuffUntil, gameTime, (x, y) => fx.spawnBurst(x, y, '#7f1d1d', 4));
   // "Counter!" only when a bullet was actually reflected (once per frame).
   if (reflectedAny) {
     // G4a(§2.9・記録専用): カウンター成立(①弾反射)を技への反応表へ通知(1フレーム1回)。
@@ -1468,7 +1482,10 @@ export const applyContactDamage = (
   // ==========================================================================================
   const bcx = collPlayer.x + collPlayer.width / 2;
   const bcy = collPlayer.y + collPlayer.height / 2;
-  const biteStarts: { id: string; dirX: number; dirY: number }[] = [];
+  const biteStarts: { id: string; dirX: number; dirY: number; escortId?: string }[] = [];
+  // research/ESCORT_TARGETED.md §3(噛みつき・§16の爪/叩き): 見えていて倒れていない軍人も噛みの的(構え始め・当たりの両方)。軍人が居なければ空=以下は従来どおり。
+  const escortBiteTargets = hittableEscorts(collState);
+  const escortBiteHits: { id: string; dmg: number; x: number; y: number }[] = [];
   const biteTgtLatches: { id: string; x: number; y: number; at: number }[] = []; // エフェクトの出る点(utils/biteFxHit)
   // ★検収監査A-1: `chaffMove`(と `aiPhase`)は下の setState(biteClears)より前にここで捕まえて
   // 持ち回る。setState後に getState() で読み直すと、biteClears が既に chaffMove を消した後の
@@ -1543,21 +1560,49 @@ export const applyContactDamage = (
         // ★検収監査A-1: chaffMove/aiPhaseをこのフレームの値のまま持ち回る(setStateより前)。
         biteHits.push({ id: e.id, dmg: e.damage * rn * sc, x: px, y: py, chaffMove: e.chaffMove, aiPhase: e.aiPhase });
       }
+      // 軍人にも同じ式で当てる(「赤いのに当たらない/赤くないのに当たる」を作らない=噛みの瞬間に絵/体が重なっていた相手に当たる)。
+      for (const esc of escortBiteTargets) {
+        const body = escortBodyRect(esc);
+        const hitEsc = e.chaffMove === 'lich-blink'
+          ? (e.lichBlinkAtX !== undefined && e.lichBlinkAtY !== undefined
+            && isInBiteCircle(e.lichBlinkAtX, e.lichBlinkAtY, esc.x, esc.y - ESCORT_BODY_SIZE / 2, LICH_BLINK_RADIUS_PX))
+          : (fxRect ? rectsOverlap(fxRect, playerArtRect(body)) : biteBodyOverlapsPlayer(eb, body));
+        if (hitEsc) {
+          const rn = redNightActive ? 2 : 1;
+          const sc = (screamerBuffUntil > gameTime && e.type !== 'screamer') ? SCREAMER_BUFF_MULT : 1;
+          escortBiteHits.push({ id: esc.id, dmg: e.damage * rn * sc, x: px, y: py });
+        }
+      }
       biteClears.push(e.id);                                      // 当たっても外しても台本は終わる
       biteResolved.push(e.id);                                    // ★中断ではない=噛み切った
-    } else if (canStartBite(e, gameTime, Date.now())) {   // ★ノックバック中でも構え始められる(社長指示2026-09-17)
+    } else if (canStartBite(e, gameTime, Date.now()) && !(e.escortLostUntil !== undefined && gameTime < e.escortLostUntil)) {   // ★ノックバック中でも構え始められる(社長指示2026-09-17) / 狙っていた軍人が倒れた直後の1秒は新しい噛みを始めない(ESCORT_TARGETED §13b-1)
       // ★発火も判定と**同じ四角**で見る(v0.25.3904)。中心間の距離で見ていた旧実装は
       // 体の大きい敵ほど発火しなかった(ゾンビは触れても中心間34px>30px=一生噛めない)。
       const eb = enemyContactBox(e);
-      const rr = biteReachRect(
-        { cx: eb.x + eb.width / 2, cy: eb.y + eb.height / 2, w: eb.width, h: eb.height },
-        bcx, bcy, spec.rangePx,
-      );
-      if (isInBiteRect(rr, collPlayer)) {
-        const ecx = eb.x + eb.width / 2, ecy = eb.y + eb.height / 2;
+      const ecx = eb.x + eb.width / 2, ecy = eb.y + eb.height / 2;
+      const reachTo = (tx: number, ty: number) => biteReachRect({ cx: ecx, cy: ecy, w: eb.width, h: eb.height }, tx, ty, spec.rangePx);
+      const toPlayer = (): { dirX: number; dirY: number; escortId?: string } | null => {
+        if (!isInBiteRect(reachTo(bcx, bcy), collPlayer)) return null;
         const dl = Math.max(0.001, Math.hypot(bcx - ecx, bcy - ecy));
-        biteStarts.push({ id: e.id, dirX: (bcx - ecx) / dl, dirY: (bcy - ecy) / dl });
-      }
+        return { dirX: (bcx - ecx) / dl, dirY: (bcy - ecy) / dl };
+      };
+      // 軍人: 構え始めの範囲(同じ四角)に入っている軍人のうち、この敵が追っている軍人(targetEscortId)を優先、無ければ一番近い軍人。
+      const toEscort = (): { dirX: number; dirY: number; escortId?: string } | null => {
+        let pick: { id: string; x: number; y: number; d: number } | null = null;
+        for (const esc of escortBiteTargets) {
+          const c = escortCenter(esc);
+          if (!isInBiteRect(reachTo(c.x, c.y), escortBodyRect(esc))) continue;
+          const d = Math.hypot(c.x - ecx, c.y - ecy);
+          if (esc.id === e.targetEscortId) { pick = { id: esc.id, x: c.x, y: c.y, d: -1 }; break; }
+          if (!pick || d < pick.d) pick = { id: esc.id, x: c.x, y: c.y, d };
+        }
+        if (!pick) return null;
+        const dl = Math.max(0.001, Math.hypot(pick.x - ecx, pick.y - ecy));
+        return { dirX: (pick.x - ecx) / dl, dirY: (pick.y - ecy) / dl, escortId: pick.id };
+      };
+      // 軍人を追っている敵は軍人を先に、そうでなければプレイヤーを先に見る(どちらも届くなら追っている相手へ)。軍人が居ない時は従来と1bit同じ。
+      const start = e.targetEscortId !== undefined ? (toEscort() ?? toPlayer()) : (toPlayer() ?? toEscort());
+      if (start) biteStarts.push({ id: e.id, ...start });
     }
   }
   if (biteTgtLatches.length > 0) {
@@ -1570,7 +1615,8 @@ export const applyContactDamage = (
         const st0 = biteStarts.find(b2 => b2.id === e.id);
         if (st0) return {
           // ★踏み込みの向きを焼く(追尾しない=横へ避けられる)。起点は持たない(v0.25.3923)。
-          ...e, biteAt: gameTime, biteDirX: st0.dirX, biteDirY: st0.dirY,
+          // biteAimEscortId=この噛みが軍人へ向けて構えたか(溜めの間の向きの追尾が同じ相手を見る)。
+          ...e, biteAt: gameTime, biteDirX: st0.dirX, biteDirY: st0.dirY, biteAimEscortId: st0.escortId,
         };
         if (biteClears.includes(e.id)) {
           // ★PACING_PUZZLE.md §16-7 穴2(訂正版・検収監査A-4): ここは**正常解決**(当たった/外れた)
@@ -1589,7 +1635,7 @@ export const applyContactDamage = (
           const stillMs = (e.chaffMove === undefined || e.chaffMove === 'lich-blink') && !isTrueBossType(e.type)
             ? BITE_RECOVER_STILL_MS : 0;
           return {
-            ...e, biteAt: 0, biteReadyAt: gameTime + Math.max(0, techSpec.recoverMs - stillMs),
+            ...e, biteAt: 0, biteAimEscortId: undefined, biteReadyAt: gameTime + Math.max(0, techSpec.recoverMs - stillMs),
             // ★噛みつき直後の本当の硬直(社長指摘2026-09-17)。**§12の噛みつき**と
             // **§16-C「転移噛み」(lich-blink)**だけ——§16-C以外の§16の技(chaffMove)は
             // 専用の硬直相(z-recover/s-recover/b-release)を既に持っており、二重に止めると
@@ -1681,6 +1727,9 @@ export const applyContactDamage = (
     }
     if (died) fx.triggerPlayerDeath(bcx, bcy);
   }
+
+  // 軍人への噛み(§12・§16の爪/叩き): プレイヤーと同じ式で当たった軍人へ。カウンターは無い。掴みの拘束はプレイヤーだけ(軍人はダメージと被弾の滑りのみ)。
+  for (const h of escortBiteHits) useGameStore.getState().damageEscort(h.id, h.dmg, h.x, h.y, 'bite');
 
   playerEnemyCollisions.forEach(enemy => {
     // research/MUTANT_HERO.md: 英雄は接触ダメージを持たない(damage 0)。ここを通すと0ダメージの被弾が

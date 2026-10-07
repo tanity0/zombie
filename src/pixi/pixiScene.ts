@@ -207,6 +207,8 @@ import type { PersistentBeam } from '../utils/persistentBeam';
 import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS } from '../utils/flamerCone';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
+import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
+import { escortReviveProgress, isEscortDowned, ESCORT_REVIVE_HEAL_RATIO } from '../utils/escortHealth';
 import {
   SWORD_VISIBILITY_FADE_MS, swordAttackAngle, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha,
   swordSwingPose,
@@ -4504,6 +4506,12 @@ export class PixiScene {
   private baseSoldierFace = new Map<string, { px: number; face: number }>(); // 兵士の向き(前フレx差分で決定)
   private escortSprites = new Map<string, Sprite>(); // 護衛軍人NPC(前進・射撃)の立ち絵。shooter 素材を流用。
   private escortBlendSprites = new Map<string, Sprite>(); // クロスフェード対象NPCの「次コマ」重ね描き(滑らか化・視覚のみ)。
+  // research/ESCORT_TARGETED.md §6・§7: 体力の線/起こす進みの縁取り/倒れた印の点(1枚のGraphicsを毎フレーム描き直す・最大4人ぶん)。
+  private escortGfx = new Graphics();
+  private escortFlashSprites = new Map<string, Sprite>(); // 被弾の白フラッシュ(従)。本体と同形を加算で重ねる(出ている時間は0.17秒)
+  private escortPoseById = new Map<string, EscortPose>(); // 影が読む「倒れている度合い」(drawEscortsが書き、次フレームの影が読む)
+  private escortBarState = new Map<string, { vis: number; frac: number; lit: number; at: number }>(); // 線の透明度/表示中の体力/縁取りの灯り(いずれも目標へなめらかに追従)
+  private escortOpaqueBoxCache = new Map<string, { x0: number; x1: number; y0: number } | null>(); // 立ち絵の不透明部の左右端/頭頂(0..1の割合)
   // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2): 兵士(§1/§9)・フィル(§2/§4)・倒れ兵士(§8)の描画専用プール。
   private endingSoldierSprites = new Map<string, Sprite>(); // 兵士立ち絵(rescue/shooter 流用・2コマ歩行)
   private endingSoldierShotSeen = new Map<string, number>(); // id→前フレームで見た lastShotAt(発砲の edge 検知用)
@@ -5661,6 +5669,8 @@ export class PixiScene {
     // 救助NPCはアクター最前(zIndex 大)に描く=常に見える(プレースホルダ)。
     this.rescueGfx.zIndex = 1_000_000;
     this.L.actorLayer.addChild(this.rescueGfx);
+    this.escortGfx.zIndex = 1_000_000; // 軍人の体力の線・縁取り・倒れた点(アクター最前)
+    this.L.actorLayer.addChild(this.escortGfx);
 
     this.gradeSprite.tint = GRADE_TINT;
     this.gradeSprite.alpha = GRADE_ALPHA;
@@ -9422,7 +9432,7 @@ export class PixiScene {
     }
     this.resetBloodPools(); // 血溜まり(E-5): 前フレームで使った枚数を超えたぶんを消す(消し忘れ防止)
     this.syncHunterVision(s.enemies, now);
-    this.drawEscorts(s.escorts, now); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
+    this.drawEscorts(s.escorts, now, s.gameTime); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
     this.drawSupportSniper(s.supportSniperNpc, s.gameTime); // 援護射撃NPC(非出撃の軍人立ち絵・画面縁のスライドイン→発射→後退)
     // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。farBackdrop!=='ending'では endingSoldiers=[]/
     // endingPhill=null なので各関数は自然に無visible化する(専用ゲートを増やさない=既存の空配列作法)。
@@ -12881,7 +12891,9 @@ export class PixiScene {
       const escSp = this.escortSprites.get(esc.id);
       const escW = escSp && escSp.visible !== false ? Math.abs(escSp.width) : 0;
       const baseW = escW > 0 ? escW : 30 * this.depthScale(esc.y);
-      this.placeShadowSprite('esc:' + esc.id, esc.x, esc.y - 2, baseW * 0.55, ha, seen);
+      // 倒れた姿は影が広がり少し濃くなる(地面に倒れた人の影は広く平たい。足元を沈めた分だけ接地点も下げる・起き上がりと同じ曲線)。
+      const ePose = this.escortPoseById.get(esc.id);
+      this.placeShadowSprite('esc:' + esc.id, esc.x, esc.y - 2, baseW * 0.55 * (ePose ? ePose.shadowW : 1), ePose ? Math.min(1, ha * ePose.shadowAlpha) : ha, seen);
     }
     // 救助NPC(rescueSurvivors)。足元=x+w/2, y+h(anchor 0.5,1)。退場(savedAt)フェードにも追従。
     for (const s of rescueSurvivors) {
@@ -13160,10 +13172,13 @@ export class PixiScene {
       if (!escSp || escSp.visible === false) continue;
       const w = Math.abs(escSp.width);
       if (w <= 0) continue;
+      // 倒れた姿(research/ESCORT_TARGETED.md §6): 影は広く・平たく・少し濃く(縮めない=縮むと地面に吸い込まれて消えていく読みになる)・接地点は沈めた足元へ。
+      // 起き上がりは同じ曲線で戻る(行き過ぎも)。
+      const ePose = this.escortPoseById.get(esc.id);
       place({
         id: 'esc:' + esc.id, x: esc.x, y: esc.y,
-        rawW: w, rawH: Math.abs(escSp.height), texture: escSp.texture,
-        alpha: ha, flip: escSp.scale.x < 0,
+        rawW: w * (ePose ? ePose.shadowW : 1), rawH: Math.abs(escSp.height) * (ePose ? ePose.shadowLen : 1), texture: escSp.texture,
+        alpha: ePose ? Math.min(1, ha * ePose.shadowAlpha) : ha, flip: escSp.scale.x < 0,
       });
     }
     // ---- エンディング(仮組み)の兵士・フィル(既存の護衛と同じ接地影のplace()に相乗り・§6) ----
@@ -26729,8 +26744,10 @@ export class PixiScene {
 
   // 護衛軍人NPC(前進・射撃)の立ち絵。shooter 素材を流用、足元アンカー・y-sort・歩行2コマ。
   // 向きは store の esc.face を使う(描画のみ・シミュレーション非干渉)。
-  private drawEscorts(escorts: EscortSoldier[], now: number) {
+  private drawEscorts(escorts: EscortSoldier[], now: number, gameTime = 0) {
     const seen = new Set<string>();
+    const eg = this.escortGfx;
+    eg.clear();
     // 3コマ立ち絵(-2 あり)は接地A→通過→接地B→通過 のピンポン[0,1,2,1]、2コマのみは従来[0,1](社長指示)。
     const step = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS);
     for (const esc of escorts) {
@@ -26769,14 +26786,32 @@ export class PixiScene {
       const walkLean = stepS * PLAYER_WALK_LEAN_RAD;
 
       const bob = lift * PLAYER_WALK_BOB_PX * this.depthScale(esc.y); // 接地↔遊脚の上下動(遠近スケール連動)
-      const px = Math.round(esc.x), py = Math.round(esc.y - bob);
+      // research/ESCORT_TARGETED.md §6・§7: 倒れた姿=足元を沈める(止めコマのまま・位置だけ)+透明度の呼吸+起き上がり後の点滅。
+      // 体力を持たない軍人(M0の随行)は pose が恒等=従来と1ビットも変わらない。滑り(被弾/倒れる)の位置は store が x,y に書く。
+      const pose = escortPose(esc, gameTime);
+      this.escortPoseById.set(esc.id, pose);
+      // 沈みの量=曲線(基準px単位)を体の表示高に比例させる(社長裁定2026-10-07「腰まで沈めて座り込んだように」§13c-1)。
+      // 表示高は下の sc と同じ式(テクスチャが無い時は従来の基準px×遠近)。
+      const sinkScaleBase = tex
+        ? (esc.soldierIndex === TUTORIAL_MEDIC_INDEX
+          ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y)
+          : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1)) * tex.height * walkSqY
+        : 0;
+      // 本体の沈みだけ体高比・食い込みの超過/起き上がりの行き過ぎ/呼吸は基準px×遠近(体高比に乗せると約8pxの跳ね=R2 A-3)。
+      const sinkWorld = tex
+        ? pose.sinkBodyK * ESCORT_SINK_FRAC * sinkScaleBase + pose.sinkExtraPx * this.depthScale(esc.y)
+        : pose.sinkPx * this.depthScale(esc.y);
+      // 下端を切った版(沈み)を使う時は、切った行の下端=地面(esc.y)に置く(位置まで下げると二重に沈む=頭上の線が浮く)。
+      // 切らない微小な沈みの時だけ位置で下げる。
+      const px = Math.round(esc.x), py = Math.round(esc.y - bob + (tex && sinkWorld > 0.4 ? 0 : sinkWorld));
       const faceSign = esc.face < 0 ? -1 : 1;
       // §17-14: ウェルカム終了で出陣した個体はappearedAtからeaseOutQuadで0→1フェードイン。
       // 出撃直後から居る通常ケース(appearedAt未設定)はescortAppearFade=1=従来のbaseAlphaのまま。
       const baseAlpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now) * this.corridorRunInFade()
         * this.escortAppearFade(esc, now);
+      let escScale = 0; // 体力の線の幅/高さの基準=実際に描いた表示倍率(0=描いていない)
       if (tex) {
-        sp.texture = tex;
+        sp.texture = tex; // 沈み中は下の行で下端を切った版へ差し替える(sc が決まってから)
         // 衛生兵はドット規格(78x64=横長キャンバス)のため contain-fit だと幅律速で小さくなる。
         // 高さ基準で他NPCと同じ表示高に揃える(社長指示v0.25.1825「大きさ揃えて」)。
         const sc = esc.soldierIndex === TUTORIAL_MEDIC_INDEX
@@ -26785,12 +26820,22 @@ export class PixiScene {
           : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1);
         sp.scale.set(sc * walkSqX * faceSign, sc * walkSqY);
         sp.rotation = walkLean;
+        // 倒れた姿の「沈み」: 足元を sinkWorld だけ下げ、地面の線より下の部分は切って見せる(足が地面に埋まる)。
+        // 位置と見切れだけ=歪みではない。切る行数は沈みの量に比例(起き上がりで同じ曲線で戻る)。
+        if (sinkWorld > 0.4) sp.texture = this.escortSunkTexture(tex, Math.round(sinkWorld / Math.max(0.01, sc * walkSqY)));
         // 登場演出中はヘリ離陸タイミングでフェードイン(プレイヤーと同期)。上下左右の4人がこれに該当。
-        sp.alpha = baseAlpha;
+        sp.alpha = baseAlpha * pose.alphaMul;
         sp.visible = sp.alpha > 0;
+        escScale = sc;
       } else sp.visible = false;
       sp.position.set(px, py);
       sp.zIndex = esc.y;
+      // 被弾の白フラッシュ(従・血と滑りが主)。本体と同形を加算で重ねる=絵の輪郭だけが一瞬光る。
+      this.updateEscortFlash(esc.id, sp, sp.texture, pose.flash * baseAlpha, esc.y + 0.002);
+      // 体力の線・起こす進みの縁取り・倒れた印の点。
+      if (tex && sp.visible && escScale > 0 && esc.maxHealth) {
+        this.drawEscortOverlay(eg, esc, tex, base, escScale, px, esc.y + sinkWorld, baseAlpha, pose, now, gameTime);
+      }
       // クロスフェードの「次コマ」重ね(同じ変換・同じ足元)。α=frac で徐々に前コマを覆う=A/Bクロスフェード。
       if (crossfade && tex && nextTex && baseAlpha > 0) {
         let bl = this.escortBlendSprites.get(esc.id);
@@ -26813,7 +26858,152 @@ export class PixiScene {
         sp.destroy(); this.escortSprites.delete(id);
         const bl = this.escortBlendSprites.get(id);
         if (bl) { bl.destroy(); this.escortBlendSprites.delete(id); }
+        const fl = this.escortFlashSprites.get(id);
+        if (fl) { fl.destroy(); this.escortFlashSprites.delete(id); }
+        this.escortPoseById.delete(id);
+        this.escortBarState.delete(id);
       }
+    }
+  }
+
+  // 沈み用: テクスチャの下端 rows 行を切った版(同じ source を共有する軽い Texture。フレームごと・行数ごとに1回だけ作る)。
+  // 切れない素材(トリム/回転つき・切る量が大きすぎる)は元のまま返す=沈みは位置だけになる。
+  // 解放: 元のテクスチャが破棄された(ステージ替え等)エントリは、溜まる前に掃いて子のフレーム Texture を捨てる(source は共有=触らない)。
+  //  上限 = 元絵(名簿8人×3コマ程度)× 行数(2行刻み・最大0.4×高さ)で元々有界。ここは「破棄された元絵の分を抱え続けない」ための掃除。
+  private escortSunkTextures = new Map<Texture, Map<number, Texture>>();
+  private escortSunkSweep(): void {
+    for (const [base, m] of this.escortSunkTextures) {
+      if (!base.destroyed) continue;
+      for (const t of m.values()) t.destroy(false);
+      this.escortSunkTextures.delete(base);
+    }
+  }
+  private escortSunkDestroyAll(): void {
+    for (const m of this.escortSunkTextures.values()) for (const t of m.values()) t.destroy(false);
+    this.escortSunkTextures.clear();
+  }
+  private escortSunkTexture(tex: Texture, rows: number): Texture {
+    const f = tex.frame;
+    const r = Math.min(Math.max(0, rows) & ~1, Math.floor(f.height * 0.4)); // 2行刻み(作る数を半分に)
+    if (r <= 0 || tex.trim || tex.rotate) return tex;
+    let m = this.escortSunkTextures.get(tex);
+    if (!m) { if (this.escortSunkTextures.size >= 24) this.escortSunkSweep(); m = new Map(); this.escortSunkTextures.set(tex, m); }
+    let t = m.get(r);
+    if (!t) { t = new Texture({ source: tex.source, frame: new Rectangle(f.x, f.y, f.width, f.height - r) }); m.set(r, t); }
+    return t;
+  }
+
+  // 軍人の被弾の白フラッシュ(従)。本体と同形・同変換のスプライトを**真っ白のシルエット**にして重ね、alpha=強さ。0なら隠す。
+  // (自分の絵を加算するだけだと色が倍になるだけで白くならない=オリーブ色の兵士が蛍光の黄緑に光る。色行列でRGBを白へ潰して重ねる)
+  private escortFlashFilter: ColorMatrixFilter | null = null;
+  private updateEscortFlash(id: string, body: Sprite, tex: Texture | null | undefined, alpha: number, zIndex: number) {
+    let fl = this.escortFlashSprites.get(id);
+    if (alpha <= 0.004 || !tex || !body.visible) { if (fl) fl.visible = false; return; }
+    if (!fl) {
+      fl = new Sprite(); fl.anchor.set(0.5, 1);
+      if (!this.escortFlashFilter) {
+        const f = new ColorMatrixFilter();
+        f.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
+        this.escortFlashFilter = f;
+      }
+      fl.filters = [this.escortFlashFilter];
+      this.L.actorLayer.addChild(fl); this.escortFlashSprites.set(id, fl);
+    }
+    fl.texture = tex;
+    fl.scale.copyFrom(body.scale);
+    fl.rotation = body.rotation;
+    fl.position.copyFrom(body.position);
+    fl.zIndex = zIndex; // 本体の直上
+    fl.alpha = alpha;
+    fl.visible = true;
+  }
+
+  // 立ち絵の不透明部の左右端と頭頂(テクスチャに対する0..1の割合)。キャンバスの余白を除いた「実幅」で体力の線を引くため。
+  // 名前ごとに1回だけ計測(読み込み済みテクスチャを canvas に写して alpha を数える)。取れない時は null=余白込みの全体を使う。
+  private escortOpaqueBox(base: string, tex: Texture): { x0: number; x1: number; y0: number } | null {
+    const hit = this.escortOpaqueBoxCache.get(base);
+    if (hit !== undefined) return hit;
+    let box: { x0: number; x1: number; y0: number } | null = null;
+    try {
+      const res = (tex.source as unknown as { resource?: CanvasImageSource }).resource;
+      const w = tex.source.width, h = tex.source.height;
+      if (res && w > 0 && h > 0 && typeof document !== 'undefined') {
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const cx = cv.getContext('2d', { willReadFrequently: true });
+        if (cx) {
+          cx.drawImage(res, 0, 0);
+          const d = cx.getImageData(0, 0, w, h).data;
+          let minX = w, maxX = -1, minY = h;
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              if (d[(y * w + x) * 4 + 3] > 16) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; }
+            }
+          }
+          if (maxX >= minX) box = { x0: minX / w, x1: (maxX + 1) / w, y0: minY / h };
+        }
+      }
+    } catch { box = null; }
+    this.escortOpaqueBoxCache.set(base, box);
+    return box;
+  }
+
+  // 軍人の頭上の描き物(research/ESCORT_TARGETED.md §7):
+  //  ・体力の線=STATUS_GREEN・3px・立ち絵の実幅。被弾/全快/起き上がりで出て数秒でフェード、半分以下と倒れている間は常設。
+  //  ・起こす進み=線に重ねた細い白い縁取り(満ちる先=起きた時の体力の位置)。半径に入ると灯り、離れると縁取りだけが引く。
+  //  ・倒れている間は薄紅(救助NPCの「助けて」と同じ 0xfca5a5)の点がゆっくり明滅(線と重ならない上に置く)。
+  // 透明度・表示中の体力・灯りはすべて目標へなめらかに追従(パッと出て止まるを作らない)。判定は一切持たない=store を読むだけ。
+  private drawEscortOverlay(
+    g: Graphics, esc: EscortSoldier, tex: Texture, base: string, sc: number, footX: number, footY: number,
+    baseAlpha: number, pose: EscortPose, now: number, gameTime: number,
+  ) {
+    const max = esc.maxHealth ?? 0;
+    if (max <= 0) return;
+    const box = this.escortOpaqueBox(base, tex);
+    const texW = tex.width, texH = tex.height;
+    const bw = Math.max(18, (box ? (box.x1 - box.x0) : 1) * texW * sc);
+    const topY = footY - (box ? (1 - box.y0) : 1) * texH * sc; // 頭頂
+    // 線の中心は足元ではなく立ち絵の不透明部の中心(銃が突き出る側へ寄る分を追う・向きで反転)。
+    if (box) footX += ((box.x0 + box.x1) / 2 - 0.5) * texW * sc * (esc.face < 0 ? -1 : 1);
+    const downed = isEscortDowned(esc);
+    let st = this.escortBarState.get(esc.id);
+    const frac = Math.max(0, Math.min(1, (esc.health ?? max) / max));
+    if (!st) { st = { vis: 0, frac, lit: 0, at: now }; this.escortBarState.set(esc.id, st); }
+    const dt = Math.max(0, Math.min(0.1, (now - st.at) / 1000));
+    st.at = now;
+    const ease = (rate: number) => 1 - Math.exp(-rate * dt);
+    st.vis += (escortBarWant(esc, gameTime) - st.vis) * ease(10);
+    st.frac += (frac - st.frac) * ease(9);
+    st.lit += (escortReviveLitTarget(esc) - st.lit) * ease(esc.reviveNear ? 14 : 5);
+    const A = baseAlpha;
+    const by = topY - 9, bx = footX - bw / 2;
+    if (st.vis > 0.01 && A > 0.01) {
+      const va = st.vis * A;
+      // 救助NPCの体力の線(rescueGfx)と同じ描き方(黒地・3px・STATUS_GREEN・枠なし)=「あなたが守る人」の線は1種類(DC-1 #6)。
+      // 空の部分の地(トラック)だけは、暗い地面に沈まないよう黒ではなく一段明るい鈍色にする(倒れた軍人の「空の線」が読める下限=DC-1 #6 の「枠」を足さずに済ませる)。
+      g.rect(bx, by, bw, 3).fill({ color: 0x3a4658, alpha: 0.82 * va });
+      if (st.frac > 0.004) g.rect(bx, by, bw * st.frac, 3).fill({ color: STATUS_GREEN, alpha: va });
+      if (downed) {
+        // 起こす進み=左から満ちる白〜薄緑の塗り(満ちる先=起きた時の体力=線の半分)。半径に入ると縁取りが灯り、満ちるほど太く明るく=「ここまで」を結果で見せる
+        // (先に印の棒で説明しない=DC-1 #9/#10)。離れると灯りだけが引く(線そのものは縮まない)。
+        const goal = bw * ESCORT_REVIVE_HEAL_RATIO;
+        const pr = escortReviveProgress(esc);
+        const prog = goal * pr;
+        if (prog > 0.6) {
+          g.rect(bx, by, prog, 3).fill({ color: 0xe6fff0, alpha: (0.5 + 0.5 * Math.min(1, st.lit)) * va });
+          const lw = 1.2 + 1.8 * pr * pr;
+          g.rect(bx - lw / 2, by - lw / 2, prog + lw, 3 + lw).stroke({ width: lw, color: 0xffffff, alpha: Math.min(1, st.lit) * va });
+        }
+      }
+    }
+    // 倒れた印の点(薄紅・ゆっくり明滅)。救助NPCの「助けて」の点と同じ置き方(線の右上)=同じ出どころの記号は同じ位置。
+    // 倒れている度合いに比例して出入り(起き上がりで消えていく)。
+    const dk = Math.max(0, Math.min(1, pose.downK));
+    if (dk > 0.02 && A > 0.01) {
+      const a = (downed && esc.downedAt !== undefined ? escortDownDotAlpha(esc.downedAt, gameTime) : 0.7) * dk * A;
+      const dx = footX + bw * 0.6, dy = by - 6;
+      g.circle(dx, dy, 5).fill({ color: 0xfca5a5, alpha: 0.92 * a });
+      g.circle(dx, dy, 5).stroke({ width: 1, color: 0x7f1d1d, alpha: 0.92 * a });
     }
   }
 
@@ -34373,7 +34563,8 @@ export class PixiScene {
       // 担当=その sector の拠点(base-${sector})に配属された護衛。名簿(soldierIndex)はランダムなので
       // 位置(baseId)で実体を引く(soldierIndex は素性=見た目/セリフ用で sector とは別)。
       const npc = escorts.find(e => e.baseId === `base-${sector}`);
-      if (npc) {
+      // 倒れている間はその軍人の緑の印を出さず、下の薄紅の印へ置き換える(重ねない・research/ESCORT_TARGETED.md §6)。
+      if (npc && !isEscortDowned(npc)) {
         const nx = toScreenX(npc.x), ny = toScreenY(npc.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
         if (nx < 0 || nx > this.screenW || ny < 0 || ny > this.screenH) {
           const angle = Math.atan2(ny - cyC, nx - cxC);
@@ -34396,6 +34587,54 @@ export class PixiScene {
             g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
           }
         }
+      }
+    }
+
+    // 倒れている軍人の印(research/ESCORT_TARGETED.md §6・CA-2 項7)。担当セクターの外でも、画面の外に居る間は出す。
+    // 味方の印(輪+頭と肩の人型)を流用し、人型は**横たわった形**(頭が一方の端・体が低く伸びる=左右非対称。中央に頭を置くと箱から顔が出たキノコになる)。
+    // 色は薄紅 0xfca5a5(救助NPCの「助けて」と同じ。危険の赤 0xef4444 とは別)。明滅は頭上の点と**同じ位相・同じ周期**(escortDownDotAlpha・gameTime)。
+    // 出入りはボスの印と同じ統一型(weaponSpawnEase=下から減速しながら出てフェード/消える時は下へ加速して抜ける)=パッと出てパッと消えない(慣性MUST)。
+    {
+      const nowT = st.gameTime;
+      const wantIds = new Set<string>();
+      for (const dn of escorts) {
+        if (!dn.maxHealth || !isEscortDowned(dn) || dn.downedAt === undefined) continue;
+        const nx = toScreenX(dn.x), ny = toScreenY(dn.y);
+        if (nx >= 0 && nx <= this.screenW && ny >= 0 && ny <= this.screenH) continue; // 画面内=本体と頭上の点で足りる
+        const angle = Math.atan2(ny - cyC, nx - cxC);
+        const dx = Math.cos(angle), dy = Math.sin(angle);
+        let tdist = Infinity;
+        if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
+        else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
+        if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
+        else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
+        if (!isFinite(tdist)) continue;
+        wantIds.add(dn.id);
+        let fx = this.escortMarkFx.get(dn.id);
+        if (!fx) { fx = { visible: true, sinceMs: nowT, lastX: 0, lastY: 0, lastAngle: 0, downedAt: dn.downedAt }; this.escortMarkFx.set(dn.id, fx); }
+        else if (!fx.visible) { fx.visible = true; fx.sinceMs = nowT; }
+        fx.lastX = cxC + dx * tdist; fx.lastY = cyC + dy * tdist; fx.lastAngle = angle; fx.downedAt = dn.downedAt;
+      }
+      // 描く: 出ている印 + 消えていく最中の印(最後に出ていた位置で下へ抜ける)。
+      for (const [id, fx] of this.escortMarkFx) {
+        if (!wantIds.has(id) && fx.visible) { fx.visible = false; fx.sinceMs = nowT; }
+        if (nowT < fx.sinceMs) { this.escortMarkFx.delete(id); continue; } // 新しい出撃で時計が巻き戻った
+        const elapsed = nowT - fx.sinceMs;
+        if (!fx.visible && elapsed >= WEAPON_SPAWN_EASE_MS) { this.escortMarkFx.delete(id); continue; }
+        const ease = fx.visible ? weaponSpawnEase(elapsed, Infinity) : weaponSpawnEase(Infinity, Math.max(0, WEAPON_SPAWN_EASE_MS - elapsed));
+        if (ease.alphaMul <= 0.01) continue;
+        const a = ease.alphaMul;
+        const ex = fx.lastX, ey = fx.lastY - ease.dy;
+        const dpulse = escortDownDotAlpha(fx.downedAt, nowT); // 0.5..1(頭上の点と同じ)
+        const color = 0xfca5a5;
+        g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.88 * a });
+        g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: (0.55 + 0.4 * dpulse) * a });
+        g.circle(ex - 4.4, ey + 1.2, 2.3).fill({ color, alpha: (0.7 * dpulse + 0.2) * a }); // 頭=輪の左端寄り(横たわって頭が一方にある)
+        g.rect(ex - 2, ey + 1.2, 8.6, 2.8).fill({ color, alpha: (0.55 * dpulse + 0.2) * a }); // 体=頭から右へ伸びる低い板
+        const hx = ex + Math.cos(fx.lastAngle) * 15, hy = ey + Math.sin(fx.lastAngle) * 15;
+        const ca = Math.cos(fx.lastAngle), sa = Math.sin(fx.lastAngle);
+        const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
+        g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: dpulse * a });
       }
     }
 
@@ -34738,6 +34977,8 @@ export class PixiScene {
   // 同時に生きるのはボスの数(通常1)なので負荷は無視できる。
   // 台帳#1: 画面外ボスマーク(どくろ+矢印)の出現・消滅フェード状態(index基準・小規模・境界なし)。
   private bossMarkFx = new Map<string, { visible: boolean; sinceMs: number; lastX: number; lastY: number; lastAngle: number }>();
+  // 倒れた軍人の画面端の印の出入りフェード状態(軍人id基準・最大4人)。時計は gameTime。出ていた最後の位置で消えていく。
+  private escortMarkFx = new Map<string, { visible: boolean; sinceMs: number; lastX: number; lastY: number; lastAngle: number; downedAt: number }>();
   private bossDistPool: BitmapText[] = [];
   private drawBossDistLabel(slot: number, text: string, x: number, y: number) {
     this.ensureDamageFont();
@@ -34773,6 +35014,7 @@ export class PixiScene {
   }
 
   destroy() {
+    this.escortSunkDestroyAll(); // 軍人の沈み用の下端を切ったフレーム Texture(source は共有=本体は触らない)
     for (const sprite of this.signalBombSprites.values()) sprite.destroy();
     this.signalBombSprites.clear();
     try { this.labRT?.destroy(true); } catch { /* ignore */ }
