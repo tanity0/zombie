@@ -19899,8 +19899,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 会話の箱は立ち絵のある人物だけが話す(v0.25.1851)ので、知らせは帯の副題に方位つきで載せる。
       // 続いて解放した軍人本人の解放セリフ(CDを通さずキューへ直接=取りこぼさない。拠点をまたいで近い時刻に
       // 続くことはある)。バナー/SEは従来どおり併用。
+      // 社長指示2026-10-07「画面内か画面外かでセリフを分ける」: 見ている所での解放は通信の帯を出さず、
+      // その場の軍人の一言だけ(目の前の出来事を無線で知らせない)。見えていない所の解放だけ帯で知らせる。
       const sol = BASE_SOLDIERS[c.soldierIndex % BASE_SOLDIERS.length];
-      get().enqueueWallEvent('comm', '通信', `${baseDirectionLabel(c.x, c.y)}拠点の解放を確認`, '#bfe3ff');
+      if (!onScreen(c.x, c.y)) get().enqueueWallEvent('comm', '通信', `${baseDirectionLabel(c.x, c.y)}拠点の解放を確認`, '#bfe3ff');
       get().enqueueNpcDialogue([{ name: sol.name, text: pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured) }]);
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
       // 歴史年表: 拠点解放は**ゲーム全体で初回のみ**「初めて拠点を開放」を載せる(社長裁定2026-07-31
