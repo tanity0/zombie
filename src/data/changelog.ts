@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4919', items: ['スカベンジャーの歩く姿が新しい絵になった'] },
   { version: '0.25.4918', items: ['近接攻撃の届く範囲を示す輪が、敵に当たる瞬間に光るようになった'] },
   { version: '0.25.4917', items: ['拠点へ向かう軍人は、攻撃を受けると一瞬片膝をついてしゃがむ'] },
   { version: '0.25.4916', items: ['マークスマンの歩く姿と走る姿の絵が逆になっていたのを直した'] },

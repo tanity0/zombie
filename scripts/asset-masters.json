@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "924 files / 復号後 約690MB",
+ "generatedFor": "925 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3604,33 +3604,39 @@
   },
   "sprites/player-striker-walk-0.png": {
    "w": 78,
-   "h": 63,
-   "bytes": 3986,
-   "sha": "2e592afa2baeddcf"
+   "h": 64,
+   "bytes": 3628,
+   "sha": "516853015793edb0"
   },
   "sprites/player-striker-walk-1.png": {
    "w": 78,
-   "h": 63,
-   "bytes": 3970,
-   "sha": "795093383c457a1c"
+   "h": 64,
+   "bytes": 3340,
+   "sha": "4f890072a68a03c6"
   },
   "sprites/player-striker-walk-2.png": {
    "w": 78,
-   "h": 63,
-   "bytes": 3420,
-   "sha": "106213cde0c39fec"
+   "h": 64,
+   "bytes": 3477,
+   "sha": "492fa1457f5cc7bd"
   },
   "sprites/player-striker-walk-3.png": {
    "w": 78,
-   "h": 63,
-   "bytes": 3688,
-   "sha": "92a6a8c38eabb9c1"
+   "h": 64,
+   "bytes": 3361,
+   "sha": "b8b30527840117bb"
   },
   "sprites/player-striker-walk-4.png": {
    "w": 78,
-   "h": 63,
-   "bytes": 3770,
-   "sha": "df795fd8c7ee0ba0"
+   "h": 64,
+   "bytes": 3286,
+   "sha": "361ac766a1f997e3"
+  },
+  "sprites/player-striker-walk-5.png": {
+   "w": 78,
+   "h": 64,
+   "bytes": 3526,
+   "sha": "db4615e666f0599c"
   },
   "sprites/player-warlord-gun-walk-0.png": {
    "w": 93,
