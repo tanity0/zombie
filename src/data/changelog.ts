@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4914', items: ['マークスマンの近接攻撃の構えと振り抜きも新しい絵になった'] },
   { version: '0.25.4913', items: ['マークスマンの立ち姿と歩く姿が新しい絵になった'] },
   { version: '0.25.4912', items: ['拠点へ向かう軍人の足の運びを落ち着かせた。ジョセフ、ムハンマド、ローレンだけ倍の速さで足を動かしていたのも直った'] },
   { version: '0.25.4911', items: ['軍人8人の会話の顔と、援護射撃に駆けつける軍人の姿を、新しい絵にそろえた'] },

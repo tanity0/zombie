@@ -3232,15 +3232,15 @@
   },
   "sprites/player-magnum-melee-ready.png": {
    "w": 78,
-   "h": 63,
-   "bytes": 3996,
-   "sha": "3da4a600382a3fc6"
+   "h": 64,
+   "bytes": 3539,
+   "sha": "3db043b72b451753"
   },
   "sprites/player-magnum-melee-swing.png": {
    "w": 78,
-   "h": 63,
-   "bytes": 5246,
-   "sha": "c43e122bef0d4413"
+   "h": 64,
+   "bytes": 4072,
+   "sha": "b43b138cd083ca70"
   },
   "sprites/player-magnum-run-0.png": {
    "w": 78,
