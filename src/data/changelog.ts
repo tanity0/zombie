@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4935', items: ['歩く時に、一歩ごとに体が小さく上下するようになった'] },
   { version: '0.25.4934', items: ['ストライカーの歩く姿が新しい絵になり、4人全員の歩く姿と走る姿が新しくなった'] },
   { version: '0.25.4933', items: ['ストライカーの走る姿を、より滑らかな新しい絵に差し替えた'] },
   { version: '0.25.4932', items: ['ストライカーの走る姿が新しい絵になった'] },

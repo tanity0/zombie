@@ -3287,14 +3287,14 @@
   "sprites/player-magnum-walk-1.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5180,
-   "sha": "d27fb3542038ad0d"
+   "bytes": 5181,
+   "sha": "0ce67e34da50b092"
   },
   "sprites/player-magnum-walk-2.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5351,
-   "sha": "ab18df28f2cf48b9"
+   "bytes": 5352,
+   "sha": "e0f58824152512d9"
   },
   "sprites/player-magnum-walk-3.png": {
    "w": 78,
@@ -3311,8 +3311,8 @@
   "sprites/player-magnum-walk-5.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5174,
-   "sha": "363b2e43c66a41a4"
+   "bytes": 5173,
+   "sha": "9f517fdc39dc3ac2"
   },
   "sprites/player-scavenger-game-0.png": {
    "w": 96,
@@ -3395,8 +3395,8 @@
   "sprites/player-scavenger-walk-1.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4384,
-   "sha": "1a60965853f41453"
+   "bytes": 4386,
+   "sha": "f54ba60718b77037"
   },
   "sprites/player-scavenger-walk-2.png": {
    "w": 78,
@@ -3414,13 +3414,13 @@
    "w": 78,
    "h": 64,
    "bytes": 4298,
-   "sha": "2215c1d3396cabd8"
+   "sha": "de3af8a248b27e4b"
   },
   "sprites/player-scavenger-walk-5.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4468,
-   "sha": "e4a93a5aa32ea01c"
+   "bytes": 4469,
+   "sha": "3627cdf8c44ff2c4"
   },
   "sprites/player-shotgun-game-0.png": {
    "w": 96,
@@ -3617,8 +3617,8 @@
   "sprites/player-striker-walk-2.png": {
    "w": 78,
    "h": 64,
-   "bytes": 3477,
-   "sha": "492fa1457f5cc7bd"
+   "bytes": 3478,
+   "sha": "2e5ffae4f94eb9f2"
   },
   "sprites/player-striker-walk-3.png": {
    "w": 78,
@@ -3629,14 +3629,14 @@
   "sprites/player-striker-walk-4.png": {
    "w": 78,
    "h": 64,
-   "bytes": 3286,
-   "sha": "361ac766a1f997e3"
+   "bytes": 3283,
+   "sha": "87cf79beb9396fd8"
   },
   "sprites/player-striker-walk-5.png": {
    "w": 78,
    "h": 64,
-   "bytes": 3526,
-   "sha": "db4615e666f0599c"
+   "bytes": 3525,
+   "sha": "1f4542b2eb9b3aa0"
   },
   "sprites/player-warlord-gun-walk-0.png": {
    "w": 93,
