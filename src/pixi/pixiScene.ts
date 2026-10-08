@@ -351,7 +351,7 @@ import {
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
-import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_6, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
+import { WALK_SEQ_2, WALK_SEQ_6, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
 import { AVATARS, type AvatarPart } from '../data/avatars'; // アバターシステム(試験・第1弾)。台帳は renderer-agnostic、ここは読んで描くだけ。
 import {
   glowFalloff, glowLenMult, glowScore, explosionSilAlpha, ambientSilAlpha,
@@ -1585,12 +1585,8 @@ const usesFiveFramePingPong = (p: Player): boolean =>
   p.characterClass === 'necromancer' || p.characterClass === 'warrior' ||
   p.characterClass === 'rogue' || p.characterClass === 'mage';
 const playerWalkSequence = (p: Player): readonly number[] =>
-  // マークスマン(mage)は社長支給2026-10-08の6コマ(順送り)。1周の時間は他の3クラスと同じ(歩幅のテンポを揃える)。
-  p.characterClass === 'mage' ? WALK_SEQ_6
-  // スカベンジャー(necromancer=player-striker絵)・ヘビーガンナー(warrior=player-shotgun絵)は社長支給2026-10-08の6コマ(順送り)。
-  : p.characterClass === 'necromancer' || p.characterClass === 'warrior' ? WALK_SEQ_6
-  // 5コマ勢は端(0,4)を重複させず往復してループ=滑らかな折り返し。
-  : usesFiveFramePingPong(p) ? WALK_SEQ_5 : WALK_SEQ_2;
+  // 4クラスとも社長支給2026-10-08の6コマ(順送り)。1周の時間は旧5コマ往復と同じ(PINGPONG_WALK_CYCLE_MS=歩幅のテンポを揃える)。
+  usesFiveFramePingPong(p) ? WALK_SEQ_6 : WALK_SEQ_2;
 // 歩行アニメの1周期(ms)。5コマ×ピンポン勢はコマ数が多いぶん、他クラスと同じ460msだと
 // コマ送りが速すぎるため専用に長め(社長指示「周期を変えて」)。
 const PINGPONG_WALK_CYCLE_MS = 900;

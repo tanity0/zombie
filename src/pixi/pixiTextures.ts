@@ -365,7 +365,7 @@ const AVATAR_HEAD_TRACK_NAMES: string[] = [
   ...AVATAR_HEAD_TRACK_CLASS_PREFIXES.flatMap((prefix) => [
     `player-${prefix}-idle`,
     `player-${prefix}-walk-0`, `player-${prefix}-walk-1`, `player-${prefix}-walk-2`, `player-${prefix}-walk-3`, `player-${prefix}-walk-4`,
-    ...(prefix === 'striker' || prefix === 'shotgun' ? [`player-${prefix}-walk-5`] : []), // スカベンジャー・ヘビーガンナーの歩きは6コマ
+    ...(prefix === 'striker' || prefix === 'shotgun' || prefix === 'scavenger' ? [`player-${prefix}-walk-5`] : []), // 歩き6コマ(マークスマンは下の行)
     ...(prefix === 'magnum' ? [`player-${prefix}-walk-5`, `player-${prefix}-run-5`] : []), // マークスマンの歩き・走り6コマ
     // しゃがみ(死亡固定絵)/攻撃ポーズ(近接構え→振り抜き。死亡固定絵は`-ready`を共有)。
     `player-${prefix}-melee-ready`, `player-${prefix}-melee-swing`,
@@ -498,6 +498,7 @@ export const ensureTextures = (): Promise<void> => {
       'player-scavenger-walk-2',
       'player-scavenger-walk-3',
       'player-scavenger-walk-4',
+      'player-scavenger-walk-5', // ストライカーの歩きは6コマ(社長支給2026-10-08)
       'player-scavenger-idle',
       'player-scavenger-game-0',
       'player-scavenger-game-1',

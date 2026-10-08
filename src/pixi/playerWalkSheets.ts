@@ -10,7 +10,7 @@
 
 /** 5コマ立ち絵(全4クラス)の歩き: 端(0,4)を重複させずに往復してループ=滑らかな折り返し。 */
 export const WALK_SEQ_5: readonly number[] = [0, 1, 2, 3, 4, 3, 2, 1];
-/** スカベンジャー・マークスマン・ヘビーガンナーの歩き6コマ(社長支給2026-10-08): 1周を6コマで描いた順送り(折り返さない)。 */
+/** 4クラスの歩き6コマ(社長支給2026-10-08): 1周を6コマで描いた順送り(折り返さない)。 */
 export const WALK_SEQ_6: readonly number[] = [0, 1, 2, 3, 4, 5];
 /** 立ち絵が2コマしか無い場合の既定(不明クラス等)。 */
 export const WALK_SEQ_2: readonly number[] = [0, 1];
@@ -30,7 +30,7 @@ export const WALK_SHEET_SEQUENCES: ReadonlyArray<{ prefix: string; sequence: rea
   { prefix: 'player-magnum-walk', sequence: WALK_SEQ_6 },
   { prefix: 'player-shotgun-walk', sequence: WALK_SEQ_6 }, // ヘビーガンナーの歩き6コマ(社長支給2026-10-08)
   { prefix: 'player-striker-walk', sequence: WALK_SEQ_6 },
-  { prefix: 'player-scavenger-walk', sequence: WALK_SEQ_5 },
+  { prefix: 'player-scavenger-walk', sequence: WALK_SEQ_6 }, // ストライカーの歩き6コマ(社長支給2026-10-08)
   { prefix: 'player-magnum-run', sequence: RUN_SEQ_6 }, // マークスマンの走り6コマ(社長支給2026-10-08)
   // スカベンジャー(necromancer=striker接頭辞)の走り: 社長支給2026-09-30で6コマへ差し替え。
   { prefix: 'player-striker-run', sequence: RUN_SEQ_6 },

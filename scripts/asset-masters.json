@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "924 files / 復号後 約690MB",
+ "generatedFor": "925 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3389,32 +3389,38 @@
   "sprites/player-scavenger-walk-0.png": {
    "w": 78,
    "h": 64,
-   "bytes": 2310,
-   "sha": "c2caaf3a2060a34c"
+   "bytes": 4582,
+   "sha": "e15843cc08226964"
   },
   "sprites/player-scavenger-walk-1.png": {
    "w": 78,
    "h": 64,
-   "bytes": 2374,
-   "sha": "b9a0984e67671a8b"
+   "bytes": 4384,
+   "sha": "1a60965853f41453"
   },
   "sprites/player-scavenger-walk-2.png": {
    "w": 78,
    "h": 64,
-   "bytes": 2209,
-   "sha": "2d7ed3d8ab263bbf"
+   "bytes": 4414,
+   "sha": "5494c76309f4274f"
   },
   "sprites/player-scavenger-walk-3.png": {
    "w": 78,
    "h": 64,
-   "bytes": 2222,
-   "sha": "27a0007bc054e1b9"
+   "bytes": 4295,
+   "sha": "c7988987af2b0dc7"
   },
   "sprites/player-scavenger-walk-4.png": {
    "w": 78,
    "h": 64,
-   "bytes": 2197,
-   "sha": "492651b8d472d9dd"
+   "bytes": 4298,
+   "sha": "2215c1d3396cabd8"
+  },
+  "sprites/player-scavenger-walk-5.png": {
+   "w": 78,
+   "h": 64,
+   "bytes": 4468,
+   "sha": "e4a93a5aa32ea01c"
   },
   "sprites/player-shotgun-game-0.png": {
    "w": 96,
