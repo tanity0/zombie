@@ -1872,6 +1872,21 @@ const WIRE_SLAM_JUMP_H = 92;          // アンカー大技の見た目ジャン
 // 判定/座標には影響しない描画専用値(叩き台・実機調整前提)。スラムより短い離脱動作なので控えめ。
 const WIRE_HOP_JUMP_H = 46;
 const WIRE_HOP_DUST_SCALE = 1.4;      // ホップ着地の砂埃スケール(叩き台)。
+// 走りの蹴り出しの砂埃(社長指示2026-10-08「走りの足元後ろに砂煙」→「はい」)。4クラスの走りの6コマのうち
+// 後ろ足が地面を蹴って離れるコマ(2・5=足が一番後ろへ来るコマ・シートの足元の位置を実測)で、足元の少し後ろに1つ出す。
+// 判定ゼロの「派手さの絵」。大きさ=体の大きさ×倍率(`?rundust=`・0で出さない)。
+// 着地の砂埃(drawDust)とは別の見せ方: もこもこ(fx/dust-puff)1種類だけを少し横長に置く(粒の帯は小さいと見えなかった)。蹴った直後が濃く小さく、
+// 離れるほど淡く広がる。夜は彩度を落として少し沈める(明かりの中では地面より少し明るい靄に見える)。舗装(廃都)では小さく薄く、
+// 雪原では大きく舞う(クリエイティブ監査2026-10-08・2巡)。
+const RUN_DUST_SCALE = tsNum('rundust', 0.5);
+const RUN_DUST_MS = 520;          // 1歩(280ms)×2本のラッチで回すので、走りの1周(560ms)より短く=次の同じ足で途切れない
+const RUN_DUST_BACK_PX = 10;      // 足元の中心から後ろへ置く距離
+const RUN_DUST_BACK_DOWN_PX = 22; // 手前(画面下)へ走る時は体の裏に隠れないよう遠めに置く
+const RUN_DUST_SIDE_PX = 4;       // 左右の足で進む向きと直交に振る(手前へ走る時は7)
+const RUN_DUST_DRIFT_PX = 14;     // 出てから後ろへ流れる距離(減速しながら=慣性)
+const RUN_DUST_ALPHA_KEYS = [0.85, 1.0, 0.6, 0.3, 0] as const; // 1コマ目は少し控えめ→すぐ最大→淡く広がって消える
+const RUN_DUST_LIFT_PX = 5;       // 蹴り上げ: 前半でふわっと上がり後半で沈む
+const RUN_DUST_KICK_FRAMES = [2, 5] as const;
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
@@ -17442,6 +17457,30 @@ export class PixiScene {
       this.latchGroundCrack('player:wirehopcrack', hopActive, hopToImpact, now,
         () => [p.wireHopTargetX, p.wireHopTargetY, Math.max(p.width, p.height) * WIRE_HOP_DUST_SCALE]);
     }
+    // 走りの蹴り出しの砂埃: 蹴り出しコマに入った瞬間に、その時の足元の少し後ろ(進む向きと逆)を焼き付ける。
+    // 同じ足は1周(560ms)ごとなので、左右の足でラッチを分けて前の砂埃を途中で消さない。
+    // 置いた場所は地面に残る(プレイヤーは走り去る)うえに、後ろへ減速しながら流す(慣性)。
+    if (RUN_DUST_SCALE > 0 && !hasFullWarlordSet(p.equipment)) {
+      const runAnimOn = running && usesRunAnimation(p);
+      for (let k = 0; k < RUN_DUST_KICK_FRAMES.length; k++) {
+        const kf = RUN_DUST_KICK_FRAMES[k];
+        const L = this.latchFx(`player:rundust${k}`, runAnimOn && frame === kf, RUN_DUST_MS, now, () => {
+          const ld = p.lastDirection;
+          const lm = ld ? Math.hypot(ld.x, ld.y) : 0;
+          const bx = lm > 0.001 ? -ld!.x / lm : -face, by = lm > 0.001 ? -ld!.y / lm : 0;
+          const towardCam = by < -0.5;
+          const back = (towardCam ? RUN_DUST_BACK_DOWN_PX : RUN_DUST_BACK_PX) * dsc;
+          const side = (towardCam ? 7 : RUN_DUST_SIDE_PX) * dsc * (k === 0 ? 1 : -1);
+          return [fb.footX + bx * back - by * side, fb.footY + by * back * 0.5 + bx * side * 0.5, bx, by,
+            Math.max(p.width, p.height) * RUN_DUST_SCALE * dsc];
+        });
+        if (L) {
+          const ease = 1 - (1 - L.t) * (1 - L.t); // ease-out=蹴られた勢いが抜けていく
+          const drift = RUN_DUST_DRIFT_PX * dsc * ease;
+          this.drawRunDust(L.d[0] + L.d[2] * drift, L.d[1] + L.d[3] * drift * 0.5, L.d[4], L.t, ease, L.t0, dsc);
+        }
+      }
+    }
 
     // フェーズA(乗車中)はプレイヤーをヘリと同じ danceUiLayer の前面へ移し、ヘリのドアに重ねて見せる
     // (danceUiLayer は world と同一トランスフォームなので座標はそのまま)。降りたら actorLayer へ戻す。
@@ -28629,6 +28668,47 @@ export class PixiScene {
     let h = Math.imul(a | 0, 0x9e3779b1) ^ Math.imul(b | 0, 0x85ebca6b) ^ Math.imul((c * 8) | 0, 0xc2b2ae35);
     h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12;
     return (h >>> 0) / 4294967296;
+  }
+  /** 走りの蹴り出しの砂埃(drawDust と同じプールを使う=毎フレームの回収も同じ)。 */
+  private drawRunDust(x: number, y: number, radius: number, prog: number, ease: number, seed: number, dsc: number): void {
+    const puff = getTexture('fx/dust-puff');
+    if (!FX_RING_ENABLED || !puff) return;
+    const night = !this.daylight && !this.snowStage;
+    const aMax = this.snowStage ? 0.8 : this.daylight ? 0.5 : 0.85;
+    const sizeMul = this.snowStage ? 1.1 : this.daylight ? 0.7 : 1;
+    const K = RUN_DUST_ALPHA_KEYS;
+    const kx = Math.max(0, Math.min(1, prog)) * (K.length - 1);
+    const ki = Math.min(K.length - 2, Math.floor(kx));
+    const alpha = (K[ki] + (K[ki + 1] - K[ki]) * (kx - ki)) * aMax;
+    if (alpha <= 0.01) return;
+    let tint = this.dustTintForStage();
+    if (night) tint = (Math.round(((tint >> 16) & 255) * 0.85) << 16) | (Math.round(((tint >> 8) & 255) * 0.85) << 8) | Math.round((tint & 255) * 0.85);
+    let sp = this.dustPool[this.dustUsed];
+    if (!sp) {
+      sp = new Sprite();
+      sp.anchor.set(0.5, 0.5);
+      this.L.groundLayer.addChild(sp);
+      this.dustPool[this.dustUsed] = sp;
+    }
+    this.dustUsed++;
+    // 出現ごとに固定の個体差(フレーム間で不変): 横長の度合い・高さ・左右反転・位置のずれ。
+    // 種は焼き付け時刻だけ(座標は流れて毎フレーム変わるので混ぜない=チラつかない)。
+    const h1 = this.dustJitterHash(seed, 1, 11), h2 = this.dustJitterHash(seed, 2, 12);
+    const h3 = this.dustJitterHash(seed, 3, 13), h4 = this.dustJitterHash(seed, 4, 14);
+    const h5 = this.dustJitterHash(seed, 5, 15);
+    const r = radius * sizeMul * (0.6 + 0.55 * ease);
+    sp.texture = puff;
+    // 潰しは軽く(強く潰すと塊の輪郭が横に伸びて泥に見える)。
+    sp.width = r * 2 * (1.15 + 0.25 * h1);
+    sp.height = r * 2 * (0.78 + 0.12 * h2);
+    sp.rotation = 0;
+    if (h3 < 0.5) sp.scale.x = -sp.scale.x;
+    const lift = RUN_DUST_LIFT_PX * dsc * Math.sin(Math.PI * Math.min(1, prog * 1.4));
+    // 中心を足元の線より下げて地面に貼り付ける(上半分が脛にかからない)。
+    sp.position.set(x + (h4 - 0.5) * 6, y + radius * 0.35 + (h5 - 0.5) * 6 - lift);
+    sp.tint = tint;
+    sp.alpha = alpha;
+    sp.visible = true;
   }
   private drawDust(x: number, y: number, radius: number, prog: number, tint: number, alpha: number, seed?: number): void {
     if (!FX_RING_ENABLED || alpha <= 0.01) return;
