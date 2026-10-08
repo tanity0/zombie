@@ -1720,8 +1720,6 @@ const ICE_FLASH_TINT = 0x7fd4ff; // 氷鈍化中の薄い水色(v0.25.3276・α/
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
 // ストライカーの走りの後ろへの傾きに掛ける倍率(前への傾きは1のまま)。0=後ろへは傾かない(v0.25.4936)。
 const STRIKER_RUN_BACK_LEAN_MULT = tsNum('runbacklean', 0.3);
-// 4クラスの歩き/走りに後付けの傾き・伸び縮みを重ねるか(既定=重ねない・お試し2026-10-08)。`?walkfx=1` で戻す。
-const PLAYER_SHEET_WALK_FX = tsBool('walkfx', false);
 // =============================================================================
 // ズーム時だけの遠近(社長2026-09-11「ズームになった時に画面が進行方向に遠近になると面白い」→「ズームはみてみたい」)。
 // 設計= research/FAKE_3D.md「第3弾」。常時の透視は読みを壊す(社長裁定「なし」)が、**寄りズームのイベントの約0.4秒だけ**
@@ -17225,12 +17223,8 @@ export class PixiScene {
     // 遊脚の最高点(lift=1)で縦に伸びて横が締まる(スカッシュ&ストレッチ)＋足元支点の左右リーン(体重移動)。
     // rotation 正=時計回り=頭が右へ倒れる。足元支点(anchor 0.5,1)なので右へ走ると右へ前傾する。
     let walkSqX = 1, walkSqY = 1, walkLean = 0;
-    // ★お試し(社長指示2026-10-08「歩きと走りから揺れの後付けを止めて。四人とも。一度それで見てみたい」):
-    // 4クラスの歩き/走りは社長支給のシート(6コマ)で動くので、後付けの傾き・伸び縮み(歪みの代用モーション)を止める。
-    // 上下の揺れ(bob=位置)は残す。武将の立ち絵(3コマ)は従来どおり。`?walkfx=1` で後付けを戻して見比べられる。
-    const sheetClassWalk = !hasFullWarlordSet(p.equipment) && (p.characterClass === 'mage' || p.characterClass === 'warrior'
-      || p.characterClass === 'rogue' || p.characterClass === 'necromancer');
-    if (walking && PLAYER_MOTION_FX && !(sheetClassWalk && !PLAYER_SHEET_WALK_FX)) {
+    // ※2026-10-08 に4クラスだけ後付けを外すお試しをしたが、見比べの結果「やはり復活させよう」(社長)で戻した。
+    if (walking && PLAYER_MOTION_FX) {
       const lift = Math.abs(step); // 0=接地 / 1=遊脚中(最高点)
       walkSqY = 1 + PLAYER_WALK_SQUASH * lift - PLAYER_WALK_SQUASH * 0.5 * (1 - lift);
       walkSqX = 1 - PLAYER_WALK_SQUASH * 0.8 * lift + PLAYER_WALK_SQUASH * 0.4 * (1 - lift);
