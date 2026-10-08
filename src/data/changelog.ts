@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4930', items: ['PCでも、プレイヤーと軍人・敵の大きさの釣り合いがスマホと同じになった'] },
   { version: '0.25.4929', items: ['PCの画面の大きさによって、軍人がプレイヤーより小さく見えていたのが直った'] },
   { version: '0.25.4928', items: ['ヘビーガンナーが歩く時、一瞬だけ頭がガクッと下がるのが直った'] },
   { version: '0.25.4927', items: ['ヘビーガンナーの歩く姿と走る姿が新しい絵になった'] },

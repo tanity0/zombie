@@ -125,6 +125,9 @@ Top-down HD-2D survival game. React + Zustand (simulation) + PixiJS (rendering).
   ゲームの判定(湧き・回収・ズーム等)を変える時は、**スマホの寸法で結果が変わらないことをユニットテストで固定**する。
 - **push 前に `node scripts/phone-guard.mjs check`**(dev サーバ 5199 番)。スマホ 430×932 / 375×667 の7画面の配置が基準と1pxでも違えば落ちる。
   基準の作り方・消えた時の撮り直しはスクリプトの冒頭。設計は research/PC_SUPPORT.md。
+- **PC 側のずれは `node scripts/pc-guard.mjs check`**(社長指示2026-10-08「PC固有のバグも発見できるようにしないと危ない」)。PC の画面3種(1280×720 / 1440×900・2倍 / 1920×1080)で
+  ①プレイヤー・軍人・敵の**画面上の大きさの比**をスマホと比べる(6%超で NG・基準ファイル不要) ②PC のタイトルとゲーム中の HUD の配置を基準と比べる。
+  **描画の倍率・ズーム・解像度・横長の分岐に触った回は回す**(実例: v0.25.4929 の「1440×900・2倍だけ NPC が小さい」はスマホのチェックでは原理的に見えなかった)。目安5分。
 
 ## Renderer
 - **PixiJS is the default and the only actively-developed renderer.** The legacy

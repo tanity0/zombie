@@ -1701,6 +1701,9 @@ const TEXEL_SNAP_ENABLED = typeof window === 'undefined'
 // 静止/低速の半端スケールだけ=ピクセルスナップで根治済み)と社長実機確認→**全演出ON=確定(v0.25.1771)**。
 // 診断用に `?pmotion=0` で一括OFF(剛体スプライト化)へ切替可。対象はプレイヤー本体の変形のみ
 // (コマ差し替え(歩き/走り/近接ポーズ)・登場演出・ノックバック跳ね(敵共通)・分身/救援アライは対象外)。
+// PC(横長)のプレイヤーの絵の倍率。スマホ(430×932・3倍)ではピクセルスナップでプレイヤーが素の約0.9倍に描かれる(実測0.897)。
+// PC はスナップせずこの値で固定=NPC・敵との大きさの比がスマホと同じになり、PC の画面サイズに左右されない(v0.25.4930)。
+const PC_PLAYER_PHONE_SCALE = tsNum('pcplayerscale', 0.9);
 const PLAYER_MOTION_FX = typeof window === 'undefined'
   || new URLSearchParams(window.location.search).get('pmotion') !== '0';
 const PLAYER_WALK_BOB_PX = 0.8;
@@ -4518,7 +4521,6 @@ export class PixiScene {
   private escortFlashSprites = new Map<string, Sprite>(); // 被弾の白フラッシュ(従)。本体と同形を加算で重ねる(出ている時間は0.17秒)
   private escortPoseById = new Map<string, EscortPose>(); // 影が読む「倒れている度合い」(drawEscortsが書き、次フレームの影が読む)
   private escortBarState = new Map<string, { vis: number; frac: number; lit: number; at: number }>(); // 線の透明度/表示中の体力/縁取りの灯り(いずれも目標へなめらかに追従)
-  private playerSnapMult = 1; // drawPlayer が毎フレーム書く: プレイヤーのピクセルスナップの倍率(スナップ後/前)
   private escortOpaqueBoxCache = new Map<string, { x0: number; x1: number; y0: number } | null>(); // 立ち絵の不透明部の左右端/頭頂(0..1の割合)
   // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2): 兵士(§1/§9)・フィル(§2/§4)・倒れ兵士(§8)の描画専用プール。
   private endingSoldierSprites = new Map<string, Sprite>(); // 兵士立ち絵(rescue/shooter 流用・2コマ歩行)
@@ -7101,6 +7103,11 @@ export class PixiScene {
   // (フィット×ズーム。前フレーム値=変化が緩やかなので1フレ遅れは無害)×レンダラ解像度で算出。
   // 視覚のみ(判定不変)。数学は utils/texelSnap.ts の純関数(ユニットテスト対象)。
   private snapTexelScale(sc: number): number {
+    // ★PC(横長)はスナップしない。代わりにスマホの見え方(スナップでプレイヤーが約0.9倍)に合わせた固定倍率を掛ける。
+    // スナップは丸め先が画面サイズで変わる(最大±19%)ので、PC の画面サイズごとにプレイヤーだけ大きさが変わり、
+    // NPC・敵との大きさの比がばらついていた(社長指摘2026-10-08「PC固有のバグ。NPCが小さい」→「はい」=スマホと同じ比に)。
+    // 縦長(スマホ)は従来どおり=1pxも変わらない。`?pcplayerscale=` で実機から詰める。
+    if (sc > 0 && typeof window !== 'undefined' && window.innerWidth > window.innerHeight) return sc * PC_PLAYER_PHONE_SCALE;
     if (!TEXEL_SNAP_ENABLED || sc <= 0) return sc;
     const worldScale = this.L.actorLayer.worldTransform.a || 1;
     const res = getAppliedResolution() || 1;
@@ -17445,10 +17452,7 @@ export class PixiScene {
       // 通常クラス絵は従来どおり幅基準。ピクセルスナップ(案1)は遠近まで掛けた素のスケールに適用し、
       // 登場演出(introScale)や歩行スカッシュ等の演出係数はその外側(=演出は殺さない)。
       const baseScale = playerBaseScale(p, tex, fb.boxW, fb.boxH);
-      const rawSc = baseScale * this.depthScale(fb.footY);
-      const snapSc = this.snapTexelScale(rawSc);
-      this.playerSnapMult = rawSc > 0 ? snapSc / rawSc : 1; // PCでNPCをプレイヤーと同じ比で描くため(npcSnapMatch)
-      const sc = snapSc * introScale;
+      const sc = this.snapTexelScale(baseScale * this.depthScale(fb.footY)) * introScale;
       // ★KILL処刑演出v2中は跳びつく相手の方を向く(帰還中も相手を見たまま後ろへ跳ぶ)。
       const flip = killPose
         ? killPose.faceLeft
@@ -26827,7 +26831,7 @@ export class PixiScene {
       const sheetMult = downSheet || hitCrouch || sheetFrames > 0 ? ESCORT_SHEET_DISPLAY_MULT : 1;
       const sinkScaleBase = tex
         ? (esc.soldierIndex === TUTORIAL_MEDIC_INDEX
-          ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y) * this.npcSnapMatch()
+          ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y)
           : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1) * sheetMult) * tex.height * walkSqY
         : 0;
       // 本体の沈みだけ体高比・食い込みの超過/起き上がりの行き過ぎ/呼吸は基準px×遠近(体高比に乗せると約8pxの跳ね=R2 A-3)。
@@ -26850,7 +26854,7 @@ export class PixiScene {
         // 衛生兵はドット規格(78x64=横長キャンバス)のため contain-fit だと幅律速で小さくなる。
         // 高さ基準で他NPCと同じ表示高に揃える(社長指示v0.25.1825「大きさ揃えて」)。
         const sc = esc.soldierIndex === TUTORIAL_MEDIC_INDEX
-          ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y) * this.npcSnapMatch()
+          ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y)
           // NPC8人(index0..7)のみ0.8倍(社長指示v0.25.1858)。チュートリアル随行(100/101)は等倍。
           : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1) * sheetMult;
         sp.scale.set(sc * walkSqX * faceSign, sc * walkSqY);
@@ -29107,16 +29111,7 @@ export class PixiScene {
   // 人型NPC(レスキュー/護衛/駐留兵)をプレイヤーと同じくらいの見た目サイズで描く(社長指示)。
   // 表示基準高さ RESCUE_NPC_DISPLAY_H の枠へ contain-fit ＋ プレイヤーと同じ遠近曲線(depthScale)。
   private humanNpcScale(texW: number, texH: number, footY: number): number {
-    return containScale(PixiScene.RESCUE_NPC_DISPLAY_H, PixiScene.RESCUE_NPC_DISPLAY_H, texW, texH) * this.depthScale(footY) * this.npcSnapMatch();
-  }
-  /**
-   * ★PC(横長)だけ: プレイヤーのピクセルスナップ(snapTexelScale)が変えた倍率を、人の形のNPCにも同じだけ掛ける。
-   * スナップは「1ドット=整数px」へ丸めるのでプレイヤーだけが最大±19%大きく/小さくなり、PCの画面サイズによっては
-   * NPCがプレイヤーより目に見えて小さかった(実測 1440×900・解像度2倍: 軍人/プレイヤー=0.85、スナップ無しなら0.96。
-   * 社長指摘2026-10-08「PC固有のバグ。NPCが小さい」)。スマホ(縦長)は1を返す=従来と1pxも変わらない。
-   */
-  private npcSnapMatch(): number {
-    return typeof window !== 'undefined' && window.innerWidth > window.innerHeight ? this.playerSnapMult : 1;
+    return containScale(PixiScene.RESCUE_NPC_DISPLAY_H, PixiScene.RESCUE_NPC_DISPLAY_H, texW, texH) * this.depthScale(footY);
   }
 
   private drawRescueSurvivors(survivors: RescueSurvivor[], now: number) {
