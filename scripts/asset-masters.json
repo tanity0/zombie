@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "924 files / 復号後 約690MB",
+ "generatedFor": "922 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3245,50 +3245,38 @@
   "sprites/player-magnum-run-0.png": {
    "w": 78,
    "h": 67,
-   "bytes": 5283,
-   "sha": "e9e7c9f084bf4a75"
+   "bytes": 4707,
+   "sha": "c851043896ddc03e"
   },
   "sprites/player-magnum-run-1.png": {
    "w": 78,
    "h": 67,
-   "bytes": 5256,
-   "sha": "23c0dfa3d71d1648"
+   "bytes": 4898,
+   "sha": "a0f514cc1d09ec0d"
   },
   "sprites/player-magnum-run-2.png": {
    "w": 78,
    "h": 67,
-   "bytes": 5174,
-   "sha": "213a378bc252989d"
+   "bytes": 4720,
+   "sha": "53416e92416da071"
   },
   "sprites/player-magnum-run-3.png": {
    "w": 78,
    "h": 67,
-   "bytes": 5196,
-   "sha": "d9956c7bbd141cc3"
+   "bytes": 4822,
+   "sha": "cc55307b206913a0"
   },
   "sprites/player-magnum-run-4.png": {
    "w": 78,
    "h": 67,
-   "bytes": 5352,
-   "sha": "85e686ab1b11e1d9"
+   "bytes": 4851,
+   "sha": "c47432c046733074"
   },
   "sprites/player-magnum-run-5.png": {
    "w": 78,
    "h": 67,
-   "bytes": 5192,
-   "sha": "f35248e7345c9d30"
-  },
-  "sprites/player-magnum-run-6.png": {
-   "w": 78,
-   "h": 67,
-   "bytes": 5137,
-   "sha": "8ebfa79aef130b39"
-  },
-  "sprites/player-magnum-run-7.png": {
-   "w": 78,
-   "h": 67,
-   "bytes": 5204,
-   "sha": "03d8543a786a6ee4"
+   "bytes": 4648,
+   "sha": "66a56a445c83a3f2"
   },
   "sprites/player-magnum-walk-0.png": {
    "w": 78,

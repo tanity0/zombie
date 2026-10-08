@@ -351,7 +351,7 @@ import {
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
-import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_6, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6, RUN_SEQ_8 } from './playerWalkSheets';
+import { WALK_SEQ_2, WALK_SEQ_5, WALK_SEQ_6, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
 import { AVATARS, type AvatarPart } from '../data/avatars'; // アバターシステム(試験・第1弾)。台帳は renderer-agnostic、ここは読んで描くだけ。
 import {
   glowFalloff, glowLenMult, glowScore, explosionSilAlpha, ambientSilAlpha,
@@ -1613,8 +1613,8 @@ const usesRunAnimation = (p: Player): boolean =>
 // マークスマン(mage)=5コマ前方ループ(社長指示v0.25.1639「走りピンポンやめる」。旧=歩きと同じ8段ping-pong)。
 // ※歩きのコマ並び(playerWalkSequence)は不変=ピンポンのまま。走りだけ前方ループにする。
 const playerRunSequence = (p: Player): readonly number[] =>
-  p.characterClass === 'mage' ? RUN_SEQ_8 // マークスマンの走り8コマ(社長支給2026-10-08)
-  : p.characterClass === 'warrior' || p.characterClass === 'necromancer' ? RUN_SEQ_6 : RUN_SEQ_5;
+  // マークスマン(社長支給2026-10-08)・ヘビーガンナー・スカベンジャーは6コマ。ストライカーは5コマ。
+  p.characterClass === 'mage' || p.characterClass === 'warrior' || p.characterClass === 'necromancer' ? RUN_SEQ_6 : RUN_SEQ_5;
 const playerWalkFrame = (p: Player, now: number, walking: boolean, running = false): number => {
   if (!walking) return 0;
   const runAnim = running && usesRunAnimation(p);

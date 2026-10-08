@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4926', items: ['マークスマンの走る姿をもう一度新しい絵に差し替えた'] },
   { version: '0.25.4925', items: ['マークスマンの歩く姿をもう一度新しい絵に差し替えた'] },
   { version: '0.25.4924', items: ['スカベンジャーの走る姿が新しい絵になった'] },
   { version: '0.25.4923', items: ['攻撃を受けた時に後ろへ押し出される動きが、また出るようになった。ジャンプ攻撃の着地を受けた時も、しっかり弾き出される'] },
