@@ -98,6 +98,7 @@ import {
   ENDING_BOMB_TUNING, // エンディング爆撃(v3.1): 爆発半径/落下高をstoreと同じ出どころから読む(絵と挙動の整合)
   EVENT_QUEST_DWELL_MS, // 二人組クエストv2(§2-8・B4): 納品3秒メーターの分母(RETURN_CIRCLE_HOLD_MSと同値=既存アークを流用)
   SCREAMER_BUFF_MS,
+  PLAYER_KNOCKBACK_MS,
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -208,7 +209,7 @@ import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_W
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS } from '../utils/flamerCone';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
-import { escortReviveProgress, isEscortDowned, ESCORT_REVIVE_HEAL_RATIO } from '../utils/escortHealth';
+import { escortReviveProgress, isEscortDowned, isEscortSliding, ESCORT_REVIVE_HEAL_RATIO } from '../utils/escortHealth';
 import {
   SWORD_VISIBILITY_FADE_MS, swordAttackAngle, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha,
   swordSwingPose,
@@ -1891,6 +1892,28 @@ const RUN_DUST_DRIFT_PX = 14;     // 出てから後ろへ流れる距離(減速
 const RUN_DUST_ALPHA_KEYS = [0.85, 1.0, 0.6, 0.3, 0] as const; // 1コマ目は少し控えめ→すぐ最大→淡く広がって消える
 const RUN_DUST_LIFT_PX = 5;       // 蹴り上げ: 前半でふわっと上がり後半で沈む
 const RUN_DUST_KICK_FRAMES = [2, 5] as const;
+// 吹き飛ばされて滑る間の砂煙「ズザー」(社長指示2026-10-08「吹き飛ばされた時も入れれる？ズザーって感じ」→「はい」)。
+// プレイヤー(被弾の吹き飛びだけ・自分の踏み込みには出さない)と軍人。敵は当たるたびに飛ぶので出すとうるさい。
+// 足元が一定の距離を進むごとに1つ置く=速い出だしほど間隔が開いて多く、減速すると詰まらず途切れる(「ズ・ザ・ー」)。
+// 大きさはその時の速さに比例し、遅くなったら出さない。置いた砂は体から離れる向き(滑る向きと逆)へ減速しながら流れて薄れる。
+// 吹き飛ばされた瞬間(=新しい滑りの始まり・滑り中の再吹き飛びも)の1つだけ大きく、その場で広がる。
+// 絵は走りの砂煙(drawRunDust)と同じ。重なって塗り潰さないよう列の濃さは下げ(夜0.55/昼0.8/雪0.7倍)・蹴り上げは0.3倍(擦った砂は低く広がる)。
+// 置く位置は進む向きと直交に左右へ散らす(一直線に並べない)。
+const SLIDE_DUST_STEP_PX = 14;   // 足元がこれだけ進むごとに1つ(遠近スケール連動)
+const SLIDE_DUST_MS = 360;
+const SLIDE_DUST_SCALE = tsNum('slidedust', 0.5); // 体の大きさ×倍率(0で出さない)
+const SLIDE_DUST_FIRST_MULT = 1.8;
+const SLIDE_DUST_FIRST_ALPHA_MUL = 0.85; // 最初の1つは重ならないので濃く(吹き飛ばされた地点の印)
+const SLIDE_DUST_FIRST_LIFE_MUL = 1.3;   // 印は少し長く残す
+const SLIDE_DUST_SIDE_PX = 7;           // 進む向きと直交に左右へ散らす最大量(足は2本・体はよろける)
+const SLIDE_DUST_DRIFT_PX = 8;   // 体から離れる向きへ流れる距離(減速しながら)
+const SLIDE_DUST_MIN_SPEED = 0.4; // 速さ(初速比)がこれ未満になったら出さない=最後の約16%は体だけ滑って止まる(「ー」)
+// 列の濃さ(重なって塗り潰さない倍率)。もともと薄い昼(廃都)・雪原は下げ過ぎない。
+const SLIDE_DUST_ALPHA_MUL_NIGHT = 0.55;
+const SLIDE_DUST_ALPHA_MUL_DAY = 1.0;
+const SLIDE_DUST_ALPHA_MUL_SNOW = 0.7;
+const SLIDE_DUST_LIFT_MUL = 0.3;
+const PLAYER_HITBOX_FOR_DUST = 28; // 軍人の体の大きさの代わり(当たり判定を持たないので、プレイヤーの当たり判定と同じ値)
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
@@ -17485,6 +17508,20 @@ export class PixiScene {
         }
       }
     }
+    // 吹き飛びの滑り(ズザー)。ヒットストップ中は止まっている(滑り出しは knockbackUntil − knockbackMs)。
+    // 被弾で始まった滑りだけ(滑り出しが被弾の直後=ヒットストップ分(最大約190ms)の遅れまで)。斬り込みの踏み込みも同じ欄を使うので除く。
+    {
+      const wall = Date.now();
+      const kbVx = p.knockbackVx ?? 0, kbVy = p.knockbackVy ?? 0;
+      const kbMs = p.knockbackMs ?? PLAYER_KNOCKBACK_MS;
+      const kbStart = (p.knockbackUntil ?? 0) - kbMs;
+      const sinceHurtAtStart = kbStart - (p.lastHurtAt ?? -1e9);
+      const sliding = p.knockbackUntil !== undefined && wall < p.knockbackUntil && wall >= kbStart
+        && sinceHurtAtStart >= -5 && sinceHurtAtStart < 260
+        && (Math.abs(kbVx) > 0.01 || Math.abs(kbVy) > 0.01);
+      const speedFrac = sliding ? (p.knockbackUntil! - wall) / Math.max(1, kbMs) : 0; // 減衰は線形(1→0)
+      this.tickSlideDust('player', sliding, kbStart, speedFrac, now, fb.footX, fb.footY, kbVx, kbVy, Math.max(p.width, p.height), dsc);
+    }
 
     // フェーズA(乗車中)はプレイヤーをヘリと同じ danceUiLayer の前面へ移し、ヘリのドアに重ねて見せる
     // (danceUiLayer は world と同一トランスフォームなので座標はそのまま)。降りたら actorLayer へ戻す。
@@ -26893,6 +26930,12 @@ export class PixiScene {
       // 切らない微小な沈みの時だけ位置で下げる。
       const px = Math.round(esc.x), py = Math.round(esc.y - bob + (tex && sinkWorld > 0.4 ? 0 : sinkWorld));
       const faceSign = esc.face < 0 ? -1 : 1;
+      // 軍人の滑りは ease-out(2次)=速さは 1−t に比例。
+      const escSlideT = esc.slideUntil !== undefined && esc.slideStartAt !== undefined
+        ? (gameTime - esc.slideStartAt) / Math.max(1, esc.slideUntil - esc.slideStartAt) : 1;
+      this.tickSlideDust(`esc:${esc.id}`, isEscortSliding(esc, gameTime), esc.slideStartAt ?? 0, 1 - escSlideT, now, esc.x, esc.y,
+        (esc.slideToX ?? esc.x) - (esc.slideFromX ?? esc.x), (esc.slideToY ?? esc.y) - (esc.slideFromY ?? esc.y),
+        PLAYER_HITBOX_FOR_DUST, this.depthScale(esc.y));
       // §17-14: ウェルカム終了で出陣した個体はappearedAtからeaseOutQuadで0→1フェードイン。
       // 出撃直後から居る通常ケース(appearedAt未設定)はescortAppearFade=1=従来のbaseAlphaのまま。
       const baseAlpha = this.horizonActorAlpha(esc.y) * this.currentIntroFade(now) * this.corridorRunInFade()
@@ -28673,17 +28716,59 @@ export class PixiScene {
     h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12;
     return (h >>> 0) / 4294967296;
   }
+  /** 吹き飛びの滑りの砂煙(キャラごとの小さな列。置いた所に残り、寿命で消える)。 */
+  private slideDust = new Map<string, { at: number; x: number; y: number; dx: number; dy: number; first: boolean; size: number; side: number }[]>();
+  /** キャラごとの「いまの滑りの開始時刻」と「最後に砂を置いた足元」。開始時刻が変わったら新しい吹き飛び=大きな1つ。 */
+  private slideDustState = new Map<string, { start: number; lx: number; ly: number }>();
+  private tickSlideDust(key: string, sliding: boolean, slideStart: number, speedFrac: number, now: number,
+    footX: number, footY: number, vx: number, vy: number, bodySize: number, dsc: number): void {
+    if (SLIDE_DUST_SCALE <= 0) return;
+    let arr = this.slideDust.get(key);
+    if (sliding) {
+      const m = Math.hypot(vx, vy) || 1;
+      const st = this.slideDustState.get(key);
+      const isNew = !st || st.start !== slideStart;
+      const moved = st ? Math.hypot(footX - st.lx, footY - st.ly) : 0;
+      if (isNew || (moved >= SLIDE_DUST_STEP_PX * dsc && speedFrac >= SLIDE_DUST_MIN_SPEED)) {
+        if (!arr) { arr = []; this.slideDust.set(key, arr); }
+        const sf = Math.max(0, Math.min(1, speedFrac));
+        arr.push({ at: now, x: footX, y: footY, dx: vx / m, dy: vy / m, first: isNew,
+          size: isNew ? SLIDE_DUST_FIRST_MULT : 0.45 + 0.55 * sf,
+          // 直交方向の散らし(出現ごとに固定)。速いほど大きく散る。最初の1つ(着地点の印)はぶれない。
+          side: isNew ? 0 : (this.dustJitterHash(now, 6, 16) - 0.5) * 2 * SLIDE_DUST_SIDE_PX * dsc * (0.6 + 0.4 * sf) });
+        this.slideDustState.set(key, { start: slideStart, lx: footX, ly: footY });
+      }
+    } else this.slideDustState.delete(key);
+    if (!arr) return;
+    const radius = bodySize * SLIDE_DUST_SCALE * dsc;
+    const aMul = this.snowStage ? SLIDE_DUST_ALPHA_MUL_SNOW : this.daylight ? SLIDE_DUST_ALPHA_MUL_DAY : SLIDE_DUST_ALPHA_MUL_NIGHT;
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const d = arr[i];
+      const t = (now - d.at) / (SLIDE_DUST_MS * (d.first ? SLIDE_DUST_FIRST_LIFE_MUL : 1));
+      if (t >= 1 || t < 0) { arr.splice(i, 1); continue; }
+      const ease = 1 - (1 - t) * (1 - t);
+      // 最初の1つはその場で広がる(吹き飛ばされた地点の印)。それ以外は体から離れる向きへ置き去りに流れる。
+      const drift = d.first ? 0 : -SLIDE_DUST_DRIFT_PX * dsc * ease;
+      this.drawRunDust(d.x + d.dx * drift - d.dy * d.side, d.y + d.dy * drift * 0.5 + d.dx * d.side * 0.5, radius * d.size, t, ease, d.at, dsc,
+        d.first ? SLIDE_DUST_FIRST_ALPHA_MUL : aMul, SLIDE_DUST_LIFT_MUL);
+    }
+    if (arr.length === 0) this.slideDust.delete(key);
+  }
+
   /** 走りの蹴り出しの砂埃(drawDust と同じプールを使う=毎フレームの回収も同じ)。 */
-  private drawRunDust(x: number, y: number, radius: number, prog: number, ease: number, seed: number, dsc: number): void {
+  private drawRunDust(x: number, y: number, radius: number, prog: number, ease: number, seed: number, dsc: number,
+    aMul = 1, liftMul = 1): void {
+    // 夜・昼=もこもこを普通に重ねる(土/コンクリートの粉)。雪原=明るく重ねる(screen)=雪しぶき。
+    // もこもこは素材に黄土色が焼いてあり、tint(乗算)だけでは白くできないため。昼は明るい石畳の上で埋もれないよう濃く大きめ。
+    const night = !this.daylight && !this.snowStage;
     const puff = getTexture('fx/dust-puff');
     if (!FX_RING_ENABLED || !puff) return;
-    const night = !this.daylight && !this.snowStage;
-    const aMax = this.snowStage ? 0.8 : this.daylight ? 0.5 : 0.85;
-    const sizeMul = this.snowStage ? 1.1 : this.daylight ? 0.7 : 1;
+    const aMax = this.snowStage ? 0.8 : this.daylight ? 0.7 : 0.85;
+    const sizeMul = this.snowStage ? 1.1 : this.daylight ? 0.85 : 1;
     const K = RUN_DUST_ALPHA_KEYS;
     const kx = Math.max(0, Math.min(1, prog)) * (K.length - 1);
     const ki = Math.min(K.length - 2, Math.floor(kx));
-    const alpha = (K[ki] + (K[ki + 1] - K[ki]) * (kx - ki)) * aMax;
+    const alpha = (K[ki] + (K[ki + 1] - K[ki]) * (kx - ki)) * aMax * aMul;
     if (alpha <= 0.01) return;
     let tint = this.dustTintForStage();
     if (night) tint = (Math.round(((tint >> 16) & 255) * 0.85) << 16) | (Math.round(((tint >> 8) & 255) * 0.85) << 8) | Math.round((tint & 255) * 0.85);
@@ -28702,12 +28787,13 @@ export class PixiScene {
     const h5 = this.dustJitterHash(seed, 5, 15);
     const r = radius * sizeMul * (0.6 + 0.55 * ease);
     sp.texture = puff;
+    sp.blendMode = this.snowStage ? 'screen' : 'normal';
     // 潰しは軽く(強く潰すと塊の輪郭が横に伸びて泥に見える)。
     sp.width = r * 2 * (1.15 + 0.25 * h1);
     sp.height = r * 2 * (0.78 + 0.12 * h2);
     sp.rotation = 0;
     if (h3 < 0.5) sp.scale.x = -sp.scale.x;
-    const lift = RUN_DUST_LIFT_PX * dsc * Math.sin(Math.PI * Math.min(1, prog * 1.4));
+    const lift = RUN_DUST_LIFT_PX * liftMul * dsc * Math.sin(Math.PI * Math.min(1, prog * 1.4));
     // 中心を足元の線より下げて地面に貼り付ける(上半分が脛にかからない)。
     sp.position.set(x + (h4 - 0.5) * 6, y + radius * 0.35 + (h5 - 0.5) * 6 - lift);
     sp.tint = tint;
@@ -28766,6 +28852,7 @@ export class PixiScene {
     sp.position.set(x, y);
     sp.tint = tint;
     sp.alpha = alpha;
+    sp.blendMode = 'normal'; // プールを走り/滑りの砂煙と共用(あちらは雪原・昼で screen を使う)
     sp.visible = true;
   }
 
