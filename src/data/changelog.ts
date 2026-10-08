@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4928', items: ['ヘビーガンナーが歩く時、一瞬だけ頭がガクッと下がるのが直った'] },
   { version: '0.25.4927', items: ['ヘビーガンナーの歩く姿と走る姿が新しい絵になった'] },
   { version: '0.25.4926', items: ['マークスマンの走る姿をもう一度新しい絵に差し替えた'] },
   { version: '0.25.4925', items: ['マークスマンの歩く姿をもう一度新しい絵に差し替えた'] },

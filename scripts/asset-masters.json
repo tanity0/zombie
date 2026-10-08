@@ -3485,26 +3485,26 @@
   "sprites/player-shotgun-walk-0.png": {
    "w": 78,
    "h": 65,
-   "bytes": 3774,
-   "sha": "ae7cf2c69b7e08f0"
+   "bytes": 3773,
+   "sha": "cf31100df8e5e61b"
   },
   "sprites/player-shotgun-walk-1.png": {
    "w": 78,
    "h": 65,
-   "bytes": 3744,
-   "sha": "4149fa159184503a"
+   "bytes": 3745,
+   "sha": "49c54e223b840b46"
   },
   "sprites/player-shotgun-walk-2.png": {
    "w": 78,
    "h": 65,
-   "bytes": 3709,
-   "sha": "1dbe1ec7d779d508"
+   "bytes": 3711,
+   "sha": "3f09acdcaf286fb6"
   },
   "sprites/player-shotgun-walk-3.png": {
    "w": 78,
    "h": 65,
-   "bytes": 3614,
-   "sha": "41401992bd8c3576"
+   "bytes": 3616,
+   "sha": "54a383e9db6f0c27"
   },
   "sprites/player-shotgun-walk-4.png": {
    "w": 78,
