@@ -1613,8 +1613,8 @@ const usesRunAnimation = (p: Player): boolean =>
 // マークスマン(mage)=5コマ前方ループ(社長指示v0.25.1639「走りピンポンやめる」。旧=歩きと同じ8段ping-pong)。
 // ※歩きのコマ並び(playerWalkSequence)は不変=ピンポンのまま。走りだけ前方ループにする。
 const playerRunSequence = (p: Player): readonly number[] =>
-  // マークスマン(社長支給2026-10-08)・ヘビーガンナー・スカベンジャーは6コマ。ストライカーは5コマ。
-  p.characterClass === 'mage' || p.characterClass === 'warrior' || p.characterClass === 'necromancer' ? RUN_SEQ_6 : RUN_SEQ_5;
+  // 4クラスとも6コマ(社長支給2026-10-08・ストライカーも6コマへ)。台帳に無いクラスは5コマ。
+  p.characterClass === 'mage' || p.characterClass === 'warrior' || p.characterClass === 'necromancer' || p.characterClass === 'rogue' ? RUN_SEQ_6 : RUN_SEQ_5;
 const playerWalkFrame = (p: Player, now: number, walking: boolean, running = false): number => {
   if (!walking) return 0;
   const runAnim = running && usesRunAnimation(p);

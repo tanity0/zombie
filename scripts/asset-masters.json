@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "923 files / 復号後 約690MB",
+ "generatedFor": "924 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3353,32 +3353,38 @@
   "sprites/player-scavenger-run-0.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4396,
-   "sha": "2b016a4d65c03a6d"
+   "bytes": 4192,
+   "sha": "2fb5f017e747f72e"
   },
   "sprites/player-scavenger-run-1.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4352,
-   "sha": "8203930ef3dcda28"
+   "bytes": 4129,
+   "sha": "5d2af0dc08f7e22a"
   },
   "sprites/player-scavenger-run-2.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4144,
-   "sha": "5f5ba998c023921c"
+   "bytes": 4017,
+   "sha": "c02e3e0a0952403d"
   },
   "sprites/player-scavenger-run-3.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4427,
-   "sha": "b2f68b2714e23aac"
+   "bytes": 4066,
+   "sha": "4ecb6097f1f9480e"
   },
   "sprites/player-scavenger-run-4.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4267,
-   "sha": "ae67dbb85eb6aec4"
+   "bytes": 3950,
+   "sha": "9da5d3280e0b40e0"
+  },
+  "sprites/player-scavenger-run-5.png": {
+   "w": 78,
+   "h": 64,
+   "bytes": 4075,
+   "sha": "3b48e5e45e0e8267"
   },
   "sprites/player-scavenger-walk-0.png": {
    "w": 78,

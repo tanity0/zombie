@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.4933 — ストライカーの走りを6コマ版に差し替え(社長「間違えた」→「こちらで」)【2026-10-08 18:54 JST】
+- v0.25.4932 の5コマは社長の取り違え。正しい6コマ(PNG 1344×264・4倍ドット・33色)で置き換えた。焼き方は同じ(÷4・上下は全コマ共通・頭の中心x=39・78×64)。`player-scavenger-run-0..4` 差し替え・`run-5` 新規。元シート `art_src/originals/striker/run-sheet-v2.png` を6コマ版で上書き(5コマ版は使わない)。原盤台帳を更新(924枚・assets:check OK)。
+- コード: ストライカー(rogue)の走りの並びを `RUN_SEQ_6` へ(=4クラスとも走り6コマ)。読み込みと頭の位置の計測に run-5 を追加。
+- 検証: typecheck / lint 0 errors / playerWalkSheets・sheetResidency テスト OK / ヘッドレスで走りが新しい絵で出ることを撮って確認。素材の入れ込み=監査なし。
+- 状態変化: なし。
+
 ## v0.25.4932 — ストライカーの走り5コマを差し替え(社長支給)【2026-10-08 18:43 JST】
 - 受領: PNG 1120×264(4倍ドット・5コマ・透過・33色)。ストライカー=rogue=`player-scavenger-run-*`。
 - ベイク: ÷4(格子は4pxに揃っていた)→上下は全コマ共通の範囲→頭の中心xを各コマ39へ(既存と同じ)→既存と同じ78×64(足元は下端)。`player-scavenger-run-0..4` 差し替え(コマ数同じ=並び `RUN_SEQ_5` のまま・コードの変更なし)。元シートは `art_src/originals/striker/run-sheet-v2.png`。原盤台帳を更新(assets:check OK)。

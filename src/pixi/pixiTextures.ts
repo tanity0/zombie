@@ -369,7 +369,7 @@ const AVATAR_HEAD_TRACK_NAMES: string[] = [
     ...(prefix === 'magnum' ? [`player-${prefix}-walk-5`, `player-${prefix}-run-5`] : []), // マークスマンの歩き・走り6コマ
     // しゃがみ(死亡固定絵)/攻撃ポーズ(近接構え→振り抜き。死亡固定絵は`-ready`を共有)。
     `player-${prefix}-melee-ready`, `player-${prefix}-melee-swing`,
-    ...(prefix === 'shotgun' || prefix === 'striker'
+    ...(prefix === 'shotgun' || prefix === 'striker' || prefix === 'scavenger'
       ? [`player-${prefix}-run-0`, `player-${prefix}-run-1`, `player-${prefix}-run-2`, `player-${prefix}-run-3`, `player-${prefix}-run-4`, `player-${prefix}-run-5`]
       : [`player-${prefix}-run-0`, `player-${prefix}-run-1`, `player-${prefix}-run-2`, `player-${prefix}-run-3`, `player-${prefix}-run-4`]),
   ]),
@@ -453,6 +453,7 @@ export const ensureTextures = (): Promise<void> => {
       'player-scavenger-run-2',
       'player-scavenger-run-3',
       'player-scavenger-run-4',
+      'player-scavenger-run-5', // ストライカーの走りは6コマ(社長支給2026-10-08)
       'player-shotgun-run-0',
       'player-shotgun-run-1',
       'player-shotgun-run-2',

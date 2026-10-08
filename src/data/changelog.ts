@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4933', items: ['ストライカーの走る姿を、より滑らかな新しい絵に差し替えた'] },
   { version: '0.25.4932', items: ['ストライカーの走る姿が新しい絵になった'] },
   { version: '0.25.4931', items: ['ストライカーの立ち姿が新しい絵になった'] },
   { version: '0.25.4930', items: ['PCでも、プレイヤーと軍人・敵の大きさの釣り合いがスマホと同じになった'] },

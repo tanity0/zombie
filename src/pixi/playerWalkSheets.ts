@@ -34,7 +34,7 @@ export const WALK_SHEET_SEQUENCES: ReadonlyArray<{ prefix: string; sequence: rea
   { prefix: 'player-magnum-run', sequence: RUN_SEQ_6 }, // マークスマンの走り6コマ(社長支給2026-10-08)
   // スカベンジャー(necromancer=striker接頭辞)の走り: 社長支給2026-09-30で6コマへ差し替え。
   { prefix: 'player-striker-run', sequence: RUN_SEQ_6 },
-  { prefix: 'player-scavenger-run', sequence: RUN_SEQ_5 },
+  { prefix: 'player-scavenger-run', sequence: RUN_SEQ_6 }, // ストライカーの走り6コマ(社長支給2026-10-08)
   { prefix: 'player-shotgun-run', sequence: RUN_SEQ_6 },
   // 武将セット(特殊3点)フル装備の立ち絵。小烏丸ありは刀(赤)・無しは銃(青)の**別シート**
   // (tintではない)。どちらも3コマなので同じ並びを使う。
