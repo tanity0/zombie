@@ -32164,6 +32164,16 @@ export class PixiScene {
     n.fog2.position.set(footX + n.drift * 0.7, footY + 2);
     n.fog2.scale.set((w0 * 0.78 / Math.max(1, tex2.width)) * b2x * swell, (h0 * 0.85 / Math.max(1, tex2.height)) * b2y * swell);
     n.fog2.alpha = HERO_FOG_ALPHA2 * ascA;
+    // ★社長指示2026-10-08「霧を英雄より前に出して」: 霧2枚は本体(と被弾の白い光)の**前**に置く。
+    // 赤い予告(tele)・体力バー(overlay)はその上のまま=予告が霧に隠れない。子の順は毎フレーム確かめる
+    // (本体の container に後から足される絵があっても、霧は常に被弾の光のすぐ上)。
+    {
+      const c = view.container;
+      for (const sp of [n.fog2, n.fog]) {
+        const hi = c.getChildIndex(view.hitFlash);
+        if (c.getChildIndex(sp) < hi) c.setChildIndex(sp, hi);
+      }
+    }
     n.motes.clear();
     // 跳んだ所に残る霧(800msで薄れる)。
     const tu = (now - n.trailAt) / 800;
