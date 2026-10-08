@@ -1,15 +1,15 @@
-// 寄り演目(処刑カメラ)の部品スイッチ。**開発用**(社長がタイトル画面で切り分けるためのもの)。
-// research/CINEMATIC_CAMERA.md §2-6/§6/§8。既定は全部「入」=今の見え方。
+// 寄り演目(処刑カメラ)の部品スイッチ。**開発用**。research/CINEMATIC_CAMERA.md §2-6/§6/§8。既定は全部「入」=今の見え方。
 //
 // なぜ store ではなくここか: **pixiScene が毎フレーム読む**ので、React の再描画を起こさない素の変数で持つ
-// (CLAUDE.md「React re-render discipline」)。値の出どころは URL > 端末の保存 > 既定 の順。
+// (CLAUDE.md「React re-render discipline」)。値の出どころは URL > 既定 の順。
 //
-// ★URLのツマミ(`?cinepush=0` 等)は従来どおり効く。**URLで明示された項目は画面から変えられない**
-// (URLが正=切り分け中に画面側の保存で上書きされない)。
+// ★タイトル画面の CAMERA パネルは撤去した(社長指示2026-10-08「スタートメニューのカメラってもういらなくない?」→「はい」)。
+// 切り分けは URL のツマミ(`?cineorbit=0` 等)だけで行う。パネルが端末に保存していた入/切は読まず、起動時に消す
+// (画面から戻す手段が無くなったため=切ったまま固まるのを防ぐ)。
 
 export type CineToggleKey = 'cinecam' | 'cineorbit' | 'cineplates' | 'cinedemo';
 
-/** 画面に出す並び順と説明(タイトル画面のパネルが引く台帳=文言を2箇所で持たない)。 */
+/** 部品の一覧と説明(URLのツマミ名=key)。 */
 export const CINE_TOGGLES: { key: CineToggleKey; label: string; hint: string }[] = [
   { key: 'cineorbit',  label: '横滑り',     hint: 'カメラが横へ流れる' },
   { key: 'cineplates', label: '近景の板',   hint: '縁に割り込む木の幹と霧' },
@@ -31,35 +31,13 @@ const urlValue = (key: CineToggleKey): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-const storedValue = (key: CineToggleKey): number | null => {
-  try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + key);
-    if (raw === null) return null;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : null;
-  } catch { return null; } // 端末のブラウザ設定で localStorage が読めない環境がある
-};
-
-/** URLで明示された項目は画面から変えられない(切り分け中に保存値で上書きしないため)。 */
-export const cineToggleLockedByUrl = (key: CineToggleKey): boolean => urlValue(key) !== null;
-
 const live: Record<CineToggleKey, number> = { ...DEFAULTS };
 for (const { key } of CINE_TOGGLES) {
-  live[key] = urlValue(key) ?? storedValue(key) ?? DEFAULTS[key];
+  live[key] = urlValue(key) ?? DEFAULTS[key];
+  try { localStorage.removeItem(STORAGE_PREFIX + key); } catch { /* 端末のブラウザ設定で localStorage が使えない環境がある */ }
 }
 
 /** 毎フレーム読む窓口(素の変数=React を起こさない)。 */
 export const cineToggle = (key: CineToggleKey): number => live[key];
 export const cineToggleOn = (key: CineToggleKey): boolean => live[key] !== 0;
 
-/** 画面から変える。URL指定がある項目は無視する。 */
-export const setCineToggle = (key: CineToggleKey, value: number): void => {
-  if (cineToggleLockedByUrl(key)) return;
-  live[key] = value;
-  try { localStorage.setItem(STORAGE_PREFIX + key, String(value)); } catch { /* ignore */ }
-};
-
-/** 全部を既定(=今の見え方)へ戻す。 */
-export const resetCineToggles = (): void => {
-  for (const { key } of CINE_TOGGLES) setCineToggle(key, DEFAULTS[key]);
-};

@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4921', items: ['タイトル画面の左下にあった開発用のボタンを外した'] },
   { version: '0.25.4920', items: ['拠点へ向かう軍人の足の運びを、プレイヤーが歩く速さとそろえた'] },
   { version: '0.25.4919', items: ['スカベンジャーの歩く姿が新しい絵になった'] },
   { version: '0.25.4918', items: ['近接攻撃の届く範囲を示す輪が、敵に当たる瞬間に光るようになった'] },
