@@ -1718,6 +1718,8 @@ const BURN_FLASH_PERIOD_MS = 520;
 const ICE_FLASH_TINT = 0x7fd4ff; // 氷鈍化中の薄い水色(v0.25.3276・α/周期は延焼と共通)
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
+// ストライカーの走りの後ろへの傾きに掛ける倍率(前への傾きは1のまま)。0=後ろへは傾かない(v0.25.4936)。
+const STRIKER_RUN_BACK_LEAN_MULT = tsNum('runbacklean', 0.3);
 // =============================================================================
 // ズーム時だけの遠近(社長2026-09-11「ズームになった時に画面が進行方向に遠近になると面白い」→「ズームはみてみたい」)。
 // 設計= research/FAKE_3D.md「第3弾」。常時の透視は読みを壊す(社長裁定「なし」)が、**寄りズームのイベントの約0.4秒だけ**
@@ -17226,6 +17228,13 @@ export class PixiScene {
       walkSqY = 1 + PLAYER_WALK_SQUASH * lift - PLAYER_WALK_SQUASH * 0.5 * (1 - lift);
       walkSqX = 1 - PLAYER_WALK_SQUASH * 0.8 * lift + PLAYER_WALK_SQUASH * 0.4 * (1 - lift);
       walkLean = step * PLAYER_WALK_LEAN_RAD;
+      // ★ストライカー(rogue)の走りだけ: 後ろへの傾き(進む向きと逆)を弱める=少し前のめりに見せる。前への傾きは増やさない
+      // (社長指示2026-10-08「後ろへの揺れを減らしたい(少し前のめりに見せるため)。前への揺れは増やさないで、
+      // できるだけ素のドットモーションで見せたい」)。rotation 正=頭が右=右向きの前傾。`?runbacklean=` で実機から詰める。
+      if (running && p.characterClass === 'rogue') {
+        const fwd = (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0)) ? -1 : 1;
+        if (walkLean * fwd < 0) walkLean *= STRIKER_RUN_BACK_LEAN_MULT;
+      }
     }
 
     // 行動の二次モーション(歩きと同じく静止スプライトに重ねる・視覚のみ・判定不変)。
