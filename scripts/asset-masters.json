@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "922 files / 復号後 約690MB",
+ "generatedFor": "923 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3449,68 +3449,74 @@
   "sprites/player-shotgun-run-0.png": {
    "w": 78,
    "h": 65,
-   "bytes": 1972,
-   "sha": "08a993a178d84319"
+   "bytes": 3909,
+   "sha": "d53bdecab24bc958"
   },
   "sprites/player-shotgun-run-1.png": {
    "w": 78,
    "h": 65,
-   "bytes": 1891,
-   "sha": "c855b4aa9e11bc6b"
+   "bytes": 3721,
+   "sha": "5c165becd1e4c6e8"
   },
   "sprites/player-shotgun-run-2.png": {
    "w": 78,
    "h": 65,
-   "bytes": 2155,
-   "sha": "3cbcec1f489c821a"
+   "bytes": 3655,
+   "sha": "d023371d94e56630"
   },
   "sprites/player-shotgun-run-3.png": {
    "w": 78,
    "h": 65,
-   "bytes": 2031,
-   "sha": "b1883616e8f1c74e"
+   "bytes": 3808,
+   "sha": "57d9f9d5bc2715ab"
   },
   "sprites/player-shotgun-run-4.png": {
    "w": 78,
    "h": 65,
-   "bytes": 2145,
-   "sha": "fe1b7233bedf382b"
+   "bytes": 3733,
+   "sha": "85e33417dd8b6d39"
   },
   "sprites/player-shotgun-run-5.png": {
    "w": 78,
    "h": 65,
-   "bytes": 2119,
-   "sha": "9ac48daf7c39fe9d"
+   "bytes": 3631,
+   "sha": "fe7a5ea86eb7f2db"
   },
   "sprites/player-shotgun-walk-0.png": {
    "w": 78,
    "h": 65,
-   "bytes": 5238,
-   "sha": "08d5d2f689f866a5"
+   "bytes": 3774,
+   "sha": "ae7cf2c69b7e08f0"
   },
   "sprites/player-shotgun-walk-1.png": {
    "w": 78,
    "h": 65,
-   "bytes": 5048,
-   "sha": "923c99a80ed55d45"
+   "bytes": 3744,
+   "sha": "4149fa159184503a"
   },
   "sprites/player-shotgun-walk-2.png": {
    "w": 78,
    "h": 65,
-   "bytes": 5059,
-   "sha": "1ff84fb2b8a37b3b"
+   "bytes": 3709,
+   "sha": "1dbe1ec7d779d508"
   },
   "sprites/player-shotgun-walk-3.png": {
    "w": 78,
    "h": 65,
-   "bytes": 4999,
-   "sha": "d9070f2c79cae6c5"
+   "bytes": 3614,
+   "sha": "41401992bd8c3576"
   },
   "sprites/player-shotgun-walk-4.png": {
    "w": 78,
    "h": 65,
-   "bytes": 5276,
-   "sha": "ee4574741a0c3d80"
+   "bytes": 3777,
+   "sha": "5980f78e3f53add2"
+  },
+  "sprites/player-shotgun-walk-5.png": {
+   "w": 78,
+   "h": 65,
+   "bytes": 3823,
+   "sha": "1ea4a68295afeb31"
   },
   "sprites/player-striker-game-0.png": {
    "w": 96,
