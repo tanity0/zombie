@@ -3335,8 +3335,8 @@
   "sprites/player-scavenger-idle.png": {
    "w": 78,
    "h": 64,
-   "bytes": 2374,
-   "sha": "b9a0984e67671a8b"
+   "bytes": 4466,
+   "sha": "405369b5cfecb169"
   },
   "sprites/player-scavenger-melee-ready.png": {
    "w": 78,
