@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.4922 — キャラ選択の歩きをゲーム本体と同じ並びに(社長「スカベンジャーの入れ替えてくれた歩き、キャラ選択画面だけモーションが早い」)【2026-10-08 09:03 JST】
+- 原因: キャラ選択の下段の歩き(MissionSelect.tsx WalkingClassSprite)は、ゲーム本体とは別に「5コマ往復 [0,1,2,3,4,3,2,1]」を決め打ちしていた。6コマ順送りのスカベンジャー(v0.25.4919)・7コマ順送りのマークスマン(v0.25.4913/4916)は、5コマ目までを行き来する=足が戻る動きが入り、速くちぐはぐに見えていた。
+- playerWalkSheets.ts `walkSequenceForIdleSrc`(新規・純関数): 待機絵のURLからゲーム本体と同じ並び(WALK_SHEET_SEQUENCES)を引く。台帳に無ければ5コマ往復。MissionSelect の再生と portraits.ts の先読みのコマ数をこれに揃えた(1周0.9秒は不変)。
+- テスト: playerWalkSheets.test に「4クラスの待機絵URL→ゲーム本体と同じ並び」を追加(13件 OK)。typecheck / lint 0 errors / 循環import 新規なし。
+- 状態変化: なし。
+
 ## v0.25.4921 — タイトル画面の CAMERA(処刑カメラの部品スイッチ)を撤去(社長「スタートメニューのカメラってもういらなくない？」→「はい」)【2026-10-08 09:00 JST】
 - TitleScreen.tsx: 左下の CAMERA ボタンと入/切パネルを削除(開発用の切り分け道具・2026-09-14 追加)。
 - utils/cineToggles.ts: 値の出どころを「URL > 端末の保存 > 既定」→「URL > 既定」に。パネルが端末に保存していた入/切は読まず、起動時に消す(画面から戻す手段が無くなるため=切ったまま固まるのを防ぐ)。`setCineToggle`/`resetCineToggles`/`cineToggleLockedByUrl` は使い手が無くなったので削除。URL のツマミ(`?cineorbit=0` `?cineplates=0` `?cinecam=0` `?cinedemo=1`)は従来どおり効く。

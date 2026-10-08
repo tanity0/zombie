@@ -5,6 +5,7 @@
 import type { CharacterClass } from '../types/game';
 import { CHARACTER_CLASSES } from './campaign';
 import { assetUrl } from '../config/assetUrl';
+import { walkSequenceForIdleSrc } from '../pixi/playerWalkSheets'; // 歩きの並び(ゲーム本体と同じ台帳)
 
 export const CLASS_PORTRAIT: Record<CharacterClass, string> = {
   warrior: 'portrait-shotgun',     // ヘビーガンナー(ショットガン)=タイトルの少女
@@ -40,14 +41,15 @@ export const preloadClassPortraits = (): Promise<void> => {
 export const menuWalkFrameSrc = (idleSrc: string, frame: number): string =>
   idleSrc.replace('-idle.png', `-walk-${frame}.png`);
 
-// クラスの待機+歩き5コマ(=キャラ選択の下段タイル)を先読みする。1枚ずつが小さいので
+// クラスの待機+歩きの全コマ(=キャラ選択の下段タイル)を先読みする。1枚ずつが小さいので
 // 全クラスまとめても軽い。これが無いと「選択画面を開いた瞬間に初取得」=更新直後は空欄になる。
 export const preloadClassWalkSprites = (): Promise<void> => {
   if (typeof Image === 'undefined') return Promise.resolve();
   const urls: string[] = [];
   for (const c of CHARACTER_CLASSES) {
     urls.push(c.sprite);
-    for (let f = 0; f < 5; f++) urls.push(menuWalkFrameSrc(c.sprite, f));
+    const frames = Math.max(...walkSequenceForIdleSrc(c.sprite)) + 1; // クラスごとのコマ数(ゲーム本体と同じ台帳)
+    for (let f = 0; f < frames; f++) urls.push(menuWalkFrameSrc(c.sprite, f));
   }
   return Promise.all(urls.map(preloadImage)).then(() => undefined);
 };

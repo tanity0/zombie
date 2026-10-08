@@ -45,3 +45,15 @@ export const WALK_SHEET_SEQUENCES: ReadonlyArray<{ prefix: string; sequence: rea
   { prefix: 'player-warlord-gun-walk', sequence: WALK_SEQ_WARLORD },
   { prefix: 'player-warlord-katana-walk', sequence: WALK_SEQ_WARLORD },
 ];
+
+/**
+ * 待機絵のURL(…/player-<名>-idle.png)から、その人の**歩きの並び**を引く(キャラ選択の下段の歩きが使う)。
+ * ゲーム本体と同じ並び(WALK_SHEET_SEQUENCES)を見る=絵を差し替えてコマ数が変わってもメニューだけ取り残されない
+ * (社長指摘2026-10-08「スカベンジャーの歩き、キャラ選択画面だけモーションが早い」: メニューは5コマ往復に決め打ちだった)。
+ * 台帳に無ければ5コマ往復(従来どおり)。
+ */
+export const walkSequenceForIdleSrc = (idleSrc: string): readonly number[] => {
+  const m = /(player-[a-z-]+)-idle\.png/.exec(idleSrc);
+  const hit = m ? WALK_SHEET_SEQUENCES.find(s => s.prefix === `${m[1]}-walk`) : undefined;
+  return hit ? hit.sequence : WALK_SEQ_5;
+};

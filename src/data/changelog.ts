@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4922', items: ['キャラ選択画面で歩くスカベンジャーとマークスマンの足の運びが、ゲーム中と同じになった'] },
   { version: '0.25.4921', items: ['タイトル画面の左下にあった開発用のボタンを外した'] },
   { version: '0.25.4920', items: ['拠点へ向かう軍人の足の運びを、プレイヤーが歩く速さとそろえた'] },
   { version: '0.25.4919', items: ['スカベンジャーの歩く姿が新しい絵になった'] },

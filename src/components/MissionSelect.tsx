@@ -120,6 +120,7 @@ import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
+import { walkSequenceForIdleSrc } from '../pixi/playerWalkSheets';
 import { TUTORIALS, tutorialLinesFor, type TutorialId } from '../data/tutorials';
 import { usePlayDevice } from '../utils/inputDevice';
 import TutorialMedia from './TutorialMedia';
@@ -195,7 +196,7 @@ interface MissionSelectProps {
 // (社長指示v0.25.1578)。メニュー画面限定の孤立小コンポーネント=再レンダは自分(56ms間隔)に閉じる
 // (CLAUDE.md再レンダ規律。プレイ中のHUDではないので毎フレーム相当でも影響なし)。
 // コマのURLは idle スプライトURLの命名規則(…-idle.png → …-walk-N.png)から導出(全4クラス共通規則)。
-const MENU_WALK_PINGPONG = [0, 1, 2, 3, 4, 3, 2, 1]; // pixiScene の playerWalkSequence と同じ並び
+// 並びはゲーム本体と同じ台帳(walkSequenceForIdleSrc)から引く=クラスごとのコマ数・順送り/往復に従う(v0.25.4922)。
 const MENU_WALK_CYCLE_MS = 900;                      // 同 PINGPONG_WALK_CYCLE_MS
 const MENU_WALK_DISPLAY_H = 50;                      // 旧 max-h-[50px] と同じ表示高さ
 const MENU_WALK_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('menuwalk') !== '0'; // ?menuwalk=0 で静止画へ復帰
@@ -216,13 +217,15 @@ const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: numbe
     if (!ctx) return;
     ctx.imageSmoothingEnabled = false; // 焼きは nearest(ドットの太りを全コマ均一に)
     const imgs: HTMLImageElement[] = [];
-    for (let f = 0; f < 5; f++) { const im = new Image(); im.src = menuWalkFrameSrc(idleSrc, f); imgs.push(im); }
+    const seq = walkSequenceForIdleSrc(idleSrc);
+    const frames = Math.max(...seq) + 1;
+    for (let f = 0; f < frames; f++) { const im = new Image(); im.src = menuWalkFrameSrc(idleSrc, f); imgs.push(im); }
     let lastStep = -1;
-    const stepMs = MENU_WALK_CYCLE_MS / MENU_WALK_PINGPONG.length;
+    const stepMs = MENU_WALK_CYCLE_MS / seq.length;
     const draw = () => {
       const step = Math.floor((Date.now() % MENU_WALK_CYCLE_MS) / stepMs);
       if (step === lastStep) return;
-      const im = imgs[MENU_WALK_PINGPONG[step] ?? 0];
+      const im = imgs[seq[step] ?? 0];
       if (!im || !im.complete || im.naturalWidth === 0) return; // 未ロード中は前コマ表示のまま(チラつき防止)
       lastStep = step;
       // 高解像度素材(社長決定v0.25.1763・NPC方式)の受け入れ: 素材がキャンバスより大きい=縮小になる時だけ

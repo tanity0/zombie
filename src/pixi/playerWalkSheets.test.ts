@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { WALK_SHEET_SEQUENCES, WALK_SEQ_WARLORD } from './playerWalkSheets';
+import { WALK_SHEET_SEQUENCES, WALK_SEQ_WARLORD, WALK_SEQ_5, walkSequenceForIdleSrc } from './playerWalkSheets';
 
 // 実バグ(v0.25.2316): 武将立ち絵は3コマしか無いのに、クラス絵の5コマ用の並び
 // [0,1,2,3,4,3,2,1] をそのまま渡していた。存在しないコマ番号は getTexture が null を返し、
@@ -44,5 +44,15 @@ describe('プレイヤー歩行/走行のコマ並びと素材の突き合わせ
     expect(gun?.sequence).toBe(WALK_SEQ_WARLORD);
     expect(katana?.sequence).toBe(WALK_SEQ_WARLORD);
     expect(frameCount('player-warlord-gun-walk')).toBe(frameCount('player-warlord-katana-walk'));
+  });
+});
+
+describe('キャラ選択の歩き(walkSequenceForIdleSrc)はゲーム本体と同じ並び', () => {
+  it('待機絵のURLから、その人の歩きの並びを引く。台帳に無ければ5コマ往復', () => {
+    for (const { prefix, sequence } of WALK_SHEET_SEQUENCES.filter(s => /^player-[a-z]+-walk$/.test(s.prefix))) {
+      const idle = `/zombie/sprites/${prefix.replace(/-walk$/, '-idle')}.png?v=abc`;
+      expect(walkSequenceForIdleSrc(idle)).toBe(sequence);
+    }
+    expect(walkSequenceForIdleSrc('/zombie/sprites/unknown.png')).toBe(WALK_SEQ_5);
   });
 });
