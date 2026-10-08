@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "925 files / 復号後 約690MB",
+ "generatedFor": "924 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3293,44 +3293,38 @@
   "sprites/player-magnum-walk-0.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5157,
-   "sha": "c22087f370305e29"
+   "bytes": 5257,
+   "sha": "380102a0dc6af361"
   },
   "sprites/player-magnum-walk-1.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4843,
-   "sha": "d9b1bd9984b4974d"
+   "bytes": 5180,
+   "sha": "d27fb3542038ad0d"
   },
   "sprites/player-magnum-walk-2.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4755,
-   "sha": "35c6a488882362c3"
+   "bytes": 5351,
+   "sha": "ab18df28f2cf48b9"
   },
   "sprites/player-magnum-walk-3.png": {
    "w": 78,
    "h": 64,
-   "bytes": 5003,
-   "sha": "d376983358f9ae59"
+   "bytes": 5184,
+   "sha": "31d472e2637eb62a"
   },
   "sprites/player-magnum-walk-4.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4910,
-   "sha": "07fc9ee7f4eb90eb"
+   "bytes": 5141,
+   "sha": "95d7aca2cca4c549"
   },
   "sprites/player-magnum-walk-5.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4911,
-   "sha": "53ab510bf423c92f"
-  },
-  "sprites/player-magnum-walk-6.png": {
-   "w": 78,
-   "h": 64,
-   "bytes": 4878,
-   "sha": "36a20e2ce7667ec7"
+   "bytes": 5174,
+   "sha": "363b2e43c66a41a4"
   },
   "sprites/player-scavenger-game-0.png": {
    "w": 96,
