@@ -1878,7 +1878,7 @@ const HERO_FOG_MULT = tsNum('herofog', 1);
 // ★社長指示2026-10-08「黒い霧の透明度90%にして」=不透明度90%(1割だけ透ける)。霧は2枚重ねなので、
 // 重なった一番濃い所が90%になるよう1枚ずつは 1−√(1−0.9)≒0.68。1枚だけで出る霧(跳んだ跡・去った跡)は0.9。
 // `?herofogop=`(0〜1)で全体の不透明度、`?herofog=` は従来どおり倍率。
-const HERO_FOG_OPACITY = Math.max(0, Math.min(1, tsNum('herofogop', 0.9) * HERO_FOG_MULT));
+const HERO_FOG_OPACITY = Math.max(0, Math.min(1, tsNum('herofogop', 0.8) * HERO_FOG_MULT)); // 社長「80%にして」(v0.25.4945)
 const HERO_FOG_ALPHA = HERO_FOG_OPACITY;                       // 1枚だけで出る霧
 const HERO_FOG_LAYER_ALPHA = 1 - Math.sqrt(1 - HERO_FOG_OPACITY); // 2枚重ねの各1枚
 const HERO_FOG_ALPHA2 = HERO_FOG_LAYER_ALPHA;
