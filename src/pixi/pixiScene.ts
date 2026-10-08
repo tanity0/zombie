@@ -1872,6 +1872,10 @@ const WIRE_SLAM_JUMP_H = 92;          // アンカー大技の見た目ジャン
 // 判定/座標には影響しない描画専用値(叩き台・実機調整前提)。スラムより短い離脱動作なので控えめ。
 const WIRE_HOP_JUMP_H = 46;
 const WIRE_HOP_DUST_SCALE = 1.4;      // ホップ着地の砂埃スケール(叩き台)。
+// 英雄(変異)の足元の黒い霧の濃さ(1枚目/重ねる2枚目)。`?herofog=` で両方に掛ける倍率(社長の実機調整用)。
+const HERO_FOG_MULT = tsNum('herofog', 1);
+const HERO_FOG_ALPHA = Math.min(1, 1.0 * HERO_FOG_MULT);
+const HERO_FOG_ALPHA2 = Math.min(1, 0.85 * HERO_FOG_MULT);
 // 走りの蹴り出しの砂埃(社長指示2026-10-08「走りの足元後ろに砂煙」→「はい」)。4クラスの走りの6コマのうち
 // 後ろ足が地面を蹴って離れるコマ(2・5=足が一番後ろへ来るコマ・シートの足元の位置を実測)で、足元の少し後ろに1つ出す。
 // 判定ゼロの「派手さの絵」。大きさ=体の大きさ×倍率(`?rundust=`・0で出さない)。
@@ -31941,7 +31945,7 @@ export class PixiScene {
    * 時計は `gameTime`(判定と同じ・ヒットストップで止まる)。`lift` を持たない州なら0。
    */
   /** 英雄の足元の霧(本体の container の一番下に置く=本体と一緒に消える)と黒い粒。 */
-  private heroFogNodes = new Map<string, { fog: Sprite; trail: Sprite; motes: Graphics; drift: number; trailAt: number; trailX: number; trailY: number; landSwellAt: number; wasAir: boolean; roarSwelled: boolean }>();
+  private heroFogNodes = new Map<string, { fog: Sprite; fog2: Sprite; trail: Sprite; motes: Graphics; drift: number; trailAt: number; trailX: number; trailY: number; landSwellAt: number; wasAir: boolean; roarSwelled: boolean }>();
   /** 去った英雄の霧を3秒その場に残すための最後の位置(描画だけ)。 */
   private heroFogLast: { at: number; x: number; y: number; w: number; h: number; depart: boolean; tex: Texture } | null = null;
   private heroFogLeft: { sp: Sprite; at: number } | null = null;
@@ -31963,7 +31967,7 @@ export class PixiScene {
     if (left) {
       const u = (now - left.at) / 3000;
       if (u >= 1) { left.sp.destroy(); this.heroFogLeft = null; }
-      else { left.sp.alpha = 0.6 * (1 - u) * (1 - u); left.sp.scale.x *= 1.0006; }
+      else { left.sp.alpha = HERO_FOG_ALPHA * (1 - u) * (1 - u); left.sp.scale.x *= 1.0006; }
     }
   }
 
@@ -31977,17 +31981,19 @@ export class PixiScene {
     const slices = this.sheetSlices('mutant-hero-fog', 16);
     let n = this.heroFogNodes.get(e.id);
     if (!n || n.fog.parent !== view.container) {
-      if (n) { n.fog.destroy(); n.trail.destroy(); n.motes.destroy(); }
+      if (n) { n.fog.destroy(); n.fog2.destroy(); n.trail.destroy(); n.motes.destroy(); }
       const fog = new Sprite(); fog.anchor.set(0.5, 0.82);
+      const fog2 = new Sprite(); fog2.anchor.set(0.5, 0.82);
       const trail = new Sprite(); trail.anchor.set(0.5, 0.82); trail.visible = false;
       const motes = new Graphics();
       view.container.addChildAt(trail, 0);
       view.container.addChildAt(fog, 1);
+      view.container.addChildAt(fog2, 2);
       view.container.addChild(motes);
-      n = { fog, trail, motes, drift: 0, trailAt: -1e9, trailX: 0, trailY: 0, landSwellAt: -1e9, wasAir: false, roarSwelled: false };
+      n = { fog, fog2, trail, motes, drift: 0, trailAt: -1e9, trailX: 0, trailY: 0, landSwellAt: -1e9, wasAir: false, roarSwelled: false };
       this.heroFogNodes.set(e.id, n);
     }
-    if (!slices) { n.fog.visible = false; n.trail.visible = false; n.motes.clear(); return; }
+    if (!slices) { n.fog.visible = false; n.fog2.visible = false; n.trail.visible = false; n.motes.clear(); return; }
     const tex = slices[Math.floor(now / 100) % 16];
     const p2 = e.heroPhase2 === true;
     const depth = this.depthScaleEnemy(footY);
@@ -32017,11 +32023,18 @@ export class PixiScene {
     const ascA = e.bossState === 'hero-ascend' ? heroAscendLook(gameTime - (e.heroStateAt ?? gameTime)).alpha : 1;
     n.fog.position.set(footX + n.drift, footY + 2);
     n.fog.scale.set((w0 / Math.max(1, tex.width)) * breathX * swell, (h0 / Math.max(1, tex.height)) * breathY * swell);
-    n.fog.alpha = 0.6 * ascA;
-    // 霧の縁だけ、わずかに明るい灰(骨色)を重ねて輪郭を出す=影の滲みと見分ける。
+    // ★社長報告2026-10-08「英雄、足元の黒い霧が入ってない」: 支給の霧は薄い黒(平均で約3割の濃さ)なので、0.6倍では夜の地面に
+    // 溶けて見えなかった。最大の濃さにし、コマをずらした2枚目(少し小さく・別の周期で呼吸)を重ねて芯を濃くする。
+    // 縁に重ねていた骨色の輪郭線は、暗い地面ではそれだけが「灰色の輪」に見えていたので外した(社長「はい」)。
+    n.fog.alpha = HERO_FOG_ALPHA * ascA;
+    const tex2 = slices[(Math.floor(now / 100) + 8) % 16];
+    const b2x = 1 + 0.07 * Math.sin((now / 2300) * Math.PI * 2 + 2.1), b2y = 1 + 0.07 * Math.sin((now / 3700) * Math.PI * 2 + 0.4);
+    n.fog2.texture = tex2;
+    n.fog2.visible = !air;
+    n.fog2.position.set(footX + n.drift * 0.7, footY + 2);
+    n.fog2.scale.set((w0 * 0.78 / Math.max(1, tex2.width)) * b2x * swell, (h0 * 0.85 / Math.max(1, tex2.height)) * b2y * swell);
+    n.fog2.alpha = HERO_FOG_ALPHA2 * ascA;
     n.motes.clear();
-    n.motes.ellipse(footX + n.drift, footY + 2 - h0 * 0.3, w0 * 0.42 * breathX * swell, h0 * 0.36 * breathY * swell)
-      .stroke({ width: Math.max(6, h0 * 0.22), color: 0xe7dccb, alpha: air ? 0 : 0.07 * ascA });
     // 跳んだ所に残る霧(800msで薄れる)。
     const tu = (now - n.trailAt) / 800;
     if (tu >= 0 && tu < 1) {
@@ -32029,7 +32042,7 @@ export class PixiScene {
       n.trail.texture = tex;
       n.trail.position.set(n.trailX, n.trailY + 2);
       n.trail.scale.set(w0 / Math.max(1, tex.width) * (1 + 0.15 * tu), h0 / Math.max(1, tex.height) * (1 + 0.1 * tu));
-      n.trail.alpha = 0.6 * (1 - tu) * (1 - tu);
+      n.trail.alpha = HERO_FOG_ALPHA * (1 - tu) * (1 - tu);
     } else n.trail.visible = false;
     // 黒い粒: 霧の上辺から常に立ち上る(1.2〜2.0秒・上へ40〜90px・横に揺らぐ)。派手さの絵=見える大きさ(4〜6px)。
     const count = p2 ? 14 : 7;
