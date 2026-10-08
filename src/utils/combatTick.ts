@@ -72,6 +72,7 @@ import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_A
 import { distToBandRect } from './geometry';
 import { circleHitsFan } from './heroScript';
 import { applyBlastToHero, applyHeroBlastToEnemies, markHeroHit, heroAsTarget, damageHeroByEnemy, hitHeroShape } from './heroBlast'; // research/MUTANT_HERO.md
+import { knockbackUntilAfterStop } from './playerHurt'; // 押し出しはヒットストップが明けてから(社長指摘2026-10-08)
 import { applyBlastToEscorts, applyEnemyProjectilesToEscorts, hitEscortShape } from './escortHit'; // research/ESCORT_TARGETED.md §3: 進軍NPCも同じ入口で被弾
 import { escortBodyRect, escortCenter, ESCORT_BODY_SIZE } from './escortHealth';
 import { escortAggroCandidates, hittableEscorts } from './escortView';
@@ -360,7 +361,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           ...st.player,
           knockbackVx: (ddx / dd) * kbSp,
           knockbackVy: (ddy / dd) * kbSp,
-          knockbackUntil: Date.now() + kbMs,
+          // 押し出しはヒットストップ(damagePlayer が張った)が明けてから始める(社長指摘2026-10-08「ジャンプ攻撃食らっても押し出されなくなってる」)。
+          knockbackUntil: knockbackUntilAfterStop(Date.now(), st.hitstopUntil, kbMs),
           knockbackMs: kbMs,
         } }));
         if (died) fx.triggerPlayerDeath(bpcx, bpcy);

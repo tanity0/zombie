@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked , isHurtMoveLocked } from './playerHurt';
+import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked , isHurtMoveLocked, knockbackUntilAfterStop } from './playerHurt';
 
 describe('playerHurtTier — 被弾の重さで段が変わる', () => {
   it('素の敵の攻撃力(最大HP120)が狙いどおりの段に落ちる', () => {
@@ -108,5 +108,13 @@ describe('isHurtGunLocked — 被弾の復帰ディレイ(銃だけ止まる)', 
 
   it('打刻が未来(時計のズレ)でも止めない', () => {
     expect(isHurtGunLocked({ lastHurtAt: 10000, lastHurtTier: 1 }, 9000)).toBe(false);
+  });
+});
+
+describe('被弾ノックバックはヒットストップが明けてから(社長指摘2026-10-08「ジャンプ攻撃食らっても押し出されなくなってる」)', () => {
+  it('ストップ中なら明けた時刻から押し出しの長さを数える。ストップが無ければ今から', () => {
+    expect(knockbackUntilAfterStop(1000, 1190, 260)).toBe(1450);
+    expect(knockbackUntilAfterStop(1000, 0, 260)).toBe(1260);
+    expect(knockbackUntilAfterStop(1000, 900, 440)).toBe(1440); // もう明けているストップは関係ない
   });
 });

@@ -109,7 +109,7 @@ import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-
 import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMilestoneCrossed, killBannerDurationMs } from '../utils/comboMilestone';
-import { playerHurtTier, playerHurtReactionOf, isHurtMoveLocked } from '../utils/playerHurt';
+import { playerHurtTier, playerHurtReactionOf, isHurtMoveLocked, knockbackUntilAfterStop } from '../utils/playerHurt';
 import { isEnemyAttacking } from '../utils/combatFeel';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
@@ -11119,6 +11119,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       // v0.25.2630: メーカーの無敵は**HPを減らさない**。amount は満額のまま通してあるので、
       // ダメージ数字・フラッシュ・シェイク・ノックバックは通常どおり出る=「当たった」が必ず分かる。
       const newHealth = makerInvincible ? state.player.health : Math.max(0, state.player.health - amount);
+      // ★被弾の「ストップ」(社長指示2026-09-16)。**段ごとに長さが変わる**(軽くかすっただけなら短い)。
+      // 既に走っているストップ(カウンター成立等)の方が長ければ**上書きしない**(短い方で切り詰めない)。
+      // ★HP0(死亡演出中)には張らない(§14-4-8 A-1 の再発防止テストが守っている不変条件)。
+      // HP0でも damagePlayer は i-frame を張り直すので amount>0 が立ち続ける=ガードが無いと
+      // 死亡演出のあいだ1000msごとに停止が入る。**とどめの一撃には入る**(被弾前のHPで見るため)。
+      const stopUntilNext = (amount > 0 && state.player.health > 0)
+        ? Math.max(state.hitstopUntil, Date.now() + playerHurtReactionOf(hurtTier).stopMs)
+        : state.hitstopUntil;
       return {
         // 被弾総量(survivalScore用)。実ダメージ(amount>0)のみ加算。
         // ★v0.25.3555: あわせて**被弾回数**と**HP最低値**も記録する(AI実機テストの計器)。
@@ -11145,14 +11153,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §5.23 M22 C1: 被弾源→プレイヤーのノックバック向きへ揺れを寄せる(?dirfx=0で従来の等方揺れ)。
         shakeDirX: amount > 0 ? (DIRFX_ENABLED ? dirX : 0) : state.shakeDirX,
         shakeDirY: amount > 0 ? (DIRFX_ENABLED ? dirY : 0) : state.shakeDirY,
-        // ★被弾の「ストップ」(社長指示2026-09-16)。**段ごとに長さが変わる**(軽くかすっただけなら短い)。
-        // 既に走っているストップ(カウンター成立等)の方が長ければ**上書きしない**(短い方で切り詰めない)。
-        // ★HP0(死亡演出中)には張らない(§14-4-8 A-1 の再発防止テストが守っている不変条件)。
-        // HP0でも damagePlayer は i-frame を張り直すので amount>0 が立ち続ける=ガードが無いと
-        // 死亡演出のあいだ1000msごとに停止が入る。**とどめの一撃には入る**(被弾前のHPで見るため)。
-        hitstopUntil: (amount > 0 && state.player.health > 0)
-          ? Math.max(state.hitstopUntil, Date.now() + playerHurtReactionOf(hurtTier).stopMs)
-          : state.hitstopUntil,
+        hitstopUntil: stopUntilNext, // 理由は上の stopUntilNext
         player: {
           ...state.player,
           health: newHealth,
@@ -11186,7 +11187,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             : state.player.iframeBySource,
           knockbackVx: kbApply ? kbVx : state.player.knockbackVx,
           knockbackVy: kbApply ? kbVy : state.player.knockbackVy,
-          knockbackUntil: kbApply ? kbNow + playerHurtReactionOf(hurtTier).kbMs : state.player.knockbackUntil,
+          // 押し出しはストップが明けてから始める(ストップ中に押し出しの時計だけ減って出だしが消えていた=社長指摘2026-10-08)。
+          knockbackUntil: kbApply ? knockbackUntilAfterStop(kbNow, stopUntilNext, playerHurtReactionOf(hurtTier).kbMs) : state.player.knockbackUntil,
           // ★持続時間も**必ず一緒に書く**(v0.25.2653)。技ごとの長い押し出しの直後に通常の被弾が
           // 来た時、ここを書かないと**前の技の持続時間で減衰が計算され**、初速が合わなくなる。
           knockbackMs: kbApply ? playerHurtReactionOf(hurtTier).kbMs : state.player.knockbackMs,

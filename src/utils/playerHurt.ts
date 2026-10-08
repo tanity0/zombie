@@ -81,6 +81,15 @@ export const playerHurtTier = (damage: number, maxHealth: number): 0 | 1 | 2 => 
 export const playerHurtReactionOf = (tier: number | undefined): PlayerHurtReaction =>
   PLAYER_HURT_TIERS[tier === 1 || tier === 2 ? tier : 0];
 
+/**
+ * 被弾ノックバックの終わりの時刻(Date.now 系)。**ヒットストップが明けてから**押し出しを始める。
+ * ストップ中はシミュレーションが止まる(プレイヤーは動かない)のに、押し出しの時計は実時間で減るため、
+ * 旧実装は一番速い出だしをストップの間に使い切っていた(重い被弾=ストップ190ms・押し出し260〜440ms)。
+ * 社長指摘2026-10-08「ジャンプ攻撃食らっても押し出されなくなってる」。
+ */
+export const knockbackUntilAfterStop = (now: number, stopUntil: number, kbMs: number): number =>
+  Math.max(now, stopUntil) + kbMs;
+
 // ---------------------------------------------------------------------------------------------
 // ★被弾の復帰ディレイ(社長指示2026-09-16「食らった時に多少動けるようになるのにディレイが
 //   お互いに必要な気がする」→「はい」)
