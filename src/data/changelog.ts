@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4944', items: ['英雄(変異)の足元の黒い霧が少しだけ透け、霧の奥に脚がうっすら見える'] },
   { version: '0.25.4943', items: ['英雄(変異)の足元の黒い霧が体の手前にかかり、脚が霧に沈んで見える'] },
   { version: '0.25.4942', items: ['英雄(変異)の足元の黒い霧が、透けない濃い霧になった'] },
   { version: '0.25.4941', items: ['吹き飛ばされると、地面を擦った跡に砂煙が尾を引く。軍人も同じ', '雪原では走った時の砂煙が白い雪しぶきに見える'] },

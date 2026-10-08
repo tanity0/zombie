@@ -1875,8 +1875,13 @@ const WIRE_HOP_JUMP_H = 46;
 const WIRE_HOP_DUST_SCALE = 1.4;      // ホップ着地の砂埃スケール(叩き台)。
 // 英雄(変異)の足元の黒い霧の濃さ(1枚目/重ねる2枚目)。`?herofog=` で両方に掛ける倍率(社長の実機調整用)。
 const HERO_FOG_MULT = tsNum('herofog', 1);
-const HERO_FOG_ALPHA = Math.min(1, 1.0 * HERO_FOG_MULT);
-const HERO_FOG_ALPHA2 = Math.min(1, 0.85 * HERO_FOG_MULT);
+// ★社長指示2026-10-08「黒い霧の透明度90%にして」=不透明度90%(1割だけ透ける)。霧は2枚重ねなので、
+// 重なった一番濃い所が90%になるよう1枚ずつは 1−√(1−0.9)≒0.68。1枚だけで出る霧(跳んだ跡・去った跡)は0.9。
+// `?herofogop=`(0〜1)で全体の不透明度、`?herofog=` は従来どおり倍率。
+const HERO_FOG_OPACITY = Math.max(0, Math.min(1, tsNum('herofogop', 0.9) * HERO_FOG_MULT));
+const HERO_FOG_ALPHA = HERO_FOG_OPACITY;                       // 1枚だけで出る霧
+const HERO_FOG_LAYER_ALPHA = 1 - Math.sqrt(1 - HERO_FOG_OPACITY); // 2枚重ねの各1枚
+const HERO_FOG_ALPHA2 = HERO_FOG_LAYER_ALPHA;
 // ★社長指示2026-10-08「霧の透明度0にして」: 支給の霧は1画素ごとの濃さ自体が薄い(最も濃い所でも約0.84・平均約0.28)ので、
 // 絵の濃さを起動後に1回だけ引き上げた写しを作って使う(原盤は触らない)。濃さ' = (濃さ/最大)^γ。γ<1 で薄い所ほど持ち上がり、
 // 芯は完全に不透明・縁は0へ落ちる(柔らかい輪郭は残る)。γ=1 で支給の絵のまま。`?herofoggamma=`。
@@ -32156,7 +32161,7 @@ export class PixiScene {
     // ★社長報告2026-10-08「英雄、足元の黒い霧が入ってない」: 支給の霧は薄い黒(平均で約3割の濃さ)なので、0.6倍では夜の地面に
     // 溶けて見えなかった。最大の濃さにし、コマをずらした2枚目(少し小さく・別の周期で呼吸)を重ねて芯を濃くする。
     // 縁に重ねていた骨色の輪郭線は、暗い地面ではそれだけが「灰色の輪」に見えていたので外した(社長「はい」)。
-    n.fog.alpha = HERO_FOG_ALPHA * ascA;
+    n.fog.alpha = HERO_FOG_LAYER_ALPHA * ascA;
     const tex2 = slices[(Math.floor(now / 100) + 8) % 16];
     const b2x = 1 + 0.07 * Math.sin((now / 2300) * Math.PI * 2 + 2.1), b2y = 1 + 0.07 * Math.sin((now / 3700) * Math.PI * 2 + 0.4);
     n.fog2.texture = tex2;
