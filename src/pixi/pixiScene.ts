@@ -1877,6 +1877,10 @@ const WIRE_HOP_DUST_SCALE = 1.4;      // ホップ着地の砂埃スケール(�
 const HERO_FOG_MULT = tsNum('herofog', 1);
 const HERO_FOG_ALPHA = Math.min(1, 1.0 * HERO_FOG_MULT);
 const HERO_FOG_ALPHA2 = Math.min(1, 0.85 * HERO_FOG_MULT);
+// ★社長指示2026-10-08「霧の透明度0にして」: 支給の霧は1画素ごとの濃さ自体が薄い(最も濃い所でも約0.84・平均約0.28)ので、
+// 絵の濃さを起動後に1回だけ引き上げた写しを作って使う(原盤は触らない)。濃さ' = (濃さ/最大)^γ。γ<1 で薄い所ほど持ち上がり、
+// 芯は完全に不透明・縁は0へ落ちる(柔らかい輪郭は残る)。γ=1 で支給の絵のまま。`?herofoggamma=`。
+const HERO_FOG_GAMMA = Math.max(0.05, tsNum('herofoggamma', 0.35));
 // 走りの蹴り出しの砂埃(社長指示2026-10-08「走りの足元後ろに砂煙」→「はい」)。4クラスの走りの6コマのうち
 // 後ろ足が地面を蹴って離れるコマ(2・5=足が一番後ろへ来るコマ・シートの足元の位置を実測)で、足元の少し後ろに1つ出す。
 // 判定ゼロの「派手さの絵」。大きさ=体の大きさ×倍率(`?rundust=`・0で出さない)。
@@ -32031,6 +32035,45 @@ export class PixiScene {
    * 放物線 4u(1-u) で=踏み切りで最も速く上がり、頂点で止まり、落ちながら加速して州の終わり(着地)で0。
    * 時計は `gameTime`(判定と同じ・ヒットストップで止まる)。`lift` を持たない州なら0。
    */
+  /** 英雄の霧のシートを、濃さを引き上げた写しにして16コマへ切る(1回だけ・912×22=約80KB)。読めない間は null。 */
+  private heroFogSlicesCache: Texture[] | null = null;
+  private heroFogSlices(): Texture[] | null {
+    if (this.heroFogSlicesCache) return this.heroFogSlicesCache;
+    const sheet = getTexture('mutant-hero-fog');
+    if (!sheet) return null;
+    const res = sheet.source.resource as CanvasImageSource | undefined;
+    let base: Texture = sheet;
+    if (res && typeof document !== 'undefined' && HERO_FOG_GAMMA !== 1) {
+      const c = document.createElement('canvas');
+      c.width = sheet.width; c.height = sheet.height;
+      const ctx = c.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(res, sheet.frame.x, sheet.frame.y, sheet.width, sheet.height, 0, 0, sheet.width, sheet.height);
+        const img = ctx.getImageData(0, 0, c.width, c.height);
+        const d = img.data;
+        let maxA = 1;
+        for (let i = 3; i < d.length; i += 4) if (d[i] > maxA) maxA = d[i];
+        // 一番薄い縁(最大の6%未満)は0のまま落とす=持ち上げるとコマの矩形の縁が見えてしまう。
+        // 色は霧の黒に揃える(薄い画素ほど色の値が不正確=持ち上げると灰色に浮くため)。
+        const cut = maxA * 0.06;
+        for (let i = 0; i < d.length; i += 4) {
+          const a0 = d[i + 3];
+          const u = a0 > cut ? (a0 - cut) / (maxA - cut) : 0;
+          d[i] = 14; d[i + 1] = 14; d[i + 2] = 17;
+          d[i + 3] = u > 0 ? Math.min(255, Math.round(255 * Math.pow(u, HERO_FOG_GAMMA))) : 0;
+        }
+        ctx.putImageData(img, 0, 0);
+        base = Texture.from(c);
+        base.source.scaleMode = 'linear';
+      }
+    }
+    const fw = Math.floor(base.width / 16), fh = base.height;
+    const ox = base === sheet ? sheet.frame.x : 0, oy = base === sheet ? sheet.frame.y : 0;
+    this.heroFogSlicesCache = Array.from({ length: 16 }, (_, k) =>
+      new Texture({ source: base.source, frame: new Rectangle(ox + k * fw, oy, fw, fh) }));
+    return this.heroFogSlicesCache;
+  }
+
   /** 英雄の足元の霧(本体の container の一番下に置く=本体と一緒に消える)と黒い粒。 */
   private heroFogNodes = new Map<string, { fog: Sprite; fog2: Sprite; trail: Sprite; motes: Graphics; drift: number; trailAt: number; trailX: number; trailY: number; landSwellAt: number; wasAir: boolean; roarSwelled: boolean }>();
   /** 去った英雄の霧を3秒その場に残すための最後の位置(描画だけ)。 */
@@ -32065,7 +32108,7 @@ export class PixiScene {
    * 判定ゼロ(派手さの絵)。負荷: スプライト2枚+粒10個以下の Graphics(強glowではない=投影影を落とさない)。
    */
   private drawHeroFog(e: Enemy, view: ActorView, footX: number, footY: number, gameTime: number, now: number): void {
-    const slices = this.sheetSlices('mutant-hero-fog', 16);
+    const slices = this.heroFogSlices();
     let n = this.heroFogNodes.get(e.id);
     if (!n || n.fog.parent !== view.container) {
       if (n) { n.fog.destroy(); n.fog2.destroy(); n.trail.destroy(); n.motes.destroy(); }
