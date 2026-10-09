@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.4952 — 被弾反撃の成立に赤い帯の「Counter!」(社長「こっちは赤ラインのcounterって入れて」)【2026-10-09 18:20 JST】
+- useGameLoop: `resolveRetaliateStrike` が命中した時(空振りでは出さない)、普通のカウンターと同じ `spawnCallout('Counter!', …)` を**赤い帯**(bg 0xdc2626・文字 #ffe4e4・保持と尺は普通のカウンターと同じ)で出す。普通のカウンターは青い帯(0x2563eb)のまま=色で見分ける。位置はプレイヤーの中心から相手の向きへ36px。
+- 検証: typecheck / lint 0 errors。ヘッドレスで骸骨に殴られ→右へはじく→命中の瞬間に spawnCallout('Counter!', '#ffe4e4', bg 0xdc2626) が1回呼ばれることを記録で確認。赤い帯の見た目は長く保持した写しを撮って目視。
+- 監査: 既存の演出(Counter! の帯)の色違い=新しい見え方ではない・社長の明示指示=出さない。
+- 状態変化: なし。
+
 ## v0.25.4951 — 被弾反撃(食らった直後に相手の方へはじいて倍返し)を実装(research/HIT_RETALIATION.md v3・社長「はい」)【2026-10-09 12:34 JST】
 - 実装(実装担当サブエージェント・Sonnet): 新設 src/utils/hitRetaliation.ts(窓の時刻・角度・相手の再確認・反撃不可状態・パッドのニュートラル履歴)+テスト2本(67件)・src/components/HitRetaliationCue.tsx(方向の縁の滲み・DOM)。gameStore: `damagePlayer` 第9引数 `retaliateFromId`・窓 `hitRetaliation`・`tryHitRetaliation`/`resolveRetaliateStrike`・`triggerCounter` の `retaliate` オプション(相手1体・CD門なし・サブの入口なし・最終値×2)・踏み込みの `lungeMs`・`hurtCancelledAt`(playerHurt の2関数と pixiScene の直読み2か所)。`PumpkinBlast.retaliate`。入口: VirtualJoystick(指離しの最初に判定・窓の中は乗車に数えない)/MouseControls(右クリック)/gamepad(ニュートラル起点+B/RB)。配線: (a)直接=接触・噛みつき・死神族の覆いかぶさり・トールの一閃/突き/払い/突進・ミゲル・ウリ・スリエル・ボンバーの鞭薙ぎ・マキの毬回し、(b)カプセル=削岩型の突き・伐採人の薙ぎ・賞金首の殴り・偶像の殴り・英雄・リバティの旗・ラファエルの跳び・ヨルムンガンドの叩きつけ・トールの着地。
 - 実装担当が決めたこと(設計書へ追記済み): 刀=一閃を相手に1回(一閃倍率×2・縮地と同型)/鞭=相手1体へ鞭×2/シーカー中は不可/成立時は指離しで撃つ銃も出さない ほか。

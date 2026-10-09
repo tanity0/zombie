@@ -9085,6 +9085,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (rt.finish && !killFxRt) playSfx('melee-finish');
             else if (rt.hit && !isWhipRt && !killFxRt) playSfx('slash-damage');
             if (rt.killed > 0) playEnemyDeath();
+            // 「Counter!」の文字を赤い帯で出す(社長指示2026-10-09「こっちは赤ラインのcounterって入れて」)。
+            // 普通のカウンターは青い帯(bg 0x2563eb)=被弾反撃は赤で見分ける。当たった時だけ(空振りに文字を出さない)。
+            if (rt.hit) {
+              const pr = useGameStore.getState().player;
+              const ld = pr.lastDirection ?? { x: 1, y: 0 };
+              const hx = pr.x + pr.width / 2 + ld.x * 36, hy = pr.y + pr.height / 2 + ld.y * 36;
+              useGameStore.getState().spawnCallout(hx, hy - 12, 'Counter!', '#ffe4e4', { bg: 0xdc2626, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+            }
           }
         }
         if (corridorRunIn) {
