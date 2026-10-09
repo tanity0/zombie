@@ -107,7 +107,11 @@ export const normalizeNamedNamesInText = (text: string): string => {
 export const NAMED_HP_MULT = 2;
 export const NAMED_DMG_MULT = 2;
 export const NAMED_SIZE_MULT = 1.5; // 表示・当たり判定とも(社長指定)
-export const NAMED_SPAWN_CHANCE = 0.6; // ラン開始時に1回だけ抽選(叩き台)
+// 社長指示2026-10-09「次回出撃時にネームド化」→ 6割の抽選をやめて**次の出撃で必ず出す**(旧0.6)。
+export const NAMED_SPAWN_CHANCE = 1; // ラン開始時に1回だけ抽選(1=必ず出る)
+// 社長指示2026-10-09「報酬は元の敵の4倍の中身」: 宿敵が落とす経験値とトレジャーの抽選率を、同じ型の普通の敵の4倍にする。
+// 討伐の決着報酬(ゴールド+トレジャー確定1個=resolveNamedFoeDefeat)はそのまま上に乗る。
+export const NAMED_LOOT_MULT = 4;
 export const NAMED_TREASURE_GOLD = 150; // 討伐報酬のゴールド(叩き台)
 export const NAMED_TINT = 0xffd700; // 専用tint=黄金(社長確定v0.25.1484。レアの青/紫/赤と被らない)
 

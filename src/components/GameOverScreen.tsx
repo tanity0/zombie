@@ -3,7 +3,10 @@ import TapWord from './TapWord';
 import { GameStats } from '../types/game';
 import { formatTime } from '../utils/renderUtils';
 import { calculateResultScore, topScoreItem } from '../utils/resultScoring';
-import { useGameStore, skillGoldRushMult } from '../store/gameStore';
+import { useGameStore, skillGoldRushMult, enemyDeathLabel } from '../store/gameStore';
+import { enemyArtName } from '../utils/enemyArt';
+import { normalizeNamedName } from '../utils/namedEnemy';
+import { shallow } from 'zustand/shallow';
 import { playSfx } from '../audio/audioManager';
 import NoBounceScroller from './NoBounceScroller';
 import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon, equipScrapGold } from '../data/equipment';
@@ -148,6 +151,52 @@ const copyText = async (text: string): Promise<void> => {
   const copied = document.execCommand('copy');
   document.body.removeChild(textarea);
   if (!copied) throw new Error('copy failed');
+};
+
+
+/**
+ * 死亡時の「倒した相手」(社長指示2026-10-09「死亡時、リザルトにプレイヤーを殺した敵のアイコンと名前を表示。次回出撃時にネームド化」)。
+ * 「死因」の左罫の帯に、立ち絵(足元に罫)+名前(+技の名)。宿敵本人に倒された時は宿敵の名が主役。
+ * この死で宿敵が決まった/宿敵に倒された時は、帯の最終行に金の1行(ゲーム中の宿敵の帯と同じ字体)。
+ * 型の分からない被弾(罠・環境)では絵を出さず、同じ帯に死因の名だけ。クリエイティブ監査(Fable 5.1)6件を反映済み。
+ */
+const KillerLine: React.FC<{ deathCause: string }> = ({ deathCause }) => {
+  const { type, id, far, promo, byNamed, namedName } = useGameStore(s => ({
+    type: s.lastDamagerType, id: s.lastDamagerId, far: s.farBackdrop, promo: s.namedFoePromotion,
+    byNamed: s.lastDamagerWasNamed, namedName: s.namedFoe ? normalizeNamedName(s.namedFoe.name) : '',
+  }), shallow);
+  const [artOk, setArtOk] = useState(true);
+  const typeName = type ? enemyDeathLabel(type) : '';
+  // 宿敵本人に倒された時は宿敵の名が主役(ゲーム中の帯で名乗っている名)。型の名は副行へ。
+  const name = byNamed && namedName ? namedName : typeName;
+  // 死因は「◯◯の△△」形式なので、名乗った直後に名前を繰り返さない(「突進」だけ)。
+  const move = !typeName || deathCause === typeName ? ''
+    : deathCause.startsWith(`${typeName}の`) ? deathCause.slice(typeName.length + 1) : deathCause;
+  const sub = [byNamed && namedName ? typeName : '', move].filter(Boolean).join('・');
+  const art = type ? spritePath(enemyArtName(type, id ?? '', far ?? '')) : '';
+  return (
+    <div className="mt-3 border-l-2 border-rose-400/60 bg-rose-950/20 px-3 py-2 text-left">
+      <p className="text-[10px] uppercase tracking-widest text-white/45">死因</p>
+      <div className="mt-1 flex items-end gap-3">
+        {type && artOk && (
+          <div className="flex shrink-0 flex-col items-center">
+            <img src={art} alt="" style={{ height: 96, width: 'auto' }} onError={() => setArtOk(false)} />
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-rose-300/40 to-transparent" />
+          </div>
+        )}
+        <div className="min-w-0 pb-1">
+          <p className="text-[16px] font-semibold leading-tight text-rose-200">{type ? name : deathCause}</p>
+          {type && sub && <p className="mt-0.5 text-[11px] text-rose-200/70">{sub}</p>}
+          {promo && (
+            <p className="mt-1.5 border-t border-white/10 pt-1 text-[12px] font-semibold text-amber-300"
+              style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif', textWrap: 'balance' }}>
+              {promo.kind === 'new' ? `次の出撃、こいつは 宿敵 ${promo.name} として戻る` : `宿敵 ${promo.name}、まだ生きている`}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const GameOverScreen: React.FC<GameOverScreenProps> = ({
@@ -631,11 +680,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   </p>
                 </div>
               )}
-              {!isBenchmark && !won && !withdraw && deathCause && (
-                <p className="mt-2 text-[12px] text-white/70">
-                  死因：<span className="font-semibold text-rose-200">{deathCause}</span>
-                </p>
-              )}
+              {!isBenchmark && !won && !withdraw && deathCause && <KillerLine deathCause={deathCause} />}
               {/* PACING_PUZZLE.md §5.17 M14: 惜しさ(死亡時のみ・燃料)。数字だけ1回明滅・派手にしない。 */}
               {/* 「◯◯まであと1昇格」は同語反復(R7以外なら常に真)なので撤去(社長指示v0.25.2342)。距離だけ残す。 */}
               {!isBenchmark && !hideDepthReview && !won && !withdraw && wallMetersToNext !== null && (
@@ -668,11 +713,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   namedFoe={namedFoeResult}
                 />
               )}
-              {!isBenchmark && !won && !withdraw && deathCause && (
-                <p className="mt-2 text-[12px] text-white/70">
-                  死因：<span className="font-semibold text-rose-200">{deathCause}</span>
-                </p>
-              )}
+              {!isBenchmark && !won && !withdraw && deathCause && <KillerLine deathCause={deathCause} />}
             </>
           )}
         </div>

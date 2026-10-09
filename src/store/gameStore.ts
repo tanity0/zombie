@@ -157,7 +157,7 @@ import { BOSS_NEUTRAL_CASTLE_MS } from '../utils/bossRebuild'; // ★社長裁�
 import { softCapCritChance } from '../utils/critSoftCap';
 import { resetCritDecay } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
 import {
-  type NamedFoeMeta, NAMED_TREASURE_GOLD, rollNamedSpawnThisRun, decidePromotionOnDeath, sanitizeNamedFoe,
+  type NamedFoeMeta, NAMED_TREASURE_GOLD, NAMED_LOOT_MULT, rollNamedSpawnThisRun, decidePromotionOnDeath, sanitizeNamedFoe,
   NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, pickNamedEnemyName, normalizeNamedName,
 } from '../utils/namedEnemy';
 import {
@@ -6316,6 +6316,9 @@ interface GameState {
                                                           // 既についたか。falseのまま次ランへ行くと持ち越し(因縁+1)
   lastDamagerType: EnemyType | null;                     // 直近の被弾元の型(宿敵昇格判定用)
   lastDamagerWasNamed: boolean;                          // 直近の被弾元が現在の宿敵インスタンスそのものだったか
+  lastDamagerId: string | null;                          // 直近の被弾元の個体id(リザルトの「倒した相手」の絵=男女などの描き分けを個体で引く)
+  // 社長指示2026-10-09: 死亡時にリザルトへ「次の出撃で宿敵になる」を出すための、この死で起きた昇格(ラン内限定)。
+  namedFoePromotion: { name: string; kind: 'new' | 'grudge' } | null;
   // BOT_AND_GHOST.md §2.7 制約2(G3): このランで守護霊(ゴースト)が一度でも実際に召喚されたか。
   // ラン内限定(resetGameでリセット)。directorTickの召喚成立箇所が打刻し、リザルトのスコア×0.5が見る。
   ghostSummonedThisRun: boolean;
@@ -6984,6 +6987,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   namedFoeRunResolved: false,
   lastDamagerType: null,
   lastDamagerWasNamed: false,
+  lastDamagerId: null,
+  namedFoePromotion: null,
   ghostSummonedThisRun: false,
   ghostSourceThisRun: null,
   ghostFeedbackTargetThisRun: null,
@@ -11146,6 +11151,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // =昇格除外(未指定=除外)の判定を毎回の被弾元で正しくやり直すため、実ダメージ時は必ず上書きする)。
         lastDamagerType: amount > 0 ? (damagerType ?? null) : state.lastDamagerType,
         lastDamagerWasNamed: amount > 0 ? !!damagerWasNamed : state.lastDamagerWasNamed,
+        lastDamagerId: amount > 0 ? (sourceId ?? null) : state.lastDamagerId,
         // Real damage kicks off a screen shake.
         shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
         shakeMag: amount > 0 ? SHAKE_MAG : state.shakeMag,
@@ -11261,11 +11267,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (outcome.kind === 'grudge' && st.namedFoe) {
         const next: NamedFoeMeta = { ...st.namedFoe, grudge: st.namedFoe.grudge + 1 };
         saveNamedFoe(next);
-        set({ namedFoe: next, namedFoeRunResolved: true });
+        set({ namedFoe: next, namedFoeRunResolved: true, namedFoePromotion: { name: normalizeNamedName(next.name), kind: 'grudge' } });
       } else if (outcome.kind === 'overwrite') {
         const next: NamedFoeMeta = { type: outcome.type, name: outcome.name, grudge: 0 };
         saveNamedFoe(next);
-        set({ namedFoe: next, namedFoeRunResolved: true });
+        set({ namedFoe: next, namedFoeRunResolved: true, namedFoePromotion: { name: normalizeNamedName(next.name), kind: 'new' } });
       }
     }
     return died;
@@ -18114,7 +18120,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // research/LIBERTY_HORDE.md §5: 補充されたバット男は何も落とさない(社長裁定)。旗手は★未決 #2「旗手の報酬」の裁定まで落とさない。
     if (enemy.hordeRefill || isLibertyBearer(enemy.type)) return;
     // 難易度⑤(DirectorRank): HARVEST相当のフェーズ中だけ有効な倍率(通常は1)。useGameLoopが毎フレーム更新。
-    const v = Math.round((value ?? enemy.experienceValue) * getDirectorRewardMult());
+    // 宿敵は同じ型の普通の敵の4倍(社長指示2026-10-09「報酬は元の敵の4倍の中身」・NAMED_LOOT_MULT)。
+    const v = Math.round((value ?? enemy.experienceValue) * getDirectorRewardMult() * (enemy.isNamed ? NAMED_LOOT_MULT : 1));
     const base = xpOrbCountForEnemy(enemy);
     // 紅き夜中は経験値ドロップ数2倍。
     const n = base * ((get().redNight?.phase === 'active' || RN_ENEMY_FORCE) ? 2 : 1);
@@ -18129,7 +18136,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // PACING_PUZZLE.md §7-11c(3): レール(elite)のドロップバイアス=トレジャー。既定(rail未指定)は
     // railTreasureDropMultが1を返すため無改変。トレジャー抽選の唯一の出どころ(dropEnemyCurrency)に乗算。
     const treasureChance = Math.max(0, Math.min(1,
-      treasureDropChance(enemy.difficultyRank) * railTreasureDropMult(RAIL_KIND, RAIL_MULT)));
+      treasureDropChance(enemy.difficultyRank) * railTreasureDropMult(RAIL_KIND, RAIL_MULT) * (enemy.isNamed ? NAMED_LOOT_MULT : 1)));
     // チュートリアル(M0訓練)ではトレジャーを落とさない(社長指示v0.25.2428)。
     // 訓練は「操作を覚える場」で、持ち帰りの報酬を配る場ではない(スコア/ゴールドの導線が別物になる)。
     // 判定は既存の `farBackdrop === 'tutorial'`(城の当たり判定スキップ等と同じ signal)を流用する。
@@ -20877,7 +20884,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       saveNamedFoe(carried);
       set({ namedFoe: carried });
     }
-    // 次ランの宿敵抽選(社長指示: 各ラン60%)+ラン内限定フィールドのリセット。
+    // 次ランの宿敵抽選(社長指示2026-10-09: 必ず出る=NAMED_SPAWN_CHANCE 1・旧各ラン60%)+ラン内限定フィールドのリセット。
     set({
       namedFoeRunEligible: NAMED_ENEMY_ENABLED && rollNamedSpawnThisRun(),
       namedFoeSpawnedThisRun: false,
@@ -20885,6 +20892,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       namedFoeRunResolved: false,
       lastDamagerType: null,
       lastDamagerWasNamed: false,
+      lastDamagerId: null,
+      namedFoePromotion: null,
       // SKILL_BUILD_REDESIGN.md §20(B4): このランの実効同行者(testGhostSkill優先・無ければ永続選択)を
       // 確定させる。directorTick.ts/ghostOnline.tsはこのフィールドだけを読む(player.skills経由の
       // 暗黙参照は廃止)。ここでの上書きはstate限定でlocalStorageへは書かない(setCompanionSkillと違う)。

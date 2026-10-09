@@ -91,9 +91,9 @@ describe('pickNamedEnemyName / rollNamedSpawnThisRun (RNG injection)', () => {
     expect(pickNamedEnemyName(() => 0.999999)).toBe(NAMED_ENEMY_NAMES[31]);
   });
 
-  it('rolls true/false at exactly the 60% boundary', () => {
-    expect(rollNamedSpawnThisRun(() => 0.59)).toBe(true);
-    expect(rollNamedSpawnThisRun(() => 0.6)).toBe(false);
+  it('always spawns the nemesis on the next sortie (chance 1, 社長指示2026-10-09)', () => {
+    expect(rollNamedSpawnThisRun(() => 0)).toBe(true);
+    expect(rollNamedSpawnThisRun(() => 0.999999)).toBe(true);
   });
 });
 
