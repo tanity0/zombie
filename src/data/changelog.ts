@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4950', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4949', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4948', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4947', items: ['倒されると、リザルトに倒した相手の姿と名前が出る', '倒した相手は次の出撃で必ず宿敵として現れる', '宿敵は元の敵の4倍の経験値を落とす'] },
