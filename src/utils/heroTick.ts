@@ -160,7 +160,7 @@ const moveKeyFor = (move: HeroMoveKey, step: number): string => {
 
 /** 形を爆風へ(解決は combatTick.applyPumpkinBlastDamage)。 */
 const pushBlast = (hero: Enemy, shape: HeroShape, damage: number, moveKey: string, kb?: { distPx: number; ms: number }): void => {
-  const base = { damage, enemyId: hero.id, moveKey, ...(kb ? { kbSpeed: knockbackSpeedFor(kb.distPx, kb.ms), kbMs: kb.ms } : {}) };
+  const base = { damage, enemyId: hero.id, moveKey, retaliate: true, ...(kb ? { kbSpeed: knockbackSpeedFor(kb.distPx, kb.ms), kbMs: kb.ms } : {}) };
   let b: PumpkinBlast;
   if (shape.kind === 'band') {
     b = { ...base, x: (shape.fx + shape.tx) / 2, y: (shape.fy + shape.ty) / 2, radius: shape.halfWidth,

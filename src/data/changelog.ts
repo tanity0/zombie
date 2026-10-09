@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4951', items: ['殴られた直後、殴ってきた相手の方へはじくと、飛び込んで倍の一撃を返せる', '食らった方向の画面の端が赤く滲んでいる間が、はじき返しの狙い目'] },
   { version: '0.25.4950', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4949', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4948', items: ['ゲーム内容の変更はありません'] },

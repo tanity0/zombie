@@ -349,7 +349,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
           : b.moveKey === 'jo-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
-        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey);
+        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
         // v0.25.2653: **技ごとの押し量**(b.kbSpeed/kbMs)があればそれを使う。未指定=従来の共通値。
@@ -1412,7 +1412,7 @@ const resolveKamitsukiFx = (fx: CombatEffects): void => {
   const wasAliveBeforeContact = useGameStore.getState().player.health > 0;
   // ④覆い切った瞬間にダメージ適用(§14-4-8③④)。fromX/Y=触れた個体の中心(発火時点・biteHits/通常接触と同型)。
   const playerDied = useGameStore.getState().damagePlayer(
-    kfx.damage, kfx.deathLabel, kfx.ex, kfx.ey, undefined, undefined, kfx.moveKey,
+    kfx.damage, kfx.deathLabel, kfx.ex, kfx.ey, undefined, undefined, kfx.moveKey, undefined, kfx.enemyId, // 末尾=被弾反撃の相手(覆いかぶさった死神/使者)
   );
   fx.playSfx('player-damage');
   fx.spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -1712,7 +1712,7 @@ export const applyContactDamage = (
     // 演出も「実際に入った時だけ」出す(弾かれた時に赤フラッシュが出ると嘘になる)。
     const wasVulnerable = !useGameStore.getState().player.invulnerable;
     // ★被弾無敵は「敵ごと」(社長裁定2026-09-17): この敵のidを渡す=別の敵からは同じ秒でも食らう。
-    const died = useGameStore.getState().damagePlayer(h.dmg, '噛みつき', h.x, h.y, undefined, undefined, undefined, h.id);
+    const died = useGameStore.getState().damagePlayer(h.dmg, '噛みつき', h.x, h.y, undefined, undefined, undefined, h.id, h.id); // 末尾=被弾反撃の相手(噛んだ個体)
     if (wasVulnerable) {
       fx.playSfx('player-damage');
       fx.spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -1910,7 +1910,7 @@ export const applyContactDamage = (
     // 死亡ズームを2回潰していた。演出は遷移の1回だけ撃つ(同フレーム複数接触の二重発火もこれで塞がる)。
     const wasAliveBeforeContact = useGameStore.getState().player.health > 0;
     // ★被弾無敵は「敵ごと」(社長裁定2026-09-17)。
-    const playerDied = useGameStore.getState().damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, undefined, undefined, contactDamageMoveKey(enemy), enemy.id);
+    const playerDied = useGameStore.getState().damagePlayer(enemy.damage * rnMelee * scMelee, enemyDeathLabel(enemy.type), enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, undefined, undefined, contactDamageMoveKey(enemy), enemy.id, enemy.id); // 末尾=被弾反撃の相手(体当たりした個体)
     if (damageWasApplied) {
       fx.playSfx('player-damage');
       fx.spawnFlash('rgba(239,68,68,0.22)', 200);

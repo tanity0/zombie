@@ -522,6 +522,7 @@ export const runIdolTick = (
     useGameStore.setState(state => ({
       pumpkinBlasts: [...state.pumpkinBlasts, {
         x: (fx + tx) / 2, y: (fy + ty) / 2, radius: halfW, damage, enemyId: idol.id,
+        retaliate: true, // 被弾反撃の対象(偶像の殴りはこの部品だけが積む)
         capsule: { fx, fy, tx, ty, halfWidth: halfW },
         ...(knockback ? { kbSpeed: knockbackSpeedFor(knockback.distPx, knockback.ms), kbMs: knockback.ms } : {}),
       }],

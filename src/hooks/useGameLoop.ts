@@ -7622,7 +7622,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const band = jormSlamBand(boss, jormSlamReach(k, HB_JO.slam.reaches));
                   useGameStore.setState(state => ({
                     pumpkinBlasts: [...state.pumpkinBlasts, {
-                      x: bcx, y: bcy, radius: band.halfWidth, damage: boss.damage, enemyId: boss.id, moveKey: 'jo-slam',
+                      x: bcx, y: bcy, radius: band.halfWidth, damage: boss.damage, enemyId: boss.id, moveKey: 'jo-slam', retaliate: true, // 被弾反撃の対象(ヨルムンガルドの叩きつけ)
                       capsule: { fx: band.fx, fy: band.fy, tx: band.tx, ty: band.ty, halfWidth: band.halfWidth },
                     }],
                   }));
@@ -8026,7 +8026,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'トールの一閃', cxp, cyp, undefined, undefined, 'thor-issen'); // G4a計測タグ(記録専用)
+                    const died = damagePlayer(boss.damage, 'トールの一閃', cxp, cyp, undefined, undefined, 'thor-issen', undefined, boss.id); // G4a計測タグ(記録専用) / 末尾=被弾反撃の相手
                     useGameStore.getState().spawnImageMark(cxp, cyp, 'zan', { scale: 1.0, duration: 1000 }); // 社長指示: 食らうと「斬」
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
@@ -8112,7 +8112,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'トールの突き', cxp, cyp, undefined, undefined, 'thor-tsuki'); // G4a計測タグ(記録専用)
+                    const died = damagePlayer(boss.damage, 'トールの突き', cxp, cyp, undefined, undefined, 'thor-tsuki', undefined, boss.id); // G4a計測タグ(記録専用) / 末尾=被弾反撃の相手
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
@@ -8166,7 +8166,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     thorCounterHit(cxp, cyp);
                     countered = true;
                   } else {
-                    const died = damagePlayer(boss.damage, 'トールの払い', cxp, cyp, undefined, undefined, 'thor-harai'); // G4a計測タグ(記録専用)
+                    const died = damagePlayer(boss.damage, 'トールの払い', cxp, cyp, undefined, undefined, 'thor-harai', undefined, boss.id); // G4a計測タグ(記録専用) / 末尾=被弾反撃の相手
                     if (died) triggerPlayerDeath(pcx, pcy);
                   }
                 }
@@ -8265,7 +8265,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       thorCounterHit((sx + ex) / 2, (sy + ey) / 2, undefined, { aimAt: thorDashPushbackFromEnemy(boss, useGameStore.getState(), AN_C.dashCounterPushbackPx), fromAt: { x: dnx, y: dny } });
                       dCountered = true;
                     } else {
-                      const died = damagePlayer(boss.damage, 'トールの突進', pcx, pcy, undefined, undefined, 'thor-dash'); // G4a計測タグ(記録専用)
+                      const died = damagePlayer(boss.damage, 'トールの突進', pcx, pcy, undefined, undefined, 'thor-dash', undefined, boss.id); // G4a計測タグ(記録専用) / 末尾=被弾反撃の相手
                       if (died) triggerPlayerDeath(pcx, pcy);
                     }
                   }
@@ -8311,7 +8311,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   // 着地: 既存のpumpkinBlasts(着地爆発)パイプラインへ積む=カウンター/被弾処理を丸ごと再利用。
                   useGameStore.setState(state => ({
-                    pumpkinBlasts: [...state.pumpkinBlasts, { x: tx, y: ty, radius: HB_TH.jump.radius, damage: boss.damage, enemyId: boss.id, moveKey: 'thor-jump' }], // moveKey=G4a計測タグ(記録専用)
+                    pumpkinBlasts: [...state.pumpkinBlasts, { x: tx, y: ty, radius: HB_TH.jump.radius, damage: boss.damage, enemyId: boss.id, moveKey: 'thor-jump', retaliate: true }], // moveKey=G4a計測タグ(記録専用) / retaliate=被弾反撃の対象(トールのハンマー)
                   }));
                   patch.bossState = 'jump-recover';
                   patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_TH.jump.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
@@ -9071,6 +9071,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (sk.finish && !killFxSk) playSfx('melee-finish');
             else if (sk.hit && !isWhipSk && !killFxSk) playSfx('slash-damage');
             if (sk.killed > 0) playEnemyDeath();
+          }
+        }
+        // ★被弾反撃(research/HIT_RETALIATION.md §4): 飛び込みが着地した瞬間に斬る(移動の後=着地した位置で振る)。縮地と同じ型。
+        // 待ちが無ければ null を返すだけ(毎フレームの呼び出しは軽い)。SEは前隙明けの振り・縮地と同じ条件。
+        {
+          const rt = useGameStore.getState().resolveRetaliateStrike();
+          if (rt) {
+            const isWhipRt = useGameStore.getState().player.subWeapons.includes('whip');
+            const kfxRt = useGameStore.getState().killFx;
+            const killFxRt = !!kfxRt && Date.now() - kfxRt.startAt < KILLFX_TOTAL_MS;
+            if (rt.swung && !isWhipRt && !killFxRt) playSfx('melee');
+            if (rt.finish && !killFxRt) playSfx('melee-finish');
+            else if (rt.hit && !isWhipRt && !killFxRt) playSfx('slash-damage');
+            if (rt.killed > 0) playEnemyDeath();
           }
         }
         if (corridorRunIn) {

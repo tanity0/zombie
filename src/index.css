@@ -244,6 +244,21 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   100% { opacity: 0.18; }
 }
 
+/* 被弾反撃の知らせ(components/HitRetaliationCue)。縁に貼りついた滲みが、縁へ吸い込まれるように縮み(減速=慣性)、
+   窓が閉じる瞬間に消え切る。濃さは瀕死の縁取りと同じ「心拍」の2拍(2拍目は弱い)。1拍目のピークは全画面の被弾フラッシュ
+   (200ms)が引く頃(窓の約4割)に置く=フラッシュの赤に沈まず、引いた瞬間に方向が浮き出る(クリエイティブ監査2026-10-09)。 */
+@keyframes hit-retaliate-shrink {
+  from { transform: scale(1.15); }
+  to   { transform: scale(0.7); }
+}
+@keyframes hit-retaliate-beat {
+  0%   { opacity: 0.35; }
+  40%  { opacity: 1; }
+  55%  { opacity: 0.6; }
+  68%  { opacity: 0.9; animation-timing-function: ease-in; }
+  100% { opacity: 0; }
+}
+
 @keyframes upgrade-backdrop-in {
   from { opacity: 0; }
   to { opacity: 1; }

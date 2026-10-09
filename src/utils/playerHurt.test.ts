@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked , isHurtMoveLocked, knockbackUntilAfterStop } from './playerHurt';
+import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked , isHurtMoveLocked, isHurtCancelled, knockbackUntilAfterStop } from './playerHurt';
 
 describe('playerHurtTier — 被弾の重さで段が変わる', () => {
   it('素の敵の攻撃力(最大HP120)が狙いどおりの段に落ちる', () => {
@@ -116,5 +116,32 @@ describe('被弾ノックバックはヒットストップが明けてから(社
     expect(knockbackUntilAfterStop(1000, 1190, 260)).toBe(1450);
     expect(knockbackUntilAfterStop(1000, 0, 260)).toBe(1260);
     expect(knockbackUntilAfterStop(1000, 900, 440)).toBe(1440); // もう明けているストップは関係ない
+  });
+});
+
+describe('hurtCancelledAt — 被弾反撃で硬直を打ち切る(research/HIT_RETALIATION.md §4)', () => {
+  const hurt = { lastHurtAt: 1000, lastHurtTier: 2 as const };
+  it('打ち切りが無ければ従来どおり(重段=1000ms動けない・撃てない)', () => {
+    expect(isHurtMoveLocked(hurt, 1500)).toBe(true);
+    expect(isHurtGunLocked(hurt, 1500)).toBe(true);
+    expect(isHurtCancelled(hurt, 1500)).toBe(false);
+  });
+  it('打ち切った時刻から、移動停止も銃の停止も終わる(それより前は従来どおり)', () => {
+    const p = { ...hurt, hurtCancelledAt: 1200 };
+    expect(isHurtMoveLocked(p, 1199)).toBe(true);
+    expect(isHurtMoveLocked(p, 1200)).toBe(false);
+    expect(isHurtGunLocked(p, 1199)).toBe(true);
+    expect(isHurtGunLocked(p, 1200)).toBe(false);
+    expect(isHurtCancelled(p, 1200)).toBe(true);
+  });
+  it('次の被弾(lastHurtAt が打ち切りより新しい)では打ち切りは効かない=また普通に固まる', () => {
+    const p = { lastHurtAt: 2000, lastHurtTier: 1 as const, hurtCancelledAt: 1200 };
+    expect(isHurtCancelled(p, 2100)).toBe(false);
+    expect(isHurtMoveLocked(p, 2100)).toBe(true);
+    expect(isHurtGunLocked(p, 2100)).toBe(true);
+  });
+  it('被弾の記録が無ければ(lastHurtAt 未設定)打ち切りも何も起きない', () => {
+    expect(isHurtCancelled({ hurtCancelledAt: 500 }, 600)).toBe(false);
+    expect(isHurtMoveLocked({ hurtCancelledAt: 500 }, 600)).toBe(false);
   });
 });

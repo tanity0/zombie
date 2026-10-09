@@ -597,10 +597,13 @@ const BOUNTY_NEUTRAL_MS = BOUNTY_NEUTRAL_RULED_MS;
 const hitCapsule = (
   bounty: Enemy, fx: number, fy: number, tx: number, ty: number, halfW: number, damage: number,
   knockback?: { distPx: number; ms: number },
+  retaliate = true,
 ): void => {
   useGameStore.setState(state => ({
     pumpkinBlasts: [...state.pumpkinBlasts, {
       x: (fx + tx) / 2, y: (fy + ty) / 2, radius: halfW, damage, enemyId: bounty.id,
+      // 被弾反撃の対象(賞金首バス停/ボンバー/マキの近接の当たりはここを通る)。飛び道具の着地(マキの水鳥乱舞)だけ外す。
+      retaliate,
       capsule: { fx, fy, tx, ty, halfWidth: halfW },
       ...(knockback ? { kbSpeed: knockbackSpeedFor(knockback.distPx, knockback.ms), kbMs: knockback.ms } : {}),
     }],
@@ -1266,7 +1269,7 @@ const tickMelee = (
     hitThirdParties({ kind: 'circle', cx: bcx, cy: bcy, r: BM_T.whip360.radius }, BM_T.whip360.damage, bounty.id, 'bm-whip360');
     if (!s.whip360Hit && Math.hypot(pcx - bcx, pcy - bcy) <= BM_T.whip360.radius + pr) {
       s.whip360Hit = true;
-      useGameStore.getState().damagePlayer(BM_T.whip360.damage, `${enemyDeathLabel(bounty.type)}の鞭薙ぎ`, pcx, pcy, undefined, undefined, 'bm-whip360'); // G4a計測タグ(記録専用・v0.25.3607裁定)
+      useGameStore.getState().damagePlayer(BM_T.whip360.damage, `${enemyDeathLabel(bounty.type)}の鞭薙ぎ`, pcx, pcy, undefined, undefined, 'bm-whip360', undefined, bounty.id); // G4a計測タグ(記録専用・v0.25.3607裁定) / 末尾=被弾反撃の相手
       sfx.whipHit?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
@@ -1825,7 +1828,7 @@ const tickMaiko = (
       // 位置で見る)では届いていない=不成立のまま被弾し、被弾で窓が閉じて以後も成立しなかった。
       // ここで**移動後の円**でもう一度だけ見る(同tickの引き分けはカウンター勝ち)。
       if (tryMovingCounter(counterReachShapeFor('bounty:mk-spin', { bcx, bcy, pcx, pcy }))) return;
-      useGameStore.getState().damagePlayer(MK_T.spin.damage, `${enemyDeathLabel(bounty.type)}の毬回し`, pcx, pcy, undefined, undefined, 'mk-spin'); // G4a計測タグ(記録専用)
+      useGameStore.getState().damagePlayer(MK_T.spin.damage, `${enemyDeathLabel(bounty.type)}の毬回し`, pcx, pcy, undefined, undefined, 'mk-spin', undefined, bounty.id); // G4a計測タグ(記録専用) / 末尾=被弾反撃の相手
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'mk-spin-recover';
@@ -1867,7 +1870,8 @@ const tickMaiko = (
       const hopIdx = st === 'mk-suiu-hop1' ? 1 : st === 'mk-suiu-hop2' ? 2 : 3;
       const isFinal = hopIdx === 3;
       const radius = isFinal ? MK_T.suiu.radius * MK_T.suiu.finalRadiusMult : MK_T.suiu.radius;
-      hitCapsule(bounty, s.suiuTx, s.suiuTy, s.suiuTx, s.suiuTy, radius, MK_T.suiu.damage);
+      // 毬の3連バウンドの着地円=飛び道具なので被弾反撃の対象にしない(設計書 §2(b)・検収監査 A-2)。
+      hitCapsule(bounty, s.suiuTx, s.suiuTy, s.suiuTx, s.suiuTy, radius, MK_T.suiu.damage, undefined, false);
       if (isFinal) {
         s.suiuHopIdx = 0;
         patch.bossState = 'mk-suiu-recover';

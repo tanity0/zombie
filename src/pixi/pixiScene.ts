@@ -38,7 +38,7 @@ import type {
 import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endingScene';
 import { endingBombFallY, isEndingSoldierTumbling, ENDING_BLOWN_MS } from '../utils/endingScene';
 import { SIGNAL_STRIKE_DELAY_MS, type SignalStrike } from '../utils/signalLauncher';
-import { playerHurtReactionOf } from '../utils/playerHurt';
+import { playerHurtReactionOf, isHurtCancelled } from '../utils/playerHurt';
 // ★被弾リアクションの強さ(しなり/跳ね/フラッシュ/光/ノックバック/停止時間が読む唯一の窓口・2026-09-17)
 import { enemyHitReaction, hopMul, flashMul } from '../utils/hitFlinch';
 import { fallenSoldiersInRange } from '../utils/endingScene';
@@ -17266,7 +17266,8 @@ export class PixiScene {
     const sinceHurt = now - (p.lastHurtAt ?? -1e9);
     // 段(軽/中/重)でしゃがみの長さが変わる。**軽段の crouchMs を 0 にすれば案(b)**
     // 「軽い被弾では怯まない」へ切り替わる(窓が開かない=しゃがみが出ない)。
-    const hurtPoseActive = sinceHurt >= 0 && sinceHurt < playerHurtReactionOf(p.lastHurtTier).crouchMs;
+    // 被弾反撃(research/HIT_RETALIATION.md)で硬直を打ち切った時は、しゃがみの絵もその時刻で終える。
+    const hurtPoseActive = sinceHurt >= 0 && sinceHurt < playerHurtReactionOf(p.lastHurtTier).crouchMs && !isHurtCancelled(p, now);
     // アバター頭頂追従(v0.25.3271)用: 「いま体に表示中のテクスチャ名」を追う(この後の近接ポーズ/
     // 死亡固定絵の差し替えで更新される)。取得失敗時のフォールバック('player'等)は追わない=
     // その場合は頭頂キャッシュに無い名前になり avatarHeadDeltaPx が自動的に差分0へ落ちる。
@@ -17532,6 +17533,7 @@ export class PixiScene {
       const sinceHurtAtStart = kbStart - (p.lastHurtAt ?? -1e9);
       const sliding = p.knockbackUntil !== undefined && wall < p.knockbackUntil && wall >= kbStart
         && sinceHurtAtStart >= -5 && sinceHurtAtStart < 260
+        && !isHurtCancelled(p, wall) // 被弾反撃で吹き飛びを打ち切った後は滑りの姿勢・砂埃を出さない
         && (Math.abs(kbVx) > 0.01 || Math.abs(kbVy) > 0.01);
       const speedFrac = sliding ? (p.knockbackUntil! - wall) / Math.max(1, kbMs) : 0; // 減衰は線形(1→0)
       this.tickSlideDust('player', sliding, kbStart, speedFrac, now, fb.footX, fb.footY, kbVx, kbVy, Math.max(p.width, p.height), dsc);

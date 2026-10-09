@@ -110,6 +110,10 @@ import { clampRectInsideCircle } from '../world/arena';
 import { shouldFireFullJuiceCinematic } from '../utils/juiceEnvelope';
 import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMilestoneCrossed, killBannerDurationMs } from '../utils/comboMilestone';
 import { playerHurtTier, playerHurtReactionOf, isHurtMoveLocked, knockbackUntilAfterStop } from '../utils/playerHurt';
+import {
+  type HitRetaliationWindow, makeRetaliationWindow, isRetaliationWindowOpen, retaliationAngleOk, isRetaliateTargetEligible,
+  isRetaliationBlocked, RETALIATE_DAMAGE_MULT, RETALIATE_LUNGE_MS,
+} from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { isEnemyAttacking } from '../utils/combatFeel';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
@@ -5370,6 +5374,12 @@ export interface PumpkinBlast {
    * 持ち主(遠くで号令した旗手)には何も起きない=吹き飛ばない・怯まない・体勢も削らない(矢を弾いただけ)。
    */
   parryLocal?: boolean;
+  /**
+   * ★被弾反撃(research/HIT_RETALIATION.md §2): **近接系の技の当たりにだけ**積む側が立てる。立っている時だけ、combatTick の解決行が
+   * `damagePlayer` へ `retaliateFromId`(=enemyId)を渡し、食らった相手へのはじき返しの窓が開く。
+   * 爆発・飛び道具・床・設置物には立てない(未指定=開かない=新しい技を足しても勝手には開かない)。
+   */
+  retaliate?: boolean;
 }
 
 /**
@@ -5820,6 +5830,9 @@ interface GameState {
   // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
   // (melee-finisher impact pause). 0 = running.
   hitstopUntil: number;
+  // ★被弾反撃の受付窓(research/HIT_RETALIATION.md §1)。damagePlayer が retaliateFromId つきの実被弾で開き、反撃・別の相手での開き直し・
+  // 死亡で閉じる(時間切れは時刻で判定=nullに戻さない)。Reactは開閉の時だけ再レンダ(components/HitRetaliationCue)。
+  hitRetaliation: HitRetaliationWindow | null;
   // ★KILL処刑演出v2(社長指示v0.25.3603): フル演出(寄りズーム発火)のフィニッシュキルで1回
   // 書かれるイベント。描画はpixiScene(実時間駆動=hitstop中も動く・判定/座標は一切不変)。
   // 跳びつきを見せるのは primary(ex/ey…)の一体のみ。victims=同時に処刑された敵(primary含む)で、
@@ -6047,16 +6060,25 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string) => boolean; // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string) => boolean; // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
-  /** @param swingStartAt 窓/CDの基準時刻(前隙の起点=指を離した時刻)。省略時は今。 */
-  triggerCounter: (swingStartAt?: number) => CounterTriggerResult;
+  /**
+   * @param swingStartAt 窓/CDの基準時刻(前隙の起点=指を離した時刻)。省略時は今。
+   * @param retaliate ★被弾反撃(research/HIT_RETALIATION.md §4): 指定時は相手をその1体に絞り、CD/受付の門・カウンター窓/CDの張り・
+   *   振った時のサブウェポン入口を通さず、命中の最終ダメージを mult 倍にする。命中した時の処理(KB・体勢・処刑・コンボ・演出)は通常のまま。
+   */
+  triggerCounter: (swingStartAt?: number, retaliate?: { targetId: string; mult: number }) => CounterTriggerResult;
   /** ★前隙の起点。窓/CD/絵だけを打ち、判定は `MELEE_WINDUP_MS` 後に useGameLoop が解決する。 */
   beginMeleeSwing: () => boolean;
   // 縮地(SKILL_BUILD_REDESIGN.md §32): ワープ後の斬撃を解決する(ループが movePlayer の直後に呼ぶ)。待ちが無ければ null。
   resolveShukuchiStrike: () => CounterTriggerResult | null;
+  // ★被弾反撃(research/HIT_RETALIATION.md): 入力(フリック/右クリック/パッド)から呼ぶ。窓・向き・相手・状態が揃えば飛び込みを始めて true
+  // (揃わなければ何もせず false=呼び出し側は従来の入力経路へ)。dirX/dirY=入力の向き。
+  tryHitRetaliation: (dirX: number, dirY: number) => boolean;
+  // 被弾反撃の着地(命中)を解決する(ループが movePlayer の直後に呼ぶ)。待ちが無い/まだ着地前なら null。
+  resolveRetaliateStrike: () => CounterTriggerResult | null;
   // Katana actions. performKatanaStrike cuts the given enemies with katana
   // melee rules (crit, knockback, shared kill rewards). 近接フィニッシュは
   // 一閃のみ: allowFinisher は dash 経由でだけ true になる。
@@ -7104,6 +7126,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   lastWeaponGet: null,
   hitstopUntil: 0,
+  hitRetaliation: null,
   killFx: null,
   kamitsukiFx: null,
   attention: null,
@@ -7299,7 +7322,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       } else if (lungeActive) {
         // 初速最大→線形に0(ノックバックと同じ形)。**回避に使うので出だしが最も速い**
         // ——加速から入ると避け始めが遅れて間に合わない(社長の狙い「早めに着地」)。
-        const d = Math.max(0, (player.lungeUntil - kbNow) / MELEE_LUNGE_MS); // 1→0
+        // 尺は欄の値(被弾反撃の飛び込み=約120ms)。未指定=近接の踏み込み(MELEE_LUNGE_MS)=従来どおり。
+        const d = Math.max(0, (player.lungeUntil - kbNow) / (player.lungeMs ?? MELEE_LUNGE_MS)); // 1→0
         // ★踏み込みも「移動」なのでトラップ効果中は素の足で頭打ち(上の moveSpeed と同じ理屈)。
         // 被弾ノックバック(上の枝)は**掛けられている力**なので対象外=そのまま飛ぶ。
         const lungeCap = trapDebuffed
@@ -7626,6 +7650,97 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { swung, hit, finish, killed };
   },
 
+  // ★被弾反撃(research/HIT_RETALIATION.md §3/§4・社長指示2026-10-09)。食らった直後の窓の中で、食らった相手の方へはじくと、
+  // 被弾の硬直・吹き飛びを打ち切って相手の手前へ飛び込み(着地で斬る=resolveRetaliateStrike)、近接の倍を返す。
+  // 入口は3本(スマホのフリック離し / PCの右クリック / パッドのスティック・B・RB)が同じこの1本を呼ぶ。
+  // 揃わなければ何もせず false=呼び出し側は従来の入力経路(一閃・ワイヤー・近接)へ落とす。
+  // ★普通の近接の入口(beginMeleeSwing)は通らない=掴まれ中でも成立する(社長裁定2026-10-09「はい」)。CD・被弾の硬直・前隙も無視する。
+  tryHitRetaliation: (dirX, dirY) => {
+    const now = Date.now();
+    const st = get();
+    const win = st.hitRetaliation;
+    if (!isRetaliationWindowOpen(win, now) || !win) return false;
+    const p = st.player;
+    // 反撃が出せない状態(入力の瞬間に判定して不発=窓自体は開いたまま)。
+    if (isRetaliationBlocked({
+      inputLocked: isInputLocked(),
+      attention: st.attention !== null,
+      meleeLocked: !st.m0Unlocked.melee,
+      skaterRiding: SKATER_LOCK_ENABLED && p.skaterRiding,
+      rhythm: st.rhythm.active,
+      pvpIncapacitated: isPvpIncapacitated(p.pvpPosture, st.gameTime),
+      seekerBlocked: isSeekerActive(p, st.gameTime) && skillLevel(p, 'seeker') < 3, // 通常の近接と同じ封印(半透明中は振れない)
+    })) return false;
+    // 相手の再確認(入力の瞬間): 生きていて普通の近接で斬れる状態、かつ体の縁までRETALIATE_REACH_PX以内、壁越しでない。
+    const target = st.enemies.find(e => e.id === win.fromId);
+    if (!target) return false;
+    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+    const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
+    if (!isRetaliateTargetEligible(target, enemyMeleeDist(pcx, pcy, target))) return false;
+    // 向きは入力の瞬間の「プレイヤー→相手」で測る(窓を開いた時ではない=吹き飛びや相手の移動でずれても追う)。
+    if (!retaliationAngleOk(dirX, dirY, ecx - pcx, ecy - pcy)) return false;
+    const walls = meleeWallsAround(get, pcx, pcy, 400);
+    if (walls.length > 0 && segmentBlocked(pcx, pcy, ecx, ecy, walls)) return false;
+    // 着地=相手の判定の帯の最近点から、近接が確実に入る手前(縮地と同じ計算)。動きは近接の踏み込みの器(lunge)を使う=
+    // 壁・行ける帯・城ボス戦の円は movePlayer が通常の移動と同じ鎖で解決する(自前で座標を書かない)。
+    const land = shukuchiLandingPoint(pcx, pcy, enemyRangeRect(target), Math.min(24, huntingMeleeRadius(p) * 0.4));
+    const mx = land.x - pcx, my = land.y - pcy;
+    const md = Math.hypot(mx, my);
+    const moves = md > 2;
+    const spd = moves ? knockbackSpeedFor(md, RETALIATE_LUNGE_MS) : 0; // 初速最大→線形に0(慣性・ease-out)
+    const fdx = ecx - land.x, fdy = ecy - land.y, fdl = Math.hypot(fdx, fdy) || 1;
+    set(state => ({
+      hitRetaliation: null, // 反撃した=窓は閉じる
+      // その被弾のヒットストップだけを打ち切る(別の演出のストップは切らない)。重い被弾でも入力してから何も起きない間を作らない。
+      hitstopUntil: state.hitstopUntil > now && state.hitstopUntil <= win.stopUntil ? now : state.hitstopUntil,
+      player: {
+        ...state.player,
+        // 吹き飛びを打ち切る。被弾の硬直(しゃがみ・移動停止・銃の停止)も打ち切る(段の記録 lastHurtAt は消さない)。
+        knockbackUntil: (state.player.knockbackUntil ?? 0) > now ? now : state.player.knockbackUntil,
+        hurtCancelledAt: now,
+        // 掴まれ中なら振りほどく(蝙蝠の掴み)。
+        grabbedUntil: state.player.grabbedUntil !== undefined ? 0 : undefined,
+        // 前隙中の普通の近接・予約済みの縮地のワープ斬撃は取り消す(二重当たり防止・検収監査 B-3)。近接のCD・窓は触らない。
+        pendingSwingAt: 0,
+        shukuchiWarpTo: undefined,
+        shukuchiStrikeAt: 0,
+        lastDirection: { x: fdx / fdl, y: fdy / fdl },
+        lungeVx: moves ? (mx / md) * spd : 0,
+        lungeVy: moves ? (my / md) * spd : 0,
+        lungeUntil: moves ? now + RETALIATE_LUNGE_MS : 0,
+        lungeMs: RETALIATE_LUNGE_MS,
+        retaliateStrikeAt: now + (moves ? RETALIATE_LUNGE_MS : 0),
+        retaliateTargetId: target.id,
+      },
+    }));
+    return true;
+  },
+  // 着地の瞬間に斬る(ループが movePlayer の直後に呼ぶ・縮地の resolveShukuchiStrike と同型)。着地の時に相手を再確認し、
+  // 居なければ空振り(もう飛び込んでいるので従来の経路へは落とさない)。命中は triggerCounter の近接の命中処理に通す(×2)。
+  resolveRetaliateStrike: () => {
+    const now = Date.now();
+    const p0 = get().player;
+    const at = p0.retaliateStrikeAt ?? 0;
+    if (!(at > 0) || now < at) return null;
+    const targetId = p0.retaliateTargetId;
+    set(state => ({ player: { ...state.player, retaliateStrikeAt: 0, retaliateTargetId: undefined } }));
+    // 飛び込みの最中に倒れていたら斬らない(死亡演出の中で着地の斬撃が出ない・検収監査 B-4)。
+    if (p0.health <= 0) return null;
+    const target = targetId !== undefined ? get().enemies.find(e => e.id === targetId) : undefined;
+    const pcx = p0.x + p0.width / 2, pcy = p0.y + p0.height / 2;
+    const reachable = !!target && isRetaliateTargetEligible(target, enemyMeleeDist(pcx, pcy, target), huntingMeleeRadius(p0));
+    if (!target || !reachable) {
+      // 空振り: 斬る絵だけ出す(判定なし)。窓・CD・連鎖は何も動かさない。
+      set(state => ({ player: { ...state.player, meleeSwingAt: now } }));
+      return { swung: true, hit: false, finish: false, killed: 0 };
+    }
+    // 相手の方を向き直してから斬る(踏み込み・斬撃の弧・鞭の向きが全部 lastDirection を読む)。
+    const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
+    const dl = Math.hypot(ecx - pcx, ecy - pcy) || 1;
+    set(state => ({ player: { ...state.player, lastDirection: { x: (ecx - pcx) / dl, y: (ecy - pcy) / dl } } }));
+    return get().triggerCounter(undefined, { targetId: target.id, mult: RETALIATE_DAMAGE_MULT });
+  },
+
   // スケボー(新仕様): ダブルタップで乗車。skater 未装備/既に乗車中は無視。
   mountSkater: () => {
     const { player, gameTime } = get();
@@ -7776,6 +7891,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const p = get().player;
     if (isPvpIncapacitated(p.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中は振れない(窓も開かない)
     if (isPlayerGrabbed(p, get().gameTime)) return false; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は振れない
+    // ★被弾反撃の飛び込みの最中(着地の斬撃が未解決)は普通の振りを出さない=飛び込みの上書きと二重の命中を防ぐ(検収監査 B-3)。
+    if ((p.retaliateStrikeAt ?? 0) > 0) return false;
     // ★縮地(SKILL_BUILD_REDESIGN.md §32): 窓の中の振りはワープ斬撃の予約へ(飛べる相手が居なければ下の通常経路)。
     // スラッシャーの追撃より**先**に見る(ワープを優先し、チェーンは破棄)。
     if (reserveShukuchiWarp(get, now)) return true;
@@ -7826,6 +7943,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           lungeVx: (ld.x / lm) * spd,
           lungeVy: (ld.y / lm) * spd,
           lungeUntil: now + MELEE_LUNGE_MS,
+          lungeMs: undefined, // 被弾反撃の飛び込み(120ms)の尺を持ち越さない
         } }));
       }
     }
@@ -7848,8 +7966,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     return true;
   },
-  triggerCounter: (swingStartAt?: number) => {
+  triggerCounter: (swingStartAt?: number, retaliate?: { targetId: string; mult: number }) => {
     const now = Date.now();
+    // ★被弾反撃(research/HIT_RETALIATION.md §4): 指定時は「相手を1体に絞る / CD・受付・前隙の門を通さない / カウンター窓とCDを張らない /
+    // 振った時のサブウェポン入口(ブーメラン・金環・地雷・フレア・ジャンク・タレット切替・分身)と小物・設置物・盾への当たりを出さない /
+    // 命中の最終ダメージを mult 倍にする」。命中した時の処理(KB・ヒットスタン・体勢・処刑・コンボ・キル集計・演出)は通常のまま全部通る。
+    const ret = retaliate;
+    const retMult = ret?.mult ?? 1;
     const {
       player, gameTime, realGameTime, enemies, projectiles,
       showShopMenu, showUpgradeMenu,
@@ -7872,11 +7995,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!get().m0Unlocked.melee) return { swung: false, hit: false, finish: false, killed: 0 };
     // ★縮地(§32): PC/ボットの直呼び(前隙なし)もタッチと同じくワープ斬撃の予約へ。斬撃と音は
     // useGameLoop の resolveShukuchiStrike が出すので、ここでは振っていない扱いで返す。
-    if (swingStartAt === undefined && reserveShukuchiWarp(get, now)) return { swung: false, hit: false, finish: false, killed: 0 };
+    if (!ret && swingStartAt === undefined && reserveShukuchiWarp(get, now)) return { swung: false, hit: false, finish: false, killed: 0 };
     // スキル スラッシャー: 使い切っていないチェーンが有効な間は、タップをチェーン継続へ回す
     // (通常CDより短い専用CD=SLASHER_CHAIN_CD_MSだけで消化。タイミング精度は問わない=CD明けなら即成立)。
     // チェーンCD中のタップは通常の近接CDと同じ「不発」扱い(連数は減らない・コンボは終わらない)。
-    if (hasSkill(player, 'slasher') && player.slasherChainReadyAt > 0) {
+    // ※被弾反撃(ret)はチェーンの受付ではない=ここを通さない(チェーンの状態も動かさない)。
+    if (!ret && hasSkill(player, 'slasher') && player.slasherChainReadyAt > 0) {
       // 時間切れ(検収時追加・叩き台2秒): チェーンを放置したら破棄して通常の初撃に戻す。
       // これが無いと、初撃の数十秒後の次の一振りまで「2撃目」扱い=2/3減衰のままになってしまう
       // (旧リングの寿命~550msに相当する脱出口)。
@@ -7899,7 +8023,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★前隙の解決(swingStartAt 指定)は**この門を通さない**: CDは `beginMeleeSwing` が
     // 指を離した瞬間に検査して張ってある。ここで再検査すると自分が張ったCDに引っかかって
     // 判定が永久に出ない(=近接が完全に死ぬ)。
-    if (swingStartAt === undefined && now < player.counterCooldownEnd) {
+    if (!ret && swingStartAt === undefined && now < player.counterCooldownEnd) {
       return { swung: false, hit: false, finish: false, killed: 0 };
     }
 
@@ -7944,10 +8068,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // ドローンブーメラン: 近接攻撃(このスイング)と同じ入力で発動(自動ではない)。5秒クールダウン中は不可。
     // ※発火経路を近接攻撃と統一(以前の「立ち止まり中」専用ゲートは廃止=近接と同ロジック)。
-    fireDroneBoomerangOnSwing(get, player, swingOwner, gameTime, swingBaseDamage);
+    if (!ret) fireDroneBoomerangOnSwing(get, player, swingOwner, gameTime, swingBaseDamage);
 
     // 金環(gold-ring・UNIQUE_WEAPONS.md §19): ブーメランと同じ「近接スイング相乗り」入口(§19-3)。
-    fireGoldRingOnSwing(get, player, swingOwner, gameTime);
+    if (!ret) fireGoldRingOnSwing(get, player, swingOwner, gameTime);
 
     // センサー地雷(sensor-mine): 近接攻撃(このスイング)と同じ入力で足元に1個設置
     // (§6.13 M36: グローバルCDではなくチャージ制。チャージ数=同時設置上限Lv1=3/Lv2=4/Lv3=5と同じ。
@@ -7957,26 +8081,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 感知/起爆/爆発は useGameLoop 側。スロー演出は出さない(CLAUDE.md)。
     // v0.25.2541(発注C): 設置本体は共通ヘルパ(主語=actor/owner引数)。ここはオーナー=プレイヤー
     // =従来と1bit同値。守護霊は fireGhostMeleeSwingSubs から同じ1本を通る。
-    placeSensorMineOnSwing(get, player, swingOwner, gameTime);
+    if (!ret) placeSensorMineOnSwing(get, player, swingOwner, gameTime);
 
     // フレアガン(flare-gun): 近接攻撃時に進行方向(プレイヤーの向き)へ発射(CD=Lv1:5秒/Lv2:4秒/Lv3:3秒・
     // CD中のスイングでは出ない)。ダメージ無し。ハンドガン距離(RANGE_BY_CATEGORY.handgun)の地点に着弾し、
     // 着弾点が3秒間、召喚と同じ範囲(ALCHEMY_AGGRO_RANGE)の敵を引き付ける(疑似召喚として
     // resolveEnemyTarget へ合流=召喚と完全に同じ効き方。PACING_PUZZLE.md §6.6 M29)。スロー無し。
-    fireFlareGunOnSwing(player, swingOwner, gameTime);
+    if (!ret) fireFlareGunOnSwing(player, swingOwner, gameTime);
 
     // ジャンクウェポン(junk-weapon): 近接攻撃と同時にスイング方向へ散弾5発(ショットガンT1相当・CDなし。
     // PACING_PUZZLE.md §6.7 M30)。弾薬=スクラップ(1消費=3ダメージ・1発あたりLv1=1/Lv2=2/Lv3=3)。
     // 社長裁定v0.25.1693: スクラップ≥1なら常にフル5発発射・消費=min(フルコスト,所持全部)・ダメージはLv固定・
     // 0のみ不発。ショットガン弾薬は消費しない。判定=純関数 computeJunkShot(src/utils/junkWeapon.ts)。スロー無し。
-    fireJunkWeaponOnSwing(get, player, swingOwner);
+    if (!ret) fireJunkWeaponOnSwing(get, player, swingOwner);
 
     // ワイヤーアンカーはフリック発動に変更(triggerWireAnchor)。スイング(指離し)では発動しない。
 
     // 自動タレットを叩いてモード切替: メレー範囲内のタレットを前方集中⇔全方位でトグル。
     // 既存の近接接触(=スイング)を再利用。counterCooldown が連打を抑えるのでスイング毎に
     // 一度だけ反転する。スイングは消費せず通常の近接判定もそのまま続行する。
-    const turretsInReach = projectiles.filter(p => {
+    const turretsInReach = ret ? [] : projectiles.filter(p => {
       if (p.weaponType !== 'turret') return false;
       const nx = Math.max(p.x, Math.min(pcx, p.x + p.width));
       const ny = Math.max(p.y, Math.min(pcy, p.y + p.height));
@@ -8006,7 +8130,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 紅き夜中は開かない(拠点近接の「やり過ごし」が別途処理)。
     // v0.25.3054(社長指示・監査指摘): ボス戦中(+復帰猶予)は開かない——ボス戦中は指を離し続ける
     // ため、拠点の近くで戦うと必ず踏んでいた(「閉じ込められて何もできず」の最有力経路)。
-    if (!showShopMenu && !showUpgradeMenu && gameTime >= shopReopenAt && get().redNight?.phase !== 'active'
+    if (!ret && !showShopMenu && !showUpgradeMenu && gameTime >= shopReopenAt && get().redNight?.phase !== 'active'
       && !facilitiesLocked(get().bossFightNow, get().bossFightLastTrueAt, gameTime)) {
       for (const b of get().baseSites) {
         if (b.status !== 'captured') continue;
@@ -8042,6 +8166,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 通常どおり開く。反射が成立した時のみ既存のカウンター成立演出が出る
     // (成立エフェクトはループ側の lastCounterSuccessTime エッジ検出が担当)。
     if (isKatanaMode(player)) {
+      // ★被弾反撃(research/HIT_RETALIATION.md §4): 刀の振りは攻撃しない(刀はオート斬撃)ので、縮地のワープ斬撃と同じく
+      // 相手へ刀の一閃を直接出す(一閃の倍率 × retMult)。窓・CDは張らない(上の ret の取り決め)。
+      if (ret) {
+        const k = get().performKatanaStrike([ret.targetId], KATANA_DASH_DAMAGE_MULT, true, undefined, retMult);
+        return { swung: true, hit: k.hit, finish: k.finish, killed: k.killed };
+      }
       // 村雨は打ち返し(カウンター)もクールダウン無しで連発可能。刀は通常CD。
       // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
       const counterCd = hasMurasame(player) ? now : swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(player);
@@ -8065,6 +8195,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     // トラップ押し出し/シールドバッシュ/小物破壊は行わない)。カウンター窓は通常
     // どおり開くので、敵弾反射(カウンター)はループ側で自動成立する=カウンター優先。
     if (isWhipMode(player)) {
+      // ★被弾反撃(research/HIT_RETALIATION.md §4): 鞭の線を新しく打たず、相手1体へ鞭の打撃を直接当てる。
+      // 敵への打撃だけに掛かる上乗せ欄(shukuchiStrikeMult)へ retMult を一時的に載せて performWhipStrike を通す(ハリケーン・チャージ加算は動かさない)。
+      if (ret) {
+        const prevMult = get().player.shukuchiStrikeMult;
+        set(state => ({ player: { ...state.player, shukuchiStrikeMult: retMult } }));
+        const res = get().performWhipStrike([ret.targetId]);
+        set(state => ({ player: { ...state.player, shukuchiStrikeMult: prevMult } }));
+        if (res.hits > 0) set({ whipHitFxAt: Date.now() }); // 鞭命中音SEのトリガ
+        return { swung: true, hit: res.hit, finish: res.finish, killed: res.killed };
+      }
       const lvl = whipLevel(player);
       const ld = player.lastDirection ?? { x: 1, y: 0 };
       const lmag = Math.max(0.001, Math.hypot(ld.x, ld.y));
@@ -8209,7 +8349,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       (get().m0MeleeHits + 1) % M0_FORCED_CRIT_AT_HIT === 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。このスイング開始時点の状態で固定。
     const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
-    const grenadesToDetonate = projectiles
+    const grenadesToDetonate = (ret ? [] : projectiles)
       .filter(p => p.weaponType === 'grenade')
       .filter(p => {
         const gx = p.x + p.width / 2;
@@ -8220,7 +8360,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★敵対側(幻影)の設置物を近接で壊す(社長指示2026-08-24「それぞれに耐久値設定して」)。
     // 近接スイングの合流点はここ1箇所なので、刀/鞭/ナイフのどれで振っても同じ1本を通る。
     // 自分の設置物は `hostile !== true` なので対象外(誤爆で自分のタレットを壊さない)。
-    {
+    if (!ret) {
       const brokenPlaced = get().damageHostilePlacements(pcx, pcy, meleeRange, swingBaseDamage);
       if (brokenPlaced > 0) {
         // 壊した手応え(既存プールのみ・新規素材なし)。判定は上で済んでいるので絵だけ。
@@ -8228,7 +8368,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnRing(pcx, pcy, 6, 46, 'rgba(251,191,36,0.85)', 3, 300);
       }
     }
-    const trapShoves = projectiles
+    const trapShoves = (ret ? [] : projectiles)
       .filter(p => p.weaponType === 'trap')
       .filter(p => {
         const tx = p.x + p.width / 2;
@@ -8260,7 +8400,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★社長裁定2026-08-25(推薦を採用): **幻影の盾はバッシュで押せない**。
     // 押せると「敵の盾を奪って自分の武器にする」ことになり、耐久(PLACED_DURABILITY)を
     // 設定した意味が薄れる。敵対の盾は**近接で耐久を削って壊すだけ**。
-    const shieldShoves = projectiles
+    const shieldShoves = (ret ? [] : projectiles)
       .filter(p => p.weaponType === 'shield' && p.hostile !== true)
       .filter(p => {
         const nx = Math.max(p.x, Math.min(pcx, p.x + p.width));
@@ -8317,6 +8457,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
 
     for (const enemy of enemies) {
+      if (ret && enemy.id !== ret.targetId) { survivors.push(enemy); continue; } // ★被弾反撃: 相手はその1体だけ
       if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) { survivors.push(enemy); continue; } // 深奥チェイサーは近接対象(ボス級)
       if (isCorpse(enemy)) { survivors.push(enemy); continue; } // KILL吹き飛び(死体・§26-2): 近接カウンター対象から除外
       const ecx = enemy.x + enemy.width / 2;
@@ -8408,7 +8549,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         bossFinishHit = true;
         const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeExecBase * gpDmgScale, gameTime) : null;
-        const dmg = fatal?.damage ?? stunnedHit.dmg;
+        const dmg = (fatal?.damage ?? stunnedHit.dmg) * retMult; // 被弾反撃は最終ダメージの×2(処刑の分岐も含む)
         // ★v0.25.4153(社長裁定2026-09-05「強個体はボスと同じく致命の一撃でキル演出は入る。でも
         // 黄色クリティカルではならないのが一貫性」): **強個体もボスと同じ線で揃える**——
         // 演出が入るのは**完全気絶(紫)中の一撃だけ**。通常の気絶からの3×(黄色クリ)では入らない。
@@ -8452,7 +8593,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★v0.25.3969: 対人スケール(gpDmgScale)を通常近接にも掛ける——gatePhantomHitの戻り値
       // damageScale は「自前のダメージ計算に掛けるため」に返っているのに、この枝だけ未適用だった
       // (気絶フィニッシュ枝は適用済み=幻影への通常近接だけ対人1/5が効いていない実バグ)。幻影以外は×1で恒等。
-      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale * retMult;
       // ★SAME_ARENA §9(対人体勢): 紫中の幻影への近接=致命の一撃(×5+最大HP25%・裁定②)。
       // 紫でなければ melee(0.04)の削り+クリなら2/3減速。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -8617,10 +8758,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeSwingAt: swingAt, // 近接スイング演出の起点(描画のみ)。★前隙の起点=指を離した時刻に揃える(200ms後に絵を出し直さない)。
         // ★SAME_ARENA §9(検収監査 重大②): この振りの最中に紫へ入った(幻影のパリィ等)なら、
         // 破棄した窓をここで開き直さない(旧: 無条件書き=紫入り直後300ms弾パリィが生きていた)。
-        counterWindowStart: isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt, // 隻狼型(v0.25.3943)
-        counterWindowEnd: isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt + COUNTER_ACCEPT_MS,
+        // ★被弾反撃(ret)は窓もCDも張らない・開き直さない(近接/カウンターの待ち時間は変えない=CDの影響を受けず、CDも進めない)。
+        counterWindowStart: ret ? state.player.counterWindowStart : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt, // 隻狼型(v0.25.3943)
+        counterWindowEnd: ret ? state.player.counterWindowEnd : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt + COUNTER_ACCEPT_MS,
         // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
-        counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
+        counterCooldownEnd: ret ? state.player.counterCooldownEnd : swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
         huntingCharged: false,
         huntingChargeStartedAt: 0,
         // スキル スラッシャー: この近接が命中(slashAt有)したらチェーンを開始(step=0・0.5秒後にチェーンCD明け)。
@@ -8629,12 +8771,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 旧実装は **命中(slashAt有)した時だけ**チェーンを開いていた=空振りすると2発目が出せなかった。
         // 前隙200msが入って「振ってから当たるまで」に間ができた今、初撃が外れるのは普通に起きるので、
         // **命中を条件にしない**(スキルを持っていて振ったなら連撃に入れる)。
-        slasherChainReadyAt: hasSkill(state.player, 'slasher')
+        // ※被弾反撃(ret)はチェーンを始めない・動かさない。
+        slasherChainReadyAt: ret ? state.player.slasherChainReadyAt : hasSkill(state.player, 'slasher')
           ? state.realGameTime + SLASHER_CHAIN_CD_MS
           : 0,
-        slasherStrikeStep: 0,
+        slasherStrikeStep: ret ? state.player.slasherStrikeStep : 0,
         // 追撃用に「初撃時点の射程」を記録(state.player は更新前=huntingCharged がまだ true なので溜め延長を含む)。
-        slasherReach: hasSkill(state.player, 'slasher') ? huntingMeleeRadius(state.player) : 0,
+        slasherReach: ret ? state.player.slasherReach : hasSkill(state.player, 'slasher') ? huntingMeleeRadius(state.player) : 0,
       },
       projectiles: grenadesToDetonate.length > 0 || trapShoves.length > 0 || hasShieldShove
         ? state.projectiles.map(p => {
@@ -8825,7 +8968,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
-    const propHit = get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, swingBaseDamage * 2.5);
+    const propHit = ret ? false : get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, swingBaseDamage * 2.5); // 被弾反撃は相手1体だけ(小物は壊さない)
 
     // 分身(サブウェポン): READY(分身なし＆CD明け)で近接攻撃すると、攻撃位置に分身を1体生成(固定)。
     // 以後は分身が自律的に1秒ごと×5秒の近接攻撃を繰り返す(tickShadowClone)。ここに到達するのは通常
@@ -8833,7 +8976,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.2541(発注B): 生成本体は共通ヘルパ(主語=actor/owner引数)。ここはオーナー=プレイヤー
     // =従来と1bit同値(枠=store.shadowClone・絵=本人のクラス)。守護霊は fireGhostMeleeSwingSubs
     // から同じ1本を通り、自分の枠(Summon.ghostShadowClone)へ自分のクラス絵で出す。
-    spawnShadowCloneOnSwing(get, player, swingOwner, gameTime);
+    if (!ret) spawnShadowCloneOnSwing(get, player, swingOwner, gameTime);
 
     // 訓練(M0)の近接教習カウンタ(社長台本v0.25.2293)。**敵に当たったスイングだけ**数える
     // (空振り・小物破壊は数えない=「3発当てた」で強制クリティカルが来る体験にする)。
@@ -11001,7 +11144,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { boomerang, flare, junk, clone, mine, goldRing };
   },
 
-  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove, sourceId) => {
+  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove, sourceId, retaliateFromId) => {
     const { player } = get();
 
     // 二人組クエストv2 §2-8(納品ロック): 納品成立後は被弾を入口で無条件に棄却する。
@@ -11160,6 +11303,22 @@ export const useGameStore = create<GameState>((set, get) => ({
         shakeDirX: amount > 0 ? (DIRFX_ENABLED ? dirX : 0) : state.shakeDirX,
         shakeDirY: amount > 0 ? (DIRFX_ENABLED ? dirY : 0) : state.shakeDirY,
         hitstopUntil: stopUntilNext, // 理由は上の stopUntilNext
+        // ★被弾反撃の受付窓(research/HIT_RETALIATION.md §1)。**retaliateFromId が指名された実被弾だけ**が開く(弾・床・罠・爆発は渡さない
+        // =新しい技を足しても勝手には開かない)。開く瞬間=被弾の瞬間(ヒットストップ中から入力を受ける)。閉じる=ストップ明け+300ms。
+        // 窓の最中に指名なしの被弾(弾・床)が来ても何もしない(閉じない・開き直さない)。死亡では閉じる。相手が居なければ開かない。
+        hitRetaliation: newHealth <= 0
+          ? null
+          : (amount > 0 && retaliateFromId !== undefined && state.player.health > 0)
+            ? (() => {
+                const src = state.enemies.find(e => e.id === retaliateFromId);
+                if (!src) return state.hitRetaliation;
+                return makeRetaliationWindow(
+                  retaliateFromId, kbNow, stopUntilNext,
+                  src.x + src.width / 2 - (state.player.x + state.player.width / 2),
+                  src.y + src.height / 2 - (state.player.y + state.player.height / 2),
+                );
+              })()
+            : state.hitRetaliation,
         player: {
           ...state.player,
           health: newHealth,
@@ -16526,7 +16685,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // activeへ移る瞬間に1回だけ積む(g-bite/g-slam等と同じ「windup末尾で1回積む」型)。
               pumpkinBlasts.push({
                 x: (tfx + ttx) / 2, y: (tfy + tty) / 2, radius: DRILLER_THRUST_HALF_WIDTH,
-                damage: enemy.damage, enemyId: enemy.id, moveKey: 'driller-thrust',
+                damage: enemy.damage, enemyId: enemy.id, moveKey: 'driller-thrust', retaliate: true, // 被弾反撃の対象(近接の突き)
                 capsule: { fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: DRILLER_THRUST_HALF_WIDTH },
               });
               drillerThrustFired = true; // post-set SE(thor-thrust)
@@ -16619,7 +16778,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // activeへ移る瞬間に1回だけ積む(driller-thrust/g-bite/g-slamと同じ「windup末尾で1回積む」型)。
               pumpkinBlasts.push({
                 x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: LOGGER_SWEEP_HALF_WIDTH,
-                damage: enemy.damage, enemyId: enemy.id, moveKey: 'logger-sweep',
+                damage: enemy.damage, enemyId: enemy.id, moveKey: 'logger-sweep', retaliate: true, // 被弾反撃の対象(近接の薙ぎ)
                 capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: LOGGER_SWEEP_HALF_WIDTH },
               });
               loggerSweepFired = true; // post-set SE(thor-thrust=driller同系流用・§14-2④)
@@ -21659,6 +21818,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         },
         lastWeaponGet: null,
         hitstopUntil: 0,
+        hitRetaliation: null,
   killFx: null,
   kamitsukiFx: null,
   attention: null,

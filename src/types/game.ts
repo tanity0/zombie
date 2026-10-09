@@ -185,6 +185,19 @@ export interface Player extends DashLocomotionState {
    */
   lungeVx: number; lungeVy: number; lungeUntil: number;
   /**
+   * ★踏み込みの尺(ms)。未指定=近接の踏み込み(`MELEE_LUNGE_MS`)。被弾反撃の飛び込み(約120ms)だけが書く
+   * (減衰を固定の90msで割っていた器へ、`knockbackMs` と同型の持続時間欄を足した)。
+   */
+  lungeMs?: number;
+  /**
+   * ★被弾反撃(research/HIT_RETALIATION.md)で被弾の硬直(しゃがみ・移動停止・銃の停止)を打ち切った時刻(Date.now)。
+   * `lastHurtAt` 以降の値だけが効く(`utils/playerHurt.isHurtCancelled`)。被弾の段の記録(lastHurtAt)は消さない。
+   */
+  hurtCancelledAt?: number;
+  /** ★被弾反撃の着地(=命中)を解決する時刻(Date.now・0/未設定=待ちなし)と相手のid。縮地の shukuchiStrikeAt と同型。 */
+  retaliateStrikeAt?: number;
+  retaliateTargetId?: string;
+  /**
    * ★対人トラップの効果が切れる時刻(Date.now・0=効果なし)。仕様の正=research/SAME_ARENA.md §3-g。
    * 幻影のトラップに触れた時だけ立つ(**対人のみ**)。効果中は①移動が等倍のみ ②貰うクリ率アップ
    * ③リロード1.5倍 ④サブのCD短縮系が無効。判定は `utils/trapDebuff.isTrapDebuffed()` の1本。

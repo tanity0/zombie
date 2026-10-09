@@ -106,22 +106,36 @@ export const knockbackUntilAfterStop = (now: number, stopUntil: number, kbMs: nu
 // (`beginMeleeSwing` が窓とCDと絵を同時に開く)なので、近接を止めるとパリィまで止まる=
 // 食らった直後に弾けなくなり、死の連鎖になる。守りは常に即応のまま、が現状の設計。
 /**
+ * ★被弾反撃(research/HIT_RETALIATION.md)で硬直を打ち切ったか。`hurtCancelledAt` が**今回の被弾以降**に打たれていて、
+ * その時刻に達していれば、しゃがみの絵・移動停止・銃の停止を全部終える(被弾の段の時計 `lastHurtAt` は消さない=段の記録は残す)。
+ * 次の被弾(`lastHurtAt` が `hurtCancelledAt` より新しい)では打ち切りは効かない=また普通に固まる。
+ */
+export const isHurtCancelled = (
+  p: { lastHurtAt?: number; hurtCancelledAt?: number },
+  nowMs: number,
+): boolean =>
+  p.hurtCancelledAt !== undefined && p.lastHurtAt !== undefined
+  && p.hurtCancelledAt >= p.lastHurtAt && nowMs >= p.hurtCancelledAt;
+
+/**
  * ★被弾直後の「動けない」窓(社長指示2026-09-17「食らった重さがほしい。エルデンリングをまねて」)。
  * のけぞり(`gunLockMs`)より**短い**=前半だけ本当に動けず、後半は動けるが撃てない。
  */
 export const isHurtMoveLocked = (
-  p: { lastHurtAt?: number; lastHurtTier?: 0 | 1 | 2 },
+  p: { lastHurtAt?: number; lastHurtTier?: 0 | 1 | 2; hurtCancelledAt?: number },
   nowMs: number,
 ): boolean => {
   if (p.lastHurtAt === undefined) return false;
+  if (isHurtCancelled(p, nowMs)) return false; // 被弾反撃で打ち切り
   return nowMs - p.lastHurtAt < playerHurtReactionOf(p.lastHurtTier).moveLockMs;
 };
 
 export const isHurtGunLocked = (
-  p: { lastHurtAt?: number; lastHurtTier?: 0 | 1 | 2 },
+  p: { lastHurtAt?: number; lastHurtTier?: 0 | 1 | 2; hurtCancelledAt?: number },
   nowMs: number,
 ): boolean => {
   if (p.lastHurtAt === undefined) return false;
+  if (isHurtCancelled(p, nowMs)) return false; // 被弾反撃で打ち切り(銃も止まらない=攻めに転じる)
   const ms = playerHurtReactionOf(p.lastHurtTier).gunLockMs;
   if (ms <= 0) return false;
   const since = nowMs - p.lastHurtAt;

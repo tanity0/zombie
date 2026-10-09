@@ -7,6 +7,7 @@ import { useGameStore, isInputLocked, isWorldFrozen } from '../store/gameStore';
 import { performFlickAction } from './inputActions';
 import { pcPressDown, pcPressUp, markPcFlick } from './pcPress';
 import { setPadActive } from './inputDevice';
+import { isRetaliationWindowOpen, createPadNeutralTracker, stepPadNeutral } from './hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { pcCycleGun } from './weaponCycle';
 import { isMenuContext, isGameplayMounted, navMove, navActivate, navBack, pressVisibleSkip, type NavDir } from './menuNav';
 
@@ -62,6 +63,7 @@ export const installGamepad = (): (() => void) => {
   let menuNextAt = 0;
   let usedPad = false;
   let walkDir: -1 | 0 | 1 = 0; // オープニングの廊下で送っている矢印
+  const padNeutral = createPadNeutralTracker(); // 被弾反撃: スティックが直近150ms以内にニュートラルだったか
 
   const releaseGameplay = () => {
     const s = useGameStore.getState();
@@ -160,12 +162,21 @@ export const installGamepad = (): (() => void) => {
     // A=指
     if (down(B.A)) pcPressDown('pad');
     if (up(B.A)) pcPressUp('pad', true);
+    // ★被弾反撃(research/HIT_RETALIATION.md §3): 窓の間に、スティックが「直近150ms以内にニュートラルだった」状態から
+    // 外へ倒れたら(=ニュートラルからの入力)その向きで反撃を試す。窓が無い時は追跡だけ進めて何も起こさない。
+    {
+      const push = stepPadNeutral(padNeutral, ax, ay, now, PAD_DEAD_ZONE);
+      if (push && !isInputLocked() && isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())) {
+        useGameStore.getState().tryHitRetaliation(push.x, push.y);
+      }
+    }
     // B・RB=フリック
     if ((down(B.B) || down(B.RB)) && !isInputLocked()) {
       const g = useGameStore.getState();
       const d = sw?.dir ?? g.player.lastDirection ?? { x: 1, y: 0 };
       if (g.rhythm.active) { g.rhythmInput('flick', d); markPcFlick(); }
-      else performFlickAction(d.x, d.y);
+      // 窓の間のB・RBも最初に反撃として判定。不成立なら従来のフリック。
+      else if (!g.tryHitRetaliation(d.x, d.y)) performFlickAction(d.x, d.y);
     }
     // Y=次の銃 / LB=前の銃
     if (down(B.Y)) pcCycleGun(1);

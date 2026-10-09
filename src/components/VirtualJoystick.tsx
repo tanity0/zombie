@@ -14,6 +14,7 @@ import {
   RHYTHM_FLICK_FIRE_SPEED,
   RHYTHM_FLICK_FIRE_WINDOW_MS
 } from '../config/shijin';
+import { isRetaliationWindowOpen } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 
 // Floating thumb-stick. The user can place a finger anywhere inside the
 // activation zone (the left half of the screen, below the HUD), and the
@@ -48,6 +49,7 @@ const VirtualJoystick: React.FC = () => {
   const beginMeleeSwing = useGameStore(state => state.beginMeleeSwing);
   const triggerKatanaDash = useGameStore(state => state.triggerKatanaDash);
   const triggerWireAnchor = useGameStore(state => state.triggerWireAnchor);
+  const tryHitRetaliation = useGameStore(state => state.tryHitRetaliation);
   const rhythmInput = useGameStore(state => state.rhythmInput);
   const mountSkater = useGameStore(state => state.mountSkater);
   const dismountSkater = useGameStore(state => state.dismountSkater);
@@ -120,6 +122,17 @@ const VirtualJoystick: React.FC = () => {
     }
   }, [detectFlick, triggerWireAnchor]);
 
+  // 被弾反撃: 指離しのフリックを反撃として試す。成立したら true(1接触で一度だけ)。窓が開いていなければ何もしない(従来経路に影響しない)。
+  const tryFireRetaliation = useCallback((): boolean => {
+    if (flickFiredRef.current) return false;
+    if (!isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())) return false;
+    const flick = detectFlick();
+    if (!flick) return false;
+    if (!tryHitRetaliation(flick.x, flick.y)) return false;
+    flickFiredRef.current = true;
+    return true;
+  }, [detectFlick, tryHitRetaliation]);
+
   const release = useCallback((fireCounter = true) => {
     // The core gameplay hook: lifting the finger fires the counter window.
     // The store enforces the cooldown so spam-tapping doesn't help.
@@ -140,6 +153,10 @@ const VirtualJoystick: React.FC = () => {
       if (useGameStore.getState().rhythm.active) {
         // フリックは move 中に即発火済み(スマホ音ゲー方式)。発火していなければ=タップ。
         if (!flickFiredRef.current) rhythmInput('tap');
+      } else if (tryFireRetaliation()) {
+        // ★被弾反撃(research/HIT_RETALIATION.md §3): 窓の間の「フリックして指を離す」を**最初に**反撃として判定する。
+        // 成立したら、この指離しでは一閃・ワイヤー・近接(カウンター)・各種の発射を出さない(反撃が出た=攻めに転じた)。
+        // 不成立(向きが外れた/相手が条件外/フリックでない/窓が無い)なら何も起きず、下の従来どおりの経路へ落ちる。
       } else {
         // PHILL銃(研究所): 立ち止まってタップ(=移動せず指を離す)で狙いサークル方向へ1発。
         // 移動中(ドラッグ)に離した時は store 側の isMoving ガードで発砲しない。撃てたら発砲SE。
@@ -184,7 +201,10 @@ const VirtualJoystick: React.FC = () => {
       // で更新すると、多点タッチで先発ポインタが強制解放された際に偽のタップが記録されダブルタップが誤爆する。
       if (fireCounter) {
         const now = performance.now();
+        // 被弾反撃の窓の間の短いタッチは「触れ直してはじく」ための操作なので、スケボーのダブルタップ乗車に数えない(乗車の誤爆を防ぐ)。
+        const inRetaliationWindow = isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now());
         lastWasTapRef.current =
+          !inRetaliationWindow &&
           now - pointerDownTimeRef.current < SKATER_TAP_MAX_MS &&
           maxDragRef.current < SKATER_TAP_MAX_DRAG;
         lastUpAtRef.current = now;
@@ -201,7 +221,7 @@ const VirtualJoystick: React.FC = () => {
     setDelta({ x: 0, y: 0 });
     setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, setTouchActive, beginMeleeSwing, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, dismountSkater]);
+  }, [setSwipeDirection, setTouchActive, beginMeleeSwing, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, tryFireRetaliation, dismountSkater]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // 操作不可(ヘリ登場/セリフ/一時停止/死亡)中は移動・向き・攻撃を一切受け付けない(社長指示)。
@@ -212,7 +232,10 @@ const VirtualJoystick: React.FC = () => {
     const nowT = performance.now();
     // スケボー: 直前が短い小移動タップで、離しから SKATER_DOUBLETAP_MS 以内の再タップ=ダブルタップ=乗車。
     // (2発目はそのままホールド=移動。skater 未装備なら store 側で無害。) release で降車(+条件で投擲)。
-    if (lastWasTapRef.current && nowT - lastUpAtRef.current <= SKATER_DOUBLETAP_MS) mountSkater();
+    // ★被弾反撃の窓の中の触れ直しは乗車に数えない(カウンターを外す短いタップ→被弾→はじくために触れ直す、で乗車して
+    // 反撃が不発になる穴・検収監査 A-1)。
+    if (lastWasTapRef.current && nowT - lastUpAtRef.current <= SKATER_DOUBLETAP_MS
+      && !isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())) mountSkater();
     pointerDownTimeRef.current = nowT;
     maxDragRef.current = 0;
     flickFiredRef.current = false;

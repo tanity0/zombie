@@ -12,6 +12,7 @@ import { NpcDialogue } from './NpcDialogue';
 import { useHudLandscape } from './HudScale';
 import SubquestHud from './SubquestHud';
 import { LowHpVignette } from './LowHpVignette';
+import { HitRetaliationCue } from './HitRetaliationCue'; // ★被弾反撃の知らせ(research/HIT_RETALIATION.md §5)
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted, playSfx } from '../audio/audioManager';
 import { comboMilestoneCrossed, comboMilestoneAmp } from '../utils/comboMilestone';
@@ -145,6 +146,7 @@ const GameHUD: React.FC = () => {
   return (
     <div className="absolute inset-0 z-40 pointer-events-none text-white">
       <LowHpVignette />
+      <HitRetaliationCue />{/* 低HPの縁取りの手前に描く(見分けがつくように) */}
       {/* ★v0.25.3743(社長指示): フィル撃破イベント後、帰還サークル無しでそのままフェードアウト
           →EXエンディングへ。CSSアニメ1.1秒(状態は1回の切替のみ=毎フレーム再描画なし)。 */}
       {exOutroFading && (

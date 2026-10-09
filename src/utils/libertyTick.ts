@@ -466,7 +466,7 @@ export const pickActiveLiberty = (enemies: readonly Enemy[]): Enemy | undefined 
 const pushFlagBlast = (bearer: Enemy, shape: NonNullable<Enemy['heroShape']>): void => {
   if (shape.kind !== 'fan') return;
   const b: PumpkinBlast = {
-    x: shape.cx, y: shape.cy, radius: shape.radius, damage: LIB_FLAG_DAMAGE, enemyId: bearer.id, moveKey: 'liberty-flag',
+    x: shape.cx, y: shape.cy, radius: shape.radius, damage: LIB_FLAG_DAMAGE, enemyId: bearer.id, moveKey: 'liberty-flag', retaliate: true, // 被弾反撃の対象(旗の一振り。矢の雨は飛び道具なので立てない)
     fan: { cx: shape.cx, cy: shape.cy, angle: shape.angle, halfArc: shape.halfArc, radius: shape.radius },
   };
   useGameStore.setState(st => ({ pumpkinBlasts: [...st.pumpkinBlasts, b] }));
