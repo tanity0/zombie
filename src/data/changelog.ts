@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4946', items: ['スケボーが新しいドット絵になった', '起動時に抱える画像のメモリを少し減らした。見た目は変わらない'] },
   { version: '0.25.4945', items: ['英雄(変異)の足元の黒い霧がもう少し透けた'] },
   { version: '0.25.4944', items: ['英雄(変異)の足元の黒い霧が少しだけ透け、霧の奥に脚がうっすら見える'] },
   { version: '0.25.4943', items: ['英雄(変異)の足元の黒い霧が体の手前にかかり、脚が霧に沈んで見える'] },

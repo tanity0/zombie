@@ -738,6 +738,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'magic-circle' },        // 既定(linear)のまま
       { name: 'whip-hurricane' },      // 既定のまま
       { name: 'whip' },                // 既定のまま
+      // スケボー(社長支給2026-10-09・47×12のドット絵・背景透過済み)。旧 'skateboard'(1254×1254を色キー=常駐6MB)の置き換え。
+      { name: 'skateboard-dot', scaleMode: 'nearest' },
       { name: 'mirror-ball', scaleMode: 'linear' },
       { name: 'helicopter', scaleMode: 'nearest' }, // ぼかさない(平滑化なし=くっきり)
       // 登場演出のヘリのローター回転(社長素材2026-09-19・18コマ横並び 8000x234)。
@@ -1182,7 +1184,21 @@ export const ensureTextures = (): Promise<void> => {
           if (dr * dr + dg * dg + db * db <= tol2) d[i + 3] = 0;
         }
         ctx.putImageData(im, 0, 0);
-        const tex = Texture.from(cv);
+        // 画面での大きさに対して大きすぎる絵は、透過を済ませた後に縮めた写しにする(KEYED_SHRINK・原盤は public/ のまま)。
+        let srcCanvas: HTMLCanvasElement = cv;
+        const div = KEYED_SHRINK[name];
+        if (div && div > 1) {
+          const c2 = document.createElement('canvas');
+          c2.width = Math.max(1, Math.round(w / div)); c2.height = Math.max(1, Math.round(h / div));
+          const ctx2 = c2.getContext('2d');
+          if (ctx2) {
+            ctx2.imageSmoothingEnabled = true;
+            ctx2.imageSmoothingQuality = 'high';
+            ctx2.drawImage(cv, 0, 0, c2.width, c2.height);
+            srcCanvas = c2;
+          }
+        }
+        const tex = Texture.from(srcCanvas);
         tex.source.scaleMode = scaleMode;
         textures.set(name, tex);
       } catch (e) {
@@ -1215,8 +1231,10 @@ export const ensureTextures = (): Promise<void> => {
           await loadEdgeSoftened(name, scaleMode === 'linear' ? 'linear' : 'nearest');
           return;
         }
-        const tex = await loadOne(name);
-        if (!tex) return;
+        const loaded = await loadOne(name);
+        if (!loaded) return;
+        // なめらかなぼかしの絵は、読み込んだ直後に縮めた写しへ置き換える(SHRINK_ON_LOAD・原盤は public/ のまま)。
+        const tex = SHRINK_ON_LOAD[name] ? shrinkLoadedTexture(loaded, spritePath(name), SHRINK_ON_LOAD[name]) : loaded;
         if (scaleMode) tex.source.scaleMode = scaleMode;
         // M8改(§5.9): ソフト系3クラスはミップマップONで縮小を均一に(linearと併用)。
         if (isSoftClassSprite(name)) tex.source.autoGenerateMipmaps = true;
@@ -1301,7 +1319,7 @@ export const ensureTextures = (): Promise<void> => {
       }
     };
 
-    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni'), loadKeyed('skateboard'), loadKeyed('thor-katana'), loadTopFadedCloud()]);
+    await Promise.all([loadKeyed('turret-fixed'), loadKeyed('turret-omni'), loadKeyed('thor-katana'), loadTopFadedCloud()]);
 
     // ステージ1セット(アトラスの敵/ピックアップ/木)をドット絵で上書き(社長指示)。
     // atlas 切り出しの後に textures.set で確実に置換。ドット絵なので nearest。
@@ -1466,6 +1484,40 @@ export const preloadBackgrounds = (): Promise<void> => {
 
 // Texture for an actor/pickup name, or null when there's no art for it (the
 // RE-specific pickups and projectiles are drawn procedurally instead).
+/**
+ * ★読み込んだ直後に縮めた写しへ置き換える絵(倍率の分母)。社長「はい」2026-10-09(起動メモリの削減)。
+ * 対象は**なめらかなぼかしだけの絵**——1/4に縮めて戻しても、ずれが平均1.1/255・上位1%でも13/255(実測)=見分けがつかない。
+ * 使う側は全部「テクスチャの寸法に対する比」で大きさを決めているので、写しが小さくても画面の大きさは変わらない。
+ * 原盤(public/)は触らない(CLAUDE.md「public/ は原盤」)。fog-alpha: 1672×941=6.0MB → 418×235=0.4MB。
+ */
+/**
+ * ★色キーで透過して読む絵のうち、画面での大きさに対して大きすぎるもの(倍率の分母)。社長「はい」2026-10-09。
+ * 砲台は画面で高さ54px(3倍の端末で約162実画素)にしか描かないのに 480×480(0.88MB×2)を抱えていた → 1/3=160×160(0.1MB×2)。
+ * 縮めた写しと元を同じ表示寸法で並べて見比べ、見分けがつかないことを確認済み。大きさは使う側が「目標の高さ÷テクスチャの高さ」で決める。
+ */
+const KEYED_SHRINK: Readonly<Record<string, number>> = {
+  'turret-fixed': 3,
+  'turret-omni': 3,
+};
+const SHRINK_ON_LOAD: Readonly<Record<string, number>> = {
+  'fog-alpha': 4,
+};
+const shrinkLoadedTexture = (tex: Texture, url: string, div: number): Texture => {
+  const res = tex.source.resource as CanvasImageSource | undefined;
+  if (!res || typeof document === 'undefined') return tex;
+  const w = Math.max(1, Math.round(tex.width / div)), h = Math.max(1, Math.round(tex.height / div));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  if (!ctx) return tex;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(res, 0, 0, w, h);
+  const out = Texture.from(c);
+  void Assets.unload(url).catch(() => { /* 解放できなくても描画は写しで続く */ });
+  return out;
+};
+
 export const getTexture = (name: string): Texture | null => {
   const t = textures.get(name);
   if (t) return t;

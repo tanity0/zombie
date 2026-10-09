@@ -1718,6 +1718,11 @@ const BURN_FLASH_ALPHA = 0.28; // 「薄く」=被弾白(0.85相当)よりずっ
 const BURN_FLASH_PERIOD_MS = 520;
 const ICE_FLASH_TINT = 0x7fd4ff; // 氷鈍化中の薄い水色(v0.25.3276・α/周期は延焼と共通)
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
+// 乗車中の板の足を乗せる高さ(絵の上端からの割合)。社長支給の横から見た板(47×12)はデッキ上面が2〜3行目=2.5/12。
+// 旧絵(上から見た板)はデッキ中央の黒線=0.43だった。
+const SKATEBOARD_DECK_TOP_FRAC = 2.5 / 12;
+// 旧絵は板が画像の幅の87%(左右に余白)だったので、新しい絵(余白なし)は同じ倍率だと一回り大きくなる。見た目の大きさを旧絵に揃える。
+const SKATEBOARD_ART_FILL = 0.87;
 const PLAYER_WALK_LEAN_RAD = 0.035;   // 足元支点の左右リーン(±約2°)。1歩ごとに体重移動
 // ストライカーの走りの後ろへの傾きに掛ける倍率(前への傾きは1のまま)。0=後ろへは傾かない(v0.25.4936)。
 const STRIKER_RUN_BACK_LEAN_MULT = tsNum('runbacklean', 0.3);
@@ -14383,7 +14388,7 @@ export class PixiScene {
     // アンカーY=0.43 は「デッキ中央の黒線」の位置(正方形テクスチャ内の実測)。ノーズ/テールは反って上へ跳ねる
     // ので上端(≒0.38)ではなく、この中央の黒線を足元(footY)へ合わせる=足がデッキ中央に乗る(社長指示)。
     if (!this.playerSkateboardAttached) {
-      this.playerSkateboard.anchor.set(0.5, 0.43);
+      this.playerSkateboard.anchor.set(0.5, SKATEBOARD_DECK_TOP_FRAC);
       this.playerSkateboard.visible = false;
       this.playerView.container.addChildAt(this.playerSkateboard, 1);
       this.playerSkateboardAttached = true;
@@ -17612,14 +17617,14 @@ export class PixiScene {
     } else {
       kb.visible = false;
     }
-    // スケボー乗車中: 足元に板を敷いて「乗っている」見た目にする(描画のみ・判定不変)。板テクスチャは
-    // 投擲弾と同じ色キー透過済み。向きで左右反転。体幅の約1.7倍(社長指示で一回り小さく)へ拡大し、
-    // アンカー(0.5,0.43=デッキ中央の黒線)を足元(footY)へ合わせる=足がデッキ中央に乗る見た目。
+    // スケボー乗車中: 足元に板を敷いて「乗っている」見た目にする(描画のみ・判定不変)。板は投擲弾と同じ絵
+    // (社長支給のドット絵 'skateboard-dot')。向きで左右反転。体幅の約1.7倍(社長指示で一回り小さく)へ拡大し、
+    // アンカー(0.5, デッキ上面)を足元(footY)へ合わせる=足がデッキの上に乗り、車輪がその下に見える。
     const sb = this.playerSkateboard;
-    const sbTex = getTexture('skateboard');
+    const sbTex = getTexture('skateboard-dot');
     if (p.skaterRiding && sbTex && sbTex.width > 0) {
       const d = this.depthScale(fb.footY);
-      const targetW = fb.boxW * 1.7 * d;
+      const targetW = fb.boxW * 1.7 * d * SKATEBOARD_ART_FILL;
       const sc = targetW / sbTex.width;
       const flip = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
       sb.texture = sbTex;
@@ -26336,13 +26341,13 @@ export class PixiScene {
     v.container.position.set(cx, cy);
     v.container.zIndex = cy;
     v.container.alpha = alpha;
-    const tex = getTexture('skateboard');
+    const tex = getTexture('skateboard-dot');
     const g = v.gfx;
     g.clear();
     if (tex && tex.height > 0) {
       v.sprite.visible = true;
       v.sprite.texture = tex;
-      const targetW = Math.max(28, p.width * 1.4);
+      const targetW = Math.max(28, p.width * 1.4) * SKATEBOARD_ART_FILL;
       const sc = targetW / tex.width;
       v.sprite.scale.set(sc);
       v.sprite.rotation = heading + spin;

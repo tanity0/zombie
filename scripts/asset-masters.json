@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "925 files / 復号後 約690MB",
+ "generatedFor": "926 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -4243,6 +4243,12 @@
    "h": 222,
    "bytes": 71911,
    "sha": "90e97586b0d52f22"
+  },
+  "sprites/skateboard-dot.png": {
+   "w": 47,
+   "h": 12,
+   "bytes": 700,
+   "sha": "a277745c8bcaa7cb"
   },
   "sprites/skateboard.png": {
    "w": 1254,
