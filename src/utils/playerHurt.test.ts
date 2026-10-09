@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked , isHurtMoveLocked, isHurtCancelled, knockbackUntilAfterStop } from './playerHurt';
+import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked , isHurtMoveLocked, isHurtCancelled, knockbackUntilAfterStop, blastKnockbackOf } from './playerHurt';
 
 describe('playerHurtTier — 被弾の重さで段が変わる', () => {
   it('素の敵の攻撃力(最大HP120)が狙いどおりの段に落ちる', () => {
@@ -143,5 +143,23 @@ describe('hurtCancelledAt — 被弾反撃で硬直を打ち切る(research/HIT_
   it('被弾の記録が無ければ(lastHurtAt 未設定)打ち切りも何も起きない', () => {
     expect(isHurtCancelled({ hurtCancelledAt: 500 }, 600)).toBe(false);
     expect(isHurtMoveLocked({ hurtCancelledAt: 500 }, 600)).toBe(false);
+  });
+});
+
+describe('爆風で食らった時の押し出しは被弾の段に従う(社長指摘2026-10-09「ジャンプ攻撃食らった時、まだ吹っ飛んでない」)', () => {
+  it('技の指定が無ければ、接触で食らった時と同じ段の押し出し(重いほど速く長い)', () => {
+    for (const tier of [0, 1, 2] as const) {
+      const r = PLAYER_HURT_TIERS[tier];
+      expect(blastKnockbackOf(460, tier)).toEqual({ speed: 460 * r.kbSpeedMult, ms: r.kbMs });
+    }
+    const light = blastKnockbackOf(460, 0), heavy = blastKnockbackOf(460, 2);
+    expect(heavy.speed * heavy.ms).toBeGreaterThan(light.speed * light.ms * 3);
+  });
+  it('段が付かなかった時(実ダメージ無し)は軽の段=旧と同じ', () => {
+    expect(blastKnockbackOf(460, undefined)).toEqual({ speed: 460, ms: PLAYER_HURT_TIERS[0].kbMs });
+  });
+  it('技ごとの押し量が指定されていれば段より優先(英雄・偶像・賞金首の技)', () => {
+    expect(blastKnockbackOf(460, 2, 900, 200)).toEqual({ speed: 900, ms: 200 });
+    expect(blastKnockbackOf(460, 2, 900)).toEqual({ speed: 900, ms: PLAYER_HURT_TIERS[2].kbMs });
   });
 });

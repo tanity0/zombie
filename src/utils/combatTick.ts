@@ -58,7 +58,7 @@ import {
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
   COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
   KNOCKBACK_DURATION, KNOCKBACK_SPEED, COUNTER_KNOCKBACK_LAUNCH, COUNTER_KNOCKBACK_SPEED,
-  PLAYER_KNOCKBACK_SPEED, PLAYER_KNOCKBACK_MS,
+  PLAYER_KNOCKBACK_SPEED,
   INVULN_MS, // ★判定時置換ミラー(2026-08-27): 守護霊の接触受け流しi-frame(プレイヤーのinvulnerable相当)
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, STUN_DURATION_MS,
   GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_GLIDE_HALF_WIDTH,
@@ -72,7 +72,7 @@ import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_A
 import { distToBandRect } from './geometry';
 import { circleHitsFan } from './heroScript';
 import { applyBlastToHero, applyHeroBlastToEnemies, markHeroHit, heroAsTarget, damageHeroByEnemy, hitHeroShape } from './heroBlast'; // research/MUTANT_HERO.md
-import { knockbackUntilAfterStop } from './playerHurt'; // 押し出しはヒットストップが明けてから(社長指摘2026-10-08)
+import { knockbackUntilAfterStop, blastKnockbackOf } from './playerHurt'; // 押し出しはヒットストップが明けてから(社長指摘2026-10-08)
 import { applyBlastToEscorts, applyEnemyProjectilesToEscorts, hitEscortShape } from './escortHit'; // research/ESCORT_TARGETED.md §3: 進軍NPCも同じ入口で被弾
 import { escortBodyRect, escortCenter, ESCORT_BODY_SIZE } from './escortHealth';
 import { escortAggroCandidates, hittableEscorts } from './escortView';
@@ -349,22 +349,26 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
           : b.moveKey === 'jo-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
+        const hurtAtBefore = useGameStore.getState().player.lastHurtAt; // この一撃で段が付いたかを見分ける(下の押し出し)
         const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
-        // v0.25.2653: **技ごとの押し量**(b.kbSpeed/kbMs)があればそれを使う。未指定=従来の共通値。
+        // v0.25.2653: **技ごとの押し量**(b.kbSpeed/kbMs)があればそれを使う。
+        // 技の指定が無ければ**被弾の段の押し出し**(接触で食らった時と同じ表=重い一撃ほど遠くへ飛ぶ)。社長指摘2026-10-09「ジャンプ攻撃食らった時、まだ吹っ飛んでない」。
         const ddx = bpcx - b.x, ddy = bpcy - b.y;
         const dd = Math.max(0.001, Math.hypot(ddx, ddy));
-        const kbSp = b.kbSpeed ?? PLAYER_KNOCKBACK_SPEED;
-        const kbMs = b.kbMs ?? PLAYER_KNOCKBACK_MS;
-        useGameStore.setState(st => ({ player: {
+        useGameStore.setState(st => {
+          const landed = st.player.lastHurtAt !== hurtAtBefore;
+          const { speed: kbSp, ms: kbMs } = blastKnockbackOf(PLAYER_KNOCKBACK_SPEED, landed ? st.player.lastHurtTier : undefined, b.kbSpeed, b.kbMs);
+          return { player: {
           ...st.player,
           knockbackVx: (ddx / dd) * kbSp,
           knockbackVy: (ddy / dd) * kbSp,
           // 押し出しはヒットストップ(damagePlayer が張った)が明けてから始める(社長指摘2026-10-08「ジャンプ攻撃食らっても押し出されなくなってる」)。
           knockbackUntil: knockbackUntilAfterStop(Date.now(), st.hitstopUntil, kbMs),
           knockbackMs: kbMs,
-        } }));
+        } };
+        });
         if (died) fx.triggerPlayerDeath(bpcx, bpcy);
         if (b.moveKey?.startsWith('hero-')) markHeroHit(b.enemyId);
       }

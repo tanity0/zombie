@@ -90,6 +90,20 @@ export const playerHurtReactionOf = (tier: number | undefined): PlayerHurtReacti
 export const knockbackUntilAfterStop = (now: number, stopUntil: number, kbMs: number): number =>
   Math.max(now, stopUntil) + kbMs;
 
+/**
+ * 爆風(着地・叩きつけ等=`pumpkinBlasts`)で食らった時の押し出しの速さと尺。
+ * **技ごとの押し量(kbSpeed/kbMs)が指定されていればそれ**、無ければ**被弾の段の押し出し**(接触で食らった時と同じ表)。
+ * 旧は未指定の技を一律で軽の段(約60px)にしていたため、重い跳びを食らってもかすり傷と同じ距離しか飛ばなかった
+ * (社長指摘2026-10-09「ジャンプ攻撃食らった時、まだ吹っ飛んでない」)。
+ * `tier` は今の一撃で付いた段。実ダメージが入らなかった時(段が付かなかった時)は undefined=軽の段(旧と同じ)。
+ */
+export const blastKnockbackOf = (
+  baseSpeed: number, tier: number | undefined, kbSpeed?: number, kbMs?: number,
+): { speed: number; ms: number } => {
+  const r = playerHurtReactionOf(tier);
+  return { speed: kbSpeed ?? baseSpeed * r.kbSpeedMult, ms: kbMs ?? r.kbMs };
+};
+
 // ---------------------------------------------------------------------------------------------
 // ★被弾の復帰ディレイ(社長指示2026-09-16「食らった時に多少動けるようになるのにディレイが
 //   お互いに必要な気がする」→「はい」)
