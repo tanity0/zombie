@@ -14471,7 +14471,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 // 半径はwindup開始時にbeginGiantMove('stomp')が確定した値を読む(M65)。未設定
                 // (=旧セーブ/フォールバック経路)なら無倍率の生半径。描画側(pixiScene.ts)も同じ値を読む。
-                pumpkinBlasts.push({ x: ecx, y: ecy, radius: enemy.gStompRadius ?? GIANT_STOMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-stomp' });
+                pumpkinBlasts.push({ x: ecx, y: ecy, radius: enemy.gStompRadius ?? GIANT_STOMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-stomp', retaliate: true }); // 被弾反撃の対象(城ボスの近接)
                 // 自分中心(軸退化=posB固定0・§1-2の bm-whip360/mk-spin/bite と同型)。
                 // AI_HUMANIZE.md B2 ★未決#14=(a): 図形は葉モジュール episodeShape.ts の
                 // episodeShapeFor へ1本化(記録側・再生側とも同じ関数=数値の複製なし)。
@@ -14530,7 +14530,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const stx = enemy.aiTargetX ?? ecx, sty = enemy.aiTargetY ?? ecy;
                 pumpkinBlasts.push({
                   x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: GIANT_SWEEP_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-sweep',
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-sweep', retaliate: true, // 被弾反撃の対象(城ボスの近接)
                   capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SWEEP_HALF_WIDTH },
                 });
                 settleGiantHabit('g-sweep-windup', {
@@ -14617,7 +14617,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               if (jt >= 1) {
                 pumpkinLanded = true;
                 // 半径はwindup開始時にbeginGiantMove('jump')が確定した値を読む(M65・stomp同様)。
-                pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: enemy.gJumpRadius ?? GIANT_JUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-jump' });
+                pumpkinBlasts.push({ x: jtx + enemy.width / 2, y: jty + enemy.height / 2, radius: enemy.gJumpRadius ?? GIANT_JUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-jump', retaliate: true }); // 被弾反撃の対象(城ボスの近接)
                 return { ...enemy, ...phaseFields, x: jtx, y: jty, vx: 0, vy: 0, aiPhase: 'g-jump-recover', aiPhaseUntil: atkUntil(jumpRecoverMs) };
               }
               return { ...enemy, ...phaseFields, x: jnx, y: jny, vx: jvx, vy: jvy };
@@ -14683,7 +14683,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const tDs = airHopEaseD01(t);
               if (t >= 1) {
                 pumpkinLanded = true;
-                pumpkinBlasts.push({ x: tx, y: ty, radius: GLEN_TRIJUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-trijump' });
+                pumpkinBlasts.push({ x: tx, y: ty, radius: GLEN_TRIJUMP_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-trijump', retaliate: true }); // 被弾反撃の対象(城ボスの近接)
                 const next = idx + 1;
                 if (next >= GLEN_TRIJUMP_COUNT) {
                   // 3発目の着地=最大の反撃窓へ。着地点の情報はここで捨てる(次の抽選に持ち越さない)。
@@ -14765,7 +14765,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const btx = enemy.aiTargetX ?? ecx, bty = enemy.aiTargetY ?? ecy;
                 pumpkinBlasts.push({
                   x: (bfx + btx) / 2, y: (bfy + bty) / 2, radius: GIANT_BITE_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-bite',
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-bite', retaliate: true, // 被弾反撃の対象(城ボスの近接)
                   capsule: { fx: bfx, fy: bfy, tx: btx, ty: bty, halfWidth: GIANT_BITE_HALF_WIDTH },
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-active', aiPhaseUntil: atkUntil(GIANT_BITE_ACTIVE_MS) };
@@ -14792,7 +14792,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const stx = enemy.aiTargetX ?? ecx, sty = enemy.aiTargetY ?? ecy;
                 pumpkinBlasts.push({
                   x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: GIANT_SLAM_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-slam',
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-slam', retaliate: true, // 被弾反撃の対象(城ボスの近接)
                   capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SLAM_HALF_WIDTH },
                 });
                 settleGiantHabit('g-slam-windup', {
@@ -14824,7 +14824,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const gtx = enemy.aiTargetX ?? enemy.x, gty = enemy.aiTargetY ?? enemy.y;
                 pumpkinBlasts.push({
                   x: (gfx + gtx) / 2 + enemy.width / 2, y: (gfy + gty) / 2 + enemy.height / 2, radius: GIANT_GLIDE_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-glide',
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-glide', retaliate: true, // 被弾反撃の対象(城ボスの近接)
                   capsule: {
                     fx: gfx + enemy.width / 2, fy: gfy + enemy.height / 2,
                     tx: gtx + enemy.width / 2, ty: gty + enemy.height / 2, halfWidth: GIANT_GLIDE_HALF_WIDTH,
@@ -14901,7 +14901,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 描画側がaiTargetX/Yを直接参照する(本体の現在地とは無関係=世界座標で描ける)。
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 const dtx = enemy.aiTargetX ?? enemy.x, dty = enemy.aiTargetY ?? enemy.y;
-                pumpkinBlasts.push({ x: dtx + enemy.width / 2, y: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-dive' });
+                pumpkinBlasts.push({ x: dtx + enemy.width / 2, y: dty + enemy.height / 2, radius: GIANT_DIVE_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-dive', retaliate: true }); // 被弾反撃の対象(城ボスの近接)
                 settleGiantHabit('g-dive-windup', {
                   liveShape: episodeShapeFor('giantbat', 'g-dive-windup', enemy) ?? undefined,
                 });
@@ -15215,7 +15215,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 // ——「素早く」なので、途中で背後へ回り込んで避ける遊びは作らない(見た目と食い違う)。
                 pumpkinBlasts.push({
                   x: enemy.aiFromX ?? ecx, y: enemy.aiFromY ?? ecy,
-                  radius: GIANT_WING_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-wing',
+                  radius: GIANT_WING_RADIUS, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-wing', retaliate: true, // 被弾反撃の対象(城ボスの近接)
                 });
                 // 自分中心(軸退化=posB固定0)。中心=溜め開始位置(aiFromX/Y)。
                 settleGiantHabit('g-wing-windup', {
@@ -15452,7 +15452,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const ttx = enemy.aiTargetX ?? ecx, tty = enemy.aiTargetY ?? ecy;
                 pumpkinBlasts.push({
                   x: (tfx + ttx) / 2, y: (tfy + tty) / 2, radius: GLEN_TAILSLAM_HALF_WIDTH,
-                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-tailslam',
+                  damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-tailslam', retaliate: true, // 被弾反撃の対象(城ボスの近接)
                   capsule: { fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: GLEN_TAILSLAM_HALF_WIDTH },
                 });
                 settleGiantHabit('g-tailslam-windup', {

@@ -1929,7 +1929,7 @@ export const runRafiTick = (
       useGameStore.setState(state => ({
         pumpkinBlasts: [...state.pumpkinBlasts, {
           x: (sfx0 + stx0) / 2, y: (sfy0 + sty0) / 2, radius: RF_T.sweep.halfWidth,
-          damage: rafi.damage, enemyId: rafi.id,
+          damage: rafi.damage, enemyId: rafi.id, retaliate: true, // 被弾反撃の対象(ラファエルの薙ぎ)
           capsule: { fx: sfx0, fy: sfy0, tx: stx0, ty: sty0, halfWidth: RF_T.sweep.halfWidth },
         }],
       }));
@@ -2948,10 +2948,11 @@ export const runAcrasielTick = (
     if (!ghost) patch.acrasielCounterLockUntil = patch.bossStateUntil;
     if (plan) patch.acrasielPlan = { ...plan, combo: false };
   };
-  const damage = (hit: boolean, label: string, tag: string): void => {
+  // retaliate=被弾反撃の対象(体ごと現れて当たる転移衝撃だけ。棘・槍・爆発・凝視は飛び道具/光なので渡さない)。
+  const damage = (hit: boolean, label: string, tag: string, retaliate = false): void => {
     if (!hit) return;
     if (isCounterActive(useGameStore.getState().player, Date.now())) { counter(px, py); return; }
-    if (useGameStore.getState().damagePlayer(boss.damage, label, px, py, undefined, undefined, tag)) onPlayerDeath(px, py);
+    if (useGameStore.getState().damagePlayer(boss.damage, label, px, py, undefined, undefined, tag, undefined, retaliate ? boss.id : undefined)) onPlayerDeath(px, py);
   };
   // research/MUTANT_HERO.md §4-2: 同じ形・同じダメージで守護霊と英雄にも当てる(プレイヤーの判定は不変)。
   const hitOthersAc = (shape: ThirdPartyShape, tag: string): void => { hitThirdParties(shape, boss.damage, boss.id, tag); };
@@ -3153,13 +3154,13 @@ export const runAcrasielTick = (
       ));
     }
     damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + Math.max(pl.width, pl.height) / 2,
-      'アクラシエルの転移衝撃', 'acrasiel-warp');
+      'アクラシエルの転移衝撃', 'acrasiel-warp', true);
     hitOthersAc({ kind: 'circle', cx: boss.aiTargetX ?? cx, cy: boss.aiTargetY ?? cy, r: AC_T.warp.impactRadius }, 'acrasiel-warp'); // §4-2
   } else if (st === 'warp-active') {
     if (remaining <= 0) recover('warp');
     else {
       damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + playerRadius,
-        'アクラシエルの転移衝撃', 'acrasiel-warp');
+        'アクラシエルの転移衝撃', 'acrasiel-warp', true);
       hitOthersAc({ kind: 'circle', cx: boss.aiTargetX ?? cx, cy: boss.aiTargetY ?? cy, r: AC_T.warp.impactRadius }, 'acrasiel-warp'); // §4-2
     }
   }
@@ -3378,10 +3379,12 @@ export const runPhillTick = (
   // カウンター成立の実体はcombatTick.applyPumpkinBlastDamageの「後追い分岐」1本
   // (§10-15#2/#3: counterReachにphill州は載せない)。windup/recover中の早期カウンターだけは
   // 他の天使6体と同じbodyOverlapNow+angelCounterHitの自己完結パターンを使う。
+  // 被弾反撃の対象=翼で斬る・突く・連撃・急降下(体ごと当たる技)。光の雨・金環・裁き・檻・輪投げ(光や投げ物)は対象外。
+  const PHILL_RETALIATE_MOVES = new Set(['phill-wingslash', 'phill-wingthrust', 'phill-wingcombo', 'phill-dive']);
   const pushBlast = (x: number, y: number, radius: number, damage: number, moveKey: string,
     capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number }): void => {
     useGameStore.setState(state => ({
-      pumpkinBlasts: [...state.pumpkinBlasts, { x, y, radius, damage, enemyId: phill.id, moveKey, ...(capsule ? { capsule } : {}) }],
+      pumpkinBlasts: [...state.pumpkinBlasts, { x, y, radius, damage, enemyId: phill.id, moveKey, ...(capsule ? { capsule } : {}), ...(PHILL_RETALIATE_MOVES.has(moveKey) ? { retaliate: true } : {}) }],
     }));
   };
 

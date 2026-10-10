@@ -7579,7 +7579,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 円AoE(giantの踏み鳴らしと同じ作法。既存pumpkinBlasts配管への相乗り)。
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   useGameStore.setState(state => ({
-                    pumpkinBlasts: [...state.pumpkinBlasts, { x: bcx, y: bcy, radius: MIMIR_BITE_RADIUS, damage: boss.damage, enemyId: boss.id }],
+                    pumpkinBlasts: [...state.pumpkinBlasts, { x: bcx, y: bcy, radius: MIMIR_BITE_RADIUS, damage: boss.damage, enemyId: boss.id, retaliate: true /* 被弾反撃の対象(ミーミルの群体の噛みつき) */ }],
                   }));
                   patch.bossState = 'bite-recover';
                   patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_MI.bite.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
@@ -7598,7 +7598,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.setState(state => ({
                     pumpkinBlasts: [...state.pumpkinBlasts, {
                       x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: HB_JO.coil.halfWidth,
-                      damage: boss.damage, enemyId: boss.id,
+                      damage: boss.damage, enemyId: boss.id, retaliate: true, // 被弾反撃の対象(ヨルムンガルドのうねり)
                       capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: HB_JO.coil.halfWidth },
                     }],
                   }));

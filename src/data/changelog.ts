@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4955', items: ['ボスの噛みつき・薙ぎ・叩きつけ・跳びかかりなど、体ごとぶつかってくる技も、食らった直後にはじき返せる'] },
   { version: '0.25.4954', items: ['跳びかかりを真下で動かずに食らっても、後ろへ吹き飛ぶ'] },
   { version: '0.25.4953', items: ['跳びかかりや叩きつけの重い一撃を食らうと、体ごと大きく吹き飛ばされる'] },
   { version: '0.25.4952', items: ['はじき返しが決まると、赤い帯の「Counter!」が出る'] },
