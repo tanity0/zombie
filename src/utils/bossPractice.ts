@@ -284,16 +284,16 @@ const GUARDIAN_PHANTOM_SLOT: PracticeSlot = {
   alwaysUnlocked: true,
 };
 
-// research/MUTANT_HERO.md §2-0(社長指示2026-10-03「出てくるステージはまだ考え中なので、ボスモード、対策室にだけ一旦入れておいて」):
-// 英雄(変異)。本編のどこにも置かれていない=遭遇記録で開く輪が無いので常時解放(幻影の枠と同じ入口)。
-// 出撃先はステージ6(仮・HPに乗るステージ難度の係数のため。本編の置き場所が決まったらそこへ差し替える)。
+// research/MUTANT_HERO.md §2-0: 英雄(変異)。常時解放(幻影の枠と同じ入口)。
+// 出撃先はステージ1=本編で出るステージ(HERO_PATROL_STAGES=1・3・4・5)の最初(社長指摘2026-10-10「英雄のステージが6なのはおかしい」。
+// 旧: 置き場所が決まる前の仮のステージ6のまま残っていた。体力は固定なのでステージで強さは変わらない)。
 // この枠だけ雑魚が湧く(社長裁定 #6=三つ巴を演習で見られるように・useGameLoop の noSpawn ゲート)。
 export const MUTANT_HERO_SLOT_KEY = 'mutant-hero@practice';
 const MUTANT_HERO_SLOT: PracticeSlot = {
   slotKey: MUTANT_HERO_SLOT_KEY,
   encounterSlotKey: 'mutant-hero',
   bossType: 'mutant-hero',
-  stageId: 'stage-6',
+  stageId: 'stage-1',
   param: 'heronow',
   label: '英雄(変異)',
   reachable: false,
