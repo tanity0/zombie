@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.4972 — 研究所レベル3の討伐演出をパンプキンと揃える(社長「はい」=討伐イベントごと外す)【2026-10-11 00:37 JST】
+- `getsDramaticDeath` から `lab-zombie-3` を外す(崩壊/「◯◯を討伐」バナー/閃光/リング/シェイク/スロー)。パンプキンの v0.25.3168 裁定と同じ強個体の区分仕様。
+- `corpseEligible` に `lab-zombie-3` を編入(討伐イベントを外すと死に方が無くなりパッと消える=パンプキン v0.25.3704 と同じ穴を先に塞ぐ)。ネームド/クエスト対象は従来どおり討伐イベント側。
+- 画: stage-2 で lab-zombie-3 を倒す前後を撮って、死体が吹き飛んで倒れることを確認(パンプキンと並べて同じ死に方)。attention なし・バナーなし・bossCorpse なし。
+  死体に HP の帯が残るのはパンプキンも同じ(既存の挙動・撮影のため死体の寿命を延ばして止めている)。
+- 残したもの: 撃破数の「ボス」集計(`isScoreBoss`)は演出ではないので触っていない。
+- enemyUtils.test 86件。自己点検: 憲法第4条・第5条に触れない。
+- 変更: src/utils/enemyUtils.ts・enemyUtils.test.ts・package.json・changelog.ts。
+
 ## v0.25.4971 — 研究所レベル3の討伐アテンションを外す(社長「研究所のレベル3は強個体であって、ボスではない。倒してもアテンションしない」)【2026-10-10 22:07 JST】
 - 原因: 討伐アテンション(時間停止+カメラ寄り)の唯一の出どころ `enemyUtils.getsDeathAttention` が「isBossType かつ pumpkin 同格(pumpkin/削岩型/伐採人)以外」で、`lab-zombie-3` は isBossType に入っているため対象になっていた。
 - 修正: `getsDeathAttention` から `lab-zombie-3` を外す(強個体の区分仕様への整合)。死体の保持(holdMs)も同じ関数を見るので 0=その場で崩れる。

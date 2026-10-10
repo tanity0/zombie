@@ -323,7 +323,8 @@ describe('boss defeat cinematic eligibility', () => {
   it('routes every boss type through the shared crumble death path (pumpkinを除く)', () => {
     for (const type of BOSS_TYPES) {
       // v0.25.3168(社長指示): pumpkin は「厳密にはボスではない」ので討伐イベントごと対象外。
-      expect(getsDramaticDeath({ type } as Enemy), type).toBe(type !== 'pumpkin');
+      // 2026-10-10(社長「はい」): lab-zombie-3(研究所レベル3)も強個体=同じく対象外。
+      expect(getsDramaticDeath({ type } as Enemy), type).toBe(type !== 'pumpkin' && type !== 'lab-zombie-3');
     }
     expect(getsDramaticDeath({ type: 'zombie' } as Enemy)).toBe(false);
   });
@@ -355,6 +356,11 @@ describe('getsDeathAttention (討伐時の時間停止+カメラ寄り・社長�
   // 旧v0.25.2879は「時間停止+カメラ寄りだけ外し、崩壊/バナーは残す」だったが、**残りも不要**という裁定。
   it('★pumpkin は討伐イベントごと対象外(崩壊/バナー/閃光/シェイク/スローを出さない)', () => {
     expect(getsDramaticDeath({ type: 'pumpkin' } as Enemy)).toBe(false);
+  });
+  it('★lab-zombie-3 も討伐イベントごと対象外。代わりに通常敵と同じ死体吹き飛び(パッと消えない)', () => {
+    expect(getsDramaticDeath({ type: 'lab-zombie-3' } as Enemy)).toBe(false);
+    expect(corpseEligible({ type: 'lab-zombie-3' })).toBe(true);
+    expect(corpseEligible({ type: 'lab-zombie-3', isNamed: true })).toBe(false);
   });
   it('ただしネームド/クエスト対象なら演出は残る(型だけで切らない)', () => {
     expect(getsDramaticDeath({ type: 'pumpkin', isNamed: true } as Enemy)).toBe(true);

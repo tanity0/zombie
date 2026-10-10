@@ -433,8 +433,10 @@ export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && !i
 // v7でisBossTypeへ賞金首がフル編入されたため`isBossType(enemy.type) && enemy.type !== 'pumpkin'`
 // だけで自動的にtrueになる(賞金首はpumpkinではない)。重複登録なので撤去(討伐SE=ボス討伐SE流用
 // との整合=劇的死亡を出す、という結論自体は不変)。
+// ★`lab-zombie-3`(研究所レベル3)も pumpkin と同じく討伐イベントごと除外(社長「はい」2026-10-10。
+//   「研究所のレベル3は強個体であって、ボスではない」→強個体の区分仕様=パンプキンと同じ死に方に揃える)。
 export const getsDramaticDeath = (enemy: Enemy): boolean =>
-  !!enemy.isNamed || !!enemy.questTarget || (isBossType(enemy.type) && !isPumpkinTier(enemy.type));
+  !!enemy.isNamed || !!enemy.questTarget || (isBossType(enemy.type) && !isPumpkinTier(enemy.type) && enemy.type !== 'lab-zombie-3');
 
 // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26): この個体が「死体」(corpseUntil付き)か。
 // これが唯一の判定=AI/攻撃/照準/被弾/対象選定の全経路がこの1関数で除外する(§26-2)。
@@ -482,8 +484,9 @@ export const pickNearestTarget = (
 // v0.25.3168裁定で討伐イベント(getsDramaticDeath)から除外され、かつ isBossType なのでここでも
 // 死体化から除外=**死亡演出が両方とも無い「隙間」に落ちてパッと消えていた**(慣性MUST違反)。
 // 討伐イベント無しの裁定はそのまま、死に方は通常敵と同じ死体吹き飛びを与える(pumpkinだけ例外編入)。
+// lab-zombie-3 も同じ理由で編入(討伐イベントを外した=死体吹き飛びが無いとパッと消える・2026-10-10)。
 export const corpseEligible = (enemy: Pick<Enemy, 'type' | 'isNamed' | 'questTarget'>): boolean =>
-  (!isBossType(enemy.type) || isPumpkinTier(enemy.type)) && !enemy.isNamed && !enemy.questTarget;
+  (!isBossType(enemy.type) || isPumpkinTier(enemy.type) || enemy.type === 'lab-zombie-3') && !enemy.isNamed && !enemy.questTarget;
 // ★社長指示v0.25.3168「パンプキンは厳密にはボスではないので討伐イベントいらない」:
 // pumpkin を**討伐イベントごと**除外する(崩壊/バナー「◯◯を討伐」/閃光/リング/シェイク/スロー)。
 // 旧: v0.25.2879 では「時間停止+カメラ寄り(getsDeathAttention)」だけを外し、崩壊やバナーは残していた。
