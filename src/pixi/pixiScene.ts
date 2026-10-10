@@ -393,7 +393,7 @@ import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt, loopSweepProg as csLoopSweepProg } from '../utils/circleSweep';
 import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, bandSweepSliceAlpha, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
 import { giantSweepWindowProg, giantNovaWindupProg } from '../utils/giantRedTelegraph';
-import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb } from '../utils/memoryTier'; // 焼きの天井をスマホ/PCで分ける(v0.25.4867)
+import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb, canBakeWithin } from '../utils/memoryTier'; // 焼きの天井をスマホ/PCで分ける(v0.25.4867)
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
 /**
@@ -17880,6 +17880,16 @@ export class PixiScene {
       if (hit) { hit.usedAt = Date.now(); return hit; } // 使った時刻を更新=捨てる順番の材料
       return null;
     }
+    // ★天井を本当の上限にする(社長実機 v0.25.4959「変異体対策室で落ちた」=縁が天井32MBを超えて71MB)。
+    // 先に古い物を捨て、それでも入らなければ**今回は焼かない**(null をキャッシュしない=空いたら次のフレームで焼ける)。
+    {
+      const limit = Math.max(1, RIM_BAKE_BUDGET_MB) * 1024 * 1024;
+      const add = bw * bh * 4;
+      if (!canBakeWithin(this.rimBakeBytes, add, limit)) {
+        this.enforceRimBudget(add);
+        if (!canBakeWithin(this.rimBakeBytes, add, limit)) return null;
+      }
+    }
     try {
       const wrap = new Container();
       const white = new ColorMatrixFilter();
@@ -17932,8 +17942,9 @@ export class PixiScene {
    * 捨てたテクスチャを貼っているスプライトは、`drawRim` が**出す直前に必ず貼り直す**ので安全
    * (貼り直せない時は `visible=false` になる=消えたテクスチャが描かれる経路が無い)。
    */
-  private enforceRimBudget(): void {
-    const limit = Math.max(1, RIM_BAKE_BUDGET_MB) * 1024 * 1024;
+  private enforceRimBudget(reserveBytes = 0): void {
+    // reserveBytes=これから焼く分。その分の空きを作るつもりで捨てる(焼く前の呼び出し用)。
+    const limit = Math.max(1, RIM_BAKE_BUDGET_MB) * 1024 * 1024 - Math.max(0, reserveBytes);
     if (this.rimBakeBytes <= limit) return;
     const now = Date.now();
     // 古い順に走査(rimBakes は焼いた順。使い直された物は usedAt が新しいので下の条件で守られる)。

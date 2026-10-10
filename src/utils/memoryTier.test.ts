@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { memoryTierFrom, rimBakeBudgetMb, whiteBakeBudgetMb, resolutionCapFor } from './memoryTier';
+import { memoryTierFrom, rimBakeBudgetMb, whiteBakeBudgetMb, resolutionCapFor, canBakeWithin } from './memoryTier';
 
 describe('端末のメモリの格', () => {
   it('uaData.mobile が取れればそれを使い、取れなければ指(粗いポインタ)で決める', () => {
@@ -17,5 +17,15 @@ describe('端末のメモリの格', () => {
     expect(resolutionCapFor('pc')).toBe(2);
     expect(rimBakeBudgetMb('pc')).toBe(64);
     expect(whiteBakeBudgetMb('pc')).toBe(32);
+  });
+});
+
+describe('canBakeWithin — 焼き置きの天井を本当の上限にする(社長実機 v0.25.4959「変異体対策室で落ちた」)', () => {
+  it('焼いた後の合計が天井以下の時だけ焼ける', () => {
+    const MB = 1024 * 1024;
+    expect(canBakeWithin(30 * MB, 1 * MB, 32 * MB)).toBe(true);
+    expect(canBakeWithin(31 * MB, 1 * MB, 32 * MB)).toBe(true);   // ちょうど天井
+    expect(canBakeWithin(31 * MB, 2 * MB, 32 * MB)).toBe(false);  // 超える=焼かない
+    expect(canBakeWithin(40 * MB, 0, 32 * MB)).toBe(false);       // 既に超えている
   });
 });

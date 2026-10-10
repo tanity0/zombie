@@ -31,6 +31,13 @@ export const memoryTier = (): MemoryTier => {
 
 /** 焼いた縁の天井(MB)。スマホは v0.25.4866 の値のまま、PC は元の64へ。 */
 export const rimBakeBudgetMb = (tier: MemoryTier): number => (tier === 'phone' ? 32 : 64);
+/**
+ * 焼き置きの天井を**本当の上限**にする判定(社長実機 v0.25.4959「変異体対策室で落ちた」: 縁の天井32MBが 71MB まで膨らんでいた)。
+ * 退避は「直近に使った物は捨てない」ので、動きの激しいボスでは退避できる物が尽きる。その時は**新しく焼かない**
+ * (縁が一瞬出ないだけ=立ち物は消えない)。焼いた後の合計が天井以下に収まる時だけ焼いてよい。
+ */
+export const canBakeWithin = (currentBytes: number, addBytes: number, limitBytes: number): boolean =>
+  currentBytes + Math.max(0, addBytes) <= limitBytes;
 /** 白シルエット(被弾フラッシュ・昇天の白い体)の天井(MB)。 */
 export const whiteBakeBudgetMb = (tier: MemoryTier): number => (tier === 'phone' ? 16 : 32);
 /** 描画の解像度上限(社長裁定 v0.25.1447: スマホ=1 / PC=2)。 */
