@@ -176,30 +176,61 @@ const coverPropsInRegion = (minX: number, maxX: number, bandLimit: number): Plac
   return out;
 };
 
-// 区画ごとに UV バーを1本(通常帯のみ・奥には置かない)。松明の代わりの光源/装飾。当たり判定なし。
+// ---- 歩ける所に置く(社長指示2026-10-10「アイテムが出るバーをちゃんと移動可能敷地内に」「ゴールも、発生地点が移動不可エリアに入ってたりする」) ----
+// 歩ける帯(±LAB_CORRIDOR_Y_LIMIT_PX)の**中**にも壁と遮蔽プロップ(どちらも当たり判定あり)が立つので、
+// 「帯の中」だけでは足りない。物を置く点は、帯の中かつ壁・プロップの矩形から外れた所へ寄せる。
+/** 物の中心が取れる縦の範囲(帯の縁から少し内側=プレイヤーが届く)。 */
+export const LAB_ITEM_Y_LIMIT = LAB_CORRIDOR_Y_LIMIT_PX - 24;
+const SPOT_PAD = 14; // 壁・プロップとの最低の隙間(px)
+const obstacleRectsAround = (x: number, y: number, r: number): Rect[] => [
+  ...labWallsInRegion(x - r, y - r, x + r, y + r).map(wallRect),
+  ...labPropsInRegion(x - r, y - r, x + r, y + r).map(propRect),
+];
+const overlapsAny = (r: Rect, obs: Rect[]): boolean =>
+  obs.some(o => r.x < o.x + o.width && r.x + r.width > o.x && r.y < o.y + o.height && r.y + r.height > o.y);
+/**
+ * (x,y)を中心に w×h の物を置く時、歩ける帯の中で壁・プロップに重ならない一番近い点を返す。
+ * 縦は帯の中へ寄せてから、近い順(縦→横)に候補を試す。見つからなければ帯の中へ寄せた点を返す(従来より悪くならない)。
+ */
+export const nudgeToClearLabSpot = (x: number, y: number, w: number, h: number): { x: number; y: number } => {
+  const lim = LAB_ITEM_Y_LIMIT;
+  const cy = Math.max(-lim, Math.min(lim, y));
+  const obs = obstacleRectsAround(x, cy, 420);
+  const rectAt = (px: number, py: number): Rect => ({ x: px - w / 2 - SPOT_PAD, y: py - h / 2 - SPOT_PAD, width: w + SPOT_PAD * 2, height: h + SPOT_PAD * 2 });
+  const dys = [0, 20, -20, 40, -40, 60, -60, 90, -90, 120, -120, 160, -160, 200, -200, 260, -260, 320, -320];
+  for (const dx of [0, 40, -40, 80, -80, 140, -140, 220, -220, 300, -300]) {
+    for (const dy of dys) {
+      const py = cy + dy;
+      if (Math.abs(py) > lim) continue;
+      if (!overlapsAny(rectAt(x + dx, py), obs)) return { x: x + dx, y: py };
+    }
+  }
+  return { x, y: cy };
+};
+
+// 区画ごとに UV バー(壊すとアイテムが出る光源/装飾。当たり判定なし)。**歩ける帯の中にだけ**置く
+// (2026-10-10 まで: 上下 ±900 の通常帯に散らしていた=ほとんどが帯の外=壊しても拾えなかった)。
+// 本数は「帯1本ぶん」= 旧の1段(cy=0)の抽選をそのまま使う(区画あたり 1本+58%で2本目+20%で3本目)。
+// 縦は帯の中のどこか、壁・プロップに重なれば nudgeToClearLabSpot で隙間へ寄せる(決定論=描画と判定が一致)。
+const UV_W = 30, UV_H = 26;
 export const labUvBarsInRegion = (minX: number, minY: number, maxX: number, maxY: number): { id: string; x: number; y: number }[] => {
   const out: { id: string; x: number; y: number }[] = [];
+  if (maxY < -LAB_CORRIDOR_Y_LIMIT_PX - LAB_ZONE || minY > LAB_CORRIDOR_Y_LIMIT_PX + LAB_ZONE) return out; // 帯が範囲の外
   const cx0 = Math.floor(minX / LAB_ZONE) - 1, cx1 = Math.floor(maxX / LAB_ZONE) + 1;
-  const cy0 = Math.floor(minY / LAB_ZONE) - 1, cy1 = Math.floor(maxY / LAB_ZONE) + 1;
-  for (let cy = cy0; cy <= cy1; cy++) {
-    if (isDeepCell(cy)) continue; // 奥は UV バーを置かない
-    for (let cx = cx0; cx <= cx1; cx++) {
-      const x = cx * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hash2(cx + 9.1, cy + 4.7));
-      const y = cy * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hash2(cx - 3.3, cy + 8.8));
-      out.push({ id: `luv-${cx}-${cy}`, x, y });
-      // 2本目(密度UP・社長指示で 約45%→約58%。出過ぎたら 0.42→0.55 に戻す)。
-      if (hash2(cx + 2.7, cy - 6.4) > 0.42) {
-        const x2 = cx * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hash2(cx + 13.3, cy - 2.1));
-        const y2 = cy * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hash2(cx - 7.7, cy + 3.9));
-        out.push({ id: `luv2-${cx}-${cy}`, x: x2, y: y2 });
-      }
-      // 3本目(密度UP・約20%の区画)。LAB_ZONE は変えず本数で密度を上げる(敵密度に影響させない)。
-      if (hash2(cx - 5.5, cy + 1.3) > 0.80) {
-        const x3 = cx * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hash2(cx + 4.4, cy + 6.6));
-        const y3 = cy * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hash2(cx - 9.9, cy - 1.2));
-        out.push({ id: `luv3-${cx}-${cy}`, x: x3, y: y3 });
-      }
-    }
+  const cy = 0;
+  const lim = LAB_ITEM_Y_LIMIT;
+  const place = (id: string, hx: number, hy: number, cx: number) => {
+    const x = cx * LAB_ZONE + LAB_ZONE * (0.2 + 0.6 * hx);
+    const y = -lim + 2 * lim * hy;
+    const p = nudgeToClearLabSpot(x, y - UV_H / 2, UV_W, UV_H); // 足元(y)から上へ描く=中心は UV_H/2 上
+    out.push({ id, x: p.x, y: p.y + UV_H / 2 });
+  };
+  for (let cx = cx0; cx <= cx1; cx++) {
+    place(`luv-${cx}-${cy}`, hash2(cx + 9.1, cy + 4.7), hash2(cx - 3.3, cy + 8.8), cx);
+    // 2本目(密度UP・社長指示で 約45%→約58%。出過ぎたら 0.42→0.55 に戻す)。
+    if (hash2(cx + 2.7, cy - 6.4) > 0.42) place(`luv2-${cx}-${cy}`, hash2(cx + 13.3, cy - 2.1), hash2(cx - 7.7, cy + 3.9), cx);
+    // 3本目(密度UP・約20%の区画)。LAB_ZONE は変えず本数で密度を上げる(敵密度に影響させない)。
+    if (hash2(cx - 5.5, cy + 1.3) > 0.80) place(`luv3-${cx}-${cy}`, hash2(cx + 4.4, cy + 6.6), hash2(cx - 9.9, cy - 1.2), cx);
   }
   return out;
 };

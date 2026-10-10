@@ -396,7 +396,7 @@ import { TELEGRAPH_TRACK_MS, stepTrackAim } from '../utils/telegraphTrack'; // �
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
-import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
+import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
   clampRectToPlayableArea,
   clampCastleFightCrossing, // v0.25.3055: 城ボス戦の移動半径制限(研究対象の外縁まで)
@@ -406,7 +406,7 @@ import {
   CORRIDOR_BOTTOM_LIMIT as CORRIDOR_BOTTOM_LIMIT_FROM_WORLD,
 } from '../world/playableArea';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
-import { labIdolSpotForDoc, type LabIdolSpot } from '../world/labIdolSpot';
+import { labIdolSpotForDoc, labIdolChestSpot, type LabIdolSpot } from '../world/labIdolSpot';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 import { cineAccepts, cineCameraAt, cineSideOf, type CineEvent, type CineKind } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜)
@@ -21280,7 +21280,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ガード配置(下)が labDoc.y ±70 でずらすため、その両端が±100に収まるよう ±30 に限定
             // (社長承認 M2_LAB_CORRIDOR_SPEC.md v0.25.2175。旧: -400+rand*800=±400)。
             const y = -30 + Math.random() * 60;
-            return { x, y, side };
+            // ★帯の中にも壁・遮蔽プロップ(当たり判定あり)が立つので、重なっていたら一番近い隙間へ寄せる
+            // (社長指示2026-10-10「ゴールも、発生地点が移動不可エリアに入ってたりする」)。
+            const spot = nudgeToClearLabSpot(x, y, 28, 28);
+            return { x: spot.x, y: spot.y, side };
           })()
         : null;
       // PACING_PUZZLE.md §6.28-20(社長指示・v0.25.2382で再配置): idol(stage-2隠しボス)=
@@ -21338,10 +21341,16 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 30%地点=ゴールから全体距離の30%手前(=スタートから70%)、60%地点も同様に逆算。
               // ランダム要素: X±LAB_AMMO_JITTER_X の散らし + Y は歩ける帯の中(拾いに行ける位置)。
               ...LAB_AMMO_GOAL_FRACS.map((frac, i) => {
-                const x = labDoc.x * (1 - frac) + labDoc.side * (Math.random() * 2 - 1) * LAB_AMMO_JITTER_X;
-                const y = (Math.random() * 2 - 1) * (LAB_CORRIDOR_Y_LIMIT_PX - 40);
+                const x0 = labDoc.x * (1 - frac) + labDoc.side * (Math.random() * 2 - 1) * LAB_AMMO_JITTER_X;
+                const y0 = (Math.random() * 2 - 1) * (LAB_CORRIDOR_Y_LIMIT_PX - 40);
+                const { x, y } = nudgeToClearLabSpot(x0, y0, 20, 20); // 壁・プロップの中に置かない(ゴールと同じ)
                 return { id: `lab-phill-${i}`, x: x - 8, y: y - 8, type: 'ammo-phill' as const, value: 0 };
               }),
+              // ★アイドルと遭遇する手前に金箱(社長指示2026-10-10)。中身は金箱の共通仕様。アイドルを置かない出撃(1対1)では置かない。
+              ...(labIdol && !vsEntryOfRun() ? [(() => {
+                const c = labIdolChestSpot(labIdol);
+                return { id: 'lab-idol-chest', x: c.x - 8, y: c.y - 8, type: 'bounty-chest' as const, value: 1 };
+              })()] : []),
             ]
           : [];
       // ★v0.25.3137(社長指示「ステージ7(ボスモードも)は、最初に宝箱が目の前に初期設置」):

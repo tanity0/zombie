@@ -1934,6 +1934,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ミゲルは bossRef を使わない独立ブロックのため専用の小さな ref を持つ。
   const bossMakerReadyRef = useRef(false); // ボスメーカーの相手を1回だけ出す
   const idolStateRef = useRef(createIdolTickState()); // idol(stage-2隠しボス)のラン内状態(バッチ3でidolTick.tsへ抽出)
+  const idolFleeRef = useRef(false); // idol が起きている間は他の敵が逃げる(bossChasing を立てているのが idol か・2026-10-10)
   const angelStateRef = useRef(createAngelBossState()); // 天使(ゲート2ボス)3体のラン内状態(M26 Step3でangelBossTick.tsへ抽出)
   // ゲート戦闘中フラグ(activeGateRef)のstore反映用・直前値(変化時だけsetして毎フレームchurnを避ける)。
   const gateActivePrevRef = useRef(false);
@@ -8831,6 +8832,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             addEnemy(mk);
           }
           const idol = pickActiveIdol(useGameStore.getState().enemies); // v0.25.2614: 起きている個体を優先(2体並んだ時の保険)
+          // ★研究所のアイドルが出現(起床)したら、他の敵は逃げる=裏ボスと同じ(社長指示2026-10-10「研究所のアイドルが出現したら、
+          //   他の敵は逃げるようにして(裏ボスと同じ)」)。仕組みも裏ボスと同じ `bossChasing`(updateEnemies が全員を
+          //   プレイヤーの反対へ走らせ、通常湧きも止める)。研究所では裏ボスのコントローラが動かない(!labTheme)ので
+          //   この旗を立てるのは idol だけ。倒した/消えた/眠っている間は下ろす(idolFleeRef=自分が立てた分だけ下ろす)。
+          {
+            const fleeNow = labTheme && !!idol && !idol.dormant && !isCorpse(idol) && idol.health > 0;
+            if (fleeNow !== idolFleeRef.current) {
+              idolFleeRef.current = fleeNow;
+              useGameStore.setState({ bossChasing: fleeNow });
+            }
+          }
           if (idol) {
             const icx = idol.x + idol.width / 2, icy = idol.y + idol.height / 2;
             const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;

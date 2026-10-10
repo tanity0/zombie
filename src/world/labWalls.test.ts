@@ -4,7 +4,7 @@
 //   帯の外は歩けない=隠れられないため遮蔽として機能していなかった。代わりに「中央に必ず通れる
 //   空きレーンが残る」ことを構造で保証し、それをここで機械化する(詰み防止の要)。
 import { describe, it, expect } from 'vitest';
-import { labWallsInRegion, wallRect, LAB_WALL_Y_LIMIT, LAB_WALL_CLEAR_TOP, LAB_WALL_CLEAR_BOTTOM, LAB_START_SAFE_RADIUS, WALL_HIT_W, WALL_DISPLAY_H, labPropsInRegion, propRect, LAB_COVER_SPACING } from './labWalls';
+import { labWallsInRegion, wallRect, LAB_WALL_Y_LIMIT, LAB_WALL_CLEAR_TOP, LAB_WALL_CLEAR_BOTTOM, LAB_START_SAFE_RADIUS, WALL_HIT_W, WALL_DISPLAY_H, labPropsInRegion, propRect, LAB_COVER_SPACING, labUvBarsInRegion, nudgeToClearLabSpot, LAB_ITEM_Y_LIMIT, LAB_CORRIDOR_Y_LIMIT_PX } from './labWalls';
 
 const PLAYER_HITBOX = 28; // src/store/gameStore.ts と同値(依存を持ち込まないため定数で持つ)
 
@@ -114,5 +114,45 @@ describe('保証プロップ(敵の近くの遮蔽)', () => {
       expect(r.y).toBeGreaterThanOrEqual(-LAB_WALL_Y_LIMIT);
       expect(r.y + r.height).toBeLessThanOrEqual(LAB_WALL_Y_LIMIT);
     }
+  });
+});
+
+// 2026-10-10(社長「アイテムが出るバーをちゃんと移動可能敷地内に」「ゴールも、発生地点が移動不可エリアに入ってたりする」):
+// 物を置く点は、歩ける帯の中かつ壁・遮蔽プロップの矩形の外。
+describe('歩ける所に置く(UVバー・ゴール)', () => {
+  const obstaclesNear = (x: number, y: number) => [
+    ...labWallsInRegion(x - 300, y - 300, x + 300, y + 300).map(wallRect),
+    ...labPropsInRegion(x - 300, y - 300, x + 300, y + 300).map(propRect),
+  ];
+  const hits = (r: { x: number; y: number; width: number; height: number }, obs: { x: number; y: number; width: number; height: number }[]) =>
+    obs.some(o => r.x < o.x + o.width && r.x + r.width > o.x && r.y < o.y + o.height && r.y + r.height > o.y);
+
+  it('UVバーは全部、歩ける帯の中で、壁・プロップに重ならない', () => {
+    const bars = labUvBarsInRegion(-20000, -2000, 20000, 2000);
+    expect(bars.length).toBeGreaterThan(40);
+    for (const b of bars) {
+      expect(Math.abs(b.y), b.id).toBeLessThanOrEqual(LAB_CORRIDOR_Y_LIMIT_PX);
+      const r = { x: b.x - 15, y: b.y - 24, width: 30, height: 26 }; // gameStore の breakableProps と同じ矩形
+      expect(hits(r, obstaclesNear(b.x, b.y)), b.id).toBe(false);
+    }
+  });
+
+  it('UVバーは描画と判定が一致する(同じ区画を2回問い合わせても同じ位置)', () => {
+    expect(labUvBarsInRegion(3000, -500, 4000, 500)).toEqual(labUvBarsInRegion(3000, -500, 4000, 500));
+  });
+
+  it('ゴールの置き場(帯の中のどこでも)を寄せると、壁・プロップの中に入らない', () => {
+    for (let i = 0; i < 400; i++) {
+      const x = (i % 2 ? 1 : -1) * (6000 + i * 37);
+      const y = -30 + ((i * 13) % 60);
+      const p = nudgeToClearLabSpot(x, y, 28, 28);
+      expect(Math.abs(p.y)).toBeLessThanOrEqual(LAB_ITEM_Y_LIMIT);
+      expect(hits({ x: p.x - 14, y: p.y - 14, width: 28, height: 28 }, obstaclesNear(p.x, p.y)), `${x},${y}`).toBe(false);
+    }
+  });
+
+  it('何も無い所ではその場のまま(動かさない)', () => {
+    const p = nudgeToClearLabSpot(0, 0, 28, 28); // 原点はスタートの安全半径=壁もプロップも無い
+    expect(p).toEqual({ x: 0, y: 0 });
   });
 });

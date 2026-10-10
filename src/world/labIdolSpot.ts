@@ -13,6 +13,8 @@
 // labDoc自体は乱数(side)を含むため、ここでは「資料の座標を受けて idol の座標/向きを返す」形の
 // 純関数にしてテストする(乱数はここでは引かない=呼び出し側と2箇所で結果がズレない。
 // world/hospital.ts の hospitalPos 等と同じ流儀)。renderer-agnostic(PixiJS非依存)。
+import { nudgeToClearLabSpot } from './labWalls';
+
 export interface LabDocLike { x: number; y: number }
 export interface LabIdolSpot { x: number; y: number; facingLeft: boolean }
 
@@ -22,4 +24,13 @@ export const labIdolSpotForDoc = (doc: LabDocLike): LabIdolSpot => {
   // 原点(プレイヤーのスタート=idol が向くべき方向)は idol から見て -x 方向。
   // idol が原点より右(x>0)なら左向き、左(x<0)なら右向き。
   return { x, y, facingLeft: x > 0 };
+};
+
+// ★アイドルと遭遇する手前に金箱(社長指示2026-10-10「アイドルと遭遇する手前に…金箱にする」)。
+// 原点(スタート)側へ LAB_IDOL_CHEST_GAP_PX 戻った所=アイドルが起きる距離(視界 180)より十分手前で拾ってから会える。
+// 縦は帯の中、壁・プロップに重なれば隙間へ寄せる(ゴールと同じ nudgeToClearLabSpot)。
+export const LAB_IDOL_CHEST_GAP_PX = 600;
+export const labIdolChestSpot = (idol: LabIdolSpot): { x: number; y: number } => {
+  const toward = idol.x > 0 ? -1 : 1; // 原点の向き
+  return nudgeToClearLabSpot(idol.x + toward * LAB_IDOL_CHEST_GAP_PX, idol.y, 40, 40);
 };

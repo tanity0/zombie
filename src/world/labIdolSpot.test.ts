@@ -2,7 +2,9 @@
 // labDoc自体は乱数を含むため、資料の座標→idolの座標/向きを返す純関数(labIdolSpotForDoc)を
 // 直接テストする(side=+1/-1の両方で点対称であること・向きが原点側を向くことを固定)。
 import { describe, it, expect } from 'vitest';
-import { labIdolSpotForDoc } from './labIdolSpot';
+import { labIdolSpotForDoc, labIdolChestSpot } from './labIdolSpot';
+import { LAB_ITEM_Y_LIMIT } from './labWalls';
+import { LAB_VISION_RANGE } from '../utils/labStealth';
 
 describe('labIdolSpotForDoc(ゴール資料の真逆位置=原点に対する点対称)', () => {
   it('資料が右側(side=+1)の時、idolは原点を挟んだ左側に厳密な点対称で立つ', () => {
@@ -46,5 +48,17 @@ describe('labIdolSpotForDoc(ゴール資料の真逆位置=原点に対する点
     const spot = labIdolSpotForDoc({ x: 7100, y: 0 }); // 資料が右→idolは左側
     expect(spot.x).toBeLessThan(0);
     expect(spot.facingLeft).toBe(false);
+  });
+});
+
+describe('labIdolChestSpot(アイドルの手前の金箱・2026-10-10)', () => {
+  it('アイドルより原点(スタート)側に、起きる距離(視界)より十分手前に置く', () => {
+    for (const x of [6500, -7200, 9000, -11000]) {
+      const idol = { x, y: 10, facingLeft: x > 0 };
+      const c = labIdolChestSpot(idol);
+      expect(Math.abs(c.x)).toBeLessThan(Math.abs(idol.x)); // 原点側
+      expect(Math.hypot(c.x - idol.x, c.y - idol.y)).toBeGreaterThan(LAB_VISION_RANGE * 2);
+      expect(Math.abs(c.y)).toBeLessThanOrEqual(LAB_ITEM_Y_LIMIT); // 歩ける帯の中
+    }
   });
 });
