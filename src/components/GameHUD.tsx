@@ -19,6 +19,8 @@ import { comboMilestoneCrossed, comboMilestoneAmp } from '../utils/comboMileston
 import DirectorLine from './DirectorLine';
 import { getSelectedStageId } from '../data/progress';
 import { getEventQuestConfig } from '../utils/eventQuest';
+import { HudKey } from './HudKey'; // ゲーム中のボタン札(research/PC_SUPPORT.md §14)
+import { useHudHintStyle, useHudHasMouse, hudGlyph, hudGunSlotKey } from '../utils/hudHints';
 
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-11・B4): S5だけの先行条件(拠点2か所確保)の掲示。
 // サブクエスト欄の最上段に[拠点確保 n/2]。§2-7と同じ「メイン扱い」の色・同じ別コンポーネント
@@ -66,8 +68,21 @@ const RescueQuestGoalPill: React.FC = () => {
   );
 };
 
+// ボタン札(research/PC_SUPPORT.md §14)の帯: 武器の箱の左の外(枠の左端から 箱の余白6px+間6px)、枠の縦の中央。
+const HUD_KEY_BAND: React.CSSProperties = { right: 'calc(100% + 12px)', top: '50%', transform: 'translateY(-50%)' };
+
 const GameHUD: React.FC = () => {
   const hudLandscape = useHudLandscape(); // PC の横長=武器の列・音のボタンを置き直す(research/PC_SUPPORT.md 段3)
+  // ボタン札(§14): キー/パッドで遊んでいる時だけ。スマホ=null=札も包みも描かない(DOM を1つも足さない)。購読は機器が変わった時だけ。
+  const hint = useHudHintStyle(hudLandscape);
+  const hasMouse = useHudHasMouse();
+  // 一時停止の間は札を沈める(窓の下で札が光ってメニューの案内と二重に出ない・監査 #14)。boolean 購読=開閉の時だけ。
+  const paused = useGameStore(s => s.isPaused);
+  React.useEffect(() => {
+    if (!hint) return;
+    document.documentElement.classList.toggle('hudhint-paused', paused);
+    return () => { document.documentElement.classList.remove('hudhint-paused'); };
+  }, [hint, paused]);
   const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
   // player 全体ではなく HUD が使うフィールドだけを shallow 購読(移動で毎フレーム再描画しないように)。
   const player = useGameStore(s => ({
@@ -350,22 +365,32 @@ const GameHUD: React.FC = () => {
             {/* 装備スキル(サブウェポン)= 装備の詳細。コンパクトに縦並び。 */}
             {equippedSkills.length > 0 && (
               <div className="flex flex-col items-end gap-1">
-                {equippedSkills.map(key => (
-                  <div
-                    key={key}
-                    className="glass-pill px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1 gt-solid"
-                  >
-                    <span className="text-purple-200/90">{subWeaponDisplayName(key)}</span>
-                    <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
-                  </div>
-                ))}
+                {equippedSkills.map(key => {
+                  const chip = (
+                    <div
+                      key={key}
+                      className="glass-pill px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1 gt-solid"
+                    >
+                      <span className="text-purple-200/90">{subWeaponDisplayName(key)}</span>
+                      <span className="text-white/45 tabular-nums">Lv{player.subWeaponLevels[key] ?? 1}</span>
+                    </div>
+                  );
+                  // 札(§14): はじく操作で出る物(一閃=刀・小烏丸 / ワイヤー)の行だけ、左の外に。
+                  const flickSkill = key === 'katana' || key === 'murasame' || key === 'wire-anchor';
+                  return hint && flickSkill ? (
+                    <div key={key} className="relative">
+                      {chip}
+                      <HudKey key={hint} hint={hint} act="flick" glyph={hudGlyph(hint, 'flick', hasMouse)} style={{ right: 'calc(100% + 4px)', top: '50%', transform: 'translateY(-50%)' }} />
+                    </div>
+                  ) : chip;
+                })}
               </div>
             )}
 
             {/* 武器: アイコンのみ。銃=タップで切替(押せるボタン)/弾数のみ表示・名前なし。メレー=表示のみ。 */}
             <div className="hud-translucent rounded-none p-1.5 flex flex-col items-end gap-1.5">
               {/* メレー枠(切替なし=アイコン表示のみ)。刀/鞭装備時はそれを表示。 */}
-              {melee && (
+              {melee && (() => { const meleeSlot = (
                 <div
                   className={`w-11 h-11 rounded-none flex items-center justify-center text-lg ${weaponSlotClass(melee.tier, false, false)}`}
                   title={katanaEquipped ? (murasameEquipped ? '小烏丸' : '刀') : whipEquipped ? '鞭' : melee.name}
@@ -388,9 +413,16 @@ const GameHUD: React.FC = () => {
                       ? <img src={spritePath(weaponIconName(melee.key!))} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
                       : '🔪'}
                 </div>
-              )}
+              );
+              // 札(§14): 近接・カウンター=指を置く/離す(左クリック / Space / A)。札は全部、武器の箱の左の外に1本の帯で並べる(各枠の縦の中央)。
+              return hint ? (
+                <div className="relative">
+                  {meleeSlot}
+                  <HudKey key={hint} hint={hint} act="press" glyph={hudGlyph(hint, 'press', hasMouse)} style={HUD_KEY_BAND} />
+                </div>
+              ) : meleeSlot; })()}
               {/* 銃スロット(所持カテゴリごと1つ)。タップで切替。弾数=装填/リザーブのみ(名前なし)。 */}
-              {guns.map(gun => {
+              {guns.map((gun, gunIndex) => {
                 // UNIQUE_WEAPONS.md §16-2/§17-8 C-3(デザートテック・受け入れ条件6):
                 // 専用弾(rifle)が尽きたら他カテゴリを代用するため、HUDの残弾は「今実際に消費する弾種」
                 // (weaponAmmoTypeForと同じ優先順=desertTechAmmo.ts)を表示する。
@@ -405,7 +437,7 @@ const GameHUD: React.FC = () => {
                 const mag = gun.magazine ?? 0;
                 const dry = !gun.infiniteAmmo && mag <= 0 && reserve <= 0;
                 const active = gun.id === activeGun?.id;
-                return (
+                const slotBtn = (
                   <button
                     key={gun.id}
                     // タッチでの反応を良くする: onClick(touchend待ち＋クリック遅延＋微ドラッグで無効化)ではなく
@@ -430,6 +462,21 @@ const GameHUD: React.FC = () => {
                       {mag}<span className="text-[7px] text-white/45">/{gun.infiniteAmmo ? '∞' : reserve}</span>
                     </span>
                   </button>
+                );
+                // 札(§14): 銃が2丁以上の時だけ。キー=その枠の番号 / パッド=今の銃の左に [▲前][▼次](どちらも左の帯)。
+                if (!hint || guns.length < 2) return slotBtn;
+                const slotKey = hudGunSlotKey(hint, gunIndex);
+                return (
+                  <div key={gun.id} className="relative">
+                    {slotBtn}
+                    {slotKey && <HudKey hint={hint} act={`slot${gunIndex + 1}`} glyph={slotKey} style={HUD_KEY_BAND} />}
+                    {hint !== 'key' && active && (
+                      <span className="hud-key-stack">
+                        <HudKey hint={hint} act="gunPrev" glyph={hudGlyph(hint, 'gunPrev', hasMouse)} className="hud-key--static"><span className="hud-key-arrow">▲</span></HudKey>
+                        <HudKey hint={hint} act="gunNext" glyph={hudGlyph(hint, 'gunNext', hasMouse)} className="hud-key--static"><span className="hud-key-arrow">▼</span></HudKey>
+                      </span>
+                    )}
+                  </div>
                 );
               })}
             </div>

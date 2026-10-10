@@ -8,6 +8,8 @@ import { useGameStore, isInputLocked, isWorldFrozen } from '../store/gameStore';
 import { performFlickAction } from './inputActions';
 import { pcPressDown, pcPressUp, markPcFlick } from './pcPress';
 import { setPadActive } from './inputDevice';
+import { isPlayStationPad } from './navMap';
+import { noteHudActivity, setHudActionDown, type HudAction } from './hudHints'; // ゲーム中のボタン札(research/PC_SUPPORT.md §14)
 import { isRetaliationWindowOpen, createPadNeutralTracker, stepPadNeutral } from './hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { pcCycleGun } from './weaponCycle';
 import { isMenuContext, isGameplayMounted, navHold, navActivate, navBack, navEnter, navTab, navScrollStick, noteNavInput, noteConfirmHeld, syncNavContext, pressVisibleSkip, resetNavRepeat, type NavDir } from './menuNav';
@@ -17,6 +19,9 @@ const MENU_STICK_ON = 0.6;
 const MENU_SCROLL_DEAD = 0.3; // 右スティックのスクロールのデッドゾーン(標準配置の axes[2]/[3] だけ読む)
 // 押しっぱなしの繰り返し間隔(初回320ms・以後110ms)は utils/menuNav が持つ。ここは「いま押されている向き」を毎フレーム渡すだけ。
 const B = { A: 0, B: 1, Y: 3, LB: 4, RB: 5, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
+// ゲーム中のボタン札(§14-3): 押している間だけ札が沈む。ボタン → 札の操作。
+const HUD_PAD_ACTIONS: readonly (readonly [number, HudAction])[] = [[B.A, 'press'], [B.B, 'flick'], [B.RB, 'flick'], [B.Y, 'gunNext'], [B.LB, 'gunPrev'], [B.START, 'pause'], [B.BACK, 'pause']];
+const syncHudPadKeys = (btn: readonly boolean[]): void => { for (const [i, a] of HUD_PAD_ACTIONS) setHudActionDown(a, `p${i}`, !!btn[i]); };
 
 /** スティックの値 → 移動の方向と強さ(デッドゾーンを0・外周を1)。デッドゾーン内は null。 */
 export const padStickToSwipe = (ax: number, ay: number, dead = PAD_DEAD_ZONE): { dir: { x: number; y: number }; strength: number } | null => {
@@ -82,7 +87,7 @@ export const installGamepad = (): (() => void) => {
     const pads = navigator.getGamepads();
     let gp: Gamepad | null = null;
     for (const p of pads) if (p && p.connected) { gp = p; break; }
-    if (!gp) { prev = []; return; }
+    if (!gp) { if (prev.length) syncHudPadKeys([]); prev = []; return; }
     const now = performance.now();
     const btn = gp.buttons.map(b => b.pressed);
     // 十字キーは配置の違うパッドでも読めるよう、ボタン12〜15へ揃えてから使う(軸で送ってくるパッドがある)。
@@ -91,12 +96,14 @@ export const installGamepad = (): (() => void) => {
     const down = (i: number) => btn[i] && !prev[i];
     const up = (i: number) => !btn[i] && prev[i];
     const ax = gp.axes[0] ?? 0, ay = gp.axes[1] ?? 0;
+    syncHudPadKeys(btn);
     noteConfirmHeld('pad', !!btn[B.A]); // 層に入った時に押されていた A は、離すまで決定に使わない(menuNav)
     const anyInput = btn.some(Boolean) || Math.hypot(ax, ay) > PAD_DEAD_ZONE;
     const dtMs = lastTickAt ? Math.min(100, now - lastTickAt) : 16;
     lastTickAt = now;
     if (anyInput) {
-      setPadActive(true); // 画面の言葉をパッドの言葉へ(マウス/キーに触れたら戻る・utils/inputDevice)
+      setPadActive(true, isPlayStationPad(gp.id)); // 画面の言葉をパッドの言葉へ(マウス/キーに触れたら戻る・utils/inputDevice)。PS 系はゲーム中の札の表記(§14)
+      noteHudActivity(); // 手を動かしている=札は控えめ(research/PC_SUPPORT.md §14-3)
       noteNavInput('pad', gp.id); // 案内の表記(A/B か ×/○ か)・menuNav が入力の種類を覚える
       if (!usedPad) {
         usedPad = true;

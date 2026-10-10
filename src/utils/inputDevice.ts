@@ -53,16 +53,27 @@ export const usePointerKind = (): PointerKind =>
 // 操作層の切り替え(上の PointerKind)とは別。パッドで遊んでいる間だけ 'pad'(utils/gamepad が立てる)、マウス/キーに触れたら戻る。
 export type PlayDevice = 'touch' | 'mouse' | 'pad';
 let padActive = false;
+let padPS = false; // いま触っているパッドが PlayStation 系か(ゲーム中のボタン札の表記・research/PC_SUPPORT.md §14)
+let keySeen = false; // 最後の指(タッチ/ペン)の後に本物のキーが押されたか(タブレット+キーボードにも札を出す・§14-1)
 const devSubs = new Set<() => void>();
 const notifyDev = () => devSubs.forEach(f => f());
-export const setPadActive = (on: boolean): void => { if (on !== padActive) { padActive = on; notifyDev(); } };
+export const setPadActive = (on: boolean, ps?: boolean): void => {
+  const nextPS = on && ps !== undefined ? ps : padPS;
+  if (on !== padActive || nextPS !== padPS) { padActive = on; padPS = nextPS; notifyDev(); }
+};
+const setKeySeen = (v: boolean): void => { if (v !== keySeen) { keySeen = v; notifyDev(); } };
 subs.add(notifyDev); // タッチ⇔マウスが切り替わった時も言葉を描き直す
 if (typeof window !== 'undefined') {
   const off = () => setPadActive(false);
   window.addEventListener('mousemove', off, { passive: true });
-  window.addEventListener('pointerdown', off, { capture: true, passive: true });
-  window.addEventListener('keydown', (e: KeyboardEvent) => { if (e.isTrusted) off(); }, { capture: true });
+  window.addEventListener('pointerdown', (e: PointerEvent) => { off(); if (e.pointerType !== 'mouse') setKeySeen(false); }, { capture: true, passive: true });
+  window.addEventListener('keydown', (e: KeyboardEvent) => { if (e.isTrusted) { off(); setKeySeen(true); } }, { capture: true });
 }
+export const isPadActive = (): boolean => padActive;
+export const isPadPS = (): boolean => padPS;
+export const isKeySeen = (): boolean => keySeen;
+/** 機器の言葉(パッド/PS/キー/タッチ⇔マウス)が変わった時だけ呼ばれる購読。 */
+export const subscribePlayDevice = (cb: () => void): (() => void) => { devSubs.add(cb); return () => { devSubs.delete(cb); }; };
 export const currentPlayDevice = (): PlayDevice => (padActive ? 'pad' : kind);
 export const usePlayDevice = (): PlayDevice =>
-  useSyncExternalStore(cb => { devSubs.add(cb); return () => { devSubs.delete(cb); }; }, currentPlayDevice, () => 'mouse');
+  useSyncExternalStore(subscribePlayDevice, currentPlayDevice, () => 'mouse');
