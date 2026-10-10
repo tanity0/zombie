@@ -3,15 +3,15 @@
 // ## 何のためにあるか
 // 幻影は「AIが操作するもう1人のプレイヤー」なので、**プレイヤーと同じ被弾ルール**で殴られる:
 //  ① 被弾無敵(i-frame): 直近の有効被弾から `INVULN_MS` の間はHPが減らない(プレイヤーと同じ定数)。
-//  ② パリィ: 近接は**自分のスイングが開けた窓**(プレイヤーの COUNTER_WINDOW と同じ機構の鏡)で、
-//     銃弾は**飛翔時間が台帳の反応速度(reactionMs)以上の時だけ** `counterChance` の抽選で弾き返す。
+//  ② パリィ: 近接も銃弾も**自分のスイングが開けた窓**(プレイヤーの COUNTER_WINDOW と同じ機構の鏡)の中で当たった時だけ弾く。
+//     (v10・社長2026-10-10: 旧=銃弾は counterChance の抽選。弾をどう扱うか(振って返す/避ける/食らう)は phantomTick が人格の記録で決める)
 // この2つは**ダメージの合流点が7系統に分かれている**(damageEnemy / 近接カウンター3枝 / 分身 /
 // 刀 / 鞭 / スケボー)ため、1経路でも素通りがあれば「無敵が存在しない」に等しい。
 // ⇒ **全系統がこの1本を通る**形にして、取りこぼしを構造的に潰す。
 //
 // ## 掟
 // - **型以外を import しない**(依存ゼロの葉)。必要な値は全部引数で受ける
-//   (invulnMs / counterChance / rand / gameTime / enemy の当該フィールド)。
+//   (invulnMs / gameTime / enemy の当該フィールド)。
 //   `counterReach.ts` と同じ理由: 葉が store を引くと循環importで起動全損(v0.25.3390)。
 // - **時計は gameTime 1本**(ENGINEERING_NOTES.md「時計の混在」)。`lastHit` は Date.now 基準なので
 //   使わず、専用の `gpHitAt`(gameTime)を持つ。混ぜて比較しない。
@@ -68,11 +68,10 @@ export const playerIframeApplies = (damagerType?: string): boolean =>
 export type PhantomHitSource = 'melee' | 'bullet' | 'counter' | 'ranged';
 
 /**
- * `damageEnemy` → 橋 → ゲートへ「打撃の種別」を運ぶ形(GHOST_BOSS.md v9)。
- * **弾だけは飛翔時間を一緒に運ぶ**——弾のゲートは damageEnemy の内側で呼ばれ、橋は弾を受け取らない
- * ため。位置引数を増やさず型で運搬を強制する(並び間違いが起きない)。
+ * `damageEnemy` → 橋 → ゲートへ「打撃の種別」を運ぶ形。v10 で弾の飛翔時間は運ばなくなった
+ * (弾も近接と同じ窓で裁くため=飛翔時間を判定に使わない)。
  */
-export type PhantomDamageSource = 'melee' | 'counter' | { kind: 'bullet'; flightMs: number };
+export type PhantomDamageSource = 'melee' | 'counter' | 'bullet';
 
 export interface PhantomHitGateInput {
   /** 殴られた敵の型。'guardian-phantom' 以外はこの関数は何もしない(恒等)。 */
@@ -84,11 +83,6 @@ export interface PhantomHitGateInput {
   gameTime: number;
   /** プレイヤーと同じ被弾無敵の長さ(呼び出し側が gameStore の INVULN_MS を渡す)。 */
   invulnMs: number;
-  /**
-   * パリィ成立率(0..1)。呼び出し側が台帳 `strongestGuardian().profile.counterChance` を渡す。
-   * **弾専用**(v9)。近接は抽選せず「窓」で裁くのでここを読まない。
-   */
-  counterChance: number;
   /** パリィが再び出せるようになるまでの間隔(ms)。 */
   parryCdMs: number;
   /**
@@ -101,22 +95,10 @@ export interface PhantomHitGateInput {
    * ——幻影のスイングは「攻撃であり、同時にカウンター窓でもある」=プレイヤーの機構の鏡。
    */
   swingWindowMs: number;
-  /**
-   * 見てから反応できる下限(ms)。呼び出し側が台帳 `strongestGuardian().profile.reactionMs` を渡す。
-   * 弾の飛翔時間がこれ未満=**見てから反応できない**=抽選せず通る。
-   */
-  reactionMs: number;
-  /**
-   * その弾が飛んでいた時間(ms)。`source` が弾の時だけ意味を持つ。
-   * `Infinity`(=発射点が不明で判定材料が無い)は**比較に流さず**「反応できた」側へ倒す。
-   */
-  flightMs?: number;
   /** 直近に**有効な**ダメージが入った時刻(gameTime)。未被弾なら undefined。 */
   gpHitAt?: number;
   /** パリィのクールダウン終了時刻(gameTime)。 */
   gpParryCdUntil?: number;
-  /** [0,1) の乱数(テストで固定できるよう注入口にする)。 */
-  rand?: () => number;
   /**
    * ★SAME_ARENA §9(対人体勢・v0.25.3969): 幻影が紫(行動不能)中か。true の間は
    * **i-frameもパリィも通らず、全ての打撃が素通しで当たる**(「紫→致命」がパリィで潰れない)。
@@ -169,25 +151,13 @@ const swingWindowOpen = (gameTime: number, gpSwingAt: number | undefined, swingW
 };
 
 /**
- * 弾を「見てから」反応できたか。**Infinity/NaN を比較に流さない**(有限だと確かめてから比べる):
- * 発射点が無くて飛翔時間が出せなかった弾(=Infinity)は従来どおり反応できた扱いにする。
+ * ②の中身。近接も弾も**窓**(v10)。窓の中なら飛翔時間に関係なく弾く=プレイヤーの打ち返しと同じ
+ * (プレイヤーも、振りの窓の中に着いた敵弾は飛翔時間に関係なく返る)。CD判定は呼び出し側で済ませてから来る。
  */
-const bulletReactable = (flightMs: number | undefined, reactionMs: number): boolean => (
-  !(typeof flightMs === 'number' && Number.isFinite(flightMs) && flightMs < reactionMs)
+const phantomParryLands = (input: PhantomHitGateInput): boolean => (
+  (input.source === 'melee' || input.source === 'bullet')
+  && swingWindowOpen(input.gameTime, input.gpSwingAt, input.swingWindowMs)
 );
-
-/** ②の中身(近接=窓・弾=反応時間+抽選)。CD判定は呼び出し側で済ませてから来る。 */
-const phantomParryLands = (input: PhantomHitGateInput): boolean => {
-  if (input.source === 'melee') {
-    return swingWindowOpen(input.gameTime, input.gpSwingAt, input.swingWindowMs);
-  }
-  if (input.source === 'bullet') {
-    return input.counterChance > 0
-      && bulletReactable(input.flightMs, input.reactionMs)
-      && (input.rand ?? Math.random)() < input.counterChance;
-  }
-  return false;
-};
 
 /**
  * 幻影が受ける1発を裁く。**適用順**は呼び出し側の責任:
@@ -216,9 +186,8 @@ export const phantomHitGate = (input: PhantomHitGateInput): PhantomHitGateResult
   }
 
   // ② パリィ(近接と銃弾)。CD中は成立しない=連続で弾き続けない(CDは近接・弾で共有)。
-  //  - 近接: **窓**。プレイヤーの近接は予告ゼロの即発=人間は見てから反応できないので、幻影も
-  //    「自分のスイングが開けた窓に、たまたま重なった時だけ」弾く(あてずっぽう vs 後の先)。
-  //  - 弾:   **反応時間**。飛翔時間が台帳の reactionMs 以上=見てから反応できた時だけ抽選する。
+  //  - 近接・弾とも **窓**。「自分のスイングが開けた窓に重なった時だけ」弾く(あてずっぽう vs 後の先)。
+  //    弾に対して振るかどうかは phantomTick が人格の記録で決める(v10)。
   if (input.gameTime >= (input.gpParryCdUntil ?? 0) && phantomParryLands(input)) {
     return {
       damage: 0, effects: false, blocked: false, parried: true,

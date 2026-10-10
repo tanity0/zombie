@@ -712,3 +712,18 @@
 - A4: counter と決めた弾は着弾400ms前以降の振れるtickで振りが出る。dodge は従来の踏み込み。take は何も出ない(テスト)。
 - A5: 同じ弾で2回決めない(テスト)。
 - A6: 幻影以外の敵・近接の窓パリィ・詰めの逃げ(c)の挙動は不変。
+
+## v10 品質監査(設計・Fable 5.1)の反映 — (A)4件・(C)6件、全て設計の穴=社長へ戻すものなし
+- (A)-1 dodge は決めた後も着弾/通過まで**毎tick**踏み込みの可否を見る(決定tickの1回評価にしない)。counter も同じく毎tick「着弾≦窓」を見る。
+- (A)-2 判断の対象=ゲートの対象=**1本の述語** `weaponUtils.isPhantomTargetBullet`(非敵弾∧非打ち返し∧非軍人∧非守護霊∧直接銃)。useGameLoop の `gpBulletSource` も同じ述語。
+- (A)-3 決めた弾の記録は Map(id→plan/'done')で、**盤面から消えた弾だけ掃除**(上限で捨てない)。
+- (A)-4 引き順は counter → take → dodge(合計>1でも順で決まる・dodge は負にしない)。
+- (C)-1 読み口: `currentBulletPlanRates()`(phantomTick)が人格(未設定なら台帳の最強データ)の `profile.moveReactions` から作る(phantomProfile には載せない=頭脳の技キー引きとは別)。
+- (C)-2 純関数は phantomLunge.ts: `bulletEtaMs`(当たる弾の着弾ms/外れはnull)・`bulletPlanRates`・`pickBulletPlan`。判断は canSwing と無関係に走り、実行だけ canSwing を見る。
+- (C)-3 `pickPhantomEscapeLunge` の戻りを `{kind:'escape',dir} | {kind:'counter'} | null` に。counter は普通の振り(踏み込みはプレイヤーの方・`gpLungeAngle` 無し)で、発火条件に足す。
+- (C)-4 死んだ配線は**消した**: ゲート入力の counterChance/reactionMs/flightMs/rand・`bulletReactable`・`PhantomDamageSource` の飛翔時間つきの形・useGameLoop の `projectileFlightMsTo` 呼び出し。弾の発射点(originX/Y)を焼く `ensureProjectileOrigin` は残っている(今は読む人がいない=別案件で掃除)。
+- (C)-5 既存テストのうち「飛翔<反応は通る」「抽選外れは通る」を窓モデルのテストへ書き換えた。
+- (C)-6 帰結: 窓を開けるのは弾のための振り・踏み込み弾避けだけでなく、**間合い内の普通の攻撃の振りも同じ**。至近で撃たれて判断の前に着いた弾も、窓が開いていれば返る(プレイヤーと同じ)。
+- 受け入れ条件のテスト(実態): A1/A2(ゲート単体)・A3(割合)・A4 の counter/待ち/take・判断の対象の述語は**テストあり**。A4 の dodge 分岐(従来の踏み込み弾避けの関数をそのまま使う)と A5(同じ弾で2回決めない)は**テスト無し**=検収監査(C)。網として別案件へ積む。
+- 積み残し(検収監査 B): 割合のキャッシュ(`bulletRatesCache`)は人格の**名前**だけで引く(`escapeStyleCache` と同型)。同名で中身が違う人格に入れ替わると古い割合のまま=別案件。
+- 循環importの検出器: gameStore が fixedGuardians を import しなくなったため、既存の固まりの別の輪(辺は全て以前から在る)が表に出た → allowlist へ事実として登録。

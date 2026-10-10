@@ -300,7 +300,6 @@ import {
 import {
   FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, pickFanHits,
 } from '../utils/flamerCone';
-import { projectileFlightMsTo } from '../utils/projectileOrigin'; // GHOST_BOSS.md v9: 弾の飛翔時間(距離÷速度)
 import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs, turretNextReadyAt } from '../utils/turretTuning';
 import {
   phaseJustChanged, BOSS_ALERT_SFX_KEY,
@@ -518,7 +517,7 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
-import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
+import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
 import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
 import { ALCHEMY_BURST_RADIUS_PX, nextAlchemyStoneStage } from '../utils/alchemyStone';
@@ -14468,23 +14467,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hateShotSource: HateSide = isGhostShot
             ? 'ghost'
             : (isEscortShot && projectile?.escortId ? escortHateSide(projectile.escortId) : 'player');
-          // ★GHOST_BOSS.md v9(弾パリィ=反応時間モデル): 弾のゲートは damageEnemy の内側で呼ばれ、
-          // 橋は弾を受け取らない。**飛翔時間はここで出して打撃種別と一緒に運ぶ**(距離÷速度なので
-          // 時計を跨がない・スロー/ヒットストップの影響も受けない)。速度0や発射点=着弾点の弾は
-          // 「瞬間着弾=見てから反応できない」側に出る(割り算の前で分岐済み)。
           // ★社長裁定2026-08-27「カウンター弾は再度カウンター不可」: 反射弾(カウンター弾)は幻影の
-          // 弾パリィ抽選にも掛けない(noCounterの対称=プレイヤーも幻影の反射弾を打ち返せない)。
-          const gpBulletSource = directPlayerGun && !projectile?.reflected
-            ? {
-              kind: 'bullet' as const,
-              flightMs: projectile && enemyForFx
-                ? projectileFlightMsTo(
-                  projectile,
-                  enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2,
-                )
-                : Number.POSITIVE_INFINITY,
-            }
-            : undefined;
+          // 弾パリィにも掛けない(noCounterの対称=プレイヤーも幻影の反射弾を打ち返せない)。
+          // v10(社長2026-10-10): 弾も幻影の振りの窓で裁く=飛翔時間は運ばない。対象の条件は phantomTick の判断と同じ1本(isPhantomTargetBullet)。
+          const gpBulletSource = projectile && isPhantomTargetBullet(projectile) ? 'bullet' as const : undefined;
           // v0.25.3219(社長指示): カウンターで打ち返した弾(reflected)の命中は体勢ゲージを少し削る。
           // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王が載せたpostureMult(既定1)をそのまま運ぶ。
           // UNIQUE_WEAPONS.md §13-1/§9(#U10是正): パイルドライバーは「非クリ弾でも体勢を削る」ため、
@@ -14501,7 +14487,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             projectile?.reflected ? 'reflect' : isPiledriverHit ? 'heavy' : directPlayerGun && hitCrit ? 'gun-crit' : null,
             projectile?.postureMult ?? 1,
             // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの直接銃弾は弾として
-            // 幻影ゲートへ(=飛翔時間が反応速度以上なら counterChance 抽選で打ち返し対象)。
+            // 幻影ゲートへ(=幻影の振りの窓の中で当たれば打ち返される・GHOST_BOSS.md v10)。
             // サブ・爆発・護衛/守護霊弾は従来どおり。
             gpBulletSource,
             // v0.25.4270(監査A-4): 連続撃破10体スローはプレイヤーの直接銃の弾だけ(タレットの榴弾/爆撃/スキル弾は

@@ -41,6 +41,7 @@ import {
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
   meleeLungePx, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ関数=武器別も揃う)
   MELEE_RADIUS, WHIP_LENGTH_BY_LEVEL, whipLevel, // research/LUNGE_DODGE.md §4(b): プレイヤーの近接の届く距離(武器別)
+  COUNTER_WINDOW,                               // GHOST_BOSS.md v10: 弾を打ち返す振りを出す時機=着弾が窓の長さ以内
   playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
   showPvpFatalOnPlayerPresentation,             // ★2026-08-27: 幻影→プレイヤーの致命もKILL演出(ズーム)
   skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
@@ -66,6 +67,7 @@ import {
   projectileFlightStats, gunEffectiveRangePx,
   gunShotCritChance, GUNBLADE_WEAPON_KEY,
   isManualOnlyGunKey, manualOnlyFallbackWeapon, // UNIQUE_WEAPONS.md §16-3b(検収B-2是正): 幻影も守護霊/ボットと同じフォールバックを踏む
+  isPhantomTargetBullet, // GHOST_BOSS.md v10: 弾パリィ(ゲート)と同じ「プレイヤーの直接銃の弾」の1本
 } from './weaponUtils';
 // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): 幻影の至近モード距離ゲート
 // (「撃たないだけ」・実装者の裁量=最終報告に記載)。
@@ -85,8 +87,10 @@ import { getPhantomIdentity, phantomDisplayLabel, phantomClassId } from './phant
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
 import {
   phantomEscapeStyleOf, phantomEscapeDir, closeInEtaMs, phantomBulletLungeDir, PHANTOM_CLOSE_IN_SPEED_FRAC,
-  type PhantomEscapeStyle,
-} from './phantomLunge'; // research/LUNGE_DODGE.md §4(段L3): 幻影の踏み込み回避
+  bulletEtaMs, bulletPlanRates, pickBulletPlan,
+  type PhantomEscapeStyle, type BulletPlan, type BulletPlanRates,
+} from './phantomLunge'; // research/LUNGE_DODGE.md §4(段L3): 幻影の踏み込み回避 / GHOST_BOSS.md v10: 弾への対処
+import { BULLET_MOVE_KEYS } from './moveReaction'; // GHOST_BOSS.md v10: 弾への対処の割合=人格の「弾の技」への反応
 import { isTrapDebuffed, TRAP_ROOT_CRIT_BONUS } from './trapDebuff';
 import { critDecayOnHit } from './critDecay'; // ★§13-3e クリ減衰(SAME_ARENA対称)
 
@@ -132,8 +136,8 @@ export const phantomProfile = (): GhostProfile => {
     subUsesPerMin: p.subUsesPerMin,
     stationaryFrac: p.stationaryFrac,
     approachPerMin: p.approachPerMin,
-    // 技への反応表は**渡さない**: 表のキーは「ボスの技」で、幻影から見た相手はプレイヤー=
-    // 技キーが引けない。渡しても常にフォールバックになるだけなので配線しない。
+    // 技への反応表は**ここには渡さない**(頭脳 decideGhost は技キーで引くが、幻影から見た相手はプレイヤー=技キーが引けない)。
+    // 弾への対処の割合(GHOST_BOSS.md v10)は currentBulletPlanRates が人格の表から直接作る。
   };
   // ★AI_HUMANIZE.md B3(§3大原則「幻影は対幻影戦の数値だけ」): 台帳の`microRhythm`(対ボス戦の実測)は
   // **上のbuiltへ複製しない**(守護霊専用のまま)。幻影は既存スカラーからの合成既定分布のみを持つ
@@ -360,9 +364,10 @@ export interface PhantomTickState {
   /**
    * research/LUNGE_DODGE.md §4(段L3): 踏み込み回避の持ち越し。
    * closingSince=プレイヤーが詰め始めた時刻(gameTime・詰めていなければ null) / closeInJudged=この詰めで抽選済み /
-   * dodgedProjIds=踏み込みで抜けた弾(1発1回・直近だけ持つ)。
+   * bulletPlans=弾ごとに1回決めた対処(GHOST_BOSS.md v10・'done'=実行済み)。**盤面から消えた弾だけ掃除する**
+   * (上限で古いものから捨てると、弾が多い時に同じ弾で2回決め直す=品質監査 A-3)。
    */
-  lunge?: { closingSince: number | null; closeInJudged: boolean; dodgedProjIds: string[] };
+  lunge?: { closingSince: number | null; closeInJudged: boolean; bulletPlans: Map<string, BulletPlan | 'done'> };
 }
 
 export const createPhantomTickState = (): PhantomTickState => ({
@@ -398,8 +403,19 @@ const currentEscapeStyle = (): PhantomEscapeStyle => {
   escapeStyleCache = { key, value };
   return value;
 };
-/** 踏み込みで抜けた弾を覚えておく数(古いものから捨てる)。 */
-const PHANTOM_DODGED_PROJ_MAX = 24;
+/**
+ * GHOST_BOSS.md v10: 弾への対処の割合(人格の技への反応表の弾の技から・人格は個体ごとに固定なので名前で1回だけ組む)。
+ * 人格未設定(旧経路)は台帳の最強データの表。
+ */
+let bulletRatesCache: { key: string; value: BulletPlanRates } | null = null;
+const currentBulletPlanRates = (): BulletPlanRates => {
+  const identity = getPhantomIdentity();
+  const key = identity?.name ?? '__strongest__';
+  if (bulletRatesCache && bulletRatesCache.key === key) return bulletRatesCache.value;
+  const value = bulletPlanRates((identity?.profile ?? strongestGuardian().profile).moveReactions, BULLET_MOVE_KEYS);
+  bulletRatesCache = { key, value };
+  return value;
+};
 
 /**
  * research/LUNGE_DODGE.md §4: 今のtickで抜けの踏み込みを出すなら、その向き(単位ベクトル)。
@@ -409,8 +425,8 @@ const PHANTOM_DODGED_PROJ_MAX = 24;
 const pickPhantomEscapeLunge = (
   phantom: Enemy, s: PhantomTickState, player: Player, projectiles: readonly Projectile[],
   bcx: number, bcy: number, walkSpeed: number, gt: number, nowMs: number, rand: () => number, canSwing: boolean,
-): { x: number; y: number } | null => {
-  const L = s.lunge ?? (s.lunge = { closingSince: null, closeInJudged: false, dodgedProjIds: [] });
+): { kind: 'escape'; dir: { x: number; y: number } } | { kind: 'counter' } | null => {
+  const L = s.lunge ?? (s.lunge = { closingSince: null, closeInJudged: false, bulletPlans: new Map() });
   const reactionMs = phantomProfile().reactionMs;
   // ---- (b)詰め: 状態は振れない時も進める(詰め始めの時刻を取りこぼさない) ----
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
@@ -420,20 +436,36 @@ const pickPhantomEscapeLunge = (
   const isClosing = player.health > 0 && closing >= player.speed * PHANTOM_CLOSE_IN_SPEED_FRAC;
   if (!isClosing) { L.closingSince = null; L.closeInJudged = false; }
   else if (L.closingSince === null) L.closingSince = gt;
-  if (!canSwing) return null;
   const lungePx = meleeLungePx(combatActorPlayer(phantom.id) ?? player);
-  // ---- (a)弾 ----
+  // ---- (a)弾(GHOST_BOSS.md v10): 弾ごとに1回「振って返す/避ける/食らう」を人格の記録の割合で決め、
+  //      決めた弾は着弾/通過まで毎tick見て、振れる時に実行する。**決めるのは振れない時も**(判断と実行は別)。
   const radius = Math.max(phantom.width, phantom.height) / 2;
+  const alive = new Set<string>();
+  let act: { kind: 'escape'; dir: { x: number; y: number } } | { kind: 'counter' } | null = null;
+  let actId: string | null = null;
   for (const p of projectiles) {
-    if (p.hostile) continue; // プレイヤーの弾だけ
-    if (nowMs - p.createdAt < reactionMs) continue; // 出てから反応の下限が経っていない
-    if (L.dodgedProjIds.includes(p.id)) continue;
-    const dir = phantomBulletLungeDir(bcx, bcy, radius, walkSpeed, lungePx, MELEE_LUNGE_MS, p);
-    if (!dir) continue;
-    L.dodgedProjIds.push(p.id);
-    if (L.dodgedProjIds.length > PHANTOM_DODGED_PROJ_MAX) L.dodgedProjIds.shift();
-    return dir;
+    if (!isPhantomTargetBullet(p)) continue; // ゲートが弾として扱うのと同じ1本(品質監査 A-2)
+    alive.add(p.id);
+    if (nowMs - p.createdAt < reactionMs) continue; // 出てから人の反応の下限が経っていない
+    let plan = L.bulletPlans.get(p.id);
+    if (plan === undefined) {
+      if (bulletEtaMs(bcx, bcy, radius, p) === null) continue; // まだ当たる弾ではない=決めない(当たる向きになったら決める)
+      plan = pickBulletPlan(currentBulletPlanRates(), rand());
+      L.bulletPlans.set(p.id, plan);
+    }
+    if (act || !canSwing || plan === 'done' || plan === 'take') continue;
+    if (plan === 'counter') {
+      // 着弾までが振りの窓(COUNTER_WINDOW)以内になったら普通の振り=窓の中で着く→ゲートが打ち返す。
+      const eta = bulletEtaMs(bcx, bcy, radius, p);
+      if (eta !== null && eta <= COUNTER_WINDOW) { act = { kind: 'counter' }; actId = p.id; }
+    } else {
+      const dir = phantomBulletLungeDir(bcx, bcy, radius, walkSpeed, lungePx, MELEE_LUNGE_MS, p);
+      if (dir) { act = { kind: 'escape', dir }; actId = p.id; }
+    }
   }
+  for (const id of [...L.bulletPlans.keys()]) if (!alive.has(id)) L.bulletPlans.delete(id); // 盤面から消えた弾だけ忘れる
+  if (act) { if (actId) L.bulletPlans.set(actId, 'done'); return act; }
+  if (!canSwing) return null;
   // ---- (b)詰め ----
   if (isClosing && !L.closeInJudged && L.closingSince !== null && gt - L.closingSince >= reactionMs) {
     const style = currentEscapeStyle();
@@ -443,7 +475,10 @@ const pickPhantomEscapeLunge = (
     const eta = closeInEtaMs(edgeDistTo(pcx, pcy, phantom), closing, reachP);
     if (eta <= style.leadMs) {
       L.closeInJudged = true;
-      if (rand() < style.chance) return phantomEscapeDir(style, rand(), bcx, bcy, pcx, pcy, s.ghost.orbitSign ?? 1);
+      if (rand() < style.chance) {
+        const dir = phantomEscapeDir(style, rand(), bcx, bcy, pcx, pcy, s.ghost.orbitSign ?? 1);
+        if (dir) return { kind: 'escape', dir };
+      }
     }
   }
   return null;
@@ -1088,12 +1123,15 @@ export const runPhantomTick = (
   // 判定は MELEE_WINDUP_MS 後に解決する=プレイヤーと同条件。
   const canSwing = !parried && phantom.gpPendingSwingAt === undefined && newGameTime >= s.nextMeleeAt;
   // research/LUNGE_DODGE.md §4(段L3): 抜けの踏み込み(弾/詰め)。振りそのものなので届かなくても振る。
-  const escapeDir = pickPhantomEscapeLunge(
+  const bulletAct = pickPhantomEscapeLunge(
     phantom, s, player, st0.projectiles, bcx, bcy,
     phantom.speed * moveSpeedMult * phantomSlowMult(phantom, newGameTime) * pvpMoveMult(phantom.pvpPosture, newGameTime),
     newGameTime, nowMs, rand, canSwing,
   );
-  if (canSwing && (escapeDir !== null || edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach)) {
+  const escapeDir = bulletAct?.kind === 'escape' ? bulletAct.dir : null;
+  // GHOST_BOSS.md v10: 弾を打ち返すための振り=普通の振り(踏み込みはプレイヤーの方・間合いの外なら空振り=プレイヤーが弾を返す時と同じ操作)。
+  const counterSwing = bulletAct?.kind === 'counter';
+  if (canSwing && (escapeDir !== null || counterSwing || edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach)) {
     // 振り始め: 窓・絵・SE だけ(プレイヤーの beginMeleeSwing と同じ分割)。
     patch.gpSwingAt = newGameTime;
     patch.gpSwingAngle = Math.atan2((player.y + player.height / 2) - bcy, (player.x + player.width / 2) - bcx);

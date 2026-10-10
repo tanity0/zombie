@@ -296,14 +296,12 @@ import {
   type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
 } from '../utils/runTelemetry';
 import { isPracticeRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice';
-import { phantomDisplayLabel, getPhantomIdentity } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の表示名はその回の人格 // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
+import { phantomDisplayLabel } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の表示名はその回の人格 // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
 // research/GHOST_BOSS.md v6: 幻影が受ける打撃の関所(被弾無敵+パリィ)。**7系統の全てがここを通る**。
 import { phantomHitGate, playerIframeApplies, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
 import { ensureProjectileOrigin } from '../utils/projectileOrigin';
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from '../utils/phantomScript';
-import { HUMAN_REACTION_MS } from '../utils/bossSkeleton'; // 幻影の弾パリィの反応にも人の下限(社長指摘2026-10-10「幻影がフェアじゃない」)
 import { isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult, TRAP_ROOT_CRIT_BONUS } from '../utils/trapDebuff';
-import { strongestGuardian } from '../data/fixedGuardians';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
@@ -3193,34 +3191,18 @@ export const INVULN_MS = 1000; // 社長裁定v0.25.3599(700→1000。多段技�
  *
  * ここが「呼び出し側が値を渡す」担当(葉は型以外を import しない):
  *  - 被弾無敵の長さ  = プレイヤーと同じ `INVULN_MS` を**直接参照**(写経しない)
- *  - パリィ成立率    = **その回の人格**の `counterChance`(=プレイヤーのカウンターの鏡・SAME_ARENA O-5)
+ *  - パリィ         = 近接・弾とも自分の振りが開けた窓(v10。旧: 弾は人格の counterChance の抽選)
  *  - パリィCD        = `phantomScript` の1箇所
  * **幻影以外の敵に対しては恒等**(通常敵のダメージ・副作用に1bitも影響しない)。
  */
 const gatePhantomHit = (
-  enemy: Enemy, amount: number, source: PhantomDamageSource | 'ranged', gameTime: number, rand?: () => number,
+  enemy: Enemy, amount: number, source: PhantomDamageSource | 'ranged', gameTime: number,
 ): PhantomHitGateResult => phantomHitGate({
   enemyType: enemy.type,
   amount, gameTime,
-  // 弾だけは「飛翔時間つきの形」で来る(GHOST_BOSS.md v9)。ここで種別と飛翔時間へ開く。
-  source: typeof source === 'string' ? source : 'bullet',
-  flightMs: typeof source === 'string' ? undefined : source.flightMs,
+  // v10: 弾も近接と同じ窓で裁く(飛翔時間・抽選・反応速度はゲートでは使わない。弾にどう対処するかは phantomTick が人格の記録で決める)。
+  source,
   invulnMs: INVULN_MS,
-  // 台帳読みは幻影の時だけ(通常敵のホットパスに台帳アクセスを持ち込まない)。
-  // ★v0.25.3860(O-5の取りこぼし修正): **その回の人格**のパリィ率を使う。
-  // O-5 で癖・ビルド・HP・名前は人格から取るようにしたが、**ここだけ台帳の最強データ(鴉)固定のまま
-  // 残っていた**=「別人と戦っているのにパリィの上手さだけ鴉」という状態だった。
-  // 人格が未設定(旧経路)なら従来どおり台帳へ落ちる=1bit不変。
-  counterChance: isGuardianPhantom(enemy.type)
-    ? (getPhantomIdentity()?.profile.counterChance ?? strongestGuardian().profile.counterChance)
-    : 0,
-  // ★同上(O-5の取りこぼし): 反応速度も**その回の人格**から。
-  // ★人の反応の下限でクランプ(社長指摘2026-10-10「幻影がフェアじゃない」)。動き・回避の判断(phantomTick の phantomProfile)は
-  // SAME_ARENA §7 で既に下限250msを入れていたのに、**弾パリィのここだけ台帳の100〜130msのまま**で、
-  // 0.1秒飛んだ弾=ほぼどの距離の弾も打ち返し抽選に掛かっていた。
-  reactionMs: isGuardianPhantom(enemy.type)
-    ? Math.max(HUMAN_REACTION_MS, getPhantomIdentity()?.profile.reactionMs ?? strongestGuardian().profile.reactionMs)
-    : 0,
   parryCdMs: GP_T.parryCdMs,
   // 近接パリィの窓: **storeに入った**スイング打刻を起点に、プレイヤーと同じ長さだけ開く
   // (幻影tickのパッチ合成が同フレーム後段なら1フレーム(16ms)の取りこぼしが出るが許容=仕様)。
@@ -3230,7 +3212,6 @@ const gatePhantomHit = (
   pvpDamageScale: isGuardianPhantom(enemy.type) ? PVP_DAMAGE_SCALE : 1,
   gpHitAt: enemy.gpHitAt,
   gpParryCdUntil: enemy.gpParryCdUntil,
-  rand,
   // ★SAME_ARENA §9(対人体勢): 紫中はi-frame/パリィなしで素通し(「紫→致命」がパリィで潰れない)。
   incapacitated: isGuardianPhantom(enemy.type) && isPvpIncapacitated(enemy.pvpPosture, gameTime),
 });
@@ -6165,7 +6146,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾=飛翔時間つきの形。null=従来の導出・v0.25.3640監査A)
+  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;

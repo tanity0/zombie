@@ -376,6 +376,16 @@ const DIRECT_GUN_WEAPON_KEYS = new Set<string>([
 ]);
 export const isDirectGunWeaponKey = (weaponKey: string | undefined): boolean =>
   weaponKey !== undefined && DIRECT_GUN_WEAPON_KEYS.has(weaponKey);
+/**
+ * 幻影が「プレイヤー本人の直接銃の弾」として扱う弾(research/GHOST_BOSS.md v10)。
+ * **弾パリィ(useGameLoop→phantomGate)と、弾にどう対処するかの判断(phantomTick)が同じ1本を読む**
+ * (判断で振ったのにゲートが弾として扱わず返らない、を作らない=品質監査 A-2)。
+ * 守護霊・軍人の弾・打ち返し済みの弾・敵の弾は含めない。
+ */
+export const isPhantomTargetBullet = (p: { hostile?: boolean; reflected?: boolean; weaponKey?: string }): boolean =>
+  !p.hostile && !p.reflected && p.weaponKey !== 'escort'
+  && p.weaponKey !== GHOST_GUN_WEAPON_KEY && p.weaponKey !== GHOST_REFLECT_WEAPON_KEY
+  && isDirectGunWeaponKey(p.weaponKey);
 // Tier 昇順。MELEE_KEYS[tier] が「1段階上」のキー(tier は 1 始まり=0-indexed の次要素)。
 export const MELEE_KEYS = ['knife-t1', 'hatchet-t2', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5'];
 export const MAX_KNIFE_TIER = MELEE_KEYS.length; // = 5

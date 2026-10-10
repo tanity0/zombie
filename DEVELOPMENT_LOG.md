@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.4961 — 幻影 v10: 弾への対処を本人の記録どおり・同じ操作で(社長「幻影がフェアじゃない」→「はい」)【2026-10-10 18:12 JST】
+- 実装(research/GHOST_BOSS.md v10): phantomLunge.ts に純関数 `bulletEtaMs`/`bulletPlanRates`/`pickBulletPlan`。phantomTick `pickPhantomEscapeLunge` が弾ごとに1回、人格の技への反応表(弾の技の n 重み→表全部→叩き台 20/50/30)で 打ち返す/避ける/食らう を決め、着弾/通過まで毎tick見て振れる時に実行(打ち返す=着弾≦窓で普通の振り/避ける=従来の踏み込み/食らう=何もしない)。決めた弾は Map(盤面から消えた弾だけ掃除)。phantomGate: 弾も**近接と同じ窓**だけで打ち返す(counterChance 抽選・飛翔時間・反応速度・rand をゲート入力から削除)。useGameLoop の弾の種別は `'bullet'` 文字列に、対象は weaponUtils `isPhantomTargetBullet`(判断とゲートが同じ1本)。
+- 品質監査(設計・Fable 5.1): (A)4件・(C)6件=全て設計の穴 → 反映してから実装(設計書に記録)。社長へ戻すものなし。
+- 検収監査(Fable 5.1): (A)なし=1巡で止め(新しい角度なし)。(C)旧説明コメント2か所・import行の連結を直した/A5・dodge分岐のテスト無しを設計書に明記して別案件へ。(B)割合キャッシュが名前キーのみ=別案件。
+- 循環import検出器: gameStore が fixedGuardians を import しなくなり、既存の固まりの別の輪(辺は全て以前から在る=6本を git show で確認)が表に出た → allowlist へ事実として登録。
+- 検証: typecheck / lint 0 errors。vitest phantom*/store/weaponUtils 737件緑(新規: ゲート窓2・割合/引き順/ETA 4・判断の統合4)。
+- 憲法の自己点検: 幻影(対策室・乱入)だけの挙動=湧き・難度・台本に触れない=第4条/第5条に抵触しない。
+- 状態変化: なし。
+
 ## v0.25.4960 — 設計書: 幻影 v10「弾への対処を本人の記録どおり・同じ操作で」(文書のみ)【2026-10-10 17:49 JST】
 - research/GHOST_BOSS.md 末尾に v10 を追記(社長「はい」)。弾ごとに1回、人格の技への反応表(弾の技)から 打ち返す/避ける/食らう を決める。打ち返しは普通の振り(窓)で、弾パリィの抽選を廃止して窓判定に揃える。品質監査(Fable 5.1)に出し中=指摘を反映してから実装。
 - 状態変化: なし。

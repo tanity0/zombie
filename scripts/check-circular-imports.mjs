@@ -31,6 +31,9 @@ import { execFileSync } from 'node:child_process';
 const ALLOWED = [
   // v0.25.3895 から存在。固定護衛の特性 → 敵の型 → ボスHP表 の輪。
   ['data/fixedGuardians.ts', 'utils/playerTraits.ts', 'utils/bossEngagement.ts', 'utils/enemyUtils.ts', 'config/bossHealth.ts'],
+  // v0.25.4961 で表に出た(**辺は全て以前から在った**=git show HEAD で6本とも確認済み)。gameStore が fixedGuardians の
+  // import をやめたため madge の辿り順が変わり、上の環と同じ固まりの別の輪が報告されるようになった。新規の依存は足していない。
+  ['config/bossHealth.ts', 'data/fixedGuardians.ts', 'utils/playerTraits.ts', 'utils/habitEpisode.ts', 'utils/counterReach.ts', 'utils/idolScript.ts'],
   // ENGINEERING_NOTES.md に「既知の無害な環」として記録されているもの。
   ['store/gameStore.ts', 'utils/ghostBuild.ts', 'utils/weaponUtils.ts'],
 ];

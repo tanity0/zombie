@@ -147,3 +147,54 @@ export const phantomBulletLungeDir = (
   const s = cross >= 0 ? 1 : -1;                    // 今ずれている側へ(線ぴったりなら左)
   return { x: -d.y * s, y: d.x * s };
 };
+
+// =================================================================================================
+// research/GHOST_BOSS.md v10(社長2026-10-10「幻影がフェアじゃない」→「はい」): 弾ごとに1回、
+// 「振って返す(counter)/避ける(dodge)/食らう(take)」を人格の記録どおりの割合で決める。
+// =================================================================================================
+
+/** このままだと当たる弾の、着弾までの時間(ms)。当たらない/通り過ぎた/速さ0なら null。 */
+export const bulletEtaMs = (cx: number, cy: number, radius: number, p: BulletLike): number | null => {
+  const d = unit(p.direction.x, p.direction.y);
+  if (!d || !(p.speed > 0)) return null;
+  const bx = p.x + p.width / 2, by = p.y + p.height / 2;
+  const rx = cx - bx, ry = cy - by;
+  const along = rx * d.x + ry * d.y;
+  if (along <= 0) return null;
+  const cross = -d.y * rx + d.x * ry;
+  if (Math.abs(cross) >= radius + Math.max(p.width, p.height) / 2) return null;
+  return (along / p.speed) * 1000;
+};
+
+export type BulletPlan = 'counter' | 'dodge' | 'take';
+export interface BulletPlanRates { counter: number; dodge: number; take: number }
+/** 記録が何も無い人格の割合(叩き台)。 */
+export const DEFAULT_BULLET_PLAN_RATES: BulletPlanRates = { counter: 0.2, dodge: 0.5, take: 0.3 };
+
+interface ReactionStatLike { n: number; counterRate: number; hitRate: number }
+const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
+
+/**
+ * 人格の「技への反応表」から割合を出す。`keys`(弾の技)の n 重み付き平均 → n 合計0なら表の全部 → それも0なら叩き台。
+ * counter=打ち返し率 / take=食らった率 / dodge=残り(0〜1。counter+take>1 なら dodge=0)。
+ */
+export const bulletPlanRates = (
+  table: Readonly<Record<string, ReactionStatLike | undefined>> | undefined, keys: readonly string[],
+): BulletPlanRates => {
+  const avg = (ks: readonly string[]): BulletPlanRates | null => {
+    let n = 0, c = 0, h = 0;
+    for (const k of ks) {
+      const st = table?.[k];
+      if (!st || !(st.n > 0)) continue;
+      n += st.n; c += clamp01(st.counterRate) * st.n; h += clamp01(st.hitRate) * st.n;
+    }
+    if (n <= 0) return null;
+    const counter = c / n, take = h / n;
+    return { counter, take, dodge: Math.max(0, 1 - counter - take) };
+  };
+  return avg(keys) ?? avg(Object.keys(table ?? {})) ?? DEFAULT_BULLET_PLAN_RATES;
+};
+
+/** 引き順: r < counter → counter / r < counter+take → take / それ以外 → dodge(合計>1でも順で決まる)。 */
+export const pickBulletPlan = (rates: BulletPlanRates, r: number): BulletPlan =>
+  (r < rates.counter ? 'counter' : r < rates.counter + rates.take ? 'take' : 'dodge');

@@ -18,6 +18,7 @@ import { phantomMeleeDamage } from './phantomTick';
 import { COUNTER_REACH_DECL } from './counterReach';
 import { usesPostureSystem, applyBossPostureDamage } from './bossPosture';
 import { strongestGuardian } from '../data/fixedGuardians';
+import { setPhantomIdentity } from './phantomIdentity';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { useGameStore, INVULN_MS, MELEE_RADIUS, COUNTER_WINDOW, MELEE_WINDUP_MS, KNOCKBACK_SPEED, KNOCKBACK_DURATION } from '../store/gameStore';
 import { HUMAN_REACTION_MS } from './bossSkeleton';
@@ -262,36 +263,36 @@ describe('② 被弾無敵: 弾・遠隔は0/近接系は無敵を無視して�
   it('phantomGate 単体: 無敵/近接の窓/通過の全分岐(窓入力で固定)', () => {
     const base = {
       enemyType: GUARDIAN_PHANTOM_TYPE, amount: 100, gameTime: 5000,
-      invulnMs: 1000, counterChance: 0.5, parryCdMs: 1000,
-      swingWindowMs: COUNTER_WINDOW, reactionMs: 100,
+      invulnMs: 1000, parryCdMs: 1000,
+      swingWindowMs: COUNTER_WINDOW,
     } as const;
     // 無敵中: 弾・遠隔は0/近接系は無敵を無視して通る(社長裁定2026-08-20)。
     for (const source of ['bullet', 'ranged'] as const) {
-      const r = phantomHitGate({ ...base, source, gpHitAt: 4500, rand: () => 1 });
+      const r = phantomHitGate({ ...base, source, gpHitAt: 4500 });
       expect(r.damage).toBe(0);
       expect(r.effects).toBe(false);
       expect(r.blocked).toBe(true);
       expect(r.patch.gpBlockedAt).toBe(5000);
     }
     for (const source of ['melee', 'counter'] as const) {
-      const r = phantomHitGate({ ...base, source, gpHitAt: 4500, rand: () => 0 });
+      const r = phantomHitGate({ ...base, source, gpHitAt: 4500 });
       expect(r.blocked).toBe(false);
       expect(r.damage).toBe(100);
       expect(r.patch.gpHitAt).toBe(5000);
     }
-    // 無敵外・近接・**窓の中**=パリィ(乱数は一切読まない)。
-    const parry = phantomHitGate({ ...base, source: 'melee', gpSwingAt: 4900, rand: () => 0.999 });
+    // 無敵外・近接・**窓の中**=パリィ。
+    const parry = phantomHitGate({ ...base, source: 'melee', gpSwingAt: 4900 });
     expect(parry.parried).toBe(true);
     expect(parry.damage).toBe(0);
     expect(parry.patch.gpParriedAt).toBe(5000);
     expect(parry.patch.gpParryCdUntil).toBe(6000);
-    // **窓の外**(スイングから COUNTER_WINDOW 以上経った)=素通り。抽選当たりの乱数でも通る。
-    const late = phantomHitGate({ ...base, source: 'melee', gpSwingAt: 5000 - COUNTER_WINDOW, rand: () => 0 });
+    // **窓の外**(スイングから COUNTER_WINDOW 以上経った)=素通り。
+    const late = phantomHitGate({ ...base, source: 'melee', gpSwingAt: 5000 - COUNTER_WINDOW });
     expect(late.parried).toBe(false);
     expect(late.damage).toBe(100);
     expect(late.patch.gpHitAt).toBe(5000);
     // 一度も振っていない(gpSwingAt 未設定)=窓が無い=素通り(リーチ外からの近接がここに落ちる)。
-    const noSwing = phantomHitGate({ ...base, source: 'melee', rand: () => 0 });
+    const noSwing = phantomHitGate({ ...base, source: 'melee' });
     expect(noSwing.parried).toBe(false);
     expect(noSwing.damage).toBe(100);
     // パリィCD中は窓が開いていても成立しない=通る。
@@ -300,13 +301,11 @@ describe('② 被弾無敵: 弾・遠隔は0/近接系は無敵を無視して�
     expect(cd.damage).toBe(100);
     // カウンター反撃・弾以外の遠隔(サブ/爆発)はパリィ不可(窓の中でも通る)。
     for (const source of ['counter', 'ranged'] as const) {
-      const r = phantomHitGate({ ...base, source, gpSwingAt: 4900, rand: () => 0 });
+      const r = phantomHitGate({ ...base, source, gpSwingAt: 4900 });
       expect(r.parried).toBe(false);
       expect(r.damage).toBe(100);
       expect(r.patch.gpHitAt).toBe(5000);
     }
-    // counterChance は近接では読まない(0でも窓の中なら弾く)。
-    expect(phantomHitGate({ ...base, source: 'melee', counterChance: 0, gpSwingAt: 4900 }).parried).toBe(true);
   });
 
   // ★v0.25.3667(社長指摘「こっちが届かない近距離攻撃をしてくる」): 幻影の近接リーチは
@@ -317,40 +316,32 @@ describe('② 被弾無敵: 弾・遠隔は0/近接系は無敵を無視して�
   });
 
   // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの銃弾('bullet')もパリィ対象。
-  // ★GHOST_BOSS.md v9: 成立には**飛翔時間 ≧ 台帳の反応速度(reactionMs)**が要る。
-  it('phantomGate 単体: 銃弾のパリィは gpBulletParriedAt に打刻(近接の gpParriedAt とは別の合図)', () => {
+  // ★GHOST_BOSS.md v10(社長2026-10-10): 弾も近接と同じ**窓**(抽選・飛翔時間は使わない)。
+  it('phantomGate 単体: 銃弾は振りの窓の中だけ打ち返す(gpBulletParriedAt に打刻)', () => {
     const base = {
       enemyType: GUARDIAN_PHANTOM_TYPE, amount: 100, gameTime: 5000,
-      invulnMs: 1000, counterChance: 0.5, parryCdMs: 1000,
-      swingWindowMs: COUNTER_WINDOW, reactionMs: 100,
+      invulnMs: 1000, parryCdMs: 1000,
+      swingWindowMs: COUNTER_WINDOW,
     } as const;
-    const r = phantomHitGate({ ...base, source: 'bullet', flightMs: 300, rand: () => 0 });
+    // 窓の中=打ち返す(A2: 飛翔時間に関係なく)。
+    const r = phantomHitGate({ ...base, source: 'bullet', gpSwingAt: 4900 });
     expect(r.parried).toBe(true);
     expect(r.damage).toBe(0);
     expect(r.effects).toBe(false);
     expect(r.patch.gpBulletParriedAt).toBe(5000);   // 弾ヒット処理が同tickで消費=弾を打ち返す
     expect(r.patch.gpParriedAt).toBeUndefined();    // 近接反撃・プレイヤーshoveは出さない
     expect(r.patch.gpParryCdUntil).toBe(6000);      // CDは近接と共有
-    // CD中の弾は抽選せず通る(i-frameの起点を打つ)。
-    const cd = phantomHitGate({ ...base, source: 'bullet', flightMs: 300, gpParryCdUntil: 9999, rand: () => 0 });
+    // 窓の外/一度も振っていない=通る(A1: 以前の抽選は無い)。
+    for (const gpSwingAt of [5000 - COUNTER_WINDOW, undefined]) {
+      const out = phantomHitGate({ ...base, source: 'bullet', gpSwingAt });
+      expect(out.parried).toBe(false);
+      expect(out.damage).toBe(100);
+      expect(out.patch.gpHitAt).toBe(5000);
+    }
+    // CD中は窓の中でも通る。
+    const cd = phantomHitGate({ ...base, source: 'bullet', gpSwingAt: 4900, gpParryCdUntil: 9999 });
     expect(cd.parried).toBe(false);
     expect(cd.damage).toBe(100);
-    expect(cd.patch.gpHitAt).toBe(5000);
-    // 反応速度に届かない飛翔時間(=近距離で撃ち込まれた弾)は**抽選せず通る**。
-    const fast = phantomHitGate({ ...base, source: 'bullet', flightMs: 99, rand: () => 0 });
-    expect(fast.parried).toBe(false);
-    expect(fast.damage).toBe(100);
-    // ちょうど反応速度ぶん飛んでいれば成立しうる(境界は「以上」)。
-    expect(phantomHitGate({ ...base, source: 'bullet', flightMs: 100, rand: () => 0 }).parried).toBe(true);
-    // 瞬間着弾(飛翔時間0=速度0や発射点=着弾点の弾)は反応不可。
-    expect(phantomHitGate({ ...base, source: 'bullet', flightMs: 0, rand: () => 0 }).parried).toBe(false);
-    // 飛翔時間が出せなかった弾(発射点なし=Infinity/未設定)は従来どおり抽選に掛かる
-    // (Infinity/NaN を比較に流していないことの固定)。
-    expect(phantomHitGate({ ...base, source: 'bullet', flightMs: Infinity, rand: () => 0 }).parried).toBe(true);
-    expect(phantomHitGate({ ...base, source: 'bullet', flightMs: NaN, rand: () => 0 }).parried).toBe(true);
-    expect(phantomHitGate({ ...base, source: 'bullet', rand: () => 0 }).parried).toBe(true);
-    // 抽選外れ=通る(弾は従来どおり counterChance を読む)。
-    expect(phantomHitGate({ ...base, source: 'bullet', flightMs: 300, rand: () => 0.999 }).damage).toBe(100);
   });
 });
 
@@ -530,11 +521,10 @@ describe('⑥ 【不変条件】撤去したものが戻ってこない', () => 
     for (const type of ['zombie', 'giantbat', 'bounty-ranged', 'pumpkin', 'mimir']) {
       const r = phantomHitGate({
         enemyType: type, amount: 77, source: 'melee', gameTime: 5000,
-        invulnMs: 1000, counterChance: 1, parryCdMs: 1000,
-        swingWindowMs: COUNTER_WINDOW, reactionMs: 100,
+        invulnMs: 1000, parryCdMs: 1000,
+        swingWindowMs: COUNTER_WINDOW,
         gpHitAt: 4999,    // 幻影ならこれで無敵ブロックされる条件を、あえて渡す
         gpSwingAt: 4999,  // 幻影ならこれで必ずパリィされる窓を、あえて渡す
-        rand: () => 0,
       });
       expect(r.damage, type).toBe(77);
       expect(r.effects, type).toBe(true);
@@ -627,5 +617,67 @@ describe('対人スケールは打ち返しでも1回だけ(社長指摘2026-10-
     // プレイヤーの弾(焼き込み無し)と、幻影以外への命中は素通し
     expect(pvpHitDamageForGate(7, false, true)).toBe(7);
     expect(pvpHitDamageForGate(7, true, false)).toBe(7);
+  });
+});
+
+describe('GHOST_BOSS.md v10: 弾に対して、人格の記録どおりに「振って返す/食らう」を選ぶ', () => {
+  // プレイヤーの直接銃の弾を、幻影の正面から当たる向きで置く(経過は人の反応の下限を十分に過ぎた状態)。
+  const putBullet = (phantom: Enemy, gt: number, distPx: number, speed = 600): void => {
+    const cx = phantom.x + phantom.width / 2, cy = phantom.y + phantom.height / 2;
+    useGameStore.setState({
+      projectiles: [{
+        id: 'pb-1', x: cx - distPx - 5, y: cy - 5, width: 10, height: 10, speed,
+        direction: { x: 1, y: 0 }, damage: 10, hostile: false, weaponKey: PLAYER_PROFILES.rogue.gunKey,
+        createdAt: gt - 2000, hitEnemies: [],
+      } as unknown as import('../types/game').Projectile],
+    });
+  };
+  const withRates = (name: string, counterRate: number, hitRate: number): void => {
+    const base = strongestGuardian().profile;
+    setPhantomIdentity({ name, source: 'fixed', profile: { ...base, moveReactions: { 'mimir-burst': { n: 10, counterRate, hitRate } } } });
+  };
+  afterEach(() => setPhantomIdentity(null));
+
+  it('A4: 打ち返す人格は、着弾が振りの窓以内になった時に振る(間合いの外=空振り)', () => {
+    withRates('v10-counter', 1, 0);
+    const { step, cur, gt } = setup(500); // 近接の間合いの外
+    step(16);
+    const before = cur().gpSwingAt;
+    putBullet(cur(), gt(), 150); // 150px ÷ 600px/s = 250ms ≦ COUNTER_WINDOW
+    step(16);
+    expect(cur().gpSwingAt).toBeDefined();
+    expect(cur().gpSwingAt).not.toBe(before);
+    expect(cur().gpLungeAngle).toBeUndefined(); // 抜けの踏み込みではない(普通の振り)
+  });
+
+  it('A4: 着弾までが窓より長いうちは振らない(決めてから待つ)', () => {
+    withRates('v10-wait', 1, 0);
+    const { step, cur, gt } = setup(500);
+    step(16);
+    const before = cur().gpSwingAt;
+    putBullet(cur(), gt(), 480); // 800ms > COUNTER_WINDOW
+    step(16);
+    expect(cur().gpSwingAt).toBe(before);
+  });
+
+  it('A4: 食らう人格は振らない', () => {
+    withRates('v10-take', 0, 1);
+    const { step, cur, gt } = setup(500);
+    step(16);
+    const before = cur().gpSwingAt;
+    putBullet(cur(), gt(), 150);
+    step(16);
+    expect(cur().gpSwingAt).toBe(before);
+  });
+
+  it('A2/A6: 判断と同じ1本=打ち返し済み・軍人・守護霊の弾には振らない', () => {
+    withRates('v10-filter', 1, 0);
+    const { step, cur, gt } = setup(500);
+    step(16);
+    const before = cur().gpSwingAt;
+    putBullet(cur(), gt(), 150);
+    useGameStore.setState(s => ({ projectiles: s.projectiles.map(p => ({ ...p, weaponKey: 'escort' })) }));
+    step(16);
+    expect(cur().gpSwingAt).toBe(before);
   });
 });

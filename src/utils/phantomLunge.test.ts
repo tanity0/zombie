@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   phantomEscapeStyle, phantomEscapeStyleOf, lungeStyleForShare, phantomEscapeDir, closeInEtaMs, phantomBulletLungeDir,
   DEFAULT_PHANTOM_ESCAPE_STYLE, PHANTOM_ESCAPE_LEAD_MIN_MS, PHANTOM_ESCAPE_LEAD_MAX_MS,
+  bulletEtaMs, bulletPlanRates, pickBulletPlan, DEFAULT_BULLET_PLAN_RATES,
 } from './phantomLunge';
 import type { HabitEpisode } from './habitEpisode';
 
@@ -68,5 +69,47 @@ describe('幻影の踏み込み回避(LUNGE_DODGE §4)', () => {
     // 送る側: 記録が足りなければ載せない / 足りれば要約だけ
     expect(lungeStyleForShare({ k: [ep(-200, 1)] })).toBeUndefined();
     expect(lungeStyleForShare({ k: [ep(-300, 1), ep(-200, 2), ep(-100, 3)] })).toEqual({ chance: 2 / 3, sideFrac: 0.5, leadMs: 250, n: 3 });
+  });
+});
+
+describe('GHOST_BOSS.md v10: 弾への対処(振って返す/避ける/食らう)を人格の記録の割合で決める', () => {
+  it('A3: 弾の技の n 重み付き平均 → 無ければ表の全部 → それも無ければ叩き台', () => {
+    const t = {
+      'b1': { n: 10, counterRate: 0.5, hitRate: 0.1 },
+      'b2': { n: 30, counterRate: 0.1, hitRate: 0.3 },
+      'melee': { n: 100, counterRate: 0.9, hitRate: 0 },
+    };
+    const r = bulletPlanRates(t, ['b1', 'b2']);
+    expect(r.counter).toBeCloseTo((0.5 * 10 + 0.1 * 30) / 40);
+    expect(r.take).toBeCloseTo((0.1 * 10 + 0.3 * 30) / 40);
+    expect(r.dodge).toBeCloseTo(1 - r.counter - r.take);
+    // 弾の技が無い → 表の全部
+    const all = bulletPlanRates(t, ['none']);
+    expect(all.counter).toBeCloseTo((0.5 * 10 + 0.1 * 30 + 0.9 * 100) / 140);
+    // 表が空 → 叩き台
+    expect(bulletPlanRates({}, ['b1'])).toEqual(DEFAULT_BULLET_PLAN_RATES);
+    expect(bulletPlanRates(undefined, ['b1'])).toEqual(DEFAULT_BULLET_PLAN_RATES);
+    // counter+take>1 → dodge は0(負にしない)
+    expect(bulletPlanRates({ x: { n: 1, counterRate: 0.8, hitRate: 0.5 } }, ['x']).dodge).toBe(0);
+  });
+  it('固定の先人(斬=打ち返し75%・食らう0%)は 打ち返し75/避け25', () => {
+    const r = bulletPlanRates({ k: { n: 20, counterRate: 0.75, hitRate: 0 } }, ['k']);
+    expect(r).toEqual({ counter: 0.75, take: 0, dodge: 0.25 });
+  });
+  it('引き順: counter → take → dodge', () => {
+    const rates = { counter: 0.3, take: 0.2, dodge: 0.5 };
+    expect(pickBulletPlan(rates, 0)).toBe('counter');
+    expect(pickBulletPlan(rates, 0.29)).toBe('counter');
+    expect(pickBulletPlan(rates, 0.3)).toBe('take');
+    expect(pickBulletPlan(rates, 0.49)).toBe('take');
+    expect(pickBulletPlan(rates, 0.5)).toBe('dodge');
+    expect(pickBulletPlan({ counter: 0.8, take: 0.5, dodge: 0 }, 0.99)).toBe('take');
+  });
+  it('bulletEtaMs: このままだと当たる弾だけ着弾までの時間、外れる/通り過ぎた/速さ0は null', () => {
+    const p = { x: -5, y: -5, width: 10, height: 10, speed: 500, direction: { x: 1, y: 0 } };
+    expect(bulletEtaMs(250, 0, 20, p)).toBeCloseTo(500); // 250px ÷ 500px/s
+    expect(bulletEtaMs(250, 100, 20, p)).toBeNull();     // 線から外れている
+    expect(bulletEtaMs(-50, 0, 20, p)).toBeNull();       // 後ろ=通り過ぎた
+    expect(bulletEtaMs(250, 0, 20, { ...p, speed: 0 })).toBeNull();
   });
 });
