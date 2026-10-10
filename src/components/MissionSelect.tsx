@@ -279,9 +279,15 @@ const LoadoutBody: React.FC<{ children: React.ReactNode }> = ({ children }) => D
 
 // NoBounceScroller(縁バウンス殺し+続き下矢印)は共有部品化した(UI監査2026-08-29で全画面へ展開)。
 
+// メニュー操作の「画面ごとの地図」を宣言済みの画面(1回目・research/MENU_NAV.md)。characterSelect は Shell を介さず自分の根に宣言している。
+// ここに無い画面は従来の「矢印の向きで一番近い所へ」で動く。
+const NAV_DECLARED_SCREENS: ReadonlySet<string> = new Set(['home', 'stageSelect', 'missionDetail', 'bossRush']);
+
 // ★testScreen(TEST_HANDOFF/REQUEST-devbridge.md §D): いま出している画面の名前を DOM に置く
 // (値は reportTestScreen と同じ TestScreenId)。**属性を足すだけ**で、見た目・レイアウトは変わらない。
-const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: boolean; loadout?: boolean; testScreen?: string }> = ({ children, fill, dsHome, loadout, testScreen }) => (
+// navScreen: メニュー操作の層の名前(data-nav-screen・research/MENU_NAV.md v3)。宣言のある画面(home/stageSelect/missionDetail/bossRush)だけ渡す=
+// 渡さない画面は従来の「近い所へ飛ぶ」まま。属性を足すだけ=見た目・並びは不変。
+const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: boolean; loadout?: boolean; testScreen?: string; navScreen?: string }> = ({ children, fill, dsHome, loadout, testScreen, navScreen }) => (
   dsHome ? (
     // DS版ホームの地(UI_OVERHAUL.md §3-1-3): 背景=DS地(タイトル絵は使わない)+走査線+fill(全高)。
     // safe-areaは外周paddingのまま(帯・罫はパネル幅いっぱいでモックの計器感は成立)。
@@ -293,6 +299,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
     // 縦に入らない端末(監査B-6)はパネル内スクロールを許容(overflow-y-auto)。
     <div
       data-screen={testScreen}
+      data-nav-screen={navScreen}
       // 横長(PC)はスマホのホームバー避けの下余白(40px)を持ち込まない=盤の上下を揃える(クリエイティブ監査 #13)。
       className={`screen-in ds-home relative h-full w-full flex flex-col items-center justify-start overflow-hidden landscape:!pb-4 ${COMMAND_PREVIEW && loadout ? 'command-shell' : ''}`}
       style={{
@@ -312,16 +319,17 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
       <div className={`relative h-full w-full overflow-hidden ${loadout ? '' : 'landscape:!max-w-[1080px]'}`} style={{ maxWidth: COMMAND_PREVIEW && loadout ? 1180 : 420 }}>{children}</div>
     </div>
   ) : COMMAND_UI_ENABLED ? (
-    <div data-screen={testScreen} className="command-page-shell h-full w-full flex flex-col items-center overflow-hidden" style={{
+    <div data-screen={testScreen} data-nav-screen={navScreen} className="command-page-shell h-full w-full flex flex-col items-center overflow-hidden" style={{
       maxHeight: 'calc(100svh / var(--hud-s, 1))', paddingTop: 'max(env(safe-area-inset-top), 12px)',
       paddingBottom: 'max(env(safe-area-inset-bottom), 16px)',
       paddingLeft: 'max(env(safe-area-inset-left), 12px)', paddingRight: 'max(env(safe-area-inset-right), 12px)',
     }}>
-      <NoBounceScroller className={`command-page w-full overflow-y-auto overflow-x-hidden overscroll-contain ${fill ? 'h-full' : 'max-h-full'}`} style={{ touchAction: 'pan-y' }} moreColor="#e9bd79">{children}</NoBounceScroller>
+      <NoBounceScroller nav={{ 'data-nav-scroll': '' }} className={`command-page w-full overflow-y-auto overflow-x-hidden overscroll-contain ${fill ? 'h-full' : 'max-h-full'}`} style={{ touchAction: 'pan-y' }} moreColor="#e9bd79">{children}</NoBounceScroller>
     </div>
   ) : (
   <div
     data-screen={testScreen}
+    data-nav-screen={navScreen}
     className="screen-in h-full w-full flex flex-col items-center justify-start bg-[#0b0b12] overflow-hidden"
     style={{
       // 社長報告2026-08-20「ページが長いと下の方が少し切れる。スクロールしても届かない(守護霊メニュー)」:
@@ -347,7 +355,7 @@ const Shell: React.FC<{ children: React.ReactNode; fill?: boolean; dsHome?: bool
     {/* overflow-x-hidden + pan-y(社長報告2026-08-29「横にずれたり」): メニューのページは縦専用。
         iOSは overflow-y:auto だけだと横も auto 扱いになり、僅かな横はみ出しで横パンできてしまう。
         Shell配下に横スクロール容器は無い(キャラ選択のチップ帯はShell外)ので一律に殺してよい。 */}
-    <NoBounceScroller className={`max-w-3xl w-full glass-panel rounded-none overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar ${fill ? 'h-full' : 'max-h-full'}`} style={{ touchAction: 'pan-y' }}>{children}</NoBounceScroller>
+    <NoBounceScroller nav={{ 'data-nav-scroll': '' }} className={`max-w-3xl w-full glass-panel rounded-none overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar ${fill ? 'h-full' : 'max-h-full'}`} style={{ touchAction: 'pan-y' }}>{children}</NoBounceScroller>
   </div>
   )
 );
@@ -705,6 +713,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           強制遷移なし(仕様書11章「非採用」)。見た目は既存モーダルと同じglass-panelトーン・強glowなし。 */}
       {newRecordsNotice.length > 0 && (
         <div
+          data-nav-modal="home-notice"
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
@@ -720,6 +729,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <button
               type="button"
               onClick={closeNewRecordsNotice}
+              data-nav-default data-nav-back
               className="w-full rounded-none bg-amber-400/15 px-3 py-2.5 text-[12px] font-semibold text-amber-100"
             >
               閉じる
@@ -731,6 +741,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           (medicine経路=サブ3本完了とhint経路=未完了は同時に成立しない)。 */}
       {newRecordsNotice.length === 0 && storyHintNotice && (
         <div
+          data-nav-modal="home-notice"
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
@@ -742,6 +753,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             <button
               type="button"
               onClick={closeStoryHintNotice}
+              data-nav-default data-nav-back
               className="w-full rounded-none bg-purple-400/15 px-3 py-2.5 text-[12px] font-semibold text-white/85"
             >
               閉じる
@@ -769,7 +781,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     const dsRow = (
       label: string, en: string, desc: string, onClick: () => void, delay: number, badge?: string
     ) => (
-      <button type="button" className="ds-row menu-item-in" style={{ animationDelay: `${delay}ms` }} onClick={onClick}>
+      <button type="button" data-nav-cursor="row" className="ds-row menu-item-in" style={{ animationDelay: `${delay}ms` }} onClick={onClick}>
         <span>
           <span className="ds-row-l">{label}{badge && <span className="ds-row-new">{badge}</span>}</span>
           <span className="ds-row-en">{en}</span>
@@ -803,14 +815,14 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
                   サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
                   =マップのSECTORタグが同じ情報を持つため重複)。 */}
-              <button type="button" data-testid="ops-sortie" data-nav-default className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goStageSelect}>
+              <button type="button" data-testid="ops-sortie" data-nav-default data-nav-cursor="dark" className="ds-sortie menu-item-in" style={{ animationDelay: '320ms' }} onClick={goStageSelect}>
                 <span className="ds-sortie-t1 block">出 撃</span>
                 <PixelIcon name="chevron-right" size={18} />
               </button>
             </div>
             {/* 行リストだけがスクロール領域(通常は全部収まる=スクロール発生なし)。縁バウンスも殺す。
                 続き矢印は作戦室色=アンバー。 */}
-            <NoBounceScroller className="ds-home-rows flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar landscape:max-h-full landscape:min-w-0 landscape:flex-[42]" style={{ touchAction: 'pan-y' }} moreColor="rgba(255, 179, 64, 0.85)">
+            <NoBounceScroller nav={{ 'data-nav-group': 'rows', 'data-nav-kind': 'list', 'data-nav-scroll': '' }} className="ds-home-rows flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain no-scrollbar landscape:max-h-full landscape:min-w-0 landscape:flex-[42]" style={{ touchAction: 'pan-y' }} moreColor="rgba(255, 179, 64, 0.85)">
               <div className="ds-glabel menu-item-in" style={{ animationDelay: '100ms' }}>PREP ── 準備</div>
               {dsRow('装備', 'LOADOUT', '銃 / サブウェポン / アバター', () => { playSfx('ui-select'); setScreen({ name: 'loadout' }); }, 125)}
               {dsRow('強化', 'GROWTH', '体力・攻撃・弾数・G', () => { playSfx('ui-select'); setScreen({ name: 'growth' }); }, 150)}
@@ -831,6 +843,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
               オプション
             </button>
             <span>SYSTEM v{__APP_VERSION__}</span>
+            {/* メニュー操作の案内の置き場(キー/パッドを使っている間だけ場所を取る・components/NavPrompt) */}
+            <div data-nav-prompt-slot className="nav-prompt-slot" />
           </div>
         </div>
         {renderHomeNotices()}
@@ -857,7 +871,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     return (
       <>
         <Header title="作戦地域" onBack={() => setScreen({ name: 'home' })} />
-        <div className="p-3 space-y-4">
+        <div data-nav-group="stages" data-nav-kind="list" className="p-3 space-y-4">
           {mains.map((stage, i) => <StageNode key={stage.id} stage={stage} index={i} />)}
           {exs.length > 0 && (
             <div className="pt-2 text-[11px] uppercase tracking-widest text-fuchsia-200/60 px-1">作戦外行動</div>
@@ -906,6 +920,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <button
         type="button"
         data-testid={`stage-card-${stage.id}`}
+        data-nav-id={stage.id}
         onClick={() => {
           if (!unlocked) { playSfx('ui-deny'); return; }
           playSfx('ui-select'); setScreen({ name: 'missionDetail', stageId: stage.id });
@@ -1122,6 +1137,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           <Ff7rButton
             onClick={() => { playSfx('ui-select'); setFreeMode(false); setScreen({ name: 'characterSelect', stageId, mission: missionKind }); }}
             testId="briefing-jobselect"
+            navDefault
             emphasis
             fade="both"
             paddingY="0.8rem"
@@ -1151,7 +1167,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // iOSのURLバー表示中に可視域より縦長になり、下部UI(START/チップ帯)が画面外へ落ちる。
     // Shellと同じく可視ビューポートでクランプ(未対応ブラウザでは無視=安全)。
     return (
-      <div data-screen="charSelect" className={`char-select screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none ${COMMAND_UI_ENABLED ? 'command-character' : ''}`} style={{ maxHeight: 'calc(100svh / var(--hud-s, 1))' }}>
+      <div data-screen="charSelect" data-nav-screen="characterSelect" className={`char-select screen-in fixed inset-0 z-0 overflow-hidden bg-black select-none ${COMMAND_UI_ENABLED ? 'command-character' : ''}`} style={{ maxHeight: 'calc(100svh / var(--hud-s, 1))' }}>
         {/* 全画面=選択中キャラの立ち絵。クラス切替=key 再マウント。ロード完了後に下からスッと表示。 */}
         <CharPortrait key={effectiveClass} src={portraitSrcFor(effectiveClass)} alt={c.name} />
         {/* 視認性スクリム(上=戻る帯 / 下=情報・選択帯)。立ち絵の暗背景に馴染ませる。 */}
@@ -1216,12 +1232,14 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
           {/* キャラ選択(最下段。ドット絵チップ。タップで立ち絵＋情報が切替) */}
           {/* 横帯の作法(UI監査2026-08-29 #9): 縦はhiddenで殺し、containは横だけ。 */}
-          <div className="flex items-end gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-0.5">
+          <div data-nav-group="chars" data-nav-kind="row" className="flex items-end gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-0.5">
             {selectableClasses.map(cc => {
               const on = cc.id === selectedClass;
               return (
                 <button
                   key={cc.id}
+                  data-nav-id={cc.id}
+                  {...(on ? { 'data-nav-default': '' } : {})}
                   onClick={() => { playSfx('ui-move'); setSelectedClass(cc.id); }}
                   className={`relative shrink-0 flex flex-col items-center justify-end rounded-none pt-2 pb-1 px-2 transition-[filter] ${
                     on ? '' : 'active:brightness-110'
@@ -1259,6 +1277,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 開き、どの守護霊を連れて行くか(なし=初期値)を選ぶ。装備メニューの同行者欄から移設。
                 M0(訓練)では出さない(社長指示: チュートリアルはヘビーガンナーのみ・守護霊なし)。 */}
             {!isTutorial && <button
+              data-nav-id="ghost"
               onClick={() => { playSfx('ui-select'); setGhostPickerOpen(true); }}
               className="relative shrink-0 flex flex-col items-center justify-end rounded-none pt-2 pb-1 px-2 transition-[filter] active:brightness-110"
               style={{
@@ -1302,18 +1321,21 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
         {/* 守護霊ピッカー(枠タップで開く)。なし/解禁済みの守護霊系3種から単一選択。 */}
         {!isTutorial && ghostPickerOpen && (
-          <div className="absolute inset-0 z-30" onClick={() => { playSfx('ui-back'); setGhostPickerOpen(false); }}>
-            <div className="absolute inset-0 bg-black/70" />
+          <div data-nav-modal="ghost-picker" className="absolute inset-0 z-30" onClick={() => { playSfx('ui-back'); setGhostPickerOpen(false); }}>
+            {/* 背景(押すと閉じる)は選ばれないが B/Esc で押される(research/MENU_NAV.md v3 A-2) */}
+            <div data-nav-back data-nav-skip className="absolute inset-0 bg-black/70" />
             <NoBounceScroller
+              nav={{ 'data-nav-scroll': '' }}
               // スクロール作法(UI監査2026-08-29 #3): シートは縦専用+連鎖遮断+横パン封じ+続き下矢印。
               className="screen-in absolute inset-x-0 bottom-0 max-h-[70%] overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar px-4 pt-4"
               style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom) + 16px), 20px)' }}
               onClick={e => e.stopPropagation()}
             >
               <div className="mb-2 text-[11px] uppercase tracking-widest text-fuchsia-200/70">守護霊を連れて行く</div>
-              <div className="menu-stagger space-y-2">
+              <div data-nav-group="ghost-picks" data-nav-kind="list" className="menu-stagger space-y-2">
                 {/* なし(初期値) */}
                 <button
+                  {...(companionSkill === null ? { 'data-nav-default': '' } : {})}
                   onClick={() => { playSfx('ui-move'); setCompanionSkill(null); setGhostPickerOpen(false); }}
                   className={`ff7r-fade-right flex w-full items-center justify-between gap-2 rounded-none px-3 py-2.5 text-left transition-[filter] ${
                     companionSkill === null ? 'is-on text-white' : 'text-white/85 active:brightness-110'
@@ -1329,6 +1351,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   return (
                     <button
                       key={k}
+                      {...(on ? { 'data-nav-default': '' } : {})}
                       onClick={() => { playSfx('ui-move'); setCompanionSkill(k); setGhostPickerOpen(false); }}
                       className={`ff7r-fade-right flex w-full items-start gap-3 rounded-none px-3 py-2.5 text-left transition-[filter] ${
                         on ? 'is-on text-white' : 'text-white/85 active:brightness-110'
@@ -1934,7 +1957,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
   if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId, screen.mission ?? 'main');
   return (
-    <Shell loadout={screen.name === 'loadout'} fill={screen.name === 'missionDetail'} dsHome={(!DS_HOME_DISABLED && screen.name === 'home') || (DS_LOADOUT_PREVIEW && screen.name === 'loadout')} testScreen={testScreenIdFor(screen.name)}>
+    <Shell loadout={screen.name === 'loadout'} fill={screen.name === 'missionDetail'} dsHome={(!DS_HOME_DISABLED && screen.name === 'home') || (DS_LOADOUT_PREVIEW && screen.name === 'loadout')} testScreen={testScreenIdFor(screen.name)}
+      navScreen={NAV_DECLARED_SCREENS.has(screen.name) ? screen.name : undefined}>
       {screen.name === 'home' && (DS_HOME_DISABLED ? renderHome() : renderDsHome())}
       {screen.name === 'stageSelect' && renderStageSelect()}
       {screen.name === 'missionDetail' && renderMissionDetail(screen.stageId, screen.mission ?? 'main')}

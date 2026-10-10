@@ -627,11 +627,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       // ★社長報告2026-08-26「リザルト画面がボタンのところが切れちゃってる。ギリギリ押せるって感じ」:
       // 旧: 外枠が min-h-screen(=100vh)。モバイルのブラウザUI(URLバー等)ぶん実表示より縦長になり、
       // 中央寄せの結果パネル下端(=ボタン)が画面外へはみ出していた。動的ビューポート(100dvh)へ。
+      data-nav-screen="result" // メニュー操作の層(research/MENU_NAV.md)。回収資料/小烏丸の窓は data-nav-modal で手前に重なる
       className="screen-in min-h-[calc(100dvh/var(--hud-s,1))] w-full flex items-center justify-center px-3"
       style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
     >
       {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。リザルトは最長画面) */}
-      <NoBounceScroller className="glass-panel command-panel max-h-[calc(100dvh/var(--hud-s,1)-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
+      <NoBounceScroller nav={{ 'data-nav-scroll': '' }} className="glass-panel command-panel max-h-[calc(100dvh/var(--hud-s,1)-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
         <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight gt-emboss ui-head-serif ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
@@ -1168,6 +1169,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-1" style={{ background: 'linear-gradient(to top, rgba(11,11,18,0.97) 72%, rgba(11,11,18,0))' }}>
           {won ? (
             <button
+              data-nav-default
               onClick={settleAnd(onReturnToMenu)}
               className="w-full py-3 rounded-none text-sm font-semibold text-white"
               style={{
@@ -1178,8 +1180,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               OK
             </button>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
+            <div data-nav-group="result-actions" data-nav-kind="row" className="grid grid-cols-2 gap-2">
               <button
+                data-nav-default
                 onClick={settleAnd(onPlayAgain)}
                 className="w-full py-3 rounded-none text-sm font-semibold text-white"
                 style={{
@@ -1206,10 +1209,11 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           画面へ戻る」)。 */}
       {(archiveListOpen || openRecord) && (
         <div
+          data-nav-modal="result-records"
           className="fixed inset-0 z-50 flex items-center justify-center px-3"
           style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
         >
-          <NoBounceScroller className="glass-panel command-panel max-h-[calc(100dvh/var(--hud-s,1)-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
+          <NoBounceScroller nav={{ 'data-nav-scroll': '' }} className="glass-panel command-panel max-h-[calc(100dvh/var(--hud-s,1)-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
             {openRecord ? (
               <div className="px-4 py-5">
                 <div className="mb-1 text-[10px] uppercase tracking-widest text-amber-200/70">回収資料</div>
@@ -1226,6 +1230,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                     リザルトへ戻るのは一覧側の閉じる=仕様書5章どおり)。 */}
                 <button
                   type="button"
+                  data-nav-default data-nav-back
                   onClick={() => { playSfx('ui-select'); setOpenRecordId(null); setArchiveListOpen(true); }}
                   className="sticky bottom-2 mt-4 w-full rounded-none bg-[#1a1426]/95 px-3 py-2 text-[12px] font-semibold text-white/85 backdrop-blur-sm"
                 >
@@ -1235,7 +1240,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             ) : (
               <div className="px-4 py-5">
                 <div className="mb-3 text-[10px] uppercase tracking-widest text-amber-200/70">回収資料（今回分）</div>
-                <div className="flex flex-col gap-1.5">
+                <div data-nav-group="records" data-nav-kind="list" className="flex flex-col gap-1.5">
                   {unlockedRecords.map(r => (
                     <button
                       key={r.id}
@@ -1249,6 +1254,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 </div>
                 <button
                   type="button"
+                  data-nav-back
                   onClick={closeArchive}
                   className="sticky bottom-2 mt-4 w-full rounded-none bg-[#1a1426]/95 px-3 py-2 text-[12px] font-semibold text-white/85 backdrop-blur-sm"
                 >
@@ -1263,7 +1269,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
           won/lost/withdraw・resultClassicMode を問わず出すため、最外殻コンテナ(回収資料モーダルと同じ層)に置く。
           既存リザルトと同じトーン(暗幕・glass-panel・金色アクセント=WEAPON MERCHANT見出し)。新規演出は無し(負荷1/10)。 */}
       {kogarasuUnlockedThisRun && kogarasuPopupOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-3 bg-black/70">
+        <div data-nav-modal="kogarasu-unlock" className="fixed inset-0 z-[60] flex items-center justify-center px-3 bg-black/70">
           <div className="glass-panel command-panel w-full max-w-sm rounded-none px-5 py-6 text-center">
             <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">NEW WEAPON UNLOCKED</div>
             <h3
@@ -1277,6 +1283,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </p>
             <button
               type="button"
+              data-nav-default
               onClick={() => { playSfx('ui-select'); setKogarasuPopupOpen(false); }}
               className="mt-5 w-full rounded-none bg-amber-400/15 px-3 py-2.5 text-sm font-bold text-amber-100"
             >

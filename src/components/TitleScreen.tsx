@@ -347,8 +347,11 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       data-screen={showNotice ? 'updateModal' : 'title'}
       data-testid={titleInteractive ? 'title-start' : undefined}
       data-nav-default={titleInteractive ? '' : undefined} // パッドの A 1回で始まる(utils/menuNav・PC版 §11-5)
+      data-nav-prompt-pos="left" // 操作の案内は左下(右下の NEWS を避ける)
+      data-nav-screen="title" // メニュー操作の層(research/MENU_NAV.md)。枠(root)が決定の対象のまま、カーソルは START の文字(data-nav-anchor)に描く
       className="relative h-full w-full overflow-hidden bg-[#06070d] select-none outline-none"
-      style={{ cursor: titleInteractive ? 'pointer' : 'default' }}
+      // メニュー操作のカーソル・案内の色はタイトルの紫を継ぐ(--nav-cursor-color / --nav-prompt-dim)
+      style={{ cursor: titleInteractive ? 'pointer' : 'default', ['--nav-cursor-color' as string]: '#c9a3ff', ['--nav-prompt-dim' as string]: 'rgba(216,180,254,.6)' } as React.CSSProperties}
     >
       <img
         src={assetUrl('backgrounds/title-the-one.png')}
@@ -407,10 +410,10 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           クリエイティブ監査第2回・第2手A-7: 同じ版の既読は全面ポップアップを出さず、
           下のバッジからの再オープンでもこの同じ内容を使う。 */}
       {showNotice && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 py-6">
+        <div data-nav-screen="changelog" data-nav-modal className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 py-6">
           <div className="relative flex max-h-full w-full max-w-md flex-col overflow-hidden" style={PANEL_STYLE}>
             {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。全件リストは必ずあふれる) */}
-            <NoBounceScroller className="overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar px-5 pt-5 pb-3 text-white/85" style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}>
+            <NoBounceScroller nav={{ 'data-nav-scroll': '' }} className="overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar px-5 pt-5 pb-3 text-white/85" style={{ fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif' }}>
               <div className="flex items-center justify-between">
                 {/* 見出し: 小さめ＋細い紫下線(FF7R風) */}
                 <h2 className="pb-1 text-[13px] font-bold tracking-[0.18em] text-white gt-emboss" style={{ borderBottom: '1px solid rgba(168,85,247,0.6)' }}>
@@ -436,6 +439,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
                 ariaLabel="OK"
                 testId="changelog-ok"
                 navDefault
+                navBack // B/Esc も OK と同じ(research/MENU_NAV.md)
                 emphasis
                 fade="both"
                 paddingY="0.75rem"
@@ -457,6 +461,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           {/* クリーンな START: 細い紫ヘアラインを上下に添えるだけ(発光は控えめ)。 */}
           <span className="h-[1px] w-28 sm:w-40" style={{ background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.7), transparent)' }} />
           <span
+            data-nav-anchor // メニュー操作のカーソルは枠ではなくこの文字に描く
+            data-nav-cursor="center" // 中央揃え=カーソルの線は中央から両端へ消える
             className="my-3 animate-pulse text-3xl font-bold tracking-[0.5em] text-white"
             style={{ textShadow: '0 0 10px rgba(168,85,247,0.5), 0 2px 8px rgba(0,0,0,0.7)' }}
           >

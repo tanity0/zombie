@@ -84,9 +84,11 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
     const hints = bossHintsFor(open.bossType, open.stageId);
     const icon = bossIcon(open);
     return (
-      <div className="p-3 space-y-3">
+      // 詳細は入れ子の層(research/MENU_NAV.md v3 A-1): 候補は詳細の中だけ。B/Esc は「← ボス一覧」「一覧」で一覧へ戻る。
+      <div data-nav-screen="bossrush-detail" className="p-3 space-y-3">
         <button
           type="button"
+          data-nav-back
           onClick={() => { playSfx('ui-back'); setOpenKey(null); }}
           className="text-[11px] text-purple-200/70 active:text-white"
         >← ボス一覧</button>
@@ -138,7 +140,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
 
         <section className="border border-white/[0.07] bg-black/20 p-3">
           <div className="mb-1.5 text-[9px] font-semibold tracking-[0.2em] text-purple-200/60">キャラクター</div>
-          <div className="flex flex-wrap gap-1">
+          <div data-nav-group="classes" data-nav-kind="row" className="flex flex-wrap gap-1">
             {CHARACTER_CLASSES.map(c => (
               <button
                 key={c.id}
@@ -155,7 +157,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
               状態は `gameStore.companionSkill`(=キャラ選択の守護霊枠と**同じ1つの正本**)を直接読み書きする
               =この画面で選び直すと本編側の選択も変わる(二重管理を作らない)。 */}
           <div className="mt-2.5 mb-1.5 text-[9px] font-semibold tracking-[0.2em] text-fuchsia-200/60">守護霊</div>
-          <div className="flex flex-wrap gap-1">
+          <div data-nav-group="guardians" data-nav-kind="row" className="flex flex-wrap gap-1">
             <button
               type="button"
               onClick={() => { playSfx('ui-move'); setCompanionSkill(null); }}
@@ -183,11 +185,13 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
         <div className="sticky bottom-0 z-20 -mx-3 flex items-stretch gap-2 px-3 pt-3 pb-1" style={{ background: 'linear-gradient(to top, rgba(11,11,18,0.97) 72%, rgba(11,11,18,0))' }}>
           <button
             type="button"
+            data-nav-back
             onClick={() => { playSfx('ui-back'); setOpenKey(null); }}
             className="shrink-0 border border-purple-300/25 bg-purple-400/10 px-3 text-[12px] font-semibold text-purple-100/85 active:bg-purple-400/20"
           >一覧</button>
           <button
             type="button"
+            data-nav-default
             onClick={() => { playSfx('ui-select'); onStartPractice(open, cls); }}
             className="flex-1 border border-emerald-400/50 bg-emerald-500/15 px-3 py-3 text-[14px] font-bold tracking-wide text-emerald-100 active:bg-emerald-500/30"
           >演習する</button>
@@ -198,7 +202,8 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
 
   // ---- 一覧 ----------------------------------------------------------------------------------
   return (
-    <div className="p-3 space-y-3">
+    // 一覧は外枠1つの grid(カテゴリの段を跨いで幾何で動く・ロック枠は行の計算に入れ移動先には選ばない・research/MENU_NAV.md v3 G-2)。
+    <div data-nav-group="bosses" data-nav-kind="grid" className="p-3 space-y-3">
       <div className="flex items-center justify-between px-1">
         <p className="text-[11px] text-white/40">討伐済みの個体のみ</p>
         <span className="shrink-0 text-[12px] font-semibold tabular-nums text-white/70">
@@ -224,6 +229,7 @@ export const BossRush: React.FC<Props> = ({ clearedSlotKeys, onStartPractice }) 
                   <button
                     key={slot.slotKey}
                     type="button"
+                    data-nav-id={slot.slotKey}
                     disabled={!unlocked}
                     onClick={() => { playSfx('ui-select'); setOpenKey(slot.slotKey); }}
                     className={`min-w-0 border px-1.5 py-2 text-center ${unlocked

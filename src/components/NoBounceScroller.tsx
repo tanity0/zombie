@@ -15,8 +15,9 @@ import { PixelIcon } from './PixelIcon';
 // 再判定はscroll/resize/内容変化(MutationObserver)時のみ=毎フレーム処理なし(メニュー/オーバーレイ限定)。
 // ※UI監査2026-08-29でメニュー外(ショップ/強化/リザルト/更新情報/チュートリアル等)へも展開するため
 //   MissionSelect.tsx から共有部品に切り出した(挙動は不変)。
-const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperties; children: React.ReactNode; moreColor?: string; onClick?: React.MouseEventHandler<HTMLDivElement> }> =
-  ({ className, style, children, moreColor, onClick }) => {
+// nav: メニュー操作の宣言(data-nav-*)をそのまま枠の div へ渡す(utils/menuNav・research/MENU_NAV.md)。属性を足すだけ=見た目は不変。
+const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperties; children: React.ReactNode; moreColor?: string; onClick?: React.MouseEventHandler<HTMLDivElement>; nav?: Record<`data-nav-${string}`, string> }> =
+  ({ className, style, children, moreColor, onClick, nav }) => {
     const ref = useRef<HTMLDivElement | null>(null);
     const start = useRef<{ x: number; y: number } | null>(null);
     const [hasMore, setHasMore] = useState(false);
@@ -88,7 +89,7 @@ const NoBounceScroller: React.FC<{ className?: string; style?: React.CSSProperti
       return () => { el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove); };
     }, []);
     return (
-      <div ref={ref} className={className} style={style} onClick={onClick}>
+      <div ref={ref} className={className} style={style} onClick={onClick} {...nav}>
         {children}
         <div
           className="ds-scroll-more"

@@ -38,6 +38,8 @@ import GauntletRunner from './components/GauntletRunner';
 import { isGauntletRun } from './utils/gauntletMode';
 import { installMenuKeyNav } from './utils/menuNav';
 import { installGamepad } from './utils/gamepad';
+import NavCursor from './components/NavCursor';
+import NavPrompt from './components/NavPrompt';
 
 const LOADING_MIN_MS = 650;
 
@@ -701,6 +703,10 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
 
       {/* 縦持ちガード(タッチ端末を横向きにしたら全面表示。PCは対象外)。最前面。 */}
       <OrientationGuard />
+
+      {/* メニュー操作のカーソルと案内(research/MENU_NAV.md)。キー/パッドを触った時(html.kbnav)だけ描く=スマホでは何も出ない。 */}
+      <NavCursor />
+      <NavPrompt />
     </div>
     </HudScaleProvider>
   );

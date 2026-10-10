@@ -60,6 +60,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (keyIdOf(e) === 'escape' || keyIdOf(e) === 'p') { // 物理キー(日本語入力オンでも P が効く・§11-3)
+        if (e.repeat) return; // 長押しのリピートでは再開しない(Game 側と同じ)
         onResume();
       }
     };
@@ -77,6 +78,8 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
 
   return (
     <div
+      data-nav-screen="pause"
+      data-nav-prompt-back="再開" // 案内の B=再開。Esc/B は従来どおり Game/PauseMenu が受け持つ(data-nav-back は付けない・research/MENU_NAV.md v3 C-7)
       className="fixed inset-0 z-50 flex items-stretch justify-center"
       style={{ background: 'rgba(11, 11, 18, 0.6)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
       onTouchStart={preventTouchEvent}
@@ -93,7 +96,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
           {/* 左: メニュー(幅は文字幅・2本を同じ幅に揃える)。
               クリエイティブ監査第2回・第2手 B-6: grid+self-start/content-start=右列の高さに引かれない
               (flex-colのままだと親グリッドの行高にstretchされ「続ける」が縦に伸びる)。 */}
-          <div className="grid gap-2 self-start content-start">
+          <div data-nav-group="pause" data-nav-kind="list" className="grid gap-2 self-start content-start">
             <Ff7rButton onClick={() => { playSfx('ui-select'); onResume(); }} emphasis fade="both" paddingY="0.8rem" navDefault>
               続ける
             </Ff7rButton>
@@ -110,7 +113,7 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
           <div className="block bg-[var(--menu-line)]" />
 
           {/* 右: 戦況(開いた時点の値・1回読み)。 */}
-          <div className="min-w-0 flex flex-col gap-3 text-[11px] max-h-[calc(78vh/var(--hud-s,1))] overflow-y-auto no-scrollbar">
+          <div data-nav-scroll className="min-w-0 flex flex-col gap-3 text-[11px] max-h-[calc(78vh/var(--hud-s,1))] overflow-y-auto no-scrollbar">
             <div className="flex items-center justify-between">
               <span className="tracking-[0.16em] text-white/35">経過時間</span>
               <span className="text-[20px] font-semibold tabular-nums text-white/90">{formatTime(snap.gameTimeSec)}</span>

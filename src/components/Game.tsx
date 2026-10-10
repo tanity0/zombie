@@ -190,6 +190,7 @@ const Game: React.FC<GameProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (keyIdOf(e) === 'escape' || keyIdOf(e) === 'p') { // 物理キー(日本語入力オンでも P が効く・§11-3)
+        if (e.repeat) return; // 長押しのリピートで 再開→再ポーズ を繰り返さない(メニュー操作の検収)
         // 説明画面(チュートリアル)は自分で一時停止を掛けて出る=ここで切り替えると、説明画面が出たままゲームが動き出す(PC版対応の調査で判明)。
         if (!tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible) {
           setPaused(!isPaused);

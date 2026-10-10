@@ -38,7 +38,7 @@ export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) 
   const icon = boss ? bossIconSrc(boss, getSelectedStageId(), slot?.glenForm2 ? 'phase2' : undefined) : null;
 
   return (
-    <div className="absolute inset-0 z-[80] flex items-center justify-center bg-[rgba(6,7,13,0.92)] px-6">
+    <div data-nav-screen="practice-result" className="absolute inset-0 z-[80] flex items-center justify-center bg-[rgba(6,7,13,0.92)] px-6">
       <div className="w-full max-w-xs border border-purple-200/12 bg-[#090b13]/90 p-5 text-center">
         <div className="text-[9px] font-semibold tracking-[0.28em] text-purple-200/55">PRACTICE</div>
 
@@ -68,9 +68,10 @@ export const PracticeResult: React.FC<Props> = ({ won, onRetry, onBackToList }) 
           練習なので、討伐記録・ステージ解放・所持金・スコアには残らない。
         </p>
 
-        <div className="mt-4 space-y-2">
+        <div data-nav-group="practice-actions" data-nav-kind="list" className="mt-4 space-y-2">
           <button
             type="button"
+            data-nav-default
             onClick={onRetry}
             className="w-full border border-emerald-400/45 bg-emerald-500/15 py-2.5 text-[13px] font-bold text-emerald-100 active:bg-emerald-500/30"
           >もう一度</button>

@@ -1098,5 +1098,7 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
    選んだボタンの見え方は**各画面の :focus-visible をそのまま使う**(ホームの行=ホバーと同じ点灯と琥珀の◆ / 出撃=暗い内枠 /
    コマンドのボタン=内枠)。決めていないボタンにだけ、内側へ引いた細い琥珀の線を足す(外へはみ出さない・影は触らない)。
    :where() で詳細度を0にしてある=各画面の規則が常に勝つ。html.kbnav は矢印を押した時だけ付く=スマホでは付かない。 */
-:where(html.kbnav) :where(button, [role="button"], a):focus-visible,
-:where(html.kbnav) :where(button, [role="button"], a).navfocus { outline: 1px solid rgba(255, 179, 64, 0.85); outline-offset: -2px; }
+:where(html.kbnav:not(.navcursor-on)) :where(button, [role="button"], a):focus-visible,
+:where(html.kbnav:not(.navcursor-on)) :where(button, [role="button"], a).navfocus { outline: 1px solid rgba(255, 179, 64, 0.85); outline-offset: -2px; }
+/* ↑カーソル(components/NavCursor・research/MENU_NAV.md v3 G-8)が出ている間(html.navcursor-on)は汎用の1pxの枠を出さない。
+   各画面の専用の選択の見え方(DS の行の2px枠・出撃の専用の見え方)は上の各規則のまま残す。 */

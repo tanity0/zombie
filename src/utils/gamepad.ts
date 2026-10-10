@@ -1,7 +1,8 @@
 // ゲームパッド(標準配置・Gamepad API)(research/PC_SUPPORT.md §11-4)。
 // ゲーム中: 左スティック=移動(タッチのスティックと同じ「方向+強さ」)/ 十字キー=移動(全速)/ A=指(押す/離す=utils/pcPress)/
 //          B・RB=フリック(スティックの向き、倒していなければ向いている向き)/ Y=次の銃・LB=前の銃(utils/weaponCycle)/ Start・Back=一時停止(Esc と同じ)。
-// メニュー(utils/menuNav の isMenuContext): 十字キー・左スティック=ボタン間の移動 / A=押す / B=戻る(ゲームの一時停止中は再開)。
+// メニュー(utils/menuNav の isMenuContext): 十字キー・左スティック=ボタン間の移動 / A=押す / B=戻る(ゲームの一時停止中は再開)/
+//          LB・RB=タブ(タブのある画面だけ)/ 右スティック=長文のスクロール(標準配置のみ)。
 // 接続中だけ毎フレーム読む。負荷 1/10(ボタン十数個と軸2本の比較だけ)。タッチだけの端末では接続が無いので何も起きない。
 import { useGameStore, isInputLocked, isWorldFrozen } from '../store/gameStore';
 import { performFlickAction } from './inputActions';
@@ -9,12 +10,12 @@ import { pcPressDown, pcPressUp, markPcFlick } from './pcPress';
 import { setPadActive } from './inputDevice';
 import { isRetaliationWindowOpen, createPadNeutralTracker, stepPadNeutral } from './hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { pcCycleGun } from './weaponCycle';
-import { isMenuContext, isGameplayMounted, navMove, navActivate, navBack, pressVisibleSkip, type NavDir } from './menuNav';
+import { isMenuContext, isGameplayMounted, navHold, navActivate, navBack, navEnter, navTab, navScrollStick, noteNavInput, noteConfirmHeld, syncNavContext, pressVisibleSkip, resetNavRepeat, type NavDir } from './menuNav';
 
 export const PAD_DEAD_ZONE = 0.2;
 const MENU_STICK_ON = 0.6;
-const MENU_REPEAT_FIRST_MS = 380;
-const MENU_REPEAT_MS = 150;
+const MENU_SCROLL_DEAD = 0.3; // 右スティックのスクロールのデッドゾーン(標準配置の axes[2]/[3] だけ読む)
+// 押しっぱなしの繰り返し間隔(初回320ms・以後110ms)は utils/menuNav が持つ。ここは「いま押されている向き」を毎フレーム渡すだけ。
 const B = { A: 0, B: 1, Y: 3, LB: 4, RB: 5, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
 
 /** スティックの値 → 移動の方向と強さ(デッドゾーンを0・外周を1)。デッドゾーン内は null。 */
@@ -59,8 +60,7 @@ export const installGamepad = (): (() => void) => {
   let prev: boolean[] = [];
   let stickActive = false;     // ゲーム中にスティックで swipeDirection を書いているか
   let dpadOwn = { up: false, down: false, left: false, right: false }; // 十字キーが立てた移動
-  let menuDir: NavDir | null = null;
-  let menuNextAt = 0;
+  let lastTickAt = 0;
   let usedPad = false;
   let walkDir: -1 | 0 | 1 = 0; // オープニングの廊下で送っている矢印
   const padNeutral = createPadNeutralTracker(); // 被弾反撃: スティックが直近150ms以内にニュートラルだったか
@@ -91,9 +91,13 @@ export const installGamepad = (): (() => void) => {
     const down = (i: number) => btn[i] && !prev[i];
     const up = (i: number) => !btn[i] && prev[i];
     const ax = gp.axes[0] ?? 0, ay = gp.axes[1] ?? 0;
+    noteConfirmHeld('pad', !!btn[B.A]); // 層に入った時に押されていた A は、離すまで決定に使わない(menuNav)
     const anyInput = btn.some(Boolean) || Math.hypot(ax, ay) > PAD_DEAD_ZONE;
+    const dtMs = lastTickAt ? Math.min(100, now - lastTickAt) : 16;
+    lastTickAt = now;
     if (anyInput) {
       setPadActive(true); // 画面の言葉をパッドの言葉へ(マウス/キーに触れたら戻る・utils/inputDevice)
+      noteNavInput('pad', gp.id); // 案内の表記(A/B か ×/○ か)・menuNav が入力の種類を覚える
       if (!usedPad) {
         usedPad = true;
         useGameStore.getState().setMouseAim(null); // パッドで遊ぶ間はマウスの照準を外す(照準=移動の向き=タッチと同じ)
@@ -108,6 +112,7 @@ export const installGamepad = (): (() => void) => {
 
     // オープニングの廊下(矢印で歩く場面): 十字キー/スティックの左右を矢印キーとして送る。
     if (document.querySelector('[data-kbnav-off]')) {
+      syncNavContext(false); // メニュー文脈を抜けた=選択の印・カーソル・案内を自前で消す
       const walk: -1 | 0 | 1 = (btn[B.LEFT] || ax < -0.5) ? -1 : (btn[B.RIGHT] || ax > 0.5) ? 1 : 0;
       if (walk !== walkDir) {
         const send = (type: 'keydown' | 'keyup', code: 'ArrowLeft' | 'ArrowRight') => window.dispatchEvent(new KeyboardEvent(type, { key: code, code }));
@@ -120,22 +125,29 @@ export const installGamepad = (): (() => void) => {
     }
     walkDir = 0;
 
-    if (isMenuContext()) {
+    const menuCtx = isMenuContext();
+    syncNavContext(menuCtx);
+    if (menuCtx) {
       releaseGameplay();
       if (up(B.A)) pcPressUp('pad', false);
       // 方向: 十字キー優先、無ければスティック。押した瞬間に1回+押し続けで繰り返し。
       let dir: NavDir | null = btn[B.UP] ? 'up' : btn[B.DOWN] ? 'down' : btn[B.LEFT] ? 'left' : btn[B.RIGHT] ? 'right' : null;
       if (!dir && Math.hypot(ax, ay) > MENU_STICK_ON) dir = Math.abs(ax) > Math.abs(ay) ? (ax > 0 ? 'right' : 'left') : (ay > 0 ? 'down' : 'up');
-      if (dir !== menuDir) { menuDir = dir; if (dir) { navMove(dir); menuNextAt = now + MENU_REPEAT_FIRST_MS; } }
-      else if (dir && now >= menuNextAt) { navMove(dir); menuNextAt = now + MENU_REPEAT_MS; }
+      navHold(dir, now); // 間隔(初回320ms・以後110ms)と端のぶつかりは menuNav が決める
       if (down(B.A)) navActivate();
+      if (down(B.LB)) navTab(-1, 'pad');
+      if (down(B.RB)) navTab(1, 'pad');
+      if (gp.mapping === 'standard') {
+        const ry = gp.axes[3] ?? 0;
+        if (Math.abs(ry) > MENU_SCROLL_DEAD) navScrollStick(Math.sign(ry) * (Math.abs(ry) - MENU_SCROLL_DEAD) / (1 - MENU_SCROLL_DEAD), dtMs);
+      }
       // B=戻る。ゲーム中(一時停止の窓)は Esc と同じ持ち主(Game/PauseMenu)へ=再開。ゲーム外は「戻る/閉じる」ボタン(監査 A-8)。
-      if (down(B.B)) { if (isGameplayMounted()) escapeKey(); else navBack(); }
+      if (down(B.B)) { if (isGameplayMounted()) escapeKey(); else { navEnter(); navBack(); } } // 最初の1押しは kbnav に入ってから(戻った先ですぐ選択が置かれる)
       if (down(B.START) || down(B.BACK)) escapeKey();
       prev = btn;
       return;
     }
-    menuDir = null;
+    resetNavRepeat('pad'); // パッドの繰り返し・ぶつかりだけ(キーのは触らない)
 
     const s = useGameStore.getState();
     // 移動: スティック(方向+強さ)

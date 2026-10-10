@@ -1,0 +1,66 @@
+/* メニュー操作のカーソルと案内(research/MENU_NAV.md v2/v3)。キー/パッドを触った時(html.kbnav)だけ出る=スマホでは何も描かれない。
+   カーソルは「線だけ・面は持たない」: 対象の外形の+3px外側、左端の中央に◆(5px)、上辺に1pxのヘアライン(出撃の上辺と同じ「色→透明」)。
+   位置・大きさ・出入りは NavCursor.tsx が決める(transition の曲線は家の署名 cubic-bezier(.2,.7,.3,1))。
+   色は CSS 変数 --nav-cursor-color(対象の祖先から継ぐ・既定=琥珀)。案内の書体・動詞の色は --nav-font / --nav-prompt-dim。 */
+.nav-cursor {
+  position: fixed; left: 0; top: 0; z-index: 99990;
+  pointer-events: none; opacity: 0; display: none;
+  color: var(--nav-cursor-color, #ffd28a);
+  will-change: transform, width, height, opacity;
+}
+.nav-cursor[data-dark="1"] { color: #fff4d6; } /* 明るい面(出撃ボタン)の上は明色(外側のまま) */
+.nav-cursor-in { position: absolute; inset: 0; }
+.nav-cursor-line {
+  position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, currentColor, transparent);
+}
+/* 中央揃えの対象(タイトルの START): 線は中央から両端へ消える */
+.nav-cursor[data-center="1"] .nav-cursor-line { background: linear-gradient(90deg, transparent, currentColor 50%, transparent); }
+.nav-cursor-dia {
+  position: absolute; left: -2px; top: 50%; width: 5px; height: 5px; margin-top: -2.5px;
+  background: currentColor; transform: rotate(45deg);
+}
+/* DS の行: 行自身の◇が塗られるので◆は出さない */
+.nav-cursor[data-row="1"] .nav-cursor-dia { display: none; }
+
+/* 案内: キー=枠だけの札(1px #4b5254・文字 #cfd3d1)、動詞=薄い文字。区切りは1pxの縦罫。背景の箱は持たず text-shadow で読ませる。 */
+.nav-prompt {
+  position: fixed; right: 16px; bottom: 44px; z-index: 99989;
+  display: flex; align-items: center;
+  pointer-events: none;
+  font-family: var(--nav-font, var(--game-font)), sans-serif; font-size: 9px; letter-spacing: 0.16em;
+  color: var(--nav-prompt-dim, #79817f);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 8px rgba(0, 0, 0, 0.75);
+  opacity: 0; transform: translateY(6px);
+  transition: opacity 120ms ease-in, transform 120ms ease-in;
+}
+.nav-prompt[data-pos="left"] { right: auto; left: 16px; bottom: 12px; } /* タイトルは左下(右下の NEWS を避ける) */
+.nav-prompt.is-on {
+  opacity: 1; transform: none;
+  /* カーソルが着いてから120ms遅れて、下から6px滑り上がる */
+  transition: opacity 180ms cubic-bezier(.2, .7, .3, 1) 120ms, transform 180ms cubic-bezier(.2, .7, .3, 1) 120ms;
+}
+.nav-prompt-item { display: flex; align-items: center; gap: 5px; padding: 0 10px; white-space: nowrap; }
+.nav-prompt-item + .nav-prompt-item { border-left: 1px solid #26212f; }
+.nav-prompt-keys { display: flex; gap: 3px; }
+.nav-prompt-key { border: 1px solid #4b5254; color: #cfd3d1; padding: 0 5px; font-weight: 600; }
+.nav-prompt[data-style="padps"] .nav-prompt-key { font-family: "Hiragino Sans", system-ui, sans-serif; } /* ×/○ の字形を揃える */
+
+/* 画面が用意した置き場(data-nav-prompt-slot・DS ホームのフッタ行=SYSTEM の右隣)。案内を出している間だけ場所を取る。 */
+.nav-prompt-slot { display: none; }
+html.navprompt-on .nav-prompt-slot { display: flex; align-items: center; margin-left: 10px; }
+.nav-prompt--slot { position: static; z-index: auto; opacity: 0; transform: none; transition: none; }
+.nav-prompt--slot.is-on { opacity: 1; animation: nav-prompt-in 180ms cubic-bezier(.2, .7, .3, 1) 120ms both; transition: none; }
+@keyframes nav-prompt-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* 作戦室ホームの書体(Rajdhani)を案内にも継ぐ。 */
+html .ds-home { --nav-font: "Rajdhani", var(--uf-jp), sans-serif; }
+
+/* ホームでは案内を出している間、「SYSTEM v…」を不透明度0.35に落として右へ寄せ、案内に譲る(推薦で仮置き・v2 #17)。 */
+.ds-foot > span { transition: opacity 180ms cubic-bezier(.2, .7, .3, 1); }
+html.navprompt-on .ds-foot > span { opacity: 0.35; margin-left: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-prompt, .nav-prompt.is-on { transition: none; }
+  .nav-prompt--slot.is-on { animation: none; }
+}
