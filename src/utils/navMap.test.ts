@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   pickNeighbor, stepInList, gridRows, stepInGrid, navStep, chooseInitial, itemKey, fullKey, NavMemory,
-  pickBackByLayer, navInputKindOf, openConfirmGuard, enterConfirmGuard, releaseConfirm, confirmAllowed, discardsRepeat, isConfirmCode, NAV_CONFIRM_GUARD_MS, isPlayStationPad, stepRepeat, initRepeat, NAV_REPEAT_FIRST_MS, NAV_REPEAT_MS,
+  pickBackByLayer, navInputKindOf, openConfirmGuard, enterConfirmGuard, releaseConfirm, confirmAllowed, discardsRepeat, isConfirmCode, NAV_CONFIRM_GUARD_MS, isPlayStationPad, isNintendoPad, padFamilyOf, padPromptStyle, stepRepeat, initRepeat, NAV_REPEAT_FIRST_MS, NAV_REPEAT_MS,
   promptItems, revealDelta, cubicBezier, navScrollEase,
   type NavItemInfo, type NavGroupInfo, type GridCell,
 } from './navMap';
@@ -193,6 +193,12 @@ describe('入力の種類(isTrusted)', () => {
     expect(isPlayStationPad('DualSense Wireless Controller')).toBe(true);
     expect(isPlayStationPad('Xbox 360 Controller (XInput STANDARD GAMEPAD)')).toBe(false);
     expect(isPlayStationPad(undefined)).toBe(false);
+    expect(isPlayStationPad('Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 02fd)')).toBe(false); // 名前に Wireless Controller を含む Xbox
+    expect(isNintendoPad('Pro Controller (STANDARD GAMEPAD Vendor: 057e Product: 2009)')).toBe(true);
+    expect(isNintendoPad('Joy-Con L+R (STANDARD GAMEPAD Vendor: 057e Product: 200e)')).toBe(true);
+    expect(isNintendoPad('Xbox 360 Controller (XInput STANDARD GAMEPAD)')).toBe(false);
+    expect([padFamilyOf('DualSense Wireless Controller'), padFamilyOf('Pro Controller'), padFamilyOf('Xbox Wireless Controller'), padFamilyOf(undefined)]).toEqual(['ps', 'nin', 'xbox', 'xbox']);
+    expect([padPromptStyle('ps'), padPromptStyle('nin'), padPromptStyle('xbox')]).toEqual(['padps', 'padnin', 'pad']);
   });
 });
 
@@ -233,6 +239,10 @@ describe('案内(その画面にある操作だけ・機器に合わせる)', ()
     ]);
   });
   it('戻るの動詞は上書きできる(一時停止=再開)/ PlayStation 表記', () => {
+    // 任天堂系: 下(決定)が B・右(戻る)が A(Xbox と刻印が逆)
+    expect(promptItems('padnin', { hasBack: true, hasTabs: true })).toEqual([
+      { keys: ['B'], verb: '決定' }, { keys: ['A'], verb: '戻る' }, { keys: ['L', 'R'], verb: '切替' },
+    ]);
     expect(promptItems('padps', { hasBack: true, backLabel: '再開', hasTabs: true })).toEqual([
       { keys: ['×'], verb: '決定' }, { keys: ['○'], verb: '再開' }, { keys: ['L1', 'R1'], verb: '切替' },
     ]);

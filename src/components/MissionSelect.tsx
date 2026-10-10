@@ -111,6 +111,7 @@ import NoBounceScroller from './NoBounceScroller';
 import { nextOperationStage } from '../utils/dsHome';
 import { reportTestScreen, type TestScreenId } from '../utils/testBridge';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
+import { useHudHintsEnabled, setHudHintsEnabled, useWindowLandscape } from '../utils/hudHints'; // ゲーム中のボタン札の表示/非表示(research/PC_SUPPORT.md §14-7)
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
 import { AVATARS, AVATAR_IDS, type AvatarId } from '../data/avatars';
@@ -1628,6 +1629,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <div className="menu-stagger p-3 space-y-3">
         <AudioSettings />
         <GraphicsSettings />
+        <ControlSettings />
         {/* 名前の決定は守護霊メニューへ一本化(社長裁定v0.25.2555「オプションから名前は外して」)。 */}
         {DEV_TOOLS_ENABLED && <DevTools selectedClass={selectedClass} onStartBenchmark={onStartBenchmark} onRefreshCleared={() => setCleared(getClearedStages())} />}
       </div>
@@ -2083,6 +2085,26 @@ const GraphicsSettings: React.FC = () => {
         <span className="flex gap-1">
           <button type="button" onClick={() => setVal(true)} className={`rounded-none px-3 py-1 text-[11px] font-semibold ${bloom ? 'ui-acc-tag' : 'ui-dim-bg text-white/50'}`}>ON</button>
           <button type="button" onClick={() => setVal(false)} className={`rounded-none px-3 py-1 text-[11px] font-semibold ${!bloom ? 'ui-acc-tag' : 'ui-dim-bg text-white/50'}`}>OFF</button>
+        </span>
+      </div>
+    </Section>
+  );
+};
+
+// === 操作: ボタンガイド=ゲーム中のボタン札の表示/非表示(research/PC_SUPPORT.md §14-7・社長「はい」2026-10-10。既定=あり) ===
+// 札は横長の画面でしか出ないので、この項目も横長の時だけ出す(スマホのオプション画面は1pxも変えない)。BLOOM と同じ2択。
+const ControlSettings: React.FC = () => {
+  const landscape = useWindowLandscape();
+  const on = useHudHintsEnabled();
+  if (!landscape) return null;
+  const setVal = (v: boolean) => { if (v === on) return; playSfx('ui-move'); setHudHintsEnabled(v); };
+  return (
+    <Section label="操作">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-[12px] text-white/70"><PixelIcon name="gamepad" size={15} className="text-white/55" />ボタンガイド</span>
+        <span className="flex gap-1">
+          <button type="button" onClick={() => setVal(true)} className={`rounded-none px-3 py-1 text-[11px] font-semibold ${on ? 'ui-acc-tag' : 'ui-dim-bg text-white/50'}`}>ON</button>
+          <button type="button" onClick={() => setVal(false)} className={`rounded-none px-3 py-1 text-[11px] font-semibold ${!on ? 'ui-acc-tag' : 'ui-dim-bg text-white/50'}`}>OFF</button>
         </span>
       </div>
     </Section>

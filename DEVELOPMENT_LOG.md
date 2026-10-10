@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.4970 — ボタンガイドの ON/OFF・任天堂系パッドの表記(社長「はい」・research/PC_SUPPORT.md §14-7)【2026-10-10 21:16 JST】
+- オプション「操作 → ボタンガイド ON/OFF」(既定 ON・localStorage `zombie:ui:hudHints`)。横長の窓の時だけ項目を出す(スマホのオプション画面は不変=横長でない時は描かない)。新しいドット絵 `gamepad`。
+- パッドの系統 `navMap.padFamilyOf` = xbox / ps / nin。任天堂系は標準配置(位置)の刻印が Xbox と逆: 下=B・右=A・上=X・L/R・一時停止=丸の中の+。メニューの案内とゲーム中の札を同じ表で。
+  `inputDevice.setPadActive(on, family)`(旧 ps:boolean)、`menuNav` も系統を持つ。
+- ★ついでの不具合修正: 「Xbox Wireless Controller」が「Wireless Controller」(DualShock 4 の名前)で PS 判定になり、×/○ の案内が出ていた → 先に Xbox(045e/xbox/xinput)を除外。テストを追加。
+- 画: オプション(PC=項目あり・スマホ=無し)、任天堂系のゲーム中の札(B/A/L/X/⊕)、ホームの案内(B 決定)、OFF で札0個、を撮って確認。
+- クリエイティブ監査(Fable): 7件→3件直した(アイコンを塗りのシルエットに・行名を「ボタンガイド」に・+ を丸囲みに)。1件社長へ(任天堂系は機能が位置のまま=「B 決定」になる。割り当てごと入れ替えるか)。1件そのまま(アイコンはパッド)。(A)相当なし=この巡で止める。
+- phone-guard: 既知の2件(charselect 1px・title の旧ボタン)以外 OK。
+- 負荷 1/10(オプションの読み書きと購読1つ)。自己点検: 憲法第4条・第5条に触れない(表示のみ)。
+- 変更: src/utils/hudHints.ts(+test)・navMap.ts(+test)・menuNav.ts・inputDevice.ts・gamepad.ts・src/components/HudKey.tsx・PixelIcon.tsx・MissionSelect.tsx・research/PC_SUPPORT.md §14-7・package.json・changelog.ts。
+
 ## v0.25.4969 — ゲーム中のボタン札(キーボード・コントローラー)(社長「キーボード、コントローラの時は小さくボタンを表示する部分があった方がいいな」→「はい」・research/PC_SUPPORT.md §14)【2026-10-10 20:56 JST】
 - 内容: 横長の画面でキー/パッドで遊んでいる時だけ、HUD の物の横に押すボタンの札を出す。武器の箱の左の外の帯に 近接(左クリックの絵/Space/A・×)・銃の番号(1〜9)・パッドの持ち替え([▲LB][▼Y] / [▲L1][▼△]、今の銃の横)。
   刀・小烏丸・ワイヤーの行に はじく(右クリックの絵/K/B・○)。一時停止の下に Esc / 三本線。面を持たない枠だけの札(メニューの案内と同じ)。

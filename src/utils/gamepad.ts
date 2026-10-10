@@ -8,7 +8,7 @@ import { useGameStore, isInputLocked, isWorldFrozen } from '../store/gameStore';
 import { performFlickAction } from './inputActions';
 import { pcPressDown, pcPressUp, markPcFlick } from './pcPress';
 import { setPadActive } from './inputDevice';
-import { isPlayStationPad } from './navMap';
+import { padFamilyOf } from './navMap';
 import { noteHudActivity, setHudActionDown, type HudAction } from './hudHints'; // ゲーム中のボタン札(research/PC_SUPPORT.md §14)
 import { isRetaliationWindowOpen, createPadNeutralTracker, stepPadNeutral } from './hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { pcCycleGun } from './weaponCycle';
@@ -102,7 +102,7 @@ export const installGamepad = (): (() => void) => {
     const dtMs = lastTickAt ? Math.min(100, now - lastTickAt) : 16;
     lastTickAt = now;
     if (anyInput) {
-      setPadActive(true, isPlayStationPad(gp.id)); // 画面の言葉をパッドの言葉へ(マウス/キーに触れたら戻る・utils/inputDevice)。PS 系はゲーム中の札の表記(§14)
+      setPadActive(true, padFamilyOf(gp.id)); // 画面の言葉をパッドの言葉へ(マウス/キーに触れたら戻る・utils/inputDevice)。系統(Xbox/PS/任天堂)はゲーム中の札の表記(§14)
       noteHudActivity(); // 手を動かしている=札は控えめ(research/PC_SUPPORT.md §14-3)
       noteNavInput('pad', gp.id); // 案内の表記(A/B か ×/○ か)・menuNav が入力の種類を覚える
       if (!usedPad) {

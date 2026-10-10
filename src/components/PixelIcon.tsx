@@ -10,7 +10,7 @@ export type PixelIconName =
   | 'lock' | 'volume-on' | 'volume-off' | 'heart' | 'swords' | 'wrench' | 'users'
   | 'trending-up' | 'shield' | 'map-pin' | 'crosshair' | 'clock' | 'book'
   | 'arrow-up-right' | 'activity' | 'sparkles' | 'gear' | 'check' | 'bag' | 'coin'
-  | 'flame' | 'note';
+  | 'flame' | 'note' | 'gamepad';
 
 // 12行×12列。'#' が塗り。
 const PATTERNS: Record<PixelIconName, string[]> = {
@@ -282,6 +282,21 @@ const PATTERNS: Record<PixelIconName, string[]> = {
     '............',
     '............',
     '............',
+    '............',
+  ],
+  // パッド(オプションの「ボタンガイド」・research/PC_SUPPORT.md §14-7)。塗りのシルエットに、十字キーとボタンを抜きで。上に肩、下に両手の握り。
+  gamepad: [
+    '............',
+    '..##....##..',
+    '.##########.',
+    '############',
+    '###.####.###',
+    '##...##.#.##',
+    '###.####.###',
+    '############',
+    '############',
+    '####....####',
+    '.##......##.',
     '............',
   ],
   sparkles: [

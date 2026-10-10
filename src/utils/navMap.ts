@@ -213,7 +213,18 @@ export const discardsRepeat = (code: string, repeat: boolean): boolean => repeat
 export const navInputKindOf = (e: { isTrusted: boolean }): NavInputKind | null => (e.isTrusted ? 'key' : null);
 
 /** PlayStation 系のパッドか(gamepad.id に 054c / DualSense / Wireless Controller 等)。 */
-export const isPlayStationPad = (id: string | undefined): boolean => !!id && /054c|dualsense|dualshock|wireless controller|playstation/i.test(id);
+// 「Wireless Controller」は DualShock 4 の名前だが、Xbox の「Xbox Wireless Controller」にも含まれる=先に Xbox(045e・xbox・xinput)を外す
+// (Xbox のパッドで ×/○ の案内が出ていた・v0.25.4970)。
+export const isPlayStationPad = (id: string | undefined): boolean =>
+  !!id && !/xbox|045e|xinput/i.test(id) && /054c|dualsense|dualshock|wireless controller|playstation/i.test(id);
+/** 任天堂系のパッドか(gamepad.id に 057e / Pro Controller / Joy-Con / Nintendo)。 */
+export const isNintendoPad = (id: string | undefined): boolean => !!id && /057e|nintendo|pro controller|joy-?con/i.test(id);
+/**
+ * パッドの系統(表記の出し分け・research/PC_SUPPORT.md §14-7)。ブラウザの標準配置は**位置**で並ぶ(0=下・1=右・3=上)ので、
+ * 同じボタンでも刻印が違う: Xbox 系=A/B/Y・LB、PS 系=×/○/△・L1、任天堂系=B/A/X・L(下が B・右が A=Xbox と逆)。分からないパッドは Xbox 表記。
+ */
+export type PadFamily = 'xbox' | 'ps' | 'nin';
+export const padFamilyOf = (id: string | undefined): PadFamily => (isPlayStationPad(id) ? 'ps' : isNintendoPad(id) ? 'nin' : 'xbox');
 
 // ---- 押しっぱなしの繰り返し(持ち主は menuNav だけ) ----
 
@@ -234,13 +245,16 @@ export const stepRepeat = (s: RepeatState, dir: NavDir | null, now: number): { f
 
 // ---- 案内(画面右下の1行) ----
 
-export type PromptStyle = 'key' | 'pad' | 'padps';
+export type PromptStyle = 'key' | 'pad' | 'padps' | 'padnin';
+/** パッドの系統 → 案内・札の表記の種類。 */
+export const padPromptStyle = (f: PadFamily): PromptStyle => (f === 'ps' ? 'padps' : f === 'nin' ? 'padnin' : 'pad');
 export interface PromptItem { keys: string[]; verb: string }
 export interface PromptSpec { hasBack: boolean; backLabel?: string; hasTabs: boolean }
 /** 使っている機器に合わせた案内。その画面に無い操作(戻る・タブ)は出さない。 */
 export const promptItems = (style: PromptStyle, spec: PromptSpec): PromptItem[] => {
   const k = style === 'key' ? { ok: 'Enter', back: 'Esc', l: 'Q', r: 'E' }
     : style === 'padps' ? { ok: '×', back: '○', l: 'L1', r: 'R1' }
+      : style === 'padnin' ? { ok: 'B', back: 'A', l: 'L', r: 'R' }
       : { ok: 'A', back: 'B', l: 'LB', r: 'RB' };
   const out: PromptItem[] = [{ keys: [k.ok], verb: '決定' }];
   if (spec.hasBack) out.push({ keys: [k.back], verb: spec.backLabel || '戻る' });

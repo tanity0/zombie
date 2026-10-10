@@ -3,19 +3,20 @@ import { hudHintStyle, hudGlyph, hudGunSlotKey } from './hudHints';
 
 describe('hudHintStyle(ゲーム中のボタン札を出す種類・research/PC_SUPPORT.md §14-1)', () => {
   it('縦の画面(スマホ)は、キーやパッドを繋いでも出さない', () => {
-    expect(hudHintStyle(true, false, 'touch', true, false)).toBeNull();
-    expect(hudHintStyle(false, false, 'mouse', true, false)).toBeNull();
+    expect(hudHintStyle(true, 'xbox', 'touch', true, false)).toBeNull();
+    expect(hudHintStyle(false, 'xbox', 'mouse', true, false)).toBeNull();
   });
   it('スマホ(タッチだけ・キーを押していない)は出さない', () => {
-    expect(hudHintStyle(false, false, 'touch', false, true)).toBeNull();
+    expect(hudHintStyle(false, 'xbox', 'touch', false, true)).toBeNull();
   });
   it('パッドを触っている間はパッド(PS 系は padps)。端末の種類より優先', () => {
-    expect(hudHintStyle(true, false, 'touch', false, true)).toBe('pad');
-    expect(hudHintStyle(true, true, 'mouse', true, true)).toBe('padps');
+    expect(hudHintStyle(true, 'xbox', 'touch', false, true)).toBe('pad');
+    expect(hudHintStyle(true, 'ps', 'mouse', true, true)).toBe('padps');
+    expect(hudHintStyle(true, 'nin', 'touch', false, true)).toBe('padnin');
   });
   it('マウスの端末はキー。タッチの端末でも指の後にキーを押したらキー', () => {
-    expect(hudHintStyle(false, false, 'mouse', false, true)).toBe('key');
-    expect(hudHintStyle(false, false, 'touch', true, true)).toBe('key');
+    expect(hudHintStyle(false, 'xbox', 'mouse', false, true)).toBe('key');
+    expect(hudHintStyle(false, 'xbox', 'touch', true, true)).toBe('key');
   });
 });
 
@@ -34,6 +35,10 @@ describe('hudGlyph(札の字)', () => {
       .toEqual(['A', 'B', 'LB', 'Y', 'menu']);
     expect([hudGlyph('padps', 'press', false), hudGlyph('padps', 'flick', false), hudGlyph('padps', 'gunPrev', false), hudGlyph('padps', 'gunNext', false), hudGlyph('padps', 'pause', false)])
       .toEqual(['×', '○', 'L1', '△', 'menu']);
+  });
+  it('任天堂系: 標準配置は位置で並ぶので、下(指)が B・右(はじく)が A・上(次の銃)が X・左肩が L・一時停止は +', () => {
+    expect([hudGlyph('padnin', 'press', false), hudGlyph('padnin', 'flick', false), hudGlyph('padnin', 'gunPrev', false), hudGlyph('padnin', 'gunNext', false), hudGlyph('padnin', 'pause', false)])
+      .toEqual(['B', 'A', 'L', 'X', 'plus']);
   });
   it('銃の枠の番号はキーボードの1〜9だけ', () => {
     expect(hudGunSlotKey('key', 0)).toBe('1');

@@ -1,20 +1,21 @@
 // ゲーム中のボタン札(research/PC_SUPPORT.md §14・社長「キーボード、コントローラの時は小さくボタンを表示する部分があった方がいいな」)。
-// 出す種類(キー/パッド/PS/出さない)と、札に書く字を決める。スマホ(タッチだけ)は null=札を1つも描かない。
+// 出す種類(キー/パッド Xbox・PS・任天堂/出さない)と、札に書く字を決める。スマホ(縦)は null=札を1つも描かない。
+// オプションの「ボタン表示」(既定=あり・§14-7)を切ると、横長でも出さない。
 // 濃さ: 最後の操作から HUD_IDLE_MS で html.hudhint-idle が付く(遊んでいる間は控えめ・手を止めると濃い)。
 //   切り替わりの時だけクラスを付け外しする=React の再描画は無い。
 import { useSyncExternalStore } from 'react';
-import { currentPointerKind, isKeySeen, isPadActive, isPadPS, subscribePlayDevice, type PointerKind } from './inputDevice';
+import { currentPadKind, currentPointerKind, isKeySeen, isPadActive, subscribePlayDevice, type PadKind, type PointerKind } from './inputDevice';
 
-export type HudHintStyle = 'key' | 'pad' | 'padps';
+export type HudHintStyle = 'key' | 'pad' | 'padps' | 'padnin';
 
 /**
  * 出す札の種類。**横長の時だけ**(CLAUDE.md「PC版の作業はスマホを1pxも動かさない」=縦のスマホにキーボード/パッドを繋いでも出さない。
  * phone-guard は一時停止をキーで開くので、ここで止めないとスマホの一時停止画面に札が出た)。
  * パッドを触っている=パッド / マウスの端末=キー / 指の後に本物のキーを押した=キー / それ以外=出さない。
  */
-export const hudHintStyle = (padActive: boolean, padPS: boolean, pointerKind: PointerKind, keySeen: boolean, landscape: boolean): HudHintStyle | null => {
+export const hudHintStyle = (padActive: boolean, padKind: PadKind, pointerKind: PointerKind, keySeen: boolean, landscape: boolean): HudHintStyle | null => {
   if (!landscape) return null;
-  if (padActive) return padPS ? 'padps' : 'pad';
+  if (padActive) return padKind === 'ps' ? 'padps' : padKind === 'nin' ? 'padnin' : 'pad';
   if (pointerKind === 'mouse' || keySeen) return 'key';
   return null;
 };
@@ -22,8 +23,8 @@ export const hudHintStyle = (padActive: boolean, padPS: boolean, pointerKind: Po
 export type HudAction = 'pause' | 'press' | 'flick' | 'gunPrev' | 'gunNext';
 /** 押下の印に使う名前(操作+銃の枠 slot1〜slot9)。 */
 export type HudPressName = HudAction | `slot${number}`;
-/** 'lmb'/'rmb'=左/右クリックの絵、'menu'=三本線(パッドの一時停止=Xbox の Menu も PS の Options も実物は三本線)。null=札を出さない。 */
-export type HudGlyph = string | 'lmb' | 'rmb' | 'menu' | null;
+/** 'lmb'/'rmb'=左/右クリックの絵、'menu'=三本線(パッドの一時停止=Xbox の Menu も PS の Options も実物は三本線。任天堂系は 'plus'=+ の形)。null=札を出さない。 */
+export type HudGlyph = string | 'lmb' | 'rmb' | 'menu' | 'plus' | null;
 /**
  * 札の字。手の置き場で分ける(クリエイティブ監査 #1): マウスの端末は右手側の操作(指=左クリック・はじく=右クリック)をマウスの絵、
  * 左手側(銃の番号・一時停止)をキーで出す。マウスの無い端末(タブレット+キーボード)は Space / K。
@@ -37,24 +38,46 @@ export const hudGlyph = (style: HudHintStyle, action: HudAction, hasMouse: boole
       default: return null; // 銃はその枠の番号(hudGunSlotKey)
     }
   }
-  const ps = style === 'padps';
-  switch (action) {
-    case 'pause': return 'menu';
-    case 'press': return ps ? '×' : 'A';
-    case 'flick': return ps ? '○' : 'B';
-    case 'gunPrev': return ps ? 'L1' : 'LB';
-    case 'gunNext': return ps ? '△' : 'Y';
-  }
-  return null;
+  // 標準配置は位置で並ぶ(下=指・右=はじく・上=次の銃・左肩=前の銃)。刻印は系統ごとに違う(任天堂系は下が B・右が A)。
+  const g = style === 'padps' ? { pause: 'menu', press: '×', flick: '○', gunPrev: 'L1', gunNext: '△' }
+    : style === 'padnin' ? { pause: 'plus', press: 'B', flick: 'A', gunPrev: 'L', gunNext: 'X' }
+      : { pause: 'menu', press: 'A', flick: 'B', gunPrev: 'LB', gunNext: 'Y' };
+  return g[action];
 };
 /** キーボードの銃の枠の番号(1〜9)。10枠目以降と、パッドは無し。 */
 export const hudGunSlotKey = (style: HudHintStyle, index: number): string | null =>
   style === 'key' && index >= 0 && index < 9 ? String(index + 1) : null;
 
-/** React から読む(機器が変わった時だけ再描画)。landscape=画面が横長か(HudScale の useHudLandscape をそのまま渡す)。 */
-const snapshotKey = (): string => hudHintStyle(isPadActive(), isPadPS(), currentPointerKind(), isKeySeen(), true) ?? '';
+// ---- オプション「ボタン表示」(§14-7・既定=あり。端末に残す) ----
+const ENABLED_KEY = 'zombie:ui:hudHints';
+const readEnabled = (): boolean => {
+  if (typeof window === 'undefined') return true;
+  try { return window.localStorage.getItem(ENABLED_KEY) !== '0'; } catch { return true; }
+};
+let enabled = readEnabled();
+const enabledSubs = new Set<() => void>();
+export const getHudHintsEnabled = (): boolean => enabled;
+export const setHudHintsEnabled = (on: boolean): void => {
+  if (on === enabled) return;
+  enabled = on;
+  try { window.localStorage.setItem(ENABLED_KEY, on ? '1' : '0'); } catch { /* ignore */ }
+  enabledSubs.forEach(f => f());
+};
+const subscribeHints = (cb: () => void): (() => void) => {
+  enabledSubs.add(cb);
+  const off = subscribePlayDevice(cb);
+  return () => { enabledSubs.delete(cb); off(); };
+};
+export const useHudHintsEnabled = (): boolean => useSyncExternalStore(subscribeHints, getHudHintsEnabled, () => true);
+/** 窓が横長か(オプションの「ボタン表示」は横長の時だけ出す=スマホのオプション画面は1pxも変えない)。 */
+const subscribeResize = (cb: () => void): (() => void) => { window.addEventListener('resize', cb); return () => window.removeEventListener('resize', cb); };
+export const useWindowLandscape = (): boolean =>
+  useSyncExternalStore(subscribeResize, () => window.innerWidth > window.innerHeight, () => false);
+
+/** React から読む(機器・オプションが変わった時だけ再描画)。landscape=画面が横長か(HudScale の useHudLandscape をそのまま渡す)。 */
+const snapshotKey = (): string => (enabled ? hudHintStyle(isPadActive(), currentPadKind(), currentPointerKind(), isKeySeen(), true) ?? '' : '');
 export const useHudHintStyle = (landscape: boolean): HudHintStyle | null => {
-  const s = useSyncExternalStore(subscribePlayDevice, snapshotKey, () => '');
+  const s = useSyncExternalStore(subscribeHints, snapshotKey, () => '');
   return landscape && s ? (s as HudHintStyle) : null;
 };
 export const useHudHasMouse = (): boolean => useSyncExternalStore(subscribePlayDevice, () => currentPointerKind() === 'mouse', () => true);

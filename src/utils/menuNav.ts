@@ -23,7 +23,7 @@
 import { useGameStore } from '../store/gameStore';
 import { playSfx } from '../audio/audioManager';
 import {
-  pickNeighbor, navStep, chooseInitial, itemKey, fullKey, NavMemory, pickBackByLayer, navInputKindOf, isPlayStationPad,
+  pickNeighbor, navStep, chooseInitial, itemKey, fullKey, NavMemory, pickBackByLayer, navInputKindOf, padFamilyOf, padPromptStyle, type PadFamily,
   stepRepeat, initRepeat, revealDelta, navScrollEase, NAV_SCROLL_MS,
   openConfirmGuard, enterConfirmGuard, releaseConfirm, confirmAllowed, discardsRepeat, isConfirmCode,
   type ConfirmGuard, type NavDir, type NavRect, type NavItemInfo, type NavGroupInfo, type NavGroupKind, type NavInputKind, type RepeatState, type PromptStyle,
@@ -58,12 +58,12 @@ let observerHook: (() => void) | null = null;
 // 入力の種類・イベント(カーソル/案内が購読する。購読は「選択が変わった時/機器が変わった時」だけ=毎フレームの再描画なし)
 // ---------------------------------------------------------------------------------------------
 let lastInput: NavInputKind | null = null;
-let lastPadPS = false;
+let lastPadFamily: PadFamily = 'xbox';
 /** 最後のメニュー入力(案内の表記を決める)。 */
 export const getLastNavInput = (): NavInputKind | null => lastInput;
 /** 入力があったことを知らせる。パッドは gamepad.ts が 'pad'(+gamepad.id)、キーは menuNav が isTrusted な keydown だけで 'key'。 */
 export const noteNavInput = (kind: NavInputKind, padId?: string): void => {
-  if (kind === 'pad') lastPadPS = isPlayStationPad(padId);
+  if (kind === 'pad') lastPadFamily = padFamilyOf(padId);
   if (kind !== lastInput) { lastInput = kind; updatePrompt(); }
 };
 
@@ -98,7 +98,7 @@ const updatePrompt = (): void => {
   let next: PromptSnapshot = PROMPT_HIDDEN;
   if (typeof document !== 'undefined' && isKbnavOn() && isMenuContext() && navFocused?.isConnected) {
     const layer = computeLayer();
-    const style: PromptStyle = lastInput === 'pad' ? (lastPadPS ? 'padps' : 'pad') : 'key';
+    const style: PromptStyle = lastInput === 'pad' ? padPromptStyle(lastPadFamily) : 'key';
     const promptBack = promptBackOf(layer);
     const hasBack = promptBack !== null || findBackButton() !== null;
     const hasTabs = !!layer?.el.querySelector('[data-nav-tabs]');

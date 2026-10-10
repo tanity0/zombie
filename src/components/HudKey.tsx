@@ -20,12 +20,20 @@ const Menu = () => (
   </svg>
 );
 
+// +(任天堂系の一時停止)。実物の刻印どおり丸の中に +(字の + は小さすぎ・素の + は加算の記号に読める)。
+const Plus = () => (
+  <svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true">
+    <circle cx="4.5" cy="4.5" r="4" fill="none" stroke="currentColor" strokeWidth="1" />
+    <path d="M4 2H5V7H4ZM2 4H7V5H2Z" fill="currentColor" shapeRendering="crispEdges" />
+  </svg>
+);
+
 export const HudKey: React.FC<{ glyph: HudGlyph; hint: HudHintStyle; act?: HudPressName; style?: React.CSSProperties; className?: string; children?: React.ReactNode }> = ({ glyph, hint, act, style, className, children }) => {
   if (glyph === null) return null;
   return (
     <span className={`hud-key${className ? ` ${className}` : ''}`} data-style={hint} data-act={act} style={style} aria-hidden="true">
       {children}
-      {glyph === 'rmb' ? <Mouse side="r" /> : glyph === 'lmb' ? <Mouse side="l" /> : glyph === 'menu' ? <Menu /> : glyph}
+      {glyph === 'rmb' ? <Mouse side="r" /> : glyph === 'lmb' ? <Mouse side="l" /> : glyph === 'menu' ? <Menu /> : glyph === 'plus' ? <Plus /> : glyph}
     </span>
   );
 };
