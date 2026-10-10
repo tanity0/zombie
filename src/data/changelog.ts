@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4965', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4964', items: ['幻影に斬られた直後も、相手の方へはじけば飛び込んで倍の一撃を返せる'] },
   { version: '0.25.4963', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4962', items: ['動きの激しいボスと戦うと、スマホでゲームが落ちることがあった。抱える画像の量に上限を設けて直した'] },
