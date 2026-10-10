@@ -202,6 +202,12 @@ export const ESCORT_WALK_SHEETS: Readonly<Record<string, number>> = {
   'npc/edgar-down': 2, 'npc/joseph-down': 2, 'npc/elizabeth-down': 2, 'npc/musashi-down': 2, 'npc/muhammad-down': 2,
   'npc/chen-down': 2, 'npc/lauren-down': 2, 'npc/phaser-down': 2,
 };
+// 立ち止まっている時に出す歩きシートのコマ(社長指示2026-10-10「立ち止まってる時は立ち絵(無ければ両足ついてるコマ)にして」)。
+// 立ち絵の素材は無いので、**両足が地面に着いているコマ**(下端2行で接地が2か所に分かれるコマ)のうち、足の開きが一番狭いものを選んだ。
+export const ESCORT_STAND_FRAME: Readonly<Record<string, number>> = {
+  'npc/edgar-walk': 3, 'npc/joseph-walk': 10, 'npc/elizabeth-walk': 3, 'npc/musashi-walk': 3, 'npc/muhammad-walk': 10,
+  'npc/chen-walk': 7, 'npc/lauren-walk': 10, 'npc/phaser-walk': 3,
+};
 export const FLAME_SHEET = 'props/flame';
 export const FLAME_FRAMES = 8;
 export const FLAME_FRAME_W = 46;  // v0.25.4588: シートを解凍(1472×264 → 368×66)したので1/4。旧184

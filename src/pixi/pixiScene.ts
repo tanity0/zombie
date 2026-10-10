@@ -345,7 +345,7 @@ import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '
 import { pickupDisplayPosition } from '../utils/collisionUtils';
 import type { SceneLayers } from './layers';
 import {
-  getTexture, PLAYER_ART_BASE_W, ESCORT_WALK_SHEETS,
+  getTexture, PLAYER_ART_BASE_W, ESCORT_WALK_SHEETS, ESCORT_STAND_FRAME,
   FLAME_SHEET, FLAME_FRAMES, FLAME_FRAME_W, FLAME_FRAME_H, FLAME_LIGHT_FRAC, TORCH_STAND_RIM_ABOVE_FOOT,
   avatarHeadDeltaPx, avatarHeadCxDeltaPx, GLEN_PART_ANIM_FRAMES, GLEN2_BODY_ANIM_FRAMES,
 } from './pixiTextures';
@@ -26884,10 +26884,11 @@ export class PixiScene {
       const idleFrame = esc.soldierIndex === TUTORIAL_MEDIC_INDEX ? 2 : 0;
       const walkFrame = animate ? seq[step % seq.length] : idleFrame;
       // 社長支給の歩きシート(2026-10-07・8/16コマ)がある人はそちらで歩く(1コマ ESCORT_SHEET_FRAME_MS・順送り)。
-      // 止まっている時は0コマ目。シートの無い人は従来の3コマ(ピンポン)。
+      // 止まっている時は両足が地面に着いているコマ(ESCORT_STAND_FRAME・社長指示2026-10-10)。シートの無い人は従来の3コマ(ピンポン)。
       const sheetFrames = getTexture(`${base}-walk-0`) ? (ESCORT_WALK_SHEETS[`${base}-walk`] ?? 0) : 0;
       const sheetFrame = sheetFrames > 0 && animate
-        ? Math.floor(now / PixiScene.ESCORT_SHEET_FRAME_MS) % sheetFrames : 0;
+        ? Math.floor(now / PixiScene.ESCORT_SHEET_FRAME_MS) % sheetFrames
+        : Math.min(Math.max(0, sheetFrames - 1), ESCORT_STAND_FRAME[`${base}-walk`] ?? 0);
       // research/ESCORT_TARGETED.md §6・§7: 倒れた姿の曲線(体力を持たない M0 の随行は恒等=従来と同じ)。
       const pose = escortPose(esc, gameTime);
       this.escortPoseById.set(esc.id, pose);

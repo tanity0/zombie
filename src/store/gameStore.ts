@@ -20276,7 +20276,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // §17-14受け入れ条件19: ウェルカム中は moving=false を保つ(止まっているのに歩行アニメが回らない)。
       // 輪が閉じたら true に戻り、従来どおりのアニメ(esc.moving!==false=常時行進)に戻る。
-      const moving = movingOut;
+      // ★実際に位置が動いたフレームだけ「歩いている」(社長指示2026-10-10「立ち止まってる時は立ち絵にして」)。
+      // 前進の枝(前方=停止/拠点に着いた)・巡回の枝(速さ0)は movingOut が true のまま、その場で足踏みして見えていた。
+      const moving = movingOut && (x !== esc.x || y !== esc.y);
       // 速度(px/s)=ボスの偏差撃ちが軍人の移動先を読むのに使う。
       const evx = deltaTime > 0.0001 ? (x - esc.x) / deltaTime : 0, evy = deltaTime > 0.0001 ? (y - esc.y) / deltaTime : 0;
       if (Math.abs(evx - (esc.vx ?? 0)) > 0.5 || Math.abs(evy - (esc.vy ?? 0)) > 0.5) escortsChanged = true;
