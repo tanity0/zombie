@@ -9601,7 +9601,7 @@ export class PixiScene {
     // v0.25.3054: 施設フェード中は施設系の矢印/マーカーも出さない(城=castleVisible、商人=radius0で
     // 縁矢印を殺す、POI/拠点=空配列)。ボスマーク・アイテム・ハンター等の非施設マーカーは従来どおり。
     const facHidden = facFade < 0.5;
-    this.syncArrows(s.pickups, s.castleEvent, (facHidden || s.merchantHidden) ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
+    this.syncArrows(s.pickups, s.castleEvent, (facHidden || s.merchantHidden || s.stageTheme === 'lab') ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
       targets: markedBosses,
       // 距離は**ボスメーカーの部屋の中だけ常時**表示(社長指示v0.25.2657)。本編は数字を出さない=
       // マーク(方角)だけ。道具としての計測値をゲーム画面へ持ち込まない。
@@ -34924,6 +34924,8 @@ export class PixiScene {
     const merchantX = toScreenX(merchant.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
     const merchantY = toScreenY(merchant.y - 28);
     // radius<=0 は「商人不在」(チュートリアル=到達不能座標へ退避・v0.25.1820)。誘導マーカーも出さない。
+    // 研究所(ステージ2)も方角マーカーは出さない(社長報告2026-10-10「これが出るのはおかしい」・呼び出し側で radius 0 にして渡す)。
+    // 商人そのもの(スタート地点に立つ・PHILL弾を売る)は残す。
     if (merchant.radius > 0 && (merchantX < 0 || merchantX > this.screenW || merchantY < 0 || merchantY > this.screenH)) {
       const angle = Math.atan2(merchantY - cyC, merchantX - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
