@@ -681,3 +681,16 @@ describe('GHOST_BOSS.md v10: 弾に対して、人格の記録どおりに「振
     expect(cur().gpSwingAt).toBe(before);
   });
 });
+
+describe('被弾反撃: 幻影の近接も窓を開く(社長指示2026-10-10「幻影との戦いの近接後は反撃できない?できるようにして」)', () => {
+  it('幻影の近接が当たると、相手=幻影の反撃の窓が開く', () => {
+    const { id, step } = setup(60); // 近接の間合いの中
+    useGameStore.setState({ hitRetaliation: null });
+    let opened = false;
+    for (let i = 0; i < 120 && !opened; i++) {
+      step(16);
+      opened = useGameStore.getState().hitRetaliation?.fromId === id;
+    }
+    expect(opened).toBe(true);
+  });
+});

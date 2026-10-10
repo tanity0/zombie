@@ -808,6 +808,9 @@ const swingPhantomMelee = (
   useGameStore.getState().damagePlayer(
     // 対人スケール(社長裁定2026-08-20)は上のdmgで適用済み。
     dmg, guardianPhantomMeleeSource(), bcx, bcy, GUARDIAN_PHANTOM_TYPE,
+    // ★被弾反撃の相手(社長指示2026-10-10「幻影との戦いの近接後は反撃できない?できるようにして」)。
+    // 旧: 対人の体勢と絡むので対象外にしていた。反撃の一撃は普通の近接と同じ関所(phantomGate の窓パリィ・対人体勢)を通る。
+    undefined, undefined, undefined, phantomId,
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
   const landed = useGameStore.getState().player.health < hpBefore;
