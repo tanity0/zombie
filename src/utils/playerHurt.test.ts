@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked , isHurtMoveLocked, isHurtCancelled, knockbackUntilAfterStop, blastKnockbackOf } from './playerHurt';
+import { playerHurtTier, playerHurtReactionOf, PLAYER_HURT_TIERS, isHurtGunLocked , isHurtMoveLocked, isHurtCancelled, knockbackUntilAfterStop, blastKnockbackOf, blastPushDir } from './playerHurt';
 
 describe('playerHurtTier — 被弾の重さで段が変わる', () => {
   it('素の敵の攻撃力(最大HP120)が狙いどおりの段に落ちる', () => {
@@ -161,5 +161,20 @@ describe('爆風で食らった時の押し出しは被弾の段に従う(社長
   it('技ごとの押し量が指定されていれば段より優先(英雄・偶像・賞金首の技)', () => {
     expect(blastKnockbackOf(460, 2, 900, 200)).toEqual({ speed: 900, ms: 200 });
     expect(blastKnockbackOf(460, 2, 900)).toEqual({ speed: 900, ms: PLAYER_HURT_TIERS[2].kbMs });
+  });
+});
+
+describe('爆風の弾き出す向き(社長指摘2026-10-10「ど真ん中から動かずに食らうと吹き飛ばない」)', () => {
+  it('爆心からずれていれば、爆心から離れる向き(長さ1)', () => {
+    expect(blastPushDir(30, 40, 1, 0)).toEqual({ x: 0.6, y: 0.8 });
+  });
+  it('爆心の真上なら、向いている方の逆へ(長さ1・0にならない)', () => {
+    const b = blastPushDir(0, 0, 1, 0);
+    expect(b.x).toBe(-1); expect(b.y).toBeCloseTo(0);
+    const d = blastPushDir(0, 0, 3, 4);
+    expect(d.x).toBeCloseTo(-0.6); expect(d.y).toBeCloseTo(-0.8);
+  });
+  it('向きも無ければ画面の奥へ', () => {
+    expect(blastPushDir(0, 0, 0, 0)).toEqual({ x: 0, y: -1 });
   });
 });

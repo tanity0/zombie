@@ -72,7 +72,7 @@ import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_A
 import { distToBandRect } from './geometry';
 import { circleHitsFan } from './heroScript';
 import { applyBlastToHero, applyHeroBlastToEnemies, markHeroHit, heroAsTarget, damageHeroByEnemy, hitHeroShape } from './heroBlast'; // research/MUTANT_HERO.md
-import { knockbackUntilAfterStop, blastKnockbackOf } from './playerHurt'; // 押し出しはヒットストップが明けてから(社長指摘2026-10-08)
+import { knockbackUntilAfterStop, blastKnockbackOf, blastPushDir } from './playerHurt'; // 押し出しはヒットストップが明けてから(社長指摘2026-10-08)
 import { applyBlastToEscorts, applyEnemyProjectilesToEscorts, hitEscortShape } from './escortHit'; // research/ESCORT_TARGETED.md §3: 進軍NPCも同じ入口で被弾
 import { escortBodyRect, escortCenter, ESCORT_BODY_SIZE } from './escortHealth';
 import { escortAggroCandidates, hittableEscorts } from './escortView';
@@ -355,15 +355,16 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
         // v0.25.2653: **技ごとの押し量**(b.kbSpeed/kbMs)があればそれを使う。
         // 技の指定が無ければ**被弾の段の押し出し**(接触で食らった時と同じ表=重い一撃ほど遠くへ飛ぶ)。社長指摘2026-10-09「ジャンプ攻撃食らった時、まだ吹っ飛んでない」。
-        const ddx = bpcx - b.x, ddy = bpcy - b.y;
-        const dd = Math.max(0.001, Math.hypot(ddx, ddy));
+        // 向き: 爆心の真上で食らった時は向いている方の逆へ(真上だと向きが決まらず一歩も飛ばなかった=社長指摘2026-10-10)。
+        const face = useGameStore.getState().player.lastDirection ?? { x: 1, y: 0 };
+        const push = blastPushDir(bpcx - b.x, bpcy - b.y, face.x, face.y);
         useGameStore.setState(st => {
           const landed = st.player.lastHurtAt !== hurtAtBefore;
           const { speed: kbSp, ms: kbMs } = blastKnockbackOf(PLAYER_KNOCKBACK_SPEED, landed ? st.player.lastHurtTier : undefined, b.kbSpeed, b.kbMs);
           return { player: {
           ...st.player,
-          knockbackVx: (ddx / dd) * kbSp,
-          knockbackVy: (ddy / dd) * kbSp,
+          knockbackVx: push.x * kbSp,
+          knockbackVy: push.y * kbSp,
           // 押し出しはヒットストップ(damagePlayer が張った)が明けてから始める(社長指摘2026-10-08「ジャンプ攻撃食らっても押し出されなくなってる」)。
           knockbackUntil: knockbackUntilAfterStop(Date.now(), st.hitstopUntil, kbMs),
           knockbackMs: kbMs,

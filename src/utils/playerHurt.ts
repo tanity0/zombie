@@ -97,6 +97,21 @@ export const knockbackUntilAfterStop = (now: number, stopUntil: number, kbMs: nu
  * (社長指摘2026-10-09「ジャンプ攻撃食らった時、まだ吹っ飛んでない」)。
  * `tier` は今の一撃で付いた段。実ダメージが入らなかった時(段が付かなかった時)は undefined=軽の段(旧と同じ)。
  */
+/**
+ * 爆風で弾き出す向き(単位ベクトル)。爆心からプレイヤーへ向かう向きが基本。
+ * **爆心の真上に立っていた時は向きが決まらない**(旧: 速さ0=一歩も飛ばない。跳びは食らう人の足元へ着地するので、
+ * 動かずに食らうと必ずこれになっていた。社長指摘2026-10-10「ど真ん中から動かずに食らうと吹き飛ばない」)。
+ * その時は**向いている方の逆=後ろへ**のけぞって飛ぶ。向きも無ければ画面の奥(上)へ(接触の被弾と同じ規約)。
+ */
+export const BLAST_CENTER_EPS_PX = 0.5;
+export const blastPushDir = (dx: number, dy: number, faceX: number, faceY: number): { x: number; y: number } => {
+  const d = Math.hypot(dx, dy);
+  if (d >= BLAST_CENTER_EPS_PX) return { x: dx / d, y: dy / d };
+  const f = Math.hypot(faceX, faceY);
+  if (f > 1e-6) return { x: -faceX / f, y: -faceY / f };
+  return { x: 0, y: -1 };
+};
+
 export const blastKnockbackOf = (
   baseSpeed: number, tier: number | undefined, kbSpeed?: number, kbMs?: number,
 ): { speed: number; ms: number } => {
