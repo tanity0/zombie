@@ -948,6 +948,8 @@ export interface Enemy {
   gpBulletParriedAt?: number;
   /** パリィの再発火が許される時刻。 */
   gpParryCdUntil?: number;
+  /** 対人トラップの効果が切れる時刻(Date.now)。プレイヤーの罠を踏んだ幻影に4つの効果(移動7割/貰うクリ+10%/リロード1.5倍/CD短縮無効)=プレイヤーと同じ(社長指示2026-10-10「幻影も効果を揃える」)。 */
+  gpTrapDebuffUntil?: number;
   /** 即発近接を振った時刻(描画=斬撃弧+踏み込みの起点)。 */
   gpSwingAt?: number;
   /**

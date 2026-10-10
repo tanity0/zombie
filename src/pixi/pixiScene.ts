@@ -393,7 +393,8 @@ import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt, loopSweepProg as csLoopSweepProg } from '../utils/circleSweep';
 import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, bandSweepSliceAlpha, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
 import { giantSweepWindowProg, giantNovaWindupProg } from '../utils/giantRedTelegraph';
-import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb, canBakeWithin } from '../utils/memoryTier'; // 焼きの天井をスマホ/PCで分ける(v0.25.4867)
+import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb, canBakeWithin } from '../utils/memoryTier';
+import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // 対人トラップの3秒の見え方(drawTrapBind) // 焼きの天井をスマホ/PCで分ける(v0.25.4867)
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
 /**
@@ -1717,6 +1718,9 @@ const BURN_FLASH_TINT = 0xff8c00;
 const BURN_FLASH_ALPHA = 0.28; // 「薄く」=被弾白(0.85相当)よりずっと弱く
 const BURN_FLASH_PERIOD_MS = 520;
 const ICE_FLASH_TINT = 0x7fd4ff; // 氷鈍化中の薄い水色(v0.25.3276・α/周期は延焼と共通)
+// ★対人トラップに掛かっている3秒(社長指示2026-10-10「罠は推薦通りに」)。罠の捕獲と同じ水色の家族。
+const TRAP_BIND_TINT = 0x38bdf8;   // 体にうっすら乗せる色(加算=沈まない)
+const TRAP_BIND_BODY_ALPHA = 0.16;  // 「わずかに水色がかる」
 // 徒歩を自然に見せる二次モーション(3コマの上に重ねる・視覚のみ・判定不変)。
 // 乗車中の板の足を乗せる高さ(絵の上端からの割合)。社長支給の横から見た板(47×12)はデッキ上面が2〜3行目=2.5/12。
 // 旧絵(上から見た板)はデッキ中央の黒線=0.43だった。
@@ -17595,6 +17599,9 @@ export class PixiScene {
     view.container.zIndex = killPose ? fb.footY + 100000 : fb.footY;
     view.light.visible = false;
     view.reticle.clear();
+    // ★対人トラップに掛かっている3秒(足元の輪+体の水色)。プレイヤーの hitFlash は他で使っていない=毎フレーム既定OFFから。
+    view.hitFlash.visible = false;
+    this.drawTrapBind(view, p.trapDebuffUntil, now, fb.footX, fb.footY, fb.boxW, this.depthScale(fb.footY), true);
     // 刀/小烏丸(村雨)装備中: 実画像(katana-item)をプレイヤー背面へ表示。
     // 武将フル装備の立ち絵中は武器を描いた一枚絵なので背負い刀は隠す(二重表示回避)。
     const hasKatanaSub = p.subWeapons.includes('murasame') || p.subWeapons.includes('katana');
@@ -17797,6 +17804,105 @@ export class PixiScene {
 
   // 立ち絵テクスチャを白黒化して1度だけベイクし、RenderTexture をキャッシュして返す。
   // 以後は毎フレームのフィルタ処理ではなく、このキャッシュ済みテクスチャをそのまま貼る。
+  /**
+   * ★対人トラップに掛かっている間の見え方(社長指示2026-10-10「罠は推薦通りに」=足元に絡みつく拘束具が3秒かけて緩む+体がわずかに水色)。
+   * プレイヤー(trapDebuffUntil)と幻影(gpTrapDebuffUntil)で同じ絵。輪は `view.reticle`(本体の後ろ=地面)に描き、
+   * 体は `view.hitFlash`(白シルエットを加算)へ水色を乗せる。**被弾の白など他の状態が hitFlash を使っている時は体の色を譲る**
+   * (`bodyFree=false`)。痺れ(黄の輪)の間は輪を描かず体の色だけ(`ringOff`=動けない方の情報が勝つ)。判定・移動には触れない。
+   * 形と時間(クリエイティブ監査2026-10-10を反映):
+   *  - 入り(0〜240ms): 体の2.4倍の外から噛む=一番強い瞬間。白っぽく太い線で入り、0.96まで食い込んで1.0へ戻る。体の水色も入りだけ濃い。
+   *  - 保持: 輪+左右の顎2つ+留め具1つ(トラバサミ)。2回「ぐいっ」と食い込む(時刻はずらす=等間隔にしない)。
+   *  - 緩み(段階=残り時間を数えられる): 残り1.6秒で留め具が外れて落ちる/残り0.9秒で片方の顎が外れ輪に切れ目が入る/
+   *    残り0.3秒でもう片方も外れ、全体が消える。外れた部品は外へ+下へ(重さ)落ちながら消える。
+   */
+  private drawTrapBind(
+    view: ActorView, until: number | undefined, now: number, footX: number, footY: number, bodyW: number, dsc: number,
+    bodyFree: boolean, ringOff = false,
+  ): void {
+    if (until === undefined || now >= until) return;
+    const total = TRAP_PVP_DEBUFF_MS;
+    const el = Math.max(0, total - (until - now)); // 掛かってからの経過(ms)
+    const left = until - now;                       // 残り(ms)
+    const easeOut = (k: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, k)), 3);
+    // 入り: 2.4 → 0.96(150ms・ease-out)→ 1.0(90ms)。α は最初の40msで立ち上がる。
+    let scale: number;
+    if (el < 150) scale = 2.4 + (0.96 - 2.4) * easeOut(el / 150);
+    else if (el < 240) { const k = (el - 150) / 90; scale = 0.96 + 0.04 * (k * k * (3 - 2 * k)); }
+    else scale = 1;
+    // 保持中の「ぐいっ」2回(600ms と 1150ms・各180ms): 0.94 へ食い込み 1.02 を経て戻る。
+    let dig = 0;
+    for (const at of [600, 1150]) {
+      const k = (el - at) / 180;
+      if (k >= 0 && k < 1) dig = k < 0.4 ? -0.06 * easeOut(k / 0.4) : -0.06 + 0.08 * easeOut((k - 0.4) / 0.35) - (k > 0.75 ? 0.02 * easeOut((k - 0.75) / 0.25) : 0);
+    }
+    scale *= 1 + dig;
+    const inA = Math.min(1, el / 40);
+    const endFade = left < 300 ? Math.max(0, left / 300) : 1; // 最後の0.3秒で全体が消える
+    const alpha = inA * endFade;
+    if (alpha <= 0.01) return;
+    const hit = Math.max(0, 1 - el / 240); // 入りの強さ(1→0)
+    const rx = bodyW * 0.62 * dsc * scale;
+    const ry = rx * 0.42;
+    const g = view.reticle;
+    // 段階の緩み: 0=全部付いている / 1=留め具が外れた / 2=片方の顎も外れた / 3=全部外れた
+    const stage = left > 1600 ? 0 : left > 900 ? 1 : left > 300 ? 2 : 3;
+    const since = (thresholdLeft: number) => Math.max(0, thresholdLeft - left); // その段に入ってからの ms
+    // 輪(楕円を折れ線で描く・切れ目つき)。下に1pxずらした暗い縁=床に置く。
+    const gap = stage >= 2 ? Math.min(0.9, 0.9 * easeOut(since(900) / 400)) : 0; // 切れ目の幅(rad)
+    const ringW = Math.max(1.5, (2.4 + 1.4 * hit) * dsc);
+    const ringColor = hit > 0.05 ? 0xe0f2fe : 0x3aa6d8;
+    const strokeRing = (dy: number, color: number, w: number, a: number) => {
+      const N = 40;
+      let pen = false;
+      for (let i = 0; i <= N; i++) {
+        const th = (i / N) * Math.PI * 2;
+        // 切れ目は2か所(右前と左奥)。そこは描かない。
+        const inGap = gap > 0 && (Math.abs(th - Math.PI * 0.25) < gap / 2 || Math.abs(th - Math.PI * 1.25) < gap / 2);
+        const x = footX + Math.cos(th) * rx, y = footY + dy + Math.sin(th) * ry;
+        if (inGap) { pen = false; continue; }
+        if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+      }
+      g.stroke({ color, width: w, alpha: a });
+    };
+    if (!ringOff) {
+      strokeRing(1, 0x0b1a2b, ringW + 1.5, 0.55 * alpha);
+      strokeRing(0, ringColor, ringW, (0.9 + 0.1 * hit) * alpha);
+      // 顎(左右)と留め具(手前寄り)。外れた部品は外へ6px・下へ3px落ちながら消える(200ms)。
+      const part = (ang: number, r1: number, w: number, a: number, detachedMs: number | null, rivet: boolean) => {
+        let ox = 0, oy = 0, pa = a;
+        if (detachedMs !== null) {
+          const k = Math.min(1, detachedMs / 200);
+          if (k >= 1) return;
+          ox = Math.cos(ang) * 6 * dsc * easeOut(k); oy = 3 * dsc * k * k; pa = a * (1 - k);
+        }
+        const c = Math.cos(ang), sn = Math.sin(ang);
+        const x0 = footX + c * rx + ox, y0 = footY + sn * ry + oy;
+        const x1 = footX + c * rx * r1 + ox, y1 = footY + sn * ry * r1 + oy;
+        g.moveTo(x0, y0).lineTo(x1, y1).stroke({ color: 0xe0f2fe, width: Math.max(1.5, w * dsc), alpha: pa * alpha });
+        if (rivet) g.circle(x0, y0, Math.max(1, 1.1 * dsc)).fill({ color: 0x0b1a2b, alpha: 0.8 * pa * alpha });
+      };
+      const jawIn = 0.06 * (dig < 0 ? -dig / 0.06 : 0); // ぐいっの間は顎も食い込む
+      part(0, 0.70 - jawIn, 2.6, 0.95, stage >= 3 ? since(300) : null, true);
+      part(Math.PI, 0.70 - jawIn, 2.6, 0.95, stage >= 2 ? since(900) : null, true);
+      const clipIn = Math.min(1, Math.max(0, (el - 60) / 120)); // 留め具は少し遅れて入る
+      if (clipIn > 0) part(Math.PI / 2 + 0.3, 0.88, 1.6, 0.6 * clipIn, stage >= 1 ? since(1600) : null, false);
+    }
+    if (bodyFree && view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1) {
+      const hf = view.hitFlash;
+      hf.texture = this.whiteSilhouette(view.sprite.texture) ?? view.sprite.texture;
+      hf.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
+      hf.position.set(view.sprite.position.x, view.sprite.position.y);
+      hf.scale.set(view.sprite.scale.x, view.sprite.scale.y);
+      hf.skew.set(view.sprite.skew.x, view.sprite.skew.y);
+      hf.rotation = view.sprite.rotation;
+      hf.tint = TRAP_BIND_TINT;
+      // 入りは濃く(0.5)→220msで保持の0.16へ(「電気が走ってから残る」)。
+      const bodyA = TRAP_BIND_BODY_ALPHA + (0.5 - TRAP_BIND_BODY_ALPHA) * Math.max(0, 1 - el / 220);
+      hf.alpha = bodyA * alpha * view.sprite.alpha;
+      hf.visible = true;
+    }
+  }
+
   private grayscaleTexture(name: string): Texture | null {
     const cached = this.grayTexCache.get(name);
     if (cached) return cached;
@@ -19633,6 +19739,11 @@ export class PixiScene {
     if (!tex) {
       const col = parseInt(getEnemyColor(e.type).slice(1), 16);
       r.ellipse(cx, cy, e.width / 2.4, e.height / 2.4).fill({ color: col });
+    }
+    // ★対人トラップ(プレイヤーの罠を踏んだ幻影)の3秒=プレイヤーと同じ絵。体の色は被弾の白などが出ていない時だけ。
+    if (e.gpTrapDebuffUntil !== undefined) {
+      this.drawTrapBind(view, e.gpTrapDebuffUntil, now, fb.footX, fb.footY, fb.boxW, this.depthScaleEnemy(fb.footY), !view.hitFlash.visible,
+        e.stunUntil !== undefined && gameTime < e.stunUntil); // 痺れ(黄の輪)の間は輪を描かず体の色だけ
     }
     const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
     if (stunned) {

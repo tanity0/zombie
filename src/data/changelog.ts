@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4967', items: ['幻影の罠を踏むと、足元に拘束具が噛みつき、少しずつ外れていく。掛かっている間は足が重い', '幻影もこちらの罠を踏むと、同じように足が重くなり、撃ち返しも鈍る'] },
   { version: '0.25.4966', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4965', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4964', items: ['幻影に斬られた直後も、相手の方へはじけば飛び込んで倍の一撃を返せる'] },

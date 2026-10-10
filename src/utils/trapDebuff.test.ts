@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult,
   TRAP_PVP_DEBUFF_MS, TRAP_PVP_RELOAD_MULT, TRAP_ROOT_CRIT_BONUS,
+  trapMoveMult,
 } from './trapDebuff';
 
 // ★対人トラップの効果(社長裁定2026-08-25・SAME_ARENA §3-g)。
@@ -50,5 +51,14 @@ describe('対人トラップ: 値の台帳', () => {
   it('リロードは1.5倍・クリ率アップは対敵と同じ+10%', () => {
     expect(TRAP_PVP_RELOAD_MULT).toBe(1.5);
     expect(TRAP_ROOT_CRIT_BONUS).toBe(0.10);
+  });
+});
+
+describe('移動7割(社長指示2026-10-10「移動速度が7割に軽減される、にして。(等倍ではなく)」)', () => {
+  it('効果中は0.7・切れたら1・フィールドを持たない主語は1', () => {
+    expect(trapMoveMult({ trapDebuffUntil: 2000 }, 1000)).toBe(0.7);
+    expect(trapMoveMult({ trapDebuffUntil: 2000 }, 2000)).toBe(1);
+    expect(trapMoveMult({}, 1000)).toBe(1);
+    expect(trapMoveMult(undefined, 1000)).toBe(1);
   });
 });

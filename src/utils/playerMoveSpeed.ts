@@ -13,6 +13,7 @@
 //         (スキル・スケーター・一時バフの「プラス分」は反映しない=社長の言葉)。
 //   使者 = この関数が返す実効値(スキル/スケーター/ダッシュ等の全バフ込み)×1.2。
 // 本体側の値は呼び出し側(useGameLoop)が player.speed をそのまま使う=この関数を経由しない。
+import { TRAP_PVP_MOVE_MULT } from './trapDebuff';
 
 export interface EffectiveMoveSpeedInput {
   /** dashOverride(ワイヤー高速移動/スラム後ホップ/一閃ダッシュ/一閃着地硬直)が出す速度。無ければ null。 */
@@ -64,5 +65,6 @@ export const computeEffectiveMoveSpeed = (input: EffectiveMoveSpeedInput): numbe
     : reloading
     ? playerSpeed * reloadMoveSpeedMult * (skaterActive ? 3 : 1) * rampedBonus(bonusMult, rampFrac)
     : playerSpeed * (skaterActive ? 3 : 1) * rampedBonus(bonusMult, rampFrac);
-  return (trapDebuffed ? Math.min(rawMoveSpeed, playerSpeed) : rawMoveSpeed) * pvpMult * recoverMult;
+  // 対人トラップ中は7割(社長指示2026-10-10。旧=素の足で頭打ち)。
+  return rawMoveSpeed * (trapDebuffed ? TRAP_PVP_MOVE_MULT : 1) * pvpMult * recoverMult;
 };

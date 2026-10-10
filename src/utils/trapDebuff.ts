@@ -17,6 +17,13 @@
 /** 効果時間。敵側の拘束(useGameLoop.MARKSMAN_TRAP_STUN_MS)と**同じ長さ**に揃える。 */
 export const TRAP_PVP_DEBUFF_MS = 3000;
 
+/**
+ * ①移動の倍率(社長指示2026-10-10「移動速度が7割に軽減される、にして。(等倍ではなく)」)。
+ * 旧(2026-08-25)=「移動が等倍のみ」(バフ込みの速さを素の足で頭打ち)。今は**その時の速さ全部を7割**にする
+ * (バフ・ダッシュ・踏み込みも7割。被弾ノックバック=掛けられている力は対象外)。
+ */
+export const TRAP_PVP_MOVE_MULT = 0.7;
+
 /** ③リロード時間の倍率(社長指示「リロード時間1.5倍」)。 */
 export const TRAP_PVP_RELOAD_MULT = 1.5;
 
@@ -35,6 +42,10 @@ export const isTrapDebuffed = (
   p: { trapDebuffUntil?: number } | undefined,
   now: number = Date.now(),
 ): boolean => (p?.trapDebuffUntil ?? 0) > now;
+
+/** ①移動の倍率(効果中=0.7・それ以外=1)。 */
+export const trapMoveMult = (p: { trapDebuffUntil?: number } | undefined, now?: number): number =>
+  (isTrapDebuffed(p, now) ? TRAP_PVP_MOVE_MULT : 1);
 
 /** ④CD短縮系の無効化。オーバークロックの抽選確率を0にする。 */
 export const trapGatedOverclockChance = (

@@ -14081,8 +14081,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(tx, ty, '#38bdf8', 14);
               useGameStore.getState().spawnGlow(tx, ty, radius + 28, 'rgba(56,189,248,', 320);
               spawnRing(htPx, htPy, 5, 28, 'rgba(125,211,252,0.86)', 2, 260);
-              // SEは付けない: 味方側のトラップ捕獲も無音なので、対人だけ音を足すと非対称になる
-              // (音を足すなら両方=別件。素材も無い)。
+              // 捕まった音(社長指示2026-10-10「罠は推薦通りに」・クリエイティブ監査で調整): 装填音を低く短く切り(280ms)、
+              // 重い金属の着地を重ねる=「足に落ちて噛んだ」。自分が掛かった時は重く近く/相手を掛けた時は軽く(下の味方側の走査)。
+              playSfx('crossbow-reload', 0.9, 280, 0.7);
+              playSfx('heavy-impact', 0.35);
               if (already.size + 1 >= maxTargets) removeProjectile(trap.id);
             }
           }
@@ -14120,7 +14122,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           targets.forEach(({ enemy }) => {
             const ex = enemy.x + enemy.width / 2;
             const ey = enemy.y + enemy.height / 2;
-            rootEnemy(enemy.id, gameTime + MARKSMAN_TRAP_STUN_MS);
+            // ★幻影は縛らず、プレイヤーと同じ4つの効果(社長指示2026-10-10「幻影も効果を揃える」・旧=拘束)。
+            if (isGuardianPhantom(enemy.type)) {
+              const until = Date.now() + TRAP_PVP_DEBUFF_MS;
+              useGameStore.setState(st => ({ enemies: st.enemies.map(x => (x.id === enemy.id ? { ...x, gpTrapDebuffUntil: until } : x)) }));
+              playSfx('crossbow-reload', 0.55, 280, 1.0); // 相手を掛けた音=軽く遠く(自分が掛かった時と聞き分ける)
+            } else rootEnemy(enemy.id, gameTime + MARKSMAN_TRAP_STUN_MS);
             spawnRing(ex, ey, 5, 28, trap.ownerGhost ? 'rgba(224,242,254,0.86)' : 'rgba(125,211,252,0.86)', 2, 260);
           });
           const nextHitEnemies = [...trap.hitEnemies, ...targets.map(({ enemy }) => enemy.id)];
@@ -14349,8 +14356,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const trapActive =
             isDirectWeaponHit &&
             enemyForFx !== undefined &&
-            enemyForFx.rootUntil !== undefined &&
-            gameTime < enemyForFx.rootUntil;
+            ((enemyForFx.rootUntil !== undefined && gameTime < enemyForFx.rootUntil)
+              // 対人トラップ中の幻影も銃クリ+10%を貰う=プレイヤーと同じ(社長指示2026-10-10「幻影も効果を揃える」)
+              || (enemyForFx.gpTrapDebuffUntil ?? 0) > Date.now());
           // 社長指示v0.25.1688「ボスにはクリティカル率アップ(既存の値)」: ボスのトラップ+10%だけは
           // ボス補正(×0.5)を通さない**別枠**。裁定を実装で倒さないため、合成に入れず独立ロールのまま残す。
           const bossTrapCrit = isBoss && trapActive && Math.random() < MARKSMAN_TRAP_CRIT_BONUS;

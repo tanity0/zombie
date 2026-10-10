@@ -55,14 +55,14 @@ describe('computeEffectiveMoveSpeed — movePlayerの速度合成(移設のみ�
     expect(computeEffectiveMoveSpeed({ ...base, reloading: true, reloadMoveSpeedMult: 0.5 })).toBe(87 * 0.5);
   });
 
-  it('トラップ頭打ち: バフ込みの値がplayerSpeedを超えるならplayerSpeedへクランプ', () => {
-    const v = computeEffectiveMoveSpeed({ ...base, bonusMult: 2, trapDebuffed: true });
-    expect(v).toBe(87); // min(87*2, 87) = 87
+  it('トラップ中は今の速さの7割(社長指示2026-10-10「等倍ではなく7割」): バフ込みでも7割', () => {
+    expect(computeEffectiveMoveSpeed({ ...base, bonusMult: 2, trapDebuffed: true })).toBeCloseTo(87 * 2 * 0.7, 6);
+    expect(computeEffectiveMoveSpeed({ ...base, trapDebuffed: true })).toBeCloseTo(87 * 0.7, 6);
   });
 
-  it('トラップ頭打ち: バフがplayerSpeed未満(リロード減速等)ならそのまま(minなので下振れは残る)', () => {
+  it('トラップ中: リロード減速などの遅さにも重ねて7割', () => {
     const v = computeEffectiveMoveSpeed({ ...base, reloading: true, reloadMoveSpeedMult: 0.5, trapDebuffed: true });
-    expect(v).toBe(87 * 0.5);
+    expect(v).toBeCloseTo(87 * 0.5 * 0.7, 6);
   });
 
   it('PvP減速は最後に一律で掛かる(dashOverride/sliding含む全経路)', () => {

@@ -301,7 +301,7 @@ import { phantomDisplayLabel } from '../utils/phantomIdentity'; // SAME_ARENA O-
 import { phantomHitGate, playerIframeApplies, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
 import { ensureProjectileOrigin } from '../utils/projectileOrigin';
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from '../utils/phantomScript';
-import { isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult, TRAP_ROOT_CRIT_BONUS } from '../utils/trapDebuff';
+import { isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult, TRAP_ROOT_CRIT_BONUS, TRAP_PVP_MOVE_MULT } from '../utils/trapDebuff';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
@@ -3529,7 +3529,9 @@ export const meleeHitCritChance = (
   gameTime: number,
   enemy: Enemy,
 ): number => {
-  const trapCritBonus = enemy.rootUntil !== undefined && gameTime < enemy.rootUntil ? TRAP_ROOT_CRIT_BONUS : 0;
+  // 罠の拘束中の敵/対人トラップ中の幻影(社長指示2026-10-10「幻影も効果を揃える」)は近接クリ+10%。
+  const trapCritBonus = (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil)
+    || isTrapDebuffed({ trapDebuffUntil: enemy.gpTrapDebuffUntil }) ? TRAP_ROOT_CRIT_BONUS : 0;
   const weakCritBonus = WEAKCRIT_ENABLED ? weaknessCritBonus(enemy.type, 'melee') : 0;
   // §13-3d(社長裁定2026-08-26): 積み上げの合計は**ハードキャップではなくソフトキャップ**を通す
   // (30%までは素通し=これまでと同じ・超えた分だけ鈍って50%へ漸近)。**敵補正はその後**に掛ける
@@ -4052,6 +4054,8 @@ const phantomActorPlayerById = (actorId: string, st: GameState): Player | null =
   return {
     ...ghostActorPlayer(build, e),
     subWeaponCooldowns: e.phantomSubWeaponCooldowns ?? EMPTY_SUB_COOLDOWNS,
+    // 対人トラップ中はサブのCD短縮が無効=プレイヤーと同じ関所(trapGated*)を通る(社長指示2026-10-10「幻影も効果を揃える」)。
+    trapDebuffUntil: e.gpTrapDebuffUntil ?? 0,
   };
 };
 
@@ -7309,11 +7313,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ——加速から入ると避け始めが遅れて間に合わない(社長の狙い「早めに着地」)。
         // 尺は欄の値(被弾反撃の飛び込み=約120ms)。未指定=近接の踏み込み(MELEE_LUNGE_MS)=従来どおり。
         const d = Math.max(0, (player.lungeUntil - kbNow) / (player.lungeMs ?? MELEE_LUNGE_MS)); // 1→0
-        // ★踏み込みも「移動」なのでトラップ効果中は素の足で頭打ち(上の moveSpeed と同じ理屈)。
+        // ★踏み込みも「移動」なのでトラップ効果中は7割(上の moveSpeed と同じ理屈・社長指示2026-10-10)。
         // 被弾ノックバック(上の枝)は**掛けられている力**なので対象外=そのまま飛ぶ。
-        const lungeCap = trapDebuffed
-          ? Math.min(1, player.speed / Math.max(1, Math.hypot(player.lungeVx ?? 0, player.lungeVy ?? 0)))
-          : 1;
+        const lungeCap = trapDebuffed ? TRAP_PVP_MOVE_MULT : 1;
         vx = (player.lungeVx ?? 0) * d * lungeCap;
         vy = (player.lungeVy ?? 0) * d * lungeCap;
       } else if (skaterStopping || pvpFrozen || grabbedFrozen || hurtFrozen) {

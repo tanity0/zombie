@@ -91,7 +91,7 @@ import {
   type PhantomEscapeStyle, type BulletPlan, type BulletPlanRates,
 } from './phantomLunge'; // research/LUNGE_DODGE.md §4(段L3): 幻影の踏み込み回避 / GHOST_BOSS.md v10: 弾への対処
 import { BULLET_MOVE_KEYS } from './moveReaction'; // GHOST_BOSS.md v10: 弾への対処の割合=人格の「弾の技」への反応
-import { isTrapDebuffed, TRAP_ROOT_CRIT_BONUS } from './trapDebuff';
+import { isTrapDebuffed, trapMoveMult, TRAP_ROOT_CRIT_BONUS } from './trapDebuff';
 import { critDecayOnHit } from './critDecay'; // ★§13-3e クリ減衰(SAME_ARENA対称)
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
@@ -501,8 +501,9 @@ const NEUTRAL_GUN_OWNER = {
   reloadEndsAt: 0, reloadingWeaponId: '', quickMagCritUntil: 0,
 } as unknown as Player;
 
-const gunOwner = (s: PhantomTickState): Player => ({
+const gunOwner = (s: PhantomTickState, trapDebuffUntil = 0): Player => ({
   ...NEUTRAL_GUN_OWNER,
+  trapDebuffUntil, // 対人トラップ中はリロード1.5倍=プレイヤーと同じ式(weaponUtils.effectiveReloadMs)を通る
   weapons: s.gun ? [s.gun] : [],
   activeWeaponId: s.gun?.id ?? '',
   reloadEndsAt: s.reloadEndsAt,
@@ -513,7 +514,7 @@ const gunOwner = (s: PhantomTickState): Player => ({
  * リロードを1tick進める(プレイヤー/守護霊と同じ純関数・リザーブ∞)。
  * 「リロード中/マガジン0は射程0=撃たない」も守護霊と同じ形にする。
  */
-const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string): void => {
+const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string, trapDebuffUntil = 0): void => {
   if (!s.gun) {
     // ★社長裁定2026-08-23「**とにかくオンラインにある他人の実データなので、初期か初期じゃないか
     // とかの議論があるのがおかしい**」: 幻影は**記録されたその人そのもの**。記録に銃があれば
@@ -527,7 +528,7 @@ const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string):
       s.gun = createWeapon(key);
     }
   }
-  const owner = gunOwner(s);
+  const owner = gunOwner(s, trapDebuffUntil);
   const finished = finishWeaponReload(s.gun, owner, Number.POSITIVE_INFINITY, nowMs);
   if (finished) {
     s.gun = finished.weapon;
@@ -535,7 +536,7 @@ const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string):
     s.reloadingWeaponId = finished.reloadingWeaponId;
   }
   if ((s.gun.magazine ?? 0) <= 0 && !s.reloadingWeaponId) {
-    const started = beginWeaponReload(s.gun, gunOwner(s), Number.POSITIVE_INFINITY, nowMs);
+    const started = beginWeaponReload(s.gun, gunOwner(s, trapDebuffUntil), Number.POSITIVE_INFINITY, nowMs);
     if (started) {
       s.reloadEndsAt = started.reloadEndsAt;
       s.reloadingWeaponId = started.reloadingWeaponId;
@@ -602,7 +603,8 @@ const phantomSlowMult = (e: Enemy, gameTime: number): number => {
   const grav = (e.gravitySlowUntil !== undefined && gameTime < e.gravitySlowUntil) ? GRAVITY_SHOT_BOSS_SLOW_MULT : 1;
   const ice = (e.iceSlowUntil !== undefined && gameTime < e.iceSlowUntil)
     ? Math.max(0, 1 - (e.iceSlowPct ?? 0)) : 1;
-  return Math.min(grav, ice);
+  // 対人トラップ(プレイヤーの罠を踏んだ)は移動7割=プレイヤーと同じ(社長指示2026-10-10)。
+  return Math.min(grav, ice) * trapMoveMult({ trapDebuffUntil: e.gpTrapDebuffUntil });
 };
 
 // =================================================================================================
@@ -1016,7 +1018,7 @@ export const runPhantomTick = (
   const parried = consumePhantomParry(phantom, s, player, bcx, bcy, sfx, patch, newGameTime);
 
   // ---- 銃の状態(リロード)を進める --------------------------------------------------------------
-  stepPhantomGun(s, nowMs, phantom.id);
+  stepPhantomGun(s, nowMs, phantom.id, phantom.gpTrapDebuffUntil ?? 0);
   // ★research/SAME_ARENA.md O-3: サブウェポン使用の**予約**。守護霊(G2.6)と同じ純関数・同じ考え方
   // (「CDが明けていて交戦中なら使う」)。実際の発動はサブ入口(useGameLoop)がCD明けに解決して
   // 予約を下ろす。頻度は**記録の癖**(profile.subUsesPerMin)=誰と戦っているかがここにも出る。
