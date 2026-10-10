@@ -254,7 +254,7 @@ export interface PromptSpec { hasBack: boolean; backLabel?: string; hasTabs: boo
 export const promptItems = (style: PromptStyle, spec: PromptSpec): PromptItem[] => {
   const k = style === 'key' ? { ok: 'Enter', back: 'Esc', l: 'Q', r: 'E' }
     : style === 'padps' ? { ok: '×', back: '○', l: 'L1', r: 'R1' }
-      : style === 'padnin' ? { ok: 'B', back: 'A', l: 'L', r: 'R' }
+      : style === 'padnin' ? { ok: 'A', back: 'B', l: 'L', r: 'R' } // 任天堂系はメニューの決定/戻るを入れ替えている(gamepad.ts)=刻印どおり A 決定
       : { ok: 'A', back: 'B', l: 'LB', r: 'RB' };
   const out: PromptItem[] = [{ keys: [k.ok], verb: '決定' }];
   if (spec.hasBack) out.push({ keys: [k.back], verb: spec.backLabel || '戻る' });

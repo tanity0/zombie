@@ -239,9 +239,9 @@ describe('案内(その画面にある操作だけ・機器に合わせる)', ()
     ]);
   });
   it('戻るの動詞は上書きできる(一時停止=再開)/ PlayStation 表記', () => {
-    // 任天堂系: 下(決定)が B・右(戻る)が A(Xbox と刻印が逆)
+    // 任天堂系: メニューは決定/戻るを入れ替える(右の A で決定・下の B で戻る=Switch の手のまま・gamepad.ts)
     expect(promptItems('padnin', { hasBack: true, hasTabs: true })).toEqual([
-      { keys: ['B'], verb: '決定' }, { keys: ['A'], verb: '戻る' }, { keys: ['L', 'R'], verb: '切替' },
+      { keys: ['A'], verb: '決定' }, { keys: ['B'], verb: '戻る' }, { keys: ['L', 'R'], verb: '切替' },
     ]);
     expect(promptItems('padps', { hasBack: true, backLabel: '再開', hasTabs: true })).toEqual([
       { keys: ['×'], verb: '決定' }, { keys: ['○'], verb: '再開' }, { keys: ['L1', 'R1'], verb: '切替' },

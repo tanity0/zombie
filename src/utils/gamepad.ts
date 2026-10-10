@@ -2,6 +2,7 @@
 // ゲーム中: 左スティック=移動(タッチのスティックと同じ「方向+強さ」)/ 十字キー=移動(全速)/ A=指(押す/離す=utils/pcPress)/
 //          B・RB=フリック(スティックの向き、倒していなければ向いている向き)/ Y=次の銃・LB=前の銃(utils/weaponCycle)/ Start・Back=一時停止(Esc と同じ)。
 // メニュー(utils/menuNav の isMenuContext): 十字キー・左スティック=ボタン間の移動 / A=押す / B=戻る(ゲームの一時停止中は再開)/
+//          ※任天堂系(Pro Controller・Joy-Con)だけ決定/戻るを入れ替える=右の A で押す・下の B で戻る(刻印どおり・2026-10-10)。
 //          LB・RB=タブ(タブのある画面だけ)/ 右スティック=長文のスクロール(標準配置のみ)。
 // 接続中だけ毎フレーム読む。負荷 1/10(ボタン十数個と軸2本の比較だけ)。タッチだけの端末では接続が無いので何も起きない。
 import { useGameStore, isInputLocked, isWorldFrozen } from '../store/gameStore';
@@ -97,7 +98,11 @@ export const installGamepad = (): (() => void) => {
     const up = (i: number) => !btn[i] && prev[i];
     const ax = gp.axes[0] ?? 0, ay = gp.axes[1] ?? 0;
     syncHudPadKeys(btn);
-    noteConfirmHeld('pad', !!btn[B.A]); // 層に入った時に押されていた A は、離すまで決定に使わない(menuNav)
+    // メニューの決定/戻る。任天堂系だけ入れ替える(社長「はい」2026-10-10: Switch の手のまま=右の A で決定・下の B で戻る)。
+    // 標準配置は位置で並ぶ(0=下・1=右)。ゲーム中の操作(下=指・右=はじく)は全パッド共通の位置のまま。
+    const nin = padFamilyOf(gp.id) === 'nin';
+    const OK = nin ? B.B : B.A, CANCEL = nin ? B.A : B.B;
+    noteConfirmHeld('pad', !!btn[OK]); // 層に入った時に押されていた決定ボタンは、離すまで決定に使わない(menuNav)
     const anyInput = btn.some(Boolean) || Math.hypot(ax, ay) > PAD_DEAD_ZONE;
     const dtMs = lastTickAt ? Math.min(100, now - lastTickAt) : 16;
     lastTickAt = now;
@@ -115,7 +120,7 @@ export const installGamepad = (): (() => void) => {
     //   (v0.25.4881・社長報告「スキップがゲームコントローラーで押すすべがない」)。
     //   旧: スタート→Esc の道はあったが、オープニングの廊下(下の分岐)は先に return していて届かず、
     //   キャンセル(B)は戻る/払いへ行くだけだった。スキップが出ていなければ何もしない=下の従来の割り当てへ。
-    if ((down(B.B) || down(B.START) || down(B.BACK)) && pressVisibleSkip()) { prev = btn; return; }
+    if ((down(CANCEL) || down(B.START) || down(B.BACK)) && pressVisibleSkip()) { prev = btn; return; }
 
     // オープニングの廊下(矢印で歩く場面): 十字キー/スティックの左右を矢印キーとして送る。
     if (document.querySelector('[data-kbnav-off]')) {
@@ -141,7 +146,7 @@ export const installGamepad = (): (() => void) => {
       let dir: NavDir | null = btn[B.UP] ? 'up' : btn[B.DOWN] ? 'down' : btn[B.LEFT] ? 'left' : btn[B.RIGHT] ? 'right' : null;
       if (!dir && Math.hypot(ax, ay) > MENU_STICK_ON) dir = Math.abs(ax) > Math.abs(ay) ? (ax > 0 ? 'right' : 'left') : (ay > 0 ? 'down' : 'up');
       navHold(dir, now); // 間隔(初回320ms・以後110ms)と端のぶつかりは menuNav が決める
-      if (down(B.A)) navActivate();
+      if (down(OK)) navActivate();
       if (down(B.LB)) navTab(-1, 'pad');
       if (down(B.RB)) navTab(1, 'pad');
       if (gp.mapping === 'standard') {
@@ -149,7 +154,7 @@ export const installGamepad = (): (() => void) => {
         if (Math.abs(ry) > MENU_SCROLL_DEAD) navScrollStick(Math.sign(ry) * (Math.abs(ry) - MENU_SCROLL_DEAD) / (1 - MENU_SCROLL_DEAD), dtMs);
       }
       // B=戻る。ゲーム中(一時停止の窓)は Esc と同じ持ち主(Game/PauseMenu)へ=再開。ゲーム外は「戻る/閉じる」ボタン(監査 A-8)。
-      if (down(B.B)) { if (isGameplayMounted()) escapeKey(); else { navEnter(); navBack(); } } // 最初の1押しは kbnav に入ってから(戻った先ですぐ選択が置かれる)
+      if (down(CANCEL)) { if (isGameplayMounted()) escapeKey(); else { navEnter(); navBack(); } } // 最初の1押しは kbnav に入ってから(戻った先ですぐ選択が置かれる)
       if (down(B.START) || down(B.BACK)) escapeKey();
       prev = btn;
       return;
