@@ -2319,6 +2319,8 @@ export interface Projectile {
   escortId?: string;
   /** ★SAME_ARENA §9: 幻影の弾のクリ旗(ダメージは焼き込み済み=旗は被弾側の体勢削り+2/3減速の合図だけ)。 */
   pvpCrit?: boolean;
+  /** 幻影の弾=生成時に対人スケール(PVP_DAMAGE_SCALE)を焼き込み済み。打ち返されて幻影に当たる時に2回掛けないための印(phantomScript.pvpHitDamageForGate)。 */
+  pvpScaled?: boolean;
   // GHOST-BULLET-TECH(BOT_AND_GHOST.md §2.9・**記録専用**): 発射元の技キー(moveReaction.tsの台帳)。
   // 「弾も技」=被弾を技別の反応表へ帰属させ、守護霊が弾技ごとの得手不得手を再現するために持つ。
   // **判定・ダメージ・弾の挙動・ボス側には一切影響しない**(createEnemyProjectileが1箇所で付ける)。

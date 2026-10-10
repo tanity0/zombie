@@ -101,7 +101,7 @@ import {
 } from '../utils/rescueQuestArena'; // 二人組クエストv2(§2-4/§2-5/§2-6・B3)
 import { computeWarpLandingPoint, computeWarpFlyinStart } from '../utils/rescueQuestWarp'; // 二人組クエストv2(§2-8・B4)
 import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
-import { PVP_DAMAGE_SCALE } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
+import { PVP_DAMAGE_SCALE, pvpHitDamageForGate } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget } from '../utils/dogFetch';
 import { stepMagnetPull } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ(社長裁定2026-09-13) // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
@@ -14496,7 +14496,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 「至近モードの弾」は存在しない=ここの分岐は死んでいた。読み手ごと削除した
           // (体勢削り'heavy'は weaponUtils の近接ブロックが damageEnemy へ直接渡している)。
           const enemyKilled = damageEnemy(
-            enemyId, dmg, false, hitCrit, false, dmgChannel, hateShotSource,
+            // 幻影の弾を打ち返して幻影に当てた時は、焼き込み済みの対人スケールを戻してからゲートへ(1回だけ掛かる・社長指摘2026-10-10)。
+            enemyId, pvpHitDamageForGate(dmg, !!projectile?.pvpScaled, !!enemyForFx && isGuardianPhantom(enemyForFx.type)), false, hitCrit, false, dmgChannel, hateShotSource,
             projectile?.reflected ? 'reflect' : isPiledriverHit ? 'heavy' : directPlayerGun && hitCrit ? 'gun-crit' : null,
             projectile?.postureMult ?? 1,
             // ★v0.25.3665(社長指摘「鴉、銃の弾反撃しないよ?」): プレイヤーの直接銃弾は弾として

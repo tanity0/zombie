@@ -49,3 +49,13 @@ export const GUARDIAN_PHANTOM_TUNING = {
  * ※派生: 幻影の弾パリィの打ち返しは ×REFLECT(10)×これ なので、素の弾ダメの2倍で返るようになる。
  */
 export const PVP_DAMAGE_SCALE = 0.2;
+
+/**
+ * 弾が幻影に当たった時、ゲート(phantomGate)へ渡すダメージ。**対人スケールは1回だけ**掛かるようにする。
+ * 幻影の弾は**生成時に**対人スケールを焼き込んである(`pvpScaled`)。それをプレイヤーが打ち返して幻影に当てると、
+ * ゲートがもう一度スケールを掛けて**2回掛かり**、打ち返しが普通の1発の2倍にしかならなかった
+ * (幻影がプレイヤーの弾を打ち返すと10倍=5倍の差。社長指摘2026-10-10「幻影がフェアじゃない」)。
+ * 焼き込み済みの弾が幻影に当たる時だけ、焼いた分を戻してからゲートへ渡す=どちらの打ち返しも普通の1発の10倍。
+ */
+export const pvpHitDamageForGate = (dmg: number, prescaled: boolean, targetIsPhantom: boolean): number =>
+  (prescaled && targetIsPhantom ? dmg / PVP_DAMAGE_SCALE : dmg);

@@ -301,6 +301,7 @@ import { phantomDisplayLabel, getPhantomIdentity } from '../utils/phantomIdentit
 import { phantomHitGate, playerIframeApplies, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
 import { ensureProjectileOrigin } from '../utils/projectileOrigin';
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from '../utils/phantomScript';
+import { HUMAN_REACTION_MS } from '../utils/bossSkeleton'; // 幻影の弾パリィの反応にも人の下限(社長指摘2026-10-10「幻影がフェアじゃない」)
 import { isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult, TRAP_ROOT_CRIT_BONUS } from '../utils/trapDebuff';
 import { strongestGuardian } from '../data/fixedGuardians';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
@@ -3214,8 +3215,11 @@ const gatePhantomHit = (
     ? (getPhantomIdentity()?.profile.counterChance ?? strongestGuardian().profile.counterChance)
     : 0,
   // ★同上(O-5の取りこぼし): 反応速度も**その回の人格**から。
+  // ★人の反応の下限でクランプ(社長指摘2026-10-10「幻影がフェアじゃない」)。動き・回避の判断(phantomTick の phantomProfile)は
+  // SAME_ARENA §7 で既に下限250msを入れていたのに、**弾パリィのここだけ台帳の100〜130msのまま**で、
+  // 0.1秒飛んだ弾=ほぼどの距離の弾も打ち返し抽選に掛かっていた。
   reactionMs: isGuardianPhantom(enemy.type)
-    ? (getPhantomIdentity()?.profile.reactionMs ?? strongestGuardian().profile.reactionMs)
+    ? Math.max(HUMAN_REACTION_MS, getPhantomIdentity()?.profile.reactionMs ?? strongestGuardian().profile.reactionMs)
     : 0,
   parryCdMs: GP_T.parryCdMs,
   // 近接パリィの窓: **storeに入った**スイング打刻を起点に、プレイヤーと同じ長さだけ開く

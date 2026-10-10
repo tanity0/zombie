@@ -837,6 +837,7 @@ const firePhantomShot = (
     ),
     // ★SAME_ARENA §9: クリ旗を弾に載せる(被弾側=combatTickが体勢削り(gun-crit)+2/3減速の合図に使う)。
     ...(crit ? { pvpCrit: true } : {}),
+    pvpScaled: true, // 対人スケール焼き込み済み(打ち返されて自分に当たる時に2回掛けない)
   });
   s.gun = { ...gun, magazine: Math.max(0, (gun.magazine ?? 0) - 1), lastFired: Date.now() };
   patch.gpShotAt = newGameTime;

@@ -616,3 +616,16 @@ describe('research/LUNGE_DODGE.md §4(段L3): 幻影の踏み込み回避', () =
     expect(escaped).toBe(false);
   });
 });
+
+describe('対人スケールは打ち返しでも1回だけ(社長指摘2026-10-10「幻影がフェアじゃない」)', () => {
+  it('幻影の弾(焼き込み済み)を打ち返して幻影に当てる時だけ、焼いた分を戻してゲートへ渡す', async () => {
+    const { pvpHitDamageForGate, PVP_DAMAGE_SCALE } = await import('./phantomScript');
+    // 幻影の弾の素のダメージ D=10 → 生成時に ×0.2 で 2 → プレイヤーが打ち返して ×10 で 20
+    const reflected = 10 * PVP_DAMAGE_SCALE * 10;
+    // ゲートは ×0.2 を掛けるので、渡す値は 20/0.2=100 → 幻影が受けるのは 20 = 普通の1発(10×0.2=2)の10倍
+    expect(pvpHitDamageForGate(reflected, true, true) * PVP_DAMAGE_SCALE).toBeCloseTo(10 * PVP_DAMAGE_SCALE * 10);
+    // プレイヤーの弾(焼き込み無し)と、幻影以外への命中は素通し
+    expect(pvpHitDamageForGate(7, false, true)).toBe(7);
+    expect(pvpHitDamageForGate(7, true, false)).toBe(7);
+  });
+});
