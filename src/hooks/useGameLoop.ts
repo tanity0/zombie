@@ -1788,6 +1788,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const prevCounterSuccessRef = useRef(0);
   const prevHealthRef = useRef(0);
   const gameOverTriggeredRef = useRef(false);
+  // 死亡演出の後にリザルトへ送る予約。**このループ(=この出撃)が終わったら取り消す**。
+  // 取り消さないと、保険(Game.tsx の700ms)で先にリザルトが出て「もう一度」を押した後、
+  // 前の出撃の予約が新しい出撃の最中に届いて、もう一度リザルトが出ていた(社長報告2026-10-10・変異体対策室)。
+  const deathToResultTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (deathToResultTimerRef.current !== null) window.clearTimeout(deathToResultTimerRef.current);
+    deathToResultTimerRef.current = null;
+  }, []);
   const dogFetchRef = useRef<DogFetchJob | null>(null);
   /** ★幻影のドッグ(拾わずに消す)。プレイヤーの枠と取り合わないよう主語ごとに持つ。 */
   const phantomDogRef = useRef<DogFetchJob | null>(null);
@@ -2231,7 +2239,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     spawnBurst(x, y, '#ef4444', 36);
     spawnBurst(x, y, '#7f1d1d', 22);
     // 死亡演出(寄り+スロー+血)を見せ切ってからゲームオーバー画面へ(v0.25.2587: 1100→PLAYER_DEATH_TO_RESULT_MS)。
-    window.setTimeout(onGameOver, PLAYER_DEATH_TO_RESULT_MS);
+    deathToResultTimerRef.current = window.setTimeout(onGameOver, PLAYER_DEATH_TO_RESULT_MS);
   }, [onGameOver, spawnBurst, spawnFlash, spawnRing, emitBotReport]);
 
   const spawnEggFluidSplash = useCallback((x: number, y: number, intensity = 1) => {
