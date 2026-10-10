@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.4971 — 研究所レベル3の討伐アテンションを外す(社長「研究所のレベル3は強個体であって、ボスではない。倒してもアテンションしない」)【2026-10-10 22:07 JST】
+- 原因: 討伐アテンション(時間停止+カメラ寄り)の唯一の出どころ `enemyUtils.getsDeathAttention` が「isBossType かつ pumpkin 同格(pumpkin/削岩型/伐採人)以外」で、`lab-zombie-3` は isBossType に入っているため対象になっていた。
+- 修正: `getsDeathAttention` から `lab-zombie-3` を外す(強個体の区分仕様への整合)。死体の保持(holdMs)も同じ関数を見るので 0=その場で崩れる。
+- 残したもの(社長へ確認中): 討伐の崩壊演出・「研究施設の変異体(Lv3)を討伐」のバナー・閃光・シェイク・スロー(`getsDramaticDeath`)。パンプキンは v0.25.3168 で「討伐イベントごと不要」と裁定済み。
+- 確認: ヘッドレスで lab-zombie-3 を倒す→attention なし・holdMs 0 / giantbat を倒す→attention あり(従来どおり)。enemyUtils.test 85件(lab-zombie-3 の項を追加)。
+- 自己点検: 憲法第4条・第5条に触れない。
+- 変更: src/utils/enemyUtils.ts・enemyUtils.test.ts・package.json・changelog.ts。
+
 ## v0.25.4970 — ボタンガイドの ON/OFF・任天堂系パッドの表記(社長「はい」・research/PC_SUPPORT.md §14-7)【2026-10-10 21:16 JST】
 - オプション「操作 → ボタンガイド ON/OFF」(既定 ON・localStorage `zombie:ui:hudHints`)。横長の窓の時だけ項目を出す(スマホのオプション画面は不変=横長でない時は描かない)。新しいドット絵 `gamepad`。
 - パッドの系統 `navMap.padFamilyOf` = xbox / ps / nin。任天堂系は標準配置(位置)の刻印が Xbox と逆: 下=B・右=A・上=X・L/R・一時停止=丸の中の+。メニューの案内とゲーム中の札を同じ表で。

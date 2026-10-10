@@ -334,9 +334,13 @@ describe('getsDeathAttention (討伐時の時間停止+カメラ寄り・社長�
     expect(getsDeathAttention('pumpkin')).toBe(false);
   });
 
-  it('pumpkin 以外のボスは従来どおり全員出す', () => {
+  it('★lab-zombie-3(研究所レベル3)も出さない。強個体であってボスではない(社長指示2026-10-10)', () => {
+    expect(getsDeathAttention('lab-zombie-3')).toBe(false);
+  });
+
+  it('pumpkin・lab-zombie-3 以外のボスは従来どおり全員出す', () => {
     for (const type of BOSS_TYPES) {
-      if (type === 'pumpkin') continue;
+      if (type === 'pumpkin' || type === 'lab-zombie-3') continue;
       expect(getsDeathAttention(type), type).toBe(true);
     }
   });

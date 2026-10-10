@@ -421,7 +421,10 @@ export const isFinalBossKill = (e: Pick<Enemy, 'type' | 'fromEvent' | 'glenForm'
  * 刈る手触り(§コアループ①秒)が毎回途切れる。**崩壊演出・バナー・スロー・シェイクは残す**ので、
  * 討伐した手応えは維持したまま、進行を止める要素だけを外す。
  */
-export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && !isPumpkinTier(t);
+//
+// ★`lab-zombie-3`(研究所レベル3)も除外(社長指示2026-10-10「研究所のレベル3は強個体であって、ボスではない。倒してもアテンションしない」)。
+// isBossType には入っているが区分は**強個体**(usesBossCrit の注記と同じ扱い)=強個体の区分仕様に揃える。
+export const getsDeathAttention = (t: EnemyType): boolean => isBossType(t) && !isPumpkinTier(t) && t !== 'lab-zombie-3';
 
 // 討伐(KILL)時に「FF風クランブル」統一演出(triggerDramaticDeath・gameStore.ts)を出す対象か。
 // ボス系は全員対象。ネームド/クエスト対象も従来どおり劇的な討伐を維持する。
