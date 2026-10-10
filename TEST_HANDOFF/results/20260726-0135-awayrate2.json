@@ -1,0 +1,23 @@
+{
+  "goal": {
+    "x": -7728,
+    "side": -1
+  },
+  "phaseMs": 120000,
+  "toward": {
+    "label": "ゴール側(間引きあり=2/3)",
+    "holdX": -3000,
+    "spawned": 26,
+    "dt": 120028,
+    "perMin": 13
+  },
+  "away": {
+    "label": "逆側(間引きなし=3/3)",
+    "holdX": 3000,
+    "spawned": 39,
+    "dt": 120029,
+    "perMin": 19.5
+  },
+  "ratio": 1.5,
+  "errors": []
+}

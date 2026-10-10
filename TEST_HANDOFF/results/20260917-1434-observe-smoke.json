@@ -1,0 +1,1152 @@
+{
+  "schema": "run-manifest/1",
+  "run": {
+    "mode": "smoke",
+    "url": "http://localhost:4173/zombie/?smoke=1&autotut=1&testbridge=1&seed=12345&bot=standard&botskill=casual&stage=stage-1",
+    "stamp": "20260917-1434",
+    "startedAt": "2026-09-17T14:34:07.703Z",
+    "endedAt": "2026-09-17T14:37:09.435Z",
+    "realSec": 182,
+    "endedReason": "timeLimit",
+    "stateSource": "bridge"
+  },
+  "build": {
+    "version": "0.25.4448",
+    "commit": "4f2a53c6"
+  },
+  "env": {
+    "os": "win32 x64",
+    "node": "v24.16.0",
+    "browser": "153.0.8010.48",
+    "headed": true,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "deviceScaleFactor": 1,
+    "isMobile": false,
+    "hasTouch": false,
+    "server": "http://localhost:4173/zombie/"
+  },
+  "query": {
+    "smoke": "1",
+    "autotut": "1",
+    "testbridge": "1",
+    "seed": "12345",
+    "bot": "standard",
+    "botskill": "casual",
+    "stage": "stage-1"
+  },
+  "seed": {
+    "requested": "12345",
+    "effective": 12345,
+    "note": "seed 配下は段階的に拡大中。Bridge の seed はレベルアップ選択と敵の湧きを代表する値"
+  },
+  "observed": {
+    "gateClicks": 1,
+    "shopFixes": 0,
+    "maxEnemies": 10,
+    "consoleErrorCount": 0,
+    "firstRunSearchMs": null,
+    "finalState": {
+      "via": "bridge",
+      "buildVersion": "0.25.4448",
+      "gitCommit": "4f2a53c6",
+      "stageId": "stage-1",
+      "screenId": "gameplay",
+      "gameTime": 147664,
+      "isPaused": false,
+      "pauseReason": null,
+      "showShopMenu": false,
+      "showEventQuestMenu": false,
+      "showUpgradeMenu": false,
+      "tutorialPopup": false,
+      "playerAlive": true,
+      "health": 37,
+      "level": 3,
+      "x": -65,
+      "y": 1926,
+      "botPersona": "standard",
+      "botSkill": "casual",
+      "botGoal": "none",
+      "enemyCount": 9,
+      "bossTypes": [],
+      "resultState": null,
+      "deathCause": null,
+      "botReportReady": false,
+      "lastProgressAt": 1789655828692,
+      "lastSignificantEventAt": 1789655812336,
+      "seed": 12345,
+      "screen": "gameplay",
+      "botReport": null,
+      "buttons": [
+        {
+          "text": "3/7",
+          "aria": "ショットガン"
+        },
+        {
+          "text": "0/0",
+          "aria": "マグナム"
+        },
+        {
+          "text": "",
+          "aria": "Audio off"
+        }
+      ]
+    },
+    "botReport": null
+  },
+  "screenshots": [
+    {
+      "trigger": "firstLevelUp",
+      "atRealSec": 75,
+      "atGameSec": 50,
+      "kept": "20260917-1434-smoke-firstLevelUp.png",
+      "tempPath": null
+    },
+    {
+      "trigger": "maxEnemies",
+      "atRealSec": 24,
+      "atGameSec": 4,
+      "kept": "20260917-1434-smoke-maxEnemies.png",
+      "tempPath": null
+    },
+    {
+      "trigger": "timeout",
+      "atRealSec": 182,
+      "atGameSec": 147,
+      "kept": "20260917-1434-smoke-timeout.png",
+      "tempPath": null
+    },
+    {
+      "trigger": "gameplayStarted",
+      "atRealSec": 19,
+      "atGameSec": 1,
+      "kept": "20260917-1434-smoke-gameplayStarted.png",
+      "tempPath": null
+    }
+  ],
+  "tempDir": "C:\\Users\\tanity\\AppData\\Local\\Temp\\zombie-observe-1789655646039",
+  "events": [
+    {
+      "realSec": 0,
+      "gameSec": null,
+      "eventType": "boot",
+      "note": "http://localhost:4173/zombie/?smoke=1&autotut=1&testbridge=1&seed=12345&bot=standard&botskill=casual&stage=stage-1"
+    },
+    {
+      "realSec": 3,
+      "gameSec": null,
+      "eventType": "gateClicked",
+      "note": "OK"
+    },
+    {
+      "realSec": 18,
+      "gameSec": 1,
+      "eventType": "gameplayStarted"
+    },
+    {
+      "realSec": 22,
+      "gameSec": 4,
+      "eventType": "maxEnemies",
+      "note": "同時 3 体"
+    },
+    {
+      "realSec": 31,
+      "gameSec": 11,
+      "eventType": "maxEnemies",
+      "note": "同時 6 体"
+    },
+    {
+      "realSec": 37,
+      "gameSec": 17,
+      "eventType": "maxEnemies",
+      "note": "同時 9 体"
+    },
+    {
+      "realSec": 47,
+      "gameSec": 26,
+      "eventType": "damageTaken",
+      "note": "130 → 124"
+    },
+    {
+      "realSec": 50,
+      "gameSec": 29,
+      "eventType": "damageTaken",
+      "note": "124 → 114"
+    },
+    {
+      "realSec": 60,
+      "gameSec": 37,
+      "eventType": "damageTaken",
+      "note": "114 → 106"
+    },
+    {
+      "realSec": 62,
+      "gameSec": 39,
+      "eventType": "damageTaken",
+      "note": "106 → 100"
+    },
+    {
+      "realSec": 72,
+      "gameSec": 48,
+      "eventType": "damageTaken",
+      "note": "100 → 87"
+    },
+    {
+      "realSec": 74,
+      "gameSec": 50,
+      "eventType": "levelUp",
+      "note": "Lv1 → Lv2"
+    },
+    {
+      "realSec": 118,
+      "gameSec": 89,
+      "eventType": "levelUp",
+      "note": "Lv2 → Lv3"
+    },
+    {
+      "realSec": 135,
+      "gameSec": 106,
+      "eventType": "damageTaken",
+      "note": "87 → 68"
+    },
+    {
+      "realSec": 151,
+      "gameSec": 120,
+      "eventType": "damageTaken",
+      "note": "68 → 49"
+    },
+    {
+      "realSec": 165,
+      "gameSec": 132,
+      "eventType": "damageTaken",
+      "note": "49 → 37"
+    },
+    {
+      "realSec": 180,
+      "gameSec": 146,
+      "eventType": "timeout"
+    }
+  ],
+  "bridgeEvents": [
+    {
+      "realTime": 1789655664529,
+      "gameTime": 16.700000000000728,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655665120,
+      "gameTime": 566.1999999999971,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655667469,
+      "gameTime": 2016.800000000003,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655669924,
+      "gameTime": 4034.30000000001,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655671181,
+      "gameTime": 4667.200000000012,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655671601,
+      "gameTime": 5050.900000000009,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655672788,
+      "gameTime": 6051.200000000008,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655674856,
+      "gameTime": 8068.0999999999985,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655676429,
+      "gameTime": 8914.804100133864,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655677764,
+      "gameTime": 10066.89249924846,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655677806,
+      "gameTime": 10100.292499248462,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "zombie"
+      }
+    },
+    {
+      "realTime": 1789655679805,
+      "gameTime": 12100.492499248467,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655681335,
+      "gameTime": 13633.492499248467,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655681847,
+      "gameTime": 14150.892499248468,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655682403,
+      "gameTime": 14700.59249924848,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655682765,
+      "gameTime": 15067.392499248483,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655683900,
+      "gameTime": 16117.292499248484,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655686089,
+      "gameTime": 18134.392499248475,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655688052,
+      "gameTime": 20084.792499248484,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655690604,
+      "gameTime": 22500.89249924849,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655691137,
+      "gameTime": 23034.092499248494,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655693291,
+      "gameTime": 25132.6924992485,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655697943,
+      "gameTime": 29314.892499248497,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655698869,
+      "gameTime": 30081.592499248494,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655698947,
+      "gameTime": 30164.592499248494,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655699660,
+      "gameTime": 30847.6924992485,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655700422,
+      "gameTime": 31614.39249924851,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655702762,
+      "gameTime": 33212.83419100072,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655703588,
+      "gameTime": 34018.052919112146,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "zombie"
+      }
+    },
+    {
+      "realTime": 1789655704818,
+      "gameTime": 35200.852919112156,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655707576,
+      "gameTime": 37668.252919112165,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655708488,
+      "gameTime": 38434.35291911216,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655709357,
+      "gameTime": 39217.35291911217,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655710462,
+      "gameTime": 40216.352919112156,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655715355,
+      "gameTime": 44981.25291911215,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "werewolf"
+      }
+    },
+    {
+      "realTime": 1789655715703,
+      "gameTime": 45247.652919112144,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655718114,
+      "gameTime": 47197.05291911215,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "zombie"
+      }
+    },
+    {
+      "realTime": 1789655720867,
+      "gameTime": 49001.43202764435,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655721744,
+      "gameTime": 49713.38345431933,
+      "eventType": "paused",
+      "data": {
+        "pauseReason": "upgrade"
+      }
+    },
+    {
+      "realTime": 1789655721744,
+      "gameTime": 49713.38345431933,
+      "eventType": "upgradeOptions",
+      "data": {
+        "options": [
+          {
+            "type": "skill",
+            "skillKey": "bomb-counter",
+            "equipDefId": null
+          },
+          {
+            "type": "consumable",
+            "skillKey": null,
+            "equipDefId": null
+          },
+          {
+            "type": "skill",
+            "skillKey": "attack-shooter",
+            "equipDefId": null
+          },
+          {
+            "type": "scrap",
+            "skillKey": null,
+            "equipDefId": null
+          }
+        ]
+      }
+    },
+    {
+      "realTime": 1789655721881,
+      "gameTime": 49713.38345431933,
+      "eventType": "upgradeSelected",
+      "data": {
+        "type": "scrap",
+        "skillKey": null,
+        "equipDefId": null
+      }
+    },
+    {
+      "realTime": 1789655721882,
+      "gameTime": 49713.38345431933,
+      "eventType": "resumed",
+      "data": {
+        "pauseReason": "upgrade"
+      }
+    },
+    {
+      "realTime": 1789655722908,
+      "gameTime": 50247.08345431934,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655723989,
+      "gameTime": 51330.88345431936,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "pumpkin"
+      }
+    },
+    {
+      "realTime": 1789655726094,
+      "gameTime": 53413.28345431937,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655728004,
+      "gameTime": 55297.083454319356,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655729923,
+      "gameTime": 57212.48345431935,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655732309,
+      "gameTime": 59595.68345431935,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "zombie"
+      }
+    },
+    {
+      "realTime": 1789655733198,
+      "gameTime": 60328.583454319356,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655735256,
+      "gameTime": 61346.10893170275,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655736866,
+      "gameTime": 62929.910521282814,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655737280,
+      "gameTime": 63213.31052128281,
+      "eventType": "counter"
+    },
+    {
+      "realTime": 1789655739413,
+      "gameTime": 64668.051531895035,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655740110,
+      "gameTime": 65350.951531895014,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655741017,
+      "gameTime": 66267.65153189504,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "zombie"
+      }
+    },
+    {
+      "realTime": 1789655745085,
+      "gameTime": 70251.25153189502,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655745205,
+      "gameTime": 70351.35153189502,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655746042,
+      "gameTime": 71184.55153189502,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "zombie"
+      }
+    },
+    {
+      "realTime": 1789655746726,
+      "gameTime": 71884.65153189503,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655747016,
+      "gameTime": 72167.55153189503,
+      "eventType": "counter"
+    },
+    {
+      "realTime": 1789655750218,
+      "gameTime": 74175.50587418725,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655751458,
+      "gameTime": 75372.4635772635,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655752407,
+      "gameTime": 76337.8635772635,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655756490,
+      "gameTime": 80388.26357726353,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655761778,
+      "gameTime": 85421.26357726351,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655764618,
+      "gameTime": 88068.96357726348,
+      "eventType": "bossDefeated",
+      "data": {
+        "type": "pumpkin",
+        "result": "defeated"
+      }
+    },
+    {
+      "realTime": 1789655765157,
+      "gameTime": 88585.46357726348,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655766115,
+      "gameTime": 89367.33281162128,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "plant"
+      }
+    },
+    {
+      "realTime": 1789655766398,
+      "gameTime": 89615.59009394445,
+      "eventType": "paused",
+      "data": {
+        "pauseReason": "upgrade"
+      }
+    },
+    {
+      "realTime": 1789655766398,
+      "gameTime": 89615.59009394445,
+      "eventType": "upgradeOptions",
+      "data": {
+        "options": [
+          {
+            "type": "consumable",
+            "skillKey": null,
+            "equipDefId": null
+          },
+          {
+            "type": "skill",
+            "skillKey": "attack-shooter",
+            "equipDefId": null
+          },
+          {
+            "type": "skill",
+            "skillKey": "knight",
+            "equipDefId": null
+          },
+          {
+            "type": "scrap",
+            "skillKey": null,
+            "equipDefId": null
+          }
+        ]
+      }
+    },
+    {
+      "realTime": 1789655766423,
+      "gameTime": 89615.59009394445,
+      "eventType": "upgradeSelected",
+      "data": {
+        "type": "skill",
+        "skillKey": "attack-shooter",
+        "equipDefId": null
+      }
+    },
+    {
+      "realTime": 1789655766427,
+      "gameTime": 89615.59009394445,
+      "eventType": "resumed",
+      "data": {
+        "pauseReason": "upgrade"
+      }
+    },
+    {
+      "realTime": 1789655767076,
+      "gameTime": 90149.09009394445,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655767446,
+      "gameTime": 90449.09009394445,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655767891,
+      "gameTime": 90882.69009394446,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655772493,
+      "gameTime": 95464.39009394438,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655773644,
+      "gameTime": 96597.19009394439,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "pumpkin"
+      }
+    },
+    {
+      "realTime": 1789655775822,
+      "gameTime": 98779.6900939444,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "zombie"
+      }
+    },
+    {
+      "realTime": 1789655776973,
+      "gameTime": 99930.0900939444,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655777624,
+      "gameTime": 100496.6900939444,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655777627,
+      "gameTime": 100496.6900939444,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655781636,
+      "gameTime": 104481.49009394443,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655782667,
+      "gameTime": 105514.59009394441,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655783268,
+      "gameTime": 106013.89009394449,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655788410,
+      "gameTime": 110554.36298164132,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655788459,
+      "gameTime": 110604.36298164132,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655789550,
+      "gameTime": 111670.26298164134,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655790619,
+      "gameTime": 112719.86298164137,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655791670,
+      "gameTime": 113786.56298164144,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "zombie"
+      }
+    },
+    {
+      "realTime": 1789655792245,
+      "gameTime": 114303.56298164144,
+      "eventType": "counter"
+    },
+    {
+      "realTime": 1789655794009,
+      "gameTime": 115582.34950129155,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655796532,
+      "gameTime": 118082.24950129149,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655797956,
+      "gameTime": 119498.34950129152,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655799186,
+      "gameTime": 120598.24950129146,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655799551,
+      "gameTime": 120794.48950129148,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655802301,
+      "gameTime": 122924.63157126233,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655803416,
+      "gameTime": 123941.1315712623,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655804299,
+      "gameTime": 124824.43157126232,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655805097,
+      "gameTime": 125607.73157126225,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655805186,
+      "gameTime": 125707.73157126225,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655809898,
+      "gameTime": 129803.73157126222,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "bat"
+      }
+    },
+    {
+      "realTime": 1789655810745,
+      "gameTime": 130653.63157126225,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655812074,
+      "gameTime": 131919.93157126228,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655812601,
+      "gameTime": 132319.93157126228,
+      "eventType": "counter"
+    },
+    {
+      "realTime": 1789655815736,
+      "gameTime": 134932.302826481,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655816496,
+      "gameTime": 135682.20282648093,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655821492,
+      "gameTime": 140665.702826481,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    },
+    {
+      "realTime": 1789655821741,
+      "gameTime": 140915.702826481,
+      "eventType": "enemySpawn",
+      "data": {
+        "type": "skeleton"
+      }
+    },
+    {
+      "realTime": 1789655826649,
+      "gameTime": 145714.70282648096,
+      "eventType": "skillUsed",
+      "data": {
+        "key": "heavy-grenade"
+      }
+    }
+  ],
+  "bridgeEventCounts": {
+    "skillUsed": 30,
+    "enemySpawn": 66,
+    "paused": 2,
+    "upgradeOptions": 2,
+    "upgradeSelected": 2,
+    "resumed": 2,
+    "counter": 4,
+    "bossDefeated": 1
+  },
+  "consoleErrors": []
+}

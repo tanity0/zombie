@@ -1,22 +1,37 @@
 import { useEffect } from 'react';
-import { useGameStore, isGameTimeStopped } from '../store/gameStore';
-import { performTapAction, performFlickAction } from '../utils/inputActions';
+import { useGameStore, isGameTimeStopped, isAttackLocked } from '../store/gameStore';
+import { performFlickAction } from '../utils/inputActions';
+import { pcPressDown, pcPressUp, markPcFlick } from '../utils/pcPress';
+import { isMenuContext } from '../utils/menuNav';
+import { pcCycleGun, pcSelectGunSlot } from '../utils/weaponCycle';
 
 // Keyboard fallback — the game is touch-first, but we keep a PC-optimized
 // scheme so a laptop is fully playable.
 //   移動(指移動): WASD / 矢印(同時押しで斜めOK)
-//   タップ/離す(カウンター・近接・PHILL発砲): Space / J
-//   フリック(一閃ダッシュ・ワイヤーアンカー): K / Shift … 押した瞬間に「今の移動方向」へ発動。
+//   指を置く/離す(タッチと同じ: 押している間ホーミングのロック、離すと近接・PHILL発砲。2度押しでスケボー): Space / J
+//     (research/PC_SUPPORT.md §11-1。マウスの左ボタン・パッドの A と同じ utils/pcPress を呼ぶ)
+//   フリック(一閃ダッシュ・ワイヤーアンカー): K … 押した瞬間に「今の移動方向」へ発動。
+//   歩き: Shift(押している間だけ・社長指示2026-10-05。それまで Shift はフリックだった)。
+//   銃の持ち替え: Q=次の銃 / 1〜9=その枠の銃(社長指示2026-10-05・utils/weaponCycle)。
 //     斜めも出せる(WASD合成方向を使う)。二連打方式は廃止(斜めに行けないため)。
 const isCounterKey = (key: string) => {
   const k = key.toLowerCase();
   return k === ' ' || k === 'spacebar' || k === 'space' || k === 'j';
 };
-// フリック発動キー(右手の定番ボタン想定 K、左手ピンキー Shift も可)。
-const isFlickKey = (key: string) => {
-  const k = key.toLowerCase();
-  return k === 'k' || k === 'shift';
+// フリック発動キー(右手の定番ボタン想定 K。マウスは右クリック)。
+const isFlickKey = (key: string) => key.toLowerCase() === 'k';
+// 歩きキー(左手の小指。押している間だけ歩く=離せば走りへ戻る)。
+const isWalkKey = (key: string) => key.toLowerCase() === 'shift';
+
+// 物理キー(e.code)で判定する(research/PC_SUPPORT.md §11-3): 日本語入力オンや JIS/AZERTY 配列でも WASD/Space が効く。
+// e.code が無い/知らないキーは e.key の小文字を使う(従来どおり)。返す値は従来の e.key 小文字と同じ綴り。
+const CODE_TO_KEY: Record<string, string> = {
+  KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', KeyJ: 'j', KeyK: 'k', KeyP: 'p',
+  ArrowUp: 'arrowup', ArrowDown: 'arrowdown', ArrowLeft: 'arrowleft', ArrowRight: 'arrowright',
+  Space: ' ', ShiftLeft: 'shift', ShiftRight: 'shift', Escape: 'escape',
 };
+export const keyIdOf = (e: { code?: string; key: string }): string =>
+  (e.code && CODE_TO_KEY[e.code]) || e.key.toLowerCase();
 
 type MoveDir = 'up' | 'down' | 'left' | 'right';
 const DIR_VECTORS: Record<MoveDir, { x: number; y: number }> = {
@@ -56,7 +71,13 @@ const currentMoveVec = (): { x: number; y: number } => {
 export const useGameControls = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const { key } = e;
+      // v0.25.2621(ボスメーカー): **入力欄にフォーカスがある間は移動/攻撃キーを食べない**。
+      // 数値を直接打っている最中に自機が走り出すと調整にならない(社長補足「動きながら数字を変える」)。
+      // フォーカスが外れれば即座に元どおり戦える。ボスメーカー以外でも同じ判定で無害。
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+
+      const key = keyIdOf(e);
 
       // 四神舞リズムモード中(PC): 移動キー=フリック(移動しない)、Space=タップ、Escape=終了。
       // 攻撃実行/効果音は useGameLoop 側が担当。移動入力は出さない(立ち止まりを維持)。
@@ -67,16 +88,27 @@ export const useGameControls = () => {
         }
         if (isCounterKey(key)) {
           e.preventDefault();
-          if (!e.repeat) useGameStore.getState().rhythmInput('tap');
+          if (!e.repeat) pcPressDown('key'); // 離した時にリズムのタップ(pcPressUp)=タッチと同じ
           return;
         }
         const md = moveDirFromKey(key);
         if (md) {
           e.preventDefault();
-          if (!e.repeat) useGameStore.getState().rhythmInput('flick', DIR_VECTORS[md]);
+          if (!e.repeat) { useGameStore.getState().rhythmInput('flick', DIR_VECTORS[md]); markPcFlick(); }
           return;
         }
         return; // その他のキーはリズム中は無視
+      }
+
+      // 一時停止・説明・レベルアップ・帰還確認などの窓が出ている間は、矢印/WASD/Space はメニューの操作(utils/menuNav・ボタンの標準動作)。
+      // 移動・向き・指には何も書かない(窓の下でプレイヤーが振り向く/再開した瞬間に歩き出す、を防ぐ・検収 A-2/C-1)。
+      if (isMenuContext()) return;
+
+      // 銃の持ち替え(押した瞬間だけ・押しっぱなしの連打は無視)。
+      if (!e.repeat) {
+        if (e.code === 'KeyQ' || (!e.code && key === 'q')) { pcCycleGun(1); return; }
+        const slot = /^Digit([1-9])$/.exec(e.code ?? '');
+        if (slot) { pcSelectGunSlot(Number(slot[1]) - 1); return; }
       }
 
       const inputState = { ...useGameStore.getState().inputState };
@@ -99,6 +131,7 @@ export const useGameControls = () => {
           inputState.right = true;
           break;
       }
+      if (isWalkKey(key)) inputState.walk = true;
 
       // 移動キーで向きを更新(フリックを「止まってから」押した時に最新の向きを使えるように)。
       if (moveDirFromKey(key)) {
@@ -117,7 +150,11 @@ export const useGameControls = () => {
       // (PCの主操作はマウス右クリック)。装備していない方は store 側が false を返すので無害。
       if (isFlickKey(key)) {
         e.preventDefault();
-        if (!e.repeat && !isGameTimeStopped()) {
+        // 二人組クエストv2 §2-8(納品ロック・入口4): isGameTimeStopped()だけでは塞がらない
+        // (この枝はisAttackLocked()を経由しない独自ゲート)ので deliveryLocked を1条件足す。
+        // PC版対応の調査(2026-10-02): 一時停止中(ポーズ/説明画面/レベルアップ等)にも通っていた → タッチの指離しと同じ
+        // 共通ゲート isAttackLocked(一時停止・死亡・時間停止・納品ロック・アテンション)で止める。
+        if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked && !isAttackLocked()) {
           const v = currentMoveVec();
           performFlickAction(v.x, v.y);
         }
@@ -129,14 +166,26 @@ export const useGameControls = () => {
         e.preventDefault();
         // First press only — auto-repeat shouldn't keep refiring the counter.
         // 会話/登場演出中(時間停止中)はカウンターを出さない。
-        if (!e.repeat && !isGameTimeStopped()) performTapAction();
+        // 二人組クエストv2 §2-8(納品ロック・入口4): 同上。
+        // 一時停止中(ポーズ/説明画面/レベルアップ等)に Space/J で攻撃が出ていた → タッチと同じ共通ゲートで止める(同上)。
+        // §11-1: 押した=指を置く(受理の門はタッチ・マウス・パッドと同じ isInputLocked=pcPressDown の中・検収 C-3)。
+        // 攻撃は離した時(pcPressUp が isAttackLocked で止める)。
+        if (!e.repeat) pcPressDown('key');
       }
 
       useGameStore.setState({ inputState });
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      const { key } = e;
+      // v0.25.2621(ボスメーカー): **入力欄にフォーカスがある間は移動/攻撃キーを食べない**。
+      // 数値を直接打っている最中に自機が走り出すと調整にならない(社長補足「動きながら数字を変える」)。
+      // フォーカスが外れれば即座に元どおり戦える。ボスメーカー以外でも同じ判定で無害。
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+
+      const key = keyIdOf(e);
+      // 指を離す(§11-1)。ゲーム中は preventDefault=フォーカスの残ったボタンが Space で押されない(監査 B-4)。窓の中では Space でボタンを押せる(検収 C-1)。
+      if (isCounterKey(key)) { if (!isMenuContext()) e.preventDefault(); pcPressUp('key', true); }
       const inputState = { ...useGameStore.getState().inputState };
 
       switch (key.toLowerCase()) {
@@ -157,16 +206,31 @@ export const useGameControls = () => {
           inputState.right = false;
           break;
       }
+      if (isWalkKey(key)) inputState.walk = false;
 
       useGameStore.setState({ inputState });
     };
 
+    // 窓が裏へ行った/ページを離れた: 押しっぱなしのキーの keyup は来ない → 移動を全部離し、指も「撃たずに離す」(§11-1)。
+    const handleBlur = () => {
+      const s = useGameStore.getState();
+      if (s.inputState.up || s.inputState.down || s.inputState.left || s.inputState.right || s.inputState.walk) {
+        useGameStore.setState({ inputState: { ...s.inputState, up: false, down: false, left: false, right: false, walk: false } });
+      }
+      pcPressUp('key', false);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('pagehide', handleBlur);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('pagehide', handleBlur);
+      pcPressUp('key', false); // ゲームを抜けた=押しっぱなしを撃たずに離す
     };
   }, []);
 };
