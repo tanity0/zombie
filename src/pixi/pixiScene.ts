@@ -9393,7 +9393,7 @@ export class PixiScene {
     this.syncHospital(now); // 廃病院(通常ステージのみ。無いステージでは即 return=no-op)
     this.syncArmory(now); // §6.24 M48: 武器庫(同上)
     this.syncPolice(now); // §6.24 M48: 警察署(同上)
-    this.syncBaseSites(s.baseSites, now, s.safeBaseId);
+    this.syncBaseSites(s.baseSites, now, s.safeBaseId, s.labArmory);
     // v0.25.3055(社長指示「城ボス戦の時は移動できる距離を制限。制限ラインを薄く表示するのはいいが、
     // 中は塗るな。景観を損ねるので」): 研究対象の外縁(原点から3000px)に細い二重ストロークだけ描く。
     {
@@ -26884,11 +26884,31 @@ export class PixiScene {
 
   // 制圧イベントの拠点。状態で色分け(未制圧=琥珀/制圧=緑/安全地帯=青)。制圧済みはHPバー＋軍人2体マーカー。
   // 描画は画面内の拠点のみ(画面外はカリング=軽量)。攻撃者は通常敵として敵レンダラが描く。
-  private syncBaseSites(sites: BaseSite[] | undefined, now: number, safeBaseId: string | null) {
+  // 武器庫(中央の小サークル)= 指を離すと遠隔で武器商人を利用(社長指示)。琥珀=ショップ色・小さめ。
+  // 制圧済みの拠点の中央と、研究所のアイドル手前(labArmory・2026-10-11)の2か所で同じ絵を使う。
+  private drawArmory(g: Graphics, x: number, y: number, pulse: number) {
+    const AR = 50; // ARMORY_RADIUS と一致
+    g.circle(x, y, AR).stroke({ width: 2, color: 0xfbbf24, alpha: 0.45 + 0.3 * pulse });
+    g.circle(x, y, AR - 3).fill({ color: 0xfbbf24, alpha: 0.05 + 0.05 * pulse });
+    // 中央に武器箱のビジュアル(社長指示)。木箱＋金属帯＋琥珀の弾薬アクセント。foot(底)= y。
+    const bw = 30, bh = 22, bx = x - bw / 2, by = y - bh;
+    g.ellipse(x, y + 2, bw * 0.55, 5).fill({ color: 0x000000, alpha: 0.28 });                // 接地影
+    g.rect(bx, by, bw, bh).fill({ color: 0x5b4326, alpha: 0.97 });                            // 木箱本体
+    g.rect(bx, by, bw, 5).fill({ color: 0x7a5a33, alpha: 0.97 });                             // 上面ハイライト
+    g.rect(bx + 5, by, 3, bh).fill({ color: 0x3f3a33, alpha: 0.95 });                         // 金属帯(縦)
+    g.rect(bx + bw - 8, by, 3, bh).fill({ color: 0x3f3a33, alpha: 0.95 });                    // 金属帯(縦)
+    g.rect(bx, by + bh / 2 - 1.5, bw, 3).fill({ color: 0x3f3a33, alpha: 0.9 });               // 金属帯(横)
+    g.rect(bx + bw / 2 - 4, by + bh / 2 - 3, 8, 6).fill({ color: 0xfbbf24, alpha: 0.55 + 0.35 * pulse }); // 弾薬色アクセント(脈動)
+    g.rect(bx, by, bw, bh).stroke({ width: 1.5, color: 0x2a2018, alpha: 0.9 });               // 縁
+  }
+
+  private syncBaseSites(sites: BaseSite[] | undefined, now: number, safeBaseId: string | null, labArmory: { x: number; y: number } | null = null) {
     const g = this.baseSitesGfx;
     g.clear();
-    if (!sites || !sites.length || this.isLabStage) return; // ラボ(屋内/野外)では出さない
     const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+    // 研究所: 拠点は無いが、アイドル手前の遠隔ショップ(武器庫)だけ描く(画面外はカリング)。
+    if (labArmory && this.distanceOutsideViewport(labArmory.x, labArmory.y, 110) <= 0) this.drawArmory(g, labArmory.x, labArmory.y, pulse);
+    if (!sites || !sites.length || this.isLabStage) return; // ラボ(屋内/野外)では拠点を出さない
     const R = 130; // BASE_CAPTURE_RADIUS と一致
     for (const s of sites) {
       if (this.distanceOutsideViewport(s.x, s.y, R + 60) > 0) continue; // 画面外はスキップ
@@ -26909,22 +26929,7 @@ export class PixiScene {
             .stroke({ width: 4, color: 0xfff7cc, alpha: 0.95 });
         }
       }
-      if (captured) {
-        // 武器庫(中央の小サークル)= 指を離すと遠隔で武器商人を利用(社長指示)。琥珀=ショップ色・小さめ。
-        const AR = 50; // ARMORY_RADIUS と一致
-        g.circle(s.x, s.y, AR).stroke({ width: 2, color: 0xfbbf24, alpha: 0.45 + 0.3 * pulse });
-        g.circle(s.x, s.y, AR - 3).fill({ color: 0xfbbf24, alpha: 0.05 + 0.05 * pulse });
-        // 中央に武器箱のビジュアル(社長指示)。木箱＋金属帯＋琥珀の弾薬アクセント。foot(底)= s.y。
-        const bw = 30, bh = 22, bx = s.x - bw / 2, by = s.y - bh;
-        g.ellipse(s.x, s.y + 2, bw * 0.55, 5).fill({ color: 0x000000, alpha: 0.28 });            // 接地影
-        g.rect(bx, by, bw, bh).fill({ color: 0x5b4326, alpha: 0.97 });                            // 木箱本体
-        g.rect(bx, by, bw, 5).fill({ color: 0x7a5a33, alpha: 0.97 });                             // 上面ハイライト
-        g.rect(bx + 5, by, 3, bh).fill({ color: 0x3f3a33, alpha: 0.95 });                         // 金属帯(縦)
-        g.rect(bx + bw - 8, by, 3, bh).fill({ color: 0x3f3a33, alpha: 0.95 });                    // 金属帯(縦)
-        g.rect(bx, by + bh / 2 - 1.5, bw, 3).fill({ color: 0x3f3a33, alpha: 0.9 });               // 金属帯(横)
-        g.rect(bx + bw / 2 - 4, by + bh / 2 - 3, 8, 6).fill({ color: 0xfbbf24, alpha: 0.55 + 0.35 * pulse }); // 弾薬色アクセント(脈動)
-        g.rect(bx, by, bw, bh).stroke({ width: 1.5, color: 0x2a2018, alpha: 0.9 });               // 縁
-      }
+      if (captured) this.drawArmory(g, s.x, s.y, pulse);
       // 兵士本体は立ち絵スプライト(drawBaseSoldiers)で描く=ここではマーカーを出さない。
     }
     this.drawBaseSoldiers(sites, now);

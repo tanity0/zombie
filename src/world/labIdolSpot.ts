@@ -26,11 +26,12 @@ export const labIdolSpotForDoc = (doc: LabDocLike): LabIdolSpot => {
   return { x, y, facingLeft: x > 0 };
 };
 
-// ★アイドルと遭遇する手前に金箱(社長指示2026-10-10「アイドルと遭遇する手前に…金箱にする」)。
-// 原点(スタート)側へ LAB_IDOL_CHEST_GAP_PX 戻った所=アイドルが起きる距離(視界 180)より十分手前で拾ってから会える。
-// 縦は帯の中、壁・プロップに重なれば隙間へ寄せる(ゴールと同じ nudgeToClearLabSpot)。
-export const LAB_IDOL_CHEST_GAP_PX = 600;
-export const labIdolChestSpot = (idol: LabIdolSpot): { x: number; y: number } => {
+// ★アイドルと遭遇する手前に遠隔ショップ(拠点の「武器庫」と同じ)(社長指示2026-10-10「アイドルと遭遇する手前に、拠点にあるのと同じ、
+// 遠隔ショップ設置して」→いったん金箱→2026-10-11「やはり研究所の遠隔ショップ復活で」)。
+// 原点(スタート)側へ LAB_IDOL_SHOP_GAP_PX 戻った所=アイドルが起きる距離(視界 180)より十分手前で買い物してから会える。
+// 縦は帯の中、壁・プロップに重なれば隙間へ寄せる(ゴールと同じ nudgeToClearLabSpot)。武器庫の輪(半径50)が収まる大きさで探す。
+export const LAB_IDOL_SHOP_GAP_PX = 600;
+export const labIdolShopSpot = (idol: LabIdolSpot): { x: number; y: number } => {
   const toward = idol.x > 0 ? -1 : 1; // 原点の向き
-  return nudgeToClearLabSpot(idol.x + toward * LAB_IDOL_CHEST_GAP_PX, idol.y, 40, 40);
+  return nudgeToClearLabSpot(idol.x + toward * LAB_IDOL_SHOP_GAP_PX, idol.y, 60, 60);
 };

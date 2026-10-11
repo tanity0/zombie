@@ -406,7 +406,7 @@ import {
   CORRIDOR_BOTTOM_LIMIT as CORRIDOR_BOTTOM_LIMIT_FROM_WORLD,
 } from '../world/playableArea';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
-import { labIdolSpotForDoc, labIdolChestSpot, type LabIdolSpot } from '../world/labIdolSpot';
+import { labIdolSpotForDoc, labIdolShopSpot, type LabIdolSpot } from '../world/labIdolSpot';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 import { cineAccepts, cineCameraAt, cineSideOf, type CineEvent, type CineKind } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜)
@@ -5693,6 +5693,8 @@ interface GameState {
   storyReturnPromptVisible: boolean;
   // 制圧イベント: 4拠点(東西南北)。suppressionActive 時のみ有効(ステージ1メインミッション等)。
   baseSites: BaseSite[];
+  /** 研究所: アイドルの手前の遠隔ショップ(拠点の武器庫と同じ・輪の中で指を離すと開く)。研究所以外/1対1は null(2026-10-11)。 */
+  labArmory: { x: number; y: number } | null;
   escorts: EscortSoldier[];      // 護衛軍人NPC(4人・東西南北担当)。HPなし・前進&射撃&10秒占拠で解放。
   // PACING_PUZZLE.md §17-14: ウェルカムがあるランで、ウェルカムが終わるまで護衛NPCの名簿を
   // 預けておく置き場(escortsは空のまま=描画もtickも走らない=画面に存在しない)。ウェルカムが
@@ -6947,6 +6949,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   finaleDefeated: false,
   storyReturnPromptVisible: false,
   baseSites: createBaseSites(),
+  labArmory: null,
   escorts: [],
   pendingEscorts: [],
   endingSoldiers: [],
@@ -8119,7 +8122,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ため、拠点の近くで戦うと必ず踏んでいた(「閉じ込められて何もできず」の最有力経路)。
     if (!ret && !showShopMenu && !showUpgradeMenu && gameTime >= shopReopenAt && get().redNight?.phase !== 'active'
       && !facilitiesLocked(get().bossFightNow, get().bossFightLastTrueAt, gameTime)) {
-      for (const b of get().baseSites) {
+      // 研究所のアイドル手前の遠隔ショップ(2026-10-11)も、制圧済みの拠点の武器庫と同じ扱い(常に開いている)。
+      const la = get().labArmory;
+      const armories = la ? [...get().baseSites, { x: la.x, y: la.y, status: 'captured' as const }] : get().baseSites;
+      for (const b of armories) {
         if (b.status !== 'captured') continue;
         const adx = b.x - pcx, ady = b.y - pcy;
         if (adx * adx + ady * ady > ARMORY_RADIUS * ARMORY_RADIUS) continue;
@@ -21346,11 +21352,6 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const { x, y } = nudgeToClearLabSpot(x0, y0, 20, 20); // 壁・プロップの中に置かない(ゴールと同じ)
                 return { id: `lab-phill-${i}`, x: x - 8, y: y - 8, type: 'ammo-phill' as const, value: 0 };
               }),
-              // ★アイドルと遭遇する手前に金箱(社長指示2026-10-10)。中身は金箱の共通仕様。アイドルを置かない出撃(1対1)では置かない。
-              ...(labIdol && !vsEntryOfRun() ? [(() => {
-                const c = labIdolChestSpot(labIdol);
-                return { id: 'lab-idol-chest', x: c.x - 8, y: c.y - 8, type: 'bounty-chest' as const, value: 1 };
-              })()] : []),
             ]
           : [];
       // ★v0.25.3137(社長指示「ステージ7(ボスモードも)は、最初に宝箱が目の前に初期設置」):
@@ -21720,6 +21721,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 「チュートリアルステージに拠点サークルぽいのがある、削除」)。制圧イベント自体は
         // v0.25.1818で止めていたが、**サークルの実体(baseSites)は作られたままで描画されていた**。
         baseSites: (corridorMode || farBackdrop === 'tutorial' || farBackdrop === 'ending') ? [] : createBaseSites(),
+        // 研究所: アイドルの手前に遠隔ショップ(武器庫)。アイドルを置かない出撃(1対1)では置かない(社長指示2026-10-11「やはり研究所の遠隔ショップ復活で」)。
+        labArmory: labIdol && !vsEntryOfRun() ? labIdolShopSpot(labIdol) : null,
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
         // §17-14: ウェルカムがあるランはescortsを空で始める(pendingEscortsへ預けてある。
         // useGameLoop.tsがウェルカム終了の瞬間にescortsへ移す=出陣)。
