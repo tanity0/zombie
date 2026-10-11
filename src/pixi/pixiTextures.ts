@@ -200,6 +200,8 @@ export const ESCORT_WALK_SHEETS: Readonly<Record<string, number>> = {
   'npc/chen-walk': 8, 'npc/lauren-walk': 16, 'npc/phaser-walk': 8,
   'npc/medic-walk': 6, // 衛生兵ジュン(社長支給2026-10-11・318×66・1コマ53)
   'rescue/shooter-walk': 6, // ヘルメット兵(社長支給2026-10-11・342×66・1コマ57)
+  // 歩きではないが同じ「等幅コマを切る」登録を使う: 進軍NPC8人の近接の振り2コマずつ(社長支給2026-10-11・768×66・1コマ48)。
+  'npc/escort-swing': 16,
   // 倒れる2コマ(社長支給2026-10-07・0=崩れかけ/1=倒れた姿。歩きと同じ高さ66・下端=接地)。
   'npc/edgar-down': 2, 'npc/joseph-down': 2, 'npc/elizabeth-down': 2, 'npc/musashi-down': 2, 'npc/muhammad-down': 2,
   'npc/chen-down': 2, 'npc/lauren-down': 2, 'npc/phaser-down': 2,
@@ -840,6 +842,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/chen-walk', scaleMode: 'nearest' },
       { name: 'npc/lauren-walk', scaleMode: 'nearest' },
       { name: 'npc/phaser-walk', scaleMode: 'nearest' },
+      { name: 'npc/escort-swing', scaleMode: 'nearest' }, // 8人の近接の振り(0..7=振り抜き・8..15=振り上げ・soldierIndex順)
       { name: 'npc/edgar-down', scaleMode: 'nearest' },
       { name: 'npc/joseph-down', scaleMode: 'nearest' },
       { name: 'npc/elizabeth-down', scaleMode: 'nearest' },

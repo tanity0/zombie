@@ -1500,8 +1500,17 @@ const SHOOTER_SHEET_BODY_MULT = 66 / 64;
 // =体の行数で割って、差し替え前と同じ背丈に保つ。
 const MEDIC_BODY_TEX_H = 64;
 const ESCORT_KNIFE_READY = { scale: 1.05, ox: 0.26, oy: 0.06, r: 0 };
-const ESCORT_KNIFE_BACK = { scale: 1.05, ox: -0.3, oy: 0.02, r: 0.95 };
-const ESCORT_KNIFE_FRONT = { scale: 1.05, ox: 0.62, oy: -0.06, r: -0.6 };
+// 2026-10-11 社長支給の振り2コマ(npc/escort-swing)が入ったので、溜め=振り上げた拳(頭の後ろ上)・振り抜き=前に低く出た拳に
+// **柄が来るように**置き直した(絵の拳の位置は8人とも実測でほぼ同じ: 振り上げ=中心から後ろ11・足元から63 / 振り抜き=前13・足元から18(66行の絵))。
+// ナイフ絵(knife-swing-1)は柄が中心から右上(+0.197, -0.072 単位)にあるので、その分を回転して引いた位置が ox/oy。
+// 溜め=刃を後ろ上へ(r 1.3)・振り抜き=刃を前下へ(r -1.6)。
+const ESCORT_KNIFE_BACK = { scale: 1.05, ox: -0.29, oy: -0.73, r: 1.3 };
+const ESCORT_KNIFE_FRONT = { scale: 1.05, ox: 0.28, oy: 0.32, r: -1.6 };
+// 進軍NPC8人の近接の振り2コマ(社長支給2026-10-11・768×66=48×16)。0..7=振り抜き(低く構えた姿)・8..15=振り上げ。並びは soldierIndex 順。
+const ESCORT_SWING_SHEET = 'npc/escort-swing';
+// 体を振り上げ→振り抜きへ替える瞬間(kt)。ナイフは振り抜きの区間(SWITCH→SWITCH2)を加速しながら後ろ上→前下へ動くので、
+// その**半分を過ぎた所**で替える=替わった瞬間のナイフが拳の間にある(区間の頭で替えると、体は低いのにナイフがまだ頭上に残る)。
+const ESCORT_SWING_BODY_SWITCH = 0.46;
 // 斬撃の弧を7コマのアニメで見せる(社長提供の絵・v0.25.4458)。小さな火花から三日月へ育つ絵で、
 // 全コマの下端(=柄側の起点)が揃っている。そこを支点に伸び上がらせ、コマが進むほど前へ押し出す。
 const MELEE_ARC_FRAMES = 7;
@@ -27047,9 +27056,15 @@ export class PixiScene {
       const downSheet = !!getTexture(`${base}-down-1`) && pose.downK > 0.02;
       // 攻撃を受けた直後(倒れていない時)は倒れる絵の0コマ目=片膝のしゃがみ(社長指示2026-10-08)。
       const hitCrouch = !downSheet && pose.hitCrouch && !!getTexture(`${base}-down-0`);
+      // 近接の振り(社長支給の2コマ): 振り上げ→振り抜き(区切りは ESCORT_SWING_BODY_SWITCH)。倒れ/被弾の絵が優先。
+      const swingTex = mSwing && esc.soldierIndex >= 0 && esc.soldierIndex < 8
+        ? getTexture(`${ESCORT_SWING_SHEET}-${esc.soldierIndex + (meleeSwingEase(mSince / (ESCORT_MELEE_WINDUP_MS + ESCORT_MELEE_BLADE_MS)) < ESCORT_SWING_BODY_SWITCH ? 8 : 0)}`)
+        : null;
       const tex = hitCrouch ? getTexture(`${base}-down-0`)
         : downSheet
         ? (getTexture(`${base}-down-${pose.downK >= 0.5 ? 1 : 0}`) ?? getTexture(`${base}-down-1`))
+        : swingTex
+        ? swingTex
         : sheetFrames > 0
         ? (getTexture(`${base}-walk-${sheetFrame}`) ?? getTexture(`${base}-walk-0`))
         : (getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture(`${SHOOTER_SHEET}-0`));

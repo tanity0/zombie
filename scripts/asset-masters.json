@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "928 files / 復号後 約690MB",
+ "generatedFor": "929 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2983,6 +2983,12 @@
    "h": 66,
    "bytes": 22236,
    "sha": "b493e9fd2e7fb3ec"
+  },
+  "sprites/npc/escort-swing.png": {
+   "w": 768,
+   "h": 66,
+   "bytes": 43310,
+   "sha": "8f2b9f5b2fdc5901"
   },
   "sprites/npc/futari-man-0.png": {
    "w": 103,
