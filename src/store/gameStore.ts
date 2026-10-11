@@ -844,6 +844,13 @@ const applyEscortMeleeHits = (get: () => GameState, set: (p: Partial<GameState> 
       const killed = get().damageEnemy(e.id, damage, false, crit, false, 'other', escortHateSide(h.id));
       // 撃破の一言(弾で倒した時と同じ npcKillReact=倒した地点に一番近い軍人が反応・低頻度)。
       if (killed) get().npcKillReact(ecx, ecy);
+      // 倒しきれなかったクリ=気絶(社長承認2026-10-11「ナイフの会心でスタン」)。銃のクリと同じ規則:
+      // 通常敵は5秒の気絶+黄色いリング(=プレイヤーの近接フィニッシュの窓)。ボスの半減は damageEnemy が
+      // crit=true を受けて中央で掛ける。使者(hangedman)は止めない。気絶時間アップはプレイヤーのパッシブなので乗せない。
+      else if (crit) {
+        if (!isBossType(e.type) && !isHangedman(e.type)) get().stunEnemy(e.id, get().gameTime + STUN_DURATION_MS);
+        get().spawnRing(ecx, ecy, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
+      }
     }
     if (victims.length > 0) landed.push({ x: h.x, y: h.y + ESCORT_CHEST_UP_PX });
     if (pushes.size > 0) {

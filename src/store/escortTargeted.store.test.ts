@@ -2,7 +2,7 @@
 // 純関数の値そのもの(escortHealth/escortAggro/bossHate)は src/utils/*.test.ts。ここは「実装精度の規律4」どおり、
 // gameStore の配線(resetGame の体力打刻・updateSuppression の倒れる/起こす・damageEscort・updateEnemies の狙い・
 // combatTick/heroBlast の被弾入口)を実際に回して確かめる。
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, applyPumpkinBlastDamage, applyEnemyProjectileHits, applyEnemyFire, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
@@ -672,6 +672,17 @@ describe('近接(ナイフ・research/ESCORT_MELEE.md)', () => {
     expect(all.some(x => x.kind === 'hit')).toBe(true);  // 溜め(200ms)明けに当たる
     expect(escById('escort-0').knifeMode).toBe(true);
     expect(useGameStore.getState().enemies.find(e => e.id === 'z1')?.health ?? 0).toBeLessThan(hp0);
+  });
+  it('会心で倒しきれなかった通常敵は気絶する(銃のクリと同じ5秒)', () => {
+    setup(0, 40);
+    put('zombie', ORIGIN + 40, ORIGIN + 40 - 30, { id: 'z1', health: 9999, maxHealth: 9999 });
+    const rnd = vi.spyOn(Math, 'random').mockReturnValue(0); // 会心を確定させる
+    try {
+      for (let t = 0; t <= 900; t += 50) tickSupp(GT + t);
+    } finally { rnd.mockRestore(); }
+    const z = useGameStore.getState().enemies.find(e => e.id === 'z1')!;
+    expect(z.health).toBeLessThan(9999);
+    expect(z.stunUntil ?? 0).toBeGreaterThan(useGameStore.getState().gameTime);
   });
   it('倒れたら振りが消える', () => {
     setup(0, 40);
