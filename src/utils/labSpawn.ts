@@ -55,8 +55,11 @@ export const placeLabSpawn = (
   const rightX = playerX + halfViewW + margin;
   const leftX = playerX - halfViewW - margin - enemyW;
   // 「通った道」の外側かどうか。右は右端より外、左は左端より外(敵の幅ぶんも含めて完全に外)。
-  const rightOk = !visited || rightX > visited.maxX;
-  const leftOk = !visited || leftX + enemyW < visited.minX;
+  // ★「通った道」=**画面に見えていた範囲**(歩いた範囲 ± 半画面)(社長「はい」2026-10-11。旧: 立ち位置だけ=
+  //   最前線から少し引き返すと、前に映っていて片付けたかもしれない半画面先の帯に湧いていた)。
+  //   前進中(最前線に立っている)は rightX=立ち位置+半画面+余白 なので、従来どおり画面外のすぐ先に湧く。
+  const rightOk = !visited || rightX > visited.maxX + halfViewW;
+  const leftOk = !visited || leftX + enemyW < visited.minX - halfViewW;
   if (!rightOk && !leftOk) return null;
   // 体(高さ)がまるごと帯に収まるYの範囲。帯より背が高い敵は帯の中央に置く(はみ出しを上下均等に)。
   const yMin = -bandLimit;

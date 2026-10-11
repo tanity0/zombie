@@ -59,6 +59,16 @@ describe('placeLabSpawn(通った道を避ける)', () => {
     expect(p!.x + 30).toBeLessThan(visited.minX); // 通った道の外
   });
 
+  // ★2026-10-11(社長「はい」): 通った道=画面に見えていた範囲(歩いた範囲 ± 半画面)。
+  it('最前線から少しでも引き返したら、前に見えていた半画面先の帯にも湧かない', () => {
+    for (const back of [1, MARGIN - 1, MARGIN + 1, 200, HALF_W]) {
+      const p = placeLabSpawn(3000 - back, HALF_W, MARGIN, 30, 60, LIMIT, { minX: 0 - HALF_W * 3, maxX: 3000 }, [], () => 0.5);
+      if (p) expect(p.x, `back=${back}`).toBeGreaterThan(3000 + HALF_W); // 置けるなら必ず見えていた範囲の外
+    }
+    // 余白(MARGIN)より大きく引き返したら、右は見えていた範囲の内側=湧かない(左も通った道)
+    expect(placeLabSpawn(3000 - MARGIN - 1, HALF_W, MARGIN, 30, 60, LIMIT, { minX: 0 - HALF_W * 3, maxX: 3000 }, [], () => 0.5)).toBeNull();
+  });
+
   it('visited 未指定なら従来どおり左右ランダム(他ステージ/初期状態)', () => {
     const a = placeLabSpawn(0, HALF_W, MARGIN, 30, 60, LIMIT, null, [], () => 0.1);
     const b = placeLabSpawn(0, HALF_W, MARGIN, 30, 60, LIMIT, null, [], () => 0.9);
