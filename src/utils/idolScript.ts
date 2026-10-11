@@ -220,7 +220,9 @@ export const IDOL_TUNING: IdolTuning = {
     fan:   { windup: 900,  active: 0,   recover: 900 },
     roll:  { windup: 400,  active: 180, recover: 900 },
     punch: { windup: 600,  active: 0,   recover: 900 },
-    snipe: { windup: 1100, active: 200, recover: 900 },
+    // 狙撃の硬直だけ1200(社長指示2026-10-11「余韻を伸ばす」): 撃ち終わりの姿で止まる間を約0.5秒に。
+    // 仰け反り→消える(3〜15)の速さは900の時とほぼ同じ=伸びたぶんは「止まっている時間」。
+    snipe: { windup: 1100, active: 200, recover: 1200 },
     orb:   { windup: 800,  active: 0,   recover: 900 },
     // 手榴弾(v0.25.3442→3444): 投げ自体は当たらない(判定は転がる手榴弾の信管2秒後の赤円)。
     // 社長指示v0.25.3444「バックロールしながら投げる」: active=後方ロールの移動時間(rollと同じ180ms)。
