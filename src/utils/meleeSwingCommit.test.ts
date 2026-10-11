@@ -56,6 +56,10 @@ const WRITE_SITES: readonly WriteSite[] = [
   },
   { field: 'counterWindowEnd', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
   { field: 'meleeSwingAt', where: 'プレイヤー初期状態(0)', stamped: false, why: '初期化=振っていない' },
+  {
+    field: 'meleeSwingAt', where: '迎撃の飛び込みが空振り(resolveRetaliateStrike)', stamped: false,
+    why: '斬る絵だけ出す空振り=判定なし。命中した時は triggerCounter 側で1回打刻する',
+  },
   // ★v0.25.3869(社長裁定「近接前隙を200にして」・SAME_ARENA.md §7): 指を離した瞬間の起点。
   // 判定は MELEE_WINDUP_MS 後に triggerCounter が解決するので、**打刻もそちらで1回だけ**打つ。
   // 前隙中にカウンターされた振りは解決されない=打刻も出ない(振りが中断されたのだから正しい)。
@@ -110,7 +114,8 @@ const scanWrites = (text: string): SwingField[] => {
     for (const f of SWING_FIELDS) {
       // `field:` (オブジェクトリテラル) / `field =` (代入) だけを書き込みとみなす。
       // `player.counterWindowEnd` のような読みは後ろに : / = が来ないので拾われない。
-      const re = new RegExp(`\\b${f}\\s*[:=](?!=)`, 'g');
+      // 三項演算子の `state.player.counterWindowEnd : …` は読みなので、`.` の直後の `:` は拾わない。
+      const re = new RegExp(`(?<!\\.)\\b${f}\\s*:(?!=)|\\b${f}\\s*=(?![=>])`, 'g');
       const hits = t.match(re);
       if (hits) for (let i = 0; i < hits.length; i++) out.push(f);
     }

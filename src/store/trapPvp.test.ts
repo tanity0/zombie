@@ -2,12 +2,12 @@
 //
 // 敵に対するトラップは従来どおり**拘束**。対人だけは拘束をやめ、社長指定の4効果に置き換えた。
 // ここで固定するのは「効果が**実際に効いているか**」で、定数の一致は utils/trapDebuff.test.ts が見る。
-//  ①移動が等倍のみ(かさまし%・ダッシュが無効) ③リロード1.5倍
+//  ①移動が7割(社長指示2026-10-10「移動速度が7割に軽減される、にして。(等倍ではなく)」=かさまし%・ダッシュにも7割が掛かる) ③リロード1.5倍
 //  (②クリ率アップ・④CD短縮無効は純関数側=trapDebuff.test.ts / 呼び出しは実装のwrap1本)
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useGameStore, PLAYER_BASE_SPEED, KATANA_DASH_MS } from './gameStore';
+import { useGameStore, KATANA_DASH_MS } from './gameStore';
 import { effectiveReloadMs, createWeapon } from '../utils/weaponUtils';
-import { TRAP_PVP_RELOAD_MULT, TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff';
+import { TRAP_PVP_RELOAD_MULT, TRAP_PVP_DEBUFF_MS, TRAP_PVP_MOVE_MULT } from '../utils/trapDebuff';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 
@@ -36,7 +36,8 @@ describe('★対人トラップ(SAME_ARENA.md §3-g)', () => {
     useGameStore.getState().resetGame('assault');
   });
 
-  it('①効果中は「かさまし%」が乗らない: 装備の移動速度倍率2倍を付けても素の足の距離しか進まない', () => {
+  // ★v0.25.4967 で仕様が「等倍で頭打ち」→「7割」に変わった(社長指示2026-10-10)。このテストは旧仕様のまま残っていた=CI が赤だった(v0.25.4979 で追従)。
+  it('①効果中は移動が7割: 装備の移動速度倍率2倍を付けていても、その7割しか進まない', () => {
     // 素の足で1秒(ランプが満額になるまで走らせる=かさましが乗るなら必ず差が出る条件)。
     placePlayer({ equipBonus: { moveSpeedMult: 2 } });
     const boosted = walkRightFor(120);
@@ -44,11 +45,11 @@ describe('★対人トラップ(SAME_ARENA.md §3-g)', () => {
     placePlayer({ equipBonus: { moveSpeedMult: 2 }, trapDebuffUntil: Date.now() + TRAP_PVP_DEBUFF_MS });
     const trapped = walkRightFor(120);
 
-    expect(boosted).toBeGreaterThan(trapped);                       // かさましが潰れている
-    expect(trapped).toBeLessThanOrEqual(PLAYER_BASE_SPEED * 2 + 1); // 2秒ぶんの上限=等倍を超えない
+    expect(boosted).toBeGreaterThan(trapped);
+    expect(trapped / boosted).toBeCloseTo(TRAP_PVP_MOVE_MULT, 2); // 同じ条件の7割
   });
 
-  it('①効果中は「ダッシュ」も等倍で頭打ち: 一閃ダッシュの移動距離が素の足まで落ちる', () => {
+  it('①効果中は「ダッシュ」も7割: 一閃ダッシュの移動距離が7割になる', () => {
     const frames = Math.ceil((KATANA_DASH_MS / 1000) * 60);
     placePlayer({ katanaDashUntil: Date.now() + KATANA_DASH_MS, katanaDashDirX: 1, katanaDashDirY: 0 });
     const dashed = walkRightFor(frames);
@@ -59,8 +60,7 @@ describe('★対人トラップ(SAME_ARENA.md §3-g)', () => {
     });
     const trapped = walkRightFor(frames);
 
-    expect(dashed).toBeGreaterThan(trapped * 2); // ダッシュは素の足の何倍も速いので明確に差が出る
-    expect(trapped).toBeLessThanOrEqual(PLAYER_BASE_SPEED * (KATANA_DASH_MS / 1000) + 1);
+    expect(trapped / dashed).toBeCloseTo(TRAP_PVP_MOVE_MULT, 2);
   });
 
   it('①効果が切れれば元どおり(期限を過ぎた trapDebuffUntil は何もしない)', () => {

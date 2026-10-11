@@ -5518,11 +5518,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const spx = sp.x + sp.width / 2, spy = sp.y + sp.height / 2;
           const scam = useGameStore.getState().camera, sgb = useGameStore.getState().gameBounds;
           let bestGain = 0; // 同フレーム複数発砲は最寄り(最大音量)の1発ぶんだけ鳴らす(throttleとも整合)
+          let swingGain = 0, hitGain = 0; // 近接(research/ESCORT_MELEE.md): 振り/当たりも同じ距離減衰・最寄りの1回だけ
           for (const f of escortFires) {
             const g = npcSfxDistGain(f.x, f.y, spx, spy, scam, sgb);
-            if (g > bestGain) bestGain = g;
+            if (f.kind === 'swing') { if (g > swingGain) swingGain = g; }
+            else if (f.kind === 'hit') { if (g > hitGain) hitGain = g; }
+            else if (g > bestGain) bestGain = g;
           }
           if (bestGain > 0) playSfx('npc-gunfire', bestGain);
+          if (swingGain > 0) playSfx('melee', swingGain * 0.7);        // プレイヤーのナイフと同じ系統を少し小さく
+          if (hitGain > 0) playSfx('slash-damage', hitGain * 0.7);
         }
         // 拠点開放SE: 制圧カウントが増えた瞬間に1回(store は音声非依存なのでここで鳴らす)。
         {

@@ -252,19 +252,21 @@ describe('倒れている間(§6): 前進・射撃・滞在・台詞が止まる
   });
 });
 
+// 返り値には近接の振り/当たり(kind あり・research/ESCORT_MELEE.md)も混ざる=銃の発砲だけ数える。
+const gunShots = (r: { kind?: string }[]) => r.filter(x => !x.kind).length;
 describe('立っている軍人: 被弾の滑り・射撃停止・瀕死の後ずさり・全快(§7・§13b)', () => {
   it('被弾で射撃が300ms止まる', () => {
     setup(0, 40);
-    put('zombie', ORIGIN + 100, ORIGIN + 40, { id: 'z1' });
+    put('zombie', ORIGIN + 140, ORIGIN + 40, { id: 'z1' }); // ナイフの間合いの外(近接の構えに入らない距離)
     const shots1 = tickSupp(GT);
-    expect(shots1.length).toBeGreaterThan(0); // 近くの敵を撃つ
+    expect(gunShots(shots1)).toBeGreaterThan(0); // 近くの敵を撃つ
     setEsc('escort-0', { fireAt: 0, fireHoldUntil: GT + 300 });
-    expect(tickSupp(GT + 100).length).toBe(0);
-    expect(tickSupp(GT + 300).length).toBeGreaterThan(0);
+    expect(gunShots(tickSupp(GT + 100))).toBe(0);
+    expect(gunShots(tickSupp(GT + 300))).toBeGreaterThan(0);
   });
   it('軍人の弾は撃った軍人のidを持つ(ボスのヘイトを軍人ごとのバケツへ積む起因)', () => {
     setup(0, 40);
-    put('zombie', ORIGIN + 100, ORIGIN + 40, { id: 'z1' });
+    put('zombie', ORIGIN + 140, ORIGIN + 40, { id: 'z1' }); // ナイフの間合いの外
     tickSupp(GT);
     const p = useGameStore.getState().projectiles.filter(x => x.weaponKey === 'escort');
     expect(p.length).toBeGreaterThan(0);
@@ -292,7 +294,7 @@ describe('立っている軍人: 被弾の滑り・射撃停止・瀕死の後�
     const e = escById('escort-0');
     expect(e.x).toBeLessThan(x0);          // 敵と反対(左)へ下がる
     expect(e.face).toBe(1);                // 敵(右)を向いたまま
-    expect(shots.length).toBeGreaterThan(0); // 撃つ
+    expect(gunShots(shots)).toBeGreaterThan(0); // 撃つ(瀕死の後ずさり中は間合いの中でもナイフではなく銃)
   });
   it('後ずさりを始めた瞬間に、その人の「下がる」台詞が1回だけ流れる(社長裁定§13c-4)', () => {
     setup(0, 40, { health: 10, soldierIndex: 1 }); // ジョセフ
@@ -655,4 +657,29 @@ describe('スマホの寸法で結果が変わらない(画面内判定はズー
       expect(outside / inside).toBeLessThan(0.35); // おおよそ 0.2×個体差(0.85〜1.15)
     });
   }
+});
+
+describe('近接(ナイフ・research/ESCORT_MELEE.md)', () => {
+  it('敵が間合いに入ると銃を撃たずに振り、溜め明けに当たってダメージが入る', () => {
+    setup(0, 40);
+    put('zombie', ORIGIN + 40, ORIGIN + 40 - 30, { id: 'z1' }); // 胸の高さのすぐ右
+    const hp0 = useGameStore.getState().enemies.find(e => e.id === 'z1')!.health;
+    // 最初の振りは人ごとに最大210msずれる(同じ拍子で振らない)=0.9秒を50ms刻みで進めて見る。
+    const all: { kind?: string }[] = [];
+    for (let t = 0; t <= 900; t += 50) all.push(...tickSupp(GT + t));
+    expect(gunShots(all)).toBe(0);                       // 構え中は撃たない
+    expect(all.some(x => x.kind === 'swing')).toBe(true);
+    expect(all.some(x => x.kind === 'hit')).toBe(true);  // 溜め(200ms)明けに当たる
+    expect(escById('escort-0').knifeMode).toBe(true);
+    expect(useGameStore.getState().enemies.find(e => e.id === 'z1')?.health ?? 0).toBeLessThan(hp0);
+  });
+  it('倒れたら振りが消える', () => {
+    setup(0, 40);
+    put('zombie', ORIGIN + 40, ORIGIN + 40 - 30, { id: 'z1' });
+    for (let t = 0; t <= 300; t += 50) tickSupp(GT + t);
+    setEsc('escort-0', { downedAt: GT + 310, health: 0 });
+    tickSupp(GT + 320);
+    expect(escById('escort-0').knifeMode).toBe(false);
+    expect(escById('escort-0').knifeSwingAt).toBeUndefined();
+  });
 });

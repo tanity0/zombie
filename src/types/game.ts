@@ -2130,6 +2130,18 @@ export interface EscortSoldier {
   lastHitDirY?: number;
   /** 被弾で射撃を止める期限(300ms)。 */
   fireHoldUntil?: number;
+  // ---- research/ESCORT_MELEE.md: 近接(ナイフ)。判定は utils/escortMelee、描画は読むだけ。時計は gameTime(ms) ----
+  /** 近接の構え中(敵が間合いの中/振っている最中)=銃は撃たない。 */
+  knifeMode?: boolean;
+  /** 今の振りを始めた gameTime(溜め200→刃200)。 */
+  knifeSwingAt?: number;
+  /** 次に振れる gameTime(周期820ms)。 */
+  knifeNextAt?: number;
+  /** 振った向き(単位ベクトル)。 */
+  knifeDirX?: number;
+  knifeDirY?: number;
+  /** この振りの当たりを出したか(1振り1回)。 */
+  knifeHitDone?: boolean;
   /** 被弾の滑り(ノックバック): 始点→終点を ease-out で運ぶ。slideUntil を過ぎたら終わり。 */
   slideFromX?: number;
   slideFromY?: number;

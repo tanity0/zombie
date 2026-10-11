@@ -214,7 +214,8 @@ import { setHateEscortProvider } from '../utils/bossHate';
 import { escortSceneLine, type EscortScene } from '../data/escortSceneLines';
 import { escortHitFx, escortRiseFx, escortLandFx, type EscortFxApi, type EscortFxView } from '../utils/escortFx'; // 軍人の血と音(被弾/倒れる/起き上がり)
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
-import { addHateDamage, escortIdOfSide, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
+import { addHateDamage, escortHateSide, escortIdOfSide, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
+import { stepEscortMelee, inEscortMeleeArc, escortKnifeHit, ESCORT_MELEE_EXIT_PX, ESCORT_CHEST_UP_PX, ESCORT_MELEE_PHASE_STEP_MS } from '../utils/escortMelee'; // 進軍NPCの近接(research/ESCORT_MELEE.md)
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
 import { computeEnemySeparation } from '../utils/enemySeparation';
 // M51: 城ボス「ジャイアント」新スクリプトの純関数(間合い/CD/HP段階から次の技を選ぶ・PACING_PUZZLE.md §6.26)。
@@ -791,6 +792,70 @@ const makeEscorts = (px: number, py: number, corridorRow = false, playerMaxHealt
   }
   return arr;
 };
+// ---- research/ESCORT_MELEE.md: 進軍NPCの近接(ナイフ)。判定は utils/escortMelee の1本、ここは2つのルートが共有する配線だけ ----
+// 狙っている敵(advance.target)との距離を胸の高さから測り、1フレーム進める。mode=true の間は銃を撃たない。
+// 近接で斬れる相手か(プレイヤーの近接の除外と同じ: 死体・昇天中の英雄・不倒の死神)。斬れない相手が目の前に居ても「撃たずに空振り」にしない=銃のまま。
+const escortCanSlash = (e: Enemy): boolean => !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e));
+const escortMeleeFrame = (esc: EscortSoldier, target: Enemy | undefined, x: number, y: number, now: number, holdGun = false) => {
+  const cy = y - ESCORT_CHEST_UP_PX;
+  let dist: number | null = null, dir: { x: number; y: number } | null = null;
+  // holdGun=瀕死の後ずさり中(撃ちながら下がる=近接は出さない)。
+  if (target && !holdGun && escortCanSlash(target)) {
+    dist = enemyMeleeDist(x, cy, target);
+    const tx = target.x + target.width / 2, ty = target.y + target.height / 2;
+    const l = Math.hypot(tx - x, ty - cy) || 1;
+    dir = { x: (tx - x) / l, y: (ty - cy) / l };
+  }
+  const step = stepEscortMelee(esc, dist, dir, now, now >= (esc.fireHoldUntil ?? 0), (esc.soldierIndex % 4) * ESCORT_MELEE_PHASE_STEP_MS);
+  const p = step.patch;
+  const changed = p.knifeMode !== esc.knifeMode || p.knifeSwingAt !== esc.knifeSwingAt || p.knifeNextAt !== esc.knifeNextAt || p.knifeHitDone !== esc.knifeHitDone;
+  return { step, changed, chestY: cy };
+};
+interface EscortMeleeHit { id: string; x: number; y: number; dirX: number; dirY: number }
+// 当たり: 振った向き ±70° の扇・間合い(最近点 94px)の中の敵全部。ダメージは tier1 ナイフ(クリはプレイヤーと同じ倍率)、
+// 押し返しはプレイヤーのナイフと同じ(押されない型は押さない・押し返しの間隔あり)。ヘイト/撃破の帰属はその軍人(撃った時と同じ)。
+// 戻り値=実際に当たった振りの位置(命中音はこれだけに鳴らす=空振りで肉の音を出さない)。
+const applyEscortMeleeHits = (get: () => GameState, set: (p: Partial<GameState> | ((s: GameState) => Partial<GameState>)) => void, hits: EscortMeleeHit[]): { x: number; y: number }[] => {
+  const landed: { x: number; y: number }[] = [];
+  if (hits.length === 0) return landed;
+  const wall = Date.now();
+  for (const h of hits) {
+    const victims = get().enemies.filter(e => escortCanSlash(e)
+      && enemyMeleeDist(h.x, h.y, e) <= ESCORT_MELEE_EXIT_PX
+      && inEscortMeleeArc(h.dirX, h.dirY, e.x + e.width / 2 - h.x, e.y + e.height / 2 - h.y));
+    const pushes = new Map<string, { vx: number; vy: number }>();
+    for (const e of victims) {
+      const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+      const { damage, crit } = escortKnifeHit(Math.random, CRIT_DAMAGE_MULT);
+      get().spawnSlash(ecx, ecy, 'rgba(226,232,240,0.95)', 1, h.dirX < 0 ? -1 : 1); // 弧は振った向き
+      // 血は斬った軍人の方へ噴く(spawnMeleeBlood は向き先がプレイヤー固定=守護霊の近接と同じく spawnBlood を直接・幾何は同じ規則)。
+      {
+        const bdx = h.x - ecx, bdy = h.y - ecy, bl = Math.hypot(bdx, bdy) || 1;
+        const ux = bdx / bl, uy = bdy / bl;
+        get().spawnBlood(ecx + ux * e.width * 0.4, ecy + uy * e.width * 0.4, Math.atan2(uy, ux), Math.max(96, e.width * 4.0));
+      }
+      get().spawnDamageNumber(ecx, e.y, damage, crit);
+      if (!resistsChipKnockback(e.type) && knockbackCdReady(e, wall)) {
+        const dx = ecx - h.x, dy = ecy - h.y, n = Math.max(0.001, Math.hypot(dx, dy));
+        const falloff = Math.max(0, 1 - enemyMeleeDist(h.x, h.y, e) / ESCORT_MELEE_EXIT_PX);
+        const sp = KNOCKBACK_SPEED * (0.5 + falloff * 0.5);
+        pushes.set(e.id, { vx: (dx / n) * sp, vy: (dy / n) * sp });
+      }
+      const killed = get().damageEnemy(e.id, damage, false, crit, false, 'other', escortHateSide(h.id));
+      // 撃破の一言(弾で倒した時と同じ npcKillReact=倒した地点に一番近い軍人が反応・低頻度)。
+      if (killed) get().npcKillReact(ecx, ecy);
+    }
+    if (victims.length > 0) landed.push({ x: h.x, y: h.y + ESCORT_CHEST_UP_PX });
+    if (pushes.size > 0) {
+      set(s => ({ enemies: s.enemies.map(e => {
+        const p = pushes.get(e.id);
+        return p && !isCorpse(e) ? { ...e, knockbackVx: p.vx, knockbackVy: p.vy, knockbackUntil: wall + KNOCKBACK_DURATION, knockbackImmuneUntil: wall + KNOCKBACK_IMMUNE_MS } : e;
+      }) }));
+    }
+  }
+  return landed;
+};
+
 // ---- research/ESCORT_TARGETED.md: 進軍NPCの時計(倒れる/起こす/被弾の滑り) -----------------------------------------
 // 毎フレーム1回、前進・射撃・滞在の処理より**前**に呼ぶ(通常拠点ルートと洋館通路ルートの両方)。
 // busy=倒れている/被弾の滑りの最中=呼び手は前進・射撃・滞在・台詞をすべて止める(進んだ滞在は保つ)。
@@ -6461,7 +6526,7 @@ interface GameState {
   updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: 帰還地点への進入/滞在を更新
   requestStoryReturnPrompt: () => boolean;              // 通常ストーリーの帰還地点内で操作を離したら確認を開く
   answerStoryReturnPrompt: (confirmed: boolean) => void;
-  updateSuppression: (deltaTime: number) => { x: number; y: number }[]; // 毎フレーム: 制圧イベント。返り値=このフレームに護衛NPCが発砲した位置(NPC銃声の距離減衰再生用)
+  updateSuppression: (deltaTime: number) => { x: number; y: number; kind?: 'swing' | 'hit' }[]; // 毎フレーム: 制圧イベント。返り値=このフレームに護衛NPCが発砲した位置(NPC銃声の距離減衰再生用)。kind='swing'/'hit'=近接の振り/当たり(research/ESCORT_MELEE.md)
   // 毎フレーム: エンディング(仮組み)の兵士/フィルの状態機械を1歩進める(ENDING_SCENE.md 演出仕様v2)。
   // shots=このフレームに発砲した兵士の位置(SE距離減衰再生用)・phillVelMult=フィルの現在速度係数
   // (呼び出し側=useGameLoopがカメラ台車の合成入力にこの倍率を掛ける)。farBackdrop!=='ending'ならno-op。
@@ -6557,7 +6622,7 @@ interface GameState {
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
   // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number, noShadow?: boolean) => void;
-  spawnSlash: (x: number, y: number, color?: string, lengthScale?: number) => void;
+  spawnSlash: (x: number, y: number, color?: string, lengthScale?: number, faceOverride?: 1 | -1) => void; // faceOverride=弧の向き(省略=プレイヤーの向き。進軍NPCの近接は振った向き)
   spawnFlash: (color: string, duration?: number) => void;
   // §5.23 M22 C3: 「N HITS」バナー(頭上・bitmap-text)+小フラッシュ。registerMultiHitから相乗りで呼ぶ。
   spawnMultiHitFx: (x: number, y: number, count: number, opts?: { label?: string; milestoneTier?: number; duration?: number }) => void;
@@ -19850,6 +19915,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const now = state.gameTime;
       const detectRadius = huntingMeleeRadius(p) * ESCORT_DETECT_MULT;
       const shots: { x: number; y: number; dx: number; dy: number; soldierIndex: number; id: string }[] = [];
+      const meleeHits: EscortMeleeHit[] = []; // 近接の当たり(research/ESCORT_MELEE.md)
+      const meleeSfx: { x: number; y: number; kind: 'swing' | 'hit' }[] = [];
       const surroundEvents: { name: string; text: string; id: string }[] = [];
       const rescuedEvents: { name: string; text: string; id: string }[] = [];
       let escChanged = false;
@@ -19873,6 +19940,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           const prevBusy = esc.hatedByBossIds ?? [];
           if (hbBusy.length !== prevBusy.length || hbBusy.some((id, k) => id !== prevBusy[k])) { esc = { ...esc, hatedByBossIds: hbBusy }; escChanged = true; }
           if (lf.landed) corridorLandEvents.push({ x: esc.x, y: esc.y });
+          // 近接の振りは倒れた/滑った時点で消す(通常ルートと同じ)。
+          if (esc.knifeMode || esc.knifeSwingAt !== undefined) { escChanged = true; return { ...esc, moving: false, vx: 0, vy: 0, knifeMode: false, knifeSwingAt: undefined, knifeHitDone: true }; }
           return { ...esc, moving: false, vx: 0, vy: 0 };
         }
         {
@@ -19909,8 +19978,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           y += dy * k;
           if (Math.abs(dx) > 6) face = dx < 0 ? -1 : 1;
         }
-        // 射撃は全方位。移動後の位置から撃ち、顔向きは射撃方向を優先する。
-        if (advance.target && now >= fireAt && now >= (esc.fireHoldUntil ?? 0)) {
+        // 近接(research/ESCORT_MELEE.md): 敵が間合いに入ったら銃を止めてナイフ。振る向きへ顔を向ける。
+        const melC = escortMeleeFrame(esc, advance.target, x, y, now);
+        if (melC.step.swingStarted) meleeSfx.push({ x, y, kind: 'swing' });
+        if (melC.step.hitNow) meleeHits.push({ id: esc.id, x, y: melC.chestY, dirX: melC.step.patch.knifeDirX ?? 1, dirY: melC.step.patch.knifeDirY ?? 0 });
+        if (melC.step.mode && melC.step.patch.knifeDirX !== undefined) face = melC.step.patch.knifeDirX < 0 ? -1 : 1;
+        if (melC.changed) escChanged = true;
+        // 射撃は全方位。移動後の位置から撃ち、顔向きは射撃方向を優先する。近接の構え中は撃たない。
+        if (!melC.step.mode && advance.target && now >= fireAt && now >= (esc.fireHoldUntil ?? 0)) {
           fireAt = now + ESCORT_FIRE_INTERVAL_MS;
           const tx = advance.target.x + advance.target.width / 2, ty = advance.target.y + advance.target.height / 2;
           let shotDx = tx - x, shotDy = ty - y; const dl = Math.hypot(shotDx, shotDy) || 1; shotDx /= dl; shotDy /= dl;
@@ -19940,6 +20015,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           wasSurrounded: advance.wasSurrounded,
           helpRequested: advance.helpRequested,
           rescuedUntil: advance.rescuedUntil,
+          ...melC.step.patch,
         };
         if (x !== esc.x || y !== esc.y || face !== esc.face || fireAt !== esc.fireAt || moving !== (esc.moving ?? false) ||
           advance.zone !== (esc.advanceZone ?? 'none') || advance.speedMult !== esc.advanceSpeedMult || advance.speedTarget !== esc.advanceSpeedTarget ||
@@ -19949,6 +20025,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         return next;
       });
       if (escChanged) set({ escorts: nextEsc });
+      for (const l of applyEscortMeleeHits(get, set, meleeHits)) meleeSfx.push({ ...l, kind: 'hit' });
       // 発砲=通常護衛と同一の実弾(handgun projectile・friendly)。SE減衰用に発射元を返す。
       for (const sh of shots) {
         get().addProjectile({
@@ -19969,7 +20046,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       for (const ev of rescuedEvents) {
         if (get().tryNpcLine(ev.name, 'rescued', ev.text, RESCUED_CAT_CD_MS, ev.id)) break;
       }
-      return shots.map(s => ({ x: s.x, y: s.y }));
+      return [...shots.map(s => ({ x: s.x, y: s.y })), ...meleeSfx];
     }
     // 拠点は屋外(非ラボ・非屋内)なら常に機能する。屋内/ラボ/勝利後は無処理。
     // イベント(suppressionActive)かどうかは「全拠点制圧」した時のゴール有無だけが違う(下部参照)。
@@ -19997,7 +20074,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const removeAttackerIds: string[] = [];
     const soldierShots: { fromX: number; fromY: number; toX: number; toY: number }[] = [];
     const damageShots: { id: string; dmg: number }[] = [];
-    const escortShots: { x: number; y: number; dx: number; dy: number; soldierIndex: number; id: string }[] = []; // 護衛NPCの発砲(プレイヤーと同じ実弾)。soldierIndex=フェイザー2倍判定用 / id=撃った軍人(ボスのヘイトを軍人ごとのバケツへ積む起因)
+    const escortShots: { x: number; y: number; dx: number; dy: number; soldierIndex: number; id: string }[] = [];
+    const escortMeleeHits: EscortMeleeHit[] = []; // 近接の当たり(research/ESCORT_MELEE.md)
+    const escortMeleeSfx: { x: number; y: number; kind: 'swing' | 'hit' }[] = []; // 護衛NPCの発砲(プレイヤーと同じ実弾)。soldierIndex=フェイザー2倍判定用 / id=撃った軍人(ボスのヘイトを軍人ごとのバケツへ積む起因)
     const fallen: { x: number; y: number; id: string; soldierIndex: number }[] = [];
     const npcSurroundEvents: { name: string; text: string; id: string }[] = []; // 「敵に囲まれた」発話候補(CDはset後にtryNpcLineで適用)
     const npcRescuedEvents: { name: string; text: string; id: string }[] = [];   // 「囲まれから助けられた」発話候補
@@ -20049,6 +20128,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             ? { ...esc, moving: false, vx: 0, vy: 0, followSpeed: undefined, followWakeAt: undefined, followState: undefined, followPauseUntil: undefined }
             : { ...esc, moving: false, vx: 0, vy: 0, followSpeed: undefined, followWakeAt: undefined };
         }
+        // 近接の振りは倒れた/滑った時点で消す(倒れた体の上にナイフが残らない・当たりも出さない)。
+        if (esc.knifeMode || esc.knifeSwingAt !== undefined) { escortsChanged = true; return { ...esc, moving: false, vx: 0, vy: 0, knifeMode: false, knifeSwingAt: undefined, knifeHitDone: true }; }
         return { ...esc, moving: false, vx: 0, vy: 0 };
       }
       // 「ボスの赤い予告が自分に掛かった瞬間」(ボスが狙いをこの軍人に決めた=hateTarget が escort:<id> に新しく変わった)。
@@ -20241,8 +20322,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         const advMult = advance.speedMult * escortAdvanceSlowMult(esc, now);
         if (d > 2 && advMult > 0) { const mv = Math.min(escortSpeed() * advMult * deltaTime, d); x += (dx / d) * mv; y += (dy / d) * mv; face = dx < 0 ? -1 : 1; }
       }
-      // 射撃対象は全方位から最寄り。ジャンプ中だけ除外し、移動中も撃ち続ける。被弾の直後(300ms)は撃つ手が止まる(§7 項8)。
-      if (advance.target && now >= fireAt && now >= (esc.fireHoldUntil ?? 0)) {
+      // 近接(research/ESCORT_MELEE.md): 敵が間合いに入ったら銃を止めてナイフ。振る向きへ顔を向ける。
+      const melN = escortMeleeFrame(esc, advance.target, x, y, now, retreating);
+      if (melN.step.swingStarted) escortMeleeSfx.push({ x, y, kind: 'swing' });
+      if (melN.step.hitNow) escortMeleeHits.push({ id: esc.id, x, y: melN.chestY, dirX: melN.step.patch.knifeDirX ?? 1, dirY: melN.step.patch.knifeDirY ?? 0 });
+      if (melN.step.mode && melN.step.patch.knifeDirX !== undefined) face = melN.step.patch.knifeDirX < 0 ? -1 : 1;
+      if (melN.changed) escortsChanged = true;
+      // 射撃対象は全方位から最寄り。ジャンプ中だけ除外し、移動中も撃ち続ける。被弾の直後(300ms)は撃つ手が止まる(§7 項8)。近接の構え中は撃たない。
+      if (!melN.step.mode && advance.target && now >= fireAt && now >= (esc.fireHoldUntil ?? 0)) {
         fireAt = now + ESCORT_FIRE_INTERVAL_MS;
         const tx = advance.target.x + advance.target.width / 2, ty = advance.target.y + advance.target.height / 2;
         let dx = tx - x, dy = ty - y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
@@ -20287,6 +20374,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         followSpeed: followSpeedOut, followWakeAt: followWakeOut, health: healthOut, followHead: followHeadOut,
         healingAt: healMarks.healingAt, healedAt: healMarks.healedAt,
         retreatK, retreatDirX: retreatK > 0 ? retreatDirX : 0, retreatDirY: retreatK > 0 ? retreatDirY : 0,
+        ...melN.step.patch,
         advanceZone: advance.zone,
         advanceDirX: advance.advanceDirX,
         advanceDirY: advance.advanceDirY,
@@ -20502,6 +20590,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().addEnemy(e);
     }
     for (const d of damageShots) get().damageEnemy(d.id, d.dmg, false, false, false, 'dot'); // 味方の射撃=本人の攻撃ではない(シェイク対象外)
+    for (const l of applyEscortMeleeHits(get, set, escortMeleeHits)) escortMeleeSfx.push({ ...l, kind: 'hit' });
     // 護衛NPCの発砲: プレイヤーと同じ見た目の実弾(handgun projectile・friendly)。命中は通常の弾-敵判定で処理。
     for (const sh of escortShots) {
       get().addProjectile({
@@ -20537,8 +20626,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().triggerEventVictory(); // イベント: ゴール(帰還サークル)を出す
       }
     }
-    // このフレームに護衛NPCが発砲した位置(発射元)を返す。useGameLoop が NPC↔プレイヤー距離で減衰再生する。
-    return escortShots.map(s => ({ x: s.x, y: s.y }));
+    // このフレームに護衛NPCが発砲した位置(発射元)を返す。useGameLoop が NPC↔プレイヤー距離で減衰再生する。近接の振り/当たりも同じ減衰で鳴らす。
+    return [...escortShots.map(s => ({ x: s.x, y: s.y })), ...escortMeleeSfx];
   },
 
   // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。兵士(§1/§7/§9)とフィル(§2/§4/§8)の状態機械を
@@ -22520,12 +22609,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)', lengthScale = 1) => {
+  spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)', lengthScale = 1, faceOverride) => {
     const now = Date.now();
     // 斬撃の向き=プレイヤーの向き(右=左下→右上 / 左=反転)。レンダラの facingLeft 判定と同じ規則。
+    // faceOverride=斬った本人の向き(進軍NPCの近接=振った向き・research/ESCORT_MELEE.md)。
     const p = get().player;
     const facingLeft = p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0);
-    const face = facingLeft ? -1 : 1;
+    const face = faceOverride ?? (facingLeft ? -1 : 1);
     set(state => {
       const next = [...state.effects, {
         kind: 'slash' as const,
