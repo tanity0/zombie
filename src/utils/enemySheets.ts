@@ -1742,7 +1742,10 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
     phases: [
       { state: 'idol-snipe-windup', seq: [0], mode: 'stretch' },
       { state: 'idol-snipe', seq: [1, 2], mode: 'stretch' },
-      { state: 'idol-snipe-recover', seq: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], mode: 'stretch' },
+      // ★余韻(社長指示2026-10-11「アイドルの狙撃(紫帯の技)の後、余韻入れて。撃った最後のコマのまま少し止まる」):
+      //   硬直の頭に撃った最後のコマ(2=反動)を4つ重ねる=撃ち終わりの姿のまま約0.2秒止まってから頭が弾かれる
+      //   (発射中の2コマ目と合わせて約0.3秒)。技の時間(硬直900ms)は変えない=後半の仰け反り→消えるが少しだけ速くなる。
+      { state: 'idol-snipe-recover', seq: [2, 2, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], mode: 'stretch' },
       { state: 'idol-orb-windup', seq: [0], mode: 'stretch' },
       { state: 'idol-orb-recover', seq: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], mode: 'stretch' },
     ],

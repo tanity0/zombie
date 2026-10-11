@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4978', items: ['研究所のアイドルが狙撃を撃ったあと、撃ち終わりの姿のまま一瞬止まってから仰け反る'] },
   { version: '0.25.4977', items: ['研究所で一度画面に映った場所には、引き返しても敵が湧き直さない'] },
   { version: '0.25.4976', items: ['研究所のアイドルの手前が、金箱から武器庫に変わった。拠点と同じく、輪の中で指を離すと買い物ができる'] },
   { version: '0.25.4975', items: ['研究所では、画面の端に武器商人の方角の印が出なくなった'] },
