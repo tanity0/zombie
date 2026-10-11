@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Application, Assets } from 'pixi.js';
 import { buildLayers } from './layers';
 import { ensureTextures, loadSpriteGroups } from './pixiTextures';
-import { PixiScene } from './pixiScene';
+import { PixiScene, releaseAllBakedTextures } from './pixiScene';
 import { useGameStore } from '../store/gameStore';
 import { setAudioSuspended } from '../audio/audioManager';
 import { computeViewport } from '../utils/viewport';
@@ -357,6 +357,9 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       tickerCallbackRef.current = null;
       try { sceneRef.current?.destroy(); } catch { /* ignore */ }
       sceneRef.current = null;
+      // 焼きの計器を作り直しの前に0へ戻す(古いレンダラの焼きは GPU ごと消える=数字だけが残っていた・2026-10-11)。
+      // scene.destroy() が途中で投げても必ず通るよう、別の try にしてある。
+      try { releaseAllBakedTextures(); } catch { /* ignore */ }
       try { a?.destroy(true); } catch { /* ignore */ }
       appRef.current = null;
       try { host?.replaceChildren(); } catch { /* ignore */ }

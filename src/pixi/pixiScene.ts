@@ -188,7 +188,7 @@ import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, s
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { labZombieSexOf } from '../utils/labZombieSex';
 import { setRenderStats, setFxDiag } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347)
-import { addBakedTexture, type BakeKind } from '../utils/renderStats'; // 焼いたテクスチャの実測(v0.25.4375)
+import { trackBakedTexture, untrackBakedTexture, liveBakedTextures, type BakeKind } from '../utils/renderStats'; // 焼いたテクスチャの実測(v0.25.4375)
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
 import { MOLOTOV_FIRE_RADIUS } from '../utils/molotov';
@@ -410,15 +410,25 @@ const bakeRenderTexture = (
   opts: { width: number; height: number; antialias?: boolean; resolution?: number },
 ): RenderTexture => {
   const rt = RenderTexture.create(opts);
-  addBakedTexture(kind, (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0));
+  trackBakedTexture(rt, kind, (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0));
   return rt;
 };
 
 /** 焼いた物を捨てる時の1点(数えた分を引き戻す)。 */
-const releaseBakedTexture = (kind: BakeKind, rt: RenderTexture | null | undefined): void => {
+// kind は呼び手の読みやすさのために残す(引く量と種類は台帳=焼いた時の記録が正)。
+const releaseBakedTexture = (_kind: BakeKind, rt: RenderTexture | null | undefined): void => {
   if (!rt) return;
-  addBakedTexture(kind, (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0), -1);
-  rt.destroy(true);
+  untrackBakedTexture(rt);
+  if (!rt.destroyed) rt.destroy(true);
+};
+
+/**
+ * シーンを畳む時に、まだ台帳に残っている焼きを全部捨てる(PixiStage の後片付けから1回)。
+ * どの焼きもシーンの持ち物(this.〜Cache)で、次のシーンへ持ち越す物は無い=全部捨ててよい。
+ * 先に生の destroy() で捨てられていた物は数だけ引く(二重には壊さない)。
+ */
+export const releaseAllBakedTextures = (): void => {
+  for (const k of liveBakedTextures()) releaseBakedTexture('other', k as RenderTexture);
 };
 
 // --- 深層域グレーディング(退色した暖色セピア) -----------------------------

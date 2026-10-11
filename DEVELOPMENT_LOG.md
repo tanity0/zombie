@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.4985 — 落ちた時の計器(焼き)が出撃を重ねるほど積み上がっていた(社長実機「ステージ5のウェルカムイベント中に落ちた」)【2026-10-11 20:58 JST】
+- 社長の端末の「前回最後」: `v0.25.4984 t22s fx 97/97 峰95 tex167MB bake166MB(縁118/影32/白15/他0)4050枚 en13`。縁の天井はスマホ32MB(v0.25.4866/4962で焼く前に止める)なのに118MB。
+- 索引(ENGINEERING_NOTES §0)→「焼きの予算」#S-2 と同型を疑って追った: 縁の天井はシーン内の数(`rimBakeBytes`)で正しく効いている。ずれていたのは**計器(`bakeMb`)がモジュールの持ち物**で、
+  PixiStage の再マウント(出撃ごと/コンテキストロスト)でレンダラとシーンを作り直すと、古い焼きは renderer.destroy で GPU ごと消えるのに**計器から1度も引かれなかった**こと。
+  - ヘッドレスで再現: コンテキストロストで作り直しを3回 → 直す前 `bake5→8→11→13MB`(積み上がる)/ 直した後 `5→2→2→2MB`(1シーンぶんで止まる)。
+- 直し: `renderStats` に焼きの台帳(`trackBakedTexture`/`untrackBakedTexture`/`liveBakedTextures`)=物ごとに数え、二重に引かない。`bakeRenderTexture` は台帳に載せ、`releaseBakedTexture` は台帳にある分だけ引く。
+  `releaseAllBakedTextures()` を PixiStage の後片付け(scene.destroy の後・別の try)で1回。どの焼きもシーンの持ち物(this.〜Cache)で次へ持ち越す物は無い=全部捨ててよい。
+- **⇒ 今回の 118MB は実量ではない**(同じタブで何度か出撃した積み上げ)。実量は 縁≦32 / 影≦32 / 白≦16 の天井内=合計はおおよそ tex167 + 焼き数十MB。**落ちた本当の原因はこの数字からは確定できない**(スマホ Safari のタブが落とされる帯 200〜400MB の中)。次に落ちた時の「前回最後」は正しい数字になる。
+- テスト: renderStats.test(同じ物を2回載せても1回分・2回外しても1回分/作り直しを3回重ねても計器が戻る)。bakeLedger.test 緑。typecheck / lint 0。
+- ENGINEERING_NOTES: §0 に1行(「前回最後の bake が天井を大きく超えている」)+「焼きの予算」に #S-3。
+- 監査: 付けない(計器のバグ修正)。負荷 1/10(焼いた時と捨てた時に Map を1回触るだけ)。
+- 変更: src/utils/renderStats.ts(+test)・src/pixi/pixiScene.ts・src/pixi/PixiStage.tsx・ENGINEERING_NOTES.md・package.json・changelog.ts。
+
 ## v0.25.4984 — 進軍NPC8人の近接の振り2コマ(社長支給)【2026-10-11 20:25 JST】
 - 受領: 3072×264 の横並び16コマ(4倍ドット=全面一致・透過)。並び=8人ぶんの「低く構えた姿」→8人ぶんの「腕を振り上げた姿」(soldierIndex 順。髪色で照合: エドガー/ジョセフ/エリザベス/武蔵/ムハンマド/チェン/ローレン/フェイザー)。
   1/4へ解凍して `public/sprites/npc/escort-swing.png`(768×66・1コマ48)。4倍へ戻すと支給画像と全画素一致。

@@ -49,6 +49,30 @@ export const addBakedTexture = (kind: BakeKind, pixels: number, sign: 1 | -1 = 1
   bakeN[kind] += sign;
 };
 
+/**
+ * ★生きている焼きの台帳(2026-10-11・社長実機 v0.25.4984「ステージ5のウェルカム中に落ちた」=`bake166MB(縁118…)`)。
+ * レンダラは出撃ごと/コンテキストロストごとに作り直され(PixiStage の再マウント)、古い焼きは GPU ごと消えるのに、
+ * 上の数字からは**1度も引かれていなかった**=出撃を重ねるほど計器だけが積み上がっていた(実測: 作り直し3回で 5→8→11→13MB)。
+ * ⇒ 焼きを**物ごとに**台帳へ載せ、捨てた時は台帳にある分だけ引く(二重に引かない)。シーンを畳む時に残りを全部引く。
+ */
+const liveBakes = new Map<object, { kind: BakeKind; pixels: number }>();
+/** 焼いた物を台帳へ載せて数える(同じ物を2回載せても1回分)。 */
+export const trackBakedTexture = (key: object, kind: BakeKind, pixels: number): void => {
+  if (liveBakes.has(key)) return;
+  liveBakes.set(key, { kind, pixels });
+  addBakedTexture(kind, pixels);
+};
+/** 台帳から外して引き戻す。載っていなければ何もしない(false)=二重に引かない。 */
+export const untrackBakedTexture = (key: object): boolean => {
+  const e = liveBakes.get(key);
+  if (!e) return false;
+  liveBakes.delete(key);
+  addBakedTexture(e.kind, e.pixels, -1);
+  return true;
+};
+/** 台帳に残っている物(シーンを畳む時に全部捨てるため)。 */
+export const liveBakedTextures = (): object[] => [...liveBakes.keys()];
+
 /** 表示側。合計MBと内訳(縁/影/白/他)と枚数。 */
 export const bakedTextureText = (): string => {
   const mb = (k: BakeKind) => Math.round(bakeMb[k]);
