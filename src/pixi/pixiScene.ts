@@ -1489,6 +1489,11 @@ const KNIFE_F3 = { scale: 1.80, ox: 0.22, oy: -0.12 };
 // 進軍NPCのナイフ(research/ESCORT_MELEE.md): 構え=腰の前 / 溜め=後ろへ引いた所 / 振り抜き=前へ伸ばした所。
 // プレイヤーの振りかぶり(KNIFE_F1)より一回り大きく=暗い地面でも刃が読める(監査: 小さくて溶ける)。
 // r=手首の回し(rad・右向き基準): 引く時は刃先を後ろ上へ起こし、振り抜きで前下へ掃く。大きさはナイフ(ライフルと競らない)。
+// ジュン(衛生兵)の歩きシート(2026-10-11 差し替え)は1周期6コマ。無い名前は PixiScene.ESCORT_SHEET_STRIDE_FRAMES(8)。
+const ESCORT_SHEET_STRIDE_FRAMES_BY: Readonly<Record<string, number>> = { 'npc/medic-walk': 6 };
+// ジュンの表示倍率の分母。旧4コマ(78×64)は体が64行ぴったり、新シートは66行のうち体が64行(上に2行の余白)
+// =体の行数で割って、差し替え前と同じ背丈に保つ。
+const MEDIC_BODY_TEX_H = 64;
 const ESCORT_KNIFE_READY = { scale: 1.05, ox: 0.26, oy: 0.06, r: 0 };
 const ESCORT_KNIFE_BACK = { scale: 1.05, ox: -0.3, oy: 0.02, r: 0.95 };
 const ESCORT_KNIFE_FRONT = { scale: 1.05, ox: 0.62, oy: -0.06, r: -0.6 };
@@ -27008,9 +27013,9 @@ export class PixiScene {
       let sp = this.escortSprites.get(esc.id);
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.escortSprites.set(esc.id, sp); }
       // soldierIndex ごとのユニーク立ち絵(社長提供)。未提供のNPCは従来の shooter 素材へフォールバック。
-      // チュートリアルの衛生兵(TUTORIAL_MEDIC_INDEX)は専用4コマ(ピンポン)。
+      // チュートリアルの衛生兵(TUTORIAL_MEDIC_INDEX)=ジュン。2026-10-11 社長支給の歩きシート(6コマ)へ差し替え=軍人と同じ `${base}-walk` の経路。
       const base = esc.soldierIndex === TUTORIAL_MEDIC_INDEX
-        ? 'npc/medic-walk'
+        ? 'npc/medic'
         : (ESCORT_SPRITE_BASE[esc.soldierIndex] ?? 'rescue/shooter');
       const seq = getTexture(`${base}-3`) ? PixiScene.ESCORT_WALK_SEQ_4
         : getTexture(`${base}-2`) ? PixiScene.ESCORT_WALK_SEQ_3 : PixiScene.ESCORT_WALK_SEQ_2;
@@ -27025,8 +27030,10 @@ export class PixiScene {
       // 社長支給の歩きシート(2026-10-07・8/16コマ)がある人はそちらで歩く(1コマ ESCORT_SHEET_FRAME_MS・順送り)。
       // 止まっている時は両足が地面に着いているコマ(ESCORT_STAND_FRAME・社長指示2026-10-10)。シートの無い人は従来の3コマ(ピンポン)。
       const sheetFrames = getTexture(`${base}-walk-0`) ? (ESCORT_WALK_SHEETS[`${base}-walk`] ?? 0) : 0;
+      // 1歩き周期のコマ数がシートごとに違う(ジュン=6・他=8)。周期の長さ(=歩調)は全員同じにする。
+      const strideFrames = ESCORT_SHEET_STRIDE_FRAMES_BY[`${base}-walk`] ?? PixiScene.ESCORT_SHEET_STRIDE_FRAMES;
       const sheetFrame = sheetFrames > 0 && animate
-        ? Math.floor(now / PixiScene.ESCORT_SHEET_FRAME_MS) % sheetFrames
+        ? Math.floor(now / (PixiScene.ESCORT_SHEET_FRAME_MS * PixiScene.ESCORT_SHEET_STRIDE_FRAMES / strideFrames)) % sheetFrames
         : Math.min(Math.max(0, sheetFrames - 1), ESCORT_STAND_FRAME[`${base}-walk`] ?? 0);
       // research/ESCORT_TARGETED.md §6・§7: 倒れた姿の曲線(体力を持たない M0 の随行は恒等=従来と同じ)。
       const pose = escortPose(esc, gameTime);
@@ -27073,7 +27080,7 @@ export class PixiScene {
       const sheetMult = downSheet || hitCrouch || sheetFrames > 0 ? ESCORT_SHEET_DISPLAY_MULT : 1;
       const sinkScaleBase = tex
         ? (esc.soldierIndex === TUTORIAL_MEDIC_INDEX
-          ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y)
+          ? (PixiScene.RESCUE_NPC_DISPLAY_H / MEDIC_BODY_TEX_H) * this.depthScale(esc.y)
           : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1) * sheetMult) * tex.height * walkSqY
         : 0;
       // 本体の沈みだけ体高比・食い込みの超過/起き上がりの行き過ぎ/呼吸は基準px×遠近(体高比に乗せると約8pxの跳ね=R2 A-3)。
@@ -27104,7 +27111,7 @@ export class PixiScene {
         // 衛生兵はドット規格(78x64=横長キャンバス)のため contain-fit だと幅律速で小さくなる。
         // 高さ基準で他NPCと同じ表示高に揃える(社長指示v0.25.1825「大きさ揃えて」)。
         const sc = esc.soldierIndex === TUTORIAL_MEDIC_INDEX
-          ? (PixiScene.RESCUE_NPC_DISPLAY_H / tex.height) * this.depthScale(esc.y)
+          ? (PixiScene.RESCUE_NPC_DISPLAY_H / MEDIC_BODY_TEX_H) * this.depthScale(esc.y)
           // NPC8人(index0..7)のみ0.8倍(社長指示v0.25.1858)。チュートリアル随行(100/101)は等倍。
           : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1) * sheetMult;
         sp.scale.set(sc * walkSqX * faceSign, sc * walkSqY);

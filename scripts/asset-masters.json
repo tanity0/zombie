@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "926 files / 復号後 約690MB",
+ "generatedFor": "927 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3049,6 +3049,12 @@
    "h": 64,
    "bytes": 1959,
    "sha": "e5bbeb2ecd6a9e2e"
+  },
+  "sprites/npc/medic-walk.png": {
+   "w": 318,
+   "h": 66,
+   "bytes": 21273,
+   "sha": "f3af8d92a5a5b1ba"
   },
   "sprites/npc/muhammad-down.png": {
    "w": 108,

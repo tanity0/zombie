@@ -198,6 +198,7 @@ let loading: Promise<void> | null = null;
 export const ESCORT_WALK_SHEETS: Readonly<Record<string, number>> = {
   'npc/edgar-walk': 8, 'npc/joseph-walk': 16, 'npc/elizabeth-walk': 8, 'npc/musashi-walk': 8, 'npc/muhammad-walk': 16,
   'npc/chen-walk': 8, 'npc/lauren-walk': 16, 'npc/phaser-walk': 8,
+  'npc/medic-walk': 6, // 衛生兵ジュン(社長支給2026-10-11・318×66・1コマ53)
   // 倒れる2コマ(社長支給2026-10-07・0=崩れかけ/1=倒れた姿。歩きと同じ高さ66・下端=接地)。
   'npc/edgar-down': 2, 'npc/joseph-down': 2, 'npc/elizabeth-down': 2, 'npc/musashi-down': 2, 'npc/muhammad-down': 2,
   'npc/chen-down': 2, 'npc/lauren-down': 2, 'npc/phaser-down': 2,
@@ -207,6 +208,8 @@ export const ESCORT_WALK_SHEETS: Readonly<Record<string, number>> = {
 export const ESCORT_STAND_FRAME: Readonly<Record<string, number>> = {
   'npc/edgar-walk': 3, 'npc/joseph-walk': 10, 'npc/elizabeth-walk': 3, 'npc/musashi-walk': 3, 'npc/muhammad-walk': 10,
   'npc/chen-walk': 7, 'npc/lauren-walk': 10, 'npc/phaser-walk': 3,
+  // ジュンのシートは両足が着くコマが無い(全コマ接地は片足)=脚が閉じた通過姿勢の2(旧4コマの立ち止まり=2「足閉じ」と同じ役)。
+  'npc/medic-walk': 2,
 };
 export const FLAME_SHEET = 'props/flame';
 export const FLAME_FRAMES = 8;
@@ -843,10 +846,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/chen-down', scaleMode: 'nearest' },
       { name: 'npc/lauren-down', scaleMode: 'nearest' },
       { name: 'npc/phaser-down', scaleMode: 'nearest' },
-      { name: 'npc/medic-walk-0', scaleMode: 'nearest' }, // 衛生兵(チュートリアル随行・4コマピンポン)
-      { name: 'npc/medic-walk-1', scaleMode: 'nearest' },
-      { name: 'npc/medic-walk-2', scaleMode: 'nearest' },
-      { name: 'npc/medic-walk-3', scaleMode: 'nearest' },
+      { name: 'npc/medic-walk', scaleMode: 'nearest' }, // 衛生兵ジュン(チュートリアル随行)の歩きシート6コマ(社長支給2026-10-11・旧4コマ medic-walk-0..3 から差し替え)
       // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。フィル歩行3コマ+救護6コマ+倒れ兵士1枚
       // (受領2026-08-28。ドット等倍・下端=接地でトリム済み)。
       { name: 'npc/phill-walk-0', scaleMode: 'nearest' },

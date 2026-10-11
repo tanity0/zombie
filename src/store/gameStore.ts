@@ -699,7 +699,7 @@ const ESCORT_DMG = 8;                   // 1射のダメージ
 // フェイザーの名簿index(レア枠)。援護射撃のNPC選定(supportSniper)もこの値でレア性を保つためexport。
 export const PHASER_INDEX = 7;
 // チュートリアルの随行衛生兵(EscortSoldier流用)の特別soldierIndex。名簿(BASE_SOLDIERS)外なので
-// セリフ系はtutorialゲートで全停止し、描画はpixiScene側で 'npc/medic-walk'(4コマピンポン)に差し替える。
+// セリフ系はtutorialゲートで全停止し、描画はpixiScene側で 'npc/medic-walk'(歩きシート6コマ・2026-10-11差し替え)に差し替える。
 export const TUTORIAL_MEDIC_INDEX = 100;
 // チュートリアルの随行軍人=レスキューイベントのヘルメット兵(社長指示v0.25.1827「軍人はレスキュー
 // イベントの時のヘルメットしてるNPC」)。名簿外indexにすると drawEscorts の ESCORT_SPRITE_BASE

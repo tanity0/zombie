@@ -36,9 +36,8 @@ const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number; 
   // glen-boss.png の頭部クロップ+背景透過(art-src/glen-head.mjs生成)。表示名は「グレン」のまま、
   // npcDialogue.portrait='グレン(変異)' のオーバーライドでこのエントリを引く。
   'グレン(変異)': { base: 'npc/glen-mutant-head', boxW: 46, frame: 0, imgH: 52 },
-  // ジュンのboxWは可視域採寸で46(素材78pxのうち左19/右13pxは透明マージン=枠を素材幅で取ると
-  // 左に余白が空く・社長報告v0.25.1855)。
-  'ジュン': { base: 'npc/medic-walk', boxW: 46, frame: 2 },
+  // ジュン(2026-10-11 歩きシート6コマへ差し替え): 足閉じ=2(ゲーム内の立ち止まりと同じコマ)。体の可視幅は約46px=boxW据え置き。
+  'ジュン': { base: 'npc/medic-walk', boxW: 46, frame: 2, sheet: 6 },
 };
 
 // 横並びシートから1コマを切り出して、旧立ち絵と同じ置き方(足元=上から2行分・中央)で出す。
