@@ -1510,17 +1510,10 @@ const SHOOTER_SHEET_BODY_MULT = 66 / 64;
 // =体の行数で割って、差し替え前と同じ背丈に保つ。
 const MEDIC_BODY_TEX_H = 64;
 const ESCORT_KNIFE_READY = { scale: 1.05, ox: 0.26, oy: 0.06, r: 0 };
-// 2026-10-11 社長支給の振り2コマ(npc/escort-swing)が入ったので、溜め=振り上げた拳(頭の後ろ上)・振り抜き=前に低く出た拳に
-// **柄が来るように**置き直した(絵の拳の位置は8人とも実測でほぼ同じ: 振り上げ=中心から後ろ11・足元から63 / 振り抜き=前13・足元から18(66行の絵))。
-// ナイフ絵(knife-swing-1)は柄が中心から右上(+0.197, -0.072 単位)にあるので、その分を回転して引いた位置が ox/oy。
-// 溜め=刃を後ろ上へ(r 1.3)・振り抜き=刃を前下へ(r -1.6)。
-const ESCORT_KNIFE_BACK = { scale: 1.05, ox: -0.29, oy: -0.73, r: 1.3 };
-const ESCORT_KNIFE_FRONT = { scale: 1.05, ox: 0.28, oy: 0.32, r: -1.6 };
-// 進軍NPC8人の近接の振り2コマ(社長支給2026-10-11・768×66=48×16)。0..7=振り抜き(低く構えた姿)・8..15=振り上げ。並びは soldierIndex 順。
+// 進軍NPC8人の近接の振り2コマ(社長支給2026-10-11・768×66=48×16)。0..7=低く構えた姿(振りかぶり)・8..15=腕を振り上げた姿(振り抜き)。並びは soldierIndex 順。
+// ★ナイフの動きはプレイヤーと同じ(社長指摘2026-10-11「プレイヤーと同じ動きになってない。ナイフが逆に動いたり」):
+//   振りかぶり=後ろ下のダガー → 弧が下から描かれて前上へ振り上げる。体の絵もその順(低く構える→振り上げる)で、弧が出る瞬間に替える。
 const ESCORT_SWING_SHEET = 'npc/escort-swing';
-// 体を振り上げ→振り抜きへ替える瞬間(kt)。ナイフは振り抜きの区間(SWITCH→SWITCH2)を加速しながら後ろ上→前下へ動くので、
-// その**半分を過ぎた所**で替える=替わった瞬間のナイフが拳の間にある(区間の頭で替えると、体は低いのにナイフがまだ頭上に残る)。
-const ESCORT_SWING_BODY_SWITCH = 0.46;
 // 斬撃の弧を7コマのアニメで見せる(社長提供の絵・v0.25.4458)。小さな火花から三日月へ育つ絵で、
 // 全コマの下端(=柄側の起点)が揃っている。そこを支点に伸び上がらせ、コマが進むほど前へ押し出す。
 const MELEE_ARC_FRAMES = 7;
@@ -4610,7 +4603,7 @@ export class PixiScene {
   private baseSoldierFace = new Map<string, { px: number; face: number }>(); // 兵士の向き(前フレx差分で決定)
   private escortSprites = new Map<string, Sprite>(); // 護衛軍人NPC(前進・射撃)の立ち絵。shooter 素材を流用。
   // research/ESCORT_MELEE.md: 進軍NPCのナイフ(焼き込みダガー frame1/2/3=救援アライ・分身と同じ3枚)。ready=構えの濃さ(慣性つき)。
-  private escortMeleeViews = new Map<string, { knife: Sprite; slash: Sprite; trail: Sprite; modeOn: boolean; modeAt: number; lastSwingAt: number | undefined; swingCount: number }>();
+  private escortMeleeViews = new Map<string, { knife: Sprite; slash: Sprite; trail: Sprite; wpn: Sprite; modeOn: boolean; modeAt: number; wasSwinging: boolean }>();
   private escortBlendSprites = new Map<string, Sprite>(); // クロスフェード対象NPCの「次コマ」重ね描き(滑らか化・視覚のみ)。
   // research/ESCORT_TARGETED.md §6・§7: 体力の線/起こす進みの縁取り/倒れた印の点(1枚のGraphicsを毎フレーム描き直す・最大4人ぶん)。
   private escortGfx = new Graphics();
@@ -27066,9 +27059,9 @@ export class PixiScene {
       const downSheet = !!getTexture(`${base}-down-1`) && pose.downK > 0.02;
       // 攻撃を受けた直後(倒れていない時)は倒れる絵の0コマ目=片膝のしゃがみ(社長指示2026-10-08)。
       const hitCrouch = !downSheet && pose.hitCrouch && !!getTexture(`${base}-down-0`);
-      // 近接の振り(社長支給の2コマ): 振り上げ→振り抜き(区切りは ESCORT_SWING_BODY_SWITCH)。倒れ/被弾の絵が優先。
-      const swingTex = mSwing && esc.soldierIndex >= 0 && esc.soldierIndex < 8
-        ? getTexture(`${ESCORT_SWING_SHEET}-${esc.soldierIndex + (meleeSwingEase(mSince / (ESCORT_MELEE_WINDUP_MS + ESCORT_MELEE_BLADE_MS)) < ESCORT_SWING_BODY_SWITCH ? 8 : 0)}`)
+      // 近接の振り(社長支給の2コマ): 低く構える→振り上げる。替える瞬間は弧が出る瞬間(KNIFE_SWING_SWITCH)=プレイヤーと同じ時計(PLAYER_MELEE_SWING_MS)。倒れ/被弾の絵が優先。
+      const swingTex = mSwing && mSince < PLAYER_MELEE_SWING_MS && esc.soldierIndex >= 0 && esc.soldierIndex < 8
+        ? getTexture(`${ESCORT_SWING_SHEET}-${esc.soldierIndex + (meleeSwingEase(mSince / PLAYER_MELEE_SWING_MS) < KNIFE_SWING_SWITCH ? 0 : 8)}`)
         : null;
       const tex = hitCrouch ? getTexture(`${base}-down-0`)
         : downSheet
@@ -27184,7 +27177,7 @@ export class PixiScene {
       if (!seen.has(id)) {
         sp.destroy(); this.escortSprites.delete(id);
         const mv = this.escortMeleeViews.get(id);
-        if (mv) { mv.knife.destroy(); mv.slash.destroy(); mv.trail.destroy(); this.escortMeleeViews.delete(id); }
+        if (mv) { mv.knife.destroy(); mv.slash.destroy(); mv.trail.destroy(); mv.wpn.destroy(); this.escortMeleeViews.delete(id); }
         const bl = this.escortBlendSprites.get(id);
         if (bl) { bl.destroy(); this.escortBlendSprites.delete(id); }
         const fl = this.escortFlashSprites.get(id);
@@ -27205,80 +27198,110 @@ export class PixiScene {
     let v = this.escortMeleeViews.get(esc.id);
     if (!v) {
       if (!esc.knifeMode && !mSwing) return; // 一度も構えていない軍人には作らない
-      const mk = (texName: string) => {
+      const mk = (texName: string | null) => {
         const s = new Sprite();
-        const t = getTexture(texName);
+        const t = texName ? getTexture(texName) : null;
         if (t) s.texture = t;
         s.anchor.set(0.5, 0.5);
         s.visible = false;
         this.L.actorLayer.addChild(s);
         return s;
       };
-      v = { knife: mk('knife-swing-1'), slash: mk('knife-swing-2'), trail: mk('knife-swing-3'), modeOn: false, modeAt: -1e9, lastSwingAt: undefined, swingCount: 0 };
+      v = { knife: mk('knife-swing-1'), slash: mk('knife-swing-2'), trail: mk('knife-swing-3'), wpn: mk(null), modeOn: false, modeAt: -1e9, wasSwinging: false };
       this.escortMeleeViews.set(esc.id, v);
     }
-    const { knife, slash, trail } = v;
-    // 構えの出入り=武器スプライトの統一型(weaponSpawnEase・下から慣性つきでズレ上がり/沈んで消える)。
+    const { knife, slash, trail, wpn } = v;
+    const hideAll = () => { knife.visible = false; slash.visible = false; trail.visible = false; wpn.visible = false; };
+    // ★振りはプレイヤーと同じ時計・同じ3段(社長指摘2026-10-11「プレイヤーと同じ動きになってない。ナイフが逆に動いたり」)。
+    //   本体/分身/守護霊の近接と同じ: ①振りかぶり=後ろ下のダガー(装備の実絵) ②弧が下から描かれ、刃先に武器の実絵が乗って前上へ ③残光が引く。
+    //   回転も逆手も無い(向きは水平ミラーだけ)=プレイヤーと同じ。
+    const swinging = mSwing && mSince >= 0 && mSince < PLAYER_MELEE_SWING_MS;
+    // 構えのナイフは振りの間は消え、振り終わりにもう一度ズレ上がって出る(武器スプライトの統一型・慣性)。
     const modeNow = !!esc.knifeMode && alpha > 0;
     if (modeNow !== v.modeOn) { v.modeOn = modeNow; v.modeAt = now; }
-    const ease = modeNow ? weaponSpawnEase(now - v.modeAt, Infinity) : weaponSpawnEase(Infinity, Math.max(0, WEAPON_SPAWN_EASE_MS - (now - v.modeAt)));
-    // 順手/逆手は「振りの数」で交互(新しい振りを見たら数える)。
-    if (esc.knifeSwingAt !== undefined && esc.knifeSwingAt !== v.lastSwingAt) { v.lastSwingAt = esc.knifeSwingAt; v.swingCount++; }
-    const spawnA = mSwing ? 1 : ease.alphaMul;
-    if (alpha <= 0.01 || spawnA <= 0.01) { knife.visible = false; slash.visible = false; trail.visible = false; return; }
+    if (v.wasSwinging && !swinging && modeNow) v.modeAt = now;
+    v.wasSwinging = swinging;
+    if (alpha <= 0.01) { hideAll(); return; }
     const dsc = this.depthScale(footY);
     const boxH = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
     const unit = boxH * dsc;
-    const dirX = esc.knifeDirX ?? (esc.face < 0 ? -1 : 1), dirY = esc.knifeDirY ?? 0;
-    const mir = dirX < 0 ? -1 : 1;
-    const tilt = Math.max(-0.7, Math.min(0.7, Math.atan2(dirY, Math.abs(dirX) || 1e-6)));
-    const rot = mir * tilt;
-    const cosR = Math.cos(rot), sinR = Math.sin(rot);
-    const backhand = v.swingCount % 2 === 0 ? -1 : 1;
-    const baseX = footX;
-    const baseY = this.snapToScreenPixel(footY - boxH * 0.4 * dsc, this.L.world.position.y) + (mSwing ? 0 : ease.dy * dsc); // 腰あたり
+    const mir = (esc.knifeDirX ?? (esc.face < 0 ? -1 : 1)) < 0 ? -1 : 1;
     const zc = footY + 0.5;
-    const place = (s: Sprite, cfg: { scale: number; ox: number; oy: number; r?: number }, vis: boolean, al: number, flip = 1) => {
-      if (!vis || !s.texture || s.texture.width === 0) { s.visible = false; return; }
-      const scl = (unit * cfg.scale) / s.texture.width;
-      s.scale.set(mir * scl, scl * flip);
-      const lx = mir * cfg.ox * unit, ly = cfg.oy * unit * flip;
-      s.position.set(baseX + lx * cosR - ly * sinR, baseY + lx * sinR + ly * cosR);
-      s.rotation = rot + mir * (cfg.r ?? 0); // 手首の回し(向きでミラー)
-      s.zIndex = zc;
-      s.alpha = al * alpha;
-      s.visible = s.alpha > 0.01;
+    if (!swinging) {
+      wpn.visible = false; slash.visible = false; trail.visible = false;
+      const ease = modeNow ? weaponSpawnEase(now - v.modeAt, Infinity) : weaponSpawnEase(Infinity, Math.max(0, WEAPON_SPAWN_EASE_MS - (now - v.modeAt)));
+      if (ease.alphaMul <= 0.01 || !knife.texture || knife.texture.width === 0) { knife.visible = false; return; }
+      const kTex = getTexture('knife-swing-1');
+      if (kTex && knife.texture !== kTex) knife.texture = kTex;
+      const scl = (unit * ESCORT_KNIFE_READY.scale) / knife.texture.width;
+      knife.scale.set(mir * scl, scl);
+      knife.rotation = 0;
+      knife.position.set(footX + mir * ESCORT_KNIFE_READY.ox * unit,
+        this.snapToScreenPixel(footY - boxH * 0.4 * dsc, this.L.world.position.y) + ease.dy * dsc + ESCORT_KNIFE_READY.oy * unit);
+      knife.zIndex = zc;
+      knife.alpha = ease.alphaMul * alpha;
+      knife.visible = knife.alpha > 0.01;
+      return;
+    }
+    // ---- ここからプレイヤーの近接(守護霊 ④ と同じ式)----
+    const kt = meleeSwingEase(mSince / PLAYER_MELEE_SWING_MS);
+    const wtex = getTexture('weapons/knife-t1'); // 装備=tier1のナイフ(社長指定)
+    const baseX = this.snapToScreenPixel(footX, this.L.world.position.x);
+    const baseY = this.snapToScreenPixel(footY - boxH * 0.5 * dsc, this.L.world.position.y); // 胸あたり
+    const place = (sp: Sprite, cfg: { scale: number; ox: number; oy: number }, vis: boolean, a: number) => {
+      if (!vis || !sp.texture || sp.texture.width === 0) { sp.visible = false; return; }
+      const scl = (unit * cfg.scale) / sp.texture.width;
+      sp.scale.set(mir * scl, scl); // 左向き=水平ミラー(回転なし)
+      sp.rotation = 0;
+      sp.position.set(baseX + mir * cfg.ox * unit, baseY + cfg.oy * unit);
+      sp.zIndex = zc;
+      sp.alpha = a * alpha;
+      sp.visible = sp.alpha > 0.01;
     };
     const placeMeleeArc = (arcSpr: Sprite, arcKt: number, arcAl: number) => {
       const arcCfg = meleeArcCfg(arcSpr, arcKt);
-      place(arcSpr, arcCfg ?? KNIFE_F2, true, arcCfg ? meleeArcAlpha(arcKt) : arcAl, backhand);
+      place(arcSpr, arcCfg ?? KNIFE_F2, true, arcCfg ? meleeArcAlpha(arcKt) : arcAl);
     };
-    // ダガーは1本の連続した動き: 構え(前・腰)→ 溜めで後ろへ引く(減速)→ 刃で前へ振り抜く(弧と一緒に)→ 構えへ戻る。瞬間移動しない。
-    type KnifePose = { scale: number; ox: number; oy: number; r: number };
-    const lerp = (a: KnifePose, b: KnifePose, t: number): KnifePose =>
-      ({ scale: a.scale + (b.scale - a.scale) * t, ox: a.ox + (b.ox - a.ox) * t, oy: a.oy + (b.oy - a.oy) * t, r: a.r + (b.r - a.r) * t });
-    const easeIn = (t: number) => { const c = Math.max(0, Math.min(1, t)); return c * c * c; };
-    const easeOut = (t: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3);
-    const easeInOut = (t: number) => { const c = Math.max(0, Math.min(1, t)); return c * c * (3 - 2 * c); };
-    if (!mSwing) {
-      place(knife, ESCORT_KNIFE_READY, true, spawnA);
-      slash.visible = false; trail.visible = false;
-      return;
-    }
-    const kt = meleeSwingEase(mSince / (ESCORT_MELEE_WINDUP_MS + ESCORT_MELEE_BLADE_MS));
+    const placeWpn = (ox: number, oy: number, rot: number, lenFrac: number, a: number) => {
+      if (!wtex) { wpn.visible = false; return; }
+      if (wpn.texture !== wtex) wpn.texture = wtex;
+      const sc2 = (unit * lenFrac) / Math.max(1, Math.hypot(wtex.width, wtex.height));
+      wpn.scale.set(mir * sc2, sc2);
+      wpn.rotation = mir * rot;
+      wpn.position.set(baseX + mir * ox * unit, baseY + oy * unit);
+      wpn.zIndex = zc;
+      wpn.alpha = a * alpha;
+      wpn.visible = wpn.alpha > 0.01;
+    };
+    const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定(本体/分身/守護霊と同じ)
+    const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
+    const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
+    const placeMeleeArcWpn = (arcKt: number, fallbackAl: number) => {
+      const arcCfg = meleeArcCfg(slash, arcKt);
+      if (!arcCfg) { placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, fallbackAl); return; }
+      const wp = meleeArcWpnPos(arcCfg);
+      placeWpn(wp.ox, wp.oy, MELEE_ARC_WPN_ROT, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
+    };
+    const kTex = getTexture('knife-swing-1');
+    if (kTex && knife.texture !== kTex) knife.texture = kTex;
     if (kt < KNIFE_SWING_SWITCH) {
-      place(knife, lerp(ESCORT_KNIFE_READY, ESCORT_KNIFE_BACK, easeOut(kt / KNIFE_SWING_SWITCH)), true, 1);
+      const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
+      place(knife, KNIFE_F1, !wtex, a1);
+      placeWpn(KNIFE_F1.ox, KNIFE_F1.oy, MELEE_WPN_F1.rot, MELEE_WPN_F1.len, a1);
       place(slash, KNIFE_F2, false, 0);
       place(trail, KNIFE_F3, false, 0);
     } else if (kt < KNIFE_SWING_SWITCH2) {
       const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH);
-      place(knife, lerp(ESCORT_KNIFE_BACK, ESCORT_KNIFE_FRONT, Math.min(1, easeIn(t2 * 1.6))), true, 1); // 振り抜きは加速して切る(弧の前半で前へ届く)
-      placeMeleeArc(slash, kt, Math.min(1, t2 / 0.25));
+      const a2 = Math.min(1, t2 / 0.25);
+      place(knife, KNIFE_F1, false, 0);
+      placeMeleeArc(slash, kt, a2);
+      placeMeleeArcWpn(kt, a2);
       place(trail, KNIFE_F3, false, 0);
     } else {
       const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2);
-      place(knife, lerp(ESCORT_KNIFE_FRONT, ESCORT_KNIFE_READY, easeInOut(t3)), true, 1);
+      place(knife, KNIFE_F1, false, 0);
       place(slash, KNIFE_F2, false, 0);
+      placeMeleeArcWpn(kt, 0);
       placeMeleeArc(trail, kt, 1 - t3);
     }
   }
