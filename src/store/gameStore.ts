@@ -703,7 +703,7 @@ export const PHASER_INDEX = 7;
 export const TUTORIAL_MEDIC_INDEX = 100;
 // チュートリアルの随行軍人=レスキューイベントのヘルメット兵(社長指示v0.25.1827「軍人はレスキュー
 // イベントの時のヘルメットしてるNPC」)。名簿外indexにすると drawEscorts の ESCORT_SPRITE_BASE
-// フォールバック('rescue/shooter')がそのまま使われる(2コマ歩行)。
+// フォールバック('rescue/shooter')がそのまま使われる(歩きシート6コマ・2026-10-11差し替え)。
 export const TUTORIAL_SOLDIER_INDEX = 101;
 // チュートリアルの上下移動制限(プレイヤー中心yがスポーン(0)から±この値まで・透明な壁)。
 // 縦カメラ=プレイヤー1:1追従とセットで、被写界深度の構図を守る(社長指示v0.25.1826)。

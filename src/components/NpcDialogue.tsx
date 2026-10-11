@@ -31,7 +31,8 @@ const NPC_PORTRAIT: Record<string, { base: string; boxW: number; frame: number; 
   // グレッグ=軍人(レスキューのヘルメット兵=rescue/shooter・92x120=縦長) / ジュン=衛生兵
   // (npc/medic-walk 78x64=横長のためboxW広め)。
   // shooterは0=足閉じ・1=足開き(4倍拡大で確認・v0.25.1856修正。ゲーム内静止コマ0とも一致)。
-  'グレッグ': { base: 'rescue/shooter', boxW: 40, frame: 0 },
+  // グレッグ(2026-10-11 ヘルメット兵の歩きシート6コマへ差し替え): 両足が着く1コマ目(ゲーム内の立ち止まりと同じ)。
+  'グレッグ': { base: 'rescue/shooter-walk', boxW: 40, frame: 1, sheet: 6 },
   // 変異後グレン(M7咆哮用・社長指示v0.25.2073「会話アイコンは変異後の頭部分だけ」):
   // glen-boss.png の頭部クロップ+背景透過(art-src/glen-head.mjs生成)。表示名は「グレン」のまま、
   // npcDialogue.portrait='グレン(変異)' のオーバーライドでこのエントリを引く。

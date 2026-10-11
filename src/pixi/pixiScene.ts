@@ -1490,7 +1490,12 @@ const KNIFE_F3 = { scale: 1.80, ox: 0.22, oy: -0.12 };
 // プレイヤーの振りかぶり(KNIFE_F1)より一回り大きく=暗い地面でも刃が読める(監査: 小さくて溶ける)。
 // r=手首の回し(rad・右向き基準): 引く時は刃先を後ろ上へ起こし、振り抜きで前下へ掃く。大きさはナイフ(ライフルと競らない)。
 // ジュン(衛生兵)の歩きシート(2026-10-11 差し替え)は1周期6コマ。無い名前は PixiScene.ESCORT_SHEET_STRIDE_FRAMES(8)。
-const ESCORT_SHEET_STRIDE_FRAMES_BY: Readonly<Record<string, number>> = { 'npc/medic-walk': 6 };
+const ESCORT_SHEET_STRIDE_FRAMES_BY: Readonly<Record<string, number>> = { 'npc/medic-walk': 6, 'rescue/shooter-walk': 6 };
+// ヘルメット兵(rescue/shooter)の歩きシート(社長支給2026-10-11・6コマ・342×66)。拠点の駐留兵・救助イベントの射撃手・
+// エンディングの兵士・訓練の随行軍人(drawEscorts のフォールバック経路)・援護射撃のフォールバックが共有する。
+const SHOOTER_SHEET = 'rescue/shooter-walk';
+// 旧2コマ(92×120)は体が120行ぴったり、新シートは66行のうち体が64行=体の行数で合わせて差し替え前と同じ背丈にする。
+const SHOOTER_SHEET_BODY_MULT = 66 / 64;
 // ジュンの表示倍率の分母。旧4コマ(78×64)は体が64行ぴったり、新シートは66行のうち体が64行(上に2行の余白)
 // =体の行数で割って、差し替え前と同じ背丈に保つ。
 const MEDIC_BODY_TEX_H = 64;
@@ -26970,7 +26975,6 @@ export class PixiScene {
   // captured 拠点の soldiers を id ごとにプール/プルーンする。描画のみ(シミュレーション非干渉)。
   private drawBaseSoldiers(sites: BaseSite[], now: number) {
     const seen = new Set<string>();
-    const walkFrame = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS) % 2;
     for (const s of sites) {
       if (s.status !== 'captured') continue;
       s.soldiers.forEach((sol, i) => {
@@ -26983,10 +26987,10 @@ export class PixiScene {
         const dxm = sol.x - fc.px; fc.px = sol.x;
         if (dxm > 0.6) fc.face = 1; else if (dxm < -0.6) fc.face = -1;
         const moving = Math.abs(dxm) > 0.3;
-        const tex = getTexture(`rescue/shooter-${moving ? walkFrame : 0}`) ?? getTexture('rescue/shooter-0');
+        const tex = this.shooterTex(moving, now);
         if (tex) {
           sp.texture = tex;
-          const sc = this.humanNpcScale(tex.width, tex.height, sol.y); // プレイヤーと同寸
+          const sc = this.humanNpcScale(tex.width, tex.height, sol.y) * SHOOTER_SHEET_BODY_MULT; // プレイヤーと同寸
           sp.scale.set(sc * fc.face, sc);
           sp.alpha = this.horizonActorAlpha(sol.y); // 地平線で透明化(空に浮かない)
           sp.visible = sp.alpha > 0;
@@ -27048,7 +27052,7 @@ export class PixiScene {
         ? (getTexture(`${base}-down-${pose.downK >= 0.5 ? 1 : 0}`) ?? getTexture(`${base}-down-1`))
         : sheetFrames > 0
         ? (getTexture(`${base}-walk-${sheetFrame}`) ?? getTexture(`${base}-walk-0`))
-        : (getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0'));
+        : (getTexture(`${base}-${walkFrame}`) ?? getTexture(`${base}-0`) ?? getTexture(`${SHOOTER_SHEET}-0`));
       // クロスフェード補間(対象NPCのみ): コマ内の進行率 frac で「次コマ」を上に α=frac で重ね、
       // 170msごとのパッ切り替えを連続化する。隣接コマは常に接地↔通過なので混色=中間歩に見える。
       const crossfade = ESCORT_CROSSFADE_SOLDIERS.has(esc.soldierIndex);
@@ -27077,7 +27081,8 @@ export class PixiScene {
       // 表示高は下の sc と同じ式(テクスチャが無い時は従来の基準px×遠近)。
       // 支給シート(歩き/倒れ)は旧立ち絵より体の上の余白が広く頭身も細い=同じ枠高だと見た目が約8%小さい
       // (社長指摘2026-10-07「小さくなってる」)。シートを使う時だけ枠ごと拡大して旧立ち絵の見た目に揃える。
-      const sheetMult = downSheet || hitCrouch || sheetFrames > 0 ? ESCORT_SHEET_DISPLAY_MULT : 1;
+      const sheetMult = base === 'rescue/shooter' && sheetFrames > 0 ? SHOOTER_SHEET_BODY_MULT
+        : downSheet || hitCrouch || sheetFrames > 0 ? ESCORT_SHEET_DISPLAY_MULT : 1;
       const sinkScaleBase = tex
         ? (esc.soldierIndex === TUTORIAL_MEDIC_INDEX
           ? (PixiScene.RESCUE_NPC_DISPLAY_H / MEDIC_BODY_TEX_H) * this.depthScale(esc.y)
@@ -27399,7 +27404,6 @@ export class PixiScene {
   // シミュレーション(x/y/phase/velMult/lastShotAt)は endingScene.ts の純関数が決め、ここは読んで描くだけ。
   private drawEndingSoldiers(soldiers: EndingSoldier[], now: number) {
     const seen = new Set<string>();
-    const walkFrame = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS) % 2;
     const tsg = this.endingTumbleShadowGfx;
     tsg.clear(); // 一時転倒の影(v3.1 監査B-3)は毎フレーム描き直し(fallen影とは別Graphics=clear順の衝突なし)
     for (const s of soldiers) {
@@ -27413,8 +27417,8 @@ export class PixiScene {
       // 傾いた姿勢からease-outで起き直る(慣性=姿勢の動きは連続)。downed=しゃがんだまま(終端)。
       const tumbling = isEndingSoldierTumbling(s);
       const tex = tumbling
-        ? (getTexture('npc/soldier-watch-0') ?? getTexture('rescue/shooter-0'))
-        : (getTexture(`rescue/shooter-${moving ? walkFrame : 0}`) ?? getTexture('rescue/shooter-0'));
+        ? (getTexture('npc/soldier-watch-0') ?? this.shooterTex(false, now))
+        : this.shooterTex(moving, now);
       if (!tex) { sp.visible = false; continue; }
       sp.texture = tex;
       if (tumbling) {
@@ -27430,7 +27434,7 @@ export class PixiScene {
           sp.rotation = 0; // しゃがんで構えたまま
         }
       } else {
-        const sc = this.humanNpcScale(tex.width, tex.height, s.y);
+        const sc = this.humanNpcScale(tex.width, tex.height, s.y) * SHOOTER_SHEET_BODY_MULT;
         sp.scale.set(-sc, sc); // shooter素材は右向き→常に左向きへ反転(faceSign=-1)
         sp.rotation = 0;
       }
@@ -27709,7 +27713,7 @@ export class PixiScene {
     const base = ESCORT_SPRITE_BASE[npc.soldierIndex] ?? 'rescue/shooter';
     // 支給の歩きシートがある軍人はその0コマ目(旧3コマの立ち絵は2026-10-07に削除=社長指示「古い絵の方は削除して」)。
     const sheetTex = getTexture(`${base}-walk-0`);
-    const tex = sheetTex ?? getTexture(`${base}-0`) ?? getTexture('rescue/shooter-0');
+    const tex = sheetTex ?? getTexture(`${base}-0`) ?? getTexture(`${SHOOTER_SHEET}-0`);
     if (!tex) { sp.visible = false; return; }
     // スライド位置: 縁の交点(npc.x/y)を基準に、向き(dir=敵の方向)の軸上で 外(-START_OUT)→内(+INSET)。
     let offset: number;
@@ -29543,6 +29547,14 @@ export class PixiScene {
   private static readonly ESCORT_WALK_SEQ_4 = [0, 1, 2, 3, 2, 1]; // 4コマ立ち絵(衛生兵): ピンポン(社長指定)
   // 人型NPC(レスキュー/護衛/駐留兵)をプレイヤーと同じくらいの見た目サイズで描く(社長指示)。
   // 表示基準高さ RESCUE_NPC_DISPLAY_H の枠へ contain-fit ＋ プレイヤーと同じ遠近曲線(depthScale)。
+  /** ヘルメット兵の歩きシートのコマ。歩いている間は歩調(他の軍人と同じ周期)で進め、止まっている時は両足が着くコマ(ESCORT_STAND_FRAME)。 */
+  private shooterTex(moving: boolean, now: number): Texture | null {
+    const n = ESCORT_WALK_SHEETS[SHOOTER_SHEET] ?? 0;
+    const frameMs = PixiScene.ESCORT_SHEET_FRAME_MS * PixiScene.ESCORT_SHEET_STRIDE_FRAMES / (ESCORT_SHEET_STRIDE_FRAMES_BY[SHOOTER_SHEET] ?? PixiScene.ESCORT_SHEET_STRIDE_FRAMES);
+    const i = moving && n > 0 ? Math.floor(now / frameMs) % n : (ESCORT_STAND_FRAME[SHOOTER_SHEET] ?? 0);
+    return getTexture(`${SHOOTER_SHEET}-${i}`) ?? getTexture(`${SHOOTER_SHEET}-0`);
+  }
+
   private humanNpcScale(texW: number, texH: number, footY: number): number {
     return containScale(PixiScene.RESCUE_NPC_DISPLAY_H, PixiScene.RESCUE_NPC_DISPLAY_H, texW, texH) * this.depthScale(footY);
   }
@@ -29552,16 +29564,17 @@ export class PixiScene {
     const walkFrame = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS) % 2;
     for (const s of survivors) {
       seen.add(s.id);
-      const base = s.subtype === 'shooter' ? 'rescue/shooter' : s.gender === 'f' ? 'rescue/civ-f' : 'rescue/civ-m';
+      const shooter = s.subtype === 'shooter';
+      const base = s.gender === 'f' ? 'rescue/civ-f' : 'rescue/civ-m';
       const moving = Math.hypot(s.vx, s.vy) > 4;
-      const tex = getTexture(`${base}-${moving ? walkFrame : 0}`) ?? getTexture(`${base}-0`);
+      const tex = shooter ? this.shooterTex(moving, now) : (getTexture(`${base}-${moving ? walkFrame : 0}`) ?? getTexture(`${base}-0`));
       let sp = this.rescueSurvivorSprites.get(s.id);
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.rescueSurvivorSprites.set(s.id, sp); }
       const footX = s.x + s.width / 2;
       const footY = s.y + s.height;
       if (tex) {
         sp.texture = tex;
-        const sc = this.humanNpcScale(tex.width, tex.height, footY); // プレイヤーと同寸(同じスケール規定)
+        const sc = this.humanNpcScale(tex.width, tex.height, footY) * (shooter ? SHOOTER_SHEET_BODY_MULT : 1); // プレイヤーと同寸(同じスケール規定)
         // 左右の向き: vx を平滑化(EMA)＋デッドゾーンで決め、パタパタ反転を防ぐ(素材は右向き想定)。
         let fs = this.rescueFace.get(s.id);
         if (!fs) { fs = { vx: s.vx, face: 1 }; this.rescueFace.set(s.id, fs); }
