@@ -4,10 +4,12 @@ import {
   applyEscortHit, stepEscortVitals, escortSlidePosition, escortMaxHealthFor, syncEscortMaxHealth, escortCenter, escortHitbox, escortBodyRect,
   isEscortDowned, isEscortLowHealth, isEscortInvulnerable, canEscortBeHit, isEscortTargetableBody, healEscortFull, escortAdvanceSlowMult,
   escortReviveProgress, clearEscortSlide,
-  ESCORT_HP_RATIO, ESCORT_HIT_INVULN_MS, ESCORT_HIT_FIRE_HOLD_MS, ESCORT_REVIVE_RADIUS_PX, ESCORT_REVIVE_NEED_MS, ESCORT_REVIVE_DECAY,
+  ESCORT_HP_RATIO, ESCORT_HIT_INVULN_MS, escortHurtReaction, ESCORT_REVIVE_RADIUS_PX, ESCORT_REVIVE_NEED_MS, ESCORT_REVIVE_DECAY,
   ESCORT_REVIVE_HEAL_RATIO, ESCORT_SELF_REVIVE_MS, ESCORT_REVIVE_INVULN_MS, ESCORT_LOW_HP_RATIO, ESCORT_SELF_REVIVE_SLOW_MS,
-  ESCORT_SELF_REVIVE_SPEED_MULT, ESCORT_KNOCKBACK_PX, ESCORT_DOWN_SLIDE_PX, ESCORT_BODY_SIZE, ESCORT_RETREAT_SPEED_MULT,
+  ESCORT_SELF_REVIVE_SPEED_MULT, ESCORT_DOWN_SLIDE_PX, ESCORT_BODY_SIZE, ESCORT_RETREAT_SPEED_MULT,
 } from './escortHealth';
+import { PLAYER_HURT_TIERS, playerHurtTier } from './playerHurt';
+import { INVULN_MS, PLAYER_KNOCKBACK_SPEED } from '../store/gameStore';
 
 const mk = (over: Partial<EscortSoldier> = {}): EscortSoldier => ({
   id: 'escort-0', baseId: 'base-0', x: 100, y: 200, face: 1, soldierIndex: 0, fireAt: 0, dwellMs: 0,
@@ -59,21 +61,35 @@ describe('被弾(§3・§7)', () => {
     expect(r3.dealt).toBe(20);
     expect(r3.next.health).toBe(32);
   });
-  it('被弾で射撃が300ms止まり、被弾源から離れる向きへ滑る(ease-out)', () => {
+  // 社長指示2026-10-12「NPCも攻撃食らった時プレイヤーと同じ動きにして 無敵時間も同じ」
+  it('無敵時間・しゃがみ・吹き飛びはプレイヤーと同じ値(段=減った体力÷最大体力もプレイヤーの境目)', () => {
+    expect(ESCORT_HIT_INVULN_MS).toBe(INVULN_MS);
+    for (const [dealt, max] of [[5, 72], [10, 72], [30, 72]] as const) {
+      const tier = PLAYER_HURT_TIERS[playerHurtTier(dealt, max)];
+      const h = escortHurtReaction(dealt, max, PLAYER_KNOCKBACK_SPEED);
+      expect(h.crouchMs).toBe(tier.crouchMs);
+      expect(h.kbMs).toBe(tier.kbMs);
+      // プレイヤーは初速 PLAYER_KNOCKBACK_SPEED×倍率 から kbMs で0へ線形減衰=距離はその半分
+      expect(h.kbPx).toBeCloseTo(PLAYER_KNOCKBACK_SPEED * tier.kbSpeedMult * tier.kbMs / 1000 / 2, 6);
+    }
+  });
+  it('被弾でしゃがみの間(段の crouchMs)撃てず、被弾源から離れる向きへ滑る(ease-out)', () => {
     const e = mk();
     // 源=軍人の左(体の中心 (100,186) の左200px) → 右へ滑る
-    const r = applyEscortHit(e, 10, 5000, -100, 186);
-    expect(r.next.fireHoldUntil).toBe(5000 + ESCORT_HIT_FIRE_HOLD_MS);
-    expect(ESCORT_HIT_FIRE_HOLD_MS).toBe(300);
+    const r = applyEscortHit(e, 10, 5000, -100, 186, PLAYER_KNOCKBACK_SPEED);
+    const h = escortHurtReaction(10, 72, PLAYER_KNOCKBACK_SPEED);
+    expect(r.next.fireHoldUntil).toBe(5000 + h.crouchMs);
+    expect(r.next.hurtCrouchMs).toBe(h.crouchMs);
     expect(r.next.lastHitAt).toBe(5000);
     expect(r.next.lastHitDirX).toBeCloseTo(1, 6);
-    expect(r.next.slideToX).toBeCloseTo(100 + ESCORT_KNOCKBACK_PX, 6);
+    expect(r.next.slideToX).toBeCloseTo(100 + h.kbPx, 6);
+    expect(r.next.slideUntil).toBe(5000 + h.kbMs);
     const p0 = escortSlidePosition(r.next, 5000)!;
     const pMid = escortSlidePosition(r.next, 5000 + (r.next.slideUntil! - 5000) / 2)!;
     const pEnd = escortSlidePosition(r.next, r.next.slideUntil! - 1)!;
     expect(p0.x).toBeCloseTo(100, 6);
     // ease-out: 半分の時間で半分より先へ進んでいる(出だしが速く終わりがゆるい=慣性)
-    expect(pMid.x - 100).toBeGreaterThan(ESCORT_KNOCKBACK_PX / 2);
+    expect(pMid.x - 100).toBeGreaterThan(h.kbPx / 2);
     expect(pEnd.x).toBeGreaterThan(pMid.x);
     expect(escortSlidePosition(r.next, r.next.slideUntil!)).toBeNull();
   });
@@ -95,8 +111,10 @@ describe('被弾(§3・§7)', () => {
     expect(isEscortDowned(r.next)).toBe(true);
     expect(r.next.downedAt).toBe(7000);
     expect(r.next.reviveMs).toBe(0);
-    expect(r.next.slideToX! - 100).toBeCloseTo(ESCORT_DOWN_SLIDE_PX, 6);
-    expect(ESCORT_DOWN_SLIDE_PX).toBeGreaterThan(ESCORT_KNOCKBACK_PX); // 倒れる滑りは被弾より大きい
+    // 倒れる滑り=max(倒れる滑り, その一撃の吹き飛び)=倒れない時より短く飛ばない
+    expect(r.next.slideToX! - 100).toBeCloseTo(Math.max(ESCORT_DOWN_SLIDE_PX, escortHurtReaction(5, 72, 460).kbPx), 6);
+    const heavy = applyEscortHit(mk({ health: 20 }), 30, 7000, 0, 186, PLAYER_KNOCKBACK_SPEED);
+    expect(heavy.next.slideToX! - 100).toBeCloseTo(escortHurtReaction(20, 72, PLAYER_KNOCKBACK_SPEED).kbPx, 6);
   });
   it('倒れている間は当たらない(技も当たらない)', () => {
     const d = applyEscortHit(mk({ health: 1 }), 5, 0, 0, 0).next;

@@ -3,12 +3,12 @@
 // gameStore の配線(resetGame の体力打刻・updateSuppression の倒れる/起こす・damageEscort・updateEnemies の狙い・
 // combatTick/heroBlast の被弾入口)を実際に回して確かめる。
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useGameStore } from './gameStore';
+import { useGameStore, PLAYER_KNOCKBACK_SPEED } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, applyPumpkinBlastDamage, applyEnemyProjectileHits, applyEnemyFire, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { hitThirdParties } from '../utils/heroBlast';
 import { applyContactToEscorts, enemyDealsContactToAllies } from '../utils/escortHit';
-import { escortMaxHealthFor, ESCORT_SELF_REVIVE_MS, ESCORT_REVIVE_NEED_MS, ESCORT_HIT_INVULN_MS } from '../utils/escortHealth';
+import { escortMaxHealthFor, ESCORT_SELF_REVIVE_MS, ESCORT_REVIVE_NEED_MS, ESCORT_HIT_INVULN_MS, escortHurtReaction } from '../utils/escortHealth';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 import { escortHateSide } from '../utils/bossHate';
@@ -98,7 +98,7 @@ describe('damageEscort(被弾の唯一の入口)', () => {
     expect(e.health).toBe(52);
     expect(e.invulnUntil).toBe(GT + ESCORT_HIT_INVULN_MS);
     expect(e.lastHitAt).toBe(GT);
-    expect(e.fireHoldUntil).toBe(GT + 300);
+    expect(e.fireHoldUntil).toBe(GT + escortHurtReaction(20, 72, PLAYER_KNOCKBACK_SPEED).crouchMs); // プレイヤーと同じ段のしゃがみ(社長指示2026-10-12)
     expect(e.slideUntil).toBeGreaterThan(GT);
     // 無敵の間の2発目は通らない
     expect(useGameStore.getState().damageEscort('escort-0', 20, ORIGIN - 100, ORIGIN + 26).dealt).toBe(0);
@@ -245,7 +245,7 @@ describe('倒れている間(§6): 前進・射撃・滞在・台詞が止まる
     tickSupp(GT + 16);
     expect(escById('escort-0').hatedByBossIds).toEqual([]);
     // 起きた直後に同じボスがまた狙う=新しく増えた=場面が打たれる
-    setEsc('escort-0', { downedAt: undefined, health: 36, invulnUntil: GT + 5000, slideUntil: undefined, slideStartAt: undefined });
+    setEsc('escort-0', { downedAt: undefined, health: 36, invulnUntil: GT + 5000, slideUntil: undefined, slideStartAt: undefined, lastHitAt: undefined });
     useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === 'b1' ? { ...e, hateTarget: escortHateSide('escort-0') } : e)) }));
     tickSupp(GT + 32);
     expect(escById('escort-0').lastScene).toEqual({ kind: 'targeted', at: GT + 32 });

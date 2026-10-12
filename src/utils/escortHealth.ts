@@ -4,16 +4,22 @@
 //
 // 数値はすべて叩き台(設計書§10「実機で絞る」)。ここが唯一の出どころ=他所に数値を書き写さない。
 import type { EscortSoldier } from '../types/game';
+import { playerHurtTier, playerHurtReactionOf } from './playerHurt';
 
 /** 体力 = プレイヤー最大体力 × この割合(§3・出撃中も追従)。 */
 export const ESCORT_HP_RATIO = 0.6;
-/** 被弾後の無敵(プレイヤーの INVULN_MS と同じ考え方=連続ヒットで溶けない)。 */
+/** 被弾後の無敵=プレイヤーの INVULN_MS と同じ値(社長指示2026-10-12「無敵時間も同じ」・テストで一致を固定)。 */
 export const ESCORT_HIT_INVULN_MS = 1000;
-/** 被弾で射撃を止める時間(§7 項8)。 */
-export const ESCORT_HIT_FIRE_HOLD_MS = 300;
-/** 被弾の滑り(§7 項9): 距離と尺。ease-out。 */
-export const ESCORT_KNOCKBACK_PX = 52;
-export const ESCORT_KNOCKBACK_MS = 280;
+/**
+ * ★被弾の反応はプレイヤーと同じ(社長指示2026-10-12「NPCも攻撃食らった時プレイヤーと同じ動きにして」)。
+ * 段(軽/中/重)=減った体力÷最大体力(playerHurt の境目そのまま)。段ごとに プレイヤーと同じ
+ * しゃがみの長さ(この間は動けず撃てない)・吹き飛びの速さ×尺(初速最大→0の線形減衰=位置は ease-out 2次)。
+ * 吹き飛びの基準速度はプレイヤーの PLAYER_KNOCKBACK_SPEED(store の値を呼び手が渡す=循環 import を作らない)。
+ */
+export const escortHurtReaction = (dealt: number, maxHealth: number, kbBaseSpeed: number): { crouchMs: number; kbPx: number; kbMs: number } => {
+  const r = playerHurtReactionOf(playerHurtTier(dealt, maxHealth));
+  return { crouchMs: r.crouchMs, kbMs: r.kbMs, kbPx: (kbBaseSpeed * r.kbSpeedMult * r.kbMs) / 1000 / 2 };
+};
 /** 倒れる瞬間の滑りは被弾より大きく・長く(§7 項16)。 */
 export const ESCORT_DOWN_SLIDE_PX = 70;
 export const ESCORT_DOWN_SLIDE_MS = 380;
@@ -128,15 +134,17 @@ const slideAway = (e: EscortSoldier, fromX: number | undefined, fromY: number | 
  * (呼び手=store が x/y と同じ規約でクランプし直す)。
  */
 export const applyEscortHit = (
-  e: EscortSoldier, amount: number, now: number, fromX?: number, fromY?: number,
+  e: EscortSoldier, amount: number, now: number, fromX?: number, fromY?: number, kbBaseSpeed = 460,
 ): EscortHitResult => {
   if (!(amount > 0) || !canEscortBeHit(e, now)) return { next: e, dealt: 0, downedNow: false };
   const hp0 = e.health ?? e.maxHealth ?? 0;
   const dealt = Math.min(hp0, amount);
   const hp = hp0 - dealt;
   const downedNow = hp <= 0;
-  const px = downedNow ? ESCORT_DOWN_SLIDE_PX : ESCORT_KNOCKBACK_PX;
-  const ms = downedNow ? ESCORT_DOWN_SLIDE_MS : ESCORT_KNOCKBACK_MS;
+  const hurt = escortHurtReaction(dealt, e.maxHealth ?? hp0, kbBaseSpeed);
+  // 倒れる滑りは被弾の吹き飛び以上(重い一撃で倒れた時に、倒れない時より飛ばない嘘を作らない)。尺は倒れる絵の時計に合わせて据え置き。
+  const px = downedNow ? Math.max(ESCORT_DOWN_SLIDE_PX, hurt.kbPx) : hurt.kbPx;
+  const ms = downedNow ? ESCORT_DOWN_SLIDE_MS : hurt.kbMs;
   const away = slideAway(e, fromX, fromY, px);
   const hasSlide = away.dx !== 0 || away.dy !== 0;
   const next: EscortSoldier = {
@@ -146,7 +154,8 @@ export const applyEscortHit = (
     lastHitAt: now,
     lastHitDirX: hasSlide ? away.dx / px : 0,
     lastHitDirY: hasSlide ? away.dy / px : 0,
-    fireHoldUntil: now + ESCORT_HIT_FIRE_HOLD_MS,
+    fireHoldUntil: now + hurt.crouchMs, // プレイヤーと同じ: しゃがんでいる間は撃てない
+    hurtCrouchMs: hurt.crouchMs,
     ...(hasSlide ? {
       slideFromX: e.x, slideFromY: e.y, slideToX: e.x + away.dx, slideToY: e.y + away.dy,
       slideStartAt: now, slideUntil: now + ms,

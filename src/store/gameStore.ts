@@ -874,6 +874,8 @@ const stepEscortLife = (
   const v = stepEscortVitals(esc, { now, dtSec, playerX, playerY });
   let e = v.next;
   let busy = isEscortDowned(e);
+  // 被弾のしゃがみの間は動けない(プレイヤーの moveLockMs=crouchMs と同じ・社長指示2026-10-12「プレイヤーと同じ動き」)。
+  if (!busy && e.lastHitAt !== undefined && now - e.lastHitAt >= 0 && now - e.lastHitAt < (e.hurtCrouchMs ?? 0)) busy = true;
   // 倒れ込みが地面に着いた瞬間(downedAt から倒れる動きの尺が経った1回)=砂埃の起点。下の滑りで位置を確定した後の足元を使う。
   const landed = e.downedAt !== undefined && !e.landedFx && now - e.downedAt >= ESCORT_DOWN_SLIDE_MS * ESCORT_FALL_IMPACT_FRAC; // 絵の最深点と同じ瞬間(R2 A-1)
   if (landed) e = { ...e, landedFx: true };
@@ -10741,7 +10743,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const esc = st.escorts.find(e => e.id === id);
     if (!esc) return { dealt: 0, downedNow: false };
     const now = st.gameTime;
-    const r = applyEscortHit(esc, amount, now, fromX, fromY);
+    const r = applyEscortHit(esc, amount, now, fromX, fromY, PLAYER_KNOCKBACK_SPEED); // 吹き飛びはプレイヤーと同じ基準速度(社長指示2026-10-12)
     if (r.dealt <= 0) return { dealt: 0, downedNow: false };
     let next = r.next;
     // 滑りの終点を「行ける帯」へ(CLAUDE.md Y方向5チェック: 帯の外・可視域の外へ滑り出さない)。

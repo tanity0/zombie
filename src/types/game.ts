@@ -2130,6 +2130,8 @@ export interface EscortSoldier {
   lastHitDirY?: number;
   /** 被弾で射撃を止める期限(300ms)。 */
   fireHoldUntil?: number;
+  /** 被弾のしゃがみの長さ(ms)。プレイヤーと同じ段(軽/中/重)で決まる。この間は動けず撃てない(社長指示2026-10-12「プレイヤーと同じ動き」)。 */
+  hurtCrouchMs?: number;
   // ---- research/ESCORT_MELEE.md: 近接(ナイフ)。判定は utils/escortMelee、描画は読むだけ。時計は gameTime(ms) ----
   /** 近接の構え中(敵が間合いの中/振っている最中)=銃は撃たない。 */
   knifeMode?: boolean;

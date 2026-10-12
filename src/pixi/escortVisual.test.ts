@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   escortPose, escortDownK, escortBarWant, escortDownDotAlpha, escortReviveLitTarget,
   ESCORT_SINK_PX, ESCORT_OVERSHOOT_PX, ESCORT_FALL_MS, ESCORT_FALL_IMPACT_AT, ESCORT_FALL_THUD_K, ESCORT_RISE_MS, ESCORT_RISE_SELF_MS,
-  ESCORT_FLASH_MS, ESCORT_FLASH_ALPHA, ESCORT_BLINK_MS, ESCORT_BAR_SHOW_MS, ESCORT_BAR_FADE_MS, ESCORT_BAR_HEAL_SHOW_MS, ESCORT_HIT_CROUCH_MS, ESCORT_BREATH_BOB_PX, ESCORT_DOWN_PULSE_MS,
+  ESCORT_FLASH_MS, ESCORT_FLASH_ALPHA, ESCORT_BLINK_MS, ESCORT_BAR_SHOW_MS, ESCORT_BAR_FADE_MS, ESCORT_BAR_HEAL_SHOW_MS, ESCORT_HIT_CROUCH_MS, ESCORT_HIT_BLINK_MS, ESCORT_BREATH_BOB_PX, ESCORT_DOWN_PULSE_MS,
 } from './escortVisual';
 
 const stand = { maxHealth: 78, health: 78 };
@@ -98,6 +98,12 @@ describe('攻撃を受けた直後のしゃがみ(社長指示2026-10-08)', () =
     expect(escortPose({ ...st, lastHitAt: 1000 }, 1000 + ESCORT_HIT_CROUCH_MS).hitCrouch).toBe(false);
     expect(escortPose({ ...st, lastHitAt: 1000, downedAt: 1000 }, 1100).hitCrouch).toBe(false);
     expect(escortPose({ lastHitAt: 1000 }, 1100).hitCrouch).toBe(false);
+  });
+  it('しゃがみの長さは被弾ごとの hurtCrouchMs(プレイヤーと同じ段)・無敵の間はプレイヤーと同じ式で点滅する', () => {
+    expect(escortPose({ ...st, lastHitAt: 1000, hurtCrouchMs: 700 }, 1699).hitCrouch).toBe(true);
+    expect(escortPose({ ...st, lastHitAt: 1000, hurtCrouchMs: 700 }, 1700).hitCrouch).toBe(false);
+    expect(escortPose({ ...st, lastHitAt: 1000 }, 1300).alphaMul).toBeCloseTo(0.5 + 0.5 * Math.sin(1300 / 50), 6);
+    expect(escortPose({ ...st, lastHitAt: 1000 }, 1000 + ESCORT_HIT_BLINK_MS).alphaMul).toBe(1);
   });
 });
 
