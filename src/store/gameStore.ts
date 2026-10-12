@@ -7952,6 +7952,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   setLastDirection: (direction) => {
+    // ★武器を振っている間は向きを変えない(社長指摘2026-10-12「まだナイフ振ってる時でも振り向けちゃう」)。
+    // v0.25.4992 は movePlayer の中(速度→向き)だけを止めていた。向きは入力側(スティック/十字/キー/マウス)もここで直接書くので、ここでも止める。
+    const sp = get().player;
+    const swingSince = Date.now() - (sp.meleeSwingAt || 0);
+    if ((sp.meleeSwingAt || 0) > 0 && swingSince >= 0 && swingSince < PLAYER_MELEE_SWING_MS) return;
     set(state => ({
       player: {
         ...state.player,

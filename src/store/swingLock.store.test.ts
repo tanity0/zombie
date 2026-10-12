@@ -53,3 +53,15 @@ describe('訓練で近接を教わる前は振らない', () => {
     expect(useGameStore.getState().player.meleeSwingAt).toBeGreaterThan(0);
   });
 });
+
+// 社長指摘2026-10-12「まだナイフ振ってる時でも振り向けちゃう」: 入力側(スティック/十字/キー/マウス)が向きを直接書く入口(setLastDirection)も止める。
+describe('振っている間は入力から向きを書き換えられない', () => {
+  it('振っている最中の setLastDirection は無視・振り終わりは効く', () => {
+    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: Date.now(), lastDirection: { x: 1, y: 0 } } }));
+    useGameStore.getState().setLastDirection({ x: -1, y: 0 });
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: 1, y: 0 });
+    useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: Date.now() - PLAYER_MELEE_SWING_MS - 5 } }));
+    useGameStore.getState().setLastDirection({ x: -1, y: 0 });
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: -1, y: 0 });
+  });
+});
