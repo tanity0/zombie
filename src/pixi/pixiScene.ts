@@ -1786,8 +1786,10 @@ const escortTossHopPx = (e: Enemy, gameTime: number): number => {
   if (e.corpseUntil !== undefined) return 0;
   const tz = e.escortToss;
   if (tz) {
+    // 浮きは時間ではなく**道のりの進み**に掛ける=頂点が道のりの真ん中に来る弾道(時間に掛けると終盤が真下へ漂う「風船」になった・検収クリエイティブ A-3)。
     const t = Math.max(0, Math.min(1, (gameTime - tz.startAt) / Math.max(1, tz.endAt - tz.startAt)));
-    return Math.sin(t * Math.PI) * ESCORT_TOSS_HOP_PX;
+    const f = 1 - (1 - t) * (1 - t);
+    return Math.sin(f * Math.PI) * ESCORT_TOSS_HOP_PX;
   }
   if (e.escortTossLandedAt !== undefined) {
     const u = (gameTime - e.escortTossLandedAt) / ESCORT_TOSS_BOUNCE_MS;
@@ -6783,6 +6785,7 @@ export class PixiScene {
   // 専用のMapで保持する(gazeWindupWasOnのSetだけでは元位置が拾えない)。
   private warpOutWasOn = new Set<string>();
   private warpInWasOn = new Set<string>();
+  private tossLastDir = new Map<string, { x: number; y: number }>(); // 兵士のトスの飛んだ向き(着地の埃を後ろへ引くため・着地後2秒で捨てる)
   private acrasielWarpOutPos = new Map<string, { x: number; y: number }>();
   // FX-V2c: 突進の風圧の向き+減衰締切。突進中は毎フレーム向きを撮り直し(endAtも押し戻す)、
   // 突進が明けたら最後の向きのまま endAt までの残り時間で減衰させる(dashWasOnと同じ「立ち下がり
@@ -9680,7 +9683,7 @@ export class PixiScene {
       s.escorts
     );
     this.syncPlayerFx(s.player, now);
-    this.syncRetaliationArrow(s.player, now);
+    this.syncRetaliationArrow(s.player, fxNow); // ★実時間(帯=CSSと同じ時計)。凍結時計だとヒットストップ中に出ず、明けに出現の動きが飛ぶ(検収品質 A-1)
     this.syncSpeedLines(s.player, now, s.gameTime); // §5.23 M22 C4: 突進/カウンターの速度線(screen-space・軽量)
     // 解放済み(=その方角の拠点が制圧済み)のPOIだけ方角矢印を出す。裏ボスは討伐後は出さない。
     // 出現/解放判定は固定の巣(セクター)で行い、矢印の指す先は「実際に出ている裏ボスの現在地」にする
@@ -22993,11 +22996,24 @@ export class PixiScene {
       const stepL = this.latchFx(`${e.id}:stepdust`, stepIn, DUST_MS, now,
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DUST_STOMP_SCALE]);
       if (stepL) this.drawDust(stepL.d[0], stepL.d[1], stepL.d[2], stepL.t, this.dustTintForStage(), this.dustAlpha(stepL.t), stepL.t0);
-      // ★兵士のトスの着地の砂埃(ESCORT_TOSS.md §4・派手さの絵=判定なし。大きさは踏み鳴らしと同じ DUST_STOMP_SCALE)。
+      // ★兵士のトスの着地の砂埃(ESCORT_TOSS.md §4・派手さの絵=判定なし)。ジャンプの着地(足元中心の円)と分けるため、
+      // **滑ってきた向きの後ろへ尾を引く**低い埃を3つ(足元・後ろ・さらに後ろへ小さく)=「投げ捨てられて滑り止まった」(検収クリエイティブ A-4)。
       const tossLandOn = e.escortTossLandedAt !== undefined && gameTime - e.escortTossLandedAt >= 0 && gameTime - e.escortTossLandedAt < 120;
-      const tossL = this.latchFx(`${e.id}:tossland`, tossLandOn, DUST_MS, now,
-        () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DUST_STOMP_SCALE]);
-      if (tossL) this.drawDust(tossL.d[0], tossL.d[1], tossL.d[2], tossL.t, this.dustTintForStage(), this.dustAlpha(tossL.t), tossL.t0);
+      const tossL = this.latchFx(`${e.id}:tossland`, tossLandOn, DUST_MS, now, () => {
+        const vx = this.tossLastDir.get(e.id)?.x ?? 0, vy = this.tossLastDir.get(e.id)?.y ?? 0;
+        return [fb.footX, fb.footY, Math.max(e.width, e.height), vx, vy];
+      });
+      if (tossL) {
+        const [dx0, dy0, sz, bx, by] = tossL.d;
+        for (const [k, sc] of [[0, DUST_SCALE * 0.9], [0.55, DUST_SCALE * 0.7], [1.05, DUST_SCALE * 0.45]] as const) {
+          this.drawDust(dx0 - bx * sz * k, dy0 - by * sz * k * 0.6, sz * sc, tossL.t, this.dustTintForStage(), this.dustAlpha(tossL.t), tossL.t0 + k * 97);
+        }
+      }
+      if (e.escortToss) {
+        const l = Math.hypot(e.escortToss.toX - e.escortToss.fromX, e.escortToss.toY - e.escortToss.fromY) || 1;
+        if (this.tossLastDir.size > 16) this.tossLastDir.clear(); // 消えた個体の分が溜まらないように(8秒に1回なので通常は1〜2件)
+        this.tossLastDir.set(e.id, { x: (e.escortToss.toX - e.escortToss.fromX) / l, y: (e.escortToss.toY - e.escortToss.fromY) / l });
+      } else if (e.escortTossLandedAt === undefined || gameTime - e.escortTossLandedAt > 2000) this.tossLastDir.delete(e.id);
 
       // v0.25.2868: 溜めの後に本体が高速でコミットする州だけ、進行方向と逆へ短い速度線を引く。
       // 州名は移動/判定の状態機械そのものを読むため、active秒数を変えてもFXだけ遅れて残らない。
@@ -23016,11 +23032,13 @@ export class PixiScene {
         const ux = mdx / ml, uy = mdy / ml, px = -uy, py = ux;
         const tail = Math.max(24, Math.min(150, Math.max(e.width, e.height) * 1.25));
         const spread = Math.max(5, Math.min(18, Math.min(e.width, e.height) * 0.18));
+        // 兵士のトスは体が浮いている=筋は足元の砂色ではなく、浮いた体の高さから空気の白で引く(検収クリエイティブ A-2)。
+        const airLift = tossing ? escortTossHopPx(e, gameTime) + fb.boxH * 0.45 : 0;
         for (const off of [-spread, 0, spread]) {
-          const sx = fb.footX + px * off, sy = fb.footY + py * off;
+          const sx = fb.footX + px * off, sy = fb.footY + py * off - airLift;
           o.moveTo(sx, sy).lineTo(sx - ux * tail, sy - uy * tail).stroke({
             width: off === 0 ? 3 : 1.5,
-            color: this.dustTintForStage(),
+            color: tossing ? 0xe5e7eb : this.dustTintForStage(),
             alpha: off === 0 ? 0.55 : 0.3,
           });
         }
@@ -34775,7 +34793,8 @@ export class PixiScene {
     if (HIDE_LAYERS.has('retarrow')) { g.visible = false; return; }
     const win = useGameStore.getState().hitRetaliation;
     const ready = win ? retaliationReadyTarget(useGameStore.getState, now) : null;
-    const RET_APPEAR_MS = 120, RET_RETRACT_MS = 70, RET_EXIT_MS = 120;
+    // 出現は短く(窓は300ms前後しか無い=戻りの動きに時間を渡す・検収クリエイティブ B-5)。
+    const RET_APPEAR_MS = 65, RET_RETRACT_MS = 70, RET_EXIT_MS = 120;
     let a = this.retArrow;
     if (ready && win) {
       const dx = ready.ecx - ready.pcx, dy = ready.ecy - ready.pcy, dl = Math.hypot(dx, dy) || 1;
@@ -34786,7 +34805,10 @@ export class PixiScene {
     } else if (a && a.mode === 'show') {
       // 条件が崩れた: 反撃が成立して飛び込んでいるなら入力の向きへ抜ける。そうでなければ体へ引っ込む。
       const success = (player.retaliateStrikeAt ?? 0) > 0 && player.retaliateTargetId !== undefined && now < (player.lungeUntil ?? 0) + 40;
-      a = { ...a, mode: success ? 'exit' : 'retract', modeAt: now };
+      // 成立=飛び込む向き(反撃がプレイヤーを相手へ向け直した lastDirection)へ抜ける。
+      const ld = player.lastDirection;
+      const ldl = ld ? Math.hypot(ld.x, ld.y) : 0;
+      a = { ...a, mode: success ? 'exit' : 'retract', modeAt: now, ...(success && ld && ldl > 0.01 ? { dirX: ld.x / ldl, dirY: ld.y / ldl } : {}) };
     }
     this.retArrow = a;
     if (!a) { if (g.visible) { g.visible = false; g.clear(); } return; }
@@ -34796,8 +34818,8 @@ export class PixiScene {
     const originY = this.L.world.position.y * wz + this.L.worldGroup.position.y;
     const cxs = originX + (player.x + player.width / 2) * wz;
     const cys = originY + (player.y + player.height - 26) * wz;
-    const edge = 24 * wz + 10; // 体の縁(画面px)
-    const GAP = 18;            // 縁から矢印の中心までの最大の余白(画面px)
+    const edge = 24 * wz + 4;  // 体の縁(画面px・矢印の中心がここまで戻ると体に吸い込まれて見える)
+    const GAP = 26;            // 出た時の縁からの距離(画面px)
     const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
     let out: number, alpha: number;
     if (a.mode === 'show') {
@@ -34806,11 +34828,13 @@ export class PixiScene {
       const s = 1.7;
       const back = 1 + (s + 1) * Math.pow(ta - 1, 3) + s * Math.pow(ta - 1, 2);
       const appearOut = GAP * back;
-      // 戻り: 出切った後から締め切りまでに GAP→0(体の縁)へ。後半ほど速く戻る(締め切りが迫る)。
+      // 戻り: 出切った後から締め切りまでに GAP→0(体の縁)へ。縁の帯の縮み(減速して止まる曲線)と同じ向きの曲線で戻り、
+      // **動きで**体の縁に消え切る(フェードは最後の1割だけ・検収クリエイティブ B-3/B-4)。
       const span = Math.max(1, a.closesAt - (a.shownAt + RET_APPEAR_MS));
       const tr = Math.max(0, Math.min(1, (now - (a.shownAt + RET_APPEAR_MS)) / span));
-      out = ta < 1 ? appearOut : GAP * (1 - tr * tr);
-      alpha = Math.min(1, ta * 1.6) * (tr > 0.75 ? Math.max(0, 1 - (tr - 0.75) / 0.25) : 1);
+      const back3 = 1 - Math.pow(1 - tr, 3);
+      out = ta < 1 ? appearOut : GAP * (1 - back3);
+      alpha = Math.min(1, ta * 1.6) * (tr > 0.9 ? Math.max(0, 1 - (tr - 0.9) / 0.1) : 1);
     } else if (a.mode === 'retract') {
       const t = Math.min(1, (now - a.modeAt) / RET_RETRACT_MS);
       out = a.out * (1 - easeOut(t));
@@ -34827,12 +34851,13 @@ export class PixiScene {
     g.visible = true;
     g.clear();
     // ▶(社長指定の形)。ドット絵の矢印は斜めに回すと輪郭が崩れて読めない(撮って確認)ため、塗りで描く。
-    // 正三角形だと斜めで ▼ に見えた(撮って確認)=先を長く・後ろを切り込んだ細身の ▶ にして向きを一目で読ませる。
-    g.poly([19, 0, -10, -12, -4, 0, -10, 12]).fill({ color: 0x0b1020, alpha: 0.9 });
-    g.poly([15, 0, -7, -8.5, -2.5, 0, -7, 8.5]).fill({ color: 0xffffff, alpha: 1 });
+    // 正三角形だと斜めで ▼ に見えた/深い切り込みはマウスカーソルに見えた(撮って確認・検収クリエイティブ B-1)
+    // =先をやや長くした ▶ に浅い切り込みだけ。白は HUD の生成りに揃える。
+    g.poly([16, 0, -9, -10, -6, 0, -9, 10]).fill({ color: 0x0b1020, alpha: 0.85 });
+    g.poly([12.5, 0, -6.5, -7, -4.2, 0, -6.5, 7]).fill({ color: 0xe7dccb, alpha: 1 });
     g.alpha = alpha;
     g.rotation = Math.atan2(a.dirY, a.dirX);
-    g.position.set(cxs + a.dirX * (edge + out + 10), cys + a.dirY * (edge + out + 10));
+    g.position.set(cxs + a.dirX * (edge + out), cys + a.dirY * (edge + out));
   }
 
   private syncPlayerFx(player: Player, now: number) {

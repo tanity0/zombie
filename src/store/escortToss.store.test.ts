@@ -54,10 +54,28 @@ describe('兵士のトス', () => {
     useGameStore.setState(s => ({ gameTime: s.gameTime + ESCORT_TOSS_CD_MS }));
     expect(useGameStore.getState().tossEnemyToPlayer(b)).toBe(true);
   });
-  it('トスはノックバックの欄を使わない(着地後の押しは従来どおり)', () => {
+  it('着地後の押しの飛距離は、トスしていない個体と同じ(トスが他のノックバックを変えない)', () => {
+    const a = put(400);
+    useGameStore.getState().tossEnemyToPlayer(a);
+    step(ESCORT_TOSS_MS + 20);
+    const b = put(-300);
+    const ay0 = enemy(a).y, by0 = enemy(b).y;
+    useGameStore.getState().knockbackEnemy(a, 0, 1, 1);
+    useGameStore.getState().knockbackEnemy(b, 0, 1, 1);
+    for (let k = 0; k < 20; k++) step(16);
+    const da = enemy(a).y - ay0, db = enemy(b).y - by0;
+    expect(db).toBeGreaterThan(1); // 押しが実際に効いている
+    // ノックバックは実時間で減衰する=2体を押した瞬間の差でわずかにずれる。守りたいのは「欄が残って約1/3縮む」事故なので3%で見る。
+    expect(Math.abs(da - db)).toBeLessThan(db * 0.03);
+    expect(enemy(a).escortToss).toBeUndefined();
+  });
+  it('飛行中に気絶が外れたら、その場で着地扱い(通常の処理へ戻る)', () => {
     const id = put(400);
     useGameStore.getState().tossEnemyToPlayer(id);
-    step(ESCORT_TOSS_MS + 20);
-    expect((enemy(id) as { knockbackMs?: number }).knockbackMs).toBeUndefined();
+    step(100);
+    useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.id === id ? { ...e, stunUntil: undefined } : e) }));
+    step(16);
+    expect(enemy(id).escortToss).toBeUndefined();
+    expect(enemy(id).escortTossLandedAt).toBeDefined();
   });
 });

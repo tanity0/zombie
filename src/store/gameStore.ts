@@ -5601,6 +5601,7 @@ export const buildCorpseFromKill = (
     // ★吹っ飛び(KNOCKBACK_DURATION)の**後ろに潰れの尺を足す**(社長指示2026-08-25)。
     // 飛距離の積分は `knockbackUntil` を見ているので、ここを伸ばしても**飛び方は1bitも変わらない**。
     corpseUntil: now + KNOCKBACK_DURATION + KILL_CORPSE_SQUASH_MS,
+    escortToss: undefined, escortTossLandedAt: undefined, // 飛行中に倒された兵士のトスは欄ごと消す(着地の演出は出さない)
     corpseStartX: enemy.x, // v0.25.3272: 実時間の解析積分用の発射起点(スロー中でも飛距離50pxを保証)
     corpseStartY: enemy.y,
     aiPhase: undefined,
@@ -7860,12 +7861,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         vx: 0, vy: 0,
       }),
     }));
-    // 打ち出し(派手さの絵・判定なし): 黄色の会心の輪は呼び手の既存のまま。飛ぶ向きと逆へ抜ける打撃の抜け+会心の刺さる音。
+    // 打ち出し(派手さの絵・判定なし): 黄色の会心の輪は呼び手の既存のまま。
     const fl = Math.hypot(land.x - ecx, land.y - ecy) || 1;
     const ux = (land.x - ecx) / fl, uy = (land.y - ecy) / fl;
-    get().spawnSpray(ecx - ux * e.width * 0.3, ecy - uy * e.height * 0.3, -ux, -uy, 14, ['#ffffff', '#fef3c7', '#fde68a']);
-    get().spawnBurst(ecx, ecy, '#fef9c3', 8, -ux, -uy);
-    void import('../audio/audioManager').then(m => m.playSfx('headshot', 0.8));
+    // 黄は既存の会心の輪1つに任せ、ここは当たった体の血・肉片が背中側へ抜ける(撃破の粒の色と分ける・検収クリエイティブ A-6)。
+    get().spawnSpray(ecx - ux * e.width * 0.3, ecy - uy * e.height * 0.3, -ux, -uy, 14, ['#7f1d1d', '#991b1b', '#b91c1c', '#e5e7eb']);
+    // 音は会心の刺さり音(弾の経路は既に鳴らしている)と重ねず、打ち出しの鞭のような破裂音を1発(検収クリエイティブ A-1)。
+    void import('../audio/audioManager').then(m => m.playSfx('whip-hit', 0.85, undefined, 0.8));
     return true;
   },
   // 着地の瞬間に斬る(ループが movePlayer の直後に呼ぶ・縮地の resolveShukuchiStrike と同型)。着地の時に相手を再確認し、
@@ -13757,6 +13759,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.escortToss) {
           const tz = enemy.escortToss;
           const ddx = tz.toX - tz.fromX, ddy = tz.toY - tz.fromY, ddl = Math.hypot(ddx, ddy) || 1;
+          // 飛行中に気絶が外れた(強個体に近接が入った等)=その場で着地扱いにして通常の処理へ戻す(検収品質 B-6)。
+          if (!(enemy.stunUntil !== undefined && gameTime < enemy.stunUntil)) {
+            tossLandings.push({ x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height, dirX: ddx / ddl, dirY: ddy / ddl });
+            return { ...enemy, escortToss: undefined, escortTossLandedAt: gameTime };
+          }
           if (gameTime >= tz.endAt) {
             const land = resolveMove(tz.toX, tz.toY);
             tossLandings.push({ x: land.x + enemy.width / 2, y: land.y + enemy.height, dirX: ddx / ddl, dirY: ddy / ddl });
@@ -17488,11 +17495,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 叫喚発動: 強い衝撃リング＋発光＋コールアウト＋画面揺れ。「叫んだ」感を強めるため(社長指示)、
     // 外側にもう一段リング(遅れて届く音波のイメージ)＋画面全体がわずかに緑へ明滅するフラッシュを追加し、
     // 揺れも他の一撃系演出(パンプキン着地mag9/盾バッシュmag10)に並ぶ強さへ上げる(旧: 220ms/mag5)。
-    // 兵士のトスの着地: 鈍い着地音+飛来方向へのカメラキック(揺れの物差しを増やさない・クリエイティブ監査 #8)。
-    // 砂埃・小さなバウンド・気絶の輪のポップは描画が escortTossLandedAt から出す(判定なし)。
+    // 兵士のトスの着地: 鈍い体の落ちる音+地面側の衝撃の揺れ(揺れの物差し registerImpact に乗せる=銃の反動の語彙を使わない・検収クリエイティブ A-5)。
+    // 砂埃(滑った向きの後ろへ尾を引く)・小さなバウンド・気絶の輪のポップは描画が escortTossLandedAt から出す(判定なし)。
     for (const l of tossLandings) {
-      void import('../audio/audioManager').then(m => m.playSfx('jump-land', 0.9, undefined, 0.8));
-      get().triggerKick(5, 160, l.dirX, l.dirY);
+      void import('../audio/audioManager').then(m => m.playSfx('heavy-impact', 0.55, undefined, 0.85));
+      get().registerImpact({ source: 'escort-toss', damage: 0, minMag: IMPACT_MELEE_MIN, flags: {}, x: l.x, y: l.y });
     }
     if (screamerActivatedAt.length > 0) {
       const { x, y } = screamerActivatedAt[0];
