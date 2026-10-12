@@ -39,3 +39,17 @@ describe('武器を振っている間は動けない・向きが変わらない'
     expect(useGameStore.getState().player.x).toBeGreaterThan(x0 + 1);
   });
 });
+
+// 社長指摘2026-10-12「チュートリアルステージだけ？なぜか真円の弧が出ない」: 近接を教わる前(m0Unlocked.melee=false)は
+// 振りの絵だけ出て判定も輪も出ない「空の振り」になっていた。教わる前は振り自体を始めない。
+describe('訓練で近接を教わる前は振らない', () => {
+  it('封印中は beginMeleeSwing が何もしない(振りの起点も前隙も打たない)・解禁後は振れる', () => {
+    useGameStore.setState(s => ({ m0Unlocked: { ...s.m0Unlocked, melee: false }, player: { ...s.player, meleeSwingAt: 0, pendingSwingAt: 0, counterCooldownEnd: 0 } }));
+    expect(useGameStore.getState().beginMeleeSwing()).toBe(false);
+    expect(useGameStore.getState().player.meleeSwingAt).toBe(0);
+    expect(useGameStore.getState().player.pendingSwingAt).toBe(0);
+    useGameStore.setState(s => ({ m0Unlocked: { ...s.m0Unlocked, melee: true } }));
+    expect(useGameStore.getState().beginMeleeSwing()).toBe(true);
+    expect(useGameStore.getState().player.meleeSwingAt).toBeGreaterThan(0);
+  });
+});

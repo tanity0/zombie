@@ -7971,6 +7971,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const p = get().player;
     if (isPvpIncapacitated(p.pvpPosture, get().gameTime)) return false; // ★SAME_ARENA §9: 紫/daze中は振れない(窓も開かない)
     if (isPlayerGrabbed(p, get().gameTime)) return false; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は振れない
+    // ★訓練(M0)で近接を教わる前は振り自体を始めない(社長指摘2026-10-12「チュートリアルステージだけ？なぜか真円の弧が出ない」)。
+    // 旧: 判定(triggerCounter)だけが封印を見ていて、ここは見ていなかった=振りの絵(ナイフ・弧)だけ出て、当たらず・輪も出ない「空の振り」になっていた
+    // (v0.25.4992 からは振りの間は動けないので、その場で止まるだけになる)。封印(社長指示v0.25.2293)どおり、教わるまでは何も起きない。
+    if (!get().m0Unlocked.melee) return false;
     // ★被弾反撃の飛び込みの最中(着地の斬撃が未解決)は普通の振りを出さない=飛び込みの上書きと二重の命中を防ぐ(検収監査 B-3)。
     if ((p.retaliateStrikeAt ?? 0) > 0) return false;
     // ★縮地(SKILL_BUILD_REDESIGN.md §32): 窓の中の振りはワープ斬撃の予約へ(飛べる相手が居なければ下の通常経路)。
