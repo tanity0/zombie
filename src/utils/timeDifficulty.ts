@@ -11,7 +11,8 @@
 //
 // 純関数のみ(renderer非依存・store非依存)。テーブルの中間は線形補間=時間でなめらかに迫る。
 
-export const TIME_DIFFICULTY_PEAK_MS = 8 * 60 * 1000; // 8:00で最深部相当(社長「８分をピークに一旦」)
+// 延長計画(社長指示2026-10-12): 城ボスが2分後ろへ動いたので、ピークも同じだけ後ろへ(8:00→10:00)。
+export const TIME_DIFFICULTY_PEAK_MS = 10 * 60 * 1000; // 10:00で最深部相当(旧8:00・社長「８分をピークに一旦」)
 
 /** 時間だけで進む仮想エリア(0..4の連続値)。0:00=0 → 8:00以降=4。 */
 export const timeVirtualArea = (gameTimeMs: number): number =>

@@ -16,9 +16,9 @@ describe('timeVirtualArea / effectiveDifficultyArea', () => {
     expect(timeVirtualArea(-1000)).toBe(0); // 負時刻ガード
   });
   it('実効エリア=max(実エリア, 仮想エリア)=深く行けば自ら早められる', () => {
-    // 3:00 時点の仮想エリアは 1.5。エリア3に居ればエリア3が勝つ。
-    expect(effectiveDifficultyArea(0, 180000)).toBeCloseTo(1.5, 5);
-    expect(effectiveDifficultyArea(3, 180000)).toBe(3);
+    // ピークの3/8の時点の仮想エリアは 1.5(延長計画2026-10-12でピーク10:00=3:45)。エリア3に居ればエリア3が勝つ。
+    expect(effectiveDifficultyArea(0, TIME_DIFFICULTY_PEAK_MS * 3 / 8)).toBeCloseTo(1.5, 5);
+    expect(effectiveDifficultyArea(3, TIME_DIFFICULTY_PEAK_MS * 3 / 8)).toBe(3);
   });
 });
 

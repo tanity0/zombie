@@ -769,7 +769,8 @@ const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。�
 // 経緯: 元は7:00固定(v0.25.3317)→ 賞金首の2体目が7:00に来るため6:00へ避難(v8.3・2026-08-15)
 // → **その賞金首2体目を廃止した(BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・v0.25.3840)ので避ける理由が消えた**。
 // PACING_PUZZLE.md §17-11: ランの時計+60秒(素の値=7:00→8:00)。
-const RED_NIGHT_FIRE_AT_MS = 420000; // ウェルカム終了から7:00
+// 延長計画(社長指示2026-10-12「推薦どおりで進めて」): 城ボスが 5:00→7:00 になったので、ボス後の洗礼も同じだけ後ろへ(7:00→9:00)。
+const RED_NIGHT_FIRE_AT_MS = 540000; // ウェルカム終了から9:00
 // PACING_PUZZLE.md §5.21-追補3(社長決定v0.25.1546): 追補2の「円内10体burst配置(ambient)」は撤去。
 // ゲート1の基本沸きは通常沸き(koma maintenance)の無限流入方式へ置き換え(permeable=trueで境界を
 // 越えて流入)。§5.21-追補4(v0.25.1553): koma目標/CDをピーク・CD0に強制する分岐は撤回済み=
@@ -854,7 +855,7 @@ const HUNTER_FAV_STREAK_6S = 3;            // 近接/KILL成功が連続(直近6
 const HUNTER_FAV_ONSCREEN_MAX = 6;         // 画面内通常敵が少ない
 const HUNTER_FAV_SCORE_NEEDED = 4;         // 6項目中4つ以上
 // 変異体(叫喚型・screamer)ディレクター: 5分以降・同時1体・CDで何度でも(社長指示)。
-const SCREAMER_START_MS = 300000;          // 出現開始(5分)
+const SCREAMER_START_MS = 300000;          // 出現開始(ウェルカム終了から5分。延長計画2026-10-12でウェルカム後の時計=directorTimeへ揃えた)
 const SCREAMER_RESPAWN_CD_MS = 60000;      // 消滅(撃破/退場)後の再出現CD(60秒)
 // エリア(区域)遷移バナー: 距離帯を跨いだら区域名をイベント発生と同じUIで表示(社長指示)。
 const AREA_BANNER_MS = 2600;           // 区域遷移バナーの表示時間(2〜3秒)
@@ -1195,9 +1196,9 @@ const RESCUE_QUEST_SPAWN_AT_MS = 4 * 60 * 1000; // ウェルカム終了から4:
 const DUO_RESCUE_PHASE_ENABLED = false;
 // 通信の開始時刻=城ボスの最短時刻と同じ5:00(S5は「5:00 と 拠点2か所ラッチ の遅い方」=§2-11の規則を流用)。
 // PACING_PUZZLE.md §17-11: ランの時計+60秒(社長裁定2026-09-18「時計ずらしはB 全部です」)。
-// CASTLE_BOSS_MIN_TIME_MS自体(config/castleBoss.ts=5分)は変えない(城ボスの「設計上の5分」という
+// ※延長計画(2026-10-12)で CASTLE_BOSS_MIN_TIME_MS 自体を 5分→7分へ変えた(以下は当時の記述: 城ボスの「設計上の5分」という
 // 値の意味はそのまま=castleBoss.test.tsが固定している)。実際の発火時刻だけここで+60秒する。
-const DUO_COMM_AT_MS = CASTLE_BOSS_MIN_TIME_MS; // ウェルカム終了から5:00
+const DUO_COMM_AT_MS = CASTLE_BOSS_MIN_TIME_MS; // ウェルカム終了から7:00(延長計画2026-10-12・旧5:00)
 // 社長指示2026-09-14「5分で通信だから読める。その10秒前くらいに入っちゃえば盤面は静まってる」: 通信の10秒前から終了まで**新規湧き停止**
 // (居る敵はそのまま)。noSpawn(?nospawn=1 と同じ止め方)に合流させる=通常湧き・パズル盤面・ゲート囲い等が全部止まる。
 const DUO_COMM_QUIET_LEAD_MS = 10_000;
@@ -5068,8 +5069,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           );
           if (aliveScreamer) {
             // 生存中はCDを先送り=撃破/退場の後、CD経過してから次の1体。
-            screamerRef.current.nextEligibleAt = newGameTime + SCREAMER_RESPAWN_CD_MS;
-          } else if (newGameTime >= SCREAMER_START_MS && newGameTime >= screamerRef.current.nextEligibleAt && !sBlocked && screamerProducerOk) {
+            screamerRef.current.nextEligibleAt = directorTime + SCREAMER_RESPAWN_CD_MS;
+          } else if (directorTime >= SCREAMER_START_MS && directorTime >= screamerRef.current.nextEligibleAt && !sBlocked && screamerProducerOk) {
             const spx = sS.player.x + sS.player.width / 2, spy = sS.player.y + sS.player.height / 2;
             const ang = Math.random() * Math.PI * 2;
             const r = Math.hypot(gameBounds.width, gameBounds.height) / 2 + 60;
@@ -5077,7 +5078,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             sc.fixed = true; // 単体管理=画面外カリング対象外(キープ距離で動く)
             addEnemy(sc);
             useGameStore.setState({ eventBannerText: '叫喚型 出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-            screamerRef.current.nextEligibleAt = newGameTime + SCREAMER_RESPAWN_CD_MS;
+            screamerRef.current.nextEligibleAt = directorTime + SCREAMER_RESPAWN_CD_MS;
           }
         }
 
@@ -5176,7 +5177,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // v8.3(社長裁定2026-08-15「3分と7分にして」): CD方式を廃止し固定スケジュール
           // (BOUNTY_NATURAL_SPAWN_AT_MS=[3:00]・社長指示2026-08-23で7:00を廃止=1ランに1体)。
           const bReady = bountyNaturalSpawnReady({
-            gameTime: newGameTime,
+            // 延長計画(2026-10-12): ほかのイベントと同じく「ウェルカムを倒し切ってから」数える(旧=出撃から=ウェルカム中に出ることがあった)。
+            gameTime: directorTime,
             spawnCount: bountyNaturalRef.current.count,
             bountyAlive: bountyAliveNow,
             spawnBlocked: bBlocked,

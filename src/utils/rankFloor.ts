@@ -11,11 +11,13 @@
 export const RANK_FLOOR_CAP = 5;
 
 const RANK_FLOOR_INTERVAL_MIN: Record<string, number> = {
-  'stage-1': 2.5,
-  'stage-3': 2.0,
-  'stage-4': 1.5,
-  'stage-5': 1.2,
-  'stage-6': 1.0,
+  // 延長計画(社長指示2026-10-12): 城ボスが5:00→7:00になったので、間隔を1.4倍(ボスの時点の床ランクを今と同じに保つ)。
+  // 旧: stage-1=2.5 / stage-3=2.0 / stage-4=1.5 / stage-5=1.2 / stage-6=1.0。
+  'stage-1': 3.5,
+  'stage-3': 2.8,
+  'stage-4': 2.1,
+  'stage-5': 1.68,
+  'stage-6': 1.4,
 };
 
 /** 純関数: ステージ→床が1段上がる間隔(ms)。未掲載ステージ=Infinity(床が一切上がらない=常にR1)。 */

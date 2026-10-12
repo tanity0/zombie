@@ -130,8 +130,8 @@ import {
 export const bountyMaxHealth = (area: number, gameTimeMs: number): number =>
   Math.round(BOUNTY_BASE_HP * bountyEffectiveValueMult(area, gameTimeMs));
 
-/** 滞在1分(§2)。dormantのまま(=交戦していない)これだけ経つと退場する。gameTime基準(ポーズで進まない)。 */
-export const BOUNTY_LINGER_MS = 60000;
+/** 滞在2分(§2・延長計画2026-10-12で1分→2分)。dormantのまま(=交戦していない)これだけ経つと退場する。gameTime基準(ポーズで進まない)。 */
+export const BOUNTY_LINGER_MS = 120000; // 延長計画(社長指示2026-10-12「賞金首の消える時間も延長」): 60秒→120秒
 /** 交戦の定義(v6 B「純関数化」)のうち「直近○秒以内に被弾」の窓。壁時計(enemy.lastHit=Date.now()基準)。 */
 export const BOUNTY_HIT_ENGAGE_MS = 3000;
 /** §6.38 B1.5-7: 手写しをやめEVENT_BANNER_MS(directorTick.ts)を直接参照する(値の出どころを1つに保つ)。

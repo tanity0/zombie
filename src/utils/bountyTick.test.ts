@@ -29,6 +29,7 @@ import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
 import { distToSegment } from './geometry';
 import type { Enemy, EnemyType } from '../types/game';
+import { TIME_DIFFICULTY_PEAK_MS } from './timeDifficulty';
 
 describe('bountyEngagedNow — 交戦の定義(§2「dormant=falseかつ(距離<リーシュ半径 or 直近3秒被弾)」)', () => {
   it('dormant中は距離・被弾に関わらず非交戦', () => {
@@ -178,7 +179,7 @@ describe('bountyMaxHealth — 基準2000×実効難易度倍率(§3)', () => {
   it('エリアが深いほど・時間が経つほど増える(単調)', () => {
     const a0 = bountyMaxHealth(0, 0);
     const a4 = bountyMaxHealth(4, 0);
-    const t8 = bountyMaxHealth(0, 8 * 60 * 1000); // 8:00=仮想エリア4相当
+    const t8 = bountyMaxHealth(0, TIME_DIFFICULTY_PEAK_MS); // ピーク(延長計画2026-10-12で10:00)=仮想エリア4相当
     expect(a4).toBeGreaterThan(a0);
     expect(t8).toBeGreaterThan(a0);
     expect(t8).toBeCloseTo(a4, -1);
