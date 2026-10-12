@@ -17499,7 +17499,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 砂埃(滑った向きの後ろへ尾を引く)・小さなバウンド・気絶の輪のポップは描画が escortTossLandedAt から出す(判定なし)。
     for (const l of tossLandings) {
       void import('../audio/audioManager').then(m => m.playSfx('heavy-impact', 0.55, undefined, 0.85));
-      get().registerImpact({ source: 'escort-toss', damage: 0, minMag: IMPACT_MELEE_MIN, flags: {}, x: l.x, y: l.y });
+      get().registerImpact({ source: 'escort-toss', damage: 1, minMag: IMPACT_MELEE_MIN, flags: {}, x: l.x, y: l.y }); // damage>0 でないと入口で捨てられる(検収2巡目 A-1)。1+床=近接の床の大きさ
     }
     if (screamerActivatedAt.length > 0) {
       const { x, y } = screamerActivatedAt[0];

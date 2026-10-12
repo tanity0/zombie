@@ -34805,8 +34805,10 @@ export class PixiScene {
     } else if (a && a.mode === 'show') {
       // 条件が崩れた: 反撃が成立して飛び込んでいるなら入力の向きへ抜ける。そうでなければ体へ引っ込む。
       const success = (player.retaliateStrikeAt ?? 0) > 0 && player.retaliateTargetId !== undefined && now < (player.lungeUntil ?? 0) + 40;
-      // 成立=飛び込む向き(反撃がプレイヤーを相手へ向け直した lastDirection)へ抜ける。
-      const ld = player.lastDirection;
+      // 成立=飛び込む向き(反撃が書いた踏み込みの速度 lungeVx/Vy。無ければ相手へ向け直した lastDirection)へ抜ける。
+      // lastDirection はパッドが毎ポーリングで上書きし得るので踏み込みの速度を先に見る(検収2巡目 B-1)。
+      const lv = Math.hypot(player.lungeVx ?? 0, player.lungeVy ?? 0) > 0.01 ? { x: player.lungeVx ?? 0, y: player.lungeVy ?? 0 } : null;
+      const ld = lv ?? player.lastDirection;
       const ldl = ld ? Math.hypot(ld.x, ld.y) : 0;
       a = { ...a, mode: success ? 'exit' : 'retract', modeAt: now, ...(success && ld && ldl > 0.01 ? { dirX: ld.x / ldl, dirY: ld.y / ldl } : {}) };
     }

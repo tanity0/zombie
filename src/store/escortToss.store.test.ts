@@ -69,6 +69,15 @@ describe('兵士のトス', () => {
     expect(Math.abs(da - db)).toBeLessThan(db * 0.03);
     expect(enemy(a).escortToss).toBeUndefined();
   });
+  it('着地で地面側の揺れが出る(registerImpact が捨てない)', () => {
+    const id = put(400);
+    useGameStore.getState().tossEnemyToPlayer(id);
+    useGameStore.setState({ hitstopUntil: 0 });
+    step(ESCORT_TOSS_MS + 20);
+    const before = Date.now();
+    useGameStore.getState().flushImpacts();
+    expect(useGameStore.getState().shakeUntil).toBeGreaterThan(before);
+  });
   it('飛行中に気絶が外れたら、その場で着地扱い(通常の処理へ戻る)', () => {
     const id = put(400);
     useGameStore.getState().tossEnemyToPlayer(id);
