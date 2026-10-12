@@ -75,6 +75,10 @@ export const stepEscortMelee = (
   return { mode: patch.knifeMode, hitNow, swingStarted, patch };
 };
 
+/** 振っている最中(溜め+刃)か。この間は動かず向きも変えない(社長指示2026-10-12「武器振ってる時は方向転換や移動はできなくして」)。 */
+export const isEscortSwinging = (f: Pick<EscortMeleeFields, 'knifeSwingAt'>, now: number): boolean =>
+  f.knifeSwingAt !== undefined && now >= f.knifeSwingAt && now < f.knifeSwingAt + ESCORT_MELEE_WINDUP_MS + ESCORT_MELEE_BLADE_MS;
+
 /** その敵(中心の向き)が、振った向きの扇の中か。 */
 export const inEscortMeleeArc = (dirX: number, dirY: number, toX: number, toY: number): boolean => {
   const l = Math.hypot(toX, toY);

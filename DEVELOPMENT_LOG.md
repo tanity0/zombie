@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.4992 — 武器を振っている間は移動も方向転換もできない(社長指示「武器振ってる時は方向転換や移動はできなくして」)【2026-10-12 12:00 JST】
+- プレイヤー(`movePlayer`): 振り全体(`PLAYER_MELEE_SWING_MS`=前隙200+振り抜き168=368ms・meleeSwingAt から)の間は移動入力を無視し、残りの速度を約50msで0へ(被弾の硬直と同じ形=慣性MUST)。
+  向き(lastDirection)と照準(aimX/Y)も止める。**振りの踏み込み(lunge)は残す**(自分の入力ではなく振りの動き)。被弾の吹き飛び・ワイヤー/一閃などの強制移動・四神舞の滑りは対象外(上の枝が先)。
+  - 振りの長さは描画(pixiScene)にしか無かったので store へ移設して共通化(`PLAYER_MELEE_FOLLOW_MS`/`PLAYER_MELEE_SWING_MS`・値は不変)。
+  - 過去の方針(事実): v0.25.3869〜「振り**中**は動ける=踏み込み斬りを回避に使える」(meleeRecoverMult の注釈)。今回の社長指示で撤回。振った**あと**の減速(meleeRecoverMult)は従来どおり。
+- 軍人(updateSuppression の回廊/通常の2経路): ナイフを振っている間(溜め200+刃200)は位置を動かさず、向きは振った向き(`escortMelee.isEscortSwinging`・向きのヒステリシスも振っている間は振った向きへ固定)。
+- テスト: swingLock.store.test(新規・振っている間は左へ入れても動かず向きは右のまま/振り終わりは動ける/踏み込みは止めない)・escortTargeted.store.test(振っている間は敵を左へ移しても位置・向きが変わらない)。
+  どちらも直しを外すと落ちることを確認。vitest 全件緑(475 files・7521 tests)。
+- 画: 撮っていない(動ける/動けないの判定の変更で、絵は変えていない)。
+- 自己点検: 憲法第4条・第5条に抵触しない。監査: 付けない(社長指示の挙動変更・既存の硬直と同じ形)。
+- 変更: src/store/gameStore.ts・src/pixi/pixiScene.ts・src/utils/escortMelee.ts・src/store/swingLock.store.test.ts(新規)・src/store/escortTargeted.store.test.ts・package.json・changelog.ts。
+
 ## v0.25.4991 — プレイヤーの近接のナイフも軍人と同じ円の動きに(社長「あれ？プレイヤーのナイフの動きも直してくれてる？」→ いいえ → 「はい」)【2026-10-12 10:46 JST】
 - v0.25.4987 の軍人のナイフ(構えの拳 → 弧に沿って円 → 振り上げた拳・大きさ unit×0.5)をプレイヤー本体にも。弧・時計・当たりは不変。
 - 拳の位置=近接専用ポーズ(-ready=低く構えた前の拳 / -swing=振り上げた拳)を職業ごとに実測(`PLAYER_MELEE_FISTS`・6倍に拡大して格子で読み、印を重ねて確認):

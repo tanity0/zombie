@@ -216,7 +216,7 @@ import { escortHitFx, escortRiseFx, escortLandFx, type EscortFxApi, type EscortF
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, escortHateSide, escortIdOfSide, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
 import { stabilizeEscortFace } from '../utils/escortFace'; // 進軍NPCの向きのヒステリシス
-import { stepEscortMelee, inEscortMeleeArc, escortKnifeHit, ESCORT_MELEE_EXIT_PX, ESCORT_CHEST_UP_PX, ESCORT_MELEE_PHASE_STEP_MS } from '../utils/escortMelee'; // 進軍NPCの近接(research/ESCORT_MELEE.md)
+import { isEscortSwinging, stepEscortMelee, inEscortMeleeArc, escortKnifeHit, ESCORT_MELEE_EXIT_PX, ESCORT_CHEST_UP_PX, ESCORT_MELEE_PHASE_STEP_MS } from '../utils/escortMelee'; // 進軍NPCの近接(research/ESCORT_MELEE.md)
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
 import { computeEnemySeparation } from '../utils/enemySeparation';
 // M51: 城ボス「ジャイアント」新スクリプトの純関数(間合い/CD/HP段階から次の技を選ぶ・PACING_PUZZLE.md §6.26)。
@@ -1556,6 +1556,13 @@ export const COUNTER_WINDOW = 400; // ms of one swing cycle (windup 200 + blade 
  * 打ち合いは「後から振った方の窓が、先に振った方の斬撃を捕まえる」=後出しが勝つ。
  */
 export const MELEE_WINDUP_MS = 200;
+/** 振り抜き→復帰の長さ(絵の都合の値・旧 pixiScene の定数を移設)。振り全体=MELEE_WINDUP_MS+これ。 */
+export const PLAYER_MELEE_FOLLOW_MS = 168;
+/**
+ * プレイヤーの近接の振り全体の長さ(=368ms・描画の振りの窓と同じ値)。
+ * ★この間は移動も方向転換もできない(社長指示2026-10-12「武器振ってる時は方向転換や移動はできなくして」)。
+ */
+export const PLAYER_MELEE_SWING_MS = MELEE_WINDUP_MS + PLAYER_MELEE_FOLLOW_MS;
 /**
  * ★カウンターの受付時間(社長裁定2026-08-26「せきろうにしようか」・隻狼型)。
  * **受付は「押した瞬間」から COUNTER_ACCEPT_MS だけ**(窓 = [押した瞬間, +300ms]・v0.25.3951で200→300へ延長)。
@@ -7380,6 +7387,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // grabbedFrozen と**同じ形**(入力を無視して残速度を減衰=瞬間停止にしない・慣性MUST)。
       // のけぞり(gunLockMs)より短い=**前半は動けない・後半は動けるが撃てない**の二段。
       const hurtFrozen = !kbActive && isHurtMoveLocked(player, Date.now());
+      // ★武器を振っている間は動けない・向きも変わらない(社長指示2026-10-12)。旧方針「振り中は動ける=踏み込み斬りを回避に使える」
+      // (v0.25.3869〜)は社長指示で撤回。**振りそのものの踏み込み(lunge)は残す**(自分の入力ではなく振りの動き)。
+      // 被弾の吹き飛び・ワイヤー/一閃などの強制移動・四神舞の滑りは対象外(それぞれ上の枝が先)。
+      const swingSince = kbNow - (player.meleeSwingAt || 0);
+      const swingFrozen = !kbActive && !lungeActive && !dashOv && !sliding
+        && (player.meleeSwingAt || 0) > 0 && swingSince >= 0 && swingSince < PLAYER_MELEE_SWING_MS;
       let vx: number, vy: number;
       if (kbActive) {
         // 持続時間は**その吹き飛び自身の値**で割る(技ごとに変わるため。未指定=従来の共通値)。
@@ -7396,7 +7409,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const lungeCap = trapDebuffed ? TRAP_PVP_MOVE_MULT : 1;
         vx = (player.lungeVx ?? 0) * d * lungeCap;
         vy = (player.lungeVy ?? 0) * d * lungeCap;
-      } else if (skaterStopping || pvpFrozen || grabbedFrozen || hurtFrozen) {
+      } else if (skaterStopping || pvpFrozen || grabbedFrozen || hurtFrozen || swingFrozen) {
         const d = Math.exp(-deltaTime / 0.05); // 約50msの時定数で素早く0へ
         vx = player.vx * d;
         vy = player.vy * d;
@@ -7548,7 +7561,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const speedNow = Math.hypot(vx, vy);
       let direction: Direction = 'idle';
       let lastDirection = player.lastDirection;
-      if (speedNow > 1) {
+      if (speedNow > 1 && !swingFrozen) { // 振っている間は向きを変えない(残りの速度で向きが揺れないように)
         lastDirection = { x: vx / speedNow, y: vy / speedNow };
         direction = Math.abs(vx) > Math.abs(vy)
           ? (vx > 0 ? 'right' : 'left')
@@ -7570,7 +7583,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // aim ベクトル: マウス時は「プレイヤー→カーソル」の即時方向(慣性なし・360度)。
       // タッチ/キーボード時は従来のスティック慣性 aim(向き×傾き強度)。
       let aimX: number, aimY: number;
-      if (mouseWorld) {
+      if (swingFrozen) {
+        aimX = player.aimX; aimY = player.aimY; // 振っている間は向き(照準)も止める
+      } else if (mouseWorld) {
         const adx = mouseWorld.x - (newX + player.width / 2);
         const ady = mouseWorld.y - (newY + player.height / 2);
         const al = Math.hypot(adx, ady) || 1;
@@ -20011,11 +20026,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           face = shotDx < 0 ? -1 : 1;
         }
+        // 振っている間は動かず、向きは振った向きのまま(社長指示2026-10-12「武器振ってる時は方向転換や移動はできなくして」)。
+        const swingC = isEscortSwinging(melC.step.patch, now);
+        if (swingC) { x = esc.x; y = esc.y; face = (melC.step.patch.knifeDirX ?? face) < 0 ? -1 : 1; }
         // 速度(px/s)=ボスの偏差撃ちが軍人の移動先を読むのに使う。
         const evx = deltaTime > 0.0001 ? (x - esc.x) / deltaTime : 0, evy = deltaTime > 0.0001 ? (y - esc.y) / deltaTime : 0;
         if (Math.abs(evx - (esc.vx ?? 0)) > 0.5 || Math.abs(evy - (esc.vy ?? 0)) > 0.5) escChanged = true;
         // 向きのヒステリシス(社長指摘2026-10-12「敵が密集してると右左を高速で向く」)。近接の振り始めだけは即座に振り向く。
-        const fsC = stabilizeEscortFace(esc.face, esc.faceFlipAt, face, now, melC.step.swingStarted);
+        const fsC = stabilizeEscortFace(esc.face, esc.faceFlipAt, face, now, melC.step.swingStarted || swingC);
         face = fsC.face;
         const next = {
           ...esc,
@@ -20376,12 +20394,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 輪が閉じたら true に戻り、従来どおりのアニメ(esc.moving!==false=常時行進)に戻る。
       // ★実際に位置が動いたフレームだけ「歩いている」(社長指示2026-10-10「立ち止まってる時は立ち絵にして」)。
       // 前進の枝(前方=停止/拠点に着いた)・巡回の枝(速さ0)は movingOut が true のまま、その場で足踏みして見えていた。
+      // 振っている間は動かず、向きは振った向きのまま(社長指示2026-10-12「武器振ってる時は方向転換や移動はできなくして」)。
+      const swingN = isEscortSwinging(melN.step.patch, now);
+      if (swingN) { x = esc.x; y = esc.y; face = (melN.step.patch.knifeDirX ?? face) < 0 ? -1 : 1; }
       const moving = movingOut && (x !== esc.x || y !== esc.y);
       // 速度(px/s)=ボスの偏差撃ちが軍人の移動先を読むのに使う。
       const evx = deltaTime > 0.0001 ? (x - esc.x) / deltaTime : 0, evy = deltaTime > 0.0001 ? (y - esc.y) / deltaTime : 0;
       if (Math.abs(evx - (esc.vx ?? 0)) > 0.5 || Math.abs(evy - (esc.vy ?? 0)) > 0.5) escortsChanged = true;
       // 向きのヒステリシス(社長指摘2026-10-12「敵が密集してると右左を高速で向く」)。近接の振り始めだけは即座に振り向く。
-      const fsN = stabilizeEscortFace(esc.face, esc.faceFlipAt, face, now, melN.step.swingStarted);
+      const fsN = stabilizeEscortFace(esc.face, esc.faceFlipAt, face, now, melN.step.swingStarted || swingN);
       face = fsN.face;
       if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face || companionMs !== (esc.companionMs ?? 0) ||
         moving !== (esc.moving ?? true) || followSpeedOut !== esc.followSpeed || followWakeOut !== esc.followWakeAt || healthOut !== esc.health ||

@@ -94,6 +94,7 @@ import {
   KILLFX_CROUCH_MS, KILLFX_LEAP_MS, KILLFX_HOLD_MS, KILLFX_SLASH_MS, KILLFX_RETURN_MS, KILLFX_LAND_MS,
   KILLFX_BURST_AT_MS, KILLFX_BLOOD_LAG_MS, KILLFX_TOTAL_MS,
   MELEE_WINDUP_MS, // ★近接の前隙。しゃがみ絵の長さをここから導く(SAME_ARENA.md §7)
+  PLAYER_MELEE_SWING_MS, // 振り全体の長さ(store が正=振っている間は動けない窓と同じ値・2026-10-12 移設)
   WHIP_SNARE_BEND_SCALE, // ★鞭のしなり(スネア)の折れの強さ(社長指示2026-08-24)
   ENDING_BOMB_TUNING, // エンディング爆撃(v3.1): 爆発半径/落下高をstoreと同じ出どころから読む(絵と挙動の整合)
   EVENT_QUEST_DWELL_MS, // 二人組クエストv2(§2-8・B4): 納品3秒メーターの分母(RETURN_CIRCLE_HOLD_MSと同値=既存アークを流用)
@@ -1933,8 +1934,7 @@ const PLAYER_FIRE_RECOIL_SQUASH = 0.04; // 反動で軽く縦に縮む量
 // 以前は「しゃがみ112ms(280×0.4)の絵を出しながら、判定は指を離した瞬間(0ms)に出ていた」=絵が嘘を
 // ついていた。いまは判定が MELEE_WINDUP_MS 後に出るので、**絵と判定を同じ数字から導いて二度とズラさない**。
 // 振り抜き(後半)の長さは従来どおり(280×0.6=168ms)を維持する=斬った実感を痩せさせない。
-const PLAYER_MELEE_FOLLOW_MS = 168;   // 振り抜き→復帰(従来値。ここだけは絵の都合で決めてよい)
-const PLAYER_MELEE_SWING_MS = MELEE_WINDUP_MS + PLAYER_MELEE_FOLLOW_MS; // = 368ms
+// 振り抜き→復帰(168ms)と振り全体(PLAYER_MELEE_SWING_MS=368ms)は store へ移設(2026-10-12: 振っている間は動けない窓と同じ値にするため)。
 const WIRE_SLAM_JUMP_H = 92;          // アンカー大技の見た目ジャンプ高さ(px・負方向=上)。引き上げ→斬り下ろしの弧。
 // スラム後ジャンプ離脱(ホップ)の見た目弧の高さ(px・負方向=上)。DEVELOPMENT_LOG v0.25.2487・
 // 判定/座標には影響しない描画専用値(叩き台・実機調整前提)。スラムより短い離脱動作なので控えめ。

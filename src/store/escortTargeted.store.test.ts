@@ -718,3 +718,23 @@ describe('助けを求める台詞は画面外だけ・向きのヒステリシ�
 
 
 });
+
+// 社長指示2026-10-12「武器振ってる時は方向転換や移動はできなくして」(軍人)
+describe('軍人: ナイフを振っている間は動かず向きも変わらない', () => {
+  it('振り始めから振り終わりまで位置は動かず、向きは振った向き', () => {
+    setup(0, 40);
+    put('zombie', ORIGIN + 40, ORIGIN + 40 - 30, { id: 'z1' }); // 右・間合いの中
+    let swingAt: number | undefined;
+    for (let t = 0; t <= 900 && swingAt === undefined; t += 16) { tickSupp(GT + t); swingAt = escById('escort-0').knifeSwingAt; }
+    expect(swingAt).toBeDefined();
+    const x0 = escById('escort-0').x, y0 = escById('escort-0').y;
+    // 振っている最中に敵を左へ移しても、振り終わるまでは右を向いたまま・その場から動かない
+    useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === 'z1' ? { ...e, x: ORIGIN - 300 } : e)) }));
+    for (let t = swingAt! - GT + 16; t < swingAt! - GT + 380; t += 16) {
+      tickSupp(GT + t);
+      expect(escById('escort-0').x).toBe(x0);
+      expect(escById('escort-0').y).toBe(y0);
+      expect(escById('escort-0').face).toBe(1);
+    }
+  });
+});
