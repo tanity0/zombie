@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "929 files / 復号後 約690MB",
+ "generatedFor": "923 files / 復号後 約690MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3032,30 +3032,6 @@
    "bytes": 45518,
    "sha": "831e2941c9b018ab"
   },
-  "sprites/npc/medic-walk-0.png": {
-   "w": 78,
-   "h": 64,
-   "bytes": 1960,
-   "sha": "220945594219bfbe"
-  },
-  "sprites/npc/medic-walk-1.png": {
-   "w": 78,
-   "h": 64,
-   "bytes": 1859,
-   "sha": "1de9c3996dce745f"
-  },
-  "sprites/npc/medic-walk-2.png": {
-   "w": 78,
-   "h": 64,
-   "bytes": 1834,
-   "sha": "cb230dbeb902e79b"
-  },
-  "sprites/npc/medic-walk-3.png": {
-   "w": 78,
-   "h": 64,
-   "bytes": 1959,
-   "sha": "e5bbeb2ecd6a9e2e"
-  },
   "sprites/npc/medic-walk.png": {
    "w": 318,
    "h": 66,
@@ -4159,18 +4135,6 @@
    "h": 120,
    "bytes": 16410,
    "sha": "801673d1c34415ea"
-  },
-  "sprites/rescue/shooter-0.png": {
-   "w": 92,
-   "h": 120,
-   "bytes": 21241,
-   "sha": "8aa9f58104fc2599"
-  },
-  "sprites/rescue/shooter-1.png": {
-   "w": 90,
-   "h": 120,
-   "bytes": 20987,
-   "sha": "35488627000ee533"
   },
   "sprites/rescue/shooter-walk.png": {
    "w": 342,

@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.4999 — 差し替え済みの旧スプライト6枚を削除(社長「はい」)【2026-10-12 17:15 JST】
+- 削除: public/sprites/npc/medic-walk-0..3.png(衛生兵ジュンの旧4コマ・v0.25.4982 で歩きシート `npc/medic-walk` へ差し替え済み)/ public/sprites/rescue/shooter-0,1.png(ヘルメット兵の旧2コマ・v0.25.4983 で `rescue/shooter-walk` へ差し替え済み)。計 約70KB。
+- 参照確認: src/scripts に `medic-walk-0..3`・`rescue/shooter-0/1` の参照なし(テクスチャのマニフェストは `-walk` シートのみ。描画側の `getTexture(`${base}-3`)` 等は未登録で undefined=シート経路へ進む従来どおり)。オープニングの `opening/shoot/shooter-N` は別素材で無関係。
+- `npm run assets:ledger` で台帳を更新(929→923枚)、`assets:check` OK。※原盤の掟(public/ を縮小版で上書きしない)とは別件=社長の明示指示による不要素材の削除。
+- 状態変化: なし。
+
 ## v0.25.4998 — 振った後の硬直を、振りの絵が終わる瞬間から開く(社長「減速は推薦で」)【2026-10-12 17:05 JST】
 - 発端: v0.25.4992 で「振っている間は動けない」(PLAYER_MELEE_SWING_MS=368ms)を入れた結果、振った後の硬直(移動×0.45)が開く COUNTER_WINDOW=400ms との間に、素の足で動ける32msの隙間ができていた。推薦=「振り終えた瞬間から遅くする・明ける時刻は据え置き」。
 - utils/meleeRecover.ts: `meleeRecoverSpeedMult` に第4引数 `recoverEndMs`(省略時=従来どおり開始+MELEE_RECOVER_MS)。gameStore の配線を「開く=PLAYER_MELEE_SWING_MS(368)/明ける=COUNTER_WINDOW+MELEE_RECOVER_MS(640)」に。硬直の倍率・明ける時刻・次に振れる時刻(820)・踏み込みは不変(硬直が32ms長くなるだけ)。
