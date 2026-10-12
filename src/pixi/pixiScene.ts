@@ -1573,7 +1573,12 @@ const MELEE_ARC_TIP: readonly { bx: number; tx: number; ty: number }[] = [
 const MELEE_ARC_RIGHT_U = MELEE_RADIUS / (PLAYER_HITBOX * PLAYER_VISUAL_SCALE);
 const MELEE_ARC_TIP_OX =
   MELEE_ARC_RIGHT_U - (1 - MELEE_ARC_TIP[MELEE_ARC_FRAMES - 1].bx) * MELEE_ARC_SCALE;
-const MELEE_ARC_RUN_END = 0.74; // ここでコマ送りが終わる(kt)。以降は最終コマを保持して引く
+// ここでコマ送りが終わる(kt)。以降は最終コマを保持して引く。
+// ★社長指示2026-10-12「ナイフの振りの絵だけ(判定は変えず)300msまで延長。カウンター閉じと弧が育ち切るのを合わせる」:
+// 旧 0.74(=振り368msの245ms地点)→ **カウンターの受付が閉じる時刻(COUNTER_ACCEPT_MS=300ms)** に育ち切る。
+// kt はイージング後の進み(meleeSwingEase=smoothstep)なので、時刻の割合をイージングに通した値にする。ナイフの実絵もこの時刻に振り上げた拳へ着く。
+// 判定(押して200ms)・振り全体の長さ(368ms)・体の絵の切り替え(200ms)は不変。
+const MELEE_ARC_RUN_END = ((t: number) => t * t * (3 - 2 * t))(COUNTER_ACCEPT_MS / PLAYER_MELEE_SWING_MS);
 // 弧の進行 t: 振りかぶり(KNIFE_SWING_SWITCH)〜MELEE_ARC_RUN_END を 0..1 に伸ばす。
 const meleeArcT = (kt: number): number =>
   Math.max(0, Math.min(1, (kt - KNIFE_SWING_SWITCH) / (MELEE_ARC_RUN_END - KNIFE_SWING_SWITCH)));
