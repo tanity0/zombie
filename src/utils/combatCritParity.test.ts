@@ -130,3 +130,36 @@ describe('刃のパリィ(parryNoDamage): 体勢は削るがHPダメージは入
     expect(after!.health).toBeLessThan(boss.maxHealth);
   });
 });
+
+// 社長報告2026-10-12「ジャンプ攻撃をカウンターしてパンプキン倒すと、消える。報酬も出ない」。
+// カウンターの2経路(着地の弾き/突進の弾き)は damageEnemy を直に呼ぶだけで、銃キル等が呼び手側で出す
+// 経験値・通貨・強個体の武器箱を出していなかった。倒した時は rewardCounterKill で同じ一式を出す。
+describe('カウンターで倒した時も報酬が出る(rewardCounterKill)', () => {
+  it('パンプキンの着地をカウンターして倒す → 死体が残り、経験値と武器箱が落ちる', () => {
+    setupPlayerAt(0, 0, 400);
+    const player = useGameStore.getState().player;
+    const boss = spawnEnemyAt('pumpkin', 400, 400, useGameStore.getState().gameTime);
+    boss.health = 1; // 反撃の一撃で倒れる
+    useGameStore.setState({
+      enemies: [boss], pickups: [],
+      pumpkinBlasts: [{ x: player.x + player.width / 2, y: player.y + player.height / 2, radius: 80, damage: 10, enemyId: boss.id }],
+    });
+    applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, { thorOrbitDist: 300, thorCounterLeapMs: 500 });
+    const st = useGameStore.getState();
+    const corpse = st.enemies.find(e => e.id === boss.id);
+    expect(corpse?.corpseUntil).toBeDefined(); // 消えずに吹き飛ぶ死体として残る
+    expect(st.pickups.some(p => p.type === 'weapon-crate' && p.id === `pickup-crate-${boss.id}`)).toBe(true);
+    expect(st.pickups.some(p => p.id.startsWith('pickup-xp-counter-'))).toBe(true);
+  });
+  it('突進をカウンターして倒した時も同じく報酬が出る', () => {
+    setupPlayerAt(0, 0, 400);
+    const p = useGameStore.getState().player;
+    const z = spawnEnemyAt('pumpkin', p.x, p.y, useGameStore.getState().gameTime); // 上の giantbat と同じ置き方=接触
+    z.aiPhase = 'charge'; z.health = 1;
+    useGameStore.setState({ enemies: [z], pickups: [] });
+    applyContactDamage(useGameStore.getState().gameTime, false, 0, NOOP_COMBAT_EFFECTS);
+    const st = useGameStore.getState();
+    expect(st.pickups.some(q => q.id === `pickup-crate-${z.id}`)).toBe(true);
+    expect(st.pickups.some(q => q.id.startsWith('pickup-xp-counter-'))).toBe(true);
+  });
+});

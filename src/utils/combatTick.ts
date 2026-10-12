@@ -33,7 +33,7 @@ import { GLOW_R_L, GLOW_R_S } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
   isBossType, isHiddenBoss, isBountyType, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
-  isGuardianPhantom, isBiteExemptType, isHangedman, isTerminalReaper, isTrueBossType, isMutantHero,
+  isGuardianPhantom, isBiteExemptType, isHangedman, isTerminalReaper, isTrueBossType, isMutantHero, isPumpkinTier,
 } from './enemyUtils';
 // PACING_PUZZLE.md §14-4-8/8b(神付き): ?rp2kami=/?rp2kamims=(判定側=生URLSearchParams・中12の作法)。
 import { KAMITSUKI_ENABLED, REAPER2_CONFIG } from '../config/reaper';
@@ -121,6 +121,28 @@ export interface CombatEffects {
   // 同じシグネチャ(戻り値は呼び出し側で使わないためvoid化)。
   triggerFinishImpact: (targetX: number, targetY: number, forceMaximumZoom?: boolean) => void;
 }
+
+/**
+ * ★カウンター(ジャンプ着地の弾き・突進/気絶の弾き)で倒した時の報酬と死亡の絵(社長報告2026-10-12
+ * 「ジャンプ攻撃をカウンターしてパンプキン倒すと、消える。報酬も出ない」)。
+ * この2経路は damageEnemy を直に呼ぶだけで、銃キル(useGameLoop の弾の命中)や他の非近接キル(ロケットの爆風・錬金の起爆)が
+ * 呼び手側で出している **死亡の声・血しぶき・通貨・経験値・強個体の武器箱** を1つも出していなかった
+ * =死体が少し飛んで消えるだけ・何も落ちない。ここで同じ一式を出す(既存の非近接キルと同じ並び)。
+ */
+export const rewardCounterKill = (fx: CombatEffects, e: Enemy): void => {
+  const st = useGameStore.getState();
+  const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+  if (fx !== NOOP_COMBAT_EFFECTS) void import('../audio/audioManager').then(m => m.playEnemyDeath());
+  const heavy = isPumpkinTier(e.type) || e.type === 'giantbat';
+  fx.spawnBurst(ex, ey, '#dc2626', heavy ? 30 : 16);
+  fx.spawnBurst(ex, ey, '#7f1d1d', heavy ? 13 : 7);
+  st.dropEnemyCurrency(e, ex, ey);
+  st.dropEnemyXp(e, ex, ey, 'pickup-xp-counter');
+  if (heavy) {
+    st.addPickup({ id: `pickup-crate-${e.id}`, x: ex - 8, y: ey - 8 - 18, type: 'weapon-crate', value: 0, worldDrop: true });
+    fx.spawnRing(ex, ey, 10, 80, 'rgba(96,165,250,0.7)', 3, 500);
+  }
+};
 
 // ヘッドレス(playtestDriver.ts)用: 全て何もしない(判定条件の評価そのものには影響しない)。
 export const NOOP_COMBAT_EFFECTS: CombatEffects = {
@@ -531,6 +553,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       // damageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
       const parryKilled = useGameStore.getState().damageEnemy(hit.id, dmg, false, true, false, 'other', 'player', 'counter');
       recordCritHit('guaranteed', boss); // §7-11c(4): カウンター反撃(確定クリ)
+      if (parryKilled) rewardCounterKill(fx, e);
       if (!parryKilled && !boss) {
         const stunMs = STUN_DURATION_MS * (bp.stunDurationMult ?? 1);
         useGameStore.getState().stunEnemy(hit.id, useGameStore.getState().gameTime + stunMs);
@@ -2033,6 +2056,7 @@ export const applyContactDamage = (
       // 紫蓄積)がdamageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
       const dashParryKilled = useGameStore.getState().damageEnemy(eid, dmg, false, true, false, 'other', 'player', 'counter');
       recordCritHit('guaranteed', boss); // §7-11c(4): カウンター反撃(確定クリ)
+      if (dashParryKilled) rewardCounterKill(fx, e);
       counterKill = dashParryKilled || counterKill;
       if (!dashParryKilled && !boss) {
         const stunMs = STUN_DURATION_MS * (collPlayer.stunDurationMult ?? 1);
