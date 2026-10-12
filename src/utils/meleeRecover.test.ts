@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { meleeRecoverSpeedMult, MELEE_RECOVER_MS, MELEE_RECOVER_SPEED_MULT } from './meleeRecover';
-import { COUNTER_WINDOW, MELEE_LUNGE_MS } from '../store/gameStore';
+import { COUNTER_WINDOW, MELEE_LUNGE_MS, PLAYER_MELEE_SWING_MS } from '../store/gameStore';
 
 const CYCLE = COUNTER_WINDOW;
 const at = (since: number) => meleeRecoverSpeedMult(1000, 1000 + since, CYCLE);
@@ -32,5 +32,20 @@ describe('meleeRecoverSpeedMult — 硬直は「振り終わってから」', ()
   it('まだ一度も振っていない/壊れた値でも1', () => {
     expect(meleeRecoverSpeedMult(0, 5000, CYCLE)).toBe(1);
     expect(meleeRecoverSpeedMult(undefined, 5000, CYCLE)).toBe(1);
+  });
+});
+
+describe('プレイヤーの実際の配線: 動けない時間が明けた瞬間から硬直(v0.25.4998・隙間なし)', () => {
+  const live = (since: number) => meleeRecoverSpeedMult(1000, 1000 + since, PLAYER_MELEE_SWING_MS, COUNTER_WINDOW + MELEE_RECOVER_MS);
+  it('振りの絵の間は素の足(その場で動けない側が受け持つ)', () => {
+    expect(live(PLAYER_MELEE_SWING_MS - 1)).toBe(1);
+  });
+  it('振りの絵が終わった瞬間から硬直・素の足で動ける隙間が無い', () => {
+    expect(live(PLAYER_MELEE_SWING_MS)).toBe(MELEE_RECOVER_SPEED_MULT);
+    expect(live(COUNTER_WINDOW)).toBe(MELEE_RECOVER_SPEED_MULT);
+  });
+  it('明けるのは従来どおり', () => {
+    expect(live(COUNTER_WINDOW + MELEE_RECOVER_MS - 1)).toBe(MELEE_RECOVER_SPEED_MULT);
+    expect(live(COUNTER_WINDOW + MELEE_RECOVER_MS)).toBe(1);
   });
 });

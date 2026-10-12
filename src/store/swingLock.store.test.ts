@@ -23,12 +23,12 @@ describe('武器を振っている間は動けない・向きが変わらない'
     expect(Math.abs(p.x - x0)).toBeLessThan(0.5);
     expect(p.lastDirection?.x).toBe(1);
   });
-  it('振り終わった後(PLAYER_MELEE_SWING_MS 経過)は普通に動けて向きも変わる', () => {
+  it('振り終わった後(PLAYER_MELEE_SWING_MS 経過)は動けて向きも変わる', () => {
     useGameStore.setState(s => ({ player: { ...s.player, meleeSwingAt: Date.now() - PLAYER_MELEE_SWING_MS - 5 } }));
     const x0 = useGameStore.getState().player.x;
     for (let i = 0; i < 10; i++) useGameStore.getState().movePlayer(LEFT, 0.016);
     const p = useGameStore.getState().player;
-    expect(p.x).toBeLessThan(x0 - 5);
+    expect(p.x).toBeLessThan(x0 - 2); // 振り終わった直後は振った後の硬直(足が重い)で遅いが、動ける(v0.25.4998〜 隙間なしで硬直へ)
     expect(p.lastDirection!.x).toBeLessThan(0);
   });
   it('振りの踏み込み(lunge)は止めない', () => {

@@ -26,17 +26,22 @@ export const MELEE_RECOVER_SPEED_MULT = 0.45;
  *
  * @param meleeSwingAt 直近の振りの起点(`player.meleeSwingAt`。未使用なら0)
  * @param nowMs        いまの実時刻
- * @param swingCycleMs 振り1サイクルの長さ(呼び手が `COUNTER_WINDOW` を渡す。
+ * @param swingCycleMs 硬直が開く時刻=振り始めからの経過(呼び手が渡す。
  *                     ★ここで定数を再定義しない=サイクル長を変えた時に片方だけ古くなるのを防ぐ)
+ * @param recoverEndMs 硬直が明ける時刻=振り始めからの経過(省略時は swingCycleMs + MELEE_RECOVER_MS)。
+ *                     プレイヤーは「振りの絵が終わる(=その場で動けない時間が明ける)瞬間」から硬直を開き、
+ *                     明ける時刻は従来の `COUNTER_WINDOW + MELEE_RECOVER_MS` のまま(社長「減速は推薦で」2026-10-12:
+ *                     動けない時間と硬直の間に、素の足で動ける一瞬の隙間があった)。
  */
 export const meleeRecoverSpeedMult = (
   meleeSwingAt: number | undefined,
   nowMs: number,
   swingCycleMs: number,
+  recoverEndMs: number = swingCycleMs + MELEE_RECOVER_MS,
 ): number => {
   if (!meleeSwingAt || meleeSwingAt <= 0) return 1; // まだ一度も振っていない
   const since = nowMs - meleeSwingAt;
   if (since < swingCycleMs) return 1;                       // 振り中(=回避として使える区間)は素の足
-  if (since >= swingCycleMs + MELEE_RECOVER_MS) return 1;    // 立て直した
+  if (since >= recoverEndMs) return 1;                        // 立て直した
   return MELEE_RECOVER_SPEED_MULT;
 };

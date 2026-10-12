@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.4998 — 振った後の硬直を、振りの絵が終わる瞬間から開く(社長「減速は推薦で」)【2026-10-12 17:05 JST】
+- 発端: v0.25.4992 で「振っている間は動けない」(PLAYER_MELEE_SWING_MS=368ms)を入れた結果、振った後の硬直(移動×0.45)が開く COUNTER_WINDOW=400ms との間に、素の足で動ける32msの隙間ができていた。推薦=「振り終えた瞬間から遅くする・明ける時刻は据え置き」。
+- utils/meleeRecover.ts: `meleeRecoverSpeedMult` に第4引数 `recoverEndMs`(省略時=従来どおり開始+MELEE_RECOVER_MS)。gameStore の配線を「開く=PLAYER_MELEE_SWING_MS(368)/明ける=COUNTER_WINDOW+MELEE_RECOVER_MS(640)」に。硬直の倍率・明ける時刻・次に振れる時刻(820)・踏み込みは不変(硬直が32ms長くなるだけ)。
+- テスト: meleeRecover.test に実配線の3件(368の直前は素の足/368から硬直/640で明ける)。swingLock.store.test の「振り終わった後は普通に動ける」を「動ける(硬直で遅い)」へ更新(この変更で直後は×0.45になるため移動量の閾値を5→2px)。
+- 検証: typecheck / lint 0 errors。循環import新規なし。vitest 28件緑。見た目の変更なし(移動速度のみ)。監査は付けない(既存の値の範囲)。
+- 状態変化: なし。
+
 ## v0.25.4997 — 死亡リザルトの「倒した相手」と宿敵の昇格が、ふつうの死に方で働いていなかった(社長「あれ？倒された敵が表示される機能は？」→「自分を殺した敵の」)【2026-10-12 16:45 JST】
 - 原因: リザルトの絵と名前(GameOverScreen `KillerLine`)と宿敵の昇格(`decidePromotionOnDeath`)はどちらも `lastDamagerType` を読むが、これを埋める `damagePlayer` の第5引数 `damagerType` を渡しているのは幻影の近接・幻影の召喚物・地雷の数か所だけ。噛みつき・接触・敵弾・爆発・ボスの技は全部 `undefined` で、型が null=リザルトは死因の文字だけ・宿敵は「型不明=対象外」で一度も決まっていなかった。M13(v0.25.1494)の記録では接触経路が型を渡しており、後の改修(被弾無敵を敵ごとに=`sourceId`、被弾反撃=`retaliateFromId`)で引数が置き換わった時に落ちた回帰。
 - 修正: utils/namedEnemy.ts に純関数 `resolveDamager` を新設。型が明示されていなければ個体id(`sourceId`→`retaliateFromId`→記録専用の手がかり)で場の敵を引いて型・宿敵本人か・個体idを埋める。`damagePlayer` に第10引数 `killerHint {type,id}` を追加(記録専用。被弾無敵・被弾反撃には効かない)。敵弾(発射元の型とid)・爆発・グレンの血溜まり・ミーミル・スカジ・偶像の手榴弾/狙撃・スリエルの環・天使ボスの共通経路・ジブリルの火・アクラシエルの槍・賞金首のレーザー/狙撃/手毬打ちに手がかりを渡した。i-frame の門(`playerIframeApplies`)は従来どおり明示の型だけを見る=幻影の門は1bitも変わらない。
