@@ -694,3 +694,27 @@ describe('近接(ナイフ・research/ESCORT_MELEE.md)', () => {
     expect(escById('escort-0').knifeSwingAt).toBeUndefined();
   });
 });
+
+// 社長指摘2026-10-12「同じ画面内にいるのに、進軍NPCが助けを求めてくる」/「敵が密集してると右左を高速で向く」
+describe('助けを求める台詞は画面外だけ・向きのヒステリシス', () => {
+  it('neglectFar(援護を)は、その軍人が画面に見えている間は出ない・見えていなければ出る', () => {
+    setup(100, 40); // 原点のすぐ横=画面の中
+    useGameStore.setState({ npcDialogueQueue: [], npcSpokeAt: {}, npcCatAt: {} });
+    expect(useGameStore.getState().tryNpcLine('エドガー', 'neglectFar', '援護を', 0, 'escort-0')).toBe(false);
+    setEsc('escort-0', { x: ORIGIN + 5000, y: ORIGIN });
+    expect(useGameStore.getState().tryNpcLine('エドガー', 'neglectFar', '援護を', 0, 'escort-0')).toBe(true);
+  });
+  it('振り向いた直後は、逆へ進みたくても保持時間のあいだ向きを保ち、過ぎたら振り向く(全ての向きの決め方の最後に1回だけ掛かる)', () => {
+    setup(0, 40, { face: 1, faceFlipAt: GT }); // たった今 右を向いた
+    // 担当拠点を左へ=左へ前進したい(向きの決め方の1つ「動く向き」)。
+    useGameStore.setState(st => ({ baseSites: st.baseSites.map(b => (b.id === 'base-0' ? { ...b, x: ORIGIN - 3000 } : b)) }));
+    for (let t = 0; t <= 320; t += 16) {
+      tickSupp(GT + t);
+      expect(escById('escort-0').face).toBe(1); // 350ms 未満は右のまま
+    }
+    for (let t = 352; t <= 600; t += 16) tickSupp(GT + t);
+    expect(escById('escort-0').face).toBe(-1); // 過ぎたら進む向き(左)
+  });
+
+
+});

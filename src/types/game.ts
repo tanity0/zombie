@@ -2076,6 +2076,8 @@ export interface EscortSoldier {
   x: number;
   y: number;
   face: number;        // 向き(描画用。1=右/-1=左)
+  /** 最後に振り向いた時刻(gameTime)。向きのヒステリシス(utils/escortFace)用。 */
+  faceFlipAt?: number;
   soldierIndex: number; // 名簿index(コールアウト/見た目)
   fireAt: number;      // 次の射撃 gameTime
   dwellMs: number;     // 担当拠点サークル内の滞在(10sで解放)

@@ -215,6 +215,7 @@ import { escortSceneLine, type EscortScene } from '../data/escortSceneLines';
 import { escortHitFx, escortRiseFx, escortLandFx, type EscortFxApi, type EscortFxView } from '../utils/escortFx'; // 軍人の血と音(被弾/倒れる/起き上がり)
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, escortHateSide, escortIdOfSide, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
+import { stabilizeEscortFace } from '../utils/escortFace'; // 進軍NPCの向きのヒステリシス
 import { stepEscortMelee, inEscortMeleeArc, escortKnifeHit, ESCORT_MELEE_EXIT_PX, ESCORT_CHEST_UP_PX, ESCORT_MELEE_PHASE_STEP_MS } from '../utils/escortMelee'; // 進軍NPCの近接(research/ESCORT_MELEE.md)
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
 import { computeEnemySeparation } from '../utils/enemySeparation';
@@ -13395,6 +13396,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 倒れている軍人は台詞(囲まれた/苦戦/並走/称賛 …)を出さない・苦戦の通信で stallUntil も付けない(research/ESCORT_TARGETED.md §3)。
     // 名前では弾かない(同名の駐留兵の台詞まで落ちる)=進軍NPC起点の呼び出しが渡す id で、その軍人だけを見る。
     if (escortId !== undefined && s.escorts.some(e => e.id === escortId && isEscortDowned(e))) return false;
+    // 「援護を」系(遠方で放置=neglectFar)は、その軍人が画面に見えている間は言わない(社長指摘2026-10-12「同じ画面内にいるのに、進軍NPCが助けを求めてくる」)。
+    // 見えている範囲は軍人の動きの判定と同じ escortInMotionView(画面+余白)=画面の端に半分見えている時も言わない。
+    if (category === 'neglectFar' && escortId !== undefined && s.escorts.some(e => e.id === escortId && escortInMotionView(s, e.x, e.y))) return false;
     if (gt - (s.npcSpokeAt[name] ?? -1e9) < NPC_SAME_NPC_CD_MS) return false;       // 同一NPCのCD
     if (gt - (s.npcCatAt[category] ?? -1e9) < categoryCdMs) return false;            // 同一カテゴリのCD
     if (s.npcDialogueQueue.length >= 3) return false;                                // 詰まり防止。表示1+キュー最大3=同フレームに複数イベント(拠点解放+包囲+救助等)が重なっても取りこぼさず順次再生。各カテゴリ/同一NPCのCDで連発は別途抑止
@@ -20010,9 +20014,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 速度(px/s)=ボスの偏差撃ちが軍人の移動先を読むのに使う。
         const evx = deltaTime > 0.0001 ? (x - esc.x) / deltaTime : 0, evy = deltaTime > 0.0001 ? (y - esc.y) / deltaTime : 0;
         if (Math.abs(evx - (esc.vx ?? 0)) > 0.5 || Math.abs(evy - (esc.vy ?? 0)) > 0.5) escChanged = true;
+        // 向きのヒステリシス(社長指摘2026-10-12「敵が密集してると右左を高速で向く」)。近接の振り始めだけは即座に振り向く。
+        const fsC = stabilizeEscortFace(esc.face, esc.faceFlipAt, face, now, melC.step.swingStarted);
+        face = fsC.face;
         const next = {
           ...esc,
-          x, y, face, fireAt, moving, vx: evx, vy: evy,
+          x, y, face, faceFlipAt: fsC.flipAt, fireAt, moving, vx: evx, vy: evy,
           advanceZone: advance.zone,
           advanceDirX: advance.advanceDirX,
           advanceDirY: advance.advanceDirY,
@@ -20155,7 +20162,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!base) return esc;
       // 後退(放置)セリフ: 後退システム未実装の代理。プレイヤーが遠く放置していて未制圧の担当NPCが、
       // たまにランダムで「押されている」旨を漏らす(画面外でも判定=放置の通知)。CDで更に間引く。
-      if (base.status === 'open' && Math.hypot(esc.x - px, esc.y - py) > NEGLECT_DIST && Math.random() < RETREAT_CHANCE_PER_SEC * deltaTime) {
+      // 社長指摘2026-10-12「同じ画面内にいるのに助けを求めてくる」: 距離(900px)だけだと、引きのズームや横長の画面では見えている軍人も言っていた
+      // ⇒ 画面に見えていない時だけ(後ずさりの「下がる」=下の lowRetreat は目の前で起きる台詞なので従来どおり)。
+      if (base.status === 'open' && Math.hypot(esc.x - px, esc.y - py) > NEGLECT_DIST && !onScreen(esc.x, esc.y) && Math.random() < RETREAT_CHANCE_PER_SEC * deltaTime) {
         const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
         npcRetreatEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'pushback', sol.pushback) });
       }
@@ -20371,6 +20380,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 速度(px/s)=ボスの偏差撃ちが軍人の移動先を読むのに使う。
       const evx = deltaTime > 0.0001 ? (x - esc.x) / deltaTime : 0, evy = deltaTime > 0.0001 ? (y - esc.y) / deltaTime : 0;
       if (Math.abs(evx - (esc.vx ?? 0)) > 0.5 || Math.abs(evy - (esc.vy ?? 0)) > 0.5) escortsChanged = true;
+      // 向きのヒステリシス(社長指摘2026-10-12「敵が密集してると右左を高速で向く」)。近接の振り始めだけは即座に振り向く。
+      const fsN = stabilizeEscortFace(esc.face, esc.faceFlipAt, face, now, melN.step.swingStarted);
+      face = fsN.face;
       if (x !== esc.x || y !== esc.y || fireAt !== esc.fireAt || dwellMs !== esc.dwellMs || face !== esc.face || companionMs !== (esc.companionMs ?? 0) ||
         moving !== (esc.moving ?? true) || followSpeedOut !== esc.followSpeed || followWakeOut !== esc.followWakeAt || healthOut !== esc.health ||
         advance.zone !== (esc.advanceZone ?? 'none') || advance.speedMult !== esc.advanceSpeedMult || advance.speedTarget !== esc.advanceSpeedTarget ||
@@ -20379,7 +20391,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         advance.helpRequested !== (esc.helpRequested ?? false) || advance.rescuedUntil !== (esc.rescuedUntil ?? 0) ||
         retreating !== (esc.lowRetreat ?? false) || retreatK !== (esc.retreatK ?? 0)) escortsChanged = true;
       return {
-        ...esc, x, y, fireAt, dwellMs, face, companionMs, moving, vx: evx, vy: evy, lowRetreat: retreating,
+        ...esc, x, y, fireAt, dwellMs, face, faceFlipAt: fsN.flipAt, companionMs, moving, vx: evx, vy: evy, lowRetreat: retreating,
         followSpeed: followSpeedOut, followWakeAt: followWakeOut, health: healthOut, followHead: followHeadOut,
         healingAt: healMarks.healingAt, healedAt: healMarks.healedAt,
         retreatK, retreatDirX: retreatK > 0 ? retreatDirX : 0, retreatDirY: retreatK > 0 ? retreatDirY : 0,
