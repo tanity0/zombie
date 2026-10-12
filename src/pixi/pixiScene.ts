@@ -1514,6 +1514,18 @@ const ESCORT_KNIFE_READY = { scale: 1.05, ox: 0.26, oy: 0.06, r: 0 };
 // ★ナイフの動きはプレイヤーと同じ(社長指摘2026-10-11「プレイヤーと同じ動きになってない。ナイフが逆に動いたり」):
 //   振りかぶり=後ろ下のダガー → 弧が下から描かれて前上へ振り上げる。体の絵もその順(低く構える→振り上げる)で、弧が出る瞬間に替える。
 const ESCORT_SWING_SHEET = 'npc/escort-swing';
+// ★軍人のナイフの通り道(社長指示2026-10-12「出始めのナイフが大きい・少し上」「弧に合わせて円を描く」「到着位置も手に合う・全キャラ共通の中央値」)。
+// 弧と斬り上げの順・時計はプレイヤーと同じまま、**ナイフの実絵だけ**を「構えの拳 → 弧に沿って円 → 振り上げた拳」へ動かす。
+// 拳の位置は支給の振り2コマ(48×66・足元=下端・横の中心=24)を8人ぶん実測した**中央値**(全員1〜2pxの差):
+//   低い構えの前の拳 = 中心から前へ12.5・足元から17.75 / 振り上げた拳 = 中心から後ろへ11.75・足元から61.25。
+// 円は2つの拳を通り、中心を体の縦の中心線上に置いて求める(前→上→頭の後ろへ回る)。
+const ESCORT_FIST_LOW = { dx: 12.5, up: 17.75 };
+const ESCORT_FIST_RAISED = { dx: -11.75, up: 61.25 };
+const ESCORT_SWING_TEX_H = 66;     // 振り2コマの絵の高さ(px)
+const ESCORT_KNIFE_SWING_LEN = 0.5; // ナイフの実絵の対角線(unit 比)。プレイヤーの振りかぶり(0.95)より小さく=拳に収まる大きさ
+// ナイフの実絵(weapons/*)は刃先が右上(≈-46°)・柄の巻きが左下。柄は絵の中心から対角線の約0.26ぶん刃と逆へ寄っている(knife-t1 で実測)。
+const WEAPON_ICON_BLADE_DEG = -46;
+const WEAPON_ICON_GRIP_FRAC = 0.26;
 // 斬撃の弧を7コマのアニメで見せる(社長提供の絵・v0.25.4458)。小さな火花から三日月へ育つ絵で、
 // 全コマの下端(=柄側の起点)が揃っている。そこを支点に伸び上がらせ、コマが進むほど前へ押し出す。
 const MELEE_ARC_FRAMES = 7;
@@ -27060,8 +27072,9 @@ export class PixiScene {
       // 攻撃を受けた直後(倒れていない時)は倒れる絵の0コマ目=片膝のしゃがみ(社長指示2026-10-08)。
       const hitCrouch = !downSheet && pose.hitCrouch && !!getTexture(`${base}-down-0`);
       // 近接の振り(社長支給の2コマ): 低く構える→振り上げる。替える瞬間は弧が出る瞬間(KNIFE_SWING_SWITCH)=プレイヤーと同じ時計(PLAYER_MELEE_SWING_MS)。倒れ/被弾の絵が優先。
+      // 体を替えるのはナイフが円の半ばを過ぎた所(前の拳→振り上げた拳の中間)=ナイフと拳が離れて見えない。
       const swingTex = mSwing && mSince < PLAYER_MELEE_SWING_MS && esc.soldierIndex >= 0 && esc.soldierIndex < 8
-        ? getTexture(`${ESCORT_SWING_SHEET}-${esc.soldierIndex + (meleeSwingEase(mSince / PLAYER_MELEE_SWING_MS) < KNIFE_SWING_SWITCH ? 0 : 8)}`)
+        ? getTexture(`${ESCORT_SWING_SHEET}-${esc.soldierIndex + (meleeArcT(meleeSwingEase(mSince / PLAYER_MELEE_SWING_MS)) < 0.5 ? 0 : 8)}`)
         : null;
       const tex = hitCrouch ? getTexture(`${base}-down-0`)
         : downSheet
@@ -27273,35 +27286,43 @@ export class PixiScene {
       wpn.alpha = a * alpha;
       wpn.visible = wpn.alpha > 0.01;
     };
-    const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定(本体/分身/守護霊と同じ)
-    const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
-    const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
-    const placeMeleeArcWpn = (arcKt: number, fallbackAl: number) => {
-      const arcCfg = meleeArcCfg(slash, arcKt);
-      if (!arcCfg) { placeWpn(wpnOx2, wpnOy2, MELEE_WPN_F2.rot, MELEE_WPN_F2.len, fallbackAl); return; }
-      const wp = meleeArcWpnPos(arcCfg);
-      placeWpn(wp.ox, wp.oy, MELEE_ARC_WPN_ROT, MELEE_WPN_F2.len, meleeArcWpnAlpha(arcKt));
-    };
     const kTex = getTexture('knife-swing-1');
     if (kTex && knife.texture !== kTex) knife.texture = kTex;
+    // ---- ナイフの実絵: 構えの拳 → 弧に沿って円 → 振り上げた拳(軍人だけ・ESCORT_FIST_* の注釈)----
+    // 絵のpx → unit。軍人の体の表示高(基準高×NPC8×シート倍率)を絵の高さ66で割り、unit(箱の高さ)で割る。
+    const pxU = (PixiScene.RESCUE_NPC_DISPLAY_H * NPC8_SCALE * ESCORT_SHEET_DISPLAY_MULT / ESCORT_SWING_TEX_H) / boxH;
+    const chestUp = boxH * 0.5 / (pxU * boxH); // 胸(baseY)の足元からの高さ(絵のpx)
+    const sx = ESCORT_FIST_LOW.dx * pxU, sy = (chestUp - ESCORT_FIST_LOW.up) * pxU;
+    const ex = ESCORT_FIST_RAISED.dx * pxU, ey = (chestUp - ESCORT_FIST_RAISED.up) * pxU;
+    // 中心は体の中心線上(x=0): 両方の拳から等距離になる cy を解く。
+    const cy = (sx * sx + sy * sy - ex * ex - ey * ey) / (2 * (sy - ey));
+    const r = Math.hypot(sx, sy - cy);
+    const a0 = Math.atan2(sy - cy, sx), a1 = Math.atan2(ey - cy, ex); // 前下 → 頭の後ろ上(角度は減っていく=前→上→後ろ)
+    const sweep = a1 - a0 + (a1 > a0 ? -Math.PI * 2 : 0);
+    const placeKnifeOnCircle = (u: number, a: number) => {
+      if (!wtex) { place(knife, KNIFE_F1, a > 0.01, a); wpn.visible = false; return; }
+      knife.visible = false;
+      const ang = a0 + sweep * u;
+      const hx = Math.cos(ang) * r, hy = cy + Math.sin(ang) * r; // 拳(柄)の位置
+      const L = ESCORT_KNIFE_SWING_LEN; // 対角線(unit)
+      // 刃は円の外向き(拳から外へ)。柄を拳に置くので、絵の中心は刃の向きへ対角線×GRIP_FRAC ずらす。
+      const cx2 = hx + Math.cos(ang) * L * WEAPON_ICON_GRIP_FRAC, cy2 = hy + Math.sin(ang) * L * WEAPON_ICON_GRIP_FRAC;
+      placeWpn(cx2, cy2, ang - WEAPON_ICON_BLADE_DEG * Math.PI / 180, L, a);
+    };
+    const u = meleeArcT(kt); // 弧と同じ進み(振りかぶりの間は0=構えの拳・弧が出揃うと1=振り上げた拳)
     if (kt < KNIFE_SWING_SWITCH) {
-      const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
-      place(knife, KNIFE_F1, !wtex, a1);
-      placeWpn(KNIFE_F1.ox, KNIFE_F1.oy, MELEE_WPN_F1.rot, MELEE_WPN_F1.len, a1);
+      placeKnifeOnCircle(0, Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5)));
       place(slash, KNIFE_F2, false, 0);
       place(trail, KNIFE_F3, false, 0);
     } else if (kt < KNIFE_SWING_SWITCH2) {
       const t2 = (kt - KNIFE_SWING_SWITCH) / (KNIFE_SWING_SWITCH2 - KNIFE_SWING_SWITCH);
-      const a2 = Math.min(1, t2 / 0.25);
-      place(knife, KNIFE_F1, false, 0);
-      placeMeleeArc(slash, kt, a2);
-      placeMeleeArcWpn(kt, a2);
+      placeKnifeOnCircle(u, 1);
+      placeMeleeArc(slash, kt, Math.min(1, t2 / 0.25));
       place(trail, KNIFE_F3, false, 0);
     } else {
       const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2);
-      place(knife, KNIFE_F1, false, 0);
+      placeKnifeOnCircle(u, meleeArcWpnAlpha(kt)); // 到着(振り上げた拳)で止まり、弧の残光と一緒に引く
       place(slash, KNIFE_F2, false, 0);
-      placeMeleeArcWpn(kt, 0);
       placeMeleeArc(trail, kt, 1 - t3);
     }
   }

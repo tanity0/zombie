@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.4987', items: ['兵士のナイフが拳に収まる大きさになり、低く構えた手から斬撃の弧に沿って円を描き、振り上げた手で止まる'] },
   { version: '0.25.4986', items: ['進軍の兵士のナイフ振りが、自分の近接と同じ動きになった。低く構えて後ろに引き、下から前へ斬り上げる'] },
   { version: '0.25.4985', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.4984', items: ['進軍の兵士がナイフを振る時、腕を振り上げてから低く踏み込んで斬る姿になった'] },
