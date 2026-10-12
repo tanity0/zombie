@@ -584,6 +584,10 @@ export interface Enemy {
    */
   corpseStartX?: number;
   corpseStartY?: number;
+  // ★兵士のトス(research/ESCORT_TOSS.md)。兵士の会心で気絶した敵をプレイヤーの手前へ飛ばしている間だけ在る(ゲーム時間)。
+  // 敵の更新は死体の直後・他の何より先にこの欄を見て from→to を ease-out で動かす(ノックバックの欄は使わない)。
+  escortToss?: { fromX: number; fromY: number; toX: number; toY: number; startAt: number; endAt: number };
+  escortTossLandedAt?: number; // 着地した時刻(ゲーム時間・描画の砂埃/バウンド/気絶の輪のポップの起点)
   /**
    * v0.25.2607(社長裁定): **押し道具(鞭・シールドバッシュ)による押し**の有効期限。
    * ボスは通常の殴り/弾では押されず、このフラグが立っている間だけ押される(updateEnemiesの

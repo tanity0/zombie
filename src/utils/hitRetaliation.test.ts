@@ -3,8 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   RETALIATE_WINDOW_MS, RETALIATE_REACH_PX, RETALIATE_ANGLE_DEG, RETALIATE_DAMAGE_MULT, RETALIATE_PAD_NEUTRAL_MS,
   retaliationClosesAt, makeRetaliationWindow, isRetaliationWindowOpen, retaliationAngleOk,
-  isRetaliateTargetEligible, isRetaliationBlocked, createPadNeutralTracker, stepPadNeutral,
-} from './hitRetaliation';
+  isRetaliateTargetEligible, isRetaliationBlocked, createPadNeutralTracker, stepPadNeutral, retaliationReady } from './hitRetaliation';
 
 describe('窓の時刻 — ヒットストップが明けてから300ms', () => {
   it('仕様の数値: 窓300ms・届く距離260px・角度45度・倍率2', () => {
@@ -130,5 +129,21 @@ describe('パッドのニュートラル履歴 — 直近150ms以内にデッド
     const t = createPadNeutralTracker();
     expect(stepPadNeutral(t, 0.2, 0, 1000, DEAD)).toBeNull();
     expect(stepPadNeutral(t, 0.21, 0, 1010, DEAD)).not.toBeNull();
+  });
+});
+
+describe('retaliationReady(矢印の表示と入力が同じ1本・HIT_RETALIATION.md §7)', () => {
+  const tgt = { health: 10, type: 'zombie' as const };
+  const ok = { windowOpen: true, blocked: false, target: tgt, distPx: 100, wallBlocked: false };
+  it('窓・相手・距離・壁がそろえば出せる', () => {
+    expect(retaliationReady(ok)).toBe(true);
+  });
+  it('どれかが崩れたら出せない(矢印も出ない)', () => {
+    expect(retaliationReady({ ...ok, windowOpen: false })).toBe(false);
+    expect(retaliationReady({ ...ok, blocked: true })).toBe(false);
+    expect(retaliationReady({ ...ok, target: undefined })).toBe(false);
+    expect(retaliationReady({ ...ok, distPx: RETALIATE_REACH_PX + 1 })).toBe(false);
+    expect(retaliationReady({ ...ok, wallBlocked: true })).toBe(false);
+    expect(retaliationReady({ ...ok, target: { ...tgt, aiPhase: 'jump' } })).toBe(false);
   });
 });

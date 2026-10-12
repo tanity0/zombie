@@ -112,7 +112,7 @@ import { multiHitMilestoneTier, multiHitDurationMs, milestoneSfxRate, comboMiles
 import { playerHurtTier, playerHurtReactionOf, isHurtMoveLocked, knockbackUntilAfterStop } from '../utils/playerHurt';
 import {
   type HitRetaliationWindow, makeRetaliationWindow, isRetaliationWindowOpen, retaliationAngleOk, isRetaliateTargetEligible,
-  isRetaliationBlocked, RETALIATE_DAMAGE_MULT, RETALIATE_LUNGE_MS,
+  isRetaliationBlocked, retaliationReady, RETALIATE_DAMAGE_MULT, RETALIATE_LUNGE_MS,
 } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { isEnemyAttacking } from '../utils/combatFeel';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
@@ -216,6 +216,7 @@ import { escortHitFx, escortRiseFx, escortLandFx, type EscortFxApi, type EscortF
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, escortHateSide, escortIdOfSide, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
 import { stabilizeEscortFace } from '../utils/escortFace'; // 進軍NPCの向きのヒステリシス
+import { escortTossDecision, escortTossLanding, escortTossProgress, ESCORT_TOSS_MS, ESCORT_TOSS_NEVER } from '../utils/escortToss'; // 兵士のトス(research/ESCORT_TOSS.md)
 import { isEscortSwinging, stepEscortMelee, inEscortMeleeArc, escortKnifeHit, ESCORT_MELEE_EXIT_PX, ESCORT_CHEST_UP_PX, ESCORT_MELEE_PHASE_STEP_MS } from '../utils/escortMelee'; // 進軍NPCの近接(research/ESCORT_MELEE.md)
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
 import { computeEnemySeparation } from '../utils/enemySeparation';
@@ -849,7 +850,12 @@ const applyEscortMeleeHits = (get: () => GameState, set: (p: Partial<GameState> 
       // 通常敵は5秒の気絶+黄色いリング(=プレイヤーの近接フィニッシュの窓)。ボスの半減は damageEnemy が
       // crit=true を受けて中央で掛ける。使者(hangedman)は止めない。気絶時間アップはプレイヤーのパッシブなので乗せない。
       else if (crit) {
-        if (!isBossType(e.type) && !isHangedman(e.type)) get().stunEnemy(e.id, get().gameTime + STUN_DURATION_MS);
+        if (!isBossType(e.type) && !isHangedman(e.type)) {
+          get().stunEnemy(e.id, get().gameTime + STUN_DURATION_MS);
+          // ★兵士のトス(research/ESCORT_TOSS.md): 条件が揃えばプレイヤーの手前へ飛ばす。この振りの押し返しは外す
+          // (下の set が無条件に上書きしてトスが消えるため・品質監査 A-1)。
+          if (get().tossEnemyToPlayer(e.id)) pushes.delete(e.id);
+        }
         get().spawnRing(ecx, ecy, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
       }
     }
@@ -3803,6 +3809,42 @@ const meleeWallsAround = (get: () => GameState, cx: number, cy: number, range: n
   return treesInRegion(cx - range - 40, cy - range - 40, cx + range + 40, cy + range + 40).map(trunkRect);
 };
 
+/**
+ * ★被弾反撃が**いま出せる相手**(向き以外の全条件・research/HIT_RETALIATION.md §7)。入力(tryHitRetaliation)と
+ * 矢印の描画(pixiScene)が同じこの1本を呼ぶ=矢印が出ている間は、矢印の向きへはじけば必ず成立する。読むだけ(書かない)。
+ */
+export const retaliationReadyTarget = (get: () => GameState, now: number): {
+  target: Enemy; pcx: number; pcy: number; ecx: number; ecy: number;
+} | null => {
+  const st = get();
+  const win = st.hitRetaliation;
+  const windowOpen = isRetaliationWindowOpen(win, now);
+  if (!windowOpen || !win) return null;
+  const p = st.player;
+  const target = st.enemies.find(e => e.id === win.fromId);
+  if (!target) return null;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
+  const walls = meleeWallsAround(get, pcx, pcy, 400);
+  const ok = retaliationReady({
+    windowOpen,
+    // 反撃が出せない状態(入力の瞬間に判定して不発=窓自体は開いたまま)。
+    blocked: isRetaliationBlocked({
+      inputLocked: isInputLocked(),
+      attention: st.attention !== null,
+      meleeLocked: !st.m0Unlocked.melee,
+      skaterRiding: SKATER_LOCK_ENABLED && p.skaterRiding,
+      rhythm: st.rhythm.active,
+      pvpIncapacitated: isPvpIncapacitated(p.pvpPosture, st.gameTime),
+      seekerBlocked: isSeekerActive(p, st.gameTime) && skillLevel(p, 'seeker') < 3, // 通常の近接と同じ封印(半透明中は振れない)
+    }),
+    target,
+    distPx: enemyMeleeDist(pcx, pcy, target),
+    wallBlocked: walls.length > 0 && segmentBlocked(pcx, pcy, ecx, ecy, walls),
+  });
+  return ok ? { target, pcx, pcy, ecx, ecy } : null;
+};
+
 // 叫喚型の予兆(溜め開始)と発動の演出。research/LIBERTY_HORDE.md の旗手も**同じ関数**を呼ぶ(同じ叫び=同じ見え方)。
 // 予兆: 2秒かけて広がるリング＋発光(優先処理を促すテレグラフ)。
 export const screamerWindupFx = (x: number, y: number, scale = 1): string[] => {
@@ -5906,6 +5948,8 @@ interface GameState {
   // ★被弾反撃の受付窓(research/HIT_RETALIATION.md §1)。damagePlayer が retaliateFromId つきの実被弾で開き、反撃・別の相手での開き直し・
   // 死亡で閉じる(時間切れは時刻で判定=nullに戻さない)。Reactは開閉の時だけ再レンダ(components/HitRetaliationCue)。
   hitRetaliation: HitRetaliationWindow | null;
+  // ★兵士のトス(research/ESCORT_TOSS.md)の前回の時刻(ゲーム時間・まだ無い=ESCORT_TOSS_NEVER)。8秒に1回まで。resetGame で戻す。
+  lastEscortTossAt: number;
   // ★KILL処刑演出v2(社長指示v0.25.3603): フル演出(寄りズーム発火)のフィニッシュキルで1回
   // 書かれるイベント。描画はpixiScene(実時間駆動=hitstop中も動く・判定/座標は一切不変)。
   // 跳びつきを見せるのは primary(ex/ey…)の一体のみ。victims=同時に処刑された敵(primary含む)で、
@@ -6150,6 +6194,8 @@ interface GameState {
   // ★被弾反撃(research/HIT_RETALIATION.md): 入力(フリック/右クリック/パッド)から呼ぶ。窓・向き・相手・状態が揃えば飛び込みを始めて true
   // (揃わなければ何もせず false=呼び出し側は従来の入力経路へ)。dirX/dirY=入力の向き。
   tryHitRetaliation: (dirX: number, dirY: number) => boolean;
+  // ★兵士のトス(research/ESCORT_TOSS.md)。兵士の会心で倒れずに気絶した瞬間に、弾/ナイフの両経路がこの1本を呼ぶ。飛ばしたら true。
+  tossEnemyToPlayer: (enemyId: string) => boolean;
   // 被弾反撃の着地(命中)を解決する(ループが movePlayer の直後に呼ぶ)。待ちが無い/まだ着地前なら null。
   resolveRetaliateStrike: () => CounterTriggerResult | null;
   // Katana actions. performKatanaStrike cuts the given enemies with katana
@@ -7201,6 +7247,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastWeaponGet: null,
   hitstopUntil: 0,
   hitRetaliation: null,
+  lastEscortTossAt: ESCORT_TOSS_NEVER,
   killFx: null,
   kamitsukiFx: null,
   attention: null,
@@ -7740,28 +7787,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const st = get();
     const win = st.hitRetaliation;
-    if (!isRetaliationWindowOpen(win, now) || !win) return false;
+    // 窓・妨げ・相手の有効性・壁越し=矢印の表示と同じ1本(retaliationReadyTarget)。向き±45°だけはここで見る。
+    const ready = retaliationReadyTarget(get, now);
+    if (!ready || !win) return false;
     const p = st.player;
-    // 反撃が出せない状態(入力の瞬間に判定して不発=窓自体は開いたまま)。
-    if (isRetaliationBlocked({
-      inputLocked: isInputLocked(),
-      attention: st.attention !== null,
-      meleeLocked: !st.m0Unlocked.melee,
-      skaterRiding: SKATER_LOCK_ENABLED && p.skaterRiding,
-      rhythm: st.rhythm.active,
-      pvpIncapacitated: isPvpIncapacitated(p.pvpPosture, st.gameTime),
-      seekerBlocked: isSeekerActive(p, st.gameTime) && skillLevel(p, 'seeker') < 3, // 通常の近接と同じ封印(半透明中は振れない)
-    })) return false;
-    // 相手の再確認(入力の瞬間): 生きていて普通の近接で斬れる状態、かつ体の縁までRETALIATE_REACH_PX以内、壁越しでない。
-    const target = st.enemies.find(e => e.id === win.fromId);
-    if (!target) return false;
-    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
-    const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
-    if (!isRetaliateTargetEligible(target, enemyMeleeDist(pcx, pcy, target))) return false;
+    const { target, pcx, pcy, ecx, ecy } = ready;
     // 向きは入力の瞬間の「プレイヤー→相手」で測る(窓を開いた時ではない=吹き飛びや相手の移動でずれても追う)。
     if (!retaliationAngleOk(dirX, dirY, ecx - pcx, ecy - pcy)) return false;
-    const walls = meleeWallsAround(get, pcx, pcy, 400);
-    if (walls.length > 0 && segmentBlocked(pcx, pcy, ecx, ecy, walls)) return false;
     // 着地=相手の判定の帯の最近点から、近接が確実に入る手前(縮地と同じ計算)。動きは近接の踏み込みの器(lunge)を使う=
     // 壁・行ける帯・城ボス戦の円は movePlayer が通常の移動と同じ鎖で解決する(自前で座標を書かない)。
     const land = shukuchiLandingPoint(pcx, pcy, enemyRangeRect(target), Math.min(24, huntingMeleeRadius(p) * 0.4));
@@ -7794,6 +7826,46 @@ export const useGameStore = create<GameState>((set, get) => ({
         retaliateTargetId: target.id,
       },
     }));
+    return true;
+  },
+  // ★兵士のトス(research/ESCORT_TOSS.md)。判定は純関数 escortTossDecision、着地点は escortTossLanding(写さない)。
+  // 位置は敵の更新が escortToss を読んで ease-out で動かす(ノックバックの欄は使わない=他の押しの飛距離を変えない)。
+  tossEnemyToPlayer: (enemyId) => {
+    const st = get();
+    const e = st.enemies.find(en => en.id === enemyId);
+    if (!e) return false;
+    const p = st.player;
+    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+    if (!escortTossDecision({
+      enemy: e, playerCx: pcx, playerCy: pcy, playerAlive: p.health > 0,
+      inputLocked: isInputLocked() || st.attention !== null,
+      gameTime: st.gameTime, lastTossAt: st.lastEscortTossAt,
+    })) return false;
+    const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    const face = p.lastDirection ?? { x: 0, y: 0 };
+    const land = escortTossLanding(ecx, ecy, pcx, pcy, face.x, face.y);
+    const now = Date.now();
+    set(state => ({
+      lastEscortTossAt: state.gameTime,
+      enemies: state.enemies.map(en => en.id !== enemyId ? en : {
+        ...en,
+        escortToss: {
+          fromX: en.x, fromY: en.y, toX: land.x - en.width / 2, toY: land.y - en.height / 2,
+          startAt: state.gameTime, endAt: state.gameTime + ESCORT_TOSS_MS,
+        },
+        escortTossLandedAt: undefined,
+        // 既存のノックバックは今で打ち切る(飛行中に別の押しが混ざらない)。飛行中の押しは敵の更新が素通りさせる。
+        knockbackUntil: (en.knockbackUntil ?? 0) > now ? now : en.knockbackUntil,
+        knockbackVx: 0, knockbackVy: 0,
+        vx: 0, vy: 0,
+      }),
+    }));
+    // 打ち出し(派手さの絵・判定なし): 黄色の会心の輪は呼び手の既存のまま。飛ぶ向きと逆へ抜ける打撃の抜け+会心の刺さる音。
+    const fl = Math.hypot(land.x - ecx, land.y - ecy) || 1;
+    const ux = (land.x - ecx) / fl, uy = (land.y - ecy) / fl;
+    get().spawnSpray(ecx - ux * e.width * 0.3, ecy - uy * e.height * 0.3, -ux, -uy, 14, ['#ffffff', '#fef3c7', '#fde68a']);
+    get().spawnBurst(ecx, ecy, '#fef9c3', 8, -ux, -uy);
+    void import('../audio/audioManager').then(m => m.playSfx('headshot', 0.8));
     return true;
   },
   // 着地の瞬間に斬る(ループが movePlayer の直後に呼ぶ・縮地の resolveShukuchiStrike と同型)。着地の時に相手を再確認し、
@@ -13482,6 +13554,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const punisherContacts: { x: number; y: number }[] = []; // v0.25.3299: 一拍目(接触)のFX用座標
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
     const layingEggs: BreakableProp[] = []; // 抱卵型(旧ghost)がこのフレームに設置する緑卵(mine)。set 内で breakableProps へマージ。
+    const tossLandings: { x: number; y: number; dirX: number; dirY: number }[] = []; // 兵士のトスがこのフレームに着地した足元(set 後に音/キック)。
     const screamerActivatedAt: { x: number; y: number }[] = []; // 叫喚型がこのフレームに溜め完了=発動した位置(set 後に FX/SE/揺れ)。
     const screamerWindupAt: { x: number; y: number }[] = [];     // 叫喚型がこのフレームに溜め開始した位置(set 後に予兆FX)。
     const quadBreathSparkles: { x: number; y: number; scale?: number; life?: number; driftX?: number; driftY?: number; rot?: number }[] = [];
@@ -13677,6 +13750,21 @@ export const useGameStore = create<GameState>((set, get) => ({
             sy + (kvy / kvl) * KILL_LAUNCH_DIST_PX * frac,
           );
           return { ...enemy, x: kb.x, y: kb.y };
+        }
+        // ★兵士のトス(research/ESCORT_TOSS.md)。飛んでいる間は AI・ノックバック・気絶の凍結より**先に**位置を決めて返す。
+        // ゲーム時間で from→to を ease-out(初速最大→着地で0=慣性)。ヒットストップ/スローで止まっても着地点は変わらない。
+        // 壁は resolveMove(木・建物・囲い)。着地のフレームで欄を消して着地時刻を打つ(演出はそこで1回)。
+        if (enemy.escortToss) {
+          const tz = enemy.escortToss;
+          const ddx = tz.toX - tz.fromX, ddy = tz.toY - tz.fromY, ddl = Math.hypot(ddx, ddy) || 1;
+          if (gameTime >= tz.endAt) {
+            const land = resolveMove(tz.toX, tz.toY);
+            tossLandings.push({ x: land.x + enemy.width / 2, y: land.y + enemy.height, dirX: ddx / ddl, dirY: ddy / ddl });
+            return { ...enemy, x: land.x, y: land.y, vx: 0, vy: 0, escortToss: undefined, escortTossLandedAt: gameTime };
+          }
+          const f = escortTossProgress(gameTime, tz.startAt, tz.endAt);
+          const fly = resolveMove(tz.fromX + ddx * f, tz.fromY + ddy * f);
+          return { ...enemy, x: fly.x, y: fly.y, vx: 0, vy: 0 };
         }
         // 攻撃モーションを「全う」するフェーズの扱い(社長指示・v0.25.3271裁定で更新):
         // ・どの敵も「攻撃モーションに入ったら(aiPhase あり=溜め/zpause/zrush/突進/ジャンプ等)技自体は
@@ -17400,6 +17488,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 叫喚発動: 強い衝撃リング＋発光＋コールアウト＋画面揺れ。「叫んだ」感を強めるため(社長指示)、
     // 外側にもう一段リング(遅れて届く音波のイメージ)＋画面全体がわずかに緑へ明滅するフラッシュを追加し、
     // 揺れも他の一撃系演出(パンプキン着地mag9/盾バッシュmag10)に並ぶ強さへ上げる(旧: 220ms/mag5)。
+    // 兵士のトスの着地: 鈍い着地音+飛来方向へのカメラキック(揺れの物差しを増やさない・クリエイティブ監査 #8)。
+    // 砂埃・小さなバウンド・気絶の輪のポップは描画が escortTossLandedAt から出す(判定なし)。
+    for (const l of tossLandings) {
+      void import('../audio/audioManager').then(m => m.playSfx('jump-land', 0.9, undefined, 0.8));
+      get().triggerKick(5, 160, l.dirX, l.dirY);
+    }
     if (screamerActivatedAt.length > 0) {
       const { x, y } = screamerActivatedAt[0];
       screamerCryFx(x, y);
@@ -21964,6 +22058,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastWeaponGet: null,
         hitstopUntil: 0,
         hitRetaliation: null,
+        lastEscortTossAt: ESCORT_TOSS_NEVER,
   killFx: null,
   kamitsukiFx: null,
   attention: null,

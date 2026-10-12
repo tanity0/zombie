@@ -100,6 +100,7 @@ import {
   EVENT_QUEST_DWELL_MS, // 二人組クエストv2(§2-8・B4): 納品3秒メーターの分母(RETURN_CIRCLE_HOLD_MSと同値=既存アークを流用)
   SCREAMER_BUFF_MS,
   PLAYER_KNOCKBACK_MS,
+  retaliationReadyTarget, // ★被弾反撃の「いま出せるか」(入力と同じ1本・HIT_RETALIATION.md §7)
 } from '../store/gameStore';
 import {
   BOSS_RECOVER_TINT,
@@ -1776,6 +1777,24 @@ const PLAYER_WALK_BOB_PX = 0.8;
 // 当たり判定/位置(store)は不変。1回のノックバックで sin の1山ぶんポンと跳ねて着地する。
 const KNOCKBACK_HOP_PX = 12;   // 跳ねの高さ(px・社長指示でもっと分かりやすく: 6→12)
 const KNOCKBACK_HOP_MS = 260;
+// ★兵士のトス(research/ESCORT_TOSS.md §4)の浮き: 飛行の長さに合わせた放物線(頂点28px)+着地から160msの小さなバウンド(6px・減衰)。
+// 回転は付けない(歪みを足さない・クリエイティブ監査 #2)。判定なし。死体には付けない。
+const ESCORT_TOSS_HOP_PX = 28;
+const ESCORT_TOSS_BOUNCE_PX = 6;
+const ESCORT_TOSS_BOUNCE_MS = 160;
+const escortTossHopPx = (e: Enemy, gameTime: number): number => {
+  if (e.corpseUntil !== undefined) return 0;
+  const tz = e.escortToss;
+  if (tz) {
+    const t = Math.max(0, Math.min(1, (gameTime - tz.startAt) / Math.max(1, tz.endAt - tz.startAt)));
+    return Math.sin(t * Math.PI) * ESCORT_TOSS_HOP_PX;
+  }
+  if (e.escortTossLandedAt !== undefined) {
+    const u = (gameTime - e.escortTossLandedAt) / ESCORT_TOSS_BOUNCE_MS;
+    if (u >= 0 && u < 1) return Math.sin(u * Math.PI) * ESCORT_TOSS_BOUNCE_PX * (1 - u);
+  }
+  return 0;
+};
 // 延焼中の敵の薄いオレンジ点滅(社長指示v0.25.3272・視覚のみ。判定=storeのburnUntil)。
 // ★v0.25.4383(社長裁定2026-09-16「1かつ、延焼はオレンジに」・PACING_PUZZLE.md §16-10-C):
 // 旧 `0xff5a3c` は**赤**で、§16 の「赤=カウンター可の予告」と同じ加算オーバーレイを共有している。
@@ -4743,6 +4762,19 @@ export class PixiScene {
   // 森の暗転/tilt-shift より上)に置き、環境光の影響を一切受けない。uiLayer は screen 座標なので
   // 描画時に world.position(=-camera+shake)を足して world→screen 変換する。
   private reticleGfx = new Graphics();
+  // ★被弾反撃の向きの矢印(HIT_RETALIATION.md §7)。uiLayer=画面座標・環境光の影響外。▶を右向きで原点に描き、
+  // Graphics ごと位置と回転を与える。
+  private retArrowGfx = new Graphics();
+  private retArrow: {
+    key: number;                         // 窓の openedAt(新しい窓で作り直す)
+    mode: 'show' | 'retract' | 'exit';   // 出ている/条件が崩れて引っ込む/反撃が成立して抜ける
+    modeAt: number;                      // mode に入った時刻(Date.now)
+    shownAt: number;                     // 最初に出た時刻
+    closesAt: number;                    // 窓の締め切り(帯と同じ時刻)
+    dirX: number; dirY: number;          // 最後に描いた向き
+    out: number;                         // 最後に描いた体の縁からの距離(画面px)
+    alpha: number;                       // 最後に描いた濃さ
+  } | null = null;
   private wireTip: Sprite | null = null; // ワイヤーアンカー先端スプライト(world座標・遅延生成)
   // §5.23 M22 C4: 突進/カウンターの速度線。固定プール(SPEED_LINE_COUNT本・screen座標=uiLayer)。
   // 遅延生成(初回syncSpeedLinesで作る)。getGlowTextureの使い回し=新規テクスチャなし。
@@ -5813,6 +5845,7 @@ export class PixiScene {
     this.L.effectLayer.addChild(this.endingShotFxGfx); // エンディング(仮組み)兵士の発砲トレイル/薬莢(§1)
     // 照準サークルは uiLayer(研究所の暗幕/森の暗転より上=環境光の影響外)へ。screen座標で描画する。
     this.L.uiLayer.addChild(this.reticleGfx);
+    this.L.uiLayer.addChild(this.retArrowGfx);
     this.L.uiLayer.addChild(this.rescueSweatGfx); // 汗マーク=環境光の影響外(uiLayer)
     this.localEventShadeGfx.zIndex = -1_000_000;
     this.L.actorLayer.addChild(
@@ -9647,6 +9680,7 @@ export class PixiScene {
       s.escorts
     );
     this.syncPlayerFx(s.player, now);
+    this.syncRetaliationArrow(s.player, now);
     this.syncSpeedLines(s.player, now, s.gameTime); // §5.23 M22 C4: 突進/カウンターの速度線(screen-space・軽量)
     // 解放済み(=その方角の拠点が制圧済み)のPOIだけ方角矢印を出す。裏ボスは討伐後は出さない。
     // 出現/解放判定は固定の巣(セクター)で行い、矢印の指す先は「実際に出ている裏ボスの現在地」にする
@@ -19050,10 +19084,10 @@ export class PixiScene {
     // knockbackUntilだけ再利用してその場に凍結させる経路があり(gameStore.ts)、速度チェック無しだと
     // 実際には押されていないのに跳ねてしまっていた。実速度が乗っている時だけ跳ねるようガード。
     const kbMoving = Math.abs(e.knockbackVx ?? 0) > 0.01 || Math.abs(e.knockbackVy ?? 0) > 0.01;
-    const kbHop = (e.knockbackUntil !== undefined && now < e.knockbackUntil && kbMoving)
+    const kbHop = ((e.knockbackUntil !== undefined && now < e.knockbackUntil && kbMoving)
       ? Math.sin(Math.max(0, Math.min(1, (now - e.lastHit) / KNOCKBACK_HOP_MS)) * Math.PI)
         * KNOCKBACK_HOP_PX * hopMul(enemyHitReaction(e))   // ★量と連動(2026-09-17)
-      : 0;
+      : 0) + escortTossHopPx(e, gameTime);
     // 裏ボスは「当たり判定=足元の帯(AABB)」と「絵(巨体)」を分離して描く(社長指示)。
     // 他敵は従来どおり足元アンカー＋遠近スケール。
     const bossFixed = isHiddenBoss(e.type);
@@ -19878,7 +19912,10 @@ export class PixiScene {
     if (stunned) {
       // 裏ボスの完全気絶(5クリ)中は黄→紫のサークル(社長指示)。それ以外は従来の黄。
       const fullStun = e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil;
-      this.drawStunReticle(r, cx, cy, Math.max(e.width, e.height), now, fullStun ? 0xa855f7 : 0xfacc15);
+      // ★兵士のトスの着地: 気絶の輪を一度大きく出して収縮させる(「受け取れ」の合図・ESCORT_TOSS.md §4)。
+      const tossPopU = e.escortTossLandedAt !== undefined ? (gameTime - e.escortTossLandedAt) / 320 : 1;
+      const tossPop = tossPopU >= 0 && tossPopU < 1 ? 1 + 1.1 * (1 - tossPopU) * (1 - tossPopU) : 1;
+      this.drawStunReticle(r, cx, cy, Math.max(e.width, e.height) * tossPop, now, fullStun ? 0xa855f7 : 0xfacc15);
     } else if (BOSS_SLOW_RING_ENABLED && e.bossSlowUntil !== undefined && gameTime < e.bossSlowUntil) {
       // v0.25.2598: 移動半減窓(クリ/カウンター成立の①効果=半減+次行動CD2倍)。痺れ中(上)は
       // そちらの輪を優先し重ねない=「痺れ」と「半減」が同時に出て読めなくなるのを防ぐ。
@@ -22956,14 +22993,21 @@ export class PixiScene {
       const stepL = this.latchFx(`${e.id}:stepdust`, stepIn, DUST_MS, now,
         () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DUST_STOMP_SCALE]);
       if (stepL) this.drawDust(stepL.d[0], stepL.d[1], stepL.d[2], stepL.t, this.dustTintForStage(), this.dustAlpha(stepL.t), stepL.t0);
+      // ★兵士のトスの着地の砂埃(ESCORT_TOSS.md §4・派手さの絵=判定なし。大きさは踏み鳴らしと同じ DUST_STOMP_SCALE)。
+      const tossLandOn = e.escortTossLandedAt !== undefined && gameTime - e.escortTossLandedAt >= 0 && gameTime - e.escortTossLandedAt < 120;
+      const tossL = this.latchFx(`${e.id}:tossland`, tossLandOn, DUST_MS, now,
+        () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DUST_STOMP_SCALE]);
+      if (tossL) this.drawDust(tossL.d[0], tossL.d[1], tossL.d[2], tossL.t, this.dustTintForStage(), this.dustAlpha(tossL.t), tossL.t0);
 
       // v0.25.2868: 溜めの後に本体が高速でコミットする州だけ、進行方向と逆へ短い速度線を引く。
       // 州名は移動/判定の状態機械そのものを読むため、active秒数を変えてもFXだけ遅れて残らない。
       // ジャンプ/滑空も同じ「溜め→高速移動」なので横展開し、サイズに比例させて巨体の重量感を残す。
       const airborneCommit = e.aiPhase === 'g-jump-air' || e.aiPhase === 'g-trijump-air'
         || e.aiPhase === 'g-glide-active' || e.bossState === 'jump-attack';
-      if (dashing || airborneCommit) {
+      const tossing = !!e.escortToss && e.corpseUntil === undefined; // 兵士のトスの飛行中も同じ速度線(風切り・ESCORT_TOSS.md §4)
+      if (dashing || airborneCommit || tossing) {
         let mdx = e.vx ?? 0, mdy = e.vy ?? 0;
+        if (tossing && e.escortToss) { mdx = e.escortToss.toX - e.escortToss.fromX; mdy = e.escortToss.toY - e.escortToss.fromY; }
         if (Math.hypot(mdx, mdy) < 1) {
           mdx = (e.aiTargetX ?? fb.footX) - (e.aiFromX ?? fb.footX);
           mdy = (e.aiTargetY ?? fb.footY) - (e.aiFromY ?? fb.footY);
@@ -34718,6 +34762,78 @@ export class PixiScene {
   }
 
   // ---- player FX: counter ring + reload meter (world space) ----------------
+
+  /**
+   * ★被弾反撃の向きの矢印(research/HIT_RETALIATION.md §7・社長指示2026-10-12)。
+   * 出す/出さないは入力と同じ1本(retaliationReadyTarget)=矢印が出ている間は、その向き(±45°)へはじけば成立する。
+   * 動き: 出る=体から外へ滑り出て少し行き過ぎて戻る(1回)→締め切りへ向けて体の方へ戻り、締め切りで体の縁に消え切る
+   * (縁の帯の「吸い込まれる」と同じ向き)。条件が崩れたら短く体へ引っ込む。反撃が成立したら入力の向きへ抜けて消える。
+   * 白+暗い縁取りだけ(赤は持たない=体のすぐ横は敵の赤い予告の世界)。判定は持たない・store へは書かない。
+   */
+  private syncRetaliationArrow(player: Player, now: number): void {
+    const g = this.retArrowGfx;
+    if (HIDE_LAYERS.has('retarrow')) { g.visible = false; return; }
+    const win = useGameStore.getState().hitRetaliation;
+    const ready = win ? retaliationReadyTarget(useGameStore.getState, now) : null;
+    const RET_APPEAR_MS = 120, RET_RETRACT_MS = 70, RET_EXIT_MS = 120;
+    let a = this.retArrow;
+    if (ready && win) {
+      const dx = ready.ecx - ready.pcx, dy = ready.ecy - ready.pcy, dl = Math.hypot(dx, dy) || 1;
+      if (!a || a.key !== win.openedAt || a.mode !== 'show') {
+        a = { key: win.openedAt, mode: 'show', modeAt: now, shownAt: now, closesAt: win.closesAt, dirX: dx / dl, dirY: dy / dl, out: 0, alpha: 0 };
+      }
+      a.dirX = dx / dl; a.dirY = dy / dl; a.closesAt = win.closesAt;
+    } else if (a && a.mode === 'show') {
+      // 条件が崩れた: 反撃が成立して飛び込んでいるなら入力の向きへ抜ける。そうでなければ体へ引っ込む。
+      const success = (player.retaliateStrikeAt ?? 0) > 0 && player.retaliateTargetId !== undefined && now < (player.lungeUntil ?? 0) + 40;
+      a = { ...a, mode: success ? 'exit' : 'retract', modeAt: now };
+    }
+    this.retArrow = a;
+    if (!a) { if (g.visible) { g.visible = false; g.clear(); } return; }
+    // 体の縁=プレイヤーの胸(足元から上へ26)を中心に、体の半径(world×ズーム)+余白。大きさは画面で一定。
+    const wz = this.L.worldGroup.scale.x || 1;
+    const originX = this.L.world.position.x * wz + this.L.worldGroup.position.x;
+    const originY = this.L.world.position.y * wz + this.L.worldGroup.position.y;
+    const cxs = originX + (player.x + player.width / 2) * wz;
+    const cys = originY + (player.y + player.height - 26) * wz;
+    const edge = 24 * wz + 10; // 体の縁(画面px)
+    const GAP = 18;            // 縁から矢印の中心までの最大の余白(画面px)
+    const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
+    let out: number, alpha: number;
+    if (a.mode === 'show') {
+      const ta = Math.min(1, (now - a.shownAt) / RET_APPEAR_MS);
+      // 出る: 0→GAP をオーバーシュート1回(back の ease-out)。
+      const s = 1.7;
+      const back = 1 + (s + 1) * Math.pow(ta - 1, 3) + s * Math.pow(ta - 1, 2);
+      const appearOut = GAP * back;
+      // 戻り: 出切った後から締め切りまでに GAP→0(体の縁)へ。後半ほど速く戻る(締め切りが迫る)。
+      const span = Math.max(1, a.closesAt - (a.shownAt + RET_APPEAR_MS));
+      const tr = Math.max(0, Math.min(1, (now - (a.shownAt + RET_APPEAR_MS)) / span));
+      out = ta < 1 ? appearOut : GAP * (1 - tr * tr);
+      alpha = Math.min(1, ta * 1.6) * (tr > 0.75 ? Math.max(0, 1 - (tr - 0.75) / 0.25) : 1);
+    } else if (a.mode === 'retract') {
+      const t = Math.min(1, (now - a.modeAt) / RET_RETRACT_MS);
+      out = a.out * (1 - easeOut(t));
+      alpha = a.alpha * (1 - t);
+      if (t >= 1) { this.retArrow = null; g.visible = false; g.clear(); return; }
+    } else {
+      const t = Math.min(1, (now - a.modeAt) / RET_EXIT_MS);
+      out = a.out + 46 * easeOut(t);
+      alpha = a.alpha * (1 - t);
+      if (t >= 1) { this.retArrow = null; g.visible = false; g.clear(); return; }
+    }
+    if (a.mode === 'show') { a.out = out; a.alpha = alpha; }
+    if (alpha <= 0.01) { g.visible = false; return; }
+    g.visible = true;
+    g.clear();
+    // ▶(社長指定の形)。ドット絵の矢印は斜めに回すと輪郭が崩れて読めない(撮って確認)ため、塗りで描く。
+    // 正三角形だと斜めで ▼ に見えた(撮って確認)=先を長く・後ろを切り込んだ細身の ▶ にして向きを一目で読ませる。
+    g.poly([19, 0, -10, -12, -4, 0, -10, 12]).fill({ color: 0x0b1020, alpha: 0.9 });
+    g.poly([15, 0, -7, -8.5, -2.5, 0, -7, 8.5]).fill({ color: 0xffffff, alpha: 1 });
+    g.alpha = alpha;
+    g.rotation = Math.atan2(a.dirY, a.dirX);
+    g.position.set(cxs + a.dirX * (edge + out + 10), cys + a.dirY * (edge + out + 10));
+  }
 
   private syncPlayerFx(player: Player, now: number) {
     const g = this.playerFx;

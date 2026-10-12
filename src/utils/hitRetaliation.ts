@@ -93,6 +93,20 @@ export interface RetaliationBlockState {
 export const isRetaliationBlocked = (s: RetaliationBlockState): boolean =>
   s.inputLocked || s.attention || s.meleeLocked || s.skaterRiding || s.rhythm || s.pvpIncapacitated || s.seekerBlocked;
 
+/**
+ * ★いま反撃が出せるか(向き以外の全条件)=入力(tryHitRetaliation)と矢印の表示(HIT_RETALIATION.md §7)が**同じこの1本**を通る。
+ * 矢印が出ている間は「矢印の向き(±45°)へはじけば成立する」を構造で守る(写しを持つと必ずずれる・品質監査 B-1/B-4)。
+ * 窓が開いている/妨げが無い/相手が居て反撃の相手として有効(isRetaliateTargetEligible の全条件)/壁越しでない。
+ */
+export const retaliationReady = (r: {
+  windowOpen: boolean;
+  blocked: boolean;
+  target: Pick<Enemy, 'health' | 'corpseUntil' | 'dormant' | 'type' | 'reaperChaser' | 'aiPhase' | 'bossState'> | undefined;
+  distPx: number;
+  wallBlocked: boolean;
+}): boolean =>
+  r.windowOpen && !r.blocked && !!r.target && isRetaliateTargetEligible(r.target, r.distPx) && !r.wallBlocked;
+
 // ---------------------------------------------------------------------------------------------
 // コントローラー: 「ニュートラルからの入力」(社長「コントローラーはニュートラルからの入力」)
 // ---------------------------------------------------------------------------------------------

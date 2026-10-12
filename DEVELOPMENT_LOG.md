@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5001 — 兵士のトス・被弾反撃の矢印を実装(社長指示2026-10-12)【2026-10-13 01:04 JST】
+- 着手前監査(Fable 5.1)2本を設計書へ反映(v2): 品質 (A)4件=ナイフ経路で押し返しがトスを上書き/跳び・突進中は動かない/欄が残って他のノックバックが縮む/壁越しで矢印が嘘 → 全て構造で解消(専用の欄 `escortToss` をゲーム時間で ease-out・押し返しから外す・跳び/突進は対象外・入力と描画が同じ `retaliationReadyTarget`)。(B)(C)も反映。クリエイティブ 17件のうち、回転をやめ放物線の浮き+着地バウンド・着地点を向いている側へ最大35°・打ち出しは背中側への抜け・着地は気絶の輪のポップ+飛来方向のカメラキック・矢印は赤を持たない/オーバーシュート1回/締め切りへ体へ戻る/成立で前へ抜ける、を採用。#11(ドット矢印)は撮った結果、斜めで輪郭が崩れて読めないため社長指定の▶へ戻した。兵士の一言(#10の後半)は社長判断待ち。
+- 新設 utils/escortToss.ts(判定 `escortTossDecision`・着地点 `escortTossLanding`・進み `escortTossProgress`)+テスト。store: `tossEnemyToPlayer`(弾/ナイフの両経路から呼ぶ1本)・`lastEscortTossAt`(resetGame で戻す)・updateEnemies の飛行/着地の分岐・着地の音とキック。types: `Enemy.escortToss`/`escortTossLandedAt`。
+- 被弾反撃: utils/hitRetaliation.ts `retaliationReady`(純関数)+ store `retaliationReadyTarget`(tryHitRetaliation と矢印が同じ1本を呼ぶ)。pixiScene `syncRetaliationArrow`(uiLayer・ズームで大きさ一定・`?hidelayer=retarrow`)。
+- 撮影(430×932・2倍): 矢印=正三角形だと斜めで▼に見えたので細身の▶へ直して撮り直し、相手を指すのを確認。トス=飛行中(輪より上へ浮く)/着地直後(プレイヤーの斜め前で止まり、気絶の輪が大きく広がる)を目視。着地の砂埃はラッチが立つことを数値で確認したが、暗い地面の静止画では見分けられなかった(事実)。
+- 検証: typecheck / lint 0 errors。循環import新規なし。vitest(escortToss 9・escortToss.store 3・hitRetaliation 29・関連 store 103)緑。
+- 憲法第4条・第5条: 該当なし(湧き・緩急に触れない)。負荷1/10。
+- 検収監査(品質・クリエイティブ)を実行中。
+- 状態変化: なし。
+
 ## v0.25.5000 — 設計書: 兵士のトス(research/ESCORT_TOSS.md 新設)・被弾反撃の矢印(HIT_RETALIATION.md §7)(文書のみ)【2026-10-13 00:34 JST】
 - 社長指示「進軍NPCは稀に(クリティカルで？)こちらに敵を吹き飛ばしてくる。吹き飛んだ敵を近接するとクリティカル中と同じ扱いにする」「攻撃食らって反撃が可能な時は、入力可能方向転換に矢印の意味の▶︎をプレイヤーから表示」。
 - ESCORT_TOSS: 兵士の会心で倒れず気絶した瞬間・敵とプレイヤーが160〜640px・前回から8秒で、プレイヤーの72px手前まで420msで減速しながら飛ばす。気絶は既存の5秒のまま=近接は既存のとどめ。ボス級・パンプキン系・囲いの敵・使者は対象外。
