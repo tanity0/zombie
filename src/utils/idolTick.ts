@@ -756,7 +756,7 @@ export const runIdolTick = (
     // research/MUTANT_HERO.md §4-2: 同じ帯で守護霊と英雄にも当てる(プレイヤーの判定は不変)。
     hitThirdParties({ kind: 'capsule', fx, fy, tx, ty, hw: IDOL_TUNING.shape.snipeHalfWidth }, IDOL_TUNING.moveDamage.snipe, idol.id, 'idol-snipe');
     if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, IDOL_TUNING.shape.snipeHalfWidth) <= pr) {
-      const died = useGameStore.getState().damagePlayer(IDOL_TUNING.moveDamage.snipe, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy, undefined, undefined, 'idol-snipe'); // G4a計測タグ(記録専用)
+      const died = useGameStore.getState().damagePlayer(IDOL_TUNING.moveDamage.snipe, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy, undefined, undefined, 'idol-snipe', undefined, undefined, { type: idol.type, id: idol.id }); // G4a計測タグ(記録専用)
       if (died) onPlayerDeath(pcx, pcy);
     }
     if (newGameTime >= (idol.bossStateUntil ?? 0)) toRecover('snipe');

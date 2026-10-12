@@ -4,7 +4,7 @@
 // pixiScene.ts 側が本ファイルの定数・純関数を消費する。
 
 import type { EnemyType } from '../types/game';
-import { isHiddenBoss, isReaperFamily } from './enemyUtils';
+import { isBodyWallBoss, isBountyType, isHiddenBoss, isReaperFamily } from './enemyUtils';
 
 // 社長決定v0.25.1481→v0.25.1482(候補は多いほど良い=32名に増量): 裏ボス=北欧の神々を
 // 予約するため、ネームドはギリシャ神話の怪物から取る(名前空間を神話ごとに分離)。
@@ -136,7 +136,11 @@ export const isPromotionExcluded = (
   // 通常ステージに出てきたよ！」の実バグ): 決闘で幻影に倒されると宿敵へ昇格し、通常ステージの
   // 宿敵湧き(60%)で幻影がフィールドに出ていた。対戦専用の型は本編の湧きに出さない。
   !killerType || killerType === 'giantbat' || isReaperFamily(killerType) || killerType === 'guardian-phantom'
-  || isHiddenBoss(killerType) || redNightActive;
+  || isHiddenBoss(killerType) || redNightActive
+  // 賞金首・英雄(変異)・解放軍の旗手も対象外(v0.25.4997): 専用の tick だけが動かす型で、ふつうの湧きで
+  // 出すと動かない/接触0の壁になる。裏ボスと同じボス級。被弾元の型がどの経路でも記録されるようになって
+  // (resolveDamager)初めて、これらに倒された死が昇格判定へ届くようになったため。
+  || isBountyType(killerType) || isBodyWallBoss(killerType);
 
 /**
  * 保存済みの宿敵メタの浄化(v0.25.3694)。除外型(幻影等)が過去の穴で保存されてしまった端末を
@@ -159,6 +163,34 @@ export type PromotionOutcome =
   | { kind: 'none' }
   | { kind: 'grudge' } // 自分の宿敵に殺された→強化なし・因縁+1
   | { kind: 'overwrite'; type: EnemyType; name: string }; // 新たな型に殺された→上書き
+
+/**
+ * 被弾元(=倒した相手)の解決。リザルトの「倒した相手」と宿敵の昇格が読む `lastDamager*` の出どころ。
+ * 型が明示されていなければ、個体id(被弾無敵用の `sourceId` → 被弾反撃の相手 `retaliateFromId` →
+ * 記録専用の手がかり `hint.id` の順)で場の敵を引いて型と「宿敵本人か」を埋める。
+ * 発射元が既に倒れている弾などは `hint.type` を最後の手がかりにする。
+ * ★i-frame の門(`playerIframeApplies`)はここで埋めた型を見ない=明示された型だけで判定する。
+ */
+export const resolveDamager = (
+  damagerType: EnemyType | undefined,
+  damagerWasNamed: boolean | undefined,
+  ids: readonly (string | undefined)[],
+  enemies: readonly { id: string; type: EnemyType; isNamed?: boolean }[],
+  hintType?: EnemyType,
+): { type: EnemyType | null; wasNamed: boolean; id: string | null } => {
+  let found: { id: string; type: EnemyType; isNamed?: boolean } | undefined;
+  for (const id of ids) {
+    if (id === undefined) continue;
+    found = enemies.find(e => e.id === id);
+    if (found) break;
+  }
+  const firstId = ids.find(id => id !== undefined) ?? null;
+  return {
+    type: damagerType ?? found?.type ?? hintType ?? null,
+    wasNamed: damagerWasNamed ?? !!found?.isNamed,
+    id: found?.id ?? firstId,
+  };
+};
 
 export const decidePromotionOnDeath = (
   killerType: EnemyType | null | undefined,

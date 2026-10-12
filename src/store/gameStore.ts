@@ -161,7 +161,7 @@ import { BOSS_NEUTRAL_CASTLE_MS } from '../utils/bossRebuild'; // ★社長裁�
 import { softCapCritChance } from '../utils/critSoftCap';
 import { resetCritDecay } from '../utils/critDecay'; // ★§13-3e クリ減衰(社長裁定2026-08-26)
 import {
-  type NamedFoeMeta, NAMED_TREASURE_GOLD, NAMED_LOOT_MULT, rollNamedSpawnThisRun, decidePromotionOnDeath, sanitizeNamedFoe,
+  type NamedFoeMeta, NAMED_TREASURE_GOLD, NAMED_LOOT_MULT, rollNamedSpawnThisRun, decidePromotionOnDeath, resolveDamager, sanitizeNamedFoe,
   NAMED_HP_MULT, NAMED_DMG_MULT, NAMED_SIZE_MULT, pickNamedEnemyName, normalizeNamedName,
 } from '../utils/namedEnemy';
 import {
@@ -6133,7 +6133,7 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string) => boolean; // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }) => boolean; // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -11236,7 +11236,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { boomerang, flare, junk, clone, mine, goldRing };
   },
 
-  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove, sourceId, retaliateFromId) => {
+  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove, sourceId, retaliateFromId, killerHint) => {
     const { player } = get();
 
     // 二人組クエストv2 §2-8(納品ロック): 納品成立後は被弾を入口で無条件に棄却する。
@@ -11384,9 +11384,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastDamageSource: (amount > 0 && source) ? source : state.lastDamageSource,
         // §5.14 M13: 宿敵昇格判定用(実ダメージかつ型指定時のみ更新。型不明の被弾では前回値を保持しない
         // =昇格除外(未指定=除外)の判定を毎回の被弾元で正しくやり直すため、実ダメージ時は必ず上書きする)。
-        lastDamagerType: amount > 0 ? (damagerType ?? null) : state.lastDamagerType,
-        lastDamagerWasNamed: amount > 0 ? !!damagerWasNamed : state.lastDamagerWasNamed,
-        lastDamagerId: amount > 0 ? (sourceId ?? null) : state.lastDamagerId,
+        // ★型が渡らない経路(噛みつき・接触・弾・ボスの技)は個体idで場の敵から引く(resolveDamager)。
+        // 旧: 型を渡すのは幻影など数か所だけで、ふつうの死ではリザルトに相手の絵が出ず宿敵も決まらなかった。
+        ...(amount > 0 ? (() => {
+          const k = resolveDamager(damagerType, damagerWasNamed, [sourceId, retaliateFromId, killerHint?.id], state.enemies, killerHint?.type);
+          return { lastDamagerType: k.type, lastDamagerWasNamed: k.wasNamed, lastDamagerId: k.id };
+        })() : {}),
         // Real damage kicks off a screen shake.
         shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
         shakeMag: amount > 0 ? SHAKE_MAG : state.shakeMag,

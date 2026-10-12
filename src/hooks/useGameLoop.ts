@@ -7456,7 +7456,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 if (Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr) {
-                  const died = damagePlayer(HB_MI.laser.damage, 'ミーミルのレーザー', cxp, cyp, undefined, undefined, 'mimir-laser'); // G4a計測タグ(記録専用)
+                  const died = damagePlayer(HB_MI.laser.damage, 'ミーミルのレーザー', cxp, cyp, undefined, undefined, 'mimir-laser', undefined, undefined, { type: 'mimir' }); // G4a計測タグ(記録専用)
                   if (died) triggerPlayerDeath(ppx, ppy);
                 }
                 // G4b(§2.9): ビーム帯はゴースト(守護霊)にも当たる(同じ線分±半太さ・同じダメージ。
@@ -7548,7 +7548,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       // 抜けてからもう一度その本に入れば、また当たる(下で「どの本にも居ない」フレームに記録を消す)。
                       const again = boss.mimirWheelLastHitK === k && newGameTime - (boss.mimirWheelLastHitAt ?? -1e9) < W.fireMs;
                       if (!again) {
-                        const died = damagePlayer(W.damage, 'ミーミルの回る光輪', cxp, cyp, undefined, undefined, 'mimir-wheel');
+                        const died = damagePlayer(W.damage, 'ミーミルの回る光輪', cxp, cyp, undefined, undefined, 'mimir-wheel', undefined, undefined, { type: 'mimir' });
                         if (died) triggerPlayerDeath(ppx, ppy);
                         patch.mimirWheelLastHitK = k; patch.mimirWheelLastHitAt = newGameTime;
                       }
@@ -7893,7 +7893,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     applyGhostAllyCapsuleHit(b.fx, b.fy, b.tx, b.ty, L.halfWidth, L.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:skadi-lattice');
                   }
                   if (hitAt) {
-                    const died = damagePlayer(L.damage, 'スカジの氷の格子', hitAt.x, hitAt.y, undefined, undefined, 'skadi-lattice');
+                    const died = damagePlayer(L.damage, 'スカジの氷の格子', hitAt.x, hitAt.y, undefined, undefined, 'skadi-lattice', undefined, undefined, { type: 'skadi' });
                     if (died) triggerPlayerDeath(ppx, ppy);
                   }
                   const total = boss.skadiLatticeStages ?? 2;
@@ -13048,7 +13048,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (hgDist <= HEAVY_GRENADE_RADIUS && !(hgWalls.length > 0 && segmentBlocked(gx, gy, hgPx, hgPy, hgWalls))) {
               const falloff = 1 - hgDist / HEAVY_GRENADE_RADIUS;
               const dmg = Math.max(1, Math.round(grenade.damage * (0.55 + falloff * 0.45)));
-              const died = useGameStore.getState().damagePlayer(dmg, '偶像の手榴弾', gx, gy, undefined, undefined, 'idol-nade'); // G4a計測タグ(記録専用・v0.25.3607裁定)
+              const died = useGameStore.getState().damagePlayer(dmg, '偶像の手榴弾', gx, gy, undefined, undefined, 'idol-nade', undefined, undefined, { type: 'idol', id: grenade.ownerId }); // G4a計測タグ(記録専用・v0.25.3607裁定)
               if (died) triggerPlayerDeath(hgPx, hgPy);
             }
             continue;

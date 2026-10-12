@@ -980,7 +980,7 @@ const tickRanged = (
       },
     }, BR_T.laser.damage, bounty.id, 'br-laser');
     if (Math.hypot(ppx - cxp, ppy - cyp) <= BR_LASER_HALFWIDTH + pr) {
-      useGameStore.getState().damagePlayer(BR_T.laser.damage, `${enemyDeathLabel(bounty.type)}のレーザー`, ppx, ppy, undefined, undefined, 'br-laser'); // G4a計測タグ(記録専用)
+      useGameStore.getState().damagePlayer(BR_T.laser.damage, `${enemyDeathLabel(bounty.type)}のレーザー`, ppx, ppy, undefined, undefined, 'br-laser', undefined, undefined, { type: bounty.type, id: bounty.id }); // G4a計測タグ(記録専用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'laser-recover';
@@ -1351,7 +1351,7 @@ const tickMelee = (
     // research/MUTANT_HERO.md §4-2: 同じ帯で守護霊と英雄にも当てる(プレイヤーの判定は不変)。
     hitThirdParties({ kind: 'capsule', fx, fy, tx, ty, hw: BM_T.snipe.halfWidth }, BM_T.snipe.damage, bounty.id, 'bm-snipe');
     if (distToBandRect({ x: ppx, y: ppy }, { x: fx, y: fy }, { x: tx, y: ty }, BM_T.snipe.halfWidth) <= pr) {
-      useGameStore.getState().damagePlayer(BM_T.snipe.damage, `${enemyDeathLabel(bounty.type)}の狙撃`, ppx, ppy, undefined, undefined, 'bm-snipe'); // G4a計測タグ(記録専用)
+      useGameStore.getState().damagePlayer(BM_T.snipe.damage, `${enemyDeathLabel(bounty.type)}の狙撃`, ppx, ppy, undefined, undefined, 'bm-snipe', undefined, undefined, { type: bounty.type, id: bounty.id }); // G4a計測タグ(記録専用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'bm-snipe-recover';
@@ -1932,7 +1932,7 @@ const tickMaiko = (
       // ★v0.25.3591(監査 A-5「毬の円reachでカウンター可にする=打ち返す」): 毬は弾ではないので反射経路に
       // 乗らず、カウンター手段が1つも無かった。**毬の円**(=描いてある毬そのもの)で成立させる。
       if (tryMovingCounter(counterReachShapeFor(`bounty:${st}`, { bcx, bcy, pcx, pcy, ballX: px2, ballY: py2 }))) return;
-      useGameStore.getState().damagePlayer(MK_T.boom.damage, `${enemyDeathLabel(bounty.type)}の手毬打ち`, pcx, pcy, undefined, undefined, 'mk-boom'); // G4a計測タグ(記録専用)
+      useGameStore.getState().damagePlayer(MK_T.boom.damage, `${enemyDeathLabel(bounty.type)}の手毬打ち`, pcx, pcy, undefined, undefined, 'mk-boom', undefined, undefined, { type: bounty.type, id: bounty.id }); // G4a計測タグ(記録専用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
       if (st === 'mk-boom-out') {

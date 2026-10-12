@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  NAMED_ENEMY_NAMES, isPromotionExcluded, pickNamedEnemyName, rollNamedSpawnThisRun, decidePromotionOnDeath, sanitizeNamedFoe,
+  NAMED_ENEMY_NAMES, isPromotionExcluded, pickNamedEnemyName, rollNamedSpawnThisRun, decidePromotionOnDeath, sanitizeNamedFoe, resolveDamager,
   normalizeNamedName, normalizeNamedNamesInText,
 } from './namedEnemy';
 
@@ -129,5 +129,34 @@ describe('幻影(guardian-phantom)は宿敵にならない', () => {
     const ok = { type: 'zombie' as const, name: 'ハロルド', grudge: 1 };
     expect(sanitizeNamedFoe(ok)).toBe(ok);
     expect(sanitizeNamedFoe(null)).toBeNull();
+  });
+});
+
+describe('resolveDamager(倒した相手の解決・v0.25.4997)', () => {
+  const enemies = [
+    { id: 'z1', type: 'zombie' as const },
+    { id: 'n1', type: 'pumpkin' as const, isNamed: true },
+  ];
+  it('型が渡らない被弾(噛みつき・接触)は個体idで場の敵から型を引く', () => {
+    expect(resolveDamager(undefined, undefined, ['z1'], enemies)).toEqual({ type: 'zombie', wasNamed: false, id: 'z1' });
+  });
+  it('宿敵本人の個体なら wasNamed=true(因縁の判定に届く)', () => {
+    expect(resolveDamager(undefined, undefined, [undefined, 'n1'], enemies)).toEqual({ type: 'pumpkin', wasNamed: true, id: 'n1' });
+  });
+  it('発射元が倒れている弾は手がかりの型を使う', () => {
+    expect(resolveDamager(undefined, undefined, [undefined, undefined, 'gone'], enemies, 'skeleton')).toEqual({ type: 'skeleton', wasNamed: false, id: 'gone' });
+  });
+  it('明示された型が最優先・何も分からなければ null', () => {
+    expect(resolveDamager('guardian-phantom', undefined, ['z1'], enemies).type).toBe('guardian-phantom');
+    expect(resolveDamager(undefined, undefined, [], enemies)).toEqual({ type: null, wasNamed: false, id: null });
+  });
+});
+
+describe('専用の tick で動くボス級は宿敵にならない(v0.25.4997)', () => {
+  it('賞金首・英雄(変異)・解放軍の旗手は対象外', () => {
+    expect(isPromotionExcluded('bounty-melee', false)).toBe(true);
+    expect(isPromotionExcluded('bounty-maiko', false)).toBe(true);
+    expect(isPromotionExcluded('mutant-hero', false)).toBe(true);
+    expect(isPromotionExcluded('mutant-liberty', false)).toBe(true);
   });
 });

@@ -2673,7 +2673,7 @@ export const runSurielTick = (
       const cp = useGameStore.getState().player;
       if (isCounterActive(cp, Date.now())) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
-        const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy, undefined, undefined, 'suriel-ring'); // G4a計測タグ(記録専用)
+        const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy, undefined, undefined, 'suriel-ring', undefined, undefined, { type: suriel.type, id: suriel.id }); // G4a計測タグ(記録専用)
         if (died) onPlayerDeath(pcx, pcy);
       }
     }
@@ -2700,7 +2700,7 @@ export const runSurielTick = (
           surielCounterHit(pcx, pcy); countered = true;
           patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
         } else {
-          const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy, undefined, undefined, 'suriel-ring'); // G4a計測タグ(記録専用)
+          const died = useGameStore.getState().damagePlayer(suriel.damage, `${enemyDeathLabel(suriel.type)}の環の射出`, pcx, pcy, undefined, undefined, 'suriel-ring', undefined, undefined, { type: suriel.type, id: suriel.id }); // G4a計測タグ(記録専用)
           if (died) onPlayerDeath(pcx, pcy);
         }
       }
@@ -2952,7 +2952,7 @@ export const runAcrasielTick = (
   const damage = (hit: boolean, label: string, tag: string, retaliate = false): void => {
     if (!hit) return;
     if (isCounterActive(useGameStore.getState().player, Date.now())) { counter(px, py); return; }
-    if (useGameStore.getState().damagePlayer(boss.damage, label, px, py, undefined, undefined, tag, undefined, retaliate ? boss.id : undefined)) onPlayerDeath(px, py);
+    if (useGameStore.getState().damagePlayer(boss.damage, label, px, py, undefined, undefined, tag, undefined, retaliate ? boss.id : undefined, { type: boss.type, id: boss.id })) onPlayerDeath(px, py);
   };
   // research/MUTANT_HERO.md §4-2: 同じ形・同じダメージで守護霊と英雄にも当てる(プレイヤーの判定は不変)。
   const hitOthersAc = (shape: ThirdPartyShape, tag: string): void => { hitThirdParties(shape, boss.damage, boss.id, tag); };
@@ -3882,7 +3882,7 @@ export const tickAngelBossFires = (newGameTime: number, onPlayerDeath: (x: numbe
     if (active) hitThirdParties({ kind: 'circle', cx: f.x, cy: f.y, r: JB_T.fire.radius }, JB_T.fire.damage, undefined, 'jibril-lantern');
     if (active && !pl.invulnerable && !died && !struck && Math.hypot(plcx - f.x, plcy - f.y) <= hitR) {
       struck = true;
-      const d = useGameStore.getState().damagePlayer(JB_T.fire.damage, 'ジブリルのランタン火', f.x, f.y, undefined, undefined, 'jibril-lantern'); // G4a計測タグ(記録専用・置いた火はランタンの技に帰属)
+      const d = useGameStore.getState().damagePlayer(JB_T.fire.damage, 'ジブリルのランタン火', f.x, f.y, undefined, undefined, 'jibril-lantern', undefined, undefined, { type: 'jibril' }); // G4a計測タグ(記録専用・置いた火はランタンの技に帰属)
       if (d) { died = true; onPlayerDeath(plcx, plcy); }
       continue;
     }
@@ -3940,7 +3940,7 @@ export const tickAcrasielSpears = (
         }
       }
       if (!pl.invulnerable && !died && inCircle) {
-        const d = useGameStore.getState().damagePlayer(sp.damage, `${enemyDeathLabel('acrasiel')}の結晶の槍`, sp.x, sp.y, undefined, undefined, 'acrasiel-spear'); // G4a計測タグ(記録専用・遅延起爆は残響で槍へ帰属)
+        const d = useGameStore.getState().damagePlayer(sp.damage, `${enemyDeathLabel('acrasiel')}の結晶の槍`, sp.x, sp.y, undefined, undefined, 'acrasiel-spear', undefined, undefined, { type: 'acrasiel' }); // G4a計測タグ(記録専用・遅延起爆は残響で槍へ帰属)
         if (d) { died = true; onPlayerDeath(plcx, plcy); }
       }
       continue;

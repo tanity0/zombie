@@ -372,7 +372,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
           : b.moveKey === 'jo-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const hurtAtBefore = useGameStore.getState().player.lastHurtAt; // この一撃で段が付いたかを見分ける(下の押し出し)
-        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
+        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined, { type: blastEnemyType, id: b.enemyId }); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
         // v0.25.2653: **技ごとの押し量**(b.kbSpeed/kbMs)があればそれを使う。
@@ -669,7 +669,7 @@ export const applyGlenFloorDamage = (fx: CombatEffects): void => {
       const damageWasApplied = !player.invulnerable;
       // G4a: h.moveKey('g-boon')=記録専用タグ。技のエピソード終了から残響(linger)を過ぎた踏み直しは
       // 反応表側で自然に無視される(moveReaction.ts参照)。
-      const died = useGameStore.getState().damagePlayer(e.damage, 'グレンの血溜まり', h.x, h.y, undefined, undefined, h.moveKey);
+      const died = useGameStore.getState().damagePlayer(e.damage, 'グレンの血溜まり', h.x, h.y, undefined, undefined, h.moveKey, undefined, undefined, { type: e.type, id: e.id });
       if (damageWasApplied) {
         fx.playSfx('player-damage');
         fx.spawnFlash('rgba(239,68,68,0.18)', 180);
@@ -873,7 +873,7 @@ export const applyEnemyProjectileHits = (
       // 発射元タイプ推定だったが、弾技を全ボスへ広げたので弾のタグを読むだけにする
       // (giantbat 新スクリプトの咆哮弾は同じ 'g-bolt' が載る=旧挙動と同値)。
       const pvpHpBefore = useGameStore.getState().player.health;
-      const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2, undefined, undefined, proj.srcMoveKey);
+      const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2, undefined, undefined, proj.srcMoveKey, undefined, undefined, { type: proj.ownerType, id: proj.ownerId }); // 末尾=倒した相手の記録(発射元)
       if (wasVulnerable) {
         fx.playSfx('player-damage');
         fx.spawnFlash('rgba(239,68,68,0.22)', 200);
