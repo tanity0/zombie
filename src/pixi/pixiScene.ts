@@ -1538,8 +1538,11 @@ const knifeSwingCircle = (sx: number, sy: number, ex: number, ey: number): { cy:
   return { cy, r, a0, sweep: a1 - a0 + (a1 > a0 ? -Math.PI * 2 : 0) };
 };
 /** 円の進み u(0=構えの拳・1=振り上げた拳)でのナイフの実絵の中心(柄を拳に・刃は円の外向き)と回転(武器アイコン基準)。 */
+// ★出始めを後ろへ(社長指示2026-10-12「ナイフの出始めはもう少し後ろからにして」): 円を構えの拳より 50° 手前(後ろ下)から始め、
+// 振りの間に構えの拳を通って振り上げた拳へ着く(到着は不変)。
+const KNIFE_SWING_START_BACK_RAD = 50 * Math.PI / 180;
 const knifeOnCircle = (c: { cy: number; r: number; a0: number; sweep: number }, u: number): { ox: number; oy: number; rot: number } => {
-  const ang = c.a0 + c.sweep * u;
+  const ang = c.a0 + KNIFE_SWING_START_BACK_RAD + (c.sweep - KNIFE_SWING_START_BACK_RAD) * u;
   const hx = Math.cos(ang) * c.r, hy = c.cy + Math.sin(ang) * c.r; // 拳(柄)の位置
   const g = ESCORT_KNIFE_SWING_LEN * WEAPON_ICON_GRIP_FRAC;
   return { ox: hx + Math.cos(ang) * g, oy: hy + Math.sin(ang) * g, rot: ang - WEAPON_ICON_BLADE_DEG * Math.PI / 180 };
@@ -2016,6 +2019,16 @@ const PLAYER_MELEE_FISTS: Record<string, { texH: number; low: { dx: number; up: 
   'player-magnum-melee':    { texH: 64, low: { dx: 7, up: 21 },  raised: { dx: -17, up: 60 } },
   'player-shotgun-melee':   { texH: 66, low: { dx: 7, up: 24 },  raised: { dx: -5, up: 62 } },
   'player-scavenger-melee': { texH: 64, low: { dx: 10, up: 21 }, raised: { dx: -12, up: 60 } },
+};
+/** 近接ポーズ(prefix)の拳を通る円。本体の縦の倍率(絵px→世界)と unit(箱の高さ×遠近)から unit 比へ。ポーズが無ければ null(従来の置き方)。本体/守護霊/分身で共通。 */
+const knifeCircleForPose = (prefix: string | undefined, spriteScaleY: number, unit: number) => {
+  const f = prefix ? PLAYER_MELEE_FISTS[prefix] : undefined;
+  if (!f || !(unit > 0)) return null;
+  const sy = Math.abs(spriteScaleY);
+  return knifeSwingCircle(
+    (f.low.dx * sy) / unit, (0.5 * unit - f.low.up * sy) / unit,
+    (f.raised.dx * sy) / unit, (0.5 * unit - f.raised.up * sy) / unit,
+  );
 };
 const RESCUE_ALLY_FRONT_MARGIN = 14;  // 着地を敵の足元より何px手前(下=描画で前面)へ取るか。社長指示v0.25.1614
 const PLAYER_COUNTER_MS = 280;        // カウンター成立の決めポーズの長さ
@@ -16543,6 +16556,17 @@ export class PixiScene {
       actSqY *= 1 - PLAYER_FIRE_RECOIL_SQUASH * e;
     }
 
+    // ★守護霊も振りの間は本体と同じ近接ポーズ(低く構える→振り上げる・社長指示2026-10-12「守護霊と分身も当然合わせて」)。
+    const gPosePrefix = !warlordFullGhost ? MELEE_POSE_PREFIX[gcls] : undefined;
+    {
+      const gMeleeAt = lifecycleActive ? 0 : (s.ghostLastMeleeAt ?? 0);
+      const gSince = now - gMeleeAt;
+      if (gPosePrefix && gMeleeAt > 0 && gSince >= 0 && gSince < PLAYER_MELEE_SWING_MS) {
+        const gName = `${gPosePrefix}${gSince / PLAYER_MELEE_SWING_MS < MELEE_POSE_READY_FRAC ? '-ready' : '-swing'}`;
+        const gPose = getTexture(gName);
+        if (gPose) { tex = gPose; bodyTexName2 = gName; }
+      }
+    }
     // 本体スプライト: プレイヤーと同じ基準(playerBaseScale=クラス絵は幅正規化+本体と同じピクセルスナップ)。
     if (tex) {
       // v0.25.2465: テクスチャ割り当て漏れ=透明守護霊の修正(割り当ては必須のまま維持)。
@@ -16696,10 +16720,18 @@ export class PixiScene {
       const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
       const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
       const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
+      // ★ナイフの実絵の円の動き(本体と同じ・社長指示2026-10-12「守護霊と分身も当然合わせて」)。
+      const circ = wtex ? knifeCircleForPose(gPosePrefix, view.sprite.scale.y, unit) : null;
+      const placeKnifeCircle = (u: number, a: number): boolean => {
+        if (!circ) return false;
+        const k = knifeOnCircle(circ, u);
+        placeWpn(k.ox, k.oy, k.rot, ESCORT_KNIFE_SWING_LEN, a);
+        return true;
+      };
       if (kt < KNIFE_SWING_SWITCH) {
         const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
         place(knife, KNIFE_F1, !wtex, a1);
-        placeWpn(KNIFE_F1.ox, KNIFE_F1.oy, MELEE_WPN_F1.rot, MELEE_WPN_F1.len, a1);
+        if (!placeKnifeCircle(0, a1)) placeWpn(KNIFE_F1.ox, KNIFE_F1.oy, MELEE_WPN_F1.rot, MELEE_WPN_F1.len, a1);
         place(slash, KNIFE_F2, false, 0);
         place(trail, KNIFE_F3, false, 0);
       } else if (kt < KNIFE_SWING_SWITCH2) {
@@ -16707,13 +16739,13 @@ export class PixiScene {
         const a2 = Math.min(1, t2 / 0.25);                              // 本体と同じくsnapで出す
         place(knife, KNIFE_F1, false, 0);
         placeMeleeArc(slash, kt, a2);
-        placeMeleeArcWpn(kt, a2);
+        if (!placeKnifeCircle(meleeArcT(kt), 1)) placeMeleeArcWpn(kt, a2);
         place(trail, KNIFE_F3, false, 0);
       } else {
         const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2); // 0..1
         place(knife, KNIFE_F1, false, 0);
         place(slash, KNIFE_F2, false, 0);
-        placeMeleeArcWpn(kt, 0);
+        if (!placeKnifeCircle(meleeArcT(kt), meleeArcWpnAlpha(kt))) placeMeleeArcWpn(kt, 0); // 到着(振り上げた拳)で止まり、弧の残光と一緒に引く
         placeMeleeArc(trail, kt, 1 - t3);                           // 弧の残光フェード(本体と同じ)
       }
     } else {
@@ -17839,12 +17871,7 @@ export class PixiScene {
         const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
         // ★ナイフの実絵の円の動き(軍人と同じ・社長指示2026-10-12)。拳の位置は近接専用ポーズの実測(PLAYER_MELEE_FISTS)。
         // 絵のpx → unit は本体の実際の縦の倍率(|scale.y|)で割り戻す=体の絵とずれない。ポーズが無い時は従来の置き方。
-        const fists = meleePosePrefix && !warlordFull ? PLAYER_MELEE_FISTS[meleePosePrefix] : undefined;
-        const pxU = Math.abs(view.sprite.scale.y) / Math.max(1e-6, unit);
-        const circ = fists && wtex ? knifeSwingCircle(
-          fists.low.dx * pxU, (0.5 * unit - fists.low.up * Math.abs(view.sprite.scale.y)) / unit,
-          fists.raised.dx * pxU, (0.5 * unit - fists.raised.up * Math.abs(view.sprite.scale.y)) / unit,
-        ) : null;
+        const circ = wtex ? knifeCircleForPose(meleePosePrefix && !warlordFull ? meleePosePrefix : undefined, view.sprite.scale.y, unit) : null;
         const placeKnifeCircle = (u: number, a: number): boolean => {
           if (!circ) return false;
           const k = knifeOnCircle(circ, u);
@@ -18413,7 +18440,13 @@ export class PixiScene {
     }
     // 外見は持ち主と同じ立ち絵(クラス/武将装備)を共有。待機なので frame 0・walking=false
     // (スカベンジャーは専用の待機立ち絵になる)。
-    const name = playerTextureName(texSubject, 0, false);
+    // ★分身も振りの間は本体と同じ近接ポーズ(低く構える→振り上げる・社長指示2026-10-12「守護霊と分身も当然合わせて」)。
+    const clonePosePrefix = !hasFullWarlordSet(texSubject.equipment) ? MELEE_POSE_PREFIX[texSubject.characterClass] : undefined;
+    const cSwingSince = Date.now() - (clone.swingAt ?? 0);
+    const cSwinging = !!clone.swingAt && cSwingSince >= 0 && cSwingSince < PLAYER_MELEE_SWING_MS;
+    const name = clonePosePrefix && cSwinging
+      ? `${clonePosePrefix}${cSwingSince / PLAYER_MELEE_SWING_MS < MELEE_POSE_READY_FRAC ? '-ready' : '-swing'}`
+      : playerTextureName(texSubject, 0, false);
     const gray = this.grayscaleTexture(name);
     if (!gray) { spr.visible = false; return; }
     spr.visible = true;
@@ -18499,10 +18532,18 @@ export class PixiScene {
       const arcAspect = 0.577; // 旧弧(knife-swing-2)の縦横比で固定。弧が7コマになっても武器絵の位置は動かさない
       const wpnOx2 = KNIFE_F2.ox + (MELEE_WPN_F2.fx - 0.5) * KNIFE_F2.scale;
       const wpnOy2 = KNIFE_F2.oy + (MELEE_WPN_F2.fy - 0.5) * KNIFE_F2.scale * arcAspect;
+      // ★ナイフの実絵の円の動き(本体と同じ・社長指示2026-10-12「守護霊と分身も当然合わせて」)。
+      const circ = wtex ? knifeCircleForPose(clonePosePrefix, spr.scale.y, unit) : null;
+      const placeKnifeCircle = (u: number, a: number): boolean => {
+        if (!circ) return false;
+        const k = knifeOnCircle(circ, u);
+        placeWpn(k.ox, k.oy, k.rot, ESCORT_KNIFE_SWING_LEN, a);
+        return true;
+      };
       if (kt < KNIFE_SWING_SWITCH) {
         const a1 = Math.min(1, kt / (KNIFE_SWING_SWITCH * 0.5));
         place(knife, KNIFE_F1, !wtex, a1);
-        placeWpn(KNIFE_F1.ox, KNIFE_F1.oy, MELEE_WPN_F1.rot, MELEE_WPN_F1.len, a1);
+        if (!placeKnifeCircle(0, a1)) placeWpn(KNIFE_F1.ox, KNIFE_F1.oy, MELEE_WPN_F1.rot, MELEE_WPN_F1.len, a1);
         place(slash, KNIFE_F2, false, 0);
         place(trail, KNIFE_F3, false, 0);
       } else if (kt < KNIFE_SWING_SWITCH2) {
@@ -18510,13 +18551,13 @@ export class PixiScene {
         const a2 = Math.min(1, t2 / 0.25);                              // 本体と同じくsnapで出す
         place(knife, KNIFE_F1, false, 0);
         placeMeleeArc(slash, kt, a2);
-        placeMeleeArcWpn(kt, a2);
+        if (!placeKnifeCircle(meleeArcT(kt), 1)) placeMeleeArcWpn(kt, a2);
         place(trail, KNIFE_F3, false, 0);
       } else {
         const t3 = (kt - KNIFE_SWING_SWITCH2) / (1 - KNIFE_SWING_SWITCH2); // 0..1
         place(knife, KNIFE_F1, false, 0);
         place(slash, KNIFE_F2, false, 0);
-        placeMeleeArcWpn(kt, 0);
+        if (!placeKnifeCircle(meleeArcT(kt), meleeArcWpnAlpha(kt))) placeMeleeArcWpn(kt, 0); // 到着(振り上げた拳)で止まり、弧の残光と一緒に引く
         placeMeleeArc(trail, kt, 1 - t3);                           // 弧の残光フェード(本体と同じ)
       }
     } else {
