@@ -175,9 +175,12 @@ const KillerLine: React.FC<{ deathCause: string }> = ({ deathCause }) => {
   const artName = type ? enemyArtName(type, id ?? '', far ?? '') : '';
   const artCandidates = artName ? [spritePath(artName), spritePath(`atlas-px2/${artName}`)] : [];
   const art = artCandidates[artStep] ?? '';
-  // 死因は「◯◯の△△」形式なので、名乗った直後に名前を繰り返さない(「突進」だけ)。宿敵本人に倒された時は型の名も添える。
+  // 死因は「◯◯の△△」形式なので、名乗った直後に名前を繰り返さない=技の名だけ(社長指示2026-10-13「踏み鳴らし だけでいい」)。
+  // 型の名で始まればそこを外す。始まらない書き方(「ミーミルのレーザー」「幻影のドッグ」等・名前の表記が型の名と違う)は
+  // 最初の「の」までを外す。宿敵本人に倒された時は型の名も添える。
   const move = !typeName || deathCause === typeName ? ''
-    : deathCause.startsWith(`${typeName}の`) ? deathCause.slice(typeName.length + 1) : deathCause;
+    : deathCause.startsWith(`${typeName}の`) ? deathCause.slice(typeName.length + 1)
+      : deathCause.includes('の') ? deathCause.slice(deathCause.indexOf('の') + 1) : deathCause;
   const sub = [!promoted && byNamed && namedName ? typeName : '', move].filter(Boolean).join('・');
   return (
     <div className="mt-3 border-l-2 border-rose-400/60 bg-rose-950/20 px-3 py-2 text-left">
