@@ -690,6 +690,8 @@ export interface Enemy {
   // 技後CD(gameTime)。この時刻まで次の技へ入れない。「同時に構えられる2体」の枠の導出もこれを見る。
   // ★後退の相(s-recover/s-retreat)は「技の続き」として扱うので、後退の終わりから数える(§16-7b)。
   chaffMoveCdUntil?: number;
+  // ゾンビの構えの赤2回点滅の錨(gameTime ms・2026-10-14)。構えに入る時に「固まる瞬間」を先に焼く(未来の時刻でよい=その時まで点かない)。
+  chaffBlinkAt?: number;
   // bat専用: 円の中心(プレイヤー座標を一次遅れで追った点。生の座標だと「ロックオン軌道」になる)。
   chaffOrbitCx?: number;
   chaffOrbitCy?: number;

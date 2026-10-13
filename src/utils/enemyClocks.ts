@@ -46,7 +46,8 @@ export interface EnemyClockEntry {
  */
 const RECOVER_HOLD_EXTRA: ReadonlySet<string> = new Set([
   'recover',      // パンプキン/ハンター系のジャンプ着地硬直
-  'z-stagger',    // ゾンビ赤2連の1発目→2発目の間のよろけ
+  // ※'z-stagger' は2026-10-14から「2発目の構え」(1発目の構え z-red-pause と同じ扱い=硬直ではない)。ここに入れると
+  //   構えの赤2回点滅の錨(chaffBlinkAt)が毎フレーム先送りされて一度も点かない(品質監査A-1)。
   'b-release',    // batの掴みを「一拍留まる」
 ]);
 export const isRecoverHoldPhase = (phase: string | undefined): boolean =>
@@ -127,6 +128,7 @@ export const ENEMY_ACTION_CLOCKS: readonly EnemyClockEntry[] = [
   { field: 'hunterWanderNextAt', kind: 'deadline', base: 'game' },
   { field: 'biteAt', kind: 'start', base: 'game', zeroIsUnset: true },
   { field: 'chaffMoveAt', kind: 'start', base: 'game' },
+  { field: 'chaffBlinkAt', kind: 'start', base: 'game' },
   { field: 'aiStartedAt', kind: 'start', base: 'game' },
   { field: 'zombieWalkRampAt', kind: 'start', base: 'game' },
   // ---- 城ボス(ジャイアント/グレン) ------------------------------------------------------------

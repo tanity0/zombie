@@ -354,9 +354,9 @@ import { tickEnemyClockFreeze } from '../utils/enemyClocks';
 import {
   deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
   ZOMBIE_BAND_OUTER_PX, ZOMBIE_BAND_INNER_PX, ZOMBIE_LUNGE_RANGE_PX,
-  ZOMBIE_STAGGER_MS,
+  ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, // 2026-10-14 構え(素早く反る→固まる→赤2回→1秒で発動)を2発とも
   ZOMBIE_RECOVER_MS, zombieLungeRampMul, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
-  zombieRedPauseMs, zombieBite2AngleRad, // §16-3z 追補(①停止の長さ±30%・②2発目の角度にspawnedAtを混ぜる)
+  zombieBite2AngleRad, // §16-3z 追補(②2発目の角度にspawnedAtを混ぜる)
   zombieRecoverWalkRampMul, // §16-3zクリエイティブ監査#3(硬直→歩きの出足の1フレーム段差を消す)
   ZOMBIE_RETREAT_TARGET_PX, ZOMBIE_RETREAT_SPEED_MULT, zombieRetreatRampMul, // §16-A7条目(技を出し切ったら150pxへ離れる)
   // ★bat(PACING_PUZZLE.md §16-1・§16-8b手順6)。
@@ -14080,7 +14080,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (lbStopped) {
             return {
               ...enemy, vx: 0, vy: 0, biteAt: 0, biteDirX: undefined, biteDirY: undefined,
-              chaffMove: undefined, chaffMoveAt: undefined, aiPhase: undefined, aiPhaseUntil: undefined,
+              chaffMove: undefined, chaffMoveAt: undefined, chaffBlinkAt: undefined, aiPhase: undefined, aiPhaseUntil: undefined,
               lichBlinkAtX: undefined, lichBlinkAtY: undefined,
               lichBlinkFromX: undefined, lichBlinkFromY: undefined,
             };
@@ -16433,12 +16433,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ここを通る。z-lunge-in→z-bite1遷移のフレームはbiteAtをこの場で新規に立てるので、
           // 「0で入ってきて0のまま」は起きない(常に非0で入るため誤検知しない)。
           if (phase === 'z-bite1' && !(enemy.biteAt !== undefined && enemy.biteAt > 0)) {
-            // 1発目解決→一拍のよろけ(160ms・その場)。
-            return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-stagger', aiPhaseUntil: gameTime + ZOMBIE_STAGGER_MS };
+            // 1発目解決→2発目の構え(社長指示2026-10-14: 素早く後ろへ反る→固まる→赤2回点滅→固まってから1秒で噛む)。
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-stagger', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };
           }
           if (phase === 'z-stagger') {
-            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // よろけ継続:その場
-            // よろけ明け→2発目。向きは§12と同じく踏み込みの瞬間(ここ)に焼く。僅かにずらす
+            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 2発目の構え継続:その場
+            // 2発目の構え明け→2発目。向きは§12と同じく踏み込みの瞬間(ここ)に焼く。僅かにずらす
             // (向きはchaffTraitsのflankSignで固定=決定的。大きさは§16-3z②「2発目の角度にも
             // spawnedAtを混ぜる」=zombieBite2AngleRadがid+spawnedAt由来で±30%散らす)。
             const bl = Math.max(0.001, pdist);
@@ -16508,15 +16508,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ただ間合いを空けるだけに留める——紫は元々CD無しで即再ループしていた仕様のまま。
             return enemy.chaffMove !== undefined
               ? {
-                ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, chaffMoveAt: undefined,
+                ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, chaffMoveAt: undefined, chaffBlinkAt: undefined,
                 zombieWalkRampAt: gameTime,
                 ...endChaffMove(enemy, gameTime),
               }
               : { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiPhaseUntil: undefined, zombieWalkRampAt: gameTime };
           }
           if (phase === 'z-red-pause') {
-            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 停止1200ms・その場(色なし)
-            // 停止明け→2倍速で射程75pxまで踏み込む。ここでchaffMoveが立つ(§16-7b「立つ位置はz-lunge-in」)。
+            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 1発目の構え(反る→固まる)・その場
+            // 構え明け(固まってから1秒)→2倍速で射程75pxまで踏み込む。ここでchaffMoveが立つ(§16-7b「立つ位置はz-lunge-in」)。
             return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-lunge-in', chaffMove: 'zombie-double', chaffMoveAt: gameTime };
           }
           if (phase === 'z-lunge-in') {
@@ -16571,9 +16571,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (pdist > ZOMBIE_BAND_OUTER_PX) {
               phase = undefined; phaseUntil = 0; // 帯の外へ戻った=待ちを解除→通常接近へ
             } else if (chaffGrants.has(enemy.id)) {
-              // ★①停止の長さ±30%(§16-3z・社長裁定「3段を比例で伸縮」): 全長はid+spawnedAt由来。
-              // pixiScene側の3段姿勢はこの全長に対する割合で描く(絶対msで段を割らない)。
-              return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + zombieRedPauseMs(enemy.id, enemy.spawnedAt) };
+              // ★1発目の構え(社長指示2026-10-14): 素早く後ろへ反る(150ms)→固まる。固まった瞬間に赤2回点滅(chaffBlinkAtを先に焼く)、
+              // 固まってから1秒で踏み込みへ。旧=止まる→起こす→溜めの3段(全長±30%)。
+              return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };
             } else if (pdist <= ZOMBIE_BAND_INNER_PX) {
               // 枠なし・内縁到達=紫(旧仕様のまま)。下の「旧仕様」ブロックへフォールスルーする。
               phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;

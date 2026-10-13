@@ -357,11 +357,17 @@ export const CHAFF_BLINK_OFF_MS = 70;
 export const CHAFF_BLINK_COUNT = 2;
 
 export const chaffMoveBlinkStrength = (
-  enemy: Pick<Enemy, 'chaffMove' | 'chaffMoveAt'>,
+  enemy: Pick<Enemy, 'chaffMove' | 'chaffMoveAt' | 'chaffBlinkAt' | 'aiPhase'>,
   gameTime: number,
 ): number => {
-  if (enemy.chaffMove === undefined) return 0;
-  const startedAt = enemy.chaffMoveAt;
+  // ★ゾンビは構え(z-red-pause=1発目 / z-stagger=2発目)の「固まった瞬間」を錨にする(`chaffBlinkAt`・
+  //   社長指示2026-10-14)。構えの外(踏み込み・噛み・硬直・構えを崩された後)では点かない。
+  //   これを持たない型(bat/skeleton/lich)は従来どおり技が立った瞬間(`chaffMoveAt`)。
+  const zombieStance = enemy.aiPhase === 'z-red-pause' || enemy.aiPhase === 'z-stagger';
+  if (enemy.chaffMove === 'zombie-double' || enemy.chaffBlinkAt !== undefined) {
+    if (!zombieStance) return 0;
+  } else if (enemy.chaffMove === undefined) return 0;
+  const startedAt = zombieStance ? enemy.chaffBlinkAt : enemy.chaffMoveAt;
   if (startedAt === undefined) return 0;
   const elapsed = gameTime - startedAt;
   const cycleMs = CHAFF_BLINK_ON_MS + CHAFF_BLINK_OFF_MS;
@@ -388,7 +394,19 @@ export const ZOMBIE_RED_PAUSE_JITTER = 0.3;
 export const zombieRedPauseMs = (id: string, spawnedAt?: number): number =>
   ZOMBIE_RED_PAUSE_MS * (1 + (idRespawnUnitHash(id, spawnedAt, 0x5ed9) * 2 - 1) * ZOMBIE_RED_PAUSE_JITTER);
 
-/** 3段の比率(§16-3z「止まる500→起こす900→詰めの溜め600」=25%:45%:30%。全長によらず一定)。 */
+/**
+ * ★ゾンビの構え(社長指示2026-10-14「**ゾンビの攻撃は素早く構え(後ろに反るモーション)て硬直したら赤点滅2回、
+ * 1秒後に発動 を2回 に変更**」)。1発目(z-red-pause→踏み込み→噛み1)と2発目(z-stagger→噛み2)の**両方の前**に同じ構え:
+ *   素早く後ろへ反る(`ZOMBIE_WINDUP_MS`)→ 反ったまま固まる。固まった瞬間に赤が2回点滅し、
+ *   固まってから `ZOMBIE_HOLD_MS` で発動(1発目=踏み込み始め/2発目=噛み)。
+ * 旧(§16-3z の「止まる→起こす→詰めの溜め」の3段・全長±30%・赤は踏み込み始め)はこれで置き換え。
+ */
+export const ZOMBIE_WINDUP_MS = 150;
+export const ZOMBIE_HOLD_MS = 1000;
+/** 構えの全長(反る+固まる)。z-red-pause / z-stagger の長さ。 */
+export const ZOMBIE_STANCE_MS = ZOMBIE_WINDUP_MS + ZOMBIE_HOLD_MS;
+
+/** 3段の比率(§16-3z「止まる500→起こす900→詰めの溜め600」=25%:45%:30%。全長によらず一定)。※2026-10-14 以降は構えに置き換わり未使用(旧の記録)。 */
 export const ZOMBIE_RP_STUMBLE_FRAC = 0.25;
 export const ZOMBIE_RP_RISE_FRAC = 0.45;
 export const ZOMBIE_RP_TREMBLE_FRAC = 0.30;

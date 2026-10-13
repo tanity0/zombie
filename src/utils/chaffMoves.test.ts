@@ -6,7 +6,7 @@ import {
   endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot, zombieRedTriggerPx,
   ZOMBIE_RED_WAIT_MIN_MS, ZOMBIE_RED_WAIT_MAX_MS,
   ZOMBIE_RED_TRIGGER_MIN_PX, ZOMBIE_RED_TRIGGER_MAX_PX,
-  zombieLungeRampMul, ZOMBIE_LUNGE_RAMP_MS, chaffMoveBlinkStrength,
+  zombieLungeRampMul, ZOMBIE_LUNGE_RAMP_MS, chaffMoveBlinkStrength, ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_HOLD_MS,
   CHAFF_BLINK_ON_MS, CHAFF_BLINK_OFF_MS, CHAFF_BLINK_COUNT,
   zombieRecoverWalkRampMul, ZOMBIE_RECOVER_WALK_RAMP_MS,
   zombieRedPauseMs, ZOMBIE_RED_PAUSE_MS, ZOMBIE_RED_PAUSE_JITTER,
@@ -258,15 +258,16 @@ describe('zombieLungeRampMul(§16-3z監査#8「踏み込みの解放を鋭く」
 });
 
 describe('chaffMoveBlinkStrength(赤は状態ではなく合図の句読点・社長指示2026-09-17「雑魚の攻撃はすべてゾンビと同じ文脈=スーパーアーマーに入るタイミングで2回点滅」)', () => {
-  const base = { chaffMove: 'zombie-double' as const, chaffMoveAt: 1000 };
+  // ゾンビは2026-10-14から構えの固まった瞬間が錨(下の別describe)。ここは技が立った瞬間が錨の型で見る。
+  const base = { chaffMove: 'skel-bite' as const, chaffMoveAt: 1000 };
   const CYCLE_MS = CHAFF_BLINK_ON_MS + CHAFF_BLINK_OFF_MS;
   const TOTAL_MS = CYCLE_MS * CHAFF_BLINK_COUNT;
 
   it('技を持たない個体(chaffMove未定義)は常に0(§12の噛みつきは紫の点滅が別に出る)', () => {
     expect(chaffMoveBlinkStrength({ ...base, chaffMove: undefined }, 1000)).toBe(0);
   });
-  it('★3体とも同じ文脈(型で分岐しない)', () => {
-    for (const chaffMove of ['zombie-double', 'bat-grab', 'skel-bite'] as const) {
+  it('★bat/skeleton は技が立った瞬間から(型で分岐しない)', () => {
+    for (const chaffMove of ['bat-grab', 'skel-bite'] as const) {
       expect(chaffMoveBlinkStrength({ chaffMove, chaffMoveAt: 1000 }, 1000)).toBe(1);
       expect(chaffMoveBlinkStrength({ chaffMove, chaffMoveAt: 1000 }, 1000 + TOTAL_MS)).toBe(0);
     }
@@ -300,6 +301,36 @@ describe('chaffMoveBlinkStrength(赤は状態ではなく合図の句読点・�
     expect(chaffMoveBlinkStrength(base, 1000 + TOTAL_MS)).toBe(0);
     for (const t of [TOTAL_MS + 1, 500, 1200, 3000, 10000]) {
       expect(chaffMoveBlinkStrength(base, 1000 + t)).toBe(0);
+    }
+  });
+});
+
+describe('ゾンビの構えの赤2回点滅(社長指示2026-10-14「素早く構え(後ろに反る)て硬直したら赤点滅2回、1秒後に発動 を2回」)', () => {
+  const CYCLE_MS = CHAFF_BLINK_ON_MS + CHAFF_BLINK_OFF_MS;
+  const TOTAL_MS = CYCLE_MS * CHAFF_BLINK_COUNT;
+  it('構えは「反る+固まる1秒」で、点滅は固まった瞬間から', () => {
+    expect(ZOMBIE_STANCE_MS).toBe(ZOMBIE_WINDUP_MS + ZOMBIE_HOLD_MS);
+    expect(ZOMBIE_HOLD_MS).toBe(1000);
+    expect(ZOMBIE_WINDUP_MS).toBeLessThan(ZOMBIE_HOLD_MS);
+  });
+  it('★1発目(z-red-pause)・2発目(z-stagger)の構えの両方で、固まった瞬間からちょうど2回点滅', () => {
+    for (const aiPhase of ['z-red-pause', 'z-stagger'] as const) {
+      const e = { aiPhase, chaffMove: aiPhase === 'z-stagger' ? 'zombie-double' as const : undefined, chaffMoveAt: 0, chaffBlinkAt: 1000 + ZOMBIE_WINDUP_MS };
+      expect(chaffMoveBlinkStrength(e, 1000)).toBe(0); // 反っている間は点かない
+      let prev = 0, edges = 0;
+      for (let t = 0; t <= ZOMBIE_STANCE_MS; t++) {
+        const v = chaffMoveBlinkStrength(e, 1000 + t);
+        if (v > 0 && prev === 0) { edges++; if (edges === 1) expect(t).toBe(ZOMBIE_WINDUP_MS); }
+        prev = v;
+      }
+      expect(edges).toBe(CHAFF_BLINK_COUNT);
+      expect(chaffMoveBlinkStrength(e, 1000 + ZOMBIE_WINDUP_MS + TOTAL_MS)).toBe(0);
+    }
+  });
+  it('★構えの外(踏み込み・噛み・硬直・構えを崩された後)では点かない', () => {
+    for (const aiPhase of ['z-lunge-in', 'z-bite1', 'z-bite2', 'z-recover', undefined] as const) {
+      expect(chaffMoveBlinkStrength({ aiPhase, chaffMove: 'zombie-double', chaffMoveAt: 1000, chaffBlinkAt: 1000 }, 1000)).toBe(0);
+      expect(chaffMoveBlinkStrength({ aiPhase, chaffMove: undefined, chaffBlinkAt: 1000 }, 1000)).toBe(0);
     }
   });
 });

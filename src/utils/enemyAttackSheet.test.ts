@@ -1,7 +1,7 @@
 // ★攻撃モーション(社長支給2026-09-20「武器を振り下ろす絵」)の機械化。
 // 描画側はテストしない(CLAUDE.md)——**いつどのコマを出すか**の純関数だけを固定する。
 import { describe, it, expect } from 'vitest';
-import { enemyAttackFrame, enemyAttackFrameFor, attackFrameSpans, ATTACK_SETTLE_MS, attackStillMs, attackTailFrame } from './enemyAttackSheet';
+import { enemyAttackFrame, enemyAttackFrameFor, attackFrameSpans, ATTACK_SETTLE_MS, attackStillMs, attackTailFrame, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME } from './enemyAttackSheet';
 import { attackSheetFrames, attackSheetName, ENEMY_ATTACK_SHEETS, attackImpactFrame } from './enemySheets';
 import { biteSpecFor, BAT_WINDUP_STILL_MS } from './enemyBite';
 import { ENEMY_VARIANT_SETS } from './enemyVariant';
@@ -284,5 +284,34 @@ describe('attackTailFrame（振り抜きのコマ・v0.25.4608）', () => {
     expect(attackTailFrame(undefined, FRAMES, 2000, IMPACT)).toBeNull();
     expect(attackTailFrame({ at: 0, windupMs: 800, biteMs: 200 }, FRAMES, 2000, IMPACT)).toBeNull();
     expect(attackTailFrame(lich, 1, 2000, IMPACT)).toBeNull();
+  });
+});
+
+describe('zombieStanceFrame(ゾンビの構え=頭を後ろへ反らせて固まる・社長指示2026-10-14)', () => {
+  const impact = attackImpactFrame('zombie-common');
+  const H = ZOMBIE_STANCE_HOLD_FRAME;
+  it('反りのコマは伸び上がりの途中(噛むコマより前)', () => {
+    expect(H).toBeGreaterThan(0);
+    expect(H).toBeLessThan(impact);
+  });
+  it('1発目: 0から始まり、構えの終わりの瞬間にちょうど反りで固まる(それより前には固まらない)', () => {
+    expect(zombieStanceFrame(0, 150, 0, H)).toBe(0);
+    expect(zombieStanceFrame(149, 150, 0, H)).toBeLessThan(H);
+    expect(zombieStanceFrame(150, 150, 0, H)).toBe(H);
+    expect(zombieStanceFrame(1100, 150, 0, H)).toBe(H);
+  });
+  it('2発目: 噛んだ絵から逆に戻して反る(0コマ目=立ち絵を通らない)', () => {
+    for (let t = 0; t <= 400; t++) {
+      const f = zombieStanceFrame(t, 150, impact, H);
+      expect(f).toBeGreaterThanOrEqual(H);
+      expect(f).toBeLessThanOrEqual(impact);
+    }
+    expect(zombieStanceFrame(0, 150, impact, H)).toBe(impact);
+    expect(zombieStanceFrame(150, 150, impact, H)).toBe(H);
+  });
+  it('コマは行って戻らない(単調)・速く入って減速する', () => {
+    let prev = 0;
+    for (let t = 0; t <= 200; t++) { const f = zombieStanceFrame(t, 150, 0, H); expect(f).toBeGreaterThanOrEqual(prev); prev = f; }
+    expect(zombieStanceFrame(75, 150, 0, H)).toBeGreaterThanOrEqual(Math.floor(H / 2));
   });
 });

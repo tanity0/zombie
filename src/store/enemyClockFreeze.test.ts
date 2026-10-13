@@ -188,7 +188,7 @@ describe('★H-7-3 硬直そのものは必ず明ける(除外1/除外2)', () =>
   });
 
   it('全ての recover 系の相で aiPhaseUntil / bossStateUntil が据え置かれない(除外2)', () => {
-    for (const phase of ['recover', 's-recover', 'z-recover', 'b-release', 'z-stagger',
+    for (const phase of ['recover', 's-recover', 'z-recover', 'b-release',
       'g-slam-recover', 'driller-thrust-recover', 'logger-sweep-recover', 'dash-recover'] as const) {
       expect(isRecoverHoldPhase(phase)).toBe(true);
       setup(gt0 => mob('zombie', gt0, { aiPhase: phase as Enemy['aiPhase'], aiPhaseUntil: gt0 + 200 }));

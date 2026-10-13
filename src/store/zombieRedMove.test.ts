@@ -12,9 +12,10 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { biteSpecFor, BITE_CONTACT_DIST_PX, biteLungeDistanceAtFire } from '../utils/enemyBite';
 import {
-  ZOMBIE_LUNGE_RANGE_PX, ZOMBIE_STAGGER_MS, ZOMBIE_RECOVER_MS,
-  zombieRedPauseMs, ZOMBIE_RED_TRIGGER_MIN_PX, // §16-3z追補①: 停止の長さ±30%(id+spawnedAt由来)
+  ZOMBIE_LUNGE_RANGE_PX, ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_RECOVER_MS,
+  ZOMBIE_RED_TRIGGER_MIN_PX,
   ZOMBIE_RETREAT_TARGET_PX, // §16-A7条目: 技を出し切ったら得意な距離(150px)へ離れる
+  chaffMoveBlinkStrength,
 } from '../utils/chaffMoves';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -131,12 +132,13 @@ describe('「赤が先」(§16-3): 帯の内縁(100px)で枠の有無により�
   it('枠が空いていれば赤(z-red-pause・その場)が確定する', () => {
     // ★距離は引き金の最小値(88px)より内側に置く。§16-3z「内縁の引き金に幅(88〜118px・id由来)」
     // により、境界ちょうど(100px)だとidによって赤にならないことがある(非決定的テストを避ける)。
-    const e0 = place(ZOMBIE_RED_TRIGGER_MIN_PX - 3, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
+    place(ZOMBIE_RED_TRIGGER_MIN_PX - 3, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-red-pause');
-    // ★①停止の長さ±30%(§16-3z): 全長は固定値ではなくid+spawnedAt由来(zombieRedPauseMs)。
-    expect(e.aiPhaseUntil).toBe(START_GT + zombieRedPauseMs(e0.id, e0.spawnedAt));
+    // ★構え(社長指示2026-10-14): 素早く反る+固まって1秒。赤2回点滅は固まった瞬間から。
+    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_STANCE_MS);
+    expect(e.chaffBlinkAt).toBe(START_GT + ZOMBIE_WINDUP_MS);
     expect(e.vx).toBe(0); expect(e.vy).toBe(0); // その場(位置は動かさない)
   });
 
@@ -209,12 +211,13 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(e.x).toBeLessThan(e0.x);
   });
 
-  it('1発目が解決(biteAt=0)したらz-stagger(160ms・その場)へ', () => {
+  it('1発目が解決(biteAt=0)したらz-stagger(2発目の構え=反る+固まって1秒・その場)へ', () => {
     place(60, { aiPhase: 'z-bite1', chaffMove: 'zombie-double', biteAt: 0 });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-stagger');
-    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_STAGGER_MS);
+    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_STANCE_MS);
+    expect(e.chaffBlinkAt).toBe(START_GT + ZOMBIE_WINDUP_MS);
     expect(e.vx).toBe(0); expect(e.vy).toBe(0);
   });
 
@@ -419,5 +422,33 @@ describe('★甲2(主経路の訂正): zrush開始から1600msを越えた最初
     place(500, { aiPhase: 'zrush', aiPhaseUntil: START_GT + (ZOMBIE_RUSH_MS - 1599) });
     tick(START_GT);
     expect(first().biteAt ?? 0).toBe(0);
+  });
+});
+
+describe('★構えの赤2回点滅を、状態機械を実際に回して数える(社長指示2026-10-14・品質監査A-1の再発防止)', () => {
+  const countBlinks = (until: number) => {
+    let prev = 0, edges = 0, firstAt = -1;
+    for (let gt = START_GT; gt <= until; gt += 16) {
+      tick(gt);
+      const e = first();
+      const v = chaffMoveBlinkStrength(e, gt);
+      if (v > 0 && prev === 0) { edges++; if (firstAt < 0) firstAt = gt - START_GT; }
+      prev = v;
+    }
+    return { edges, firstAt };
+  };
+  it('1発目の構え(z-red-pause): 固まってから2回', () => {
+    place(ZOMBIE_RED_TRIGGER_MIN_PX - 3, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
+    const r = countBlinks(START_GT + ZOMBIE_STANCE_MS - 16);
+    expect(first().aiPhase).toBe('z-red-pause');
+    expect(r.edges).toBe(2);
+    expect(r.firstAt).toBeGreaterThanOrEqual(ZOMBIE_WINDUP_MS);
+  });
+  it('2発目の構え(z-stagger): 固まってから2回(時計の凍結で点滅が先送りされない)', () => {
+    place(60, { aiPhase: 'z-bite1', chaffMove: 'zombie-double', chaffMoveAt: START_GT - 500, biteAt: 0 });
+    const r = countBlinks(START_GT + ZOMBIE_STANCE_MS - 16);
+    expect(first().aiPhase).toBe('z-stagger');
+    expect(r.edges).toBe(2);
+    expect(r.firstAt).toBeGreaterThanOrEqual(ZOMBIE_WINDUP_MS);
   });
 });

@@ -1696,7 +1696,7 @@ export const applyContactDamage = (
             // `lichBlinkAtX/Y`/`lichBlinkFromX/Y`(予告円・見た目の基準点)は役目を終えたので消す。
             ...(e.chaffMove === 'lich-blink'
               ? {
-                  chaffMove: undefined, chaffMoveAt: undefined, aiPhase: undefined, aiPhaseUntil: undefined,
+                  chaffMove: undefined, chaffMoveAt: undefined, chaffBlinkAt: undefined, aiPhase: undefined, aiPhaseUntil: undefined,
                   chaffMoveCdUntil: gameTime + techSpec.recoverMs,
                   lichBlinkAtX: undefined, lichBlinkAtY: undefined,
                   lichBlinkFromX: undefined, lichBlinkFromY: undefined,

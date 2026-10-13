@@ -112,7 +112,7 @@ import { variantTextureName } from '../utils/enemyVariant';
 import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
 import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
-import { enemyAttackFrameFor, attackTailFrame, type AttackTailMemo } from '../utils/enemyAttackSheet';
+import { enemyAttackFrameFor, attackTailFrame, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
 import { bossFaceWant, bossFaceDeadzonePx, BOSS_TURN_MIN_MS } from '../utils/bossFacing';
@@ -308,9 +308,9 @@ import {
 } from '../utils/lichBlink'; // §16-C リッチの技「転移噛み」
 // §16-3z「歯応え」の仕上げ: ゾンビ赤2連の停止尺(姿勢の3段の合計に使う)と赤の脈(純関数)。
 import {
-  chaffMoveBlinkStrength, zombieRedPauseMs,
-  ZOMBIE_RP_STUMBLE_FRAC, ZOMBIE_RP_RISE_FRAC, ZOMBIE_RP_TREMBLE_FRAC, // §16-3z①停止の長さ±30%(比例3段)
-  ZOMBIE_STAGGER_MS, ZOMBIE_RECOVER_MS, // よろけ/硬直の姿勢(クリエイティブ監査#1/#7)の尺
+  chaffMoveBlinkStrength,
+  ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_HOLD_MS, // 2026-10-14 構え(反る→固まる)の尺
+  ZOMBIE_RECOVER_MS, // 硬直の姿勢(クリエイティブ監査#1)の尺
 } from '../utils/chaffMoves';
 // research/GHOST_BOSS.md(守護霊ボス「幻影」): 表示名・立ち絵クラスの正本(台帳)と、技の寸法テーブル。
 // **判定(phantomTick)と同じ1箇所**を読むので「赤いのに当たらない」が起きない。
@@ -1460,23 +1460,19 @@ const BOSS_CORPSE_SHAKE_PX = 7;         // 揺れの最大振幅(横)。縦は�
 const BOSS_CORPSE_CRUMBLE_FROM = 0.35;  // 崩れ始め。まず揺れだけを見せてから崩す=「揺れて崩れる」の順
 const BOSS_CORPSE_SQUASH = 0.55;        // 崩れ切った時の縦の潰れ(足元は地面に残す)
 const BOSS_CORPSE_SPREAD = 0.18;        // 崩れる時の横の広がり(瓦礫が積もる感じ)
-// §16-3z「歯応え」の仕上げ(社長指示2026-09-16)★①姿勢: ゾンビ赤の停止(z-red-pause)を
-// 3段に割る(1つの姿勢で通すと「固まったバグ」に見える。段で割ると「溜めている」に見える)。
-// ★①停止の長さ±30%(社長裁定2026-09-16「3段を比例で伸縮」): 段の境目msは個体の全長
-// (`zombieRedPauseMs`・chaffMoves.ts)× 比率(`ZOMBIE_RP_*_FRAC`・同ファイルからimport)で
-// 描画側(下の該当ブロック)が計算する。ここに絶対msの定数は置かない(段がズレるため)。
 // ★①読める: 赤の脈(加算overlay)の色。既存の赤テレグラフ(0xff2a2a系)と揃える。
 const ZOMBIE_RED_GLOW_TINT = 0xff2a2a;
 const ZOMBIE_RED_GLOW_ALPHA_MAX = 0.85;
-// ★クリエイティブ監査#6是正: z-red-pauseの3段は「縦横の伸縮(aiSqX/Y)」ではなく§16-6
-// 「姿勢は縦の差ではなく傾きの向きで」に沿ってskew(傾き)+off(前後オフセット)で描く。値は
-// 叩き台(演出の微調整=実機で振る。社長裁定を要する数値ではない)。
-const ZOMBIE_RP_STUMBLE_SKEW = 0.5;    // ①つんのめり: 前へ行き過ぎるskewの最大
-const ZOMBIE_RP_STUMBLE_OFF_PX = 10;   // ①つんのめり: 前へ行き過ぎる位置オフセットの最大
-const ZOMBIE_RP_RISE_SKEW = 0.35;      // ②③上体を起こして後ろへ傾く角度(そのまま③まで保持)
-// ★クリエイティブ監査#7是正: よろけ(z-stagger)160msに姿勢が無かった。1発目の勢いの余韻が
-// 抜けるまでの前のめりskew(指数減衰)。
-const ZOMBIE_STAGGER_SKEW = 0.4;
+// ★ゾンビの構え(社長指示2026-10-14): 1発目・2発目の前に、プレイヤーから離れる向きへ大きく反って固まる。
+// 傾き(skew)+後ろへのずれ(off)。値は叩き台(演出の微調整=実機で振る)。
+const ZOMBIE_STANCE_SKEW = 0.5;        // シートの無い見た目の時だけ
+const ZOMBIE_STANCE_OFF_PX = 12;      // 1発目: 後ろへ引く量
+const ZOMBIE_STANCE_OFF2_PX = 17;     // 2発目: 深く引く
+const ZOMBIE_STANCE_CARRY_PX = 5;     // 1発目の頭: 歩いてきた勢いで前へ出る量
+const ZOMBIE_STANCE_SHAKE_PX = 3.2;   // 固まっている間の震え(発動へ向けて強まる)の到達量
+const ZOMBIE_STANCE_SHAKE2_PX = 4.2;
+const ZOMBIE_STANCE_QUIET_MS = 90;    // 発動の直前、震えを止めて息を詰める長さ
+const ZOMBIE_LUNGE_REACH_MS = 70;     // 踏み込みの頭: 反りのコマから伸び切り(腕を広げる)へ移る長さ
 // ★クリエイティブ監査#1是正: z-recover(硬直)の姿勢が無かった(pixiScene.tsにz-recoverを読む
 // 描画が1行も無い)。打ち終わりで最も前へ倒れ込んだ姿勢(skew/off最大・sqY沈み)で固め、
 // 硬直の後半(ZOMBIE_RECOVER_HOLD_FRAC以降)でゆっくり起こす。値は叩き台(実機で振る)。
@@ -18845,7 +18841,7 @@ export class PixiScene {
     // パンプキン特殊AI演出(描画のみ): 縮み(しゃがみ)/ジャンプのアーク/着地スカッシュ。Lv3・ジャイアントバットも同様。
     let aiSqX = 1, aiSqY = 1, aiHop = 0;
     let aiShake = 0; // v0.25.3069: 溜め中の震え(横揺れ・下の liftShake に合流させて位置へ反映)
-    // ★§16-3zクリエイティブ監査#6/#7: ゾンビの姿勢(赤の停止3段・よろけ)はskew(傾き)+off
+    // ★ゾンビの姿勢(構え §16-3s・硬直)はskew(傾き)+off
     // (前後オフセット)で描く(aiSqX/Yの縦横伸縮は使わない)。
     let aiSkew = 0, aiOffX = 0, aiOffY = 0;
     if (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat' || e.type === 'hunter') {
@@ -18968,60 +18964,46 @@ export class PixiScene {
       }
     }
 
-    // ★①姿勢(PACING_PUZZLE.md §16-3z/§16-6): ゾンビ赤の停止(z-red-pause)を3段で見せる。
-    // 紫の停止(zpause・1000ms)とは色を付けず姿勢と長さだけで見分ける(§16-5)。
-    // ★①停止の長さ±30%(社長裁定2026-09-16「3段を比例で伸縮させる」): 全長は個体ごとに違う
-    // (`zombieRedPauseMs`・id+spawnedAt由来)ので、**段の境目は絶対msではなく全長に対する
-    // 割合**で置く(`ZOMBIE_RP_*_FRAC`=500:900:600と同じ比)。絶対msのままだと短い個体で
-    // 「溜め」だけ相対的に伸びて姿勢の形が崩れる。
-    // ★クリエイティブ監査#6是正: 旧実装は縦横の伸縮(aiSqX/Y)で、最大引きでも1.7px=消える上、
-    // §16-6「姿勢は縦の差ではなく傾きの向きで」に逆行していた。skew(傾き)+off(前後オフセット)へ
-    // 描き直す(慣性=smoothstepはそのまま)。skewの向きはcontactLungePoseと同じ規約
-    // (プレイヤー方向への符号=-dirSignで「頭がプレイヤー側へ倒れ込む」)。
-    if (e.type === 'zombie' && e.aiPhase === 'z-red-pause') {
-      const ply = useGameStore.getState().player;
-      const lang = Math.atan2((ply.y + ply.height / 2) - cy, (ply.x + ply.width / 2) - cx);
-      const dirSign = Math.cos(lang) >= 0 ? 1 : -1;
-      const totalMs = zombieRedPauseMs(e.id, e.spawnedAt);
-      const stumbleMs = totalMs * ZOMBIE_RP_STUMBLE_FRAC;
-      const riseMs = totalMs * ZOMBIE_RP_RISE_FRAC;
-      const trembleMs = totalMs * ZOMBIE_RP_TREMBLE_FRAC;
-      const startedAt = (e.aiPhaseUntil ?? gameTime) - totalMs;
-      const t = Math.max(0, gameTime - startedAt);
-      if (t < stumbleMs) {
-        // ①止まる(つんのめり): 足は一気に止め、上体だけプレイヤー側へ行き過ぎて戻る(§16-6の慣性の掟)。
-        const p = t / stumbleMs;
-        const dip = Math.sin(Math.min(1, p * 2.2) * Math.PI) * Math.exp(-p * 2.5);
-        aiSkew = -dirSign * ZOMBIE_RP_STUMBLE_SKEW * dip;
-        aiOffX = Math.cos(lang) * ZOMBIE_RP_STUMBLE_OFF_PX * dip;
-        aiOffY = Math.sin(lang) * ZOMBIE_RP_STUMBLE_OFF_PX * dip;
-      } else if (t < stumbleMs + riseMs) {
-        // ②上体を起こす: プレイヤーから離れる向きへ傾いて立ち上がる威圧(§16-6「上体を起こして
-        // 後ろへ」・smoothstep=慣性)。
-        const q = (t - stumbleMs) / riseMs;
-        const ease = q * q * (3 - 2 * q);
-        aiSkew = dirSign * ZOMBIE_RP_RISE_SKEW * ease;
-      } else {
-        // ③詰めの溜め(震え): 起こしきった後ろ傾きを保ったまま、踏み込みへ向けて震えが強まる。
-        // ★クリエイティブ監査#10是正: 個体位相(stablePhase)を混ぜて2体の震えが完全同期しないようにする。
-        aiSkew = dirSign * ZOMBIE_RP_RISE_SKEW;
-        const r = Math.min(1, (t - stumbleMs - riseMs) / trembleMs);
-        const shakePhase = stablePhase(e.id);
-        aiShake = (Math.sin(now / 23 + shakePhase) * 0.6 + Math.sin(now / 11 + shakePhase * 1.3) * 0.4) * 1.6 * r;
-      }
-    }
-    // ★クリエイティブ監査#7是正: よろけ(z-stagger・160ms)に姿勢が無かった(素の立ち姿で静止)。
-    // 1発目の勢いの余韻が体に残っていて、前のめりのskewが指数減衰しながら抜けていく
-    // (squash/offは使わない=§16-6「傾きの向きで」)。
-    if (e.type === 'zombie' && e.aiPhase === 'z-stagger') {
+    // ★ゾンビの構え(社長指示2026-10-14「素早く構え(後ろに反るモーション)て硬直したら赤点滅2回、1秒後に発動 を2回」)。
+    // 1発目の前(z-red-pause)・2発目の前(z-stagger)。反りの絵は攻撃シートのコマ(enemyAttackTexture・zombieStanceFrame)が持つ。
+    // ここは**位置**だけ(手描きのコマ中も掛かる): 素早く後ろへ引いて(ease-out)固まり、固まっている間は震えが強まり、
+    // 発動の直前だけ息を詰めて止まる。1発目は歩いてきた勢いを一瞬前へ受けてから引く(慣性)。2発目は引きも震えも深い。
+    // 向きは構えに入った瞬間に焼く(固まっている間に裏へ回られても体の向きは変えない)。
+    // シートの無い見た目の時だけ傾け(skew)も掛ける(下の `walkTex === null` の時だけ効く)。
+    if (e.type === 'zombie' && (e.aiPhase === 'z-red-pause' || e.aiPhase === 'z-stagger')) {
       const until = e.aiPhaseUntil ?? gameTime;
-      const elapsed = Math.max(0, Math.min(ZOMBIE_STAGGER_MS, ZOMBIE_STAGGER_MS - (until - gameTime)));
-      const u = elapsed / ZOMBIE_STAGGER_MS;
-      const decay = Math.exp(-u * 3.2); // 頭で最大、抜け際にすっと収まる
-      const ply = useGameStore.getState().player;
-      const lang = Math.atan2((ply.y + ply.height / 2) - cy, (ply.x + ply.width / 2) - cx);
-      const dirSign = Math.cos(lang) >= 0 ? 1 : -1;
-      aiSkew = -dirSign * ZOMBIE_STAGGER_SKEW * decay;
+      let dir = this.zombieStanceDir.get(e.id);
+      if (!dir || dir.until !== until) {
+        const ply = useGameStore.getState().player;
+        const lang = Math.atan2((ply.y + ply.height / 2) - cy, (ply.x + ply.width / 2) - cx);
+        dir = { until, cos: Math.cos(lang), sin: Math.sin(lang) };
+        if (this.zombieStanceDir.size > 128) this.zombieStanceDir.clear();
+        this.zombieStanceDir.set(e.id, dir);
+      }
+      const dirSign = dir.cos >= 0 ? 1 : -1;
+      const second = e.aiPhase === 'z-stagger';
+      const t = Math.max(0, gameTime - (until - ZOMBIE_STANCE_MS));
+      let back: number;   // 0..1 後ろへ引いた量
+      let fwd = 0;        // 1発目の頭だけ、勢いで前へ出る量(px)
+      if (t < ZOMBIE_WINDUP_MS) {
+        const p = t / ZOMBIE_WINDUP_MS;
+        back = 1 - (1 - p) * (1 - p) * (1 - p);
+        if (!second) fwd = ZOMBIE_STANCE_CARRY_PX * Math.sin(Math.min(1, p * 2.5) * Math.PI) * (1 - p);
+      } else {
+        back = 1;
+        const h = t - ZOMBIE_WINDUP_MS;
+        const quiet = ZOMBIE_HOLD_MS - h < ZOMBIE_STANCE_QUIET_MS; // 発動の直前は震えを止めて息を詰める
+        if (!quiet) {
+          const r = Math.min(1, h / (ZOMBIE_HOLD_MS - ZOMBIE_STANCE_QUIET_MS));
+          const shakePhase = stablePhase(e.id); // 2体の震えが同期しない
+          const amp = (second ? ZOMBIE_STANCE_SHAKE2_PX : ZOMBIE_STANCE_SHAKE_PX) * (0.25 + 0.75 * r * r);
+          aiShake = (Math.sin(now / 23 + shakePhase) * 0.6 + Math.sin(now / 11 + shakePhase * 1.3) * 0.4) * amp;
+        }
+      }
+      const off = (second ? ZOMBIE_STANCE_OFF2_PX : ZOMBIE_STANCE_OFF_PX) * back - fwd;
+      aiSkew = dirSign * ZOMBIE_STANCE_SKEW * back;
+      aiOffX = -dir.cos * off;
+      aiOffY = -dir.sin * off;
     }
     // ★クリエイティブ監査#1是正: z-recover(硬直600ms)の姿勢が無かった(pixiScene.tsにz-recoverを
     // 読む描画が1行も無い=素の立ち姿のまま固まって見えていた)。打ち終わりで最も前へ倒れ込んだ姿勢
@@ -19602,7 +19584,7 @@ export class PixiScene {
       } else {
         view.sprite.skew.x = 0;
       }
-      // ★§16-3zクリエイティブ監査#6/#7: ゾンビの赤の停止3段/よろけの傾き(z-red-pause/z-stagger
+      // ★ゾンビの構え(§16-3s)/硬直の傾き(z-red-pause/z-stagger/z-recover
       // ブロックが上で計算済み。他型・他相は既定0なので無変化)。
       // ★同上(社長報告2026-09-23): よろけ・立ち直りの傾ぎも**スプライトを回す=歪み**なので、
       // 手で描いたコマが出ている間は掛けない(CLAUDE.md の判定基準「伸ばす/縮める/回すなら歪み」)。
@@ -19865,7 +19847,7 @@ export class PixiScene {
         } else if (zRedStrength > 0.01) {
           // ★赤=カウンター可(CLAUDE.md 色と形の文法①)。★§16-3z「赤は状態ではなく合図の句読点」
           // (社長指示2026-09-16「走り始めのとき2回点滅するだけ」): 脈(0..1)は
-          // chaffMoveBlinkStrength(技が立った瞬間から2回点滅・それ以外は常に0)の
+          // chaffMoveBlinkStrength(技が立った瞬間から2回点滅。ゾンビは構えで固まった瞬間から・§16-3s。それ以外は常に0)の
           // 二値(0/1)なので、ここでは強さをそのままalphaへ写すだけでよい。
           hf.tint = ZOMBIE_RED_GLOW_TINT;
           hf.alpha = zRedStrength * ZOMBIE_RED_GLOW_ALPHA_MAX * artFade;
@@ -33234,6 +33216,8 @@ export class PixiScene {
    * 技が生きている間に尺を覚えておき、消えた後の余韻ぶんだけ**描く側だけで**出し切る。
    * ★時計は**ゲーム内時刻**(`biteAt` と同じ)。`Date.now()` と混ぜない(v0.25.4594の事故と同型)。
    */
+  // ゾンビの構えの向き(構えに入った瞬間に焼く・2026-10-14)。
+  private zombieStanceDir = new Map<string, { until: number; cos: number; sin: number }>();
   private biteTailMemo = new Map<string, AttackTailMemo>();
 
   /**
@@ -33289,7 +33273,15 @@ export class PixiScene {
     if (frames <= 1) return null;
     const impact = attackImpactFrame(idleTexKey);
     let i: number | null;
-    if (e.biteAt !== undefined && e.biteAt > 0) {
+    const zombieStance = e.type === 'zombie' && (e.aiPhase === 'z-red-pause' || e.aiPhase === 'z-stagger');
+    if (zombieStance) {
+      // ★ゾンビの構え(2026-10-14): 頭を後ろへ反らせるコマで固まる。1発目は0から、2発目は噛んだ絵から逆に戻す。
+      const since = gameTime - ((e.aiPhaseUntil ?? gameTime) - ZOMBIE_STANCE_MS);
+      i = zombieStanceFrame(since, ZOMBIE_WINDUP_MS, e.aiPhase === 'z-stagger' ? impact : 0, Math.min(ZOMBIE_STANCE_HOLD_FRAME, impact - 1));
+    } else if (e.type === 'zombie' && e.aiPhase === 'z-lunge-in' && e.chaffMove === 'zombie-double') {
+      // 踏み込み: 反りから伸び切り(腕を広げた絵)へ速く移り、そのまま滑り込む(歩きのコマへ落とさない)。
+      i = zombieStanceFrame(gameTime - (e.chaffMoveAt ?? gameTime), ZOMBIE_LUNGE_REACH_MS, Math.min(ZOMBIE_STANCE_HOLD_FRAME, impact - 1), impact - 1);
+    } else if (e.biteAt !== undefined && e.biteAt > 0) {
       // 技が生きている間: 従来どおり。尺は**この瞬間の台本**から覚えておく
       // (中断で `chaffMove` が消えると spec が変わるので、後から引き直さない)。
       const spec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
@@ -33299,6 +33291,12 @@ export class PixiScene {
         at: e.biteAt, windupMs: spec.windupMs, biteMs: spec.biteMs, lungeMs: spec.lungeMs,
       });
       i = enemyAttackFrameFor(e, frames, gameTime, impact);
+      // ★構えの続きなので、噛みの溜めでは0コマ目へ戻さない(2重に伸び上がらない)。1発目=踏み込みで伸び切っている/
+      //   2発目=反りのコマから伸び切りを通って噛む。
+      if (e.type === 'zombie' && e.chaffMove === 'zombie-double' && i !== null && gameTime - e.biteAt < spec.windupMs) {
+        const floor = e.aiPhase === 'z-bite1' ? impact - 1 : Math.min(ZOMBIE_STANCE_HOLD_FRAME, impact - 1);
+        if (i < floor) i = floor;
+      }
     } else {
       // 技が消えた後: **当たった後**なら余韻のコマを出す(中断は当たる前に消えるので混ざらない)。
       const memo = this.biteTailMemo.get(e.id);

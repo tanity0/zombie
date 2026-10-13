@@ -63,6 +63,25 @@ export const attackFrameSpans = (
   return out;
 };
 
+/**
+ * ★ゾンビの構えのコマ(社長指示2026-10-14「素早く構え(後ろに反るモーション)て硬直したら赤点滅2回、1秒後に発動 を2回」)。
+ * 攻撃シート(0=構え / 1〜5=体を起こして伸び上がる・**3〜5で頭を後ろへ反らす** / 6=伸び切り / 7=噛む / 8〜10=戻り)のうち、
+ * **頭が一番反っている `ZOMBIE_STANCE_HOLD_FRAME`** で固まる。1発目の前は 0→反り、2発目の前は**噛んだ絵(7)から逆に**反りへ戻す
+ * (噛んだ絵から立ち絵へ1コマで飛ばない)。`windupMs` を使い切って**ちょうど終わりの瞬間に固まる**(=赤2回点滅の錨と同じ時刻)。
+ * ease-out=速く入って減速。手描きのコマがある型は傾け(歪み)を掛けないので、反りはこのコマで見せる。
+ * @param sinceMs 構えに入ってからの経過(ゲーム内時刻)。
+ */
+export const ZOMBIE_STANCE_HOLD_FRAME = 4;
+export const zombieStanceFrame = (sinceMs: number, windupMs: number, from: number, to: number): number => {
+  if (!(sinceMs >= 0)) return from;
+  if (sinceMs >= windupMs) return to;
+  const p = sinceMs / windupMs;
+  const eased = 1 - (1 - p) * (1 - p);
+  const span = Math.abs(to - from);
+  const step = Math.min(span - 1, Math.floor(eased * span)); // 終わりの瞬間まで `to` へは入らない
+  return from + Math.sign(to - from) * Math.max(0, step);
+};
+
 /** 余韻の長さ。★ランタンの振り抜き(`BAT_LANTERN_SETTLE_MS`)と**同じ値を引く**
  * ——腕(シート)と武器(別スプライト)で余韻の尺が違うと、振り抜きが二重になる。 */
 export const ATTACK_SETTLE_MS = BAT_LANTERN_SETTLE_MS;
