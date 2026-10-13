@@ -175,3 +175,16 @@ export const pickNpcLine = (idx: number, cat: string, fallback: string): string 
   if (v.length === 0) return fallback;
   return v[Math.floor(Math.random() * v.length)].text;
 };
+
+// 「連れて歩く」を切り替えた時の返事(research/ESCORT_FOLLOW.md §9・社長指示2026-10-13)。名簿の並び(BASE_SOLDIERS)と同じ index。
+// on=同行を頼まれた/off=置いていかれた。「ここで待つ」の説明ではなく、その人がどう受けるか(長さは揃えない)。
+export const FOLLOW_TOGGLE_LINES: readonly { on: string; off: string }[] = [
+  { on: 'よし、背中は預かる。行こう。', off: 'ここは守る。行け。' },                         // エドガー
+  { on: '待ってました！派手に行こうぜ！', off: '置いてくのかよ…いいさ、拠点は任せろ！' },     // ジョセフ
+  { on: '同行します。傷を負ったら、すぐ言って。', off: '了解。ここで救助者を受け入れます。' }, // エリザベス
+  { on: '供をする。', off: '待つ。' },                                                     // 武蔵
+  { on: 'そうこなくちゃな！暴れに行くぞ！', off: '俺抜きで暴れる気か。……いいだろう。' },     // ムハンマド
+  { on: '随伴に移行。後ろは任せてください。', off: '待機。周辺警戒に移ります。' },             // チェン
+  { on: 'はいはい、ついてくよ。足は引っ張らない。', off: 'はいはい、留守番ね。' },             // ローレン
+  { on: '同行しよう。外の変異も見ておきたい。', off: '固定点で観測を続ける。' },               // フェイザー
+];

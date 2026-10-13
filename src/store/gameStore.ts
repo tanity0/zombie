@@ -199,6 +199,7 @@ import { escortAdvance, escortShouldHoldForWelcome } from '../utils/escortAdvanc
 import { escortOffscreenStep, escortOffscreenPace, baseDirectionLabel, ESCORT_STRUGGLE_STALL_MS } from '../utils/escortOffscreen';
 import { welcomeAppliesToRun } from '../utils/welcomeScript';
 import { isWelcomeRetired } from '../utils/welcomeStreak';
+import { loadEscortFollowEnabled, saveEscortFollowEnabled, followToggleBaseAt } from '../utils/escortFollowToggle';
 // research/ESCORT_TARGETED.md: 進軍NPCの体力・倒れる・起こす / 画面内の定義 / 敵の狙い。
 import {
   applyEscortHit, escortAdvanceSlowMult, escortHasHealth, escortMaxHealthFor, syncEscortMaxHealth, escortSlidePosition, clearEscortSlide,
@@ -276,7 +277,7 @@ import { recordKill, recordSpawn } from '../utils/killTelemetryState';
 import { drillerZoneFor, drillerCanThrust, isDrillerRetreating, isRetreatEligibleType, DRILLER_RETREAT_MS, DRILLER_RETREAT_SPEED_MULT } from '../utils/drillerAi';
 import { loggerZoneFor, loggerCanSweep, loggerSweepBand, LOGGER_SWEEP_FORWARD_OFFSET } from '../utils/loggerAi'; // PACING_PUZZLE.md §14-2
 import { getPityDropTuning } from '../utils/pityState';
-import { pickNpcLine } from '../data/npcLines';
+import { pickNpcLine, FOLLOW_TOGGLE_LINES } from '../data/npcLines';
 import {
   buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
@@ -1018,6 +1019,8 @@ const escortSceneName = (soldierIndex: number): string => {
 // sortie=出撃時 / surrounded=敵に囲まれた時 / rescued=囲まれから助けてもらった時 / pushback=後退する時 /
 // baseNear=拠点が見えてきた時 / companion=並走時 / baseCaptured=拠点解放時 / neglectFar=遠方で放置(隣NPCのみ) /
 // npcKill=自分で倒した時 / opPrep=作戦準備が進んだ時 / praise=プレイヤー無双時(管理表準拠)。capture/retreat は既存。
+// 「連れて歩く」の返事の連打止め(実時間ms・toggleEscortFollow だけが読み書き)。
+let followToggleLineAt = 0;
 const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: string; surrounded: string; rescued: string; pushback: string; baseNear: string; companion: string; baseCaptured: string; neglectFar: string; npcKill: string; opPrep: string; praise: string }[] = [
   { name: 'エドガー',   capture: 'まかせろ！',       retreat: '撤退だ！',     sortie: '東部隊、前進を開始する。援護は任せた。', surrounded: '囲まれた。突破口を作る。', rescued: '助かった。今ので前線を戻せる。', pushback: '東部隊、押されている。可能なら援護を。', baseNear: '見えた。あれが東部拠点だ。', companion: 'この距離なら押せる。足を止めるな。', baseCaptured: '東部拠点、確保。ここから押し返す。', neglectFar: '東部隊、押されている。可能なら援護を。', npcKill: '一体排除。進軍を再開する。', opPrep: '作戦準備が進んだ。次が見えてきたな。', praise: '見事だ。こちらも遅れるわけにはいかない。' },
   { name: 'ジョセフ',   capture: '了解！',           retreat: '失敗！',       sortie: '南は俺が行く！派手に道を開けようぜ！', surrounded: '囲まれた！笑えない数だ！', rescued: '助かった！今のは正直キツかった！', pushback: 'まずい、押されてる！一歩下がる！', baseNear: '見えた見えた！南部拠点だ！', companion: 'いいねえ、足並み合ってる！', baseCaptured: '南部拠点、いただきだ！', neglectFar: '南、ちょい劣勢！助けに来てもいいんだぜ！', npcKill: 'よし、一丁上がり！', opPrep: 'いいぞ、作戦が前に進んだ！', praise: 'おいおい、全部持ってく気かよ！' },
@@ -5845,6 +5848,13 @@ interface GameState {
    * 毎フレーム同じ答えを得る(ラン中に卒業しても、そのランの答えは変えない)。
    */
   welcomeRetired: boolean;
+  /**
+   * 「連れて歩く」のオン/オフ(research/ESCORT_FOLLOW.md §9・社長指示2026-10-13)。全拠点共通の1つ。
+   * オン=解放済みの拠点の軍人がその区域の中でついてくる(§1〜8)/オフ=誰もついてこない。端末に覚える(resetGameでも戻さない)。
+   */
+  escortFollowEnabled: boolean;
+  /** 解放済みの拠点の円の中でだけ呼ぶ(ボタン/E/パッドのX)。オン/オフを切り替えて保存する。 */
+  toggleEscortFollow: () => void;
   updateMerchantDwell: (deltaMs: number) => void;
   /**
    * ★ウェルカムの段を1つ片付けるたびに弾を1個落とす(社長指示2026-09-19
@@ -7154,6 +7164,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   merchantDwellMs: 0,
   merchantHidden: false,
   welcomeRetired: false,
+  escortFollowEnabled: loadEscortFollowEnabled(),
   eventQuestNpc: createEventQuestNpc(),
   eventQuestActive: null,
   eventQuestKills: 0,
@@ -8128,6 +8139,29 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // PC(マウス)照準: キャンバス左上基準のスクリーン座標を保持(null で解除)。
+  toggleEscortFollow: () => {
+    const s = get();
+    const p = s.player;
+    const baseId = followToggleBaseAt(p.x + p.width / 2, p.y + p.height / 2, s.baseSites, BASE_CAPTURE_RADIUS);
+    // 解放済みの拠点の円の外・操作できない間(一時停止・倒れた・演出の時間停止など=isInputLocked)は切り替えない(§9-1・監査A-5)。
+    if (!baseId || s.corridorMode || s.gameWon || isInputLocked()) return;
+    const next = !s.escortFollowEnabled;
+    saveEscortFollowEnabled(next);
+    set({ escortFollowEnabled: next });
+    // 手応え=その拠点の軍人の返事(決定音は鳴らさない=設定を変えた音にしない・監査CR-4)。間隔の制限は通さない
+    // (押したら必ず返す・監査A-2)。連打で台詞が積もらないよう、前の返事から1.2秒は黙る。
+    const now = Date.now();
+    const esc = s.escorts.find(e => e.baseId === baseId && !isEscortDowned(e));
+    if (esc && now - followToggleLineAt >= 1200) {
+      followToggleLineAt = now;
+      const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
+      const line = FOLLOW_TOGGLE_LINES[idx];
+      // 返事は列の先頭へ(押した直後に読めるように=前に積まれた雑談の後ろへ回さない)。前の返事が残っていれば差し替える。
+      const reply = { name: BASE_SOLDIERS[idx].name, text: next ? line.on : line.off };
+      const toggleTexts = new Set(FOLLOW_TOGGLE_LINES.flatMap(l => [l.on, l.off]));
+      if (line) set(st => ({ npcDialogueQueue: [reply, ...st.npcDialogueQueue.filter(q => !toggleTexts.has(q.text))] }));
+    }
+  },
   setMouseAim: (screen) => {
     set({ mouseAim: screen });
   },
@@ -20429,7 +20463,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         escortsChanged = true;
       }
       if (base.status === 'captured' && !escortWelcomeHold) {
-        const zoneIn = followZoneContains(px, py, poiSectorIndex(base), esc.followInZone ?? false, AREA_THRESHOLDS[0]);
+        // §9(社長指示2026-10-13): 「連れて歩く」がオフなら区域の中でも誰もついてこない(ついてきていた軍人は区域を出た時と同じく見送って帰る)。
+        const zoneIn = state.escortFollowEnabled && followZoneContains(px, py, poiSectorIndex(base), esc.followInZone ?? false, AREA_THRESHOLDS[0]);
         fol = stepFollowMachine({
           captured: true, zoneIn, prev: esc.followState,
           inBaseCircle: Math.hypot(esc.x - base.x, esc.y - base.y) <= BASE_CAPTURE_RADIUS,

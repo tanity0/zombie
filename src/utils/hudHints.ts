@@ -20,7 +20,8 @@ export const hudHintStyle = (padActive: boolean, padKind: PadKind, pointerKind: 
   return null;
 };
 
-export type HudAction = 'pause' | 'press' | 'flick' | 'gunPrev' | 'gunNext';
+// 'follow'=「連れて歩く」の切り替え(research/ESCORT_FOLLOW.md §9・解放済みの拠点の円の中だけ)。
+export type HudAction = 'pause' | 'press' | 'flick' | 'gunPrev' | 'gunNext' | 'follow';
 /** 押下の印に使う名前(操作+銃の枠 slot1〜slot9)。 */
 export type HudPressName = HudAction | `slot${number}`;
 /** 'lmb'/'rmb'=左/右クリックの絵、'menu'=三本線(パッドの一時停止=Xbox の Menu も PS の Options も実物は三本線。任天堂系は 'plus'=+ の形)。null=札を出さない。 */
@@ -35,13 +36,15 @@ export const hudGlyph = (style: HudHintStyle, action: HudAction, hasMouse: boole
       case 'pause': return 'Esc';
       case 'press': return hasMouse ? 'lmb' : 'Space';
       case 'flick': return hasMouse ? 'rmb' : 'K';
+      case 'follow': return 'E';
       default: return null; // 銃はその枠の番号(hudGunSlotKey)
     }
   }
   // 標準配置は位置で並ぶ(下=指・右=はじく・上=次の銃・左肩=前の銃)。刻印は系統ごとに違う(任天堂系は下が B・右が A)。
-  const g = style === 'padps' ? { pause: 'menu', press: '×', flick: '○', gunPrev: 'L1', gunNext: '△' }
-    : style === 'padnin' ? { pause: 'plus', press: 'B', flick: 'A', gunPrev: 'L', gunNext: 'X' }
-      : { pause: 'menu', press: 'A', flick: 'B', gunPrev: 'LB', gunNext: 'Y' };
+  // follow=左の面ボタン(標準配置の2番)。刻印は Xbox=X・PS=□・任天堂系=Y。
+  const g = style === 'padps' ? { pause: 'menu', press: '×', flick: '○', gunPrev: 'L1', gunNext: '△', follow: '□' }
+    : style === 'padnin' ? { pause: 'plus', press: 'B', flick: 'A', gunPrev: 'L', gunNext: 'X', follow: 'Y' }
+      : { pause: 'menu', press: 'A', flick: 'B', gunPrev: 'LB', gunNext: 'Y', follow: 'X' };
   return g[action];
 };
 /** キーボードの銃の枠の番号(1〜9)。10枠目以降と、パッドは無し。 */
@@ -115,7 +118,7 @@ export const setHudActionDown = (action: HudPressName, src: string, on: boolean)
   downCount.set(action, Math.max(0, n));
   if (typeof document !== 'undefined') document.documentElement.classList.toggle(`hk-${action}`, n > 0);
 };
-const KEY_ACTION: Record<string, HudPressName> = { Space: 'press', KeyJ: 'press', KeyK: 'flick', Escape: 'pause', KeyP: 'pause', KeyQ: 'gunNext',
+const KEY_ACTION: Record<string, HudPressName> = { Space: 'press', KeyJ: 'press', KeyK: 'flick', Escape: 'pause', KeyP: 'pause', KeyQ: 'gunNext', KeyE: 'follow',
   Digit1: 'slot1', Digit2: 'slot2', Digit3: 'slot3', Digit4: 'slot4', Digit5: 'slot5', Digit6: 'slot6', Digit7: 'slot7', Digit8: 'slot8', Digit9: 'slot9' };
 const MOUSE_ACTION: Record<number, HudAction> = { 0: 'press', 2: 'flick' };
 if (typeof window !== 'undefined') {

@@ -107,6 +107,8 @@ export const useGameControls = () => {
       // 銃の持ち替え(押した瞬間だけ・押しっぱなしの連打は無視)。
       if (!e.repeat) {
         if (e.code === 'KeyQ' || (!e.code && key === 'q')) { pcCycleGun(1); return; }
+        // E=「連れて歩く」の切り替え(research/ESCORT_FOLLOW.md §9)。解放済みの拠点の円の外では store が何もしない。
+        if (e.code === 'KeyE' || (!e.code && key === 'e')) { useGameStore.getState().toggleEscortFollow(); return; }
         const slot = /^Digit([1-9])$/.exec(e.code ?? '');
         if (slot) { pcSelectGunSlot(Number(slot[1]) - 1); return; }
       }

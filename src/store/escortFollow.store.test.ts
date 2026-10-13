@@ -200,3 +200,45 @@ describe('被弾の滑りを跨いでも、ついてくる/帰るは続く(検�
     expect(useGameStore.getState().npcDialogueQueue.length).toBe(0);
   });
 });
+
+// §9(社長指示2026-10-13): 「連れて歩く」のオン/オフ。オフなら区域の中でも誰もついてこない。
+describe('連れて歩くのオン/オフ(§9)', () => {
+  it('オフなら区域の中に居てもついてこない', () => {
+    setup({ captured: true, ex: 3000, ey: 200, px: 3500, py: 0 });
+    useGameStore.setState({ escortFollowEnabled: false });
+    tick(60);
+    expect(esc0().followState).not.toBe('follow');
+    useGameStore.setState({ escortFollowEnabled: true });
+  });
+  it('ついてきている最中にオフにすると、見送ってから帰る', () => {
+    setup({ captured: true, ex: 3000, ey: 200, px: 3500, py: 0 });
+    tick(30);
+    expect(esc0().followState).toBe('follow');
+    useGameStore.setState({ escortFollowEnabled: false });
+    tick(1);
+    expect(esc0().followState).toBe('return');
+    expect(esc0().followPauseUntil).toBeGreaterThan(0);
+    useGameStore.setState({ escortFollowEnabled: true });
+    tick(1);
+    expect(esc0().followState).toBe('follow'); // オンへ戻せば(区域の中なので)またついてくる
+  });
+  it('toggleEscortFollow は解放済みの拠点の円の中でだけ効く', () => {
+    setup({ captured: true, ex: 4700, ey: 0, px: 3500, py: 0 });
+    useGameStore.getState().toggleEscortFollow();
+    expect(useGameStore.getState().escortFollowEnabled).toBe(true); // 円の外=何もしない
+    putPlayer(4800, 0);
+    useGameStore.getState().toggleEscortFollow();
+    expect(useGameStore.getState().escortFollowEnabled).toBe(false);
+    useGameStore.getState().toggleEscortFollow();
+    expect(useGameStore.getState().escortFollowEnabled).toBe(true);
+  });
+});
+
+describe('連れて歩くの返事(§9・監査A-1)', () => {
+  it('名簿の全員ぶんの返事がある', async () => {
+    const { FOLLOW_TOGGLE_LINES } = await import('../data/npcLines');
+    const { BASE_SOLDIER_COUNT } = await import('./gameStore');
+    expect(FOLLOW_TOGGLE_LINES).toHaveLength(BASE_SOLDIER_COUNT);
+    for (const l of FOLLOW_TOGGLE_LINES) { expect(l.on.length).toBeGreaterThan(0); expect(l.off.length).toBeGreaterThan(0); }
+  });
+});

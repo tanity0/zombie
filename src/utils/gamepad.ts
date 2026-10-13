@@ -19,9 +19,9 @@ export const PAD_DEAD_ZONE = 0.2;
 const MENU_STICK_ON = 0.6;
 const MENU_SCROLL_DEAD = 0.3; // 右スティックのスクロールのデッドゾーン(標準配置の axes[2]/[3] だけ読む)
 // 押しっぱなしの繰り返し間隔(初回320ms・以後110ms)は utils/menuNav が持つ。ここは「いま押されている向き」を毎フレーム渡すだけ。
-const B = { A: 0, B: 1, Y: 3, LB: 4, RB: 5, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
+const B = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
 // ゲーム中のボタン札(§14-3): 押している間だけ札が沈む。ボタン → 札の操作。
-const HUD_PAD_ACTIONS: readonly (readonly [number, HudAction])[] = [[B.A, 'press'], [B.B, 'flick'], [B.RB, 'flick'], [B.Y, 'gunNext'], [B.LB, 'gunPrev'], [B.START, 'pause'], [B.BACK, 'pause']];
+const HUD_PAD_ACTIONS: readonly (readonly [number, HudAction])[] = [[B.A, 'press'], [B.B, 'flick'], [B.RB, 'flick'], [B.Y, 'gunNext'], [B.LB, 'gunPrev'], [B.X, 'follow'], [B.START, 'pause'], [B.BACK, 'pause']];
 const syncHudPadKeys = (btn: readonly boolean[]): void => { for (const [i, a] of HUD_PAD_ACTIONS) setHudActionDown(a, `p${i}`, !!btn[i]); };
 
 /** スティックの値 → 移動の方向と強さ(デッドゾーンを0・外周を1)。デッドゾーン内は null。 */
@@ -205,6 +205,8 @@ export const installGamepad = (): (() => void) => {
     // Y=次の銃 / LB=前の銃
     if (down(B.Y)) pcCycleGun(1);
     if (down(B.LB)) pcCycleGun(-1);
+    // X(左の面ボタン)=「連れて歩く」の切り替え(research/ESCORT_FOLLOW.md §9)。解放済みの拠点の円の外では store が何もしない。
+    if (down(B.X)) useGameStore.getState().toggleEscortFollow();
     if (down(B.START) || down(B.BACK)) escapeKey();
     prev = btn;
   };
