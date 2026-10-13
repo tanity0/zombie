@@ -216,7 +216,12 @@ import { escortHitFx, escortRiseFx, escortLandFx, type EscortFxApi, type EscortF
 // BOT_AND_GHOST.md §2.8 G2.5(ヘイト)。
 import { addHateDamage, escortHateSide, escortIdOfSide, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
 import { stabilizeEscortFace } from '../utils/escortFace'; // 進軍NPCの向きのヒステリシス
-import { escortTossDecision, escortTossLanding, escortTossProgress, ESCORT_TOSS_MS, ESCORT_TOSS_NEVER } from '../utils/escortToss'; // 兵士のトス(research/ESCORT_TOSS.md)
+import {
+  escortTossDecision, escortTossLanding, ESCORT_TOSS_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_CD_MS,
+  escortKickTargetOk, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist, type EscortKick,
+  ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS,
+} from '../utils/escortToss'; // 兵士の蹴り飛ばし(research/ESCORT_TOSS.md v3.1)
+import { npcSfxDistGain } from '../utils/npcSfx';
 import { isEscortSwinging, stepEscortMelee, inEscortMeleeArc, escortKnifeHit, ESCORT_MELEE_EXIT_PX, ESCORT_CHEST_UP_PX, ESCORT_MELEE_PHASE_STEP_MS } from '../utils/escortMelee'; // 進軍NPCの近接(research/ESCORT_MELEE.md)
 // 敵同士の軽い押し合い(社長指示v0.25.2320)。updateEnemies の後処理で座標だけ微調整する純関数。
 import { computeEnemySeparation } from '../utils/enemySeparation';
@@ -852,9 +857,6 @@ const applyEscortMeleeHits = (get: () => GameState, set: (p: Partial<GameState> 
       else if (crit) {
         if (!isBossType(e.type) && !isHangedman(e.type)) {
           get().stunEnemy(e.id, get().gameTime + STUN_DURATION_MS);
-          // ★兵士のトス(research/ESCORT_TOSS.md): 条件が揃えばプレイヤーの手前へ飛ばす。この振りの押し返しは外す
-          // (下の set が無条件に上書きしてトスが消えるため・品質監査 A-1)。
-          if (get().tossEnemyToPlayer(e.id)) pushes.delete(e.id);
         }
         get().spawnRing(ecx, ecy, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
       }
@@ -868,6 +870,95 @@ const applyEscortMeleeHits = (get: () => GameState, set: (p: Partial<GameState> 
     }
   }
   return landed;
+};
+
+// ---- ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md・社長指示2026-10-13) -----------------------------------------------
+// 毎フレーム1回(updateSuppression の頭・通常ルートと洋館通路ルートの両方より前)。割り当て→中止→着地の再判定→命中→終わり、を進める。
+// 兵士の位置は各ルートの軍人の map が escortKickOverride で書く(ここは store の escortKick だけを書く)。
+const escortBusyNow = (e: EscortSoldier, now: number): boolean =>
+  isEscortDowned(e)
+  || (e.lastHitAt !== undefined && now - e.lastHitAt >= 0 && now - e.lastHitAt < (e.hurtCrouchMs ?? 0))
+  || (e.slideUntil !== undefined && now < e.slideUntil);
+const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s: GameState) => Partial<GameState>)) => void): void => {
+  const st = get();
+  const now = st.gameTime;
+  const p = st.player;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const locked = isInputLocked() || st.attention !== null || !(p.health > 0);
+  const k = st.escortKick;
+  if (k) {
+    const esc = st.escorts.find(e => e.id === k.escortId);
+    const enemy = st.enemies.find(e => e.id === k.enemyId);
+    let next: EscortKick | null = k;
+    let abortRec = st.escortKickAbort;
+    if (!k.aborted && !k.hitDone) {
+      const bad = !esc || escortBusyNow(esc, now) || isEscortLowHealth(esc) || !enemy || isCorpse(enemy)
+        || !(enemy.stunUntil !== undefined && now < enemy.stunUntil) || !!enemy.escortToss || locked;
+      // 着地の瞬間の再判定(型・状態・入力・プレイヤーまでの距離。間隔はもう見ない=割り当て時に見た)。
+      const landFail = !bad && now >= k.landAt && enemy !== undefined && !escortTossDecision({
+        enemy, playerCx: pcx, playerCy: pcy, playerAlive: p.health > 0, inputLocked: locked,
+        gameTime: now, lastTossAt: ESCORT_TOSS_NEVER,
+      });
+      if (bad || landFail) {
+        next = { ...k, aborted: true };
+        if (enemy && enemy.stunUntil !== undefined) abortRec = { enemyId: enemy.id, stunUntil: enemy.stunUntil };
+      }
+    }
+    if (next && next.aborted && now >= next.landAt) next = null; // 跳躍中の中止は着地まで飛んでから終わる
+    if (next && !next.aborted && !next.hitDone && now >= next.hitAt && enemy) {
+      next = { ...next, hitDone: true };
+      const slid = get().tossEnemyToPlayer(enemy.id);
+      const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+      // 命中(派手さの絵・判定なし): 会心と同じ音を兵士の会心と同じ距離減衰で+鞭の破裂音を低く。会心の金の輪と粒を蹴った向きへ。
+      // 血は蹴られた背中から兵士の側へ抜ける。揺れは出さない(遠い所の出来事=揺れは到着で)。
+      const g = npcSfxDistGain(ecx, ecy, pcx, pcy, st.camera, st.gameBounds);
+      if (g > 0) void import('../audio/audioManager').then(m => { m.playSfx('headshot', g); m.playSfx('whip-hit', 0.8 * g, undefined, 0.8); });
+      get().spawnRing(ecx, ecy, 8, 52, 'rgba(253,224,71,0.95)', 3, 320);
+      get().spawnBurst(ecx, ecy, '#fde047', 12, next.dirX, next.dirY);
+      get().spawnGlow(ecx, ecy, 34, 'rgba(253,224,71,', 240);
+      get().spawnSpray(ecx - next.dirX * enemy.width * 0.3, ecy - next.dirY * enemy.height * 0.3, -next.dirX, -next.dirY, 12, ['#7f1d1d', '#991b1b', '#b91c1c']);
+      if (slid) set({ lastEscortTossAt: now });
+    }
+    if (next && now >= next.endAt) next = null;
+    if (next !== k || abortRec !== st.escortKickAbort) set({ escortKick: next, escortKickAbort: abortRec });
+    return;
+  }
+  // 割り当て: 間隔・入力・ウェルカム待機を見てから、画面内の気絶中の敵 × 兵士の一番近い組。
+  if (locked || now - st.lastEscortTossAt < ESCORT_TOSS_CD_MS) return;
+  if (escortShouldHoldForWelcome(st.activeEvent?.kind)) return;
+  const targets = st.enemies.filter(e => e.stunUntil !== undefined && now < e.stunUntil
+    && escortKickTargetOk(e, now, pcx, pcy, isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom, 0), st.escortKickAbort, e.id));
+  if (targets.length === 0) return;
+  const kickers = st.escorts.filter(e => escortHasHealth(e) && !escortBusyNow(e, now) && !isEscortLowHealth(e) && !isEscortSwinging(e, now));
+  const pair = pickEscortKickPair(targets, kickers);
+  if (!pair) return;
+  const face = p.lastDirection ?? { x: 0, y: 0 };
+  const en = pair.enemy;
+  const land = escortTossLanding(en.x + en.width / 2, en.y + en.height / 2, pcx, pcy, face.x, face.y);
+  const kp = escortKickPoint(en, land.x, land.y);
+  const half = ESCORT_BODY_SIZE / 2;
+  const areaCtx: PlayableAreaCtx = {
+    farBackdrop: st.farBackdrop, labTheme: false,
+    corridorMode: st.corridorMode, m0AdvanceLimitX: st.m0AdvanceLimitX, corridorRunInActive: st.corridorRunInActive,
+  };
+  const c = clampRectToPlayableArea(kp.x - half, kp.y - ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, areaCtx, pair.escort.x - half);
+  const landAt = now + ESCORT_KICK_CROUCH_MS + ESCORT_KICK_JUMP_MS;
+  const hitAt = landAt + ESCORT_KICK_WINDUP_MS;
+  set(state => ({
+    escortKick: {
+      escortId: pair.escort.id, enemyId: en.id, startAt: now,
+      fromX: pair.escort.x, fromY: pair.escort.y, toX: c.x + half, toY: c.y + ESCORT_BODY_SIZE,
+      dirX: kp.dirX, dirY: kp.dirY, landAt, hitAt, endAt: hitAt + ESCORT_KICK_RECOVER_MS, hitDone: false, aborted: false,
+    },
+    // 割り当ての瞬間にナイフの構えを畳む(着いた瞬間に自動のナイフが出て、気絶中の敵を蹴る前に押さない・品質監査 A-2)。
+    escorts: state.escorts.map(e => e.id !== pair.escort.id ? e : { ...e, knifeMode: false, knifeSwingAt: undefined, knifeHitDone: true }),
+  }));
+};
+/** 蹴りを割り当てられた兵士の位置・向き(各ルートの軍人の map が呼ぶ。撃たない・ナイフを振らない=呼び手はここで return する)。 */
+const escortKickOverride = (esc: EscortSoldier, k: EscortKick, now: number): EscortSoldier => {
+  const pos = escortKickJumpPos(k, now);
+  const face: 1 | -1 = (now < k.landAt ? (k.toX - k.fromX) : k.dirX) < 0 ? -1 : 1;
+  return { ...esc, x: pos.x, y: pos.y, face, moving: false, vx: 0, vy: 0, knifeMode: false };
 };
 
 // ---- research/ESCORT_TARGETED.md: 進軍NPCの時計(倒れる/起こす/被弾の滑り) -----------------------------------------
@@ -5951,6 +6042,9 @@ interface GameState {
   hitRetaliation: HitRetaliationWindow | null;
   // ★兵士のトス(research/ESCORT_TOSS.md)の前回の時刻(ゲーム時間・まだ無い=ESCORT_TOSS_NEVER)。8秒に1回まで。resetGame で戻す。
   lastEscortTossAt: number;
+  // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md)。進行中の1件(同時1件)と、この気絶中に中止した敵の記憶。resetGame で null。
+  escortKick: EscortKick | null;
+  escortKickAbort: { enemyId: string; stunUntil: number } | null;
   // ★KILL処刑演出v2(社長指示v0.25.3603): フル演出(寄りズーム発火)のフィニッシュキルで1回
   // 書かれるイベント。描画はpixiScene(実時間駆動=hitstop中も動く・判定/座標は一切不変)。
   // 跳びつきを見せるのは primary(ex/ey…)の一体のみ。victims=同時に処刑された敵(primary含む)で、
@@ -6195,7 +6289,7 @@ interface GameState {
   // ★被弾反撃(research/HIT_RETALIATION.md): 入力(フリック/右クリック/パッド)から呼ぶ。窓・向き・相手・状態が揃えば飛び込みを始めて true
   // (揃わなければ何もせず false=呼び出し側は従来の入力経路へ)。dirX/dirY=入力の向き。
   tryHitRetaliation: (dirX: number, dirY: number) => boolean;
-  // ★兵士のトス(research/ESCORT_TOSS.md)。兵士の会心で倒れずに気絶した瞬間に、弾/ナイフの両経路がこの1本を呼ぶ。飛ばしたら true。
+  // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md)。蹴りの命中で呼ぶ=気絶中の敵をプレイヤーの斜め前へ滑らせる。滑らせたら true。
   tossEnemyToPlayer: (enemyId: string) => boolean;
   // 被弾反撃の着地(命中)を解決する(ループが movePlayer の直後に呼ぶ)。待ちが無い/まだ着地前なら null。
   resolveRetaliateStrike: () => CounterTriggerResult | null;
@@ -7249,6 +7343,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   hitstopUntil: 0,
   hitRetaliation: null,
   lastEscortTossAt: ESCORT_TOSS_NEVER,
+  escortKick: null,
+  escortKickAbort: null,
   killFx: null,
   kamitsukiFx: null,
   attention: null,
@@ -7829,25 +7925,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
     return true;
   },
-  // ★兵士のトス(research/ESCORT_TOSS.md)。判定は純関数 escortTossDecision、着地点は escortTossLanding(写さない)。
-  // 位置は敵の更新が escortToss を読んで ease-out で動かす(ノックバックの欄は使わない=他の押しの飛距離を変えない)。
+  // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md §3)。蹴りの命中で呼ぶ=敵を「プレイヤーの斜め前」まで地面を滑らせる。
+  // 起こす条件(画面内・気絶・間隔・兵士)は呼び手の蹴りの制御(stepEscortKick)が持つ。ここは「滑らせてよいか」だけを見る:
+  // 生きていて気絶中・死体でない・プレイヤーまで (着地の距離+24px) 以上(近すぎる時に後退させない)。着地点は escortTossLanding(写さない)。
+  // 位置は敵の更新が escortToss を読んで動かす(ノックバックの欄は使わない=他の押しの飛距離を変えない)。
   tossEnemyToPlayer: (enemyId) => {
     const st = get();
     const e = st.enemies.find(en => en.id === enemyId);
-    if (!e) return false;
+    if (!e || !(e.health > 0) || isCorpse(e) || !(e.stunUntil !== undefined && st.gameTime < e.stunUntil)) return false;
     const p = st.player;
     const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
-    if (!escortTossDecision({
-      enemy: e, playerCx: pcx, playerCy: pcy, playerAlive: p.health > 0,
-      inputLocked: isInputLocked() || st.attention !== null,
-      gameTime: st.gameTime, lastTossAt: st.lastEscortTossAt,
-    })) return false;
     const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+    if (Math.hypot(ecx - pcx, ecy - pcy) < ESCORT_TOSS_STOP_PX + 24) return false;
     const face = p.lastDirection ?? { x: 0, y: 0 };
     const land = escortTossLanding(ecx, ecy, pcx, pcy, face.x, face.y);
     const now = Date.now();
     set(state => ({
-      lastEscortTossAt: state.gameTime,
       enemies: state.enemies.map(en => en.id !== enemyId ? en : {
         ...en,
         escortToss: {
@@ -7861,13 +7954,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         vx: 0, vy: 0,
       }),
     }));
-    // 打ち出し(派手さの絵・判定なし): 黄色の会心の輪は呼び手の既存のまま。
-    const fl = Math.hypot(land.x - ecx, land.y - ecy) || 1;
-    const ux = (land.x - ecx) / fl, uy = (land.y - ecy) / fl;
-    // 黄は既存の会心の輪1つに任せ、ここは当たった体の血・肉片が背中側へ抜ける(撃破の粒の色と分ける・検収クリエイティブ A-6)。
-    get().spawnSpray(ecx - ux * e.width * 0.3, ecy - uy * e.height * 0.3, -ux, -uy, 14, ['#7f1d1d', '#991b1b', '#b91c1c', '#e5e7eb']);
-    // 音は会心の刺さり音(弾の経路は既に鳴らしている)と重ねず、打ち出しの鞭のような破裂音を1発(検収クリエイティブ A-1)。
-    void import('../audio/audioManager').then(m => m.playSfx('whip-hit', 0.85, undefined, 0.8));
     return true;
   },
   // 着地の瞬間に斬る(ループが movePlayer の直後に呼ぶ・縮地の resolveShukuchiStrike と同型)。着地の時に相手を再確認し、
@@ -13769,8 +13855,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             tossLandings.push({ x: land.x + enemy.width / 2, y: land.y + enemy.height, dirX: ddx / ddl, dirY: ddy / ddl });
             return { ...enemy, x: land.x, y: land.y, vx: 0, vy: 0, escortToss: undefined, escortTossLandedAt: gameTime };
           }
-          const f = escortTossProgress(gameTime, tz.startAt, tz.endAt);
-          const fly = resolveMove(tz.fromX + ddx * f, tz.fromY + ddy * f);
+          // 地面を滑る(浮かない・v3.1)。止まり際に5px行き過ぎて戻る(慣性)。
+          const dd = escortTossSlideDist(gameTime, tz.startAt, tz.endAt, ddl);
+          const fly = resolveMove(tz.fromX + (ddx / ddl) * dd, tz.fromY + (ddy / ddl) * dd);
           return { ...enemy, x: fly.x, y: fly.y, vx: 0, vy: 0 };
         }
         // 攻撃モーションを「全う」するフェーズの扱い(社長指示・v0.25.3271裁定で更新):
@@ -17497,9 +17584,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 揺れも他の一撃系演出(パンプキン着地mag9/盾バッシュmag10)に並ぶ強さへ上げる(旧: 220ms/mag5)。
     // 兵士のトスの着地: 鈍い体の落ちる音+地面側の衝撃の揺れ(揺れの物差し registerImpact に乗せる=銃の反動の語彙を使わない・検収クリエイティブ A-5)。
     // 砂埃(滑った向きの後ろへ尾を引く)・小さなバウンド・気絶の輪のポップは描画が escortTossLandedAt から出す(判定なし)。
+    // v3.1: 到着(プレイヤーの目の前)が2つ目の山=会心の揺れの型(crit)+短く軽い「ザッ」(jump-land を速く短く=兵士の倒れる音と聞き分ける)。
     for (const l of tossLandings) {
-      void import('../audio/audioManager').then(m => m.playSfx('heavy-impact', 0.55, undefined, 0.85));
-      get().registerImpact({ source: 'escort-toss', damage: 1, minMag: IMPACT_MELEE_MIN, flags: {}, x: l.x, y: l.y }); // damage>0 でないと入口で捨てられる(検収2巡目 A-1)。1+床=近接の床の大きさ
+      void import('../audio/audioManager').then(m => m.playSfx('jump-land', 0.85, 180, 1.4));
+      get().registerImpact({ source: 'escort-toss', damage: 1, minMag: IMPACT_MELEE_MIN, flags: { crit: true }, x: l.x, y: l.y }); // damage>0 でないと入口で捨てられる(検収2巡目 A-1)
     }
     if (screamerActivatedAt.length > 0) {
       const { x, y } = screamerActivatedAt[0];
@@ -20047,6 +20135,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       return shots.map(sh => ({ x: sh.x, y: sh.y }));
     }
+    // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md): 割り当て・中止・命中を進める(通常ルートと洋館通路ルートの両方より前・M0は上で抜けている)。
+    stepEscortKick(get, set);
     const state = get();
     // 洋館通路(corridorMode): 横一列の隊形へ進みつつ通常拠点護衛と同じ四方位索敵を使う。
     // 前方=停止、左右=50%、後方=70%で全方位へ射撃。M0チュートリアルは上の別経路なので対象外。
@@ -20086,6 +20176,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (esc.knifeMode || esc.knifeSwingAt !== undefined) { escChanged = true; return { ...esc, moving: false, vx: 0, vy: 0, knifeMode: false, knifeSwingAt: undefined, knifeHitDone: true }; }
           return { ...esc, moving: false, vx: 0, vy: 0 };
         }
+        // ★兵士の蹴り飛ばし v3.1: 割り当てられた兵士は跳ぶ〜蹴る〜戻りの間、列へ戻らない・撃たない・ナイフを振らない。
+        { const kk = state.escortKick; if (kk && kk.escortId === esc.id) { escChanged = true; return escortKickOverride(esc, kk, now); } }
         {
           const hb = corridorHaters.get(esc.id) ?? [];
           const prevHb = esc.hatedByBossIds ?? [];
@@ -20280,6 +20372,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (esc.knifeMode || esc.knifeSwingAt !== undefined) { escortsChanged = true; return { ...esc, moving: false, vx: 0, vy: 0, knifeMode: false, knifeSwingAt: undefined, knifeHitDone: true }; }
         return { ...esc, moving: false, vx: 0, vy: 0 };
       }
+      // ★兵士の蹴り飛ばし v3.1: 割り当てられた兵士は跳ぶ〜蹴る〜戻りの間、画面外の自動進行・後ずさり・前進・射撃・ナイフより優先(どこに居ても跳んで来る)。
+      { const kk = state.escortKick; if (kk && kk.escortId === esc.id) { escortsChanged = true; return escortKickOverride(esc, kk, now); } }
       // 「ボスの赤い予告が自分に掛かった瞬間」(ボスが狙いをこの軍人に決めた=hateTarget が escort:<id> に新しく変わった)。
       {
         const hb = bossHatersOf.get(esc.id) ?? [];
@@ -22066,6 +22160,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         hitstopUntil: 0,
         hitRetaliation: null,
         lastEscortTossAt: ESCORT_TOSS_NEVER,
+        escortKick: null,
+        escortKickAbort: null,
   killFx: null,
   kamitsukiFx: null,
   attention: null,

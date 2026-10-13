@@ -74,3 +74,107 @@ export const escortTossProgress = (gameTime: number, startAt: number, endAt: num
   const t = Math.max(0, Math.min(1, (gameTime - startAt) / Math.max(1, endAt - startAt)));
   return 1 - (1 - t) * (1 - t);
 };
+
+// ---------------------------------------------------------------------------------------------
+// ★v3.1(社長指示2026-10-13): 兵士の蹴り飛ばし。画面内の気絶中の敵へ、一番近い兵士が(どこに居ても)0.5秒で背後へ跳び、
+// 着地してすぐ蹴る → 敵がプレイヤーの斜め前まで地面を滑り込む。research/ESCORT_TOSS.md「仕様 v3.1」。
+// ---------------------------------------------------------------------------------------------
+/** しゃがみ(溜め)。KILL の跳びつきと同じ型(しゃがみ→跳躍)。 */
+export const ESCORT_KICK_CROUCH_MS = 100;
+/** 跳躍。しゃがみと合わせて 0.5秒(社長「どんなに遠くても0.5秒で背後にジャンプ」)。 */
+export const ESCORT_KICK_JUMP_MS = 400;
+/** 着地から命中まで(足を引く)。 */
+export const ESCORT_KICK_WINDUP_MS = 200;
+/** 命中から元の動きへ戻るまで(踏み込み→反動→戻り)。 */
+export const ESCORT_KICK_RECOVER_MS = 220;
+/** 蹴る位置=敵の体の縁からさらにこれだけ外(敵の背中側)。 */
+export const ESCORT_KICK_BEHIND_PX = 26;
+/** 気絶の残りがこれだけ余っている敵だけ(着いて蹴る前に気絶が切れないように)。 */
+export const ESCORT_KICK_STUN_MARGIN_MS = 300;
+/** 割り当てから命中まで。 */
+export const ESCORT_KICK_TO_HIT_MS = ESCORT_KICK_CROUCH_MS + ESCORT_KICK_JUMP_MS + ESCORT_KICK_WINDUP_MS;
+/** プレイヤーまでこの距離より近い敵は蹴らない(すでに目の前)。 */
+export const ESCORT_KICK_MIN_DIST = ESCORT_TOSS_MIN_DIST;
+
+/** 蹴りの進行(store.escortKick)。時計はゲーム時間。 */
+export interface EscortKick {
+  escortId: string;
+  enemyId: string;
+  startAt: number;   // 割り当て=しゃがみ開始
+  fromX: number; fromY: number; // 跳ぶ前の兵士の足元
+  toX: number; toY: number;     // 蹴る位置(兵士の足元)
+  dirX: number; dirY: number;   // 蹴る向き(=敵が滑る向き)
+  landAt: number;    // 着地
+  hitAt: number;     // 命中
+  endAt: number;     // 元の動きへ
+  hitDone: boolean;
+  aborted: boolean;  // 中止(跳躍中なら着地まで飛んでから終わる)
+}
+
+/** 蹴る対象になれる敵か(画面内・気絶の残り・型/状態・プレイヤーまでの距離)。onScreen は呼び手が測る(ズーム込みの可視域)。 */
+export const escortKickTargetOk = (
+  e: Pick<Enemy, 'type' | 'health' | 'corpseUntil' | 'dormant' | 'fromEvent' | 'aiPhase' | 'hordeLeaderId' | 'hordeState' | 'stunUntil' | 'escortToss'>
+    & { x: number; y: number; width: number; height: number },
+  gameTime: number, playerCx: number, playerCy: number, onScreen: boolean,
+  abort: { enemyId: string; stunUntil: number } | null, id: string,
+): boolean => {
+  if (!onScreen || e.escortToss) return false;
+  if (!(e.health > 0) || isCorpse(e) || e.dormant === true || e.fromEvent) return false;
+  if (!escortTossableType(e.type) || isHordeFollower(e)) return false;
+  if (e.aiPhase === 'jump' || e.aiPhase === 'charge') return false;
+  if (e.stunUntil === undefined || e.stunUntil - gameTime < ESCORT_KICK_TO_HIT_MS + ESCORT_KICK_STUN_MARGIN_MS) return false;
+  if (abort && abort.enemyId === id && abort.stunUntil === e.stunUntil) return false; // この気絶中に一度中止した敵
+  return Math.hypot(e.x + e.width / 2 - playerCx, e.y + e.height / 2 - playerCy) >= ESCORT_KICK_MIN_DIST;
+};
+
+/**
+ * 蹴る位置(兵士の足元)。着地点→敵の延長線上の、敵の背中側(蹴る向きと滑る向きを一致させる)。
+ * 足元の高さは敵の足元の線に揃える。戻り値 dir=蹴る向き(敵→着地点)。
+ */
+export const escortKickPoint = (
+  enemy: { x: number; y: number; width: number; height: number }, landX: number, landY: number,
+): { x: number; y: number; dirX: number; dirY: number } => {
+  const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+  let dx = landX - ecx, dy = landY - ecy;
+  const dl = Math.hypot(dx, dy) || 1;
+  dx /= dl; dy /= dl;
+  const back = enemy.width / 2 + ESCORT_KICK_BEHIND_PX;
+  return { x: ecx - dx * back, y: enemy.y + enemy.height - dy * back, dirX: dx, dirY: dy };
+};
+
+/** 跳躍の位置(足元)。しゃがみの間は from、跳躍は加速→減速(smoothstep)、着地後は to。 */
+export const escortKickJumpPos = (k: Pick<EscortKick, 'fromX' | 'fromY' | 'toX' | 'toY' | 'startAt'>, gameTime: number): { x: number; y: number; t: number } => {
+  const t = Math.max(0, Math.min(1, (gameTime - k.startAt - ESCORT_KICK_CROUCH_MS) / ESCORT_KICK_JUMP_MS));
+  const s = t * t * (3 - 2 * t);
+  return { x: k.fromX + (k.toX - k.fromX) * s, y: k.fromY + (k.toY - k.fromY) * s, t };
+};
+
+/** (敵, 兵士) の組のうち、兵士から敵までが一番近い組。どちらも呼び手が条件で絞った候補。 */
+export const pickEscortKickPair = <E extends { id: string; x: number; y: number; width: number; height: number }, S extends { id: string; x: number; y: number }>(
+  enemies: readonly E[], escorts: readonly S[],
+): { enemy: E; escort: S } | null => {
+  let best: { enemy: E; escort: S } | null = null, bestD = Infinity;
+  for (const e of enemies) {
+    const ex = e.x + e.width / 2, ey = e.y + e.height;
+    for (const s of escorts) {
+      const d = Math.hypot(s.x - ex, s.y - ey);
+      if (d < bestD) { bestD = d; best = { enemy: e, escort: s }; }
+    }
+  }
+  return best;
+};
+
+/** 止まり際に行き過ぎる量(px)。慣性=止まる所で一度だけ行き過ぎて戻る(クリエイティブ監査 v3 #11)。 */
+export const ESCORT_TOSS_OVERSHOOT_PX = 5;
+/**
+ * 滑り込みの進んだ距離(px)。前の 86% の時間で (距離+行き過ぎ) まで ease-out で進み(着く直前に速度0)、
+ * 残りで行き過ぎを戻す(smoothstep)。最後は必ず dist ちょうど(着地点がずれない)。
+ */
+export const escortTossSlideDist = (gameTime: number, startAt: number, endAt: number, dist: number): number => {
+  const t = Math.max(0, Math.min(1, (gameTime - startAt) / Math.max(1, endAt - startAt)));
+  const t1 = 0.86;
+  const os = Math.min(ESCORT_TOSS_OVERSHOOT_PX, dist * 0.1);
+  if (t < t1) { const u = t / t1; return (dist + os) * (1 - (1 - u) * (1 - u)); }
+  const u = (t - t1) / (1 - t1);
+  return dist + os - os * u * u * (3 - 2 * u);
+};

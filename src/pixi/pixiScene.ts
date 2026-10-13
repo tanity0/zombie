@@ -102,6 +102,7 @@ import {
   PLAYER_KNOCKBACK_MS,
   retaliationReadyTarget, // ★被弾反撃の「いま出せるか」(入力と同じ1本・HIT_RETALIATION.md §7)
 } from '../store/gameStore';
+import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
@@ -1777,26 +1778,6 @@ const PLAYER_WALK_BOB_PX = 0.8;
 // 当たり判定/位置(store)は不変。1回のノックバックで sin の1山ぶんポンと跳ねて着地する。
 const KNOCKBACK_HOP_PX = 12;   // 跳ねの高さ(px・社長指示でもっと分かりやすく: 6→12)
 const KNOCKBACK_HOP_MS = 260;
-// ★兵士のトス(research/ESCORT_TOSS.md §4)の浮き: 飛行の長さに合わせた放物線(頂点28px)+着地から160msの小さなバウンド(6px・減衰)。
-// 回転は付けない(歪みを足さない・クリエイティブ監査 #2)。判定なし。死体には付けない。
-const ESCORT_TOSS_HOP_PX = 28;
-const ESCORT_TOSS_BOUNCE_PX = 6;
-const ESCORT_TOSS_BOUNCE_MS = 160;
-const escortTossHopPx = (e: Enemy, gameTime: number): number => {
-  if (e.corpseUntil !== undefined) return 0;
-  const tz = e.escortToss;
-  if (tz) {
-    // 浮きは時間ではなく**道のりの進み**に掛ける=頂点が道のりの真ん中に来る弾道(時間に掛けると終盤が真下へ漂う「風船」になった・検収クリエイティブ A-3)。
-    const t = Math.max(0, Math.min(1, (gameTime - tz.startAt) / Math.max(1, tz.endAt - tz.startAt)));
-    const f = 1 - (1 - t) * (1 - t);
-    return Math.sin(f * Math.PI) * ESCORT_TOSS_HOP_PX;
-  }
-  if (e.escortTossLandedAt !== undefined) {
-    const u = (gameTime - e.escortTossLandedAt) / ESCORT_TOSS_BOUNCE_MS;
-    if (u >= 0 && u < 1) return Math.sin(u * Math.PI) * ESCORT_TOSS_BOUNCE_PX * (1 - u);
-  }
-  return 0;
-};
 // 延焼中の敵の薄いオレンジ点滅(社長指示v0.25.3272・視覚のみ。判定=storeのburnUntil)。
 // ★v0.25.4383(社長裁定2026-09-16「1かつ、延焼はオレンジに」・PACING_PUZZLE.md §16-10-C):
 // 旧 `0xff5a3c` は**赤**で、§16 の「赤=カウンター可の予告」と同じ加算オーバーレイを共有している。
@@ -6785,7 +6766,8 @@ export class PixiScene {
   // 専用のMapで保持する(gazeWindupWasOnのSetだけでは元位置が拾えない)。
   private warpOutWasOn = new Set<string>();
   private warpInWasOn = new Set<string>();
-  private tossLastDir = new Map<string, { x: number; y: number }>(); // 兵士のトスの飛んだ向き(着地の埃を後ろへ引くため・着地後2秒で捨てる)
+  private tossLastDir = new Map<string, { x: number; y: number }>();
+  private escKickFx = new Map<string, EscortKick>(); // 兵士の蹴り(v3.1)の最後の段取り(蹴りが終わった後も着地/蹴り抜きの埃を描き切るため) // 兵士のトスの飛んだ向き(着地の埃を後ろへ引くため・着地後2秒で捨てる)
   private acrasielWarpOutPos = new Map<string, { x: number; y: number }>();
   // FX-V2c: 突進の風圧の向き+減衰締切。突進中は毎フレーム向きを撮り直し(endAtも押し戻す)、
   // 突進が明けたら最後の向きのまま endAt までの残り時間で減衰させる(dashWasOnと同じ「立ち下がり
@@ -19090,7 +19072,7 @@ export class PixiScene {
     const kbHop = ((e.knockbackUntil !== undefined && now < e.knockbackUntil && kbMoving)
       ? Math.sin(Math.max(0, Math.min(1, (now - e.lastHit) / KNOCKBACK_HOP_MS)) * Math.PI)
         * KNOCKBACK_HOP_PX * hopMul(enemyHitReaction(e))   // ★量と連動(2026-09-17)
-      : 0) + escortTossHopPx(e, gameTime);
+      : 0);
     // 裏ボスは「当たり判定=足元の帯(AABB)」と「絵(巨体)」を分離して描く(社長指示)。
     // 他敵は従来どおり足元アンカー＋遠近スケール。
     const bossFixed = isHiddenBoss(e.type);
@@ -23014,16 +22996,28 @@ export class PixiScene {
         if (this.tossLastDir.size > 16) this.tossLastDir.clear(); // 消えた個体の分が溜まらないように(8秒に1回なので通常は1〜2件)
         this.tossLastDir.set(e.id, { x: (e.escortToss.toX - e.escortToss.fromX) / l, y: (e.escortToss.toY - e.escortToss.fromY) / l });
       } else if (e.escortTossLandedAt === undefined || gameTime - e.escortTossLandedAt > 2000) this.tossLastDir.delete(e.id);
+      // ★v3.1: 滑っている間は突進の速度線を出さず(「自分の意志で走る」記号のため)、通った地面に砂埃を置き去りにする
+      // (道のりの 15%/45%/75% を通過した瞬間に1つずつ・最初が大きい=滑り込みの跡・クリエイティブ監査 v3 #10)。
+      // 着いた後も DUST_MS の間は描き続ける(置き去りの埃は滑り終わっても残る)。
+      const trailOn = e.corpseUntil === undefined && (!!e.escortToss || (e.escortTossLandedAt !== undefined && gameTime - e.escortTossLandedAt < DUST_MS + 200));
+      if (trailOn) {
+        const tz = e.escortToss;
+        const tt = tz ? (gameTime - tz.startAt) / Math.max(1, tz.endAt - tz.startAt) : 2;
+        const prog = 1 - (1 - Math.max(0, Math.min(1, tt))) ** 2;
+        [0.15, 0.45, 0.75].forEach((mark, k) => {
+          const L = this.latchFx(`${e.id}:tosstrail${k}`, !!tz && prog >= mark && prog < mark + 0.25, DUST_MS, now,
+            () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DUST_SCALE * (0.75 - k * 0.15)]);
+          if (L) this.drawDust(L.d[0], L.d[1], L.d[2], L.t, this.dustTintForStage(), this.dustAlpha(L.t), L.t0 + k * 53);
+        });
+      }
 
       // v0.25.2868: 溜めの後に本体が高速でコミットする州だけ、進行方向と逆へ短い速度線を引く。
       // 州名は移動/判定の状態機械そのものを読むため、active秒数を変えてもFXだけ遅れて残らない。
       // ジャンプ/滑空も同じ「溜め→高速移動」なので横展開し、サイズに比例させて巨体の重量感を残す。
       const airborneCommit = e.aiPhase === 'g-jump-air' || e.aiPhase === 'g-trijump-air'
         || e.aiPhase === 'g-glide-active' || e.bossState === 'jump-attack';
-      const tossing = !!e.escortToss && e.corpseUntil === undefined; // 兵士のトスの飛行中も同じ速度線(風切り・ESCORT_TOSS.md §4)
-      if (dashing || airborneCommit || tossing) {
+      if (dashing || airborneCommit) {
         let mdx = e.vx ?? 0, mdy = e.vy ?? 0;
-        if (tossing && e.escortToss) { mdx = e.escortToss.toX - e.escortToss.fromX; mdy = e.escortToss.toY - e.escortToss.fromY; }
         if (Math.hypot(mdx, mdy) < 1) {
           mdx = (e.aiTargetX ?? fb.footX) - (e.aiFromX ?? fb.footX);
           mdy = (e.aiTargetY ?? fb.footY) - (e.aiFromY ?? fb.footY);
@@ -23032,13 +23026,11 @@ export class PixiScene {
         const ux = mdx / ml, uy = mdy / ml, px = -uy, py = ux;
         const tail = Math.max(24, Math.min(150, Math.max(e.width, e.height) * 1.25));
         const spread = Math.max(5, Math.min(18, Math.min(e.width, e.height) * 0.18));
-        // 兵士のトスは体が浮いている=筋は足元の砂色ではなく、浮いた体の高さから空気の白で引く(検収クリエイティブ A-2)。
-        const airLift = tossing ? escortTossHopPx(e, gameTime) + fb.boxH * 0.45 : 0;
         for (const off of [-spread, 0, spread]) {
-          const sx = fb.footX + px * off, sy = fb.footY + py * off - airLift;
+          const sx = fb.footX + px * off, sy = fb.footY + py * off;
           o.moveTo(sx, sy).lineTo(sx - ux * tail, sy - uy * tail).stroke({
             width: off === 0 ? 3 : 1.5,
-            color: tossing ? 0xe5e7eb : this.dustTintForStage(),
+            color: this.dustTintForStage(),
             alpha: off === 0 ? 0.55 : 0.3,
           });
         }
@@ -27184,8 +27176,15 @@ export class PixiScene {
     eg.clear();
     // 3コマ立ち絵(-2 あり)は接地A→通過→接地B→通過 のピンポン[0,1,2,1]、2コマのみは従来[0,1](社長指示)。
     const step = Math.floor(now / PixiScene.RESCUE_WALK_FRAME_MS);
+    const escKick = useGameStore.getState().escortKick; // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md §2)
     for (const esc of escorts) {
       seen.add(esc.id);
+      // 蹴りの段(割り当てられた兵士だけ): しゃがみ→跳躍→溜め→蹴り抜き。時計はゲーム時間(store と同じ)。
+      const kick = escKick && escKick.escortId === esc.id && !escKick.aborted ? escKick : null;
+      const kickPhase: 'crouch' | 'air' | 'windup' | 'strike' | null = !kick ? null
+        : gameTime < kick.startAt + ESCORT_KICK_CROUCH_MS ? 'crouch'
+        : gameTime < kick.landAt ? 'air'
+        : gameTime < kick.hitAt ? 'windup' : 'strike';
       let sp = this.escortSprites.get(esc.id);
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.escortSprites.set(esc.id, sp); }
       // soldierIndex ごとのユニーク立ち絵(社長提供)。未提供のNPCは従来の shooter 素材へフォールバック。
@@ -27224,7 +27223,13 @@ export class PixiScene {
       const swingTex = mSwing && mSince < PLAYER_MELEE_SWING_MS && esc.soldierIndex >= 0 && esc.soldierIndex < 8
         ? getTexture(`${ESCORT_SWING_SHEET}-${esc.soldierIndex + (meleeArcT(meleeSwingEase(mSince / PLAYER_MELEE_SWING_MS)) < 0.5 ? 0 : 8)}`)
         : null;
-      const tex = hitCrouch ? getTexture(`${base}-down-0`)
+      // 蹴り(v3.1): 専用の絵が無いので振りの2コマで「しゃがむ/跳ぶ・ためる=振り上げた姿(8..15)→蹴り抜く=低く踏み込んだ姿(0..7)」。
+      // しゃがみは低い構え(0..7)。命中と同じフレームで絵を替える。
+      const kickTex = kickPhase && esc.soldierIndex >= 0 && esc.soldierIndex < 8
+        ? getTexture(`${ESCORT_SWING_SHEET}-${esc.soldierIndex + (kickPhase === 'air' || kickPhase === 'windup' ? 8 : 0)}`)
+        : null;
+      const tex = kickTex ? kickTex
+        : hitCrouch ? getTexture(`${base}-down-0`)
         : downSheet
         ? (getTexture(`${base}-down-${pose.downK >= 0.5 ? 1 : 0}`) ?? getTexture(`${base}-down-1`))
         : swingTex
@@ -27277,7 +27282,33 @@ export class PixiScene {
       // 切らない微小な沈みの時だけ位置で下げる。
       // 近接の踏み込み(振る向きへ PLAYER_MELEE_LUNGE_PX・行って戻る=sin)。位置だけ=歪みではない・判定不変。
       const lungeK = mSwing ? Math.sin((mSince / (ESCORT_MELEE_WINDUP_MS + ESCORT_MELEE_BLADE_MS)) * Math.PI) * PLAYER_MELEE_LUNGE_PX * this.depthScale(esc.y) : 0;
-      const px = Math.round(esc.x + (esc.knifeDirX ?? 0) * lungeK), py = Math.round(esc.y - bob + (tex && sinkWorld > 0.4 ? 0 : sinkWorld) + (esc.knifeDirY ?? 0) * lungeK);
+      // 蹴り(v3.1): 跳躍の放物線(頂点=距離×0.22・30〜140px・位置の動き)と、蹴り抜きの踏み込み 22px→反動で4px戻り過ぎ→戻る(慣性)。
+      let kickOffX = 0, kickOffY = 0;
+      if (kick && kickPhase === 'air') {
+        const tj = Math.max(0, Math.min(1, (gameTime - kick.startAt - ESCORT_KICK_CROUCH_MS) / ESCORT_KICK_JUMP_MS));
+        const hgt = Math.max(30, Math.min(140, Math.hypot(kick.toX - kick.fromX, kick.toY - kick.fromY) * 0.22));
+        kickOffY = -Math.sin(tj * Math.PI) * hgt * this.depthScale(esc.y);
+      } else if (kick && kickPhase === 'strike') {
+        const u = Math.max(0, Math.min(1, (gameTime - kick.hitAt) / ESCORT_KICK_RECOVER_MS));
+        const L = 22 * this.depthScale(esc.y);
+        const ss = (t: number) => t * t * (3 - 2 * t);
+        const k1 = u < 0.3 ? L * (1 - (1 - u / 0.3) ** 2) : u < 0.8 ? L + (-4 - L) * ss((u - 0.3) / 0.5) : -4 * (1 - ss((u - 0.8) / 0.2));
+        kickOffX = kick.dirX * k1; kickOffY = kick.dirY * k1;
+      }
+      const px = Math.round(esc.x + (esc.knifeDirX ?? 0) * lungeK + kickOffX), py = Math.round(esc.y - bob + (tex && sinkWorld > 0.4 ? 0 : sinkWorld) + (esc.knifeDirY ?? 0) * lungeK + kickOffY);
+      // 着地と蹴り抜きの瞬間に足元へ砂埃(判定なし)。蹴りが終わった後も埃は DUST_MS の間描き切る(最後の蹴りを覚えておく)。
+      if (kick) this.escKickFx.set(esc.id, kick);
+      const kickFx = kick ?? this.escKickFx.get(esc.id);
+      if (kickFx && !kick && gameTime > kickFx.endAt + DUST_MS + 200) this.escKickFx.delete(esc.id);
+      if (kickFx) {
+        const kick = kickFx;
+        const landL = this.latchFx(`esc:${esc.id}:kickland`, gameTime >= kick.landAt && gameTime < kick.landAt + 120, DUST_MS, now,
+          () => [kick.toX, kick.toY, PLAYER_HITBOX_FOR_DUST * DUST_SCALE]);
+        if (landL) this.drawDust(landL.d[0], landL.d[1], landL.d[2], landL.t, this.dustTintForStage(), this.dustAlpha(landL.t), landL.t0);
+        const strL = this.latchFx(`esc:${esc.id}:kickstrike`, gameTime >= kick.hitAt && gameTime < kick.hitAt + 120, DUST_MS, now,
+          () => [kick.toX + kick.dirX * 18, kick.toY + kick.dirY * 18, PLAYER_HITBOX_FOR_DUST * DUST_SCALE * 0.8]);
+        if (strL) this.drawDust(strL.d[0], strL.d[1], strL.d[2], strL.t, this.dustTintForStage(), this.dustAlpha(strL.t), strL.t0);
+      }
       const faceSign = esc.face < 0 ? -1 : 1;
       // 軍人の滑りは ease-out(2次)=速さは 1−t に比例。
       const escSlideT = esc.slideUntil !== undefined && esc.slideStartAt !== undefined

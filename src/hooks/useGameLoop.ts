@@ -15094,8 +15094,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 気絶時間アップ(パッシブ): フィニッシュ受付時間を stunDurationMult 倍に。
               const stunMs = STUN_DURATION_MS * (useGameStore.getState().player.stunDurationMult ?? 1);
               useGameStore.getState().stunEnemy(enemyId, gameTime + stunMs);
-              // ★兵士のトス(research/ESCORT_TOSS.md): 兵士の弾の会心で気絶した敵を、条件が揃えばプレイヤーの手前へ飛ばす。
-              if (isEscortShot) useGameStore.getState().tossEnemyToPlayer(enemyId);
             }
             spawnRing(
               enemyForFx.x + enemyForFx.width / 2,

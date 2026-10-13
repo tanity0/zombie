@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   escortTossDecision, escortTossLanding, escortTossProgress, escortTossableType,
   ESCORT_TOSS_CD_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_MIN_DIST, ESCORT_TOSS_MAX_DIST, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_SWING_DEG,
+  escortKickTargetOk, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist,
+  ESCORT_KICK_TO_HIT_MS, ESCORT_KICK_STUN_MARGIN_MS, ESCORT_KICK_BEHIND_PX, ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_TOSS_OVERSHOOT_PX,
 } from './escortToss';
 import type { EscortTossInput } from './escortToss';
 
@@ -65,5 +67,44 @@ describe('escortTossProgress', () => {
     expect(escortTossProgress(210, 0, 420)).toBeCloseTo(0.75, 6);
     expect(escortTossProgress(420, 0, 420)).toBe(1);
     expect(escortTossProgress(999, 0, 420)).toBe(1);
+  });
+});
+
+describe('v3.1 兵士の蹴り飛ばし(純関数)', () => {
+  const en = { type: 'zombie' as const, health: 10, x: 300 - 15, y: -15, width: 30, height: 30, stunUntil: 105_000 };
+  it('escortKickTargetOk: 画面内・気絶の残り・すぐそばでない・中止記憶', () => {
+    expect(escortKickTargetOk(en, 100_000, 0, 0, true, null, 'a')).toBe(true);
+    expect(escortKickTargetOk(en, 100_000, 0, 0, false, null, 'a')).toBe(false); // 画面外
+    expect(escortKickTargetOk({ ...en, stunUntil: 100_000 + ESCORT_KICK_TO_HIT_MS + ESCORT_KICK_STUN_MARGIN_MS - 1 }, 100_000, 0, 0, true, null, 'a')).toBe(false);
+    expect(escortKickTargetOk({ ...en, x: 100 - 15 }, 100_000, 0, 0, true, null, 'a')).toBe(false); // すぐそば
+    expect(escortKickTargetOk(en, 100_000, 0, 0, true, { enemyId: 'a', stunUntil: 105_000 }, 'a')).toBe(false); // この気絶中に中止した
+    expect(escortKickTargetOk(en, 100_000, 0, 0, true, { enemyId: 'a', stunUntil: 104_000 }, 'a')).toBe(true); // 別の気絶なら可
+  });
+  it('escortKickPoint: 着地点→敵の延長線上の背中側(蹴る向き=滑る向き)', () => {
+    const k = escortKickPoint({ x: 285, y: -15, width: 30, height: 30 }, 72, 0);
+    expect(k.dirX).toBeCloseTo(-1, 6);
+    expect(k.x).toBeCloseTo(300 + 15 + ESCORT_KICK_BEHIND_PX, 6);
+  });
+  it('escortKickJumpPos: しゃがみの間は動かず、跳躍は加速→減速、0.5秒で着く', () => {
+    const k = { fromX: 0, fromY: 0, toX: 100, toY: 0, startAt: 0 };
+    expect(escortKickJumpPos(k, ESCORT_KICK_CROUCH_MS).x).toBe(0);
+    expect(escortKickJumpPos(k, ESCORT_KICK_CROUCH_MS + ESCORT_KICK_JUMP_MS / 2).x).toBeCloseTo(50, 6);
+    expect(escortKickJumpPos(k, ESCORT_KICK_CROUCH_MS + ESCORT_KICK_JUMP_MS).x).toBe(100);
+    expect(ESCORT_KICK_CROUCH_MS + ESCORT_KICK_JUMP_MS).toBe(500); // 社長「0.5秒で背後にジャンプ」
+  });
+  it('pickEscortKickPair: 兵士から敵までが一番近い組', () => {
+    const p = pickEscortKickPair(
+      [{ id: 'e1', x: 0, y: 0, width: 10, height: 10 }, { id: 'e2', x: 500, y: 0, width: 10, height: 10 }],
+      [{ id: 's1', x: 480, y: 10 }, { id: 's2', x: 100, y: 10 }],
+    );
+    expect(p?.enemy.id).toBe('e2');
+    expect(p?.escort.id).toBe('s1');
+  });
+  it('escortTossSlideDist: 行き過ぎて戻り、最後は距離ちょうど', () => {
+    const D = 300;
+    const peak = Math.max(...Array.from({ length: 101 }, (_, i) => escortTossSlideDist(i * 4.2, 0, 420, D)));
+    expect(peak).toBeGreaterThan(D);
+    expect(peak).toBeLessThanOrEqual(D + ESCORT_TOSS_OVERSHOOT_PX + 1e-6);
+    expect(escortTossSlideDist(420, 0, 420, D)).toBeCloseTo(D, 6);
   });
 });
