@@ -200,6 +200,7 @@ import { escortOffscreenStep, escortOffscreenPace, baseDirectionLabel, ESCORT_ST
 import { welcomeAppliesToRun } from '../utils/welcomeScript';
 import { isWelcomeRetired } from '../utils/welcomeStreak';
 import { loadEscortFollowEnabled, saveEscortFollowEnabled, followToggleBaseAt } from '../utils/escortFollowToggle';
+import { listTravelDestinations, type TravelDestination } from '../utils/fastTravel';
 // research/ESCORT_TARGETED.md: 進軍NPCの体力・倒れる・起こす / 画面内の定義 / 敵の狙い。
 import {
   applyEscortHit, escortAdvanceSlowMult, escortHasHealth, escortMaxHealthFor, syncEscortMaxHealth, escortSlidePosition, clearEscortSlide,
@@ -5857,6 +5858,8 @@ interface GameState {
   escortFollowEnabled: boolean;
   /** 解放済みの拠点の円の中でだけ呼ぶ(ボタン/E/パッドのX)。オン/オフを切り替えて保存する。 */
   toggleEscortFollow: () => void;
+  /** ファストトラベル(research/FAST_TRAVEL.md): ショップが開いている時だけ。行き先へ立たせてショップを閉じる。成功で true。 */
+  fastTravelTo: (destId: string) => boolean;
   updateMerchantDwell: (deltaMs: number) => void;
   /**
    * ★ウェルカムの段を1つ片付けるたびに弾を1個落とす(社長指示2026-09-19
@@ -6994,6 +6997,19 @@ export const resolveShieldWalls = (candidate: Rect): { x: number; y: number } =>
 // 170へ強制スナップされる(最大130pxワープ)。exPlayerBarrier(結界の南北膜)は§10-20#4の規約どおり
 // 「プレイヤーの移動クランプにのみ渡す」呼び出し側の作法なので、こちらは従来どおり盾へは渡さない
 // (盾は結界の対象アクターではない=渡さなくても常に無効)。
+/** ファストトラベルの行き先(research/FAST_TRAVEL.md)。ショップの画面と fastTravelTo が同じ答えを使う。 */
+export const travelDestinationsOf = (s: Pick<GameState, 'player' | 'weaponMerchant' | 'merchantHidden' | 'stageTheme' | 'indoorMode' | 'corridorMode' | 'baseSites'>): TravelDestination[] => {
+  const p = s.player;
+  const merchantShown = !s.merchantHidden && s.stageTheme !== 'lab' && !s.indoorMode && !s.corridorMode;
+  return listTravelDestinations({
+    player: { x: p.x + p.width / 2, y: p.y + p.height / 2 },
+    merchant: merchantShown ? s.weaponMerchant : null,
+    bases: s.corridorMode ? [] : s.baseSites,
+    armoryRadius: ARMORY_RADIUS,
+    baseRadius: BASE_CAPTURE_RADIUS,
+  });
+};
+
 export const shieldPlayableCtx = (): PlayableAreaCtx => {
   const s = useGameStore.getState();
   return {
@@ -8172,6 +8188,30 @@ export const useGameStore = create<GameState>((set, get) => ({
         };
       });
     }
+  },
+  fastTravelTo: (destId) => {
+    const s = get();
+    if (!s.showShopMenu) return false;
+    const dest = travelDestinationsOf(s).find(d => d.id === destId && !d.current);
+    if (!dest) return false;
+    const half = PLAYER_HITBOX / 2;
+    const clamped = clampRectToPlayableArea(dest.arriveX - half, dest.arriveY - half, PLAYER_HITBOX, PLAYER_HITBOX, shieldPlayableCtx());
+    const placed = resolveShieldWalls({ x: clamped.x, y: clamped.y, width: PLAYER_HITBOX, height: PLAYER_HITBOX });
+    const p = s.player;
+    // 当たり箱(PLAYER_HITBOX)の左上 → Player の左上(体の大きさは違ってよい=中心を揃える)。
+    const cx = placed.x + half, cy = placed.y + half;
+    get().closeShop();
+    set({
+      player: { ...p, x: cx - p.width / 2, y: cy - p.height / 2, vx: 0, vy: 0 },
+      // カメラは大きく離れると即寄せる(CAMERA_SNAP_DIST)が、その前の1フレームを古い画で描かないよう先に寄せる。
+      camera: { x: cx - s.gameBounds.width / 2, y: cy - s.gameBounds.height / 2 },
+      touchActive: false, swipeDirection: null,
+    });
+    // 明け(暗転の底から行き先が見えてくる)+足元の輪。暗転(閉じる前の0.25秒)はショップの画面が受け持つ。
+    get().spawnFlash('rgba(4,5,8,1)', 520);
+    get().spawnRing(cx, cy + p.height / 2 - 4, 10, 74, 'rgba(244,239,228,0.75)', 3, 620);
+    void import('../audio/audioManager').then(m => m.playSfx('jump-land', 0.7, undefined, 0.9));
+    return true;
   },
   setMouseAim: (screen) => {
     set({ mouseAim: screen });

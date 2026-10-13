@@ -35764,9 +35764,11 @@ export class PixiScene {
       g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
     }
 
-    // 拠点(未制圧)の方向矢印: 近く(500px以内)で画面外のものだけ示す(社長指示=拠点の表示は半径500)。
+    // 拠点の方向矢印: 近く(500px以内)で画面外のものだけ示す(社長指示=拠点の表示は半径500)。
+    // ★解放済みも出し続ける(社長指示2026-10-13「解放されても表示されるままに。色分けで分かるように」・research/FAST_TRAVEL.md §2-5)。
+    //   色は地面の円と同じ(未解放=琥珀/解放済み=緑)。色だけに頼らず、解放済みは旗の中を塗りつぶす。
     for (const b of baseSites) {
-      if (b.status === 'captured') continue; // 制圧済みは出さない(未制圧だけ誘導)
+      const captured = b.status === 'captured';
       const tx = toScreenX(b.x), ty = toScreenY(b.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内は地面サークルで見える
       if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
@@ -35779,11 +35781,11 @@ export class PixiScene {
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (!isFinite(tdist)) continue;
       const ex = cxC + dx * tdist, ey = cyC + dy * tdist;
-      const color = 0xfbbf24; // 拠点=琥珀(地面サークルと同色)
+      const color = captured ? 0x34d399 : 0xfbbf24; // 未解放=琥珀/解放済み=緑(地面サークルと同色)
       g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
       g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
       g.rect(ex - 5, ey - 4, 10, 9).stroke({ width: 1.5, color, alpha: 0.9 }); // 旗/拠点アイコン(簡易)
-      g.rect(ex - 5, ey - 4, 6, 4).fill({ color, alpha: 0.85 });
+      g.rect(ex - 5, ey - 4, captured ? 10 : 6, captured ? 9 : 4).fill({ color, alpha: captured ? 0.7 : 0.85 }); // 解放済み=旗の中を塗る
       const hx = ex + dx * 15, hy = ey + dy * 15;
       const ca = Math.cos(angle), sa = Math.sin(angle);
       const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
