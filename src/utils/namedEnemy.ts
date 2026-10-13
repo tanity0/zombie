@@ -178,10 +178,10 @@ export const resolveDamager = (
   damagerType: EnemyType | undefined,
   damagerWasNamed: boolean | undefined,
   ids: readonly (string | undefined)[],
-  enemies: readonly { id: string; type: EnemyType; isNamed?: boolean }[],
+  enemies: readonly { id: string; type: EnemyType; isNamed?: boolean; isWelcome?: boolean }[],
   hintType?: EnemyType,
-): { type: EnemyType | null; wasNamed: boolean; id: string | null } => {
-  let found: { id: string; type: EnemyType; isNamed?: boolean } | undefined;
+): { type: EnemyType | null; wasNamed: boolean; id: string | null; welcome: boolean } => {
+  let found: { id: string; type: EnemyType; isNamed?: boolean; isWelcome?: boolean } | undefined;
   for (const id of ids) {
     if (id === undefined) continue;
     found = enemies.find(e => e.id === id);
@@ -192,6 +192,8 @@ export const resolveDamager = (
     type: damagerType ?? found?.type ?? hintType ?? null,
     wasNamed: damagerWasNamed ?? !!found?.isNamed,
     id: found?.id ?? firstId,
+    // ウェルカム(ステージ入りの関門)の個体か。宿敵の昇格から外すのに使う(社長指示2026-10-13)。
+    welcome: !!found?.isWelcome,
   };
 };
 
@@ -199,9 +201,12 @@ export const decidePromotionOnDeath = (
   killerType: EnemyType | null | undefined,
   killerWasNamed: boolean,
   redNightActive: boolean,
+  // 社長指示2026-10-13「ウェルカムイベントの個体は宿敵にならない様にして」: 型ではなく**個体**で外す
+  // (同じ型でもウェルカム以外の個体に倒されれば従来どおり昇格する)。既存の宿敵本人なら因縁+1は従来どおり。
+  killerWasWelcome = false,
   rand: () => number = Math.random,
 ): PromotionOutcome => {
   if (killerWasNamed) return { kind: 'grudge' };
-  if (isPromotionExcluded(killerType, redNightActive)) return { kind: 'none' };
+  if (killerWasWelcome || isPromotionExcluded(killerType, redNightActive)) return { kind: 'none' };
   return { kind: 'overwrite', type: killerType as EnemyType, name: pickNamedEnemyName(rand) };
 };

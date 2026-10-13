@@ -9,6 +9,7 @@ import { getLastHeartbeat } from '../utils/crashDiagnostics';
 import { reportTestScreen } from '../utils/testBridge';
 import { CHANGELOG } from '../data/changelog';
 import { loadChronicle, getChronicleStartAt, type ChronicleEntry } from '../data/progress';
+import { chronicleProgress } from '../data/chronicleCatalog';
 import { bossIconSrc } from '../utils/bossIcon';
 import { getLoadProgress, subscribeLoadProgress } from '../utils/loadProgress';
 import { normalizeNamedNamesInText } from '../utils/namedEnemy';
@@ -120,6 +121,8 @@ const ChronicleTimeline: React.FC = () => {
   // 年表の先頭に常設する「初ミッション」行(社長指示v0.25.1772): 記録が空でも年表に置き、
   // すぐ下にプレイ開始の実日付をグレーで出す(初回参照時に永続化=以後固定)。
   const startAt = useMemo(() => getChronicleStartAt(), []);
+  // 社長指示2026-10-13「年表の一番下に、全ての年表から見た、何分の何」。分母=通常プレイで刻める行の全数。
+  const progress = useMemo(() => chronicleProgress(entries), [entries]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [entered, setEntered] = useState(false);
   // 登場演出(社長指示v0.25.1637): 上(過去)から下(最新)へスクロール位置を流し込む+フェードイン。
@@ -177,7 +180,9 @@ const ChronicleTimeline: React.FC = () => {
         className="chronicle-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain"
         style={{ scrollbarWidth: 'none', maskImage: fade, WebkitMaskImage: fade }}
       >
-        <ul className="flex flex-col items-center py-5">
+        {/* 下端はローディングのスピナー(z-40)と重なる帯。流し込みの終点(=最下部)で達成数がスピナーに
+            潜らないよう、その帯ぶんだけ下に余白を足す(社長指示2026-10-13の達成数表示に伴う)。 */}
+        <ul className="flex flex-col items-center pt-5 pb-28">
           {/* 先頭に常設の「初ミッション」(社長指示v0.25.1772)。すぐ下に実日付をグレーで。 */}
           <li
             className="text-center text-[12.5px] leading-relaxed"
@@ -248,6 +253,23 @@ const ChronicleTimeline: React.FC = () => {
               </li>
             </React.Fragment>
           ))}
+          {/* 年表の終端=「今」。ここまでに刻んだ行数 / 刻める行の全数(社長指示2026-10-13)。
+              出来事どうしをつなぐ「|」は使わない=次の出来事ではなく締めの集計だと読ませる(短い細線で区切る)。 */}
+          <li aria-hidden className="mt-5 mb-3 h-4 w-px" style={{ background: 'rgba(255,255,255,0.25)' }} />
+          <li
+            className="flex flex-col items-center"
+            style={{
+              fontFamily: '"Hiragino Mincho ProN", "Yu Mincho", "Songti SC", serif',
+              textShadow: '0 1px 4px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.6)',
+            }}
+          >
+            <span style={{ color: 'rgba(255,255,255,0.42)', fontSize: '9.5px', letterSpacing: '0.3em', marginRight: '-0.3em' }}>記録</span>
+            <span className="leading-none" style={{ fontSize: '18px', fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>
+              <span style={{ color: 'rgba(255,255,255,0.94)' }}>{progress.got}</span>
+              <span style={{ color: 'rgba(255,255,255,0.42)', margin: '0 0.35em' }}>/</span>
+              <span style={{ color: 'rgba(255,255,255,0.42)' }}>{progress.total}</span>
+            </span>
+          </li>
         </ul>
       </div>
     </div>

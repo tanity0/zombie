@@ -111,8 +111,15 @@ describe('decidePromotionOnDeath', () => {
   });
 
   it('overwrites (fresh promotion, grudge implicitly 0 by caller) when killed by a new eligible type', () => {
-    const outcome = decidePromotionOnDeath('skeleton', false, false, () => 0);
+    const outcome = decidePromotionOnDeath('skeleton', false, false, false, () => 0);
     expect(outcome).toEqual({ kind: 'overwrite', type: 'skeleton', name: NAMED_ENEMY_NAMES[0] });
+  });
+
+  // 社長指示2026-10-13「ウェルカムイベントの個体は宿敵にならない様にして」: 型ではなく個体で外す。
+  it('ウェルカムの個体に倒されても昇格しない(同じ型でもウェルカム以外の個体なら従来どおり昇格)', () => {
+    expect(decidePromotionOnDeath('zombie', false, false, true)).toEqual({ kind: 'none' });
+    expect(decidePromotionOnDeath('zombie', false, false, false, () => 0).kind).toBe('overwrite');
+    expect(decidePromotionOnDeath('zombie', true, false, true)).toEqual({ kind: 'grudge' }); // 既存の宿敵本人は因縁+1のまま
   });
 });
 
@@ -138,17 +145,20 @@ describe('resolveDamager(倒した相手の解決・v0.25.4997)', () => {
     { id: 'n1', type: 'pumpkin' as const, isNamed: true },
   ];
   it('型が渡らない被弾(噛みつき・接触)は個体idで場の敵から型を引く', () => {
-    expect(resolveDamager(undefined, undefined, ['z1'], enemies)).toEqual({ type: 'zombie', wasNamed: false, id: 'z1' });
+    expect(resolveDamager(undefined, undefined, ['z1'], enemies)).toEqual({ type: 'zombie', wasNamed: false, id: 'z1', welcome: false });
   });
   it('宿敵本人の個体なら wasNamed=true(因縁の判定に届く)', () => {
-    expect(resolveDamager(undefined, undefined, [undefined, 'n1'], enemies)).toEqual({ type: 'pumpkin', wasNamed: true, id: 'n1' });
+    expect(resolveDamager(undefined, undefined, [undefined, 'n1'], enemies)).toEqual({ type: 'pumpkin', wasNamed: true, id: 'n1', welcome: false });
   });
   it('発射元が倒れている弾は手がかりの型を使う', () => {
-    expect(resolveDamager(undefined, undefined, [undefined, undefined, 'gone'], enemies, 'skeleton')).toEqual({ type: 'skeleton', wasNamed: false, id: 'gone' });
+    expect(resolveDamager(undefined, undefined, [undefined, undefined, 'gone'], enemies, 'skeleton')).toEqual({ type: 'skeleton', wasNamed: false, id: 'gone', welcome: false });
   });
   it('明示された型が最優先・何も分からなければ null', () => {
     expect(resolveDamager('guardian-phantom', undefined, ['z1'], enemies).type).toBe('guardian-phantom');
-    expect(resolveDamager(undefined, undefined, [], enemies)).toEqual({ type: null, wasNamed: false, id: null });
+    expect(resolveDamager(undefined, undefined, [], enemies)).toEqual({ type: null, wasNamed: false, id: null, welcome: false });
+  });
+  it('ウェルカムの個体なら welcome=true', () => {
+    expect(resolveDamager(undefined, undefined, ['w1'], [{ id: 'w1', type: 'zombie' as const, isWelcome: true }]).welcome).toBe(true);
   });
 });
 
