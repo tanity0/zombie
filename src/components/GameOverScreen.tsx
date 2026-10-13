@@ -156,43 +156,42 @@ const copyText = async (text: string): Promise<void> => {
 
 /**
  * 死亡時の「倒した相手」(社長指示2026-10-09「死亡時、リザルトにプレイヤーを殺した敵のアイコンと名前を表示。次回出撃時にネームド化」)。
- * 「死因」の左罫の帯に、立ち絵(足元に罫)+名前(+技の名)。宿敵本人に倒された時は宿敵の名が主役。
- * この死で宿敵が決まった/宿敵に倒された時は、帯の最終行に金の1行(ゲーム中の宿敵の帯と同じ字体)。
- * 型の分からない被弾(罠・環境)では絵を出さず、同じ帯に死因の名だけ。クリエイティブ監査(Fable 5.1)6件を反映済み。
+ * ★表示の型(社長指示2026-10-13): 全ての敵・ボスが対象。出すのは**名前だけ**(技の名・副行・説明の文は出さない)。
+ *   この死で宿敵が決まった時だけ「名前 → 宿敵化」。宿敵になるかどうかの規則は今まで通り(decidePromotionOnDeath)。
+ *   宿敵本人に倒された時は、その宿敵の名前(ゲーム中の帯で名乗っている名)。
+ * 型の分からない被弾(罠・環境)では絵を出さず、死因の名だけ。
  */
 const KillerLine: React.FC<{ deathCause: string }> = ({ deathCause }) => {
   const { type, id, far, promo, byNamed, namedName } = useGameStore(s => ({
     type: s.lastDamagerType, id: s.lastDamagerId, far: s.farBackdrop, promo: s.namedFoePromotion,
     byNamed: s.lastDamagerWasNamed, namedName: s.namedFoe ? normalizeNamedName(s.namedFoe.name) : '',
   }), shallow);
-  const [artOk, setArtOk] = useState(true);
+  // 絵の候補: 単独の絵 → ドット絵の上書き(atlas-px2/・ステージ1のボス等はここにしか無い)。両方無ければ絵を出さない。
+  const [artStep, setArtStep] = useState(0);
   const typeName = type ? enemyDeathLabel(type) : '';
-  // 宿敵本人に倒された時は宿敵の名が主役(ゲーム中の帯で名乗っている名)。型の名は副行へ。
-  const name = byNamed && namedName ? namedName : typeName;
-  // 死因は「◯◯の△△」形式なので、名乗った直後に名前を繰り返さない(「突進」だけ)。
-  const move = !typeName || deathCause === typeName ? ''
-    : deathCause.startsWith(`${typeName}の`) ? deathCause.slice(typeName.length + 1) : deathCause;
-  const sub = [byNamed && namedName ? typeName : '', move].filter(Boolean).join('・');
-  const art = type ? spritePath(enemyArtName(type, id ?? '', far ?? '')) : '';
+  const promoted = promo?.kind === 'new';
+  // 宿敵本人に倒された時(この死で新しく決まったのではない)は宿敵の名、それ以外は敵の名。
+  const name = !promoted && byNamed && namedName ? namedName : typeName;
+  const artName = type ? enemyArtName(type, id ?? '', far ?? '') : '';
+  const artCandidates = artName ? [spritePath(artName), spritePath(`atlas-px2/${artName}`)] : [];
+  const art = artCandidates[artStep] ?? '';
   return (
     <div className="mt-3 border-l-2 border-rose-400/60 bg-rose-950/20 px-3 py-2 text-left">
       <p className="text-[10px] uppercase tracking-widest text-white/45">死因</p>
       <div className="mt-1 flex items-end gap-3">
-        {type && artOk && (
+        {type && art && (
           <div className="flex shrink-0 flex-col items-center">
-            <img src={art} alt="" style={{ height: 96, width: 'auto' }} onError={() => setArtOk(false)} />
+            <img key={art} src={art} alt="" style={{ height: 96, width: 'auto', imageRendering: 'pixelated' }} onError={() => setArtStep(k => k + 1)} />
             <div className="h-px w-full bg-gradient-to-r from-transparent via-rose-300/40 to-transparent" />
           </div>
         )}
         <div className="min-w-0 pb-1">
-          <p className="text-[16px] font-semibold leading-tight text-rose-200">{type ? name : deathCause}</p>
-          {type && sub && <p className="mt-0.5 text-[11px] text-rose-200/70">{sub}</p>}
-          {promo && (
-            <p className="mt-1.5 border-t border-white/10 pt-1 text-[12px] font-semibold text-amber-300"
-              style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif', textWrap: 'balance' }}>
-              {promo.kind === 'new' ? `次の出撃、こいつは 宿敵 ${promo.name} として戻る` : `宿敵 ${promo.name}、まだ生きている`}
-            </p>
-          )}
+          <p className="text-[16px] font-semibold leading-tight text-rose-200">
+            {type ? name : deathCause}
+            {type && promoted && (
+              <span className="ml-1.5 text-amber-300" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>→ 宿敵化</span>
+            )}
+          </p>
         </div>
       </div>
     </div>

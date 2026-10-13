@@ -9610,7 +9610,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const walls = meleeWallsAround(get, ccx, ccy, meleeRange);
     if (walls.length > 0 && segmentBlocked(ccx, ccy, pcx, pcy, walls)) return;
     const hpBefore = player.health;
-    get().damagePlayer(dmg, `${phantomDisplayLabel()}の分身`, ccx, ccy);
+    get().damagePlayer(dmg, `${phantomDisplayLabel()}の分身`, ccx, ccy, undefined, undefined, undefined, undefined, undefined, { type: 'guardian-phantom' }); // 末尾=倒した相手の記録(死因の絵と名)
     const landed = get().player.health < hpBefore;
     // 紫(PHANTOM_SUB_TINT系)の斬撃+リング。着弾時のみバーストを足す(ドッグ被弾の前例と同型)。
     get().spawnSlash(ccx, ccy, 'rgba(192,132,252,0.95)');

@@ -10028,7 +10028,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (!job.bitten.has('__player__') && Math.hypot(ppx - dx, ppy - dy) <= DOG_BITE_RADIUS) {
                 job.bitten.add('__player__');
                 const bite = Math.max(1, Math.round(DOG_BITE_DAMAGE * PVP_DAMAGE_SCALE));
-                useGameStore.getState().damagePlayer(bite, '幻影のドッグ', dx, dy);
+                useGameStore.getState().damagePlayer(bite, '幻影のドッグ', dx, dy, undefined, undefined, undefined, undefined, undefined, { type: 'guardian-phantom' }); // 末尾=倒した相手の記録(死因の絵と名)
                 spawnBurst(ppx, ppy, '#cbd5e1', 4);
               }
               // 到着: **拾わずに消す**(誰の持ち物にもならない=取得ではない)。
@@ -12833,7 +12833,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (pdist <= tBlastR && !(tWalls.length > 0 && segmentBlocked(tcx, tcy, tgtCx, tgtCy, tWalls))) {
                   const pfall = 1 - pdist / tBlastR;
                   const pdmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * tExMult * (0.55 + pfall * 0.45) * PVP_DAMAGE_SCALE));
-                  useGameStore.getState().damagePlayer(pdmg, '幻影のタレット', tcx, tcy);
+                  useGameStore.getState().damagePlayer(pdmg, '幻影のタレット', tcx, tcy, undefined, undefined, undefined, undefined, undefined, { type: 'guardian-phantom' }); // 末尾=倒した相手の記録
                 }
                 continue;
               }
@@ -13280,7 +13280,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (sdist <= smBlastR && !(smWalls.length > 0 && segmentBlocked(mine.x, mine.y, spx, spy, smWalls))) {
                   const sfall = 1 - sdist / smBlastR;
                   const sdmg = Math.max(1, Math.round(SENSOR_MINE_DAMAGE * (0.55 + sfall * 0.45) * PVP_DAMAGE_SCALE));
-                  useGameStore.getState().damagePlayer(sdmg, '幻影の地雷', mine.x, mine.y);
+                  useGameStore.getState().damagePlayer(sdmg, '幻影の地雷', mine.x, mine.y, undefined, undefined, undefined, undefined, undefined, { type: 'guardian-phantom' }); // 末尾=倒した相手の記録
                 }
                 continue;
               }

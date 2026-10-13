@@ -418,6 +418,26 @@ const ShopMenu: React.FC = () => {
           </div>
         </div>
 
+        {showFollow && (
+          <div className="px-4 pb-3">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-amber-200/55 mb-1.5">同行</div>
+            {/* 「連れて歩く」のオン/オフ(research/ESCORT_FOLLOW.md §9-8)。札は今の状態だけ(押すと入れ替わる)。待機も「選んだ姿」として色を持つ。 */}
+            <button
+              type="button"
+              onClick={() => { playSfx('ui-move'); useGameStore.getState().toggleEscortFollow(); }}
+              aria-label={followOn ? '軍人の同行: 連れていく。押すと待たせる' : '軍人の同行: 待たせる。押すと連れていく'}
+              className="relative flex h-11 w-full items-center gap-3 rounded-none border border-purple-400/[0.15] bg-purple-400/[0.06] px-3 text-left active:scale-[0.99]"
+            >
+              <span aria-hidden className="self-stretch my-1.5 w-[3px]"
+                style={{ background: followOn ? '#e0a33a' : '#9fb8c8', transition: followOn ? 'background 90ms ease-out' : 'background 260ms ease-in-out' }} />
+              <span className="min-w-0 flex-1 text-[13px] font-bold text-white">軍人の同行</span>
+              <span className="shrink-0 text-[12px] font-bold tracking-[0.16em]"
+                style={{ color: followOn ? '#e0a33a' : '#b9cfdc', transition: followOn ? 'color 90ms ease-out' : 'color 260ms ease-in-out' }}>
+                {followOn ? '連れていく' : '待たせる'}
+              </span>
+            </button>
+          </div>
+        )}
         {sellTarget && (
           <div className="px-4 pb-3">
             <div className="text-[10px] uppercase tracking-[0.2em] text-amber-200/55 mb-1.5">サブウェポン換金</div>
@@ -439,27 +459,7 @@ const ShopMenu: React.FC = () => {
         </NoBounceScroller>
 
         <div className="px-4 pb-4 space-y-2 shrink-0">
-          {showFollow && (
-            <button
-              type="button"
-              onClick={() => { playSfx('ui-move'); useGameStore.getState().toggleEscortFollow(); }}
-              aria-label={followOn ? '軍人の同行: 連れていく(押すと待たせる)' : '軍人の同行: 待たせる(押すと連れていく)'}
-              className="relative flex w-full items-center gap-3 rounded-none border border-purple-400/[0.15] bg-purple-400/[0.06] px-3 py-2 text-left active:scale-[0.99]"
-            >
-              <span aria-hidden className="self-stretch w-[3px]" style={{ background: followOn ? '#e0a33a' : '#5b6063', transition: 'background 180ms ease-out' }} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-bold text-white">軍人の同行</span>
-                <span className="block text-[10px] tracking-[0.06em]" style={{ color: followOn ? 'rgba(224,163,58,0.85)' : 'rgba(255,255,255,0.42)' }}>
-                  {followOn ? '拠点の区域で、その軍人がついてくる' : '軍人は拠点で待つ'}
-                </span>
-              </span>
-              {/* 2つの位置の切り替え(押すたびに入れ替わる)。今の側だけ点く。 */}
-              <span aria-hidden className="flex shrink-0 text-[11px] font-bold tracking-[0.12em]">
-                <span className="px-2 py-1" style={{ color: followOn ? 'rgba(255,255,255,0.35)' : '#f4efe4', background: followOn ? 'transparent' : 'rgba(91,96,99,0.45)', transition: 'all 180ms ease-out' }}>待たせる</span>
-                <span className="px-2 py-1" style={{ color: followOn ? '#1a1206' : 'rgba(255,255,255,0.35)', background: followOn ? '#e0a33a' : 'transparent', transition: 'all 180ms ease-out' }}>連れていく</span>
-              </span>
-            </button>
-          )}
+
           {/* 帰還(撤収)は補給のタブだけ。輸送のタブで「動く」と「やめる」を並べない(クリエイティブ監査)。 */}
           {tab === 'shop' && (
           <button
