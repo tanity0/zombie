@@ -103,12 +103,16 @@ export interface WelcomeApplicabilityInput {
   tutorialStage: boolean;
   endingStage: boolean;
   practiceRun: boolean;
+  // 社長指示2026-10-13: そのステージで3連続クリア済み(utils/welcomeStreak.ts)=以後は起動しない。
+  // 出撃時に1回だけ読んだ値を渡す(ラン中に卒業しても、そのランの答えは変えない)。
+  retired: boolean;
 }
 
 /** このランにウェルカム台本が関係あるか(=台本を持つステージ+対象の実行モード)。 */
 export const welcomeAppliesToRun = (input: WelcomeApplicabilityInput): boolean =>
   input.welcomeEnabled && !!welcomeStageScript(input.stageId) && !input.labTheme && !input.indoor
-  && !input.danceTest && !input.storyBoss && !input.tutorialStage && !input.endingStage && !input.practiceRun;
+  && !input.danceTest && !input.storyBoss && !input.tutorialStage && !input.endingStage && !input.practiceRun
+  && !input.retired;
 
 // ============================================================================
 // B1b. 始動ゲート(§17-13・社長指示2026-09-19)
@@ -182,6 +186,8 @@ export interface WelcomeAdvanceResult {
   step: number;
   spawnNow: WelcomeUnit[] | null; // このフレームで湧かせるべき段の顔ぶれ。無ければ null。
   endedAt: number | null; // ウェルカムが終了した gameTime。まだ終了していなければ null。
+  // 台本を最後の段まで倒し切って終わった時だけ true(区域を跨いだ打ち切り等は付かない)。連続クリアの記録用。
+  cleared?: true;
   // ★§17-13-c: 更新後のstartedAt。呼び出し側は次フレームへそのまま持ち越す(refに保存)。
   startedAt: number | null;
 }
@@ -238,7 +244,7 @@ export const welcomeAdvance = (params: WelcomeAdvanceParams): WelcomeAdvanceResu
 
   // 間が明けた。最後の段だった → ①倒し切り終了。
   if (step >= totalSteps - 1) {
-    return { step, spawnNow: null, endedAt: gameTime, startedAt };
+    return { step, spawnNow: null, endedAt: gameTime, startedAt, cleared: true };
   }
 
   // 次の段へ進む。

@@ -101,7 +101,7 @@ describe('welcomeAdvance(§17-11 B2・受け入れ条件2/3/4)', () => {
     const r = welcomeAdvance({
       ...base, step: 2, aliveOfWelcome: 0, gameTime: endGameTime, stepClearedAt: clearedAt,
     });
-    expect(r).toEqual({ step: 2, spawnNow: null, endedAt: endGameTime, startedAt: 0 });
+    expect(r).toEqual({ step: 2, spawnNow: null, endedAt: endGameTime, cleared: true, startedAt: 0 });
   });
 
   // ★社長指示2026-09-19「**このウェルカムイベント、1分で終わらないわ。倒し切るまで続けよう。**」
@@ -241,6 +241,7 @@ describe('welcomeAppliesToRun (§17-14)', () => {
     tutorialStage: false,
     endingStage: false,
     practiceRun: false,
+    retired: false,
   };
 
   it('台本を持つステージ(stage-1)+対象の実行モードなら真', () => {
@@ -259,6 +260,7 @@ describe('welcomeAppliesToRun (§17-14)', () => {
     ['チュートリアル', { tutorialStage: true }],
     ['エンディング', { endingStage: true }],
     ['練習ラン', { practiceRun: true }],
+    ['3連続クリアで卒業済み', { retired: true }],
   ] as const)('%sは偽になる', (_label, patch) => {
     expect(welcomeAppliesToRun({ ...applicableBase, ...patch })).toBe(false);
   });

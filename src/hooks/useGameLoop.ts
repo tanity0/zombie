@@ -351,6 +351,7 @@ import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
 import { welcomeAdvance, welcomeAppliesToRun, WELCOME_RING_ENDS_IN_MS } from '../utils/welcomeScript';
+import { beginWelcomeAttempt, completeWelcomeAttempt } from '../utils/welcomeStreak';
 import { spawnEscalation, gateLiveCorrection, playerPower, expectedPower, powerMargin } from '../utils/difficultyScaler';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
@@ -1715,6 +1716,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ウェルカム終了で `0`(=出す予約・ポップアップ待ち)、一拍の起点が決まったらその時刻、
   // 出し終わったら `null`。M0の銘打ちの `m0WallHoldRef` と同じ3状態の作法。
   const welcomeClearBannerAtRef = useRef<number | null>(null);
+  // ウェルカムの連続クリア(社長指示2026-10-13・utils/welcomeStreak.ts): 1段目が湧いた時点の連続回数。
+  // 倒し切った瞬間に +1 して書き戻す(湧いた瞬間に保存値は0へ落としてある=途中で終われば途切れる)。
+  const welcomeStreakAtStartRef = useRef(0);
   // BOT_AND_GHOST.md G2: 召喚中ゴーストのプロファイル(6ノブ)。召喚時にdirectorTick側が1回だけ書き込む。
   const ghostProfileRef = useRef<GhostProfile | null>(null);
   // v0.25.2480(★未決2解消): ゴースト被弾音のエッジ検知(damageSummonのlastHit打刻を見る)+最短間隔保険。
@@ -3289,6 +3293,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           welcomeEnabled: WELCOME_ENABLED,
           labTheme, indoor, danceTest, storyBoss, tutorialStage, endingStage,
           practiceRun: isPracticeRun(),
+          retired: useGameStore.getState().welcomeRetired,
         });
         const welcomeActive = welcomeApplicable && welcomeEndedAtRef.current === null;
         // ★ディレクターの時計(§17-3): ウェルカム中はずっと0。終了後は gameTime − min(終了時刻,60秒)
@@ -16801,6 +16806,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             merchantY: welcomeMerchantY,
           });
           welcomeStartedAtRef.current = welcomeResult.startedAt;
+          // 1段目が湧く瞬間=挑戦の開始。連続回数を控えて保存値を0へ(倒し切れなければ0のまま=途切れる)。
+          if (welcomeResult.spawnNow && welcomeStepRef.current < 0) {
+            welcomeStreakAtStartRef.current = beginWelcomeAttempt(welcomeStageIdNow);
+          }
           if (welcomeResult.spawnNow) {
             // §17-12-c/d: 'horde'を借りず新設の'welcome'を使う(confiningから除外済み=
             // arenaEventCapを使わない・報酬経路にも繋がない)。confinesPlayer:false(プレイヤーは
@@ -16863,6 +16872,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           welcomeStepRef.current = welcomeResult.step;
           if (welcomeResult.endedAt !== null) {
             welcomeEndedAtRef.current = welcomeResult.endedAt;
+            // 倒し切って終わった時だけ連続+1(区域を跨いだ打ち切りは0のまま=途切れる)。3に届いたら次の出撃から出ない。
+            if (welcomeResult.cleared) completeWelcomeAttempt(welcomeStageIdNow, welcomeStreakAtStartRef.current);
             // §17-3「強制始動で打ち切った時…残った敵は消さない」(不変・§17-12はこれを覆していない)。
             // 終了時は輪を閉じる(§17-12-d「終わったら輪も閉じる」)が、endArenaEvent()は残存
             // fromEvent敵を撤去してしまう(既存の共有関数の仕様)ので、ここでは使わない。

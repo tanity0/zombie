@@ -18,7 +18,7 @@ const mem = new Map<string, string>();
 
 const {
   PLAYER_UPGRADES_KEY, activeUpgradeLevel, effectiveAmmoMax, effectiveAmmoMaxMap, emptyPlayerUpgrades,
-  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, growthXpMult, loadPlayerUpgrades,
+  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, growthScrapMult, growthXpMult, loadPlayerUpgrades,
   normalizePlayerUpgrades, playerUpgradeCost, savePlayerUpgrades,
 } = await import('./playerUpgrades');
 const { PLAYER_UPGRADE_COSTS, PLAYER_UPGRADE_IDS, PLAYER_UPGRADE_MAX_LEVEL } = await import('../data/playerUpgrades');
@@ -117,6 +117,22 @@ describe('経験値効率(v0.25.3679・+10%×5段)', () => {
   it('0段=1.0/5段=1.5', () => {
     expect(growthXpMult(0)).toBe(1);
     expect(growthXpMult(5)).toBeCloseTo(1.5, 10);
+  });
+});
+
+describe('スクラップ効率(社長指示2026-10-13・+20%×5段=+100%)', () => {
+  it('0段=1.0/1段=1.2/5段=2.0', () => {
+    expect(growthScrapMult(0)).toBe(1);
+    expect(growthScrapMult(1)).toBeCloseTo(1.2, 10);
+    expect(growthScrapMult(5)).toBeCloseTo(2.0, 10);
+  });
+  it('スコア対象(5系統フルで0.5)', () => {
+    expect(growthScoreMult(normalizePlayerUpgrades({ scrap: { bought: 5, active: 5 } }))).toBeCloseTo(0.9, 10);
+    const all5 = normalizePlayerUpgrades({
+      health: { bought: 5, active: 5 }, attack: { bought: 5, active: 5 },
+      ammo: { bought: 5, active: 5 }, xp: { bought: 5, active: 5 }, scrap: { bought: 5, active: 5 },
+    });
+    expect(growthScoreMult(all5)).toBeCloseTo(0.5, 10);
   });
 });
 

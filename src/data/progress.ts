@@ -4,6 +4,7 @@
 
 import { STAGES, getStage, type Stage } from './campaign';
 import { getEventQuestConfig } from '../utils/eventQuest';
+import { clearWelcomeStreaks } from '../utils/welcomeStreak';
 import { clearBossEncounters, unlockAllBossEncounters } from '../utils/bossEncounter';
 // ★練習ランの出撃先(下の「実行時上書き」)。import方向は progress→bossPractice の一方通行
 // (bossPractice側はprogressを読まない)。逆向き(bossPractice→progress)にすると
@@ -686,6 +687,7 @@ export const resetProgress = (): void => {
   clearSubBlueprints(); // サブウェポンの設計図も進行リセットで消す(開発用・UNIQUE_WEAPONS.md §19-6)
   try { localStorage.removeItem(LEGACY_EVENT_QUEST_DONE_KEY); } catch { /* ignore */ } // 旧v1684キーの掃除
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
+  clearWelcomeStreaks(); // ウェルカムの連続クリア(3連続で卒業)も進行リセットで消す(開発用)
   writeRunCores({}); // 掘削記録(リザルト断面の過去ラン)も進行リセットで消す(開発用)
   try { localStorage.removeItem(CHRONICLE_START_KEY); } catch { /* ignore */ } // 初ミッション日付も消す(開発用)
   setStoryFlags(emptyStoryFlags()); // the ONE ストーリー分岐フラグも進行リセットで消す(開発用)

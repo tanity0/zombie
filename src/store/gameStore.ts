@@ -198,6 +198,7 @@ import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { escortAdvance, escortShouldHoldForWelcome } from '../utils/escortAdvance';
 import { escortOffscreenStep, escortOffscreenPace, baseDirectionLabel, ESCORT_STRUGGLE_STALL_MS } from '../utils/escortOffscreen';
 import { welcomeAppliesToRun } from '../utils/welcomeScript';
+import { isWelcomeRetired } from '../utils/welcomeStreak';
 // research/ESCORT_TARGETED.md: 進軍NPCの体力・倒れる・起こす / 画面内の定義 / 敵の狙い。
 import {
   applyEscortHit, escortAdvanceSlowMult, escortHasHealth, escortMaxHealthFor, syncEscortMaxHealth, escortSlidePosition, clearEscortSlide,
@@ -291,7 +292,7 @@ import { isNoAmmoRun, vsStartAmmo, vsEntryOfRun } from '../utils/vsTest';
 // 引数で渡す=utils→store の逆流を作らない)。計測路(ガントレット)の述語は依存ゼロの葉から読む。
 import {
   PLAYER_UPGRADES_KEY, activeUpgradeLevel, effectiveAmmoMaxMap, emptyPlayerUpgrades,
-  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, growthXpMult, loadPlayerUpgrades, playerUpgradeCost,
+  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, growthScrapMult, growthXpMult, loadPlayerUpgrades, playerUpgradeCost,
   savePlayerUpgrades, type PlayerUpgradeState,
 } from '../utils/playerUpgrades';
 import { PLAYER_UPGRADE_MAX_LEVEL, type PlayerUpgradeId } from '../data/playerUpgrades';
@@ -5838,6 +5839,12 @@ interface GameState {
    *   隠すのは**絵**(pixiScene)と**話しかけ**(updateMerchantDwell)の2つだけ。
    */
   merchantHidden: boolean;
+  /**
+   * このステージのウェルカムを卒業済みか(社長指示2026-10-13「3連続でクリアしたらもう出ない」・
+   * utils/welcomeStreak.ts)。出撃時(resetGame)に1回だけ読んで焼く=useGameLoop の welcomeAppliesToRun が
+   * 毎フレーム同じ答えを得る(ラン中に卒業しても、そのランの答えは変えない)。
+   */
+  welcomeRetired: boolean;
   updateMerchantDwell: (deltaMs: number) => void;
   /**
    * ★ウェルカムの段を1つ片付けるたびに弾を1個落とす(社長指示2026-09-19
@@ -7146,6 +7153,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   weaponMerchant: createWeaponMerchant(),
   merchantDwellMs: 0,
   merchantHidden: false,
+  welcomeRetired: false,
   eventQuestNpc: createEventQuestNpc(),
   eventQuestActive: null,
   eventQuestKills: 0,
@@ -21480,6 +21488,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const bakedGrowthAmmoMax = effectiveAmmoMaxMap(AMMO_MAX, activeUpgradeLevel(growthMeters, 'ammo'));
     const bakedGrowthGoldMult = growthGoldMult(activeUpgradeLevel(growthMeters, 'gold'));
     const bakedGrowthXpMult = growthXpMult(activeUpgradeLevel(growthMeters, 'xp'));
+    // スクラップ効率(社長指示2026-10-13): パッシブ「スクラップ獲得数アップ」が足し込む scrapMult の初期値として焼く。
+    const bakedGrowthScrapMult = growthScrapMult(activeUpgradeLevel(growthMeters, 'scrap'));
     // スコア倍率(社長裁定2026-08-20): メーター1本フルで−0.2・ゴールド系統は数えない。計測路は上と同じく0段=1.0。
     const bakedGrowthScoreMult = growthScoreMult(growthMeters);
     // ステージ難度のスコア倍率(社長指示2026-08-20「難易度補正の分、スコアにも。換金にも」):
@@ -21769,6 +21779,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // pendingEscortsへ預け、escortsは空で始める(=描画もtickも走らない=存在しない)。
       // ウェルカムを持たないラン(S2/S7/EX/練習・ラボ・洋館・?welcome=0等)は、このifがfalseになり
       // 従来どおりescortsへ直接入る=出撃の瞬間から1フレームも遅れず4人が居る。
+      const welcomeRetiredNow = isWelcomeRetired(getSelectedStageId() ?? '');
       const welcomeForThisRun = welcomeAppliesToRun({
         stageId: getSelectedStageId() ?? '',
         welcomeEnabled: WELCOME_ENABLED,
@@ -21779,6 +21790,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         tutorialStage: farBackdrop === 'tutorial',
         endingStage: farBackdrop === 'ending',
         practiceRun: isPracticeRun(),
+        retired: welcomeRetiredNow,
       });
       const escortsNow = welcomeForThisRun ? [] : escortRoster;
       const pendingEscortsNow = welcomeForThisRun ? escortRoster : [];
@@ -21896,7 +21908,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           reloadMult: 1,
           stunDurationMult: 1,
           ammoDropBonus: 0,
-          scrapMult: 1,
+          scrapMult: bakedGrowthScrapMult,
           passiveCounts: {},
           // 仮: ダンスモードはダンスフロア(shijin)を指定レベルだけ覚えた状態で開始(敵なしで練習)。
           // 通常開始は固有スキルを Lv1 所持(新規取得スキル1個はこれと別枠=upgradeUtils 側で管理)。
@@ -22087,6 +22099,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         pendingEscorts: pendingEscortsNow,
         // ★商人も護衛と同じ(社長指示2026-09-19「武器商人もウェルカムイベント終わってから出現」)。
         merchantHidden: welcomeForThisRun,
+        welcomeRetired: welcomeRetiredNow,
         // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §3/§9): 専用配列を新ランごとに初期化
         // (2周目に前回の兵士が残らないように)。escortsとは別配列(相乗りしない)。
         endingSoldiers: farBackdrop === 'ending'
