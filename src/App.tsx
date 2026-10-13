@@ -412,6 +412,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     if (endingStageParamHandledRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const ep = params.get('ending');
+    // ?ending=ex … EXクリア後の最終調査記録だけを直接出す(確認用・終わるとリザルトへ)。
+    if (ep === 'ex') { endingStageParamHandledRef.current = true; setGameState('exEnding'); return; }
     if (ep !== '1' && ep !== '2') return;
     endingStageParamHandledRef.current = true;
     if (ep === '1') setEndingOverlay(true); // 聴取記録を上に重ねる=本番導線と同じ描画・BGM経路

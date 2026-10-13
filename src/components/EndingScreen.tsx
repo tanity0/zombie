@@ -7,7 +7,8 @@ import { useGameStore } from '../store/gameStore';
 
 // 通常エンディング(社長編集稿v0.25.2191): 軍の聴取記録→「成し得なかった」+the/ONEが残って
 // 順番に消える(word相)→メニューへ。
-// - 台詞はタップで送り(オート送りもあり)。本文はサブ達成状況で変えない。
+// - 台詞はタップで送る(1行1タップ・オート送りなし=社長指示2026-10-14「早すぎて読めない。一区切り、1タップ制にする？」→はい)。
+//   最終行の後(word相=成し得なかった/the/ONE が消えていく)とフィナーレは従来どおり自動。本文はサブ達成状況で変えない。
 // - 「the ONE / Thank you for playing」の中央画面(旧credits相)は廃止(社長指示2026-08-29
 //   「最後のthe ONE thankyou for のところいらない」)。ONEが消えたら直接フィナーレへ。
 // - scenic(社長指示2026-08-29「このシーンを、グレン撃破後のミラの事情聴取の後ろに流して」):
@@ -21,7 +22,6 @@ import { useGameStore } from '../store/gameStore';
 
 type Phase = 'script' | 'word' | 'finale';
 
-const LINE_AUTO_MS = 3200;      // オート送りの1行表示時間
 // word相=最終行のその場残し(v0.25.4065・社長指示「成し得なかった だけのっこりつつ、英語も the と
 // ONE だけが残って消える感じで。順番に残って消えていく感じ」):
 // t=0 周囲の文字が消える(0.7s)→ 残るのは「成し得なかった」+ the + ONE(その場・大きさ不変)
@@ -97,13 +97,11 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
     }
   };
 
-  // フェーズ/行ごとのオート送りタイマー。
+  // フェーズごとのオート送りタイマー(台詞=script相はタップでだけ進む)。
   useEffect(() => {
     clearTimer();
-    const delay =
-      phase === 'script' ? LINE_AUTO_MS
-      : phase === 'word' ? FINAL_WORD_MS
-      : FINALE_SAFETY_MS;
+    if (phase === 'script') return clearTimer;
+    const delay = phase === 'word' ? FINAL_WORD_MS : FINALE_SAFETY_MS;
     timerRef.current = window.setTimeout(advance, delay);
     return clearTimer;
     // eslint-disable-next-line react-hooks/exhaustive-deps
