@@ -20,7 +20,6 @@ import DirectorLine from './DirectorLine';
 import { getSelectedStageId } from '../data/progress';
 import { getEventQuestConfig } from '../utils/eventQuest';
 import { HudKey } from './HudKey'; // ゲーム中のボタン札(research/PC_SUPPORT.md §14)
-import FollowToggle from './FollowToggle'; // 「連れて歩く」の切り替え(research/ESCORT_FOLLOW.md §9)
 import { useHudHintStyle, useHudHasMouse, hudGlyph, hudGunSlotKey } from '../utils/hudHints';
 
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-11・B4): S5だけの先行条件(拠点2か所確保)の掲示。
@@ -486,9 +485,6 @@ const GameHUD: React.FC = () => {
       })()}
 
       {/* Stats(撃破/DMG/SCRAP)は StatsHud に分離(頻繁な再描画をHUD本体から切り離す)。 */}
-
-      {/* 「連れて歩く」の切り替え(research/ESCORT_FOLLOW.md §9): 解放済みの拠点の円の中でだけ下中央に立つ。 */}
-      <FollowToggle landscape={hudLandscape} />
 
       {/* BGM toggle: 右下・一時停止(MobileControls の "II")のすぐ上に配置。 */}
       <button

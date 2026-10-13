@@ -223,15 +223,17 @@ describe('連れて歩くのオン/オフ(§9)', () => {
     tick(1);
     expect(esc0().followState).toBe('follow'); // オンへ戻せば(区域の中なので)またついてくる
   });
-  it('toggleEscortFollow は解放済みの拠点の円の中でだけ効く', () => {
-    setup({ captured: true, ex: 4700, ey: 0, px: 3500, py: 0 });
+  it('toggleEscortFollow は商人メニュー(ショップの画面)が開いている時だけ効く(§9-8)', () => {
+    setup({ captured: true, ex: 4700, ey: 0, px: 4800, py: 0 });
     useGameStore.getState().toggleEscortFollow();
-    expect(useGameStore.getState().escortFollowEnabled).toBe(true); // 円の外=何もしない
-    putPlayer(4800, 0);
+    expect(useGameStore.getState().escortFollowEnabled).toBe(true); // 拠点の円の中でも、メニューの外=何もしない
+    useGameStore.setState({ showShopMenu: true, isPaused: true });
     useGameStore.getState().toggleEscortFollow();
     expect(useGameStore.getState().escortFollowEnabled).toBe(false);
+    putPlayer(0, -130); // 武器商人の所(拠点の外)でも切り替わる
     useGameStore.getState().toggleEscortFollow();
     expect(useGameStore.getState().escortFollowEnabled).toBe(true);
+    useGameStore.setState({ showShopMenu: false, isPaused: false });
   });
 });
 

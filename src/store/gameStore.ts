@@ -5858,7 +5858,7 @@ interface GameState {
    * オン=解放済みの拠点の軍人がその区域の中でついてくる(§1〜8)/オフ=誰もついてこない。端末に覚える(resetGameでも戻さない)。
    */
   escortFollowEnabled: boolean;
-  /** 解放済みの拠点の円の中でだけ呼ぶ(ボタン/E/パッドのX)。オン/オフを切り替えて保存する。 */
+  /** 商人メニュー(ショップの画面)の中でだけ効く。オン/オフを切り替えて保存する(§9-8)。 */
   toggleEscortFollow: () => void;
   /** ファストトラベル(research/FAST_TRAVEL.md): ショップが開いている時だけ。行き先へ立たせてショップを閉じる。成功で true。 */
   fastTravelTo: (destId: string) => boolean;
@@ -8163,16 +8163,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   toggleEscortFollow: () => {
     const s = get();
     const p = s.player;
+    // ★切り替えは**商人メニュー(ショップの画面)の中だけ**(社長指示2026-10-13「連れていくのオンオフは商人メニューに入れて」・§9-8)。
+    // 武器商人の所でも拠点の武器庫でも同じ1つのスイッチ。返事は、拠点で開いた時だけその拠点の軍人が言う。
+    if (!s.showShopMenu || s.corridorMode || s.gameWon) return;
     const baseId = followToggleBaseAt(p.x + p.width / 2, p.y + p.height / 2, s.baseSites, BASE_CAPTURE_RADIUS);
-    // 解放済みの拠点の円の外・操作できない間(一時停止・倒れた・演出の時間停止など=isInputLocked)は切り替えない(§9-1・監査A-5)。
-    if (!baseId || s.corridorMode || s.gameWon || isInputLocked()) return;
     const next = !s.escortFollowEnabled;
     saveEscortFollowEnabled(next);
     set({ escortFollowEnabled: next });
     // 手応え=その拠点の軍人の返事(決定音は鳴らさない=設定を変えた音にしない・監査CR-4)。間隔の制限は通さない
     // (押したら必ず返す・監査A-2)。連打で台詞が積もらないよう、前の返事から1.2秒は黙る。
     const now = Date.now();
-    const esc = s.escorts.find(e => e.baseId === baseId && !isEscortDowned(e));
+    const esc = baseId ? s.escorts.find(e => e.baseId === baseId && !isEscortDowned(e)) : undefined;
     if (esc && now - followToggleLineAt >= 1200) {
       followToggleLineAt = now;
       const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
