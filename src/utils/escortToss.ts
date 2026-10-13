@@ -89,8 +89,9 @@ export const ESCORT_KICK_WINDUP_MS = 200;
 export const ESCORT_KICK_RECOVER_MS = 220;
 /** 蹴る位置=敵の体の縁からさらにこれだけ外(敵の背中側)。 */
 export const ESCORT_KICK_BEHIND_PX = 26;
-/** 気絶の残りがこれだけ余っている敵だけ(着いて蹴る前に気絶が切れないように)。 */
-export const ESCORT_KICK_STUN_MARGIN_MS = 300;
+/** 気絶の残りが「命中まで+これ」以上ある敵だけ。滑り(ESCORT_TOSS_MS)と、着いてからプレイヤーがとどめを入れる間(600ms)を含む
+ *  (滑りの途中や着いた直後に気絶が切れて、目の前に来たのにとどめが刺せない、を作らない・検収 A-4)。 */
+export const ESCORT_KICK_STUN_MARGIN_MS = ESCORT_TOSS_MS + 600;
 /** 割り当てから命中まで。 */
 export const ESCORT_KICK_TO_HIT_MS = ESCORT_KICK_CROUCH_MS + ESCORT_KICK_JUMP_MS + ESCORT_KICK_WINDUP_MS;
 /** プレイヤーまでこの距離より近い敵は蹴らない(すでに目の前)。 */
@@ -111,6 +112,13 @@ export interface EscortKick {
   aborted: boolean;  // 中止(跳躍中なら着地まで飛んでから終わる)
 }
 
+/** 型・状態として蹴ってよいか(気絶・画面・距離は見ない)。割り当てと着地の再判定が同じ1本を使う。 */
+export const escortKickableState = (
+  e: Pick<Enemy, 'type' | 'health' | 'corpseUntil' | 'dormant' | 'fromEvent' | 'aiPhase' | 'hordeLeaderId' | 'hordeState'>,
+): boolean =>
+  e.health > 0 && !isCorpse(e) && e.dormant !== true && !e.fromEvent && escortTossableType(e.type) && !isHordeFollower(e)
+  && e.aiPhase !== 'jump' && e.aiPhase !== 'charge';
+
 /** 蹴る対象になれる敵か(画面内・気絶の残り・型/状態・プレイヤーまでの距離)。onScreen は呼び手が測る(ズーム込みの可視域)。 */
 export const escortKickTargetOk = (
   e: Pick<Enemy, 'type' | 'health' | 'corpseUntil' | 'dormant' | 'fromEvent' | 'aiPhase' | 'hordeLeaderId' | 'hordeState' | 'stunUntil' | 'escortToss'>
@@ -119,9 +127,7 @@ export const escortKickTargetOk = (
   abort: { enemyId: string; stunUntil: number } | null, id: string,
 ): boolean => {
   if (!onScreen || e.escortToss) return false;
-  if (!(e.health > 0) || isCorpse(e) || e.dormant === true || e.fromEvent) return false;
-  if (!escortTossableType(e.type) || isHordeFollower(e)) return false;
-  if (e.aiPhase === 'jump' || e.aiPhase === 'charge') return false;
+  if (!escortKickableState(e)) return false;
   if (e.stunUntil === undefined || e.stunUntil - gameTime < ESCORT_KICK_TO_HIT_MS + ESCORT_KICK_STUN_MARGIN_MS) return false;
   if (abort && abort.enemyId === id && abort.stunUntil === e.stunUntil) return false; // この気絶中に一度中止した敵
   return Math.hypot(e.x + e.width / 2 - playerCx, e.y + e.height / 2 - playerCy) >= ESCORT_KICK_MIN_DIST;
@@ -142,11 +148,13 @@ export const escortKickPoint = (
   return { x: ecx - dx * back, y: enemy.y + enemy.height - dy * back, dirX: dx, dirY: dy };
 };
 
-/** 跳躍の位置(足元)。しゃがみの間は from、跳躍は加速→減速(smoothstep)、着地後は to。 */
+/**
+ * 跳躍の位置(足元)。しゃがみの間は from、跳躍の間は**横は等速**(現実の跳躍=横の速さは変わらない。縦の放物線は描画が足す)、着地後は to。
+ * 横を smoothstep にすると「真上に上がってから横へ流れ、ふわっと降りる」になり、跳んできた勢いのまま蹴れない(検収クリエイティブ #3)。
+ */
 export const escortKickJumpPos = (k: Pick<EscortKick, 'fromX' | 'fromY' | 'toX' | 'toY' | 'startAt'>, gameTime: number): { x: number; y: number; t: number } => {
   const t = Math.max(0, Math.min(1, (gameTime - k.startAt - ESCORT_KICK_CROUCH_MS) / ESCORT_KICK_JUMP_MS));
-  const s = t * t * (3 - 2 * t);
-  return { x: k.fromX + (k.toX - k.fromX) * s, y: k.fromY + (k.toY - k.fromY) * s, t };
+  return { x: k.fromX + (k.toX - k.fromX) * t, y: k.fromY + (k.toY - k.fromY) * t, t };
 };
 
 /** (敵, 兵士) の組のうち、兵士から敵までが一番近い組。どちらも呼び手が条件で絞った候補。 */

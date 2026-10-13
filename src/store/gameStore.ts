@@ -217,8 +217,8 @@ import { escortHitFx, escortRiseFx, escortLandFx, type EscortFxApi, type EscortF
 import { addHateDamage, escortHateSide, escortIdOfSide, isHateTrackedBossType, resolveBossHateAim, resolveBossLockedHateAim, type HateSide } from '../utils/bossHate';
 import { stabilizeEscortFace } from '../utils/escortFace'; // 進軍NPCの向きのヒステリシス
 import {
-  escortTossDecision, escortTossLanding, ESCORT_TOSS_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_CD_MS,
-  escortKickTargetOk, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist, type EscortKick,
+  escortTossLanding, ESCORT_TOSS_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_CD_MS,
+  escortKickTargetOk, escortKickableState, ESCORT_KICK_MIN_DIST, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist, type EscortKick,
   ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS,
 } from '../utils/escortToss'; // 兵士の蹴り飛ばし(research/ESCORT_TOSS.md v3.1)
 import { npcSfxDistGain } from '../utils/npcSfx';
@@ -894,14 +894,13 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
     if (!k.aborted && !k.hitDone) {
       const bad = !esc || escortBusyNow(esc, now) || isEscortLowHealth(esc) || !enemy || isCorpse(enemy)
         || !(enemy.stunUntil !== undefined && now < enemy.stunUntil) || !!enemy.escortToss || locked;
-      // 着地の瞬間の再判定(型・状態・入力・プレイヤーまでの距離。間隔はもう見ない=割り当て時に見た)。
-      const landFail = !bad && now >= k.landAt && enemy !== undefined && !escortTossDecision({
-        enemy, playerCx: pcx, playerCy: pcy, playerAlive: p.health > 0, inputLocked: locked,
-        gameTime: now, lastTossAt: ESCORT_TOSS_NEVER,
-      });
+      // 着地の瞬間の再判定(型・状態+プレイヤーまでの最小距離。上限は見ない=画面内なら遠くても対象・検収 A-1。間隔は割り当て時に見た)。
+      const landFail = !bad && now >= k.landAt && enemy !== undefined && (!escortKickableState(enemy)
+        || Math.hypot(enemy.x + enemy.width / 2 - pcx, enemy.y + enemy.height / 2 - pcy) < ESCORT_KICK_MIN_DIST);
       if (bad || landFail) {
         next = { ...k, aborted: true };
-        if (enemy && enemy.stunUntil !== undefined) abortRec = { enemyId: enemy.id, stunUntil: enemy.stunUntil };
+        // 「この気絶中は二度と選ばない」の記憶は、敵の側の理由の時だけ(会話・アテンションの中止は明けたら蹴れる・検収 B)。
+        if (enemy && enemy.stunUntil !== undefined && !locked) abortRec = { enemyId: enemy.id, stunUntil: enemy.stunUntil };
       }
     }
     if (next && next.aborted && now >= next.landAt) next = null; // 跳躍中の中止は着地まで飛んでから終わる
@@ -909,15 +908,18 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
       next = { ...next, hitDone: true };
       const slid = get().tossEnemyToPlayer(enemy.id);
       const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+      if (slid) {
       // 命中(派手さの絵・判定なし): 会心と同じ音を兵士の会心と同じ距離減衰で+鞭の破裂音を低く。会心の金の輪と粒を蹴った向きへ。
       // 血は蹴られた背中から兵士の側へ抜ける。揺れは出さない(遠い所の出来事=揺れは到着で)。
-      const g = npcSfxDistGain(ecx, ecy, pcx, pcy, st.camera, st.gameBounds);
-      if (g > 0) void import('../audio/audioManager').then(m => { m.playSfx('headshot', g); m.playSfx('whip-hit', 0.8 * g, undefined, 0.8); });
+      // 蹴りの音はパスの合図=遠くても聞こえる床(0.4)を付ける(社長「クリティカルと同じような目立つ音」・検収クリエイティブ #10)。
+      const g = Math.max(0.4, npcSfxDistGain(ecx, ecy, pcx, pcy, st.camera, st.gameBounds));
+      void import('../audio/audioManager').then(m => { m.playSfx('headshot', g); m.playSfx('whip-hit', 0.8 * g, undefined, 0.8); });
       get().spawnRing(ecx, ecy, 8, 52, 'rgba(253,224,71,0.95)', 3, 320);
       get().spawnBurst(ecx, ecy, '#fde047', 12, next.dirX, next.dirY);
       get().spawnGlow(ecx, ecy, 34, 'rgba(253,224,71,', 240);
       get().spawnSpray(ecx - next.dirX * enemy.width * 0.3, ecy - next.dirY * enemy.height * 0.3, -next.dirX, -next.dirY, 12, ['#7f1d1d', '#991b1b', '#b91c1c']);
-      if (slid) set({ lastEscortTossAt: now });
+      set({ lastEscortTossAt: now });
+      } // 滑らなかった(敵がもう目の前まで来ていた)時は音・光を出さない(検収 B)
     }
     if (next && now >= next.endAt) next = null;
     if (next !== k || abortRec !== st.escortKickAbort) set({ escortKick: next, escortKickAbort: abortRec });
@@ -944,6 +946,11 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
   const c = clampRectToPlayableArea(kp.x - half, kp.y - ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, areaCtx, pair.escort.x - half);
   const landAt = now + ESCORT_KICK_CROUCH_MS + ESCORT_KICK_JUMP_MS;
   const hitAt = landAt + ESCORT_KICK_WINDUP_MS;
+  // 跳ぶ音(KILL の跳びつきと同じ音を低く・兵士の位置で距離減衰)。跳んだ者が無音、を作らない(検収クリエイティブ #9)。
+  {
+    const g = npcSfxDistGain(pair.escort.x, pair.escort.y - ESCORT_BODY_SIZE / 2, pcx, pcy, st.camera, st.gameBounds);
+    if (g > 0) void import('../audio/audioManager').then(m => m.playSfx('kill-dash', 0.6 * g, undefined, 0.85));
+  }
   set(state => ({
     escortKick: {
       escortId: pair.escort.id, enemyId: en.id, startAt: now,
@@ -957,7 +964,8 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
 /** 蹴りを割り当てられた兵士の位置・向き(各ルートの軍人の map が呼ぶ。撃たない・ナイフを振らない=呼び手はここで return する)。 */
 const escortKickOverride = (esc: EscortSoldier, k: EscortKick, now: number): EscortSoldier => {
   const pos = escortKickJumpPos(k, now);
-  const face: 1 | -1 = (now < k.landAt ? (k.toX - k.fromX) : k.dirX) < 0 ? -1 : 1;
+  // 向き: 跳躍の前半は跳ぶ向き、後半からは蹴る向きへ体を向けて降りる(着地の1フレームで反転しない・検収クリエイティブ #6)。
+  const face: 1 | -1 = (pos.t < 0.5 && now < k.landAt ? (k.toX - k.fromX) : k.dirX) < 0 ? -1 : 1;
   return { ...esc, x: pos.x, y: pos.y, face, moving: false, vx: 0, vy: 0, knifeMode: false };
 };
 
@@ -7952,6 +7960,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         knockbackUntil: (en.knockbackUntil ?? 0) > now ? now : en.knockbackUntil,
         knockbackVx: 0, knockbackVy: 0,
         vx: 0, vy: 0,
+        lastHit: now, // 蹴られた体に既存の被弾の反応(白い光・揺れ)を出す(検収クリエイティブ #11・描画のみが読む)
       }),
     }));
     return true;
@@ -20135,8 +20144,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       return shots.map(sh => ({ x: sh.x, y: sh.y }));
     }
-    // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md): 割り当て・中止・命中を進める(通常ルートと洋館通路ルートの両方より前・M0は上で抜けている)。
-    stepEscortKick(get, set);
+    // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md): 割り当て・中止・命中を進める。軍人の map が回る時だけ
+    // (=下の2ルートと同じ条件・勝利後/拠点なし/屋内/ラボでは進めない=兵士が動かないのに音と光だけ出る、を作らない・検収 A-3)。M0は上で抜けている。
+    {
+      const s0 = get();
+      if (s0.corridorMode ? !s0.gameWon : (s0.baseSites.length > 0 && !s0.indoorMode && s0.stageTheme !== 'lab' && !s0.gameWon)) stepEscortKick(get, set);
+    }
     const state = get();
     // 洋館通路(corridorMode): 横一列の隊形へ進みつつ通常拠点護衛と同じ四方位索敵を使う。
     // 前方=停止、左右=50%、後方=70%で全方位へ射撃。M0チュートリアルは上の別経路なので対象外。

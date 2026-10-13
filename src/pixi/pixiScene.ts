@@ -102,7 +102,7 @@ import {
   PLAYER_KNOCKBACK_MS,
   retaliationReadyTarget, // ★被弾反撃の「いま出せるか」(入力と同じ1本・HIT_RETALIATION.md §7)
 } from '../store/gameStore';
-import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
+import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
   MIMIR_SCRIPT_ENABLED, JORMUNGAND_SCRIPT_ENABLED, SKADI_SCRIPT_ENABLED, THOR_SCRIPT_ENABLED,
@@ -6767,7 +6767,8 @@ export class PixiScene {
   private warpOutWasOn = new Set<string>();
   private warpInWasOn = new Set<string>();
   private tossLastDir = new Map<string, { x: number; y: number }>();
-  private escKickFx = new Map<string, EscortKick>(); // 兵士の蹴り(v3.1)の最後の段取り(蹴りが終わった後も着地/蹴り抜きの埃を描き切るため) // 兵士のトスの飛んだ向き(着地の埃を後ろへ引くため・着地後2秒で捨てる)
+  private escKickFx = new Map<string, EscortKick>();
+  private escKickLift = new Map<string, number>(); // 兵士の跳躍の高さ(影の place() へ heightPx として渡す) // 兵士の蹴り(v3.1)の最後の段取り(蹴りが終わった後も着地/蹴り抜きの埃を描き切るため) // 兵士のトスの飛んだ向き(着地の埃を後ろへ引くため・着地後2秒で捨てる)
   private acrasielWarpOutPos = new Map<string, { x: number; y: number }>();
   // FX-V2c: 突進の風圧の向き+減衰締切。突進中は毎フレーム向きを撮り直し(endAtも押し戻す)、
   // 突進が明けたら最後の向きのまま endAt までの残り時間で減衰させる(dashWasOnと同じ「立ち下がり
@@ -13358,6 +13359,7 @@ export class PixiScene {
         id: 'esc:' + esc.id, x: esc.x, y: esc.y,
         rawW: w * (ePose ? ePose.shadowW : 1), rawH: Math.abs(escSp.height) * (ePose ? ePose.shadowLen : 1), texture: escSp.texture,
         alpha: ePose ? Math.min(1, ha * ePose.shadowAlpha) : ha, flip: escSp.scale.x < 0,
+        heightPx: this.escKickLift.get(esc.id) ?? 0,
       });
     }
     // ---- エンディング(仮組み)の兵士・フィル(既存の護衛と同じ接地影のplace()に相乗り・§6) ----
@@ -23001,13 +23003,14 @@ export class PixiScene {
       // 着いた後も DUST_MS の間は描き続ける(置き去りの埃は滑り終わっても残る)。
       const trailOn = e.corpseUntil === undefined && (!!e.escortToss || (e.escortTossLandedAt !== undefined && gameTime - e.escortTossLandedAt < DUST_MS + 200));
       if (trailOn) {
+        // 跡は時間で置く=減速して地面を擦る後半に寄せ、最後(止まる手前)が一番大きく長く舞う(検収クリエイティブ #13)。
         const tz = e.escortToss;
         const tt = tz ? (gameTime - tz.startAt) / Math.max(1, tz.endAt - tz.startAt) : 2;
-        const prog = 1 - (1 - Math.max(0, Math.min(1, tt))) ** 2;
-        [0.15, 0.45, 0.75].forEach((mark, k) => {
-          const L = this.latchFx(`${e.id}:tosstrail${k}`, !!tz && prog >= mark && prog < mark + 0.25, DUST_MS, now,
-            () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DUST_SCALE * (0.75 - k * 0.15)]);
-          if (L) this.drawDust(L.d[0], L.d[1], L.d[2], L.t, this.dustTintForStage(), this.dustAlpha(L.t), L.t0 + k * 53);
+        const TRAIL = [[0.3, 0.42, 520, 31], [0.58, 0.6, 700, 74], [0.82, 0.86, 900, 19]] as const;
+        TRAIL.forEach(([mark, size, dur, seed], k) => {
+          const L = this.latchFx(`${e.id}:tosstrail${k}`, !!tz && tt >= mark && tt < mark + 0.2, dur, now,
+            () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DUST_SCALE * size]);
+          if (L) this.drawDust(L.d[0], L.d[1], L.d[2], L.t, this.dustTintForStage(), this.dustAlpha(L.t), L.t0 + seed);
         });
       }
 
@@ -27180,10 +27183,13 @@ export class PixiScene {
     for (const esc of escorts) {
       seen.add(esc.id);
       // 蹴りの段(割り当てられた兵士だけ): しゃがみ→跳躍→溜め→蹴り抜き。時計はゲーム時間(store と同じ)。
-      const kick = escKick && escKick.escortId === esc.id && !escKick.aborted ? escKick : null;
+      // 中止でも跳躍中は着地まで空中の絵のまま(store も着地まで位置を進める=地面を滑らない・検収品質 A-2)。中止後の溜め・蹴りは出さない。
+      const kickMine = escKick && escKick.escortId === esc.id ? escKick : null;
+      const kick = kickMine && (!kickMine.aborted || gameTime < kickMine.landAt) ? kickMine : null;
       const kickPhase: 'crouch' | 'air' | 'windup' | 'strike' | null = !kick ? null
         : gameTime < kick.startAt + ESCORT_KICK_CROUCH_MS ? 'crouch'
         : gameTime < kick.landAt ? 'air'
+        : kick.aborted ? null
         : gameTime < kick.hitAt ? 'windup' : 'strike';
       let sp = this.escortSprites.get(esc.id);
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.escortSprites.set(esc.id, sp); }
@@ -27223,10 +27229,12 @@ export class PixiScene {
       const swingTex = mSwing && mSince < PLAYER_MELEE_SWING_MS && esc.soldierIndex >= 0 && esc.soldierIndex < 8
         ? getTexture(`${ESCORT_SWING_SHEET}-${esc.soldierIndex + (meleeArcT(meleeSwingEase(mSince / PLAYER_MELEE_SWING_MS)) < 0.5 ? 0 : 8)}`)
         : null;
-      // 蹴り(v3.1): 専用の絵が無いので振りの2コマで「しゃがむ/跳ぶ・ためる=振り上げた姿(8..15)→蹴り抜く=低く踏み込んだ姿(0..7)」。
-      // しゃがみは低い構え(0..7)。命中と同じフレームで絵を替える。
-      const kickTex = kickPhase && esc.soldierIndex >= 0 && esc.soldierIndex < 8
-        ? getTexture(`${ESCORT_SWING_SHEET}-${esc.soldierIndex + (kickPhase === 'air' || kickPhase === 'windup' ? 8 : 0)}`)
+      // 蹴り(v3.1): 蹴り専用の絵は無い。振りのコマはナイフが描き込まれていて「跳び斬り→突き」に見える(検収クリエイティブ #1)ので使わない。
+      // しゃがみ・溜め=片膝のしゃがみ(倒れる絵の0コマ目)/空中・蹴り抜き=歩きシートの大きく脚を開いたコマ。蹴りは動き・敵の反応・音で見せる。
+      const kickTex = kickPhase
+        ? (kickPhase === 'crouch' || kickPhase === 'windup'
+          ? getTexture(`${base}-down-0`)
+          : (getTexture(`${base}-walk-${kickPhase === 'air' ? 2 : 6}`) ?? getTexture(`${base}-walk-0`)))
         : null;
       const tex = kickTex ? kickTex
         : hitCrouch ? getTexture(`${base}-down-0`)
@@ -27285,9 +27293,24 @@ export class PixiScene {
       // 蹴り(v3.1): 跳躍の放物線(頂点=距離×0.22・30〜140px・位置の動き)と、蹴り抜きの踏み込み 22px→反動で4px戻り過ぎ→戻る(慣性)。
       let kickOffX = 0, kickOffY = 0;
       if (kick && kickPhase === 'air') {
+        // 縦だけ放物線(横は store で等速)。頂点は敵の背丈を越える高さ以上(近い跳びで敵の胴を横切らない・検収クリエイティブ #5)。
         const tj = Math.max(0, Math.min(1, (gameTime - kick.startAt - ESCORT_KICK_CROUCH_MS) / ESCORT_KICK_JUMP_MS));
-        const hgt = Math.max(30, Math.min(140, Math.hypot(kick.toX - kick.fromX, kick.toY - kick.fromY) * 0.22));
-        kickOffY = -Math.sin(tj * Math.PI) * hgt * this.depthScale(esc.y);
+        const hgt = Math.max(110, Math.min(170, Math.hypot(kick.toX - kick.fromX, kick.toY - kick.fromY) * 0.25));
+        kickOffY = -4 * tj * (1 - tj) * hgt * this.depthScale(esc.y);
+        // 速度線(突進の線の文法・判定なし): 0.4秒で画面を横切る速さを読ませる(検収クリエイティブ #4)。
+        const jx = kick.toX - kick.fromX, jy = kick.toY - kick.fromY, jl = Math.hypot(jx, jy) || 1;
+        const ux = jx / jl, uy = jy / jl, vy = (1 - 2 * tj) * 4 * hgt / ESCORT_KICK_JUMP_MS; // 縦の速さの向き(上り=正)
+        const tail = Math.min(140, jl * 0.18) * this.depthScale(esc.y);
+        const bx = esc.x, by = esc.y + kickOffY - 26;
+        for (const off of [-8, 0, 8]) {
+          eg.moveTo(bx - uy * off, by + ux * off).lineTo(bx - uy * off - ux * tail, by + ux * off - uy * tail + vy * tail * 0.4)
+            .stroke({ width: off === 0 ? 2.5 : 1.2, color: 0xe5e7eb, alpha: off === 0 ? 0.5 : 0.28 });
+        }
+      } else if (kick && kickPhase === 'windup') {
+        // 溜め: 蹴る向きと逆へ 3px 引く(予備動作の慣性・検収クリエイティブ #7)。
+        const u = Math.max(0, Math.min(1, (gameTime - kick.landAt) / ESCORT_KICK_WINDUP_MS));
+        const back = -3 * (1 - (1 - u) * (1 - u)) * this.depthScale(esc.y);
+        kickOffX = kick.dirX * back; kickOffY = kick.dirY * back;
       } else if (kick && kickPhase === 'strike') {
         const u = Math.max(0, Math.min(1, (gameTime - kick.hitAt) / ESCORT_KICK_RECOVER_MS));
         const L = 22 * this.depthScale(esc.y);
@@ -27297,17 +27320,16 @@ export class PixiScene {
       }
       const px = Math.round(esc.x + (esc.knifeDirX ?? 0) * lungeK + kickOffX), py = Math.round(esc.y - bob + (tex && sinkWorld > 0.4 ? 0 : sinkWorld) + (esc.knifeDirY ?? 0) * lungeK + kickOffY);
       // 着地と蹴り抜きの瞬間に足元へ砂埃(判定なし)。蹴りが終わった後も埃は DUST_MS の間描き切る(最後の蹴りを覚えておく)。
+      this.escKickLift.set(esc.id, kickOffY < 0 ? -kickOffY : 0); // 影の高さ(跳躍中は影が薄く小さく=浮いて見える・検収クリエイティブ #8)
       if (kick) this.escKickFx.set(esc.id, kick);
       const kickFx = kick ?? this.escKickFx.get(esc.id);
-      if (kickFx && !kick && gameTime > kickFx.endAt + DUST_MS + 200) this.escKickFx.delete(esc.id);
+      // 終わって埃を描き切った/次の出撃で時計が戻った(前の出撃の段取り)は捨てる(検収品質 B)。
+      if (kickFx && !kick && (gameTime > kickFx.endAt + DUST_MS + 200 || gameTime < kickFx.startAt)) this.escKickFx.delete(esc.id);
       if (kickFx) {
         const kick = kickFx;
         const landL = this.latchFx(`esc:${esc.id}:kickland`, gameTime >= kick.landAt && gameTime < kick.landAt + 120, DUST_MS, now,
           () => [kick.toX, kick.toY, PLAYER_HITBOX_FOR_DUST * DUST_SCALE]);
         if (landL) this.drawDust(landL.d[0], landL.d[1], landL.d[2], landL.t, this.dustTintForStage(), this.dustAlpha(landL.t), landL.t0);
-        const strL = this.latchFx(`esc:${esc.id}:kickstrike`, gameTime >= kick.hitAt && gameTime < kick.hitAt + 120, DUST_MS, now,
-          () => [kick.toX + kick.dirX * 18, kick.toY + kick.dirY * 18, PLAYER_HITBOX_FOR_DUST * DUST_SCALE * 0.8]);
-        if (strL) this.drawDust(strL.d[0], strL.d[1], strL.d[2], strL.t, this.dustTintForStage(), this.dustAlpha(strL.t), strL.t0);
       }
       const faceSign = esc.face < 0 ? -1 : 1;
       // 軍人の滑りは ease-out(2次)=速さは 1−t に比例。

@@ -99,6 +99,21 @@ describe('兵士の蹴り飛ばし v3.1', () => {
     expect(useGameStore.getState().escortKick).toBeNull();
     expect(enemy(id).escortToss).toBeUndefined();
   });
+  it('画面内ならプレイヤーから640pxより遠い敵も蹴る(着地で空振りしない・検収 A-1)', () => {
+    useGameStore.setState({ viewZoom: 0.5 }); // 引きのズーム=可視域が広い
+    const id = put(700, -60);
+    step(16);
+    expect(useGameStore.getState().escortKick?.enemyId).toBe(id);
+    run(ESCORT_KICK_TO_HIT_MS + 60);
+    expect(useGameStore.getState().escortKick?.aborted).toBe(false);
+    expect(enemy(id).escortToss).toBeDefined();
+  });
+  it('勝利後は蹴りを進めない(兵士が動かないのに音と光だけ出る、を作らない・検収 A-3)', () => {
+    put(300, -40);
+    useGameStore.setState({ gameWon: true });
+    step(16);
+    expect(useGameStore.getState().escortKick).toBeNull();
+  });
   it('着地後の押しの飛距離は、蹴られていない個体と同じ(ノックバックの欄を使わない)', () => {
     const a = put(300, -40);
     step(16);
