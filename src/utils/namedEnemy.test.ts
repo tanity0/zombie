@@ -160,3 +160,15 @@ describe('専用の tick で動くボス級は宿敵にならない(v0.25.4997)'
     expect(isPromotionExcluded('mutant-liberty', false)).toBe(true);
   });
 });
+
+describe('死神の使者・ハンターは宿敵にならない(社長指示2026-10-13)', () => {
+  it('使者(hangedman)・ハンター・死神本体は対象外', () => {
+    expect(isPromotionExcluded('hangedman', false)).toBe(true);
+    expect(isPromotionExcluded('hunter', false)).toBe(true);
+    expect(isPromotionExcluded('reaper', false)).toBe(true);
+  });
+  it('保存済みの宿敵が使者・ハンターなら浄化で消える', () => {
+    expect(sanitizeNamedFoe({ type: 'hangedman', name: 'x', grudge: 0 })).toBeNull();
+    expect(sanitizeNamedFoe({ type: 'hunter', name: 'x', grudge: 1 })).toBeNull();
+  });
+});

@@ -4,7 +4,7 @@
 // pixiScene.ts 側が本ファイルの定数・純関数を消費する。
 
 import type { EnemyType } from '../types/game';
-import { isBodyWallBoss, isBountyType, isHiddenBoss, isReaperFamily } from './enemyUtils';
+import { isBodyWallBoss, isBountyType, isHangedman, isHiddenBoss, isReaperFamily } from './enemyUtils';
 
 // 社長決定v0.25.1481→v0.25.1482(候補は多いほど良い=32名に増量): 裏ボス=北欧の神々を
 // 予約するため、ネームドはギリシャ神話の怪物から取る(名前空間を神話ごとに分離)。
@@ -140,7 +140,10 @@ export const isPromotionExcluded = (
   // 賞金首・英雄(変異)・解放軍の旗手も対象外(v0.25.4997): 専用の tick だけが動かす型で、ふつうの湧きで
   // 出すと動かない/接触0の壁になる。裏ボスと同じボス級。被弾元の型がどの経路でも記録されるようになって
   // (resolveDamager)初めて、これらに倒された死が昇格判定へ届くようになったため。
-  || isBountyType(killerType) || isBodyWallBoss(killerType);
+  || isBountyType(killerType) || isBodyWallBoss(killerType)
+  // 死神の使者(hangedman)とハンターも対象外(社長指示2026-10-13「死神(使者)はネームド化しないようにして。ハンターも」)。
+  // 保存済みの宿敵がこの型でも、読込時の浄化(sanitizeNamedFoe)で宿敵不在に戻る。
+  || isHangedman(killerType) || killerType === 'hunter';
 
 /**
  * 保存済みの宿敵メタの浄化(v0.25.3694)。除外型(幻影等)が過去の穴で保存されてしまった端末を
