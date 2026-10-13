@@ -472,6 +472,8 @@ overlays, menus shown during play), make sure it does NOT re-render every frame:
     全角英字・別表記を作らない)。
 - **例外(v0.25.3763): `PROJECT_STATUS.md` のみの変更はbump・changelog・DEVELOPMENT_LOG不要=即push**
   (状態の単独push。TEST_HANDOFF/例外と同型。状態を動かした設計チャットが、その回の返信前に行う)。
+- **★チャットの返信は必ず日本語(社長指示2026-10-13「チャットを英語で出すの今後は禁止」・MUST)**。
+  見出し・箇条書き・選択肢・状況報告の一言まで全部日本語で書く。コード・ファイル名・コマンド・識別子はそのままでよい。
 - **ALWAYS state the current `version` in every chat reply** (e.g. end the
   response with `v0.25.xxx`). This is a hard rule — never omit it, even for
   questions, doc-only changes, or replies with no code change. After bumping,
