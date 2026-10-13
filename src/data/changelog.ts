@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5027', items: ['資料室の新しい操作記録の文を、ほかの記録と言葉をそろえて短くした'] },
   { version: '0.25.5026', items: ['資料室の操作記録に、被弾反撃・軍人の蹴り・輸送・軍人の同行の説明が加わった'] },
   { version: '0.25.5025', items: ['死因の敵の絵を小さくした'] },
   { version: '0.25.5024', items: ['死因の下は「踏み鳴らし」のように、やられ方の名前だけになった'] },
