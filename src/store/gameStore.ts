@@ -912,14 +912,13 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
       const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
       if (slid) {
       // 命中(派手さの絵・判定なし): 会心と同じ音を兵士の会心と同じ距離減衰で+鞭の破裂音を低く。会心の金の輪と粒を蹴った向きへ。
-      // 血は蹴られた背中から兵士の側へ抜ける。揺れは出さない(遠い所の出来事=揺れは到着で)。
+      // 血は出さない(社長指示2026-10-13「蹴った時は血を出さない」)。揺れは出さない(遠い所の出来事=揺れは到着で)。
       // 蹴りの音はパスの合図=遠くても聞こえる床(0.4)を付ける(社長「クリティカルと同じような目立つ音」・検収クリエイティブ #10)。
       const g = Math.max(0.4, npcSfxDistGain(ecx, ecy, pcx, pcy, st.camera, st.gameBounds));
       void import('../audio/audioManager').then(m => { m.playSfx('headshot', g); m.playSfx('whip-hit', 0.8 * g, undefined, 0.8); });
       get().spawnRing(ecx, ecy, 8, 52, 'rgba(253,224,71,0.95)', 3, 320);
       get().spawnBurst(ecx, ecy, '#fde047', 12, next.dirX, next.dirY);
       get().spawnGlow(ecx, ecy, 34, 'rgba(253,224,71,', 240);
-      get().spawnSpray(ecx - next.dirX * enemy.width * 0.3, ecy - next.dirY * enemy.height * 0.3, -next.dirX, -next.dirY, 12, ['#7f1d1d', '#991b1b', '#b91c1c']);
       set({ lastEscortTossAt: now });
       } // 滑らなかった(敵がもう目の前まで来ていた)時は音・光を出さない(検収 B)
     }
