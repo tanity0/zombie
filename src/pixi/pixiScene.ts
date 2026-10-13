@@ -13356,7 +13356,8 @@ export class PixiScene {
       // 起き上がりは同じ曲線で戻る(行き過ぎも)。
       const ePose = this.escortPoseById.get(esc.id);
       place({
-        id: 'esc:' + esc.id, x: esc.x, y: esc.y,
+        // place() の y=描画上の足元(持ち上げた後)・接地点=y+heightPx。跳躍中は持ち上げた足元を渡す(地面の下へ沈めない・検収2巡目 A-1)。
+        id: 'esc:' + esc.id, x: esc.x, y: esc.y - (this.escKickLift.get(esc.id) ?? 0),
         rawW: w * (ePose ? ePose.shadowW : 1), rawH: Math.abs(escSp.height) * (ePose ? ePose.shadowLen : 1), texture: escSp.texture,
         alpha: ePose ? Math.min(1, ha * ePose.shadowAlpha) : ha, flip: escSp.scale.x < 0,
         heightPx: this.escKickLift.get(esc.id) ?? 0,
@@ -27320,7 +27321,8 @@ export class PixiScene {
       }
       const px = Math.round(esc.x + (esc.knifeDirX ?? 0) * lungeK + kickOffX), py = Math.round(esc.y - bob + (tex && sinkWorld > 0.4 ? 0 : sinkWorld) + (esc.knifeDirY ?? 0) * lungeK + kickOffY);
       // 着地と蹴り抜きの瞬間に足元へ砂埃(判定なし)。蹴りが終わった後も埃は DUST_MS の間描き切る(最後の蹴りを覚えておく)。
-      this.escKickLift.set(esc.id, kickOffY < 0 ? -kickOffY : 0); // 影の高さ(跳躍中は影が薄く小さく=浮いて見える・検収クリエイティブ #8)
+      // 影の高さは跳躍の放物線だけ(蹴り抜きの平面の踏み込みは高さではない・検収2巡目 A-1)。
+      this.escKickLift.set(esc.id, kickPhase === 'air' && kickOffY < 0 ? -kickOffY : 0);
       if (kick) this.escKickFx.set(esc.id, kick);
       const kickFx = kick ?? this.escKickFx.get(esc.id);
       // 終わって埃を描き切った/次の出撃で時計が戻った(前の出撃の段取り)は捨てる(検収品質 B)。
@@ -27389,7 +27391,7 @@ export class PixiScene {
     }
     for (const [id, sp] of this.escortSprites) {
       if (!seen.has(id)) {
-        sp.destroy(); this.escortSprites.delete(id);
+        sp.destroy(); this.escortSprites.delete(id); this.escKickFx.delete(id); this.escKickLift.delete(id);
         const mv = this.escortMeleeViews.get(id);
         if (mv) { mv.knife.destroy(); mv.slash.destroy(); mv.trail.destroy(); mv.wpn.destroy(); this.escortMeleeViews.delete(id); }
         const bl = this.escortBlendSprites.get(id);

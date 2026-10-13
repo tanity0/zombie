@@ -899,11 +899,13 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
         || Math.hypot(enemy.x + enemy.width / 2 - pcx, enemy.y + enemy.height / 2 - pcy) < ESCORT_KICK_MIN_DIST);
       if (bad || landFail) {
         next = { ...k, aborted: true };
-        // 「この気絶中は二度と選ばない」の記憶は、敵の側の理由の時だけ(会話・アテンションの中止は明けたら蹴れる・検収 B)。
+        // 「この気絶中は二度と選ばない」の記憶は、入力ロック(会話・アテンション)以外の理由の時(明けたら蹴れる・検収 B)。
         if (enemy && enemy.stunUntil !== undefined && !locked) abortRec = { enemyId: enemy.id, stunUntil: enemy.stunUntil };
       }
     }
-    if (next && next.aborted && now >= next.landAt) next = null; // 跳躍中の中止は着地まで飛んでから終わる
+    // 跳躍中の中止は着地まで飛んでから終わる。ただし兵士自身が倒れた/被弾した時は軍人の map が先に止める(位置が進まない)ので
+    // 即座に終える(描画が空中の絵のまま、居ない所へ着地しない・検収2巡目 B-2)。
+    if (next && next.aborted && (now >= next.landAt || !esc || escortBusyNow(esc, now))) next = null;
     if (next && !next.aborted && !next.hitDone && now >= next.hitAt && enemy) {
       next = { ...next, hitDone: true };
       const slid = get().tossEnemyToPlayer(enemy.id);
@@ -20149,6 +20151,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     {
       const s0 = get();
       if (s0.corridorMode ? !s0.gameWon : (s0.baseSites.length > 0 && !s0.indoorMode && s0.stageTheme !== 'lab' && !s0.gameWon)) stepEscortKick(get, set);
+      else if (s0.escortKick) set({ escortKick: null }); // 勝利が蹴りの途中に来た等: 段取りを捨てる(兵士を蹴る位置に釘付けにしない・検収2巡目 B-1)
     }
     const state = get();
     // 洋館通路(corridorMode): 横一列の隊形へ進みつつ通常拠点護衛と同じ四方位索敵を使う。
