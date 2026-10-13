@@ -188,7 +188,7 @@ const KillerLine: React.FC<{ deathCause: string }> = ({ deathCause }) => {
       <div className="mt-1 flex items-end gap-3">
         {type && art && (
           <div className="flex shrink-0 flex-col items-center">
-            <img key={art} src={art} alt="" style={{ height: 96, width: 'auto', imageRendering: 'pixelated' }} onError={() => setArtStep(k => k + 1)} />
+            <img key={art} src={art} alt="" style={{ height: 56, width: 'auto', imageRendering: 'pixelated' }} onError={() => setArtStep(k => k + 1)} />
             <div className="h-px w-full bg-gradient-to-r from-transparent via-rose-300/40 to-transparent" />
           </div>
         )}
