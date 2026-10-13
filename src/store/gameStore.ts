@@ -5960,7 +5960,7 @@ interface GameState {
   endingFinaleHitAt: number;         // フィナーレ直撃弾の着弾gameTime(0=未着弾)。EndingScreenがフラッシュ暗転に使う
   suppressionActive: boolean;    // 制圧イベント中か(通常は false=拠点なし)
   suppressionCaptureCount: number; // 制圧した累計回数(base-capture SE 検出用。軍人名簿indexはランダム割当)
-  safeBaseId: string | null;     // 武器商人が現在いる拠点(=安全地帯。HP回復・陥落しない)
+  safeBaseId: string | null;     // 最後に解放した拠点(=安全地帯。HP回復・陥落しない)。※武器商人はスタート常駐で拠点へは移動しない
   pendingSuppression: boolean;   // 出撃が制圧イベント(ステージ1)か。resetGame で suppressionActive へ
   // the ONE(統合正本M7/EX): ストーリーボス専用ステージ(通常湧き/イベント全停止→会話→ボス→勝利)。
   pendingStoryBoss: boolean;     // 出撃前にAppがセット(Stage.storyBossOnly)。resetGame で storyBossMode へ

@@ -9710,7 +9710,7 @@ export class PixiScene {
     // v0.25.3054: 施設フェード中は施設系の矢印/マーカーも出さない(城=castleVisible、商人=radius0で
     // 縁矢印を殺す、POI/拠点=空配列)。ボスマーク・アイテム・ハンター等の非施設マーカーは従来どおり。
     const facHidden = facFade < 0.5;
-    this.arrowSafeBaseId = s.safeBaseId ?? null; // 拠点の目印の色(安全な拠点=青・地面の円と同じ)
+    this.arrowSafeBaseId = s.safeBaseId ?? null; // 拠点の目印の色(安全な拠点=最後に解放した拠点=青・地面の円と同じ)
     this.syncArrows(s.pickups, s.castleEvent, (facHidden || s.merchantHidden || s.stageTheme === 'lab') ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
       targets: markedBosses,
       // 距離は**ボスメーカーの部屋の中だけ常時**表示(社長指示v0.25.2657)。本編は数字を出さない=
@@ -35793,8 +35793,6 @@ export class PixiScene {
     for (const b of baseSites) {
       const captured = b.status === 'captured';
       const bKey = b.id ?? `${b.x},${b.y}`;
-      // 武器商人の居る拠点(安全な拠点)は、商人の縁矢印が同じ所を指すので重ねない(1つにまとめる・納品監査A-4)。
-      if (captured && b.id !== undefined && b.id === this.arrowSafeBaseId) continue;
       const tx = toScreenX(b.x), ty = toScreenY(b.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内は地面サークルで見える
       if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
@@ -35807,8 +35805,8 @@ export class PixiScene {
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (!isFinite(tdist)) continue;
       baseArrowSeen.add(bKey);
-      // 色は地面の円と同じ(未解放=琥珀/解放済み=緑)。
-      const color = captured ? 0x34d399 : 0xfbbf24;
+      // 色は地面の円と同じ(未解放=琥珀/解放済み=緑/安全な拠点=青。安全な拠点=最後に解放した拠点・`safeBaseId`)。
+      const color = captured ? (b.id !== undefined && b.id === this.arrowSafeBaseId ? 0x60a5fa : 0x34d399) : 0xfbbf24;
       let rec = this.baseArrowRecs.get(bKey);
       if (!rec || rec.hiddenAt !== null) {
         // 新しく出た(消えかけからの戻りは、消えの残りぶん濃さを引き継いで入り直す)。
