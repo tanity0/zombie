@@ -12,6 +12,16 @@ const merchant = { x: 0, y: -130, radius: 58 };
 const base = { merchant, bases, armoryRadius: 50, baseRadius: 130 };
 
 describe('ファストトラベルの行き先', () => {
+  it('襲われている拠点は上へ・行に印', () => {
+    const l = listTravelDestinations({ ...base, bases: bases.map(b => (b.id === 'base-2' ? { ...b, attackerId: 'e1' } : b)), player: { x: 0, y: 0 } });
+    expect(l.map(d => d.id)).toEqual(['base-2', 'merchant', 'base-0']);
+    expect(l[0].attacked).toBe(true);
+  });
+  it('武器商人が解放済みの拠点に居るなら、商人の行はその拠点の行にまとめる', () => {
+    const l = listTravelDestinations({ ...base, merchant: { x: 4800, y: -40, radius: 58 }, player: { x: 0, y: 0 } });
+    expect(l.map(d => d.id)).toEqual(['base-0', 'base-2']);
+    expect(l[0].hasMerchant).toBe(true);
+  });
   it('武器商人+解放済みの拠点だけ(東→西の順)', () => {
     const l = listTravelDestinations({ ...base, player: { x: 4800, y: 30 } });
     expect(l.map(d => d.label)).toEqual(['武器商人', '東部拠点', '西部拠点']);

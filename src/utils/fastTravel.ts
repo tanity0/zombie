@@ -10,6 +10,8 @@ export interface TravelDestination {
   arriveY: number;
   current: boolean;     // 今いる場所(押せない)
   baseId: string | null;
+  attacked: boolean;    // 拠点が襲われている(攻撃者が居る)=行に「交戦中」・一覧の上へ
+  hasMerchant: boolean; // 武器商人がこの拠点に居る(商人の行はこの拠点の行にまとめる)
 }
 
 /** 着く地点を、ショップがまた開く円(武器庫/商人の会話の円)の少し外=下側に置く距離(px)。 */
@@ -18,33 +20,36 @@ export const TRAVEL_ARRIVE_GAP_PX = 34;
 export interface TravelInput {
   player: { x: number; y: number };                    // 中心
   merchant: { x: number; y: number; radius: number } | null; // 姿を見せていない時は null
-  bases: readonly { id: string; x: number; y: number; status: string }[];
+  bases: readonly { id: string; x: number; y: number; status: string; attackerId?: string | null }[];
   armoryRadius: number;
   baseRadius: number;                                  // 拠点の円(ここに居れば「今いる場所」)
 }
 
 export const listTravelDestinations = (i: TravelInput): TravelDestination[] => {
   const out: TravelDestination[] = [];
-  if (i.merchant) {
+  const captured = [...i.bases].filter(b => b.status === 'captured').sort((a, b) => a.id.localeCompare(b.id)); // 東→南→西→北
+  // 武器商人が解放済みの拠点の円の中に居るなら、商人の行は出さずその拠点の行にまとめる(同じ場所を2行にしない)。
+  const merchantBase = i.merchant
+    ? captured.find(b => Math.hypot(i.merchant!.x - b.x, i.merchant!.y - b.y) <= i.baseRadius) ?? null
+    : null;
+  if (i.merchant && !merchantBase) {
     const m = i.merchant;
     out.push({
-      id: 'merchant', label: '武器商人', baseId: null,
+      id: 'merchant', label: '武器商人', baseId: null, attacked: false, hasMerchant: true,
       arriveX: m.x, arriveY: m.y + m.radius + TRAVEL_ARRIVE_GAP_PX,
       current: Math.hypot(i.player.x - m.x, i.player.y - m.y) <= m.radius + TRAVEL_ARRIVE_GAP_PX + 40,
     });
   }
-  // 並び=東→南→西→北(base-0..3)。未解放は出さない。
-  const order = [...i.bases].sort((a, b) => a.id.localeCompare(b.id));
-  for (const b of order) {
-    if (b.status !== 'captured') continue;
+  for (const b of captured) {
     out.push({
       id: b.id, label: `${baseDirectionLabel(b.x, b.y)}拠点`, baseId: b.id,
+      attacked: !!b.attackerId, hasMerchant: merchantBase?.id === b.id,
       arriveX: b.x, arriveY: b.y + i.armoryRadius + TRAVEL_ARRIVE_GAP_PX,
       current: Math.hypot(i.player.x - b.x, i.player.y - b.y) <= i.baseRadius,
     });
   }
-  // 行き先が「今いる場所」だけなら、移動先は無い(=タブを出さない)。
-  return out;
+  // 襲われている拠点を上へ(駆けつける判断を先に見せる)。それ以外は 武器商人→東→南→西→北 のまま。
+  return out.map((d, k) => ({ d, k })).sort((a, b) => Number(b.d.attacked) - Number(a.d.attacked) || a.k - b.k).map(x => x.d);
 };
 
 /** 「移動」タブを出すか: 今いる場所以外に行き先が1つ以上ある時だけ。 */

@@ -13,8 +13,11 @@ import {
   SHOP_VACCINE_COST,
   EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の2: 商人の装備区画価格表(Tier1→5)
   subWeaponDisplayName,
-  useGameStore
+  useGameStore,
+  travelDestinationsOf, // ファストトラベル(research/FAST_TRAVEL.md)
+  baseSoldierName,
 } from '../store/gameStore';
+import { hasTravelTargets } from '../utils/fastTravel';
 import type { AmmoType, EquipSlot, ShopItemKey, SubWeaponKey } from '../types/game';
 import { CHARACTER_SUBWEAPON_KEYS } from '../data/campaign';
 import { subWeaponUpgradeNoteText } from '../data/subWeaponUpgradeNotes';
@@ -71,6 +74,9 @@ const ammoShopKey: Record<AmmoType, ShopItemKey> = {
   phill: 'ammo-phill',
   glauncher: 'ammo-rifle'
 };
+
+/** 輸送の暗転(出)の長さ(ms)。明けは store の FAST_TRAVEL_REVEAL_MS(長め)。 */
+const FAST_TRAVEL_DIM_MS = 200;
 
 const ShopMenu: React.FC = () => {
   // player 全体を購読するとシム稼働中は毎フレーム再描画になるため、ショップで使う
@@ -230,6 +236,26 @@ const ShopMenu: React.FC = () => {
     }
   };
 
+  // ── 輸送(ファストトラベル・research/FAST_TRAVEL.md)。ショップを開いている間は世界が止まっている=開いた時の1回だけ組む
+  //    (選択子で毎回新しい配列を返すと購読が回り続けるため、getState を1回読む)。
+  const [tab, setTab] = React.useState<'shop' | 'travel'>('shop');
+  const [leaving, setLeaving] = React.useState(false);
+  const travel = React.useMemo(() => {
+    const st = useGameStore.getState();
+    return travelDestinationsOf(st).map(d => {
+      const esc = d.baseId ? st.escorts.find(e => e.baseId === d.baseId) : undefined;
+      return { ...d, who: esc ? baseSoldierName(esc.soldierIndex) : null };
+    });
+  }, []);
+  const showTravel = hasTravelTargets(travel);
+  const goTravel = (id: string) => {
+    if (leaving) return;
+    playSfx('ui-select');
+    setLeaving(true);
+    // 暗転(出)は速く、底で行き先へ置き、明け(store が受け持つ)は長く。
+    window.setTimeout(() => { if (!useGameStore.getState().fastTravelTo(id)) setLeaving(false); }, FAST_TRAVEL_DIM_MS);
+  };
+
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center px-3 pointer-events-auto">
       <div className="absolute inset-0 bg-black/55" />
@@ -248,9 +274,53 @@ const ShopMenu: React.FC = () => {
             <div className="text-lg font-black text-amber-100 tabular-nums">{player.straps}s</div>
           </div>
         </div>
+        {showTravel && (
+          <div data-nav-tabs className="px-4 pb-2 flex gap-5" role="tablist">
+            {([['shop', '補給'], ['travel', '輸送']] as const).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={tab === k}
+                onClick={() => { if (tab !== k) { playSfx('ui-move'); setTab(k); } }}
+                className={`relative pb-1 text-[13px] font-bold tracking-[0.2em] transition-colors ${tab === k ? 'text-white' : 'text-white/40'}`}
+              >
+                {label}
+                <span aria-hidden className="absolute left-0 right-0 -bottom-px h-[2px] origin-left transition-transform duration-200"
+                  style={{ background: '#e0a33a', transform: tab === k ? 'scaleX(1)' : 'scaleX(0)' }} />
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開) */}
         <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain no-scrollbar">
+        {tab === 'travel' ? (
+          <div className="px-4 pb-3 flex flex-col gap-2">
+            {travel.map(d => (
+              <button
+                key={d.id}
+                type="button"
+                disabled={d.current || leaving}
+                onClick={() => goTravel(d.id)}
+                className={`relative flex items-center gap-3 rounded-none border px-3 py-2.5 text-left transition ${
+                  d.current ? 'bg-purple-400/[0.03] border-purple-400/[0.08]' : 'bg-purple-400/[0.08] border-purple-400/[0.15] active:scale-[0.98]'
+                }`}
+              >
+                <span aria-hidden className="self-stretch w-[3px]" style={{ background: d.baseId ? '#34d399' : '#fbbf24', opacity: d.current ? 0.35 : 0.9 }} />
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-[13px] font-bold ${d.current ? 'text-white/45' : 'text-white'}`}>
+                    {d.label}
+                    {d.who && <span className="ml-2 text-[11px] font-normal text-white/50">── {d.who}</span>}
+                  </span>
+                  {(d.hasMerchant && d.baseId) && <span className="block text-[10px] text-amber-200/60">武器商人が居る</span>}
+                </span>
+                {d.attacked && <span className="shrink-0 text-[11px] font-bold tracking-[0.1em] text-rose-400">交戦中</span>}
+                {d.current && <span className="shrink-0 text-[11px] tracking-[0.2em] text-white/45">ここ</span>}
+              </button>
+            ))}
+          </div>
+        ) : (<>
         <div className="px-4 pb-3 grid grid-cols-2 gap-2">
           {entries.map(entry => {
             const canBuy = !entry.disabled && player.straps >= entry.cost;
@@ -348,6 +418,7 @@ const ShopMenu: React.FC = () => {
             </button>
           </div>
         )}
+        </>)}
         </NoBounceScroller>
 
         <div className="px-4 pb-4 space-y-2 shrink-0">
@@ -366,6 +437,9 @@ const ShopMenu: React.FC = () => {
           </button>
         </div>
       </div>
+      {/* 輸送の暗転(出): 押した瞬間から速く黒へ。底で store が行き先へ置き、明けは store の黒い明け(spawnFlash)が受け持つ。 */}
+      <div aria-hidden className="pointer-events-none absolute inset-0"
+        style={{ background: '#040508', opacity: leaving ? 1 : 0, transition: `opacity ${FAST_TRAVEL_DIM_MS}ms cubic-bezier(0.55,0,0.85,0.35)` }} />
     </div>
   );
 };

@@ -9708,6 +9708,7 @@ export class PixiScene {
     // v0.25.3054: 施設フェード中は施設系の矢印/マーカーも出さない(城=castleVisible、商人=radius0で
     // 縁矢印を殺す、POI/拠点=空配列)。ボスマーク・アイテム・ハンター等の非施設マーカーは従来どおり。
     const facHidden = facFade < 0.5;
+    this.arrowSafeBaseId = s.safeBaseId ?? null; // 拠点の目印の色(安全な拠点=青・地面の円と同じ)
     this.syncArrows(s.pickups, s.castleEvent, (facHidden || s.merchantHidden || s.stageTheme === 'lab') ? { ...s.weaponMerchant, radius: 0 } : s.weaponMerchant, s.camera, !(s.indoorMode || s.stageTheme === 'lab') && !facHidden, s.activeEvent, facHidden ? [] : revealedPois, facHidden ? [] : s.baseSites, s.escorts, { x: s.player.x + s.player.width / 2, y: s.player.y + s.player.height / 2 }, alertedHunters, liveScreamers, questTargets, rescuePoints, {
       targets: markedBosses,
       // 距離は**ボスメーカーの部屋の中だけ常時**表示(社長指示v0.25.2657)。本編は数字を出さない=
@@ -35267,6 +35268,9 @@ export class PixiScene {
 
   // ---- screen-space: off-screen supply arrows ------------------------------
 
+  // 拠点の目印(research/FAST_TRAVEL.md §2-5): 安全な拠点の id(syncArrows の直前に置く)と、目印が出た時刻(出の慣性用・実時間)。
+  private arrowSafeBaseId: string | null = null;
+  private baseArrowShownAt = new Map<string, number>();
   private syncArrows(
     pickups: Pickup[],
     castle: CastleEvent,
@@ -35276,7 +35280,7 @@ export class PixiScene {
     castleVisible: boolean,
     event: ActiveEvent | null,
     pois: { x: number; y: number; kind: 'boss' | 'cave' | 'hospital' | 'armory' | 'police' }[] = [],
-    baseSites: { x: number; y: number; status: string }[] = [],
+    baseSites: { id?: string; x: number; y: number; status: string }[] = [],
     escorts: EscortSoldier[] = [],
     playerCenter?: { x: number; y: number },
     hunters: { x: number; y: number }[] = [],
@@ -35767,11 +35771,19 @@ export class PixiScene {
     // 拠点の方向矢印: 近く(500px以内)で画面外のものだけ示す(社長指示=拠点の表示は半径500)。
     // ★解放済みも出し続ける(社長指示2026-10-13「解放されても表示されるままに。色分けで分かるように」・research/FAST_TRAVEL.md §2-5)。
     //   色は地面の円と同じ(未解放=琥珀/解放済み=緑)。色だけに頼らず、解放済みは旗の中を塗りつぶす。
+    const baseArrowNow = Date.now();
+    const baseArrowSeen = new Set<string>();
     for (const b of baseSites) {
       const captured = b.status === 'captured';
+      const bKey = b.id ?? `${b.x},${b.y}`;
       const tx = toScreenX(b.x), ty = toScreenY(b.y); // 監査v0.25.3008(A-1): post-zoom実画面座標
       if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内は地面サークルで見える
       if (Math.hypot(tx - cxC, ty - cyC) > ARROW_NEAR_RADIUS) continue;
+      // 出の慣性(慣性MUST・着手前監査A-3): 目印が出た瞬間から統一型の ease で、縁の外から滑り込みつつ濃くなる。
+      baseArrowSeen.add(bKey);
+      let shownAt = this.baseArrowShownAt.get(bKey);
+      if (shownAt === undefined) { shownAt = baseArrowNow; this.baseArrowShownAt.set(bKey, shownAt); }
+      const bEase = weaponSpawnEase(baseArrowNow - shownAt, Infinity);
       const angle = Math.atan2(ty - cyC, tx - cxC);
       const dx = Math.cos(angle), dy = Math.sin(angle);
       let tdist = Infinity;
@@ -35780,17 +35792,29 @@ export class PixiScene {
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
       if (!isFinite(tdist)) continue;
-      const ex = cxC + dx * tdist, ey = cyC + dy * tdist;
-      const color = captured ? 0x34d399 : 0xfbbf24; // 未解放=琥珀/解放済み=緑(地面サークルと同色)
-      g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
-      g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
-      g.rect(ex - 5, ey - 4, 10, 9).stroke({ width: 1.5, color, alpha: 0.9 }); // 旗/拠点アイコン(簡易)
-      g.rect(ex - 5, ey - 4, captured ? 10 : 6, captured ? 9 : 4).fill({ color, alpha: captured ? 0.7 : 0.85 }); // 解放済み=旗の中を塗る
+      const slide = bEase.dy; // 縁の外側から内へ(矢印の向き=外向きの逆へ戻ってくる)
+      const ex = cxC + dx * (tdist + slide), ey = cyC + dy * (tdist + slide);
+      const am = bEase.alphaMul;
+      // 色は地面の円と同じ(未解放=琥珀/解放済み=緑/安全な拠点=青・着手前監査A-4)。
+      const color = captured ? (b.id !== undefined && b.id === this.arrowSafeBaseId ? 0x60a5fa : 0x34d399) : 0xfbbf24;
+      g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 * am });
+      g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 * am });
+      if (captured) {
+        // 解放済み=竿に旗が立つ(形でも分かる・色だけに頼らない)。
+        g.rect(ex - 4, ey - 6, 1.6, 12).fill({ color, alpha: 0.95 * am });                       // 竿
+        g.poly([ex - 2.4, ey - 6, ex + 5.5, ey - 3.2, ex - 2.4, ey - 0.4]).fill({ color, alpha: 0.9 * am }); // 旗(はためく三角)
+      } else {
+        // 未解放=枠だけの拠点(角だけ塗る=まだ旗が立っていない)。
+        g.rect(ex - 5, ey - 4, 10, 9).stroke({ width: 1.5, color, alpha: 0.9 * am });
+        g.rect(ex - 5, ey - 4, 6, 4).fill({ color, alpha: 0.85 * am });
+      }
       const hx = ex + dx * 15, hy = ey + dy * 15;
       const ca = Math.cos(angle), sa = Math.sin(angle);
       const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
-      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse * am });
     }
+    // 出ていない拠点は出の時刻を忘れる(次に出た時にまた慣性で入る)。
+    for (const k of this.baseArrowShownAt.keys()) if (!baseArrowSeen.has(k)) this.baseArrowShownAt.delete(k);
 
     // 二人組クエストの強制目標(ネームド)の方向マーク: 拠点と同じ規則(社長裁定v0.25.1686 #7=
     // 注意誘導はせず「近づいたらマーク表示」)。近く(500px以内)かつ画面外の時だけ縁矢印。

@@ -278,7 +278,7 @@ import { recordKill, recordSpawn } from '../utils/killTelemetryState';
 import { drillerZoneFor, drillerCanThrust, isDrillerRetreating, isRetreatEligibleType, DRILLER_RETREAT_MS, DRILLER_RETREAT_SPEED_MULT } from '../utils/drillerAi';
 import { loggerZoneFor, loggerCanSweep, loggerSweepBand, LOGGER_SWEEP_FORWARD_OFFSET } from '../utils/loggerAi'; // PACING_PUZZLE.md §14-2
 import { getPityDropTuning } from '../utils/pityState';
-import { pickNpcLine, FOLLOW_TOGGLE_LINES } from '../data/npcLines';
+import { pickNpcLine, FOLLOW_TOGGLE_LINES, FAST_TRAVEL_ARRIVE_LINES } from '../data/npcLines';
 import {
   buildSummon, ALCHEMY_RARE_CHANCE, ALCHEMY_MAX_NORMAL, ALCHEMY_AGGRO_RANGE,
   ALCHEMY_DESPAWN_DIST, ALCHEMY_FOLLOW_GAP_PX,
@@ -1020,6 +1020,8 @@ const escortSceneName = (soldierIndex: number): string => {
 // sortie=出撃時 / surrounded=敵に囲まれた時 / rescued=囲まれから助けてもらった時 / pushback=後退する時 /
 // baseNear=拠点が見えてきた時 / companion=並走時 / baseCaptured=拠点解放時 / neglectFar=遠方で放置(隣NPCのみ) /
 // npcKill=自分で倒した時 / opPrep=作戦準備が進んだ時 / praise=プレイヤー無双時(管理表準拠)。capture/retreat は既存。
+/** ファストトラベルの明け(実時間ms)。この間は世界を止める。暗転(出)は ShopMenu 側の FAST_TRAVEL_DIM_MS。 */
+export const FAST_TRAVEL_REVEAL_MS = 600;
 // 「連れて歩く」の返事の連打止め(実時間ms・toggleEscortFollow だけが読み書き)。
 let followToggleLineAt = 0;
 const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: string; surrounded: string; rescued: string; pushback: string; baseNear: string; companion: string; baseCaptured: string; neglectFar: string; npcKill: string; opPrep: string; praise: string }[] = [
@@ -8191,7 +8193,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   fastTravelTo: (destId) => {
     const s = get();
-    if (!s.showShopMenu) return false;
+    if (!s.showShopMenu || s.deliveryLocked) return false; // 納品ロック中は動かさない(商人の滞在と同じ扱い・着手前監査)
     const dest = travelDestinationsOf(s).find(d => d.id === destId && !d.current);
     if (!dest) return false;
     const half = PLAYER_HITBOX / 2;
@@ -8206,11 +8208,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       // カメラは大きく離れると即寄せる(CAMERA_SNAP_DIST)が、その前の1フレームを古い画で描かないよう先に寄せる。
       camera: { x: cx - s.gameBounds.width / 2, y: cy - s.gameBounds.height / 2 },
       touchActive: false, swipeDirection: null,
+      // 明け切るまで世界を止める(ショップを閉じると一時停止が解けるため・着手前監査A-1)。
+      hitstopUntil: Math.max(s.hitstopUntil ?? 0, Date.now() + FAST_TRAVEL_REVEAL_MS),
     });
-    // 明け(暗転の底から行き先が見えてくる)+足元の輪。暗転(閉じる前の0.25秒)はショップの画面が受け持つ。
-    get().spawnFlash('rgba(4,5,8,1)', 520);
-    get().spawnRing(cx, cy + p.height / 2 - 4, 10, 74, 'rgba(244,239,228,0.75)', 3, 620);
-    void import('../audio/audioManager').then(m => m.playSfx('jump-land', 0.7, undefined, 0.9));
+    // 明け(暗転の底から目が慣れるように長めの ease-out)+足元の輪(行き先の色=拠点は緑/商人は琥珀)。
+    // 暗転(押してから閉じるまで)はショップの画面が受け持つ(components/ShopMenu.tsx)。
+    get().spawnFlash('rgba(4,5,8,1)', FAST_TRAVEL_REVEAL_MS);
+    const ringColor = dest.baseId ? 'rgba(52,211,153,0.8)' : 'rgba(251,191,36,0.8)';
+    get().spawnRing(cx, cy + p.height / 2 - 4, 10, 74, ringColor, 3, 700);
+    // 拠点に着いたら、その拠点の軍人が迎える(倒れていなければ)。
+    if (dest.baseId) {
+      const esc = s.escorts.find(e => e.baseId === dest.baseId && !isEscortDowned(e));
+      if (esc) {
+        const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
+        const text = FAST_TRAVEL_ARRIVE_LINES[idx];
+        // 列の先頭へ(着いた直後に読める=前に積まれた雑談の後ろへ回さない)。
+        if (text) set(st => ({ npcDialogueQueue: [{ name: BASE_SOLDIERS[idx].name, text }, ...st.npcDialogueQueue] }));
+      }
+    }
     return true;
   },
   setMouseAim: (screen) => {
