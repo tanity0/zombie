@@ -156,8 +156,8 @@ const copyText = async (text: string): Promise<void> => {
 
 /**
  * 死亡時の「倒した相手」(社長指示2026-10-09「死亡時、リザルトにプレイヤーを殺した敵のアイコンと名前を表示。次回出撃時にネームド化」)。
- * ★表示の型(社長指示2026-10-13): 全ての敵・ボスが対象。出すのは**名前だけ**(技の名・副行・説明の文は出さない)。
- *   この死で宿敵が決まった時だけ「名前 → 宿敵化」。宿敵になるかどうかの規則は今まで通り(decidePromotionOnDeath)。
+ * ★表示の型(社長指示2026-10-13): 全ての敵・ボスが対象。名前+死因の情報(「噛みつき」等の技の名=社長「死因情報はそのまま」)。
+ *   宿敵の説明の文は出さない。この死で宿敵が決まった時だけ「名前 → 宿敵化」。宿敵になるかどうかの規則は今まで通り(decidePromotionOnDeath)。
  *   宿敵本人に倒された時は、その宿敵の名前(ゲーム中の帯で名乗っている名)。
  * 型の分からない被弾(罠・環境)では絵を出さず、死因の名だけ。
  */
@@ -175,6 +175,10 @@ const KillerLine: React.FC<{ deathCause: string }> = ({ deathCause }) => {
   const artName = type ? enemyArtName(type, id ?? '', far ?? '') : '';
   const artCandidates = artName ? [spritePath(artName), spritePath(`atlas-px2/${artName}`)] : [];
   const art = artCandidates[artStep] ?? '';
+  // 死因は「◯◯の△△」形式なので、名乗った直後に名前を繰り返さない(「突進」だけ)。宿敵本人に倒された時は型の名も添える。
+  const move = !typeName || deathCause === typeName ? ''
+    : deathCause.startsWith(`${typeName}の`) ? deathCause.slice(typeName.length + 1) : deathCause;
+  const sub = [!promoted && byNamed && namedName ? typeName : '', move].filter(Boolean).join('・');
   return (
     <div className="mt-3 border-l-2 border-rose-400/60 bg-rose-950/20 px-3 py-2 text-left">
       <p className="text-[10px] uppercase tracking-widest text-white/45">死因</p>
@@ -192,6 +196,7 @@ const KillerLine: React.FC<{ deathCause: string }> = ({ deathCause }) => {
               <span className="ml-1.5 text-amber-300" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>→ 宿敵化</span>
             )}
           </p>
+          {type && sub && <p className="mt-0.5 text-[11px] text-rose-200/70">{sub}</p>}
         </div>
       </div>
     </div>
