@@ -248,6 +248,7 @@ const ShopMenu: React.FC = () => {
     });
   }, []);
   const showTravel = hasTravelTargets(travel);
+  const here = travel.find(d => d.current) ?? null; // 今いる所は一覧から外し、見出しに「◯◯から」と置く
   const goTravel = (id: string) => {
     if (leaving) return;
     playSfx('ui-select');
@@ -266,8 +267,14 @@ const ShopMenu: React.FC = () => {
       <div className="relative glass-panel command-panel rounded-none w-full max-w-lg overflow-hidden max-h-[calc(86dvh/var(--hud-s,1))] flex flex-col">
         <div className="px-4 pt-4 pb-2 flex items-start justify-between gap-3">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">WEAPON MERCHANT</div>
-            <h2 className="text-xl font-bold text-white">武器商人</h2>
+            {tab === 'travel' ? (<>
+              <div className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/65">TRANSPORT</div>
+              <h2 className="text-xl font-bold text-white">輸送網</h2>
+              {here && <div className="mt-0.5 text-[11px] tracking-[0.12em] text-white/50">{here.label}から</div>}
+            </>) : (<>
+              <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">WEAPON MERCHANT</div>
+              <h2 className="text-xl font-bold text-white">武器商人</h2>
+            </>)}
           </div>
           <div className="rounded-none bg-amber-300/12 px-3 py-1 text-right">
             <div className="text-[9px] tracking-widest text-amber-100/60">SCRAP</div>
@@ -297,7 +304,7 @@ const ShopMenu: React.FC = () => {
         <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain no-scrollbar">
         {tab === 'travel' ? (
           <div className="px-4 pb-3 flex flex-col gap-2">
-            {travel.map(d => (
+            {travel.filter(d => !d.current).map(d => (
               <button
                 key={d.id}
                 type="button"
@@ -311,12 +318,16 @@ const ShopMenu: React.FC = () => {
                 <span className="min-w-0 flex-1">
                   <span className={`block text-[13px] font-bold ${d.current ? 'text-white/45' : 'text-white'}`}>
                     {d.label}
-                    {d.who && <span className="ml-2 text-[11px] font-normal text-white/50">── {d.who}</span>}
                   </span>
-                  {(d.hasMerchant && d.baseId) && <span className="block text-[10px] text-amber-200/60">武器商人が居る</span>}
+                  {(d.who || (d.hasMerchant && d.baseId)) && (
+                    <span className="mt-0.5 block text-[10px] tracking-[0.08em] text-white/45">
+                      {d.who && <>守備 {d.who}</>}
+                      {d.who && d.hasMerchant && d.baseId && <span className="mx-1.5 text-white/25">/</span>}
+                      {d.hasMerchant && d.baseId && <span className="text-amber-200/60">武器商人</span>}
+                    </span>
+                  )}
                 </span>
                 {d.attacked && <span className="shrink-0 text-[11px] font-bold tracking-[0.1em] text-rose-400">交戦中</span>}
-                {d.current && <span className="shrink-0 text-[11px] tracking-[0.2em] text-white/45">ここ</span>}
               </button>
             ))}
           </div>
@@ -422,6 +433,8 @@ const ShopMenu: React.FC = () => {
         </NoBounceScroller>
 
         <div className="px-4 pb-4 space-y-2 shrink-0">
+          {/* 帰還(撤収)は補給のタブだけ。輸送のタブで「動く」と「やめる」を並べない(クリエイティブ監査)。 */}
+          {tab === 'shop' && (
           <button
             onClick={() => { playSfx('ui-select'); returnToBase(); }}
             className="w-full rounded-none bg-amber-400/15 py-2.5 text-sm font-bold text-amber-100"
@@ -429,6 +442,7 @@ const ShopMenu: React.FC = () => {
             帰還する
             <span className="block text-[10px] font-normal text-amber-100/70">撤収（スコアは残る。クリアにはならない）</span>
           </button>
+          )}
           <button
             onClick={closeShop}
             className="w-full rounded-none bg-purple-400/10 py-3 text-sm font-bold text-white/90"

@@ -7002,7 +7002,8 @@ export const resolveShieldWalls = (candidate: Rect): { x: number; y: number } =>
 /** ファストトラベルの行き先(research/FAST_TRAVEL.md)。ショップの画面と fastTravelTo が同じ答えを使う。 */
 export const travelDestinationsOf = (s: Pick<GameState, 'player' | 'weaponMerchant' | 'merchantHidden' | 'stageTheme' | 'indoorMode' | 'corridorMode' | 'baseSites'>): TravelDestination[] => {
   const p = s.player;
-  const merchantShown = !s.merchantHidden && s.stageTheme !== 'lab' && !s.indoorMode && !s.corridorMode;
+  // 商人が居ない出撃(練習・ボスメーカー・ストーリーボス専用等)は世界の外へ退避して半径0にしてある=不在扱い(納品監査A-1)。
+  const merchantShown = !s.merchantHidden && s.stageTheme !== 'lab' && !s.indoorMode && !s.corridorMode && s.weaponMerchant.radius > 0;
   return listTravelDestinations({
     player: { x: p.x + p.width / 2, y: p.y + p.height / 2 },
     merchant: merchantShown ? s.weaponMerchant : null,
@@ -8213,7 +8214,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     // 明け(暗転の底から目が慣れるように長めの ease-out)+足元の輪(行き先の色=拠点は緑/商人は琥珀)。
     // 暗転(押してから閉じるまで)はショップの画面が受け持つ(components/ShopMenu.tsx)。
-    get().spawnFlash('rgba(4,5,8,1)', FAST_TRAVEL_REVEAL_MS);
+    {
+      const fNow = Date.now();
+      set(st => ({ effects: [...st.effects, { kind: 'flash', id: `fx-travel-${fNow}`, color: 'rgba(4,5,8,1)', createdAt: fNow, duration: FAST_TRAVEL_REVEAL_MS, curve: 'reveal', holdMs: 110 }] }));
+    }
+    // 着いた手応えの音: 輸送=ヘリで降ろされた、の読み(既存素材のヘリ着地を薄く1発。ジャンプの着地音は「落ちてきた」に読めるので使わない)。
+    void import('../audio/audioManager').then(m => m.playSfx('heli-land', 0.45));
     const ringColor = dest.baseId ? 'rgba(52,211,153,0.8)' : 'rgba(251,191,36,0.8)';
     get().spawnRing(cx, cy + p.height / 2 - 4, 10, 74, ringColor, 3, 700);
     // 拠点に着いたら、その拠点の軍人が迎える(倒れていなければ)。
@@ -8222,8 +8228,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (esc) {
         const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
         const text = FAST_TRAVEL_ARRIVE_LINES[idx];
-        // 列の先頭へ(着いた直後に読める=前に積まれた雑談の後ろへ回さない)。
-        if (text) set(st => ({ npcDialogueQueue: [{ name: BASE_SOLDIERS[idx].name, text }, ...st.npcDialogueQueue] }));
+        // 表示中の行を差し替えて出す(着いた瞬間に読める)。差し替えた行は列の先頭へ戻す(雑談を消さない)。
+        if (text) set(st => {
+          const cur = st.npcDialogue;
+          const back = cur ? [{ name: cur.name, text: cur.text, ...(cur.portrait ? { portrait: cur.portrait } : {}) }] : [];
+          return { npcDialogue: { name: BASE_SOLDIERS[idx].name, text, until: st.gameTime + NPC_DIALOGUE_MS }, npcDialogueQueue: [...back, ...st.npcDialogueQueue] };
+        });
       }
     }
     return true;

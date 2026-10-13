@@ -2890,6 +2890,10 @@ export type VisualEffect =
       color: string;          // e.g. 'rgba(255,255,255,0.8)' — overlays whole screen
       createdAt: number;
       duration: number;
+      // 明けの形(省略=従来どおり線形に抜ける)。'reveal'=最初の holdMs は濃いまま、その後 ease-out で抜ける
+      // (暗転の底から目が慣れる・ファストトラベルの明け=research/FAST_TRAVEL.md)。
+      curve?: 'reveal';
+      holdMs?: number;
     }
   | {
       kind: 'trail';

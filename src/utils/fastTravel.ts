@@ -29,6 +29,8 @@ export const listTravelDestinations = (i: TravelInput): TravelDestination[] => {
   const out: TravelDestination[] = [];
   const captured = [...i.bases].filter(b => b.status === 'captured').sort((a, b) => a.id.localeCompare(b.id)); // 東→南→西→北
   // 武器商人が解放済みの拠点の円の中に居るなら、商人の行は出さずその拠点の行にまとめる(同じ場所を2行にしない)。
+  // 半径0の商人は不在(世界の外へ退避した出撃)=行き先に出さない(納品監査A-1)。
+  if (i.merchant && !(i.merchant.radius > 0)) i = { ...i, merchant: null };
   const merchantBase = i.merchant
     ? captured.find(b => Math.hypot(i.merchant!.x - b.x, i.merchant!.y - b.y) <= i.baseRadius) ?? null
     : null;

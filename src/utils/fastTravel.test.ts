@@ -47,6 +47,10 @@ describe('ファストトラベルの行き先', () => {
     const l = listTravelDestinations({ merchant: null, bases: bases.map(b => ({ ...b, status: 'open' })), armoryRadius: 50, baseRadius: 130, player: { x: 0, y: 0 } });
     expect(hasTravelTargets(l)).toBe(false);
   });
+  it('半径0の商人(世界の外へ退避した出撃)は行き先に出さない', () => {
+    const l = listTravelDestinations({ ...base, merchant: { x: 1e9, y: 1e9, radius: 0 }, player: { x: 4800, y: 30 } });
+    expect(l.map(d => d.id)).toEqual(['base-0', 'base-2']);
+  });
   it('今いる場所だけなら移動先なし', () => {
     const l = listTravelDestinations({ ...base, bases: bases.map(b => ({ ...b, status: 'open' })), player: { x: 0, y: -130 } });
     expect(l).toHaveLength(1);
