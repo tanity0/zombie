@@ -1,12 +1,13 @@
 // 「連れて歩く」のオン/オフ(research/ESCORT_FOLLOW.md §9・社長指示2026-10-13)。
-// 全拠点共通のスイッチ1つ。既定はオン(=§1〜8 の今の遊び)。端末に覚える(次の出撃でもそのまま)。
+// 全拠点共通のスイッチ1つ。**既定はオフ**(社長指示2026-10-13「最初は連れていくをオフにして。縛りプレイの人もいるから」)。
+// 端末に覚える(次の出撃でもそのまま)。オンにした人だけ '1' が残る=それ以外(未保存・壊れた値)はオフ。
 // 判定(どこでボタンを出すか)も純関数でここに置く=React と store が同じ答えを使う。
 const KEY = 'zombie.settings.escortFollow';
 
-/** 保存値を読む。無い/壊れている時はオン。 */
+/** 保存値を読む。無い/壊れている時はオフ(既定オフ)。 */
 export const loadEscortFollowEnabled = (): boolean => {
-  if (typeof localStorage === 'undefined') return true;
-  try { return localStorage.getItem(KEY) !== '0'; } catch { return true; }
+  if (typeof localStorage === 'undefined') return false;
+  try { return localStorage.getItem(KEY) === '1'; } catch { return false; }
 };
 
 export const saveEscortFollowEnabled = (on: boolean): void => {

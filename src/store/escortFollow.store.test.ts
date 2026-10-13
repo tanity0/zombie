@@ -30,6 +30,7 @@ const setup = (o: { captured: boolean; ex: number; ey: number; px: number; py: n
   gt = GT;
   useGameStore.getState().resetGame('assault');
   useGameStore.setState(s => ({
+    escortFollowEnabled: true, // §1〜8 の追従の配線を見るテスト=オン(既定はオフ・§9)
     gameTime: GT, gameBounds: { width: 430, height: 932 }, viewZoom: 1,
     enemies: [], projectiles: [], pumpkinBlasts: [],
     player: { ...s.player, health: 9999, maxHealth: 120, // 120×0.6=72=軍人の最大体力(出撃中もプレイヤーに比例する)

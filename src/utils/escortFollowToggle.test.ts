@@ -16,10 +16,10 @@ const { loadEscortFollowEnabled, saveEscortFollowEnabled, followToggleBaseAt } =
 beforeEach(() => { mem.clear(); });
 
 describe('連れて歩くの保存', () => {
-  it('既定はオン・壊れた値もオン', () => {
-    expect(loadEscortFollowEnabled()).toBe(true);
+  it('既定はオフ・壊れた値もオフ(社長指示2026-10-13「最初は連れていくをオフに」)', () => {
+    expect(loadEscortFollowEnabled()).toBe(false);
     mem.set('zombie.settings.escortFollow', 'xyz');
-    expect(loadEscortFollowEnabled()).toBe(true);
+    expect(loadEscortFollowEnabled()).toBe(false);
   });
   it('オフを覚える/オンへ戻せる', () => {
     saveEscortFollowEnabled(false);
