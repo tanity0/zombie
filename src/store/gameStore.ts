@@ -1033,6 +1033,8 @@ const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: s
 ];
 // 軍人名簿の人数(=ESCORT_SPRITE_BASE のスプライト数と一致)。援護射撃のNPC選定で使うためexport。
 export const BASE_SOLDIER_COUNT = BASE_SOLDIERS.length;
+/** 軍人名簿の名前(index は出撃ごとの soldierIndex。範囲外も巡回で引く)。HUD の札が「誰が」を言うのに使う。 */
+export const baseSoldierName = (idx: number): string => BASE_SOLDIERS[((idx % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length].name;
 // NPCセリフのHUD表示タイミング(gameTime ms)。1行の表示時間と、次の行までの間隔。
 export const NPC_DIALOGUE_MS = 2800;     // 1行の表示時間(ストーリーボスの終幕台詞の尺計算でも使用)
 export const NPC_DIALOGUE_GAP_MS = 500;  // 行間の空き(連続表示でも詰めすぎない)
@@ -8156,10 +8158,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       followToggleLineAt = now;
       const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
       const line = FOLLOW_TOGGLE_LINES[idx];
-      // 返事は列の先頭へ(押した直後に読めるように=前に積まれた雑談の後ろへ回さない)。前の返事が残っていれば差し替える。
+      // 返事は**その場で表示中の行を差し替えて**出す(押した瞬間に読める=納品監査A-1)。差し替えた行が返事でなければ、
+      // 列の先頭へ戻して後で読ませる(雑談を消さない)。列に残っている前の返事は捨てる(オン→オフの連打で古い返事が残らない)。
       const reply = { name: BASE_SOLDIERS[idx].name, text: next ? line.on : line.off };
       const toggleTexts = new Set(FOLLOW_TOGGLE_LINES.flatMap(l => [l.on, l.off]));
-      if (line) set(st => ({ npcDialogueQueue: [reply, ...st.npcDialogueQueue.filter(q => !toggleTexts.has(q.text))] }));
+      if (line) set(st => {
+        const cur = st.npcDialogue;
+        const rest = st.npcDialogueQueue.filter(q => !toggleTexts.has(q.text));
+        const back = cur && !toggleTexts.has(cur.text) ? [{ name: cur.name, text: cur.text, ...(cur.portrait ? { portrait: cur.portrait } : {}) }] : [];
+        return {
+          npcDialogue: { ...reply, until: st.gameTime + NPC_DIALOGUE_MS },
+          npcDialogueQueue: [...back, ...rest],
+        };
+      });
     }
   },
   setMouseAim: (screen) => {
