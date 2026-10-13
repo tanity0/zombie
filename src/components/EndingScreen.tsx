@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import TapWord from './TapWord';
 import { CUTIN_SERIF_STACK } from '../config/font';
 import { ENDING_HEADER, ENDING_SCRIPT, ENDING_FINAL_WORD } from '../data/ending';
@@ -109,7 +109,35 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
 
   const onTap = () => { if (phase !== 'finale') advance(); }; // finale中のタップは無効(直撃を見せ切る)
 
+  // PC: Enter/Space でも1行送る(背後でゲームの画面が動いている=メニューの操作として拾われないため、ここで直接拾う)。
+  const onTapRef = useRef(onTap);
+  onTapRef.current = onTap;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || (e.code !== 'Enter' && e.code !== 'NumpadEnter' && e.code !== 'Space')) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      onTapRef.current();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
   const visibleLines = ENDING_SCRIPT.slice(0, lineIdx + 1);
+
+  // 行が増えた時: 新しい行の高さぶん全体を下げてから、ease-out で元へ戻す(新しい行は下から上がり、古い行は押し上がる)。
+  const stackRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = stackRef.current;
+    if (!el || lineIdx === 0) return;
+    const last = el.lastElementChild as HTMLElement | null;
+    if (!last) return;
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${last.offsetHeight + 12}px)`;
+    void el.offsetHeight;
+    el.style.transition = 'transform 460ms cubic-bezier(.2,.7,.2,1)';
+    el.style.transform = 'translateY(0)';
+  }, [lineIdx]);
 
   return (
     <div
@@ -148,7 +176,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                 WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 26%, black 100%)',
               }}
             >
-              <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end space-y-3">
+              <div ref={stackRef} className="absolute inset-x-0 bottom-0 flex flex-col justify-end space-y-3">
                 {visibleLines.map((l, i) => (
                   <p
                     key={i}
@@ -167,7 +195,16 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
                 ))}
               </div>
             </div>
-            <p className="shrink-0 mt-4 text-center text-[10px] tracking-widest text-white/25"><TapWord />で進む</p>
+            {/* 唯一の進む手段なので、最初の数行は少し見せてから沈める。 */}
+            <button
+              type="button"
+              tabIndex={-1}
+              className="shrink-0 mx-auto mt-3 px-4 py-1 text-center text-[10px] tracking-widest"
+              style={{ color: `rgba(255,255,255,${lineIdx < 2 ? 0.5 : 0.25})`, transition: 'color 1.2s ease', background: 'transparent' }}
+              onPointerDown={(e) => { e.stopPropagation(); onTap(); }}
+            >
+              <TapWord />で進む
+            </button>
           </div>
         </div>
       )}

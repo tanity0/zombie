@@ -15,9 +15,16 @@ import { setEndingBgm } from '../audio/audioManager';
 const CHAR_MS = 34;            // 1文字あたり
 const NEWLINE_EXTRA_MS = 170;  // 改行(息継ぎ)
 const START_DELAY_MS = 1200;   // 黒フェードインの間
-const SECTION_LEAD_MS = 520;   // 次の区切りを上端へ送ってから打ち始めるまで
+const FAST_STEP_MS = 16;       // 途中タップ後の高速打ち込み: 1回の間隔
+const FAST_STEP_CHARS = 4;     // 同: 1回に打つ文字数(区切り1つ≒1秒強で打ち切る)
+const SCROLL_MIN_MS = 320;     // 次の区切りを上端へ送る尺(距離で伸びる)
+const SCROLL_MAX_MS = 720;
+const AFTER_SCROLL_MS = 140;   // 送り終えてから打ち始めるまで
+const TAP_SLOP_PX = 12;        // これ以上指が動いたらスクロール扱い(送らない)
 
 type Mode = 'typing' | 'waiting' | 'finished';
+
+const MONO = '"Courier New", "Hiragino Kaku Gothic ProN", monospace';
 
 interface ExEndingScreenProps {
   onDone: () => void;
@@ -32,31 +39,57 @@ const ExEndingScreen: React.FC<ExEndingScreenProps> = ({ onDone }) => {
   const [sec, setSec] = useState(0);
   const [chars, setChars] = useState(0);
   const [mode, setMode] = useState<Mode>('typing');
+  const [ready, setReady] = useState(false); // 区切りの頭: 送り終えるまで打たない
+  const fastRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const doneRef = useRef(false);
+  const downRef = useRef<{ x: number; y: number } | null>(null);
   const isLast = sec >= EX_ENDING_SECTIONS.length - 1;
 
-  // 打ち込み(区切り1つぶん)。最後まで打ったら止まって待つ。
+  // 最初の区切り: 黒から明けるのを待って打ち始める。
   useEffect(() => {
-    if (mode !== 'typing') return;
-    const text = EX_ENDING_SECTIONS[sec] ?? '';
-    if (chars >= text.length) {
-      setMode(isLast ? 'finished' : 'waiting');
-      return;
-    }
-    const lead = chars === 0 ? (sec === 0 ? START_DELAY_MS : SECTION_LEAD_MS) : 0;
-    const delay = lead + (chars > 0 && text[chars - 1] === '\n' ? CHAR_MS + NEWLINE_EXTRA_MS : CHAR_MS);
-    const t = window.setTimeout(() => setChars(c => c + 1), delay);
+    const t = window.setTimeout(() => setReady(true), START_DELAY_MS);
     return () => window.clearTimeout(t);
-  }, [mode, sec, chars, isLast]);
+  }, []);
 
-  // 新しい区切りに入ったら、その区切りを上端へ送る(区切り線ごと)。
+  // 次の区切りへ: 自前の ease-out で上端へ送り(距離で尺が伸びる)、送り終えてから打ち始める。
   useEffect(() => {
     if (sec === 0) return;
     const el = scrollRef.current, head = sectionRefs.current[sec];
-    if (el && head) el.scrollTo({ top: head.offsetTop - 24, behavior: 'smooth' });
+    if (!el || !head) { setReady(true); return; }
+    const from = el.scrollTop;
+    const to = Math.max(0, Math.min(head.offsetTop - 8, el.scrollHeight - el.clientHeight));
+    const dist = Math.abs(to - from);
+    const dur = Math.min(SCROLL_MAX_MS, SCROLL_MIN_MS + dist * 0.8);
+    const t0 = performance.now();
+    let raf = 0, timer = 0;
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / dur);
+      const e = 1 - Math.pow(1 - p, 3);
+      el.scrollTop = from + (to - from) * e;
+      if (p < 1) raf = requestAnimationFrame(step);
+      else timer = window.setTimeout(() => setReady(true), AFTER_SCROLL_MS);
+    };
+    raf = requestAnimationFrame(step);
+    return () => { cancelAnimationFrame(raf); window.clearTimeout(timer); };
   }, [sec]);
+
+  // 打ち込み(区切り1つぶん)。最後まで打ったら止まって待つ。
+  useEffect(() => {
+    if (mode !== 'typing' || !ready) return;
+    const text = EX_ENDING_SECTIONS[sec] ?? '';
+    if (chars >= text.length) {
+      fastRef.current = false;
+      setMode(isLast ? 'finished' : 'waiting');
+      return;
+    }
+    const fast = fastRef.current;
+    const delay = fast ? FAST_STEP_MS
+      : (chars > 0 && text[chars - 1] === '\n' ? CHAR_MS + NEWLINE_EXTRA_MS : CHAR_MS);
+    const t = window.setTimeout(() => setChars(c => Math.min(text.length, c + (fast ? FAST_STEP_CHARS : 1))), delay);
+    return () => window.clearTimeout(t);
+  }, [mode, ready, sec, chars, isLast]);
 
   // 打っている間は、打っている区切りの末尾が画面の下へ出たら追いかける(打ち終えた後は、読む人が送った位置を動かさない)。
   useEffect(() => {
@@ -64,7 +97,7 @@ const ExEndingScreen: React.FC<ExEndingScreenProps> = ({ onDone }) => {
     const el = scrollRef.current, cur = sectionRefs.current[sec];
     if (!el || !cur) return;
     const bottom = cur.offsetTop + cur.offsetHeight;
-    const margin = 56;
+    const margin = 72;
     if (bottom > el.scrollTop + el.clientHeight - margin) el.scrollTop = bottom - el.clientHeight + margin;
   }, [mode, sec, chars]);
 
@@ -76,9 +109,10 @@ const ExEndingScreen: React.FC<ExEndingScreenProps> = ({ onDone }) => {
 
   const onTap = () => {
     if (mode === 'typing') {
-      // 打っている途中: その区切りを最後まで出す(次の区切りへは進まない)。
-      setChars((EX_ENDING_SECTIONS[sec] ?? '').length);
+      // 打っている途中: 高速で打ち切る(一瞬で全文は出さない=打たれていく手触りを残す)。次の区切りへは進まない。
+      if (ready) fastRef.current = true;
     } else if (mode === 'waiting') {
+      setReady(false);
       setSec(i => i + 1);
       setChars(0);
       setMode('typing');
@@ -89,49 +123,75 @@ const ExEndingScreen: React.FC<ExEndingScreenProps> = ({ onDone }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black select-none"
+      className="fixed inset-0 z-50 flex flex-col bg-black select-none"
       style={{ touchAction: 'pan-y' }}
-      onClick={onTap}
+      // 触れて離した位置がほぼ同じなら送る(指が滑った=スクロールでは送らない)。触れた瞬間ではなく離した瞬間。
+      onPointerDown={(e) => { downRef.current = { x: e.clientX, y: e.clientY }; }}
+      onPointerUp={(e) => {
+        const d = downRef.current; downRef.current = null;
+        if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) < TAP_SLOP_PX) onTap();
+      }}
+      onPointerCancel={() => { downRef.current = null; }}
     >
       <style>{`
         @keyframes exEndIn{from{opacity:0}to{opacity:1}}
         @keyframes exCaretBlink{0%,55%{opacity:1}56%,100%{opacity:0}}
+        @keyframes exCaretOut{0%,35%{opacity:1}100%{opacity:0}}
+        @keyframes exHintIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
         .ex-end-root{animation:exEndIn 1.1s ease-out forwards}
         .ex-caret{display:inline-block;margin-left:2px;animation:exCaretBlink 0.9s step-end infinite}
+        .ex-caret-out{display:inline-block;margin-left:2px;animation:exCaretOut 1.8s ease-in forwards}
+        .ex-hint{animation:exHintIn .5s cubic-bezier(.2,.7,.2,1) both}
       `}</style>
-      <div ref={scrollRef} className="ex-end-root h-full w-full overflow-y-auto px-6 py-10" style={{ scrollbarWidth: 'none' }}>
-        <div className="mx-auto w-full max-w-xl">
-          <p
-            className="mb-8 text-center text-[13px] tracking-[0.25em] text-emerald-200/70"
-            style={{ fontFamily: '"Courier New", "Hiragino Kaku Gothic ProN", monospace' }}
-          >
-            {EX_ENDING_TITLE}
-          </p>
+      {/* 表題は端末の見出しとして上に固定(本文と一緒に流さない)。 */}
+      <p
+        className="ex-end-root shrink-0 px-6 pb-4 text-center text-[13px] tracking-[0.25em] text-emerald-200/70"
+        style={{ fontFamily: MONO, paddingTop: 'calc(env(safe-area-inset-top, 0px) + 40px)' }}
+      >
+        {EX_ENDING_TITLE}
+      </p>
+      <div
+        ref={scrollRef}
+        className="ex-end-root min-h-0 w-full flex-1 overflow-y-auto px-6"
+        style={{
+          scrollbarWidth: 'none',
+          // 上端で行が半分に切れて見えないよう、上端だけ薄く消す。
+          maskImage: 'linear-gradient(to bottom, transparent 0, black 44px, black 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, black 44px, black 100%)',
+        }}
+      >
+        <div className="mx-auto w-full max-w-xl pt-6">
           {EX_ENDING_SECTIONS.slice(0, sec + 1).map((text, i) => (
             <div key={i} ref={el => { sectionRefs.current[i] = el; }}>
               {i > 0 && <div className="my-7 text-center text-[13px] text-emerald-100/25">⸻</div>}
               <p
                 className="text-[14px] leading-relaxed text-emerald-100/85"
-                style={{ whiteSpace: 'pre-wrap', fontFamily: '"Courier New", "Hiragino Kaku Gothic ProN", monospace' }}
+                style={{ whiteSpace: 'pre-wrap', fontFamily: MONO }}
               >
                 {i < sec ? text : text.slice(0, chars)}
-                {i === sec && mode !== 'finished' && <span className="ex-caret">▌</span>}
+                {i === sec && <span className={mode === 'finished' ? 'ex-caret-out' : 'ex-caret'}>▌</span>}
               </p>
             </div>
           ))}
-          {/* 最後の区切りでも上端まで送れるだけの余白(画面の高さぶん)。 */}
+          {/* 最後の区切りでも上端まで送れるだけの余白。 */}
           <div style={{ height: 'calc(70svh / var(--hud-s, 1))' }} />
         </div>
       </div>
-      {/* 待っている合図は画面の下端に固定(区切りが画面より長くても見える)。 */}
+      {/* 入力待ちの合図は端末の書式で(等幅・薄緑)。区切りが画面より長くても見えるよう下端に固定。 */}
+      {/* キー・パッドの決定もこれを押す(menuNav の主役=data-nav-default)。触った時は画面全体と同じ1回だけ送る。 */}
       {mode !== 'typing' && (
-        <p
+        <button
+          type="button"
+          data-nav-default
           key={`${mode}-${sec}`}
-          className="screen-in pointer-events-none absolute inset-x-0 text-center text-[11px] tracking-widest text-white/40"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 22px)' }}
+          className="ex-hint absolute inset-x-0 mx-auto w-fit px-4 py-2 text-center text-[11px] tracking-[0.18em] text-emerald-100/45"
+          style={{ fontFamily: MONO, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)', background: 'transparent' }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onTap(); }}
         >
-          <TapWord />{mode === 'finished' ? 'で終了' : 'で次へ'}
-        </p>
+          <TapWord />{mode === 'finished' ? 'で記録を閉じる' : 'で次の記録へ'}
+        </button>
       )}
     </div>
   );
