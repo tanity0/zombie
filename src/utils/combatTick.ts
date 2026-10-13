@@ -1179,7 +1179,7 @@ export const dashParriedEnemyPatch = (
     // updateEnemies の硬直ブロック(`chaffMove === undefined` ゲート)に掛かり、**技が完走しなくなる**。
     ...(keepPhase ? {} : { biteRecoverUntil: gameTimeNow + COUNTER_RECOVER_STILL_MS }),
     // ★§16-7b「中断(カウンター成立含む)は消す+技後CDを書く」(訂正版・§16-7穴2)。
-    chaffMove: undefined,
+    chaffMove: undefined, chaffBlinkAt: undefined,
     ...(effectiveMove !== undefined ? { chaffMoveCdUntil: gameTimeNow + techSpec.recoverMs } : {}),
     // 突進/ジャンプ中断。※ COUNTER_UNINTERRUPTIBLE_PHASES の技だけは技を消さない(社長指示v0.25.3145)。
     ...(keepPhase ? {} : {

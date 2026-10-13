@@ -1466,8 +1466,13 @@ const ZOMBIE_RED_GLOW_ALPHA_MAX = 0.85;
 // ★ゾンビの構え(社長指示2026-10-14): 1発目・2発目の前に、プレイヤーから離れる向きへ大きく反って固まる。
 // 傾き(skew)+後ろへのずれ(off)。値は叩き台(演出の微調整=実機で振る)。
 const ZOMBIE_STANCE_SKEW = 0.5;        // シートの無い見た目の時だけ
-const ZOMBIE_STANCE_OFF_PX = 12;      // 1発目: 後ろへ引く量
-const ZOMBIE_STANCE_OFF2_PX = 17;     // 2発目: 深く引く
+const ZOMBIE_STANCE_OFF_PX = 22;      // 1発目: 後ろへ引く量
+const ZOMBIE_STANCE_OFF2_PX = 27;     // 2発目: 深く引く
+const ZOMBIE_STANCE_LIFT_PX = 3;      // 反りながら伸び上がる量
+const ZOMBIE_STANCE_BREATH_PX = 4;    // 発動の直前、もう一段引く量
+const ZOMBIE_LUNGE_BOUND_MS = 210;    // 踏み込みの跳ねの周期(1歩)
+const ZOMBIE_LUNGE_BOUND_PX = 5;      // 踏み込みの跳ねの高さ
+const ZOMBIE_BITE_PULL_PX = 7;        // 噛む前に一度引く量
 const ZOMBIE_STANCE_CARRY_PX = 5;     // 1発目の頭: 歩いてきた勢いで前へ出る量
 const ZOMBIE_STANCE_SHAKE_PX = 3.2;   // 固まっている間の震え(発動へ向けて強まる)の到達量
 const ZOMBIE_STANCE_SHAKE2_PX = 4.2;
@@ -18985,25 +18990,45 @@ export class PixiScene {
       const t = Math.max(0, gameTime - (until - ZOMBIE_STANCE_MS));
       let back: number;   // 0..1 後ろへ引いた量
       let fwd = 0;        // 1発目の頭だけ、勢いで前へ出る量(px)
+      let breath = 0;     // 発動の直前、さらに引いて息を詰める量(0..1)
       if (t < ZOMBIE_WINDUP_MS) {
         const p = t / ZOMBIE_WINDUP_MS;
-        back = 1 - (1 - p) * (1 - p) * (1 - p);
-        if (!second) fwd = ZOMBIE_STANCE_CARRY_PX * Math.sin(Math.min(1, p * 2.5) * Math.PI) * (1 - p);
+        // 1発目は歩いてきた勢いを前で受けてから引く(引き始めを遅らせないと前へ出る動きが相殺されて見えない)。
+        const q = second ? p : Math.max(0, (p - 0.3) / 0.7);
+        back = 1 - (1 - q) * (1 - q) * (1 - q);
+        if (!second) fwd = ZOMBIE_STANCE_CARRY_PX * Math.sin(Math.min(1, p / 0.45) * Math.PI);
       } else {
         back = 1;
         const h = t - ZOMBIE_WINDUP_MS;
-        const quiet = ZOMBIE_HOLD_MS - h < ZOMBIE_STANCE_QUIET_MS; // 発動の直前は震えを止めて息を詰める
-        if (!quiet) {
-          const r = Math.min(1, h / (ZOMBIE_HOLD_MS - ZOMBIE_STANCE_QUIET_MS));
-          const shakePhase = stablePhase(e.id); // 2体の震えが同期しない
-          const amp = (second ? ZOMBIE_STANCE_SHAKE2_PX : ZOMBIE_STANCE_SHAKE_PX) * (0.25 + 0.75 * r * r);
-          aiShake = (Math.sin(now / 23 + shakePhase) * 0.6 + Math.sin(now / 11 + shakePhase * 1.3) * 0.4) * amp;
-        }
+        const left = ZOMBIE_HOLD_MS - h;
+        const r = Math.min(1, h / (ZOMBIE_HOLD_MS - ZOMBIE_STANCE_QUIET_MS));
+        // 発動の直前は震えを引いていき(ぷつりと切らない)、同時にもう一段引いて息を詰める。
+        const calm = left < ZOMBIE_STANCE_QUIET_MS ? Math.max(0, left / ZOMBIE_STANCE_QUIET_MS) : 1;
+        if (left < ZOMBIE_STANCE_QUIET_MS) { const u = 1 - calm; breath = u * u * (3 - 2 * u); }
+        const shakePhase = stablePhase(e.id); // 2体の震えが同期しない
+        const amp = (second ? ZOMBIE_STANCE_SHAKE2_PX : ZOMBIE_STANCE_SHAKE_PX) * (0.25 + 0.75 * r * r) * calm * calm;
+        aiShake = (Math.sin(now / 23 + shakePhase) * 0.6 + Math.sin(now / 11 + shakePhase * 1.3) * 0.4) * amp;
       }
-      const off = (second ? ZOMBIE_STANCE_OFF2_PX : ZOMBIE_STANCE_OFF_PX) * back - fwd;
+      const off = (second ? ZOMBIE_STANCE_OFF2_PX : ZOMBIE_STANCE_OFF_PX) * back + ZOMBIE_STANCE_BREATH_PX * breath - fwd;
       aiSkew = dirSign * ZOMBIE_STANCE_SKEW * back;
       aiOffX = -dir.cos * off;
-      aiOffY = -dir.sin * off;
+      aiOffY = -dir.sin * off - ZOMBIE_STANCE_LIFT_PX * back; // 反りながら少し伸び上がる
+    }
+    // ゾンビの踏み込み(z-lunge-in): 腕を広げた絵のまま、地面を蹴って跳ねるように詰める(止め絵で滑らせない)。
+    if (e.type === 'zombie' && e.aiPhase === 'z-lunge-in' && e.chaffMove === 'zombie-double' && e.chaffMoveAt !== undefined) {
+      const lt = Math.max(0, gameTime - e.chaffMoveAt);
+      aiOffY -= Math.abs(Math.sin((lt / ZOMBIE_LUNGE_BOUND_MS) * Math.PI)) * ZOMBIE_LUNGE_BOUND_PX;
+    }
+    // ゾンビの噛みの溜め(z-bite1/z-bite2): 噛む前に一度引く(予備動作)。引いた分は踏み込み(lungeOff)で前へ返る。
+    if (e.type === 'zombie' && (e.aiPhase === 'z-bite1' || e.aiPhase === 'z-bite2') && e.biteAt !== undefined && e.biteAt > 0) {
+      const spec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
+      const bt = gameTime - e.biteAt;
+      const span = spec.windupMs * 0.55;
+      if (bt >= 0 && bt < span) {
+        const pull = Math.sin((bt / span) * Math.PI) * ZOMBIE_BITE_PULL_PX;
+        aiOffX -= (e.biteDirX ?? 0) * pull;
+        aiOffY -= (e.biteDirY ?? 0) * pull;
+      }
     }
     // ★クリエイティブ監査#1是正: z-recover(硬直600ms)の姿勢が無かった(pixiScene.tsにz-recoverを
     // 読む描画が1行も無い=素の立ち姿のまま固まって見えていた)。打ち終わりで最も前へ倒れ込んだ姿勢
@@ -33294,8 +33319,9 @@ export class PixiScene {
       // ★構えの続きなので、噛みの溜めでは0コマ目へ戻さない(2重に伸び上がらない)。1発目=踏み込みで伸び切っている/
       //   2発目=反りのコマから伸び切りを通って噛む。
       if (e.type === 'zombie' && e.chaffMove === 'zombie-double' && i !== null && gameTime - e.biteAt < spec.windupMs) {
-        const floor = e.aiPhase === 'z-bite1' ? impact - 1 : Math.min(ZOMBIE_STANCE_HOLD_FRAME, impact - 1);
-        if (i < floor) i = floor;
+        // 1発目=伸び切りのまま(踏み込みで伸び切っている)。2発目=反りから伸び切りへ、溜めの前半で移る(止め絵にしない)。
+        i = e.aiPhase === 'z-bite1' ? impact - 1
+          : zombieStanceFrame(gameTime - e.biteAt, spec.windupMs * 0.6, Math.min(ZOMBIE_STANCE_HOLD_FRAME, impact - 1), impact - 1);
       }
     } else {
       // 技が消えた後: **当たった後**なら余韻のコマを出す(中断は当たる前に消えるので混ざらない)。

@@ -348,9 +348,9 @@ export const zombieRecoverWalkRampMul = (rampAt: number | undefined, gameTime: n
  * 踏み込みは最長1.9秒あるため「1.5秒以上の赤い照明」になっていた(クリエイティブ監査#12)。
  * **社長指示はこれを根本から置き換える**——強さや尺の調整ではない。
  *
- * ★いつ: `z-lunge-in` に入った瞬間(`chaffMoveAt`)だけ。 ★何回: 2回の点滅
- * (点灯→消灯→点灯→消灯)。 ★その後: 技の終わりまで(踏み込みの残り・噛み1・よろけ・噛み2・硬直)
- * 赤は一切出ない=このフェーズ以外は常に0を返す。
+ * ★いつ: bat/skeleton/lich は技が立った瞬間(`chaffMoveAt`)。**ゾンビは2026-10-14から構えで固まった瞬間**
+ * (`chaffBlinkAt`・1発目の前 z-red-pause と2発目の前 z-stagger の2回・§16-3s)。 ★何回: 2回の点滅
+ * (点灯→消灯→点灯→消灯)。 ★その後: 次の構え・技の終わりまで赤は一切出ない。
  */
 export const CHAFF_BLINK_ON_MS = 70;
 export const CHAFF_BLINK_OFF_MS = 70;

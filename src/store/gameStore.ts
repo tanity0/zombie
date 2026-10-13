@@ -14234,6 +14234,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 色(紫)と判定(赤)が食い違う。押し合いの免除/knocked無視もこのフィールドを読むので、
               // 残った個体は押されず・ノックバックで止まらないまま歩き回る。
               ...(enemy.chaffMove !== undefined ? { chaffMove: undefined } : {}),
+              ...(enemy.chaffBlinkAt !== undefined ? { chaffBlinkAt: undefined } : {}),
               // ★リッチの転移は気絶で**取り消す**(§16-B B-5「気絶中はワープしない」)。
               // 繰り越すと「クリで止めたのに気絶明けに逃げる」=クリで止めた見返りが消える。
               ...(enemy.lichWarpAt !== undefined ? { lichWarpAt: undefined } : {}),
