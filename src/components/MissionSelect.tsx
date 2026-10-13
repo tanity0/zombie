@@ -1698,10 +1698,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         <div className="menu-stagger p-3 space-y-3">
           {/* 操作記録(社長指示v0.25.2252): 一度見たチュートリアルを読み返す。「どう狙うんだっけ」を
               探しに来る場所なので、物語の記録より先に置く。1件も見ていない間はセクションごと出さない。 */}
-          {seenTutorials.size > 0 && (
+          {(seenTutorials.size > 0 || TUTORIALS.some(t => t.archiveAlways)) && (
             <Section label="操作記録">
               <div className="flex flex-col gap-1.5">
-                {TUTORIALS.map(t => seenTutorials.has(t.id) ? (
+                {TUTORIALS.map(t => (seenTutorials.has(t.id) || t.archiveAlways) ? (
                   <button
                     key={t.id}
                     type="button"

@@ -11,7 +11,10 @@ export type TutorialId =
   // ステージ1開始時に一度だけ出す、横スライド式フィールドガイド。
   | 'stage1-guide'
   // 旧「寄り道」ガイド。既読者が資料室で読み返せるよう台帳だけを残す(ゲーム中の発火は新版へ移行)。
-  | 'detour-poi';
+  | 'detour-poi'
+  // 後から足した操作(社長指示2026-10-13「資料室に、新たに追加された操作方法をシンプルな内容で追加」)。
+  // ゲーム中のポップアップは無い=資料室に最初から並ぶ(archiveAlways)。
+  | 'hit-retaliation' | 'escort-kick' | 'fast-travel' | 'escort-follow';
 
 export interface TutorialSlide {
   title: string;
@@ -34,6 +37,8 @@ export interface TutorialEntry {
   pcLines?: string[];
   /** ゲームパッドで遊んでいる時の本文。無ければ pcLines → lines。今その人の手にある物だけに向けて書く(機器を並べない)。 */
   padLines?: string[];
+  /** ゲーム中のポップアップを持たない項目。見ていなくても資料室の「操作記録」に最初から並ぶ。 */
+  archiveAlways?: boolean;
 }
 
 /** いまの操作で読む本文(スマホ=lines / マウス=pcLines / パッド=padLines)。 */
@@ -286,6 +291,61 @@ export const TUTORIALS: TutorialEntry[] = [
     where: '狂い咲きの森',
   },
 ];
+
+// ── 後から足した操作(資料室に最初から並ぶ・本文に数値を書かない) ─────────────
+TUTORIALS.push(
+  {
+    id: 'hit-retaliation',
+    title: '被弾反撃',
+    lines: [
+      '攻撃を受けた直後、相手のいる方へ矢印が出る。',
+      'すぐにその方向へはじくと、近接の倍のダメージを相手に返す。受けたダメージは戻らない。',
+      '受け付ける時間は短い。',
+    ],
+    pcLines: [
+      '攻撃を受けた直後、相手のいる方へ矢印が出る。',
+      'すぐにカーソルを相手へ向けて右クリックすると、近接の倍のダメージを相手に返す。受けたダメージは戻らない。',
+      '受け付ける時間は短い。',
+    ],
+    padLines: [
+      '攻撃を受けた直後、相手のいる方へ矢印が出る。',
+      'すぐにスティックを相手の方へ倒すと、近接の倍のダメージを相手に返す。受けたダメージは戻らない。',
+      '受け付ける時間は短い。',
+    ],
+    where: '共通',
+    archiveAlways: true,
+  },
+  {
+    id: 'escort-kick',
+    title: '軍人の蹴り',
+    lines: [
+      'クリティカルで体勢を崩した敵の近くに軍人がいると、軍人がその背後へ跳び、こちらへ蹴り飛ばす。',
+      '滑ってきた敵に近接を当てれば、そのまま仕留められる。',
+    ],
+    where: '拠点のある戦場',
+    archiveAlways: true,
+  },
+  {
+    id: 'fast-travel',
+    title: '輸送',
+    lines: [
+      '武器商人か、解放した拠点の武器庫でショップを開くと、「輸送」のタブがある。',
+      '行き先を選ぶと、その場所へ一瞬で移れる。行き先は武器商人と、解放した拠点。',
+    ],
+    where: '拠点のある戦場',
+    archiveAlways: true,
+  },
+  {
+    id: 'escort-follow',
+    title: '軍人の同行',
+    lines: [
+      'ショップの「軍人の同行」で、軍人を連れていくか、拠点で待たせるかを選べる。',
+      '連れていくにすると、解放した拠点の区域にいる間、その拠点の軍人がついてくる。最初は待たせる。',
+    ],
+    where: '拠点のある戦場',
+    archiveAlways: true,
+  },
+);
 
 export const getTutorial = (id: TutorialId): TutorialEntry | undefined =>
   TUTORIALS.find(t => t.id === id);
