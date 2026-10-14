@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   tickPlayerTraits, notifyCounterHit, loadPlayerProfile, resetPlayerTraits,
+  notifyRetaliationWindow, notifyRetaliationHit, retaliateRateOf, // v0.25.5043
   // G4a(BOT_AND_GHOST.md §2.9)
   notifyMoveCounter, notifyMoveDamage,
   recordWireAnchorUse, recordShieldPlacement, recordShieldBash, recordShieldBashDamage, foldSubStyleTallies,
@@ -303,6 +304,58 @@ describe('playerTraits: counterChance(機会/成立)とreactionMs', () => {
     tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
     commitPendingTraits();
     expect(loadPlayerProfile()!.counterChance).toBe(1); // 1機会/1成立
+  });
+
+  it('裏ボスの走り(thor-dash-move)でのカウンターも機会/成立として数える(旧: 語尾に載らず窓が閉じていた)', () => {
+    const thor = mkBoss({ bossState: 'thor-dash-windup' as Enemy['bossState'] });
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [thor] }));
+    now = 1_000_500;
+    tickPlayerTraits(baseInput({ gameTime: 500, enemies: [{ ...thor, bossState: 'thor-dash-move' as Enemy['bossState'] }] })); // 同じ窓
+    notifyCounterHit('boss-1');
+    tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [{ ...thor, bossState: 'chase' as Enemy['bossState'] }] }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    const p = loadPlayerProfile()!;
+    expect(p.counterChance).toBe(1);
+    expect(p.reactionMs).toBeCloseTo(500, 0);
+  });
+});
+
+// ★v0.25.5043: 反撃(被弾反撃=赤い帯のCounter!)の記録。
+describe('playerTraits: 反撃率(ボスから食らって開いた窓/その窓で反撃した回数)', () => {
+  beforeEach(() => { installStorage(); resetBotTelemetry(); resetPlayerTraits(); });
+
+  it('ボス本人からの窓2回・反撃1回=50%。雑魚からの窓と雑魚への反撃は数えない', () => {
+    const boss = mkBoss({ bossState: 'chase' as Enemy['bossState'] });
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [boss] }));
+    notifyRetaliationWindow('boss-1'); notifyRetaliationHit('boss-1');
+    notifyRetaliationWindow('zombie-7'); notifyRetaliationHit('zombie-7'); // 雑魚=対象外
+    notifyRetaliationWindow('boss-1'); // 反撃しなかった
+    tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [boss] }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    const view = pendingBossClears();
+    expect(view).toHaveLength(1);
+    expect(view[0].retaliateRate).toBeCloseTo(0.5, 5);
+    commitPendingTraits();
+    const slot = loadPlayerProfile()!.bossStyles!['thor'];
+    expect(slot.retaliate).toEqual({ windows: 2, hits: 1 });
+    expect(retaliateRateOf(slot.retaliate)).toBeCloseTo(0.5, 5);
+  });
+
+  it('窓が一度も開かなかった戦いは記録に載せない(欠損=「—」)。交戦外の通知は無視', () => {
+    notifyRetaliationWindow('boss-1'); // セッション未開=無視
+    const boss = mkBoss({ bossState: 'chase' as Enemy['bossState'] });
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [boss] }));
+    tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [boss] }));
+    notifyBossClear('thor', 'test-stage');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    expect(pendingBossClears()[0].retaliateRate).toBeNull();
+    commitPendingTraits();
+    const slot = loadPlayerProfile()!.bossStyles!['thor'];
+    expect(slot.retaliate).toBeUndefined();
+    expect(retaliateRateOf(slot.retaliate)).toBeNull();
   });
 });
 

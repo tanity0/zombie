@@ -266,8 +266,8 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
     return;
   }
   // BOT_AND_GHOST.md G1(計測専用・挙動不変): miguel/jibril/rafi/uri/suriel/acrasielの6体が
-  // 共通で通るこの1箇所で、カウンター成立をplayerTraitsへ通知する。
-  notifyCounterHit();
+  // 共通で通るこの1箇所で、カウンター成立をplayerTraitsへ通知する。v0.25.5043: 相手IDを渡す(窓の概算の外でも落とさない)。
+  notifyCounterHit(boss.id);
   notifyMoveCounter(); // G4a(§2.9・記録専用): 成立⑦=技への反応表へも通知(天使6体はG4b対象=表キー未定義・現状no-op)
   const st = useGameStore.getState();
   const cp = st.player;

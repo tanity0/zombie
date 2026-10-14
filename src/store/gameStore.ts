@@ -83,6 +83,8 @@ import {
   notifyBossClear,
   // 裁定4(§2.11・記録専用): PHILLの発射数(ヘッドショット数はuseGameLoopの着弾側でフックする)。
   recordPhillShot,
+  // v0.25.5043(記録専用): 反撃(被弾反撃)の窓が開いた/反撃した。挙動は一切変えない(session=null時はno-op)。
+  notifyRetaliationWindow, notifyRetaliationHit,
 } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a/G5
 // §2.17(GHOST-DUO-RECORDS・記録専用): 同行撃破台帳の打刻。挙動は一切変えない(計測パスとは独立の
 // 別モジュール。ソロラン=交戦時計が開いていない時はno-op)。
@@ -8024,6 +8026,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const moves = md > 2;
     const spd = moves ? knockbackSpeedFor(md, RETALIATE_LUNGE_MS) : 0; // 初速最大→線形に0(慣性・ease-out)
     const fdx = ecx - land.x, fdy = ecy - land.y, fdl = Math.hypot(fdx, fdy) || 1;
+    notifyRetaliationHit(target.id); // v0.25.5043: 守護霊の記録(反撃率の分子)。計測専用・挙動不変。
     set(state => ({
       hitRetaliation: null, // 反撃した=窓は閉じる
       // その被弾のヒットストップだけを打ち切る(別の演出のストップは切らない)。重い被弾でも入力してから何も起きない間を作らない。
@@ -11773,6 +11776,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             ? (() => {
                 const src = state.enemies.find(e => e.id === retaliateFromId);
                 if (!src) return state.hitRetaliation;
+                notifyRetaliationWindow(retaliateFromId); // v0.25.5043: 守護霊の記録(反撃率の分母)。計測専用。
                 return makeRetaliationWindow(
                   retaliateFromId, kbNow, stopUntilNext,
                   src.x + src.width / 2 - (state.player.x + state.player.width / 2),

@@ -6610,8 +6610,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // 下の共通処理=プレイヤー成立と同一。
                   applyGhostCounterEffect(boss, hitX, hitY, ghost, (k, g) => playSfx(k, g));
                 } else {
-                // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
-                notifyCounterHit();
+                // BOT_AND_GHOST.md G1(計測専用・挙動不変)。v0.25.5043: 相手IDを渡す=窓の概算の外でも成立を落とさない。
+                notifyCounterHit(boss.id);
                 notifyMoveCounter(); // G4a(§2.9・記録専用): 成立④=技への反応表へも通知
                 const cp = useGameStore.getState().player;
                 const pnow = Date.now();
@@ -6710,8 +6710,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // v0.25.2480(★未決1解消): 守護霊カウンター成立(thorCounterHitのghost分岐と同じ扱い)。
                   applyGhostCounterEffect(boss, hitX, hitY, ghost, (k, g) => playSfx(k, g));
                 } else {
-                // BOT_AND_GHOST.md G1(計測専用・挙動不変)。
-                notifyCounterHit();
+                // BOT_AND_GHOST.md G1(計測専用・挙動不変)。v0.25.5043: 相手IDを渡す=窓の概算の外でも成立を落とさない。
+                notifyCounterHit(boss.id);
                 notifyMoveCounter(); // G4a(§2.9・記録専用): 成立⑤=技への反応表へも通知(G4b対象ボスは表キー未定義=現状no-op)
                 const cp = useGameStore.getState().player;
                 const pnow = Date.now();

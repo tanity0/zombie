@@ -9,6 +9,7 @@ import { enemyDeathLabel, subWeaponDisplayName } from '../store/gameStore';
 import { bossCutinName } from '../data/bossCutin';
 import type { BossClearCard } from '../utils/ghostAlbum';
 import { formatClearTime, formatPerMin, formatPerfScore, formatRatePercent } from '../utils/ghostAlbum';
+import { retaliateRateOf } from '../utils/playerTraits'; // v0.25.5043: 反撃率
 import {
   GHOST_DOSSIER_CATEGORY_LABEL, GHOST_DOSSIER_SLOTS, type GhostDossierCategory, type GhostDossierSlot,
 } from '../utils/ghostDossier';
@@ -320,11 +321,13 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
                 <div className="mb-1.5 text-[9px] font-semibold tracking-[0.18em] text-sky-200/55">COMBAT PROFILE</div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 bg-white/[0.025] px-2.5 py-2 text-[10px] tabular-nums">
                   <div className="flex justify-between"><span className="text-white/35">カウンター成功</span><span className="text-white/75">{formatRatePercent(slot?.counterChance)}</span></div>
+                  <div className="flex justify-between"><span className="text-white/35">反撃</span><span className="text-white/75">{formatRatePercent(retaliateRateOf(slot?.retaliate))}</span></div>
                   <div className="flex justify-between"><span className="text-white/35">被弾 / 分</span><span className="text-white/75">{formatPerMin(slot?.hitsPerMin)}</span></div>
                   <div className="flex justify-between"><span className="text-white/35">移動率</span><span className="text-white/75">{formatRatePercent(slot?.mobility)}</span></div>
                   <div className="flex justify-between"><span className="text-white/35">サブ / 分</span><span className="text-white/75">{formatPerMin(slot?.subUsesPerMin)}</span></div>
-                  <div className="flex justify-between"><span className="text-white/35">得意距離</span><span className="text-white/75">{slot?.preferredDist == null ? '—' : `${Math.round(slot.preferredDist)} px`}</span></div>
                   <div className="flex justify-between"><span className="text-white/35">近接傾向</span><span className="text-white/75">{formatRatePercent(slot?.meleeBias)}</span></div>
+                  {/* v0.25.5043: 7項目=最終段の単独枠は得意距離(唯一の距離の単位)を置く(クリエイティブ監査#10)。 */}
+                  <div className="flex justify-between"><span className="text-white/35">得意距離</span><span className="text-white/75">{slot?.preferredDist == null ? '—' : `${Math.round(slot.preferredDist)} px`}</span></div>
                 </div>
               </div>
 

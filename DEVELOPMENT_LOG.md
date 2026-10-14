@@ -1,5 +1,38 @@
 # Development Log
 
+## v0.25.5043 — 守護霊の記録: 全ボスのカウンター成立を数える+反撃(被弾反撃)の記録を新設【2026-10-14 21:40 JST】
+- 社長質問「カウンターできる全てを記録で合ってる? 他のボス技も大丈夫か確認した?」+「反撃は赤いカウンターの事です。これは記録がまだ実装されてない気がする」。
+- **答え(数えた)**: v0.25.5042 の時点では**合っていなかった**。成立の通知 `notifyCounterHit()` は相手IDを持たず「機会窓が開いている時だけ」数える作りで、
+  機会窓は語尾(-windup/-recover)の概算だったため、語尾に載らない州で決めたカウンターは全部落ちていた:
+  裏ボスの走り(`thor-dash-move`/`dash`)・idolの休符(`idol-rest`)・ラフィの薙ぎ(`sweep`)・アクラシエルの転移(`warp-in`)・
+  ジブリールの灯/連射/転移抜け(`lantern`/`volley`/`warp-out`)。逆に紫(狙撃・車輪の溜め等)と、カウンター憲法(v0.25.3947)で接触成立が
+  撤去済みの裏ボス/idolの硬直は機会として数えていた(分母の水増し)。
+- 直し(3つ・全部計測専用・挙動不変):
+  1. **機会の判定を宣言表で**: 新設 `utils/counterOpportunity.ts isBossCounterOpportunity(enemy)`。裏ボス4体/idol/賞金首は
+     `COUNTER_REACH_DECL`(表に載っていて 'none' でない州=通る州)、ただし硬直(-recover)は憲法どおり除外。天使6体/フィルは語尾の概算+
+     角のリスト(`rafi:sweep` / `acrasiel:warp-in` / `jibril:lantern,volley,warp-out`、`jibril:warp-recover` は除外=angelBossTick の注記)。
+     天使/フィルの硬直は `bodyOverlapNow+angelCounterHit` の分岐が生きている(`tate-recover` 等)ので機会のまま。城ボスは v5042 の規則。
+     ※表を playerTraits から読むと `counterReach → idolScript → config/bossHealth → data/fixedGuardians → playerTraits` の循環になるため、
+     **表だけを依存ゼロの葉 `utils/counterReachDecl.ts` へ切り出し**(counterReach.ts は再輸出・import 先は従来どおり)。
+  2. **成立は相手IDつきで通知**: useGameLoop(thor/裏ボス)・angelBossTick・bountyTick・combatTick(フィル爆風/突進パリィ)の全箇所で
+     `notifyCounterHit(boss.id)`。v5042 の救済(窓の外でも交戦中のボス本人の成立は数える・多重通知は1成立)が全経路に効く。
+  3. **反撃の記録を新設**: `notifyRetaliationWindow(fromId)`(gameStore.damagePlayer で窓を作った瞬間)/`notifyRetaliationHit(targetId)`
+     (tryHitRetaliation が受け付けた瞬間)。交戦相手のボス本人の分だけ数える(雑魚は対象外=対ボス戦で録る大原則)。
+     `BossStyleSlot.retaliate?: {windows,hits}`(窓が0なら載せない=旧記録と同じ欠損「—」)。表示: リザルト年表カード「反撃率」
+     (比較マーク付き)、守護霊メニューの討伐記録 COMBAT PROFILE「反撃」(7項目: 単独枠は得意距離)。評点(社長式)は触らない。
+- テスト: `counterOpportunity.test.ts`(新・表/天使/城ボスの州ごとの真偽)、`playerTraits.test.ts` に走り中の成立・反撃率2本、
+  `ghostAlbum.test.ts` の期待値に retaliateRate。関連 14 ファイル全緑 / typecheck / eslint 0 / 循環import 新規なし。
+- 画: 守護霊メニュー→討伐記録(トール)で「カウンター成功 62% / 反撃 60%」、グレン(反撃の記録なし)で「反撃 —」を headless で確認。
+- クリエイティブ監査(Fable)1巡: 指摘11 → 直した8(更新情報の文7件=前版の繰り返し/「全て」の断言/薙ぎ払いの表記/「攻撃を受けた直後」の声/
+  矢印で定義/項目分割/母数、グリッドの並び1件)、社長へ戻す2(#8「—」が3状態を潰す / #9 無被弾の戦いに初記録の★が出る=既存行と同型)、
+  可1(#11 ラベル「反撃」)。
+- 自己点検: 計測・表示のみ=判定/挙動/バランスは1bitも変えていない(憲法第4条/第5条に抵触なし)。
+- 状態変化: 守護霊の記録(カウンター成功率・反撃率) → 実機確認待ち(社長)。★未決: 「—」の意味(旧記録/無被弾/未計測)と無被弾時の★の扱い。
+- 変更ファイル: src/utils/counterOpportunity.ts(新) / counterOpportunity.test.ts(新) / counterReachDecl.ts(新) / counterReach.ts /
+  playerTraits.ts / playerTraits.test.ts / combatTick.ts / angelBossTick.ts / bountyTick.ts / ghostAlbum.ts / ghostAlbum.test.ts /
+  src/hooks/useGameLoop.ts / src/store/gameStore.ts / src/components/GhostRecordCards.tsx / GhostBossDossier.tsx /
+  src/data/changelog.ts / package.json / DEVELOPMENT_LOG.md
+
 ## v0.25.5042 — 守護霊の記録: 城ボスのカウンター成功率が0のままだった件【2026-10-14 21:14 JST】
 - 社長報告「守護霊の記録の方。グレンの第一と第二倒したんだけど、カウンター率0だった。カウンターは適度にしてたのに」。
 - 原因(2つ・両方とも城ボス系=giantbat だけに効いていた):

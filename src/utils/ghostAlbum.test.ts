@@ -64,7 +64,7 @@ describe('ghostAlbum: リザルト年表の組み立て', () => {
     const profile = profileWith({ thor: slot({ hitsPerMin: 5, clearTimeMs: 80_000, counterChance: 0.4 }) });
     const cards = buildRunTimeline([clear({ slotKey: 'thor' }), clear({ slotKey: 'mimir', at: 2001 })], profile);
     expect(cards.map(c => c.slotKey)).toEqual(['thor', 'mimir']); // 撃破順のまま
-    expect(cards[0].best).toEqual({ clearTimeMs: 80_000, hitsPerMin: 5, counterChance: 0.4, perfScore: null });
+    expect(cards[0].best).toEqual({ clearTimeMs: 80_000, hitsPerMin: 5, counterChance: 0.4, retaliateRate: null, perfScore: null }); // v0.25.5043: 旧記録は反撃率なし=null
     expect(cards[1].best).toBeNull(); // 記録が無いボス=比較対象なし
   });
 
@@ -142,7 +142,7 @@ describe('ghostAlbum: 同行枠(§2.17)のカード組み立て', () => {
     expect(cards[0].isRecordUpdate).toBe(true);
     expect(cards[0].ally?.name).toBe('tanity');
     expect(cards[1].stageId).toBe('stage-2');       // giantbatはステージ別スロット
-    expect(cards[1].best).toEqual({ clearTimeMs: 40_000, hitsPerMin: null, counterChance: null, perfScore: null });
+    expect(cards[1].best).toEqual({ clearTimeMs: 40_000, hitsPerMin: null, counterChance: null, retaliateRate: null, perfScore: null });
     expect(cards[1].isRecordUpdate).toBe(false);
   });
 

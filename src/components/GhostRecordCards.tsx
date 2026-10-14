@@ -214,6 +214,12 @@ export const BossClearCardRow: React.FC<{
               best={card.best ? formatRatePercent(card.best.counterChance) : null}
               trend={card.best ? trendHigherBetter(card.counterChance, card.best.counterChance) : 'first'}
             />
+            {/* v0.25.5043: 反撃(食らった直後に相手へはじく赤い帯のCounter!)。窓が開かなかった戦いは「—」。 */}
+            <MetricRow
+              label="反撃率" value={formatRatePercent(card.retaliateRate)}
+              best={card.best ? formatRatePercent(card.best.retaliateRate) : null}
+              trend={card.best ? trendHigherBetter(card.retaliateRate, card.best.retaliateRate) : 'first'}
+            />
           </>
         )}
       </div>

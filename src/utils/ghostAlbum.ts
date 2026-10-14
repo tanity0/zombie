@@ -13,6 +13,7 @@ import { displayNameFrom } from './playerName';
 import {
   isBetterBossStyleSample,
   type BossStyleSlot, type PendingBossClearView, type PlayerProfile,
+  retaliateRateOf, // v0.25.5043: 反撃率(hits/windows)
 } from './playerTraits';
 import type { DuoAlbum, DuoRunClearView } from './duoRecords';
 import { GHOST_KNOB_SET_V } from '../../shared/ghostSanitize.mjs';
@@ -71,12 +72,14 @@ export interface BossClearCard {
   clearTimeMs: number | null;
   hitsPerMin: number | null;
   counterChance: number | null;
+  /** v0.25.5043: 反撃率(被弾反撃=赤い帯のCounter!を出せた割合)。未計測/旧記録/同行枠はnull=「—」。 */
+  retaliateRate: number | null;
   /** 記録時刻(Date.now)。一覧の並び順に使う。 */
   at: number;
   /** 同行していた守護霊(持ち主名+ビルド写し)。不在ならnull=カード/名前を出さない。 */
   ally: GhostAllySnapshot | null;
   /** 比較対象=**このランを反映する前**の保存記録。一覧(それ自体が記録)ではnull。 */
-  best: { clearTimeMs: number | null; hitsPerMin: number | null; counterChance: number | null; perfScore: number | null } | null;
+  best: { clearTimeMs: number | null; hitsPerMin: number | null; counterChance: number | null; retaliateRate: number | null; perfScore: number | null } | null;
   /** v0.25.2603(社長式): このカード自身の評点(年表用。一覧/同行カードはnull)。 */
   perfScore: number | null;
   /** 採用したら記録が上書きされるか(=「記録更新」表示)。既存記録が無ければtrue(初記録)。 */
@@ -88,6 +91,7 @@ export interface BossClearCard {
 const slotBest = (slot: BossStyleSlot | undefined) => slot
   ? {
     clearTimeMs: slot.clearTimeMs ?? null, hitsPerMin: slot.hitsPerMin, counterChance: slot.counterChance,
+    retaliateRate: retaliateRateOf(slot.retaliate),
     perfScore: slot.perfScore ?? null, // v0.25.2603(社長式): 記録更新の判定はこの評点で行う
   }
   : null;
@@ -107,6 +111,7 @@ export const buildRunTimeline = (
     clearTimeMs: c.clearTimeMs,
     hitsPerMin: c.hitsPerMin,
     counterChance: c.counterChance,
+    retaliateRate: c.retaliateRate ?? null,
     perfScore: c.perfScore,
     at: c.at,
     ally: cleanAlly(c.ally),
@@ -133,6 +138,7 @@ export const buildAlbumCards = (profile: PlayerProfile | null): BossClearCard[] 
         clearTimeMs: slot.clearTimeMs ?? null,
         hitsPerMin: slot.hitsPerMin,
         counterChance: slot.counterChance,
+        retaliateRate: retaliateRateOf(slot.retaliate),
         perfScore: slot.perfScore ?? null,
         at: slot.at,
         ally: cleanAlly(slot.ally),
@@ -159,11 +165,12 @@ export const buildDuoRunTimeline = (clears: readonly DuoRunClearView[]): BossCle
       clearTimeMs: c.clearTimeMs,
       hitsPerMin: null,
       counterChance: null,
+      retaliateRate: null,
       perfScore: null,
       at: c.at,
       ally: cleanAlly(c.ally),
       best: c.bestBefore !== null
-        ? { clearTimeMs: c.bestBefore, hitsPerMin: null, counterChance: null, perfScore: null }
+        ? { clearTimeMs: c.bestBefore, hitsPerMin: null, counterChance: null, retaliateRate: null, perfScore: null }
         : null,
       isRecordUpdate: c.isRecordUpdate,
       isStale: false,
@@ -186,6 +193,7 @@ export const buildDuoAlbumCards = (album: DuoAlbum | null): BossClearCard[] => {
         hitsPerMin: null,
         perfScore: null,
         counterChance: null,
+        retaliateRate: null,
         at: slot.at,
         ally: cleanAlly(slot.ally),
         best: null,

@@ -609,7 +609,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       const slug = PHILL_MOVE_SLUGS.find(k => (pe.bossState ?? '').startsWith(`phill-${k}`));
       const recoverState = slug ? PHILL_RECOVER_STATE_BY_SLUG[slug] : undefined;
       if (!recoverState) continue; // 未知の州(想定外)は何もしない=安全側
-      notifyCounterHit();
+      notifyCounterHit(hit.id); // v0.25.5043: 相手IDを渡す(上の爆風経路の通知と同じ窓=通知側で1成立に畳まれる)
       useGameStore.setState(st => ({
         enemies: st.enemies.map(en => en.id === hit.id ? {
           // ★v0.25.3721(検収監査・実バグ級): gameTime基準に修正。旧Date.now()だとrecoverの出口が
@@ -2020,8 +2020,8 @@ export const applyContactDamage = (
     }));
   }
   if (dashParried.length > 0) {
-    // BOT_AND_GHOST.md G1(計測専用・挙動不変): カウンター成立をplayerTraitsへ通知する。
-    notifyCounterHit();
+    // BOT_AND_GHOST.md G1(計測専用・挙動不変): カウンター成立をplayerTraitsへ通知する。v0.25.5043: 相手IDを渡す。
+    for (const id of new Set(dashParried)) notifyCounterHit(id);
     notifyMoveCounter(); // G4a(§2.9・記録専用): カウンター成立(③突進パリィ)を技への反応表へも通知
 
     const pnow = Date.now();

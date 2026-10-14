@@ -537,7 +537,7 @@ export const BOUNTY_RECOVER_STATES: readonly string[] = [
 
 /** カウンター成立の演出(idolTick.ts/angelBossTick.tsのcounterHit/angelCounterHitと同型)。 */
 const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx): void => {
-  notifyCounterHit();
+  notifyCounterHit(bounty.id);
   notifyMoveCounter();
   const g = useGameStore.getState();
   const cp = g.player;

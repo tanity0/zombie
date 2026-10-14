@@ -32,7 +32,7 @@ import { recordTestEvent } from './testEvents'; // TEST_HANDOFF/REQUEST-devbridg
 import { snapshotPlayerBuild, type GhostAllySnapshot } from './playerBuild';
 import { isGhostEligibleBoss } from './bossEngagement';
 import { bossClockDurationMs } from './bossClock'; // v0.25.2577: 撃破タイム=ボスごと交戦時計(共有)
-import { isBossCounterableNowApprox } from './bossScript';
+import { isBossCounterOpportunity } from './counterOpportunity'; // v0.25.5043: 機会=カウンターが通る州(宣言表が正)
 import {
   createMeleeSpacingState, stepMeleeSpacing, foldMeleeSpacing, blendMeleeSpacing,
   type MeleeSpacingState, type MeleeSpacingProfile,
@@ -106,9 +106,17 @@ export const subStyleHomingHoldMs = (s: SubStyleProfile | undefined): number | n
  * (**EMAしない**)。9ノブは各null可(そのセッションで計測できなかったノブ=消費側がその項目だけ
  * 軸1へフォールバックする合図)。moveReactions(技への反応表)はここに含めない=共有のまま(軸2へ複製しない)。
  */
+/** v0.25.5043: 反撃(被弾反撃)の記録。windows=ボスから食らって反撃の窓が開いた回数 / hits=その窓で反撃した回数。 */
+export interface RetaliateStat { windows: number; hits: number }
+/** 反撃率(hits/windows)。窓が無ければnull。 */
+export const retaliateRateOf = (r: RetaliateStat | null | undefined): number | null =>
+  r && r.windows > 0 ? r.hits / r.windows : null;
+
 export interface BossStyleSlot {
   reactionMs: number | null;
   counterChance: number | null;
+  /** v0.25.5043: 反撃の記録(旧レコードには無い=欠損可。表示は「—」)。 */
+  retaliate?: RetaliateStat;
   preferredDist: number | null;
   meleeBias: number | null;
   mobility: number | null;
@@ -437,6 +445,10 @@ interface Session {
   lastBossId: string | null;       // 直近tickで交戦相手と見たボスの個体ID
   windowClosedAt: number | null;   // 成立しないまま閉じた最後の機会窓の Date.now() ms
   lastSuccessAt: number | null;    // 最後に成立を数えた Date.now() ms(1回のカウンターを多重に数えない)
+  // ★v0.25.5043: 反撃(被弾反撃=赤い帯のCounter!・research/HIT_RETALIATION.md)の記録。交戦相手のボスから
+  // 食らって窓が開いた回数と、その窓で反撃した回数(雑魚からの被弾は数えない=対ボス戦で録る大原則)。
+  retaliateWindows: number;
+  retaliateHits: number;
   lastHealth: number | null;       // 被弾検知(前tickのhealth)
   // ---- G4a(§2.9) ----
   moveReactions: MoveReactionState; // (1) 技への反応表(エピソード状態機械はmoveReaction.tsの純関数)
@@ -496,6 +508,8 @@ const startSession = (gameTime: number): Session => ({
   lastBossId: null,
   windowClosedAt: null,
   lastSuccessAt: null,
+  retaliateWindows: 0,
+  retaliateHits: 0,
   lastHealth: null,
   moveReactions: createMoveReactionState(),
   stationaryTicks: 0,
@@ -528,7 +542,7 @@ const counterOpportunityOpen = (
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
   if (Math.hypot(ecx - pcx, ecy - pcy) > OPPORTUNITY_RANGE) return false;
   if (isBiteSubject(e, isBiteExemptType, gameTime)) return bitePhaseOf(e, gameTime) !== 'none';
-  return isBossCounterableNowApprox(e.aiPhase, e.bossState, e.type);
+  return isBossCounterOpportunity(e);
 });
 
 // G4a(§2.9(2))の計測定数(計測専用・挙動には無関係)。
@@ -672,6 +686,8 @@ export interface PendingBossStyleRecord {
   clearTimeMs: number;
   /** v0.25.2553(§2.16 A): 撃破の瞬間に同行していた守護霊の写し(不在ならnull)。 */
   ally: GhostAllySnapshot | null;
+  /** v0.25.5043: 反撃の記録(窓が開いた回数/反撃した回数)。窓が一度も開かなければnull=そのセッションでは測れていない。 */
+  retaliateSample: RetaliateStat | null;
 }
 
 /**
@@ -722,6 +738,8 @@ const endSession = (): void => {
   const reactionSample = reactionRaw === null ? null
     : Math.max(REACTION_CLAMP_MIN, Math.min(REACTION_CLAMP_MAX, reactionRaw));
   const counterChanceSample = s.opportunities > 0 ? s.successes / s.opportunities : null;
+  const retaliateSample: RetaliateStat | null = s.retaliateWindows > 0
+    ? { windows: s.retaliateWindows, hits: Math.min(s.retaliateHits, s.retaliateWindows) } : null;
   const preferredDistSample = medianBucketDist(s.distBuckets);
   const mobilitySample = s.totalTicks > 0 ? s.movedTicks / s.totalTicks : null;
   const hitsPerMinSample = durationMs > 0 ? s.hits / (durationMs / 60000) : null;
@@ -794,6 +812,7 @@ const endSession = (): void => {
       perfScoreSample: bossStylePerfScore(moveResult.tally, cleared.clearTimeMs),
       srcClass, snapshot, srcName, at: Date.now(), clearTimeMs: cleared.clearTimeMs,
       ally: cleared.ally, // v0.25.2553(§2.16 A): 撃破の瞬間に写した同行守護霊(不在ならnull)
+      retaliateSample, // v0.25.5043: 反撃の記録(同じセッション確定値の写し)
     });
   }
 };
@@ -1079,7 +1098,7 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   }
 
   s.lastBossId = boss.id;
-  const opportunityNow = dist <= OPPORTUNITY_RANGE && isBossCounterableNowApprox(boss.aiPhase, boss.bossState, boss.type);
+  const opportunityNow = dist <= OPPORTUNITY_RANGE && isBossCounterOpportunity(boss);
   if (opportunityNow && !s.wasOpportunity) {
     s.opportunities += 1;
     s.pendingOpportunityAt = Date.now();
@@ -1141,6 +1160,24 @@ export const notifyCounterHit = (sourceEnemyId?: string): void => {
   // 成立(pendingOpportunityAt)は別物。ここで false に戻すと、まだ同じwindup/recoverが続いている
   // 次tickに opportunityNow===true(継続中)&&wasOpportunity===false という偽の立ち上がりが起き、
   // 同じ窓が2回目の「機会」として二重計上されてしまう(実装中に発覚したバグ)。
+};
+
+/**
+ * ★v0.25.5043: 反撃(被弾反撃)の窓が開いた(gameStore.damagePlayer で hitRetaliation を作った瞬間)。
+ * 交戦相手のボス本人からの被弾だけ数える(雑魚からの被弾は対象外=counterChance と同じ「対ボス戦で録る」)。
+ * 計測専用・挙動不変。セッションが無ければ何もしない。
+ */
+export const notifyRetaliationWindow = (fromEnemyId: string): void => {
+  const s = session;
+  if (!s || fromEnemyId !== s.lastBossId) return;
+  s.retaliateWindows += 1;
+};
+
+/** ★v0.25.5043: 反撃が成立した(gameStore.tryHitRetaliation が受け付けた瞬間)。相手がボス本人の時だけ数える。 */
+export const notifyRetaliationHit = (targetEnemyId: string): void => {
+  const s = session;
+  if (!s || targetEnemyId !== s.lastBossId) return;
+  s.retaliateHits += 1;
 };
 
 // ==== G4a(BOT_AND_GHOST.md §2.9): 記録専用の通知フック ==========================================
@@ -1612,6 +1649,7 @@ export const applyPendingBossStyle = (
     srcName: r.srcName,
     at: r.at,
     clearTimeMs: r.clearTimeMs, // v0.25.2493: 討伐記録一覧用(表示はカウンター成功率と併記)
+    ...(r.retaliateSample ? { retaliate: r.retaliateSample } : {}), // v0.25.5043: 窓が無かったセッションは載せない(欠損=「—」)
   };
   return { ...prev, bossStyles: { ...(prev.bossStyles ?? {}), [r.slotKey]: slot } };
 };
@@ -1636,6 +1674,8 @@ export interface PendingBossClearView {
   perfScore: number | null;
   at: number;
   ally: GhostAllySnapshot | null;
+  /** v0.25.5043: 反撃率(窓が無ければnull)。 */
+  retaliateRate?: number | null;
 }
 
 export const pendingBossClears = (): PendingBossClearView[] =>
@@ -1649,6 +1689,7 @@ export const pendingBossClears = (): PendingBossClearView[] =>
       perfScore: r.perfScoreSample,
       at: r.at,
       ally: r.ally,
+      retaliateRate: retaliateRateOf(r.retaliateSample),
     }));
 
 /**
