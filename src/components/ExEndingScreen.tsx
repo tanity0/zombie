@@ -178,19 +178,39 @@ const ExEndingScreen: React.FC<ExEndingScreenProps> = ({ onDone }) => {
         </div>
       </div>
       {/* 入力待ちの合図は端末の書式で(等幅・薄緑)。区切りが画面より長くても見えるよう下端に固定。 */}
-      {/* キー・パッドの決定もこれを押す(menuNav の主役=data-nav-default)。触った時は画面全体と同じ1回だけ送る。 */}
-      {mode !== 'typing' && (
+      {/* キー・パッドの決定もこれを押す(menuNav の主役=data-nav-default)。触った時は画面全体と同じ1回だけ送る。
+          ★打っている間も透明のまま置いておく=決定ボタンの連打は「速く打ち切る」へ行き、右下のスキップを押さない。 */}
+      <button
+        type="button"
+        data-nav-default
+        aria-label={mode === 'finished' ? '記録を閉じる' : '次の記録へ'}
+        className="absolute inset-x-0 mx-auto w-fit px-4 py-2 text-center text-[11px] tracking-[0.18em] text-emerald-100/45"
+        style={{ fontFamily: MONO, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)', background: 'transparent' }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onTap(); }}
+      >
+        <span key={`${mode}-${sec}`} className={mode === 'typing' ? '' : 'ex-hint'} style={mode === 'typing' ? { opacity: 0 } : undefined}>
+          <TapWord />{mode === 'finished' ? 'で記録を閉じる' : 'で次の記録へ'}
+        </span>
+      </button>
+      {/* スキップ(社長指示2026-10-14「EXクリア後の文章にスキップを付ける」): 通常のエンディングと同じ見た目・位置(右下)。
+          押した瞬間に記録を閉じてリザルトへ。Esc・パッドのスタートでも押せる(data-skip=utils/menuNav.pressVisibleSkip)。 */}
+      {mode !== 'finished' && (
         <button
           type="button"
-          data-nav-default
-          key={`${mode}-${sec}`}
-          className="ex-hint absolute inset-x-0 mx-auto w-fit px-4 py-2 text-center text-[11px] tracking-[0.18em] text-emerald-100/45"
-          style={{ fontFamily: MONO, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)', background: 'transparent' }}
+          data-skip
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onTap(); }}
+          onClick={(e) => { e.stopPropagation(); finish(); }}
+          style={{
+            position: 'absolute', zIndex: 10,
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 18px)', right: 18,
+            padding: '6px 14px', fontSize: 12, color: 'rgba(255,255,255,0.75)',
+            background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 999,
+          }}
         >
-          <TapWord />{mode === 'finished' ? 'で記録を閉じる' : 'で次の記録へ'}
+          スキップ
         </button>
       )}
     </div>
