@@ -2,7 +2,7 @@ import type { GameStats } from '../types/game';
 
 // スコアは2系統(社長指示):
 //  - totalScore = 青天井(cap無し)。ハイスコア表示/順位に使う。
-//  - goldScore  = 各項目を換金MAXでクランプした合計。ゴールド = floor(goldScore / 2000)。
+//  - goldScore  = 各項目を換金MAXでクランプした合計。ゴールド = floor(goldScore / GOLD_SCORE_PER_GOLD)。
 // 結果別の扱い: clearBonus は won のみ / speedBonus はラボ勝利のみ / その他(survival含む)は常に計上
 //   = 死亡してもクリアボーナス以外は全部計算する。
 export interface ResultScore {
@@ -17,7 +17,7 @@ export interface ResultScore {
   speedBonus: number;     // ラボ勝利のみ
   totalScore: number;     // 青天井(ハイスコア用)
   goldScore: number;      // cap適用合計(換金用)
-  goldEarned: number;     // floor(goldScore / 2000)
+  goldEarned: number;     // floor(goldScore / GOLD_SCORE_PER_GOLD)
 }
 
 export const LAB_PAR_TIME_SEC = 480;          // ラボ基準タイム 8:00
@@ -28,6 +28,9 @@ export const SPEED_BONUS_PER_SEC = 100;       // 短縮1秒あたりの加点(�
 export const SURVIVAL_RAMP_SEC = 60;
 export const TREASURE_SCORE_PER_VALUE = 5000; // トレジャー価値1あたり
 export const CLEAR_BONUS = 30000;             // クリア時のフラット加点
+// 換金スコア何点で1Gか。★2026-10-14 社長「もっとゴールド稼ぎやすくしたい。1プレイのゴールド取得効率を上げる」→
+// 2000→1000(1回の出撃で入るゴールドが一律2倍。項目どうしの比率は不変)。
+export const GOLD_SCORE_PER_GOLD = 1000;
 // ★v0.25.2768(社長裁定): **守護霊を使ったランのスコア倍率は廃止**(旧 GHOST_SCORE_MULT=0.5)。
 // 社長「スコアは換金されないのだから、自然に減る以外いじらない。0.5もしない。」
 // 理由: ①**ハイスコアは換金に使われない**(ゴールドは下の goldScore という別計算から出る)ので
@@ -97,7 +100,7 @@ export const calculateResultScore = (
     clearBonus, treasureScore, damageScore, finisherScore, comboScore,
     eliteBossScore, scrapScore, survivalScore, speedBonus,
     totalScore, goldScore,
-    goldEarned: Math.floor(goldScore / 2000),
+    goldEarned: Math.floor(goldScore / GOLD_SCORE_PER_GOLD),
   };
 };
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { topScoreItem, calculateResultScore } from './resultScoring';
+import { topScoreItem, calculateResultScore, GOLD_SCORE_PER_GOLD } from './resultScoring';
 import type { GameStats } from '../types/game';
 
 // 全項目0の GameStats(必要なものだけ上書きして使う)。
@@ -100,7 +100,8 @@ describe('育成のスコア補正(scoreMult)', () => {
     const r = calculateResultScore(stats, true, false, 0.4);
     expect(r.totalScore).toBe(Math.round(base.totalScore * 0.4));
     expect(r.goldScore).toBe(Math.round(base.goldScore * 0.4));
-    expect(r.goldEarned).toBe(Math.floor(r.goldScore / 2000));
+    expect(r.goldEarned).toBe(Math.floor(r.goldScore / GOLD_SCORE_PER_GOLD));
+    expect(GOLD_SCORE_PER_GOLD).toBe(1000); // 2026-10-14: 1回の出撃のゴールドを2倍に
     expect(r.goldEarned).toBeLessThan(base.goldEarned);
   });
 });

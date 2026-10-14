@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5039', items: ['出撃の終わりにもらえるゴールドが倍になった'] },
   { version: '0.25.5038', items: ['天使を倒すと、回復の肉と赤い経験値十個、トレジャーが落ちる'] },
   { version: '0.25.5037', items: ['ゾンビが頭を反らせて構える時、低く唸るようになった'] },
   { version: '0.25.5036', items: ['深層で追ってくる死神を近接で倒しても、スキル「死神」の習得と年表の記録が残らなかった。直った'] },
