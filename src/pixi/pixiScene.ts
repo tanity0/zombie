@@ -13657,6 +13657,7 @@ export class PixiScene {
     if (!this.renderer || !src || src.width <= 1 || src.height <= 1) return null;
     const bakeStart = performance.now();
     let trimmed: Texture | null = null;
+    let gradTex: Texture | null = null; // 縦グラデ(使い捨て)。途中で投げても finally で必ず捨てる(コンティニューで溜まらない)
     try {
       // ---- ★D-2(縦)+★D-2b(横): 絵のある範囲へ切り詰める ----
       const content = SHADOW_TRIM_CONTENT ? this.textureContentCache.get(src) : undefined;
@@ -13707,7 +13708,7 @@ export class PixiScene {
       body.height = srcH;
       body.position.set(pad, pad);
 
-      const gradTex = this.buildVerticalEraseGradientTexture(paddedH, pad, srcH);
+      gradTex = this.buildVerticalEraseGradientTexture(paddedH, pad, srcH);
       const grad = new Sprite(gradTex);
       grad.blendMode = 'erase';
       grad.position.set(0, 0);
@@ -13776,8 +13777,6 @@ export class PixiScene {
         releaseBakedTexture('shadow', hardRT);
         releaseBakedTexture('shadow', softRT);
       }
-      gradTex.destroy(true);
-
       return { texture: rt, bytes: paddedW * paddedH * 4, contentFrac };
     } catch (err) {
       console.error('[shadow-v9] bakeSilhouette failed (suppressed):', err);
@@ -13786,6 +13785,7 @@ export class PixiScene {
       if (this.penumbraFilter) { this.penumbraFilterFailed = true; }
       return null;
     } finally {
+      if (gradTex) gradTex.destroy(true);
       if (trimmed) trimmed.destroy(false); // ★source は共有なので絶対に破棄しない(元の絵が消える)
       // ★検収差し戻し(高6): 仕様書指示「事前ベイク中のフレーム時間を1回ログに出す」。
       // ★v12: 半影は1枚あたり**3パス**(hard/soft/合成)になったので、ここの実測を必ず見て
