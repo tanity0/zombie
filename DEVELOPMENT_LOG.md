@@ -1,5 +1,30 @@
 # Development Log
 
+## v0.25.5049 — 歴史年表に実績10件(社長指示「年表に、資料を全て解放…なども入れて」)【2026-10-15 01:40 JST】
+- 社長指示「年表に、資料を全て解放 / ボスをソロで全撃破 / 無強化で全ステージクリア / 無強化でボスを全撃破 / 全ステータス最大強化 /
+  全スキル解放 / 全武器解放(購入) / 全サブウェポン解放 / ストーリークリア / EXストーリークリア なども入れて」。
+- 作り: `data/chronicleFeats.ts`(葉=判定の純関数 `achievedFeats(snapshot)`+「無強化」の台帳)/ `utils/chronicleFeatsSync.ts`
+  (進行データを集めて `recordChronicleGlobalFirst('feat','feat',key,label,true)`=ゲーム全体で各1回)。年表の行は見出し無し(stageId='feat')。
+  分母(`chronicleCatalog`)に10枠=73→83。`ChronicleKind` に 'feat'。進行リセットで台帳も消す。
+- 判定元(「全部」は台帳から導く=手で列挙しない): 資料=`storyArchive.unlockedRecordIds` ⊇ ARCHIVE_RECORDS / ソロ撃破=守護霊の記録
+  `bossStyles` のキー ⊇ 討伐記録の16枠(同行中は計測されない=ソロのみ。アクラシエルは枠が無いので対象外)/ 最大強化=全系統 bought=5 /
+  スキル=`ownedSkills` ⊇ SKILL_KEYS−退役 / 武器=購入済み ⊇ BOSS_UNLOCK の武器+店売り3+小烏丸 / サブ=棚の全種(クラス固有・退役を除く)Lv1以上 /
+  ストーリー=endingSeen または stage-7 クリア / EX=stage-ex1 クリア。
+- **「無強化」の定義(設計者が決めた・社長の言葉に定義が無い)**: 拠点のステータス強化の**メーター(active)が全系統0**のランで達成
+  (買ってあっても下げて出撃すれば無強化=スコア補正の縛りと同じ読み方。スキル・武器・サブは問わない)。
+  積む場所: 勝利時(App・クリア扱いになったステージだけ)/ ボス討伐の年表記録と同じ場所(gameStore・討伐記録と同じスロットキー・
+  練習/ボステスト/イベント産/グレン第1形態は除く)。
+- 同期の呼び出し点: 勝利の瞬間(App)/ 拠点メニューの画面が変わるたび(MissionSelect=強化・購入・ガチャの直後を拾う)。初回だけ書く。
+- テスト: `chronicleFeats.test.ts`(新・10件/欠け/集合/無強化の台帳)、`chronicleCatalog.test.ts` 83へ。typecheck / eslint 0 / 循環import 新規なし。
+- 画: タイトルのローディング中の年表に「ストーリークリア / 全ステータス最大強化 / ボスをソロで全撃破」が見出し無しで並び、記録 5/83 と数えられるのを
+  headless で確認(featchron.png)。
+- 更新情報 v0.25.5042 の誤字「数わる」→「数えられる」も直した(クリエイティブ監査の指摘)。
+- 自己点検: 記録の追加のみ(憲法第4条/第5条に抵触なし)。
+- 状態変化: 年表の実績 → 実機確認待ち(社長)。★未決: 「無強化」の定義でよいか(返信で確認)。
+- 変更ファイル: src/data/chronicleFeats.ts(新) / chronicleFeats.test.ts(新) / src/utils/chronicleFeatsSync.ts(新) / src/data/progress.ts /
+  chronicleCatalog.ts / chronicleCatalog.test.ts / src/store/gameStore.ts / src/App.tsx / src/components/MissionSelect.tsx /
+  src/data/changelog.ts / package.json / DEVELOPMENT_LOG.md
+
 ## v0.25.5048 — 吸血: 回復量 +6/+8/+10・覚醒の近接回復 5%【2026-10-15 00:30 JST】
 - 社長指示「6/8/10に変更 / 覚醒時、近接で5%」(「吸血の効果教えて」への回答=キルで必ず +2/+4/+6・覚醒Lv3で近接ヒットごとに最大体力1%、を受けて)。
 - `skillEffectsB7.VAMPIRE_HEAL_BY_LEVEL` [0,2,4,6]→[0,6,8,10] / `gameStore.VAMPIRE_AWAKEN_MELEE_HEAL_FRAC` 0.01→0.05 /

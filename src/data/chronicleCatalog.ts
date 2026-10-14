@@ -15,6 +15,7 @@
 import type { ChronicleEntry, ChronicleKind } from './progress';
 import { STAGES } from './campaign';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
+import { FEAT_KEYS } from './chronicleFeats';
 
 /** 年表の1枠。stageId/detail が null の枠は「どのステージ/どの detail でも1つあれば埋まる」。 */
 export interface ChronicleSlot {
@@ -51,6 +52,8 @@ const buildSlots = (): ChronicleSlot[] => {
   add(null, 'poi', 'police');
   add(null, 'poi', 'armory');
   add(null, 'poi', 'hospital');
+  // 実績(社長指示2026-10-14): 各1枠(stageId='feat'・ゲーム全体で1回)。
+  for (const k of FEAT_KEYS) add(null, 'feat', k);
   return slots;
 };
 

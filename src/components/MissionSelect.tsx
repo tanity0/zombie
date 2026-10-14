@@ -1,3 +1,4 @@
+import { syncFeatChronicle } from '../utils/chronicleFeatsSync';
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal as createReactPortal } from 'react-dom';
 import './commandHome.css';
@@ -511,6 +512,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   const portalRoot = useHudPortalRoot();
   const playDevice = usePlayDevice(); // 資料室の操作記録も PC は今手にある物の言葉で(§11-6)
   const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
+  // 年表の実績(社長指示2026-10-14): 拠点で画面が変わるたびに達成を見る(強化・購入・ガチャの直後を拾う。初回だけ書く=軽い)。
+  useEffect(() => { syncFeatChronicle(); }, [screen.name]);
 
   // ★テストブリッジ(TEST_HANDOFF/REQUEST-devbridge.md A)へ今の枝を報告する。
   // `?testbridge=1` が無ければ reportTestScreen は即returnする=通常プレイでは何も起きない。

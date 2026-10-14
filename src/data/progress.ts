@@ -2,6 +2,7 @@
 // ゲームロジックには触れず localStorage だけで完結させる(導線の解放制御用)。
 // メインミッションをクリアすると次ステージが解放される。EX は前提ステージのクリアで解放。
 
+import { clearNoUpgradeLedger } from './chronicleFeats';
 import { STAGES, getStage, type Stage } from './campaign';
 import { getEventQuestConfig } from '../utils/eventQuest';
 import { clearWelcomeStreaks } from '../utils/welcomeStreak';
@@ -565,7 +566,9 @@ export const setSelectedMission = (m: SelectedMission): void => {
 // 'clear'=ステージクリア(現状ステージ6のみ・社長指示v0.25.2150「ステージ6はクリアしたか否かだけ」)。
 // 'poi'=寄り道POI開放(警察署/武器庫/病院・社長裁定2026-07-31「初めて警察署を開放 ね」=種別ごと
 //   ゲーム全体で初回のみ。detail=PoiKind('police'|'armory'|'hospital'))。
-export type ChronicleKind = 'zone' | 'rank' | 'boss' | 'base' | 'hunter' | 'reaper' | 'redNight' | 'cave' | 'clear' | 'poi';
+// 'feat'=実績(社長指示2026-10-14「年表に、資料を全て解放…なども入れて」。stageId='feat'(見出し無し)・detail=data/chronicleFeats.ts の FeatKey・
+//   ゲーム全体で各1回。判定と書き込みは utils/chronicleFeatsSync.ts)。
+export type ChronicleKind = 'zone' | 'rank' | 'boss' | 'base' | 'hunter' | 'reaper' | 'redNight' | 'cave' | 'clear' | 'poi' | 'feat';
 
 export interface ChronicleEntry {
   key: string;          // dedup キー = `${stageId}::${kind}::${detail}`
@@ -687,6 +690,7 @@ export const resetProgress = (): void => {
   clearSubBlueprints(); // サブウェポンの設計図も進行リセットで消す(開発用・UNIQUE_WEAPONS.md §19-6)
   try { localStorage.removeItem(LEGACY_EVENT_QUEST_DONE_KEY); } catch { /* ignore */ } // 旧v1684キーの掃除
   saveChronicle([]); // 歴史年表も進行リセットで消す(開発用)
+  clearNoUpgradeLedger(); // 年表の実績「無強化」の台帳も進行リセットで消す(開発用)
   clearWelcomeStreaks(); // ウェルカムの連続クリア(3連続で卒業)も進行リセットで消す(開発用)
   writeRunCores({}); // 掘削記録(リザルト断面の過去ラン)も進行リセットで消す(開発用)
   try { localStorage.removeItem(CHRONICLE_START_KEY); } catch { /* ignore */ } // 初ミッション日付も消す(開発用)

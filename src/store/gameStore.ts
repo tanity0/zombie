@@ -151,7 +151,8 @@ import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPO
 import { nextCycleMode } from '../utils/cycleShotgun'; // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB・切替式SG)
 import { stepHeavySniperStillMs } from '../utils/heavySniperCharge'; // UNIQUE_WEAPONS.md §16-2(バッチB・大型狙撃銃)
 import { resolveSlotKeyNow, isTestWeaponUnlockAll } from '../utils/weaponSlot'; // UNIQUE_WEAPONS.md §4-1(生成点=grantWeapon入口の安全網/武器庫)/ 武器解放ALL(開発用)
-import { BOSS_UNLOCK, SUB_BOSS_UNLOCK } from '../data/weaponSlots'; // UNIQUE_WEAPONS.md §11-6(ボス撃破→ユニーク武器の設計図入手)/§19-6(サブウェポン版・別台帳)
+import { BOSS_UNLOCK, SUB_BOSS_UNLOCK } from '../data/weaponSlots';
+import { isNoUpgradeState, noteNoUpgradeBossKill, featBossSlotKey } from '../data/chronicleFeats'; // 年表の実績「無強化」(社長指示2026-10-14) // UNIQUE_WEAPONS.md §11-6(ボス撃破→ユニーク武器の設計図入手)/§19-6(サブウェポン版・別台帳)
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
@@ -4115,6 +4116,12 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
       enemy.type,
       phrase
     );
+    // 年表の実績「無強化でボスを全撃破」(社長指示2026-10-14): メーター全0のランで倒したボスを台帳へ
+    // (討伐記録と同じスロットキー。ハンター・イベント産・グレン第1形態は対象外=記録の対象ボスと同じ集合)。
+    if (enemy.type !== 'hunter' && !enemy.fromEvent && isFinalBossKill(enemy)
+      && !isPracticeRun() && !BOSS_TEST_RUN && isNoUpgradeState(get().playerUpgrades)) {
+      noteNoUpgradeBossKill(featBossSlotKey(enemy.type, getSelectedStageId()));
+    }
     // 城ボスクリアフラグ(EVENT_QUEST_DESIGN.md・社長裁定v0.25.1686 #4): 討伐の瞬間に永続記録し、
     // 「城ボスフラグ && 強制クエストフラグ」が揃えばそのステージをクリア扱い=次ステージ解放。
     // イベント産のgiantbat(fromEvent)はストーリーボスではないので除外(finaleDefeatedと同じ扱い)。

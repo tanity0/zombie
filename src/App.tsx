@@ -1,3 +1,5 @@
+import { isNoUpgradeState, noteNoUpgradeStageClear } from './data/chronicleFeats';
+import { syncFeatChronicle } from './utils/chronicleFeatsSync';
 import { COMMAND_UI_ENABLED } from './config/uiDesign';
 import { HudScale, HudScaleProvider } from './components/HudScale';
 import { hudScaleFor } from './utils/viewport';
@@ -544,6 +546,12 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
         // storyFlags/ミッション単位クリアへ保存済み。軍向けの記録は残さない=統合正本9.4)。
       } else if (getEventQuestConfig(stageId)) syncQuestStageClear(stageId);
       else markStageCleared(stageId);
+      // 年表の実績(社長指示2026-10-14): 無強化(メーター全0)のランで**クリア扱いになった**ステージを台帳へ、
+      // そのうえで達成した実績を年表へ(初回だけ)。
+      if (!revisitRun && getClearedStages().has(stageId) && isNoUpgradeState(useGameStore.getState().playerUpgrades)) {
+        noteNoUpgradeStageClear(stageId);
+      }
+      syncFeatChronicle();
       // M7(stage-7)クリア → リザルトの後(メニューに戻る時)に通常エンディングを流す予約。
       if (!revisitRun && stageId === 'stage-7') pendingEndingRef.current = true;
     }
