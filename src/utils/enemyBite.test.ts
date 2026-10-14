@@ -30,12 +30,12 @@ const at = (biteAt: number | undefined): Pick<Enemy, 'type' | 'biteAt'> =>
   ({ type: 'bat', biteAt } as Pick<Enemy, 'type' | 'biteAt'>);
 
 describe('噛みつきの台帳', () => {
-  it('社長指定の叩き台がそのまま入っている(30px / 300ms / 200ms / 踏み込み30px)', () => {
+  it('社長指定の叩き台がそのまま入っている(30px / 800ms / 200ms / 踏み込み30px)', () => {
     expect(BITE_DEFAULT.rangePx).toBe(30);
-    expect(BITE_DEFAULT.windupMs).toBe(300);
+    expect(BITE_DEFAULT.windupMs).toBe(800); // ★社長指示2026-10-14「光ってから1秒してから攻撃」(旧300)
     expect(BITE_DEFAULT.biteMs).toBe(200);
     expect(BITE_DEFAULT.lungePx).toBe(30); // 社長裁定2026-08-25「30PX移動してくる」(旧20px)
-    expect(BITE_DEFAULT.windupMs + BITE_DEFAULT.biteMs).toBe(500); // 社長「500msかけて」
+    expect(BITE_DEFAULT.windupMs + BITE_DEFAULT.biteMs).toBe(1000); // 光り始め→当たる瞬間=1秒(旧「500msかけて」)
   });
 
   it('★紫=カウンター不可(社長裁定2026-08-25「噛みつきはやはり紫にする」)', () => {
@@ -68,7 +68,8 @@ describe('噛みつきの台帳', () => {
   it('★ゾンビの噛みつきは600msへ復帰した(社長裁定2026-09-16「4は戻して様子見」)', () => {
     expect(biteSpecFor('zombie').recoverMs).toBe(600);
     // ★§16-D(社長指示2026-09-19)でwindupMs 300→600・lungeMs新設300も上書きされている。
-    expect(biteSpecFor('zombie')).toEqual({ ...BITE_DEFAULT, recoverMs: 600, windupMs: 600, lungeMs: 300 });
+    // ★v0.25.5045: windupMs は既定と同じ800(社長指示2026-10-14「光ってから1秒」)。lungeMs:300 の止まる拍は残る。
+    expect(biteSpecFor('zombie')).toEqual({ ...BITE_DEFAULT, recoverMs: 600, windupMs: 800, lungeMs: 300 });
   });
 });
 
@@ -76,17 +77,17 @@ describe('噛みつきの区間(300ms溜め → 200ms噛み)', () => {
   it('未発火は none / 溜め / 噛み / 終わったら none(境界を固定)', () => {
     expect(bitePhaseOf(at(undefined), 1000)).toBe('none');
     expect(bitePhaseOf(at(0), 1000)).toBe('none');
-    // ★v0.25.3932: 溜め300(この中で2回点滅)→ 噛み200 の通し500ms。
+    // ★v0.25.5045: 溜め800(この中で2回点滅)→ 噛み200 の通し1000ms(旧 300/200=500ms)。
     expect(bitePhaseOf(at(1000), 1000)).toBe('windup');   // 0ms
-    expect(bitePhaseOf(at(1000), 1299)).toBe('windup');   // 299ms
-    expect(bitePhaseOf(at(1000), 1300)).toBe('bite');     // 300ms=噛みへ
-    expect(bitePhaseOf(at(1000), 1499)).toBe('bite');     // 499ms
-    expect(bitePhaseOf(at(1000), 1500)).toBe('none');     // 500ms=終了
+    expect(bitePhaseOf(at(1000), 1799)).toBe('windup');   // 799ms
+    expect(bitePhaseOf(at(1000), 1800)).toBe('bite');     // 800ms=噛みへ
+    expect(bitePhaseOf(at(1000), 1999)).toBe('bite');     // 999ms
+    expect(bitePhaseOf(at(1000), 2000)).toBe('none');     // 1000ms=終了
   });
 
   it('進捗は0..1にクランプされる(赤い点滅と絵の2拍が同じ値を見る)', () => {
     expect(biteProgress(at(1000), 1000)).toBeCloseTo(0);
-    expect(biteProgress(at(1000), 1250)).toBeCloseTo(0.5); // 通し500msの半分
+    expect(biteProgress(at(1000), 1500)).toBeCloseTo(0.5); // 通し1000msの半分
     expect(biteProgress(at(1000), 9999)).toBeCloseTo(1);
     expect(biteProgress(at(undefined), 1000)).toBe(0);
   });
@@ -95,15 +96,15 @@ describe('噛みつきの区間(300ms溜め → 200ms噛み)', () => {
 describe('踏み込みの見た目(★プレイヤーの踏み込みとは逆の形)', () => {
   it('ゆっくり出て、噛む瞬間に伸び切る(溜め終わりで半分・最後に1)', () => {
     expect(biteLungeFrac(at(1000), 1000)).toBeCloseTo(0);
-    // 溜めは ease-in: 中間(150ms)ではまだ 1/8 しか出ていない=「じわっと」
-    expect(biteLungeFrac(at(1000), 1150)).toBeLessThan(0.2);
-    expect(biteLungeFrac(at(1000), 1300)).toBeCloseTo(0.5); // 溜め終わり=半分
-    expect(biteLungeFrac(at(1000), 1500)).toBeCloseTo(1);   // 噛み切って伸び切る
+    // 溜めは ease-in: 中間(400ms)ではまだ 1/8 しか出ていない=「じわっと」
+    expect(biteLungeFrac(at(1000), 1400)).toBeLessThan(0.2);
+    expect(biteLungeFrac(at(1000), 1800)).toBeCloseTo(0.5); // 溜め終わり=半分
+    expect(biteLungeFrac(at(1000), 2000)).toBeCloseTo(1);   // 噛み切って伸び切る
   });
 
   it('★単調増加(引っ込んでから出る、のような不自然な動きをしない)', () => {
     let prev = -1;
-    for (let t = 0; t <= 500; t += 10) {
+    for (let t = 0; t <= 1000; t += 10) {
       const f = biteLungeFrac(at(1000), 1000 + t);
       expect(f).toBeGreaterThanOrEqual(prev);
       prev = f;
@@ -119,8 +120,8 @@ describe('★§16-D ゾンビの噛みつき「詰めたあとの停止」', () 
     ({ type: 'zombie', biteAt } as Pick<Enemy, 'type' | 'biteAt'>);
   const spec = biteSpecFor('zombie'); // move/aiPhase無し=§12の噛みつきそのもの
 
-  it('D-4受け入れ条件1: 台帳はwindupMs600/lungeMs300/biteMs200/lungePx30/recoverMs600(変えていない値の確認込み)', () => {
-    expect(spec.windupMs).toBe(600);
+  it('D-4受け入れ条件1: 台帳はwindupMs800/lungeMs300/biteMs200/lungePx30/recoverMs600(変えていない値の確認込み)', () => {
+    expect(spec.windupMs).toBe(800); // ★v0.25.5045: 600→800(社長指示2026-10-14「光ってから1秒」)
     expect(spec.lungeMs).toBe(300);
     expect(spec.biteMs).toBe(200);       // 変えない
     expect(spec.lungePx).toBe(30);       // 変えない
@@ -133,34 +134,34 @@ describe('★§16-D ゾンビの噛みつき「詰めたあとの停止」', () 
     expect(biteLungeFrac(z(1000), 1300)).toBeCloseTo(0.5);    // lungeMs=300で走り切る
   });
 
-  it('D-4受け入れ条件1: 300ms〜600ms(windupMs)は完全に静止する(0.5のまま動かない)', () => {
+  it('D-4受け入れ条件1: 300ms〜800ms(windupMs)は完全に静止する(0.5のまま動かない)', () => {
     expect(biteLungeFrac(z(1000), 1301)).toBeCloseTo(0.5);
-    expect(biteLungeFrac(z(1000), 1450)).toBeCloseTo(0.5);
-    expect(biteLungeFrac(z(1000), 1599)).toBeCloseTo(0.5);
+    expect(biteLungeFrac(z(1000), 1550)).toBeCloseTo(0.5);
+    expect(biteLungeFrac(z(1000), 1799)).toBeCloseTo(0.5);
   });
 
-  it('D-4受け入れ条件1: windupMs(600ms)を過ぎたら噛みへ入り、800msで伸び切る', () => {
-    expect(biteLungeFrac(z(1000), 1600)).toBeCloseTo(0.5); // 噛みの入口=段差なし
-    expect(biteLungeFrac(z(1000), 1700)).toBeGreaterThan(0.5);
-    expect(biteLungeFrac(z(1000), 1800)).toBeCloseTo(1);   // windupMs+biteMs=噛み切る
+  it('D-4受け入れ条件1: windupMs(800ms)を過ぎたら噛みへ入り、1000msで伸び切る', () => {
+    expect(biteLungeFrac(z(1000), 1800)).toBeCloseTo(0.5); // 噛みの入口=段差なし
+    expect(biteLungeFrac(z(1000), 1900)).toBeGreaterThan(0.5);
+    expect(biteLungeFrac(z(1000), 2000)).toBeCloseTo(1);   // windupMs+biteMs=噛み切る
   });
 
   it('★単調増加(静止区間を含めても後退しない)', () => {
     let prev = -1;
-    for (let t = 0; t <= 800; t += 10) {
+    for (let t = 0; t <= 1000; t += 10) {
       const f = biteLungeFrac(z(1000), 1000 + t);
       expect(f).toBeGreaterThanOrEqual(prev);
       prev = f;
     }
   });
 
-  it('D-4受け入れ条件2: 紫の予告が消え切る瞬間(windupMs+biteMs=800ms)=噛みが当たる瞬間(掟③)が一致する', () => {
-    expect(bitePhaseOf(z(1000), 1799)).toBe('bite');
-    expect(bitePhaseOf(z(1000), 1800)).toBe('none');   // 予告消え切り
-    expect(biteProgress(z(1000), 1800)).toBeCloseTo(1); // 進捗も同じ瞬間に1
-    expect(biteLungeFrac(z(1000), 1800)).toBeCloseTo(1); // 踏み込みも同じ瞬間に伸び切る=命中点
-    expect(isBiteResolveDue(z(1000), 1799)).toBe(false);
-    expect(isBiteResolveDue(z(1000), 1800)).toBe(true);
+  it('D-4受け入れ条件2: 紫の予告が消え切る瞬間(windupMs+biteMs=1000ms)=噛みが当たる瞬間(掟③)が一致する', () => {
+    expect(bitePhaseOf(z(1000), 1999)).toBe('bite');
+    expect(bitePhaseOf(z(1000), 2000)).toBe('none');   // 予告消え切り
+    expect(biteProgress(z(1000), 2000)).toBeCloseTo(1); // 進捗も同じ瞬間に1
+    expect(biteLungeFrac(z(1000), 2000)).toBeCloseTo(1); // 踏み込みも同じ瞬間に伸び切る=命中点
+    expect(isBiteResolveDue(z(1000), 1999)).toBe(false);
+    expect(isBiteResolveDue(z(1000), 2000)).toBe(true);
   });
 
   it('D-4受け入れ条件3: 他の型(ゴースト/リッチ/研究所Lv1等)は1ビットも変わらない(lungeMs未指定)', () => {
@@ -198,13 +199,13 @@ describe('★§16-E 骸骨の噛みつき「構えて一瞬止まる」', () => 
     ({ type: 'skeleton', biteAt } as Pick<Enemy, 'type' | 'biteAt'>);
   const spec = biteSpecFor('skeleton'); // move/aiPhase無し=§12の噛みつきそのもの
 
-  it('E-5受け入れ条件4: 台帳はwindupMs300/lungeMs180/biteMs200/lungePx30/recoverMs600(変えていない値の確認込み)', () => {
-    expect(spec.windupMs).toBe(300);       // 変えない
+  it('E-5受け入れ条件4: 台帳はwindupMs800/lungeMs180/biteMs200/lungePx30/recoverMs600(変えていない値の確認込み)', () => {
+    expect(spec.windupMs).toBe(800);       // ★v0.25.5045: 既定の300→800に追従(社長指示2026-10-14「光ってから1秒」)
     expect(spec.lungeMs).toBe(180);
     expect(spec.biteMs).toBe(200);         // 変えない
     expect(spec.lungePx).toBe(BITE_DEFAULT.lungePx); // 変えない
     expect(spec.recoverMs).toBe(BITE_DEFAULT.recoverMs); // 変えない(§12既定のまま)
-    expect(spec.windupMs + spec.biteMs).toBe(500); // 総尺は不変(BITE_DEFAULTと同じ500ms)
+    expect(spec.windupMs + spec.biteMs).toBe(1000); // 総尺は既定と同じ(1000ms)
   });
 
   it('踏み込みは180msで走り切る(溜め終わり=半分)', () => {
@@ -213,35 +214,35 @@ describe('★§16-E 骸骨の噛みつき「構えて一瞬止まる」', () => 
     expect(biteLungeFrac(sk(1000), 1180)).toBeCloseTo(0.5);    // lungeMs=180で走り切る
   });
 
-  it('180ms〜300ms(windupMs)は完全に静止する(0.5のまま動かない=120msの静止)', () => {
+  it('180ms〜800ms(windupMs)は完全に静止する(0.5のまま動かない=620msの静止)', () => {
     expect(biteLungeFrac(sk(1000), 1181)).toBeCloseTo(0.5);
-    expect(biteLungeFrac(sk(1000), 1240)).toBeCloseTo(0.5);
-    expect(biteLungeFrac(sk(1000), 1299)).toBeCloseTo(0.5);
+    expect(biteLungeFrac(sk(1000), 1500)).toBeCloseTo(0.5);
+    expect(biteLungeFrac(sk(1000), 1799)).toBeCloseTo(0.5);
   });
 
-  it('windupMs(300ms)を過ぎたら噛みへ入り、500msで伸び切る', () => {
-    expect(biteLungeFrac(sk(1000), 1300)).toBeCloseTo(0.5); // 噛みの入口=段差なし
-    expect(biteLungeFrac(sk(1000), 1400)).toBeGreaterThan(0.5);
-    expect(biteLungeFrac(sk(1000), 1500)).toBeCloseTo(1);   // windupMs+biteMs=噛み切る
+  it('windupMs(800ms)を過ぎたら噛みへ入り、1000msで伸び切る', () => {
+    expect(biteLungeFrac(sk(1000), 1800)).toBeCloseTo(0.5); // 噛みの入口=段差なし
+    expect(biteLungeFrac(sk(1000), 1900)).toBeGreaterThan(0.5);
+    expect(biteLungeFrac(sk(1000), 2000)).toBeCloseTo(1);   // windupMs+biteMs=噛み切る
   });
 
   it('★単調増加(静止区間を含めても後退しない)', () => {
     let prev = -1;
-    for (let t = 0; t <= 500; t += 10) {
+    for (let t = 0; t <= 1000; t += 10) {
       const f = biteLungeFrac(sk(1000), 1000 + t);
       expect(f).toBeGreaterThanOrEqual(prev);
       prev = f;
     }
   });
 
-  it('E-5受け入れ条件3: 紫の予告が消え切る瞬間(windupMs+biteMs=500ms)=噛みが当たる瞬間(掟③)が一致する', () => {
-    expect(bitePhaseOf(sk(1000), 1499)).toBe('bite');
-    expect(bitePhaseOf(sk(1000), 1500)).toBe('none');   // 予告消え切り
-    expect(biteProgress(sk(1000), 1500)).toBeCloseTo(1); // 進捗も同じ瞬間に1
-    expect(biteLungeFrac(sk(1000), 1500)).toBeCloseTo(1); // 踏み込みも同じ瞬間に伸び切る=命中点
+  it('E-5受け入れ条件3: 紫の予告が消え切る瞬間(windupMs+biteMs=1000ms)=噛みが当たる瞬間(掟③)が一致する', () => {
+    expect(bitePhaseOf(sk(1000), 1999)).toBe('bite');
+    expect(bitePhaseOf(sk(1000), 2000)).toBe('none');   // 予告消え切り
+    expect(biteProgress(sk(1000), 2000)).toBeCloseTo(1); // 進捗も同じ瞬間に1
+    expect(biteLungeFrac(sk(1000), 2000)).toBeCloseTo(1); // 踏み込みも同じ瞬間に伸び切る=命中点
   });
 
-  it('★技(skel-bite)にも同じwindupMsのまま伝わる(windupMsが同じ300msなのでlungeMsの割り方も同じ)', () => {
+  it('★技(skel-bite)は技の表のwindupMs(300)=§16の技の尺は変えない(lungeMs:180はそのまま効く)', () => {
     // ★設計書に明記が無かったので設計者が決めた箇所: §16-Dのzombie-doubleは1発目のwindupMs(220)が
     // 型のlungeMs(300)より短くなる壊れた値になるため、BITE_BY_PHASEで打ち消してあった。
     // skel-biteはwindupMsが§12既定と同じ300msなので、その打ち消しは不要=そのままlungeMs:180が効く。
@@ -555,8 +556,8 @@ describe('★噛みつきの台本(v0.25.3914)', () => {
   it('台本の間は壁が開く(=覆いかぶされる)。終われば壁は戻る', () => {
     const e = zom(1000);
     expect(isBiteWallOpen(e, 1000)).toBe(true);   // 溜め開始(踏み込みも始まる)
-    expect(isBiteWallOpen(e, 1400)).toBe(true);   // 噛みの最中
-    expect(isBiteWallOpen(e, 1500)).toBe(false);  // 台本終了=壁が戻る
+    expect(isBiteWallOpen(e, 1900)).toBe(true);   // 噛みの最中
+    expect(isBiteWallOpen(e, 2000)).toBe(false);  // 台本終了=壁が戻る(v0.25.5045: 通し1000ms)
     expect(isBiteWallOpen(zom(undefined), 1000)).toBe(false); // 構えていない時は常に壁
   });
 
@@ -570,9 +571,9 @@ describe('★噛みつきの台本(v0.25.3914)', () => {
   it('踏み込みは溜めでじわり→噛みで伸び切る(慣性・CLAUDE.md「加減速のない動きは禁止」)', () => {
     const e = zom(1000);                                 // biteAt=0 は「構えていない」の意味なので使わない
     expect(biteLungeFrac(e, 1000)).toBe(0);
-    expect(biteLungeFrac(e, 1150)).toBeLessThan(0.25);   // 溜め中盤=まだ出ていない(ease-in)
-    expect(biteLungeFrac(e, 1300)).toBeCloseTo(0.5);     // 溜め終わり=半分
-    expect(biteLungeFrac(e, 1500)).toBe(1);              // 噛みの瞬間=伸び切る
+    expect(biteLungeFrac(e, 1150)).toBeLessThan(0.25);   // 踏み込み中盤=まだ出ていない(ease-in・lungeMs=300)
+    expect(biteLungeFrac(e, 1800)).toBeCloseTo(0.5);     // 溜め終わり=半分
+    expect(biteLungeFrac(e, 2000)).toBe(1);              // 噛みの瞬間=伸び切る(v0.25.5045: 通し1000ms)
   });
 });
 
@@ -940,12 +941,12 @@ describe('★重なっただけで痛い敵(接触ダメージが残っている
 describe('★強個体3種(蜘蛛/削岩型/伐採人)の噛みつきの溜め', () => {
   const TIER: EnemyType[] = ['pumpkin', 'driller', 'logger'];
 
-  it('溜めは600ms・踏み込みは先頭300msで走り切る(=詰めてから0.3秒止まってから噛む)', () => {
+  it('溜めは800ms・踏み込みは先頭300msで走り切る(=詰めてから0.5秒止まってから噛む。v0.25.5045「光ってから1秒」)', () => {
     for (const t of TIER) {
       const sp = biteSpecFor(t);
-      expect(sp.windupMs, t).toBe(600);
+      expect(sp.windupMs, t).toBe(800);
       expect(sp.lungeMs, t).toBe(300);
-      expect(sp.windupMs - (sp.lungeMs ?? sp.windupMs), `${t} の静止`).toBe(300);
+      expect(sp.windupMs - (sp.lungeMs ?? sp.windupMs), `${t} の静止`).toBe(500);
     }
   });
 
