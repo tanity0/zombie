@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5048 — 吸血: 回復量 +6/+8/+10・覚醒の近接回復 5%【2026-10-15 00:30 JST】
+- 社長指示「6/8/10に変更 / 覚醒時、近接で5%」(「吸血の効果教えて」への回答=キルで必ず +2/+4/+6・覚醒Lv3で近接ヒットごとに最大体力1%、を受けて)。
+- `skillEffectsB7.VAMPIRE_HEAL_BY_LEVEL` [0,2,4,6]→[0,6,8,10] / `gameStore.VAMPIRE_AWAKEN_MELEE_HEAL_FRAC` 0.01→0.05 /
+  `campaign.ts` のLv別説明文を追従(HP+6/+8/+10・5%)。発動条件(キル100%・近接4武器の全経路)は不変。
+- 事実として: 回復量 [2,4,6] は v0.25.3603(確定発動化)当時の値をそのまま保っていたもの。
+- テスト: `skillEffectsB7.test.ts` の表の期待値を打ち直し / typecheck / eslint 0。
+- 自己点検: 数値のみ(憲法第4条/第5条に抵触なし)。
+- 状態変化: 吸血の数値 → 実機確認待ち(社長)。
+- 変更ファイル: src/utils/skillEffectsB7.ts / skillEffectsB7.test.ts / src/store/gameStore.ts / src/data/campaign.ts / src/data/changelog.ts / package.json / DEVELOPMENT_LOG.md
+
 ## v0.25.5047 — 反撃(被弾反撃)の受付を 0.3→0.5秒【2026-10-14 23:34 JST】
 - 社長「赤カウンターの判定が厳しすぎるかもな…いま何秒だっけ？」→ 答え(ヒットストップ明けから300ms=被弾から370〜490ms・±45度・260px)
   → 推薦「窓を0.3→0.5秒(角度・距離は据え置き)」に「はい」。

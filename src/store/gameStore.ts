@@ -1824,8 +1824,8 @@ export const GOLD_RUSH_AWAKEN_SCRAP_MULT = 1.5;
 const INCENDIARY_SPREAD_PAD_PX = 4;
 // 延焼弾覚醒: 感染判定のスロットル打刻(gameTime基準。ランをまたいでも|差|で判定するので実害なし)。
 let burnSpreadLastAt = 0;
-// 吸血覚醒: 近接ヒット1スイングごとの回復(最大HP比)。
-export const VAMPIRE_AWAKEN_MELEE_HEAL_FRAC = 0.01;
+// 吸血覚醒: 近接ヒット1スイングごとの回復(最大HP比)。★社長指示2026-10-14「覚醒時、近接で5%」(v0.25.5048・旧1%)。
+export const VAMPIRE_AWAKEN_MELEE_HEAL_FRAC = 0.05;
 // ランナー覚醒: 加速中の被ダメージ20%軽減。「加速中」=速度ボーナスのランプが半分以上
 // 立ち上がっている間(叩き台。RAMP_FULL_MS=1.5秒の半分=同方向へ0.75秒走り続けた状態)。
 export const RUNNER_AWAKEN_DR_MULT = 0.8;

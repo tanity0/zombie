@@ -32,11 +32,12 @@ export const ICE_SHOT_BOSS_EFFECT_MULT = 0.5;
 export const ICE_SHOT_SHARD_COUNT = 3;         // 全Lv共通(§28-2)
 export const ICE_SHOT_SHARD_DMG_MULT = 0.3;    // 全Lv共通(§28-2)。基準=キル時のこの1発のdmg。
 
-// ---- 吸血(normal): キルで確定発動 HP+2/+4/+6 ----
+// ---- 吸血(normal): キルで確定発動 HP+6/+8/+10 ----
 // ★社長裁定v0.25.3603「吸血はキルで確定発動にする 100%」: 旧仕様(キルの20%・§14/§28 B7)は撤去。
 // 旧VAMPIRE_PROC_CHANCE=0.2は事実として記録(率固定=Lvで率が伸びない設計だった)。
+// ★社長指示2026-10-14「6/8/10に変更」(v0.25.5048): 回復量 +2/+4/+6 → +6/+8/+10(事実として: v0.25.3603 までの表は [2,4,6])。
 export const VAMPIRE_PROC_CHANCE = 1.0;
-export const VAMPIRE_HEAL_BY_LEVEL: readonly number[] = [0, 2, 4, 6];
+export const VAMPIRE_HEAL_BY_LEVEL: readonly number[] = [0, 6, 8, 10];
 /** キル1回ぶんの吸血回復量。100%発動(v0.25.3603裁定)なのでrngは読まない(引数はABI互換で残置)。 */
 export const rollVampireHeal = (level: number, _rng: () => number = Math.random): number => {
   const lv = clampLv(level);
