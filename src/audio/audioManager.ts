@@ -146,7 +146,8 @@ export type SfxKey =
   // research/MUTANT_HERO.md(英雄(変異)・社長支給2026-10-03): いななき / 鼻息 / 蹄(駆け足のループ=setHeroGallop が鳴らす)。
   | 'hero-neigh' | 'hero-snort' | 'hero-gallop'
   // 英雄の命中音(既存素材を低く回して別物にする=phill-skylight-low と同じ作法): 叩きつけ / 体当たり / 斬撃。
-  | 'hero-slam' | 'hero-tackle-hit' | 'hero-slash';
+  | 'hero-slam' | 'hero-tackle-hit' | 'hero-slash'
+  | 'zombie-growl';  // ゾンビの構え(反る→固まる)の唸り声(社長支給2026-10-14・1.12倍に速めた版)
 
 const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // UI選択音(社長提供SE)。レベルアップの選択肢タップ等に使用。
@@ -194,6 +195,14 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     volume: 0.9,
     minIntervalMs: 300,
     playbackRate: 0.8,
+  },
+  // ゾンビが構えに入った時の唸り声(社長支給2026-10-14「ゾンビ素材、少しだけ早くして流して」)。
+  // 支給の1.8秒を ffmpeg atempo=1.12 で速めた(音程はそのまま=低い声を保つ)→1.6秒。原盤は art-masters/zombie-growl-original.mp3。
+  // 何体も同時に構えても重ならないよう 0.7秒空ける。
+  'zombie-growl': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/zombie-growl.mp3`,
+    volume: 0.85,
+    minIntervalMs: 700,
   },
   // 城ボス/裏ボス出現時のアテンションで鳴らす(社長提供SE)。
   'boss-appear': {

@@ -4494,6 +4494,14 @@ const spawnKillSlashFx = (
  * 旧: 銃・接触・爆発などの経路(damageEnemy)にだけ書かれていて、近接の経路(grantMeleeKillRewards)には無かった
  *    =近接で倒すと年表に刻まれず、スキルも手に入らなかった。
  */
+/** ゾンビが構えに入った瞬間の唸り声(社長支給2026-10-14)。画面の外なら鳴らさず、遠いほど小さく(npcSfxDistGain)。 */
+const playZombieGrowl = (ecx: number, ecy: number): void => {
+  const st = useGameStore.getState();
+  const p = st.player;
+  const g = npcSfxDistGain(ecx, ecy, p.x + p.width / 2, p.y + p.height / 2, st.camera, st.gameBounds);
+  if (g > 0) void import('../audio/audioManager').then(m => m.playSfx('zombie-growl', g));
+};
+
 export const grantReaperDefeatRewards = (get: () => GameState, at: { x: number; y: number }): void => {
   const already = get().ownedSkills.includes('reaper');
   get().grantSkill('reaper');
@@ -16536,6 +16544,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             //   上限(ZOMBIE_LUNGE_MAX_MS)で届かなくても構える=空振りしても技の3拍(技→硬直→離れる)は守る(逃げ切った側が報われる)。
             //   旧=2倍速で射程75pxまで走り込んでから噛む(構えの後)。
             if (pdist <= ZOMBIE_STEP_REACH_PX || gameTime >= phaseUntil) {
+              playZombieGrowl(ecx, ecy);
               return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };
             }
             // 2倍速で実プレイヤーへ直進(zrushと同じ書き味=フラフラ込み)。紫の追尾(旧zrush)は
@@ -16570,6 +16579,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               // ★赤が決まった(社長指示2026-10-14「射程に入ったら…赤点滅2回」): 1歩で噛める距離(ZOMBIE_STEP_REACH_PX)に居れば
               //   その場で構える。まだ遠ければ普通に歩いて詰める(z-lunge-in=詰め・上限 ZOMBIE_LUNGE_MAX_MS)→届いたら構える。
               if (pdist <= ZOMBIE_STEP_REACH_PX) {
+                playZombieGrowl(ecx, ecy);
                 return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };
               }
               return { ...enemy, aiPhase: 'z-lunge-in', aiPhaseUntil: gameTime + ZOMBIE_LUNGE_MAX_MS };
