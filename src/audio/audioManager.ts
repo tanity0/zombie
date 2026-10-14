@@ -1849,3 +1849,12 @@ export const playEnemyDeath = () => {
   // 連続撃破の段が上がるほど半音ずつ高く(combatFeel.killChainSfxRate・1発ごとに±3%揺れる)。数字を出さずに音で伝える。
   playSfx(key, 1, undefined, killChainSfxRateSource ? killChainSfxRateSource() : 1);
 };
+
+// DEV限定の診断窓口(ヘッドレスで「曲が止まったか」を読む・2026-10-14)。本番には出ない。
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__audioDebug = () => ({
+    held: bgmSilenceHeld, active: bgmActive, muted,
+    gain: bgmGain ? bgmGain.gain.value : null, vol: bgm?.volume ?? null, paused: bgm?.paused ?? null, src: bgmSrc,
+    deep: deepActive, deepVol: deepBgm?.volume ?? null, deepPaused: deepBgm?.paused ?? null, radio: radioMix,
+  });
+}

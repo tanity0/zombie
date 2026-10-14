@@ -288,6 +288,7 @@ import {
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
 import { setFlowersDisabled } from '../world/forestDecor';
+import { EX_SURIEL_BGM_FADE_MS } from '../world/exHall'; // EXのスリィエル撃破でBGMを落とす尺(2026-10-14)
 import { bossTestGhostSkill, isBossMakerRun, getBossTestSkillInjection } from '../utils/bossTest';
 import { isNoAmmoRun, vsStartAmmo, vsEntryOfRun } from '../utils/vsTest';
 // research/GROWTH.md v4(永続育成「強化」)。**効果値の純関数と保存は utils 側**(AMMO_MAX は
@@ -4502,6 +4503,18 @@ const spawnKillSlashFx = (
  */
 export const ANGEL_DEFEAT_XP_COUNT = 10;
 export const isAngelRewardType = (t: EnemyType): boolean => isGate2AngelBoss(t) && t !== 'phillboss';
+/**
+ * ★EXのスリィエルを倒した瞬間にBGMを落とし始める(社長報告2026-10-14「スリィエル倒してもBGM止まらない」)。
+ * 旧: useGameLoop のEX関所ブロックで「場から消えた」を見て落としていたが、討伐カットイン+崩れの間は
+ *     シミュレーションごと止まるので、合図が演出明け(撃破から4〜5秒後)まで届かず、無音になるのは倒してから6〜7秒後だった。
+ * ここは撃破の経路(銃・接触・爆発=damageEnemy / 近接=grantMeleeKillRewards)の両方から**倒した瞬間**に呼ぶ。
+ * 無音の保持は冪等(`holdBgmSilence` は保持中なら何もしない)なので、useGameLoop 側の保険はそのまま残す。
+ */
+const exSurielDefeatedBgm = (type: EnemyType): void => {
+  if (type !== 'suriel' || getSelectedStageId() !== 'stage-ex1') return;
+  void import('../audio/audioManager').then(m => m.holdBgmSilence(EX_SURIEL_BGM_FADE_MS));
+};
+
 export const dropAngelDefeatRewards = (get: () => GameState, enemy: Pick<Enemy, 'id' | 'x' | 'y' | 'width' | 'height'>): void => {
   const x = enemy.x + enemy.width / 2, y = enemy.y + enemy.height / 2;
   get().addPickup({
@@ -4584,6 +4597,7 @@ export const grantMeleeKillRewards = (
     if (isReaperFamily(enemy.type)) grantReaperDefeatRewards(get, { x: enemy.x + enemy.width / 2, y: enemy.y });
     // 天使を近接で倒した=銃の経路と同じ落とし物。
     if (isAngelRewardType(enemy.type)) dropAngelDefeatRewards(get, enemy);
+    exSurielDefeatedBgm(enemy.type);
     // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。近接全経路(通常近接カウンター/
     // 刀/鞭/シールドバッシュ/投擲スケボー/分身)はこのヘルパーを通るのでここ1箇所で拾える
     // (gun/接触/爆発/DoT/カウンター等の非近接経路は damageEnemy 側で同様に通知)。
@@ -13558,6 +13572,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 死神を倒したらスキル「死神」を習得(ガチャ非排出。撃破でのみ解禁)。未所持時のみ告知。
     if (reaperDefeated) grantReaperDefeatRewards(get, reaperDefeated as { x: number; y: number });
     if (angelDefeated) dropAngelDefeatRewards(get, angelDefeated as Enemy);
+    if (angelDefeated) exSurielDefeatedBgm((angelDefeated as Enemy).type);
 
     // §6.24 M48「使役」: 20%抽選(D1対象は set() 内で既に絞り込み済み)。既に1体いる時は抽選しない
     // =先着1体を維持(D3)。錬金術の召喚と同じ枠(state.summons)へ persistent:true で1体追加する
