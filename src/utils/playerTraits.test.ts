@@ -259,6 +259,51 @@ describe('playerTraits: counterChance(機会/成立)とreactionMs', () => {
     const p = loadPlayerProfile()!;
     expect(p.counterChance).toBeCloseTo(0.5, 5); // 機会0件→今回はサンプル無し→種の既定値のまま
   });
+
+  // ★v0.25.5042(社長報告「グレンの第一と第二を倒したがカウンター率0だった」)
+  it('城ボス(giantbat)は溜め→実行(薙ぎの帯)まで1つの機会=実行中の爆風パリィが成立として数わる', () => {
+    const glen = mkBoss({ id: 'glen', type: 'giantbat' as Enemy['type'], aiPhase: 'g-sweep-windup' as Enemy['aiPhase'] });
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [glen] }));           // 機会オープン(溜め)
+    now = 1_000_400;
+    tickPlayerTraits(baseInput({ gameTime: 400, enemies: [{ ...glen, aiPhase: 'g-sweep-active' as Enemy['aiPhase'] }] })); // 実行中も同じ窓
+    notifyCounterHit('glen');                                                 // 帯をパリィ(combatTickの爆風経路)
+    now = 1_001_000;
+    tickPlayerTraits(baseInput({ gameTime: 1000, enemies: [{ ...glen, aiPhase: 'g-sweep-recover' as Enemy['aiPhase'] }] })); // 硬直は機会ではない
+    tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [{ ...glen, aiPhase: undefined }] }));
+    notifyBossClear('giantbat', 'stage-7');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    const p = loadPlayerProfile()!;
+    expect(p.counterChance).toBe(1); // 1技=1機会/1成立(旧: 溜めと硬直で2機会・成立0=0%)
+    expect(p.reactionMs).toBeCloseTo(400, 0);
+  });
+
+  it('窓が閉じた直後に届いたボス本人の成立は、その窓の成立として数える(機会を二重に数えない)', () => {
+    const glen = mkBoss({ id: 'glen', type: 'giantbat' as Enemy['type'], aiPhase: 'g-jump-windup' as Enemy['aiPhase'] });
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [glen] }));
+    now = 1_000_900;
+    tickPlayerTraits(baseInput({ gameTime: 900, enemies: [{ ...glen, aiPhase: 'g-jump-recover' as Enemy['aiPhase'] }] })); // 着地=窓が閉じる
+    notifyCounterHit('glen'); // 同フレームの処理順で、着地の爆風パリィが窓の後に解決した
+    tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [{ ...glen, aiPhase: undefined }] }));
+    notifyBossClear('giantbat', 'stage-7');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.counterChance).toBe(1);
+  });
+
+  it('窓の外でもボス本人の弾を打ち返した成立は数える(見えていなかった機会として1機会1成立)。別個体は無視', () => {
+    const glen = mkBoss({ id: 'glen', type: 'giantbat' as Enemy['type'], aiPhase: undefined, x: 400, y: 400 }); // 間合いの外
+    tickPlayerTraits(baseInput({ gameTime: 0, enemies: [glen] }));
+    notifyCounterHit('pumpkin-9'); // 雑魚の爆風=無視(窓も開いていない)
+    notifyCounterHit('glen');      // 咆哮弾の打ち返し
+    now = 1_000_100;
+    notifyCounterHit('glen');      // 同じカウンターの2発目の弾=1成立に畳む
+    tickPlayerTraits(baseInput({ gameTime: 30_000, enemies: [glen] }));
+    notifyBossClear('giantbat', 'stage-7');
+    tickPlayerTraits(baseInput({ inCombat: false, gameTime: 30_100 }));
+    commitPendingTraits();
+    expect(loadPlayerProfile()!.counterChance).toBe(1); // 1機会/1成立
+  });
 });
 
 describe('playerTraits: hitsPerMin', () => {

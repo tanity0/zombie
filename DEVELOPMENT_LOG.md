@@ -1,5 +1,31 @@
 # Development Log
 
+## v0.25.5042 — 守護霊の記録: 城ボスのカウンター成功率が0のままだった件【2026-10-14 21:14 JST】
+- 社長報告「守護霊の記録の方。グレンの第一と第二倒したんだけど、カウンター率0だった。カウンターは適度にしてたのに」。
+- 原因(2つ・両方とも城ボス系=giantbat だけに効いていた):
+  1. **成立の通知が突進パリィにしか無かった。** 守護霊の記録(`playerTraits` の counterChance=機会/成立)へ成立を知らせる
+     `notifyCounterHit()` は combatTick の突進パリィ(dashParried)にしか置かれておらず、爆風パリィ(着地・薙ぎの帯)と
+     弾の反射は G4a の `notifyMoveCounter()` だけ(「G1 はここに足さない=既存ノブの計測を変えないため」の旧裁定)。
+     城ボスのカウンターはその2経路がほぼ全てなので、**成立が一度も数われない**。
+  2. **機会の概算が当たり方と逆だった。** `isBossCounterableNowApprox` は語尾 `-windup`/`-recover` を機会としていたが、
+     城ボスは溜め(W4)も硬直(カウンター憲法 v0.25.3947)も弾けず、弾けるのは実行中(active/air/charge)。
+     1技ごとに機会が2回立ち、成立は窓の外=分母だけ増える。
+- 直し:
+  - `bossScript.isBossCounterableNowApprox(aiPhase, bossState, enemyType?)`: giantbat は `g-*` のうち `-recover` と `g-quad-*`(紫)
+    以外を機会とする=**溜めから実行の終わりまで1つの窓**(1技1機会・成立は窓の中)。他ボスは従来どおり。
+  - `combatTick`: 爆風パリィ(parriedEnemyIds/localParries)と弾反射(reflectedOwnerIds)で `notifyCounterHit(持ち主ID)` を呼ぶ。
+  - `playerTraits.notifyCounterHit(sourceEnemyId?)`: 窓が開いていなくても**交戦中のボス本人**(直近tickの `lastBossId`)の成立なら数える。
+    窓が閉じた直後(500ms)はその窓の成立として分子だけ、それ以外は見えていなかった機会として分母・分子を1つずつ。
+    1回のカウンターで複数経路/複数弾から届く通知は 300ms で1成立に畳む。持ち主不明/ボス以外は従来どおり窓の中だけ。
+- テスト: `playerTraits.test.ts` に3本(溜め→実行の1窓で成立・反応時間 / 窓が閉じた直後の成立は二重に数えない /
+  窓の外の弾反射は1機会1成立・別個体は無視)。既存の「機会が無い状態の通知は無視」は維持。
+- 検証: typecheck / eslint(0件) / playerTraits・bossScript・combatTick 系の関連テスト 13ファイル全緑。
+- 自己点検: 計測専用の修正で挙動・判定は1bitも変えていない(憲法第4条/第5条に抵触なし)。
+- 未確認: 社長の「あとこれ反撃も必要だね」の指す先(記録に反撃の項目か/守護霊が反撃するか)=返信で確認。
+- 状態変化: 守護霊の記録(カウンター成功率) → 実機確認待ち(社長)。
+- 変更ファイル: src/utils/bossScript.ts / src/utils/playerTraits.ts / src/utils/playerTraits.test.ts / src/utils/combatTick.ts /
+  src/data/changelog.ts / package.json / DEVELOPMENT_LOG.md
+
 ## v0.25.5041 — エンディング: 読み込み中は聴取記録を進めない【2026-10-14 21:03 JST】
 - 社長報告「エンディングで、ローディングが終わってないのに文章だけ進める時がある」。
 - 原因: 聴取記録の層(z-110)は読み込みの黒(SortieLoadingOverlay・z-100)より上に居るので、読み込み中のタップ・Enter がそのまま文字へ届いていた

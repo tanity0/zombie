@@ -433,6 +433,10 @@ interface Session {
   hits: number;
   wasOpportunity: boolean;         // 「機会」のエッジ検知用
   pendingOpportunityAt: number | null; // 機会が開いた Date.now() ms(reactionMs算出の起点)
+  // ★v0.25.5042: 窓の外で成立した時の救済用(詳細は notifyCounterHit)。
+  lastBossId: string | null;       // 直近tickで交戦相手と見たボスの個体ID
+  windowClosedAt: number | null;   // 成立しないまま閉じた最後の機会窓の Date.now() ms
+  lastSuccessAt: number | null;    // 最後に成立を数えた Date.now() ms(1回のカウンターを多重に数えない)
   lastHealth: number | null;       // 被弾検知(前tickのhealth)
   // ---- G4a(§2.9) ----
   moveReactions: MoveReactionState; // (1) 技への反応表(エピソード状態機械はmoveReaction.tsの純関数)
@@ -489,6 +493,9 @@ const startSession = (gameTime: number): Session => ({
   hits: 0,
   wasOpportunity: false,
   pendingOpportunityAt: null,
+  lastBossId: null,
+  windowClosedAt: null,
+  lastSuccessAt: null,
   lastHealth: null,
   moveReactions: createMoveReactionState(),
   stationaryTicks: 0,
@@ -521,7 +528,7 @@ const counterOpportunityOpen = (
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
   if (Math.hypot(ecx - pcx, ecy - pcy) > OPPORTUNITY_RANGE) return false;
   if (isBiteSubject(e, isBiteExemptType, gameTime)) return bitePhaseOf(e, gameTime) !== 'none';
-  return isBossCounterableNowApprox(e.aiPhase, e.bossState);
+  return isBossCounterableNowApprox(e.aiPhase, e.bossState, e.type);
 });
 
 // G4a(§2.9(2))の計測定数(計測専用・挙動には無関係)。
@@ -1071,12 +1078,18 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
     }
   }
 
-  const opportunityNow = dist <= OPPORTUNITY_RANGE && isBossCounterableNowApprox(boss.aiPhase, boss.bossState);
+  s.lastBossId = boss.id;
+  const opportunityNow = dist <= OPPORTUNITY_RANGE && isBossCounterableNowApprox(boss.aiPhase, boss.bossState, boss.type);
   if (opportunityNow && !s.wasOpportunity) {
     s.opportunities += 1;
     s.pendingOpportunityAt = Date.now();
+    s.windowClosedAt = null;
   } else if (!opportunityNow && s.wasOpportunity) {
-    s.pendingOpportunityAt = null; // 機会窓を捕まえられなかった(=不成立のまま閉じた)
+    // 機会窓を捕まえられなかった(=不成立のまま閉じた)。閉じた時刻は残す: 同じ技の成立が
+    // 同フレームの処理順(着地の爆風が硬直へ移った後に解決する等)で窓の直後に届いた時に、
+    // 機会を二重に数えずその窓の成立として拾うため(notifyCounterHit の救済経路)。
+    if (s.pendingOpportunityAt !== null) s.windowClosedAt = Date.now();
+    s.pendingOpportunityAt = null;
   }
   s.wasOpportunity = opportunityNow;
   s.lastPcx = pcx;
@@ -1089,12 +1102,40 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
  * uri/suriel/acrasielの共通処理) / useGameLoop.ts の thorCounterHit・hiddenBossCounterHit・
  * idolCounterHit。開いている「機会」窓が無ければ何もしない(ボス戦以外での通常カウンターは無視)。
  */
-export const notifyCounterHit = (): void => {
+/** 1回のカウンター(窓1つ)で届く複数の成立通知(同じ技の爆風と突進パリィ・同フレームの複数弾)を
+ * 1成立に畳む間隔。カウンター窓(COUNTER_WINDOW=数百ms)より短く、次の技の窓(秒単位)より十分短い。 */
+const SUCCESS_DEDUPE_MS = 300;
+/** 窓が閉じた直後に届いた成立を「その窓の成立」として拾う猶予(処理順のズレは同フレーム〜数フレーム)。 */
+const CLOSED_WINDOW_GRACE_MS = 500;
+
+/**
+ * @param sourceEnemyId 弾いた爆風/弾の持ち主の個体ID(分かる経路だけ渡す)。
+ *   ★v0.25.5042(社長報告「グレンのカウンター率が0」): 機会窓が開いていない時でも、**交戦中のボス本人の
+ *   攻撃**を弾いたと分かる成立は数える(近似の窓が実際の当たり方とズレても、成立した事実を落とさない)。
+ *   窓が閉じた直後(CLOSED_WINDOW_GRACE_MS)ならその窓の成立として分子だけ、それ以外は見えていなかった
+ *   機会として分母・分子を1つずつ。持ち主が分からない/ボス以外(雑魚の爆風など)の成立は従来どおり無視。
+ */
+export const notifyCounterHit = (sourceEnemyId?: string): void => {
   const s = session;
-  if (!s || s.pendingOpportunityAt === null) return;
-  const reactionMs = Date.now() - s.pendingOpportunityAt;
+  if (!s) return;
+  const now = Date.now();
+  // 1回のカウンターは1成立(同じ窓・同じ技で複数の経路から届く通知を畳む)。
+  if (s.lastSuccessAt !== null && now - s.lastSuccessAt < SUCCESS_DEDUPE_MS) return;
+  if (s.pendingOpportunityAt === null) {
+    if (sourceEnemyId === undefined || sourceEnemyId !== s.lastBossId) return;
+    if (s.windowClosedAt !== null && now - s.windowClosedAt <= CLOSED_WINDOW_GRACE_MS) {
+      s.windowClosedAt = null; // 閉じたばかりの窓の成立=分母は既に数えてある
+    } else {
+      s.opportunities += 1; // 近似が見ていなかった機会(弾の反射で間合いの外など)
+    }
+    s.successes += 1;
+    s.lastSuccessAt = now;
+    return;
+  }
+  const reactionMs = now - s.pendingOpportunityAt;
   s.reactionSamplesMs.push(reactionMs);
   s.successes += 1;
+  s.lastSuccessAt = now;
   s.pendingOpportunityAt = null; // 同じ窓での二重成立を防ぐ(次のnotifyCounterHitは機会なしとして無視される)。
   // **s.wasOpportunity はここで触らない**: エッジ検知(機会=カウンター可能状態に入った回数)と
   // 成立(pendingOpportunityAt)は別物。ここで false に戻すと、まだ同じwindup/recoverが続いている

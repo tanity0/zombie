@@ -194,13 +194,24 @@ export const pickComboFollowup = <T extends string>(
 // をここへ集約する再設計が要る(本バッチのスコープ外)。特に giantbat は combatTick.ts の
 // dashParried 判定が 'windup' 語尾ではなく個別の active/recover 名リストを見ているため、
 // この概算は giantbat の windup 中を「機会あり」と数える点で実際の当たり判定より広め(=過大評価)。
+// ★v0.25.5042(社長報告「グレンの第一と第二を倒したがカウンター率0だった」): 城ボス系(giantbat)は
+// 語尾の概算が**実際の当たり方と逆**だった——溜め(windup)は W4「予告を出したら必ず実行」で弾けず、
+// 硬直(recover)はカウンター憲法(v0.25.3947)で判定ゼロ=弾けない。弾けるのは**実行中**(薙ぎの帯・
+// 着地の爆風・突進の走り・咆哮弾の反射)なのに、そこは概算が「機会なし」と見ていた。結果、
+// 1技ごとに機会が2回(windup/recover)立ち、成立は実行中に起きて窓の外=分母だけ増えて0%になる。
+// giantbat は技の**開始(溜め)から実行の終わりまで**を1つの機会とし(=1技1機会・成立は窓の中)、
+// 硬直と紫(g-quad-*=カウンター不可の裁定v0.25.3049)は数えない。他のボスは従来どおり語尾判定。
 export const isBossCounterableNowApprox = (
   aiPhase: string | undefined,
   bossState: string | undefined,
+  enemyType?: string,
 ): boolean => {
   const suffixHit = (s: string): boolean => s.endsWith('-windup') || s.endsWith('-recover');
   const ph = aiPhase ?? '';
   const bs = bossState ?? '';
+  if (enemyType === 'giantbat') {
+    return ph.startsWith('g-') && !ph.endsWith('-recover') && !ph.startsWith('g-quad-');
+  }
   const legacyHit = ph === 'charge' || ph === 'recover' || ph === 'crouch' || ph === 'jump' || ph === 'g-jump-air';
   return suffixHit(ph) || suffixHit(bs) || legacyHit;
 };

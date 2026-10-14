@@ -448,8 +448,14 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   }
   if (parriedEnemyIds.length > 0 || localParries.length > 0) {
     // G4a(§2.9・記録専用): カウンター成立(②ジャンプ着地パリィ)を技への反応表へ通知。
-    // ※G1のnotifyCounterHitはここには足さない(既存counterChanceノブの計測を変えないため)。
     notifyMoveCounter();
+    // ★v0.25.5042(社長報告「グレンの第一と第二を倒したがカウンター率0」): G1(守護霊の記録=counterChance)も
+    // ここで数える。城ボス系のカウンターは着地の爆風・薙ぎの帯(=この経路)がほぼ全てなのに、通知が
+    // 突進パリィにしか無く、分母(機会)だけ増えて成立が0のまま記録されていた。
+    // 持ち主の個体IDを渡す=交戦中のボス本人の爆風だけが窓の外でも数えられる(雑魚の爆風は従来どおり窓の中だけ)。
+    // 旧「G1はここに足さない(既存ノブの計測を変えないため)」は本修正で上書き(事実として記す)。
+    for (const id of new Set(parriedEnemyIds.map(h => h.id))) notifyCounterHit(id);
+    if (localParries.length > 0) notifyCounterHit();
     const pnow = Date.now();
     // 通常カウンター(弾反射)と同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
     fx.addMeleeFinishCombo(1);
@@ -852,6 +858,7 @@ export const applyEnemyProjectileHits = (
   const incoming = checkProjectilePlayerCollisions(liveProjectiles, player);
   let reflectedAny = false;
   let reflectedAt: { x: number; y: number } | null = null; // 最初に打ち返した弾の位置(カウンターした地点の向き)
+  const reflectedOwnerIds = new Set<string | undefined>(); // 打ち返した弾の持ち主(守護霊の記録=G1 の通知用・v0.25.5042)
   for (const proj of incoming) {
     const currentPlayer = useGameStore.getState().player;
     // ★紫の文法(SAME_ARENA O-3): `noCounter` の弾は**打ち返せない**。既定(未設定)は従来どおり反射する
@@ -862,6 +869,7 @@ export const applyEnemyProjectileHits = (
       // 反射1回分は共有関数(主語=プレイヤー。ghostId未指定=従来と1bit同値)。
       applyCounterReflect(proj.id, now, currentPlayer, tunables);
       reflectedAny = true;
+      reflectedOwnerIds.add(proj.ownerId);
       if (reflectedAt === null) reflectedAt = { x: proj.x + proj.width / 2, y: proj.y + proj.height / 2 };
     } else {
       const wasVulnerable = !useGameStore.getState().player.invulnerable;
@@ -974,8 +982,10 @@ export const applyEnemyProjectileHits = (
   // "Counter!" only when a bullet was actually reflected (once per frame).
   if (reflectedAny) {
     // G4a(§2.9・記録専用): カウンター成立(①弾反射)を技への反応表へ通知(1フレーム1回)。
-    // ※G1のnotifyCounterHitはここには足さない(既存counterChanceノブの計測を変えないため)。
     notifyMoveCounter();
+    // ★v0.25.5042: G1(守護霊の記録)にも数える(城ボスの咆哮弾の打ち返し=間合いの外でも成立する経路)。
+    // 持ち主IDを渡す=交戦中のボス本人の弾だけが窓の外でも数えられる。同フレームの複数弾は通知側で1成立に畳む。
+    for (const id of reflectedOwnerIds) notifyCounterHit(id);
     fx.addMeleeFinishCombo(1);
     fx.playSfx('counter');
     const pcx = player.x + player.width / 2;
