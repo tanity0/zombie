@@ -171,7 +171,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob } from '../utils/enemyUtils';
+import { isBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isGate2AngelBoss, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
@@ -4494,6 +4494,41 @@ const spawnKillSlashFx = (
  * 旧: 銃・接触・爆発などの経路(damageEnemy)にだけ書かれていて、近接の経路(grantMeleeKillRewards)には無かった
  *    =近接で倒すと年表に刻まれず、スキルも手に入らなかった。
  */
+/**
+ * ★天使(ゲート2の天使ボス)を倒した時の落とし物(社長指示2026-10-14「天使倒したら、回復と、赤経験値10本、トレジャー にして」)。
+ * 回復(肉=最大HPの30%)1個 + 赤経験値10個(金箱と同じ赤=value 5・広くばらまく) + トレジャー1個(最上位の帯=危険ランクの抽選)。
+ * 対象はミゲル/ジブリル/ラフィ/ウリ/スリィエル/アクラシエル。フィル(EXの最後のボス)は天使ではない=対象外(倒すとそのままエンディング)。
+ * 撃破の経路(銃・接触・爆発の damageEnemy / 近接の grantMeleeKillRewards)の両方から呼ぶ。
+ */
+export const ANGEL_DEFEAT_XP_COUNT = 10;
+export const isAngelRewardType = (t: EnemyType): boolean => isGate2AngelBoss(t) && t !== 'phillboss';
+export const dropAngelDefeatRewards = (get: () => GameState, enemy: Pick<Enemy, 'id' | 'x' | 'y' | 'width' | 'height'>): void => {
+  const x = enemy.x + enemy.width / 2, y = enemy.y + enemy.height / 2;
+  get().addPickup({
+    id: `pickup-angel-heal-${enemy.id}`,
+    x: x - 8, y: y - 8,
+    type: 'health', value: 20,
+    scatterRadius: DROP_SCATTER_RADIUS,
+  });
+  for (let i = 0; i < ANGEL_DEFEAT_XP_COUNT; i++) {
+    get().addPickup({
+      id: `pickup-angel-xp-${enemy.id}-${i}`,
+      x: x - 8, y: y - 8,
+      type: 'experience', value: GOLD_CRATE_XP_VALUE,
+      scatterRadius: GOLD_CRATE_XP_SCATTER_RADIUS,
+    });
+  }
+  const tv = treasureValueForRank('danger');
+  get().addPickup({
+    id: `pickup-treasure-angel-${enemy.id}`,
+    x: x - 8, y: y - 8 - 12,
+    type: 'treasure', value: tv, variant: treasureVariantForValue(tv),
+    worldDrop: true,
+    scatterRadius: DROP_SCATTER_RADIUS,
+  });
+  get().spawnRing(x, y, 10, 120, 'rgba(251,191,36,0.8)', 3, 560);
+};
+
 /** ゾンビが構えに入った瞬間の唸り声(社長支給2026-10-14)。画面の外なら鳴らさず、遠いほど小さく(npcSfxDistGain)。 */
 const playZombieGrowl = (ecx: number, ecy: number): void => {
   const st = useGameStore.getState();
@@ -4547,6 +4582,8 @@ export const grantMeleeKillRewards = (
     if (!isHangedman(enemy.type)) recordKill(enemy.type, 'melee', get().gameTime);
     // 死神を近接で倒した=銃の経路と同じ報い(スキル「死神」・年表)。2026-10-14 まで近接ではここが抜けていた。
     if (isReaperFamily(enemy.type)) grantReaperDefeatRewards(get, { x: enemy.x + enemy.width / 2, y: enemy.y });
+    // 天使を近接で倒した=銃の経路と同じ落とし物。
+    if (isAngelRewardType(enemy.type)) dropAngelDefeatRewards(get, enemy);
     // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。近接全経路(通常近接カウンター/
     // 刀/鞭/シールドバッシュ/投擲スケボー/分身)はこのヘルパーを通るのでここ1箇所で拾える
     // (gun/接触/爆発/DoT/カウンター等の非近接経路は damageEnemy 側で同様に通知)。
@@ -13178,6 +13215,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const hateSource: 'player' | 'ghost' | 'neutral' = hateEscortId !== undefined ? 'player' : (hateSourceIn as 'player' | 'ghost' | 'neutral');
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
+    let angelDefeated: Enemy | null = null; // 天使撃破=回復・赤経験値10・トレジャー(社長指示2026-10-14)
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
     let bossFatalAt: { x: number; y: number; labelY: number; w: number; h: number } | null = null; // w/h=killFx流用(v0.25.3703)
     let namedFoeKilled: Enemy | null = null; // §5.14 M13: 宿敵討伐(set後にREVENGE演出+報酬)
@@ -13389,6 +13427,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // v0.25.3029: グレン形態1は撃破記録に通知しない(melee経路と同じゲート・監査指摘)。
         bossClearedType = (enemy.type === 'giantbat' && enemy.glenForm === 1) ? null : enemy.type; // BOT_AND_GHOST.md §2.10 G5: 撃破通知用(set後にnotifyBossClear。非対象typeはnotifyBossClear内で無視)
         if (isReaperFamily(enemy.type)) reaperDefeated = { x: enemy.x + enemy.width / 2, y: enemy.y }; // 死神撃破→習得
+        if (isAngelRewardType(enemy.type)) angelDefeated = enemy; // 天使撃破→落とし物(set後に出す)
         // SKILL_BUILD_REDESIGN.md §28(B7): 吸血/グラビティショットはキル全般が対象(仕様上ボス/宿敵の
         // 除外指定なし=poi-thrallと違い型を絞らない)。位置だけ拾い、抽選/適用はset()の外側で行う。
         killedAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
@@ -13518,6 +13557,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // 死神を倒したらスキル「死神」を習得(ガチャ非排出。撃破でのみ解禁)。未所持時のみ告知。
     if (reaperDefeated) grantReaperDefeatRewards(get, reaperDefeated as { x: number; y: number });
+    if (angelDefeated) dropAngelDefeatRewards(get, angelDefeated as Enemy);
 
     // §6.24 M48「使役」: 20%抽選(D1対象は set() 内で既に絞り込み済み)。既に1体いる時は抽選しない
     // =先着1体を維持(D3)。錬金術の召喚と同じ枠(state.summons)へ persistent:true で1体追加する
