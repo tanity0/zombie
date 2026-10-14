@@ -85,6 +85,8 @@ import {
   recordPhillShot,
   // v0.25.5043(記録専用): 反撃(被弾反撃)の窓が開いた/反撃した。挙動は一切変えない(session=null時はno-op)。
   notifyRetaliationWindow, notifyRetaliationHit,
+  // v0.25.5044(検収監査A-1・記録専用): ミーミル系レーザーの近接中断=「Counter!」が出る成立を守護霊の記録へ。
+  notifyCounterHit,
 } from '../utils/playerTraits'; // BOT_AND_GHOST.md G1/G4a/G5
 // §2.17(GHOST-DUO-RECORDS・記録専用): 同行撃破台帳の打刻。挙動は一切変えない(計測パスとは独立の
 // 別モジュール。ソロラン=交戦時計が開いていない時はno-op)。
@@ -9085,7 +9087,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (bossBump?.triggered) { bossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断。'melee'体幹パッチを合成してから判定(二重取り防止)。
       const laserBreak = mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime);
-      if (laserBreak) mimirLaserBreakHits.push({ x: ecx, y: ecy });
+      if (laserBreak) { mimirLaserBreakHits.push({ x: ecx, y: ecy }); notifyCounterHit(enemy.id); } // 記録(v0.25.5044)
       if (laserBreak?.postureTriggered) bossFullStunHits.push({ x: ecx, y: ecy });
       // 社長指示: 近接クリでも銃・刀と同じくスタンさせる(倒せなかった時のみ=フィニッシュ受付の入口)。
       // 気絶時間アップ(パッシブ)も銃と同じくstunDurationMultを掛ける。
@@ -10315,7 +10317,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (bossBump?.triggered) { katanaBossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断(プレイヤーの刀のみ=分身/守護霊は対象外)。
       const laserBreak = !isGhost ? mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime) : null;
-      if (laserBreak) mimirLaserBreakHits.push({ x: ecx, y: ecy });
+      if (laserBreak) { mimirLaserBreakHits.push({ x: ecx, y: ecy }); notifyCounterHit(enemy.id); } // 記録(v0.25.5044)
       if (laserBreak?.postureTriggered) katanaBossFullStunHits.push({ x: ecx, y: ecy });
       // v0.25.3491: bossCritSlowPatch→bossCritStopPatch(isBossType全体をDR込みで扱う。site1と同型)。
       const bossSlow = critStun ? bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) : null; // ボスは半減(v0.25.2422)
@@ -10643,7 +10645,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (bossBump?.triggered) { whipBossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断(鞭もプレイヤーの近接=対象)。
       const laserBreak = mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime);
-      if (laserBreak) mimirLaserBreakHits.push({ x: ecx, y: ecy });
+      if (laserBreak) { mimirLaserBreakHits.push({ x: ecx, y: ecy }); notifyCounterHit(enemy.id); } // 記録(v0.25.5044)
       if (laserBreak?.postureTriggered) whipBossFullStunHits.push({ x: ecx, y: ecy });
       // 大ノックバック(通常の約3倍): 鞭の線に直交する向きへ、敵がいる側へ強く弾く=避難路。
       // 鞭は「必ずノックバック」: ノックバック無敵窓(knockbackImmuneUntil)を無視して毎回弾く。

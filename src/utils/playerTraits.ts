@@ -1116,10 +1116,13 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
 };
 
 /**
- * カウンター成立の通知(挙動不変・計測のみ)。フック点(BOT_AND_GHOST.md指示どおり1行ずつ):
- * combatTick.ts の dashParried 成立箇所 / angelBossTick.ts の angelCounterHit(miguel/jibril/rafi/
- * uri/suriel/acrasielの共通処理) / useGameLoop.ts の thorCounterHit・hiddenBossCounterHit・
- * idolCounterHit。開いている「機会」窓が無ければ何もしない(ボス戦以外での通常カウンターは無視)。
+ * カウンター成立の通知(挙動不変・計測のみ)。フック点(v0.25.5044 時点・数えた):
+ * combatTick.ts の 爆風パリィ(parriedEnemyIds/localParries=着地・薙ぎ・idolの拳の帯)/ 弾反射(reflectedOwnerIds)/
+ * フィルの爆風(PHILL_MOVE_SLUGS)/ 突進パリィ(dashParried)、angelBossTick.ts の angelCounterHit(天使6体+フィル)、
+ * useGameLoop.ts の thorCounterHit・hiddenBossCounterHit、bountyTick.ts の bountyCounterHit、
+ * gameStore.ts の ミーミル系レーザー近接中断(mimirLaserBreakOnMeleeHit=「Counter!」)。
+ * ※idol 専用の成立関数は v0.25.3947 で削除済み(idol の成立は爆風パリィ/弾反射の経路)。
+ * 開いている「機会」窓が無い時は、相手IDが交戦中のボス本人なら救済経路で数える(下記)。
  */
 /** 1回のカウンター(窓1つ)で届く複数の成立通知(同じ技の爆風と突進パリィ・同フレームの複数弾)を
  * 1成立に畳む間隔。カウンター窓(COUNTER_WINDOW=数百ms)より短く、次の技の窓(秒単位)より十分短い。 */

@@ -806,7 +806,11 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
 
   // G1: 計測(純関数へ委譲。この関数自体はplayerTraitsが必要とする値をstoreから集めて渡すだけ)。
   tickPlayerTraits({
-    inCombat: engagedNow,
+    // v0.25.5044(検収監査A-2): グレン形態1討伐→形態2出現の約5秒は盤上の giantbat が0になり engagedNow が落ちて
+    // 計測セッションが破棄されていた(=形態1で取ったカウンター/被弾が丸ごと記録から消える)。形態2の予約中は
+    // 「まだ同じ戦い」として計測を続ける(記録専用。交戦判定そのもの=湧き/ズームは engagedNow のまま)。
+    // 事実として: 撃破タイム(bossClock)は v0.25.3029 の裁定どおり形態2の討伐時間のまま。
+    inCombat: engagedNow || state.glenForm2SpawnAt != null,
     ghostActive,
     ghostRunActive,
     gameTime,
