@@ -15,7 +15,7 @@
 //
 // レンダラ非依存の純関数(src/utils)=ヘッドレスでユニットテスト可能。
 import type { Enemy, EnemyType, Player } from '../types/game';
-import { biteSpecFor } from './enemyBite';
+import { biteSpecFor, BITE_CONTACT_DIST_PX, BITE_LUNGE_CAP_PX } from './enemyBite';
 import { spriteVariantIndex } from './enemyVariant';
 
 /** §16の技(雑魚の「詰めさせない技」)を持つ型。lab-zombie/lich等は別バッチで足す(§16-0)。 */
@@ -178,6 +178,12 @@ export const ZOMBIE_RED_WAIT_MAX_MS = 2800;
 export const ZOMBIE_RED_PAUSE_MS = 1200;
 /** 踏み込みの終端=1発目が届く上限(§16-3「射程75pxの根拠」)。 */
 export const ZOMBIE_LUNGE_RANGE_PX = 75;
+/**
+ * ★1歩で噛める距離(社長指示2026-10-14「射程に入ったら…赤点滅2回」「そこから、1歩進んですぐ噛む」「前進はそれぞれ1歩分まで」)。
+ * 中心間の距離がこれ以下なら、構え明けの1歩(踏み込み上限 `BITE_LUNGE_CAP_PX.zombie`)で体が接触距離
+ * (`BITE_CONTACT_DIST_PX.zombie`)まで届く=止まっている相手に当たる。赤を決めた個体はここまで普通に歩いて詰めてから構える。
+ */
+export const ZOMBIE_STEP_REACH_PX = BITE_CONTACT_DIST_PX.zombie + BITE_LUNGE_CAP_PX.zombie;
 
 /**
  * ★踏み込み(`z-lunge-in`)の上限時間(社長指摘2026-09-17
@@ -360,10 +366,10 @@ export const chaffMoveBlinkStrength = (
   enemy: Pick<Enemy, 'chaffMove' | 'chaffMoveAt' | 'chaffBlinkAt' | 'aiPhase'>,
   gameTime: number,
 ): number => {
-  // ★ゾンビは構え(z-red-pause=1発目 / z-stagger=2発目)の「固まった瞬間」を錨にする(`chaffBlinkAt`・
-  //   社長指示2026-10-14)。構えの外(踏み込み・噛み・硬直・構えを崩された後)では点かない。
+  // ★ゾンビは構え(z-red-pause・1発目の前の1回だけ)の「固まった瞬間」を錨にする(`chaffBlinkAt`・
+  //   社長指示2026-10-14)。構えの外(噛み・2発目の前の一拍・硬直・構えを崩された後)では点かない。
   //   これを持たない型(bat/skeleton/lich)は従来どおり技が立った瞬間(`chaffMoveAt`)。
-  const zombieStance = enemy.aiPhase === 'z-red-pause' || enemy.aiPhase === 'z-stagger';
+  const zombieStance = enemy.aiPhase === 'z-red-pause';
   if (enemy.chaffMove === 'zombie-double' || enemy.chaffBlinkAt !== undefined) {
     if (!zombieStance) return 0;
   } else if (enemy.chaffMove === undefined) return 0;
@@ -402,7 +408,8 @@ export const zombieRedPauseMs = (id: string, spawnedAt?: number): number =>
  * 旧(§16-3z の「止まる→起こす→詰めの溜め」の3段・全長±30%・赤は踏み込み始め)はこれで置き換え。
  */
 export const ZOMBIE_WINDUP_MS = 150;
-export const ZOMBIE_HOLD_MS = 1000;
+// ★2026-10-14 社長「射程に入ったら…硬直してる絵までモーションして赤点滅2回。**ここまで1**」=構えの全長を1秒に(旧: 固まってから1秒)。
+export const ZOMBIE_HOLD_MS = 1000 - ZOMBIE_WINDUP_MS;
 /** 構えの全長(反る+固まる)。z-red-pause / z-stagger の長さ。 */
 export const ZOMBIE_STANCE_MS = ZOMBIE_WINDUP_MS + ZOMBIE_HOLD_MS;
 

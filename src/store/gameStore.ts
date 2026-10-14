@@ -353,10 +353,9 @@ import { tickEnemyClockFreeze } from '../utils/enemyClocks';
 // ★ゾンビ赤(PACING_PUZZLE.md §16-3・§16-8b手順5)。枠の導出/技の終わり/待ちの尺/帯の定数の正本。
 import {
   deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
-  ZOMBIE_BAND_OUTER_PX, ZOMBIE_BAND_INNER_PX, ZOMBIE_LUNGE_RANGE_PX,
-  ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, // 2026-10-14 構え(素早く反る→固まる→赤2回→1秒で発動)を2発とも
-  ZOMBIE_RECOVER_MS, zombieLungeRampMul, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
-  zombieBite2AngleRad, // §16-3z 追補(②2発目の角度にspawnedAtを混ぜる)
+  ZOMBIE_BAND_OUTER_PX, ZOMBIE_BAND_INNER_PX, ZOMBIE_STEP_REACH_PX,
+  ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_STAGGER_MS, // 2026-10-14 構え(反る→固まる・赤2回=全長1秒)→1歩で噛む→一拍で狙い直して1歩で噛む
+  ZOMBIE_RECOVER_MS, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
   zombieRecoverWalkRampMul, // §16-3zクリエイティブ監査#3(硬直→歩きの出足の1フレーム段差を消す)
   ZOMBIE_RETREAT_TARGET_PX, ZOMBIE_RETREAT_SPEED_MULT, zombieRetreatRampMul, // §16-A7条目(技を出し切ったら150pxへ離れる)
   // ★bat(PACING_PUZZLE.md §16-1・§16-8b手順6)。
@@ -16434,22 +16433,18 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ここを通る。z-lunge-in→z-bite1遷移のフレームはbiteAtをこの場で新規に立てるので、
           // 「0で入ってきて0のまま」は起きない(常に非0で入るため誤検知しない)。
           if (phase === 'z-bite1' && !(enemy.biteAt !== undefined && enemy.biteAt > 0)) {
-            // 1発目解決→2発目の構え(社長指示2026-10-14: 素早く後ろへ反る→固まる→赤2回点滅→固まってから1秒で噛む)。
-            return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-stagger', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };
+            // 1発目解決→一拍(160ms)で狙い直して2発目(社長指示2026-10-14「2回目は再度ターゲティングして、1歩進んですぐ噛む」)。
+            //   構え・赤の点滅は1発目の前の1回だけ。
+            return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-stagger', aiPhaseUntil: gameTime + ZOMBIE_STAGGER_MS, chaffBlinkAt: undefined };
           }
           if (phase === 'z-stagger') {
-            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 2発目の構え継続:その場
-            // 2発目の構え明け→2発目。向きは§12と同じく踏み込みの瞬間(ここ)に焼く。僅かにずらす
-            // (向きはchaffTraitsのflankSignで固定=決定的。大きさは§16-3z②「2発目の角度にも
-            // spawnedAtを混ぜる」=zombieBite2AngleRadがid+spawnedAt由来で±30%散らす)。
+            if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 一拍:その場
+            // 2発目: **今のプレイヤーへ狙い直す**(社長指示2026-10-14「2回目は再度ターゲティングして、1歩進んですぐ噛む」)。
+            //   旧=1発目の向きから僅かにずらす(zombieBite2AngleRad)は狙い直しと食い違うので外した。踏み込みは1歩(BITE_LUNGE_CAP_PX)まで。
             const bl = Math.max(0.001, pdist);
-            const bdx = (apx - ecx) / bl, bdy = (apy - ecy) / bl;
-            const spin = chaffTraits(enemy.id).flankSign;
-            const bite2Angle = zombieBite2AngleRad(enemy.id, enemy.spawnedAt, spin);
-            const ca = Math.cos(bite2Angle), sa = Math.sin(bite2Angle);
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: 'z-bite2', biteAt: gameTime, biteAimEscortId: escortAim?.id,
-              biteDirX: bdx * ca - bdy * sa, biteDirY: bdx * sa + bdy * ca,
+              biteDirX: (apx - ecx) / bl, biteDirY: (apy - ecy) / bl,
               // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
               biteLungePx: biteLungeDistanceAtFire('zombie', bl),
             };
@@ -16517,38 +16512,31 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
           if (phase === 'z-red-pause') {
             if (gameTime < phaseUntil) return { ...enemy, vx: 0, vy: 0 }; // 1発目の構え(反る→固まる)・その場
-            // 構え明け(固まってから1秒)→2倍速で射程75pxまで踏み込む。ここでchaffMoveが立つ(§16-7b「立つ位置はz-lunge-in」)。
-            return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-lunge-in', chaffMove: 'zombie-double', chaffMoveAt: gameTime };
+            // 構え明け→**1歩進んですぐ噛む**(社長指示2026-10-14「そこから、1歩進んですぐ噛む。ここは速攻」「前進はそれぞれ1歩分まで」)。
+            //   旧=2倍速で射程75pxまで走り込む(z-lunge-in・最長1.8秒)は外した。踏み込みは噛みの溜めの中の1歩(BITE_LUNGE_CAP_PX)だけ。
+            //   ここでchaffMoveが立つ(技の始まり)。向き・踏み込み距離は発火の瞬間に焼く(追尾しない)。
+            const bl = Math.max(0.001, pdist);
+            return {
+              ...enemy, vx: 0, vy: 0, aiPhase: 'z-bite1', chaffMove: 'zombie-double', chaffMoveAt: gameTime,
+              biteAt: gameTime, biteAimEscortId: escortAim?.id,
+              biteDirX: (apx - ecx) / bl, biteDirY: (apy - ecy) / bl,
+              biteLungePx: biteLungeDistanceAtFire('zombie', bl),
+            };
           }
           if (phase === 'z-lunge-in') {
-            // ★踏み込みの上限時間(社長指摘2026-09-17「台本の中で詰め寄ってくる時間に上限ある？」)。
-            // 上限に達したら**その場で噛む**(=空振りする)。引き返さないのは、技の3拍
-            // (技→硬直→離れる)を全型で守るため——空振りでも硬直はプレイヤーの取り分になる。
-            const lungeOver = enemy.chaffMoveAt !== undefined
-              && gameTime - enemy.chaffMoveAt >= ZOMBIE_LUNGE_MAX_MS;
-            if (pdist <= ZOMBIE_LUNGE_RANGE_PX || lungeOver) {
-              // 射程到達→1発目。向きは§12と同じく踏み込みの瞬間(ここ)に焼く(追尾しない)。
-              // ★②速度を持ち越す(§16-3z「踏み込み→噛み」): vx/vyを0で潰さず前フレームの値を
-              // そのまま残す(=spreadで継承)。満速→0の1フレーム段差(「走って来て一瞬カクッと
-              // 止まり、また出る」吃音)を消す。実際の踏み込み移動はbiteLungeFrac(ease-in)が
-              // 上のisBiteSubject分岐で引き継ぐので、位置(x/y)はここでは動かさない(従来どおり)。
-              const bl = Math.max(0.001, pdist);
-              return {
-                ...enemy, aiPhase: 'z-bite1', biteAt: gameTime, biteAimEscortId: escortAim?.id,
-                biteDirX: (apx - ecx) / bl, biteDirY: (apy - ecy) / bl,
-                // ★踏み込み距離を発火の瞬間に焼く(§16-A「★踏み込みの終点」)。
-                biteLungePx: biteLungeDistanceAtFire('zombie', bl),
-              };
+            // ★詰め(社長指示2026-10-14): 赤を決めた個体が、1歩で噛める距離(ZOMBIE_STEP_REACH_PX)まで**普通の歩きで**詰める。
+            //   届いたら構え(z-red-pause・全長1秒・固まった瞬間に赤2回)→構え明けに1歩で噛む。
+            //   上限(ZOMBIE_LUNGE_MAX_MS)で届かなくても構える=空振りしても技の3拍(技→硬直→離れる)は守る(逃げ切った側が報われる)。
+            //   旧=2倍速で射程75pxまで走り込んでから噛む(構えの後)。
+            if (pdist <= ZOMBIE_STEP_REACH_PX || gameTime >= phaseUntil) {
+              return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };
             }
             // 2倍速で実プレイヤーへ直進(zrushと同じ書き味=フラフラ込み)。紫の追尾(旧zrush)は
             // 汎用の接近ターゲット(dx/dy=tgt基準)を追うが、こちらは「赤が来る」と確定した後の
             // 踏み込みなので狙いの座標(apx/apy=軍人を追っていなければ実プレイヤー)を直接使う(decoy/summonに逸れない)。
             const zTraits = chaffTraits(enemy.id);
-            // ★②踏み込みの出足(§16-3z「立ち上がり360msの加速」): z-lunge-inへ入った瞬間
-            // (`chaffMoveAt`)からsmoothstepで0→満速。0→満速の1フレーム段差を消す。
-            const lungeRamp = zombieLungeRampMul(enemy.chaffMoveAt, gameTime);
-            // ★踏み込みは紫の追尾より速い(社長指示2026-09-17「台本の中での詰め寄りを早くする」)。
-            const lungeSpeed = enemy.speed * ZOMBIE_SPEED_MULT * ZOMBIE_LUNGE_SPEED_MULT * lungeRamp
+            // 詰めは普通の歩きの速さ(2026-10-14: 走り込みはやめた。速いのは構え明けの1歩だけ)。
+            const lungeSpeed = enemy.speed * ZOMBIE_SPEED_MULT
               * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, pdist) * iceSlowMult(enemy, gameTime);
             let lh = 0;
             for (let i = 0; i < enemy.id.length; i++) lh = (lh * 31 + enemy.id.charCodeAt(i)) | 0;
@@ -16572,9 +16560,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (pdist > ZOMBIE_BAND_OUTER_PX) {
               phase = undefined; phaseUntil = 0; // 帯の外へ戻った=待ちを解除→通常接近へ
             } else if (chaffGrants.has(enemy.id)) {
-              // ★1発目の構え(社長指示2026-10-14): 素早く後ろへ反る(150ms)→固まる。固まった瞬間に赤2回点滅(chaffBlinkAtを先に焼く)、
-              // 固まってから1秒で踏み込みへ。旧=止まる→起こす→溜めの3段(全長±30%)。
-              return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };
+              // ★赤が決まった(社長指示2026-10-14「射程に入ったら…赤点滅2回」): 1歩で噛める距離(ZOMBIE_STEP_REACH_PX)に居れば
+              //   その場で構える。まだ遠ければ普通に歩いて詰める(z-lunge-in=詰め・上限 ZOMBIE_LUNGE_MAX_MS)→届いたら構える。
+              if (pdist <= ZOMBIE_STEP_REACH_PX) {
+                return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };
+              }
+              return { ...enemy, aiPhase: 'z-lunge-in', aiPhaseUntil: gameTime + ZOMBIE_LUNGE_MAX_MS };
             } else if (pdist <= ZOMBIE_BAND_INNER_PX) {
               // 枠なし・内縁到達=紫(旧仕様のまま)。下の「旧仕様」ブロックへフォールスルーする。
               phase = 'zpause'; phaseUntil = gameTime + ZOMBIE_PAUSE_MS;

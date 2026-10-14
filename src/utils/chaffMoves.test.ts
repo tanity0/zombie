@@ -308,14 +308,14 @@ describe('chaffMoveBlinkStrength(赤は状態ではなく合図の句読点・�
 describe('ゾンビの構えの赤2回点滅(社長指示2026-10-14「素早く構え(後ろに反る)て硬直したら赤点滅2回、1秒後に発動 を2回」)', () => {
   const CYCLE_MS = CHAFF_BLINK_ON_MS + CHAFF_BLINK_OFF_MS;
   const TOTAL_MS = CYCLE_MS * CHAFF_BLINK_COUNT;
-  it('構えは「反る+固まる1秒」で、点滅は固まった瞬間から', () => {
+  it('構えは「反る+固まる」で全長1秒(社長指示2026-10-14「ここまで1」)、点滅は固まった瞬間から', () => {
     expect(ZOMBIE_STANCE_MS).toBe(ZOMBIE_WINDUP_MS + ZOMBIE_HOLD_MS);
-    expect(ZOMBIE_HOLD_MS).toBe(1000);
+    expect(ZOMBIE_STANCE_MS).toBe(1000);
     expect(ZOMBIE_WINDUP_MS).toBeLessThan(ZOMBIE_HOLD_MS);
   });
-  it('★1発目(z-red-pause)・2発目(z-stagger)の構えの両方で、固まった瞬間からちょうど2回点滅', () => {
-    for (const aiPhase of ['z-red-pause', 'z-stagger'] as const) {
-      const e = { aiPhase, chaffMove: aiPhase === 'z-stagger' ? 'zombie-double' as const : undefined, chaffMoveAt: 0, chaffBlinkAt: 1000 + ZOMBIE_WINDUP_MS };
+  it('★1発目の構え(z-red-pause)で、固まった瞬間からちょうど2回点滅', () => {
+    for (const aiPhase of ['z-red-pause'] as const) {
+      const e = { aiPhase, chaffMove: undefined, chaffMoveAt: 0, chaffBlinkAt: 1000 + ZOMBIE_WINDUP_MS };
       expect(chaffMoveBlinkStrength(e, 1000)).toBe(0); // 反っている間は点かない
       let prev = 0, edges = 0;
       for (let t = 0; t <= ZOMBIE_STANCE_MS; t++) {
@@ -328,7 +328,7 @@ describe('ゾンビの構えの赤2回点滅(社長指示2026-10-14「素早く�
     }
   });
   it('★構えの外(踏み込み・噛み・硬直・構えを崩された後)では点かない', () => {
-    for (const aiPhase of ['z-lunge-in', 'z-bite1', 'z-bite2', 'z-recover', undefined] as const) {
+    for (const aiPhase of ['z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'z-recover', undefined] as const) {
       expect(chaffMoveBlinkStrength({ aiPhase, chaffMove: 'zombie-double', chaffMoveAt: 1000, chaffBlinkAt: 1000 }, 1000)).toBe(0);
       expect(chaffMoveBlinkStrength({ aiPhase, chaffMove: undefined, chaffBlinkAt: 1000 }, 1000)).toBe(0);
     }

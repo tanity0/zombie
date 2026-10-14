@@ -60,7 +60,7 @@ describe('噛みつき直後の硬直', () => {
     const gt = 5000;
     setup(0, {
       biteRecoverUntil: gt + BITE_RECOVER_STILL_MS,
-      chaffMove: 'zombie-double', aiPhase: 'z-lunge-in', chaffMoveAt: gt,
+      chaffMove: 'zombie-double', aiPhase: 'z-lunge-in', aiPhaseUntil: gt + 2000, chaffMoveAt: gt,
     });
     const before = useGameStore.getState().enemies[0].x;
     for (let i = 0; i < 10; i++) {

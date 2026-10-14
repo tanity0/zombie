@@ -10,9 +10,9 @@ import {
 } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
-import { biteSpecFor, BITE_CONTACT_DIST_PX, biteLungeDistanceAtFire } from '../utils/enemyBite';
+import { biteSpecFor, BITE_CONTACT_DIST_PX, BITE_LUNGE_CAP_PX, biteLungeDistanceAtFire } from '../utils/enemyBite';
 import {
-  ZOMBIE_LUNGE_RANGE_PX, ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_RECOVER_MS,
+  ZOMBIE_STEP_REACH_PX, ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_RECOVER_MS, ZOMBIE_STAGGER_MS,
   ZOMBIE_RED_TRIGGER_MIN_PX,
   ZOMBIE_RETREAT_TARGET_PX, // §16-A7条目: 技を出し切ったら得意な距離(150px)へ離れる
   chaffMoveBlinkStrength,
@@ -129,10 +129,9 @@ describe('★検収A-1/A-2(2026-09-16・14秒実走で発覚): 帯への進入�
 });
 
 describe('「赤が先」(§16-3): 帯の内縁(100px)で枠の有無により赤/紫が確定する', () => {
-  it('枠が空いていれば赤(z-red-pause・その場)が確定する', () => {
-    // ★距離は引き金の最小値(88px)より内側に置く。§16-3z「内縁の引き金に幅(88〜118px・id由来)」
-    // により、境界ちょうど(100px)だとidによって赤にならないことがある(非決定的テストを避ける)。
-    place(ZOMBIE_RED_TRIGGER_MIN_PX - 3, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
+  it('枠が空いていて1歩で噛める距離なら、その場で構え(z-red-pause)', () => {
+    // ★2026-10-14「射程に入ったら…赤点滅2回」: 1歩で噛める距離(ZOMBIE_STEP_REACH_PX)の内側に置く。
+    place(ZOMBIE_STEP_REACH_PX - 3, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-red-pause');
@@ -142,10 +141,16 @@ describe('「赤が先」(§16-3): 帯の内縁(100px)で枠の有無により�
     expect(e.vx).toBe(0); expect(e.vy).toBe(0); // その場(位置は動かさない)
   });
 
-  it('尺切れ(タイマー満了)でも赤が確定する(距離は100px未満まで来ていなくてもよい)', () => {
+  it('尺切れ(タイマー満了)でも赤が確定する。遠ければまず歩いて詰める(z-lunge-in)', () => {
     place(140, { aiPhase: 'z-wait', aiPhaseUntil: START_GT - 1 }); // 尺切れ済み
     tick(START_GT);
-    expect(first().aiPhase).toBe('z-red-pause');
+    expect(first().aiPhase).toBe('z-lunge-in');
+  });
+  it('引き金の距離(88〜118px)で赤が決まっても、1歩で届かなければまず歩いて詰める', () => {
+    place(ZOMBIE_RED_TRIGGER_MIN_PX - 3, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
+    tick(START_GT);
+    expect(ZOMBIE_RED_TRIGGER_MIN_PX - 3).toBeGreaterThan(ZOMBIE_STEP_REACH_PX);
+    expect(first().aiPhase).toBe('z-lunge-in');
   });
 
   it('枠が無ければ紫(旧zpause)へ落ちる。境界は100px(旧MELEE_RADIUS=74ではない)', () => {
@@ -180,30 +185,39 @@ describe('「赤が先」(§16-3): 帯の内縁(100px)で枠の有無により�
 });
 
 describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger → z-bite2 → 技の終わり', () => {
-  it('停止2000ms明けでz-lunge-inへ。chaffMoveがここで立つ(§16-7b)', () => {
-    place(150, { aiPhase: 'z-red-pause', aiPhaseUntil: START_GT });
-    tick(START_GT);
-    const e = first();
-    expect(e.aiPhase).toBe('z-lunge-in');
-    expect(e.chaffMove).toBe('zombie-double');
-    expect(e.chaffMoveAt).toBe(START_GT);
-  });
-
-  it('射程75pxに達したらz-bite1(biteAt/向き/踏み込み距離を焼く)', () => {
-    place(ZOMBIE_LUNGE_RANGE_PX, { aiPhase: 'z-lunge-in', chaffMove: 'zombie-double', chaffMoveAt: START_GT - 500 });
+  it('★構え明けは走り込まずにすぐ1発目(1歩で噛む・社長指示2026-10-14「1歩進んですぐ噛む。ここは速攻」)。chaffMoveがここで立つ', () => {
+    place(100, { aiPhase: 'z-red-pause', aiPhaseUntil: START_GT });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-bite1');
     expect(e.biteAt).toBe(START_GT);
-    // 敵はプレイヤーより+x側に置いた(place)ので、敵→プレイヤー方向は-x。
-    expect(e.biteDirX).toBeCloseTo(-1, 5);
-    // ★§16-A「踏み込みの終点」: 踏み込み距離は発火時の中心間距離(75px)から接触距離を引いた値を
-    // 発火の瞬間に焼く(biteLungeDistanceAtFire・追尾しない=以後は読むだけ)。
-    expect(e.biteLungePx).toBeCloseTo(biteLungeDistanceAtFire('zombie', ZOMBIE_LUNGE_RANGE_PX), 5);
+    expect(e.chaffMove).toBe('zombie-double');
+    expect(e.chaffMoveAt).toBe(START_GT);
+    // ★前進は1歩まで(踏み込み距離の上限=BITE_LUNGE_CAP_PX)。遠くから構え明けしても飛びすぎない。
+    expect(e.biteLungePx).toBeCloseTo(biteLungeDistanceAtFire('zombie', 100), 5);
+    expect(e.biteLungePx ?? 0).toBeLessThanOrEqual(BITE_LUNGE_CAP_PX.zombie);
   });
 
-  it('射程に届いていない間は2倍速で近づき続ける(z-lunge-inのまま)', () => {
-    const e0 = place(ZOMBIE_LUNGE_RANGE_PX + 20, { aiPhase: 'z-lunge-in', chaffMove: 'zombie-double', chaffMoveAt: START_GT - 200 });
+  it('詰め: 1歩で噛める距離に届いたら構え(z-red-pause・全長1秒・固まった瞬間に赤2回)', () => {
+    place(ZOMBIE_STEP_REACH_PX - 1, { aiPhase: 'z-lunge-in', aiPhaseUntil: START_GT + 1000 });
+    tick(START_GT);
+    const e = first();
+    expect(e.aiPhase).toBe('z-red-pause');
+    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_STANCE_MS);
+    expect(e.chaffBlinkAt).toBe(START_GT + ZOMBIE_WINDUP_MS);
+  });
+  it('詰めの上限に達したら届いていなくても構える(逃げ切れば空振り)', () => {
+    place(150, { aiPhase: 'z-lunge-in', aiPhaseUntil: START_GT });
+    tick(START_GT);
+    expect(first().aiPhase).toBe('z-red-pause');
+  });
+  it('★1歩で噛める距離から構え明けに噛めば、止まっている相手に体が届く(1歩=踏み込み上限)', () => {
+    expect(biteLungeDistanceAtFire('zombie', ZOMBIE_STEP_REACH_PX)).toBeCloseTo(BITE_LUNGE_CAP_PX.zombie, 5);
+    expect(ZOMBIE_STEP_REACH_PX - BITE_LUNGE_CAP_PX.zombie).toBeLessThanOrEqual(BITE_CONTACT_DIST_PX.zombie);
+  });
+
+  it('詰めの間は普通の歩きで近づき続ける(z-lunge-inのまま)', () => {
+    const e0 = place(ZOMBIE_STEP_REACH_PX + 30, { aiPhase: 'z-lunge-in', aiPhaseUntil: START_GT + 1000 });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-lunge-in');
@@ -211,17 +225,17 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(e.x).toBeLessThan(e0.x);
   });
 
-  it('1発目が解決(biteAt=0)したらz-stagger(2発目の構え=反る+固まって1秒・その場)へ', () => {
+  it('1発目が解決(biteAt=0)したらz-stagger(一拍で狙い直す・構え/点滅なし・その場)へ', () => {
     place(60, { aiPhase: 'z-bite1', chaffMove: 'zombie-double', biteAt: 0 });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-stagger');
-    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_STANCE_MS);
-    expect(e.chaffBlinkAt).toBe(START_GT + ZOMBIE_WINDUP_MS);
+    expect(e.aiPhaseUntil).toBe(START_GT + ZOMBIE_STAGGER_MS);
+    expect(e.chaffBlinkAt).toBeUndefined();
     expect(e.vx).toBe(0); expect(e.vy).toBe(0);
   });
 
-  it('よろけ明けでz-bite2へ(biteAt再発火・踏み込み距離はその場の距離から動的に焼く・向きは1発目から僅かにずれる)', () => {
+  it('よろけ明けでz-bite2へ(biteAt再発火・踏み込み距離はその場の距離から動的に焼く・向きは今のプレイヤーへ狙い直す)', () => {
     place(60, { aiPhase: 'z-stagger', aiPhaseUntil: START_GT, chaffMove: 'zombie-double' });
     tick(START_GT);
     const e = first();
@@ -236,8 +250,9 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     // 向きは単位ベクトル。
     const len = Math.hypot(e.biteDirX ?? 0, e.biteDirY ?? 0);
     expect(len).toBeCloseTo(1, 5);
-    // まっすぐプレイヤー方向(1,0)からは僅かにずれている(offset角が乗っている)。
-    expect(e.biteDirY ?? 0).not.toBe(0);
+    // ★狙い直し(社長指示2026-10-14「2回目は再度ターゲティング」): まっすぐ今のプレイヤーの方向(-1,0)。
+    expect(e.biteDirX ?? 0).toBeCloseTo(-1, 5);
+    expect(e.biteDirY ?? 0).toBeCloseTo(0, 5);
   });
 
   it('z-bite1/z-bite2とも保険の既定値(BiteSpec.lungePx)は接触距離に統一されている(実際の踏み込み距離は動的計算=biteLungePxが優先)', () => {
@@ -438,17 +453,16 @@ describe('★構えの赤2回点滅を、状態機械を実際に回して数え
     return { edges, firstAt };
   };
   it('1発目の構え(z-red-pause): 固まってから2回', () => {
-    place(ZOMBIE_RED_TRIGGER_MIN_PX - 3, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
+    place(ZOMBIE_STEP_REACH_PX - 3, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
     const r = countBlinks(START_GT + ZOMBIE_STANCE_MS - 16);
     expect(first().aiPhase).toBe('z-red-pause');
     expect(r.edges).toBe(2);
     expect(r.firstAt).toBeGreaterThanOrEqual(ZOMBIE_WINDUP_MS);
   });
-  it('2発目の構え(z-stagger): 固まってから2回(時計の凍結で点滅が先送りされない)', () => {
+  it('★2発目の前の一拍(z-stagger)では点かない=赤の点滅は1発目の構えの1回だけ(社長指示2026-10-14)', () => {
     place(60, { aiPhase: 'z-bite1', chaffMove: 'zombie-double', chaffMoveAt: START_GT - 500, biteAt: 0 });
-    const r = countBlinks(START_GT + ZOMBIE_STANCE_MS - 16);
+    const r = countBlinks(START_GT + ZOMBIE_STAGGER_MS - 16);
     expect(first().aiPhase).toBe('z-stagger');
-    expect(r.edges).toBe(2);
-    expect(r.firstAt).toBeGreaterThanOrEqual(ZOMBIE_WINDUP_MS);
+    expect(r.edges).toBe(0);
   });
 });
