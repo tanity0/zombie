@@ -25,7 +25,6 @@
 import type { Enemy } from '../types/game';
 import { biteSpecFor, bitePhaseOf, biteProgress, biteLungeFrac, BITE_CONTACT_DIST_PX } from './enemyBite';
 import { enemyContactBox } from './collisionUtils';
-import { isTrueBossType } from './enemyUtils';
 
 /** プレイヤーの当たり判定の半幅(PLAYER_HITBOX=28 の半分)。enemyBite.ts の接触距離の導出と同じ値。 */
 const PLAYER_HALF_PX = 14;
@@ -85,11 +84,14 @@ export interface BiteTelegraphLine {
 }
 
 /**
- * 予告の線を引く(出さない時は null)。**雑魚の軽い攻撃だけ**——本物のボスと城ボスは
- * 自前の予告(帯・円・専用ライン)を既に持っているので対象外(予告を二重に出さない)。
+ * 予告の線を引く(出さない時は null)。
+ * ★v0.25.5046(社長報告2026-10-14「ボスに近づくと、ノールックで攻撃される。これ噛みつきじゃない?」): 旧は
+ * 「本物のボスと城ボスは自前の予告を持つので対象外(二重に出さない)」としていたが、**§12の噛みつき自体には
+ * ボスの自前の予告は無い**(噛みつきは追跡中=技の外でしか出ない=技の帯・円と重なることがない)。ボスは巨体の
+ * 乗算tintの紫点滅しか出ておらず、実機では「光っていない」に見えていた。全敵共通の予告として線もボスに出す。
+ * 事実として: 2026-09-17 の除外は「雑魚の軽い攻撃」を対象にした時の線引き。
  */
 export const biteTelegraphLine = (e: Enemy, gameTime: number): BiteTelegraphLine | null => {
-  if (isTrueBossType(e.type) || e.type === 'giantbat') return null;
   const phase = bitePhaseOf(e, gameTime);
   if (phase === 'none') return null;
   const dirX = e.biteDirX, dirY = e.biteDirY;

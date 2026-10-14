@@ -61,9 +61,11 @@ describe('雑魚の軽い攻撃の予告(流星ライン)', () => {
     expect(purple.counterable).toBe(false);
   });
 
-  it('★本物のボスと城ボスには出さない(自前の予告と二重にしない)', () => {
+  it('★本物のボスと城ボスにも出す(v0.25.5046・社長報告「ボスに近づくとノールックで攻撃される」=噛みつきに自前の予告は無い)', () => {
     for (const type of ['thor', 'mimir', 'giantbat'] as const) {
-      expect(biteTelegraphLine(mk({ type, biteAt: 1000, biteDirX: 1, biteDirY: 0 }), 1000)).toBeNull();
+      const bl = biteTelegraphLine(mk({ type, biteAt: 1000, biteDirX: 1, biteDirY: 0 }), 1000);
+      expect(bl, type).not.toBeNull();
+      expect(bl!.counterable, type).toBe(false); // §12=紫
     }
   });
 });
