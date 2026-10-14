@@ -107,7 +107,7 @@ describe('被弾反撃: 入力(tryHitRetaliation)', () => {
     useGameStore.setState({ enemies: [zombieAt(100, 0, 'z')] });
     expect(useGameStore.getState().tryHitRetaliation(1, 0)).toBe(false);
   });
-  it('窓が閉じた後(ストップ明け+300ms以降)は false', () => {
+  it('窓が閉じた後(ストップ明け+RETALIATE_WINDOW_MS以降)は false', () => {
     setup();
     useGameStore.setState({ enemies: [zombieAt(100, 0, 'z')] });
     hitBy('z', 5);

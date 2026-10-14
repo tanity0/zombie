@@ -5,29 +5,29 @@ import {
   retaliationClosesAt, makeRetaliationWindow, isRetaliationWindowOpen, retaliationAngleOk,
   isRetaliateTargetEligible, isRetaliationBlocked, createPadNeutralTracker, stepPadNeutral, retaliationReady } from './hitRetaliation';
 
-describe('窓の時刻 — ヒットストップが明けてから300ms', () => {
-  it('仕様の数値: 窓300ms・届く距離260px・角度45度・倍率2', () => {
-    expect(RETALIATE_WINDOW_MS).toBe(300);
+describe('窓の時刻 — ヒットストップが明けてから500ms(v0.25.5047・旧300)', () => {
+  it('仕様の数値: 窓500ms・届く距離260px・角度45度・倍率2', () => {
+    expect(RETALIATE_WINDOW_MS).toBe(500);
     expect(RETALIATE_REACH_PX).toBe(260);
     expect(RETALIATE_ANGLE_DEG).toBe(45);
     expect(RETALIATE_DAMAGE_MULT).toBe(2);
   });
-  it('閉じる時刻 = ストップ明け + 300(当たった瞬間から 軽370 / 中420 / 重490)', () => {
-    expect(retaliationClosesAt(1000, 1070)).toBe(1370);
-    expect(retaliationClosesAt(1000, 1120)).toBe(1420);
-    expect(retaliationClosesAt(1000, 1190)).toBe(1490);
+  it('閉じる時刻 = ストップ明け + 500(当たった瞬間から 軽570 / 中620 / 重690)', () => {
+    expect(retaliationClosesAt(1000, 1070)).toBe(1570);
+    expect(retaliationClosesAt(1000, 1120)).toBe(1620);
+    expect(retaliationClosesAt(1000, 1190)).toBe(1690);
   });
-  it('ストップが既に明けている(または無い)なら、今から300ms', () => {
-    expect(retaliationClosesAt(1000, 0)).toBe(1300);
-    expect(retaliationClosesAt(1000, 900)).toBe(1300);
+  it('ストップが既に明けている(または無い)なら、今から500ms', () => {
+    expect(retaliationClosesAt(1000, 0)).toBe(1500);
+    expect(retaliationClosesAt(1000, 900)).toBe(1500);
   });
   it('開く瞬間 = 被弾の瞬間(ヒットストップの最中から受け付ける)・閉じる ms ちょうどは閉じている', () => {
     const w = makeRetaliationWindow('e1', 1000, 1190, 1, 0);
     expect(isRetaliationWindowOpen(w, 999)).toBe(false);
     expect(isRetaliationWindowOpen(w, 1000)).toBe(true);
     expect(isRetaliationWindowOpen(w, 1100)).toBe(true); // ストップの最中
-    expect(isRetaliationWindowOpen(w, 1489)).toBe(true);
-    expect(isRetaliationWindowOpen(w, 1490)).toBe(false);
+    expect(isRetaliationWindowOpen(w, 1689)).toBe(true);
+    expect(isRetaliationWindowOpen(w, 1690)).toBe(false); // 1190(ストップ明け)+500
     expect(w.stopUntil).toBe(1190);
   });
   it('窓が無ければ閉じている / 向きは単位ベクトルに正規化・重なっていれば真上', () => {

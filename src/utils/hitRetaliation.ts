@@ -4,8 +4,10 @@
 import type { Enemy } from '../types/game';
 import { isCorpse, isReaperFamily, isTerminalReaper, isUntouchable } from './enemyUtils';
 
-/** 受付の長さ(ms)。ヒットストップが明けてから数える(社長「そだね」2026-10-09・当たった瞬間から 370〜490ms)。 */
-export const RETALIATE_WINDOW_MS = 300;
+/** 受付の長さ(ms)。ヒットストップが明けてから数える。
+ * ★v0.25.5047(社長「赤カウンターの判定が厳しすぎるかもな」→推薦「窓0.3→0.5秒」に「はい」): 300→500
+ * (当たった瞬間から 570〜690ms)。角度・距離は変えない。事実として: 2026-10-09 の「そだね」は 300ms。 */
+export const RETALIATE_WINDOW_MS = 500;
 /** 相手の体の縁までこの距離(px)以内なら成立(入力の瞬間に測る)。 */
 export const RETALIATE_REACH_PX = 260;
 /** 入力の向きと「プレイヤー→相手」の向きがこの角度(度)以内で成立。 */

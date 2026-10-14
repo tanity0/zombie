@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5047 — 反撃(被弾反撃)の受付を 0.3→0.5秒【2026-10-14 23:34 JST】
+- 社長「赤カウンターの判定が厳しすぎるかもな…いま何秒だっけ？」→ 答え(ヒットストップ明けから300ms=被弾から370〜490ms・±45度・260px)
+  → 推薦「窓を0.3→0.5秒(角度・距離は据え置き)」に「はい」。
+- `RETALIATE_WINDOW_MS` 300→500(被弾から 570〜690ms)。角度(±45度)・距離(260px)・倍率(2)は不変。矢印の表示は同じ窓を読むので自動で追従。
+- 事実として: 2026-10-09「そだね」の値は300ms。
+- テスト: `hitRetaliation.test.ts` の閉じる時刻を打ち直し / store 側は定数参照なので文言のみ。関連5ファイル緑 / typecheck / eslint 0。
+- 自己点検: プレイヤー有利側の数値変更のみ(憲法第4条/第5条に抵触なし)。
+- 状態変化: 反撃の受付 → 実機確認待ち(社長)。
+- 変更ファイル: src/utils/hitRetaliation.ts / hitRetaliation.test.ts / src/store/hitRetaliation.store.test.ts / research/HIT_RETALIATION.md /
+  src/data/changelog.ts / package.json / DEVELOPMENT_LOG.md
+
 ## v0.25.5046 — ボスの噛みつきにも紫の予告の線(社長報告「ボスに近づくと、ノールックで攻撃される」)【2026-10-14 22:12 JST】
 - 社長「あれ？じゃあ別のものが入ってるかも。ボスに近づくと、ノールックで攻撃される。これ噛みつきじゃない？」
 - 調べた(コード): ボス(裏4体/天使6体/idol/フィル/城ボス)も§12の噛みつき(`isBiteSubject`=true・追跡中 `chase` だけ・判定も尺も雑魚と同じ)を
