@@ -4609,6 +4609,8 @@ export const grantMeleeKillRewards = (
     if (isReaperFamily(enemy.type)) grantReaperDefeatRewards(get, { x: enemy.x + enemy.width / 2, y: enemy.y });
     // 天使を近接で倒した=銃の経路と同じ落とし物。
     if (isAngelRewardType(enemy.type)) dropAngelDefeatRewards(get, enemy);
+    // 吸血(キル時の回復)=銃の経路(damageEnemy)と同じ。2026-10-15 まで近接ではここが抜けていた(社長報告「倒しても吸収されない時がある」)。
+    applyVampireKillHeal(get, { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 });
     exSurielDefeatedBgm(enemy.type);
     // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。近接全経路(通常近接カウンター/
     // 刀/鞭/シールドバッシュ/投擲スケボー/分身)はこのヘルパーを通るのでここ1箇所で拾える
@@ -4810,6 +4812,24 @@ export const applyRescueSignalProc = (
 // 社長指示v0.25.3300 吸血覚醒(Lv3): 近接攻撃のヒットでも最大HPの1%回復。粒度は救難信号と同じ
 // 「1スイング1回」(複数体を同時に斬っても1回)。吸収エフェクトは控えめ=drain1本を短めに流すだけで
 // +数字のcalloutは出さない(キル時の既存演出との差別化)。
+// スキル: 吸血(キル時の回復)。銃/爆風/延焼(damageEnemy)と近接5経路(grantMeleeKillRewards)の**両方**から呼ぶ。
+// ★社長報告2026-10-15「倒しても吸収されない時がある」(v0.25.5051): 旧実装は damageEnemy の中にだけ書かれていて、
+// 近接の撃破(ナイフ/刀/鞭/分身/スケボー=自前で体力を削って grantMeleeKillRewards へ来る)は**一度も吸血していなかった**
+// (覚醒Lv3のヒット回復だけが近接に付いていた)。キル全般が対象(§28 B7)なので合流点へ出す。
+const applyVampireKillHeal = (get: () => GameState, at: { x: number; y: number }) => {
+  const heal = rollVampireHeal(skillLevel(get().player, 'vampire'));
+  if (heal <= 0) return;
+  useGameStore.setState(state => ({
+    player: { ...state.player, health: Math.min(state.player.maxHealth, state.player.health + heal) },
+  }));
+  const p = get().player;
+  get().spawnEffect({
+    kind: 'drain', id: `vamp-drain-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    fromX: at.x, fromY: at.y, createdAt: Date.now(), duration: 620,
+  });
+  get().spawnCallout(p.x + p.width / 2, p.y - 20, `+${heal}`, '#f87171');
+};
+
 const applyVampireMeleeHeal = (
   get: () => GameState,
   player: Player,
@@ -13608,22 +13628,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 旧: キルの20%・率固定)HP+2/+4/+6(Lv)。
     // 絵は分類②(派手側)。キル地点からプレイヤーへ血粒が吸い込まれるdrainエフェクト
     // (社長指示v0.25.3276「攻撃したときの血のエフェクトがプレイヤーに吸収されていくような」)。
-    if (killedAt) {
-      const vampLv = skillLevel(get().player, 'vampire');
-      const heal = rollVampireHeal(vampLv);
-      if (heal > 0) {
-        set(state => ({
-          player: { ...state.player, health: Math.min(state.player.maxHealth, state.player.health + heal) },
-        }));
-        const p = get().player;
-        const src = killedAt as { x: number; y: number };
-        get().spawnEffect({
-          kind: 'drain', id: `vamp-drain-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          fromX: src.x, fromY: src.y, createdAt: Date.now(), duration: 620,
-        });
-        get().spawnCallout(p.x + p.width / 2, p.y - 20, `+${heal}`, '#f87171');
-      }
-    }
+    if (killedAt) applyVampireKillHeal(get, killedAt);
 
     // SKILL_BUILD_REDESIGN.md §28(B7) スキル: グラビティショット = **射撃ヒット時**の20/30/40%(Lv)で
     // 爆縮(社長指示v0.25.3703。旧: キル時)。確率表・渦の性能(引き寄せ120px/s×0.4s・半径100/120/140・
