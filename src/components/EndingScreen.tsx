@@ -107,7 +107,14 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, lineIdx]);
 
-  const onTap = () => { if (phase !== 'finale') advance(); }; // finale中のタップは無効(直撃を見せ切る)
+  // ★読み込み中は進めない(社長報告2026-10-14「エンディングで、ローディングが終わってないのに文章だけ進める時がある」):
+  //   聴取記録の層は読み込みの黒(SortieLoadingOverlay・z-100)より上に居るので、タップがそのまま文字へ届いていた。
+  //   戦場(エンディングステージ)の初フレームが出る(rendererReady)まではタップ・キーとも無視し、合図も出さない。
+  //   最初の1行は読み込みの上に出たままでよい(黒繋ぎの間も読める=従来どおり)。非scenicは読み込みが無いので常に進める。
+  const loading = useGameStore(state => scenic && !state.rendererReady);
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+  const onTap = () => { if (phase !== 'finale' && !loadingRef.current) advance(); }; // finale中・読み込み中のタップは無効
 
   // PC: Enter/Space でも1行送る(背後でゲームの画面が動いている=メニューの操作として拾われないため、ここで直接拾う)。
   const onTapRef = useRef(onTap);
@@ -200,7 +207,7 @@ const EndingScreen: React.FC<EndingScreenProps> = ({ onDone, scenic = false }) =
               type="button"
               tabIndex={-1}
               className="shrink-0 mx-auto mt-3 px-4 py-1 text-center text-[10px] tracking-widest"
-              style={{ color: `rgba(255,255,255,${lineIdx < 2 ? 0.5 : 0.25})`, transition: 'color 1.2s ease', background: 'transparent' }}
+              style={{ color: `rgba(255,255,255,${loading ? 0 : lineIdx < 2 ? 0.5 : 0.25})`, transition: 'color 1.2s ease', background: 'transparent' }}
               onPointerDown={(e) => { e.stopPropagation(); onTap(); }}
             >
               <TapWord />で進む

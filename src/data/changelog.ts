@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5041', items: ['エンディングの聴取記録は、戦場の読み込みが終わるまでタップしても進まない'] },
   { version: '0.25.5040', items: ['EXステージでスリィエルを倒すと、倒した瞬間から音楽が消え始める。これまでは討伐の演出が終わってからだった'] },
   { version: '0.25.5039', items: ['出撃の終わりにもらえるゴールドが倍になった'] },
   { version: '0.25.5038', items: ['天使を倒すと、回復の肉と赤い経験値十個、トレジャーが落ちる'] },
