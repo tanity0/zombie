@@ -44,6 +44,8 @@ export const EX_HALL_ZONES: ExHallZone[] = [EX_SURIEL_HALL, EX_PHILL_HALL];
 
 // 関所(スリィエル)の発火/結界のy(§10-20#3・#4)。
 export const EX_SURIEL_TRIGGER_Y = -2800; // (a)発火: プレイヤーyがこれ以下で1回だけスポーン
+/** スリィエル撃破でBGMを無音まで落とす尺(社長指示2026-10-14「一旦bgmをフェードアウト」)。崩れていく間に落ちきる長さ。 */
+export const EX_SURIEL_BGM_FADE_MS = 3000;
 export const EX_SURIEL_NORTH_LOCK_Y = EX_SURIEL_HALL.northY; // (c)結界: 存命中はこれより奥へ進めない
 export const EX_SURIEL_SOUTH_LOCK_Y = EX_SURIEL_HALL.southY; // 5巡目#1: 南も同時に締める(退路封鎖)
 

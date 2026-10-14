@@ -399,7 +399,7 @@ import { shouldTriggerGate2 } from '../utils/gate2';
 import { shouldFireDeathFallback } from '../utils/playerDeathWatch';
 import { isExStageRun, phillBossSpawnReady, surielGateSpawnReady, surielGateClearReady } from '../utils/exStage';
 import {
-  EX_SURIEL_TRIGGER_Y, EX_SURIEL_NORTH_LOCK_Y, EX_SURIEL_SOUTH_LOCK_Y,
+  EX_SURIEL_TRIGGER_Y, EX_SURIEL_NORTH_LOCK_Y, EX_SURIEL_SOUTH_LOCK_Y, EX_SURIEL_BGM_FADE_MS,
   EX_PHILL_TRIGGER_Y, EX_PHILL_SOUTH_LOCK_Y,
   exPhillNorthCenterLimitY,
 } from '../world/exHall';
@@ -527,7 +527,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
-import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow } from '../audio/audioManager';
+import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -1995,6 +1995,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // PACING_PUZZLE.md §10-20#3(EX関所「スリィエル」・EX専用3点セット): 出現済みか(二重スポーン防止)+
   // クリア打刻(gate2Cleared)の次フレーム以降に撃破報酬の金箱を置くための予約フラグ(§10-20#10)。
   const surielSpawnedRef = useRef(false);
+  const surielBgmFadedRef = useRef(false); // スリィエル撃破でBGMを落としたか(1ランに1回)
   const surielChestPendingRef = useRef(false);
   const glenRoarQueuedRef = useRef(false); // M7: 咆哮を会話キューへ積んだか
   const glenRoarShownRef = useRef(false);  // M7: 咆哮が実際に表示されたか(表示終了後の出現ゲート)
@@ -3259,6 +3260,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           phillOutroAtRef.current = null;      // ★v0.25.3743: 撃破フェードの打刻も再アーム
           phillBossSpawnPosRef.current = { x: 0, y: 0 };
           surielSpawnedRef.current = false; // §10-20#3: EX関所「スリィエル」も新ランで再アーム
+          surielBgmFadedRef.current = false;
           surielChestPendingRef.current = false;
           glenRoarQueuedRef.current = false;
           glenRoarShownRef.current = false;
@@ -3682,6 +3684,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 討伐カットイン/崩壊の間ではない)。打刻先=フィル出現条件が読んでいるgate2Clearedと同じ変数。
           const gsSr = useGameStore.getState();
           const surielAlive = gsSr.enemies.some(e => e.type === 'suriel');
+          // ★撃破でBGM(ステージ6曲)を一旦フェードアウトし、無音のまま保持する(社長指示2026-10-14
+          //   「exステージ、スリィエル倒したら一旦bgmをフェードアウト」)。崩れていく間に落ちていく=討伐カットイン/崩壊を待たない。
+          //   無音はフィルの紹介明けのフィル戦BGM(startBossBgmNow)/リトライ・メニュー復帰(setBgmScene)で外れる。
+          if (surielSpawnedRef.current && !surielAlive && !surielBgmFadedRef.current) {
+            surielBgmFadedRef.current = true;
+            holdBgmSilence(EX_SURIEL_BGM_FADE_MS);
+          }
           if (surielGateClearReady(surielSpawnedRef.current, gateMetaRef.current.gate2Cleared, surielAlive, !!gsSr.attention, !!gsSr.bossCorpse)) {
             gateMetaRef.current = { ...gateMetaRef.current, gate2Cleared: true };
             // §10-20#4: 撃破で北の結界・南の膜とも同フレームで開放。

@@ -531,7 +531,12 @@ let radioMix = 0;
 // 通常BGM(+深層逆再生版)の実効音量はここ1箇所だけで計算する(bgmVolume×bgmDuck×(1-radioMix))。
 // この計算を書く場所を増やすと必ずどれかが更新漏れになる(このプロジェクトで繰り返し起きた事故の
 // 再発防止)。normal-BGM系のvolume書き込みは全てこのヘルパ経由にすること。
-const effectiveBgmVolume = () => bgmVolume * bgmDuck * (1 - radioMix);
+// ★無音の保持(社長指示2026-10-14「exステージ、スリィエル倒したら一旦bgmをフェードアウト」): 立っている間は
+//   どの経路(再生の掛け直し・音量設定・ダック)から実効音量を引いても0=曲が勝手に戻らない。次の曲の開始/場面切替で外れる。
+let bgmSilenceHeld = false;
+const effectiveBgmVolume = () => (bgmSilenceHeld ? 0 : bgmVolume * bgmDuck * (1 - radioMix));
+/** 今、実際に鳴っている音量(フェードの始点。無音の保持中なら0)。 */
+const currentBgmLevel = (): number => (bgmGain ? bgmGain.gain.value : (bgm?.volume ?? 0));
 // ダンスビートB方式(v0.25.1339): メトロノームのキックが埋もれないよう、ダンス曲を軽くダックする。
 // 実機調整前提の叩き台値。setDanceBeatDuck(true/false) はダンス開始/終了エッジでのみ呼ぶ(useGameLoop)。
 const DANCE_BGM_BEAT_DUCK = 0.8;
@@ -1163,9 +1168,12 @@ export const crossToBossBgm = (variant: string, fadeOutMs = 800): void => {
   if (bgmBaseTrack === nextSrc) return; // 既に切替済み
   bgmBaseTrack = nextSrc;
   currentGameVariant = variant;
+  const wasHeld = bgmSilenceHeld;
+  bgmSilenceHeld = false; // 新しい曲は実効音量で鳴らす
   if (!bgm || !bgmActive || muted) { setBgmTrack(nextSrc); return; }
   const token = ++bossBgmFadeToken;
-  const startVol = effectiveBgmVolume() * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
+  // 無音の保持中だった時は、今の音量(0)から落とす=一度戻ってから消える段差を作らない。
+  const startVol = wasHeld ? currentBgmLevel() : effectiveBgmVolume() * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
   const t0 = performance.now();
   const step = () => {
     if (token !== bossBgmFadeToken || !bgm) return;
@@ -1190,6 +1198,7 @@ export const crossToBossBgm = (variant: string, fadeOutMs = 800): void => {
 export const fadeOutBgmToSilence = (fadeMs = 800): void => {
   ensureBgm();
   if (!bgm || !bgmActive || muted) return;
+  if (bgmSilenceHeld) return; // 既に無音で保持している(スリィエル撃破後のEX)=鳴らし直してから落とす段差を作らない
   const token = ++bossBgmFadeToken;
   const startVol = effectiveBgmVolume() * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
   const t0 = performance.now();
@@ -1204,6 +1213,31 @@ export const fadeOutBgmToSilence = (fadeMs = 800): void => {
 };
 
 /**
+ * ★今の曲を `fadeMs` かけて無音まで落とし、**次の曲が始まるまで無音のまま保持する**
+ * (社長指示2026-10-14「exステージ、スリィエル倒したら一旦bgmをフェードアウト」)。
+ * `fadeOutBgmToSilence` との違いは保持: 落とした後に再生の掛け直し・音量設定が走っても曲は戻らない。
+ * 外れるのは `startBossBgmNow` / `crossToBossBgm` / `setBgmScene`(リトライ・メニュー復帰)。
+ */
+export const holdBgmSilence = (fadeMs = 3000): void => {
+  ensureBgm();
+  if (bgmSilenceHeld) return;
+  const startVol = currentBgmLevel();
+  bgmSilenceHeld = true;
+  if (!bgm || !bgmActive || muted) return;
+  const token = ++bossBgmFadeToken;
+  const t0 = performance.now();
+  const step = () => {
+    if (token !== bossBgmFadeToken || !bgm || !bgmSilenceHeld) return;
+    const k = Math.min(1, (performance.now() - t0) / Math.max(1, fadeMs));
+    const e = 1 - (1 - k) * (1 - k); // 聞こえ方は頭で大きく落ちて、尾をゆっくり引く
+    const v = startVol * (1 - e);
+    if (bgmGain) bgmGain.gain.value = v; else bgm.volume = v;
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+};
+
+/**
  * 後半=**次の曲を実効音量で即始める**(フェードイン無し=社長の掟「フェードせずにはっきり流し始めて」)。
  * 走っているフェードはトークンで打ち切る(無音のまま置き去りにしない)。
  * 同じ曲を指していても `setBgmTrack` → `playBgmRobust` が音量を実効値へ戻すので、
@@ -1211,6 +1245,7 @@ export const fadeOutBgmToSilence = (fadeMs = 800): void => {
  */
 export const startBossBgmNow = (variant: string): void => {
   ensureBgm();
+  bgmSilenceHeld = false;
   const nextSrc = GAME_BGM[variant] ?? GAME_BGM.default;
   bgmBaseTrack = nextSrc;
   currentGameVariant = variant;
@@ -1222,6 +1257,7 @@ export const startBossBgmNow = (variant: string): void => {
 // menu→game でステージ曲へ、game→menu でタイトル曲へ自動で差し替わる(applyDanceAudio が bgmBaseTrack を流す)。
 // ブラウザの自動再生制限で menu の初回はユーザー操作まで鳴らないことがあるため、初回タップで再度呼ぶ。
 export const setBgmScene = (scene: 'menu' | 'game' | 'off', variant: string = 'default') => {
+  bgmSilenceHeld = false; // 場面が変わったら無音の保持は外す(リトライ・メニュー復帰で曲が戻る)
   if (scene === 'off') { releaseDeepReverseBgm(); stopCorridorRadioMix(); void setBgmActive(false); return; }
   if (scene === 'game') {
     if (variant !== currentGameVariant) { releaseDeepReverseBgm(); stopCorridorRadioMix(); currentGameVariant = variant; }
