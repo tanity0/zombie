@@ -4488,7 +4488,21 @@ const spawnKillSlashFx = (
   });
 };
 
-const grantMeleeKillRewards = (
+/**
+ * ★死神を倒した時の報い(スキル「死神」習得+年表「死神を討伐」+初回の習得表示)。**撃破の経路を問わずここ1本**
+ * (社長指示2026-10-14「死神の近接で倒した記録が年表に残らない件 → 直して」)。
+ * 旧: 銃・接触・爆発などの経路(damageEnemy)にだけ書かれていて、近接の経路(grantMeleeKillRewards)には無かった
+ *    =近接で倒すと年表に刻まれず、スキルも手に入らなかった。
+ */
+export const grantReaperDefeatRewards = (get: () => GameState, at: { x: number; y: number }): void => {
+  const already = get().ownedSkills.includes('reaper');
+  get().grantSkill('reaper');
+  // 歴史年表: 死神討伐を即載せ(社長決定v0.25.1628。スキル付与と同じA方式=撃破の瞬間に永続)。
+  recordChronicle(getSelectedStageId(), 'reaper', 'reaper', '死神を討伐');
+  if (!already) get().spawnCallout(at.x, at.y - 20, 'スキル「死神」習得！', '#c084fc', { scale: 1.2 });
+};
+
+export const grantMeleeKillRewards = (
   get: () => GameState,
   killed: { enemy: Enemy; finisher: boolean }[],
   player: Player,
@@ -4523,6 +4537,8 @@ const grantMeleeKillRewards = (
     // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
     // PACING_PUZZLE.md §14-4-3(使者・hangedman): 計測(killTelemetry)の対象外(除外リスト)。
     if (!isHangedman(enemy.type)) recordKill(enemy.type, 'melee', get().gameTime);
+    // 死神を近接で倒した=銃の経路と同じ報い(スキル「死神」・年表)。2026-10-14 まで近接ではここが抜けていた。
+    if (isReaperFamily(enemy.type)) grantReaperDefeatRewards(get, { x: enemy.x + enemy.width / 2, y: enemy.y });
     // BOT_AND_GHOST.md §2.10 G5: ボス撃破の通知(記録専用・挙動不変)。近接全経路(通常近接カウンター/
     // 刀/鞭/シールドバッシュ/投擲スケボー/分身)はこのヘルパーを通るのでここ1箇所で拾える
     // (gun/接触/爆発/DoT/カウンター等の非近接経路は damageEnemy 側で同様に通知)。
@@ -13493,16 +13509,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // 死神を倒したらスキル「死神」を習得(ガチャ非排出。撃破でのみ解禁)。未所持時のみ告知。
-    if (reaperDefeated) {
-      const already = get().ownedSkills.includes('reaper');
-      get().grantSkill('reaper');
-      // 歴史年表: 死神討伐を即載せ(社長決定v0.25.1628。スキル付与と同じA方式=撃破の瞬間に永続)。
-      recordChronicle(getSelectedStageId(), 'reaper', 'reaper', '死神を討伐');
-      if (!already) {
-        const p = reaperDefeated as { x: number; y: number };
-        get().spawnCallout(p.x, p.y - 20, 'スキル「死神」習得！', '#c084fc', { scale: 1.2 });
-      }
-    }
+    if (reaperDefeated) grantReaperDefeatRewards(get, reaperDefeated as { x: number; y: number });
 
     // §6.24 M48「使役」: 20%抽選(D1対象は set() 内で既に絞り込み済み)。既に1体いる時は抽選しない
     // =先着1体を維持(D3)。錬金術の召喚と同じ枠(state.summons)へ persistent:true で1体追加する

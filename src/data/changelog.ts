@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5036', items: ['深層で追ってくる死神を近接で倒しても、スキル「死神」の習得と年表の記録が残らなかった。直った'] },
   { version: '0.25.5035', items: ['EXクリア後の調査記録に、右下のスキップが付いた。PCは Esc でも飛ばせる'] },
   { version: '0.25.5034', items: ['ゾンビは噛める距離まで歩いて来ると、頭を反らせて固まり、赤く二度光る', '光った直後に一歩踏み込んで噛み、すかさずこちらへ向き直ってもう一度噛む'] },
   { version: '0.25.5033', items: ['ゲーム内容の変更はありません'] },
