@@ -1684,6 +1684,20 @@ describe('playerTraits: bossStylesの旧EXスロットキー移行', () => {
     expect(raw.bossStyles['phillboss@stage-ex1']).toEqual({ samples: 3 });
   });
 
+  // ★v0.25.5050(検収監査A-3): v0.25.5049 まで bossStyleSlotKey が型名 'phillboss' を返していた間の記録も同じ新キーへ。
+  it('型名だけの旧キー(phillboss)も新キーへ移行する。両方あれば新しい方(at)を残す', () => {
+    const map = installStorage();
+    map.set('zombie-ghost-profile-v1', JSON.stringify({
+      v: 1, runs: 1, reactionMs: 500, counterChance: 0.5, preferredDist: 100, meleeBias: 0.5,
+      mobility: 0.5, hitsPerMin: 1,
+      bossStyles: { phillboss: { samples: 4, at: 20 }, 'phillboss@stage-ex1': { samples: 5, at: 10 } },
+    }));
+    const p = loadPlayerProfile()!;
+    expect(p.bossStyles?.phillboss).toBeUndefined();
+    expect(p.bossStyles?.['phillboss@stage-ex1']).toEqual({ samples: 4, at: 20 });
+    expect(bossStyleSlotKey('phillboss', 'stage-ex1')).toBe('phillboss@stage-ex1'); // 以後はこのキーで書く
+  });
+
   it('旧キーが無ければ何もしない(すでに移行済み/新規プレイヤー)', () => {
     installStorage();
     runClearSession([{ type: 'thor', stageId: 'stage-1' }]);

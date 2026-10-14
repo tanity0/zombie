@@ -11,7 +11,7 @@
 // メーターを下げて出撃すれば無強化(スコア補正の縛りと同じ読み方)。スキル・武器・サブウェポンは問わない。
 import type { PlayerUpgradeState } from '../utils/playerUpgrades';
 import { PLAYER_UPGRADE_IDS, PLAYER_UPGRADE_MAX_LEVEL } from './playerUpgrades';
-import { SKILL_KEYS, RETIRED_SKILLS, NEW_SLEEPING_SKILLS, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, RETIRED_SUB_WEAPONS, STAGES } from './campaign';
+import { SKILL_KEYS, RETIRED_SKILLS, NEW_SLEEPING_SKILLS, POLICE_REWARD_SKILLS, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, RETIRED_SUB_WEAPONS, STAGES } from './campaign';
 import { BOSS_UNLOCK, STORE_SOLD_KEYS } from './weaponSlots';
 import { ARCHIVE_RECORDS } from './storyArchive';
 import { GHOST_DOSSIER_SLOTS } from '../utils/ghostDossier';
@@ -42,19 +42,20 @@ export const FEAT_STAGE_ID = 'feat';
 // ---- 各実績の「全部」の集合(台帳から導く=手で列挙しない) ----
 /** 本編ステージ(訓練は除く)。 */
 export const FEAT_MAIN_STAGE_IDS: readonly string[] = STAGES.filter(s => s.kind === 'main' && s.id !== 'stage-tutorial').map(s => s.id);
-/** 守護霊の討伐記録スロット=ソロ撃破の対象ボス(アクラシエルは記録枠が無いので対象外)。 */
-export const FEAT_BOSS_SLOT_KEYS: readonly string[] = GHOST_DOSSIER_SLOTS.map(s => s.slotKey);
-/** いま入手できるスキル全て(退役・未配線は除く)。 */
-export const FEAT_ALL_SKILLS: readonly SkillKey[] = SKILL_KEYS.filter(k => !RETIRED_SKILLS.includes(k) && !NEW_SLEEPING_SKILLS.includes(k));
+/** 守護霊の討伐記録スロット=ソロ撃破の対象ボス(アクラシエルは記録枠が無いので対象外)。
+ * ★検収監査A-2: 'giantbat@stage-2' は研究所に城ボスが居ない(bossPractice/gauntlet「城ボス不在」)=誰にも倒せないので外す。 */
+export const FEAT_BOSS_SLOT_KEYS: readonly string[] = GHOST_DOSSIER_SLOTS.map(s => s.slotKey).filter(k => k !== 'giantbat@stage-2');
+/** 永続で所持できるスキル全て(退役・未配線を除く。★検収監査A-4: 警察署の3種はラン内だけの付与で所持リストに残らない=除く)。 */
+export const FEAT_ALL_SKILLS: readonly SkillKey[] = SKILL_KEYS.filter(k =>
+  !RETIRED_SKILLS.includes(k) && !NEW_SLEEPING_SKILLS.includes(k) && !POLICE_REWARD_SKILLS.includes(k));
 /** 開発施設の棚に並ぶサブウェポン全て(クラス固有・退役は除く)。 */
 export const FEAT_ALL_SUBS: readonly SubWeaponKey[] = SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k));
 /** 購入(開発)できる武器全て=ボス設計図の武器+店売り。小烏丸は別台帳(kogarasuUnlocked)。 */
 export const FEAT_ALL_WEAPON_KEYS: readonly string[] = [...new Set([...Object.values(BOSS_UNLOCK), ...STORE_SOLD_KEYS])];
 export const FEAT_ALL_ARCHIVE_IDS: readonly string[] = ARCHIVE_RECORDS.map(r => r.id);
 
-/** 討伐記録のスロットキーと同じ規則(フィルだけ 'phillboss@stage-ex1'=playerTraits の移行後キー)。 */
-export const featBossSlotKey = (type: EnemyType, stageId: string): string =>
-  type === 'phillboss' ? 'phillboss@stage-ex1' : bossStyleSlotKey(type, stageId);
+/** 討伐記録(bossStyles)と同じスロットキー=唯一の規則 bossStyleSlotKey をそのまま使う(別の規則を作らない)。 */
+export const featBossSlotKey = (type: EnemyType, stageId: string): string => bossStyleSlotKey(type, stageId);
 
 /** 無強化=メーターが全系統0。 */
 export const isNoUpgradeState = (u: PlayerUpgradeState): boolean =>
@@ -103,8 +104,8 @@ export interface FeatSnapshot {
   unlockedWeaponKeys: readonly string[]; // 購入済みユニーク武器
   kogarasuUnlocked: boolean;
   purchasedSubLevels: Readonly<Partial<Record<SubWeaponKey, number>>>;
-  clearedStageIds: readonly string[];
-  endingSeen: boolean;
+  /** 本物のクリアだけが書く集合(missionId=`${stageId}:main`)。開発用の全開放(unlockAllStages)はここには書かない(検収監査A-5)。 */
+  clearedMissionIds: readonly string[];
 }
 
 const hasAll = (have: readonly string[], need: readonly string[]): boolean => {
@@ -123,7 +124,7 @@ export const achievedFeats = (s: FeatSnapshot): FeatKey[] => {
   if (hasAll(s.ownedSkills, FEAT_ALL_SKILLS)) out.push('skills-all');
   if (hasAll(s.unlockedWeaponKeys, FEAT_ALL_WEAPON_KEYS) && s.kogarasuUnlocked) out.push('weapons-all');
   if (FEAT_ALL_SUBS.every(k => (s.purchasedSubLevels[k] ?? 0) >= 1)) out.push('subs-all');
-  if (s.endingSeen || s.clearedStageIds.includes('stage-7')) out.push('story-clear');
-  if (s.clearedStageIds.includes('stage-ex1')) out.push('ex-clear');
+  if (s.clearedMissionIds.includes('stage-7:main')) out.push('story-clear');
+  if (s.clearedMissionIds.includes('stage-ex1:main')) out.push('ex-clear');
   return out;
 };

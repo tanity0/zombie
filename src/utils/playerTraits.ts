@@ -343,15 +343,25 @@ const isValidProfile = (v: unknown): v is PlayerProfile => {
 // PACING_PUZZLE.md §10-12#4/§10-14#10(EXボス「フィル(変異体)」バッチ1): bossStylesのスロットキーも
 // ghostDossier/bossEncounterと同じく 'giantbat@stage-ex1' → 'phillboss@stage-ex1' へ読み替える
 // (初回ロード時に1度だけ移行して旧キーを削除=恒久2キー併存を避ける)。
-const LEGACY_PHILLBOSS_STYLE_KEY = 'giantbat@stage-ex1';
+// ★v0.25.5050(検収監査A-3): bossStyleSlotKey が v0.25.5049 まで型名 'phillboss' を返していたため、その間の撃破は
+// 'phillboss' キーで保存されている。これも同じ移行で 'phillboss@stage-ex1' へ寄せる(旧キーは2種)。
+const LEGACY_PHILLBOSS_STYLE_KEYS = ['giantbat@stage-ex1', 'phillboss'] as const;
 const PHILLBOSS_STYLE_KEY = 'phillboss@stage-ex1';
 const migrateLegacyPhillbossStyle = (
   bossStyles: Record<string, BossStyleSlot> | undefined,
 ): { styles: Record<string, BossStyleSlot> | undefined; changed: boolean } => {
-  if (!bossStyles || !(LEGACY_PHILLBOSS_STYLE_KEY in bossStyles)) return { styles: bossStyles, changed: false };
-  const { [LEGACY_PHILLBOSS_STYLE_KEY]: legacy, ...rest } = bossStyles;
-  // 新キーに既に記録がある(重複保存等の異常系)なら、既存の新キーを優先し旧キーはただ捨てる。
-  return { styles: { ...rest, [PHILLBOSS_STYLE_KEY]: rest[PHILLBOSS_STYLE_KEY] ?? legacy }, changed: true };
+  if (!bossStyles) return { styles: bossStyles, changed: false };
+  let styles = bossStyles;
+  let changed = false;
+  for (const legacyKey of LEGACY_PHILLBOSS_STYLE_KEYS) {
+    if (!(legacyKey in styles)) continue;
+    const { [legacyKey]: legacy, ...rest } = styles;
+    // 新キーに既に記録がある(重複保存等の異常系)なら、新しい方(at が大きい方)を残す。
+    const cur = rest[PHILLBOSS_STYLE_KEY];
+    styles = { ...rest, [PHILLBOSS_STYLE_KEY]: cur && cur.at >= legacy.at ? cur : legacy };
+    changed = true;
+  }
+  return { styles, changed };
 };
 
 /** 保存済みプロファイル。無ければ null(G2側が既定プロファイルへフォールバックする)。 */

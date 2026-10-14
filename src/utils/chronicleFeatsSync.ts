@@ -4,7 +4,7 @@
 import { useGameStore } from '../store/gameStore';
 import { loadStoryArchive } from '../data/storyArchive';
 import { loadPlayerProfile } from './playerTraits';
-import { getClearedStages, getStoryFlags, getWeaponUnlocks, isKogarasuUnlocked, recordChronicleGlobalFirst } from '../data/progress';
+import { getClearedMissions, getWeaponUnlocks, isKogarasuUnlocked, recordChronicleGlobalFirst } from '../data/progress';
 import { achievedFeats, loadNoUpgradeLedger, FEAT_LABELS, FEAT_STAGE_ID, type FeatKey, type FeatSnapshot } from '../data/chronicleFeats';
 
 export const buildFeatSnapshot = (): FeatSnapshot => {
@@ -18,8 +18,7 @@ export const buildFeatSnapshot = (): FeatSnapshot => {
     unlockedWeaponKeys: [...getWeaponUnlocks()],
     kogarasuUnlocked: isKogarasuUnlocked(),
     purchasedSubLevels: st.purchasedSubLevels,
-    clearedStageIds: [...getClearedStages()],
-    endingSeen: getStoryFlags().endingSeen,
+    clearedMissionIds: [...getClearedMissions()], // 本物のクリアだけ(開発用の全開放・?ending=1 では立たない)
   };
 };
 

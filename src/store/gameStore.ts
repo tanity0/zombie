@@ -4117,8 +4117,9 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
       phrase
     );
     // 年表の実績「無強化でボスを全撃破」(社長指示2026-10-14): メーター全0のランで倒したボスを台帳へ
-    // (討伐記録と同じスロットキー。ハンター・イベント産・グレン第1形態は対象外=記録の対象ボスと同じ集合)。
-    if (enemy.type !== 'hunter' && !enemy.fromEvent && isFinalBossKill(enemy)
+    // (討伐記録と同じスロットキー。ハンター・イベント産・グレン第1形態は対象外)。
+    // ★検収監査A-1: isFinalBossKill は城ボス専用の述語(giantbat && 第1形態でない)なので、城ボス以外にはそのまま掛けない。
+    if (enemy.type !== 'hunter' && !enemy.fromEvent && (enemy.type !== 'giantbat' || isFinalBossKill(enemy))
       && !isPracticeRun() && !BOSS_TEST_RUN && isNoUpgradeState(get().playerUpgrades)) {
       noteNoUpgradeBossKill(featBossSlotKey(enemy.type, getSelectedStageId()));
     }

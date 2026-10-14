@@ -6,6 +6,7 @@ import {
   loadNoUpgradeLedger, noteNoUpgradeBossKill, noteNoUpgradeStageClear, clearNoUpgradeLedger, type FeatSnapshot,
 } from './chronicleFeats';
 import { PLAYER_UPGRADE_IDS, PLAYER_UPGRADE_MAX_LEVEL } from './playerUpgrades';
+import { GHOST_DOSSIER_SLOTS } from '../utils/ghostDossier';
 import type { PlayerUpgradeState } from '../utils/playerUpgrades';
 
 const installStorage = () => {
@@ -26,8 +27,7 @@ const full = (): FeatSnapshot => ({
   unlockedWeaponKeys: [...FEAT_ALL_WEAPON_KEYS],
   kogarasuUnlocked: true,
   purchasedSubLevels: Object.fromEntries(FEAT_ALL_SUBS.map(k => [k, 1])),
-  clearedStageIds: ['stage-7', 'stage-ex1'],
-  endingSeen: true,
+  clearedMissionIds: ['stage-7:main', 'stage-ex1:main'],
 });
 
 describe('chronicleFeats: 判定', () => {
@@ -36,7 +36,7 @@ describe('chronicleFeats: 判定', () => {
     expect(FEAT_KEYS).toHaveLength(10);
     expect(achievedFeats({
       unlockedArchiveIds: [], soloBossSlotKeys: [], noUpgrade: { stages: [], bosses: [] }, upgrades: upgrades(0, 0),
-      ownedSkills: [], unlockedWeaponKeys: [], kogarasuUnlocked: false, purchasedSubLevels: {}, clearedStageIds: [], endingSeen: false,
+      ownedSkills: [], unlockedWeaponKeys: [], kogarasuUnlocked: false, purchasedSubLevels: {}, clearedMissionIds: [],
     })).toEqual([]);
   });
   it('1つ欠けるとその実績だけ落ちる(台帳の「全部」は手で列挙していない=台帳から導く)', () => {
@@ -50,18 +50,27 @@ describe('chronicleFeats: 判定', () => {
     expect(drop({ kogarasuUnlocked: false })).not.toContain('weapons-all');
     expect(drop({ unlockedWeaponKeys: FEAT_ALL_WEAPON_KEYS.slice(1) })).not.toContain('weapons-all');
     expect(drop({ purchasedSubLevels: Object.fromEntries(FEAT_ALL_SUBS.slice(1).map(k => [k, 1])) })).not.toContain('subs-all');
-    expect(drop({ clearedStageIds: ['stage-ex1'], endingSeen: false })).not.toContain('story-clear');
-    expect(drop({ clearedStageIds: ['stage-7'] })).not.toContain('ex-clear');
+    expect(drop({ clearedMissionIds: ['stage-ex1:main'] })).not.toContain('story-clear');
+    expect(drop({ clearedMissionIds: ['stage-7:main'] })).not.toContain('ex-clear');
   });
-  it('最大強化は「買った段」で見る(メーターを下げていても達成)。ストーリークリアはエンディング既読でも可', () => {
+  it('最大強化は「買った段」で見る(メーターを下げていても達成)。ストーリー/EXは本物のクリア集合(missionId)だけを見る', () => {
     expect(achievedFeats({ ...full(), upgrades: upgrades(PLAYER_UPGRADE_MAX_LEVEL, 0) })).toContain('upgrades-max');
-    expect(achievedFeats({ ...full(), clearedStageIds: [], endingSeen: true })).toContain('story-clear');
+    // 検収監査A-5: 開発用の全開放はステージ集合しか書かないので、missionId を見る限り偽達成にならない。
+    expect(achievedFeats({ ...full(), clearedMissionIds: [] })).not.toContain('story-clear');
   });
-  it('対象の集合: 本編7ステージ(訓練は除く)/ボス16枠/武器は設計図+店売り/資料は台帳全件', () => {
+  it('対象の集合: 本編7ステージ(訓練は除く)/ボス16枠(研究所の城ボス枠は無い)/武器は設計図+店売り/資料は台帳全件', () => {
     expect(FEAT_MAIN_STAGE_IDS).toEqual(['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-6', 'stage-7']);
+    expect(FEAT_BOSS_SLOT_KEYS).toHaveLength(16);
     expect(FEAT_BOSS_SLOT_KEYS).toContain('giantbat@stage-7');
     expect(FEAT_BOSS_SLOT_KEYS).toContain('phillboss@stage-ex1');
+    expect(FEAT_BOSS_SLOT_KEYS).not.toContain('giantbat@stage-2'); // 研究所に城ボスは居ない(検収監査A-2)
     expect(FEAT_BOSS_SLOT_KEYS).not.toContain('acrasiel');
+    // ★配線の一致(検収監査B-4): 対象の各キーは、実際に記録側が生成するキー(bossStyleSlotKey)と同じ規則で作れる。
+    for (const s of GHOST_DOSSIER_SLOTS) {
+      if (s.slotKey === 'giantbat@stage-2') continue;
+      expect(featBossSlotKey(s.bossType, s.stageId ?? 'stage-5'), s.slotKey).toBe(s.slotKey);
+    }
+    expect(FEAT_ALL_SKILLS).not.toContain('poi-bombing'); // 警察署の3種はラン内だけ(検収監査A-4)
     expect(FEAT_ALL_WEAPON_KEYS).toContain('handgun-t1-crossbow');
     expect(FEAT_ALL_SUBS).not.toContain('shijin'); // 退役
     expect(FEAT_ALL_SKILLS).not.toContain('scrap-builder'); // 退役

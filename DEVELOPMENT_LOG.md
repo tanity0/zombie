@@ -1,5 +1,27 @@
 # Development Log
 
+## v0.25.5050 — 年表の実績: 検収監査(A)5件の反映+フィルの守護霊記録キーの統一【2026-10-15 01:38 JST】
+- 検収監査(Fable・v0.25.5049 の成果物)1巡: (A)5 / (B)5 / (C)4。判断: (A)が出たので直す。次の巡は回さない(全て集合と条件の不一致で、
+  配線一致のテストを足した=新しい角度は残っていない)。
+- (A-1) 直した: 無強化のボス記録の条件に `isFinalBossKill`(城ボス専用=giantbat以外は常にfalse)を掛けていて、**城ボス以外が一生積まれなかった**
+  → `(type !== 'giantbat' || isFinalBossKill)`(設計図の付与と同じ形)。
+- (A-2) 直した: 対象ボスに研究所の城ボス枠 `giantbat@stage-2`(存在しない)が入っていて到達不能 → 除外(16枠)。
+- (A-3) 直した(根本): `bossStyleSlotKey` がフィルだけ型名 'phillboss' を返し、討伐記録画面/bossEncounter/duoRecords/固定守護霊の
+  'phillboss@stage-ex1' と食い違っていた=**守護霊メニューでフィルの新規記録が引けない既存バグ**+実績が到達不能。規則を
+  'phillboss@stage-ex1' に統一し、旧キー 'phillboss' は読み込み時に移行(両方あれば at の新しい方)。`featBossSlotKey` は同じ規則をそのまま使う。
+- (A-4) 直した: 全スキルの集合から警察署の3種(poi-*=ラン内だけの付与・所持リストに残らない)を除外。
+- (A-5) 直した: ストーリー/EXクリアの判定元を `getClearedStages`(開発用の全開放ボタンが書く)→ `getClearedMissions`(本物のクリアだけが書く
+  `stage-7:main`/`stage-ex1:main`)へ。`endingSeen`(`?ending=1` でも立つ)は見ない。
+- (B) 積む: B-1 ソロ撃破は「守護霊へ採用」した撃破だけ(採用を外すと数えない)/ B-2 武器解放ALL(開発)経由の購入は達成扱い/ B-5 打刻が「拠点へ戻った時」になる
+  (討伐記録・資料の確定はリザルトの後)。
+- (C) コメント4件を実態へ打ち直し。
+- テスト: 対象キーが記録側の規則(bossStyleSlotKey)と一致することを全枠で固定(B-4)、phillboss 旧キーの移行、missionId 判定。関連12ファイル緑 /
+  typecheck / eslint 0。
+- 自己点検: 記録・表示のみ(憲法第4条/第5条に抵触なし)。
+- 状態変化: 年表の実績 → 実機確認待ち(社長)。
+- 変更ファイル: src/data/chronicleFeats.ts / chronicleFeats.test.ts / src/utils/chronicleFeatsSync.ts / src/utils/ghostSlot.ts / src/utils/playerTraits.ts /
+  playerTraits.test.ts / src/store/gameStore.ts / src/data/changelog.ts / package.json / DEVELOPMENT_LOG.md
+
 ## v0.25.5049 — 歴史年表に実績10件(社長指示「年表に、資料を全て解放…なども入れて」)【2026-10-15 01:40 JST】
 - 社長指示「年表に、資料を全て解放 / ボスをソロで全撃破 / 無強化で全ステージクリア / 無強化でボスを全撃破 / 全ステータス最大強化 /
   全スキル解放 / 全武器解放(購入) / 全サブウェポン解放 / ストーリークリア / EXストーリークリア なども入れて」。
