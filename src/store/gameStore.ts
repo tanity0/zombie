@@ -6691,7 +6691,7 @@ interface GameState {
                                                           // 既についたか。falseのまま次ランへ行くと持ち越し(因縁+1)
   lastDamagerType: EnemyType | null;                     // 直近の被弾元の型(宿敵昇格判定用)
   lastDamagerWasNamed: boolean;                          // 直近の被弾元が現在の宿敵インスタンスそのものだったか
-  lastDamagerWelcome: boolean;                           // 直近の被弾元がウェルカム台本の個体か(宿敵に昇格させない・社長指示2026-10-13)
+  lastDamagerWelcome: boolean;                           // 直近の被弾元がウェルカム台本/イベント湧き(fromEvent)の個体か(宿敵に昇格させない・社長指示2026-10-13/10-15)
   lastDamagerId: string | null;                          // 直近の被弾元の個体id(リザルトの「倒した相手」の絵=男女などの描き分けを個体で引く)
   // 社長指示2026-10-09: 死亡時にリザルトへ「次の出撃で宿敵になる」を出すための、この死で起きた昇格(ラン内限定)。
   namedFoePromotion: { name: string; kind: 'new' | 'grudge' } | null;

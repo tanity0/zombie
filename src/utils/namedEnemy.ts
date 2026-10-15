@@ -178,10 +178,10 @@ export const resolveDamager = (
   damagerType: EnemyType | undefined,
   damagerWasNamed: boolean | undefined,
   ids: readonly (string | undefined)[],
-  enemies: readonly { id: string; type: EnemyType; isNamed?: boolean; isWelcome?: boolean }[],
+  enemies: readonly { id: string; type: EnemyType; isNamed?: boolean; isWelcome?: boolean; fromEvent?: boolean }[],
   hintType?: EnemyType,
 ): { type: EnemyType | null; wasNamed: boolean; id: string | null; welcome: boolean } => {
-  let found: { id: string; type: EnemyType; isNamed?: boolean; isWelcome?: boolean } | undefined;
+  let found: { id: string; type: EnemyType; isNamed?: boolean; isWelcome?: boolean; fromEvent?: boolean } | undefined;
   for (const id of ids) {
     if (id === undefined) continue;
     found = enemies.find(e => e.id === id);
@@ -192,8 +192,10 @@ export const resolveDamager = (
     type: damagerType ?? found?.type ?? hintType ?? null,
     wasNamed: damagerWasNamed ?? !!found?.isNamed,
     id: found?.id ?? firstId,
-    // ウェルカム(ステージ入りの関門)の個体か。宿敵の昇格から外すのに使う(社長指示2026-10-13)。
-    welcome: !!found?.isWelcome,
+    // 昇格から外す個体か(社長指示2026-10-13「ウェルカムイベントの個体は宿敵にならない様に」+2026-10-15「ゲートの敵とか、
+    // イベント内の敵は宿敵化しないようにして」): ウェルカム台本の個体、および囲いゲート1/ゲート2/二人組クエスト/救助/
+    // ウェルカム等の**イベントが湧かせた個体**(fromEvent)。同じ型でも通常湧きの個体に倒されれば従来どおり昇格する。
+    welcome: !!found?.isWelcome || !!found?.fromEvent,
   };
 };
 
@@ -201,8 +203,9 @@ export const decidePromotionOnDeath = (
   killerType: EnemyType | null | undefined,
   killerWasNamed: boolean,
   redNightActive: boolean,
-  // 社長指示2026-10-13「ウェルカムイベントの個体は宿敵にならない様にして」: 型ではなく**個体**で外す
-  // (同じ型でもウェルカム以外の個体に倒されれば従来どおり昇格する)。既存の宿敵本人なら因縁+1は従来どおり。
+  // 社長指示2026-10-13「ウェルカムイベントの個体は宿敵にならない様にして」+2026-10-15「ゲートの敵とか、イベント内の敵は
+  // 宿敵化しないようにして」: 型ではなく**個体**で外す(ウェルカム/イベント湧き=resolveDamager の welcome)。
+  // 同じ型でも通常湧きの個体に倒されれば従来どおり昇格する。既存の宿敵本人なら因縁+1は従来どおり。
   killerWasWelcome = false,
   rand: () => number = Math.random,
 ): PromotionOutcome => {

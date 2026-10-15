@@ -160,6 +160,13 @@ describe('resolveDamager(倒した相手の解決・v0.25.4997)', () => {
   it('ウェルカムの個体なら welcome=true', () => {
     expect(resolveDamager(undefined, undefined, ['w1'], [{ id: 'w1', type: 'zombie' as const, isWelcome: true }]).welcome).toBe(true);
   });
+  // 社長指示2026-10-15「ゲートの敵とか、イベント内の敵は宿敵化しないようにして」: イベント湧き(fromEvent)も同じ扱い。
+  it('イベント湧き(囲いゲート/二人組クエスト/救助=fromEvent)の個体も welcome=true=昇格しない', () => {
+    expect(resolveDamager(undefined, undefined, ['g1'], [{ id: 'g1', type: 'driller' as const, fromEvent: true }]).welcome).toBe(true);
+    expect(resolveDamager(undefined, undefined, ['n1'], [{ id: 'n1', type: 'driller' as const }]).welcome).toBe(false); // 通常湧きは従来どおり
+    expect(decidePromotionOnDeath('driller', false, false, true).kind).toBe('none');
+    expect(decidePromotionOnDeath('driller', false, false, false, () => 0).kind).toBe('overwrite');
+  });
 });
 
 describe('専用の tick で動くボス級は宿敵にならない(v0.25.4997)', () => {
