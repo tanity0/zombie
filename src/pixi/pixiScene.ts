@@ -14483,6 +14483,12 @@ export class PixiScene {
         this.shadowFootXOffsetState.delete(id); // ★D-2b
       }
     }
+    // ★v0.25.5055(ソーク実測: 敵8体で 90件まで増え続けた): 足元の平滑化の状態は**影の要求ごと**に書かれるのに、
+    // 消すのは上の「投影影の枠(shadowPoolV9)を捨てる時」だけだった=枠を持たない要求(簡易影・ボス等)の分が
+    // 敵が消えても一生残る。今フレームの要求に無い id は捨てる(次に現れた時は生の値から滑らかに収束するだけ)。
+    for (const id of this.shadowFootXOffsetState.keys()) {
+      if (!seen.has(id)) this.shadowFootXOffsetState.delete(id);
+    }
   }
 
   // ---- actors: player + enemies, Y-sorted by foot Y ------------------------
