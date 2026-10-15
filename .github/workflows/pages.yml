@@ -1,7 +1,7 @@
 name: Deploy to GitHub Pages
 on:
   push:
-    branches: [main, claude/chat-context-continuity-saxlH, claude/direction-shift]
+    branches: [main, claude/chat-context-continuity-saxlH]
     # Actions ストレージ対策(2026-10-15・社長報告「アクションストレージ 100%」): 文書だけの push では配信物が変わらないので
     # デプロイしない(1回のデプロイ=約400MBのアーティファクトを積む)。
     paths-ignore:
@@ -22,43 +22,27 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-# A/Bレース(v0.25.1369): Pagesサイトは1つしかないので、どちらの線がpushしても
-# 「旧線=/zombie/ 新線=/zombie/v2/」の両方を最新でビルドして合成デプロイする。
-# どちらのURLも常に生きる(奪い合いをなくす)。レース終了時に単一ビルドへ戻すこと。
+# A/Bレース(v0.25.1369)の合成デプロイ(旧線=/zombie/ + 新線=/zombie/v2/)は 2026-10-15 に単一ビルドへ戻した
+# (社長裁定・新線 claude/direction-shift は 2026-07-05 で更新停止。Actions ストレージ対策=アーティファクトを約400MB→約200MBに半減)。
 jobs:
   build:
     runs-on: ubuntu-latest
     outputs:
       artifact_id: ${{ steps.pages-artifact.outputs.artifact_id }}
     env:
-      # 公開URLのみ。Cloudflareの認証情報はGitHubへ渡さない。旧線/新線の両ビルドで同じ値を使う。
+      # 公開URLのみ。Cloudflareの認証情報はGitHubへ渡さない。
       GHOST_API_BASE: https://zombie-coop-signaling.tanity0-zombie.workers.dev
     steps:
       - uses: actions/checkout@v4
         with:
           ref: claude/chat-context-continuity-saxlH
-          path: line-old
-      - uses: actions/checkout@v4
-        with:
-          ref: claude/direction-shift
-          path: line-new
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
       - run: npm ci
-        working-directory: line-old
       - run: npm run build
-        working-directory: line-old
-      - run: npm ci
-        working-directory: line-new
-      - run: npm run build -- --base=/zombie/v2/
-        working-directory: line-new
-      - name: Merge new line under /v2/
-        run: |
-          mkdir -p line-old/dist/v2
-          cp -r line-new/dist/. line-old/dist/v2/
       - id: pages-artifact
         uses: actions/upload-pages-artifact@v3
-        with: { path: ./line-old/dist }
+        with: { path: ./dist }
 
   deploy:
     needs: build
