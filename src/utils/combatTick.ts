@@ -942,7 +942,7 @@ export const applyEnemyProjectileHits = (
         useGameStore.getState().damageSummon(dog.id, proj.damage * rnMult, proj.x + proj.width / 2, proj.y + proj.height / 2, `projectile:${proj.ownerType ?? 'unknown'}`);
         useGameStore.getState().removeProjectile(proj.id);
         const after = useGameStore.getState().summons.find(s => s.id === dog.id);
-        if (after && after.health < before.health) fx.spawnBurst(after.x + after.width / 2, after.y + after.height / 2, '#b91c1c', 4);
+        if (after && after.health < before.health) fx.spawnBurst(after.x + after.width / 2, after.y + after.height / 2, '#b91c1c', 9);
       }
     }
   }

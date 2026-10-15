@@ -804,8 +804,9 @@ const SCREAM_BUFF_WAVE_MAX_DELAY_MS = 900;
 const SUMMON_FADE_IN_MS = 360, SUMMON_FADE_OUT_MS = 600, SUMMON_RISE_PX = 10;
 /** 噛んだ後、次の噛みまでの間に加えて敵の方を向き続ける猶予(ms)。噛みが続く間は向きが揺れない。 */
 const SUMMON_BITE_FACE_GRACE_MS = 200;
-// research/HERO_DOG.md §7: 英雄の犬の歩きのコマを切り替える距離(px/コマ)。
-const HERO_DOG_STRIDE_PX = 12;
+// research/HERO_DOG.md §7: 英雄の犬の歩きのコマを切り替える距離(px/コマ)。2コマで1周≒体長(54px)。
+const HERO_DOG_STRIDE_PX = 26;
+const HERO_DOG_FADE_IN_MS = 120; // 走り込んで来るので湧きの演出は無し。縁の外から来た体を短く濃くするだけ
 const RARE_TORNADO_WIDTH_MULT = 1.4;
 /** 竜巻の高さ(幅に対する割合)。正方のままだと頂が地平線の先の空まで届く。 */
 const RARE_TORNADO_HEIGHT_FRAC = 0.62;
@@ -16412,9 +16413,15 @@ export class PixiScene {
     const dxm = last ? s.x - last.x : 0;
     const biting = s.biteTargetX !== undefined && s.lastContactAt !== undefined
       && Date.now() - s.lastContactAt < HERO_DOG_BITE_INTERVAL_MS + SUMMON_BITE_FACE_GRACE_MS;
+    const movingNow = Math.abs(dxm) > 0.05 || (last !== undefined && Math.abs(s.y - last.y) > 0.05);
+    // 止まっている時は主人の方を向く(到着時の向きで固まらない)。噛む間は敵の方、動いている間は動いた向き。
+    const pl = useGameStore.getState().player;
+    const dxPlayer = pl.x + pl.width / 2 - (s.x + s.width / 2);
     const faceRight = biting
       ? (s.biteTargetX as number) >= s.x + s.width / 2
-      : Math.abs(dxm) > 0.05 ? dxm > 0 : (last?.faceRight ?? true);
+      : Math.abs(dxm) > 0.05 ? dxm > 0
+      : (!movingNow && Math.abs(dxPlayer) > 8) ? dxPlayer > 0
+      : (last?.faceRight ?? true);
     this.summonMotionMemo.set(s.id, { x: s.x, y: s.y, faceRight });
     // 歩きのコマ: 進んだ距離で刻む。止まって少し経ったら0コマ目(立ち)。
     const px = view.walkPrevX, py = view.walkPrevY;
@@ -16433,21 +16440,23 @@ export class PixiScene {
     const hitT = sinceHit >= 0 && sinceHit < HIT_SHAKE_MS ? 1 - sinceHit / HIT_SHAKE_MS : 0;
     const shakeX = hitT > 0 ? Math.sin(sinceHit / 16) * HIT_SHAKE_PX * hitT : 0;
     const bornMs = now - s.createdAt;
-    const inT = Math.max(0, Math.min(1, bornMs / SUMMON_FADE_IN_MS));
+    const inT = Math.max(0, Math.min(1, bornMs / HERO_DOG_FADE_IN_MS));
     const outT = s.expiresAt === undefined ? 1 : Math.max(0, Math.min(1, (s.expiresAt - now) / SUMMON_FADE_OUT_MS));
-    const inE = 1 - (1 - inT) ** 3, outE = 1 - (1 - outT) ** 2;
-    const sinkY = (1 - inE) * SUMMON_RISE_PX + (1 - outE) * SUMMON_RISE_PX * 0.6;
-    // 走っている間は体がわずかに上下する(足の位相と同じ距離刻み)。止まっている間は速い呼吸(はぁはぁ)。
+    const inE = 1 - (1 - inT) ** 2, outE = 1 - (1 - outT) ** 2;
+    // 走っている間はギャロップの背の上下(足の位相と同じ距離刻み・大きく)。止まっている間は速い呼吸(はぁはぁ)。
     const bob = moving
-      ? Math.abs(Math.sin(((view.walkDist ?? 0) / HERO_DOG_STRIDE_PX) * Math.PI)) * 1.5
+      ? Math.abs(Math.sin(((view.walkDist ?? 0) / HERO_DOG_STRIDE_PX) * Math.PI)) * 3
       : Math.sin(now / 90) * 0.8;
-    view.sprite.position.set(Math.round(fb.footX + shakeX), Math.round(fb.footY + sinkY - bob));
+    view.sprite.position.set(Math.round(fb.footX + shakeX), Math.round(fb.footY - bob));
     view.container.zIndex = fb.footY;
-    // 透明度は目標へ寄せる(去りかけで満タンに戻った時に1フレームで元へ跳ばない)。
+    // 透明度は目標へ寄せる(去りかけで満タンに戻った時に1フレームで元へ跳ばない)。個体ごと・時間基準(fps に依らない)。
     const alphaGoal = inE * outE;
-    const prevA = this.heroDogAlphaMemo ?? alphaGoal;
-    view.container.alpha = prevA + (alphaGoal - prevA) * 0.2;
-    this.heroDogAlphaMemo = view.container.alpha;
+    const am = this.heroDogAlphaMemo;
+    const prevA = am && am.id === s.id ? am.a : alphaGoal;
+    const dtA = am && am.id === s.id ? Math.max(0, Math.min(100, now - am.t)) : 0;
+    const k = 1 - Math.exp(-dtA / 80);
+    view.container.alpha = prevA + (alphaGoal - prevA) * k;
+    this.heroDogAlphaMemo = { id: s.id, a: view.container.alpha, t: now };
     let drawnH = fb.boxH;
     if (tex) {
       view.sprite.texture = tex;
@@ -16472,7 +16481,7 @@ export class PixiScene {
     }
   }
 
-  private heroDogAlphaMemo: number | undefined;
+  private heroDogAlphaMemo: { id: string; a: number; t: number } | undefined;
   // 倒れ絵は生きている召喚と同じ ActorView(makeActor=actorLayer 直下の container+sprite)で描く。
   // ★actorLayer 直下に Sprite を直接置く形(守護霊の倒れ絵と同型)はヘッドレス(swiftshader)で1画素も描かれなかった(実測2026-10-15)。
   private heroDogDeathSpr: Sprite | null = null;
@@ -16498,7 +16507,6 @@ export class PixiScene {
     if (!this.heroDogDeathSpr) {
       const ns = new Sprite(tex);
       ns.anchor.set(0.5, 1);
-      ns.zIndex = 36;
       this.L.actorLayer.addChild(ns);
       this.heroDogDeathSpr = ns;
     }
@@ -16512,8 +16520,9 @@ export class PixiScene {
     spr.position.set(fb.footX, fb.footY);
     spr.scale.set((srcRight ? 1 : -1) * sc, sc);
     spr.rotation = (srcRight ? -1 : 1) * (Math.PI / 2) * fallE;
+    spr.zIndex = fb.footY; // 生きている召喚と同じ足元Yソート(奥の敵の後ろへ沈まない)
     spr.alpha = fade;
-    spr.tint = 0xc8c0b8;
+    spr.tint = 0xffffff; // 色は素のまま(「死=灰色」にしない)
     spr.visible = true;
   }
 

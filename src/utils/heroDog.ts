@@ -13,8 +13,11 @@ export const HERO_DOG_BITE_INTERVAL_MS = 600;
 export const HERO_DOG_RESPAWN_MS = 10000;   // 死んでから戻るまで(gameTime基準=ポーズ中は進まない)
 export const HERO_DOG_HUNT_RANGE = 300;     // 主人からこの距離内の敵を狙う
 export const HERO_DOG_LEASH = 380;          // 主人からこれより離れない(越えたら戻る)
-export const HERO_DOG_HEEL_GAP = 70;        // 狙いが無い時に主人の横で止まる間合い
-export const HERO_DOG_HEEL_START = 95;      // 止まっている犬が再び動き出す間合い(不感帯=主人の1歩で向き直らない)
+// 「横に付く」= 主人の向きの後ろ斜め(HEEL_OFFSET)が定位置。主人が歩けば並走し、止まれば横で止まる。
+export const HERO_DOG_HEEL_OFFSET_X = 48;   // 主人の向きと反対側(後ろ)へ
+export const HERO_DOG_HEEL_OFFSET_Y = 14;   // 少し手前(足元側)
+export const HERO_DOG_HEEL_GAP = 22;        // 定位置からこの距離内なら止まる
+export const HERO_DOG_HEEL_START = 50;      // 止まっている犬が再び動き出す、定位置からの距離(不感帯=主人の1歩で向き直らない)
 export const HERO_DOG_SPEED = 109;          // 最低速度(= PLAYER_BASE_SPEED(87)×1.25)。実際は主人の実効速度×1.15 まで上がる(heroDogSpeedFor)
 export const HERO_DOG_SPEED_MAX = HERO_DOG_SPEED * 1.8; // 上限(スケボーには追いつかない=降りれば追いつく)
 /** 犬の速度: 主人の実効移動速度(英雄・ランナー・装備込み)×1.15 と最低速度の大きい方。主人に置いて行かれない。 */
@@ -28,10 +31,16 @@ export const HERO_DOG_H = 22;
 export const HERO_DOG_HATE_MS = 5000;       // 噛まれた雑魚・強個体が犬を追う時間(噛むたび更新)。守護霊の GHOST_MOB_HATE_MS と同じ5秒
 export const HERO_DOG_LEAVE_MS = 700;       // HPが満タンでなくなって走り去る時間(薄れながら主人から離れる)
 export const HERO_DOG_ENTRY_DIST = 260;     // 現れる時は主人からこの距離の外から走り込む(最寄りの敵と反対側)
-export const HERO_DOG_FLINCH_PX = 14;       // 被弾でダメージ源と反対へ跳ね退く距離
+export const HERO_DOG_FLINCH_PX = 26;       // 被弾でダメージ源と反対へ跳ね退く距離(体長の半分=見える量)
 export const HERO_DOG_FLINCH_MS = 140;
-export const HERO_DOG_DEATH_HOLD_MS = 700;  // 倒れ絵を保つ時間
-export const HERO_DOG_DEATH_FADE_MS = 900;  // その後薄れる時間
+export const HERO_DOG_DEATH_HOLD_MS = 1600; // 倒れ絵を保つ時間(雑魚の死体より早く消えない)
+export const HERO_DOG_DEATH_FADE_MS = 1200; // その後薄れる時間
+export const HERO_DOG_LUNGE_MS = 110;       // 跳び付きから噛みが届くまで(跳んで→噛む。噛んでから跳ばない)
+// 社長指示2026-10-15「イヌが出てる時、拾うだけの犬が出ないようにして」: 英雄の犬が居る間、サブウェポン「ドッグ」の拾い物は
+// 英雄の犬が走って取りに行く(拾うだけの犬=dogFetch 効果は出さない)。綱(LEASH)は無視して取りに行く。
+export const HERO_DOG_FETCH_ARRIVE_PX = 26;     // 拾い物にこの距離まで寄ったら「着いた」(=回収)
+export const HERO_DOG_FETCH_TIMEOUT_MS = 3000;  // 着けなくてもこの時間で回収(安全網)
+export const HERO_DOG_FETCH_RETURN_MS = 400;    // 回収からCD開始までの一拍
 
 export const isHeroDog = (s: Pick<Summon, 'kind'>): boolean => s.kind === 'hero-dog';
 /** 去っている最中(HPが満タンでなくなった=走り去りながら薄れる)。噛まない・当たらない。 */
@@ -60,9 +69,9 @@ export const heroDogPresence = (i: {
  * そこから主人の横へ走り込む(=出現の慣性は走り込みで付く・地面から湧かない)。
  */
 export const heroDogEntryPoint = (
-  playerCx: number, playerCy: number, nearestEnemy: { cx: number; cy: number } | null,
+  playerCx: number, playerCy: number, nearestEnemy: { cx: number; cy: number } | null, playerFacing: 1 | -1 = 1,
 ): { cx: number; cy: number } => {
-  let dx = -1, dy = 0;
+  let dx = -playerFacing, dy = 0; // 敵が居なければ主人の背中側から
   if (nearestEnemy) {
     const ex = playerCx - nearestEnemy.cx, ey = playerCy - nearestEnemy.cy;
     const d = Math.hypot(ex, ey);
@@ -70,6 +79,10 @@ export const heroDogEntryPoint = (
   }
   return { cx: playerCx + dx * HERO_DOG_ENTRY_DIST, cy: playerCy + dy * HERO_DOG_ENTRY_DIST * 0.6 };
 };
+
+/** 「横に付く」定位置(主人の向きの後ろ斜め)。 */
+export const heroDogHeelPoint = (playerCx: number, playerCy: number, playerFacing: 1 | -1): { cx: number; cy: number } =>
+  ({ cx: playerCx - playerFacing * HERO_DOG_HEEL_OFFSET_X, cy: playerCy + HERO_DOG_HEEL_OFFSET_Y });
 
 /** 犬を作る(cx,cy=犬の中心)。見た目の参照元(reusedType)は使わない(描画は kind で分岐)。 */
 export const buildHeroDog = (cx: number, cy: number, now: number): Summon => ({
@@ -142,28 +155,35 @@ export const stepHeroDog = (
   target: { cx: number; cy: number } | null,
   dt: number,
   leaving = false,
+  // ドッグの拾い物へ走る(英雄の犬が代行)。敵の狙いより優先・綱を無視・拾い物のすぐ手前で止まる。
+  fetch: { cx: number; cy: number } | null = null,
+  // 主人の向き(定位置=背中側)。去る時の向き(leaveDir・単位ベクトル。未指定=主人から離れる向き)。
+  playerFacing: 1 | -1 = 1,
+  leaveDir: { x: number; y: number } | null = null,
 ): HeroDogStep => {
   const cx = dog.x + dog.width / 2, cy = dog.y + dog.height / 2;
   let vx = dog.vx ?? 0, vy = dog.vy ?? 0;
   const v0 = Math.hypot(vx, vy);
   let wantVx = 0, wantVy = 0;
   if (leaving) {
-    let ax = cx - playerCx, ay = cy - playerCy;
+    let ax = leaveDir ? leaveDir.x : cx - playerCx, ay = leaveDir ? leaveDir.y : cy - playerCy;
     const ad = Math.hypot(ax, ay);
-    if (ad < 0.001) { ax = -1; ay = 0; } else { ax /= ad; ay /= ad; }
+    if (ad < 0.001) { ax = -playerFacing; ay = 0; } else { ax /= ad; ay /= ad; }
     wantVx = ax * dog.speed; wantVy = ay * dog.speed;
   } else {
     const dPlayer = Math.hypot(playerCx - cx, playerCy - cy);
-    const useTarget = target !== null && dPlayer <= HERO_DOG_LEASH;
-    const gx = useTarget ? target.cx : playerCx;
-    const gy = useTarget ? target.cy : playerCy;
+    const useFetch = fetch !== null;
+    const useTarget = !useFetch && target !== null && dPlayer <= HERO_DOG_LEASH;
+    const heel = heroDogHeelPoint(playerCx, playerCy, playerFacing);
+    const gx = useFetch ? fetch.cx : useTarget ? target.cx : heel.cx;
+    const gy = useFetch ? fetch.cy : useTarget ? target.cy : heel.cy;
     const stopped = v0 < 1;
-    const stopAt = useTarget ? HERO_DOG_BITE_RANGE * 0.75 : (stopped ? HERO_DOG_HEEL_START : HERO_DOG_HEEL_GAP);
+    const stopAt = useFetch ? HERO_DOG_FETCH_ARRIVE_PX * 0.5 : useTarget ? HERO_DOG_BITE_RANGE * 0.75 : (stopped ? HERO_DOG_HEEL_START : HERO_DOG_HEEL_GAP);
     const dx = gx - cx, dy = gy - cy;
     const dist = Math.hypot(dx, dy);
     if (dist > stopAt) {
       // 止まる手前では目標速度を落とす(到着で急停止しない)
-      const slow = Math.min(1, (dist - (useTarget ? stopAt : HERO_DOG_HEEL_GAP)) / 40);
+      const slow = Math.min(1, (dist - ((useTarget || useFetch) ? stopAt : HERO_DOG_HEEL_GAP)) / 40);
       wantVx = (dx / dist) * dog.speed * slow;
       wantVy = (dy / dist) * dog.speed * slow;
     }

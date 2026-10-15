@@ -43,18 +43,58 @@ describe('英雄の犬(store)', () => {
     useGameStore.getState().updateHeroDog();
     expect(dog()?.health).toBe(100);
   });
-  it('噛むと敵が犬を追う(dogHateUntil)。噛みの威力はスキル倍率を受けない', () => {
+  it('噛むと敵が犬を追う(dogHateUntil)。噛みは「跳んで→届いてから」で、威力はスキル倍率を受けない', () => {
     giveHero(true); useGameStore.getState().updateHeroDog();
+    const d0 = dog()!;
+    // 横に着いた状態にする(着くまでは狩りに出ない)
+    useGameStore.setState(s => ({ summons: s.summons.map(x => x.id === d0.id ? { ...x, heroDogSettled: true } : x) }));
     const d = dog()!;
     const e = spawnEnemyAt('zombie', 0, 0, 0);
     e.x = d.x + d.width / 2 + 20 - e.width / 2; e.y = d.y + d.height / 2 - e.height / 2;
     useGameStore.setState({ enemies: [e], gameTime: 1000 });
     const hp0 = e.health;
     useGameStore.getState().updateSummons(0.016);
+    // 1フレーム目=跳び付き開始(まだ噛んでいない)
+    expect(useGameStore.getState().enemies.find(x => x.id === e.id)!.health).toBe(hp0);
+    expect(dog()?.biteLungeUntil).toBeDefined();
+    // 届く=跳び付き中に間合いの内側(0.6倍)へ入る/時間切れ → 噛む
+    for (let i = 0; i < 12; i++) useGameStore.getState().updateSummons(0.016);
     const after = useGameStore.getState().enemies.find(x => x.id === e.id)!;
     expect(after.health).toBe(hp0 - d.damage);
     expect(after.dogHateUntil).toBe(1000 + HERO_DOG_HATE_MS);
     expect(dog()?.biteTargetId).toBe(e.id);
+    expect(dog()?.biteLungeUntil).toBeUndefined();
+  });
+  it('強個体(パンプキン)に噛まれ判定が立ち、犬を追う(isBossType ではなく本物のボスだけ除く)', async () => {
+    const { resolveEnemyTarget } = await import('../utils/enemyUtils');
+    giveHero(true); useGameStore.getState().updateHeroDog();
+    const d0 = dog()!;
+    useGameStore.setState(s => ({ summons: s.summons.map(x => x.id === d0.id ? { ...x, heroDogSettled: true } : x) }));
+    const d = dog()!;
+    const e = spawnEnemyAt('pumpkin', 0, 0, 0);
+    e.x = d.x + d.width / 2 + 20 - e.width / 2; e.y = d.y + d.height / 2 - e.height / 2;
+    useGameStore.setState({ enemies: [e], gameTime: 1000 });
+    for (let i = 0; i < 14; i++) useGameStore.getState().updateSummons(0.016);
+    const after = useGameStore.getState().enemies.find(x => x.id === e.id)!;
+    expect(after.dogHateUntil).toBe(1000 + HERO_DOG_HATE_MS);
+    const p = useGameStore.getState().player;
+    const t = resolveEnemyTarget({ ...after, x: p.x + 500, y: p.y }, p, useGameStore.getState().summons, 380, false, 1000);
+    expect(t.isSummon).toBe(true);
+  });
+  it('ドッグの拾い物を代行中は敵を狙わず拾い物へ走る', () => {
+    giveHero(true); useGameStore.getState().updateHeroDog();
+    const d0 = dog()!;
+    useGameStore.setState(s => ({ summons: s.summons.map(x => x.id === d0.id ? { ...x, heroDogSettled: true, vx: 0, vy: 0 } : x) }));
+    const d = dog()!;
+    const e = spawnEnemyAt('zombie', 0, 0, 0);
+    e.x = d.x + d.width / 2 + 20 - e.width / 2; e.y = d.y + d.height / 2 - e.height / 2;
+    const fx = d.x + d.width / 2 - 200, fy = d.y + d.height / 2;
+    useGameStore.setState({ enemies: [e], gameTime: 1000, heroDogFetch: { x: fx, y: fy } });
+    const hp0 = e.health;
+    for (let i = 0; i < 6; i++) useGameStore.getState().updateSummons(0.016);
+    expect(useGameStore.getState().enemies.find(x => x.id === e.id)!.health).toBe(hp0);
+    expect(dog()!.vx).toBeLessThan(0); // 拾い物(左)へ
+    expect(dog()!.biteTargetId).toBeUndefined();
   });
   it('錬金術の召喚攻撃ボーナスに犬は数えない/錬金術の召喚で犬は消えない', () => {
     giveHero(true); useGameStore.getState().updateHeroDog();

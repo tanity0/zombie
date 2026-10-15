@@ -103,6 +103,7 @@ import { computeWarpLandingPoint, computeWarpFlyinStart } from '../utils/rescueQ
 import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { PVP_DAMAGE_SCALE, pvpHitDamageForGate } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget } from '../utils/dogFetch';
+import { HERO_DOG_FETCH_ARRIVE_PX, HERO_DOG_FETCH_TIMEOUT_MS, HERO_DOG_FETCH_RETURN_MS } from '../utils/heroDog';
 import { stepMagnetPull } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ(社長裁定2026-09-13) // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
 import { glenScriptApplies } from '../utils/giantScript';
@@ -1480,7 +1481,13 @@ type DogFetchJob = {
   // 毎フレーム utils/dogFetch.dogTrackTarget で現在位置へ向け直し、先に拾われていたら CD を消費せず中止する。
   targetId: string | null;
   effectId: string | null;
+  // 社長指示2026-10-15「イヌが出てる時、拾うだけの犬が出ないようにして」: 英雄の犬が居る間は dogFetch 効果(拾うだけの犬)を出さず、
+  // 英雄の犬が拾い物へ走る(store.heroDogFetch)。回収は着いた時(HERO_DOG_FETCH_ARRIVE_PX)か安全網の時刻。
+  heroDog: boolean;
 };
+/** 場に居る英雄の犬(去りかけは除く)。ドッグの拾い物を代行させるかの判定に使う。 */
+const liveHeroDog = () => useGameStore.getState().summons.find(s => s.kind === 'hero-dog' && s.expiresAt === undefined);
+const clearHeroDogFetch = (): void => { if (useGameStore.getState().heroDogFetch !== null) useGameStore.setState({ heroDogFetch: null }); };
 
 // ドッグ効果(dogFetch)の狙い座標を追従させる/中止時に今いる所から引き返させる。効果は描画専用の state で、
 // updateEffects は particle/damageNumber 以外を同じオブジェクトのまま持ち回るので、その場で書き換える(set は起こさない)。
@@ -3245,6 +3252,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           deepBgmPhaseRef.current = 'shallow'; releaseDeepReverseBgm(); // 深層BGMも初期化
           // 進行中サブウェポンのトラッキング(前ランの古いID/座標)を破棄=新ランへの持ち越し防止。
           dogFetchRef.current = null;            // 進行中のドッグ取得をキャンセル
+          clearHeroDogFetch();
           phantomDogRef.current = null;          // ★幻影のドッグも同時にキャンセル
           decoyPulseRef.current.clear();         // デコイ/シールド/タレット/ブーメランのパルス記録
           shieldHitRef.current.clear();
@@ -10087,6 +10095,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   bitten: new Set<string>(),
                   targetId: cand.id,
                   effectId: pdFxId,
+                  heroDog: false, // 幻影のドッグは常に拾うだけの犬
                 };
                 spawnEffect({
                   kind: 'dogFetch',
@@ -10117,16 +10126,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const job = dogFetchRef.current;
             if (job && !job.collected) {
               const tr = dogTrackTarget(useGameStore.getState().pickups, job.targetId, nowMs);
-              if (tr.kind === 'follow') { job.targetX = tr.x; job.targetY = tr.y; syncDogFetchFxTarget(job.effectId, tr.x, tr.y); }
-              else if (tr.kind === 'lost') { abortDogFetchFx(job, job.effectId, nowMs); dogFetchRef.current = null; }
+              if (tr.kind === 'follow') {
+                job.targetX = tr.x; job.targetY = tr.y; syncDogFetchFxTarget(job.effectId, tr.x, tr.y);
+                if (job.heroDog) {
+                  const hf = useGameStore.getState().heroDogFetch;
+                  if (!hf || hf.x !== tr.x || hf.y !== tr.y) useGameStore.setState({ heroDogFetch: { x: tr.x, y: tr.y } });
+                }
+              }
+              else if (tr.kind === 'lost') { abortDogFetchFx(job, job.effectId, nowMs); dogFetchRef.current = null; clearHeroDogFetch(); }
+              // 英雄の犬が代行中に居なくなった(倒れた/去った): 拾わずに中止(CDは消費しない)。
+              if (job.heroDog && dogFetchRef.current === job && !liveHeroDog()) { dogFetchRef.current = null; clearHeroDogFetch(); }
             }
           }
           const activeFetch = dogFetchRef.current;
 
           if (activeFetch) {
             // 移動軌道上の敵を噛む: 現在のドッグ位置(出発→対象→プレイヤーへ戻る)を補間で求め、
-            // 近接した未噛みの敵に小ダメージ+小ノックバック。
-            {
+            // 近接した未噛みの敵に小ダメージ+小ノックバック。英雄の犬の代行中は補間の犬が居ないので噛まない(犬自身の噛みは updateSummons)。
+            if (!activeFetch.heroDog) {
               const t = Math.max(0, Math.min(1, (nowMs - activeFetch.startedAt) / DOG_FETCH_DURATION_MS));
               const outFrac = DOG_FETCH_PICKUP_MS / DOG_FETCH_DURATION_MS;
               const bstate = useGameStore.getState();
@@ -10165,7 +10182,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               }
             }
-            if (!activeFetch.collected && nowMs >= activeFetch.collectAt) {
+            // 英雄の犬の代行: 犬が拾い物に着いたら回収(安全網の時刻でも回収)。
+            const heroArrived = activeFetch.heroDog && (() => {
+              const d = liveHeroDog();
+              return !!d && Math.hypot(d.x + d.width / 2 - activeFetch.targetX, d.y + d.height / 2 - activeFetch.targetY) <= HERO_DOG_FETCH_ARRIVE_PX;
+            })();
+            if (!activeFetch.collected && (nowMs >= activeFetch.collectAt || heroArrived)) {
               const state = useGameStore.getState();
               // ★v0.25.3896: ここは以前**狙いを選ぶ側とは別の、緩いフィルタ**だった
               // (狙いでは card-key 等を外すのに、着いてから拾う時は外していなかった=
@@ -10205,10 +10227,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 eligiblePickups.forEach(p => collectPickup(p.id));
               }
               activeFetch.collected = true;
+              if (activeFetch.heroDog) { activeFetch.finishAt = nowMs + HERO_DOG_FETCH_RETURN_MS; clearHeroDogFetch(); }
             }
 
             if (nowMs >= activeFetch.finishAt) {
               dogFetchRef.current = null;
+              clearHeroDogFetch();
               // スキル: ドッグラン = Lv1 CD半減 / Lv2-3 は**下限つき**(社長裁定2026-09-16)。
               // ★旧仕様は Lv2-3 で CD=0 だった。犬の往復は 1240ms なので、0 だと**帰った次のフレームに
               // 次の犬が出発する**=拾い物が地面にある限り永久に途切れず、社長報告
@@ -10264,9 +10288,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const targetX = target.x + 8;
               const targetY = target.y + 8;
               const dogFxId = `fx-dog-fetch-${Math.floor(nowMs)}-${target.id}`;
+              // 英雄の犬が居る時は、拾うだけの犬(dogFetch 効果)を出さず英雄の犬に取りに行かせる(社長指示2026-10-15)。
+              const heroDog = !!liveHeroDog();
               dogFetchRef.current = {
-                collectAt: nowMs + DOG_FETCH_PICKUP_MS,
-                finishAt: nowMs + DOG_FETCH_DURATION_MS,
+                collectAt: nowMs + (heroDog ? HERO_DOG_FETCH_TIMEOUT_MS : DOG_FETCH_PICKUP_MS),
+                finishAt: heroDog ? Number.POSITIVE_INFINITY : nowMs + DOG_FETCH_DURATION_MS, // 代行は回収時に決まる
                 startedAt: nowMs,
                 fromX: playerX,
                 fromY: playerY,
@@ -10276,27 +10302,33 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 collected: false,
                 bitten: new Set<string>(),
                 targetId: target.id,
-                effectId: dogFxId,
+                effectId: heroDog ? null : dogFxId,
+                heroDog,
               };
-              spawnEffect({
-                kind: 'dogFetch',
-                id: dogFxId,
-                fromX: playerX,
-                fromY: playerY,
-                targetX,
-                targetY,
-                toX: playerX,
-                toY: playerY,
-                createdAt: nowMs,
-                pickupAt: nowMs + DOG_FETCH_PICKUP_MS,
-                duration: DOG_FETCH_DURATION_MS
-              });
+              if (heroDog) {
+                useGameStore.setState({ heroDogFetch: { x: targetX, y: targetY } });
+              } else {
+                spawnEffect({
+                  kind: 'dogFetch',
+                  id: dogFxId,
+                  fromX: playerX,
+                  fromY: playerY,
+                  targetX,
+                  targetY,
+                  toX: playerX,
+                  toY: playerY,
+                  createdAt: nowMs,
+                  pickupAt: nowMs + DOG_FETCH_PICKUP_MS,
+                  duration: DOG_FETCH_DURATION_MS
+                });
+              }
             } else {
               setSubWeaponCooldown('dog', gameTime + DOG_EMPTY_RETRY_MS);
             }
           }
         } else {
           dogFetchRef.current = null;
+          clearHeroDogFetch();
         }
 
         // Decoy: 10秒ごとに進行方向へ円盤を投げる。設置中は0.5秒ごとに射程内の

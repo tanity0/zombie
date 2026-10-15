@@ -54,10 +54,18 @@ describe('英雄の犬: 動き(§4・慣性)', () => {
     expect(Math.hypot(s.vx, s.vy)).toBeLessThan(HERO_DOG_SPEED);
     expect(Math.hypot(s.vx, s.vy)).toBeCloseTo(HERO_DOG_ACCEL / 60, 3);
   });
-  it('狙いが無ければ主人の横で止まる(HEEL_GAP の内側では目標速度0)', () => {
-    const d = { ...dog(), x: HERO_DOG_HEEL_GAP - 20 - 15, y: -11, vx: 0, vy: 0 };
-    const s = stepHeroDog(d, 0, 0, null, 1 / 60);
+  it('狙いが無ければ主人の横(背中側の定位置)で止まる(定位置から HEEL_GAP の内側では目標速度0)', async () => {
+    const { heroDogHeelPoint } = await import('./heroDog');
+    const heel = heroDogHeelPoint(0, 0, 1);
+    expect(heel.cx).toBeLessThan(0); // 右向きの主人なら左(後ろ)
+    const d = { ...dog(), x: heel.cx + HERO_DOG_HEEL_GAP - 6 - 15, y: heel.cy - 11, vx: 0, vy: 0 };
+    const s = stepHeroDog(d, 0, 0, null, 1 / 60, false, null, 1);
     expect(s.vx).toBe(0); expect(s.vy).toBe(0);
+  });
+  it('拾い物の代行中は綱を無視して拾い物へ走る', () => {
+    const d = { ...dog(), x: -15, y: -11, vx: 0, vy: 0 };
+    const s = stepHeroDog(d, 0, 0, { cx: 100, cy: 0 }, 1 / 60, false, { cx: HERO_DOG_LEASH + 300, cy: 0 });
+    expect(s.vx).toBeGreaterThan(0);
   });
   it('主人から LEASH より離れていたら狙いを捨てて主人へ戻る', () => {
     const d = { ...dog(), x: HERO_DOG_LEASH + 50 - 15, y: -11, vx: 0, vy: 0 };

@@ -1613,6 +1613,10 @@ export interface Summon {
   biteTargetX?: number;
   /** research/HERO_DOG.md §4: 英雄の犬が噛み始めた敵のid(噛める限り・綱の内に居る限り変えない=標的のちらつき防止)。 */
   biteTargetId?: string;
+  /** 英雄の犬: 跳び付き中(この時刻に噛みが届く)。undefined=跳んでいない。 */
+  biteLungeUntil?: number;
+  /** 英雄の犬: 現れてから一度主人の横に着いたか(着くまでは狩りに出ない)。 */
+  heroDogSettled?: boolean;
   // PACING_PUZZLE.md §6.24 M48「使役」: 警察署アリーナ報酬で倒した敵の20%が復活したもの。
   // 錬金術の距離消滅(ALCHEMY_DESPAWN_DIST)を適用しない/最大1体(先着維持)の識別に使う。
   persistent?: boolean;

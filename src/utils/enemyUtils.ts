@@ -817,8 +817,10 @@ export const resolveEnemyTarget = (
     const g = summons.find(s => s.kind === 'ghost-ally');
     if (g) return { x: g.x + g.width / 2, y: g.y + g.height / 2, isSummon: true, hidden: false };
   }
-  // research/HERO_DOG.md §5(a): 英雄の犬に噛まれた雑魚・強個体は期限内、犬を追う(去りかけ=expiresAt ありの犬は追わない)。
-  if (mobGhostRules && gameTimeNow !== undefined
+  // research/HERO_DOG.md §5(a): 英雄の犬に噛まれた雑魚・**強個体**(パンプキン/削岩型/伐採人/ハンター)は期限内、犬を追う
+  // (去りかけ=expiresAt ありの犬は追わない)。★`isBossType` は強個体を含む別目的の表なので使わない(検収監査A-1)=本物のボスだけ除く。
+  const dogRules = !isTrueBossType(enemy.type);
+  if (dogRules && gameTimeNow !== undefined
       && enemy.dogHateUntil !== undefined && gameTimeNow < enemy.dogHateUntil) {
     const d = summons.find(s => s.kind === 'hero-dog' && s.expiresAt === undefined);
     if (d) return { x: d.x + d.width / 2, y: d.y + d.height / 2, isSummon: true, hidden: false };
@@ -853,7 +855,7 @@ export const resolveEnemyTarget = (
     // 自動で乗らない(★未決として最終報告に記載・本バッチのスコープ外)。
     // research/HERO_DOG.md §5(b): 英雄の犬は雑魚の既定候補に入る(錬金術の通常召喚と同じ)。去りかけの犬は除く。ボスは見ない。
     const isDog = s.kind === 'hero-dog';
-    if (isDog && (!mobGhostRules || s.expiresAt !== undefined)) continue;
+    if (isDog && (!dogRules || s.expiresAt !== undefined)) continue;
     if (s.kind !== 'normal' && s.kind !== 'ghost-ally' && !isDog) continue;
     // v0.25.2490: 雑魚(非ボス)の既定候補からゴーストを外す(狙うのは上のラッチ経由のみ)。
     if (s.kind === 'ghost-ally' && mobGhostRules) continue;
