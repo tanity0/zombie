@@ -74,6 +74,8 @@ export const playerFootBox = (p: Player): FootBox => {
 // (=ゲーム上の生の矩形 e.width×e.height)に統一したので、この倍率は描画(enemyFootBox)にしか掛からない。
 // 帯はこの描画ボックスの下部中央バンドに一致する(footY=足元に底辺・上へ伸びる)=裏ボスの足元帯と同構造。
 export const ENEMY_SIZE_MULT = 1.5;
+// 英雄の犬(hero-dog)の描画枠=当たり判定(30×22)×この倍率(×ENEMY_SIZE_MULT 込み)。ゾンビの約半分の背丈。
+export const HERO_DOG_DRAW_SCALE = 1.2 * ENEMY_SIZE_MULT;
 
 export const enemyFootBox = (e: Enemy): FootBox => {
   const scale = (ENEMY_VISUAL_SCALE[e.type] ?? 2) * ENEMY_SIZE_MULT;
@@ -124,7 +126,11 @@ export const enemyHitStrip = (e: Enemy): { x: number; y: number; width: number; 
 };
 
 // 召喚ユニットは流用元の敵タイプと同じ視覚スケールで描く(敵と大きさを揃える)。
-export const summonFootBox = (s: Summon): FootBox => {
+export const summonFootBox = (s: Pick<Summon, 'x' | 'y' | 'width' | 'height' | 'kind' | 'reusedType'> | (Pick<Summon, 'x' | 'y' | 'width' | 'height'> & { kind: 'hero-dog' })): FootBox => {
+  // research/HERO_DOG.md §7: 英雄の犬は敵の絵の流用ではないので自前の足元箱(絵 96×72 を当たり判定の幅×HERO_DOG_DRAW_SCALE に収める)。
+  if (s.kind === 'hero-dog') {
+    return { footX: s.x + s.width / 2, footY: s.y + s.height, boxW: s.width * HERO_DOG_DRAW_SCALE, boxH: s.height * HERO_DOG_DRAW_SCALE };
+  }
   // 社長指示2026-10-04(召喚を今の敵の絵とモーションへ): フィールドの同じ敵と同じ大きさ(ENEMY_SIZE_MULT も掛ける=enemyFootBox と同じ式)。
   const scale = (ENEMY_VISUAL_SCALE[s.reusedType] ?? 2) * ENEMY_SIZE_MULT;
   return {

@@ -1522,6 +1522,9 @@ export interface Enemy {
   // 雑魚(非ボス)専用のゴーストヘイト終了時刻(gameTime基準)。damageEnemyがhateSource='ghost'の
   // 被弾のたびに更新し、resolveEnemyTargetが期限内ならゴーストを狙わせる。ボスはG2.5のバケツ側(上)。
   ghostHateUntil?: number;
+  // research/HERO_DOG.md §5(a): 英雄の犬に噛まれた雑魚・強個体が犬を追う終了時刻(gameTime基準・噛まれるたび更新)。
+  // ghostHateUntil と同じ型のハードラッチ。ボスは見ない(ボスのヘイト系は別件)。
+  dogHateUntil?: number;
   // SKILL_BUILD_REDESIGN.md §28(B7): アイスショット(ice-shot)の鈍足(ボスは対象外・§28-2)。
   // gameTime < iceSlowUntil の間、移動速度に (1 - iceSlowPct) を掛ける(updateEnemies)。
   iceSlowUntil?: number;
@@ -1579,7 +1582,8 @@ export interface EnemyClockStash {
 // このファイル内でも実際に混在している(取り違えのリスクが実在するため名前を分けた)。
 // 他の2種と違い、移動/攻撃は gameStore.updateSummons ではなく専用の ghostDriver.ts + useGameLoop の
 // 専用ブロックが駆動する(updateSummons側はkind==='ghost-ally'を素通しするだけ=既存2種は無改変)。
-export type SummonKind = 'normal' | 'rare' | 'ghost-ally';
+// 'hero-dog' = research/HERO_DOG.md: スキル「英雄」の相棒の犬(HP100固定・噛んでヘイトを取る・死ぬと10秒後に復活)。
+export type SummonKind = 'normal' | 'rare' | 'ghost-ally' | 'hero-dog';
 // 錬金術で召喚する味方ユニット。敵とは別配列(enemies のカウント/スポーン/勝利条件
 // 等に混ざらないよう完全分離)。移動/攻撃/見た目は敵キャラの仕様を流用し、reusedType が
 // その参照元(normal: zombie/werewolf/pumpkin、rare: reaper=死神ヴィジュアル)。
@@ -1607,6 +1611,8 @@ export interface Summon {
   lastContactAt?: number; // 召喚→敵 接触ダメージの throttle
   /** 最後に噛んだ敵の中心x(描画が噛む間その敵の方を向く・社長指示2026-10-05)。 */
   biteTargetX?: number;
+  /** research/HERO_DOG.md §4: 英雄の犬が噛み始めた敵のid(噛める限り・綱の内に居る限り変えない=標的のちらつき防止)。 */
+  biteTargetId?: string;
   // PACING_PUZZLE.md §6.24 M48「使役」: 警察署アリーナ報酬で倒した敵の20%が復活したもの。
   // 錬金術の距離消滅(ALCHEMY_DESPAWN_DIST)を適用しない/最大1体(先着維持)の識別に使う。
   persistent?: boolean;

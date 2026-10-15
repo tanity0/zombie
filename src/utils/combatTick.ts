@@ -42,6 +42,7 @@ import { PHILL_COUNTER_RECOVER_MS } from './phillScript'; // §10-15#2: フィ�
 import { activeFlareTargets } from './flareGun';
 import { getActiveGun, GHOST_REFLECT_WEAPON_KEY } from './weaponUtils';
 import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkCollision, enemyContactBox } from './collisionUtils';
+import { isHeroDogLeaving } from './heroDog';
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12・社長発案2026-08-25)。
 import {
   biteSpecFor, biteReachRect, isInBiteRect, isBiteSubject, canStartBite, isBiteResolveDue,
@@ -925,6 +926,23 @@ export const applyEnemyProjectileHits = (
         damageHeroByEnemy(hero.id, proj.damage * rnMult, proj.ownerId);
         useGameStore.getState().removeProjectile(proj.id);
         fx.spawnBurst(proj.x + proj.width / 2, proj.y + proj.height / 2, '#7f1d1d', 4);
+      }
+    }
+  }
+  // research/HERO_DOG.md §6(監査A-2): 英雄の犬にも敵弾が当たる(犬を狙った射手の弾が犬を素通りして主人へ飛ばない=囮が成立する)。
+  // プレイヤー/英雄の解決の後に残っている弾だけ。去りかけの犬(expiresAt あり)は当たらない。手榴弾は信管でのみ爆発(プレイヤーと同じ)。
+  {
+    const dog = useGameStore.getState().summons.find(s => s.kind === 'hero-dog' && !isHeroDogLeaving(s));
+    if (dog) {
+      const rnMult = redNightActive ? 2 : 1;
+      for (const proj of useGameStore.getState().projectiles) {
+        if (!proj.hostile || proj.weaponType === 'grenade' || !checkCollision(proj, dog)) continue;
+        const before = useGameStore.getState().summons.find(s => s.id === dog.id);
+        if (!before) break; // 直前の弾で倒れた
+        useGameStore.getState().damageSummon(dog.id, proj.damage * rnMult, proj.x + proj.width / 2, proj.y + proj.height / 2, `projectile:${proj.ownerType ?? 'unknown'}`);
+        useGameStore.getState().removeProjectile(proj.id);
+        const after = useGameStore.getState().summons.find(s => s.id === dog.id);
+        if (after && after.health < before.health) fx.spawnBurst(after.x + after.width / 2, after.y + after.height / 2, '#b91c1c', 4);
       }
     }
   }

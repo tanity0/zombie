@@ -11635,6 +11635,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 鞭ハリケーン: 発動中は毎フレーム(内部でスロットル)敵を鞭先端の根元へ吸引。
         useGameStore.getState().tickHurricane();
 
+        // research/HERO_DOG.md §3: 英雄の犬の出入り(HP満タンで現れる/満タンでなくなると去る/死後10秒で戻る)。
+        useGameStore.getState().updateHeroDog();
         // 錬金術: 召喚ユニットの追従/攻撃/レア吸引/消滅を毎フレーム更新。
         useGameStore.getState().updateSummons(deltaTime);
 

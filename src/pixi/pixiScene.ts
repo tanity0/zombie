@@ -343,6 +343,7 @@ import {
   ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryCircleCenter,
 } from '../world/armory';
 import { POLICE_FADE_MS, POLICE_DISPLAY_H } from '../world/police';
+import { HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_DEATH_HOLD_MS, HERO_DOG_DEATH_FADE_MS, heroDogDeathPose } from '../utils/heroDog';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE, ALCHEMY_ATTACK_INTERVAL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { ESCORT_MELEE_WINDUP_MS, ESCORT_MELEE_BLADE_MS } from '../utils/escortMelee'; // 進軍NPCのナイフ(research/ESCORT_MELEE.md)
@@ -803,6 +804,8 @@ const SCREAM_BUFF_WAVE_MAX_DELAY_MS = 900;
 const SUMMON_FADE_IN_MS = 360, SUMMON_FADE_OUT_MS = 600, SUMMON_RISE_PX = 10;
 /** 噛んだ後、次の噛みまでの間に加えて敵の方を向き続ける猶予(ms)。噛みが続く間は向きが揺れない。 */
 const SUMMON_BITE_FACE_GRACE_MS = 200;
+// research/HERO_DOG.md §7: 英雄の犬の歩きのコマを切り替える距離(px/コマ)。
+const HERO_DOG_STRIDE_PX = 12;
 const RARE_TORNADO_WIDTH_MULT = 1.4;
 /** 竜巻の高さ(幅に対する割合)。正方のままだと頂が地平線の先の空まで届く。 */
 const RARE_TORNADO_HEIGHT_FRAC = 0.62;
@@ -16253,6 +16256,7 @@ export class PixiScene {
     // v0.25.2599: 守護霊の倒れ絵。**summonsに居ない時にこそ描く**もの(実体は死亡と同時に消える)ので、
     // 上のループの外・prune の前後どちらでも成立する位置で毎フレーム呼ぶ。
     this.syncGhostDeathPose(now);
+    this.syncHeroDogDeathPose(now); // research/HERO_DOG.md §7: 犬の倒れ絵(実体は消えているので毎フレームここで)
     for (const [id, view] of this.summonViews) {
       if (!seen.has(id)) {
         view.light.destroy();
@@ -16320,6 +16324,8 @@ export class PixiScene {
     // 新規描画経路・新規フィルタ・強glowは追加しない(CLAUDE.md負荷規律)= 既存のactorプール
     // (view.sprite/light/reticle/overlay)にそのまま乗せるだけ。
     if (s.kind === 'ghost-ally') { this.drawGhostAlly(view, s, now); return; }
+    // research/HERO_DOG.md §7: 英雄の犬は犬の絵(dog-walk)で描く(敵アセットの流用ではない)。
+    if (s.kind === 'hero-dog') { this.drawHeroDog(view, s, now); return; }
     // 敵と同じ視覚スケールの足元ボックスで描く(大きさを揃える)。
     const fb = summonFootBox(s);
     // 社長指示2026-10-04「召喚変異体が古い絵のまま・モーションも無い」: フィールドの敵と同じ絵(見た目の種類・ステージ別の絵)と
@@ -16391,6 +16397,124 @@ export class PixiScene {
       o.rect(bx, by, s.width, 3).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
       o.rect(bx, by, s.width * frac, 3).fill({ color: STATUS_ALLY });
     }
+  }
+
+  /**
+   * research/HERO_DOG.md §7: 英雄の犬。絵は `dog-walk-0/1`(ドッグの拾い物往復と同じ犬・右向きが素)。
+   * 動いている間は2コマを**進んだ距離**で刻む(時計で刻むと足が滑る)、止まったら0コマ目。向きは動いた向き・噛む間は敵の方。
+   * 色は素のまま(金色tintは「敵の絵の流用」を見分ける文法。犬は味方にしか居ない絵)。
+   * 出る=浮き上がり+濃くなる / 去る(expiresAt)=沈み+薄れる(召喚と同じ長さ)。被弾の赤白フラッシュ・横揺れも召喚と同じ。
+   * 影は召喚の影パス(summonFootBox)が付ける。新規の描画経路・フィルタ・強glowは無し。
+   */
+  private drawHeroDog(view: ActorView, s: Summon, now: number) {
+    const fb = summonFootBox(s);
+    const last = this.summonMotionMemo.get(s.id);
+    const dxm = last ? s.x - last.x : 0;
+    const biting = s.biteTargetX !== undefined && s.lastContactAt !== undefined
+      && Date.now() - s.lastContactAt < HERO_DOG_BITE_INTERVAL_MS + SUMMON_BITE_FACE_GRACE_MS;
+    const faceRight = biting
+      ? (s.biteTargetX as number) >= s.x + s.width / 2
+      : Math.abs(dxm) > 0.05 ? dxm > 0 : (last?.faceRight ?? true);
+    this.summonMotionMemo.set(s.id, { x: s.x, y: s.y, faceRight });
+    // 歩きのコマ: 進んだ距離で刻む。止まって少し経ったら0コマ目(立ち)。
+    const px = view.walkPrevX, py = view.walkPrevY;
+    view.walkPrevX = s.x; view.walkPrevY = s.y;
+    if (px !== undefined && py !== undefined) {
+      const step = Math.hypot(s.x - px, s.y - py);
+      if (step <= ENEMY_WALK_MAX_STEP_PX) view.walkDist = (view.walkDist ?? 0) + step;
+      if (step > 0.01) view.walkMovedAt = now;
+    }
+    const moving = view.walkMovedAt !== undefined && now - view.walkMovedAt < ENEMY_WALK_STOP_HOLD_MS;
+    // 止まっている時は脚が体の下に揃うコマ(dog-walk-1)。dog-walk-0 は脚を前後に伸ばした疾走のコマ=立ち止まりに使わない。
+    const frame = moving ? Math.floor((view.walkDist ?? 0) / HERO_DOG_STRIDE_PX) % 2 : 1;
+    const tex = getTexture(`dog-walk-${frame}`) ?? getTexture('dog-walk-1');
+    view.light.visible = false;
+    const sinceHit = Date.now() - s.lastHit;
+    const hitT = sinceHit >= 0 && sinceHit < HIT_SHAKE_MS ? 1 - sinceHit / HIT_SHAKE_MS : 0;
+    const shakeX = hitT > 0 ? Math.sin(sinceHit / 16) * HIT_SHAKE_PX * hitT : 0;
+    const bornMs = now - s.createdAt;
+    const inT = Math.max(0, Math.min(1, bornMs / SUMMON_FADE_IN_MS));
+    const outT = s.expiresAt === undefined ? 1 : Math.max(0, Math.min(1, (s.expiresAt - now) / SUMMON_FADE_OUT_MS));
+    const inE = 1 - (1 - inT) ** 3, outE = 1 - (1 - outT) ** 2;
+    const sinkY = (1 - inE) * SUMMON_RISE_PX + (1 - outE) * SUMMON_RISE_PX * 0.6;
+    // 走っている間は体がわずかに上下する(足の位相と同じ距離刻み)。止まっている間は速い呼吸(はぁはぁ)。
+    const bob = moving
+      ? Math.abs(Math.sin(((view.walkDist ?? 0) / HERO_DOG_STRIDE_PX) * Math.PI)) * 1.5
+      : Math.sin(now / 90) * 0.8;
+    view.sprite.position.set(Math.round(fb.footX + shakeX), Math.round(fb.footY + sinkY - bob));
+    view.container.zIndex = fb.footY;
+    // 透明度は目標へ寄せる(去りかけで満タンに戻った時に1フレームで元へ跳ばない)。
+    const alphaGoal = inE * outE;
+    const prevA = this.heroDogAlphaMemo ?? alphaGoal;
+    view.container.alpha = prevA + (alphaGoal - prevA) * 0.2;
+    this.heroDogAlphaMemo = view.container.alpha;
+    let drawnH = fb.boxH;
+    if (tex) {
+      view.sprite.texture = tex;
+      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
+      view.sprite.scale.set(faceRight ? sc : -sc, sc);
+      drawnH = tex.height * sc;
+      view.sprite.tint = hitT > 0.35 ? 0xffd0d0 : 0xffffff;
+      view.sprite.visible = true;
+    } else {
+      view.sprite.visible = false;
+    }
+    view.reticle.clear();
+    const o = view.overlay;
+    o.clear();
+    if (s.health < s.maxHealth && s.expiresAt === undefined) {
+      const frac = Math.max(0, Math.min(1, s.health / s.maxHealth));
+      const bw = Math.max(18, s.width * 0.8);
+      const bx = fb.footX - bw / 2;
+      const by = fb.footY - drawnH - 5;
+      o.rect(bx, by, bw, 2).fill({ color: 0x000000, alpha: BAR_BG_ALPHA });
+      o.rect(bx, by, bw * frac, 2).fill({ color: STATUS_ALLY });
+    }
+  }
+
+  private heroDogAlphaMemo: number | undefined;
+  // 倒れ絵は生きている召喚と同じ ActorView(makeActor=actorLayer 直下の container+sprite)で描く。
+  // ★actorLayer 直下に Sprite を直接置く形(守護霊の倒れ絵と同型)はヘッドレス(swiftshader)で1画素も描かれなかった(実測2026-10-15)。
+  private heroDogDeathSpr: Sprite | null = null;
+  private heroDogDeathLatchAt = 0;
+  private heroDogDeathRec: ReturnType<typeof heroDogDeathPose> = null;
+
+  /**
+   * research/HERO_DOG.md §7: 犬の倒れ絵。実体は死亡と同時に消えるので、store の控え(heroDogDeathPose)から
+   * 横倒し(足をダメージ源と反対へ)の絵を HOLD の間保ち、FADE で薄れる。守護霊の syncGhostDeathPose と同じ作法。
+   */
+  private syncHeroDogDeathPose(now: number) {
+    const rec = heroDogDeathPose();
+    if (rec === null) { this.heroDogDeathRec = null; this.heroDogDeathLatchAt = 0; }
+    else if (rec.atMs !== this.heroDogDeathLatchAt) { this.heroDogDeathLatchAt = rec.atMs; this.heroDogDeathRec = rec; }
+    const pose = this.heroDogDeathRec;
+    const hide = () => { if (this.heroDogDeathSpr) this.heroDogDeathSpr.visible = false; };
+    if (!pose) { hide(); return; }
+    const since = now - pose.atMs;
+    const fade = Math.max(0, 1 - Math.max(0, since - HERO_DOG_DEATH_HOLD_MS) / HERO_DOG_DEATH_FADE_MS);
+    if (since < 0 || fade <= 0.01) { hide(); this.heroDogDeathRec = null; return; }
+    const tex = getTexture('dog-walk-1');
+    if (!tex) { hide(); return; }
+    if (!this.heroDogDeathSpr) {
+      const ns = new Sprite(tex);
+      ns.anchor.set(0.5, 1);
+      ns.zIndex = 36;
+      this.L.actorLayer.addChild(ns);
+      this.heroDogDeathSpr = ns;
+    }
+    const spr = this.heroDogDeathSpr;
+    const fb = summonFootBox({ x: pose.x, y: pose.y, width: pose.width, height: pose.height, kind: 'hero-dog' });
+    const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
+    // 倒れる向き: 足をダメージ源と反対へ(源が右なら頭が右・足が左=右向きの絵を反時計に倒す)。
+    const srcRight = pose.fromX === undefined ? pose.facing === 1 : pose.fromX >= fb.footX;
+    const fall = Math.min(1, since / 220);
+    const fallE = 1 - (1 - fall) ** 2; // 倒れ込みは減速で止まる
+    spr.position.set(fb.footX, fb.footY);
+    spr.scale.set((srcRight ? 1 : -1) * sc, sc);
+    spr.rotation = (srcRight ? -1 : 1) * (Math.PI / 2) * fallE;
+    spr.alpha = fade;
+    spr.tint = 0xc8c0b8;
+    spr.visible = true;
   }
 
   /** 召喚の動き(前のフレームの位置・向き)。向きを決める。 */

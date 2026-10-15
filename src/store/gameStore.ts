@@ -292,6 +292,7 @@ import {
   ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE, ALCHEMY_RARE_SUCTION_RADIUS
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
+import { heroDogPresence, buildHeroDog, isHeroDog, isHeroDogLeaving, pickHeroDogTarget, stepHeroDog, heroDogEntryPoint, heroDogSpeedFor, setHeroDogDeathPose, HERO_DOG_BITE_RANGE, HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_RESPAWN_MS, HERO_DOG_HATE_MS, HERO_DOG_LEAVE_MS, HERO_DOG_LUNGE_SPEED, HERO_DOG_FLINCH_PX, HERO_DOG_FLINCH_MS } from '../utils/heroDog';
 import { setFlowersDisabled } from '../world/forestDecor';
 import { EX_SURIEL_BGM_FADE_MS } from '../world/exHall'; // EXのスリィエル撃破でBGMを落とす尺(2026-10-14)
 import { bossTestGhostSkill, isBossMakerRun, getBossTestSkillInjection } from '../utils/bossTest';
@@ -2204,7 +2205,8 @@ export const ALCHEMY_SUMMON_ATK_BONUS = 0.2;
 // ★永続育成の攻撃力(research/GROWTH.md v4)もこの合流点に乗せる: player の**焼き値**を読む
 // (store の有効段数は読まない=守護霊の疑似Playerが同じ関数を通るため)。0段=1.0で無変化。
 export const skillOutgoingDamageMult = (player: Player): number => {
-  const summonN = useGameStore.getState().summons.reduce((n, s) => n + (s.kind !== 'ghost-ally' ? 1 : 0), 0);
+  // research/HERO_DOG.md: 英雄の犬(hero-dog)は同行者であって召喚獣ではないので数えない(犬1体で+20%が常時付くのを防ぐ)。
+  const summonN = useGameStore.getState().summons.reduce((n, s) => n + (s.kind !== 'ghost-ally' && s.kind !== 'hero-dog' ? 1 : 0), 0);
   const alcMult = 1 + ALCHEMY_SUMMON_ATK_BONUS * summonN;
   // LEVEL_GROWTH.md §11 代替a: ラン内「攻撃力 +6%」カードの累積(既定1)。育成倍率と同じ合流点で掛ける。
   const growthMult = (player.growthAtkMult ?? 1) * (player.levelAtkMult ?? 1);
@@ -6283,6 +6285,8 @@ interface GameState {
   } | null;
   // 錬金術で召喚した味方ユニット。enemies とは別配列(副作用回避)。
   summons: Summon[];
+  // research/HERO_DOG.md §3: 英雄の犬が死んでから戻れる時刻(gameTime基準)。undefined=待ちなし。resetGameで消える。
+  heroDogRespawnAt?: number;
   // 救助ホールドイベントの守る対象NPC(逃げ惑う3人)。alchemy summons とは別系統。
   rescueSurvivors: RescueSurvivor[];
   // ホーミング弾のロック対象(敵ID配列。重複=2ロック)。毎フレーム useGameLoop が更新、発射でクリア。
@@ -6472,6 +6476,8 @@ interface GameState {
   updateAlchemyChannel: (startedAt: number) => void;
   summonAlchemy: () => void;
   updateSummons: (deltaTime: number) => void;
+  // research/HERO_DOG.md §3: 英雄の犬の出入り(現れる/去る/呼び戻す)。毎フレーム updateSummons の直前に呼ぶ。
+  updateHeroDog: () => void;
   // fromX/fromY=ダメージ源の位置(省略可)。守護霊(ghost-ally)の被弾ノックバックの向きに使う
   // (プレイヤーのdamagePlayerと同じ引数の意味・v0.25.2514 監査項目7)。
   // source=被弾源タグ(記録専用・?ghostlog=1のconsole出力にだけ使う。判定・挙動には一切影響しない)。
@@ -6514,7 +6520,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
+  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral' | 'dog', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -7538,6 +7544,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   danceTapLog: [],
   hurricane: null,
   summons: [],
+  heroDogRespawnAt: undefined,
   rescueSurvivors: [],
 
   // Player actions
@@ -10892,7 +10899,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ summonFxAt: Date.now() }); // 召喚音SEのトリガ(通常/レアとも)
     // §6.24 M48「使役」: 警察署アリーナ報酬のペット(persistent:true)は錬金術の入れ替え枠に数えない
     // =錬金術を唱えても消えない(「死ぬまでついてくる」)。alchemy自身の3体上限/レア切替の挙動は不変。
-    const persistentPets = summons.filter(s => s.persistent);
+    const persistentPets = summons.filter(s => s.persistent || s.kind === 'hero-dog'); // 使役ペット+英雄の犬(research/HERO_DOG.md)は錬金術のFIFO/レア入替で消さない
     if (Math.random() < ALCHEMY_RARE_CHANCE) {
       // レア: 既存の通常個体を全消去し、レア1体を召喚(枠を専有)。
       const rare = buildSummon(lvl, 'rare', sx, sy);
@@ -10922,6 +10929,43 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().spawnBurst(sx, sy, '#fff1b8', 10);
   },
 
+  updateHeroDog: () => {
+    const state = get();
+    const dog = state.summons.find(isHeroDog);
+    const mode = heroDogPresence({
+      heroActive: skillHeroActive(state.player),
+      hasDog: dog !== undefined,
+      dogLeaving: dog !== undefined && isHeroDogLeaving(dog),
+      respawnAt: state.heroDogRespawnAt,
+      gameTime: state.gameTime,
+    });
+    if (mode === 'spawn') {
+      // 現れ方: 地面から湧かない。主人から少し離れた所(最寄りの敵と反対側)から走り込んで横に付く(慣性は走り込みで付く)。
+      const p = state.player;
+      const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+      let nearest: { cx: number; cy: number } | null = null, nd2 = 600 * 600;
+      for (const e of state.enemies) {
+        if (isCorpse(e)) continue;
+        const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
+        const d2 = (cx - pcx) ** 2 + (cy - pcy) ** 2;
+        if (d2 < nd2) { nd2 = d2; nearest = { cx, cy }; }
+      }
+      const ep = heroDogEntryPoint(pcx, pcy, nearest);
+      const c = clampRectToPlayableArea(ep.cx - 15, ep.cy - 11, 30, 22, shieldPlayableCtx());
+      const unit = buildHeroDog(c.x + 15, c.y + 11, Date.now());
+      set(st => ({ summons: [...st.summons, unit], heroDogRespawnAt: undefined }));
+      return;
+    }
+    if (!dog) return;
+    if (mode === 'leave') {
+      // HPが満タンでなくなった: 沈みながら薄れて去る(描画は expiresAt を見る)。去っている間は噛まない・当たらない。
+      set(st => ({ summons: st.summons.map(s => s.id === dog.id ? { ...s, expiresAt: Date.now() + HERO_DOG_LEAVE_MS } : s) }));
+    } else if (mode === 'keep' && dog.expiresAt !== undefined) {
+      // 去りかけで満タンに戻った: 呼び戻す。
+      set(st => ({ summons: st.summons.map(s => s.id === dog.id ? { ...s, expiresAt: undefined } : s) }));
+    }
+  },
+
   updateSummons: (deltaTime) => {
     const now = Date.now();
     const state = get();
@@ -10938,6 +10982,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const rareAuraMult = sage ? 1.3 : 1;
 
     const attackHits: { id: string; amount: number; x: number; y: number }[] = [];
+    const dogBites: { id: string; amount: number; x: number; y: number }[] = []; // 英雄の犬の噛み(ヘイト='dog'・倍率なし)
     let enemiesNext = state.enemies;
     let enemiesChanged = false;
 
@@ -10977,6 +11022,38 @@ export const useGameStore = create<GameState>((set, get) => ({
         } else {
           nextSummons.push(s0);
         }
+        continue;
+      }
+      if (s0.kind === 'hero-dog') {
+        // research/HERO_DOG.md §4: 主人から HUNT_RANGE 内の最寄りの噛める敵へ走って噛む。無ければ主人の横へ戻る。慣性つき。
+        if (s0.expiresAt !== undefined && now >= s0.expiresAt) continue; // 去り切った
+        const leaving = s0.expiresAt !== undefined;
+        const dcx = s0.x + s0.width / 2, dcy = s0.y + s0.height / 2;
+        // 速度は主人の実効速度に追従(英雄発動中の主人124〜136px/s に置いて行かれない=監査A-1)。
+        const dogSpeed = heroDogSpeedFor(player.effectiveMoveSpeed);
+        const tgt = leaving ? null : pickHeroDogTarget(dcx, dcy, pcx, pcy, enemiesNext, s0.biteTargetId);
+        const tc = tgt ? { cx: tgt.x + tgt.width / 2, cy: tgt.y + tgt.height / 2 } : null;
+        // 被弾の跳ね退き(ダメージ源と反対へ・短い)は位置へ直接足す(速度の慣性とは別枠)。
+        const kbUntil = s0.knockbackUntil ?? 0;
+        const kbDecay = now < kbUntil ? Math.max(0, (kbUntil - now) / HERO_DOG_FLINCH_MS) : 0;
+        const step = stepHeroDog({ ...s0, speed: dogSpeed }, pcx, pcy, tc, deltaTime, leaving);
+        const stepX = step.x + (s0.knockbackVx ?? 0) * kbDecay * deltaTime;
+        const stepY = step.y + (s0.knockbackVy ?? 0) * kbDecay * deltaTime;
+        const r0 = resolveTreeCollision({ x: stepX, y: stepY, width: s0.width, height: s0.height });
+        // 行ける帯の中に留める(CLAUDE.md「アクターを新しく動かす時は必ず clampRectToPlayableArea」)。
+        const r = clampRectToPlayableArea(r0.x, r0.y, s0.width, s0.height, shieldPlayableCtx(), s0.x);
+        let sd: Summon = { ...s0, x: r.x, y: r.y, vx: step.vx, vy: step.vy, speed: dogSpeed, biteTargetId: tgt?.id };
+        if (tgt && tc && now - (s0.lastContactAt ?? 0) >= HERO_DOG_BITE_INTERVAL_MS) {
+          const ddx = tc.cx - (r.x + s0.width / 2), ddy = tc.cy - (r.y + s0.height / 2);
+          const dd = Math.hypot(ddx, ddy);
+          if (dd <= HERO_DOG_BITE_RANGE) {
+            dogBites.push({ id: tgt.id, amount: s0.damage, x: tc.cx, y: tgt.y });
+            // 跳び付き: 噛む瞬間に敵の方へ速度の衝撃(次のフレームから減速で滑って戻る=位置の移動であって歪みではない)。
+            const ux = dd > 0.001 ? ddx / dd : 1, uy = dd > 0.001 ? ddy / dd : 0;
+            sd = { ...sd, lastContactAt: now, biteTargetX: tc.cx, vx: ux * HERO_DOG_LUNGE_SPEED, vy: uy * HERO_DOG_LUNGE_SPEED };
+          }
+        }
+        nextSummons.push(sd);
         continue;
       }
       if (s0.kind === 'rare') {
@@ -11073,6 +11150,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().damageEnemy(h.id, sDmg, false, false, false, 'dot'); // 召喚の与ダメ=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
       get().spawnDamageNumber(h.x, h.y, sDmg); // 召喚(死神AoE/通常接触)の攻撃を可視化
     }
+    // research/HERO_DOG.md §2/§5: 犬の噛みは固定威力(スキル倍率を掛けない=犬は火力役ではない)。hateSource='dog'
+    // =ボスのバケツに積まず、噛まれた雑魚・強個体は犬を追う(dogHateUntil)。
+    for (const h of dogBites) {
+      get().damageEnemy(h.id, h.amount, false, false, false, 'dot', 'dog');
+      get().spawnDamageNumber(h.x, h.y, h.amount);
+      get().spawnBurst(h.x, h.y + 10, '#cbd5e1', 5); // サブウェポン「ドッグ」の噛みと同じ灰色の飛沫(同じ犬=同じ手触り)
+    }
   },
 
   damageSummon: (id, amount, fromX, fromY, source) => {
@@ -11080,7 +11164,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const gtNow = get().gameTime; // ?ghostlog=1 の診断出力用(下)。read-onlyで挙動不変。
     // BOT_AND_GHOST.md G2: ghost-ally(kind='ghost-ally')もHP制なので normal と同じ被弾/消滅の枠へ
     // 含める(i-frame・health<=0で消滅=「ゴーストHP0で解散」の土台)。rareは対象外のまま(既存挙動不変)。
-    const isHittable = (s: Summon): boolean => s.kind === 'normal' || s.kind === 'ghost-ally';
+    // research/HERO_DOG.md §6: 英雄の犬も当たる(去っている間=expiresAt あり、は当たらない)。
+    const isHittable = (s: Summon): boolean => s.kind === 'normal' || s.kind === 'ghost-ally' || (s.kind === 'hero-dog' && !isHeroDogLeaving(s));
+    let dogDeathAt: { x: number; y: number } | null = null;
     const livePlayer = get().player;
     // v0.25.2586(社長指示): 守護霊が死んだ瞬間の位置(ズーム+スローの寄り先)。set外へ持ち出す
     // (演出はset内で呼ばない=updateArmory/updateHospitalと同じ「副作用は外」の作法)。
@@ -11106,6 +11192,16 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (ダメージ源から離れる向き × PLAYER_KNOCKBACK_SPEED を PLAYER_KNOCKBACK_MS かけて減衰)。
           // 消化は updateSummons(ghost-ally分岐)。被弾シェイクは出さない(裁定3=除外1の演出枠)。
           let kb: Partial<Summon> = {};
+          // research/HERO_DOG.md §7: 犬はひるんで跳び退く(ダメージ源と反対へ HERO_DOG_FLINCH_PX・短い。updateSummons の hero-dog 分岐が消化)。
+          if (s.kind === 'hero-dog' && dealt > 0 && fromX !== undefined && fromY !== undefined) {
+            const scx = s.x + s.width / 2, scy = s.y + s.height / 2;
+            let dx = scx - fromX, dy = scy - fromY;
+            const d = Math.hypot(dx, dy);
+            if (d < 0.001) { dx = -1; dy = 0; } else { dx /= d; dy /= d; }
+            // 減衰(1→0)の積分が 1/2 なので、速度 = 距離 / (時間/2)
+            const v = HERO_DOG_FLINCH_PX / (HERO_DOG_FLINCH_MS / 1000) * 2;
+            kb = { knockbackVx: dx * v, knockbackVy: dy * v, knockbackUntil: now + HERO_DOG_FLINCH_MS };
+          }
           if (s.kind === 'ghost-ally' && dealt > 0 && fromX !== undefined && fromY !== undefined) {
             const scx = s.x + s.width / 2, scy = s.y + s.height / 2;
             let dx = scx - fromX, dy = scy - fromY;
@@ -11127,6 +11223,16 @@ export const useGameStore = create<GameState>((set, get) => ({
             console.log('[GHOSTDMG]', line);
             ghostDmgLines = [...ghostDmgLines, line].slice(-GHOST_DMG_LOG_MAX);
           }
+          // research/HERO_DOG.md §3: 犬がこの被弾で落ちる=消える。10秒後に戻る(gameTime基準)。
+          if (s.kind === 'hero-dog' && s.health - dealt <= 0) {
+            dogDeathAt = { x: s.x + s.width / 2, y: s.y + s.height / 2 };
+            // 倒れ絵(描画専用の控え・守護霊と同じ作法): 実体は下の filter で消えるので、横倒しの姿はここから描く。
+            setHeroDogDeathPose({
+              x: s.x, y: s.y, width: s.width, height: s.height,
+              facing: (s.biteTargetX ?? (s.x + s.width / 2)) >= s.x + s.width / 2 ? 1 : -1,
+              fromX, atMs: now,
+            });
+          }
           // v0.25.2586: 守護霊がこの被弾で落ちる(HP0以下=下のfilterで消える)なら寄り先を控える。
           if (s.kind === 'ghost-ally' && s.health - dealt <= 0) {
             ghostDeathAt = { x: s.x + s.width / 2, y: s.y + s.height / 2 };
@@ -11144,6 +11250,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         })
         .filter(s => !isHittable(s) || s.health > 0),
     }));
+    if (dogDeathAt) {
+      const d = dogDeathAt as { x: number; y: number };
+      set({ heroDogRespawnAt: get().gameTime + HERO_DOG_RESPAWN_MS });
+      // 倒れた印(派手さの絵②): 血しぶき+砂埃。倒れ絵は上の setHeroDogDeathPose をレンダラが描く。
+      get().spawnBurst(d.x, d.y, '#b91c1c', 14);
+      get().spawnBurst(d.x, d.y + 8, '#d6c9a8', 8);
+    }
     // v0.25.2586(社長指示「守護霊死んだときもカメラズーム スローしてほしい」): 死んだ守護霊の位置へ
     // 寄る+スロー。プレイヤーの死亡演出(useGameLoop)と同じ定数・同じ長さで揃える(停止は入れない)。
     if (ghostDeathAt) {
@@ -13259,8 +13372,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSourceIn = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
     // research/ESCORT_TARGETED.md §5: 進軍NPCの弾は起因側 `escort:<id>`。**ヘイトのバケツだけ**軍人ごとに積み(下の hatePatch)、
     // それ以外の判定(揺れ・クリ・撃破カウント・英雄の被弾記録 …)はこれまでどおり 'player' 扱いのまま=軍人の弾の挙動は1bitも変えない。
-    const hateEscortId = escortIdOfSide(hateSourceIn === 'neutral' ? undefined : hateSourceIn);
-    const hateSource: 'player' | 'ghost' | 'neutral' = hateEscortId !== undefined ? 'player' : (hateSourceIn as 'player' | 'ghost' | 'neutral');
+    const hateEscortId = escortIdOfSide(hateSourceIn === 'neutral' || hateSourceIn === 'dog' ? undefined : hateSourceIn);
+    // research/HERO_DOG.md §5: 'dog'(英雄の犬の噛み)はボスのバケツには積まない(=neutral扱い)。雑魚のラッチだけ下の dogHatePatch。
+    const hateSource: 'player' | 'ghost' | 'neutral' = hateEscortId !== undefined ? 'player' : hateSourceIn === 'dog' ? 'neutral' : (hateSourceIn as 'player' | 'ghost' | 'neutral');
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let angelDefeated: Enemy | null = null; // 天使撃破=回復・赤経験値10・トレジャー(社長指示2026-10-14)
@@ -13415,6 +13529,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const mobHatePatch = (eff > 0 && hateSource === 'ghost' && !isBossType(enemy.type))
         ? { ghostHateUntil: state.gameTime + GHOST_MOB_HATE_MS }
         : {};
+      // research/HERO_DOG.md §5(a): 英雄の犬に噛まれた雑魚・強個体は HERO_DOG_HATE_MS の間、犬を追う(噛まれるたび更新)。
+      const dogHatePatch = (eff > 0 && hateSourceIn === 'dog' && !isBossType(enemy.type))
+        ? { dogHateUntil: state.gameTime + HERO_DOG_HATE_MS }
+        : {};
       // ★SAME_ARENA §9(対人体勢・v0.25.3969): 幻影の隠し体勢。プレイヤー本人起因の成立
       // (counter/gun-crit/reflect)だけが削り、クリ被弾で2/3減速3秒。melee 0.04と致命は
       // damageEnemyを通らない近接site1側(排他)。usesPostureSystem外なのでボスの紫系とは独立。
@@ -13466,7 +13584,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         ...(isMutantHero(enemy.type) && hateSource === 'ghost' && eff > 0 ? { heroGhostHitAt: state.gameTime } : {}),
         ...(isMutantHero(enemy.type) && hateSource === 'neutral' && eff > 0 ? { heroMobHitAt: state.gameTime } : {}) };
       const updatedEnemies = enemies.map(e =>
-        e.id === id ? { ...e, health: newHealth, lastHit: hitAt, ...dotPatch, ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
+        e.id === id ? { ...e, health: newHealth, lastHit: hitAt, ...dotPatch, ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...dogHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
       );
       
       // Check if enemy was killed
@@ -21561,6 +21679,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetPlayerTraits();
     resetGhostDamageLog(); // v0.25.2591: 被弾ログ(?ghostlog=1の画面表示)は1ランごとに読めればよい
     resetGhostDeathPose(); // v0.25.2599: 前ランの倒れ絵を持ち越さない(描画専用の控え)
+    setHeroDogDeathPose(null); // research/HERO_DOG.md: 犬の倒れ絵も同じく持ち越さない
     glenSimTrail = null;   // v0.25.3027: グレン胴体弾の軌跡を持ち越さない(監査指摘)
     // v0.25.3084(テスト設計B): ラン内の時計は**この1行**で全部戻る。時計を足してもここは直さない
     // (=「足したがリセットを忘れた」が構造的に起きない。v0.25.3070「キラキラが消えた」の再発防止)。
@@ -22423,6 +22542,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         viewZoom: 1,
         hurricane: null,
         summons: [],
+        heroDogRespawnAt: undefined,
         rescueSurvivors: [],
       };
     });
