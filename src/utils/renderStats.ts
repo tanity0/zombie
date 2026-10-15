@@ -81,3 +81,14 @@ export const bakedTextureText = (): string => {
   return `bake${total}MB(縁${mb('rim')}/影${mb('shadow')}/白${mb('silhouette')}/他${mb('other')})${n}枚`;
 };
 
+
+/**
+ * ★「長く遊ぶほど落ちやすい」の切り分け(社長質問2026-10-15・v0.25.5054)。`tex`/`bake` は素材と焼きしか見ておらず、
+ * **表示物の総数・敵IDで持つ表の件数・store の配列の長さ**は1つも映っていなかった。描画側(pixiScene)が自分の数え方を
+ * ここへ登録し、落ちる直前の行(crashWatch)がそれを読む。数えるのは2秒に1回=負荷は無視できる。
+ */
+let sceneDiag: (() => string) | null = null;
+export const setSceneDiag = (fn: (() => string) | null): void => { sceneDiag = fn; };
+export const sceneDiagText = (): string => {
+  try { return sceneDiag ? sceneDiag() : ''; } catch { return ''; }
+};

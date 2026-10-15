@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.5054 — 「前回最後」の行に表示物の総数・表の件数・store の配列の長さを足す(社長質問「長時間プレイするほど落ちる確率が上がる?」)【2026-10-15 17:45 JST】
+- 社長質問「長時間プレイするほど落ちる確率上がる気がするんだけど、その辺りも原因に無い?」→「はい」(①計器の増強 ②ヘッドレスの長時間ソーク)。
+- 答えの前提: 落ちる直前の行(v0.25.5052 t715s)は `tex187MB` が12分一定・焼きは天井で止まっている=**測っていた物は時間で増えていない**。
+  ただし表示物の総数・敵IDで持つ表・store の配列・JSヒープは1つも映っていなかった。
+- ①計器: `renderStats.setSceneDiag/sceneDiagText`(描画側が数え方を登録)。pixiScene `diagCountsText()`=`obj<ステージ配下の表示物の総数(再帰)>
+  maps<敵ID/技キーで持つ33表の件数合計>(多い順3つ)`。Game.tsx の crashWatch の行へ `… obj1532 maps412(fxLatches180,…) st[fx51 pk12 pj3 sm2]` を追記。
+  2秒に1回の再帰走査=負荷は無視できる。描画器を畳む時に登録を外す。
+- コードの側の洗い出し(敵が消えても `delete/clear` が無い表): 33表のうち該当は `rimTexCache/textureContentCache/imageEffectFrameCache/
+  enemyWalkFrames`(**素材(Texture/シート名)キー=有限**)、`warpCircleSprites`(アクラシエルの陣・個体キー・非表示化のみ)、`bossMarkFx`/
+  `heroShapeMemo`(ボス/英雄のみ)。**敵IDで無限に増える表は見つからなかった**。`ENEMY_REMOVE_CAUSE`(消失ログ)は200件で間引き済み。
+- ②ソーク: `scratchpad/soak.mjs`(ステージ4・ボット・1分ごとに heap/nodes/listeners/行を記録)を実行中。結果は次のエントリへ。
+- 検証: typecheck / eslint 0。
+- 自己点検: 計測のみ(憲法第4条/第5条に抵触なし)。
+- 状態変化: 落ち対策 → 次に落ちた時の行で「時間で増えた物」を名指しできる状態。
+- 変更ファイル: src/utils/renderStats.ts / src/pixi/pixiScene.ts / src/components/Game.tsx / src/data/changelog.ts / package.json / DEVELOPMENT_LOG.md
+
 ## v0.25.5053 — 焼きの天井(スマホ)を半分に: 縁16/影16/白8(社長実機 v0.25.5052 がステージ4・12分で落ちた)【2026-10-15 16:35 JST】
 - 社長報告(画像)「落ちた。ステージ4を普通にプレイしていた」。前回最後: `v0.25.5052 t715s fx 51/51 峰208(particle×183,ring×9)
   tex187MB((直下)79+fx58) bake77MB(縁32/影28/白16/他1)1259枚 en13`。

@@ -11,7 +11,7 @@ import { isPixiRenderer, getAppliedResolution } from '../config/renderer';
 import { getAssistLightDebug } from '../pixi/pixiScene';
 import { getTexture } from '../pixi/pixiTextures';
 import { lastSuppressedError } from '../utils/errorBeacon';
-import { renderStatsText, bakedTextureText } from '../utils/renderStats';
+import { renderStatsText, bakedTextureText, sceneDiagText } from '../utils/renderStats';
 import { prevBeatText, startCrashWatch } from '../utils/crashWatch';
 import { textureMemoryMB, textureTopGroups } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
@@ -383,7 +383,10 @@ const ErrBeacon: React.FC = () => {
     startCrashWatch(() => {
       const st = useGameStore.getState();
       // ★v0.25.4375: `tex` は**読み込んだ素材しか数えない**。実行中に焼く分(縁/影/白)は別口で出す。
-      return `v${__APP_VERSION__} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} en${st.enemies.length}`;
+      // v0.25.5054(社長質問「長時間プレイするほど落ちる確率が上がる?」): 時間で増える物を名指しできるよう、
+      // 表示物の総数・敵IDで持つ表の件数(描画側)と store の配列の長さを足す。
+      return `v${__APP_VERSION__} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} en${st.enemies.length}`
+        + ` ${sceneDiagText()} st[fx${st.effects.length} pk${st.pickups.length} pj${st.projectiles.length} sm${st.summons.length}]`;
     });
     const iv = setInterval(() => {
       const msg = lastSuppressedError();

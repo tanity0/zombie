@@ -190,7 +190,7 @@ import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近
 import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { labZombieSexOf } from '../utils/labZombieSex';
-import { setRenderStats, setFxDiag } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347)
+import { setRenderStats, setFxDiag, setSceneDiag } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347 / 表示物と表の件数 v0.25.5054)
 import { trackBakedTexture, untrackBakedTexture, liveBakedTextures, type BakeKind } from '../utils/renderStats'; // 焼いたテクスチャの実測(v0.25.4375)
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -5440,6 +5440,8 @@ export class PixiScene {
 
   constructor(layers: SceneLayers) {
     this.L = layers;
+    // 落ちる直前の行へ「表示物の総数」と「敵IDで持つ表の件数」を出す(v0.25.5054・社長質問「長時間プレイするほど落ちる確率が上がる?」)。
+    setSceneDiag(() => this.diagCountsText());
     // 背景バンドの初期テクスチャ(森1/遠景)もmipmap化(縮小モアレ対策・社長指示v0.25.1869)。
     // 森2(nearHorizon)は初期EMPTYで、ステージ別の実テクスチャは setNearHorizonTexture 側で適用。
     this.applyBgMipmap(this.L.horizonForest.texture);
@@ -35982,7 +35984,35 @@ export class PixiScene {
     }
   }
 
+  /**
+   * ★時間で増える物の名指し(v0.25.5054)。`obj`=ステージ配下の表示物の総数(再帰)。`maps`=敵ID/技キーで持つ表の
+   * 件数の合計と、多い順に3つ。敵が居なくなっても消していない表があれば、ここが右肩上がりになる。
+   * 2秒に1回しか呼ばれない(crashWatch)ので再帰の走査で足りる。
+   */
+  private diagCountsText(): string {
+    let obj = 0;
+    const walk = (c: Container): void => { obj++; for (const ch of c.children) walk(ch as Container); };
+    try { walk(this.L.stage); } catch { /* 畳み中など */ }
+    const maps: [string, number][] = [
+      ['fxLatches', this.fxLatches.size], ['effects', this.effects.size], ['enemyViews', this.enemies.size],
+      ['rimViews', this.rimViews.size], ['rimTex', this.rimTexCache.size], ['whiteTex', this.whiteTexCache.size],
+      ['silTex', this.silhouetteCache.size], ['texContent', this.textureContentCache.size], ['imgFx', this.imageEffectFrameCache.size],
+      ['walkFrames', this.enemyWalkFrames.size], ['atkFrame', this.atkFrameMemo.size], ['moveInst', this.moveInstance.size],
+      ['bossPhase', this.bossPhaseStart.size], ['giantPhase', this.giantPhaseSpan.size], ['weaponTrail', this.weaponTrail.size],
+      ['weaponHold', this.weaponHoldContinuity.size], ['zombieStance', this.zombieStanceDir.size], ['biteTail', this.biteTailMemo.size],
+      ['screamEnd', this.screamEndMemo.size], ['shadowTrim', this.shadowHorizonTrimState.size], ['shadowFoot', this.shadowFootXOffsetState.size],
+      ['shadowPool', this.shadowPool.size], ['jumpHop', this.enemyJumpHop.size], ['lockAnim', this.lockAnim.size],
+      ['dashWind', this.dashWindDir.size], ['slideDust', this.slideDustState.size], ['boltLast', this.boltLast.size],
+      ['pickups', this.pickups.size], ['projectiles', this.projectiles.size], ['labVision', this.labVisionObjs.size],
+      ['bossMark', this.bossMarkFx.size], ['escortMark', this.escortMarkFx.size], ['namedLabel', this.namedFoeLabels.size],
+    ];
+    const total = maps.reduce((a, [, n]) => a + n, 0);
+    const top = maps.slice().sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => `${k}${n}`).join(',');
+    return `obj${obj} maps${total}(${top})`;
+  }
+
   destroy() {
+    setSceneDiag(null); // v0.25.5054: 畳んだ描画器の数え方を残さない
     this.escortSunkDestroyAll(); // 軍人の沈み用の下端を切ったフレーム Texture(source は共有=本体は触らない)
     for (const sprite of this.signalBombSprites.values()) sprite.destroy();
     this.signalBombSprites.clear();
