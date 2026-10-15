@@ -133,9 +133,12 @@ export interface PickHateTargetInput {
   enemyCenter: HatePoint;
   player: HatePoint;
   ghost: HatePoint | null;
+  /** 英雄の犬(research/HERO_DOG.md・社長指示2026-10-15「ボスのヘイトにも入れる」)。居なければ null。 */
+  dog?: HatePoint | null;
   escorts: readonly HateEscortCandidate[];
   playerHateBuckets: readonly HateBucket[] | undefined;
   ghostHateBuckets: readonly HateBucket[] | undefined;
+  dogHateBuckets?: readonly HateBucket[] | undefined;
   escortHateBuckets: Readonly<Record<string, readonly HateBucket[]>> | undefined;
   gameTime: number;
   currentTarget: HateSide | undefined;
@@ -152,11 +155,13 @@ export interface PickHateTargetInput {
 export const pickHateTarget = (input: PickHateTargetInput): HateSide => {
   if (!BOSS_HATE_ENABLED) return 'player';
   const { enemyCenter, player, ghost, escorts, gameTime, currentTarget } = input;
-  if (!ghost && escorts.length === 0) return 'player';
+  const dog = input.dog ?? null;
+  if (!ghost && !dog && escorts.length === 0) return 'player';
   const cands: { side: HateSide; x: number; y: number; hate: number }[] = [
     { side: 'player', x: player.x, y: player.y, hate: hateTotal(input.playerHateBuckets, gameTime) },
   ];
   if (ghost) cands.push({ side: 'ghost', x: ghost.x, y: ghost.y, hate: hateTotal(input.ghostHateBuckets, gameTime) });
+  if (dog) cands.push({ side: 'dog', x: dog.x, y: dog.y, hate: hateTotal(input.dogHateBuckets, gameTime) });
   for (const e of escorts) {
     cands.push({ side: escortHateSide(e.id), x: e.x, y: e.y, hate: hateTotal(input.escortHateBuckets?.[e.id], gameTime) });
   }
@@ -209,16 +214,22 @@ export interface BossHateEnemyLike {
   x: number; y: number; width: number; height: number;
   hatePlayerBuckets?: readonly HateBucket[];
   hateGhostBuckets?: readonly HateBucket[];
+  hateDogBuckets?: readonly HateBucket[];
   hateEscortBuckets?: Readonly<Record<string, readonly HateBucket[]>>;
   hateTarget?: HateSide;
 }
 
-/** summons 配列からゴーストを拾うための最小限の形(Summon型のダックタイピング)。 */
+/** summons 配列からゴースト/英雄の犬を拾うための最小限の形(Summon型のダックタイピング)。 */
 export interface BossHateGhostLike {
   x: number; y: number; width: number; height: number;
   kind: string;
   ghostBossId?: string;
+  /** 英雄の犬: 去りかけなら時刻が入る(去りかけは狙いに入れない)。 */
+  expiresAt?: number;
 }
+/** 場に居る英雄の犬(去りかけは除く)。 */
+export const findHeroDogForHate = <T extends BossHateGhostLike>(summons: readonly T[]): T | undefined =>
+  summons.find(s => s.kind === 'hero-dog' && s.expiresAt === undefined);
 
 // ---- 進軍NPCの候補の提供口 ------------------------------------------------------------------------
 // 全ボスの狙いロック箇所(約50)は同じ resolveBossHateAim / resolveBossLockedHateAim を通る。軍人の一覧(画面内・
@@ -253,20 +264,23 @@ export const resolveBossHateAim = (
   const enemyCenter: HatePoint = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
   const boundGhost = summons.find(s => s.kind === 'ghost-ally' && s.ghostBossId === enemy.id);
   const ghost: HatePoint | null = boundGhost ? guardCenter(boundGhost) : null;
+  const dogUnit = findHeroDogForHate(summons);
+  const dog: HatePoint | null = dogUnit ? guardCenter(dogUnit) : null;
   const cand = currentEscorts(escorts).inView;
   const side = pickHateTarget({
-    enemyCenter, player, ghost, escorts: cand,
-    playerHateBuckets: enemy.hatePlayerBuckets, ghostHateBuckets: enemy.hateGhostBuckets,
+    enemyCenter, player, ghost, dog, escorts: cand,
+    playerHateBuckets: enemy.hatePlayerBuckets, ghostHateBuckets: enemy.hateGhostBuckets, dogHateBuckets: enemy.hateDogBuckets,
     escortHateBuckets: enemy.hateEscortBuckets,
     gameTime, currentTarget: enemy.hateTarget,
   });
-  return aimOfSide(side, player, ghost, cand);
+  return aimOfSide(side, player, ghost, cand, dog);
 };
 
 const aimOfSide = (
-  side: HateSide, player: HatePoint, ghost: HatePoint | null, escorts: readonly HateEscortCandidate[],
+  side: HateSide, player: HatePoint, ghost: HatePoint | null, escorts: readonly HateEscortCandidate[], dog: HatePoint | null = null,
 ): ResolvedHateAim => {
   if (side === 'ghost' && ghost) return { x: ghost.x, y: ghost.y, side };
+  if (side === 'dog' && dog) return { x: dog.x, y: dog.y, side };
   const id = escortIdOfSide(side);
   if (id !== undefined) {
     const e = escorts.find(c => c.id === id);
@@ -295,6 +309,9 @@ export const resolveBossLockedHateAim = (
       side: 'ghost',
     };
   }
+  // 英雄の犬(research/HERO_DOG.md): 技の途中も犬を追う。犬が倒れた/去りかけならプレイヤーへ安全に戻す。
+  const dogUnit = enemy.hateTarget === 'dog' ? findHeroDogForHate(summons) : undefined;
+  if (dogUnit) return { x: dogUnit.x + dogUnit.width / 2, y: dogUnit.y + dogUnit.height / 2, side: 'dog' };
   const eid = escortIdOfSide(enemy.hateTarget);
   if (eid !== undefined) {
     const e = currentEscorts(escorts).alive.find(c => c.id === eid);

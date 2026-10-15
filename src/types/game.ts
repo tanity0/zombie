@@ -517,7 +517,8 @@ export type Direction = 'up' | 'down' | 'left' | 'right' | 'idle';
  * 文字列のテンプレートリテラル型にしたのは、既存の `aim.side` を素通しで運ぶ約50箇所(hateTarget への書き戻し)を
  * 1行も変えずに3択へ広げるため。相手ごとの分岐が要る所(座標を引く箇所)は bossHate.ts の `escortIdOfSide` で読む。
  */
-export type HateSideKey = 'player' | 'ghost' | `escort:${string}`;
+// 'dog' = research/HERO_DOG.md: 英雄の犬(社長指示2026-10-15「ボスのヘイトにも入れる」)。
+export type HateSideKey = 'player' | 'ghost' | 'dog' | `escort:${string}`;
 
 export interface Enemy {
   id: string;
@@ -1508,6 +1509,8 @@ export interface Enemy {
   // research/ESCORT_TARGETED.md §5: 進軍NPC(軍人)ごとの直近6秒ダメージのバケツ(キー=EscortSoldier.id)。
   // プレイヤー/守護霊のバケツと同じ形・同じ6秒窓。damageEnemy(hateSource='escort:<id>')が積む。
   hateEscortBuckets?: Record<string, { idx: number; dmg: number }[]>;
+  // research/HERO_DOG.md: 英雄の犬の直近6秒ダメージ(damageEnemy(hateSource='dog') が積む)。
+  hateDogBuckets?: { idx: number; dmg: number }[];
   hateTarget?: HateSideKey;
   // research/ESCORT_TARGETED.md §4: 雑魚・強個体・ハンターが今追っている進軍NPCのid(粘着20%の基準・resolveEnemyTarget が読む)。
   // 既存の `escortTarget`(救助イベントの攻撃者が追う生存者のid)とは**別物**。

@@ -35,6 +35,7 @@ export const HERO_DOG_FLINCH_PX = 26;       // 被弾でダメージ源と反対
 export const HERO_DOG_FLINCH_MS = 140;
 export const HERO_DOG_DEATH_HOLD_MS = 1600; // 倒れ絵を保つ時間(雑魚の死体より早く消えない)
 export const HERO_DOG_DEATH_FADE_MS = 1200; // その後薄れる時間
+export const HERO_DOG_BITE_KNOCKBACK_MULT = 0.8; // 噛みの小ノックバック(サブウェポン「ドッグ」の噛みと同じ・社長指示2026-10-15)
 export const HERO_DOG_LUNGE_MS = 110;       // 跳び付きから噛みが届くまで(跳んで→噛む。噛んでから跳ばない)
 // 社長指示2026-10-15「イヌが出てる時、拾うだけの犬が出ないようにして」: 英雄の犬が居る間、サブウェポン「ドッグ」の拾い物は
 // 英雄の犬が走って取りに行く(拾うだけの犬=dogFetch 効果は出さない)。綱(LEASH)は無視して取りに行く。

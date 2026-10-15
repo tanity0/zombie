@@ -836,6 +836,11 @@ export const resolveEnemyTarget = (
     const g = summons.find(s => s.kind === 'ghost-ally' && (s.ghostBossId === undefined || s.ghostBossId === enemy.id));
     if (g) return { x: g.x + g.width / 2, y: g.y + g.height / 2, isSummon: true, hidden: false };
   }
+  // research/HERO_DOG.md(社長指示2026-10-15「ボスのヘイトにも入れる」): ヘイトが英雄の犬に向いているボスは移動の狙いも犬(技と移動で主語を揃える)。
+  if (!mobGhostRules && enemy.hateTarget === 'dog') {
+    const d = summons.find(s => s.kind === 'hero-dog' && s.expiresAt === undefined);
+    if (d) return { x: d.x + d.width / 2, y: d.y + d.height / 2, isSummon: true, hidden: false };
+  }
   // 進軍NPCが狙われているボス(§5): 移動の狙いも軍人へ(技と移動の主語を揃える=v0.25.3862)。倒れた/居なくなったら距離規則へ落ちる。
   if (!mobGhostRules && escorts && escorts.length > 0) {
     const eid = escortIdOfSide(enemy.hateTarget);

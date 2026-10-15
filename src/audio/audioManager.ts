@@ -145,6 +145,8 @@ export type SfxKey =
   | 'glen-nihil'    // グレン「虚無の三唱」(お墓技)SE(社長提供・壊れたラジオ加工)。長尺→フェードで止める
   // research/MUTANT_HERO.md(英雄(変異)・社長支給2026-10-03): いななき / 鼻息 / 蹄(駆け足のループ=setHeroGallop が鳴らす)。
   | 'hero-neigh' | 'hero-snort' | 'hero-gallop'
+  // 英雄の犬(research/HERO_DOG.md・社長支給2026-10-15): 汎用の吠え / やられた時
+  | 'dog-bark' | 'dog-yelp'
   // 英雄の命中音(既存素材を低く回して別物にする=phill-skylight-low と同じ作法): 叩きつけ / 体当たり / 斬撃。
   | 'hero-slam' | 'hero-tackle-hit' | 'hero-slash'
   | 'zombie-growl';  // ゾンビの構え(反る→固まる)の唸り声(社長支給2026-10-14・1.12倍に速めた版)
@@ -471,6 +473,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // 英雄(変異)(社長支給2026-10-03・加工なし=音量は既存のボス登場音と同程度)。
   'hero-neigh': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-neigh.mp3`, volume: 1.0, minIntervalMs: 600 },
   'hero-snort': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-snort.mp3`, volume: 1.0, minIntervalMs: 600 },
+  'dog-bark': { src: `${import.meta.env.BASE_URL}audio/sfx/dog-bark.mp3`, volume: 0.9, minIntervalMs: 900 },
+  'dog-yelp': { src: `${import.meta.env.BASE_URL}audio/sfx/dog-yelp.mp3`, volume: 1.0, minIntervalMs: 500 },
   // 蹄はループ専用(playSfx では鳴らさない)。末尾の約0.1秒の無音を切ってループする(setHeroGallop)。
   'hero-gallop': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-gallop.mp3`, volume: 0.9, minIntervalMs: 200 },
   // 巨体の騎馬の一撃は雑魚の着地と同じ音にしない: 同じ素材を遅く(=低く重く)回す。

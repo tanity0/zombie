@@ -115,3 +115,48 @@ describe('英雄の犬(store)', () => {
     expect(dog()?.health).toBe(100);
   });
 });
+
+describe('英雄の犬: 社長指示2026-10-15(噛みのKB・撃破を段へ・ボスのヘイト)', () => {
+  beforeEach(() => { setTreesDisabled(true); useGameStore.getState().resetGame('warrior'); });
+  const settle = () => {
+    giveHero(true); useGameStore.getState().updateHeroDog();
+    const d0 = dog()!;
+    useGameStore.setState(s => ({ summons: s.summons.map(x => x.id === d0.id ? { ...x, heroDogSettled: true } : x) }));
+    return dog()!;
+  };
+  const putEnemy = (type: 'zombie' | 'giantbat', d: ReturnType<typeof dog> & object, hp: number) => {
+    const e = spawnEnemyAt(type, 0, 0, 0);
+    e.x = d.x + d.width / 2 + 20 - e.width / 2; e.y = d.y + d.height / 2 - e.height / 2;
+    e.health = hp; e.maxHealth = Math.max(e.maxHealth, hp);
+    return e;
+  };
+  it('噛みで敵が犬から離れる向きへノックバックする', () => {
+    const d = settle();
+    const e = putEnemy('zombie', d, 400);
+    useGameStore.setState({ enemies: [e], gameTime: 1000 });
+    for (let i = 0; i < 14; i++) useGameStore.getState().updateSummons(0.016);
+    const after = useGameStore.getState().enemies.find(x => x.id === e.id)!;
+    expect(after.health).toBeLessThan(400);
+    expect((after.knockbackVx ?? 0)).toBeGreaterThan(0); // 犬は左・敵は右 → 右へ
+  });
+  it('犬の噛みで倒すと連続撃破の段に数える', () => {
+    const d = settle();
+    const e = putEnemy('zombie', d, 1);
+    useGameStore.setState({ enemies: [e], gameTime: 1000, killChainCount: 0 });
+    for (let i = 0; i < 14; i++) useGameStore.getState().updateSummons(0.016);
+    expect(useGameStore.getState().killChainCount).toBe(1);
+  });
+  it('犬の噛みはボスのヘイト(hateDogBuckets)に積まれ、狙いの相手に犬が選ばれる', async () => {
+    const { resolveBossHateAim } = await import('../utils/bossHate');
+    const d = settle();
+    const boss = spawnEnemyAt('giantbat', 0, 0, 0);
+    boss.x = d.x + 200; boss.y = d.y; boss.health = 5000; boss.maxHealth = 5000;
+    useGameStore.setState({ enemies: [boss], gameTime: 1000 });
+    useGameStore.getState().damageEnemy(boss.id, 50, false, false, false, 'dot', 'dog');
+    const after = useGameStore.getState().enemies.find(x => x.id === boss.id)!;
+    expect(after.hateDogBuckets?.length ?? 0).toBeGreaterThan(0);
+    const p = useGameStore.getState().player;
+    const aim = resolveBossHateAim(after, { x: p.x + p.width / 2 + 2000, y: p.y }, useGameStore.getState().summons, 1000);
+    expect(aim.side).toBe('dog');
+  });
+});

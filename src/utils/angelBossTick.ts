@@ -1493,7 +1493,8 @@ export const runJibrilTick = (
           ? store.summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === jibril.id)
           : undefined;
         // 火の設置先=相手の足元。3択(research/ESCORT_TARGETED.md §5): 守護霊=その足元 / 進軍NPC=軍人の足元(escort.footY) / プレイヤー=足元。
-        const fpx = aim.x, fpy = ghost ? ghost.y + ghost.height : aim.escort ? aim.escort.footY : player.y + player.height;
+        const dogU = aim.side === 'dog' ? store.summons.find(su => su.kind === 'hero-dog' && su.expiresAt === undefined) : undefined; // 英雄の犬=その足元
+        const fpx = aim.x, fpy = ghost ? ghost.y + ghost.height : dogU ? dogU.y + dogU.height : aim.escort ? aim.escort.footY : player.y + player.height;
         useGameStore.getState().spawnBossFire(fpx, fpy, newGameTime, newGameTime + JB_T.fire.telegraphMs, newGameTime + JB_T.fire.telegraphMs + JB_T.fire.lifeMs);
         jr.nextFireAt = newGameTime + JB_T.lantern.fireGapMs;
       }

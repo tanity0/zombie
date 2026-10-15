@@ -453,8 +453,10 @@ export const runIdolTick = (
       ? useGameStore.getState().summons.find(su => su.kind === 'ghost-ally' && su.ghostBossId === idol.id)
       : undefined;
     // 相手は3択(research/ESCORT_TARGETED.md §5): プレイヤー=前フレームとの差の速度 / 守護霊=その速度 / 進軍NPC=軍人の速度(escort.vx/vy)。
-    const targetVx = aim.side === 'ghost' ? (ghost?.vx ?? 0) : aim.escort ? aim.escort.vx : s.playerVx;
-    const targetVy = aim.side === 'ghost' ? (ghost?.vy ?? 0) : aim.escort ? aim.escort.vy : s.playerVy;
+    // 英雄の犬(research/HERO_DOG.md): 犬の速度で偏差撃ち。
+    const dogU = aim.side === 'dog' ? useGameStore.getState().summons.find(su => su.kind === 'hero-dog' && su.expiresAt === undefined) : undefined;
+    const targetVx = aim.side === 'ghost' ? (ghost?.vx ?? 0) : dogU ? (dogU.vx ?? 0) : aim.escort ? aim.escort.vx : s.playerVx;
+    const targetVy = aim.side === 'ghost' ? (ghost?.vy ?? 0) : dogU ? (dogU.vy ?? 0) : aim.escort ? aim.escort.vy : s.playerVy;
     // 到達時間→予測位置→到達時間、の2回で十分収束する(弾速がプレイヤー速度より十分速いため)。
     // 距離・角度とも銃口(mzx/mzy)基準(社長指示v0.25.3439)。
     for (let i = 0; i < 2; i++) {
