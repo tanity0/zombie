@@ -104,6 +104,7 @@ import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; 
 import { PVP_DAMAGE_SCALE, pvpHitDamageForGate } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
 import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget } from '../utils/dogFetch';
 import { HERO_DOG_FETCH_ARRIVE_PX, HERO_DOG_FETCH_TIMEOUT_MS, HERO_DOG_FETCH_RETURN_MS } from '../utils/heroDog';
+import { HIT_BLINK_TYPES } from '../utils/hitBlink';
 import { stepMagnetPull } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ(社長裁定2026-09-13) // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
 import { glenScriptApplies } from '../utils/giantScript';
@@ -14689,7 +14690,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().spawnGlow(ox, oy, 20, 'rgba(251,146,60,', 150); // 根元の小グロー(プール済み=安い)
             // 血飛沫(OP射撃シーンと同素材・3コマ100msずつ)。火の破裂と完全に同じ出口点(ox,oy)・
             // 同じ角度で噴く(社長指示v0.25.2024)。サイズは敵幅×4.0(最低96px・v0.25.2025でさらに2倍)。
-            useGameStore.getState().spawnBlood(ox, oy, ang, Math.max(96, enemyForFx.width * 4.0));
+            useGameStore.getState().spawnBlood(ox, oy, ang, Math.max(96, enemyForFx.width * 4.0), { flash: HIT_BLINK_TYPES.has(enemyForFx.type) }); // 点滅(ゾンビの試し・2026-10-16)
           }
           // NPCセリフ9: 護衛弾(weaponKey='escort')が敵を倒したら、撃破地点に最も近い護衛が反応(低頻度・CD)。
           if (enemyKilled && projectile?.weaponKey === 'escort' && enemyForFx) {
@@ -15539,7 +15540,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, wireChannel, wireHate);
               spawnDamageNumber(ecx, e.y, dmg, false);
               useGameStore.getState().spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
-              useGameStore.getState().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫(v0.25.2026)
+              useGameStore.getState().spawnMeleeBlood(ecx, ecy, e.width, { flash: HIT_BLINK_TYPES.has(e.type) }); // 近接の血飛沫(v0.25.2026)・点滅(ゾンビの試し)
               if (!killed && knockbackCdReady(e, nowW)) {
                 const dx = ecx - pcx, dy = ecy - pcy;
                 const dd = Math.hypot(dx, dy) || 1;
@@ -15582,7 +15583,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 useGameStore.getState().spawnSlash(tcx, tcy - 12, 'rgba(186,230,253,0.98)'); // 縦の斬り下ろし
                 useGameStore.getState().spawnSlash(tcx, tcy + 12, 'rgba(147,197,253,0.9)');
-                useGameStore.getState().spawnMeleeBlood(tcx, tcy, tgt.width); // 近接の血飛沫(v0.25.2026)
+                useGameStore.getState().spawnMeleeBlood(tcx, tcy, tgt.width, { flash: HIT_BLINK_TYPES.has(tgt.type) }); // 近接の血飛沫(v0.25.2026)・点滅(ゾンビの試し)
                 spawnBurst(tcx, tcy, '#bae6fd', 14);
                 wireSfx('slash-damage', tcx, tcy);
               }

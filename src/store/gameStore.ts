@@ -553,7 +553,7 @@ const countBloodParticles = (effects: VisualEffect[]): number => {
 };
 // (x,y)から方向angleへ円錐±20°で粒子を噴くバースト。塊感の大粒(約3割)+赤の小粒。中心ほど速く、
 // 少し上向きバイアスで噴き上げてから重力で落ちる。銃/近接どちらの血飛沫もこの1関数から作る(見た目統一)。
-const buildBloodBurst = (x: number, y: number, angle: number, count: number, now: number): VisualEffect[] => {
+const buildBloodBurst = (x: number, y: number, angle: number, count: number, now: number, flash = false): VisualEffect[] => {
   const fresh: VisualEffect[] = [];
   for (let i = 0; i < count; i++) {
     const spread = Math.random() * 2 - 1;                 // [-1,1]=コーン内の左右位置
@@ -576,6 +576,7 @@ const buildBloodBurst = (x: number, y: number, angle: number, count: number, now
       liquid: true,
       stretch: true,                                       // 速度方向に伸ばして線状の飛沫に(白芯も有効・v0.25.2041)
       gravity: BLOOD_GRAVITY,                              // 血だけ重力で落下(他呼び出しは未指定=挙動不変)
+      ...(flash ? { flash: true } : {}),                   // 点滅(ゾンビの試し・描画のみ)
     });
   }
   return fresh;
@@ -6913,8 +6914,8 @@ interface GameState {
   // 指定方向(dirX,dirY)へ円錐状に粒子を噴く(被弾の出口=背中側の破裂演出など)。色はランダムに使い分け。
   spawnSpray: (x: number, y: number, dirX: number, dirY: number, count: number, colors: string[]) => void;
   spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
-  spawnBlood: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ血飛沫(3コマ100msずつ・OP同素材)
-  spawnMeleeBlood: (ex: number, ey: number, size?: number) => void; // 近接ヒット時、敵からプレイヤーへ向かって飛ぶ血飛沫(専用素材)
+  spawnBlood: (x: number, y: number, angle: number, len: number, opts?: { flash?: boolean }) => void; // 銃弾ヒット時、背中側へ血飛沫。opts.flash=点滅(ゾンビの試し・2026-10-16)
+  spawnMeleeBlood: (ex: number, ey: number, size?: number, opts?: { flash?: boolean }) => void; // 近接ヒット時、敵からプレイヤーへ向かって飛ぶ血飛沫。opts.flash=点滅(ゾンビの試し)
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
@@ -22958,14 +22959,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   // 銃弾ヒットの血飛沫(ZELTER風・社長指示v0.25.2027): (x,y)から方向angleへ円錐±20°で微粒子を噴き、重力で落とす。
   // 粒子数は len(=傷の勢い)に比例させ 22〜56 に収める。旧'blood'kindは発行しない(素材は残置)。
-  spawnBlood: (x, y, angle, len) => {
+  spawnBlood: (x, y, angle, len, opts) => {
     const now = Date.now();
     // グローバルキャップ: 生きている血粒子が上限を超えないよう、不足分だけ生成(超過分はスキップ)。
     const alive = countBloodParticles(get().effects);
     const room = BLOOD_PARTICLE_CAP - alive;
     if (room <= 0) return; // 既に上限=1粒も足さない(setも呼ばない=無駄な購読者起こしを避ける)
     const desired = Math.max(22, Math.min(56, Math.round(len / 4))); // 粒数+25%(社長指示v0.25.2058もう少し増量)
-    const fresh = buildBloodBurst(x, y, angle, Math.min(desired, room), now);
+    const fresh = buildBloodBurst(x, y, angle, Math.min(desired, room), now, opts?.flash === true);
     set(state => {
       const next = [...state.effects, ...fresh];
       if (next.length > 400) next.splice(0, next.length - 400);
@@ -22974,7 +22975,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   // 近接の血飛沫(社長指示v0.25.2026→2027で粒子化): 敵(ex,ey)から【プレイヤーに向かって】飛ぶ。方向は内部計算。
   // 起点=敵中心をプレイヤー側へ少し寄せた点(斬った面)。勢い(len)規則は銃と同じ(×4.0・最低96px)。
-  spawnMeleeBlood: (ex, ey, size = 40) => {
+  spawnMeleeBlood: (ex, ey, size = 40, opts) => {
     const now = Date.now();
     const p = get().player;
     const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
@@ -22987,7 +22988,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const desired = Math.max(22, Math.min(56, Math.round(len / 4))); // 粒数+25%(社長指示v0.25.2058もう少し増量)
     const fresh = buildBloodBurst(
       ex + dx * size * 0.4, ey + dy * size * 0.4, // 起点=既存計算のまま(斬った面)
-      Math.atan2(dy, dx), Math.min(desired, room), now,
+      Math.atan2(dy, dx), Math.min(desired, room), now, opts?.flash === true,
     );
     set(state => {
       const next = [...state.effects, ...fresh];

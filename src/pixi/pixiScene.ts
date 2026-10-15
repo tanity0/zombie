@@ -344,6 +344,7 @@ import {
 } from '../world/armory';
 import { POLICE_FADE_MS, POLICE_DISPLAY_H } from '../world/police';
 import { HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_DEATH_HOLD_MS, HERO_DOG_DEATH_FADE_MS, heroDogDeathPose } from '../utils/heroDog';
+import { HIT_BLINK_TYPES, hitBlinkStrength, bloodFlashStrength } from '../utils/hitBlink';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE, ALCHEMY_ATTACK_INTERVAL_MS } from '../utils/summonUtils';
 import { effectiveReloadMs, hasWeaponIcon, weaponIconName, getActiveGun } from '../utils/weaponUtils';
 import { ESCORT_MELEE_WINDUP_MS, ESCORT_MELEE_BLADE_MS } from '../utils/escortMelee'; // 進軍NPCのナイフ(research/ESCORT_MELEE.md)
@@ -19969,7 +19970,8 @@ export class PixiScene {
       const hf = view.hitFlash;
       const flashT = view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1
         // ★量と連動(2026-09-17)。小さいダメージほど薄く光る(旧は量によらず満額だった)。
-        ? Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS) * flashMul(enemyHitReaction(e))
+        // 点滅(社長指示2026-10-16・ゾンビで試し): 白→消える→もう一度光る→減衰(utils/hitBlink)。他の型は従来の線形減衰。
+        ? (HIT_BLINK_TYPES.has(e.type) ? hitBlinkStrength(now - e.lastHit) : Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS)) * flashMul(enemyHitReaction(e))
           // research/MUTANT_HERO.md: 英雄は三つ巴で常に誰かに殴られる巨体=全身白で構え(技の見分け)が消えないよう薄く。
           * (e.type === 'mutant-hero' ? 0.35 : 1) : 0;
       // 延焼中の薄い赤点滅(社長指示v0.25.3272)/氷鈍化中の薄い水色点滅(社長指示v0.25.3276)。
@@ -31311,6 +31313,14 @@ export class PixiScene {
       return;
     }
     view.alpha = e.liquid ? Math.max(0, 1 - t * 0.88) : Math.max(0, 1 - t);
+    // 点滅(社長指示2026-10-16・ゾンビで試し): 出た瞬間は真っ白、寿命の途中で1回だけ明るく戻す(本体の tint だけ。絵は足さない)。
+    if (e.flash) {
+      const f = bloodFlashStrength(now - e.createdAt, t);
+      const body = (view as Container).children[1] as Sprite | undefined;
+      const halo = (view as Container).children[0] as Sprite | undefined;
+      if (body) body.tint = f >= 0.99 ? 0xffffff : f > 0 ? 0xffd9d9 : this.glowTint(e.color);
+      if (halo) halo.tint = f > 0 ? 0x7f1d1d : 0x052e16;
+    }
     // 血飛沫(stretch): 速度方向に伸ばして線状の飛沫に(速いほど長く・少し薄く)。ZELTER風の
     // 走る血しぶきをグロー無し(通常合成のscale/rotationのみ)で出す(v0.25.2041・負荷0)。
     if (e.stretch) {

@@ -2792,6 +2792,8 @@ export type VisualEffect =
       // 血飛沫用(v0.25.2041): 速度方向に粒を伸ばして線状の飛沫として描く(描画のみ)。
       // 指定時はハイライト芯も白(未指定=既存の他パーティクルは見た目不変)。
       stretch?: boolean;
+      // 点滅(社長指示2026-10-16・ゾンビで試し): 出た瞬間を白1コマ+寿命の途中で1回だけ明るく(utils/hitBlink.bloodFlashStrength)。
+      flash?: boolean;
       // 薬莢(戦闘の手触り③・v0.25.4269): 固体の粒。通常合成・白熱芯なし・空中は spin(rad/s)で回り、
       // y が floorY に達したら1回跳ねて止まる(updateEffects・combatFeel.stepFloorParticle)。restedAt=止まった時刻。
       solid?: boolean;
