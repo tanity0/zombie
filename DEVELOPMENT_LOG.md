@@ -18,7 +18,7 @@
 ## v0.25.5061 — Pages を単一ビルドへ戻す(A/Bレースの新線 /v2/ を外す)【2026-10-15 21:42 JST】
 - 社長裁定2026-10-15「はい(さらに減らす)」: `pages.yml` の合成デプロイ(旧線 /zombie/ + 新線 claude/direction-shift を /zombie/v2/)を
   単一ビルド(claude/chat-context-continuity-saxlH のみ)へ戻した。新線の最終更新は 2026-07-05。/zombie/v2/ の URL は次のデプロイから消える。
-  トリガーの branches からも claude/direction-shift を外した。アーティファクトは約400MB→約200MB(次のデプロイで実測)。
+  トリガーの branches からも claude/direction-shift を外した。アーティファクトは **396MB→240MB(実測・v0.25.5061 のデプロイ)**。デプロイ成功後に自動削除も確認(一覧から消えた)。
 - src に /v2/ への参照は無し(grep)。
 - 検証: YAML 妥当。実動は次の push のデプロイで確認。
 - 状態変化: なし(インフラ)。
