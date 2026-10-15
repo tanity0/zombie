@@ -15,7 +15,21 @@
   表示寸法に対して過大の疑い(常駐かは起動マニフェスト次第・要確認)。
 - 状態変化: 落ち対策(時間で増える物) → 調査完了(増える物なし)。常駐削減は社長判断待ち。
 
-## v0.25.5059 — 英雄の犬: 噛みのノックバック・撃破を段へ・ボスのヘイト・鳴き声【2026-10-15 21:14 JST】
+## v0.25.5060 — GitHub Actions ストレージ対策(Pages のアーティファクトを即消す・文書 push は配信しない)+ CI の赤を解消【2026-10-15 21:35 JST】
+- 社長報告2026-10-15(メール「アクションストレージを100%使用」・無料枠 0.5GB/月): 原因は **Pages のデプロイ用アーティファクト(1回 約396MB・
+  旧線+新線 /v2/ の2本ぶん)が保持1日のあいだ課金対象に残る**こと。1日20回 push で 8GB(実測: 生きているアーティファクト21本=8.3GB)。
+  Actions の実行時間ではない(public リポジトリは無料)。
+- 対策(`.github/workflows/pages.yml`): ①デプロイ直後に `actions/github-script` でそのアーティファクトを消す(`actions: write`・成否に関わらず)
+  ②文書だけの push(`**.md` / research/ / TEST_HANDOFF/ / archive/)はデプロイしない。
+  ★残っている21本の削除は API で試みたが実行環境の権限で止まった(社長が GitHub の Actions 画面から消せる。放っておいても各1日で消える)。
+  ★提案(社長判断): `claude/direction-shift`(新線 /v2/)は最終更新 2026-07-05。A/Bレースが終わっているなら pages.yml を単一ビルドへ戻すと
+  アーティファクトが半分(約200MB)になる。
+- CI の赤(2026-10-14〜連続失敗): `clockLedger.test` の「knockbackShoveUntil を gameTime と比べていない」が、`canShoveEnemy` の引数名 `now` を
+  上の無関係な `const now = …` で誤判定していた。引数名を `realNow` に(呼び手の時計は Date.now 系で正しい)。`npm test` 全件 7672 緑。
+- 検証: typecheck 0 / lint 0 / npm test 490ファイル緑 / pages.yml は YAML として妥当(次の push で実動確認)。
+- 状態変化: なし(インフラ・CI)。
+
+【2026-10-15 21:14 JST】
 - 社長指示2026-10-15「噛みにノックバック付ける / 犬の撃破も入れる / ボスのヘイトにも入れる」+ SE 2本の支給(犬やられた時・汎用 犬)。
 - ノックバック: ドッグの噛みと同じ ×0.8(`HERO_DOG_BITE_KNOCKBACK_MULT`・城ボス/パンプキン級は免除)。撃破: `registerPlayerKills` のゲートに 'dog'(スロー無し)。
 - ボスのヘイト: `HateSideKey` に 'dog'・`Enemy.hateDogBuckets`・`pickHateTarget` の候補に犬(守護霊と同じ点数)・`resolveBossHateAim`/`resolveBossLockedHateAim`/

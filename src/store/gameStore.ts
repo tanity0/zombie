@@ -1522,10 +1522,10 @@ export const GHOST_MOB_HATE_MS = 5000;
  */
 export const canShoveEnemy = (
   enemy: Pick<Enemy, 'type' | 'knockbackShoveUntil' | 'reaperChaser'>,
-  now: number,
+  realNow: number, // 実時間(Date.now)。knockbackShoveUntil と同じ時計(clockLedger.test が機械的に見る=引数名で時計を明示)
 ): boolean => {
   if (isTerminalReaper(enemy)) return false;
-  return !isBossType(enemy.type) || now < (enemy.knockbackShoveUntil ?? 0);
+  return !isBossType(enemy.type) || realNow < (enemy.knockbackShoveUntil ?? 0);
 };
 
 // ★ボスはクリティカルで「痺れない」(社長指示v0.25.2422)。代わりに一定時間**動きが半減**する。
