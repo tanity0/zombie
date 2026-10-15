@@ -397,7 +397,7 @@ import { CorridorLayer, CFG as CORRIDOR_GAME_CFG } from './corridorLayer';
 import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circleSweepBand, circleSweepAlphaAt, loopSweepProg as csLoopSweepProg } from '../utils/circleSweep';
 import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, bandSweepSliceAlpha, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
 import { giantSweepWindowProg, giantNovaWindupProg } from '../utils/giantRedTelegraph';
-import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb, canBakeWithin } from '../utils/memoryTier';
+import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb, canBakeWithin, shadowSilBudgetMb } from '../utils/memoryTier';
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // 対人トラップの3秒の見え方(drawTrapBind) // 焼きの天井をスマホ/PCで分ける(v0.25.4867)
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
@@ -3194,7 +3194,7 @@ const SHADOW_FOOTX_SMOOTH_MS = 900;
 // ★#S-1(社長指摘2026-09-20): 予算は**上限として機能させる**(超過したら新規ベイクを止めて
 // 接地だけの簡易影へ落とす)。`?silbudget=<MB>` で切り分け・詰めができる
 // (小さくすると「枠が尽きた時にどう見えるか」をその場で確認できる)。
-const SHADOW_SIL_CACHE_BUDGET_BYTES = Math.max(1, tsNum('silbudget', 32)) * 1024 * 1024;
+const SHADOW_SIL_CACHE_BUDGET_BYTES = Math.max(1, tsNum('silbudget', shadowSilBudgetMb(memoryTier()))) * 1024 * 1024; // スマホ16 / PC32(v0.25.5053)
 const SHADOW_BAKE_BUDGET_PER_FRAME = 4;
 
 // ---- 静止物(木/壁/プロップ/city props/建物)の距離クロスフェード(旧 OBJECT_SHADOW_MAX の代替) ------
