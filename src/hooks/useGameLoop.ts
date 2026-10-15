@@ -10134,8 +10134,22 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               }
               else if (tr.kind === 'lost') { abortDogFetchFx(job, job.effectId, nowMs); dogFetchRef.current = null; clearHeroDogFetch(); }
-              // 英雄の犬が代行中に居なくなった(倒れた/去った): 拾わずに中止(CDは消費しない)。
-              if (job.heroDog && dogFetchRef.current === job && !liveHeroDog()) { dogFetchRef.current = null; clearHeroDogFetch(); }
+              // 社長指示2026-10-15「英雄犬が倒れた時は通常のドッグ効果」: 代行中に英雄の犬が居なくなった(倒れた/去った)ら、
+              // その場から**通常のドッグ(拾うだけの犬)に引き継ぐ**=主人の所から改めて往復する(CD・回収は通常どおり)。
+              if (job.heroDog && dogFetchRef.current === job && !liveHeroDog()) {
+                const st = useGameStore.getState();
+                const hx = st.player.x + st.player.width / 2, hy = st.player.y + st.player.height / 2;
+                const fxId = `fx-dog-fetch-${Math.floor(nowMs)}-${job.targetId ?? 'x'}`;
+                job.heroDog = false;
+                job.startedAt = nowMs; job.fromX = hx; job.fromY = hy;
+                job.collectAt = nowMs + DOG_FETCH_PICKUP_MS; job.finishAt = nowMs + DOG_FETCH_DURATION_MS;
+                job.effectId = fxId;
+                clearHeroDogFetch();
+                spawnEffect({
+                  kind: 'dogFetch', id: fxId, fromX: hx, fromY: hy, targetX: job.targetX, targetY: job.targetY, toX: hx, toY: hy,
+                  createdAt: nowMs, pickupAt: nowMs + DOG_FETCH_PICKUP_MS, duration: DOG_FETCH_DURATION_MS,
+                });
+              }
             }
           }
           const activeFetch = dogFetchRef.current;
