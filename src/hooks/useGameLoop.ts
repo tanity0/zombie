@@ -159,6 +159,7 @@ import {
 // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 守護霊は「計測時ビルド」で戦う。ビルドの復元+倍率評価用の
 // 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
 import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
+import { recordMapSightings } from '../utils/mapSightings'; // 一時停止の地図に出す「出会った敵」の記録
 import { bloodAwakenStep, isBloodAwakening, BLOOD_AWAKEN_SFX_GAIN, BLOOD_AWAKEN_SFX_RATE } from '../utils/bloodAwaken'; // B10 血の覚醒の遷移(満ちたら自動発動・終わりで0へ)
 import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle';
 // v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀のオート斬撃の標的選択と、
@@ -2996,6 +2997,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           updateEffects(deltaTime);
           frameRef.current = requestAnimationFrame(gameLoop);
           return;
+        }
+        { // 一時停止の地図(THEONE_ROUND2 §2-3): 画面に入ったボス級・宿敵を「出会った」として記録(store へは書かない)
+          const ms = useGameStore.getState();
+          recordMapSightings(ms.enemies, ms.camera, ms.gameBounds, ms.viewZoom);
         }
 
         // --- キャラ登場演出(ロックマン的な飛び込み)---
