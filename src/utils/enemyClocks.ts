@@ -61,6 +61,10 @@ export const isRecoverHoldPhase = (phase: string | undefined): boolean =>
  * 含める: (a)技後の硬直相 (b)噛みつき直後の硬直 (c)被弾硬直 (d)気絶/紫 (e)拘束・持ち上げ。
  * 含めない: (f)ノックバック(社長裁定2026-09-19=「銃撃では攻撃は何も止まらない」と揃える)。
  */
+/** ボスが技の最中か(`bossState` が chase 以外・硬直相(-recover)は除く=硬直相は (a) が見る)。拘束(e)はこの間すり抜ける。 */
+export const isBossMidMove = (e: { bossState?: string }): boolean =>
+  e.bossState !== undefined && e.bossState !== 'chase' && !isRecoverHoldPhase(e.bossState);
+
 export const isEnemyFrozenForClocks = (e: Enemy, gameTime: number, nowMs: number): boolean => {
   // committed = 中断不可の実行中(空中ジャンプ・ダッシュ突進)。updateEnemies と同じ定義。
   const committed = e.aiPhase === 'jump' || e.aiPhase === 'charge';
@@ -68,8 +72,12 @@ export const isEnemyFrozenForClocks = (e: Enemy, gameTime: number, nowMs: number
   if (e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil) return true;
   // (d)気絶
   if (!committed && e.stunUntil !== undefined && gameTime < e.stunUntil) return true;
-  // (e)拘束(技の発動中はすり抜ける=updateEnemies の `&& !enemy.aiPhase` と同じ)
-  if (e.rootUntil !== undefined && gameTime < e.rootUntil && e.aiPhase === undefined) return true;
+  // (e)拘束(技の発動中はすり抜ける=updateEnemies の `&& !enemy.aiPhase` と同じ)。
+  // ★ボス(天使/賞金首/城ボス)は技を `aiPhase` ではなく `bossState` で持つ。`aiPhase` だけで見ると**突進中のミゲルが
+  //   拘束で凍る**: 台帳の `aiStartedAt` が毎フレーム据え置かれて突進のツイーンが進まず、同時に銃弾のノックバックで
+  //   位置だけ小刻みに揺れる(社長報告2026-10-16「ミゲルが突進モーションのまま小刻みに震えながら止まって、しばらくして再開」。
+  //   マークスマンのトラップ Lv1=rootEnemy 3秒)。angelBossTick は「技の実行中は完走させる」(chase でだけ止まる)ので、時計も同じ式で見る。
+  if (e.rootUntil !== undefined && gameTime < e.rootUntil && e.aiPhase === undefined && !isBossMidMove(e)) return true;
   // (e)持ち上げ(Date.now系)
   if (!committed && e.liftUntil !== undefined && nowMs < e.liftUntil) return true;
   // (c)被弾硬直(攻撃中スーパーアーマー=技を出している個体は止まらない・Date.now系)

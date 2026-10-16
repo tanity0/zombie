@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5077', items: [
+    'ステージ4のボス ミゲルが、トラップに掛かると突進の途中で震えながら止まっていたのが直った。技の最中は拘束で時間が止まらない',
+  ] },
   { version: '0.25.5076', items: [
     '一時停止の地図の右下に、今居る場所の距離を「◯◯m」で表示',
   ] },
