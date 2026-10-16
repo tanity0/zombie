@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5081', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5080', items: [
     '境界のテープが太く大きくなり、文字は地面に書かれた大きさに(引けば小さく見える)。境に近づくと手前から薄く浮かび、踏む直前でくっきりする',
   ] },
