@@ -96,6 +96,10 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
     >
       <canvas ref={ref} width={SIZE * res} height={SIZE * res} aria-label="地図" />
       <span className="ds-map-tag">DEPTH — {AREA_ZONE_NAMES[zone] ?? ''}</span>
+      {/* ★社長(2026-10-16 実機)「現在地をリザルトのところで表示してるみたいに『◯◯m』って表示。地図の4隅のどこかに」: 右下に原点からの距離(px=m・リザルトと同じ数え方)。 */}
+      <span className="ds-map-tag" style={{ left: 'auto', right: 8, top: 'auto', bottom: 6, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.72)' }}>
+        {Math.round(dist)}<span style={{ marginLeft: 2, opacity: 0.55 }}>m</span>
+      </span>
     </div>
   );
 };
