@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useHudScale } from './HudScale';
 import { AREA_ZONE_NAMES, activeAreaThresholds, areaIndexForDist } from '../utils/enemyUtils';
 import { POI_SECTORS } from '../world/pois';
-import { POI_MARK_COLOR } from '../utils/poiMarks';
 
 // ★B2(research/THEONE_ROUND2.md §2・社長「一時停止メニューにマップを追加」)。
 // 一時停止を開いた時の1回読み(スナップショット)を canvas に1度だけ描く(毎フレーム描かない=負荷0/10)。
@@ -20,6 +19,7 @@ export interface PauseMapData {
 
 const SIZE = 300; // バッキング(正方形)。CSSで箱いっぱいに伸ばす。
 const AMBER = '#ffb340', AMBER_HI = '#ffd28a';
+const DETOUR = '#9fdcea'; // 寄り道の点(青白=琥珀の脅威・白の自分/拠点と色で分かれる)
 const GROUND = '#07060d'; // 地の色(--ds-bg と同じ)。記号の縁取りに使う
 
 export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
@@ -75,11 +75,12 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
       if (b.captured) { ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(x - 3 * m, y - 3 * m, 6 * m, 6 * m); }
       else { ctx.strokeStyle = AMBER; ctx.lineWidth = 1.2 * m; ctx.strokeRect(x - 3.5 * m, y - 3.5 * m, 7 * m, 7 * m); }
     }
-    // 発見済みの寄り道・裏ボスの巣=色分けした点(色はリザルトの到達図と同じ・社長 2026-10-17「色分けしたドット」)。
+    // 発見済みの寄り道・裏ボスの巣=**1色の点**(社長 2026-10-17「POIは区別しなくていい。全体的に大雑把な区分けでいい」)。
+    // 地図の区分は4つだけ: 自分=白の枠 / 拠点=四角 / 寄り道=青白の点 / 脅威=琥珀の菱形。色を琥珀から離して脅威と取り違えない。
     // 取り終えた所は塗らずに輪だけ(まだ行く価値がある所が一目で分かる)。
     // 記号は地の色で一回り縁取ってから描く=輪の線や他の記号に溶けない(検収クリエイティブ監査 #1/#6)。
     for (const q of data.pois) {
-      const col = POI_MARK_COLOR[q.kind];
+      const col = DETOUR;
       const x = mx(q.x), y = my(q.y);
       ctx.fillStyle = GROUND; ctx.beginPath(); ctx.arc(x, y, 3.8 * m, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(x, y, (q.taken ? 2.2 : 2.6) * m, 0, Math.PI * 2);

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5093', items: [
+    '一時停止の地図の寄り道は、種類を分けずに一つの色で出す。取り終えた所は輪だけのまま',
+  ] },
   { version: '0.25.5092', items: [
     'ゲーム内容の変更はありません',
   ] },
