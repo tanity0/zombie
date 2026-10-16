@@ -106,7 +106,8 @@ import { beginGhostOnlineRun, type GhostFeedbackTarget, type GhostSource } from 
 import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/dashLocomotion';
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
-import { stepSpeedRamp, effectiveRampFrac, RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
+import { stepSpeedRamp } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
+import { cruiseIntervalS, cruiseTotalMs, cruiseStage, cruiseStageBonus, cruiseOthersRampMs, cruiseDamageMult, equipCruiseTier, CRUISE_STAGE_BONUS, CRUISE_STAGE_MAX } from '../utils/cruise'; // B3 巡航+B11(THEONE_ROUND2 §4b)
 import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_PUZZLE.md §14-4-2(新死神・重大4/5)
 import { bloodAwakenMult, bloodGainFor, applyBloodGain } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
 import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
@@ -1842,9 +1843,9 @@ export const VAMPIRE_AWAKEN_MELEE_HEAL_FRAC = 0.05;
 // 立ち上がっている間(叩き台。RAMP_FULL_MS=1.5秒の半分=同方向へ0.75秒走り続けた状態)。
 export const RUNNER_AWAKEN_DR_MULT = 0.8;
 export const RUNNER_AWAKEN_RAMP_FRAC_MIN = 0.5;
+// ★B3 巡航(v0.25.5082): 「加速中」=巡航の段1以上(ランナーLv3は約0.57秒・旧=ランプ半分=0.5秒とほぼ同じ)。RUNNER_AWAKEN_RAMP_FRAC_MIN は互換のため残す。
 export const runnerAwakenDamageMult = (player: Player): number =>
-  skillLevel(player, 'runner') >= 3 &&
-  Math.min(1, player.speedRampSustainMs / RAMP_FULL_MS) >= RUNNER_AWAKEN_RAMP_FRAC_MIN
+  skillLevel(player, 'runner') >= 3 && playerCruiseStage(player) >= 1
     ? RUNNER_AWAKEN_DR_MULT
     : 1;
 // エクスプローダー覚醒(Lv3)の爆発KB距離倍率(主語=その爆発の持ち主)。全爆発KB地点がこれを乗算する。
@@ -2173,8 +2174,16 @@ export const scavengerGunMult = (player: Player, gameTime: number): number =>
 // (src/utils/speedRamp.ts・満額 RAMP_FULL_MS)へ渡すことで表現する。旧 marksmanSpeedMult
 // (mageのみ×1.2・仕様1で個別条件をランプへ統合済み)の後継。marksmanMovingSince(連続移動の
 // 開始時刻)はスケーターバッシュの発動条件と頭上マーク通知の debounce キーとして引き続き残置。
+// ★B3 巡航(THEONE_ROUND2 §4b・社長「B3はA案で」2026-10-16): 全員標準の+10%は巡航の段(+20/30/40%)に置き換わった。
+// 残るのはマークスマン(mage)の追加+10%だけ(旧 標準1.2 ÷ 全員1.1 の差=クラスの特徴として上乗せに残す)。
 export const standardSpeedBonusMult = (player: Player): number =>
-  player.characterClass === 'mage' ? 1.2 : 1.1;
+  player.characterClass === 'mage' ? 1.2 / 1.1 : 1;
+/** B3 巡航: このプレイヤーの最大段までの総時間(ms)。ランナー Lv と機動系の装備の段階から(読み②)。 */
+export const playerCruiseTotalMs = (player: Player): number =>
+  cruiseTotalMs(cruiseIntervalS(skillLevel(player, 'runner'), equipCruiseTier(player.equipment)));
+/** B3 巡航: 今の段(0〜3)。`?speedramp=0` は常に最大段。 */
+export const playerCruiseStage = (player: Player): number =>
+  SPEED_RAMP_ENABLED ? cruiseStage(player.speedRampSustainMs, playerCruiseTotalMs(player)) : CRUISE_STAGE_MAX;
 // ヘビーガンナー: 同一攻撃で2体以上に当てた後3秒、すべての爆発範囲 ×1.1。
 export const heavyGunnerExplosionMult = (player: Player, gameTime: number): number =>
   player.characterClass === 'warrior' && gameTime < player.heavyGunnerExpBuffUntil ? 1.1 : 1;
@@ -7654,11 +7663,28 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (input.right) rampInX += 1;
       }
       const rampMoving = Math.hypot(rampInX, rampInY) > 0;
-      const nextSpeedRamp = stepSpeedRamp(
-        { sustainMs: player.speedRampSustainMs, lastDirX: player.speedRampDirX, lastDirY: player.speedRampDirY },
-        { dtMs: deltaTime * 1000, moving: rampMoving, dirX: rampInX, dirY: rampInY },
-      );
-      const rampFrac = effectiveRampFrac(nextSpeedRamp, SPEED_RAMP_ENABLED);
+      // ★B3 巡航(THEONE_ROUND2 §4b-2-5): 強制的に動かされている/止められている間は段を**積まない・戻さない**(保持)。
+      //   ダッシュ/ワイヤー/ホップ/一閃・四神スライド・被弾の吹き飛び・踏み込み・スケーター急停止・対人の体勢・掴まれ・被弾の移動ロック・
+      //   近接の振り(動けない368ms)・納品ロック。スティックを倒し続けても時計は進まず、離しても段0へ戻らない。
+      //   向きだけは入力に追従させる(明けた最初のフレームに「強制移動の前の向き」と比べて段0に落ちないように)。
+      const holdNow = Date.now();
+      const holdSwingSince = holdNow - (player.meleeSwingAt || 0);
+      const cruiseHold = dashMode !== null || sliding || state.deliveryLocked
+        || (player.knockbackUntil !== undefined && holdNow < player.knockbackUntil)
+        || holdNow < (player.lungeUntil ?? 0) || holdNow < player.skaterStopUntil
+        || isPvpIncapacitated(player.pvpPosture, state.gameTime) || isPlayerGrabbed(player, state.gameTime)
+        || isHurtMoveLocked(player, holdNow)
+        || ((player.meleeSwingAt || 0) > 0 && holdSwingSince >= 0 && holdSwingSince < PLAYER_MELEE_SWING_MS);
+      const nextSpeedRamp = cruiseHold
+        ? { sustainMs: player.speedRampSustainMs, lastDirX: rampMoving ? rampInX : player.speedRampDirX, lastDirY: rampMoving ? rampInY : player.speedRampDirY }
+        : stepSpeedRamp(
+          { sustainMs: player.speedRampSustainMs, lastDirX: player.speedRampDirX, lastDirY: player.speedRampDirY },
+          { dtMs: deltaTime * 1000, moving: rampMoving, dirX: rampInX, dirY: rampInY },
+        );
+      // 段(+20/30/40%)は段の時間で、上乗せ(ランナー/装備/英雄/消費カード/マークスマンの追加分)は min(段の総時間, 1秒) で立ち上がる。
+      const cruiseT = playerCruiseTotalMs(player);
+      const rampFrac = SPEED_RAMP_ENABLED ? Math.min(1, nextSpeedRamp.sustainMs / cruiseOthersRampMs(cruiseT)) : 1;
+      const cruiseMult = 1 + (SPEED_RAMP_ENABLED ? cruiseStageBonus(nextSpeedRamp.sustainMs, cruiseT) : CRUISE_STAGE_BONUS[CRUISE_STAGE_MAX]);
 
       // ★対人トラップ効果中は「移動が等倍のみ」(社長指示2026-08-25・SAME_ARENA §3-g)。
       // かさまし%(ランナー/マークスマン/消費カード/装備)・スケーター×3・ダッシュ系
@@ -7697,6 +7723,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeRecoverMult: meleeRecoverSpeedMult(player.meleeSwingAt, nowMs, PLAYER_MELEE_SWING_MS, COUNTER_WINDOW + MELEE_RECOVER_MS),
         // B10 血の覚醒(THEONE_ROUND2 §3-1): 移動速度 ×1.5。ランプの外・dash/スライド/スケーターには掛けない(関数側)。
         awakenSpeedMult: bloodAwakenMult(player, state.gameTime).boost,
+        // B3 巡航の段(THEONE_ROUND2 §4b): ランプと同じ枝に掛ける(dash/スライドには掛からない=関数側)。
+        cruiseMult,
       });
 
       // Target direction from swipe (touch) or keys.
@@ -11903,6 +11931,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // B10 血の覚醒中は被ダメージ ×2(終わりの1秒で線形に 1 へ戻る・ナイト等と乗算。THEONE_ROUND2 §3-1)。
     const skilled = rawAmount > 0
       ? rawAmount * skillIncomingDamageMult(player, get().gameTime) * runnerAwakenDamageMult(player) * bloodAwakenMult(player, get().gameTime).taken
+        // B11(THEONE_ROUND2 §4b-2-6): 巡航の段1以上なら機動系の装備の段階×4%軽く(段を戻す前の段で判定)。スーパーアーマーの判定より前=軽くなった分だけ耐えやすい(相乗りを意図)。
+        * cruiseDamageMult(playerCruiseStage(player), equipCruiseTier(player.equipment))
       : rawAmount;
     // B12 スーパーアーマー(THEONE_ROUND2 §4): 実ダメージ(skilled=M0 の noDeath 切り詰めの前)で判定。
     // 働いたら吹き飛ばさず、しゃがみ/移動ロック/銃ロックの時計(lastHurtAt/lastHurtTier)を**書かない**(読み手3つが自然に素通りする)。
@@ -12067,6 +12097,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ★被弾リアクションの打刻(描画専用・判定不変)。この間だけ本体の絵がしゃがみへ替わる。
           // 段(軽/中/重)は**実際に減ったHP**(amount=軽減後)と最大HPの割合で決まる。
           lastHurtAt: (amount > 0 && !armored) ? kbNow : state.player.lastHurtAt,
+          // B3 巡航: 被弾(吹き飛び・しゃがみの付く当たり)で段0へ。スーパーアーマーで耐えた被弾・M0 の踏みとどまり(amount=0)では戻さない。
+          ...((amount > 0 && !armored) ? { speedRampSustainMs: 0 } : {}),
           lastHurtTier: (amount > 0 && !armored) ? hurtTier : state.player.lastHurtTier,
           hurtArmoredAt: (amount > 0 && armored) ? kbNow : state.player.hurtArmoredAt, // B12: アーマーで受けた被弾の時刻(描画の起点・爆風の旗)
           // B12 見せ方(描画専用・判定には使わない): アーマーで受けた被弾の向き(踏ん張りの傾きの向き)。向きが無い被弾(fromX 未指定)は 0=傾かない。

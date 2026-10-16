@@ -15,6 +15,12 @@ export const CRUISE_EQUIP_STEP_S = 0.1;
 export const CRUISE_MIN_INTERVAL_S = 0.1;
 /** 段が上がる瞬間の寄せ込み(ms)。パッと跳ねない(慣性MUST)。 */
 export const CRUISE_STAGE_BLEND_MS = 120;
+/**
+ * 上乗せ(ランナー/装備/英雄/消費カード/魔導士の追加分)の立ち上がりにかける時間の上限(ms)。
+ * 段の総時間が長いビルドでも、上乗せは従来どおり1秒で満額(=今までより遅くしない・設計監査の指摘)。総時間がそれより短ければそれに揃う。
+ */
+export const CRUISE_OTHERS_RAMP_MAX_MS = 1000;
+export const cruiseOthersRampMs = (totalMs: number): number => Math.max(1, Math.min(CRUISE_OTHERS_RAMP_MAX_MS, totalMs));
 /** B11: 段1以上の被弾を軽くする量(機動系の装備の段階あたり)。段階5で −20%。 */
 export const CRUISE_DR_PER_TIER = 0.04;
 

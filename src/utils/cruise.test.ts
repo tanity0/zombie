@@ -53,6 +53,6 @@ describe('B3 巡航(research/THEONE_ROUND2.md §4b)', () => {
     expect(equipCruiseTier(undefined)).toBe(0);
     expect(equipCruiseTier({ body: null, arms: null, accessory: null })).toBe(0);
     expect(equipCruiseTier({ body: 'body-mobility-4', arms: null, accessory: null })).toBe(4);
-    expect(equipCruiseTier({ body: 'body-armor-4', arms: null, accessory: null })).toBe(0);
+    expect(equipCruiseTier({ body: 'body-protection-4', arms: null, accessory: null })).toBe(0);
   });
 });

@@ -13,8 +13,10 @@ import {
   migrateCompanionFromLegacy,
   // ★v0.25.3863: 慣性の定数と式を**写経せず import**する(調整しても勝手に揃う)。
   PLAYER_INERTIA_TAU, inertiaAlpha,
+  playerCruiseTotalMs,
 } from './gameStore';
 import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1(ランプの正本)
+import { cruiseOthersRampMs, cruiseStageBonus } from '../utils/cruise'; // B3 巡航(THEONE_ROUND2 §4b)
 import { BOSS_STOP_DR_IMMUNE_MS } from '../utils/bossStopDr';
 import type { Enemy } from '../types/game';
 
@@ -164,8 +166,8 @@ describe('headless simulation invariants', () => {
   // (写経したテストは、値を変えた時に「一致している」と嘘をつく=v0.25.3855の教訓)。
   it('MOVEMENT_REWORK.md 仕様1: 速度ボーナスはランプで立ち上がり、急な切り返し/停止でゼロへ戻る(movePlayer結線の裏取り)', () => {
     useGameStore.getState().resetGame('warrior');
-    // ランナーLv3装備(×1.20)+仕様1b標準ボーナス(warrior=×1.1)= P=1.32
-    // (マークスマンなら標準が×1.2に置き換わる。装備/消費カードは未所持=中立の1)。
+    // ランナーLv3(×1.20)=上乗せ P=1.20(★B3 巡航 v0.25.5082: 全員標準の+10%は巡航の段に置き換わった)。
+    // 段(+20/30/40%)は playerCruiseTotalMs で、上乗せは min(段の総時間,1秒) で立ち上がる(数値は import から導出=写経しない)。
     useGameStore.setState(s => ({ player: { ...s.player, skills: ['runner'], skillLevels: { runner: 3 } } }));
     const baseSpeed = useGameStore.getState().player.speed; // PLAYER_BASE_SPEED(基礎速度・ランプ対象外)
     const noInput: InputState = { up: false, down: false, left: false, right: false };
@@ -178,12 +180,14 @@ describe('headless simulation invariants', () => {
     useGameStore.getState().movePlayer(rightInput, dt);
     expect(useGameStore.getState().player.speedRampSustainMs).toBeCloseTo(dtMs, 3);
     expect(useGameStore.getState().player.speedRampSustainMs / RAMP_FULL_MS).toBeLessThan(0.02);
+    const cruiseT = playerCruiseTotalMs(useGameStore.getState().player);
+    const othersMs = cruiseOthersRampMs(cruiseT);
 
     // ①-b 慣性が配線されていること(1フレーム目の vx は目標速度の alpha 倍で立ち上がる)。
     //     tau は import する=慣性を調整してもこのテストは勝手に揃う。
     //     目標速度には1フレームぶんの微小ランプ(P=1.32の dtMs/RAMP_FULL_MS)が既に乗っている。
     const alpha = inertiaAlpha(dt, PLAYER_INERTIA_TAU);
-    const frame1Target = baseSpeed * (1 + (1.32 - 1) * (dtMs / RAMP_FULL_MS));
+    const frame1Target = baseSpeed * (1 + (1.20 - 1) * (dtMs / othersMs)) * (1 + cruiseStageBonus(dtMs, cruiseT));
     expect(useGameStore.getState().player.vx).toBeCloseTo(frame1Target * alpha, 1);
 
     // ② 90フレーム(≈1500ms ≥ RAMP_FULL_MS)同方向へ走り続けるとフルランプに達する。
@@ -193,7 +197,8 @@ describe('headless simulation invariants', () => {
     //     vx が目標を追いかけている途中なので、数フレーム走らせて落ち着かせてから見る
     //     (旧テストはここを分けておらず、慣性導入で 0.6 ほど足りずに落ちていた)。
     for (let i = 0; i < 10; i++) useGameStore.getState().movePlayer(rightInput, dt);
-    expect(useGameStore.getState().player.vx).toBeCloseTo(baseSpeed * 1.32, 0);
+    const sustainNow = useGameStore.getState().player.speedRampSustainMs;
+    expect(useGameStore.getState().player.vx).toBeCloseTo(baseSpeed * 1.20 * (1 + cruiseStageBonus(sustainNow, cruiseT)), 0);
 
     // ③ 75°以上の急な切り返し(右→左=180°)で**ランプが即ゼロへ戻る**。
     //    ※vx は慣性で数フレームかけて戻るので、ここでは vx ではなくランプを見る。

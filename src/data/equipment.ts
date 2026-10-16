@@ -191,7 +191,7 @@ export const equipStatLabel = (st: EquipStat): string => {
   const pct = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`;
   switch (st.key) {
     case 'maxHealth': return `最大体力 +${st.value}`;
-    case 'moveSpeed': return `移動速度 ${pct(st.value)}`;
+    case 'moveSpeed': return `移動速度 ${pct(st.value)}・加速が早く、加速中は被ダメージ減`; // B3/B11(THEONE_ROUND2 §4b): 機動系は巡航の加速と加速中の被弾軽減にも効く
     case 'killGrace': return `コンボ猶予 ${pct(st.value)}`;
     case 'damage': return `ダメージ ${pct(st.value)}`;
     case 'fireRate': return `連射速度 ${pct(st.value)}`;

@@ -80,7 +80,7 @@ import {
   // v0.25.2483(社長指示): フルランプ速度線のゲート=「移動速度+10%以上のステータス」判定に、
   // movePlayerがランプへ渡す「対象倍率の積P」と同じ純関数を使う(判定の二重実装をしない)。
   // 旧skillWarmUpSpeedMultは§23-1裁定で退役=消費カード「スピードブースト」のconsumableSpeedMultへ置換。
-  skillRunnerSpeedMult, standardSpeedBonusMult, consumableSpeedMult, skillHeroMult,
+  playerCruiseStage,
   // ワイヤーアンカー・スラム後ジャンプ離脱(ホップ・DEVELOPMENT_LOG v0.25.2487): 見た目弧の進行度算出に使う。
   WIRE_HOP_MS,
   // v0.25.2599: 守護霊の倒れ絵(描画専用の控え。実体が消えた後もしゃがみ絵を出すため)。
@@ -218,7 +218,6 @@ import {
   swordSwingPose,
   type SwordSwingStyle,
 } from '../utils/swordSwingMotion';
-import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1の可視化(フルランプ速度線)
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
 import {
@@ -2614,7 +2613,7 @@ const RAMP_SPEED_LINE_ALPHA = SPEED_LINE_MAX_ALPHA * 0.45;
 // この値以上の時だけ出す。基礎速度のみ(P=1)のフルランプでは出さない(実際は速くなっていないのに
 // 疾走感だけ出るのをやめる)。スケーター×3はランプ対象外(乗車という別の見た目を持つ)=Pに含めない。
 // 突進/カウンターのパルス速度線は従来どおり(このゲートの対象外)。
-const RAMP_SPEED_LINE_MIN_BONUS_MULT = 1.1;
+// (旧 RAMP_SPEED_LINE_MIN_BONUS_MULT=1.1: 「+10%以上のステータスがある時だけ速度線」。B3 巡航で段3=+40%に置き換え・v0.25.5082)
 
 // Pseudo-perspective scale: objects are drawn bigger toward the foreground
 // (south / larger world Y) and smaller toward the back (north). PURELY VISUAL —
@@ -35583,7 +35582,7 @@ export class PixiScene {
   // MOVEMENT_REWORK.md 仕様1の可視化(追記): 上記のパルスに加えて、フルランプ中(同方向へ
   // RAMP_FULL_MS走り続けて速度ボーナス満額)は薄いαで常時出す。パルスとフルランプが同時に
   // 生きていれば大きい方のαを採用(triggerShakeと同じ「重なったら強い方」の考え方)。
-  private syncSpeedLines(player: Player, now: number, gameTime: number) {
+  private syncSpeedLines(player: Player, now: number, _gameTime: number) {
     if (!SPEEDLINE_ENABLED) {
       for (const sp of this.speedLineSprites) sp.visible = false;
       return;
@@ -35594,10 +35593,8 @@ export class PixiScene {
     );
     // v0.25.2483: フルランプ線は「移動速度+10%以上のステータス」がある時のみ(定数コメント参照)。
     // Pの組はmovePlayerの非リロード分岐と同一(リロード中ランナーの追加+10%は"ステータス"に数えない)。
-    const speedBonusP = skillRunnerSpeedMult(player) * standardSpeedBonusMult(player)
-      * consumableSpeedMult(player, gameTime) * (player.equipBonus?.moveSpeedMult ?? 1) * skillHeroMult(player);
-    const rampFull = player.isMoving && player.speedRampSustainMs >= RAMP_FULL_MS
-      && speedBonusP >= RAMP_SPEED_LINE_MIN_BONUS_MULT;
+    // ★B3 巡航(v0.25.5082): 「フルランプ」=巡航の段3(+40%)に届いた時。段そのものが+40%なので「+10%以上のステータスがある時だけ」の条件は常に満たす。
+    const rampFull = player.isMoving && playerCruiseStage(player) >= 3;
     if (remain <= 0 && !rampFull) {
       for (const sp of this.speedLineSprites) sp.visible = false;
       return;
