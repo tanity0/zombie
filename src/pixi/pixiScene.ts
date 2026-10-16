@@ -2047,6 +2047,8 @@ const PLAYER_COUNTER_MS = 280;        // カウンター成立の決めポーズ
 const PLAYER_COUNTER_POP = 0.13;      // 決めポーズの一瞬の膨らみ(縦横)
 const PLAYER_COUNTER_LEAN_RAD = 0.10; // 決めポーズの傾き
 // B10 血の覚醒の見せ方(描画専用)。体の赤は二層: 影側=暗いワイン(通常合成)・明部/縁=朱(加算)。光は暗い朱で地面を染めない。
+const TAPE_TEXT_WORLD_PX = 13;  // 境界テープの文字の高さ(世界px・社長「世界固定で」「もう少し大きく」2026-10-16)
+const TAPE_CHAR_W = 12;         // 同・1文字の幅の目安(世界px・板の間隔を決める)
 const BLOOD_AURA_ALPHA = 0.7;          // 赤い光の濃さ(0.95 は桃色のスポット・0.5 はヘッドレスでほぼ見えず=中間。社長が実機で詰める)
 const BLOOD_AURA_PULSE_DEPTH = 0.35;   // 光の鼓動の深さ(山=1・底=1-0.35)
 const BLOOD_BODY_WINE_ALPHA = 0.42;    // 体の1層目(暗いワイン 0x6a0a14・通常合成)=影側(0.3 では「赤い体」に読めなかった・実測)
@@ -35192,7 +35194,8 @@ export class PixiScene {
     const g = this.areaCrossGfx;
     const hide = HIDE_LAYERS.has('areacross') || useGameStore.getState().corridorMode || useGameStore.getState().stageTheme === 'lab';
     const wz = this.L.worldGroup.scale.x || 1;
-    const AREA_TAPE_NEAR_PX = 600 / wz, AREA_TAPE_FADE_PX = 220 / wz; // 画面上の距離で決める(引くほど遠くまで描く=地面の物は画面に入っていれば在る)
+    // ★社長(2026-10-16)「薄ら現れてくる今のでいいのだが、300から、残り40pxでMAX」: 輪から画面距離 300px で現れ始め、40px で濃さが最大。
+    const AREA_TAPE_NEAR_PX = 300 / wz, AREA_TAPE_FADE_PX = (300 - 40) / wz; // 画面上の距離で決める(引くほど遠くまで描く)
     const rings = activeAreaThresholds();
     const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
     const dist = Math.hypot(pcx, pcy);
@@ -35223,7 +35226,7 @@ export class PixiScene {
     g.clear(); g.visible = true;
     let used = 0;
     const MAX_TEXTS = 12;
-    const BAND_PX = 11, LINE_PX = 1.6;
+    const BAND_PX = 15, LINE_PX = 2.4; // ★社長「もう少し太く大きく」(旧 11/1.6)
     for (let i = 0; i < rings.length; i++) {
       const vis = this.areaTapeVis[i];
       if (vis <= 0) continue;
@@ -35251,7 +35254,8 @@ export class PixiScene {
       // 板: 区域名と KEEP OUT を交互に、区切り「··」を添える。間隔は世界で 260px 固定(ズームが変わっても板が滑らない)。
       // ★社長(2026-10-16 実機)「文字の動き方が変。プレイヤーの動きに連動せずに、ゆっくり右へ流れてる感じに」: 板は自機や
       //   ズームに連動せず、**読む向きへ一定の速さ(世界 22px/s)でゆっくり流れる**(電光掲示のテープ)。位相は時刻だけで決まる。
-      const spacing = 260;
+      // 板の間隔: 文字が世界固定で大きくなった分、最長の札(区域名)が隣と重ならない幅を取る(1文字≒世界12px+余白60)。
+      const spacing = Math.max(260, `${name}  ··`.length * TAPE_CHAR_W + 60);
       const stepAng = spacing / r;
       // 読む向きは輪ごとに1つ: 自機の位置の接線で決める(同じ画面に逆向きが混ざらない)。斜め45°付近では前の向きを保つ(ちらつかない)。
       const rotBase = pAng + Math.PI / 2;
@@ -35280,7 +35284,7 @@ export class PixiScene {
         t.rotation = rot;
         const inward = (BAND_PX / 2 + 0.5) / wz; // 帯の中央
         t.position.set(Math.cos(ang) * (r - inward), Math.sin(ang) * (r - inward));
-        t.scale.set((10 / 26) / wz); // 画面で約10px(ズームで割る=引いても同じ大きさ)
+        t.scale.set(TAPE_TEXT_WORLD_PX / 26); // ★社長「世界固定で」: 文字は地面の物=世界で13px(引けば小さく・寄れば大きく)。旧=画面10px固定
         const wear = 0.65 + 0.27 * hash01(i * 7919 + kk); // 板ごとの擦れ(0.65〜0.92)
         t.alpha = ((kk & 1) === 0 ? wear : wear * 0.8) * (1 + 0.25 * flashAt(ang)) * vis * hk;
         used++;
