@@ -11074,7 +11074,7 @@ export class PixiScene {
     }
     wrap.filters = [new BlurFilter({ strength: LAB_FAR_BLOOM_BLUR, quality: 3 })];
     const rt = bakeRenderTexture('other', { width: w, height: h });
-    this.renderer.render({ container: wrap, target: rt, clear: true });
+    this.renderBake(wrap, rt, true);
     wrap.destroy({ children: true });
     this.farBloomCache.set(src, rt);
     return rt;
@@ -12704,7 +12704,7 @@ export class PixiScene {
     g.rect(70 + sway, 95, 22, 60).fill({ color: 0x000000, alpha: 1 });  // 右脚
     g.filters = [new BlurFilter({ strength: 3 })];
     const rt = bakeRenderTexture('other', { width: 128, height: 168, resolution: 1 });
-    this.renderer.render({ container: g, target: rt });
+    this.renderBake(g, rt);
     g.destroy(true);
     this.probeTexes[variant] = rt;
     return rt;
@@ -13789,7 +13789,7 @@ export class PixiScene {
         const wrap = new Container();
         wrap.addChild(body, grad);
         wrap.filters = [new BlurFilter({ strength: blurPx, quality: 3 })];
-        this.renderer.render({ container: wrap, target: rt, clear: true });
+        this.renderBake(wrap, rt, true);
         wrap.destroy({ children: true });
       } else {
         // 1) a_hard / 2) a_soft: **同じ黒シルエット**を強さ違いのぼかしで2枚焼く(縦グラデは掛けない)。
@@ -13798,9 +13798,9 @@ export class PixiScene {
         const hardRT = bakeRenderTexture('shadow', { width: paddedW, height: paddedH, resolution: 1 });
         const softRT = bakeRenderTexture('shadow', { width: paddedW, height: paddedH, resolution: 1 });
         silo.filters = [new BlurFilter({ strength: Math.max(0.1, blurPx * SHADOW_PENUMBRA_HARD_MULT), quality: 3 })];
-        this.renderer.render({ container: silo, target: hardRT, clear: true });
+        this.renderBake(silo, hardRT, true);
         silo.filters = [new BlurFilter({ strength: Math.max(0.1, blurPx * SHADOW_PENUMBRA_SOFT_MULT), quality: 3 })];
-        this.renderer.render({ container: silo, target: softRT, clear: true });
+        this.renderBake(silo, softRT, true);
 
         // 3) 合成: a_hard に内側フェザーを掛け、その上から濃さの縦カーブを erase で最後に掛ける。
         // t の基準は「焼いたテクスチャ内での絵の位置」= 縦グラデと同じ offset(余白ぶんは平坦)。
@@ -13819,7 +13819,7 @@ export class PixiScene {
         hardSp.filters = [penumbra];
         const wrap = new Container();
         wrap.addChild(hardSp, grad);
-        this.renderer.render({ container: wrap, target: rt, clear: true });
+        this.renderBake(wrap, rt, true);
         hardSp.filters = []; // 使い回すフィルタなので参照を切ってから破棄する
         // ★shadow-v9根本原因(TEST_HANDOFF 20260807-1857-fieldwide.md「bakeSilhouette failed
         // (suppressed): TypeError: Cannot read properties of null (reading '0')」at BindGroup.getResource):
@@ -18351,7 +18351,7 @@ export class PixiScene {
     f.desaturate(); // 彩度0=白黒
     wrap.filters = [f]; // コンテナにかけると render で確実に適用される
     const rt = bakeRenderTexture('silhouette', { width: Math.max(1, src.width), height: Math.max(1, src.height) });
-    this.renderer.render({ container: wrap, target: rt, clear: true });
+    this.renderBake(wrap, rt, true);
     wrap.destroy({ children: true });
     this.grayTexCache.set(name, rt);
     return rt;
@@ -18372,7 +18372,7 @@ export class PixiScene {
     f.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
     wrap.filters = [f];
     const rt = bakeRenderTexture('silhouette', { width: Math.max(1, src.width), height: Math.max(1, src.height) });
-    this.renderer.render({ container: wrap, target: rt, clear: true });
+    this.renderBake(wrap, rt, true);
     wrap.destroy({ children: true });
     const bytes = (rt.source.pixelWidth || 0) * (rt.source.pixelHeight || 0) * 4;
     this.whiteTexCache.set(src, { rt, usedAt: now, bytes });
@@ -18459,7 +18459,7 @@ export class PixiScene {
       wrap.addChild(lit, cut);
       wrap.scale.set(f); // 元素材を焼き上がりの寸法へ縮めて描く
       const rt = bakeRenderTexture('rim', { width: bw, height: bh });
-      this.renderer.render({ container: wrap, target: rt, clear: true });
+      this.renderBake(wrap, rt, true);
       wrap.destroy({ children: true });
       const entry: RimBake = {
         src, key, tex: rt, usedAt: Date.now(), f,
@@ -35189,6 +35189,28 @@ export class PixiScene {
    *  負荷 1/10: Graphics 1本(帯+線で最大48区間)+Text 最大12枚(文字の再描画は輪が変わった時だけ)。ズーム0.4でも弧の角度幅は可視域から出す。
    *  (v0.25.5074: 検収クリエイティブ監査の12件のうち 見せ方9件を反映。社長判断3件=戻る時の一拍を弱く/文字を世界固定に/近づいて現れる仕組み自体)
    */
+  /**
+   * ★焼き直し(RenderTexture へ描く)の唯一の描き口(v0.25.5086・メモリが積み上がる原因の1つ目)。
+   * Pixi 8.19 の BatcherPipe は「描いた入れ物(RenderGroup)の命令列ごと」に描画の束ね役(DefaultBatcher=頂点/添字の
+   * バッファ+GLバッファ+束の配列)を作り、`_batchersByInstructionSet` に**入れたまま二度と捨てない**。
+   * 焼くたびに `new Container()` を根にして描いていたので、焼き1回=束ね役1つが永久に残っていた
+   * (ヘッドレス実測: ステージ5でゲーム内24秒に 342→710 個。束ね役は描いた物の束を抱えるので、壊した Sprite も道連れで残る)。
+   * ⇒ 根は**使い回しの1つ**(bakeRoot)にし、焼く物はその子として一時的に付けて描く。命令列が1本なので束ね役も1つで済む。
+   * 根は恒等変換なので、子(wrap)の位置・拡大・フィルタは従来どおりに効く(根として描いた時と同じ結果)。
+   */
+  private bakeRoot: Container | null = null;
+  private renderBake(content: Container, target: RenderTexture, clear?: boolean): void {
+    if (!this.renderer) return;
+    if (!this.bakeRoot || this.bakeRoot.destroyed) { this.bakeRoot = new Container(); this.bakeRoot.label = 'bakeRoot'; }
+    const root = this.bakeRoot;
+    root.addChild(content);
+    try {
+      this.renderer.render(clear === undefined ? { container: root, target } : { container: root, target, clear });
+    } finally {
+      root.removeChild(content);
+    }
+  }
+
   private syncAreaBoundaryTape(player: Player, now: number, dtMs: number): void {
     const g = this.areaCrossGfx;
     const hide = HIDE_LAYERS.has('areacross') || useGameStore.getState().corridorMode || useGameStore.getState().stageTheme === 'lab';
@@ -35635,7 +35657,7 @@ export class PixiScene {
     const sp = new Sprite(src); sp.position.set(pad, pad); sp.scale.set(scale);
     const wrap = new Container(); wrap.addChild(sp);
     wrap.filters = [new BlurFilter({ strength: CINE_PLATE_BLUR_PX, quality: 3 })];
-    this.renderer.render({ container: wrap, target: rt, clear: true });
+    this.renderBake(wrap, rt, true);
     wrap.destroy({ children: true });
     this.cinePlateTexCache.set(key, rt);
     return rt;
@@ -36433,6 +36455,7 @@ export class PixiScene {
   }
 
   destroy() {
+    try { this.bakeRoot?.destroy({ children: true }); } catch { /* ignore */ } this.bakeRoot = null; // v0.25.5086: 焼きの使い回しの根
     setSceneDiag(null); // v0.25.5054: 畳んだ描画器の数え方を残さない
     this.escortSunkDestroyAll(); // 軍人の沈み用の下端を切ったフレーム Texture(source は共有=本体は触らない)
     for (const sprite of this.signalBombSprites.values()) sprite.destroy();
