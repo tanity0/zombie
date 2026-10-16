@@ -1,5 +1,6 @@
 import React from 'react';
 import { COMMAND_UI_ENABLED } from '../config/uiDesign';
+import { usePlayDevice } from '../utils/inputDevice';
 
 // FF7リメイク風UIの共通ボタン(社長指示・カラーは紫)。斜め(skew)は使わない。
 // 背景だけでなく「枠線(上下のライン)もフェードする」よう、border ではなくグラデーションの細線を重ねる。
@@ -29,10 +30,17 @@ export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
   children, onClick, className = '', paddingY = '0.7rem', active = false, ariaLabel, emphasis = false, fade = 'right', testId, navDefault, navBack,
 }) => {
   const nav = { ...(navDefault ? { 'data-nav-default': '' } : {}), ...(navBack ? { 'data-nav-back': '' } : {}) };
+  // ★PC(マウス・キーボード)では、Enter で押せる既定ボタンにだけ小さな「Enter」の札を添える(社長裁定2026-10-16・まとめHTML C11
+  //   「PCで直感的でない操作(チュートリアルのOKなど)」→「はい」)。Enter/Space/クリックで押せるのは utils/menuNav が既に担っている
+  //   (navDefault)。タッチ・パッドでは出さない=スマホは1pxも動かない(research/PC_SUPPORT.md の原則)。
+  const device = usePlayDevice();
+  const enterBadge = navDefault && device === 'mouse'
+    ? <span aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-[2px] border border-white/25 px-1 text-[8px] font-semibold leading-[1.5] tracking-[0.12em] text-white/55">Enter</span>
+    : null;
   if (COMMAND_UI_ENABLED) return (
     <button type="button" onClick={onClick} aria-label={ariaLabel} data-testid={testId} {...nav}
-      className={`command-button ${emphasis ? 'command-button-primary' : ''} ${active ? 'command-button-selected' : ''} ${className}`}
-      style={{ paddingTop: paddingY, paddingBottom: paddingY }}>{children}</button>
+      className={`command-button relative ${emphasis ? 'command-button-primary' : ''} ${active ? 'command-button-selected' : ''} ${className}`}
+      style={{ paddingTop: paddingY, paddingBottom: paddingY }}>{children}{enterBadge}</button>
   );
   // シンプルに: フェードした面＋(右のみ)左端1pxの細い紫ライン1本だけ。枠線は足さない。
   // 端は透明(フェードアウト)・中央は軽め。紫の発色(=以前は選択時だけだった明るさ)を「常時=ノーマル基準」に
@@ -56,6 +64,7 @@ export const Ff7rButton: React.FC<Ff7rButtonProps> = ({
         <span className="relative z-10 block px-4 text-center text-[14px] font-bold tracking-[0.22em] text-white">
           {children}
         </span>
+        {enterBadge}
       </span>
     </button>
   );

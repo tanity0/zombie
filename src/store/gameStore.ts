@@ -292,6 +292,7 @@ import {
   ALCHEMY_RARE_MELEE_INTERVAL_MS, ALCHEMY_RARE_MELEE_DAMAGE, ALCHEMY_RARE_SUCTION_RADIUS
 } from '../utils/summonUtils';
 import { resolveTreeCollision, treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
+import { healthDropMult } from '../utils/healthDropBias';
 import { heroDogPresence, buildHeroDog, isHeroDog, isHeroDogLeaving, pickHeroDogTarget, stepHeroDog, heroDogEntryPoint, heroDogHeelPoint, heroDogSpeedFor, setHeroDogDeathPose, HERO_DOG_BITE_RANGE, HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_RESPAWN_MS, HERO_DOG_HATE_MS, HERO_DOG_LEAVE_MS, HERO_DOG_LUNGE_SPEED, HERO_DOG_LUNGE_MS, HERO_DOG_HEEL_START, HERO_DOG_FLINCH_PX, HERO_DOG_FLINCH_MS, HERO_DOG_BITE_KNOCKBACK_MULT } from '../utils/heroDog';
 import { setFlowersDisabled } from '../world/forestDecor';
 import { EX_SURIEL_BGM_FADE_MS } from '../world/exHall'; // EXのスリィエル撃破でBGMを落とす尺(2026-10-14)
@@ -337,7 +338,7 @@ import {
   poiUnlockBandText, POI_BAND_MS, POI_VACCINE_NAME, POI_VACCINE_DESC, POI_LABEL, type PoiKind,
 } from '../utils/detourPoiUx';
 import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled } from '../world/torches';
-import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled } from '../world/mines';
+import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled, isEggExpired, eggsToArmForCap } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, gachaRefundFor, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
@@ -747,7 +748,7 @@ export const LAB_CORRIDOR_Y_LIMIT_PX = LAB_CORRIDOR_Y_LIMIT_FROM_WORLD;
 export const LAB_AMMO_GOAL_FRACS = [0.3, 0.6];
 const LAB_AMMO_JITTER_X = 400; // 位置の散らし幅(px)。毎回同じ場所にならないように
 const PHASER_GUN_OFFSET = 5;           // 2丁拳銃の左右ずらし幅(px。進行方向に直交)
-const PHASER_APPEAR_CHANCE = 0.2;      // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず
+const PHASER_APPEAR_CHANCE = 0.06;     // 出撃ごとに「フェイザーが1枠だけ入る」確率(レア)。0=出ない/1=必ず。★0.2→0.06(社長裁定2026-10-16「推薦で」=約16出撃に1回。10万出撃の再現で偏りは無く、20%が「想像以上に出る」の正体だった)
 const ESCORT_DETECT_MULT = 2.25;        // 検知/射撃範囲 = プレイヤー近接半径 × この倍率(社長指示で 1.5→×1.5=2.25)
 const ESCORT_PATROL_R = 0.8;            // 制圧後に巡回する円の半径(BASE_CAPTURE_RADIUS×この割合=縁寄り。社長指示)
 // 制圧時、サークルの端寄りにランダムに軍人を配置(真ん中=商人と被る を回避)。
@@ -17275,7 +17276,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               id: `egg-gc-${enemy.id}-${Math.floor(gameTime)}-${burst}`,
               x: rect.x, y: rect.y, width: rect.width, height: rect.height,
               footX: fx, footY: fy, scale: 1,
-              health: 1, maxHealth: 1, type: 'mine', lastHit: 0,
+              health: 1, maxHealth: 1, type: 'mine', lastHit: 0, laidAt: gameTime,
             });
             burst += 1;
             laid = true;
@@ -18186,7 +18187,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           id: `egg-evt-${stamp}-${i}`,
           x: rect.x, y: rect.y, width: rect.width, height: rect.height,
           footX: fx, footY: fy, scale: 1,
-          health: 1, maxHealth: 1, type: 'mine', lastHit: 0,
+          health: 1, maxHealth: 1, type: 'mine', lastHit: 0, laidAt: state.gameTime,
         });
       }
       return { breakableProps: [...state.breakableProps, ...eggs] };
@@ -19422,7 +19423,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (p.type !== 'mine' || added.has(p.id) || state.destroyedBreakableProps[p.id]) continue;
         if (p.footX >= rx0 && p.footX <= rx1 && p.footY >= ry0 && p.footY <= ry1) next.push(p);
       }
-      return { breakableProps: next, mineAmbushAnchor };
+      // ★寿命と同時上限(社長指示2026-10-16・A6): 期限切れの動的卵/上限超過ぶんは**自爆**(踏んだ時と同じアーム→1.5秒で爆発)。
+      //   アーム済みは触らない。絵・連鎖・SEは既存の起爆経路がそのまま担う(world/mines.ts の注記)。
+      const gt = state.gameTime;
+      let out = next.map(p => isEggExpired(p, gt) ? { ...p, armedAt: gt } : p);
+      const capArm = eggsToArmForCap(out);
+      if (capArm.size > 0) out = out.map(p => capArm.has(p.id) ? { ...p, armedAt: gt } : p);
+      return { breakableProps: out, mineAmbushAnchor };
     });
   },
 
@@ -19497,7 +19504,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
-    if (roll < pity.healthT) {
+    // ★C9(社長裁定2026-10-16「前者」): 肉(回復)の出る幅を体力で伸ばす(50%以下で1.5倍・20%以下で2倍)。伸びた分は爆弾の窓を食う
+    //   (bombT を越えない=何も出ない窓は不変)。
+    const healthTop = Math.min(pity.bombT, pity.ammoT + (pity.healthT - pity.ammoT) * healthDropMult(get().player.health, get().player.maxHealth));
+    if (roll < healthTop) {
       get().addPickup({
         id: `pickup-torch-health-${prop.id}`,
         x, y,

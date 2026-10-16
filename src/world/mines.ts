@@ -7,6 +7,25 @@ export const MINE_CELL = 720;
 export const EGG_FUSE_MS = 1500;      // アーム(踏む/連鎖)から爆発までの導火時間
 export const EGG_BLAST_RADIUS = 80;   // 爆発半径(px)。クラスタの広がり44〜64pxを丸ごと連鎖させる値(社長「任せる」)
 
+// ★卵の寿命と同時上限(社長指示2026-10-16・まとめHTML A6「緑卵って増え続ける？消える？上限個数、時間制限ある？ほしい」)。
+//   実態(調査): 増え続けはしないが時間では消えず、上限は抱卵型の卵20個だけ。他(待ち伏せ52/包囲22/畑/圧力)は画面外カリング任せ。
+//   直し方=**自爆**: 期限切れ/上限超過の卵は「踏んだ時と同じアーム(赤くプクプク1.5秒)→爆発」で消す。消滅に慣性(予告→爆ぜる)が
+//   付き、絵・SE・連鎖は既存のまま(新しい消え方を作らない)。アーム済みは触らない(赤い予告③「消え切る=当たる」)。
+//   寿命は**動いて撒かれた卵(抱卵型 egg-gc- / 包囲 egg-evt-)だけ**。畑・圧力・待ち伏せは決定論で復活する設置物なので寿命は付けない。
+export const EGG_TTL_MS = 45_000;     // 撒かれてからこの時間で自爆(叩き台・社長が実機で決める)
+export const MINE_LIVE_CAP = 70;      // 画面近傍(カメラ領域)の未アーム卵の同時上限。待ち伏せ52個が一度に出る仕様を壊さない値
+export interface LaidEggLike { id: string; type: string; armedAt?: number; laidAt?: number }
+export const isEggExpired = (p: LaidEggLike, gameTime: number): boolean =>
+  p.type === 'mine' && p.armedAt === undefined && p.laidAt !== undefined && gameTime >= p.laidAt + EGG_TTL_MS;
+/** 上限超過ぶんの id(古い順=撒かれた時刻の古い動的卵→設置物の順)。アーム済みは数えない・選ばない。 */
+export const eggsToArmForCap = <T extends LaidEggLike>(props: readonly T[], cap: number = MINE_LIVE_CAP): Set<string> => {
+  const live = props.filter(p => p.type === 'mine' && p.armedAt === undefined);
+  const over = live.length - cap;
+  if (over <= 0) return new Set();
+  const sorted = [...live].sort((a, b) => (a.laidAt ?? Infinity) - (b.laidAt ?? Infinity));
+  return new Set(sorted.slice(0, over).map(p => p.id));
+};
+
 // 爆発期限が来たアーム済み卵(純関数・毎フレームのフィルタのみ=距離計算は爆発時だけ)。
 export interface ArmedEggLike { id: string; type: string; footX: number; footY: number; armedAt?: number }
 export const dueArmedEggs = <T extends ArmedEggLike>(props: T[], gameTime: number): T[] =>

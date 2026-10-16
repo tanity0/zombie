@@ -105,6 +105,7 @@ import { PVP_DAMAGE_SCALE, pvpHitDamageForGate } from '../utils/phantomScript'; 
 import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget } from '../utils/dogFetch';
 import { HERO_DOG_FETCH_ARRIVE_PX, HERO_DOG_FETCH_TIMEOUT_MS, HERO_DOG_FETCH_RETURN_MS } from '../utils/heroDog';
 import { HIT_BLINK_TYPES } from '../utils/hitBlink';
+import { healthDropMult } from '../utils/healthDropBias';
 import { stepMagnetPull } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ(社長裁定2026-09-13) // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
 import { glenScriptApplies } from '../utils/giantScript';
@@ -15319,7 +15320,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   worldDrop: true
                 });
               }
-              const chickenChance = isElite ? 0.35 : 0.015;
+              // ★C9(社長裁定2026-10-16「前者」): 体力が減っているほど肉が出やすい(50%以下で1.5倍・20%以下で2倍)。
+              const chickenChance = Math.min(1, (isElite ? 0.35 : 0.015) * healthDropMult(player.health, player.maxHealth));
               const magnetChance = isElite ? 0.15 : 0.004;
               const bombChance = isElite ? 0.1 : 0.002;
               if (Math.random() < chickenChance) {

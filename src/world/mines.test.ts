@@ -30,7 +30,7 @@ describe('setMinesDisabled(チュートリアル=緑卵なし)', () => {
 });
 
 // 緑卵の起爆(社長仕様v0.25.1846「踏むと赤くプクプク→2秒後に爆発。範囲内の卵は連鎖起爆」)の純関数。
-import { dueArmedEggs, eggsToChainArm, EGG_FUSE_MS, EGG_BLAST_RADIUS } from './mines';
+import { dueArmedEggs, eggsToChainArm, EGG_FUSE_MS, EGG_BLAST_RADIUS, isEggExpired, eggsToArmForCap, EGG_TTL_MS, MINE_LIVE_CAP } from './mines';
 
 const egg = (id: string, x: number, y: number, armedAt?: number) =>
   ({ id, type: 'mine', footX: x, footY: y, armedAt });
@@ -60,5 +60,32 @@ describe('緑卵の起爆ヘルパ(v0.25.1846)', () => {
     expect(eggsToChainArm(props, 0, 0).map(p => p.id)).toEqual(['b']); // cは圏外
     const afterHop1 = [egg('c', 120, 0)]; // bは爆発済みで除去
     expect(eggsToChainArm(afterHop1, 60, 0).map(p => p.id)).toEqual(['c']);
+  });
+});
+
+describe('★緑卵の寿命と同時上限(社長指示2026-10-16・A6)', () => {
+  it('撒かれた卵は EGG_TTL_MS で期限切れ(アーム済み・設置物・他の型は対象外)', () => {
+    expect(isEggExpired({ id: 'a', type: 'mine', laidAt: 0 }, EGG_TTL_MS)).toBe(true);
+    expect(isEggExpired({ id: 'a', type: 'mine', laidAt: 0 }, EGG_TTL_MS - 1)).toBe(false);
+    expect(isEggExpired({ id: 'a', type: 'mine', laidAt: 0, armedAt: 10 }, EGG_TTL_MS)).toBe(false); // アーム済みは触らない
+    expect(isEggExpired({ id: 'a', type: 'mine' }, 1e9)).toBe(false);                                   // 設置物(laidAt無し)は寿命なし
+    expect(isEggExpired({ id: 'a', type: 'torch', laidAt: 0 }, 1e9)).toBe(false);
+  });
+  it('上限超過ぶんは古い順(撒かれた動的卵→設置物)に選ぶ。アーム済みは数えない', () => {
+    const props = [
+      ...Array.from({ length: 3 }, (_, i) => ({ id: `gen-${i}`, type: 'mine' })),           // 設置物
+      { id: 'old', type: 'mine', laidAt: 100 }, { id: 'new', type: 'mine', laidAt: 500 },
+      { id: 'armed', type: 'mine', laidAt: 1, armedAt: 50 },
+    ];
+    expect(eggsToArmForCap(props, 5).size).toBe(0);           // 未アーム5個=上限ちょうど
+    const over1 = eggsToArmForCap(props, 4);
+    expect([...over1]).toEqual(['old']);                      // 1個超過=一番古い動的卵
+    const over3 = eggsToArmForCap(props, 2);
+    expect(over3.has('old') && over3.has('new')).toBe(true);  // 動的卵が先
+    expect(over3.size).toBe(3);                               // 残り1個は設置物から
+    expect(over3.has('armed')).toBe(false);
+  });
+  it('上限は待ち伏せ52個が一度に出る仕様を壊さない', () => {
+    expect(MINE_LIVE_CAP).toBeGreaterThan(52);
   });
 });
