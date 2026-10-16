@@ -11,11 +11,20 @@ import { useGameStore } from '../store/gameStore';
 //
 // 再レンダ規律: 購読は窓の記録(開閉の時にしか参照が変わらない)だけ。動きは CSS アニメーション(開いた時刻から数えた
 // 負の delay で、レンダが多少遅れても消える時刻は窓の閉じる時刻に揃う)。毎フレームの購読は無い。
-const EDGE_GRADIENT_STOPS = 'rgba(255,70,50,0.80) 0%, rgba(190,0,0,0.60) 35%, rgba(120,0,0,0.25) 65%, rgba(120,0,0,0) 100%';
+// ★v0.25.5069(社長裁定2026-10-16・まとめHTML C4「はい」=ピンチより派手に): 赤を濃く・縁から画面の約1/3まで届かせる
+//   (旧 0.80/0.60/0.25・深さ48vmin)。白→赤の2コマ点滅(WHITE層)と、画面全体を一瞬沈める層(DIM)を足す。
+//   縁ごとの重み(斜めの成分)は包みの opacity ではなく**色の不透明度に畳む**(包みの半透明=合成層が1枚増えるだけで、
+//   ヘッドレスの撮影では描かれないことがあった。実機の見え方は同じ)。
+const edgeStops = (w: number) =>
+  `rgba(255,70,50,${(0.95 * w).toFixed(3)}) 0%, rgba(200,0,0,${(0.80 * w).toFixed(3)}) 40%, rgba(130,0,0,${(0.40 * w).toFixed(3)}) 72%, rgba(120,0,0,0) 100%`;
+const whiteStops = (w: number) =>
+  `rgba(255,245,240,${(0.95 * w).toFixed(3)}) 0%, rgba(255,220,220,${(0.60 * w).toFixed(3)}) 40%, rgba(255,200,200,${(0.20 * w).toFixed(3)}) 72%, rgba(255,200,200,0) 100%`;
+const WHITE_BLINK_MS = 200;  // 白の2コマ(各45ms・瞬断)+減速して消える65ms。実時間・窓の長さに依らない
+const DIM_MS = 260;          // 世界の沈み(実時間)。HUD は沈めない(z-index:-1=GameHUD の文脈の最背面)
 // 画面の外に置く中心の距離と、滲みの楕円の大きさ(縁沿い × 縁から内へ)。
 const EDGE_OUTSET_VMIN = 22;
-const EDGE_ALONG_VMIN = 70;
-const EDGE_DEPTH_VMIN = 48;
+const EDGE_ALONG_VMIN = 78;
+const EDGE_DEPTH_VMIN = 62; // 縁から内へ(見える滲みの深さ=画面短辺の約1/3)
 // これより弱い成分の縁は描かない(真横から食らった時に上下の縁がうっすら出ない)。
 const EDGE_MIN_WEIGHT = 0.25;
 
@@ -53,20 +62,36 @@ export const HitRetaliationCue = () => {
       origin: `${px}% ${bottom ? '100%' : '0%'}`,
     });
   }
+  // 白の点滅と沈みは実時間の固定尺(開いてから数える)。既に過ぎていれば描かない(再マウント時に二度光らせない)。
+  const sinceOpen = Math.max(0, now - win.openedAt);
+  const whiteAnim = sinceOpen < WHITE_BLINK_MS ? `hit-retaliate-white ${WHITE_BLINK_MS}ms ${-sinceOpen}ms both linear` : null;
+  const dimAnim = sinceOpen < DIM_MS ? `hit-retaliate-dim ${DIM_MS}ms ${-sinceOpen}ms both linear` : null;
   return (
     <div key={win.openedAt} aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      {dimAnim && <div className="absolute inset-0 bg-black" style={{ animation: dimAnim, willChange: 'opacity', zIndex: -1 }} />}
       {edges.map(e => (
-        <div key={e.key} className="absolute inset-0" style={{ opacity: Math.min(1, e.weight * 1.15) }}>
+        <div key={e.key} className="absolute inset-0">
           <div
             className="absolute inset-0"
             style={{
-              background: `radial-gradient(${e.ellipse} at ${e.at}, ${EDGE_GRADIENT_STOPS})`,
+              background: `radial-gradient(${e.ellipse} at ${e.at}, ${edgeStops(Math.min(1, e.weight * 1.15))})`,
               transformOrigin: e.origin,
               // 縮み(縁へ吸い込まれる)は減速して止まる(慣性)。濃さは心拍の2拍で、最後に消え切る。
               animation: `hit-retaliate-shrink ${anim} cubic-bezier(0.16, 0.8, 0.3, 1), hit-retaliate-beat ${anim} linear`,
               willChange: 'transform, opacity',
             }}
           />
+          {whiteAnim && (
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `radial-gradient(${e.ellipse} at ${e.at}, ${whiteStops(Math.min(1, e.weight * 1.15))})`,
+                transformOrigin: e.origin,
+                animation: `hit-retaliate-shrink ${anim} cubic-bezier(0.16, 0.8, 0.3, 1), ${whiteAnim}`,
+                willChange: 'transform, opacity',
+              }}
+            />
+          )}
         </div>
       ))}
     </div>

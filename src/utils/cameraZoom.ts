@@ -262,7 +262,7 @@ export const isPointInZoomedViewport = (
 // 破綻しない**」ことが条件なので、`CONTEXT_ZOOM_MIN` ではなく必ずこちらを見ること。
 // CLAUDE.md の「ズーム引き考慮(必須)」で言及している v0.25.1324/1325 の潜伏バグは、
 // 引きの値とマージンの基準がズレると再発する(レイヤーごとに漏れて潜伏するので気づきにくい)。
-export const ZOOM_MIN_ABS = Math.min(CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN, BOSS_DISTANCE_ZOOM_MIN);
+export const ZOOM_MIN_ABS = Math.min(CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN, BOSS_DISTANCE_ZOOM_MIN); // ★走りの引き(RUN_ZOOM_MIN 0.85)は 0.4 より浅いのでここに影響しない
 
 // 大型敵(即・最大引き対象)。パンプキン/screamer は含めない(社長指示)。
 const LARGE_ZOOM_TYPES = new Set<string>(['reaper', 'giantbat', 'mimir', 'jormungand', 'skadi', 'thor', 'hunter']);
@@ -280,6 +280,30 @@ const ZOOM_LOCK: number | null = (() => {
   const n = Number(v);
   return Number.isFinite(n) && n > 0.3 && n <= 1 ? n : CONTEXT_ZOOM_MIN;
 })();
+
+// ★B9 走りのズーム引き(社長裁定2026-10-16「3秒かけてじわじわ広がる で」・まとめHTML B9)。
+//   同じ向きに RUN_ZOOM_START_MS 以上走り続け(速度ランプの sustainMs=utils/speedRamp と同じ状態を読む)、近くに敵が居なければ
+//   RUN_ZOOM_MIN まで引く。戻る条件=止まる・75°以上の切り返し(sustain が0に戻る)・敵が近づく。撃つことでは戻さない
+//   (速いまま撃つ方が爽快=B3の監査の推薦と揃える)。
+//   ★0.85 の根拠: 群衆ズームの最大(CONTEXT_ZOOM_MIN=0.8)より浅くして、走りの引きが「敵が多い時の引き」を越えないようにした
+//   (可視域は面積で約1.38倍)。プレイヤーの絵(約28px)が24px程度に収まり、スマホでドットが潰れない範囲。`?runzoom=` で上書き可。
+//   進み: 位相を等速で動かし smoothstep(加速→減速のS字)で倍率にする。引き3秒・戻り1秒。敵が視界から消えて0.4秒は引き始めない(鋸歯よけ)。
+const RUN_ZOOM_OVERRIDE: number | null = (() => {
+  if (typeof window === 'undefined') return null;
+  const v = new URLSearchParams(window.location.search).get('runzoom');
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0.3 && n <= 1 ? n : null;
+})();
+export const RUN_ZOOM_MIN = RUN_ZOOM_OVERRIDE ?? 0.85;
+export const RUN_ZOOM_START_MS = 1000;
+export const RUN_ZOOM_OUT_S = 3.0;    // 引き切るまで(S字)
+export const RUN_ZOOM_IN_S = 1.0;     // 戻るまで(S字)
+export const RUN_ZOOM_HOLD_S = 0.4;   // 敵が視界から消えてから引き始めるまでの保持
+export const runZoomTarget = (sustainMs: number, enemiesNear: boolean): number => {
+  if (ZOOM_LOCK != null) return 1; // 固定ズームの実機確認(?zoomlock=)では走りの引きを足さない
+  return (!enemiesNear && sustainMs >= RUN_ZOOM_START_MS) ? RUN_ZOOM_MIN : 1;
+};
 
 // 目標ズーム(1.0=等倍)。敵数・大型・交戦中ボスのうち「最も深い引き」を採用。
 export const contextZoomTarget = (

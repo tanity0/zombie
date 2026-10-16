@@ -6,6 +6,7 @@ import {
   BOSS_DISTANCE_ZOOM_FAR_PX, BOSS_DISTANCE_ZOOM_MID_PX, BOSS_DISTANCE_ZOOM_MIN, BOSS_DISTANCE_ZOOM_NEAR_PX,
   BOSS_ZOOM_PROFILES, BOSS_ZOOM_NEAR, BOSS_ZOOM_MID, CONTEXT_ZOOM_MIN, BOSS_ZOOM_MIN, ZOOM_MIN_ABS,
   CONTEXT_ZOOM_COUNT_FLOOR, CONTEXT_ZOOM_COUNT_CEIL,
+  runZoomTarget, RUN_ZOOM_MIN, RUN_ZOOM_START_MS,
 } from './cameraZoom';
 
 describe('cameraZoom — context zoom target', () => {
@@ -415,5 +416,18 @@ describe('★横は絵の端まで収める(社長指示2026-10-01「ボスが�
     expect(bossCameraLeadX(-300, phone.width, z, 150)).toBeCloseTo(-edge, 9);
     // 半幅0=従来どおり
     expect(bossCameraLeadX(300, phone.width, z, 0)).toBeCloseTo(center, 9);
+  });
+});
+
+describe('★B9 走りのズーム引き runZoomTarget(社長裁定2026-10-16「3秒かけてじわじわ広がる」)', () => {
+  it('同じ向きに1秒以上走り、近くに敵が居ない時だけ RUN_ZOOM_MIN。それ以外は等倍', () => {
+    expect(runZoomTarget(RUN_ZOOM_START_MS, false)).toBe(RUN_ZOOM_MIN);
+    expect(runZoomTarget(RUN_ZOOM_START_MS - 1, false)).toBe(1);
+    expect(runZoomTarget(5000, true)).toBe(1);   // 敵が近い=引かない
+    expect(runZoomTarget(0, false)).toBe(1);     // 止まった/切り返した
+  });
+  it('引きは群衆ズームの最大(0.8)より浅い=走りの引きが「敵が多い時の引き」を越えない', () => {
+    expect(RUN_ZOOM_MIN).toBeGreaterThan(CONTEXT_ZOOM_MIN);
+    expect(RUN_ZOOM_MIN).toBeGreaterThan(ZOOM_MIN_ABS);
   });
 });

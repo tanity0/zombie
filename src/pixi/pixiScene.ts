@@ -222,7 +222,7 @@ import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
 import { NAMED_TINT, normalizeNamedName } from '../utils/namedEnemy';
 import { hasFullWarlordSet, emptyEquipLoadout } from '../data/equipment';
 import {
-  aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
+  aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom, runZoomTarget, RUN_ZOOM_MIN, RUN_ZOOM_OUT_S, RUN_ZOOM_IN_S, RUN_ZOOM_HOLD_S,
   BOSS_DISTANCE_ZOOM_RETURN_TAU, springSmoothZoom, ZOOM_MIN_ABS,
 } from '../utils/cameraZoom';
 import { airHopHeight01 } from '../utils/airHop';
@@ -2082,6 +2082,9 @@ const ENEMY_LIGHT_TINT: Partial<Record<Enemy['type'], number>> = {
 // バー/メーターの色トンマナ統一(社長指示)。デザイン理論=同一トーン(Tailwind -400 帯で彩度/明度を揃えた
 // 一族)で 緑(健全)/黄(注意・リロード)/赤(危険)/青(味方) を統一。背景は共通の半透明黒。単一の出所に集約。
 const BAR_BG_ALPHA = 0.5;       // 数値連動バー共通の半透明黒背景
+const PLAYER_HIT_HP_BAR_MS = 1000;     // ★C6: 被弾後に頭上の体力の線を出す長さ
+const PLAYER_HIT_HP_BAR_FADE_MS = 300; // そのうち最後のフェード
+const PLAYER_HIT_HP_BAR_IN_MS = 70;    // 入りの立ち上がり(慣性)
 const STATUS_GREEN = 0x34d399;  // emerald-400: HP高(健全)
 const STATUS_RED = 0xf87171;    // red-400: HP低/危険
 const STATUS_YELLOW = 0xfbbf24; // amber-400: リロード/注意
@@ -5366,6 +5369,9 @@ export class PixiScene {
   private cameraY = 0;
   private zoomApplied = false; // ズーム(待機/パンチ)を worldGroup に適用中か(終了時に1度だけ戻す)
   private contextZoom = 1;     // 文脈ズーム(敵数/大型で少し引く・視覚専用)。目標へイージング追従。
+  private runZoom = 1;         // ★B9 走りのズーム引き(1=等倍・RUN_ZOOM_MIN まで)。位相 runZoomT の smoothstep(引き3秒/戻り1秒)
+  private runZoomT = 0;        // 走りの引きの位相 0..1(等速で進む)
+  private runZoomClear = 0;    // 敵が視界に居ない時間(秒)。RUN_ZOOM_HOLD_S を越えてから引き始める
   private contextZoomVel = 0;  // v0.25.3019: 交戦中の距離ズームはバネ追従(慣性)。その速度(1/s)。
   private bossCameraEngaged = false; // 距離ヒステリシス込みのボス交戦カメラ状態
   private bossCameraReturning = false; // 敵視解除後だけ、通常画角へゆっくり戻す
@@ -8675,6 +8681,21 @@ export class PixiScene {
       if (isLargeForZoom(e.type)) hasLargeForZoom = true;
     }
     let czTarget = contextZoomTarget(nearCount, hasLargeForZoom, bossDistanceTarget);
+    // ★B9 走りのズーム引き(社長裁定2026-10-16「3秒かけてじわじわ広がる で」): 同じ向きに1秒以上走り続け(=速度ランプの
+    //   sustain・utils/speedRamp)、近くに敵が居ない時だけ、3秒かけて RUN_ZOOM_MIN(0.85)まで引く。敵が近づく/止まる/切り返すと
+    //   1秒で戻る。判定は純関数 runZoomTarget(cameraZoom.ts)で、湧き位置(useGameLoop)も同じ関数を読む=引いた分だけ外に湧く。
+    //   文脈ズーム(群衆/ボス)とは別の係数として掛ける(ボス交戦中は目標1=引かない)。
+    {
+      // 目標は二値(引く/戻る)。進みは 0..1 の位相 runZoomT を**等速で**動かし(引き3秒・戻り1秒)、ズームは smoothstep で
+      // 加速→減速のS字にする(1次遅れは出足が最速で尻すぼみ=「じわじわ」にならない・監査#17)。
+      // 敵が視界から消えても RUN_ZOOM_HOLD_S の間は引き始めない(縁の出入りで鋸歯にならない・監査#18)。
+      const wantOut = !this.bossCameraEngaged && runZoomTarget(s.player.speedRampSustainMs, nearCount > 0) < 1;
+      if (wantOut) this.runZoomClear += zdt; else this.runZoomClear = 0;
+      const dir = wantOut && this.runZoomClear >= RUN_ZOOM_HOLD_S ? 1 : -1;
+      this.runZoomT = Math.max(0, Math.min(1, this.runZoomT + dir * zdt / (dir > 0 ? RUN_ZOOM_OUT_S : RUN_ZOOM_IN_S)));
+      const u = this.runZoomT * this.runZoomT * (3 - 2 * this.runZoomT);
+      this.runZoom = 1 + (RUN_ZOOM_MIN - 1) * u;
+    }
     // ★v0.25.3727(社長指示「登場シーン、フィルだけ等倍に寄ってもらっていい？」): フィルの登場窓
     // (スポーン→カットイン明けまで)は文脈ズームを**等倍(1.0)へ固定**。窓明けはバネが通常の
     // ボス距離ズーム(giant級の引き)へ滑らかに戻す=切替の慣性は既存バネが担う。
@@ -8697,7 +8718,7 @@ export class PixiScene {
     if (this.bossCameraReturning && Math.abs(czTarget - this.contextZoom) < 0.002) {
       this.bossCameraReturning = false;
     }
-    const zoom = this.idleZoom * this.contextZoom * punch;
+    const zoom = this.idleZoom * this.contextZoom * this.runZoom * punch;
     this.zwarpZoomNow = this.idleZoom * this.contextZoom; // KILL/カウンターの寄りパンチ(punch・瞬間ジャンプ)は歪みの入力から除く(監査B#7)
     // 寄り先(社長指示・v0.25.1498): KILLはキルされた対象(zoomTargetX/Y・世界座標)を画面中央の
     // 代わりに寄りの軸にする(zoomDecay>0=パンチ演出中のみ・カウンター等は指定なしで従来どおり中央)。
@@ -18080,6 +18101,31 @@ export class PixiScene {
       }
     }
     view.overlay.clear();
+    // ★C6(社長裁定2026-10-16「はい」): 被弾した直後だけ、頭上に小さな体力の線を出す(敵の体力バーと同じ作法=黒地3px・
+    //   緑/3割未満で赤)。HUDの大きなバーは視線の外にあるので、「いま食らった分」を体の近くで読ませる。1秒で消える
+    //   (最後の0.3秒はフェード=慣性)。満タンなら出さない。描き直しは overlay(毎フレーム clear 済み)に数図形=負荷1/10。
+    {
+      const sinceHit = now - (p.lastHurtAt ?? -1e9);
+      if (sinceHit >= 0 && sinceHit < PLAYER_HIT_HP_BAR_MS && p.health < p.maxHealth && p.health > 0) {
+        // 入り(70ms): 下から2px浮きながら立ち上がる(慣性・武器スプライトの統一型と同じ向き)。消え(300ms): 減速フェード。
+        const rise = Math.min(1, sinceHit / PLAYER_HIT_HP_BAR_IN_MS);
+        const inA = 1 - (1 - rise) * (1 - rise);
+        const a = inA * (sinceHit > PLAYER_HIT_HP_BAR_MS - PLAYER_HIT_HP_BAR_FADE_MS
+          ? 1 - (sinceHit - (PLAYER_HIT_HP_BAR_MS - PLAYER_HIT_HP_BAR_FADE_MS)) / PLAYER_HIT_HP_BAR_FADE_MS : 1);
+        // 位置・幅は当たり箱ではなく**描いた絵**に合わせる(敵のバーと同じ: 絵の上端から6px・幅は絵よりやや狭く・監査#14)。
+        //   立ち絵のキャンバスには余白があるので、影の経路が測っている「不透明部の上端/左右端」(textureContentCache)を読む
+        //   (キャッシュを読むだけ=毎フレーム経路で extract はしない)。未実測なら絵の寸法で代用。
+        const spH = Math.abs(view.sprite.height), spW = Math.abs(view.sprite.width);
+        const cc = this.textureContentCache.get(view.sprite.texture);
+        const artTopFrac = cc ? cc.top : 0, artWFrac = cc ? Math.max(0.2, cc.right - cc.left) : 1;
+        const w = Math.max(10, Math.round(spW * artWFrac * 0.9)), h = 3;
+        const x = Math.round(fb.footX - w / 2);
+        const y = Math.round(fb.footY - spH * (1 - artTopFrac) - 6 + (1 - inA) * 2);
+        const pct = Math.max(0, Math.min(1, p.health / p.maxHealth));
+        view.overlay.rect(x, y, w, h).fill({ color: 0x000000, alpha: BAR_BG_ALPHA * a });
+        view.overlay.rect(x, y, Math.max(1, Math.round(w * pct)), h).fill({ color: pct < 0.3 ? STATUS_RED : STATUS_GREEN, alpha: a });
+      }
+    }
   }
 
   // 立ち絵テクスチャを白黒化して1度だけベイクし、RenderTexture をキャッシュして返す。

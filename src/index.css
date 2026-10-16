@@ -236,12 +236,12 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 
 /* 瀕死(HP≤20)ビネットの心拍脈動(ドクン…ドクン…)。旧PixiスプライトからDOM/CSSへ移設(v0.25.1560)。 */
 @keyframes lowhp-heartbeat {
-  0%   { opacity: 0.18; }
-  4%   { opacity: 0.46; }
-  12%  { opacity: 0.20; }
-  22%  { opacity: 0.42; }
-  32%  { opacity: 0.18; }
-  100% { opacity: 0.18; }
+  0%   { opacity: 0.24; }
+  4%   { opacity: 0.68; }
+  12%  { opacity: 0.28; }
+  22%  { opacity: 0.60; }
+  32%  { opacity: 0.24; }
+  100% { opacity: 0.24; }
 }
 
 /* 被弾反撃の知らせ(components/HitRetaliationCue)。縁に貼りついた滲みが、縁へ吸い込まれるように縮み(減速=慣性)、
@@ -252,10 +252,29 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   to   { transform: scale(0.7); }
 }
 @keyframes hit-retaliate-beat {
-  0%   { opacity: 0.35; }
+  0%   { opacity: 0.9; }   /* 白の1コマ目の直後に赤が立つ(白→赤が本当に赤になる・監査#8) */
+  12%  { opacity: 0.55; }
   40%  { opacity: 1; }
   55%  { opacity: 0.6; }
   68%  { opacity: 0.9; animation-timing-function: ease-in; }
+  100% { opacity: 0; }
+}
+/* ★C4(社長裁定2026-10-16「はい」): 被弾の方向の知らせを派手に。①白の2コマ点滅を赤の滲みの上に乗せる(点滅の試し A1 と同じ作法)。
+   尺200ms・1コマ=45ms(60fpsで約3フレーム・30fpsでも1フレーム以上=実機の負荷で潰れない・監査#7)。点滅は**瞬断**(点滅は瞬断でよい。
+   嘘の注釈を書かない・監査#9)。最後の65msだけ減速して消える。②画面を一瞬だけ暗く沈める(方向の縁が浮く)。沈むのは世界だけ=HUD は沈めない
+   (監査#10・GameHUD の文脈の中で z-index:-1 に置く)。 */
+@keyframes hit-retaliate-white {
+  0%     { opacity: 0.95; }
+  22.5%  { opacity: 0.95; }
+  22.6%  { opacity: 0; }
+  45%    { opacity: 0; }
+  45.1%  { opacity: 0.85; }
+  67.5%  { opacity: 0.85; animation-timing-function: ease-out; }
+  100%   { opacity: 0; }
+}
+@keyframes hit-retaliate-dim {
+  0%   { opacity: 0.38; }
+  30%  { opacity: 0.30; animation-timing-function: ease-out; }
   100% { opacity: 0; }
 }
 

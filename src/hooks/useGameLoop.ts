@@ -106,6 +106,7 @@ import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget } from '../utils
 import { HERO_DOG_FETCH_ARRIVE_PX, HERO_DOG_FETCH_TIMEOUT_MS, HERO_DOG_FETCH_RETURN_MS } from '../utils/heroDog';
 import { HIT_BLINK_TYPES } from '../utils/hitBlink';
 import { healthDropMult } from '../utils/healthDropBias';
+import { lowHpTier, LOW_HP_HEART_RATE } from '../utils/lowHpPulse';
 import { stepMagnetPull } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ(社長裁定2026-09-13) // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
 import { glenScriptApplies } from '../utils/giantScript';
@@ -507,7 +508,7 @@ import { recordHeartbeat, readHeapMB } from '../utils/crashDiagnostics';
 // 帯(判定)中心から**絵の中心**へ。表はrenderSpec(描画と同じBOSS_SPRITE_FIT)=絵とカメラが一致。
 import { bossArtCenter, BOSS_SPRITE_FIT } from '../pixi/renderSpec';
 import {
-  aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom,
+  aabbGapDistance, bossDistanceZoomTarget, contextZoomTarget, isLargeForZoom, runZoomTarget,
   ZOOM_MIN_ABS,
   springSmoothZoom, BOSS_DISTANCE_ZOOM_RETURN_TAU, zoomCameraDownFrac, bossCameraLeadY,
   bossWideShotZoom,
@@ -2608,7 +2609,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const gs = useGameStore.getState();
         const hpFrac = gs.player.maxHealth > 0 ? gs.player.health / gs.player.maxHealth : 0;
         const critical = gs.player.health > 0 && hpFrac <= HEARTBEAT_HP_FRAC && !gs.isPaused;
-        setHeartbeatLoop(critical);
+        setHeartbeatLoop(critical, LOW_HP_HEART_RATE[lowHpTier(gs.player.health)]); // 鼓動の速さは縁取りと同じ段(C3)
         // PEAK重ねSE+BGMダッキング: トリガーは「多数の変異体を検知」バナーと同じ源=台本に統一
         // (社長指示。反応型macroのPEAKでは鳴らさない=macro基準だとRELAX表示中に鳴る、が起きる)。
         // PACING_PUZZLE.md M6(§4-C): パズル方式ON時の演出コマは**ピーク**(通常コマでは鳴らさない・
@@ -16559,7 +16560,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         });
         const spawnZoomTarget = bossCameraMayPull
           ? ZOOM_MIN_ABS
-          : contextZoomTarget(nearEnemies.length, nearEnemies.some(e => isLargeForZoom(e.type)));
+          // ★B9: 走りの引き(描画と同じ純関数)も湧き位置へ反映=引いた分だけ外に湧く(目標値=安全側)。
+          : Math.min(contextZoomTarget(nearEnemies.length, nearEnemies.some(e => isLargeForZoom(e.type))),
+            runZoomTarget(useGameStore.getState().player.speedRampSustainMs, nearEnemies.length > 0));
         const czInvZoom = (labTheme || indoor) ? 1 : 1 / spawnZoomTarget;
         const spawnBounds = czInvZoom > 1.0001
           ? { width: gameBounds.width * czInvZoom, height: gameBounds.height * czInvZoom }

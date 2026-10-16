@@ -1723,12 +1723,13 @@ let heartbeatActive = false;
 let heartbeatSource: AudioBufferSourceNode | null = null;
 let heartbeatGain: GainNode | null = null;
 let heartbeatStartTimer: number | null = null;
-const HEARTBEAT_VOLUME = 0.55; // 私案・実機調整前提(まだ緊張を煽りすぎない控えめな音量から開始)
+const HEARTBEAT_VOLUME = 0.3;  // ★v0.25.5069(社長裁定2026-10-16・C3「心音を小さく」): 0.55→0.3。縁の滲みが主役・心音は添える
 const HEARTBEAT_FADE_S = 0.25;
-// 社長決定(v0.25.1567): 心音ループは**既定OFF**(「重くはないが、これもいらない」)。心音は連続ループの
-// Web Audioバッファ(source.loop=true)=ダンスループと同クラスの地雷候補でもあり、要らないなら鳴らさないのが安全。
-// `?heartbeat=1`で従来の心音を試聴のみ可(温存)。既定でピンチ中も心音は鳴らない。
-const HEARTBEAT_DISABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('heartbeat') !== '1';
+// 事実として: v0.25.1567 の社長決定は**既定OFF**(「重くはないが、これもいらない」。連続ループの Web Audio バッファ=地雷候補)。
+// ★v0.25.5069(社長裁定2026-10-16・まとめHTML C3「はい」=縁を濃く・脈を速く・**心音を小さく添える**)で**既定ON**へ戻した
+//   (音量 0.3・体力の段で再生速度が上がる=`setHeartbeatLoop(active, rate)`)。`?heartbeat=0` で切れる(診断)。
+//   v0.25.5033 のA/Bで「peak/心音はBGM遅延に無罪」が確定しているので、地雷の疑いは晴れている。
+const HEARTBEAT_DISABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('heartbeat') === '0';
 
 const startHeartbeatSource = () => {
   heartbeatStartTimer = null;
@@ -1750,6 +1751,7 @@ const startHeartbeatSource = () => {
   try { source.start(now); } catch { /* ignore */ }
   heartbeatSource = source;
   heartbeatGain = gain;
+  source.playbackRate.value = heartbeatRate; // 始動時点の段の速さで鳴り始める
 };
 
 const stopHeartbeatNode = () => {
@@ -1773,11 +1775,19 @@ const stopHeartbeatNode = () => {
 // OFFは300msの猶予付き(ポーズ/回復瞬間の1フレームのチラつきでループを殺して再始動→連打化しない)。
 // 猶予中にONへ戻れば同じソースをそのまま継続(新ソースを作らない)。
 let heartbeatStopTimer: number | null = null;
-export const setHeartbeatLoop = (active: boolean) => {
+let heartbeatRate = 1;
+/** 再生速度(=鼓動の速さ)を体力の段に合わせる。走っている源へは滑らかに(0.25秒)寄せる=段を跨いだ瞬間に拍が跳ばない。 */
+const applyHeartbeatRate = () => {
+  const context = ensureSfxContext();
+  if (!context || !heartbeatSource) return;
+  try { heartbeatSource.playbackRate.setTargetAtTime(heartbeatRate, context.currentTime, 0.25); } catch { heartbeatSource.playbackRate.value = heartbeatRate; }
+};
+export const setHeartbeatLoop = (active: boolean, rate = 1) => {
   if (HEARTBEAT_DISABLED) return; // ?heartbeat=0 診断: 心音ループを一切鳴らさない(連続バッファ地雷の切り分け)
   const shouldPlay = active && !muted;
   if (shouldPlay) {
     if (heartbeatStopTimer != null) { clearTimeout(heartbeatStopTimer); heartbeatStopTimer = null; }
+    if (rate !== heartbeatRate) { heartbeatRate = rate; applyHeartbeatRate(); }
     if (heartbeatActive) return; // idempotent: cheap per-frame no-op
     heartbeatActive = true;
     startHeartbeatSource();
