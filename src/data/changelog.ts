@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5079', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5078', items: [
     '血の覚醒の見た目を作り込んだ。体の赤は影に血が入り明部が照り返す二層に、光は小さく暗い朱に、脈は心拍の形に。入りは光が先に強く出て体が遅れて染まる',
     '体力の液体は前半は暗いワイン色に沈み、後半で朱へ。満ちた瞬間は液面が縁まで迫り上がり、底から沸く',
