@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5084', items: [
+    '血の覚醒に入った瞬間、頭上に AWAKENING の文字が浮かぶ',
+  ] },
   { version: '0.25.5083', items: [
     '走り続けた時の速さが積みすぎで跳ね上がらないようにした。スキルや装備を重ねるほど伸びは緩やかになり、二倍の手前で止まる。最高速までの時間も積むほど確実に縮むが、一瞬にはならない',
   ] },
