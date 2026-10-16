@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5091', items: [
+    '一時停止の地図に、ハンターと死神は出さないようにした',
+  ] },
   { version: '0.25.5090', items: [
     '一時停止の地図に、その出撃で出会ったボスと宿敵の今の位置が出る。パンプキン・削岩型・伐採人は出さない',
     '見つけた寄り道は色で分かれる。病院は緑、武器庫は黄、警察は青、裏ボスの巣は赤。取り終えた所は輪だけ',

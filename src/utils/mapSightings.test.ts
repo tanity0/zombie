@@ -9,32 +9,31 @@ const cam = { x: 0, y: 0 }, view = { width: 400, height: 800 };
 describe('地図に出す敵(THEONE_ROUND2 §2-3)', () => {
   beforeEach(() => resetMapSightings());
 
-  it('強個体(パンプキン/削岩型/伐採人)と研究所の大型は出さない', () => {
-    for (const t of ['pumpkin', 'driller', 'logger', 'lab-zombie-3'] as EnemyType[]) {
+  it('強個体(パンプキン/削岩型/伐採人)・研究所の大型・ハンター・死神は出さない', () => {
+    for (const t of ['pumpkin', 'driller', 'logger', 'lab-zombie-3', 'hunter', 'reaper'] as EnemyType[]) {
       expect(isMapTrackedEnemy({ type: t })).toBe(false);
     }
   });
 
   it('ボス級と宿敵は出す・死体は出さない・雑魚は出さない', () => {
     expect(isMapTrackedEnemy({ type: 'thor' })).toBe(true);
-    expect(isMapTrackedEnemy({ type: 'hunter' })).toBe(true);
     expect(isMapTrackedEnemy({ type: 'zombie', isNamed: true })).toBe(true);
     expect(isMapTrackedEnemy({ type: 'zombie' })).toBe(false);
     expect(isMapTrackedEnemy({ type: 'thor', corpseUntil: 1 })).toBe(false);
   });
 
   it('画面に入った個体だけが「出会った」になり、出た後も記録は残る', () => {
-    const near = foe('a', 'hunter', 100, 100);
-    const far = foe('b', 'hunter', 5000, 5000);
+    const near = foe('a', 'thor', 100, 100);
+    const far = foe('b', 'thor', 5000, 5000);
     expect(recordMapSightings([near, far], cam, view, 1)).toBe(1);
-    expect(wasSeenThisRun({ id: 'a', type: 'hunter' })).toBe(true);
-    expect(wasSeenThisRun({ id: 'b', type: 'hunter' })).toBe(false);
+    expect(wasSeenThisRun({ id: 'a', type: 'thor' })).toBe(true);
+    expect(wasSeenThisRun({ id: 'b', type: 'thor' })).toBe(false);
     recordMapSightings([{ ...near, x: 9000 }], cam, view, 1); // 画面外へ出ても
-    expect(wasSeenThisRun({ id: 'a', type: 'hunter' })).toBe(true);
+    expect(wasSeenThisRun({ id: 'a', type: 'thor' })).toBe(true);
   });
 
   it('引いた時(ズーム)は見える範囲が広がる', () => {
-    const edge = foe('c', 'hunter', 500, 100); // 400幅の外・0.5倍なら見える
+    const edge = foe('c', 'thor', 500, 100); // 400幅の外・0.5倍なら見える
     expect(recordMapSightings([edge], cam, view, 1)).toBe(0);
     expect(recordMapSightings([edge], cam, view, 0.5)).toBe(1);
   });
@@ -45,8 +44,8 @@ describe('地図に出す敵(THEONE_ROUND2 §2-3)', () => {
   });
 
   it('次の出撃で記録は空', () => {
-    recordMapSightings([foe('a', 'hunter', 100, 100)], cam, view, 1);
+    recordMapSightings([foe('a', 'thor', 100, 100)], cam, view, 1);
     resetMapSightings();
-    expect(wasSeenThisRun({ id: 'a', type: 'hunter' })).toBe(false);
+    expect(wasSeenThisRun({ id: 'a', type: 'thor' })).toBe(false);
   });
 });
