@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useGameStore, isGameTimeStopped, isAttackLocked } from '../store/gameStore';
 import { performFlickAction } from '../utils/inputActions';
+import { keyRetaliationDir } from '../utils/keyRetaliation';
 import { pcPressDown, pcPressUp, markPcFlick } from '../utils/pcPress';
 import { isMenuContext } from '../utils/menuNav';
 import { pcCycleGun, pcSelectGunSlot } from '../utils/weaponCycle';
@@ -144,6 +145,13 @@ export const useGameControls = () => {
           const l = Math.hypot(dx, dy) || 1;
           useGameStore.getState().setLastDirection({ x: dx / l, y: dy / l });
         }
+        // ★被弾反撃(PC・キーボード): 方向キーの**新しい押下**(押しっぱなしの repeat は除く)を、パッドの「ニュートラルから倒す」と
+        //   同じ「相手の方へはじく」入力にする(社長報告2026-10-16「PCで反撃が発動しない」。キーボードには反撃の入口が無かった)。
+        //   窓・±45°・相手の有効性は store(tryHitRetaliation)が見る=揃わなければ false で、ただ歩くだけ(従来どおり)。
+        const rd = keyRetaliationDir(inputState, e.repeat);
+        if (rd && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked && !isAttackLocked()) {
+          useGameStore.getState().tryHitRetaliation(rd.x, rd.y);
+        }
       }
 
       // フリック(一閃ダッシュ / ワイヤーアンカー): 今の移動方向(斜め可)へ発動。キーボードの予備操作
@@ -156,7 +164,8 @@ export const useGameControls = () => {
         // 共通ゲート isAttackLocked(一時停止・死亡・時間停止・納品ロック・アテンション)で止める。
         if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked && !isAttackLocked()) {
           const v = currentMoveVec();
-          performFlickAction(v.x, v.y);
+          // ★被弾反撃を先に試す(マウス右クリック MouseControls / パッド gamepad と同じ順。research/HIT_RETALIATION.md の積み残し=PC のキーボードの K は反撃を通らなかった)。
+          if (!useGameStore.getState().tryHitRetaliation(v.x, v.y)) performFlickAction(v.x, v.y);
         }
         useGameStore.setState({ inputState });
         return;

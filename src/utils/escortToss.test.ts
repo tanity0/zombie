@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   escortTossDecision, escortTossLanding, escortTossProgress, escortTossableType,
   ESCORT_TOSS_CD_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_MIN_DIST, ESCORT_TOSS_MAX_DIST, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_SWING_DEG,
-  escortKickTargetOk, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist,
+  escortKickTargetOk, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist, escortKickerInPlayerSector,
   ESCORT_KICK_TO_HIT_MS, ESCORT_KICK_STUN_MARGIN_MS, ESCORT_KICK_BEHIND_PX, ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_TOSS_OVERSHOOT_PX,
 } from './escortToss';
 import type { EscortTossInput } from './escortToss';
+import { poiSectorIndex } from '../world/pois';
 
 // research/ESCORT_TOSS.md(兵士のトス)の判定と幾何。
 const base = (over: Partial<EscortTossInput> = {}, enemy: Partial<EscortTossInput['enemy']> = {}): EscortTossInput => ({
@@ -91,6 +92,19 @@ describe('v3.1 兵士の蹴り飛ばし(純関数)', () => {
     expect(escortKickJumpPos(k, ESCORT_KICK_CROUCH_MS + ESCORT_KICK_JUMP_MS / 2).x).toBeCloseTo(50, 6);
     expect(escortKickJumpPos(k, ESCORT_KICK_CROUCH_MS + ESCORT_KICK_JUMP_MS).x).toBe(100);
     expect(ESCORT_KICK_CROUCH_MS + ESCORT_KICK_JUMP_MS).toBe(500); // 社長「0.5秒で背後にジャンプ」
+  });
+  it('escortKickerInPlayerSector: プレイヤーの区画の担当兵士だけ(拠点が無ければ従来どおり候補)', () => {
+    // 拠点は東南西北(原点からの角度で区画が決まる)。東=0 / 南=1 / 西=2 / 北=3(poiSectorIndex と同じ並び)。
+    const bases = [
+      { id: 'base-0', x: 4800, y: 0 }, { id: 'base-1', x: 0, y: 4800 }, { id: 'base-2', x: -4800, y: 0 }, { id: 'base-3', x: 0, y: -4800 },
+    ];
+    const east = poiSectorIndex({ x: 1000, y: 10 }), north = poiSectorIndex({ x: 10, y: -1000 });
+    expect(east).not.toBe(north);
+    expect(escortKickerInPlayerSector({ baseId: 'base-0' }, bases, east)).toBe(true);
+    expect(escortKickerInPlayerSector({ baseId: 'base-3' }, bases, east)).toBe(false); // 北の駐留兵は東の敵へ跳ばない
+    expect(escortKickerInPlayerSector({ baseId: 'base-3' }, bases, north)).toBe(true);
+    expect(escortKickerInPlayerSector({ baseId: 'base-9' }, bases, east)).toBe(true); // 拠点表に無い=通路ステージ等は候補に残す
+    expect(escortKickerInPlayerSector({ baseId: 'base-0' }, [], east)).toBe(true);
   });
   it('pickEscortKickPair: 兵士から敵までが一番近い組', () => {
     const p = pickEscortKickPair(

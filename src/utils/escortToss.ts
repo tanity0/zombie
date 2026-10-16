@@ -4,6 +4,7 @@
 // ここは判定と幾何の純関数だけ(store が呼ぶ・テストで固定する)。gameStore を import しない。
 import type { Enemy, EnemyType } from '../types/game';
 import { isBossType, isCorpse, isHangedman, isHordeFollower, resistsChipKnockback } from './enemyUtils';
+import { poiSectorIndex } from '../world/pois';
 
 /** 飛ぶ時間(ms・ゲーム時間)。 */
 export const ESCORT_TOSS_MS = 420;
@@ -155,6 +156,22 @@ export const escortKickPoint = (
 export const escortKickJumpPos = (k: Pick<EscortKick, 'fromX' | 'fromY' | 'toX' | 'toY' | 'startAt'>, gameTime: number): { x: number; y: number; t: number } => {
   const t = Math.max(0, Math.min(1, (gameTime - k.startAt - ESCORT_KICK_CROUCH_MS) / ESCORT_KICK_JUMP_MS));
   return { x: k.fromX + (k.toX - k.fromX) * t, y: k.fromY + (k.toY - k.fromY) * t, t };
+};
+
+/**
+ * ★跳ぶ兵士は**プレイヤーの居る区画の担当兵士だけ**(社長報告2026-10-16「区画外のNPCが飛んできて吹っ飛ばしに参加」=バグ)。
+ * 兵士の所属は担当拠点(`baseId`)で、拠点の区画(`poiSectorIndex`)がプレイヤーの区画(`playerSector`)と同じ兵士だけが候補。
+ * 拠点表に居ない(通路ステージなど拠点が無い)兵士は**従来どおり候補に残す**(誰も蹴れなくならないように)。
+ * 「どんなに遠くても0.5秒で跳ぶ」(§2)は区画の中では変えない=同じ区画なら画面外からでも跳ぶ。
+ */
+export const escortKickerInPlayerSector = (
+  escort: { baseId: string },
+  bases: readonly { id: string; x: number; y: number }[],
+  playerSector: number,
+): boolean => {
+  const b = bases.find(x => x.id === escort.baseId);
+  if (!b) return true;
+  return poiSectorIndex(b) === playerSector;
 };
 
 /** (敵, 兵士) の組のうち、兵士から敵までが一番近い組。どちらも呼び手が条件で絞った候補。 */

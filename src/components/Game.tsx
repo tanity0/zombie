@@ -42,6 +42,7 @@ import { useGameLoop } from '../hooks/useGameLoop';
 import { useGameControls } from '../hooks/useGameControls';
 import { computeViewport } from '../utils/viewport';
 import { playSfx } from '../audio/audioManager';
+import { getSelectedStageId } from '../data/progress';
 
 // the ONE 洋館［SUB］再訪(統合正本9.3): 保存槽(洋館)接近中だけ出す操作表示［投与する］。
 // 購読は boolean 1個(medicinePromptVisible・変化時のみ書かれる)=React再レンダ規律準拠の孤立小コンポーネント。
@@ -385,7 +386,8 @@ const ErrBeacon: React.FC = () => {
       // ★v0.25.4375: `tex` は**読み込んだ素材しか数えない**。実行中に焼く分(縁/影/白)は別口で出す。
       // v0.25.5054(社長質問「長時間プレイするほど落ちる確率が上がる?」): 時間で増える物を名指しできるよう、
       // 表示物の総数・敵IDで持つ表の件数(描画側)と store の配列の長さを足す。
-      return `v${__APP_VERSION__} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} en${st.enemies.length}`
+      // v0.25.5065: どのステージで落ちたかを行に残す(社長実機 v0.25.5062 t133s・合計212MBで落ちた件の切り分け用)。
+      return `v${__APP_VERSION__} ${getSelectedStageId()} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} en${st.enemies.length}`
         + ` ${sceneDiagText()} st[fx${st.effects.length} pk${st.pickups.length} pj${st.projectiles.length} sm${st.summons.length}]`;
     });
     const iv = setInterval(() => {

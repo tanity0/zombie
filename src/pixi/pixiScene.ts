@@ -27536,7 +27536,7 @@ export class PixiScene {
         const bl = this.escortBlendSprites.get(esc.id);
         if (bl) bl.visible = false;
       }
-      this.drawEscortMelee(esc, sp.visible ? baseAlpha * pose.alphaMul : 0, px, esc.y, mSince, mSwing, now);
+      this.drawEscortMelee(esc, sp.visible ? baseAlpha * pose.alphaMul : 0, px, esc.y, mSince, mSwing, now, escScale);
     }
     for (const [id, sp] of this.escortSprites) {
       if (!seen.has(id)) {
@@ -27559,7 +27559,7 @@ export class PixiScene {
   //  - 振り: 溜め明け(当たる瞬間)には弧の中盤=刃が敵の上を横切っている(meleeSwingEase で kt 0.5)。
   //  - 上下の敵には振りの面だけ傾ける(体は回さない)。1振りごとに順手/逆手を交互(弧を上下反転)。
   //  - 腰の高さ(胸の銃のシルエットより下)から振る。
-  private drawEscortMelee(esc: EscortSoldier, alpha: number, footX: number, footY: number, mSince: number, mSwing: boolean, now: number) {
+  private drawEscortMelee(esc: EscortSoldier, alpha: number, footX: number, footY: number, mSince: number, mSwing: boolean, now: number, bodyScale = 0) {
     let v = this.escortMeleeViews.get(esc.id);
     if (!v) {
       if (!esc.knifeMode && !mSwing) return; // 一度も構えていない軍人には作らない
@@ -27641,8 +27641,13 @@ export class PixiScene {
     const kTex = getTexture('knife-swing-1');
     if (kTex && knife.texture !== kTex) knife.texture = kTex;
     // ---- ナイフの実絵: 構えの拳 → 弧に沿って円 → 振り上げた拳(軍人だけ・ESCORT_FIST_* の注釈)----
-    // 絵のpx → unit。軍人の体の表示高(基準高×NPC8×シート倍率)を絵の高さ66で割り、unit(箱の高さ)で割る。
-    const pxU = (PixiScene.RESCUE_NPC_DISPLAY_H * NPC8_SCALE * ESCORT_SHEET_DISPLAY_MULT / ESCORT_SWING_TEX_H) / boxH;
+    // 絵のpx → unit。★本体の**実際の表示倍率**(bodyScale=sp.scale の絶対値・遠近込み)から引く(プレイヤーの knifeCircleForPose と同じ作法)。
+    //   旧=「全員 NPC8×シート倍率×絵の高さ66」の定数で計算していたため、体格の違う個体(衛生兵・随行・歩きシート無し)で拳の位置が
+    //   体から約1割ずれて見えた(社長報告2026-10-16「ナイフが被写界深度に比例していない」の切り分け=標準の兵士では旧式と同値)。
+    //   bodyScale が無い(0)時だけ旧式へ落とす。
+    const pxU = bodyScale > 0
+      ? Math.abs(bodyScale) / unit
+      : (PixiScene.RESCUE_NPC_DISPLAY_H * NPC8_SCALE * ESCORT_SHEET_DISPLAY_MULT / ESCORT_SWING_TEX_H) / boxH;
     const chestUp = boxH * 0.5 / (pxU * boxH); // 胸(baseY)の足元からの高さ(絵のpx)
     const sx = ESCORT_FIST_LOW.dx * pxU, sy = (chestUp - ESCORT_FIST_LOW.up) * pxU;
     const ex = ESCORT_FIST_RAISED.dx * pxU, ey = (chestUp - ESCORT_FIST_RAISED.up) * pxU;

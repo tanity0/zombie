@@ -19,7 +19,7 @@ beforeEach(() => {
   px = st.player.x + st.player.width / 2;
   py = st.player.y + st.player.height / 2;
   useGameStore.setState(s => ({
-    enemies: [], gameTime: 100_000, activeEvent: null,
+    enemies: [], gameTime: 100_000, activeEvent: null, escortFollowEnabled: true, // 蹴りは「連れて行く」オンの時だけ(v0.25.5065)
     camera: { x: px - 400, y: py - 300 }, viewZoom: 1,
     player: { ...s.player, lastDirection: { x: 1, y: 0 } },
   }));
@@ -41,6 +41,35 @@ const run = (ms: number, dt = 16) => { for (let t = 0; t < ms; t += dt) step(dt)
 const distToPlayer = (id: string) => { const e = enemy(id); return Math.hypot(e.x + e.width / 2 - px, e.y + e.height / 2 - py); };
 
 describe('兵士の蹴り飛ばし v3.1', () => {
+  it('「連れて行く」がオフなら蹴らない(社長指示2026-10-16)', () => {
+    useGameStore.setState({ escortFollowEnabled: false });
+    put(300, -40);
+    run(600);
+    expect(useGameStore.getState().escortKick).toBeNull();
+  });
+  it('プレイヤーの区画の担当兵士だけが跳ぶ(別区画の拠点に居る兵士は候補にならない・社長報告2026-10-16)', () => {
+    // 兵士4人を「北の拠点(base-3)」所属にして北へ置き、プレイヤー(原点付近=東寄り)の東の敵へは誰も跳ばない。
+    const st = useGameStore.getState();
+    const bases = st.baseSites;
+    expect(bases.length).toBeGreaterThan(0);
+    const east = bases.find(b => Math.abs(b.y) < 1 && b.x > 0) ?? bases[0];
+    const north = bases.find(b => b.id !== east.id)!;
+    useGameStore.setState(s => ({
+      player: { ...s.player, x: east.x * 0.5 - s.player.width / 2, y: east.y * 0.5 - s.player.height / 2 },
+      escorts: s.escorts.map(e => ({ ...e, baseId: north.id, x: north.x, y: north.y })),
+    }));
+    const s2 = useGameStore.getState();
+    px = s2.player.x + s2.player.width / 2; py = s2.player.y + s2.player.height / 2;
+    useGameStore.setState({ camera: { x: px - 400, y: py - 300 } });
+    put(300, -40);
+    run(600);
+    expect(useGameStore.getState().escortKick).toBeNull();
+    // 同じ区画(東の拠点)所属に戻せば跳ぶ(気絶の残りが要るので敵は置き直す)。
+    useGameStore.setState(s => ({ enemies: [], escorts: s.escorts.map(e => ({ ...e, baseId: east.id })) }));
+    put(300, -40);
+    step(16);
+    expect(useGameStore.getState().escortKick).not.toBeNull();
+  });
   it('画面内の気絶中の敵へ兵士が0.5秒で背後へ跳び、蹴って、敵がプレイヤーの手前まで滑って止まる(気絶はそのまま)', () => {
     const id = put(300, -40);
     step(16);
@@ -119,6 +148,9 @@ describe('兵士の蹴り飛ばし v3.1', () => {
     step(16);
     run(ESCORT_KICK_TO_HIT_MS + ESCORT_TOSS_MS + 60);
     const b = put(-300, 60);
+    // 蹴りの命中が書いた被弾ストップ/ノックバック(実時間の時計)が残っていると、テストの速さ次第で a だけ止まる(flaky)。
+    // ここで見たいのは「着地後の押しの飛距離」なので、両者の被弾系の時計を揃えて(消して)から押す。
+    useGameStore.setState(st => ({ enemies: st.enemies.map(e => (e.id === a || e.id === b) ? { ...e, hitStunUntil: undefined, knockbackUntil: undefined } : e) }));
     const ay0 = enemy(a).y, by0 = enemy(b).y;
     useGameStore.getState().knockbackEnemy(a, 0, 1, 1);
     useGameStore.getState().knockbackEnemy(b, 0, 1, 1);

@@ -226,7 +226,7 @@ import { addHateDamage, escortHateSide, escortIdOfSide, isHateTrackedBossType, r
 import { stabilizeEscortFace } from '../utils/escortFace'; // 進軍NPCの向きのヒステリシス
 import {
   escortTossLanding, ESCORT_TOSS_MS, ESCORT_TOSS_NEVER, ESCORT_TOSS_STOP_PX, ESCORT_TOSS_CD_MS,
-  escortKickTargetOk, escortKickableState, ESCORT_KICK_MIN_DIST, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortTossSlideDist, type EscortKick,
+  escortKickTargetOk, escortKickableState, ESCORT_KICK_MIN_DIST, escortKickPoint, escortKickJumpPos, pickEscortKickPair, escortKickerInPlayerSector, escortTossSlideDist, type EscortKick,
   ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS,
 } from '../utils/escortToss'; // 兵士の蹴り飛ばし(research/ESCORT_TOSS.md v3.1)
 import { npcSfxDistGain } from '../utils/npcSfx';
@@ -937,12 +937,17 @@ const stepEscortKick = (get: () => GameState, set: (p: Partial<GameState> | ((s:
     return;
   }
   // 割り当て: 間隔・入力・ウェルカム待機を見てから、画面内の気絶中の敵 × 兵士の一番近い組。
+  // ★「連れて行く」がオフの時は蹴らない(社長指示2026-10-16「連れて行くにしてない時はキック攻撃しないようにして」)。
+  if (!st.escortFollowEnabled) return;
   if (locked || now - st.lastEscortTossAt < ESCORT_TOSS_CD_MS) return;
   if (escortShouldHoldForWelcome(st.activeEvent?.kind)) return;
   const targets = st.enemies.filter(e => e.stunUntil !== undefined && now < e.stunUntil
     && escortKickTargetOk(e, now, pcx, pcy, isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom, 0), st.escortKickAbort, e.id));
   if (targets.length === 0) return;
-  const kickers = st.escorts.filter(e => escortHasHealth(e) && !escortBusyNow(e, now) && !isEscortLowHealth(e) && !isEscortSwinging(e, now));
+  // ★プレイヤーの居る区画の担当兵士だけ(社長報告2026-10-16「区画外のNPCが飛んできて吹っ飛ばしに参加」)。拠点の無いステージは全員。
+  const pSector = poiSectorIndex({ x: pcx, y: pcy });
+  const kickers = st.escorts.filter(e => escortHasHealth(e) && !escortBusyNow(e, now) && !isEscortLowHealth(e) && !isEscortSwinging(e, now)
+    && escortKickerInPlayerSector(e, st.baseSites, pSector));
   const pair = pickEscortKickPair(targets, kickers);
   if (!pair) return;
   const face = p.lastDirection ?? { x: 0, y: 0 };
