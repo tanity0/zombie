@@ -94,6 +94,7 @@ import {
   resolveShieldWalls, shieldPlayableCtx, // ★B6(盾押し・§6)
   spawnRescueQuestPoint, EVENT_NPC_MIN_DISTANCE, // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2)
   isInReturnCircle, // 二人組クエストv2(§2-8・B4): 納品の3秒滞在の判定(returnCircle.radiusは対象のフィールドをそのまま読む)
+  type AreaCrossFx, // ★B1 区域を跨いだ瞬間の告知(research/THEONE_ROUND2.md §1)
 } from '../store/gameStore';
 import { resolveRescueSpawnDirection } from '../utils/rescueQuestSpawn'; // 二人組クエストv2(§2-3・B2)
 import {
@@ -259,7 +260,7 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget,
   AREA_ZONE_NAMES,
-  areaIndexForPos, areaIndexForDist,
+  areaIndexForPos, areaIndexForDist, activeAreaThresholds,
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN,
   isCorpse,
@@ -863,7 +864,23 @@ const HUNTER_FAV_SCORE_NEEDED = 4;         // 6項目中4つ以上
 const SCREAMER_START_MS = 300000;          // 出現開始(ウェルカム終了から5分。延長計画2026-10-12でウェルカム後の時計=directorTimeへ揃えた)
 const SCREAMER_RESPAWN_CD_MS = 60000;      // 消滅(撃破/退場)後の再出現CD(60秒)
 // エリア(区域)遷移バナー: 距離帯を跨いだら区域名をイベント発生と同じUIで表示(社長指示)。
-const AREA_BANNER_MS = 2600;           // 区域遷移バナーの表示時間(2〜3秒)
+// (旧 AREA_BANNER_MS=2600: 区域遷移の小さな帯。v0.25.5070 の B1 で「境界線+区画名の帯」(areaCrossFx・1.5秒)へ置き換えた)
+/**
+ * ★B1(research/THEONE_ROUND2.md §1): 区域を跨いだ瞬間の告知を作る。ringIdx=跨いだ輪(省略時は zoneIdx-1=その区域の内側の境界)。
+ * 弧(arc)は**プレイヤーが輪の上(±AREA_CROSS_ARC_NEAR_PX)に居る時だけ**描く(ファストトラベル・ゲートクリア時の遅延告知では帯だけ)。
+ */
+const AREA_CROSS_ARC_NEAR_PX = 420;
+const areaCrossFxAt = (zoneIdx: number, deeper: boolean, banner: boolean, ringIdx = zoneIdx - 1): AreaCrossFx => {
+  const p = useGameStore.getState().player;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const dist = Math.hypot(pcx, pcy);
+  const radius = activeAreaThresholds()[Math.max(0, ringIdx)] ?? AREA_THRESHOLDS[0];
+  const angle = Math.atan2(pcy, pcx);
+  // 進行方向側が先に伸びる(接線 (-sin, cos) と向きの内積の符号)。
+  const ld = p.lastDirection ?? { x: 1, y: 0 };
+  const lead: 1 | -1 = (ld.x * -Math.sin(angle) + ld.y * Math.cos(angle)) >= 0 ? 1 : -1;
+  return { at: Date.now(), zoneIdx, deeper, radius, angle, arc: Math.abs(dist - radius) <= AREA_CROSS_ARC_NEAR_PX, banner, lead };
+};
 // AREA_ZONE_NAMES は enemyUtils.ts からの共有(PACING_REDESIGN.mdバッチ2の最深到達telemetryと表記を統一)。
 // 原点(スタート/商人)からの距離(px)→ 区域インデックス。
 // ★**正本(`areaIndexForDist`)をそのまま使う**(v0.25.4450・社長裁定「はい」)。
@@ -4526,6 +4543,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // §5.21-追補9(社長指示v0.25.1655): 年表「未確認汚染エリアに到達」はゲート1クリア時に刻む
                   // (クロス時は gateBlocksThisWall で保留=倒すまで到達扱いにしない)。dedup=区域index。
                   recordChronicle(getSelectedStageId(), 'zone', '3', `${AREA_ZONE_NAMES[3]}に到達`);
+                  // ★B1(品質監査A): 塞がれていた跨ぎの告知をここで出す(名前の帯。輪の上に居なければ弧は描かない)。
+                  useGameStore.setState({ areaCrossFx: areaCrossFxAt(3, true, !(WALL_ENABLED && isFirstWallBreach(wm2, 3))) });
                 }
                 // PACING_PUZZLE.md §5.21 M20 stage④: 囲いゲート2クリア時の後処理。恒久解除+M14
                 // 到達判定を遅延実行(ハンター復活は伴わない=ゲート2にはその仕様が無い)。
@@ -4541,6 +4560,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // §5.21-追補9(社長指示v0.25.1655): 年表「深層域に到達」はゲート2ボス(ミゲル)討伐時に刻む
                   // (クロス時は gateBlocksThisWall で保留=倒すまで到達扱いにしない)。dedup=区域index。
                   recordChronicle(getSelectedStageId(), 'zone', '4', `${AREA_ZONE_NAMES[4]}に到達`);
+                  useGameStore.setState({ areaCrossFx: areaCrossFxAt(4, true, !(WALL_ENABLED && isFirstWallBreach(wm3, 4))) }); // ★B1(品質監査A): 同上
                 }
               } else {
                 // PACING_PUZZLE.md §5.21-追補6(社長決定v0.25.1556): ゲート失敗(制限時間切れ・未クリア)=
@@ -5666,7 +5686,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   gate1PassedThisRunRef.current = true;
                 }
                 if (!gateBlocksThisWall) {
-                  useGameStore.setState({ eventBannerText: AREA_ZONE_NAMES[zoneIdx], eventBannerUntil: newGameTime + AREA_BANNER_MS });
+                  // ★B1(research/THEONE_ROUND2.md §1・社長「跨いだ時だけ、画面いっぱいの境界線と区画名を一瞬表示」): 小さなイベント帯ではなく、
+                  //   跨いだ輪の弧(描画)と画面幅いっぱいの名前の帯(HUD)を1.5秒だけ出す。他のイベント帯(eventBannerText)は従来どおり。
+                  //   再生中に次の跨ぎが来たら**上書き**(帯も弧も新しい方で描き直す)。ファストトラベル等で輪の上に居ない時は弧を描かない(帯だけ)。
+                  //   名前の帯は深い側へ入った時だけ。初回踏破は銘打ち(WallInscription・下の WALL_ENABLED 分岐)が同じ場所に出るので帯は譲る(弧だけ)。
+                  const firstBreachNow = WALL_ENABLED && wallIdxCrossed !== null && isFirstWallBreach(useGameStore.getState().wallMeta, wallIdxCrossed);
+                  useGameStore.setState({ areaCrossFx: areaCrossFxAt(zoneIdx, zoneIdx > prevZone, zoneIdx > prevZone && !firstBreachNow, Math.min(prevZone, zoneIdx)) });
                   // 歴史年表: より深い区域へ初めて到達したら即載せ(社長決定v0.25.1628)。dedup=区域index。
                   // 浅い側へ戻る移動(zoneIdx<prevZone)は「到達」ではないので記録しない。
                   if (zoneIdx > prevZone) {

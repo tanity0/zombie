@@ -5864,6 +5864,15 @@ interface TutorialPopupPayload {
   slides?: TutorialSlide[];
 }
 
+/**
+ * ★B1(research/THEONE_ROUND2.md §1): 区域を跨いだ瞬間の告知。at=Date.now(HUDのCSSと描画の実時間で揃える)。
+ *  radius=跨いだ輪の半径(世界px)・angle=跨いだ点の原点からの角度・deeper=深い側へ入ったか。
+ *  arc=弧を描くか(輪の上に居る時だけ=ファストトラベル/ゲートクリアの遅延告知では帯だけ)。
+ *  banner=名前の帯を出すか(浅い側へ戻る時・初回踏破の銘打ち(WallInscription)が出る時は出さない=題字を二重にしない)。
+ *  lead=弧が先に伸びる側(+1/−1・プレイヤーの進行方向側。完全対称にしない)。
+ */
+export interface AreaCrossFx { at: number; zoneIdx: number; deeper: boolean; radius: number; angle: number; arc: boolean; banner: boolean; lead: 1 | -1 }
+
 interface GameState {
   player: Player;
   enemies: Enemy[];
@@ -5914,6 +5923,9 @@ interface GameState {
   // イベント発生告知バナー(コンボ表示の近く)。gameTime(ms)基準。HUDが gameTime<eventBannerUntil の間表示。
   eventBannerText: string;
   eventBannerUntil: number;
+  // ★B1(research/THEONE_ROUND2.md §1): 区域を跨いだ瞬間の「境界線と区画名」。at=Date.now(HUDのCSSと描画の実時間で揃える)。
+  //   radius=跨いだ輪の半径(世界px)・angle=跨いだ点の原点からの角度・deeper=深い側へ入ったか。描画(pixiScene)とHUD(AreaCrossBanner)が読む。
+  areaCrossFx: AreaCrossFx | null;
   // v0.25.3728(社長GO「バロメーターライン入れて」): 戦況ラインのHUDミラー。書くのはdirectorTickの
   // **変化時のみ**(コマ切替=約40秒に1回・ランク変化時)=毎フレーム再レンダーしない(CLAUDE.md規律)。
   hudDirector: { koma: 'relax' | 'harvest' | 'normal' | 'peak'; rank: number };
@@ -7261,6 +7273,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   rescueShooterFxAt: 0,
   eventBannerText: '',
   eventBannerUntil: 0,
+  areaCrossFx: null,
   hudDirector: { koma: 'relax', rank: 1 },
   npcDialogue: null,
   npcDialogueQueue: [],
@@ -22383,6 +22396,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         screamerBuffUntil: 0,
         eventBannerText: '',
         eventBannerUntil: 0,
+        areaCrossFx: null,
         hudDirector: { koma: 'relax', rank: 1 },
         // 屋内は指定がない限り「最初の部屋に武器商人のみ」。ボス部屋(城)/二人組(クエストNPC)は不在。
         // 城/死神/クエストの“発生”は useGameLoop 側で既に !indoor ゲート済み。商人は最初の部屋へ配置。

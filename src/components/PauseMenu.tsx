@@ -6,6 +6,26 @@ import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { CHARACTER_CLASSES, SKILLS, skillDescForLevel } from '../data/campaign';
 import { subWeaponBlurb } from '../data/subWeaponBlurbs';
 import { formatTime } from '../utils/renderUtils';
+import { PauseMap, type PauseMapData } from './PauseMap'; // ★B2 一時停止の地図(research/THEONE_ROUND2.md §2)
+import { getRunPois, isPoiRevealed } from '../world/pois';
+import { getSelectedStageId } from '../data/progress';
+
+// ★B2: 地図を出すステージ=区域の輪と拠点があるステージだけ(研究所・洋館の通路・訓練・EX・ステージ7は出さない)。ボスメーカー/1対1も出さない。
+const PAUSE_MAP_STAGES = new Set(['stage-1', 'stage-3', 'stage-4', 'stage-5']);
+const readPauseMap = (): PauseMapData | null => {
+  const s = useGameStore.getState();
+  if (s.corridorMode || s.stageTheme === 'lab' || s.bossMaker.active || !PAUSE_MAP_STAGES.has(getSelectedStageId())) return null;
+  const p = s.player;
+  const pois = getRunPois(s.hiddenBoss, [
+    { kind: 'hospital', pos: s.hospital }, { kind: 'armory', pos: s.armory }, { kind: 'police', pos: s.police },
+  ]).filter(q => isPoiRevealed(q, s.baseSites));
+  return {
+    player: { x: p.x + p.width / 2, y: p.y + p.height / 2, dirX: p.lastDirection?.x ?? 1, dirY: p.lastDirection?.y ?? 0 },
+    bases: s.baseSites.map(b => ({ x: b.x, y: b.y, captured: b.status === 'captured' })),
+    pois: pois.map(q => ({ x: q.x, y: q.y, kind: q.kind })),
+    named: s.enemies.filter(e => e.isNamed && !(e.corpseUntil !== undefined)).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 })),
+  };
+};
 
 interface PauseMenuProps {
   onResume: () => void;
@@ -27,6 +47,7 @@ const readPauseSnapshot = () => {
   const s = useGameStore.getState();
   const classInfo = CHARACTER_CLASSES.find(c => c.id === s.player.characterClass);
   return {
+    map: readPauseMap(),
     gameTimeSec: Math.floor(s.gameTime / 1000),
     subquests: s.subquests,
     playerName: classInfo?.name ?? 'プレイヤー',
@@ -114,6 +135,13 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
 
           {/* 右: 戦況(開いた時点の値・1回読み)。 */}
           <div data-nav-scroll className="min-w-0 flex flex-col gap-3 text-[11px] max-h-[calc(78vh/var(--hud-s,1))] overflow-y-auto no-scrollbar">
+            {/* ★B2 地図(research/THEONE_ROUND2.md §2): 開いた時の1回読み。凡例は作戦室の地図と同じ。見出しは他の節と同じ様式。 */}
+            {snap.map && (
+              <div>
+                <div className="mb-1 tracking-[0.16em] text-white/35">地図</div>
+                <PauseMap data={snap.map} />
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="tracking-[0.16em] text-white/35">経過時間</span>
               <span className="text-[20px] font-semibold tabular-nums text-white/90">{formatTime(snap.gameTimeSec)}</span>

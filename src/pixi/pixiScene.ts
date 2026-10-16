@@ -4756,6 +4756,7 @@ export class PixiScene {
   // ★被弾反撃の向きの矢印(HIT_RETALIATION.md §7)。uiLayer=画面座標・環境光の影響外。▶を右向きで原点に描き、
   // Graphics ごと位置と回転を与える。
   private retArrowGfx = new Graphics();
+  private areaCrossGfx = new Graphics(); // ★B1 区域を跨いだ瞬間の境界の弧(世界座標・effectLayer)
   private retArrow: {
     key: number;                         // 窓の openedAt(新しい窓で作り直す)
     mode: 'show' | 'retract' | 'exit';   // 出ている/条件が崩れて引っ込む/反撃が成立して抜ける
@@ -5842,6 +5843,7 @@ export class PixiScene {
     // 照準サークルは uiLayer(研究所の暗幕/森の暗転より上=環境光の影響外)へ。screen座標で描画する。
     this.L.uiLayer.addChild(this.reticleGfx);
     this.L.uiLayer.addChild(this.retArrowGfx);
+    this.L.effectLayer.addChild(this.areaCrossGfx);
     this.L.uiLayer.addChild(this.rescueSweatGfx); // 汗マーク=環境光の影響外(uiLayer)
     this.localEventShadeGfx.zIndex = -1_000_000;
     this.L.actorLayer.addChild(
@@ -9694,6 +9696,7 @@ export class PixiScene {
       s.escorts
     );
     this.syncPlayerFx(s.player, now);
+    this.syncAreaCrossLine(fxNow); // ★B1 区域の境界の弧(実時間=HUDの帯と同じ時計)
     this.syncRetaliationArrow(s.player, fxNow); // ★実時間(帯=CSSと同じ時計)。凍結時計だとヒットストップ中に出ず、明けに出現の動きが飛ぶ(検収品質 A-1)
     this.syncSpeedLines(s.player, now, s.gameTime); // §5.23 M22 C4: 突進/カウンターの速度線(screen-space・軽量)
     // 解放済み(=その方角の拠点が制圧済み)のPOIだけ方角矢印を出す。裏ボスは討伐後は出さない。
@@ -35069,6 +35072,57 @@ export class PixiScene {
    * (縁の帯の「吸い込まれる」と同じ向き)。条件が崩れたら短く体へ引っ込む。反撃が成立したら入力の向きへ抜けて消える。
    * 白+暗い縁取りだけ(赤は持たない=体のすぐ横は敵の赤い予告の世界)。判定は持たない・store へは書かない。
    */
+  /**
+   * ★B1(research/THEONE_ROUND2.md §1): 区域を跨いだ瞬間、跨いだ輪(原点中心・半径 radius)の弧を、跨いだ点から左右へ伸ばして画面の外まで描く。
+   *  入り350ms(ease-out・出足が最速)→保持500ms→消え600ms(端から薄れ中央が最後まで残る)。深い側=真鍮・浅い側=薄い白。赤・紫は使わない。
+   *  弧の角度幅は可視域の対角線から求める(ズーム0.4でも画面を横切る)。線の太さは画面pxで一定(2px・中央160pxは3px)。
+   */
+  private syncAreaCrossLine(now: number): void {
+    const g = this.areaCrossGfx;
+    const fx = useGameStore.getState().areaCrossFx;
+    // 入り350ms(出足最速・減速)→保持450ms→消え500ms。帯(HUD)はこの弧が消え切った後に一拍残って消える(順序に意味を持たせる)。
+    const IN_MS = 350, HOLD_MS = 450, OUT_MS = 500;
+    const t = fx ? now - fx.at : Infinity;
+    if (!fx || !fx.arc || t < 0 || t >= IN_MS + HOLD_MS + OUT_MS || HIDE_LAYERS.has('areacross')) { if (g.visible) { g.visible = false; g.clear(); } return; }
+    const wz = this.L.worldGroup.scale.x || 1;
+    const r = Math.max(1, fx.radius);
+    // 可視域の対角線(世界px)ぶんの弧=画面を必ず横切る。弧の角度は半径で割る(πを越えない)。
+    const diagWorld = Math.hypot(this.screenW, this.screenH) / wz;
+    const spanMax = Math.min(Math.PI, (diagWorld * 0.75) / r);
+    const easeOut = (u: number) => 1 - (1 - u) * (1 - u) * (1 - u);
+    const grow = easeOut(Math.min(1, t / IN_MS));
+    // 進行方向側(lead)が先に届く。反対側は少し遅れて短い(完全対称にしない)。
+    const spanLead = spanMax * grow;
+    const spanTrail = spanMax * 0.85 * easeOut(Math.min(1, Math.max(0, t - 60) / IN_MS));
+    const outU = t > IN_MS + HOLD_MS ? Math.min(1, (t - IN_MS - HOLD_MS) / OUT_MS) : 0;
+    const shrink = 1 - outU * outU;          // 消えは端から中央へ吸い込まれる
+    const alphaAll = 1 - outU;
+    const color = fx.deeper ? 0xffb340 : 0xffffff; // 深い側=UIの琥珀(--menu-accent)・浅い側=白(線だけ・帯は出さない)
+    const baseAlpha = fx.deeper ? 0.9 : 0.6;
+    g.clear(); g.visible = true;
+    const a0 = fx.angle - (fx.lead < 0 ? spanLead : spanTrail) * shrink;
+    const a1 = fx.angle + (fx.lead > 0 ? spanLead : spanTrail) * shrink;
+    if (a1 - a0 < 1e-4) return;
+    // 地平線フェード(horizonActorAlpha)を弧にも掛ける=世界の他の物と同じ法則で奥へ消える。
+    // 1本で描くと奥(tilt-shiftの強ボケ帯)で線が太いボケの帯になり、森の上まで突き抜ける(実測・ヘッドレス)。
+    // 区間ごとに alpha を変えるため分割して描く(最大24本/フレーム・1.3秒だけ=負荷1/10)。
+    const SEGS = 24;
+    const hz = (ang: number) => this.horizonActorAlpha(r * Math.sin(ang));
+    for (let i = 0; i < SEGS; i++) {
+      const s0 = a0 + (a1 - a0) * (i / SEGS), s1 = a0 + (a1 - a0) * ((i + 1) / SEGS);
+      const k = hz((s0 + s1) / 2);
+      if (k < 0.02) continue;
+      g.arc(0, 0, r, s0, s1).stroke({ width: 2 / wz, color, alpha: baseAlpha * alphaAll * k });
+    }
+    // 光は伸びる先端に置く(動きが見える)。入りの間だけ、両端 70px ぶんを明るく太く。
+    if (grow < 1 && outU === 0) {
+      const tip = Math.min(spanLead, 70 / r);
+      const k1 = hz(a1 - tip / 2), k0 = hz(a0 + tip / 2);
+      if (k1 > 0.02) g.arc(0, 0, r, a1 - tip, a1).stroke({ width: 3.5 / wz, color, alpha: k1 });
+      if (k0 > 0.02) g.arc(0, 0, r, a0, a0 + tip).stroke({ width: 3.5 / wz, color, alpha: 0.9 * k0 });
+    }
+  }
+
   private syncRetaliationArrow(player: Player, now: number): void {
     const g = this.retArrowGfx;
     if (HIDE_LAYERS.has('retarrow')) { g.visible = false; return; }
