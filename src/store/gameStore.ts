@@ -5871,7 +5871,7 @@ interface TutorialPopupPayload {
  *  banner=名前の帯を出すか(浅い側へ戻る時・初回踏破の銘打ち(WallInscription)が出る時は出さない=題字を二重にしない)。
  *  lead=弧が先に伸びる側(+1/−1・プレイヤーの進行方向側。完全対称にしない)。
  */
-export interface AreaCrossFx { at: number; zoneIdx: number; deeper: boolean; radius: number; angle: number; arc: boolean; banner: boolean; lead: 1 | -1 }
+export interface AreaCrossFx { at: number; ringIdx: number } // ★B1 v3: 跨いだ瞬間(at=Date.now)と跨いだ輪。線が一拍明るくなるだけ(文字は地面に常在)
 
 interface GameState {
   player: Player;
@@ -5923,8 +5923,7 @@ interface GameState {
   // イベント発生告知バナー(コンボ表示の近く)。gameTime(ms)基準。HUDが gameTime<eventBannerUntil の間表示。
   eventBannerText: string;
   eventBannerUntil: number;
-  // ★B1(research/THEONE_ROUND2.md §1): 区域を跨いだ瞬間の「境界線と区画名」。at=Date.now(HUDのCSSと描画の実時間で揃える)。
-  //   radius=跨いだ輪の半径(世界px)・angle=跨いだ点の原点からの角度・deeper=深い側へ入ったか。描画(pixiScene)とHUD(AreaCrossBanner)が読む。
+  // ★B1 v3(research/THEONE_ROUND2.md §1): 区域の輪を跨いだ瞬間。境界の線(常在・pixiScene.syncAreaBoundaryTape)が一拍明るくなる合図。at=Date.now。
   areaCrossFx: AreaCrossFx | null;
   // v0.25.3728(社長GO「バロメーターライン入れて」): 戦況ラインのHUDミラー。書くのはdirectorTickの
   // **変化時のみ**(コマ切替=約40秒に1回・ランク変化時)=毎フレーム再レンダーしない(CLAUDE.md規律)。

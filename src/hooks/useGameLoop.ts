@@ -94,7 +94,6 @@ import {
   resolveShieldWalls, shieldPlayableCtx, // ★B6(盾押し・§6)
   spawnRescueQuestPoint, EVENT_NPC_MIN_DISTANCE, // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2)
   isInReturnCircle, // 二人組クエストv2(§2-8・B4): 納品の3秒滞在の判定(returnCircle.radiusは対象のフィールドをそのまま読む)
-  type AreaCrossFx, // ★B1 区域を跨いだ瞬間の告知(research/THEONE_ROUND2.md §1)
 } from '../store/gameStore';
 import { resolveRescueSpawnDirection } from '../utils/rescueQuestSpawn'; // 二人組クエストv2(§2-3・B2)
 import {
@@ -126,7 +125,7 @@ import { clampRectInsideCircle } from '../world/arena'; // v0.25.2589: 囲いの
 import { computeWireHopLanding, targetHalfDiagonal } from '../utils/wireHop';
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
-  detectWallBreach, isFirstWallBreach, isApproachingWall, markWallBreached, markSelfDeepest,
+  detectWallBreach, isFirstWallBreach, markWallBreached, markSelfDeepest,
 } from '../utils/wallProgress';
 import { pickAmmoDropType } from '../utils/ammoDrop';
 // マークスマンのトラップの捕獲判定(体が円に触れたら掛かる・社長裁定v0.25.2326「a」)。
@@ -260,7 +259,7 @@ import {
   selectLabEnemyType,
   resolveEnemyTarget,
   AREA_ZONE_NAMES,
-  areaIndexForPos, areaIndexForDist, activeAreaThresholds,
+  areaIndexForPos, areaIndexForDist,
   AREA_THRESHOLDS,
   OFFSCREEN_SPAWN_MARGIN,
   isCorpse,
@@ -864,24 +863,8 @@ const HUNTER_FAV_SCORE_NEEDED = 4;         // 6項目中4つ以上
 const SCREAMER_START_MS = 300000;          // 出現開始(ウェルカム終了から5分。延長計画2026-10-12でウェルカム後の時計=directorTimeへ揃えた)
 const SCREAMER_RESPAWN_CD_MS = 60000;      // 消滅(撃破/退場)後の再出現CD(60秒)
 // エリア(区域)遷移バナー: 距離帯を跨いだら区域名をイベント発生と同じUIで表示(社長指示)。
-// (旧 AREA_BANNER_MS=2600: 区域遷移の小さな帯。v0.25.5070 の B1 で「境界線(1.3秒)+区域名(2.0秒)」(areaCrossFx)へ置き換えた)
-/**
- * ★B1(research/THEONE_ROUND2.md §1): 区域を跨いだ瞬間の告知を作る。ringIdx=跨いだ輪(省略時は zoneIdx-1=その区域の内側の境界)。
- * 弧(arc)は**プレイヤーが輪の上(±AREA_CROSS_ARC_NEAR_PX)に居る時だけ**描く(ファストトラベル・ゲートクリア時の遅延告知では帯だけ)。
- */
-const AREA_CROSS_ARC_NEAR_PX = 420;
-const AREA_CROSS_REBANNER_MS = 8000; // 同じ輪を再び跨いでも名前を出し直さない間(弧だけ)
-const areaCrossFxAt = (zoneIdx: number, deeper: boolean, banner: boolean, ringIdx = zoneIdx - 1): AreaCrossFx => {
-  const p = useGameStore.getState().player;
-  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
-  const dist = Math.hypot(pcx, pcy);
-  const radius = activeAreaThresholds()[Math.max(0, ringIdx)] ?? AREA_THRESHOLDS[0];
-  const angle = Math.atan2(pcy, pcx);
-  // 進行方向側が先に伸びる(接線 (-sin, cos) と向きの内積の符号)。
-  const ld = p.lastDirection ?? { x: 1, y: 0 };
-  const lead: 1 | -1 = (ld.x * -Math.sin(angle) + ld.y * Math.cos(angle)) >= 0 ? 1 : -1;
-  return { at: Date.now(), zoneIdx, deeper, radius, angle, arc: Math.abs(dist - radius) <= AREA_CROSS_ARC_NEAR_PX, banner, lead };
-};
+// (旧 AREA_BANNER_MS=2600: 区域遷移の小さな帯 → v0.25.5070 で弧+題字 → v0.25.5073(B1 v3)で「地面に常在する境界線+テープの英字」へ。
+//  跨いだ瞬間は store.areaCrossFx={at, ringIdx} を書くだけ=線が一拍明るくなる。描画は pixiScene.syncAreaBoundaryTape)
 // AREA_ZONE_NAMES は enemyUtils.ts からの共有(PACING_REDESIGN.mdバッチ2の最深到達telemetryと表記を統一)。
 // 原点(スタート/商人)からの距離(px)→ 区域インデックス。
 // ★**正本(`areaIndexForDist`)をそのまま使う**(v0.25.4450・社長裁定「はい」)。
@@ -1794,7 +1777,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     });
   }, [seenTutorials]);
   // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告(この先——{区域名})」を壁ごとにラン1回だけ出すためのフラグ。
-  const wallWarnedRef = useRef<boolean[]>([false, false, false, false]);
   // M14: このランの最深距離(px・毎フレーム追跡)+store/localStorageへの同期は1秒間隔(書き込み間引き)。
   const runDeepestDistRef = useRef(0);
   const wallDepthSyncRef = useRef(0);
@@ -2033,7 +2015,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const suppCaptureCountRef = useRef<number>(0);
   // 直近の区域インデックス(エリア遷移バナー用)。-1=未判定(開始/リワインド直後は黙って採用し、開始地点では出さない)。
   const areaZoneRef = useRef<number>(-1);
-  const lastAreaCrossRef = useRef<{ ring: number; at: number }>({ ring: -1, at: -Infinity }); // ★B1 直近に跨いだ輪(名前の出し直し抑止)
   // 社長指示(仕様変更v0.25.1523): 到達時のSEは1プレイ(1ラン)中1エリア1回まで。ステージ永続の
   // WallMetaとは別の「今回のランで既に鳴らした区域」集合(新ランでリセット)。
   const zoneSfxPlayedRef = useRef<Set<number>>(new Set());
@@ -3215,7 +3196,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // チュートリアルの表示済みは端末記憶(localStorage)が正。**出撃時に1回だけ読んで**refへ載せる
           // (毎フレームlocalStorageを読まないため)。以後このラン中は ref だけを見る。
           tutorialSeenRef.current = loadSeenForGate();
-          wallWarnedRef.current = [false, false, false, false]; // M14の予告バンドも新ランで再アーム
           runDeepestDistRef.current = 0;
           wallDepthSyncRef.current = 0;
           gateCalloutRef.current = ''; // 関所コールアウトの前フェーズ記憶もリセット
@@ -4545,8 +4525,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // §5.21-追補9(社長指示v0.25.1655): 年表「未確認汚染エリアに到達」はゲート1クリア時に刻む
                   // (クロス時は gateBlocksThisWall で保留=倒すまで到達扱いにしない)。dedup=区域index。
                   recordChronicle(getSelectedStageId(), 'zone', '3', `${AREA_ZONE_NAMES[3]}に到達`);
-                  // ★B1(品質監査A): 塞がれていた跨ぎの告知をここで出す(名前の帯。輪の上に居なければ弧は描かない)。
-                  useGameStore.setState({ areaCrossFx: areaCrossFxAt(3, true, !(WALL_ENABLED && isFirstWallBreach(wm2, 3))) });
                 }
                 // PACING_PUZZLE.md §5.21 M20 stage④: 囲いゲート2クリア時の後処理。恒久解除+M14
                 // 到達判定を遅延実行(ハンター復活は伴わない=ゲート2にはその仕様が無い)。
@@ -4562,7 +4540,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // §5.21-追補9(社長指示v0.25.1655): 年表「深層域に到達」はゲート2ボス(ミゲル)討伐時に刻む
                   // (クロス時は gateBlocksThisWall で保留=倒すまで到達扱いにしない)。dedup=区域index。
                   recordChronicle(getSelectedStageId(), 'zone', '4', `${AREA_ZONE_NAMES[4]}に到達`);
-                  useGameStore.setState({ areaCrossFx: areaCrossFxAt(4, true, !(WALL_ENABLED && isFirstWallBreach(wm3, 4))) }); // ★B1(品質監査A): 同上
                 }
               } else {
                 // PACING_PUZZLE.md §5.21-追補6(社長決定v0.25.1556): ゲート失敗(制限時間切れ・未クリア)=
@@ -5688,18 +5665,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   gate1PassedThisRunRef.current = true;
                 }
                 if (!gateBlocksThisWall) {
-                  // ★B1(research/THEONE_ROUND2.md §1・社長「跨いだ時だけ、画面いっぱいの境界線と区画名を一瞬表示」): 小さなイベント帯ではなく、
-                  //   跨いだ輪の弧(描画・1.3秒)と区域名(HUD・2.0秒)を出す。他のイベント帯(eventBannerText)は従来どおり。
-                  //   再生中に次の跨ぎが来たら**上書き**(帯も弧も新しい方で描き直す)。ファストトラベル等で輪の上に居ない時は弧を描かない(帯だけ)。
-                  //   名前は両方向。初回踏破は銘打ち(WallInscription・下の WALL_ENABLED 分岐)が出るので名前は譲る(弧だけ)。
-                  const firstBreachNow = WALL_ENABLED && wallIdxCrossed !== null && isFirstWallBreach(useGameStore.getState().wallMeta, wallIdxCrossed);
-                  //   境界沿いの戦い(拠点は輪のすぐ外)で同じ輪を数秒内に行き来した時、名前は出し直さない(弧の線だけ)=SE の「1区域1回」と揃える
-                  //   (検収クリエイティブ監査)。判定・年表・SE は従来どおり。
-                  const ringCrossed = Math.min(prevZone, zoneIdx);
-                  const crossNow = Date.now();
-                  const recross = lastAreaCrossRef.current.ring === ringCrossed && crossNow - lastAreaCrossRef.current.at < AREA_CROSS_REBANNER_MS;
-                  lastAreaCrossRef.current = { ring: ringCrossed, at: crossNow };
-                  useGameStore.setState({ areaCrossFx: areaCrossFxAt(zoneIdx, zoneIdx > prevZone, !firstBreachNow && !recross, ringCrossed) }); // 名前は両方向(検収品質監査 A-2: 社長の言葉に方向の区別は無い・旧い帯も両方向だった)
+                  // ★B1 v3(research/THEONE_ROUND2.md §1・社長「この範囲にいる間は常に表示/文字は地面に焼き付いている/侵入禁止のテープのように英語で」):
+                  //   境界の線と英字は地面に常在(pixiScene.syncAreaBoundaryTape)。跨いだ瞬間はその線が一拍明るくなるだけ。旧い小さな帯(eventBannerText)の
+                  //   区域分と「この先 — ◯◯」の予告帯は、テープに名前が書いてあるので出さない(v0.25.5073・社長「推薦でやって」)。
+                  useGameStore.setState({ areaCrossFx: { at: Date.now(), ringIdx: Math.min(prevZone, zoneIdx) } });
                   // 歴史年表: より深い区域へ初めて到達したら即載せ(社長決定v0.25.1628)。dedup=区域index。
                   // 浅い側へ戻る移動(zoneIdx<prevZone)は「到達」ではないので記録しない。
                   if (zoneIdx > prevZone) {
@@ -5748,18 +5717,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
               }
             }
-            // PACING_PUZZLE.md §5.17 M14: 深さの壁「予告」(境界の手前150pxで帯。1ランに各壁1回)。
-            // §5.21-追補7: ゲート発生中は予告も出さない(バナー類と足並みを揃える)。
-            if (WALL_ENABLED && activeGateRef.current === null) {
-              const nextWallIdx = zoneIdx + 1;
-              if (
-                nextWallIdx <= wallWarnedRef.current.length && !wallWarnedRef.current[nextWallIdx - 1] &&
-                isApproachingWall(Math.hypot(pcx, pcy), 150)
-              ) {
-                wallWarnedRef.current[nextWallIdx - 1] = true;
-                useGameStore.getState().triggerWallBand(`この先 — ${AREA_ZONE_NAMES[nextWallIdx]}`, 'white', 2800);
-              }
-            }
+            // (旧 PACING_PUZZLE.md §5.17 M14「この先 — ◯◯」の予告帯(境界の手前150px)は v0.25.5073 の B1 v3 で撤去:
+            //  境界の線に区域名が焼き付いているので、同じ名前を帯でも出す必要が無い=社長「推薦でやって」2026-10-16)
             // 担当エリア(セクター)進入で、その担当NPCが「遠い時用(neglectFar)」コメント(社長指示・#1連動)。
             // ハブ付近(原点近く)は除外。十分外へ出てセクターが変わった時に発火。CD は tryNpcLine が担保。
             const sec = poiSectorIndex({ x: pcx, y: pcy });

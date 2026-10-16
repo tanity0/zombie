@@ -615,6 +615,8 @@ export const selectLabEnemyType = (gameTime: number): EnemyType => {
 export const AREA_COUNT = 5;
 // エリア名(進入バナー・PACING_REDESIGN.mdバッチ2の最深到達telemetry表示で共有)。
 export const AREA_ZONE_NAMES = ['軍備配置区域', '研究対象区域', 'デンジャーゾーン', '未確認汚染エリア', '深層域'];
+// ★B1 v3(research/THEONE_ROUND2.md §1): 境界の線に焼き付ける英語名(侵入禁止テープの文字。深い側の区域名を書く)。
+export const AREA_ZONE_NAMES_EN = ['ARMAMENT ZONE', 'RESEARCH AREA', 'DANGER ZONE', 'UNCONFIRMED CONTAMINATION', 'DEEP ZONE'];
 // 区域境界(px・原点からの距離)。PACING_PUZZLE.md §5.17 M14の「深さの壁」4本と同じ値。
 // ★v0.25.4293(社長裁定2026-09-14): 素の値 1500/3000/5000/7500 を WORLD_DIST_SCALE(1.5)で伸ばす
 // → 2250/4500/7500/11250。訓練ステージ(M0)は素の値のまま(台本が境界に載っている)=setAreaDistanceScale(false)。

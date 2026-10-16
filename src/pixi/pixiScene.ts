@@ -46,7 +46,7 @@ import {
   lichWarpPose, lichCircleVanishProgress, lichCircleAppearProgress, lichWarpTintStrength,
 } from '../utils/lichWarp';
 // 区域境界の正本(深層域グレードの距離を写さず、ここから引く)。
-import { AREA_THRESHOLDS } from '../utils/enemyUtils';
+import { AREA_THRESHOLDS, AREA_ZONE_NAMES_EN, activeAreaThresholds } from '../utils/enemyUtils';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
   useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, SCREAMER_WINDUP_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_RECOVER_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
@@ -4756,8 +4756,10 @@ export class PixiScene {
   // ★被弾反撃の向きの矢印(HIT_RETALIATION.md §7)。uiLayer=画面座標・環境光の影響外。▶を右向きで原点に描き、
   // Graphics ごと位置と回転を与える。
   private retArrowGfx = new Graphics();
-  private areaCrossGfx = new Graphics(); // ★B1 区域を跨いだ瞬間の境界の弧(世界座標・groundLayer=足の下)
-  private areaCrossShownAt = 0;           // 今描いている弧の開始時刻(出る瞬間に groundLayer の最上段へ上げ直すため)
+  private areaCrossGfx = new Graphics(); // ★B1 v3 区域の境界の線(地面に常在・世界座標・groundLayer=足の下)
+  private areaTapeTexts: Text[] = [];     // 線に沿って焼き付く英字(侵入禁止テープ)。プール=最大12枚。text は輪が変わった時だけ書き換わる(Text の再描画はその時だけ)
+  private areaTapeVis: number[] = [];     // 輪ごとの見え(0..1)。距離から目標を出し、指数追従で寄せる(慣性=パッと出ない)
+  private areaTapeLastNow = 0;            // 前フレームの実時刻(見えの追従の dt 用)
   private retArrow: {
     key: number;                         // 窓の openedAt(新しい窓で作り直す)
     mode: 'show' | 'retract' | 'exit';   // 出ている/条件が崩れて引っ込む/反撃が成立して抜ける
@@ -5844,7 +5846,7 @@ export class PixiScene {
     // 照準サークルは uiLayer(研究所の暗幕/森の暗転より上=環境光の影響外)へ。screen座標で描画する。
     this.L.uiLayer.addChild(this.reticleGfx);
     this.L.uiLayer.addChild(this.retArrowGfx);
-    this.L.groundLayer.addChild(this.areaCrossGfx); // 境界は踏む物=足の下(クリエイティブ監査: 人物の上を線が通っていた)。出る瞬間に最上段へ上げ直す
+    this.L.groundLayer.addChild(this.areaCrossGfx); // 境界は踏む物=足の下(血溜まり・影と同じ層)
     this.L.uiLayer.addChild(this.rescueSweatGfx); // 汗マーク=環境光の影響外(uiLayer)
     this.localEventShadeGfx.zIndex = -1_000_000;
     this.L.actorLayer.addChild(
@@ -9697,7 +9699,8 @@ export class PixiScene {
       s.escorts
     );
     this.syncPlayerFx(s.player, now);
-    this.syncAreaCrossLine(fxNow); // ★B1 区域の境界の弧(実時間=HUDの帯と同じ時計)
+    const tapeDt = this.areaTapeLastNow ? Math.min(100, Math.max(0, fxNow - this.areaTapeLastNow)) : 16; this.areaTapeLastNow = fxNow;
+    this.syncAreaBoundaryTape(s.player, fxNow, tapeDt); // ★B1 v3 区域の境界の線+テープの英字(地面に常在・輪の近くでだけ描く)
     this.syncRetaliationArrow(s.player, fxNow); // ★実時間(帯=CSSと同じ時計)。凍結時計だとヒットストップ中に出ず、明けに出現の動きが飛ぶ(検収品質 A-1)
     this.syncSpeedLines(s.player, now, s.gameTime); // §5.23 M22 C4: 突進/カウンターの速度線(screen-space・軽量)
     // 解放済み(=その方角の拠点が制圧済み)のPOIだけ方角矢印を出す。裏ボスは討伐後は出さない。
@@ -35074,66 +35077,98 @@ export class PixiScene {
    * 白+暗い縁取りだけ(赤は持たない=体のすぐ横は敵の赤い予告の世界)。判定は持たない・store へは書かない。
    */
   /**
-   * ★B1(research/THEONE_ROUND2.md §1): 区域を跨いだ瞬間、跨いだ輪(原点中心・半径 radius)の弧を、跨いだ点から左右へ伸ばして画面の外まで描く。
-   *  入り350ms(ease-out・出足が最速)→保持450ms→消え500ms(端から中央へ吸い込まれて薄れる)。反対側は120ms遅れ=全長約1.4秒。琥珀1色(浅い側は薄く)。赤・紫は使わない。
-   *  跨いだ点が主役: 中央が一番濃く太く(160px は 3px)、外へ行くほど薄い。進行方向側が先に走り、反対側は 120ms 遅れて追う(画面の中で見える崩し)。
-   *  弧の角度幅は可視域の対角線から求める(ズーム0.4でも画面を横切る)。線の太さは画面pxで一定。地面の線なので groundLayer(足の下)。
+   * ★B1 v3(research/THEONE_ROUND2.md §1・社長「この範囲にいる間は常に表示/文字は地面に焼き付いている/侵入禁止のテープのように英語で小さめ」):
+   *  区域の輪(原点中心・半径=activeAreaThresholds)は**地面に常在する線**。プレイヤーが輪から AREA_TAPE_NEAR_PX 以内に居る時だけ描く
+   *  (遠いと見えない=負荷ゼロ)。近づくと AREA_TAPE_FADE_PX の間でじわっと見えてくる(距離の目標値へ指数追従=慣性)。
+   *  線に沿って深い側の区域名の英字(大文字・小さめ・琥珀・暗い縁取り)を世界座標で等間隔に焼き付ける。輪の半径は 2250px 以上なので
+   *  画面内の弧はほぼ直線=文字の板を接線に傾けて置くだけ。板は世界に固定(歩いても滑らない)。上下逆さまになる向きは 180° 回して読める向きに。
+   *  跨いだ瞬間(store.areaCrossFx)は線が一拍明るくなる(0.4秒・減速)。線も文字も地平線フェードで奥へ消える。足の下(groundLayer)。
+   *  負荷 1/10: Graphics 1本(最大24区間)+Text 最大12枚(文字の再描画は輪が変わった時だけ)。ズーム0.4でも弧の角度幅は可視域から出す。
    */
-  private syncAreaCrossLine(now: number): void {
+  private syncAreaBoundaryTape(player: Player, now: number, dtMs: number): void {
     const g = this.areaCrossGfx;
-    const fx = useGameStore.getState().areaCrossFx;
-    // 入り350ms(出足最速・減速)→保持450ms→消え500ms。題字(HUD)は弧が走り切る 350ms に出て、弧が消えた後に一拍残る(順序に意味を持たせる)。
-    const IN_MS = 350, HOLD_MS = 450, OUT_MS = 500;
-    const TRAIL_LAG_MS = 120; // 反対側の遅れ(画面の中で先と後が見える量)
-    const t = fx ? now - fx.at : Infinity;
-    if (!fx || !fx.arc || t < 0 || t >= IN_MS + TRAIL_LAG_MS + HOLD_MS + OUT_MS || HIDE_LAYERS.has('areacross')) { if (g.visible) { g.visible = false; g.clear(); } return; }
-    if (this.areaCrossShownAt !== fx.at) { this.areaCrossShownAt = fx.at; this.L.groundLayer.addChild(g); } // 地面の最上段へ(血溜まり・影より上、足より下)
+    const hide = HIDE_LAYERS.has('areacross') || useGameStore.getState().corridorMode || useGameStore.getState().stageTheme === 'lab';
+    const AREA_TAPE_NEAR_PX = 600, AREA_TAPE_FADE_PX = 220;
+    const rings = activeAreaThresholds();
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const dist = Math.hypot(pcx, pcy);
+    const pAng = Math.atan2(pcy, pcx);
+    // 見え(0..1)を輪ごとに追従させる(時定数 120ms=出る時も消える時も加減速がある)。
+    const k = 1 - Math.exp(-Math.max(0, dtMs) / 120);
+    if (this.areaTapeVis.length !== rings.length) this.areaTapeVis = rings.map(() => 0);
+    let anyVisible = false;
+    for (let i = 0; i < rings.length; i++) {
+      const d = Math.abs(dist - rings[i]);
+      const target = hide ? 0 : Math.max(0, Math.min(1, (AREA_TAPE_NEAR_PX - d) / AREA_TAPE_FADE_PX));
+      const eased = target * target * (3 - 2 * target); // smoothstep: 近づくほど加速して濃くなる
+      this.areaTapeVis[i] += (eased - this.areaTapeVis[i]) * k;
+      if (this.areaTapeVis[i] < 0.01) this.areaTapeVis[i] = 0; else anyVisible = true;
+    }
+    if (!anyVisible) {
+      if (g.visible) { g.visible = false; g.clear(); }
+      for (const t of this.areaTapeTexts) t.visible = false;
+      return;
+    }
     const wz = this.L.worldGroup.scale.x || 1;
-    const r = Math.max(1, fx.radius);
-    // 可視域の対角線(世界px)ぶんの弧=画面を必ず横切る。弧の角度は半径で割る(πを越えない)。
     const diagWorld = Math.hypot(this.screenW, this.screenH) / wz;
-    const spanMax = Math.min(Math.PI, (diagWorld * 0.75) / r);
+    const fx = useGameStore.getState().areaCrossFx;
     const easeOut = (u: number) => 1 - (1 - u) * (1 - u) * (1 - u);
-    const grow = easeOut(Math.min(1, t / IN_MS));
-    // 進行方向側(lead)が先に走り切る。反対側は 120ms 遅れて追う(入りの間、画面の中で先と後が見える)。
-    const spanLead = spanMax * grow;
-    const growTrail = easeOut(Math.min(1, Math.max(0, t - TRAIL_LAG_MS) / IN_MS));
-    const spanTrail = spanMax * growTrail;
-    const holdFrom = IN_MS + TRAIL_LAG_MS;
-    const outU = t > holdFrom + HOLD_MS ? Math.min(1, (t - holdFrom - HOLD_MS) / OUT_MS) : 0;
-    const shrink = 1 - outU * outU;          // 消えは端から中央へ吸い込まれる
-    const alphaAll = 1 - outU;
-    // 色は1つ(UIの琥珀=--menu-accent)。浅い側へ戻る時は強さだけ落とす(方向を色相で符号化しても学ぶ機会が無い=検収クリエイティブ監査。設計時は白だった)。
-    const color = 0xffb340;
-    const baseAlpha = fx.deeper ? 0.9 : 0.5;
+    const color = 0xffb340; // UI の琥珀(--menu-accent)
+    const hz = (r: number, ang: number) => this.horizonActorAlpha(r * Math.sin(ang));
     g.clear(); g.visible = true;
-    const a0 = fx.angle - (fx.lead < 0 ? spanLead : spanTrail) * shrink;
-    const a1 = fx.angle + (fx.lead > 0 ? spanLead : spanTrail) * shrink;
-    if (a1 - a0 < 1e-4) return;
-    // 地平線フェード(horizonActorAlpha)を弧にも掛ける=世界の他の物と同じ法則で奥へ消える。
-    // 1本で描くと奥(tilt-shiftの強ボケ帯)で線が太いボケの帯になり、森の上まで突き抜ける(実測・ヘッドレス)。
-    // 区間ごとに alpha を変えるため分割して描く(最大24本/フレーム・1.3秒だけ=負荷1/10)。
-    // 跨いだ点が主役: 中央が一番濃く、外へ行くほど薄い(端は 0.4 倍)。中央 160px は 3px。
-    const SEGS = 24;
-    const hz = (ang: number) => this.horizonActorAlpha(r * Math.sin(ang));
-    const centerW = 80 / r; // 中央の太い区間(片側 80px)
-    for (let i = 0; i < SEGS; i++) {
-      const s0 = a0 + (a1 - a0) * (i / SEGS), s1 = a0 + (a1 - a0) * ((i + 1) / SEGS);
-      const mid = (s0 + s1) / 2;
-      const k = hz(mid);
-      if (k < 0.02) continue;
-      const u = Math.min(1, Math.abs(mid - fx.angle) / Math.max(1e-6, spanMax)); // 0=跨いだ点 1=画面の端
-      const weight = 1 - 0.6 * u;
-      const thick = Math.abs(mid - fx.angle) <= centerW;
-      g.arc(0, 0, r, s0, s1).stroke({ width: (thick ? 3 : 2) / wz, color, alpha: baseAlpha * alphaAll * k * weight });
+    let used = 0;
+    const MAX_TEXTS = 12;
+    for (let i = 0; i < rings.length; i++) {
+      const vis = this.areaTapeVis[i];
+      if (vis <= 0) continue;
+      const r = rings[i];
+      // 跨いだ瞬間の一拍(0.4秒・減速)。
+      const ft = fx && fx.ringIdx === i ? now - fx.at : Infinity;
+      const flash = ft >= 0 && ft < 400 ? 1 - easeOut(ft / 400) : 0;
+      const span = Math.min(Math.PI, (diagWorld * 0.75) / r); // 片側の角度幅=画面を必ず横切る
+      const a0 = pAng - span, a1 = pAng + span;
+      // 線: 24区間に割り、区間ごとに地平線フェードを掛ける(1本で描くと奥の tilt-shift 帯で太いボケの帯になる・v0.25.5070 の実測)。
+      const SEGS = 24;
+      const lineAlpha = (0.42 + 0.45 * flash) * vis;
+      for (let q = 0; q < SEGS; q++) {
+        const s0 = a0 + (a1 - a0) * (q / SEGS), s1 = a0 + (a1 - a0) * ((q + 1) / SEGS);
+        const hk = hz(r, (s0 + s1) / 2);
+        if (hk < 0.02) continue;
+        g.arc(0, 0, r, s0, s1).stroke({ width: (2 + 1.5 * flash) / wz, color, alpha: lineAlpha * hk });
+      }
+      // テープの英字: 世界座標で固定の間隔(スクリーンで約420px相当・引くほど間隔が開く=枚数の上限を守る)。
+      const label = AREA_ZONE_NAMES_EN[i + 1] ?? '';
+      if (!label) continue;
+      const spacing = Math.max(420, (2 * span * r) / 8); // 世界px。可視弧を8枚より多く割らない(引いた時に枚数が増えすぎない)
+      const stepAng = spacing / r;
+      const kStart = Math.ceil(a0 / stepAng), kEnd = Math.floor(a1 / stepAng);
+      for (let kk = kStart; kk <= kEnd && used < MAX_TEXTS; kk++) {
+        const ang = kk * stepAng;
+        const hk = hz(r, ang);
+        if (hk < 0.03) continue;
+        let t = this.areaTapeTexts[used];
+        if (!t) {
+          t = new Text({ text: '', style: { fontFamily: '"Rajdhani", system-ui, sans-serif', fontSize: 26, fontWeight: '600', letterSpacing: 6, fill: color, stroke: { color: 0x0b0710, width: 4 } }, resolution: 2 });
+          t.anchor.set(0.5, 0.5);
+          this.areaTapeTexts[used] = t;
+          this.L.groundLayer.addChild(t);
+        }
+        if (t.text !== label) t.text = label; // 再描画は輪が変わった時だけ
+        t.visible = true;
+        t.position.set(Math.cos(ang) * r, Math.sin(ang) * r);
+        // 接線方向。読める向き(上下逆さまなら 180° 回す)。文字は線の内側(浅い側)に 9px 寄せる=線を踏むと文字が足元の手前に来る。
+        let rot = ang + Math.PI / 2;
+        const cs = Math.cos(rot);
+        if (cs < 0) rot += Math.PI;
+        t.rotation = rot;
+        const inward = 9 / wz;
+        t.position.set(Math.cos(ang) * (r - inward), Math.sin(ang) * (r - inward));
+        t.scale.set((11 / 26) / wz); // 画面で約11px(ズームで割る=引いても同じ大きさ)
+        t.alpha = (0.78 + 0.22 * flash) * vis * hk;
+        used++;
+      }
     }
-    // 光は伸びる先端に置く(動きが見える)。走っている間だけ、先端 70px を明るく太く(先に走る側が明るい)。
-    if (outU === 0) {
-      const tip = 70 / r;
-      const leadEnd = fx.lead > 0 ? a1 : a0, trailEnd = fx.lead > 0 ? a0 : a1;
-      if (grow < 1) { const k1 = hz(leadEnd); if (k1 > 0.02) g.arc(0, 0, r, Math.min(leadEnd, leadEnd - fx.lead * tip), Math.max(leadEnd, leadEnd - fx.lead * tip)).stroke({ width: 3.5 / wz, color, alpha: k1 }); }
-      if (growTrail > 0 && growTrail < 1) { const k0 = hz(trailEnd); if (k0 > 0.02) g.arc(0, 0, r, Math.min(trailEnd, trailEnd + fx.lead * tip), Math.max(trailEnd, trailEnd + fx.lead * tip)).stroke({ width: 3 / wz, color, alpha: 0.75 * k0 }); }
-    }
+    for (let i = used; i < this.areaTapeTexts.length; i++) this.areaTapeTexts[i].visible = false;
   }
 
   private syncRetaliationArrow(player: Player, now: number): void {
