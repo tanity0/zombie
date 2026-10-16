@@ -14,13 +14,29 @@ const OrientationGuard: React.FC = () => {
   const pausedByGuardRef = useRef(false);
 
   useEffect(() => {
-    const check = () => setShow(isLandscapeBlocked() && window.innerWidth > window.innerHeight);
+    // ★社長報告2026-10-16「守護霊のコメント/名前の入力でソフトキーボードが出ると『画面を縦にしてください』が出る」:
+    // キーボードが上がると innerHeight だけ縮んで横長に見える。**文字入力中は向きを判定しない**(入力が終われば再判定)。
+    // 併せて、判定は窓の寸法ではなく**画面の向き**(screen.orientation)が取れる端末ではそちらを使う(キーボードの影響を受けない)。
+    const typing = () => {
+      const a = document.activeElement as HTMLElement | null;
+      return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+    };
+    const landscapeNow = () => {
+      const t = window.screen?.orientation?.type;
+      if (typeof t === 'string') return t.startsWith('landscape');
+      return window.innerWidth > window.innerHeight;
+    };
+    const check = () => setShow(isLandscapeBlocked() && !typing() && landscapeNow());
     check();
     window.addEventListener('resize', check);
     window.addEventListener('orientationchange', check);
+    document.addEventListener('focusin', check);
+    document.addEventListener('focusout', check);
     return () => {
       window.removeEventListener('resize', check);
       window.removeEventListener('orientationchange', check);
+      document.removeEventListener('focusin', check);
+      document.removeEventListener('focusout', check);
     };
   }, []);
 

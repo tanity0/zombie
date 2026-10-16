@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5063', items: ['スマホで名前やコメントを入力している時に「画面を縦にしてください」が出てしまう件を修正'] },
   { version: '0.25.5062', items: ['試し: ゾンビを攻撃した時の光り方が「点滅」になった。白く光って一瞬消え、もう一度光る。血しぶきも出た瞬間が白く、途中で一度明るくなる'] },
   { version: '0.25.5061', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5060', items: ['ゲーム内容の変更はありません'] },
