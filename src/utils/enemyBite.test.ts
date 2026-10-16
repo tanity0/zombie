@@ -862,6 +862,20 @@ describe('★溜め中の点滅の色(社長裁定2026-09-16「紫」)', () => {
  * `gameTime` は出撃からの経過ms(35秒なら約35,000)、`Date.now()` は約1.77e12。
  * ⇒ **一度でも浮かされた個体は以後ずっと「凍結」扱い**になり、**二度と噛まない・技も出さない**。
  */
+describe('★硬直(biteRecoverUntil)中は構え始めない(v0.25.5066・C10調査: 凍結中に始まると溜めが硬直明けまで止まる)', () => {
+  const base = { type: 'skeleton' as const, biteAt: 0, biteReadyAt: 0, aiPhase: undefined, bossState: undefined };
+  it('canStartBite: 硬直中は false・明けたら true(biteReadyAt が無くても)', () => {
+    expect(canStartBite({ ...base, biteRecoverUntil: 1500 }, 1000, 1000)).toBe(false);
+    expect(canStartBite({ ...base, biteRecoverUntil: 1500 }, 1500, 1500)).toBe(true);
+    expect(canStartBite(base, 1000, 1000)).toBe(true);
+  });
+  it('canZombieRushBite: 同じ', () => {
+    const z = { ...base, type: 'zombie' as const, aiPhase: 'zrush' as const };
+    expect(canZombieRushBite({ ...z, biteRecoverUntil: 1500 }, 1000, 1000)).toBe(false);
+    expect(canZombieRushBite(z, 1000, 1000)).toBe(true);
+  });
+});
+
 describe('★liftUntil は Date.now 系。gameTime と比べない(v0.25.45xx・真因)', () => {
   const NOW = 1_770_000_000_000;   // 実際の Date.now() の桁
   const GT = 35_000;               // 出撃から35秒

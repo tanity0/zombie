@@ -762,7 +762,7 @@ export const isBiteFrozen = (
   || (enemy.liftUntil !== undefined && nowMs < enemy.liftUntil);
 
 export const canStartBite = (
-  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
   gameTime: number,
   /** ★`liftUntil` は Date.now 系(§isBiteFrozen の注記)。時計を混ぜないため呼び手が両方渡す。 */
   nowMs: number,
@@ -790,6 +790,11 @@ export const canStartBite = (
   if (isBiteInterruptedByMove(enemy)) return false;
   if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;      // もう構えている
   if (gameTime < (enemy.biteReadyAt ?? 0)) return false;                 // 硬直中
+  // ★噛み後/カウンター後の硬直(`biteRecoverUntil`)中も構え始めない(v0.25.5066・C10調査で判明)。
+  //   §16-H の凍結は硬直中の時計を据え置くので、ここで始めると `biteAt` が毎フレーム書き直され、溜めの位相が
+  //   硬直が明けるまで止まる(実測: 着地パリィの硬直2秒の間に密着されると溜め800msが2秒間固まる)。
+  //   着地パリィ(combatTick)は `biteRecoverUntil` だけ書いて `biteReadyAt` を書かないため、ここで塞ぐ。
+  if (enemy.biteRecoverUntil !== undefined && gameTime < enemy.biteRecoverUntil) return false;
   if (isBiteFrozen(enemy, gameTime, nowMs)) return false;
   return true;
 };
@@ -805,7 +810,7 @@ export const canStartBite = (
  * ここを緩めると「黄色く気絶して棒立ちの敵が噛んでくる」が戻る(v0.25.3600台の事故)。
  */
 export const canZombieRushBite = (
-  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
   gameTime: number,
   /** ★`liftUntil` は Date.now 系(§isBiteFrozen の注記)。時計を混ぜないため呼び手が両方渡す。 */
   nowMs: number,
@@ -814,6 +819,7 @@ export const canZombieRushBite = (
   if (isBiteInterruptedByMove(enemy)) return false;
   if (enemy.biteAt !== undefined && enemy.biteAt > 0) return false;   // もう構えている
   if (gameTime < (enemy.biteReadyAt ?? 0)) return false;              // 硬直中
+  if (enemy.biteRecoverUntil !== undefined && gameTime < enemy.biteRecoverUntil) return false; // 硬直(凍結)中は構え始めない(v0.25.5066)
   if (isBiteFrozen(enemy, gameTime, nowMs)) return false;
   return true;
 };
