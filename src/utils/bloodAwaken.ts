@@ -11,7 +11,9 @@
 // 覚醒中に計測したビルドの守護霊が永久に ×1.5 になる。
 //
 // ★加算の「誰が浴びるか」はここでは分からない(分身/守護霊/スケボーも同じ player を渡してくる)。
-// 呼び手が旗を立てる(gameStore: grantMeleeKillRewards の bloodSplash / damageEnemy の gun 枝)。
+// 加算は呼び手が選ぶ(gameStore: 本人の近接の呼び手が grantMeleeBlood / damageEnemy の gun 枝が grantGunBlood。分身・スケボー・守護霊は呼ばない=0)。
+
+import { LOW_HP_PULSE_MS, lowHpBeatShape } from './lowHpPulse';
 
 /** 血の状態(Player の部分。テストでは必要な欄だけ渡せる)。 */
 export interface BloodFields {
@@ -37,8 +39,18 @@ export const BLOOD_AWAKEN_FADE_MS = 1000;
 export const BLOOD_DRY_DELAY_MS = 4000;
 /** 乾く速さ(1/秒)。 */
 export const BLOOD_DRY_PER_SEC = 0.01;
-/** 体が赤くなる入り(ms)。 */
+/** 体が赤くなる入り: ピーク(オーバーシュート)まで(ms)。 */
 export const BLOOD_RED_IN_MS = 300;
+/** ピークから定常へ落ち着くまで(ms)。 */
+export const BLOOD_RED_SETTLE_MS = 500;
+/** 入りのオーバーシュート(定常 1.0 に対するピーク)。 */
+export const BLOOD_RED_OVERSHOOT = 1.2;
+/** 体の赤が光より遅れて染まる時間(ms・位相差 80〜120)。 */
+export const BLOOD_BODY_LAG_MS = 100;
+
+/** 発動音('heavy-impact' の流用)の鳴らし方: 敵のレーザー等と同じ素材を、低く(rate)・控えめ(gain)に鳴らして別物にする。 */
+export const BLOOD_AWAKEN_SFX_RATE = 0.7;
+export const BLOOD_AWAKEN_SFX_GAIN = 0.5;
 
 /** 近接キルで「浴びる」距離(プレイヤー中心と敵中心・px)。 */
 export const BLOOD_MELEE_NEAR_PX = 120;
@@ -140,16 +152,53 @@ export const bloodAwakenMult = (p: BloodFields, gameTime: number): { boost: numb
 };
 
 /**
- * 覚醒中の体の赤の濃さ(0..1・描画用)。入り 0.3秒は ease-out で立ち上がり、終わりの 1秒で戻る。
- * 覚醒していなければ 0。
+ * 入りの「瞬間」(クリエイティブ監査): 赤は一度オーバーシュートしてから定常へ落ち着く。
+ * 0→1.2 を 0.3秒で ease-out(慣性)、1.2→1.0 を 0.5秒で smoothstep(動き終わりに加減速)。sinceMs ≤ 0 は 0。
+ */
+const redEnvelope = (sinceMs: number): number => {
+  if (!(sinceMs > 0)) return 0;
+  if (sinceMs < BLOOD_RED_IN_MS) {
+    const k = sinceMs / BLOOD_RED_IN_MS;
+    return BLOOD_RED_OVERSHOOT * (1 - (1 - k) * (1 - k));
+  }
+  const s = clamp01((sinceMs - BLOOD_RED_IN_MS) / BLOOD_RED_SETTLE_MS);
+  return BLOOD_RED_OVERSHOOT + (1 - BLOOD_RED_OVERSHOOT) * (s * s * (3 - 2 * s));
+};
+
+/** 終わりの 1秒で 1→0 へ戻る係数(smoothstep=動き終わりに加減速)。 */
+const redOutFactor = (p: BloodFields, gameTime: number): number => {
+  const k = clamp01(((p.bloodAwakenUntil ?? 0) - gameTime) / BLOOD_AWAKEN_FADE_MS);
+  return k * k * (3 - 2 * k);
+};
+
+/**
+ * 覚醒中の**赤い光**の濃さ(0..1.2・描画用)。入りは先に強く(オーバーシュート 1.2 → 0.5秒で 1.0)、終わりの 1秒で戻る。
+ * 体の赤(bloodAwakenRedAlpha)はこれより BLOOD_BODY_LAG_MS 遅れて染まる=「光って、遅れて体が染まる」。覚醒していなければ 0。
+ */
+export const bloodAwakenGlowAlpha = (p: BloodFields, gameTime: number): number => {
+  if (!isBloodAwakening(p, gameTime)) return 0;
+  return redEnvelope(gameTime - (p.bloodAwakenStartedAt ?? 0)) * redOutFactor(p, gameTime);
+};
+
+/**
+ * 覚醒中の**体の赤**の濃さ(0..1.2・描画用)。光(bloodAwakenGlowAlpha)と同じ立ち上がりを BLOOD_BODY_LAG_MS 遅らせる
+ * (位相差=光が先・体が遅れて染まる)。終わりの 1秒で戻るのは光と同時。覚醒していなければ 0。
  */
 export const bloodAwakenRedAlpha = (p: BloodFields, gameTime: number): number => {
   if (!isBloodAwakening(p, gameTime)) return 0;
-  const inK = clamp01((gameTime - (p.bloodAwakenStartedAt ?? 0)) / BLOOD_RED_IN_MS);
-  const inA = 1 - (1 - inK) * (1 - inK); // ease-out
-  const k = clamp01(((p.bloodAwakenUntil ?? 0) - gameTime) / BLOOD_AWAKEN_FADE_MS);
-  const outA = k * k * (3 - 2 * k); // smoothstep(動き終わりに加減速)
-  return inA * outA;
+  return redEnvelope(gameTime - (p.bloodAwakenStartedAt ?? 0) - BLOOD_BODY_LAG_MS) * redOutFactor(p, gameTime);
+};
+
+/** 覚醒中の鼓動の周期(ms)。瀕死の縁の鼓動の中段(1195ms)と同じ拍=二拍・休止の同じ形を使う。 */
+export const BLOOD_BEAT_PERIOD_MS = LOW_HP_PULSE_MS[2];
+
+/**
+ * 覚醒中の鼓動の係数(1-depth..1)。サイン波ではなく心拍の形(lowHpBeatShape=二拍・休止)。
+ * 光と体の赤の両方が同じ nowMs・同じ形で読む(depth だけ変える)。
+ */
+export const bloodPulseMult = (nowMs: number, depth: number): number => {
+  const ph = ((nowMs % BLOOD_BEAT_PERIOD_MS) + BLOOD_BEAT_PERIOD_MS) % BLOOD_BEAT_PERIOD_MS;
+  return 1 - depth + depth * lowHpBeatShape(ph);
 };
 
 /**

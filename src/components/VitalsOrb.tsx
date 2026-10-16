@@ -77,21 +77,54 @@ const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 // B10 血の覚醒(THEONE_ROUND2 §3-2): 液体の色は血の量で紫→赤へ寄る(覚醒の赤 #e0263a / #6a0a14 と同じ家族)。
 // 量(shownBlood)は shownHp と同じ指数追従+rAFローカル(補間を新設しない・React を毎フレーム起こさない)。
-const BLOOD_HI = [0xf0, 0x1e, 0x30] as const;
-const BLOOD_LO = [0x6a, 0x0a, 0x14] as const;
+const BLOOD_HI = [0xf0, 0x1e, 0x30] as const; // 朱 #f01e30
+const BLOOD_LO = [0x6a, 0x0a, 0x14] as const; // 暗いワイン #6a0a14
 const BLOOD_OVERLAY_ALPHA_ADD = 0.6; // 素材テクスチャ経路でグラデを重ねる濃さ(0.35)に足す量=赤が素材の紫に負けない(0.45 では6割でもほぼ紫だった・実測)
 const bloodCurve = (t: number) => Math.pow(clamp01(t), 0.6); // 血は早めに赤く見え始める(線形だと半分まで紫のまま)
 const BLOOD_STOP_EPS = 0.002;         // 停止条件: shownBloodと目標の差
-const OVERFLOW_MS = 520;              // 満ちた瞬間に液面の縁を一筋の赤が走る長さ
+const BLOOD_STAGE_SPLIT = 0.5;        // 二段の境目: 前半=紫→暗いワイン / 後半=ワイン→朱
+// 満ちた瞬間の合図(クリエイティブ監査): 液面全体が一瞬リムまで迫り上がって引く。上がりは ease-out・戻りは ease-in(慣性)。
+const OVERFLOW_MS = 500;              // 迫り上がって引くまでの長さ
+const OVERFLOW_UP_FRAC = 0.4;         // そのうち「上がり」に使う割合(残りが戻り)
+// 満ちた瞬間の波(同じく監査): 被弾スプラッシュ(AMPLITUDE_CAP + rippleStartTime + rippleY=topY)とは別の装置で、下から沸く向き。
+const BOIL_AMPLITUDE_FRAC = 0.5;      // 振幅は被弾(上限 AMPLITUDE_CAP)の半分
+const BOIL_RIPPLE_MS = 1500;          // 波紋の寿命(被弾の着水波紋 RIPPLE_DURATION=900 より長い=周期が長い)
+const BOIL_RIPPLE_STAGGER_MS = 380;   // 2つ目の波紋の遅れ
+const BOIL_RIPPLE_COUNT = 2;
+const BOIL_RIPPLE_BASE_Y = 0.55;      // 波紋の出どころ(底寄り・オーブ中心から ORB_R の何倍下か)
 const hexToRgb = (hex: string): [number, number, number] => {
   const h = hex.replace('#', '');
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 };
-const mixToBlood = (hex: string, target: readonly [number, number, number], t: number): string => {
-  if (t <= 0.001) return hex;
-  const [r, g, b] = hexToRgb(hex);
+const mixRgb = (from: readonly [number, number, number], to: readonly [number, number, number], t: number): [number, number, number] => {
   const m = (a: number, c: number) => Math.round(a + (c - a) * t);
-  return `rgb(${m(r, target[0])},${m(g, target[1])},${m(b, target[2])})`;
+  return [m(from[0], to[0]), m(from[1], to[1]), m(from[2], to[2])];
+};
+const rgbStr = (c: readonly [number, number, number]) => `rgb(${c[0]},${c[1]},${c[2]})`;
+/**
+ * 液体の上(明部)の色: 二段。前半(0〜0.5)で元の紫を**暗いワイン**へ沈め(ハイライトの明るい紫を先に殺す=血が混ざった液体は暗くなる)、
+ * 後半(0.5〜1)でワインから朱へ寄せる。線形RGB補間は紫→赤の途中がマゼンタに見えた。
+ */
+const bloodHiColor = (hex: string, t: number): string => {
+  if (t <= 0.001) return hex;
+  const base = hexToRgb(hex);
+  if (t <= BLOOD_STAGE_SPLIT) return rgbStr(mixRgb(base, BLOOD_LO, t / BLOOD_STAGE_SPLIT));
+  return rgbStr(mixRgb(BLOOD_LO, BLOOD_HI, (t - BLOOD_STAGE_SPLIT) / (1 - BLOOD_STAGE_SPLIT)));
+};
+/** 液体の底(暗部)の色: 前半で暗いワインへ沈み、後半はワインのまま(朱は上の明部だけ=深さが残る)。 */
+const bloodLoColor = (hex: string, t: number): string => {
+  if (t <= 0.001) return hex;
+  return rgbStr(mixRgb(hexToRgb(hex), BLOOD_LO, Math.min(1, t / BLOOD_STAGE_SPLIT)));
+};
+/** 満ちた合図の迫り上がり(0=いつもの液面 / 1=リム)。0〜OVERFLOW_UP_FRAC で ease-out に上がり、残りで ease-in に戻る。 */
+const overflowLift = (elapsedMs: number): number => {
+  const k = clamp01(elapsedMs / OVERFLOW_MS);
+  if (k < OVERFLOW_UP_FRAC) {
+    const u = k / OVERFLOW_UP_FRAC;
+    return 1 - (1 - u) * (1 - u);
+  }
+  const d = (k - OVERFLOW_UP_FRAC) / (1 - OVERFLOW_UP_FRAC);
+  return 1 - d * d;
 };
 
 const topYFor = (hp: number, maxHp: number) => {
@@ -117,7 +150,8 @@ type AnimState = {
   rippleY: number;
   shownBlood: number;           // B10: 液体の赤み(0..1・指数追従)
   awakenSeenAt: number;         // B10: 最後に見た覚醒の始まり(gameTime)。変わったら「満ちた」演出
-  overflowStartTime: number | null; // B10: 溢れの一筋の始まり(rAF時計ms)
+  overflowStartTime: number | null; // B10: 満ちた瞬間の「液面の迫り上がり」の始まり(rAF時計ms)
+  boilStartTime: number | null;     // B10: 満ちた瞬間の「下から沸く」波紋の始まり(rAF時計ms・被弾のrippleStartTimeとは別)
   rafId: number | null;
   lastT: number | null;
   ctx: CanvasRenderingContext2D | null;
@@ -142,7 +176,14 @@ const drawLiquid = (
   ctx.fillRect(CX - ORB_R - 4, CY - ORB_R - 4, ORB_R * 2 + 8, ORB_R * 2 + 8);
 
   const shownFrac = clamp01(maxHealth > 0 ? state.shownHp / maxHealth : 0);
-  const baseTopY = topYFor(state.shownHp, maxHealth);
+  const settledTopY = topYFor(state.shownHp, maxHealth);
+  // B10 満ちた合図: 液面全体が一瞬リムまで迫り上がって引く(液面の高さだけを動かす=色・形は液体のまま)。
+  let baseTopY = settledTopY;
+  if (state.overflowStartTime != null) {
+    const el = tSec * 1000 - state.overflowStartTime;
+    if (el >= OVERFLOW_MS) state.overflowStartTime = null;
+    else baseTopY = settledTopY + (CY - ORB_R - settledTopY) * overflowLift(el);
+  }
   const amplitudePx = state.amplitude * ORB_R;
 
   // 液体本体: ★モックで踏んだバグ対策(社長報告2026-08-28「HP増えると細くなる中身が」)=
@@ -164,9 +205,9 @@ const drawLiquid = (
 
   // HPは紫(社長指示・裁定待ち=現行の2段階のまま「動きだけ」)。上=明るい紫→下=濃い紫。
   const blood = bloodCurve(state.shownBlood);
-  const hpHi = mixToBlood(shownFrac > 0.5 ? '#b070f5' : shownFrac > 0.25 ? '#9333ea' : '#7e22ce', BLOOD_HI, blood);
-  const hpLo = mixToBlood(shownFrac > 0.25 ? '#3b0764' : '#2a043f', BLOOD_LO, blood);
-  const grad = ctx.createLinearGradient(CX, baseTopY, CX, CY + ORB_R);
+  const hpHi = bloodHiColor(shownFrac > 0.5 ? '#b070f5' : shownFrac > 0.25 ? '#9333ea' : '#7e22ce', blood);
+  const hpLo = bloodLoColor(shownFrac > 0.25 ? '#3b0764' : '#2a043f', blood);
+  const grad = ctx.createLinearGradient(CX, settledTopY, CX, CY + ORB_R); // 色は迫り上がりに引きずられない(いつもの液面を起点)
   grad.addColorStop(0, hpHi);
   grad.addColorStop(1, hpLo);
   const tex = liquidTexture();
@@ -214,20 +255,25 @@ const drawLiquid = (
     ctx.stroke();
   }
 
-  // B10: 満ちた瞬間、縁を一筋の赤が走って消える(液面が溢れた合図)。頭頂から右回りに滑り、尾を引いて薄れる。
-  if (state.overflowStartTime != null) {
-    const el = tSec * 1000 - state.overflowStartTime;
-    if (el >= OVERFLOW_MS) {
-      state.overflowStartTime = null;
+  // B10: 満ちた瞬間の「下から沸く」波紋。被弾の着水波紋(液面=topY から広がる)とは逆に、底寄りから湧き上がりながら広がる。
+  // 被弾より振幅は半分(tick 側)・寿命は長い。2つを少し遅らせて重ねる。色は液体の赤の家族(明るい血色)。
+  if (state.boilStartTime != null) {
+    const el = tSec * 1000 - state.boilStartTime;
+    if (el >= BOIL_RIPPLE_MS + BOIL_RIPPLE_STAGGER_MS * (BOIL_RIPPLE_COUNT - 1)) {
+      state.boilStartTime = null;
     } else {
-      const k = el / OVERFLOW_MS;
-      const head = -Math.PI / 2 + Math.PI * 1.1 * (1 - (1 - k) * (1 - k)); // ease-out
-      ctx.beginPath();
-      ctx.arc(CX, CY, ORB_R - 1.2, head - 0.9, head);
-      ctx.strokeStyle = `rgba(255,90,100,${(0.85 * (1 - k)).toFixed(3)})`;
-      ctx.lineWidth = 2.4;
-      ctx.lineCap = 'round';
-      ctx.stroke();
+      for (let i = 0; i < BOIL_RIPPLE_COUNT; i++) {
+        const t = (el - BOIL_RIPPLE_STAGGER_MS * i) / BOIL_RIPPLE_MS;
+        if (t <= 0 || t >= 1) continue;
+        const e = 1 - (1 - t) * (1 - t); // ease-out(勢いよく湧いて、広がりながら鎮まる)
+        const r = ORB_R * 0.7 * e;
+        const y = CY + ORB_R * BOIL_RIPPLE_BASE_Y - ORB_R * 0.35 * e; // 底寄りから上へ沸き上がる
+        ctx.beginPath();
+        ctx.ellipse(CX, y, r, r * 0.34, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,150,158,${(0.4 * (1 - t) * (1 - t)).toFixed(3)})`;
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
     }
   }
 
@@ -323,6 +369,7 @@ const VitalsOrb: React.FC = () => {
       shownBlood: 0,
       awakenSeenAt: useGameStore.getState().player.bloodAwakenStartedAt,
       overflowStartTime: null,
+      boilStartTime: null,
       rafId: null,
       lastT: null,
       ctx: null,
@@ -362,9 +409,9 @@ const VitalsOrb: React.FC = () => {
     state.shownBlood += (bloodTarget - state.shownBlood) * (1 - Math.exp(-FOLLOW_RATE * dt));
     if (gs.player.bloodAwakenStartedAt !== state.awakenSeenAt) {
       if (gs.player.bloodAwakenUntil > gs.gameTime) {
-        state.amplitude = AMPLITUDE_CAP;
-        state.rippleStartTime = nowMs;
-        state.rippleY = topYFor(state.shownHp, maxHp);
+        // 被弾スプラッシュと同じ装置(AMPLITUDE_CAP + rippleStartTime + rippleY=topY)は使わない。下から沸く別の波紋・半分の振幅。
+        state.amplitude = Math.max(state.amplitude, AMPLITUDE_CAP * BOIL_AMPLITUDE_FRAC);
+        state.boilStartTime = nowMs;
         state.overflowStartTime = nowMs;
       }
       state.awakenSeenAt = gs.player.bloodAwakenStartedAt;
@@ -380,6 +427,7 @@ const VitalsOrb: React.FC = () => {
       && state.amplitude < STOP_AMP_EPS
       && state.rippleStartTime == null
       && state.overflowStartTime == null
+      && state.boilStartTime == null
       && bloodSettled;
     if (settled) {
       state.shownHp = hp;

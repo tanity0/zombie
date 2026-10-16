@@ -56,6 +56,7 @@ describe('damagePlayer の経路: Lv1 は 8 まで(境界)', () => {
     expect(p.knockbackUntil).toBe(kbUntil0);          // 押し出さない
     expect(p.lastHurtAt).toBeUndefined();             // しゃがみ/ロックの時計を書かない
     expect(p.hurtArmoredAt).toBe(now);                 // 代わりに旗
+    expect(p.hurtArmoredDirX).toBeLessThan(0);         // 描画専用の向き(敵は右=弾かれる向きは左)。判定には使わない
     expect(isHurtMoveLocked(p, now)).toBe(false);      // 移動ロックの読み手が素通り
     expect(isHurtGunLocked(p, now)).toBe(false);       // 銃ロックの読み手が素通り
   });
@@ -66,6 +67,7 @@ describe('damagePlayer の経路: Lv1 は 8 まで(境界)', () => {
     expect(p.knockbackUntil).toBeGreaterThan(now);
     expect(p.lastHurtAt).toBe(now);
     expect(p.hurtArmoredAt).toBeUndefined();
+    expect(p.hurtArmoredDirX).toBeUndefined();
     expect(isHurtMoveLocked(p, now)).toBe(true);
   });
   it('Lv2 は 16 まで・Lv3 は 24 まで', () => {
@@ -198,9 +200,9 @@ describe('スキル台帳', () => {
     expect(SKILLS['super-armor'].name).toBe('スーパーアーマー');
     expect(SKILLS['super-armor'].rarity).toBe('normal');
     const base = '小さなダメージでは吹き飛ばず、動きが止まらない';
-    expect(skillDescForLevel('super-armor', 1)).toBe(`${base}（Lv1：8以下）`);
-    expect(skillDescForLevel('super-armor', 2)).toBe(`${base}（Lv2：16以下）`);
-    expect(skillDescForLevel('super-armor', 3)).toBe(`${base}（Lv3：24以下。近接を振っている間は吹き飛ばない）`);
+    expect(skillDescForLevel('super-armor', 1)).toBe(`${base}（Lv1：ダメージ8まで）`);
+    expect(skillDescForLevel('super-armor', 2)).toBe(`${base}（Lv2：16まで）`);
+    expect(skillDescForLevel('super-armor', 3)).toBe(`${base}（Lv3：24まで。近接を振っている間は吹き飛ばない）`);
   });
   it('ガチャの通常枠に自動で入る(眠らせない・初期所持にしない)', () => {
     expect(NEW_SLEEPING_SKILLS as SkillKey[]).not.toContain('super-armor');

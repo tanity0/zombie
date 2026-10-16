@@ -1,9 +1,9 @@
 // B10 血の覚醒(research/THEONE_ROUND2.md §3)の純関数テスト。配線は src/store/bloodAwaken.store.test.ts。
 import { describe, it, expect } from 'vitest';
 import {
-  bloodGainMult, bloodGainFor, bloodDryStep, bloodMeterNow, isBloodAwakening, bloodAwakenMult, bloodAwakenRedAlpha,
+  bloodGainMult, bloodGainFor, bloodDryStep, bloodMeterNow, isBloodAwakening, bloodAwakenMult, bloodAwakenRedAlpha, bloodAwakenGlowAlpha, bloodPulseMult,
   applyBloodGain, bloodAwakenStep, bloodOrbTarget, withoutBlood,
-  BLOOD_AWAKEN_MS, BLOOD_AWAKEN_FADE_MS, BLOOD_DRY_DELAY_MS, BLOOD_RED_IN_MS,
+  BLOOD_AWAKEN_MS, BLOOD_AWAKEN_FADE_MS, BLOOD_DRY_DELAY_MS, BLOOD_RED_IN_MS, BLOOD_RED_SETTLE_MS, BLOOD_RED_OVERSHOOT, BLOOD_BODY_LAG_MS, BLOOD_BEAT_PERIOD_MS,
 } from './bloodAwaken';
 
 describe('bloodGainMult(HPが低いほど早く染まる)', () => {
@@ -160,31 +160,82 @@ describe('bloodAwakenMult(入り即・終わりの1秒で線形に戻る)', () =
   });
 });
 
-describe('bloodAwakenRedAlpha(体の赤・描画用)', () => {
+describe('bloodAwakenGlowAlpha / bloodAwakenRedAlpha(光が先・体が遅れて染まる・入りは一度オーバーシュート)', () => {
   const p = { bloodAwakenUntil: 11_000, bloodAwakenStartedAt: 1000 };
   it('覚醒していなければ 0', () => {
-    expect(bloodAwakenRedAlpha({}, 0)).toBe(0);
-    expect(bloodAwakenRedAlpha(p, 11_000)).toBe(0);
+    for (const f of [bloodAwakenGlowAlpha, bloodAwakenRedAlpha]) {
+      expect(f({}, 0)).toBe(0);
+      expect(f(p, 11_000)).toBe(0);
+    }
   });
-  it('入り0.3秒で ease-out に 1 へ(パッと出ない)', () => {
-    expect(bloodAwakenRedAlpha(p, 1000)).toBe(0);
-    const a1 = bloodAwakenRedAlpha(p, 1000 + BLOOD_RED_IN_MS / 3);
-    const a2 = bloodAwakenRedAlpha(p, 1000 + (BLOOD_RED_IN_MS * 2) / 3);
+  it('光: 入りは 0 から ease-out で 1.2 へ(パッと出ない)→ 0.5秒で 1.0 へ落ち着く', () => {
+    expect(bloodAwakenGlowAlpha(p, 1000)).toBe(0);
+    const a1 = bloodAwakenGlowAlpha(p, 1000 + BLOOD_RED_IN_MS / 3);
+    const a2 = bloodAwakenGlowAlpha(p, 1000 + (BLOOD_RED_IN_MS * 2) / 3);
     expect(a1).toBeGreaterThan(0);
     expect(a2).toBeGreaterThan(a1);
-    expect(a1).toBeGreaterThan(1 / 3); // ease-out=序盤が速い
-    expect(bloodAwakenRedAlpha(p, 1000 + BLOOD_RED_IN_MS)).toBeCloseTo(1);
-    expect(bloodAwakenRedAlpha(p, 6000)).toBe(1);
+    expect(a1).toBeGreaterThan(BLOOD_RED_OVERSHOOT / 3); // ease-out=序盤が速い
+    expect(bloodAwakenGlowAlpha(p, 1000 + BLOOD_RED_IN_MS)).toBeCloseTo(BLOOD_RED_OVERSHOOT);
+    expect(bloodAwakenGlowAlpha(p, 1000 + BLOOD_RED_IN_MS + BLOOD_RED_SETTLE_MS)).toBeCloseTo(1);
+    expect(bloodAwakenGlowAlpha(p, 6000)).toBe(1);
   });
-  it('終わりの1秒で 1→0 へ戻る(単調減少)', () => {
-    let prev = 1;
-    for (let t = 10_000; t < 11_000; t += 20) {
-      const a = bloodAwakenRedAlpha(p, t);
+  it('オーバーシュート後は単調に 1.0 へ戻る(ピークは 1.2 を超えない)', () => {
+    let prev = BLOOD_RED_OVERSHOOT;
+    for (let t = BLOOD_RED_IN_MS; t <= BLOOD_RED_IN_MS + BLOOD_RED_SETTLE_MS; t += 10) {
+      const a = bloodAwakenGlowAlpha(p, 1000 + t);
       expect(a).toBeLessThanOrEqual(prev + 1e-12);
+      expect(a).toBeGreaterThanOrEqual(1 - 1e-12);
       prev = a;
     }
-    expect(bloodAwakenRedAlpha(p, 10_000)).toBeCloseTo(1);
-    expect(bloodAwakenRedAlpha(p, 10_999)).toBeLessThan(0.001);
+  });
+  it('体は光より BLOOD_BODY_LAG_MS 遅れる(位相差 80〜120ms・同じ形を遅らせただけ)', () => {
+    expect(BLOOD_BODY_LAG_MS).toBeGreaterThanOrEqual(80);
+    expect(BLOOD_BODY_LAG_MS).toBeLessThanOrEqual(120);
+    expect(bloodAwakenRedAlpha(p, 1000 + BLOOD_BODY_LAG_MS)).toBe(0);
+    for (const dt of [30, 90, 200, 330, 500]) {
+      expect(bloodAwakenRedAlpha(p, 1000 + BLOOD_BODY_LAG_MS + dt)).toBeCloseTo(bloodAwakenGlowAlpha(p, 1000 + dt), 6);
+      if (dt <= 200) expect(bloodAwakenRedAlpha(p, 1000 + dt)).toBeLessThan(bloodAwakenGlowAlpha(p, 1000 + dt)); // 立ち上がりの間は体が遅れている
+    }
+    expect(bloodAwakenRedAlpha(p, 6000)).toBe(1);
+  });
+  it('終わりの1秒で 1→0 へ戻る(単調減少・光と体は同時)', () => {
+    for (const f of [bloodAwakenGlowAlpha, bloodAwakenRedAlpha]) {
+      let prev = 1;
+      for (let t = 10_000; t < 11_000; t += 20) {
+        const a = f(p, t);
+        expect(a).toBeLessThanOrEqual(prev + 1e-12);
+        prev = a;
+      }
+      expect(f(p, 10_000)).toBeCloseTo(1);
+      expect(f(p, 10_999)).toBeLessThan(0.001);
+    }
+  });
+});
+
+describe('bloodPulseMult(覚醒中の鼓動=心拍の形・サイン波ではない)', () => {
+  it('範囲は 1-depth..1・拍の頭と休止は底(1-depth)・1拍目の山は 1', () => {
+    const depth = 0.3;
+    expect(bloodPulseMult(0, depth)).toBeCloseTo(1 - depth);
+    expect(bloodPulseMult(55, depth)).toBeCloseTo(1);
+    expect(bloodPulseMult(BLOOD_BEAT_PERIOD_MS - 10, depth)).toBeCloseTo(1 - depth); // 休止
+    for (let t = 0; t < BLOOD_BEAT_PERIOD_MS * 2; t += 7) {
+      const m = bloodPulseMult(t, depth);
+      expect(m).toBeGreaterThanOrEqual(1 - depth - 1e-12);
+      expect(m).toBeLessThanOrEqual(1 + 1e-12);
+    }
+  });
+  it('二拍(55msと300msに山)・間に谷・休止が長い=サイン波(山が1つ)ではない', () => {
+    const d = 0.4;
+    const v = (t: number) => bloodPulseMult(t, d);
+    expect(v(170)).toBeLessThan(v(55));
+    expect(v(170)).toBeLessThan(v(300));
+    expect(v(300)).toBeGreaterThan(1 - d + d * 0.6); // 2拍目も山
+    expect(v(300)).toBeLessThan(v(55));              // 2拍目は弱い
+    expect(v(700)).toBeCloseTo(1 - d);               // 休止
+  });
+  it('周期でつながる(位相が負でも壊れない)', () => {
+    expect(bloodPulseMult(BLOOD_BEAT_PERIOD_MS + 55, 0.3)).toBeCloseTo(bloodPulseMult(55, 0.3));
+    expect(Number.isFinite(bloodPulseMult(-100, 0.3))).toBe(true);
   });
 });
 

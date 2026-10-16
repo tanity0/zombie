@@ -301,6 +301,9 @@ export interface Player extends DashLocomotionState {
   // アーマー時は lastHurtAt を**書かず**これを書く(しゃがみ/ロックの読み手は lastHurtAt だけを見るので自然に素通りする)。
   // 爆風の押し出し(combatTick)が「命中した」を見る旗と、踏ん張りの絵(描画専用)の起点を兼ねる。判定・挙動には他に使わない。
   hurtArmoredAt?: number;
+  // B12 見せ方(描画専用・判定には使わない): アーマーで受けた被弾の「弾かれる向き」(攻撃源から離れる単位ベクトル)。踏ん張りの傾き(攻撃の来た側へ傾ぐ)にだけ使う。
+  hurtArmoredDirX?: number;
+  hurtArmoredDirY?: number;
   // 救急鞄スキル発動演出用タイムスタンプ(Date.now)。描画のみ=払い出しの瞬間に「振り抜きポーズ+鞄を掲げる」
   // 一拍の起点(社長指示v0.25.1656)。0=未発動。判定・射程・払い出しロジックには不干渉(renderer が読むだけ)。
   firstAidPoseAt: number;
@@ -2816,6 +2819,8 @@ export type VisualEffect =
       floorY?: number;
       spin?: number;
       restedAt?: number;
+      // 血の滴(B10 血の覚醒・描画専用): この y に達したら止まって小さな点に変わり、0.3秒だけ地面に残る(垂れた血は足の線を越えて落ちない)。
+      settleY?: number;
     }
   | {
       kind: 'damageNumber';

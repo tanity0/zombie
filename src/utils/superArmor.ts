@@ -70,29 +70,53 @@ export const playerSuperArmorActive = (
 };
 
 // ---- 見せ方(描画専用・判定には使わない) ----
-/** アーマーで吹き飛びを打ち消した後、被弾フラッシュが引くのを待ってから体が沈む(ms)。 */
-export const SUPER_ARMOR_POSE_DELAY_MS = 200;
-/** 沈み込みに入る時間(慣性・パッと潰れない)。 */
+// 踏ん張りの時間割(被弾=hurtArmoredAt からの実時間 ms。ヒットストップ中も進める時計で読む):
+//   0〜50ms   衝撃と同時に沈む(ease-out・ヒットストップの中)
+//   50〜120ms 底で止まる(70ms=「耐えている間」が本体)
+//   120ms〜   戻り始める(180ms ease-out)。戻りはフラッシュが引いた後に始まる
+/** 沈み込みに入る時間(慣性・パッと潰れない)。被弾と同時に始まる。 */
 export const SUPER_ARMOR_SINK_MS = 50;
+/** 底で止まる時間(耐えている間)。 */
+export const SUPER_ARMOR_HOLD_MS = 70;
+/** 戻り始めるまでの遅れ(被弾からの ms)=沈み+底の止まり。被弾フラッシュ・ヒットストップが引いた後に戻る。 */
+export const SUPER_ARMOR_POSE_DELAY_MS = SUPER_ARMOR_SINK_MS + SUPER_ARMOR_HOLD_MS;
 /** 踏ん張りから戻る時間(ease-out)。 */
 export const SUPER_ARMOR_RECOVER_MS = 180;
 /** 沈み込みの縦倍率の底。 */
-export const SUPER_ARMOR_SQUASH_Y = 0.94;
+export const SUPER_ARMOR_SQUASH_Y = 0.89;
+/** 底での横倍率(縦に沈めば横に広がる)。 */
+export const SUPER_ARMOR_SQUASH_X = 1.03;
+/** 攻撃の来た側へ傾ぐ角度の最大(rad・約4°)。カウンターの決めポーズ(PLAYER_COUNTER_LEAN_RAD=0.10)より小さい。 */
+export const SUPER_ARMOR_LEAN_RAD = 0.07;
 
-/**
- * 踏ん張りの縦倍率(1=変化なし・底 0.94)。hurtArmoredAt から +200ms で沈み始め(50msで底へ ease-out)、
- * 180ms かけて ease-out で 1.0 へ戻る。範囲外は 1。
- */
-export const superArmorSquashY = (sinceArmoredMs: number): number => {
-  const t = sinceArmoredMs - SUPER_ARMOR_POSE_DELAY_MS;
-  if (!(t >= 0)) return 1;
-  const total = SUPER_ARMOR_SINK_MS + SUPER_ARMOR_RECOVER_MS;
-  if (t >= total) return 1;
-  const depth = 1 - SUPER_ARMOR_SQUASH_Y;
+/** 踏ん張りの深さ(0=立っている / 1=底)。沈み・底・戻りの全てがここから導かれる。 */
+export const superArmorDepth = (sinceArmoredMs: number): number => {
+  const t = sinceArmoredMs;
+  if (!(t > 0)) return 0;
   if (t < SUPER_ARMOR_SINK_MS) {
     const k = t / SUPER_ARMOR_SINK_MS;
-    return 1 - depth * (1 - (1 - k) * (1 - k));
+    return 1 - (1 - k) * (1 - k); // ease-out
   }
-  const k = (t - SUPER_ARMOR_SINK_MS) / SUPER_ARMOR_RECOVER_MS;
-  return SUPER_ARMOR_SQUASH_Y + depth * (1 - (1 - k) * (1 - k) * (1 - k));
+  if (t < SUPER_ARMOR_POSE_DELAY_MS) return 1; // 底で止まる
+  const k = (t - SUPER_ARMOR_POSE_DELAY_MS) / SUPER_ARMOR_RECOVER_MS;
+  if (k >= 1) return 0;
+  return (1 - k) * (1 - k) * (1 - k); // ease-out で戻る
+};
+
+/** 踏ん張りの縦倍率(1=変化なし・底 0.89)。範囲外は 1。 */
+export const superArmorSquashY = (sinceArmoredMs: number): number =>
+  1 - (1 - SUPER_ARMOR_SQUASH_Y) * superArmorDepth(sinceArmoredMs);
+
+/** 踏ん張りの横倍率(1=変化なし・底 1.03)。縦に沈めば横へ広がる。 */
+export const superArmorSquashX = (sinceArmoredMs: number): number =>
+  1 + (SUPER_ARMOR_SQUASH_X - 1) * superArmorDepth(sinceArmoredMs);
+
+/**
+ * 踏ん張りの傾き(rad・正=時計回り=頭が +x 側へ倒れる)。攻撃の来た側へ頭が傾ぐ。
+ * dirX = 被弾で弾かれる向き(攻撃源から離れる向き・damagePlayer の dirX)。攻撃源は -dirX 側なので符号を反転する。
+ * 沈みと同じ深さに比例する(沈めば傾き、戻れば起きる)。
+ */
+export const superArmorLeanRad = (sinceArmoredMs: number, dirX: number): number => {
+  const d = Math.max(-1, Math.min(1, Number.isFinite(dirX) ? dirX : 0));
+  return -d * SUPER_ARMOR_LEAN_RAD * superArmorDepth(sinceArmoredMs);
 };

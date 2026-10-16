@@ -371,8 +371,8 @@ import { getBloomEnabled } from '../config/graphics';
 // SKILL_BUILD_REDESIGN.md §21(B5)/§24(社長指示2026-08-13): 枠光の判定は純関数のまま(pixiは読むだけ・
 // 判定を書かない)。バーサーカー=HP依存の常時オーラ、オーバークロック=proc起点の800msフラッシュ。
 import { berserkerFrameLight, overclockFrameLit, OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
-import { bloodAwakenRedAlpha } from '../utils/bloodAwaken'; // B10 血の覚醒: 体の赤・赤い光の濃さ(入り0.3秒・終わり1秒)
-import { superArmorSquashY, SUPER_ARMOR_POSE_DELAY_MS } from '../utils/superArmor'; // B12 スーパーアーマー: 踏ん張りの縦倍率
+import { bloodAwakenRedAlpha, bloodAwakenGlowAlpha, bloodPulseMult } from '../utils/bloodAwaken'; // B10 血の覚醒: 体の赤・赤い光の濃さ(光が先・体が遅れて染まる・入りはオーバーシュート・終わり1秒)と心拍の脈
+import { superArmorSquashY, superArmorSquashX, superArmorLeanRad, SUPER_ARMOR_SINK_MS } from '../utils/superArmor'; // B12 スーパーアーマー: 踏ん張りの縦横倍率・傾き
 import { GLOW_R_M, GLOW_R_L, GLOW_R_XL } from '../utils/glowTiers';
 import { FONT_STACK, JP_SERIF_STACK } from '../config/font';
 import {
@@ -2046,6 +2046,12 @@ const RESCUE_ALLY_FRONT_MARGIN = 14;  // 着地を敵の足元より何px手前(
 const PLAYER_COUNTER_MS = 280;        // カウンター成立の決めポーズの長さ
 const PLAYER_COUNTER_POP = 0.13;      // 決めポーズの一瞬の膨らみ(縦横)
 const PLAYER_COUNTER_LEAN_RAD = 0.10; // 決めポーズの傾き
+// B10 血の覚醒の見せ方(描画専用)。体の赤は二層: 影側=暗いワイン(通常合成)・明部/縁=朱(加算)。光は暗い朱で地面を染めない。
+const BLOOD_AURA_ALPHA = 0.7;          // 赤い光の濃さ(0.95 は桃色のスポット・0.5 はヘッドレスでほぼ見えず=中間。社長が実機で詰める)
+const BLOOD_AURA_PULSE_DEPTH = 0.35;   // 光の鼓動の深さ(山=1・底=1-0.35)
+const BLOOD_BODY_WINE_ALPHA = 0.42;    // 体の1層目(暗いワイン 0x6a0a14・通常合成)=影側(0.3 では「赤い体」に読めなかった・実測)
+const BLOOD_BODY_RIM_ALPHA = 0.4;      // 体の2層目(朱 0xff2a3a・加算)=明部・縁(社長指示「プレイヤーの色を赤に」=はっきり赤く)
+const BLOOD_BODY_PULSE_DEPTH = 0.22;   // 体の赤の鼓動の深さ(光より浅い=絵を潰さない)
 const PLAYER_RELOAD_BOB_PX = 1.3;     // リロード中の小刻みな上下(手元作業の揺れ)
 const PLAYER_RELOAD_LEAN_RAD = 0.022; // リロード中の小刻みな左右リーン
 // ホーミングのロックオンサークル出現演出: 0.5秒でズームアウト(×開始倍率)→ターゲット半径へ収束＋フェードイン。
@@ -4870,6 +4876,8 @@ export class PixiScene {
   private playerAuraGold = new Sprite(getSoftGlowTexture()); // バーサーカー: HP70%未満で常時点灯・強度は失HP比例
   private playerAuraBlue = new Sprite(getSoftGlowTexture()); // オーバークロック: proc後800msのワンショットフラッシュ
   private playerAuraRed = new Sprite(getSoftGlowTexture()); // B10 血の覚醒: 覚醒中の赤い光(入り0.3秒・終わり1秒。バーサーカー金/オーバークロック青と同じ加算ソフトグローの家族)
+  private playerBloodRim = new Sprite();                 // B10 血の覚醒: 体の赤の明部・縁(朱を加算で重ねる2層目。1層目=暗いワインは playerView.hitFlash)
+  private playerBloodRimAttached = false;                // playerView.container へ親子付け済みか
   /** ★§4手順1: 強glowが地面に落とす光だまり(加算・プール済み=作っては壊さない)。 */
   private glowGroundLayer = new Container();
   private glowGroundPool: Sprite[] = [];
@@ -5714,7 +5722,7 @@ export class PixiScene {
     this.playerAuraBlue.visible = false;
     this.playerAuraRed.anchor.set(0.5);
     this.playerAuraRed.blendMode = 'add';
-    this.playerAuraRed.tint = 0xff2a3a;
+    this.playerAuraRed.tint = 0xc01020;
     this.playerAuraRed.visible = false;
     // 登場演出のヘリ。danceUiLayer(filteredWorld外=被写界深度でボケない/world座標で追従)に置く。
     // ぼかさない要件のため effectLayer(=tilt-shiftでボケる)からこちらへ移動。画像登場時のみ表示。
@@ -9853,13 +9861,16 @@ export class PixiScene {
     } else {
       this.playerAuraBlue.visible = false;
     }
-    // ③血の覚醒(赤): 覚醒中の体の周りに赤い柔らかい光(THEONE_ROUND2 §3-2)。濃さは bloodAwakenRedAlpha(入り0.3秒ease-out・終わり1秒で戻る)。
+    // ③血の覚醒(赤): 覚醒中の体の周りに赤い柔らかい光(THEONE_ROUND2 §3-2)。濃さは bloodAwakenGlowAlpha(光が先に立ち上がる=入りは一度オーバーシュート・終わり1秒で戻る)。
+    // クリエイティブ監査: 広い桃色のスポットに見えていた(地面を染めていた)ので、半径は GLOW_R_M(地面をほとんど染めない)・色は暗い朱・濃さは控えめ。
+    // 体の赤は二層(playerBloodRim + hitFlash)が担う。脈はサイン波ではなく心拍の形(二拍・休止=瀕死の縁と同じ形)。
     // 加算なので重いのは「絵」ではなく投影影を落とす光源だけ——この光は syncLocalEventLighting に載せない(影を落とさない)。
-    const bloodRed = bloodAwakenRedAlpha(s.player, s.gameTime);
-    if (bloodRed > 0.01) {
+    const bloodGlow = bloodAwakenGlowAlpha(s.player, s.gameTime);
+    if (bloodGlow > 0.01) {
       this.playerAuraRed.position.set(lx, ly);
-      this.playerAuraRed.width = this.playerAuraRed.height = (GLOW_R_L + (GLOW_R_XL - GLOW_R_L) * 0.5) * 2 * lightScale;
-      this.playerAuraRed.alpha = bloodRed * 0.95 * (0.92 + 0.08 * Math.sin(now / 320)); // 光は強め(体の赤と合わせて「赤い」と読める量・実測で0.7は薄かった)
+      this.playerAuraRed.width = this.playerAuraRed.height = GLOW_R_M * 2 * lightScale;
+      this.playerAuraRed.tint = 0xc01020;
+      this.playerAuraRed.alpha = Math.min(1, bloodGlow * BLOOD_AURA_ALPHA * bloodPulseMult(now, BLOOD_AURA_PULSE_DEPTH));
       this.playerAuraRed.visible = true;
     } else {
       this.playerAuraRed.visible = false;
@@ -14570,6 +14581,16 @@ export class PixiScene {
       this.playerView.container.addChildAt(this.playerSkateboard, 1);
       this.playerSkateboardAttached = true;
     }
+    // B10 血の覚醒の体の赤・2層目(朱を加算)を hitFlash のすぐ後ろ(本体の前面)へ一度だけ親子付け。
+    // 1層目(暗いワイン・通常合成)は hitFlash を借りる。2枚の子順は [.., sprite, hitFlash, bloodRim, tele, ..]。
+    if (!this.playerBloodRimAttached) {
+      const c = this.playerView.container;
+      this.playerBloodRim.blendMode = 'add';
+      this.playerBloodRim.tint = 0xff2a3a;
+      this.playerBloodRim.visible = false;
+      c.addChildAt(this.playerBloodRim, c.getChildIndex(this.playerView.hitFlash) + 1);
+      this.playerBloodRimAttached = true;
+    }
     // 近接スイングは3枚の画像(frame1=ダガー / frame2=ダガー+青スラッシュ / frame3=弧の残光)を
     // 差し替えて見せる(社長提供の3コマ化)。本体スプライトの前面に重ね、回転はせず左向きは水平ミラーのみ。
     if (!this.playerKnifeSetup) {
@@ -17759,14 +17780,26 @@ export class PixiScene {
       actSqY *= 1 + PLAYER_COUNTER_POP * pop;
       actLean += face * PLAYER_COUNTER_LEAN_RAD * pop;
     }
-    // ★B12 スーパーアーマーの踏ん張り(THEONE_ROUND2 §4-4): アーマーで吹き飛びを打ち消した被弾の +200ms(被弾フラッシュが引いた後)に、
-    // 体が一瞬沈んで(縦 0.94)180ms かけて戻る+足元に小さな砂埃。白い縁・赤は使わない。常時表示なし。描画のみ(store には書かない)。
+    // ★B12 スーパーアーマーの踏ん張り(THEONE_ROUND2 §4-4): アーマーで吹き飛びを打ち消した被弾の**衝撃と同時**に体が沈み(縦 0.89・横 +3%)、
+    // 底で70ms止まって(=耐えている間)から、フラッシュが引いた後に180msかけて戻る。攻撃の来た側へ頭がわずかに傾ぐ(lean 約4°・向きは damagePlayer が
+    // 描画専用の欄 hurtArmoredDirX に書いた)。足元に小さな砂埃を左右2つ(時間差・大きさ差)。白い縁・赤は使わない。常時表示なし。描画のみ(store には書かない)。
+    // ★時計は実時間(Date.now): `now` はヒットストップ中に凍るので、凍る時計で読むと「沈むのはヒットストップが明けてから」になる(監査: 衝撃と同時に沈ませる)。
     if (p.hurtArmoredAt !== undefined) {
-      const sinceArmor = now - p.hurtArmoredAt;
-      if (PLAYER_MOTION_FX) actSqY *= superArmorSquashY(sinceArmor);
-      const dustDt = sinceArmor - SUPER_ARMOR_POSE_DELAY_MS;
-      const armorDust = this.latchFx('player:armordust', dustDt >= 0 && dustDt < 90, DUST_MS * 0.6, now, () => [fb.footX, fb.footY]);
-      if (armorDust) this.drawDust(armorDust.d[0], armorDust.d[1], Math.max(fb.boxW, 28) * 0.42 * dsc, armorDust.t, this.dustTintForStage(), this.dustAlpha(armorDust.t) * 0.7, armorDust.t0); // 小さく(0.95 は体を覆う塊になった・実測)
+      const sinceArmor = Date.now() - p.hurtArmoredAt;
+      if (PLAYER_MOTION_FX) {
+        actSqY *= superArmorSquashY(sinceArmor);
+        actSqX *= superArmorSquashX(sinceArmor);
+        actLean += superArmorLeanRad(sinceArmor, p.hurtArmoredDirX ?? 0);
+      }
+      // 砂埃: 底に着いた瞬間(沈み切り)に左右の足元へ1つずつ。右は +25ms 遅れ、大きさも違う(重さの掛かった側=弾かれる向きの足が大きい)。
+      const dustDt = sinceArmor - SUPER_ARMOR_SINK_MS;
+      const heavySide = (p.hurtArmoredDirX ?? 0) >= 0 ? 1 : -1;
+      const footOff = Math.max(fb.boxW, 28) * 0.32 * dsc;
+      const dustR = Math.max(fb.boxW, 28) * 0.42 * dsc * 0.7; // 小さく(0.95 は体を覆う塊になった・実測)
+      ([[-1, 0], [1, 25]] as const).forEach(([side, delay]) => {
+        const puff = this.latchFx(`player:armordust:${side}`, dustDt >= delay && dustDt < delay + 90, DUST_MS * 0.6, Date.now(), () => [fb.footX + side * footOff, fb.footY]);
+        if (puff) this.drawDust(puff.d[0], puff.d[1], dustR * (side === heavySide ? 0.9 : 0.55), puff.t, this.dustTintForStage(), this.dustAlpha(puff.t) * 0.7, puff.t0);
+      });
     }
     // リロード中: 手元作業の小刻みな上下＋左右リーン(リロード中だけ・進行と独立)。
     if (PLAYER_MOTION_FX && p.reloadingWeaponId && now < p.reloadEndsAt) {
@@ -17931,13 +17964,20 @@ export class PixiScene {
     view.reticle.clear();
     // ★対人トラップに掛かっている3秒(足元の輪+体の水色)。プレイヤーの hitFlash は他で使っていない=毎フレーム既定OFFから。
     view.hitFlash.visible = false;
+    this.playerBloodRim.visible = false;
     this.drawTrapBind(view, p.trapDebuffUntil, now, fb.footX, fb.footY, fb.boxW, this.depthScale(fb.footY), true);
-    // ★B10 血の覚醒(THEONE_ROUND2 §3-2・社長「覚醒中はプレイヤーの色を赤に」): 本体と同じ絵を**赤く染めて加算で重ねる**
+    // ★B10 血の覚醒(THEONE_ROUND2 §3-2・社長「覚醒中はプレイヤーの色を赤に」): 本体と同じ絵を**赤く染めて重ねる**
     // (ドット絵の明暗は残る。乗算 tint は絵が黒く沈む=この作品の黒tint事故を踏まない)。白シルエットではなく元の絵そのものを使う。
+    // クリエイティブ監査: 通常合成の赤1枚(0.62)は「赤いセロファン越し」で絵が潰れた → **二層**に分けた:
+    //   ①影側=暗いワイン 0x6a0a14 を通常合成・α0.3(hitFlash を借りる) ②明部・縁=朱 0xff2a3a を加算・α0.25(playerBloodRim)。
+    // 濃さは bloodAwakenRedAlpha(光より BLOOD_BODY_LAG_MS 遅れて染まる・入りはオーバーシュート)に心拍の脈(光と同じ拍の形)。
     // 水色のトラップ拘束が hitFlash を使っている間は体の色を譲る。判定・移動には触れない。
     {
+      const rim = this.playerBloodRim;
       const redA = bloodAwakenRedAlpha(p, gameTime);
       if (redA > 0.01 && !view.hitFlash.visible && view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1) {
+        const pulse = bloodPulseMult(now, BLOOD_BODY_PULSE_DEPTH);
+        const a = Math.min(1.2, redA) * pulse * view.sprite.alpha;
         const hf = view.hitFlash;
         hf.texture = view.sprite.texture;
         hf.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
@@ -17945,14 +17985,22 @@ export class PixiScene {
         hf.scale.set(view.sprite.scale.x, view.sprite.scale.y);
         hf.skew.set(view.sprite.skew.x, view.sprite.skew.y);
         hf.rotation = view.sprite.rotation;
-        // 加算だけだと桃色に寄って「赤い体」に読めない(ヘッドレス実測)。通常合成で赤く染めた写しを 0.62 重ねる=明暗を残したまま全身が赤。
-        // 乗算 tint(本体を暗くする)は使わない。白フラッシュ側は使う時に blendMode='add' へ戻す(下)。
+        // 白フラッシュ側は使う時に blendMode='add'・tint を自分で戻す(下の else)。乗算 tint(本体を暗くする)は使わない。
         hf.blendMode = 'normal';
-        hf.tint = 0xe8202e;
-        hf.alpha = redA * 0.62 * view.sprite.alpha;
+        hf.tint = 0x6a0a14;
+        hf.alpha = a * BLOOD_BODY_WINE_ALPHA;
         hf.visible = true;
-      } else if (view.hitFlash.blendMode !== 'add') {
-        view.hitFlash.blendMode = 'add';
+        rim.texture = view.sprite.texture;
+        rim.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
+        rim.position.set(view.sprite.position.x, view.sprite.position.y);
+        rim.scale.set(view.sprite.scale.x, view.sprite.scale.y);
+        rim.skew.set(view.sprite.skew.x, view.sprite.skew.y);
+        rim.rotation = view.sprite.rotation;
+        rim.alpha = a * BLOOD_BODY_RIM_ALPHA;
+        rim.visible = true;
+      } else {
+        rim.visible = false;
+        if (view.hitFlash.blendMode !== 'add') view.hitFlash.blendMode = 'add';
       }
     }
     // 刀/小烏丸(村雨)装備中: 実画像(katana-item)をプレイヤー背面へ表示。

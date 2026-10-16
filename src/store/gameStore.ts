@@ -121,6 +121,7 @@ import {
   isRetaliationBlocked, retaliationReady, RETALIATE_DAMAGE_MULT, RETALIATE_LUNGE_MS,
 } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { isEnemyAttacking } from '../utils/combatFeel';
+import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
 import {
@@ -6972,7 +6973,7 @@ interface GameState {
   spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
   spawnBlood: (x: number, y: number, angle: number, len: number, opts?: { flash?: boolean }) => void; // 銃弾ヒット時、背中側へ血飛沫。opts.flash=点滅(ゾンビの試し・2026-10-16)
   spawnMeleeBlood: (ex: number, ey: number, size?: number, opts?: { flash?: boolean }) => void; // 近接ヒット時、敵からプレイヤーへ向かって飛ぶ血飛沫。opts.flash=点滅(ゾンビの試し)
-  spawnBloodDrip: (x: number, y: number, backX: number, backY: number, moveFrac: number) => void; // B10 血の覚醒: 体から滴る/後ろへ流れる血の粒(1〜2個・血粒子のキャップを共有)
+  spawnBloodDrip: (body: DripBody, bodyVx: number, bodyVy: number, moveFrac: number) => void; // B10 血の覚醒: 体から滴る血の粒(1〜2個・血粒子のキャップを共有。出どころ/初速は utils/bloodDrip・足の線で止まる)
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
@@ -9659,7 +9660,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale;
+      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale; // 分身はサブ武器=血の覚醒の×1.5は掛けない(社長裁定: 与ダメ+50%は近接+銃だけ・検収品質監査C)
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
@@ -12068,6 +12069,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           lastHurtAt: (amount > 0 && !armored) ? kbNow : state.player.lastHurtAt,
           lastHurtTier: (amount > 0 && !armored) ? hurtTier : state.player.lastHurtTier,
           hurtArmoredAt: (amount > 0 && armored) ? kbNow : state.player.hurtArmoredAt, // B12: アーマーで受けた被弾の時刻(描画の起点・爆風の旗)
+          // B12 見せ方(描画専用・判定には使わない): アーマーで受けた被弾の向き(踏ん張りの傾きの向き)。向きが無い被弾(fromX 未指定)は 0=傾かない。
+          hurtArmoredDirX: (amount > 0 && armored) ? dirX : state.player.hurtArmoredDirX,
+          hurtArmoredDirY: (amount > 0 && armored) ? dirY : state.player.hurtArmoredDirY,
           // ★敵ごとの被弾無敵の記録(社長裁定2026-09-17)。INVULN_MS より古い項は同時に掃除する。
           iframeBySource: (amount > 0 && sourceId !== undefined)
             ? (() => {
@@ -23096,25 +23100,23 @@ export const useGameStore = create<GameState>((set, get) => ({
   // B10 血の覚醒(THEONE_ROUND2 §3-2): 覚醒中の体から出る血の粒。**移動速度に比例して体から後ろへ**流れ、立ち止まると足元へ滴る。
   // 既存の血飛沫の粒(buildBloodBurst と同じ 'fx-bloodp-' 粒子・liquid・重力)を流用=新しい描画方式は作らない。
   // 1回に1〜2個・上限は血粒子のキャップと共有(負荷1/10)。呼ぶのは useGameLoop のティックだけ(間引きもそちら)。
-  spawnBloodDrip: (x, y, backX, backY, moveFrac) => {
+  spawnBloodDrip: (body, bodyVx, bodyVy, moveFrac) => {
     const room = BLOOD_PARTICLE_CAP - countBloodParticles(get().effects);
     if (room <= 0) return;
     const now = Date.now();
     const moving = moveFrac > 0.15;
     const n = Math.min(room, moving ? 2 : 1);
-    const bl = Math.hypot(backX, backY) || 1;
-    const baseA = Math.atan2(backY / bl, backX / bl);
     const fresh: VisualEffect[] = [];
     for (let i = 0; i < n; i++) {
       const big = Math.random() < 0.3;
-      const a = baseA + (Math.random() - 0.5) * 0.9;
-      const speed = moving ? (50 + Math.random() * 190) * Math.min(1, moveFrac) : 0; // 立ち止まると 0(真下へ滴る)
+      // 出どころ・初速は utils/bloodDrip(体から離れた滴の世界速度はほぼ 0 + 体の速度の 10〜20% を前へ持ち越す・重力は下の gravity)。
+      const d = bloodDripSpec(body, bodyVx, bodyVy, moving, Math.random);
       fresh.push({
         kind: 'particle',
         id: `fx-bloodp-${now}-drip${i}-${Math.random().toString(36).slice(2, 6)}`,
-        x: x + (Math.random() - 0.5) * 10, y,
-        vx: moving ? Math.cos(a) * speed : (Math.random() - 0.5) * 16,
-        vy: moving ? Math.sin(a) * speed - Math.random() * 24 : Math.random() * 10,
+        x: d.x, y: d.y,
+        vx: d.vx,
+        vy: d.vy,
         color: big ? BLOOD_BIG_COLOR : BLOOD_SMALL_COLORS[(Math.random() * BLOOD_SMALL_COLORS.length) | 0],
         size: big ? 3.6 + Math.random() * 2 : 2 + Math.random() * 1.6,
         createdAt: now,
@@ -23123,6 +23125,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         liquid: true,
         stretch: moving,
         gravity: BLOOD_GRAVITY,
+        settleY: d.floorY, // 足の線で止まる(updateEffects が小さな点に替えて 0.3秒残す)
       });
     }
     set(state => {
@@ -23445,6 +23448,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (e.restedAt !== undefined) { live.push(e); continue; } // 床で止まった薬莢は動かさない
           const ny = e.y + e.vy * deltaTime;
           const nvx = e.vx * decay, nvy = e.vy * decay + g * deltaTime;
+          if (e.settleY !== undefined && ny >= e.settleY) {
+            // 血の滴(B10): 足の線に着いたら止まり、小さな点として BLOOD_DRIP_DOT_MS だけ地面に残る(垂れた血は足の線を越えて落ちない)。
+            // 別 id の粒に替える(描画側は粒の大きさを生成時に焼くので、小さくするには作り直す)。id 接頭辞は同じ=血粒子のキャップは数え続ける。
+            live.push({
+              kind: 'particle', id: `${e.id}-dot`,
+              x: e.x + e.vx * deltaTime, y: e.settleY, vx: 0, vy: 0,
+              color: e.color, size: Math.max(1.4, e.size * 0.55),
+              createdAt: now, duration: BLOOD_DRIP_DOT_MS, liquid: true,
+            });
+            continue;
+          }
           if (e.floorY !== undefined) {
             // 薬莢(戦闘の手触り③): 床に達したら1回跳ね、遅ければ止まる(combatFeel.stepFloorParticle)。
             const f = stepFloorParticle(ny, nvx, nvy, e.floorY);

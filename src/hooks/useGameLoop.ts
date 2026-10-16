@@ -159,7 +159,7 @@ import {
 // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 守護霊は「計測時ビルド」で戦う。ビルドの復元+倍率評価用の
 // 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
 import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
-import { bloodAwakenStep, isBloodAwakening } from '../utils/bloodAwaken'; // B10 血の覚醒の遷移(満ちたら自動発動・終わりで0へ)
+import { bloodAwakenStep, isBloodAwakening, BLOOD_AWAKEN_SFX_GAIN, BLOOD_AWAKEN_SFX_RATE } from '../utils/bloodAwaken'; // B10 血の覚醒の遷移(満ちたら自動発動・終わりで0へ)
 import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle';
 // v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀のオート斬撃の標的選択と、
 // 刀の一閃/ワイヤーのロコモーション上書き。どちらもプレイヤーと守護霊が同じ純関数を通る。
@@ -12529,7 +12529,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const bloodStep = bloodAwakenStep(useGameStore.getState().player, newGameTime);
           if (bloodStep) {
             useGameStore.setState(st => ({ player: { ...st.player, ...bloodStep.patch } }));
-            if (bloodStep.started) playSfx('heavy-impact');
+            // 発動音: 敵のレーザー等('heavy-impact' をそのまま)と同じ鳴らし方にしない。同じ素材を rate 0.7(低く)・音量低めで別物にする(新素材は足さない)。
+            if (bloodStep.started) playSfx('heavy-impact', BLOOD_AWAKEN_SFX_GAIN, undefined, BLOOD_AWAKEN_SFX_RATE);
           }
         }
         // 覚醒中の体から血の粒(移動速度に比例して後ろへ・立ち止まると足元へ滴る)。間引いて1〜2個ずつ(負荷1/10)。
@@ -12539,8 +12540,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (newGameTime >= bloodDripNextAt) {
               const spd = Math.hypot(bp.vx ?? 0, bp.vy ?? 0);
               const moveFrac = Math.min(1, spd / Math.max(1, bp.speed));
-              useGameStore.getState().spawnBloodDrip(
-                bp.x + bp.width / 2, bp.y + bp.height * 0.7, -(bp.vx ?? 0), -(bp.vy ?? 0), moveFrac);
+              useGameStore.getState().spawnBloodDrip(bp, bp.vx ?? 0, bp.vy ?? 0, moveFrac);
               bloodDripNextAt = newGameTime + (moveFrac > 0.15 ? 55 : 320) * (0.8 + Math.random() * 0.4);
             }
           } else {

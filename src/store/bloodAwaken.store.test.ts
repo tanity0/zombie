@@ -234,3 +234,48 @@ describe('守護霊・幻影の疑似Playerに持ち越さない', () => {
     expect(resolveGhostBuild(snap, live).player.bloodMeter).toBe(0);
   });
 });
+
+describe('血の滴(spawnBloodDrip): 足の線で止まり、小さな点として 0.3秒だけ残る', () => {
+  const bodyRect = { x: 1000, y: 500, width: 40, height: 80 };
+  const dripIds = () => st().effects.filter(e => e.kind === 'particle' && e.id.startsWith('fx-bloodp-'));
+  it('停止中に出した滴は、足の線(体の下端)を越えて落ちない', () => {
+    let now = 9_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    useGameStore.setState({ effects: [] });
+    st().spawnBloodDrip(bodyRect, 0, 0, 0);
+    expect(dripIds().length).toBe(1);
+    const foot = bodyRect.y + bodyRect.height;
+    let maxY = -Infinity;
+    for (let i = 0; i < 40; i++) { // 約 0.64秒ぶん進める(寿命内・着地まで十分)
+      now += 16;
+      st().updateEffects(0.016);
+      for (const e of dripIds()) if (e.kind === 'particle') maxY = Math.max(maxY, e.y);
+    }
+    expect(maxY).toBeLessThanOrEqual(foot + 1e-9); // 足の線を越えない
+  });
+  it('着地した滴は小さな点(速度 0・寿命 300ms)に替わり、300ms 後に消える', () => {
+    let now = 9_100_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    useGameStore.setState({ effects: [] });
+    st().spawnBloodDrip(bodyRect, 0, 0, 0);
+    const before = dripIds()[0];
+    if (before.kind !== 'particle') throw new Error('particle expected');
+    const bigSize = before.size;
+    let dot: (typeof before) | undefined;
+    for (let i = 0; i < 40 && !dot; i++) {
+      now += 16;
+      st().updateEffects(0.016);
+      const d = dripIds().find(e => e.id.endsWith('-dot'));
+      if (d && d.kind === 'particle') dot = d;
+    }
+    expect(dot).toBeDefined();
+    expect(dot!.y).toBeCloseTo(bodyRect.y + bodyRect.height);
+    expect(dot!.vy).toBe(0);
+    expect(dot!.duration).toBe(300);
+    expect(dot!.size).toBeLessThan(bigSize);
+    expect(dot!.settleY).toBeUndefined(); // 点は二度と着地しない
+    now += 301;
+    st().updateEffects(0.016);
+    expect(dripIds().length).toBe(0);
+  });
+});
