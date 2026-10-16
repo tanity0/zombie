@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { hasEquipIcon, equipIconName } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
+import { bloodOrbTarget } from '../utils/bloodAwaken';
 
 // コンパクトなバイタル表示: HP は「数字主体の球体(オーブ)」、その外周を EXP の白いリングが一周。
 // 一周溜まる=レベルアップ。被弾した瞬間はオーブを点滅+パンチさせて分かりやすくする。
@@ -74,6 +75,25 @@ const DT_CLAMP = 0.05;       // タブ復帰/ポーズ明けの巨大dtで液面
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
+// B10 血の覚醒(THEONE_ROUND2 §3-2): 液体の色は血の量で紫→赤へ寄る(覚醒の赤 #e0263a / #6a0a14 と同じ家族)。
+// 量(shownBlood)は shownHp と同じ指数追従+rAFローカル(補間を新設しない・React を毎フレーム起こさない)。
+const BLOOD_HI = [0xf0, 0x1e, 0x30] as const;
+const BLOOD_LO = [0x6a, 0x0a, 0x14] as const;
+const BLOOD_OVERLAY_ALPHA_ADD = 0.6; // 素材テクスチャ経路でグラデを重ねる濃さ(0.35)に足す量=赤が素材の紫に負けない(0.45 では6割でもほぼ紫だった・実測)
+const bloodCurve = (t: number) => Math.pow(clamp01(t), 0.6); // 血は早めに赤く見え始める(線形だと半分まで紫のまま)
+const BLOOD_STOP_EPS = 0.002;         // 停止条件: shownBloodと目標の差
+const OVERFLOW_MS = 520;              // 満ちた瞬間に液面の縁を一筋の赤が走る長さ
+const hexToRgb = (hex: string): [number, number, number] => {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+};
+const mixToBlood = (hex: string, target: readonly [number, number, number], t: number): string => {
+  if (t <= 0.001) return hex;
+  const [r, g, b] = hexToRgb(hex);
+  const m = (a: number, c: number) => Math.round(a + (c - a) * t);
+  return `rgb(${m(r, target[0])},${m(g, target[1])},${m(b, target[2])})`;
+};
+
 const topYFor = (hp: number, maxHp: number) => {
   const frac = clamp01(maxHp > 0 ? hp / maxHp : 0);
   return CY + ORB_R - 2 * ORB_R * frac;
@@ -95,6 +115,9 @@ type AnimState = {
   lastPrevHealth: number;
   rippleStartTime: number | null;
   rippleY: number;
+  shownBlood: number;           // B10: 液体の赤み(0..1・指数追従)
+  awakenSeenAt: number;         // B10: 最後に見た覚醒の始まり(gameTime)。変わったら「満ちた」演出
+  overflowStartTime: number | null; // B10: 溢れの一筋の始まり(rAF時計ms)
   rafId: number | null;
   lastT: number | null;
   ctx: CanvasRenderingContext2D | null;
@@ -140,8 +163,9 @@ const drawLiquid = (
   ctx.closePath();
 
   // HPは紫(社長指示・裁定待ち=現行の2段階のまま「動きだけ」)。上=明るい紫→下=濃い紫。
-  const hpHi = shownFrac > 0.5 ? '#b070f5' : shownFrac > 0.25 ? '#9333ea' : '#7e22ce';
-  const hpLo = shownFrac > 0.25 ? '#3b0764' : '#2a043f';
+  const blood = bloodCurve(state.shownBlood);
+  const hpHi = mixToBlood(shownFrac > 0.5 ? '#b070f5' : shownFrac > 0.25 ? '#9333ea' : '#7e22ce', BLOOD_HI, blood);
+  const hpLo = mixToBlood(shownFrac > 0.25 ? '#3b0764' : '#2a043f', BLOOD_LO, blood);
   const grad = ctx.createLinearGradient(CX, baseTopY, CX, CY + ORB_R);
   grad.addColorStop(0, hpHi);
   grad.addColorStop(1, hpLo);
@@ -155,7 +179,7 @@ const drawLiquid = (
     ctx.clip();
     const bob = waveOffset(CX, tSec, amplitudePx) * 0.5;
     ctx.drawImage(tex, CX - ORB_R - 4, CY - ORB_R - 4 + bob, ORB_R * 2 + 8, ORB_R * 2 + 8);
-    ctx.globalAlpha = 0.35;
+    ctx.globalAlpha = 0.35 + BLOOD_OVERLAY_ALPHA_ADD * blood;
     ctx.fillStyle = grad;
     ctx.fillRect(leftX, CY - ORB_R - 4, rightX - leftX, bottomY - (CY - ORB_R - 4));
     ctx.restore();
@@ -190,6 +214,23 @@ const drawLiquid = (
     ctx.stroke();
   }
 
+  // B10: 満ちた瞬間、縁を一筋の赤が走って消える(液面が溢れた合図)。頭頂から右回りに滑り、尾を引いて薄れる。
+  if (state.overflowStartTime != null) {
+    const el = tSec * 1000 - state.overflowStartTime;
+    if (el >= OVERFLOW_MS) {
+      state.overflowStartTime = null;
+    } else {
+      const k = el / OVERFLOW_MS;
+      const head = -Math.PI / 2 + Math.PI * 1.1 * (1 - (1 - k) * (1 - k)); // ease-out
+      ctx.beginPath();
+      ctx.arc(CX, CY, ORB_R - 1.2, head - 0.9, head);
+      ctx.strokeStyle = `rgba(255,90,100,${(0.85 * (1 - k)).toFixed(3)})`;
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+  }
+
   // 着水点の波紋(~0.9秒)。
   if (state.rippleStartTime != null) {
     const elapsedMs = tSec * 1000 - state.rippleStartTime;
@@ -215,6 +256,9 @@ const VitalsOrb: React.FC = () => {
   const experience = useGameStore(s => s.player.experience);
   const expToNext = useGameStore(s => s.player.experienceToNextLevel);
   const level = useGameStore(s => s.player.level);
+  // B10 血の覚醒: 血の量は 2% 刻みの整数と覚醒の始まりだけを購読(乾きは書かれない=rAFが getState で導く。毎フレーム再レンダしない)。
+  const bloodStep = useGameStore(s => Math.round(s.player.bloodMeter * 50));
+  const awakenStartedAt = useGameStore(s => s.player.bloodAwakenStartedAt);
   // 装備(部位ごとに個別購読=装備変更時のみ再描画)。アイコンがある装備だけ表示。
   const equipBody = useGameStore(s => s.player.equipment.body);
   const equipArms = useGameStore(s => s.player.equipment.arms);
@@ -276,6 +320,9 @@ const VitalsOrb: React.FC = () => {
       lastPrevHealth: health,
       rippleStartTime: null,
       rippleY: CY,
+      shownBlood: 0,
+      awakenSeenAt: useGameStore.getState().player.bloodAwakenStartedAt,
+      overflowStartTime: null,
       rafId: null,
       lastT: null,
       ctx: null,
@@ -309,15 +356,34 @@ const VitalsOrb: React.FC = () => {
     state.shownHp += (hp - state.shownHp) * (1 - Math.exp(-FOLLOW_RATE * dt));
     state.amplitude *= Math.exp(-DECAY_RATE * dt);
 
+    // B10: 血の量(覚醒中は残り時間の割合=10秒で赤→紫へ戻る)へ同じ指数追従。満ちた瞬間(覚醒の始まりが変わった)は波を立てて縁を一筋走らせる。
+    const gs = useGameStore.getState();
+    const bloodTarget = bloodOrbTarget(gs.player, gs.gameTime);
+    state.shownBlood += (bloodTarget - state.shownBlood) * (1 - Math.exp(-FOLLOW_RATE * dt));
+    if (gs.player.bloodAwakenStartedAt !== state.awakenSeenAt) {
+      if (gs.player.bloodAwakenUntil > gs.gameTime) {
+        state.amplitude = AMPLITUDE_CAP;
+        state.rippleStartTime = nowMs;
+        state.rippleY = topYFor(state.shownHp, maxHp);
+        state.overflowStartTime = nowMs;
+      }
+      state.awakenSeenAt = gs.player.bloodAwakenStartedAt;
+    }
+
     drawLiquid(ctx, state, hp, maxHp, nowMs / 1000);
 
     // 停止条件(数値で): shownHpが実HPへ十分近く・振幅が十分小さく・波紋も終わっていたら
     // shownHpをスナップして停止する(指数追従は漸近=これが無いと永久に止まらない)。
+    // B10: 血が在る間(乾き・覚醒の戻りは目標が動き続ける)は止めない。血が0で目標に追いついたら止まる。
+    const bloodSettled = bloodTarget <= 0.001 && state.shownBlood < BLOOD_STOP_EPS;
     const settled = Math.abs(hp - state.shownHp) < STOP_HP_EPS
       && state.amplitude < STOP_AMP_EPS
-      && state.rippleStartTime == null;
+      && state.rippleStartTime == null
+      && state.overflowStartTime == null
+      && bloodSettled;
     if (settled) {
       state.shownHp = hp;
+      state.shownBlood = 0;
       drawLiquid(ctx, state, hp, maxHp, nowMs / 1000);
       state.rafId = null;
       state.lastT = null;
@@ -373,7 +439,7 @@ const VitalsOrb: React.FC = () => {
     if (WINE_ORB_DISABLED) return;
     ensureRunning();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [health, maxHealth]);
+  }, [health, maxHealth, bloodStep, awakenStartedAt]);
 
   return (
     <div className="flex items-center gap-1.5">

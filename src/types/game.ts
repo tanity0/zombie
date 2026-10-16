@@ -297,6 +297,10 @@ export interface Player extends DashLocomotionState {
   // (表は `utils/playerHurt.ts`)。**敵の体勢値とは別系統**——プレイヤーは無敵1秒が頻度を守るので、
   // 「出す/出さない」ではなく「どれだけ効いたか」を段で出す(社長裁定2026-09-16)。
   lastHurtTier?: 0 | 1 | 2;
+  // B12 スーパーアーマー(utils/superArmor.ts): アーマーで吹き飛び・しゃがみ・移動/銃ロックを防いだ被弾の時刻(Date.now基準)。
+  // アーマー時は lastHurtAt を**書かず**これを書く(しゃがみ/ロックの読み手は lastHurtAt だけを見るので自然に素通りする)。
+  // 爆風の押し出し(combatTick)が「命中した」を見る旗と、踏ん張りの絵(描画専用)の起点を兼ねる。判定・挙動には他に使わない。
+  hurtArmoredAt?: number;
   // 救急鞄スキル発動演出用タイムスタンプ(Date.now)。描画のみ=払い出しの瞬間に「振り抜きポーズ+鞄を掲げる」
   // 一拍の起点(社長指示v0.25.1656)。0=未発動。判定・射程・払い出しロジックには不干渉(renderer が読むだけ)。
   firstAidPoseAt: number;
@@ -352,6 +356,14 @@ export interface Player extends DashLocomotionState {
   consumableSpeedUntil: number;      // スピードブースト: 移動速度+15%
   consumableXpUntil: number;         // 経験値ブースト: 経験値×1.5
   consumableProtectionUntil: number; // プロテクション: 被ダメージ-30%
+  // B10 血の覚醒(research/THEONE_ROUND2.md §3・utils/bloodAwaken.ts が純関数の正本)。
+  // bloodMeter=最後に浴びた時点の血の量(0..1・乾きは bloodDryStep が導く=書かない)/ bloodLastGainAt=最後に浴びた時刻(gameTime)/
+  // bloodAwakenUntil=覚醒の終わり(gameTime・0=覚醒していない)/ bloodAwakenStartedAt=覚醒の始まり(入りの赤に使う)。
+  // 守護霊・幻影の疑似Playerには持ち越さない(withoutBlood)。resetGame で全部 0。
+  bloodMeter: number;
+  bloodLastGainAt: number;
+  bloodAwakenUntil: number;
+  bloodAwakenStartedAt: number;
   // 枠光(SKILL_BUILD_REDESIGN.md §21 B5・視覚専用): オーバークロックのCDリセットprocが立った
   // 時刻+800ms(gameTime基準)。判定はsrc/utils/frameLight.tsのoverclockFrameLitへ渡すだけで、
   // この値自体はゲームプレイ(判定・数値)に一切影響しない。既定0。
@@ -2223,6 +2235,8 @@ export type SkillKey =
   | 'gold-rush' | 'time-keeper' | 'ghost-shooter' | 'dog-run' | 'counter-master' | 'slasher'
   | 'attack-shooter' | 'runner' | 'seeker' | 'scrap-builder'
   | 'magnet' | 'last-magazine' | 'warm-up'
+  // THEONE_ROUND2 §4(B12): スーパーアーマー。通常ガチャ枠。小さな被弾では吹き飛ばず・しゃがまず・動きも銃も止まらない。
+  | 'super-armor'
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ専用(ガチャからは絶対に出ない・GACHA_EXCLUDED_SKILLS)。
   | 'poi-bombing' | 'poi-guard' | 'poi-thrall'
   // SKILL_BUILD_REDESIGN.md §14(社長承認2026-08-13)・新スキル9種。§28(B7)で効果配線+

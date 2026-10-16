@@ -15,6 +15,24 @@
   表示寸法に対して過大の疑い(常駐かは起動マニフェスト次第・要確認)。
 - 状態変化: 落ち対策(時間で増える物) → 調査完了(増える物なし)。常駐削減は社長判断待ち。
 
+## v0.25.5075 — B10 血の覚醒 / B12 スーパーアーマー 実装着地(Sonnet)+ テープの文字を流す【2026-10-16 18:14 JST】
+
+**実装(Sonnet サブエージェント・設計書 §3 第3版/§4 第2版どおり)**: 新規 `utils/bloodAwaken.ts` / `utils/superArmor.ts`(純関数+テスト計79件)、Player 型に
+`bloodMeter/bloodLastGainAt/bloodAwakenUntil/bloodAwakenStartedAt/hurtArmoredAt`、`grantMeleeBlood`/`grantGunBlood`(呼び手ごと・分身/スケボー/守護霊は0)、
+`skillBloodAwakenDamageMult`(近接+銃の呼び手に個別。`skillOutgoingDamageMult` 本体は爆発・サブも通るため入れない)、速度(`awakenSpeedMult`・ランプの外)、
+弾速(`fireWeapon`)、被ダメ×2(`damagePlayer` skilled 段)、自動発動と乾き(useGameLoop 1箇所・`heavy-impact`)、守護霊ビルドから血を落とす(`ghostBuild`/`playerBuild`)。
+B12: `damagePlayer`(kbApply 止め・`lastHurtAt` を書かず `hurtArmoredAt`)+ combatTick 爆風経路。スキル `super-armor`「スーパーアーマー」(normal・ガチャ自動・
+アイコンは防衛を借用・絵文字🗿仮)。見せ方: VitalsOrb 液体の赤(1/50刻み購読・rAF の粘り)、体の赤+赤い光、血の粒、踏ん張り(+200ms・0.94・砂埃)。
+実装者の決め: 覚醒中は血の加算なし / Lv3 の「振り中」= meleeSwingAt 窓・katanaDashUntil・縮地 strike・retaliateStrike(カウンター成立の演出でも meleeSwingAt が打たれる=弾を弾いた直後もアーマー・事実として記録)。
+**設計チャットの手直し(撮影で判明)**: 体の赤が桃色で薄い→本体の写しを通常合成 0.62(+光 0.95) / オーブが6割でも紫→曲線 t^0.6+重ね 0.95 / 砂埃が体を覆う塊→0.42 倍。
+**見た目の確認(ヘッドレス)**: b10v2-awaken.png(体が赤・赤い光・オーブ赤)/ b10v2-orb60.png(血6割で赤紫)/ 数値: damagePlayer(8) で HP 130→122・knockback/lastHurtAt 不変・hurtArmoredAt 書き込み=アーマー成立。
+**テスト**: typecheck 0 / eslint 0(変更19ファイル)/ 新規テスト100件緑 / 循環なし。既存 flaky(escortToss 着地の押し)1件は無関係(HEAD でも落ちる)。
+**テープ(B1)**: 社長(実機)「文字の動き方が変。プレイヤーの動きに連動せずに、ゆっくり右へ流れてる感じに」→ 板の位置を自機・ズームから切り離し、
+世界 260px 固定の間隔で**読む向きへ 22px/s で流れる**(位相は時刻だけ)。向きは斜め45°付近で前の値を保つ(ちらつかない)。
+**監査**: クリエイティブ監査(fable)20件の指摘を受領=次版(v0.25.5076)で演出17件を反映・社長判断3件(残り時間の読み口/アイコンの借り先/名)。品質監査は進行中。
+**自己点検**: 憲法第4条・第5条に抵触なし(湧き・難度の数値に触れない)。負荷 1/10(覚醒中の血の粒は毎フレーム最大2個・オーブは血>0の間だけ rAF)。
+**状態変化**: B10/B12 → 実装着地(実機待ち・監査反映は次版)。B1 → 文字の流れを修正。
+
 ## v0.25.5074 — B1 v3.1: テープの検収クリエイティブ監査(12件)を反映【2026-10-16 17:46 JST】
 
 クリエイティブ監査(fable)の指摘 12件: **見せ方 9件を反映 / 社長判断 3件を設計書 §1-1-4 に列挙**。

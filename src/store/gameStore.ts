@@ -108,6 +108,8 @@ import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規�
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { stepSpeedRamp, effectiveRampFrac, RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
 import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_PUZZLE.md §14-4-2(新死神・重大4/5)
+import { bloodAwakenMult, bloodGainFor, applyBloodGain } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
+import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
 import { meleeRecoverSpeedMult, MELEE_RECOVER_MS } from '../utils/meleeRecover'; // 近接を振ったあとの硬直(v0.25.4380)
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
 import { clampRectInsideCircle } from '../world/arena';
@@ -2227,6 +2229,11 @@ export const skillOutgoingDamageMult = (player: Player): number => {
   const k = [0, 1, 1.25, 1.5][bl];
   return alcMult * cmMult * growthMult * heroMult * (1 + Math.max(0, (player.maxHealth - player.health) / player.maxHealth) * k);
 };
+// B10 血の覚醒: 与ダメージ ×1.5(終わりの1秒で線形に戻る)。**近接と銃だけ**に掛ける専用の倍率。
+// skillOutgoingDamageMult は爆発・ドローン・犬・四神なども通る合流点なので、そこへは入れない
+// (THEONE_ROUND2 §3-1「爆発・サブ・DoT・召喚は対象外」)。守護霊・幻影の疑似Playerは withoutBlood で 1。
+export const skillBloodAwakenDamageMult = (player: Player): number =>
+  bloodAwakenMult(player, useGameStore.getState().gameTime).boost;
 // クリティカルD上昇: crit倍率 +0.5/0.75/1.0(Lv)。
 export const skillCritMult = (player: Player, base: number): number => {
   const cl = skillLevel(player, 'crit-up');
@@ -3769,7 +3776,7 @@ export const counterReplyDamage = (
   player: Player,
   critBase: number,
 ): number => Math.max(1, Math.round(
-  (baseGunDamage ?? 12) * skillCritMult(player, critBase) * skillOutgoingDamageMult(player) * (player.equipBonus?.damageMult ?? 1),
+  (baseGunDamage ?? 12) * skillCritMult(player, critBase) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * (player.equipBonus?.damageMult ?? 1),
 ));
 
 const weaponTierLabel = (tier?: number): string => `T${tier ?? 1}`;
@@ -4577,6 +4584,38 @@ export const grantReaperDefeatRewards = (get: () => GameState, at: { x: number; 
   // 歴史年表: 死神討伐を即載せ(社長決定v0.25.1628。スキル付与と同じA方式=撃破の瞬間に永続)。
   recordChronicle(getSelectedStageId(), 'reaper', 'reaper', '死神を討伐');
   if (!already) get().spawnCallout(at.x, at.y - 20, 'スキル「死神」習得！', '#c084fc', { scale: 1.2 });
+};
+
+/**
+ * B10 血の覚醒の加算(THEONE_ROUND2 §3-1)。**浴びるのは自分の手で近くで倒した時だけ**——分身・投擲スケボー・
+ * シールドバッシュ・守護霊の刀は同じ `player` を渡してくる(関数の中では見分けられない)ので、
+ * **本人の近接を振り終えた呼び手(カウンター/刀の一閃/鞭。縮地・処刑・被弾反撃もこの3関数を通る)だけ**が呼ぶ。
+ * kills=浴びる対象のキル(距離=プレイヤー中心と敵中心)/ hitOnly=倒せなかった命中の数(+0.02ずつ)。
+ * HPが低いほど早く染まる(bloodGainFor)。覚醒中は加算しない(applyBloodGain が null)。満ちたら自動発動は useGameLoop。
+ */
+export const grantMeleeBlood = (get: () => GameState, kills: Enemy[], hitOnly: number): void => {
+  if (kills.length === 0 && hitOnly <= 0) return;
+  const st = get();
+  const p = st.player;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const hpFrac = p.maxHealth > 0 ? p.health / p.maxHealth : 1;
+  let gain = 0;
+  for (const e of kills) {
+    gain += bloodGainFor({ kind: 'melee-kill', distPx: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy), hpFrac });
+  }
+  if (hitOnly > 0) gain += hitOnly * bloodGainFor({ kind: 'melee-hit', distPx: 0, hpFrac });
+  const patch = applyBloodGain(p, gain, st.gameTime);
+  if (patch) useGameStore.setState(s => ({ player: { ...s.player, ...patch } }));
+};
+
+/** B10 血の覚醒: 銃のキル(距離≤90pxだけ浴びる・遠距離は0)。呼び手(damageEnemy の 'gun' 枝)が条件を確かめて呼ぶ。 */
+export const grantGunBlood = (get: () => GameState, at: { x: number; y: number }): void => {
+  const st = get();
+  const p = st.player;
+  const distPx = Math.hypot(at.x - (p.x + p.width / 2), at.y - (p.y + p.height / 2));
+  const gain = bloodGainFor({ kind: 'gun-kill', distPx, hpFrac: p.maxHealth > 0 ? p.health / p.maxHealth : 1 });
+  const patch = applyBloodGain(p, gain, st.gameTime);
+  if (patch) useGameStore.setState(s => ({ player: { ...s.player, ...patch } }));
 };
 
 export const grantMeleeKillRewards = (
@@ -5508,7 +5547,7 @@ const applySlasherChainStrike = (
   const melee = player.weapons.find(w => w.isMelee);
   const meleeDamage = meleeSwingBaseDamage(melee, player);
   const comboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
-  const dmg = meleeDamage * SLASHER_MULTS[step] * skillOutgoingDamageMult(player) * comboMult;
+  const dmg = meleeDamage * SLASHER_MULTS[step] * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * comboMult;
   const nextStep = step + 1;
   // Lv3(maxHits=3)の最終段(nextStep===maxHits=この一撃で使い切る)のみノックバック大。
   const isFinalBigKbStep = slLv === 3 && nextStep === maxHits;
@@ -6933,6 +6972,7 @@ interface GameState {
   spawnFireJet: (x: number, y: number, angle: number, len: number) => void; // 銃弾ヒット時、背中側へ火の破裂(2コマ立ち絵)
   spawnBlood: (x: number, y: number, angle: number, len: number, opts?: { flash?: boolean }) => void; // 銃弾ヒット時、背中側へ血飛沫。opts.flash=点滅(ゾンビの試し・2026-10-16)
   spawnMeleeBlood: (ex: number, ey: number, size?: number, opts?: { flash?: boolean }) => void; // 近接ヒット時、敵からプレイヤーへ向かって飛ぶ血飛沫。opts.flash=点滅(ゾンビの試し)
+  spawnBloodDrip: (x: number, y: number, backX: number, backY: number, moveFrac: number) => void; // B10 血の覚醒: 体から滴る/後ろへ流れる血の粒(1〜2個・血粒子のキャップを共有)
   spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
@@ -7233,6 +7273,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     seekerUntil: 0, seekerCdUntil: 0,
     consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
     consumableXpUntil: 0, consumableProtectionUntil: 0,
+    bloodMeter: 0, bloodLastGainAt: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, // B10 血の覚醒
     overclockLightUntil: 0,
     huntingChargeStartedAt: 0,
     huntingCharged: false,
@@ -7653,6 +7694,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 振り**中**は掛からない=踏み込み斬りの「回避としての使い方」を殺さない、が社長の前提。
         // 開くのは振りの絵が終わる瞬間(=その場で動けない時間が明ける)・明けるのは従来どおり(v0.25.4998・隙間を詰めた)。
         meleeRecoverMult: meleeRecoverSpeedMult(player.meleeSwingAt, nowMs, PLAYER_MELEE_SWING_MS, COUNTER_WINDOW + MELEE_RECOVER_MS),
+        // B10 血の覚醒(THEONE_ROUND2 §3-1): 移動速度 ×1.5。ランプの外・dash/スライド/スケーターには掛けない(関数側)。
+        awakenSpeedMult: bloodAwakenMult(player, state.gameTime).boost,
       });
 
       // Target direction from swipe (touch) or keys.
@@ -8854,6 +8897,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const meleeHitEnemyIds: string[] = []; // スキル 救難信号: このスイングでヒットした敵ID(発動判定/対象選定用)
+    const bashBloodExcludeIds = new Set<string>(); // B10: シールドバッシュで当てた敵(血を浴びない・THEONE_ROUND2 §3-1)
     // ★スラッシャー実機FB(v0.25.3616「敵を2撃目追いかけてない」): 初撃も追撃と同じ自動追尾を持つ。
     // 初撃の強制KB(25px)で敵が射程の外縁へ出ると、2撃目が空振り→空振りでは追尾も発火しない=
     // チェーンが最初の一押しで死んでいた。押した敵(最寄り・非ボス)へ lunge する(追撃側v0.25.3540と同式)。
@@ -9018,6 +9062,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         bashHitEnemy = true; // 敵にヒット → 後でストップ
         slashAt.push({ x: ecx, y: ecy });
         meleeHitEnemyIds.push(enemy.id);
+        bashBloodExcludeIds.add(enemy.id);
         let dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT * gpDmgScale;
         // ★SAME_ARENA §9(検収監査 重大③): バッシュも近接=致命+melee削りの対象(site1と同型)。
         let bashPvpPatch: Partial<Enemy> = {};
@@ -9113,7 +9158,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★v0.25.3969: 対人スケール(gpDmgScale)を通常近接にも掛ける——gatePhantomHitの戻り値
       // damageScale は「自前のダメージ計算に掛けるため」に返っているのに、この枝だけ未適用だった
       // (気絶フィニッシュ枝は適用済み=幻影への通常近接だけ対人1/5が効いていない実バグ)。幻影以外は×1で恒等。
-      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale * retMult;
+      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult;
       // ★SAME_ARENA §9(対人体勢): 紫中の幻影への近接=致命の一撃(×5+最大HP25%・裁定②)。
       // 紫でなければ melee(0.04)の削り+クリなら2/3減速。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -9404,6 +9449,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // also DROPS an ammo box for the active gun's family — melee is the run's
     // main way to scavenge rounds, but you have to walk over the drop.
     grantMeleeKillRewards(get, killed, player, gun, false, undefined, true /* 縮地: 本人の近接 */);
+    {
+      // B10 血の覚醒: 本人の近接(カウンター・縮地・処刑・被弾反撃もこの経路)。バッシュで当てた敵は浴びない。
+      const bloodKills = killed.filter(k => !bashBloodExcludeIds.has(k.enemy.id)).map(k => k.enemy);
+      const bloodHitIds = meleeHitEnemyIds.filter(id => !bashBloodExcludeIds.has(id));
+      grantMeleeBlood(get, bloodKills, Math.max(0, bloodHitIds.length - bloodKills.length));
+    }
     let finishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301 社長「CD中は画面揺れだけ入れて」。〜4300 はフル演出の回だけ)
     if (finisherHit || bossFinishHit) {
       const [ztx, zty] = bossFatalHits[0]
@@ -9608,7 +9659,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale;
       damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
@@ -10339,7 +10390,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeHitCritChance(KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)], player, gameTime, enemy);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
-      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale;
       // ★SAME_ARENA §9(検収監査 重大③): 刀にも致命(×5+最大HP25%)とmelee削り(site1と同型)。
       // 本人由来のみ=守護霊の刀(isGhost)は削らない・致命も出さない。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -10518,6 +10569,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 刀の一閃フィニッシュは「斬」コールアウトが主役なので、Kill! と既存の
     // 黄色フィニッシュフラッシュは出さない(暗転と斬は triggerKatanaDash 側で出す)。
     grantMeleeKillRewards(get, killed, player, gun, true, undefined, !ghostId && allowFinisher /* 縮地: 本人の一閃だけ(オート斬撃・守護霊の刀では開かない=社長裁定2026-10-01) */);
+    // B10 血の覚醒: 浴びるのは**本人の一閃だけ**(縮地のワープ斬撃・被弾反撃の刀もここ)。オート斬撃・守護霊の刀は浴びない(縮地の窓と同じ線引き)。
+    if (!ghostId && allowFinisher) grantMeleeBlood(get, killed.map(k => k.enemy), Math.max(0, katanaHitEnemyIds.length - killed.length));
     let katanaFinishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301)
     // 除外1(演出)→v0.25.2582試験改定: 守護霊起因でも出す(?ghostzoom=0で従来=除外1へ)。
     if ((finisherHit || bossFinishHit) && (!isGhost || GHOST_ZOOM_TRIAL_ENABLED)) {
@@ -10674,7 +10727,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale;
+      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale;
       // ★SAME_ARENA §9(検収監査 重大③): 鞭にも致命(×5+最大HP25%)とmelee削り(site1と同型・鞭はプレイヤー本人のみの武器)。
       let pvpMeleePatch: Partial<Enemy> = {};
       if (isGuardianPhantom(enemy.type)) {
@@ -10796,6 +10849,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 弾薬ドロップは鞭固定20%(弾切れ救済)。
     grantMeleeKillRewards(get, killed, player, gun, false, WHIP_AMMO_DROP_CHANCE, true /* 縮地: 本人の近接 */);
+    grantMeleeBlood(get, killed.map(k => k.enemy), Math.max(0, whipHitEnemyIds.length - killed.length)); // B10 血の覚醒: 本人の鞭
     // スキル: 救難信号(§6.10 M33⑦: 鞭のヒットでも発動判定。基本近接/刀と同条件。アライの一撃は
     // 鞭の通常打撃基準=meleeBase×WHIP_DAMAGE_MULT を素通し)。
     applyRescueSignalProc(get, player, meleeBase * WHIP_DAMAGE_MULT, whipHitEnemyIds, pcx, pcy);
@@ -11845,9 +11899,16 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // スキル: ナイト(×0.8)/バーサーカー(×1.2)/消費カード「プロテクション」(×0.7・§23) の被ダメ補正。
     // ランナー覚醒(Lv3・v0.25.3300): 加速中は×0.8。amount>0 のみ補正。
+    // B10 血の覚醒中は被ダメージ ×2(終わりの1秒で線形に 1 へ戻る・ナイト等と乗算。THEONE_ROUND2 §3-1)。
     const skilled = rawAmount > 0
-      ? rawAmount * skillIncomingDamageMult(player, get().gameTime) * runnerAwakenDamageMult(player)
+      ? rawAmount * skillIncomingDamageMult(player, get().gameTime) * runnerAwakenDamageMult(player) * bloodAwakenMult(player, get().gameTime).taken
       : rawAmount;
+    // B12 スーパーアーマー(THEONE_ROUND2 §4): 実ダメージ(skilled=M0 の noDeath 切り詰めの前)で判定。
+    // 働いたら吹き飛ばさず、しゃがみ/移動ロック/銃ロックの時計(lastHurtAt/lastHurtTier)を**書かない**(読み手3つが自然に素通りする)。
+    // 代わりに hurtArmoredAt を書く(爆風側の「命中した」の旗と、踏ん張りの絵の起点)。無敵・ヒットストップ・被弾反撃の窓・シェイク・被弾演出は従来どおり。
+    // 蝙蝠の掴み・対人体勢は別の状態なのでここでは防がない。
+    const armored = rawAmount > 0 && skilled > 0
+      && playerSuperArmorActive(player, skilled, Date.now(), get().gameTime, PLAYER_MELEE_SWING_MS);
     // 訓練(M0)は**死なない**(社長指示v0.25.2302「チュートリアルではHPは1になるけど死なない。
     // 衛生兵が1秒後には回復しちゃう」)。ハンターのジャンプ攻撃のような大ダメージでもHP1で踏みとどまる。
     // 教習の途中でゲームオーバーになると台本が最初からやり直しになり、教える順序が成立しない。
@@ -11923,7 +11984,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 旧は全段一律(460px/s・260ms)で、かすっても保たない一撃でも同じ飛び方だった。
       const hurtKb = playerHurtReactionOf(hurtTier);
       const kbSpd = PLAYER_KNOCKBACK_SPEED * hurtKb.kbSpeedMult;
-      kbVx = dx * kbSpd; kbVy = dy * kbSpd; kbApply = true;
+      kbVx = dx * kbSpd; kbVy = dy * kbSpd; kbApply = !armored; // アーマー時は押し出さない(向き dirX/dirY は画面シェイクのために残す)
       dirX = dx; dirY = dy;
     }
 
@@ -12004,8 +12065,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           counterWindowEnd: (amount > 0 && !LATE_COUNTER_ENABLED) ? 0 : state.player.counterWindowEnd,
           // ★被弾リアクションの打刻(描画専用・判定不変)。この間だけ本体の絵がしゃがみへ替わる。
           // 段(軽/中/重)は**実際に減ったHP**(amount=軽減後)と最大HPの割合で決まる。
-          lastHurtAt: amount > 0 ? kbNow : state.player.lastHurtAt,
-          lastHurtTier: amount > 0 ? hurtTier : state.player.lastHurtTier,
+          lastHurtAt: (amount > 0 && !armored) ? kbNow : state.player.lastHurtAt,
+          lastHurtTier: (amount > 0 && !armored) ? hurtTier : state.player.lastHurtTier,
+          hurtArmoredAt: (amount > 0 && armored) ? kbNow : state.player.hurtArmoredAt, // B12: アーマーで受けた被弾の時刻(描画の起点・爆風の旗)
           // ★敵ごとの被弾無敵の記録(社長裁定2026-09-17)。INVULN_MS より古い項は同時に掃除する。
           iframeBySource: (amount > 0 && sourceId !== undefined)
             ? (() => {
@@ -13811,6 +13873,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 絵は分類②(派手側)。キル地点からプレイヤーへ血粒が吸い込まれるdrainエフェクト
     // (社長指示v0.25.3276「攻撃したときの血のエフェクトがプレイヤーに吸収されていくような」)。
     if (killedAt) applyVampireKillHeal(get, killedAt);
+    // B10 血の覚醒: 銃('gun'チャネル・プレイヤー起因)のキルは距離≤90pxだけ浴びる(THEONE_ROUND2 §3-1)。サブ('other')・爆発・DoT・犬・守護霊は浴びない。
+    if (killedAt && damageChannel === 'gun' && hateSource === 'player') grantGunBlood(get, killedAt);
 
     // SKILL_BUILD_REDESIGN.md §28(B7) スキル: グラビティショット = **射撃ヒット時**の20/30/40%(Lv)で
     // 爆縮(社長指示v0.25.3703。旧: キル時)。確率表・渦の性能(引き寄せ120px/s×0.4s・半径100/120/140・
@@ -22316,6 +22380,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           seekerUntil: 0, seekerCdUntil: 0,
           consumableScrapUntil: 0, consumableAttackUntil: 0, consumableSpeedUntil: 0,
           consumableXpUntil: 0, consumableProtectionUntil: 0,
+          bloodMeter: 0, bloodLastGainAt: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, // B10 血の覚醒(リトライ・ステージ跨ぎで残さない)
           overclockLightUntil: 0,
           subWeaponLevels: runLevels,
           subWeaponCooldowns: {},
@@ -23022,6 +23087,44 @@ export const useGameStore = create<GameState>((set, get) => ({
       ex + dx * size * 0.4, ey + dy * size * 0.4, // 起点=既存計算のまま(斬った面)
       Math.atan2(dy, dx), Math.min(desired, room), now, opts?.flash === true,
     );
+    set(state => {
+      const next = [...state.effects, ...fresh];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  },
+  // B10 血の覚醒(THEONE_ROUND2 §3-2): 覚醒中の体から出る血の粒。**移動速度に比例して体から後ろへ**流れ、立ち止まると足元へ滴る。
+  // 既存の血飛沫の粒(buildBloodBurst と同じ 'fx-bloodp-' 粒子・liquid・重力)を流用=新しい描画方式は作らない。
+  // 1回に1〜2個・上限は血粒子のキャップと共有(負荷1/10)。呼ぶのは useGameLoop のティックだけ(間引きもそちら)。
+  spawnBloodDrip: (x, y, backX, backY, moveFrac) => {
+    const room = BLOOD_PARTICLE_CAP - countBloodParticles(get().effects);
+    if (room <= 0) return;
+    const now = Date.now();
+    const moving = moveFrac > 0.15;
+    const n = Math.min(room, moving ? 2 : 1);
+    const bl = Math.hypot(backX, backY) || 1;
+    const baseA = Math.atan2(backY / bl, backX / bl);
+    const fresh: VisualEffect[] = [];
+    for (let i = 0; i < n; i++) {
+      const big = Math.random() < 0.3;
+      const a = baseA + (Math.random() - 0.5) * 0.9;
+      const speed = moving ? (50 + Math.random() * 190) * Math.min(1, moveFrac) : 0; // 立ち止まると 0(真下へ滴る)
+      fresh.push({
+        kind: 'particle',
+        id: `fx-bloodp-${now}-drip${i}-${Math.random().toString(36).slice(2, 6)}`,
+        x: x + (Math.random() - 0.5) * 10, y,
+        vx: moving ? Math.cos(a) * speed : (Math.random() - 0.5) * 16,
+        vy: moving ? Math.sin(a) * speed - Math.random() * 24 : Math.random() * 10,
+        color: big ? BLOOD_BIG_COLOR : BLOOD_SMALL_COLORS[(Math.random() * BLOOD_SMALL_COLORS.length) | 0],
+        size: big ? 3.6 + Math.random() * 2 : 2 + Math.random() * 1.6,
+        createdAt: now,
+        duration: 420 + Math.random() * 260,
+        drag: 2.7,
+        liquid: true,
+        stretch: moving,
+        gravity: BLOOD_GRAVITY,
+      });
+    }
     set(state => {
       const next = [...state.effects, ...fresh];
       if (next.length > 400) next.splice(0, next.length - 400);

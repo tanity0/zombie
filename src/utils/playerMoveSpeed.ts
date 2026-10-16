@@ -42,6 +42,12 @@ export interface EffectiveMoveSpeedInput {
    * そもそもこの関数を通らない(movePlayer の `lungeVx` の枝)ので、掛かりようがない。
    */
   meleeRecoverMult: number;
+  /**
+   * B10 血の覚醒の移動速度倍率(research/THEONE_ROUND2.md §3-1)。省略/1=無し。
+   * **ランプの外**で掛ける(入り即・終わりの1秒で線形に戻る倍率が、ランプの立ち上がりで鈍らない)。
+   * dashOverride(ワイヤー/一閃/ホップ)・四神スライド・スケーター搭乗には掛けない。
+   */
+  awakenSpeedMult?: number;
 }
 
 /** ランプ済みボーナス倍率。speedRamp.rampedBonusMult と同一式(移設先を増やさないための再掲)。 */
@@ -55,6 +61,7 @@ export const computeEffectiveMoveSpeed = (input: EffectiveMoveSpeedInput): numbe
   const {
     dashOverrideSpeed, slidingSpeed, reloading, reloadMoveSpeedMult, playerSpeed,
     skaterActive, bonusMult, rampFrac, trapDebuffed, pvpMult, meleeRecoverMult,
+    awakenSpeedMult = 1,
   } = input;
   // 特殊ロコモーション(ダッシュ/スライド)中は近接の硬直を掛けない(上のコメント)。
   const recoverMult = (dashOverrideSpeed !== null || slidingSpeed !== null) ? 1 : meleeRecoverMult;
@@ -63,8 +70,8 @@ export const computeEffectiveMoveSpeed = (input: EffectiveMoveSpeedInput): numbe
     : slidingSpeed !== null
     ? slidingSpeed
     : reloading
-    ? playerSpeed * reloadMoveSpeedMult * (skaterActive ? 3 : 1) * rampedBonus(bonusMult, rampFrac)
-    : playerSpeed * (skaterActive ? 3 : 1) * rampedBonus(bonusMult, rampFrac);
+    ? playerSpeed * reloadMoveSpeedMult * (skaterActive ? 3 : 1) * rampedBonus(bonusMult, rampFrac) * (skaterActive ? 1 : awakenSpeedMult)
+    : playerSpeed * (skaterActive ? 3 : 1) * rampedBonus(bonusMult, rampFrac) * (skaterActive ? 1 : awakenSpeedMult);
   // 対人トラップ中は7割(社長指示2026-10-10。旧=素の足で頭打ち)。
   return rawMoveSpeed * (trapDebuffed ? TRAP_PVP_MOVE_MULT : 1) * pvpMult * recoverMult;
 };

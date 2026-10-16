@@ -92,10 +92,10 @@ describe('skillIconStyle(切り出し)', () => {
 // v0.25.3500: POI報酬3種(101 爆撃 / 102 防衛 / 103 使役)は1枚シートに入らない単体ファイル。
 // 対応の正は「社長の番号=支給ファイル名の番号」。ここを取り違えると別のスキルの絵が出るので固定する。
 describe('SKILL_SINGLE_ICON(単体ファイルのアイコン)', () => {
-  it('単体アイコンを持つのはシートに入らない10種だけ', () => {
+  it('単体アイコンを持つのはシートに入らない11種だけ(super-armor=仮に防衛のアイコンを借りている)', () => {
     expect(Object.keys(SKILL_SINGLE_ICON).sort())
       .toEqual(['big-bullet', 'ghost-helper', 'ghost-slayer', 'guardian-spirit', 'poi-bombing',
-        'poi-guard', 'poi-thrall', 'scrap-builder', 'shukuchi', 'warm-up']);
+        'poi-guard', 'poi-thrall', 'scrap-builder', 'shukuchi', 'super-armor', 'warm-up']);
   });
   it('101=爆撃 / 102=防衛 / 103=使役 / 104=守護霊 の対応', () => {
     expect(skillSingleIconName('poi-bombing')).toBe('skill/poi-bombing');

@@ -1,5 +1,6 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
+import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
+import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 弾速 ×1.5(発射時に確定)
 import { projectileHitCritChance } from './critPenalty';
 import { classifyProjectileDamageChannel, recordMeleeFromGun } from './botTelemetry';
 import { DEV_WEAPON_KEY } from './devTestKnobs';
@@ -1109,7 +1110,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       const critChanceEff = projectileHitCritChance(critChanceBase, meleeTarget);
       const isCrit = Math.random() < critChanceEff;
       const critMult = isCrit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1;
-      const dmg = gunShotBaseDamage(shotWeapon, player, meleeGt) * critMult * skillOutgoingDamageMult(player);
+      const dmg = gunShotBaseDamage(shotWeapon, player, meleeGt) * critMult * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player);
       const dmgChannel = classifyProjectileDamageChannel('handgun', weapon.key);
       // postureImpact='heavy'(比率0.10・パイルドライバーと同じ「新しい打撃種別は作らない」枠組み・
       // §17-5)。gpSource='melee'(弾ではなく近接として幻影ゲートへ渡す=幻影の弾専用パリィの
@@ -1145,7 +1146,10 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
   const count = shotWeapon.count ?? 1;
   // GHOST-GUN-PARITY: 拡散角/サイズ・速度の計算式は共通ヘルパへ抽出しただけ(値は不変)。
   const shotDirections = computeShotDirections(shotWeapon, baseDir);
-  const { size, speed } = projectileFlightStats(shotWeapon);
+  const { size, speed: baseSpeed } = projectileFlightStats(shotWeapon);
+  // B10 血の覚醒(THEONE_ROUND2 §3-1): 弾速 ×1.5は**発射時に確定**(飛行中の弾は変わらない・射程も伸びる=副作用として許容)。
+  // 守護霊は buildGhostGunShots 側(この関数を通らない)・疑似Playerは血が落ちているので影響しない。
+  const speed = baseSpeed * bloodAwakenMult(player, useGameStore.getState().gameTime).boost;
   // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG・2026-09-07 C-2検収A-1で確定): 「中心線からの
   // 横ズレ」方式(coilShotgun.ts)の起点になる、ペレットiごとの振幅(px・±COIL_AMPLITUDE_PXへ等間隔)。
   // 基礎の拡散角は持たせない(CATALOGのspreadRadOverride:0)ので、computeShotDirectionsは

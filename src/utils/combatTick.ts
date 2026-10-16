@@ -373,6 +373,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
           : b.moveKey === 'jo-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const hurtAtBefore = useGameStore.getState().player.lastHurtAt; // この一撃で段が付いたかを見分ける(下の押し出し)
+        const armoredAtBefore = useGameStore.getState().player.hurtArmoredAt; // B12: アーマーで受けたかを見分ける(下の押し出し)
         const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined, { type: blastEnemyType, id: b.enemyId }); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
@@ -381,7 +382,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         // 向き: 爆心の真上で食らった時は向いている方の逆へ(真上だと向きが決まらず一歩も飛ばなかった=社長指摘2026-10-10)。
         const face = useGameStore.getState().player.lastDirection ?? { x: 1, y: 0 };
         const push = blastPushDir(bpcx - b.x, bpcy - b.y, face.x, face.y);
-        useGameStore.setState(st => {
+        // B12 スーパーアーマー(THEONE_ROUND2 §4-3): damagePlayer がアーマーで受けた(hurtArmoredAt が変わった)なら、爆風の押し出しも**書かない**
+        // (ここは吹き飛びを書く2箇所のうちの1つ。アーマー時は lastHurtAt を書かない代わりに hurtArmoredAt が変わるので、命中は「どちらかが変わった」で見える)。
+        const armoredNow = useGameStore.getState().player.hurtArmoredAt !== armoredAtBefore;
+        if (!armoredNow) useGameStore.setState(st => {
           const landed = st.player.lastHurtAt !== hurtAtBefore;
           const { speed: kbSp, ms: kbMs } = blastKnockbackOf(PLAYER_KNOCKBACK_SPEED, landed ? st.player.lastHurtTier : undefined, b.kbSpeed, b.kbMs);
           return { player: {

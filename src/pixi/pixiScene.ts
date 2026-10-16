@@ -371,6 +371,8 @@ import { getBloomEnabled } from '../config/graphics';
 // SKILL_BUILD_REDESIGN.md §21(B5)/§24(社長指示2026-08-13): 枠光の判定は純関数のまま(pixiは読むだけ・
 // 判定を書かない)。バーサーカー=HP依存の常時オーラ、オーバークロック=proc起点の800msフラッシュ。
 import { berserkerFrameLight, overclockFrameLit, OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
+import { bloodAwakenRedAlpha } from '../utils/bloodAwaken'; // B10 血の覚醒: 体の赤・赤い光の濃さ(入り0.3秒・終わり1秒)
+import { superArmorSquashY, SUPER_ARMOR_POSE_DELAY_MS } from '../utils/superArmor'; // B12 スーパーアーマー: 踏ん張りの縦倍率
 import { GLOW_R_M, GLOW_R_L, GLOW_R_XL } from '../utils/glowTiers';
 import { FONT_STACK, JP_SERIF_STACK } from '../config/font';
 import {
@@ -4762,6 +4764,7 @@ export class PixiScene {
   private areaTapeLastNow = 0;            // 前フレームの実時刻(見えの追従の dt 用)
   private areaFlashKey = 0;               // 今の一拍(areaCrossFx.at)
   private areaFlashAngle = 0;             // 一拍の中心=踏んだ点の角度(原点から)
+  private areaTapeFlip: (boolean | undefined)[] = []; // 輪ごとの文字の向き(斜め付近でちらつかないよう前の値を保つ)
   private retArrow: {
     key: number;                         // 窓の openedAt(新しい窓で作り直す)
     mode: 'show' | 'retract' | 'exit';   // 出ている/条件が崩れて引っ込む/反撃が成立して抜ける
@@ -4866,6 +4869,7 @@ export class PixiScene {
   // syncLocalEventLighting(投影影)の走査対象にも入らない=「投影影を落とすイベントライトは使わない」を満たす。
   private playerAuraGold = new Sprite(getSoftGlowTexture()); // バーサーカー: HP70%未満で常時点灯・強度は失HP比例
   private playerAuraBlue = new Sprite(getSoftGlowTexture()); // オーバークロック: proc後800msのワンショットフラッシュ
+  private playerAuraRed = new Sprite(getSoftGlowTexture()); // B10 血の覚醒: 覚醒中の赤い光(入り0.3秒・終わり1秒。バーサーカー金/オーバークロック青と同じ加算ソフトグローの家族)
   /** ★§4手順1: 強glowが地面に落とす光だまり(加算・プール済み=作っては壊さない)。 */
   private glowGroundLayer = new Container();
   private glowGroundPool: Sprite[] = [];
@@ -5708,6 +5712,10 @@ export class PixiScene {
     this.playerAuraBlue.blendMode = 'add';
     this.playerAuraBlue.tint = 0x60a5fa;
     this.playerAuraBlue.visible = false;
+    this.playerAuraRed.anchor.set(0.5);
+    this.playerAuraRed.blendMode = 'add';
+    this.playerAuraRed.tint = 0xff2a3a;
+    this.playerAuraRed.visible = false;
     // 登場演出のヘリ。danceUiLayer(filteredWorld外=被写界深度でボケない/world座標で追従)に置く。
     // ぼかさない要件のため effectLayer(=tilt-shiftでボケる)からこちらへ移動。画像登場時のみ表示。
     this.helicopter.anchor.set(0.5);
@@ -5758,6 +5766,7 @@ export class PixiScene {
       this.playerLight,
       this.playerAuraGold,
       this.playerAuraBlue,
+      this.playerAuraRed,
       this.alchemyCircle,
       this.castleSummonCircle,
       this.shadowContainer,
@@ -9843,6 +9852,17 @@ export class PixiScene {
       this.playerAuraBlue.visible = life > 0.01;
     } else {
       this.playerAuraBlue.visible = false;
+    }
+    // ③血の覚醒(赤): 覚醒中の体の周りに赤い柔らかい光(THEONE_ROUND2 §3-2)。濃さは bloodAwakenRedAlpha(入り0.3秒ease-out・終わり1秒で戻る)。
+    // 加算なので重いのは「絵」ではなく投影影を落とす光源だけ——この光は syncLocalEventLighting に載せない(影を落とさない)。
+    const bloodRed = bloodAwakenRedAlpha(s.player, s.gameTime);
+    if (bloodRed > 0.01) {
+      this.playerAuraRed.position.set(lx, ly);
+      this.playerAuraRed.width = this.playerAuraRed.height = (GLOW_R_L + (GLOW_R_XL - GLOW_R_L) * 0.5) * 2 * lightScale;
+      this.playerAuraRed.alpha = bloodRed * 0.95 * (0.92 + 0.08 * Math.sin(now / 320)); // 光は強め(体の赤と合わせて「赤い」と読める量・実測で0.7は薄かった)
+      this.playerAuraRed.visible = true;
+    } else {
+      this.playerAuraRed.visible = false;
     }
 
     this.applyHideLayers();
@@ -17739,6 +17759,15 @@ export class PixiScene {
       actSqY *= 1 + PLAYER_COUNTER_POP * pop;
       actLean += face * PLAYER_COUNTER_LEAN_RAD * pop;
     }
+    // ★B12 スーパーアーマーの踏ん張り(THEONE_ROUND2 §4-4): アーマーで吹き飛びを打ち消した被弾の +200ms(被弾フラッシュが引いた後)に、
+    // 体が一瞬沈んで(縦 0.94)180ms かけて戻る+足元に小さな砂埃。白い縁・赤は使わない。常時表示なし。描画のみ(store には書かない)。
+    if (p.hurtArmoredAt !== undefined) {
+      const sinceArmor = now - p.hurtArmoredAt;
+      if (PLAYER_MOTION_FX) actSqY *= superArmorSquashY(sinceArmor);
+      const dustDt = sinceArmor - SUPER_ARMOR_POSE_DELAY_MS;
+      const armorDust = this.latchFx('player:armordust', dustDt >= 0 && dustDt < 90, DUST_MS * 0.6, now, () => [fb.footX, fb.footY]);
+      if (armorDust) this.drawDust(armorDust.d[0], armorDust.d[1], Math.max(fb.boxW, 28) * 0.42 * dsc, armorDust.t, this.dustTintForStage(), this.dustAlpha(armorDust.t) * 0.7, armorDust.t0); // 小さく(0.95 は体を覆う塊になった・実測)
+    }
     // リロード中: 手元作業の小刻みな上下＋左右リーン(リロード中だけ・進行と独立)。
     if (PLAYER_MOTION_FX && p.reloadingWeaponId && now < p.reloadEndsAt) {
       actOffY += Math.sin(now / 70) * PLAYER_RELOAD_BOB_PX * dsc;
@@ -17903,6 +17932,29 @@ export class PixiScene {
     // ★対人トラップに掛かっている3秒(足元の輪+体の水色)。プレイヤーの hitFlash は他で使っていない=毎フレーム既定OFFから。
     view.hitFlash.visible = false;
     this.drawTrapBind(view, p.trapDebuffUntil, now, fb.footX, fb.footY, fb.boxW, this.depthScale(fb.footY), true);
+    // ★B10 血の覚醒(THEONE_ROUND2 §3-2・社長「覚醒中はプレイヤーの色を赤に」): 本体と同じ絵を**赤く染めて加算で重ねる**
+    // (ドット絵の明暗は残る。乗算 tint は絵が黒く沈む=この作品の黒tint事故を踏まない)。白シルエットではなく元の絵そのものを使う。
+    // 水色のトラップ拘束が hitFlash を使っている間は体の色を譲る。判定・移動には触れない。
+    {
+      const redA = bloodAwakenRedAlpha(p, gameTime);
+      if (redA > 0.01 && !view.hitFlash.visible && view.sprite.visible && view.sprite.texture && view.sprite.texture.width > 1) {
+        const hf = view.hitFlash;
+        hf.texture = view.sprite.texture;
+        hf.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
+        hf.position.set(view.sprite.position.x, view.sprite.position.y);
+        hf.scale.set(view.sprite.scale.x, view.sprite.scale.y);
+        hf.skew.set(view.sprite.skew.x, view.sprite.skew.y);
+        hf.rotation = view.sprite.rotation;
+        // 加算だけだと桃色に寄って「赤い体」に読めない(ヘッドレス実測)。通常合成で赤く染めた写しを 0.62 重ねる=明暗を残したまま全身が赤。
+        // 乗算 tint(本体を暗くする)は使わない。白フラッシュ側は使う時に blendMode='add' へ戻す(下)。
+        hf.blendMode = 'normal';
+        hf.tint = 0xe8202e;
+        hf.alpha = redA * 0.62 * view.sprite.alpha;
+        hf.visible = true;
+      } else if (view.hitFlash.blendMode !== 'add') {
+        view.hitFlash.blendMode = 'add';
+      }
+    }
     // 刀/小烏丸(村雨)装備中: 実画像(katana-item)をプレイヤー背面へ表示。
     // 武将フル装備の立ち絵中は武器を描いた一枚絵なので背負い刀は隠す(二重表示回避)。
     const hasKatanaSub = p.subWeapons.includes('murasame') || p.subWeapons.includes('katana');
@@ -18114,7 +18166,7 @@ export class PixiScene {
     //   緑/3割未満で赤)。HUDの大きなバーは視線の外にあるので、「いま食らった分」を体の近くで読ませる。1秒で消える
     //   (最後の0.3秒はフェード=慣性)。満タンなら出さない。描き直しは overlay(毎フレーム clear 済み)に数図形=負荷1/10。
     {
-      const sinceHit = now - (p.lastHurtAt ?? -1e9);
+      const sinceHit = now - Math.max(p.lastHurtAt ?? -1e9, p.hurtArmoredAt ?? -1e9); // B12: アーマーで受けた被弾でも頭上の体力の線は出す
       if (sinceHit >= 0 && sinceHit < PLAYER_HIT_HP_BAR_MS && p.health < p.maxHealth && p.health > 0) {
         // 入り(70ms): 下から2px浮きながら立ち上がる(慣性・武器スプライトの統一型と同じ向き)。消え(300ms): 減速フェード。
         const rise = Math.min(1, sinceHit / PLAYER_HIT_HP_BAR_IN_MS);
@@ -35148,16 +35200,22 @@ export class PixiScene {
       }
       const name = AREA_ZONE_NAMES_EN[i + 1] ?? '';
       if (!name) continue;
-      // 板: 区域名と KEEP OUT を交互に、区切り「··」を添える。間隔は画面で約260px(世界座標に固定=歩いても滑らない)。
-      const spacing = 260 / wz;
+      // 板: 区域名と KEEP OUT を交互に、区切り「··」を添える。間隔は世界で 260px 固定(ズームが変わっても板が滑らない)。
+      // ★社長(2026-10-16 実機)「文字の動き方が変。プレイヤーの動きに連動せずに、ゆっくり右へ流れてる感じに」: 板は自機や
+      //   ズームに連動せず、**読む向きへ一定の速さ(世界 22px/s)でゆっくり流れる**(電光掲示のテープ)。位相は時刻だけで決まる。
+      const spacing = 260;
       const stepAng = spacing / r;
-      const kStart = Math.ceil(a0 / stepAng), kEnd = Math.floor(a1 / stepAng);
-      // 読む向きは輪ごとに1つ: 自機の位置の接線で決める(同じ画面に逆向きが混ざらない)。
+      // 読む向きは輪ごとに1つ: 自機の位置の接線で決める(同じ画面に逆向きが混ざらない)。斜め45°付近では前の向きを保つ(ちらつかない)。
       const rotBase = pAng + Math.PI / 2;
       const cb = Math.cos(rotBase), sb = Math.sin(rotBase);
-      const flip = Math.abs(cb) > 0.2 ? cb < 0 : sb < 0; // 横なら左→右、縦なら上→下に読む
+      const prevFlip = this.areaTapeFlip[i];
+      const flip = Math.abs(cb) > 0.35 ? cb < 0 : Math.abs(cb) < 0.12 ? sb < 0 : (prevFlip ?? (cb < 0)); // 横なら左→右、縦なら上→下に読む
+      this.areaTapeFlip[i] = flip;
+      const flowAng = ((now / 1000) * 22 % spacing) / r * (flip ? -1 : 1); // 読む向き(文字の +x)へ流れる
+      const kStart = Math.ceil((a0 - flowAng) / stepAng) - 1, kEnd = Math.floor((a1 - flowAng) / stepAng) + 1;
       for (let kk = kStart; kk <= kEnd && used < MAX_TEXTS; kk++) {
-        const ang = kk * stepAng;
+        const ang = kk * stepAng + flowAng;
+        if (ang < a0 - stepAng * 0.5 || ang > a1 + stepAng * 0.5) continue;
         const hk = hz(r, ang);
         if (hk < 0.03) continue;
         let t = this.areaTapeTexts[used];

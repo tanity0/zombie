@@ -11,6 +11,7 @@
 import type { Player, PlayerBuildSnapshot, Summon, Weapon } from '../types/game';
 import { createWeapon } from './weaponUtils';
 import { buildHasLoadout, buildPseudoPlayer } from './playerBuild';
+import { withoutBlood } from './bloodAwaken';
 
 export interface GhostBuild {
   /** スナップショットに武器ロードアウトが入っていたか(false=旧プロファイル→今の装備借用のフォールバック)。 */
@@ -27,7 +28,8 @@ export interface GhostBuild {
 
 /** スナップショット(欠損可)+召喚時の本人から、ゴーストのビルドを1組組み立てる(純関数)。 */
 export const resolveGhostBuild = (snap: PlayerBuildSnapshot | undefined, live: Player): GhostBuild => {
-  const pseudo = buildPseudoPlayer(snap, live);
+  // B10 血の覚醒: 本人の血・覚醒を守護霊の疑似Playerに乗せない(旧プロファイル=snap無しは live をそのまま返すので、ここでも落とす)。
+  const pseudo = withoutBlood(buildPseudoPlayer(snap, live));
   if (!buildHasLoadout(snap) || snap === undefined) {
     // 旧プロファイル(ロードアウト未記録)=従来どおり召喚時のプレイヤーの現在装備を借用する。
     const guns = live.weapons.filter(w => !w.isMelee);

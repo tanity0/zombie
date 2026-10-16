@@ -120,6 +120,8 @@ export const SKILL_SINGLE_ICON: Partial<Record<SkillKey, string>> = {
   'warm-up': 'skill/warm-up',                 // 107 ウォームアップ
   'big-bullet': 'skill/big-bullet',           // 108 ビッグバレット(横長140×68=contain表示前提)
   'shukuchi': 'skill/shukuchi',               // 縮地(社長支給2026-10-01・40×34=contain表示前提)
+  // THEONE_ROUND2 §6 #8: スーパーアーマーは39枚目の支給まで**意味の近い既存アイコン(防衛=紋章)を借りる**(色違いは作らない)。支給されたら専用ファイルに差し替える。
+  'super-armor': 'skill/poi-guard',
 };
 
 /** 単体ファイルのアイコン名(無ければ null)。 */

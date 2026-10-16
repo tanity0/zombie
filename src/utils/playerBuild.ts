@@ -170,5 +170,7 @@ export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: P
     consumableSpeedUntil: 0,
     consumableXpUntil: 0,
     consumableProtectionUntil: 0,
+    // B10 血の覚醒: 本人の覚醒を守護霊・幻影に乗せない(乗ると覚醒中に計測したビルドの守護霊が永久に×1.5)。
+    bloodMeter: 0, bloodLastGainAt: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0,
   };
 };

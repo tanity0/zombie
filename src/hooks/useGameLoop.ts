@@ -56,7 +56,7 @@ import {
   // オーバークロックproc時クイックリロード / シーカー半透明中の攻撃封印(覚醒で解除)。
   BOMB_COUNTER_AWAKEN_KB_PX, skillExplosionKbMult, overclockAwakenReloadPatch, isSeekerActive,
   counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
-  skillCritMult, skillOutgoingDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
+  skillCritMult, skillOutgoingDamageMult, skillBloodAwakenDamageMult, sniperGunMult, skillExplosionMult, hasSkill, skillLevel, skillComboMasterMult,
   // v0.25.2514(GHOST-BUILD-1): 近接/カウンター反撃の唯一の式(プレイヤーと守護霊で共有)。
   meleeSwingBaseDamage, meleeHitCritChance, counterReplyDamage,
   skillMagnetPullRadius, skillOverclockChance, skillCooldownMult, skillGoldRushMult, strikerMeleeMult,
@@ -159,6 +159,7 @@ import {
 // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 守護霊は「計測時ビルド」で戦う。ビルドの復元+倍率評価用の
 // 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
 import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
+import { bloodAwakenStep, isBloodAwakening } from '../utils/bloodAwaken'; // B10 血の覚醒の遷移(満ちたら自動発動・終わりで0へ)
 import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle';
 // v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀のオート斬撃の標的選択と、
 // 刀の一閃/ワイヤーのロコモーション上書き。どちらもプレイヤーと守護霊が同じ純関数を通る。
@@ -558,6 +559,7 @@ import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
 // ゲームプレイ中の「プレイヤーの移動」と「敵の移動」だけを倍速にする係数。
 // movePlayer / updateEnemies に渡す deltaTime にのみ掛ける(弾・召喚・軍人・進行・演出・
 // スポーンは等速のまま)。すぐ戻せるよう単一定数で管理: 1.0 = 従来等速 / 1.2 = 現在。
+let bloodDripNextAt = 0; // B10: 覚醒中の血の粒の次の発生 gameTime(覚醒が終われば0へ戻る)
 const MOVE_SPEED_MULT = GAME_SPEED; // ゲームスピード(?speed=で調整)。既定1.2。プレイヤー/敵の移動テンポ。
 
 // 被弾時の「背中側にドバッと火」破裂演出: 2コマ立ち絵(spawnFireJet)＋根元の小グロー1個。
@@ -12520,6 +12522,32 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         useGameStore.getState().tickBloodSpikes();
         useGameStore.getState().tickGravityWells();
 
+        // B10 血の覚醒(THEONE_ROUND2 §3): 満ちたら自動発動(10秒)・終わったら血と覚醒を0へ。遷移の書き手はここ1箇所
+        // (加算は gameStore の grantMeleeBlood/grantGunBlood・乾きは bloodDryStep が導く=毎フレーム書かない)。
+        // 遷移があった時だけ store を書く。発動音は既存の heavy-impact を1回(終わりは無音)。
+        {
+          const bloodStep = bloodAwakenStep(useGameStore.getState().player, newGameTime);
+          if (bloodStep) {
+            useGameStore.setState(st => ({ player: { ...st.player, ...bloodStep.patch } }));
+            if (bloodStep.started) playSfx('heavy-impact');
+          }
+        }
+        // 覚醒中の体から血の粒(移動速度に比例して後ろへ・立ち止まると足元へ滴る)。間引いて1〜2個ずつ(負荷1/10)。
+        {
+          const bp = useGameStore.getState().player;
+          if (isBloodAwakening(bp, newGameTime)) {
+            if (newGameTime >= bloodDripNextAt) {
+              const spd = Math.hypot(bp.vx ?? 0, bp.vy ?? 0);
+              const moveFrac = Math.min(1, spd / Math.max(1, bp.speed));
+              useGameStore.getState().spawnBloodDrip(
+                bp.x + bp.width / 2, bp.y + bp.height * 0.7, -(bp.vx ?? 0), -(bp.vy ?? 0), moveFrac);
+              bloodDripNextAt = newGameTime + (moveFrac > 0.15 ? 55 : 320) * (0.8 + Math.random() * 0.4);
+            }
+          } else {
+            bloodDripNextAt = 0;
+          }
+        }
+
         // ジブリルのランタン火(紫の単発火): M26 Step3で angelBossTick.ts へ移設(挙動不変・ヘッドレス共用)。
         tickAngelBossFires(newGameTime, triggerPlayerDeath);
         // §6.28-19(バッチM63): アクラシエルの結晶の槍(設置→2秒後に一度だけ起爆)。
@@ -14536,11 +14564,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const handcannonMult = projectile?.weaponKey === HANDCANNON_WEAPON_KEY
             ? handcannonDamageMultOnHit(enemyId)
             : 1;
+          // B10 血の覚醒: 与ダメ ×1.5は**銃('gun'チャネル)だけ**(サブ・爆発の弾は対象外=THEONE_ROUND2 §3-1)。守護霊弾は疑似Player(血なし)で 1。
+          const bloodGunMult = classifyProjectileDamageChannel(projectile?.weaponType, projectile?.weaponKey) === 'gun'
+            ? skillBloodAwakenDamageMult(shotOwner)
+            : 1;
           const dmg = plantCounterKill
             ? (enemyForFx?.maxHealth ?? 1) + 1
             : isAllyOwnedShot
               ? damage * critMult * pierceDecayMult
-              : damage * critMult * pierceDecayMult * skillOutgoingDamageMult(shotOwner) * sniperGunMult(shotOwner, enemyForFx) * comboMasterMult * handcannonMult;
+              : damage * critMult * pierceDecayMult * skillOutgoingDamageMult(shotOwner) * bloodGunMult * sniperGunMult(shotOwner, enemyForFx) * comboMasterMult * handcannonMult;
           // §6.21 M46: gun/otherチャネル分類(護衛NPC弾はnull=計測除外)。純関数=classifyProjectileDamageChannel。
           const dmgChannel = classifyProjectileDamageChannel(projectile?.weaponType, projectile?.weaponKey);
           // BOT_AND_GHOST.md §2.8 G2.5: ゴースト銃弾(weaponKey='ghost-gun')と守護霊の反射弾

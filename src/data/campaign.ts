@@ -751,6 +751,8 @@ export const SKILL_KEYS: SkillKey[] = [
   'gold-rush', 'time-keeper', 'ghost-shooter', 'dog-run', 'counter-master', 'slasher',
   'attack-shooter', 'runner', 'seeker', 'scrap-builder',
   'magnet', 'last-magazine', 'warm-up',
+  // THEONE_ROUND2 §4(B12): スーパーアーマー。通常ガチャ枠(均等抽選)・初期所持にしない・眠らせない。
+  'super-armor',
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ専用(reaperと同じくガチャからは絶対に出ない=
   // GACHA_EXCLUDED_SKILLSで除外。この場所でしか手に入らないことが存在理由)。
   'poi-bombing', 'poi-guard', 'poi-thrall',
@@ -817,6 +819,8 @@ export const SKILLS: Record<SkillKey, { name: string; desc: string; rarity: Skil
   'magnet':       { name: 'マグネット',     desc: '近くの経験値が足元に引き寄せられる(Lvでコインと弾も、覚醒でアイテムも。範囲も広がる)', rarity: 'normal' },
   'last-magazine':{ name: 'ラストマガジン', desc: '弾倉の最後の1発のダメージが2倍になる(Lvで2.5倍/3倍)。ショットガンは最後の1発の全ペレットが対象', rarity: 'normal' },
   'warm-up':      { name: 'ウォームアップ', desc: '出撃から60秒間、移動速度+10%・リロード時間-20%・クリティカル率+20%', rarity: 'normal' },
+  // THEONE_ROUND2 §4(B12): 見せる名は社長の言葉どおり「スーパーアーマー」(作品の口調の名へ変えるなら name の1行だけ)。
+  'super-armor':  { name: 'スーパーアーマー', desc: '小さなダメージでは吹き飛ばず、しゃがまず、動きも銃も止まらない。大きな一撃は従来どおり吹き飛ぶ', rarity: 'normal' },
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ討伐報酬(3種から毎回ランダムで1つ)。
   'poi-bombing':  { name: '爆撃',   desc: '3秒に1度、近くの敵にグレネードランチャーを自動で撃つ', rarity: 'super' },
   'poi-guard':    { name: '防衛',   desc: 'プレイヤーの周りをブーメランが回り続け、触れた敵にダメージを与え、敵の弾も消す', rarity: 'super' },
@@ -881,6 +885,7 @@ const SKILL_LEVEL_INFO: Partial<Record<SkillKey, { base: string; lv?: [string, s
   'magnet':       { base: '近くの落ち物が足元へ引き寄せられる', lv: ['経験値が引き寄せられる', 'コインと弾薬も引き寄せられ、範囲が広がる', '覚醒で回復や爆弾などのアイテムも引き寄せられ、範囲がさらに広がる'] },
   'last-magazine':{ base: '弾倉の最後の1発のダメージが増える(ショットガンは最後の1発の全ペレット)', lv: ['×2.0', '×2.5', '×3.0。覚醒でその1発に延焼が付く'] },
   'warm-up':      { base: '出撃から60秒間、移動速度+10%・リロード時間-20%・クリティカル率+20%' },
+  'super-armor':  { base: '小さなダメージでは吹き飛ばず、動きが止まらない', lv: ['8以下', '16以下', '24以下。近接を振っている間は吹き飛ばない'] },
   // PACING_PUZZLE.md §6.24 M48: 警察署アリーナ報酬(いずれもLv変化なし=Lv1固定)。
   'poi-bombing':  { base: '3秒に1度、近くの敵にグレネードランチャーを自動で撃つ' },
   'poi-guard':    { base: 'プレイヤーの周りをブーメランが回り続け、触れた敵にダメージを与え、敵の弾も消す' },
@@ -1002,6 +1007,7 @@ export const SKILL_ICON: Partial<Record<SkillKey, string>> = {
   'ghost-shooter': '🔫', 'dog-run': '🐕', 'counter-master': '🥊', slasher: '💫',
   'attack-shooter': '🔫', runner: '👟', seeker: '🧭', 'scrap-builder': '🔩',
   magnet: '🧲', 'last-magazine': '🔚', 'warm-up': '🤸',
+  'super-armor': '🗿',
   'poi-bombing': '🛩️', 'poi-guard': '🏰', 'poi-thrall': '🧟',
   'big-bullet': '⚫', 'ice-shot': '❄️', vampire: '🩸', 'incendiary-round': '♨️',
   'execution-shock': '💢', 'gravity-shot': '🕳️', 'echo-shot': '🔁',
