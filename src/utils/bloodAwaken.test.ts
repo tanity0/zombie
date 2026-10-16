@@ -1,57 +1,58 @@
 // B10 血の覚醒(research/THEONE_ROUND2.md §3)の純関数テスト。配線は src/store/bloodAwaken.store.test.ts。
 import { describe, it, expect } from 'vitest';
 import {
-  bloodGainMult, bloodGainFor, bloodDryStep, bloodMeterNow, isBloodAwakening, bloodAwakenMult, bloodAwakenRedAlpha, bloodAwakenGlowAlpha, bloodPulseMult,
+  bloodCapacity, bloodFill, BLOOD_CAP_MIN, bloodGainFor, bloodDryStep, bloodMeterNow, isBloodAwakening, bloodAwakenMult, bloodAwakenRedAlpha, bloodAwakenGlowAlpha, bloodPulseMult,
   applyBloodGain, bloodAwakenStep, bloodOrbTarget, withoutBlood,
   BLOOD_AWAKEN_MS, BLOOD_AWAKEN_FADE_MS, BLOOD_DRY_DELAY_MS, BLOOD_RED_IN_MS, BLOOD_RED_SETTLE_MS, BLOOD_RED_OVERSHOOT, BLOOD_BODY_LAG_MS, BLOOD_BEAT_PERIOD_MS,
 } from './bloodAwaken';
 
-describe('bloodGainMult(HPが低いほど早く染まる)', () => {
-  it('満タン×1.0 / HP半分×1.75 / HP2割×2.2', () => {
-    expect(bloodGainMult(1)).toBeCloseTo(1);
-    expect(bloodGainMult(0.5)).toBeCloseTo(1.75);
-    expect(bloodGainMult(0.2)).toBeCloseTo(2.2);
+describe('器(社長「体力が低いと…相対的に満タン値が下がってくるので自ずと早まる」)', () => {
+  it('器の大きさ=今の体力の割合(下限あり)・体力が無い欄は満タン扱い', () => {
+    expect(bloodCapacity({ health: 100, maxHealth: 100 })).toBeCloseTo(1);
+    expect(bloodCapacity({ health: 50, maxHealth: 100 })).toBeCloseTo(0.5);
+    expect(bloodCapacity({ health: 1, maxHealth: 100 })).toBeCloseTo(BLOOD_CAP_MIN);
+    expect(bloodCapacity({})).toBeCloseTo(1);
   });
-  it('単調: HPが減るほど増える(0.05刻みで全域)', () => {
-    let prev = bloodGainMult(1);
-    for (let hp = 0.95; hp >= -0.0001; hp -= 0.05) {
-      const m = bloodGainMult(hp);
-      expect(m).toBeGreaterThanOrEqual(prev);
-      prev = m;
+  it('同じ血でも体力が低いほど赤く染まった割合が大きい(単調)', () => {
+    let prev = -1;
+    for (let hp = 100; hp >= 0; hp -= 5) {
+      const f = bloodFill({ bloodMeter: 0.1, bloodLastGainAt: 0, health: hp, maxHealth: 100 }, 0);
+      expect(f).toBeGreaterThanOrEqual(prev);
+      prev = f;
     }
   });
-  it('範囲外は丸める', () => {
-    expect(bloodGainMult(2)).toBeCloseTo(1);
-    expect(bloodGainMult(-1)).toBeCloseTo(2.5);
+  it('回復すると薄まる(血の量は変わらず割合が下がる)', () => {
+    const low = bloodFill({ bloodMeter: 0.2, bloodLastGainAt: 0, health: 40, maxHealth: 100 }, 0);
+    const high = bloodFill({ bloodMeter: 0.2, bloodLastGainAt: 0, health: 80, maxHealth: 100 }, 0);
+    expect(high).toBeLessThan(low);
   });
 });
 
 describe('bloodGainFor(表 §3-1)', () => {
   it('近接キル: 距離≤120px で +0.12 / それ以上 +0.06(境界は120を含む)', () => {
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 0, hpFrac: 1 })).toBeCloseTo(0.12);
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120, hpFrac: 1 })).toBeCloseTo(0.12);
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120.01, hpFrac: 1 })).toBeCloseTo(0.06);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 0 })).toBeCloseTo(0.12);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120 })).toBeCloseTo(0.12);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120.01 })).toBeCloseTo(0.06);
   });
   it('近接ヒットのみ +0.02', () => {
-    expect(bloodGainFor({ kind: 'melee-hit', distPx: 0, hpFrac: 1 })).toBeCloseTo(0.02);
+    expect(bloodGainFor({ kind: 'melee-hit', distPx: 0 })).toBeCloseTo(0.02);
   });
   it('銃キル: 距離≤90px だけ +0.06 / それ以上は 0(境界は90を含む)', () => {
-    expect(bloodGainFor({ kind: 'gun-kill', distPx: 90, hpFrac: 1 })).toBeCloseTo(0.06);
-    expect(bloodGainFor({ kind: 'gun-kill', distPx: 90.01, hpFrac: 1 })).toBe(0);
-    expect(bloodGainFor({ kind: 'gun-kill', distPx: 500, hpFrac: 0.1 })).toBe(0);
+    expect(bloodGainFor({ kind: 'gun-kill', distPx: 90 })).toBeCloseTo(0.06);
+    expect(bloodGainFor({ kind: 'gun-kill', distPx: 90.01 })).toBe(0);
+    expect(bloodGainFor({ kind: 'gun-kill', distPx: 500 })).toBe(0);
   });
-  it('HP補正が掛かる(HP2割の近接キル近距離=0.12×2.2)', () => {
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 10, hpFrac: 0.2 })).toBeCloseTo(0.264);
+  it('加算は体力で変わらない(器の方が縮む)', () => {
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 10 })).toBeCloseTo(0.12);
   });
-  it('受け入れ: 満タンHPの密着キル 8〜9回で満ちる / HP2割なら 4回', () => {
-    const perFull = bloodGainFor({ kind: 'melee-kill', distPx: 10, hpFrac: 1 });
-    expect(Math.ceil(1 / perFull)).toBe(9);
-    expect(perFull * 8).toBeGreaterThan(0.95);
-    const perLow = bloodGainFor({ kind: 'melee-kill', distPx: 10, hpFrac: 0.2 });
-    expect(Math.ceil(1 / perLow)).toBe(4);
+  it('受け入れ: 満タンHPの密着キル 8〜9回で満ちる / HP2割(器0.2)なら 2回', () => {
+    const per = bloodGainFor({ kind: 'melee-kill', distPx: 10 });
+    expect(Math.ceil(1 / per)).toBe(9);
+    expect(per * 8).toBeGreaterThan(0.95);
+    expect(Math.ceil(bloodCapacity({ health: 20, maxHealth: 100 }) / per - 1e-9)).toBe(2);
   });
   it('銃だけでは満ちにくい(満タンHPの近距離銃キルでも 17回)', () => {
-    expect(Math.ceil(1 / bloodGainFor({ kind: 'gun-kill', distPx: 10, hpFrac: 1 }))).toBe(17);
+    expect(Math.ceil(1 / bloodGainFor({ kind: 'gun-kill', distPx: 10 }))).toBe(17);
   });
 });
 

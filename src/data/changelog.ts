@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5085', items: [
+    '血の覚醒の溜まり方を変えた。血は体力の液体を染めるので、体力が減るほど器が小さくなり同じ血でも早く満ちる。回復すると薄まる。攻撃を受けて体力が減った瞬間に満ちることもある',
+  ] },
   { version: '0.25.5084', items: [
     '血の覚醒に入った瞬間、頭上に AWAKENING の文字が浮かぶ',
   ] },

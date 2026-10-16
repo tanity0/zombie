@@ -17,7 +17,7 @@ import { LOW_HP_PULSE_MS, lowHpBeatShape } from './lowHpPulse';
 
 /** 血の状態(Player の部分。テストでは必要な欄だけ渡せる)。 */
 export interface BloodFields {
-  /** 最後に浴びた時点の血の量(0..1)。乾きは含まない(→ bloodDryStep)。覚醒中は 1 のまま。 */
+  /** 最後に浴びた時点の血の量(満タン体力=1の絶対量・0..1)。乾きは含まない(→ bloodDryStep)。 */
   bloodMeter?: number;
   /** 覚醒の終わり(gameTime)。0=覚醒していない。 */
   bloodAwakenUntil?: number;
@@ -25,7 +25,23 @@ export interface BloodFields {
   bloodAwakenStartedAt?: number;
   /** 最後に浴びた時刻(gameTime)。乾きの起点。 */
   bloodLastGainAt?: number;
+  /** 今の体力・最大体力(満タン値=器の大きさを決める。無ければ満タン扱い)。 */
+  health?: number;
+  maxHealth?: number;
 }
+
+/**
+ * ★器の考え方(社長2026-10-16「体力が低いと溜まる量が増えるのではなく、相対的に満タン値が下がってくるので自ずと早まる」):
+ * 血は**体力の液体を染める**。血の量(bloodMeter)は満タン体力を1とした絶対量で、器の大きさ=今の体力の割合。
+ * 体力が減ると器が小さくなり、同じ血でも液体の多くが赤くなる=自ずと早く満ちる。回復すると器が大きくなり薄まる。
+ * 体力ゼロ付近で1滴で満ちないよう、器の下限を置く。
+ */
+export const BLOOD_CAP_MIN = 0.15;
+export const bloodCapacity = (p: BloodFields): number => {
+  const max = p.maxHealth ?? 0;
+  const frac = max > 0 ? Math.max(0, Math.min(1, (p.health ?? max) / max)) : 1;
+  return Math.max(BLOOD_CAP_MIN, frac);
+};
 
 /** 覚醒の長さ(gameTime ms)。 */
 export const BLOOD_AWAKEN_MS = 10000;
@@ -67,23 +83,17 @@ export type BloodGainKind = 'melee-kill' | 'melee-hit' | 'gun-kill';
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /**
- * HPが低いほど早く染まる(社長案): 満タン×1.0 → HP半分×1.75 → HP2割×2.2。単調(HPが減るほど増える)。
- * hpFrac は 0..1 に丸める。
- */
-export const bloodGainMult = (hpFrac: number): number => 1 + 1.5 * (1 - clamp01(hpFrac));
-
-/**
- * 1回の加算量(HP補正込み)。表は §3-1。
+ * 1回の加算量(満タン体力を1とした絶対量)。表は §3-1。体力による補正は掛けない(器の大きさ=bloodCapacity が担う)。
  *  - 近接キル: 距離≤120px で +0.12 / それ以上 +0.06 / 近接ヒットのみ +0.02
  *  - 銃キル: 距離≤90px で +0.06 / それ以上 0
  * distPx は呼び手がプレイヤー中心と敵中心で測る(melee-hit では使わない)。
  */
-export const bloodGainFor = (a: { kind: BloodGainKind; distPx: number; hpFrac: number }): number => {
+export const bloodGainFor = (a: { kind: BloodGainKind; distPx: number }): number => {
   let base = 0;
   if (a.kind === 'melee-kill') base = a.distPx <= BLOOD_MELEE_NEAR_PX ? BLOOD_GAIN_MELEE_KILL_NEAR : BLOOD_GAIN_MELEE_KILL_FAR;
   else if (a.kind === 'melee-hit') base = BLOOD_GAIN_MELEE_HIT;
   else if (a.kind === 'gun-kill') base = a.distPx <= BLOOD_GUN_NEAR_PX ? BLOOD_GAIN_GUN_KILL_NEAR : 0;
-  return base * bloodGainMult(a.hpFrac);
+  return base;
 };
 
 /** 覚醒中か。 */
@@ -106,30 +116,34 @@ export const bloodDryStep = (meter: number, lastGainAt: number, now: number, awa
 export const bloodMeterNow = (p: BloodFields, gameTime: number): number =>
   bloodDryStep(p.bloodMeter ?? 0, p.bloodLastGainAt ?? 0, gameTime, isBloodAwakening(p, gameTime));
 
+/** 液体のうち赤く染まった割合(0..1)= 血の量 ÷ 器(今の体力の割合)。覚醒中は1。 */
+export const bloodFill = (p: BloodFields, gameTime: number): number =>
+  isBloodAwakening(p, gameTime) ? 1 : clamp01(bloodMeterNow(p, gameTime) / bloodCapacity(p));
+
 /**
- * 加算を適用した後の欄を返す。加算が 0 以下 / 覚醒中は null(何も書かない)。溢れた分は捨てる(上限 1)。
+ * 加算を適用した後の欄を返す。加算が 0 以下 / 覚醒中は null(何も書かない)。溢れた分は捨てる(上限=今の器)。
  * 満ちたら自動発動するのは useGameLoop のティック(bloodAwakenStep)。
  */
 export const applyBloodGain = (p: BloodFields, gain: number, gameTime: number): { bloodMeter: number; bloodLastGainAt: number } | null => {
   if (!(gain > 0)) return null;
   if (isBloodAwakening(p, gameTime)) return null;
-  return { bloodMeter: Math.min(1, bloodMeterNow(p, gameTime) + gain), bloodLastGainAt: gameTime };
+  return { bloodMeter: Math.min(bloodCapacity(p), bloodMeterNow(p, gameTime) + gain), bloodLastGainAt: gameTime };
 };
 
 /**
  * 毎ティックの遷移(useGameLoop 1箇所)。書くべき欄があれば patch を返す。
  *  - 覚醒が終わった(gameTime ≥ until): 血を 0・覚醒を 0 へ
- *  - 覚醒していない & meter ≥ 1: 自動発動(started=true。音は呼び手が鳴らす)
+ *  - 覚醒していない & 器が満ちた(bloodFill ≥ 1。被弾で体力が減って器が縮んだ瞬間にも満ちうる): 自動発動(started=true。音は呼び手が鳴らす)
  *  - それ以外は null(書かない)
  */
 export const bloodAwakenStep = (
   p: BloodFields, gameTime: number,
-): { patch: Required<BloodFields>; started: boolean } | null => {
+): { patch: Required<Pick<BloodFields, 'bloodMeter' | 'bloodAwakenUntil' | 'bloodAwakenStartedAt' | 'bloodLastGainAt'>>; started: boolean } | null => {
   const until = p.bloodAwakenUntil ?? 0;
   if (until > 0 && gameTime >= until) {
     return { patch: { bloodMeter: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: p.bloodAwakenStartedAt ?? 0, bloodLastGainAt: 0 }, started: false };
   }
-  if (until <= gameTime && (p.bloodMeter ?? 0) >= 1) {
+  if (until <= gameTime && (p.bloodMeter ?? 0) > 0 && bloodFill(p, gameTime) >= 1 - 1e-9) {
     return {
       patch: { bloodMeter: 1, bloodAwakenUntil: gameTime + BLOOD_AWAKEN_MS, bloodAwakenStartedAt: gameTime, bloodLastGainAt: gameTime },
       started: true,
@@ -202,12 +216,12 @@ export const bloodPulseMult = (nowMs: number, depth: number): number => {
 };
 
 /**
- * 体力のオーブの液体が目指す「血の量」(0..1)。覚醒中は残り時間の割合(=満タンの赤から10秒で紫へ戻る)、
- * それ以外は乾き込みの血の量。React の購読ではなく rAF から getState で読む用。
+ * 体力のオーブの液体が目指す「赤の割合」(0..1)。覚醒中は残り時間の割合(=満タンの赤から10秒で紫へ戻る)、
+ * それ以外は液体のうち染まった割合(bloodFill)。React の購読ではなく rAF から getState で読む用。
  */
 export const bloodOrbTarget = (p: BloodFields, gameTime: number): number => {
   if (isBloodAwakening(p, gameTime)) return clamp01(((p.bloodAwakenUntil ?? 0) - gameTime) / BLOOD_AWAKEN_MS);
-  return bloodMeterNow(p, gameTime);
+  return bloodFill(p, gameTime);
 };
 
 /** 守護霊・幻影の疑似Playerから血の状態を落とす(本人の覚醒を他人に乗せない)。 */

@@ -4601,19 +4601,18 @@ export const grantReaperDefeatRewards = (get: () => GameState, at: { x: number; 
  * シールドバッシュ・守護霊の刀は同じ `player` を渡してくる(関数の中では見分けられない)ので、
  * **本人の近接を振り終えた呼び手(カウンター/刀の一閃/鞭。縮地・処刑・被弾反撃もこの3関数を通る)だけ**が呼ぶ。
  * kills=浴びる対象のキル(距離=プレイヤー中心と敵中心)/ hitOnly=倒せなかった命中の数(+0.02ずつ)。
- * HPが低いほど早く染まる(bloodGainFor)。覚醒中は加算しない(applyBloodGain が null)。満ちたら自動発動は useGameLoop。
+ * 体力が低いほど器(満タン値)が小さい=自ずと早く満ちる(bloodCapacity)。覚醒中は加算しない(applyBloodGain が null)。満ちたら自動発動は useGameLoop。
  */
 export const grantMeleeBlood = (get: () => GameState, kills: Enemy[], hitOnly: number): void => {
   if (kills.length === 0 && hitOnly <= 0) return;
   const st = get();
   const p = st.player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
-  const hpFrac = p.maxHealth > 0 ? p.health / p.maxHealth : 1;
   let gain = 0;
   for (const e of kills) {
-    gain += bloodGainFor({ kind: 'melee-kill', distPx: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy), hpFrac });
+    gain += bloodGainFor({ kind: 'melee-kill', distPx: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) });
   }
-  if (hitOnly > 0) gain += hitOnly * bloodGainFor({ kind: 'melee-hit', distPx: 0, hpFrac });
+  if (hitOnly > 0) gain += hitOnly * bloodGainFor({ kind: 'melee-hit', distPx: 0 });
   const patch = applyBloodGain(p, gain, st.gameTime);
   if (patch) useGameStore.setState(s => ({ player: { ...s.player, ...patch } }));
 };
@@ -4623,7 +4622,7 @@ export const grantGunBlood = (get: () => GameState, at: { x: number; y: number }
   const st = get();
   const p = st.player;
   const distPx = Math.hypot(at.x - (p.x + p.width / 2), at.y - (p.y + p.height / 2));
-  const gain = bloodGainFor({ kind: 'gun-kill', distPx, hpFrac: p.maxHealth > 0 ? p.health / p.maxHealth : 1 });
+  const gain = bloodGainFor({ kind: 'gun-kill', distPx });
   const patch = applyBloodGain(p, gain, st.gameTime);
   if (patch) useGameStore.setState(s => ({ player: { ...s.player, ...patch } }));
 };

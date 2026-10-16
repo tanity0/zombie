@@ -1,5 +1,6 @@
 // B10 血の覚醒(research/THEONE_ROUND2.md §3)の**配線**テスト。純関数は utils/bloodAwaken.test.ts。
 // 「誰が浴びるか」(本人の近接3関数・銃は距離≤90px)/ 乗る倍率 / 守護霊に持ち越さない / リセット を固定する。
+import { bloodFill } from '../utils/bloodAwaken';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 const backing: Record<string, string> = {};
@@ -67,11 +68,12 @@ describe('近接で浴びる(本人の近接だけ)', () => {
     expect(meter()).toBeCloseTo(0.12);
     expect(st().player.bloodLastGainAt).toBe(st().gameTime);
   });
-  it('HPが低いほど早く染まる: HP2割なら +0.12×2.2', () => {
+  it('体力が低いと器が小さい=自ずと早く満ちる: HP2割なら同じ +0.12 で液体の6割が赤い', () => {
     setHp(0.2);
     spawnInFront(1);
     st().triggerCounter();
-    expect(meter()).toBeCloseTo(0.264);
+    expect(meter()).toBeCloseTo(0.12);
+    expect(bloodFill(st().player, st().gameTime)).toBeCloseTo(0.6);
   });
   it('倒せなかった命中は +0.02', () => {
     spawnInFront(99999);
