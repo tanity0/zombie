@@ -864,12 +864,13 @@ const HUNTER_FAV_SCORE_NEEDED = 4;         // 6項目中4つ以上
 const SCREAMER_START_MS = 300000;          // 出現開始(ウェルカム終了から5分。延長計画2026-10-12でウェルカム後の時計=directorTimeへ揃えた)
 const SCREAMER_RESPAWN_CD_MS = 60000;      // 消滅(撃破/退場)後の再出現CD(60秒)
 // エリア(区域)遷移バナー: 距離帯を跨いだら区域名をイベント発生と同じUIで表示(社長指示)。
-// (旧 AREA_BANNER_MS=2600: 区域遷移の小さな帯。v0.25.5070 の B1 で「境界線+区画名の帯」(areaCrossFx・1.5秒)へ置き換えた)
+// (旧 AREA_BANNER_MS=2600: 区域遷移の小さな帯。v0.25.5070 の B1 で「境界線(1.3秒)+区域名(2.0秒)」(areaCrossFx)へ置き換えた)
 /**
  * ★B1(research/THEONE_ROUND2.md §1): 区域を跨いだ瞬間の告知を作る。ringIdx=跨いだ輪(省略時は zoneIdx-1=その区域の内側の境界)。
  * 弧(arc)は**プレイヤーが輪の上(±AREA_CROSS_ARC_NEAR_PX)に居る時だけ**描く(ファストトラベル・ゲートクリア時の遅延告知では帯だけ)。
  */
 const AREA_CROSS_ARC_NEAR_PX = 420;
+const AREA_CROSS_REBANNER_MS = 8000; // 同じ輪を再び跨いでも名前を出し直さない間(弧だけ)
 const areaCrossFxAt = (zoneIdx: number, deeper: boolean, banner: boolean, ringIdx = zoneIdx - 1): AreaCrossFx => {
   const p = useGameStore.getState().player;
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
@@ -2032,6 +2033,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const suppCaptureCountRef = useRef<number>(0);
   // 直近の区域インデックス(エリア遷移バナー用)。-1=未判定(開始/リワインド直後は黙って採用し、開始地点では出さない)。
   const areaZoneRef = useRef<number>(-1);
+  const lastAreaCrossRef = useRef<{ ring: number; at: number }>({ ring: -1, at: -Infinity }); // ★B1 直近に跨いだ輪(名前の出し直し抑止)
   // 社長指示(仕様変更v0.25.1523): 到達時のSEは1プレイ(1ラン)中1エリア1回まで。ステージ永続の
   // WallMetaとは別の「今回のランで既に鳴らした区域」集合(新ランでリセット)。
   const zoneSfxPlayedRef = useRef<Set<number>>(new Set());
@@ -5687,11 +5689,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 if (!gateBlocksThisWall) {
                   // ★B1(research/THEONE_ROUND2.md §1・社長「跨いだ時だけ、画面いっぱいの境界線と区画名を一瞬表示」): 小さなイベント帯ではなく、
-                  //   跨いだ輪の弧(描画)と画面幅いっぱいの名前の帯(HUD)を1.5秒だけ出す。他のイベント帯(eventBannerText)は従来どおり。
+                  //   跨いだ輪の弧(描画・1.3秒)と区域名(HUD・2.0秒)を出す。他のイベント帯(eventBannerText)は従来どおり。
                   //   再生中に次の跨ぎが来たら**上書き**(帯も弧も新しい方で描き直す)。ファストトラベル等で輪の上に居ない時は弧を描かない(帯だけ)。
-                  //   名前の帯は深い側へ入った時だけ。初回踏破は銘打ち(WallInscription・下の WALL_ENABLED 分岐)が同じ場所に出るので帯は譲る(弧だけ)。
+                  //   名前は両方向。初回踏破は銘打ち(WallInscription・下の WALL_ENABLED 分岐)が出るので名前は譲る(弧だけ)。
                   const firstBreachNow = WALL_ENABLED && wallIdxCrossed !== null && isFirstWallBreach(useGameStore.getState().wallMeta, wallIdxCrossed);
-                  useGameStore.setState({ areaCrossFx: areaCrossFxAt(zoneIdx, zoneIdx > prevZone, zoneIdx > prevZone && !firstBreachNow, Math.min(prevZone, zoneIdx)) });
+                  //   境界沿いの戦い(拠点は輪のすぐ外)で同じ輪を数秒内に行き来した時、名前は出し直さない(弧の線だけ)=SE の「1区域1回」と揃える
+                  //   (検収クリエイティブ監査)。判定・年表・SE は従来どおり。
+                  const ringCrossed = Math.min(prevZone, zoneIdx);
+                  const crossNow = Date.now();
+                  const recross = lastAreaCrossRef.current.ring === ringCrossed && crossNow - lastAreaCrossRef.current.at < AREA_CROSS_REBANNER_MS;
+                  lastAreaCrossRef.current = { ring: ringCrossed, at: crossNow };
+                  useGameStore.setState({ areaCrossFx: areaCrossFxAt(zoneIdx, zoneIdx > prevZone, !firstBreachNow && !recross, ringCrossed) }); // 名前は両方向(検収品質監査 A-2: 社長の言葉に方向の区別は無い・旧い帯も両方向だった)
                   // 歴史年表: より深い区域へ初めて到達したら即載せ(社長決定v0.25.1628)。dedup=区域index。
                   // 浅い側へ戻る移動(zoneIdx<prevZone)は「到達」ではないので記録しない。
                   if (zoneIdx > prevZone) {

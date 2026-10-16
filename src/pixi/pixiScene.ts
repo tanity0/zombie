@@ -682,7 +682,7 @@ const S3_CLOUD_HEIGHT_OVERRIDE = tsNum('s3cloudh', NaN); // 帯の高さ・画�
  *   far=遠景パノラマ / hz=遠景森1(地平帯) / nh=遠景森2 / ff=手前森 / fog=霧 / ground=地面ベース
  *   ★v0.25.2786で追加(遠景を全部消しても線が残ったため、上に被せている幕も対象にした):
  *   grade=全画面グレード / vig=周辺減光 / air=寒色グレード / cloud=雲影 / strips=地面ストリップ /
- *   dim=帯外の暗幕 / veil=研究所の暗幕 / mask=森のフェードマスクを外す
+ *   dim=帯外の暗幕 / veil=研究所の暗幕 / mask=森のフェードマスクを外す / areacross=区域を跨いだ瞬間の境界の弧(B1・v0.25.5070)
  *   ★v0.25.2789で追加(社長の示唆「霧っぽいのがあやしい」): `fog` を**霧全部**に拡張し、
  *   1枚ずつ詰める鍵も足した。fogback=奥霧 / fogunder=森下霧 / fogtop=森上霧 / nhmist=森2の底の境界霧
  */
@@ -4756,7 +4756,8 @@ export class PixiScene {
   // ★被弾反撃の向きの矢印(HIT_RETALIATION.md §7)。uiLayer=画面座標・環境光の影響外。▶を右向きで原点に描き、
   // Graphics ごと位置と回転を与える。
   private retArrowGfx = new Graphics();
-  private areaCrossGfx = new Graphics(); // ★B1 区域を跨いだ瞬間の境界の弧(世界座標・effectLayer)
+  private areaCrossGfx = new Graphics(); // ★B1 区域を跨いだ瞬間の境界の弧(世界座標・groundLayer=足の下)
+  private areaCrossShownAt = 0;           // 今描いている弧の開始時刻(出る瞬間に groundLayer の最上段へ上げ直すため)
   private retArrow: {
     key: number;                         // 窓の openedAt(新しい窓で作り直す)
     mode: 'show' | 'retract' | 'exit';   // 出ている/条件が崩れて引っ込む/反撃が成立して抜ける
@@ -5843,7 +5844,7 @@ export class PixiScene {
     // 照準サークルは uiLayer(研究所の暗幕/森の暗転より上=環境光の影響外)へ。screen座標で描画する。
     this.L.uiLayer.addChild(this.reticleGfx);
     this.L.uiLayer.addChild(this.retArrowGfx);
-    this.L.effectLayer.addChild(this.areaCrossGfx);
+    this.L.groundLayer.addChild(this.areaCrossGfx); // 境界は踏む物=足の下(クリエイティブ監査: 人物の上を線が通っていた)。出る瞬間に最上段へ上げ直す
     this.L.uiLayer.addChild(this.rescueSweatGfx); // 汗マーク=環境光の影響外(uiLayer)
     this.localEventShadeGfx.zIndex = -1_000_000;
     this.L.actorLayer.addChild(
@@ -35074,16 +35075,19 @@ export class PixiScene {
    */
   /**
    * ★B1(research/THEONE_ROUND2.md §1): 区域を跨いだ瞬間、跨いだ輪(原点中心・半径 radius)の弧を、跨いだ点から左右へ伸ばして画面の外まで描く。
-   *  入り350ms(ease-out・出足が最速)→保持500ms→消え600ms(端から薄れ中央が最後まで残る)。深い側=真鍮・浅い側=薄い白。赤・紫は使わない。
-   *  弧の角度幅は可視域の対角線から求める(ズーム0.4でも画面を横切る)。線の太さは画面pxで一定(2px・中央160pxは3px)。
+   *  入り350ms(ease-out・出足が最速)→保持450ms→消え500ms(端から中央へ吸い込まれて薄れる)。反対側は120ms遅れ=全長約1.4秒。琥珀1色(浅い側は薄く)。赤・紫は使わない。
+   *  跨いだ点が主役: 中央が一番濃く太く(160px は 3px)、外へ行くほど薄い。進行方向側が先に走り、反対側は 120ms 遅れて追う(画面の中で見える崩し)。
+   *  弧の角度幅は可視域の対角線から求める(ズーム0.4でも画面を横切る)。線の太さは画面pxで一定。地面の線なので groundLayer(足の下)。
    */
   private syncAreaCrossLine(now: number): void {
     const g = this.areaCrossGfx;
     const fx = useGameStore.getState().areaCrossFx;
-    // 入り350ms(出足最速・減速)→保持450ms→消え500ms。帯(HUD)はこの弧が消え切った後に一拍残って消える(順序に意味を持たせる)。
+    // 入り350ms(出足最速・減速)→保持450ms→消え500ms。題字(HUD)は弧が走り切る 350ms に出て、弧が消えた後に一拍残る(順序に意味を持たせる)。
     const IN_MS = 350, HOLD_MS = 450, OUT_MS = 500;
+    const TRAIL_LAG_MS = 120; // 反対側の遅れ(画面の中で先と後が見える量)
     const t = fx ? now - fx.at : Infinity;
-    if (!fx || !fx.arc || t < 0 || t >= IN_MS + HOLD_MS + OUT_MS || HIDE_LAYERS.has('areacross')) { if (g.visible) { g.visible = false; g.clear(); } return; }
+    if (!fx || !fx.arc || t < 0 || t >= IN_MS + TRAIL_LAG_MS + HOLD_MS + OUT_MS || HIDE_LAYERS.has('areacross')) { if (g.visible) { g.visible = false; g.clear(); } return; }
+    if (this.areaCrossShownAt !== fx.at) { this.areaCrossShownAt = fx.at; this.L.groundLayer.addChild(g); } // 地面の最上段へ(血溜まり・影より上、足より下)
     const wz = this.L.worldGroup.scale.x || 1;
     const r = Math.max(1, fx.radius);
     // 可視域の対角線(世界px)ぶんの弧=画面を必ず横切る。弧の角度は半径で割る(πを越えない)。
@@ -35091,14 +35095,17 @@ export class PixiScene {
     const spanMax = Math.min(Math.PI, (diagWorld * 0.75) / r);
     const easeOut = (u: number) => 1 - (1 - u) * (1 - u) * (1 - u);
     const grow = easeOut(Math.min(1, t / IN_MS));
-    // 進行方向側(lead)が先に届く。反対側は少し遅れて短い(完全対称にしない)。
+    // 進行方向側(lead)が先に走り切る。反対側は 120ms 遅れて追う(入りの間、画面の中で先と後が見える)。
     const spanLead = spanMax * grow;
-    const spanTrail = spanMax * 0.85 * easeOut(Math.min(1, Math.max(0, t - 60) / IN_MS));
-    const outU = t > IN_MS + HOLD_MS ? Math.min(1, (t - IN_MS - HOLD_MS) / OUT_MS) : 0;
+    const growTrail = easeOut(Math.min(1, Math.max(0, t - TRAIL_LAG_MS) / IN_MS));
+    const spanTrail = spanMax * growTrail;
+    const holdFrom = IN_MS + TRAIL_LAG_MS;
+    const outU = t > holdFrom + HOLD_MS ? Math.min(1, (t - holdFrom - HOLD_MS) / OUT_MS) : 0;
     const shrink = 1 - outU * outU;          // 消えは端から中央へ吸い込まれる
     const alphaAll = 1 - outU;
-    const color = fx.deeper ? 0xffb340 : 0xffffff; // 深い側=UIの琥珀(--menu-accent)・浅い側=白(線だけ・帯は出さない)
-    const baseAlpha = fx.deeper ? 0.9 : 0.6;
+    // 色は1つ(UIの琥珀=--menu-accent)。浅い側へ戻る時は強さだけ落とす(方向を色相で符号化しても学ぶ機会が無い=検収クリエイティブ監査。設計時は白だった)。
+    const color = 0xffb340;
+    const baseAlpha = fx.deeper ? 0.9 : 0.5;
     g.clear(); g.visible = true;
     const a0 = fx.angle - (fx.lead < 0 ? spanLead : spanTrail) * shrink;
     const a1 = fx.angle + (fx.lead > 0 ? spanLead : spanTrail) * shrink;
@@ -35106,20 +35113,26 @@ export class PixiScene {
     // 地平線フェード(horizonActorAlpha)を弧にも掛ける=世界の他の物と同じ法則で奥へ消える。
     // 1本で描くと奥(tilt-shiftの強ボケ帯)で線が太いボケの帯になり、森の上まで突き抜ける(実測・ヘッドレス)。
     // 区間ごとに alpha を変えるため分割して描く(最大24本/フレーム・1.3秒だけ=負荷1/10)。
+    // 跨いだ点が主役: 中央が一番濃く、外へ行くほど薄い(端は 0.4 倍)。中央 160px は 3px。
     const SEGS = 24;
     const hz = (ang: number) => this.horizonActorAlpha(r * Math.sin(ang));
+    const centerW = 80 / r; // 中央の太い区間(片側 80px)
     for (let i = 0; i < SEGS; i++) {
       const s0 = a0 + (a1 - a0) * (i / SEGS), s1 = a0 + (a1 - a0) * ((i + 1) / SEGS);
-      const k = hz((s0 + s1) / 2);
+      const mid = (s0 + s1) / 2;
+      const k = hz(mid);
       if (k < 0.02) continue;
-      g.arc(0, 0, r, s0, s1).stroke({ width: 2 / wz, color, alpha: baseAlpha * alphaAll * k });
+      const u = Math.min(1, Math.abs(mid - fx.angle) / Math.max(1e-6, spanMax)); // 0=跨いだ点 1=画面の端
+      const weight = 1 - 0.6 * u;
+      const thick = Math.abs(mid - fx.angle) <= centerW;
+      g.arc(0, 0, r, s0, s1).stroke({ width: (thick ? 3 : 2) / wz, color, alpha: baseAlpha * alphaAll * k * weight });
     }
-    // 光は伸びる先端に置く(動きが見える)。入りの間だけ、両端 70px ぶんを明るく太く。
-    if (grow < 1 && outU === 0) {
-      const tip = Math.min(spanLead, 70 / r);
-      const k1 = hz(a1 - tip / 2), k0 = hz(a0 + tip / 2);
-      if (k1 > 0.02) g.arc(0, 0, r, a1 - tip, a1).stroke({ width: 3.5 / wz, color, alpha: k1 });
-      if (k0 > 0.02) g.arc(0, 0, r, a0, a0 + tip).stroke({ width: 3.5 / wz, color, alpha: 0.9 * k0 });
+    // 光は伸びる先端に置く(動きが見える)。走っている間だけ、先端 70px を明るく太く(先に走る側が明るい)。
+    if (outU === 0) {
+      const tip = 70 / r;
+      const leadEnd = fx.lead > 0 ? a1 : a0, trailEnd = fx.lead > 0 ? a0 : a1;
+      if (grow < 1) { const k1 = hz(leadEnd); if (k1 > 0.02) g.arc(0, 0, r, Math.min(leadEnd, leadEnd - fx.lead * tip), Math.max(leadEnd, leadEnd - fx.lead * tip)).stroke({ width: 3.5 / wz, color, alpha: k1 }); }
+      if (growTrail > 0 && growTrail < 1) { const k0 = hz(trailEnd); if (k0 > 0.02) g.arc(0, 0, r, Math.min(trailEnd, trailEnd + fx.lead * tip), Math.max(trailEnd, trailEnd + fx.lead * tip)).stroke({ width: 3 / wz, color, alpha: 0.75 * k0 }); }
     }
   }
 

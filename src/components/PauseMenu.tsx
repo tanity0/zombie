@@ -9,12 +9,15 @@ import { formatTime } from '../utils/renderUtils';
 import { PauseMap, type PauseMapData } from './PauseMap'; // ★B2 一時停止の地図(research/THEONE_ROUND2.md §2)
 import { getRunPois, isPoiRevealed } from '../world/pois';
 import { getSelectedStageId } from '../data/progress';
+import { isPracticeRun } from '../utils/bossPractice';
+import { isGauntletRun } from '../utils/gauntletMode';
 
 // ★B2: 地図を出すステージ=区域の輪と拠点があるステージだけ(研究所・洋館の通路・訓練・EX・ステージ7は出さない)。ボスメーカー/1対1も出さない。
 const PAUSE_MAP_STAGES = new Set(['stage-1', 'stage-3', 'stage-4', 'stage-5']);
 const readPauseMap = (): PauseMapData | null => {
   const s = useGameStore.getState();
-  if (s.corridorMode || s.stageTheme === 'lab' || s.bossMaker.active || !PAUSE_MAP_STAGES.has(getSelectedStageId())) return null;
+  // 練習枠(bossPractice)は getSelectedStageId が枠の stageId を返すので、練習/計測路/ボスメーカーは別に見る(検収品質監査 C-3)。
+  if (s.corridorMode || s.stageTheme === 'lab' || s.bossMaker.active || isPracticeRun() || isGauntletRun() || !PAUSE_MAP_STAGES.has(getSelectedStageId())) return null;
   const p = s.player;
   const pois = getRunPois(s.hiddenBoss, [
     { kind: 'hospital', pos: s.hospital }, { kind: 'armory', pos: s.armory }, { kind: 'police', pos: s.police },
@@ -135,13 +138,9 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
 
           {/* 右: 戦況(開いた時点の値・1回読み)。 */}
           <div data-nav-scroll className="min-w-0 flex flex-col gap-3 text-[11px] max-h-[calc(78vh/var(--hud-s,1))] overflow-y-auto no-scrollbar">
-            {/* ★B2 地図(research/THEONE_ROUND2.md §2): 開いた時の1回読み。凡例は作戦室の地図と同じ。見出しは他の節と同じ様式。 */}
-            {snap.map && (
-              <div>
-                <div className="mb-1 tracking-[0.16em] text-white/35">地図</div>
-                <PauseMap data={snap.map} />
-              </div>
-            )}
+            {/* ★B2 地図(research/THEONE_ROUND2.md §2): 開いた時の1回読み。凡例は作戦室の地図と同じ。見出しは付けない(地図は見れば地図。
+                作戦室と同じく中のタグ「DEPTH — 区域名」が見出しを兼ねる=二重見出しにしない・検収クリエイティブ監査)。 */}
+            {snap.map && <PauseMap data={snap.map} />}
             <div className="flex items-center justify-between">
               <span className="tracking-[0.16em] text-white/35">経過時間</span>
               <span className="text-[20px] font-semibold tabular-nums text-white/90">{formatTime(snap.gameTimeSec)}</span>
