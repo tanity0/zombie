@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5092', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5091', items: [
     '一時停止の地図に、ハンターと死神は出さないようにした',
   ] },
