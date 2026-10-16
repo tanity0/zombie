@@ -27,10 +27,10 @@ describe('地図に出す敵(THEONE_ROUND2 §2-3)', () => {
     const near = foe('a', 'hunter', 100, 100);
     const far = foe('b', 'hunter', 5000, 5000);
     expect(recordMapSightings([near, far], cam, view, 1)).toBe(1);
-    expect(wasSeenThisRun('a')).toBe(true);
-    expect(wasSeenThisRun('b')).toBe(false);
+    expect(wasSeenThisRun({ id: 'a', type: 'hunter' })).toBe(true);
+    expect(wasSeenThisRun({ id: 'b', type: 'hunter' })).toBe(false);
     recordMapSightings([{ ...near, x: 9000 }], cam, view, 1); // 画面外へ出ても
-    expect(wasSeenThisRun('a')).toBe(true);
+    expect(wasSeenThisRun({ id: 'a', type: 'hunter' })).toBe(true);
   });
 
   it('引いた時(ズーム)は見える範囲が広がる', () => {
@@ -39,9 +39,14 @@ describe('地図に出す敵(THEONE_ROUND2 §2-3)', () => {
     expect(recordMapSightings([edge], cam, view, 0.5)).toBe(1);
   });
 
+  it('裏ボスは巣へ帰って別IDで出直しても出会ったまま', () => {
+    recordMapSightings([foe('t1', 'thor', 100, 100)], cam, view, 1);
+    expect(wasSeenThisRun({ id: 't2', type: 'thor' })).toBe(true);
+  });
+
   it('次の出撃で記録は空', () => {
     recordMapSightings([foe('a', 'hunter', 100, 100)], cam, view, 1);
     resetMapSightings();
-    expect(wasSeenThisRun('a')).toBe(false);
+    expect(wasSeenThisRun({ id: 'a', type: 'hunter' })).toBe(false);
   });
 });

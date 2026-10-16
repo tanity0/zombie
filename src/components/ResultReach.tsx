@@ -3,6 +3,7 @@ import { strata, depthFrac, buildCores, rankRungs, nextGoal, digProgress, CUTAWA
 import { wallAchievementHeadline } from '../utils/wallProgress';
 import { clampRank } from '../utils/rankAssessor';
 import type { RunCore } from '../data/progress';
+import { POI_MARK_COLOR } from '../utils/poiMarks';
 
 // リザルトの主役「到達譜」= 地表から掘り下げる**1枚の地質断面図**(社長指示v0.25.2332/2333)。
 //
@@ -52,12 +53,13 @@ const STRATUM_STYLE: { bg: string; tex: string; fg: string }[] = [
 /** 終わり方ごとの坑の色(達成=金 / 撤退=白 / 死亡=赤)。 */
 const END_COLOR: Record<RunCore['end'], string> = { won: '#FFD54A', withdraw: '#CBD5E1', death: '#FF6A55' };
 
+// 色は一時停止の地図と共通(utils/poiMarks.ts)。
 const POI_MARK: Record<PoiPin['kind'], { icon: string; color: string }> = {
-  hospital: { icon: '✚', color: '#7BE8A8' },
-  boss: { icon: '☠', color: '#FF6A55' },
-  cave: { icon: '◗', color: '#F59E0B' },
-  armory: { icon: '▣', color: '#FBBF24' }, // §6.24 M48: 武器庫(スクラップ色)
-  police: { icon: '★', color: '#60A5FA' }, // §6.24 M48: 警察署
+  hospital: { icon: '✚', color: POI_MARK_COLOR.hospital },
+  boss: { icon: '☠', color: POI_MARK_COLOR.boss },
+  cave: { icon: '◗', color: POI_MARK_COLOR.cave },
+  armory: { icon: '▣', color: POI_MARK_COLOR.armory }, // §6.24 M48: 武器庫(スクラップ色)
+  police: { icon: '★', color: POI_MARK_COLOR.police }, // §6.24 M48: 警察署
 };
 
 const ResultReach: React.FC<ResultReachProps> = ({

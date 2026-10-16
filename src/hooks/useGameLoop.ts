@@ -2527,6 +2527,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState({ gameWon: true, practiceWinPendingSince: null });
           }
         }
+        { // 一時停止の地図(THEONE_ROUND2 §2-3): 画面に入ったボス級・宿敵を「出会った」として記録(store へは書かない)。
+          // アテンション(ボスの紹介でカメラが寄る間)は下で return するので、その前で記録する(品質監査 A-1)
+          const ms = useGameStore.getState();
+          recordMapSightings(ms.enemies, ms.camera, ms.gameBounds, ms.viewZoom);
+        }
         if (att) {
           const el = nowMs - att.startReal;
           // §6.36(v0.25.2958・社長指示で復帰): cutin付きattentionは hold と out の間に cutinMs
@@ -2997,10 +3002,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           updateEffects(deltaTime);
           frameRef.current = requestAnimationFrame(gameLoop);
           return;
-        }
-        { // 一時停止の地図(THEONE_ROUND2 §2-3): 画面に入ったボス級・宿敵を「出会った」として記録(store へは書かない)
-          const ms = useGameStore.getState();
-          recordMapSightings(ms.enemies, ms.camera, ms.gameBounds, ms.viewZoom);
         }
 
         // --- キャラ登場演出(ロックマン的な飛び込み)---

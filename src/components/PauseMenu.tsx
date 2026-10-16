@@ -7,6 +7,7 @@ import { CHARACTER_CLASSES, SKILLS, skillDescForLevel } from '../data/campaign';
 import { subWeaponBlurb } from '../data/subWeaponBlurbs';
 import { formatTime } from '../utils/renderUtils';
 import { PauseMap, type PauseMapData } from './PauseMap'; // ★B2 一時停止の地図(research/THEONE_ROUND2.md §2)
+import { isMapTrackedEnemy, wasSeenThisRun } from '../utils/mapSightings'; // §2-3 出会ったボス級・宿敵
 import { getRunPois, isPoiRevealed } from '../world/pois';
 import { getSelectedStageId } from '../data/progress';
 import { isPracticeRun } from '../utils/bossPractice';
@@ -22,11 +23,18 @@ const readPauseMap = (): PauseMapData | null => {
   const pois = getRunPois(s.hiddenBoss, [
     { kind: 'hospital', pos: s.hospital }, { kind: 'armory', pos: s.armory }, { kind: 'police', pos: s.police },
   ]).filter(q => isPoiRevealed(q, s.baseSites));
+  const taken: Partial<Record<PauseMapData['pois'][number]['kind'], boolean>> = {
+    hospital: s.hospitalTaken, armory: s.armoryTaken, police: s.policeTaken, boss: s.hiddenBossDefeated,
+  };
   return {
     player: { x: p.x + p.width / 2, y: p.y + p.height / 2, dirX: p.lastDirection?.x ?? 1, dirY: p.lastDirection?.y ?? 0 },
     bases: s.baseSites.map(b => ({ x: b.x, y: b.y, captured: b.status === 'captured' })),
-    pois: pois.map(q => ({ x: q.x, y: q.y, kind: q.kind })),
-    named: s.enemies.filter(e => e.isNamed && !(e.corpseUntil !== undefined)).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 })),
+    pois: pois.map(q => ({ x: q.x, y: q.y, kind: q.kind, taken: taken[q.kind] ?? false })),
+    // §2-3: ボス級(強個体を除く)と宿敵のうち、この出撃で一度画面に映った物の今の位置。
+    // 城ボスの急降下の溜め(g-dive-windup)は場外へ座標を退避しているので出さない(縮尺も跳ぶ・品質監査 A-2)。
+    threats: s.enemies
+      .filter(e => isMapTrackedEnemy(e) && wasSeenThisRun(e) && e.aiPhase !== 'g-dive-windup')
+      .map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 })),
   };
 };
 
