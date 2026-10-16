@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5087', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5086', items: [
     '長く遊ぶほどメモリが積み上がって落ちやすくなっていた原因の一つを直した。影や光の縁を描き直すたびに、捨てるはずの描画の部品が残り続けていた',
   ] },
