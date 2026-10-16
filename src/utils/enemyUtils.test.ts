@@ -658,6 +658,23 @@ describe('★守護霊が狙う敵は敵からも狙う(社長指示2026-08-23�
 // PACING_PUZZLE.md §17-12-d/e(ウェルカム台本のサークル化): spawnEnemyAtWithTierの`tier`を
 // ForcedColorTier(EnemyColorTier | 'none')へ広げた。既存呼び手(EnemyColorTierの実値のみ)の
 // 挙動は不変(下の1件目)で、'none'は抽選を経ず色なし固定になる(§17-8 受け入れ条件10)。
+describe('★ハンターは色ティア(青/紫/赤)の抽選を通らない(v0.25.5067・社長報告「ハンターがずっと紫のまま」)', () => {
+  it('深いエリアで何体出しても colorTier が付かない(同じ場所のゾンビには付く=抽選は生きている)', () => {
+    let hunterTiers = 0, zombieTiers = 0;
+    for (let i = 0; i < 300; i++) {
+      if (spawnEnemyAt('hunter', 6000, 0, 600_000).colorTier !== undefined) hunterTiers++;
+      if (spawnEnemyAt('zombie', 6000, 0, 600_000).colorTier !== undefined) zombieTiers++;
+    }
+    expect(hunterTiers).toBe(0);
+    expect(zombieTiers).toBeGreaterThan(0);
+  });
+  it('エリアによる強さのスケールは従来どおり(色だけ外す=HPは近くより深い所の方が高い)', () => {
+    const near = spawnEnemyAt('hunter', 100, 0, 0).maxHealth;
+    const far = spawnEnemyAt('hunter', 6000, 0, 0).maxHealth;
+    expect(far).toBeGreaterThanOrEqual(near);
+  });
+});
+
 describe('spawnEnemyAtWithTier (§17-12・forcedColorTierをForcedColorTierへ拡張)', () => {
   it('既存の呼び手どおりEnemyColorTierの実値を渡すと、抽選を経ずそのまま固定される(挙動不変)', () => {
     const e = spawnEnemyAtWithTier('bat', 0, 0, 0, 'purple');

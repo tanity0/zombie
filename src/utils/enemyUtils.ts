@@ -705,6 +705,11 @@ const RARE_TINT_ENABLED = typeof window === 'undefined' || new URLSearchParams(w
 const COLOR_TIER_SIZE_MULT: Record<EnemyColorTier, number> = RARE_TINT_ENABLED
   ? { blue: 1, purple: 1, red: 1 }
   : { blue: 1.1, purple: 1.2, red: 1.3 }; // 旧値(青1.1/紫1.2/赤1.3・+10%刻み)
+// ★色ティア(青/紫/赤)の抽選だけを通さない型(v0.25.5067・社長報告2026-10-16「ハンターがずっと紫のまま」「普通に遠くを歩いてる時でも紫」)。
+// ハンターは専用コントローラ(useGameLoop)で出す**ボス級**なのに、`spawnEnemyAt` の雑魚向け色抽選を素通りして
+// 深いエリアでは紫/青/赤のレア個体になっていた(体が常時 0xbb66ff に染まる・HP/攻撃にも色倍率が乗る)。
+// エリアによる強さのスケールは従来どおり(CONSTANT_STRENGTH_TYPES には入れない=1bit不変)。色だけ外す。
+const COLOR_TIER_EXEMPT_TYPES = new Set<EnemyType>(['hunter']);
 // 「強さ一定」タイプ(距離/色でスケールしない)。将来の特別敵もここへ追加して除外する。
 const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'hangedman', 'mimir', 'jormungand', 'skadi', 'thor', 'miguel', 'jibril', 'rafi', 'uri', 'suriel', 'acrasiel', 'idol', 'bounty-ranged', 'bounty-melee', 'bounty-balance', 'bounty-maiko',
   // research/GHOST_BOSS.md(幻影・裏ボス方式): エリア/距離/時間/色でスケールしない=色ティア抽選の対象外。
@@ -904,7 +909,7 @@ const buildEnemy = (
   );
   // 色付き(固定難易度タイプには付かない)。色ごとの倍率を強さに乗せる。
   // §5.21-追補7: 攻撃/HPを別倍率で分離(colorDmgMult/colorHpMult → diffDmg/diffHp)。
-  const colorTier = fixed
+  const colorTier = (fixed || COLOR_TIER_EXEMPT_TYPES.has(type))
     ? undefined
     : forcedColorTier === 'none'
       ? undefined // §17-11 B1: 'none'=抽選を通さず色なしで固定(undefinedは従来どおり「抽選する」)
