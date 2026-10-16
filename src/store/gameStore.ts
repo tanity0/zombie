@@ -107,7 +107,7 @@ import { dashModeAt, dashOverride, dashStateOf, emptyDashState } from '../utils/
 import { applySubCooldownSkills } from '../utils/subCooldown'; // G2.6 CD正規化(BOT_AND_GHOST.md §2.8)
 import { playerAsOwner, ghostAsOwner, ownerCenterX, ownerCenterY, ownerFootY, ownerGhostId, type SubWeaponOwner } from '../utils/subWeaponOwner'; // G2.6 オーナー抽象化
 import { stepSpeedRamp } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1
-import { cruiseIntervalS, cruiseTotalMs, cruiseStage, cruiseStageBonus, cruiseOthersRampMs, cruiseDamageMult, equipCruiseTier, CRUISE_STAGE_BONUS, CRUISE_STAGE_MAX } from '../utils/cruise'; // B3 巡航+B11(THEONE_ROUND2 §4b)
+import { cruiseTotalMsFor, cruiseStage, cruiseStageBonus, cruiseOthersRampMs, cruiseDamageMult, cruiseSpeedMult, equipCruiseTier, CRUISE_STAGE_BONUS, CRUISE_STAGE_MAX } from '../utils/cruise'; // B3 巡航+B11(THEONE_ROUND2 §4b)
 import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_PUZZLE.md §14-4-2(新死神・重大4/5)
 import { bloodAwakenMult, bloodGainFor, applyBloodGain } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
 import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
@@ -2180,7 +2180,7 @@ export const standardSpeedBonusMult = (player: Player): number =>
   player.characterClass === 'mage' ? 1.2 / 1.1 : 1;
 /** B3 巡航: このプレイヤーの最大段までの総時間(ms)。ランナー Lv と機動系の装備の段階から(読み②)。 */
 export const playerCruiseTotalMs = (player: Player): number =>
-  cruiseTotalMs(cruiseIntervalS(skillLevel(player, 'runner'), equipCruiseTier(player.equipment)));
+  cruiseTotalMsFor(skillLevel(player, 'runner'), equipCruiseTier(player.equipment));
 /** B3 巡航: 今の段(0〜3)。`?speedramp=0` は常に最大段。 */
 export const playerCruiseStage = (player: Player): number =>
   SPEED_RAMP_ENABLED ? cruiseStage(player.speedRampSustainMs, playerCruiseTotalMs(player)) : CRUISE_STAGE_MAX;
@@ -7684,7 +7684,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 段(+20/30/40%)は段の時間で、上乗せ(ランナー/装備/英雄/消費カード/マークスマンの追加分)は min(段の総時間, 1秒) で立ち上がる。
       const cruiseT = playerCruiseTotalMs(player);
       const rampFrac = SPEED_RAMP_ENABLED ? Math.min(1, nextSpeedRamp.sustainMs / cruiseOthersRampMs(cruiseT)) : 1;
-      const cruiseMult = 1 + (SPEED_RAMP_ENABLED ? cruiseStageBonus(nextSpeedRamp.sustainMs, cruiseT) : CRUISE_STAGE_BONUS[CRUISE_STAGE_MAX]);
 
       // ★対人トラップ効果中は「移動が等倍のみ」(社長指示2026-08-25・SAME_ARENA §3-g)。
       // かさまし%(ランナー/マークスマン/消費カード/装備)・スケーター×3・ダッシュ系
@@ -7702,9 +7701,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       // MOVEMENT_REWORK.md 仕様1のランプに乗る。基礎速度(player.speed)・RELOAD_MOVE_SPEED_MULT・
       // スケーター×3はランプ対象外(即応のまま)。
       const skaterActive = hasSkill(player, 'skater') && player.skaterRiding;
-      const bonusMult = skillRunnerSpeedMult(player, reloading) * standardSpeedBonusMult(player)
-        * consumableSpeedMult(player, state.gameTime) * (player.equipBonus?.moveSpeedMult ?? 1)
-        * skillHeroMult(player); // スキル「英雄」: HP満タンの間 ×1.3
+      // ★v0.25.5083(社長「もうちょっと抑えが効く計算に」→「はい」): 速度ボーナスは**足し算**でまとめ、+60%を超えた分は効きが鈍って
+      //   +100%の手前で止まる(utils/cruise.ts cruiseSpeedMult)。段(+20/30/40%)は段の時間で、上乗せは min(段の総時間,1秒) で立ち上がる。
+      const othersSum = (skillRunnerSpeedMult(player, reloading) - 1) + (standardSpeedBonusMult(player) - 1)
+        + (consumableSpeedMult(player, state.gameTime) - 1) + ((player.equipBonus?.moveSpeedMult ?? 1) - 1)
+        + (skillHeroMult(player) - 1); // スキル「英雄」: HP満タンの間 +30%
+      const stageBonusNow = SPEED_RAMP_ENABLED ? cruiseStageBonus(nextSpeedRamp.sustainMs, cruiseT) : CRUISE_STAGE_BONUS[CRUISE_STAGE_MAX];
+      const bonusMult = cruiseSpeedMult(stageBonusNow, othersSum, rampFrac);
       const moveSpeed = computeEffectiveMoveSpeed({
         dashOverrideSpeed: dashOv ? dashOv.speed : null,
         slidingSpeed: sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000) : null,
@@ -7712,8 +7715,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         reloadMoveSpeedMult: RELOAD_MOVE_SPEED_MULT,
         playerSpeed: player.speed,
         skaterActive,
-        bonusMult,
-        rampFrac,
+        bonusMult, // 段と上乗せを足し算+頭打ち済みの倍率(立ち上がりも込み)=ランプ割合は1で渡す
+        rampFrac: 1,
         trapDebuffed,
         // ★SAME_ARENA §9(対人体勢): クリ被弾の2/3減速(幻影と対称・移動速度のみ=攻撃CDは触らない)。
         pvpMult: pvpMoveMult(player.pvpPosture, state.gameTime),
@@ -7723,8 +7726,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeRecoverMult: meleeRecoverSpeedMult(player.meleeSwingAt, nowMs, PLAYER_MELEE_SWING_MS, COUNTER_WINDOW + MELEE_RECOVER_MS),
         // B10 血の覚醒(THEONE_ROUND2 §3-1): 移動速度 ×1.5。ランプの外・dash/スライド/スケーターには掛けない(関数側)。
         awakenSpeedMult: bloodAwakenMult(player, state.gameTime).boost,
-        // B3 巡航の段(THEONE_ROUND2 §4b): ランプと同じ枝に掛ける(dash/スライドには掛からない=関数側)。
-        cruiseMult,
       });
 
       // Target direction from swipe (touch) or keys.

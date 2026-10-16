@@ -16,7 +16,7 @@ import {
   playerCruiseTotalMs,
 } from './gameStore';
 import { RAMP_FULL_MS } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様1(ランプの正本)
-import { cruiseOthersRampMs, cruiseStageBonus } from '../utils/cruise'; // B3 巡航(THEONE_ROUND2 §4b)
+import { cruiseOthersRampMs, cruiseStageBonus, cruiseSpeedMult } from '../utils/cruise'; // B3 巡航(THEONE_ROUND2 §4b)
 import { BOSS_STOP_DR_IMMUNE_MS } from '../utils/bossStopDr';
 import type { Enemy } from '../types/game';
 
@@ -187,7 +187,7 @@ describe('headless simulation invariants', () => {
     //     tau は import する=慣性を調整してもこのテストは勝手に揃う。
     //     目標速度には1フレームぶんの微小ランプ(P=1.32の dtMs/RAMP_FULL_MS)が既に乗っている。
     const alpha = inertiaAlpha(dt, PLAYER_INERTIA_TAU);
-    const frame1Target = baseSpeed * (1 + (1.20 - 1) * (dtMs / othersMs)) * (1 + cruiseStageBonus(dtMs, cruiseT));
+    const frame1Target = baseSpeed * cruiseSpeedMult(cruiseStageBonus(dtMs, cruiseT), 0.20, dtMs / othersMs);
     expect(useGameStore.getState().player.vx).toBeCloseTo(frame1Target * alpha, 1);
 
     // ② 90フレーム(≈1500ms ≥ RAMP_FULL_MS)同方向へ走り続けるとフルランプに達する。
@@ -198,7 +198,7 @@ describe('headless simulation invariants', () => {
     //     (旧テストはここを分けておらず、慣性導入で 0.6 ほど足りずに落ちていた)。
     for (let i = 0; i < 10; i++) useGameStore.getState().movePlayer(rightInput, dt);
     const sustainNow = useGameStore.getState().player.speedRampSustainMs;
-    expect(useGameStore.getState().player.vx).toBeCloseTo(baseSpeed * 1.20 * (1 + cruiseStageBonus(sustainNow, cruiseT)), 0);
+    expect(useGameStore.getState().player.vx).toBeCloseTo(baseSpeed * cruiseSpeedMult(cruiseStageBonus(sustainNow, cruiseT), 0.20, 1), 0);
 
     // ③ 75°以上の急な切り返し(右→左=180°)で**ランプが即ゼロへ戻る**。
     //    ※vx は慣性で数フレームかけて戻るので、ここでは vx ではなくランプを見る。
