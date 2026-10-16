@@ -4760,6 +4760,8 @@ export class PixiScene {
   private areaTapeTexts: Text[] = [];     // 線に沿って焼き付く英字(侵入禁止テープ)。プール=最大12枚。text は輪が変わった時だけ書き換わる(Text の再描画はその時だけ)
   private areaTapeVis: number[] = [];     // 輪ごとの見え(0..1)。距離から目標を出し、指数追従で寄せる(慣性=パッと出ない)
   private areaTapeLastNow = 0;            // 前フレームの実時刻(見えの追従の dt 用)
+  private areaFlashKey = 0;               // 今の一拍(areaCrossFx.at)
+  private areaFlashAngle = 0;             // 一拍の中心=踏んだ点の角度(原点から)
   private retArrow: {
     key: number;                         // 窓の openedAt(新しい窓で作り直す)
     mode: 'show' | 'retract' | 'exit';   // 出ている/条件が崩れて引っ込む/反撃が成立して抜ける
@@ -35077,30 +35079,31 @@ export class PixiScene {
    * 白+暗い縁取りだけ(赤は持たない=体のすぐ横は敵の赤い予告の世界)。判定は持たない・store へは書かない。
    */
   /**
-   * ★B1 v3(research/THEONE_ROUND2.md §1・社長「この範囲にいる間は常に表示/文字は地面に焼き付いている/侵入禁止のテープのように英語で小さめ」):
-   *  区域の輪(原点中心・半径=activeAreaThresholds)は**地面に常在する線**。プレイヤーが輪から AREA_TAPE_NEAR_PX 以内に居る時だけ描く
-   *  (遠いと見えない=負荷ゼロ)。近づくと AREA_TAPE_FADE_PX の間でじわっと見えてくる(距離の目標値へ指数追従=慣性)。
-   *  線に沿って深い側の区域名の英字(大文字・小さめ・琥珀・暗い縁取り)を世界座標で等間隔に焼き付ける。輪の半径は 2250px 以上なので
-   *  画面内の弧はほぼ直線=文字の板を接線に傾けて置くだけ。板は世界に固定(歩いても滑らない)。上下逆さまになる向きは 180° 回して読める向きに。
-   *  跨いだ瞬間(store.areaCrossFx)は線が一拍明るくなる(0.4秒・減速)。線も文字も地平線フェードで奥へ消える。足の下(groundLayer)。
-   *  負荷 1/10: Graphics 1本(最大24区間)+Text 最大12枚(文字の再描画は輪が変わった時だけ)。ズーム0.4でも弧の角度幅は可視域から出す。
+   * ★B1 v3(research/THEONE_ROUND2.md §1・社長「この範囲にいる間(線を踏んでる間)は常に表示/文字は地面に焼き付いている/侵入禁止のテープのように英語で小さめ」):
+   *  区域の輪(原点中心・半径=activeAreaThresholds)は**地面に常在するテープ**。暗い帯(画面11px)の深い側の縁に琥珀の線、帯の中に英字
+   *  (区域名と KEEP OUT を交互・区切り「··」・縁取り無し・板ごとに決定的な擦れ=全部同じにしない)。足の下(groundLayer)。
+   *  プレイヤーが輪から 600px(÷ズーム=引くほど遠くまで)以内に居る時だけ描き、最後の 220px でじわっと濃くなる(距離の目標値へ指数追従=慣性)。
+   *  跨いだ瞬間(store.areaCrossFx)は**踏んだ点から線に沿って明るさが走って減衰**(50ms の立ち上がり→400ms で減速。全体が一斉に光らない)。
+   *  板の読む向きは輪ごとに1つ(自機の位置の接線で決める=同じ画面に逆向きが混ざらない)。線も文字も地平線フェードで奥へ消える。
+   *  負荷 1/10: Graphics 1本(帯+線で最大48区間)+Text 最大12枚(文字の再描画は輪が変わった時だけ)。ズーム0.4でも弧の角度幅は可視域から出す。
+   *  (v0.25.5074: 検収クリエイティブ監査の12件のうち 見せ方9件を反映。社長判断3件=戻る時の一拍を弱く/文字を世界固定に/近づいて現れる仕組み自体)
    */
   private syncAreaBoundaryTape(player: Player, now: number, dtMs: number): void {
     const g = this.areaCrossGfx;
     const hide = HIDE_LAYERS.has('areacross') || useGameStore.getState().corridorMode || useGameStore.getState().stageTheme === 'lab';
-    const AREA_TAPE_NEAR_PX = 600, AREA_TAPE_FADE_PX = 220;
+    const wz = this.L.worldGroup.scale.x || 1;
+    const AREA_TAPE_NEAR_PX = 600 / wz, AREA_TAPE_FADE_PX = 220 / wz; // 画面上の距離で決める(引くほど遠くまで描く=地面の物は画面に入っていれば在る)
     const rings = activeAreaThresholds();
     const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
     const dist = Math.hypot(pcx, pcy);
     const pAng = Math.atan2(pcy, pcx);
-    // 見え(0..1)を輪ごとに追従させる(時定数 120ms=出る時も消える時も加減速がある)。
     const k = 1 - Math.exp(-Math.max(0, dtMs) / 120);
     if (this.areaTapeVis.length !== rings.length) this.areaTapeVis = rings.map(() => 0);
     let anyVisible = false;
     for (let i = 0; i < rings.length; i++) {
       const d = Math.abs(dist - rings[i]);
       const target = hide ? 0 : Math.max(0, Math.min(1, (AREA_TAPE_NEAR_PX - d) / AREA_TAPE_FADE_PX));
-      const eased = target * target * (3 - 2 * target); // smoothstep: 近づくほど加速して濃くなる
+      const eased = target * target * (3 - 2 * target);
       this.areaTapeVis[i] += (eased - this.areaTapeVis[i]) * k;
       if (this.areaTapeVis[i] < 0.01) this.areaTapeVis[i] = 0; else anyVisible = true;
     }
@@ -35109,62 +35112,71 @@ export class PixiScene {
       for (const t of this.areaTapeTexts) t.visible = false;
       return;
     }
-    const wz = this.L.worldGroup.scale.x || 1;
     const diagWorld = Math.hypot(this.screenW, this.screenH) / wz;
     const fx = useGameStore.getState().areaCrossFx;
+    // 跨いだ瞬間の「踏んだ点」= fx.at が変わった最初のフレームの自機の角度を覚える(store には角度が無い)。
+    if (fx && this.areaFlashKey !== fx.at) { this.areaFlashKey = fx.at; this.areaFlashAngle = pAng; }
     const easeOut = (u: number) => 1 - (1 - u) * (1 - u) * (1 - u);
     const color = 0xffb340; // UI の琥珀(--menu-accent)
     const hz = (r: number, ang: number) => this.horizonActorAlpha(r * Math.sin(ang));
+    const hash01 = (n: number) => { const x = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); }; // 板/区間ごとの決定的な擦れ
     g.clear(); g.visible = true;
     let used = 0;
     const MAX_TEXTS = 12;
+    const BAND_PX = 11, LINE_PX = 1.6;
     for (let i = 0; i < rings.length; i++) {
       const vis = this.areaTapeVis[i];
       if (vis <= 0) continue;
       const r = rings[i];
-      // 跨いだ瞬間の一拍(0.4秒・減速)。
       const ft = fx && fx.ringIdx === i ? now - fx.at : Infinity;
-      const flash = ft >= 0 && ft < 400 ? 1 - easeOut(ft / 400) : 0;
-      const span = Math.min(Math.PI, (diagWorld * 0.75) / r); // 片側の角度幅=画面を必ず横切る
+      // 一拍: 50ms で立ち上がり(加速)→400ms で減速して消える。線に沿って踏んだ点から減衰(e^-d/320px)。
+      const flashEnv = ft < 0 ? 0 : ft < 50 ? (ft / 50) * (ft / 50) : ft < 450 ? 1 - easeOut((ft - 50) / 400) : 0;
+      const flashAt = (ang: number) => flashEnv > 0 ? flashEnv * Math.exp(-Math.abs(ang - this.areaFlashAngle) * r / 320) : 0;
+      const span = Math.min(Math.PI, (diagWorld * 0.75) / r);
       const a0 = pAng - span, a1 = pAng + span;
-      // 線: 24区間に割り、区間ごとに地平線フェードを掛ける(1本で描くと奥の tilt-shift 帯で太いボケの帯になる・v0.25.5070 の実測)。
       const SEGS = 24;
-      const lineAlpha = (0.42 + 0.45 * flash) * vis;
+      const bandR = r - (BAND_PX / 2) / wz; // 帯は線の内側(浅い側)に敷く。琥珀の線は帯の深い側の縁
       for (let q = 0; q < SEGS; q++) {
         const s0 = a0 + (a1 - a0) * (q / SEGS), s1 = a0 + (a1 - a0) * ((q + 1) / SEGS);
-        const hk = hz(r, (s0 + s1) / 2);
+        const mid = (s0 + s1) / 2;
+        const hk = hz(r, mid);
         if (hk < 0.02) continue;
-        g.arc(0, 0, r, s0, s1).stroke({ width: (2 + 1.5 * flash) / wz, color, alpha: lineAlpha * hk });
+        const wear = 0.9 + 0.2 * hash01(i * 1000 + Math.floor(mid * 400)); // 区間ごとの擦れ(±10%)。角度で固定=歩いても揺れない
+        const fl = flashAt(mid);
+        g.arc(0, 0, bandR, s0, s1).stroke({ width: BAND_PX / wz, color: 0x120a0c, alpha: (0.34 + 0.1 * fl) * vis * hk * wear });
+        g.arc(0, 0, r, s0, s1).stroke({ width: (LINE_PX + 1.4 * fl) / wz, color, alpha: (0.5 + 0.5 * fl) * vis * hk * wear });
       }
-      // テープの英字: 世界座標で固定の間隔(スクリーンで約420px相当・引くほど間隔が開く=枚数の上限を守る)。
-      const label = AREA_ZONE_NAMES_EN[i + 1] ?? '';
-      if (!label) continue;
-      const spacing = Math.max(420, (2 * span * r) / 8); // 世界px。可視弧を8枚より多く割らない(引いた時に枚数が増えすぎない)
+      const name = AREA_ZONE_NAMES_EN[i + 1] ?? '';
+      if (!name) continue;
+      // 板: 区域名と KEEP OUT を交互に、区切り「··」を添える。間隔は画面で約260px(世界座標に固定=歩いても滑らない)。
+      const spacing = 260 / wz;
       const stepAng = spacing / r;
       const kStart = Math.ceil(a0 / stepAng), kEnd = Math.floor(a1 / stepAng);
+      // 読む向きは輪ごとに1つ: 自機の位置の接線で決める(同じ画面に逆向きが混ざらない)。
+      const rotBase = pAng + Math.PI / 2;
+      const cb = Math.cos(rotBase), sb = Math.sin(rotBase);
+      const flip = Math.abs(cb) > 0.2 ? cb < 0 : sb < 0; // 横なら左→右、縦なら上→下に読む
       for (let kk = kStart; kk <= kEnd && used < MAX_TEXTS; kk++) {
         const ang = kk * stepAng;
         const hk = hz(r, ang);
         if (hk < 0.03) continue;
         let t = this.areaTapeTexts[used];
         if (!t) {
-          t = new Text({ text: '', style: { fontFamily: '"Rajdhani", system-ui, sans-serif', fontSize: 26, fontWeight: '600', letterSpacing: 6, fill: color, stroke: { color: 0x0b0710, width: 4 } }, resolution: 2 });
+          t = new Text({ text: '', style: { fontFamily: '"Rajdhani", system-ui, sans-serif', fontSize: 26, fontWeight: '500', letterSpacing: 9, fill: color }, resolution: 2 });
           t.anchor.set(0.5, 0.5);
           this.areaTapeTexts[used] = t;
           this.L.groundLayer.addChild(t);
         }
-        if (t.text !== label) t.text = label; // 再描画は輪が変わった時だけ
+        const label = (kk & 1) === 0 ? `${name}  ··` : 'KEEP OUT  ··';
+        if (t.text !== label) t.text = label;
         t.visible = true;
-        t.position.set(Math.cos(ang) * r, Math.sin(ang) * r);
-        // 接線方向。読める向き(上下逆さまなら 180° 回す)。文字は線の内側(浅い側)に 9px 寄せる=線を踏むと文字が足元の手前に来る。
-        let rot = ang + Math.PI / 2;
-        const cs = Math.cos(rot);
-        if (cs < 0) rot += Math.PI;
+        let rot = ang + Math.PI / 2; if (flip) rot += Math.PI;
         t.rotation = rot;
-        const inward = 9 / wz;
+        const inward = (BAND_PX / 2 + 0.5) / wz; // 帯の中央
         t.position.set(Math.cos(ang) * (r - inward), Math.sin(ang) * (r - inward));
-        t.scale.set((11 / 26) / wz); // 画面で約11px(ズームで割る=引いても同じ大きさ)
-        t.alpha = (0.78 + 0.22 * flash) * vis * hk;
+        t.scale.set((10 / 26) / wz); // 画面で約10px(ズームで割る=引いても同じ大きさ)
+        const wear = 0.65 + 0.27 * hash01(i * 7919 + kk); // 板ごとの擦れ(0.65〜0.92)
+        t.alpha = ((kk & 1) === 0 ? wear : wear * 0.8) * (1 + 0.25 * flashAt(ang)) * vis * hk;
         used++;
       }
     }

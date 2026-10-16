@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5074', items: [
+    '境界のテープを作り込んだ。暗い帯の縁に琥珀の線が走り、帯の中に区域名と KEEP OUT が交互に焼き付く。板ごとに擦れがあり、跨いだ瞬間は踏んだ所から明るさが線を走る',
+    '区域名の英字を揃えた(HAZARD ZONE / SUSPECTED CONTAMINATION / THE DEEP)。引いて見ている時も境界が遠くまで見える',
+  ] },
   { version: '0.25.5073', items: [
     '区域の境界線は地面に引かれた線になった。近づくと浮かび、踏んでいる間はずっと見える。線に沿って侵入禁止のテープのように区域名が英字で焼き付いている',
     '跨いだ瞬間の大きな名前と、境界手前の「この先」の帯は無くなった(名前は地面の線に書いてある)',
