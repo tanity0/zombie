@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useGameStore } from '../store/gameStore';
 import { biteSpecFor, BITE_RECOVER_STILL_MS } from './enemyBite';
+import { ZOMBIE_LUNGE_MAX_MS } from './chaffMoves';
 
 /**
  * ★噛みつき直後の硬直(社長指摘2026-09-17「噛みつき直後の硬直があるはずだけど？」)。
@@ -60,7 +61,8 @@ describe('噛みつき直後の硬直', () => {
     const gt = 5000;
     setup(0, {
       biteRecoverUntil: gt + BITE_RECOVER_STILL_MS,
-      chaffMove: 'zombie-double', aiPhase: 'z-lunge-in', aiPhaseUntil: gt + 2000, chaffMoveAt: gt,
+      // z-lunge-in の出足のease(v0.25.5064〜)は aiPhaseUntil−ZOMBIE_LUNGE_MAX_MS を走り始めとして読むので、実際の入り方(gt開始)に揃える。
+      chaffMove: 'zombie-double', aiPhase: 'z-lunge-in', aiPhaseUntil: gt + ZOMBIE_LUNGE_MAX_MS, chaffMoveAt: gt,
     });
     const before = useGameStore.getState().enemies[0].x;
     for (let i = 0; i < 10; i++) {

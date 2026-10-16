@@ -362,7 +362,7 @@ import {
   deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
   ZOMBIE_BAND_OUTER_PX, ZOMBIE_BAND_INNER_PX, ZOMBIE_STEP_REACH_PX,
   ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_STAGGER_MS, // 2026-10-14 構え(反る→固まる・赤2回=全長1秒)→1歩で噛む→一拍で狙い直して1歩で噛む
-  ZOMBIE_RECOVER_MS, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
+  ZOMBIE_RECOVER_MS, zombieLungeRampMul, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
   zombieRecoverWalkRampMul, // §16-3zクリエイティブ監査#3(硬直→歩きの出足の1フレーム段差を消す)
   ZOMBIE_RETREAT_TARGET_PX, ZOMBIE_RETREAT_SPEED_MULT, zombieRetreatRampMul, // §16-A7条目(技を出し切ったら150pxへ離れる)
   // ★bat(PACING_PUZZLE.md §16-1・§16-8b手順6)。
@@ -16778,7 +16778,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             };
           }
           if (phase === 'z-lunge-in') {
-            // ★詰め(社長指示2026-10-14): 赤を決めた個体が、1歩で噛める距離(ZOMBIE_STEP_REACH_PX)まで**普通の歩きで**詰める。
+            // ★詰め(社長指示2026-10-14・2026-10-16): 赤を決めた個体が、1歩で噛める距離(ZOMBIE_STEP_REACH_PX)まで**走って**詰める。
             //   届いたら構え(z-red-pause・全長1秒・固まった瞬間に赤2回)→構え明けに1歩で噛む。
             //   上限(ZOMBIE_LUNGE_MAX_MS)で届かなくても構える=空振りしても技の3拍(技→硬直→離れる)は守る(逃げ切った側が報われる)。
             //   旧=2倍速で射程75pxまで走り込んでから噛む(構えの後)。
@@ -16790,8 +16790,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 汎用の接近ターゲット(dx/dy=tgt基準)を追うが、こちらは「赤が来る」と確定した後の
             // 踏み込みなので狙いの座標(apx/apy=軍人を追っていなければ実プレイヤー)を直接使う(decoy/summonに逸れない)。
             const zTraits = chaffTraits(enemy.id);
-            // 詰めは普通の歩きの速さ(2026-10-14: 走り込みはやめた。速いのは構え明けの1歩だけ)。
-            const lungeSpeed = enemy.speed * ZOMBIE_SPEED_MULT
+            // ★詰めは**走る**(社長指示2026-10-16「赤が走り寄る。紫は密着してきた人向けの攻撃」)。
+            //   v0.25.5034 で「普通の歩き」にしたのは誤解(「前進はそれぞれ1歩分まで」は構え明けの踏み込みの話)。
+            //   速さは赤専用の `ZOMBIE_LUNGE_SPEED_MULT`(2.8・紫の追尾2倍とは別)。出足は z-lunge-in に入った瞬間
+            //   (=aiPhaseUntil−ZOMBIE_LUNGE_MAX_MS)から `zombieLungeRampMul`(200msのease)で0→満速(慣性MUST)。
+            const lungeRamp = zombieLungeRampMul(phaseUntil - ZOMBIE_LUNGE_MAX_MS, gameTime);
+            const lungeSpeed = enemy.speed * ZOMBIE_SPEED_MULT * ZOMBIE_LUNGE_SPEED_MULT * lungeRamp
               * rnSpeedMult * screamSpeedMult * chaffSpeedMult(zTraits, pdist) * iceSlowMult(enemy, gameTime);
             let lh = 0;
             for (let i = 0; i < enemy.id.length; i++) lh = (lh * 31 + enemy.id.charCodeAt(i)) | 0;
@@ -16816,7 +16820,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               phase = undefined; phaseUntil = 0; // 帯の外へ戻った=待ちを解除→通常接近へ
             } else if (chaffGrants.has(enemy.id)) {
               // ★赤が決まった(社長指示2026-10-14「射程に入ったら…赤点滅2回」): 1歩で噛める距離(ZOMBIE_STEP_REACH_PX)に居れば
-              //   その場で構える。まだ遠ければ普通に歩いて詰める(z-lunge-in=詰め・上限 ZOMBIE_LUNGE_MAX_MS)→届いたら構える。
+              //   その場で構える。まだ遠ければ走って詰める(z-lunge-in=詰め・上限 ZOMBIE_LUNGE_MAX_MS・社長指示2026-10-16「赤が走り寄る」)→届いたら構える。
               if (pdist <= ZOMBIE_STEP_REACH_PX) {
                 playZombieGrowl(ecx, ecy);
                 return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };

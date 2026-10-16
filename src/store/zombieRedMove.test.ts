@@ -13,7 +13,7 @@ import { applyContactDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { biteSpecFor, BITE_CONTACT_DIST_PX, BITE_LUNGE_CAP_PX, biteLungeDistanceAtFire } from '../utils/enemyBite';
 import {
   ZOMBIE_STEP_REACH_PX, ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_RECOVER_MS, ZOMBIE_STAGGER_MS,
-  ZOMBIE_RED_TRIGGER_MIN_PX,
+  ZOMBIE_RED_TRIGGER_MIN_PX, ZOMBIE_BAND_OUTER_PX,
   ZOMBIE_RETREAT_TARGET_PX, // §16-A7条目: 技を出し切ったら得意な距離(150px)へ離れる
   chaffMoveBlinkStrength,
 } from '../utils/chaffMoves';
@@ -216,13 +216,20 @@ describe('赤の台本: z-red-pause → z-lunge-in → z-bite1 → z-stagger →
     expect(ZOMBIE_STEP_REACH_PX - BITE_LUNGE_CAP_PX.zombie).toBeLessThanOrEqual(BITE_CONTACT_DIST_PX.zombie);
   });
 
-  it('詰めの間は普通の歩きで近づき続ける(z-lunge-inのまま)', () => {
+  it('詰めの間は走って近づき続ける(z-lunge-inのまま・社長指示2026-10-16「赤が走り寄る」=歩きより速い)', () => {
     const e0 = place(ZOMBIE_STEP_REACH_PX + 30, { aiPhase: 'z-lunge-in', aiPhaseUntil: START_GT + 1000 });
     tick(START_GT);
     const e = first();
     expect(e.aiPhase).toBe('z-lunge-in');
     // 近づいている(敵は+x側に居るので、xが減る=プレイヤーへ寄っている)。
     expect(e.x).toBeLessThan(e0.x);
+    // ★走る: 同じ個体を帯の外(通常接近=歩き)で動かした時の1フレームの移動量より明らかに大きい
+    //   (出足のeaseは z-lunge-in 開始から800ms経過の想定=満速)。
+    const w0 = place(ZOMBIE_BAND_OUTER_PX + 200, {});
+    tick(START_GT);
+    const walkDx = w0.x - first().x;
+    expect(walkDx).toBeGreaterThan(0);
+    expect(e0.x - e.x).toBeGreaterThan(walkDx * 2);
   });
 
   it('1発目が解決(biteAt=0)したらz-stagger(一拍で狙い直す・構え/点滅なし・その場)へ', () => {
