@@ -1,6 +1,7 @@
 import { isTrueBossType, isBossType, isBiteExemptType, isGuardianPhantom, ENEMY_STATS } from './enemyUtils';
 import { describe, it, expect } from 'vitest';
 import {
+  isHarmlessFootWallSubject,
   BITE_DEFAULT, BITE_BY_TYPE, biteSpecFor, bitePhaseOf, biteProgress,
   biteLungeFrac, bitePointFrom, biteReachRect, isInBiteRect, isBiteSubject,
   biteWallRect, BITE_WALL_W, BITE_WALL_H, isBiteWallOpen, biteBodyOverlapsPlayer, canStartBite,
@@ -984,5 +985,13 @@ describe('★強個体3種(蜘蛛/削岩型/伐採人)の噛みつきの溜め',
     for (const t of ['bat', 'werewolf', 'ghost'] as EnemyType[]) {
       expect(biteSpecFor(t).windupMs, t).toBe(BITE_DEFAULT.windupMs);
     }
+  });
+});
+
+describe('接触ダメージ0の雑魚も足元の箱で塞ぐ(社長報告2026-10-17「プラント、重なれちゃう」)', () => {
+  it('プラントは塞ぐ・ボス級と接触ダメージのある敵は対象外', () => {
+    expect(isHarmlessFootWallSubject({ type: 'plant', damage: ENEMY_STATS.plant.damage }, isBossType)).toBe(true);
+    expect(isHarmlessFootWallSubject({ type: 'zombie', damage: ENEMY_STATS.zombie.damage }, isBossType)).toBe(false);
+    expect(isHarmlessFootWallSubject({ type: 'mutant-hero', damage: 0 }, isBossType)).toBe(false);
   });
 });

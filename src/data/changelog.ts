@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5098', items: [
+    'プラントに重なれてしまっていたのを直した。ほかの敵と同じく体で行く手を塞ぐ',
+  ] },
   { version: '0.25.5097', items: [
     '一時停止の地図に、その出撃で歩いてきた道が線で出る',
     '装備やスキルが増えると一時停止の地図が消えていたのを直した',

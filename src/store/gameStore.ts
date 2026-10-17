@@ -360,7 +360,7 @@ import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '
 import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): 純関数(src/world/shieldPush.test.ts)
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
-import { isBiteSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS, BAT_WINDUP_STILL_MS, biteLungeDistanceAtFire } from '../utils/enemyBite';
+import { isBiteSubject, isHarmlessFootWallSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS, BAT_WINDUP_STILL_MS, biteLungeDistanceAtFire } from '../utils/enemyBite';
 // ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。旧 `deferFrozenClocksBy`(凍結dtの毎フレーム
 // 繰り下げ)は**破棄**して、この「残りを預かって明けた瞬間に書き直す」1本へ置き換えた(H-3)。
 import { tickEnemyClockFreeze } from '../utils/enemyClocks';
@@ -7872,6 +7872,12 @@ export const useGameStore = create<GameState>((set, get) => ({
               const hb = heroBodyWallRect(en);
               if (Math.abs(hb.x - newX) > 300 || Math.abs(hb.y - newY) > 300) continue;
               blockers.push(hb);
+              continue;
+            }
+            // ★接触ダメージ0の雑魚(プラント)も足元の箱で塞ぐ(社長報告2026-10-17「プラント、重なれちゃう」・噛まないので壁を開ける時間も無い)。
+            if (en.health > 0 && isHarmlessFootWallSubject(en, isBossType)) { // ボス級(接触0の英雄等)は上の専用の壁 or 塞がない=対象外
+              const fb = biteWallRect(en);
+              if (Math.abs(fb.x - newX) <= 160 && Math.abs(fb.y - newY) <= 160) blockers.push({ x: fb.x, y: fb.y, width: fb.width, height: fb.height });
               continue;
             }
             if (!isBiteSubject(en, isBiteExemptType, state.gameTime)) continue;

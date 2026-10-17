@@ -724,6 +724,16 @@ export const isBiteSubject = (
 };
 
 /**
+ * ★接触ダメージを持たない雑魚(プラント)も、噛みつく雑魚と同じ足元の箱で体を塞ぐ(社長報告2026-10-17「プラント、重なれちゃう」)。
+ * 体で塞ぐのは雑魚の区分の仕様(噛みつき化で接触ダメージを外した時に、雑魚全体へ足元の壁を付けた=v0.25.3913)。
+ * プラントは最初から接触ダメージ0なので `isBiteSubject` に入らず、**塞ぐ対象から漏れていた**=区分仕様への整合。
+ */
+export const isHarmlessFootWallSubject = (
+  enemy: Pick<Enemy, 'type' | 'damage'>,
+  isBoss: (t: EnemyType) => boolean,
+): boolean => !isBoss(enemy.type) && (enemy.damage ?? 0) <= 0;
+
+/**
  * 今このフレームで**新しく構え始められる**か。
  * 拘束(rootUntil)・気絶(stunUntil)中は構えない=**罠で止めた敵は噛んでこない**
  * (拘束の意味が「止める」なので、止まっているのに噛むのは矛盾する)。
