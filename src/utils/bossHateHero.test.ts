@@ -26,10 +26,17 @@ describe('ボスの狙い: 英雄も候補', () => {
     expect(pickHateTarget(base({ hero: { x: 100, y: 0 } }))).toBe('hero');
     expect(pickHateTarget(base({ hero: { x: 500, y: 0 } }))).toBe('player');
   });
-  it('英雄に殴られ続けたボスは英雄を狙う', () => {
-    const heroHateBuckets = addHateDamage(undefined, 1000, 400);
-    const playerHateBuckets = addHateDamage(undefined, 1000, 50);
-    expect(pickHateTarget(base({ hero: { x: 300, y: 0 }, heroHateBuckets, playerHateBuckets }))).toBe('hero');
+  it('英雄はダメージを見ず近さで決まる: プレイヤーが殴り続けていても、英雄の方が近ければ英雄', () => {
+    const playerHateBuckets = addHateDamage(undefined, 1000, 5000);
+    expect(pickHateTarget(base({ hero: { x: 250, y: 0 }, playerHateBuckets }))).toBe('hero');
+    expect(pickHateTarget(base({ hero: { x: 350, y: 0 }, playerHateBuckets }))).toBe('player');
+  });
+  it('今の相手が英雄なら、少し遠くなっても英雄のまま(行ったり来たりしない)', () => {
+    expect(pickHateTarget(base({ hero: { x: 350, y: 0 }, currentTarget: 'hero' }))).toBe('hero'); // 300×1.3=390 まで
+    expect(pickHateTarget(base({ hero: { x: 400, y: 0 }, currentTarget: 'hero' }))).toBe('player');
+  });
+  it('英雄より近い守護霊・軍人が居れば、英雄ではなく従来の決め方', () => {
+    expect(pickHateTarget(base({ hero: { x: 250, y: 0 }, ghost: { x: 100, y: 0 } }))).toBe('ghost');
   });
   it('resolveBossHateAim: 英雄を選んだら英雄の中心・速度・足元を返す', () => {
     const aim = resolveBossHateAim(boss(), { x: 400, y: 0 }, [], 1000, NO_ESC, heroAt(80, 0));

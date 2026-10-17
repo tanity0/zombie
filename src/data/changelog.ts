@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5104', items: [
+    'ボスは、誰が殴っているかより英雄(変異)との近さで狙いを決める。英雄がいちばん近ければ英雄へ',
+  ] },
   { version: '0.25.5103', items: [
     'ボスも英雄(変異)を狙う。殴ってくる英雄や、すぐそばの英雄に向き直る',
   ] },

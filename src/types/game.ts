@@ -1527,8 +1527,6 @@ export interface Enemy {
   hateEscortBuckets?: Record<string, { idx: number; dmg: number }[]>;
   // research/HERO_DOG.md: 英雄の犬の直近6秒ダメージ(damageEnemy(hateSource='dog') が積む)。
   hateDogBuckets?: { idx: number; dmg: number }[];
-  // research/MUTANT_HERO.md §3-2: 英雄の直近6秒ダメージ(damageEnemy(hateSource='hero') が積む)。
-  hateHeroBuckets?: { idx: number; dmg: number }[];
   hateTarget?: HateSideKey;
   // research/ESCORT_TARGETED.md §4: 雑魚・強個体・ハンターが今追っている進軍NPCのid(粘着20%の基準・resolveEnemyTarget が読む)。
   // 既存の `escortTarget`(救助イベントの攻撃者が追う生存者のid)とは**別物**。

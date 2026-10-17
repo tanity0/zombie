@@ -141,7 +141,6 @@ export interface PickHateTargetInput {
   playerHateBuckets: readonly HateBucket[] | undefined;
   ghostHateBuckets: readonly HateBucket[] | undefined;
   dogHateBuckets?: readonly HateBucket[] | undefined;
-  heroHateBuckets?: readonly HateBucket[] | undefined;
   escortHateBuckets: Readonly<Record<string, readonly HateBucket[]>> | undefined;
   gameTime: number;
   currentTarget: HateSide | undefined;
@@ -154,6 +153,8 @@ export interface PickHateTargetInput {
  * - 全員の直近6秒ダメージが0(開幕等)→ **粘着なしで一番近い相手**(今と同じ。同距離はプレイヤー)。
  * - それ以外 → 点数 = ダメージの割合(dmg_i/Σdmg)+ HATE_NEAR_WEIGHT × 近さの点。今の相手には ×HATE_STICKY_MULT。
  *   いちばん高い相手。同点は先に並べた方(プレイヤー → 守護霊 → 進軍NPC)。
+ * - 英雄(変異)だけは**ダメージを見ず近さで決める**(社長指示2026-10-17「英雄はダメージ値より、近さを優先させたい」):
+ *   英雄が他の誰よりも近ければ英雄。今の相手が英雄なら ×HATE_STICKY_MULT の距離まで英雄のまま(行ったり来たりしない)。
  */
 export const pickHateTarget = (input: PickHateTargetInput): HateSide => {
   if (!BOSS_HATE_ENABLED) return 'player';
@@ -166,9 +167,14 @@ export const pickHateTarget = (input: PickHateTargetInput): HateSide => {
   ];
   if (ghost) cands.push({ side: 'ghost', x: ghost.x, y: ghost.y, hate: hateTotal(input.ghostHateBuckets, gameTime) });
   if (dog) cands.push({ side: 'dog', x: dog.x, y: dog.y, hate: hateTotal(input.dogHateBuckets, gameTime) });
-  if (hero) cands.push({ side: 'hero', x: hero.x, y: hero.y, hate: hateTotal(input.heroHateBuckets, gameTime) });
   for (const e of escorts) {
     cands.push({ side: escortHateSide(e.id), x: e.x, y: e.y, hate: hateTotal(input.escortHateBuckets?.[e.id], gameTime) });
+  }
+  if (hero) {
+    const dHero = Math.hypot(hero.x - enemyCenter.x, hero.y - enemyCenter.y);
+    let dMin = Infinity;
+    for (const c of cands) dMin = Math.min(dMin, Math.hypot(c.x - enemyCenter.x, c.y - enemyCenter.y));
+    if (dHero < (currentTarget === 'hero' ? dMin * HATE_STICKY_MULT : dMin)) return 'hero';
   }
   const sum = cands.reduce((a, c) => a + c.hate, 0);
   let best = cands[0];
@@ -223,7 +229,6 @@ export interface BossHateEnemyLike {
   hatePlayerBuckets?: readonly HateBucket[];
   hateGhostBuckets?: readonly HateBucket[];
   hateDogBuckets?: readonly HateBucket[];
-  hateHeroBuckets?: readonly HateBucket[];
   hateEscortBuckets?: Readonly<Record<string, readonly HateBucket[]>>;
   hateTarget?: HateSide;
 }
@@ -303,7 +308,6 @@ export const resolveBossHateAim = (
   const side = pickHateTarget({
     enemyCenter, player, ghost, dog, hero: heroC, escorts: cand,
     playerHateBuckets: enemy.hatePlayerBuckets, ghostHateBuckets: enemy.hateGhostBuckets, dogHateBuckets: enemy.hateDogBuckets,
-    heroHateBuckets: enemy.hateHeroBuckets,
     escortHateBuckets: enemy.hateEscortBuckets,
     gameTime, currentTarget: enemy.hateTarget,
   });

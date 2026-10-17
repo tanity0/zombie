@@ -109,8 +109,7 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
   let kills = 0;
   for (const e of victims) {
     const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-    // ヘイト='hero': ボスのバケツに積む=殴られたボスは英雄へ向き直る(§3-2・社長指示2026-10-17「狙わせる」)。それ以外は 'neutral' と同じ扱い。
-    const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, null, 'hero');
+    const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, null, 'neutral');
     if (killed) kills++;
     fx.spawnDamageNumber(ex, e.y, dmg, false);
     // 派手さの絵(判定ゼロ): 英雄から外へ向かう大きい血しぶき=ボスの命中と同じ大きさ。
