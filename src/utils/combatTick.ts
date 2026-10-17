@@ -441,7 +441,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           } else {
             damageGhostAllyByBossMove(ghostAlly.id, b.damage, (x, y) => fx.spawnBurst(x, y, '#bae6fd', 3), b.x, b.y,
               `blast:${b.moveKey ?? (b.capsule ? 'capsule' : 'circle')}`);
-            if (b.moveKey?.startsWith('hero-')) markHeroHit(b.enemyId);
+            if (b.moveKey?.startsWith('hero-')) { markHeroHit(b.enemyId); healHeroForHits(b.enemyId, 1, 0); } // 社長指示2026-10-17「英雄は守護霊や軍人でも回復」
           }
         }
       }
@@ -454,7 +454,11 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     }
     // research/ESCORT_TARGETED.md §3(爆風): 同じ爆発を進軍NPC(見えていて倒れていない軍人)にも。守護霊と同じく英雄の技の爆風も当たる。
     // 軍人にカウンターは無い=窓(counterActive)にも請求にも関係なく、触れたら食らう(無敵の間は damageEscort が弾く)。
-    if (applyBlastToEscorts(b) > 0 && b.moveKey?.startsWith('hero-')) markHeroHit(b.enemyId);
+    {
+      const escortHits = applyBlastToEscorts(b);
+      // 社長指示2026-10-17「英雄は守護霊や軍人でも回復」: 当たった軍人1人につき +200。
+      if (escortHits > 0 && b.moveKey?.startsWith('hero-')) { markHeroHit(b.enemyId); healHeroForHits(b.enemyId, escortHits, 0); }
+    }
   }
   if (parriedEnemyIds.length > 0 || localParries.length > 0) {
     // G4a(§2.9・記録専用): カウンター成立(②ジャンプ着地パリィ)を技への反応表へ通知。

@@ -138,7 +138,8 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
 
 /**
  * 英雄の技が当たった分だけ英雄を回復する(社長指示2026-10-05 → 2026-10-17「攻撃で200回復、倒すと500回復に変更。プレイヤーに当てても回復」)。
- * 当てた1体=200、倒した1体=500(その1体は200ではなく500)。敵の一撃(applyHeroBlastToEnemies)とプレイヤーへの命中(combatTick)の両方から呼ぶ。
+ * 当てた1体=200、倒した1体=500(その1体は200ではなく500)。敵の一撃(applyHeroBlastToEnemies)・プレイヤー/守護霊/軍人への命中(combatTick)から呼ぶ
+ * (守護霊・軍人は 2026-10-17「英雄は守護霊や軍人でも回復」。こちらは当たった分の +200 だけ=倒れたかは見ない)。
  * 満タンになったら次のtickで昇天(heroTick)。回復は数字で見せる(派手さの絵・判定なし)。
  */
 export const healHeroForHits = (heroId: string, hits: number, kills: number): void => {

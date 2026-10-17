@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5109', items: [
+    '英雄(変異)は、守護霊や軍人に攻撃を当てた時も回復する',
+  ] },
   { version: '0.25.5108', items: [
     'もう一度プレイを繰り返した時に、前の画面のメモリをすぐ手放すようにした(落ちにくくするための手当て)',
   ] },
