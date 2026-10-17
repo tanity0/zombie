@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5099', items: [
+    '旧市街地・洋館のはじめの迎撃戦の輪が、スタート地点より少し奥に出る。輪の下側が歩けない所にはみ出さない',
+  ] },
   { version: '0.25.5098', items: [
     'プラントに重なれてしまっていたのを直した。ほかの敵と同じく体で行く手を塞ぐ',
   ] },

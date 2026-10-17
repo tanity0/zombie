@@ -357,7 +357,7 @@ import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
 import { consumeDueWaves, newConsumedWaves } from '../utils/stageDirector';
 import { phaseAt, sceneAt } from '../utils/difficultyDirector';
-import { welcomeAdvance, welcomeAppliesToRun, WELCOME_RING_ENDS_IN_MS } from '../utils/welcomeScript';
+import { welcomeAdvance, welcomeAppliesToRun, welcomeRingCenter, WELCOME_RING_ENDS_IN_MS } from '../utils/welcomeScript';
 import { beginWelcomeAttempt, completeWelcomeAttempt } from '../utils/welcomeStreak';
 import { spawnEscalation, gateLiveCorrection, playerPower, expectedPower, powerMargin } from '../utils/difficultyScaler';
 // SKILL_BUILD_REDESIGN.md §21(B5発注文): 枠光(視覚専用)の点灯窓の長さだけを共有する。
@@ -1138,8 +1138,7 @@ const WELCOME_ENABLED = evParam('welcome') !== '0';
 // ★社長指示2026-09-19「ウェルカムサークル生成はステージ中心からずらさないで」: 輪の中心。
 // ステージ中心=出撃の到着点で、ウェルカム台本を持つ全ステージ(S1/S3/S4/S5/S6)で (0,0)。
 // プレイヤーの現在地から取らない(段ごとに舞台がずれるため)。
-const WELCOME_RING_CENTER_X = 0;
-const WELCOME_RING_CENTER_Y = 0;
+// ★2026-10-17: 洋館(ステージ6)だけ輪を上へ(社長指示)=中心は welcomeScript.welcomeRingCenter が返す(ここに数字を写さない)。
 // PACING_PUZZLE.md §5.5 バッチM5(RE4式弾ドロップ・既定ON): キル時弾薬ドロップを「残弾割合が
 // 最小の弾種」にする。`?ammosmart=0`で従来(構え銃の弾種)へ復帰。gameStore側の近接キル経路も
 // 同名パラメータを各自読む(既存のcamNum等と同じ流儀)。
@@ -16877,9 +16876,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             //   縁ぴったりだと拾いに行けないことがあるので、半径の85%=輪の内側に落とす。
             //   プレイヤーが中心に重なっている時は向きが定まらないので、真上を既定にする
             //   (ゼロ除算で「その場に落ちる」を作らない=今日 `biteDir` で踏んだのと同じ罠)。
-            useGameStore.getState().dropWelcomeStepAmmo(
-              WELCOME_RING_CENTER_X, WELCOME_RING_CENTER_Y, ARENA_EVENT_RADIUS * 0.85, welcomeStepRef.current,
-            );
+            const wc = welcomeRingCenter(welcomeStageIdNow, ARENA_EVENT_RADIUS);
+            useGameStore.getState().dropWelcomeStepAmmo(wc.x, wc.y, ARENA_EVENT_RADIUS * 0.85, welcomeStepRef.current);
           }
           // §17-12-d「段ごと: 1段=1つの輪。倒し切ったら閉じ、gap後に次の輪を新しく開く」。
           // 段が全滅した瞬間、まだ輪(kind:'welcome')が開いていれば閉じる(次の輪はspawnNowが
@@ -16918,7 +16916,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             //   `spawnTL = {x:0, y:0}`、洋館(S6)は `{x:0, y:CORRIDOR_RUNIN_DIST}` から走り込んで
             //   **到着点が y=0**(gameStore.ts の spawnTL)。屋内(研究所)は台本を持たない。
             // ★敵の配置(placeInWelcomeRing)もこの中心を使う=輪と中身が必ず同じ場所になる。
-            const wpcx = WELCOME_RING_CENTER_X, wpcy = WELCOME_RING_CENTER_Y;
+            const { x: wpcx, y: wpcy } = welcomeRingCenter(welcomeStageIdNow, ARENA_EVENT_RADIUS);
             useGameStore.getState().beginArenaEvent({
               kind: 'welcome', x: wpcx, y: wpcy, radius: ARENA_EVENT_RADIUS,
               // ★時間では終わらない(社長指示2026-09-19)。`endsAt` は輪の見た目のための遠い期限で、

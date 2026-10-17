@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   WELCOME_SCRIPT, WELCOME_STEP_GAP_MS, WELCOME_FORCE_END_AREA,
   welcomeStageScript, welcomeStepCount, welcomeUnitsAt, welcomeAdvance,
-  WELCOME_START_GATE, welcomeStartGateMet, welcomeAppliesToRun, type WelcomeApplicabilityInput,
+  WELCOME_START_GATE, welcomeStartGateMet, welcomeAppliesToRun, type WelcomeApplicabilityInput, welcomeRingCenter,
 } from './welcomeScript';
 
 describe('welcomeStageScript / welcomeStepCount (§17-11 受け入れ条件1)', () => {
@@ -263,5 +263,14 @@ describe('welcomeAppliesToRun (§17-14)', () => {
     ['3連続クリアで卒業済み', { retired: true }],
   ] as const)('%sは偽になる', (_label, patch) => {
     expect(welcomeAppliesToRun({ ...applicableBase, ...patch })).toBe(false);
+  });
+});
+
+describe('ウェルカムの輪の中心(社長指示2026-10-17「洋館のウェルカム、スタート地点よりもう少し上に」)', () => {
+  it('洋館(ステージ6)だけ上へ=輪の下端が歩ける範囲の下端(到着点の下50px)に揃う・他のステージと EX は到着点', () => {
+    expect(welcomeRingCenter('stage-6', 240)).toEqual({ x: 0, y: -190 });
+    expect(welcomeRingCenter('stage-6', 240).y + 240).toBe(50);
+    expect(welcomeRingCenter('stage-1', 240)).toEqual({ x: 0, y: 0 });
+    expect(welcomeRingCenter('stage-ex1', 240)).toEqual({ x: 0, y: 0 });
   });
 });
