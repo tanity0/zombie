@@ -13,7 +13,7 @@ import { POI_SECTORS } from '../world/pois';
 export interface PauseMapData {
   player: { x: number; y: number; dirX: number; dirY: number };
   bases: { x: number; y: number; captured: boolean }[];
-  pois: { x: number; y: number; kind: 'boss' | 'cave' | 'armory' | 'police' | 'hospital'; taken: boolean }[]; // 発見済みだけ。taken=取り終えた(裏ボスは討伐済み)
+  pois: { x: number; y: number; kind: 'boss' | 'cave' | 'armory' | 'police' | 'hospital' }[]; // 発見済みで、まだ取り終えていない所だけ(取り終えたら消す)
   threats: { x: number; y: number }[]; // §2-3: この出撃で出会ったボス級(強個体を除く)・宿敵の今の位置
 }
 
@@ -77,16 +77,14 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
     }
     // 発見済みの寄り道・裏ボスの巣=**1色の点**(社長 2026-10-17「POIは区別しなくていい。全体的に大雑把な区分けでいい」)。
     // 地図の区分は4つだけ: 自分=白の枠 / 拠点=四角 / 寄り道=青白の点 / 脅威=琥珀の菱形。色を琥珀から離して脅威と取り違えない。
-    // 取り終えた所は塗らずに輪だけ(まだ行く価値がある所が一目で分かる)。
+    // 取り終えた所は出さない(社長 2026-10-17「取り終えたら消していいよ」=PauseMenu で外す)。
     // 記号は地の色で一回り縁取ってから描く=輪の線や他の記号に溶けない(検収クリエイティブ監査 #1/#6)。
     for (const q of data.pois) {
       const col = DETOUR;
       const x = mx(q.x), y = my(q.y);
       ctx.fillStyle = GROUND; ctx.beginPath(); ctx.arc(x, y, 3.8 * m, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x, y, (q.taken ? 2.2 : 2.6) * m, 0, Math.PI * 2);
-      // 取り終えた所=輪だけ。細いと小さい箱で色が読めないので太めに・薄くしない(検収クリエイティブ監査 #4)。
-      if (q.taken) { ctx.strokeStyle = col; ctx.lineWidth = 1.6 * m; ctx.stroke(); }
-      else { ctx.fillStyle = col; ctx.fill(); }
+      ctx.beginPath(); ctx.arc(x, y, 2.6 * m, 0, Math.PI * 2);
+      ctx.fillStyle = col; ctx.fill();
     }
     // 自分=白い角(作戦室と同じ・一番大きい)。向きは白枠の一辺に付く小さな三角(線ではなく形で示す)。
     const px = mx(data.player.x), py = my(data.player.y);

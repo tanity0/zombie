@@ -29,7 +29,8 @@ const readPauseMap = (): PauseMapData | null => {
   return {
     player: { x: p.x + p.width / 2, y: p.y + p.height / 2, dirX: p.lastDirection?.x ?? 1, dirY: p.lastDirection?.y ?? 0 },
     bases: s.baseSites.map(b => ({ x: b.x, y: b.y, captured: b.status === 'captured' })),
-    pois: pois.map(q => ({ x: q.x, y: q.y, kind: q.kind, taken: taken[q.kind] ?? false })),
+    // 取り終えた寄り道(裏ボスは討伐済み)は地図から消す(社長 2026-10-17「取り終えたら消していいよ」)。
+    pois: pois.filter(q => !(taken[q.kind] ?? false)).map(q => ({ x: q.x, y: q.y, kind: q.kind })),
     // §2-3: ボス級(強個体を除く)と宿敵のうち、この出撃で一度画面に映った物の今の位置。
     // 城ボスの急降下の溜め(g-dive-windup)は場外へ座標を退避しているので出さない(縮尺も跳ぶ・品質監査 A-2)。
     threats: s.enemies
