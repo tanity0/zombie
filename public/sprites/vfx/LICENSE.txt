@@ -1,0 +1,30 @@
+Kenney Particle Pack (1.1) — 抜粋9枚
+
+出典 (source)
+  https://kenney.nl/assets/particle-pack
+  zip: https://kenney.nl/media/pages/assets/particle-pack/f8fe0f8cb8-1677578741/kenney_particle-pack.zip
+作者 (author)
+  Kenney Vleugels (https://kenney.nl)
+  フィルタテンプレート作成の追加クレジット:
+  Indigo Ray, Craig Nisbet, Zoltan Erdokovy, Heliagon, ThreeDee, Killst4r, Tim2501
+ライセンス (license)
+  Creative Commons Zero (CC0 1.0)
+  http://creativecommons.org/publicdomain/zero/1.0/
+  個人・商用ともに利用可。クレジットは任意(推奨)。
+取得日 (retrieved)
+  2026-09-14
+
+このフォルダの中身
+  配布 zip の "PNG (Transparent)" から下記9枚だけを取り出したもの。
+    light_01.png  light_02.png  light_03.png  flare_01.png
+    smoke_04.png  smoke_08.png  spark_04.png  trace_04.png  slash_02.png
+
+加工 (modifications) — いずれも可逆・絵は変えていない
+  1. 長辺 512 -> 256px へ縮小 (sips -Z 256・透過はそのまま)
+  2. 元絵が R=G=B のものは PNG カラータイプ 6(RGBA) -> 4(グレー+アルファ) へ変換。
+     画素値は同一=可逆。smoke_08.png のみ R=G=B ではないため RGBA のまま。
+  3. oxipng -o max --strip safe で可逆最適化。
+  合計 217KB (元の9枚は 402KB)。
+
+用途 (intended use)
+  処刑演出のカメラに合わせる VFX(逆光の光条・放射・埃)。実装は別途。

@@ -35,3 +35,9 @@ const read = (): RendererKind => {
 const SELECTED: RendererKind = read();
 
 export const isPixiRenderer = (): boolean => SELECTED === 'pixi';
+
+// 実際に適用された描画解像度(診断用)。PixiStageがapp.init後に書き、Game.tsxの左下デバッグ行が読む。
+// 「?rescap=1が実は3のままでは?」等を実機で確定するための表示(社長質問 v0.25.1446)。
+let appliedResolution = 0;
+export const setAppliedResolution = (r: number): void => { appliedResolution = r; };
+export const getAppliedResolution = (): number => appliedResolution;

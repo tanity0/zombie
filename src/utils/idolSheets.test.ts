@@ -1,0 +1,95 @@
+import { describe, it, expect } from 'vitest';
+import tickSrc from './idolTick.ts?raw';
+import { BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame } from './enemySheets';
+
+describe('アイドルの狙撃・追尾弾', () => {
+  const spec = BOSS_PHASE_SHEETS.find(s => s.name === 'idol-snipe')!;
+  it('狙撃と追尾弾の州がこのシートを引き、州名は台本に実在する(州名を変えたら絵が黙って消える形を止める)', () => {
+    for (const ph of spec.phases) {
+      expect(tickSrc.includes(`'${ph.state}'`) || tickSrc.includes('`idol-${m}-windup`'), ph.state).toBe(true);
+      expect(bossPhaseFor('idol', ph.state)?.spec.name, ph.state).toBe('idol-snipe');
+    }
+    expect(tickSrc.includes("'idol-snipe'")).toBe(true);
+  });
+  it('★閃光のコマ(1)は弾が出る瞬間=狙撃は判定の州の頭・追尾弾は硬直の頭。溜めの間は構え(0)のまま', () => {
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-snipe-windup')!.phase, 0.999, 0, 90)).toBe(0);
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-snipe')!.phase, 0, 0, 90)).toBe(1);
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-orb-windup')!.phase, 0.999, 0, 90)).toBe(0);
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-orb-recover')!.phase, 0, 0, 90)).toBe(1);
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-snipe-recover')!.phase, 0.999, 0, 90)).toBe(15);
+  });
+  it('他の州(狙い撃ちの溜め・待機)は引かない', () => {
+    for (const st of ['idol-aim-windup', 'chase']) {  // 狙い撃ちの溜めは立ち絵のまま
+      expect(bossPhaseFor('idol', st), st).toBeNull();
+    }
+  });
+});
+
+describe('アイドルの歩き', () => {
+  it('止まったら立ち絵へ戻す(アイドルだけ。他の歩きのシートを持つ敵は止まったコマのまま)', async () => {
+    const m = await import('./enemySheets');
+    expect(m.walkSheetFrames('idol')).toBe(16);
+    expect(m.walkStopsToIdle('idol')).toBe(true);
+    expect(m.walkStopsToIdle('bounty-maiko')).toBe(false);
+    expect(m.walkStopsToIdle('zombie-common')).toBe(false);
+  });
+});
+
+describe('アイドルの跳び退き(離脱ローリング・手榴弾)', () => {
+  it('両技の溜め/跳ぶ/硬直の州が idol-roll を引き、州名は台本に実在する', () => {
+    for (const m of ['roll', 'nade']) for (const st of [`idol-${m}-windup`, `idol-${m}`, `idol-${m}-recover`]) {
+      expect(tickSrc.includes(`'${st}'`) || st.endsWith('-recover'), st).toBe(true);
+      expect(bossPhaseFor('idol', st)?.spec.name, st).toBe('idol-roll');
+    }
+  });
+  it('跳ぶ州の頭で仰け反り始め(2)、硬直の末で立ち姿(0)へ戻る', () => {
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-roll')!.phase, 0, 0, 90)).toBe(2);
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-nade-recover')!.phase, 0.999, 0, 90)).toBe(0);
+  });
+});
+
+describe('アイドルの通常撃ち1(狙い撃ち)', () => {
+  it('狙い撃ちの硬直だけが idol-shot を引き(溜めは立ち絵)、硬直の頭=0・末=14', () => {
+    const ph = bossPhaseFor('idol', 'idol-aim-recover')!;
+    expect(ph.spec.name).toBe('idol-shot');
+    expect(bossPhaseFrame(ph.phase, 0, 0, 90)).toBe(0);
+    expect(bossPhaseFrame(ph.phase, 0.999, 0, 90)).toBe(14);
+    expect(bossPhaseFor('idol', 'idol-aim-windup')).toBeNull();
+  });
+  it('跳ねる浮きは全コマぶんあり、伸びるコマで浮き・屈むコマで着地', async () => {
+    const m = await import('./enemySheets');
+    const lift = m.SHEET_FRAME_LIFT['idol-shot'];
+    expect(lift.length).toBe(15);
+    expect(lift[0]).toBeGreaterThan(0);
+    expect(lift[3]).toBe(0);
+  });
+});
+
+describe('アイドルの射撃2(連射扇)', () => {
+  it('溜めで構え(0→5)、弾が出る瞬間=硬直の頭で撃つコマ(6)。2発目のコマ(11,12)は使わない', () => {
+    const w = bossPhaseFor('idol', 'idol-fan-windup')!;
+    expect(w.spec.name).toBe('idol-shot2');
+    expect(bossPhaseFrame(w.phase, 0.999, 0, 90)).toBe(5);
+    const r = bossPhaseFor('idol', 'idol-fan-recover')!;
+    expect(bossPhaseFrame(r.phase, 0, 0, 90)).toBe(6);
+    expect(r.phase.seq.includes(11) || r.phase.seq.includes(12)).toBe(false);
+  });
+});
+
+describe('アイドルの向き', () => {
+  it('絵は右向き=戦闘中はボス共通のミラーでプレイヤーの側を向く(社長指摘「アイドルの向きが逆」)', async () => {
+    const m = await import('./enemySheets');
+    for (const n of [null, 'idol-snipe', 'idol-roll', 'idol-shot', 'idol-shot2', 'idol-walk']) {
+      expect(m.sheetArtFacesRight('idol', n), String(n)).toBe(true);
+    }
+  });
+});
+
+describe('アイドルのパンチ', () => {
+  it('溜めで 0→3、当たる瞬間(硬直の頭)で腕を伸ばし切る 4', () => {
+    const w = bossPhaseFor('idol', 'idol-punch-windup')!;
+    expect(w.spec.name).toBe('idol-punch');
+    expect(bossPhaseFrame(w.phase, 0.999, 0, 90)).toBe(3);
+    expect(bossPhaseFrame(bossPhaseFor('idol', 'idol-punch-recover')!.phase, 0, 0, 90)).toBe(4);
+  });
+});

@@ -1,0 +1,52 @@
+/* ゲーム中のボタン札(research/PC_SUPPORT.md §14)。メニューの案内(.nav-prompt-key)と同じ「枠だけの札」: 面は持たず、text-shadow と影で読ませる。
+   キー/パッドで遊んでいる時だけ描かれる(スマホは DOM が無い)。
+   濃さ: 遊んでいる間は控えめ(触った瞬間に速く落ちる)/ 手を止めると(html.hudhint-idle)ゆっくり濃くなる / 一時停止中(html.hudhint-paused)は沈める。
+   押している間(html.hk-<操作>)は、その札だけ明るくなって1px沈む。 */
+.hud-key {
+  position: absolute; z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 13px; height: 13px; padding: 0 3px; box-sizing: border-box;
+  border: 1px solid #4b5254; color: #cfd3d1;
+  font-family: var(--game-font, "Orbitron"), sans-serif; font-size: 8px; font-weight: 600; line-height: 1; letter-spacing: 0.04em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 6px rgba(0, 0, 0, 0.75);
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); /* 枠の線も明るい地面の上で読めるように */
+  white-space: nowrap; pointer-events: none;
+  opacity: 0.45;
+  transition: opacity 140ms cubic-bezier(.2, .7, .3, 1), border-color 90ms ease-out, color 90ms ease-out, translate 90ms ease-out;
+  animation: hud-key-appear 220ms cubic-bezier(.2, .7, .3, 1) both;
+}
+html.hudhint-idle .hud-key { opacity: 0.9; transition: opacity 700ms cubic-bezier(.4, 0, .2, 1), border-color 90ms ease-out, color 90ms ease-out, translate 90ms ease-out; }
+html.hudhint-paused .hud-key { opacity: 0.2; }
+.hud-key[data-style="padps"] { font-family: "Hiragino Sans", system-ui, sans-serif; font-size: 9px; } /* ×/○/△ の字形を揃える */
+.hud-key--static { position: static; }
+.hud-key svg { display: block; }
+@keyframes hud-key-appear { from { opacity: 0; translate: 0 3px; } }
+
+/* 押している間 */
+/* 押している間(一時停止中は沈めたまま=窓の中の決定・戻るで窓の下の札が光らない) */
+html.hk-press:not(.hudhint-paused) .hud-key[data-act="press"],
+html.hk-flick:not(.hudhint-paused) .hud-key[data-act="flick"],
+html.hk-pause:not(.hudhint-paused) .hud-key[data-act="pause"],
+html.hk-gunPrev:not(.hudhint-paused) .hud-key[data-act="gunPrev"],
+html.hk-gunNext:not(.hudhint-paused) .hud-key[data-act="gunNext"],
+html.hk-slot1:not(.hudhint-paused) .hud-key[data-act="slot1"],
+html.hk-slot2:not(.hudhint-paused) .hud-key[data-act="slot2"],
+html.hk-slot3:not(.hudhint-paused) .hud-key[data-act="slot3"],
+html.hk-slot4:not(.hudhint-paused) .hud-key[data-act="slot4"],
+html.hk-slot5:not(.hudhint-paused) .hud-key[data-act="slot5"],
+html.hk-slot6:not(.hudhint-paused) .hud-key[data-act="slot6"],
+html.hk-slot7:not(.hudhint-paused) .hud-key[data-act="slot7"],
+html.hk-slot8:not(.hudhint-paused) .hud-key[data-act="slot8"],
+html.hk-slot9:not(.hudhint-paused) .hud-key[data-act="slot9"] { opacity: 1; border-color: #cfd3d1; color: #fff; translate: 0 1px; }
+
+/* 銃の持ち替え(パッド): 今の銃の左に [▲ LB][▼ Y] の縦の組。今の銃が変わると、新しい位置で下から滑り込む。 */
+.hud-key-stack {
+  position: absolute; z-index: 2; top: 50%; right: calc(100% + 12px); transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+  pointer-events: none;
+}
+.hud-key-arrow { font-size: 6px; margin-right: 3px; color: #79817f; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-key, html.hudhint-idle .hud-key { transition: none; animation: none; }
+}

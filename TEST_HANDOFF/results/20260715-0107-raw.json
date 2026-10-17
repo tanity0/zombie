@@ -1,0 +1,409 @@
+{
+  "generatedAt": "2026-07-15T02:02:12.040Z",
+  "config": {
+    "baseUrl": "local",
+    "runMs": 900000,
+    "headless": true,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "configs": [
+      {
+        "name": "junk-scrap-a",
+        "persona": "standard",
+        "subs": [
+          "junk-weapon"
+        ],
+        "skills": [
+          "scrap-builder",
+          "magnet"
+        ]
+      },
+      {
+        "name": "junk-scrap-b",
+        "persona": "standard",
+        "subs": [
+          "junk-weapon"
+        ],
+        "skills": [
+          "scrap-builder",
+          "magnet"
+        ]
+      },
+      {
+        "name": "berserker-on-a",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "berserker",
+          "exploder"
+        ]
+      },
+      {
+        "name": "berserker-on-b",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "berserker",
+          "exploder"
+        ]
+      },
+      {
+        "name": "berserker-off-a",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "exploder"
+        ]
+      },
+      {
+        "name": "berserker-off-b",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "exploder"
+        ]
+      },
+      {
+        "name": "goldrush-on-a",
+        "persona": "standard",
+        "subs": [
+          "flare-gun"
+        ],
+        "skills": [
+          "gold-rush",
+          "warm-up"
+        ]
+      },
+      {
+        "name": "goldrush-on-b",
+        "persona": "standard",
+        "subs": [
+          "flare-gun"
+        ],
+        "skills": [
+          "gold-rush",
+          "warm-up"
+        ]
+      },
+      {
+        "name": "goldrush-off-a",
+        "persona": "standard",
+        "subs": [
+          "flare-gun"
+        ],
+        "skills": [
+          "warm-up"
+        ]
+      },
+      {
+        "name": "goldrush-off-b",
+        "persona": "standard",
+        "subs": [
+          "flare-gun"
+        ],
+        "skills": [
+          "warm-up"
+        ]
+      }
+    ]
+  },
+  "results": [
+    {
+      "config": "junk-scrap-a",
+      "subs": [
+        "junk-weapon"
+      ],
+      "skills": [
+        "scrap-builder",
+        "magnet"
+      ],
+      "realSec": 312,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 275311,
+        "deathCause": "吸血コウモリ",
+        "kills": 122,
+        "playerLevel": 5,
+        "maxDepthPx": 1172,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 56,
+          "junk-weapon": 58
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 73,
+        "scrapSpent": 279,
+        "damageTaken": 208,
+        "goldEarned": 18
+      },
+      "errors": [],
+      "finalBodySnippet": "ゲームオーバー\n\n軍備配置区域の怠惰 に到達\n\n自己最深\n1172m⚑更新\n昇格度 15 —— 阻んだのは 被ダメ(15)\n\n死因：吸血コウモリ\n\nRESULT\n生存時間\n04:36\n撃破\n122\nLv\n5\n最大コンボ\n10\nSCORE\nHIGH SCORE\n35812\nKILLスコア 21600\n詳細\n▾\nAIディレクター\n開く▾\n失った装備\n獲得 +17g / 換金 +3g / 所持 20g\n防弾ベスト\nR1\n最大体力 +50\n+1g\n強化バレル\nR1\nダメージ +20%\n+1g\n弾薬ポーチ\nR1\n弾薬ドロップ +10%\n+1g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "junk-scrap-b",
+      "subs": [
+        "junk-weapon"
+      ],
+      "skills": [
+        "scrap-builder",
+        "magnet"
+      ],
+      "realSec": 164,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 140703,
+        "deathCause": "変異体(肥大型)の落下攻撃",
+        "kills": 74,
+        "playerLevel": 3,
+        "maxDepthPx": 959,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 29,
+          "junk-weapon": 47
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 59,
+        "scrapSpent": 215,
+        "damageTaken": 118,
+        "goldEarned": 13
+      },
+      "errors": [],
+      "finalBodySnippet": "ゲームオーバー\n\n軍備配置区域の怠惰 に到達\n\n自己最深\n959m⚑更新\n\n死因：変異体(肥大型)の落下攻撃\n\nRESULT\n生存時間\n02:21\n撃破\n74\nLv\n3\n最大コンボ\n9\nSCORE\nHIGH SCORE\n27883\nKILLスコア 13600\n詳細\n▾\nAIディレクター\n開く▾\n失った装備\n獲得 +13g / 換金 +2g / 所持 15g\nレーザースコープ\nR2\nクリ率 +6%\n+2g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "berserker-on-a",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "berserker",
+        "exploder"
+      ],
+      "realSec": 149,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 125510,
+        "deathCause": "変異体(肥大型)の落下攻撃",
+        "kills": 83,
+        "playerLevel": 4,
+        "maxDepthPx": 1535,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 26
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 94,
+        "scrapSpent": 0,
+        "damageTaken": 166,
+        "goldEarned": 16
+      },
+      "errors": [],
+      "finalBodySnippet": "ゲームオーバー\n\n研究対象区域の怠惰 に到達\n\n自己最深\n1535m⚑更新\n\n死因：変異体(肥大型)の落下攻撃\n\nRESULT\n生存時間\n02:06\n撃破\n84\nLv\n4\n最大コンボ\n6\nSCORE\nHIGH SCORE\n33072\nKILLスコア 9600\n詳細\n▾\nAIディレクター\n開く▾\n失った装備\n獲得 +16g / 換金 +3g / 所持 19g\n防弾ベスト\nR1\n最大体力 +50\n+1g\n強化バレル\nR1\nダメージ +20%\n+1g\n精密スコープ\nR1\nクリ率 +3%\n+1g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "berserker-on-b",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "berserker",
+        "exploder"
+      ],
+      "realSec": 150,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 127264,
+        "deathCause": "敵の飛び道具",
+        "kills": 81,
+        "playerLevel": 4,
+        "maxDepthPx": 1620,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 26
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 41,
+        "scrapSpent": 0,
+        "damageTaken": 114,
+        "goldEarned": 18
+      },
+      "errors": [],
+      "finalBodySnippet": "ゲームオーバー\n\n研究対象区域の怠惰 に到達\n\n自己最深\n1620m⚑更新\n\n死因：敵の飛び道具\n\nRESULT\n生存時間\n02:08\n撃破\n81\nLv\n4\n最大コンボ\n12\nSCORE\nHIGH SCORE\n36803\nKILLスコア 16800\n詳細\n▾\nAIディレクター\n開く▾\n失った装備\n獲得 +18g / 換金 +3g / 所持 21g\nランニングシューズ\nR1\n移動速度 +10%\n+1g\nマガジンウェル\nR1\nリロード -10%\n+1g\n弾薬ポーチ\nR1\n弾薬ドロップ +10%\n+1g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "berserker-off-a",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "exploder"
+      ],
+      "realSec": 902,
+      "smokeFallback": false,
+      "botReport": null,
+      "errors": [],
+      "finalBodySnippet": "00:08\n🔩 0\n110\nLv 1\n手榴弾\nLv1\n3/15\nWEAPON MERCHANT\n武器商人\nSCRAP\n0s\nハンドガン弾\n+40発\n10s\nショットガン弾\n+10発\n10s\nライフル弾\n+20発\n10s\n救急セット\n満タン\n50s\nワクチン\n一度だけ死亡時に復活\n500s\n帰還する\n装備を1つ持ち帰り撤収（スコア計上・進行/クリアボーナスなし）\n閉じる\npixi · v0.25.1730 · floor:SGC · res:1/1"
+    },
+    {
+      "config": "berserker-off-b",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "exploder"
+      ],
+      "realSec": 212,
+      "smokeFallback": true,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 156293,
+        "deathCause": "地雷",
+        "kills": 100,
+        "playerLevel": 5,
+        "maxDepthPx": 945,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 32
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 75,
+        "scrapSpent": 0,
+        "damageTaken": 144,
+        "goldEarned": 21
+      },
+      "errors": [],
+      "finalBodySnippet": "ゲームオーバー\n\n軍備配置区域の怠惰 に到達\n\n自己最深\n945m⚑更新\n昇格度 65 —— 阻んだのは 被ダメ(65)\n\n死因：地雷\n\nRESULT\n生存時間\n02:37\n撃破\n101\nLv\n5\n最大コンボ\n10\nSCORE\nHIGH SCORE\n46412\nKILLスコア 28800\n詳細\n▾\nAIディレクター\n開く▾\n失った装備\n獲得 +21g / 換金 +3g / 所持 24g\nランニングシューズ\nR1\n移動速度 +10%\n+1g\nマガジンウェル\nR1\nリロード -10%\n+1g\n弾薬ポーチ\nR1\n弾薬ドロップ +10%\n+1g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "goldrush-on-a",
+      "subs": [
+        "flare-gun"
+      ],
+      "skills": [
+        "gold-rush",
+        "warm-up"
+      ],
+      "realSec": 902,
+      "smokeFallback": false,
+      "botReport": null,
+      "errors": [],
+      "finalBodySnippet": "01:12\n🔩 4\n54\nLv 2\n手榴弾\nLv1\nフレアガン\nLv1\n1/24\n6/36\nWEAPON MERCHANT\n武器商人\nSCRAP\n4s\nハンドガン弾\n+40発\n10s\nショットガン弾\nMAX\n10s\nライフル弾\nMAX\n10s\nフレアガン Lv2\nスキルカード 陳列Lv3\n100s\n救急セット\n即時にHP30%回復\n50s\nワクチン\n一度だけ死亡時に復活\n500s\nサブウェポン換金\nフレアガン を換金\n装備中のサブウェポン（Lv1）を手放す\n+100s\n帰還する\n装備を1つ持ち帰り撤収（スコア計上・進行/クリアボーナスなし）\n閉じる\npixi · v0.25.1730 · floor:SGC · res:1/1"
+    },
+    {
+      "config": "goldrush-on-b",
+      "subs": [
+        "flare-gun"
+      ],
+      "skills": [
+        "gold-rush",
+        "warm-up"
+      ],
+      "realSec": 130,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 94853,
+        "deathCause": "変異体(痩躯型)",
+        "kills": 50,
+        "playerLevel": 4,
+        "maxDepthPx": 2964,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 20,
+          "flare-gun": 14
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 30,
+        "scrapSpent": 0,
+        "damageTaken": 111,
+        "goldEarned": 35
+      },
+      "errors": [],
+      "finalBodySnippet": "ゲームオーバー\n\n研究対象区域の怠惰 に到達\n\n自己最深\n2964m⚑更新\n\n死因：変異体(痩躯型)\n\nRESULT\n生存時間\n01:35\n撃破\n51\nLv\n4\n最大コンボ\n32\nSCORE\nHIGH SCORE\n50716\nKILLスコア 28800\n詳細\n▾\nAIディレクター\n開く▾\n失った装備\n獲得 +35g / 換金 +3g / 所持 38g\nランニングシューズ\nR1\n移動速度 +10%\n+1g\nレーザースコープ\nR2\nクリ率 +6%\n+2g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "goldrush-off-a",
+      "subs": [
+        "flare-gun"
+      ],
+      "skills": [
+        "warm-up"
+      ],
+      "realSec": 151,
+      "smokeFallback": true,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 96752,
+        "deathCause": "変異体(肥大型)の落下攻撃",
+        "kills": 51,
+        "playerLevel": 3,
+        "maxDepthPx": 1201,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 20,
+          "flare-gun": 15
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 6,
+        "scrapSpent": 0,
+        "damageTaken": 120,
+        "goldEarned": 20
+      },
+      "errors": [],
+      "finalBodySnippet": "ゲームオーバー\n\n軍備配置区域の怠惰 に到達\n\n自己最深\n1201m⚑更新\n\n死因：変異体(肥大型)の落下攻撃\n\nRESULT\n生存時間\n01:37\n撃破\n52\nLv\n3\n最大コンボ\n25\nSCORE\nHIGH SCORE\n40335\nKILLスコア 21600\n詳細\n▾\nAIディレクター\n開く▾\n失った装備\n獲得 +20g / 換金 +2g / 所持 22g\nランニングシューズ\nR1\n移動速度 +10%\n+1g\n弾薬ポーチ\nR1\n弾薬ドロップ +10%\n+1g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "goldrush-off-b",
+      "subs": [
+        "flare-gun"
+      ],
+      "skills": [
+        "warm-up"
+      ],
+      "realSec": 196,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 129244,
+        "deathCause": "変異体(肥大型)",
+        "kills": 79,
+        "playerLevel": 4,
+        "maxDepthPx": 2644,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 26,
+          "flare-gun": 20
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 21,
+        "scrapSpent": 0,
+        "damageTaken": 124,
+        "goldEarned": 25
+      },
+      "errors": [],
+      "finalBodySnippet": "ゲームオーバー\n\n研究対象区域の怠惰 に到達\n\n自己最深\n2653m⚑更新\n\n死因：変異体(肥大型)\n\nRESULT\n生存時間\n02:09\n撃破\n79\nLv\n4\n最大コンボ\n30\nSCORE\nHIGH SCORE\n66395\nKILLスコア 42400\n詳細\n▾\nAIディレクター\n開く▾\n失った装備\n獲得 +24g / 換金 +3g / 所持 27g\nランニングシューズ\nR1\n移動速度 +10%\n+1g\nマガジンウェル\nR1\nリロード -10%\n+1g\n弾薬ポーチ\nR1\n弾薬ドロップ +10%\n+1g\nもう一度プレイ\nメニューに戻る"
+    }
+  ]
+}
