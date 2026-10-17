@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5096', items: [
+    '作戦室の地図が列島の地図になった。クリアした場所が線でつながり、物語が進むほど軌跡が延びる',
+    '今いる場所と次の行き先が地図の上で分かる。まだ行っていない場所は出ない',
+  ] },
   { version: '0.25.5095', items: [
     'ゲーム内容の変更はありません',
   ] },

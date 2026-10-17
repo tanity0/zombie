@@ -1,6 +1,6 @@
 // 作戦室DS2化(UI_OVERHAUL.md §3-1/§3-2)の純関数層。
 // - nextOperationStage: ホームの「出撃」行・DAY計器・等高線マップのシードが指す「次の作戦地域」。
-// - contour*: 等高線マップ(DsContourMap.tsx)の擬似地形。描画コンポーネントから数式だけを
+// - contour*: 旧・等高線マップ(DsContourMap.tsx・v0.25.5096 で DsStoryMap に置き換えて撤去)の擬似地形。今は使っていない(テストだけ残る)。描画コンポーネントから数式だけを
 //   切り出してユニットテスト対象にする(実装精度の規律4: 配線ロジックの純関数化)。
 import type { Stage } from '../data/campaign';
 import { isStageUnlocked, type StoryFlags } from '../data/progress';

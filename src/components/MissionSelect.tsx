@@ -106,8 +106,8 @@ const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey
 // 対応表にない名前(Ghost/Skull/ShoppingBag)は意味が近いドット絵へ読み替え(守護霊=shield、変異体対策室=
 // crosshair、開発施設=bag)——判断の根拠は最終報告に記載。
 import { PixelIcon, type PixelIconName } from './PixelIcon';
-// 作戦室DS2化(UI_OVERHAUL.md §3 バッチ①): ホームの計器化+等高線マップ。旧ホームは?dshome=0で丸ごと復帰。
-import DsContourMap from './DsContourMap';
+// 作戦室DS2化(UI_OVERHAUL.md §3 バッチ①): ホームの計器化+作戦地図(v0.25.5096〜 架空列島+ストーリーの軌跡=DsStoryMap。旧=等高線の飾り)。旧ホームは?dshome=0で丸ごと復帰。
+import DsStoryMap from './DsStoryMap'; // 作戦室の地図=架空列島+ストーリーの軌跡(THEONE_ROUND2 §2-5)
 import NoBounceScroller from './NoBounceScroller';
 import { nextOperationStage } from '../utils/dsHome';
 import { reportTestScreen, type TestScreenId } from '../utils/testBridge';
@@ -814,7 +814,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 <span>DAY {nextStage.day}</span>
               </div>}
               <div className="menu-item-in" style={{ animationDelay: '50ms' }}>
-                <DsContourMap stageId={nextStage?.id ?? 'stage-tutorial'} sectorLabel={nextStage?.locationTitle ?? '—'} />
+                <DsStoryMap stages={STAGES} cleared={cleared} next={nextStage} sectorLabel={nextStage?.locationTitle ?? '—'} />
               </div>
               {/* 出撃=アンバーの主役行。遷移先は作戦地域の一覧(現行の「作戦準備」と同一)。
                   サブ行「作戦地域: 〇〇」は廃止(社長指示2026-08-29「いらないかも。その上の図にあるから」
