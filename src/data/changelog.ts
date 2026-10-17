@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5095', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5094', items: [
     '一時停止の地図から、取り終えた寄り道と倒した裏ボスの巣が消える',
   ] },
