@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5103', items: [
+    'ボスも英雄(変異)を狙う。殴ってくる英雄や、すぐそばの英雄に向き直る',
+  ] },
   { version: '0.25.5102', items: [
     'ゴールで仲間と話している間は、周りの敵の姿が消える',
     'ゴールに入った時の大爆発はやめた',

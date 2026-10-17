@@ -10,6 +10,7 @@ import { isPointInZoomedViewport } from './cameraZoom';
 import { distToBandRect } from './geometry';
 import { enemyContactBox } from './collisionUtils';
 import { circleHitsFan, HERO_INCOMING_MULT, HERO_VS_ENEMY_MULT } from './heroScript';
+import { setHateHeroProvider } from './bossHate';
 
 /** 当たり半径(矩形の長い辺の半分=守護霊・プレイヤーと同じ流儀)。 */
 const radiusOf = (e: { width: number; height: number }): number => Math.max(e.width, e.height) / 2;
@@ -108,7 +109,8 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
   let kills = 0;
   for (const e of victims) {
     const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-    const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, null, 'neutral');
+    // ヘイト='hero': ボスのバケツに積む=殴られたボスは英雄へ向き直る(§3-2・社長指示2026-10-17「狙わせる」)。それ以外は 'neutral' と同じ扱い。
+    const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, null, 'hero');
     if (killed) kills++;
     fx.spawnDamageNumber(ex, e.y, dmg, false);
     // 派手さの絵(判定ゼロ): 英雄から外へ向かう大きい血しぶき=ボスの命中と同じ大きさ。
@@ -244,3 +246,12 @@ export const hitThirdParties = (s: ThirdPartyShape, amount: number, srcEnemyId: 
 
 // gameStore 内の技(城ボスの継続技など)が当てに来る入口を登録する(gameStore は heroBlast を import できない=循環)。
 setThirdPartyHook(hitThirdParties);
+
+// ボスの狙いの候補としての英雄(research/MUTANT_HERO.md §3-2・社長指示2026-10-17「狙わせる」)。
+// 候補=画面内で昇天中でない(heroAsTarget と同じ線)。技の途中の追跡=倒れておらず昇天中でない(画面外も追う)。
+setHateHeroProvider(() => {
+  const h = findHero(useGameStore.getState().enemies);
+  if (!h || h.bossState === 'hero-ascend') return { inView: null, alive: null };
+  const c = { id: h.id, x: h.x + h.width / 2, y: h.y + h.height / 2, vx: h.vx ?? 0, vy: h.vy ?? 0, footY: h.y + h.height };
+  return { inView: heroOnScreen(h) ? c : null, alive: c };
+});

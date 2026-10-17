@@ -1,5 +1,22 @@
 # Development Log
 
+## v0.25.5103 — ボスも英雄(変異)を狙う【2026-10-17 19:53 JST】
+- 社長「狙わせる」(v0.25.5101 で残した問い「ボス側から英雄を狙わせるか」への答え)。
+- 英雄の犬をボスの狙いに入れた時(v0.25.5058 前後)と同じ道で 'hero' を足した:
+  - `types/game.ts`: `HateSideKey` に 'hero'・`Enemy.hateHeroBuckets`。
+  - `utils/bossHate.ts`: `pickHateTarget` の候補に英雄 / 提供口 `setHateHeroProvider`(画面内=候補・倒れていない=技の途中の追跡・自分自身は除く)/
+    `resolveBossHateAim`・`resolveBossLockedHateAim` が英雄を返す(`aim.hero` に速度と足元)。
+  - `store/gameStore.ts` damageEnemy: hateSource 'hero' はヘイト対象のボスの `hateHeroBuckets` にだけ積む(他は 'neutral' と同じ=討伐数に数えない)。
+  - `utils/heroBlast.ts`: 英雄の技の命中を 'neutral' → 'hero' に。提供関数を登録。
+  - `utils/enemyUtils.ts` resolveEnemyTarget: hateTarget='hero' のボスは英雄へ歩く。`useGameLoop` の裏ボスの追跡にも画面内の英雄を渡す。
+  - 偏差・足元: idolTick(偏差撃ち)/ angelBossTick(ジブリルの火)/ useGameLoop(ヨルムンガンドの牙)。
+- 文書: research/MUTANT_HERO.md §3-2。
+- 検証: typecheck 0 / lint 0 / 循環import新規なし / 新テスト `bossHateHero.test.ts` 7件 / 全件 7835 緑+1 赤=`escortToss.store.test`「着地後の押しの飛距離」。
+  この1件は**この変更を外しても赤**(stash で確認)、変更を入れたまま単独で回すと緑=時間に依存する揺れ。別件。
+- 監査: 既存のヘイトの仕組みに候補を1つ足しただけ(犬と同じ型)で、新しい仕組みは足していないため付けない。
+- 自己点検: 憲法第4条・第5条に抵触しない(英雄が場に居る時だけ・ボスの台本は不変)。
+- 状態変化: なし。
+
 ## v0.25.5102 — ゴールの爆発をやめ、会話中は敵の姿を消す【2026-10-17 19:40 JST】
 - 社長「あ、ゴールの爆発演出いらない。絵的に会話してるのに敵がいるのが変だなと思っただけなので」。
 - **撤回**: v0.25.5100 のゴールの一掃(`useGameLoop` のきっかけ・演出/`gameStore.goalWipe`/`utils/goalWipe.ts`+テスト)を削除。

@@ -13538,10 +13538,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSourceIn = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
     // research/ESCORT_TARGETED.md §5: 進軍NPCの弾は起因側 `escort:<id>`。**ヘイトのバケツだけ**軍人ごとに積み(下の hatePatch)、
     // それ以外の判定(揺れ・クリ・撃破カウント・英雄の被弾記録 …)はこれまでどおり 'player' 扱いのまま=軍人の弾の挙動は1bitも変えない。
-    const hateEscortId = escortIdOfSide(hateSourceIn === 'neutral' || hateSourceIn === 'dog' ? undefined : hateSourceIn);
+    const hateEscortId = escortIdOfSide(hateSourceIn === 'neutral' || hateSourceIn === 'dog' || hateSourceIn === 'hero' ? undefined : hateSourceIn);
     // research/HERO_DOG.md §5: 'dog'(英雄の犬の噛み)は**ボスのバケツ(hateDogBuckets)に積む**(社長指示2026-10-15「ボスのヘイトにも入れる」)。
     // それ以外の判定(揺れ・クリ・記録…)は 'neutral' 扱い。雑魚のラッチは下の dogHatePatch。
-    const hateSource: 'player' | 'ghost' | 'neutral' = hateEscortId !== undefined ? 'player' : hateSourceIn === 'dog' ? 'neutral' : (hateSourceIn as 'player' | 'ghost' | 'neutral');
+    // research/MUTANT_HERO.md §3-2: 'hero'(英雄の技)も犬と同じ=ボスのバケツ(hateHeroBuckets)にだけ積み、他は 'neutral' 扱い(社長指示2026-10-17「狙わせる」)。
+    const hateSource: 'player' | 'ghost' | 'neutral' = hateEscortId !== undefined ? 'player' : (hateSourceIn === 'dog' || hateSourceIn === 'hero') ? 'neutral' : (hateSourceIn as 'player' | 'ghost' | 'neutral');
     let killed = false;
     let reaperDefeated: { x: number; y: number } | null = null; // 死神撃破=スキル「死神」を習得(社長指示)
     let angelDefeated: Enemy | null = null; // 天使撃破=回復・赤経験値10・トレジャー(社長指示2026-10-14)
@@ -13689,7 +13690,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             ? { hateGhostBuckets: addHateDamage(enemy.hateGhostBuckets, state.gameTime, eff) }
             : hateSourceIn === 'dog'
             ? { hateDogBuckets: addHateDamage(enemy.hateDogBuckets, state.gameTime, eff) }
-            // research/MUTANT_HERO.md: 英雄(中立)の一撃は誰のヘイトにも積まない。
+            : hateSourceIn === 'hero'
+            ? { hateHeroBuckets: addHateDamage(enemy.hateHeroBuckets, state.gameTime, eff) }
+            // 'neutral'(英雄が受けた一撃など)は誰のヘイトにも積まない。
             : hateSource === 'neutral' ? {}
             : { hatePlayerBuckets: addHateDamage(enemy.hatePlayerBuckets, state.gameTime, eff) })
         : {};

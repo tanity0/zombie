@@ -856,6 +856,10 @@ export const resolveEnemyTarget = (
     const d = summons.find(s => s.kind === 'hero-dog' && s.expiresAt === undefined);
     if (d) return { x: d.x + d.width / 2, y: d.y + d.height / 2, isSummon: true, hidden: false };
   }
+  // research/MUTANT_HERO.md §3-2(社長指示2026-10-17「狙わせる」): ヘイトが英雄に向いているボスは移動の狙いも英雄(画面外=hero 未指定なら距離規則へ)。
+  if (!mobGhostRules && enemy.hateTarget === 'hero' && hero && hero.id !== enemy.id) {
+    return { x: hero.x + hero.width / 2, y: hero.y + hero.height / 2, isSummon: true, hidden: false };
+  }
   // 進軍NPCが狙われているボス(§5): 移動の狙いも軍人へ(技と移動の主語を揃える=v0.25.3862)。倒れた/居なくなったら距離規則へ落ちる。
   if (!mobGhostRules && escorts && escorts.length > 0) {
     const eid = escortIdOfSide(enemy.hateTarget);

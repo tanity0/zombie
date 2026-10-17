@@ -204,7 +204,7 @@ import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrpha
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
 import { loadHeroAscended } from '../utils/heroAscended';
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
-import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties } from '../utils/heroBlast';
+import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties, heroAsTarget } from '../utils/heroBlast';
 import { hateEscortSource } from '../utils/escortView';
 import { applyContactToEscorts } from '../utils/escortHit'; // research/ESCORT_TARGETED.md §3: 進軍NPCの接触被弾
 // 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
@@ -6390,7 +6390,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 進軍NPCは「召喚への吸い付き(BOSS_SUMMON_AGGRO=距離だけ)」の候補には入れない(ヘイトの点数を素通りさせない・ESCORT_TARGETED §5)。
                 // ここで渡すのは「ボスの狙い(hateTarget='escort:<id>')を引く」ための見えていて倒れていない軍人の一覧だけ(isEscortAggroMob でない=距離規則には使われない)。
                 // 画面外へ出た軍人は追わない(ボスが軍人に引かれて戦場から離れない)。技の途中の照準(resolveBossLockedHateAim)は画面外でもロックした相手を引く。
-                undefined, hateEscortSource(useGameStore.getState()).inView,
+                // 英雄(MUTANT_HERO §3-2・社長指示2026-10-17「狙わせる」): ヘイトが英雄に向いた時だけ英雄へ歩く(画面内の英雄)。
+                heroAsTarget() ?? null, hateEscortSource(useGameStore.getState()).inView,
               );
               // 攻撃の向きは通常召喚/フレアの移動挑発と分離し、プレイヤー対守護霊のG2.5ヘイトで決める。
               // 技開始時にsideを固定し、連射/設置/弱追尾中は同じ側の現在位置だけを追う。
@@ -7825,7 +7826,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   return r.ids.length > 0 && newGameTime - r.emitAt >= L && newGameTime - r.emitAt - deltaTime * 1000 < L;
                 });
                 // 凍った牙の飛び出し(時計回りに順番)と加速。反射された弾(もう敵弾ではない)は触らない。
-                const tvx = tNow.side === 'player' ? player.vx : (tNow.escort?.vx ?? 0), tvy = tNow.side === 'player' ? player.vy : (tNow.escort?.vy ?? 0); // 進軍NPCは軍人の速度(research/ESCORT_TARGETED.md §5)
+                const tvx = tNow.side === 'player' ? player.vx : (tNow.hero?.vx ?? tNow.escort?.vx ?? 0), tvy = tNow.side === 'player' ? player.vy : (tNow.hero?.vy ?? tNow.escort?.vy ?? 0); // 進軍NPCは軍人の速度(research/ESCORT_TARGETED.md §5)・英雄は英雄の速度
                 const upd = new Map<string, { speed: number; aim?: boolean; lead?: boolean; flying?: boolean }>();
                 let launchedNow = 0;
                 for (const r of rings) {

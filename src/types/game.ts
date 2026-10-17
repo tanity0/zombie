@@ -533,7 +533,8 @@ export type Direction = 'up' | 'down' | 'left' | 'right' | 'idle';
  * 1行も変えずに3択へ広げるため。相手ごとの分岐が要る所(座標を引く箇所)は bossHate.ts の `escortIdOfSide` で読む。
  */
 // 'dog' = research/HERO_DOG.md: 英雄の犬(社長指示2026-10-15「ボスのヘイトにも入れる」)。
-export type HateSideKey = 'player' | 'ghost' | 'dog' | `escort:${string}`;
+// 'hero' = research/MUTANT_HERO.md §3-2: 英雄(変異・中立)。社長指示2026-10-17「(ボスにも英雄を)狙わせる」。
+export type HateSideKey = 'player' | 'ghost' | 'dog' | 'hero' | `escort:${string}`;
 
 export interface Enemy {
   id: string;
@@ -1526,6 +1527,8 @@ export interface Enemy {
   hateEscortBuckets?: Record<string, { idx: number; dmg: number }[]>;
   // research/HERO_DOG.md: 英雄の犬の直近6秒ダメージ(damageEnemy(hateSource='dog') が積む)。
   hateDogBuckets?: { idx: number; dmg: number }[];
+  // research/MUTANT_HERO.md §3-2: 英雄の直近6秒ダメージ(damageEnemy(hateSource='hero') が積む)。
+  hateHeroBuckets?: { idx: number; dmg: number }[];
   hateTarget?: HateSideKey;
   // research/ESCORT_TARGETED.md §4: 雑魚・強個体・ハンターが今追っている進軍NPCのid(粘着20%の基準・resolveEnemyTarget が読む)。
   // 既存の `escortTarget`(救助イベントの攻撃者が追う生存者のid)とは**別物**。
