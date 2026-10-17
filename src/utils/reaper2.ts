@@ -3,6 +3,21 @@
 // 切り出してテスト」)。useGameLoop/gameStore はこれらを呼ぶだけ(座標の実書き込みは呼び出し側)。
 
 export interface Point { x: number; y: number; }
+
+/**
+ * 使者の1フレームの速度(慣性つき・社長指示2026-10-17「使者の動きに慣性を足して。もっと」)。
+ * 今の速度 (vx,vy) を、目標の速度(向き dir × 速さ speed)へ時定数 tauSec で寄せる(指数で近づく=急に向きを変えない)。
+ * 止まっている所からは加速し、向きが変わると大回りする。dtSec ≤ 0 なら今の速度のまま。tauSec ≤ 0 なら即座に目標(慣性なし)。
+ */
+export const steerServantVelocity = (
+  vx: number, vy: number, dirX: number, dirY: number, speed: number, dtSec: number, tauSec: number,
+): Point => {
+  const tx = dirX * speed, ty = dirY * speed;
+  if (!(dtSec > 0)) return { x: vx, y: vy };
+  if (!(tauSec > 0)) return { x: tx, y: ty };
+  const k = 1 - Math.exp(-dtSec / tauSec);
+  return { x: vx + (tx - vx) * k, y: vy + (ty - vy) * k };
+};
 export interface ChaseOrbitResult extends Point { orbiting: boolean; }
 
 /**

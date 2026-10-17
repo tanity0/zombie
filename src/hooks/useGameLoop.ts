@@ -541,7 +541,7 @@ import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAV
 import { stepFollowChain, FOLLOW_SPEED_MULT } from '../utils/companionFollow';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
 import { REAPER_CONFIG, REAPER2_CONFIG, REAPER_TEST, REAPER2_TEST, reaperPassIntervalMs } from '../config/reaper';
-import { stepReaperBody, encircleRadiusPx, encirclePoints, corridorEncirclePoints, servantTargetCount, knockbackCdReady, hangedmanKnockbackActive } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4
+import { stepReaperBody, encircleRadiusPx, encirclePoints, corridorEncirclePoints, servantTargetCount, knockbackCdReady, hangedmanKnockbackActive, steerServantVelocity } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4
 // PACING_PUZZLE.md §14-4-3(使者・叩き台): 詠唱の静止時間/出現フェードインの尺。専用の定数(値は叩き台)。
 const REAPER_CAST_MS = 650;         // 本体が「使者」を詠唱する間の停止時間(SE=phill-skylight)
 const REAPER_MATERIALIZE_MS = 420;  // 使者の出現フェードイン(reaperWarpAlpha 0→1)
@@ -6028,20 +6028,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               for (const e of servantsNow) {
                 const materialize = Math.min(1, (newGameTime - (e.spawnedAt ?? newGameTime)) / REAPER_MATERIALIZE_MS);
                 if (hangedmanKnockbackActive(e, Date.now())) {
+                  // 吹き飛ばされている間は追う速度を捨てる=明けたらまた止まった所から加速する(慣性)。
                   patches.set(e.id, {
-                    damage: REAPER2_CONFIG.servantContactDamage, speed: servantSpeed, reaperWarpAlpha: materialize,
+                    damage: REAPER2_CONFIG.servantContactDamage, speed: servantSpeed, reaperWarpAlpha: materialize, vx: 0, vy: 0,
                   });
                   continue;
                 }
                 const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
                 const sdx = pcx - ecx, sdy = pcy - ecy;
                 const sl = Math.hypot(sdx, sdy) || 1;
-                const rawX = e.x + (sdx / sl) * servantStepPx;
-                const rawY = e.y + (sdy / sl) * servantStepPx;
+                // 慣性(社長指示2026-10-17「使者の動きに慣性を足して。もっと」): 速度を目標へ時定数で寄せる。最高速は従来どおり(プレイヤーの今の速さ×1.2)。
+                const sv = steerServantVelocity(e.vx ?? 0, e.vy ?? 0, sdx / sl, sdy / sl, servantStepPx / Math.max(1e-6, deltaTime), deltaTime, REAPER2_CONFIG.servantInertiaSec);
+                const rawX = e.x + sv.x * deltaTime;
+                const rawY = e.y + sv.y * deltaTime;
                 const clamped = clampRectToPlayableArea(rawX, rawY, e.width, e.height, reaperPlayableCtx, e.x);
                 patches.set(e.id, {
                   x: clamped.x, y: clamped.y, damage: REAPER2_CONFIG.servantContactDamage,
-                  speed: servantSpeed, reaperWarpAlpha: materialize,
+                  speed: servantSpeed, reaperWarpAlpha: materialize, vx: sv.x, vy: sv.y,
                 });
               }
 

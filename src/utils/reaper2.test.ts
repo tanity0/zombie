@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   stepReaperBody, encircleRadiusPx, encirclePoints, corridorEncirclePoints,
-  servantTargetCount, knockbackCdReady, hangedmanKnockbackActive,
+  servantTargetCount, knockbackCdReady, hangedmanKnockbackActive, steerServantVelocity,
 } from './reaper2';
 
 describe('stepReaperBody — 直進+70px旋回(PACING_PUZZLE.md §14-4-2)', () => {
@@ -167,5 +167,28 @@ describe('knockbackCdReady — hangedmanのKB特例(裁定済み#6/#8)', () => {
 
   it('knockbackImmuneUntil未指定は0扱い=常にCD明け', () => {
     expect(knockbackCdReady({ type: 'zombie' }, 0)).toBe(true);
+  });
+});
+
+describe('使者の慣性(社長指示2026-10-17「使者の動きに慣性を足して。もっと」)', () => {
+  it('止まった所から加速し、時定数の1倍で約63%まで達する', () => {
+    const v = steerServantVelocity(0, 0, 1, 0, 300, 0.6, 0.6);
+    expect(v.x).toBeCloseTo(300 * (1 - Math.exp(-1)), 3);
+    expect(v.y).toBe(0);
+  });
+  it('真横へ向きが変わっても、1フレームでは向き切らない(大回りする)', () => {
+    const v = steerServantVelocity(300, 0, 0, 1, 300, 1 / 60, 0.6);
+    expect(v.x).toBeGreaterThan(290);
+    expect(v.y).toBeGreaterThan(0);
+    expect(v.y).toBeLessThan(20);
+  });
+  it('十分な時間で目標の速さに落ち着き、最高速は超えない', () => {
+    let v = { x: 0, y: 0 };
+    for (let i = 0; i < 600; i++) v = steerServantVelocity(v.x, v.y, 0.6, 0.8, 250, 1 / 60, 0.6);
+    expect(Math.hypot(v.x, v.y)).toBeCloseTo(250, 1);
+  });
+  it('dt≤0 は今のまま / 時定数0 は即座に目標', () => {
+    expect(steerServantVelocity(10, 20, 1, 0, 300, 0, 0.6)).toEqual({ x: 10, y: 20 });
+    expect(steerServantVelocity(10, 20, 1, 0, 300, 0.016, 0)).toEqual({ x: 300, y: 0 });
   });
 });
