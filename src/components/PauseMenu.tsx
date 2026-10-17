@@ -8,6 +8,7 @@ import { subWeaponBlurb } from '../data/subWeaponBlurbs';
 import { formatTime } from '../utils/renderUtils';
 import { PauseMap, type PauseMapData } from './PauseMap'; // ★B2 一時停止の地図(research/THEONE_ROUND2.md §2)
 import { isMapTrackedEnemy, wasSeenThisRun } from '../utils/mapSightings'; // §2-3 出会ったボス級・宿敵
+import { currentRoute } from '../utils/runRoutes'; // §2-6 今回歩いた道
 import { getRunPois, isPoiRevealed } from '../world/pois';
 import { getSelectedStageId } from '../data/progress';
 import { isPracticeRun } from '../utils/bossPractice';
@@ -30,6 +31,7 @@ const readPauseMap = (): PauseMapData | null => {
     player: { x: p.x + p.width / 2, y: p.y + p.height / 2, dirX: p.lastDirection?.x ?? 1, dirY: p.lastDirection?.y ?? 0 },
     bases: s.baseSites.map(b => ({ x: b.x, y: b.y, captured: b.status === 'captured' })),
     // 取り終えた寄り道(裏ボスは討伐済み)は地図から消す(社長 2026-10-17「取り終えたら消していいよ」)。
+    route: currentRoute(), // §2-6 今回歩いた道(線ごと・開いた時の写し)
     pois: pois.filter(q => !(taken[q.kind] ?? false)).map(q => ({ x: q.x, y: q.y, kind: q.kind })),
     // §2-3: ボス級(強個体を除く)と宿敵のうち、この出撃で一度画面に映った物の今の位置。
     // 城ボスの急降下の溜め(g-dive-windup)は場外へ座標を退避しているので出さない(縮尺も跳ぶ・品質監査 A-2)。

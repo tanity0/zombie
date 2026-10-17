@@ -14,6 +14,7 @@ export interface PauseMapData {
   player: { x: number; y: number; dirX: number; dirY: number };
   bases: { x: number; y: number; captured: boolean }[];
   pois: { x: number; y: number; kind: 'boss' | 'cave' | 'armory' | 'police' | 'hospital' }[]; // 発見済みで、まだ取り終えていない所だけ(取り終えたら消す)
+  route: readonly (readonly (readonly [number, number])[])[]; // §2-6 今回歩いた道(1.5秒ごとの自分の位置・素早い移動の所で線が切れる)
   threats: { x: number; y: number }[]; // §2-3: この出撃で出会ったボス級(強個体を除く)・宿敵の今の位置
 }
 
@@ -37,7 +38,8 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
     const C = SIZE / 2;
     const AREA_THRESHOLDS = activeAreaThresholds(); // 境界の数字は写さず、今効いている輪を読む(enemyUtils の注記・検収品質監査 B-1)
     // 縮尺: 描く物(自分・拠点・寄り道・宿敵)の一番遠い物を含む次の輪が収まるまで。最低でも2本目の輪、最大で一番外の輪。
-    const far = Math.max(dist, ...data.bases.map(b => Math.hypot(b.x, b.y)), ...data.pois.map(q => Math.hypot(q.x, q.y)), ...data.threats.map(n => Math.hypot(n.x, n.y)));
+    const far = Math.max(dist, ...data.bases.map(b => Math.hypot(b.x, b.y)), ...data.pois.map(q => Math.hypot(q.x, q.y)), ...data.threats.map(n => Math.hypot(n.x, n.y)),
+      ...data.route.flat().map(p => Math.hypot(p[0], p[1]))); // 歩いた道の一番深い所も箱に入れる
     const fit = AREA_THRESHOLDS.find(r => r > far * 1.04) ?? AREA_THRESHOLDS[AREA_THRESHOLDS.length - 1];
     const outer = Math.max(AREA_THRESHOLDS[1], fit) * 1.06;
     const k = (C - 6) / outer;
@@ -69,6 +71,39 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
       ctx.beginPath(); ctx.arc(C, C, r * k, 0, Math.PI * 2); ctx.stroke();
     });
     ctx.setLineDash([]);
+    // 今回歩いた道(§2-6)=自分と同じ白の家族の線。記号より下に描く。最後は今の位置まで繋ぐ。素早い移動の所では線が切れ、両端に小さな点。
+    // 古い区間ほど薄く(どちらへ歩いたかが読める)・一番濃い所でも自分の印より一段暗く(0.55)・直線のつなぎ(作図した曲線に見せない)。
+    // 線の下に地の色を一回り太く敷く=拠点などの記号に刺さって「連結線」に見えない(検収クリエイティブ監査 #1〜#6)。
+    {
+      const segs = data.route.map((seg, si) => {
+        const pts = seg.map(p => [mx(p[0]), my(p[1])] as [number, number]);
+        if (si === data.route.length - 1) pts.push([mx(data.player.x), my(data.player.y)]);
+        return pts;
+      });
+      const total = Math.max(1, segs.reduce((a, q) => a + Math.max(0, q.length - 1), 0));
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      for (const pts of segs) {
+        if (pts.length < 2) continue;
+        ctx.strokeStyle = 'rgba(7,6,13,0.6)'; ctx.lineWidth = 2.8 * m;
+        ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke();
+      }
+      let k = 0;
+      ctx.lineWidth = 1.1 * m;
+      for (const pts of segs) {
+        for (let i = 1; i < pts.length; i++, k++) {
+          ctx.strokeStyle = `rgba(255,255,255,${(0.16 + 0.39 * (k / total)).toFixed(3)})`;
+          ctx.beginPath(); ctx.moveTo(pts[i - 1][0], pts[i - 1][1]); ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke();
+        }
+      }
+      if (segs.length > 1) {
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        segs.forEach((pts, si) => {
+          if (!pts.length) return;
+          if (si > 0) { ctx.beginPath(); ctx.arc(pts[0][0], pts[0][1], 1.3 * m, 0, Math.PI * 2); ctx.fill(); }
+          if (si < segs.length - 1) { const e = pts[pts.length - 1]; ctx.beginPath(); ctx.arc(e[0], e[1], 1.3 * m, 0, Math.PI * 2); ctx.fill(); }
+        });
+      }
+    }
     // 拠点=四角(場所)。未解放=琥珀の枠 / 解放済み=白の塗り。
     for (const b of data.bases) {
       const x = mx(b.x), y = my(b.y);
@@ -117,6 +152,9 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
         height: 'clamp(110px, 18vh, 240px)', width: 'auto', aspectRatio: '1 / 1', margin: 0,
         // 親が縦並びで子を横いっぱいに伸ばすので、伸ばさない(伸びると aspectRatio が効かず輪が楕円になっていた)。
         alignSelf: 'flex-start',
+        // ★縮めない(社長報告2026-10-17「拠点移動・装備やスキルがいっぱいになると地図が出ない」): 右の列は高さに上限がある縦並びで、
+        // 中身が溢れると各項目が縮められる。地図の箱の中身は浮いた置き方(absolute)なので、縮められると高さ0まで潰れて消えていた。
+        flexShrink: 0,
         // .ds-home の外なので DS トークンをここで与える(枠=メニューの罫・地=メニューの地・淡色=作戦室と同じ)。
         ['--ds-line' as string]: 'var(--menu-line, #26212f)', ['--ds-bg' as string]: '#07060d', ['--ds-dim' as string]: '#79817f',
         ['--ds-amber' as string]: AMBER, ['--ds-amber-hi' as string]: AMBER_HI,

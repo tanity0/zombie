@@ -160,6 +160,7 @@ import {
 // 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
 import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
 import { recordMapSightings } from '../utils/mapSightings'; // 一時停止の地図に出す「出会った敵」の記録
+import { recordRoutePoint } from '../utils/runRoutes'; // 一時停止の地図に描く「今回歩いた道」の記録
 import { bloodAwakenStep, isBloodAwakening, BLOOD_AWAKEN_SFX_GAIN, BLOOD_AWAKEN_SFX_RATE } from '../utils/bloodAwaken'; // B10 血の覚醒の遷移(満ちたら自動発動・終わりで0へ)
 import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle';
 // v0.25.2518(GHOST-KATANA-WIRE・裁定2「共有方式」): 刀のオート斬撃の標的選択と、
@@ -2531,6 +2532,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // アテンション(ボスの紹介でカメラが寄る間)は下で return するので、その前で記録する(品質監査 A-1)
           const ms = useGameStore.getState();
           recordMapSightings(ms.enemies, ms.camera, ms.gameBounds, ms.viewZoom);
+          // 今回の出撃で歩いた道(THEONE_ROUND2 §2-6): 1.5秒ごとに自分の中心を記録(間隔・移動量の判定は utils/runRoutes)
+          if (!ms.isPaused) recordRoutePoint(ms.gameTime, ms.player.x + ms.player.width / 2, ms.player.y + ms.player.height / 2);
         }
         if (att) {
           const el = nowMs - att.startReal;
