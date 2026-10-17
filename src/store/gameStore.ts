@@ -11938,7 +11938,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ランナー覚醒(Lv3・v0.25.3300): 加速中は×0.8。amount>0 のみ補正。
     // B10 血の覚醒中は被ダメージ ×2(終わりの1秒で線形に 1 へ戻る・ナイト等と乗算。THEONE_ROUND2 §3-1)。
     const skilled = rawAmount > 0
-      ? rawAmount * skillIncomingDamageMult(player, get().gameTime) * runnerAwakenDamageMult(player) * bloodAwakenMult(player, get().gameTime).taken
+      ? rawAmount * skillIncomingDamageMult(player, get().gameTime) * runnerAwakenDamageMult(player)
         // B11(THEONE_ROUND2 §4b-2-6): 巡航の段1以上なら機動系の装備の段階×4%軽く(段を戻す前の段で判定)。スーパーアーマーの判定より前=軽くなった分だけ耐えやすい(相乗りを意図)。
         * cruiseDamageMult(playerCruiseStage(player), equipCruiseTier(player.equipment))
       : rawAmount;

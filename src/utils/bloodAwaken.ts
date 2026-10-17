@@ -1,7 +1,7 @@
 // B10 血の覚醒(research/THEONE_ROUND2.md §3・第3版)。**純関数だけ**を置く(store/pixi/React は読むだけ)。
 //
 // 仕組み(一言): 自分の手で近くの敵を倒す(浴びる)と体力のオーブの液体が赤く染まる。満ちたら自動で10秒間の覚醒
-// (移動・弾速・与ダメージ ×1.5 / 被ダメージ ×2 / スーパーアーマー)。**時間の速さ(timeScale)は触らない。**
+// (移動・弾速・与ダメージ ×1.5 / スーパーアーマー。被ダメージ ×2 は v0.25.5106 で撤去)。**時間の速さ(timeScale)は触らない。**
 //
 // ★「乾き」は**書き込まずに導く**: meter は「最後に浴びた時点の値」で、時間が経った値は
 // `bloodDryStep(meter, lastGainAt, now, awakening)` が毎回求める(浴びる/終わる時にだけ store へ書く)。
@@ -47,8 +47,6 @@ export const bloodCapacity = (p: BloodFields): number => {
 export const BLOOD_AWAKEN_MS = 10000;
 /** 覚醒中の強化倍率(移動速度・弾速・与ダメージ)。 */
 export const BLOOD_AWAKEN_BOOST = 1.5;
-/** 覚醒中の被ダメージ倍率。 */
-export const BLOOD_AWAKEN_TAKEN = 2;
 /** 終わりの何ms前から倍率が 1.0 へ線形に戻るか。 */
 export const BLOOD_AWAKEN_FADE_MS = 1000;
 /** 最後に浴びてからこの時間(ms)は乾かない。 */
@@ -73,10 +71,11 @@ export const BLOOD_MELEE_NEAR_PX = 120;
 /** 銃キルで「浴びる」距離(px)。これより遠いキルは 0。 */
 export const BLOOD_GUN_NEAR_PX = 90;
 
-export const BLOOD_GAIN_MELEE_KILL_NEAR = 0.12;
-export const BLOOD_GAIN_MELEE_KILL_FAR = 0.06;
-export const BLOOD_GAIN_MELEE_HIT = 0.02;
-export const BLOOD_GAIN_GUN_KILL_NEAR = 0.06;
+// ★v0.25.5106 社長「覚醒までが早すぎる」: 全部半分に(満タンHPの密着キル 9回 → 17回)。
+export const BLOOD_GAIN_MELEE_KILL_NEAR = 0.06;
+export const BLOOD_GAIN_MELEE_KILL_FAR = 0.03;
+export const BLOOD_GAIN_MELEE_HIT = 0.01;
+export const BLOOD_GAIN_GUN_KILL_NEAR = 0.03;
 
 export type BloodGainKind = 'melee-kill' | 'melee-hit' | 'gun-kill';
 
@@ -84,8 +83,8 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /**
  * 1回の加算量(満タン体力を1とした絶対量)。表は §3-1。体力による補正は掛けない(器の大きさ=bloodCapacity が担う)。
- *  - 近接キル: 距離≤120px で +0.12 / それ以上 +0.06 / 近接ヒットのみ +0.02
- *  - 銃キル: 距離≤90px で +0.06 / それ以上 0
+ *  - 近接キル: 距離≤120px で +0.06 / それ以上 +0.03 / 近接ヒットのみ +0.01
+ *  - 銃キル: 距離≤90px で +0.03 / それ以上 0
  * distPx は呼び手がプレイヤー中心と敵中心で測る(melee-hit では使わない)。
  */
 export const bloodGainFor = (a: { kind: BloodGainKind; distPx: number }): number => {
@@ -153,16 +152,14 @@ export const bloodAwakenStep = (
 };
 
 /**
- * 覚醒中の倍率。入りは即(1.5 / 2)、終わりの 1秒で線形に 1.0 へ戻る。
- * boost=移動速度・弾速(発射時に確定)・与ダメージ(近接+銃) / taken=被ダメージ。覚醒していなければ全部 1。
+ * 覚醒中の倍率。入りは即(1.5)、終わりの 1秒で線形に 1.0 へ戻る。
+ * boost=移動速度・弾速(発射時に確定)・与ダメージ(近接+銃)。覚醒していなければ 1。
+ * (被ダメージ ×2 は v0.25.5106 社長「覚醒で被ダメ2倍やめる」で撤去。)
  */
-export const bloodAwakenMult = (p: BloodFields, gameTime: number): { boost: number; taken: number } => {
-  if (!isBloodAwakening(p, gameTime)) return { boost: 1, taken: 1 };
+export const bloodAwakenMult = (p: BloodFields, gameTime: number): { boost: number } => {
+  if (!isBloodAwakening(p, gameTime)) return { boost: 1 };
   const k = clamp01(((p.bloodAwakenUntil ?? 0) - gameTime) / BLOOD_AWAKEN_FADE_MS);
-  return {
-    boost: 1 + (BLOOD_AWAKEN_BOOST - 1) * k,
-    taken: 1 + (BLOOD_AWAKEN_TAKEN - 1) * k,
-  };
+  return { boost: 1 + (BLOOD_AWAKEN_BOOST - 1) * k };
 };
 
 /**

@@ -62,40 +62,40 @@ describe('初期化(リトライ・ステージ跨ぎで残らない)', () => {
 });
 
 describe('近接で浴びる(本人の近接だけ)', () => {
-  it('カウンター(ナイフ)で密着キル: +0.12(満タンHP)', () => {
+  it('カウンター(ナイフ)で密着キル: +0.06(満タンHP)', () => {
     spawnInFront(1);
     st().triggerCounter();
-    expect(meter()).toBeCloseTo(0.12);
+    expect(meter()).toBeCloseTo(0.06);
     expect(st().player.bloodLastGainAt).toBe(st().gameTime);
   });
-  it('体力が低いと器が小さい=自ずと早く満ちる: HP2割なら同じ +0.12 で液体の6割が赤い', () => {
+  it('体力が低いと器が小さい=自ずと早く満ちる: HP2割なら同じ +0.06 で液体の3割が赤い', () => {
     setHp(0.2);
     spawnInFront(1);
     st().triggerCounter();
-    expect(meter()).toBeCloseTo(0.12);
-    expect(bloodFill(st().player, st().gameTime)).toBeCloseTo(0.6);
+    expect(meter()).toBeCloseTo(0.06);
+    expect(bloodFill(st().player, st().gameTime)).toBeCloseTo(0.3);
   });
-  it('倒せなかった命中は +0.02', () => {
+  it('倒せなかった命中は +0.01', () => {
     spawnInFront(99999);
     st().triggerCounter();
     expect(st().enemies[0].health).toBeLessThan(99999); // 当たってはいる
-    expect(meter()).toBeCloseTo(0.02);
+    expect(meter()).toBeCloseTo(0.01);
   });
-  it('刀の一閃(本人)のキル: +0.12。オート斬撃(allowFinisher=false)は浴びない', () => {
+  it('刀の一閃(本人)のキル: +0.06。オート斬撃(allowFinisher=false)は浴びない', () => {
     useGameStore.setState(s => ({ player: { ...s.player, subWeapons: [...s.player.subWeapons, 'katana'] } }));
     const e = spawnInFront(1);
     st().performKatanaStrike([e.id], 1, true);
-    expect(meter()).toBeCloseTo(0.12);
+    expect(meter()).toBeCloseTo(0.06);
     const e2 = spawnInFront(1);
     useGameStore.setState(s => ({ player: { ...s.player, bloodMeter: 0 } }));
     st().performKatanaStrike([e2.id], 1, false);
     expect(meter()).toBe(0);
   });
-  it('鞭(本人)のキル: +0.12', () => {
+  it('鞭(本人)のキル: +0.06', () => {
     const e = spawnInFront(1);
     useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['whip'] } }));
     st().performWhipStrike([e.id]);
-    expect(meter()).toBeCloseTo(0.12);
+    expect(meter()).toBeCloseTo(0.06);
   });
   it('分身・投擲スケボー・grantMeleeKillRewards 単体(旗なし)では浴びない', () => {
     const e = spawnInFront(1);
@@ -111,7 +111,7 @@ describe('近接で浴びる(本人の近接だけ)', () => {
     grantMeleeKillRewards(useGameStore.getState, [{ enemy: dead, finisher: false }], st().player, undefined);
     expect(meter()).toBe(0);
   });
-  it('離れたキルは +0.06(距離>120px)', () => {
+  it('離れたキルは +0.03(距離>120px)', () => {
     useGameStore.setState(s => ({ player: { ...s.player, subWeapons: [...s.player.subWeapons, 'katana'] } }));
     const e = spawnInFront(1);
     const p = st().player;
@@ -119,7 +119,7 @@ describe('近接で浴びる(本人の近接だけ)', () => {
     e.x = p.x + p.width / 2 + 200 - e.width / 2; e.y = p.y + p.height / 2 - e.height / 2;
     useGameStore.setState({ enemies: [e] });
     st().performKatanaStrike([e.id], 1, true);
-    expect(meter()).toBeCloseTo(0.06);
+    expect(meter()).toBeCloseTo(0.03);
   });
   it('覚醒中は加算しない(10秒の間に溜め直さない)', () => {
     awaken();
@@ -131,10 +131,10 @@ describe('近接で浴びる(本人の近接だけ)', () => {
 });
 
 describe('銃で浴びる(キルだけ・距離≤90px)', () => {
-  it('近距離の銃キル: +0.06', () => {
+  it('近距離の銃キル: +0.03', () => {
     const e = spawnInFront(1, 30);
     st().damageEnemy(e.id, 999, false, false, false, 'gun', 'player');
-    expect(meter()).toBeCloseTo(0.06);
+    expect(meter()).toBeCloseTo(0.03);
   });
   it('遠距離の銃キル・倒せなかった命中は 0', () => {
     const far = spawnInFront(1, 400);
@@ -178,14 +178,14 @@ describe('覚醒中の倍率の配線', () => {
     const boosted = 99999 - st().enemies[0].health;
     expect(boosted / base).toBeCloseTo(1.5, 1);
   });
-  it('被ダメ ×2(damagePlayer の skilled の段)', () => {
+  it('被ダメは変わらない(v0.25.5106 社長「覚醒で被ダメ2倍やめる」)', () => {
     const hp0 = st().player.health;
     st().damagePlayer(10, 'test');
     const normal = hp0 - st().player.health;
     useGameStore.setState(s => ({ player: { ...s.player, health: hp0, invulnerable: false } }));
     awaken();
     st().damagePlayer(10, 'test');
-    expect(hp0 - st().player.health).toBeCloseTo(normal * 2);
+    expect(hp0 - st().player.health).toBeCloseTo(normal);
   });
   it('移動速度 ×1.5 はランプの外: 通常歩行の枝だけ。dashOverride・スケーター・スライドには掛けない', () => {
     const base: EffectiveMoveSpeedInput = {
@@ -216,7 +216,7 @@ describe('覚醒中の倍率の配線', () => {
     expect(normal[0].speed).toBeGreaterThan(0); // 先に撃った弾は変わらない
   });
   it('時間の速さ(timeScale)は触らない: 覚醒の倍率に時間の項は無い', () => {
-    expect(Object.keys(bloodAwakenMult({ bloodAwakenUntil: 99999 }, 0)).sort()).toEqual(['boost', 'taken']);
+    expect(Object.keys(bloodAwakenMult({ bloodAwakenUntil: 99999 }, 0)).sort()).toEqual(['boost']);
   });
 });
 

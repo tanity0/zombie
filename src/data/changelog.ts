@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5106', items: [
+    '血の覚醒中も、受けるダメージは増えない',
+    '覚醒するまでに倒す数がおよそ倍に。体力が減っているほど早く満ちるのは前と同じ',
+  ] },
   { version: '0.25.5105', items: [
     '雑魚も、画面内の英雄(変異)がプレイヤーより近ければ、離れていても英雄へ向かう',
   ] },

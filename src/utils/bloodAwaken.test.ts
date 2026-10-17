@@ -29,30 +29,30 @@ describe('器(社長「体力が低いと…相対的に満タン値が下がっ
 });
 
 describe('bloodGainFor(表 §3-1)', () => {
-  it('近接キル: 距離≤120px で +0.12 / それ以上 +0.06(境界は120を含む)', () => {
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 0 })).toBeCloseTo(0.12);
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120 })).toBeCloseTo(0.12);
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120.01 })).toBeCloseTo(0.06);
+  it('近接キル: 距離≤120px で +0.06 / それ以上 +0.03(境界は120を含む)', () => {
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 0 })).toBeCloseTo(0.06);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120 })).toBeCloseTo(0.06);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 120.01 })).toBeCloseTo(0.03);
   });
-  it('近接ヒットのみ +0.02', () => {
-    expect(bloodGainFor({ kind: 'melee-hit', distPx: 0 })).toBeCloseTo(0.02);
+  it('近接ヒットのみ +0.01', () => {
+    expect(bloodGainFor({ kind: 'melee-hit', distPx: 0 })).toBeCloseTo(0.01);
   });
-  it('銃キル: 距離≤90px だけ +0.06 / それ以上は 0(境界は90を含む)', () => {
-    expect(bloodGainFor({ kind: 'gun-kill', distPx: 90 })).toBeCloseTo(0.06);
+  it('銃キル: 距離≤90px だけ +0.03 / それ以上は 0(境界は90を含む)', () => {
+    expect(bloodGainFor({ kind: 'gun-kill', distPx: 90 })).toBeCloseTo(0.03);
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 90.01 })).toBe(0);
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 500 })).toBe(0);
   });
   it('加算は体力で変わらない(器の方が縮む)', () => {
-    expect(bloodGainFor({ kind: 'melee-kill', distPx: 10 })).toBeCloseTo(0.12);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 10 })).toBeCloseTo(0.06);
   });
-  it('受け入れ: 満タンHPの密着キル 8〜9回で満ちる / HP2割(器0.2)なら 2回', () => {
+  it('受け入れ(v0.25.5106「早すぎる」で半分に): 満タンHPの密着キル 17回で満ちる / HP2割(器0.2)なら 4回', () => {
     const per = bloodGainFor({ kind: 'melee-kill', distPx: 10 });
-    expect(Math.ceil(1 / per)).toBe(9);
-    expect(per * 8).toBeGreaterThan(0.95);
-    expect(Math.ceil(bloodCapacity({ health: 20, maxHealth: 100 }) / per - 1e-9)).toBe(2);
+    expect(Math.ceil(1 / per - 1e-9)).toBe(17);
+    expect(per * 16).toBeLessThan(1);
+    expect(Math.ceil(bloodCapacity({ health: 20, maxHealth: 100 }) / per - 1e-9)).toBe(4);
   });
-  it('銃だけでは満ちにくい(満タンHPの近距離銃キルでも 17回)', () => {
-    expect(Math.ceil(1 / bloodGainFor({ kind: 'gun-kill', distPx: 10 }))).toBe(17);
+  it('銃だけでは満ちにくい(満タンHPの近距離銃キルでも 34回)', () => {
+    expect(Math.ceil(1 / bloodGainFor({ kind: 'gun-kill', distPx: 10 }) - 1e-9)).toBe(34);
   });
 });
 
@@ -137,18 +137,17 @@ describe('bloodAwakenStep(満ちたら自動発動・終わりで0へ)', () => {
 describe('bloodAwakenMult(入り即・終わりの1秒で線形に戻る)', () => {
   const p = { bloodAwakenUntil: 11_000, bloodAwakenStartedAt: 1000 };
   it('覚醒していなければ全部1', () => {
-    expect(bloodAwakenMult({}, 0)).toEqual({ boost: 1, taken: 1 });
-    expect(bloodAwakenMult(p, 11_000)).toEqual({ boost: 1, taken: 1 });
+    expect(bloodAwakenMult({}, 0)).toEqual({ boost: 1 });
+    expect(bloodAwakenMult(p, 11_000)).toEqual({ boost: 1 });
   });
-  it('入りは即: 1.5 / 被ダメ 2', () => {
-    expect(bloodAwakenMult(p, 1000)).toEqual({ boost: 1.5, taken: 2 });
-    expect(bloodAwakenMult(p, 5000)).toEqual({ boost: 1.5, taken: 2 });
-    expect(bloodAwakenMult(p, 11_000 - BLOOD_AWAKEN_FADE_MS)).toEqual({ boost: 1.5, taken: 2 });
+  it('入りは即: 1.5(被ダメージの倍率は無い)', () => {
+    expect(bloodAwakenMult(p, 1000)).toEqual({ boost: 1.5 });
+    expect(bloodAwakenMult(p, 5000)).toEqual({ boost: 1.5 });
+    expect(bloodAwakenMult(p, 11_000 - BLOOD_AWAKEN_FADE_MS)).toEqual({ boost: 1.5 });
   });
-  it('終わりの1秒で線形に 1.5→1.0 / 2→1', () => {
+  it('終わりの1秒で線形に 1.5→1.0', () => {
     const m = bloodAwakenMult(p, 11_000 - BLOOD_AWAKEN_FADE_MS / 2);
     expect(m.boost).toBeCloseTo(1.25);
-    expect(m.taken).toBeCloseTo(1.5);
     expect(bloodAwakenMult(p, 10_999).boost).toBeCloseTo(1.0005, 3);
   });
   it('単調(終わりに向かって減るだけ)', () => {
@@ -258,7 +257,7 @@ describe('withoutBlood(守護霊・幻影の疑似Playerへ持ち越さない)',
     const g = withoutBlood(live);
     expect(g).toEqual({ bloodMeter: 0, bloodLastGainAt: 0, bloodAwakenUntil: 0, bloodAwakenStartedAt: 0, hp: 77 });
     expect(isBloodAwakening(g, 1)).toBe(false);
-    expect(bloodAwakenMult(g, 1)).toEqual({ boost: 1, taken: 1 });
+    expect(bloodAwakenMult(g, 1)).toEqual({ boost: 1 });
     expect(live.bloodAwakenUntil).toBe(99_999); // 元は書き換えない
   });
 });
