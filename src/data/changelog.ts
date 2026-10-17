@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5110', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5109', items: [
     '英雄(変異)は、守護霊や軍人に攻撃を当てた時も回復する',
   ] },
