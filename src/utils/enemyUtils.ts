@@ -338,6 +338,14 @@ export const isHangedman = (t: EnemyType): boolean => t === 'hangedman';
 export const isBiteExemptType = (t: EnemyType): boolean =>
   isReaperFamily(t) || isGuardianPhantom(t) || isHangedman(t);
 
+/**
+ * ★英雄(変異)に「引き寄せられない」敵=本物のボス(ステージのボス・裏ボス・賞金首・幻影・死神系)と、中立の英雄・旗手。
+ * 雑魚・**強個体(パンプキン/削岩型/伐採人)・研究所の大型・ハンター**は英雄に引き寄せられる(research/MUTANT_HERO.md §3-2「雑魚と強個体」)。
+ * ★旧実装は `isBossType` で除外していた=**強個体とハンターまで除外**していた(isBossType は強個体を含む別目的の表・英雄の犬で同じ取り違えを直した前例 HERO_DOG §5)。
+ */
+export const isHeroLureExempt = (t: EnemyType): boolean =>
+  isTrueBossType(t) || t === 'giantbat' || isBodyWallBoss(t);
+
 export const isTrueBossType = (t: EnemyType): boolean =>
   t === 'mimir' || t === 'jormungand' || t === 'skadi' || t === 'thor' ||
   t === 'miguel' || t === 'jibril' || t === 'rafi' || t === 'uri' || t === 'suriel' ||
@@ -810,7 +818,7 @@ export const resolveEnemyTarget = (
   const ey = enemy.y + enemy.height / 2;
   const px = player.x + player.width / 2;
   const py = player.y + player.height / 2;
-  if (hero && hero.id !== enemy.id && !isBossType(enemy.type)) {
+  if (hero && hero.id !== enemy.id && !isHeroLureExempt(enemy.type)) {
     const hx = hero.x + hero.width / 2, hy = hero.y + hero.height / 2;
     if (mobPrefersHero(ex, ey, hx, hy, playerHidden ? Infinity : px, py)) return { x: hx, y: hy, isSummon: true, hidden: false };
   }

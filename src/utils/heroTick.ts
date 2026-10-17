@@ -10,7 +10,7 @@ import { bossFaceDeadzonePx } from './bossFacing';
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, knockbackSpeedFor, ENEMY_REMOVE_CAUSE, type PumpkinBlast } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
-import { isBossType, isCorpse, isMutantHero } from './enemyUtils';
+import { isCorpse, isMutantHero, isUntouchable, isHeroLureExempt } from './enemyUtils';
 import { heroOnScreen } from './heroBlast';
 import { isPointInZoomedViewport } from './cameraZoom';
 import { npcSfxDistGain as npcGain } from './npcSfx';
@@ -135,7 +135,8 @@ const targetCands = (hero: Enemy): HeroTargetCand[] => {
   const g = st.summons.find(s => s.kind === 'ghost-ally');
   if (g) { const gx = g.x + g.width / 2, gy = g.y + g.height / 2; out.push({ id: 'ghost', x: gx, y: gy, onScreen: vis(gx, gy) }); }
   for (const e of st.enemies) {
-    if (e.id === hero.id || isCorpse(e) || e.health <= 0 || isBossType(e.type) || e.dormant) continue;
+    // 社長 2026-10-17「英雄はボスも強個体も区別は無し。全ての敵味方が対象です」=ボス級・強個体も狙う(旧=ボス級の表で除外=強個体も外れていた)。
+    if (e.id === hero.id || isCorpse(e) || e.health <= 0 || isUntouchable(e) || e.dormant) continue;
     const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
     out.push({ id: e.id, x: ex, y: ey, onScreen: vis(ex, ey) });
   }
@@ -309,7 +310,7 @@ export const runHeroTick = (
       const r2 = HERO_AWE_RANGE_PX * HERO_AWE_RANGE_PX;
       let touched = false;
       const next = useGameStore.getState().enemies.map(e => {
-        if (e.id === hero.id || isBossType(e.type) || isCorpse(e) || e.dormant || e.health <= 0) return e;
+        if (e.id === hero.id || isHeroLureExempt(e.type) || isCorpse(e) || e.dormant || e.health <= 0) return e; // 雑魚・強個体(本物のボスは除く)
         const ex = e.x + e.width / 2 - hx, ey = e.y + e.height / 2 - hy;
         if (ex * ex + ey * ey > r2) return e;
         if (e.aweUntil === untilNow && e.aweFaceX === hx) return e;

@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5101', items: [
+    '英雄(変異)はボスや強い個体にも襲いかかるようになった',
+    'パンプキン・削岩型・伐採人・ハンターも、近くの英雄に向かっていく',
+  ] },
   { version: '0.25.5100', items: [
     'ゴールに入った瞬間、足元で爆弾が炸裂する。衝撃が外へ広がり、周りの雑魚は倒れ、爆風が効かない敵は遠くへ吹き飛ぶ',
   ] },

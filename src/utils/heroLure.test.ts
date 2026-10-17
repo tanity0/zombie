@@ -24,6 +24,14 @@ describe('雑魚が英雄を狙う', () => {
     const b = resolveEnemyTarget(z, player, [], 380, false, 0, null);
     expect(a).toEqual(b);
   });
+  it('強個体(パンプキン/削岩型/伐採人)とハンターも英雄を追う(社長 2026-10-17・旧実装は除外していた)', () => {
+    for (const t of ['pumpkin', 'driller', 'logger', 'hunter'] as const) {
+      const e = spawnEnemyAt(t, 300, 0, 0);
+      const h = { ...hero, x: 380, y: 0 };
+      const r = resolveEnemyTarget(e, player, [], 380, false, 0, h);
+      expect(r.x, t).toBeCloseTo(h.x + h.width / 2);
+    }
+  });
   it('ボスは英雄を見ない(狙いは今のまま)', () => {
     const b = spawnEnemyAt('bounty-melee', 300, 0, 0);
     const t = resolveEnemyTarget(b, player, [], 380, false, 0, { ...hero, x: 360, y: 0 });
