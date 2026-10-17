@@ -75,8 +75,6 @@ export const HERO_TARGET_LATCH_MS = 1500;
 export const HERO_RETARGET_PAUSE_MS = 200;
 /** 左右の向きが入れ替わる前に止まる間。 */
 export const HERO_FLIP_PAUSE_MS = 120;
-/** 雑魚・強個体が英雄を追う距離(英雄の中心から)。錬金の召喚用の 380 とは別の口。 */
-export const HERO_LURE_RANGE = 360;
 /** 敵の攻撃を英雄が受ける時の倍率(敵の技の値はプレイヤー向け)。 */
 export const HERO_INCOMING_MULT = 3;
 /** 英雄の技が敵に当たる時の倍率。 */
@@ -290,13 +288,12 @@ export const heroNotices = (
 };
 
 /**
- * 雑魚・強個体が英雄を追うか(設計書 §3-2)。英雄が自分から HERO_LURE_RANGE 以内で、プレイヤーより近い時だけ。
+ * 雑魚・強個体が英雄を追うか(設計書 §3-2)。英雄がプレイヤーより近い時だけ=近さだけで決める(距離の上限なし・v0.25.5105 社長「雑魚も同じく近さ優先でいい」)。
+ * 英雄が画面外なら呼び手が渡さない(候補は画面内の英雄だけ)。
  * ボス級はこの関数を呼ばない(呼び手=resolveEnemyTarget がボスなら見ない)。
  */
 export const mobPrefersHero = (ex: number, ey: number, heroX: number, heroY: number, playerX: number, playerY: number): boolean => {
-  const dh2 = (heroX - ex) ** 2 + (heroY - ey) ** 2;
-  if (dh2 > HERO_LURE_RANGE * HERO_LURE_RANGE) return false;
-  return dh2 < (playerX - ex) ** 2 + (playerY - ey) ** 2;
+  return (heroX - ex) ** 2 + (heroY - ey) ** 2 < (playerX - ex) ** 2 + (playerY - ey) ** 2;
 };
 
 // ---------------------------------------------------------------------------------------------

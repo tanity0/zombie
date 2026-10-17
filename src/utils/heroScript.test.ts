@@ -4,7 +4,7 @@ import {
   heroNotices, heroHealAfterHits, heroShouldAscend, heroAscendLook,
   HERO_MAX_HP, HERO_START_HP, HERO_HEAL_PER_HIT, HERO_HEAL_PER_KILL, HERO_ASCEND_MS, HERO_ASCEND_RISE_MS, HERO_ASCEND_CLIMAX_MS,
   heroSwingArc, heroPatrolRadius, heroPatrolNext, heroPatrolNearest, HERO_PATROL_STAGES, HERO_PATROL_SPEED, HERO_WALK_SPEED, HERO_GALLOP_SPEED,
-  HERO_MOVES, HERO_NEAR, HERO_MID, HERO_AGGRO_RANGE, HERO_LURE_RANGE, heroMoveCandidates, pickHeroMove, pickHeroTarget,
+  HERO_MOVES, HERO_NEAR, HERO_MID, HERO_AGGRO_RANGE, heroMoveCandidates, pickHeroMove, pickHeroTarget,
   heroFollowUp, heroStepShape, heroStepHitDelay, circleHitsHeroShape, circleHitsFan, mobPrefersHero, heroFrameFor, heroLiftPx, HERO_SHEETS,
 } from './heroScript';
 import { AOE_TELEGRAPH_AUDIT } from './bossTelegraph';
@@ -80,10 +80,10 @@ describe('狙い(中立)', () => {
     expect(pickHeroTarget(0, 0, cands, 'player', 1000, 1500)?.id).toBe('z1');
     expect(pickHeroTarget(0, 0, [c('z1', 100, 0)], 'player', 1000, 500)?.id).toBe('z1');
   });
-  it('雑魚が英雄を追うのは、英雄が近い範囲内でプレイヤーより近い時だけ', () => {
+  it('雑魚が英雄を追うのは、英雄がプレイヤーより近い時だけ(距離の上限なし=近さだけ)', () => {
     expect(mobPrefersHero(0, 0, 100, 0, 300, 0)).toBe(true);
     expect(mobPrefersHero(0, 0, 300, 0, 100, 0)).toBe(false);
-    expect(mobPrefersHero(0, 0, HERO_LURE_RANGE + 10, 0, 2000, 0)).toBe(false);
+    expect(mobPrefersHero(0, 0, 900, 0, 2000, 0)).toBe(true);
   });
 });
 

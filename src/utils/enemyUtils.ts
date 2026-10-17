@@ -805,7 +805,7 @@ export const resolveEnemyTarget = (
   // ラッチ無効=雑魚はゴーストを狙わない側に倒れる(既定候補からの除外は常に効く)。
   gameTimeNow?: number,
   // research/MUTANT_HERO.md §3-2(社長「敵の近くにいたら、敵も彼を狙う」): 画面内に居る英雄(中立)。
-  // 雑魚・強個体は、英雄が HERO_LURE_RANGE 以内でプレイヤーより近い時は英雄を追う/撃つ。ボスは見ない(狙いは今のまま)。
+  // 雑魚・強個体は、英雄がプレイヤーより近い時は英雄を追う/撃つ(近さだけ・v0.25.5105)。ボスはヘイト側(hateTarget='hero')で英雄を見る。
   // 未指定=英雄なし=従来と1bit同じ。呼び手は英雄が画面外なら渡さない。
   hero?: { id: string; x: number; y: number; width: number; height: number } | null,
   // research/ESCORT_TARGETED.md §4/§5: 進軍NPC(軍人)の候補(画面内で倒れていない・体の中心座標)。

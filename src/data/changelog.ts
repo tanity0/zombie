@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5105', items: [
+    '雑魚も、画面内の英雄(変異)がプレイヤーより近ければ、離れていても英雄へ向かう',
+  ] },
   { version: '0.25.5104', items: [
     'ボスは、誰が殴っているかより英雄(変異)との近さで狙いを決める。英雄がいちばん近ければ英雄へ',
   ] },
