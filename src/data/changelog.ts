@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5112', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5111', items: [
     '礼賛が呼ぶ使者の動きが重くなった。動き出しはじわりと速まり、急に横へ逃げると大回りして追い直す',
   ] },
