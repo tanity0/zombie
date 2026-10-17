@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5107 — 英雄の回復 +200/+500・プレイヤーに当てても回復【2026-10-17 23:14 JST】
+- 社長「英雄は攻撃で200回復、倒すと500回復に変更 / プレイヤーに当てても回復」。
+- `utils/heroScript.ts`: `HERO_HEAL_PER_HIT` 100→200 / `HERO_HEAL_PER_KILL` 300→500。
+- `utils/heroBlast.ts`: 回復を `healHeroForHits(heroId, hits, kills)` に切り出し(敵への命中はこれを呼ぶ)。
+- `utils/combatTick.ts`: 英雄の技の爆風がプレイヤーに**実際に当たった**時(段が付いた/アーマーで受けた。死んだら倒した扱い)に `healHeroForHits`。カウンター・無敵中は回復しない。守護霊・軍人への命中は対象外(指示がプレイヤーのみ)。
+- 文書: research/MUTANT_HERO.md §回復。テスト heroScript.test 更新(37件緑)。typecheck 0 / lint 0 / 循環import新規なし。
+- 監査: 値の変更+既存の回復を1経路足すだけ=付けない。自己点検: 憲法第4条・第5条に抵触しない。
+- 状態変化: なし。
+
 ## v0.25.5106 — 血の覚醒: 被ダメ2倍を撤去・溜まる量を半分に【2026-10-17 23:03 JST】
 - 社長「覚醒で被ダメ2倍やめる。あと、覚醒までが早すぎる」。
 - `utils/bloodAwaken.ts`: `BLOOD_AWAKEN_TAKEN` と `bloodAwakenMult().taken` を撤去(戻り値は boost だけ)。`gameStore.damagePlayer` の skilled 段から掛け算を外した。

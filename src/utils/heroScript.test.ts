@@ -251,12 +251,12 @@ describe('英雄の体力と昇天(社長指示2026-10-05)', () => {
     expect(HERO_MAX_HP).toBe(20000);
     expect(HERO_START_HP).toBe(HERO_MAX_HP / 2);
   });
-  it('当てると1体100・倒すと1体300回復し、上限で止まる', () => {
+  it('当てると1体200・倒すと1体500回復し、上限で止まる(社長指示2026-10-17)', () => {
     // 社長指示2026-10-05: 当てると1体100(3体なら300)・倒すと1体300。
-    expect(HERO_HEAL_PER_HIT).toBe(100);
-    expect(HERO_HEAL_PER_KILL).toBe(300);
-    expect(heroHealAfterHits(10000, HERO_MAX_HP, 3, 0)).toBe(10300);
-    expect(heroHealAfterHits(10000, HERO_MAX_HP, 1, 2)).toBe(10700);
+    expect(HERO_HEAL_PER_HIT).toBe(200);
+    expect(HERO_HEAL_PER_KILL).toBe(500);
+    expect(heroHealAfterHits(10000, HERO_MAX_HP, 3, 0)).toBe(10600);
+    expect(heroHealAfterHits(10000, HERO_MAX_HP, 1, 2)).toBe(11200);
     expect(heroHealAfterHits(19950, HERO_MAX_HP, 2, 0)).toBe(HERO_MAX_HP);
     expect(heroHealAfterHits(10000, HERO_MAX_HP, 0, 0)).toBe(10000);
   });

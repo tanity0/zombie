@@ -72,7 +72,7 @@ import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_A
 // v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
 import { distToBandRect } from './geometry';
 import { circleHitsFan } from './heroScript';
-import { applyBlastToHero, applyHeroBlastToEnemies, markHeroHit, heroAsTarget, damageHeroByEnemy, hitHeroShape } from './heroBlast'; // research/MUTANT_HERO.md
+import { applyBlastToHero, applyHeroBlastToEnemies, markHeroHit, heroAsTarget, damageHeroByEnemy, hitHeroShape, healHeroForHits } from './heroBlast'; // research/MUTANT_HERO.md
 import { knockbackUntilAfterStop, blastKnockbackOf, blastPushDir } from './playerHurt'; // 押し出しはヒットストップが明けてから(社長指摘2026-10-08)
 import { applyBlastToEscorts, applyEnemyProjectilesToEscorts, hitEscortShape } from './escortHit'; // research/ESCORT_TARGETED.md §3: 進軍NPCも同じ入口で被弾
 import { escortBodyRect, escortCenter, ESCORT_BODY_SIZE } from './escortHealth';
@@ -398,7 +398,12 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         } };
         });
         if (died) fx.triggerPlayerDeath(bpcx, bpcy);
-        if (b.moveKey?.startsWith('hero-')) markHeroHit(b.enemyId);
+        if (b.moveKey?.startsWith('hero-')) {
+          markHeroHit(b.enemyId);
+          // 社長指示2026-10-17「プレイヤーに当てても回復」: 実際に当たった(段が付いた/アーマーで受けた)時だけ。倒したら500。
+          const pNow = useGameStore.getState().player;
+          if (died || pNow.lastHurtAt !== hurtAtBefore || pNow.hurtArmoredAt !== armoredAtBefore) healHeroForHits(b.enemyId, died ? 0 : 1, died ? 1 : 0);
+        }
       }
     }
     // G4b: 同じ爆発をゴーストにも(プレイヤーと同じ幾何・同じ量・同じ解決ループ内)。

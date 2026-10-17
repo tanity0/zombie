@@ -132,20 +132,22 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
       }));
     }
   }
-  // 社長指示2026-10-05「攻撃を当てると100回復に変更。一気に3体当たれば300。倒すと1体につき300回復」:
-  // 当てた敵1体=100、倒した敵1体=300(その1体は100ではなく300)。満タンになったら次のtickで昇天(heroTick)。
-  // 回復は数字で見せる(派手さの絵・判定なし)。
-  if (victims.length > 0) {
-    const cur = useGameStore.getState().enemies.find(e => e.id === hero.id);
-    if (cur && cur.bossState !== 'hero-ascend' && cur.health > 0) {
-      const healed = heroHealAfterHits(cur.health, cur.maxHealth, victims.length - kills, kills);
-      if (healed > cur.health) {
-        useGameStore.setState(s2 => ({ enemies: s2.enemies.map(en => en.id === hero.id ? { ...en, health: healed } : en) }));
-        useGameStore.getState().spawnCallout(hx, hero.y - 18, `+${healed - cur.health}`, '#e7dccb'); // 英雄の色(骨色)=プレイヤーの回復の緑と分ける
-      }
-    }
-  }
+  if (victims.length > 0) healHeroForHits(hero.id, victims.length - kills, kills);
   return victims.length;
+};
+
+/**
+ * 英雄の技が当たった分だけ英雄を回復する(社長指示2026-10-05 → 2026-10-17「攻撃で200回復、倒すと500回復に変更。プレイヤーに当てても回復」)。
+ * 当てた1体=200、倒した1体=500(その1体は200ではなく500)。敵の一撃(applyHeroBlastToEnemies)とプレイヤーへの命中(combatTick)の両方から呼ぶ。
+ * 満タンになったら次のtickで昇天(heroTick)。回復は数字で見せる(派手さの絵・判定なし)。
+ */
+export const healHeroForHits = (heroId: string, hits: number, kills: number): void => {
+  const cur = useGameStore.getState().enemies.find(e => e.id === heroId);
+  if (!cur || !isMutantHero(cur.type) || cur.bossState === 'hero-ascend' || cur.health <= 0) return;
+  const healed = heroHealAfterHits(cur.health, cur.maxHealth, hits, kills);
+  if (healed <= cur.health) return;
+  useGameStore.setState(s2 => ({ enemies: s2.enemies.map(en => en.id === heroId ? { ...en, health: healed } : en) }));
+  useGameStore.getState().spawnCallout(cur.x + cur.width / 2, cur.y - 18, `+${healed - cur.health}`, '#e7dccb'); // 英雄の色(骨色)=プレイヤーの回復の緑と分ける
 };
 
 /** 英雄の今の技で、だれかに当たったことを英雄に書く(つなぎと休みの判定)。 */

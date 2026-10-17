@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5107', items: [
+    '英雄(変異)の回復が増えた。攻撃を当てるたびに大きく回復し、倒せばさらに回復する',
+    'プレイヤーに攻撃を当てた時も、英雄は回復する',
+  ] },
   { version: '0.25.5106', items: [
     '血の覚醒中も、受けるダメージは増えない',
     '覚醒するまでに倒す数がおよそ倍に。体力が減っているほど早く満ちるのは前と同じ',
