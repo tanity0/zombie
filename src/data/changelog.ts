@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5102', items: [
+    'ゴールで仲間と話している間は、周りの敵の姿が消える',
+    'ゴールに入った時の大爆発はやめた',
+  ] },
   { version: '0.25.5101', items: [
     '英雄(変異)はボスや強い個体にも襲いかかるようになった',
     'パンプキン・削岩型・伐採人・ハンターも、近くの英雄に向かっていく',

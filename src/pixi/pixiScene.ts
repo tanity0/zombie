@@ -125,6 +125,8 @@ import { enemyJumpFrame, enemyJumpFallFrame, enemyJumpLandLastFrame, jumpSplitFr
 import { plantShotFrame, PLANT_CLOSE_MS, PLANT_OPEN_MS, PLANT_BUD_HOLD_MS } from '../utils/plantShot';
 import { enemySweepFrame, enemySweepSpanFrame, giantMotionSpanOf, sweepPhaseOf, sweepSplitFrames, sweepBandDirX, sweepFaceMulFor, sweepActiveLoopFrame } from '../utils/enemySweepSheet';
 import { counterRewindFrame, counterRewindEase, counterRewindElapsed, COUNTER_REWIND_MS, counterRewindIsFresh } from '../utils/counterRewind';
+// ゴールの会話が始まってから敵の姿が消え切るまで(ms)。
+const GOAL_TALK_ENEMY_FADE_MS = 420;
 // ★武器の振りの軌跡(カウンターの「振りを戻す」用)。60fpsで窓140ms=約9枚なので16枚で足りる。
 const WEAPON_TRAIL_MAX = 16;
 interface WeaponDrawArgs {
@@ -14635,6 +14637,15 @@ export class PixiScene {
     this.playerView.container.visible = this.currentFarKey !== 'ending';
     this.syncShadowClone(player);
 
+    // ★ゴールの会話(二人組の納品=deliveryLocked)が始まったら、敵の姿を静かに消す(社長 2026-10-17「絵的に会話してるのに敵がいるのが変だなと思っただけ」)。
+    // 判定・状態には触れない(会話の間は世界が止まり、終わればそのままクリア)=描画の「存在の法則」のフェードに掛けるだけ。慣性=ゆっくり始まりゆっくり消える。
+    {
+      const locked = useGameStore.getState().deliveryLocked;
+      if (locked && this.goalTalkFadeFrom === 0) this.goalTalkFadeFrom = now;
+      if (!locked) this.goalTalkFadeFrom = 0;
+      const t = this.goalTalkFadeFrom ? Math.min(1, (now - this.goalTalkFadeFrom) / GOAL_TALK_ENEMY_FADE_MS) : 0;
+      this.goalTalkFade = 1 - t * t * (3 - 2 * t);
+    }
     // Enemies (mark-and-sweep pool)
     const seen = new Set<string>();
     for (const e of enemies) {
@@ -19432,7 +19443,8 @@ export class PixiScene {
     // §3-9-B v9裁定Q: 「存在の法則」(reaperWarpFade=死神ワープ/hunterLeaveFade=索敵タイムアウト立ち去り/
     // bountyDepartFade=賞金首の退場フェード)だけを影へ渡す。posFade(=horizonAlpha×foreFade、位置の法則)は
     // 影側が別途持つため含めない(地平線フェードの二重掛け防止。裏回り透け(bossBehindAlpha)も含めない)。
-    view.shadowFade = reaperWarpFade * hunterLeaveFade * bountyDepartFade * lichWarp.alpha * lichBlinkAlpha;
+    view.shadowFade = reaperWarpFade * hunterLeaveFade * bountyDepartFade * lichWarp.alpha * lichBlinkAlpha * this.goalTalkFade;
+    view.container.alpha *= this.goalTalkFade; // ゴールの会話中は敵が居ない絵にする(上の goalTalkFade の注記)
 
     if (bossFixed && tex) {
       // 裏ボス: 当たり判定=帯(AABB=e.width×e.height)。絵はそれより大きく、帯の上に伸ばす(見た目と判定を分離)。
@@ -35199,6 +35211,9 @@ export class PixiScene {
    * 根は恒等変換なので、子(wrap)の位置・拡大・フィルタは従来どおりに効く(根として描いた時と同じ結果)。
    */
   private bakeRoot: Container | null = null;
+  /** ゴールの会話が始まった時刻(0=会話中でない)と、今フレームの敵の消え具合(1=見える 0=消えた)。 */
+  private goalTalkFadeFrom = 0;
+  private goalTalkFade = 1;
   private renderBake(content: Container, target: RenderTexture, clear?: boolean): void {
     if (!this.renderer) return;
     if (!this.bakeRoot || this.bakeRoot.destroyed) { this.bakeRoot = new Container(); this.bakeRoot.label = 'bakeRoot'; }
