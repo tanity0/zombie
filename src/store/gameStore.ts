@@ -110,6 +110,7 @@ import { stepSpeedRamp } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様
 import { cruiseTotalMsFor, cruiseStage, cruiseStageBonus, cruiseOthersRampMs, cruiseDamageMult, cruiseSpeedMult, equipCruiseTier, CRUISE_STAGE_BONUS, CRUISE_STAGE_MAX } from '../utils/cruise'; // B3 巡航+B11(THEONE_ROUND2 §4b)
 import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_PUZZLE.md §14-4-2(新死神・重大4/5)
 import { resetMapSightings } from '../utils/mapSightings';
+import { planGoalWipe } from '../utils/goalWipe'; // ゴールの一掃(THEONE_ROUND2 §7)
 import { resetRunRoute } from '../utils/runRoutes';
 import { bloodAwakenMult, bloodGainFor, applyBloodGain } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
 import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
@@ -6995,6 +6996,8 @@ interface GameState {
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
+  /** ★ゴールの一掃(THEONE_ROUND2 §7): 中心の周りの雑魚を倒し、効かない敵(強個体・ボス級)を外向きに遠くへ吹き飛ばす。倒した数・吹き飛ばした数を返す。 */
+  goalWipe: (cx: number, cy: number, reach: number, done: Set<string>) => { killed: number; pushed: number };
   // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number, noShadow?: boolean) => void;
   spawnSlash: (x: number, y: number, color?: string, lengthScale?: number, faceOverride?: 1 | -1) => void; // faceOverride=弧の向き(省略=プレイヤーの向き。進軍NPCの近接は振った向き)
@@ -23392,6 +23395,37 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // 爆発の6コマflipbook(社長支給v0.25.3283「爆発 全部用」)。全ての爆発FXがこれを呼ぶ
   // (手榴弾/タレット/ドローン/地雷/ランチャー/ファイアシューター/ボムカウンター/反射神経/処刑の爆発/朱雀)。
+  goalWipe: (cx, cy, reach, done) => {
+    const st = get();
+    const plan = planGoalWipe(st.enemies, cx, cy, isBossType, e => {
+      const en = st.enemies.find(q => q.id === e.id);
+      return !en || isCorpse(en) || isUntouchable(en);
+    }, reach, done);
+    for (const id of plan.kill) done.add(id);
+    for (const q of plan.push) done.add(q.id);
+    // 一掃は「連続撃破」ではない=頭上の撃破数の帯を出さない(検収クリエイティブ監査 #7)。撃破の数え方(討伐数)はそのまま。
+    const chain = { killChainCount: st.killChainCount, killChainLastAt: st.killChainLastAt, killChainTier: st.killChainTier, killChainTierAt: st.killChainTierAt };
+    // 倒す=普通の撃破の道を通す(死に方の演出・数え方は他の倒し方と同じ)。連続撃破のスローは出さない(演出が重なる)。
+    for (const id of plan.kill) {
+      const en = get().enemies.find(q => q.id === id);
+      if (en && en.health > 0) get().damageEnemy(id, en.health + 1, true, false, false, 'other', 'player', null, 1, null, false);
+    }
+    if (plan.kill.length) set(chain);
+    // 吹き飛ばす=ノックバック(減速つき)。ボス級は普段押されないので、押し道具と同じ印(knockbackShoveUntil)で今回だけ押せるようにする。
+    if (plan.push.length) {
+      const now = Date.now();
+      const until = now + KNOCKBACK_DURATION;
+      const byId = new Map(plan.push.map(q => [q.id, q]));
+      set(state => ({
+        enemies: state.enemies.map(e => {
+          const q = byId.get(e.id);
+          return q ? { ...e, knockbackVx: q.vx, knockbackVy: q.vy, knockbackUntil: until, knockbackShoveUntil: until } : e;
+        }),
+      }));
+    }
+    return { killed: plan.kill.length, pushed: plan.push.length };
+  },
+
   spawnExplosionFx: (x, y, radius, tint) => {
     get().spawnEffect({
       kind: 'explosion', id: `fx-expl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,

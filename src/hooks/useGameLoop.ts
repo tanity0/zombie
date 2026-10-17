@@ -160,6 +160,7 @@ import {
 // 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
 import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
 import { recordMapSightings } from '../utils/mapSightings'; // 一時停止の地図に出す「出会った敵」の記録
+import { GOAL_WIPE_CHARGE_MS, GOAL_WIPE_WAVE_PX_PER_MS, GOAL_WIPE_RADIUS } from '../utils/goalWipe'; // ゴールの一掃(THEONE_ROUND2 §7)
 import { recordRoutePoint } from '../utils/runRoutes'; // 一時停止の地図に描く「今回歩いた道」の記録
 import { bloodAwakenStep, isBloodAwakening, BLOOD_AWAKEN_SFX_GAIN, BLOOD_AWAKEN_SFX_RATE } from '../utils/bloodAwaken'; // B10 血の覚醒の遷移(満ちたら自動発動・終わりで0へ)
 import { ghostArrivalPoint, ghostDeparturePoint } from '../utils/ghostLifecycle';
@@ -1730,6 +1731,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ウェルカム終了で `0`(=出す予約・ポップアップ待ち)、一拍の起点が決まったらその時刻、
   // 出し終わったら `null`。M0の銘打ちの `m0WallHoldRef` と同じ3状態の作法。
   const welcomeClearBannerAtRef = useRef<number | null>(null);
+  // ゴールの一掃(THEONE_ROUND2 §7): 1回の出撃で1回だけ(新ランで下ろす)。
+  const goalWipeDoneRef = useRef(false);
+  // 溜め→波の進行(Date.now 基準。納品の会話で世界が止まっても演出は実時間で進む)。null=未発動。
+  const goalWipeWaveRef = useRef<{ at: number; cx: number; cy: number; done: Set<string>; boomed: boolean; chain: number; embers: number } | null>(null);
   // ウェルカムの連続クリア(社長指示2026-10-13・utils/welcomeStreak.ts): 1段目が湧いた時点の連続回数。
   // 倒し切った瞬間に +1 して書き戻す(湧いた瞬間に保存値は0へ落としてある=途中で終われば途切れる)。
   const welcomeStreakAtStartRef = useRef(0);
@@ -3188,6 +3193,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           welcomeEndedAtRef.current = null;
           welcomeStartedAtRef.current = null; // §17-13-c: 新ランでゲート待ち状態からやり直す
           welcomeClearBannerAtRef.current = null; // エリア踏破の銘打ちの予約も新ランで下ろす
+          goalWipeDoneRef.current = false; // ゴールの一掃も新ランでやり直す
+          goalWipeWaveRef.current = null;
           // ★バグ修正2026-08-22: ボス強制リラックスの尾(10秒)はdirectorTickのモジュール変数に
           // 持っているので、出撃をまたぐと前ランの記録が残る(ラン2で同じ時刻に到達すると
           // 10秒だけ湧きが静かになる)。ここで消す。※gameStoreから呼ぶとdirectorTickとの
@@ -4674,6 +4681,63 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           if (useGameStore.getState().returnCircle && !useGameStore.getState().gameWon) {
             useGameStore.getState().updateReturnPhase(deltaTime);
+          }
+          // ★ゴールの一掃(THEONE_ROUND2 §7・社長「ゴール入ってクリアイベント始まったら爆弾で雑魚一掃。効かない敵はノックバックで遠くへ」):
+          // ゴール(帰還サークル)に初めて入った瞬間、自分を中心に爆発。雑魚は倒れ、効かない敵(強個体・ボス級)は外向きに遠くへ飛ぶ。
+          // 会話(納品)が始まると世界が止まって吹き飛ぶ動きが見えないので、**入った瞬間**に起こす(納品は輪の中で数秒とどまってから)。
+          const gws = useGameStore.getState();
+          if (!goalWipeDoneRef.current && gws.returnCircle && !gws.gameWon && (gws.finaleDefeated || gws.corridorMode)
+              && isInReturnCircle(gws.player, gws.returnCircle)) {
+            goalWipeDoneRef.current = true;
+            const gx = gws.player.x + gws.player.width / 2, gy = gws.player.y + gws.player.height / 2;
+            // 溜め(0.26秒): 画面が一瞬沈み、ロック音=爆弾が出どころ不明で湧かない(検収クリエイティブ監査 #5)。
+            goalWipeWaveRef.current = { at: Date.now(), cx: gx, cy: gy, done: new Set(), boomed: false, chain: 0, embers: 0 };
+            spawnFlash('rgba(0,0,0,0.38)', GOAL_WIPE_CHARGE_MS + 80);
+            playSfx('homing-lock', 0.9);
+          }
+          // 波: 溜めが明けたら爆発し、衝撃が外へ進む。倒れる/飛ぶのは波が届いた時(検収クリエイティブ監査 #1)。
+          const gw = goalWipeWaveRef.current;
+          if (gw) {
+            const t = Date.now() - gw.at - GOAL_WIPE_CHARGE_MS;
+            if (t >= 0) {
+              const st = useGameStore.getState();
+              if (!gw.boomed) {
+                gw.boomed = true;
+                // 派手さの絵(判定はプレイヤーに当たらない)。白い閃光で飛んだ後に暗く沈む二段(#6)。
+                st.spawnExplosionFx(gw.cx, gw.cy, 150);
+                st.spawnBurst(gw.cx, gw.cy, '#fbbf24', 36);
+                st.spawnBurst(gw.cx, gw.cy, '#f97316', 24);
+                st.spawnRing(gw.cx, gw.cy, 16, 720, 'rgba(255,255,255,0.95)', 3, 460);   // 白=細く速い(#4)
+                st.spawnRing(gw.cx, gw.cy, 30, 960, 'rgba(251,146,60,0.7)', 9, 980);    // 橙=太く遅い
+                st.spawnGlow(gw.cx, gw.cy, GLOW_R_M, 'rgba(251,146,60,', 620);
+                spawnFlash('rgba(255,255,255,0.75)', 140);
+                st.triggerShake(BOSS_CRUSH_SHAKE_MS, BOSS_CRUSH_SHAKE_MAG);
+                playSfx('bomb');
+                playSfx('heavy-impact', 1, undefined, 0.7); // 低く重ねる(#9)
+              }
+              if (t >= 160 && gw.embers === 0) { gw.embers = 1; spawnFlash('rgba(10,6,4,0.4)', 520); } // 二段目=暗く沈む
+              // 外周へ連鎖する普通の大きさの爆発(#3): 波が 260px / 540px を越えた時に1輪ずつ。
+              const reachNow = t * GOAL_WIPE_WAVE_PX_PER_MS;
+              const rings = [260, 540];
+              while (gw.chain < rings.length && reachNow >= rings[gw.chain]) {
+                const r = rings[gw.chain], n = gw.chain === 0 ? 6 : 9, off = gw.chain * 0.35;
+                for (let k = 0; k < n; k++) {
+                  const a = off + (k / n) * Math.PI * 2;
+                  st.spawnExplosionFx(gw.cx + Math.cos(a) * r, gw.cy + Math.sin(a) * r * 0.82, 70 + Math.random() * 30);
+                }
+                if (gw.chain === 1) playSfx('bomb', 0.55);
+                gw.chain++;
+              }
+              st.goalWipe(gw.cx, gw.cy, reachNow, gw.done);
+              // 後に残る煙と瓦礫(#8): 波が端に届いたら一度だけ。
+              if (gw.embers === 1 && reachNow >= GOAL_WIPE_RADIUS) {
+                gw.embers = 2;
+                st.spawnRubble(gw.cx, gw.cy, 22, 300);
+                st.spawnBurst(gw.cx, gw.cy, '#57534e', 28);
+                st.spawnGlow(gw.cx, gw.cy, GLOW_R_M, 'rgba(180,83,9,', 1800);
+                goalWipeWaveRef.current = null;
+              }
+            }
           }
         }
 
