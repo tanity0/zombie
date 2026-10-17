@@ -12,7 +12,7 @@ import { getAssistLightDebug } from '../pixi/pixiScene';
 import { getTexture } from '../pixi/pixiTextures';
 import { lastSuppressedError } from '../utils/errorBeacon';
 import { renderStatsText, bakedTextureText, sceneDiagText } from '../utils/renderStats';
-import { prevBeatText, startCrashWatch } from '../utils/crashWatch';
+import { prevBeatText, startCrashWatch, rendererMountCount } from '../utils/crashWatch';
 import { textureMemoryMB, textureTopGroups } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
@@ -388,7 +388,7 @@ const ErrBeacon: React.FC = () => {
       // 表示物の総数・敵IDで持つ表の件数(描画側)と store の配列の長さを足す。
       // v0.25.5065: どのステージで落ちたかを行に残す(社長実機 v0.25.5062 t133s・合計212MBで落ちた件の切り分け用)。
       return `v${__APP_VERSION__} ${getSelectedStageId()} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} en${st.enemies.length}`
-        + ` ${sceneDiagText()} st[fx${st.effects.length} pk${st.pickups.length} pj${st.projectiles.length} sm${st.summons.length}]`;
+        + ` ${sceneDiagText()} st[fx${st.effects.length} pk${st.pickups.length} pj${st.projectiles.length} sm${st.summons.length}] 描画器${rendererMountCount()}代目`;
     });
     const iv = setInterval(() => {
       const msg = lastSuppressedError();

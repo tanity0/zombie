@@ -34,6 +34,15 @@ export const startCrashWatch = (sample: () => string): void => {
   }, 2000);
 };
 
+/**
+ * ★このタブで描画器(PixiStage)を作った回数(2026-10-17・社長実機「何度もリプレイしてたら落ちた。蓄積されてる」)。
+ * 出撃・もう一度プレイ・コンテキストロストのたびに作り直す。「前回最後」の行に載せ、**何回目で落ちたか**を残す
+ * (Chrome では何度作り直しても積み上がらない=実機の行だけが手がかり)。
+ */
+let rendererMounts = 0;
+export const noteRendererMount = (): void => { rendererMounts++; };
+export const rendererMountCount = (): number => rendererMounts;
+
 export const stopCrashWatch = (): void => {
   if (timer !== null) { clearInterval(timer); timer = null; }
 };

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5108', items: [
+    'もう一度プレイを繰り返した時に、前の画面のメモリをすぐ手放すようにした(落ちにくくするための手当て)',
+  ] },
   { version: '0.25.5107', items: [
     '英雄(変異)の回復が増えた。攻撃を当てるたびに大きく回復し、倒せばさらに回復する',
     'プレイヤーに攻撃を当てた時も、英雄は回復する',

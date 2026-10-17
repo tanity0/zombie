@@ -13,6 +13,7 @@ import { SORTIE_STAGE_TEXTURE_PATHS, sortieTexturesNeeded, sortieSpriteGroups } 
 import { setAppliedResolution } from '../config/renderer';
 import { memoryTier, resolutionCapFor } from '../utils/memoryTier';
 import { renderErrorFlags } from './renderErrorFlags';
+import { noteRendererMount } from '../utils/crashWatch';
 
 // 描画解像度の上限(電池対策)。スマホ(タッチ端末)は塗り面積=GPU負荷を抑えるため低め、PCは高画質のまま。
 // 塗るピクセル数は倍率の2乗で効くので、スマホ 2.0→1.5 で約44%削減。?rescap= でURL上書き(検証/微調整)。
@@ -69,6 +70,7 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
     let readyFailsafe = 0; // ローディング解除のフェイルセーフタイマー(下記)
     const host = hostRef.current;
     const app = new Application();
+    noteRendererMount(); // 「前回最後」の行に何代目の描画器で落ちたかを残す(crashWatch)
     appRef.current = app; // 早期に保持: 非同期init中にunmountしても cleanup で確実に破棄できる
 
     (async () => {
@@ -360,7 +362,14 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
       // 焼きの計器を作り直しの前に0へ戻す(古いレンダラの焼きは GPU ごと消える=数字だけが残っていた・2026-10-11)。
       // scene.destroy() が途中で投げても必ず通るよう、別の try にしてある。
       try { releaseAllBakedTextures(); } catch { /* ignore */ }
+      // ★古い描画器のキャンバスは**その場で 0×0 に縮めて**から手放す(2026-10-17・社長実機「何度もリプレイしてたら落ちた。蓄積されてる」)。
+      // iOS Safari はキャンバスの裏の画素と WebGL の描き先を、要素が GC されるまで抱えたままにする(コンテキストを失わせても同じ)。
+      // 端末解像度ぶん(スマホで十数MB+描き先)が出撃のたびに積み上がりうる=縮めれば即座に返る。Chrome では GC が先に回るので差が出ない。
+      // destroy が途中で投げても縮める(別の try)。描画は既に止めてある(ticker を外した後)ので見た目は変わらない。
+      let oldCanvas: HTMLCanvasElement | null = null;
+      try { oldCanvas = (a?.canvas as HTMLCanvasElement | undefined) ?? null; } catch { /* init 前 */ }
       try { a?.destroy(true); } catch { /* ignore */ }
+      try { if (oldCanvas) { oldCanvas.width = 0; oldCanvas.height = 0; } } catch { /* ignore */ }
       appRef.current = null;
       try { host?.replaceChildren(); } catch { /* ignore */ }
     };
