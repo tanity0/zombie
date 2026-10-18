@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5140', items: [
+    '衛星弾の回る輪が地面に沿って広がる。奥を回る弾は体の後ろへ隠れる',
+  ] },
   { version: '0.25.5139', items: [
     '新しい銃が三つ加わった。開発施設の店に並ぶ',
     '塊弾。溶けた塊がゆっくり進み、敵を押しのけながら焼き続ける。壁や大物に当たるとその場で止まる',

@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5140 — 衛星弾の回る輪を地面の楕円に【2026-10-18 19:25 JST】
+- 社長「はい」(回る輪を地面に倒す)。横64・縦×0.36。絵と判定は satelliteOrbitPoint 1本で作る。根元はプレイヤーの足元。放つ向きは楕円上の外向き+接線の勢い。奥半分の玉は地面の層へ移し体の後ろに回す(実装役の追加・不要なら戻せる)。
+- テスト: 全周24点で判定と絵が一致/左右64・上下64×0.36の当たり範囲/放つ向き。
+- 画: scratchpad/guns6/ab.png(8個回っている時・持ち替え中に横の敵に当たる)を目視。
+- 監査: 既存の仕組みの形を変える数値・見え方の追従で新しい仕組みではないため回していない。
+- 検証: typecheck 0 / eslint 0 / 関連 vitest exit 0。
+- 変更ファイル: src/utils/satelliteOrbit.ts / satelliteOrbit.test.ts / newGunsTick.ts / src/pixi/newGunsFx.ts / research/NEW_GUNS.md / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5139 — 新しい銃3挺(塊弾・衛星弾・スキャンセンサー)【2026-10-18 18:38 JST】
 - 仕様: research/NEW_GUNS.md 第5版(§2〜§6)。実装はサブエージェント(Opus)。入手は開発施設の店に仮置き(社長「あとで考える」)。
 - 新規: src/utils/scanSensor.ts / blobShot.ts / satelliteOrbit.ts / newGunsTick.ts / gunKillDrops.ts、src/pixi/newGunsFx.ts、src/components/ScanBeatMeter.tsx、テスト6本(scanSensor/blobShot/satelliteOrbit/newGunsAlly、store の scanSensor/newGunsTick)。

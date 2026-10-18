@@ -314,7 +314,8 @@ const tryFireBlob = (gameTime: number): void => {
 const tickSatellite = (gameTime: number, dtSec: number, holding: boolean, locked: boolean, moveInput: boolean): void => {
   const st = useGameStore.getState();
   const p = st.player;
-  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  // 軌道の根元=足元(扇と同じ)。楕円の位置は satelliteOrbitPoint(絵と同じ関数)。
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height;
   if (orbitFade && gameTime - orbitFade.at > 400) orbitFade = null;
   // 消えるのは死亡・出撃の終わり・衛星弾を手放した時だけ(持ち替えでは消えない=社長決定2026-10-18)。寿命は無い。
   const ownsSat = p.weapons.some(w => w.key === SATELLITE_WEAPON_KEY);
@@ -352,7 +353,7 @@ const tickSatellite = (gameTime: number, dtSec: number, holding: boolean, locked
     if (!satelliteContactReady(satContactAt.get(e.id), gameTime)) continue;
     // 軌道の外側の敵は早めに捨てる(半径+敵の大きさより遠い)。
     const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-    if (Math.hypot(ecx - pcx, ecy - pcy) > SAT_ORBIT_RADIUS_PX + Math.max(e.width, e.height) + 12) continue;
+    if (Math.hypot(ecx - pcx, ecy - pcy) > SAT_ORBIT_RADIUS_PX + Math.max(e.width, e.height) + 12) continue; // 足元からの粗い足切り(余裕あり)
     const touching = poses.find(ps => satelliteTouchesRect(ps.x, ps.y, e));
     if (!touching) continue;
     satContactAt.set(e.id, gameTime);
@@ -373,14 +374,14 @@ const releaseSatellites = (poses: SatelliteBulletPose[], angVel: number, gameTim
   const p = st.player;
   const gun = p.weapons.find(w => w.key === SATELLITE_WEAPON_KEY);
   if (!gun) return;
-  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height; // 軌道の根元(足元)。散る先の方位もここから測る
   const reach = SAT_SHOT_RANGE_PX + SAT_ORBIT_RADIUS_PX;
   const near = aimableEnemies(st.enemies)
-    .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) }))
+    .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height - pcy) })) // 足元どうし
     .filter(x => x.d <= reach)
     .sort((a, b) => a.d - b.d)
     .slice(0, poses.length)
-    .map(x => ({ id: x.e.id, azimuthRad: Math.atan2(x.e.y + x.e.height / 2 - pcy, x.e.x + x.e.width / 2 - pcx) }));
+    .map(x => ({ id: x.e.id, azimuthRad: Math.atan2(x.e.y + x.e.height - pcy, x.e.x + x.e.width / 2 - pcx) }));
   const targets = assignSatelliteTargets(poses.map(ps => Math.atan2(ps.ry, ps.rx)), near);
   const damage = gunShotBaseDamage({ damage: SAT_SHOT_DAMAGE, magazine: undefined }, p, gameTime); // CATALOG の damage はカウンターの元値(品質監査#13)
   const critChance = gunShotCritChance(gun, p, gameTime);

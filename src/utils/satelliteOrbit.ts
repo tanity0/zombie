@@ -11,6 +11,17 @@ export const SATELLITE_WEAPON_KEY = 'shotgun-t2-satellite';
 export const SAT_ADD_MS = 350;
 export const SAT_MAX = 8;
 export const SAT_ORBIT_RADIUS_PX = 64;
+/**
+ * 軌道は地面に倒した楕円(社長承認2026-10-18): 横の半径 64 のまま、縦は扇・印と同じ 0.36 倍。
+ * 根元はプレイヤーの足元(扇と同じ)。絵と当たり判定はどちらも satelliteOrbitPoint で位置を作る。
+ */
+export const SAT_ORBIT_Y_SCALE = 0.36; // = scanSensor.SCAN_FAN_GROUND_Y_SCALE(テストで同値を固定。import すると敵の表まで引き込むので値で持つ)
+
+/** 軌道の角度 a・半径 r の点(画面=世界px)。描画の玉・尾も判定の玉もこれで置く。 */
+export const satelliteOrbitPoint = (cx: number, cy: number, a: number, r: number): { x: number; y: number } => ({
+  x: cx + Math.cos(a) * r,
+  y: cy + Math.sin(a) * r * SAT_ORBIT_Y_SCALE,
+});
 export const SAT_REV_PER_SEC_MIN = 1;
 export const SAT_REV_PER_SEC_MAX = 1.6;
 export const SAT_RELEASE_IDLE_MS = 150;
@@ -80,8 +91,12 @@ export interface SatelliteBulletPose {
   x: number; y: number;
   /** 回っている向き(接線・単位)。放つ時の速度の持ち越しに使う。 */
   tx: number; ty: number;
-  /** 外向き(単位)。 */
+  /** 外向き(単位・根元から玉への向き)。 */
   rx: number; ry: number;
+  /** 軌道の角度(rad)。 */
+  angle: number;
+  /** 角度1radあたりに玉が進む距離÷半径(真円なら1。楕円では上下で速く、左右で遅い)。接線の勢いに掛ける。 */
+  tk: number;
 }
 
 const slotRadius = (s: SatelliteSlot, gameTime: number): number => {
@@ -100,8 +115,13 @@ export const satelliteBulletPoses = (
     const s = orbit.slots[i];
     const a = orbit.angle + s.phase;
     const r = slotRadius(s, gameTime);
-    const rx = Math.cos(a), ry = Math.sin(a);
-    out.push({ x: cx + rx * r, y: cy + ry * r, rx, ry, tx: -ry * dir, ty: rx * dir });
+    const q = satelliteOrbitPoint(cx, cy, a, r);
+    // 外向き=根元から玉への向き(楕円の上の今の位置)。接線=楕円の位置を角度で微分した向き。
+    const ox = Math.cos(a), oy = Math.sin(a) * SAT_ORBIT_Y_SCALE;
+    const ol = Math.hypot(ox, oy) || 1;
+    const tx0 = -Math.sin(a), ty0 = Math.cos(a) * SAT_ORBIT_Y_SCALE;
+    const tl = Math.hypot(tx0, ty0) || 1;
+    out.push({ x: q.x, y: q.y, rx: ox / ol, ry: oy / ol, tx: (tx0 / tl) * dir, ty: (ty0 / tl) * dir, angle: a, tk: tl });
   }
   return out;
 };
@@ -160,7 +180,7 @@ export const stepSatelliteOrbit = (
  * 持ち越しの割合は回る速さに比例(速く回っていたほど横へ流れて出る)。
  */
 export const satelliteReleaseDir = (pose: SatelliteBulletPose, angVelRadPerSec: number): { x: number; y: number } => {
-  const tangential = Math.abs(angVelRadPerSec) * SAT_ORBIT_RADIUS_PX; // px/s
+  const tangential = Math.abs(angVelRadPerSec) * SAT_ORBIT_RADIUS_PX * pose.tk; // px/s(楕円の上のその位置での速さ)
   const carry = Math.min(0.9, (tangential / SAT_SHOT_SPEED_PX_PER_SEC) * 0.5);
   const x = pose.rx + pose.tx * carry, y = pose.ry + pose.ty * carry;
   const l = Math.hypot(x, y) || 1;

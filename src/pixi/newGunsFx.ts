@@ -9,7 +9,7 @@ import { Container, Graphics } from 'pixi.js';
 import type { Enemy, Player, Projectile } from '../types/game';
 import { getNewGunsView, type NewGunsEvent } from '../utils/newGunsTick';
 import { BLOB_RADIUS_PX, BLOB_LIFE_MS, BLOB_FADE_MS, blobVisualScale, blobSpeedAt, BLOB_SPEED_PX_PER_SEC, type BlobShot } from '../utils/blobShot';
-import { SAT_BULLET_RADIUS_PX, SAT_ORBIT_RADIUS_PX, SAT_SPAWN_EASE_MS, SAT_RELEASE_IDLE_MS, SATELLITE_WEAPON_KEY, type SatelliteOrbit } from '../utils/satelliteOrbit';
+import { SAT_BULLET_RADIUS_PX, SAT_ORBIT_RADIUS_PX, SAT_SPAWN_EASE_MS, SAT_RELEASE_IDLE_MS, SATELLITE_WEAPON_KEY, satelliteOrbitPoint, type SatelliteOrbit } from '../utils/satelliteOrbit';
 import {
   SCAN_FAN_HALF_ANGLE_RAD, SCAN_FAN_LENGTH_PX, SCAN_SWEEP_MS, scanFanSweepFrac, scanFanGroundAngle, scanFanScreenPoint, scanBeatPhase, SCAN_BEAT_MS, SCAN_WEAPON_KEY, SCAN_FAN_GROUND_Y_SCALE, isScanMarked, scanMarkRemainFrac,
   type ScanFan,
@@ -94,7 +94,7 @@ export class NewGunsFx {
     const v = getNewGunsView();
     const g = this.ground; const f = this.fx; const fan = this.fanGfx;
     g.clear(); f.clear(); fan.clear();
-    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    const pcx = player.x + player.width / 2;
     this.drawMarks(enemies, gameTime, now, depthEnemy, g, f, v.scanMarkedAt, v.scanSweptIds, v.scanSweptAt);
     if (v.scanFan) this.drawFan(pcx, player.y + player.height, gameTime, fan, v.scanFan); // 根元=足元(判定と同じ)
     this.drawFootBeat(player, gameTime, now, g);
@@ -102,10 +102,12 @@ export class NewGunsFx {
     this.drawScorches(gameTime, g);
     this.drawContacts(gameTime, f, g, v.blobContacts, v.blobPushed);
     for (const ev of v.events) this.drawEvent(gameTime, g, f, ev);
-    if (v.orbit && v.orbit.slots.length > 0) this.drawOrbit(f, v.orbit, pcx, pcy, gameTime, 1, null);
+    // 衛星弾の軌道の根元=足元(判定 newGunsTick と同じ)。奥半分の玉は地面の層(体の後ろ)、手前は効果の層。
+    const pfy = player.y + player.height;
+    if (v.orbit && v.orbit.slots.length > 0) this.drawOrbit(f, g, v.orbit, pcx, pfy, gameTime, 1, null);
     if (v.orbitFade) {
       const t = (gameTime - v.orbitFade.at) / ORBIT_FADE_MS;
-      if (t < 1) this.drawOrbit(f, v.orbitFade.orbit, pcx, pcy, gameTime, 1 - easeInQuad(t), gameTime - v.orbitFade.at);
+      if (t < 1) this.drawOrbit(f, g, v.orbitFade.orbit, pcx, pfy, gameTime, 1 - easeInQuad(t), gameTime - v.orbitFade.at);
     }
     let shotN = 0;
     for (const p of projectiles) {
@@ -147,7 +149,7 @@ export class NewGunsFx {
   }
 
   /** 回っている(または死亡・出撃の終わりで消えていく)軌道。fadeMs!==null の時は減速しながら回り続けて縮む。 */
-  private drawOrbit(f: Graphics, orbit: SatelliteOrbit, cx: number, cy: number, gameTime: number, life: number, fadeMs: number | null): void {
+  private drawOrbit(f: Graphics, behind: Graphics, orbit: SatelliteOrbit, cx: number, cy: number, gameTime: number, life: number, fadeMs: number | null): void {
     const TAU_S = 0.25;
     let angle = orbit.angle;
     let angVel = orbit.angVel;
@@ -167,14 +169,14 @@ export class NewGunsFx {
       const shrink = fadeMs !== null ? (0.4 + 0.6 * life) : 1;
       const rad = SAT_ORBIT_RADIUS_PX * spawn * shrink;
       const a = angle + s.phase;
-      const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad;
+      const { x, y } = satelliteOrbitPoint(cx, cy, a, rad); // 地面に倒した楕円(判定と同じ関数)
       const tail: { x: number; y: number }[] = [];
       const tailK = (0.3 + 0.7 * spin) * (1 - 0.65 * tension);
       // 尾の弧の長さ: 一番長くても隣の玉までの弧の6割(団子に見えない)。
       const span = Math.sign(dTheta) * Math.min(Math.abs(dTheta * 4 * tailK), (0.6 * Math.PI * 2) / Math.max(1, n));
       for (let k = 1; k <= 6; k++) {
         const ta = a - span * (k / 6);
-        tail.push({ x: cx + Math.cos(ta) * rad, y: cy + Math.sin(ta) * rad });
+        tail.push(satelliteOrbitPoint(cx, cy, ta, rad));
       }
       // 奥行き(絵だけ): 軌道の奥半分(画面の上側)の玉は少し暗く・小さく。判定の真円は変えない。
       const back = clamp01(-Math.sin(a));
@@ -183,7 +185,7 @@ export class NewGunsFx {
       const pulse = 1 + 0.1 * Math.sin(gameTime / 170 + i * 0.83);
       const fresh = 1 + 0.6 * clamp01(1 - (gameTime - s.bornAt) / 300);
       const r = SAT_BULLET_RADIUS_PX * pulse * depthR * (fadeMs !== null ? life : (0.55 + 0.45 * spawn));
-      this.drawOrb(f, x, y, tail, r, pulse * fresh * depthB * (1 + 0.3 * tension), fadeMs !== null ? life : 1);
+      this.drawOrb(Math.sin(a) < 0 ? behind : f, x, y, tail, r, pulse * fresh * depthB * (1 + 0.3 * tension), fadeMs !== null ? life : 1);
     }
   }
 
