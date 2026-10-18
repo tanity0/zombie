@@ -8,6 +8,7 @@ import { useGameStore, knockbackSpeedFor, setThirdPartyHook, type PumpkinBlast }
 import { isCorpse, isMutantHero, resistsChipKnockback } from './enemyUtils';
 import { isPointInZoomedViewport } from './cameraZoom';
 import { distToBandRect } from './geometry';
+import { beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §8
 import { enemyContactBox } from './collisionUtils';
 import { circleHitsFan, HERO_INCOMING_MULT, HERO_VS_ENEMY_MULT } from './heroScript';
 import { setHateHeroProvider } from './bossHate';
@@ -74,6 +75,7 @@ export const hitHeroRect = (r: { x: number; y: number; width: number; height: nu
 /** 爆風の形(円/帯/扇)が、中心 (cx,cy)・半径 r の相手に触れるか。プレイヤー・守護霊・英雄・敵で同じ式。 */
 export const blastHitsCircle = (b: PumpkinBlast, cx: number, cy: number, r: number): boolean => {
   if (b.fan) return circleHitsFan(cx, cy, r, b.fan.cx, b.fan.cy, b.fan.angle, b.fan.halfArc, b.fan.radius);
+  if (b.strips) return beamStripsHit(b.strips, cx, cy, r, true); // research/SHIELD_BLOCK.md §8: 盾の影で割った光線の帯
   if (b.capsule) return distToBandRect({ x: cx, y: cy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }, b.capsule.halfWidth) <= r;
   return Math.hypot(cx - b.x, cy - b.y) <= b.radius + r;
 };

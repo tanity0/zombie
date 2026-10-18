@@ -64,6 +64,7 @@ import {
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, STUN_DURATION_MS,
   GIANT_SCRIPT_ENABLED, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GIANT_GLIDE_HALF_WIDTH,
   bossCritCdMult,
+  currentFriendlyShield, noteShieldGuard, shieldGuardsPlayerLine, type PumpkinBlast, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
   REFLECT_DAMAGE_MULTIPLIER, // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王の倍率計算に使う基準値
   counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
   playerPvpChipPatch, // ★SAME_ARENA §9(対人体勢): 幻影の弾クリ/弾パリィ返しの被弾でプレイヤー体勢を削る
@@ -71,6 +72,7 @@ import {
 import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_ARENA §9: クリ被弾の2/3減速+紫中の弾パリィ停止
 // v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
 import { distToBandRect } from './geometry';
+import { blastBlockedByShield, splitBeamAtShield, beamStripsHit, shieldContactPoint, type BeamShieldSplit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md
 import { circleHitsFan } from './heroScript';
 import { applyBlastToHero, applyHeroBlastToEnemies, markHeroHit, heroAsTarget, damageHeroByEnemy, hitHeroShape, healHeroForHits } from './heroBlast'; // research/MUTANT_HERO.md
 import { knockbackUntilAfterStop, blastKnockbackOf, blastPushDir } from './playerHurt'; // 押し出しはヒットストップが明けてから(社長指摘2026-10-08)
@@ -298,7 +300,19 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   const gacx = ghostAlly ? ghostAlly.x + ghostAlly.width / 2 : 0;
   const gacy = ghostAlly ? ghostAlly.y + ghostAlly.height / 2 : 0;
   const gar = ghostAlly ? Math.max(ghostAlly.width, ghostAlly.height) / 2 : 0;
-  for (const b of blasts) {
+  // research/SHIELD_BLOCK.md: 味方の盾(最大1枚)。無ければ null=以下の盾の分岐は全部素通り(1bitも変わらない)。
+  const shield = currentFriendlyShield();
+  const bpRect = { x: bp.x, y: bp.y, width: bp.width, height: bp.height };
+  for (const bRaw of blasts) {
+    // レーザー(beam 印の帯)は盾が壁: 盾の影(盾の幅だけ)に入る中央の帯は盾の面で止まり、影の外の縁は全長のまま通る(§8 光線の幅)。
+    // 割った帯の並び(strips)を プレイヤー・守護霊・英雄・軍人の全員の当たりに使う。先は四角(distToBandRect)なので tipExt。
+    let b: PumpkinBlast = bRaw;
+    let beamSplit: BeamShieldSplit | null = null;
+    if (shield && bRaw.beam && bRaw.capsule) {
+      const c = bRaw.capsule;
+      beamSplit = splitBeamAtShield(c.fx, c.fy, c.tx, c.ty, c.halfWidth, shield, true);
+      if (beamSplit) b = { ...bRaw, strips: beamSplit.strips };
+    }
     if (b.ice) {
       // スカジ氷=青版の爆発エフェクト(社長指示。爆発処理自体は流用)。
       fx.spawnFlash('rgba(140,200,255,0.16)', 200);
@@ -351,11 +365,31 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     const pr = Math.max(bp.width, bp.height) / 2;
     // M51: 薙ぎ払い(capsule付き)は円ではなく直線+半幅のカプセル判定(distToSegment流用)。
     // それ以外(パンプキン着地/スカジ氷等)は既存どおり円形(爆心からの距離<=半径+双方の当たり半径)。
-    const inBlast = b.fan
-      ? circleHitsFan(bpcx, bpcy, pr, b.fan.cx, b.fan.cy, b.fan.angle, b.fan.halfArc, b.fan.radius)
-      : b.capsule
-      ? distToBandRect({ x: bpcx, y: bpcy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }, b.capsule.halfWidth) <= pr
-      : Math.hypot(bpcx - b.x, bpcy - b.y) <= b.radius + pr;
+    const playerInBlastOf = (bb: PumpkinBlast): boolean => bb.fan
+      ? circleHitsFan(bpcx, bpcy, pr, bb.fan.cx, bb.fan.cy, bb.fan.angle, bb.fan.halfArc, bb.fan.radius)
+      : bb.strips
+      ? beamStripsHit(bb.strips, bpcx, bpcy, pr, true)
+      : bb.capsule
+      ? distToBandRect({ x: bpcx, y: bpcy }, { x: bb.capsule.fx, y: bb.capsule.fy }, { x: bb.capsule.tx, y: bb.capsule.ty }, bb.capsule.halfWidth) <= pr
+      : Math.hypot(bpcx - bb.x, bpcy - bb.y) <= bb.radius + pr;
+    let inBlast = playerInBlastOf(b);
+    // research/SHIELD_BLOCK.md §2: 防いだ当たりは「範囲に入っていない」扱い(カウンター/パリィの分岐より前)。
+    // ダメージ・押し出し・英雄の回復・被弾反撃・体勢削り・マーク・ヒットストップ・中断を一切起こさない。
+    // 盾が防ぐのはプレイヤーの当たりだけ(守護霊・英雄・軍人は下で従来どおり。ただしレーザーは全員が短い帯)。
+    if (shield) {
+      if (beamSplit) {
+        // 光線: 盾に当たっていれば、後ろに誰も居なくても「防いだ」(接点の演出+その攻撃者の区分の耐久)。1回の命中=1回。
+        const owner0 = useGameStore.getState().enemies.find(e => e.id === bRaw.enemyId);
+        const c0 = beamSplit.contact;
+        noteShieldGuard(shield, { attacker: owner0?.type, kind: 'beam', x: c0.x, y: c0.y, dx: c0.ux, dy: c0.uy, sx: c0.sx, sy: c0.sy });
+      } else if (inBlast && blastBlockedByShield(b, bpRect, shield)) {
+        inBlast = false;
+        const owner0 = useGameStore.getState().enemies.find(e => e.id === b.enemyId);
+        const org = b.fan ? { x: b.fan.cx, y: b.fan.cy } : b.capsule ? (b.origin ?? { x: b.capsule.fx, y: b.capsule.fy }) : { x: b.x, y: b.y };
+        const cp = shieldContactPoint(org.x, org.y, bpcx, bpcy, shield);
+        noteShieldGuard(shield, { attacker: owner0?.type, kind: 'hit', x: cp.x, y: cp.y, dx: cp.dx, dy: cp.dy });
+      }
+    }
     if (inBlast) {
       if (counterActive) {
         // カウンター成立は無敵中でも弾く(=確実にノックバック+クリ反撃)。
@@ -419,6 +453,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       if (owner) {
         const inBlastGhost = b.fan
           ? circleHitsFan(gacx, gacy, gar, b.fan.cx, b.fan.cy, b.fan.angle, b.fan.halfArc, b.fan.radius)
+          : b.strips
+          ? beamStripsHit(b.strips, gacx, gacy, gar, true)
           : b.capsule
           ? distToBandRect({ x: gacx, y: gacy }, { x: b.capsule.fx, y: b.capsule.fy }, { x: b.capsule.tx, y: b.capsule.ty }, b.capsule.halfWidth) <= gar
           : Math.hypot(gacx - b.x, gacy - b.y) <= b.radius + gar;
@@ -1752,6 +1788,8 @@ export const applyContactDamage = (
   for (const h of biteHits) {
     const he = useGameStore.getState().enemies.find(x => x.id === h.id);
     if (!he) continue;
+    // research/SHIELD_BLOCK.md §3(帯の行・起点=噛む敵の中心 h.x,h.y): その影に居れば盾が防ぐ(カウンター/被弾の分岐より前・何も起こさない)。
+    if (shieldGuardsPlayerLine(h.x, h.y, he)) continue;
     // ★噛みつきは**紫=カウンター不可**(社長裁定2026-08-25「噛みつきはやはり紫にする」)。
     // 台帳が `counterable: false` なので、下の分岐は**今は通らない**——絵の点滅も紫(pixiScene)で、
     // 判定と色は**必ず一対**で切り替える(片方だけ変えると色の文法が破れる)。

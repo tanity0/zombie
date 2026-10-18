@@ -1076,6 +1076,8 @@ export interface Enemy {
   giantDelayedHits?: { x: number; y: number; radius: number; bornAt: number; fireAt: number; ice?: boolean;
     capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number };
     burst?: boolean; floorUntil?: number; moveKey?: string;
+    // research/SHIELD_BLOCK.md §1-1: pumpkinBlasts へ書き写す時にそのまま渡す(帯の起点 / レーザー扱い)。
+    origin?: { x: number; y: number }; beam?: true;
     // v0.25.3126(社長指示「三唱のダメージを100に」): この遅延起爆だけダメージを上書きする。
     // 未設定=従来どおり enemy.damage(=技ごとに変えていなかった旧仕様)。
     damage?: number;
@@ -1458,6 +1460,9 @@ export interface Enemy {
   /** 最後に当たったレーザーの番号と時刻(gameTime)。1本の通過で当たるのは1回=近くで止まっていても1本で2回当たらない。 */
   mimirWheelLastHitK?: number;
   mimirWheelLastHitAt?: number;
+  /** 舞妓の手毬打ち: 往路で味方の盾に触れて弾かれた時刻(gameTime)と、その時の進み具合(0〜1)。復路の位置式(utils/maikoBoom)が読む。投げ始めで消す。 */
+  boomBounceAt?: number;
+  boomBounceP0?: number;
   jormFreezeRings?: { emitAt: number; cx: number; cy: number; ring: number; theta0: number; ids: string[]; launched: boolean[] }[];
   skadiCageReadyAt?: number;    // スカジ 氷結の檻専用CD(12000ms・Phase3)
   // research/THOR_ISSEN_REWORK.md §4: トール「突進」専用CD(6000ms・ミゲルの mDashReadyAt と同じ作法)。
@@ -2468,6 +2473,12 @@ export interface Projectile {
   /** 被弾時刻(描画のヒットフラッシュ用・判定には使わない)。 */
   placedHitAt?: number;
   shieldMaxHp?: number;
+  // research/SHIELD_BLOCK.md: 盾が技を防いだ時の「押し戻し」(視覚のみ・耐久の赤い被弾フラッシュとは別)。
+  // shieldGuardAt=この防ぎの始まり / shieldGuardLastAt=直近に防いだ時刻 / DirX,DirY=攻撃の進む向き(単位)。
+  shieldGuardAt?: number;
+  shieldGuardLastAt?: number;
+  shieldGuardDirX?: number;
+  shieldGuardDirY?: number;
   shieldHitAt?: number; // 直近に耐久を削られた時刻(Date.now)。描画側の被弾シェイク/フラッシュ用(視覚のみ)。
   // Set when a melee shield-bash shoves the wall: the wall slides seamlessly,
   // then is force-destroyed once Date.now() reaches this timestamp (slide end).

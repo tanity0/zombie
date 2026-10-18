@@ -94,7 +94,9 @@ import {
   resolveShieldWalls, shieldPlayableCtx, // ★B6(盾押し・§6)
   spawnRescueQuestPoint, EVENT_NPC_MIN_DISTANCE, // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2)
   isInReturnCircle, // 二人組クエストv2(§2-8・B4): 納品の3秒滞在の判定(returnCircle.radiusは対象のフィールドをそのまま読む)
+  currentFriendlyShield, noteShieldGuardFrom, noteShieldBeam, shieldGuardsPlayerLine, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
 } from '../store/gameStore';
+import { shieldBlocksArea, shieldBlocksLine, splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md
 import { resolveRescueSpawnDirection } from '../utils/rescueQuestSpawn'; // 二人組クエストv2(§2-3・B2)
 import {
   shouldFireRescueQuestArena, shouldFoldRescueHold, rescueQuestArenaOutcome, computeQuestGateOk,
@@ -1854,6 +1856,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // M51: ジャイアント新スクリプトの予告SE(全技共通=hunter-alert流用・社長裁定6.26-9 #5)。
   // 直前フレームのaiPhaseを覚えておき、5つの溜め(windup)ステートへ切り替わった瞬間だけ1回鳴らす。
   const giantWindupSfxRef = useRef<string | undefined>(undefined);
+  // research/SHIELD_BLOCK.md §2: 盾が技を防いだ演出の時刻。hit=直近の単発 / beam=光線が最後に当たっていた時刻 / spark=次の火花を出す時刻(ばらつかせる) / tick=軽い接触音の最小間隔。
+  // 最初の1回は大きく、続く分は小さく(メトロノームにしない)。shieldHitAt は耐久の被弾・バッシュも書くので使わない。
+  const shieldGuardFxRef = useRef({ hit: 0, beam: 0, spark: 0, tick: 0 });
   const kbLogPrevRef = useRef<Map<string, { x: number; y: number; type: string; kbU?: number }>>(new Map()); // ?kblog=1専用
   // ★EXステージのボスBGM切替(社長指示2026-08-26)。遭遇エッジの検知フラグ(条件が消えたら自動で再武装)。
   const phillBgmRef = useRef(false);
@@ -7485,17 +7490,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 let ux = nax - bcx, uy = nay - bcy;
                 const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
                 const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
+                // research/SHIELD_BLOCK.md §2/§8(レーザー=壁・光線の幅): 盾の影(盾の幅だけ)に入る中央の帯は盾の面で止まり、影の外の縁は全長のまま通る。
+                // 割った帯の並びを プレイヤー・守護霊 に使う(先が丸い判定なので tipExt)。絵は pixiScene が同じ splitBeamAtShield で割る。盾が無ければ元の光線のまま。
+                const mlShield = currentFriendlyShield();
+                const mlSplit = mlShield ? splitBeamAtShield(bcx, bcy, bcx + ux * MIMIR_LASER_RANGE, bcy + uy * MIMIR_LASER_RANGE, MIMIR_LASER_HALF_WIDTH, mlShield, true) : null;
                 const tproj = Math.max(0, Math.min(MIMIR_LASER_RANGE, (ppx - bcx) * ux + (ppy - bcy) * uy));
                 const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
-                if (Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr) {
+                const mlHit = mlSplit
+                  ? beamStripsHit(mlSplit.strips, ppx, ppy, pr, false)
+                  : Math.hypot(ppx - cxp, ppy - cyp) <= MIMIR_LASER_HALF_WIDTH + pr;
+                if (mlHit) {
                   const died = damagePlayer(HB_MI.laser.damage, 'ミーミルのレーザー', cxp, cyp, undefined, undefined, 'mimir-laser', undefined, undefined, { type: 'mimir' }); // G4a計測タグ(記録専用)
                   if (died) triggerPlayerDeath(ppx, ppy);
                 }
+                // 盾が光線を受けている間は、後ろに誰も居なくても毎秒10ずつ削れ、接点に光だまりと火花(演出は消化側)。
+                if (mlSplit && mlShield) noteShieldBeam(mlShield, mlSplit, deltaTime, 'mimir');
                 // G4b(§2.9): ビーム帯はゴースト(守護霊)にも当たる(同じ線分±半太さ・同じダメージ。
                 // 継続ダメージの間引きはdamageSummonのi-frame=プレイヤーのdamagePlayer i-frameと同型)。
-                applyGhostAllyCapsuleHit(bcx, bcy, bcx + ux * MIMIR_LASER_RANGE, bcy + uy * MIMIR_LASER_RANGE,
-                  MIMIR_LASER_HALF_WIDTH, HB_MI.laser.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:mimir-laser');
+                for (const sg of (mlSplit ? mlSplit.strips : [{ fx: bcx, fy: bcy, tx: bcx + ux * MIMIR_LASER_RANGE, ty: bcy + uy * MIMIR_LASER_RANGE, halfWidth: MIMIR_LASER_HALF_WIDTH }])) {
+                  applyGhostAllyCapsuleHit(sg.fx, sg.fy, sg.tx, sg.ty,
+                    sg.halfWidth, HB_MI.laser.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:mimir-laser');
+                }
                 if (newGameTime >= (boss.bossStateUntil ?? 0)) {
                   if (MIMIR_SCRIPT_ENABLED) { patch.bossState = 'laser-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_MI.laser.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
@@ -7567,15 +7583,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const th0 = boss.mimirWheelTheta0 ?? 0, wdir = boss.mimirWheelDir ?? 1;
                 const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
                 const prr = Math.max(player.width, player.height) / 2;
+                const wlShield = currentFriendlyShield(); // research/SHIELD_BLOCK.md: 1フレームに1回だけ読む(盾が無ければ null=素通り)
                 let hitDone = false;
                 for (let k = 0; k < Math.max(1, Math.round(W.spokes)); k++) {
                   const ang = mimirWheelSpokeAngle(th0, wdir, k, tW, W);
                   const ux = Math.cos(ang), uy = Math.sin(ang);
-                  const ex = bcx + ux * MIMIR_LASER_RANGE, ey = bcy + uy * MIMIR_LASER_RANGE;
+                  // research/SHIELD_BLOCK.md §2/§8(レーザー=壁・光線の幅): 各本を盾の影で割る(影の中央は盾の面で止まり、外の縁は全長のまま)。プレイヤー・守護霊に同じ帯。
+                  const wlSplit = wlShield ? splitBeamAtShield(bcx, bcy, bcx + ux * MIMIR_LASER_RANGE, bcy + uy * MIMIR_LASER_RANGE, W.halfWidth, wlShield, true) : null;
+                  if (wlSplit && wlShield) noteShieldBeam(wlShield, wlSplit, deltaTime, 'mimir'); // 後ろに誰も居なくても毎秒10(本ごとに別々)
                   if (!hitDone) {
                     const tproj = Math.max(0, Math.min(MIMIR_LASER_RANGE, (ppx - bcx) * ux + (ppy - bcy) * uy));
                     const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
-                    if (Math.hypot(ppx - cxp, ppy - cyp) <= W.halfWidth + prr) {
+                    const wlHit = wlSplit
+                      ? beamStripsHit(wlSplit.strips, ppx, ppy, prr, false)
+                      : Math.hypot(ppx - cxp, ppy - cyp) <= W.halfWidth + prr;
+                    if (wlHit) {
                       hitDone = true;
                       // 1本の通過で当たるのは1回(近くでは1本が1秒以上かけて通るので、無敵明けにもう1回、を作らない)。
                       // 抜けてからもう一度その本に入れば、また当たる(下で「どの本にも居ない」フレームに記録を消す)。
@@ -7587,7 +7609,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       }
                     }
                   }
-                  applyGhostAllyCapsuleHit(bcx, bcy, ex, ey, W.halfWidth, W.damage, (x, y) => spawnBurst(x, y, '#d8b4fe', 3), 'capsule:mimir-wheel');
+                  for (const sg of (wlSplit ? wlSplit.strips : [{ fx: bcx, fy: bcy, tx: bcx + ux * MIMIR_LASER_RANGE, ty: bcy + uy * MIMIR_LASER_RANGE, halfWidth: W.halfWidth }])) {
+                    applyGhostAllyCapsuleHit(sg.fx, sg.fy, sg.tx, sg.ty, sg.halfWidth, W.damage, (x, y) => spawnBurst(x, y, '#d8b4fe', 3), 'capsule:mimir-wheel');
+                  }
                 }
                 if (!hitDone && boss.mimirWheelLastHitK !== undefined) { patch.mimirWheelLastHitK = undefined; patch.mimirWheelLastHitAt = undefined; }
                 // 変化(HP60%以下で始まった回): 追跡弾。赤い二重丸(カウンター可)。追跡は相手がプレイヤーの時だけ(守護霊へは直進)。
@@ -7646,6 +7670,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                       x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: HB_JO.coil.halfWidth,
                       damage: boss.damage, enemyId: boss.id, retaliate: true, // 被弾反撃の対象(ヨルムンガルドのうねり)
                       capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: HB_JO.coil.halfWidth },
+                      origin: { x: bcx, y: bcy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=ヨルムンガルドの中心(盾の影の判定源)
                     }],
                   }));
                   patch.bossState = 'coil'; patch.bossStateUntil = newGameTime + HB_JO.coil.active;
@@ -7670,6 +7695,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     pumpkinBlasts: [...state.pumpkinBlasts, {
                       x: bcx, y: bcy, radius: band.halfWidth, damage: boss.damage, enemyId: boss.id, moveKey: 'jo-slam', retaliate: true, // 被弾反撃の対象(ヨルムンガルドの叩きつけ)
                       capsule: { fx: band.fx, fy: band.fy, tx: band.tx, ty: band.ty, halfWidth: band.halfWidth },
+                      origin: { x: bcx, y: bcy }, // research/SHIELD_BLOCK.md §1-1: 叩きつけの起点=bcx,bcy
                     }],
                   }));
                   playSfx('heavy-impact');
@@ -7917,10 +7943,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
                   const prr = Math.max(player.width, player.height) / 2;
                   let hitAt: { x: number; y: number } | null = null;
+                  // research/SHIELD_BLOCK.md §1-1(社長裁定 案A: 判定源=その判定の中心、帯の判定源は帯の始点): 格子の刃1本ごとの**始点 b.fx,b.fy**
+                  // (その刃が走り出す所)から見て盾の影に居れば、その刃は当たらない(スカジ本人の中心ではない)。守護霊・英雄は従来どおり。
+                  const latShield = currentFriendlyShield();
+                  const latPlayerRect = { x: player.x, y: player.y, width: player.width, height: player.height };
+                  let latGuarded = false; // 1段の命中=1回の技: 複数の刃が重なって防がれても耐久は1回だけ削る
                   for (const b of bands) {
                     if (!hitAt && distToBandRect({ x: ppx, y: ppy }, { x: b.fx, y: b.fy }, { x: b.tx, y: b.ty }, L.halfWidth) <= prr) {
-                      // 刃に直交して弾く(真上に居たら開けている側へ・設計監査 A-4)。
-                      hitAt = latticeHitSource(b, ppx, ppy, boss.skadiLatticeSide ?? 1);
+                      if (latShield !== null && shieldBlocksLine(b.fx, b.fy, latPlayerRect, latShield)) { if (!latGuarded) { latGuarded = true; noteShieldGuardFrom(latShield, b.fx, b.fy, 'skadi'); } }
+                      else hitAt = latticeHitSource(b, ppx, ppy, boss.skadiLatticeSide ?? 1); // 刃に直交して弾く(真上に居たら開けている側へ・設計監査 A-4)
                     }
                     // 守護霊も同じ帯(線分±半幅。帯の端の伸びは半幅ぶん=カプセルとの差は端の角だけ)。
                     applyGhostAllyCapsuleHit(b.fx, b.fy, b.tx, b.ty, L.halfWidth, L.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:skadi-lattice');
@@ -8066,7 +8097,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 詳細は thorNihil.isGuaranteedIssenNow のコメント(州の最終フレームだけ窓が閉じる
                 // off-by-one で「必中なのにカウンターされる」が起きていた)。
                 const issenGuaranteed = isGuaranteedIssenNow(boss.issenGuaranteedUntil);
-                if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, HB_TH.issen.halfWidth) <= pr) { // v0.25.3496: 描いてある四角
+                if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, HB_TH.issen.halfWidth) <= pr
+                  && !shieldGuardsPlayerLine(fx, fy, 'thor')) { // v0.25.3496: 描いてある四角 / research/SHIELD_BLOCK.md §1-1: 起点 fx,fy(aiFrom)の影なら盾が防ぐ(カウンター判定より前)
                   const cp = useGameStore.getState().player;
                   if (!issenGuaranteed && isCounterActive(cp, Date.now())) {
                     thorCounterHit(cxp, cyp);
@@ -8152,7 +8184,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 let countered = false;
-                if (Math.hypot(pcx - cxp, pcy - cyp) <= HB_TH.tsuki.halfWidth + pr) {
+                if (Math.hypot(pcx - cxp, pcy - cyp) <= HB_TH.tsuki.halfWidth + pr
+                  && !shieldGuardsPlayerLine(fx, fy, 'thor')) { // research/SHIELD_BLOCK.md §1-1: 突きの起点=fx,fy(本人)の影なら盾が防ぐ
                   const cp = useGameStore.getState().player;
                   if (isCounterActive(cp, Date.now())) {
                     thorCounterHit(cxp, cyp);
@@ -8206,7 +8239,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const cxp = fx + lux * tproj, cyp = fy + luy * tproj;
                 const pr = Math.max(player.width, player.height) / 2;
                 let countered = false;
-                if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, HB_TH.harai.halfWidth) <= pr) { // v0.25.3496: 描いてある四角
+                if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, HB_TH.harai.halfWidth) <= pr
+                  && !shieldGuardsPlayerLine(bcx, bcy, 'thor')) { // v0.25.3496: 描いてある四角 / research/SHIELD_BLOCK.md §1-1: 払いの起点=トールの中心(払い中は本体静止)の影なら盾が防ぐ
                   const cp = useGameStore.getState().player;
                   if (isCounterActive(cp, Date.now())) {
                     thorCounterHit(cxp, cyp);
@@ -8297,7 +8331,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const sx = dnx, sy = dny;
                   const ex = dnx + ddirx * HB_TH.harai.range, ey = dny + ddiry * HB_TH.harai.range;
                   const dpr = Math.max(player.width, player.height) / 2;
-                  if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, HB_TH.harai.halfWidth) <= dpr) {
+                  if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, HB_TH.harai.halfWidth) <= dpr
+                    && !shieldGuardsPlayerLine(dnx, dny, 'thor')) { // research/SHIELD_BLOCK.md §1-1: 斬り抜けの起点=到達点 dnx,dny の影なら盾が防ぐ
                     const cp = useGameStore.getState().player;
                     if (isCounterActive(cp, Date.now())) {
                       // 跳びの起点は**このフレームで実際に居る場所**(=上で patch.x へ書いた到達点)。
@@ -10051,7 +10086,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // research/MUTANT_HERO.md §4-2: 同じ噛みの円で守護霊と英雄にも(プレイヤーの「1回だけ」の掛け金 bitten とは独立。英雄は700ms間引き)。
               hitThirdParties({ kind: 'circle', cx: dx, cy: dy, r: DOG_BITE_RADIUS },
                 Math.max(1, Math.round(DOG_BITE_DAMAGE * PVP_DAMAGE_SCALE)), ownerGhostId(pdOwner), 'phantom-dog');
-              if (!job.bitten.has('__player__') && Math.hypot(ppx - dx, ppy - dy) <= DOG_BITE_RADIUS) {
+              // research/SHIELD_BLOCK.md §3(帯の行・起点=犬の中心): 犬から見て盾の影なら噛まない(影だけ・距離なし)。防いだ間は「1回だけ」の掛け金も立てない。
+              if (!job.bitten.has('__player__') && Math.hypot(ppx - dx, ppy - dy) <= DOG_BITE_RADIUS && !shieldGuardsPlayerLine(dx, dy, 'guardian-phantom')) {
                 job.bitten.add('__player__');
                 const bite = Math.max(1, Math.round(DOG_BITE_DAMAGE * PVP_DAMAGE_SCALE));
                 useGameStore.getState().damagePlayer(bite, '幻影のドッグ', dx, dy, undefined, undefined, undefined, undefined, undefined, { type: 'guardian-phantom' }); // 末尾=倒した相手の記録(死因の絵と名)
@@ -11662,6 +11698,80 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // research/SHIELD_BLOCK.md §2/§8: 盾が範囲攻撃・帯・光線・飛ぶ刃を防いだ瞬間の演出(接点に出す・盾の中心ではない)。
+        //   単発: 防いだ最初の1回は上の shieldBlocks と同じ強さ(リング+火花+heavy-impact+短い揺れ)・続く分(700ms以内)は小さな火花と軽い金属音。
+        //   光線: 最初の接触だけ大きく。当たっている間は接点に光だまり+盾の面に沿って左右へ散る火花を、ばらついた間隔と数で出し続ける。
+        //   耐久が尽きた盾は、既存の破壊(倒れる演出)と同じ形で崩れる。盾の押し戻し/白紫の光は pixiScene が shieldGuardAt から描く(赤い被弾フラッシュは使わない)。
+        {
+          const gst = useGameStore.getState();
+          if (gst.shieldGuardFx.length > 0 || gst.shieldBreakFx.length > 0) {
+            const guards = gst.shieldGuardFx, breaks = gst.shieldBreakFx;
+            useGameStore.setState({ shieldGuardFx: [], shieldBreakFx: [] });
+            const gnow = Date.now();
+            const gr = shieldGuardFxRef.current;
+            const rnd = Math.random;
+            const bigImpact = (x: number, y: number, sfxGain: number): void => {
+              playSfx('heavy-impact', sfxGain);
+              playSfx('decoy-zap', 0.4, undefined, 1.15); // カツン(金属の高い一撃)を重ねる
+              spawnFlash('rgba(226,232,240,0.14)', 120);
+              spawnRing(x, y, 8, 46, 'rgba(226,232,240,0.95)', 4, 260);   // 白い衝撃リング(金属で弾いた感)
+              spawnRing(x, y, 4, 28, 'rgba(196,181,253,0.9)', 3, 220);    // 内側は薄紫(赤い被弾に見せない)
+              spawnBurst(x, y, '#e2e8f0', 12);
+              spawnBurst(x, y, '#c4b5fd', 6);
+              useGameStore.getState().triggerShake(SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG);
+            };
+            for (const g of guards) {
+              if (g.kind === 'beam') {
+                const sx = g.sx ?? -g.dy, sy = g.sy ?? g.dx;
+                if (gnow - gr.beam > 250) { // 最初の接触だけ大きい
+                  bigImpact(g.x, g.y, 0.7);
+                  useGameStore.getState().spawnGlow(g.x, g.y, 70, 'rgba(216,180,254,', 320);
+                  gr.spark = gnow + 80;
+                }
+                gr.beam = gnow;
+                if (gnow >= gr.spark) {
+                  gr.spark = gnow + 70 + rnd() * 90; // ばらついた間隔
+                  useGameStore.getState().spawnGlow(g.x, g.y, 36 + rnd() * 16, 'rgba(216,180,254,', 240); // 接点の光だまり
+                  useGameStore.getState().spawnGlow(g.x, g.y, 16 + rnd() * 8, 'rgba(255,255,255,', 170);
+                  const n = 3 + Math.floor(rnd() * 4); // ばらついた数
+                  for (let i = 0; i < n; i++) {
+                    const side = rnd() < 0.5 ? -1 : 1, off = 6 + rnd() * 28;
+                    spawnBurst(g.x + sx * side * off, g.y + sy * side * off, rnd() < 0.5 ? '#ffffff' : '#c4b5fd', 2 + Math.floor(rnd() * 3));
+                  }
+                  playSfx('decoy-zap', 0.2 + rnd() * 0.1, undefined, 0.8 + rnd() * 0.5); // 続く接触は小さく・ピッチもばらす
+                }
+              } else if (g.kind === 'blade') {
+                // 飛ぶ刃(氷・骨・羽根): 触れた点で砕ける。破片は刃の色+白。
+                spawnBurst(g.x, g.y, g.color ?? '#bfe6ff', 10);
+                spawnBurst(g.x, g.y, '#ffffff', 4);
+                spawnRing(g.x, g.y, 3, 24, 'rgba(255,255,255,0.8)', 2, 180);
+                if (gnow - gr.hit > 700) playSfx('heavy-impact', 0.35);
+                playSfx('decoy-zap', 0.35, undefined, 0.85 + rnd() * 0.35);
+                gr.hit = gnow;
+              } else if (g.kind === 'tick') {
+                // 戻る途中の毬が盾に触れた/継続技が防がれ続けている: 小さな火花と短い金属音だけ。
+                spawnBurst(g.x, g.y, '#e2e8f0', 5);
+                spawnRing(g.x, g.y, 3, 18, 'rgba(226,232,240,0.8)', 2, 150);
+                if (gnow - gr.tick >= 120) { gr.tick = gnow; playSfx('decoy-zap', 0.3, undefined, 1.0 + rnd() * 0.3); }
+              } else {
+                if (gnow - gr.hit > 700) bigImpact(g.x, g.y, 0.6); // 防いだ最初の1回
+                else { // 続く分は小さく(同じ攻撃の連打でメトロノームにならない)
+                  spawnBurst(g.x, g.y, '#e2e8f0', 5);
+                  spawnRing(g.x, g.y, 3, 20, 'rgba(226,232,240,0.8)', 2, 160);
+                  playSfx('decoy-zap', 0.3, undefined, 0.9 + rnd() * 0.25);
+                }
+                gr.hit = gnow;
+              }
+            }
+            for (const br of breaks) {
+              // 既存の「耐久0で倒れる」演出と同じ(burst 12 + 灰色のリング)。
+              const bcxs = br.x + br.w / 2, bcys = br.y + br.h / 2;
+              spawnBurst(bcxs, bcys, '#94a3b8', 12);
+              spawnRing(bcxs, bcys, 4, Math.max(br.w, br.h), 'rgba(148,163,184,0.7)', 2, 260);
+            }
+          }
+        }
+
         // デコイ(着地後)は敵のみ通行不可。プレイヤーは通す。reaper は貫通。
         {
           const dnow = Date.now();
@@ -12922,7 +13032,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 hitThirdParties({ kind: 'circle', cx: tcx, cy: tcy, r: tBlastR },
                   Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * tExMult * (0.55 + 0.5 * 0.45) * PVP_DAMAGE_SCALE)), turret.ownerId, 'phantom-turret');
                 const pdist = Math.hypot(tgtCx - tcx, tgtCy - tcy);
-                if (pdist <= tBlastR && !(tWalls.length > 0 && segmentBlocked(tcx, tcy, tgtCx, tgtCy, tWalls))) {
+                // research/SHIELD_BLOCK.md §1(円): 爆心から見て盾の影、かつ盾から 40px 以内なら防ぐ(守護霊・英雄は上の hitThirdParties で従来どおり)。
+                const tShield = pdist <= tBlastR ? currentFriendlyShield() : null;
+                const tPl = useGameStore.getState().player;
+                const tShielded = tShield !== null && shieldBlocksArea(tcx, tcy, { x: tPl.x, y: tPl.y, width: tPl.width, height: tPl.height }, tShield);
+                if (tShielded && tShield) noteShieldGuardFrom(tShield, tcx, tcy, 'guardian-phantom');
+                if (pdist <= tBlastR && !tShielded && !(tWalls.length > 0 && segmentBlocked(tcx, tcy, tgtCx, tgtCy, tWalls))) {
                   const pfall = 1 - pdist / tBlastR;
                   const pdmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * tExMult * (0.55 + pfall * 0.45) * PVP_DAMAGE_SCALE));
                   useGameStore.getState().damagePlayer(pdmg, '幻影のタレット', tcx, tcy, undefined, undefined, undefined, undefined, undefined, { type: 'guardian-phantom' }); // 末尾=倒した相手の記録
@@ -13144,7 +13259,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 量は距離減衰の中間(0.55+0.5×0.45)。プレイヤー個別の距離は相手ごとに違うので固定の代表値。
             hitThirdParties({ kind: 'circle', cx: gx, cy: gy, r: HEAVY_GRENADE_RADIUS },
               Math.max(1, Math.round(grenade.damage * (0.55 + 0.5 * 0.45))), grenade.ownerId, 'idol-nade');
-            if (hgDist <= HEAVY_GRENADE_RADIUS && !(hgWalls.length > 0 && segmentBlocked(gx, gy, hgPx, hgPy, hgWalls))) {
+            // research/SHIELD_BLOCK.md §1(円): 爆心から見て盾の影、かつ盾から 40px 以内なら防ぐ(守護霊・英雄は従来どおり=上の hitThirdParties)。
+            const hgShield = hgDist <= HEAVY_GRENADE_RADIUS ? currentFriendlyShield() : null;
+            const hgShielded = hgShield !== null && shieldBlocksArea(gx, gy, { x: hgPl.x, y: hgPl.y, width: hgPl.width, height: hgPl.height }, hgShield);
+            if (hgShielded && hgShield) noteShieldGuardFrom(hgShield, gx, gy, 'idol');
+            if (hgDist <= HEAVY_GRENADE_RADIUS && !hgShielded && !(hgWalls.length > 0 && segmentBlocked(gx, gy, hgPx, hgPy, hgWalls))) {
               const falloff = 1 - hgDist / HEAVY_GRENADE_RADIUS;
               const dmg = Math.max(1, Math.round(grenade.damage * (0.55 + falloff * 0.45)));
               const died = useGameStore.getState().damagePlayer(dmg, '偶像の手榴弾', gx, gy, undefined, undefined, 'idol-nade', undefined, undefined, { type: 'idol', id: grenade.ownerId }); // G4a計測タグ(記録専用・v0.25.3607裁定)
@@ -13369,7 +13488,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // research/MUTANT_HERO.md §4-2: 同じ爆発円で守護霊と英雄にも(プレイヤーの判定は不変)。量は距離減衰の中間(固定の代表値)。
                 hitThirdParties({ kind: 'circle', cx: mine.x, cy: mine.y, r: smBlastR },
                   Math.max(1, Math.round(SENSOR_MINE_DAMAGE * (0.55 + 0.5 * 0.45) * PVP_DAMAGE_SCALE)), smGhostId, 'phantom-mine');
-                if (sdist <= smBlastR && !(smWalls.length > 0 && segmentBlocked(mine.x, mine.y, spx, spy, smWalls))) {
+                // research/SHIELD_BLOCK.md §1(円): 爆心から見て盾の影、かつ盾から 40px 以内なら防ぐ(守護霊・英雄は上の hitThirdParties で従来どおり)。
+                const smShield = sdist <= smBlastR ? currentFriendlyShield() : null;
+                const smShielded = smShield !== null && shieldBlocksArea(mine.x, mine.y, { x: smP.x, y: smP.y, width: smP.width, height: smP.height }, smShield);
+                if (smShielded && smShield) noteShieldGuardFrom(smShield, mine.x, mine.y, 'guardian-phantom');
+                if (sdist <= smBlastR && !smShielded && !(smWalls.length > 0 && segmentBlocked(mine.x, mine.y, spx, spy, smWalls))) {
                   const sfall = 1 - sdist / smBlastR;
                   const sdmg = Math.max(1, Math.round(SENSOR_MINE_DAMAGE * (0.55 + sfall * 0.45) * PVP_DAMAGE_SCALE));
                   useGameStore.getState().damagePlayer(sdmg, '幻影の地雷', mine.x, mine.y, undefined, undefined, undefined, undefined, undefined, { type: 'guardian-phantom' }); // 末尾=倒した相手の記録
@@ -15454,7 +15577,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const egP = useGameStore.getState().player;
               const egPcx = egP.x + egP.width / 2, egPcy = egP.y + egP.height / 2;
               const egPHalf = Math.max(egP.width, egP.height) / 2;
-              if (Math.hypot(egPcx - ex0, egPcy - ey0) <= EGG_BLAST_RADIUS + egPHalf && !egP.invulnerable) {
+              // research/SHIELD_BLOCK.md §1(円): 爆心から見て盾の影、かつ盾から 40px 以内なら防ぐ。
+              const egInRange = Math.hypot(egPcx - ex0, egPcy - ey0) <= EGG_BLAST_RADIUS + egPHalf && !egP.invulnerable;
+              const egShield = egInRange ? currentFriendlyShield() : null;
+              const egShielded = egShield !== null && shieldBlocksArea(ex0, ey0, { x: egP.x, y: egP.y, width: egP.width, height: egP.height }, egShield);
+              if (egShielded && egShield) noteShieldGuardFrom(egShield, ex0, ey0);
+              if (egInRange && !egShielded) {
                 const egDied = useGameStore.getState().damagePlayer(MINE_DAMAGE, '地雷', ex0, ey0);
                 playSfx('player-damage');
                 spawnFlash('rgba(239,68,68,0.18)', 180);

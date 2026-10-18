@@ -166,7 +166,8 @@ const pushBlast = (hero: Enemy, shape: HeroShape, damage: number, moveKey: strin
   let b: PumpkinBlast;
   if (shape.kind === 'band') {
     b = { ...base, x: (shape.fx + shape.tx) / 2, y: (shape.fy + shape.ty) / 2, radius: shape.halfWidth,
-      capsule: { fx: shape.fx, fy: shape.fy, tx: shape.tx, ty: shape.ty, halfWidth: shape.halfWidth } };
+      capsule: { fx: shape.fx, fy: shape.fy, tx: shape.tx, ty: shape.ty, halfWidth: shape.halfWidth },
+      origin: { x: hero.x + hero.width / 2, y: hero.y + hero.height / 2 } }; // research/SHIELD_BLOCK.md §1-1: 帯の起点=作った瞬間の英雄の中心
   } else if (shape.kind === 'fan') {
     b = { ...base, x: shape.cx, y: shape.cy, radius: shape.radius,
       fan: { cx: shape.cx, cy: shape.cy, angle: shape.angle, halfArc: shape.halfArc, radius: shape.radius } };

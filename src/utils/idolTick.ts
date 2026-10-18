@@ -14,7 +14,10 @@ import { isEnemyFrozenForClocks, tickModuleClockFreeze } from './enemyClocks';
 // (GLOW_R_L / counterReplyDamage / クリ・演出定数 / getActiveGun / recordCritHit / refundCounterCooldown)を整理。
 import {
   useGameStore, bossCritCdMult, bossSlowMult, enemyDeathLabel,
-  knockbackSpeedFor } from '../store/gameStore';
+  knockbackSpeedFor,
+  currentFriendlyShield, noteShieldBeam, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
+} from '../store/gameStore';
+import { splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: レーザー=壁(光線の幅)
 import { createEnemyProjectile } from './enemyUtils';
 import { hitThirdParties } from './heroBlast'; // research/MUTANT_HERO.md §4-2: 守護霊と英雄にも同じ形で当てる
 // v0.25.2617(社長報告「m2は移動できる範囲が限られてるのに、ボスだけその外に移動してる」):
@@ -527,6 +530,7 @@ export const runIdolTick = (
         x: (fx + tx) / 2, y: (fy + ty) / 2, radius: halfW, damage, enemyId: idol.id,
         retaliate: true, // 被弾反撃の対象(偶像の殴りはこの部品だけが積む)
         capsule: { fx, fy, tx, ty, halfWidth: halfW },
+        origin: { x: icx, y: icy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=作った瞬間の偶像の中心(盾の影の判定源)
         ...(knockback ? { kbSpeed: knockbackSpeedFor(knockback.distPx, knockback.ms), kbMs: knockback.ms } : {}),
       }],
     }));
@@ -754,11 +758,19 @@ export const runIdolTick = (
   } else if (st === 'idol-snipe') {
     // ロック済みの線上のみ判定(点-線分距離のカプセル)。図形=判定=描画が同じ2点を読む。
     const fx = idol.aiFromX ?? icx, fy = idol.aiFromY ?? icy;
-    const tx = idol.aiTargetX ?? icx, ty = idol.aiTargetY ?? icy;
+    const tx0 = idol.aiTargetX ?? icx, ty0 = idol.aiTargetY ?? icy;
     const pr = Math.max(player.width, player.height) / 2;
+    // research/SHIELD_BLOCK.md §2/§8(レーザー=壁・光線の幅): 狙撃線を盾の影で割る(影の中央は盾の面で止まり、外の縁は全長のまま)。
+    // 割った帯の並びをプレイヤー・守護霊・英雄・軍人の全員に使う(distToBandRect は両端を半幅ぶん伸ばす=tipExt)。絵は pixiScene が同じ関数で割る。
+    const idShield = currentFriendlyShield();
+    const idSplit = idShield ? splitBeamAtShield(fx, fy, tx0, ty0, IDOL_TUNING.shape.snipeHalfWidth, idShield, true) : null;
+    const idReaches = (hx: number, hy: number, hr: number): boolean => idSplit
+      ? beamStripsHit(idSplit.strips, hx, hy, hr, true)
+      : distToBandRect({ x: hx, y: hy }, { x: fx, y: fy }, { x: tx0, y: ty0 }, IDOL_TUNING.shape.snipeHalfWidth) <= hr;
+    if (idSplit && idShield) noteShieldBeam(idShield, idSplit, deltaTime, idol); // 後ろに誰も居なくても毎秒10
     // research/MUTANT_HERO.md §4-2: 同じ帯で守護霊と英雄にも当てる(プレイヤーの判定は不変)。
-    hitThirdParties({ kind: 'capsule', fx, fy, tx, ty, hw: IDOL_TUNING.shape.snipeHalfWidth }, IDOL_TUNING.moveDamage.snipe, idol.id, 'idol-snipe');
-    if (distToBandRect({ x: pcx, y: pcy }, { x: fx, y: fy }, { x: tx, y: ty }, IDOL_TUNING.shape.snipeHalfWidth) <= pr) {
+    hitThirdParties({ kind: 'test', fx, fy, hits: idReaches }, IDOL_TUNING.moveDamage.snipe, idol.id, 'idol-snipe');
+    if (idReaches(pcx, pcy, pr)) {
       const died = useGameStore.getState().damagePlayer(IDOL_TUNING.moveDamage.snipe, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy, undefined, undefined, 'idol-snipe', undefined, undefined, { type: idol.type, id: idol.id }); // G4a計測タグ(記録専用)
       if (died) onPlayerDeath(pcx, pcy);
     }

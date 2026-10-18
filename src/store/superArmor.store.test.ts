@@ -118,12 +118,12 @@ describe('アーマー時も従来どおりの物(無敵・ヒットストップ
   });
 });
 
-describe('血の覚醒中はスキルが無くても吹き飛ばない(被ダメは×2のまま)', () => {
-  it('覚醒中: 74 ダメージ級でも吹き飛ばない。ダメージは2倍で受ける', () => {
+describe('血の覚醒中はスキルが無くても吹き飛ばない(被ダメの2倍は v0.25.5106 で撤去)', () => {
+  it('覚醒中: 74 ダメージ級でも吹き飛ばない。ダメージはそのまま受ける', () => {
     setup();
     useGameStore.setState(s => ({ player: { ...s.player, bloodMeter: 1, bloodAwakenUntil: s.gameTime + BLOOD_AWAKEN_MS, bloodAwakenStartedAt: s.gameTime } }));
     const hp0 = st().player.health;
-    hit(37);
+    hit(74);
     const p = st().player;
     expect(hp0 - p.health).toBe(74);
     expect(p.lastHurtAt).toBeUndefined();

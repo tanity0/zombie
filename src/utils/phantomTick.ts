@@ -47,6 +47,7 @@ import {
   skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
   resolveShieldWalls, shieldPlayableCtx, // ★B6(盾押し・§6)
   spawnShadowCloneOnSwing, // ★O-3b-2(SAME_ARENA §3-d-4): 分身の生成入口。player/ghost-allyと同じ1本
+  shieldGuardsPlayerLine, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
 } from '../store/gameStore';
 import { phantomAsOwner } from './subWeaponOwner'; // ★O-3b-2: 分身の生成入口へ渡すオーナー形
 import { softCapCritChance } from './critSoftCap'; // ★§13-3d: 近接クリ式のミラーに同じソフトキャップ
@@ -764,6 +765,8 @@ const swingPhantomMelee = (
   hitThirdParties({ kind: 'capsule', fx: bcx, fy: bcy, tx, ty, hw: GP_T.melee.halfWidth },
     phantomMeleeDamage(growthAtkMult, phantomId) * PVP_DAMAGE_SCALE, phantomId, GUARDIAN_PHANTOM_TYPE);
   if (distToBandRect({ x: pcx, y: pcy }, { x: bcx, y: bcy }, { x: tx, y: ty }, GP_T.melee.halfWidth) > playerRadius) return;
+  // research/SHIELD_BLOCK.md §1-1: 帯の起点=幻影の中心 bcx,bcy。その影に居れば盾が防ぐ(カウンター判定より前・何も起こさない)。守護霊・英雄は上の hitThirdParties で従来どおり。
+  if (shieldGuardsPlayerLine(bcx, bcy, 'guardian-phantom')) return;
   // fromX/fromY を渡さないとプレイヤーのノックバックが出ない(GHOST_BOSS.md 監査4周目#1)。
   // ★v0.25.3640(成果物監査Q1-3): damagePlayer の戻り値は「プレイヤーが死んだか」であって
   // 「当たったか」ではない(旧実装はこれを landed と誤読し、被弾SEが一度も鳴らなかった)。

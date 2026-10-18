@@ -25,7 +25,10 @@ import {
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, counterReplyDamage, skillLevel, enemyDeathLabel, counterMasterAwakenBuffPatch,
   BOSS_CRIT_DAMAGE_MULT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_ZOOM_MAG,
-  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult, bossCritCdMult } from '../store/gameStore';
+  MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult, bossCritCdMult,
+  shieldGuardsPlayerArea, shieldGuardsPlayerLine, currentFriendlyShield, noteShieldBeam, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
+} from '../store/gameStore';
+import { splitBeamAtShield, beamStripsHit, type BeamShieldSplit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: レーザー=壁(光線の幅)
 import { getActiveGun } from './weaponUtils';
 import { createEnemyProjectile, isGate2AngelBoss, spawnEnemyAt } from './enemyUtils';
 import { rectsOverlap } from '../world/obstacles';
@@ -796,7 +799,8 @@ export const runMiguelTick = (
     const tx0 = miguel.aiTargetX ?? mcx, ty0 = miguel.aiTargetY ?? mcy;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, MG_T.harai.halfWidth) <= pr) {
+    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, MG_T.harai.halfWidth) <= pr
+      && !shieldGuardsPlayerLine(mcx, mcy, 'miguel')) { // research/SHIELD_BLOCK.md §1-1: 払い/縦の起点=ミゲルの中心の影なら盾が防ぐ(カウンター判定より前)
       const cp = useGameStore.getState().player;
       if (isCounterActive(cp, Date.now())) {
         miguelCounterHit((fx0 + tx0) / 2, (fy0 + ty0) / 2);
@@ -918,7 +922,8 @@ export const runMiguelTick = (
       const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
       const sx = nx, sy = ny, ex = nx + dirx * MG_T.harai.range, ey = ny + diry * MG_T.harai.range;
       const pr = Math.max(player.width, player.height) / 2;
-      if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, MG_T.harai.halfWidth) <= pr) {
+      if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, MG_T.harai.halfWidth) <= pr
+        && !shieldGuardsPlayerLine(sx, sy, 'miguel')) { // research/SHIELD_BLOCK.md §1-1: 斬り抜けの起点=ミゲルの中心(sx,sy)の影なら盾が防ぐ
         const cp = useGameStore.getState().player;
         if (isCounterActive(cp, Date.now())) {
           dashCountered((sx + ex) / 2, (sy + ey) / 2);
@@ -1071,7 +1076,8 @@ export const runMiguelTickLegacy = (
     const cxp = fx0 + lux * tproj, cyp = fy0 + luy * tproj;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (Math.hypot(pcx - cxp, pcy - cyp) <= MG_T.harai.halfWidth + pr) {
+    if (Math.hypot(pcx - cxp, pcy - cyp) <= MG_T.harai.halfWidth + pr
+      && !shieldGuardsPlayerLine(mcx, mcy, 'miguel')) { // research/SHIELD_BLOCK.md §1-1: ミゲルの中心の影なら盾が防ぐ
       const cp = useGameStore.getState().player;
       if (isCounterActive(cp, Date.now())) {
         miguelCounterHit(cxp, cyp);
@@ -1437,6 +1443,7 @@ export const runJibrilTick = (
               x: (jcx + nx) / 2, y: (jcy + ny) / 2, radius: JB_T.lance.halfWidth,
               damage: jibril.damage, enemyId: jibril.id,
               capsule: { fx: jcx, fy: jcy, tx: nx, ty: ny, halfWidth: JB_T.lance.halfWidth },
+              beam: true, // research/SHIELD_BLOCK.md §2: 槍はレーザー扱い=味方の盾が壁(共通路が帯の終点を盾の所で切る)
             }],
           }));
           L.firedUntil = newGameTime + JB_T.lance.beamMs;
@@ -1932,6 +1939,7 @@ export const runRafiTick = (
           x: (sfx0 + stx0) / 2, y: (sfy0 + sty0) / 2, radius: RF_T.sweep.halfWidth,
           damage: rafi.damage, enemyId: rafi.id, retaliate: true, // 被弾反撃の対象(ラファエルの薙ぎ)
           capsule: { fx: sfx0, fy: sfy0, tx: stx0, ty: sty0, halfWidth: RF_T.sweep.halfWidth },
+          origin: { x: rcx, y: rcy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=ラファエルの中心
         }],
       }));
       patch.bossState = 'sweep'; patch.bossStateUntil = newGameTime + RF_T.sweep.active;
@@ -2286,7 +2294,8 @@ export const runUriTick = (
     const fx0 = uri.aiFromX ?? ucx, fy0 = uri.aiFromY ?? ucy, tx0 = uri.aiTargetX ?? ucx, ty0 = uri.aiTargetY ?? ucy;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, UR_T.sweep.halfWidth) <= pr) {
+    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, UR_T.sweep.halfWidth) <= pr
+      && !shieldGuardsPlayerLine(ucx, ucy, 'uri')) { // research/SHIELD_BLOCK.md §1-1: 大薙ぎの起点=ウリの中心の影なら盾が防ぐ(カウンター判定より前)
       const cp = useGameStore.getState().player;
       if (isCounterActive(cp, Date.now())) { uriCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri); }
       else {
@@ -2334,7 +2343,8 @@ export const runUriTick = (
     const fx0 = uri.aiFromX ?? ucx, fy0 = uri.aiFromY ?? ucy, tx0 = uri.aiTargetX ?? ucx, ty0 = uri.aiTargetY ?? ucy;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, UR_T.downslash.halfWidth) <= pr) {
+    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, UR_T.downslash.halfWidth) <= pr
+      && !shieldGuardsPlayerLine(ucx, ucy, 'uri')) { // research/SHIELD_BLOCK.md §1-1: 振り下ろしの起点=ウリの中心の影なら盾が防ぐ
       const cp = useGameStore.getState().player;
       if (isCounterActive(cp, Date.now())) { uriCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, uri); }
       else {
@@ -2403,7 +2413,8 @@ export const runUriTick = (
       let dirx = tx0 - fx0, diry = ty0 - fy0; const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
       const sx = nx, sy = ny, ex = nx + dirx * UR_T.thrust.range, ey = ny + diry * UR_T.thrust.range;
       const pr = Math.max(player.width, player.height) / 2;
-      if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, UR_T.thrust.halfWidth) <= pr) {
+      if (distToBandRect({ x: pcx, y: pcy }, { x: sx, y: sy }, { x: ex, y: ey }, UR_T.thrust.halfWidth) <= pr
+        && !shieldGuardsPlayerLine(sx, sy, 'uri')) { // research/SHIELD_BLOCK.md §1-1: 突きの起点=ウリの中心(sx,sy)の影なら盾が防ぐ
         const cp = useGameStore.getState().player;
         if (isCounterActive(cp, Date.now())) {
           thrustCountered((sx + ex) / 2, (sy + ey) / 2); countered = true;
@@ -2667,10 +2678,20 @@ export const runSurielTick = (
   } else if (st === 'ring-active') {
     const fx0 = suriel.aiFromX ?? scx, fy0 = suriel.aiFromY ?? scy, tx0 = suriel.aiTargetX ?? scx, ty0 = suriel.aiTargetY ?? scy;
     let dirx = tx0 - fx0, diry = ty0 - fy0; const dl = Math.hypot(dirx, diry) || 1; dirx /= dl; diry /= dl;
-    const ex = fx0 + dirx * SR_T.beam.range, ey = fy0 + diry * SR_T.beam.range;
+    // research/SHIELD_BLOCK.md §2/§8(レーザー=壁・光線の幅): 光線(1本目・2本目)を味方の盾の影で割る。影の中央は盾の面で止まり、影の外の縁は全長のまま通る。
+    // 割った帯の並びをプレイヤー・守護霊・英雄・軍人の全員に使う(先が丸い判定=distToSegment なので tipExt)。絵は pixiScene が同じ splitBeamAtShield で割る。盾が無ければ元のまま。
+    const srShield = currentFriendlyShield();
+    const fullEx = fx0 + dirx * SR_T.beam.range, fullEy = fy0 + diry * SR_T.beam.range;
+    const srSplit1 = srShield ? splitBeamAtShield(fx0, fy0, fullEx, fullEy, SR_T.beam.halfWidth, srShield, true) : null;
+    const ex = fullEx, ey = fullEy;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (distToSegment({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: ex, y: ey }) <= SR_T.beam.halfWidth + pr) {
+    // 1本の光線の「相手(中心 x,y・半径 r)に届くか」。割れていれば割った帯の並び、割れていなければ元の線分±半幅。
+    const srReaches = (sp: BeamShieldSplit | null, bfx: number, bfy: number, bex: number, bey: number, x: number, y: number, r: number): boolean =>
+      sp ? beamStripsHit(sp.strips, x, y, r, false)
+         : distToSegment({ x, y }, { x: bfx, y: bfy }, { x: bex, y: bey }) <= SR_T.beam.halfWidth + r;
+    if (srSplit1 && srShield) noteShieldBeam(srShield, srSplit1, deltaTime, suriel); // 後ろに誰も居なくても毎秒10
+    if (srReaches(srSplit1, fx0, fy0, ex, ey, pcx, pcy, pr)) {
       const cp = useGameStore.getState().player;
       if (isCounterActive(cp, Date.now())) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
@@ -2681,21 +2702,24 @@ export const runSurielTick = (
     // ★写し修正(2026-08-27裁定「はい」): 守護霊も同じビーム線分で判定時置換(1本目・プレイヤー優先)。
     if (!countered) {
       const gb = ghostAllyBodyFor(suriel.id);
-      if (gb && distToSegment({ x: gb.x, y: gb.y }, { x: fx0, y: fy0 }, { x: ex, y: ey }) <= SR_T.beam.halfWidth + gb.r
+      if (gb && srReaches(srSplit1, fx0, fy0, ex, ey, gb.x, gb.y, gb.r)
         && fireGhostStrikeCounter(suriel, gb.x, gb.y, sfx)) {
         countered = true;
         patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
       }
     }
     // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
-    hitOthers(countered, { kind: 'test', hits: (hx, hy, hr) => distToSegment({ x: hx, y: hy }, { x: fx0, y: fy0 }, { x: ex, y: ey }) <= SR_T.beam.halfWidth + hr, fx: fx0, fy: fy0 }, suriel.damage, suriel.id, 'suriel-ring');
+    hitOthers(countered, { kind: 'test', hits: (hx, hy, hr) => srReaches(srSplit1, fx0, fy0, ex, ey, hx, hy, hr), fx: fx0, fy: fy0 }, suriel.damage, suriel.id, 'suriel-ring');
     // v0.25.3200: Phase2の2本目のビーム(2本目の環→同じロック対象)。判定・威力・カウンターとも1本目と同一。
     // 二重ヒットは被弾i-frameが吸収する(1本目と同じ経路)。
     if (!countered && suriel.ring2X !== undefined && suriel.ring2Y !== undefined) {
       const f2x = suriel.ring2X, f2y = suriel.ring2Y;
       let d2x = tx0 - f2x, d2y = ty0 - f2y; const dl2 = Math.hypot(d2x, d2y) || 1; d2x /= dl2; d2y /= dl2;
-      const e2x = f2x + d2x * SR_T.beam.range, e2y = f2y + d2y * SR_T.beam.range;
-      if (distToSegment({ x: pcx, y: pcy }, { x: f2x, y: f2y }, { x: e2x, y: e2y }) <= SR_T.beam.halfWidth + pr) {
+      const full2x = f2x + d2x * SR_T.beam.range, full2y = f2y + d2y * SR_T.beam.range;
+      const srSplit2 = srShield ? splitBeamAtShield(f2x, f2y, full2x, full2y, SR_T.beam.halfWidth, srShield, true) : null; // 2本目も盾が壁(上と同じ)
+      const e2x = full2x, e2y = full2y;
+      if (srSplit2 && srShield) noteShieldBeam(srShield, srSplit2, deltaTime, suriel);
+      if (srReaches(srSplit2, f2x, f2y, e2x, e2y, pcx, pcy, pr)) {
         const cp2 = useGameStore.getState().player;
         if (isCounterActive(cp2, Date.now())) {
           surielCounterHit(pcx, pcy); countered = true;
@@ -2708,14 +2732,14 @@ export const runSurielTick = (
       // ★写し修正(2026-08-27裁定「はい」): 2本目のビームも守護霊で同じ判定時置換(プレイヤー優先)。
       if (!countered) {
         const gb = ghostAllyBodyFor(suriel.id);
-        if (gb && distToSegment({ x: gb.x, y: gb.y }, { x: f2x, y: f2y }, { x: e2x, y: e2y }) <= SR_T.beam.halfWidth + gb.r
+        if (gb && srReaches(srSplit2, f2x, f2y, e2x, e2y, gb.x, gb.y, gb.r)
           && fireGhostStrikeCounter(suriel, gb.x, gb.y, sfx)) {
           countered = true;
           patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel);
         }
       }
       // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
-      hitOthers(countered, { kind: 'test', hits: (hx, hy, hr) => distToSegment({ x: hx, y: hy }, { x: f2x, y: f2y }, { x: e2x, y: e2y }) <= SR_T.beam.halfWidth + hr, fx: f2x, fy: f2y }, suriel.damage, suriel.id, 'suriel-ring');
+      hitOthers(countered, { kind: 'test', hits: (hx, hy, hr) => srReaches(srSplit2, f2x, f2y, e2x, e2y, hx, hy, hr), fx: f2x, fy: f2y }, suriel.damage, suriel.id, 'suriel-ring');
     }
     if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
       patch.bossState = 'ring-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SR_T.ringshot.recover, (suriel.bossScriptQueue?.length ?? 0) > 0);
@@ -2753,7 +2777,8 @@ export const runSurielTick = (
     patch.ringY = scy + Math.sin(spinT) * SR_T.ringspin.radius;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (Math.hypot(pcx - scx, pcy - scy) <= SR_T.ringspin.radius + pr) {
+    if (Math.hypot(pcx - scx, pcy - scy) <= SR_T.ringspin.radius + pr
+      && !shieldGuardsPlayerArea(scx, scy, 'suriel')) { // research/SHIELD_BLOCK.md §1(円): 回転の中心=スリエルから見て盾の影、かつ盾から 40px 以内なら防ぐ(カウンター判定より前)
       const cp = useGameStore.getState().player;
       if (isCounterActive(cp, Date.now())) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
@@ -2807,7 +2832,8 @@ export const runSurielTick = (
     const fx0 = suriel.aiFromX ?? scx, fy0 = suriel.aiFromY ?? scy, tx0 = suriel.aiTargetX ?? scx, ty0 = suriel.aiTargetY ?? scy;
     const pr = Math.max(player.width, player.height) / 2;
     let countered = false;
-    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, SR_T.sweep.halfWidth) <= pr) {
+    if (distToBandRect({ x: pcx, y: pcy }, { x: fx0, y: fy0 }, { x: tx0, y: ty0 }, SR_T.sweep.halfWidth) <= pr
+      && !shieldGuardsPlayerLine(scx, scy, 'suriel')) { // research/SHIELD_BLOCK.md §1-1: 薙ぎの起点=スリエルの中心の影なら盾が防ぐ
       const cp = useGameStore.getState().player;
       if (isCounterActive(cp, Date.now())) { surielCounterHit(pcx, pcy); countered = true; /* v0.25.3128(案A): カウンター成立で**技を中断**。判定が出続ける技は毎フレーム範囲内を見るので、止めない限り窓の間ずっと成立し続けていた(旧 countered は「今フレームは硬直へ進めない」だけだった)。 */ patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(newGameTime, suriel); }
       else {
@@ -2950,8 +2976,10 @@ export const runAcrasielTick = (
     if (plan) patch.acrasielPlan = { ...plan, combo: false };
   };
   // retaliate=被弾反撃の対象(体ごと現れて当たる転移衝撃だけ。棘・槍・爆発・凝視は飛び道具/光なので渡さない)。
-  const damage = (hit: boolean, label: string, tag: string, retaliate = false): void => {
+  // src=円・扇の判定源(中心/要)。research/SHIELD_BLOCK.md §1: 判定源から見て盾の影、かつ盾から 40px 以内なら防ぐ(カウンター判定より前・何も起こさない)。
+  const damage = (hit: boolean, label: string, tag: string, retaliate = false, src?: { x: number; y: number }): void => {
     if (!hit) return;
+    if (src && shieldGuardsPlayerArea(src.x, src.y, boss)) return;
     if (isCounterActive(useGameStore.getState().player, Date.now())) { counter(px, py); return; }
     if (useGameStore.getState().damagePlayer(boss.damage, label, px, py, undefined, undefined, tag, undefined, retaliate ? boss.id : undefined, { type: boss.type, id: boss.id })) onPlayerDeath(px, py);
   };
@@ -3100,7 +3128,7 @@ export const runAcrasielTick = (
     if (plan) damage(Array.from({ length: 8 }, (_, sector) => sector).some(sector =>
       !isSpikeGapSector(plan.gapMask, sector) && acrasielPolygonHitsCircle(
         acrasielSectorPolygon(plan.x, plan.y, plan.rotation, sector, AC_T.spike.range), px, py, Math.max(pl.width, pl.height) / 2)),
-    'アクラシエルの放射棘', 'acrasiel-spike');
+    'アクラシエルの放射棘', 'acrasiel-spike', false, plan ? { x: plan.x, y: plan.y } : undefined);
     if (plan) hitOthersAc(spikeShape(plan), 'acrasiel-spike'); // 初回activeも同じ形で守護霊と英雄へ(§4-2)
   } else if (st === 'spike') {
     if (remaining <= 0) {
@@ -3119,7 +3147,7 @@ export const runAcrasielTick = (
       damage(Array.from({ length: 8 }, (_, sector) => sector).some(sector =>
         !isSpikeGapSector(plan.gapMask, sector) && acrasielPolygonHitsCircle(
           acrasielSectorPolygon(plan.x, plan.y, plan.rotation, sector, AC_T.spike.range), px, py, Math.max(pl.width, pl.height) / 2)),
-      'アクラシエルの放射棘', 'acrasiel-spike');
+      'アクラシエルの放射棘', 'acrasiel-spike', false, { x: plan.x, y: plan.y });
       hitOthersAc(spikeShape(plan), 'acrasiel-spike'); // 同じ形で守護霊と英雄にも(§4-2)
     }
   } else if (st === 'spear-windup' && remaining <= 0 && plan) {
@@ -3155,13 +3183,13 @@ export const runAcrasielTick = (
       ));
     }
     damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + Math.max(pl.width, pl.height) / 2,
-      'アクラシエルの転移衝撃', 'acrasiel-warp', true);
+      'アクラシエルの転移衝撃', 'acrasiel-warp', true, { x: boss.aiTargetX ?? cx, y: boss.aiTargetY ?? cy });
     hitOthersAc({ kind: 'circle', cx: boss.aiTargetX ?? cx, cy: boss.aiTargetY ?? cy, r: AC_T.warp.impactRadius }, 'acrasiel-warp'); // §4-2
   } else if (st === 'warp-active') {
     if (remaining <= 0) recover('warp');
     else {
       damage(Math.hypot(px - (boss.aiTargetX ?? cx), py - (boss.aiTargetY ?? cy)) <= AC_T.warp.impactRadius + playerRadius,
-        'アクラシエルの転移衝撃', 'acrasiel-warp', true);
+        'アクラシエルの転移衝撃', 'acrasiel-warp', true, { x: boss.aiTargetX ?? cx, y: boss.aiTargetY ?? cy });
       hitOthersAc({ kind: 'circle', cx: boss.aiTargetX ?? cx, cy: boss.aiTargetY ?? cy, r: AC_T.warp.impactRadius }, 'acrasiel-warp'); // §4-2
     }
   }
@@ -3178,7 +3206,7 @@ export const runAcrasielTick = (
     if (remaining <= 0) recover('burst');
     else {
       damage(Math.hypot(px - (plan?.x ?? cx), py - (plan?.y ?? cy)) <= AC_T.burst.radius + Math.max(pl.width, pl.height) / 2,
-        'アクラシエルの爆発', 'acrasiel-burst');
+        'アクラシエルの爆発', 'acrasiel-burst', false, { x: plan?.x ?? cx, y: plan?.y ?? cy });
       hitOthersAc({ kind: 'circle', cx: plan?.x ?? cx, cy: plan?.y ?? cy, r: AC_T.burst.radius }, 'acrasiel-burst'); // §4-2
     }
   } else if (st === 'gaze-windup' && remaining <= 0) {
@@ -3385,7 +3413,7 @@ export const runPhillTick = (
   const pushBlast = (x: number, y: number, radius: number, damage: number, moveKey: string,
     capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number }): void => {
     useGameStore.setState(state => ({
-      pumpkinBlasts: [...state.pumpkinBlasts, { x, y, radius, damage, enemyId: phill.id, moveKey, ...(capsule ? { capsule } : {}), ...(PHILL_RETALIATE_MOVES.has(moveKey) ? { retaliate: true } : {}) }],
+      pumpkinBlasts: [...state.pumpkinBlasts, { x, y, radius, damage, enemyId: phill.id, moveKey, ...(capsule ? { capsule, origin: { x: phcx, y: phcy } } : {}), /* origin=research/SHIELD_BLOCK.md §1-1: 帯の起点=フィルの中心 */ ...(PHILL_RETALIATE_MOVES.has(moveKey) ? { retaliate: true } : {}) }],
     }));
   };
 
@@ -3914,7 +3942,8 @@ export const tickAcrasielSpears = (
   const survivors: typeof spears = [];
   for (const sp of spears) {
     if (newGameTime >= sp.fireAt) {
-      const inCircle = Math.hypot(plcx - sp.x, plcy - sp.y) <= AC_T.spear.radius + pr;
+      // research/SHIELD_BLOCK.md §1(円): 起爆の中心から見て盾の影、かつ盾から 40px 以内なら防ぐ(カウンター潰しより前。守護霊・英雄は下で従来どおり)。
+      const inCircle = Math.hypot(plcx - sp.x, plcy - sp.y) <= AC_T.spear.radius + pr && !shieldGuardsPlayerArea(sp.x, sp.y, 'acrasiel');
       // research/MUTANT_HERO.md §4-2: 起爆の円で守護霊と英雄にも(プレイヤーのカウンター潰し/無敵とは独立)。
       hitThirdParties({ kind: 'circle', cx: sp.x, cy: sp.y, r: AC_T.spear.radius }, sp.damage, sp.enemyId, 'acrasiel-spear');
       if (inCircle && !counteredThisFrame && isCounterActive(pl, Date.now())) {

@@ -12,6 +12,7 @@ import { isBiteSubject } from './enemyBite';
 import { ESCORT_BODY_RADIUS, canEscortBeHit, escortCenter, escortHitbox } from './escortHealth';
 import { hittableEscorts } from './escortView';
 import { shapeHitsCircle, shapeSource, type ThirdPartyShape } from './thirdPartyShape';
+import { beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §8
 
 /** 見えている軍人(倒れていない)のうち、形に触れたものへ当てる。当てた軍人の数を返す。 */
 export const hitEscortShape = (s: ThirdPartyShape, amount: number, _srcEnemyId: string | undefined, key: string): number => {
@@ -31,6 +32,7 @@ export const hitEscortShape = (s: ThirdPartyShape, amount: number, _srcEnemyId: 
 /** 爆風(円/帯/扇)の形を第三者の形へ直す(heroBlast.blastHitsCircle と同じ幾何)。 */
 export const blastShape = (b: PumpkinBlast): ThirdPartyShape =>
   b.fan ? { kind: 'fan', cx: b.fan.cx, cy: b.fan.cy, angle: b.fan.angle, halfArc: b.fan.halfArc, radius: b.fan.radius }
+  : b.strips ? { kind: 'test', hits: (cx, cy, r) => beamStripsHit(b.strips!, cx, cy, r, true), fx: b.capsule?.fx ?? b.x, fy: b.capsule?.fy ?? b.y } // research/SHIELD_BLOCK.md §8: 盾の影で割った光線の帯
   : b.capsule ? { kind: 'capsule', fx: b.capsule.fx, fy: b.capsule.fy, tx: b.capsule.tx, ty: b.capsule.ty, hw: b.capsule.halfWidth }
   : { kind: 'circle', cx: b.x, cy: b.y, r: b.radius };
 

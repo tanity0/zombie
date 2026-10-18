@@ -25,7 +25,11 @@ import {
   counterReplyDamage, skillLevel, BOSS_CRIT_DAMAGE_MULT, counterMasterAwakenBuffPatch,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, knockbackSpeedFor, enemyDeathLabel,
-  bossSlowMult, ENEMY_REMOVE_CAUSE } from '../store/gameStore';
+  bossSlowMult, ENEMY_REMOVE_CAUSE,
+  shieldGuardsPlayerArea, currentFriendlyShield, noteShieldGuard, noteShieldBeam, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
+} from '../store/gameStore';
+import { splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: レーザー=壁(光線の幅)
+import { maikoBoomProgress, maikoBounceTotalMs } from './maikoBoom'; // 手毬の位置式(絵と判定が同じ式を読む)
 // ★予告寸法は依存ゼロの葉(bountyDims.ts)が正=ここでは使うだけ+従来の消費者(pixiScene/テスト)の
 // ために named re-export する。gameStoreから直接importしない理由はbountyDims.ts冒頭を読むこと
 // (循環import起動全損 v0.25.3390 の再発防止)。
@@ -421,6 +425,7 @@ export interface BountyTickState {
   // 実行中はそこからの**イーズ距離**で位置を決める(等速移動・瞬間停止を作らないため)。
   spinKey: number; spinX0: number; spinY0: number; spinUx: number; spinUy: number;
   whip360Hit: boolean; // 馬乗り: 360度ムチ振りは1回の振りで1度だけ当てる(多段防止)
+  boomShielded: boolean; // 舞妓の手毬打ち: この投げが味方の盾に触れた=もうこの投げは当たらない(research/SHIELD_BLOCK.md §1)。投げ始めで落とす
   // §6.38 v12(バス停「三段突き」・社長裁定2026-08-15): クールダウン(6000ms)は**BountyTickState側で
   // 管理**する(社長裁定「置き場所はBountyTickState・activeId切替で消えてよい」)。gameTime基準・
   // 初期値0=初回は即撃てる。
@@ -451,7 +456,7 @@ export const createBountyTickState = (): BountyTickState => ({
   activeId: null, aimVX: 0, aimVY: 0, farMs: 0, comboStep: 0, escortsSummoned: false,
   suiuHopIdx: 0, suiuTx: 0, suiuTy: 0,
   brPattern: null, brPrevPattern: null, brShotsRemaining: 0, brCycleEndAt: 0,
-  spinKey: 0, spinX0: 0, spinY0: 0, spinUx: 0, spinUy: 0, whip360Hit: false,
+  spinKey: 0, spinX0: 0, spinY0: 0, spinUx: 0, spinUy: 0, whip360Hit: false, boomShielded: false,
   tripleReadyAt: 0, pushReadyAt: 0, tripleStepStartAt: 0, tripleHitFired: false,
   tripleApproachKey: 0, tripleApproachTx: 0, tripleApproachTy: 0,
   tripleLungeX0: 0, tripleLungeY0: 0, tripleLungeUx: 0, tripleLungeUy: 0, tripleLungeStartAt: 0,
@@ -605,6 +610,7 @@ const hitCapsule = (
       // 被弾反撃の対象(賞金首バス停/ボンバー/マキの近接の当たりはここを通る)。飛び道具の着地(マキの水鳥乱舞)だけ外す。
       retaliate,
       capsule: { fx, fy, tx, ty, halfWidth: halfW },
+      origin: { x: bounty.x + bounty.width / 2, y: bounty.y + bounty.height / 2 }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=作った瞬間の賞金首の中心(盾の影の判定源)
       ...(knockback ? { kbSpeed: knockbackSpeedFor(knockback.distPx, knockback.ms), kbMs: knockback.ms } : {}),
     }],
   }));
@@ -969,17 +975,19 @@ const tickRanged = (
     const player = useGameStore.getState().player;
     const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
     const pr = Math.max(player.width, player.height) / 2;
-    const tproj = Math.max(0, Math.min(BR_LASER_RANGE, (ppx - bcx) * ux + (ppy - bcy) * uy));
-    const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
+    // research/SHIELD_BLOCK.md §2/§8(レーザー=壁・光線の幅): 光線を盾の影で割る(影の中央は盾の面で止まり、外の縁は全長のまま)。
+    // 割った帯の並びをプレイヤー・守護霊・英雄・軍人の全員に使う(先が丸い判定なので tipExt)。絵は pixiScene が同じ関数で割る。盾が無ければ元のまま。
+    const brShield = currentFriendlyShield();
+    const brSplit = brShield ? splitBeamAtShield(bcx, bcy, bcx + ux * BR_LASER_RANGE, bcy + uy * BR_LASER_RANGE, BR_LASER_HALFWIDTH, brShield, true) : null;
+    const brReaches = (hx: number, hy: number, hr: number): boolean => {
+      if (brSplit) return beamStripsHit(brSplit.strips, hx, hy, hr, false);
+      const tp = Math.max(0, Math.min(BR_LASER_RANGE, (hx - bcx) * ux + (hy - bcy) * uy));
+      return Math.hypot(hx - (bcx + ux * tp), hy - (bcy + uy * tp)) <= BR_LASER_HALFWIDTH + hr;
+    };
     // research/MUTANT_HERO.md §4-2: 同じ線分+半幅で守護霊と英雄にも当てる(プレイヤーの判定は不変)。
-    hitThirdParties({
-      kind: 'test', fx: bcx, fy: bcy,
-      hits: (hx, hy, hr) => {
-        const tp = Math.max(0, Math.min(BR_LASER_RANGE, (hx - bcx) * ux + (hy - bcy) * uy));
-        return Math.hypot(hx - (bcx + ux * tp), hy - (bcy + uy * tp)) <= BR_LASER_HALFWIDTH + hr;
-      },
-    }, BR_T.laser.damage, bounty.id, 'br-laser');
-    if (Math.hypot(ppx - cxp, ppy - cyp) <= BR_LASER_HALFWIDTH + pr) {
+    hitThirdParties({ kind: 'test', fx: bcx, fy: bcy, hits: brReaches }, BR_T.laser.damage, bounty.id, 'br-laser');
+    if (brSplit && brShield) noteShieldBeam(brShield, brSplit, deltaTime, bounty); // 後ろに誰も居なくても毎秒10
+    if (brReaches(ppx, ppy, pr)) {
       useGameStore.getState().damagePlayer(BR_T.laser.damage, `${enemyDeathLabel(bounty.type)}のレーザー`, ppx, ppy, undefined, undefined, 'br-laser', undefined, undefined, { type: bounty.type, id: bounty.id }); // G4a計測タグ(記録専用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
@@ -1267,7 +1275,9 @@ const tickMelee = (
     const pr = Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2;
     // research/MUTANT_HERO.md §4-2: 同じ円で守護霊と英雄にも(プレイヤーの「1振り1回」の掛け金 whip360Hit とは独立。英雄は700ms間引き)。
     hitThirdParties({ kind: 'circle', cx: bcx, cy: bcy, r: BM_T.whip360.radius }, BM_T.whip360.damage, bounty.id, 'bm-whip360');
-    if (!s.whip360Hit && Math.hypot(pcx - bcx, pcy - bcy) <= BM_T.whip360.radius + pr) {
+    // research/SHIELD_BLOCK.md §1(円): 判定は狙いの点 pcx,pcy のまま。影の線分だけ本物のプレイヤーの中心を使う(shieldGuardsPlayerArea が store のプレイヤーを読む)。
+    // 防いだフレームは「1振り1回」の掛け金を立てない(陰から出たらまた当たりうる)。
+    if (!s.whip360Hit && Math.hypot(pcx - bcx, pcy - bcy) <= BM_T.whip360.radius + pr && !shieldGuardsPlayerArea(bcx, bcy, bounty)) {
       s.whip360Hit = true;
       useGameStore.getState().damagePlayer(BM_T.whip360.damage, `${enemyDeathLabel(bounty.type)}の鞭薙ぎ`, pcx, pcy, undefined, undefined, 'bm-whip360', undefined, bounty.id); // G4a計測タグ(記録専用・v0.25.3607裁定) / 末尾=被弾反撃の相手
       sfx.whipHit?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
@@ -1344,13 +1354,21 @@ const tickMelee = (
   }
   if (st === 'bm-snipe') {
     const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
-    const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
+    const tx0 = bounty.aiTargetX ?? bcx, ty0 = bounty.aiTargetY ?? bcy;
     const player = useGameStore.getState().player;
     const ppx = player.x + player.width / 2, ppy = player.y + player.height / 2;
     const pr = Math.max(player.width, player.height) / 2;
+    // research/SHIELD_BLOCK.md §2/§8(レーザー=壁・光線の幅): 狙撃線を盾の影で割る(影の中央は盾の面で止まり、外の縁は全長のまま)。
+    // 割った帯の並びをプレイヤー・守護霊・英雄・軍人の全員に使う(distToBandRect は両端を半幅ぶん伸ばす=tipExt)。絵は pixiScene が同じ関数で割る。
+    const snShield = currentFriendlyShield();
+    const snSplit = snShield ? splitBeamAtShield(fx, fy, tx0, ty0, BM_T.snipe.halfWidth, snShield, true) : null;
+    const snReaches = (hx: number, hy: number, hr: number): boolean => snSplit
+      ? beamStripsHit(snSplit.strips, hx, hy, hr, true)
+      : distToBandRect({ x: hx, y: hy }, { x: fx, y: fy }, { x: tx0, y: ty0 }, BM_T.snipe.halfWidth) <= hr;
+    if (snSplit && snShield) noteShieldBeam(snShield, snSplit, deltaTime, bounty); // 後ろに誰も居なくても毎秒10
     // research/MUTANT_HERO.md §4-2: 同じ帯で守護霊と英雄にも当てる(プレイヤーの判定は不変)。
-    hitThirdParties({ kind: 'capsule', fx, fy, tx, ty, hw: BM_T.snipe.halfWidth }, BM_T.snipe.damage, bounty.id, 'bm-snipe');
-    if (distToBandRect({ x: ppx, y: ppy }, { x: fx, y: fy }, { x: tx, y: ty }, BM_T.snipe.halfWidth) <= pr) {
+    hitThirdParties({ kind: 'test', fx, fy, hits: snReaches }, BM_T.snipe.damage, bounty.id, 'bm-snipe');
+    if (snReaches(ppx, ppy, pr)) {
       useGameStore.getState().damagePlayer(BM_T.snipe.damage, `${enemyDeathLabel(bounty.type)}の狙撃`, ppx, ppy, undefined, undefined, 'bm-snipe', undefined, undefined, { type: bounty.type, id: bounty.id }); // G4a計測タグ(記録専用)
     }
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
@@ -1622,6 +1640,7 @@ const beginMkBoom = ({ newGameTime, dist, pcx, pcy, bcx, bcy, sfx, patch }: Boun
   const dl = dist || 1;
   patch.aiTargetX = bcx + ((pcx - bcx) / dl) * MK_T.boom.range;
   patch.aiTargetY = bcy + ((pcy - bcy) / dl) * MK_T.boom.range;
+  patch.boomBounceAt = undefined; patch.boomBounceP0 = undefined; // 新しい投げ: 前の投げの「盾で弾かれた」記録を消す(research/SHIELD_BLOCK.md)
   patch.bossState = 'mk-boom-windup';
   patch.bossStateUntil = newGameTime + MK_T.boom.windup;
 };
@@ -1823,7 +1842,9 @@ const tickMaiko = (
     }
     // research/MUTANT_HERO.md §4-2: 動いた後の同じ円で守護霊と英雄にも(プレイヤーのカウンター/被弾とは独立)。
     hitThirdParties({ kind: 'circle', cx: bcx, cy: bcy, r: MK_T.spin.radius }, MK_T.spin.damage, bounty.id, 'mk-spin');
-    if (Math.hypot(pcx - bcx, pcy - bcy) <= MK_T.spin.radius + Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2) {
+    // research/SHIELD_BLOCK.md §1(円): 判定は狙いの点 pcx,pcy のまま。影の線分だけ本物のプレイヤーの中心を使う。防いだら移動後のカウンター判定(下)にも入らない。
+    if (Math.hypot(pcx - bcx, pcy - bcy) <= MK_T.spin.radius + Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2
+      && !shieldGuardsPlayerArea(bcx, bcy, bounty)) {
       // ★v0.25.3591: 判定円が自分を掃く**最初のフレーム**は、runBountyTickのカウンター判定(移動前の
       // 位置で見る)では届いていない=不成立のまま被弾し、被弾で窓が閉じて以後も成立しなかった。
       // ここで**移動後の円**でもう一度だけ見る(同tickの引き分けはカウンター勝ち)。
@@ -1909,6 +1930,7 @@ const tickMaiko = (
   // ---- 手毬打ち(遠距離・ブーメラン) -------------------------------------------------------------
   if (st === 'mk-boom-windup') {
     if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+      s.boomShielded = false; // 新しい投げ(research/SHIELD_BLOCK.md §1)
       patch.bossState = 'mk-boom-out';
       patch.bossStateUntil = newGameTime + MK_T.boom.outMs;
       sfx.throwBall?.(); // v0.25.3700: 技SE(社長指示・プレイヤー近似流用)
@@ -1920,15 +1942,41 @@ const tickMaiko = (
     // 現在位置(往路=from→to/復路=to→from)に円判定を置く。共通弾(赤二重丸)ではない=専用の絵(pixiScene)。
     const fx = bounty.aiFromX ?? bcx, fy = bounty.aiFromY ?? bcy;
     const tx = bounty.aiTargetX ?? bcx, ty = bounty.aiTargetY ?? bcy;
-    const total = st === 'mk-boom-out' ? MK_T.boom.outMs : MK_T.boom.backMs;
-    const remain = (bounty.bossStateUntil ?? newGameTime) - newGameTime;
-    const t = Math.max(0, Math.min(1, 1 - remain / total));
-    const px2 = st === 'mk-boom-out' ? fx + (tx - fx) * t : tx + (fx - tx) * t;
-    const py2 = st === 'mk-boom-out' ? fy + (ty - fy) * t : ty + (fy - ty) * t;
+    // 毬の進み具合 p(0=投げた点→1=最遠点)。絵(pixiScene)と同じ maikoBoomProgress を読む(盾で弾かれた復路は停止→減速→加速)。
+    const t = Math.max(0, Math.min(1, maikoBoomProgress(st === 'mk-boom-out', newGameTime, bounty.bossStateUntil ?? newGameTime, MK_T.boom.outMs, MK_T.boom.backMs, bounty.boomBounceAt, bounty.boomBounceP0)));
+    const px2 = fx + (tx - fx) * t;
+    const py2 = fy + (ty - fy) * t;
     const pr = Math.max(useGameStore.getState().player.width, useGameStore.getState().player.height) / 2;
     // research/MUTANT_HERO.md §4-2: 毬の同じ円で守護霊と英雄にも(プレイヤーのカウンター/被弾とは独立)。
     hitThirdParties({ kind: 'circle', cx: px2, cy: py2, r: MK_T.boom.hitRadius }, MK_T.boom.damage, bounty.id, 'mk-boom');
-    if (Math.hypot(pcx - px2, pcy - py2) <= MK_T.boom.hitRadius + pr) {
+    // research/SHIELD_BLOCK.md §1(飛ぶ物): 毬が味方の盾の矩形に触れたら、その場で戻りに入る(往路でもこの投げはもう当たらない)。
+    // 戻りは今の位置から同じ線を逆走(back の位置式で今の点に一致する残り時間を逆算=絵と判定が連続する)。
+    const bmShield = currentFriendlyShield();
+    if (bmShield && !s.boomShielded) {
+      const gx = Math.max(bmShield.x - px2, 0, px2 - (bmShield.x + bmShield.width));
+      const gy = Math.max(bmShield.y - py2, 0, py2 - (bmShield.y + bmShield.height));
+      if (Math.hypot(gx, gy) <= MK_T.boom.hitRadius) {
+        s.boomShielded = true;
+        // 接点=毬の中心に一番近い盾の面の点。毬の進む向き(往路 from→to / 復路 to→from)。
+        const dl0 = Math.hypot(tx - fx, ty - fy) || 1;
+        const sgn = st === 'mk-boom-out' ? 1 : -1;
+        const cxs = Math.max(bmShield.x, Math.min(px2, bmShield.x + bmShield.width));
+        const cys = Math.max(bmShield.y, Math.min(py2, bmShield.y + bmShield.height));
+        noteShieldGuard(bmShield, {
+          attacker: bounty, x: cxs, y: cys, dx: sgn * (tx - fx) / dl0, dy: sgn * (ty - fy) / dl0,
+          // 往路=カツンと弾かれる(大きい防ぎ) / 復路=ただ触れる(戻る途中なので小さな火花と金属音だけ)。
+          kind: st === 'mk-boom-out' ? 'hit' : 'tick',
+        });
+        if (st === 'mk-boom-out') {
+          // 接点で一瞬止まり(MAIKO_BOUNCE_STOP_MS)、減速→加速して戻る。bossStateUntil=停止+戻り。位置式は maikoBoomProgress が読む。
+          patch.bossState = 'mk-boom-back';
+          patch.boomBounceAt = newGameTime;
+          patch.boomBounceP0 = t;
+          patch.bossStateUntil = newGameTime + maikoBounceTotalMs(t, MK_T.boom.backMs);
+        }
+      }
+    }
+    if (!s.boomShielded && Math.hypot(pcx - px2, pcy - py2) <= MK_T.boom.hitRadius + pr) {
       // ★v0.25.3591(監査 A-5「毬の円reachでカウンター可にする=打ち返す」): 毬は弾ではないので反射経路に
       // 乗らず、カウンター手段が1つも無かった。**毬の円**(=描いてある毬そのもの)で成立させる。
       if (tryMovingCounter(counterReachShapeFor(`bounty:${st}`, { bcx, bcy, pcx, pcy, ballX: px2, ballY: py2 }))) return;

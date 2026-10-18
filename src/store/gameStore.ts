@@ -356,7 +356,9 @@ import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
-import { footRect, rectsOverlap, resolveAabb, segmentBlocked, type Rect } from '../world/obstacles';
+import { footRect, rectsOverlap, resolveAabb, segmentBlocked, segmentIntersectsRect, type Rect } from '../world/obstacles';
+import { friendlyShieldRect, splitBeamAtShield, beamStripsHit, shieldBlocksArea, shieldBlocksLine, shieldContactPoint, type BeamShieldSplit, type BeamStrip } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md: シールドで技を防ぐ
+import { shieldGuardCostFor, shieldBeamDrainFor } from '../utils/shieldGuardCost'; // research/SHIELD_BLOCK.md §8: 盾の代償
 import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): 純関数(src/world/shieldPush.test.ts)
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
@@ -5767,6 +5769,18 @@ export interface PumpkinBlast {
    * 爆発・飛び道具・床・設置物には立てない(未指定=開かない=新しい技を足しても勝手には開かない)。
    */
   retaliate?: boolean;
+  /**
+   * research/SHIELD_BLOCK.md §1-1: 帯の起点=帯を作った瞬間の、攻撃した本人の中心。盾の「影」の判定源に使う。
+   * 未指定=帯の始点 `capsule.fx,fy`。円・扇・レーザーでは読まない。
+   */
+  origin?: { x: number; y: number };
+  /** research/SHIELD_BLOCK.md §1-1: レーザー扱いの帯(ジブリルの槍・巨人の三連射)。盾の所で光が終わる(壁)。 */
+  beam?: true;
+  /**
+   * research/SHIELD_BLOCK.md §8(光線の幅): 盾の影で割った後の帯の並び。combatTick が `beam` の帯を盾で割った時だけ書く(それ以外は未指定=capsule をそのまま使う)。
+   * 立っている間、プレイヤー・守護霊・英雄・軍人の当たりは capsule ではなくこの並びを読む。
+   */
+  strips?: BeamStrip[];
 }
 
 /**
@@ -5777,6 +5791,131 @@ export interface PumpkinBlast {
  */
 export const knockbackSpeedFor = (distancePx: number, ms: number): number =>
   (Math.max(0, distancePx) * 2) / Math.max(0.001, ms / 1000);
+
+/**
+ * research/SHIELD_BLOCK.md: いまある味方の盾(hostile でない)の矩形。無ければ null(=技の判定は1bitも変わらない)。
+ * 判定側(store/utils/useGameLoop)は技の当たりの前にこれを1回読む。引数省略=現在の store の projectiles。
+ */
+export const currentFriendlyShield = (projectiles?: readonly { weaponType?: string; hostile?: boolean; x: number; y: number; width: number; height: number }[]): Rect | null =>
+  friendlyShieldRect(projectiles ?? useGameStore.getState().projectiles);
+
+/** 盾が技を防いだ瞬間の演出の積み荷(useGameLoop が消化)。 */
+export interface ShieldGuardFxEntry {
+  /** 防いだ接点(光線が盾に入る点 / 刃が触れた点 / 攻撃した側の盾の面)。 */
+  x: number; y: number;
+  /** 攻撃の進む向き(単位・攻撃源→盾)。盾の押し戻しと火花の向きに使う。 */
+  dx: number; dy: number;
+  /** hit=範囲/帯/突進を防いだ単発 / beam=光線が当たり続けている(毎フレーム) / blade=飛ぶ刃が砕けた。 */
+  kind: 'hit' | 'beam' | 'blade' | 'tick';
+  /** beam のみ: 盾の面に沿う横向き(単位)。火花を左右へ散らす。 */
+  sx?: number; sy?: number;
+  /** blade のみ: 砕片の色。 */
+  color?: string;
+  /** 削れた耐久(演出の強さ・テスト用)。 */
+  cost: number;
+}
+
+/** noteShieldGuard への入力。攻撃者の型から耐久の削れ量を引く(cost で上書きも可)。 */
+export interface ShieldGuardInput {
+  /** 攻撃した敵の型(区分で削れ量が決まる。不明=0)。 */
+  attacker?: EnemyType | { type: EnemyType };
+  kind?: ShieldGuardFxEntry['kind'];
+  x?: number; y?: number; dx?: number; dy?: number; sx?: number; sy?: number;
+  color?: string;
+  /** 削れ量を直接指定(光線の毎フレームぶんなど)。省略=攻撃者の区分の表。 */
+  cost?: number;
+}
+// research/SHIELD_BLOCK.md §8: 継続技(g-quad/g-nova)が1回の技の中で既に耐久を削ったか(キー→最後に防いだ gameTime)。resetGame で空にする。
+const shieldChargedKeys = new Map<string, number>();
+const attackerTypeOf = (a: ShieldGuardInput['attacker']): EnemyType | undefined => (a === undefined ? undefined : typeof a === 'string' ? a : a.type);
+
+/**
+ * 盾が技を防いだ瞬間を記録する(research/SHIELD_BLOCK.md §2/§8)。
+ *  ① 防いだ区分に応じて盾の耐久を削る(ボス級の技=1回10 / 光線=毎秒10 / 強個体・雑魚=0)。0以下なら盾を消し、倒れる演出を積む。
+ *  ② 盾の「防いだ」押し戻し(shieldGuardAt/LastAt・向き)を書く。耐久の被弾フラッシュ(shieldHitAt)は書かない=赤く光らない。
+ *  ③ 演出を1件積む(接点つき)。消化は useGameLoop。列は最大12件(耐久の削りは列が満杯でも必ず効く)。
+ * 盾が無ければ何もしない。ボスの技は止めない(防いだ当たりが消えるだけ)。
+ */
+export const noteShieldGuard = (shield: Rect, g: ShieldGuardInput = {}): void => {
+  const scx = shield.x + shield.width / 2, scy = shield.y + shield.height / 2;
+  const cost = g.cost ?? shieldGuardCostFor(attackerTypeOf(g.attacker));
+  const entry: ShieldGuardFxEntry = {
+    x: g.x ?? scx, y: g.y ?? scy, dx: g.dx ?? 0, dy: g.dy ?? 1, kind: g.kind ?? 'hit',
+    ...(g.sx !== undefined ? { sx: g.sx, sy: g.sy } : {}), ...(g.color ? { color: g.color } : {}), cost,
+  };
+  const nowMs = Date.now();
+  useGameStore.setState(st => {
+    const idx = st.projectiles.findIndex(p => p.weaponType === 'shield' && p.hostile !== true);
+    if (idx < 0) return st;
+    const sp = st.projectiles[idx];
+    const nextHp = sp.shieldHp === undefined ? undefined : sp.shieldHp - cost;
+    const fx = st.shieldGuardFx.length >= 12 ? st.shieldGuardFx : [...st.shieldGuardFx, entry];
+    if (nextHp !== undefined && nextHp <= 0) {
+      // 耐久が尽きた: 盾を消す(次のフレームから壁は無い=光線は伸び、技は当たる)。倒れる演出は useGameLoop が既存の破壊と同じ形で出す。
+      return {
+        projectiles: st.projectiles.filter((_, i) => i !== idx),
+        shieldBreakFx: [...st.shieldBreakFx, { x: sp.x, y: sp.y, w: sp.width, h: sp.height }],
+        shieldGuardFx: fx,
+      };
+    }
+    const lastAt = sp.shieldGuardLastAt ?? -1e9;
+    const projectiles = st.projectiles.slice();
+    projectiles[idx] = {
+      ...sp,
+      ...(nextHp !== undefined && cost > 0 ? { shieldHp: nextHp } : {}),
+      // 押し戻しの1エピソード: 前回から 250ms 以上空いたら新しい始まり(光線の当たり続けは同じエピソードで保持)。
+      shieldGuardAt: nowMs - lastAt > 250 ? nowMs : (sp.shieldGuardAt ?? nowMs),
+      shieldGuardLastAt: nowMs,
+      ...(g.dx !== undefined || g.dy !== undefined ? { shieldGuardDirX: g.dx ?? 0, shieldGuardDirY: g.dy ?? 1 } : {}),
+    };
+    return { projectiles, shieldGuardFx: fx };
+  });
+};
+
+/** 判定源 (srcX,srcY) からプレイヤーへの当たりを防いだ、と記録する(接点=判定源→プレイヤーの線分が盾に入る点)。判定は呼び出し側が済ませている。 */
+export const noteShieldGuardFrom = (shield: Rect, srcX: number, srcY: number, attacker?: ShieldGuardInput['attacker']): void => {
+  const p = useGameStore.getState().player;
+  const cp = shieldContactPoint(srcX, srcY, p.x + p.width / 2, p.y + p.height / 2, shield);
+  noteShieldGuard(shield, { attacker, kind: 'hit', x: cp.x, y: cp.y, dx: cp.dx, dy: cp.dy });
+};
+
+/**
+ * 光線が盾に当たっている1フレーム(誰が後ろに居なくても): 毎秒10を dt で削り、接点の演出を積む。
+ * 1本につき1フレーム1回だけ呼ぶ(複数本は別々に削る)。split は splitBeamAtShield の結果。
+ */
+export const noteShieldBeam = (shield: Rect, split: BeamShieldSplit, dtSec: number, attacker?: EnemyType | { type: EnemyType }): void => {
+  const c = split.contact;
+  const t = attackerTypeOf(attacker);
+  noteShieldGuard(shield, {
+    kind: 'beam', x: c.x, y: c.y, dx: c.ux, dy: c.uy, sx: c.sx, sy: c.sy,
+    cost: t === undefined ? shieldBeamDrainFor('mimir', dtSec) : shieldBeamDrainFor(t, dtSec),
+  });
+};
+
+/**
+ * research/SHIELD_BLOCK.md §1: 判定源 (srcX,srcY) からの当たりを、味方の盾が防ぐか(いまの store のプレイヤーに対して)。
+ * 防いだら演出を1件積んで true を返す(攻撃者の区分で耐久も削る)。盾が無ければ何もせず false(=素通り・1bitも変わらない)。
+ * 呼び出し側は「範囲に入った」が真になった後で、カウンター/パリィの分岐より前に呼び、true なら当たりの分岐へ入らない。
+ *   Area = 円・扇(影 かつ 盾から 40px 以内) / Line = 帯・突進(影だけ)。attacker=攻撃した敵(型)。
+ */
+export const shieldGuardsPlayerArea = (srcX: number, srcY: number, attacker?: ShieldGuardInput['attacker']): boolean =>
+  guardsPlayer(srcX, srcY, attacker, shieldBlocksArea);
+export const shieldGuardsPlayerLine = (srcX: number, srcY: number, attacker?: ShieldGuardInput['attacker']): boolean =>
+  guardsPlayer(srcX, srcY, attacker, shieldBlocksLine);
+const guardsPlayer = (
+  srcX: number, srcY: number, attacker: ShieldGuardInput['attacker'],
+  test: (sx: number, sy: number, target: Rect, shield: Rect | null) => boolean,
+): boolean => {
+  const st = useGameStore.getState();
+  const sh = friendlyShieldRect(st.projectiles);
+  if (!sh) return false;
+  const p = st.player;
+  const pr: Rect = { x: p.x, y: p.y, width: p.width, height: p.height };
+  if (!test(srcX, srcY, pr, sh)) return false;
+  const cp = shieldContactPoint(srcX, srcY, p.x + p.width / 2, p.y + p.height / 2, sh);
+  noteShieldGuard(sh, { attacker, kind: 'hit', x: cp.x, y: cp.y, dx: cp.dx, dy: cp.dy });
+  return true;
+};
 
 // 社長指示v0.25.3300 オーバークロック覚醒(Lv3): リセット(proc)成立時に構えている銃も即クイックリロード
 // (リザーブから瞬時に満タン装填。リロード中だったら完了扱いで解除)。リザーブが空なら何も起きない。
@@ -5959,6 +6098,11 @@ interface GameState {
   thrownBags: ThrownBag[];
   // ジャンプ/ダッシュが設置シールドに防がれた瞬間(その frame の接触点)。useGameLoop が消化(衝突FX+SE)して空に戻す。
   shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[];
+  // research/SHIELD_BLOCK.md §2: 盾が技(範囲攻撃・帯・光線・飛ぶ刃)を防いだ瞬間の盾の中心。useGameLoop が消化(小さな火花+SE・250msに1回)して空に戻す。
+  // 重い shieldBlocks(heavy-impact・画面揺れ)とは別の軽い列。
+  shieldGuardFx: ShieldGuardFxEntry[];
+  // research/SHIELD_BLOCK.md §8: 耐久が尽きて消えた盾の位置(倒れる演出の積み荷)。useGameLoop が既存の破壊と同じ形で出して空に戻す。
+  shieldBreakFx: { x: number; y: number; w: number; h: number }[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
   // フレアガンのCD明け演出(頭上の小さな炎マーク・一瞬)の発火時刻(Date.now)。
   // サブウェポンのチャージ通知は全共通で「明けた瞬間だけ一瞬出る」ブーメラン型(社長指示v0.25.2155)。
@@ -7304,6 +7448,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   enemies: [],
   pumpkinBlasts: [],
   shieldBlocks: [],
+  shieldGuardFx: [],
+  shieldBreakFx: [],
   skadiIceMarkers: [],
   skadiIceBlades: [],
   groundFires: [],
@@ -9833,6 +9979,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (Math.hypot(pcx - ccx, pcy - ccy) > meleeRange) return;
     const walls = meleeWallsAround(get, ccx, ccy, meleeRange);
     if (walls.length > 0 && segmentBlocked(ccx, ccy, pcx, pcy, walls)) return;
+    // research/SHIELD_BLOCK.md §1(円): 分身の中心から見て盾の影、かつ盾から 40px 以内なら防ぐ(守護霊・英雄は上の thirdPartyHook で従来どおり)。
+    const cloneShield = currentFriendlyShield(st.projectiles);
+    if (cloneShield && shieldBlocksArea(ccx, ccy, { x: player.x, y: player.y, width: player.width, height: player.height }, cloneShield)) { noteShieldGuardFrom(cloneShield, ccx, ccy, 'guardian-phantom'); return; }
     const hpBefore = player.health;
     get().damagePlayer(dmg, `${phantomDisplayLabel()}の分身`, ccx, ccy, undefined, undefined, undefined, undefined, undefined, { type: 'guardian-phantom' }); // 末尾=倒した相手の記録(死因の絵と名)
     const landed = get().player.health < hpBefore;
@@ -14148,6 +14297,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     let loggerSweepFired = false; // PACING_PUZZLE.md §14-2④: 発動音はdrillerと同系流用(thor-thrust)
     const glenVolleyFires: string[] = []; // v0.25.3027: グレン第二形態の胴体弾(パーツV字斉射)。post-set で発射。
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
+    // research/SHIELD_BLOCK.md §1-2/§8: 盾が巨人の継続技(g-quad/g-nova/g-sweepbeam)・飛ぶ刃を防いだ記録(set 後に消化。set 内は再入 set 禁止)。
+    // once=技の1回ぶんの重複キー(同じ技が毎フレーム防がれても耐久は1回だけ削る) / beam=光線(毎フレーム dt で削る)。
+    const shieldGuardHits: { shield: Rect; type: EnemyType | undefined; srcX: number; srcY: number; once?: string; beam?: BeamShieldSplit; blade?: { x: number; y: number; dx: number; dy: number; color: string } }[] = [];
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
     const punisherContacts: { x: number; y: number }[] = []; // v0.25.3299: 一拍目(接触)のFX用座標
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
@@ -14167,6 +14319,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // set の中で読む=引き継ぎ元は必ず最新の state(get()のタイミングずれを作らない)。
       pumpkinBlasts.push(...state.pumpkinBlasts);
       const { enemies, player, gameTime, breakableProps, summons, rescueSurvivors } = state;
+      // research/SHIELD_BLOCK.md: 味方の盾(最大1枚)。無ければ null=巨人の継続技の判定は1bitも変わらない。
+      const friendlyShield = currentFriendlyShield(state.projectiles);
+      const shieldPlayerRect = { x: player.x, y: player.y, width: player.width, height: player.height };
       // フレアガン(§6.6 M29): 着弾中のフレアを疑似召喚として敵ターゲット解決へ合流
       // (召喚と完全に同じ効き方=専用ヘイト機構なし)。ループ外で一度だけ合成する。
       const flareTargets = state.flareGunFlares.length > 0 ? activeFlareTargets(state.flareGunFlares, gameTime) : [];
@@ -14820,7 +14975,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (dueHits.length > 0) {
               for (const h of dueHits) {
                 // v0.25.3126: 遅延起爆ごとのダメージ上書き(未設定=従来どおり enemy.damage)。
-                pumpkinBlasts.push({ x: h.x, y: h.y, radius: h.radius, damage: h.damage ?? enemy.damage, enemyId: enemy.id, ice: h.ice, capsule: h.capsule, moveKey: h.moveKey });
+                pumpkinBlasts.push({ x: h.x, y: h.y, radius: h.radius, damage: h.damage ?? enemy.damage, enemyId: enemy.id, ice: h.ice, capsule: h.capsule, moveKey: h.moveKey, ...(h.origin ? { origin: h.origin } : {}), ...(h.beam ? { beam: true as const } : {}) }); // origin/beam=research/SHIELD_BLOCK.md §1-1(帯の起点/レーザー扱い)を書き写す
                 // v0.25.3074(社長指示「キラキラ粉塵爆発!」): 氷が砕ける瞬間、凝縮しきったキラキラが
                 // 一気に外へ散る。√乱数で円内に均等分布させる(中心に固まらない)。
                 if (h.ice) {
@@ -15324,6 +15479,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: GIANT_SWEEP_HALF_WIDTH,
                   damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-sweep', retaliate: true, // 被弾反撃の対象(城ボスの近接)
                   capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SWEEP_HALF_WIDTH },
+                  origin: { x: ecx, y: ecy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=作った瞬間の本人の中心
                 });
                 settleGiantHabit('g-sweep-windup', {
                   aiFromX: sfx, aiFromY: sfy, aiTargetX: stx, aiTargetY: sty,
@@ -15559,6 +15715,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   x: (bfx + btx) / 2, y: (bfy + bty) / 2, radius: GIANT_BITE_HALF_WIDTH,
                   damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-bite', retaliate: true, // 被弾反撃の対象(城ボスの近接)
                   capsule: { fx: bfx, fy: bfy, tx: btx, ty: bty, halfWidth: GIANT_BITE_HALF_WIDTH },
+                  origin: { x: ecx, y: ecy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=作った瞬間の本人の中心
                 });
                 return { ...enemy, ...phaseFields, vx: 0, vy: 0, aiPhase: 'g-bite-active', aiPhaseUntil: atkUntil(GIANT_BITE_ACTIVE_MS) };
               }
@@ -15586,6 +15743,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: GIANT_SLAM_HALF_WIDTH,
                   damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-slam', retaliate: true, // 被弾反撃の対象(城ボスの近接)
                   capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: GIANT_SLAM_HALF_WIDTH },
+                  origin: { x: ecx, y: ecy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=作った瞬間の本人の中心
                 });
                 settleGiantHabit('g-slam-windup', {
                   aiFromX: sfx, aiFromY: sfy, aiTargetX: stx, aiTargetY: sty,
@@ -15621,6 +15779,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     fx: gfx + enemy.width / 2, fy: gfy + enemy.height / 2,
                     tx: gtx + enemy.width / 2, ty: gty + enemy.height / 2, halfWidth: GIANT_GLIDE_HALF_WIDTH,
                   },
+                  origin: { x: ecx, y: ecy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=滑空の出発点(実際に飛び出す位置=この瞬間の本人の中心)。終点ではない
                 });
                 settleGiantHabit('g-glide-windup', {
                   aiFromX: gfx + enemy.width / 2, aiFromY: gfy + enemy.height / 2,
@@ -15837,8 +15996,10 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 同じ帯で守護霊と英雄にも(プレイヤーの1回だけの掛け金 giantActiveHit とは独立。英雄は700ms間引き)。
               thirdPartyHits.push({ shape: { kind: 'capsule', fx: bfx, fy: bfy, tx: farX, ty: farY, hw: GIANT_QUAD_BREATH_HALF_WIDTH }, dmg: enemy.damage, src: enemy.id, key: 'g-quad' });
               const playerR = Math.max(player.width, player.height) / 2;
-              const hitNow = !enemy.giantActiveHit &&
+              let hitNow = !enemy.giantActiveHit &&
                 distToBandRect({ x: pcx, y: pcy }, { x: bfx, y: bfy }, { x: farX, y: farY }, GIANT_QUAD_BREATH_HALF_WIDTH) <= playerR;
+              // research/SHIELD_BLOCK.md §1-2: 帯(起点 bfx,bfy)の影に居れば防ぐ。防いだフレームは掛け金(giantActiveHit)を立てない=陰から出たらまた当たりうる。
+              if (hitNow && friendlyShield && shieldBlocksLine(bfx, bfy, shieldPlayerRect, friendlyShield)) { hitNow = false; shieldGuardHits.push({ shield: friendlyShield, type: enemy.type, srcX: bfx, srcY: bfy, once: `${enemy.id}:g-quad:${enemy.aiStartedAt ?? 0}` }); }
               if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-quad' });
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 // 薙いだ跡に遅延起爆の氷を3つ(固定・学習装置①)。スカジの氷ハザード配管(pumpkinBlastsの
@@ -15931,7 +16092,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                 shape: { kind: 'test', hits: (hx, hy, hr) => Math.abs(Math.hypot(hx - ecx, hy - ecy) - curR) <= GIANT_NOVA_BAND_THICKNESS + hr, fx: ecx, fy: ecy },
                 dmg: enemy.damage, src: enemy.id, key: 'g-nova',
               });
-              const hitNow = !enemy.giantActiveHit && Math.abs(pdist - curR) <= GIANT_NOVA_BAND_THICKNESS + playerR;
+              let hitNow = !enemy.giantActiveHit && Math.abs(pdist - curR) <= GIANT_NOVA_BAND_THICKNESS + playerR;
+              // research/SHIELD_BLOCK.md §1-2: 円(中心 ecx,ecy)=影 かつ 盾から 40px 以内で防ぐ。防いだフレームは掛け金を立てない。
+              if (hitNow && friendlyShield && shieldBlocksArea(ecx, ecy, shieldPlayerRect, friendlyShield)) { hitNow = false; shieldGuardHits.push({ shield: friendlyShield, type: enemy.type, srcX: ecx, srcY: ecy, once: `${enemy.id}:g-nova:${enemy.aiStartedAt ?? 0}` }); }
               if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-nova' });
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
@@ -15964,11 +16127,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                 const rightTx = tfx + rightX * GIANT_TRISHOT_LENGTH, rightTy = tfy + rightY * GIANT_TRISHOT_LENGTH;
                 pumpkinBlasts.push({
                   x: (tfx + leftTx) / 2, y: (tfy + leftTy) / 2, radius: GIANT_TRISHOT_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-trishot',
-                  capsule: { fx: tfx, fy: tfy, tx: leftTx, ty: leftTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
+                  capsule: { fx: tfx, fy: tfy, tx: leftTx, ty: leftTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH }, beam: true, // research/SHIELD_BLOCK.md: 光線=盾が壁
                 });
                 pumpkinBlasts.push({
                   x: (tfx + rightTx) / 2, y: (tfy + rightTy) / 2, radius: GIANT_TRISHOT_HALF_WIDTH, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-trishot',
-                  capsule: { fx: tfx, fy: tfy, tx: rightTx, ty: rightTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
+                  capsule: { fx: tfx, fy: tfy, tx: rightTx, ty: rightTy, halfWidth: GIANT_TRISHOT_HALF_WIDTH }, beam: true, // research/SHIELD_BLOCK.md: 光線=盾が壁
                 });
                 settleGiantHabit('g-trishot-windup', {
                   aiFromX: tfx, aiFromY: tfy, aiTargetX: ttx, aiTargetY: tty,
@@ -15981,7 +16144,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   giantDelayedHits: [...(giantDelayedHits ?? []), {
                     x: (tfx + ttx) / 2, y: (tfy + tty) / 2, radius: GIANT_TRISHOT_HALF_WIDTH, bornAt: gameTime, fireAt: atkUntil(GIANT_TRISHOT_THIRD_DELAY_MS),
                     capsule: { fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: GIANT_TRISHOT_HALF_WIDTH },
-                    moveKey: 'g-trishot',
+                    moveKey: 'g-trishot', beam: true, // 三拍目も光線(盾が壁)。pumpkinBlasts への書き写しで beam を引き継ぐ
                   }],
                 };
               }
@@ -16060,11 +16223,20 @@ export const useGameStore = create<GameState>((set, get) => ({
               const nearX = sbfx + Math.cos(curAngle) * GIANT_SWEEPBEAM_INNER_RADIUS, nearY = sbfy + Math.sin(curAngle) * GIANT_SWEEPBEAM_INNER_RADIUS;
               const farX = sbfx + Math.cos(curAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH),
                 farY = sbfy + Math.sin(curAngle) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH);
+              // research/SHIELD_BLOCK.md §2/§8(レーザー=壁・光線の幅): 光線(回転の中心 sbfx,sbfy から 懐 を空けて伸びる)を盾の影で割る。
+              // 影の中央の帯は盾の面で止まり(懐の中で止まれば無し)、影の外の縁は全長のまま。割った帯の並びをプレイヤー・守護霊・英雄の全員に使う
+              // (絵も pixiScene が同じ splitBeamAtShield で割る)。盾が無ければ元の1本。後ろに誰も居なくても毎秒10削れる(消化側)。
+              const sbSplit = friendlyShield
+                ? splitBeamAtShield(sbfx, sbfy, farX, farY, GIANT_SWEEPBEAM_HALF_WIDTH, friendlyShield, true, GIANT_SWEEPBEAM_INNER_RADIUS)
+                : null;
+              if (sbSplit && friendlyShield) shieldGuardHits.push({ shield: friendlyShield, type: enemy.type, srcX: sbfx, srcY: sbfy, beam: sbSplit });
+              const sbStrips: BeamStrip[] = sbSplit
+                ? sbSplit.strips
+                : [{ fx: nearX, fy: nearY, tx: farX, ty: farY, halfWidth: GIANT_SWEEPBEAM_HALF_WIDTH }];
               // 同じ帯で守護霊と英雄にも(giantActiveHit とは独立)。
-              thirdPartyHits.push({ shape: { kind: 'capsule', fx: nearX, fy: nearY, tx: farX, ty: farY, hw: GIANT_SWEEPBEAM_HALF_WIDTH }, dmg: enemy.damage, src: enemy.id, key: 'g-sweepbeam' });
+              for (const sg of sbStrips) thirdPartyHits.push({ shape: { kind: 'capsule', fx: sg.fx, fy: sg.fy, tx: sg.tx, ty: sg.ty, hw: sg.halfWidth }, dmg: enemy.damage, src: enemy.id, key: 'g-sweepbeam' });
               const playerR = Math.max(player.width, player.height) / 2;
-              const hitNow = !enemy.giantActiveHit &&
-                distToBandRect({ x: pcx, y: pcy }, { x: nearX, y: nearY }, { x: farX, y: farY }, GIANT_SWEEPBEAM_HALF_WIDTH) <= playerR;
+              const hitNow = !enemy.giantActiveHit && beamStripsHit(sbStrips, pcx, pcy, playerR, true);
               if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-sweepbeam' });
               if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
@@ -16153,6 +16325,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     x: (ecx + tx) / 2, y: (ecy + ty) / 2, radius: GLEN_REACH_HALF_WIDTH,
                     damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-reach',
                     capsule: { fx: ecx, fy: ecy, tx, ty, halfWidth: GLEN_REACH_HALF_WIDTH },
+                    origin: { x: ecx, y: ecy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=作った瞬間の本人の中心
                   });
                   // ★検収是正(中2): 判定を積んだ瞬間の帯(始点/終点)を本ごとに保持する
                   // (満了時に「最後の1本」だけでなく全本をsettleEpisodeへ渡すため)。
@@ -16246,6 +16419,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                   x: (tfx + ttx) / 2, y: (tfy + tty) / 2, radius: GLEN_TAILSLAM_HALF_WIDTH,
                   damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-tailslam', retaliate: true, // 被弾反撃の対象(城ボスの近接)
                   capsule: { fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: GLEN_TAILSLAM_HALF_WIDTH },
+                  origin: { x: ecx, y: ecy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=作った瞬間の本人の中心
                 });
                 settleGiantHabit('g-tailslam-windup', {
                   aiFromX: tfx, aiFromY: tfy, aiTargetX: ttx, aiTargetY: tty,
@@ -17477,6 +17651,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 x: (tfx + ttx) / 2, y: (tfy + tty) / 2, radius: DRILLER_THRUST_HALF_WIDTH,
                 damage: enemy.damage, enemyId: enemy.id, moveKey: 'driller-thrust', retaliate: true, // 被弾反撃の対象(近接の突き)
                 capsule: { fx: tfx, fy: tfy, tx: ttx, ty: tty, halfWidth: DRILLER_THRUST_HALF_WIDTH },
+                origin: { x: ecx, y: ecy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=作った瞬間の本人の中心
               });
               drillerThrustFired = true; // post-set SE(thor-thrust)
               return { ...enemy, vx: 0, vy: 0, aiPhase: 'driller-thrust-active', aiPhaseUntil: atkUntil(DRILLER_THRUST_ACTIVE_MS) };
@@ -17570,6 +17745,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 x: (sfx + stx) / 2, y: (sfy + sty) / 2, radius: LOGGER_SWEEP_HALF_WIDTH,
                 damage: enemy.damage, enemyId: enemy.id, moveKey: 'logger-sweep', retaliate: true, // 被弾反撃の対象(近接の薙ぎ)
                 capsule: { fx: sfx, fy: sfy, tx: stx, ty: sty, halfWidth: LOGGER_SWEEP_HALF_WIDTH },
+                origin: { x: ecx, y: ecy }, // research/SHIELD_BLOCK.md §1-1: 帯の起点=作った瞬間の本人の中心
               });
               loggerSweepFired = true; // post-set SE(thor-thrust=driller同系流用・§14-2④)
               return { ...enemy, vx: 0, vy: 0, aiPhase: 'logger-sweep-active', aiPhaseUntil: atkUntil(LOGGER_SWEEP_ACTIVE_MS) };
@@ -17847,6 +18023,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         .filter(b => {
           if (!b.launched) return true;
           if (gameTime >= b.expireAt) return false;
+          // research/SHIELD_BLOCK.md §1/§2(飛ぶ物): 味方の盾の矩形に触れた刃は敵弾と同じく消える(氷刃・骨刃・フィルの羽根=この列を共用)。
+          // 刃の命中半径ぶん広げた矩形に対し、前フレームの位置→今の位置の線分で見る(すり抜け防止)。ダメージ・パリィ・爆発は起きない。
+          if (friendlyShield) {
+            const hr = SKADI_BLADE_HIT;
+            const grown = { x: friendlyShield.x - hr, y: friendlyShield.y - hr, width: friendlyShield.width + hr * 2, height: friendlyShield.height + hr * 2 };
+            if (segmentIntersectsRect(b.x - b.vx * deltaTime, b.y - b.vy * deltaTime, b.x, b.y, grown)) {
+              // 接点=刃の進行線が盾の矩形に入る点(砕片をそこで散らす)。耐久=持ち主の区分(ボス級の刃=1枚10 / 雑魚の刃=0)。
+              const bl = Math.hypot(b.vx, b.vy) || 1;
+              const cp = shieldContactPoint(b.x - b.vx * deltaTime, b.y - b.vy * deltaTime, b.x, b.y, friendlyShield);
+              const ownerType = enemies.find(e => e.id === b.enemyId)?.type;
+              shieldGuardHits.push({ shield: friendlyShield, type: ownerType, srcX: b.x, srcY: b.y,
+                blade: { x: cp.x, y: cp.y, dx: b.vx / bl, dy: b.vy / bl, color: b.visual === 'bone' ? '#e7e5e4' : b.visual === 'feather' ? '#fde68a' : '#bfe6ff' } });
+              return false;
+            }
+          }
           const d = Math.hypot(pcx - b.x, pcy - b.y);
           // ★v0.25.3591(社長指示「これはカウンターしても体勢値は削るけど、ダメージは入らないように
           // して」/「同じく氷刃も」): 飛んでくる刃を弾いた時の**反撃HPダメージだけ0**にする
@@ -17927,6 +18118,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     // research/MUTANT_HERO.md §4-2: set 後に守護霊・英雄へ当てる(積んだ分だけ=毎フレーム数件)。
     if (thirdPartyHits.length > 0) for (const h of thirdPartyHits) thirdPartyHook?.(h.shape, h.dmg, h.src, h.key);
+    // research/SHIELD_BLOCK.md §2/§8: 防いだ記録を消化(耐久を削り、接点の演出を積む)。光線は毎フレーム dt で削る。継続技は1回の技で1度だけ削る。
+    const stNow = shieldGuardHits.length > 0 ? get() : null;
+    const gameTimeNow = stNow ? stNow.gameTime : 0;
+    const pcxNow = stNow ? stNow.player.x + stNow.player.width / 2 : 0, pcyNow = stNow ? stNow.player.y + stNow.player.height / 2 : 0;
+    for (const h of shieldGuardHits) {
+      if (h.beam) { noteShieldBeam(h.shield, h.beam, deltaTime, h.type); continue; }
+      if (h.blade) { noteShieldGuard(h.shield, { attacker: h.type, kind: 'blade', x: h.blade.x, y: h.blade.y, dx: h.blade.dx, dy: h.blade.dy, color: h.blade.color }); continue; }
+      let cost: number | undefined;
+      let kind: ShieldGuardFxEntry['kind'] = 'hit';
+      if (h.once !== undefined) {
+        const last = shieldChargedKeys.get(h.once);
+        if (last !== undefined && gameTimeNow - last < 300) continue; // 同じ技の続き: 何もしない(毎フレーム積まない)
+        if (last !== undefined) { cost = 0; kind = 'tick'; } // 継続中の防ぎ: 耐久は削らず、小さな火花だけ
+        shieldChargedKeys.set(h.once, gameTimeNow);
+        if (shieldChargedKeys.size > 48) for (const k of [...shieldChargedKeys.keys()].slice(0, 24)) shieldChargedKeys.delete(k);
+      }
+      const cp = shieldContactPoint(h.srcX, h.srcY, pcxNow, pcyNow, h.shield);
+      noteShieldGuard(h.shield, { attacker: h.type, kind, x: cp.x, y: cp.y, dx: cp.dx, dy: cp.dy, ...(cost !== undefined ? { cost } : {}) });
+    }
     // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)+設計チャットの追補: ボス突入スナップショット
     // (装備スキル/Lv/プレイヤーLv/装備スロット別Tier+系統+特殊フラグ/straps)。イベント時のみ
     // (per-frame走査ではない=この呼び出し自体が「交戦フラグが立った1フレーム」でしか起きない)。
@@ -21848,6 +22058,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   resetGame: (characterClass) => {
+    shieldChargedKeys.clear(); // research/SHIELD_BLOCK.md §8: 継続技の「削った」記録を捨てる
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)
     resetMapSightings(); // 一時停止の地図の「出会った敵」は出撃ごと(THEONE_ROUND2 §2-3)
@@ -22470,6 +22681,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         enemies: runEnemies,
         pickups: runPickups,
         projectiles: [],
+        shieldGuardFx: [],
+        shieldBreakFx: [],
         skadiIceMarkers: [],
         skadiIceBlades: [],
         homingLocks: [],
