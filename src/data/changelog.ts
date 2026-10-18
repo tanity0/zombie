@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5126', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5125', items: [
     'シールドの後ろに隠れると、敵の技を防げるようになった。爆発や着地の衝撃は盾のすぐ後ろだけ、突きや突進は盾の後ろならどこでも防げる',
     'レーザーは盾で止まる。ただし盾より太い光は、はみ出した所が後ろへ抜ける',
