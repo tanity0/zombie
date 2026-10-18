@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5137', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5136', items: [
     '歩き続けても、敵のいない時間が長く続かない。後ろに置いてきた敵は、進む先から現れる',
     '休憩の時間にも、コウモリと骸骨がぽつぽつ出る',
