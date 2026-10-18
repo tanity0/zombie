@@ -220,7 +220,10 @@ export const chaffWeightsForKoma = (kind: KomaKind4): ChaffWeights => {
  * 赤だけを落とし、青・紫は残す(社長指示は「赤い強個体敵は出ない」)。実装は抽選側で赤の帯を
  * 0にするだけなので、赤に当たっていたぶんは**無色**へ落ちる=盤面数・湧きCDには一切触らない。
  */
-export const noRedTierForKoma = (kind: KomaKind4): boolean => kind === 'harvest';
+//
+// ★リラックスも赤を出さない(社長指示2026-10-18「敵出現は推薦でなおして」): リラックスは弱い雑魚が
+// ぽつぽつ出るコマになった(chaffTargetForKoma)ので、休憩中に赤が混ざらないよう同じく赤の帯を外す。
+export const noRedTierForKoma = (kind: KomaKind4): boolean => kind === 'harvest' || kind === 'relax';
 
 // チャフ目標(§4-C・上限capに対する比率)。リラックス40%/ハーベスト100%/通常50%/ピーク100%。
 export const chaffTargetForKoma = (kind: KomaKind4, cap: number): number => {
@@ -229,10 +232,24 @@ export const chaffTargetForKoma = (kind: KomaKind4, cap: number): number => {
   // これでリラックスは「ピークで残った敵を自然に消化するだけの40秒」になる。
   // 収入(経験値/スクラップ)の心配は不要——**直後のハーベストが満量・最速**で稼ぐコマだから
   // (休む40秒 → 稼ぐ40秒、と役割が分かれる)。
-  if (kind === 'relax') return Math.round(cap * 0.1);
+  // ★v0.25.3529 の「ほぼ沸かない(cap×0.1=1体)」は、社長指示2026-10-18「敵の出現ゼロの時間はやめよう。
+  // 暇だわ。1:ゼロではなく少しは出る」で **3体**(cap×0.3・上限3)へ。顔ぶれはバット・スケルトンだけ
+  // (chaffWeightsForKoma の 6:4:0)・赤なし(noRedTierForKoma)・邪魔者/特別枠なし・湧き間隔×2(cdForKoma)
+  // は従来どおり=「休む40秒」のまま、弱い雑魚をぽつぽつ刈れる。
+  // ★ボス交戦中の強制リラックスはこの値を使わない(bossRelaxChaffTarget=従来の1体のまま)。
+  if (kind === 'relax') return Math.min(RELAX_CHAFF_TARGET_MAX, Math.round(cap * 0.3));
   if (kind === 'normal') return Math.round(cap * 0.5);
   return cap; // harvest / peak = 満量
 };
+
+/** リラックスのコマのチャフ目標の上限(社長指示2026-10-18「1→3体」)。 */
+export const RELAX_CHAFF_TARGET_MAX = 3;
+
+/**
+ * ボス交戦中の強制リラックス(社長裁定v0.25.2412)のチャフ目標。**従来の cap×0.1(=1体)のまま**。
+ * リラックスのコマを3体にした(2026-10-18)時に、ボス戦の「1対1」まで盛らないよう分けた。
+ */
+export const bossRelaxChaffTarget = (cap: number): number => Math.round(cap * 0.1);
 
 /**
  * ★ピークの「赤い個体1体」(社長裁定 v0.25.3546「①の1は入れていい」)。

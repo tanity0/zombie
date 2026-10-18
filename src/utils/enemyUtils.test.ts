@@ -693,12 +693,17 @@ describe('spawnEnemyAtWithTier (§17-12・forcedColorTierをForcedColorTierへ�
 // research/PC_SUPPORT.md 段2「左右の湧く距離」: スマホは均等のまま(1つも変えない)・PC は近い辺から多く。
 import { spawnSideFromRoll as sideFromRoll } from './enemyUtils';
 describe('湧く辺(spawnSideFromRoll)', () => {
-  it('縦持ち(スマホ)は従来の floor(roll*4) と全ての乱数で一致', () => {
+  it('縦持ち(スマホ)は上15%・右/下/左 各約28.3%(案④・2026-10-18。並びは上→右→下→左)', () => {
     for (const [w, h] of [[405, 878], [405, 720], [540, 720]]) {
-      for (let i = 0; i < 1000; i++) {
-        const r = i / 1000;
-        expect(sideFromRoll(r, w, h)).toBe(Math.floor(r * 4));
-      }
+      const n = [0, 0, 0, 0];
+      for (let i = 0; i < 10000; i++) n[sideFromRoll(i / 10000, w, h)]++;
+      expect(n[0] / 10000).toBeCloseTo(0.15, 3);
+      for (const k of [1, 2, 3]) expect(n[k] / 10000).toBeCloseTo(0.85 / 3, 2);
+      // 並び(乱数が小さい順に 上→右→下→左)
+      expect(sideFromRoll(0, w, h)).toBe(0);
+      expect(sideFromRoll(0.16, w, h)).toBe(1);
+      expect(sideFromRoll(0.5, w, h)).toBe(2);
+      expect(sideFromRoll(0.99, w, h)).toBe(3);
     }
   });
   it('横長(PC 1280×720)は辺までの距離に反比例(上下が多く・左右が少ない)', () => {

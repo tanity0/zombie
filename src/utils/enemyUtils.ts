@@ -987,14 +987,24 @@ const buildEnemy = (
 // continuous spawner and the wave/elite spawner.
 /**
  * 湧く辺(0=上 / 1=右 / 2=下 / 3=左)を乱数1本から決める(research/PC_SUPPORT.md 段2・★未決 #PC-1「左右の湧く距離」)。
- * - 縦持ち(幅 ≤ 高さ)=**従来どおり4辺均等**(`floor(roll*4)` と完全に同じ=スマホは1つも変わらない)。
+ * - 縦持ち(幅 ≤ 高さ)=**上15%・右/下/左 各約28.3%**(社長指示2026-10-18「敵出現は推薦でなおして」の案④)。
+ *   上の辺の外から湧いた敵は、画面の上の遠景の帯(地平線のフェード)を歩く間は透けて見えないため、上を減らして
+ *   見える辺から来る敵を増やす(旧: 4辺均等=floor(roll*4))。歩く向きへの寄せ(spawnWalkBias)・通路は従来どおり上書きする。
  * - 横長(PC)=辺までの距離に反比例の重み。PC(1280×720)は左右の湧く距離が約780・上下が約500で、均等だと左右から来る敵は
  *   着くまで1.5倍かかり、左右の道中に敵が溜まる(=広い画面で遠くから眺めている時間が長い)。割合を道のりに反比例させて
  *   「歩いて来る途中の数」(割合×道のり)を4辺で揃える(上下 約3割ずつ・左右 約2割ずつ)。
  */
+/** 縦持ちで上の辺の外から湧く割合(案④・2026-10-18。旧0.25=4辺均等)。 */
+export const PORTRAIT_SPAWN_TOP_RATIO = 0.15;
 export const spawnSideFromRoll = (roll: number, viewportW: number, viewportH: number, margin = OFFSCREEN_SPAWN_MARGIN): number => {
   const r = Math.min(0.999999, Math.max(0, roll));
-  if (!(viewportW > viewportH)) return Math.floor(r * 4);
+  if (!(viewportW > viewportH)) {
+    // 並びは 上 → 右 → 下 → 左(従来の 0..3 の順)。上だけ PORTRAIT_SPAWN_TOP_RATIO、残りを3辺で均等に。
+    const rest = (1 - PORTRAIT_SPAWN_TOP_RATIO) / 3;
+    return r < PORTRAIT_SPAWN_TOP_RATIO ? 0
+      : r < PORTRAIT_SPAWN_TOP_RATIO + rest ? 1
+        : r < PORTRAIT_SPAWN_TOP_RATIO + rest * 2 ? 2 : 3;
+  }
   const wTB = 1 / (viewportH / 2 + margin); // 上・下
   const wLR = 1 / (viewportW / 2 + margin); // 左・右
   const total = 2 * wTB + 2 * wLR;

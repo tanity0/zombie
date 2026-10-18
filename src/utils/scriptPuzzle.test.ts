@@ -7,6 +7,7 @@ import {
   peakRedTier,
   nextKomaKind, KOMA_ORDER, KOMA_START_KIND, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
   chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp, noRedTierForKoma,
+  bossRelaxChaffTarget, RELAX_CHAFF_TARGET_MAX,
   isScriptCleared, selectRotationPattern, LOWER_MIX_CHANCE, LOWER_MIX_CHANCE_HIT,
   ZERO_NUISANCE, type NuisanceCounts,
 } from './scriptPuzzle';
@@ -197,9 +198,9 @@ describe('M6 §4-C: 4コマサイクル', () => {
     expect(nextKomaKind('normal')).toBe('peak');
     expect(nextKomaKind('peak')).toBe('relax');
     expect(nextKomaKind('relax')).toBe('harvest');
-    // 開始コマの目標がチャフ満量であること(緩=cap*0.1 ではない)
+    // 開始コマの目標がチャフ満量であること(緩=3体 ではない)
     expect(chaffTargetForKoma(KOMA_START_KIND, 10)).toBe(10);
-    expect(chaffTargetForKoma('relax', 10)).toBe(1);
+    expect(chaffTargetForKoma('relax', 10)).toBe(3);
   });
 
   it('KOMA_ORDER is relax→harvest→normal→peak, and nextKomaKind cycles it', () => {
@@ -224,7 +225,10 @@ describe('M6 §4-C: 4コマサイクル', () => {
 
   it('chaff targets per koma: relax 10% / normal 50% / harvest・peak 100% of the cap', () => {
     // v0.25.3529(社長指示「リラックスは敵ほぼ沸かない」): 緩=0.4→0.1。
-    expect(chaffTargetForKoma('relax', 10)).toBe(1);
+    // 2026-10-18(社長「敵の出現ゼロの時間はやめよう」→推薦で): 緩=3体(cap×0.3・上限3)。
+    expect(chaffTargetForKoma('relax', 10)).toBe(3);
+    expect(chaffTargetForKoma('relax', 20)).toBe(3); // R7で上限が伸びても3体まで
+    expect(chaffTargetForKoma('relax', 9)).toBe(3);  // RELAXの上限×0.85(=9)が重なっても3体
     expect(chaffTargetForKoma('normal', 10)).toBe(5);
     expect(chaffTargetForKoma('harvest', 10)).toBe(10);
     expect(chaffTargetForKoma('peak', 20)).toBe(20);
@@ -386,10 +390,23 @@ describe('★ハーベストの売り=サクサク刈れる(社長指示2026-08-
     expect(zombieRate).toBeGreaterThan(0.08);
     expect(zombieRate).toBeLessThan(0.12);
   });
-  it('★赤い個体を出さないのはハーベストだけ(他コマは従来どおり抽選する)', () => {
+  it('★赤い個体を出さないのはハーベストとリラックス(通常・ピークは従来どおり抽選する)', () => {
     expect(noRedTierForKoma('harvest')).toBe(true);
-    expect(noRedTierForKoma('relax')).toBe(false);
+    expect(noRedTierForKoma('relax')).toBe(true); // 2026-10-18: リラックス(3体)にも赤を混ぜない
     expect(noRedTierForKoma('normal')).toBe(false);
     expect(noRedTierForKoma('peak')).toBe(false); // ピークは確定赤1体を置くコマ=禁止と両立しない
+  });
+});
+
+describe('リラックスは「ゼロではなく少しは出る」(社長指示2026-10-18「敵出現は推薦でなおして」)', () => {
+  it('リラックスのコマは3体(バット・スケルトンのみ・赤なし)。ボス交戦中の強制リラックスは従来の1体のまま', () => {
+    expect(RELAX_CHAFF_TARGET_MAX).toBe(3);
+    expect(chaffTargetForKoma('relax', 10)).toBe(3);
+    expect(chaffWeightsForKoma('relax').zombie).toBe(0);
+    expect(noRedTierForKoma('relax')).toBe(true);
+    expect(bossRelaxChaffTarget(10)).toBe(1);
+    expect(bossRelaxChaffTarget(20)).toBe(2);
+    // 湧き間隔×2(ランク基準)は従来どおり
+    expect(cdForKoma('relax', 1, R7_CAP_MIN, false, false)).toBe(cdBasisForRank(1, R7_CAP_MIN) * 2);
   });
 });

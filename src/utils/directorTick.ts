@@ -48,6 +48,15 @@ import { stepPinch, pityLevel, pityDropTuning, type PinchState } from './pityDir
 import { setPityDrop } from './pityState';
 import { PITY_EVENT_BLOCK_TAIL_MS } from './eventProducer';
 import { ZOOM_MIN_ABS } from './cameraZoom';
+import { currentSpawnWalk, walkBiasStrength } from './spawnWalkBias';
+import {
+  renderedViewRect, countVisibleBelowHorizon, catchUpSpawnCdMs, enemyVisualBox, isBoxOutsideRect,
+  shouldRetireBehind, retireDisposition, frontRespawnPoint, holdMinZoom, newZoomHold, retireGapReady,
+  type ViewRect,
+} from './spawnRefill';
+import { enemyFootBox } from '../pixi/renderSpec';
+import { isPracticeRun } from './bossPractice';
+import { isExStageRun } from './exStage';
 import { bossEngagedNow, bossEngagementDistancePx, bossRelaxWithTail, engagedBossSlotKeys, isEngageableBoss, isGhostEligibleBoss, BOSS_OPENING_HOLD_MS } from './bossEngagement';
 import { markBossesEncountered } from './bossEncounter'; // BOSS_MAKER.md §20-5: ボスラッシュの解放記録
 import {
@@ -84,7 +93,7 @@ import {
   nuisanceTarget, decideNextSpawn,
   ZERO_NUISANCE, NUISANCE_TYPES,
   nextKomaKind, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
-  chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp,
+  chaffWeightsForKoma, chaffTargetForKoma, bossRelaxChaffTarget, rampIntervalForKoma, cdForKoma, stepChaffRamp,
   peakRedTier, noRedTierForKoma,
   isScriptCleared, selectRotationPattern, allPatternsSeen,
   type FormationPattern, type NuisanceCounts, type SpecialType, type KomaKind4, type ChaffRampState,
@@ -617,8 +626,25 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   const cdRaw = cdForKoma(spawnKoma, rank, puzzleClockRef.current.r7Cap, tightenedNow, softenedNow);
   const cadence = applyRelaxSpawnCadence(capRaw, cdRaw, relaxCadenceAdj);
   const cap = cadence.cap;
-  const cdMs = cadence.cdMs;
-  let komaChaffTarget = chaffTargetForKoma(spawnKoma, cap);
+  // ★追い上げ(社長指示2026-10-18「敵の画面補充をもう少し早くする仕組み」): 画面内(地平線より下)が
+  // 0体なら湧き間隔×0.3(下限0.3秒)、1体なら×0.5。1度に1体は decideNextSpawn のまま(§0.5)。
+  // ボス交戦中の強制リラックスには掛けない(ボス戦の湧き方は従来どおり)。
+  let cdMs = cadence.cdMs;
+  if (!bossRelax) {
+    const gb = useGameStore.getState().gameBounds;
+    const vz = Math.min(useGameStore.getState().viewZoom || 1, spawnBounds.width > 0 ? gb.width / spawnBounds.width : 1);
+    // カメラの推定=useGameLoop のカメラ目標と同じ「プレイヤー中心−画面の半分−カメラ下げ(spawnViewOffsetY)」。
+    const view = renderedViewRect(
+      player.x + player.width / 2 - gb.width / 2, player.y + player.height / 2 - gb.height / 2 - spawnViewOffsetY,
+      gb.width, gb.height, vz,
+    );
+    cdMs = catchUpSpawnCdMs(cdMs, countVisibleBelowHorizon(puzzleEnemiesNow.filter(countsTowardEnemyCap), view));
+  }
+  // ★社長指示2026-10-18(敵出現は推薦で): リラックスのコマは3体になったが、ボス交戦中の強制
+  // リラックス(v0.25.2412)は従来の1体のまま(bossRelaxChaffTarget)。
+  let komaChaffTarget = bossRelax ? bossRelaxChaffTarget(cap) : chaffTargetForKoma(spawnKoma, cap);
+  // 置き去りの回収(runOffscreenRecycleAndCull)が「いまのコマの顔ぶれ」を知るための写し(湧きの段=spawnKoma)。
+  retireKomaSeen = { kind: spawnKoma, at: gameTime };
   if (softenedNow) komaChaffTarget = softenedChaffTarget(komaChaffTarget);
   // PACING_PUZZLE.md §5.21-追補4(社長決定v0.25.1553): 追補3が足した「ゲート1中はchaff目標=
   // ピーク・CD0を強制」は撤回。ゲート1中もchaffは常にコマ駆動の値をそのまま使う=既存カーブ不変
@@ -766,6 +792,16 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
 // 完全に同じ純関数を再利用=新しい交戦判定は発明していない。ヒステリシスの前回値だけ
 // runKomaBoardMaintenance側のbossRelaxPrevとは別の変数で持つ=互いに干渉しない)。
 let ghostBossEngagePrev = false;
+// 置き去りの回収(runOffscreenRecycleAndCull)の持ち回り。gameTime が巻き戻った(新しいラン)時は
+// holdMinZoom / retireGapReady 側が数え直すので、明示のリセットは要らない。
+let retireZoomHold = newZoomHold();
+let lastBehindRetireAt = -Infinity;
+// 直近の runKomaBoardMaintenance が湧きに使ったコマ(1秒より古い/巻き戻った=盤面の仕組みが止まっている扱い)。
+let retireKomaSeen: { kind: KomaKind4; at: number } | null = null;
+const retireKomaNow = (gameTime: number): KomaKind4 | null =>
+  (retireKomaSeen && gameTime >= retireKomaSeen.at && gameTime - retireKomaSeen.at <= 1000) ? retireKomaSeen.kind : null;
+// 置き去りの回収の対象(盤面の雑魚。叫喚型は fixed で別扱い・ghost は追従型なので含めない)。
+const BEHIND_RETIRE_TYPES = new Set<EnemyType>(['bat', 'skeleton', 'zombie', 'plant', 'werewolf', 'pumpkin', 'driller', 'logger']);
 // ボス戦テスト等で交戦開始がオンライン候補取得より早かった時だけ、同じ交戦の召喚を保留する。
 // 召喚後はnullへ戻すため、守護霊が倒れても同じボスへ再召喚しない。
 let pendingRemoteGhostSlot: string | null = null;
@@ -1133,6 +1169,38 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
   const recycleHalfW = (gameBounds.width / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
   const recycleHalfH = (gameBounds.height / 2) * recycleZoomOverscan + OFFSCREEN_RECYCLE_MARGIN;
   let recycledAnyEnemy = false;
+  // ★置き去りの回収(PACING_PUZZLE.md §20 ★未決②・社長指示2026-10-18「敵出現は推薦でなおして」):
+  // 歩き続けている時、**後ろ側**で、**見えている範囲(絵の背丈込み)+300px の外**へ出た雑魚を、**進む先の辺の外**へ
+  // 動かす(上の2.5画面ぶんの回収はそのまま。こちらはその内側に1本足すだけ)。判定は spawnRefill.ts の純関数。
+  // 見えている範囲は描画の式(横=中央支点/縦=地平線支点・renderedViewRect)で、ズームは「ボスの引き
+  // (viewZoom)・湧きの目標(群衆/走り/大型/ボスの引きの目標=spawnBounds)」の一番引いた値を3秒保持して使う
+  // (描画のズームは目標へ遅れて追いつく。保持で拾えないずれは余白300pxで吸う)。
+  // 見えている範囲はプレイヤー中心の推定と store のカメラの**両方の外**の時だけ回収する。
+  // 対象外: 研究所/屋内(研究所の系統には触らない)・チュートリアル(M0)・エンディング・練習ラン・EX。
+  // 1体ずつ(BEHIND_RETIRE_GAP_MS ごと)。
+  const retireStore = useGameStore.getState();
+  const retireEnabled = !labTheme && !indoor
+    && retireStore.farBackdrop !== 'tutorial' && retireStore.farBackdrop !== 'ending'
+    && !isPracticeRun() && !isExStageRun();
+  let retireBudget = 0;
+  let retireViews: ViewRect[] = [];
+  const retireWalk = currentSpawnWalk();
+  const retireWalkStrength = walkBiasStrength(retireWalk);
+  if (retireEnabled) {
+    const rs = useGameStore.getState();
+    const spawnZoomNow = spawnBounds.width > 0 ? gameBounds.width / spawnBounds.width : 1;
+    retireZoomHold = holdMinZoom(
+      retireZoomHold, Math.min(rs.viewZoom || 1, spawnZoomNow), gameTime,
+    );
+    retireViews = [
+      renderedViewRect(
+        playerCenterX - gameBounds.width / 2, playerCenterY - gameBounds.height / 2 - spawnViewOffsetY,
+        gameBounds.width, gameBounds.height, retireZoomHold.z,
+      ),
+      renderedViewRect(rs.camera.x, rs.camera.y, gameBounds.width, gameBounds.height, retireZoomHold.z),
+    ];
+    if (retireGapReady(lastBehindRetireAt, gameTime)) retireBudget = 1;
+  }
   const recycledEnemies = currentEnemiesForRecycle.map(enemy => {
     // 裏ボスは距離リサイクル(ワープ先回り)対象外。専用コントローラが帰巣/再生を独自に管理する。
     if (isHiddenBoss(enemy.type)) return enemy;
@@ -1247,6 +1315,60 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // (「割と消える」)と同根のバグの、タイプ個別対処ではない恒久版。
     const outsideView = Math.abs(enemyCenterX - playerCenterX) > recycleHalfW - OFFSCREEN_RECYCLE_MARGIN
       || Math.abs(enemyCenterY - (playerCenterY - spawnViewOffsetY)) > recycleHalfH - OFFSCREEN_RECYCLE_MARGIN;
+    // ★置き去りの回収(上の retireEnabled のコメント)。対象は盤面の雑魚だけ(叫喚型=fixed は上で除外済み・
+    // ghost/ボス系=preserveEnemyState は対象外)。技の最中(aiPhase あり/噛みつき中)も対象外。
+    if (retireBudget > 0 && !offRect && !waveProtected && !preserveEnemyState
+      && BEHIND_RETIRE_TYPES.has(enemy.type) && enemy.aiPhase === undefined && !enemy.biteAt) {
+      const fb = enemyFootBox(enemy);
+      const vis = enemyVisualBox(enemy, fb.boxW, fb.boxH);
+      if (shouldRetireBehind({
+        box: vis, playerCx: playerCenterX, playerCy: playerCenterY,
+        heading: retireWalk, walkStrength: retireWalkStrength, views: retireViews,
+      })) {
+        // 邪魔者・ゾンビ・赤い個体(リラックスの顔ぶれに無い型)は、リラックス/ハーベスト中は前へ持ち込まず退場させる
+        // (空いた枠はコマ自身の湧きが埋める)。判定は retireDisposition(純関数)。
+        if (retireDisposition(enemy.type, enemy.colorTier, retireKomaNow(gameTime)) === 'remove') {
+          retireBudget -= 1; lastBehindRetireAt = gameTime; recycledAnyEnemy = true;
+          ENEMY_REMOVE_CAUSE.set(enemy.id, 'behindRetire'); // 消失ログ用(置き去りの回収で退場)
+          return null;
+        }
+        // 同じ個体を**進む先の辺の外**へ動かす(型・色・HPは引き直さない=台本の帳簿と顔ぶれを崩さない)。
+        const cs = useGameStore.getState();
+        const pt = frontRespawnPoint({
+          view: retireViews[0], heading: retireWalk, playerCx: playerCenterX, playerCy: playerCenterY,
+          width: enemy.width, height: enemy.height, artWidth: vis.width, artHeight: vis.height,
+          corridor: cs.corridorMode, roll1: directorRng(), roll2: directorRng(),
+        });
+        const placed = clampRectToPlayableArea(pt.x, pt.y, enemy.width, enemy.height, {
+          farBackdrop: cs.farBackdrop,
+          labTheme: false,
+          corridorMode: cs.corridorMode,
+          m0AdvanceLimitX: null,
+          corridorRunInActive: cs.corridorRunInActive,
+        });
+        const placedVis = enemyVisualBox({ x: placed.x, y: placed.y, width: enemy.width, height: enemy.height }, fb.boxW, fb.boxH);
+        // 歩ける帯へ寄せた結果、見えている範囲に入ってしまうなら今回は動かさない(目の前に湧かせない)。
+        if (retireViews.every(v => isBoxOutsideRect(placedVis, v, 0))) {
+          retireBudget -= 1; lastBehindRetireAt = gameTime; recycledAnyEnemy = true;
+          return {
+            ...enemy,
+            x: placed.x,
+            y: placed.y,
+            vx: undefined,
+            vy: undefined,
+            knockbackUntil: undefined,
+            knockbackVx: undefined,
+            knockbackVy: undefined,
+            drillerRetreatUntil: undefined,
+            frozenClocks: undefined,
+            biteTgtX: undefined,
+            biteTgtY: undefined,
+            biteTgtAt: undefined,
+            spawnedAt: gameTime,
+          };
+        }
+      }
+    }
     if ((!offRect && !(areaInvalid && outsideView)) || waveProtected) return enemy;
     // 研究所スキンはリサイクル先もラボ用ゾンビに固定(森敵を出さない)。
     const recycleType = preserveEnemyState ? enemy.type : (labTheme ? selectLabEnemyType(gameTime) : undefined);
