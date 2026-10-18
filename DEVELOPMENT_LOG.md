@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5119 — シールドで技を防ぐ: 判定の純関数(未配線)【2026-10-18 10:43 JST】
+- `src/world/shieldBlock.ts`: `friendlyShieldRect` / `inShieldShadow` / `shieldBlocksArea`(影+40px)/ `shieldBlocksLine`(影だけ)/ `clipBeamAtShield`。
+- `shieldBlock.test.ts` 6件緑。どの経路にもまだ繋いでいない=ゲームの挙動は不変。typecheck 0 / lint 0。
+- 第4版の監査(Opus)待ち。状態変化: なし。
+
 ## v0.25.5118 — 設計書「シールドで技を防ぐ」第4版(社長の決定で作り直し)【2026-10-18 10:41 JST】
 - 社長「はい」(40px は形で分ける)。判定源=当たり判定の中心(案A)・予告は盾を例外・円/扇=影+40px・帯/レーザー=影だけ。
 - 帯の起点の例外(伐採人・トール一閃/突進・スリエル2本目)、共通路の `origin`/`beam` 欄と遅延一撃の書き写し、レーザーの第三者へ `shieldSrc`、描画の切り方、既知の限界を明記。
