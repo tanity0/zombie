@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5131', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5130', items: [
     '盾で受けた時の手応えを作り直した。受けた所が光り、盾が押されてから戻る',
     '削られた盾は暗くひびが入り、割れる時は砕けて飛んでいく',
