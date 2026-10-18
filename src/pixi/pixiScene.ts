@@ -16,6 +16,7 @@
 import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform } from '../utils/viewTransform';
+import { labFlickerLevel, smoothFlicker, easeToward } from '../utils/labFlicker'; // ステージ2の切れかけの蛍光灯
 import { bossFramingFor } from '../utils/bossFraming';
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
@@ -783,6 +784,8 @@ const CASTLE_TARGET_HEIGHT = 188; // 125 * 1.5(建物1.5倍指示)
 const POI_CIRCLE_CULL_MARGIN = 230; // 210(サークル南端)+余裕
 const POLICE_CULL_MARGIN = 210; // 建物(188)基準+余裕(円を描かないので南端分は不要)
 const MERCHANT_TARGET_HEIGHT = 100;
+// ステージ2の武器商人(武器箱の見た目)の大きさ。拠点の武器庫の箱(30×22)に対する倍率。?mbox=
+const MERCHANT_BOX_SCALE = Math.max(0.5, tsNum('mbox', 1.6));
 const EVENT_NPC_TARGET_HEIGHT = 108;
 // NPC8人(=出撃している護衛8人: エドガー/ジョセフ/エリザベス/武蔵/ムハンマド/チェン/ローレン/フェイザー)
 // の全表示共通の縮小率(社長指示v0.25.1858「通常NPCとは出撃してるNPC8人のこと。0.8倍・全ての表示で」。
@@ -947,6 +950,21 @@ const LAB_EMLIGHT_DOF_FADE_PX = Math.max(1, tsNum('labemdof', 220)); // 消え�
 // 円錐の高さの上限(画面高に対する割合)。**灯りのYに依存させない**ことで伸縮(=つぶれ)を防ぐ。?labemhmax=
 const LAB_EMLIGHT_H_SCREEN_FRAC = Math.max(0.1, tsNum('labemhmax', 0.62));
 const LAB_EMLIGHT_MAX = 8;
+// 切れかけの蛍光灯(社長指示2026-10-18「緑のダウンライトと連動して、ステージ全体を切れかけの蛍光灯の演出みたいに
+// たまにチカチカさせる。たまに0.5秒くらい暗いままだったり。恐怖演出」)。時刻表は utils/labFlicker.ts(純関数)。
+// 灯りが消えている度合いに応じて、非常灯を消し、画面全体を暗くする(幕)。?labflick=0 で無効。
+const LAB_FLICKER_ON = tsNum('labflick', 1) > 0;
+const LAB_FLICKER_DARK = Math.max(0, Math.min(1, tsNum('labflickdark', 0.78))); // 消灯しきった時の画面の暗さ。?labflickdark=
+// 画面を暗くしてはいけない危険(赤い予告が出うる相手)が場にいるか。赤い予告は暗転でも必ず見えること(CLAUDE.md 色と形の文法)。
+// ボス戦(bossFightNow)に入らない型(ハンター・死神・使者)と、技の溜め/最中(aiPhase)・噛みつき(biteAt)の敵を見る。
+const LAB_DANGER_TYPES = new Set<string>(['hunter', 'reaper', 'hangedman']);
+const labDangerOnScreen = (enemies: readonly { type: string; aiPhase?: unknown; biteAt?: number; hp?: number }[]): boolean => {
+  for (const e of enemies) {
+    if ((e.hp ?? 1) <= 0) continue;
+    if (e.aiPhase !== undefined || e.biteAt !== undefined || LAB_DANGER_TYPES.has(e.type)) return true;
+  }
+  return false;
+};
 
 // 敵の視界表示(社長指示v0.25.2235): 休眠中のlab-zombieが「起きる範囲」を薄い赤で塗る。
 // ゲーム側の覚醒条件(半径 aggroRange 以内 かつ segmentBlocked でない)と**同じ壁リスト**でレイを飛ばすので、
@@ -5438,6 +5456,13 @@ export class PixiScene {
   private labDarkLayer: Container | null = null;  // M2の暗転幕+非常灯(幕1枚 + プール済みグロー)
   private labDarkVeil: Sprite | null = null;
   private labEmLights: Sprite[] = [];
+  private labFlickerCur = 1;      // 蛍光灯の表示の明るさ(残光込み)。utils/labFlicker の目標へ寄せる
+  private labFlickerLastNow = 0;
+  private labFlickerLightCur: number[] = []; // 非常灯ごとの明るさ(点き直しを灯りごとにずらす)
+  private labFlickerSeed = 0;     // 出撃ごとの種(同じ時刻に同じちらつきが来ないように)
+  private labFlickerLastGt = Number.POSITIVE_INFINITY;
+  private labDarkAllow = 1;       // 画面を暗くしてよい度合い(危険が画面にある間は0へ・慣性つき)
+  private labShaftMul = 1;        // 暗転中は月明りの筋も一緒に沈める
   private labOutDim: Container | null = null; // 移動可能帯の外を暗くする幕(4枚: 上ベタ/上グラデ/下グラデ/下ベタ)
   private labOutDimParts: Sprite[] = [];
   private labFarBloom: TilingSprite | null = null;      // 遠景のソフトブルーム(ぼかし焼き込みのscreen重ね)
@@ -6597,7 +6622,7 @@ export class PixiScene {
     }
     this.stageLightShaftGfx.position.set(px, 0);
     this.stageLightShaftGfx.alpha =
-      1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT;
+      (1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT) * this.labShaftMul;
   }
 
   private farBackdropHeight() {
@@ -9535,7 +9560,7 @@ export class PixiScene {
     // 遠景の窓(フレーム+ガラス2層)。lab屋外限定・支給なしはno-op(社長指示v0.25.2199)。
     this.updateLabFarWindow(s.stageTheme === 'lab' && !s.indoorMode, s.camera.x, now);
     this.updateLabVisibility(LAB_VISIBILITY_VEIL && s.stageTheme === 'lab' && !s.indoorMode, sx, sy); // 暗闇演出は廃止(社長指示)。?labveil=1 で参照復活
-    this.updateLabDarkLights(s.stageTheme === 'lab' && !s.indoorMode, now); // 全体を少し暗く+等間隔の非常灯(v0.25.2263)
+    this.updateLabDarkLights(s.stageTheme === 'lab' && !s.indoorMode, now, s.gameTime, s.bossFightNow || labDangerOnScreen(s.enemies)); // 全体を少し暗く+等間隔の非常灯(v0.25.2263)+切れかけの蛍光灯
     // 移動可能帯の外を少し暗く(境目はグラデ)。M2(ラボ)は従来どおり画面上端まで。
     // M0(訓練)は**地面だけ**=地平(遠景の下端)で打ち止め、帯は縦±TUTORIAL_MOVE_Y_LIMIT_PX
     // (社長指示v0.25.2311「m0もm2みたいに『地面だけ』歩けない部分から暗くして」)。
@@ -10572,17 +10597,25 @@ export class PixiScene {
     this.merchantView.alpha = horizonAlpha;
     this.merchantView.zIndex = merchant.y;
 
+    // ステージ2(研究所)の武器商人は「出張武器商人」=拠点の武器庫と同じ武器箱の見た目(社長指示2026-10-18)。
+    // 見た目だけを替える(話しかけ・品揃え・円は今のまま)。
+    const boxLook = this.isLabStage;
+    const boxK = MERCHANT_BOX_SCALE * d;
+    const boxH = PixiScene.ARMORY_BOX_H * boxK;
+    this.merchantSprite.visible = !boxLook;
     this.merchantSprite.texture = tex;
     this.merchantSprite.scale.set(sc);
 
+    const glowCy = boxLook ? boxH * 0.5 : targetH * 0.52;
+    const glowSize = boxLook ? boxH * 2.4 : targetH;
     this.placeDofGlow(
       this.merchantGlow, this.merchantGlowBokeh, true,
-      merchant.y - targetH * 0.52, 0, -targetH * 0.52, targetH * 0.92, targetH * 0.72,
+      merchant.y - glowCy, 0, -glowCy, glowSize * 0.92, glowSize * 0.72,
       (near ? 0.18 : 0.08) + pulse * (near ? 0.08 : 0.025),
     );
 
-    // 接地影は syncShadows のソフト方向影に統一(可視時のみリクエスト)。
-    this.merchantShadow = {
+    // 接地影は syncShadows のソフト方向影に統一(可視時のみリクエスト)。武器箱は自前の接地影を持つので出さない。
+    this.merchantShadow = boxLook ? null : {
       x: merchant.x, y: merchant.y,
       legacyW: 82 * d,
       rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
@@ -10591,10 +10624,11 @@ export class PixiScene {
 
     const g = this.merchantGfx;
     g.clear();
+    if (boxLook) PixiScene.drawArmoryBox(g, 0, 0, pulse, boxK);
     if (near) {
       g.circle(0, -8 * d, merchant.radius * d)
         .stroke({ width: 2 * d, color: 0xfbbf24, alpha: 0.38 + pulse * 0.22 });
-      g.circle(0, -targetH * 0.82, 4 * d)
+      g.circle(0, boxLook ? -(boxH + 14 * d) : -targetH * 0.82, 4 * d)
         .fill({ color: 0xfde68a, alpha: 0.82 + pulse * 0.16 });
     }
     // 滞在→話しかけの進捗アーク(社長指示v0.25.1842「サークルに3秒滞在」)。帰還/クエスト円の
@@ -11418,20 +11452,37 @@ export class PixiScene {
   // 幕(黒・画面全体)の上に screen 合成のグローを重ねる=光の位置だけ暗さが持ち上がる。
   // **ズーム対応(CLAUDE.md必須項目)**: 可視範囲は toLocal で画面端をワールド座標へ逆変換して求めるので、
   // 文脈ズームで引いても取りこぼさない。光の大きさも world.scale を掛けて追従させる。
-  private updateLabDarkLights(show: boolean, now: number) {
+  private updateLabDarkLights(show: boolean, now: number, gameTime = 0, noDark = false) {
     // 登場演出(ヘリ降下)中は出さない。帯外減光と同じ理由=カメラが廊下から離れている間に幕を出すと
     // 画面全体が暗転して「読み込み中」に見える(v0.25.2225の事故)。
     // v0.25.2275: 旧実装は LAB_DARK_ALPHA<=0 でこの関数ごと抜けており、**明るさを戻すと非常灯も消えた**。
     // 幕とライトは別物なので、ここでは「M2かどうか」と「登場演出中か」だけで判定する。
     // 幕の濃さ0=幕を出さない / ライトの半径・強さ0=ライトを出さない、と**個別に**効くようにした。
+    this.labShaftMul = 1;
     if (!show || this.introActive) {
       if (this.labDarkLayer) this.labDarkLayer.visible = false;
       return;
     }
-    if (LAB_DARK_ALPHA <= 0 && (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0)) {
+    if (LAB_DARK_ALPHA <= 0 && !LAB_FLICKER_ON && (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0)) {
       if (this.labDarkLayer) this.labDarkLayer.visible = false;
       return; // 幕もライトも出さない=完全OFF
     }
+    // 切れかけの蛍光灯: 目標の明るさ(時刻表)へ、残光つきで寄せる(消え=ゆっくり / 点き=速く)。
+    // 時刻はゲーム時間(一時停止中は止まる)。寄せる速さは実時計の dt。
+    const dt = this.labFlickerLastNow > 0 ? now - this.labFlickerLastNow : 0;
+    {
+      this.labFlickerLastNow = now;
+      // 新しい出撃(ゲーム時間が戻った)で種を引き直す。描画だけの乱数(ゲームの判定には使わない)。
+      if (gameTime < this.labFlickerLastGt) this.labFlickerSeed = (Math.random() * 0x7fffffff) | 0;
+      this.labFlickerLastGt = gameTime;
+      const target = LAB_FLICKER_ON ? labFlickerLevel(gameTime, this.labFlickerSeed) : 1;
+      this.labFlickerCur = smoothFlicker(this.labFlickerCur, target, dt);
+      // 危険(ボス戦・赤い予告を出す敵)が画面にある間は画面を暗くしない=赤い予告は必ず見える。切り替えは慣性つき。
+      this.labDarkAllow = easeToward(this.labDarkAllow, noDark ? 0 : 1, dt, noDark ? 60 : 400);
+    }
+    const flick = this.labFlickerCur;
+    const flickDark = (1 - flick) * LAB_FLICKER_DARK * this.labDarkAllow;
+    this.labShaftMul = 1 - flickDark; // 月明りの筋も一緒に沈める(暗転中に筋だけが浮かないように)
     if (!this.labDarkLayer) {
       const cont = new Container();
       cont.eventMode = 'none';
@@ -11469,8 +11520,10 @@ export class PixiScene {
       veil.position.set(-OVER, -OVER);
       veil.width = this.screenW + OVER * 2;
       veil.height = this.screenH + OVER * 2;
-      veil.alpha = LAB_DARK_ALPHA * ramp;
-      veil.visible = LAB_DARK_ALPHA > 0; // 明るさを戻した(0)時は幕そのものを描かない
+      // 幕の濃さ = 常時の暗さ と 蛍光灯が消えた分の暗さ の大きい方。
+      const va = Math.max(LAB_DARK_ALPHA, flickDark) * ramp;
+      veil.alpha = va;
+      veil.visible = va > 0.001; // 明るさを戻した(0)時・点灯中は幕そのものを描かない
     }
     if (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0) {
       for (const sp of this.labEmLights) sp.visible = false;
@@ -11488,7 +11541,13 @@ export class PixiScene {
     const kFrom = Math.ceil(wl / LAB_EMLIGHT_SPACING);
     const kTo = Math.floor(wr / LAB_EMLIGHT_SPACING);
     for (let k = kFrom; k <= kTo && n < LAB_EMLIGHT_MAX; k++) {
+      const li = n;
       const sp = this.labEmLights[n++];
+      // 灯りごとの明るさ: 全体と同じ時刻表を、灯りの番号ごとに数十msずらして読む(点き直しが手前から順に走る)。
+      const lag = (((k % 5) + 5) % 5) * 35;
+      const lt = LAB_FLICKER_ON ? labFlickerLevel(gameTime - lag, this.labFlickerSeed) : 1;
+      const lc = smoothFlicker(this.labFlickerLightCur[li] ?? 1, lt, dt);
+      this.labFlickerLightCur[li] = lc;
       const g = this.L.world.toGlobal({ x: k * LAB_EMLIGHT_SPACING, y: 0 });
       sp.position.set(g.x, g.y);
       sp.width = size;
@@ -11501,8 +11560,8 @@ export class PixiScene {
       const apexY = g.y - coneH * 0.78;
       const over = (this.farBackdropHeight() - LAB_EMLIGHT_DOF_ALLOW) - apexY;
       const dofFade = over <= 0 ? 1 : Math.max(0, 1 - over / LAB_EMLIGHT_DOF_FADE_PX);
-      sp.alpha = LAB_EMLIGHT_ALPHA * ramp * dofFade;
-      sp.visible = true;
+      sp.alpha = LAB_EMLIGHT_ALPHA * ramp * dofFade * lc; // 蛍光灯と一緒に消える(灯りごとに少しずれる)
+      sp.visible = sp.alpha > 0.002;
     }
     for (let i = n; i < this.labEmLights.length; i++) this.labEmLights[i].visible = false;
   }
@@ -27601,16 +27660,23 @@ export class PixiScene {
     const AR = 50; // ARMORY_RADIUS と一致
     g.circle(x, y, AR).stroke({ width: 2, color: 0xfbbf24, alpha: 0.45 + 0.3 * pulse });
     g.circle(x, y, AR - 3).fill({ color: 0xfbbf24, alpha: 0.05 + 0.05 * pulse });
-    // 中央に武器箱のビジュアル(社長指示)。木箱＋金属帯＋琥珀の弾薬アクセント。foot(底)= y。
-    const bw = 30, bh = 22, bx = x - bw / 2, by = y - bh;
-    g.ellipse(x, y + 2, bw * 0.55, 5).fill({ color: 0x000000, alpha: 0.28 });                // 接地影
+    PixiScene.drawArmoryBox(g, x, y, pulse, 1);
+  }
+
+  // 武器箱の絵(社長指示)。木箱＋金属帯＋琥珀の弾薬アクセント。foot(底)= y。k=大きさの倍率。
+  // 拠点の武器庫と、ステージ2の武器商人(出張武器商人=この箱の見た目・社長指示2026-10-18)で同じ絵を使う。
+  static readonly ARMORY_BOX_W = 30;
+  static readonly ARMORY_BOX_H = 22;
+  private static drawArmoryBox(g: Graphics, x: number, y: number, pulse: number, k: number) {
+    const bw = PixiScene.ARMORY_BOX_W * k, bh = PixiScene.ARMORY_BOX_H * k, bx = x - bw / 2, by = y - bh;
+    g.ellipse(x, y + 2 * k, bw * 0.55, 5 * k).fill({ color: 0x000000, alpha: 0.28 });        // 接地影
     g.rect(bx, by, bw, bh).fill({ color: 0x5b4326, alpha: 0.97 });                            // 木箱本体
-    g.rect(bx, by, bw, 5).fill({ color: 0x7a5a33, alpha: 0.97 });                             // 上面ハイライト
-    g.rect(bx + 5, by, 3, bh).fill({ color: 0x3f3a33, alpha: 0.95 });                         // 金属帯(縦)
-    g.rect(bx + bw - 8, by, 3, bh).fill({ color: 0x3f3a33, alpha: 0.95 });                    // 金属帯(縦)
-    g.rect(bx, by + bh / 2 - 1.5, bw, 3).fill({ color: 0x3f3a33, alpha: 0.9 });               // 金属帯(横)
-    g.rect(bx + bw / 2 - 4, by + bh / 2 - 3, 8, 6).fill({ color: 0xfbbf24, alpha: 0.55 + 0.35 * pulse }); // 弾薬色アクセント(脈動)
-    g.rect(bx, by, bw, bh).stroke({ width: 1.5, color: 0x2a2018, alpha: 0.9 });               // 縁
+    g.rect(bx, by, bw, 5 * k).fill({ color: 0x7a5a33, alpha: 0.97 });                         // 上面ハイライト
+    g.rect(bx + 5 * k, by, 3 * k, bh).fill({ color: 0x3f3a33, alpha: 0.95 });                 // 金属帯(縦)
+    g.rect(bx + bw - 8 * k, by, 3 * k, bh).fill({ color: 0x3f3a33, alpha: 0.95 });            // 金属帯(縦)
+    g.rect(bx, by + bh / 2 - 1.5 * k, bw, 3 * k).fill({ color: 0x3f3a33, alpha: 0.9 });       // 金属帯(横)
+    g.rect(bx + bw / 2 - 4 * k, by + bh / 2 - 3 * k, 8 * k, 6 * k).fill({ color: 0xfbbf24, alpha: 0.55 + 0.35 * pulse }); // 弾薬色アクセント(脈動)
+    g.rect(bx, by, bw, bh).stroke({ width: 1.5 * k, color: 0x2a2018, alpha: 0.9 });           // 縁
   }
 
   private syncBaseSites(sites: BaseSite[] | undefined, now: number, safeBaseId: string | null, labArmory: { x: number; y: number } | null = null) {

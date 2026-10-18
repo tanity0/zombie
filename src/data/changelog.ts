@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5141', items: [
+    'ステージ2の灯りが切れかけの蛍光灯のように瞬く。ときおり闇に沈み、すぐには点かない',
+    '闇の中でも、敵の赤い予告は隠れない',
+    'ステージ2の武器商人は、拠点と同じ武器箱で店を開く',
+  ] },
   { version: '0.25.5140', items: [
     '衛星弾の回る輪が地面に沿って広がる。奥を回る弾は体の後ろへ隠れる',
   ] },
