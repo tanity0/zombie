@@ -25,6 +25,7 @@ import {
 } from './heroScript';
 import { STRUCK_NOTICE_MS } from './frontSight';
 import { saveHeroAscended } from './heroAscended';
+import { SKILLS } from '../data/campaign';
 
 /** 帰巣(社長「範囲外はボスと同じ」・§6-1 / §10a)。賞金首と同じ数字。 */
 export const HERO_LEASH_PLAYER_PX = 700;
@@ -343,6 +344,14 @@ export const runHeroTick = (
     g.grantSkill('hero');
     saveHeroAscended(); // 社長指示「解放された後は2度と出ない(昇天のみ)」=本編の周回の英雄はもう置かない
     if (!hadHeroSkill) g.spawnCallout(hx, hero.y - 40, 'スキル「英雄」習得！', '#fde68a', { scale: 1.2 });
+    // 社長指摘2026-10-18「英雄が昇天した時、既存のゲット表示がない」: 警察署のスキルと同じ入手トースト(名前+効果1行)も出す。
+    // 既に持っている時(対策室など)は「習得済み」と添える=入手したと嘘をつかない。
+    useGameStore.setState({
+      lastWeaponGet: {
+        name: SKILLS.hero.name, at: Date.now(), color: '#fde68a', kind: 'poi-skill', desc: SKILLS.hero.desc,
+        ...(hadHeroSkill ? { note: '習得済み' } : {}),
+      },
+    });
     sfx.ascend?.(Math.max(0.5, sfxGain * 0.8));
     sfx.gallop(0, 1);
     return;

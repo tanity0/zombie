@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5116', items: [
+    '英雄(変異)が昇天した時、スキル入手の表示が出るようになった',
+  ] },
   { version: '0.25.5115', items: [
     'ゲーム内容の変更はありません',
   ] },
