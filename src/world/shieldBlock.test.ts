@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   friendlyShieldRect, inShieldShadow, shieldBlocksArea, shieldBlocksLine, clipBeamAtShield, rectGap, SHIELD_AREA_GUARD_PX,
-  clipBeamEnd, clipSweepBeam, blastBlockedByShield, splitBeamAtShield, beamStripsHit, shieldContactPoint,
+  clipBeamEnd, clipSweepBeam, blastBlockedByShield, splitBeamAtShield, beamStripsHit, shieldContactPoint, beamDrawPlan,
 } from './shieldBlock';
 
 // 上向きに置いた盾(横 58 × 厚み 16)。プレイヤーは盾の下(y が大きい側)。
@@ -173,5 +173,30 @@ describe('splitBeamAtShield / beamStripsHit / shieldContactPoint', () => {
     const miss = shieldContactPoint(200, -300, 200, 0, shield); // 当たらない=盾の中心
     expect(miss.x).toBeCloseTo(0);
     expect(miss.y).toBeCloseTo(-32);
+  });
+});
+
+describe('光線の絵の計画 beamDrawPlan(第2回クリエイティブ監査 #1・判定は不変)', () => {
+  it('判定の割り(splitBeamAtShield)が null の時は null=元の1本をそのまま描く', () => {
+    expect(beamDrawPlan(0, -300, 0, 300, 30, null, true)).toBeNull();
+    expect(beamDrawPlan(300, -300, 300, 300, 30, shield, true)).toBeNull(); // 影が掛からない
+    expect(beamDrawPlan(0, -300, 0, -200, 30, shield, true)).toBeNull();    // 盾の面が先端より遠い
+  });
+  it('盾の影の横の範囲は盾そのものの広がり(光線の太さで切らない)・中心線は盾の面で止まる', () => {
+    const plan = beamDrawPlan(0, -300, 0, 300, 30, shield, false)!;
+    expect(plan).not.toBeNull();
+    // 起点 (0,-300)→下向き(u=(0,1))。n=(-1,0)。盾の x は -29..29 → 横は -29..29。
+    expect(Math.min(plan.s0, plan.s1)).toBeCloseTo(-29);
+    expect(Math.max(plan.s0, plan.s1)).toBeCloseTo(29);
+    // 盾の面(上辺 y=-40)は起点から 260 の所。
+    expect(plan.centerEnd).toBeCloseTo(260);
+    expect(plan.faceAt(0, 600)).toBeCloseTo(260);
+    // 影の外の横位置は盾に当たらない=終点まで。
+    expect(plan.faceAt(plan.s1 > 0 ? -40 : 40, 600)).toBeCloseTo(600);
+  });
+  it('判定の strips と同じ割り(絵と判定が同じ splitBeamAtShield を読む)', () => {
+    const plan = beamDrawPlan(0, -300, 0, 300, 20, shield, true)!;
+    expect(plan.split).toEqual(splitBeamAtShield(0, -300, 0, 300, 20, shield, true));
+    expect(plan.split.strips).toHaveLength(1); // 太さ20 < 盾の幅 → 止まる中央の帯1本だけ(縁は無い)
   });
 });

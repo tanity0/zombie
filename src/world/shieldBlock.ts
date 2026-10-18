@@ -242,3 +242,50 @@ export const shieldContactPoint = (
   if (c >= len) return { x: scx, y: scy, dx, dy };
   return { x: srcX + dx * c, y: srcY + dy * c, dx, dy };
 };
+
+// ---------------------------------------------------------------------------------------------
+// 光線の「絵」の計画(研究 SHIELD_BLOCK.md §8 の見た目・第2回クリエイティブ監査 2026-10-18)
+// 判定は上の splitBeamAtShield(帯の並び)のまま。絵は帯を貼り直さず、**元の1本の断面**を盾の影で切った形で描く:
+//   盾に当たるまでは1本の光線(元の層・元の幅)、盾の向こう側だけ影の外の縁が残る(元の断面のその横位置の切り出し)。
+// 描画側(pixiScene)はこの計画を読んで多角形を作るだけ。ここは判定を1ミリも変えない純関数(描画は import しない)。
+// ---------------------------------------------------------------------------------------------
+
+export interface BeamDrawPlan {
+  /** 起点・向き(単位)・横向き(単位・n = (-uy, ux))。 */
+  fx: number; fy: number; ux: number; uy: number; nx: number; ny: number;
+  /** 起点→終点の長さ。 */
+  len: number;
+  /** 盾の影が覆う横の範囲(光線の中心線を 0・n 向きが正)。**盾そのものの広がり**で、光線の太さでは切らない(広い層ほど縁が残る)。 */
+  s0: number; s1: number;
+  /** 判定側と同じ割り(strips が空 = 丸ごと塞がれた)。 */
+  split: BeamShieldSplit;
+  /** 横位置 l(中心線からの距離)の線が盾の面に入る距離(起点から)。当たらなければ maxLen。 */
+  faceAt: (l: number, maxLen: number) => number;
+  /** 中心線(横 0)が盾の面で止まる距離。影が中心線を覆っていなければ len。 */
+  centerEnd: number;
+}
+
+/**
+ * 光線の絵の計画。splitBeamAtShield が null(盾が無い・影が掛からない・面が先端より遠い)なら null=元の1本をそのまま描く。
+ * 引数は splitBeamAtShield と同じ(絵と判定が必ず同じ「割る/割らない」を読む)。
+ */
+export const beamDrawPlan = (
+  fx: number, fy: number, tx: number, ty: number, halfWidth: number, shield: Rect | null, tipExt: boolean, startOffset = 0,
+): BeamDrawPlan | null => {
+  if (!shield) return null;
+  const split = splitBeamAtShield(fx, fy, tx, ty, halfWidth, shield, tipExt, startOffset);
+  if (!split) return null;
+  const dx = tx - fx, dy = ty - fy;
+  const len = Math.hypot(dx, dy);
+  const ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
+  let s0 = Infinity, s1 = -Infinity;
+  for (const [cx, cy] of [[shield.x, shield.y], [shield.x + shield.width, shield.y], [shield.x, shield.y + shield.height], [shield.x + shield.width, shield.y + shield.height]] as const) {
+    const s = (cx - fx) * nx + (cy - fy) * ny;
+    if (s < s0) s0 = s;
+    if (s > s1) s1 = s;
+  }
+  const faceAt = (l: number, maxLen: number): number =>
+    clipBeamAtShield(fx + nx * l, fy + ny * l, ux, uy, maxLen, shield);
+  const centerEnd = s0 <= 0 && s1 >= 0 ? Math.min(len, faceAt(0, len)) : len;
+  return { fx, fy, ux, uy, nx, ny, len, s0, s1, split, faceAt, centerEnd };
+};

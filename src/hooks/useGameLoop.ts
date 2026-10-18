@@ -41,7 +41,7 @@ import {
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
   COUNTER_ACCEPT_MS, // v0.25.2525→v0.25.3943: 守護霊の弾反射の窓(プレイヤーの受付と同じ定数)
-  SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG,
+  SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG, SHIELD_BREAK_HITSTOP_MS, SHIELD_BREAK_SHAKE_MS, SHIELD_BREAK_SHAKE_MAG,
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV, DRONE_BOOM_SPEED,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
   CAMERA_CENTER_CLAMP_FRAC, CAMERA_DANGER_RADIUS, CAMERA_SNAP_DIST, CAMERA_DOWN_OFFSET_FRAC, CORRIDOR_CAMERA_DOWN_FRAC,
@@ -97,6 +97,7 @@ import {
   currentFriendlyShield, noteShieldGuardFrom, noteShieldBeam, shieldGuardsPlayerLine, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
 } from '../store/gameStore';
 import { shieldBlocksArea, shieldBlocksLine, splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md
+import { METAL_PALETTE, shieldBeamPalette, reflectAlongTravel, takeTechniqueStart, BEAM_HOLD_TICK_MS, beamHoldGain, type GuardPalette, type TechniqueGateState } from '../utils/shieldGuardFx'; // 防いだ演出の色・間引き・曲線(第2回クリエイティブ監査)
 import { resolveRescueSpawnDirection } from '../utils/rescueQuestSpawn'; // 二人組クエストv2(§2-3・B2)
 import {
   shouldFireRescueQuestArena, shouldFoldRescueHold, rescueQuestArenaOutcome, computeQuestGateOk,
@@ -1858,7 +1859,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const giantWindupSfxRef = useRef<string | undefined>(undefined);
   // research/SHIELD_BLOCK.md §2: 盾が技を防いだ演出の時刻。hit=直近の単発 / beam=光線が最後に当たっていた時刻 / spark=次の火花を出す時刻(ばらつかせる) / tick=軽い接触音の最小間隔。
   // 最初の1回は大きく、続く分は小さく(メトロノームにしない)。shieldHitAt は耐久の被弾・バッシュも書くので使わない。
-  const shieldGuardFxRef = useRef({ hit: 0, beam: 0, spark: 0, tick: 0 });
+  const shieldGuardFxRef = useRef({
+    hit: 0, beam: 0, spark: 0, tick: 0,
+    hitKey: undefined as string | undefined, // 直近に大きく防いだ技のキー
+    beamGate: { key: undefined, lastAt: 0 } as TechniqueGateState, // 光線の「同じ技の1回」の関門(utils/shieldGuardFx)
+    techStart: 0, beamTick: 0, beamChip: 0,
+  });
   const kbLogPrevRef = useRef<Map<string, { x: number; y: number; type: string; kbU?: number }>>(new Map()); // ?kblog=1専用
   // ★EXステージのボスBGM切替(社長指示2026-08-26)。遭遇エッジの検知フラグ(条件が消えたら自動で再武装)。
   const phillBgmRef = useRef(false);
@@ -7505,7 +7511,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (died) triggerPlayerDeath(ppx, ppy);
                 }
                 // 盾が光線を受けている間は、後ろに誰も居なくても毎秒10ずつ削れ、接点に光だまりと火花(演出は消化側)。
-                if (mlSplit && mlShield) noteShieldBeam(mlShield, mlSplit, deltaTime, 'mimir');
+                if (mlSplit && mlShield) noteShieldBeam(mlShield, mlSplit, deltaTime, boss);
                 // G4b(§2.9): ビーム帯はゴースト(守護霊)にも当たる(同じ線分±半太さ・同じダメージ。
                 // 継続ダメージの間引きはdamageSummonのi-frame=プレイヤーのdamagePlayer i-frameと同型)。
                 for (const sg of (mlSplit ? mlSplit.strips : [{ fx: bcx, fy: bcy, tx: bcx + ux * MIMIR_LASER_RANGE, ty: bcy + uy * MIMIR_LASER_RANGE, halfWidth: MIMIR_LASER_HALF_WIDTH }])) {
@@ -7590,7 +7596,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const ux = Math.cos(ang), uy = Math.sin(ang);
                   // research/SHIELD_BLOCK.md §2/§8(レーザー=壁・光線の幅): 各本を盾の影で割る(影の中央は盾の面で止まり、外の縁は全長のまま)。プレイヤー・守護霊に同じ帯。
                   const wlSplit = wlShield ? splitBeamAtShield(bcx, bcy, bcx + ux * MIMIR_LASER_RANGE, bcy + uy * MIMIR_LASER_RANGE, W.halfWidth, wlShield, true) : null;
-                  if (wlSplit && wlShield) noteShieldBeam(wlShield, wlSplit, deltaTime, 'mimir'); // 後ろに誰も居なくても毎秒10(本ごとに別々)
+                  if (wlSplit && wlShield) noteShieldBeam(wlShield, wlSplit, deltaTime, boss); // 後ろに誰も居なくても毎秒10(本ごとに別々)
                   if (!hitDone) {
                     const tproj = Math.max(0, Math.min(MIMIR_LASER_RANGE, (ppx - bcx) * ux + (ppy - bcy) * uy));
                     const cxp = bcx + ux * tproj, cyp = bcy + uy * tproj;
@@ -11699,9 +11705,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         }
 
         // research/SHIELD_BLOCK.md §2/§8: 盾が範囲攻撃・帯・光線・飛ぶ刃を防いだ瞬間の演出(接点に出す・盾の中心ではない)。
-        //   単発: 防いだ最初の1回は上の shieldBlocks と同じ強さ(リング+火花+heavy-impact+短い揺れ)・続く分(700ms以内)は小さな火花と軽い金属音。
-        //   光線: 最初の接触だけ大きく。当たっている間は接点に光だまり+盾の面に沿って左右へ散る火花を、ばらついた間隔と数で出し続ける。
-        //   耐久が尽きた盾は、既存の破壊(倒れる演出)と同じ形で崩れる。盾の押し戻し/白紫の光は pixiScene が shieldGuardAt から描く(赤い被弾フラッシュは使わない)。
+        //   (第2回クリエイティブ監査 2026-10-18)
+        //   色: 物理の技=金属の火花(白→淡い金) / 光線=その光線自身の色(紫の光線は紫・赤は赤)。紫は赤い/物理の攻撃を防ぐ色にしない。
+        //   音: 「カツン」は anchor-plant(地面へ金属を打ち込む乾いた明るい音)。counter.mp3 を高く回しただけの decoy-zap(ピッ)は使わない。
+        //       重さは heavy-impact + shield-deploy を低いピッチで重ねる。
+        //   大きな衝撃(閃光・揺れ・重い音)は**1つの技につき1度だけ**(key=攻撃者id+技の始まり)。車輪の各本が盾を横切っても再発しない。
+        //   光線が当たり続ける間は 6〜14回/秒の単発音にせず、380ms おきの細い接触音(音量は包絡で細る)+火花は盾の面に沿って左右へ流れ、光の向きへ少し跳ね返る。
+        //   耐久が実際に削れた防ぎは「欠けた」: 暗い破片が飛び、低く重い音が重なる(盾の暗い濁りは pixiScene が shieldChipAt から描く)。
+        //   耐久が尽きた盾は山場: 短いヒットストップ→残骸(pixiScene の shieldBreakGhosts)が攻撃の向きへ飛ぶ・破片をたっぷり・低い重い音・強く長い揺れ。
         {
           const gst = useGameStore.getState();
           if (gst.shieldGuardFx.length > 0 || gst.shieldBreakFx.length > 0) {
@@ -11710,64 +11721,110 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const gnow = Date.now();
             const gr = shieldGuardFxRef.current;
             const rnd = Math.random;
-            const bigImpact = (x: number, y: number, sfxGain: number): void => {
+            const clink = (gain: number, rate: number): void => playSfx('anchor-plant', gain, undefined, rate);
+            // 欠けた読み(耐久が削れた時): 暗い破片が攻撃してきた側へ跳ね返って飛び、低い音が重なる。赤は使わない。
+            const chipRead = (x: number, y: number, dx: number, dy: number, soft: boolean): void => {
+              spawnBurst(x, y, '#475569', soft ? 5 : 9, -dx, -dy);
+              spawnBurst(x, y, '#1e293b', soft ? 3 : 6, -dx, -dy);
+              spawnBurst(x, y, '#94a3b8', soft ? 3 : 5);
+              if (!soft) { // 光線が当たり続けている間の「欠けた」(soft)は破片と細い音だけ=重い音を連打しない
+                playSfx('heavy-impact', 0.8, undefined, 0.6);
+                playSfx('shield-deploy', 0.55, undefined, 0.55);
+              }
+              clink(soft ? 0.18 : 0.45, 0.7);
+            };
+            const bigImpact = (x: number, y: number, sfxGain: number, P: GuardPalette, dx: number, dy: number): void => {
               playSfx('heavy-impact', sfxGain);
-              playSfx('decoy-zap', 0.4, undefined, 1.15); // カツン(金属の高い一撃)を重ねる
-              spawnFlash('rgba(226,232,240,0.14)', 120);
-              spawnRing(x, y, 8, 46, 'rgba(226,232,240,0.95)', 4, 260);   // 白い衝撃リング(金属で弾いた感)
-              spawnRing(x, y, 4, 28, 'rgba(196,181,253,0.9)', 3, 220);    // 内側は薄紫(赤い被弾に見せない)
-              spawnBurst(x, y, '#e2e8f0', 12);
-              spawnBurst(x, y, '#c4b5fd', 6);
+              clink(0.5, 1.15); // カツン(金属の高い一撃)
+              spawnFlash(P.flash, 120);
+              spawnRing(x, y, 8, 46, P.ring[0], 4, 260);   // 衝撃リング(外)
+              spawnRing(x, y, 4, 28, P.ring[1], 3, 220);   // 内側
+              spawnBurst(x, y, P.sparks[0], 12, -dx, -dy); // 攻撃の来た側へ跳ね返る火花
+              spawnBurst(x, y, P.sparks[1], 6);
               useGameStore.getState().triggerShake(SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG);
             };
             for (const g of guards) {
               if (g.kind === 'beam') {
+                const P = shieldBeamPalette(g.type);
                 const sx = g.sx ?? -g.dy, sy = g.sy ?? g.dx;
-                if (gnow - gr.beam > 250) { // 最初の接触だけ大きい
-                  bigImpact(g.x, g.y, 0.7);
-                  useGameStore.getState().spawnGlow(g.x, g.y, 70, 'rgba(216,180,254,', 320);
-                  gr.spark = gnow + 80;
-                }
+                const contactNew = gnow - gr.beam > 250; // 途切れた後の当たり直し(車輪の次の本など)
+                const fresh = takeTechniqueStart(gr.beamGate, g.key, gnow);
                 gr.beam = gnow;
+                if (fresh) { // この技の最初の接触だけ大きい
+                  gr.techStart = gnow;
+                  bigImpact(g.x, g.y, 0.7, P, g.dx, g.dy);
+                  useGameStore.getState().spawnGlow(g.x, g.y, 70, P.glow, 320);
+                  gr.spark = gnow + 80;
+                  gr.beamTick = gnow + 140;
+                  if (g.cost > 0) { gr.beamChip = gnow; chipRead(g.x, g.y, g.dx, g.dy, false); }
+                } else if (contactNew) { // 同じ技の続き: 大きな衝撃は出さず、小さな火花と細い接触音だけ
+                  spawnBurst(g.x, g.y, P.sparks[0], 4, -g.dx, -g.dy);
+                  clink(0.12, 0.9 + rnd() * 0.2);
+                  gr.beamTick = Math.max(gr.beamTick, gnow + 200);
+                }
+                if (g.cost > 0 && gnow - gr.beamChip > 600) { gr.beamChip = gnow; chipRead(g.x, g.y, g.dx, g.dy, true); }
                 if (gnow >= gr.spark) {
                   gr.spark = gnow + 70 + rnd() * 90; // ばらついた間隔
-                  useGameStore.getState().spawnGlow(g.x, g.y, 36 + rnd() * 16, 'rgba(216,180,254,', 240); // 接点の光だまり
+                  useGameStore.getState().spawnGlow(g.x, g.y, 36 + rnd() * 16, P.glow, 240); // 接点の光だまり
                   useGameStore.getState().spawnGlow(g.x, g.y, 16 + rnd() * 8, 'rgba(255,255,255,', 170);
-                  const n = 3 + Math.floor(rnd() * 4); // ばらついた数
-                  for (let i = 0; i < n; i++) {
-                    const side = rnd() < 0.5 ? -1 : 1, off = 6 + rnd() * 28;
-                    spawnBurst(g.x + sx * side * off, g.y + sy * side * off, rnd() < 0.5 ? '#ffffff' : '#c4b5fd', 2 + Math.floor(rnd() * 3));
-                  }
-                  playSfx('decoy-zap', 0.2 + rnd() * 0.1, undefined, 0.8 + rnd() * 0.5); // 続く接触は小さく・ピッチもばらす
+                  // 火花: 盾の面に沿って左右へ流れる + 光の来た向きへ少し跳ね返る(一様な散らし方にしない)。
+                  const nSide = 2 + Math.floor(rnd() * 3), nBack = 1 + Math.floor(rnd() * 3);
+                  const off = 4 + rnd() * 10;
+                  spawnBurst(g.x + sx * off, g.y + sy * off, rnd() < 0.5 ? P.sparks[0] : P.sparks[1], nSide, sx, sy);
+                  spawnBurst(g.x - sx * off, g.y - sy * off, rnd() < 0.5 ? P.sparks[0] : P.sparks[1], nSide, -sx, -sy);
+                  spawnBurst(g.x, g.y, P.sparks[0], nBack, -g.dx, -g.dy);
+                }
+                if (gnow >= gr.beamTick) { // 続く接触音: 間引き+包絡(細っていく)=ひと続きの接触
+                  gr.beamTick = gnow + BEAM_HOLD_TICK_MS * (0.85 + rnd() * 0.3);
+                  clink(beamHoldGain(gnow - gr.techStart), 0.7 + rnd() * 0.25);
                 }
               } else if (g.kind === 'blade') {
-                // 飛ぶ刃(氷・骨・羽根): 触れた点で砕ける。破片は刃の色+白。
-                spawnBurst(g.x, g.y, g.color ?? '#bfe6ff', 10);
-                spawnBurst(g.x, g.y, '#ffffff', 4);
+                // 飛ぶ刃(氷・骨・羽根): 触れた点で砕ける。破片は刃が来た向きの「跳ね返り」(盾の面で反射した向き)へ飛ぶ。
+                const r = reflectAlongTravel(g.dx, g.dy);
+                spawnBurst(g.x, g.y, g.color ?? '#bfe6ff', 10, r.x, r.y);
+                spawnBurst(g.x, g.y, '#ffffff', 4, r.x, r.y);
+                spawnBurst(g.x, g.y, METAL_PALETTE.sparks[1], 3, r.x, r.y); // 盾の金属が弾く火花
                 spawnRing(g.x, g.y, 3, 24, 'rgba(255,255,255,0.8)', 2, 180);
                 if (gnow - gr.hit > 700) playSfx('heavy-impact', 0.35);
-                playSfx('decoy-zap', 0.35, undefined, 0.85 + rnd() * 0.35);
+                clink(0.3, 1.0 + rnd() * 0.3);
+                if (g.cost > 0) chipRead(g.x, g.y, g.dx, g.dy, false);
                 gr.hit = gnow;
               } else if (g.kind === 'tick') {
                 // 戻る途中の毬が盾に触れた/継続技が防がれ続けている: 小さな火花と短い金属音だけ。
-                spawnBurst(g.x, g.y, '#e2e8f0', 5);
+                spawnBurst(g.x, g.y, METAL_PALETTE.sparks[0], 5, -g.dx, -g.dy);
                 spawnRing(g.x, g.y, 3, 18, 'rgba(226,232,240,0.8)', 2, 150);
-                if (gnow - gr.tick >= 120) { gr.tick = gnow; playSfx('decoy-zap', 0.3, undefined, 1.0 + rnd() * 0.3); }
+                if (gnow - gr.tick >= 120) { gr.tick = gnow; clink(0.22, 0.95 + rnd() * 0.3); }
               } else {
-                if (gnow - gr.hit > 700) bigImpact(g.x, g.y, 0.6); // 防いだ最初の1回
+                const freshHit = gnow - gr.hit > 700 || (g.key !== undefined && g.key !== gr.hitKey);
+                if (freshHit) bigImpact(g.x, g.y, 0.6, METAL_PALETTE, g.dx, g.dy); // 防いだ最初の1回
                 else { // 続く分は小さく(同じ攻撃の連打でメトロノームにならない)
-                  spawnBurst(g.x, g.y, '#e2e8f0', 5);
+                  spawnBurst(g.x, g.y, METAL_PALETTE.sparks[0], 5, -g.dx, -g.dy);
                   spawnRing(g.x, g.y, 3, 20, 'rgba(226,232,240,0.8)', 2, 160);
-                  playSfx('decoy-zap', 0.3, undefined, 0.9 + rnd() * 0.25);
+                  clink(0.25, 0.95 + rnd() * 0.25);
                 }
+                if (g.cost > 0) chipRead(g.x, g.y, g.dx, g.dy, false);
                 gr.hit = gnow;
+                gr.hitKey = g.key;
               }
             }
             for (const br of breaks) {
-              // 既存の「耐久0で倒れる」演出と同じ(burst 12 + 灰色のリング)。
+              // 山場: 短いヒットストップ(全停止)→揺れ→残骸が飛ぶ(絵は pixiScene)。踊り中(リズム)は時間を止めない。
               const bcxs = br.x + br.w / 2, bcys = br.y + br.h / 2;
-              spawnBurst(bcxs, bcys, '#94a3b8', 12);
-              spawnRing(bcxs, bcys, 4, Math.max(br.w, br.h), 'rgba(148,163,184,0.7)', 2, 260);
+              const bst = useGameStore.getState();
+              if (!bst.rhythm.active) bst.triggerHitstop(SHIELD_BREAK_HITSTOP_MS);
+              setTimeout(() => useGameStore.getState().triggerShake(SHIELD_BREAK_SHAKE_MS, SHIELD_BREAK_SHAKE_MAG), bst.rhythm.active ? 0 : SHIELD_BREAK_HITSTOP_MS);
+              playSfx('heavy-impact', 1.0, undefined, 0.55); // 低く重い
+              playSfx('shield-deploy', 0.75, undefined, 0.5);
+              clink(0.6, 0.6);
+              spawnFlash('rgba(226,232,240,0.2)', 160);
+              spawnRing(bcxs, bcys, 4, Math.max(br.w, br.h) * 1.4, 'rgba(203,213,225,0.85)', 3, 320);
+              spawnRing(bcxs, bcys, 3, Math.max(br.w, br.h) * 0.8, 'rgba(253,230,138,0.8)', 2, 240);
+              // 破片: 攻撃の向きへ散るもの・元の絵の色・金属の火花・暗い欠片・跳ね返るもの。
+              spawnBurst(bcxs, bcys, '#94a3b8', 22, br.dx, br.dy);
+              spawnBurst(bcxs, bcys, '#e2e8f0', 16, br.dx, br.dy);
+              spawnBurst(bcxs, bcys, '#fde68a', 10, br.dx, br.dy);
+              spawnBurst(bcxs, bcys, '#475569', 14);
+              spawnBurst(br.cx, br.cy, '#cbd5e1', 10, -br.dx, -br.dy);
             }
           }
         }

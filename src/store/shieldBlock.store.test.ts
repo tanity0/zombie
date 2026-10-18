@@ -289,10 +289,11 @@ describe('飛ぶ物(氷刃・骨刃・羽根)× 盾: 触れたら消える', () 
 
 describe('防いだ印(shieldGuardFx)', () => {
   it('resetGame で空に戻る', () => {
-    useGameStore.setState({ shieldGuardFx: [{ x: 1, y: 2, dx: 0, dy: 1, kind: 'hit', cost: 0 }], shieldBreakFx: [{ x: 1, y: 2, w: 3, h: 4 }] });
+    useGameStore.setState({ shieldGuardFx: [{ x: 1, y: 2, dx: 0, dy: 1, kind: 'hit', cost: 0 }], shieldBreakFx: [{ x: 1, y: 2, w: 3, h: 4, dx: 0, dy: 1, cx: 1, cy: 2 }] });
     useGameStore.getState().resetGame('assault');
     expect(useGameStore.getState().shieldGuardFx).toEqual([]);
     expect(useGameStore.getState().shieldBreakFx).toEqual([]);
+    expect(useGameStore.getState().shieldBreakGhosts).toEqual([]);
   });
 });
 
@@ -348,6 +349,59 @@ describe('盾の代償: 防いだ技の区分ごとに耐久が削れる', () =>
     noteShieldGuard({ x: O - 29, y: O - 108, width: 58, height: 16 }, { attacker: 'thor' });
     expect(shieldHpNow()).toBe(20);
     expect(useGameStore.getState().shieldGuardFx).toHaveLength(12);
+  });
+});
+
+describe('防いだ演出の印(第2回クリエイティブ監査・視覚のみ)', () => {
+  const shieldNow = () => useGameStore.getState().projectiles.find(p => p.weaponType === 'shield')!;
+  const rect = () => ({ x: O - 29, y: O - 108, width: 58, height: 16 });
+  it('耐久が削れる(ボス級)防ぎ: 大きな押し戻し・欠けた時刻・接点・光の色を書き、積み荷に技のキーと型が付く', () => {
+    useGameStore.setState({ projectiles: [shieldAt(O, O - 100)] });
+    noteShieldGuard(rect(), { attacker: { type: 'thor', id: 'e1', bossState: 'issen' }, kind: 'hit', x: O, y: O - 108, dx: 0, dy: 1 });
+    const sp = shieldNow();
+    expect(sp.shieldGuardHeavy).toBe(true);
+    expect(sp.shieldChipAt).toBeGreaterThan(0);
+    expect(sp.shieldGuardCX).toBe(O);
+    expect(sp.shieldGuardCY).toBe(O - 108);
+    expect(sp.shieldGuardTint).toBe(0xfff0c2); // 物理=金属(白金)
+    const fx = guardFx()[0];
+    expect(fx.key).toBe('thor:e1:issen');
+    expect(fx.type).toBe('thor');
+  });
+  it('耐久が削れない防ぎ(強個体・雑魚): 軽い押し戻し・欠けた時刻は書かない', () => {
+    useGameStore.setState({ projectiles: [shieldAt(O, O - 100)] });
+    noteShieldGuard(rect(), { attacker: 'zombie', kind: 'hit', x: O, y: O - 108, dx: 0, dy: 1 });
+    const sp = shieldNow();
+    expect(sp.shieldGuardHeavy).toBe(false);
+    expect(sp.shieldChipAt).toBeUndefined();
+  });
+  it('紫の光線(ミーミル)を防ぐ光は紫・他の光線は赤。ミーミルの車輪は開始時刻が技のキーになる', () => {
+    useGameStore.setState({ projectiles: [shieldAt(O, O - 100)] });
+    noteShieldGuard(rect(), { attacker: { type: 'mimir', id: 'm1', mimirWheelAt: 1234 }, kind: 'beam', x: O, y: O - 108, dx: 0, dy: 1, cost: 0.1 });
+    expect(shieldNow().shieldGuardTint).toBe(0xd8b4fe);
+    expect(guardFx()[0].key).toBe('mimir:m1:1234');
+    useGameStore.setState({ shieldGuardFx: [] });
+    noteShieldGuard(rect(), { attacker: { type: 'bounty-melee', id: 'b1' }, kind: 'beam', x: O, y: O - 108, dx: 0, dy: 1, cost: 0.1 });
+    expect(shieldNow().shieldGuardTint).toBe(0xff8a7e);
+  });
+  it('光線の当たり続け(毎フレーム)でも「欠けた」は 600ms おき・押し戻しの始まりは1つ', () => {
+    useGameStore.setState({ projectiles: [shieldAt(O, O - 100)] });
+    noteShieldGuard(rect(), { attacker: 'mimir', kind: 'beam', x: O, y: O - 108, dx: 0, dy: 1, cost: 0.1 });
+    const first = shieldNow();
+    const chip0 = first.shieldChipAt, at0 = first.shieldGuardAt;
+    noteShieldGuard(rect(), { attacker: 'mimir', kind: 'beam', x: O, y: O - 108, dx: 0, dy: 1, cost: 0.1 });
+    expect(shieldNow().shieldChipAt).toBe(chip0);
+    expect(shieldNow().shieldGuardAt).toBe(at0);
+  });
+  it('耐久が尽きた盾は、飛んでいく残骸(shieldBreakGhosts)を残す。向きは攻撃の進む向き・判定の盾は消える', () => {
+    useGameStore.setState({ projectiles: [shieldAt(O, O - 100, { shieldHp: 10 })] });
+    noteShieldGuard(rect(), { attacker: 'thor', kind: 'hit', x: O + 5, y: O - 108, dx: 0, dy: 1 });
+    expect(useGameStore.getState().projectiles.some(p => p.weaponType === 'shield')).toBe(false);
+    const gh = useGameStore.getState().shieldBreakGhosts;
+    expect(gh).toHaveLength(1);
+    expect(gh[0].dy).toBeCloseTo(1);
+    expect(gh[0].at).toBeGreaterThan(Date.now() - 5); // ヒットストップの明けから飛び始める
+    expect(useGameStore.getState().shieldBreakFx[0]).toMatchObject({ dx: 0, dy: 1, cx: O + 5, cy: O - 108 });
   });
 });
 

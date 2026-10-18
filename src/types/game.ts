@@ -2480,6 +2480,15 @@ export interface Projectile {
   shieldGuardDirX?: number;
   shieldGuardDirY?: number;
   shieldHitAt?: number; // 直近に耐久を削られた時刻(Date.now)。描画側の被弾シェイク/フラッシュ用(視覚のみ)。
+  // 防いだ演出の追加欄(第2回クリエイティブ監査 2026-10-18・視覚のみ/判定は読まない):
+  // shieldGuardCX/CY=防いだ接点(世界px・光の集まる所と欠片の出る所) / shieldGuardHeavy=この防ぎの始まりがボス級(耐久が削れた)技か(押し戻しの大小)
+  // shieldChipAt=耐久が実際に削れた時刻(Date.now・「欠けた」見え=暗く濁る)。
+  shieldGuardCX?: number;
+  shieldGuardCY?: number;
+  shieldGuardHeavy?: boolean;
+  shieldChipAt?: number;
+  /** 防いだ時の光の色(0xRRGGBB・物理=白金 / 光線=その光線の色)。 */
+  shieldGuardTint?: number;
   // Set when a melee shield-bash shoves the wall: the wall slides seamlessly,
   // then is force-destroyed once Date.now() reaches this timestamp (slide end).
   shieldBreakAt?: number;

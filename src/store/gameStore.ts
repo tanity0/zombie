@@ -359,6 +359,7 @@ import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, segmentIntersectsRect, type Rect } from '../world/obstacles';
 import { friendlyShieldRect, splitBeamAtShield, beamStripsHit, shieldBlocksArea, shieldBlocksLine, shieldContactPoint, type BeamShieldSplit, type BeamStrip } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md: シールドで技を防ぐ
 import { shieldGuardCostFor, shieldBeamDrainFor } from '../utils/shieldGuardCost'; // research/SHIELD_BLOCK.md §8: 盾の代償
+import { METAL_PALETTE, shieldBeamPalette } from '../utils/shieldGuardFx'; // 防いだ光の色(視覚のみ)
 import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): 純関数(src/world/shieldPush.test.ts)
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
@@ -2858,6 +2859,10 @@ export const PUMPKIN_LAND_SHAKE_MAG = 9;
 // 設置シールドでジャンプ/ダッシュを弾いた瞬間の「ぶつかった感」用シェイク(着地より軽め)。
 export const SHIELD_BLOCK_SHAKE_MS = 140;
 export const SHIELD_BLOCK_SHAKE_MAG = 5;
+// 盾が壊れる瞬間(耐久が尽きた防ぎ)は山場: 短いヒットストップ(全停止)→残骸が飛び、揺れも強く長い(第2回クリエイティブ監査 2026-10-18)。
+export const SHIELD_BREAK_HITSTOP_MS = 70;
+export const SHIELD_BREAK_SHAKE_MS = 300;
+export const SHIELD_BREAK_SHAKE_MAG = 10;
 // パンプキン(/lab-zombie-3)のジャンプ攻撃は着地時に爆発攻撃。範囲は狭め(半径px)。ダメージは各敵の damage。
 // ★定義はbountyDims.ts(依存ゼロの葉)へ移動(v0.25.3390・循環import起動全損の修正)。値54は不変。
 import { PUMPKIN_EXPLOSION_RADIUS } from '../utils/bountyDims';
@@ -5813,21 +5818,42 @@ export interface ShieldGuardFxEntry {
   color?: string;
   /** 削れた耐久(演出の強さ・テスト用)。 */
   cost: number;
+  /** 同じ「技の1回」を指すキー(攻撃者のid+その技の始まり。無ければ型)。大きな衝撃(閃光・揺れ・重い音)は1つの技で1度だけ出す。 */
+  key?: string;
+  /** 攻撃した敵の型(光線の色=その光線自身の色を引く)。不明は無し。 */
+  type?: EnemyType;
+}
+
+/** 耐久が尽きた盾の飛んでいく残骸(描画専用)。at=飛び始める時刻(ヒットストップの明け=Date.now)。 */
+export interface ShieldBreakGhost {
+  id: string;
+  /** 盾の矩形(世界px)・盾の向き(絵の選択)・攻撃の進む向き(単位)・防いだ接点・霊体の盾か。 */
+  x: number; y: number; w: number; h: number;
+  dirX: number; dirY: number;
+  dx: number; dy: number;
+  cx: number; cy: number;
+  ownerGhost: boolean;
+  at: number;
 }
 
 /** noteShieldGuard への入力。攻撃者の型から耐久の削れ量を引く(cost で上書きも可)。 */
 export interface ShieldGuardInput {
-  /** 攻撃した敵の型(区分で削れ量が決まる。不明=0)。 */
-  attacker?: EnemyType | { type: EnemyType };
+  /** 攻撃した敵の型(区分で削れ量が決まる。不明=0)。オブジェクトで渡すと id と技の始まり(車輪の開始・状態)から「技の1回」のキーを作る。 */
+  attacker?: EnemyType | { type: EnemyType; id?: string; mimirWheelAt?: number; bossState?: string };
   kind?: ShieldGuardFxEntry['kind'];
   x?: number; y?: number; dx?: number; dy?: number; sx?: number; sy?: number;
   color?: string;
   /** 削れ量を直接指定(光線の毎フレームぶんなど)。省略=攻撃者の区分の表。 */
   cost?: number;
+  /** 「技の1回」のキーを直接指定(省略=attacker から作る)。 */
+  key?: string;
 }
 // research/SHIELD_BLOCK.md §8: 継続技(g-quad/g-nova)が1回の技の中で既に耐久を削ったか(キー→最後に防いだ gameTime)。resetGame で空にする。
 const shieldChargedKeys = new Map<string, number>();
 const attackerTypeOf = (a: ShieldGuardInput['attacker']): EnemyType | undefined => (a === undefined ? undefined : typeof a === 'string' ? a : a.type);
+/** 「技の1回」のキー: 攻撃者の id + その技の始まり(ミーミルの車輪は開始時刻・他は状態名)。id が無ければ型だけ(消化側が間隔でも区切る)。 */
+const attackerKeyOf = (a: ShieldGuardInput['attacker']): string | undefined =>
+  a === undefined ? undefined : typeof a === 'string' ? a : `${a.type}:${a.id ?? ''}:${a.mimirWheelAt ?? a.bossState ?? ''}`;
 
 /**
  * 盾が技を防いだ瞬間を記録する(research/SHIELD_BLOCK.md §2/§8)。
@@ -5842,6 +5868,8 @@ export const noteShieldGuard = (shield: Rect, g: ShieldGuardInput = {}): void =>
   const entry: ShieldGuardFxEntry = {
     x: g.x ?? scx, y: g.y ?? scy, dx: g.dx ?? 0, dy: g.dy ?? 1, kind: g.kind ?? 'hit',
     ...(g.sx !== undefined ? { sx: g.sx, sy: g.sy } : {}), ...(g.color ? { color: g.color } : {}), cost,
+    ...(g.key !== undefined ? { key: g.key } : attackerKeyOf(g.attacker) !== undefined ? { key: attackerKeyOf(g.attacker) } : {}),
+    ...(attackerTypeOf(g.attacker) !== undefined ? { type: attackerTypeOf(g.attacker) } : {}),
   };
   const nowMs = Date.now();
   useGameStore.setState(st => {
@@ -5852,20 +5880,38 @@ export const noteShieldGuard = (shield: Rect, g: ShieldGuardInput = {}): void =>
     const fx = st.shieldGuardFx.length >= 12 ? st.shieldGuardFx : [...st.shieldGuardFx, entry];
     if (nextHp !== undefined && nextHp <= 0) {
       // 耐久が尽きた: 盾を消す(次のフレームから壁は無い=光線は伸び、技は当たる)。倒れる演出は useGameLoop が既存の破壊と同じ形で出す。
+      // 盾の絵は消さずに「飛んでいく残骸」として残す(描画専用・攻撃の向きへ飛んで薄れる)。
+      const bdx = entry.dx, bdy = entry.dy;
+      const bl = Math.hypot(bdx, bdy);
+      const ghost: ShieldBreakGhost = {
+        id: `shield-ghost-${sp.id}-${nowMs}`, x: sp.x, y: sp.y, w: sp.width, h: sp.height,
+        dirX: sp.direction.x, dirY: sp.direction.y,
+        dx: bl > 1e-6 ? bdx / bl : 0, dy: bl > 1e-6 ? bdy / bl : 1, cx: entry.x, cy: entry.y,
+        ownerGhost: sp.ownerGhost === true, at: nowMs + SHIELD_BREAK_HITSTOP_MS,
+      };
       return {
         projectiles: st.projectiles.filter((_, i) => i !== idx),
-        shieldBreakFx: [...st.shieldBreakFx, { x: sp.x, y: sp.y, w: sp.width, h: sp.height }],
+        shieldBreakFx: [...st.shieldBreakFx, { x: sp.x, y: sp.y, w: sp.width, h: sp.height, dx: ghost.dx, dy: ghost.dy, cx: entry.x, cy: entry.y }],
+        shieldBreakGhosts: [...st.shieldBreakGhosts.slice(-3), ghost],
         shieldGuardFx: fx,
       };
     }
     const lastAt = sp.shieldGuardLastAt ?? -1e9;
+    // 押し戻しの1エピソード: 前回から 250ms 以上空いたら新しい始まり(光線の当たり続けは同じエピソードで保持)。
+    // 耐久が削れる(ボス級の)防ぎは大きな押し戻し: 軽い防ぎで始まったエピソードにボス級が来たら、そこから新しく始める。
+    const heavy = cost > 0;
+    const newEpisode = nowMs - lastAt > 250 || (heavy && sp.shieldGuardHeavy !== true && entry.kind !== 'beam');
     const projectiles = st.projectiles.slice();
     projectiles[idx] = {
       ...sp,
       ...(nextHp !== undefined && cost > 0 ? { shieldHp: nextHp } : {}),
-      // 押し戻しの1エピソード: 前回から 250ms 以上空いたら新しい始まり(光線の当たり続けは同じエピソードで保持)。
-      shieldGuardAt: nowMs - lastAt > 250 ? nowMs : (sp.shieldGuardAt ?? nowMs),
+      shieldGuardAt: newEpisode ? nowMs : (sp.shieldGuardAt ?? nowMs),
       shieldGuardLastAt: nowMs,
+      shieldGuardCX: entry.x, shieldGuardCY: entry.y,
+      shieldGuardTint: (entry.kind === 'beam' ? shieldBeamPalette(entry.type) : METAL_PALETTE).tint,
+      shieldGuardHeavy: newEpisode ? heavy : (sp.shieldGuardHeavy === true || heavy),
+      // 耐久が実際に削れた防ぎ(光線は毎フレーム削れるので、始まりと 600ms おきだけ「欠けた」とする)=盾が濁って暗くなる合図。
+      ...(cost > 0 && (entry.kind !== 'beam' || newEpisode || nowMs - (sp.shieldChipAt ?? -1e9) > 600) ? { shieldChipAt: nowMs } : {}),
       ...(g.dx !== undefined || g.dy !== undefined ? { shieldGuardDirX: g.dx ?? 0, shieldGuardDirY: g.dy ?? 1 } : {}),
     };
     return { projectiles, shieldGuardFx: fx };
@@ -5883,11 +5929,11 @@ export const noteShieldGuardFrom = (shield: Rect, srcX: number, srcY: number, at
  * 光線が盾に当たっている1フレーム(誰が後ろに居なくても): 毎秒10を dt で削り、接点の演出を積む。
  * 1本につき1フレーム1回だけ呼ぶ(複数本は別々に削る)。split は splitBeamAtShield の結果。
  */
-export const noteShieldBeam = (shield: Rect, split: BeamShieldSplit, dtSec: number, attacker?: EnemyType | { type: EnemyType }): void => {
+export const noteShieldBeam = (shield: Rect, split: BeamShieldSplit, dtSec: number, attacker?: ShieldGuardInput['attacker']): void => {
   const c = split.contact;
   const t = attackerTypeOf(attacker);
   noteShieldGuard(shield, {
-    kind: 'beam', x: c.x, y: c.y, dx: c.ux, dy: c.uy, sx: c.sx, sy: c.sy,
+    attacker, kind: 'beam', x: c.x, y: c.y, dx: c.ux, dy: c.uy, sx: c.sx, sy: c.sy,
     cost: t === undefined ? shieldBeamDrainFor('mimir', dtSec) : shieldBeamDrainFor(t, dtSec),
   });
 };
@@ -6102,7 +6148,10 @@ interface GameState {
   // 重い shieldBlocks(heavy-impact・画面揺れ)とは別の軽い列。
   shieldGuardFx: ShieldGuardFxEntry[];
   // research/SHIELD_BLOCK.md §8: 耐久が尽きて消えた盾の位置(倒れる演出の積み荷)。useGameLoop が既存の破壊と同じ形で出して空に戻す。
-  shieldBreakFx: { x: number; y: number; w: number; h: number }[];
+  shieldBreakFx: { x: number; y: number; w: number; h: number; dx: number; dy: number; cx: number; cy: number }[];
+  // 耐久が尽きた盾の「飛んでいく残骸」(描画だけが読む・判定なし)。盾の本体(projectiles)は消えたまま、絵だけが攻撃の向きへ飛んで消える。
+  // 古いものは useGameLoop の消化で間引く。resetGame で空。
+  shieldBreakGhosts: ShieldBreakGhost[];
   boomerangReadyFxAt: number; // ドローンブーメランのCD明け演出(頭上マーク)の発火時刻(Date.now)
   // フレアガンのCD明け演出(頭上の小さな炎マーク・一瞬)の発火時刻(Date.now)。
   // サブウェポンのチャージ通知は全共通で「明けた瞬間だけ一瞬出る」ブーメラン型(社長指示v0.25.2155)。
@@ -7450,6 +7499,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   shieldBlocks: [],
   shieldGuardFx: [],
   shieldBreakFx: [],
+  shieldBreakGhosts: [],
   skadiIceMarkers: [],
   skadiIceBlades: [],
   groundFires: [],
@@ -18135,7 +18185,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (shieldChargedKeys.size > 48) for (const k of [...shieldChargedKeys.keys()].slice(0, 24)) shieldChargedKeys.delete(k);
       }
       const cp = shieldContactPoint(h.srcX, h.srcY, pcxNow, pcyNow, h.shield);
-      noteShieldGuard(h.shield, { attacker: h.type, kind, x: cp.x, y: cp.y, dx: cp.dx, dy: cp.dy, ...(cost !== undefined ? { cost } : {}) });
+      noteShieldGuard(h.shield, { attacker: h.type, kind, x: cp.x, y: cp.y, dx: cp.dx, dy: cp.dy, ...(cost !== undefined ? { cost } : {}), ...(h.once !== undefined ? { key: h.once } : {}) });
     }
     // SKILL_BUILD_REDESIGN.md §15-1(B0発注文)+設計チャットの追補: ボス突入スナップショット
     // (装備スキル/Lv/プレイヤーLv/装備スロット別Tier+系統+特殊フラグ/straps)。イベント時のみ
@@ -22683,6 +22733,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         projectiles: [],
         shieldGuardFx: [],
         shieldBreakFx: [],
+        shieldBreakGhosts: [],
         skadiIceMarkers: [],
         skadiIceBlades: [],
         homingLocks: [],

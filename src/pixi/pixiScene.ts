@@ -146,7 +146,8 @@ import {
 import { mimirWheelSpokeAngle, mimirWheelOmega, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
 import { latticeBands, latticeAxisForStage } from '../utils/skadiLattice';
 import { maikoBoomProgress } from '../utils/maikoBoom'; // 手毬の位置式(判定 bountyTick と同じ式を読む)
-import { friendlyShieldRect, splitBeamAtShield, type BeamStrip } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: 光線は味方の盾が壁(絵も判定と同じ関数で割る)
+import { shieldPushPx, shieldPushCurve, shieldHoldAmount, shieldHoldJitter, shieldGuardGlow, shieldChipDark, shieldGhostPose, SHIELD_GHOST_LIFE_MS } from '../utils/shieldGuardFx'; // 防いだ演出の曲線(第2回クリエイティブ監査)
+import { friendlyShieldRect, beamDrawPlan, type BeamDrawPlan } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: 光線は味方の盾が壁(絵も判定と同じ関数で割る)
 import { jormSlamRect, jormSlamReach, jormSlamTelegraphProgress, jormRainLobPos, jormFreezeState, jormFreezeLaunchOffsetMs, jormFreezeSlot } from '../utils/jormDanmaku';
 // research/THOR_ISSEN_REWORK.md §1: 紫円の**半径は台帳の1定数**(判定・ボット・絵が同じ値を読む)。
 import { THOR_NIHIL_STATE, thorNihilRadius } from '../utils/thorNihil';
@@ -2586,50 +2587,74 @@ const shieldForDraw = (): Rect | null => {
   return shieldDrawCacheRect;
 };
 /**
- * 光線 (ox,oy)→(ex,ey)・半幅 hw を盾の影で割った帯の並び。割らない時は null。
+ * 光線 (ox,oy)→(ex,ey)・半幅 hw の絵の計画(盾の影で割る時だけ。割らない時は null=元の1本をそのまま描く)。
+ * 判定と同じ splitBeamAtShield を読む(world/shieldBlock.beamDrawPlan)。
  * round=先端が半幅ぶん丸く/伸びて描かれる光線なら true(判定側 tipExt と同じ意味)。startOffset=回る光線の懐。
  */
-const shieldBeamPieces = (ox: number, oy: number, ex: number, ey: number, hw: number, round: boolean, startOffset = 0): BeamStrip[] | null => {
+const shieldBeamPlan = (ox: number, oy: number, ex: number, ey: number, hw: number, round: boolean, startOffset = 0): BeamDrawPlan | null => {
   const sh = shieldForDraw();
   if (!sh) return null;
-  const sp = splitBeamAtShield(ox, oy, ex, ey, hw, sh, round, startOffset);
-  return sp ? sp.strips : null;
+  return beamDrawPlan(ox, oy, ex, ey, hw, sh, round, startOffset);
 };
-/** 割った帯のうち光線の中心線(横 0)を含む帯が終わる所(芯の線の終点)。含む帯が無ければ元の終点。 */
-const beamCoreEnd = (ox: number, oy: number, ex: number, ey: number, pieces: readonly BeamStrip[]): { x: number; y: number } => {
-  const dx = ex - ox, dy = ey - oy;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
-  for (const p of pieces) {
-    const lat = (p.fx - ox) * nx + (p.fy - oy) * ny;
-    if (Math.abs(lat) > p.halfWidth + 1e-3) continue;
-    const d = (p.tx - ox) * ux + (p.ty - oy) * uy;
-    if (d >= len - 0.5) return { x: ex, y: ey };
-    return { x: ox + ux * Math.max(0, d), y: oy + uy * Math.max(0, d) };
-  }
-  return { x: ex, y: ey };
-};
-/** 光線の1層(w=盾が無い時の全幅px。core=芯=割っても細らず中心線だけに引く)。 */
+/** 光線の1層(w=盾が無い時の全幅px。cap='round' なら両端が丸い)。core は昔の名残(いまは他の層と同じく元の断面の切り出しで描く)。 */
 interface BeamLayer { w: number; color: number; alpha: number; cap?: 'round'; core?: boolean }
 /**
- * 光線を層ごとに描く。盾が光線を割る時は、帯ごとに幅を(帯の半幅/元の半幅)倍にして描き、芯だけは中心線を盾の面まで引く。
+ * 盾の影で切った1層の多角形(研究 SHIELD_BLOCK.md §8・第2回クリエイティブ監査 #1「割れた光線が2〜3本の別の光に見える」の是正)。
+ * 元の1本の断面(横幅 w の帯)を (距離 d, 横 l) の座標で作り、**盾の影の横の範囲 [s0,s1] だけ盾の面で終わらせ**、
+ * 影の外の縁は元の終点(丸い層なら丸い先端)まで残す。盾に当たるまでは1本の光線、向こう側で初めて割れる形になる。
+ * 帯は貼り直さず、1つの多角形なので継ぎ目も二重の濃さも出ない。
+ */
+const beamCombPts = (plan: BeamDrawPlan, R: number, dA: number, dB: number, roundA: boolean, roundB: boolean): Array<[number, number]> => {
+  const { s0, s1 } = plan;
+  const ls: number[] = [];
+  const N = Math.max(8, Math.min(28, Math.round(R / 2.5)));
+  for (let i = 0; i <= N; i++) ls.push(-R + (2 * R * i) / N);
+  const endCap = (l: number): number => (roundB ? dB + Math.sqrt(Math.max(0, R * R - l * l)) : dB);
+  const startD = (l: number): number => dA - (roundA ? Math.sqrt(Math.max(0, R * R - l * l)) : 0);
+  const eOut = (l: number): number => endCap(l);
+  const eIn = (l: number): number => Math.max(startD(l), Math.min(endCap(l), plan.faceAt(l, plan.len + R + 4)));
+  const inShadow = (l: number): boolean => l >= s0 - 1e-6 && l <= s1 + 1e-6;
+  const interior = (v: number): boolean => v > -R + 1e-6 && v < R - 1e-6;
+  // 影の縁(s0 の外→内 / s1 の内→外)で終点が段差になるので、同じ横位置に2点入れる。
+  const sorted = ls.slice();
+  if (interior(s0)) sorted.push(s0);
+  if (interior(s1)) sorted.push(s1);
+  sorted.sort((x, y) => x - y);
+  const pts: Array<[number, number]> = []; // [横 l, 距離 d]
+  for (const l of sorted) {
+    if (interior(s0) && Math.abs(l - s0) < 1e-9) { pts.push([l, eOut(l)], [l, eIn(l)]); continue; }
+    if (interior(s1) && Math.abs(l - s1) < 1e-9) { pts.push([l, eIn(l)], [l, eOut(l)]); continue; }
+    pts.push([l, inShadow(l) ? eIn(l) : eOut(l)]);
+  }
+  for (let i = sorted.length - 1; i >= 0; i--) pts.push([sorted[i], startD(sorted[i])]);
+  return pts;
+};
+const beamPtsToXY = (plan: BeamDrawPlan, pts: ReadonlyArray<[number, number]>): number[] => {
+  const out: number[] = [];
+  for (const [l, d] of pts) out.push(plan.fx + plan.ux * d + plan.nx * l, plan.fy + plan.uy * d + plan.ny * l);
+  return out;
+};
+const beamLayerPoly = (plan: BeamDrawPlan, w: number, round: boolean, startOffset: number): number[] =>
+  beamPtsToXY(plan, beamCombPts(plan, Math.max(0.25, w / 2), startOffset, plan.len, round, round));
+/**
+ * 光線を層ごとに描く。盾が光線を割る時は、層ごとに「元の断面を盾の影で切った多角形」を1つ描く(帯を貼り直さない)。
  * 盾が無い時は従来の `moveTo/lineTo/stroke` と同じ(層の並び=描く順は不変)。
  */
 const strokeBeamLayers = (
   o: Graphics, ox: number, oy: number, ex: number, ey: number, hw: number, round: boolean,
   layers: readonly BeamLayer[], startOffset = 0,
 ): void => {
-  const pieces = shieldBeamPieces(ox, oy, ex, ey, hw, round, startOffset);
+  const plan = shieldBeamPlan(ox, oy, ex, ey, hw, round, startOffset);
   const sx = startOffset > 0 ? ox + ((ex - ox) / (Math.hypot(ex - ox, ey - oy) || 1)) * startOffset : ox;
   const sy = startOffset > 0 ? oy + ((ey - oy) / (Math.hypot(ex - ox, ey - oy) || 1)) * startOffset : oy;
-  const coreEnd = pieces ? beamCoreEnd(ox, oy, ex, ey, pieces) : { x: ex, y: ey };
   for (const L of layers) {
-    const cap = L.cap ? { cap: L.cap } : {};
-    if (!pieces) { o.moveTo(sx, sy).lineTo(ex, ey).stroke({ width: L.w, color: L.color, alpha: L.alpha, ...cap }); continue; }
-    if (L.core) { o.moveTo(sx, sy).lineTo(coreEnd.x, coreEnd.y).stroke({ width: L.w, color: L.color, alpha: L.alpha, ...cap }); continue; }
-    for (const p of pieces) {
-      o.moveTo(p.fx, p.fy).lineTo(p.tx, p.ty).stroke({ width: Math.max(0.5, L.w * (p.halfWidth / Math.max(1e-6, hw))), color: L.color, alpha: L.alpha, ...cap });
+    if (!plan) {
+      const cap = L.cap ? { cap: L.cap } : {};
+      o.moveTo(sx, sy).lineTo(ex, ey).stroke({ width: L.w, color: L.color, alpha: L.alpha, ...cap });
+      continue;
     }
+    if (L.alpha <= 0.001) continue;
+    o.poly(beamLayerPoly(plan, L.w, L.cap === 'round', startOffset)).fill({ color: L.color, alpha: L.alpha });
   }
 };
 const THIN_BEAM_VIS_HALFWIDTH = 30; // T6細ビームの描画半太さ(=SR_T.beam.halfWidth。20→30=v0.25.3590貼り戻し。使用箇所はスリィエル環の2本のみ・同値はangelSwordSync.testが見張る)
@@ -3759,11 +3784,18 @@ const isAngelFlashTailState = (bs: string | undefined): boolean =>
 const HIT_SHAKE_MS = 220;
 const HIT_SHAKE_PX = 4;
 // research/SHIELD_BLOCK.md: 盾が技を防いだ時の押し戻し(視覚のみ)。立ち上がり/戻り/保持の時間と大きさ。
-const SHIELD_GUARD_RISE_MS = 110;
-const SHIELD_GUARD_FALL_MS = 260;
-const SHIELD_GUARD_HOLD_MS = 90;
-const SHIELD_GUARD_PUSH_PX = 6;
-const SHIELD_GUARD_FLASH_ALPHA = 0.55;
+const SHIELD_GUARD_HOLD_MS = 90;          // 直近に防いでから「まだ当たり続けている」とみなす間(押し戻しの曲線は utils/shieldGuardFx)
+const SHIELD_GUARD_FLASH_ALPHA = 0.16;    // 盾の絵全体に乗せる加算の光(下地だけ)。主役は接点の光だまり
+const SHIELD_GUARD_GLOW_ALPHA = 0.85;     // 接点の光だまり(盾の絵の alpha を掛ける)
+const frac01 = (x: number): number => x - Math.floor(x);
+/** tint を暗く・彩度を落とす(耐久が削れた「欠けた」読み)。k=0..1(0=そのまま)。赤へは寄せない=輝度へ寄せて沈める。 */
+const darkenTint = (tint: number, k: number): number => {
+  const r = (tint >> 16) & 255, g = (tint >> 8) & 255, b = tint & 255;
+  const lum = 0.3 * r + 0.59 * g + 0.11 * b;
+  const mix = 0.5 * k, scale = 1 - 0.45 * k;
+  const f = (c: number): number => Math.max(0, Math.min(255, Math.round((c + (lum - c) * mix) * scale)));
+  return (f(r) << 16) | (f(g) << 8) | f(b);
+};
 // プレイヤーが裏ボスの当たり判定(帯)より奥=裏に回り込んだとき、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
 // ★v0.25.3736(社長指示2026-08-21・全ボス共通の新カーブ): 濃さは**「プレイヤーがボスの絵のどの
 // 高さに居るか」**で決める(旧: 画面px固定の2段カーブ「奥ほど薄い」は廃止)。
@@ -4319,7 +4351,9 @@ export class PixiScene {
   // worldGroupの背後に敷く=見た目はプレビュー・ゲームは完全m0のまま上に乗る。
   private corridorBackdrop: CorridorLayer | null = null;
   // 設置型シールドは actorLayer に置いて足元Yでy-sort(上部はキャラ被り)。
-  private shieldViews = new Map<string, { container: Container; sprite: Sprite; flash: Sprite }>();
+  private shieldViews = new Map<string, { container: Container; sprite: Sprite; flash: Sprite; glow: Sprite; crack: Graphics }>();
+  // 耐久が尽きた盾の残骸(store.shieldBreakGhosts を読む・描画専用)。id→絵。
+  private shieldGhostViews = new Map<string, { container: Container; sprite: Sprite; flash: Sprite }>();
   // 設置型デコイ: 射程サークル(Graphics)+ 装置スプライト。
   private decoyViews = new Map<string, { container: Container; gfx: Graphics; sprite: Sprite }>();
   // 発火ナイフ投擲物: 専用イラスト(飛翔/刺さった状態共通)+ 刺さった時の火種明滅(Graphics)。
@@ -23562,6 +23596,7 @@ export class PixiScene {
       const drawGiantCapsuleZone = (
         fx: number, fy: number, tx: number, ty: number, halfWidth: number, fillA: number, strokeA: number, prog?: number,
         bandIdx = 0, // 帯ごとのスプライト枠(同フレームに複数本描く時だけ指定。既定0=従来どおり)
+        shieldCut?: { plan: BeamDrawPlan; d0: number }, // 盾に当たる帯(掃射ビーム)を1本のまま切る計画(drawSweepBand 参照)。省略=従来どおり
       ) => {
         bandsThisFrame.push([fx, fy, tx, ty, halfWidth]); // 衝撃波の対象は**判定どおりの全長**(絵の縮みに引きずられない)
         const ddx = tx - fx, ddy = ty - fy;
@@ -23579,7 +23614,7 @@ export class PixiScene {
           // ★v0.25.4103(社長「もっとフェードマスクをシームレスに」): 切り出しをやめ、
           //   全長スライスのアルファだけを窓のグラデで変える(切り口が原理的に出ない)。
           //   縁の焼き素材も同じスライスで描く。**抜け切り=判定発生**。
-          this.drawSweepBand(view, o, fx, fy, tx, ty, halfWidth, prog, fillA * TELEGRAPH_FILL_MULT, strokeA, gTgStyle, undefined, undefined, bandIdx);
+          this.drawSweepBand(view, o, fx, fy, tx, ty, halfWidth, prog, fillA * TELEGRAPH_FILL_MULT, strokeA, gTgStyle, undefined, undefined, bandIdx, false, 0, 0, shieldCut);
           return;
         }
         const met = prog === undefined ? null : PixiScene.meteorPhase(prog, gTgStyle.drawFrac);
@@ -24464,13 +24499,10 @@ export class PixiScene {
             // 丸ごと塞がれた時は、曳光弾の本数をN↔0で切り替えず、全長のまま透明度だけ滑らかに落とす(帯と同じ可視度)。
             const trFarX = gfx0 + Math.cos(ang2) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH);
             const trFarY = gfy0 + Math.sin(ang2) * (GIANT_SWEEPBEAM_INNER_RADIUS + GIANT_SWEEPBEAM_LENGTH);
-            const trPieces = shieldBeamPieces(gfx0, gfy0, trFarX, trFarY, GIANT_SWEEPBEAM_HALF_WIDTH, true, GIANT_SWEEPBEAM_INNER_RADIUS);
-            const trBlocked = trPieces !== null && trPieces.length === 0;
+            const trPlan = shieldBeamPlan(gfx0, gfy0, trFarX, trFarY, GIANT_SWEEPBEAM_HALF_WIDTH, true, GIANT_SWEEPBEAM_INNER_RADIUS);
+            const trBlocked = trPlan !== null && trPlan.split.strips.length === 0;
             const trVis = this.sweepbeamVisibility(e.id, trBlocked, now);
-            if (trPieces && trPieces.length > 0) {
-              const ce = beamCoreEnd(gfx0, gfy0, trFarX, trFarY, trPieces);
-              beamEnd = Math.hypot(ce.x - gfx0, ce.y - gfy0);
-            }
+            if (trPlan && !trBlocked) beamEnd = trPlan.centerEnd;
             const span = Math.max(1, beamEnd - out2);
             for (let i = 0; i < (beamEnd > out2 + 1 ? SWEEPBEAM_TRACER_N : 0); i++) {
               const d = ((now * SWEEPBEAM_TRACER_SPEED) / 1000 + (i * span) / SWEEPBEAM_TRACER_N) % span;
@@ -25005,16 +25037,17 @@ export class PixiScene {
           // research/SHIELD_BLOCK.md §2/§8(レーザー=壁・光線の幅): 発射中の掃射は味方の盾の影で割る(判定 gameStore の g-sweepbeam と同じ splitBeamAtShield・
           // 回転の中心から懐を空けて伸びる帯・先端は半幅ぶん伸びる形)。影の中央は盾の面で止まり、影の外の縁は全長のまま。溜めの予告(扇)は変えない。
           // 丸ごと塞がれた(帯が1本も残らない)時は、帯をパッと消さず透明度を滑らかに(慣性つき)落とす。盾が消えたら滑らかに戻る。
-          const sbPieces = shieldBeamPieces(sbfx, sbfy, sbFarX, sbFarY, GIANT_SWEEPBEAM_HALF_WIDTH, true, GIANT_SWEEPBEAM_INNER_RADIUS);
-          const sbFullyBlocked = sbPieces !== null && sbPieces.length === 0;
+          const sbPlan = shieldBeamPlan(sbfx, sbfy, sbFarX, sbFarY, GIANT_SWEEPBEAM_HALF_WIDTH, true, GIANT_SWEEPBEAM_INNER_RADIUS);
+          const sbFullyBlocked = sbPlan !== null && sbPlan.split.strips.length === 0;
           const sbVis = this.sweepbeamVisibility(e.id, sbFullyBlocked, now);
           // ★掃射ビームだけは**判定が生きている持続技**(120°を900msかけて回転)なので、
           //   予告の後も赤を消さない。§11-4「持続判定=流れ続ける」に従い、窓を周期でループさせる
           //   (消すと『赤くないのに当たる』=CLAUDE.md の色の文法に反する)。
           const sbWin = giantSweepWindowProg(false, (e.aiPhaseUntil ?? gameTime) - gameTime,
             GIANT_SWEEPBEAM_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT, sbDurEff);
-          if (sbPieces && sbPieces.length > 0) {
-            sbPieces.forEach((pc, k) => drawGiantCapsuleZone(pc.fx, pc.fy, pc.tx, pc.ty, pc.halfWidth, 0.34 * sbVis, 0.6 * sbVis, sbWin, k));
+          if (sbPlan && !sbFullyBlocked) {
+            // 1本の帯のまま盾の面まで描き、盾の影の横の範囲だけ面で終える(影の外の縁は全長のまま)。別々の細い帯を貼り直さない。
+            drawGiantCapsuleZone(sbNearX, sbNearY, sbFarX, sbFarY, GIANT_SWEEPBEAM_HALF_WIDTH, 0.34 * sbVis, 0.6 * sbVis, sbWin, 0, { plan: sbPlan, d0: GIANT_SWEEPBEAM_INNER_RADIUS });
           } else if (sbVis > 0.02) {
             // 塞がれ始め/塞がれ解け: 盾が無いと仮定した全長の帯を、薄れていく(育っていく)透明度で。
             drawGiantCapsuleZone(sbNearX, sbNearY, sbFarX, sbFarY, GIANT_SWEEPBEAM_HALF_WIDTH, 0.34 * sbVis, 0.6 * sbVis, sbWin);
@@ -25144,11 +25177,11 @@ export class PixiScene {
                 / Math.max(0.001, 1 - 1 / (1 + SHOCKWAVE_TAIL_MS / SHOCKWAVE_MS)));
             // research/SHIELD_BLOCK.md §2/§8: 三連射(g-trishot)の左右の光線は味方の盾の影で割る(判定の共通路と同じ splitBeamAtShield)。
             // 衝撃波は帯の先端まで走る絵なので、割った帯ごとに走らせる(影の中央は盾の面で止まり、外の縁は全長まで)。
-            const shPieces = gph !== undefined && gph.startsWith('g-trishot')
-              ? shieldBeamPieces(shL.d[b], shL.d[b + 1], shL.d[b + 2], shL.d[b + 3], shL.d[b + 4], false)
+            const shPlan = gph !== undefined && gph.startsWith('g-trishot')
+              ? shieldBeamPlan(shL.d[b], shL.d[b + 1], shL.d[b + 2], shL.d[b + 3], shL.d[b + 4], false)
               : null;
-            if (shPieces) {
-              shPieces.forEach((pc, k) => this.drawShockwave(view, 10 + i * 4 + k, pc.fx, pc.fy, pc.tx, pc.ty, pc.halfWidth, runP, fade));
+            if (shPlan) {
+              this.drawShockwaveCut(view, i, 10 + i * 4, shL.d[b], shL.d[b + 1], shL.d[b + 2], shL.d[b + 3], shL.d[b + 4], runP, fade, shPlan);
             } else {
               this.drawShockwave(view, i, shL.d[b], shL.d[b + 1], shL.d[b + 2], shL.d[b + 3], shL.d[b + 4],
                 runP, fade);
@@ -25334,9 +25367,9 @@ export class PixiScene {
         if (sh3 && sh3.t >= sh3.d[0]) {
           const prog3 = sh3.d[0] < 1 ? (sh3.t - sh3.d[0]) / (1 - sh3.d[0]) : 1;
           // research/SHIELD_BLOCK.md §2/§8: 三拍目(中央)の光線も味方の盾の影で割る(左右と同じ)。
-          const sh3Pieces = shieldBeamPieces(sh3.d[1], sh3.d[2], sh3.d[3], sh3.d[4], sh3.d[5], false);
-          if (sh3Pieces) {
-            sh3Pieces.forEach((pc, k) => this.drawShockwave(view, 40 + k, pc.fx, pc.fy, pc.tx, pc.ty, pc.halfWidth, prog3, Math.min(1, (1 - prog3) / 0.2)));
+          const sh3Plan = shieldBeamPlan(sh3.d[1], sh3.d[2], sh3.d[3], sh3.d[4], sh3.d[5], false);
+          if (sh3Plan) {
+            this.drawShockwaveCut(view, 2, 40, sh3.d[1], sh3.d[2], sh3.d[3], sh3.d[4], sh3.d[5], prog3, Math.min(1, (1 - prog3) / 0.2), sh3Plan);
           } else {
             this.drawShockwave(view, 2, sh3.d[1], sh3.d[2], sh3.d[3], sh3.d[4], sh3.d[5],
               prog3, Math.min(1, (1 - prog3) / 0.2));
@@ -26416,11 +26449,22 @@ export class PixiScene {
   private drawShieldedAngelBeam(
     o: Graphics, fx: number, fy: number, ex: number, ey: number, firing: boolean, prog: number, now: number, style?: TelegraphStyle,
   ): void {
-    const pieces = firing ? shieldBeamPieces(fx, fy, ex, ey, SR_T.beam.halfWidth, false) : null;
-    if (!pieces) { this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, prog, now, style, firing); return; }
-    for (const p of pieces) {
-      this.drawAngelBeamLine(o, p.fx, p.fy, p.tx, p.ty, THIN_BEAM_VIS_HALFWIDTH * (p.halfWidth / SR_T.beam.halfWidth), prog, now, style, true);
-    }
+    if (!firing) { this.drawAngelBeamLine(o, fx, fy, ex, ey, THIN_BEAM_VIS_HALFWIDTH, prog, now, style, false); return; }
+    // 発射中は drawAngelBeamLine の uniform 経路(全形)と同じ層を、盾の影で切った1本として描く(盾が無ければ従来の2本の線そのまま)。
+    const L = this.angelBeamLayers(THIN_BEAM_VIS_HALFWIDTH, prog, now);
+    strokeBeamLayers(o, fx, fy, ex, ey, SR_T.beam.halfWidth, false, [
+      { w: L.baseW, color: 0xff3030, alpha: L.baseA },
+      { w: L.coreW, color: 0xffe0e0, alpha: L.coreA, cap: 'round' },
+    ]);
+  }
+  private angelBeamLayers(halfWidth: number, prog: number, now: number): { baseW: number; baseA: number; coreW: number; coreA: number } {
+    const pulse = 0.55 + 0.45 * Math.sin(now / 80);
+    return {
+      baseA: (0.18 + 0.5 * prog) * (0.7 + 0.3 * pulse),
+      coreA: 0.45 + 0.45 * prog,
+      baseW: 2 + (halfWidth - 2) * prog,
+      coreW: 1 + 2 * prog,
+    };
   }
 
   // 巨人の掃射ビームが盾に丸ごと塞がれた時の「帯・曳光弾の見え方」(0=見えない〜1=全開)。パッと消さず、慣性つきの指数接近で滑らかに動かす。
@@ -29011,11 +29055,21 @@ export class PixiScene {
     //   coreA/coreW=帯の中心を走る「白芯」(0なら描かない)。**同じ窓のグラデ**で流れる
     //   (窓の外に白芯だけ残ると「赤くないのに当たる」の逆=線だけ浮いて見えるため)。
     idx = 0, uniform = false, coreA = 0, coreW = 0,
+    // 研究 SHIELD_BLOCK.md §8(第2回クリエイティブ監査 #1): 盾に当たる帯は**1本の帯のまま**盾の面まで描き、盾の影の横の範囲だけ
+    // 面で終える(影の外の縁は元の終点まで残る)。plan=光線全体の計画(起点は回転の中心)・d0=帯の始点までの距離(懐)。
+    // 盾に掛からない縞(スライス)は従来どおりの四角+縁の焼き素材。掛かる縞だけ切った多角形+縁取りの線に替える。
+    cut?: { plan: BeamDrawPlan; d0: number },
   ): void {
     const ddx = tx - fx, ddy = ty - fy;
     const ddl = Math.hypot(ddx, ddy) || 1;
     const ux = ddx / ddl, uy = ddy / ddl;
     const nx = -uy, ny = ux;
+    let cutMinFace = Infinity;
+    if (cut) {
+      const lo = Math.max(-halfWidth, cut.plan.s0), hi = Math.min(halfWidth, cut.plan.s1);
+      for (let k = 0; k <= 12; k++) cutMinFace = Math.min(cutMinFace, cut.plan.faceAt(lo + ((hi - lo) * k) / 12, cut.plan.len + halfWidth + 4));
+    }
+    const sliceCut = new Array<boolean>(BAND_SWEEP_SLICES).fill(false);
     const halfWin = Math.max(0.02, style?.bandHalfW ?? BAND_SWEEP_W);
     const center = bandSweepCenter(prog, halfWin, CIRCLE_SWEEP_EASE, style?.easePow);
     const peak = uniform ? Math.min(1, fillA) : Math.min(1, fillA * BAND_SWEEP_A);
@@ -29028,6 +29082,13 @@ export class PixiScene {
       if (a <= 0.002) continue;
       const bc = i === 0 ? halfWidth : 0;                      // 端のキャップ=元の帯の形
       const fc = i === BAND_SWEEP_SLICES - 1 ? halfWidth : 0;
+      if (cut && cut.d0 + ddl * s1 + fc > cutMinFace - 0.5) {
+        // 盾の面に掛かる縞: 元の縞の四角から、盾の影の横の範囲を面の向こうだけ抜いた形。
+        sliceCut[i] = true;
+        const cp = beamCombPts(cut.plan, halfWidth, cut.d0 + ddl * s0 - bc, cut.d0 + ddl * s1 + fc, false, false);
+        o.poly(beamPtsToXY(cut.plan, cp)).fill({ color: fillColor, alpha: a });
+        continue;
+      }
       const ax = fx + ddx * s0, ay = fy + ddy * s0;
       const bx = fx + ddx * s1, by = fy + ddy * s1;
       o.poly([
@@ -29073,6 +29134,26 @@ export class PixiScene {
       }
       const a = strokeA * winAt((i + 0.5) * st);
       if (a <= 0.002) { sp.visible = false; continue; }
+      if (sliceCut[i] && cut) {
+        // 盾に切られた縞: 焼き素材の縁は貼れない(盾の向こうへはみ出す)ので、切り口と外縁を線で縁取る。縞どうしの継ぎ目の線は引かない。
+        sp.visible = false;
+        const bc = i === 0 ? halfWidth : 0, fc = i === BAND_SWEEP_SLICES - 1 ? halfWidth : 0;
+        const dA = cut.d0 + ddl * (i * st) - bc, dB = cut.d0 + ddl * ((i + 1) * st) + fc;
+        const cp = beamCombPts(cut.plan, halfWidth, dA, dB, false, false);
+        const edge = (p0: [number, number], p1: [number, number]): void => {
+          const q0 = beamPtsToXY(cut.plan, [p0]), q1 = beamPtsToXY(cut.plan, [p1]);
+          o.moveTo(q0[0], q0[1]).lineTo(q1[0], q1[1]);
+        };
+        for (let k = 0; k < cp.length; k++) {
+          const p0 = cp[k], p1 = cp[(k + 1) % cp.length];
+          const isStartSide = Math.abs(p0[1] - dA) < 0.01 && Math.abs(p1[1] - dA) < 0.01 && Math.abs(p0[0] - p1[0]) > 0.01; // 始端の継ぎ目
+          const isSeamEnd = Math.abs(p0[1] - dB) < 0.01 && Math.abs(p1[1] - dB) < 0.01 && Math.abs(p0[0] - p1[0]) > 0.01; // 終端側の平らな継ぎ目
+          if (isStartSide || isSeamEnd) continue;
+          edge(p0, p1);
+        }
+        o.stroke({ width: 2, color: strokeColor, alpha: Math.min(1, a) });
+        continue;
+      }
       const dw = totalW / BAND_SWEEP_SLICES;
       sp.position.set(midX + Math.cos(rot) * (-totalW / 2 + dw * i), midY + Math.sin(rot) * (-totalW / 2 + dw * i));
       sp.rotation = rot;
@@ -29210,6 +29291,65 @@ export class PixiScene {
     // 素材は上下対称なので180°回しても破綻しない。細い尖りは発生源側へ尾を引く。
     sp.rotation = Math.atan2(dy, dx) + Math.PI;
     sp.position.set(headX, headY);
+    sp.tint = SHOCKWAVE_TINT;
+    sp.alpha = alpha;
+    sp.visible = true;
+  }
+
+  /**
+   * 衝撃波(drawShockwave)が盾に当たる時の描き方(研究 SHIELD_BLOCK.md §8・第2回クリエイティブ監査 #1)。
+   * 波の先端が盾の面に届くまでは**元の1枚の波**。届いたら、盾の影の横の範囲の切り出しは面で止まり(先端を面に留める)、
+   * 影の外の縁は元の素材のその横位置の切り出し(素材の縦帯を切る)のまま走り続ける。細い波を貼り直さない。
+   * 素材は上下対称で、縦=光線の横。fullIdx=切らない時の枠 / sliceIdx0 から最大3枚=切り出しの枠。
+   */
+  private drawShockwaveCut(
+    view: ActorView, fullIdx: number, sliceIdx0: number, fx: number, fy: number, tx: number, ty: number,
+    halfWidth: number, prog: number, alpha: number, plan: BeamDrawPlan,
+  ): void {
+    const tex = getTexture('fx/shockwave');
+    const lo = Math.max(-halfWidth, plan.s0), hi = Math.min(halfWidth, plan.s1);
+    const len = plan.len;
+    const head = len * prog;
+    let cMin = Infinity;
+    for (let k = 0; k <= 8; k++) cMin = Math.min(cMin, plan.faceAt(lo + ((hi - lo) * k) / 8, len + halfWidth + 4));
+    if (!tex || head <= cMin || hi - lo < 0.5) { this.drawShockwave(view, fullIdx, fx, fy, tx, ty, halfWidth, prog, alpha); return; }
+    const cCenter = Math.min(len, plan.faceAt((lo + hi) / 2, len + halfWidth + 4));
+    const parts: Array<[number, number, number]> = [[lo, hi, Math.min(head, cCenter)]]; // [横の下端, 上端, 先端の距離]
+    if (lo > -halfWidth + 0.5) parts.push([-halfWidth, lo, head]);
+    if (hi < halfWidth - 0.5) parts.push([hi, halfWidth, head]);
+    parts.forEach(([a, b, hd], k) => this.drawShockwaveSlice(view, sliceIdx0 + k, tex, plan, halfWidth, a, b, hd, Math.min(SHOCKWAVE_LEN_MAX, len), alpha));
+  }
+
+  private shockSliceTex = new WeakMap<Sprite, Texture>();
+  private drawShockwaveSlice(
+    view: ActorView, idx: number, tex: Texture, plan: BeamDrawPlan, halfWidth: number,
+    a: number, b: number, headD: number, waveLen: number, alpha: number,
+  ): void {
+    if (!FX_RING_ENABLED || alpha <= 0.01) return;
+    if (!view.shockwaves) view.shockwaves = [];
+    let sp = view.shockwaves[idx];
+    if (!sp) {
+      sp = new Sprite(tex);
+      sp.anchor.set(SHOCKWAVE_ANCHOR_X, 0.5);
+      view.container.addChildAt(sp, view.container.getChildIndex(view.overlay));
+      view.shockwaves[idx] = sp;
+    }
+    let own = this.shockSliceTex.get(sp);
+    if (!own) { own = new Texture({ source: tex.source, frame: new Rectangle(tex.frame.x, tex.frame.y, tex.frame.width, tex.frame.height) }); this.shockSliceTex.set(sp, own); }
+    // 縦の行は光線の横の反対向き(スプライトは +π 回してあるため): 横 l の行は 0.5 - l/H。
+    const H = Math.max(1e-3, halfWidth * 2);
+    const r0 = Math.max(0, 0.5 - b / H), r1 = Math.min(1, 0.5 - a / H);
+    own.frame.x = tex.frame.x; own.frame.width = tex.frame.width;
+    own.frame.y = tex.frame.y + r0 * tex.frame.height;
+    own.frame.height = Math.max(1, (r1 - r0) * tex.frame.height);
+    own.updateUvs();
+    if (sp.texture !== own) sp.texture = own;
+    const { fx, fy, ux, uy, nx, ny } = plan;
+    const m = (a + b) / 2;
+    sp.width = waveLen;
+    sp.height = b - a;
+    sp.rotation = Math.atan2(uy, ux) + Math.PI;
+    sp.position.set(fx + ux * headD + nx * m, fy + uy * headD + ny * m);
     sp.tint = SHOCKWAVE_TINT;
     sp.alpha = alpha;
     sp.visible = true;
@@ -30401,11 +30541,21 @@ export class PixiScene {
         const flash = new Sprite();
         flash.anchor.set(0.5, 1);
         flash.blendMode = 'add';
-        flash.tint = 0xc4b5fd;
+        flash.tint = 0xfff0c2;
         flash.visible = false;
         container.addChild(flash);
+        // 接点の光だまり(防いだ側に集まる光)。加算・盾の絵の alpha を掛ける。
+        const glow = new Sprite(getGlowTexture());
+        glow.anchor.set(0.5, 0.5);
+        glow.blendMode = 'add';
+        glow.visible = false;
+        container.addChild(glow);
+        // 「欠けた」ひび(暗い線)。耐久が実際に削れた直後だけ接点に描く。
+        const crack = new Graphics();
+        crack.visible = false;
+        container.addChild(crack);
         this.L.actorLayer.addChild(container);
-        v = { container, sprite, flash };
+        v = { container, sprite, flash, glow, crack };
         this.shieldViews.set(p.id, v);
       }
       this.drawShield(v, p);
@@ -30416,9 +30566,69 @@ export class PixiScene {
         this.shieldViews.delete(id);
       }
     }
+    this.syncShieldGhosts();
   }
 
-  private drawShield(v: { container: Container; sprite: Sprite; flash: Sprite }, p: Projectile) {
+  /**
+   * 耐久が尽きた盾の残骸(store.shieldBreakGhosts)。盾そのものは判定ごと消えている(判定は 1px も残さない)。
+   * 絵だけが、ヒットストップの間は割れた位置で白く光って止まり、明けたら攻撃の向きへ飛んで回りながら薄れる(出だしは加速・以後は減衰=慣性)。
+   */
+  private syncShieldGhosts(): void {
+    const ghosts = useGameStore.getState().shieldBreakGhosts;
+    if (ghosts.length === 0 && this.shieldGhostViews.size === 0) return;
+    const now = Date.now();
+    const seen = new Set<string>();
+    for (const g of ghosts) {
+      const t = now - g.at;
+      if (t > SHIELD_GHOST_LIFE_MS) continue;
+      seen.add(g.id);
+      let v = this.shieldGhostViews.get(g.id);
+      if (!v) {
+        const container = new Container();
+        const sprite = new Sprite();
+        sprite.anchor.set(0.5, 1);
+        container.addChild(sprite);
+        const flash = new Sprite();
+        flash.anchor.set(0.5, 1);
+        flash.blendMode = 'add';
+        flash.tint = 0xfff0c2;
+        container.addChild(flash);
+        this.L.actorLayer.addChild(container);
+        v = { container, sprite, flash };
+        this.shieldGhostViews.set(g.id, v);
+      }
+      const name = Math.abs(g.dirX) >= Math.abs(g.dirY)
+        ? (g.dirX >= 0 ? 'shield-right' : 'shield-left')
+        : (g.dirY >= 0 ? 'shield-down' : 'shield-up');
+      const tex = getTexture(name);
+      if (tex && v.sprite.texture !== tex) v.sprite.texture = tex;
+      const footX = g.x + g.w / 2, footY = g.y + g.h;
+      const depth = this.depthScale(footY);
+      const base = tex && tex.height > 0 ? SHIELD_DISPLAY_H / tex.height : 1;
+      const pose = shieldGhostPose(t);
+      // 割れた瞬間(ヒットストップ中)は位置で止まって細かく震える。明けたら攻撃の向きへ(縦は遠近で小さく)・少し浮いて回る。
+      const rattle = t < 0 ? Math.sin(now / 9) * 1.6 : 0;
+      const spin = (g.dx >= 0 ? 1 : -1) * pose.rot;
+      v.container.position.set(footX + g.dx * pose.dist + rattle, footY + g.dy * pose.dist * 0.6 - pose.dist * 0.18);
+      v.container.zIndex = footY;
+      v.container.rotation = spin;
+      v.sprite.scale.set(base * depth);
+      v.sprite.alpha = pose.alpha * (g.ownerGhost ? GHOST_ALLY_ALPHA : 1) * this.horizonActorAlpha(footY);
+      v.sprite.tint = 0xb8bfca; // 壊れて沈んだ色
+      v.flash.texture = v.sprite.texture;
+      v.flash.scale.set(base * depth);
+      v.flash.alpha = t < 0 ? 0.7 : Math.max(0, 0.7 * (1 - t / 140)) * v.sprite.alpha;
+      v.flash.visible = v.flash.alpha > 0.01;
+    }
+    for (const [id, v] of this.shieldGhostViews) {
+      if (!seen.has(id)) {
+        v.container.destroy({ children: true });
+        this.shieldGhostViews.delete(id);
+      }
+    }
+  }
+
+  private drawShield(v: { container: Container; sprite: Sprite; flash: Sprite; glow: Sprite; crack: Graphics }, p: Projectile) {
     // 外向き法線(=防ぐ向き)で4方向スプライトを選択。
     const dir = p.direction;
     const name = Math.abs(dir.x) >= Math.abs(dir.y)
@@ -30463,59 +30673,105 @@ export class PixiScene {
     let shakeX = 0;
     const hitT = sinceHit < HIT_SHAKE_MS ? 1 - sinceHit / HIT_SHAKE_MS : 0;
     if (hitT > 0) shakeX = Math.sin(sinceHit / 16) * HIT_SHAKE_PX * hitT;
-    // research/SHIELD_BLOCK.md: 技を防いだ「押し戻し」(攻撃の進む向きへ少し押される→戻る)。耐久の赤い被弾シェイクとは別。
-    // 立ち上がり/戻りとも ease(smoothstep)で慣性をつける。光線が当たり続けている間は押された位置で保持し、細かく震える。
-    let guardV = 0, guardPushX = 0, guardPushY = 0, guardTremor = 0;
+    // research/SHIELD_BLOCK.md: 技を防いだ「押し戻し」(攻撃の進む向きへ弾かれる→ばね戻り)。耐久の赤い被弾シェイクとは別。
+    // 第2回クリエイティブ監査(2026-10-18): 往復の smoothstep ではなく、30〜50ms で一気に出て(ease-out)わずかに行き過ぎて戻る非対称の曲線。
+    // ボス級(耐久が削れた)の防ぎは 10〜14px、それ以外は 6px。光線が当たり続けている間は、押されたまま不規則に細かく震える(周期の見えない揺れ)。
+    // 攻撃の向き(shieldGuardDirX/Y)は読むだけ。判定(盾の矩形)は 1px も動かさない。
+    let guardGlow = 0, guardPushX = 0, guardPushY = 0, holdAmt = 0;
+    const gnow = Date.now();
     if (p.shieldGuardAt !== undefined && p.shieldGuardLastAt !== undefined) {
-      const gnow = Date.now();
-      const sm = (x: number): number => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
-      const holdEnd = p.shieldGuardLastAt + SHIELD_GUARD_HOLD_MS;
-      const sustained = gnow < holdEnd;
-      guardV = sustained
-        ? sm((gnow - p.shieldGuardAt) / SHIELD_GUARD_RISE_MS)
-        : sm((holdEnd - p.shieldGuardAt) / SHIELD_GUARD_RISE_MS) * (1 - sm((gnow - holdEnd) / SHIELD_GUARD_FALL_MS));
-      if (guardV > 0.001) {
-        const gdx = p.shieldGuardDirX ?? 0, gdy = p.shieldGuardDirY ?? 0;
-        guardPushX = gdx * SHIELD_GUARD_PUSH_PX * guardV;
-        guardPushY = gdy * SHIELD_GUARD_PUSH_PX * 0.6 * guardV; // 縦は遠近で小さく
-        if (sustained && gnow - p.shieldGuardAt > 160) guardTremor = Math.sin(gnow / 21) * 0.9 * guardV;
-      }
+      const since = gnow - p.shieldGuardAt;
+      const contactMs = p.shieldGuardLastAt - p.shieldGuardAt;
+      const sinceEnd = Math.max(0, gnow - p.shieldGuardLastAt - SHIELD_GUARD_HOLD_MS);
+      holdAmt = shieldHoldAmount(contactMs, sinceEnd);
+      const pk = shieldPushPx(p.shieldGuardHeavy === true, p.shieldGuardAt);
+      const disp = pk * (shieldPushCurve(since) + 0.45 * holdAmt);
+      const jit = shieldHoldJitter(gnow, p.shieldGuardAt, holdAmt);
+      const gdx = p.shieldGuardDirX ?? 0, gdy = p.shieldGuardDirY ?? 0;
+      guardPushX = gdx * disp + (-gdy) * jit + gdx * jit * 0.5;
+      guardPushY = (gdy * disp + gdx * jit + gdy * jit * 0.5) * 0.6; // 縦は遠近で小さく
+      guardGlow = shieldGuardGlow(since, holdAmt);
     }
-    v.container.position.set(footX + shakeX + guardPushX + guardTremor, footY - drop + guardPushY);
+    v.container.position.set(footX + shakeX + guardPushX, footY - drop + guardPushY);
     v.container.zIndex = footY;
     const shieldDepth = this.depthScale(footY); // 設置物として地面遠近に乗せる(視覚のみ・判定不変)
     v.sprite.scale.set(baseScale * sqx * shieldDepth, baseScale * sqy * shieldDepth);
-    // 白紫の光: 同じ絵を加算で重ねる。防いだ強さ(guardV)に比例し、消えると同時に非表示。
-    if (guardV > 0.01) {
-      v.flash.texture = v.sprite.texture;
-      v.flash.scale.set(v.sprite.scale.x, v.sprite.scale.y);
-      v.flash.alpha = guardV * SHIELD_GUARD_FLASH_ALPHA;
-      v.flash.visible = true;
-    } else {
-      v.flash.visible = false;
-    }
 
     // 寿命末で早めにフェードアウト。さらに他の者(敵/木)と同じ地平線フェードを乗算(消える位置を統一)。
     // v0.25.2472: ゴースト設置(ownerGhost)は守護霊本体と同じ半透明を乗算(視覚のみ・遮断/耐久は不変)。
     const remaining = p.duration - age;
-    v.sprite.alpha = Math.max(0, Math.min(1, remaining / 600)) * this.horizonActorAlpha(footY)
+    const spriteAlpha = Math.max(0, Math.min(1, remaining / 600)) * this.horizonActorAlpha(footY)
       * (p.ownerGhost ? GHOST_ALLY_ALPHA : 1);
+    v.sprite.alpha = spriteAlpha;
+
+    // 防いだ光: 盾の絵の alpha(寿命の薄れ・地平線・ゴースト)を必ず掛ける=消えかけの盾の位置に光だけ残らない。
+    // 主役は接点の光だまり(防いだ側に集まる)。盾の絵全体への加算は下地だけ(均一に光らせない)。
+    const tex2 = v.sprite.texture;
+    const sprW = (tex2.width || 1) * v.sprite.scale.x, sprH = (tex2.height || 1) * v.sprite.scale.y;
+    if (guardGlow > 0.01 && spriteAlpha > 0.01) {
+      const tintC = p.shieldGuardTint ?? 0xfff0c2;
+      v.flash.texture = tex2;
+      v.flash.scale.set(v.sprite.scale.x, v.sprite.scale.y);
+      v.flash.tint = tintC;
+      v.flash.alpha = guardGlow * SHIELD_GUARD_FLASH_ALPHA * spriteAlpha;
+      v.flash.visible = true;
+      // 接点(世界)→コンテナの局所。盾の絵の見える範囲へ収める(絵の外へ光をはみ出させない)。高さは絵の中ほど。
+      const lx = (p.shieldGuardCX ?? footX) - footX, ly = (p.shieldGuardCY ?? footY) - footY;
+      const gx = Math.max(-sprW * 0.45, Math.min(sprW * 0.45, lx));
+      const gy = -sprH * 0.5 + Math.max(-sprH * 0.2, Math.min(sprH * 0.2, ly * 0.5));
+      v.glow.position.set(gx, gy);
+      const gsz = sprW * (0.85 + 0.35 * guardGlow);
+      v.glow.width = gsz; v.glow.height = gsz;
+      v.glow.tint = tintC;
+      v.glow.alpha = Math.min(1, guardGlow * SHIELD_GUARD_GLOW_ALPHA) * spriteAlpha;
+      v.glow.visible = true;
+    } else {
+      v.flash.visible = false;
+      v.glow.visible = false;
+    }
+
+    // 耐久が実際に削れた直後の「欠けた」読み: 盾が暗く濁り(彩度を落として沈む)、接点にひびのような暗い線が走る。赤は使わない。
+    const chipDark = p.shieldChipAt !== undefined ? shieldChipDark(gnow - p.shieldChipAt) : 0;
+    if (chipDark > 0.02 && spriteAlpha > 0.01) {
+      const lx = (p.shieldGuardCX ?? footX) - footX;
+      const cx0 = Math.max(-sprW * 0.4, Math.min(sprW * 0.4, lx)), cy0 = -sprH * 0.5;
+      const sd = (p.shieldChipAt ?? 0) * 0.001;
+      v.crack.clear();
+      for (let k = 0; k < 3; k++) { // 3本のひび: 接点から折れ曲がりながら外へ(出だしは毎回違う向き)
+        let ang = (frac01(sd * (k + 1) * 7.31) * 2 - 1) * 1.2 + (k - 1) * 1.7 + 1.57;
+        let x = cx0, y = cy0;
+        v.crack.moveTo(x, y);
+        const segN = 3 + (k % 2);
+        for (let j = 0; j < segN; j++) {
+          ang += (frac01(sd * (k * 5 + j + 3) * 3.7) - 0.5) * 1.1;
+          const sl = sprW * (0.1 + 0.07 * frac01(sd * (k + j + 2) * 11.1));
+          x += Math.cos(ang) * sl; y += Math.sin(ang) * sl * 0.9;
+          v.crack.lineTo(x, y);
+        }
+      }
+      v.crack.stroke({ width: 2, color: 0x0b0d12, alpha: Math.min(0.85, chipDark) * spriteAlpha });
+      v.crack.visible = true;
+    } else {
+      v.crack.visible = false;
+    }
 
     // 耐久が減ると赤み(亀裂感)。tint のみ・常時glowなし。被弾直後は赤白フラッシュを上書き。
     // ゴースト設置の基調は青白tint(被弾フラッシュ=情報はそのまま残す)。
     const hp = p.shieldHp ?? 1;
     const maxHp = p.shieldMaxHp ?? hp;
     const worn = maxHp > 0 ? 1 - Math.max(0, Math.min(1, hp / maxHp)) : 0;
+    let baseTint: number;
     if (hitT > 0.35) {
-      v.sprite.tint = 0xffd0d0; // 被弾フラッシュ(赤白)
+      baseTint = 0xffd0d0; // 被弾フラッシュ(赤白)
     } else if (p.ownerGhost) {
-      v.sprite.tint = GHOST_ALLY_TINT; // 霊体の盾(耐久の赤みより霊体色を優先=視覚のみ)
+      baseTint = GHOST_ALLY_TINT; // 霊体の盾(耐久の赤みより霊体色を優先=視覚のみ)
     } else if (worn > 0.01) {
       const c = Math.round(255 - 150 * (0.6 * worn));
-      v.sprite.tint = (255 << 16) | (c << 8) | c;
+      baseTint = (255 << 16) | (c << 8) | c;
     } else {
-      v.sprite.tint = 0xffffff;
+      baseTint = 0xffffff;
     }
+    v.sprite.tint = chipDark > 0.02 ? darkenTint(baseTint, chipDark) : baseTint;
   }
 
   private drawProjectile(g: Graphics, p: Projectile) {
