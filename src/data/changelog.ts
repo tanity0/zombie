@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5128', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5127', items: [
     'スキル「スーパーアーマー」に専用のアイコンが付いた',
   ] },
