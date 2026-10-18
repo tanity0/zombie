@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "924 files / 復号後 約693MB",
+ "generatedFor": "925 files / 復号後 約693MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -4339,6 +4339,12 @@
    "h": 34,
    "bytes": 50271,
    "sha": "acb0173d4eec811d"
+  },
+  "sprites/skill/super-armor.png": {
+   "w": 35,
+   "h": 32,
+   "bytes": 1580,
+   "sha": "e015f634f4d1fbc6"
   },
   "sprites/skill/warm-up.png": {
    "w": 37,
