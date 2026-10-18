@@ -13,6 +13,7 @@ import { useHudLandscape } from './HudScale';
 import SubquestHud from './SubquestHud';
 import { LowHpVignette } from './LowHpVignette';
 import { BloodAwakenBanner } from './BloodAwakenBanner'; // ★B10 覚醒に入った瞬間の英字(社長「覚醒時、覚醒の英語を表示」)
+import ScanBeatMeter from './ScanBeatMeter'; // research/NEW_GUNS.md §4: スキャンセンサーの拍
 import { HitRetaliationCue } from './HitRetaliationCue'; // ★被弾反撃の知らせ(research/HIT_RETALIATION.md §5)
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted, playSfx } from '../audio/audioManager';
@@ -437,7 +438,8 @@ const GameHUD: React.FC = () => {
                 // UNIQUE_WEAPONS.md §16-2/§17-3(監査A-3): 無限弾武器はHUDに実弾数ではなく「∞」を出す。
                 const reserve = ammoType ? ammoFieldFor(ammoType) : 0;
                 const mag = gun.magazine ?? 0;
-                const dry = !gun.infiniteAmmo && mag <= 0 && reserve <= 0;
+                // research/NEW_GUNS.md §3/§4: 弾倉も予備弾も持たない銃(衛星弾・スキャンセンサー)は弾切れにならない=数字も出さない。
+                const dry = !gun.infiniteAmmo && !gun.noAmmo && mag <= 0 && reserve <= 0;
                 const active = gun.id === activeGun?.id;
                 const slotBtn = (
                   <button
@@ -455,14 +457,14 @@ const GameHUD: React.FC = () => {
                     {hasWeaponIcon(gun.key)
                       ? <img src={spritePath(weaponIconName(gun.key!))} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
                       : <span className="text-lg">🔫</span>}
-                    {/* 弾数バッジ(右下・小さく)。装填/リザーブ。 */}
-                    <span
+                    {/* 弾数バッジ(右下・小さく)。装填/リザーブ。弾倉の無い銃は出さない。 */}
+                    {!gun.noAmmo && <span
                       className={`absolute bottom-0 right-0.5 text-[9px] font-bold tabular-nums leading-none gt-solid ${
                         dry ? 'text-red-400 animate-pulse' : 'text-white'
                       }`}
                     >
                       {mag}<span className="text-[7px] text-white/45">/{gun.infiniteAmmo ? '∞' : reserve}</span>
-                    </span>
+                    </span>}
                   </button>
                 );
                 // 札(§14): 銃が2丁以上の時だけ。キー=その枠の番号 / パッド=今の銃の左に [▲前][▼次](どちらも左の帯)。
@@ -487,6 +489,9 @@ const GameHUD: React.FC = () => {
       })()}
 
       {/* Stats(撃破/DMG/SCRAP)は StatsHud に分離(頻繁な再描画をHUD本体から切り離す)。 */}
+
+      {/* research/NEW_GUNS.md §4: スキャンセンサーの拍(持っている時だけ・持っていなければ何も描かない)。 */}
+      <ScanBeatMeter />
 
       {/* BGM toggle: 右下・一時停止(MobileControls の "II")のすぐ上に配置。 */}
       <button

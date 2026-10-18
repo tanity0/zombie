@@ -12,7 +12,7 @@
 import type { PlayerUpgradeState } from '../utils/playerUpgrades';
 import { PLAYER_UPGRADE_IDS, PLAYER_UPGRADE_MAX_LEVEL } from './playerUpgrades';
 import { SKILL_KEYS, RETIRED_SKILLS, NEW_SLEEPING_SKILLS, POLICE_REWARD_SKILLS, SUB_WEAPON_KEYS, CHARACTER_SUBWEAPON_KEYS, RETIRED_SUB_WEAPONS, STAGES } from './campaign';
-import { BOSS_UNLOCK, STORE_SOLD_KEYS } from './weaponSlots';
+import { BOSS_UNLOCK, STORE_SOLD_KEYS, FEAT_EXCLUDED_WEAPON_KEYS } from './weaponSlots';
 import { ARCHIVE_RECORDS } from './storyArchive';
 import { GHOST_DOSSIER_SLOTS } from '../utils/ghostDossier';
 import { bossStyleSlotKey } from '../utils/ghostSlot';
@@ -51,7 +51,9 @@ export const FEAT_ALL_SKILLS: readonly SkillKey[] = SKILL_KEYS.filter(k =>
 /** 開発施設の棚に並ぶサブウェポン全て(クラス固有・退役は除く)。 */
 export const FEAT_ALL_SUBS: readonly SubWeaponKey[] = SUB_WEAPON_KEYS.filter(k => !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k));
 /** 購入(開発)できる武器全て=ボス設計図の武器+店売り。小烏丸は別台帳(kogarasuUnlocked)。 */
-export const FEAT_ALL_WEAPON_KEYS: readonly string[] = [...new Set([...Object.values(BOSS_UNLOCK), ...STORE_SOLD_KEYS])];
+// research/NEW_GUNS.md(品質監査#15): 後から足した3挺(FEAT_EXCLUDED_WEAPON_KEYS)は数えない=既に達成した人が未達に戻らない。
+export const FEAT_ALL_WEAPON_KEYS: readonly string[] = [...new Set([...Object.values(BOSS_UNLOCK), ...STORE_SOLD_KEYS])]
+  .filter(k => !FEAT_EXCLUDED_WEAPON_KEYS.includes(k));
 export const FEAT_ALL_ARCHIVE_IDS: readonly string[] = ARCHIVE_RECORDS.map(r => r.id);
 
 /** 討伐記録(bossStyles)と同じスロットキー=唯一の規則 bossStyleSlotKey をそのまま使う(別の規則を作らない)。 */

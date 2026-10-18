@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.5139 — 新しい銃3挺(塊弾・衛星弾・スキャンセンサー)【2026-10-18 18:38 JST】
+- 仕様: research/NEW_GUNS.md 第5版(§2〜§6)。実装はサブエージェント(Opus)。入手は開発施設の店に仮置き(社長「あとで考える」)。
+- 新規: src/utils/scanSensor.ts / blobShot.ts / satelliteOrbit.ts / newGunsTick.ts / gunKillDrops.ts、src/pixi/newGunsFx.ts、src/components/ScanBeatMeter.tsx、テスト6本(scanSensor/blobShot/satelliteOrbit/newGunsAlly、store の scanSensor/newGunsTick)。
+- 既存の配線: weaponUtils(3挺の定義・noAmmo・守護霊/幻影/ボットの代わりの銃)/ gameStore(印の倍率 Ng×1.6・近接/刀/鞭/気絶の一撃/バッシュの倍率と1体だけの枠・数字の id 照合・ストライカー除外・弾切れの持ち替え)/ useGameLoop(tickNewGuns・弾で倒した時のドロップを gunKillDrops に切り出し・空中投下の弾種)/ pixiScene / GameHUD / audioManager('satellite-release'=counter.mp3 を高く小さく)/ chronicleFeats(全武器開発の対象から3挺を除外)/ ghostBuild・ghostCounter・heroBlast・angelBossTick・bountyTick・playtestDriver・types/game・weaponSlots。
+- 監査:
+  - 品質監査(Opus)2巡。1巡目(A)11件+社長判断5件→直した。2巡目(A)5件(回る弾が攻撃禁止中も当たる/ボットの代わりの銃の弾倉/塊弾の+15%→9.5/数字の id 渡し漏れ8経路/空中投下の弾種)→直した。3巡目は回していない(直しは局所でテスト固定済み。実機確認を先にする)。(B)積み: 紫のナイフの直接テスト・ズーム0.4射程・30fps止まり方などのテスト、印の絵24体打ち切り、塊の数字の端数の捨て。
+  - クリエイティブ監査(Opus)2巡。1巡目21件→社長判断4件を除き直した。2巡目9件(塊の卍・脚・明るすぎ・重なり/足元の拍が印と同じ/扇の出始めの欠片/横向きの扇が細い/衛星弾の尾が団子/目盛りの幅)→直した。回る輪の地面化は社長判断待ち(推薦=真円のまま奥側を暗く小さく・絵は実装済み)。
+- 社長の決定(§6): 気絶の一撃・バッシュに印/衛星弾は持ち替えても回り当たり続ける(撃てない間は当たらない)/扇は地面に倒す(縦0.36・絵と判定同じ)/菱形は残す/拍を足元にも/放つ専用音。
+- 画: scratchpad の guns/・guns4/・guns5/(扇の上向き・横向き、印と数字、回る衛星弾・放った衛星弾、塊の進行・停止・ひび・焦げ跡、足元の弧、画面下の目盛り)を目視。
+- 検証: typecheck 0 / eslint 0 / 循環 import 新規なし / vitest 全体 8023件通過(全体実行。実装役の回では escortToss・M16・combatCritParity が揺れたが、この回は全部通過)/ phone-guard は既知のホーム画面の地図のみ NG。
+- 3挺を持たない時の挙動は不変(監査2巡で確認・テストで store の参照不変を固定)。
+- 負荷 2/10: 描画は毎フレームの Graphics 3枚(図形数に上限)、強glow・投影影なし。判定は塊≤4・回る弾≤8・扇は1.2秒に1回。
+
 ## v0.25.5138 — 設計書: 新しい銃の監査後の社長決定7件【2026-10-18 16:05 JST】
 - 気絶の一撃・バッシュに印/衛星弾は持ち替えても残る/入手は保留/扇を地面に倒す(判定ごと)/菱形は残す/拍を足元にも/放つ専用音。research/NEW_GUNS.md §6。実装役へ発注済み。
 - 変更ファイル: research/NEW_GUNS.md / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md

@@ -27,7 +27,7 @@ import {
 } from '../store/gameStore';
 // SKILL_BUILD_REDESIGN.md §13-2(B0発注文): ボットの商人購買ポリシー(乱数なし・決定的な純関数)。
 import { decideBotShopPurchase } from './botShopPolicy';
-import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey, isManualOnlyGunKey, manualOnlyFallbackWeapon } from './weaponUtils';
+import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey, isManualOnlyGunKey, manualOnlyFallbackWeapon, allyFallbackWeapon, effectiveReloadMs } from './weaponUtils';
 import { DEV_WEAPON_KEY } from './devTestKnobs';
 import { pickAmmoDropType } from './ammoDrop';
 import { ammoDirectorRate } from './ammoDirector';
@@ -374,6 +374,11 @@ const cycleActiveGun = (): void => {
   useGameStore.getState().setActiveWeapon(next.id);
 };
 
+// research/NEW_GUNS.md(品質監査#8・2巡目#2): 弾倉の無い銃(スキャン・衛星弾)の代わりの銃の弾倉とリロード。
+// 実体の銃(id)ごとに**ここで別に持ち回る**(実体の magazine は書き換えない=fireWeapon が書き戻した分は撃った直後に戻す)。
+const botFallbackMag = new Map<string, number>();
+const botFallbackReloadUntil = new Map<string, number>();
+
 // useGameLoop.ts の自動射撃(3316行付近)と同じ呼び出し(PHILL銃の手動発砲・刀装備中の無射撃も同様に踏襲)。
 const autoFireGun = (): void => {
   const { enemies } = useGameStore.getState();
@@ -381,7 +386,29 @@ const autoFireGun = (): void => {
   useGameStore.getState().autoSwitchIfDry();
   const postReloadPlayer = useGameStore.getState().player;
   const katanaActive = isKatanaMode(postReloadPlayer);
-  const activeGun = getActiveGun(postReloadPlayer);
+  // research/NEW_GUNS.md §4: スキャンセンサーはハンドガンT2で撃つ(守護霊・幻影と同じ)。弾を撃たない印で落とす前に差し替える。
+  const activeGunRaw = getActiveGun(postReloadPlayer);
+  const fbBase = activeGunRaw ? allyFallbackWeapon(activeGunRaw) : activeGunRaw;
+  const fbHeld = !!(activeGunRaw && fbBase && fbBase !== activeGunRaw && activeGunRaw.noAmmo);
+  const activeGun = fbHeld && activeGunRaw && fbBase
+    ? { ...fbBase, magazine: botFallbackMag.get(activeGunRaw.id) ?? fbBase.magazine }
+    : fbBase;
+  // 弾倉の無い銃の代わりの銃: 撃ち切ったら代わりの銃のリロード時間だけ待ち、明けたら弾倉を満タンに戻す
+  // (毎フレーム作り直して満タンにしない)。塊弾は弾倉を持つ実体なので、通常のリロード(autoSwitchIfDry)に乗る。
+  if (fbHeld && activeGunRaw && activeGun && !katanaActive) {
+    const nowMs = Date.now();
+    const until = botFallbackReloadUntil.get(activeGunRaw.id);
+    if (until !== undefined) {
+      if (nowMs < until) return;
+      botFallbackReloadUntil.delete(activeGunRaw.id);
+      botFallbackMag.delete(activeGunRaw.id); // 装填が明けた=満タン(次のフレームから撃つ)
+      return;
+    }
+    if ((activeGun.magazine ?? 0) <= 0) {
+      botFallbackReloadUntil.set(activeGunRaw.id, nowMs + effectiveReloadMs(activeGun, postReloadPlayer));
+      return;
+    }
+  }
   // UNIQUE_WEAPONS.md §17-6(検収監査A-2の是正): アイレーザー/火炎放射器は非投射武器=専用の
   // 状態機械でしか撃たない(useGameLoop.ts側のみ)。ボット(playtestDriver)はfireWeaponを直接
   // 呼ぶ経路なので、ここで撃たせないと「14ダメージの連射弾」等の等価実装ズレが起きる。
@@ -398,6 +425,19 @@ const autoFireGun = (): void => {
   // research/WEAPON_AI_TEST.md S1-c: `?weapon=` ツマミが立っている時だけ既定(true)へ戻す
   // (対象武器の挙動を確かめるための例外。ツマミが無ければ従来どおりfalse=1ビットも変えない)。
   const newProjectiles = fireWeapon(fireGun, postReloadPlayer, enemies, { allowMelee: DEV_WEAPON_KEY !== null });
+  if (fbHeld && activeGunRaw) {
+    // fireWeapon は同じ id の実体へ magazine を書き戻す。実体(弾倉の無い銃)は undefined のまま保ち、
+    // 代わりの銃の弾倉はこちらで1つ減らす(撃ったかは lastFired が進んだかで見る)。
+    const real = useGameStore.getState().player.weapons.find(w => w.id === activeGunRaw.id);
+    if (real && real.lastFired !== activeGunRaw.lastFired) {
+      botFallbackMag.set(activeGunRaw.id, Math.max(0, (activeGun.magazine ?? 0) - 1));
+    }
+    if (real && real.magazine !== undefined) {
+      useGameStore.setState(st => ({
+        player: { ...st.player, weapons: st.player.weapons.map(w => (w.id === activeGunRaw.id ? { ...w, magazine: undefined } : w)) },
+      }));
+    }
+  }
   newProjectiles.forEach(p => useGameStore.getState().addProjectile(p));
 };
 
@@ -784,3 +824,6 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
     pressureOutdoor: false, playerAreaIdx, boardDebtNow: 0, upswingBonus: 0,
   });
 };
+
+/** テスト用(品質監査2巡目#2): ボットの自動射撃1回ぶん。 */
+export const botAutoFireGunForTest = (): void => autoFireGun();

@@ -566,7 +566,7 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
   g2.damageEnemy(bounty.id, dmg, false, true, false, 'other', 'player', 'counter');
   // §7-11c(4): カウンター反撃(確定クリ)。賞金首は isBossType 非登録(§6.38裁定)=対雑魚扱いで計上。
   recordCritHit('guaranteed', false);
-  g2.spawnDamageNumber(bounty.x + bounty.width / 2, bounty.y, dmg, true);
+  g2.spawnDamageNumber(bounty.x + bounty.width / 2, bounty.y, dmg, true, { enemyId: bounty.id });
   sfx.reward();
   g2.spawnRing(hx, hy, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
   g2.spawnBurst(hx, hy, '#fde047', 10);

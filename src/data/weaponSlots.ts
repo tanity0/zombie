@@ -13,7 +13,7 @@ export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> =
   // UNIQUE_WEAPONS.md §16-2(バッチC-2): handgun T3(2つめ)にガンブレードが入った。
   handgun: {
     1: ['handgun-t1', 'handgun-t1-derringer', 'handgun-t1-crossbow'],
-    2: ['handgun-t2', 'handgun-t2-handcannon', 'handgun-t2-dualrange'],
+    2: ['handgun-t2', 'handgun-t2-handcannon', 'handgun-t2-dualrange', 'handgun-t2-scan'], // research/NEW_GUNS.md §4: スキャンセンサー
     3: ['handgun-t3', 'handgun-t3-piledriver', 'handgun-t3-gunblade'],
   },
   // UNIQUE_WEAPONS.md §16(バッチA)/§16-2(バッチB): shotgun T2 / rifle T1 に続き、
@@ -22,7 +22,7 @@ export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> =
   // UNIQUE_WEAPONS.md §16-2(バッチC-2): shotgun T2(2つめ)・T3(2つめ)にコイル/誘導散弾が入った。
   shotgun: {
     1: ['shotgun-t1', 'shotgun-t1-focus', 'shotgun-t1-cycle'],
-    2: ['shotgun-t2', 'shotgun-t2-suppress', 'shotgun-t2-coil'],
+    2: ['shotgun-t2', 'shotgun-t2-suppress', 'shotgun-t2-coil', 'shotgun-t2-satellite'], // research/NEW_GUNS.md §3: 衛星弾
     3: ['shotgun-t3', 'shotgun-t3-flamer', 'shotgun-t3-homing'],
   },
   // UNIQUE_WEAPONS.md §17-10(#U16裁定・バッチC漏れの是正): rifle T3(2つめ)にレールガンが入った。
@@ -34,7 +34,7 @@ export const SLOT_CANDIDATES: Record<SlotCategory, Record<SlotTier, string[]>> =
   // UNIQUE_WEAPONS.md §16-2/§18-3(バッチD): ランチャー3挺(第2弾は無し=各Tier1挺で確定)。
   glauncher: {
     1: ['glauncher-t1', 'glauncher-t1-rocket'],
-    2: ['glauncher-t2', 'glauncher-t2-alchemy'],
+    2: ['glauncher-t2', 'glauncher-t2-alchemy', 'glauncher-t2-blob'], // research/NEW_GUNS.md §2: 塊弾
     3: ['glauncher-t3', 'glauncher-t3-signal'],
   },
 };
@@ -94,4 +94,8 @@ export const SUB_BOSS_UNLOCK: Partial<Record<EnemyType, SubWeaponKey>> = {
 // どちらか一方に属する(排反かつ網羅)。入れ忘れた武器は永久に入手不能になる。
 // UNIQUE_WEAPONS.md §16(バッチA)/§16-2(バッチB)/§18-3: クロスボウ・ボルトアクションは店売り。
 // 切替式SGもバッチBで店売りに加わった(BOSS_UNLOCKに割当が無い=社長の割当表§18-1に対応行なし)。
-export const STORE_SOLD_KEYS: string[] = ['handgun-t1-crossbow', 'rifle-t1-bolt', 'shotgun-t1-cycle'];
+// research/NEW_GUNS.md(第4版)の3挺: 設計書は「入手は既存の特殊銃と同じ(ドロップ・武器箱)」までで、解放元
+// (ボスの設計図か店売りか)の割当が無い。★仮に店売りへ置いた(入れ忘れると永久に入手不能になるため)。割当が決まったら移す。
+export const STORE_SOLD_KEYS: string[] = ['handgun-t1-crossbow', 'rifle-t1-bolt', 'shotgun-t1-cycle', 'glauncher-t2-blob', 'shotgun-t2-satellite', 'handgun-t2-scan'];
+/** research/NEW_GUNS.md の3挺。「全武器開発」の実績(FEAT_ALL_WEAPON_KEYS)の対象に入れない=既に達成した人が未達に戻らない(品質監査#15)。 */
+export const FEAT_EXCLUDED_WEAPON_KEYS: readonly string[] = ['glauncher-t2-blob', 'shotgun-t2-satellite', 'handgun-t2-scan'];

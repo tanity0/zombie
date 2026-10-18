@@ -65,6 +65,8 @@ import type { IceLanceFloor } from '../utils/iceLanceFloor';
 // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルショットガン shotgun-t2-coil): 弾の軌道位相(純関数)。
 import { coilConvergeMs, coilLateralOffsetPx } from '../utils/coilShotgun';
 import { homingPelletTurnRateRadPerSec } from '../utils/homingShotgun';
+// research/NEW_GUNS.md §4(スキャンセンサー): 印の倍率・除外・1体だけの選び方(純関数)。
+import { SCAN_WEAPON_KEY, isScanMarked, scanMarkDamageMult, scanMarkMeleeMult, pickScanMarkTarget, scanMarkMeleeCritBonus, scanMarkMeleePostureMult, SCAN_MARK_RANGED_MULT, isEliteHeavyStun } from '../utils/scanSensor';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
@@ -149,7 +151,7 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
-import { getStartingWeapons, createWeapon, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
 import { alchemyStoneDetonateDamage, alchemyStoneDetonateRadius } from '../utils/alchemyStone';
 import { type SignalStrike, SIGNAL_STRIKE_DELAY_MS, SIGNAL_STRIKE_RADIUS_PX } from '../utils/signalLauncher';
@@ -861,7 +863,7 @@ const applyEscortMeleeHits = (get: () => GameState, set: (p: Partial<GameState> 
         const ux = bdx / bl, uy = bdy / bl;
         get().spawnBlood(ecx + ux * e.width * 0.4, ecy + uy * e.width * 0.4, Math.atan2(uy, ux), Math.max(96, e.width * 4.0));
       }
-      get().spawnDamageNumber(ecx, e.y, damage, crit);
+      get().spawnDamageNumber(ecx, e.y, damage, crit, { enemyId: e.id });
       if (!resistsChipKnockback(e.type) && knockbackCdReady(e, wall)) {
         const dx = ecx - h.x, dy = ecy - h.y, n = Math.max(0.001, Math.hypot(dx, dy));
         const falloff = Math.max(0, 1 - enemyMeleeDist(h.x, h.y, e) / ESCORT_MELEE_EXIT_PX);
@@ -2166,6 +2168,8 @@ export const skillLevel = (player: Player, key: SkillKey): number =>
 export const strikerMeleeMult = (player: Player): number => {
   if (player.characterClass !== 'rogue') return 1;
   const gun = getActiveGun(player);
+  // research/NEW_GUNS.md §4: 弾倉も予備弾も持たない銃(スキャンセンサー・衛星弾)は弾切れとみなさない=×1.5は付かない。
+  if (gun?.noAmmo) return 1;
   if (!gun || !gun.ammoType) return 1.5; // 銃/弾種なし=弾切れ扱い
   return ((gun.magazine ?? 0) + ammoPoolFor(player, gun.ammoType)) <= 0 ? 1.5 : 1;
 };
@@ -3650,6 +3654,28 @@ export const isGameTimeStopped = (): boolean => {
  * isInputLocked に加えて **attention(ボス出現等の演出中)** も攻撃禁止に含める。
  * ※移動はここでは止めない(isInputLockedの範囲は変えない=アテンション中に歩けるのは従来どおり)。
  */
+// ─────────────────────────────────────────────────────────────────────────
+// research/NEW_GUNS.md §4「ダメージの数字は、倍率を掛けた後の値を出す」の受け渡し(品質監査#9で id 照合へ)。
+// damageEnemy は数字を出さない(呼び手が直後に spawnDamageNumber を呼ぶ)ので、印の倍率が効いた命中を
+// **その敵の id で**覚え、呼び手が spawnDamageNumber に同じ id(opts.enemyId)を渡した時だけ掛ける(隣の敵に付かない)。
+// 使ったら消す。使われなかったメモはフレームの頭で全部捨てる(clearScanMarkNumberNotes・useGameLoop が毎フレーム呼ぶ)。
+const scanMarkNumberNotes = new Map<string, number>();
+const noteScanMarkNumber = (enemyId: string, mult: number): void => { scanMarkNumberNotes.set(enemyId, mult); };
+const takeScanMarkNumber = (enemyId: string): number | null => {
+  const m = scanMarkNumberNotes.get(enemyId);
+  if (m === undefined) return null;
+  scanMarkNumberNotes.delete(enemyId);
+  return m;
+};
+/** フレームの頭で、使われなかったメモを捨てる。 */
+export const clearScanMarkNumberNotes = (): void => { if (scanMarkNumberNotes.size > 0) scanMarkNumberNotes.clear(); };
+/** テスト用: 残っているメモの数。 */
+export const scanMarkNumberNoteCount = (): number => scanMarkNumberNotes.size;
+/** 印のついた敵へのダメージ数字の縁取りの色(スキャンの燐光と同じ色・赤/紫は使わない)。芯は白(会心なら金)。 */
+export const SCAN_MARK_NUMBER_OUTLINE = 0x9fd8d0;
+/** 印の数字は HP バーの線と重ならないよう、少し上へずらして出す(描画のみ)。 */
+const SCAN_MARK_NUMBER_LIFT_PX = 16;
+
 export const isAttackLocked = (): boolean => {
   const s = useGameStore.getState();
   // v0.25.3318(社長指示): 帰還サークル(ゴール)の「敵が入れない+攻撃禁止」は撤廃。指を離せば
@@ -3765,6 +3791,9 @@ export const meleeHitCritChance = (
   player: Player,
   gameTime: number,
   enemy: Enemy,
+  // research/NEW_GUNS.md §4: プレイヤー本人の近接(ナイフの振り・刀・鞭)だけ true。印付きの雑魚へ +15%。
+  // 守護霊・分身は渡さない(既定 false=従来と1bitも変わらない)。
+  scanMarkCrit = false,
 ): number => {
   // 罠の拘束中の敵/対人トラップ中の幻影(社長指示2026-10-10「幻影も効果を揃える」)は近接クリ+10%。
   const trapCritBonus = (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil)
@@ -3773,7 +3802,10 @@ export const meleeHitCritChance = (
   // §13-3d(社長裁定2026-08-26): 積み上げの合計は**ハードキャップではなくソフトキャップ**を通す
   // (30%までは素通し=これまでと同じ・超えた分だけ鈍って50%へ漸近)。**敵補正はその後**に掛ける
   // =「雑魚補正(色階層)・ボス補正(×0.5+下限5%)」の意味は不変(社長質問2026-08-26への答え)。
-  return applyEnemyCritPenalty(softCapCritChance(meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+  const base = applyEnemyCritPenalty(softCapCritChance(meleeCritChance + player.critChance + trapCritBonus + weakCritBonus + skillBenkeiCritBonus(player, gameTime) + skillKnifeMasterMeleeCrit(player)), enemy);
+  // research/NEW_GUNS.md §4: 印付きの雑魚だけ +15%(色の補正の後・上限の前)。印が無ければ 0 を足すだけ=従来と同値。
+  const scanBonus = scanMarkCrit ? scanMarkMeleeCritBonus(enemy, gameTime) : 0;
+  return scanBonus > 0 ? Math.min(1, base + scanBonus) : base;
 };
 
 /**
@@ -4721,7 +4753,8 @@ export const grantMeleeKillRewards = (
     // (executing a stunned enemy) rolls at 1.5× that, capped at 100%.
     // Prefer the active gun's family; if the active pointer is temporarily
     // invalid, fall back to any owned gun so the slider still governs melee.
-    const ownedAmmoTypes = getGuns(player)
+    // research/NEW_GUNS.md(品質監査#5): 弾倉の無い銃(スキャン・衛星弾)は弾種選び・弾薬ディレクターに数えない。
+    const ownedAmmoTypes = ammoBearingGuns(player)
       .map(w => w.ammoType)
       .filter((t): t is AmmoType => !!t);
     // 弾薬AIディレクター(v0.25.2170): 「全所持銃の弾備蓄の枯渇度×敵の多さ」で基礎率を最大20%まで底上げ。
@@ -4743,9 +4776,9 @@ export const grantMeleeKillRewards = (
     // PACING_PUZZLE.md §5.5 M5(RE4式): 残弾割合が最小の弾種を落とす(同率は構え優先・phill対象外)。
     // ?ammosmart=0で従来(構え銃の弾種)へ。ドロップ率・供給量は不変=弾種の配分のみ。
     const smartType = AMMO_SMART_ENABLED
-      ? pickAmmoDropType(ownedAmmoTypes.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), gun?.ammoType)
+      ? pickAmmoDropType(ownedAmmoTypes.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), gun?.noAmmo ? undefined : gun?.ammoType)
       : null;
-    const dropType = smartType ?? gun?.ammoType ?? ownedAmmoTypes[0];
+    const dropType = smartType ?? (gun?.noAmmo ? undefined : gun?.ammoType) ?? ownedAmmoTypes[0];
     // ナイフマスターは弾薬ドロップ0%(何をしても。社長指示)。
     // M0(訓練)は弾を拾う教習まで抽選ドロップを封印(社長指示v0.25.2319・m0Unlocked.ammo)。
     if (dropType && !hasSkill(player, 'knife-master') && get().m0Unlocked.ammo && Math.random() < ammoChance) {
@@ -4939,6 +4972,14 @@ const applyMeleeFinishSkillSpread = (
   if (!finisherOccurred) return;
   if (hasSkill(player, 'reaper')) {
     const r2 = range * range;
+    // research/NEW_GUNS.md §4(スキャンセンサー): フィニッシュの波及も近接の1振り。ボスへの×5のうち、
+    // 一番近い印付きの1体だけ近接の倍率(ボス級×4.7)。即死(通常敵)には掛けない。どちらも ×1.6 を二重に掛けない旗を渡す。
+    const spreadGt = get().gameTime;
+    const spreadScanTargetId = pickScanMarkTarget(
+      get().enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e) && isBossType(e.type)
+        && (e.x + e.width / 2 - pcx) ** 2 + (e.y + e.height / 2 - pcy) ** 2 <= r2),
+      spreadGt, e => Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy),
+    );
     for (const e of get().enemies) {
       if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue; // 不倒の通常リーパーは対象外。深奥チェイサーは近接対象(ボス級)なので含める
       if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象選定から除外
@@ -4949,12 +4990,13 @@ const applyMeleeFinishSkillSpread = (
       get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫=プレイヤーへ向かって飛ぶ(v0.25.2026)
       if (isBossType(e.type)) {
         // ボスは即死しない=近接フィニッシュ相当ダメージ(×5)。フィニッシュ波及なのでviaMeleeFinish=true
-        const dmg = Math.max(1, Math.round(baseMeleeDamage * BOSS_MELEE_STUN_MULT));
-        get().damageEnemy(e.id, dmg, false, false, true);
-        get().spawnDamageNumber(ecx, e.y, dmg, true);
+        const spreadScanMult = e.id === spreadScanTargetId ? scanMarkMeleeMult(e, spreadGt, 'melee') : 1;
+        const dmg = Math.max(1, Math.round(baseMeleeDamage * BOSS_MELEE_STUN_MULT * spreadScanMult));
+        get().damageEnemy(e.id, dmg, false, false, true, undefined, undefined, undefined, undefined, undefined, undefined, true);
+        get().spawnDamageNumber(ecx, e.y, dmg, true, { scanMarked: spreadScanMult !== 1 });
         get().spawnBurst(ecx, ecy, '#a855f7', 10);
       } else {
-        const killed = get().damageEnemy(e.id, e.health + 1, false, false, true); // 即死(フィニッシュ波及)
+        const killed = get().damageEnemy(e.id, e.health + 1, false, false, true, undefined, undefined, undefined, undefined, undefined, undefined, true); // 即死(フィニッシュ波及)
         if (killed) {
           get().spawnBurst(ecx, ecy, '#a855f7', 14);
           get().dropEnemyXp(e, ecx, ecy, 'pickup-xp-reaper');
@@ -4990,7 +5032,7 @@ const applyMeleeFinishSkillSpread = (
       const d2 = dx * dx + dy * dy;
       if (d2 > r2) continue;
       const killedE = get().damageEnemy(e.id, dmg, true); // 爆風系と同じくボス系には非致死
-      get().spawnDamageNumber(ecx, e.y, dmg, false);
+      get().spawnDamageNumber(ecx, e.y, dmg, false, { enemyId: e.id });
       if (!killedE) {
         const dist = Math.max(0.001, Math.sqrt(d2));
         // KB共通(既定値=通常のノックバック)。エクスプローダー覚醒(Lv3)は爆発KB距離×1.5(v0.25.3300)。
@@ -5592,6 +5634,12 @@ const applySlasherChainStrike = (
   // v0.25.3931 で初撃の「命中しないとチェーンが始まらない」を外したので、**追撃側も揃える**:
   // 誰も居なくても**振る**(段を消費してチェーンは進む)。前隙200msが入った今、
   // 連撃の途中で相手が射程外へ出るのは普通に起きるため、そこで手が止まるのは操作として不自然。
+  // research/NEW_GUNS.md §4(スキャンセンサー): 追撃も近接の1振り=射程内の一番近い印付きの1体だけ雑魚×2.75/ボス級×4.7。
+  // damageEnemy へは「印を使った」旗を渡す(×1.6 を二重に掛けない・1体以外にも掛けない)。
+  const chainScanTargetId = pickScanMarkTarget(
+    get().enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e) && enemyMeleeDist(pcx, pcy, e) <= meleeRange),
+    gameTime, e => enemyMeleeDist(pcx, pcy, e),
+  );
   for (const e of get().enemies) {
     if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
     if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は追撃対象から除外
@@ -5608,14 +5656,16 @@ const applySlasherChainStrike = (
     // ★v0.25.3640(成果物監査A): スラッシャー追撃は**近接**なので、幻影ゲートへ 'melee' で通す
     // (パリィ抽選の対象になる)。無効化(無敵/パリィ)されたら数字・斬撃・血飛沫・KBを出さない
     // (「数字は出るのにHPが減らない」偽演出の禁止=監査Q1-1と同型)。幻影以外には従来と1bitも変わらない。
-    const k = get().damageEnemy(e.id, dmg, false, false, false, 'other', 'player', null, 1, 'melee');
+    const chainScanMult = e.id === chainScanTargetId ? scanMarkMeleeMult(e, gameTime, 'melee') : 1;
+    const eDmg = dmg * chainScanMult;
+    const k = get().damageEnemy(e.id, eDmg, false, false, false, 'other', 'player', null, 1, 'melee', undefined, true);
     const eAfter = get().enemies.find(x => x.id === e.id);
     const gpDeflected = isGuardianPhantom(e.type)
       && !!eAfter && (eAfter.gpBlockedAt === gameTime || eAfter.gpParriedAt === gameTime);
     if (gpDeflected) continue; // hit/hitIds は積み済み=チェーンの進行は従来どおり(空振り扱いにしない)
     // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): スラッシャー追撃も近接武器の打撃。
     if (!k) get().applyDrillerRetreat(e.id);
-    get().spawnDamageNumber(ecx, e.y, dmg, false);
+    get().spawnDamageNumber(ecx, e.y, eDmg, false, { scanMarked: chainScanMult !== 1 });
     get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.95)');
     get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫(v0.25.2026)
     if (k) {
@@ -6783,7 +6833,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral' | 'dog', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
+  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral' | 'dog', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean, scanMarkHandled?: boolean) => boolean; // scanMarkHandled: research/NEW_GUNS.md §4 近接が自分の経路で印の倍率を掛けた(または1体だけの規則で外した)=ここで×1.6を掛けない / killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -7177,7 +7227,7 @@ interface GameState {
   spawnBlood: (x: number, y: number, angle: number, len: number, opts?: { flash?: boolean }) => void; // 銃弾ヒット時、背中側へ血飛沫。opts.flash=点滅(ゾンビの試し・2026-10-16)
   spawnMeleeBlood: (ex: number, ey: number, size?: number, opts?: { flash?: boolean }) => void; // 近接ヒット時、敵からプレイヤーへ向かって飛ぶ血飛沫。opts.flash=点滅(ゾンビの試し)
   spawnBloodDrip: (body: DripBody, bodyVx: number, bodyVy: number, moveFrac: number) => void; // B10 血の覚醒: 体から滴る血の粒(1〜2個・血粒子のキャップを共有。出どころ/初速は utils/bloodDrip・足の線で止まる)
-  spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
+  spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean, opts?: { scanMarked?: boolean; enemyId?: string }) => void; // research/NEW_GUNS.md §4: opts.scanMarked=呼び手が印の倍率を掛け済み(true)/掛からない(false)と明示。opts.enemyId=直前の damageEnemy のその敵への印の倍率を数字に掛ける
   spawnAmmoNumber: (x: number, y: number, amount: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
   // カウンター成立のガラスの砕け(社長支給2026-10-01)。x/y=カウンターした地点(counterClashPoint)。
@@ -8516,9 +8566,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         hitAt.push({ x: ecx, y: enemy.y });
         // 覚醒: 爆発の距離減衰(中心1.0〜外周0.55)。非覚醒: 従来どおり等倍。
+        // research/NEW_GUNS.md §4: スケボーはスキル(サブ扱い)=印付きへ ×1.6。
         const eDmg = (skAwaken
           ? Math.max(1, Math.round(dmg * (0.55 + (1 - Math.sqrt(d2) / bashRange) * 0.45)))
-          : dmg) * gpDmgScale;
+          : dmg) * gpDmgScale * (isScanMarked(enemy, s.gameTime) ? SCAN_MARK_RANGED_MULT : 1);
         dealtSum += eDmg;
         const nh = Math.max(0, enemy.health - eDmg);
         if (nh <= 0) { killedList.push({ enemy, finisher: false }); continue; }
@@ -9123,7 +9174,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // **到達不能になっていた**(2つの裁定が噛み合っていなかった)。
     let eliteFatalKill = false;
     const survivors: Enemy[] = [];
-    const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number }[] = [];
+    const meleeDamageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number; scan?: boolean }[] = [];
     const bossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 近接クリで完全気絶が発動した位置(紫FX用)
     const mimirLaserBreakHits: { x: number; y: number }[] = []; // §6.33: レーザー弱点窓を近接で中断した位置(カウンター成立FX用)
     const bossFatalHits: { x: number; y: number; labelY: number; w: number; h: number }[] = []; // w/h=killFx流用(v0.25.3622)
@@ -9252,6 +9303,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     let bashHitEnemy = false; // バッシュが敵に当たったか(ストップ用)
     // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
+    // research/NEW_GUNS.md §4(スキャンセンサー): 1振りで印の倍率が効くのは「この振りが届く一番近い印付きの1体」だけ。
+    // 候補の条件は下のループの「届く・壁越しでない」と同じ(印の無い時は undefined=従来と1bitも変わらない)。
+    const scanBashHits = (e: Enemy): boolean =>
+      hasShieldShove && shieldShoves.some(sh => rectsOverlap({ x: e.x, y: e.y, width: e.width, height: e.height }, sh.swept));
+    const isStunnedNow = (e: Enemy): boolean => e.stunUntil !== undefined && gameTime < e.stunUntil;
+    const scanTargetId = pickScanMarkTarget(
+      enemies.filter(e => !(ret && e.id !== ret.targetId) && !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e)
+        && isScanMarked(e, gameTime)
+        // 社長決定2026-10-18: 盾のバッシュと、気絶中の強個体への3倍にも印を掛ける(=ここで「1体だけ」の枠を使う)。
+        // 掛けないのは気絶中の即死(処刑)と、ボスの気絶への5倍(紫の報酬を含む)=その敵では枠を使わない。
+        && (scanBashHits(e) || !isStunnedNow(e) || isEliteHeavyStun(e, gameTime))
+        && (scanBashHits(e) || enemyMeleeDist(pcx, pcy, e) <= meleeRange)
+        && !(meleeWalls.length > 0 && segmentBlocked(pcx, pcy, e.x + e.width / 2, e.y + e.height / 2, meleeWalls))),
+      gameTime, e => enemyMeleeDist(pcx, pcy, e),
+    );
 
     for (const enemy of enemies) {
       if (ret && enemy.id !== ret.targetId) { survivors.push(enemy); continue; } // ★被弾反撃: 相手はその1体だけ
@@ -9296,12 +9362,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         slashAt.push({ x: ecx, y: ecy });
         meleeHitEnemyIds.push(enemy.id);
         bashBloodExcludeIds.add(enemy.id);
-        let dmg = meleeDamage * SHIELD_BASH_DAMAGE_MULT * gpDmgScale;
+        // 社長決定2026-10-18: バッシュにも印の近接倍率(雑魚×2.75/ボス級×4.7)。この振りの「1体だけ」の枠を使う。
+        // 対人の致命(紫の報酬)には掛けない(素の値から致命を計算する)。
+        const bashScanMult = enemy.id === scanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
+        const bashBase = meleeDamage * SHIELD_BASH_DAMAGE_MULT * gpDmgScale;
+        let dmg = bashBase * bashScanMult;
+        let bashScanShown = bashScanMult !== 1;
         // ★SAME_ARENA §9(検収監査 重大③): バッシュも近接=致命+melee削りの対象(site1と同型)。
         let bashPvpPatch: Partial<Enemy> = {};
         if (isGuardianPhantom(enemy.type)) {
           if (isPvpFatalTarget(enemy.pvpPosture, gameTime)) {
-            dmg = pvpFatalDamage(dmg, enemy.maxHealth);
+            dmg = pvpFatalDamage(bashBase, enemy.maxHealth);
+            bashScanShown = false;
             bashPvpPatch = { pvpPosture: pvpAfterFatal(enemy.pvpPosture, gameTime) };
             bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
             bossFinishHit = true; // ★社長指示2026-08-27「幻影戦の致命もKILL演出(ズーム)」: 対人致命もフル演出ゲートを開く
@@ -9313,7 +9385,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         }
         recordShieldBashDamage(dmg); // G4a(§2.9(3)・記録専用): バッシュ与ダメの様式カウンタ
-        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
+        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health, scan: bashScanShown });
         const newHealth = Math.max(0, enemy.health - dmg);
         if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
         survivors.push({
@@ -9347,7 +9419,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         bossFinishHit = true;
         const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeExecBase * gpDmgScale, gameTime) : null;
-        const dmg = (fatal?.damage ?? stunnedHit.dmg) * retMult; // 被弾反撃は最終ダメージの×2(処刑の分岐も含む)
+        // 社長決定2026-10-18: 気絶中の強個体への3倍にも印の近接倍率(強個体=雑魚の倍率)。ボスの5倍・紫の報酬には掛けない。
+        const heavyScanMult = stunnedHit.kind === 'heavy' && enemy.id === scanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
+        const dmg = (fatal?.damage ?? stunnedHit.dmg) * retMult * heavyScanMult; // 被弾反撃は最終ダメージの×2(処刑の分岐も含む)
         // ★v0.25.4153(社長裁定2026-09-05「強個体はボスと同じく致命の一撃でキル演出は入る。でも
         // 黄色クリティカルではならないのが一貫性」): **強個体もボスと同じ線で揃える**——
         // 演出が入るのは**完全気絶(紫)中の一撃だけ**。通常の気絶からの3×(黄色クリ)では入らない。
@@ -9357,7 +9431,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         //   極端だった。本裁定は**紫かどうか**で分ける(ボスと同じ物差し)。
         // ※3×のダメージ・黄色のクリ表示・浮きは常にそのまま(変えるのは演出の有無だけ)。
         if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
+        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
         recordCritHit('guaranteed', stunnedHit.kind === 'boss'); // §7-11c(4): meleeExecuteの紫中フィニッシュ
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
         // そのもの(finisher:trueの即時処刑に相当)。
@@ -9387,11 +9461,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (m0CritLocked が false=通常ステージ/解禁後 なら、従来どおり確率で決まる。)
       const crit = m0CritLocked
         ? m0ForceCritNow
-        : Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
+        : Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy, true);
       // ★v0.25.3969: 対人スケール(gpDmgScale)を通常近接にも掛ける——gatePhantomHitの戻り値
       // damageScale は「自前のダメージ計算に掛けるため」に返っているのに、この枝だけ未適用だった
       // (気絶フィニッシュ枝は適用済み=幻影への通常近接だけ対人1/5が効いていない実バグ)。幻影以外は×1で恒等。
-      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult;
+      // research/NEW_GUNS.md §4: 印の倍率(雑魚×2.75/ボス級×4.7・段に関係なく1つ)は選ばれた1体だけ。
+      const scanHit = enemy.id === scanTargetId;
+      const scanMult = scanHit ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
+      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult;
       // ★SAME_ARENA §9(対人体勢): 紫中の幻影への近接=致命の一撃(×5+最大HP25%・裁定②)。
       // 紫でなければ melee(0.04)の削り+クリなら2/3減速。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -9409,7 +9486,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health });
+      meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health, scan: scanMult !== 1 });
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -9418,7 +9495,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // GAME_AUDIT #17(社長承認): プレイヤーが直接出したクリはすべて裏ボスの完全気絶カウントに
       // 乗せる(銃と同じbumpBossCrit=挙動統一)。裏ボス以外はnullで素通り。
-      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime);
+      // research/NEW_GUNS.md §4: 印付きのボスへの近接の当たりは 'melee' の削りを 0.04→0.09 相当(impactMult)。別の呼び出しにしない。
+      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime, scanMarkMeleePostureMult(enemy, gameTime));
       if (bossBump?.triggered) { bossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断。'melee'体幹パッチを合成してから判定(二重取り防止)。
       const laserBreak = mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime);
@@ -9650,7 +9728,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Damage numbers for every non-execute melee hit; crits/boss-stun hits pop gold.
     for (const c of meleeDamageNumbers) {
-      get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+      get().spawnDamageNumber(c.x, c.y, c.value, c.crit, { scanMarked: !!c.scan });
     }
     // クリでスタンさせた敵に黄色いリング(銃クリと同じフィードバック。社長指示で近接にも追加)。
     for (const c of critStunAt) {
@@ -9829,7 +9907,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     const survivors: Enemy[] = [];
-    const damageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number }[] = [];
+    const damageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number; scan?: boolean }[] = [];
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const cloneHitEnemyIds: string[] = []; // スキル 救難信号(§6.10 M33⑦): このストライクでヒットした敵ID
@@ -9892,8 +9970,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale; // 分身はサブ武器=血の覚醒の×1.5は掛けない(社長裁定: 与ダメ+50%は近接+銃だけ・検収品質監査C)
-      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health });
+      // research/NEW_GUNS.md §4: 分身はサブウェポン=印の倍率は ×1.6(1体だけの規則は近接の振りの話なので掛けない)。
+      const cloneScan = isScanMarked(enemy, gameTime);
+      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale * (cloneScan ? SCAN_MARK_RANGED_MULT : 1); // 分身はサブ武器=血の覚醒の×1.5は掛けない(社長裁定: 与ダメ+50%は近接+銃だけ・検収品質監査C)
+      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health, scan: cloneScan });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
       const nh = Math.max(0, enemy.health - dmg);
@@ -9974,7 +10054,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // 演出はプレイヤーの近接と同じ経路(スラッシュ/ダメージ数字/キル報酬)。分身位置にも一閃を出す。
     for (const s of slashAt) get().spawnSlash(s.x, s.y);
-    for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+    for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit, { scanMarked: !!c.scan });
     for (const c of critStunAt) get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260);
     // CRIT-UNIFY §9.4: 分身のクリで完全気絶が発動したら他の近接経路と同じ紫FX+STUN!コールアウト。
     grantMeleeKillRewards(get, killed, player, gun); // 分身=本人の近接ではない(縮地の窓は開かない)
@@ -10245,7 +10325,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
     for (const h of hits) {
       get().damageEnemy(h.id, h.dmg, false, false, false, 'dot'); // 持続ダメージ=シェイク対象外(社長指示2026-09-13)
-      get().spawnDamageNumber(h.x, h.y, h.dmg);
+      get().spawnDamageNumber(h.x, h.y, h.dmg, false, { enemyId: h.id });
     }
   },
 
@@ -10293,7 +10373,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     for (const h of hits) {
       get().damageEnemy(h.id, h.dmg, false, false, false, 'dot'); // 持続ダメージ(棘)=シェイク対象外(社長指示2026-09-13)
-      get().spawnDamageNumber(h.x, h.y, h.dmg);
+      get().spawnDamageNumber(h.x, h.y, h.dmg, false, { enemyId: h.id });
     }
   },
 
@@ -10387,7 +10467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const tcx = target.x + target.width / 2;
       const tcy = target.y + target.height / 2;
       const killed = get().damageEnemy(a.targetEnemyId, a.damage, false, false, false, 'dot'); // 味方の援護=本人の攻撃ではない(揺らさない・v0.25.4284)
-      get().spawnDamageNumber(tcx, target.y, a.damage, false);
+      get().spawnDamageNumber(tcx, target.y, a.damage, false, { enemyId: target.id });
       get().spawnSlash(tcx, tcy, 'rgba(226,232,240,0.95)');
       get().spawnRing(tcx, tcy, 6, 34, 'rgba(56,189,248,0.75)', 2, 260);
       // ズーム演出のみ(CLAUDE.md: サブウェポン/スキルのprocはスロー禁止=triggerHitImpactは
@@ -10481,7 +10561,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const falloff = 1 - dist / radius;
         const dmg = Math.max(1, Math.round(baseDmg * (0.55 + falloff * 0.45)));
         const killed = get().damageEnemy(e.id, dmg, true); // 爆風の束(v0.25.4284: blast=揺れの爆発倍率)
-        get().spawnDamageNumber(ecx, e.y, dmg, false);
+        get().spawnDamageNumber(ecx, e.y, dmg, false, { enemyId: e.id });
         // 重い敵/ボス/すり抜け勢はノックバック無効(既存のシールド等と同じ慣例)。
         // PACING_PUZZLE.md §9-7#1(ノックバック免除): driller はpumpkinと同格=isPumpkinTier経由で共有。
         const knockbackImmune = e.type === 'giantbat' || isPumpkinTier(e.type)
@@ -10529,7 +10609,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     let bossFinishHit = false;
     const survivors: Enemy[] = [];
-    const damageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number }[] = [];
+    const damageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number; scan?: boolean }[] = [];
     const slashAt: { x: number; y: number }[] = [];
     const critStunAt: { x: number; y: number }[] = [];
     const katanaBossFullStunHits: { x: number; y: number }[] = []; // GAME_AUDIT #17: 刀クリで完全気絶が発動した位置
@@ -10539,6 +10619,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     const katanaHitEnemyIds: string[] = []; // スキル 救難信号: 一閃(allowFinisher時)でヒットした敵ID(発動判定/対象選定用)
     // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
+    // research/NEW_GUNS.md §4(スキャンセンサー): プレイヤーの刀は「この斬撃の標的のうち一番近い印付きの1体」だけ
+    // 雑魚×3.1/ボス級×5.2(Lvに関係なく1つ)。守護霊の刀は仲間=印付き全員へ ×1.6(抑えない)。
+    const katanaScanTargetId = isGhost ? undefined : pickScanMarkTarget(
+      enemies.filter(e => targetIds.includes(e.id) && !isCorpse(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
+        // 一閃が気絶中の敵へ入る一撃のうち、即死(処刑)とボスの5倍には印を掛けない=枠を使わない。
+        // 強個体の3倍には掛ける(社長決定2026-10-18)。
+        && !(allowFinisher && e.stunUntil !== undefined && gameTime < e.stunUntil && !isEliteHeavyStun(e, gameTime))),
+      gameTime, e => enemyMeleeDist(pcx, pcy, e),
+    );
 
     for (const enemy of enemies) {
       // ジャンプ攻撃中(空中)はあらゆる近接の当たり判定を外す(=無敵。盾は敵AI側で別処理)。
@@ -10599,9 +10688,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
         if (stunnedMeleeOutcome(enemy, gameTime) === 'heavy') {
           bossFinishHit = true;
-          const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT;
+          // 社長決定2026-10-18: 強個体の3倍にも印の倍率(プレイヤーの刀=刀の雑魚の倍率・1体だけ/守護霊=×1.6)。
+          const heavyScanMult = isGhost
+            ? (isScanMarked(enemy, gameTime) ? SCAN_MARK_RANGED_MULT : 1)
+            : (enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1);
+          const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT * heavyScanMult;
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
@@ -10623,10 +10716,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       // + トラップ拘束 + 弱点(近接+10%) + 弁慶 + ウォームアップ + ナイフマスター
       // (合成はmeleeHitCritChanceが唯一の出どころ=v0.25.2514で抽出・値は不変)。
       const crit = Math.random() <
-        meleeHitCritChance(KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)], player, gameTime, enemy);
+        meleeHitCritChance(KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)], player, gameTime, enemy, !isGhost);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
-      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale;
+      const katanaScanMult = isGhost
+        ? (isScanMarked(enemy, gameTime) ? SCAN_MARK_RANGED_MULT : 1)
+        : (enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1);
+      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * katanaScanMult;
       // ★SAME_ARENA §9(検収監査 重大③): 刀にも致命(×5+最大HP25%)とmelee削り(site1と同型)。
       // 本人由来のみ=守護霊の刀(isGhost)は削らない・致命も出さない。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -10644,7 +10740,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health });
+      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health, scan: katanaScanMult !== 1 });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -10657,7 +10753,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const critStun = crit; // reaper は対象外(上で除外済み)
       if (critStun) critStunAt.push({ x: ecx, y: ecy });
       // GAME_AUDIT #17(社長承認): 刀のクリも銃と同じく裏ボスの完全気絶カウントに乗せる。
-      const bossBump = !isGhost ? applyBossPostureDamage(enemy, allowFinisher ? 'heavy' : 'melee', gameTime) : null;
+      // research/NEW_GUNS.md §4: 印付きのボスへの 'melee' の削りは 0.04→0.09 相当('heavy' の一閃は変えない)。
+      const bossBump = !isGhost ? applyBossPostureDamage(enemy, allowFinisher ? 'heavy' : 'melee', gameTime, allowFinisher ? 1 : scanMarkMeleePostureMult(enemy, gameTime)) : null;
       if (bossBump?.triggered) { katanaBossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断(プレイヤーの刀のみ=分身/守護霊は対象外)。
       const laserBreak = !isGhost ? mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime) : null;
@@ -10776,7 +10873,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnMeleeHit(s.x, s.y);   // v0.25.4334: 刀の通常ヒットにも(同じ「当たった」動作)
     }
     for (const c of damageNumbers) {
-      get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+      get().spawnDamageNumber(c.x, c.y, c.value, c.crit, { scanMarked: !!c.scan });
     }
     // クリでスタンさせた敵に黄色いリング(銃クリと同じフィードバック)。
     for (const c of critStunAt) {
@@ -10879,7 +10976,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const killed: { enemy: Enemy; finisher: boolean }[] = [];
     let bossFinishHit = false;
     const survivors: Enemy[] = [];
-    const damageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number }[] = [];
+    const damageNumbers: { x: number; y: number; value: number; crit: boolean; hp?: number; scan?: boolean }[] = [];
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
     const whipBossFullStunHits: { x: number; y: number }[] = []; // §9.4(v0.25.2502): 鞭クリで完全気絶が発動した位置(紫FX用)
@@ -10892,6 +10989,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     let hits = 0;
     // スキル: 近接コンボ倍率(ナイフマスター×コンボマスター)。
     const meleeComboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
+    // research/NEW_GUNS.md §4(スキャンセンサー): 鞭は近接と同じ倍率(雑魚×2.75/ボス級×4.7)を、線が当てる中で
+    // 一番近い印付きの1体だけに掛ける。
+    const whipScanTargetId = pickScanMarkTarget(
+      enemies.filter(e => targetIds.includes(e.id) && !isCorpse(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
+        // 気絶中の敵への一撃のうち、即死(処刑)とボスの5倍には印を掛けない=枠を使わない。強個体の3倍には掛ける(社長決定2026-10-18)。
+        && !(e.stunUntil !== undefined && gameTime < e.stunUntil && !isEliteHeavyStun(e, gameTime))),
+      gameTime, e => enemyMeleeDist(pcx, pcy, e),
+    );
 
     for (const enemy of enemies) {
       if (!targetIds.includes(enemy.id) || (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) || isCorpse(enemy)) {
@@ -10944,9 +11049,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
         if (stunnedMeleeOutcome(enemy, gameTime) === 'heavy') {
           bossFinishHit = true;
-          const dmg = whipExecBase * ELITE_MELEE_STUN_MULT;
+          const heavyScanMult = enemy.id === whipScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'whip') : 1; // 社長決定2026-10-18
+          const dmg = whipExecBase * ELITE_MELEE_STUN_MULT * heavyScanMult;
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
+          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
           recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
@@ -10962,8 +11068,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         recordFinisherKill(); // §6.21 M46: 気絶中の敵への近接即死(鞭)
         continue;
       }
-      const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale;
+      const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy, true);
+      const whipScanMult = enemy.id === whipScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'whip') : 1;
+      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult;
       // ★SAME_ARENA §9(検収監査 重大③): 鞭にも致命(×5+最大HP25%)とmelee削り(site1と同型・鞭はプレイヤー本人のみの武器)。
       let pvpMeleePatch: Partial<Enemy> = {};
       if (isGuardianPhantom(enemy.type)) {
@@ -10980,14 +11087,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health });
+      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health, scan: whipScanMult !== 1 });
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
       if (crit) critStunAt.push({ x: ecx, y: ecy });
       // §9.4(v0.25.2502・CRIT-UNIFY★未決2の解消): 鞭のクリも紫カウントへ(発生枠=近接系共通。
       // ナイフ4737/刀5479/分身5076と同じ作法=GAME_AUDIT #17「プレイヤーが直接出したクリは全部乗せる」)。
-      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime);
+      // research/NEW_GUNS.md §4: 印付きのボスへの 'melee' の削りは 0.04→0.09 相当。
+      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime, scanMarkMeleePostureMult(enemy, gameTime));
       if (bossBump?.triggered) { whipBossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断(鞭もプレイヤーの近接=対象)。
       const laserBreak = mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime);
@@ -11062,7 +11170,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 鞭の時は近接攻撃のクレスト(slashストリーク)表現は出さない。鞭自身のlashスプライトのみ。
     // 血飛沫は出す(社長指摘v0.25.2060: メイン近接3経路に未配線だった)。
     for (const s of slashAt) { get().spawnMeleeBlood(s.x, s.y); get().spawnMeleeHit(s.x, s.y); } // v0.25.4334: 鞭も同じ
-    for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit);
+    for (const c of damageNumbers) get().spawnDamageNumber(c.x, c.y, c.value, c.crit, { scanMarked: !!c.scan });
     for (const c of critStunAt) { get().spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260); get().spawnCritImpact(c.x, c.y); } // 鞭クリも揺れ+光源(社長指示2026-09-13)
     // §9.4(v0.25.2502): 鞭クリの紫完全気絶FX(ナイフ4923/刀5573の紫リング+STUN!と同じ作法)。
     for (const p of whipBossFullStunHits) {
@@ -11189,7 +11297,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const hurDmg = Math.round(HURRICANE_DAMAGE * sageStoneHurricaneMult(state.player) * skillOutgoingDamageMult(state.player));
       for (const o of inRange) {
         get().damageEnemy(o.id, hurDmg, false, false, false, 'dot'); // 竜巻の巻き込み=持続(シェイクは発生時の HURRICANE_SHAKE だけ)
-        get().spawnDamageNumber(o.x, o.y, hurDmg); // 巻き込みダメージを可視化
+        get().spawnDamageNumber(o.x, o.y, hurDmg, false, { enemyId: o.id }); // 巻き込みダメージを可視化
       }
     }
   },
@@ -11488,7 +11596,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const h of attackHits) {
       const sDmg = Math.max(1, Math.round(h.amount * summonOutMult));
       get().damageEnemy(h.id, sDmg, false, false, false, 'dot'); // 召喚の与ダメ=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
-      get().spawnDamageNumber(h.x, h.y, sDmg); // 召喚(死神AoE/通常接触)の攻撃を可視化
+      get().spawnDamageNumber(h.x, h.y, sDmg, false, { enemyId: h.id }); // 召喚(死神AoE/通常接触)の攻撃を可視化
     }
     // research/HERO_DOG.md §2/§5: 犬の噛みは固定威力(スキル倍率を掛けない=犬は火力役ではない)。hateSource='dog'
     // =ボスのバケツに積まず、噛まれた雑魚・強個体は犬を追う(dogHateUntil)。
@@ -12051,7 +12159,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     const dmg = Math.max(1, Math.round(hit.dmg));
     const killed = get().damageEnemy(enemyId, dmg, false, false, true, null, 'ghost');
-    get().spawnDamageNumber(enemy.x + enemy.width / 2, enemy.y, dmg, true); // 金の数字=プレイヤーのフィニッシュ打と同じ
+    get().spawnDamageNumber(enemy.x + enemy.width / 2, enemy.y, dmg, true, { enemyId: enemy.id }); // 金の数字=プレイヤーのフィニッシュ打と同じ
     if (killed) {
       spawnKillSlashFx(get, actor.x + actor.width / 2, actor.y + actor.height / 2, enemy); // KILL時の首元斬撃(社長指示2026-09-16)
     }
@@ -12366,7 +12474,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const falloff = 1 - dist / radius;
           const dmg = Math.max(1, Math.round(baseDmg * (0.55 + falloff * 0.45)));
           const killed = get().damageEnemy(e.id, dmg, true); // 爆風の束(v0.25.4284: blast=揺れの爆発倍率)
-          get().spawnDamageNumber(ecx, e.y, dmg, false);
+          get().spawnDamageNumber(ecx, e.y, dmg, false, { enemyId: e.id });
           if (!killed) {
             const nrm = Math.max(0.001, dist);
             get().knockbackEnemy(e.id, dx / nrm, dy / nrm, kbMult, kbMult);
@@ -12843,7 +12951,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const falloff = 1 - dist / radius;
         const eDmg = e.id === center.id ? dmg : Math.max(1, Math.round(dmg * (0.55 + falloff * 0.45)));
         const killed = get().damageEnemy(e.id, eDmg, true);
-        get().spawnDamageNumber(ecx, e.y, eDmg, false);
+        get().spawnDamageNumber(ecx, e.y, eDmg, false, { enemyId: e.id });
         if (e.id !== center.id) get().spawnBurst(ecx, ecy, '#b91c1c', 4);
         if (killed) {
           void import('../audio/audioManager').then(m => m.playEnemyDeath());
@@ -13540,7 +13648,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   dropWelcomeStepAmmo: (cx, cy, distPx, step) => {
     const { player } = get();
-    const owned = getGuns(player).map(w => w.ammoType).filter((t): t is AmmoType => !!t);
+    const owned = ammoBearingGuns(player).map(w => w.ammoType).filter((t): t is AmmoType => !!t); // 弾倉の無い銃は数えない(品質監査#5)
     // 銃を1挺も持っていない(ナイフのみ)なら落とさない=拾えない物を置かない。
     const type = pickAmmoDropType(owned.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), undefined)
       ?? owned.find(t => t !== 'phill');
@@ -13734,7 +13842,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSourceIn = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
+  damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSourceIn = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk, scanMarkHandled = false) => {
     // research/ESCORT_TARGETED.md §5: 進軍NPCの弾は起因側 `escort:<id>`。**ヘイトのバケツだけ**軍人ごとに積み(下の hatePatch)、
     // それ以外の判定(揺れ・クリ・撃破カウント・英雄の被弾記録 …)はこれまでどおり 'player' 扱いのまま=軍人の弾の挙動は1bitも変えない。
     const hateEscortId = escortIdOfSide(hateSourceIn === 'neutral' || hateSourceIn === 'dog' ? undefined : hateSourceIn);
@@ -13837,7 +13945,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         labelY: enemy.y - 6,
         w: enemy.width, h: enemy.height,
       };
-      const resolvedAmount = meleeFatal?.damage ?? pvpFatal ?? gunReward?.damage ?? gatedAmount;
+      // research/NEW_GUNS.md §4(スキャンセンサー): 印の倍率は gatedAmount に掛ける(幻影の関門の後・
+      // 紫の報酬と紅き夜の半減の前)。カウンター/打ち返し/紫の報酬/即死/呼び手が扱った近接には掛けない。
+      // 印の無い敵は ×1(=従来と1bitも変わらない)。
+      const scanMult = scanMarkDamageMult({
+        marked: isScanMarked(enemy, state.gameTime),
+        amount: gatedAmount,
+        enemyHealth: enemy.health,
+        postureImpact,
+        rewardActive: !!gunReward || !!meleeFatal || pvpFatal !== null,
+        handledByCaller: scanMarkHandled,
+      });
+      if (scanMult !== 1) noteScanMarkNumber(enemy.id, scanMult);
+      const resolvedAmount = meleeFatal?.damage ?? pvpFatal ?? gunReward?.damage ?? gatedAmount * scanMult;
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
       const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
       appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)
@@ -18372,7 +18492,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const e = get().enemies.find(en => en.id === id);
         if (!e) continue;
         get().damageEnemy(id, punisherDmg);
-        get().spawnDamageNumber(e.x + e.width / 2, e.y, punisherDmg);
+        get().spawnDamageNumber(e.x + e.width / 2, e.y, punisherDmg, false, { enemyId: id });
       }
     }
   },
@@ -18688,7 +18808,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // NPCカイト移動 + 敵接触ダメージ + shooter自衛射撃
     const survivors = state.rescueSurvivors;
     const contactDamage: { id: string; amount: number }[] = [];
-    const shooterShots: { x: number; y: number }[] = [];
+    const shooterShots: { x: number; y: number; id: string }[] = [];
     const moved: RescueSurvivor[] = survivors.map(s => {
       // 被弾パニック中(speedBoostUntil)は移動速度2倍。
       const spd = RESCUE_SURVIVOR_SPEED * (s.speedBoostUntil && now < s.speedBoostUntil ? RESCUE_HIT_SPEED_MULT : 1);
@@ -18719,7 +18839,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const d2 = (ex - scx) ** 2 + (ey - scy) ** 2;
           if (d2 <= nd2) { nd2 = d2; nearestId = e.id; tx = ex; ty = ey; }
         }
-        if (nearestId) { contactDamage.push({ id: nearestId, amount: RESCUE_SHOOTER_DAMAGE }); shooterShots.push({ x: tx, y: ty }); next = { ...next, lastShotAt: now }; }
+        if (nearestId) { contactDamage.push({ id: nearestId, amount: RESCUE_SHOOTER_DAMAGE }); shooterShots.push({ x: tx, y: ty, id: nearestId }); next = { ...next, lastShotAt: now }; }
       }
       return next;
     });
@@ -18728,7 +18848,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (c.id.startsWith('rescue-')) get().damageRescueSurvivor(c.id, c.amount);
       else get().damageEnemy(c.id, c.amount, false, false, false, 'dot'); // 生存者の接触=本人の攻撃ではない(シェイク対象外)
     }
-    for (const sh of shooterShots) get().spawnDamageNumber(sh.x, sh.y, RESCUE_SHOOTER_DAMAGE);
+    for (const sh of shooterShots) get().spawnDamageNumber(sh.x, sh.y, RESCUE_SHOOTER_DAMAGE, false, { enemyId: sh.id });
 
     const after = get();
     const alive = after.rescueSurvivors;
@@ -19181,7 +19301,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const tAngle = Math.atan2(dy, dx);
               const cAngle = Math.atan2(p.direction.y, p.direction.x);
               const diff = ((tAngle - cAngle) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
-              const maxTurn = homingPelletTurnRateRadPerSec(p.speed) * deltaTime;
+              const maxTurn = (p.homingTurnRadiusPx ? p.speed / p.homingTurnRadiusPx : homingPelletTurnRateRadPerSec(p.speed)) * deltaTime; // research/NEW_GUNS.md §3: 衛星弾の放った弾は半径を個別に持つ(ゆるい誘導)
               const newAngle = cAngle + Math.sign(diff) * Math.min(Math.abs(diff), maxTurn);
               dir = { x: Math.cos(newAngle), y: Math.sin(newAngle) };
             }
@@ -19868,8 +19988,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = get().player;
 
     if (roll < pity.ammoT) {
-      const equippedAmmo = getActiveGun(player)?.ammoType;
-      const owned = getGuns(player)
+      const equippedGun = getActiveGun(player);
+      const equippedAmmo = equippedGun?.noAmmo ? undefined : equippedGun?.ammoType; // 弾倉の無い銃は数えない(品質監査#5)
+      const owned = ammoBearingGuns(player)
         .map(w => w.ammoType)
         .filter((t): t is AmmoType => !!t);
       const dropType = equippedAmmo ?? owned[0];
@@ -20025,9 +20146,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // loaded rounds and no reserve to reload from).
       const hadGun = getGuns(player).length > 0;
       const activeNow = getActiveGun(player);
+      // research/NEW_GUNS.md §3/§4: 弾倉も予備弾も持たない銃(noAmmo)は弾切れとみなさない=拾っても持ち替えない。
       const activeDry =
         !activeNow?.ammoType ||
-        ((activeNow.magazine ?? 0) <= 0 && ammoPoolFor(player, activeNow.ammoType) <= 0);
+        (!activeNow.noAmmo && (activeNow.magazine ?? 0) <= 0 && ammoPoolFor(player, activeNow.ammoType) <= 0);
       let activeWeaponId = player.activeWeaponId;
       if (isActiveCategory || !hadGun || activeDry) {
         activeWeaponId = weapon.id;
@@ -20081,7 +20203,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 発動条件はcritバフと同じ(切替+CD明け)=切替連打での無限装填を防ぐ。リザーブは消費しない
       // (0の時の応急装填という趣旨・叩き台)。
       const benkeiRounds = skillLevel(state.player, 'benkei') >= 3 ? 2 : 1;
-      const benkeiWeapons = benkeiProc && (target.magazine ?? 0) <= 0
+      const benkeiWeapons = benkeiProc && (target.magazine ?? 0) <= 0 && !target.noAmmo // 弾倉の無い銃には詰めない(research/NEW_GUNS.md §4)
         ? state.player.weapons.map(w => (w.id === id ? { ...w, magazine: benkeiRounds } : w))
         : null;
       // UNIQUE_WEAPONS.md §16-5(受け入れ条件5「武器の持ち替えで残らない・錬金砲の石も」): 錬金砲から
@@ -20180,6 +20302,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const player = get().player;
     const active = getActiveGun(player);
     if (!active?.ammoType) return;
+    // research/NEW_GUNS.md §3/§4: 弾倉も予備弾も持たない銃(衛星弾・スキャンセンサー)は弾切れにならない=持ち替えない。
+    if (active.noAmmo) return;
     if ((active.magazine ?? 0) > 0) return;
     // UNIQUE_WEAPONS.md §17-3(監査A-3・棚卸し対象): 無限弾武器は実フィールドが0でも「リロード可能」
     // 扱いにする(でないと永久にリロードへ入れず1発も撃てなくなる)。
@@ -20188,9 +20312,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
     const guns = getGuns(player);
-    const ready = guns.find(w => (w.magazine ?? 0) > 0);
-    const reloadable = guns.find(w => w.ammoType && weaponReloadReserve(w, player) > 0);
-    const target = ready ?? reloadable;
+    // research/NEW_GUNS.md §4: ほかの銃が全部弾切れになった時は、弾倉の無い銃(スキャンセンサー優先)へ持ち替える。
+    // その銃を持っていなければ undefined のまま=従来と1bitも変わらない。
+    const ready = guns.find(w => !w.noAmmo && (w.magazine ?? 0) > 0);
+    const reloadable = guns.find(w => !w.noAmmo && w.ammoType && weaponReloadReserve(w, player) > 0);
+    const noAmmoFallback = guns.find(w => w.noAmmo && w.key === SCAN_WEAPON_KEY) ?? guns.find(w => w.noAmmo);
+    const target = ready ?? reloadable ?? noAmmoFallback;
     if (target && target.id !== player.activeWeaponId) {
       // UNIQUE_WEAPONS.md §16-5c(バッチD検収B-3是正): setActiveWeaponと同じ「錬金砲から離れたら
       // 育てた石を消す」を、弾切れの自動切替(この経路はsetActiveWeaponを経由せずactiveWeaponIdを
@@ -23569,8 +23696,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  spawnDamageNumber: (x, y, value, crit = false) => {
+  spawnDamageNumber: (x, y, value, crit = false, opts) => {
     const now = Date.now();
+    // research/NEW_GUNS.md §4: 印のある敵に当てた数字は倍率の後の値を、少し大きく色違いで出す。
+    let scanMarked = false;
+    if (opts?.scanMarked !== undefined) scanMarked = opts.scanMarked;
+    else if (opts?.enemyId !== undefined) {
+      const m = takeScanMarkNumber(opts.enemyId);
+      if (m !== null) { value = value * m; scanMarked = true; }
+    }
     // LEVEL_GROWTH.md §11 代替b: 攻撃が変わるカードの後の**最初の1発**(非クリ)だけ白→金に光る。消費したら窓を閉じる。
     const flash = !crit && get().levelUpFlashArmed && get().gameTime < get().levelUpEmphasisUntil;
     if (flash) set({ levelUpFlashArmed: false });
@@ -23578,10 +23712,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       kind: 'damageNumber',
       id: `fx-dmg-${now}-${Math.random().toString(36).slice(2, 6)}`,
       x: x + (Math.random() - 0.5) * 18,
-      y: y + (Math.random() - 0.5) * 8,
+      y: y + (Math.random() - 0.5) * 8 - (scanMarked ? SCAN_MARK_NUMBER_LIFT_PX : 0),
       value: Math.max(1, Math.ceil(value)), // 表示ダメージは切り上げ(社長指示・最低1)。内部の実ダメージは丸めない
-      color: crit ? '#fbbf24' : (flash ? '#fde68a' : '#fef9c3'),
-      ...(flash ? { scale: 1.4, flash: true } : {}),
+      // 印: 白い芯(会心なら金のまま)+燐光の縁取り・1.5倍・出だし80msで1.8倍から縮む(research/NEW_GUNS.md §4)。
+      color: crit ? '#fbbf24' : (flash ? '#fde68a' : (scanMarked ? '#ffffff' : '#fef9c3')),
+      ...(flash ? { scale: 1.4, flash: true } : (scanMarked ? { scale: 1.5, outline: SCAN_MARK_NUMBER_OUTLINE, popFrom: 1.8 / 1.5, popMs: 80 } : {})),
       createdAt: now,
       duration: 720,
       crit

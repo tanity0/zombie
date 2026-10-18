@@ -32,6 +32,10 @@ import { assignHomingShotgunTargetsByAzimuth } from './homingShotgun';
 import { coilPelletAmplitudePx } from './coilShotgun';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ(値の二重管理を避ける)。
 import { ROCKET_CHARGE_MS } from './rocketLauncher';
+// research/NEW_GUNS.md(第4版): 新しい銃3挺(塊弾・衛星弾・スキャンセンサー)の定数の単一の出どころ。
+import { BLOB_WEAPON_KEY, BLOB_COOLDOWN_MS, BLOB_MAG_SIZE, BLOB_RELOAD_MS_RAW, blobReachPx } from './blobShot';
+import { SATELLITE_WEAPON_KEY, SAT_ADD_MS } from './satelliteOrbit';
+import { SCAN_WEAPON_KEY, SCAN_NOMINAL_DAMAGE, SCAN_BEAT_MS, SCAN_FALLBACK_GUN_KEY } from './scanSensor';
 
 // プレイヤー中心→敵 の二乗距離。**全ての敵で「当たり判定の矩形の最近点」**まで測る(v0.25.3170・
 // 社長指示「当たり判定の四隅でみて」)。中心基準だと巨体の縁に立っていても射程外扱いになる。
@@ -96,6 +100,8 @@ interface WeaponDef {
   // 守護霊(gunRangePx・buildGhostGunShots入口)・幻影(phantomTick.ts)・ボット(playtestDriver.ts)・
   // プレイヤー自身(useGameLoop.ts)の全経路がこの1フラグだけを見る(キー直書きをここへ集約)。
   nonProjectile?: true;
+  // research/NEW_GUNS.md §3/§4: 弾倉も予備弾も持たない銃(衛星弾・スキャンセンサー)。弾切れとみなさない。
+  noAmmo?: true;
 }
 
 // UNIQUE_WEAPONS.md §13-1: パイルドライバー(handgun-t3-piledriver)の射程。
@@ -127,6 +133,10 @@ const CATALOG: Record<string, WeaponDef> = {
   // (dualRangeGun.ts。ヒステリシス=近へ入る120px以下/遠へ戻る180px以上)。CATALOGの既定値は
   // 「遠」セット(=交戦開始時の初期モード。weapon.dualRangeMode未設定は'far'扱い)。
   // rangeOverride=220(§16-1)。実効DPSは近29.17(+3.7%)/遠30.43(+8.2%)・§16-1。
+  // research/NEW_GUNS.md §4(第4版): スキャンセンサー(T2)。弾を撃たない(nonProjectile)・弾倉も予備弾も
+  // 持たない(noAmmo)。damage はカウンターの名目値(ハンドガンT2の1発=9)。cooldown は拍の周期(表示・参考のみ)。
+  // 拍・扇・印は utils/newGunsTick.ts、倍率は utils/scanSensor.ts。
+  [SCAN_WEAPON_KEY]: { key: SCAN_WEAPON_KEY, name: 'スキャンセンサー', type: 'handgun', category: 'handgun', tier: 2, damage: SCAN_NOMINAL_DAMAGE, cooldown: SCAN_BEAT_MS, count: 1, nonProjectile: true, noAmmo: true },
   'handgun-t2-dualrange':  { key: 'handgun-t2-dualrange',  name: 'デュアルレンジピストル', type: 'handgun', category: 'handgun', tier: 2, damage: 28, cooldown: 700, projectileSpeed: 700, projectileSize: 8, count: 1, magSize: 10, reloadMs: 1100, rangeOverride: 220 },
 
   // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2)。ガンブレード(T3): 通常は銃(8/cd110)。至近
@@ -153,6 +163,12 @@ const CATALOG: Record<string, WeaponDef> = {
   // 判定・弾数・弾薬は通常のカウント式ショットガンと同じ=サイクル式に現れない式外の演出=§5-2の
   // 思想と同型)。★spreadRadOverride:0=基礎の拡散角を持たせない(広がりは全部横ズレで作る・A-1)。
   // 実効DPS=22.73(既定比+7.1%・§16-1)。
+  // research/NEW_GUNS.md §3(第4版): 衛星弾(T2)。弾倉・リロードは無い(noAmmo)。弾を自動で撃たない
+  // (nonProjectile=歩いて溜め、止まって放つ。状態は utils/newGunsTick.ts)。
+  // damage は**カウンターの元値**=ショットガンT2の damage(品質監査#13・スキャン=ハンドガンT2と同じ考え方)。
+  // 放った弾・回る弾のダメージは satelliteOrbit.ts の定数(SAT_SHOT_DAMAGE/SAT_CONTACT_DAMAGE)を使う。
+  // cooldown は「1つ増える間隔」(表示・参考のみ)。
+  [SATELLITE_WEAPON_KEY]: { key: SATELLITE_WEAPON_KEY, name: '衛星弾', type: 'shotgun', category: 'shotgun', tier: 2, damage: 0 /* 下で shotgun-t2 から引く */, cooldown: SAT_ADD_MS, count: 1, nonProjectile: true, noAmmo: true },
   'shotgun-t2-coil': { key: 'shotgun-t2-coil', name: 'コイルショットガン', type: 'shotgun', category: 'shotgun', tier: 2, damage: 5, cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 9, magSize: 3, reloadMs: 1800, spreadRadOverride: 0 },
 
   // UNIQUE_WEAPONS.md §16-2/§17-1(バッチB)。収束型ショットガン(T1): 命中した射撃ごとに散り角が
@@ -261,6 +277,11 @@ const CATALOG: Record<string, WeaponDef> = {
   // 指を離した瞬間に全部起爆(gameStore.detonateAlchemyStones)。石の起爆自体はここのdamageとは別枠
   // (段階ごとに固定値60/120/200・ALCHEMY_STONE_DAMAGE_BY_STAGE)。サイクル実効DPS=48.48
   // (既定glauncher-t2=45.83比+5.8%・§5-2)。
+  // research/NEW_GUNS.md §2(第4版): 塊弾(T2)。弾(Projectile)は作らない(nonProjectile)=塊は
+  // utils/newGunsTick.ts が撃ち・動かし・当てる。
+  // damage は**カウンターの元値**=グレネードガンT2の damage(品質監査#13)。塊の1回のダメージは blobShot.BLOB_TICK_DAMAGE。
+  // rangeOverride=塊が消え始めるまでに進める道のり(約404px・ズーム補正しない=品質監査#3)。
+  [BLOB_WEAPON_KEY]: { key: BLOB_WEAPON_KEY, name: '塊弾', type: 'rifle', category: 'glauncher', tier: 2, damage: 0 /* 下で glauncher-t2 から引く */, cooldown: BLOB_COOLDOWN_MS, count: 1, magSize: BLOB_MAG_SIZE, reloadMs: BLOB_RELOAD_MS_RAW, rangeOverride: blobReachPx, nonProjectile: true },
   'glauncher-t2-alchemy': { key: 'glauncher-t2-alchemy', name: '錬金砲', type: 'rifle', category: 'glauncher', tier: 2, damage: 30, cooldown: 700, projectileSpeed: 440, projectileSize: 15, count: 1, magSize: 4, reloadMs: 1900, passthrough: true },
 
   // UNIQUE_WEAPONS.md §16-2/§16-3b/§16-5(バッチD)。シグナルランチャー(T3): 手動専用
@@ -272,6 +293,10 @@ const CATALOG: Record<string, WeaponDef> = {
   // (既定glauncher-t3=70.00比+8.1%・§5-2。着弾遅延900msをcooldownへ畳んで測る)。
   'glauncher-t3-signal': { key: 'glauncher-t3-signal', name: 'シグナルランチャー', type: 'rifle', category: 'glauncher', tier: 3, damage: 275, cooldown: 1400, count: 1, magSize: 3, reloadMs: 2000 }
 };
+// research/NEW_GUNS.md(品質監査#13): 塊弾・衛星弾の damage は「カウンターの元値」=同じ枠の標準の銃の damage を引く
+// (値を2箇所に書かない。塊・弾そのもののダメージは blobShot/satelliteOrbit の定数)。
+CATALOG[BLOB_WEAPON_KEY].damage = CATALOG['glauncher-t2'].damage;
+CATALOG[SATELLITE_WEAPON_KEY].damage = CATALOG['shotgun-t2'].damage;
 
 // UNIQUE_WEAPONS.md §13-1: 個別の挙動配線(ハンドキャノンの連続命中減衰・パイルドライバーの
 // ノックバック/体勢削り)がweaponKeyで判定するための定数。マジックストリングを1箇所にまとめる。
@@ -439,6 +464,8 @@ export const createWeapon = (key: string): Weapon => {
     infiniteAmmo: def.infiniteAmmo,
     // UNIQUE_WEAPONS.md §17-6(検収監査A-2の是正): 非投射武器の印もコピーが要る。
     nonProjectile: def.nonProjectile,
+    // research/NEW_GUNS.md §3/§4: 弾倉も予備弾も持たない印もコピーが要る。
+    noAmmo: def.noAmmo,
     // dualRangeMode はCATALOGに持たない(ランタイム状態。未設定='far'扱いはdualRangeGun.ts側の規約)。
   };
 };
@@ -536,6 +563,13 @@ const WEAPON_DESC: Record<string, string> = {
   // シグナルランチャー(§16-2/§16-3b/バッチD): 手動専用(自動射撃なし)。指を離した瞬間の狙い先を
   // 記録し、少し遅れてそこへ空爆が落ちる(signalLauncher.ts。追尾しない=置き撃ち)。
   'glauncher-t3-signal': '自動では撃たない。狙いを定めて指を離すと、少し遅れてその地点へ空爆が落ちる',
+  // research/NEW_GUNS.md(第4版)の3挺。
+  // 塊弾(§2): 秒速110の大きな塊。押せる敵は押しのけ、壁・押せない大物で止まって触れている間ずっと削る。
+  [BLOB_WEAPON_KEY]: '大きな塊をゆっくり撃ち出す。敵を押しのけて進み、壁や大物に当たるとそこに留まって削り続ける',
+  // 衛星弾(§3): 歩くと周りに弾が溜まって回り(回る弾も当たる)、足を止めると近くの敵へ散って飛ぶ。
+  [SATELLITE_WEAPON_KEY]: '歩くほど周りに弾が溜まって回る。回る弾も当たり、足を止めると近くの敵へ一斉に散る',
+  // スキャンセンサー(§4): 弾を撃たない。拍ごとに前を走査して印を付け、印の敵には近接も他の銃もよく通る。
+  [SCAN_WEAPON_KEY]: '弾は撃たない。一定の拍で前を走査し、捉えた敵に印を付ける。印の敵には近接も持ち替えた銃もよく通る',
 };
 
 /** 装備欄に出す1行説明(未登録は空文字)。 */
@@ -625,6 +659,29 @@ export const manualOnlyFallbackWeapon = (weapon: Weapon): Weapon => {
   // (createWeaponはid採番のたびDate.now()を焼くだけの使い捨てインスタンスのため)。
   return { ...createWeapon(fallbackKey), id: weapon.id, lastFired: weapon.lastFired, magazine: weapon.magazine };
 };
+
+/**
+ * research/NEW_GUNS.md の3挺を持つ守護霊・幻影・ボットは、代わりの標準の銃で撃つ(既存の「手動専用の銃は代わりの銃で撃つ」
+ * 前例どおり・社長「仲間は初心者救済なので抑え込まない」)。スキャン=ハンドガンT2 / 塊弾=グレネードガンT2 / 衛星弾=ショットガンT2。
+ */
+const ALLY_FALLBACK_GUN_KEY: Readonly<Record<string, string>> = {
+  [SCAN_WEAPON_KEY]: SCAN_FALLBACK_GUN_KEY,
+  [BLOB_WEAPON_KEY]: 'glauncher-t2',
+  [SATELLITE_WEAPON_KEY]: 'shotgun-t2',
+};
+export const allyFallbackGunKey = (key: string | undefined | null): string | undefined => (key ? ALLY_FALLBACK_GUN_KEY[key] : undefined);
+/**
+ * 代わりの銃を返す(対象外の銃は入力をそのまま返す)。id/lastFired は実体のまま(manualOnlyFallbackWeapon と同じ理由=
+ * クールダウンと id 照合の帳簿を壊さない)。弾倉は実体に記録があればそれを持ち回り、無ければ代わりの銃の満タン。
+ */
+export const allyFallbackWeapon = (weapon: Weapon): Weapon => {
+  const fb = allyFallbackGunKey(weapon.key);
+  if (!fb) return weapon;
+  const base = createWeapon(fb);
+  return { ...base, id: weapon.id, lastFired: weapon.lastFired, magazine: weapon.magazine ?? base.magazine };
+};
+/** 弾倉と予備弾を持つ銃(弾ドロップの弾種選び・弾薬ディレクターが数える銃)。弾倉の無い銃(noAmmo)を除く。 */
+export const ammoBearingGuns = (player: Player): Weapon[] => getGuns(player).filter(w => !w.noAmmo);
 
 // Player-state RESERVE pool value for an ammo type.
 export const ammoPoolFor = (player: Player, type: AmmoType): number =>
@@ -788,8 +845,16 @@ export const WEAPON_ICON_KEYS: ReadonlySet<string> = new Set<string>([
   // ★★これで**ユニーク武器21挺すべての絵が揃った**(ハンドガン6/ショットガン6/ライフル6/ランチャー3)。
   'rifle-t1-bolt', 'rifle-t2-icelance', 'rifle-t3-eyelaser',
 ]);
-export const hasWeaponIcon = (key: string | undefined | null): boolean => !!key && WEAPON_ICON_KEYS.has(key);
-export const weaponIconName = (key: string): string => `weapons/${key}`;
+// research/NEW_GUNS.md: 新しい3挺はまだ専用の絵が無い。近い銃の絵を仮で使う(素材が届いたらこの表から消して
+// WEAPON_ICON_KEYS へ足す)。HUD・拾い物・装備欄・取得トーストの全部がこの2関数を通るので、ここ1箇所で済む。
+const WEAPON_ICON_ALIAS: Readonly<Record<string, string>> = {
+  [BLOB_WEAPON_KEY]: 'glauncher-t2',
+  [SATELLITE_WEAPON_KEY]: 'shotgun-t2-coil',
+  [SCAN_WEAPON_KEY]: 'handgun-t2',
+};
+const iconKeyOf = (key: string): string => WEAPON_ICON_ALIAS[key] ?? key;
+export const hasWeaponIcon = (key: string | undefined | null): boolean => !!key && WEAPON_ICON_KEYS.has(iconKeyOf(key));
+export const weaponIconName = (key: string): string => `weapons/${iconKeyOf(key)}`;
 
 // Effective firing range per gun family (px). A gun only fires when an enemy
 // is within this reach, so the player doesn't burn rounds into empty space.
@@ -1118,7 +1183,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       const killed = useGameStore.getState().damageEnemy(
         meleeTarget.id, dmg, false, isCrit, false, dmgChannel, 'player', 'heavy', 1, 'melee',
       );
-      useGameStore.getState().spawnDamageNumber(mtcx, meleeTarget.y, dmg, isCrit);
+      useGameStore.getState().spawnDamageNumber(mtcx, meleeTarget.y, dmg, isCrit, { enemyId: meleeTarget.id });
       // 命中点に斬撃の絵(spawnSlash=既存の汎用近接斬撃エフェクト)+血飛沫+SEを出す「口」
       // (専用アートは後日支給=UNIQUE_WEAPONS.md §16-5b「口が無いと素材が来ても出せない」)。
       useGameStore.getState().spawnSlash(mtcx, mtcy, 'rgba(226,232,240,0.95)');

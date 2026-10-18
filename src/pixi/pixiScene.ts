@@ -215,6 +215,8 @@ import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
 import type { PersistentBeam } from '../utils/persistentBeam';
 import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS } from '../utils/flamerCone';
+import { NewGunsFx } from './newGunsFx'; // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
+import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
 import { escortReviveProgress, isEscortDowned, isEscortSliding, ESCORT_REVIVE_HEAL_RATIO } from '../utils/escortHealth';
@@ -4586,6 +4588,7 @@ export class PixiScene {
   private eyeLaserHalo: Sprite | null = null;
   // 火炎放射器の扇(固定本数のstreak sprite。pooled・毎フレーム再生成しない)。
   private flamerStreaks: Sprite[] = [];
+  private newGunsFx: NewGunsFx | null = null; // research/NEW_GUNS.md: 新しい銃3挺の絵
   // §6.28-19(バッチM63): アクラシエルの結晶の槍(acrasielSpears)。設置中の槍スプライト+T5円テレグラフ
   // (ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
   private acrasielSpearGfx = new Graphics();
@@ -9640,6 +9643,9 @@ export class PixiScene {
     this.syncIceLanceFloors(s.iceLanceFloors, s.gameTime); // UNIQUE_WEAPONS.md §16-2: 氷槍ライフルの床
     this.syncEyeLaser(s.player, s.eyeLaserBeam, s.gameTime); // UNIQUE_WEAPONS.md §16-2: アイレーザーの溜め/照射
     this.syncFlamerCone(s.player, s.flamerCone, s.gameTime, now); // UNIQUE_WEAPONS.md §16-2: 火炎放射器の扇
+    // research/NEW_GUNS.md(第4版): 塊弾・衛星弾・スキャンの扇と印(描くだけ・判定は utils/newGunsTick.ts)。
+    (this.newGunsFx ??= new NewGunsFx(this.L.groundLayer, this.L.effectLayer))
+      .sync(s.enemies, s.player, s.projectiles, s.gameTime, now, fy => this.depthScaleEnemy(fy));
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
     this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now, s.effects, s.breakableProps, s.endingSoldiers);
@@ -26729,6 +26735,7 @@ export class PixiScene {
       if (p.createdAt > now) continue; // scheduled / inactive
       if (p.weaponType === 'shield') continue; // 盾は syncShields で別管理(actorLayer/y-sort)
       if (p.weaponKey === ICE_LANCE_WEAPON_KEY && !p.hostile) continue; // 氷槍ライフルの弾は syncIceLanceBolts(氷の刃)
+      if (p.weaponKey === SATELLITE_WEAPON_KEY && !p.hostile) continue; // 衛星弾の放った弾は NewGunsFx(回っていた時と同じ琥珀の玉のまま飛ぶ)
       if (p.weaponType === 'decoy') continue;  // デコイは syncDecoys で別管理(スプライト+射程円)
       if (p.weaponType === 'turret') continue; // タレットは syncTurrets で別管理(actorLayer/y-sort)
       if (p.weaponType === 'skateboard') continue; // 投擲スケボーは syncSkateboards で別管理(スプライト)
@@ -35356,7 +35363,11 @@ export class PixiScene {
     // 数値のみ(コールアウト文字や明朝でない)は BitmapText の高速パス。
     if (e.text === undefined && !e.serif) {
       this.ensureDamageFont();
-      if (this.damageFontReady) { this.drawDamageNumberBitmap(e, t, scale, bold); return; }
+      if (this.damageFontReady) {
+        // research/NEW_GUNS.md §4: 印のついた敵への数字=縁取りの色つき(白い芯+燐光の縁)。それ以外は従来のまま。
+        if (e.outline !== undefined) { this.drawDamageNumberOutlined(e, now, scale); return; }
+        this.drawDamageNumberBitmap(e, t, scale, bold); return;
+      }
     }
     // 色背景付きコールアウト(Counter=青/KILL=赤など): 縁取り無し＋両サイドフェードの色帯を背面に。
     if (e.bg !== undefined) { this.drawCalloutWithBg(e, t, scale); return; }
@@ -35461,6 +35472,47 @@ export class PixiScene {
     // flash(LEVEL_GROWTH.md §11 代替b): 最初の1発は白から金へ(最初の35%で補間・その後は金のまま)。
     bt.tint = e.flash ? lerpColor(0xffffff, e.color, Math.min(1, t / 0.35)) : e.color; // crit=金 / 通常=白 などを tint で
     bt.alpha = Math.max(0, 1 - t);
+  }
+
+  // research/NEW_GUNS.md §4: 縁取りつきの数字(印のついた敵へのダメージ)。BitmapText を縁の色で4方向にずらして
+  // 背面に重ね、芯を上に置く(プールは他の数字と同じ effects マップ=寿命で破棄)。出だしは popFrom 倍から popMs で
+  // 減速しながら縮む(慣性)。上昇とフェードは従来の数字と同じ。
+  private drawDamageNumberOutlined(e: Extract<VisualEffect, { kind: 'damageNumber' }>, now: number, scale: number) {
+    let c = this.effects.get(e.id);
+    if (!(c instanceof Container) || c.children.length !== 5 || !(c.children[4] instanceof BitmapText)) {
+      if (c) c.destroy({ children: true });
+      const box = new Container();
+      for (let i = 0; i < 5; i++) {
+        const bt = new BitmapText({ text: String(e.value), style: { fontFamily: PixiScene.DAMAGE_FONT, fontSize: PixiScene.DAMAGE_FONT_SIZE } });
+        bt.anchor.set(0.5, 0.5);
+        box.addChild(bt);
+      }
+      this.L.effectLayer.addChild(box);
+      this.effects.set(e.id, box);
+      c = box;
+    }
+    const box = c as Container;
+    const t = Math.max(0, (now - e.createdAt) / e.duration);
+    const ms = now - e.createdAt;
+    const popMs = Math.max(1, e.popMs ?? 80);
+    const k = Math.max(0, 1 - ms / popMs);
+    const pop = 1 + ((e.popFrom ?? 1.2) - 1) * k * k; // 減速しながら縮む
+    const s = ((15 * scale) / PixiScene.DAMAGE_FONT_SIZE) * pop;
+    const off = 1.6 * pop;
+    const offs = [[-off, 0], [off, 0], [0, -off], [0, off]] as const;
+    for (let i = 0; i < 4; i++) {
+      const bt = box.children[i] as BitmapText;
+      bt.scale.set(s);
+      bt.position.set(offs[i][0], offs[i][1]);
+      bt.tint = e.outline ?? 0xffffff;
+    }
+    const core = box.children[4] as BitmapText;
+    core.scale.set(s);
+    core.position.set(0, 0);
+    core.tint = e.color;
+    box.position.set(e.x, e.y - t * 12);
+    box.alpha = Math.max(0, 1 - t);
+    box.visible = true;
   }
 
   // §5.23 M22 C3: 「N HITS」バナー(プレイヤー頭上)。drawDamageNumberBitmapと同じ手法

@@ -91,7 +91,7 @@ export const applyBlastToHero = (b: PumpkinBlast): boolean => {
 
 export interface HeroBlastFx {
   spawnBurst: (x: number, y: number, color: string, count?: number) => void;
-  spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
+  spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean, opts?: { enemyId?: string }) => void;
 }
 
 /**
@@ -113,7 +113,7 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
     const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
     const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, null, 'neutral');
     if (killed) kills++;
-    fx.spawnDamageNumber(ex, e.y, dmg, false);
+    fx.spawnDamageNumber(ex, e.y, dmg, false, { enemyId: e.id });
     // 派手さの絵(判定ゼロ): 英雄から外へ向かう大きい血しぶき=ボスの命中と同じ大きさ。
     const ang = Math.atan2(ey - hy, ex - hx);
     useGameStore.getState().spawnBlood(ex, ey, ang, 260);

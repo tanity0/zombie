@@ -78,6 +78,7 @@ export type SfxKey =
   | 'melee'
   | 'katana-dash'
   | 'counter'
+  | 'satellite-release' // 衛星弾を放つ瞬間(counter.mp3 の金属の鳴りを高く・小さく流用)
   | 'enemy-hit'
   | 'enemy-kill'
   | 'pickup'
@@ -428,6 +429,14 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     src: `${import.meta.env.BASE_URL}audio/sfx/counter.mp3`,
     volume: 0.98,
     playbackRate: 0.82,   // 少し太く: 低めピッチで「ガチャン」を重くする(ファイル差し替え不要)
+    minIntervalMs: 120,
+  },
+  // 衛星弾を放つ瞬間の「キン」(research/NEW_GUNS.md §3・社長決定2026-10-18「専用の音」)。新しい素材は作らず、
+  // 金属の鳴りが澄んでいる counter.mp3 を少し高く・小さく回して、カウンター成功(等速・大音量)と聞き分けられるようにする。
+  'satellite-release': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/counter.mp3`,
+    volume: 0.6,
+    playbackRate: 1.3,
     minIntervalMs: 120,
   },
   // デコイ迎撃のレーザー音。counter.mp3 を高ピッチ・小音量で流用(短い「ピッ」)。

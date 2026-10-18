@@ -295,7 +295,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
   useGameStore.getState().damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter');
   recordCritHit('guaranteed', true); // §7-11c(4): カウンター反撃(確定クリ・天使6体は常にボス)
-  useGameStore.getState().spawnDamageNumber(bcx, boss.y, dmg, true);
+  useGameStore.getState().spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
   sfx.reward();
   useGameStore.getState().spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
   useGameStore.getState().spawnBurst(hitX, hitY, '#fde047', 10);

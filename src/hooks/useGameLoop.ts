@@ -64,7 +64,7 @@ import {
   isAttackLocked, // v0.25.2589: 死亡モーション中/アテンション演出中は自動攻撃を止める共通ゲート
   ATTENTION_IN_MS, ATTENTION_HOLD_MS, ATTENTION_OUT_MS, ATTENTION_FOCUS_Y_FRAC,
   ENEMY_REMOVE_CAUSE, kbLogPush, BASE_CAPTURE_RADIUS, PRAISE_WINDOW_MS, PRAISE_KILL_COUNT,
-  HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, AMMO_MAX,
+  HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
   DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, DEATH_SLOW_SCALE, // v0.25.2586: 死亡の寄り+スロー
   EVENT_QUEST_DWELL_MS, EVENT_QUEST_REWARD_GOLD,
@@ -95,6 +95,7 @@ import {
   spawnRescueQuestPoint, EVENT_NPC_MIN_DISTANCE, // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2)
   isInReturnCircle, // 二人組クエストv2(§2-8・B4): 納品の3秒滞在の判定(returnCircle.radiusは対象のフィールドをそのまま読む)
   currentFriendlyShield, noteShieldGuardFrom, noteShieldBeam, shieldGuardsPlayerLine, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
+  clearScanMarkNumberNotes, // research/NEW_GUNS.md §4: 印の数字メモをフレームの頭で捨てる
 } from '../store/gameStore';
 import { shieldBlocksArea, shieldBlocksLine, splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md
 import { METAL_PALETTE, shieldBeamPalette, reflectAlongTravel, takeTechniqueStart, BEAM_HOLD_TICK_MS, beamHoldGain, type GuardPalette, type TechniqueGateState } from '../utils/shieldGuardFx'; // 防いだ演出の色・間引き・曲線(第2回クリエイティブ監査)
@@ -108,7 +109,7 @@ import { PVP_DAMAGE_SCALE, pvpHitDamageForGate } from '../utils/phantomScript'; 
 import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget } from '../utils/dogFetch';
 import { HERO_DOG_FETCH_ARRIVE_PX, HERO_DOG_FETCH_TIMEOUT_MS, HERO_DOG_FETCH_RETURN_MS } from '../utils/heroDog';
 import { HIT_BLINK_TYPES } from '../utils/hitBlink';
-import { healthDropMult } from '../utils/healthDropBias';
+// healthDropMult は utils/gunKillDrops.ts へ移した(品質監査#4)
 import { lowHpTier, LOW_HP_HEART_RATE } from '../utils/lowHpPulse';
 import { stepMagnetPull } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ(社長裁定2026-09-13) // ★ドッグが触る物の台帳(SAME_ARENA §3-d-4)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // ★対人トラップの効果時間(SAME_ARENA §3-g)
@@ -130,10 +131,10 @@ import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import {
   detectWallBreach, isFirstWallBreach, markWallBreached, markSelfDeepest,
 } from '../utils/wallProgress';
-import { pickAmmoDropType } from '../utils/ammoDrop';
+// pickAmmoDropType は utils/gunKillDrops.ts へ移した(品質監査#4)
 // マークスマンのトラップの捕獲判定(体が円に触れたら掛かる・社長裁定v0.25.2326「a」)。
 import { selectTrapTargets } from '../utils/marksmanTrap';
-import { ammoDirectorRate } from '../utils/ammoDirector';
+// ammoDirectorRate は utils/gunKillDrops.ts へ移した(品質監査#4)
 import { shouldSpawnAirdrop } from '../utils/ammoAirdrop';
 import {
   applyPumpkinBlastDamage, applyEnemyFire, applyEnemyProjectileHits, applyMineDamage, applyContactDamage,
@@ -218,7 +219,7 @@ import { segmentBlocked, type Rect } from '../world/obstacles';
 import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisionはv0.25.2469で不使用に(霊体すり抜け)
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
-import { rollWeaponKey } from '../utils/weaponDrop';
+// rollWeaponKey は utils/gunKillDrops.ts へ移した(品質監査#4)
 import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey, Summon, SkillKey, Enemy } from '../types/game';
 import {
   checkCollision,
@@ -528,6 +529,10 @@ import {
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
+import { tickNewGuns } from '../utils/newGunsTick'; // research/NEW_GUNS.md: 新しい銃3挺の進行
+import { dropGunKillLoot } from '../utils/gunKillDrops'; // 弾で倒した時の撃破演出とドロップ(品質監査#4)
+import { isScanMarked, scanMarkMeleeMult, SCAN_MARK_RANGED_MULT } from '../utils/scanSensor';
+import { ammoBearingGuns } from '../utils/weaponUtils'; // 弾倉の無い銃を除いた所持銃(research/NEW_GUNS.md 品質監査#5)
 import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
 import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
@@ -2323,7 +2328,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         playEnemyDeath();
         dropEnemyXp(e, ex, ey, `pickup-xp-shijin-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
       } else {
-        spawnDamageNumber(ex, e.y, Math.round(dmg), stunned);
+        spawnDamageNumber(ex, e.y, Math.round(dmg), stunned, { enemyId: e.id });
       }
       return killed;
     };
@@ -2731,6 +2736,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // 必ず立つ=永久停止はない。canvasレンダラ(rendererReadyを使わない)は対象外。
       if (!useGameStore.getState().isPaused && !useGameStore.getState().backgrounded
           && (!isPixiRenderer() || useGameStore.getState().rendererReady)) {
+        clearScanMarkNumberNotes(); // research/NEW_GUNS.md §4: 前のフレームで使われなかった印の数字メモを捨てる
         const loopState = useGameStore.getState();
         const {
           gameTime,
@@ -6664,7 +6670,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 社長指示: トールのカウンターは必ずクリティカル扱いにする(裏ボス完全気絶=bumpBossCritの
                 // カウントに乗せる。他の裏ボス共通のパリィ演出は非crit踏襲のままここだけ変更)。
                 damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter');
-                spawnDamageNumber(bcx, boss.y, dmg, true);
+                spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
                 playSfx('headshot');
                 // 社長指示: 「これは普通のクリティカルです」= 通常のクリ演出(金の衝撃波+火花+発光。
                 // 銃/近接クリの hitCrit juice と同じ見た目)もここに乗せる。青いCounter演出とは別レイヤーで
@@ -6762,7 +6768,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
                 damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter');
-                spawnDamageNumber(bcx, boss.y, dmg, true);
+                spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
                 playSfx('headshot');
                 spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
                 spawnBurst(hitX, hitY, '#fde047', 10);
@@ -10234,7 +10240,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 activeFetch.bitten.add(enemy.id);
                 const dogDmg = Math.max(1, Math.round(DOG_BITE_DAMAGE * skillOutgoingDamageMult(useGameStore.getState().player)));
                 const killed = damageEnemy(enemy.id, dogDmg, false, false, false, 'dot'); // 召喚(犬)=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
-                spawnDamageNumber(ex, enemy.y, dogDmg, false);
+                spawnDamageNumber(ex, enemy.y, dogDmg, false, { enemyId: enemy.id });
                 spawnBurst(ex, ey, '#cbd5e1', 4);
                 // PACING_PUZZLE.md §9-7#1(ノックバック免除): driller はpumpkinと同格。
                 if (!killed && enemy.type !== 'giantbat' && !isPumpkinTier(enemy.type)) {
@@ -10698,7 +10704,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (!enemy) continue;
                   const killed = damageEnemy(id, dmg);
                   const ex = enemy.x + enemy.width / 2, ey = enemy.y + enemy.height / 2;
-                  spawnDamageNumber(ex + (((a.landAt * 13) % 25) - 12), enemy.y, dmg, false); // 同じ所に数字が積み重ならないよう横へ揺らす(監査 #12)
+                  spawnDamageNumber(ex + (((a.landAt * 13) % 25) - 12), enemy.y, dmg, false, { enemyId: enemy.id }); // 同じ所に数字が積み重ならないよう横へ揺らす(監査 #12)
                   if (killed) { playEnemyDeath(); dropEnemyXp(enemy, ex, ey, `pickup-xp-arrow-rain-${a.landAt}`); }
                 }
               }
@@ -12604,7 +12610,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ghostMeleeKilled = ghostFinish
                   ? ghostFinish.killed
                   : damageEnemy(boundBoss.id, dmg, false, ghostMeleeCrit, false, null, 'ghost');
-                if (!ghostFinish) spawnDamageNumber(btcx, btcy, dmg, ghostMeleeCrit);
+                if (!ghostFinish) spawnDamageNumber(btcx, btcy, dmg, ghostMeleeCrit, { enemyId: boundBoss.id });
                 spawnBurst(btcx, bccy, (ghostMeleeCrit || ghostFinish !== null) ? '#fde047' : '#9fd8ff', 6);
                 // v0.25.2479(プレイヤー近接ヒットとのパリティ=triggerCounterのslashAt処理と同型):
                 // スラッシュ+近接の血飛沫。血はspawnMeleeBloodと同じ幾何を「ゴーストへ向かって」計算する
@@ -13111,7 +13117,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const falloff = 1 - dist / tBlastR;
                 const dmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * tExMult * (0.55 + falloff * 0.45)));
                 const killed = damageEnemy(enemy.id, dmg, true, false, false, 'dot'); // 召喚(タレット)の爆風=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
-                spawnDamageNumber(ex, enemy.y, dmg, false);
+                spawnDamageNumber(ex, enemy.y, dmg, false, { enemyId: enemy.id });
                 if (killed) {
                   playEnemyDeath();
                   dropEnemyXp(enemy, ex, ey, `pickup-xp-turret-${nowMs}`);
@@ -13268,7 +13274,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const falloff = 1 - dist / dBlastR;
               const dmg = Math.max(1, Math.round(decoy.damage * dExMult * (0.55 + falloff * 0.45)));
               const killed = damageEnemy(enemy.id, dmg, true); // 爆発=ボス系には非致死
-              spawnDamageNumber(ex, enemy.y, dmg, false);
+              spawnDamageNumber(ex, enemy.y, dmg, false, { enemyId: enemy.id });
               if (!killed && !resistsChipKnockback(enemy.type)) { // v0.25.3494(案A): 旧リストを一本化
                 const norm = Math.max(0.001, dist);
                 // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5。
@@ -13398,7 +13404,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const splashDamage = Math.max(1, Math.round(grenadeBaseDamage * grenadeExMult * grenadeOutMult * (0.55 + falloff * 0.45)));
             const killed = damageEnemy(enemy.id, splashDamage, true); // 爆発=ボス系には非致死(社長指示)
             hgHitCount += 1;
-            spawnDamageNumber(ex, enemy.y, splashDamage, false);
+            spawnDamageNumber(ex, enemy.y, splashDamage, false, { enemyId: enemy.id });
             spawnBurst(ex, ey, '#b91c1c', 4);
             if (
               !killed &&
@@ -13460,7 +13466,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
             const splashKilled = damageEnemy(splashEnemy.id, splashDamage, true); // 爆発=ボス系には非致死
             glHitCount += 1;
-            spawnDamageNumber(ex, splashEnemy.y, splashDamage, false);
+            spawnDamageNumber(ex, splashEnemy.y, splashDamage, false, { enemyId: splashEnemy.id });
             spawnBurst(ex, ey, '#b91c1c', 4);
             if (splashKilled) {
               playEnemyDeath();
@@ -13571,7 +13577,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ? damageEnemy(enemy.id, splashDamage, true, false, false, null, 'ghost')
                   : damageEnemy(enemy.id, splashDamage, true);
                 smHitCount += 1;
-                spawnDamageNumber(ex, enemy.y, splashDamage, false);
+                spawnDamageNumber(ex, enemy.y, splashDamage, false, { enemyId: enemy.id });
                 spawnBurst(ex, ey, '#b91c1c', 4);
                 if (!smKilled && !resistsChipKnockback(enemy.type)) { // v0.25.3494(案A): 旧リストを一本化
                   const norm = Math.max(0.001, dist);
@@ -13662,7 +13668,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * fkExMult * fkOutMult * (0.55 + falloff * 0.45)));
                 const killed = damageEnemy(enemy.id, splashDamage, true, false, false, knife.ownerGhost ? 'dot' : 'other'); // 爆風。守護霊の火ナイフは揺らさない(v0.25.4286)
                 fkHitCount += 1;
-                spawnDamageNumber(ex, enemy.y, splashDamage, false);
+                spawnDamageNumber(ex, enemy.y, splashDamage, false, { enemyId: enemy.id });
                 spawnBurst(ex, ey, '#b91c1c', 4);
                 if (!killed && !resistsChipKnockback(enemy.type)) { // v0.25.3494(案A): 旧リストを一本化
                   const norm = Math.max(0.001, dist);
@@ -13690,7 +13696,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hx = hit.x + hit.width / 2;
               const hy = hit.y + hit.height / 2;
               const killed = damageEnemy(hit.id, knife.damage, false, false, false, knife.ownerGhost ? 'dot' : 'other'); // 守護霊の投げナイフは揺らさない(v0.25.4286)
-              spawnDamageNumber(hx, hit.y, knife.damage, false);
+              spawnDamageNumber(hx, hit.y, knife.damage, false, { enemyId: hit.id });
               spawnBurst(hx, hy, knife.ownerGhost ? '#9fd8ff' : '#fb923c', 5); // 刺さった火花(軽量。ゴースト発は青白)
               playSfx('shot-damage');
               // 刺さる: 敵に追従し2秒後に爆発(敵が死んでも死亡地点で爆発)。
@@ -13728,7 +13734,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)をドローン往復の接触ダメージにも乗算。
                 const boomDmg = Math.max(1, Math.round(boom.damage * skillOutgoingDamageMult(useGameStore.getState().player)));
                 const killed = damageEnemy(e.id, boomDmg, false); // 接触(爆風ではない・v0.25.4284: blast旗は揺れの爆発倍率になった)
-                spawnDamageNumber(ex, e.y, boomDmg, false);
+                spawnDamageNumber(ex, e.y, boomDmg, false, { enemyId: e.id });
                 spawnBurst(ex, ey, '#a5f3fc', 4);
                 if (killed) {
                   playEnemyDeath();
@@ -13762,7 +13768,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (Math.hypot(ex - bx, ey - by) > r) continue;
                   if (boomWalls.length > 0 && segmentBlocked(bx, by, ex, ey, boomWalls)) continue; // 壁越し不可
                   const killed = damageEnemy(e.id, dmg, true); // 爆発=ボス系には非致死
-                  spawnDamageNumber(ex, e.y, dmg, false);
+                  spawnDamageNumber(ex, e.y, dmg, false, { enemyId: e.id });
                   if (killed) {
                     playEnemyDeath();
                     dropEnemyXp(e, ex, ey, `pickup-xp-boom-${Math.floor(Date.now())}`);
@@ -13810,7 +13816,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // nonLethalBoss は v0.25.1571 で廃止済み(引数は互換のため残置・実際は爆発以外も
             // ボスを倒せる)なので値は無関係。damageChannel='other'・クリなし(§19-2b)。
             const killed = damageEnemy(e.id, dmg, false, false, false, 'dot', hateSource); // 連続源(光線の脈)=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
-            spawnDamageNumber(ex, e.y, dmg, false);
+            spawnDamageNumber(ex, e.y, dmg, false, { enemyId: e.id });
             spawnBurst(ex, ey, burstColor, 3);
             if (killed) {
               playEnemyDeath();
@@ -13939,7 +13945,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const rFalloff = 1 - rDist / exRadius;
                 const rDmg = Math.max(1, Math.round(splashBase * (0.55 + rFalloff * 0.45)));
                 const rKilled = damageEnemy(rEnemy.id, rDmg, true);
-                spawnDamageNumber(rex, rEnemy.y, rDmg, false);
+                spawnDamageNumber(rex, rEnemy.y, rDmg, false, { enemyId: rEnemy.id });
                 spawnBurst(rex, rey, '#b91c1c', 4);
                 if (rKilled) {
                   playEnemyDeath();
@@ -14046,7 +14052,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-2是正): 社長仕様「高い体勢値削り」。
                     // 'heavy'(パイルドライバーと同じ打撃種別枠)+ 1.5倍(SIGNAL_POSTURE_MULT)。
                     const sKilled = damageEnemy(sgEnemy.id, sDmg, true, false, false, 'other', 'player', 'heavy', SIGNAL_POSTURE_MULT);
-                    spawnDamageNumber(sex, sgEnemy.y, sDmg, false);
+                    spawnDamageNumber(sex, sgEnemy.y, sDmg, false, { enemyId: sgEnemy.id });
                     spawnBurst(sex, sey, '#b91c1c', 4);
                     if (sKilled) {
                       playEnemyDeath();
@@ -14341,6 +14347,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             }
           }
+        }
+
+        // research/NEW_GUNS.md(第4版): 塊弾・衛星弾・スキャンセンサーの1フレーム(撃つ・動かす・当てる・印)。
+        // 3挺を持たず場に何も残っていなければ即 return(store へ書かない=既存の挙動は1bitも変えない)。
+        {
+          const ngSwipe = useGameStore.getState().swipeDirection;
+          tickNewGuns({
+            gameTime, dtSec: deltaTime,
+            killCtx: { indoor, ammoSmart: AMMO_SMART_ENABLED, ammoDirector: AMMO_DIRECTOR_ENABLED, noAmmoRun: NO_AMMO_RUN },
+            moveInput: inputState.up || inputState.down || inputState.left || inputState.right
+              || (!!ngSwipe && Math.hypot(ngSwipe.x, ngSwipe.y) > 0.01),
+          });
         }
 
         // ★敵対(幻影)のトラップは**別の走査**で解決する(社長裁定2026-08-25・SAME_ARENA §3-g)。
@@ -14985,7 +15003,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (acEnemy.id === enemyId) continue; // 直撃対象は既にダメージ済み
               const acDmg = Math.max(1, Math.round(dmg));
               const acKilled = damageEnemy(acEnemy.id, acDmg, true);
-              spawnDamageNumber(ax, acEnemy.y, acDmg, false);
+              spawnDamageNumber(ax, acEnemy.y, acDmg, false, { enemyId: acEnemy.id });
               spawnBurst(ax, ay, '#b91c1c', 4);
               if (acKilled) {
                 playEnemyDeath();
@@ -15044,7 +15062,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
               const splashKilled = damageEnemy(splashEnemy.id, splashDamage, true); // 爆発=ボス系には非致死
               glHitCount += 1;
-              spawnDamageNumber(sx, splashEnemy.y, splashDamage, hitCrit);
+              spawnDamageNumber(sx, splashEnemy.y, splashDamage, hitCrit, { enemyId: splashEnemy.id });
               spawnBurst(sx, sy, '#b91c1c', hitCrit ? 7 : 4);
               if (splashKilled) {
                 playEnemyDeath();
@@ -15104,7 +15122,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
               const splashKilled = damageEnemy(splashEnemy.id, splashDamage, true); // 爆発=ボス系には非致死
               exHitCount += 1;
-              spawnDamageNumber(sx, splashEnemy.y, splashDamage, false);
+              spawnDamageNumber(sx, splashEnemy.y, splashDamage, false, { enemyId: splashEnemy.id });
               if (splashKilled) {
                 playEnemyDeath();
                 useGameStore.getState().dropEnemyCurrency(splashEnemy, sx, sy);
@@ -15309,8 +15327,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               enemyForFx.x + enemyForFx.width / 2,
               enemyForFx.y,
               dmg,
-              !!projectile?.reflected || hitCrit
-            );
+              !!projectile?.reflected || hitCrit, { enemyId: enemyForFx.id });
           }
 
           // Light knockback on every connecting bullet — staggers normal
@@ -15432,143 +15449,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             playEnemyDeath();
             const enemy = collisionEnemies.find(e => e.id === enemyId);
             if (enemy) {
-              // Death splash: red burst so kills read as blood/hit impact.
-              const ex = enemy.x + enemy.width / 2;
-              const ey = enemy.y + enemy.height / 2;
-              // PACING_PUZZLE.md §9-7#1(死亡FXの重さ): driller はpumpkinと同格。
-              const bloodCount = isPumpkinTier(enemy.type) || enemy.type === 'giantbat' ? 30 : 16;
-              // §5.23 M22 C1: 弾/接触キルの死亡血しぶきも弾の進行方向へ寄せる(弾が無い接触キル等はundefined=従来の全方位)。
-              const kDirX = DIRFX_ENABLED && projectile ? projectile.direction.x : undefined;
-              const kDirY = DIRFX_ENABLED && projectile ? projectile.direction.y : undefined;
-              spawnBurst(
-                ex,
-                ey,
-                '#dc2626',
-                bloodCount,
-                kDirX,
-                kDirY
-              );
-              spawnBurst(ex, ey, '#7f1d1d', Math.max(6, Math.floor(bloodCount * 0.45)), kDirX, kDirY);
-              spawnRing(ex, ey, 4, isPumpkinTier(enemy.type) || enemy.type === 'giantbat' ? 38 : 24, 'rgba(185,28,28,0.72)', 3, 300);
-              useGameStore.getState().dropEnemyCurrency(enemy, ex, ey);
-
-              dropEnemyXp(enemy, ex, ey, 'pickup-xp');
-              // 銃キル版の武器クレート/リング演出も同じ isElite を通る=近接版(gameStore.ts)と揃える。
-              const isElite = isPumpkinTier(enemy.type) || enemy.type === 'giantbat';
-              if (isElite) {
-                // Mid-boss drop — a weapon crate. Picking it up opens it and
-                // rolls a new gun (category & tier weighted by run time).
-                addPickup({
-                  id: `pickup-crate-${enemy.id}`,
-                  x: enemy.x + enemy.width / 2 - 8,
-                  y: enemy.y + enemy.height / 2 - 8 - 18,
-                  type: 'weapon-crate',
-                  value: 0,
-                  worldDrop: true
-                });
-                spawnRing(
-                  enemy.x + enemy.width / 2,
-                  enemy.y + enemy.height / 2,
-                  10, 80, 'rgba(96,165,250,0.7)', 3, 500
-                );
-              }
-              // Ammo resupply: every kill rolls an ammo drop at the start-screen
-              // drop rate, so the slider governs the whole ammo economy. (Before,
-              // only melee kills dropped — but the gun lands most killing blows,
-              // so the rate felt far lower than set.) Active gun's family.
-              const equippedAmmo = getActiveGun(player)?.ammoType;
-              const owned = getGuns(player)
-                .map(w => w.ammoType)
-                .filter((t): t is AmmoType => !!t);
-              // 弾薬AIディレクター(v0.25.2170): 「全所持銃の弾備蓄の枯渇度×敵の多さ」で基礎率を最大20%まで底上げ。
-              // ?ammodir=0で無効化(常にmeleeAmmoDropPercentのまま)。
-              // 弾薬ドロップ率アップ(パッシブ): 既定ドロップ率に ammoDropBonus を加算(0..1)。
-              const dirPct = AMMO_DIRECTOR_ENABLED
-                ? ammoDirectorRate(useGameStore.getState().meleeAmmoDropPercent, {
-                    families: owned.filter(t => t !== 'phill').map(t => ({ reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })),
-                    enemyCount: useGameStore.getState().enemies.length,
-                  })
-                : useGameStore.getState().meleeAmmoDropPercent;
-              const gunKillDropRate = Math.max(0, Math.min(1,
-                dirPct / 100 + (useGameStore.getState().player.ammoDropBonus ?? 0) + (useGameStore.getState().player.equipBonus?.ammoDropBonus ?? 0)
-              ));
-              // 研究所(屋内)は通常ドロップ無し: PHILL弾は固定3箇所＋近接フィニッシュのみ。
-              // ナイフマスターは弾薬ドロップ0%(社長指示)。
-              // M0(訓練)は弾を拾う教習まで抽選ドロップを封印(社長指示v0.25.2319・m0Unlocked.ammo)。
-              if (
-                !indoor && !hasSkill(player, 'knife-master')
-                // §21-4(弾ゼロ): ★弾薬ディレクタは**備蓄0を枯渇と見て率を上げる**ので、
-                // 何もしないと「弾ゼロにするほど落ちる」。ここで完全に塞ぐ。
-                && !NO_AMMO_RUN
-                && useGameStore.getState().m0Unlocked.ammo
-                && Math.random() < gunKillDropRate
-              ) {
-                // M5(§5.5・RE4式): 残弾割合が最小の弾種を落とす(同率は構え優先・phill対象外)。
-                // ?ammosmart=0で従来(構え銃の弾種)へ。ドロップ率・供給量は不変=弾種の配分のみ。
-                const smartType = AMMO_SMART_ENABLED
-                  ? pickAmmoDropType(owned.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), equippedAmmo)
-                  : null;
-                const dropType = smartType ?? equippedAmmo ?? owned[0];
-                if (dropType) {
-                  addPickup({
-                    id: `pickup-ammo-${enemy.id}`,
-                    x: enemy.x + enemy.width / 2 - 8 + 16,
-                    y: enemy.y + enemy.height / 2 - 8,
-                    type: `ammo-${dropType}` as `ammo-${AmmoType}`, // v0.25.3999: 4種への嘘つきキャストを是正(glauncher弾が型検査をすり抜けて描画欠けしていた)
-                    value: 0,
-                    worldDrop: true
-                  });
-                }
-              }
-              // Rare world weapon drop (~1%, elites a bit higher).
-              if (Math.random() < (isElite ? 0.06 : 0.01)) {
-                addPickup({
-                  id: `pickup-weapon-${enemy.id}`,
-                  x: enemy.x + enemy.width / 2 - 8,
-                  y: enemy.y + enemy.height / 2 - 8 + 16,
-                  type: 'weapon-drop',
-                  value: 0,
-                  // v0.25.3291: 近接が当たった時は「装備tier+1」を落とす(rollWeaponKey側の新仕様)。
-                  weaponKey: rollWeaponKey(
-                    areaZoneIndexFor(Math.hypot(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2)),
-                    useGameStore.getState().player.weapons.find(w => w.isMelee)?.tier ?? 1,
-                    newGameTime, // v0.25.3328: Tier率も時間で迫る(8:00で最深部相当)
-                  ),
-                  worldDrop: true
-                });
-              }
-              // ★C9(社長裁定2026-10-16「前者」): 体力が減っているほど肉が出やすい(50%以下で1.5倍・20%以下で2倍)。
-              const chickenChance = Math.min(1, (isElite ? 0.35 : 0.015) * healthDropMult(player.health, player.maxHealth));
-              const magnetChance = isElite ? 0.15 : 0.004;
-              const bombChance = isElite ? 0.1 : 0.002;
-              if (Math.random() < chickenChance) {
-                addPickup({
-                  id: `pickup-chicken-${enemy.id}`,
-                  x: enemy.x + enemy.width / 2 - 8,
-                  y: enemy.y + enemy.height / 2 - 8 + 18,
-                  type: 'health',
-                  value: 30,
-                  worldDrop: true
-                });
-              }
-              if (Math.random() < magnetChance) {
-                addPickup({
-                  id: `pickup-magnet-${enemy.id}`,
-                  x: enemy.x + enemy.width / 2 - 8 + 14,
-                  y: enemy.y + enemy.height / 2 - 8,
-                  type: 'magnet',
-                  value: 0
-                });
-              }
-              if (!indoor && Math.random() < bombChance) { // 研究所(屋内)は爆弾を出さない(社長指示)
-                addPickup({
-                  id: `pickup-bomb-${enemy.id}`,
-                  x: enemy.x + enemy.width / 2 - 8 - 14,
-                  y: enemy.y + enemy.height / 2 - 8,
-                  type: 'bomb',
-                  value: 0
-                });
-              }
+              // 撃破の血しぶき・お金・経験値・武器箱・弾・レアの武器・肉・磁石・爆弾(research/NEW_GUNS.md 品質監査#4 で
+              // utils/gunKillDrops.ts へ出した。塊弾・回る衛星弾で倒した時も同じ関数を通る)。中身は移す前と同じ。
+              dropGunKillLoot(enemy, {
+                player, indoor, gameTime: newGameTime,
+                dirX: DIRFX_ENABLED && projectile ? projectile.direction.x : undefined,
+                dirY: DIRFX_ENABLED && projectile ? projectile.direction.y : undefined,
+                ammoSmart: AMMO_SMART_ENABLED, ammoDirector: AMMO_DIRECTOR_ENABLED, noAmmoRun: NO_AMMO_RUN,
+              });
             }
           }
         });
@@ -15650,7 +15538,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
                 if (Math.hypot(ecx - ex0, ecy - ey0) > EGG_BLAST_RADIUS) continue;
                 const egKilled = damageEnemy(enemy.id, MINE_DAMAGE, true);
-                spawnDamageNumber(ecx, enemy.y, MINE_DAMAGE, false);
+                spawnDamageNumber(ecx, enemy.y, MINE_DAMAGE, false, { enemyId: enemy.id });
                 spawnBurst(ecx, ecy, '#b91c1c', 4);
                 if (egKilled) {
                   playEnemyDeath();
@@ -15741,7 +15629,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 aoe.forEach(o => {
                   const oxc = o.x + o.width / 2, oyc = o.y + o.height / 2;
                   const killed = useGameStore.getState().damageEnemy(o.id, dmg, true, false, false, wireChannel, wireHate); // 爆発=ボス非致死
-                  spawnDamageNumber(oxc, o.y, dmg, true);
+                  spawnDamageNumber(oxc, o.y, dmg, true, { enemyId: o.id });
                   if (!killed && knockbackCdReady(o, nowW)) {
                     const kdx = oxc - ecx, kdy = oyc - ecy;
                     const kdd = Math.hypot(kdx, kdy) || 1;
@@ -15762,7 +15650,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 continue;
               }
               const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, wireChannel, wireHate);
-              spawnDamageNumber(ecx, e.y, dmg, false);
+              spawnDamageNumber(ecx, e.y, dmg, false, { enemyId: e.id });
               useGameStore.getState().spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
               useGameStore.getState().spawnMeleeBlood(ecx, ecy, e.width, { flash: HIT_BLINK_TYPES.has(e.type) }); // 近接の血飛沫(v0.25.2026)・点滅(ゾンビの試し)
               if (!killed && knockbackCdReady(e, nowW)) {
@@ -15799,9 +15687,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // §5.21-追補4: フィニッシュ相当ダメージなのでviaMeleeFinish=true
                   // (nonLethalBoss=trueで即死自体は元々しない)。
                   const postureFatal = wireHate === 'player' && isBossPostureBroken(tgt, gameTime);
-                  const wireHitDamage = postureFatal ? meleeDmg : bdmg;
-                  useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, false, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null); // 打撃(爆風ではない・v0.25.4284)
-                  spawnDamageNumber(tcx, tgt.y, wireHitDamage, true);
+                  // research/NEW_GUNS.md §4(スキャンセンサー): ワイヤーの斬り下ろしは近接の1振り(相手は1体)=
+                  // 印があれば近接の倍率(ボス級×4.7)。紫の致命(postureFatal)には掛けない。守護霊のワイヤーは仲間=×1.6。
+                  // damageEnemy へは「印を使った」旗を渡す(×1.6 を二重に掛けない)。
+                  const wireScanMult = postureFatal ? 1
+                    : wireHate === 'player' ? scanMarkMeleeMult(tgt, gameTime, 'melee')
+                      : (isScanMarked(tgt, gameTime) ? SCAN_MARK_RANGED_MULT : 1);
+                  const wireHitDamage = postureFatal ? meleeDmg : bdmg * wireScanMult;
+                  useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, false, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null, undefined, undefined, undefined, true); // 打撃(爆風ではない・v0.25.4284)
+                  spawnDamageNumber(tcx, tgt.y, wireHitDamage, true, { scanMarked: wireScanMult !== 1 });
                 } else {
                   useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1, false, false, true, wireChannel, wireHate); // 即死フィニッシュ
                 }
@@ -15838,7 +15732,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const dx = ecx - pcx, dy = ecy - pcy;
               const dist = Math.hypot(dx, dy) || 1;
               const killed = explode ? useGameStore.getState().damageEnemy(e.id, dmg, true, false, false, wireChannel, wireHate) : false;
-              if (explode) spawnDamageNumber(ecx, e.y, dmg, true);
+              if (explode) spawnDamageNumber(ecx, e.y, dmg, true, { enemyId: e.id });
               if (!killed) {
                 useGameStore.setState({
                   enemies: useGameStore.getState().enemies.map(x => x.id === e.id ? {
@@ -17278,8 +17172,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           nextAmmoDropDelayMs: nextAmmoDropDelayRef.current,
           playerX: player.x, playerY: player.y, playerWidth: player.width, playerHeight: player.height,
           boundsWidth: gameBounds.width, boundsHeight: gameBounds.height,
-          ownedAmmoTypes: getGuns(player).map(w => w.ammoType).filter((t): t is AmmoType => !!t),
-          equippedAmmo: getActiveGun(player)?.ammoType,
+          ownedAmmoTypes: ammoBearingGuns(player).map(w => w.ammoType).filter((t): t is AmmoType => !!t), // 弾倉の無い銃は数えない(research/NEW_GUNS.md 品質監査#5)
+          equippedAmmo: (() => { const g = getActiveGun(player); return g && !g.noAmmo ? g.ammoType : undefined; })(), // 弾倉の無い銃を除く(品質監査2巡目#5)
           rng: Math.random,
         });
         nextAmmoDropDelayRef.current = airdropTick.nextAmmoDropDelayMs;
@@ -17518,7 +17412,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const falloff = 1 - dist / radius;
               const dmg = Math.max(1, Math.round(base * (0.55 + falloff * 0.45)));
               const killedE = damageEnemy(e.id, dmg, true); // 爆発=ボス系には非致死
-              spawnDamageNumber(ecx, e.y, dmg, false);
+              spawnDamageNumber(ecx, e.y, dmg, false, { enemyId: e.id });
               if (!killedE) {
                 const nrm = Math.max(0.001, dist);
                 useGameStore.getState().knockbackEnemy(e.id, (ecx - bcx) / nrm, (ecy - bcy) / nrm, bcKbMult, bcKbMult);

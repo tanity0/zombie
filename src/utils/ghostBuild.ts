@@ -9,7 +9,7 @@
 // 掟: このモジュールは**判定も乱数も持たない**(純粋な組み立てのみ)。ビルドは召喚1体につき不変なので
 // summon.id で1件だけメモ化する(毎フレーム/毎着弾のcreateWeaponを避ける=負荷1/10)。
 import type { Player, PlayerBuildSnapshot, Summon, Weapon } from '../types/game';
-import { createWeapon } from './weaponUtils';
+import { createWeapon, allyFallbackWeapon } from './weaponUtils';
 import { buildHasLoadout, buildPseudoPlayer } from './playerBuild';
 import { withoutBlood } from './bloodAwaken';
 
@@ -33,16 +33,24 @@ export const resolveGhostBuild = (snap: PlayerBuildSnapshot | undefined, live: P
   if (!buildHasLoadout(snap) || snap === undefined) {
     // 旧プロファイル(ロードアウト未記録)=従来どおり召喚時のプレイヤーの現在装備を借用する。
     const guns = live.weapons.filter(w => !w.isMelee);
+    const liveGun = guns.find(w => w.id === live.activeWeaponId) ?? guns[0];
     return {
       fromSnapshot: false,
-      gun: guns.find(w => w.id === live.activeWeaponId) ?? guns[0],
+      // research/NEW_GUNS.md: 新しい3挺は代わりの標準の銃で撃つ(守護霊・幻影の両方がここを通る)。
+      gun: liveGun ? allyFallbackWeapon(liveGun) : liveGun,
       melee: live.weapons.find(w => w.isMelee),
       phillHeadshotRate: 0,
-      player: pseudo,
+      // ★品質監査#7: 守護霊は player.weapons から id で銃を引き直す(useGameLoop の ghostWeapons)。代わりの銃は id を
+      // 実体のまま持つので、ここも差し替えておかないと id 照合で元の銃(撃たない)へ戻ってしまう。
+      player: { ...pseudo, weapons: pseudo.weapons.map(w => (w.isMelee ? w : allyFallbackWeapon(w))) },
     };
   }
-  const guns = (snap.gunKeys ?? []).map(k => createWeapon(k));
-  const gun = guns.find(w => w.key === snap.activeGunKey) ?? guns[0];
+  // research/NEW_GUNS.md: 新しい3挺は代わりの標準の銃で組み立てる(守護霊・幻影)。
+  const gunKeys = snap.gunKeys ?? [];
+  const guns = gunKeys.map(k => allyFallbackWeapon(createWeapon(k)));
+  // 差し替えた銃は key が変わるので、アクティブ銃は「元のキーの位置」で引く。
+  const activeIdx = gunKeys.indexOf(snap.activeGunKey ?? '');
+  const gun = (activeIdx >= 0 ? guns[activeIdx] : undefined) ?? guns[0];
   const melee = snap.meleeKey ? createWeapon(snap.meleeKey) : undefined;
   return {
     fromSnapshot: true,

@@ -1581,6 +1581,11 @@ export interface Enemy {
   // setActiveWeapon側で明示的にクリアする(§16-5受け入れ条件5「持ち替えで残らない」)。
   alchemyStoneStage?: number;
   /**
+   * research/NEW_GUNS.md §4(スキャンセンサー): 印の期限(gameTime)。扇に入った敵へ「今から3秒」を書く
+   * (重ねても強くならない・入り直せば3秒に戻る)。倍率の読み手は utils/scanSensor.ts の純関数だけ。
+   */
+  scanMarkUntil?: number;
+  /**
    * ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。硬直に入った瞬間に「行動の時計」の
    * 残り(期限型)/経過(始点型)を畳んで預かる袋。書き手は `src/utils/enemyClocks.ts` の
    * `tickEnemyClockFreeze` **1本だけ**(updateEnemies の前処理から毎フレーム呼ばれる)。
@@ -1950,6 +1955,10 @@ export interface Weapon {
   // プレイヤー自身のオート射撃(useGameLoop.ts)の**全経路がこの1つのフラグだけを見る**
   // (キー直書きの散らばりを1箇所へ集約)。未設定(既定undefined)=従来どおり弾を撃つ武器。
   nonProjectile?: true;
+  // research/NEW_GUNS.md §3/§4(衛星弾・スキャンセンサー): 弾倉も予備弾も持たない銃の印。
+  // 「弾切れ」とみなさない(拾った時の持ち替え・弾切れの自動持ち替え・ストライカーの弾切れ×1.5の対象外)。
+  // ほかの銃が全部弾切れになった時は、この印の銃へ自動で持ち替える(autoSwitchIfDry)。
+  noAmmo?: true;
   // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード handgun-t3-gunblade限定): 至近(≤90px)
   // かどうかで通常銃/近接系の強攻撃を切り替える現在モード(dualRangeMode/cycleModeと同じ作法=
   // src/utils/gunbladeMelee.ts)。未指定(undefined)は'ranged'(通常銃)扱い。撃つ瞬間(射程ゲートを
@@ -2520,6 +2529,9 @@ export interface Projectile {
   // ままにしたいため(既存のshotgun着弾処理・SE・描画分岐を変えない)、旋回の可否だけをこのフラグで
   // 別途開く。targetEnemyIdが対応する敵と一緒に使う(対象が消えたら直進=homing-missileと同じ規則)。
   homingPellet?: true;
+  // research/NEW_GUNS.md §3(衛星弾): 誘導の旋回半径(px)の個別指定。未指定は誘導散弾と同じ40px相当
+  // (homingShotgun.HOMING_PELLET_TURN_RADIUS_PX)。衛星弾の放った弾は「ゆるい誘導」なのでこれより大きい半径を持つ。
+  homingTurnRadiusPx?: number;
   // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG shotgun-t2-coil・2026-09-07 C-2検収A-1で確定)。
   // 「中心線からの横ズレ」方式(coilShotgun.ts): coilAimDirX/Yは狙点方向(発射時に固定・以後は
   // 再追尾しない)、coilAmplitudePxはこのペレット固有の最大横ズレ(px・±COIL_AMPLITUDE_PX)、
@@ -2867,6 +2879,11 @@ export type VisualEffect =
       // Optional: このms分は満alphaを保持してからフェード開始(未指定/0=従来どおり生成直後からフェード)。
       // KILL/カウンターのスローの「一番遅い」区間と文字の見え方を合わせるために追加。
       holdMs?: number;
+      // research/NEW_GUNS.md §4(スキャンの印): 数字の縁取りの色(0xRRGGBB)。未指定=従来の黒フチのまま(描画のみ)。
+      outline?: number;
+      // 同上: 出だしだけ大きく出て縮む。popFrom=最初の倍率(scale に対する比)・popMs=縮み切るまでのms。未指定=従来の pop。
+      popFrom?: number;
+      popMs?: number;
     }
   | {
       // 一枚絵のマーク表示(例: 刀フィニッシュの習字「斬」)。pop-in→保持→フェード。
