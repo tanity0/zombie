@@ -2260,6 +2260,8 @@ export interface EscortSoldier {
   followPauseUntil?: number;
   /** 止まっている所から動き出す反応の遅れの期限(gameTime ms・個体で150〜250ms)。 */
   followWakeAt?: number;
+  /** ステージ4のジュンだけ: プレイヤーに離されている(「置いていかれそう」の一言のヒステリシス・utils/junEscort junLeftBehindStep)。 */
+  junFar?: boolean;
   /** 担当拠点を解放した時刻(gameTime ms)。解放の直後に始まるついてくる動きでは台詞を出さない判定に使う。 */
   capturedAt?: number;
 }

@@ -1,7 +1,10 @@
 // ステージ4: 衛生兵ジュンの同行・離脱・変身(research/JUN_ESCORT.md §1)の判定。純関数だけ(PixiJS/store を import しない)。
 //
 // 流れ:
-//   ① 出撃: ステージ4の通常の進軍NPCの名簿(4人)に、5人目としてジュンが加わる(他の進軍NPCと同じ動き・戦い・倒れる/起こされる)。
+//   ① 出撃: ステージ4の通常の進軍NPC(4人)と一緒に出撃し、**最初からプレイヤーについて歩く**(社長指示2026-10-19
+//      「ジュンは最初からプレイヤーについてくる。拠点解放には行かない。」)。拠点へは向かわず、拠点の滞在・解放・駐留に数えない
+//      (隊の4人だけで拠点が進む)。ついて歩く動きは拠点の駐留兵の「ついてくる」(utils/escortFollow stepEscortFollow=慣性つき)を流用。
+//      戦い方・狙われる・倒れる/起こされる・台詞は他の進軍NPCと同じ配線のまま。
 //   ② 離脱: 城ボスの時刻に城の足元へ着くよう逆算して(距離÷歩く速さ)、「変な感じがする…」と言って隊を外れ、一拍おいて
 //      城ボスがいつも出る場所(城)へ歩いて行く。隊(escorts)からは外れる=戦わない・狙われない・倒れない・台詞も出ない。
 //      倒れていたら起き上がってから離脱する。画面下のぼけの帯では少し待つ。
@@ -10,6 +13,7 @@
 //   ジュンが居ない(隊に居ない・名簿に無い)時は、城ボスは従来どおり出る。
 import { JUN_ESCORT_INDEX } from '../data/junEscortLines';
 import type { JunDeparture } from '../types/game';
+import type { EscortFollowState } from './escortFollow';
 
 /** ジュンが加わるステージ。 */
 export const JUN_ESCORT_STAGE_ID = 'stage-4';
@@ -25,6 +29,70 @@ export const isJunEscort = (e: { soldierIndex: number }): boolean => e.soldierIn
  */
 export const junJoinsRun = (i: { stageId: string; normalRoster: boolean; revisit: boolean }): boolean =>
   i.stageId === JUN_ESCORT_STAGE_ID && i.normalRoster && !i.revisit;
+
+// ---- ① 同行(プレイヤーについて歩く) -----------------------------------------------------------------------------
+/**
+ * ジュンが今フレーム「ついてくる」で動くか。ジュンは拠点の解放状態に関係なく、出撃の最初からずっとついてくる
+ * (拠点の駐留兵の「連れて歩く」の切り替え・担当区域の判定は見ない=ジュンは駐留兵ではない)。
+ * ウェルカムの輪が出ている間だけは、他の進軍NPCと同じく出撃地点で待つ(輪の中の敵は撃つ)。
+ */
+export const junFollowsPlayer = (i: { isJun: boolean; welcomeHold: boolean }): boolean => i.isJun && !i.welcomeHold;
+
+/**
+ * 進軍NPCの「ついてくる/帰る」の状態機械の代わりにジュンが使う答え(stepFollowMachine と同じ形)。
+ * 常に follow・見送り無し・「ついてき始めた」の台詞も無し(出撃の一言=sortie がその役)。
+ */
+export const junFollowMachine = (): { state: EscortFollowState; pauseUntil: undefined; started: false } =>
+  ({ state: 'follow', pauseUntil: undefined, started: false });
+
+/**
+ * 拠点の滞在(dwell)・解放に数えるか。ジュンは数えない=ジュンが拠点の円に立っていても解放は進まない
+ * (隊の人数・拠点の解放の進み方は4人のまま)。
+ */
+export const countsForBaseCapture = (e: { soldierIndex: number }): boolean => !isJunEscort(e);
+
+/**
+ * ジュンの拠点の名札。どの拠点の id とも一致しない=「その拠点の担当」を baseId で引く既存の配線(駐留・遠方の通信・確保の全快・
+ * ボットの付き添い先・区画の担当)にジュンは入らない。蹴り飛ばしの候補は「拠点表に居ない兵士=区画を問わない」の既存の扱いになる
+ * (ジュンはいつもプレイヤーの隣に居る=プレイヤーの区画の兵士)。
+ */
+export const JUN_BASE_ID = 'jun-follow';
+/**
+ * 護衛のループで「担当拠点」が要る所に渡す、ジュンの仮の拠点(自分の足元・解放済み扱い=前進・苦戦の通信・巡回の枝に入らない)。
+ * 滞在・解放は countsForBaseCapture が別に止める。
+ */
+export const junPseudoBase = (pos: { x: number; y: number }): { id: string; x: number; y: number; status: 'captured' } =>
+  ({ id: JUN_BASE_ID, x: pos.x, y: pos.y, status: 'captured' });
+
+/**
+ * ジュンの「拠点の近く」(医師団はどこに…)の対象=いちばん近い未解放の拠点(nearDist 以内)。
+ * ジュンは担当の拠点へ向かわないので、自分の担当ではなく「プレイヤーと歩いていて近づいた拠点」で言う。
+ */
+export const junNearOpenBase = <B extends { x: number; y: number; status: string }>(
+  pos: { x: number; y: number }, bases: readonly B[], nearDist: number,
+): B | null => {
+  let best: B | null = null, bd = nearDist;
+  for (const b of bases) {
+    if (b.status !== 'open') continue;
+    const d = Math.hypot(pos.x - b.x, pos.y - b.y);
+    if (d < bd) { bd = d; best = b; }
+  }
+  return best;
+};
+
+/**
+ * 「置いていかれそう」(待って…置いていかないで…): ついてくるジュンがプレイヤーから離された時に一度。
+ * 離された=足元どうしの距離が JUN_LEFT_BEHIND_PX を超えた瞬間。JUN_LEFT_BEHIND_REARM_PX まで追いついたら次に備える(ヒステリシス)。
+ * 間隔(同じ一言の連発防止)は台詞の CD(JUN_LEFT_BEHIND_CD_MS)が受け持つ。
+ */
+export const JUN_LEFT_BEHIND_PX = 380;
+export const JUN_LEFT_BEHIND_REARM_PX = 200;
+export const JUN_LEFT_BEHIND_CD_MS = 30_000;
+export const junLeftBehindStep = (distPx: number, prevFar: boolean): { far: boolean; speakNow: boolean } => {
+  if (prevFar) return { far: distPx > JUN_LEFT_BEHIND_REARM_PX, speakNow: false };
+  const far = distPx > JUN_LEFT_BEHIND_PX;
+  return { far, speakNow: far };
+};
 
 // ---- 歩き(慣性つき) --------------------------------------------------------------------------------------
 /** 歩き出し/止まりの加速度(px/s²)。進軍NPCの歩きの速さへ約0.6秒で乗り、目的地の手前で同じ加速度で減速して止まる。 */

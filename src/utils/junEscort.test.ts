@@ -6,6 +6,8 @@ import {
   junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST, type PathRect,
   JUN_DEPART_LEAD_MIN_MS, JUN_DEPART_LEAD_MAX_MS, JUN_DEPART_AFTER_RISE_MS, JUN_COLLAPSE_BEAT_MS, JUN_FALL_MS, JUN_VANISH_MS,
   JUN_HOLD_LONG_CAP_MS, JUN_FOCUS_WAIT_MAX_MS, JUN_COMPANION_QUIET_BEFORE_MS, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT, MEDIC_FALL_SHIFT_PX,
+  junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, junPseudoBase, JUN_BASE_ID,
+  JUN_LEFT_BEHIND_PX, JUN_LEFT_BEHIND_REARM_PX,
 } from './junEscort';
 import { JUN_ESCORT_INDEX, JUN_NPC_LINES, JUN_SCENE_LINES, pickJunLine, JUN_DEPART_LINE } from '../data/junEscortLines';
 import { pickNpcLine } from '../data/npcLines';
@@ -318,5 +320,46 @@ describe('junEscort: 道筋(城の当たり箱を回り込んで足元へ着く)
     const w = stepJunWalk({ x: 0, y: 0, speed: VMAX, targetX: 1, targetY: 0, dtSec: 1 / 60, vmax: VMAX, remainingPx: 500 });
     expect(w.speed).toBeGreaterThan(VMAX * 0.9);
     expect(w.arrived).toBe(false);
+  });
+});
+
+describe('junEscort: 最初からプレイヤーについて歩く(拠点解放には行かない)', () => {
+  it('ジュンだけが、ウェルカムの輪の外ではいつもついてくる(輪の間は出撃地点で待つ)', () => {
+    expect(junFollowsPlayer({ isJun: true, welcomeHold: false })).toBe(true);
+    expect(junFollowsPlayer({ isJun: true, welcomeHold: true })).toBe(false);
+    expect(junFollowsPlayer({ isJun: false, welcomeHold: false })).toBe(false);
+    expect(junFollowMachine()).toEqual({ state: 'follow', pauseUntil: undefined, started: false });
+  });
+  it('拠点の滞在・解放に数えるのは隊の4人だけ(ジュンは数えない)', () => {
+    expect(countsForBaseCapture({ soldierIndex: JUN_ESCORT_INDEX })).toBe(false);
+    for (let i = 0; i < 8; i++) expect(countsForBaseCapture({ soldierIndex: i })).toBe(true);
+  });
+  it('ジュンの拠点の名札はどの拠点とも一致しない・仮の拠点は自分の足元で解放済み扱い', () => {
+    for (let i = 0; i < 4; i++) expect(JUN_BASE_ID).not.toBe(`base-${i}`);
+    expect(junPseudoBase({ x: 12, y: -40 })).toEqual({ id: JUN_BASE_ID, x: 12, y: -40, status: 'captured' });
+  });
+  it('「拠点の近く」は、いちばん近い未解放の拠点(範囲内)。解放済み・範囲外は対象外', () => {
+    const bases = [
+      { id: 'base-0', x: 1000, y: 0, status: 'open' },
+      { id: 'base-1', x: 0, y: 500, status: 'captured' },
+      { id: 'base-2', x: 0, y: -400, status: 'open' },
+    ];
+    expect(junNearOpenBase({ x: 0, y: 0 }, bases, 600)?.id).toBe('base-2');
+    expect(junNearOpenBase({ x: 0, y: 400 }, bases, 600)).toBeNull(); // 近いのは解放済み/他は遠い
+    expect(junNearOpenBase({ x: 900, y: 0 }, bases, 600)?.id).toBe('base-0');
+  });
+  it('「置いていかれそう」は離された瞬間に1回だけ。追いつくまで次は出ない(ヒステリシス)', () => {
+    let far = false, spoke = 0;
+    const seq = [50, 200, JUN_LEFT_BEHIND_PX + 1, JUN_LEFT_BEHIND_PX + 200, JUN_LEFT_BEHIND_PX - 10, JUN_LEFT_BEHIND_REARM_PX + 5, JUN_LEFT_BEHIND_PX + 5];
+    const out: boolean[] = [];
+    for (const d of seq) { const r = junLeftBehindStep(d, far); far = r.far; out.push(r.speakNow); if (r.speakNow) spoke++; }
+    expect(out).toEqual([false, false, true, false, false, false, false]);
+    expect(spoke).toBe(1);
+    // 追いついてから(REARM 以下)また離されたら、もう一度
+    let r = junLeftBehindStep(JUN_LEFT_BEHIND_REARM_PX - 1, far); far = r.far;
+    expect(far).toBe(false);
+    r = junLeftBehindStep(JUN_LEFT_BEHIND_PX + 1, far);
+    expect(r.speakNow).toBe(true);
+    expect(JUN_LEFT_BEHIND_REARM_PX).toBeLessThan(JUN_LEFT_BEHIND_PX);
   });
 });

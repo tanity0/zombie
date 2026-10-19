@@ -222,7 +222,7 @@ import {
 } from '../utils/escortHealth';
 import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscortSource } from '../utils/escortView';
 import { JUN_ESCORT_INDEX, JUN_NAME, JUN_DEPART_LINE } from '../data/junEscortLines';
-import { isJunEscort, JUN_ESCORT_ID, junJoinsRun, stepJunWalk, JUN_DEPART_WALK_DELAY_MS, junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST } from '../utils/junEscort';
+import { isJunEscort, JUN_ESCORT_ID, junJoinsRun, stepJunWalk, JUN_DEPART_WALK_DELAY_MS, junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST, junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, JUN_LEFT_BEHIND_CD_MS, JUN_BASE_ID, junPseudoBase } from '../utils/junEscort';
 // research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils の純関数)。
 import {
   followZoneContains, stepFollowMachine, stepEscortFollow, escortFollowProfile, followSpeedCap, followHeal, followHealMarks, followLineMuted,
@@ -843,17 +843,17 @@ const junPathObstacles = (s: GameState, ax: number, ay: number, bx: number, by: 
   }
   return out;
 };
-// ステージ4: 衛生兵ジュンを5人目の進軍NPCとして加える(research/JUN_ESCORT.md §1)。名簿(BASE_SOLDIERS 0..7)の外の印
+// ステージ4: 衛生兵ジュンを進軍NPCの隊に加える(research/JUN_ESCORT.md §1)。名簿(BASE_SOLDIERS 0..7)の外の印
 // (JUN_ESCORT_INDEX)を持つ=名簿の抽選・援護射撃の人選・拠点の駐留兵・名簿順の表(歩き/振り/返事)には一切入らない。
-// 担当拠点は4人のうち誰かと同じ拠点(拠点は4つ)。配列の末尾に置く=「その拠点の担当」を find で引く既存の箇所は常に本来の軍人を返す。
+// ジュンは最初からプレイヤーについて歩く(拠点へは向かわない・拠点の滞在/解放に数えない=utils/junEscort countsForBaseCapture)。
+// baseId はどの拠点とも一致しない名札(JUN_BASE_ID)=「その拠点の担当」を引く既存の配線にジュンは入らない。配列の末尾に置く。
 // 立ち位置は4人の円(半径36・0/90/180/270°)の隙間の左下。体力は他の進軍NPCと同じ。
-const makeJunEscort = (squad: EscortSoldier[], px: number, py: number, playerMaxHealth = 0): EscortSoldier => {
+const makeJunEscort = (px: number, py: number, playerMaxHealth = 0): EscortSoldier => {
   const escortHp = playerMaxHealth > 0 ? escortMaxHealthFor(playerMaxHealth) : undefined;
-  const mate = squad[Math.floor(Math.random() * squad.length)];
   const ang = Math.PI * 0.75;
   return {
     id: JUN_ESCORT_ID,
-    baseId: mate?.baseId ?? 'base-0',
+    baseId: JUN_BASE_ID,
     x: px + Math.cos(ang) * 40,
     y: py + Math.sin(ang) * 40,
     face: 1,
@@ -1112,8 +1112,8 @@ const rosterKey = (idx: number): number =>
 const rosterEntry = (idx: number): (typeof BASE_SOLDIERS)[number] =>
   idx === JUN_ESCORT_INDEX ? JUN_ROSTER_ENTRY : BASE_SOLDIERS[rosterKey(idx)];
 /**
- * 拠点を開けた手柄の index(拠点の駐留兵・解放の台詞・撤退の台詞の話し手)。ジュンが滞在を満たした時は、
- * 同じ拠点の担当の軍人の手柄にする(ジュンは拠点の駐留兵に混ざらない・research/JUN_ESCORT.md §1)。
+ * 拠点を開けた手柄の index(拠点の駐留兵・解放の台詞・撤退の台詞の話し手)。ジュンは拠点の滞在・解放に数えない
+ * (utils/junEscort countsForBaseCapture)のでここへは来ない。来た時の保険として、同じ拠点の担当の軍人の手柄にする。
  */
 const captureCreditIndex = (esc: EscortSoldier, escorts: readonly EscortSoldier[]): number =>
   isJunEscort(esc) ? (escorts.find(e => e.baseId === esc.baseId && !isJunEscort(e))?.soldierIndex ?? 0) : esc.soldierIndex;
@@ -14472,6 +14472,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (s.farBackdrop === 'tutorial') return; // チュートリアル: 随行NPCの汎用セリフは全停止(イベントで特別に組む)
     let best: EscortSoldier | null = null; let bd = NPC_KILL_MAX_DIST * NPC_KILL_MAX_DIST;
     for (const e of s.escorts) {
+      if (isJunEscort(e)) continue; // ジュンはこの場面の文言を持たない(無言)=隣に居ても他の軍人の一言を奪わない
       const d = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
       if (d < bd) { bd = d; best = e; }
     }
@@ -14505,6 +14506,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const p = s.player; const px = p.x + p.width / 2, py = p.y + p.height / 2;
     let best: EscortSoldier | null = null; let bd = PRAISE_WITNESS_DIST * PRAISE_WITNESS_DIST;
     for (const e of s.escorts) {
+      if (isJunEscort(e)) continue; // ジュンはこの場面の文言を持たない(無言)=隣に居ても他の軍人の一言を奪わない
       const d = (e.x - px) * (e.x - px) + (e.y - py) * (e.y - py);
       if (d < bd) { bd = d; best = e; }
     }
@@ -21417,6 +21419,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const npcRetreatEvents: { name: string; text: string; id: string }[] = [];    // 「後退する時」(放置×ランダム)発話候補
     const npcBaseNearEvents: { name: string; text: string; id: string }[] = [];   // 「拠点が見えてきた時」発話候補
     const npcCompanionEvents: { name: string; text: string; id: string }[] = [];  // 「並走時」発話候補(頻度低め)
+    const npcJunLeftBehindEvents: { name: string; text: string; id: string }[] = []; // ステージ4のジュン「置いていかれそう」
     let capturedThisFrame: { id: string; x: number; y: number; soldierIndex: number } | null = null;
     let captureCount = state.suppressionCaptureCount; // 制圧累計回数(SE検出用)。名簿indexはランダム割当に変更。
     let changed = false;
@@ -21478,7 +21481,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           escortsChanged = true;
         }
       }
-      const base = state.baseSites.find(b => b.id === esc.baseId);
+      // ジュン(拠点の担当を持たない)は自分の足元の仮の拠点(解放済み扱い)を使う=前進・巡回・苦戦の通信の枝に入らない。
+      const base = state.baseSites.find(b => b.id === esc.baseId) ?? (isJunEscort(esc) ? junPseudoBase(esc) : undefined);
       if (!base) return esc;
       // 後退(放置)セリフ: 後退システム未実装の代理。プレイヤーが遠く放置していて未制圧の担当NPCが、
       // たまにランダムで「押されている」旨を漏らす(画面外でも判定=放置の通知)。CDで更に間引く。
@@ -21492,12 +21496,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 状態の優先順位は 倒れ/滑り(上で抜けた) > 後ずさり > ウェルカム待機 > ついてくる/帰る > 巡回 > 前進(設計書§2-2)。
       // 画面の外か内かより**先**に判定する=ついてくる/帰る軍人は画面の内外で同じ動き(速さの継ぎ目を画面端に置かない)。
       let fol: ReturnType<typeof stepFollowMachine> | null = null;
-      if (base.status !== 'captured' && (esc.followState !== undefined || esc.followInZone !== undefined || esc.followSpeed !== undefined)) {
+      // ステージ4のジュン(research/JUN_ESCORT.md §1): 拠点の解放状態に関係なく、最初からずっとついてくる(同じ「ついてくる」の枝を通る)。
+      const junFollow = junFollowsPlayer({ isJun: isJunEscort(esc), welcomeHold: escortWelcomeHold });
+      if (junFollow) fol = junFollowMachine();
+      else if (isJunEscort(esc)) { /* ウェルカムの輪の間は出撃地点で待つ(下の escortWelcomeHold の枝) */ }
+      else if (base.status !== 'captured' && (esc.followState !== undefined || esc.followInZone !== undefined || esc.followSpeed !== undefined)) {
         // 拠点が陥落して未解放へ戻った: ついてくる状態を全部畳む(前進へ戻る)。
         esc = { ...esc, followState: undefined, followInZone: undefined, followSpeed: undefined, followPauseUntil: undefined, followWakeAt: undefined };
         escortsChanged = true;
       }
-      if (base.status === 'captured' && !escortWelcomeHold) {
+      if (!isJunEscort(esc) && base.status === 'captured' && !escortWelcomeHold) {
         // §9(社長指示2026-10-13): 「連れて歩く」がオフなら区域の中でも誰もついてこない(ついてきていた軍人は区域を出た時と同じく見送って帰る)。
         const zoneIn = state.escortFollowEnabled && followZoneContains(px, py, poiSectorIndex(base), esc.followInZone ?? false, AREA_THRESHOLDS[0]);
         fol = stepFollowMachine({
@@ -21537,7 +21545,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const sol = rosterEntry(esc.soldierIndex);
       // 制圧後は進軍目標がないため全方位を前方扱い。巡回中に背後だけ無視して進み続けない。
       // §17-14: ウェルカムの輪が出ている間は出撃地点(esc.x/y=現在地)を目標にして前進させない。
-      const goal = (escortWelcomeHold || base.status === 'captured') ? { x: esc.x, y: esc.y } : { x: base.x, y: base.y };
+      // ジュン(ついてくる)も全方位を前方扱い(担当拠点へは向かわない)。
+      const goal = (escortWelcomeHold || base.status === 'captured' || junFollow) ? { x: esc.x, y: esc.y } : { x: base.x, y: base.y };
       // ついてくる/帰る軍人が画面外に居る間は索敵しない(射撃・索敵は画面内だけ=設計書§2-2・監査C-3)。
       const followOffscreen = followDrives && !onScreen(esc.x, esc.y);
       const advance = escortAdvance(esc, goal, followOffscreen ? [] : state.enemies, {
@@ -21553,8 +21562,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (advance.rescuedNow && !followOffscreen) npcRescuedEvents.push( // 画面外は敵を渡さないので「助かった」の偽の立ち上がりを出さない(検収D1 B-1)
        { id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
       // 拠点が見えてきた時: 未制圧の担当拠点中心へ近づいた(あと少し)。
-      if (base.status === 'open' && Math.hypot(esc.x - base.x, esc.y - base.y) < NEAR_BASE_DIST) {
+      // ジュンは担当拠点へ向かわない=プレイヤーと歩いていて近づいた未解放の拠点で言う(research/JUN_ESCORT.md §2「拠点の近く」)。
+      if (isJunEscort(esc)
+        ? junNearOpenBase(esc, state.baseSites, NEAR_BASE_DIST) !== null
+        : (base.status === 'open' && Math.hypot(esc.x - base.x, esc.y - base.y) < NEAR_BASE_DIST)) {
         npcBaseNearEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'baseNear', sol.baseNear) });
+      }
+      // ジュンの「置いていかれそう」: ついてきていて、プレイヤーに離された瞬間に一度(utils/junEscort junLeftBehindStep)。
+      if (junFollow) {
+        const lb = junLeftBehindStep(Math.hypot(esc.x - px, esc.y - py), esc.junFar ?? false);
+        if (lb.far !== (esc.junFar ?? false)) { esc = { ...esc, junFar: lb.far }; escortsChanged = true; }
+        if (lb.speakNow) npcJunLeftBehindEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'neglectFar', '') });
       }
       // 並走時: プレイヤーと近距離の連続時間を計測し、一定時間越えたら低確率で漏らす(頻度かなり低め)。
       let companionMs = esc.companionMs ?? 0;
@@ -21639,8 +21657,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           face = fh.dx < 0 ? -1 : fh.dx > 0 ? 1 : face; // 敵が居なければプレイヤーの進む向き(なましたもの)
         }
         // 回復(§5b S-1): ついてくる間、直近の被弾から8秒たったらゆっくり。倒れている間・帰る間は回復しない。
-        healthOut = followHeal(esc, fol.state, now, deltaTime);
-        healMarks = followHealMarks(esc.health, healthOut, esc.maxHealth, now, healMarks);
+        // ジュンは駐留兵ではない=ついてくる間の回復は付けない(戦い方・倒れ方は他の進軍NPCのまま)。
+        if (!isJunEscort(esc)) {
+          healthOut = followHeal(esc, fol.state, now, deltaTime);
+          healMarks = followHealMarks(esc.health, healthOut, esc.maxHealth, now, healMarks);
+        }
       } else if (base.status === 'captured') {
         // 制圧後: 円の縁を巡回(社長指示)。半径を patrolR へ寄せつつ角度を進める=滑らかに周回。
         const cx0 = x - base.x, cy0 = y - base.y;
@@ -21685,7 +21706,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 滞在カウント/占拠は射撃・前進どちらの枝でも毎フレーム評価する(社長報告のバグ修正)。
       // 仕様「拠点内に10秒留まったら解放」: 敵を撃ちながらでも円内に留まっていればカウントを進める。
       // 円の外(まだ到達前/押し出された)では0にリセット。
-      const inC = Math.hypot(x - base.x, y - base.y) <= BASE_CAPTURE_RADIUS;
+      // ジュンは拠点の滞在・解放に数えない(隊の4人だけで拠点が進む・research/JUN_ESCORT.md §1)。
+      const inC = countsForBaseCapture(esc) && Math.hypot(x - base.x, y - base.y) <= BASE_CAPTURE_RADIUS;
       // v0.25.3054(社長指示・監査指摘): ボス戦中(+復帰猶予)は拠点確保を凍結——確保完了の
       // バナー/SE/商人移動/拠点ショップ有効化がボス戦の最中に発生しない(進捗は保持し、解除後に再開)。
       const capFrozen = facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime);
@@ -21748,7 +21770,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...s, status: 'captured', hp: SUPP_HP_MAX, dwellMs: 0, attackerId: null, attackerRespawnAt: now + SUPP_ATTACKER_FIRST_MS, soldierFireAt: 0, soldierIndex: capIdx, soldiers: SUPP_BASE_ATTACKS_ENABLED ? makeBaseSoldiers(s.x, s.y) : [] };
         }
         // 護衛の滞在進捗をレンダラー用に反映(s.dwellMs が常に0だと白弧が動かない)。
-        const escortDwell = nextEscorts.find(e => e.baseId === s.id)?.dwellMs ?? 0;
+        const escortDwell = nextEscorts.find(e => e.baseId === s.id && countsForBaseCapture(e))?.dwellMs ?? 0;
         if (escortDwell !== s.dwellMs) { changed = true; return { ...s, dwellMs: escortDwell }; }
         return s;
       }
@@ -21875,9 +21897,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const sol = BASE_SOLDIERS[c.soldierIndex % BASE_SOLDIERS.length];
       if (!onScreen(c.x, c.y)) get().enqueueWallEvent('comm', '通信', `${baseDirectionLabel(c.x, c.y)}拠点の解放を確認`, '#bfe3ff');
       get().enqueueNpcDialogue([{ name: sol.name, text: pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured) }]);
-      // ステージ4: その拠点の担当にジュンが居れば、続けてジュンの一言(拠点を取った=research/JUN_ESCORT.md §2)。
+      // ステージ4: 目の前で拠点を取った時(=ジュンはプレイヤーについて歩いている)、続けてジュンの一言(拠点を取った=research/JUN_ESCORT.md §2)。
       {
-        const jun = get().escorts.find(e => isJunEscort(e) && e.baseId === c.id && !isEscortDowned(e));
+        const jun = onScreen(c.x, c.y) ? get().escorts.find(e => isJunEscort(e) && !isEscortDowned(e)) : undefined;
         const junText = jun ? pickNpcLine(JUN_ESCORT_INDEX, 'baseCaptured', '') : '';
         if (junText) get().enqueueNpcDialogue([{ name: JUN_NAME, text: junText }]);
       }
@@ -21910,12 +21932,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const ev of npcCompanionEvents) {
       if (get().tryNpcLine(ev.name, 'companion', ev.text, COMPANION_CAT_CD_MS, ev.id)) break;
     }
+    // ステージ4のジュン「置いていかれそう」(待って…置いていかないで…)。遠方の通信(neglectFar)とは別の場面=見えていても言う。
+    for (const ev of npcJunLeftBehindEvents) get().tryNpcLine(ev.name, 'junLeftBehind', ev.text, JUN_LEFT_BEHIND_CD_MS, ev.id);
     // 「遠方で放置(隣NPCのみ)」セリフ(社長確定条件)。誰も進軍を手伝っていない(全護衛から遠い)時、
     // プレイヤーの現在エリア起点で時計回りに最初の未開放エリアのNPCが1人だけ低頻度で反応。
     {
       const gs = get();
       const gp = gs.player; const gpx = gp.x + gp.width / 2, gpy = gp.y + gp.height / 2;
-      const helping = gs.escorts.some(e => Math.hypot(e.x - gpx, e.y - gpy) <= HELPING_DIST);
+      // ジュンはいつもプレイヤーの隣に居る=進軍の手伝いには数えない(他の軍人の「遠方で放置」が止まらない)。
+      const helping = gs.escorts.some(e => !isJunEscort(e) && Math.hypot(e.x - gpx, e.y - gpy) <= HELPING_DIST);
       const anyOpen = gs.baseSites.some(b => b.status === 'open');
       if (gs.escorts.length > 0 && !helping && anyOpen && Math.random() < NEGLECT_FAR_CHANCE_PER_SEC * deltaTime) {
         const startIdx = ((Math.round(Math.atan2(gpy, gpx) / (Math.PI / 2)) % BASE_SITE_COUNT) + BASE_SITE_COUNT) % BASE_SITE_COUNT;
@@ -21926,7 +21951,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         if (pickIdx >= 0) {
           // その sector(base-${pickIdx})に配属された護衛の素性(soldierIndex)でセリフを選ぶ(ランダム名簿対応)。
-          // ステージ4はジュンも同じ拠点の担当に居る=その拠点の担当の中から1人(他のステージは1人=従来と同じ人)。
+          // その拠点の担当の中から1人(ステージ4のジュンはどの拠点の担当でもない=ここには入らない)。
           const cands = gs.escorts.filter(e => e.baseId === `base-${pickIdx}`);
           const esc = cands.length > 1 ? cands[Math.floor(Math.random() * cands.length)] : cands[0];
           if (esc) {
@@ -22859,7 +22884,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         stageId: getSelectedStageId() ?? '',
         normalRoster: !escortsSuppressed && farBackdrop !== 'tutorial' && escortSquad.length > 0,
         revisit: state.pendingRevisit,
-      }) ? [...escortSquad, makeJunEscort(escortSquad, spawnTL.x, spawnTL.y, maxHealth)] : escortSquad;
+      }) ? [...escortSquad, makeJunEscort(spawnTL.x, spawnTL.y, maxHealth)] : escortSquad;
       const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
       const sortieSol = sortieEsc ? rosterEntry(sortieEsc.soldierIndex) : null;
       // PACING_PUZZLE.md §17-14(社長指示「ウェルカム終わるまでは画面に存在させない」):
