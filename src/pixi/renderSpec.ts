@@ -15,6 +15,9 @@ import { ZOOM_MIN_ABS } from '../utils/cameraZoom';
 export const PLAYER_VISUAL_SCALE = 2.3;
 
 const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
+  // research/LAB_CRAWLER.md §4: ステージ2の死体の塊の代理(描かない・攻撃を受ける窓口だけ)。足元の箱=塊の当たり判定そのもの
+  // (×ENEMY_SIZE_MULT(1.5) を打ち消す)。PHILL弾の頭の領域・照準の足元が塊の箱から外へはみ出さない。
+  'lab-crawler': 1 / 1.5,
   bat: 2.35,
   skeleton: 2.15,
   zombie: 2.1,
@@ -116,6 +119,8 @@ export const ENEMY_STRIP_HEIGHT_FRAC = 0.5;
 // min(boxH,boxW×アスペクト))で影/絵の実寸と一致(アスペクト未登録時は box にフォールバック)。深度スケールは掛けない
 // (当たり判定不変)。裏ボスは別経路(生の帯=ENEMY_STATS)なので呼び出し側で除外する。
 export const enemyHitStrip = (e: Enemy): { x: number; y: number; width: number; height: number } => {
+  // ステージ2の死体の塊の代理(LAB_CRAWLER §4): 弾・近接・照準の当たる帯=塊の当たり判定の箱そのもの(見たまま当たる)。
+  if (e.type === 'lab-crawler') return { x: e.x, y: e.y, width: e.width, height: e.height };
   const fb = enemyFootBox(e);
   const aspect = enemyArtAspect.get('default:' + e.type); // texH/texW
   const drawnW = aspect && aspect > 0 ? Math.min(fb.boxW, fb.boxH / aspect) : fb.boxW;

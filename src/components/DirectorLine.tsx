@@ -1,6 +1,6 @@
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
-import { isBossType } from '../utils/enemyUtils';
+import { isBossType, isLabCrawlerProxyType } from '../utils/enemyUtils';
 
 // UI_OVERHAUL.md §1(社長裁定2026-08-28「上から0pxに1px幅で横いっぱいにライン引いて…」)。
 // 旧DirectorLine(上部30px下・幅72px固定・下地に刻み7つ)を置き換え。
@@ -29,7 +29,7 @@ const LINE_TOP_SAFE_AREA = typeof window !== 'undefined'
 const DirectorLine: React.FC = () => {
   const hud = useGameStore(s => s.hudDirector);
   const redNight = useGameStore(s => s.redNight?.phase === 'active');
-  const bossBattle = useGameStore(s => s.enemies.some(e => isBossType(e.type)));
+  const bossBattle = useGameStore(s => s.enemies.some(e => isBossType(e.type) && !isLabCrawlerProxyType(e.type))); // 死体の塊の代理(描かない窓口)は数えない
   const st = KOMA_STYLE[hud.koma] ?? KOMA_STYLE.relax;
   const mainColor = redNight ? '#a855f7' : st.color; // 紅き夜=紫が色の文法ごと乗っ取る(優先順位①>②)
   const peak = hud.koma === 'peak';

@@ -134,7 +134,17 @@ const GameHUD: React.FC = () => {
   // 変わらなければ再描画しない)。FPS/負荷表示は PerfOverlay へ分離済み。
   const formattedTime = formatTime(gameTime / 1000);
 
-  const itemGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < 5000;
+  const itemGetHoldMs = lastWeaponGet?.holdMs ?? 5000;
+  const itemGetVisible = lastWeaponGet !== null && Date.now() - lastWeaponGet.at < itemGetHoldMs;
+  // 短い取得表示(holdMs・ステージ2の資料)は、時間停止中で時計の再描画が来なくても消えるよう、その時刻に1回だけ描き直す。
+  const [, bumpItemGet] = useState(0);
+  React.useEffect(() => {
+    if (!lastWeaponGet?.holdMs) return;
+    const left = lastWeaponGet.at + lastWeaponGet.holdMs - Date.now();
+    if (left <= 0) return;
+    const id = window.setTimeout(() => bumpItemGet(v => v + 1), left + 10);
+    return () => window.clearTimeout(id);
+  }, [lastWeaponGet]);
   const isTreasureGet = lastWeaponGet?.kind === 'treasure';
   const isDataGet = lastWeaponGet?.kind === 'data'; // 研究所の重要データ確保(武器/トレジャーと同じバナーUI)
   // 寄り道POIの入手(PACING_PUZZLE.md §6.24-UX 確定要件2): 警察署スキル/武器庫装備/病院ワクチンを

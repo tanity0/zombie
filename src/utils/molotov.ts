@@ -97,3 +97,22 @@ export const isEnemyInGroundFire = (
   }
   return false;
 };
+/**
+ * 箱(敵の当たり判定)と火だまりの円が重なるか(LAB_CRAWLER §4・品質監査2巡目A-1)。ステージ2の死体の塊の代理(幅742)は
+ * 中心で測ると縁に落ちた炎が効かないため、箱の中で火の中心に一番近い点で測る(enemyUtils.blastAnchorOf と同じ最近点)。
+ */
+export const isBoxInGroundFire = (
+  box: { x: number; y: number; width: number; height: number },
+  fires: readonly { x: number; y: number; radius?: number }[],
+  radius: number = MOLOTOV_FIRE_RADIUS,
+  radiusMult: number = 1,
+): boolean => {
+  for (const f of fires) {
+    const r = (f.radius ?? radius) * radiusMult;
+    const nx = Math.max(box.x, Math.min(box.x + box.width, f.x));
+    const ny = Math.max(box.y, Math.min(box.y + box.height, f.y));
+    const dx = nx - f.x, dy = ny - f.y;
+    if (dx * dx + dy * dy <= r * r) return true;
+  }
+  return false;
+};

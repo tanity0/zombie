@@ -117,6 +117,10 @@ export interface Player extends DashLocomotionState {
   // (px/s・MOVE_SPEED_MULTは含まない=utils/playerMoveSpeed.ts参照)。ダッシュ/ランプ/トラップ頭打ち/
   // PvP減速まで含めた「今まさに動ける速さ」。死神の技「使者」の追尾速度(×1.2)の元になる。
   effectiveMoveSpeed?: number;
+  // research/LAB_CRAWLER.md §4(第2版): 歩きの実効移動速度(px/s・MOVE_SPEED_MULTは含まない)。effectiveMoveSpeed から
+  // 一時的なダッシュ(ワイヤー/一閃/ホップ)と四神スライドを除いた「今の足の速さ」(スキル・段・装備・リロード込み)。
+  // ステージ2の死体の塊の追跡速度(×1.1)の元。movePlayer が毎tick書く。
+  walkMoveSpeed?: number;
   health: number;
   maxHealth: number;
   experience: number;
@@ -1857,7 +1861,10 @@ export type EnemyType =
   // research/MUTANT_HERO.md: 英雄(変異)。中立の騎馬ボス(プレイヤーも敵も、近い方を斬る)。
   | 'mutant-hero'
   // research/LIBERTY_HORDE.md: 解放軍群(変異)の旗手。叫んで周りの敵を強化する(自分は攻撃しない)。後ろにバット男5体。
-  | 'mutant-liberty';
+  | 'mutant-liberty'
+  // research/LAB_CRAWLER.md §4(第2版): ステージ2の死体の塊の**代理**。攻撃を受ける窓口だけ(描かない・動かない・落とさない)。
+  // 本体は store の labCrawler(world/labCrawler.ts)。代理の作り方と同期は utils/labCrawlerProxy.ts / labCrawlerTick.ts。
+  | 'lab-crawler';
 
 // Weapon types
 export interface Weapon {
@@ -3066,6 +3073,21 @@ export type VisualEffect =
       createdAt: number;
       pickupAt: number;
       duration: number;
+    }
+  | {
+      // 柔らかい煙(土煙)。光の型(soft glow)を通常合成・低く横長に置き、ゆっくり広がって薄れる(描画だけ・判定なし)。
+      // 死体の塊(research/LAB_CRAWLER.md §4)の壁の崩れ・現れ・沈み・叩き付けの擦り跡で使う(点の粒は破片だけに減らした)。
+      kind: 'smoke';
+      id: string;
+      x: number; y: number;
+      w0: number; w1: number; // 幅(出た時→消える時・px)
+      hRatio: number;         // 高さ÷幅(低く横長=0.3前後)
+      tint: number;           // 0xRRGGBB
+      alpha: number;          // 最大の濃さ
+      createdAt: number;
+      duration: number;
+      driftX?: number;        // world px/秒(ゆっくり流れる)
+      driftY?: number;
     }
   | {
       // Fixed-radius radial light that fades in place (no expansion). Used to

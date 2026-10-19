@@ -84,7 +84,41 @@ const WALL_BAND_B_MIN = WALL_CENTER_INNER * L, WALL_BAND_B_MAX = WALL_CENTER_OUT
 export const LAB_WALL_CLEAR_TOP: [number, number] = [-L, WALL_BAND_A_MIN - H_DEPTH];
 export const LAB_WALL_CLEAR_BOTTOM: [number, number] = [WALL_BAND_B_MAX, L];
 
-export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedWall[] => {
+// ---- 壊れた壁・プロップ(ステージ2の死体の塊が這って壊す・research/LAB_CRAWLER.md §4) ----
+// ★正本は store の `labBrokenObstacles`。ここはその id の**写し**(store の購読が書く・読み取り専用の窓)。
+// 写しにする理由: 壁・プロップの問い合わせ(labWallsInRegion / labPropsInRegion)は判定(プレイヤー・敵の移動、視線、
+// 弾の遮蔽、物の置き場所)と描画の20箇所以上から呼ばれる。ここで1回除けば、**判定と絵が必ず同じ集合を見る**
+// (呼び手ごとに渡すと1箇所の渡し忘れで「見えないのに当たる壁」ができる)。
+// 決定論の置き場所(UVバー・物を置く点)は壊れる前の配置で決める(壊れても位置が跳ばない)=`*Raw` を使う。
+const EMPTY_BROKEN: ReadonlySet<string> = new Set();
+let brokenObstacleIds: ReadonlySet<string> = EMPTY_BROKEN;
+/** store の購読だけが呼ぶ(壊れた集合の写しを差し替える)。空なら素の配置と1bitも変わらない。 */
+export const setLabBrokenObstacleIds = (ids: Iterable<string>): void => {
+  const next = new Set(ids);
+  brokenObstacleIds = next.size > 0 ? next : EMPTY_BROKEN;
+};
+/**
+ * 壊れた壁・プロップ1つ(store の labBrokenObstacles の要素)。x/y=足元・at=壊れた gameTime。
+ * 描画だけが読む欄: dir=倒れる向き(塊→物・+1右/-1左)・variant=プロップの種類(破片の色)・
+ * revealAt=崩れ始める実時刻(Date.now。回り込みのアテンションでカメラが着くまで待つ・未指定=すぐ)。
+ */
+export interface LabBrokenObstacle {
+  id: string; kind: 'wall' | 'prop'; x: number; y: number; at: number;
+  dir?: number; variant?: number; revealAt?: number;
+}
+/**
+ * 壊れた物の残骸のうち、範囲(足元の点)に入っている物(描画だけ・クリエイティブ監査#16 社長「推薦で」2026-10-19)。
+ * 残骸は画面の外へ出ても消さずに出撃の終わりまで残す=記録(store の labBrokenObstacles)は出撃の間ずっと持ち、
+ * 描画は可視域(ズーム込み)に入っている物だけ作る(外へ出たら絵を捨て、戻ったら記録から作り直す)。判定は無い(上を歩ける)。
+ */
+export const labDebrisInRegion = (
+  broken: readonly LabBrokenObstacle[], kind: 'wall' | 'prop', minX: number, minY: number, maxX: number, maxY: number,
+): LabBrokenObstacle[] => broken.filter(b => b.kind === kind && b.x >= minX && b.x <= maxX && b.y >= minY && b.y <= maxY);
+/** その壁・プロップが壊れているか(写しを見る)。 */
+export const isLabObstacleBroken = (id: string): boolean => brokenObstacleIds.has(id);
+
+/** 壊れた物も含めた素の配置(決定論の置き場所の計算と、壊す側の当たりの候補に使う)。 */
+export const labWallsInRegionRaw = (minX: number, minY: number, maxX: number, maxY: number): PlacedWall[] => {
   const out: PlacedWall[] = [];
   // 帯(±LAB_WALL_Y_LIMIT)が問い合わせ範囲と交わらなければ壁は無い(カリングを効かせる)。
   if (maxY < -LAB_WALL_Y_LIMIT || minY > LAB_WALL_Y_LIMIT) return out;
@@ -109,6 +143,11 @@ export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY:
   }
   return out;
 };
+/** 今立っている壁(壊れた物を除く)。判定・描画はこちらを使う。 */
+export const labWallsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedWall[] => {
+  const all = labWallsInRegionRaw(minX, minY, maxX, maxY);
+  return brokenObstacleIds.size === 0 ? all : all.filter(w => !brokenObstacleIds.has(w.id));
+};
 
 // 障害物プロップ(パソコン/割れたカプセル等の遮蔽物)。テスト(屋内)ステージで置いていた
 // lab-props を、このステージ(研究所スキン・屋外)にも区画ごとにランダム散布する。
@@ -130,7 +169,7 @@ export const propRect = (p: PlacedProp): Rect => footRect(p.footX, p.footY, PROP
 
 // 区画(セル)ごとに 3〜6 個のプロップを散布(社長指示v0.25.2222で 2〜4 から増量=「壁とか」の“とか”側)。
 // 決定的ハッシュなので描画と当たり判定が必ず一致する。
-export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedProp[] => {
+export const labPropsInRegionRaw = (minX: number, minY: number, maxX: number, maxY: number): PlacedProp[] => {
   const out: PlacedProp[] = [];
   const cx0 = Math.floor(minX / LAB_ZONE) - 1, cx1 = Math.floor(maxX / LAB_ZONE) + 1;
   const cy0 = Math.floor(minY / LAB_ZONE) - 1, cy1 = Math.floor(maxY / LAB_ZONE) + 1;
@@ -151,6 +190,11 @@ export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY:
   // 描画(pixiScene)・移動の当たり判定・視線判定(segmentBlocked)すべてに自動で反映される。
   out.push(...coverPropsInRegion(minX, maxX, LAB_CORRIDOR_Y_LIMIT_PX));
   return out;
+};
+/** 今立っているプロップ(壊れた物を除く)。判定・描画はこちらを使う。 */
+export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedProp[] => {
+  const all = labPropsInRegionRaw(minX, minY, maxX, maxY);
+  return brokenObstacleIds.size === 0 ? all : all.filter(p => !brokenObstacleIds.has(p.id));
 };
 
 // 「敵の近くには必ず1つ視線を切れる遮蔽物がある」ことを構造で保証する(社長指示v0.25.2243・**壁とは別**)。
@@ -182,9 +226,10 @@ const coverPropsInRegion = (minX: number, maxX: number, bandLimit: number): Plac
 /** 物の中心が取れる縦の範囲(帯の縁から少し内側=プレイヤーが届く)。 */
 export const LAB_ITEM_Y_LIMIT = LAB_CORRIDOR_Y_LIMIT_PX - 24;
 const SPOT_PAD = 14; // 壁・プロップとの最低の隙間(px)
+// 壊れる前の配置で決める(UVバーの位置が、壁が壊れた瞬間に跳ばない=決定論のまま)。
 const obstacleRectsAround = (x: number, y: number, r: number): Rect[] => [
-  ...labWallsInRegion(x - r, y - r, x + r, y + r).map(wallRect),
-  ...labPropsInRegion(x - r, y - r, x + r, y + r).map(propRect),
+  ...labWallsInRegionRaw(x - r, y - r, x + r, y + r).map(wallRect),
+  ...labPropsInRegionRaw(x - r, y - r, x + r, y + r).map(propRect),
 ];
 const overlapsAny = (r: Rect, obs: Rect[]): boolean =>
   obs.some(o => r.x < o.x + o.width && r.x + r.width > o.x && r.y < o.y + o.height && r.y + r.height > o.y);

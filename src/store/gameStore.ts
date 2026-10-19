@@ -37,7 +37,7 @@ import {
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
   MOLOTOV_IGNITE_BURN_MS,
-  isEnemyInGroundFire,
+  isEnemyInGroundFire, isBoxInGroundFire,
 } from '../utils/molotov';
 // SKILL_BUILD_REDESIGN.md §28(B7): 眠り9種の判定叩き台(純関数群)。
 import {
@@ -184,7 +184,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isTrueBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isGate2AngelBoss, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob } from '../utils/enemyUtils';
+import { isBossType, isTrueBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isGate2AngelBoss, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob, isLabCrawlerProxyType, blastAnchorOf } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
@@ -427,7 +427,7 @@ import { TELEGRAPH_TRACK_MS, stepTrackAim } from '../utils/telegraphTrack'; // �
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
-import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
+import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD, setLabBrokenObstacleIds, type LabBrokenObstacle } from '../world/labWalls';
 import {
   clampRectToPlayableArea,
   clampCircleToPlayableArea, isCircleInPlayableArea, // 帰還サークルを行ける帯の内側に置く
@@ -439,7 +439,8 @@ import {
 } from '../world/playableArea';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { labIdolSpotForDoc, labIdolShopSpot, type LabIdolSpot } from '../world/labIdolSpot';
-import { createLabCrawler, crawlerRect, crawlerSolid, type LabCrawler } from '../world/labCrawler'; // ステージ2の這う塊(倒せない・壁のように通れない)
+import { createLabCrawler, crawlerRect, crawlerSolid, LAB_ESCAPE_BANNER_TEXT, type LabCrawler } from '../world/labCrawler'; // ステージ2の這う塊(壁のように通れない・第2版で HP あり=research/LAB_CRAWLER.md §4)
+import { crawlerDamageNumberAt, crawlerDmgNumberViewX, isCrawlerDamageNumber, crawlerCenterFxPoint } from '../utils/labCrawlerProxy'; // 死体の塊のダメージの数字・手応えの絵の位置(描画だけ)
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 import { cineAccepts, cineCameraAt, cineSideOf, type CineEvent, type CineKind } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜)
@@ -5041,14 +5042,13 @@ const applyMeleeFinishSkillSpread = (
     const spreadGt = get().gameTime;
     const spreadScanTargetId = pickScanMarkTarget(
       get().enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e) && isBossType(e.type)
-        && (e.x + e.width / 2 - pcx) ** 2 + (e.y + e.height / 2 - pcy) ** 2 <= r2),
+        && (blastAnchorOf(e, pcx, pcy).x - pcx) ** 2 + (blastAnchorOf(e, pcx, pcy).y - pcy) ** 2 <= r2),
       spreadGt, e => Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy),
     );
     for (const e of get().enemies) {
       if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue; // 不倒の通常リーパーは対象外。深奥チェイサーは近接対象(ボス級)なので含める
       if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象選定から除外
-      const ecx = e.x + e.width / 2;
-      const ecy = e.y + e.height / 2;
+      const { x: ecx, y: ecy } = blastAnchorOf(e, pcx, pcy); // 死体の塊の代理は箱の中で一番近い点(LAB_CRAWLER §4)
       if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
       get().spawnSlash(ecx, ecy, 'rgba(168,85,247,0.95)');
       get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫=プレイヤーへ向かって飛ぶ(v0.25.2026)
@@ -5090,8 +5090,7 @@ const applyMeleeFinishSkillSpread = (
     for (const e of get().enemies) {
       if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
       if (isCorpse(e) || isUntouchable(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象外 / 英雄の昇天中
-      const ecx = e.x + e.width / 2;
-      const ecy = e.y + e.height / 2;
+      const { x: ecx, y: ecy } = blastAnchorOf(e, fcx, fcy); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
       const dx = ecx - fcx, dy = ecy - fcy;
       const d2 = dx * dx + dy * dy;
       if (d2 > r2) continue;
@@ -6471,6 +6470,18 @@ interface GameState {
   labArmory: { x: number; y: number } | null;
   /** ステージ2(屋外ラボ)の這う塊(world/labCrawler.ts)。アイドルを置く出撃だけ。それ以外/昇天し終えたら null(2026-10-19)。 */
   labCrawler: LabCrawler | null;
+  /**
+   * ステージ2の死体の塊が壊した廊下の壁・遮蔽プロップ(research/LAB_CRAWLER.md §4・第2版)。**壊れた集合の正本**。
+   * world/labWalls の問い合わせ(判定と描画の両方)は、この id の写し(購読で setLabBrokenObstacleIds)を除いて返す。
+   * x/y=足元(破片の出どころ)・at=壊れた gameTime(描画の崩れ方の起点)。新しいランで空に戻る。
+   */
+  labBrokenObstacles: LabBrokenObstacle[];
+  /** ステージ2: 死体の塊を置いた出撃か(ゴールが「資料を拾ってスタート地点へ戻る」になる・第2版)。ラン開始時に決まる。 */
+  labEscapeRun: boolean;
+  /** ステージ2(第2版): 資料を拾った gameTime(0=まだ)。これ以降、塊が前から出てきて追い、スタート地点の円がゴール。 */
+  labEscapeAt: number;
+  /** ステージ2(第2版): 「出口まで戻れ」の帯を、回り込みのアテンションが戻ってから出す待ち(labCrawlerTick が出す)。 */
+  labEscapeBannerPending: boolean;
   /** ステージ2: アイドルが居る側の符号(+1/-1)。その側には雑魚を湧かせない(utils/labSpawn.isLabIdolSide)。アイドルを置かない出撃は 0(2026-10-19)。 */
   labIdolSide: number;
   escorts: EscortSoldier[];      // 護衛軍人NPC(4人・東西南北担当)。HPなし・前進&射撃&10秒占拠で解放。
@@ -6601,6 +6612,8 @@ interface GameState {
     name: string; at: number; color?: string;
     kind?: 'weapon' | 'treasure' | 'data' | 'poi-skill' | 'poi-equip' | 'poi-vaccine';
     weaponKey?: string; treasureVariant?: number; desc?: string; note?: string;
+    /** 表示の長さ(ms・未指定=5000)。ステージ2の資料(死体の塊が回り込む経路)だけ短くする(LAB_CRAWLER §4)。 */
+    holdMs?: number;
   } | null;
   // Global hitstop: while Date.now() < hitstopUntil the simulation is frozen
   // (melee-finisher impact pause). 0 = running.
@@ -7265,6 +7278,7 @@ interface GameState {
   debugLoopError: string;                               // 診断: ゲームループ本体で投げられた例外の要約(?debug=1 表示)
   triggerEventVictory: () => void;                      // 終了アイテム/ゴール: 帰還サークルを出す(即勝利しない)
   beginReturnPhase: (originX: number, originY: number, avoidPlayer?: boolean) => void; // 帰還サークル出現
+  beginLabEscape: () => void; // ステージ2(第2版): 資料を拾った=スタート地点に帰還サークル(入ればクリア)+塊が前から出てくる
   updateReturnPhase: (deltaTime: number) => void;       // 毎フレーム: 帰還地点への進入/滞在を更新
   requestStoryReturnPrompt: () => boolean;              // 通常ストーリーの帰還地点内で操作を離したら確認を開く
   answerStoryReturnPrompt: (confirmed: boolean) => void;
@@ -7348,7 +7362,9 @@ interface GameState {
   // 円錐(spawnSprayと同じ角度)へ絞って噴く。未指定/{0,0}/`?dirfx=0`は従来どおり全方位。
   spawnBurst: (x: number, y: number, color: string, count?: number, dirX?: number, dirY?: number) => void;
   /** 落ちて転がる瓦礫(重力つきの固体粒)。城の崩落など「ガラガラ」を作る絵。判定ゼロ=派手さの絵。 */
-  spawnRubble: (x: number, y: number, count?: number, spread?: number) => void;
+  spawnRubble: (x: number, y: number, count?: number, spread?: number, colors?: readonly string[]) => void; // colors=破片の色(未指定=従来の石の2色)
+  /** 柔らかい煙(低く横長・ゆっくり広がって薄れる・描画だけ)。死体の塊の土煙(LAB_CRAWLER §4)。 */
+  spawnSmoke: (x: number, y: number, w0: number, w1: number, tint: number, opts?: { alpha?: number; duration?: number; hRatio?: number; driftX?: number; driftY?: number }) => void;
   /** 近接ヒットの炸裂(社長支給の実写VFX・v0.25.4334)。判定ゼロ=派手さの絵。 */
   spawnMeleeHit: (x: number, y: number, size?: number) => void;
   /** スキル取得の炸裂(v0.25.4343)。**プレイヤーの裏**に敷く。大きさ=Lv / 色=レア度。判定ゼロ。 */
@@ -7583,6 +7599,15 @@ export const shieldPlayableCtx = (): PlayableAreaCtx => {
   };
 };
 
+// ステージ2の死体の塊の代理(幅742)の「箱の中心」に出された手応えの絵を、プレイヤーに面した縁の内側へ寄せる(LAB_CRAWLER §4・品質監査A3)。
+// 塊の居ないステージでは labCrawler=null で即 null(負荷0)。描画だけ・判定なし。
+const crawlerFxAt = (x: number, y: number): { x: number; y: number } | null => {
+  const st = useGameStore.getState();
+  if (!st.labCrawler) return null;
+  const p = st.player;
+  return crawlerCenterFxPoint(x, y, st.labCrawler, p.x + p.width / 2, p.y + p.height / 2);
+};
+
 export const useGameStore = create<GameState>((set, get) => ({
   player: {
     x: 0,
@@ -7787,6 +7812,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   baseSites: createBaseSites(),
   labArmory: null,
   labCrawler: null,
+  labBrokenObstacles: [],
+  labEscapeRun: false,
+  labEscapeAt: 0,
+  labEscapeBannerPending: false,
   labIdolSide: 0,
   escorts: [],
   pendingEscorts: [],
@@ -8092,9 +8121,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         + (skillHeroMult(player) - 1); // スキル「英雄」: HP満タンの間 +30%
       const stageBonusNow = SPEED_RAMP_ENABLED ? cruiseStageBonus(nextSpeedRamp.sustainMs, cruiseT) : CRUISE_STAGE_BONUS[CRUISE_STAGE_MAX];
       const bonusMult = cruiseSpeedMult(stageBonusNow, othersSum, rampFrac);
-      const moveSpeed = computeEffectiveMoveSpeed({
-        dashOverrideSpeed: dashOv ? dashOv.speed : null,
-        slidingSpeed: sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000) : null,
+      const moveSpeedInput = {
         reloading,
         reloadMoveSpeedMult: RELOAD_MOVE_SPEED_MULT,
         playerSpeed: player.speed,
@@ -8110,7 +8137,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeRecoverMult: meleeRecoverSpeedMult(player.meleeSwingAt, nowMs, PLAYER_MELEE_SWING_MS, COUNTER_WINDOW + MELEE_RECOVER_MS),
         // B10 血の覚醒(THEONE_ROUND2 §3-1): 移動速度 ×1.5。ランプの外・dash/スライド/スケーターには掛けない(関数側)。
         awakenSpeedMult: bloodAwakenMult(player, state.gameTime).boost,
+      };
+      const moveSpeed = computeEffectiveMoveSpeed({
+        ...moveSpeedInput,
+        dashOverrideSpeed: dashOv ? dashOv.speed : null,
+        slidingSpeed: sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000) : null,
       });
+      // 歩きの速さ(一時的なダッシュ/スライドを除く)。ステージ2の死体の塊の追跡速度の元(LAB_CRAWLER §4)。判定には使わない。
+      const walkMoveSpeed = (dashOv || sliding)
+        ? computeEffectiveMoveSpeed({ ...moveSpeedInput, dashOverrideSpeed: null, slidingSpeed: null })
+        : moveSpeed;
 
       // Target direction from swipe (touch) or keys.
       let tx = 0;
@@ -8445,6 +8481,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           isMoving,
           // PACING_PUZZLE.md §14-4-2(新死神・重大4/5): 毎tickの実効移動速度(死神の技「使者」が読む)。
           effectiveMoveSpeed: moveSpeed,
+          walkMoveSpeed,
           marksmanMovingSince,
           heavySniperStillMs,
           speedRampSustainMs: nextSpeedRamp.sustainMs,
@@ -8671,7 +8708,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (enemy.aiPhase === 'jump' || isUntouchable(enemy)) { out.push(enemy); continue; }
         if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) { out.push(enemy); continue; }
         if (isCorpse(enemy)) { out.push(enemy); continue; } // KILL吹き飛び(死体・§26-2): バッシュ対象から除外
-        const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+        const { x: ecx, y: ecy } = blastAnchorOf(enemy, x, y); // 死体の塊の代理は箱の中で着弾点に一番近い点(LAB_CRAWLER §4)
         const d2 = (ecx - x) * (ecx - x) + (ecy - y) * (ecy - y);
         if (d2 > r2) { out.push(enemy); continue; }
         // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統⑥=スケボー)。バッシュも近接系=パリィ対象。
@@ -10365,7 +10402,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (gameTime - (e.lastFireHitAt ?? -Infinity) < MOLOTOV_DOT_INTERVAL_MS) continue;
         const ecx = e.x + e.width / 2;
         const ecy = e.y + e.height / 2;
-        if (isEnemyInGroundFire(ecx, ecy, ownerFires, MOLOTOV_FIRE_RADIUS, gfExMult)) {
+        // 死体の塊の代理は箱と火の円の重なりで測る(縁に落ちた炎も効く・LAB_CRAWLER §4)。
+        if (isLabCrawlerProxyType(e.type) ? isBoxInGroundFire(e, ownerFires, MOLOTOV_FIRE_RADIUS, gfExMult) : isEnemyInGroundFire(ecx, ecy, ownerFires, MOLOTOV_FIRE_RADIUS, gfExMult)) {
           alreadyHit.add(e.id);
           hits.push({ id: e.id, x: ecx, y: ecy, dmg: gfDotDmg });
         }
@@ -10470,7 +10508,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         const ecy = e.y + e.height / 2;
         let inSpike = false;
         for (const s of aliveSpikes) {
-          const dx = ecx - s.x, dy = ecy - s.y;
+          const a = blastAnchorOf(e, s.x, s.y); // 死体の塊の代理は箱の中で棘に一番近い点(他の敵は中心のまま)
+          const dx = a.x - s.x, dy = a.y - s.y;
           if (dx * dx + dy * dy <= r2) { inSpike = true; break; }
         }
         if (inSpike) hits.push({ id: e.id, x: ecx, y: ecy, dmg: dps });
@@ -10651,8 +10690,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const target = get().enemies.find(e => e.id === b.targetEnemyId);
       // 社長決定v0.25.1657: 空鞄=爆発範囲攻撃。着弾点中心のAoE(反射神経の反撃爆発に準拠)。
       // 対象が消えていても発生時に記録した対象足元(targetX/Y)で爆発させる(空振りにしない)。
-      const cx = target ? target.x + target.width / 2 : b.targetX;
-      const cy = target ? target.y + target.height / 2 : b.targetY;
+      // 死体の塊の代理は、箱の中で投げた時の着地点(縁)に一番近い点で爆ぜる(中心=画面の外にしない・LAB_CRAWLER §4)。
+      const tpt = target ? blastAnchorOf(target, b.targetX, b.targetY) : null;
+      const cx = tpt ? tpt.x : b.targetX;
+      const cy = tpt ? tpt.y : b.targetY;
       const exMult = skillExplosionMult(get().player); // 全爆発共通の倍率(エクスプローダー等)に追従
       // §6.10 M33⑤: ヘビーガンナー固有(爆発範囲倍率)を他の爆発と同じく半径へ適用。
       const radius = FIRST_AID_BAG_EXPLODE_RADIUS * exMult * heavyGunnerExplosionMult(get().player, gameTime);
@@ -10671,8 +10712,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       for (const e of get().enemies) {
         if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
         if (isCorpse(e) || isUntouchable(e)) continue; // KILL吹き飛び(死体・§26-2): 救急鞄爆発の対象から除外 / 英雄の昇天中
-        const ecx = e.x + e.width / 2;
-        const ecy = e.y + e.height / 2;
+        const { x: ecx, y: ecy } = blastAnchorOf(e, cx, cy); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
         const dx = ecx - cx, dy = ecy - cy;
         const dist = Math.hypot(dx, dy);
         if (dist > radius) continue;
@@ -11660,9 +11700,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           for (const e of enemiesNext) {
             if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
             if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死神オーラの対象から除外
-            const d2 = (e.x + e.width / 2 - rcx) ** 2 + (e.y + e.height / 2 - rcy) ** 2;
+            const ea = blastAnchorOf(e, rcx, rcy); // 死体の塊の代理は箱の中で一番近い点(LAB_CRAWLER §4)
+            const d2 = (ea.x - rcx) ** 2 + (ea.y - rcy) ** 2;
             if (d2 > aura2) continue;
-            attackHits.push({ id: e.id, amount: rareDmg, x: e.x + e.width / 2, y: e.y });
+            attackHits.push({ id: e.id, amount: rareDmg, x: isLabCrawlerProxyType(e.type) ? ea.x : e.x + e.width / 2, y: e.y });
           }
           sr = { ...s0, lastContactAt: now };
         }
@@ -11686,9 +11727,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           for (const e of enemiesNext) {
             if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
             if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 賢者の石AoEの対象から除外
-            const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
+            const ea = blastAnchorOf(e, scx, scy); // 死体の塊の代理は箱の中で一番近い点(LAB_CRAWLER §4)
+            const d2 = (ea.x - scx) ** 2 + (ea.y - scy) ** 2;
             if (d2 > aoe2) continue;
-            attackHits.push({ id: e.id, amount: s.damage, x: e.x + e.width / 2, y: e.y });
+            attackHits.push({ id: e.id, amount: s.damage, x: isLabCrawlerProxyType(e.type) ? ea.x : e.x + e.width / 2, y: e.y });
             hitAny = true;
             if (d2 < faceD2) { faceD2 = d2; faceX = e.x + e.width / 2; }
           }
@@ -11700,8 +11742,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           for (const e of enemiesNext) {
             if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
             if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 通常召喚の接触対象から除外
-            const d2 = (e.x + e.width / 2 - scx) ** 2 + (e.y + e.height / 2 - scy) ** 2;
-            if (d2 <= nd2) { nd2 = d2; nearestId = e.id; nx = e.x + e.width / 2; ny = e.y; }
+            const ea = blastAnchorOf(e, scx, scy); // 死体の塊の代理は箱の中で一番近い点(LAB_CRAWLER §4)
+            const d2 = (ea.x - scx) ** 2 + (ea.y - scy) ** 2;
+            if (d2 <= nd2) { nd2 = d2; nearestId = e.id; nx = isLabCrawlerProxyType(e.type) ? ea.x : e.x + e.width / 2; ny = e.y; }
           }
           if (nearestId) { attackHits.push({ id: nearestId, amount: s.damage, x: nx, y: ny }); s = { ...s, lastContactAt: now, biteTargetX: nx }; }
         }
@@ -12583,8 +12626,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         for (const e of get().enemies) {
           if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
           if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 反射神経の反撃爆発の対象から除外
-          const ecx = e.x + e.width / 2;
-          const ecy = e.y + e.height / 2;
+          const { x: ecx, y: ecy } = blastAnchorOf(e, pcx, pcy); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
           const dx = ecx - pcx;
           const dy = ecy - pcy;
           const dist = Math.hypot(dx, dy);
@@ -13060,8 +13102,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       for (const e of get().enemies) {
         if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
         if (isCorpse(e)) continue;
-        const ecx = e.x + e.width / 2;
-        const ecy = e.y + e.height / 2;
+        const { x: ecx, y: ecy } = blastAnchorOf(e, ex, ey); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
         const dist = Math.hypot(ecx - ex, ecy - ey);
         if (dist > radius) continue;
         if (detWalls.length > 0 && segmentBlocked(ex, ey, ecx, ecy, detWalls)) continue;
@@ -14700,6 +14741,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         return false;
       });
       const updatedEnemies = postureUpdatedEnemies.map((enemy): Enemy => {
+        // research/LAB_CRAWLER.md §4: ステージ2の死体の塊の代理は動かない(位置・箱は labCrawlerTick が毎フレーム塊に合わせる)。
+        if (isLabCrawlerProxyType(enemy.type)) return enemy;
         // 裏ボス4体/天使6体/アイドル(=isHiddenBoss)は updateEnemies の追跡AIから除外。移動/攻撃/
         // 帰巣/再生は専用コントローラ(useGameLoop/angelBossTick/idolTick)が座標を直接書き込む
         // (死神と同じ方式)。v0.25.2895: 早期returnはノックバック適用ブロックの直後(liftUntilの
@@ -20854,6 +20897,24 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().spawnGlow(castle.x, castle.y - 30, 42, 'rgba(253,230,138,', 620);
   },
 
+  // ステージ2(第2版・research/LAB_CRAWLER.md §4): 資料を拾った瞬間。クリアにはせず、スタート地点(原点)に帰還サークルを出す
+  // (既存の帰還サークルの作法=とどまるとクリア。塊はゴール手前で消えるので、通り抜けて奥のアイドルへも行ける)。塊が前から出てくるのは labCrawlerTick が labEscapeAt を見て行う(アテンションが空くのを待つ)。
+  beginLabEscape: () => {
+    set(state => {
+      if (!state.labEscapeRun || state.labEscapeAt > 0 || state.gameWon) return {};
+      // 帯「出口まで戻れ」(この経路だけの文言・クリエイティブ監査#5)は、塊が回り込むアテンションが戻ってから出す(labCrawlerTick)。
+      // 塊が既に倒れている(居ない/崩れている)時は回り込みが無いので、すぐ出す。
+      const crawlerWillAppear = !!state.labCrawler && crawlerSolid(state.labCrawler);
+      return {
+        labEscapeAt: Math.max(1, state.gameTime),
+        ...(state.returnCircle ? {} : { returnCircle: { x: 0, y: 0, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 } }),
+        ...(crawlerWillAppear
+          ? { labEscapeBannerPending: true }
+          : { eventBannerText: LAB_ESCAPE_BANNER_TEXT, eventBannerUntil: state.gameTime + 3500 }),
+      };
+    });
+  },
+
   triggerEventVictory: () => {
     // 終了アイテム/ゴール。即勝利せず帰還サークルへ。屋内は壁に阻まれないようプレイヤー位置に直接出す(避けない)。
     const p = get().player;
@@ -23227,6 +23288,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // アイドルを置かない出撃(1対1)では置かない。
         // ボスモード(練習ラン=アイドルとの戦いだけを見る場)も1対1と同じく置かない。
         labCrawler: labIdol && labDoc && !vsEntryOfRun() && !isPracticeRun() ? createLabCrawler(labIdol, labDoc.x) : null,
+        // 第2版(LAB_CRAWLER §4): 塊を置いた出撃は「資料を拾ってスタート地点へ戻る」がゴール。壊れた壁は新しいランで元に戻る。
+        labEscapeRun: !!(labIdol && labDoc && !vsEntryOfRun() && !isPracticeRun()),
+        labEscapeAt: 0,
+        labEscapeBannerPending: false,
+        labBrokenObstacles: [],
         // アイドル側には雑魚を置かない・湧かせない(書類の見張り3体はもともと書類=反対側にしか置かれない)。塊を置かない出撃は従来どおり。
         labIdolSide: labIdol && !vsEntryOfRun() && !isPracticeRun() ? Math.sign(labIdol.x) : 0,
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
@@ -23451,6 +23517,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   spawnCritImpact: (x, y) => {
+    { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 死体の塊の代理の中心→縁(LAB_CRAWLER §4)
     // 描画のみ・光源だけ(揺れは v0.25.4284 から registerImpact の crit 倍率)。光は CRIT_LIGHT_GAP_MS 以内の連続クリでは1つに畳む(強glowの負荷)。
     const now = Date.now();
     if (now - critImpactAt < CRIT_LIGHT_GAP_MS) return;
@@ -23742,6 +23809,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
   spawnFireJet: (x, y, angle, len) => {
+    { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 死体の塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     const fx: VisualEffect = {
       kind: 'firejet',
@@ -23757,6 +23825,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 銃弾ヒットの血飛沫(ZELTER風・社長指示v0.25.2027): (x,y)から方向angleへ円錐±20°で微粒子を噴き、重力で落とす。
   // 粒子数は len(=傷の勢い)に比例させ 22〜56 に収める。旧'blood'kindは発行しない(素材は残置)。
   spawnBlood: (x, y, angle, len, opts) => {
+    { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 死体の塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     // グローバルキャップ: 生きている血粒子が上限を超えないよう、不足分だけ生成(超過分はスキップ)。
     const alive = countBloodParticles(get().effects);
@@ -23773,6 +23842,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 近接の血飛沫(社長指示v0.25.2026→2027で粒子化): 敵(ex,ey)から【プレイヤーに向かって】飛ぶ。方向は内部計算。
   // 起点=敵中心をプレイヤー側へ少し寄せた点(斬った面)。勢い(len)規則は銃と同じ(×4.0・最低96px)。
   spawnMeleeBlood: (ex, ey, size = 40, opts) => {
+    // 死体の塊の代理の中心→縁(LAB_CRAWLER §4)。大きさは元の1体の胴幅まで(幅742の血は画面を覆う)。
+    { const q = crawlerFxAt(ex, ey); if (q) { ex = q.x; ey = q.y; size = Math.min(size, 165); } }
     const now = Date.now();
     const p = get().player;
     const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
@@ -23833,6 +23904,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // ★v0.25.4334(社長「VFXの試し1つ。近接当てた時用」): 近接が当たった所で1回。
   // 素材はシアンなので**白へ寄せて**出す(シアンのままだと氷の技に見える=色の文法を汚す)。
   spawnMeleeHit: (x, y, size = MELEE_HIT_SIZE) => {
+    { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 死体の塊の代理の中心→縁(LAB_CRAWLER §4)
     if (!MELEE_HIT_ON) return;
     const now = Date.now();
     get().spawnEffect({
@@ -23872,7 +23944,23 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // ★v0.25.4331: 瓦礫。既存の「固体粒」(薬莢と同じ枝=通常合成・発光なし・重力・回転・着地で停止)を
   // 石色で使う。砂埃(spawnBurst)は軽くて舞うだけなので、**落ちて積もる固体**が無いと「ガラガラ」にならない。
-  spawnRubble: (x, y, count = 12, spread = 140) => {
+  spawnSmoke: (x, y, w0, w1, tint, opts) => {
+    const now = Date.now();
+    const fx: VisualEffect = {
+      kind: 'smoke', id: `fx-smoke-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      x, y, w0, w1, tint, hRatio: opts?.hRatio ?? 0.32, alpha: opts?.alpha ?? 0.5,
+      createdAt: now, duration: opts?.duration ?? 1300,
+      ...(opts?.driftX !== undefined ? { driftX: opts.driftX } : {}),
+      ...(opts?.driftY !== undefined ? { driftY: opts.driftY } : {}),
+    };
+    set(state => {
+      const next = [...state.effects, fx];
+      if (next.length > 400) next.splice(0, next.length - 400);
+      return { effects: next };
+    });
+  },
+
+  spawnRubble: (x, y, count = 12, spread = 140, colors) => {
     const now = Date.now();
     const fresh: VisualEffect[] = [];
     for (let i = 0; i < count; i++) {
@@ -23885,7 +23973,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         y: y + (Math.random() - 0.5) * 30,
         vx: Math.cos(ang) * sp * (Math.random() < 0.5 ? -1 : 1),
         vy: Math.sin(ang) * sp,
-        color: Math.random() < 0.5 ? '#94a3b8' : '#64748b',        // 石の色(明暗2種で均質さを避ける)
+        color: colors && colors.length > 0 ? colors[Math.floor(Math.random() * colors.length)] : (Math.random() < 0.5 ? '#94a3b8' : '#64748b'), // 石の色(明暗2種で均質さを避ける)・色の指定があればその中から
         size: 2.5 + Math.random() * 4.5,
         createdAt: now,
         duration: 1100 + Math.random() * 900,
@@ -23904,6 +23992,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   spawnBurst: (x, y, color, count = 6, dirX, dirY) => {
+    { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 死体の塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     // §5.23 M22 C1: 方向指定(かつ有効長)なら円錐(spawnSprayと同じ角度)へ絞る。無指定/{0,0}は
     // 従来どおり全方位(既存の呼び出し元は全てそのまま=挙動不変)。
@@ -23961,6 +24050,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   spawnDamageNumber: (x, y, value, crit = false, opts) => {
     const now = Date.now();
+    // ステージ2の死体の塊(幅約740の箱)に当たった数字は、プレイヤーに面した縁の内側へ寄せる(箱の中心=画面の外になりやすい)。
+    // 代理に当たった数字だけ(enemyId か、代理の箱の中心に出された数字)。
+    { const st0 = get(); if (st0.labCrawler && isCrawlerDamageNumber(x, y, st0.labCrawler, opts?.enemyId)) { const pl = st0.player; const q = crawlerDamageNumberAt(x, y, st0.labCrawler, pl.x + pl.width / 2, pl.y + pl.height / 2, Math.random(), crawlerDmgNumberViewX(st0.camera, st0.gameBounds, st0.viewZoom)); x = q.x; y = q.y; } }
     // research/NEW_GUNS.md §4: 印のある敵に当てた数字は倍率の後の値を、少し大きく色違いで出す。
     let scanMarked = false;
     if (opts?.scanMarked !== undefined) scanMarked = opts.scanMarked;
@@ -24055,6 +24147,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 爆発の6コマflipbook(社長支給v0.25.3283「爆発 全部用」)。全ての爆発FXがこれを呼ぶ
   // (手榴弾/タレット/ドローン/地雷/ランチャー/ファイアシューター/ボムカウンター/反射神経/処刑の爆発/朱雀)。
   spawnExplosionFx: (x, y, radius, tint) => {
+    { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 死体の塊の代理の中心→縁(LAB_CRAWLER §4)
     get().spawnEffect({
       kind: 'explosion', id: `fx-expl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       x, y, radius, createdAt: Date.now(), duration: 460, tint,
@@ -24062,6 +24155,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   spawnRing: (x, y, startRadius, endRadius, color, width = 3, duration = 500) => {
+    { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 死体の塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     set(state => ({
       effects: [
@@ -24078,6 +24172,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   spawnGlow: (x, y, radius, color, duration = 320, noShadow = false) => {
+    { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 死体の塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     const small = radius < STRONG_GLOW_RADIUS;
     const tunedRadius = small ? radius * SMALL_GLOW_RADIUS_SCALE : radius;
@@ -24099,6 +24194,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   spawnSlash: (x, y, color = 'rgba(255,255,255,0.95)', lengthScale = 1, faceOverride) => {
+    { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 死体の塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     // 斬撃の向き=プレイヤーの向き(右=左下→右上 / 左=反転)。レンダラの facingLeft 判定と同じ規則。
     // faceOverride=斬った本人の向き(進軍NPCの近接=振った向き・research/ESCORT_MELEE.md)。
@@ -24211,6 +24307,19 @@ export const useGameStore = create<GameState>((set, get) => ({
 
 // research/ESCORT_TARGETED.md §5: ボスの狙いロック(約50箇所)が軍人を候補に入れる提供口(bossHate.ts は store を import しない葉)。
 setHateEscortProvider(() => hateEscortSource(useGameStore.getState()));
+
+// ステージ2の死体の塊が壊した壁・プロップ(research/LAB_CRAWLER.md §4)。正本は store の labBrokenObstacles。
+// world/labWalls の問い合わせ(判定と描画の両方)が同じ集合を除くよう、変わった時だけ写しを差し替える
+// (setState のたびに参照を1回比べるだけ=負荷 1/10)。
+{
+  let lastBroken = useGameStore.getState().labBrokenObstacles;
+  setLabBrokenObstacleIds(lastBroken.map(b => b.id));
+  useGameStore.subscribe(st => {
+    if (st.labBrokenObstacles === lastBroken) return;
+    lastBroken = st.labBrokenObstacles;
+    setLabBrokenObstacleIds(lastBroken.map(b => b.id));
+  });
+}
 
 // DEVビルド限定のデバッグハンドル(__pixiSceneと同じ趣旨・v0.25.1831)。ヘッドレス実機テストが
 // page.evaluateからstoreの実値を読む/captureFrameを叩くために使う。本番ビルドでは付かない。

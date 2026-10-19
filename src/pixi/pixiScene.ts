@@ -250,7 +250,7 @@ const ZOOM_OVERSCAN = 1 / ZOOM_MIN_ABS; // ★一番引いた時(巨大ボス遠
 import { LAB_BOUNDS, LAB_OUTER_BOUNDS, LAB_WALLS, LAB_DOORS, LAB_BUTTON, LAB_GOAL_TRIGGER, LAB_ROOMS } from '../world/labMap';
 import {
   isCorpse, // ★死体は投影影を落とさない(v0.25.3933)
-  getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType, isPumpkinTier,
+  getEnemyColor, isHiddenBoss, isGate2AngelBoss, isBossType, isBountyType, isPumpkinTier, isLabCrawlerProxyType,
   isReaperFamily, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
 } from '../utils/enemyUtils';
 import { recoilKickOffset, killChainEdgeEnvelope } from '../utils/combatFeel';
@@ -401,11 +401,12 @@ import { treesInRegion, TREE_CELL, treeHash } from '../world/trees';
 import { cityPropsInRegion, cityPropDef, STAGE_PROPS, CITY_ZONE } from '../world/cityProps';
 import { forestFlowersInRegion, FLOWER_ZONE, FLOWER_DISPLAY_H } from '../world/forestDecor';
 import { getSelectedStageId } from '../data/progress';
-import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect } from '../world/labWalls';
+import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
+import { LAB_WALL_CRUMBLE_MS, LAB_PROP_CRUMBLE_MS, LAB_DEBRIS_PALETTE, labDebrisKind } from '../utils/labCrawlerTick'; // 崩れの尺・破片の色(着地の土煙・音と同じ値)
 import {
   CRAWLER_HIT_W, CRAWLER_ART_W_PER_HIT_W, CRAWLER_WALK_FRAMES, CRAWLER_ATTACK_FRAMES, CRAWLER_WALK_ART_BODY_W, CRAWLER_ATTACK_ART_BODY_W,
-  CRAWLER_LANTERNS_WALK_ART, CRAWLER_ABSORB_TO_ASCEND, CRAWLER_SLAM_RADIUS, crawlerAttackFrame, crawlerTelegraphProg, crawlerAscendLook,
-  crawlerAscendSoul, crawlerAbsorbLook, crawlerBodyFoot, type LabCrawler,
+  CRAWLER_LANTERNS_WALK_ART, CRAWLER_ASCEND_SOULS, CRAWLER_SLAM_RADIUS, crawlerAttackFrame, crawlerTelegraphProg, crawlerAscendLook,
+  crawlerAscendSoul, crawlerAbsorbLook, crawlerBodyFoot, crawlerFacingEdgeX, crawlerVanishLook, crawlerSlamLunge, crawlerRect, type LabCrawler,
 } from '../world/labCrawler'; // ステージ2の這う塊(判定は world 側・ここは描くだけ)
 import { visibilityPolygon } from '../world/vision';
 import type { Rect } from '../world/obstacles';
@@ -2778,6 +2779,78 @@ const LAB_CRAWLER_LANTERN_ART_PX = 46;
 const LAB_CRAWLER_LANTERN_IN_MS = 700;
 /** 演出の大きさの基準=元の1体の胴の表示幅(px)。今の胴の幅÷これ=演出の倍率(5倍の絵なら5)。 */
 const LAB_CRAWLER_FX_BASE_BODY_W = 165;
+/**
+ * 死体の塊に壊された壁・プロップの崩れ方(第2版・描画だけ。判定は壊れた瞬間に world から消えている)。
+ * 一瞬ぐらつき(JOLT)→ 下へ潰れて傾きながら崩れ落ち(加速)→ 最後に薄れて消える。破片・土煙は labCrawlerTick が出す。
+ */
+// 尺は種類で分ける(壁=重く長く・プロップ=軽く短く・クリエイティブ監査#6)。値の正本は utils/labCrawlerTick(着地の土煙・音と同じ時刻)。
+// ?crumblems= で両方を伸ばして確かめられる(撮影・実機の見比べ用・520=等倍)。
+const LAB_OBSTACLE_CRUMBLE_SCALE = Math.max(0.2, tsNum('crumblems', 520) / 520);
+const LAB_OBSTACLE_CRUMBLE_JOLT_FRAC = 0.16;
+/** 着地の戻り(1〜2コマぶん・2巡目#7)。 */
+const LAB_OBSTACLE_LAND_BOUNCE_MS = 110;
+/**
+ * 倒れ方(2巡目#5): 壁=縦を潰して(1→0.15)数度だけ傾ける=奥へ倒れ込む見え方(画面内で大きく回すと「立ち上がる板」に見える)。
+ * プロップ=浅めに横倒し(0.85rad)+少し潰す。
+ */
+const LAB_WALL_FALL_RAD = 0.07;
+const LAB_WALL_FALL_SQUASH = 0.15;
+const LAB_PROP_FALL_RAD = 0.85;
+const LAB_PROP_FALL_SQUASH = 0.5;
+/** 残骸(2巡目#6): 不透明のまま暗く平たく残す(見た目だけ・画面外へ出たら消す)。 */
+const LAB_OBSTACLE_DEBRIS_TINT = 0x3e3c40;
+/** 残骸の絵を記録から作り直す範囲・捨てる範囲(可視域からの余白px)。捨てる方を広くして境目のちらつき(作る/捨てるの繰り返し)を防ぐ。 */
+const LAB_DEBRIS_RESTORE_MARGIN = 120;
+const LAB_DEBRIS_DROP_MARGIN = 240;
+interface LabObstacleView {
+  sprite: Sprite; baseScale: number; footY: number;
+  crumbleAt?: number; crumbleDir?: number; crumbleMs?: number; crumbleKind?: 'wall' | 'prop'; debris?: boolean;
+  /** 薬液・カプセルの床の染み(楕円・2巡目#6)。 */
+  stain?: Graphics; stainTint?: number;
+}
+/** 被弾の白い明滅(第2版): 尺(ms・実時間)と最大の濃さ。体が画面幅ほどあるので薄く・短く(減衰は二乗で抜ける)。 */
+// 第2版の監査で見直し(クリエイティブ監査#11): 薄く毎発ではなく、200msに1回まで・濃く短くパッと光らせる+怯み。
+const LAB_CRAWLER_HIT_FLASH_MS = 120;
+const LAB_CRAWLER_HIT_FLASH_A = 0.62;
+/** 光らせる間隔(実時間ms・2巡目#9): 毎回この範囲でばらす(機械的な等間隔にしない)。 */
+const LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS = 160;
+const LAB_CRAWLER_HIT_FLASH_GAP_MAX_MS = 260;
+/** 当たった点の周りだけ光らせる円(2巡目#9): 半径=絵の高さ×これ(濃さが上がるほど少し広がる)。円の縁は柔らかい光の絵でぼかす。 */
+const LAB_CRAWLER_HIT_FLASH_R_K = 0.5;
+/** 光の濃さ: 前の光からこのダメージが積もって満の濃さ(それ未満は薄く・下限 LAB_CRAWLER_HIT_FLASH_MIN_POWER)。 */
+const LAB_CRAWLER_HIT_FLASH_FULL_DMG = 60;
+const LAB_CRAWLER_HIT_FLASH_MIN_POWER = 0.4;
+/** 重い一撃(2巡目#10): 前の光からこのダメージ以上で、12〜20pxの揺り戻し+ランタンが遅れて振れる。 */
+const LAB_CRAWLER_HEAVY_HIT_DMG = 45;
+const LAB_CRAWLER_HEAVY_FLINCH_MIN_PX = 12;
+const LAB_CRAWLER_HEAVY_FLINCH_MAX_PX = 20;
+const LAB_CRAWLER_HEAVY_FLINCH_MS = 360;
+/** ランタンの振れ: 体の怯みから遅れて(1つずつずらして)振れ、行き過ぎて揺れ戻り、収まる。 */
+const LAB_CRAWLER_LANTERN_SWING_DELAY_MS = 70;
+const LAB_CRAWLER_LANTERN_SWING_STAGGER_MS = 35;
+const LAB_CRAWLER_LANTERN_SWING_MS = 900;
+/** 手が着くコマで前の縁へ出る量(px・2巡目#1・動きながらの叩きつけだけ)。 */
+const LAB_CRAWLER_SLAM_LUNGE_PX = 46;
+/** 怯み: 当たった方へこの距離(px)だけ、出だし速く(ease-out)戻りはゆっくり(慣性)。 */
+const LAB_CRAWLER_FLINCH_PX = 5;
+const LAB_CRAWLER_FLINCH_MS = 200;
+/** ランタンの遅れた振れ(px・0から始まり、行き過ぎ→戻り→収まる)。t=振れ始めからの経過ms。 */
+const crawlerLanternSwing = (t: number, amp: number): number => {
+  if (t <= 0 || t >= LAB_CRAWLER_LANTERN_SWING_MS) return 0;
+  const ramp = 1 - (1 - Math.min(1, t / 90)) ** 2; // 振れ始めは加速して(いきなり振れない)
+  return amp * ramp * Math.sin(t / 105) * Math.exp(-t / 260);
+};
+const crawlerFlinchCurve = (u: number): number => {
+  const v = Math.max(0, Math.min(1, u));
+  if (v < 0.25) return 1 - (1 - v / 0.25) ** 2;
+  const w = (v - 0.25) / 0.75;
+  return 1 - w * w * (3 - 2 * w);
+};
+/** 倒れた時の光の柱・魂の出どころ: プレイヤーに面した縁から内側へ(px・クリエイティブ監査#14)と、魂の横の散らばり。 */
+const LAB_CRAWLER_DEATH_EDGE_INSET_PX = 150;
+const LAB_CRAWLER_SOUL_SPREAD_PX = 110;
+/** ゴール手前で沈んで引いていく時に後ろへ下がる距離(px)。 */
+const LAB_CRAWLER_VANISH_SLIDE_PX = 90;
 // --- 位置ベースの遠近マッピング(既定ON=社長確定。?depthmap=0 で旧方式へ) ------------------
 // 「足元が画面外でも頭が見える背の高い物の拡縮が止まる」対処。サイズ範囲(min/max)を“足元の画面位置”に割り当てる:
 // プレイヤー面=等倍 / 画面上端=min / 画面下端=max(=画面内でレンジ使い切り)。端を越えても min/max を越えて伸び続け、
@@ -4261,8 +4334,8 @@ export class PixiScene {
   private L: SceneLayers;
 
   private trees = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>();
-  private wallObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // 壁オブジェクト(区画生成)
-  private propObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // 遮蔽物プロップ(区画生成・研究所スキン)
+  private wallObjs = new Map<string, LabObstacleView>(); // 壁オブジェクト(区画生成)
+  private propObjs = new Map<string, LabObstacleView>(); // 遮蔽物プロップ(区画生成・研究所スキン)
   private cityPropObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ3(廃都)の散布オブジェクト
   private flowerObjs = new Map<string, { sprite: Sprite; baseScale: number; footY: number }>(); // ステージ1(森)の装飾花(壁判定なし)
   private enemies = new Map<string, ActorView>();
@@ -4835,6 +4908,24 @@ export class PixiScene {
   private crawlerWakeDust = [0, 1, 2].map(() => new Sprite(getSoftGlowTexture()));
   /** 目覚めた実時刻(アテンション中の手の持ち上げ=実時間で回す)。 */
   private crawlerWake = { prevAwake: false, at: 0 };
+  /** 回り込み(資料を拾った瞬間)の検出=追跡の立ち上がり。 */
+  private crawlerChasePrev = false;
+  /** 被弾の明滅・怯み(実時間)。flashAt=最後に光らせた時刻(200msに1回まで)・dir=怯む向き(当たった方=プレイヤーから離れる向き)。 */
+  private crawlerHit = {
+    flashAt: 0, lastSeen: 0, dir: 1,
+    /** 前のフレームの塊の hp(減りを積んでダメージの大きさにする)・前の光から積もったダメージ。 */
+    prevHp: NaN, pend: 0,
+    /** 次に光らせてよい間隔(毎回ばらす)・今の光の濃さ(0.4〜1)・怯みの量と尺・重い一撃の時刻と向き。 */
+    gap: LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS, power: 1, flinchPx: LAB_CRAWLER_FLINCH_PX, flinchMs: LAB_CRAWLER_FLINCH_MS,
+    heavyAt: 0, heavyDir: 1, heavyPx: 0,
+    /** 当たった点(光の円の中心)。 */
+    hx: 0, hy: 0,
+  };
+  /** 当たった点の周りだけ光らせる白い影絵と、その型(柔らかい光の絵=縁がぼける)。型は常にこの影絵に付けたまま(型は描かれない)。 */
+  private crawlerFlash = new Sprite();
+  private crawlerFlashMask = new Sprite(getSoftGlowTexture());
+  /** 倒れた瞬間の光の柱・魂の x(一度だけ覚える・2巡目#12)。 */
+  private crawlerDeathEdgeX: number | null = null;
   private crawlerBody = new Sprite();
   /** 昇天で床へ沈む本体の、足元の線より下を切る型。 */
   private crawlerBodyMask = new Graphics();
@@ -6007,6 +6098,14 @@ export class PixiScene {
     this.crawlerBody.tint = 0xfff4dc;
     this.crawlerBody.visible = false;
     this.L.actorLayer.addChild(this.crawlerBody);
+    this.crawlerFlash.anchor.set(0.5, 1);
+    this.crawlerFlash.blendMode = 'add';
+    this.crawlerFlash.tint = 0xfff4dc;
+    this.crawlerFlash.visible = false;
+    this.crawlerFlashMask.anchor.set(0.5);
+    this.crawlerFlash.mask = this.crawlerFlashMask;
+    this.L.actorLayer.addChild(this.crawlerFlash);
+    this.L.actorLayer.addChild(this.crawlerFlashMask);
     this.crawlerGlow.anchor.set(0.5);
     this.crawlerGlow.blendMode = 'add';
     this.crawlerGlow.tint = 0xffe2a8;
@@ -8666,7 +8765,11 @@ export class PixiScene {
   sync() {
     this.restoreForestPreview();
     this.restoreZwarpActors(); // 前フレームの逆変形(ズーム時の遠近)を戻してから描く
-    const s = useGameStore.getState();
+    const s0 = useGameStore.getState();
+    // ステージ2の死体の塊の代理(攻撃を受ける窓口だけの Enemy・research/LAB_CRAWLER.md §4)は描かない:
+    // 敵の絵・影・体力バー・照準・方角マーカーなど、敵配列を読む描画の全部から最初に1回だけ外す(塊の絵は syncLabCrawler)。
+    const crawlerProxy = s0.labCrawler ? s0.enemies.find(e => isLabCrawlerProxyType(e.type)) : undefined;
+    const s = crawlerProxy ? { ...s0, enemies: s0.enemies.filter(e => e !== crawlerProxy) } : s0;
     const realNow = Date.now();
     // オプションのブルームON/OFFをリロード無しで反映(変化時だけフィルタ配列を作り直す)。
     const wantBloom = getBloomEnabled();
@@ -9743,7 +9846,7 @@ export class PixiScene {
     // 点けるのは各分岐(三連射の銃/通常弾の銃/エンディングの射撃)で、どれもこの後で毎フレーム点け直す。
     for (const sp of this.bossGunMuzzleSprites.values()) sp.visible = false;
     // ★syncActors より前: 取り込まれた敵の姿は、敵の絵が片付けられる前(=このフレーム)に覚える必要がある。
-    this.syncLabCrawler(s.labCrawler, s.gameTime, now, s.attention !== null);
+    this.syncLabCrawler(s.labCrawler, s.gameTime, now, s.attention !== null, crawlerProxy?.lastHit ?? 0, s.player.x + s.player.width / 2, s.player.y + s.player.height / 2);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     // §6.38 B2b: 舞妓の花びらpool更新(全体で1回・enemyループの外)。
     const petalDtSec = this.lastPetalStepAt === null ? 0 : Math.min(0.1, Math.max(0, (now - this.lastPetalStepAt) / 1000));
@@ -10722,7 +10825,7 @@ export class PixiScene {
    * 歩き12コマ(這った距離でコマ送り)/攻撃16コマ(溜め=0〜6・手が着くコマ7=当たる瞬間)/叩きつけの赤い予告(円の流星)/
    * 取り込まれる敵(塊へ吸い寄せられて縮みながら消える)/昇天(光が差し、浮きながら薄れて消える)。
    */
-  private syncLabCrawler(c: LabCrawler | null, gameTime: number, now: number, attentionOn: boolean): void {
+  private syncLabCrawler(c: LabCrawler | null, gameTime: number, now: number, attentionOn: boolean, lastHitAt = 0, playerCx = 0, playerCy = 0): void {
     const sp = this.crawlerSprite;
     const g = this.crawlerTelegraph;
     g.clear();
@@ -10730,6 +10833,7 @@ export class PixiScene {
     this.crawlerBeamCore.visible = false;
     this.crawlerGlow.visible = false;
     this.crawlerBody.visible = false;
+    this.crawlerFlash.visible = false;
     for (const d of this.crawlerWakeDust) d.visible = false;
     for (const s of this.crawlerSouls) s.visible = false;
     for (const l of this.crawlerLanterns) l.visible = false;
@@ -10744,12 +10848,60 @@ export class PixiScene {
       this.crawlerAbsorbFx.clear();
       this.crawlerStride.lastX = NaN;
       this.crawlerWake.prevAwake = false; this.crawlerWake.at = 0;
+      this.crawlerHit.prevHp = NaN; this.crawlerHit.pend = 0;
+      this.crawlerDeathEdgeX = null;
       return;
     }
     if (c.awake && !this.crawlerWake.prevAwake) this.crawlerWake.at = realNow;
+    // 回り込んだ瞬間(クリエイティブ監査#1/#2): 向きはその場で確定(凍った時計で補間すると、アテンションの間ずっと逆を向き、
+    // 時間が戻った瞬間に一瞬で反転する)。手の振り上げ(目覚めの動き)も回り込みで出す。這った距離は数え直す。
+    if (c.chasing && !this.crawlerChasePrev) {
+      const want0 = c.facingLeft ? 1 : -1;
+      this.crawlerFace = { from: want0, to: want0, at: now };
+      this.crawlerWake.at = realNow;
+      this.crawlerStride.lastX = NaN;
+    }
+    this.crawlerChasePrev = c.chasing;
+    // 被弾(クリエイティブ監査#11): 新しい当たりで、200msに1回までパッと光らせ、当たった方(プレイヤーから離れる向き)へ数px怯む。
+    // 2巡目#9/#10: 光るのは当たった点の周りだけ・濃さは積もったダメージで変え・間隔はばらす。重い一撃は大きく揺り戻し、ランタンが遅れて振れる。
+    const hit = this.crawlerHit;
+    if (!Number.isFinite(hit.prevHp) || c.hp > hit.prevHp) hit.prevHp = c.hp;
+    hit.pend += Math.max(0, hit.prevHp - c.hp);
+    hit.prevHp = c.hp;
+    if (lastHitAt > hit.lastSeen) {
+      hit.lastSeen = lastHitAt;
+      if (realNow - hit.flashAt >= hit.gap) {
+        const dmg = hit.pend;
+        hit.pend = 0;
+        hit.flashAt = realNow;
+        hit.dir = playerCx >= c.x ? -1 : 1;
+        hit.gap = LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS + Math.random() * (LAB_CRAWLER_HIT_FLASH_GAP_MAX_MS - LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS);
+        hit.power = Math.max(LAB_CRAWLER_HIT_FLASH_MIN_POWER, Math.min(1, dmg / LAB_CRAWLER_HIT_FLASH_FULL_DMG));
+        // 当たった点: プレイヤーに面した縁の少し内側・箱の中でプレイヤーに一番近い高さ(弾も近接も面した縁から入る。
+        // プレイヤーが箱の上下に居る時は箱の上辺/下辺=絵の肉のある高さ。下の描画でさらに絵の胴の範囲へ収める)。
+        hit.hx = crawlerFacingEdgeX(c, playerCx, 60);
+        const hr = crawlerRect(c);
+        hit.hy = Math.max(hr.y, Math.min(hr.y + hr.height, playerCy));
+        if (dmg >= LAB_CRAWLER_HEAVY_HIT_DMG) {
+          const k = Math.min(1, (dmg - LAB_CRAWLER_HEAVY_HIT_DMG) / (LAB_CRAWLER_HEAVY_HIT_DMG * 3));
+          hit.flinchPx = LAB_CRAWLER_HEAVY_FLINCH_MIN_PX + (LAB_CRAWLER_HEAVY_FLINCH_MAX_PX - LAB_CRAWLER_HEAVY_FLINCH_MIN_PX) * k;
+          hit.flinchMs = LAB_CRAWLER_HEAVY_FLINCH_MS;
+          hit.heavyAt = realNow; hit.heavyDir = hit.dir; hit.heavyPx = hit.flinchPx;
+        } else {
+          hit.flinchPx = LAB_CRAWLER_FLINCH_PX;
+          hit.flinchMs = LAB_CRAWLER_FLINCH_MS;
+        }
+      }
+    }
+    const flinchEl = realNow - hit.flashAt;
+    const flinchX = hit.flashAt > 0 && flinchEl < hit.flinchMs ? hit.dir * hit.flinchPx * crawlerFlinchCurve(flinchEl / hit.flinchMs) : 0;
     this.crawlerWake.prevAwake = c.awake;
     const bf = crawlerBodyFoot(c); // 本体の絵の足元(肉の溜まりの上・箱の中心より少し奥)
     const ascendLook = c.state === 'ascend' ? crawlerAscendLook(gameTime - c.stateAt) : null;
+    if (!ascendLook) this.crawlerDeathEdgeX = null;
+    // 資料の後の追跡の終わり(ゴール手前): 光は昇らず、床へ沈んで引いていく(倒した時と区別)。
+    const vanishLook = c.state === 'vanish' ? crawlerVanishLook(gameTime - c.stateAt) : null;
+    let slideX = 0;
 
 
     // ---- 取り込まれる敵: 手の下で潰れ → 戻りの手に合わせて引きずり込まれ → 縁の下へ沈んで隠れる ----
@@ -10802,7 +10954,10 @@ export class PixiScene {
     const wakeEl = realNow - this.crawlerWake.at;
     const waking = c.awake && attentionOn && this.crawlerWake.at > 0 && wakeEl < LAB_CRAWLER_WAKE_ANIM_MS;
     const wakeFrame = waking ? Math.min(3, Math.floor(wakeEl / LAB_CRAWLER_WAKE_FRAME_MS)) : null;
-    const atkFrame = wakeFrame ?? crawlerAttackFrame(c, gameTime);
+    // 沈んで引いていく頭の止まり(2巡目#14): 手で床を一度掻く攻撃コマ1〜2。
+    const atkFrame = wakeFrame ?? vanishLook?.scratchFrame ?? crawlerAttackFrame(c, gameTime);
+    // 手が着くコマで前の縁へ前のめり(2巡目#1・動きながらの叩きつけだけ・加減速つき)。
+    const lungeX = (c.facingLeft ? -1 : 1) * LAB_CRAWLER_SLAM_LUNGE_PX * crawlerSlamLunge(c, gameTime);
     const walk = this.crawlerSlices('lab/lab-crawler-walk', CRAWLER_WALK_FRAMES);
     const atk = atkFrame !== null ? this.crawlerSlices('lab/lab-crawler-attack', CRAWLER_ATTACK_FRAMES) : null;
     // 這った距離でコマを送る(速度に比例・止まればそのコマで止まる)。押し止められている間は、ゆっくり回す(もがく)。
@@ -10841,13 +10996,17 @@ export class PixiScene {
       alpha *= look.alpha;
       sinkPx = look.sink * artH; // 崩れて床へ沈む(足元の線より下は切る)
       const bodyCy = bf.y - artH * 0.5; // 胴の中心(沈む前)
+      // 光の柱・魂はプレイヤーに面した縁の内側から昇る(体の中心は画面の外になりやすい)。
+      // 倒れた瞬間の x を一度だけ覚える(2巡目#12: プレイヤーが動いても柱・魂は倒れた所から昇る)。
+      if (this.crawlerDeathEdgeX === null) this.crawlerDeathEdgeX = crawlerFacingEdgeX(c, playerCx, LAB_CRAWLER_DEATH_EDGE_INSET_PX);
+      const deathEdgeX = this.crawlerDeathEdgeX;
       const zoom = this.L.worldGroup.scale.x || 1;
       // 光の柱: 柔らかい光の絵を縦に伸ばす(左右と下の縁がぼける)。下端は胴の中心あたりで溶ける=体の下から芯が伸びない。
       if (look.beam > 0.002) {
         const beamH = (this.screenH / zoom) * 1.25;
         const place = (b: Sprite, wMul: number, a: number) => {
           b.width = artW * wMul; b.height = beamH;
-          b.position.set(c.x, bodyCy - beamH * 0.44);
+          b.position.set(deathEdgeX, bodyCy - beamH * 0.44);
           b.alpha = Math.min(1, a * look.beam);
           b.visible = true;
         };
@@ -10868,14 +11027,14 @@ export class PixiScene {
         b.visible = true;
       }
       // 取り込んだ数の光が1つずつ(時間差で)昇って消える。
-      const souls = Math.min(this.crawlerSouls.length, Math.max(CRAWLER_ABSORB_TO_ASCEND, c.absorbed));
+      const souls = Math.min(this.crawlerSouls.length, Math.max(CRAWLER_ASCEND_SOULS, c.absorbed));
       for (let i = 0; i < souls; i++) {
         const sl = crawlerAscendSoul(i, gameTime - c.stateAt);
         if (!sl) continue;
         const s = this.crawlerSouls[i];
         // 出てくる所は胴の上をばらす(決まった並び=毎回同じ)。
-        const ox = ((i * 37) % 11 - 5) / 5 * artW * 0.32;
-        s.position.set(c.x + ox, bodyCy - sl.rise * fxK);
+        const ox = ((i * 37) % 11 - 5) / 5 * LAB_CRAWLER_SOUL_SPREAD_PX;
+        s.position.set(deathEdgeX + ox, bodyCy - sl.rise * fxK);
         s.width = s.height = 16 * sl.scale * fxK; // 5倍の絵で約80px
         s.alpha = sl.alpha * this.horizonActorAlpha(bf.y);
         s.visible = true;
@@ -10888,27 +11047,64 @@ export class PixiScene {
       this.crawlerBodyMask.clear();
       this.crawlerBodyMask.rect(c.x - artW, bf.y - artH * 3, artW * 2, artH * 3).fill({ color: 0xffffff });
       sp.mask = this.crawlerBodyMask;
+    } else if (vanishLook) {
+      // 沈んで引いていく: 足元の線より下は切る(床へ沈む)・向いている方と逆へ引く・暗く沈んで消える。光も縁も出さない。
+      alpha *= vanishLook.alpha;
+      sinkPx = vanishLook.sink * artH;
+      slideX = -(c.facingLeft ? -1 : 1) * LAB_CRAWLER_VANISH_SLIDE_PX * vanishLook.slide;
+      const d = Math.round(255 * (1 - vanishLook.dark));
+      sp.tint = (d << 16) | (d << 8) | d;
+      this.crawlerBodyMask.clear();
+      this.crawlerBodyMask.rect(c.x + slideX - artW, bf.y - artH * 3, artW * 2, artH * 3).fill({ color: 0xffffff });
+      sp.mask = this.crawlerBodyMask;
     } else {
+      if (sp.tint !== 0xffffff) sp.tint = 0xffffff;
       // 型は使っていない間は空にしておく(型でない時は普通の図形として描かれてしまうため)。
       if (sp.mask) { sp.mask = null; this.crawlerBody.mask = null; }
       this.crawlerBodyMask.clear();
+      // 被弾の白い明滅(第2版・通常の敵と同じく当たると光る)。体が画面幅ほどあるので、全面の白ではなく薄く重ねる
+      // (連射で白く張り付かないよう上限 LAB_CRAWLER_HIT_FLASH_A)。白い影絵を本体の**手前**に同じ形で重ねる。
+      // 2巡目#9: 当たった点の周りだけ(柔らかい円の型で切る)・濃さはダメージで変える。
+      const since = hit.flashAt > 0 ? realNow - hit.flashAt : Infinity;
+      if (since >= 0 && since < LAB_CRAWLER_HIT_FLASH_MS) {
+        const sil = this.whiteSilhouette(tex);
+        if (sil) {
+          // パッと光って(最初の1/3は満の濃さのまま)、素早く抜ける。
+          const u = Math.max(0, (since / LAB_CRAWLER_HIT_FLASH_MS - 0.33) / 0.67);
+          const b = this.crawlerFlash;
+          b.texture = sil;
+          b.position.set(Math.round(c.x + flinchX + lungeX), Math.round(bf.y));
+          b.scale.set(baseScale * face, baseScale);
+          b.alpha = Math.min(1, LAB_CRAWLER_HIT_FLASH_A * (0.55 + 0.75 * hit.power)) * (1 - u) * (1 - u) * alpha;
+          b.zIndex = bf.y + 0.5;
+          b.visible = b.alpha > 0.01;
+          const m = this.crawlerFlashMask;
+          const hy = Math.max(bf.y - artH * 0.7, Math.min(bf.y - artH * 0.08, hit.hy));
+          m.position.set(hit.hx + flinchX + lungeX, hy);
+          m.width = m.height = artH * LAB_CRAWLER_HIT_FLASH_R_K * (0.8 + 0.5 * hit.power) * 2;
+        }
+      }
     }
     sp.texture = tex;
     sp.scale.set(baseScale * face, baseScale);
-    sp.position.set(Math.round(c.x), Math.round(bf.y + sinkPx));
+    sp.position.set(Math.round(c.x + flinchX + lungeX + slideX), Math.round(bf.y + sinkPx));
     sp.zIndex = bf.y;
     sp.alpha = alpha;
     sp.visible = alpha > 0.01;
     if (sp.visible && !ascendLook) {
+      // 沈む間は影も沈みに比例して縮め、薄くする(2巡目#15)。
+      const sinkK = vanishLook ? vanishLook.sink : 0;
+      const shrink = 1 - 0.55 * sinkK;
       this.crawlerShadow = {
-        x: c.x, y: bf.y,
-        legacyW: artW * 0.85,
-        rawW: artW, rawH: artH, texture: tex,
-        alpha,
+        x: c.x + lungeX + slideX, y: bf.y,
+        legacyW: artW * 0.85 * shrink,
+        rawW: artW * shrink, rawH: artH * shrink, texture: tex,
+        alpha: alpha * (1 - 0.8 * sinkK),
       };
     }
     // ランタンの灯り: 目覚めた瞬間にぽっと灯り(実時間・加減速つき)、以後は弱く揺らぐ。柔らかい光の絵だけ(投影影を落とさない)。
-    if (c.awake && this.crawlerWake.at > 0 && sp.visible && !useAtk) {
+    // 沈んで引いていく頭の止まり(攻撃コマ1〜2)の間も灯りは消さない(振り上げの頭なので位置は歩きの組で足りる)。
+    if (c.awake && this.crawlerWake.at > 0 && sp.visible && (!useAtk || (vanishLook?.scratchFrame ?? null) !== null)) {
       const lit = 1 - (1 - Math.min(1, wakeEl / LAB_CRAWLER_LANTERN_IN_MS)) ** 3;
       const swell = Math.max(0, 1 - Math.abs(wakeEl - LAB_CRAWLER_LANTERN_IN_MS * 0.8) / LAB_CRAWLER_LANTERN_IN_MS) * 0.6; // 灯った瞬間だけ一度強く
       const ws = dispW / CRAWLER_WALK_ART_BODY_W * depth; // 歩きシートの1画素=何px
@@ -10916,9 +11112,17 @@ export class PixiScene {
         const p = CRAWLER_LANTERNS_WALK_ART[i];
         if (!p) return;
         const flick = 0.82 + 0.1 * Math.sin(now / 430 + i * 1.9) + 0.08 * Math.sin(now / 157 + i * 4.1);
-        l.position.set(c.x + p.x * ws * face, bf.y + sinkPx + p.y * ws);
+        // 2巡目#10: 体の怯みから遅れて付いてきて、重い一撃では当たった向きへ振れて揺れ戻る(1つずつずらす)。
+        const lag = LAB_CRAWLER_LANTERN_SWING_DELAY_MS + i * LAB_CRAWLER_LANTERN_SWING_STAGGER_MS;
+        const lagEl = flinchEl - lag;
+        const lagFlinch = hit.flashAt > 0 && lagEl > 0 && lagEl < hit.flinchMs ? hit.dir * hit.flinchPx * crawlerFlinchCurve(lagEl / hit.flinchMs) : 0;
+        const swing = hit.heavyAt > 0 ? crawlerLanternSwing(realNow - hit.heavyAt - lag, hit.heavyDir * hit.heavyPx * 1.2) : 0;
+        const ly = bf.y + sinkPx + p.y * ws - Math.abs(swing) * 0.22; // 振り子=振れると少し持ち上がる
+        l.position.set(c.x + lagFlinch + swing + lungeX + slideX + p.x * ws * face, ly);
         l.width = l.height = LAB_CRAWLER_LANTERN_ART_PX * ws * (1 + 0.25 * swell);
-        l.alpha = Math.min(1, (0.55 * flick + swell) * lit) * alpha;
+        // 2巡目#15: 沈む間は床の線(足元)で切る=灯りの中心が線へ近づくほど薄れ、越えたら消える(高さが違うので1つずつ消える)。
+        const cut = vanishLook ? Math.max(0, Math.min(1, (bf.y - ly) / Math.max(1, l.height * 0.35))) : 1;
+        l.alpha = Math.min(1, (0.55 * flick + swell) * lit) * alpha * cut;
         l.zIndex = bf.y + 0.6;
         l.visible = l.alpha > 0.01;
       });
@@ -10940,7 +11144,8 @@ export class PixiScene {
     }
 
     // ---- 叩きつけの赤い予告(★赤い予告の4つの掟: 流星=外から内へ流れ、溜め開始で出て、当たる瞬間に消え切る) ----
-    // 円は溜め開始の時点で地面に固定(c.slamX/Y)。半径=判定半径(CRAWLER_SLAM_RADIUS)そのもの。
+    // 円の位置=c.slamX/Y(=当たる位置)。雑魚を狙う時・資料の前は溜め開始で地面に固定。資料の後にプレイヤーを狙う時(slamMoving)は
+    // 溜めの前半だけ塊と一緒に動き、後半は止まる(CRAWLER_CHASE_SLAM_ADVANCE_FRAC)=最後に描いた円が当たる。半径=判定半径(CRAWLER_SLAM_RADIUS)そのもの。
     const prog = crawlerTelegraphProg(c, gameTime);
     if (prog !== null) {
       const style = TELEGRAPH_STYLE_BOSS;
@@ -11201,32 +11406,163 @@ export class PixiScene {
     const labTheme = s.stageTheme === 'lab' && !s.indoorMode;
     const cam = s.camera;
     const m = LAB_ZONE;
+    // 範囲は可視域(ズーム込み)+1区画。引いた画角でも奥の壁が描かれ、死体の塊に壊された時に崩れの絵・残骸が出る(品質監査2巡目A-3)。
+    const vb = this.labObstacleViewBounds(cam);
     const walls = labTheme
-      ? labWallsInRegion(cam.x - m, cam.y - m, cam.x + this.screenW + m, cam.y + this.screenH + m)
+      ? labWallsInRegion(vb.left - m, vb.top - m, vb.right + m, vb.bottom + m)
       : [];
     const seen = new Set<string>();
     for (const w of walls) {
       seen.add(w.id);
       let entry = this.wallObjs.get(w.id);
       if (!entry) {
-        const tex = getTexture('lab/lab-wall-obj-h');
-        const sprite = new Sprite(tex ?? undefined);
-        sprite.anchor.set(0.5, 1);
-        sprite.tint = ENV_TINT; // 環境として暗く沈める(木と同じ)
-        sprite.x = w.footX;
-        sprite.y = w.footY;
-        sprite.zIndex = w.footY; // 足元Yでプレイヤー/敵とY-sort(背面は被る)
-        this.L.actorLayer.addChild(sprite);
-        const baseScale = tex ? containScale(WALL_DISPLAY_H.w, WALL_DISPLAY_H.h, tex.width, tex.height) : 1;
-        entry = { sprite, baseScale, footY: w.footY };
+        entry = this.makeLabWallView(w.footX, w.footY);
         this.wallObjs.set(w.id, entry);
       }
+      if (entry.crumbleAt !== undefined || entry.debris) { entry.crumbleAt = undefined; entry.debris = false; entry.sprite.rotation = 0; entry.sprite.tint = ENV_TINT; entry.stain?.destroy(); entry.stain = undefined; entry.stainTint = undefined; } // 新しいランで立ち直った
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       this.applyObstacleAlpha(entry.sprite, entry.footY);
     }
-    for (const [id, entry] of this.wallObjs) {
-      if (!seen.has(id)) { entry.sprite.destroy(); this.wallObjs.delete(id); }
+    // 壊れた壁の残骸(2巡目#16): 画面の外へ出て絵を捨てた物も、可視域へ戻ったら記録から残骸のまま作り直す(出撃の終わりまで残る)。
+    if (labTheme) {
+      for (const b of labDebrisInRegion(s.labBrokenObstacles, 'wall', vb.left - LAB_DEBRIS_RESTORE_MARGIN, vb.top - LAB_DEBRIS_RESTORE_MARGIN, vb.right + LAB_DEBRIS_RESTORE_MARGIN, vb.bottom + LAB_DEBRIS_RESTORE_MARGIN)) {
+        if (this.wallObjs.has(b.id)) continue;
+        const entry = this.makeLabWallView(b.x, b.y);
+        this.restoreLabDebris(entry, b, 'wall');
+        this.wallObjs.set(b.id, entry);
+      }
     }
+    for (const [id, entry] of this.wallObjs) {
+      if (seen.has(id)) continue;
+      // 死体の塊に壊された物は、消す前に崩れ落ちる(慣性の掟: パッと消さない)。範囲外へ出ただけの物は従来どおり即破棄。
+      if (isLabObstacleBroken(id) && this.tickLabObstacleCrumble(entry, id, s.labBrokenObstacles, cam, 'wall')) continue;
+      entry.sprite.destroy(); entry.stain?.destroy(); this.wallObjs.delete(id);
+    }
+  }
+
+  private makeLabWallView(footX: number, footY: number): LabObstacleView {
+    const tex = getTexture('lab/lab-wall-obj-h');
+    const sprite = new Sprite(tex ?? undefined);
+    sprite.anchor.set(0.5, 1);
+    sprite.tint = ENV_TINT; // 環境として暗く沈める(木と同じ)
+    sprite.x = footX;
+    sprite.y = footY;
+    sprite.zIndex = footY; // 足元Yでプレイヤー/敵とY-sort(背面は被る)
+    this.L.actorLayer.addChild(sprite);
+    const baseScale = tex ? containScale(WALL_DISPLAY_H.w, WALL_DISPLAY_H.h, tex.width, tex.height) : 1;
+    return { sprite, baseScale, footY };
+  }
+
+  private makeLabPropView(variant: number, footX: number, footY: number): LabObstacleView {
+    const row = Math.floor(variant / 4) + 1, col = (variant % 4) + 1;
+    const tex = getTexture(`lab-props/lab-prop2-r${row}-c${col}`);
+    const sprite = new Sprite(tex ?? undefined);
+    sprite.anchor.set(0.5, 1);
+    sprite.tint = ENV_TINT; // 環境として暗く沈める(木/壁オブジェクトと同じ)
+    sprite.x = footX;
+    sprite.y = footY;
+    sprite.zIndex = footY; // 足元Yでプレイヤー/敵とY-sort(背面は被る)
+    this.L.actorLayer.addChild(sprite);
+    const baseScale = tex ? containScale(PROP_DISPLAY_H, PROP_DISPLAY_H, tex.width, tex.height) : 1;
+    return { sprite, baseScale, footY };
+  }
+
+  /** 記録から作り直した残骸を、崩れ終わった姿(倒れ切って暗く平たい・染みは広がり切り)で置く(崩れの絵をもう一度流さない)。 */
+  private restoreLabDebris(entry: LabObstacleView, b: LabBrokenObstacle, kind: 'wall' | 'prop'): void {
+    entry.crumbleAt = Date.now() - 600_000;
+    entry.crumbleDir = b.dir ?? ((Math.round(b.x) & 1) ? 1 : -1);
+    entry.crumbleKind = kind;
+    entry.crumbleMs = (kind === 'wall' ? LAB_WALL_CRUMBLE_MS : LAB_PROP_CRUMBLE_MS) * LAB_OBSTACLE_CRUMBLE_SCALE;
+    const pal = LAB_DEBRIS_PALETTE[labDebrisKind(b)];
+    if (pal?.stain !== undefined) entry.stainTint = pal.stain;
+  }
+
+  /** 研究所の壁・プロップを並べる範囲の基準=可視域(ズーム込み・cameraZoom.zoomedViewportBounds と同じ式)。 */
+  private labObstacleViewBounds(cam: { x: number; y: number }): { left: number; top: number; right: number; bottom: number } {
+    const zoom = this.L.worldGroup.scale.x || 1;
+    const z = zoom > 0 ? Math.min(1, zoom) : 1;
+    const ex = (this.screenW / z - this.screenW) / 2, ey = (this.screenH / z - this.screenH) / 2;
+    return { left: cam.x - ex, top: cam.y - ey, right: cam.x + this.screenW + ex, bottom: cam.y + this.screenH + ey };
+  }
+
+  /**
+   * 壊れた壁・プロップの崩れ(描画だけ)。崩れている最中・残骸として残す間は true(まだ消さない)、消してよければ false。
+   * ぐらつき → 倒れ込む(壁=縦に潰れて奥へ・プロップ=浅く横倒し・加速)→ 着地で小さく戻る → 暗く平たい残骸(不透明)として残る。
+   * 残骸は画面(ズーム込み)の外へ出たら絵だけ捨て、戻ったら記録から作り直す(出撃の終わりまで残る)。回り込み(資料を拾った瞬間)で壊れた物は、カメラが着くまで立ったまま待つ(revealAt)。
+   * 破片・土煙・音は utils/labCrawlerTick が同じ時刻(割れた瞬間/着地)で出す。
+   */
+  private tickLabObstacleCrumble(
+    entry: LabObstacleView, id: string, broken: readonly LabBrokenObstacle[], cam: { x: number; y: number }, kind: 'wall' | 'prop',
+  ): boolean {
+    const realNow = Date.now();
+    const sp = entry.sprite;
+    if (entry.crumbleAt === undefined) {
+      const rec = broken.find(b => b.id === id);
+      if (rec?.revealAt !== undefined && realNow < rec.revealAt) return true; // カメラが着くまで立ったまま
+      entry.crumbleAt = realNow;
+      entry.crumbleDir = rec?.dir ?? ((Math.round(sp.x) & 1) ? 1 : -1);
+      entry.crumbleKind = kind;
+      entry.crumbleMs = (kind === 'wall' ? LAB_WALL_CRUMBLE_MS : LAB_PROP_CRUMBLE_MS) * LAB_OBSTACLE_CRUMBLE_SCALE;
+      const pal = rec ? LAB_DEBRIS_PALETTE[labDebrisKind(rec)] : undefined;
+      if (pal?.stain !== undefined) entry.stainTint = pal.stain;
+    }
+    const k = entry.baseScale * this.depthScale(entry.footY);
+    const dir = entry.crumbleDir ?? 1;
+    const T = entry.crumbleMs ?? LAB_PROP_CRUMBLE_MS;
+    const fallRad = (entry.crumbleKind === 'wall' ? LAB_WALL_FALL_RAD : LAB_PROP_FALL_RAD) * dir;
+    const squash = entry.crumbleKind === 'wall' ? LAB_WALL_FALL_SQUASH : LAB_PROP_FALL_SQUASH;
+    const el = realNow - entry.crumbleAt;
+    const a0 = this.horizonActorAlpha(entry.footY) * this.foregroundActorAlpha(entry.footY);
+    // 染み(薬液・カプセル): 着地から広がる床の楕円。
+    if (entry.stainTint !== undefined && el >= T) {
+      if (!entry.stain) { entry.stain = new Graphics(); this.L.groundLayer.addChild(entry.stain); }
+      const g = entry.stain;
+      const u = Math.min(1, (el - T) / 700);
+      const e = 1 - (1 - u) ** 3;
+      g.clear();
+      g.ellipse(sp.x + dir * 18, entry.footY - 2, 14 + 40 * e, 4 + 10 * e).fill({ color: entry.stainTint, alpha: 0.6 * a0 });
+    }
+    if (entry.debris || el >= T + LAB_OBSTACLE_LAND_BOUNCE_MS) {
+      // 残骸: 倒れ切った姿勢のまま、暗く平たく不透明で残す。画面(ズーム込み+余白)の外へ出たら絵だけ捨てる
+      // (記録は出撃の終わりまで残り、戻ったら syncLabWalls/Props が作り直す=2巡目#16)。
+      if (!entry.debris) {
+        entry.debris = true;
+        sp.rotation = fallRad;
+        sp.scale.set(k * (entry.crumbleKind === 'wall' ? 1.06 : 1), k * squash);
+        sp.tint = LAB_OBSTACLE_DEBRIS_TINT;
+      }
+      sp.alpha = a0;
+      const vb = this.labObstacleViewBounds(cam);
+      const m = LAB_DEBRIS_DROP_MARGIN; // 作り直す範囲(LAB_DEBRIS_RESTORE_MARGIN)より広く=境目で作る/捨てるを繰り返さない
+      return !(sp.x < vb.left - m || sp.x > vb.right + m || entry.footY < vb.top - m || entry.footY > vb.bottom + m + 200);
+    }
+    sp.alpha = a0;
+    const jolt = T * LAB_OBSTACLE_CRUMBLE_JOLT_FRAC;
+    if (el < jolt) {
+      // ぐらつき: 左右に小さく震えて、ほんの少し沈む(減衰)。
+      const j = 1 - el / jolt;
+      sp.rotation = Math.sin(el * 0.25) * 0.05 * j * dir;
+      sp.scale.set(k, k * (1 - 0.04 * (1 - j)));
+      return true;
+    }
+    if (el < T) {
+      // 倒れ込む: 出だしは重く、だんだん速く(重力=ease-in)。暗さが残骸の値へ寄っていく。
+      const u = (el - jolt) / (T - jolt);
+      const e = u * u;
+      sp.rotation = fallRad * e;
+      sp.scale.set(k * (1 + (entry.crumbleKind === 'wall' ? 0.06 : 0) * e), k * (1 - (1 - squash) * e));
+      const t = Math.max(0, (u - 0.5) / 0.5);
+      const lerp = (a: number, b: number) => Math.round(a + (b - a) * t);
+      const from = ENV_TINT, to = LAB_OBSTACLE_DEBRIS_TINT;
+      sp.tint = (lerp((from >> 16) & 255, (to >> 16) & 255) << 16) | (lerp((from >> 8) & 255, (to >> 8) & 255) << 8) | lerp(from & 255, to & 255);
+      return true;
+    }
+    // 着地の戻り(1〜2コマ): 床に当たって少し跳ね返り、すぐ収まる。
+    const b = Math.sin(Math.PI * (el - T) / LAB_OBSTACLE_LAND_BOUNCE_MS);
+    sp.rotation = fallRad * (1 - 0.06 * b);
+    sp.scale.set(k * (entry.crumbleKind === 'wall' ? 1.06 : 1), k * squash * (1 + 0.35 * b));
+    sp.tint = LAB_OBSTACLE_DEBRIS_TINT;
+    return true;
   }
 
   // ---- 遮蔽物プロップ(研究所スキン・区画生成): テストステージのパソコン/割れたカプセル等を
@@ -11236,32 +11572,36 @@ export class PixiScene {
     const labTheme = s.stageTheme === 'lab' && !s.indoorMode;
     const cam = s.camera;
     const m = LAB_ZONE;
+    const vb = this.labObstacleViewBounds(cam);
     const props = labTheme
-      ? labPropsInRegion(cam.x - m, cam.y - m, cam.x + this.screenW + m, cam.y + this.screenH + m)
+      ? labPropsInRegion(vb.left - m, vb.top - m, vb.right + m, vb.bottom + m)
       : [];
     const seen = new Set<string>();
     for (const p of props) {
       seen.add(p.id);
       let entry = this.propObjs.get(p.id);
       if (!entry) {
-        const row = Math.floor(p.variant / 4) + 1, col = (p.variant % 4) + 1;
-        const tex = getTexture(`lab-props/lab-prop2-r${row}-c${col}`);
-        const sprite = new Sprite(tex ?? undefined);
-        sprite.anchor.set(0.5, 1);
-        sprite.tint = ENV_TINT; // 環境として暗く沈める(木/壁オブジェクトと同じ)
-        sprite.x = p.footX;
-        sprite.y = p.footY;
-        sprite.zIndex = p.footY; // 足元Yでプレイヤー/敵とY-sort(背面は被る)
-        this.L.actorLayer.addChild(sprite);
-        const baseScale = tex ? containScale(PROP_DISPLAY_H, PROP_DISPLAY_H, tex.width, tex.height) : 1;
-        entry = { sprite, baseScale, footY: p.footY };
+        entry = this.makeLabPropView(p.variant, p.footX, p.footY);
         this.propObjs.set(p.id, entry);
       }
+      if (entry.crumbleAt !== undefined || entry.debris) { entry.crumbleAt = undefined; entry.debris = false; entry.sprite.rotation = 0; entry.sprite.tint = ENV_TINT; entry.stain?.destroy(); entry.stain = undefined; entry.stainTint = undefined; } // 新しいランで立ち直った
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       this.applyObstacleAlpha(entry.sprite, entry.footY);
     }
+    // 壊れたプロップの残骸(2巡目#16): 壁と同じく、可視域へ戻ったら記録から作り直す。
+    if (labTheme) {
+      for (const b of labDebrisInRegion(s.labBrokenObstacles, 'prop', vb.left - LAB_DEBRIS_RESTORE_MARGIN, vb.top - LAB_DEBRIS_RESTORE_MARGIN, vb.right + LAB_DEBRIS_RESTORE_MARGIN, vb.bottom + LAB_DEBRIS_RESTORE_MARGIN)) {
+        if (this.propObjs.has(b.id) || b.variant === undefined) continue;
+        const entry = this.makeLabPropView(b.variant, b.x, b.y);
+        this.restoreLabDebris(entry, b, 'prop');
+        this.propObjs.set(b.id, entry);
+      }
+    }
     for (const [id, entry] of this.propObjs) {
-      if (!seen.has(id)) { entry.sprite.destroy(); this.propObjs.delete(id); }
+      if (seen.has(id)) continue;
+      // 死体の塊に壊された物は、消す前に崩れ落ちる(慣性の掟: パッと消さない)。範囲外へ出ただけの物は従来どおり即破棄。
+      if (isLabObstacleBroken(id) && this.tickLabObstacleCrumble(entry, id, s.labBrokenObstacles, cam, 'prop')) continue;
+      entry.sprite.destroy(); entry.stain?.destroy(); this.propObjs.delete(id);
     }
   }
 
@@ -32334,6 +32674,8 @@ export class PixiScene {
         this.drawImageEffect(e, now);
       } else if (e.kind === 'dogFetch') {
         this.drawDogFetchSprite(e, now);
+      } else if (e.kind === 'smoke') {
+        this.drawSmokeSprite(e, now);
       } else if (e.kind === 'glow') {
         // 小glow=プールsprite(従来)。強glowも以前は毎フレ Graphics(clear()+7図形の再テッセレーション=
         // G12 FAIL)だったが、同じプールsprite方式(色haloと白coreの加算スプライト)に変更して激減させる。
@@ -32755,6 +33097,35 @@ export class PixiScene {
     const g = Math.max(0, Math.min(255, Number(match[2])));
     const b = Math.max(0, Math.min(255, Number(match[3])));
     return (r << 16) | (g << 8) | b;
+  }
+
+  /**
+   * 柔らかい煙(LAB_CRAWLER §4・クリエイティブ監査2巡目#8): 光の型(soft glow)を通常合成で低く横長に置き、ゆっくり広がって薄れる。
+   * 出だしは素早く濃くなり(12%)、広がりは ease-out、薄れは後半に寄せる(慣性)。負荷 1/10(プールsprite1枚・Graphics無し)。
+   */
+  private drawSmokeSprite(e: Extract<VisualEffect, { kind: 'smoke' }>, now: number) {
+    const el = Math.max(0, now - e.createdAt);
+    const t = Math.min(1, el / e.duration);
+    let sprite = this.effects.get(e.id);
+    if (!(sprite instanceof Sprite)) {
+      if (sprite) sprite.destroy();
+      sprite = new Sprite(getSoftGlowTexture());
+      (sprite as Sprite).anchor.set(0.5, 0.62);
+      this.L.effectLayer.addChild(sprite);
+      this.effects.set(e.id, sprite);
+    }
+    const sp = sprite as Sprite;
+    const grow = 1 - (1 - t) ** 3;
+    const w = e.w0 + (e.w1 - e.w0) * grow;
+    sp.visible = true;
+    sp.blendMode = 'normal';
+    sp.tint = e.tint;
+    sp.position.set(e.x + (e.driftX ?? 0) * el / 1000, e.y + (e.driftY ?? 0) * el / 1000);
+    sp.width = w;
+    sp.height = w * e.hRatio * (1 + 0.25 * grow);
+    const inA = Math.min(1, t / 0.12);
+    const outA = 1 - Math.max(0, (t - 0.35) / 0.65) ** 2;
+    sp.alpha = e.alpha * inA * outA * this.horizonActorAlpha(e.y);
   }
 
   private drawSmallGlowSprite(e: Extract<VisualEffect, { kind: 'glow' }>, now: number) {

@@ -4,7 +4,7 @@
 // pixiScene.ts 側が本ファイルの定数・純関数を消費する。
 
 import type { EnemyType } from '../types/game';
-import { isBodyWallBoss, isBountyType, isHangedman, isHiddenBoss, isReaperFamily } from './enemyUtils';
+import { isBodyWallBoss, isBountyType, isHangedman, isHiddenBoss, isReaperFamily, isLabCrawlerProxyType } from './enemyUtils';
 
 // 社長決定v0.25.1481→v0.25.1482(候補は多いほど良い=32名に増量): 裏ボス=北欧の神々を
 // 予約するため、ネームドはギリシャ神話の怪物から取る(名前空間を神話ごとに分離)。
@@ -143,7 +143,10 @@ export const isPromotionExcluded = (
   || isBountyType(killerType) || isBodyWallBoss(killerType)
   // 死神の使者(hangedman)とハンターも対象外(社長指示2026-10-13「死神(使者)はネームド化しないようにして。ハンターも」)。
   // 保存済みの宿敵がこの型でも、読込時の浄化(sanitizeNamedFoe)で宿敵不在に戻る。
-  || isHangedman(killerType) || killerType === 'hunter';
+  || isHangedman(killerType) || killerType === 'hunter'
+  // ステージ2の死体の塊の代理(攻撃を受ける窓口だけの型・research/LAB_CRAWLER.md §4)も対象外: 本体は敵配列の外にあり、
+  // この型だけを湧かせると描かれない・動かない壁になる。叩きつけの持ち主=代理なので、ここで止めないと塊に倒された死が昇格する。
+  || isLabCrawlerProxyType(killerType);
 
 /**
  * 保存済みの宿敵メタの浄化(v0.25.3694)。除外型(幻影等)が過去の穴で保存されてしまった端末を

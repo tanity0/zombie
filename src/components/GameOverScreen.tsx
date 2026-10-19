@@ -18,7 +18,7 @@ import { getSelectedStageId, getSelectedMission, submitStageHighScore, getRunCor
 import { getRunPois, isPoiRevealed } from '../world/pois';
 import { getStage, stageDateLabel, REVISIT_MISSION } from '../data/campaign';
 import { getArchiveRecord, unlockRecordsForStage, markRecordRead, type ArchiveRecord } from '../data/storyArchive';
-import { AREA_ZONE_NAMES, AREA_THRESHOLDS } from '../utils/enemyUtils';
+import { AREA_ZONE_NAMES, AREA_THRESHOLDS, isLabCrawlerProxyType } from '../utils/enemyUtils';
 import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
 import { isKomaLogEnabled, komaLogSummary, logKomaSummary } from '../utils/komaLog';
 import { hasPendingTraitRecords, settlePendingTraits, pendingBossClears, loadPlayerProfile } from '../utils/playerTraits';
@@ -184,9 +184,10 @@ const KillerLine: React.FC<{ deathCause: string }> = ({ deathCause }) => {
       : deathCause.includes('の') ? deathCause.slice(deathCause.indexOf('の') + 1) : deathCause;
   const sub = [!promoted && byNamed && namedName ? typeName : '', move].filter(Boolean).join('・');
   // ステージ2の這う塊は敵の型を持たない(倒した相手の記録が null になる)ので、死因の名から見分けて名前と絵を出す。
+  // 第2版: 叩きつけの持ち主=代理の Enemy(型 'lab-crawler'・絵は無い)なので、記録がその型の時も同じ枝で出す。
   // 絵=歩きシート(4800×130・12コマ×400)の1コマ目を切り出して表示(高さ56)。★素材を差し替えたらこの3つの寸法も直す。
   const crawlerName = enemyDeathLabel(LAB_CRAWLER_BLAST_OWNER);
-  if (!type && deathCause.startsWith(`${crawlerName}の`)) {
+  if ((!type || isLabCrawlerProxyType(type)) && deathCause.startsWith(`${crawlerName}の`)) {
     const SHEET_W = 4800, SHEET_H = 130, FRAME_W = 400;
     const k = 56 / SHEET_H;
     return (

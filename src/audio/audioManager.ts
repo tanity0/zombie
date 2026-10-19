@@ -148,6 +148,8 @@ export type SfxKey =
   | 'hero-neigh' | 'hero-snort' | 'hero-gallop'
   // research/LAB_CRAWLER.md(ステージ2の死体の塊・社長支給2026-10-19): 体を引きずる音(ループ専用=setCrawlerDrag が鳴らす)。
   | 'crawler-drag'
+  // 塊が攻撃してくる直前の音・登場時の音(社長支給2026-10-20「塊が攻撃してくる直前の音 登場時も鳴らす」)。同じ素材を2つの鍵で鳴らし分ける。
+  | 'crawler-windup' | 'crawler-appear'
   // ステージ2でたまに遠くから鳴る音(社長支給2026-10-19)。playDistantSfx が遠さ(音量・こもり・左右)を付けて鳴らす。
   | 'lab-distant' | 'lab-distant-2' | 'lab-distant-3'
   // 英雄の犬(research/HERO_DOG.md・社長支給2026-10-15): 汎用の吠え / やられた時
@@ -492,6 +494,10 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'hero-gallop': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-gallop.mp3`, volume: 0.9, minIntervalMs: 200 },
   // 塊が体を引きずる音はループ専用(playSfx では鳴らさない)。
   'crawler-drag': { src: `${import.meta.env.BASE_URL}audio/sfx/crawler-drag.mp3`, volume: 0.9, minIntervalMs: 200 },
+  // 素材は約2.85秒で、約1.4秒かけて膨らみ頂点へ達してから引く。叩きつけの溜め(短い)では途中から鳴らし、頂点が手の着く瞬間に来るようにする。
+  'crawler-windup': { src: `${import.meta.env.BASE_URL}audio/sfx/crawler-windup.mp3`, volume: 1.0, minIntervalMs: 300, startAt: 0.8 },
+  // 登場時は頭から全部鳴らす(膨らむ間がそのまま「来る」の溜めになる)。
+  'crawler-appear': { src: `${import.meta.env.BASE_URL}audio/sfx/crawler-windup.mp3`, volume: 1.0, minIntervalMs: 1000 },
   // ステージ2でたまに遠くから鳴る音(playDistantSfx 専用)。
   'lab-distant': { src: `${import.meta.env.BASE_URL}audio/sfx/lab-distant.mp3`, volume: 1.0, minIntervalMs: 3000 },
   'lab-distant-2': { src: `${import.meta.env.BASE_URL}audio/sfx/lab-distant-2.mp3`, volume: 0.55, minIntervalMs: 3000 }, // 素材が他の2本より約6dB大きい

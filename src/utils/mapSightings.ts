@@ -4,7 +4,7 @@
 // 出会った=その出撃で一度でも画面(ズーム込みの可視域)に体の中心が入った個体(敵ID単位。裏ボスだけは型単位=下の sightKey)。一度出会えば今の位置を出す。
 // 記録はこのモジュールの中だけ(store へは書かない=毎ティック呼んでも購読者を起こさない)。出撃ごとに resetMapSightings で空にする。
 import type { Enemy } from '../types/game';
-import { isBossType, isPumpkinTier, isHiddenBoss, isReaperFamily } from './enemyUtils';
+import { isBossType, isPumpkinTier, isHiddenBoss, isReaperFamily, isLabCrawlerProxyType } from './enemyUtils';
 import { isPointInZoomedViewport } from './cameraZoom';
 
 type Tracked = Pick<Enemy, 'type' | 'isNamed' | 'corpseUntil'>;
@@ -14,6 +14,8 @@ export const isMapTrackedEnemy = (e: Tracked): boolean => {
   if (e.isNamed) return true;
   // 社長 2026-10-17「(ハンターは)外す 死神も外す」。
   if (e.type === 'hunter' || isReaperFamily(e.type)) return false;
+  // ステージ2の死体の塊の代理(攻撃を受ける窓口だけ・research/LAB_CRAWLER.md §4)は出さない(第1版の塊も地図に無かった=見え方を変えない)。
+  if (isLabCrawlerProxyType(e.type)) return false;
   return isBossType(e.type) && !isPumpkinTier(e.type) && e.type !== 'lab-zombie-3';
 };
 

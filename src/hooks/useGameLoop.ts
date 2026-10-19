@@ -285,7 +285,7 @@ import {
   isPumpkinTier, // PACING_PUZZLE.md §9-7#1(削岩型): pumpkinの特別扱いをdrillerと共有する述語
   isReaperFamily, isTerminalReaper, isHangedman, // PACING_PUZZLE.md §14-4(新死神): 型名ベタ書きの集約述語
   pickNearestTarget, // UNIQUE_WEAPONS.md §19-3: 金環の対象取得(各金環が独立に最寄りの敵を取る)
-  countsTowardEnemyCap, // research/MUTANT_HERO.md §2-1: 英雄は湧き上限に数えない
+  countsTowardEnemyCap, blastAnchorOf, isLabCrawlerProxyType, bandHitsBox, // blastAnchorOf=死体の塊の代理の爆発・手応えの点(LAB_CRAWLER §4) / research/MUTANT_HERO.md §2-1: 英雄は湧き上限に数えない
 } from '../utils/enemyUtils';
 import { killChainSfxRate, recoilSpecForWeapon, casingSpecFor , GUN_STOP_BASE_MS, GUN_STOP_MAX_MULT, GUN_STOP_AWAKEN_MULT, GUN_STOP_DUTY } from '../utils/combatFeel';
 import { comboMilestoneCrossed, milestoneSfxRate } from '../utils/comboMilestone';
@@ -2368,12 +2368,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     const rhythmLineAttack = (cx: number, cy: number, dx: number, dy: number, length: number, halfW: number, damage: number, kbMult: number, execute: boolean, kbMax = 3) => {
       for (const e of useGameStore.getState().enemies) {
         if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-        const rx = e.x + e.width / 2 - cx;
-        const ry = e.y + e.height / 2 - cy;
-        const along = rx * dx + ry * dy;
-        if (along < 0 || along > length) continue;
-        const perp = Math.abs(rx * dy - ry * dx);
-        if (perp > halfW + e.width / 2) continue;
+        if (isLabCrawlerProxyType(e.type)) {
+          // 死体の塊の代理(幅742)は帯と箱の交差で測る(中心が帯の長さの外でも縁に掛かれば当たる・LAB_CRAWLER §4)。
+          if (!bandHitsBox(cx, cy, dx, dy, length, halfW, e)) continue;
+        } else {
+          const rx = e.x + e.width / 2 - cx;
+          const ry = e.y + e.height / 2 - cy;
+          const along = rx * dx + ry * dy;
+          if (along < 0 || along > length) continue;
+          const perp = Math.abs(rx * dy - ry * dx);
+          if (perp > halfW + e.width / 2) continue;
+        }
         shijinHitEnemy(e.id, damage, execute);
         if (kbMult > 0) useGameStore.getState().knockbackEnemy(e.id, dx, dy, kbMult, kbMax);
       }
@@ -2401,12 +2406,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const fxMs = GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS;
         const targets = useGameStore.getState().enemies
           .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
-          .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - x, e.y + e.height / 2 - y) }))
+          .map(e => { const a = blastAnchorOf(e, x, y); return { e, d: Math.hypot(a.x - x, a.y - y) }; })
           .sort((a, b) => a.d - b.d).slice(0, SUZAKU_MAX_TARGETS).map(h => h.e);
         spawnFlash('rgba(248,113,113,0.16)', 150);
         for (const t of targets) {
-          const bx = t.x + t.width / 2;
-          const by = t.y + t.height / 2;
+          // 爆心=狙った敵の中心(死体の塊の代理は四神の位置に一番近い箱の点=縁で爆ぜる・LAB_CRAWLER §4)。
+          const { x: bx, y: by } = blastAnchorOf(t, x, y);
           spawnRing(bx, by, 10, blastR, 'rgba(248,113,113,0.85)', 5, fxMs);
           spawnBurst(bx, by, '#f87171', 20);
           spawnBurst(bx, by, '#7f1d1d', 8);
@@ -2414,7 +2419,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().spawnExplosionFx(bx, by, blastR); // v0.25.3283: 爆発flipbook(全爆発共通)
           for (const e of useGameStore.getState().enemies) {
             if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-            const dist = Math.hypot(e.x + e.width / 2 - bx, e.y + e.height / 2 - by);
+            const ea = blastAnchorOf(e, bx, by); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
+            const dist = Math.hypot(ea.x - bx, ea.y - by);
             if (dist > blastR) continue;
             const falloff = 1 - dist / blastR;
             shijinHitEnemy(e.id, Math.max(1, Math.round(SUZAKU_BLAST_DAMAGE * szExMult * (0.55 + falloff * 0.45))), true);
@@ -2477,8 +2483,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         spawnRing(pcx, pcy, 6, meleeR, 'rgba(167,139,250,0.6)', 2, 200);
         for (const e of useGameStore.getState().enemies) {
           if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-          const ex = e.x + e.width / 2;
-          const ey = e.y + e.height / 2;
+          const { x: ex, y: ey } = blastAnchorOf(e, pcx, pcy); // 死体の塊の代理は箱の中でプレイヤーに一番近い点(LAB_CRAWLER §4)
           const d = Math.hypot(ex - pcx, ey - pcy);
           if (d > meleeR) continue;
           shijinHitEnemy(e.id, RHYTHM_TAP_DAMAGE, false);
@@ -9635,7 +9640,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const bcy = bp.y + bp.height / 2;
               const target = useGameStore.getState().enemies
                 .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
-                .map(e => ({ e, d: Math.hypot(e.x + e.width / 2 - bcx, e.y + e.height / 2 - bcy) }))
+                .map(e => { const a = blastAnchorOf(e, bcx, bcy); return { e, d: Math.hypot(a.x - bcx, a.y - bcy) }; }) // 死体の塊の代理は箱の最近点
                 .filter(h => h.d <= BYAKKO_RANGE)
                 .sort((a, b) => a.d - b.d)[0]?.e;
               if (target) {
@@ -11177,11 +11182,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (!kitStateAfterDispense.thrown && isFirstAidKitEmpty(kitStateAfterDispense, level)) {
             const target = useGameStore.getState().enemies
               .filter(e => !isReaperFamily(e.type) || isTerminalReaper(e))
-              .map(e => ({ enemy: e, dist: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) }))
+              .map(e => { const a = blastAnchorOf(e, pcx, pcy); return { enemy: e, dist: Math.hypot(a.x - pcx, a.y - pcy) }; })
               .sort((a, b) => a.dist - b.dist)[0]?.enemy;
             if (target) {
-              const tx = target.x + target.width / 2;
-              const ty = target.y + target.height / 2;
+              // 着地点=敵の中心(死体の塊の代理は箱の中でプレイヤーに一番近い点=縁で爆ぜる・LAB_CRAWLER §4)。
+              const { x: tx, y: ty } = blastAnchorOf(target, pcx, pcy);
               useGameStore.getState().spawnThrownBag(pcx, pcy, { id: target.id, x: tx, y: ty }, FIRST_AID_KIT_THROW_DAMAGE);
               useGameStore.getState().setFirstAidKitState({ ...kitStateAfterDispense, thrown: true });
             }
@@ -13316,8 +13321,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               for (const enemy of useGameStore.getState().enemies) {
                 if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
-                const ex = enemy.x + enemy.width / 2;
-                const ey = enemy.y + enemy.height / 2;
+                const { x: ex, y: ey } = blastAnchorOf(enemy, tcx, tcy); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
                 const dist = Math.hypot(ex - tcx, ey - tcy);
                 if (dist > tBlastR) continue;
                 if (tWalls.length > 0 && segmentBlocked(tcx, tcy, ex, ey, tWalls)) continue; // 壁越し不可
@@ -13473,8 +13477,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const dWalls = aoeWalls(dcx, dcy);
             for (const enemy of useGameStore.getState().enemies) {
               if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
-              const ex = enemy.x + enemy.width / 2;
-              const ey = enemy.y + enemy.height / 2;
+              const { x: ex, y: ey } = blastAnchorOf(enemy, dcx, dcy); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
               const dist = Math.hypot(ex - dcx, ey - dcy);
               if (dist > dBlastR) continue;
               if (dWalls.length > 0 && segmentBlocked(dcx, dcy, ex, ey, dWalls)) continue; // 壁越し不可
@@ -13602,8 +13605,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const gWalls = aoeWalls(gx, gy);
           for (const enemy of useGameStore.getState().enemies) {
             if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
-            const ex = enemy.x + enemy.width / 2;
-            const ey = enemy.y + enemy.height / 2;
+            const { x: ex, y: ey } = blastAnchorOf(enemy, gx, gy); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
             const dist = Math.hypot(ex - gx, ey - gy);
             if (dist > blastR) continue;
             if (gWalls.length > 0 && segmentBlocked(gx, gy, ex, ey, gWalls)) continue; // 壁越しには効かない
@@ -13664,8 +13666,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const glWalls = aoeWalls(sx, sy);
           for (const splashEnemy of useGameStore.getState().enemies) {
             if (isReaperFamily(splashEnemy.type) && !isTerminalReaper(splashEnemy)) continue;
-            const ex = splashEnemy.x + splashEnemy.width / 2;
-            const ey = splashEnemy.y + splashEnemy.height / 2;
+            const { x: ex, y: ey } = blastAnchorOf(splashEnemy, sx, sy); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
             const dist = Math.hypot(ex - sx, ey - sy);
             if (dist > exRadius) continue;
             if (glWalls.length > 0 && segmentBlocked(sx, sy, ex, ey, glWalls)) continue; // 壁越し不可
@@ -13771,8 +13772,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               for (const enemy of useGameStore.getState().enemies) {
                 if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
-                const ex = enemy.x + enemy.width / 2;
-                const ey = enemy.y + enemy.height / 2;
+                const { x: ex, y: ey } = blastAnchorOf(enemy, mine.x, mine.y); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
                 const dist = Math.hypot(ex - mine.x, ey - mine.y);
                 if (dist > smBlastR) continue;
                 if (smWalls.length > 0 && segmentBlocked(mine.x, mine.y, ex, ey, smWalls)) continue; // 壁越しには効かない
@@ -13866,8 +13866,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const fkWalls = aoeWalls(bx, by);
               for (const enemy of useGameStore.getState().enemies) {
                 if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
-                const ex = enemy.x + enemy.width / 2;
-                const ey = enemy.y + enemy.height / 2;
+                const { x: ex, y: ey } = blastAnchorOf(enemy, bx, by); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
                 const dist = Math.hypot(ex - bx, ey - by);
                 if (dist > blastR) continue;
                 if (fkWalls.length > 0 && segmentBlocked(bx, by, ex, ey, fkWalls)) continue; // 壁越し不可
@@ -13971,7 +13970,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const boomWalls = aoeWalls(bx, by);
                 for (const e of bs.enemies) {
                   if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
-                  const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+                  const { x: ex, y: ey } = blastAnchorOf(e, bx, by); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
                   if (Math.hypot(ex - bx, ey - by) > r) continue;
                   if (boomWalls.length > 0 && segmentBlocked(bx, by, ex, ey, boomWalls)) continue; // 壁越し不可
                   const killed = damageEnemy(e.id, dmg, true); // 爆発=ボス系には非致死
@@ -14145,7 +14144,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const splashBase = rp.damage * GRENADE_BLAST_DAMAGE_MULT * exMult;
               for (const rEnemy of useGameStore.getState().enemies) {
                 if (isReaperFamily(rEnemy.type) && !isTerminalReaper(rEnemy)) continue;
-                const rex = rEnemy.x + rEnemy.width / 2, rey = rEnemy.y + rEnemy.height / 2;
+                const { x: rex, y: rey } = blastAnchorOf(rEnemy, rcx, rcy); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
                 const rDist = Math.hypot(rex - rcx, rey - rcy);
                 if (rDist > exRadius) continue;
                 if (rWalls.length > 0 && segmentBlocked(rcx, rcy, rex, rey, rWalls)) continue;
@@ -14250,7 +14249,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.getState().spawnGlow(strike.x, strike.y, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
                   const sgWalls = aoeWalls(strike.x, strike.y);
                   for (const sgEnemy of sgAimable) {
-                    const sex = sgEnemy.x + sgEnemy.width / 2, sey = sgEnemy.y + sgEnemy.height / 2;
+                    const { x: sex, y: sey } = blastAnchorOf(sgEnemy, strike.x, strike.y); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
                     const sDist = Math.hypot(sex - strike.x, sey - strike.y);
                     if (sDist > SIGNAL_STRIKE_RADIUS_PX) continue;
                     if (sgWalls.length > 0 && segmentBlocked(strike.x, strike.y, sex, sey, sgWalls)) continue;
@@ -14859,6 +14858,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         projectileEnemyCollisions.forEach(({ projectileId, enemyId, damage, headshot }) => {
           const enemyForFx = collisionEnemies.find(e => e.id === enemyId);
           const projectile = collisionProjectiles.find(p => p.id === projectileId);
+          // 当たった手応えの絵・着弾爆発の点(LAB_CRAWLER §4・品質監査A2/A3): 通常の敵=箱の中心(従来どおり)。
+          // 死体の塊の代理(幅742)だけは弾に一番近い箱の点=当たった所(中心に出すと画面の外になる)。
+          const hitPt = enemyForFx
+            ? blastAnchorOf(enemyForFx,
+              projectile ? projectile.x + projectile.width / 2 : enemyForFx.x + enemyForFx.width / 2,
+              projectile ? projectile.y + projectile.height / 2 : enemyForFx.y + enemyForFx.height / 2)
+            : { x: 0, y: 0 };
+          const hitIsCrawler = !!enemyForFx && isLabCrawlerProxyType(enemyForFx.type);
 
           // Apply the crit multiplier at hit time: bosses take 5× on a crit,
           // normal enemies 1.5×. `damage` is the projectile's base damage.
@@ -15112,7 +15119,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if ((projectile?.weaponKey === 'escort' || isGhostShot) && enemyForFx) {
             const hpl = collisionState.player;
             const hcam = useGameStore.getState().camera, hgb = useGameStore.getState().gameBounds;
-            hitSfxGain = npcSfxDistGain(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2, hpl.x + hpl.width / 2, hpl.y + hpl.height / 2, hcam, hgb);
+            hitSfxGain = npcSfxDistGain(hitPt.x, hitPt.y, hpl.x + hpl.width / 2, hpl.y + hpl.height / 2, hcam, hgb);
           }
           if (!gpDeflectedShot) playSfx(hitCrit ? 'headshot' : 'shot-damage', hitSfxGain); // 幻影が弾いた弾は無音(v0.25.3640監査Q1-1)
           // 撃たれた対象の背中側(=弾の進行方向の出口)に「ドバッと火」破裂演出(2コマ立ち絵=プールsprite1枚で安い)。
@@ -15123,17 +15130,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (enemyForFx && projectile && !gpBulletReflected && !fireJetEnemiesThisFrame.has(enemyId) && fireNowMs - lastJetAt >= FIRE_JET_DEDUP_MS) {
             fireJetEnemiesThisFrame.add(enemyId);
             fireJetEnemyAtRef.current.set(enemyId, fireNowMs);
-            const ecx = enemyForFx.x + enemyForFx.width / 2, ecy = enemyForFx.y + enemyForFx.height / 2;
+            const ecx = hitPt.x, ecy = hitPt.y;
             let dx = projectile.direction.x, dy = projectile.direction.y;
             const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-            const ox = ecx + dx * (enemyForFx.width * 0.42), oy = ecy + dy * (enemyForFx.height * 0.18);
+            const ox = ecx + dx * (hitIsCrawler ? 0 : enemyForFx.width * 0.42), oy = ecy + dy * (hitIsCrawler ? 0 : enemyForFx.height * 0.18); // 塊は当たった所そのものから
             const ang = Math.atan2(dy, dx);
             const fireLen = hitFireLen(projectile.weaponType, shotgunPelletHitsByEnemy.get(enemyId) ?? 1); // 銃系統で大きさ可変(社長指示)
             useGameStore.getState().spawnFireJet(ox, oy, ang, fireLen);
             useGameStore.getState().spawnGlow(ox, oy, 20, 'rgba(251,146,60,', 150); // 根元の小グロー(プール済み=安い)
             // 血飛沫(OP射撃シーンと同素材・3コマ100msずつ)。火の破裂と完全に同じ出口点(ox,oy)・
             // 同じ角度で噴く(社長指示v0.25.2024)。サイズは敵幅×4.0(最低96px・v0.25.2025でさらに2倍)。
-            useGameStore.getState().spawnBlood(ox, oy, ang, Math.max(96, enemyForFx.width * 4.0), { flash: HIT_BLINK_TYPES.has(enemyForFx.type) }); // 点滅(ゾンビの試し・2026-10-16)
+            useGameStore.getState().spawnBlood(ox, oy, ang, Math.max(96, (hitIsCrawler ? 165 : enemyForFx.width) * 4.0), { flash: HIT_BLINK_TYPES.has(enemyForFx.type) }); // 点滅(ゾンビの試し・2026-10-16)
           }
           // NPCセリフ9: 護衛弾(weaponKey='escort')が敵を倒したら、撃破地点に最も近い護衛が反応(低頻度・CD)。
           if (enemyKilled && projectile?.weaponKey === 'escort' && enemyForFx) {
@@ -15157,8 +15164,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // warpUntil を立てる者が居なくなった=常に非ワープ。過去の除外(ミゲル/idolの絵消えバグ)ごと不要になった。
 
           if (enemyForFx) {
-            const hitX = enemyForFx.x + enemyForFx.width / 2;
-            const hitY = enemyForFx.y + enemyForFx.height / 2;
+            const hitX = hitPt.x;
+            const hitY = hitPt.y;
             // §5.23 M22 C1: 血しぶきの方向=弾の進行方向(出口側=貫通していく向き)。
             const bDirX = DIRFX_ENABLED && projectile ? projectile.direction.x : undefined;
             const bDirY = DIRFX_ENABLED && projectile ? projectile.direction.y : undefined;
@@ -15168,8 +15175,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           // Crit / headshot juice: gold shockwave + sparks + glow.
           if (hitCrit && enemyForFx) {
-            const cex = enemyForFx.x + enemyForFx.width / 2;
-            const cey = enemyForFx.y + enemyForFx.height / 2;
+            const cex = hitPt.x;
+            const cey = hitPt.y;
             spawnRing(cex, cey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
             spawnBurst(cex, cey, '#fde047', 10);
             useGameStore.getState().spawnGlow(cex, cey, 34, 'rgba(253,224,71,', 240);
@@ -15188,8 +15195,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // ダメージを重ねて与えない。範囲内の他の敵にはdmgと同じ額を配り、石も付ける。
             grenadeExplodedThisFrame.add(projectileId);
             playSfx('bomb');
-            const acBlastX = enemyForFx.x + enemyForFx.width / 2;
-            const acBlastY = enemyForFx.y + enemyForFx.height / 2;
+            const acBlastX = hitPt.x;
+            const acBlastY = hitPt.y;
             spawnRing(acBlastX, acBlastY, 6, ALCHEMY_BURST_RADIUS_PX, 'rgba(250,204,21,0.75)', 3, 320);
             spawnBurst(acBlastX, acBlastY, '#facc15', 12);
             useGameStore.getState().spawnGlow(acBlastX, acBlastY, 30, 'rgba(250,204,21,', 320);
@@ -15248,8 +15255,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const rocketMult = projectile?.weaponKey === ROCKET_WEAPON_KEY ? ROCKET_BLAST_RADIUS_MULT : 1;
             const exRadius = GRENADE_BLAST_RADIUS * exMult * heavyGunnerExplosionMult(skillPlayer, gameTime) * rocketMult;
             let glHitCount = 1; // 直撃した敵を含む
-            const blastX = enemyForFx.x + enemyForFx.width / 2;
-            const blastY = enemyForFx.y + enemyForFx.height / 2;
+            const blastX = hitPt.x;
+            const blastY = hitPt.y;
             spawnRing(blastX, blastY, 10, exRadius, 'rgba(251,146,60,0.82)', 5, GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
             spawnBurst(blastX, blastY, '#f97316', 24);
             spawnBurst(blastX, blastY, '#7f1d1d', 10);
@@ -15260,8 +15267,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const glWalls = aoeWalls(blastX, blastY);
             for (const splashEnemy of useGameStore.getState().enemies) {
               if (splashEnemy.id === enemyId || (isReaperFamily(splashEnemy.type) && !isTerminalReaper(splashEnemy))) continue;
-              const sx = splashEnemy.x + splashEnemy.width / 2;
-              const sy = splashEnemy.y + splashEnemy.height / 2;
+              const { x: sx, y: sy } = blastAnchorOf(splashEnemy, blastX, blastY); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
               const dist = Math.hypot(sx - blastX, sy - blastY);
               if (dist > exRadius) continue;
               if (glWalls.length > 0 && segmentBlocked(blastX, blastY, sx, sy, glWalls)) continue; // 壁越し不可
@@ -15299,8 +15305,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // キャラ固有 ヘビーガンナー: 直近の同一攻撃2体以上ヒットで爆発範囲 ×1.1。
             const exRadius = (projectile.explodeRadius ?? HEAVY_GRENADE_RADIUS) * exMult * heavyGunnerExplosionMult(skillPlayer, gameTime);
             let exHitCount = 1; // 直撃した敵を含む
-            const blastX = enemyForFx.x + enemyForFx.width / 2;
-            const blastY = enemyForFx.y + enemyForFx.height / 2;
+            const blastX = hitPt.x;
+            const blastY = hitPt.y;
             // v0.25.2472: ゴースト発(ownerGhost=ゴースト設置タレットのランチャー弾のみ)は青白FX
             // (視覚のみ・判定/ダメージ不変。プレイヤーの弾はownerGhost未設定=従来色)。
             if (projectile.ownerGhost) {
@@ -15320,8 +15326,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const exWalls = aoeWalls(blastX, blastY);
             for (const splashEnemy of useGameStore.getState().enemies) {
               if (splashEnemy.id === enemyId || (isReaperFamily(splashEnemy.type) && !isTerminalReaper(splashEnemy))) continue;
-              const sx = splashEnemy.x + splashEnemy.width / 2;
-              const sy = splashEnemy.y + splashEnemy.height / 2;
+              const { x: sx, y: sy } = blastAnchorOf(splashEnemy, blastX, blastY); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
               const dist = Math.hypot(sx - blastX, sy - blastY);
               if (dist > exRadius) continue;
               if (exWalls.length > 0 && segmentBlocked(blastX, blastY, sx, sy, exWalls)) continue;
@@ -15402,8 +15407,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             !projectile.explodeOnHit && !isGrenadeGunKey(projectile.weaponKey) && // v0.25.3291: グレネード系全キー除外
             ricochetLv && Math.random() < [0, 0.2, 0.3, 0.4][ricochetLv]
           ) {
-            const ox = enemyForFx.x + enemyForFx.width / 2;
-            const oy = enemyForFx.y + enemyForFx.height / 2;
+            const ox = hitPt.x;
+            const oy = hitPt.y;
             let target: typeof enemyForFx | undefined;
             let bestD2 = Infinity;
             for (const other of useGameStore.getState().enemies) {
@@ -15456,7 +15461,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 社長指示v0.25.3300 エコーショット覚醒(Lv3): 複製弾に延焼を付与(延焼弾Lv1相当・命中側が適用)。
               ...(echoLv >= 3 ? { bonusIncendiary: true } : {}),
             });
-            spawnBurst(enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2, '#67e8f9', 6);
+            spawnBurst(hitPt.x, hitPt.y, '#67e8f9', 6);
           }
 
           // SKILL_BUILD_REDESIGN.md §28(B7) スキル: アイスショット = 命中した敵を鈍足化。
@@ -15474,7 +15479,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }));
             // 社長指示v0.25.3277「アイスショットは発動したら氷のキラキラを(発動時だけね)」:
             // 鈍足が付いた瞬間だけ、氷色+白の小さな煌めきを一拍(分類②・既存粒子プールのみ)。
-            const icx = enemyForFx.x + enemyForFx.width / 2, icy = enemyForFx.y + enemyForFx.height / 2;
+            const icx = hitPt.x, icy = hitPt.y;
             spawnBurst(icx, icy, '#bae6fd', 8);
             spawnBurst(icx, icy, '#f0f9ff', 4);
           }
@@ -15519,7 +15524,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (burn.floorRadius !== null && incGameTime >= incendiaryFloorNextAtRef.current) {
               incendiaryFloorNextAtRef.current = incGameTime + INCENDIARY_FLOOR_CD_MS;
               useGameStore.getState().spawnGroundFire(
-                enemyForFx.x + enemyForFx.width / 2, enemyForFx.y + enemyForFx.height / 2,
+                hitPt.x, hitPt.y,
                 undefined, burn.floorRadius,
               );
             }
@@ -15531,8 +15536,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 援護が壊れて見える(社長指示v0.25.2293「味方は演出」の体裁を守る)。
           if (enemyForFx && dmg > 0 && !gpDeflectedShot) { // 幻影が弾いた弾は数字も出さない(v0.25.3640監査Q1-1)
             spawnDamageNumber(
-              enemyForFx.x + enemyForFx.width / 2,
-              enemyForFx.y,
+              hitIsCrawler ? hitPt.x : enemyForFx.x + enemyForFx.width / 2,
+              hitIsCrawler ? hitPt.y : enemyForFx.y, // 死体の塊は当たった高さ(数字の置き場所は store が縁の内側へ寄せる)
               dmg,
               !!projectile?.reflected || hitCrit, { enemyId: enemyForFx.id });
           }
@@ -15742,7 +15747,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               for (const enemy of useGameStore.getState().enemies) {
                 if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) continue;
-                const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+                const { x: ecx, y: ecy } = blastAnchorOf(enemy, ex0, ey0); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
                 if (Math.hypot(ecx - ex0, ecy - ey0) > EGG_BLAST_RADIUS) continue;
                 const egKilled = damageEnemy(enemy.id, MINE_DAMAGE, true);
                 spawnDamageNumber(ecx, enemy.y, MINE_DAMAGE, false, { enemyId: enemy.id });
@@ -16278,8 +16283,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   break;
                 case 'lab-clear-item': {
                   // 研究所クリア条件アイテム: 拾うと勝利。到達演出(~1.5s)を挟んでイベント勝利へ。
+                  // ★ステージ2(屋外)で死体の塊を置いた出撃は拾ってもクリアしない(第2版・research/LAB_CRAWLER.md §4):
+                  //   スタート地点に帰還サークルが出て(入ればクリア)、塊が前から出てくる(labCrawlerTick)。
                   const gw = useGameStore.getState();
-                  if (gw.goalReachedAt === 0 && !gw.gameWon) {
+                  if (gw.labEscapeRun && !indoor) {
+                    if (gw.labEscapeAt === 0 && !gw.gameWon) {
+                      gw.beginLabEscape(); // ジングルは鳴らさない(拾った音だけ=唸りまで一拍静か・クリエイティブ監査#5)
+                      // 旧版の「勝ち」の絵(白い全画面フラッシュ・金のリングと粒)はこの経路では出さない(2巡目#4)。
+                      // 取得表示は回り込みのアテンションが始まる前に消える短さ(holdMs)。
+                      useGameStore.setState({ lastWeaponGet: { name: '重要データ', at: Date.now(), color: '#fde68a', kind: 'data', holdMs: 320 } });
+                    }
+                  } else if (gw.goalReachedAt === 0 && !gw.gameWon) {
                     useGameStore.setState({ goalReachedAt: Date.now() });
                     spawnFlash('rgba(255,255,255,0.28)', 420);
                     spawnRing(pk.x + 8, pk.y + 8, 6, 64, 'rgba(253,230,138,0.9)', 4, 420);
@@ -17031,6 +17045,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const labZoneCounts = new Map<string, number>();
           if (labTheme) {
             for (const e of useGameStore.getState().enemies) {
+              if (!countsTowardEnemyCap(e)) continue; // 死体の塊の代理(LAB_CRAWLER §4)は区画の数に入れない
               const k = labZoneKey(e.x + e.width / 2, e.y + e.height / 2);
               labZoneCounts.set(k, (labZoneCounts.get(k) ?? 0) + 1);
             }
@@ -17613,7 +17628,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const bcPunishIds: string[] = [];
             for (const e of useGameStore.getState().enemies) {
               if ((isReaperFamily(e.type) && !isTerminalReaper(e)) || e.aiPhase === 'jump') continue; // 深奥チェイサーは対象・空中無敵は対象外
-              const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+              const { x: ecx, y: ecy } = blastAnchorOf(e, bcx, bcy); // 死体の塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
               const dist = Math.hypot(ecx - bcx, ecy - bcy);
               if (dist > radius) continue;
               const falloff = 1 - dist / radius;
