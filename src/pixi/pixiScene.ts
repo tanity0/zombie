@@ -954,7 +954,7 @@ const LAB_EMLIGHT_MAX = 8;
 // たまにチカチカさせる。たまに0.5秒くらい暗いままだったり。恐怖演出」)。時刻表は utils/labFlicker.ts(純関数)。
 // 灯りが消えている度合いに応じて、非常灯を消し、画面全体を暗くする(幕)。?labflick=0 で無効。
 const LAB_FLICKER_ON = tsNum('labflick', 1) > 0;
-const LAB_FLICKER_DARK = Math.max(0, Math.min(1, tsNum('labflickdark', 0.78))); // 消灯しきった時の画面の暗さ。?labflickdark=
+const LAB_FLICKER_DARK = Math.max(0, Math.min(1, tsNum('labflickdark', 0.88))); // 消灯しきった時の画面の暗さ。0.78→0.88(社長「もう少しだけはっきり暗い時間を」)。?labflickdark=
 // 画面を暗くしてはいけない危険(赤い予告が出うる相手)が場にいるか。赤い予告は暗転でも必ず見えること(CLAUDE.md 色と形の文法)。
 // ボス戦(bossFightNow)に入らない型(ハンター・死神・使者)と、技の溜め/最中(aiPhase)・噛みつき(biteAt)の敵を見る。
 const LAB_DANGER_TYPES = new Set<string>(['hunter', 'reaper', 'hangedman']);

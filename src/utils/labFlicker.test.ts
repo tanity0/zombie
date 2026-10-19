@@ -37,11 +37,11 @@ describe('labFlicker(ステージ2の切れかけの蛍光灯)', () => {
         episodes++;
         if (ep.kind !== 'blackout') continue;
         blackouts++;
-        expect(ep.segs.some(([len, lv]) => lv === 0 && len >= 400 && len <= 650)).toBe(true);
+        expect(ep.segs.some(([len, lv]) => lv === 0 && len >= 480 && len <= 700)).toBe(true);
       }
     }
     expect(blackouts).toBeGreaterThan(0);
-    expect(blackouts / episodes).toBeLessThan(0.25);
+    expect(blackouts / episodes).toBeLessThan(0.3);
   });
 
   it('ちらつきは次の枠に食い込まない(枠ごとに1回)', () => {

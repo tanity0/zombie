@@ -75,15 +75,15 @@ export const flickerEpisode = (slot: number, seed = 0): { start: number; kind: F
   if (r() < (bad ? SKIP_BAD : SKIP_CALM)) return null;
   const start = slot * LAB_FLICKER_SLOT_MS + Math.round(r() * START_JITTER_MS);
   const p = r();
-  // 長い暗転は稀(調子が悪い時期の中でだけ・その中でも2割)。主は細かい点滅。
-  const kind: FlickerKind = bad && p < 0.2 ? 'blackout' : p < 0.75 ? 'stutter' : 'sag';
+  // 長い暗転は稀(調子が悪い時期の中でだけ・その中でも3割=社長「もう少しだけはっきり暗い時間を」で2割→3割)。主は細かい点滅。
+  const kind: FlickerKind = bad && p < 0.3 ? 'blackout' : p < 0.75 ? 'stutter' : 'sag';
   let segs: FlickerSegment[];
   if (kind === 'stutter') {
     segs = jitter(r, pick(r, STUTTERS));
   } else if (kind === 'blackout') {
     const lead = jitter(r, pick(r, STUTTERS));
     if (lead.length && lead[lead.length - 1][1] === 0) lead.pop(); // 最後の消灯は暗転へつなぐ
-    segs = [...lead, [Math.round(420 + r() * 200), 0], ...jitter(r, pick(r, RELIGHTS))];
+    segs = [...lead, [Math.round(480 + r() * 200), 0], ...jitter(r, pick(r, RELIGHTS))]; // 暗いまま 480〜680ms
   } else {
     segs = jitter(r, pick(r, SAGS));
   }

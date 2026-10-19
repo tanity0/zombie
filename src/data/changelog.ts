@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5142', items: [
+    'ステージ2の灯りが落ちた時の闇が深くなり、闇に沈む時間も少し長く、少し多い',
+  ] },
   { version: '0.25.5141', items: [
     'ステージ2の灯りが切れかけの蛍光灯のように瞬く。ときおり闇に沈み、すぐには点かない',
     '闇の中でも、敵の赤い予告は隠れない',
