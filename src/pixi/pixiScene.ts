@@ -784,8 +784,6 @@ const CASTLE_TARGET_HEIGHT = 188; // 125 * 1.5(建物1.5倍指示)
 const POI_CIRCLE_CULL_MARGIN = 230; // 210(サークル南端)+余裕
 const POLICE_CULL_MARGIN = 210; // 建物(188)基準+余裕(円を描かないので南端分は不要)
 const MERCHANT_TARGET_HEIGHT = 100;
-// ステージ2の武器商人(武器箱の見た目)の大きさ。拠点の武器庫の箱(30×22)に対する倍率。?mbox=
-const MERCHANT_BOX_SCALE = Math.max(0.5, tsNum('mbox', 1.6));
 const EVENT_NPC_TARGET_HEIGHT = 108;
 // NPC8人(=出撃している護衛8人: エドガー/ジョセフ/エリザベス/武蔵/ムハンマド/チェン/ローレン/フェイザー)
 // の全表示共通の縮小率(社長指示v0.25.1858「通常NPCとは出撃してるNPC8人のこと。0.8倍・全ての表示で」。
@@ -10597,22 +10595,24 @@ export class PixiScene {
     this.merchantView.alpha = horizonAlpha;
     this.merchantView.zIndex = merchant.y;
 
-    // ステージ2(研究所)の武器商人は「出張武器商人」=拠点の武器庫と同じ武器箱の見た目(社長指示2026-10-18)。
-    // 見た目だけを替える(話しかけ・品揃え・円は今のまま)。
+    // ステージ2(研究所)の武器商人は「出張武器商人」=拠点の武器庫と**まったく同じ見た目**(社長指示2026-10-18
+    // 「出張武器商人(拠点のやつ)に変更」→「他のステージと同じ見た目に揃えて」)。drawArmory をそのまま使う
+    // (琥珀の円+木箱・等倍・光の玉/接近リングなし)。話しかけ・品揃え・滞在の白いアークは今のまま。
     const boxLook = this.isLabStage;
-    const boxK = MERCHANT_BOX_SCALE * d;
-    const boxH = PixiScene.ARMORY_BOX_H * boxK;
     this.merchantSprite.visible = !boxLook;
     this.merchantSprite.texture = tex;
     this.merchantSprite.scale.set(sc);
 
-    const glowCy = boxLook ? boxH * 0.5 : targetH * 0.52;
-    const glowSize = boxLook ? boxH * 2.4 : targetH;
-    this.placeDofGlow(
-      this.merchantGlow, this.merchantGlowBokeh, true,
-      merchant.y - glowCy, 0, -glowCy, glowSize * 0.92, glowSize * 0.72,
-      (near ? 0.18 : 0.08) + pulse * (near ? 0.08 : 0.025),
-    );
+    if (boxLook) {
+      this.merchantGlow.visible = false;
+      this.merchantGlowBokeh.visible = false;
+    } else {
+      this.placeDofGlow(
+        this.merchantGlow, this.merchantGlowBokeh, true,
+        merchant.y - targetH * 0.52, 0, -targetH * 0.52, targetH * 0.92, targetH * 0.72,
+        (near ? 0.18 : 0.08) + pulse * (near ? 0.08 : 0.025),
+      );
+    }
 
     // 接地影は syncShadows のソフト方向影に統一(可視時のみリクエスト)。武器箱は自前の接地影を持つので出さない。
     this.merchantShadow = boxLook ? null : {
@@ -10624,11 +10624,11 @@ export class PixiScene {
 
     const g = this.merchantGfx;
     g.clear();
-    if (boxLook) PixiScene.drawArmoryBox(g, 0, 0, pulse, boxK);
-    if (near) {
+    if (boxLook) this.drawArmory(g, 0, 0, 0.5 + 0.5 * Math.sin(now / 260)); // 拠点の武器庫と同じ脈動
+    if (near && !boxLook) {
       g.circle(0, -8 * d, merchant.radius * d)
         .stroke({ width: 2 * d, color: 0xfbbf24, alpha: 0.38 + pulse * 0.22 });
-      g.circle(0, boxLook ? -(boxH + 14 * d) : -targetH * 0.82, 4 * d)
+      g.circle(0, -targetH * 0.82, 4 * d)
         .fill({ color: 0xfde68a, alpha: 0.82 + pulse * 0.16 });
     }
     // 滞在→話しかけの進捗アーク(社長指示v0.25.1842「サークルに3秒滞在」)。帰還/クエスト円の
@@ -10636,8 +10636,9 @@ export class PixiScene {
     if (dwellMs > 0) {
       const frac = Math.max(0, Math.min(1, dwellMs / MERCHANT_TALK_DWELL_MS));
       const start = -Math.PI / 2;
-      const rr = (merchant.radius + 6) * d;
-      const cyw = -8 * d;
+      // 武器箱の見た目の時は、箱の円(半径50・中心=足元)の外側に沿わせる。
+      const rr = boxLook ? 55 : (merchant.radius + 6) * d;
+      const cyw = boxLook ? 0 : -8 * d;
       g.moveTo(Math.cos(start) * rr, cyw + Math.sin(start) * rr)
         .arc(0, cyw, rr, start, start + Math.PI * 2 * frac)
         .stroke({ width: 4 * d, color: 0xfff7cc, alpha: 0.95 });

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5143', items: [
+    'ステージ2の武器箱の店が、ほかのステージの拠点の武器箱と同じ姿になった',
+  ] },
   { version: '0.25.5142', items: [
     'ステージ2の灯りが落ちた時の闇が深くなり、闇に沈む時間も少し長く、少し多い',
   ] },
