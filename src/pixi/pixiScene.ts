@@ -9683,7 +9683,9 @@ export class PixiScene {
     this.syncHospital(now); // 廃病院(通常ステージのみ。無いステージでは即 return=no-op)
     this.syncArmory(now); // §6.24 M48: 武器庫(同上)
     this.syncPolice(now); // §6.24 M48: 警察署(同上)
-    this.syncBaseSites(s.baseSites, now, s.safeBaseId, s.labArmory);
+    this.syncBaseSites(s.baseSites, now, s.safeBaseId, s.labArmory,
+      // ステージ2の武器商人=拠点の武器庫と同じ絵(同じ層・同じ加算)で描く(社長指示2026-10-18)。
+      s.stageTheme === 'lab' && !s.merchantHidden ? s.weaponMerchant : null);
     // v0.25.3055(社長指示「城ボス戦の時は移動できる距離を制限。制限ラインを薄く表示するのはいいが、
     // 中は塗るな。景観を損ねるので」): 研究対象の外縁(原点から3000px)に細い二重ストロークだけ描く。
     {
@@ -10596,8 +10598,9 @@ export class PixiScene {
     this.merchantView.zIndex = merchant.y;
 
     // ステージ2(研究所)の武器商人は「出張武器商人」=拠点の武器庫と**まったく同じ見た目**(社長指示2026-10-18
-    // 「出張武器商人(拠点のやつ)に変更」→「他のステージと同じ見た目に揃えて」)。drawArmory をそのまま使う
-    // (琥珀の円+木箱・等倍・光の玉/接近リングなし)。話しかけ・品揃え・滞在の白いアークは今のまま。
+    // 「出張武器商人(拠点のやつ)に変更」→「他のステージと同じ見た目に揃えて」)。絵は syncBaseSites が
+    // 拠点の武器庫と同じ baseSitesGfx(地面の層・加算合成)に描く=ここでは立ち絵・光の玉・接近リングを止めるだけ。
+    // 話しかけ・品揃え・滞在の白いアークは今のまま。
     const boxLook = this.isLabStage;
     this.merchantSprite.visible = !boxLook;
     this.merchantSprite.texture = tex;
@@ -10624,7 +10627,7 @@ export class PixiScene {
 
     const g = this.merchantGfx;
     g.clear();
-    if (boxLook) this.drawArmory(g, 0, 0, 0.5 + 0.5 * Math.sin(now / 260)); // 拠点の武器庫と同じ脈動
+    // 武器箱の本体は syncBaseSites が拠点の武器庫と同じ層(地面・加算)で描く。ここでは滞在のアークだけ。
     if (near && !boxLook) {
       g.circle(0, -8 * d, merchant.radius * d)
         .stroke({ width: 2 * d, color: 0xfbbf24, alpha: 0.38 + pulse * 0.22 });
@@ -27680,12 +27683,13 @@ export class PixiScene {
     g.rect(bx, by, bw, bh).stroke({ width: 1.5 * k, color: 0x2a2018, alpha: 0.9 });           // 縁
   }
 
-  private syncBaseSites(sites: BaseSite[] | undefined, now: number, safeBaseId: string | null, labArmory: { x: number; y: number } | null = null) {
+  private syncBaseSites(sites: BaseSite[] | undefined, now: number, safeBaseId: string | null, labArmory: { x: number; y: number } | null = null, merchantArmory: { x: number; y: number } | null = null) {
     const g = this.baseSitesGfx;
     g.clear();
     const pulse = 0.5 + 0.5 * Math.sin(now / 260);
     // 研究所: 拠点は無いが、アイドル手前の遠隔ショップ(武器庫)だけ描く(画面外はカリング)。
     if (labArmory && this.distanceOutsideViewport(labArmory.x, labArmory.y, 110) <= 0) this.drawArmory(g, labArmory.x, labArmory.y, pulse);
+    if (merchantArmory && this.distanceOutsideViewport(merchantArmory.x, merchantArmory.y, 110) <= 0) this.drawArmory(g, merchantArmory.x, merchantArmory.y, pulse);
     if (!sites || !sites.length || this.isLabStage) return; // ラボ(屋内/野外)では拠点を出さない
     const R = 130; // BASE_CAPTURE_RADIUS と一致
     for (const s of sites) {
