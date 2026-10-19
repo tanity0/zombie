@@ -170,3 +170,24 @@ export const clampCastleFightCrossing = (
   const k = (limit - 1) / (newDist || 1); // 厳密に内側へ着地させる(境界ちょうどに載せない)
   return { x: newCx * k, y: newCy * k };
 };
+
+// 円(中心・半径)を「行ける帯」に丸ごと収める中心を返す(帰還サークルなど、置く物の配置用)。
+// 帯の定義はアクターの中心(=大きさ0の点)で測る clampRectToPlayableArea と同じ。円の上下左右の端の4点が
+// 全部その帯に入るよう中心をずらす(=円が歩けない所へ食い込まない)。
+const CIRCLE_EDGE_OFFSETS: readonly (readonly [number, number])[] = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+export const clampCircleToPlayableArea = (
+  cx: number, cy: number, r: number, ctx: PlayableAreaCtx
+): { x: number; y: number } => {
+  let x = cx, y = cy;
+  for (const [ux, uy] of CIRCLE_EDGE_OFFSETS) {
+    const ex = x + ux * r, ey = y + uy * r;
+    const c = clampRectToPlayableArea(ex, ey, 0, 0, ctx);
+    x += c.x - ex;
+    y += c.y - ey;
+  }
+  return { x, y };
+};
+
+// 円が「行ける帯」に丸ごと収まっているか(上下左右の端の4点が全部帯の内側)。
+export const isCircleInPlayableArea = (cx: number, cy: number, r: number, ctx: PlayableAreaCtx): boolean =>
+  CIRCLE_EDGE_OFFSETS.every(([ux, uy]) => isRectInPlayableArea(cx + ux * r, cy + uy * r, 0, 0, ctx));

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5155', items: [
+    '帰還サークルが、歩けない場所にはみ出して出ることがあったのを直した',
+  ] },
   { version: '0.25.5154', items: [
     'ステージ4のジュンは出撃した時から隣を歩く。拠点には向かわない',
     '離れすぎると、ジュンが呼び止めてくる',

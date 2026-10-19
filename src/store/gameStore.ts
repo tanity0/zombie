@@ -430,6 +430,7 @@ import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD } from '../world/labWalls';
 import {
   clampRectToPlayableArea,
+  clampCircleToPlayableArea, isCircleInPlayableArea, // 帰還サークルを行ける帯の内側に置く
   clampCastleFightCrossing, // v0.25.3055: 城ボス戦の移動半径制限(研究対象の外縁まで)
   type PlayableAreaCtx,
   TUTORIAL_MOVE_Y_LIMIT_PX as TUTORIAL_MOVE_Y_LIMIT_PX_FROM_WORLD,
@@ -20886,6 +20887,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         return obstaclesAround(cx, cy).some(w =>
           bx < w.x + w.width && bx + bw > w.x && by < w.y + w.height && by + bh > w.y);
       };
+      // 行ける帯(歩けない所)に円が食い込む位置は置かない(社長報告2026-10-20「ゴールが歩行禁止区域に食い込んでる時がある」)。
+      // 帯の判定はプレイヤーの移動と同じ純関数(world/playableArea)。
+      const areaCtx: PlayableAreaCtx = {
+        farBackdrop: state.farBackdrop, labTheme: state.stageTheme === 'lab' && !state.indoorMode, corridorMode: state.corridorMode,
+        m0AdvanceLimitX: state.m0AdvanceLimitX, corridorRunInActive: state.corridorRunInActive, exStage: state.corridorMode && isExStageRun(),
+      };
+      const fits = (cx: number, cy: number): boolean => isCircleInPlayableArea(cx, cy, radius, areaCtx);
+      const blocked = (cx: number, cy: number): boolean => overlaps(cx, cy) || !fits(cx, cy);
+      const intoArea = (cx: number, cy: number) => clampCircleToPlayableArea(cx, cy, radius, areaCtx);
 
       // 基準位置(必要ならプレイヤーから離す)。
       let cx = originX, cy = originY;
@@ -20895,17 +20905,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         cx = px + Math.cos(baseAng) * RETURN_CIRCLE_AVOID_DIST;
         cy = py + Math.sin(baseAng) * RETURN_CIRCLE_AVOID_DIST;
       }
-      // 障害物に重なるなら、プレイヤーから一定距離以上を保ちつつ周囲を探索して空き地へ。
-      if (overlaps(cx, cy)) {
+      ({ x: cx, y: cy } = intoArea(cx, cy));
+      // 障害物に重なる/帯からはみ出すなら、プレイヤーから一定距離以上を保ちつつ周囲を探索して空き地へ。
+      // 候補は帯の内側へ寄せてから確かめる(帯の外の候補をそのまま採らない)。
+      if (blocked(cx, cy)) {
         const minDist = avoidPlayer ? RETURN_CIRCLE_AVOID_DIST : radius + 40;
         search:
         for (let ring = 0; ring < 5; ring++) {
           const dist = minDist + ring * (radius + 50);
           for (let k = 0; k < 8; k++) {
             const ang = baseAng + (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 4);
-            const tx = px + Math.cos(ang) * dist;
-            const ty = py + Math.sin(ang) * dist;
-            if (!overlaps(tx, ty)) { cx = tx; cy = ty; break search; }
+            const t = intoArea(px + Math.cos(ang) * dist, py + Math.sin(ang) * dist);
+            if (Math.hypot(t.x - px, t.y - py) < minDist * 0.8) continue; // 寄せた結果プレイヤーの足元に戻った候補は捨てる
+            if (!blocked(t.x, t.y)) { cx = t.x; cy = t.y; break search; }
           }
         }
       }
