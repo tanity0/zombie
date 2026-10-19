@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createLabCrawler, stepLabCrawler, crawlerRect, crawlerCenter, crawlerSlamCenter, crawlerSolid,
   crawlerTelegraphProg, crawlerAttackFrame, crawlerShouldWake, crawlerRouteProgress,
-  CRAWLER_START_DIST_PX, CRAWLER_MAX_SPEED, CRAWLER_HIT_W, CRAWLER_HIT_H, CRAWLER_WINDUP_MS, CRAWLER_RECOVER_MS,
+  CRAWLER_START_DIST_PX, CRAWLER_MAX_SPEED, crawlerSlamDamage, crawlerRushing, CRAWLER_RUSH_RANGE_PX, CRAWLER_RUSH_SPEED, CRAWLER_HIT_W, CRAWLER_HIT_H, CRAWLER_WINDUP_MS, CRAWLER_RECOVER_MS,
   CRAWLER_SLAM_RADIUS, CRAWLER_ABSORB_TO_ASCEND, CRAWLER_ASCEND_MS, CRAWLER_ATTACK_IMPACT_FRAME, CRAWLER_WAKE_PROGRESS,
   CRAWLER_SLAM_KB, CRAWLER_MAX_SPEED_Y,
   type LabCrawler, type CrawlerStepInput, type CrawlerTarget,
@@ -371,14 +371,14 @@ describe('ステージ2の這う塊: 叩きつけのコマ割り(見え方だけ
   it('溜めは頂点ほど長く、手が着くコマ7の頭=当たる時刻、着地のコマを止めてから早送り', () => {
     const c = { state: 'windup' as const, stateAt: 0, hitAt: CRAWLER_WINDUP_MS };
     expect(crawlerAttackFrame(c, 0)).toBe(0);
-    expect(crawlerAttackFrame(c, 89)).toBe(0);
-    expect(crawlerAttackFrame(c, 90)).toBe(1);
-    expect(crawlerAttackFrame(c, CRAWLER_WINDUP_MS - 231)).toBe(5);
-    expect(crawlerAttackFrame(c, CRAWLER_WINDUP_MS - 229)).toBe(6);
+    expect(crawlerAttackFrame(c, 56)).toBe(0);
+    expect(crawlerAttackFrame(c, 57)).toBe(1);
+    expect(crawlerAttackFrame(c, CRAWLER_WINDUP_MS - 146)).toBe(5);
+    expect(crawlerAttackFrame(c, CRAWLER_WINDUP_MS - 144)).toBe(6);
     expect(crawlerAttackFrame(c, CRAWLER_WINDUP_MS - 1)).toBe(6);
     const r = { state: 'recover' as const, stateAt: CRAWLER_WINDUP_MS, hitAt: CRAWLER_WINDUP_MS };
     expect(crawlerAttackFrame(r, CRAWLER_WINDUP_MS)).toBe(CRAWLER_ATTACK_IMPACT_FRAME);
-    expect(crawlerAttackFrame(r, CRAWLER_WINDUP_MS + 170)).toBe(CRAWLER_ATTACK_IMPACT_FRAME);
+    expect(crawlerAttackFrame(r, CRAWLER_WINDUP_MS + 120)).toBe(CRAWLER_ATTACK_IMPACT_FRAME);
     expect(crawlerAttackFrame(r, CRAWLER_WINDUP_MS + CRAWLER_RECOVER_MS - 1)).toBe(15);
   });
 });
@@ -408,3 +408,22 @@ describe('ステージ2の這う塊: 5倍の1体(社長「これ一体で、で�
     expect(r.x - (endCx + PW / 2)).toBeGreaterThanOrEqual(CRAWLER_SLAM_KB.distPx - 1);
   });
 });
+
+describe('ステージ2の這う塊: 社長調整2026-10-19(ダメージ50%・近くで突進)', () => {
+  it('叩きつけのダメージ=最大体力の50%(満タンから1発では倒れない・2発で倒れる)', () => {
+    expect(crawlerSlamDamage(120)).toBe(60);
+    expect(crawlerSlamDamage(131)).toBe(66);
+    expect(120 - crawlerSlamDamage(120)).toBeGreaterThan(0);
+    expect(120 - 2 * crawlerSlamDamage(120)).toBeLessThanOrEqual(0);
+  });
+  it('近く(箱の縁から突進の距離以内)では突進、遠くではゆっくり', () => {
+    const c = createLabCrawler({ x: 7000, y: 0 });
+    const r = crawlerRect(c);
+    const near = { x: r.x + r.width + CRAWLER_RUSH_RANGE_PX - 10, y: -14, width: 28, height: 28 };
+    const far = { x: r.x + r.width + CRAWLER_RUSH_RANGE_PX + 50, y: -14, width: 28, height: 28 };
+    expect(crawlerRushing(c, near)).toBe(true);
+    expect(crawlerRushing(c, far)).toBe(false);
+    expect(CRAWLER_RUSH_SPEED).toBeGreaterThan(104); // プレイヤーの素の速さより速い
+  });
+});
+

@@ -45,6 +45,11 @@ export const CRAWLER_BODY_FOOT_UP_PX = 0;
 export const CRAWLER_WAKE_PROGRESS = 0.2;
 /** 横の最高速度(px/秒)。プレイヤー約104・ゾンビ42 に対して「すごくゆっくり」。 */
 export const CRAWLER_MAX_SPEED = 18;
+/** 近くに居る時の突進(社長2026-10-19「近くにいるとすごいスピードでおいかけてきて」)。箱の縁からプレイヤーまでこの距離以内で、横の最高速度が RUSH まで上がる(プレイヤーの素の速さより速い)。 */
+export const CRAWLER_RUSH_RANGE_PX = 320;
+export const CRAWLER_RUSH_SPEED = 135;
+/** 突進の時の加減速の時定数(秒)。遠い時より速く寄る。 */
+export const CRAWLER_RUSH_TAU_S = 0.35;
 /** 縦の最高速度(px/秒)。プレイヤーの y を追う(社長決定「上下にも移動する」・約70)。 */
 export const CRAWLER_MAX_SPEED_Y = 70;
 /** 縦の追い方: 高さの差(px)×これ を目標の縦速度にする(最高 CRAWLER_MAX_SPEED_Y)。差が詰まるほどゆっくり寄る。 */
@@ -69,7 +74,7 @@ export const CRAWLER_SLAM_HAND_UP_PX = 33;
  * 叩きつける円の半径(=赤い予告の半径=判定)。手のひらが地面に着く範囲(土埃の広がり±55画素)と、伸ばした爪の先(胴の中心から
  * 約195画素=表示約435px)までを含む。箱の横に接して立つプレイヤーには、箱の中ほどの高さまで当たる。
  */
-export const CRAWLER_SLAM_RADIUS = 155;
+export const CRAWLER_SLAM_RADIUS = 230; // 155→230(社長2026-10-19「攻撃範囲もっと広く」)
 /** 歩きシートのコマ数(lab-crawler-walk.png 4800×130・1コマ400px)。 */
 export const CRAWLER_WALK_FRAMES = 12;
 /** 攻撃シートのコマ数(lab-crawler-attack.png 6688×130・1コマ418px)。 */
@@ -77,17 +82,20 @@ export const CRAWLER_ATTACK_FRAMES = 16;
 /** 手が地面に着くコマ(0始まり)。最初の土埃が出るコマ(新しい攻撃シートでも同じ7=実測)。ここ=当たる瞬間。 */
 export const CRAWLER_ATTACK_IMPACT_FRAME = 7;
 /** 溜め(振り上げ)= コマ0〜6 の7コマぶん。巨体らしく遅め。 */
-export const CRAWLER_WINDUP_MS = 980;
+export const CRAWLER_WINDUP_MS = 620; // 980→620(社長2026-10-19「攻撃もっと早めて」)。コマの比(CRAWLER_WINDUP_FRAME_MS)で割り付ける
 /** 戻り = コマ7〜15 の9コマぶん(叩きつけ・土埃が舞って収まるまで)。 */
-export const CRAWLER_RECOVER_MS = 900;
+export const CRAWLER_RECOVER_MS = 600; // 900→600(同上)
 /** 次の攻撃までの間(戻りが終わってから)。 */
-export const CRAWLER_COOLDOWN_MS = 2500;
+export const CRAWLER_COOLDOWN_MS = 1200; // 2500→1200(同上)
 /**
  * 叩きつけのダメージ(プレイヤー)。「大きめ・即死ではない」。基準HP120の1/3。
  * 比較: ステージ2で一番重い一撃=研究所の大型(lab-zombie-3)の跳び36・アイドルの拳/狙撃30、
  * 英雄の跳び28・パンプキン16。これらより一段上。即死させる仕組みは持たない(通常の被ダメージ)。
  */
-export const CRAWLER_SLAM_DAMAGE = 40;
+export const CRAWLER_SLAM_DAMAGE = 40; // 旧・固定値(参照用)。実際はプレイヤーの最大体力 × CRAWLER_SLAM_DAMAGE_FRAC
+/** 叩きつけのダメージ=プレイヤーの最大体力の50%(社長2026-10-19「二発喰らうと死ぬ(つまり50%)」)。1発では倒れない(満タンから)。 */
+export const CRAWLER_SLAM_DAMAGE_FRAC = 0.5;
+export const crawlerSlamDamage = (playerMaxHealth: number): number => Math.max(1, Math.ceil(Math.max(1, playerMaxHealth) * CRAWLER_SLAM_DAMAGE_FRAC));
 /** 叩きつけの吹き飛び(距離px・尺ms)。既存最大(英雄の突き260px)・重い被弾の段(約200px)より大きい。 */
 export const CRAWLER_SLAM_KB = { distPx: 300, ms: 520 } as const;
 /** この数だけ取り込むと昇天する。 */
@@ -157,6 +165,15 @@ export interface LabCrawler {
 export const crawlerRect = (c: Pick<LabCrawler, 'x' | 'y'>): Rect => footRect(c.x, c.y, CRAWLER_HIT_W, CRAWLER_HIT_H);
 /** 箱の中心。 */
 export const crawlerCenter = (c: Pick<LabCrawler, 'x' | 'y'>): { x: number; y: number } => ({ x: c.x, y: c.y - CRAWLER_HIT_H / 2 });
+/** 箱の縁からプレイヤーの箱までの隙間(重なっていれば0)。 */
+export const crawlerGapToPlayer = (c: Pick<LabCrawler, 'x' | 'y'>, p: Rect): number => {
+  const r = crawlerRect(c);
+  const gx = Math.max(0, r.x - (p.x + p.width), p.x - (r.x + r.width));
+  const gy = Math.max(0, r.y - (p.y + p.height), p.y - (r.y + r.height));
+  return Math.hypot(gx, gy);
+};
+/** 突進中か(プレイヤーが箱の縁から CRAWLER_RUSH_RANGE_PX 以内)。 */
+export const crawlerRushing = (c: Pick<LabCrawler, 'x' | 'y'>, p: Rect): boolean => crawlerGapToPlayer(c, p) <= CRAWLER_RUSH_RANGE_PX;
 /** 本体の絵の足元(肉の溜まりの上・箱の中心より少し奥)。 */
 export const crawlerBodyFoot = (c: Pick<LabCrawler, 'x' | 'y'>): { x: number; y: number } => ({ x: c.x, y: c.y - CRAWLER_BODY_FOOT_UP_PX });
 /** 今の向きで叩きつけたら円がどこへ落ちるか(絵の手のひらが地面に着く所)。 */
@@ -313,12 +330,13 @@ export const stepLabCrawler = (c: LabCrawler, inp: CrawlerStepInput): CrawlerSte
   if (n.state === 'move') {
     const cc = crawlerCenter(n);
     const dx = pc.x - cc.x;
-    if (Math.abs(dx) > 1) tvx = Math.sign(dx) * CRAWLER_MAX_SPEED;
+    if (Math.abs(dx) > 1) tvx = Math.sign(dx) * (crawlerRushing(n, inp.player) ? CRAWLER_RUSH_SPEED : CRAWLER_MAX_SPEED);
     tvy = Math.max(-CRAWLER_MAX_SPEED_Y, Math.min(CRAWLER_MAX_SPEED_Y, (pc.y - cc.y) * CRAWLER_Y_GAIN));
   }
-  const kx = dt > 0 ? 1 - Math.exp(-dt / CRAWLER_ACCEL_TAU_S) : 0;
+  const rushNow = n.state === 'move' && crawlerRushing(n, inp.player);
+  const kx = dt > 0 ? 1 - Math.exp(-dt / (rushNow ? CRAWLER_RUSH_TAU_S : CRAWLER_ACCEL_TAU_S)) : 0;
   const ky = dt > 0 ? 1 - Math.exp(-dt / CRAWLER_ACCEL_TAU_Y_S) : 0;
-  let vx = Math.max(-CRAWLER_MAX_SPEED, Math.min(CRAWLER_MAX_SPEED, n.vx + (tvx - n.vx) * kx));
+  let vx = Math.max(-CRAWLER_RUSH_SPEED, Math.min(CRAWLER_RUSH_SPEED, n.vx + (tvx - n.vx) * kx));
   let vy = Math.max(-CRAWLER_MAX_SPEED_Y, Math.min(CRAWLER_MAX_SPEED_Y, n.vy + (tvy - n.vy) * ky));
 
   let playerPush: CrawlerStepResult['playerPush'] = null;
@@ -365,9 +383,9 @@ const easeIn2 = (v: number): number => clamp01(v) ** 2;
  * 溜めの各コマの尺(ms・コマ0〜6)。振り上げの頂点ほど長く溜める(クリエイティブ監査2026-10-19)。合計=CRAWLER_WINDUP_MS。
  * 実際の溜めの長さ(hitAt−stateAt)が違っても、この比で割り付ける=手が着くコマ(7)の頭=当たる時刻は動かない。
  */
-export const CRAWLER_WINDUP_FRAME_MS = [90, 90, 110, 130, 150, 180, 230] as const;
+export const CRAWLER_WINDUP_FRAME_MS = [57, 57, 70, 82, 95, 114, 145] as const; // 合計620(旧980の比のまま縮めた)
 /** 戻り: 手が着いたコマ7をこの尺だけ止めてから、残り8コマを早送り(合計=CRAWLER_RECOVER_MS)。 */
-export const CRAWLER_IMPACT_HOLD_MS = 180;
+export const CRAWLER_IMPACT_HOLD_MS = 130;
 
 /** 溜め・戻りの攻撃コマ(0〜15)。溜め=コマ0〜6(頂点ほど長い)、戻り=コマ7(着地で止める)〜15。手が着くコマ7の頭=当たる時刻。 */
 export const crawlerAttackFrame = (c: Pick<LabCrawler, 'state' | 'stateAt' | 'hitAt'>, gameTime: number): number | null => {

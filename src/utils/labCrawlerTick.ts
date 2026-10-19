@@ -7,7 +7,7 @@
 import { useGameStore, ENEMY_REMOVE_CAUSE, knockbackSpeedFor, playerEnemyBodyBlockers } from '../store/gameStore';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import {
-  stepLabCrawler, crawlerCenter, CRAWLER_SLAM_DAMAGE, CRAWLER_SLAM_KB, type CrawlerTarget,
+  stepLabCrawler, crawlerCenter, crawlerSlamDamage, CRAWLER_SLAM_KB, type CrawlerTarget,
 } from '../world/labCrawler';
 import { isCrawlerAbsorbable } from './crawlerAbsorb';
 import type { PlayableAreaCtx } from '../world/playableArea';
@@ -96,7 +96,7 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
     ...(res.playerPush ? { player: { ...s.player, x: s.player.x + res.playerPush.dx, y: s.player.y + res.playerPush.dy } } : {}),
     ...(slam && blastNear ? {
       pumpkinBlasts: [...s.pumpkinBlasts, {
-        x: slam.x, y: slam.y, radius: slam.radius, damage: CRAWLER_SLAM_DAMAGE,
+        x: slam.x, y: slam.y, radius: slam.radius, damage: crawlerSlamDamage(s.player.maxHealth),
         enemyId: LAB_CRAWLER_BLAST_OWNER, moveKey: 'crawler-slam',
         kbSpeed: knockbackSpeedFor(CRAWLER_SLAM_KB.distPx, CRAWLER_SLAM_KB.ms), kbMs: CRAWLER_SLAM_KB.ms,
         // 吹き飛ぶ向き=塊から離れる向き(叩きつけの円の中心ではない=手の手前に居ても塊へ押し込まない)。

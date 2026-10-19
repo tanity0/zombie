@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5148', items: [
+    'ステージ2の死体の塊の一撃が重くなった。二度叩きつけられれば倒れる',
+    '塊は近づくと猛然と這い寄ってくる。腕を振り下ろすのも速く、届く範囲も広い',
+  ] },
   { version: '0.25.5147', items: [
     'ステージ2の死体の塊が、ひとつの巨大な姿になった。腕を振り下ろすと地面が揺れる',
   ] },
