@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5149 — ステージ2の通常BGMを差し替え【2026-10-19 22:58 JST】
+- 社長支給の曲「ステージ2の通常BGMはやめる。これを流す」→ public/audio/stage2.mp3(192kbps)を追加し、audioManager の GAME_BGM.lab を lab-stage.mp3→stage2.mp3 に。旧 lab-stage.mp3 は原盤として残す(public は原盤・削除しない)。
+- 検証: 1行の差し替えのみ(typecheck 対象外の文字列)。assets:check OK。
+- 変更ファイル: public/audio/stage2.mp3(新規)/ src/audio/audioManager.ts(この1行だけ)/ package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5148 — 死体の塊の調整(ダメージ50%・攻撃を速く・近くで突進・範囲を広く)【2026-10-19 22:20 JST】
 - 社長「塊の攻撃力はプレイヤー最大HPに比例で、二発喰らうと死ぬ(つまり50%)」「攻撃もっと早めて」「近くにいるとすごいスピードでおいかけてきて」「攻撃範囲もっと広く」。
 - ダメージ=最大体力×0.5(切り上げ・crawlerSlamDamage)。溜め 980→620ms(コマの比は維持=57/57/70/82/95/114/145)/戻り 900→600ms(着地の止め 180→130)/間 2500→1200ms。叩きつけの円の半径 155→230。
