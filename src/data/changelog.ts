@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5145', items: [
+    'ステージ2の灯りの瞬きがはっきりした。パチッと落ちて、パチッと点く',
+  ] },
   { version: '0.25.5144', items: [
     'ステージ2の武器箱の店が、ほかのステージと同じように光って見える',
   ] },
