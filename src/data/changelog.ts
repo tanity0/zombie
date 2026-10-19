@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5164', items: [
+    'ステージ2の帰り道の物を片付けるのはやめた。物陰も障害物も、行きと同じまま残る',
+  ] },
   { version: '0.25.5163', items: [
     'ステージ2の画面端に残っていた拠点の目印を消した',
     'ステージ2の結果画面では、区域はすべて未確認汚染エリア。次の深さは解析できない',

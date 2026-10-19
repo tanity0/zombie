@@ -113,20 +113,9 @@ export interface LabBrokenObstacle {
  */
 export const labDebrisInRegion = (
   broken: readonly LabBrokenObstacle[], kind: 'wall' | 'prop', minX: number, minY: number, maxX: number, maxY: number,
-): LabBrokenObstacle[] => broken.filter(b => b.kind === kind && b.x >= minX && b.x <= maxX && b.y >= minY && b.y <= maxY
-  && !(kind === 'prop' && isLabPropCleared(b.x))); // 逃走中に取り除いたプロップは残骸も出さない
+): LabBrokenObstacle[] => broken.filter(b => b.kind === kind && b.x >= minX && b.x <= maxX && b.y >= minY && b.y <= maxY);
 /** その壁・プロップが壊れているか(写しを見る)。 */
 export const isLabObstacleBroken = (id: string): boolean => brokenObstacleIds.has(id);
-
-// ---- 逃走中はプロップを取り除く(社長指示2026-10-20「逃走時は、壁以外を排除しておいて(オブジェクト)」) ----
-// ★正本は store の `labPropsClearKeep`。資料を拾った瞬間に、その時に見えていた範囲(keep)だけ残し、それ以外のプロップ
-// (遮蔽の保証プロップを含む)を判定と絵の両方から外す。見えていた物まで消すとパッと消える(慣性の掟)ので残す。壁は残す。
-let propsClearKeep: { minX: number; maxX: number } | null = null;
-/** store の購読(と資料を拾った瞬間)だけが呼ぶ。null=取り除かない(素の配置)。 */
-export const setLabPropsClearKeep = (keep: { minX: number; maxX: number } | null): void => { propsClearKeep = keep; };
-/** そのプロップ(足元x)が逃走中の取り除きで消えているか。 */
-export const isLabPropCleared = (footX: number): boolean =>
-  !!propsClearKeep && (footX < propsClearKeep.minX || footX > propsClearKeep.maxX);
 
 /** 壊れた物も含めた素の配置(決定論の置き場所の計算と、壊す側の当たりの候補に使う)。 */
 export const labWallsInRegionRaw = (minX: number, minY: number, maxX: number, maxY: number): PlacedWall[] => {
@@ -205,8 +194,7 @@ export const labPropsInRegionRaw = (minX: number, minY: number, maxX: number, ma
 /** 今立っているプロップ(壊れた物を除く)。判定・描画はこちらを使う。 */
 export const labPropsInRegion = (minX: number, minY: number, maxX: number, maxY: number): PlacedProp[] => {
   const all = labPropsInRegionRaw(minX, minY, maxX, maxY);
-  if (brokenObstacleIds.size === 0 && !propsClearKeep) return all;
-  return all.filter(p => !brokenObstacleIds.has(p.id) && !isLabPropCleared(p.footX));
+  return brokenObstacleIds.size === 0 ? all : all.filter(p => !brokenObstacleIds.has(p.id));
 };
 
 // 「敵の近くには必ず1つ視線を切れる遮蔽物がある」ことを構造で保証する(社長指示v0.25.2243・**壁とは別**)。

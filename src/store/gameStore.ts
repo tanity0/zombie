@@ -428,7 +428,7 @@ import { TELEGRAPH_TRACK_MS, stepTrackAim } from '../utils/telegraphTrack'; // �
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
-import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, LAB_START_SAFE_RADIUS, setLabPropsClearKeep, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD, setLabBrokenObstacleIds, type LabBrokenObstacle } from '../world/labWalls';
+import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, LAB_START_SAFE_RADIUS, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD, setLabBrokenObstacleIds, type LabBrokenObstacle } from '../world/labWalls';
 import {
   clampRectToPlayableArea,
   clampCircleToPlayableArea, isCircleInPlayableArea, // 帰還サークルを行ける帯の内側に置く
@@ -1209,8 +1209,6 @@ const createBaseSites = (): BaseSite[] => {
 
 // 帰還フェーズ: 通常ストーリーは地点内で離指確認、イベントは3秒滞在、洋館通路は5秒滞在で帰還完了。
 const RETURN_CIRCLE_RADIUS = 95;        // 帰還サークル半径(円コリジョン)
-/** 逃走中にプロップを取り除く時、拾った位置から残す幅の余白(1画面の幅に足す・px・社長指示2026-10-20)。 */
-const LAB_PROPS_CLEAR_KEEP_PAD_PX = 300;
 export const RETURN_CIRCLE_HOLD_MS = 3000; // イベント帰還の滞在時間(描画の進捗にも使用)
 // ステージ6(洋館通路)のゴール(社長指示v0.25.2132): 4000px付近のハッチ床の上で5秒滞在=ゴール(例のサークル)。
 // 位置は床タイル境界(FLOOR_REPEAT=520)に揃えて8枚目[3640,4160)をハッチ床に差し替え→中心=3900
@@ -6479,8 +6477,6 @@ interface GameState {
    * x/y=足元(破片の出どころ)・at=壊れた gameTime(描画の崩れ方の起点)。新しいランで空に戻る。
    */
   labBrokenObstacles: LabBrokenObstacle[];
-  /** ステージ2: 資料を拾った後(逃走中)に残すプロップの範囲(足元x)。それ以外のプロップは取り除く。null=取り除かない(社長指示2026-10-20)。 */
-  labPropsClearKeep: { minX: number; maxX: number } | null;
   /** ステージ2: 死体の塊を置いた出撃か(ゴールが「資料を拾ってスタート地点へ戻る」になる・第2版)。ラン開始時に決まる。 */
   labEscapeRun: boolean;
   /** ステージ2(第2版): 資料を拾った gameTime(0=まだ)。これ以降、塊が前から出てきて追い、スタート地点の円がゴール。 */
@@ -7818,7 +7814,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   labArmory: null,
   labCrawler: null,
   labBrokenObstacles: [],
-  labPropsClearKeep: null,
   labEscapeRun: false,
   labEscapeAt: 0,
   labEscapeBannerPending: false,
@@ -20914,12 +20909,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 逃走経路にレベル1の雑魚を1画面に1体ずつ、帯の上下の縁へ交互に置く(通路を塞がない・社長指示2026-10-20)。
       // 休眠(近づくと起きる)は普段の湧きと同じ。壁・プロップに重なる所は近くの空きへ寄せる。
       const pcx = state.player.x + state.player.width / 2;
-      // 逃走中は壁以外(プロップ)を取り除く(社長指示2026-10-20「逃走時は、壁以外を排除しておいて」)。
-      // 拾った時に見えている辺り(プレイヤー±1画面+余白)の物だけ残す=画面の中でパッと消さない。
-      // 写し(world)はここで先に差し替える=下の雑魚の置き場所(nudgeToClearLabSpot)も取り除いた後の配置で決まる。
-      const keepHalf = state.gameBounds.width + LAB_PROPS_CLEAR_KEEP_PAD_PX;
-      const labPropsClearKeep = { minX: pcx - keepHalf, maxX: pcx + keepHalf };
-      setLabPropsClearKeep(labPropsClearKeep);
       const proto = spawnEnemyAt('lab-zombie-1', 0, 0, state.gameTime);
       const escapeEnemies = labEscapeRouteSlots(pcx, state.gameBounds.width, LAB_CORRIDOR_Y_LIMIT_PX, proto.height, LAB_START_SAFE_RADIUS)
         .map(sl => {
@@ -20929,7 +20918,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
       return {
         ...(escapeEnemies.length ? { enemies: [...state.enemies, ...escapeEnemies] } : {}),
-        labPropsClearKeep,
         labEscapeAt: Math.max(1, state.gameTime),
         ...(state.returnCircle ? {} : { returnCircle: { x: 0, y: 0, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 } }),
         ...(crawlerWillAppear
@@ -23318,7 +23306,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         labEscapeAt: 0,
         labEscapeBannerPending: false,
         labBrokenObstacles: [],
-  labPropsClearKeep: null,
         // アイドル側には雑魚を置かない・湧かせない(書類の見張り3体はもともと書類=反対側にしか置かれない)。塊を置かない出撃は従来どおり。
         labIdolSide: labIdol && !vsEntryOfRun() && !isPracticeRun() ? Math.sign(labIdol.x) : 0,
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
@@ -24344,16 +24331,6 @@ setHateEscortProvider(() => hateEscortSource(useGameStore.getState()));
     if (st.labBrokenObstacles === lastBroken) return;
     lastBroken = st.labBrokenObstacles;
     setLabBrokenObstacleIds(lastBroken.map(b => b.id));
-  });
-}
-// 逃走中に取り除くプロップの範囲(上と同じ写しの作法・社長指示2026-10-20)。新しい出撃で null に戻る。
-{
-  let lastKeep = useGameStore.getState().labPropsClearKeep;
-  setLabPropsClearKeep(lastKeep);
-  useGameStore.subscribe(st => {
-    if (st.labPropsClearKeep === lastKeep) return;
-    lastKeep = st.labPropsClearKeep;
-    setLabPropsClearKeep(lastKeep);
   });
 }
 

@@ -173,13 +173,8 @@ describe('runLabCrawlerTick 第2版: 資料を拾った瞬間、前から出て�
       expect(cx).toBeGreaterThan(-7000);
     }
     expect(isCrawlerAbsorbable(route[0])).toBe(true); // 塊には食べられる(足止め役)
-    // 逃走中は壁以外(プロップ)を取り除く(社長指示2026-10-20)。拾った時に見えていた辺りだけ残す。壁は残る。
-    expect(labPropsInRegion(-4000, -300, -2000, 300).filter(q => q.footX > -4000 && q.footX < -2000)).toEqual([]);
-    expect(labPropsInRegionRaw(-4000, -300, -2000, 300).length).toBeGreaterThan(0);
-    expect(labWallsInRegion(-4000, -300, -2000, 300).length).toBe(labWallsInRegionRaw(-4000, -300, -2000, 300).filter(w => !isLabObstacleBroken(w.id)).length);
-    // 問い合わせは区画ごとに返すので、足元が拾った位置のすぐ近く(±250)の物だけで比べる。
-    const nearIds = (ps: { id: string; footX: number }[]) => ps.filter(q => Math.abs(q.footX + 7000) <= 250).map(q => q.id).sort();
-    expect(nearIds(labPropsInRegion(-7300, -300, -6700, 300))).toEqual(nearIds(labPropsInRegionRaw(-7300, -300, -6700, 300)));
+    // 逃走中もプロップは取り除かない(社長2026-10-20「やはり無しで。簡単になりすぎた」=壊れていない物はそのまま立っている)。
+    expect(labPropsInRegion(-4000, -300, -2000, 300).length).toBe(labPropsInRegionRaw(-4000, -300, -2000, 300).filter(q => !isLabObstacleBroken(q.id)).length);
     expect(st0.returnCircle).toMatchObject({ x: 0, y: 0 });
     expect(st0.labEscapeBannerPending).toBe(true); // 帯はアテンションが戻ってから
     expect(st0.eventBannerText).not.toBe(LAB_ESCAPE_BANNER);
