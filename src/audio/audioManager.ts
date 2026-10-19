@@ -148,6 +148,8 @@ export type SfxKey =
   | 'hero-neigh' | 'hero-snort' | 'hero-gallop'
   // research/LAB_CRAWLER.md(ステージ2の死体の塊・社長支給2026-10-19): 体を引きずる音(ループ専用=setCrawlerDrag が鳴らす)。
   | 'crawler-drag'
+  // ステージ2でたまに遠くから鳴る音(社長支給2026-10-19)。playDistantSfx が遠さ(音量・こもり・左右)を付けて鳴らす。
+  | 'lab-distant'
   // 英雄の犬(research/HERO_DOG.md・社長支給2026-10-15): 汎用の吠え / やられた時
   | 'dog-bark' | 'dog-yelp'
   // 英雄の命中音(既存素材を低く回して別物にする=phill-skylight-low と同じ作法): 叩きつけ / 体当たり / 斬撃。
@@ -490,6 +492,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'hero-gallop': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-gallop.mp3`, volume: 0.9, minIntervalMs: 200 },
   // 塊が体を引きずる音はループ専用(playSfx では鳴らさない)。
   'crawler-drag': { src: `${import.meta.env.BASE_URL}audio/sfx/crawler-drag.mp3`, volume: 0.9, minIntervalMs: 200 },
+  // ステージ2でたまに遠くから鳴る音(playDistantSfx 専用)。
+  'lab-distant': { src: `${import.meta.env.BASE_URL}audio/sfx/lab-distant.mp3`, volume: 1.0, minIntervalMs: 3000 },
   // 巨体の騎馬の一撃は雑魚の着地と同じ音にしない: 同じ素材を遅く(=低く重く)回す。
   'hero-slam': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.9, minIntervalMs: 80, playbackRate: 0.7 },
   'hero-tackle-hit': { src: `${import.meta.env.BASE_URL}audio/sfx/jump-land.mp3`, volume: 1.2, minIntervalMs: 80, playbackRate: 0.85 },
@@ -1920,6 +1924,42 @@ export const setCrawlerDrag = (gainMult: number): void => {
   }
   if (crawlerDragWatchdog != null) clearTimeout(crawlerDragWatchdog);
   crawlerDragWatchdog = window.setTimeout(() => { crawlerDragWatchdog = null; stopCrawlerDrag(); }, 300);
+};
+
+/**
+ * 遠くから鳴る音(ステージ2・utils/labDistantSound.ts が時刻と遠さを決める)。音量・ローパス(遠いほどこもる)・左右・速さを付けて1回鳴らす。
+ * cue を渡さずに呼ぶと素材の読み込みだけする(最初の1回を取りこぼさないため・毎フレーム呼んでよい)。
+ */
+export const playDistantSfx = (key: SfxKey, cue?: { gain: number; pan: number; lowpassHz: number; rate: number }): void => {
+  const context = sfxContext ?? ensureSfxContext();
+  if (!context) return;
+  const buffer = sfxBuffers.get(key);
+  if (!buffer) { loadSfxBuffer(key); return; }
+  if (!cue || muted || cue.gain <= 0) return;
+  const config = SFX_SOURCES[key];
+  const now = typeof window === 'undefined' ? Date.now() : (window.performance?.now() ?? Date.now());
+  if (config?.minIntervalMs && now - (sfxLastPlayedAt.get(key) ?? 0) < config.minIntervalMs) return;
+  sfxLastPlayedAt.set(key, now);
+  resumeSfxContext();
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.playbackRate.value = cue.rate;
+  const filter = context.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = cue.lowpassHz;
+  const gain = context.createGain();
+  gain.gain.value = (config?.volume ?? 1) * sfxVolume * cue.gain;
+  source.connect(filter);
+  filter.connect(gain);
+  let last: AudioNode = gain;
+  if (typeof context.createStereoPanner === 'function') {
+    const pan = context.createStereoPanner();
+    pan.pan.value = Math.max(-1, Math.min(1, cue.pan));
+    gain.connect(pan);
+    last = pan;
+  }
+  last.connect(context.destination);
+  try { source.start(0); } catch { /* ignore */ }
 };
 
 // Random zombie death grunt on a kill. A shared throttle stops mass deaths

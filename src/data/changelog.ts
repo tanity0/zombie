@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5152', items: [
+    'ステージ2で、ときどき遠くから何かの音が聞こえてくる',
+  ] },
   { version: '0.25.5151', items: [
     'ステージ4に衛生兵ジュンが同行する。戦いぶりはいつも通りだが、どこか様子がおかしい',
     'ステージ4のボスが現れる少し前、ジュンは隊を離れていく',

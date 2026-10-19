@@ -193,6 +193,7 @@ import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import { runLabCrawlerTick } from '../utils/labCrawlerTick'; // ステージ2の這う塊
+import { labDistantDue } from '../utils/labDistantSound'; // ステージ2でたまに遠くから鳴る音
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
   bountyPlaybackActive, clearBountyPlayback,
@@ -549,7 +550,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
-import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, setCrawlerDrag, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
+import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, setCrawlerDrag, playDistantSfx, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -1447,6 +1448,8 @@ const IDOL_ACTION_MIN_MS = HIDDEN_COMMON_TUNING_DEFAULTS.actionMinMs; // 既存�
 
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let idolCtrlErrLogged = false;                       // idol制御例外のログも初回だけ
+let labDistantPrevMs = 0;
+let labDistantSeed = (Math.random() * 1e9) | 0;
 let crawlerCtrlErrLogged = false;                    // ステージ2の這う塊の制御例外のログも初回だけ(本体はlabCrawlerTick.ts)
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
@@ -9173,6 +9176,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           reportSuppressedError('idol', err); // v0.25.3324: 同上
          }
         }
+
+        // --- ステージ2でたまに遠くから鳴る音(utils/labDistantSound.ts が時刻と遠さを決める・ゲーム時間で回す) ---
+        if (labTheme && !indoor && !useGameStore.getState().gameWon) {
+          if (newGameTime < labDistantPrevMs) labDistantSeed = (Math.random() * 1e9) | 0; // 新しい出撃
+          const cue = labDistantDue(labDistantPrevMs, newGameTime, labDistantSeed);
+          playDistantSfx('lab-distant', cue ?? undefined);
+        }
+        labDistantPrevMs = newGameTime;
 
         // --- ステージ2の這う塊(world/labCrawler.ts・倒せない・壁のように通れない・ゆっくり追う) ---
         // 判定と状態機械は純関数(stepLabCrawler)、store への書き込みは utils/labCrawlerTick.ts。
