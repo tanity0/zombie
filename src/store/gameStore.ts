@@ -436,6 +436,7 @@ import {
 } from '../world/playableArea';
 import { LAB_DOORS, LAB_BUTTON, LAB_ENEMIES, LAB_PLAYER_SPAWN, LAB_MERCHANT, LAB_CARD_KEY, LAB_WEAPON_CRATE, LAB_CLEAR_ITEM, LAB_UV_BARS, LAB_AMMO_PICKUPS, labBlockingWalls, generateLabProps } from '../world/labMap';
 import { labIdolSpotForDoc, labIdolShopSpot, type LabIdolSpot } from '../world/labIdolSpot';
+import { createLabCrawler, crawlerRect, crawlerSolid, type LabCrawler } from '../world/labCrawler'; // ステージ2の這う塊(倒せない・壁のように通れない)
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { worldDist } from '../config/worldScale'; // 世界の距離スケール(v0.25.4293)
 import { cineAccepts, cineCameraAt, cineSideOf, type CineEvent, type CineKind } from '../utils/cineCamera'; // ダイナミック・カメラワーク(v0.25.4294〜)
@@ -1992,6 +1993,8 @@ export const WIRE_HOP_ENABLED = typeof window === 'undefined' || new URLSearchPa
 
 // 敵タイプ → 死因表示用の日本語ラベル。
 const ENEMY_DEATH_LABELS: Record<string, string> = {
+  // ステージ2の這う塊(world/labCrawler.ts)。敵の型ではないが、叩きつけの爆風の持ち主の名札(utils/labCrawlerTick.LAB_CRAWLER_BLAST_OWNER)で引く。
+  'lab-crawler': '死体の塊',
   zombie: '変異体(徘徊型)',
   skeleton: '変異体(痩躯型)',
   ghost: '変異体(抱卵型)',
@@ -5832,11 +5835,52 @@ export interface PumpkinBlast {
   /** research/SHIELD_BLOCK.md §1-1: レーザー扱いの帯(ジブリルの槍・巨人の三連射)。盾の所で光が終わる(壁)。 */
   beam?: true;
   /**
+   * 吹き飛ぶ向きの起点(未指定=爆心 x,y)。ステージ2の這う塊の叩きつけは、円が手の先に落ちるので
+   * 爆心から押すと手前に居たプレイヤーが塊へ押し込まれる=塊の中心から離れる向きにする。
+   */
+  pushFrom?: { x: number; y: number };
+  /**
    * research/SHIELD_BLOCK.md §8(光線の幅): 盾の影で割った後の帯の並び。combatTick が `beam` の帯を盾で割った時だけ書く(それ以外は未指定=capsule をそのまま使う)。
    * 立っている間、プレイヤー・守護霊・英雄・軍人の当たりは capsule ではなくこの並びを読む。
    */
   strips?: BeamStrip[];
 }
+
+/**
+ * プレイヤーの移動を塞ぐ敵の体の箱(英雄・旗手の体/接触0の雑魚の足元/噛みつき敵の足元)。プレイヤーの移動の解決と、
+ * ステージ2の這う塊がプレイヤーを押し出す時の行き先の確認(utils/labCrawlerTick.ts)が同じ1本を見る。
+ * (nearX, nearY)=プレイヤーの左上(遠い個体は捨てる=全個体との解決を毎フレームやらない)。
+ */
+export const playerEnemyBodyBlockers = (enemies: readonly Enemy[], gameTime: number, nearX: number, nearY: number): Rect[] => {
+  const blockers: Rect[] = [];
+  for (const en of enemies) {
+    if (isCorpse(en)) continue;
+    // research/MUTANT_HERO.md: 英雄も体で塞ぐ(接触ダメージを持たない=重なると技を全部浴びるだけになる)。
+    // research/LIBERTY_HORDE.md §7: 解放軍群の旗手も同じ(接触ダメージ0のボス級)。
+    if (isBodyWallBoss(en.type)) {
+      if (en.health <= 0 || isUntouchable(en)) continue; // 昇天中の英雄は光に溶けていく=塞がない
+      const hb = heroBodyWallRect(en);
+      if (Math.abs(hb.x - nearX) > 300 || Math.abs(hb.y - nearY) > 300) continue;
+      blockers.push(hb);
+      continue;
+    }
+    // ★接触ダメージ0の雑魚(プラント)も足元の箱で塞ぐ(社長報告2026-10-17「プラント、重なれちゃう」・噛まないので壁を開ける時間も無い)。
+    if (en.health > 0 && isHarmlessFootWallSubject(en, isBossType)) { // ボス級(接触0の英雄等)は上の専用の壁 or 塞がない=対象外
+      const fb = biteWallRect(en);
+      if (Math.abs(fb.x - nearX) <= 160 && Math.abs(fb.y - nearY) <= 160) blockers.push({ x: fb.x, y: fb.y, width: fb.width, height: fb.height });
+      continue;
+    }
+    if (!isBiteSubject(en, isBiteExemptType, gameTime)) continue;
+    // ★噛みつきの踏み込み中は壁を開ける(社長裁定2026-08-25「この際、壁判定は通過可能になり、
+    // 当たり判定の瞬間に被っていたらダメージ、壁判定に戻す」)。開けないと覆いかぶされない。
+    if (isBiteWallOpen(en, gameTime)) continue;
+    const eb = biteWallRect(en);
+    // 遠い個体は捨てる(全個体との矩形解決を毎フレームやらない)。
+    if (Math.abs(eb.x - nearX) > 160 || Math.abs(eb.y - nearY) > 160) continue;
+    blockers.push({ x: eb.x, y: eb.y, width: eb.width, height: eb.height });
+  }
+  return blockers;
+};
 
 /**
  * 「**この距離だけ押したい**」を初速へ直す(v0.25.2653)。
@@ -6363,6 +6407,10 @@ interface GameState {
   baseSites: BaseSite[];
   /** 研究所: アイドルの手前の遠隔ショップ(拠点の武器庫と同じ・輪の中で指を離すと開く)。研究所以外/1対1は null(2026-10-11)。 */
   labArmory: { x: number; y: number } | null;
+  /** ステージ2(屋外ラボ)の這う塊(world/labCrawler.ts)。アイドルを置く出撃だけ。それ以外/昇天し終えたら null(2026-10-19)。 */
+  labCrawler: LabCrawler | null;
+  /** ステージ2: アイドルが居る側の符号(+1/-1)。その側には雑魚を湧かせない(utils/labSpawn.isLabIdolSide)。アイドルを置かない出撃は 0(2026-10-19)。 */
+  labIdolSide: number;
   escorts: EscortSoldier[];      // 護衛軍人NPC(4人・東西南北担当)。HPなし・前進&射撃&10秒占拠で解放。
   // PACING_PUZZLE.md §17-14: ウェルカムがあるランで、ウェルカムが終わるまで護衛NPCの名簿を
   // 預けておく置き場(escortsは空のまま=描画もtickも走らない=画面に存在しない)。ウェルカムが
@@ -7654,6 +7702,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   storyReturnPromptVisible: false,
   baseSites: createBaseSites(),
   labArmory: null,
+  labCrawler: null,
+  labIdolSide: 0,
   escorts: [],
   pendingEscorts: [],
   endingSoldiers: [],
@@ -8108,32 +8158,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         // (`biteWallRect`)。当たり判定そのもので塞ぐと、プレイヤーが攻撃の四角の中に
         // 立っていられず「ぶつかりに行かないと当たらない」状態になる(§12・enemyBite.ts に理由)。
         {
-          const blockers: Rect[] = [];
-          for (const en of state.enemies) {
-            if (isCorpse(en)) continue;
-            // research/MUTANT_HERO.md: 英雄も体で塞ぐ(接触ダメージを持たない=重なると技を全部浴びるだけになる)。
-            // research/LIBERTY_HORDE.md §7: 解放軍群の旗手も同じ(接触ダメージ0のボス級)。
-            if (isBodyWallBoss(en.type)) {
-              if (en.health <= 0 || isUntouchable(en)) continue; // 昇天中の英雄は光に溶けていく=塞がない
-              const hb = heroBodyWallRect(en);
-              if (Math.abs(hb.x - newX) > 300 || Math.abs(hb.y - newY) > 300) continue;
-              blockers.push(hb);
-              continue;
-            }
-            // ★接触ダメージ0の雑魚(プラント)も足元の箱で塞ぐ(社長報告2026-10-17「プラント、重なれちゃう」・噛まないので壁を開ける時間も無い)。
-            if (en.health > 0 && isHarmlessFootWallSubject(en, isBossType)) { // ボス級(接触0の英雄等)は上の専用の壁 or 塞がない=対象外
-              const fb = biteWallRect(en);
-              if (Math.abs(fb.x - newX) <= 160 && Math.abs(fb.y - newY) <= 160) blockers.push({ x: fb.x, y: fb.y, width: fb.width, height: fb.height });
-              continue;
-            }
-            if (!isBiteSubject(en, isBiteExemptType, state.gameTime)) continue;
-            // ★噛みつきの踏み込み中は壁を開ける(社長裁定2026-08-25「この際、壁判定は通過可能になり、
-            // 当たり判定の瞬間に被っていたらダメージ、壁判定に戻す」)。開けないと覆いかぶされない。
-            if (isBiteWallOpen(en, state.gameTime)) continue;
-            const eb = biteWallRect(en);
-            // 遠い個体は捨てる(全個体との矩形解決を毎フレームやらない)。
-            if (Math.abs(eb.x - newX) > 160 || Math.abs(eb.y - newY) > 160) continue;
-            blockers.push({ x: eb.x, y: eb.y, width: eb.width, height: eb.height });
+          const blockers: Rect[] = playerEnemyBodyBlockers(state.enemies, state.gameTime, newX, newY);
+          // ステージ2の這う塊も壁と同じく塞ぐ(すり抜けられない)。昇天中は判定なし=通れる。
+          const lc = state.labCrawler;
+          if (lc && crawlerSolid(lc)) {
+            const cr = crawlerRect(lc);
+            if (Math.abs(cr.x - newX) <= 400 && Math.abs(cr.y - newY) <= 400) blockers.push(cr);
           }
           if (blockers.length > 0) {
             const r = resolveAabb({ x: newX, y: newY, width: player.width, height: player.height }, blockers);
@@ -22987,6 +23017,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         baseSites: (corridorMode || farBackdrop === 'tutorial' || farBackdrop === 'ending') ? [] : createBaseSites(),
         // 研究所: アイドルの手前に遠隔ショップ(武器庫)。アイドルを置かない出撃(1対1)では置かない(社長指示2026-10-11「やはり研究所の遠隔ショップ復活で」)。
         labArmory: labIdol && !vsEntryOfRun() ? labIdolShopSpot(labIdol) : null,
+        // ステージ2の這う塊: アイドル側の入り口(スタートからアイドルの方へ600px)で待ち、順路(原点→資料)を20%進むと起きる。
+        // アイドルを置かない出撃(1対1)では置かない。
+        // ボスモード(練習ラン=アイドルとの戦いだけを見る場)も1対1と同じく置かない。
+        labCrawler: labIdol && labDoc && !vsEntryOfRun() && !isPracticeRun() ? createLabCrawler(labIdol, labDoc.x) : null,
+        // アイドル側には雑魚を置かない・湧かせない(書類の見張り3体はもともと書類=反対側にしか置かれない)。塊を置かない出撃は従来どおり。
+        labIdolSide: labIdol && !vsEntryOfRun() && !isPracticeRun() ? Math.sign(labIdol.x) : 0,
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
         // §17-14: ウェルカムがあるランはescortsを空で始める(pendingEscortsへ預けてある。
         // useGameLoop.tsがウェルカム終了の瞬間にescortsへ移す=出陣)。

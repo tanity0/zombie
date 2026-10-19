@@ -192,6 +192,7 @@ import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
 import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
+import { runLabCrawlerTick } from '../utils/labCrawlerTick'; // ステージ2の這う塊
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
   bountyPlaybackActive, clearBountyPlayback,
@@ -1431,6 +1432,7 @@ const IDOL_ACTION_MIN_MS = HIDDEN_COMMON_TUNING_DEFAULTS.actionMinMs; // 既存�
 
 let bossCtrlErrLogged = false;                       // 裏ボス制御例外のログは初回だけ(毎フレーム出さない)
 let idolCtrlErrLogged = false;                       // idol制御例外のログも初回だけ
+let crawlerCtrlErrLogged = false;                    // ステージ2の這う塊の制御例外のログも初回だけ(本体はlabCrawlerTick.ts)
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
 let phantomCtrlErrLogged = false;                    // 守護霊ボス「幻影」制御例外のログも初回だけ(本体はphantomTick.ts)
@@ -1446,6 +1448,7 @@ let loopErrLogged = false;                           // ループ本体例外の
 export const rearmLoopErrorFlags = (): void => {
   bossCtrlErrLogged = false;
   idolCtrlErrLogged = false;
+  crawlerCtrlErrLogged = false;
   angelCtrlErrLogged = false;
   bountyCtrlErrLogged = false;
   phantomCtrlErrLogged = false;
@@ -8991,6 +8994,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          } catch (err) {
           if (!idolCtrlErrLogged) { idolCtrlErrLogged = true; console.error('[idol] controller error (suppressed after first):', err); }
           reportSuppressedError('idol', err); // v0.25.3324: 同上
+         }
+        }
+
+        // --- ステージ2の這う塊(world/labCrawler.ts・倒せない・壁のように通れない・ゆっくり追う) ---
+        // 判定と状態機械は純関数(stepLabCrawler)、store への書き込みは utils/labCrawlerTick.ts。
+        // ここ(ポーズ・ヒットストップ・アテンション・登場演出で早期returnした後)で回す=それらの間は止まる。
+        if (labTheme && !indoor && useGameStore.getState().labCrawler && !useGameStore.getState().gameWon) {
+         try {
+          runLabCrawlerTick(newGameTime, deltaTime, (key, gain) => playSfx(key, gain));
+         } catch (err) {
+          if (!crawlerCtrlErrLogged) { crawlerCtrlErrLogged = true; console.error('[lab-crawler] controller error (suppressed after first):', err); }
+          reportSuppressedError('lab-crawler', err);
          }
         }
 
@@ -16850,7 +16865,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const placed = placeLabSpawn(
                 player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
                 labEnemy.width, labEnemy.height, LAB_CORRIDOR_Y_LIMIT_PX,
-                labVisitedRef.current, labVisionCircles,
+                labVisitedRef.current, labVisionCircles, Math.random, useGameStore.getState().labIdolSide, // アイドル側には湧かせない
               );
               if (!placed) continue; // 両側とも通った道=湧かせない(社長指示v0.25.2244)
               labEnemy.x = placed.x;

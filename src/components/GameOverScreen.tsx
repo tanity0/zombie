@@ -11,6 +11,7 @@ import { playSfx } from '../audio/audioManager';
 import NoBounceScroller from './NoBounceScroller';
 import { equipmentById, equipmentDescription, equipIconName, hasEquipIcon, equipScrapGold } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
+import { LAB_CRAWLER_BLAST_OWNER } from '../utils/labCrawlerTick'; // ステージ2の這う塊(敵の型を持たない)の名札
 import type { EquipSlot } from '../types/game';
 import type { BenchmarkResult } from './BenchmarkOverlay';
 import { getSelectedStageId, getSelectedMission, submitStageHighScore, getRunCores, pushRunCore, type RunCore } from '../data/progress';
@@ -182,6 +183,32 @@ const KillerLine: React.FC<{ deathCause: string }> = ({ deathCause }) => {
     : deathCause.startsWith(`${typeName}の`) ? deathCause.slice(typeName.length + 1)
       : deathCause.includes('の') ? deathCause.slice(deathCause.indexOf('の') + 1) : deathCause;
   const sub = [!promoted && byNamed && namedName ? typeName : '', move].filter(Boolean).join('・');
+  // ステージ2の這う塊は敵の型を持たない(倒した相手の記録が null になる)ので、死因の名から見分けて名前と絵を出す。
+  // 絵=歩きシート(4800×130・12コマ×400)の1コマ目を切り出して表示(高さ56)。★素材を差し替えたらこの3つの寸法も直す。
+  const crawlerName = enemyDeathLabel(LAB_CRAWLER_BLAST_OWNER);
+  if (!type && deathCause.startsWith(`${crawlerName}の`)) {
+    const SHEET_W = 4800, SHEET_H = 130, FRAME_W = 400;
+    const k = 56 / SHEET_H;
+    return (
+      <div className="mt-3 border-l-2 border-rose-400/60 bg-rose-950/20 px-3 py-2 text-left">
+        <p className="text-[10px] uppercase tracking-widest text-white/45">死因</p>
+        <div className="mt-1 flex items-end gap-3">
+          <div className="flex shrink-0 flex-col items-center">
+            <div style={{
+              width: Math.round(FRAME_W * k), height: 56, imageRendering: 'pixelated',
+              backgroundImage: `url(${spritePath('lab/lab-crawler-walk')})`, backgroundRepeat: 'no-repeat',
+              backgroundSize: `${Math.round(SHEET_W * k)}px 56px`, backgroundPosition: '0 0',
+            }} />
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-rose-300/40 to-transparent" />
+          </div>
+          <div className="min-w-0 pb-1">
+            <p className="text-[16px] font-semibold leading-tight text-rose-200">{crawlerName}</p>
+            <p className="mt-0.5 text-[11px] text-rose-200/70">{deathCause.slice(crawlerName.length + 1)}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="mt-3 border-l-2 border-rose-400/60 bg-rose-950/20 px-3 py-2 text-left">
       <p className="text-[10px] uppercase tracking-widest text-white/45">死因</p>

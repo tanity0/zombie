@@ -276,7 +276,8 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   if (blasts.length === 0) return;
   // スカジ氷=専用SE(社長提供) / それ以外(パンプキン着地等)=heavy-impact。
   // research/MUTANT_HERO.md: 英雄の斬撃・タックルは自分の音(下)。叩きつけ(棹立ち・跳躍)は重い音のまま。
-  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-') && b.moveKey !== 'liberty-flag' && b.moveKey !== 'liberty-arrow')) fx.playSfx('heavy-impact');
+  // ステージ2の這う塊(crawler-slam)は自分の配線(labCrawlerTick)が距離で弱めて鳴らすので、ここでは鳴らさない。
+  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-') && b.moveKey !== 'liberty-flag' && b.moveKey !== 'liberty-arrow' && b.moveKey !== 'crawler-slam')) fx.playSfx('heavy-impact');
   if (blasts.some(b => b.moveKey === 'liberty-arrow')) fx.playSfx('anchor-plant', 0.5); // 矢の雨: 土に突き立つ音(旗振りと耳で区別できるように。同じフレームに何本刺さっても1回)
   if (blasts.some(b => b.moveKey === 'hero-slam')) fx.playSfx('hero-slam');
   if (blasts.some(b => b.moveKey === 'hero-slash')) fx.playSfx('hero-slash');
@@ -345,6 +346,15 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       // research/LIBERTY_HORDE.md §4c: 矢が刺さる。土が跳ねる粒と小さな土煙の輪(矢の絵と刺さった跡は描画が出す)。全画面フラッシュなし。
       fx.spawnBurst(b.x, b.y, '#a08a70', 12);
       fx.spawnRing(b.x, b.y, 4, b.radius * 0.9, 'rgba(160,138,112,0.6)', 3, 300);
+    } else if (b.moveKey === 'crawler-slam') {
+      // ステージ2の這う塊の叩きつけ(world/labCrawler.ts)。爆発ではない=全画面の橙のフラッシュは出さない。
+      // 手が地面を打った土煙(シートの砂埃と同じ明るいベージュ)と大きな輪、飛び散る破片(派手さの絵=判定より大きく外へ)。
+      // 暗い床に溶けないよう明るい色を主にし、暗い破片は少しだけ混ぜる。
+      fx.spawnRing(b.x, b.y, 12, b.radius * 2.1, 'rgba(226,206,168,0.9)', 7, 620);
+      fx.spawnRing(b.x, b.y, 8, b.radius * 1.4, 'rgba(196,172,134,0.85)', 5, 480);
+      fx.spawnBurst(b.x, b.y, '#e3cfa6', 30);
+      fx.spawnBurst(b.x, b.y, '#bfa57c', 18);
+      fx.spawnBurst(b.x, b.y, '#5a4636', 10); // 土くれ・骨の破片
     } else if (b.moveKey === 'driller-thrust') {
       // 削岩型の突き(検収監査#5): 雑魚の通常攻撃なので**全画面フラッシュは出さない**(3.5秒ごとに
       // 画面全体が明滅するのはうるさい)。判定終端の小さな火花+リングだけ(色はドリル=琥珀寄り)。
@@ -399,23 +409,26 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         else parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y, ...(b.parryNoDamage ? { noDamage: true } : {}) });
       } else if (!bp.invulnerable) {
         const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
+        // ステージ2の這う塊は敵配列に居ない=型の代わりに持ち主の名札で名前を引く(「死体の塊の叩きつけ」)。
+        const blastOwnerLabel = blastEnemyType ?? (b.moveKey === 'crawler-slam' ? b.enemyId : '');
         // G4a: b.moveKey=どの技の爆発か(記録専用タグ・未設定なら従来どおりundefined)。
         // 検収監査#6: 死因の技名はmoveKeyで分ける(削岩型の突きが「落下攻撃」と表示されていた)。
         // 検収監査#6の継承(§14-2): 死因の技名はmoveKeyで分ける(伐採人の薙ぎ払いが「落下攻撃」と
         // 表示される取りこぼしを防ぐ)。
         const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
-          : b.moveKey === 'jo-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
+          : b.moveKey === 'jo-slam' || b.moveKey === 'crawler-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const hurtAtBefore = useGameStore.getState().player.lastHurtAt; // この一撃で段が付いたかを見分ける(下の押し出し)
         const armoredAtBefore = useGameStore.getState().player.hurtArmoredAt; // B12: アーマーで受けたかを見分ける(下の押し出し)
-        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastEnemyType ?? '')}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined, { type: blastEnemyType, id: b.enemyId }); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
+        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastOwnerLabel)}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined, { type: blastEnemyType, id: b.enemyId }); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
         // v0.25.2653: **技ごとの押し量**(b.kbSpeed/kbMs)があればそれを使う。
         // 技の指定が無ければ**被弾の段の押し出し**(接触で食らった時と同じ表=重い一撃ほど遠くへ飛ぶ)。社長指摘2026-10-09「ジャンプ攻撃食らった時、まだ吹っ飛んでない」。
         // 向き: 爆心の真上で食らった時は向いている方の逆へ(真上だと向きが決まらず一歩も飛ばなかった=社長指摘2026-10-10)。
         const face = useGameStore.getState().player.lastDirection ?? { x: 1, y: 0 };
-        const push = blastPushDir(bpcx - b.x, bpcy - b.y, face.x, face.y);
+        const pushOrg = b.pushFrom ?? { x: b.x, y: b.y }; // ステージ2の這う塊=塊の中心から離れる向き
+        const push = blastPushDir(bpcx - pushOrg.x, bpcy - pushOrg.y, face.x, face.y);
         // B12 スーパーアーマー(THEONE_ROUND2 §4-3): damagePlayer がアーマーで受けた(hurtArmoredAt が変わった)なら、爆風の押し出しも**書かない**
         // (ここは吹き飛びを書く2箇所のうちの1つ。アーマー時は lastHurtAt を書かない代わりに hurtArmoredAt が変わるので、命中は「どちらかが変わった」で見える)。
         const armoredNow = useGameStore.getState().player.hurtArmoredAt !== armoredAtBefore;
@@ -485,7 +498,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     // research/MUTANT_HERO.md §4: 英雄の一撃は予告の中の敵にも当たる / 英雄以外の爆風は英雄にも当たる(第三者の的)。
     if (b.moveKey?.startsWith('hero-')) {
       if (applyHeroBlastToEnemies(b, fx) > 0) markHeroHit(b.enemyId);
-    } else {
+    } else if (b.moveKey !== 'crawler-slam') { // 這う塊はボス級(英雄)に当たっても何も起きない
       applyBlastToHero(b);
     }
     // research/ESCORT_TARGETED.md §3(爆風): 同じ爆発を進軍NPC(見えていて倒れていない軍人)にも。守護霊と同じく英雄の技の爆風も当たる。

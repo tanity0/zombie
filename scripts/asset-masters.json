@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "925 files / 復号後 約693MB",
+ "generatedFor": "927 files / 復号後 約699MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2665,6 +2665,18 @@
    "h": 720,
    "bytes": 148715,
    "sha": "95a5abe40baff56e"
+  },
+  "sprites/lab/lab-crawler-attack.png": {
+   "w": 6688,
+   "h": 130,
+   "bytes": 1010819,
+   "sha": "e0d91da8ded2186f"
+  },
+  "sprites/lab/lab-crawler-walk.png": {
+   "w": 4800,
+   "h": 130,
+   "bytes": 626253,
+   "sha": "6a166a78ea7f0d18"
   },
   "sprites/lab/lab-far-backdrop.png": {
    "w": 1672,

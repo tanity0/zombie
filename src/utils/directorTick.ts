@@ -1394,7 +1394,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
       const placed = placeLabSpawn(
         player.x, spawnBounds.width / 2, OFFSCREEN_SPAWN_MARGIN,
         replacement.width, replacement.height, LAB_CORRIDOR_Y_LIMIT_PX,
-        labVisited ?? null, visionCircles,
+        labVisited ?? null, visionCircles, Math.random, useGameStore.getState().labIdolSide, // アイドル側には置き直さない
       );
       // 通った道しか置き場が無い場合は再配置せず、その個体をそのまま消す(=画面外で静かに退場)。
       if (!placed) { ENEMY_REMOVE_CAUSE.set(enemy.id, 'labNoPlace'); return null; } // 消失ログ用(v0.25.3958)

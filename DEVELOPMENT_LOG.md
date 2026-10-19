@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.5146 — ステージ2の新しい敵「死体の塊」【2026-10-19 20:38 JST】
+- 仕様は research/LAB_CRAWLER.md(社長の言葉・決定・監査の記録)。実装はサブエージェント(Opus)。
+- 新規: src/world/labCrawler.ts(+test)/ src/utils/labCrawlerTick.ts(+store test)/ src/utils/crawlerAbsorb.ts(+test)/ 素材 public/sprites/lab/lab-crawler-walk.png・lab-crawler-attack.png。
+- 配線: gameStore(labCrawler・labIdolSide・プレイヤーの移動の壁・PumpkinBlast.pushFrom)/ useGameLoop(塊の処理)/ combatTick(叩きつけ=既存の爆風経路・死因・吹き飛び)/ labSpawn・directorTick(アイドル側に湧かせない)/ pixiScene・pixiTextures(描画・遅延組 lab)/ GameOverScreen(死因の絵)/ asset-masters.json。
+- 社長がアップロードした public/sprites/lab/IMG_8925.png・IMG_8926.png は正式名へ移して削除。
+- 監査: 品質(Opus)1巡で(A)2件→社長判断と直しで解消。クリエイティブ(Opus)1巡15件→見せ方は直し、社長判断5件は決定済み。床の溜まりは長方形→歩きの絵6段重ねに作り直し(撮って確認)。2巡目は回していない(直しは指摘どおりで、実機で社長が見る方が早い)。
+- 自己点検: 憲法第4条(初心者ゾーン)— チュートリアルに影響なし。第5条(緩を荒らさない)— ステージ2の休憩のコマに湧きを足していない(塊は湧きではない)。
+- 画: scratchpad/crawler・crawler2・crawler3・crawler4 を目視(待機・アテンション+ランタン・赤い予告・叩きつけ・取り込み・昇天・6段の塊・上の隙間を抜ける)。
+- 検証: typecheck 0 / eslint 0 / 循環 import 新規なし / assets:check OK / vitest 全体 8068件通過。
+- 負荷 2/10。
+- 未決: 取り込みの音の素材(今は jump-land で代用)。段の絵が箱から最大約13pxはみ出す。
+
 ## v0.25.5145 — ステージ2の点滅をはっきり(切れかけの蛍光灯)【2026-10-19 17:01 JST】
 - 社長「暗い間は連動して視界も暗くていいです」→ 休眠ゾンビの視界の赤は暗転で一緒に沈む今のまま(決定)。
 - 社長「点滅はもっとハッキリ。切れかけの蛍光灯の様に」:

@@ -1,6 +1,6 @@
 // M2の湧き位置(placeLabSpawn)の不変条件。社長指示v0.25.2242「敵は自由移動範囲内でのみスポーン」。
 import { describe, it, expect } from 'vitest';
-import { placeLabSpawn, isAwayFromLabGoal } from './labSpawn';
+import { placeLabSpawn, isAwayFromLabGoal, isLabIdolSide } from './labSpawn';
 
 const LIMIT = 200;   // LAB_CORRIDOR_Y_LIMIT_PX と同値
 const HALF_W = 400;
@@ -137,5 +137,30 @@ describe('isAwayFromLabGoal', () => {
   it('ゴール未確定(side=0)は常に false=従来どおり間引いたまま', () => {
     expect(isAwayFromLabGoal(-5000, 0)).toBe(false);
     expect(isAwayFromLabGoal(5000, 0)).toBe(false);
+  });
+});
+
+// 社長指示2026-10-19「(這う塊を置いたので)アイドル側には雑魚を配置しない」。
+describe('アイドル側には湧かせない', () => {
+  it('isLabIdolSide: アイドルと同じ符号の側だけ。原点・アイドル無し(0)は対象外', () => {
+    expect(isLabIdolSide(500, 1)).toBe(true);
+    expect(isLabIdolSide(-500, 1)).toBe(false);
+    expect(isLabIdolSide(-500, -1)).toBe(true);
+    expect(isLabIdolSide(0, 1)).toBe(false);
+    expect(isLabIdolSide(500, 0)).toBe(false);
+  });
+  it('プレイヤーが原点付近ならアイドル側(右)を捨てて反対側(左)に湧く', () => {
+    for (let i = 0; i < 50; i++) {
+      const p = placeLabSpawn(0, HALF_W, MARGIN, 30, 60, LIMIT, null, [], () => i / 50, 1)!;
+      expect(p.x + 15).toBeLessThan(0);
+    }
+  });
+  it('アイドル側に深く入っていれば(両側ともアイドル側)湧かない', () => {
+    expect(placeLabSpawn(3000, HALF_W, MARGIN, 30, 60, LIMIT, null, [], () => 0.3, 1)).toBeNull();
+    expect(placeLabSpawn(-3000, HALF_W, MARGIN, 30, 60, LIMIT, null, [], () => 0.3, -1)).toBeNull();
+  });
+  it('アイドルが居ない出撃(0)は従来どおり両側', () => {
+    const r = placeLabSpawn(3000, HALF_W, MARGIN, 30, 60, LIMIT, null, [], () => 0.1, 0)!;
+    expect(r.x).toBeGreaterThan(3000);
   });
 });

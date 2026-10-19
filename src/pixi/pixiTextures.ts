@@ -72,6 +72,9 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'lab/lab-front-band' },                                // 2172x724 = 6.0MB
     { name: 'lab-floor/lab-floor-ground', scaleMode: 'nearest' },  // 1254x1254 = 6.0MB
     { name: 'lab-floor/lab-floor-stage2', scaleMode: 'nearest' },  // 1000x1000 = 3.8MB(出撃側でも読む=二重には積まれない)
+    // ステージ2の這う塊(world/labCrawler.ts・ステージ2にしか出ない)。歩き12コマ/攻撃16コマ。
+    { name: 'lab/lab-crawler-walk', scaleMode: 'nearest' },        // 4800x130 = 2.5MB
+    { name: 'lab/lab-crawler-attack', scaleMode: 'nearest' },      // 6688x130 = 3.5MB
   ],
   // 訓練(洞窟)ステージの鍾乳石帯。2508x627 = 6.0MB。
   tutorial: [
