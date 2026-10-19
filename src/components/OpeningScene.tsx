@@ -1,7 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { OPENING_REVIVAL_LINES, OPENING_REVIVAL_TIMING } from '../data/openingRevivalSequence';
 import { rewindBgm } from '../audio/audioManager';
 import { trackLoad } from '../utils/loadProgress';
+import { planRevivalGlitches, type ArenaTimes, type GlitchSegment, type HoldTool } from '../utils/openingGlitch';
+import { urlNum } from '../utils/urlNum';
+import OpeningGlitch from './OpeningGlitch';
 // パン!SEはWebAudio(playSfx)ではなくHTMLAudioで鳴らす(v0.25.2050):
 // 実機でアリーナ音源(HTMLAudio)は鳴るのにplaySfx経路のパン!だけ無音だったため、
 // 確実に鳴る同じ仕組みに統一(コンテキスト解錠・バッファ非同期の罠を回避)。
@@ -173,6 +176,9 @@ const ARENA_FADEIN_MS = 1000; // 廊下側で2秒暗転し切った後の明け(
 const BLACK_START = 8600;
 const BLACK_MS = 1600;
 const SCENE_START = 10400; // 暗転し切ったら射撃シーンへハードカット
+const PAN_CONFETTI_MS = 1050; // 紙吹雪のパン!(開始1秒後・社長指示v0.25.2049)
+// 乱れ(OpeningGlitch)が置き場所に使うアリーナの時刻: パン!の直後・カメラのハードカット・暗転・射撃シーンへの切替。
+const OP_ARENA_TIMES: ArenaTimes = { panMs: PAN_CONFETTI_MS, cuts: [CUTS[1], CUTS[2]], blackStartMs: BLACK_START, sceneStartMs: SCENE_START };
 const ARENA_AUDIO = [`${BASE}audio/op-arena-a.mp3`, `${BASE}audio/op-arena-b.mp3`]; // 2音源を同時ループ(社長指示)
 // ARENA_AUDIOは従来 new Audio() のデフォルト音量(1)のまま明示指定していなかった。iOS保険の
 // unlockAndPlay(下記)で本再生時に明示restoreするための名前付き定数として1を明文化(挙動は不変)。
@@ -385,6 +391,24 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const [subIdx, setSubIdx] = useState(-1); // 蘇生パートの表示中字幕(OPENING_REVIVAL_LINES index / -1=非表示)
   const [revFading, setRevFading] = useState(false); // 蘇生パート終端の3秒フェードアウト中(社長指示v0.25.2055)
   const [titleReveal, setTitleReveal] = useState(false); // 蘇生後のタイトルフェードイン中(社長指示v0.25.2061)
+  // ── 画面が乱れるホラー演出(社長指示2026-10-19・OpeningGlitch / utils/openingGlitch) ──
+  // 乱れ=曖昧な記憶(社長の答え)。作曲は utils/openingGlitch、画と音は OpeningGlitch。場面の入れ物(glitchTargetRef)の中の
+  // data-opg-scene/figure/content を手掛かりに、止める・残像・欠け・帯のずれ・色抜けを決めた順番で重ねる。BGM も一緒に遠のく。
+  // 廊下の拍は台詞(walkLineRef)に合わせて置き、「止まる」の間は歩きの rAF が walkFreezeRef を見てコマ送り・移動・カメラを止める。
+  // 射撃シーンは乱さない。蘇生の字幕は1〜2行だけ文字がずれて滲む。
+  // 撮影用: ?opglitch=1(道具を出しっぱなし・&opgtools=ghost,face,…)/?opgslow=N(乱れの中の時間をN倍)/?opgonly=W4,A3(その拍だけ)。
+  const glitchTargetRef = useRef<HTMLDivElement | null>(null);
+  const walkLineRef = useRef(-1);
+  const walkFreezeRef = useRef(false);
+  const [glitchKnob] = useState(() => { try { return urlNum(window.location.search, 'opglitch', 0) === 1; } catch { return false; } });
+  const [revGlitch] = useState(() => planRevivalGlitches(Math.random, OPENING_REVIVAL_LINES));
+  const [glitchHoldTools] = useState<HoldTool[] | undefined>(() => {
+    try { const v = new URLSearchParams(window.location.search).get('opgtools'); return v ? (v.split(',').filter(Boolean) as HoldTool[]) : undefined; } catch { return undefined; }
+  });
+  const [glitchSlow] = useState(() => { try { return urlNum(window.location.search, 'opgslow', 1); } catch { return 1; } });
+  const [glitchOnly] = useState<string[] | undefined>(() => {
+    try { const v = new URLSearchParams(window.location.search).get('opgonly'); return v ? v.split(',').filter(Boolean) : undefined; } catch { return undefined; }
+  });
   // 歩きシーン(アリーナ前・v0.25.2114)。?opening=2/3のプレビューはスキップ(=完了扱い)。
   const [walkDone, setWalkDone] = useState<boolean>(!!(startAtShoot || startAtRevival));
   // 廊下の出口に着いた=暗転(フェードアウト)開始。WALK_FADEOUT_MS 後に walkDone へ移る。
@@ -392,6 +416,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const walkDirRef = useRef<0 | -1 | 1>(0);                   // 歩行方向(0=停止/-1=左/1=右)
   const walkTouchXRef = useRef<number | null>(null);          // ドラッグ起点X(null=非タッチ)。v0.25.2124: ジョイスティック式
   const [walkLine, setWalkLine] = useState(-1);               // 歩き会話の表示中index(-1=非表示)
+  useEffect(() => { walkLineRef.current = walkLine; }, [walkLine]); // 乱れの拍は台詞に合わせて置く(OpeningGlitch が覗く)
   const walkShownRef = useRef<Set<number>>(new Set());        // 発火済みトリガー
   const walkLineTimerRef = useRef(0);
   // 廊下の出口に着いてからアリーナへ切り替わるまでの暗転(社長指示v0.25.2413)。歩行の rAF は
@@ -432,6 +457,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const stopAudio = () => { stopArena(); stopWalkBgm(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; stopHearts(); };
   // rewindBgm: OP明けのタイトルBGMは必ず曲頭から(v0.25.2104)。過去にタイトル曲を再生済みだと
   // onDone側のsetBgmScene('menu')が同srcのため停止位置から途中再開してしまうのを防ぐ。
+  // 乱れに合わせて揺らす BGM(鳴っていない要素は乱れ側が飛ばす)。
+  const getGlitchBgm = useCallback(() => [...audioRef.current, ...(walkAudioRef.current ? [walkAudioRef.current] : [])], []);
   const finish = () => { if (!doneRef.current) { doneRef.current = true; stopAudio(); rewindBgm(); onDone(); } };
   // 【iOS保険・v0.25.2177系フォロー】WebKit実機で「muted指定を無視して一瞬鳴る」前科があるため、
   // 事前解錠(プライミング、下のpanRef/heartRef/audioRef生成部)は【muted+volume=0の二重ガード】にし、
@@ -600,7 +627,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       const base = startAtShoot ? 0 : SCENE_START;
       // 「パン!」のSE(社長指示v0.25.2040): 紙吹雪の発射と、射撃シーンの発砲に【同じ音=handgun-fire】。
       // 音声未解禁のURLプレビューでは鳴らない(本番=更新情報OKのジェスチャ後は鳴る)。
-      if (!startAtShoot) ids.push(window.setTimeout(() => firePan(0), 1050)); // 紙吹雪パーン(1秒置いて)
+      if (!startAtShoot) ids.push(window.setTimeout(() => firePan(0), PAN_CONFETTI_MS)); // 紙吹雪パーン(1秒置いて)
       ids.push(window.setTimeout(() => firePan(1), base + 7500));           // 発砲(一閃の瞬間・v0.25.2075で7.5s)
       if (!startAtShoot) {
         // アングル切替=即表示のハードカット(社長指示v0.25.2072・旧クロスフェードは廃止)。
@@ -681,6 +708,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     const tick = (now: number) => {
       const dt = Math.min(50, now - last);
       last = now;
+      // 乱れの「時間が止まる」(OpeningGlitch): 主人公・スタッフ・カメラのコマ送りと移動を止める。入力(walkDirRef)は
+      // 受け続けるので、解けたら歩きの続きから。止まっていた時間は歩いたことにしない(dt を捨てる)。
+      if (walkFreezeRef.current) { raf = requestAnimationFrame(tick); return; }
       const scene = walkSceneRef.current, world = walkWorldRef.current, char = walkCharRef.current;
       if (scene && world && char) {
         // stop行(さ、いこっか)のタップスキップ(v0.25.2186・社長指示「タップで飛ばせる様に」):
@@ -837,9 +867,20 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // v0.25.2487: 呼吸3%→6%(社長指示「ゆるいズームを繰り返してるやつ、2倍の動きにして」。周期7sは不変。
     // このkeyframeは夢セット共通=廊下/アリーナ/射撃の3箇所が同時に2倍になる)。
     `\n@keyframes opbreathe{from{transform:scale(1)}to{transform:scale(1.06)}}` +
-    `\n@keyframes oplray{0%,100%{opacity:0.35}50%{opacity:1}}`;
+    `\n@keyframes oplray{0%,100%{opacity:0.35}50%{opacity:1}}` +
+    // 蘇生の字幕の乱れ(社長指示2026-10-19): パッと横へずれて赤/青緑ににじみ(step)、残像のように抜ける(ease-out)。
+    `\n@keyframes opg-sub{` +
+      `0%{transform:translateX(-7px) skewX(-9deg);text-shadow:-3px 0 rgba(255,40,40,0.85),3px 0 rgba(0,230,255,0.75),0 1px 6px rgba(0,0,0,0.9);filter:blur(0.9px);animation-timing-function:step-end}` +
+      `16%{transform:translateX(5px) skewX(4deg);text-shadow:2.5px 0 rgba(255,40,40,0.8),-2.5px 0 rgba(0,230,255,0.7),0 1px 6px rgba(0,0,0,0.9);filter:blur(0.6px);animation-timing-function:step-end}` +
+      `32%{transform:translateX(-2px);text-shadow:-1.5px 0 rgba(255,40,40,0.6),1.5px 0 rgba(0,230,255,0.5),0 1px 6px rgba(0,0,0,0.9);filter:blur(0.5px);animation-timing-function:ease-out}` +
+      `100%{transform:translateX(0);text-shadow:0 1px 6px rgba(0,0,0,0.9);filter:blur(0)}}`;
 
   const cur = SHOOT_STEPS[step];
+  // 乱れの場面(射撃=shoot は乱さない・蘇生は字幕側だけ)。
+  const glitchSegment: GlitchSegment =
+    !ready ? 'off' : !walkDone ? 'walk' : !mainReady ? 'off'
+      : phase < 3 ? (startAtShoot ? 'off' : 'arena') : phase === 3 ? 'shoot' : titleReveal ? 'off' : 'revival';
+  const subGlitch = subIdx >= 0 ? revGlitch.find(g => g.line === subIdx) : undefined;
 
   return (
     <div
@@ -854,6 +895,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     >
       <style>{css}</style>
 
+      {/* 乱れの入れ物(OpeningGlitch が中の夢の動きを止めたり、人物・場面の複製を置いたりする)。乱れていない間は素の箱=見え方は従来どおり。
+          isolation=中の z-index(暗転50/60)を箱の中に閉じ、後に置く乱れの重ね(z-index なし)とスキップ(60)を常に上に置く。
+          overflow=ズーム中のアリーナは箱の外まで広がっているので、横ずれの時に暗転幕の外の会場が覗かないよう箱で切る(ルートと同じ寸法=普段の見え方は不変)。 */}
+      <div ref={glitchTargetRef} style={{ position: 'absolute', inset: 0, isolation: 'isolate', overflow: 'hidden' }}>
       {!walkDone ? (!ready ? (
         // 歩きシーン素材のロード待ち(v0.25.2118): 見切り発車しない代わりに待ちを可視化。
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.55)', fontSize: 13, letterSpacing: '0.2em' }}>
@@ -885,9 +930,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           {/* 呼吸ズーム(v0.25.2158・社長選定B案): 舞台全体がゆっくり1.4%だけ伸縮する「夢の呼吸」。
               worldのtransformはrAFがカメラ用に毎フレーム書くため、CSSアニメは別ラッパーに載せる。
               会話UI・motesはこの外=呼吸しない。 */}
-          <div style={{ position: 'absolute', inset: 0, transformOrigin: '50% 60%', animation: 'opbreathe 7s ease-in-out infinite alternate', willChange: 'transform' }}>
+          <div data-opg-scene="" style={{ position: 'absolute', inset: 0, transformOrigin: '50% 60%', animation: 'opbreathe 7s ease-in-out infinite alternate', willChange: 'transform' }}>
           <div ref={walkWorldRef} style={{ position: 'absolute', top: 0, left: 0, height: '100%', willChange: 'transform' }}>
-            <img src={WALK_BG} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />
+            <img data-opg-content="0.13,0.755" src={WALK_BG} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill' }} />
             {/* 被写界深度: 事前ブラー版を縦グラデマスクで重ねる(壁=ボケ/黄色ラインで抜けて床はシャープ)。 */}
             <img src={WALK_BG_BLUR} alt="" draggable={false} style={{
               position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill',
@@ -938,7 +983,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 (向き訂正v0.25.2133)。白シルエット(invert・社長指示v0.25.2134=暗い通路で黒は見えない)。
                 位置/コマ/退場フェードはrAF側が駆動(主役と同じref直更新)。translateZ(0)=iOSマスクz順対策。 */}
             <img
-              ref={walkNpcRef} src={NPC_IDLE} alt="" draggable={false}
+              ref={walkNpcRef} src={NPC_IDLE} alt="" draggable={false} data-opg-figure="other"
               style={{
                 position: 'absolute', transform: 'translate(-50%, -100%) translateZ(0)', imageRendering: 'pixelated',
                 // 発光と透過で「存在」に見せる(社長裁定2026-09-12・クリエイティブ監査#7「白無地=仮置きに見える」)。
@@ -956,7 +1001,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               50% { filter: invert(1) drop-shadow(0 0 6px rgba(216,196,255,0.95)) drop-shadow(0 0 16px rgba(168,120,255,0.55)); }
             }`}</style>
             <img
-              ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false}
+              ref={walkCharRef} src={WALK_FRAMES[0]} alt="" draggable={false} data-opg-figure="hero"
               style={{
                 // translateZ(0)=iOSのmaskedレイヤーz順バグ対策(v0.25.2063の教訓): DOFマスクの下に潜らせない。
                 // キャラ個別フェードは廃止(v0.25.2121: シーン全体フェード+画面外左から歩き入場へ)。
@@ -1027,6 +1072,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
           {[phase].map(si => (
             <div
               key={si}
+              data-opg-scene=""
               style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1048,7 +1094,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
               >
                 <div style={{ position: 'relative', width: '100%', aspectRatio: `${ARENA_AR}` }}>
                   {/* flipScene=背景を左右反転(キャラは素の座標=画面全体がミラーに見える) */}
-                  <img src={SHOTS[si].bg} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined }} />
+                  <img data-opg-content="" src={SHOTS[si].bg} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: SHOTS[si].flipScene ? 'scaleX(-1)' : undefined }} />
                   {/* 被写界深度(v0.25.2060方式): 事前ブラー版bgを焦点マスク(中心=透明穴)で重ねる。
                       焦点(ステージ)は下の鮮明bgが素通しで見え、周辺ほどブラー版が出る。ランタイムぼかし無し。 */}
                   <img src={SHOTS[si].bgBlur} alt="" draggable={false} style={{
@@ -1117,7 +1163,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                   <div style={{ position: 'absolute', inset: 0 }}>
                     {SHOTS[si].chars.map((c, ci) => (
                       <img
-                        key={ci} src={c.src} alt="" draggable={false}
+                        key={ci} src={c.src} alt="" draggable={false} data-opg-figure={c.src === HERO ? 'hero' : 'other'}
                         style={{
                           position: 'absolute', left: `${c.x}%`, top: `${c.y}%`, height: `${c.h}%`,
                           transform: 'translate(-50%, -100%)', imageRendering: 'pixelated',
@@ -1324,7 +1370,12 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
                 fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif',
                 fontSize: 14, letterSpacing: '0.06em', lineHeight: 1.75,
                 textShadow: '0 1px 6px rgba(0,0,0,0.9)',
-                animation: 'opsub 260ms ease both',
+                // 中盤〜終盤の1〜2行だけ、文字が一瞬ずれて滲む(?opglitch=1 は全行で繰り返す=撮影用)。
+                animation: glitchKnob
+                  ? 'opsub 260ms ease both, opg-sub 420ms linear 300ms infinite'
+                  : subGlitch
+                    ? `opsub 260ms ease both, opg-sub ${subGlitch.durMs}ms linear ${subGlitch.offsetMs}ms 1 none`
+                    : 'opsub 260ms ease both',
               }}
             >
               {OPENING_REVIVAL_LINES[subIdx].text}
@@ -1343,6 +1394,19 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       {mainReady && walkDone && phase < 3 && !startAtShoot && (
         <div style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0, zIndex: 50, pointerEvents: 'none', animation: `opblack ${BLACK_MS}ms linear ${BLACK_START}ms both` }} />
       )}
+      </div>{/* 乱れの入れ物 閉じ */}
+      <OpeningGlitch
+        targetRef={glitchTargetRef}
+        segment={glitchSegment}
+        walkLineRef={walkLineRef}
+        walkFreezeRef={walkFreezeRef}
+        arenaTimes={OP_ARENA_TIMES}
+        getBgm={getGlitchBgm}
+        continuous={glitchKnob}
+        holdTools={glitchHoldTools}
+        slow={glitchSlow}
+        only={glitchOnly}
+      />
 
       {/* スキップ(タイトルフェードイン中=実質OP終了後は出さない)。
           data-testid=自動レビューの掴み手(TEST_HANDOFF/REQUEST-devbridge.md §D・属性のみ追加)。 */}

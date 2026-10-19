@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5158', items: [
+    'オープニングの記憶が、ときどきあやふやになる。色が抜け、時が止まり、誰かの顔が思い出せなくなる',
+  ] },
   { version: '0.25.5157', items: [
     'ステージ4で倒れる時、ジュンが通信で何かを言い残す',
   ] },
