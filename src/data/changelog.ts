@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5156', items: [
+    'ステージ2の死体の塊が、スタート地点から少し離れた奥で待つようになった',
+  ] },
   { version: '0.25.5155', items: [
     '帰還サークルが、歩けない場所にはみ出して出ることがあったのを直した',
   ] },

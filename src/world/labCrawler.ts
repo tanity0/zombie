@@ -20,8 +20,8 @@ import { LAB_VISION_RANGE } from '../utils/labStealth'; // 研究所の休眠敵
 import { clampRectToPlayableArea, isRectInPlayableArea, type PlayableAreaCtx } from './playableArea';
 
 // ---- 寸法・速さ ------------------------------------------------------------------------------
-/** 出現位置: スタート(原点)からアイドルの方へこの距離。 */
-export const CRAWLER_START_DIST_PX = 600;
+/** 出現位置: スタート(原点)からアイドルの方へこの距離(箱の中心)。600→900(社長2026-10-20「スタート地点近すぎる。もう少しだけ後ろに」)。 */
+export const CRAWLER_START_DIST_PX = 900;
 /** 絵の胴の表示幅(px)。元の1体(165)の5倍(社長「5倍くらい」)。 */
 export const CRAWLER_ART_BODY_DISPLAY_W = 165 * 5;
 /** 当たり判定の幅(足元基準の箱)=描いた胴の幅の0.9倍(胴の両端の腕・管の先は通り抜ける程度)。 */
