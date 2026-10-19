@@ -71,7 +71,7 @@ import {
   NPC_DIALOGUE_MS, NPC_DIALOGUE_GAP_MS,
   RN_ENEMY_FORCE,
   FIRST_AID_KIT_THROW_DAMAGE, MINE_DAMAGE, HEAL_FRACTION, QUICK_MAG_CRIT_WINDOW_MS,
-  PHASER_INDEX, BASE_SOLDIER_COUNT,
+  PHASER_INDEX, BASE_SOLDIER_COUNT, escortWalkSpeed,
   TUTORIAL_MOVE_X_MIN_PX,
   TUTORIAL_MOVE_Y_LIMIT_PX,
   M0_FORCED_CRIT_AT_HIT,
@@ -211,6 +211,11 @@ import { loadHeroAscended } from '../utils/heroAscended';
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties, heroAsTarget } from '../utils/heroBlast';
 import { hateEscortSource } from '../utils/escortView';
+import { isEscortDowned } from '../utils/escortHealth';
+import {
+  isJunEscort, junDepartDue, junDepartReady, junCastleRoute, junCollapseView, junAttentionExtraHoldMs,
+  castleBossFootPoint, JUN_VANISH_MS, JUN_LIE_MS, junDepartLeadMs, junCompanionQuiet, junFocusOk, worldToScreenYFrac, junRelocatePoint,
+} from '../utils/junEscort';
 import { applyContactToEscorts } from '../utils/escortHit'; // research/ESCORT_TARGETED.md §3: 進軍NPCの接触被弾
 // 第三者の的(守護霊+英雄)が弾いた時の音(research/MUTANT_HERO.md §4-1)。
 setThirdPartySfx((key, gain) => playSfx(key, gain));
@@ -264,6 +269,7 @@ import {
   isHiddenBoss,
   spawnEnemyAt,
   spawnEnemyAtWithTier,
+  ENEMY_STATS,
   selectLabEnemyType,
   resolveEnemyTarget,
   AREA_ZONE_NAMES,
@@ -543,7 +549,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
-import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, setCrawlerDrag, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence } from '../audio/audioManager';
+import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, setCrawlerDrag, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -749,6 +755,15 @@ const MAX_ENEMIES = 10;
 // 保証出現(plant1分/犬3分・エリア不問)はPACING_REDESIGN.mdバッチ1.5で撤廃(社長決定)。
 // ジャイアント(城ボス)出現後、近づくまで城で待機する索敵範囲(これより近づくと起動)。
 const GIANT_AGGRO_RANGE = 380;
+/** ステージ4のジュンへのアテンションの寄り先=足元からこれだけ上(立っている時=胸の高さ・倒れ切った時=地面に近い体の中心)。 */
+const JUN_ATTENTION_CHEST_UP_PX = 40;
+const JUN_ATTENTION_LYING_UP_PX = 10;
+/** ジュンの離脱・置き直しの「画面に見えているか」の余白(px・体の絵が画面端からはみ出して見えない分)。 */
+const JUN_VIEW_MARGIN_PX = 100;
+/** 変身の瞬間から、寄り先を巨体の中心へ移す尺(ms・紹介のホールド 950ms の中で着く)。 */
+const JUN_PAN_MS = 800;
+/** 伏せの間の足元の弱い光の半径(強glow=STRONG_GLOW_RADIUS 44 未満=投影影を落とさない)。 */
+const JUN_LIE_GLOW_RADIUS = 40;
 // イベント出現の敵(囲い系=プレイヤー狙い)も「近づくまで向かってこない」。プレイヤーの周囲に湧くので
 // この範囲なら出現直後にプレイヤーが居れば即起動する(救助の対NPC攻撃者・卵=静止プロップは対象外)。
 const EVENT_SPAWN_AGGRO_RANGE = 300;
@@ -2001,6 +2016,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 城ボスのアテンション遅延: 出現エフェクト(リング/グロウ/バースト)が消えてからカメラアテンションを出す
   // (出現直後だと演出で本体がぼやける・社長指示)。{at,x,y}=発火予定gameTime と注目座標。0=予約なし。
   const castleAttnRef = useRef<{ at: number; x: number; y: number }>({ at: 0, x: 0, y: 0 });
+  // ステージ4のジュン(research/JUN_ESCORT.md): 城ボスの条件が満ちてから待っている起点(gameTime・null=待っていない)/
+  // 離脱の時刻が来てからピントの帯を待っている起点/変身の後、カットインが明けたら出す「危険変異体出現」の帯の予約。
+  const junHoldSinceRef = useRef<number | null>(null);
+  const junDueSinceRef = useRef<number | null>(null);
+  const junBannerPendingRef = useRef(false);
+  // 変身の瞬間から、寄り先を彼女の体→巨体の絵の中心へ ease-out で移す(カメラの引きと合わせて尺度の跳びを見せる)。
+  const junPanRef = useRef<{ fromX: number; fromY: number; toX: number; toY: number; at: number } | null>(null);
+  // 再マウント(画面の出入り等)で、前の変身の「紹介が明けるまで」の印が残っていたら外す(HUD が暗いまま・聖堂が暗いまま残らない)。
+  useEffect(() => {
+    if (useGameStore.getState().junTransformRealAt !== 0) useGameStore.setState({ junTransformRealAt: 0 });
+  }, []);
   // v0.25.3983(城の崩壊・社長指示): 崩落開始(castleEvent.collapsedAt)後の追加の砂埃の波を1回ずつ積む
   // (at=処理済みのcollapsedAt / wave=次に出す波の添字)。リセットは collapsedAt が消えた時(新しいラン)。
   const castleCollapseDustRef = useRef<{ at: number; wave: number }>({ at: 0, wave: 0 });
@@ -2478,6 +2504,54 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       }
     };
 
+    // 城ボス(giantbat)を城の位置に出す(出現の演出込み)。通常の時間出現と、ステージ4のジュンの変身(research/JUN_ESCORT.md)が
+    // 共有する1本(中身は従来の出現ブロックそのまま・呼び手が出現アテンションの出し方だけを選ぶ)。戻り値=出した個体。
+    // opts.fx=出現の輪・光・破片の中心(既定=城の座標。ジュンの変身では彼女が倒れた位置)/opts.banner=false で帯を出さない(呼び手が後で出す)。
+    const spawnCastleBossNow = (gt: number, opts?: { fx?: { x: number; y: number }; banner?: boolean }): Enemy => {
+      const castle = useGameStore.getState().castleEvent;
+      markCastleBossSpawned();
+      if (opts?.banner !== false) useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: gt + EVENT_BANNER_MS });
+      const boss = spawnEnemyAt('giantbat', castle.x, castle.y, gt);
+      // PHILLガンはstage-2限定・弾薬有限のため火力基準から除外。通常ビルド基準でstage進行ごとに上げる。
+      // research/STAGE_DIFFICULTY.md: 台帳のステージ階段に、育成への対抗であるステージ係数を重ねる
+      // (役割が別=掛ける・社長裁定「案A」)。計測路(ボスメーカー/ガントレット)はヘルパが1.0を返す。
+      {
+        const cbMult = stageBossDiffMults();
+        boss.health = boss.maxHealth = Math.round(stageBossHealthFor(getSelectedStageId()) * cbMult.hp);
+        boss.damage = Math.round(boss.damage * cbMult.dmg);
+      }
+      // 出現直後は城で待機=プレイヤーが近づくまで向かってこない(社長指示)。aggroRange 内へ入ると起動。
+      boss.dormant = true;
+      boss.aggroRange = GIANT_AGGRO_RANGE;
+      // リーシュで待機へ戻った時の帰り先(社長指示v0.25.2419「城にゆっくり戻ってほしい」)。
+      // 出現地点=城なので、そのまま巣にする(裏ボスの homeX/homeY と同じ役割・同じフィールド)。
+      boss.homeX = castle.x;
+      boss.homeY = castle.y;
+      boss.vx = 0;
+      boss.vy = 0;
+      addEnemy(boss);
+      const fx = opts?.fx ?? { x: castle.x, y: castle.y };
+      spawnFlash('rgba(127,29,29,0.28)', 420);
+      spawnRing(fx.x, fx.y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
+      spawnRing(fx.x, fx.y, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
+      useGameStore.getState().spawnGlow(fx.x, fx.y, GLOW_R_XXL, 'rgba(239,68,68,', 900);
+      spawnBurst(fx.x, fx.y + 20, '#7f1d1d', 28);
+      return boss;
+    };
+    // 城ボスの出現アテンション(§6.36 カットイン=ステージ別の名前)。chain=出ている素のアテンションへ継ぎ足す(ジュンの変身)。
+    const fireCastleBossAttention = (x: number, y: number, gt: number, chain = false) => {
+      // §6.36: 城ボス出現カットイン。名前はステージ別台帳(bossCutin.ts)。台帳に無いステージ
+      // (=実装してないボス)は undefined でカットイン無し=従来のattentionのみ。
+      const cutin = bossCutinPayload('giantbat', getSelectedStageId());
+      if (chain) useGameStore.getState().chainAttentionCutin(x, y, cutin);
+      else useGameStore.getState().triggerAttention(x, y, cutin);
+      playSfx('boss-appear');
+      // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-7・B3): アテンションが実際に張られた瞬間を打刻
+      // (HUDの黄色い行の表示条件・§2-14「アテンション完了の打刻」)。triggerAttentionを呼んだのと
+      // 同じ行で打刻する。
+      useGameStore.setState({ castleAttnDoneAt: gt });
+    };
+
     const gameLoop = (timestamp: number) => {
      loopTickAtRef.current = Date.now(); // ★v0.25.4111: 生存打刻(ウォッチドッグが読む)。例外の有無に関わらず必ず打つ。
      try { // 診断+耐障害: ループ本体の例外でrAFが途切れて全停止(=移動/敵/弾が止まる)のを防ぎ、例外内容を記録。
@@ -2527,6 +2601,66 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // --- アテンション・シネマティック(レスキュー/ジャイアント出現) ---
       // 現地へ高速パン→2-3秒ホールド→高速で戻る。その間は hitstop でシム/アニメ停止(時間停止)。
       // ここ(hitstop早期returnの前)でカメラだけ毎フレーム動かす。終了で解除し通常進行へ。
+      // ステージ4: ジュンが倒れる→城ボスへ変身(research/JUN_ESCORT.md §1)。アテンション(時間停止)の中で進むので実時間で測り、
+      // 停止の早期returnより前のここで毎フレーム見る。時間割は utils/junEscort(描画も同じ関数で倒れのコマを決める)。
+      {
+        const jd = useGameStore.getState().junDeparture;
+        if (jd?.phase === 'collapsing' && jd.collapseStartReal !== undefined) {
+          const v = junCollapseView(nowMs - jd.collapseStartReal, ATTENTION_IN_MS);
+          // 寄り先は彼女の胸の高さ→倒れていくにつれて体の中心(地面寄り)へ追う(画面の中央やや下に居続ける)。
+          {
+            const att = useGameStore.getState().attention;
+            const fy = jd.y - (JUN_ATTENTION_CHEST_UP_PX + (JUN_ATTENTION_LYING_UP_PX - JUN_ATTENTION_CHEST_UP_PX) * v.fallK);
+            if (att && !att.cutin && Math.abs(att.y - fy) > 0.25) useGameStore.setState({ attention: { ...att, x: jd.x, y: fy } });
+          }
+          if (v.landed && !jd.landedFx) {
+            // 地面に着いた瞬間: 雪に体が落ちる鈍い音(軍人の倒れ込みと同じ素材を低く)+足元に弱い光(投影影を落とさない)。
+            // 雪煙は描画(pixiScene drawEscorts の地面沿いの砂埃)が同じ瞬間に出す。
+            useGameStore.setState(s2 => (s2.junDeparture ? { junDeparture: { ...s2.junDeparture, landedFx: true } } : {}));
+            playSfx('jump-land', 0.85, undefined, 0.72);
+            // 半径は強glow(44以上)の手前=投影影を落とさない小さい光の経路(強glowは周りの物の影を落とす=聖堂の大きな影が地面に出た・実測)。
+            useGameStore.getState().spawnGlow(jd.x, jd.y - 4, JUN_LIE_GLOW_RADIUS, 'rgba(170,190,228,', JUN_LIE_MS + JUN_VANISH_MS + 300, true);
+          }
+          if (v.transformDue) {
+            // 変身: 城ボスが城の位置(=ジュンが倒れている場所)に現れる。輪・光・破片の中心は彼女の体。
+            // 「危険変異体出現」の帯はカットインが明けてから(下の予約)。BGM はここで戻す(寄りの頭で落としてある)。
+            // ジュンの体は閃光の中でフェードアウトして消える(vanishing)。続けて、出ている寄りのままボスの紹介(カットイン)へ。
+            const gt = useGameStore.getState().gameTime;
+            const boss = spawnCastleBossNow(gt, { fx: { x: jd.x, y: jd.y - 20 }, banner: false });
+            useGameStore.setState(s2 => ({
+              junTransformRealAt: nowMs,
+              ...(s2.junDeparture ? { junDeparture: { ...s2.junDeparture, phase: 'vanishing' as const, vanishStartReal: nowMs } } : {}),
+            }));
+            junBannerPendingRef.current = true;
+            resumeBgmAfterFade();
+            const bAc = bossArtCenter(boss);
+            const att0 = useGameStore.getState().attention;
+            junPanRef.current = att0 ? { fromX: att0.x, fromY: att0.y, toX: bAc.x, toY: bAc.y, at: nowMs } : null;
+            fireCastleBossAttention(bAc.x, bAc.y, gt, true);
+          }
+        } else if (jd?.phase === 'vanishing' && nowMs - (jd.vanishStartReal ?? nowMs) >= JUN_VANISH_MS) {
+          useGameStore.setState({ junDeparture: null });
+        }
+        // 変身の後の寄り先の移り(ease-out・JUN_PAN_MS)。紹介(カットイン)の絵が出る前に巨体の中心へ着く。
+        {
+          const pan = junPanRef.current;
+          const att = useGameStore.getState().attention;
+          if (pan && att?.cutin) {
+            const u = Math.min(1, (nowMs - pan.at) / JUN_PAN_MS);
+            const e = 1 - (1 - u) * (1 - u) * (1 - u);
+            const ax = pan.fromX + (pan.toX - pan.fromX) * e, ay = pan.fromY + (pan.toY - pan.fromY) * e;
+            if (Math.abs(att.x - ax) > 0.25 || Math.abs(att.y - ay) > 0.25) useGameStore.setState({ attention: { ...att, x: ax, y: ay } });
+            if (u >= 1) junPanRef.current = null;
+          } else if (pan && !att) junPanRef.current = null;
+        }
+        // 変身のカットインが明けたら「危険変異体出現」の帯(汎用の出現告知は紹介の後へ)。
+        if (junBannerPendingRef.current && !useGameStore.getState().attention) {
+          junBannerPendingRef.current = false;
+          const gs = useGameStore.getState();
+          // junTransformRealAt=0 で「変身〜紹介の一続き」の終わり(HUD の暗さ・聖堂の暗さ・カメラの引きが戻る)。
+          useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: gs.gameTime + EVENT_BANNER_MS, junTransformRealAt: 0 });
+        }
+      }
       {
         // §6.36(監査指摘1): 保留中のカットイン付きattentionを、attentionが空いた最初のフレームで撃つ。
         if (pendingCutinAttnRef.current && !useGameStore.getState().attention) {
@@ -3266,6 +3400,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           botReportedRef.current = false;
           botPausedSinceRef.current = 0;
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
+          junHoldSinceRef.current = null; junDueSinceRef.current = null; junBannerPendingRef.current = false; junPanRef.current = null;
           suppCaptureCountRef.current = 0;
           areaZoneRef.current = -1; // 区域も再判定(リワインド/新ランで開始地点では出さない)
           zoneSfxPlayedRef.current = new Set(); // 到達SEの「今回のラン」判定も新ランでリセット
@@ -3389,39 +3524,88 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         })();
         // PACING_PUZZLE.md §10-14#4(維持=storyBoss || isExStageRun): EXは城ボス(giantbat)の対象外
         // (最奥ボスはphillboss。城ボスの5分湧きイベントとphillbossを混在させない=旧EXボス廃止と同じ理由)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && (!noSpawn || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode && !castle.bossSpawned && castleBossReady && !castleSpawnLocked) {
-          markCastleBossSpawned();
-          useGameStore.setState({ eventBannerText: '危険変異体出現', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-          const boss = spawnEnemyAt('giantbat', castle.x, castle.y, newGameTime);
-          // PHILLガンはstage-2限定・弾薬有限のため火力基準から除外。通常ビルド基準でstage進行ごとに上げる。
-          // research/STAGE_DIFFICULTY.md: 台帳のステージ階段に、育成への対抗であるステージ係数を重ねる
-          // (役割が別=掛ける・社長裁定「案A」)。計測路(ボスメーカー/ガントレット)はヘルパが1.0を返す。
-          {
-            const cbMult = stageBossDiffMults();
-            boss.health = boss.maxHealth = Math.round(stageBossHealthFor(getSelectedStageId()) * cbMult.hp);
-            boss.damage = Math.round(boss.damage * cbMult.dmg);
+        // ステージ4: 衛生兵ジュンの離脱と変身(research/JUN_ESCORT.md §1・判定は utils/junEscort.ts)。
+        // 城ボスの経路が生きているか=下の城ボスの if の条件のうち「時刻・二人組の通信の静けさ(noSpawn)・別ボスとの交戦(castleSpawnLocked)」を
+        // 除いた集合(湧き止めは noSpawnDebug)。★交戦中でも離脱は進む(城ボスの出現だけが交戦明けまで先送りされる=ジュンは城で待つ)。
+        const castleRouteOk = !danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage
+          && (!noSpawnDebug || practiceWantsCastleBoss()) && !revisitRun && !useGameStore.getState().corridorMode;
+        const castleBossFoot = castleBossFootPoint(castle, ENEMY_STATS.giantbat.width, ENEMY_STATS.giantbat.height);
+        // 画面(+余白)に見えているか。置き直しは見えない所でだけ行う。
+        const junVisible = (x: number, y: number): boolean => {
+          const vs = useGameStore.getState();
+          return isPointInZoomedViewport(x, y, vs.camera, vs.gameBounds, vs.viewZoom, JUN_VIEW_MARGIN_PX);
+        };
+        {
+          // 離脱: 城ボスの時刻に城の足元へ着くよう逆算して(距離÷歩く速さ)、「変な感じがする…」と言って隊を離れる。
+          // 倒れていたら起き上がってから・画面下のぼけの帯では少し待つ。道中の同じ一言は離脱の数十秒前から止める。
+          const js = useGameStore.getState();
+          const jun = js.escorts.find(isJunEscort);
+          if (jun) {
+            const leadMs = junDepartLeadMs(Math.hypot(castleBossFoot.x - jun.x, castleBossFoot.y - jun.y), escortWalkSpeed());
+            const quiet = junCompanionQuiet(directorTime, CASTLE_BOSS_MIN_TIME_MS, leadMs);
+            if (quiet !== js.junCompanionQuiet) useGameStore.setState({ junCompanionQuiet: quiet });
+            const due = junDepartDue({
+              junInSquad: true, castleRouteOk, castleSpawned: castle.bossSpawned,
+              directorTimeMs: directorTime, castleMinMs: CASTLE_BOSS_MIN_TIME_MS, castleReady: castleBossReady, leadMs,
+            });
+            if (!due) junDueSinceRef.current = null;
+            else if (junDueSinceRef.current === null) junDueSinceRef.current = newGameTime;
+            const onScreen = junVisible(jun.x, jun.y);
+            if (due && junDepartReady({
+              downed: isEscortDowned(jun),
+              sinceRiseMs: jun.riseAt !== undefined ? newGameTime - jun.riseAt : null,
+              busy: jun.slideUntil !== undefined || (jun.lastHitAt !== undefined && newGameTime - jun.lastHitAt < (jun.hurtCrouchMs ?? 0)),
+              kicking: js.escortKick?.escortId === jun.id,
+              focusOk: junFocusOk({
+                onScreen,
+                screenYFrac: worldToScreenYFrac(jun.y - JUN_ATTENTION_CHEST_UP_PX, js.camera.y, js.gameBounds.height, js.viewZoom),
+                waitedMs: newGameTime - (junDueSinceRef.current ?? newGameTime),
+              }),
+            })) {
+              js.beginJunDeparture(castleBossFoot.x, castleBossFoot.y);
+              junDueSinceRef.current = null;
+            }
           }
-          // 出現直後は城で待機=プレイヤーが近づくまで向かってこない(社長指示)。aggroRange 内へ入ると起動。
-          boss.dormant = true;
-          boss.aggroRange = GIANT_AGGRO_RANGE;
-          // リーシュで待機へ戻った時の帰り先(社長指示v0.25.2419「城にゆっくり戻ってほしい」)。
-          // 出現地点=城なので、そのまま巣にする(裏ボスの homeX/homeY と同じ役割・同じフィールド)。
-          boss.homeX = castle.x;
-          boss.homeY = castle.y;
-          boss.vx = 0;
-          boss.vy = 0;
-          addEnemy(boss);
-          spawnFlash('rgba(127,29,29,0.28)', 420);
-          spawnRing(castle.x, castle.y, 18, 170, 'rgba(239,68,68,0.9)', 7, 720);
-          spawnRing(castle.x, castle.y, 42, 260, 'rgba(127,29,29,0.62)', 4, 920);
-          useGameStore.getState().spawnGlow(castle.x, castle.y, GLOW_R_XXL, 'rgba(239,68,68,', 900);
-          spawnBurst(castle.x, castle.y + 20, '#7f1d1d', 28);
-          // アテンションは出現エフェクトが消えてから(=ぼやけ防止・社長指示)。下のディスパッチャが発火。
-          // v0.25.3727: 寄り先=絵の中心(城ボスはBOSS_SPRITE_FIT表に無い=帯中心のまま返る。表に載せたら自動追従)。
-          {
+          useGameStore.getState().stepJunDeparture(deltaTime);
+        }
+        if (castleRouteOk && (!noSpawn || practiceWantsCastleBoss()) && !castle.bossSpawned && castleBossReady && !castleSpawnLocked) {
+          const rs = useGameStore.getState();
+          const jd = rs.junDeparture;
+          const route = junCastleRoute({
+            junInSquad: rs.escorts.some(isJunEscort),
+            phase: jd?.phase ?? null,
+            junOnScreen: jd ? junVisible(jd.x, jd.y) : false,
+            targetOnScreen: junVisible(castleBossFoot.x, castleBossFoot.y),
+            relocated: !!jd?.relocated,
+            holdMs: newGameTime - (junHoldSinceRef.current ?? newGameTime),
+            attentionBusy: rs.attention !== null,
+          });
+          if (route === 'hold') { if (junHoldSinceRef.current === null) junHoldSinceRef.current = newGameTime; }
+          else junHoldSinceRef.current = null;
+          if (route === 'legacy') {
+            const boss = spawnCastleBossNow(newGameTime);
+            // アテンションは出現エフェクトが消えてから(=ぼやけ防止・社長指示)。下のディスパッチャが発火。
+            // v0.25.3727: 寄り先=絵の中心(城ボスはBOSS_SPRITE_FIT表に無い=帯中心のまま返る。表に載せたら自動追従)。
             const cAc = bossArtCenter(boss);
             castleAttnRef.current = { at: newGameTime + 950, x: cAc.x, y: cAc.y };
+          } else if (route === 'relocate' && jd) {
+            // 城へ向かう道の上で、画面の外のいちばん城寄りの点へ(そこから歩いて入って来る=置き直しは画面に見えない)。
+            const rp = junRelocatePoint({ x: jd.x, y: jd.y }, castleBossFoot, junVisible);
+            rs.relocateJunDeparture(rp.x, rp.y);
+            junHoldSinceRef.current = newGameTime; // 入って来る間を、もう一度 全体の上限で見張る
+          } else if (route === 'collapse' && jd) {
+            // ジュンへカメラが向く(素のアテンション=時間停止)。歩き途中なら(ジュンも城の足元も画面外なので見えない)足元へ置き直す。
+            // ホールドは変身の瞬間まで延ばす(倒れる→変身は上の実時間の段が進める)。寄りの頭で BGM を慣性つきで無音へ落とす。
+            const atX = jd.phase === 'waiting' ? jd.x : castleBossFoot.x;
+            const atY = jd.phase === 'waiting' ? jd.y : castleBossFoot.y;
+            useGameStore.setState({ junDeparture: { ...jd, x: atX, y: atY, speed: 0, phase: 'collapsing', collapseStartReal: Date.now(), landedFx: false } });
+            rs.triggerAttention(atX, atY - JUN_ATTENTION_CHEST_UP_PX, undefined, junAttentionExtraHoldMs(ATTENTION_IN_MS, ATTENTION_HOLD_MS));
+            fadeOutBgmToSilence(1200);
           }
+        } else {
+          // 城ボスの条件が満ちていない/交戦中で先送り(castleSpawnLocked)等の間は待ちの時計を数えない
+          // (交戦明けに、いきなり全体の上限を超えた扱いにしない)。
+          junHoldSinceRef.current = null;
         }
         // v0.25.3983(城の崩壊・社長指示): 崩落中の追加の砂埃の波(開始時の1発はstore側。ここは
         // 沈下が進む途中の0.7s/1.3sに足元へ2波=②派手さの絵・判定なし・event-only。カメラは向けない)。
@@ -3465,14 +3649,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (castleAttnRef.current.at > 0 && newGameTime >= castleAttnRef.current.at && !useGameStore.getState().attention) {
           const { x, y } = castleAttnRef.current;
           castleAttnRef.current = { at: 0, x: 0, y: 0 };
-          // §6.36: 城ボス出現カットイン。名前はステージ別台帳(bossCutin.ts)。台帳に無いステージ
-          // (=実装してないボス)は undefined でカットイン無し=従来のattentionのみ。
-          useGameStore.getState().triggerAttention(x, y, bossCutinPayload('giantbat', getSelectedStageId()));
-          playSfx('boss-appear');
-          // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-7・B3): アテンションが実際に張られた瞬間を打刻
-          // (HUDの黄色い行の表示条件・§2-14「アテンション完了の打刻」)。triggerAttentionを呼んだのと
-          // 同じ行で打刻する。
-          useGameStore.setState({ castleAttnDoneAt: newGameTime });
+          fireCastleBossAttention(x, y, newGameTime);
         }
 
         // --- the ONE ストーリーボス(M7=グレン巨大化) ---

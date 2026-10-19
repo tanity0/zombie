@@ -2119,6 +2119,37 @@ export interface BaseSite {
 
 // 護衛軍人NPC(社長指示): スタート時にプレイヤーと同時に4人配置。HPなし。担当拠点(東西南北)へ前進し、
 // 近くに敵が居れば停止して射撃、拠点サークルに10秒留まると解放(制圧)。プレイヤーの画面外では索敵・射撃なしで1/5の速さで自動進行(社長指示2026-10-07・旧: 前進停止)。
+/**
+ * ステージ4: 隊を離れたジュン(research/JUN_ESCORT.md §1)。離脱した瞬間に escorts から外れ、ここへ移る
+ * (=戦わない・狙われない・倒れない・台詞も出ない)。判定は utils/junEscort.ts、描画は読むだけ。
+ * phase: leaving=城へ歩いている / waiting=城の位置で立っている / collapsing=アテンションの中で倒れていく /
+ *        vanishing=変身(城ボスが現れた)で体が消えていく。
+ */
+export interface JunDeparture {
+  phase: 'leaving' | 'waiting' | 'collapsing' | 'vanishing';
+  /** 足元(EscortSoldier と同じ=足元アンカー)。 */
+  x: number;
+  y: number;
+  face: number;
+  /** 今の歩きの速さ(px/s・慣性)。 */
+  speed: number;
+  /** 歩いて行く先=城ボスがいつも出る場所の足元。 */
+  targetX: number;
+  targetY: number;
+  /** 離脱した gameTime。 */
+  startedAt: number;
+  /** 歩き出す gameTime(一言の後、その場で一拍止まってから向きを変えて歩き出す)。未設定=一言が出るのを待っている。 */
+  walkAt?: number;
+  /** 城ボスの足元が画面に映っていたので、画面外の点へ一度置き直した(そこから歩いて入って来る)。 */
+  relocated?: boolean;
+  /** 倒れるアテンションを始めた実時間(Date.now)。時間停止の中で進むので実時間で測る。 */
+  collapseStartReal?: number;
+  /** 地面に着いた瞬間の砂埃を出し済みか。 */
+  landedFx?: boolean;
+  /** 変身した実時間(Date.now)。 */
+  vanishStartReal?: number;
+}
+
 export interface EscortSoldier {
   id: string;
   baseId: string;      // 担当拠点(base-0..3)

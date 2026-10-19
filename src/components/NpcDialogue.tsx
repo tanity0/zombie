@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { spritePath } from '../utils/spriteLoader';
 import { useHudLandscape } from './HudScale';
@@ -63,6 +63,36 @@ const SheetPortrait = ({ src, frames, frame, h, alt }: { src: string; frames: nu
         }}
       />
     </div>
+  );
+};
+
+// slow の行(ステージ4のジュンの離脱の一言・research/JUN_ESCORT.md): 文字をゆっくり送り、三点リーダで一度止まる
+// (道中の同じ文言と出し方で区別する)。三点リーダは間をおいてから出す=言い淀み。この小さな部品だけが再描画する。
+const SLOW_CHAR_MS = 120;
+const SLOW_ELLIPSIS_PAUSE_MS = 520;
+const SlowLine = ({ text }: { text: string }) => {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const chars = Array.from(text);
+    let i = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const step = () => {
+      i += 1;
+      setN(i);
+      if (i >= chars.length) return;
+      // 次が三点リーダなら一拍ためてから出す。
+      timer = setTimeout(step, chars[i] === '…' ? SLOW_ELLIPSIS_PAUSE_MS : SLOW_CHAR_MS);
+    };
+    timer = setTimeout(step, SLOW_CHAR_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
+  const chars = Array.from(text);
+  return (
+    <span className="text-white/90">
+      {chars.slice(0, n).join('')}
+      {/* 未表示の文字は透明で場所だけ取る(箱の大きさが文字送りで伸び縮みしない)。 */}
+      <span style={{ opacity: 0 }}>{chars.slice(n).join('')}</span>
+    </span>
   );
 };
 
@@ -131,7 +161,7 @@ export const NpcDialogue = () => {
         <div className="self-center" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
           {/* 会話は名前の後に一度改行(社長指示v0.25.2069・会話UI共通=OP射撃シーン側も同じ)。 */}
           <span className="block font-bold text-amber-300/95 gt-outline">{npc.name}</span>
-          <span className="text-white/90">{npc.text}</span>
+          {npc.slow ? <SlowLine key={npc.until} text={npc.text} /> : <span className="text-white/90">{npc.text}</span>}
         </div>
       </div>
     </div>

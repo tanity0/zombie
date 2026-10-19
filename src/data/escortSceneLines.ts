@@ -13,6 +13,8 @@
 //   ・★存在しない挙動を約束しない(軍人に回避行動は無い=「回避に移る」は言わない=DC-1 #23)。危機の反応は短く(DC-1 #24)。
 // 名簿 soldierIndex: 0 エドガー / 1 ジョセフ / 2 エリザベス / 3 武蔵 / 4 ムハンマド / 5 チェン / 6 ローレン / 7 フェイザー。
 // ★・矢印・内部語は入れない(research/TEXT_REWRITE_2026-10.md の3項)。
+import { JUN_ESCORT_INDEX, JUN_SCENE_LINES } from './junEscortLines';
+
 export type EscortScene = 'downed' | 'revived' | 'targeted';
 
 /** soldierIndex(名簿index 0..7) → 文言。無い人=その場面は無言。 */
@@ -43,4 +45,6 @@ export const ESCORT_SCENE_LINES: Record<EscortScene, Readonly<Record<number, str
 };
 
 export const escortSceneLine = (soldierIndex: number, scene: EscortScene): string =>
-  ESCORT_SCENE_LINES[scene][soldierIndex] ?? '';
+  // ステージ4のジュン(名簿外の印)は専用の台帳(この表の 0..7 には混ぜない)。
+  soldierIndex === JUN_ESCORT_INDEX ? (JUN_SCENE_LINES[scene] ?? '')
+  : ESCORT_SCENE_LINES[scene][soldierIndex] ?? '';

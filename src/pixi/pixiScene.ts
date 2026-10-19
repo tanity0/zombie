@@ -30,7 +30,7 @@ import { shadowProbeCount, shadowProbeMode, shadowProbeStretch, noteShadowProbeF
 import { SKILL_ICON_INDEX, skillSheetGeometry } from '../data/skillIcons';
 import type {
   BreakableProp, CastleEvent, Enemy, EventQuestNpc, Pickup, Player, Projectile, VisualEffect, WeaponMerchant, Summon, StageTheme,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, JunDeparture, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
   BloodSpike, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
   GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショットの渦(v0.25.3276)
   SkillKey, // スキル取得の頭上マーク(v0.25.4342)がアイコンを引くのに使う
@@ -220,6 +220,8 @@ import { NewGunsFx } from './newGunsFx'; // research/NEW_GUNS.md: 塊弾・衛�
 import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
+import { JUN_ESCORT_INDEX } from '../data/junEscortLines'; // ステージ4のジュン(名簿外の印・research/JUN_ESCORT.md)
+import { JUN_ESCORT_ID, junCollapseView, junVanishAlpha, junCollapseMotion, medicFallShiftPx, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT } from '../utils/junEscort';
 import { escortReviveProgress, isEscortDowned, isEscortSliding, ESCORT_REVIVE_HEAL_RATIO } from '../utils/escortHealth';
 import {
   SWORD_VISIBILITY_FADE_MS, swordAttackAngle, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha,
@@ -1544,6 +1546,23 @@ const SHOOTER_SHEET_BODY_MULT = 66 / 64;
 // ジュンの表示倍率の分母。旧4コマ(78×64)は体が64行ぴったり、新シートは66行のうち体が64行(上に2行の余白)
 // =体の行数で割って、差し替え前と同じ背丈に保つ。
 const MEDIC_BODY_TEX_H = 64;
+// ジュン(衛生兵)の倒れの3コマ(社長支給 v0.25.1799・80×64・右向き・下端=接地)。歩きシート(1コマ53×66)より一回り大きく描かれている
+// (頭の幅 歩き22px/倒れ24px・救急鞄 12.5px/14px の実測)ので、歩きと同じ縮尺に揃えるため 0.9 倍で描く。
+const MEDIC_FALL = 'npc/medic-fall';
+const MEDIC_FALL_TEX_SCALE = 0.9;
+// 倒れのコマの足元合わせ(テクスチャpx・向いている側へ+)は utils/junEscort の medicFallShiftPx(後ろ足の位置=下端6行の左端
+// 0=21/1=7/2=2 を揃える量の約3/4)。倒れの度合いに沿って連続で補間する=コマの段差で横に跳ばない。0コマ目の足元は歩きの立ちコマと一致(実測)。
+// 隊の中で倒れる時(escortPose の downK)のコマの切り替え。
+const MEDIC_DOWN_FRAME1_AT = 0.34;
+// ステージ4のジュンの変身(research/JUN_ESCORT.md): カメラの引き(倍率と ease-out の時定数)・聖堂を暗く落とす量・
+// 時間停止の中の雪の速さ(止めずにゆっくり)・紹介が明けるまでの上限。
+const JUN_TRANSFORM_PULL_ZOOM = 0.8;
+const JUN_TRANSFORM_PULL_TAU_S = 0.45;
+const JUN_TRANSFORM_PULL_BACK_TAU_S = 0.8;
+const JUN_CASTLE_DARK_TINT_MIN = 0.42;
+const JUN_SNOW_TIME_SCALE = 0.4;
+const JUN_POST_TRANSFORM_MAX_MS = 8000;
+const MEDIC_DOWN_FRAME2_AT = 0.67;
 const ESCORT_KNIFE_READY = { scale: 1.05, ox: 0.26, oy: 0.06, r: 0 };
 // 進軍NPC8人の近接の振り2コマ(社長支給2026-10-11・768×66=48×16)。0..7=低く構えた姿(振りかぶり)・8..15=腕を振り上げた姿(振り抜き)。並びは soldierIndex 順。
 // ★ナイフの動きはプレイヤーと同じ(社長指摘2026-10-11「プレイヤーと同じ動きになってない。ナイフが逆に動いたり」):
@@ -7637,7 +7656,7 @@ export class PixiScene {
   // 中心から広げないと、引き時に画面端へ現れるはずのエフェクト/リング/松明などが消えてしまう(社長報告)。
   // contextZoom<1(引き)のときだけ拡張。zoom-in(idle/move/punch)は可視域を狭めるので拡張しない(=1.0据え置き)。
   private zoomViewportOverscan(): { exW: number; exH: number; ox: number; oy: number } {
-    const zin = 1 / Math.min(1, this.contextZoom || 1); // >=1(引き)
+    const zin = 1 / Math.min(1, (this.contextZoom || 1) * this.junPull); // >=1(引き)。ジュンの変身の引き(junPull)も含める
     const exW = this.screenW * zin, exH = this.screenH * zin;
     return { exW, exH, ox: (exW - this.screenW) / 2, oy: (exH - this.screenH) / 2 };
   }
@@ -8950,7 +8969,17 @@ export class PixiScene {
     if (this.bossCameraReturning && Math.abs(czTarget - this.contextZoom) < 0.002) {
       this.bossCameraReturning = false;
     }
-    const zoom = this.idleZoom * this.contextZoom * this.runZoom * punch;
+    // ステージ4のジュンの変身(research/JUN_ESCORT.md): 城ボスが現れた瞬間からカットインが明けるまで、カメラを ease-out でゆっくり引く
+    // (人から巨体への尺度の跳び)。時間停止の中で進むので実時間で動かす(zdt は凍結時計=止まる)。明けたら同じ慣性で戻る。
+    {
+      const rn = Date.now();
+      const rdt = this.junPullLastNow ? Math.min(0.1, Math.max(0, rn - this.junPullLastNow) / 1000) : 0;
+      this.junPullLastNow = rn;
+      const want = this.junPostTransformActive(s, rn) ? JUN_TRANSFORM_PULL_ZOOM : 1;
+      const tau = want < this.junPull ? JUN_TRANSFORM_PULL_TAU_S : JUN_TRANSFORM_PULL_BACK_TAU_S;
+      this.junPull += (want - this.junPull) * (1 - Math.exp(-rdt / tau));
+    }
+    const zoom = this.idleZoom * this.contextZoom * this.runZoom * this.junPull * punch;
     this.zwarpZoomNow = this.idleZoom * this.contextZoom; // KILL/カウンターの寄りパンチ(punch・瞬間ジャンプ)は歪みの入力から除く(監査B#7)
     // 寄り先(社長指示・v0.25.1498): KILLはキルされた対象(zoomTargetX/Y・世界座標)を画面中央の
     // 代わりに寄りの軸にする(zoomDecay>0=パンチ演出中のみ・カウンター等は指定なしで従来どおり中央)。
@@ -9752,7 +9781,9 @@ export class PixiScene {
       .sync(s.enemies, s.player, s.projectiles, s.gameTime, now, fy => this.depthScaleEnemy(fy));
     this.syncRescueAllies(s.rescueAllies, s.player, s.gameTime); // スキル 救難信号: 飛来する援護アライ(着地位置は発生時固定)
     this.syncThrownBags(s.thrownBags, s.enemies, s.gameTime); // 救急鞄: 空鞄投擲(プレイヤー→対象敵への直線飛行)
-    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, s.escorts, s.rescueSurvivors, s.baseSites, now, s.effects, s.breakableProps, s.endingSoldiers);
+    // ステージ4: 隊を離れたジュン(junDeparture)も進軍NPCと同じ絵の経路で描く(影・立ち絵)。判定には混ぜない=描く列だけ。
+    const escortsDrawn = this.escortsWithJun(s.escorts, s.junDeparture);
+    this.syncShadows(s.player, s.enemies, s.summons, s.projectiles, escortsDrawn, s.rescueSurvivors, s.baseSites, now, s.effects, s.breakableProps, s.endingSoldiers);
     this.syncShadowProbe(s.camera, now, s.effects); // 計測専用(ベンチ以外では count=0 で即 return)
     this.syncStageLightShaftDrift(s.camera, now);
     this.syncProjectiles(s.projectiles, now);
@@ -9878,7 +9909,7 @@ export class PixiScene {
     }
     this.resetBloodPools(); // 血溜まり(E-5): 前フレームで使った枚数を超えたぶんを消す(消し忘れ防止)
     this.syncHunterVision(s.enemies, now);
-    this.drawEscorts(s.escorts, now, s.gameTime); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
+    this.drawEscorts(escortsDrawn, now, s.gameTime, s.junDeparture); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
     this.drawSupportSniper(s.supportSniperNpc, s.gameTime); // 援護射撃NPC(非出撃の軍人立ち絵・画面縁のスライドイン→発射→後退)
     // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。farBackdrop!=='ending'では endingSoldiers=[]/
     // endingPhill=null なので各関数は自然に無visible化する(専用ゲートを増やさない=既存の空配列作法)。
@@ -9930,7 +9961,7 @@ export class PixiScene {
       s.eventQuestNpc,
       s.camera,
       now,
-      s.escorts
+      escortsDrawn
     );
     this.syncPlayerFx(s.player, now);
     const tapeDt = this.areaTapeLastNow ? Math.min(100, Math.max(0, fxNow - this.areaTapeLastNow)) : 16; this.areaTapeLastNow = fxNow;
@@ -10097,7 +10128,18 @@ export class PixiScene {
     // リズムの拍/演出は実時間(now=Date.now)基準。store の firstBeatAt/lastTapAt 等も Date.now ベース。
     this.syncRhythmScreenFx(s.rhythm, now);
     this.syncRhythmOverlay(s.rhythm, s.player, now);
-    this.syncFireflies(s.camera, now);
+    // ステージ4のジュンの倒れ→変身→紹介の間は、時間停止の中でも雪を止めずにゆっくり降らせる(雪の描画だけ実時間)。
+    {
+      const rn = Date.now();
+      const junSeq = this.junSequenceActive(s, rn);
+      this.snowTimeScale = junSeq ? JUN_SNOW_TIME_SCALE : 1;
+      // 寄りでカメラが大きく飛んだフレームは、雪を今の画面へ散らし直す(画面の縁で一斉に折り返して縦の筋に溜まらない)。
+      if (junSeq && this.snowStage && Number.isFinite(this.fireflyCameraX)
+        && Math.hypot(s.camera.x - this.fireflyCameraX, s.camera.y - this.fireflyCameraY) > Math.max(this.screenW, this.screenH) * 0.35) {
+        this.firefliesPlaced = false;
+      }
+      this.syncFireflies(s.camera, junSeq ? rn : now);
+    }
     this.applyForestPreview();
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
@@ -10411,9 +10453,11 @@ export class PixiScene {
 
   // ---- ambient fireflies ---------------------------------------------------
 
+  private snowTimeScale = 1;
   private syncFireflies(camera: { x: number; y: number }, now: number) {
     if (!this.fireflies.length) return;
-    const dt = this.fxPrevNow ? Math.min(50, now - this.fxPrevNow) : 16;
+    // 時計の切り替え(凍結時計⇔実時間)で戻らないよう負は0に。
+    const dt = (this.fxPrevNow ? Math.max(0, Math.min(50, now - this.fxPrevNow)) : 16) * this.snowTimeScale;
     this.fxPrevNow = now;
 
     const minX = camera.x - FIREFLY_MARGIN;
@@ -10611,6 +10655,16 @@ export class PixiScene {
 
     this.castleSprite.texture = tex;
     this.castleSprite.scale.set(sc);
+    // ステージ4のジュンの変身: 城ボスが現れてから紹介が明けるまで、聖堂(城の絵)を暗く落として巨体の輪郭を先に立てる(実時間・慣性つき)。
+    {
+      const rn = Date.now();
+      const rdt = this.junCastleDarkLastNow ? Math.min(0.1, Math.max(0, rn - this.junCastleDarkLastNow) / 1000) : 0;
+      this.junCastleDarkLastNow = rn;
+      const want = this.junPostTransformActive(useGameStore.getState(), rn) ? 1 : 0;
+      this.junCastleDark += (want - this.junCastleDark) * (1 - Math.exp(-rdt / (want > this.junCastleDark ? 0.12 : 0.4)));
+      const v = Math.round(255 * (1 - (1 - JUN_CASTLE_DARK_TINT_MIN) * this.junCastleDark));
+      this.castleSprite.tint = this.junCastleDark > 0.002 ? (v << 16) | (v << 8) | v : 0xffffff;
+    }
 
     // 光源DOF(v0.25.2666): ワールドYは「城の位置 + グローのローカルY」。崩落中は消灯。
     this.placeDofGlow(
@@ -28119,8 +28173,40 @@ export class PixiScene {
 
   // 護衛軍人NPC(前進・射撃)の立ち絵。shooter 素材を流用、足元アンカー・y-sort・歩行2コマ。
   // 向きは store の esc.face を使う(描画のみ・シミュレーション非干渉)。
-  private drawEscorts(escorts: EscortSoldier[], now: number, gameTime = 0) {
+  // ステージ4のジュンの変身の引き(1=引かない)とその実時間の時計。
+  private junPull = 1;
+  private junPullLastNow = 0;
+  private junCastleDark = 0;
+  private junCastleDarkLastNow = 0;
+  /** ジュンが倒れていく〜変身〜紹介(カットイン)が明けるまで(時間停止の中の一続き)。 */
+  private junSequenceActive(s: { junDeparture: JunDeparture | null; junTransformRealAt: number; attention: unknown }, realNow: number): boolean {
+    const jd = s.junDeparture;
+    if (jd && (jd.phase === 'collapsing' || jd.phase === 'vanishing')) return true;
+    return this.junPostTransformActive(s, realNow);
+  }
+  /** 城ボスが現れてから紹介が明けるまで。 */
+  private junPostTransformActive(s: { junTransformRealAt: number; attention: unknown }, realNow: number): boolean {
+    return s.junTransformRealAt > 0 && s.attention !== null && realNow - s.junTransformRealAt < JUN_POST_TRANSFORM_MAX_MS;
+  }
+
+  // ステージ4: 隊を離れたジュンを描く列に足す(同じ id のスプライトを引き継ぐ=離れる瞬間に絵が切れない)。体力を持たない=体力の線・倒れの曲線は出ない。
+  private junDrawCache: { src: JunDeparture | null; list: EscortSoldier[]; escorts: EscortSoldier[] } = { src: null, list: [], escorts: [] };
+  private escortsWithJun(escorts: EscortSoldier[], jd: JunDeparture | null): EscortSoldier[] {
+    if (!jd) return escorts;
+    const c = this.junDrawCache;
+    if (c.src === jd && c.escorts === escorts) return c.list;
+    const jun: EscortSoldier = {
+      id: JUN_ESCORT_ID, baseId: '', x: jd.x, y: jd.y, face: jd.face, soldierIndex: JUN_ESCORT_INDEX, fireAt: 0, dwellMs: 0,
+      moving: jd.phase === 'leaving' && jd.speed > 1,
+    };
+    this.junDrawCache = { src: jd, escorts, list: [...escorts, jun] };
+    return this.junDrawCache.list;
+  }
+
+  private drawEscorts(escorts: EscortSoldier[], now: number, gameTime = 0, junDep: JunDeparture | null = null) {
     const seen = new Set<string>();
+    const wallNow = Date.now(); // ジュンの倒れ→変身はアテンション(時間停止)の中で進む=実時間(store と同じ Date.now)で測る
+    let junLand: number[] | null = null; // ジュンが地面に着いた(雪煙の起点・下のループの後で描き切る=体が消えても埃は残る)
     const eg = this.escortGfx;
     eg.clear();
     // 3コマ立ち絵(-2 あり)は接地A→通過→接地B→通過 のピンポン[0,1,2,1]、2コマのみは従来[0,1](社長指示)。
@@ -28141,7 +28227,9 @@ export class PixiScene {
       if (!sp) { sp = new Sprite(); sp.anchor.set(0.5, 1); this.L.actorLayer.addChild(sp); this.escortSprites.set(esc.id, sp); }
       // soldierIndex ごとのユニーク立ち絵(社長提供)。未提供のNPCは従来の shooter 素材へフォールバック。
       // チュートリアルの衛生兵(TUTORIAL_MEDIC_INDEX)=ジュン。2026-10-11 社長支給の歩きシート(6コマ)へ差し替え=軍人と同じ `${base}-walk` の経路。
-      const base = esc.soldierIndex === TUTORIAL_MEDIC_INDEX
+      // ステージ4のジュン(JUN_ESCORT_INDEX)も同じ衛生兵の絵(歩きシート+倒れの3コマ)。
+      const isMedic = esc.soldierIndex === TUTORIAL_MEDIC_INDEX || esc.soldierIndex === JUN_ESCORT_INDEX;
+      const base = isMedic
         ? 'npc/medic'
         : (ESCORT_SPRITE_BASE[esc.soldierIndex] ?? 'rescue/shooter');
       const seq = getTexture(`${base}-3`) ? PixiScene.ESCORT_WALK_SEQ_4
@@ -28152,7 +28240,7 @@ export class PixiScene {
       const mSince = gameTime - (esc.knifeSwingAt ?? -1e9);
       const mSwing = mSince >= 0 && mSince < ESCORT_MELEE_WINDUP_MS + ESCORT_MELEE_BLADE_MS;
       const animate = esc.moving !== false && !mSwing;
-      const idleFrame = esc.soldierIndex === TUTORIAL_MEDIC_INDEX ? 2 : 0;
+      const idleFrame = isMedic ? 2 : 0;
       const walkFrame = animate ? seq[step % seq.length] : idleFrame;
       // 社長支給の歩きシート(2026-10-07・8/16コマ)がある人はそちらで歩く(1コマ ESCORT_SHEET_FRAME_MS・順送り)。
       // 止まっている時は両足が地面に着いているコマ(ESCORT_STAND_FRAME・社長指示2026-10-10)。シートの無い人は従来の3コマ(ピンポン)。
@@ -28167,9 +28255,20 @@ export class PixiScene {
       this.escortPoseById.set(esc.id, pose);
       // 社長支給の倒れる2コマ(2026-10-07): 0=崩れかけ/1=倒れた姿。倒れ込み(downK 0→1)・倒れ中・起き上がり(1→0)の
       // 途中を2コマで見せる(半分までは0コマ目)。この絵がある人は「腰まで沈める」代用を使わない。
-      const downSheet = !!getTexture(`${base}-down-1`) && pose.downK > 0.02;
+      // 衛生兵は倒れが3コマ(npc/medic-fall-0..2)=倒れ込み(downK 0→1)を3段で見せる(他の軍人は2コマ)。
+      const medicFall = base === 'npc/medic' && !!getTexture(`${MEDIC_FALL}-2`);
+      const downTex0 = medicFall ? getTexture(`${MEDIC_FALL}-0`) : getTexture(`${base}-down-0`);
+      const downSheet = (medicFall || !!getTexture(`${base}-down-1`)) && pose.downK > 0.02;
       // 攻撃を受けた直後(倒れていない時)は倒れる絵の0コマ目=片膝のしゃがみ(社長指示2026-10-08)。
-      const hitCrouch = !downSheet && pose.hitCrouch && !!getTexture(`${base}-down-0`);
+      const hitCrouch = !downSheet && pose.hitCrouch && !!downTex0;
+      // ステージ4: 隊を離れたジュンがアテンションの中で倒れていく/変身で消えていく(research/JUN_ESCORT.md §1)。
+      const junMine = junDep && esc.id === JUN_ESCORT_ID ? junDep : null;
+      const junView = junMine?.phase === 'collapsing' && junMine.collapseStartReal !== undefined
+        ? junCollapseView(wallNow - junMine.collapseStartReal, ATTENTION_IN_MS) : null;
+      const junFallFrame = junMine?.phase === 'vanishing' ? 2 : (junView?.frame ?? -1);
+      const junAlpha = junMine?.phase === 'vanishing' ? junVanishAlpha(wallNow - (junMine.vanishStartReal ?? wallNow)) : 1;
+      // 使う倒れのコマ(衛生兵のみ・-1=倒れの絵ではない)。足元合わせと縮尺に使う。
+      let medicFallFrame = -1;
       // 近接の振り(社長支給の2コマ): 低く構える→振り上げる。替える瞬間は弧が出る瞬間(KNIFE_SWING_SWITCH)=プレイヤーと同じ時計(PLAYER_MELEE_SWING_MS)。倒れ/被弾の絵が優先。
       // 体を替えるのはナイフが円の半ばを過ぎた所(前の拳→振り上げた拳の中間)=ナイフと拳が離れて見えない。
       const swingTex = mSwing && mSince < PLAYER_MELEE_SWING_MS && esc.soldierIndex >= 0 && esc.soldierIndex < 8
@@ -28179,11 +28278,15 @@ export class PixiScene {
       // しゃがみ・溜め=片膝のしゃがみ(倒れる絵の0コマ目)/空中・蹴り抜き=歩きシートの大きく脚を開いたコマ。蹴りは動き・敵の反応・音で見せる。
       const kickTex = kickPhase
         ? (kickPhase === 'crouch' || kickPhase === 'windup'
-          ? getTexture(`${base}-down-0`)
+          ? downTex0
           : (getTexture(`${base}-walk-${kickPhase === 'air' ? 2 : 6}`) ?? getTexture(`${base}-walk-0`)))
         : null;
-      const tex = kickTex ? kickTex
-        : hitCrouch ? getTexture(`${base}-down-0`)
+      if (junFallFrame >= 0 && medicFall) medicFallFrame = junFallFrame;
+      else if (medicFall && !kickTex && (hitCrouch || downSheet)) medicFallFrame = hitCrouch ? 0 : pose.downK < MEDIC_DOWN_FRAME1_AT ? 0 : pose.downK < MEDIC_DOWN_FRAME2_AT ? 1 : 2;
+      else if (medicFall && kickTex && kickTex === downTex0) medicFallFrame = 0;
+      const tex = medicFallFrame >= 0 ? getTexture(`${MEDIC_FALL}-${medicFallFrame}`)
+        : kickTex ? kickTex
+        : hitCrouch ? downTex0
         : downSheet
         ? (getTexture(`${base}-down-${pose.downK >= 0.5 ? 1 : 0}`) ?? getTexture(`${base}-down-1`))
         : swingTex
@@ -28222,7 +28325,7 @@ export class PixiScene {
       const sheetMult = base === 'rescue/shooter' && sheetFrames > 0 ? SHOOTER_SHEET_BODY_MULT
         : downSheet || hitCrouch || sheetFrames > 0 ? ESCORT_SHEET_DISPLAY_MULT : 1;
       const sinkScaleBase = tex
-        ? (esc.soldierIndex === TUTORIAL_MEDIC_INDEX
+        ? (isMedic
           ? (PixiScene.RESCUE_NPC_DISPLAY_H / MEDIC_BODY_TEX_H) * this.depthScale(esc.y)
           : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1) * sheetMult) * tex.height * walkSqY
         : 0;
@@ -28294,8 +28397,8 @@ export class PixiScene {
         sp.texture = tex; // 沈み中は下の行で下端を切った版へ差し替える(sc が決まってから)
         // 衛生兵はドット規格(78x64=横長キャンバス)のため contain-fit だと幅律速で小さくなる。
         // 高さ基準で他NPCと同じ表示高に揃える(社長指示v0.25.1825「大きさ揃えて」)。
-        const sc = esc.soldierIndex === TUTORIAL_MEDIC_INDEX
-          ? (PixiScene.RESCUE_NPC_DISPLAY_H / MEDIC_BODY_TEX_H) * this.depthScale(esc.y)
+        const sc = isMedic
+          ? (PixiScene.RESCUE_NPC_DISPLAY_H / MEDIC_BODY_TEX_H) * this.depthScale(esc.y) * (medicFallFrame >= 0 ? MEDIC_FALL_TEX_SCALE : 1)
           // NPC8人(index0..7)のみ0.8倍(社長指示v0.25.1858)。チュートリアル随行(100/101)は等倍。
           : this.humanNpcScale(tex.width, tex.height, esc.y) * (esc.soldierIndex < 8 ? NPC8_SCALE : 1) * sheetMult;
         sp.scale.set(sc * walkSqX * faceSign, sc * walkSqY);
@@ -28304,11 +28407,30 @@ export class PixiScene {
         // 位置と見切れだけ=歪みではない。切る行数は沈みの量に比例(起き上がりで同じ曲線で戻る)。
         if (sinkWorld > 0.4) sp.texture = this.escortSunkTexture(tex, Math.round(sinkWorld / Math.max(0.01, sc * walkSqY)));
         // 登場演出中はヘリ離陸タイミングでフェードイン(プレイヤーと同期)。上下左右の4人がこれに該当。
-        sp.alpha = baseAlpha * pose.alphaMul;
+        sp.alpha = baseAlpha * pose.alphaMul * junAlpha;
         sp.visible = sp.alpha > 0;
         escScale = sc;
       } else sp.visible = false;
-      sp.position.set(px, py);
+      // 倒れのコマの足元合わせ(衛生兵のみ・向いている側へ。位置だけ=歪みではない)。
+      // 足元合わせの量は倒れの度合いに沿って連続(コマの段差で跳ばない)。ジュンの変身の前の倒れは、膝が抜ける沈み・ふらつき・
+      // 倒れ込み・着地の跳ねも位置で足す(絵はそのまま=歪みではない・utils/junEscort junCollapseMotion)。
+      let fallShiftX = 0, fallShiftY = 0;
+      if (medicFallFrame >= 0 && escScale > 0) {
+        const shiftTex = junMine && junView ? medicFallShiftPx(junView.fallK, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT)
+          : junMine ? medicFallShiftPx(1, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT)
+          : hitCrouch || kickTex ? 0
+          : medicFallShiftPx(Math.max(0, Math.min(1, pose.downK)), MEDIC_DOWN_FRAME1_AT, MEDIC_DOWN_FRAME2_AT);
+        const mot = junMine?.phase === 'collapsing' && junMine.collapseStartReal !== undefined
+          ? junCollapseMotion(wallNow - junMine.collapseStartReal, ATTENTION_IN_MS) : { forward: 0, down: 0 };
+        fallShiftX = Math.round(faceSign * (shiftTex + mot.forward) * escScale);
+        fallShiftY = Math.round(mot.down * escScale);
+      }
+      sp.position.set(px + fallShiftX, py + fallShiftY);
+      // ジュンが地面に着いた瞬間の雪煙(既存の地面沿いの砂埃・ステージの色)。横に低く大きく=足元から頭の側へ3つ並べる。
+      // 時間停止の中でも実時間で描き切る(latch の時計=wallNow)。
+      if (junMine && esc.id === JUN_ESCORT_ID && junView?.landed) {
+        junLand = [esc.x + faceSign * 14 * Math.max(0.3, escScale), esc.y, PLAYER_HITBOX_FOR_DUST * DUST_SCALE * 1.1 * Math.max(0.6, escScale)];
+      }
       sp.zIndex = esc.y;
       // 被弾の白フラッシュ(従・血と滑りが主)。本体と同形を加算で重ねる=絵の輪郭だけが一瞬光る。
       this.updateEscortFlash(esc.id, sp, sp.texture, pose.flash * baseAlpha, esc.y + 0.002);
@@ -28333,6 +28455,28 @@ export class PixiScene {
         if (bl) bl.visible = false;
       }
       this.drawEscortMelee(esc, sp.visible ? baseAlpha * pose.alphaMul : 0, px, esc.y, mSince, mSwing, now, escScale);
+    }
+    {
+      const jl = junLand;
+      const lw = this.latchFx('jun:land', jl !== null, DUST_MS * 1.8, wallNow, () => jl ?? [0, 0, 0]);
+      if (lw) {
+        const [lx, ly, lr] = lw.d;
+        const tint = this.dustTintForStage(), a = this.dustAlpha(lw.t);
+        // 地面沿いの砂埃: 灰の4コマ帯(種なし=土色のもこもこ絵を選ばない)を横長・低く潰し、雪原では加算で重ねる
+        // =地面より明るい白い煙になる(normal だと灰が地面より暗く煤の円に、screen だとほぼ見えなかった・実測)。
+        const puffs: [number, number, number][] = [[-0.75, 0.8, 0.8], [0, 1, 1], [0.75, 0.8, 0.8]];
+        puffs.forEach(([ox, rk, ak]) => {
+          const before = this.dustUsed;
+          this.drawDust(lx + lr * ox, ly, lr * rk, lw.t, tint, a * ak);
+          if (this.dustUsed === before) return;
+          const sp = this.dustPool[this.dustUsed - 1];
+          sp.rotation = 0;
+          sp.width = lr * rk * 2 * (1.25 + 0.35 * lw.t);
+          sp.height = lr * rk * 2 * (0.42 + 0.12 * lw.t);
+          sp.position.set(lx + lr * ox, ly - sp.height * 0.18); // 中心を足元の線より少し上=地面に貼り付く
+          sp.blendMode = this.snowStage ? 'add' : 'normal';
+        });
+      }
     }
     for (const [id, sp] of this.escortSprites) {
       if (!seen.has(id)) {

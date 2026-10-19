@@ -3,6 +3,8 @@
 // こちらを優先採用(=キャラ設定リライト反映)。無ければ呼び出し側の既存1文(BASE_SOLDIERS)へフォールバック。
 // idx=soldierIndex: edgar0 / joseph1 / elizabeth2 / musashi3 / oklahoma4 / chen5 / lauren6 / phaser7
 // cat: sortie / surrounded / rescued / pushback / baseNear / baseCaptured / neglectFar / companion / praise / rescueReturned / npcKill
+import { JUN_ESCORT_INDEX, pickJunLine } from './junEscortLines';
+
 export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = [
   // base_captured (拠点解放時)
   { idx: 0, cat: 'baseCaptured', text: '拠点、確保。ここから押し返す。' },        // dlg_000001
@@ -171,6 +173,8 @@ export const NPC_SCENE_VARIANTS: { idx: number; cat: string; text: string }[] = 
 
 // (idx, cat) のバリアントからランダムに1つ返す。無ければ fallback(既存1文)。
 export const pickNpcLine = (idx: number, cat: string, fallback: string): string => {
+  // ステージ4のジュン(名簿外の印)は専用の台帳だけを引く(表に無い場面=空文字=無言・research/JUN_ESCORT.md §2)。
+  if (idx === JUN_ESCORT_INDEX) return pickJunLine(cat);
   const v = NPC_SCENE_VARIANTS.filter(x => x.idx === idx && x.cat === cat);
   if (v.length === 0) return fallback;
   return v[Math.floor(Math.random() * v.length)].text;

@@ -1264,6 +1264,18 @@ export const holdBgmSilence = (fadeMs = 3000): void => {
 };
 
 /**
+ * `fadeOutBgmToSilence` で落とした**今の曲**を、曲を替えずに実効音量へ戻す(ステージ4のジュンの変身・research/JUN_ESCORT.md)。
+ * 走っているフェードはトークンで打ち切る。曲は頭から鳴らし直さない(同じ曲なら setBgmTrack が音量だけ戻す)。
+ */
+export const resumeBgmAfterFade = (): void => {
+  ensureBgm();
+  bgmSilenceHeld = false;
+  ++bossBgmFadeToken;
+  if (!bgmTargetSrc) return;
+  setBgmTrack(bgmTargetSrc, bgmTargetDanceLevel);
+};
+
+/**
  * 後半=**次の曲を実効音量で即始める**(フェードイン無し=社長の掟「フェードせずにはっきり流し始めて」)。
  * 走っているフェードはトークンで打ち切る(無音のまま置き去りにしない)。
  * 同じ曲を指していても `setBgmTrack` → `playBgmRobust` が音量を実効値へ戻すので、

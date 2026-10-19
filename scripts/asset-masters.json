@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "927 files / 復号後 約699MB",
+ "generatedFor": "930 files / 復号後 約699MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3049,6 +3049,24 @@
    "h": 66,
    "bytes": 45518,
    "sha": "831e2941c9b018ab"
+  },
+  "sprites/npc/medic-fall-0.png": {
+   "w": 80,
+   "h": 64,
+   "bytes": 5413,
+   "sha": "5365cc79c197782b"
+  },
+  "sprites/npc/medic-fall-1.png": {
+   "w": 80,
+   "h": 64,
+   "bytes": 5042,
+   "sha": "1a76d60957554b6f"
+  },
+  "sprites/npc/medic-fall-2.png": {
+   "w": 80,
+   "h": 64,
+   "bytes": 3665,
+   "sha": "d58ca0a0615021ee"
   },
   "sprites/npc/medic-walk.png": {
    "w": 318,

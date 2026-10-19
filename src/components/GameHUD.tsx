@@ -127,6 +127,9 @@ const GameHUD: React.FC = () => {
   const eventBannerUntil = useGameStore(state => state.eventBannerUntil);
   // ★v0.25.3743: EX(フィル戦)勝利の黒フェード(boolean購読=1回だけ変化・毎フレーム再描画なし)。
   const exOutroFading = useGameStore(state => state.exOutroFading);
+  // ステージ4のジュンが倒れていく寄り〜変身〜紹介が明けるまで(research/JUN_ESCORT.md): HUD をカットインと同じ暗さへ落とし、
+  // 無関係なイベントの帯(救難信号受信 等)も隠す。boolean 購読=切り替わりの2回だけ再描画。
+  const junHudDim = useGameStore(state => state.junDeparture?.phase === 'collapsing' || state.junDeparture?.phase === 'vanishing' || state.junTransformRealAt > 0);
   // 配列ではなく派生値だけ購読(敵の移動で配列参照が毎フレーム変わっても、件数/ボス有無が
   // 変わらなければ再描画しない)。FPS/負荷表示は PerfOverlay へ分離済み。
   const formattedTime = formatTime(gameTime / 1000);
@@ -161,7 +164,11 @@ const GameHUD: React.FC = () => {
   if (endingStage) return null;
 
   return (
-    <div className="absolute inset-0 z-40 pointer-events-none text-white">
+    <div
+      className="absolute inset-0 z-40 pointer-events-none text-white"
+      // カットインの暗幕(rgba 0.72)と同じ暗さ=明るさ 0.28。落ちる時は ease-out、戻る時はゆっくり(慣性)。
+      style={{ filter: junHudDim ? 'brightness(0.28)' : undefined, transition: junHudDim ? 'filter 380ms ease-out' : 'filter 700ms ease-in-out' }}
+    >
       <LowHpVignette />
       <HitRetaliationCue />{/* 低HPの縁取りの手前に描く(見分けがつくように) */}
       <BloodAwakenBanner />
@@ -219,7 +226,7 @@ const GameHUD: React.FC = () => {
           コンボ状態(meleeFinishComboCount)は内部で継続使用。 */}
 
       {/* イベント発生告知バナー。コンボ表示があるときはその下にシームレスにずらす(規定秒数まで消えない)。 */}
-      {eventBannerText && eventBannerUntil >= gameTime && (
+      {eventBannerText && eventBannerUntil >= gameTime && !junHudDim && (
         <div
           className="absolute text-left"
           style={{

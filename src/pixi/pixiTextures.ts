@@ -855,6 +855,11 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'npc/lauren-down', scaleMode: 'nearest' },
       { name: 'npc/phaser-down', scaleMode: 'nearest' },
       { name: 'npc/medic-walk', scaleMode: 'nearest' }, // 衛生兵ジュン(チュートリアル随行)の歩きシート6コマ(社長支給2026-10-11・旧4コマ medic-walk-0..3 から差し替え)
+      // 衛生兵ジュンの倒れ3コマ(社長支給v0.25.1799・80×64・右向き・下端=接地。2026-10-19 履歴から復元)。
+      // ステージ4の進軍NPCとして倒れる/起こされる時と、城ボスへの変身の前に倒れる時に使う(research/JUN_ESCORT.md)。
+      { name: 'npc/medic-fall-0', scaleMode: 'nearest' },
+      { name: 'npc/medic-fall-1', scaleMode: 'nearest' },
+      { name: 'npc/medic-fall-2', scaleMode: 'nearest' },
       // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2)。フィル歩行3コマ+救護6コマ+倒れ兵士1枚
       // (受領2026-08-28。ドット等倍・下端=接地でトリム済み)。
       { name: 'npc/phill-walk-0', scaleMode: 'nearest' },

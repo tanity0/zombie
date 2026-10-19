@@ -29,7 +29,7 @@ import {
   VisualEffect, AmmoType, Direction, SubWeaponKey, SkillKey, CastleEvent, DifficultyRank, EnemyColorTier,
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
-  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
+  ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, JunDeparture, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
   DashLocomotionState, EquipLoadout, EquipSlot, ConsumableKey,
   BloodSpike, GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯/グラビティショットの状態
   PauseReason, // ★なぜ止まっているか(テストブリッジ用・遊びの仕様には使わない)
@@ -221,6 +221,8 @@ import {
   ESCORT_BODY_SIZE, ESCORT_DOWN_SLIDE_MS, ESCORT_FALL_IMPACT_FRAC, ESCORT_LOST_SIGHT_MS, ESCORT_RETREAT_SPEED_MULT,
 } from '../utils/escortHealth';
 import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscortSource } from '../utils/escortView';
+import { JUN_ESCORT_INDEX, JUN_NAME, JUN_DEPART_LINE } from '../data/junEscortLines';
+import { isJunEscort, JUN_ESCORT_ID, junJoinsRun, stepJunWalk, JUN_DEPART_WALK_DELAY_MS, junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST } from '../utils/junEscort';
 // research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils の純関数)。
 import {
   followZoneContains, stepFollowMachine, stepEscortFollow, escortFollowProfile, followSpeedCap, followHeal, followHealMarks, followLineMuted,
@@ -333,7 +335,7 @@ import { isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult, TRAP_R
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
 import { clearDestroyedObstacles } from '../world/destructibles';
-import { resolveCityPropCollision, setCityPropsDisabled } from '../world/cityProps';
+import { resolveCityPropCollision, setCityPropsDisabled, cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
 import { detourAngleOffset } from '../world/detourPoi';
 import { armoryPos as armorySpot, resolveArmoryCollision, isInArmoryCircle, tickArmoryDwell, ARMORY_SCRAP_COST } from '../world/armory';
@@ -721,7 +723,9 @@ const SUPP_BASE_ATTACKS_ENABLED: boolean = false;
 const ESCORT_WALK_MULT = 0.7;
 /** 瀕死の後ずさりの速さを立ち上げ/畳む時間(秒・慣性MUST=検収R2 A-2)。 */
 const ESCORT_RETREAT_RAMP_SEC = 0.35;
-const escortSpeed = (): number => PLAYER_BASE_SPEED * GAME_SPEED * ESCORT_WALK_MULT; // 前進速度(画面内)。画面外はこの1/5で自動進行(utils/escortOffscreen.ts)。
+const escortSpeed = (): number => PLAYER_BASE_SPEED * GAME_SPEED * ESCORT_WALK_MULT;
+/** 進軍NPCの歩きの速さ(px/s・画面内)。ステージ4のジュンの離脱の逆算(useGameLoop)が読む。 */
+export const escortWalkSpeed = escortSpeed; // 前進速度(画面内)。画面外はこの1/5で自動進行(utils/escortOffscreen.ts)。
 const ESCORT_FIRE_INTERVAL_MS = 600;    // 射撃間隔
 const ESCORT_DMG = 8;                   // 1射のダメージ
 // フェイザー(名簿index7)は特別: 2丁拳銃で1射につき2発撃つ=合計ダメージ2倍(1発は通常と同じ)。
@@ -821,6 +825,45 @@ const makeEscorts = (px: number, py: number, corridorRow = false, playerMaxHealt
     });
   }
   return arr;
+};
+// ステージ4のジュンの道筋(research/JUN_ESCORT.md): 城の当たり箱(崩れた後・ボス戦で施設が隠れている間は無し=resolveOutOfSolids と同じ)。
+const junCastlePathRect = (s: GameState): Rect | null =>
+  (s.castleEvent.collapsedAt !== undefined || s.farBackdrop === 'tutorial' || s.stageTheme === 'lab'
+    || facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime)) ? null : castleRect(s.castleEvent);
+// 道筋で回り込む障害物=城+歩く範囲の木の幹+散布物(車両・見張り台)。押し戻しは resolveShieldWalls が別に掛ける。
+const junPathObstacles = (s: GameState, ax: number, ay: number, bx: number, by: number): Rect[] => {
+  const pad = 160;
+  const x0 = Math.min(ax, bx) - pad, x1 = Math.max(ax, bx) + pad, y0 = Math.min(ay, by) - pad, y1 = Math.max(ay, by) + pad;
+  const out: Rect[] = [];
+  const c = junCastlePathRect(s);
+  if (c) out.push(c);
+  if (s.stageTheme !== 'lab') {
+    for (const t of treesInRegion(x0, y0, x1, y1)) out.push(trunkRect(t));
+    for (const p of cityPropsInRegion(s.farBackdrop, x0, y0, x1, y1)) { const r = cityPropRect(s.farBackdrop, p); if (r) out.push(r); }
+  }
+  return out;
+};
+// ステージ4: 衛生兵ジュンを5人目の進軍NPCとして加える(research/JUN_ESCORT.md §1)。名簿(BASE_SOLDIERS 0..7)の外の印
+// (JUN_ESCORT_INDEX)を持つ=名簿の抽選・援護射撃の人選・拠点の駐留兵・名簿順の表(歩き/振り/返事)には一切入らない。
+// 担当拠点は4人のうち誰かと同じ拠点(拠点は4つ)。配列の末尾に置く=「その拠点の担当」を find で引く既存の箇所は常に本来の軍人を返す。
+// 立ち位置は4人の円(半径36・0/90/180/270°)の隙間の左下。体力は他の進軍NPCと同じ。
+const makeJunEscort = (squad: EscortSoldier[], px: number, py: number, playerMaxHealth = 0): EscortSoldier => {
+  const escortHp = playerMaxHealth > 0 ? escortMaxHealthFor(playerMaxHealth) : undefined;
+  const mate = squad[Math.floor(Math.random() * squad.length)];
+  const ang = Math.PI * 0.75;
+  return {
+    id: JUN_ESCORT_ID,
+    baseId: mate?.baseId ?? 'base-0',
+    x: px + Math.cos(ang) * 40,
+    y: py + Math.sin(ang) * 40,
+    face: 1,
+    soldierIndex: JUN_ESCORT_INDEX,
+    fireAt: 0,
+    dwellMs: 0,
+    wasSurrounded: false,
+    companionMs: 0,
+    ...(escortHp !== undefined ? { health: escortHp, maxHealth: escortHp } : {}),
+  };
 };
 // ---- research/ESCORT_MELEE.md: 進軍NPCの近接(ナイフ)。判定は utils/escortMelee の1本、ここは2つのルートが共有する配線だけ ----
 // 狙っている敵(advance.target)との距離を胸の高さから測り、1フレーム進める。mode=true の間は銃を撃たない。
@@ -1035,10 +1078,7 @@ const escortFxApi = (get: () => { spawnBlood: (x: number, y: number, angle: numb
 const escortFxView = (s: { player: { x: number; y: number; width: number; height: number }; camera: { x: number; y: number }; gameBounds: { width: number; height: number }; gameTime: number }): EscortFxView => ({
   playerX: s.player.x + s.player.width / 2, playerY: s.player.y + s.player.height / 2, camera: s.camera, gameBounds: s.gameBounds, gameTime: s.gameTime,
 });
-const escortSceneName = (soldierIndex: number): string => {
-  const n = BASE_SOLDIERS.length;
-  return BASE_SOLDIERS[((soldierIndex % n) + n) % n].name;
-};
+const escortSceneName = (soldierIndex: number): string => rosterEntry(soldierIndex).name;
 
 // 各拠点(base-0..7)の駐留軍人。名前/セリフは「制圧時」「撤退時(拠点喪失)」にコールアウトで出るのみ。
 // 拠点を失っても死亡ではなく撤退する(実体はもともと描画のみ)。
@@ -1059,13 +1099,33 @@ const BASE_SOLDIERS: { name: string; capture: string; retreat: string; sortie: s
   { name: 'ローレン',   capture: '私も頑張る！',     retreat: 'くやしい！',   sortie: '行くよ。壊れた道を直すのはいつもこっちだ。', surrounded: '囲まれた。最悪、でも想定内。', rescued: '助かった。文句はあとで言う。', pushback: '下がる。無理して壊れるよりマシ。', baseNear: '拠点が見えた。やっと使える場所だ。', companion: '悪くないペース。今のところはね。', baseCaptured: '確保。ここなら補給線を組める。', neglectFar: 'こっちは停滞中。手が空いたら来て。', npcKill: '一体処理。次。', opPrep: '作戦準備、ひとつ片付いたね。', praise: 'あんた、ほんとに一人で軍隊みたいだね。' },
   { name: 'フェイザー', capture: 'やるしかねぇ・・・', retreat: '冗談だろ？',   sortie: '進軍を開始する。変異反応に注意しろ。', surrounded: '囲まれたな。興味深いが危険だ。', rescued: '介入を確認。生存率が上がった。', pushback: '後退する。標本になる気はない。', baseNear: '拠点を視認。ここを固定点にする。', companion: '近接距離を維持しろ。観測しやすい。', baseCaptured: '拠点確保。観測拠点として使える。', neglectFar: 'こちらは停滞している。汚染圧が高い。', npcKill: '対象を沈黙させた。', opPrep: '作戦条件が一つ満たされた。', praise: '異常な殲滅速度だ。記録しておく。' },
 ];
+// ステージ4のジュン(名簿外の印 JUN_ESCORT_INDEX)の名簿の行。文言はすべて空=台詞は data/junEscortLines.ts の台帳だけ
+// (pickNpcLine / escortSceneLine がジュンの印を見て引く)。表に無い場面は空文字のまま=無言(tryNpcLine が空文字を弾く)。
+const JUN_ROSTER_ENTRY: (typeof BASE_SOLDIERS)[number] = {
+  name: JUN_NAME, capture: '', retreat: '', sortie: '', surrounded: '', rescued: '', pushback: '', baseNear: '', companion: '',
+  baseCaptured: '', neglectFar: '', npcKill: '', opPrep: '', praise: '',
+};
+/** 進軍NPCの soldierIndex → 台詞の引き先の index(名簿は巡回で 0..7・ジュンは印のまま)。 */
+const rosterKey = (idx: number): number =>
+  idx === JUN_ESCORT_INDEX ? idx : ((idx % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
+/** 進軍NPCの soldierIndex → 名簿の行(ジュンは専用の行)。 */
+const rosterEntry = (idx: number): (typeof BASE_SOLDIERS)[number] =>
+  idx === JUN_ESCORT_INDEX ? JUN_ROSTER_ENTRY : BASE_SOLDIERS[rosterKey(idx)];
+/**
+ * 拠点を開けた手柄の index(拠点の駐留兵・解放の台詞・撤退の台詞の話し手)。ジュンが滞在を満たした時は、
+ * 同じ拠点の担当の軍人の手柄にする(ジュンは拠点の駐留兵に混ざらない・research/JUN_ESCORT.md §1)。
+ */
+const captureCreditIndex = (esc: EscortSoldier, escorts: readonly EscortSoldier[]): number =>
+  isJunEscort(esc) ? (escorts.find(e => e.baseId === esc.baseId && !isJunEscort(e))?.soldierIndex ?? 0) : esc.soldierIndex;
 // 軍人名簿の人数(=ESCORT_SPRITE_BASE のスプライト数と一致)。援護射撃のNPC選定で使うためexport。
 export const BASE_SOLDIER_COUNT = BASE_SOLDIERS.length;
 /** 軍人名簿の名前(index は出撃ごとの soldierIndex。範囲外も巡回で引く)。HUD の札が「誰が」を言うのに使う。 */
-export const baseSoldierName = (idx: number): string => BASE_SOLDIERS[((idx % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length].name;
+export const baseSoldierName = (idx: number): string => rosterEntry(idx).name;
 // NPCセリフのHUD表示タイミング(gameTime ms)。1行の表示時間と、次の行までの間隔。
 export const NPC_DIALOGUE_MS = 2800;     // 1行の表示時間(ストーリーボスの終幕台詞の尺計算でも使用)
 export const NPC_DIALOGUE_GAP_MS = 500;  // 行間の空き(連続表示でも詰めすぎない)
+/** slow の行(文字送り+三点リーダの間)は文字送りのぶんだけ長く出す。 */
+export const NPC_DIALOGUE_SLOW_EXTRA_MS = 1200;
 // ★v0.25.3989: アテンション(ボス出現カットイン)で通信を凍結した印。明けたエッジで表示中の行の
 // 尺を張り直すための1bit(モジュール変数=保存不要の揮発でよい)。
 let npcDialogueFrozeByAttention = false;
@@ -6267,8 +6327,9 @@ interface GameState {
   hudDirector: { koma: 'relax' | 'harvest' | 'normal' | 'peak'; rank: number };
   // NPCリアルタイムセリフ(時間停止なし・HUDの軽量表示)。current=表示中、queue=順番待ち、nextAt=次を出せる最短gameTime。
   // portrait=会話の立ち絵を話者名と別に指定するオーバーライド(例: 変異後グレン)。省略時は name で引く。
-  npcDialogue: { name: string; text: string; until: number; portrait?: string } | null;
-  npcDialogueQueue: { name: string; text: string; portrait?: string }[];
+  npcDialogue: { name: string; text: string; until: number; portrait?: string; slow?: boolean } | null;
+  /** slow=文字をゆっくり送り、三点リーダで一度止めてから消す(ステージ4のジュンの離脱の一言・NpcDialogue が見る)。 */
+  npcDialogueQueue: { name: string; text: string; portrait?: string; slow?: boolean }[];
   npcDialogueNextAt: number;
   npcSpokeAt: Record<string, number>;   // NPC名→最後に喋ったgameTime(同一NPCのCD用)
   npcCatAt: Record<string, number>;      // カテゴリ→最後に出したgameTime(同一カテゴリのCD用)
@@ -6417,6 +6478,12 @@ interface GameState {
   // 終わった瞬間にescortsへそのまま移す(名簿を作り直さない=配置の乱数を二度引かない)。
   // ウェルカムを持たないランではresetGameの時点でescortsへ直接入れるので、このランでは常に空。
   pendingEscorts: EscortSoldier[];
+  /** ステージ4: 隊を離れて城へ向かうジュン(research/JUN_ESCORT.md §1・utils/junEscort.ts)。離脱前/居ない出撃は null。 */
+  junDeparture: JunDeparture | null;
+  /** ステージ4: 道中のジュンの「一緒にいる」を止めている(離脱の一言で初めて聞かせる・useGameLoop が変化時だけ書く)。 */
+  junCompanionQuiet: boolean;
+  /** ステージ4: ジュンが城ボスへ変身した実時間(Date.now)。0=無し。描画(聖堂を暗く・カメラの引き・雪)とバナーの遅らせが読む。 */
+  junTransformRealAt: number;
   // エンディング(仮組み・ENDING_SCENE.md 演出仕様v2 §3): 専用配列。escortsに相乗りしない
   // (セリフ4関数はtutorialしか見ておらず、混ぜると名前付きNPCが喋る事故になるため)。
   endingSoldiers: EndingSoldier[];
@@ -6887,7 +6954,7 @@ interface GameState {
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
   spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string, visual?: 'ice' | 'bone' | 'feather') => void; // visual='bone'=ラフィの骨刃(見た目のみ差し替え・判定/挙動はスカジ刃と同じ)
   // NPCセリフ: キューに追加 / 毎フレームの表示進行(useGameLoopから呼ぶ)。
-  enqueueNpcDialogue: (lines: { name: string; text: string; portrait?: string }[]) => void;
+  enqueueNpcDialogue: (lines: { name: string; text: string; portrait?: string; slow?: boolean }[]) => void;
   updateNpcDialogue: (gameTime: number) => void;
   // 状況反応セリフをCD(同一NPC/同一カテゴリ)を守って投入。通れば true。
   // escortId: 進軍NPC起点の呼び出しは軍人の id を渡す(その軍人が倒れている間は黙る・同名の別人=駐留兵の台詞は落とさない)。
@@ -6918,6 +6985,15 @@ interface GameState {
   noteMeleeSwingPressedAt: (pressedAtMs: number) => void;
   markFirstAidPoseFx: () => void; // 救急鞄スキル発動演出の起点を更新(描画のみ)。払い出しの瞬間に呼ぶ。
   markCastleBossSpawned: () => void;
+  /**
+   * ステージ4: ジュンが隊を離れる(research/JUN_ESCORT.md §1)。escorts から外して junDeparture へ移し、「変な感じがする…」を1行。
+   * target=歩いて行く先(城ボスがいつも出る場所の足元)。ジュンが隊に居ない/既に離れていれば何もしない(false)。
+   */
+  beginJunDeparture: (targetX: number, targetY: number) => boolean;
+  /** 隊を離れたジュンを城へ1フレーム歩かせる(一言の後に一拍止まってから・慣性つき・遮蔽物と行ける帯に従う)。着いたら waiting。 */
+  stepJunDeparture: (dtSec: number) => void;
+  /** 歩き途中のジュンを画面外の点へ置き直す(城の足元が画面に映っている時・待ちすぎた時。utils/junEscort junRelocatePoint)。 */
+  relocateJunDeparture: (x: number, y: number) => void;
   // 囲い系イベント: 開始(activeEvent をセット＋囲い周辺の通常敵を一掃)/ 終了(activeEvent=null＋残存イベント敵を撤去)。
   beginArenaEvent: (event: ActiveEvent) => void;
   endArenaEvent: () => void;
@@ -7231,6 +7307,13 @@ interface GameState {
   setCameraPosition: (x: number, y: number) => void;
   triggerAttention: (x: number, y: number, cutin?: AttentionCutin, extraHoldMs?: number) => void; // 現地へカメラアテンション(時間停止で高速パン→ホールド→戻る)。cutin指定=§6.36ボス出現カットイン付き。extraHoldMs=ホールド延長(討伐の崩壊見届け用)
   clearAttention: () => void;
+  /**
+   * ステージ4のジュンの変身(research/JUN_ESCORT.md §1): 出ている素のアテンション(ジュンへの寄り)を、その場でボスの紹介(カットイン)
+   * つきへ継ぎ足す。カメラは今の注目点に止まったまま(寄り直さない)・戻り先(プレイヤー)は元のまま・時間停止もそのまま延びる。
+   * 素のアテンションが出ていなければ通常の triggerAttention(x, y, cutin) と同じ。
+   * ★x, y はその「素のアテンションが無い時」の寄り先にだけ使う。継ぎ足す時は今の注目点のまま(x, y は効かない)。
+   */
+  chainAttentionCutin: (x: number, y: number, cutin?: AttentionCutin) => void;
   triggerTimeSlow: (scale: number, durationMs: number, holdMs?: number) => void; // holdMs=最も遅い倍率を保持する時間(既定0)
   triggerHitstop: (durationMs: number) => void; // 全停止の瞬間ストップ(カウンター/近接フィニッシュの衝撃)
   // targetX/Y(v0.25.2585・任意): 寄り先の世界座標。未指定=従来どおり画面中央(=カメラが追う
@@ -7706,6 +7789,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   labIdolSide: 0,
   escorts: [],
   pendingEscorts: [],
+  junDeparture: null,
+  junCompanionQuiet: false,
+  junTransformRealAt: 0,
   endingSoldiers: [],
   endingPhill: null,
   endingBombs: [],
@@ -8667,7 +8753,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 手応え=その拠点の軍人の返事(決定音は鳴らさない=設定を変えた音にしない・監査CR-4)。間隔の制限は通さない
     // (押したら必ず返す・監査A-2)。連打で台詞が積もらないよう、前の返事から1.2秒は黙る。
     const now = Date.now();
-    const esc = baseId ? s.escorts.find(e => e.baseId === baseId && !isEscortDowned(e)) : undefined;
+    const esc = baseId ? s.escorts.find(e => e.baseId === baseId && !isEscortDowned(e) && !isJunEscort(e)) : undefined; // ジュンは名簿順の返事の表に居ない
     if (esc && now - followToggleLineAt >= 1200) {
       followToggleLineAt = now;
       const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
@@ -8719,7 +8805,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().spawnRing(cx, cy + p.height / 2 - 4, 10, 74, ringColor, 3, 700);
     // 拠点に着いたら、その拠点の軍人が迎える(倒れていなければ)。
     if (dest.baseId) {
-      const esc = s.escorts.find(e => e.baseId === dest.baseId && !isEscortDowned(e));
+      const esc = s.escorts.find(e => e.baseId === dest.baseId && !isEscortDowned(e) && !isJunEscort(e)); // ジュンは名簿順の迎えの表に居ない
       if (esc) {
         const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
         const text = FAST_TRAVEL_ARRIVE_LINES[idx];
@@ -14375,7 +14461,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (cur && gameTime >= cur.until) { cur = null; nextAt = gameTime + NPC_DIALOGUE_GAP_MS; changed = true; }
     if (!cur && queue.length > 0 && gameTime >= nextAt) {
       const head = queue[0];
-      cur = { ...head, until: gameTime + NPC_DIALOGUE_MS }; // portrait等の追加フィールドも素通しで引き継ぐ
+      cur = { ...head, until: gameTime + NPC_DIALOGUE_MS + (head.slow ? NPC_DIALOGUE_SLOW_EXTRA_MS : 0) }; // portrait等の追加フィールドも素通しで引き継ぐ
       queue = queue.slice(1);
       changed = true;
     }
@@ -14390,7 +14476,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (d < bd) { bd = d; best = e; }
     }
     if (!best) return;
-    const sol = BASE_SOLDIERS[best.soldierIndex % BASE_SOLDIERS.length];
+    const sol = rosterEntry(best.soldierIndex);
     get().tryNpcLine(sol.name, 'npcKill', pickNpcLine(best.soldierIndex, 'npcKill', sol.npcKill), NPC_KILL_CAT_CD_MS, best.id);
   },
   // イベント系クリア地点(x,y)に対応する地域NPC(最寄り拠点担当)が反応。救助成功は「救助者保護(rescueReturned)」を出す。
@@ -14423,7 +14509,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (d < bd) { bd = d; best = e; }
     }
     if (!best) return;
-    const sol = BASE_SOLDIERS[best.soldierIndex % BASE_SOLDIERS.length];
+    const sol = rosterEntry(best.soldierIndex);
     get().tryNpcLine(sol.name, 'praise', pickNpcLine(best.soldierIndex, 'praise', sol.praise), PRAISE_CAT_CD_MS, best.id);
   },
   // 担当エリア(セクター)に入った時=その担当NPCが「遠い時用(neglectFar)」コメント(社長指示・#1と連動)。
@@ -14439,7 +14525,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(idx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS, esc.id);
   },
   tryNpcLine: (name, category, text, categoryCdMs, escortId) => {
+    if (!text) return false; // 文言の無い場面=無言(ステージ4のジュンは表に無い場面の文言を持たない)
     const s = get();
+    // ステージ4: 離脱の一言(「一緒にいる」と同じ文言)の前の数十秒は、道中の同じ一言を出さない(離脱で初めて聞かせる)。
+    if (category === 'companion' && name === JUN_NAME && s.junCompanionQuiet) return false;
     const gt = s.gameTime;
     // 倒れている軍人は台詞(囲まれた/苦戦/並走/称賛 …)を出さない・苦戦の通信で stallUntil も付けない(research/ESCORT_TARGETED.md §3)。
     // 名前では弾かない(同名の駐留兵の台詞まで落ちる)=進軍NPC起点の呼び出しが渡す id で、その軍人だけを見る。
@@ -14459,7 +14548,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       npcCatAt: { ...s.npcCatAt, [category]: gt },
       ...(struggle ? {
         escorts: s.escorts.map(e => (escortId !== undefined ? e.id === escortId
-          : BASE_SOLDIERS[((e.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length]?.name === name)
+          : rosterEntry(e.soldierIndex).name === name)
           ? { ...e, stallUntil: gt + ESCORT_STRUGGLE_STALL_MS } : e),
       } : {}),
     });
@@ -18687,6 +18776,70 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({ player: { ...state.player, firstAidPoseAt: Date.now() } }));
   },
 
+  beginJunDeparture: (targetX, targetY) => {
+    const s = get();
+    const jun = s.escorts.find(isJunEscort);
+    if (!jun || s.junDeparture) return false;
+    set(st => ({
+      escorts: st.escorts.filter(e => !isJunEscort(e)),
+      junDeparture: {
+        phase: 'leaving', x: jun.x, y: jun.y, face: jun.face, speed: 0,
+        targetX, targetY, startedAt: st.gameTime,
+      },
+    }));
+    // 会話の箱の列へ直接(間隔の制限を通さない=離れる理由の一言を取りこぼさない)。
+    get().enqueueNpcDialogue([{ name: JUN_NAME, text: JUN_DEPART_LINE, slow: true }]);
+    return true;
+  },
+  stepJunDeparture: (dtSec) => {
+    const s = get();
+    const jd = s.junDeparture;
+    if (!jd || jd.phase !== 'leaving') return;
+    // 一言を言ってから、その場で一拍止まり、向きを変えて歩き出す(台詞と同時に歩き出さない)。
+    // 歩き出しの時刻は、一言が画面に出た瞬間から JUN_DEPART_WALK_DELAY_MS(列で待たされても一言の後に歩く)。
+    if (jd.walkAt === undefined) {
+      const shown = s.npcDialogue?.name === JUN_NAME && s.npcDialogue?.text === JUN_DEPART_LINE;
+      const pending = s.npcDialogueQueue.some(l => l.name === JUN_NAME && l.text === JUN_DEPART_LINE);
+      // 一言が出た/列から落ちた/待ちすぎ(6秒)=歩き出しの時刻を決める。
+      if (shown || !pending || s.gameTime - jd.startedAt > 6000) set({ junDeparture: { ...jd, walkAt: s.gameTime + (shown ? JUN_DEPART_WALK_DELAY_MS : 600) } });
+      return;
+    }
+    if (s.gameTime < jd.walkAt) return;
+    // 道筋: 行き先への直線が城・木・散布物の当たり箱を横切る時は、箱の角を回り込む(utils/junEscort junNextWaypoint)。
+    // 行き先(城ボスの足元)は城の箱のすぐ下=体の頭が城に掛かるので、数px下の「着ける足元」を目指す(junReachableGoal)。
+    const obstacles = junPathObstacles(s, jd.x, jd.y, jd.targetX, jd.targetY);
+    const cRect = junCastlePathRect(s);
+    const goal = junReachableGoal({ x: jd.targetX, y: jd.targetY }, cRect ? [cRect] : []);
+    const wp = junNextWaypoint({ x: jd.x, y: jd.y }, goal, obstacles);
+    // 速さは進軍NPCの歩き(画面内の前進)と同じ。走らない=「自然に離れていく」。経由点では止まらない(減速は道のり全体で)。
+    const w = stepJunWalk({ x: jd.x, y: jd.y, speed: jd.speed, targetX: wp.x, targetY: wp.y, dtSec, vmax: escortSpeed(), remainingPx: wp.remaining });
+    // 木・車両・見張り台・城に当たる(プレイヤーと同じ遮蔽物の連鎖=resolveShieldWalls)→行ける帯の外へは出ない(Y方向の副作用チェック)。
+    const half = ESCORT_BODY_SIZE / 2;
+    const walled = resolveShieldWalls({ x: w.x - half, y: w.y - ESCORT_BODY_SIZE, width: ESCORT_BODY_SIZE, height: ESCORT_BODY_SIZE });
+    const ctx: PlayableAreaCtx = {
+      farBackdrop: s.farBackdrop, labTheme: false, corridorMode: s.corridorMode,
+      m0AdvanceLimitX: s.m0AdvanceLimitX, corridorRunInActive: s.corridorRunInActive,
+    };
+    const c = clampRectToPlayableArea(walled.x, walled.y, ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ctx, jd.x - half);
+    const nx = c.x + half, ny = c.y + ESCORT_BODY_SIZE;
+    const face = w.dirX < -0.1 ? -1 : w.dirX > 0.1 ? 1 : jd.face;
+    // 押し戻された分は速さも落とす(壁に向かって速さだけ溜めない=離れた時に急に飛び出さない)。
+    const moved = Math.hypot(nx - jd.x, ny - jd.y);
+    const speed = dtSec > 0 ? Math.min(w.speed, moved / dtSec) : w.speed;
+    // 着いた=行き先に届いた/城の当たり箱に接していて行き先が近い/行き先の近くで動けなくなった(押し戻されて数px手前で止まる)。
+    const near = Math.hypot(nx - jd.targetX, ny - jd.targetY);
+    const arrived = near <= 2
+      || (near <= JUN_ARRIVE_TOUCH_DIST && cRect !== null && junTouchesRect({ x: nx, y: ny }, cRect))
+      || (near <= 24 && (w.arrived || moved < 0.25));
+    set({ junDeparture: { ...jd, x: nx, y: ny, speed, face, phase: arrived ? 'waiting' : 'leaving' } });
+  },
+  /** 歩き途中のジュンを置き直す(画面外の点・城へ向かう道の上)。描画には見えない所でだけ呼ばれる(utils/junEscort junCastleRoute)。 */
+  relocateJunDeparture: (x, y) => {
+    const jd = get().junDeparture;
+    if (!jd || jd.phase !== 'leaving') return;
+    const atTarget = Math.hypot(x - jd.targetX, y - jd.targetY) <= 2;
+    set({ junDeparture: { ...jd, x, y, relocated: true, walkAt: jd.walkAt ?? get().gameTime, ...(atTarget ? { phase: 'waiting', speed: 0 } : {}) } });
+  },
   markCastleBossSpawned: () => {
     set(state => ({
       castleEvent: {
@@ -21139,7 +21292,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           strongNearExit: 150,
           now,
         });
-        const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+        const sol = rosterEntry(esc.soldierIndex);
         if (advance.surroundedNow) surroundEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'surrounded', sol.surrounded) });
         if (advance.rescuedNow) rescuedEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'rescued', sol.rescued) });
 
@@ -21332,7 +21485,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 社長指摘2026-10-12「同じ画面内にいるのに助けを求めてくる」: 距離(900px)だけだと、引きのズームや横長の画面では見えている軍人も言っていた
       // ⇒ 画面に見えていない時だけ(後ずさりの「下がる」=下の lowRetreat は目の前で起きる台詞なので従来どおり)。
       if (base.status === 'open' && Math.hypot(esc.x - px, esc.y - py) > NEGLECT_DIST && !onScreen(esc.x, esc.y) && Math.random() < RETREAT_CHANCE_PER_SEC * deltaTime) {
-        const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+        const sol = rosterEntry(esc.soldierIndex);
         npcRetreatEvents.push({ id: esc.id, name: sol.name, text: pickNpcLine(esc.soldierIndex, 'pushback', sol.pushback) });
       }
       // ★research/ESCORT_FOLLOW.md: 解放済みの拠点の軍人は、プレイヤーが担当区域の中に居る間だけついてくる(区域を出たら見送ってから帰る)。
@@ -21358,7 +21511,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         if (fol.started && !followLineMuted(esc.capturedAt, now) && !(esc.riseAt !== undefined && now - esc.riseAt < 3000)) { // 起き上がった直後は「ついてき始めた」台詞を出さない(R2 S・推薦)
           // ついてき始めた時: その人の「並走」台詞を1回(既存の間隔=tryNpcLine のCDが明けていれば。新しい台詞は作らない=§5b S-3)。
-          const solF = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+          const solF = rosterEntry(esc.soldierIndex);
           npcCompanionEvents.push({ id: esc.id, name: solF.name, text: pickNpcLine(esc.soldierIndex, 'companion', solF.companion) });
         }
       }
@@ -21376,12 +21529,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           captureFrozen: facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime),
           downed: isEscortDowned(esc), // 倒れている軍人は上の busy で既に抜けている=ここは保険(research/ESCORT_TARGETED.md §6)
         });
-        if (off.capture && !escortCaptures.has(base.id)) escortCaptures.set(base.id, esc.soldierIndex);
+        if (off.capture && !escortCaptures.has(base.id)) escortCaptures.set(base.id, captureCreditIndex(esc, state.escorts));
         if (off.x === esc.x && off.y === esc.y && off.dwellMs === esc.dwellMs) return esc;
         escortsChanged = true;
         return { ...esc, x: off.x, y: off.y, dwellMs: off.dwellMs };
       }
-      const sol = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+      const sol = rosterEntry(esc.soldierIndex);
       // 制圧後は進軍目標がないため全方位を前方扱い。巡回中に背後だけ無視して進み続けない。
       // §17-14: ウェルカムの輪が出ている間は出撃地点(esc.x/y=現在地)を目標にして前進させない。
       const goal = (escortWelcomeHold || base.status === 'captured') ? { x: esc.x, y: esc.y } : { x: base.x, y: base.y };
@@ -21437,7 +21590,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const half = ESCORT_BODY_SIZE / 2;
         // 社長裁定2026-10-07(設計書§13c-4): 後ずさりを**始めた瞬間**に、その人の「下がる」台詞を1回(既存の間隔に従う)。
         if (!esc.lowRetreat) {
-          const solR = BASE_SOLDIERS[esc.soldierIndex % BASE_SOLDIERS.length];
+          const solR = rosterEntry(esc.soldierIndex);
           npcRetreatEvents.push({ name: solR.name, text: pickNpcLine(esc.soldierIndex, 'pushback', solR.pushback), id: esc.id });
         }
         const rc = clampRectToPlayableArea(x + rdx * rmv - half, y + rdy * rmv - ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, ESCORT_BODY_SIZE, escortAreaCtx, x - half);
@@ -21538,7 +21691,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const capFrozen = facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime);
       dwellMs = inC ? (capFrozen ? dwellMs : dwellMs + deltaTime * 1000) : 0;
       if (!capFrozen && inC && dwellMs >= BASE_CAPTURE_HOLD_MS && base.status === 'open' && !escortCaptures.has(base.id)) {
-        escortCaptures.set(base.id, esc.soldierIndex);
+        escortCaptures.set(base.id, captureCreditIndex(esc, state.escorts));
       }
       // §17-14受け入れ条件19: ウェルカム中は moving=false を保つ(止まっているのに歩行アニメが回らない)。
       // 輪が閉じたら true に戻り、従来どおりのアニメ(esc.moving!==false=常時行進)に戻る。
@@ -21722,6 +21875,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       const sol = BASE_SOLDIERS[c.soldierIndex % BASE_SOLDIERS.length];
       if (!onScreen(c.x, c.y)) get().enqueueWallEvent('comm', '通信', `${baseDirectionLabel(c.x, c.y)}拠点の解放を確認`, '#bfe3ff');
       get().enqueueNpcDialogue([{ name: sol.name, text: pickNpcLine(c.soldierIndex, 'baseCaptured', sol.baseCaptured) }]);
+      // ステージ4: その拠点の担当にジュンが居れば、続けてジュンの一言(拠点を取った=research/JUN_ESCORT.md §2)。
+      {
+        const jun = get().escorts.find(e => isJunEscort(e) && e.baseId === c.id && !isEscortDowned(e));
+        const junText = jun ? pickNpcLine(JUN_ESCORT_INDEX, 'baseCaptured', '') : '';
+        if (junText) get().enqueueNpcDialogue([{ name: JUN_NAME, text: junText }]);
+      }
       set({ eventBannerText: '拠点確保', eventBannerUntil: now + 2200 });
       // 歴史年表: 拠点解放は**ゲーム全体で初回のみ**「初めて拠点を開放」を載せる(社長裁定2026-07-31
       // 「初めて拠点を開放した のみ拠点系は記録」。旧: 各ステージ×4拠点で方位付きを毎回記録=廃止。
@@ -21767,10 +21926,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         if (pickIdx >= 0) {
           // その sector(base-${pickIdx})に配属された護衛の素性(soldierIndex)でセリフを選ぶ(ランダム名簿対応)。
-          const esc = gs.escorts.find(e => e.baseId === `base-${pickIdx}`);
+          // ステージ4はジュンも同じ拠点の担当に居る=その拠点の担当の中から1人(他のステージは1人=従来と同じ人)。
+          const cands = gs.escorts.filter(e => e.baseId === `base-${pickIdx}`);
+          const esc = cands.length > 1 ? cands[Math.floor(Math.random() * cands.length)] : cands[0];
           if (esc) {
-            const idx = ((esc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length;
-            const sol = BASE_SOLDIERS[idx];
+            const idx = rosterKey(esc.soldierIndex);
+            const sol = rosterEntry(esc.soldierIndex);
             get().tryNpcLine(sol.name, 'neglectFar', pickNpcLine(idx, 'neglectFar', sol.neglectFar), NEGLECT_FAR_CAT_CD_MS, esc.id);
           }
         }
@@ -22689,11 +22850,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       // pendingStoryBossのみ・EXはstoryBossOnlyを既に廃止済みでpendingStoryBossが立たない)。
       // EX専用分岐として明示的に除外する(社長裁定「景色全体が違う。NPCも居ちゃってる」)。
       // エンディング(仮組み)も護衛NPCを出さない=NPC0(見せるだけのステージ・ENDING_SCENE.md)。
-      const escortRoster = (indoor || stageTheme === 'lab' || state.pendingStoryBoss || BOSS_TEST_RUN || isPracticeRun() || (corridorMode && isExStageRun()) || farBackdrop === 'ending') ? []
+      const escortsSuppressed = indoor || stageTheme === 'lab' || state.pendingStoryBoss || BOSS_TEST_RUN || isPracticeRun() || (corridorMode && isExStageRun()) || farBackdrop === 'ending';
+      const escortSquad = escortsSuppressed ? []
         : farBackdrop === 'tutorial' ? makeTutorialCompanions(spawnTL.x, spawnTL.y)
         : makeEscorts(spawnTL.x, spawnTL.y, corridorMode, maxHealth);
+      // ステージ4: 通常の4人が出る出撃だけ、5人目としてジュンが加わる(洋館再訪は城ボスが出ない=変身の流れが閉じないので加えない)。
+      const escortRoster = junJoinsRun({
+        stageId: getSelectedStageId() ?? '',
+        normalRoster: !escortsSuppressed && farBackdrop !== 'tutorial' && escortSquad.length > 0,
+        revisit: state.pendingRevisit,
+      }) ? [...escortSquad, makeJunEscort(escortSquad, spawnTL.x, spawnTL.y, maxHealth)] : escortSquad;
       const sortieEsc = (escortRoster.length && farBackdrop !== 'tutorial') ? escortRoster[Math.floor(Math.random() * escortRoster.length)] : null;
-      const sortieSol = sortieEsc ? BASE_SOLDIERS[((sortieEsc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length] : null;
+      const sortieSol = sortieEsc ? rosterEntry(sortieEsc.soldierIndex) : null;
       // PACING_PUZZLE.md §17-14(社長指示「ウェルカム終わるまでは画面に存在させない」):
       // このランにウェルカムが関係あるか(useGameLoop.ts の welcomeApplicable と同じ1関数=
       // welcomeAppliesToRun・判定を2箇所に増やさない)。関係あるランは名簿(escortRoster)を
@@ -23029,6 +23197,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // useGameLoop.tsがウェルカム終了の瞬間にescortsへ移す=出陣)。
         escorts: escortsNow,
         pendingEscorts: pendingEscortsNow,
+        junDeparture: null, // ステージ4のジュンの離脱は新ランごとに無し(隊の中から始まる)
+        junCompanionQuiet: false,
+        junTransformRealAt: 0,
         // ★商人も護衛と同じ(社長指示2026-09-19「武器商人もウェルカムイベント終わってから出現」)。
         merchantHidden: welcomeForThisRun,
         welcomeRetired: welcomeRetiredNow,
@@ -23048,7 +23219,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         npcSpokeAt: {},
         npcCatAt: {},
         npcDialogueQueue: sortieEsc && sortieSol
-          ? [{ name: sortieSol.name, text: pickNpcLine(((sortieEsc.soldierIndex % BASE_SOLDIERS.length) + BASE_SOLDIERS.length) % BASE_SOLDIERS.length, 'sortie', sortieSol.sortie) }]
+          ? [{ name: sortieSol.name, text: pickNpcLine(rosterKey(sortieEsc.soldierIndex), 'sortie', sortieSol.sortie) }]
           : [],
         suppressionActive: state.pendingSuppression && !indoor && stageTheme !== 'lab',
         suppressionCaptureCount: 0,
@@ -23187,6 +23358,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 素のattention(カメラが寄って戻るだけ)にする。first-wins の判定もカットインを外した後の値で行う。
     const cutin = isCutinRepeat(cutinShownThisRun, cutinIn) ? undefined : cutinIn;
     if (shouldIgnoreAttention(prev !== null, !!prev?.cutin, !!cutin)) return;
+    // ステージ4のジュンが倒れていく寄り(素のアテンション)の最中は、別の素のアテンション(拠点陥落・救援など)で
+    // カメラを奪わない(倒れ→変身→紹介の一続きを切らない・research/JUN_ESCORT.md §1)。
+    if (prev && !cutin && get().junDeparture?.phase === 'collapsing') return;
     if (cutin) cutinShownThisRun.add(cutin.name);
     const cam = get().camera;
     // v0.25.2958(社長指示「やはり前のバージョンに戻して」): カットインは hold の後に cutinMs(1100)を
@@ -23202,6 +23376,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
   clearAttention: () => set({ attention: null }),
+  chainAttentionCutin: (x, y, cutinIn) => {
+    const prev = get().attention;
+    if (!prev || prev.cutin) { get().triggerAttention(x, y, cutinIn); return; }
+    // 紹介は1ゲーム中1回まで(triggerAttention と同じ帳簿)。
+    const cutin = isCutinRepeat(cutinShownThisRun, cutinIn) ? undefined : cutinIn;
+    if (cutin) cutinShownThisRun.add(cutin.name);
+    const elapsed = Date.now() - prev.startReal;
+    // 今からボスの紹介前の止まり(カットイン付きのホールド=半分)を取り直す。寄り(in)は済んでいる前提(済んでいなければ in の後から数える)。
+    const holdMs = Math.max(0, elapsed - ATTENTION_IN_MS) + Math.round(ATTENTION_HOLD_MS / 2);
+    const cutinMs = cutin ? BOSS_CUTIN_MS : 0;
+    set({
+      attention: { ...prev, holdMs, ...(cutin ? { cutin, cutinMs } : {}) },
+      hitstopUntil: prev.startReal + ATTENTION_IN_MS + holdMs + ATTENTION_OUT_MS + cutinMs,
+    });
+  },
 
   triggerShake: (durationMs, mag = SHAKE_MAG, dirX, dirY) => {
     // 描画のみ。重なった時は「強い方(振幅)」を優先(弱い揺れが強い揺れを潰さない)。長さは延長。
