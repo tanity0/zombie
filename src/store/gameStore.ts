@@ -165,6 +165,7 @@ import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { evaluateLabLoseSight, LAB_VISION_RANGE } from '../utils/labStealth';
+import { labEscapeRouteSlots } from '../utils/labSpawn'; // ステージ2: 資料の後の逃走経路の雑魚
 // distToSegment: M66(§6.26-11)の掃射/三連突進の吐息(回転帯)が毎フレーム自己検出するために使う純関数。
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
 import { distToBandRect } from '../utils/geometry'; // v0.25.3496: 帯の判定=描いてある四角
@@ -427,7 +428,7 @@ import { TELEGRAPH_TRACK_MS, stepTrackAim } from '../utils/telegraphTrack'; // �
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
-import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD, setLabBrokenObstacleIds, type LabBrokenObstacle } from '../world/labWalls';
+import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, LAB_START_SAFE_RADIUS, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD, setLabBrokenObstacleIds, type LabBrokenObstacle } from '../world/labWalls';
 import {
   clampRectToPlayableArea,
   clampCircleToPlayableArea, isCircleInPlayableArea, // 帰還サークルを行ける帯の内側に置く
@@ -20905,7 +20906,18 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 帯「出口まで戻れ」(この経路だけの文言・クリエイティブ監査#5)は、塊が回り込むアテンションが戻ってから出す(labCrawlerTick)。
       // 塊が既に倒れている(居ない/崩れている)時は回り込みが無いので、すぐ出す。
       const crawlerWillAppear = !!state.labCrawler && crawlerSolid(state.labCrawler);
+      // 逃走経路にレベル1の雑魚を1画面に1体ずつ、帯の上下の縁へ交互に置く(通路を塞がない・社長指示2026-10-20)。
+      // 休眠(近づくと起きる)は普段の湧きと同じ。壁・プロップに重なる所は近くの空きへ寄せる。
+      const pcx = state.player.x + state.player.width / 2;
+      const proto = spawnEnemyAt('lab-zombie-1', 0, 0, state.gameTime);
+      const escapeEnemies = labEscapeRouteSlots(pcx, state.gameBounds.width, LAB_CORRIDOR_Y_LIMIT_PX, proto.height, LAB_START_SAFE_RADIUS)
+        .map(sl => {
+          const c = nudgeToClearLabSpot(sl.cx, sl.cy, proto.width, proto.height);
+          const e = spawnEnemyAt('lab-zombie-1', c.x - proto.width / 2, c.y - proto.height / 2, state.gameTime);
+          return { ...e, escapeRoute: true, dormant: true, aggroRange: LAB_VISION_RANGE, vx: 0, vy: 0 };
+        });
       return {
+        ...(escapeEnemies.length ? { enemies: [...state.enemies, ...escapeEnemies] } : {}),
         labEscapeAt: Math.max(1, state.gameTime),
         ...(state.returnCircle ? {} : { returnCircle: { x: 0, y: 0, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 } }),
         ...(crawlerWillAppear

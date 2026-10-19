@@ -737,6 +737,8 @@ export interface Enemy {
   fromEvent?: boolean;
   // 救助イベントの攻撃者: この survivor の id を狙う(updateEnemies の retarget 分岐で参照)。
   escortTarget?: string;
+  /** ステージ2: 資料を拾った後の逃走経路に置いた雑魚(utils/labSpawn.labEscapeRouteSlots)。画面外の置き直し・上限の間引きで消さない(塊には食べられる)。 */
+  escapeRoute?: boolean;
   // プレイヤーが近接ダメージを与えた敵=以後プレイヤーを狙う(救助の survivor 狙いから切替。社長指示)。
   meleeAggro?: boolean;
   // Difficulty metadata. Time and distance from the game origin both feed this

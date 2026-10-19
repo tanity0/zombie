@@ -1,6 +1,6 @@
 // M2の湧き位置(placeLabSpawn)の不変条件。社長指示v0.25.2242「敵は自由移動範囲内でのみスポーン」。
 import { describe, it, expect } from 'vitest';
-import { placeLabSpawn, isAwayFromLabGoal, isLabIdolSide } from './labSpawn';
+import { placeLabSpawn, isAwayFromLabGoal, isLabIdolSide, labEscapeRouteSlots } from './labSpawn';
 
 const LIMIT = 200;   // LAB_CORRIDOR_Y_LIMIT_PX と同値
 const HALF_W = 400;
@@ -162,5 +162,30 @@ describe('アイドル側には湧かせない', () => {
   it('アイドルが居ない出撃(0)は従来どおり両側', () => {
     const r = placeLabSpawn(3000, HALF_W, MARGIN, 30, 60, LIMIT, null, [], () => 0.1, 0)!;
     expect(r.x).toBeGreaterThan(3000);
+  });
+});
+
+describe('labEscapeRouteSlots(資料の後の逃走経路・社長指示2026-10-20「等間隔に一画面1体くらい」「通路を塞がない」)', () => {
+  it('原点の方へ1画面ごとに1体・最初は1画面先・原点の手前で止まる・原点の向こうには置かない', () => {
+    const sl = labEscapeRouteSlots(-7000, 430, 200, 60, 700);
+    expect(sl[0].cx).toBe(-7000 + 430);
+    for (let i = 1; i < sl.length; i++) expect(sl[i].cx - sl[i - 1].cx).toBe(430);
+    for (const s0 of sl) { expect(s0.cx).toBeLessThan(-700 + 1e-9); expect(s0.cx).toBeLessThan(0); }
+    expect(sl.length).toBe(Math.floor((7000 - 700) / 430));
+    const r = labEscapeRouteSlots(6000, 500, 200, 60, 700);
+    expect(r[0].cx).toBe(5500);
+    for (const s0 of r) expect(s0.cx).toBeGreaterThanOrEqual(700);
+  });
+  it('上下の縁へ交互(真ん中を空ける)・体は帯の中', () => {
+    const sl = labEscapeRouteSlots(-5000, 430, 200, 60, 700);
+    for (let i = 0; i < sl.length; i++) {
+      expect(Math.abs(sl[i].cy)).toBeGreaterThan(100);
+      expect(Math.abs(sl[i].cy) + 30).toBeLessThanOrEqual(200);
+      if (i > 0) expect(Math.sign(sl[i].cy)).toBe(-Math.sign(sl[i - 1].cy));
+    }
+  });
+  it('原点ちょうど・間隔0では置かない', () => {
+    expect(labEscapeRouteSlots(0, 430, 200, 60, 700)).toEqual([]);
+    expect(labEscapeRouteSlots(-5000, 0, 200, 60, 700)).toEqual([]);
   });
 });

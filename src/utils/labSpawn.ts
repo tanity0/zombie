@@ -85,3 +85,27 @@ export const placeLabSpawn = (
   }
   return null; // どこも他の敵の視界の中=今回は湧かせない
 };
+
+// ---- 資料を拾った後の逃走経路(社長指示2026-10-20「逃走経路は、レベル1だけを、できれば通路を塞がない配置で、
+// 等間隔に一画面1体くらい で配置して」) ----------------------------------------------------------------------
+// 帰り道は「一度通った道には湧かせない」(v0.25.2244)と画面外の置き直しで空になっているので、拾った瞬間に置き直す。
+// 足止め役(塊は雑魚を食べる間だけ止まる)として、プレイヤーの前方=原点の方へ1画面ごとに1体。
+export interface LabEscapeSlot { cx: number; cy: number }
+/**
+ * 逃走経路の雑魚の中心位置。fromX=拾った時のプレイヤーの中心x。原点へ向かって spacing ごとに置き、最初の1体は1画面先。
+ * y は帯の上の縁と下の縁に交互(真ん中を空ける=通路を塞がない)。原点から stopPx より近い所・原点の向こうには置かない。
+ */
+export const labEscapeRouteSlots = (
+  fromX: number, spacing: number, bandLimit: number, enemyH: number, stopPx: number,
+): LabEscapeSlot[] => {
+  if (!(spacing > 0) || fromX === 0) return [];
+  const dir = fromX > 0 ? -1 : 1; // 原点の方
+  const edge = Math.max(0, bandLimit - enemyH / 2 - 12); // 体が帯に収まる上下の縁
+  const out: LabEscapeSlot[] = [];
+  for (let k = 1; k < 200; k++) {
+    const cx = fromX + dir * spacing * k;
+    if (Math.sign(cx) !== Math.sign(fromX) || Math.abs(cx) < stopPx) break;
+    out.push({ cx, cy: (k % 2 === 1 ? -1 : 1) * edge });
+  }
+  return out;
+};

@@ -128,13 +128,14 @@ export const EVENT_BANNER_MS = 3500;      // イベント発生告知バナー�
  * クロージャ・実装精度の規律4)。判定・値は移設前と同一(挙動不変)。
  */
 export const isEnemyCapProtected = (
-  e: Pick<Enemy, 'type' | 'fixed' | 'fromEvent' | 'isNamed' | 'questTarget' | 'isWave' | 'spawnedAt' | 'stunUntil'>,
+  e: Pick<Enemy, 'type' | 'fixed' | 'escapeRoute' | 'fromEvent' | 'isNamed' | 'questTarget' | 'isWave' | 'spawnedAt' | 'stunUntil'>,
   gameTime: number,
 ): boolean =>
   // ★v0.25.3956(社長報告「クリティカルになって…消えちゃう敵がいる」): 気絶中(=クリのフィニッシュ
   // 受付中)は消さない。ご褒美の窓の最中に上限カリングで消えるのは理不尽(プラント消失の疑い筋①)。
   (e.stunUntil !== undefined && gameTime < e.stunUntil) ||
   !!e.fixed ||
+  !!e.escapeRoute || // ステージ2の逃走経路の雑魚(資料の後に1画面1体で置いた足止め役)
   // PACING_PUZZLE.md §17-12-e(ウェルカム台本のサークル化): ウェルカムの個体も fromEvent=true で
   // 湧かせるので、この保護がそのまま時間無制限で効く(旧 isWelcome 専用の保護は撤去=fromEventに一本化)。
   !!e.fromEvent ||
@@ -1271,6 +1272,8 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // 固定敵(屋内の配置敵)は距離リサイクル対象外=常駐。ただし「画面外に出たら最初の
     // 定位置へ戻して再休眠」する(社長指示)。プレイヤーは常に画面中心なので、画面の半分+
     // 余白を超えたら画面外と判定。
+    // ステージ2の逃走経路の雑魚は画面外の置き直し・回収をしない(置いた場所で待つ=1画面1体の間隔を崩さない)。
+    if (enemy.escapeRoute) return enemy;
     if (enemy.fixed) {
       if (
         indoor && !enemy.dormant &&

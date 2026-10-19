@@ -162,6 +162,17 @@ describe('runLabCrawlerTick 第2版: 資料を拾った瞬間、前から出て�
     useGameStore.getState().beginLabEscape();
     const st0 = useGameStore.getState();
     expect(st0.labEscapeAt).toBeGreaterThan(0);
+    // 逃走経路にレベル1の雑魚が1画面1体で並ぶ(社長指示2026-10-20)。休眠・回収されない印つき・原点の手前まで。
+    const route = st0.enemies.filter(e => e.escapeRoute);
+    expect(route.length).toBeGreaterThan(5);
+    for (const e of route) {
+      expect(e.type).toBe('lab-zombie-1');
+      expect(e.dormant).toBe(true);
+      const cx = e.x + e.width / 2;
+      expect(cx).toBeLessThan(0);
+      expect(cx).toBeGreaterThan(-7000);
+    }
+    expect(isCrawlerAbsorbable(route[0])).toBe(true); // 塊には食べられる(足止め役)
     expect(st0.returnCircle).toMatchObject({ x: 0, y: 0 });
     expect(st0.labEscapeBannerPending).toBe(true); // 帯はアテンションが戻ってから
     expect(st0.eventBannerText).not.toBe(LAB_ESCAPE_BANNER);

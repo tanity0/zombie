@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5161', items: [
+    'ステージ2で資料を手にした後の帰り道に、ゾンビが通路の端にぽつぽつと待ち構える',
+  ] },
   { version: '0.25.5160', items: [
     'ステージ2の死体の塊を倒した瞬間、時が一拍止まる',
   ] },
