@@ -403,7 +403,7 @@ import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISP
 import {
   CRAWLER_HIT_W, CRAWLER_ART_W_PER_HIT_W, CRAWLER_WALK_FRAMES, CRAWLER_ATTACK_FRAMES, CRAWLER_WALK_ART_BODY_W, CRAWLER_ATTACK_ART_BODY_W,
   CRAWLER_LANTERNS_WALK_ART, CRAWLER_ABSORB_TO_ASCEND, CRAWLER_SLAM_RADIUS, crawlerAttackFrame, crawlerTelegraphProg, crawlerAscendLook,
-  crawlerAscendSoul, crawlerAbsorbLook, crawlerBodyFoot, crawlerRect, type LabCrawler,
+  crawlerAscendSoul, crawlerAbsorbLook, crawlerBodyFoot, type LabCrawler,
 } from '../world/labCrawler'; // ステージ2の這う塊(判定は world 側・ここは描くだけ)
 import { visibilityPolygon } from '../world/vision';
 import type { Rect } from '../world/obstacles';
@@ -2754,24 +2754,11 @@ const LAB_CRAWLER_WAKE_FRAME_MS = 280;
 const LAB_CRAWLER_WAKE_ANIM_MS = 2600;
 /** 昇天: 上側の輪郭だけ光らせるため、白い影絵を胴の後ろでこれだけ上へずらす(px・遠近スケール前)。 */
 const LAB_CRAWLER_RIM_UP_PX = 3;
-/** ランタンの灯りの大きさ(px・遠近スケール前)と、灯るまでの尺(実時間ms)。 */
-const LAB_CRAWLER_LANTERN_PX = 22;
+/** ランタンの灯りの大きさ(歩きシートの画素・絵の倍率を掛けて使う)と、灯るまでの尺(実時間ms)。 */
+const LAB_CRAWLER_LANTERN_ART_PX = 46;
 const LAB_CRAWLER_LANTERN_IN_MS = 700;
-/** 肉の溜まりの中の腕・触手の筋の数。 */
-// 死体の積み重なりの段(奥→手前・6段で段どうしを重ねる)。up=箱の下辺(足元y)から段の足元までの高さ。body=本体(攻撃・ランタン・縁の光)の段。
-// 段の絵の高さ≈58px(歩き130px×倍率0.446)、段の間隔48=上下に約10px重なる。奥の段の上端≈箱の上辺、手前の段の足元≈箱の下辺。
-// frameOff=歩きのコマの位相のずれ / flip=左右反転(隣り合う段で同じ向きが続かない) / dx=横ずれ(±14) / scale=大きさ(0.88〜1.12)
-// tint=暗さ(奥ほど沈んだ色) / lagS=上下に付いてくる遅れ。大きい段は横ずれを小さく組み、箱からのはみ出しを抑える(最大約13px=大きさ1.12の段)。
-const LAB_CRAWLER_ROWS: readonly { up: number; body?: true; frameOff: number; flip: boolean; dx: number; scale: number; tint: number; lagS: number }[] = [
-  { up: 244, frameOff: 5, flip: false, dx: -12, scale: 0.90, tint: 0x4e403a, lagS: 0.32 },
-  { up: 196, frameOff: 9, flip: true, dx: 14, scale: 0.88, tint: 0x6f5f57, lagS: 0.22 },
-  { up: 148, body: true, frameOff: 0, flip: false, dx: 0, scale: 1, tint: 0xffffff, lagS: 0 },
-  { up: 100, frameOff: 3, flip: true, dx: -10, scale: 1.04, tint: 0xc8bab0, lagS: 0.16 },
-  { up: 52, frameOff: 7, flip: false, dx: 3, scale: 1.12, tint: 0xe0d4cb, lagS: 0.24 },
-  { up: 4, frameOff: 11, flip: true, dx: -14, scale: 0.90, tint: 0xece0d8, lagS: 0.32 },
-];
-/** 段が遅れて付いてくる量の上限(px)。箱の縁と絵の縁が大きくずれないように。 */
-const LAB_CRAWLER_ROW_LAG_MAX = 14;
+/** 演出の大きさの基準=元の1体の胴の表示幅(px)。今の胴の幅÷これ=演出の倍率(5倍の絵なら5)。 */
+const LAB_CRAWLER_FX_BASE_BODY_W = 165;
 // --- 位置ベースの遠近マッピング(既定ON=社長確定。?depthmap=0 で旧方式へ) ------------------
 // 「足元が画面外でも頭が見える背の高い物の拡縮が止まる」対処。サイズ範囲(min/max)を“足元の画面位置”に割り当てる:
 // プレイヤー面=等倍 / 画面上端=min / 画面下端=max(=画面内でレンジ使い切り)。端を越えても min/max を越えて伸び続け、
@@ -4830,14 +4817,6 @@ export class PixiScene {
   /** 目覚めた実時刻(アテンション中の手の持ち上げ=実時間で回す)。 */
   private crawlerWake = { prevAwake: false, at: 0 };
   private crawlerBody = new Sprite();
-  /** 死体の積み重なりの下に敷く柔らかい暗い影(地面の層・当たり判定の箱と同じ広がり)。 */
-  private crawlerPool = new Container();
-  private crawlerPoolBlobs = Array.from({ length: 2 + 6 }, () => new Sprite(getSoftGlowTexture()));
-  /** 死体の積み重なりの段(本体以外・歩きの絵の複製)と、昇天で沈む時の切り取り型・遅れて付いてくる足元。 */
-  private crawlerRows = Array.from({ length: 6 }, () => new Sprite());
-  private crawlerRowMasks = Array.from({ length: 6 }, () => new Graphics());
-  private crawlerRowPos = Array.from({ length: 6 }, () => ({ x: NaN, y: NaN }));
-  private crawlerRowLastNow = 0;
   /** 昇天で床へ沈む本体の、足元の線より下を切る型。 */
   private crawlerBodyMask = new Graphics();
   /** 昇天で昇る光(取り込んだ数ぶん・最大16)。 */
@@ -5964,7 +5943,6 @@ export class PixiScene {
       this.armoryGfx, // §6.24 M48: 武器庫サークル(地面・world座標。病院と同じ)
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
       this.pumpkinTelegraph,
-      this.crawlerPool, // ステージ2の這う塊の下の柔らかい暗い影(地面・world座標=当たり判定の箱と同じ広がり)
       this.crawlerTelegraph, // ステージ2の這う塊の叩きつけの予告(地面・world座標)
       this.endingFallenShadowGfx, // エンディング(仮組み)倒れ兵士の専用楕円ソフト影(§6)
       this.endingTumbleShadowGfx, // エンディング爆撃の一時転倒中の楕円ソフト影(v3.1 監査B-3)
@@ -6032,15 +6010,6 @@ export class PixiScene {
       this.L.actorLayer.addChild(l);
     }
     this.L.actorLayer.addChild(this.crawlerBodyMask);
-    for (const b of this.crawlerPoolBlobs) {
-      b.anchor.set(0.5); b.tint = 0x000000; b.visible = false; // 通常合成の黒い柔らかい影(光ではない)
-      this.crawlerPool.addChild(b);
-    }
-    this.crawlerRows.forEach((r, i) => {
-      r.anchor.set(0.5, 1); r.visible = false;
-      this.L.actorLayer.addChild(r);
-      this.L.actorLayer.addChild(this.crawlerRowMasks[i]);
-    });
     this.boomReadyGfx.blendMode = 'add'; // 「ピカ!」が光るよう加算
     this.L.effectLayer.addChild(this.boomReadyGfx); // 頭上マークはアクター上に
     // スキル取得の頭上マーク(v0.25.4333)。**加算にはしない**——下敷きの暗い円が要るため
@@ -10703,8 +10672,6 @@ export class PixiScene {
     const sp = this.crawlerSprite;
     const g = this.crawlerTelegraph;
     g.clear();
-    for (const b of this.crawlerPoolBlobs) b.visible = false;
-    for (const r of this.crawlerRows) r.visible = false;
     this.crawlerBeamSoft.visible = false;
     this.crawlerBeamCore.visible = false;
     this.crawlerGlow.visible = false;
@@ -10797,10 +10764,13 @@ export class PixiScene {
     const useAtk = !!atk && atkFrame !== null;
     const tex = useAtk ? atk![atkFrame!] : walk ? walk[walkI] : null;
     if (!tex) { sp.visible = false; return; }
-    const depth = this.depthScaleEnemy(bf.y);
+    // 遠近スケールは掛けない(社長決定「一体で5倍」: 絵の胴=当たり判定の箱を見たまま合わせるため。奥へ行っても箱は縮まない)。
+    const depth = 1;
     // 絵の縮尺: 表示幅÷そのシートの胴の実測幅(歩き/攻撃で別の素材でも画面で同じ大きさ)。
     const dispW = CRAWLER_HIT_W * CRAWLER_ART_W_PER_HIT_W;
     const baseScale = (dispW / (useAtk ? CRAWLER_ATTACK_ART_BODY_W : CRAWLER_WALK_ART_BODY_W)) * depth;
+    // 演出(光・土埃)の大きさの倍率: 元の1体(胴の幅165)の時を1とする=絵の大きさに比例させる。
+    const fxK = dispW / LAB_CRAWLER_FX_BASE_BODY_W;
     // 向き(素材=左向き)。反転は旧→0→新と潰して向き直る(パッと反転しない)。
     const want = c.facingLeft ? 1 : -1;
     const fc = this.crawlerFace;
@@ -10827,15 +10797,16 @@ export class PixiScene {
           b.alpha = Math.min(1, a * look.beam);
           b.visible = true;
         };
-        place(this.crawlerBeamSoft, 0.5, 0.5);
-        place(this.crawlerBeamCore, 0.22, 0.6);
+        // 5倍の絵は胴が画面幅を超えるので、幅は胴の0.4倍・芯は細め、濃さは控えめ(加算が画面を白く飛ばさない)。
+        place(this.crawlerBeamSoft, 0.4, 0.3);
+        place(this.crawlerBeamCore, 0.16, 0.38);
       }
       // 体: 白で塗りつぶさない。上から光が当たる向き=白い影絵を胴の**後ろ**に置き、上へ少しずらして上側の輪郭だけを光らせる。
       const sil = this.whiteSilhouette(tex);
       if (sil && look.flare > 0.01) {
         const b = this.crawlerBody;
         b.texture = sil;
-        b.position.set(c.x, bf.y + sinkPx - LAB_CRAWLER_RIM_UP_PX * depth);
+        b.position.set(c.x, bf.y + sinkPx - LAB_CRAWLER_RIM_UP_PX * fxK);
         b.scale.set(baseScale * face, baseScale);
         b.alpha = Math.min(1, look.flare) * this.horizonActorAlpha(bf.y);
         b.zIndex = bf.y - 0.5;
@@ -10850,15 +10821,15 @@ export class PixiScene {
         const s = this.crawlerSouls[i];
         // 出てくる所は胴の上をばらす(決まった並び=毎回同じ)。
         const ox = ((i * 37) % 11 - 5) / 5 * artW * 0.32;
-        s.position.set(c.x + ox, bodyCy - sl.rise * depth);
-        s.width = s.height = 30 * sl.scale * depth;
+        s.position.set(c.x + ox, bodyCy - sl.rise * fxK);
+        s.width = s.height = 16 * sl.scale * fxK; // 5倍の絵で約80px
         s.alpha = sl.alpha * this.horizonActorAlpha(bf.y);
         s.visible = true;
       }
       const gl = this.crawlerGlow;
       gl.position.set(c.x, bodyCy - artH * 0.2);
       gl.width = artW * (0.9 + 0.3 * look.flare); gl.height = artH * (1.3 + 0.5 * look.flare);
-      gl.alpha = 0.3 * look.flare;
+      gl.alpha = 0.14 * look.flare;
       gl.visible = look.flare > 0.01;
       this.crawlerBodyMask.clear();
       this.crawlerBodyMask.rect(c.x - artW, bf.y - artH * 3, artW * 2, artH * 3).fill({ color: 0xffffff });
@@ -10874,8 +10845,6 @@ export class PixiScene {
     sp.zIndex = bf.y;
     sp.alpha = alpha;
     sp.visible = alpha > 0.01;
-    this.drawCrawlerStack(c, now, walk, walkI, face, depth, ascendLook ? ascendLook.alpha : 1, ascendLook ? ascendLook.sink : 0,
-      y => this.horizonActorAlpha(y) * this.foregroundActorAlpha(y));
     if (sp.visible && !ascendLook) {
       this.crawlerShadow = {
         x: c.x, y: bf.y,
@@ -10894,7 +10863,7 @@ export class PixiScene {
         if (!p) return;
         const flick = 0.82 + 0.1 * Math.sin(now / 430 + i * 1.9) + 0.08 * Math.sin(now / 157 + i * 4.1);
         l.position.set(c.x + p.x * ws * face, bf.y + sinkPx + p.y * ws);
-        l.width = l.height = LAB_CRAWLER_LANTERN_PX * depth * (1 + 0.25 * swell);
+        l.width = l.height = LAB_CRAWLER_LANTERN_ART_PX * ws * (1 + 0.25 * swell);
         l.alpha = Math.min(1, (0.55 * flick + swell) * lit) * alpha;
         l.zIndex = bf.y + 0.6;
         l.visible = l.alpha > 0.01;
@@ -10908,8 +10877,8 @@ export class PixiScene {
         const u = Math.max(0, Math.min(1, u0 - i * 0.12));
         if (u <= 0) return;
         const e = 1 - (1 - u) ** 3;
-        d.position.set(c.x + fwd + (i - 1) * 14 * depth + e * 10 * (i - 1), bf.y - 4 - e * 22 * depth);
-        d.width = (26 + 40 * e) * depth; d.height = (14 + 22 * e) * depth;
+        d.position.set(c.x + fwd + (i - 1) * 14 * fxK + e * 10 * fxK * (i - 1), bf.y - 4 * fxK - e * 22 * fxK);
+        d.width = (26 + 40 * e) * fxK; d.height = (14 + 22 * e) * fxK;
         d.alpha = 0.55 * (1 - u * u) * alpha;
         d.zIndex = bf.y + 1;
         d.visible = true;
@@ -10928,68 +10897,6 @@ export class PixiScene {
       g.circle(c.slamX, c.slamY, CRAWLER_SLAM_RADIUS).stroke({ width: 2 + 3 * prog, color: 0xff3b3b, alpha: telStrokeA(prog, 1) * mask });
       g.alpha = this.horizonActorAlpha(c.slamY);
     }
-  }
-
-  /**
-   * 死体の積み重なり(社長の支給した歩きの絵の複製を、当たり判定の箱の奥→手前へ段に重ねる)。本体は真ん中の段(syncLabCrawler)。
-   * 各段: 歩きの別のコマ(本体と同じ進み方で位相をずらす)・左右反転・少し横にずらす・大きさ±10%・奥ほど暗い。
-   * 上下に動く時は段ごとに少し遅れて付いてくる(慣性)。段のすき間と箱の縁には柔らかい暗い影を敷き、四角い縁を見せない。
-   * 箱の縁=絵の縁(奥の段の上端=箱の上辺、手前の段の足元=箱の下辺)。
-   */
-  private drawCrawlerStack(
-    c: LabCrawler, now: number, walk: Texture[] | null, walkI: number, face: number, depth: number, alpha: number,
-    sink01: number, alphaHorizon: (y: number) => number,
-  ): void {
-    const dtS = this.crawlerRowLastNow > 0 ? Math.max(0, Math.min(0.1, (now - this.crawlerRowLastNow) / 1000)) : 0;
-    this.crawlerRowLastNow = now;
-    const r = crawlerRect(c);
-    const dispW = CRAWLER_HIT_W * CRAWLER_ART_W_PER_HIT_W;
-    const ws = (dispW / CRAWLER_WALK_ART_BODY_W) * depth; // 歩きシートの1画素=何px
-    // ---- 柔らかい暗い影(地面の層): 箱全体を覆う大きな影+各段の足元の帯 ----
-    const shadowA = alpha * (1 - 0.7 * sink01);
-    const blobs = this.crawlerPoolBlobs;
-    const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
-    const setBlob = (b: Sprite, x: number, y: number, w: number, h: number, a: number) => {
-      b.position.set(x, y); b.width = w; b.height = h; b.alpha = a; b.visible = a > 0.01;
-    };
-    setBlob(blobs[0], cx, cy, r.width * 1.25, r.height * 1.12, 0.7 * shadowA);
-    setBlob(blobs[1], cx, cy, r.width * 0.95, r.height * 0.9, 0.55 * shadowA);
-    LAB_CRAWLER_ROWS.forEach((row, i) => {
-      setBlob(blobs[2 + i], cx + row.dx, c.y - row.up - 4, r.width * 1.15, 48 * depth, 0.55 * shadowA);
-    });
-    // ---- 段(本体以外) ----
-    LAB_CRAWLER_ROWS.forEach((row, i) => {
-      const sp = this.crawlerRows[i];
-      const m = this.crawlerRowMasks[i];
-      m.clear();
-      if (!walk || row.body) { sp.visible = false; return; }
-      // 遅れて付いてくる(慣性): 目標の足元へ指数で寄せる。遅れは箱からはみ出しすぎない範囲に収める。
-      const tx = c.x + row.dx, ty = c.y - row.up;
-      const st = this.crawlerRowPos[i];
-      if (!Number.isFinite(st.x) || Math.abs(st.x - tx) > 200 || Math.abs(st.y - ty) > 200) { st.x = tx; st.y = ty; }
-      const k = dtS > 0 ? 1 - Math.exp(-dtS / row.lagS) : 0;
-      st.x += (tx - st.x) * k; st.y += (ty - st.y) * k;
-      st.x = tx + Math.max(-LAB_CRAWLER_ROW_LAG_MAX, Math.min(LAB_CRAWLER_ROW_LAG_MAX, st.x - tx));
-      st.y = ty + Math.max(-LAB_CRAWLER_ROW_LAG_MAX, Math.min(LAB_CRAWLER_ROW_LAG_MAX, st.y - ty));
-      const tex = walk[(walkI + row.frameOff) % CRAWLER_WALK_FRAMES];
-      const s = ws * row.scale;
-      const h = tex.height * s;
-      const sinkPx = sink01 * h;
-      sp.texture = tex;
-      sp.scale.set(s * face * (row.flip ? -1 : 1), s);
-      sp.position.set(Math.round(st.x), Math.round(st.y + sinkPx));
-      sp.tint = row.tint;
-      sp.zIndex = st.y;
-      sp.alpha = alpha * alphaHorizon(st.y);
-      sp.visible = sp.alpha > 0.01;
-      // 昇天で床へ沈む時だけ、足元の線より下を切る(沈んで見える)。
-      if (sink01 > 0) {
-        m.rect(st.x - tex.width * s, st.y - h * 3, tex.width * s * 2, h * 3).fill({ color: 0xffffff });
-        sp.mask = m;
-      } else if (sp.mask) {
-        sp.mask = null;
-      }
-    });
   }
 
   /** 這う塊の今の向き(-1〜1)。旧→新を CRAWLER_TURN_MS かけて加減速つきで(体を捻って向き直る)。 */

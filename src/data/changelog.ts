@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5147', items: [
+    'ステージ2の死体の塊が、ひとつの巨大な姿になった。腕を振り下ろすと地面が揺れる',
+  ] },
   { version: '0.25.5146', items: [
     'ステージ2に、倒せない死体の塊が現れる。アイドルへ続く通路を塞いで眠っている',
     '塊は目を覚ますと、どこまでもじわじわ這って追ってくる。上下にも寄ってきて、すり抜けるのは難しい',

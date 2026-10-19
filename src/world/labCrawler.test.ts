@@ -382,3 +382,29 @@ describe('ステージ2の這う塊: 叩きつけのコマ割り(見え方だけ
     expect(crawlerAttackFrame(r, CRAWLER_WINDUP_MS + CRAWLER_RECOVER_MS - 1)).toBe(15);
   });
 });
+
+describe('ステージ2の這う塊: 5倍の1体(社長「これ一体で、でかくしてほしい。5倍くらい」)', () => {
+  it('当たり判定の幅=描いた胴(165の5倍)の0.9倍・奥行き300', () => {
+    expect(CRAWLER_HIT_W).toBe(Math.round(165 * 5 * 0.9));
+    expect(CRAWLER_HIT_H).toBe(300);
+  });
+  it('叩きつけの円は手のひらの所で、箱の外(手の先)まで届く', () => {
+    const c = createLabCrawler({ x: 7000, y: 0 });
+    const r = crawlerRect(c);
+    const s = crawlerSlamCenter(c); // 左向き
+    expect(s.x - CRAWLER_SLAM_RADIUS).toBeLessThan(r.x); // 箱の左端より外へ届く
+    expect(s.y).toBeGreaterThan(crawlerCenter(c).y); // 手は絵の下の方(箱の手前寄り)
+    // 箱の左端に接して、箱の中ほどの高さに立つプレイヤーには当たる
+    const p = playerAt(r.x - PW / 2, crawlerCenter(c).y);
+    expect(Math.hypot(p.x + PW / 2 - s.x, p.y + PW / 2 - s.y)).toBeLessThanOrEqual(CRAWLER_SLAM_RADIUS + PW / 2);
+  });
+  it('吹き飛び(300px・塊の中心から離れる向き)で、箱の横に接していたプレイヤーは箱の外へ大きく出る', () => {
+    const c = createLabCrawler({ x: 7000, y: 0 });
+    const r = crawlerRect(c);
+    const cc = crawlerCenter(c);
+    const startCx = r.x - PW / 2; // 箱の左端に接している
+    const dir = Math.sign(startCx - cc.x);
+    const endCx = startCx + dir * CRAWLER_SLAM_KB.distPx;
+    expect(r.x - (endCx + PW / 2)).toBeGreaterThanOrEqual(CRAWLER_SLAM_KB.distPx - 1);
+  });
+});

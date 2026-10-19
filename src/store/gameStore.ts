@@ -8163,7 +8163,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           const lc = state.labCrawler;
           if (lc && crawlerSolid(lc)) {
             const cr = crawlerRect(lc);
-            if (Math.abs(cr.x - newX) <= 400 && Math.abs(cr.y - newY) <= 400) blockers.push(cr);
+            // 箱が大きい(幅約740)ので、左上ではなく箱そのものとの近さで拾う。
+            if (newX < cr.x + cr.width + 200 && newX + player.width > cr.x - 200 && newY < cr.y + cr.height + 200 && newY + player.height > cr.y - 200) blockers.push(cr);
           }
           if (blockers.length > 0) {
             const r = resolveAabb({ x: newX, y: newY, width: player.width, height: player.height }, blockers);

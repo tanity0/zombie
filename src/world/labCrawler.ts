@@ -7,7 +7,8 @@
 // 撃破集計・湧き上限などに全部巻き込まれるため。弾・近接・爆発は素通りする(ここには当たらない)。
 // 塊が壁になるのはプレイヤーだけ(雑魚は塊をすり抜けてよい)。
 // ★通路の塞ぎ方(社長決定2026-10-19「bで、ただし上下にも移動する」): 当たり判定は廊下(帯±200)を大きく塞ぐ奥行き300の箱。
-//   見たまま=当たる範囲にするため、描画は箱を塊の歩きの絵の複製(6段・奥→手前・重ねる)で埋める=死体が積み重なって廊下を塞ぐ。本体は真ん中の段。
+//   見たまま=当たる範囲にするため、塊は**1体を大きく**描く(社長「これ一体で、でかくしてほしい。5倍くらい」)。
+//   絵の胴の幅=元の1体(165)の5倍、当たり判定の幅=その0.9倍。絵の足元=箱の下辺、絵の背丈(約290)≈箱の奥行き(300)。
 //   塊の y はプレイヤーの y を追う(上下は速め・慣性つき)=フェイントで逆側の隙間へ回り込めば抜けられる。
 //   ★壁・プロップは塊を止めない(肉が床を這って乗り越える)。奥行き300の箱は帯の中の壁の列(|y|≈24〜78)を必ず跨ぐので、
 //   止めると一歩も進めなくなるため。プレイヤーを押す時の行き先の確認には壁・プロップを使う(挟み込まない)。
@@ -21,20 +22,22 @@ import { clampRectToPlayableArea, isRectInPlayableArea, type PlayableAreaCtx } f
 // ---- 寸法・速さ ------------------------------------------------------------------------------
 /** 出現位置: スタート(原点)からアイドルの方へこの距離。 */
 export const CRAWLER_START_DIST_PX = 600;
-/** 当たり判定の幅(足元基準の箱)=今の本体の絵の幅(判定150×1.1の時の表示幅)。 */
-export const CRAWLER_HIT_W = 165;
+/** 絵の胴の表示幅(px)。元の1体(165)の5倍(社長「5倍くらい」)。 */
+export const CRAWLER_ART_BODY_DISPLAY_W = 165 * 5;
+/** 当たり判定の幅(足元基準の箱)=描いた胴の幅の0.9倍(胴の両端の腕・管の先は通り抜ける程度)。 */
+export const CRAWLER_HIT_W = Math.round(CRAWLER_ART_BODY_DISPLAY_W * 0.9);
 /**
  * 当たり判定の奥行き(足元から上へ)。帯(±200=幅400)を大きく塞ぎ、塊が帯の真ん中にいる時に上下それぞれ約50の隙間を残す
  * (社長決定2026-10-19)。描画はこの箱と同じ広がりの肉の溜まりを床に敷く=見たまま当たる。
  */
 export const CRAWLER_HIT_H = 300;
-/** 本体の絵の幅 ÷ 判定の幅(描画が使う)。 */
-export const CRAWLER_ART_W_PER_HIT_W = 1.0;
+/** 本体の絵の胴の幅 ÷ 判定の幅(描画が使う)。 */
+export const CRAWLER_ART_W_PER_HIT_W = CRAWLER_ART_BODY_DISPLAY_W / CRAWLER_HIT_W;
 /**
- * 本体の絵の足元: 箱の下辺(=足元 y)からこれだけ奥。描画は箱を歩きの絵の複製6段(奥→手前・重ねる)で埋め、本体は奥から3段目
- * (箱の中心より少し奥寄り・pixiScene の LAB_CRAWLER_ROWS と同じ値)。
+ * 本体の絵の足元: 箱の下辺(=足元 y)からこれだけ奥。0=絵の下端が箱の下辺。絵の背丈(130画素×倍率2.23≈290)が箱の奥行き300と
+ * ほぼ同じなので、絵の上端≈箱の上辺(差約10px)。
  */
-export const CRAWLER_BODY_FOOT_UP_PX = 148;
+export const CRAWLER_BODY_FOOT_UP_PX = 0;
 /**
  * 起きる進み具合(社長指示2026-10-19「順路を20%くらい進む(資料がゴールとした時に)と、動き始めます。その時アテンションイベント」)。
  * 順路=スタート(原点)→ゴール資料の廊下の1本道。資料の向きへ進んだx距離 ÷ 資料までのx距離 がこの値以上で起きる。一度起きたら戻らない。
@@ -55,13 +58,18 @@ export const CRAWLER_FACE_HYST_PX = 24;
 
 // ---- 攻撃(手で押しつぶす) -------------------------------------------------------------------
 /**
- * 叩きつける円の中心 = 塊の中心から、向いている方へこの距離(縦は本体の手の高さ=本体の足元の少し奥)。
- * 攻撃シートの手が地面に着くコマ(`CRAWLER_ATTACK_IMPACT_FRAME`)で、手の位置は胴の中心から
- * 絵の約41〜55px前(表示倍率で約45〜60px)。円はそこを中心に置く。
+ * 叩きつける円の中心 = 塊の中心から、向いている方へこの距離(縦は手のひらが地面に着く高さ=箱の下辺から CRAWLER_SLAM_HAND_UP_PX)。
+ * 攻撃シート(6688×130)の手が地面に着くコマ7〜8で、土埃の出る手のひらは胴の中心から前へ約97〜159画素
+ * (中心≈125画素)=表示で約280px。円はそこを中心に置く。
  */
-export const CRAWLER_SLAM_FWD_PX = 70;
-/** 叩きつける円の半径(=赤い予告の半径=判定)。手の振り下ろしが届く広さ(体の前端から約70px先まで)。 */
-export const CRAWLER_SLAM_RADIUS = 72;
+export const CRAWLER_SLAM_FWD_PX = 280;
+/** 手のひらが地面に着く高さ: 絵の下端(=箱の下辺)から約15画素=表示で約33px奥。 */
+export const CRAWLER_SLAM_HAND_UP_PX = 33;
+/**
+ * 叩きつける円の半径(=赤い予告の半径=判定)。手のひらが地面に着く範囲(土埃の広がり±55画素)と、伸ばした爪の先(胴の中心から
+ * 約195画素=表示約435px)までを含む。箱の横に接して立つプレイヤーには、箱の中ほどの高さまで当たる。
+ */
+export const CRAWLER_SLAM_RADIUS = 155;
 /** 歩きシートのコマ数(lab-crawler-walk.png 4800×130・1コマ400px)。 */
 export const CRAWLER_WALK_FRAMES = 12;
 /** 攻撃シートのコマ数(lab-crawler-attack.png 6688×130・1コマ418px)。 */
@@ -151,11 +159,9 @@ export const crawlerRect = (c: Pick<LabCrawler, 'x' | 'y'>): Rect => footRect(c.
 export const crawlerCenter = (c: Pick<LabCrawler, 'x' | 'y'>): { x: number; y: number } => ({ x: c.x, y: c.y - CRAWLER_HIT_H / 2 });
 /** 本体の絵の足元(肉の溜まりの上・箱の中心より少し奥)。 */
 export const crawlerBodyFoot = (c: Pick<LabCrawler, 'x' | 'y'>): { x: number; y: number } => ({ x: c.x, y: c.y - CRAWLER_BODY_FOOT_UP_PX });
-/** 今の向きで叩きつけたら円がどこへ落ちるか(手の高さ=本体の足元の少し奥)。 */
-export const crawlerSlamCenter = (c: Pick<LabCrawler, 'x' | 'y' | 'facingLeft'>): { x: number; y: number } => {
-  const bf = crawlerBodyFoot(c);
-  return { x: bf.x + (c.facingLeft ? -1 : 1) * CRAWLER_SLAM_FWD_PX, y: bf.y - 8 };
-};
+/** 今の向きで叩きつけたら円がどこへ落ちるか(絵の手のひらが地面に着く所)。 */
+export const crawlerSlamCenter = (c: Pick<LabCrawler, 'x' | 'y' | 'facingLeft'>): { x: number; y: number } =>
+  ({ x: c.x + (c.facingLeft ? -1 : 1) * CRAWLER_SLAM_FWD_PX, y: c.y - CRAWLER_SLAM_HAND_UP_PX });
 /** 昇天中は判定が無い(通れる・攻撃しない)。 */
 export const crawlerSolid = (c: Pick<LabCrawler, 'state'>): boolean => c.state !== 'ascend';
 

@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5147 — 死体の塊を1体・5倍に【2026-10-19 21:22 JST】
+- 社長「ちがうなー これ一体で、でかくしてほしい。5倍くらい」。6段重ねを外し、本体1体を胴の幅825(元165の5倍・シート倍率2.23・絵892×290)で描く。
+- 当たり判定 幅743(胴の0.9倍)×奥行き300(上下の隙間は真ん中で50ずつのまま)。絵の足元=箱の下辺。遠近スケールは掛けない(箱と見たままを合わせるため)。近さの判定を箱との距離に。
+- 叩きつけ: 手のひらの位置を測り直し、円の中心=前へ280px・半径155。土煙・輪・画面の揺れを大きさ相応に。ランタン・昇天の光・目覚めの土埃も倍率に比例。光の柱は胴の0.4倍に絞る。
+- 速さ・起床条件・ダメージ40・吹き飛び300は不変。上下の隙間で食らうと帯の端で止まる(帯の外へは飛ばない)。
+- 画面との大きさ: スマホ縦で絵の幅は画面の約2.1倍(アテンションで下半分を埋める)/PC で約1/3/最大引き0.4で破綻なし(scratchpad/crawler5)。
+- 検証: typecheck 0 / eslint 0 / assets:check OK / vitest 全体 8070件通過・1件失敗(escortToss の既知の揺れ=今回の変更前から)。監査: 社長の差し戻しによる大きさの変更のため回していない。
+- 変更ファイル: src/world/labCrawler.ts(+test)/ src/utils/labCrawlerTick.ts / src/utils/combatTick.ts / src/store/gameStore.ts / src/pixi/pixiScene.ts / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5146 — ステージ2の新しい敵「死体の塊」【2026-10-19 20:38 JST】
 - 仕様は research/LAB_CRAWLER.md(社長の言葉・決定・監査の記録)。実装はサブエージェント(Opus)。
 - 新規: src/world/labCrawler.ts(+test)/ src/utils/labCrawlerTick.ts(+store test)/ src/utils/crawlerAbsorb.ts(+test)/ 素材 public/sprites/lab/lab-crawler-walk.png・lab-crawler-attack.png。

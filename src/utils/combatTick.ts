@@ -350,11 +350,14 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       // ステージ2の這う塊の叩きつけ(world/labCrawler.ts)。爆発ではない=全画面の橙のフラッシュは出さない。
       // 手が地面を打った土煙(シートの砂埃と同じ明るいベージュ)と大きな輪、飛び散る破片(派手さの絵=判定より大きく外へ)。
       // 暗い床に溶けないよう明るい色を主にし、暗い破片は少しだけ混ぜる。
-      fx.spawnRing(b.x, b.y, 12, b.radius * 2.1, 'rgba(226,206,168,0.9)', 7, 620);
-      fx.spawnRing(b.x, b.y, 8, b.radius * 1.4, 'rgba(196,172,134,0.85)', 5, 480);
-      fx.spawnBurst(b.x, b.y, '#e3cfa6', 30);
-      fx.spawnBurst(b.x, b.y, '#bfa57c', 18);
-      fx.spawnBurst(b.x, b.y, '#5a4636', 10); // 土くれ・骨の破片
+      // 5倍の巨体の手(半径約155)なので、輪は大きく・太く、土煙も多く。
+      fx.spawnRing(b.x, b.y, 20, b.radius * 2.0, 'rgba(226,206,168,0.9)', 12, 760);
+      fx.spawnRing(b.x, b.y, 14, b.radius * 1.35, 'rgba(196,172,134,0.85)', 9, 600);
+      for (const [ox, oy] of [[0, 0], [-0.45, 0.2], [0.45, -0.15], [-0.2, -0.4], [0.25, 0.4]] as const) {
+        fx.spawnBurst(b.x + ox * b.radius, b.y + oy * b.radius, '#e3cfa6', 26);
+      }
+      fx.spawnBurst(b.x, b.y, '#bfa57c', 30);
+      fx.spawnBurst(b.x, b.y, '#5a4636', 18); // 土くれ・骨の破片
     } else if (b.moveKey === 'driller-thrust') {
       // 削岩型の突き(検収監査#5): 雑魚の通常攻撃なので**全画面フラッシュは出さない**(3.5秒ごとに
       // 画面全体が明滅するのはうるさい)。判定終端の小さな火花+リングだけ(色はドリル=琥珀寄り)。

@@ -26,18 +26,18 @@ const WAKE_SFX_GAIN = 0.8;
 /** 叩きつけの爆風に付ける持ち主の名札(敵配列には居ない=カウンターされても反撃は誰にも入らない)。 */
 export const LAB_CRAWLER_BLAST_OWNER = 'lab-crawler';
 /** 敵の候補を集める範囲(塊の中心から・px)。手の届く範囲より十分広く。 */
-const TARGET_SCAN_PX = 360;
+const TARGET_SCAN_PX = 700;
 /** 壁・プロップを集める範囲(塊の箱の周り・px)。 */
-const OBSTACLE_PAD_PX = 400;
+const OBSTACLE_PAD_PX = 700;
 /**
  * プレイヤーからこの距離より遠い叩きつけは爆風を積まない(当たらないうえ、重い衝撃音と土煙が画面外で鳴るだけ)。
  * 雑魚の取り込みは距離に関係なく起きる。
  */
 const SLAM_BLAST_NEAR_PX = 900;
 /** 叩きつけの揺れ(既存の triggerShake)。プレイヤーとの距離で弱め、この距離で0。 */
-const SLAM_SHAKE_MS = 260;
-const SLAM_SHAKE_MAG = 7;
-const SLAM_SHAKE_FALLOFF_PX = 760;
+const SLAM_SHAKE_MS = 360;
+const SLAM_SHAKE_MAG = 12; // 5倍の巨体の叩きつけ=重く
+const SLAM_SHAKE_FALLOFF_PX = 1400;
 /** 叩きつけの揺れの強さ(距離で直線的に弱める・純関数)。 */
 export const crawlerSlamShakeMag = (distPx: number): number =>
   SLAM_SHAKE_MAG * Math.max(0, 1 - distPx / SLAM_SHAKE_FALLOFF_PX);
