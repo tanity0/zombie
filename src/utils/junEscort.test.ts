@@ -363,3 +363,12 @@ describe('junEscort: 最初からプレイヤーについて歩く(拠点解放�
     expect(JUN_LEFT_BEHIND_REARM_PX).toBeLessThan(JUN_LEFT_BEHIND_PX);
   });
 });
+
+describe('倒れる時の通信(社長指示2026-10-20)', () => {
+  it('「い、意識が…」をその場で出し、待ち行列のジュンの行だけ捨てる', async () => {
+    const { junCollapseDialogue } = await import('./junEscort');
+    const r = junCollapseDialogue(1000, [{ name: 'ジュン', text: 'x' }, { name: '武蔵', text: 'y' }], 2800, 1200);
+    expect(r.npcDialogue).toEqual({ name: 'ジュン', text: 'い、意識が…', until: 1000 + 2800 + 1200, slow: true });
+    expect(r.npcDialogueQueue).toEqual([{ name: '武蔵', text: 'y' }]);
+  });
+});

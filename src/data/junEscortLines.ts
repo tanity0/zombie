@@ -31,6 +31,9 @@ export const JUN_SCENE_LINES: Readonly<Partial<Record<'downed' | 'revived' | 'ta
   targeted: '私を…見てる…？',
 };
 
+/** 城ボスの前に倒れる時、通信で言いながら倒れる一言(社長指示2026-10-20「通信でジュンが い、意識が… と言いながら倒れる」)。 */
+export const JUN_COLLAPSE_LINE = 'い、意識が…';
+
 /** 隊を離れる時の一言(表の「一緒にいる」の文言をそのまま使う)。 */
 export const JUN_DEPART_LINE = JUN_NPC_LINES.companion[0];
 

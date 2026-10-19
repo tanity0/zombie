@@ -68,7 +68,7 @@ import {
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, PUMPKIN_EXPLOSION_RADIUS, WALL_ENABLED,
   DEATH_ZOOM_MAG, DEATH_ZOOM_MS, DEATH_ZOOM_HOLD_MS, DEATH_SLOW_SCALE, // v0.25.2586: 死亡の寄り+スロー
   EVENT_QUEST_DWELL_MS, EVENT_QUEST_REWARD_GOLD,
-  NPC_DIALOGUE_MS, NPC_DIALOGUE_GAP_MS,
+  NPC_DIALOGUE_MS, NPC_DIALOGUE_GAP_MS, NPC_DIALOGUE_SLOW_EXTRA_MS,
   RN_ENEMY_FORCE,
   FIRST_AID_KIT_THROW_DAMAGE, MINE_DAMAGE, HEAL_FRACTION, QUICK_MAG_CRIT_WINDOW_MS,
   PHASER_INDEX, BASE_SOLDIER_COUNT, escortWalkSpeed,
@@ -214,7 +214,7 @@ import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties, he
 import { hateEscortSource } from '../utils/escortView';
 import { isEscortDowned } from '../utils/escortHealth';
 import {
-  isJunEscort, junDepartDue, junDepartReady, junCastleRoute, junCollapseView, junAttentionExtraHoldMs,
+  isJunEscort, junDepartDue, junDepartReady, junCastleRoute, junCollapseView, junAttentionExtraHoldMs, junCollapseDialogue,
   castleBossFootPoint, JUN_VANISH_MS, JUN_LIE_MS, junDepartLeadMs, junCompanionQuiet, junFocusOk, worldToScreenYFrac, junRelocatePoint,
 } from '../utils/junEscort';
 import { applyContactToEscorts } from '../utils/escortHit'; // research/ESCORT_TARGETED.md §3: 進軍NPCの接触被弾
@@ -3601,7 +3601,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // ホールドは変身の瞬間まで延ばす(倒れる→変身は上の実時間の段が進める)。寄りの頭で BGM を慣性つきで無音へ落とす。
             const atX = jd.phase === 'waiting' ? jd.x : castleBossFoot.x;
             const atY = jd.phase === 'waiting' ? jd.y : castleBossFoot.y;
-            useGameStore.setState({ junDeparture: { ...jd, x: atX, y: atY, speed: 0, phase: 'collapsing', collapseStartReal: Date.now(), landedFx: false } });
+            useGameStore.setState(st => ({
+              junDeparture: { ...jd, x: atX, y: atY, speed: 0, phase: 'collapsing', collapseStartReal: Date.now(), landedFx: false },
+              // 通信で「い、意識が…」と言いながら倒れる(社長指示2026-10-20)。
+              ...junCollapseDialogue(newGameTime, st.npcDialogueQueue, NPC_DIALOGUE_MS, NPC_DIALOGUE_SLOW_EXTRA_MS),
+            }));
             rs.triggerAttention(atX, atY - JUN_ATTENTION_CHEST_UP_PX, undefined, junAttentionExtraHoldMs(ATTENTION_IN_MS, ATTENTION_HOLD_MS));
             fadeOutBgmToSilence(1200);
           }

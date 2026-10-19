@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5157', items: [
+    'ステージ4で倒れる時、ジュンが通信で何かを言い残す',
+  ] },
   { version: '0.25.5156', items: [
     'ステージ2の死体の塊が、スタート地点から少し離れた奥で待つようになった',
   ] },

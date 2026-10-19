@@ -11,7 +11,7 @@
 //   ③ 変身: 城ボスが出る瞬間、カメラがジュンへ向き(素のアテンション=時間停止)、ゆっくり倒れ、城ボスが城の位置に現れる。
 //      そのまま通常のボスのアテンション(カットイン)へ。置き直しは画面に見えている所では起こさない。
 //   ジュンが居ない(隊に居ない・名簿に無い)時は、城ボスは従来どおり出る。
-import { JUN_ESCORT_INDEX } from '../data/junEscortLines';
+import { JUN_ESCORT_INDEX, JUN_NAME, JUN_COLLAPSE_LINE } from '../data/junEscortLines';
 import type { JunDeparture } from '../types/game';
 import type { EscortFollowState } from './escortFollow';
 
@@ -470,3 +470,16 @@ export const junTouchesRect = (foot: { x: number; y: number }, r: PathRect, tol 
 };
 /** 城の足元に着いたとみなす距離(城に接している時)。 */
 export const JUN_ARRIVE_TOUCH_DIST = 32;
+
+// ---- 倒れる時の通信 -------------------------------------------------------------------------------------
+/**
+ * 倒れ始めの瞬間に通信の箱へ出す行(社長指示2026-10-20「通信でジュンが い、意識が… と言いながら倒れる」)。
+ * 待ち行列に積まず、その場で差し替える(アテンション中は通信の時計が凍る=倒れる間ずっと出ていて、明けてから尺が張り直される)。
+ * 待ち行列に残っていたジュンの行は捨てる(倒れた後に普段の台詞が出ないように)。
+ */
+export const junCollapseDialogue = <Q extends { name: string }>(
+  gameTime: number, queue: readonly Q[], lineMs: number, slowExtraMs: number,
+): { npcDialogue: { name: string; text: string; until: number; slow: true }; npcDialogueQueue: Q[] } => ({
+  npcDialogue: { name: JUN_NAME, text: JUN_COLLAPSE_LINE, until: gameTime + lineMs + slowExtraMs, slow: true },
+  npcDialogueQueue: queue.filter(l => l.name !== JUN_NAME),
+});
