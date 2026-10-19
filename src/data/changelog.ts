@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5153', items: [
+    'ステージ2の遠くの物音が三種類になった。同じ音は続かない',
+  ] },
   { version: '0.25.5152', items: [
     'ステージ2で、ときどき遠くから何かの音が聞こえてくる',
   ] },

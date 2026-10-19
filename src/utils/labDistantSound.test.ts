@@ -46,6 +46,14 @@ describe('labDistantSound', () => {
       expect(c.lowpassHz).toBeLessThanOrEqual(2600);
     }
   });
+  it('3種の音を使い、同じ音は2回続けない', () => {
+    for (const seed of [2, 8, 4242]) {
+      const vs: number[] = [];
+      for (let sl = 0; sl < 300; sl++) { const c = labDistantCue(sl, seed); if (c) vs.push(c.variant); }
+      expect(new Set(vs)).toEqual(new Set([0, 1, 2]));
+      for (let i = 1; i < vs.length; i++) expect(vs[i]).not.toBe(vs[i - 1]);
+    }
+  });
   it('時間が戻った時(新しい出撃)は鳴らさない', () => {
     expect(labDistantDue(50000, 100, 1)).toBeNull();
   });

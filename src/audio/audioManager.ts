@@ -149,7 +149,7 @@ export type SfxKey =
   // research/LAB_CRAWLER.md(ステージ2の死体の塊・社長支給2026-10-19): 体を引きずる音(ループ専用=setCrawlerDrag が鳴らす)。
   | 'crawler-drag'
   // ステージ2でたまに遠くから鳴る音(社長支給2026-10-19)。playDistantSfx が遠さ(音量・こもり・左右)を付けて鳴らす。
-  | 'lab-distant'
+  | 'lab-distant' | 'lab-distant-2' | 'lab-distant-3'
   // 英雄の犬(research/HERO_DOG.md・社長支給2026-10-15): 汎用の吠え / やられた時
   | 'dog-bark' | 'dog-yelp'
   // 英雄の命中音(既存素材を低く回して別物にする=phill-skylight-low と同じ作法): 叩きつけ / 体当たり / 斬撃。
@@ -494,6 +494,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'crawler-drag': { src: `${import.meta.env.BASE_URL}audio/sfx/crawler-drag.mp3`, volume: 0.9, minIntervalMs: 200 },
   // ステージ2でたまに遠くから鳴る音(playDistantSfx 専用)。
   'lab-distant': { src: `${import.meta.env.BASE_URL}audio/sfx/lab-distant.mp3`, volume: 1.0, minIntervalMs: 3000 },
+  'lab-distant-2': { src: `${import.meta.env.BASE_URL}audio/sfx/lab-distant-2.mp3`, volume: 0.55, minIntervalMs: 3000 }, // 素材が他の2本より約6dB大きい
+  'lab-distant-3': { src: `${import.meta.env.BASE_URL}audio/sfx/lab-distant-3.mp3`, volume: 1.0, minIntervalMs: 3000 },
   // 巨体の騎馬の一撃は雑魚の着地と同じ音にしない: 同じ素材を遅く(=低く重く)回す。
   'hero-slam': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.9, minIntervalMs: 80, playbackRate: 0.7 },
   'hero-tackle-hit': { src: `${import.meta.env.BASE_URL}audio/sfx/jump-land.mp3`, volume: 1.2, minIntervalMs: 80, playbackRate: 0.85 },
@@ -1929,13 +1931,20 @@ export const setCrawlerDrag = (gainMult: number): void => {
 /**
  * 遠くから鳴る音(ステージ2・utils/labDistantSound.ts が時刻と遠さを決める)。音量・ローパス(遠いほどこもる)・左右・速さを付けて1回鳴らす。
  * cue を渡さずに呼ぶと素材の読み込みだけする(最初の1回を取りこぼさないため・毎フレーム呼んでよい)。
+ * baseKey に種類の束があれば(DISTANT_VARIANTS)、cue.variant でその中の1本を選ぶ。
  */
-export const playDistantSfx = (key: SfxKey, cue?: { gain: number; pan: number; lowpassHz: number; rate: number }): void => {
+const DISTANT_VARIANTS: Partial<Record<SfxKey, readonly SfxKey[]>> = {
+  'lab-distant': ['lab-distant', 'lab-distant-2', 'lab-distant-3'],
+};
+export const playDistantSfx = (baseKey: SfxKey, cue?: { gain: number; pan: number; lowpassHz: number; rate: number; variant?: number }): void => {
   const context = sfxContext ?? ensureSfxContext();
   if (!context) return;
+  const pool = DISTANT_VARIANTS[baseKey] ?? [baseKey];
+  if (!cue) { for (const k of pool) if (!sfxBuffers.has(k)) loadSfxBuffer(k); return; }
+  const key = pool[Math.max(0, Math.min(pool.length - 1, cue.variant ?? 0))];
   const buffer = sfxBuffers.get(key);
   if (!buffer) { loadSfxBuffer(key); return; }
-  if (!cue || muted || cue.gain <= 0) return;
+  if (muted || cue.gain <= 0) return;
   const config = SFX_SOURCES[key];
   const now = typeof window === 'undefined' ? Date.now() : (window.performance?.now() ?? Date.now());
   if (config?.minIntervalMs && now - (sfxLastPlayedAt.get(key) ?? 0) < config.minIntervalMs) return;
