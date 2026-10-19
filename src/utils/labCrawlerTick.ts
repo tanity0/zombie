@@ -414,7 +414,7 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
     const g = Math.max(0.25, gainAt(edgeX, r.y + r.height / 2));
     if (sfx) setTimeout(() => sfx('phill-skylight', g), DEATH_BEAT_STOP_MS + DEATH_SKYLIGHT_DELAY_MS); // 一拍の後、崩れ始めてから
   }
-  // 「出口まで戻れ」の帯は、回り込みのアテンションが戻ってから出す(クリエイティブ監査#5)。
+  // 「入り口まで走れ」の帯は、回り込みのアテンションが戻ってから出す(クリエイティブ監査#5)。
   if (gs.labEscapeBannerPending && gs.attention === null && !chaseAt && (!nc || nc.chasing || !crawlerSolid(nc))) {
     useGameStore.setState({ labEscapeBannerPending: false, eventBannerText: LAB_ESCAPE_BANNER, eventBannerUntil: gs.gameTime + 3500 });
   }

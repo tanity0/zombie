@@ -195,7 +195,7 @@ describe('runLabCrawlerTick 第2版: 資料を拾った瞬間、前から出て�
     expect(st.attention!.x).toBeCloseTo(crawlerCenter(c).x);
     expect(proxyOf()).toBeDefined();
     expect(st.labEscapeBannerPending).toBe(true);
-    // アテンションが戻ったら「出口まで戻れ」
+    // アテンションが戻ったら「入り口まで走れ」
     useGameStore.setState({ attention: null });
     runLabCrawlerTick(10_032, 1 / 60);
     expect(useGameStore.getState().labEscapeBannerPending).toBe(false);

@@ -156,7 +156,7 @@ export const CRAWLER_CHASE_CATCHUP_MULT = 1.5;
  */
 export const CRAWLER_CHASE_SLAM_ADVANCE_FRAC = 0.5; // 社長決定2026-10-19(中間案): 溜めの前半だけ進み、後半は止まる
 /** 資料を拾った後の帯の文言(store の beginLabEscape と labCrawlerTick の両方がここを読む=1か所・クリエイティブ監査2巡目#19)。 */
-export const LAB_ESCAPE_BANNER_TEXT = '出口まで戻れ';
+export const LAB_ESCAPE_BANNER_TEXT = '入り口まで走れ';
 /**
  * 資料の後の追跡の終わり(社長2026-10-19「ゴール手前まで来ると消える。アイドルに行くならそのまま奥へ行けばいい」):
  * 塊の前の縁(ゴール側の縁)が原点からこの距離まで来たら、床へ沈んで引いていく(vanish)。消えた後はアイドル側への道が開く。

@@ -6485,7 +6485,7 @@ interface GameState {
   labEscapeRun: boolean;
   /** ステージ2(第2版): 資料を拾った gameTime(0=まだ)。これ以降、塊が前から出てきて追い、スタート地点の円がゴール。 */
   labEscapeAt: number;
-  /** ステージ2(第2版): 「出口まで戻れ」の帯を、回り込みのアテンションが戻ってから出す待ち(labCrawlerTick が出す)。 */
+  /** ステージ2(第2版): 「入り口まで走れ」の帯を、回り込みのアテンションが戻ってから出す待ち(labCrawlerTick が出す)。 */
   labEscapeBannerPending: boolean;
   /** ステージ2: アイドルが居る側の符号(+1/-1)。その側には雑魚を湧かせない(utils/labSpawn.isLabIdolSide)。アイドルを置かない出撃は 0(2026-10-19)。 */
   labIdolSide: number;
@@ -20908,7 +20908,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   beginLabEscape: () => {
     set(state => {
       if (!state.labEscapeRun || state.labEscapeAt > 0 || state.gameWon) return {};
-      // 帯「出口まで戻れ」(この経路だけの文言・クリエイティブ監査#5)は、塊が回り込むアテンションが戻ってから出す(labCrawlerTick)。
+      // 帯「入り口まで走れ」(この経路だけの文言・クリエイティブ監査#5)は、塊が回り込むアテンションが戻ってから出す(labCrawlerTick)。
       // 塊が既に倒れている(居ない/崩れている)時は回り込みが無いので、すぐ出す。
       const crawlerWillAppear = !!state.labCrawler && crawlerSolid(state.labCrawler);
       // 逃走経路にレベル1の雑魚を1画面に1体ずつ、帯の上下の縁へ交互に置く(通路を塞がない・社長指示2026-10-20)。
@@ -23305,7 +23305,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 洋館通路は拠点なし(v0.25.2128)。**訓練(M0)も拠点なし**(社長報告v0.25.2313
         // 「チュートリアルステージに拠点サークルぽいのがある、削除」)。制圧イベント自体は
         // v0.25.1818で止めていたが、**サークルの実体(baseSites)は作られたままで描画されていた**。
-        baseSites: (corridorMode || farBackdrop === 'tutorial' || farBackdrop === 'ending') ? [] : createBaseSites(),
+        // ステージ2(研究所)も拠点なし(社長報告2026-10-20「ステージ2にまだ拠点マークが出てる」=画面端の拠点の矢印と地図の四角)。
+        baseSites: (corridorMode || farBackdrop === 'tutorial' || farBackdrop === 'ending' || stageTheme === 'lab') ? [] : createBaseSites(),
         // 研究所: アイドルの手前に遠隔ショップ(武器庫)。アイドルを置かない出撃(1対1)では置かない(社長指示2026-10-11「やはり研究所の遠隔ショップ復活で」)。
         labArmory: labIdol && !vsEntryOfRun() ? labIdolShopSpot(labIdol) : null,
         // ステージ2の這う塊: アイドル側の入り口(スタートからアイドルの方へ600px)で待ち、順路(原点→資料)を20%進むと起きる。

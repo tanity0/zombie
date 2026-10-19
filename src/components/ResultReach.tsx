@@ -4,6 +4,7 @@ import { wallAchievementHeadline } from '../utils/wallProgress';
 import { clampRank } from '../utils/rankAssessor';
 import type { RunCore } from '../data/progress';
 import { POI_MARK_COLOR } from '../utils/poiMarks';
+import { AREA_ZONE_NAMES } from '../utils/enemyUtils';
 
 // リザルトの主役「到達譜」= 地表から掘り下げる**1枚の地質断面図**(社長指示v0.25.2332/2333)。
 //
@@ -34,6 +35,10 @@ interface ResultReachProps {
   history: RunCore[];         // 過去の掘削記録(古い順・今回を含まない)
   pois?: PoiPin[];            // 解放済みの世界の目印(深度計に刺す)
   namedFoe?: { name: string; defeated: boolean } | null;
+  /** ステージ2(研究所): 区域名を全部この名前に揃える(社長指示2026-10-20「すべて未確認汚染エリアにしておいて」)。 */
+  zoneNameOverride?: string;
+  /** ステージ2(研究所): 「次の深さ」を測れない(社長指示2026-10-20「次の深さ の表示は 解析不可」)。 */
+  nextDepthUnknown?: boolean;
 }
 
 const CUT_H = 244;      // 断面図の高さ(px)。縦持ち360pxで地層名が潰れない下限。
@@ -63,7 +68,7 @@ const POI_MARK: Record<PoiPin['kind'], { icon: string; color: string }> = {
 };
 
 const ResultReach: React.FC<ResultReachProps> = ({
-  dist, rank, bestRank, zoneIdx, end, at, history, pois = [], namedFoe,
+  dist, rank, bestRank, zoneIdx, end, at, history, pois = [], namedFoe, zoneNameOverride, nextDepthUnknown,
 }) => {
   // マウント後に一度だけ「掘り下がる」(0→実値へCSS transition・1回きり)。
   const [dug, setDug] = useState(false);
@@ -84,12 +89,14 @@ const ResultReach: React.FC<ResultReachProps> = ({
   }, [history.length]);
 
   const cur = clampRank(rank);
-  const bands = strata();
+  const bands = zoneNameOverride ? strata().map(b => ({ ...b, name: zoneNameOverride })) : strata();
   const cores = buildCores(history, { dist, rank, end, at });
   const ranks = rankRungs(rank, bestRank);
   const goal = nextGoal(dist, rank);
   const glow = digProgress(dist, rank);
-  const headline = wallAchievementHeadline(zoneIdx, cur);
+  const headline = zoneNameOverride
+    ? wallAchievementHeadline(zoneIdx, cur).replace(AREA_ZONE_NAMES[zoneIdx] ?? '', zoneNameOverride)
+    : wallAchievementHeadline(zoneIdx, cur);
   const deepest = cores.find(c => c.isDeepest);
   // 壁の幅。竪坑が少ないうちは**画面いっぱい(minWidth:100%)まで地層を伸ばし**、坑は右端から並べる。
   // 「初回は右寄りに立ち、増えるたび左へ押されていく」(社長指示v0.25.2335)= 左側は手つかずの岩のまま。
@@ -278,7 +285,12 @@ const ResultReach: React.FC<ResultReachProps> = ({
 
       {/* ================= 次の一手 ================= */}
       <div className="mt-2.5 border-l-2 border-amber-300/60 bg-amber-400/[0.06] px-2.5 py-2 text-left">
-        {goal.maxedOut ? (
+        {nextDepthUnknown ? (
+          <p className="text-[11px] leading-snug">
+            <span className="text-white/45">次の深さ</span>{' '}
+            <span className="font-semibold text-sky-200">解析不可</span>
+          </p>
+        ) : goal.maxedOut ? (
           <p className="text-[12px] font-semibold text-amber-100">最も深い区域まで到達した</p>
         ) : (
           <div className="space-y-0.5 text-[11px] leading-snug text-white/70">

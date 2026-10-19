@@ -19,6 +19,8 @@ import { getRunPois, isPoiRevealed } from '../world/pois';
 import { getStage, stageDateLabel, REVISIT_MISSION } from '../data/campaign';
 import { getArchiveRecord, unlockRecordsForStage, markRecordRead, type ArchiveRecord } from '../data/storyArchive';
 import { AREA_ZONE_NAMES, AREA_THRESHOLDS, isLabCrawlerProxyType } from '../utils/enemyUtils';
+/** ステージ2(研究所)のリザルトで、区域名をすべてこの名前に揃える(社長指示2026-10-20)。 */
+const LAB_RESULT_ZONE_NAME = '未確認汚染エリア';
 import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
 import { isKomaLogEnabled, komaLogSummary, logKomaSummary } from '../utils/komaLog';
 import { hasPendingTraitRecords, settlePendingTraits, pendingBossClears, loadPlayerProfile } from '../utils/playerTraits';
@@ -478,7 +480,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const remainingStraps = Math.max(0, stats.strapsCollected - stats.strapsSpent);
   // PACING_PUZZLE.md §5.17 M14: 到達譜(掛け合わせ見出し+深度メーター+惜しさ)。
   const wallHighestRank = clampRank(stats.maxRankReached);
-  const wallHeadline = wallAchievementHeadline(stats.maxAreaReached, wallHighestRank);
+  // ステージ2(研究所)の深さの表示: 区域名は全部「未確認汚染エリア」、次の深さは「解析不可」(社長指示2026-10-20)。
+  const labZoneName = isLab ? LAB_RESULT_ZONE_NAME : null;
+  const zoneNameAt = (i: number): string => labZoneName ?? AREA_ZONE_NAMES[i] ?? AREA_ZONE_NAMES[0];
+  const wallHeadline = labZoneName
+    ? wallAchievementHeadline(stats.maxAreaReached, wallHighestRank).replace(AREA_ZONE_NAMES[stats.maxAreaReached] ?? '', labZoneName)
+    : wallAchievementHeadline(stats.maxAreaReached, wallHighestRank);
   const wallSelfBestUpdated = stats.maxDepthDist > 0 && stats.maxDepthDist >= wallMeta.selfDeepestDist;
   const wallMetersToNext = metersToNextWall(stats.maxDepthDist);
   const wallMeterPct = (d: number) => Math.max(0, Math.min(100, (d / WALL_METER_SCALE_MAX) * 100));
@@ -500,7 +507,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     { label: '最大コンボ', value: stats.maxCombo },
     { label: 'トレジャー', value: stats.treasuresCollected },
     // PACING_REDESIGN.mdバッチ2(計測): ラン中の最深到達エリア。挙動には影響しない表示のみ。
-    { label: '最深到達', value: AREA_ZONE_NAMES[stats.maxAreaReached] ?? AREA_ZONE_NAMES[0] },
+    { label: '最深到達', value: zoneNameAt(stats.maxAreaReached) },
     { label: 'スクラップ残', value: remainingStraps },
     { label: 'ゴールド', value: goldEarned },
     ...(isBenchmarkRun ? [] : [{ label: '所持ゴールド', value: goldBalance }]),
@@ -712,14 +719,17 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   </p>
                   <div className="mx-auto mt-0.5 h-[2px] w-24 rounded-full" style={{ background: 'linear-gradient(90deg, transparent, #ffd700, transparent)' }} />
                   <p className="mt-1 text-[10px] text-white/50">
-                    {AREA_ZONE_NAMES[stats.maxAreaReached]} × {rankLabel(wallHighestRank)}
+                    {zoneNameAt(stats.maxAreaReached)} × {rankLabel(wallHighestRank)}
                   </p>
                 </div>
               )}
               {!isBenchmark && !won && !withdraw && deathCause && <KillerLine deathCause={deathCause} />}
               {/* PACING_PUZZLE.md §5.17 M14: 惜しさ(死亡時のみ・燃料)。数字だけ1回明滅・派手にしない。 */}
               {/* 「◯◯まであと1昇格」は同語反復(R7以外なら常に真)なので撤去(社長指示v0.25.2342)。距離だけ残す。 */}
-              {!isBenchmark && !hideDepthReview && !won && !withdraw && wallMetersToNext !== null && (
+              {!isBenchmark && !hideDepthReview && !won && !withdraw && labZoneName && (
+                <p className="mt-1 text-[11px] text-white/60">次の深さ 解析不可</p>
+              )}
+              {!isBenchmark && !hideDepthReview && !won && !withdraw && !labZoneName && wallMetersToNext !== null && (
                 <p className="mt-1 text-[11px] text-white/60">
                   次の壁 {AREA_ZONE_NAMES[stats.maxAreaReached + 1]} まで あと約<span className="font-semibold text-white/90" style={{ animation: 'wall-tantalize-flicker 1.6s ease-out 1' }}>{wallMetersToNext}</span>m
                 </p>
@@ -747,6 +757,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   history={runHistory}
                   pois={reachPois}
                   namedFoe={namedFoeResult}
+                  zoneNameOverride={labZoneName ?? undefined}
+                  nextDepthUnknown={!!labZoneName}
                 />
               )}
               {!isBenchmark && !won && !withdraw && deathCause && <KillerLine deathCause={deathCause} />}
@@ -960,7 +972,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-white/50">最深区域</span>
-                      <span className="font-semibold text-sky-200">{AREA_ZONE_NAMES[stats.maxAreaReached]}</span>
+                      <span className="font-semibold text-sky-200">{zoneNameAt(stats.maxAreaReached)}</span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-white/50">自己最深</span>
