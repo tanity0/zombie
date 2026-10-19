@@ -79,6 +79,9 @@ export const crawlerBreakShakeMag = (distPx: number): number =>
   BREAK_SHAKE_MAG * Math.max(0, 1 - distPx / BREAK_SHAKE_FALLOFF_PX);
 /** 倒れた瞬間の揺れ。 */
 const DEATH_SHAKE_MS = 900;
+/** 倒した瞬間の一拍: 時間の止まり(ms)と、面した縁への寄り(+50%)。 */
+export const DEATH_BEAT_STOP_MS = 520;
+const DEATH_BEAT_ZOOM_MAG = 0.5;
 const DEATH_SHAKE_MAG = 10;
 
 /** 追跡の速さ(px/秒)=プレイヤーの今の歩きの速さ(MOVE_SPEED_MULT 前)×ゲームのテンポ×1.1(純関数)。 */
@@ -397,16 +400,19 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
   }
   if (died && nc) {
     // HP0(第2版・社長「HP0で倒せる(崩れて昇る)」): 崩れて沈み、光が昇る(昇天の見せ方)+地響き。撃破の集計・報酬は無い。
-    // ※アテンション(時間停止)は掛けない: 昇天の見せ方はゲーム時間で進むので、止めると崩れる所が見えないまま戻ってしまう。
+    // 倒した瞬間に一拍(社長指示2026-10-20「倒した時、一拍入れる」): 時間を DEATH_BEAT_STOP_MS だけ止め、面した縁へ寄る
+    // (カウンター/処刑と同じ triggerHitImpact=止め→スローで等速へ→揺れは止めの後)。止めの間は崩れも止まって見え、明けてから崩れが始まる。
+    // ※長いアテンション(時間停止+パン)は使わない: 昇天はゲーム時間で進むので、2秒以上止めると崩れる所が見えないまま戻ってしまう。
     // 土煙の出どころはプレイヤーに面した縁の内側(体の中心は画面の外になりやすい・クリエイティブ監査#14)。白い輪は出さない(2巡目#9)。
     const r = crawlerRect(nc);
     const edgeX = crawlerFacingEdgeX(nc, pcx);
-    gs.triggerShake(DEATH_SHAKE_MS, DEATH_SHAKE_MAG * Math.max(0.35, 1 - Math.abs(edgeX - pcx) / 1600));
+    gs.triggerHitImpact(DEATH_BEAT_STOP_MS, DEATH_SHAKE_MS, DEATH_SHAKE_MAG * Math.max(0.35, 1 - Math.abs(edgeX - pcx) / 1600),
+      DEATH_BEAT_ZOOM_MAG, edgeX, r.y + r.height * 0.55);
     spawnLowSmoke(gs, edgeX, r.y + r.height - 6, 160, 0xa8977a, { alpha: 0.5, duration: 1700 });
     gs.spawnRubble(edgeX, r.y + r.height - 30, 14, 180, LAB_DEBRIS_PALETTE.stone.shards);
     sfx?.('boss-death', Math.max(0.35, gainAt(edgeX, r.y + r.height / 2)));
     const g = Math.max(0.25, gainAt(edgeX, r.y + r.height / 2));
-    if (sfx) setTimeout(() => sfx('phill-skylight', g), DEATH_SKYLIGHT_DELAY_MS);
+    if (sfx) setTimeout(() => sfx('phill-skylight', g), DEATH_BEAT_STOP_MS + DEATH_SKYLIGHT_DELAY_MS); // 一拍の後、崩れ始めてから
   }
   // 「出口まで戻れ」の帯は、回り込みのアテンションが戻ってから出す(クリエイティブ監査#5)。
   if (gs.labEscapeBannerPending && gs.attention === null && !chaseAt && (!nc || nc.chasing || !crawlerSolid(nc))) {

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5160', items: [
+    'ステージ2の死体の塊を倒した瞬間、時が一拍止まる',
+  ] },
   { version: '0.25.5159', items: [
     'ステージ2で資料を手にすると、背後にいたはずの死体の塊が前から現れる。スタート地点まで逃げ帰れ',
     '塊は壁を砕きながら、こちらより少し速く這ってくる。振り返りはしない。崩れた跡はそのまま残る',

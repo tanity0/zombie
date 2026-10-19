@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useGameStore, ATTENTION_IN_MS } from '../store/gameStore';
 import { spawnEnemyAt, countsTowardEnemyCap, isBossType } from './enemyUtils';
-import { runLabCrawlerTick, crawlerSlamShakeMag, crawlerChaseSpeedFor, LAB_CRAWLER_BLAST_OWNER, LAB_ESCAPE_BANNER, labDebrisKind } from './labCrawlerTick';
+import { runLabCrawlerTick, crawlerSlamShakeMag, crawlerChaseSpeedFor, LAB_CRAWLER_BLAST_OWNER, LAB_ESCAPE_BANNER, labDebrisKind, DEATH_BEAT_STOP_MS } from './labCrawlerTick';
 import {
   createLabCrawler, crawlerSlamCenter, crawlerCenter, crawlerRect, CRAWLER_WINDUP_MS, CRAWLER_HP, CRAWLER_HIT_W, CRAWLER_HIT_H,
   CRAWLER_CHASE_SPEED_MULT, type LabCrawler,
@@ -127,6 +127,11 @@ describe('runLabCrawlerTick 第2版: 代理の Enemy(当たり判定を通常の
     expect(c.hp).toBe(0);
     expect(c.state).toBe('ascend');
     expect(proxyOf()).toBeUndefined();
+    // 倒した瞬間の一拍(社長指示2026-10-20): 時間が止まり、面した縁へ寄る。
+    const st = useGameStore.getState();
+    expect(st.hitstopUntil - Date.now()).toBeGreaterThan(DEATH_BEAT_STOP_MS - 100);
+    expect(st.hitstopUntil - Date.now()).toBeLessThanOrEqual(DEATH_BEAT_STOP_MS);
+    expect(st.zoomHasTarget).toBe(true);
     for (let t = 10_048; t < 14_000; t += 16) runLabCrawlerTick(t, 1 / 60);
     expect(useGameStore.getState().labCrawler).toBeNull();
     expect(proxyOf()).toBeUndefined();
