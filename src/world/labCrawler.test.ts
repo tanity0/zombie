@@ -8,6 +8,7 @@ import {
   CRAWLER_HP, CRAWLER_CHASE_SPEED_MULT, CRAWLER_CHASE_SPAWN_MARGIN_PX, CRAWLER_CHASE_FIRST_ATTACK_MS, CRAWLER_COOLDOWN_MS,
   crawlerChaseSpawn, applyCrawlerDamage, crawlerObstacleHits, crawlerGapToPlayer,
   CRAWLER_CHASE_CATCHUP_GAP_PX, CRAWLER_CHASE_SLAM_ADVANCE_FRAC, CRAWLER_VANISH_GOAL_DIST_PX, CRAWLER_VANISH_MS, CRAWLER_VANISH_HOLD_MS, crawlerReachedGoal, crawlerGoalDir, crawlerVanishLook,
+  approachCrawlerSpeed, CRAWLER_ACCEL_PX_S2, CRAWLER_DECEL_PX_S2,
   crawlerSlamLunge, CRAWLER_SLAM_LUNGE_IN_MS, CRAWLER_SLAM_LUNGE_OUT_MS, CRAWLER_IMPACT_HOLD_MS,
   type LabCrawler, type CrawlerStepInput, type CrawlerTarget,
 } from './labCrawler';
@@ -353,10 +354,13 @@ describe('ステージ2の這う塊 第2版: 資料を拾った瞬間、前か�
     const p = playerAt(5000, 0); // ゴール(原点)から遠い所で(ゴール手前では沈んで消えるため)
     const c0 = crawlerChaseSpawn(createLabCrawler({ x: -7000, y: 0 }), p, 300, LAB, 0)!; // 資料は右=塊は右から来る
     const chaseSpeed = 104 * 1.2 * CRAWLER_CHASE_SPEED_MULT;
-    const { c, speeds } = run(c0, p, 2, 1 / 60, 0, { chaseSpeed, targets: [] });
+    const { c, speeds } = run(c0, p, 3, 1 / 60, 0, { chaseSpeed, targets: [] });
     expect(Math.abs(c!.vx)).toBeLessThanOrEqual(chaseSpeed + 1e-6);
     expect(speeds[0]).toBeLessThan(chaseSpeed * 0.2); // いきなり最高速にならない
-    expect(Math.abs(c!.vx)).toBeGreaterThan(chaseSpeed * 0.9); // 2秒でほぼ最高速
+    // 止まりからは徐々に(社長2026-10-20「止まりからは、徐々にスピードを上げる」): 1秒でまだ半分弱、3秒でほぼ最高速
+    expect(Math.abs(speeds[59])).toBeLessThan(chaseSpeed * 0.5);
+    expect(Math.abs(speeds[59])).toBeGreaterThan(chaseSpeed * 0.3);
+    expect(Math.abs(c!.vx)).toBeGreaterThan(chaseSpeed * 0.9);
     expect(c!.vx).toBeLessThan(0); // プレイヤー(左)へ向かう
     // 突進の距離に入っても速さは追跡の速さのまま(突進135に上がらない)
     const slow = 50;
@@ -721,5 +725,21 @@ describe('手が着くコマの前のめり(描画だけ・2巡目#1)', () => {
     expect(crawlerSlamLunge(rec, 620 + CRAWLER_IMPACT_HOLD_MS + CRAWLER_SLAM_LUNGE_OUT_MS + 1)).toBe(0);
     expect(crawlerSlamLunge({ ...base, slamMoving: false }, 619)).toBe(0);
     expect(CRAWLER_IMPACT_HOLD_MS).toBeGreaterThan(0);
+  });
+});
+
+describe('塊の横の速さの慣性(社長指示2026-10-20「止まりからは、徐々にスピードを上げる」)', () => {
+  it('止まりからは一定の加速度でじわじわ速くなり、目標を越えない', () => {
+    let v = 0; const out: number[] = [];
+    for (let i = 0; i < 180; i++) { v = approachCrawlerSpeed(v, -115, 1 / 60); out.push(v); }
+    expect(Math.abs(out[0])).toBeCloseTo(CRAWLER_ACCEL_PX_S2 / 60, 6);
+    expect(Math.abs(out[59])).toBeCloseTo(CRAWLER_ACCEL_PX_S2, 6); // 1秒で加速度ぶん
+    expect(Math.abs(out[179])).toBe(115);
+    for (const x of out) expect(x).toBeGreaterThanOrEqual(-115);
+  });
+  it('緩める・逆向きは強い減速度で(巨体も少しずつ止まる)', () => {
+    expect(approachCrawlerSpeed(-115, 0, 1 / 60)).toBeCloseTo(-115 + CRAWLER_DECEL_PX_S2 / 60, 6);
+    expect(approachCrawlerSpeed(-50, 100, 1 / 60)).toBeCloseTo(-50 + CRAWLER_DECEL_PX_S2 / 60, 6);
+    expect(approachCrawlerSpeed(10, 100, 0)).toBe(10);
   });
 });

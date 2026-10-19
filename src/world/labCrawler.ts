@@ -117,6 +117,25 @@ export const CRAWLER_CHASE_SPEED_MULT = 1.1;
 /** 追いかける時の加減速の時定数(秒)=慣性。突進(CRAWLER_RUSH_TAU_S)と同じ尺で寄る。 */
 export const CRAWLER_CHASE_TAU_S = 0.35;
 /**
+ * 横の速さの慣性(社長指示2026-10-20「塊の速さ、慣性持たせて。止まりからは、徐々にスピードを上げる」)。
+ * 速める時は一定の加速度でじわじわ(止まりから追跡の速さ約115まで約1.9秒・突進135まで約2.3秒)、
+ * 緩める・向きを変える時はそれより強い減速度で(巨体なので止まるのにも少しかかる=約0.6秒)。
+ * 旧: 目標の速さへ指数で寄る(時定数0.35〜0.8秒)=止まりから一瞬で速さが乗っていた。
+ */
+export const CRAWLER_ACCEL_PX_S2 = 60;
+export const CRAWLER_DECEL_PX_S2 = 220;
+/** 目覚める前後のゆっくり這い(最高18px/秒)の加減速。止まりから約1.2秒で乗り、約0.6秒で止まる。 */
+export const CRAWLER_SLOW_ACCEL_PX_S2 = 15;
+export const CRAWLER_SLOW_DECEL_PX_S2 = 30;
+/** 横の速さを目標へ寄せる(純関数): 速める時は up、緩める/逆向きは down の加速度で。 */
+export const approachCrawlerSpeed = (v: number, target: number, dt: number, up = CRAWLER_ACCEL_PX_S2, down = CRAWLER_DECEL_PX_S2): number => {
+  if (!(dt > 0)) return v;
+  const sameDir = v === 0 || Math.sign(v) === Math.sign(target);
+  const rate = sameDir && Math.abs(target) > Math.abs(v) ? up : down;
+  const dv = rate * dt;
+  return target > v ? Math.min(target, v + dv) : Math.max(target, v - dv);
+};
+/**
  * 資料を拾った瞬間に現れる位置: プレイヤーの中心から、資料の奥の向きへ「画面の半分+この余白」先に箱の手前の縁が来る
  * (画面のすぐ外=アテンションでカメラが寄るとすぐ見える)。
  */
@@ -509,11 +528,13 @@ export const stepLabCrawler = (c: LabCrawler, inp: CrawlerStepInput): CrawlerSte
     }
   }
   const rushNow = advancing && crawlerRushing(n, inp.player);
-  const tauX = n.chasing ? CRAWLER_CHASE_TAU_S : rushNow ? CRAWLER_RUSH_TAU_S : CRAWLER_ACCEL_TAU_S;
-  const kx = dt > 0 ? 1 - Math.exp(-dt / tauX) : 0;
   const ky = dt > 0 ? 1 - Math.exp(-dt / CRAWLER_ACCEL_TAU_Y_S) : 0;
   const vxCap = Math.max(CRAWLER_RUSH_SPEED, chaseSpeed);
-  let vx = Math.max(-vxCap, Math.min(vxCap, n.vx + (tvx - n.vx) * kx));
+  // 横は加速度で寄せる(止まりからは徐々に速く・社長指示2026-10-20)。縦の寄り(プレイヤーの高さへ)は従来の指数のまま。
+  const fastMode = n.chasing || rushNow || Math.abs(n.vx) > CRAWLER_MAX_SPEED + 1e-6;
+  let vx = Math.max(-vxCap, Math.min(vxCap, fastMode
+    ? approachCrawlerSpeed(n.vx, tvx, dt)
+    : approachCrawlerSpeed(n.vx, tvx, dt, CRAWLER_SLOW_ACCEL_PX_S2, CRAWLER_SLOW_DECEL_PX_S2)));
   let vy = Math.max(-CRAWLER_MAX_SPEED_Y, Math.min(CRAWLER_MAX_SPEED_Y, n.vy + (tvy - n.vy) * ky));
 
   let playerPush: CrawlerStepResult['playerPush'] = null;

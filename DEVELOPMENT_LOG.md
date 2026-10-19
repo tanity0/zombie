@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5162 — 塊の速さの慣性・逃走中のプロップ取り除き【2026-10-20 08:10 JST】
+- 社長指示「塊の速さ、慣性持たせて。止まりからは、徐々にスピードを上げる。逃走時は、壁以外を排除しておいて(オブジェクト)」。
+- world/labCrawler.ts: 横の速さを加速度の寄せへ(approachCrawlerSpeed・追跡/突進=加速60・減速220px/s²、ゆっくり這い=15・30)。テスト: 加速度の純関数2件・追跡は1秒で半分弱→3秒でほぼ最高速に更新(社長指示に合わせて期待値を変えた)。
+- world/labWalls.ts: setLabPropsClearKeep / isLabPropCleared(取り除いたプロップは問い合わせと残骸から外す)。gameStore: labPropsClearKeep(資料を拾った瞬間にプレイヤー±(1画面+300px)を残す・写しは先に差し替えて逃走経路の雑魚の置き場所も取り除いた後で決める)・購読で world へ写す・新しい出撃で null。research/LAB_CRAWLER.md §8。
+- 検証: typecheck 0 / eslint 0 / 循環 新規なし / utils・store・world 7576件通過(落ちた1件 escortToss は既知)。ヘッドレスで同じ場所を拾う前/後に撮り、カプセル等のプロップが消えて壁が残ることを確認。加速の手触りは実機で。
+- 自己点検: ステージ2の塊と資料の後だけ。初心者ゾーン・緩の時間に触れない。
+
 ## v0.25.5161 — ステージ2の逃走経路に雑魚を置く【2026-10-20 08:01 JST】
 - 社長の質問「逃走経路の敵倒してなくても一体も敵がいないけどなぜ？」→ 原因: 「一度通った道には湧かせない」(v0.25.2244)で引き返し中は湧きが止まり、進む間に置き去りにした敵は画面外の置き直しで前方へ運ばれる/置き場が無ければ消える。社長指示「逃走経路は、レベル1だけを、できれば通路を塞がない配置で、等間隔に一画面1体くらい で配置して」。
 - utils/labSpawn.labEscapeRouteSlots(純関数・テスト3件)/ gameStore.beginLabEscape で拾った瞬間に配置(lab-zombie-1・休眠・視界は普段の湧きと同じ・壁は nudgeToClearLabSpot で避ける)/ Enemy.escapeRoute の印=directorTick の画面外の置き直しと上限の間引きから外す(塊には食べられる)。research/LAB_CRAWLER.md §7。
