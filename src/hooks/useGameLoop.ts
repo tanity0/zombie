@@ -543,7 +543,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
-import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence } from '../audio/audioManager';
+import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, setCrawlerDrag, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -9002,7 +9002,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ここ(ポーズ・ヒットストップ・アテンション・登場演出で早期returnした後)で回す=それらの間は止まる。
         if (labTheme && !indoor && useGameStore.getState().labCrawler && !useGameStore.getState().gameWon) {
          try {
-          runLabCrawlerTick(newGameTime, deltaTime, (key, gain) => playSfx(key, gain));
+          runLabCrawlerTick(newGameTime, deltaTime, (key, gain) => playSfx(key, gain), setCrawlerDrag);
          } catch (err) {
           if (!crawlerCtrlErrLogged) { crawlerCtrlErrLogged = true; console.error('[lab-crawler] controller error (suppressed after first):', err); }
           reportSuppressedError('lab-crawler', err);

@@ -7,7 +7,7 @@
 import { useGameStore, ENEMY_REMOVE_CAUSE, knockbackSpeedFor, playerEnemyBodyBlockers } from '../store/gameStore';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import {
-  stepLabCrawler, crawlerCenter, crawlerSlamDamage, CRAWLER_SLAM_KB, type CrawlerTarget,
+  stepLabCrawler, crawlerCenter, crawlerSlamDamage, crawlerGapToPlayer, CRAWLER_SLAM_KB, type CrawlerTarget,
 } from '../world/labCrawler';
 import { isCrawlerAbsorbable } from './crawlerAbsorb';
 import type { PlayableAreaCtx } from '../world/playableArea';
@@ -20,6 +20,18 @@ import { npcSfxDistGain } from './npcSfx';
  */
 export type LabCrawlerSfxKey = 'zombie-growl' | 'heavy-impact' | 'jump-land' | 'phill-skylight';
 export type LabCrawlerSfx = (key: LabCrawlerSfxKey, gain: number) => void;
+/** 体を引きずる音のループ(社長支給2026-10-19)。0..1 の音量を毎フレーム渡す(呼び手=audioManager.setCrawlerDrag)。 */
+export type LabCrawlerDrag = (gain: number) => void;
+/** 引きずる音: 箱の縁からこの距離までは最大、DRAG_SILENT_PX で無音(社長「近いと流れてくる。遠いと小さくなり、鳴らなくなる」)。 */
+const DRAG_FULL_PX = 200;
+const DRAG_SILENT_PX = 1200;
+/** 引きずる音の音量(純関数): 距離×這う速さ。止まっている(待機・攻撃中)は無音、昇天中も無音。 */
+export const crawlerDragGain = (gapPx: number, speed: number, ascending: boolean): number => {
+  if (ascending || speed < 2) return 0;
+  const dist = gapPx <= DRAG_FULL_PX ? 1 : Math.max(0, 1 - (gapPx - DRAG_FULL_PX) / (DRAG_SILENT_PX - DRAG_FULL_PX));
+  const move = Math.min(1, 0.4 + speed / 60);
+  return dist * move;
+};
 /** 目覚めのうめきはアテンションで画面に映すので、距離に関係なくこの音量で鳴らす。 */
 const WAKE_SFX_GAIN = 0.8;
 
@@ -42,7 +54,7 @@ const SLAM_SHAKE_FALLOFF_PX = 1400;
 export const crawlerSlamShakeMag = (distPx: number): number =>
   SLAM_SHAKE_MAG * Math.max(0, 1 - distPx / SLAM_SHAKE_FALLOFF_PX);
 
-export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCrawlerSfx): void => {
+export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCrawlerSfx, drag?: LabCrawlerDrag): void => {
   const st = useGameStore.getState();
   const c = st.labCrawler;
   if (!c) return;
@@ -67,6 +79,10 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
   // 塊がプレイヤーを押す時の行き先の確認に、プレイヤーの移動が見ている敵の体の壁(噛みつき敵の足元など)も渡す。
   const playerBlockers = playerEnemyBodyBlockers(st.enemies, st.gameTime, p.x, p.y);
   const res = stepLabCrawler(c, { gameTime, dt: dtSec, player: pRect, targets, obstacles, playable, playerBlockers, wakeBlocked: st.attention !== null });
+  {
+    const nc = res.next;
+    drag?.(nc ? crawlerDragGain(crawlerGapToPlayer(nc, pRect), Math.hypot(nc.vx, nc.vy), nc.state === 'ascend') : 0);
+  }
 
   if (res.woke) {
     // 起きた瞬間のアテンション(社長指示2026-10-19)。既存の「現地へカメラアテンション」の素の型(カットイン無し)=

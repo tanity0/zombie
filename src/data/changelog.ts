@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5150', items: [
+    'ステージ2の死体の塊が近づくと、体を引きずる音が聞こえてくる',
+  ] },
   { version: '0.25.5149', items: [
     'ステージ2の曲が新しくなった',
   ] },

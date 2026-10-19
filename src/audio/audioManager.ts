@@ -146,6 +146,8 @@ export type SfxKey =
   | 'glen-nihil'    // グレン「虚無の三唱」(お墓技)SE(社長提供・壊れたラジオ加工)。長尺→フェードで止める
   // research/MUTANT_HERO.md(英雄(変異)・社長支給2026-10-03): いななき / 鼻息 / 蹄(駆け足のループ=setHeroGallop が鳴らす)。
   | 'hero-neigh' | 'hero-snort' | 'hero-gallop'
+  // research/LAB_CRAWLER.md(ステージ2の死体の塊・社長支給2026-10-19): 体を引きずる音(ループ専用=setCrawlerDrag が鳴らす)。
+  | 'crawler-drag'
   // 英雄の犬(research/HERO_DOG.md・社長支給2026-10-15): 汎用の吠え / やられた時
   | 'dog-bark' | 'dog-yelp'
   // 英雄の命中音(既存素材を低く回して別物にする=phill-skylight-low と同じ作法): 叩きつけ / 体当たり / 斬撃。
@@ -486,6 +488,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'dog-yelp': { src: `${import.meta.env.BASE_URL}audio/sfx/dog-yelp.mp3`, volume: 1.0, minIntervalMs: 500 },
   // 蹄はループ専用(playSfx では鳴らさない)。末尾の約0.1秒の無音を切ってループする(setHeroGallop)。
   'hero-gallop': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-gallop.mp3`, volume: 0.9, minIntervalMs: 200 },
+  // 塊が体を引きずる音はループ専用(playSfx では鳴らさない)。
+  'crawler-drag': { src: `${import.meta.env.BASE_URL}audio/sfx/crawler-drag.mp3`, volume: 0.9, minIntervalMs: 200 },
   // 巨体の騎馬の一撃は雑魚の着地と同じ音にしない: 同じ素材を遅く(=低く重く)回す。
   'hero-slam': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.9, minIntervalMs: 80, playbackRate: 0.7 },
   'hero-tackle-hit': { src: `${import.meta.env.BASE_URL}audio/sfx/jump-land.mp3`, volume: 1.2, minIntervalMs: 80, playbackRate: 0.85 },
@@ -1855,6 +1859,55 @@ export const setHeroGallop = (gainMult: number, rate = 1): void => {
     try { heroGallopSource.playbackRate.setTargetAtTime(rate, context.currentTime, 0.15); } catch { /* ignore */ }
     heroGallopLast.rate = rate;
   }
+};
+
+// --- ステージ2の死体の塊が体を引きずる音(社長支給2026-10-19「塊が近いと流れてくる体を引きずる音。遠いと小さくなり、鳴らなくなる」)。
+// 蹄と同じ「ネイティブループ1本+gain」。gain=距離減衰×這う速さ(呼び手=labCrawlerTick)。毎フレーム呼んでよい。
+// ★呼ばれなくなったら(ポーズ・別画面・出撃の終わり・塊が消えた)約0.3秒で自分からフェードして止まる(番犬)=止め忘れが無い。
+let crawlerDragSource: AudioBufferSourceNode | null = null;
+let crawlerDragGain: GainNode | null = null;
+let crawlerDragLast = -1;
+let crawlerDragWatchdog: number | null = null;
+const stopCrawlerDrag = () => {
+  if (crawlerDragWatchdog != null) { clearTimeout(crawlerDragWatchdog); crawlerDragWatchdog = null; }
+  const context = sfxContext;
+  const src = crawlerDragSource, gain = crawlerDragGain;
+  crawlerDragSource = null; crawlerDragGain = null; crawlerDragLast = -1;
+  if (!src) return;
+  if (context && gain) {
+    const now = context.currentTime;
+    try { gain.gain.cancelScheduledValues(now); gain.gain.setTargetAtTime(0, now, 0.15); } catch { /* ignore */ }
+    try { src.stop(now + 0.6); } catch { /* ignore */ }
+  } else {
+    try { src.stop(); } catch { /* ignore */ }
+  }
+};
+export const setCrawlerDrag = (gainMult: number): void => {
+  const want = muted ? 0 : Math.max(0, Math.min(1, gainMult));
+  if (want <= 0.001) { stopCrawlerDrag(); return; }
+  const context = sfxContext ?? ensureSfxContext();
+  if (!context) return;
+  if (!crawlerDragSource) {
+    const buffer = sfxBuffers.get('crawler-drag');
+    if (!buffer) { loadSfxBuffer('crawler-drag'); return; }
+    resumeSfxContext();
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(gain);
+    gain.connect(context.destination);
+    gain.gain.setValueAtTime(0, context.currentTime);
+    try { source.start(); } catch { /* ignore */ }
+    crawlerDragSource = source; crawlerDragGain = gain;
+  }
+  const vol = want * 0.9 * sfxVolume;
+  if (Math.abs(vol - crawlerDragLast) > 0.02 && crawlerDragGain) {
+    try { crawlerDragGain.gain.setTargetAtTime(vol, context.currentTime, 0.2); } catch { /* ignore */ }
+    crawlerDragLast = vol;
+  }
+  if (crawlerDragWatchdog != null) clearTimeout(crawlerDragWatchdog);
+  crawlerDragWatchdog = window.setTimeout(() => { crawlerDragWatchdog = null; stopCrawlerDrag(); }, 300);
 };
 
 // Random zombie death grunt on a kill. A shared throttle stops mass deaths

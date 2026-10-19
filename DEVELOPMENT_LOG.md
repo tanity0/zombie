@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5150 — 死体の塊の引きずる音【2026-10-19 23:02 JST】
+- 社長支給「ステージ2の塊が近いと流れてくる体を引きずる音。遠いと小さくなり、鳴らなくなる」→ public/audio/sfx/crawler-drag.mp3。
+- audioManager.setCrawlerDrag(ネイティブループ1本+gain・蹄と同じ型)。呼ばれなくなると0.3秒で自分からフェードして止まる番犬つき(ポーズ・別画面・出撃の終わり・塊が消えた時に止め忘れない)。
+- 音量 crawlerDragGain(純関数・テスト2件): 箱の縁から200pxまで最大→1200pxで無音、這う速さで0.4〜1倍、止まっている(待機・攻撃中)・昇天中は無音。labCrawlerTick から毎フレーム渡す。
+- 検証: 自分の変更だけを別の作業ツリーで typecheck 0 / eslint 0 / 塊のテスト31件+新規2件通過。音は実機で確認してもらう(ヘッドレスでは聞けない)。
+- 変更ファイル: public/audio/sfx/crawler-drag.mp3(新規)/ src/audio/audioManager.ts / src/hooks/useGameLoop.ts(2行)/ src/utils/labCrawlerTick.ts / src/utils/crawlerDrag.test.ts(新規)/ package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5149 — ステージ2の通常BGMを差し替え【2026-10-19 22:58 JST】
 - 社長支給の曲「ステージ2の通常BGMはやめる。これを流す」→ public/audio/stage2.mp3(192kbps)を追加し、audioManager の GAME_BGM.lab を lab-stage.mp3→stage2.mp3 に。旧 lab-stage.mp3 は原盤として残す(public は原盤・削除しない)。
 - 検証: 1行の差し替えのみ(typecheck 対象外の文字列)。assets:check OK。
