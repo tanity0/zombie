@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5176', items: [
+    'ステージ2で画面が引いた時、奥の窓の両脇に出ていた黒い帯を消した',
+  ] },
   { version: '0.25.5175', items: [
     'アイドルから大きく離れると、大きく跳んで目の前へ降り、すぐ追尾弾を撃ってくる',
     '着地の砂埃は、研究所らしい灰色の埃に',

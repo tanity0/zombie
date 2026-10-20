@@ -11958,13 +11958,17 @@ export class PixiScene {
     // LAB_FAR_WINDOW_BOTTOM_UP(?labfwup=)ぶん上へ持ち上げる。
     // §6.37 v4: farBackdrop.height は常に farBackdropHeight() の静的値(毎フレームの伸縮なし)。
     const bottom = this.L.farBackdrop.position.y + this.farBackdropHeight() - LAB_FAR_WINDOW_BOTTOM_UP;
+    // 横は一番引いた時(ZOOM_MIN_ABS)でも画面を覆う幅で敷く(社長報告2026-10-20「引くと両サイドに黒い帯」)。
+    // 左へはみ出したぶんだけタイルの送りを足して、模様の位置は画面幅で敷いていた時と同じに保つ。
+    const overW = this.screenW * ZOOM_OVERSCAN;
+    const marginX = (overW - this.screenW) / 2;
     const layoutOne = (sp: TilingSprite, tex: Texture) => {
-      const h = this.screenW * (tex.height / tex.width) * LAB_FAR_WINDOW_SCALE; // アスペクト維持
-      sp.width = this.screenW;
+      const h = this.screenW * (tex.height / tex.width) * LAB_FAR_WINDOW_SCALE; // アスペクト維持(高さは画面幅基準のまま)
+      sp.width = overW;
       sp.height = h;
       sp.tileScale.set(h / Math.max(1, tex.height));
-      sp.position.set(0, bottom - h); // 下辺=bottom(遠景backdropの下辺)に揃える
-      sp.tilePosition.set(-cameraX * LAB_FAR_WINDOW_PARALLAX, 0); // 旧森1と同じ横スクロール率(横に動く)
+      sp.position.set(-marginX, bottom - h); // 下辺=bottom(遠景backdropの下辺)に揃える
+      sp.tilePosition.set(-cameraX * LAB_FAR_WINDOW_PARALLAX + marginX, 0); // 旧森1と同じ横スクロール率(横に動く)
     };
     layoutOne(glass, glassTex);
     layoutOne(frame, frameTex);
@@ -12041,7 +12045,8 @@ export class PixiScene {
     const paneW = tileW / LAB_FAR_EMLIGHT_PANES;
     const period = paneW * LAB_FAR_EMLIGHT_EVERY;
     const base = frame.position.x + frame.tilePosition.x + paneW * 1.5; // 2面目の真ん中から
-    const mFrom = Math.ceil((-period - base) / period);
+    const left = frame.position.x, right = frame.position.x + frame.width; // 窓の敷き幅(引き用に画面より広い)
+    const mFrom = Math.ceil((left - period - base) / period);
     const y = frame.position.y + frame.height * 0.46;
     const w = paneW * 1.7, h = frame.height * 0.95;
     const t = now / 1000;
@@ -12049,7 +12054,7 @@ export class PixiScene {
     let n = 0;
     for (let m = mFrom; ; m++) {
       const x = base + m * period;
-      if (x > this.screenW + period) break;
+      if (x > right + period) break;
       if (n >= 12) break;
       let sp = this.labFarEmGlows[n];
       if (!sp) {
@@ -12222,9 +12227,10 @@ export class PixiScene {
       sp.rotation = facing * LAB_FAR_WINDOW_ZOMBIE_LEAN * vel; // 歩行中だけ進行方向へ前のめり(足元が軸)
       // 横位置: 基準点+うろつき+窓と同じパララックス。画面外(スプライト幅ぶん)で巻き戻して途切れさせない。
       const halfW = Math.abs(sp.width) / 2;
-      const span = w + halfW * 4;
-      const raw = labFarZombieRnd(i, 1) * w + wander - cameraX * LAB_FAR_WINDOW_PARALLAX;
-      sp.position.x = ((raw + halfW * 2) % span + span) % span - halfW * 2;
+      // 巻き戻しは窓の敷き幅(引き用に画面より広い)の外で行う=引いても見える所で消えない。
+      const span = glass.width + halfW * 4;
+      const raw = labFarZombieRnd(i, 1) * w + wander - cameraX * LAB_FAR_WINDOW_PARALLAX - glass.position.x;
+      sp.position.x = ((raw + halfW * 2) % span + span) % span - halfW * 2 + glass.position.x;
       // 縦位置: 遠景下辺とガラス下辺の中間線に足元を置く。個体ごとに微差(奥行き感)。
       sp.position.y = footLine - winH * 0.02 * labFarZombieRnd(i, 6);
     }
