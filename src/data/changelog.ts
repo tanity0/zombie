@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5177', items: [
+    'ゲームコントローラーで遊んでいる時、照準のある銃がスティックで狙えなくなることがあった。直った',
+  ] },
   { version: '0.25.5176', items: [
     'ステージ2で画面が引いた時、奥の窓の両脇に出ていた黒い帯を消した',
   ] },

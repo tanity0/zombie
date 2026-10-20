@@ -58,6 +58,15 @@ export const readDpad = (
   return d;
 };
 
+/**
+ * パッドに触れたらマウスの照準を外すか(社長報告2026-10-20「ゲームコントローラーでターゲティング操るタイプの操作が対応してない」)。
+ * 照準はマウスが付いている間はカーソルが持つ(PHILL/シグナル/レールガン)。旧: 外すのは**パッドに最初に触れた1回だけ**で、
+ * その後マウスが少しでも動くと照準がカーソルへ戻り、パッドのスティックでは二度と狙えなかった。
+ * いまは**パッドを触るたび**に外す(マウスを動かせばまたカーソルが持つ=最後に触った方が照準を持つ)。
+ */
+export const padTakesAim = (anyPadInput: boolean, mouseAim: { x: number; y: number } | null): boolean =>
+  anyPadInput && mouseAim !== null;
+
 const escapeKey = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
 
 export const installGamepad = (): (() => void) => {
@@ -67,7 +76,6 @@ export const installGamepad = (): (() => void) => {
   let stickActive = false;     // ゲーム中にスティックで swipeDirection を書いているか
   let dpadOwn = { up: false, down: false, left: false, right: false }; // 十字キーが立てた移動
   let lastTickAt = 0;
-  let usedPad = false;
   let walkDir: -1 | 0 | 1 = 0; // オープニングの廊下で送っている矢印
   const padNeutral = createPadNeutralTracker(); // 被弾反撃: スティックが直近150ms以内にニュートラルだったか
 
@@ -110,10 +118,8 @@ export const installGamepad = (): (() => void) => {
       setPadActive(true, padFamilyOf(gp.id)); // 画面の言葉をパッドの言葉へ(マウス/キーに触れたら戻る・utils/inputDevice)。系統(Xbox/PS/任天堂)はゲーム中の札の表記(§14)
       noteHudActivity(); // 手を動かしている=札は控えめ(research/PC_SUPPORT.md §14-3)
       noteNavInput('pad', gp.id); // 案内の表記(A/B か ×/○ か)・menuNav が入力の種類を覚える
-      if (!usedPad) {
-        usedPad = true;
-        useGameStore.getState().setMouseAim(null); // パッドで遊ぶ間はマウスの照準を外す(照準=移動の向き=タッチと同じ)
-      }
+      // パッドで遊ぶ間はマウスの照準を外す(照準=移動の向き=タッチと同じ)。触るたびに外す=途中でマウスが動いても取り返す。
+      if (padTakesAim(true, useGameStore.getState().mouseAim)) useGameStore.getState().setMouseAim(null);
     }
 
     // ★スキップ(オープニング・出撃時の会話・エンディング)は B・スタート・バックのどれでも押せる

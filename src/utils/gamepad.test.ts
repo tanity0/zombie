@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { padStickToSwipe, PAD_DEAD_ZONE, readDpad } from './gamepad';
+import { padStickToSwipe, PAD_DEAD_ZONE, readDpad, padTakesAim } from './gamepad';
 
 describe('パッドの左スティック → 移動(タッチのスティックと同じ「方向+強さ」)', () => {
   it('デッドゾーンの中は動かない', () => {
@@ -36,5 +36,17 @@ describe('十字キー(配置の違うパッドも読む・v0.25.4881)', () => {
   });
   it('ハットでない軸が0で止まっていても「下」と読まない(刻みに乗っていない)', () => {
     expect(readDpad('', none, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0])).toEqual({ up: false, down: false, left: false, right: false });
+  });
+});
+
+describe('パッドに触れたらマウスの照準を外す(照準を持つ銃をスティックで狙える・2026-10-20)', () => {
+  it('マウスの照準が付いていれば、パッドに触れるたびに外す(最初の1回だけではない)', () => {
+    expect(padTakesAim(true, { x: 10, y: 5 })).toBe(true);
+    // 一度外した後にマウスが動いて付き直しても、次にパッドに触れたらまた外す
+    expect(padTakesAim(true, { x: -3, y: 40 })).toBe(true);
+  });
+  it('パッドに触れていない/もう外れている時は何もしない', () => {
+    expect(padTakesAim(false, { x: 10, y: 5 })).toBe(false);
+    expect(padTakesAim(true, null)).toBe(false);
   });
 });
