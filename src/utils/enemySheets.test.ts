@@ -241,7 +241,7 @@ describe('歩きのシートの bodyH(立ち絵より小さく描かれた歩き
 
 // 社長指示2026-10-11「アイドルの狙撃(紫帯の技)の後、余韻入れて。撃った最後のコマのまま少し止まる」
 describe('アイドルの狙撃の余韻', () => {
-  it('硬直の頭は撃った最後のコマ(2=反動)のまま約0.88秒止まり、そのあと頭が弾かれる(3〜)', async () => {
+  it('硬直の頭は撃った最後のコマ(2=反動)のまま約0.38秒止まり、そのあと頭が弾かれる(3〜)', async () => {
     const { BOSS_PHASE_SHEETS: sheets, bossPhaseFrame: frameAt } = await import('./enemySheets');
     const spec = sheets.find(s => s.name === 'idol-snipe')!;
     const rec = spec.phases.find(p => p.state === 'idol-snipe-recover')!;
@@ -249,10 +249,24 @@ describe('アイドルの狙撃の余韻', () => {
     const RECOVER_MS = IDOL_TUNING_DEFAULTS.timing.snipe.recover;
     expect(RECOVER_MS).toBe(1700); // 「伸ばして」(2026-10-11)→「もう少し硬直させて」(2026-10-20)
     expect(frameAt(rec, 0, 0, 100)).toBe(2);
-    expect(frameAt(rec, 860 / RECOVER_MS, 0, 100)).toBe(2);
-    expect(frameAt(rec, 900 / RECOVER_MS, 0, 100)).toBe(3);
+    expect(frameAt(rec, 360 / RECOVER_MS, 0, 100)).toBe(2);
+    expect(frameAt(rec, 400 / RECOVER_MS, 0, 100)).toBe(3);
     // 仰け反り→消えるの1コマは余韻を入れる前(14コマ/900ms=約64ms)とほぼ同じ速さ(差2ms未満)。
     expect(Math.abs(RECOVER_MS / rec.seq.length - 900 / 14)).toBeLessThan(2);
     expect(frameAt(rec, 0.999, 0, 100)).toBe(15); // 最後は従来どおり引いて消える
+  });
+  it('伸ばした硬直は最後のコマ(15=崩れ落ちた姿)で止まり、そこで小刻みに震える(社長指示2026-10-20「最後のコマで小刻みに震えて痙攣」)', async () => {
+    const { BOSS_PHASE_SHEETS: sheets, bossPhaseFrame: frameAt, bossPhaseTremble } = await import('./enemySheets');
+    const rec = sheets.find(s => s.name === 'idol-snipe')!.phases.find(p => p.state === 'idol-snipe-recover')!;
+    const from = rec.tremble!.from;
+    expect(frameAt(rec, from + 0.001, 0, 100)).toBe(15); // 震え始め=最後のコマに入った所
+    expect(frameAt(rec, from - 0.04, 0, 100)).not.toBe(15);
+    expect(bossPhaseTremble(rec, from - 0.01, 0)).toEqual({ dx: 0, dy: 0 }); // その前は震えない
+    const shakes = Array.from({ length: 30 }, (_, k) => bossPhaseTremble(rec, from + 0.1, 150 + k * 45));
+    const mags = shakes.map(v => Math.hypot(v.dx, v.dy));
+    expect(Math.max(...mags)).toBeGreaterThan(1);              // 目に見える大きさ
+    expect(Math.max(...mags)).toBeLessThanOrEqual(rec.tremble!.px * 2 + 1e-9); // 跳ねても振れ幅の2倍まで
+    expect(new Set(shakes.map(v => Math.sign(v.dx))).size).toBe(2); // 左右に震える
+    expect(Math.hypot(bossPhaseTremble(rec, from + 0.01, 10).dx, 0)).toBeLessThan(rec.tremble!.px * 0.2); // 入りはじわっと(120msで立ち上がる)
   });
 });

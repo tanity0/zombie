@@ -118,7 +118,7 @@ import { warmEnemySheets } from './pixiTextures';
 import { sheetHeightFix } from '../utils/sheetFit';
 import { bossFaceWant, bossFaceDeadzonePx, BOSS_TURN_MIN_MS } from '../utils/bossFacing';
 import { bossStoppedForArt } from '../utils/bossStopArt';
-import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, SHEET_FRAME_LIFT, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, bossReleaseFrame, bossIntroFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
+import { ENEMY_FRAME_OFFSETS, ENEMY_IDLE_BODY_H, ENEMY_IDLE_HOP, SHEET_TIP_GLOW, SHEET_FRAME_LIFT, sheetArtFacesRight, BOSS_PHASE_SHEETS, bossPhaseFor, bossPhaseFrame, bossPhaseTremble, bossReleaseFrame, bossIntroFrame, PHILL_CAST_SHEETS, phillCastSpecFor, phillCastFrame, phillReleaseFrame, attackSheetFrames, attackSheetName, attackImpactFrame, hasAnimSheet, sheetFacesRight, walkStrideMul, shotSheetFrames, shotSheetName, idleSheetFrames, idleSheetName, idleSheetPeriodMs, idleSheetPlayback, jumpSheetSplit, jumpSheetName, jumpSheetBodyH, jumpLandMs, sweepSheetSplit, sweepSheetName, sweepSheetBodyH, giantMotionSkipFor, giantAltSweepFor, giantAltSweepSheets, giantNoActiveExtraFor, giantActiveLoopMsFor } from '../utils/enemySheets';
 import { enemyIdleFrame, enemyIdleLoopPos, idleHopLift } from '../utils/enemyIdleSheet';
 import { eggTrembleAt, EGG_TREMBLE_LEAD_MS, EGG_TREMBLE_PX, EGG_TREMBLE_SPAWN_GUARD_MS } from '../utils/eggTremble';
 import { enemyScreamFrame, enemyScreamLastFrame, enemyScreamReleaseFrame } from '../utils/enemyScreamSheet';
@@ -20553,6 +20553,8 @@ export class PixiScene {
       // ★コマごとの浮き(`SHEET_FRAME_LIFT`・アイドルの通常撃ち1「少し飛び跳ねる」)。跳ねる高さが絵に無いシートだけ、出ているコマで体を浮かせる。
       const frameLift = phillSheet !== null && tex.width > 0 ? (SHEET_FRAME_LIFT[phillSheet.name]?.[Math.round(tex.frame.x / tex.width)] ?? 0) : 0;
       const phaseLiftPx = phillSheet !== null ? (this.bossPhaseLiftSheetPx(idleTexKey, e, gameTime) + frameLift) * scale : 0;
+      // 州の痙攣(アイドルの狙撃の硬直の最後のコマ・社長指示2026-10-20)。位置の揺れだけ(歪みではない)。
+      const phaseTremble = phillSheet !== null ? this.bossPhaseTrembleSheetPx(idleTexKey, e, gameTime) : { dx: 0, dy: 0 };
       // PACING_PUZZLE.md §10-4(浮遊)+§10-19(登場シーン)。視覚のみ=e.y/当たり判定は不変
       // (CLAUDE.md Y方向5点チェック: 地平線フェード/擬似遠近は上で既に対象外化。可視域/移動可能帯は
       // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。
@@ -20652,8 +20654,8 @@ export class PixiScene {
       const contentBottomFrac = this.textureContentBottomFrac(tex);
       view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5); // 論理の足元(実体下端。リフト/スカッシュ無し)
       view.sprite.position.set(
-        Math.round(spx + liftShake + lungeOffX + biteShake),
-        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff - idleHopPx - phaseLiftPx),
+        Math.round(spx + liftShake + lungeOffX + biteShake + phaseTremble.dx * scale),
+        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff - idleHopPx - phaseLiftPx + phaseTremble.dy * scale),
       );
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
@@ -34958,6 +34960,17 @@ export class PixiScene {
     const spec = HERO_SHEETS[f.sheet];
     const slices = this.sheetSlices(spec.name, spec.frames);
     return this.rememberAtkFrame(e, spec.name, spec.frames, f.frame, slices);
+  }
+
+  /** 州の痙攣の位置ずれ(シート画素・`BossPhase.tremble`)。描画の位置だけ。州の時計は bossPhaseStart(コマを選ぶのと同じ)。 */
+  private bossPhaseTrembleSheetPx(idleTexKey: string, e: Enemy, gameTime: number): { dx: number; dy: number } {
+    const ph = bossPhaseFor(idleTexKey, e.bossState)?.phase;
+    if (!ph?.tremble) return { dx: 0, dy: 0 };
+    const lat = this.bossPhaseStart.get(e.id);
+    if (!lat) return { dx: 0, dy: 0 };
+    const span = Math.max(1, lat.until - lat.start);
+    const prog = (gameTime - lat.start) / span;
+    return bossPhaseTremble(ph, prog, gameTime - (lat.start + ph.tremble.from * span));
   }
 
   private bossPhaseLiftSheetPx(idleTexKey: string, e: Enemy, gameTime: number): number {

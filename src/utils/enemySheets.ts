@@ -1514,6 +1514,11 @@ export interface BossPhase {
    */
   readonly lift?: number;
   /**
+   * 州の進み `from`(0..1)から終わりまで、体を小刻みに震わせる(痙攣・シートの1画素単位の振れ幅 `px`)。描画の位置だけ(判定・影は不変)。
+   * アイドルの狙撃の硬直の最後のコマ(社長指示2026-10-20「最後のコマで小刻みに震えて痙攣」)。歪み(伸び縮み)ではなく位置の揺れ。
+   */
+  readonly tremble?: { readonly from: number; readonly px: number };
+  /**
    * `release` だけが使う: **同じ `group` の州が交互に何度も続く技**(スリィエルの凝視=溜め↔硬直を10回)を1本として流す。
    * 技に入った最初の溜めの間は `seq` をその長さへ割り付け、**最初の溜めが明けた瞬間(1発目)から** `loop` を往復し続ける。
    * 州が替わっても(溜め→硬直→溜め…)同じ `group` の間は時計が途切れない=1発ごとに振りかぶり直さない。
@@ -1747,7 +1752,10 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       //   (発射中の2コマ目と合わせて約0.5秒)。続く「伸ばして」(同日)で硬直を900→1200へ(idolScript の IDOL_TUNING_DEFAULTS)。
       //   19コマ/1200ms=1コマ約63msで、仰け反り→消える(3〜15)の速さは余韻を入れる前(14コマ/900ms=約64ms)とほぼ同じ。
       // 硬直1200→1700(社長指示2026-10-20): 止まりのコマ(2)を6→14に足して、仰け反り→消える(3〜15)の速さは据え置き(1コマ約63ms)。
-      { state: 'idol-snipe-recover', seq: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], mode: 'stretch' },
+      // → 社長指示2026-10-20「その際、最後のコマで小刻みに震えて痙攣」: 伸ばした分は頭ではなく**最後のコマ(15=崩れ落ちた姿)**で止まり、
+      //   そこで小刻みに震えて痙攣する。頭の止まり(2)は6に戻し、末尾に15を8つ。27コマ/1700ms=1コマ約63ms(仰け反り→崩れの速さは据え置き)。
+      //   震えるのは最後のコマに入ってから(進み 19/27 以降)。
+      { state: 'idol-snipe-recover', seq: [2, 2, 2, 2, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15], mode: 'stretch', tremble: { from: 19 / 27, px: 2.2 } },
       { state: 'idol-orb-windup', seq: [0], mode: 'stretch' },
       { state: 'idol-orb-recover', seq: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], mode: 'stretch' },
     ],
@@ -2088,6 +2096,24 @@ export const bossPhaseFor = (idle: string, bossState: string | undefined): { spe
  * 州の中のコマ。`prog` = 州の進み(0..1・`stretch` が使う)、`elapsedMs` = 州に入ってからの経過(`pingpong` が使う)。
  * 状態を持たない純関数。
  */
+/**
+ * 痙攣の位置ずれ(シート画素・純関数)。州の進み prog が `tremble.from` を過ぎてからの経過 sinceMs で、約45msごとに向きと強さが変わる
+ * 小刻みな揺れ+たまに大きく跳ねる。入りは120msで振れ幅を立ち上げる(いきなり最大で揺れない)。tremble の無い州・前半は {0,0}。
+ */
+export const bossPhaseTremble = (
+  phase: Pick<BossPhase, 'tremble'>, prog: number, sinceTrembleMs: number,
+): { dx: number; dy: number } => {
+  const tr = phase.tremble;
+  if (!tr || prog < tr.from || sinceTrembleMs < 0) return { dx: 0, dy: 0 };
+  const step = Math.floor(sinceTrembleMs / 45);
+  const h = (n: number) => { const v = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return v - Math.floor(v); };
+  const jerk = h(step * 3 + 2) < 0.12 ? 2 : 1; // たまに大きく跳ねる
+  const env = Math.min(1, sinceTrembleMs / 120);
+  const amp = tr.px * env * jerk * (0.55 + 0.45 * h(step * 3 + 1));
+  const ang = h(step * 3) * Math.PI * 2;
+  return { dx: Math.cos(ang) * amp, dy: Math.sin(ang) * amp * 0.6 };
+};
+
 export const bossPhaseFrame = (phase: BossPhase, prog: number, elapsedMs: number, frameMs: number): number => {
   const seq = phase.seq, n = seq.length;
   if (n === 0) return 0;

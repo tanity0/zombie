@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5173', items: [
+    '狙撃線を撃ち終えたアイドルは、崩れ落ちた姿のまま小刻みに痙攣する',
+  ] },
   { version: '0.25.5172', items: [
     'アイドルが紫の狙撃線を撃った後、しばらく動けなくなる。反撃の隙',
   ] },
