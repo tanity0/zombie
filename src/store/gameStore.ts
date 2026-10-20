@@ -1209,6 +1209,14 @@ const createBaseSites = (): BaseSite[] => {
 
 // 帰還フェーズ: 通常ストーリーは地点内で離指確認、イベントは3秒滞在、洋館通路は5秒滞在で帰還完了。
 const RETURN_CIRCLE_RADIUS = 95;        // 帰還サークル半径(円コリジョン)
+/** ステージ2の逃走のゴールの円の中心x: 武器商人(原点)の会話の円と重ならない、資料の側の手前(社長指示2026-10-20)。 */
+const LAB_ESCAPE_GOAL_OFFSET_X = MERCHANT_INTERACT_RADIUS + RETURN_CIRCLE_RADIUS + 30; // 商人の会話の円+帰還の円の半径+隙間
+export const labEscapeGoalX = (idolSide: number, playerCx: number): number => {
+  const docSide = idolSide !== 0 ? -Math.sign(idolSide) : (Math.sign(playerCx) || 1); // 資料はアイドルの反対側
+  return docSide * LAB_ESCAPE_GOAL_OFFSET_X;
+};
+/** ステージ2の逃走のゴール(資料を拾った後の帰還サークル)か。手を離すと帰還の確認が出る型(自動のとどまりクリアをしない)。 */
+const isLabEscapeGoal = (s: { labEscapeAt: number; stageTheme: string }): boolean => s.labEscapeAt > 0 && s.stageTheme === 'lab';
 export const RETURN_CIRCLE_HOLD_MS = 3000; // イベント帰還の滞在時間(描画の進捗にも使用)
 // ステージ6(洋館通路)のゴール(社長指示v0.25.2132): 4000px付近のハッチ床の上で5秒滞在=ゴール(例のサークル)。
 // 位置は床タイル境界(FLOOR_REPEAT=520)に揃えて8枚目[3640,4160)をハッチ床に差し替え→中心=3900
@@ -20919,7 +20927,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       return {
         ...(escapeEnemies.length ? { enemies: [...state.enemies, ...escapeEnemies] } : {}),
         labEscapeAt: Math.max(1, state.gameTime),
-        ...(state.returnCircle ? {} : { returnCircle: { x: 0, y: 0, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 } }),
+        // ゴール=武器商人の手前(重ならない)・資料の側(社長指示2026-10-20「ゴールは武器商人の手前(重ならない)で」)。
+        ...(state.returnCircle ? {} : { returnCircle: { x: labEscapeGoalX(state.labIdolSide, pcx), y: 0, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 } }),
         ...(crawlerWillAppear
           ? { labEscapeBannerPending: true }
           : { eventBannerText: LAB_ESCAPE_BANNER_TEXT, eventBannerUntil: state.gameTime + 3500 }),
@@ -21014,7 +21023,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dist = Math.hypot(rc.x - px, rc.y - py);
       const inside = dist <= rc.radius;
       // 通常ストーリーは自動帰還しない。進入状態だけ保持し、実際の確認は離指入力で開く。
-      if (state.finaleDefeated && !state.corridorMode) {
+      // ステージ2の逃走のゴールも同じ(社長指示2026-10-20「手を離したらすぐゴール方式」=通り抜けてもクリアにならない)。
+      if ((state.finaleDefeated && !state.corridorMode) || isLabEscapeGoal(state)) {
         const dwellMs = inside ? 1 : 0;
         if (dwellMs === rc.dwellMs) return {};
         const justEntered = inside && rc.dwellMs === 0;
@@ -21069,7 +21079,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       || state.eventQuestNpc.status === 'delivering';
     if (
       state.storyReturnPromptVisible || state.gameWon ||
-      (!state.finaleDefeated && !m6CorridorGoal) ||
+      (!state.finaleDefeated && !m6CorridorGoal && !isLabEscapeGoal(state)) ||
       (state.corridorMode && isExStageRun()) ||
       !corridorGoalReady ||
       !isInReturnCircle(state.player, state.returnCircle) ||

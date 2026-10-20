@@ -1,7 +1,7 @@
 // ステージ2の這う塊の配線(runLabCrawlerTick)のテスト: 取り込んだ個体を敵配列から外す/起きたフレームはアテンションだけで終わる。
 // 第2版(research/LAB_CRAWLER.md §4): 代理の Enemy(攻撃の窓口)・HP・資料を拾った後の回り込み・壁を壊す・入ればクリアの円。
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useGameStore, ATTENTION_IN_MS } from '../store/gameStore';
+import { useGameStore, ATTENTION_IN_MS, labEscapeGoalX } from '../store/gameStore';
 import { spawnEnemyAt, countsTowardEnemyCap, isBossType } from './enemyUtils';
 import { runLabCrawlerTick, crawlerSlamShakeMag, crawlerChaseSpeedFor, LAB_CRAWLER_BLAST_OWNER, LAB_ESCAPE_BANNER, labDebrisKind, DEATH_BEAT_STOP_MS } from './labCrawlerTick';
 import {
@@ -175,7 +175,8 @@ describe('runLabCrawlerTick 第2版: 資料を拾った瞬間、前から出て�
     expect(isCrawlerAbsorbable(route[0])).toBe(true); // 塊には食べられる(足止め役)
     // 逃走中もプロップは取り除かない(社長2026-10-20「やはり無しで。簡単になりすぎた」=壊れていない物はそのまま立っている)。
     expect(labPropsInRegion(-4000, -300, -2000, 300).length).toBe(labPropsInRegionRaw(-4000, -300, -2000, 300).filter(q => !isLabObstacleBroken(q.id)).length);
-    expect(st0.returnCircle).toMatchObject({ x: 0, y: 0 });
+    expect(st0.returnCircle).toMatchObject({ x: labEscapeGoalX(useGameStore.getState().labIdolSide, -7000), y: 0 });
+    expect(Math.abs(st0.returnCircle!.x)).toBeGreaterThan(58 + 95); // 武器商人(原点)の会話の円と重ならない
     expect(st0.labEscapeBannerPending).toBe(true); // 帯はアテンションが戻ってから
     expect(st0.eventBannerText).not.toBe(LAB_ESCAPE_BANNER);
     runLabCrawlerTick(10_016, 1 / 60);
@@ -204,17 +205,24 @@ describe('runLabCrawlerTick 第2版: 資料を拾った瞬間、前から出て�
     expect(useGameStore.getState().eventBannerText).toBe(LAB_ESCAPE_BANNER);
   });
 
-  it('円は既存の帰還サークルの作法(とどまるとクリア)=通り抜ければクリアにならない(奥のアイドルへ行ける)', () => {
-    useGameStore.setState(st => ({ labEscapeRun: true, labEscapeAt: 0, returnCircle: null, gameWon: false, player: { ...st.player, x: -14, y: -14 } }));
+  it('ゴールは武器商人の手前(資料の側・重ならない)。手を離すと帰還の確認=とどまっても通り抜けてもクリアにならない(社長2026-10-20)', () => {
+    useGameStore.setState(st => ({ labEscapeRun: true, labEscapeAt: 0, returnCircle: null, gameWon: false, labIdolSide: 1, storyReturnPromptVisible: false, isPaused: false, player: { ...st.player, x: -3000, y: -14 } }));
     useGameStore.getState().beginLabEscape();
-    useGameStore.getState().updateReturnPhase(0.5);
-    expect(useGameStore.getState().gameWon).toBe(false); // 入っただけではクリアしない
-    useGameStore.setState(st => ({ player: { ...st.player, x: -3000, y: -14 } }));
-    useGameStore.getState().updateReturnPhase(0.5);
-    expect(useGameStore.getState().returnCircle!.dwellMs).toBe(0); // 出たら戻る
-    useGameStore.setState(st => ({ player: { ...st.player, x: -14, y: -14 } }));
-    for (let i = 0; i < 4; i++) useGameStore.getState().updateReturnPhase(1);
+    const rc = useGameStore.getState().returnCircle!;
+    expect(rc.x).toBeLessThan(0); // 資料(アイドルの反対=左)の側
+    expect(Math.hypot(rc.x - 0, rc.y - (-60))).toBeGreaterThan(rc.radius + 58); // 商人の会話の円と重ならない
+    useGameStore.setState(st => ({ player: { ...st.player, x: rc.x - 14, y: -14 } }));
+    for (let i = 0; i < 6; i++) useGameStore.getState().updateReturnPhase(1);
+    expect(useGameStore.getState().gameWon).toBe(false); // とどまってもクリアしない
+    expect(useGameStore.getState().requestStoryReturnPrompt()).toBe(true); // 手を離す=帰還の確認
+    useGameStore.getState().answerStoryReturnPrompt(true);
     expect(useGameStore.getState().gameWon).toBe(true);
+  });
+
+  it('円の外で手を離しても確認は出ない', () => {
+    useGameStore.setState(st => ({ labEscapeRun: true, labEscapeAt: 0, returnCircle: null, gameWon: false, labIdolSide: 1, storyReturnPromptVisible: false, isPaused: false, player: { ...st.player, x: -3000, y: -14 } }));
+    useGameStore.getState().beginLabEscape();
+    expect(useGameStore.getState().requestStoryReturnPrompt()).toBe(false);
   });
 
   it('塊を置いていない出撃では beginLabEscape は何もしない(従来の流れ)', () => {
