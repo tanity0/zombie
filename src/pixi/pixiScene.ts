@@ -893,6 +893,13 @@ const LAB_FAR_BLOOM_ALPHA = tsNum('labfbloom', 0.18); // 重ねる濃さ。0で�
 const LAB_FAR_BLOOM_BLUR = tsNum('labfblur', 12);     // ベイク時のぼかし強度。?labfblur=
 const LAB_FAR_GLASS_ALPHA = tsNum('labfga', 0.3); // 遠景窓ガラスの不透明度(社長指示v0.25.2202「透明度70%=alpha0.3」)。?labfga=
 const LAB_FAR_GLASS_UP = tsNum('labfgup', 2); // 遠景窓ガラスだけの上オフセット(px・フレームは動かさない。既定2=常にフレームから2px上。社長指示v0.25.2208)。?labfgup=
+// 遠景のガラスの奥の非常灯(社長指示2026-10-20「ステージ2の遠景、ガラスの裏に薄ーく非常灯の灯り」「等間隔で。他は推薦通り」)。
+// 暗い赤・枠の絵(8面)に2つ=4面ごとの等間隔・窓と一緒に横へ流れる。蛍光灯が切れて暗くなっても非常灯だけは残る
+// (暗幕の濃さぶんを暗幕の上に足し戻す)。ごくたまに、ゆっくり明るさが揺らぐ。描画だけ・判定なし。
+const LAB_FAR_EMLIGHT_ALPHA = tsNum('labfemla', 0.24); // ガラスの奥のグローの濃さ。?labfemla=
+const LAB_FAR_EMLIGHT_TINT = 0xb0141e;                 // 暗い赤
+const LAB_FAR_EMLIGHT_PANES = 8;                       // 枠の絵(stage2-far-frame)の面の数
+const LAB_FAR_EMLIGHT_EVERY = 4;                       // 何面ごとに1つ
 // 窓ガラス/ゾンビの被写界深度(社長指示v0.25.2219「位置なりのぼかし」)。v2204で窓をworldGroupへ移した際に
 // 遠景グループのぼかしから外れていたぶんを、奥行き順に付け直す。既存の階段に合わせた値:
 // 遠景1.1 > **ゾンビ0.85** > 遠景森0.8 > 遠方床0.65 ≒ **ガラス0.6** > 合焦(フレーム=0・最も手前の構造物)。
@@ -5601,6 +5608,11 @@ export class PixiScene {
   private labFarFrame: TilingSprite | null = null; // 遠景の窓・フレーム(手前)。ガラスの直上に重ねる。worldGroup内。lab限定・横ループ(社長指示v0.25.2199/2204)
   private labFarGlassTex: Texture | null = null;
   private labFarFrameTex: Texture | null = null;
+  private labFarEmLayer: Container | null = null;      // 遠景のガラスの奥の非常灯(ガラスの直下)
+  private labFarEmGlows: Sprite[] = [];
+  private labFarEmTop: Container | null = null;        // 暗幕の上に足し戻す分(蛍光灯が切れても非常灯は残る)
+  private labFarEmTopGlows: Sprite[] = [];
+  private labVeilAlphaNow = 0;                         // 研究所の暗幕のいまの濃さ(非常灯の足し戻しに使う・前フレームの値)
   private labFarZombieLayer: Container | null = null; // 窓の向こうのうろつきゾンビ(描画のみ)。ガラスの直下=ガラス越しに見える
   private labFarZombies: Sprite[] = [];
   private labFarZombieFacing: number[] = []; // 個体ごとの向き(静止中も直前の向きを保持)
@@ -11863,6 +11875,8 @@ export class PixiScene {
       if (this.labFarGlass) this.labFarGlass.visible = false;
       if (this.labFarFrame) this.labFarFrame.visible = false;
       if (this.labFarZombieLayer) this.labFarZombieLayer.visible = false;
+      if (this.labFarEmLayer) this.labFarEmLayer.visible = false;
+      if (this.labFarEmTop) this.labFarEmTop.visible = false;
       return;
     }
     const wg = this.L.worldGroup;
@@ -11902,6 +11916,91 @@ export class PixiScene {
     glass.alpha = LAB_FAR_GLASS_ALPHA; // ガラスだけ半透明(フレームは不透明のまま)
     frame.alpha = 1;
     this.updateLabFarWindowZombies(glass, bottom, frame.height, cameraX, now);
+    this.updateLabFarEmergency(glass, frame, frameTex, now);
+  }
+
+  // 遠景のガラスの奥の非常灯(社長指示2026-10-20)。枠のタイルと同じ横送りで、4面ごとに1つ。
+  // 奥の灯り=ガラスの直下(ガラス越しに滲む・枠の桟に隠れる)。暗幕(蛍光灯の暗転)で沈んだ分だけ、暗幕の上に同じ灯りを足し戻す。
+  private updateLabFarEmergency(glass: TilingSprite, frame: TilingSprite, frameTex: Texture, now: number) {
+    if (LAB_FAR_EMLIGHT_ALPHA <= 0) {
+      if (this.labFarEmLayer) this.labFarEmLayer.visible = false;
+      if (this.labFarEmTop) this.labFarEmTop.visible = false;
+      return;
+    }
+    const wg = this.L.worldGroup;
+    if (!this.labFarEmLayer) {
+      const layer = new Container();
+      layer.eventMode = 'none';
+      wg.addChildAt(layer, wg.getChildIndex(glass)); // ガラスの直下
+      this.labFarEmLayer = layer;
+    }
+    const layer = this.labFarEmLayer;
+    layer.visible = true;
+    // 暗幕の上(足し戻し)。暗幕の層ができてから、その直上に置く。
+    const dark = this.labDarkLayer;
+    if (dark?.parent) {
+      if (!this.labFarEmTop) { this.labFarEmTop = new Container(); this.labFarEmTop.eventMode = 'none'; }
+      const ui = dark.parent;
+      if (this.labFarEmTop.parent !== ui) ui.addChildAt(this.labFarEmTop, Math.min(ui.getChildIndex(dark) + 1, ui.children.length));
+      else if (ui.getChildIndex(this.labFarEmTop) < ui.getChildIndex(dark)) ui.setChildIndex(this.labFarEmTop, ui.getChildIndex(dark)); // 暗幕より下へ回っていたら直上へ
+    }
+    const top = this.labFarEmTop;
+    const veilA = this.labVeilAlphaNow;
+    if (top) top.visible = veilA > 0.01;
+    const tileW = frameTex.width * frame.tileScale.x;
+    if (!(tileW > 1)) return;
+    const paneW = tileW / LAB_FAR_EMLIGHT_PANES;
+    const period = paneW * LAB_FAR_EMLIGHT_EVERY;
+    const base = frame.position.x + frame.tilePosition.x + paneW * 1.5; // 2面目の真ん中から
+    const mFrom = Math.ceil((-period - base) / period);
+    const y = frame.position.y + frame.height * 0.46;
+    const w = paneW * 1.7, h = frame.height * 0.95;
+    const t = now / 1000;
+    const gs = wg.worldTransform.a || 1;
+    let n = 0;
+    for (let m = mFrom; ; m++) {
+      const x = base + m * period;
+      if (x > this.screenW + period) break;
+      if (n >= 12) break;
+      let sp = this.labFarEmGlows[n];
+      if (!sp) {
+        sp = new Sprite(getSoftGlowTexture());
+        sp.anchor.set(0.5);
+        sp.eventMode = 'none';
+        sp.blendMode = 'add';
+        sp.tint = LAB_FAR_EMLIGHT_TINT;
+        layer.addChild(sp);
+        this.labFarEmGlows[n] = sp;
+      }
+      // ごくたまに、ゆっくり揺らぐ(灯りごとに位相をずらす・普段はほぼ一定)。番号は横送りに付いて回る=同じ灯りは同じ揺らぎ。
+      const ph = Math.sin(m * 12.9898) * 43758.5453;
+      const dip = Math.pow(Math.max(0, Math.sin(t * 0.21 + (ph - Math.floor(ph)) * 6.283)), 10);
+      const a = LAB_FAR_EMLIGHT_ALPHA * (1 - 0.45 * dip);
+      sp.visible = true;
+      sp.position.set(x, y);
+      sp.width = w; sp.height = h;
+      sp.alpha = a;
+      if (top) {
+        let tp = this.labFarEmTopGlows[n];
+        if (!tp) {
+          tp = new Sprite(getSoftGlowTexture());
+          tp.anchor.set(0.5);
+          tp.eventMode = 'none';
+          tp.blendMode = 'add';
+          tp.tint = LAB_FAR_EMLIGHT_TINT;
+          top.addChild(tp);
+          this.labFarEmTopGlows[n] = tp;
+        }
+        const g = wg.toGlobal({ x, y });
+        tp.visible = veilA > 0.01;
+        tp.position.set(g.x, g.y);
+        tp.width = w * gs; tp.height = h * gs;
+        tp.alpha = a * veilA; // 暗幕で沈んだ分だけ足し戻す=暗転しても見た目の明るさはほぼそのまま
+      }
+      n++;
+    }
+    for (let i = n; i < this.labFarEmGlows.length; i++) this.labFarEmGlows[i].visible = false;
+    for (let i = n; i < this.labFarEmTopGlows.length; i++) this.labFarEmTopGlows[i].visible = false;
   }
 
   // 遠景のソフトブルーム(社長指示v0.25.2214)。OP廊下と同じ「ぼかし焼き込み+screen重ね」を Pixi に移植。
@@ -12199,6 +12298,7 @@ export class PixiScene {
     this.labShaftMul = 1;
     if (!show || this.introActive) {
       if (this.labDarkLayer) this.labDarkLayer.visible = false;
+      this.labVeilAlphaNow = 0;
       return;
     }
     if (LAB_DARK_ALPHA <= 0 && !LAB_FLICKER_ON && (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0)) {
@@ -12262,6 +12362,7 @@ export class PixiScene {
       const va = Math.max(LAB_DARK_ALPHA, flickDark) * ramp;
       veil.alpha = va;
       veil.visible = va > 0.001; // 明るさを戻した(0)時・点灯中は幕そのものを描かない
+      this.labVeilAlphaNow = veil.visible ? va : 0; // 遠景の非常灯の足し戻しに使う
     }
     if (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0) {
       for (const sp of this.labEmLights) sp.visible = false;

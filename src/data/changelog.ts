@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5165', items: [
+    'ステージ2の奥の窓ガラスの向こうに、赤い非常灯がぼんやり灯る。灯りが落ちても、そこだけは消えない',
+  ] },
   { version: '0.25.5164', items: [
     'ステージ2の帰り道の物を片付けるのはやめた。物陰も障害物も、行きと同じまま残る',
   ] },
