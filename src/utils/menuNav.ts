@@ -563,6 +563,24 @@ export const syncNavContext = (menu: boolean = isMenuContext()): boolean => {
   return menu; // メニュー文脈へ入った(復帰した)時だけ true
 };
 
+/**
+ * キー/パッドで選んでいる間だけ、選択の印を指定のボタンへ移す(マウス・タッチの時は何もしない=false)。
+ * 例: キャラ選択でキャラを押したら START へ(社長指示2026-10-20「PCはキャラ押したらカーソルがスタートに遷移が自然」)。
+ */
+export const navSelectEl = (el: HTMLElement | null): boolean => {
+  if (!el || !el.isConnected || !isKbnavOn()) return false;
+  const layer = syncLayer();
+  if (layer) {
+    const col = collect(layer);
+    const i = col.els.indexOf(el);
+    if (i < 0) return false;
+    selectItem(col, i, 'near');
+    return true;
+  }
+  focusEl(el);
+  return true;
+};
+
 /** 押す(パッドの A)。層に入った直後・入った時から押しっぱなしの A は押さない(置くだけ)。 */
 export const navActivate = (): boolean => {
   if (!confirmOk('pad')) { navEnter(); return false; }

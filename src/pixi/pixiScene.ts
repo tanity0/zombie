@@ -902,6 +902,7 @@ const LAB_FAR_EMLIGHT_TINT = 0xb0141e;                 // 暗い赤
 // と認識できるくらい」)。ガラスの直下に、上(天井の灯り)ほど明るい冷たい白の光を加算で敷く=奥の壁が浮かぶ。枠の桟には隠れる。描画だけ。
 const LAB_FAR_ROOM_ALPHA = tsNum('labfroom', 0.55); // 0で無効。?labfroom=
 const LAB_FAR_ROOM_TINT = 0xd6e6f2;                  // 蛍光灯の冷たい白
+const LAB_FAR_WINDOW_LANDSCAPE_BASE_W = tsNum('labfwbase', 430); // 横長(PC)の遠景の窓の大きさの基準幅=スマホの幅。?labfwbase=
 const LAB_FAR_EMLIGHT_PANES = 8;                       // 枠の絵(stage2-far-frame)の面の数
 const LAB_FAR_EMLIGHT_EVERY = 4;                       // 何面ごとに1つ
 // 窓ガラス/ゾンビの被写界深度(社長指示v0.25.2219「位置なりのぼかし」)。v2204で窓をworldGroupへ移した際に
@@ -11962,8 +11963,12 @@ export class PixiScene {
     // 左へはみ出したぶんだけタイルの送りを足して、模様の位置は画面幅で敷いていた時と同じに保つ。
     const overW = this.screenW * ZOOM_OVERSCAN;
     const marginX = (overW - this.screenW) / 2;
+    // 大きさの基準の幅。縦持ち(スマホ)は従来どおり画面幅。横長(PC)は画面幅で決めると窓の中身(机・棚・うろつくゾンビ)が
+    // 画面幅に比例して巨大になる(1280幅でスマホの約3倍・社長報告2026-10-20「pcだと遠くのゾンビたちが大きい」)ので、
+    // スマホの幅で頭打ちにする=世界の他の物(1px=1px)と同じ大きさに見える。横は従来どおりタイルで並べる。
+    const baseW = this.screenW > this.screenH ? Math.min(this.screenW, LAB_FAR_WINDOW_LANDSCAPE_BASE_W) : this.screenW;
     const layoutOne = (sp: TilingSprite, tex: Texture) => {
-      const h = this.screenW * (tex.height / tex.width) * LAB_FAR_WINDOW_SCALE; // アスペクト維持(高さは画面幅基準のまま)
+      const h = baseW * (tex.height / tex.width) * LAB_FAR_WINDOW_SCALE; // アスペクト維持
       sp.width = overW;
       sp.height = h;
       sp.tileScale.set(h / Math.max(1, tex.height));

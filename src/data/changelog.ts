@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5179', items: [
+    'PCで、ステージ2の奥の窓の向こうが大きく映りすぎていた。スマホと同じ大きさに',
+    'キーボードやコントローラーでキャラを選ぶと、選択がそのまま START へ移る',
+  ] },
   { version: '0.25.5178', items: [
     'ステージ2の這う塊の呼び名を「変異塊」に改めた',
   ] },

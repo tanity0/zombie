@@ -184,6 +184,7 @@ import { PLAYER_UPGRADES, PLAYER_UPGRADE_MAX_LEVEL } from '../data/playerUpgrade
 import { subWeaponBlurb } from '../data/subWeaponBlurbs';
 import { playerUpgradeCost, growthScoreMult } from '../utils/playerUpgrades';
 import type { PracticeSlot } from '../utils/bossPractice';
+import { navSelectEl } from '../utils/menuNav'; // キャラを選んだら START へ選択の印を送る(キー/パッドの時だけ)
 
 interface MissionSelectProps {
   /** 開いた直後に表示する画面(`?screen=bossrush` 等)。未指定なら拠点。v0.25.2861。 */
@@ -1244,7 +1245,11 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   key={cc.id}
                   data-nav-id={cc.id}
                   {...(on ? { 'data-nav-default': '' } : {})}
-                  onClick={() => { playSfx('ui-move'); setSelectedClass(cc.id); }}
+                  onClick={() => {
+                    playSfx('ui-move'); setSelectedClass(cc.id);
+                    // キー/パッドで選んだ時だけ、選択の印を START へ送る(PC・社長指示2026-10-20)。マウス・タッチは何もしない。
+                    requestAnimationFrame(() => navSelectEl(document.querySelector<HTMLElement>('[data-testid="charselect-start"]')));
+                  }}
                   className={`relative shrink-0 flex flex-col items-center justify-end rounded-none pt-2 pb-1 px-2 transition-[filter] ${
                     on ? '' : 'active:brightness-110'
                   }`}
