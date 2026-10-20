@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5172', items: [
+    'アイドルが紫の狙撃線を撃った後、しばらく動けなくなる。反撃の隙',
+  ] },
   { version: '0.25.5171', items: [
     'ステージ2のアイドルの拳が、壁や物を砕く',
     'アイドルと戦い始めると、奥から聞こえる曲が少し大きくなる',

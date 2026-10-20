@@ -241,16 +241,16 @@ describe('歩きのシートの bodyH(立ち絵より小さく描かれた歩き
 
 // 社長指示2026-10-11「アイドルの狙撃(紫帯の技)の後、余韻入れて。撃った最後のコマのまま少し止まる」
 describe('アイドルの狙撃の余韻', () => {
-  it('硬直の頭は撃った最後のコマ(2=反動)のまま約0.38秒止まり、そのあと頭が弾かれる(3〜)', async () => {
+  it('硬直の頭は撃った最後のコマ(2=反動)のまま約0.88秒止まり、そのあと頭が弾かれる(3〜)', async () => {
     const { BOSS_PHASE_SHEETS: sheets, bossPhaseFrame: frameAt } = await import('./enemySheets');
     const spec = sheets.find(s => s.name === 'idol-snipe')!;
     const rec = spec.phases.find(p => p.state === 'idol-snipe-recover')!;
     const { IDOL_TUNING_DEFAULTS } = await import('./idolScript');
     const RECOVER_MS = IDOL_TUNING_DEFAULTS.timing.snipe.recover;
-    expect(RECOVER_MS).toBe(1200); // 「伸ばして」(2026-10-11)
+    expect(RECOVER_MS).toBe(1700); // 「伸ばして」(2026-10-11)→「もう少し硬直させて」(2026-10-20)
     expect(frameAt(rec, 0, 0, 100)).toBe(2);
-    expect(frameAt(rec, 360 / RECOVER_MS, 0, 100)).toBe(2);
-    expect(frameAt(rec, 400 / RECOVER_MS, 0, 100)).toBe(3);
+    expect(frameAt(rec, 860 / RECOVER_MS, 0, 100)).toBe(2);
+    expect(frameAt(rec, 900 / RECOVER_MS, 0, 100)).toBe(3);
     // 仰け反り→消えるの1コマは余韻を入れる前(14コマ/900ms=約64ms)とほぼ同じ速さ(差2ms未満)。
     expect(Math.abs(RECOVER_MS / rec.seq.length - 900 / 14)).toBeLessThan(2);
     expect(frameAt(rec, 0.999, 0, 100)).toBe(15); // 最後は従来どおり引いて消える

@@ -171,13 +171,13 @@ describe('IDOL_TUNING の既定値(現在の確定値・勝手に動かさない
     expect(IDOL_TUNING_DEFAULTS.fanCount).toEqual({ p1: 5, p2: 8 }); // v0.25.4204(旧 3/5)
     expect(IDOL_TUNING_DEFAULTS.orbCount).toEqual({ p1: 3, p2: 5 }); // v0.25.4204(旧 2/3)
   });
-  it('技の秒数(硬直は狙撃1200・他は900=withRecoverFloorの床が既定値になっている)', () => {
+  it('技の秒数(硬直は狙撃1700・他は900=withRecoverFloorの床が既定値になっている)', () => {
     expect(IDOL_TUNING_DEFAULTS.timing).toEqual({
       aim:   { windup: 700,  active: 0,   recover: 900 },
       fan:   { windup: 900,  active: 0,   recover: 900 },
       roll:  { windup: 400,  active: 180, recover: 900 },
       punch: { windup: 600,  active: 0,   recover: 900 },
-      snipe: { windup: 1100, active: 200, recover: 1200 }, // 余韻(2026-10-11)
+      snipe: { windup: 1100, active: 200, recover: 1700 }, // 余韻(2026-10-11)→もう少し硬直(2026-10-20)
       orb:   { windup: 800,  active: 0,   recover: 900 },
       nade:  { windup: 600,  active: 180, recover: 900 }, // v0.25.3442手榴弾→v0.25.3444バックロール投げ(active=rollと同じ)
     });
