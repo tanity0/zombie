@@ -119,7 +119,7 @@ export interface Player extends DashLocomotionState {
   effectiveMoveSpeed?: number;
   // research/LAB_CRAWLER.md §4(第2版): 歩きの実効移動速度(px/s・MOVE_SPEED_MULTは含まない)。effectiveMoveSpeed から
   // 一時的なダッシュ(ワイヤー/一閃/ホップ)と四神スライドを除いた「今の足の速さ」(スキル・段・装備・リロード込み)。
-  // ステージ2の死体の塊の追跡速度(×1.1)の元。movePlayer が毎tick書く。
+  // ステージ2の変異塊の追跡速度(×1.1)の元。movePlayer が毎tick書く。
   walkMoveSpeed?: number;
   health: number;
   maxHealth: number;
@@ -1867,7 +1867,7 @@ export type EnemyType =
   | 'mutant-hero'
   // research/LIBERTY_HORDE.md: 解放軍群(変異)の旗手。叫んで周りの敵を強化する(自分は攻撃しない)。後ろにバット男5体。
   | 'mutant-liberty'
-  // research/LAB_CRAWLER.md §4(第2版): ステージ2の死体の塊の**代理**。攻撃を受ける窓口だけ(描かない・動かない・落とさない)。
+  // research/LAB_CRAWLER.md §4(第2版): ステージ2の変異塊の**代理**。攻撃を受ける窓口だけ(描かない・動かない・落とさない)。
   // 本体は store の labCrawler(world/labCrawler.ts)。代理の作り方と同期は utils/labCrawlerProxy.ts / labCrawlerTick.ts。
   | 'lab-crawler';
 
@@ -3081,7 +3081,7 @@ export type VisualEffect =
     }
   | {
       // 柔らかい煙(土煙)。光の型(soft glow)を通常合成・低く横長に置き、ゆっくり広がって薄れる(描画だけ・判定なし)。
-      // 死体の塊(research/LAB_CRAWLER.md §4)の壁の崩れ・現れ・沈み・叩き付けの擦り跡で使う(点の粒は破片だけに減らした)。
+      // 変異塊(research/LAB_CRAWLER.md §4)の壁の崩れ・現れ・沈み・叩き付けの擦り跡で使う(点の粒は破片だけに減らした)。
       kind: 'smoke';
       id: string;
       x: number; y: number;

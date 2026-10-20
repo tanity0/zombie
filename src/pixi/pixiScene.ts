@@ -2821,7 +2821,7 @@ const LAB_CRAWLER_LANTERN_IN_MS = 700;
 /** 演出の大きさの基準=元の1体の胴の表示幅(px)。今の胴の幅÷これ=演出の倍率(5倍の絵なら5)。 */
 const LAB_CRAWLER_FX_BASE_BODY_W = 165;
 /**
- * 死体の塊に壊された壁・プロップの崩れ方(第2版・描画だけ。判定は壊れた瞬間に world から消えている)。
+ * 変異塊に壊された壁・プロップの崩れ方(第2版・描画だけ。判定は壊れた瞬間に world から消えている)。
  * 一瞬ぐらつき(JOLT)→ 下へ潰れて傾きながら崩れ落ち(加速)→ 最後に薄れて消える。破片・土煙は labCrawlerTick が出す。
  */
 // 尺は種類で分ける(壁=重く長く・プロップ=軽く短く・クリエイティブ監査#6)。値の正本は utils/labCrawlerTick(着地の土煙・音と同じ時刻)。
@@ -8830,7 +8830,7 @@ export class PixiScene {
     this.restoreForestPreview();
     this.restoreZwarpActors(); // 前フレームの逆変形(ズーム時の遠近)を戻してから描く
     const s0 = useGameStore.getState();
-    // ステージ2の死体の塊の代理(攻撃を受ける窓口だけの Enemy・research/LAB_CRAWLER.md §4)は描かない:
+    // ステージ2の変異塊の代理(攻撃を受ける窓口だけの Enemy・research/LAB_CRAWLER.md §4)は描かない:
     // 敵の絵・影・体力バー・照準・方角マーカーなど、敵配列を読む描画の全部から最初に1回だけ外す(塊の絵は syncLabCrawler)。
     const crawlerProxy = s0.labCrawler ? s0.enemies.find(e => isLabCrawlerProxyType(e.type)) : undefined;
     const s = crawlerProxy ? { ...s0, enemies: s0.enemies.filter(e => e !== crawlerProxy) } : s0;
@@ -11473,7 +11473,7 @@ export class PixiScene {
     const labTheme = s.stageTheme === 'lab' && !s.indoorMode;
     const cam = s.camera;
     const m = LAB_ZONE;
-    // 範囲は可視域(ズーム込み)+1区画。引いた画角でも奥の壁が描かれ、死体の塊に壊された時に崩れの絵・残骸が出る(品質監査2巡目A-3)。
+    // 範囲は可視域(ズーム込み)+1区画。引いた画角でも奥の壁が描かれ、変異塊に壊された時に崩れの絵・残骸が出る(品質監査2巡目A-3)。
     const vb = this.labObstacleViewBounds(cam);
     const walls = labTheme
       ? labWallsInRegion(vb.left - m, vb.top - m, vb.right + m, vb.bottom + m)
@@ -11501,7 +11501,7 @@ export class PixiScene {
     }
     for (const [id, entry] of this.wallObjs) {
       if (seen.has(id)) continue;
-      // 死体の塊に壊された物は、消す前に崩れ落ちる(慣性の掟: パッと消さない)。範囲外へ出ただけの物は従来どおり即破棄。
+      // 変異塊に壊された物は、消す前に崩れ落ちる(慣性の掟: パッと消さない)。範囲外へ出ただけの物は従来どおり即破棄。
       if (isLabObstacleBroken(id) && this.tickLabObstacleCrumble(entry, id, s.labBrokenObstacles, cam, 'wall')) continue;
       entry.sprite.destroy(); entry.stain?.destroy(); this.wallObjs.delete(id);
     }
@@ -11666,7 +11666,7 @@ export class PixiScene {
     }
     for (const [id, entry] of this.propObjs) {
       if (seen.has(id)) continue;
-      // 死体の塊に壊された物は、消す前に崩れ落ちる(慣性の掟: パッと消さない)。範囲外へ出ただけの物は従来どおり即破棄。
+      // 変異塊に壊された物は、消す前に崩れ落ちる(慣性の掟: パッと消さない)。範囲外へ出ただけの物は従来どおり即破棄。
       if (isLabObstacleBroken(id) && this.tickLabObstacleCrumble(entry, id, s.labBrokenObstacles, cam, 'prop')) continue;
       entry.sprite.destroy(); entry.stain?.destroy(); this.propObjs.delete(id);
     }

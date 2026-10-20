@@ -1,4 +1,4 @@
-// ステージ2の死体の塊の代理(research/LAB_CRAWLER.md §4・第2版)の純関数のテスト。
+// ステージ2の変異塊の代理(research/LAB_CRAWLER.md §4・第2版)の純関数のテスト。
 import { describe, it, expect } from 'vitest';
 import {
   CRAWLER_PROXY_ID, CRAWLER_PROXY_HP_PAD, crawlerProxyWanted, crawlerProxyHealth, crawlerProxyDamage, buildCrawlerProxy,
@@ -19,7 +19,7 @@ import { enemyFootBox } from '../pixi/renderSpec';
 
 const awake = () => ({ ...createLabCrawler({ x: 7000, y: 0 }), awake: true });
 
-describe('死体の塊の代理', () => {
+describe('変異塊の代理', () => {
   it('起きていて判定がある間だけ置く(待機中・昇天中・居ない時は置かない)', () => {
     expect(crawlerProxyWanted(null)).toBe(false);
     expect(crawlerProxyWanted(createLabCrawler({ x: 7000, y: 0 }))).toBe(false);
@@ -71,7 +71,7 @@ describe('死体の塊の代理', () => {
   });
 });
 
-describe('死体の塊のダメージの数字の位置(描画だけ)', () => {
+describe('変異塊のダメージの数字の位置(描画だけ)', () => {
   it('x はプレイヤーに面した縁の内側 70〜160 でばらし、y は当たった高さを箱の中に収めて使う', () => {
     const c = awake();
     const r = crawlerRect(c);
@@ -122,7 +122,7 @@ describe('死体の塊のダメージの数字の位置(描画だけ)', () => {
   });
 });
 
-describe('死体の塊の代理: 当たった手応えの絵・爆発の点(品質監査A2/A3)', () => {
+describe('変異塊の代理: 当たった手応えの絵・爆発の点(品質監査A2/A3)', () => {
   it('代理の箱の中心に出された絵だけ、プレイヤーに面した縁の内側(プレイヤーの高さ)へ寄せる', () => {
     const c = awake();
     const r = crawlerRect(c);
@@ -162,7 +162,7 @@ describe('死体の塊の代理: 当たった手応えの絵・爆発の点(品�
   });
 });
 
-describe('死体の塊の代理: 当たる範囲=塊の箱そのもの(見たまま当たる)', () => {
+describe('変異塊の代理: 当たる範囲=塊の箱そのもの(見たまま当たる)', () => {
   it('弾の当たり(enemyContactBox)・近接/銃の届き(enemyRangeRect)・足元の箱(PHILLの頭の領域・照準)が箱からはみ出さない', () => {
     const c = awake();
     const p = buildCrawlerProxy(c);

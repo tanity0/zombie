@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { crawlerDragGain } from './labCrawlerTick';
 
-describe('死体の塊が体を引きずる音(社長「近いと流れてくる。遠いと小さくなり、鳴らなくなる」)', () => {
+describe('変異塊が体を引きずる音(社長「近いと流れてくる。遠いと小さくなり、鳴らなくなる」)', () => {
   it('近いと最大、遠いほど小さく、遠すぎると鳴らない', () => {
     const near = crawlerDragGain(100, 60, false);
     const mid = crawlerDragGain(700, 60, false);

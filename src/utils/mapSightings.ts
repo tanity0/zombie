@@ -14,7 +14,7 @@ export const isMapTrackedEnemy = (e: Tracked): boolean => {
   if (e.isNamed) return true;
   // 社長 2026-10-17「(ハンターは)外す 死神も外す」。
   if (e.type === 'hunter' || isReaperFamily(e.type)) return false;
-  // ステージ2の死体の塊の代理(攻撃を受ける窓口だけ・research/LAB_CRAWLER.md §4)は出さない(第1版の塊も地図に無かった=見え方を変えない)。
+  // ステージ2の変異塊の代理(攻撃を受ける窓口だけ・research/LAB_CRAWLER.md §4)は出さない(第1版の塊も地図に無かった=見え方を変えない)。
   if (isLabCrawlerProxyType(e.type)) return false;
   return isBossType(e.type) && !isPumpkinTier(e.type) && e.type !== 'lab-zombie-3';
 };

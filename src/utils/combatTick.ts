@@ -412,7 +412,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         else parriedEnemyIds.push({ id: b.enemyId, bx: b.x, by: b.y, ...(b.parryNoDamage ? { noDamage: true } : {}) });
       } else if (!bp.invulnerable) {
         const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
-        // ステージ2の這う塊は敵配列に居ない=型の代わりに持ち主の名札で名前を引く(「死体の塊の叩きつけ」)。
+        // ステージ2の這う塊は敵配列に居ない=型の代わりに持ち主の名札で名前を引く(「変異塊の叩きつけ」)。
         const blastOwnerLabel = blastEnemyType ?? (b.moveKey === 'crawler-slam' ? b.enemyId : '');
         // G4a: b.moveKey=どの技の爆発か(記録専用タグ・未設定なら従来どおりundefined)。
         // 検収監査#6: 死因の技名はmoveKeyで分ける(削岩型の突きが「落下攻撃」と表示されていた)。
@@ -1857,7 +1857,7 @@ export const applyContactDamage = (
   for (const h of escortBiteHits) useGameStore.getState().damageEscort(h.id, h.dmg, h.x, h.y, 'bite');
 
   playerEnemyCollisions.forEach(enemy => {
-    // research/LAB_CRAWLER.md §4: ステージ2の死体の塊の代理は攻撃を受ける窓口だけ(接触ダメージ0)。触れても何も起きない
+    // research/LAB_CRAWLER.md §4: ステージ2の変異塊の代理は攻撃を受ける窓口だけ(接触ダメージ0)。触れても何も起きない
     // (塞ぐのは塊の箱=プレイヤーの移動側・当てるのは叩きつけの爆風)。
     if (isLabCrawlerProxyType(enemy.type)) return;
     // research/MUTANT_HERO.md: 英雄は接触ダメージを持たない(damage 0)。ここを通すと0ダメージの被弾が

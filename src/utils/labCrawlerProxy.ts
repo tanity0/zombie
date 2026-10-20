@@ -1,4 +1,4 @@
-// ステージ2の死体の塊の「代理の Enemy」(research/LAB_CRAWLER.md §4・第2版。社長2026-10-19「当たり判定も通常の敵のように追加。HPは37564」)。
+// ステージ2の変異塊の「代理の Enemy」(research/LAB_CRAWLER.md §4・第2版。社長2026-10-19「当たり判定も通常の敵のように追加。HPは37564」)。
 //
 // 塊の本体は store の labCrawler(world/labCrawler.ts)で、敵配列の外にいる。弾・近接・爆発・サブウェポン・仲間の攻撃は
 // 全部「敵配列の Enemy」に当たる作りなので、**攻撃を受ける窓口だけ**を敵配列に1体置く:
@@ -13,7 +13,7 @@
 import type { Enemy } from '../types/game';
 import { crawlerRect, crawlerSolid, CRAWLER_HP, CRAWLER_HIT_W, CRAWLER_HIT_H, type LabCrawler } from '../world/labCrawler';
 
-/** 代理の id(=叩きつけの爆風の持ち主の名札 LAB_CRAWLER_BLAST_OWNER と同じ文字列。死因の表示がどちらでも「死体の塊」になる)。 */
+/** 代理の id(=叩きつけの爆風の持ち主の名札 LAB_CRAWLER_BLAST_OWNER と同じ文字列。死因の表示がどちらでも「変異塊」になる)。 */
 export const CRAWLER_PROXY_ID = 'lab-crawler';
 /** 代理の体力の下駄。1フレームにこれ以上のダメージは入らない(=代理は撃破されない)。 */
 export const CRAWLER_PROXY_HP_PAD = 1_000_000;

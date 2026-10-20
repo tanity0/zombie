@@ -51,7 +51,7 @@ const WAKE_SFX_GAIN = 0.8;
 
 /**
  * 叩きつけの爆風に付ける持ち主の名札。第2版では代理の Enemy の id と同じ文字列(CRAWLER_PROXY_ID)=
- * 爆風をカウンターすると反撃は代理(=塊)に入る。死因の表示(enemyDeathLabel)はどちらでも「死体の塊」。
+ * 爆風をカウンターすると反撃は代理(=塊)に入る。死因の表示(enemyDeathLabel)はどちらでも「変異塊」。
  */
 export const LAB_CRAWLER_BLAST_OWNER = CRAWLER_PROXY_ID;
 /** 敵の候補を集める範囲(塊の中心から・px)。手の届く範囲より十分広く。 */

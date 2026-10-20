@@ -146,7 +146,7 @@ export type SfxKey =
   | 'glen-nihil'    // グレン「虚無の三唱」(お墓技)SE(社長提供・壊れたラジオ加工)。長尺→フェードで止める
   // research/MUTANT_HERO.md(英雄(変異)・社長支給2026-10-03): いななき / 鼻息 / 蹄(駆け足のループ=setHeroGallop が鳴らす)。
   | 'hero-neigh' | 'hero-snort' | 'hero-gallop'
-  // research/LAB_CRAWLER.md(ステージ2の死体の塊・社長支給2026-10-19): 体を引きずる音(ループ専用=setCrawlerDrag が鳴らす)。
+  // research/LAB_CRAWLER.md(ステージ2の変異塊・社長支給2026-10-19): 体を引きずる音(ループ専用=setCrawlerDrag が鳴らす)。
   | 'crawler-drag'
   // 塊が攻撃してくる直前の音・登場時の音(社長支給2026-10-20「塊が攻撃してくる直前の音 登場時も鳴らす」)。同じ素材を2つの鍵で鳴らし分ける。
   | 'crawler-windup' | 'crawler-appear'
@@ -1898,7 +1898,7 @@ export const setHeroGallop = (gainMult: number, rate = 1): void => {
   }
 };
 
-// --- ステージ2の死体の塊が体を引きずる音(社長支給2026-10-19「塊が近いと流れてくる体を引きずる音。遠いと小さくなり、鳴らなくなる」)。
+// --- ステージ2の変異塊が体を引きずる音(社長支給2026-10-19「塊が近いと流れてくる体を引きずる音。遠いと小さくなり、鳴らなくなる」)。
 // 蹄と同じ「ネイティブループ1本+gain」。gain=距離減衰×這う速さ(呼び手=labCrawlerTick)。毎フレーム呼んでよい。
 // ★呼ばれなくなったら(ポーズ・別画面・出撃の終わり・塊が消えた)約0.3秒で自分からフェードして止まる(番犬)=止め忘れが無い。
 let crawlerDragSource: AudioBufferSourceNode | null = null;

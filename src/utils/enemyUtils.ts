@@ -175,7 +175,7 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   //  ・speed は libertyTick が自分で動かす(周回=英雄と同じ速さ)。health はスポーン側が上書きする(英雄と同じ式)。
   //  ・experienceValue=0(★未決 #2「旗手の報酬」の裁定まで)。
   'mutant-liberty': { width: 110, height: 60, speed: 48, health: 2000, damage: 0, experienceValue: 0 },
-  // research/LAB_CRAWLER.md §4: ステージ2の死体の塊の代理(攻撃を受ける窓口だけ)。寸法・体力は utils/labCrawlerProxy.ts が
+  // research/LAB_CRAWLER.md §4: ステージ2の変異塊の代理(攻撃を受ける窓口だけ)。寸法・体力は utils/labCrawlerProxy.ts が
   // 毎フレーム塊に合わせて書く(ここの値は使わない)。動かない・接触ダメージ0・経験値0。
   'lab-crawler': { width: 742, height: 300, speed: 0, health: 37564, damage: 0, experienceValue: 0 },
 };
@@ -192,16 +192,16 @@ export const isMutantHero = (t: EnemyType): boolean => t === 'mutant-hero';
  */
 export const countsTowardEnemyCap = (e: { type: EnemyType; hordeLeaderId?: string }): boolean =>
   e.type !== 'mutant-hero' && e.type !== 'mutant-liberty' && e.hordeLeaderId === undefined // 解放軍群(旗手+取り巻き)も別カウント(LIBERTY_HORDE §6)
-  && !isLabCrawlerProxyType(e.type); // ステージ2の死体の塊の代理は敵の数に入れない(LAB_CRAWLER §4)
+  && !isLabCrawlerProxyType(e.type); // ステージ2の変異塊の代理は敵の数に入れない(LAB_CRAWLER §4)
 /**
- * research/LAB_CRAWLER.md §4(第2版): ステージ2の死体の塊の**代理**か。攻撃を受ける窓口だけの Enemy(描かない・動かない・
+ * research/LAB_CRAWLER.md §4(第2版): ステージ2の変異塊の**代理**か。攻撃を受ける窓口だけの Enemy(描かない・動かない・
  * 接触ダメージ0・撃破/経験値/ドロップ/クエストに入らない・敵の数に数えない)。区分は**ボス級**(isBossType)=ノックバック・
  * 気絶(フィニッシュ)・爆弾の一掃・取り込みの対象外。体勢値は持たない(usesPostureSystem の外)。「ボス戦」には入れない。
  */
 export const isLabCrawlerProxyType = (t: EnemyType): boolean => t === 'lab-crawler';
 /**
  * 爆発の巻き込み・当たった手応えの絵を測る敵の点(LAB_CRAWLER §4・品質監査A2/A3)。通常=箱の中心(従来どおり1bitも変えない)。
- * 死体の塊の代理(幅742)だけは「箱の中で (px,py) に一番近い点」=縁で起きた爆発も届き、爆発・火・血は当たった所に出る。
+ * 変異塊の代理(幅742)だけは「箱の中で (px,py) に一番近い点」=縁で起きた爆発も届き、爆発・火・血は当たった所に出る。
  */
 export const blastAnchorOf = (
   e: { type: EnemyType; x: number; y: number; width: number; height: number }, px: number, py: number,
@@ -211,7 +211,7 @@ export const blastAnchorOf = (
     : { x: e.x + e.width / 2, y: e.y + e.height / 2 };
 /**
  * 起点(cx,cy)から単位ベクトル(dx,dy)へ length まで・半幅 halfW の帯が箱に掛かるか(線の攻撃・品質監査2巡目A-2)。
- * 帯の上の点を刻んで、箱までの最短距離が halfW 以内の点があれば掛かる(箱が帯より大きい死体の塊の代理のため)。
+ * 帯の上の点を刻んで、箱までの最短距離が halfW 以内の点があれば掛かる(箱が帯より大きい変異塊の代理のため)。
  */
 export const bandHitsBox = (
   cx: number, cy: number, dx: number, dy: number, length: number, halfW: number,
@@ -401,7 +401,7 @@ export const isBossType = (t: EnemyType): boolean =>
   isMutantHero(t) ||
   // research/LIBERTY_HORDE.md: 解放軍群の旗手もボス級(社長裁定2026-10-04)。英雄と同じく「ボス戦」には入れない。
   isLibertyBearer(t) ||
-  // research/LAB_CRAWLER.md §4: ステージ2の死体の塊の代理もボス級の固さ(社長「ノックバックしない・体勢は崩れない」)。「ボス戦」には入れない。
+  // research/LAB_CRAWLER.md §4: ステージ2の変異塊の代理もボス級の固さ(社長「ノックバックしない・体勢は崩れない」)。「ボス戦」には入れない。
   isLabCrawlerProxyType(t);
 
 /**

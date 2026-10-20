@@ -84,7 +84,7 @@ const WALL_BAND_B_MIN = WALL_CENTER_INNER * L, WALL_BAND_B_MAX = WALL_CENTER_OUT
 export const LAB_WALL_CLEAR_TOP: [number, number] = [-L, WALL_BAND_A_MIN - H_DEPTH];
 export const LAB_WALL_CLEAR_BOTTOM: [number, number] = [WALL_BAND_B_MAX, L];
 
-// ---- 壊れた壁・プロップ(ステージ2の死体の塊が這って壊す・research/LAB_CRAWLER.md §4) ----
+// ---- 壊れた壁・プロップ(ステージ2の変異塊が這って壊す・research/LAB_CRAWLER.md §4) ----
 // ★正本は store の `labBrokenObstacles`。ここはその id の**写し**(store の購読が書く・読み取り専用の窓)。
 // 写しにする理由: 壁・プロップの問い合わせ(labWallsInRegion / labPropsInRegion)は判定(プレイヤー・敵の移動、視線、
 // 弾の遮蔽、物の置き場所)と描画の20箇所以上から呼ばれる。ここで1回除けば、**判定と絵が必ず同じ集合を見る**
