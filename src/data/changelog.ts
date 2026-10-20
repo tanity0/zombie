@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5174', items: [
+    'ステージ2の奥の窓の向こうに、明るい廊下が見える',
+  ] },
   { version: '0.25.5173', items: [
     '狙撃線を撃ち終えたアイドルは、崩れ落ちた姿のまま小刻みに痙攣する',
   ] },

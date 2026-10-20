@@ -898,6 +898,10 @@ const LAB_FAR_GLASS_UP = tsNum('labfgup', 2); // 遠景窓ガラスだけの上�
 // (暗幕の濃さぶんを暗幕の上に足し戻す)。ごくたまに、ゆっくり明るさが揺らぐ。描画だけ・判定なし。
 const LAB_FAR_EMLIGHT_ALPHA = tsNum('labfemla', 0.6); // ガラスの奥のグローの濃さ。0.24→0.38→0.6(社長指示2026-10-20「もう少し明るく」×2)。?labfemla=
 const LAB_FAR_EMLIGHT_TINT = 0xb0141e;                 // 暗い赤
+// 遠景のガラスの向こう=明るい廊下(社長指示2026-10-20「ガラスの裏、もっと明るくして、壁が見えるくらい。この部屋(廊下)は遠目に明るいところなんだな、
+// と認識できるくらい」)。ガラスの直下に、上(天井の灯り)ほど明るい冷たい白の光を加算で敷く=奥の壁が浮かぶ。枠の桟には隠れる。描画だけ。
+const LAB_FAR_ROOM_ALPHA = tsNum('labfroom', 0.55); // 0で無効。?labfroom=
+const LAB_FAR_ROOM_TINT = 0xd6e6f2;                  // 蛍光灯の冷たい白
 const LAB_FAR_EMLIGHT_PANES = 8;                       // 枠の絵(stage2-far-frame)の面の数
 const LAB_FAR_EMLIGHT_EVERY = 4;                       // 何面ごとに1つ
 // 窓ガラス/ゾンビの被写界深度(社長指示v0.25.2219「位置なりのぼかし」)。v2204で窓をworldGroupへ移した際に
@@ -1114,6 +1118,8 @@ const ENV_TINT = (() => {
   return (g << 16) | (g << 8) | g;
 })();
 const ENV_VIGNETTE_ALPHA = tsNum('vig', 0.70);
+/** ステージ2の遠景(ガラスの向こうの廊下)の明るさ。白=素材のまま。?labfartint=0xRRGGBB(10進でも可)。 */
+const LAB_FAR_TINT = tsNum('labfartint', 0xffffff);
 
 // --- 研究施設(屋内)の暗さ -------------------------------------------------------
 // ステージ全体(床/壁)を乗算tintで沈める。オブジェクト(プロップ/UV/アクター)はtintしない=明るく浮く。
@@ -5614,6 +5620,7 @@ export class PixiScene {
   private labFarFrame: TilingSprite | null = null; // 遠景の窓・フレーム(手前)。ガラスの直上に重ねる。worldGroup内。lab限定・横ループ(社長指示v0.25.2199/2204)
   private labFarGlassTex: Texture | null = null;
   private labFarFrameTex: Texture | null = null;
+  private labFarRoomLight: Sprite | null = null;      // 遠景のガラスの向こうの明るい廊下(ガラスの直下・加算)
   private labFarEmLayer: Container | null = null;      // 遠景のガラスの奥の非常灯(ガラスの直下)
   private labFarEmGlows: Sprite[] = [];
   private labFarEmTop: Container | null = null;        // 暗幕の上に足し戻す分(蛍光灯が切れても非常灯は残る)
@@ -8336,7 +8343,10 @@ export class PixiScene {
       // ENV_TINTを重ねると川が読めなくなる=社長報告「そもそも川がない」v0.25.1807)。
       // それ以外(森/ラボ)は従来どおり環境の暗転tintを掛ける。
       // エンディング(仮組み)も同じ扱い=素材の色をそのまま出す(夕暮れ・社長指示2026-08-28)。
-      this.L.farBackdrop.tint = (desired === 'city' || desired === 'tutorial' || desired === 'ending') ? 0xffffff : ENV_TINT;
+      // ステージ2(研究所)の遠景=ガラスの向こうの廊下は、遠目に明るい所として見せる(社長指示2026-10-20「ガラスの裏、もっと明るくして、
+      // 壁が見えるくらい。この部屋(廊下)は遠目に明るいところなんだな、と認識できるくらい」)=環境の暗転tintを掛けず LAB_FAR_TINT。
+      this.L.farBackdrop.tint = (desired === 'city' || desired === 'tutorial' || desired === 'ending') ? 0xffffff
+        : desired === 'lab' ? LAB_FAR_TINT : ENV_TINT;
       // tileScale は resize() でしか計算されないため、差し替えテクスチャの寸法が違うと
       // 旧テクスチャ基準のスケールのまま=見た目が変わらない/崩れる。ここで再レイアウトする。
       this.layoutFarBackdrop();
@@ -11892,6 +11902,7 @@ export class PixiScene {
       if (this.labFarZombieLayer) this.labFarZombieLayer.visible = false;
       if (this.labFarEmLayer) this.labFarEmLayer.visible = false;
       if (this.labFarEmTop) this.labFarEmTop.visible = false;
+      if (this.labFarRoomLight) this.labFarRoomLight.visible = false;
       return;
     }
     const wg = this.L.worldGroup;
@@ -11931,7 +11942,40 @@ export class PixiScene {
     glass.alpha = LAB_FAR_GLASS_ALPHA; // ガラスだけ半透明(フレームは不透明のまま)
     frame.alpha = 1;
     this.updateLabFarWindowZombies(glass, bottom, frame.height, cameraX, now);
+    this.updateLabFarRoomLight(glass);
     this.updateLabFarEmergency(glass, frame, frameTex, now);
+  }
+
+  // 遠景のガラスの向こうの明るい廊下(社長指示2026-10-20)。上ほど明るい縦グラデの光をガラスの直下に加算で敷く。
+  private updateLabFarRoomLight(glass: TilingSprite) {
+    if (LAB_FAR_ROOM_ALPHA <= 0) { if (this.labFarRoomLight) this.labFarRoomLight.visible = false; return; }
+    if (!this.labFarRoomLight) {
+      if (typeof document === 'undefined') return;
+      const c = document.createElement('canvas');
+      c.width = 4; c.height = 128;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      const g = ctx.createLinearGradient(0, 0, 0, 128);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.35, 'rgba(255,255,255,0.75)');
+      g.addColorStop(0.8, 'rgba(255,255,255,0.3)');
+      g.addColorStop(1, 'rgba(255,255,255,0.12)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 4, 128);
+      const sp = new Sprite(Texture.from(c));
+      sp.eventMode = 'none';
+      sp.blendMode = 'add';
+      sp.tint = LAB_FAR_ROOM_TINT;
+      const wg = this.L.worldGroup;
+      wg.addChildAt(sp, wg.getChildIndex(glass)); // ガラスの直下(ガラス越しに見え、枠の桟に隠れる)
+      this.labFarRoomLight = sp;
+    }
+    const sp = this.labFarRoomLight;
+    sp.visible = glass.visible;
+    sp.position.set(glass.position.x, glass.position.y);
+    sp.width = glass.width;
+    sp.height = glass.height;
+    sp.alpha = LAB_FAR_ROOM_ALPHA;
   }
 
   // 遠景のガラスの奥の非常灯(社長指示2026-10-20)。枠のタイルと同じ横送りで、4面ごとに1つ。
