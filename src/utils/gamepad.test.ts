@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { padStickToSwipe, PAD_DEAD_ZONE, readDpad, padTakesAim } from './gamepad';
+import { padStickToSwipe, PAD_DEAD_ZONE, readDpad, padTakesAim, normalizePadButtons, isAndroidLayoutPad } from './gamepad';
 
 describe('パッドの左スティック → 移動(タッチのスティックと同じ「方向+強さ」)', () => {
   it('デッドゾーンの中は動かない', () => {
@@ -48,5 +48,29 @@ describe('パッドに触れたらマウスの照準を外す(照準を持つ銃
   it('パッドに触れていない/もう外れている時は何もしない', () => {
     expect(padTakesAim(false, { x: 10, y: 5 })).toBe(false);
     expect(padTakesAim(true, null)).toBe(false);
+  });
+});
+
+describe('Android 配置のパッド(GameSir・8BitDo)を標準の並びへ(2026-10-20「スタートボタンがLRボタンは意外すぎる」)', () => {
+  const press = (...idx: number[]) => { const b = new Array(17).fill(false); for (const i of idx) b[i] = true; return b; };
+  const GS = 'Gamesir-T4 Pro (Vendor: 3537 Product: 1012)';
+  it('スタート(11)とセレクト(10)が標準の 9/8 になる。L2/R2(8/9)では一時停止にならない', () => {
+    expect(normalizePadButtons('', GS, press(11))[9]).toBe(true);
+    expect(normalizePadButtons('', GS, press(10))[8]).toBe(true);
+    const lr2 = normalizePadButtons('', GS, press(8, 9));
+    expect(lr2[8]).toBe(false); expect(lr2[9]).toBe(false);
+    expect(lr2[6]).toBe(true); expect(lr2[7]).toBe(true); // L2/R2 は標準の 6/7
+  });
+  it('肩と顔のボタンも標準の位置へ(上=3・L1=4・R1=5)', () => {
+    const b = normalizePadButtons('', GS, press(4, 6, 7, 0, 1, 3));
+    expect([b[0], b[1], b[2], b[3], b[4], b[5]]).toEqual([true, true, true, true, true, true]);
+  });
+  it('標準配置のパッド・名前の違うパッドは素通し', () => {
+    expect(normalizePadButtons('standard', GS, press(9))[9]).toBe(true);
+    expect(isAndroidLayoutPad('standard', GS)).toBe(false);
+    expect(isAndroidLayoutPad('', 'USB Gamepad (Vendor: 0079 Product: 0006)')).toBe(false);
+    expect(normalizePadButtons('', 'USB Gamepad (Vendor: 0079 Product: 0006)', press(9))[9]).toBe(true);
+    expect(isAndroidLayoutPad('', '8BitDo Pro 2 (Vendor: 2dc8 Product: 6003)')).toBe(true);
+    expect(isAndroidLayoutPad('', '3537-1012-Gamesir-T4 Pro')).toBe(true);
   });
 });

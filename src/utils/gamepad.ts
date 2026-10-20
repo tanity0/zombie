@@ -67,6 +67,25 @@ export const readDpad = (
 export const padTakesAim = (anyPadInput: boolean, mouseAim: { x: number; y: number } | null): boolean =>
   anyPadInput && mouseAim !== null;
 
+/**
+ * 標準配置として認識されない「Android 配置」のパッド(GameSir・8BitDo の Bluetooth / D-input 等)のボタン番号を標準の並びへ読み替える
+ * (社長報告2026-10-20「スタートボタンがLRボタンは意外すぎる」・機種=GameSir T○ Pro)。
+ * この配置は 0=下 1=右 3=左 4=上 6=L1 7=R1 8=L2 9=R2 10=セレクト 11=スタート 13=L3 14=R3(2・5 は空き)で、
+ * 標準の 8/9(バック/スタート)が L2/R2 に当たる=肩のボタンで一時停止が開き、上のボタン(銃の持ち替え)もずれていた。
+ * 十字キーは軸(ハット)で来るので readDpad が読む(ここでは 12〜15 を空けて返す)。
+ * ★名前で見分ける(ボタンの数で当てると、別の配置の汎用パッドを読み違える)。標準配置のパッドは素通し。
+ */
+const ANDROID_LAYOUT_ID = /gamesir|8bitdo|vendor:\s*3537|vendor:\s*2dc8|^3537-|^2dc8-/i;
+export const isAndroidLayoutPad = (mapping: string, id: string | undefined): boolean =>
+  mapping !== 'standard' && !!id && ANDROID_LAYOUT_ID.test(id);
+const ANDROID_TO_STD: readonly (readonly [number, number])[] = [[0, 0], [1, 1], [2, 3], [3, 4], [4, 6], [5, 7], [6, 8], [7, 9], [8, 10], [9, 11], [10, 13], [11, 14]];
+export const normalizePadButtons = (mapping: string, id: string | undefined, raw: readonly boolean[]): boolean[] => {
+  if (!isAndroidLayoutPad(mapping, id)) return [...raw];
+  const out: boolean[] = new Array(16).fill(false);
+  for (const [std, src] of ANDROID_TO_STD) out[std] = !!raw[src];
+  return out;
+};
+
 const escapeKey = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
 
 export const installGamepad = (): (() => void) => {
@@ -98,7 +117,7 @@ export const installGamepad = (): (() => void) => {
     for (const p of pads) if (p && p.connected) { gp = p; break; }
     if (!gp) { if (prev.length) syncHudPadKeys([]); prev = []; return; }
     const now = performance.now();
-    const btn = gp.buttons.map(b => b.pressed);
+    const btn = normalizePadButtons(gp.mapping, gp.id, gp.buttons.map(b => b.pressed)); // Android 配置のパッドは標準の並びへ
     // 十字キーは配置の違うパッドでも読めるよう、ボタン12〜15へ揃えてから使う(軸で送ってくるパッドがある)。
     const dp = readDpad(gp.mapping, btn, gp.axes);
     btn[B.UP] = dp.up; btn[B.DOWN] = dp.down; btn[B.LEFT] = dp.left; btn[B.RIGHT] = dp.right;

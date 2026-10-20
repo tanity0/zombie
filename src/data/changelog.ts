@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5182', items: [
+    'GameSir や 8BitDo のコントローラーで、肩のボタンで一時停止が開いていた。スタートボタンで開くように。ほかのボタンの割り当ても正しい位置に',
+  ] },
   { version: '0.25.5181', items: [
     'アイドルを撃った時の白い光を控えめに。姿が見えたまま光って押される',
     '狙いを定めている間のアイドルは、撃たれても構えを崩さない。銃だけが震える',
