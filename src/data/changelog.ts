@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5170', items: [
+    'ステージ2で画面が引いた時、奥の景色と床の境目に出ていた黒い線を消した',
+  ] },
   { version: '0.25.5169', items: [
     'ステージ2の逃走で、死体の塊がすぐ背後に張り付いてくる。足を止めれば手が届く',
     '逃げている間は、背後の塊が画面の端に映る',

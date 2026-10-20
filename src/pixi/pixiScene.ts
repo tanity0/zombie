@@ -8605,10 +8605,16 @@ export class PixiScene {
     // 専用値を返す=境界が実在する)ので、そこでは帯は本来の仕事をしている。
     // **社長の報告は洋館通路だけ**であり、他所で隙間が見えている報告は無い。
     // 「A を直せと言われたら A だけ」(CLAUDE.md)に戻す。
-    if (useGameStore.getState().corridorMode) {
+    // ★ステージ2(屋外ラボ)も出さない(社長報告2026-10-20「ズームが引になると、遠景に黒い線が出ちゃう」・写真つき)。
+    // ラボでは帯の色(遠景の下端の色→その45%)が床より暗く、引くと遠景と床の境目に**黒い横線**として見えていた。
+    // `?zoomlock=0.6`/`0.4` で帯を外して撮ると、線は消え、隙間も見えない(ラボの遠景と床はそのまま繋がる)ことを確認。
+    // 訓練(洞窟)は従来どおり帯を使う(報告なし=触らない)。
+    const gs = useGameStore.getState();
+    if (gs.corridorMode || (gs.stageTheme === 'lab' && !gs.indoorMode)) {
       if (this.worldGapBand) this.worldGapBand.visible = false;
       return;
     }
+    if (this.worldGapBand && !this.worldGapBand.visible && !HIDE_LAYERS.has('gapband')) this.worldGapBand.visible = true;
     const farH = this.farBackdropHeight();
     const zoom = this.wgZoom();
     const offsetY = this.wgOffsetY();
