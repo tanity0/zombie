@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5168', items: [
+    'ステージ2の奥の赤い非常灯がさらに明るく',
+    '死体の塊の這う動きが、重くゆっくりになった',
+  ] },
   { version: '0.25.5167', items: [
     'ステージ2の灯りの届かない所が少し暗くなった。奥の赤い非常灯はもう少しはっきり',
   ] },

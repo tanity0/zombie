@@ -896,7 +896,7 @@ const LAB_FAR_GLASS_UP = tsNum('labfgup', 2); // 遠景窓ガラスだけの上�
 // 遠景のガラスの奥の非常灯(社長指示2026-10-20「ステージ2の遠景、ガラスの裏に薄ーく非常灯の灯り」「等間隔で。他は推薦通り」)。
 // 暗い赤・枠の絵(8面)に2つ=4面ごとの等間隔・窓と一緒に横へ流れる。蛍光灯が切れて暗くなっても非常灯だけは残る
 // (暗幕の濃さぶんを暗幕の上に足し戻す)。ごくたまに、ゆっくり明るさが揺らぐ。描画だけ・判定なし。
-const LAB_FAR_EMLIGHT_ALPHA = tsNum('labfemla', 0.38); // ガラスの奥のグローの濃さ。0.24→0.38(社長指示2026-10-20「もう少し明るく」)。?labfemla=
+const LAB_FAR_EMLIGHT_ALPHA = tsNum('labfemla', 0.6); // ガラスの奥のグローの濃さ。0.24→0.38→0.6(社長指示2026-10-20「もう少し明るく」×2)。?labfemla=
 const LAB_FAR_EMLIGHT_TINT = 0xb0141e;                 // 暗い赤
 const LAB_FAR_EMLIGHT_PANES = 8;                       // 枠の絵(stage2-far-frame)の面の数
 const LAB_FAR_EMLIGHT_EVERY = 4;                       // 何面ごとに1つ
@@ -2771,8 +2771,13 @@ const ENEMY_DEPTH_K = tsNum('edepthk', 0.00145);
 const ENEMY_DEPTH_MIN = tsNum('edepthmin', 0.55);
 const ENEMY_DEPTH_MAX = tsNum('edepthmax', 1.85);
 // ステージ2の這う塊の見え方(描画だけ・判定は world/labCrawler.ts)。
-/** 歩き12コマで1周する這った距離(px)。最高速18px/秒で約7コマ/秒。 */
-const LAB_CRAWLER_WALK_CYCLE_PX = tsNum('crawlcycle', 30);
+/**
+ * 歩き12コマで1周する這った距離(px)。速いほど1歩の幅も伸びる(=コマの速さは速度ほどには上がらない)。
+ * 社長指示2026-10-20「塊の移動時のモーション、もう少しゆっくり」: 旧 30px固定=追跡の速さ(約115px/秒)で毎秒46コマも回っていた。
+ * いま: 1周 = 45 + 0.55×速さ px → ゆっくり這い(18)で約4.5コマ/秒・追跡(115)で約13コマ/秒。
+ */
+const LAB_CRAWLER_WALK_CYCLE_PX = tsNum('crawlcycle', 45);
+const LAB_CRAWLER_WALK_STRIDE_PER_SPEED = tsNum('crawlstride', 0.55);
 /** 向き直りの尺(ms)。巨体なので、ずるずると時間をかけて向きを変える(雑魚の ENEMY_TURN_MS=120)。 */
 const LAB_CRAWLER_TURN_MS = 1250;
 /** プレイヤーに押し止められて進めない間の、もがくコマ送り(這った距離に換算・px/秒)。 */
@@ -4946,7 +4951,7 @@ export class PixiScene {
   /** 向き(1=素材どおり左向き / -1=右向き)。反転は CRAWLER_TURN_MS かけて 旧→0→新 と潰す(慣性)。 */
   private crawlerFace = { from: 1, to: 1, at: 0 };
   /** 這った距離の積算(歩きのコマ送り=移動速度に比例。止まれば止まる)。 */
-  private crawlerStride = { dist: 0, lastX: NaN, lastY: NaN, lastGt: 0 };
+  private crawlerStride = { phase: 0, lastX: NaN, lastY: NaN, lastGt: 0 };
   /** 取り込まれている敵の絵(取り込まれた瞬間の姿を覚えて、塊へ吸い寄せる)。 */
   private crawlerAbsorbFx = new Map<string, { sprite: Sprite; sx: number; sy: number; mask: Graphics }>();
   // §6.24 M48: 武器庫(病院と同じサークル+滞在の枠組み)/警察署(建物のみ・アリーナ方式でサークルなし)。
@@ -10977,12 +10982,15 @@ export class PixiScene {
     const st = this.crawlerStride;
     if (Number.isFinite(st.lastX)) {
       const d = Math.hypot(c.x - st.lastX, c.y - st.lastY);
-      if (d < 60) st.dist += d; // ワープ級の飛び(新しいラン等)はコマ送りに数えない
+      // 位相(周)で積む=速さが変わっても今のコマが跳ばない。1周の長さは速さで伸びる。
+      const cycle = LAB_CRAWLER_WALK_CYCLE_PX + LAB_CRAWLER_WALK_STRIDE_PER_SPEED * Math.hypot(c.vx, c.vy);
+      if (d < 60) st.phase += d / cycle; // ワープ級の飛び(新しいラン等)はコマ送りに数えない
       const gdt = Math.max(0, Math.min(100, gameTime - st.lastGt));
-      if (c.pressing && c.state === 'move') st.dist += gdt / 1000 * LAB_CRAWLER_STRUGGLE_PX_PER_S;
+      if (c.pressing && c.state === 'move') st.phase += gdt / 1000 * LAB_CRAWLER_STRUGGLE_PX_PER_S / cycle;
+      st.phase %= 1;
     }
     st.lastX = c.x; st.lastY = c.y; st.lastGt = gameTime;
-    const walkI = Math.floor((st.dist / LAB_CRAWLER_WALK_CYCLE_PX) * CRAWLER_WALK_FRAMES) % CRAWLER_WALK_FRAMES;
+    const walkI = Math.floor(st.phase * CRAWLER_WALK_FRAMES) % CRAWLER_WALK_FRAMES;
     const useAtk = !!atk && atkFrame !== null;
     const tex = useAtk ? atk![atkFrame!] : walk ? walk[walkI] : null;
     if (!tex) { sp.visible = false; return; }
