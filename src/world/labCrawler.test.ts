@@ -9,6 +9,7 @@ import {
   crawlerChaseSpawn, applyCrawlerDamage, crawlerObstacleHits, crawlerGapToPlayer,
   CRAWLER_CHASE_CATCHUP_GAP_PX, CRAWLER_CHASE_SLAM_ADVANCE_FRAC, CRAWLER_VANISH_GOAL_DIST_PX, CRAWLER_VANISH_MS, CRAWLER_VANISH_HOLD_MS, crawlerReachedGoal, crawlerGoalDir, crawlerVanishLook,
   approachCrawlerSpeed, CRAWLER_ACCEL_PX_S2, CRAWLER_DECEL_PX_S2,
+  crawlerChaseBandSpeed, CRAWLER_CHASE_TARGET_GAP_PX, CRAWLER_CHASE_FAR_GAP_PX, CRAWLER_CHASE_NEAR_MULT, CRAWLER_CHASE_FAR_MULT,
   crawlerSlamLunge, CRAWLER_SLAM_LUNGE_IN_MS, CRAWLER_SLAM_LUNGE_OUT_MS, CRAWLER_IMPACT_HOLD_MS,
   type LabCrawler, type CrawlerStepInput, type CrawlerTarget,
 } from './labCrawler';
@@ -741,5 +742,34 @@ describe('塊の横の速さの慣性(社長指示2026-10-20「止まりから�
     expect(approachCrawlerSpeed(-115, 0, 1 / 60)).toBeCloseTo(-115 + CRAWLER_DECEL_PX_S2 / 60, 6);
     expect(approachCrawlerSpeed(-50, 100, 1 / 60)).toBeCloseTo(-50 + CRAWLER_DECEL_PX_S2 / 60, 6);
     expect(approachCrawlerSpeed(10, 100, 0)).toBe(10);
+  });
+});
+
+describe('最後の追いかけっこのゴム紐(社長 2026-10-20「ギリギリ感」→A)', () => {
+  it('隙間で速さが決まる: 張り付く距離ではプレイヤーのわずかに上、遠いほど一気に詰める', () => {
+    expect(crawlerChaseBandSpeed(100, 0)).toBeCloseTo(100 * CRAWLER_CHASE_NEAR_MULT);
+    expect(crawlerChaseBandSpeed(100, CRAWLER_CHASE_TARGET_GAP_PX)).toBeCloseTo(100 * CRAWLER_CHASE_NEAR_MULT);
+    expect(crawlerChaseBandSpeed(100, CRAWLER_CHASE_FAR_GAP_PX)).toBeCloseTo(100 * CRAWLER_CHASE_FAR_MULT);
+    expect(crawlerChaseBandSpeed(100, 5000)).toBeCloseTo(100 * CRAWLER_CHASE_FAR_MULT);
+    const mid = crawlerChaseBandSpeed(100, (CRAWLER_CHASE_TARGET_GAP_PX + CRAWLER_CHASE_FAR_GAP_PX) / 2);
+    expect(mid).toBeGreaterThan(100 * CRAWLER_CHASE_NEAR_MULT);
+    expect(mid).toBeLessThan(100 * CRAWLER_CHASE_FAR_MULT);
+  });
+  it('全速で逃げても、塊は遠くからすぐ後ろまで詰めてきて、そこに張り付く(手の届く範囲の近く)', () => {
+    const walk = 125; // プレイヤーの歩き×テンポ
+    let px = 5000;
+    let c: LabCrawler | null = crawlerChaseSpawn(createLabCrawler({ x: -7000, y: 0 }), playerAt(px, 0), 1200, LAB, 0)!; // 遠く(PCの広い画面)に出る
+    let t = 0;
+    const gaps: number[] = [];
+    for (let i = 0; i < 60 * 40 && c; i++) {
+      t += 1000 / 60;
+      px -= walk / 60; // 原点(左)へ全速
+      const r = stepLabCrawler(c, input(t, 1 / 60, playerAt(px, 0), { chaseSpeed: walk * 1.1, targets: [] }));
+      c = r.next;
+      if (c && i % 60 === 0) gaps.push(crawlerGapToPlayer(c, playerAt(px, 0)));
+    }
+    const late = gaps.slice(-15);
+    expect(Math.max(...late)).toBeLessThan(CRAWLER_CHASE_TARGET_GAP_PX + 60); // 後半はずっとすぐ後ろ
+    expect(gaps[0]).toBeGreaterThan(CRAWLER_CHASE_FAR_GAP_PX); // 最初は遠かった
   });
 });

@@ -150,6 +150,22 @@ export const CRAWLER_CHASE_CATCHUP_GAP_PX = 320;
 /** 追いつく速さ=追跡の速さ×これ(下限は突進の速さ)。 */
 export const CRAWLER_CHASE_CATCHUP_MULT = 1.5;
 /**
+ * 最後の追いかけっこの「ギリギリ感」(社長 2026-10-20「最後追いかけてくるところ、ギリギリ感が少ない」→ 推薦A「aとbで」)。
+ * 速さを塊の縁とプレイヤーの隙間で決める(ゴム紐): 遠いほど一気に詰め、CRAWLER_CHASE_TARGET_GAP_PX(手の届く範囲のすぐ外・
+ * 画面の後ろの端に見える距離)ではプレイヤーの歩きの速さのわずかに上で張り付く。立ち止まる・雑魚に絡まれる・壁に引っかかると
+ * そのぶん手が届く。旧: プレイヤー×1.1 固定(差が毎秒約11pxしかなく、雑魚を食べるたびに画面の外へ遠のいていた)。
+ * プレイヤーが塊の後ろへ抜けた時(振り返らない)は従来の 1.1 倍のまま。追いつき(CATCHUP)はこれに含まれる。
+ */
+export const CRAWLER_CHASE_TARGET_GAP_PX = 170;
+export const CRAWLER_CHASE_FAR_GAP_PX = 560;
+export const CRAWLER_CHASE_NEAR_MULT = 1.05;
+export const CRAWLER_CHASE_FAR_MULT = 1.6;
+/** 追跡の速さ(純関数): プレイヤーの歩きの速さ×(隙間で 1.05〜1.6 倍)。 */
+export const crawlerChaseBandSpeed = (playerWalkSpeed: number, gapPx: number): number => {
+  const t = Math.max(0, Math.min(1, (gapPx - CRAWLER_CHASE_TARGET_GAP_PX) / (CRAWLER_CHASE_FAR_GAP_PX - CRAWLER_CHASE_TARGET_GAP_PX)));
+  return Math.max(0, playerWalkSpeed) * (CRAWLER_CHASE_NEAR_MULT + (CRAWLER_CHASE_FAR_MULT - CRAWLER_CHASE_NEAR_MULT) * t);
+};
+/**
  * 追跡中にプレイヤーを狙った叩きつけ(slamMoving)で、溜めの何割まで進み続けるか(0..1・品質監査2巡目A-0)。
  * 社長決定=0.5: 溜めの前半は追跡の速さで進み、赤い円も一緒に動く。後半は止まり、円も止まる(=当たる位置=最後に描いた円)。
  * 真っすぐ走って逃げれば、後半の間に円の外へ出られる。戻りの間は進む。
@@ -509,7 +525,10 @@ export const stepLabCrawler = (c: LabCrawler, inp: CrawlerStepInput): CrawlerSte
   const playerAhead = goalDir * (pc.x - crawlerCenter(n).x) > 0;
   if (n.chaseCatchUp && (!n.chasing || crawlerGapToPlayer(n, inp.player) <= CRAWLER_CHASE_CATCHUP_GAP_PX)) n = { ...n, chaseCatchUp: false };
   const baseChase = n.chasing ? Math.max(0, inp.chaseSpeed ?? CRAWLER_RUSH_SPEED) : 0;
-  const chaseSpeed = n.chaseCatchUp && playerAhead ? Math.max(CRAWLER_RUSH_SPEED, baseChase * CRAWLER_CHASE_CATCHUP_MULT) : baseChase;
+  // プレイヤーが前(ゴール側)に居る間は隙間で速さを決める(ゴム紐・社長 2026-10-20)。後ろへ抜けた時は 1.1 倍のまま。
+  const chaseSpeed = n.chasing && playerAhead
+    ? crawlerChaseBandSpeed(baseChase / CRAWLER_CHASE_SPEED_MULT, crawlerGapToPlayer(n, inp.player))
+    : baseChase;
   // 進む状態: 動いている間+追跡中にプレイヤーを狙った叩きつけの溜め・戻り(品質監査A1)。
   const windupAdvancing = n.state === 'windup'
     && (t - n.stateAt) < CRAWLER_CHASE_SLAM_ADVANCE_FRAC * Math.max(1, n.hitAt - n.stateAt);

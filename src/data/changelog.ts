@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5169', items: [
+    'ステージ2の逃走で、死体の塊がすぐ背後に張り付いてくる。足を止めれば手が届く',
+    '逃げている間は、背後の塊が画面の端に映る',
+  ] },
   { version: '0.25.5168', items: [
     'ステージ2の奥の赤い非常灯がさらに明るく',
     '死体の塊の這う動きが、重くゆっくりになった',

@@ -193,6 +193,7 @@ import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import { runLabCrawlerTick } from '../utils/labCrawlerTick'; // ステージ2の這う塊
+import { crawlerGoalDir, crawlerSolid } from '../world/labCrawler'; // 逃走中のカメラの寄せ
 import { labDistantDue } from '../utils/labDistantSound'; // ステージ2でたまに遠くから鳴る音
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
@@ -1450,6 +1451,9 @@ let bossCtrlErrLogged = false;                       // 裏ボス制御例外の
 let idolCtrlErrLogged = false;                       // idol制御例外のログも初回だけ
 let labDistantPrevMs = 0;
 let labDistantSeed = (Math.random() * 1e9) | 0;
+/** ステージ2の逃走中、カメラを塊の側へ寄せる量(画面幅比)と寄せる速さ(時定数・秒)。 */
+const LAB_ESCAPE_CAMERA_LEAD_FRAC = 0.2;
+const LAB_ESCAPE_CAMERA_TAU_S = 0.9;
 let crawlerCtrlErrLogged = false;                    // ステージ2の這う塊の制御例外のログも初回だけ(本体はlabCrawlerTick.ts)
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
@@ -1927,6 +1931,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const camBossLeadYRef = useRef<number>(0);
   // v0.25.3063: 横のボス先読み(世界px・正=東)。縦と同じ目標ライン式・同じ時定数(社長裁定「2をまず揃える」)。
   const camBossLeadXRef = useRef<number>(0);
+  const camEscapeLeadXRef = useRef<number>(0); // ステージ2の逃走: 塊の側へカメラを寄せる量(社長 2026-10-20「aとbで」のB)
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
   // ステージ2(屋外ラボ廊下)BGMクロスフェード: 直前フレームがlab対象コマだったか。falseへ落ちた
@@ -9773,7 +9778,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const look = camLookAheadRef.current;
         look.x += (offTx - look.x) * ok;
         look.y += (offTy - look.y) * ok;
-        const targetCameraX = baseCamX + look.x + camBossLeadXRef.current; // v0.25.3063: 横のボス先読み
+        // ステージ2の逃走(資料の後・塊が追ってくる間): カメラを塊の側(後ろ)へ寄せ、背後の塊が画面の端に映るようにする
+        // (社長 2026-10-20「最後追いかけてくるところ、ギリギリ感が少ない」→B)。描画だけ・慣性つきで寄せて戻す。
+        {
+          const gsc = useGameStore.getState();
+          const lc = gsc.labCrawler;
+          const escapeChase = labTheme && !indoor && gsc.labEscapeAt > 0 && !gsc.gameWon && !!lc && lc.chasing && crawlerSolid(lc);
+          const wantEsc = escapeChase && lc ? -crawlerGoalDir(lc) * gameBounds.width * LAB_ESCAPE_CAMERA_LEAD_FRAC : 0;
+          const ek = 1 - Math.exp(-baseDeltaTime / LAB_ESCAPE_CAMERA_TAU_S);
+          camEscapeLeadXRef.current += (wantEsc - camEscapeLeadXRef.current) * ek;
+        }
+        const targetCameraX = baseCamX + look.x + camBossLeadXRef.current + camEscapeLeadXRef.current; // v0.25.3063: 横のボス先読み
         const targetCameraY = baseCamY + look.y;
         // 指数追従(危険時はタイトな τ)。
         const followTau = Math.max(0.001, danger ? CAMERA_DANGER_TAU : CAMERA_FOLLOW_TAU);
@@ -9786,7 +9801,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ★横もボス先読みのぶんを基準に測る(2026-10-01「ボスが見切れてる」)。縦(offY)は camDownOff に
         // 縦の先読みが入っているので先読みを差し引いて測れていたが、横は差し引いておらず、**先読みそのものを
         // 遅れとみなして画面幅の7%へ引き戻していた**(実測: 先読みが欲しい量222wpxに対し実際22wpx)。
-        const offX = (pcCamX - camX) - gameBounds.width / 2 + camBossLeadXRef.current;
+        const offX = (pcCamX - camX) - gameBounds.width / 2 + camBossLeadXRef.current + camEscapeLeadXRef.current;
         const offY = (pcCamY - camY) - gameBounds.height / 2 - camDownOff; // 下げ量を基準に(=ずらした構図からのラグを測る)
         const offD = Math.hypot(offX, offY);
         if (offD > maxLag && maxLag > 0) { const s2 = 1 - maxLag / offD; camX += offX * s2; camY += offY * s2; }
