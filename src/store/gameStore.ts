@@ -211,7 +211,7 @@ import { stageBossDiffMults } from '../utils/stageDiffMults';
 // 代わりにbountyTick.tsもgameStore.tsも共通の葉から取る形にした)。
 import { escortAdvance, escortShouldHoldForWelcome } from '../utils/escortAdvance';
 import { escortOffscreenStep, escortOffscreenPace, baseDirectionLabel, ESCORT_STRUGGLE_STALL_MS } from '../utils/escortOffscreen';
-import { welcomeAppliesToRun } from '../utils/welcomeScript';
+import { welcomeAppliesToRun, welcomeAmmoDropPoint } from '../utils/welcomeScript';
 import { isWelcomeRetired } from '../utils/welcomeStreak';
 import { loadEscortFollowEnabled, saveEscortFollowEnabled, followToggleBaseAt } from '../utils/escortFollowToggle';
 import { listTravelDestinations, type TravelDestination } from '../utils/fastTravel';
@@ -336,7 +336,7 @@ import { isTrapDebuffed, trapGatedOverclockChance, trapGatedCooldownMult, TRAP_R
 import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
 import { clearDestroyedObstacles } from '../world/destructibles';
-import { resolveCityPropCollision, setCityPropsDisabled, cityPropsInRegion, cityPropRect } from '../world/cityProps';
+import { resolveCityPropCollision, setCityPropsDisabled, cityPropsInRegion, cityPropRect, cityPropDef } from '../world/cityProps';
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
 import { detourAngleOffset } from '../world/detourPoi';
 import { armoryPos as armorySpot, resolveArmoryCollision, isInArmoryCircle, tickArmoryDwell, ARMORY_SCRAP_COST } from '../world/armory';
@@ -13828,16 +13828,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     const type = pickAmmoDropType(owned.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), undefined)
       ?? owned.find(t => t !== 'phill');
     if (!type) return;
-    // 中心→プレイヤーの**逆向き**=輪の中でプレイヤーから最も遠い側。
+    // 輪の中でプレイヤーから最も遠い側。ただし輪の奥側(地平線のフェード帯=薄くて見えない)は避ける(welcomeAmmoDropPoint)。
     const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
-    const dx = pcx - cx, dy = pcy - cy;
-    const d = Math.hypot(dx, dy);
-    // ★重なっている時は向きが定まらない。既定を持って必ずどこかへ置く(その場に落とさない)。
-    const ux = d > 0.001 ? -dx / d : 0;
-    const uy = d > 0.001 ? -dy / d : -1;
+    // 散布オブジェクト(廃バス・監視塔・テント等)の**絵**の範囲(足元から絵の高さぶん上・幅は当たりの幅+余白)に入る点は使わない。
+    const farKey = get().farBackdrop;
+    const PAD = 24;
+    const props = cityPropsInRegion(farKey, cx - distPx - 200, cy - distPx - 200, cx + distPx + 200, cy + distPx + 200);
+    const hidden = (dx: number, dy: number): boolean => {
+      const x = cx + dx, y = cy + dy;
+      return props.some(p => {
+        const def = cityPropDef(farKey, p.variant);
+        if (!def || def.decal) return false;
+        const halfW = Math.max(def.colW, def.displayH * 0.8) * p.scale / 2 + PAD;
+        return Math.abs(x - p.footX) <= halfW && y <= p.footY + PAD && y >= p.footY - def.displayH * p.scale - PAD;
+      });
+    };
+    const at = welcomeAmmoDropPoint(pcx - cx, pcy - cy, distPx, hidden);
     get().addPickup({
       id: `pickup-ammo-welcome-${step}-${Math.round(get().gameTime)}`,
-      x: cx + ux * distPx - 8, y: cy + uy * distPx - 8,
+      x: cx + at.x - 8, y: cy + at.y - 8,
       type: `ammo-${type}` as `ammo-${AmmoType}`,
       value: 0,
     });

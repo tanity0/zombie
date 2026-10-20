@@ -274,3 +274,38 @@ describe('ウェルカムの輪の中心(社長指示2026-10-17「洋館のウ�
     expect(welcomeRingCenter('stage-ex1', 240)).toEqual({ x: 0, y: 0 });
   });
 });
+
+import { welcomeAmmoDropPoint, WELCOME_AMMO_MAX_RISE_PX, WELCOME_AMMO_MAX_SIDE_PX, WELCOME_AMMO_MAX_DROP_PX } from './welcomeScript';
+describe('ウェルカムの段の弾を置く点(画面の外・地平線のフェード・手前の霞・物の絵の後ろを避ける・2026-10-20「ステージ4に無い」)', () => {
+  const D = 204;
+  const visible = (px: number, py: number, d: { x: number; y: number }) =>
+    d.y >= py - WELCOME_AMMO_MAX_RISE_PX - 1e-6 && d.y <= py + WELCOME_AMMO_MAX_DROP_PX + 1e-6
+    && Math.abs(d.x - px) <= WELCOME_AMMO_MAX_SIDE_PX + 1e-6;
+  it('輪の中でプレイヤーがどこにいても、見える範囲・輪の内側に置く', () => {
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * Math.PI * 2;
+      for (const r of [0, 20, 60, 120, 180]) {
+        const px = Math.cos(a) * r, py = Math.sin(a) * r;
+        const d = welcomeAmmoDropPoint(px, py, D);
+        expect(visible(px, py, d)).toBe(true);
+        expect(Math.hypot(d.x, d.y)).toBeLessThanOrEqual(D + 1e-6);
+      }
+    }
+  });
+  it('見える範囲の中で遠い方を選ぶ: 右にいれば左側、上にいれば下側', () => {
+    expect(welcomeAmmoDropPoint(120, 0, D).x).toBeLessThan(120 - 100); // プレイヤーより左側
+    expect(welcomeAmmoDropPoint(0, -120, D).y).toBeGreaterThan(-120);
+  });
+  it('中心に重なっている時も、その場・真上に置かず、ある程度離す', () => {
+    const d = welcomeAmmoDropPoint(0, 0, D);
+    expect(visible(0, 0, d)).toBe(true);
+    expect(Math.hypot(d.x, d.y)).toBeGreaterThan(D * 0.5);
+  });
+  it('物の絵に隠れる点を除いて選ぶ(縁が塞がっていれば内側へ)', () => {
+    const free = welcomeAmmoDropPoint(0, 0, D);
+    const hidden = (dx: number, dy: number) => Math.hypot(dx - free.x, dy - free.y) < 70 || Math.hypot(dx + free.x, dy - free.y) < 70;
+    const d = welcomeAmmoDropPoint(0, 0, D, hidden);
+    expect(hidden(d.x, d.y)).toBe(false);
+    expect(visible(0, 0, d)).toBe(true);
+  });
+});

@@ -134,6 +134,46 @@ export const welcomeAppliesToRun = (input: WelcomeApplicabilityInput): boolean =
 export const welcomeRingCenter = (stageId: string, radius: number): { x: number; y: number } =>
   stageId === 'stage-6' ? { x: 0, y: Math.min(0, CORRIDOR_BOTTOM_LIMIT - radius) } : { x: 0, y: 0 };
 
+/**
+ * ウェルカムの段を片付けた時に弾を置く点(輪の中心から見たずれ・純関数)。
+ * 社長指示2026-09-19「プレイヤーから遠い端っこにドロップ」=輪の縁のうちプレイヤーから最も遠い点が基本。
+ * ★ただし**プレイヤーより大きく奥(画面の上)の点は除く**(社長報告2026-10-20「ステージ4に無い」): 画面の上の帯は
+ *   地平線のフェードで薄くなり(ステージ4は帯が手前にあり、ほぼ透明)、落ちた弾が見えなかった。帯はカメラ=プレイヤーと
+ *   一緒に動くので、輪の上下ではなく「プレイヤーからどれだけ上か」で決める(WELCOME_AMMO_MAX_RISE_PX まで)。
+ *   左右も同じく画面の中に収まる幅(WELCOME_AMMO_MAX_SIDE_PX)まで。散布オブジェクトの絵の後ろ(`hidden`)も除く
+ *   (ステージ4の廃バスの絵に隠れていた)。
+ *   残りの点のうちプレイヤーから最も遠い点を選ぶ。下も手前の霞に覆われない距離(WELCOME_AMMO_MAX_DROP_PX)まで。
+ *   縁が塞がっていれば輪の内側へ寄せる(WELCOME_AMMO_RADII)。どれも許されない時は見えない量が一番少ない点。
+ * `px`/`py` は輪の中心から見たプレイヤーの位置、`distPx` は中心から置く点までの距離。
+ */
+export const WELCOME_AMMO_MAX_RISE_PX = 90;
+/** 左右もプレイヤーからこの幅まで(輪の半径はスマホの画面の半幅より大きい=横の端は画面の外だった。右端の武器の欄にも潜らない幅)。 */
+export const WELCOME_AMMO_MAX_SIDE_PX = 110;
+/** 下もプレイヤーからこの距離まで(画面の下の帯は手前の霞・前景に覆われる)。 */
+export const WELCOME_AMMO_MAX_DROP_PX = 100;
+export const WELCOME_AMMO_RADII = [1, 0.85, 0.7, 0.55, 0.4] as const; // 縁が塞がっている時は内側へ寄せる(distPx に掛ける)
+export const welcomeAmmoDropPoint = (
+  px: number, py: number, distPx: number,
+  /** 輪の中心から見た点(dx,dy)が物の絵に隠れるか(呼ぶ側=store が散布オブジェクトの絵の範囲で答える)。 */
+  hidden: (dx: number, dy: number) => boolean = () => false,
+): { x: number; y: number } => {
+  let best = { x: 0, y: distPx }, bestScore = -Infinity;
+  for (const k of WELCOME_AMMO_RADII) {
+    for (let i = 0; i < 48; i++) {
+      const a = (i / 48) * Math.PI * 2;
+      const uy = Math.sin(a);
+      const x = Math.cos(a) * distPx * k, y = uy * distPx * k;
+      // 見えない所の量(px)。上へ上がりすぎ(地平線のフェード)・下へ下がりすぎ(手前の霞)・横の外。物の絵の後ろは別の重さ。
+      const off = Math.max(0, (py - WELCOME_AMMO_MAX_RISE_PX) - y) + Math.max(0, y - (py + WELCOME_AMMO_MAX_DROP_PX))
+        + Math.max(0, Math.abs(x - px) - WELCOME_AMMO_MAX_SIDE_PX);
+      // 見えて隠れない点の中で遠い点(見えない量・隠れは何より先に減らす=どこも駄目な時も一番ましな点へ)。同点は縁寄り・横寄り。
+      const score = -(off + (hidden(x, y) ? 400 : 0)) * 1e6 + (x - px) ** 2 + (y - py) ** 2 + k * 1e-3 - Math.abs(uy) * 1e-4;
+      if (score > bestScore + 1e-9) { bestScore = score; best = { x, y }; }
+    }
+  }
+  return best;
+};
+
 /** 始動ゲートの種類。今は「商人より上(y座標が小さい)へ出る」の1種のみ。 */
 export type WelcomeStartGate = 'above-merchant';
 

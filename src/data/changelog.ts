@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5183', items: [
+    'ウェルカムの波を片付けるたびに落ちる弾が、画面の奥や物陰に隠れて見えないことがあった。見える所に落ちるように',
+  ] },
   { version: '0.25.5182', items: [
     'GameSir や 8BitDo のコントローラーで、肩のボタンで一時停止が開いていた。スタートボタンで開くように。ほかのボタンの割り当ても正しい位置に',
   ] },
