@@ -896,7 +896,7 @@ const LAB_FAR_GLASS_UP = tsNum('labfgup', 2); // 遠景窓ガラスだけの上�
 // 遠景のガラスの奥の非常灯(社長指示2026-10-20「ステージ2の遠景、ガラスの裏に薄ーく非常灯の灯り」「等間隔で。他は推薦通り」)。
 // 暗い赤・枠の絵(8面)に2つ=4面ごとの等間隔・窓と一緒に横へ流れる。蛍光灯が切れて暗くなっても非常灯だけは残る
 // (暗幕の濃さぶんを暗幕の上に足し戻す)。ごくたまに、ゆっくり明るさが揺らぐ。描画だけ・判定なし。
-const LAB_FAR_EMLIGHT_ALPHA = tsNum('labfemla', 0.24); // ガラスの奥のグローの濃さ。?labfemla=
+const LAB_FAR_EMLIGHT_ALPHA = tsNum('labfemla', 0.38); // ガラスの奥のグローの濃さ。0.24→0.38(社長指示2026-10-20「もう少し明るく」)。?labfemla=
 const LAB_FAR_EMLIGHT_TINT = 0xb0141e;                 // 暗い赤
 const LAB_FAR_EMLIGHT_PANES = 8;                       // 枠の絵(stage2-far-frame)の面の数
 const LAB_FAR_EMLIGHT_EVERY = 4;                       // 何面ごとに1つ
@@ -935,7 +935,8 @@ const LAB_OUT_DIM_TOP_SHARE = Math.max(0, Math.min(1, tsNum('labdimshare', 0.8))
 // 0.22(v0.25.2263)→ 0.42(v2265「もっと暗くして」)→ 0.22(v2273「元に戻して」)→ **0**
 // (社長指示v0.25.2275「さらに戻して」= 暗転そのものを無しにして元の明るさへ)。
 // **0でも非常灯は出る**(v0.25.2275で幕とライトのガードを分離済み)。少し暗くしたい時は ?labdark=0.1 等。
-const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0)));
+// → 0.15(社長指示2026-10-20「ライトが当たってない全体を少し暗く」=灯りの外だけ沈む・灯りは幕の上で持ち上げる)。
+const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.15)));
 // 間隔440 / 半径140(=光の直径280、暗がり160)。実測で決めた値:
 //  - 900だと画面(≒390ワールドpx幅)に1個も入らない時間が長く、並んでいるリズムが伝わらない。
 //  - 逆に間隔を詰めて2個以上同時に映そうとすると光が繋がって**暗くした意味が消える**。

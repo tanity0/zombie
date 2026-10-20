@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5167', items: [
+    'ステージ2の灯りの届かない所が少し暗くなった。奥の赤い非常灯はもう少しはっきり',
+  ] },
   { version: '0.25.5166', items: [
     'ステージ2のゴールは武器商人のすぐ手前。円の中で指を離せば帰還できる',
   ] },
