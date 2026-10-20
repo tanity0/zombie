@@ -54,6 +54,30 @@ export const getSoftGlowTexture = (): Texture => {
   return softGlowTex;
 };
 
+let hitCoreTex: Texture | null = null;
+/**
+ * 当たった一点の光の型(変異塊の被弾の明滅・2026-10-20)。`getSoftGlowTexture` より**芯が小さく、外側が速く抜ける**
+ * (12%まで満・30%で0.35・55%で0.06)=広いもやではなく「ここに当たった」が読める点。白で焼き、使う側が型として使う。
+ */
+export const getHitCoreGlowTexture = (): Texture => {
+  if (hitCoreTex) return hitCoreTex;
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const r = size / 2;
+  const g = ctx.createRadialGradient(r, r, 0, r, r, r);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.12, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.3, 'rgba(255,255,255,0.35)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.06)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  hitCoreTex = Texture.from(canvas);
+  return hitCoreTex;
+};
+
 /**
  * v0.25.2635(社長指示「光源側もDOF、松明からやって」): **ピントが外れた光源用**の平坦なカーブ。
  *

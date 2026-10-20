@@ -558,6 +558,19 @@ export interface Enemy {
   // 旧v0.25.4374はチャネル(`'dot'`)で丸ごと除外していたが、量で決める形へ置き換えた。
   // 判定には一切使わない。点滅・跳ね・光は従来どおり `lastHit` を見る。
   lastHitDmg?: number;
+  // ★弾が当たった打刻と衝撃(**描画専用**・社長指示2026-10-20「ステージ2のアイドルや塊は撃たれても反応するようにして」)。
+  // `shotHitAt` は**打刻された被弾の `lastHit`**(1発の弾)。`shotImpX/Y` はその処理で当たった弾の衝撃(弾の向き×押し戻しの強さ・
+  // `utils/shotRecoil.ts`)。`shotHitPx/Py` は弾が当たった点(変異塊の被弾の光の位置)。
+  // `shotForceAt` は継続して当たるもの(火炎・光線・金環のレーザー・塊弾の脈)の打刻された被弾の `lastHit`、`shotForceX/Y` は押し続ける力。
+  // 書くのは `hasShotRecoil` の型(アイドル・変異塊の代理)だけ。判定・移動には一切使わない。
+  shotHitAt?: number;
+  shotImpX?: number;
+  shotImpY?: number;
+  shotHitPx?: number;
+  shotHitPy?: number;
+  shotForceAt?: number;
+  shotForceX?: number;
+  shotForceY?: number;
   lastShot: number;
   // ★弾を撃つ前の「花が閉じる」溜めの開始時刻(Date.now基準・`lastShot` と同じ時計)。
   // プラントだけが使う(`utils/plantShot.ts`)。**この間はまだ撃っていない**——閉じ切る

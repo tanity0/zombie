@@ -28,6 +28,7 @@ import { clampRectToPlayableArea } from '../world/playableArea';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
 import { recoilSpecForWeapon } from './combatFeel';
 import { dropGunKillLoot, type GunKillDropCtx } from './gunKillDrops';
+import { hasShotRecoil, stampShotHits, addShotHit, type ShotHitAcc } from './shotRecoil';
 import {
   BLOB_WEAPON_KEY, BLOB_MAX_ALIVE, BLOB_RADIUS_PX, BLOB_LIFE_MS, BLOB_FADE_MS, BLOB_TICK_DAMAGE, BLOB_MUZZLE_PX, createBlobShot, stepBlobShot, isBlobExpired,
   accumulateBlobNumber, pruneBlobNumberLedger, blobHitRadius, type BlobShot, type BlobNumberLedger,
@@ -152,9 +153,25 @@ let killCtx: NewGunsKillCtx | null = null;
  * 1回のダメージを当てる。倒したら、弾で倒した時と同じ撃破演出とドロップ(dropGunKillLoot=品質監査#4)。
  * killChainSlowOk=false で連続撃破10体スローを出さない(塊弾の一定間隔の当たり=品質監査#12)。戻り値=数字に出す量。
  */
-const hitEnemy = (e: Enemy, dmg: number, killChainSlowOk: boolean | undefined, dirX?: number, dirY?: number): { killed: boolean; shown: number } => {
+const hitEnemy = (e: Enemy, dmg: number, killChainSlowOk: boolean | undefined, dirX?: number, dirY?: number, stream = false): { killed: boolean; shown: number } => {
   const st = useGameStore.getState();
+  const shotSince = Date.now(); // この当たりで書かれる lastHit はこれ以降
   const killed = st.damageEnemy(e.id, dmg, false, false, false, 'gun', 'player', null, 1, null, killChainSlowOk);
+  // 撃たれた時の押し戻し(utils/shotRecoil.ts・アイドルと変異塊の代理だけ)。向きが渡されない当たりはプレイヤー→敵の向き。
+  // stream=継続して当たるもの(塊弾の200msごとの脈)=押し続ける力として渡す(1発ごとのしゃっくりにしない)。回る弾の接触は1発の弾扱い。
+  if (hasShotRecoil(e.type)) {
+    const pl = st.player;
+    const dx = dirX ?? (e.x + e.width / 2 - (pl.x + pl.width / 2));
+    const dy = dirY ?? (e.y + e.height / 2 - (pl.y + pl.height / 2));
+    useGameStore.setState(s => {
+      const cur = s.enemies.find(x => x.id === e.id);
+      if (!cur || !(cur.lastHit >= shotSince)) return {};
+      const acc = new Map<string, ShotHitAcc>();
+      addShotHit(acc, e.id, dx, dy, cur.lastHitDmg, stream);
+      const next = stampShotHits(s.enemies, acc, shotSince);
+      return next === s.enemies ? {} : { enemies: next as Enemy[] };
+    });
+  }
   // 数字に出す量=印の倍率の後(HPに掛かったのと同じ判定を純関数で引き直す)。
   const mult = scanMarkDamageMult({
     marked: isScanMarked(e, st.gameTime), amount: dmg, enemyHealth: e.health, postureImpact: null,
@@ -267,7 +284,7 @@ const tickBlob = (gameTime: number, dtSec: number, canFire: boolean): void => {
         const e = useGameStore.getState().enemies.find(x => x.id === id);
         if (!e || isCorpse(e)) continue;
         const dmg = Math.max(1, h.blob.tickDamage * outgoingGunMult(p, e, gameTime)); // 小数のまま(9.5)。数字はまとめで丸める
-        const { shown } = hitEnemy(e, dmg, false, h.blob.dirX, h.blob.dirY);
+        const { shown } = hitEnemy(e, dmg, false, h.blob.dirX, h.blob.dirY, true);
         const v = accumulateBlobNumber(blobNumbers, id, shown, gameTime);
         if (v !== null) {
           const marked = isScanMarked(e, gameTime);

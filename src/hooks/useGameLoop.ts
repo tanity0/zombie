@@ -193,6 +193,7 @@ import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import { idolAirLiftOf } from '../utils/idolScript'; // 宙の偶像に当たった手応えの絵を体の高さへ(見せ方のみ)
+import { hasShotRecoil, stampShotHits, addShotHit, type ShotHitAcc } from '../utils/shotRecoil'; // 撃たれた時の押し戻し(アイドル・変異塊)の打刻
 import { runLabCrawlerTick, breakLabObstaclesInSweep } from '../utils/labCrawlerTick'; // ステージ2の這う塊(+アイドルの拳で壁を壊す)
 import { crawlerGoalDir, crawlerSolid } from '../world/labCrawler'; // 逃走中のカメラの寄せ
 import { labDistantDue } from '../utils/labDistantSound'; // ステージ2でたまに遠くから鳴る音
@@ -14042,8 +14043,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const applyBeamPulse = (
           hits: readonly Enemy[], pulseDamage: number, ownerGhostId: string | undefined,
           burstColor: string, xpIdPrefix: string,
+          // 撃たれた時の押し戻し(アイドル・変異塊)の向きの起点(銃の光線/扇=プレイヤーの中心・金環=レーザーの根元)。渡した時だけ打刻する。
+          recoilFrom?: { x: number; y: number },
         ): void => {
           if (hits.length === 0) return;
+          const pulseRecoil = new Map<string, ShotHitAcc>();
+          const pulseSince = Date.now();
           // research/WEAPON_AI_TEST.md S2-a: 金環/氷槍床/アイレーザー/火炎放射器の共通パルス口。
           // hits.length を渡すのは「1パルスで2体以上=貫通」の観測用(計測のみ・挙動不変)。
           recordBeamPulse(hits.length);
@@ -14058,12 +14063,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // nonLethalBoss は v0.25.1571 で廃止済み(引数は互換のため残置・実際は爆発以外も
             // ボスを倒せる)なので値は無関係。damageChannel='other'・クリなし(§19-2b)。
             const killed = damageEnemy(e.id, dmg, false, false, false, 'dot', hateSource); // 連続源(光線の脈)=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
+            if (recoilFrom && hasShotRecoil(e.type)) {
+              // 脈は継続扱い=押し続ける力(stampShotHits の stream)。向き=起点→当たった敵(光線/扇の進む向き)。
+              const cur = useGameStore.getState().enemies.find(x => x.id === e.id);
+              if (cur && cur.lastHit >= pulseSince) {
+                addShotHit(pulseRecoil, e.id, ex - recoilFrom.x, ey - recoilFrom.y, cur.lastHitDmg, true);
+              }
+            }
             spawnDamageNumber(ex, e.y, dmg, false, { enemyId: e.id });
             spawnBurst(ex, ey, burstColor, 3);
             if (killed) {
               playEnemyDeath();
               dropEnemyXp(e, ex, ey, `${xpIdPrefix}-${Math.floor(Date.now())}`);
             }
+          }
+          if (pulseRecoil.size > 0) {
+            useGameStore.setState(st => {
+              const next = stampShotHits(st.enemies, pulseRecoil, pulseSince);
+              return next === st.enemies ? {} : { enemies: next as Enemy[] };
+            });
           }
         };
 
@@ -14119,7 +14137,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     changed = true;
                     const pulseBeam = pulses[0];
                     const hits = pickBeamHits(pulseBeam.ax, pulseBeam.ay, pulseBeam.bx, pulseBeam.by, pulseBeam.halfWidth, aimableEnemies);
-                    applyBeamPulse(hits, pulseBeam.damage, ring.ownerGhostId, '#fde68a', 'pickup-xp-gold-ring');
+                    applyBeamPulse(hits, pulseBeam.damage, ring.ownerGhostId, '#fde68a', 'pickup-xp-gold-ring', { x: pulseBeam.ax, y: pulseBeam.ay });
                   }
                   nextRings.push({ ...ring, beam: survBeams[0] ?? ring.beam });
                 } else { // 'fading'
@@ -14506,7 +14524,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const end2 = shortenSegmentAtWalls(elPcx, elPcy, rawEndX2, rawEndY2, beamWalls(elPcx, elPcy, elPad2));
                     if (gameTime >= eyeLaserNextPulseRef.current) {
                       const hits = pickBeamHits(elPcx, elPcy, end2.x, end2.y, EYE_LASER_HALFWIDTH, elAimable);
-                      applyBeamPulse(hits, elGun.eyeLaserPulseDamage ?? 0, undefined, '#ff8a3d', 'pickup-xp-eyelaser');
+                      applyBeamPulse(hits, elGun.eyeLaserPulseDamage ?? 0, undefined, '#ff8a3d', 'pickup-xp-eyelaser', { x: elPcx, y: elPcy });
                       eyeLaserNextPulseRef.current += EYE_LASER_PULSE_MS;
                     }
                     // ★A-3/A-4是正: 射線(毎tick)はstoreの専用フィールドへ。
@@ -14563,7 +14581,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ? candidates
                   : candidates.filter(e => !segmentBlocked(flPcx, flPcy, e.x + e.width / 2, e.y + e.height / 2, flWalls));
                 const pulseDamage = Math.max(1, Math.round(gunShotBaseDamage(flGun, flPlayer, gameTime)));
-                applyBeamPulse(hits, pulseDamage, undefined, '#ff9d4d', 'pickup-xp-flamer');
+                applyBeamPulse(hits, pulseDamage, undefined, '#ff9d4d', 'pickup-xp-flamer', { x: flPcx, y: flPcy });
                 // ★検収監査A-5是正: パルスが途切れていた(=新しい噴射の立ち上がり)時だけ
                 // flamerSprayStartAtを更新する。継続中の噴射では最初の開始時刻を保持したまま
                 // (pixiSceneがそこからの経過でα/長さを一度だけ立ち上げ、以後は定常表示にする)。
@@ -14891,6 +14909,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
         
+        // 撃たれた時の押し戻し(utils/shotRecoil.ts・アイドルと変異塊の代理だけ): 1発ごとの衝撃(弾の向き×そのダメージの強さ)を
+        // 敵ごとに足し、ループの後に1回だけ打刻する。
+        const shotRecoilHits = new Map<string, ShotHitAcc>();
         projectileEnemyCollisions.forEach(({ projectileId, enemyId, damage, headshot }) => {
           const enemyForFx = collisionEnemies.find(e => e.id === enemyId);
           const projectile = collisionProjectiles.find(p => p.id === projectileId);
@@ -15161,6 +15182,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             hitSfxGain = npcSfxDistGain(hitPt.x, hitPt.y, hpl.x + hpl.width / 2, hpl.y + hpl.height / 2, hcam, hgb);
           }
           if (!gpDeflectedShot) playSfx(hitCrit ? 'headshot' : 'shot-damage', hitSfxGain); // 幻影が弾いた弾は無音(v0.25.3640監査Q1-1)
+          if (enemyForFx && projectile && !gpBulletReflected && hasShotRecoil(enemyForFx.type)) {
+            const cur = useGameStore.getState().enemies.find(x => x.id === enemyId);
+            // 実際に被弾した時だけ(lastHit がこの処理の中で書かれた)。強さはその1発に入ったダメージ(lastHitDmg)。
+            if (cur && cur.lastHit >= fireNowMs) {
+              addShotHit(shotRecoilHits, enemyId, projectile.direction.x, projectile.direction.y, cur.lastHitDmg, false, hitPt); // hitPt=当たった点(変異塊の光の位置)
+            }
+          }
           // 撃たれた対象の背中側(=弾の進行方向の出口)に「ドバッと火」破裂演出(2コマ立ち絵=プールsprite1枚で安い)。
           // 「敵1体につき直近 FIRE_JET_DEDUP_MS は1本」に間引く。ショットガン等の多弾(=見た目は単発)は近距離だと同一
           // フレーム、遠距離だと数フレームに分かれて命中するため、フレーム単位の間引きだけでは「2本生える」を防げない。
@@ -15711,6 +15739,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             }
           }
         });
+        if (shotRecoilHits.size > 0) {
+          useGameStore.setState(s => {
+            const next = stampShotHits(s.enemies, shotRecoilHits, fireNowMs);
+            return next === s.enemies ? {} : { enemies: next as Enemy[] };
+          });
+        }
 
         // Projectiles can also break small environmental props such as torches.
         const propProjectiles = useGameStore.getState().projectiles;

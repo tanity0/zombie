@@ -42,6 +42,7 @@ import { SIGNAL_STRIKE_DELAY_MS, type SignalStrike } from '../utils/signalLaunch
 import { playerHurtReactionOf, isHurtCancelled } from '../utils/playerHurt';
 // ★被弾リアクションの強さ(しなり/跳ね/フラッシュ/光/ノックバック/停止時間が読む唯一の窓口・2026-09-17)
 import { enemyHitReaction, hopMul, flashMul } from '../utils/hitFlinch';
+import { hasShotRecoil, newRecoilBody, kickRecoil, pushRecoilForce, advanceRecoil, recoilOffset, recoilParts, SHOT_RECOIL_IDOL, SHOT_RECOIL_CRAWLER, type RecoilBody } from '../utils/shotRecoil'; // 撃たれた時の押し戻し(アイドル・変異塊)
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
   lichWarpPose, lichCircleVanishProgress, lichCircleAppearProgress, lichWarpTintStrength,
@@ -375,7 +376,7 @@ import {
   SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS, SHADOW_STATIC_SLOTS,
   canBakeSilhouette, planSilhouetteEviction,
 } from '../utils/shadowSlots';
-import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 // SKILL_BUILD_REDESIGN.md §21(B5)/§24(社長指示2026-08-13): 枠光の判定は純関数のまま(pixiは読むだけ・
 // 判定を書かない)。バーサーカー=HP依存の常時オーラ、オーバークロック=proc起点の800msフラッシュ。
@@ -2859,6 +2860,15 @@ const LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS = 160;
 const LAB_CRAWLER_HIT_FLASH_GAP_MAX_MS = 260;
 /** 当たった点の周りだけ光らせる円(2巡目#9): 半径=絵の高さ×これ(濃さが上がるほど少し広がる)。円の縁は柔らかい光の絵でぼかす。 */
 const LAB_CRAWLER_HIT_FLASH_R_K = 0.5;
+/** 当たった一点の芯を強く(芯の小さい型 getHitCoreGlowTexture と組み、外側は速く抜ける)。濃さへ掛ける倍率(上限1)。 */
+const LAB_CRAWLER_HIT_FLASH_CORE_MUL = 1.35;
+/**
+ * 当たった一点の置き場所: 面した縁からの内側(px)と、絵の高さに対する上下の範囲(足元から)。芯が小さくなったので、
+ * 縁の指先や頭と腕の間の隙間(肉の無い所)に置くと何も光らない(2026-10-20・画で確認)。⇒ 縁から少し内側・胴の中ほどの帯へ収める。
+ */
+const LAB_CRAWLER_HIT_POINT_INSET_PX = 140;
+const LAB_CRAWLER_HIT_POINT_TOP_K = 0.55;
+const LAB_CRAWLER_HIT_POINT_BOTTOM_K = 0.18;
 /** 光の濃さ: 前の光からこのダメージが積もって満の濃さ(それ未満は薄く・下限 LAB_CRAWLER_HIT_FLASH_MIN_POWER)。 */
 const LAB_CRAWLER_HIT_FLASH_FULL_DMG = 60;
 const LAB_CRAWLER_HIT_FLASH_MIN_POWER = 0.4;
@@ -2875,7 +2885,34 @@ const LAB_CRAWLER_LANTERN_SWING_MS = 900;
 const LAB_CRAWLER_SLAM_LUNGE_PX = 46;
 /** 怯み: 当たった方へこの距離(px)だけ、出だし速く(ease-out)戻りはゆっくり(慣性)。 */
 const LAB_CRAWLER_FLINCH_PX = 5;
+/** 撃たれた時の押し戻し(utils/shotRecoil.ts・アイドルと変異塊)の量の倍率。実機で詰める用のツマミ(?shotrecoil=1.5 等)。 */
+const SHOT_RECOIL_MUL = Math.max(0, tsNum('shotrecoil', 1));
+/** アイドルの赤い線(起点=銃口)が出ている間の、体の押し戻しの割合(赤い予告と銃口のずれを小さく保つ)。 */
+const IDOL_RECOIL_TELEGRAPH_MUL = 0.3;
+/** アイドルの赤い線が銃口から出ている溜め(狙い撃ち・扇・狙撃線・追尾弾・射撃部品)。 */
+const idolLineTelegraphOn = (bs: string | undefined): boolean =>
+  bs === 'idol-aim-windup' || bs === 'idol-fan-windup' || bs === 'idol-snipe-windup' || bs === 'idol-orb-windup'
+  || (bs !== undefined && bs.startsWith('idol-s') && bs.endsWith('-windup')
+    && isIdolShot(bs.slice('idol-'.length, bs.length - '-windup'.length) as IdolMove));
 const LAB_CRAWLER_FLINCH_MS = 200;
+/** 弾でランタンを蹴る1回の振れ幅の上限(px)・次に蹴るまでの最短間隔(ms)・重ねる数の上限。振れは足し合わせる(重い一撃の振れ12〜24pxより小さく)。 */
+const LAB_CRAWLER_SHOT_SWING_MAX_PX = 6;
+const LAB_CRAWLER_SHOT_SWING_GAP_MS = 110;
+const LAB_CRAWLER_SHOT_SWING_CAP = 6;
+/** 押しの履歴から、時刻 t の押しを線形に引く(範囲外は端の値)。 */
+const sampleRecoilHist = (h: readonly { t: number; x: number; y: number }[], t: number): { x: number; y: number } => {
+  if (h.length === 0) return { x: 0, y: 0 };
+  if (t <= h[0].t) return { x: h[0].x, y: h[0].y };
+  for (let i = h.length - 1; i > 0; i--) {
+    const a = h[i - 1], b = h[i];
+    if (t >= a.t) {
+      const u = b.t > a.t ? Math.min(1, (t - a.t) / (b.t - a.t)) : 1;
+      return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+    }
+  }
+  const last = h[h.length - 1];
+  return { x: last.x, y: last.y };
+};
 /** ランタンの遅れた振れ(px・0から始まり、行き過ぎ→戻り→収まる)。t=振れ始めからの経過ms。 */
 const crawlerLanternSwing = (t: number, amp: number): number => {
   if (t <= 0 || t >= LAB_CRAWLER_LANTERN_SWING_MS) return 0;
@@ -4168,6 +4205,10 @@ interface ActorView {
   // 社長裁定(v0.25.3437): idolのハンドガン(プレイヤーのhandgun-t1流用)。撃った後(fire/recover)は
   // 最後の溜めの向きで固まる(punchAimと同じ作法)。idolGunFireAtは発射=溜め明けの時刻(gameTime系・反動の起点)。
   idolGunAim?: number;
+  /** アイドルの体に今掛かっている押し戻し(px・銃と銃口の閃光も一緒に動かす)。 */
+  recoilX?: number; recoilY?: number;
+  /** 押し戻しの弱め(赤い線の間=0.3)を滑らかに寄せる値と、その時刻。 */
+  recoilMul?: number; recoilMulAt?: number;
   idolGunFireAt?: number;
   // v0.25.3044: 冷気ブレス本体の曲線ロープ(stage-4城ボスのみ生成・薙ぎ中だけ表示)。
   breathRope?: { rope: MeshRope; pts: Point[] };
@@ -4954,6 +4995,16 @@ export class PixiScene {
   private crawlerWake = { prevAwake: false, at: 0 };
   /** 回り込み(資料を拾った瞬間)の検出=追跡の立ち上がり。 */
   private crawlerChasePrev = false;
+  /** 撃たれた時の押し戻し(utils/shotRecoil.ts・実時間で回す)。アイドルは敵の id ごと・変異塊は本体1つ。 */
+  private shotRecoilStates = new Map<string, RecoilBody>();
+  private crawlerShotRecoil: RecoilBody = newRecoilBody(SHOT_RECOIL_CRAWLER);
+  /** 変異塊の押し戻しの直近の履歴(ランタンを怯みと同じ遅れで付いてこさせる)。 */
+  private crawlerRecoilHist: { t: number; x: number; y: number }[] = [];
+  /** 弾でランタンを蹴った時刻と振れ幅(向きつき px)。 */
+  private crawlerShotSwings: { at: number; amp: number }[] = [];
+  /** アイドルの最後の押し戻し(倒した瞬間に死体へ持ち越す・宙の高さ idolLastLift と同じやり方)。 */
+  private idolLastRecoil: { id: string; x: number; y: number; at: number } | null = null;
+  private idolCorpseRecoil: { diedAt: number; x: number; y: number } | null = null;
   /** 被弾の明滅・怯み(実時間)。flashAt=最後に光らせた時刻(200msに1回まで)・dir=怯む向き(当たった方=プレイヤーから離れる向き)。 */
   private crawlerHit = {
     flashAt: 0, lastSeen: 0, dir: 1,
@@ -4961,13 +5012,18 @@ export class PixiScene {
     prevHp: NaN, pend: 0,
     /** 次に光らせてよい間隔(毎回ばらす)・今の光の濃さ(0.4〜1)・怯みの量と尺・重い一撃の時刻と向き。 */
     gap: LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS, power: 1, flinchPx: LAB_CRAWLER_FLINCH_PX, flinchMs: LAB_CRAWLER_FLINCH_MS,
+    /** 怯みの動き出しの遅れ(ms)。弾の当たりの時は押し戻しと同じ質量の遅れ・それ以外は0。 */
+    flinchDelay: 0,
     heavyAt: 0, heavyDir: 1, heavyPx: 0,
     /** 当たった点(光の円の中心)。 */
     hx: 0, hy: 0,
   };
-  /** 当たった点の周りだけ光らせる白い影絵と、その型(柔らかい光の絵=縁がぼける)。型は常にこの影絵に付けたまま(型は描かれない)。 */
+  /** 当たった点の周りだけ光らせる白い影絵と、その型(円・段ごとに1枚)。型は常にこの影絵に付けたまま(型は描かれない)。 */
+  // ★柔らかい円の型が**何も描かれなかった**(2026-10-20・画で確認)のは、型の Sprite を影絵の**兄弟**として actorLayer
+  // (並べ替えのある層)に置いていたため。型を一様な白の絵に替えると光り、柔らかい絵だと全面が消えた=型の絵の座標の写しがずれていた。
+  // **型を影絵の子にする**と正しく描かれる(画で確認)。型の位置・大きさは影絵のローカル座標(拡大・反転を割り戻す)で置く。
   private crawlerFlash = new Sprite();
-  private crawlerFlashMask = new Sprite(getSoftGlowTexture());
+  private crawlerFlashMask = new Sprite(getHitCoreGlowTexture());
   /** 倒れた瞬間の光の柱・魂の x(一度だけ覚える・2巡目#12)。 */
   private crawlerDeathEdgeX: number | null = null;
   private crawlerBody = new Sprite();
@@ -6153,9 +6209,9 @@ export class PixiScene {
     this.crawlerFlash.tint = 0xfff4dc;
     this.crawlerFlash.visible = false;
     this.crawlerFlashMask.anchor.set(0.5);
+    this.crawlerFlash.addChild(this.crawlerFlashMask); // 型は影絵の子(兄弟に置くと描かれない)
     this.crawlerFlash.mask = this.crawlerFlashMask;
     this.L.actorLayer.addChild(this.crawlerFlash);
-    this.L.actorLayer.addChild(this.crawlerFlashMask);
     this.crawlerGlow.anchor.set(0.5);
     this.crawlerGlow.blendMode = 'add';
     this.crawlerGlow.tint = 0xffe2a8;
@@ -9911,7 +9967,7 @@ export class PixiScene {
     // 点けるのは各分岐(三連射の銃/通常弾の銃/エンディングの射撃)で、どれもこの後で毎フレーム点け直す。
     for (const sp of this.bossGunMuzzleSprites.values()) sp.visible = false;
     // ★syncActors より前: 取り込まれた敵の姿は、敵の絵が片付けられる前(=このフレーム)に覚える必要がある。
-    this.syncLabCrawler(s.labCrawler, s.gameTime, now, s.attention !== null, crawlerProxy?.lastHit ?? 0, s.player.x + s.player.width / 2, s.player.y + s.player.height / 2);
+    this.syncLabCrawler(s.labCrawler, s.gameTime, now, s.attention !== null, crawlerProxy?.lastHit ?? 0, s.player.x + s.player.width / 2, s.player.y + s.player.height / 2, crawlerProxy);
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     // §6.38 B2b: 舞妓の花びらpool更新(全体で1回・enemyループの外)。
     const petalDtSec = this.lastPetalStepAt === null ? 0 : Math.min(0.1, Math.max(0, (now - this.lastPetalStepAt) / 1000));
@@ -10890,7 +10946,7 @@ export class PixiScene {
    * 歩き12コマ(這った距離でコマ送り)/攻撃16コマ(溜め=0〜6・手が着くコマ7=当たる瞬間)/叩きつけの赤い予告(円の流星)/
    * 取り込まれる敵(塊へ吸い寄せられて縮みながら消える)/昇天(光が差し、浮きながら薄れて消える)。
    */
-  private syncLabCrawler(c: LabCrawler | null, gameTime: number, now: number, attentionOn: boolean, lastHitAt = 0, playerCx = 0, playerCy = 0): void {
+  private syncLabCrawler(c: LabCrawler | null, gameTime: number, now: number, attentionOn: boolean, lastHitAt = 0, playerCx = 0, playerCy = 0, proxy?: Enemy): void {
     const sp = this.crawlerSprite;
     const g = this.crawlerTelegraph;
     g.clear();
@@ -10914,6 +10970,9 @@ export class PixiScene {
       this.crawlerStride.lastX = NaN;
       this.crawlerWake.prevAwake = false; this.crawlerWake.at = 0;
       this.crawlerHit.prevHp = NaN; this.crawlerHit.pend = 0;
+      this.crawlerShotRecoil = newRecoilBody(SHOT_RECOIL_CRAWLER);
+      this.crawlerRecoilHist = [];
+      this.crawlerShotSwings = [];
       this.crawlerDeathEdgeX = null;
       return;
     }
@@ -10940,13 +10999,26 @@ export class PixiScene {
         hit.pend = 0;
         hit.flashAt = realNow;
         hit.dir = playerCx >= c.x ? -1 : 1;
+        // 弾の当たり(押し戻しの打刻と同じ被弾)なら、怯みを押し戻しと**同じ向き・同じ遅れ(質量)**で出す=1つの動きに読ませる。
+        const shotTrig = !!proxy && proxy.shotHitAt === lastHitAt && Math.abs(proxy.shotImpX ?? 0) > 1e-6;
+        if (shotTrig) hit.dir = (proxy!.shotImpX ?? 0) > 0 ? 1 : -1;
+        hit.flinchDelay = shotTrig ? SHOT_RECOIL_CRAWLER.delayMs : 0;
         hit.gap = LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS + Math.random() * (LAB_CRAWLER_HIT_FLASH_GAP_MAX_MS - LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS);
         hit.power = Math.max(LAB_CRAWLER_HIT_FLASH_MIN_POWER, Math.min(1, dmg / LAB_CRAWLER_HIT_FLASH_FULL_DMG));
         // 当たった点: プレイヤーに面した縁の少し内側・箱の中でプレイヤーに一番近い高さ(弾も近接も面した縁から入る。
         // プレイヤーが箱の上下に居る時は箱の上辺/下辺=絵の肉のある高さ。下の描画でさらに絵の胴の範囲へ収める)。
-        hit.hx = crawlerFacingEdgeX(c, playerCx, 60);
+        hit.hx = crawlerFacingEdgeX(c, playerCx, LAB_CRAWLER_HIT_POINT_INSET_PX);
         const hr = crawlerRect(c);
         hit.hy = Math.max(hr.y, Math.min(hr.y + hr.height, playerCy));
+        // 弾の当たりなら、弾が当たった点(打刻の hitPt)から: 縁から内側へ寄せて胴へ収める(縦は下の描画で胴の帯へ収める)。
+        // 弾ごとに当たった点が違うので、連射でも同じ一点に張り付かない。近接は上のまま。
+        if (shotTrig && proxy!.shotHitPx !== undefined && proxy!.shotHitPy !== undefined) {
+          const cx0 = hr.x + hr.width / 2;
+          const inward = proxy!.shotHitPx < cx0 ? 1 : -1;
+          const lo = hr.x + LAB_CRAWLER_HIT_POINT_INSET_PX * 0.6, hi = hr.x + hr.width - LAB_CRAWLER_HIT_POINT_INSET_PX * 0.6;
+          hit.hx = Math.max(lo, Math.min(hi, proxy!.shotHitPx + inward * LAB_CRAWLER_HIT_POINT_INSET_PX * 0.6));
+          hit.hy = proxy!.shotHitPy;
+        }
         if (dmg >= LAB_CRAWLER_HEAVY_HIT_DMG) {
           const k = Math.min(1, (dmg - LAB_CRAWLER_HEAVY_HIT_DMG) / (LAB_CRAWLER_HEAVY_HIT_DMG * 3));
           hit.flinchPx = LAB_CRAWLER_HEAVY_FLINCH_MIN_PX + (LAB_CRAWLER_HEAVY_FLINCH_MAX_PX - LAB_CRAWLER_HEAVY_FLINCH_MIN_PX) * k;
@@ -10958,8 +11030,38 @@ export class PixiScene {
         }
       }
     }
-    const flinchEl = realNow - hit.flashAt;
-    const flinchX = hit.flashAt > 0 && flinchEl < hit.flinchMs ? hit.dir * hit.flinchPx * crawlerFlinchCurve(flinchEl / hit.flinchMs) : 0;
+    const flinchEl = realNow - hit.flashAt - hit.flinchDelay;
+    const flinchX0 = hit.flashAt > 0 && flinchEl >= 0 && flinchEl < hit.flinchMs ? hit.dir * hit.flinchPx * crawlerFlinchCurve(flinchEl / hit.flinchMs) : 0;
+    // ★撃たれた時の押し戻し(utils/shotRecoil.ts・社長指示2026-10-20「塊は撃たれても反応するように」)。代理が受けた弾の衝撃を本体の絵へ写す。
+    // 1発では数pxの身震い・連射で積もって大きく下がり、戻りで少し前へのめる。上の怯み(近接と弾の共通)は消さずに足す(弾の時は向き・遅れを揃えてある)。
+    // 位置だけ・実時間(怯みと同じ時計)。昇天・消滅(倒れた/沈んで引く)に入ったら衝撃を取らず、今の押しを短く0へ戻す。
+    // 昇天・消滅(倒れた/沈んで引く)の間は新しい衝撃・力を取らず、ばねは自然に収まる(縁取り・足元の型・影・ランタンは同じ押しで揃える)。
+    const dying = c.state === 'ascend' || c.state === 'vanish';
+    if (proxy && !dying) {
+      const before = this.crawlerShotRecoil.seenAt;
+      // ヒットストップの間は体に乗せない(止めが明けてから質量の遅れののちに押しが出る)。
+      const stopUntil = useGameStore.getState().hitstopUntil;
+      this.crawlerShotRecoil = kickRecoil(this.crawlerShotRecoil, proxy.shotHitAt, proxy.shotImpX, proxy.shotImpY, SHOT_RECOIL_MUL, stopUntil);
+      this.crawlerShotRecoil = pushRecoilForce(this.crawlerShotRecoil, proxy.shotForceAt, proxy.shotForceX, proxy.shotForceY, SHOT_RECOIL_MUL);
+      // 弾の向きでランタンを少し蹴る(重い一撃の振れより小さく)。前の振れに**足す**(上書きして位相を切らない)。
+      if (this.crawlerShotRecoil.seenAt !== before && realNow - (this.crawlerShotSwings[this.crawlerShotSwings.length - 1]?.at ?? -1e9) > LAB_CRAWLER_SHOT_SWING_GAP_MS) {
+        const ix = proxy.shotImpX ?? 0;
+        if (Math.abs(ix) > 1e-6) {
+          this.crawlerShotSwings.push({ at: Math.max(this.crawlerShotRecoil.seenAt, stopUntil) + SHOT_RECOIL_CRAWLER.delayMs, amp: Math.sign(ix) * Math.min(LAB_CRAWLER_SHOT_SWING_MAX_PX, 2 + 3 * Math.abs(ix)) });
+          if (this.crawlerShotSwings.length > LAB_CRAWLER_SHOT_SWING_CAP) this.crawlerShotSwings.shift();
+        }
+      }
+    }
+    while (this.crawlerShotSwings.length > 0 && realNow - this.crawlerShotSwings[0].at > LAB_CRAWLER_LANTERN_SWING_MS + 400) this.crawlerShotSwings.shift();
+    this.crawlerShotRecoil = advanceRecoil(this.crawlerShotRecoil, SHOT_RECOIL_CRAWLER, realNow);
+    const rparts = recoilParts(this.crawlerShotRecoil, SHOT_RECOIL_CRAWLER);
+    const shotRo = { x: rparts.x, y: rparts.y };
+    // ランタンが怯みと同じ遅れで付いてこられるよう、押しの履歴を短く持つ。
+    const hist = this.crawlerRecoilHist;
+    hist.push({ t: realNow, x: shotRo.x, y: shotRo.y });
+    while (hist.length > 2 && realNow - hist[0].t > 400) hist.shift();
+    const flinchX = flinchX0 + shotRo.x;
+    const shotRy = shotRo.y;
     this.crawlerWake.prevAwake = c.awake;
     const bf = crawlerBodyFoot(c); // 本体の絵の足元(肉の溜まりの上・箱の中心より少し奥)
     const ascendLook = c.state === 'ascend' ? crawlerAscendLook(gameTime - c.stateAt) : null;
@@ -11087,7 +11189,7 @@ export class PixiScene {
       if (sil && look.flare > 0.01) {
         const b = this.crawlerBody;
         b.texture = sil;
-        b.position.set(c.x, bf.y + sinkPx - LAB_CRAWLER_RIM_UP_PX * fxK);
+        b.position.set(c.x + shotRo.x, bf.y + sinkPx + shotRy - LAB_CRAWLER_RIM_UP_PX * fxK); // 押し戻しが0へ戻り切る間も本体と揃える
         b.scale.set(baseScale * face, baseScale);
         b.alpha = Math.min(1, look.flare) * this.horizonActorAlpha(bf.y);
         b.zIndex = bf.y - 0.5;
@@ -11113,7 +11215,7 @@ export class PixiScene {
       gl.alpha = 0.14 * look.flare;
       gl.visible = look.flare > 0.01;
       this.crawlerBodyMask.clear();
-      this.crawlerBodyMask.rect(c.x - artW, bf.y - artH * 3, artW * 2, artH * 3).fill({ color: 0xffffff });
+      this.crawlerBodyMask.rect(c.x + shotRo.x - artW, bf.y + shotRy - artH * 3, artW * 2, artH * 3).fill({ color: 0xffffff });
       sp.mask = this.crawlerBodyMask;
     } else if (vanishLook) {
       // 沈んで引いていく: 足元の線より下は切る(床へ沈む)・向いている方と逆へ引く・暗く沈んで消える。光も縁も出さない。
@@ -11123,7 +11225,7 @@ export class PixiScene {
       const d = Math.round(255 * (1 - vanishLook.dark));
       sp.tint = (d << 16) | (d << 8) | d;
       this.crawlerBodyMask.clear();
-      this.crawlerBodyMask.rect(c.x + slideX - artW, bf.y - artH * 3, artW * 2, artH * 3).fill({ color: 0xffffff });
+      this.crawlerBodyMask.rect(c.x + slideX + shotRo.x - artW, bf.y + shotRy - artH * 3, artW * 2, artH * 3).fill({ color: 0xffffff });
       sp.mask = this.crawlerBodyMask;
     } else {
       if (sp.tint !== 0xffffff) sp.tint = 0xffffff;
@@ -11141,21 +11243,26 @@ export class PixiScene {
           const u = Math.max(0, (since / LAB_CRAWLER_HIT_FLASH_MS - 0.33) / 0.67);
           const b = this.crawlerFlash;
           b.texture = sil;
-          b.position.set(Math.round(c.x + flinchX + lungeX), Math.round(bf.y));
+          b.position.set(Math.round(c.x + flinchX + lungeX), Math.round(bf.y + shotRy));
           b.scale.set(baseScale * face, baseScale);
-          b.alpha = Math.min(1, LAB_CRAWLER_HIT_FLASH_A * (0.55 + 0.75 * hit.power)) * (1 - u) * (1 - u) * alpha;
+          // 芯を小さく強く(型=芯の小さい光の絵・外側は速く抜ける)。濃さの式(積もったダメージ・下限)は従来どおり。
+          b.alpha = Math.min(1, Math.min(1, LAB_CRAWLER_HIT_FLASH_A * (0.55 + 0.75 * hit.power)) * LAB_CRAWLER_HIT_FLASH_CORE_MUL) * (1 - u) * (1 - u) * alpha;
           b.zIndex = bf.y + 0.5;
           b.visible = b.alpha > 0.01;
+          // 型は影絵の子=影絵のローカル座標で置く(拡大・左右反転を割り戻す)。
           const m = this.crawlerFlashMask;
-          const hy = Math.max(bf.y - artH * 0.7, Math.min(bf.y - artH * 0.08, hit.hy));
-          m.position.set(hit.hx + flinchX + lungeX, hy);
-          m.width = m.height = artH * LAB_CRAWLER_HIT_FLASH_R_K * (0.8 + 0.5 * hit.power) * 2;
+          const hy = Math.max(bf.y - artH * LAB_CRAWLER_HIT_POINT_TOP_K, Math.min(bf.y - artH * LAB_CRAWLER_HIT_POINT_BOTTOM_K, hit.hy));
+          const mx = hit.hx + flinchX + lungeX, my = hy + shotRy;
+          const sx = b.scale.x || 1, sy = b.scale.y || 1;
+          m.position.set((mx - b.position.x) / sx, (my - b.position.y) / sy);
+          const d = artH * LAB_CRAWLER_HIT_FLASH_R_K * (0.8 + 0.5 * hit.power) * 2;
+          m.width = d / Math.abs(sx); m.height = d / Math.abs(sy);
         }
       }
     }
     sp.texture = tex;
     sp.scale.set(baseScale * face, baseScale);
-    sp.position.set(Math.round(c.x + flinchX + lungeX + slideX), Math.round(bf.y + sinkPx));
+    sp.position.set(Math.round(c.x + flinchX + lungeX + slideX), Math.round(bf.y + sinkPx + shotRy));
     sp.zIndex = bf.y;
     sp.alpha = alpha;
     sp.visible = alpha > 0.01;
@@ -11164,7 +11271,7 @@ export class PixiScene {
       const sinkK = vanishLook ? vanishLook.sink : 0;
       const shrink = 1 - 0.55 * sinkK;
       this.crawlerShadow = {
-        x: c.x + lungeX + slideX, y: bf.y,
+        x: c.x + lungeX + slideX + rparts.bodyX, y: bf.y + rparts.bodyY, // 体ごと下がる分(遅いばね)だけ影も滑る。速い身震い・怯みは影に入れない
         legacyW: artW * 0.85 * shrink,
         rawW: artW * shrink, rawH: artH * shrink, texture: tex,
         alpha: alpha * (1 - 0.8 * sinkK),
@@ -11184,9 +11291,12 @@ export class PixiScene {
         const lag = LAB_CRAWLER_LANTERN_SWING_DELAY_MS + i * LAB_CRAWLER_LANTERN_SWING_STAGGER_MS;
         const lagEl = flinchEl - lag;
         const lagFlinch = hit.flashAt > 0 && lagEl > 0 && lagEl < hit.flinchMs ? hit.dir * hit.flinchPx * crawlerFlinchCurve(lagEl / hit.flinchMs) : 0;
-        const swing = hit.heavyAt > 0 ? crawlerLanternSwing(realNow - hit.heavyAt - lag, hit.heavyDir * hit.heavyPx * 1.2) : 0;
-        const ly = bf.y + sinkPx + p.y * ws - Math.abs(swing) * 0.22; // 振り子=振れると少し持ち上がる
-        l.position.set(c.x + lagFlinch + swing + lungeX + slideX + p.x * ws * face, ly);
+        const swing = (hit.heavyAt > 0 ? crawlerLanternSwing(realNow - hit.heavyAt - lag, hit.heavyDir * hit.heavyPx * 1.2) : 0)
+          + this.crawlerShotSwings.reduce((sum, k) => sum + crawlerLanternSwing(realNow - k.at - lag, k.amp), 0);
+        // 押し戻しも怯みと同じ遅れ(lag)で付いてくる(履歴から lag 前の押しを引く)。
+        const lagRo = sampleRecoilHist(hist, realNow - lag);
+        const ly = bf.y + sinkPx + lagRo.y + p.y * ws - Math.abs(swing) * 0.22; // 振り子=振れると少し持ち上がる
+        l.position.set(c.x + lagFlinch + lagRo.x + swing + lungeX + slideX + p.x * ws * face, ly);
         l.width = l.height = LAB_CRAWLER_LANTERN_ART_PX * ws * (1 + 0.25 * swell);
         // 2巡目#15: 沈む間は床の線(足元)で切る=灯りの中心が線へ近づくほど薄れ、越えたら消える(高さが違うので1つずつ消える)。
         const cut = vanishLook ? Math.max(0, Math.min(1, (bf.y - ly) / Math.max(1, l.height * 0.35))) : 1;
@@ -15891,6 +16001,7 @@ export class PixiScene {
         if (bountySummonSp) { bountySummonSp.destroy(); this.bountySummonSprites.delete(id); }
         const bountyWeaponSp = this.bountyWeaponSprites.get(id);
         if (bountyWeaponSp) { bountyWeaponSp.destroy(); this.bountyWeaponSprites.delete(id); }
+        this.shotRecoilStates.delete(id);
         // バットの炸裂も同じ mark-and-sweep に乗せる(討伐後に最後のコマが残らない)。
         const batSlamSp = this.batSlamSprites.get(id);
         if (batSlamSp) { batSlamSp.destroy(); this.batSlamSprites.delete(id); }
@@ -20747,10 +20858,33 @@ export class PixiScene {
       // 実アルファ内容の下端(余白を除いた実体)を使う(社長報告: ヨルムンガルドで足元より80px級下に
       // 影が置かれていた=透明な余白を「絵の下端」と誤認していたため)。
       const contentBottomFrac = this.textureContentBottomFrac(tex);
-      view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5); // 論理の足元(実体下端。リフト/スカッシュ無し)
+      // ★撃たれた時の押し戻し(アイドルだけ・utils/shotRecoil.ts・社長指示2026-10-20「撃たれても反応するように」)。
+      // 1発ごとに弾の進む向きへ衝撃を足し、ばね+減衰で硬く止まる(行き過ぎなし)。**位置だけ**=シート絵は伸び縮み・回転させない。
+      // 体ごと押される絵なので影の接地点も一緒に滑らせる(影の x は sprite.x を読む)。手に持つ銃と銃口の閃光も同じだけ動かす。
+      // 時計は実時間(凍る now で回すとヒットストップ明けに出が飛ぶ)。判定・e.x/e.y は不変。
+      let shotRx = 0, shotRy = 0;
+      if (hasShotRecoil(e.type)) {
+        const rnow = Date.now();
+        let rb = this.shotRecoilStates.get(e.id) ?? newRecoilBody(SHOT_RECOIL_IDOL);
+        // ヒットストップの間は体に乗せない(止めが明けてから押しが出る)。継続(火炎・光線)は押し続ける力。
+        rb = kickRecoil(rb, e.shotHitAt, e.shotImpX, e.shotImpY, SHOT_RECOIL_MUL, useGameStore.getState().hitstopUntil);
+        rb = pushRecoilForce(rb, e.shotForceAt, e.shotForceX, e.shotForceY, SHOT_RECOIL_MUL);
+        rb = advanceRecoil(rb, SHOT_RECOIL_IDOL, rnow);
+        this.shotRecoilStates.set(e.id, rb);
+        const ro = recoilOffset(rb, SHOT_RECOIL_IDOL);
+        // 赤い線(起点=銃口)が出ている溜めの間は3割へ弱める(赤い予告と銃口のずれを小さく保つ)。切り替えは約60msで寄せる(跳ばない)。
+        const wantMul = idolLineTelegraphOn(e.bossState) ? IDOL_RECOIL_TELEGRAPH_MUL : 1;
+        const mdt = view.recoilMulAt !== undefined ? Math.max(0, rnow - view.recoilMulAt) : 1e9;
+        view.recoilMul = (view.recoilMul ?? wantMul) + (wantMul - (view.recoilMul ?? wantMul)) * (1 - Math.exp(-mdt / 60));
+        view.recoilMulAt = rnow;
+        shotRx = ro.x * view.recoilMul; shotRy = ro.y * view.recoilMul;
+        this.idolLastRecoil = { id: e.id, x: shotRx, y: shotRy, at: rnow };
+      }
+      view.recoilX = shotRx; view.recoilY = shotRy;
+      view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5) + shotRy; // 論理の足元(実体下端。リフト/スカッシュ無し)
       view.sprite.position.set(
-        Math.round(spx + liftShake + lungeOffX + biteShake + phaseTremble.dx * scale),
-        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff - idleHopPx - phaseLiftPx - idolLeapLift + idolCrouchSink + phaseTremble.dy * scale),
+        Math.round(spx + liftShake + lungeOffX + biteShake + phaseTremble.dx * scale + shotRx),
+        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff - idleHopPx - phaseLiftPx - idolLeapLift + idolCrouchSink + phaseTremble.dy * scale + shotRy),
       );
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
@@ -23446,9 +23580,11 @@ export class PixiScene {
               const gp = lockedGun && e.aiFromX !== undefined && e.aiFromY !== undefined
                 ? { x: e.aiFromX, y: e.aiFromY }
                 : gunMz(cx + Math.cos(gunAng));
+              // 撃たれた時の押し戻し(体と同じ量・赤い線の間は体と一緒に3割)を銃と閃光にも足す(体から銃が離れない)。
+              const rx = view.recoilX ?? 0, ry = view.recoilY ?? 0;
               this.drawBountyWeapon(
                 e.id, 'weapons/handgun-t1',
-                gp.x - Math.cos(gunAng) * 8 * kickU, gp.y - Math.sin(gunAng) * 8 * kickU + ease.dy,
+                gp.x - Math.cos(gunAng) * 8 * kickU + rx, gp.y - Math.sin(gunAng) * 8 * kickU + ease.dy + ry,
                 gunAng + (flip ? 1 : -1) * 0.35 * kickU, 42, 0.95 * ease.alphaMul * artFade, 1, flip,
               );
               // ★撃つ瞬間の銃口の閃光(社長指示2026-09-29「**撃つ時に閃光を光らせて**」)。発射=溜め明け(`idolGunFireAt`)から
@@ -23462,7 +23598,7 @@ export class PixiScene {
               const mf = IDOL_MUZZLE[gunMove === 'snipe' ? 'snipe' : gunMove === 'fan' ? 'fan' : 'shot'];
               if (fdt >= 0 && fdt <= mf.ms) {
                 const kAng = gunAng + (flip ? 1 : -1) * 0.35 * kickU;
-                const bx = gp.x - Math.cos(gunAng) * 8 * kickU, by = gp.y - Math.sin(gunAng) * 8 * kickU + ease.dy;
+                const bx = gp.x - Math.cos(gunAng) * 8 * kickU + rx, by = gp.y - Math.sin(gunAng) * 8 * kickU + ease.dy + ry;
                 const u = fdt / mf.ms;
                 const life = u < 0.15 ? 1 : Math.pow(1 - (u - 0.15) / 0.85, 2.2);
                 this.drawBossGunMuzzle(`${e.id}:idolgun`, bx + Math.cos(kAng) * 21, by + Math.sin(kAng) * 21, kAng,
@@ -31463,11 +31599,20 @@ export class PixiScene {
     // 空中で倒された偶像(品質監査A3): 死んだ瞬間の高さから、止めの演出(holdMs)が明けたら重力で地面へ落とし、
     // 落ち切ってから揺れ→崩れを始める(描画だけ。死体の位置=地面の点は store のまま)。
     let fallLift = 0, fallMs = 0;
+    let corpseRecoilX = 0, corpseRecoilY = 0;
     if (corpse.type === 'idol') {
       if (this.idolCorpseFall?.diedAt !== corpse.diedAt) {
         const ll = this.idolLastLift;
         this.idolCorpseFall = { diedAt: corpse.diedAt, from: ll && ll.lift > 1 && corpse.diedAt - ll.at < 600 ? ll.lift : 0 };
       }
+      // 倒した瞬間の押し戻しを持ち越す(品質監査A-3: 持ち越さないと死体が押し戻しぶん跳ぶ)。撃ち倒された体は
+      // プレイヤー側へ戻さない=持ち越した位置のまま崩れる(描画だけ・死体の足元の点は store のまま)。
+      if (this.idolCorpseRecoil?.diedAt !== corpse.diedAt) {
+        const lr = this.idolLastRecoil;
+        const ok = lr && corpse.diedAt - lr.at < 600;
+        this.idolCorpseRecoil = { diedAt: corpse.diedAt, x: ok ? lr.x : 0, y: ok ? lr.y : 0 };
+      }
+      corpseRecoilX = this.idolCorpseRecoil.x; corpseRecoilY = this.idolCorpseRecoil.y;
       const from = this.idolCorpseFall.from;
       if (from > 0) {
         fallMs = Math.sqrt((2 * from) / IDOL_CORPSE_FALL_G) * 1000;
@@ -31515,7 +31660,7 @@ export class PixiScene {
     const baseX = fit ? stripCx + (0.5 - fit.cx) * spriteW : stripCx;
     // 通常経路の敵は足元アンカー(0.5,1)で描かれているので、中心アンカーに合わせて半分持ち上げる。
     const baseY = fit ? stripCy + (0.5 - fit.cy) * spriteH : corpse.y + corpse.h - spriteH / 2;
-    sp.position.set(Math.round(baseX + shakeX), Math.round(baseY + shakeY + sinkY - fallLift));
+    sp.position.set(Math.round(baseX + shakeX + corpseRecoilX), Math.round(baseY + shakeY + sinkY - fallLift + corpseRecoilY));
     sp.zIndex = corpse.y + corpse.h + 1; // アクターと同じ y-sort 帯
     sp.alpha = Math.max(0, (1 - t) * flicker);
     // ③崩れている間は足元から瓦礫の砂埃。既存のプール済み drawDust をそのまま使う
