@@ -48,6 +48,8 @@ export interface IdolSfx {
   throwNade: () => void;
   /** 笑い声(社長提供2026-10-05「登場シーンとか、技の時にたまに」)。 */
   laugh?: () => void;
+  /** 拳で壁・プロップを壊す(社長指示2026-10-20)。呼び手が壊す処理(utils/labCrawlerTick.breakLabObstaclesInSweep)を渡す。無ければ壊さない。 */
+  breakObstacles?: (ax: number, ay: number, bx: number, by: number, halfW: number, gameTime: number) => void;
 }
 /** 技で笑う頻度: 前に笑ってからこの数の技を出し、かつこの時間が経っていたら笑う(乱数を使わない=テストの再現性を崩さない)。 */
 export const IDOL_LAUGH_EVERY_MOVES = 3;
@@ -789,6 +791,12 @@ export const runIdolTick = (
         icx + Math.cos(ang) * IDOL_TUNING.shape.punchRange, icy + Math.sin(ang) * IDOL_TUNING.shape.punchRange,
         IDOL_TUNING.shape.punchHalfWidth, IDOL_TUNING.moveDamage.punch,
         IDOL_TUNING.moveKnockback.punch,
+      );
+      // 拳の通り道の壁・プロップを壊す(社長指示2026-10-20・判定=拳と同じ帯)。
+      sfx.breakObstacles?.(
+        icx, icy,
+        icx + Math.cos(ang) * IDOL_TUNING.shape.punchRange, icy + Math.sin(ang) * IDOL_TUNING.shape.punchRange,
+        IDOL_TUNING.shape.punchHalfWidth, newGameTime,
       );
       toRecover('punch');
     }

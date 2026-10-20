@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useGameStore, ATTENTION_IN_MS, labEscapeGoalX } from '../store/gameStore';
 import { spawnEnemyAt, countsTowardEnemyCap, isBossType } from './enemyUtils';
-import { runLabCrawlerTick, crawlerSlamShakeMag, crawlerChaseSpeedFor, LAB_CRAWLER_BLAST_OWNER, LAB_ESCAPE_BANNER, labDebrisKind, DEATH_BEAT_STOP_MS } from './labCrawlerTick';
+import { runLabCrawlerTick, breakLabObstaclesInSweep, crawlerSlamShakeMag, crawlerChaseSpeedFor, LAB_CRAWLER_BLAST_OWNER, LAB_ESCAPE_BANNER, labDebrisKind, DEATH_BEAT_STOP_MS } from './labCrawlerTick';
 import {
   createLabCrawler, crawlerSlamCenter, crawlerCenter, crawlerRect, CRAWLER_WINDUP_MS, CRAWLER_HP, CRAWLER_HIT_W, CRAWLER_HIT_H,
   CRAWLER_CHASE_SPEED_MULT, type LabCrawler,
@@ -365,5 +365,26 @@ describe('壊した壁・プロップの残骸(2巡目#16 社長「推薦で」)
     expect(useGameStore.getState().labBrokenObstacles).toEqual([]);
     expect(labDebrisInRegion(useGameStore.getState().labBrokenObstacles, 'wall', -1e9, -1e9, 1e9, 1e9)).toEqual([]);
     expect(isLabObstacleBroken(w.id)).toBe(false);
+  });
+});
+
+describe('アイドルの拳で壁・プロップを壊す(社長指示2026-10-20)', () => {
+  it('拳の帯が通った壁は壊れ(判定から消え)、帯の外の物は残る。屋外ラボ以外では壊さない', () => {
+    useGameStore.setState({ labBrokenObstacles: [] });
+    const w = labWallsInRegion(-4000, -300, -2000, 300)[0];
+    const r = wallRect(w);
+    const cy = r.y + r.height / 2;
+    const n = breakLabObstaclesInSweep(r.x - 150, cy, r.x + r.width / 2, cy, 30, 10_000);
+    expect(n).toBeGreaterThan(0);
+    expect(isLabObstacleBroken(w.id)).toBe(true);
+    expect(labWallsInRegion(-4000, -300, -2000, 300).some(q => q.id === w.id)).toBe(false);
+    const b = useGameStore.getState().labBrokenObstacles.find(q => q.id === w.id)!;
+    expect(b.kind).toBe('wall');
+    expect(b.dir).toBe(1); // 打った者(左)から物への向きに倒れる
+    // 遠くの空振りは何も壊さない
+    expect(breakLabObstaclesInSweep(0, 0, 10, 0, 20, 10_000)).toBe(0);
+    // 屋外ラボ以外
+    useGameStore.setState({ stageTheme: 'forest' as never, labBrokenObstacles: [] });
+    expect(breakLabObstaclesInSweep(r.x - 150, cy, r.x + r.width / 2, cy, 30, 10_000)).toBe(0);
   });
 });

@@ -207,6 +207,52 @@ const playBreakLanding = (gs: FxStore, breaks: readonly LabBrokenObstacle[], sfx
     sfx(anyWall ? 'heavy-impact' : 'jump-land', jitter(gain(b0) * (anyWall ? 0.28 : 0.22)));
   }
 };
+/**
+ * 他の者の一撃でも壁・プロップを壊す(社長指示2026-10-20「アイドルの拳でオブジェクトや壁を破壊できる様にして」)。
+ * 範囲=線分(ax,ay)→(bx,by)を太さ halfW で掃いた帯(拳の当たりと同じ形)。壊れ方の絵・音は塊と同じ(割れた瞬間=破片と短い音、
+ * 倒れ切った時刻=土煙と小さな衝撃音・揺れ)。倒れる向きは打った者から物への向き。屋外ラボ以外では何もしない。返り値=壊した数。
+ */
+export const breakLabObstaclesInSweep = (
+  ax: number, ay: number, bx: number, by: number, halfW: number, gameTime: number, sfx?: LabCrawlerSfx,
+): number => {
+  const gs = useGameStore.getState();
+  if (gs.stageTheme !== 'lab' || gs.indoorMode) return 0;
+  const pad = halfW + 120;
+  const minX = Math.min(ax, bx) - pad, maxX = Math.max(ax, bx) + pad, minY = Math.min(ay, by) - pad, maxY = Math.max(ay, by) + pad;
+  const cand = [
+    ...labWallsInRegion(minX, minY, maxX, maxY).map(w => ({ id: w.id, rect: wallRect(w), kind: 'wall' as const, x: w.footX, y: w.footY, variant: undefined as number | undefined })),
+    ...labPropsInRegion(minX, minY, maxX, maxY).map(pr => ({ id: pr.id, rect: propRect(pr), kind: 'prop' as const, x: pr.footX, y: pr.footY, variant: pr.variant as number | undefined })),
+  ];
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+  // 線分上の最近点から矩形までの距離が halfW 以内なら当たり(矩形の最近点と線分の最近点を交互に寄せる・2回で十分)。
+  const hitRect = (r: { x: number; y: number; width: number; height: number }): boolean => {
+    let px = r.x + r.width / 2, py = r.y + r.height / 2;
+    for (let k = 0; k < 3; k++) {
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+      const sx = ax + dx * t, sy = ay + dy * t;
+      px = Math.max(r.x, Math.min(r.x + r.width, sx));
+      py = Math.max(r.y, Math.min(r.y + r.height, sy));
+      if (k === 2) return Math.hypot(px - sx, py - sy) <= halfW;
+    }
+    return false;
+  };
+  const breaks: LabBrokenObstacle[] = cand.filter(o => hitRect(o.rect)).map(o => ({
+    id: o.id, kind: o.kind, x: o.x, y: o.y, at: gameTime,
+    dir: o.x >= ax ? 1 : -1,
+    ...(o.variant !== undefined ? { variant: o.variant } : {}),
+  }));
+  if (breaks.length === 0) return 0;
+  useGameStore.setState(st => ({ labBrokenObstacles: [...st.labBrokenObstacles, ...breaks] }));
+  const p = gs.player;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const gain = (b: LabBrokenObstacle) => npcSfxDistGain(b.x, b.y, pcx, pcy, gs.camera, gs.gameBounds);
+  const nearest = Math.min(...breaks.map(b => Math.hypot(b.x - pcx, b.y - pcy)));
+  const crumbleMs = breaks.some(b => b.kind === 'wall') ? LAB_WALL_CRUMBLE_MS : LAB_PROP_CRUMBLE_MS;
+  playBreakMoment(useGameStore.getState(), breaks, sfx, gain);
+  setTimeout(() => playBreakLanding(useGameStore.getState(), breaks, sfx, gain, nearest), crumbleMs);
+  return breaks.length;
+};
+
 /** 資料を拾った後の帯の文言(この経路だけ・クリエイティブ監査#5)。定数の正本は world/labCrawler.LAB_ESCAPE_BANNER_TEXT。 */
 export const LAB_ESCAPE_BANNER = LAB_ESCAPE_BANNER_TEXT;
 /** 回り込みのアテンションでカメラが塊へ着くまで(=注目点へ寄る尺)。現れる演出・壊れる絵と音をここへ揃える(クリエイティブ監査#4・2巡目#2)。 */

@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5171', items: [
+    'ステージ2のアイドルの拳が、壁や物を砕く',
+    'アイドルと戦い始めると、奥から聞こえる曲が少し大きくなる',
+  ] },
   { version: '0.25.5170', items: [
     'ステージ2で画面が引いた時、奥の景色と床の境目に出ていた黒い線を消した',
   ] },

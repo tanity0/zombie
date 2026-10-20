@@ -192,7 +192,7 @@ import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
 import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
-import { runLabCrawlerTick } from '../utils/labCrawlerTick'; // ステージ2の這う塊
+import { runLabCrawlerTick, breakLabObstaclesInSweep } from '../utils/labCrawlerTick'; // ステージ2の這う塊(+アイドルの拳で壁を壊す)
 import { crawlerGoalDir, crawlerSolid } from '../world/labCrawler'; // 逃走中のカメラの寄せ
 import { labDistantDue } from '../utils/labDistantSound'; // ステージ2でたまに遠くから鳴る音
 import {
@@ -551,7 +551,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
-import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, setCrawlerDrag, playDistantSfx, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
+import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, setHeroGallop, setCrawlerDrag, playDistantSfx, setCorridorRadioBoost, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT } from '../world/labRadioMix';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
@@ -1056,6 +1056,8 @@ const IDOL_SFX: IdolSfx = {
   snipe: () => playSfx('rifle-fire'),                // 狙撃線(ライフル近似)
   throwNade: () => playSfx('grenade-launcher-fire'), // 手榴弾投擲(グレネードランチャー近似)
   laugh: () => playSfx('idol-laugh'),                // 笑い声(社長提供2026-10-05・登場と、技の時にたまに)
+  // 拳で壁・プロップを壊す(社長指示2026-10-20)。壊れ方の絵と音は死体の塊と同じ。
+  breakObstacles: (ax, ay, bx, by, halfW, gt) => { breakLabObstaclesInSweep(ax, ay, bx, by, halfW, gt, (k, g) => playSfx(k, g)); },
 };
 // 賞金首(§6.38 B2a)の音。予兆SEは全ボス共通のhunter-alert流用(§6.26-9 #5)。fireはレーザー発射の
 // 一撃SE(ミーミルと同じ'heavy-impact'流用=useGameLoop.tsのlaser-windup→laser-fire遷移箇所と同一)。
@@ -1451,6 +1453,8 @@ let bossCtrlErrLogged = false;                       // 裏ボス制御例外の
 let idolCtrlErrLogged = false;                       // idol制御例外のログも初回だけ
 let labDistantPrevMs = 0;
 let labDistantSeed = (Math.random() * 1e9) | 0;
+/** アイドル戦の間の、裏のアイドルBGMの倍率(社長指示2026-10-20「少しだけ音量上げて」)。 */
+const LAB_RADIO_IDOL_BOOST = 1.35;
 /** ステージ2の逃走中、カメラを塊の側へ寄せる量(画面幅比)と寄せる速さ(時定数・秒)。 */
 const LAB_ESCAPE_CAMERA_LEAD_FRAC = 0.2;
 const LAB_ESCAPE_CAMERA_TAU_S = 0.9;
@@ -1937,6 +1941,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ステージ2(屋外ラボ廊下)BGMクロスフェード: 直前フレームがlab対象コマだったか。falseへ落ちた
   // 最初のフレームだけ setCorridorRadioMix(0) を1回呼んで止める(毎フレーム0を呼び続けない)。
   const labRadioActiveRef = useRef<boolean>(false);
+  const labRadioBoostRef = useRef<number>(1); // アイドル戦の間の裏のアイドルBGMの倍率(慣性つき・社長指示2026-10-20)
   // 死神(深奥リスク)システムの内部状態。新しいランで rewind 検出時にリセット。
   // PACING_PUZZLE.md §14-4(新死神・ワープ廃止): lastWarpAt/warpAnimStartAt/warpToX/Y/warpTeleported は
   // 不要になった(直進+70px旋回に置換)。代わりに技「使者」の population 管理フィールドを持つ。
@@ -2807,9 +2812,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (gs.stageTheme === 'lab' && !gs.indoorMode) {
           const t = labRadioMixT(gs.labRadioX, gs.player.x + gs.player.width / 2);
           setCorridorRadioMix(t);
+          // アイドル戦の間(アイドルが起きている=idolFleeRef)、裏のアイドルBGMを少しだけ上げる(社長指示2026-10-20)。
+          // 1.0→LAB_RADIO_IDOL_BOOST へ約1.5秒の時定数で寄せる=じわっと上がり、倒した後もじわっと戻る。
+          {
+            const want = idolFleeRef.current ? LAB_RADIO_IDOL_BOOST : 1;
+            const kB = 1 - Math.exp(-baseDeltaTime / 1.5);
+            labRadioBoostRef.current += (want - labRadioBoostRef.current) * kB;
+            if (Math.abs(labRadioBoostRef.current - want) < 0.005) labRadioBoostRef.current = want;
+            setCorridorRadioBoost(labRadioBoostRef.current);
+          }
           labRadioActiveRef.current = true;
         } else if (labRadioActiveRef.current) {
           setCorridorRadioMix(0);
+          labRadioBoostRef.current = 1;
+          setCorridorRadioBoost(1);
           labRadioActiveRef.current = false;
         }
       }

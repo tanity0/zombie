@@ -1479,6 +1479,10 @@ const CORRIDOR_RADIO_TRACK = assetUrl('audio/op-corridor.mp3');
 const LAB_RADIO_DISABLED = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('labradio') === '0';
 let radioLayerEl: HTMLAudioElement | null = null;
 let lastAppliedRadioMix = 0; // setCorridorRadioMix の書き込みスキップ判定用(直近に適用した値)
+// アイドル戦の間だけ、裏のアイドルBGM(ラジオ層)を少し上げる倍率(社長指示2026-10-20「アイドル戦始まったら裏のアイドルBGM少しだけ音量上げて」)。
+// 1=通常。呼び手(useGameLoop)が慣性つきで寄せた値を渡す。音量は 1 を超えない。
+let radioBoost = 1;
+let lastAppliedRadioBoost = 1;
 
 const ensureRadioLayer = (): HTMLAudioElement | null => {
   if (radioLayerEl) return radioLayerEl;
@@ -1499,7 +1503,7 @@ const applyRadioLayerAudio = () => {
   if (radioMix > 0 && bgmActive && !muted) {
     const el = ensureRadioLayer();
     if (!el) return;
-    el.volume = radioMix * bgmVolume;
+    el.volume = Math.min(1, radioMix * bgmVolume * radioBoost);
     if (el.paused) void el.play().catch(() => { /* ignore: unlocks on next user gesture like other tracks */ });
   } else if (radioLayerEl) {
     try { radioLayerEl.pause(); } catch { /* ignore */ }
@@ -1527,6 +1531,15 @@ export const setCorridorRadioMix = (t: number): void => {
   lastAppliedRadioMix = next;
   radioMix = next;
   applyDuckedBgmVolume(); // 通常BGM(+深層逆再生版)の実効音量を1箇所の計算で更新
+  applyRadioLayerAudio();
+};
+
+/** アイドル戦の間の、裏のアイドルBGMの倍率(1=通常)。変化が小さい時は書き込まない(毎フレーム呼ばれる)。 */
+export const setCorridorRadioBoost = (b: number): void => {
+  const next = Math.max(1, Math.min(2, b));
+  if (Math.abs(next - lastAppliedRadioBoost) < 0.01 && !(next === 1 && lastAppliedRadioBoost !== 1)) return;
+  lastAppliedRadioBoost = next;
+  radioBoost = next;
   applyRadioLayerAudio();
 };
 
