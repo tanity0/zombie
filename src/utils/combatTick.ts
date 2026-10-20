@@ -1899,7 +1899,9 @@ export const applyContactDamage = (
     if (isGuardianPhantom(enemy.type)) return;
     // 被弾しない(ダメージ=赤い帯のカプセル爆発+終点二撃目のみ)。カウンターは赤い帯の中でだけ。
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air' || enemy.aiPhase === 'g-trijump-air'
-      || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-glide-active')) {
+      || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-glide-active')
+      // 偶像の大ジャンプの空中(社長指示2026-10-20): ただの移動=着地も含めて判定なし。宙にいる体は地上の相手に触れない。
+      || (enemy.type === 'idol' && enemy.bossState === 'idol-leap')) {
       // ★カウンター憲法(v0.25.3947): 空中は「被弾しない」と宣言している=接触の攻撃判定ゼロ。
       // よって空中の接触パリィ(旧: 素のjump=どこでも/着地円・帯の中なら成立=v2601/v3050/v3052の裁定)は
       // 憲法違反として除去した(過去の裁定は事実として上書き)。ジャンプ・滑空への対処は

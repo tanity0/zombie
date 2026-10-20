@@ -192,6 +192,7 @@ import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
 import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
+import { idolAirLiftOf } from '../utils/idolScript'; // 宙の偶像に当たった手応えの絵を体の高さへ(見せ方のみ)
 import { runLabCrawlerTick, breakLabObstaclesInSweep } from '../utils/labCrawlerTick'; // ステージ2の這う塊(+アイドルの拳で壁を壊す)
 import { crawlerGoalDir, crawlerSolid } from '../world/labCrawler'; // 逃走中のカメラの寄せ
 import { labDistantDue } from '../utils/labDistantSound'; // ステージ2でたまに遠くから鳴る音
@@ -1058,6 +1059,10 @@ const IDOL_SFX: IdolSfx = {
   laugh: () => playSfx('idol-laugh'),                // 笑い声(社長提供2026-10-05・登場と、技の時にたまに)
   // 拳で壁・プロップを壊す(社長指示2026-10-20)。壊れ方の絵と音は死体の塊と同じ。
   breakObstacles: (ax, ay, bx, by, halfW, gt) => { breakLabObstaclesInSweep(ax, ay, bx, by, halfW, gt, (k, g) => playSfx(k, g)); },
+  // 大ジャンプ(社長指示2026-10-20): 踏み切りは床を蹴る重い一撃(heavy-impact を低く・小さめ)。自機・味方の kill-dash は使わない
+  // (クリエイティブ監査#5: 自分の音と取り違える)。笑い声は既存の頻度で踏み切りに乗る(毎回だと癖に聞こえる)。着地は汎用ジャンプの着地音。
+  leap: () => playSfx('heavy-impact', 0.55, undefined, 0.72),
+  land: () => playSfx('jump-land', 1.0, undefined, 0.9),
 };
 // 賞金首(§6.38 B2a)の音。予兆SEは全ボス共通のhunter-alert流用(§6.26-9 #5)。fireはレーザー発射の
 // 一撃SE(ミーミルと同じ'heavy-impact'流用=useGameLoop.tsのlaser-windup→laser-fire遷移箇所と同一)。
@@ -14897,6 +14902,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               projectile ? projectile.y + projectile.height / 2 : enemyForFx.y + enemyForFx.height / 2)
             : { x: 0, y: 0 };
           const hitIsCrawler = !!enemyForFx && isLabCrawlerProxyType(enemyForFx.type);
+          // 宙の偶像(大ジャンプ)に当たった手応えの絵(火・血・火花・クリの輪)だけ体の高さへ。判定・爆心(hitPt)は床のまま
+          // (品質/クリエイティブ監査#13・当てた敵が分かっているここでだけ持ち上げる=他の敵の絵は動かない)。
+          const fxLiftY = idolAirLiftOf(enemyForFx, newGameTime);
 
           // Apply the crit multiplier at hit time: bosses take 5× on a crit,
           // normal enemies 1.5×. `damage` is the projectile's base damage.
@@ -15161,7 +15169,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (enemyForFx && projectile && !gpBulletReflected && !fireJetEnemiesThisFrame.has(enemyId) && fireNowMs - lastJetAt >= FIRE_JET_DEDUP_MS) {
             fireJetEnemiesThisFrame.add(enemyId);
             fireJetEnemyAtRef.current.set(enemyId, fireNowMs);
-            const ecx = hitPt.x, ecy = hitPt.y;
+            const ecx = hitPt.x, ecy = hitPt.y - fxLiftY;
             let dx = projectile.direction.x, dy = projectile.direction.y;
             const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
             const ox = ecx + dx * (hitIsCrawler ? 0 : enemyForFx.width * 0.42), oy = ecy + dy * (hitIsCrawler ? 0 : enemyForFx.height * 0.18); // 塊は当たった所そのものから
@@ -15196,7 +15204,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
           if (enemyForFx) {
             const hitX = hitPt.x;
-            const hitY = hitPt.y;
+            const hitY = hitPt.y - fxLiftY;
             // §5.23 M22 C1: 血しぶきの方向=弾の進行方向(出口側=貫通していく向き)。
             const bDirX = DIRFX_ENABLED && projectile ? projectile.direction.x : undefined;
             const bDirY = DIRFX_ENABLED && projectile ? projectile.direction.y : undefined;
@@ -15207,7 +15215,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // Crit / headshot juice: gold shockwave + sparks + glow.
           if (hitCrit && enemyForFx) {
             const cex = hitPt.x;
-            const cey = hitPt.y;
+            const cey = hitPt.y - fxLiftY;
             spawnRing(cex, cey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
             spawnBurst(cex, cey, '#fde047', 10);
             useGameStore.getState().spawnGlow(cex, cey, 34, 'rgba(253,224,71,', 240);
@@ -15895,7 +15903,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, wireChannel, wireHate);
               spawnDamageNumber(ecx, e.y, dmg, false, { enemyId: e.id });
               useGameStore.getState().spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
-              useGameStore.getState().spawnMeleeBlood(ecx, ecy, e.width, { flash: HIT_BLINK_TYPES.has(e.type) }); // 近接の血飛沫(v0.25.2026)・点滅(ゾンビの試し)
+              useGameStore.getState().spawnMeleeBlood(ecx, ecy - idolAirLiftOf(e, newGameTime), e.width, { flash: HIT_BLINK_TYPES.has(e.type) }); // 近接の血飛沫(v0.25.2026)・点滅(ゾンビの試し)
               if (!killed && knockbackCdReady(e, nowW)) {
                 const dx = ecx - pcx, dy = ecy - pcy;
                 const dd = Math.hypot(dx, dy) || 1;
@@ -15944,7 +15952,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 }
                 useGameStore.getState().spawnSlash(tcx, tcy - 12, 'rgba(186,230,253,0.98)'); // 縦の斬り下ろし
                 useGameStore.getState().spawnSlash(tcx, tcy + 12, 'rgba(147,197,253,0.9)');
-                useGameStore.getState().spawnMeleeBlood(tcx, tcy, tgt.width, { flash: HIT_BLINK_TYPES.has(tgt.type) }); // 近接の血飛沫(v0.25.2026)・点滅(ゾンビの試し)
+                useGameStore.getState().spawnMeleeBlood(tcx, tcy - idolAirLiftOf(tgt, newGameTime), tgt.width, { flash: HIT_BLINK_TYPES.has(tgt.type) }); // 近接の血飛沫(v0.25.2026)・点滅(ゾンビの試し)
                 spawnBurst(tcx, tcy, '#bae6fd', 14);
                 wireSfx('slash-damage', tcx, tcy);
               }

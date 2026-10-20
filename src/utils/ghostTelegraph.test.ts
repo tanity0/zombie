@@ -13,7 +13,7 @@ import {
 } from './ghostTelegraph';
 import { telegraphDodge } from './botSkill';
 import {
-  IDOL_WINDUP_STATES, IDOL_RECOVER_STATES, IDOL_FIRE_STATES, IDOL_REST_STATE,
+  IDOL_WINDUP_STATES, IDOL_RECOVER_STATES, IDOL_FIRE_STATES, IDOL_REST_STATE, IDOL_LEAP_STATES,
 } from './idolTick';
 import { ACRASIEL_STATES } from './acrasielScript';
 import type { Enemy } from '../types/game';
@@ -54,6 +54,7 @@ const scanStates = (): Map<string, string> => {
     ['IDOL_RECOVER_STATES', IDOL_RECOVER_STATES],
     ['IDOL_FIRE_STATES', IDOL_FIRE_STATES],
     ['IDOL_REST_STATE', [IDOL_REST_STATE]],
+    ['IDOL_LEAP_STATES', IDOL_LEAP_STATES], // 大ジャンプ(社長指示2026-10-20)
     // v0.25.4204: アクラシエルも一覧を正本にする(理由は acrasielScript.ts の ACRASIEL_STATES を参照)。
     ['ACRASIEL_STATES', ACRASIEL_STATES],
   ] as const) {

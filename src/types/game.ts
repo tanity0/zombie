@@ -1232,6 +1232,9 @@ export interface Enemy {
     // v0.25.3442(社長指示): 手榴弾技(プレイヤーの手榴弾と同じ仕様の投擲)。
     // v0.25.3444(社長指示「バックロールしながら手榴弾を投げる」): 'idol-nade'=投擲と同時の後方ロール実行域。
     | 'idol-nade-windup' | 'idol-nade' | 'idol-nade-recover'
+    // 社長指示2026-10-20(大ジャンプ→即・追尾弾): しゃがむ(その場)→空中(地面の座標が着地点へ・高さは絵だけ)。
+    // 着地の瞬間に idol-orb-windup(溜めは短い)へ。着地にダメージは無い=語尾 '-windup' を付けない(赤い予告の語尾規則に乗せない)。
+    | 'idol-leap-crouch' | 'idol-leap'
     | 'idol-rest'
     // PACING_PUZZLE.md §6.38 B2: バス停(変異・bounty-ranged)の技。
     // laser-windup/laser-fire/laser-recover/laser-broken は usesMimirLaser 経由でミーミルと共有

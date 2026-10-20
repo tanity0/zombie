@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5175', items: [
+    'アイドルから大きく離れると、大きく跳んで目の前へ降り、すぐ追尾弾を撃ってくる',
+    '着地の砂埃は、研究所らしい灰色の埃に',
+  ] },
   { version: '0.25.5174', items: [
     'ステージ2の奥の窓の向こうに、明るい廊下が見える',
   ] },

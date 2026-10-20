@@ -260,7 +260,7 @@ describe('射撃部品(shots)', () => {
     expect(idolEnabledShots()).toEqual([]);
     // 台本も公平性の台帳も、足していない限り**同じ配列の同じ参照**が返る。
     expect(idolStrings()).toBe(IDOL_TUNING.strings);
-    expect(idolFairnessP1().map(f => f.key)).toEqual(['aim', 'fan', 'snipe', 'punch', 'orb', 'nade']);
+    expect(idolFairnessP1().map(f => f.key)).toEqual(['aim', 'fan', 'snipe', 'punch', 'orb', 'nade', 'leap+orb']);
   });
 
   it('中核6技と射撃枠を1つの関数で引ける(timing に居ない技を直接引かない)', () => {

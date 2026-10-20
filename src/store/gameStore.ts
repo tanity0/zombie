@@ -429,6 +429,7 @@ import { enemyFootBox, enemyHeadY, enemyHitStrip } from '../pixi/renderSpec';
 // 雑魚の個体差+役割(社長指示v0.25.3176・案4+案3)。向きと速さだけを曲げる純関数。
 import { isChaffType, chaffTraits, chaffHeading, chaffSpeedMult } from '../utils/chaffMotion';
 import { labWallsInRegion, labUvBarsInRegion, wallRect, labPropsInRegion, propRect, nudgeToClearLabSpot, LAB_START_SAFE_RADIUS, LAB_CORRIDOR_Y_LIMIT_PX as LAB_CORRIDOR_Y_LIMIT_FROM_WORLD, setLabBrokenObstacleIds, type LabBrokenObstacle } from '../world/labWalls';
+import { idolAirLiftOf } from '../utils/idolScript'; // 宙の偶像に当たった血・数字を体の高さへ(見せ方のみ)
 import {
   clampRectToPlayableArea,
   clampCircleToPlayableArea, isCircleInPlayableArea, // 帰還サークルを行ける帯の内側に置く
@@ -5060,7 +5061,7 @@ const applyMeleeFinishSkillSpread = (
       const { x: ecx, y: ecy } = blastAnchorOf(e, pcx, pcy); // 死体の塊の代理は箱の中で一番近い点(LAB_CRAWLER §4)
       if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
       get().spawnSlash(ecx, ecy, 'rgba(168,85,247,0.95)');
-      get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫=プレイヤーへ向かって飛ぶ(v0.25.2026)
+      get().spawnMeleeBlood(ecx, ecy - idolAirLift(e), e.width); // 近接の血飛沫=プレイヤーへ向かって飛ぶ(v0.25.2026)
       if (isBossType(e.type)) {
         // ボスは即死しない=近接フィニッシュ相当ダメージ(×5)。フィニッシュ波及なのでviaMeleeFinish=true
         const spreadScanMult = e.id === spreadScanTargetId ? scanMarkMeleeMult(e, spreadGt, 'melee') : 1;
@@ -5739,7 +5740,7 @@ const applySlasherChainStrike = (
     if (!k) get().applyDrillerRetreat(e.id);
     get().spawnDamageNumber(ecx, e.y, eDmg, false, { scanMarked: chainScanMult !== 1 });
     get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.95)');
-    get().spawnMeleeBlood(ecx, ecy, e.width); // 近接の血飛沫(v0.25.2026)
+    get().spawnMeleeBlood(ecx, ecy - idolAirLift(e), e.width); // 近接の血飛沫(v0.25.2026)
     if (k) {
       killed += 1;
       openShukuchiWindow(get); // 縮地: スラッシャーの追撃(プレイヤー本人の近接)での撃破も窓を開く(§32-3)
@@ -7617,6 +7618,12 @@ const crawlerFxAt = (x: number, y: number): { x: number; y: number } | null => {
   return crawlerCenterFxPoint(x, y, st.labCrawler, p.x + p.width / 2, p.y + p.height / 2);
 };
 
+/**
+ * 宙にいる偶像(大ジャンプ)に**当たった**絵(血・火花・数字・斬撃の当たり)を持ち上げる量(px)。判定は床の箱のまま。
+ * ★当てた敵が分かっている所でだけ呼ぶ(点の位置で推測しない=他の敵・壁・破片の絵を持ち上げない・品質監査2巡目A)。
+ */
+const idolAirLift = (e: Enemy | undefined): number => idolAirLiftOf(e, useGameStore.getState().gameTime);
+
 export const useGameStore = create<GameState>((set, get) => ({
   player: {
     x: 0,
@@ -8728,7 +8735,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           gpPatch = gp.patch;
           gpDmgScale = gp.damageScale;
         }
-        hitAt.push({ x: ecx, y: enemy.y });
+        hitAt.push({ x: ecx, y: enemy.y - idolAirLift(enemy) });
         // 覚醒: 爆発の距離減衰(中心1.0〜外周0.55)。非覚醒: 従来どおり等倍。
         // research/NEW_GUNS.md §4: スケボーはスキル(サブ扱い)=印付きへ ×1.6。
         const eDmg = (skAwaken
@@ -9523,7 +9530,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // バッシュ: 近接ダメージ×3 + 押し出し方向への強ノックバック。フィニッシュ無し。
       if (bashShove) {
         bashHitEnemy = true; // 敵にヒット → 後でストップ
-        slashAt.push({ x: ecx, y: ecy });
+        slashAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
         meleeHitEnemyIds.push(enemy.id);
         bashBloodExcludeIds.add(enemy.id);
         // 社長決定2026-10-18: バッシュにも印の近接倍率(雑魚×2.75/ボス級×4.7)。この振りの「1体だけ」の枠を使う。
@@ -9549,7 +9556,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         }
         recordShieldBashDamage(dmg); // G4a(§2.9(3)・記録専用): バッシュ与ダメの様式カウンタ
-        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health, scan: bashScanShown });
+        meleeDamageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: bashScanShown });
         const newHealth = Math.max(0, enemy.health - dmg);
         if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
         survivors.push({
@@ -9567,7 +9574,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
 
       // Anything in reach gets cut — show a slash on it.
-      slashAt.push({ x: ecx, y: ecy });
+      slashAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
       meleeHitEnemyIds.push(enemy.id);
       // 気絶敵へのフィニッシュ裁定は resolveStunnedMeleeHit が唯一の出どころ
       // (v0.25.2525で抽出=**守護霊の近接スイングと共有**・値/条件は不変。ボス5×は
@@ -9595,7 +9602,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         //   極端だった。本裁定は**紫かどうか**で分ける(ボスと同じ物差し)。
         // ※3×のダメージ・黄色のクリ表示・浮きは常にそのまま(変えるのは演出の有無だけ)。
         if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-        meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
+        meleeDamageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
         recordCritHit('guaranteed', stunnedHit.kind === 'boss'); // §7-11c(4): meleeExecuteの紫中フィニッシュ
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
         // そのもの(finisher:trueの即時処刑に相当)。
@@ -9650,7 +9657,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      meleeDamageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health, scan: scanMult !== 1 });
+      meleeDamageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: scanMult !== 1 });
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -9668,7 +9675,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (laserBreak?.postureTriggered) bossFullStunHits.push({ x: ecx, y: ecy });
       // 社長指示: 近接クリでも銃・刀と同じくスタンさせる(倒せなかった時のみ=フィニッシュ受付の入口)。
       // 気絶時間アップ(パッシブ)も銃と同じくstunDurationMultを掛ける。
-      if (crit) critStunAt.push({ x: ecx, y: ecy });
+      if (crit) critStunAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
       // ボスはスタンさせず半減(v0.25.2422)。通常敵は従来どおり。
       // v0.25.3491: isBossType(pumpkin/lab-zombie-3含む)はbossCritStopPatch側がDR込みで
       // stunUntil/bossSlowUntilのどちらかを決める。通常敵だけこの場の直書き5秒スタンを使う(不変)。
@@ -10100,7 +10107,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         gpHitPatch = { id: enemy.id, patch: gp.patch };
         gpDmgScale = gp.damageScale;
       }
-      slashAt.push({ x: ecx, y: ecy });
+      slashAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
       cloneHitEnemyIds.push(enemy.id); // スキル 救難信号(§6.10 M33⑦): 分身のヒット敵ID(発動判定/対象選定用)
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil
         && !isBossPostureBroken(enemy, gameTime);
@@ -10109,7 +10116,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (usesBossStunnedMelee(enemy.type)) {
           bossFinishHit = true;
           const dmg = meleeExecBase * BOSS_MELEE_STUN_MULT;
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
+          damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health });
           if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
           cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
           // §5.21-追補4: スタン中ボスへの5×近接=ボスのフィニッシュ経路そのものなのでclampしない。
@@ -10122,7 +10129,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (stunnedMeleeOutcome(enemy, gameTime) === 'heavy') {
           bossFinishHit = true;
           const dmg = meleeExecBase * ELITE_MELEE_STUN_MULT;
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
+          damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
           const nh = Math.max(0, enemy.health - dmg);
@@ -10137,12 +10144,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       // research/NEW_GUNS.md §4: 分身はサブウェポン=印の倍率は ×1.6(1体だけの規則は近接の振りの話なので掛けない)。
       const cloneScan = isScanMarked(enemy, gameTime);
       const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale * (cloneScan ? SCAN_MARK_RANGED_MULT : 1); // 分身はサブ武器=血の覚醒の×1.5は掛けない(社長裁定: 与ダメ+50%は近接+銃だけ・検収品質監査C)
-      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health, scan: cloneScan });
+      damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: cloneScan });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
       const nh = Math.max(0, enemy.health - dmg);
       if (nh <= 0) { killed.push({ enemy, finisher: false }); continue; }
-      if (crit) critStunAt.push({ x: ecx, y: ecy });
+      if (crit) critStunAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
       // CRIT-UNIFY §9.4(現行漏れの解消): 分身のクリも銃/ナイフ/刀と同じく裏ボスの完全気絶カウントに乗せる。
       // v0.25.3491: bossCritSlowPatch→bossCritStopPatch(isBossType全体をDR込みで扱う。site1と同型)。
       const bossSlow = crit ? bossCritStopPatch(enemy, gameTime, player.stunDurationMult ?? 1) : null; // ボスは半減(v0.25.2422)
@@ -10818,7 +10825,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         gpHitPatch = { id: enemy.id, patch: gp.patch };
         gpDmgScale = gp.damageScale;
       }
-      slashAt.push({ x: ecx, y: ecy });
+      slashAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
       katanaHitEnemyIds.push(enemy.id);
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil
         && !(isGhost && isBossPostureBroken(enemy, gameTime));
@@ -10834,7 +10841,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = fatal?.damage ?? katanaExecBase * gpDmgScale * BOSS_MELEE_STUN_MULT;
           if (fatal) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
+          damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health });
           if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
           // §5.21-追補4: スタン中ボスへの5×一閃=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -10861,7 +10868,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : (enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1);
           const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT * heavyScanMult;
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
+          damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
@@ -10907,7 +10914,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health, scan: katanaScanMult !== 1 });
+      damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: katanaScanMult !== 1 });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -10918,7 +10925,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 知らせる。これで刀でも「クリが出た」のが分かり、スタン中の敵を一閃の近接
       // フィニッシュで処刑できる(刀=銃の代替としての一貫挙動)。
       const critStun = crit; // reaper は対象外(上で除外済み)
-      if (critStun) critStunAt.push({ x: ecx, y: ecy });
+      if (critStun) critStunAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
       // GAME_AUDIT #17(社長承認): 刀のクリも銃と同じく裏ボスの完全気絶カウントに乗せる。
       // research/NEW_GUNS.md §4: 印付きのボスへの 'melee' の削りは 0.04→0.09 相当('heavy' の一閃は変えない)。
       const bossBump = !isGhost ? applyBossPostureDamage(enemy, allowFinisher ? 'heavy' : 'melee', gameTime, allowFinisher ? 1 : scanMarkMeleePostureMult(enemy, gameTime)) : null;
@@ -11188,7 +11195,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       whipHitEnemyIds.push(enemy.id);
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
-      slashAt.push({ x: ecx, y: ecy });
+      slashAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
       // 巻き込み中は通常倍率(1.0)、それ以外は鞭の低倍率(0.25)。
       const whipMult = inHurricane(ecx, ecy) ? 1 : WHIP_DAMAGE_MULT;
       // 処刑(ボス5×/強個体3×/致命の一撃)は skillOutgoingDamageMult を通らないので、育成の攻撃力は
@@ -11205,7 +11212,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const fatal = applyBrokenMeleeFatal(enemy, whipExecBase, gameTime);
           const dmg = fatal?.damage ?? whipExecBase * BOSS_MELEE_STUN_MULT;
           if (fatal) whipBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health });
+          damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health });
           recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ
           // §5.21-追補4: スタン中ボスへの5×鞭打ち=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -11219,7 +11226,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const heavyScanMult = enemy.id === whipScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'whip') : 1; // 社長決定2026-10-18
           const dmg = whipExecBase * ELITE_MELEE_STUN_MULT * heavyScanMult;
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
-          damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
+          damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
           recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
@@ -11254,11 +11261,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      damageNumbers.push({ x: ecx, y: enemy.y, value: dmg, crit, hp: enemy.health, scan: whipScanMult !== 1 });
+      damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: whipScanMult !== 1 });
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
-      if (crit) critStunAt.push({ x: ecx, y: ecy });
+      if (crit) critStunAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
       // §9.4(v0.25.2502・CRIT-UNIFY★未決2の解消): 鞭のクリも紫カウントへ(発生枠=近接系共通。
       // ナイフ4737/刀5479/分身5076と同じ作法=GAME_AUDIT #17「プレイヤーが直接出したクリは全部乗せる」)。
       // research/NEW_GUNS.md §4: 印付きのボスへの 'melee' の削りは 0.04→0.09 相当。
@@ -24072,6 +24079,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   spawnDamageNumber: (x, y, value, crit = false, opts) => {
+    // 当てた敵を名指しされた数字だけ、宙の偶像なら体の高さへ(品質/クリエイティブ監査#13・名指しの無い数字は動かさない)。
+    if (opts?.enemyId !== undefined) y -= idolAirLift(get().enemies.find(e => e.id === opts.enemyId));
     const now = Date.now();
     // ステージ2の死体の塊(幅約740の箱)に当たった数字は、プレイヤーに面した縁の内側へ寄せる(箱の中心=画面の外になりやすい)。
     // 代理に当たった数字だけ(enemyId か、代理の箱の中心に出された数字)。

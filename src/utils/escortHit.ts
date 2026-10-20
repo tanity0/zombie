@@ -48,7 +48,8 @@ export const enemyDealsContactToAllies = (e: Enemy, gameTime: number): boolean =
   if (isCorpse(e) || e.dormant || !(e.damage > 0)) return false;
   if (isBodyWallBoss(e.type) || isGuardianPhantom(e.type) || isReaperFamily(e.type) || isHangedman(e.type)) return false;
   if (e.aiPhase === 'jump' || e.aiPhase === 'g-jump-air' || e.aiPhase === 'g-trijump-air'
-    || (e.type === 'giantbat' && e.aiPhase === 'g-glide-active')) return false;
+    || (e.type === 'giantbat' && e.aiPhase === 'g-glide-active')
+    || (e.type === 'idol' && e.bossState === 'idol-leap')) return false; // 偶像の大ジャンプの空中(プレイヤーへの接触と同じ扱い)
   if (e.stunUntil !== undefined && gameTime < e.stunUntil) return false;
   // トールの技の最中は本体接触を落とす(技自身の判定に委ねる)。突進の走り(thor-dash-move)だけは本体接触が生きている。
   if (e.type === 'thor' && e.bossState && e.bossState !== 'chase' && e.bossState !== 'return' && e.bossState !== 'thor-dash-move') return false;

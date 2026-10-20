@@ -1834,6 +1834,12 @@ export const BOSS_PHASE_SHEETS: readonly BossPhaseSheetSpec[] = [
       ...(['idol-roll', 'idol-nade'] as const).map(state => ({ state, seq: [2, 3, 4, 5], mode: 'stretch' as const })),
       ...(['idol-roll-recover', 'idol-nade-recover'] as const).map(state =>
         ({ state, seq: [6, 7, 8, 8, 4, 2, 1, 0], mode: 'stretch' as const })),
+      // 大ジャンプ(社長指示2026-10-20・専用の絵は無い=このシートのコマを流用): しゃがむ(450ms)は 0→踏み切り(1)で溜め、
+      // 空中(750ms)は仰け反りの浅い 2→4 で上がって頂点(進み0.4)で止め、下りは 4→3→2→1 と戻して踏み切りの姿(1)で着地する
+      // (クリエイティブ監査#1: 仰け反り切った姿のまま降りると寝そべって着地して見える)。着地の瞬間は狙撃シートの膝立ち(0)へ繋がる。
+      // 跳ぶ高さは絵に無いので位置で上げる(idolScript.idolLeapLiftPx・描画の位置だけ)。伸び縮み(歪み)では代用しない。
+      { state: 'idol-leap-crouch', seq: [0, 1, 1, 1], mode: 'stretch' },
+      { state: 'idol-leap', seq: [2, 3, 4, 4, 4, 3, 2, 1, 1], mode: 'stretch' },
     ],
   },
   // ★スカジの魔法1・魔法2(社長支給2026-09-30「**スカジの魔法1と2 / 1が単発、即発動系**」)。

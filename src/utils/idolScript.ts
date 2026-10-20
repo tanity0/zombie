@@ -173,10 +173,39 @@ export interface IdolTuning {
     /** 拳が当たってから消えるまで(ms)。 */
     punchFistHoldMs: number;
   };
+  /**
+   * **大ジャンプ→即・追尾弾**(社長指示2026-10-20「アイドルから大きく離れると、大ジャンプして少し手前に移動してきて
+   * すぐ様、誘導弾を打つ台本追加」)。台本(strings)の抽選ではなく、中立(chase)へ割り込む別枠の台本。
+   * 発火距離は超遠の境目(`zoneEdges.midMax`)をそのまま読む(数字を二重に持たない)。
+   */
+  leap: IdolLeapTuning;
   /** 射撃部品の8枠(既定は全て `enabled:0` = 何も無い)。 */
   shots: Record<IdolShotSlot, IdolShotSpec>;
   /** 枠に付けた名前(空=`射撃1` のような既定名)。台本に並べた時に読めるようにするためだけの値。 */
   shotLabels: Record<IdolShotSlot, string>;
+}
+
+/** 大ジャンプの数値(`IDOL_TUNING.leap`)。全部が数字=ボスメーカーの欄がそのまま生える。 */
+export interface IdolLeapTuning {
+  /** 狙いの相手が超遠(`zoneEdges.midMax` より遠い)に居続けてから跳ぶまで(ms)。跳ぶのは中立か段の切れ目(技の最中には割り込まない・残りの段は捨てる)。 */
+  triggerMs: number;
+  /**
+   * 次に跳べるまで(ms)。**しゃがみの頭から**数える。行動の時計なので、硬直の州の間は止まる
+   * (PACING_PUZZLE.md §16-H・`enemyClocks.tickModuleClockFreeze`)=壁時計ではこれより少し長い。
+   */
+  cooldownMs: number;
+  /** 溜め(しゃがんで踏み切る)の長さ(ms)。この間はその場で止まる。 */
+  crouchMs: number;
+  /** 空中の長さ(ms)。地面の座標はこの間に着地点へ移る。 */
+  airMs: number;
+  /** 見た目の跳ぶ高さの頂点(px・ワールド)。判定は地面の座標のまま=絵だけが上がる。 */
+  heightPx: number;
+  /** 着地点=狙いの相手からこの距離だけ手前(px)。 */
+  standOffPx: number;
+  /** 壁・プロップを避けて寄せた結果、狙いの相手にこれより近くなったら線上で離す(px)。 */
+  minGapPx: number;
+  /** 着地直後の追尾弾の溜め(ms)。通常の追尾弾の溜め(`timing.orb.windup`)より短い=「すぐ様」。 */
+  orbWindupMs: number;
 }
 
 /**
@@ -294,6 +323,13 @@ export const IDOL_TUNING: IdolTuning = {
   // (溜めの最後の35%で突き出す=拳らしい速さ)。**伸び切る瞬間は判定の瞬間のまま**なので、
   // 「絵が当たったのにダメージが来ない/逆」は起きない(CLAUDE.md 攻撃ヴィジュアルの分類①)。
   fx: { punchFistLead: 0.35, punchFistEase: 1, punchFistHoldMs: 280 },
+  // 大ジャンプ→即・追尾弾(社長指示2026-10-20)。★叩き台。
+  // 185px手前=目の前の主戦帯へ頭上から降ってくる(品質監査A1: 380だとスマホの半幅約200pxの外=跳ぶ・空中・着地が全部画面外)。
+  // 溜め450+空中750=1.2秒は跳ぶ姿そのものが合図(追尾弾の赤い線は着地から300msだけ)。高さ240=「大ジャンプ」。
+  leap: {
+    triggerMs: 800, cooldownMs: 7000, crouchMs: 450, airMs: 750,
+    heightPx: 240, standOffPx: 185, minGapPx: 120, orbWindupMs: 300,
+  },
   // 射撃部品(v0.25.2638)。**既定は8枠すべて無効**=本編のアイドルの挙動は1ミリも変わらない。
   shots: {
     s1: shotDefault(), s2: shotDefault(), s3: shotDefault(), s4: shotDefault(),
@@ -314,6 +350,77 @@ export const IDOL_STRING_LEN: StringLenConfig = IDOL_TUNING.stringLen;
 export const IDOL_STRINGS: readonly StringScript<IdolMove>[] = IDOL_TUNING.strings;
 export const IDOL_REST: RestConfig = IDOL_TUNING.rest;
 export const IDOL_PUNISH: PunishConfig<IdolMove> = IDOL_TUNING.punish;
+export const IDOL_LEAP: IdolLeapTuning = IDOL_TUNING.leap;
+
+// ---- 大ジャンプ(社長指示2026-10-20) ------------------------------------------------------------
+// 状態: `idol-leap-crouch`(しゃがむ・その場) → `idol-leap`(空中・地面の座標が着地点へ) → 着地の瞬間に
+// 追尾弾の溜め(`idol-orb-windup`・溜めは `leap.orbWindupMs`)。**着地にダメージは無い**(ただの移動)=赤い予告も出さない。
+// ★州名に `-windup` を付けない: 付けると全ボス共通の語尾規則が「カウンターできる赤い帯」と読み、
+// 体の赤フラッシュ等が付く(=赤いのに当たらない)。バス停の後方ロール(`br-roll`)と同じ理由。
+export const IDOL_LEAP_CROUCH_STATE = 'idol-leap-crouch';
+export const IDOL_LEAP_AIR_STATE = 'idol-leap';
+
+/** 着地点(中心)= 跳ぶ前の位置(from)から狙い(target)への線上で、狙いから `standOffPx` 手前。既に近ければその場。 */
+export const idolLeapLanding = (
+  fromX: number, fromY: number, targetX: number, targetY: number, standOffPx: number,
+): { x: number; y: number } => {
+  const dx = targetX - fromX, dy = targetY - fromY;
+  const d = Math.hypot(dx, dy);
+  if (d <= standOffPx || d < 0.001) return { x: fromX, y: fromY };
+  const k = (d - standOffPx) / d;
+  return { x: fromX + dx * k, y: fromY + dy * k };
+};
+
+/**
+ * 空中の地面の進み(0..1)。**踏み切りで速度を持って出て、着地へ向けて減速する**(慣性MUST)。
+ * 3次エルミート(始点の傾き1.1=蹴り出し・終点の傾き0.2=着地で殺す)。単調増加・u=0で0・u=1で1。
+ */
+export const idolLeapGroundEase = (u: number): number => {
+  const t = Math.max(0, Math.min(1, u));
+  const m0 = 1.1, m1 = 0.2;
+  const t2 = t * t, t3 = t2 * t;
+  return (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) + (t3 - t2) * m1;
+};
+
+/** 空中の進み(0..1)。`untilMs`=着地の時刻(bossStateUntil)。 */
+export const idolLeapAirProgress = (untilMs: number | undefined, nowMs: number): number =>
+  Math.max(0, Math.min(1, 1 - ((untilMs ?? nowMs) - nowMs) / Math.max(1, IDOL_TUNING.leap.airMs)));
+
+/** 高さの頂点が来る空中の進み(0..1)。前寄せ=上がりは速く、頂点で少し漂い、落ちは長く加速する(着地が重い)。 */
+export const IDOL_LEAP_APEX_U = 0.4;
+/** 落ちの曲線の指数(2=放物線)。2より大きいほど着地の直前が速い=重く落ちる。 */
+const IDOL_LEAP_FALL_POW = 3.4; // 頂点0.4・落ち0.6でも着地の速さ(3.4/0.6)が踏み切り(2/0.4)を上回る=重く落ちる
+/** 高さの形(0..1・頂点=1)。上がりは放物線、落ちは指数 IDOL_LEAP_FALL_POW。u=0 と u=1 で 0。 */
+export const idolLeapHeightShape = (u: number): number => {
+  const t = Math.max(0, Math.min(1, u)), p = IDOL_LEAP_APEX_U;
+  if (t <= p) { const a = (p - t) / p; return 1 - a * a; }
+  return 1 - Math.pow((t - p) / (1 - p), IDOL_LEAP_FALL_POW);
+};
+/**
+ * 見た目の跳ぶ高さ(px・ワールド)。空中の州でだけ 0 より大きい。
+ * **描画が読むだけ**——判定・影の接地点・遠近・地平線フェードは地面の座標(e.y)のまま。
+ * 遠近の倍率は掛けない(当たった絵の持ち上げ=`idolAirLiftOf` と同じ値にする)。
+ */
+export const idolLeapLiftPx = (bossState: string | undefined, untilMs: number | undefined, nowMs: number): number => {
+  if (bossState !== IDOL_LEAP_AIR_STATE) return 0;
+  return IDOL_TUNING.leap.heightPx * idolLeapHeightShape(idolLeapAirProgress(untilMs, nowMs));
+};
+
+/**
+ * 宙にいるアイドルに**当たった**時の血・火花・数字を持ち上げる量(px・品質/クリエイティブ監査#13)。判定は床の箱のまま、**絵だけ**上へ。
+ * ★呼び手が「この敵に当たった」と分かっている所でだけ使う(点の位置で推測しない=空中の間に近くで出た他の敵・壁・破片の絵を
+ * 巻き込まない・品質監査2巡目A)。アイドル以外・空中でない時は 0。
+ */
+export const idolAirLiftOf = (
+  e: { type: string; bossState?: string; bossStateUntil?: number } | undefined, nowMs: number,
+): number => (e && e.type === 'idol' ? idolLeapLiftPx(e.bossState, e.bossStateUntil, nowMs) : 0);
+
+/** 跳んでよいか(純関数): 超遠に居続けた時間がしきい値以上で、クールダウンが明けている。 */
+export const idolLeapReady = (superFarMs: number, nowMs: number, readyAt: number): boolean =>
+  superFarMs >= IDOL_TUNING.leap.triggerMs && nowMs >= readyAt;
+
+/** 超遠か(=跳ぶ距離か)。境目は距離帯の超遠と同じ値を読む。 */
+export const idolLeapFar = (distance: number): boolean => distance > IDOL_TUNING.zoneEdges.midMax;
 
 /**
  * 拳の伸び具合(0..1)。`u` = 溜めの進行(0=溜め開始 / **1=判定の瞬間**)。
@@ -409,6 +516,15 @@ const idolShotFairness = (): MoveFairness[] => idolEnabledShots().map(s => {
     ? { key: idolShotName(s), cls: 'C' as const, telegraphMs: sp.windup }
     : { key: idolShotName(s), cls: 'B' as const, telegraphMs: sp.windup, escapePx: sp.size / 2 + PLAYER_HALF };
 });
+/**
+ * 大ジャンプ→即・追尾弾(社長指示2026-10-20)。追尾弾そのものは C(走っても振り切れない=答えは詰める)。
+ * ★追尾弾の赤い線は着地から `orbWindupMs`(300ms)だけで、単独なら下限550msを割る。**ヒントは跳ぶ姿**——
+ * この技は必ず「しゃがむ→跳ぶ→着地即撃つ」の決まった並びなので、しゃがんだ瞬間から撃つまでが予告になる。
+ */
+const leapOrbFairness = (): MoveFairness => {
+  const L = IDOL_TUNING.leap;
+  return { key: 'leap+orb', cls: 'C', telegraphMs: L.crouchMs + L.airMs + L.orbWindupMs };
+};
 // ★ボスメーカー対応: 数値がテーブルから来る=**モジュール読み込み時のスナップショットにしない**。
 // 呼ぶたびに今の値で組み直す関数にする(数字を画面で変えたら公平性の検算も追随する)。
 export const idolFairnessP1 = (): MoveFairness[] => {
@@ -424,6 +540,7 @@ export const idolFairnessP1 = (): MoveFairness[] => {
     // 手榴弾(v0.25.3442): 赤円66pxが投擲から信管2秒後に爆ぜる=歩いて出られる(B)。
     // ヒント=転がる手榴弾+赤円そのもの(投擲の瞬間から見えている)なので予告時間は信管の2秒。
     { key: 'nade', cls: 'B', telegraphMs: HEAVY_GRENADE_FUSE_MS, escapePx: HEAVY_GRENADE_RADIUS + PLAYER_HALF },
+    leapOrbFairness(),
     ...idolShotFairness(),
   ];
 };
@@ -440,6 +557,7 @@ export const idolFairnessP2 = (): MoveFairness[] => {
     // 手榴弾はP2でも同じ仕様(第二波なし・B=歩いて出られる)。「P2は全部C」の憲法は
     // nadeを除いた既存技で維持する(社長指示による追加=idolScript.test側も同じ形で機械化)。
     { key: 'nade', cls: 'B', telegraphMs: HEAVY_GRENADE_FUSE_MS, escapePx: HEAVY_GRENADE_RADIUS + PLAYER_HALF },
+    leapOrbFairness(),
     ...idolShotFairness(),
   ];
 };

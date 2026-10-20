@@ -24,6 +24,7 @@ import { hitThirdParties } from './heroBlast'; // research/MUTANT_HERO.md §4-2:
 // プレイヤーの移動クランプと**同じ純関数**を使う。`playableArea.ts` は「行ける帯」の唯一の出どころで、
 // プレイヤー移動・湧き制限・帯の外の減光が全てここから導かれている。ボスだけがこれを通っていなかった。
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
+import { nudgeToClearLabSpot } from '../world/labWalls'; // 大ジャンプの着地点を壁・プロップの外へ(ゴール・UVバーと同じ置き場所の作法)
 import { distToBandRect } from './geometry'; // v0.25.3496: 帯の判定=描いてある四角
 import { phaseJustChanged } from './bossScript';
 import { IDOL_NEUTRAL_RULED_MS } from './bossRebuild'; // ★社長裁定2026-08-27: 偶像のインターバル=1.2秒(移動しながら)
@@ -34,6 +35,8 @@ import {
   IDOL_VERB_SPEED_MULT, IDOL_TIMING, IDOL_MOVES_ALL, IDOL_ORB_SPREAD_RAD,
   idolZone, idolPhaseForHealth, idolFanCount, idolOrbCount, idolWaveActive,
   idolStrings, idolShot, idolShotFireMs, idolMoveTiming, isIdolShot, idolGunMuzzle,
+  IDOL_LEAP_CROUCH_STATE, IDOL_LEAP_AIR_STATE, idolLeapLanding, idolLeapGroundEase, idolLeapAirProgress,
+  idolLeapReady, idolLeapFar,
   type IdolMove, type IdolShotSlot, type IdolShotSpec,
 } from './idolScript';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from './grenadeSpec';
@@ -50,7 +53,15 @@ export interface IdolSfx {
   laugh?: () => void;
   /** 拳で壁・プロップを壊す(社長指示2026-10-20)。呼び手が壊す処理(utils/labCrawlerTick.breakLabObstaclesInSweep)を渡す。無ければ壊さない。 */
   breakObstacles?: (ax: number, ay: number, bx: number, by: number, halfW: number, gameTime: number) => void;
+  /** 大ジャンプの踏み切り(社長指示2026-10-20)。超遠=画面の外のことが多いので、音で「跳んだ」を知らせる。 */
+  leap?: () => void;
+  /** 大ジャンプの着地(派手さの音・判定なし)。 */
+  land?: () => void;
 }
+/** 大ジャンプの着地の画面の揺れ(描画のみ・派手さの絵)。小さく短く=ダメージの揺れと取り違えない。 */
+export const IDOL_LEAP_LAND_SHAKE_MS = 220;
+export const IDOL_LEAP_LAND_SHAKE_MAG = 8; // クリエイティブ監査#8: 4では大ジャンプの着地の重さが出ない。向き=着地点→自機
+
 /** 技で笑う頻度: 前に笑ってからこの数の技を出し、かつこの時間が経っていたら笑う(乱数を使わない=テストの再現性を崩さない)。 */
 export const IDOL_LAUGH_EVERY_MOVES = 3;
 export const IDOL_LAUGH_MIN_GAP_MS = 9000;
@@ -81,6 +92,8 @@ export interface IdolTickState {
   lastPx: number; lastPy: number; playerVx: number; playerVy: number;
   /** 笑い声: 登場で笑った個体・最後に笑った時刻・それから出した技の数。 */
   laughedIdolId?: string; lastLaughAt?: number; movesSinceLaugh?: number;
+  /** 大ジャンプ(社長指示2026-10-20): 狙いの相手が超遠に居続けた時間(ms・何をしていても数え、超遠を外れたら0)と、次に跳べる時刻(gameTime)。 */
+  leapFarMs: number; leapReadyAt: number;
   /**
    * ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。**Enemy に無い時計**
    * (ここの `shotNextAt`)を硬直の間だけ預かる袋。書き手は `tickModuleClockFreeze` だけ。
@@ -99,6 +112,7 @@ export const createIdolTickState = (): IdolTickState => ({
   farSince: 0, meleeSince: 0, angleSince: 0, lastAngle: 0, homing: [],
   shotSlot: null, shotWavesLeft: 0, shotNextAt: 0, shotAngle: 0, shotWaveIdx: 0,
   lastPx: 0, lastPy: 0, playerVx: 0, playerVy: 0,
+  leapFarMs: 0, leapReadyAt: 0,
 });
 
 // ============================================================================================
@@ -113,7 +127,7 @@ export const createIdolTickState = (): IdolTickState => ({
 // 掟: 強制発動の前に**進行中のストリング・第二波の予約・懲罰シグナルを必ずリセット**する
 // (中途半端な状態が残ると以後の挙動が「たまに変」になり、原因究明が地獄になる)。
 // ============================================================================================
-interface IdolPlayRequest { move?: IdolMove; verb?: NeutralVerb | null; solo: boolean; loop: boolean }
+interface IdolPlayRequest { move?: IdolMove; verb?: NeutralVerb | null; leap?: boolean; solo: boolean; loop: boolean }
 let pendingPlay: IdolPlayRequest | null = null;
 /** 単独再生の実行中(=停止中でも tick を進めてよい)。硬直明けに false へ戻る。 */
 let soloActive = false;
@@ -128,6 +142,10 @@ export const requestIdolMovePlay = (move: IdolMove, opts?: { solo?: boolean; loo
   // ループのON/OFFトグルは「次に押す再生」に効くだけなので、走っているループを止める手段がここに要る。
   if (loopMove === move) { pendingPlay = { verb: null, solo: false, loop: false }; return; }
   pendingPlay = { move, solo: opts?.solo ?? false, loop: opts?.loop ?? false };
+};
+/** 大ジャンプ→即・追尾弾を1回だけ再生する(距離・クールダウンを無視・ループ無し)。 */
+export const requestIdolLeapPlay = (opts?: { solo?: boolean }): void => {
+  pendingPlay = { leap: true, solo: opts?.solo ?? false, loop: false };
 };
 /** 移動語彙を維持する(同じものを再度指定 or null で解除)。終わりが無いので押し続ける形。 */
 export const requestIdolVerbPlay = (verb: NeutralVerb | null): void => {
@@ -160,6 +178,8 @@ const FIRE_SUFFIX = '-fire';
  */
 export const IDOL_FIRE_STATES: readonly string[] =
   IDOL_MOVES_ALL.filter(isIdolShot).map(m => `idol-${m}${FIRE_SUFFIX}`);
+/** 大ジャンプの州(社長指示2026-10-20)。州名は idolScript の定数=予告台帳の網羅テストが走査で拾えないので、ここを正本として渡す。 */
+export const IDOL_LEAP_STATES: readonly string[] = [IDOL_LEAP_CROUCH_STATE, IDOL_LEAP_AIR_STATE];
 
 type BossStateName = NonNullable<Enemy['bossState']>;
 const windupState = (m: IdolMove): BossStateName => `idol-${m}-windup` as BossStateName;
@@ -270,7 +290,10 @@ export const runIdolTick = (
    */
   tickModuleClockFreeze(
     s,
-    [{ key: 'shotNextAt', kind: 'deadline', base: 'game', get: () => s.shotNextAt, set: v => { s.shotNextAt = v; } }],
+    [
+      { key: 'shotNextAt', kind: 'deadline', base: 'game', get: () => s.shotNextAt, set: v => { s.shotNextAt = v; } },
+      { key: 'leapReadyAt', kind: 'deadline', base: 'game', get: () => s.leapReadyAt, set: v => { s.leapReadyAt = v; } },
+    ],
     isEnemyFrozenForClocks(idol, newGameTime, Date.now()), newGameTime, Date.now(),
   );
   const fresh = (): Enemy => useGameStore.getState().enemies.find(e => e.id === idol.id) ?? idol;
@@ -334,17 +357,26 @@ export const runIdolTick = (
     idolGunMuzzle(icx, idol.y + idol.height, aimX - icx);
 
   // ---- 技の開始(ストリングの1段を出す) --------------------------------------------------------
-  const beginMove = (m: IdolMove): void => {
-    sfx.alert();
-    // 技の時にたまに笑う(3つ目の技ごと・前の笑いから9秒以上)。
+  /** 技の時にたまに笑う(3つ目の技ごと・前の笑いから9秒以上)。大ジャンプは跳ぶ瞬間に数える。 */
+  const countMoveAndMaybeLaugh = (): void => {
     s.movesSinceLaugh = (s.movesSinceLaugh ?? 0) + 1;
     if (s.movesSinceLaugh >= IDOL_LAUGH_EVERY_MOVES && newGameTime - (s.lastLaughAt ?? -1e9) >= IDOL_LAUGH_MIN_GAP_MS) {
       s.movesSinceLaugh = 0; s.lastLaughAt = newGameTime;
       sfx.laugh?.();
     }
+  };
+  /**
+   * quiet=大ジャンプの着地直後の追尾弾。予兆SEと笑いの数えは**しゃがみ/踏み切りで1回だけ**済ませてあるので、
+   * ここでは鳴らさず数えない(1回の跳びにつき1回・品質監査C1)。
+   */
+  const beginMove = (m: IdolMove, windupMs?: number, quiet = false): void => {
+    if (!quiet) { sfx.alert(); countMoveAndMaybeLaugh(); }
     s.wavePending = idolWaveActive(m, phase);
     patch.bossState = windupState(m);
-    patch.bossStateUntil = newGameTime + idolMoveTiming(m).windup;
+    // windupMs=大ジャンプの着地直後の追尾弾(溜めが短い)。描画は溜めの頭(bossWindupStartAt)〜明け(bossStateUntil)で
+    // 予告の進みを出す=溜めの長さが技ごとに違っても「出る=溜め開始 / 消え切る=発射」がずれない。
+    patch.bossStateUntil = newGameTime + (windupMs ?? idolMoveTiming(m).windup);
+    patch.bossWindupStartAt = newGameTime;
     if (isIdolShot(m)) {
       const aim = hateAim();
       patch.hateTarget = aim.side;
@@ -401,6 +433,7 @@ export const runIdolTick = (
       sfx.alert();
       patch.bossState = windupState(m);
       patch.bossStateUntil = newGameTime + IDOL_TUNING.waveDelayMs;
+      patch.bossWindupStartAt = newGameTime;
       return;
     }
     // ボスメーカーの単独再生: この技だけを見せる約束なので、ストリングへは続けない。
@@ -412,7 +445,12 @@ export const runIdolTick = (
       patch.bossNextActionAt = newGameTime + IDOL_TUNING.neutral.minMs;
       return;
     }
-    if (s.step < s.seq.length) { beginMove(s.seq[s.step++]); return; }
+    if (s.step < s.seq.length) {
+      // ★段の切れ目への割り込み(設計チャット判断2026-10-20「離れた瞬間に来る方が面白い」): 次の段へ移る所で
+      // 超遠0.8秒・クールダウン明けなら跳ぶ(残りの段は捨てる)。技の最中(溜め・発射・硬直)には割り込まない。
+      if (leapGo()) { beginLeap(); return; }
+      beginMove(s.seq[s.step++]); return;
+    }
     // ストリング終端=休符(必ず入る)。
     s.seq = []; s.step = 0;
     patch.bossState = IDOL_REST_STATE;
@@ -538,6 +576,92 @@ export const runIdolTick = (
     }));
   };
 
+  // ---- 大ジャンプ(社長指示2026-10-20「アイドルから大きく離れると、大ジャンプして少し手前に移動してきて
+  // すぐ様、誘導弾を打つ台本追加」) ------------------------------------------------------------------
+  // しゃがむ(その場) → 空中(地面の座標が着地点へ慣性つきで移る・高さは絵だけ=idolLeapLiftPx) → 着地の瞬間に
+  // 追尾弾の溜め(短い)。**着地にダメージは無い**=赤い予告も出さない。空中も無敵にしない(弾は当たる)。
+  const playCtx = (): PlayableAreaCtx => {
+    const st0 = useGameStore.getState();
+    return {
+      farBackdrop: st0.farBackdrop,
+      labTheme: st0.stageTheme === 'lab' && !st0.indoorMode,
+      corridorMode: st0.corridorMode,
+      m0AdvanceLimitX: st0.m0AdvanceLimitX,
+      corridorRunInActive: st0.corridorRunInActive,
+    };
+  };
+  const beginLeap = (): void => {
+    s.leapFarMs = 0;
+    s.leapReadyAt = newGameTime + IDOL_TUNING.leap.cooldownMs;
+    // 台本への割り込み: 進行中の段・第二波・懲罰シグナルを持ち越さない(終わったら休符→通常の流れ)。
+    s.seq = []; s.step = 0; s.wavePending = false;
+    s.farSince = 0; s.meleeSince = 0;
+    patch.bossState = IDOL_LEAP_CROUCH_STATE;
+    patch.bossStateUntil = newGameTime + IDOL_TUNING.leap.crouchMs;
+    patch.bossWindupStartAt = newGameTime;
+    // しゃがみの頭で予兆SE(クリエイティブ監査#3: 姿も音も無いと超遠からは何も読めない)。1回の跳びにつきここだけ。
+    sfx.alert();
+  };
+  /** 踏み切り: 着地点をこの瞬間の狙いで決める(しゃがんでいる間に相手が動いても、跳ぶ先は跳ぶ瞬間の相手)。 */
+  const takeOffLeap = (): void => {
+    const L = IDOL_TUNING.leap;
+    const aim = hateAim();
+    // 壁・プロップの中に降りない(ステージ2の屋外=ゴール・UVバーと同じ nudgeToClearLabSpot)+行ける帯の中へ。
+    // 寄せた結果が相手に近すぎたら(minGapPx 未満)、線上で手前距離を足して試し直す(品質監査B3)。
+    const st0 = useGameStore.getState();
+    const labOut = st0.stageTheme === 'lab' && !st0.indoorMode;
+    const settle = (standOff: number): { x: number; y: number } => {
+      let p0 = idolLeapLanding(icx, icy, aim.x, aim.y, standOff);
+      if (labOut) p0 = nudgeToClearLabSpot(p0.x, p0.y, idol.width, idol.height);
+      const c = clampRectToPlayableArea(p0.x - idol.width / 2, p0.y - idol.height / 2, idol.width, idol.height, playCtx());
+      return { x: c.x + idol.width / 2, y: c.y + idol.height / 2 };
+    };
+    let land = settle(L.standOffPx);
+    for (const extra of [40, 80, 130, 200]) {
+      if (Math.hypot(land.x - aim.x, land.y - aim.y) >= L.minGapPx) break;
+      land = settle(L.standOffPx + extra);
+    }
+    patch.aiFromX = icx; patch.aiFromY = icy;
+    patch.aiTargetX = land.x; patch.aiTargetY = land.y;
+    patch.hateTarget = aim.side;
+    patch.bossState = IDOL_LEAP_AIR_STATE;
+    patch.bossStateUntil = newGameTime + L.airMs;
+    sfx.leap?.();
+    countMoveAndMaybeLaugh();
+  };
+  /** 空中の1フレーム。地面の座標を着地点へ(慣性つき)。着地したら true(位置は着地点ちょうど)。 */
+  const stepLeapAir = (): boolean => {
+    const fx = idol.aiFromX ?? icx, fy = idol.aiFromY ?? icy;
+    const tx = idol.aiTargetX ?? icx, ty = idol.aiTargetY ?? icy;
+    const landed = newGameTime >= (idol.bossStateUntil ?? 0);
+    const g = landed ? 1 : idolLeapGroundEase(idolLeapAirProgress(idol.bossStateUntil, newGameTime));
+    patch.x = (fx + (tx - fx) * g) - idol.width / 2;
+    patch.y = (fy + (ty - fy) * g) - idol.height / 2;
+    if (landed) {
+      // 着地の派手さ(判定なし): 音+揺れ(着地点→自機の向き)。砂埃・地割れは描画(pixiScene の idolLeapWasAir=空中の州から出た瞬間)が着いた点で出す。
+      sfx.land?.();
+      const sdx = pcx - tx, sdy = pcy - ty, sdl = Math.hypot(sdx, sdy) || 1;
+      useGameStore.getState().triggerShake(IDOL_LEAP_LAND_SHAKE_MS, IDOL_LEAP_LAND_SHAKE_MAG, sdx / sdl, sdy / sdl);
+    }
+    return landed;
+  };
+  /** 跳んでよいか: ボスメーカーの再生・維持中でなく、アテンション中でなく、生きていて、超遠が続きCDが明けている。
+   *  呼ぶのは中立と「段の切れ目」(afterMove・間明けの次段)だけ=技の最中には割り込まない。 */
+  const leapGo = (): boolean =>
+    verbHold === null && !soloActive && !useGameStore.getState().attention && idol.health > 0
+    && idolLeapReady(s.leapFarMs, newGameTime, s.leapReadyAt);
+
+  // 超遠に居続けた時間(相手は技と同じ狙い=ヘイト対象)。**アイドルが何をしていても数える**(超遠を外れたら0)。
+  // 跳ぶのは中立からだけ(技の最中・休符=プレイヤーのターンには割り込まない)なので、「技の最中は数えない」に
+  // すると、休符(約0.7秒)+中立(1フレームで次の台本を引く)の間に0.8秒へ届かず**一度も跳ばない**(実測)。
+  // ⇒ 超遠が0.8秒続いていれば、中立か、台本の次の段へ移る切れ目で跳ぶ。
+  if (verbHold === null && !soloActive) {
+    const la = hateAim();
+    s.leapFarMs = advanceLingerMs(s.leapFarMs, idolLeapFar(Math.hypot(la.x - icx, la.y - icy)), deltaTime * 1000);
+  } else {
+    s.leapFarMs = 0;
+  }
+
   // ---- 状態機械 -------------------------------------------------------------------------------
   // ---- ボスメーカー: 要求箱の引き取り(毎フレーム先頭で1回) --------------------------------------
   let forcedThisFrame = false;
@@ -567,10 +691,28 @@ export const runIdolTick = (
       loopMove = req.loop ? req.move : null;
       beginMove(req.move); // CD・距離帯・抽選を全部バイパスして即開始
       forcedThisFrame = true;
+    } else if (req.leap) {
+      // 大ジャンプの単独再生(距離・クールダウンを無視)。掟どおり持ち越しを全部捨ててから始める。
+      s.seq = []; s.step = 0; s.wavePending = false;
+      s.farSince = 0; s.meleeSince = 0; s.angleSince = 0;
+      s.homing = []; s.shotWavesLeft = 0; s.shotSlot = null;
+      verbHold = null; loopMove = null;
+      soloActive = req.solo;
+      beginLeap();
+      forcedThisFrame = true;
     }
   }
 
-  if (fullStun) {
+  if (fullStun && st === IDOL_LEAP_AIR_STATE) {
+    // ★空中で紫: 宙で止めない・地面へ瞬間移動させない(慣性MUST・品質監査A2)。空中の時計は止まらない
+    // (enemyClocks.isEnemyFrozenForClocks の例外)ので着地まで飛び切り、着地したら技(追尾弾)は出さずに中立へ
+    // =以後は上の紫の分岐が気絶として止める(既存の作法)。
+    if (stepLeapAir()) {
+      patch.bossState = 'chase';
+      patch.bossNextActionAt = newGameTime + IDOL_TUNING.neutral.minMs;
+    }
+    patch.bossMoveCutPending = undefined;
+  } else if (fullStun) {
     // ★紫の完全気絶: 状態機械を丸ごとスキップ=技も弾も出ない・座標も書かない(=移動しない)。
     // 解除後はチェイスから再開する。**持ち越しを全部捨てる**のは裏ボスが `bossBurstLeft` を
     // クリアしているのと同じ理由——残しておくと、解除直後に「止まっていた分の連射/次の段」が
@@ -582,7 +724,7 @@ export const runIdolTick = (
     s.seq = []; s.step = 0; s.wavePending = false;
     s.shotWavesLeft = 0; s.shotSlot = null;
     patch.bossMoveCutPending = undefined; // 紫が勝つ(技は既に全部捨てた)
-  } else if (idol.bossMoveCutPending) {
+  } else if (idol.bossMoveCutPending && st !== IDOL_LEAP_AIR_STATE) {
     // ★カウンターで「出していた1手だけ」を終わらせる(社長指示2026-10-01・counterCut.ts)。
     // 爆風/帯のパリィ(combatTick)が立てた旗を引き取る。行き先は休符(=間)。休符は中立と同じ
     // 語彙で動く(裁定2026-08-27「アイドルは止まらない」)ので、技の絵は消えて歩き/立ち絵へ戻る。
@@ -601,6 +743,17 @@ export const runIdolTick = (
     // ボスメーカーの強制発動フレーム: 上で patch を組み終えているので通常遷移はスキップ。
   } else if (countered) {
     // カウンター成立フレームは遷移をスキップ(counterHitが休符まで設定済み)。
+  } else if (st === 'chase' && leapGo()) {
+    // === 大ジャンプ: 台本(ストリング)への割り込み。抽選の時刻(bossNextActionAt)を待たない=離れたらすぐ来る ===
+    beginLeap();
+  } else if (st === IDOL_LEAP_CROUCH_STATE) {
+    // しゃがむ(その場で止まる)。明けたら踏み切る。
+    if (newGameTime >= (idol.bossStateUntil ?? 0)) takeOffLeap();
+  } else if (st === IDOL_LEAP_AIR_STATE) {
+    // 空中: カウンターで「技を切る」旗が立っていても空中では受けない(切る技が無い=ただの移動)。
+    if (idol.bossMoveCutPending) patch.bossMoveCutPending = undefined;
+    // 着地した瞬間に追尾弾の溜め(短い=「すぐ様」)。予告・絵・弾は通常の追尾弾と同じ州・同じ経路。
+    if (stepLeapAir()) beginMove('orb', IDOL_TUNING.leap.orbWindupMs, true);
   } else if (st === 'chase') {
     // === NEUTRAL: 主戦帯を維持する(監査レポート§2-5の移動語彙4つ) ===
     // ボスメーカーで語彙を維持中はそれを使う(通常は距離から判断)。
@@ -654,7 +807,9 @@ export const runIdolTick = (
     if (newGameTime >= (idol.bossStateUntil ?? 0) && s.step < s.seq.length) {
       // ★カウンターで1手を終えた後の間(社長指示2026-10-01): ストリングの残りがあれば次の段から出す。
       // 通常の休符はストリング終端で入る(s.seq=[])のでここへは来ない。
-      beginMove(s.seq[s.step++]);
+      // ここも「次の段へ移る所」=大ジャンプの割り込み先(段の切れ目と同じ判断)。
+      if (leapGo()) beginLeap();
+      else beginMove(s.seq[s.step++]);
     } else if (newGameTime >= (idol.bossStateUntil ?? 0)) {
       // 休符明け=即・次の行動抽選が可能(間合い調整は休符中に済ませた。旧: さらに中立0.7〜1.3秒を足していた)。
       patch.bossState = 'chase';
@@ -849,16 +1004,8 @@ export const runIdolTick = (
   // =「行ける帯」の定義が1本のまま(片方だけ直すとズレる、と playableArea.ts に明記されている)。
   // 追いかけられない相手は戦えない=理不尽なので、帯の外へは出さない。
   if (patch.x !== undefined || patch.y !== undefined) {
-    const st0 = useGameStore.getState();
-    const ctx: PlayableAreaCtx = {
-      farBackdrop: st0.farBackdrop,
-      labTheme: st0.stageTheme === 'lab' && !st0.indoorMode,
-      corridorMode: st0.corridorMode,
-      m0AdvanceLimitX: st0.m0AdvanceLimitX,
-      corridorRunInActive: st0.corridorRunInActive,
-    };
     const c = clampRectToPlayableArea(
-      patch.x ?? idol.x, patch.y ?? idol.y, idol.width, idol.height, ctx,
+      patch.x ?? idol.x, patch.y ?? idol.y, idol.width, idol.height, playCtx(),
     );
     patch.x = c.x; patch.y = c.y;
   }

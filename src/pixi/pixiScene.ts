@@ -172,7 +172,7 @@ import { horizontalShadowCorners } from '../utils/shadowProjection';
 import { lightAt, lightSmoothLerp, assistLightMult, type PointLight } from '../utils/lightField';
 import {
   idolFanCount, idolOrbCount, IDOL_TIMING, IDOL_TUNING, IDOL_ORB_SPREAD_RAD, IDOL_MOVES_ALL,
-  idolShot, isIdolShot, idolFistReach, idolGunMuzzle, type IdolShotSlot, type IdolMove,
+  idolShot, isIdolShot, idolFistReach, idolGunMuzzle, idolLeapLiftPx, IDOL_LEAP_AIR_STATE, IDOL_LEAP_CROUCH_STATE, type IdolShotSlot, type IdolMove,
 } from '../utils/idolScript';
 import { HEAVY_GRENADE_RADIUS } from '../utils/grenadeSpec';
 import { MIGUEL_SCRIPT_ENABLED, JIBRIL_SCRIPT_ENABLED, RAFI_SCRIPT_ENABLED } from '../utils/angelBossTick';
@@ -2247,11 +2247,33 @@ const JORM_COIL_BODY_LEN_SCALE = 1.3;   // 帯の長さ(JORM_COIL_RANGE)に対�
 const idolAimWindupVis = () => IDOL_TIMING.aim.windup;
 const idolFanWindupVis = () => IDOL_TIMING.fan.windup;
 const idolPunchWindupVis = () => IDOL_TIMING.punch.windup;
+// 追尾弾の溜めの長さ=その回の溜めの頭〜明け(大ジャンプの着地直後は短い)。頭が無ければ表の値。
+const idolOrbWindMsVis = (e: { bossWindupStartAt?: number; bossStateUntil?: number }): number =>
+  e.bossWindupStartAt !== undefined && e.bossStateUntil !== undefined && e.bossStateUntil > e.bossWindupStartAt
+    ? e.bossStateUntil - e.bossWindupStartAt : IDOL_TIMING.orb.windup;
+// 追尾弾の溜めが表の溜めより短い(=大ジャンプの着地直後)か。溜めの長さは時刻の引き算なので、
+// 硬直の時計止め(頭と明けを同じだけずらす)の浮動小数の誤差で通常の溜めを「短い」と読まないよう 1ms の余白を持つ。
+const idolOrbWindupIsShort = (e: { bossWindupStartAt?: number; bossStateUntil?: number }): boolean =>
+  idolOrbWindMsVis(e) < IDOL_TIMING.orb.windup - 1;
 const idolPunchRangeVis = () => IDOL_TUNING.shape.punchRange;
 const idolPunchHalfWidthVis = () => IDOL_TUNING.shape.punchHalfWidth;
 // 弾の見た目の半太さ=弾サイズの半分(狙い撃ちと連射扇でサイズが違えるようになったので技ごとに引く)。
 const idolBulletHalfWidthVis = (m: 'aim' | 'fan') => IDOL_TUNING.bullet[m].size / 2;
 const IDOL_FAN_VIS_RANGE = 700;         // T6線の描画上の長さ(px・判定を持たない"派手さの絵"側=②)
+// 大ジャンプの着地の砂埃・地割れの基準半径(px・判定は無い=派手さの絵②)。×DUST_SCALE で描く(体の箱40×20より大きく外へ出す)。
+const IDOL_LEAP_DUST_R = 72;
+// 研究所の砂埃の不透明度の倍率(床の冷たい粉塵=薄く・クリエイティブ監査#7)。研究所の全ての跳び・突進の埃に効く。
+const LAB_DUST_ALPHA_MUL = 0.8;
+// 大ジャンプのしゃがみで体を沈める量(px・位置だけ=歪みではない)/着地後に前へ滑る量(px)と時間(ms)。
+const IDOL_LEAP_CROUCH_SINK_PX = 10;
+const IDOL_LEAP_LAND_SLIDE_PX = 7;
+const IDOL_LEAP_LAND_SLIDE_MS = 130;
+// 大ジャンプの間の影の「浮いて薄くなる」の下限(1=地上と同じ)。着地点が読めるように薄くなり切らせない(クリエイティブ監査#12)。
+const IDOL_LEAP_SHADOW_FLOOR = 0.6;
+// 大ジャンプの着地直後の追尾弾の線の長さ=狙いまでの距離×これ。
+const IDOL_LEAP_ORB_LINE_MUL = 1.15;
+// 空中で倒された時、死体の絵を地面へ落とす重力(px/s²)。240pxを約0.26秒で落ちる(品質監査A3)。
+const IDOL_CORPSE_FALL_G = 7000;
 // 硬直の青白tint / 予告の赤ブリンクを出す州。**技の一覧から機械的に組む**(v0.25.2638)——
 // 手書きの配列だと射撃枠を足した時に「予告なのに赤くならない」という形で静かに漏れる。
 const IDOL_RECOVER_STATES: readonly string[] = [...IDOL_MOVES_ALL.map(m => `idol-${m}-recover`), 'idol-rest'];
@@ -4157,6 +4179,7 @@ interface ActorView {
   shadowScale?: number;   // texture.width/height に掛ける「素の」スケール(depthScale/containScale/
                             // stageEnemyVisualMul等の構造的な倍率のみ。breath/flinch/aiSq/lungeSqは含まない)
   shadowLiftPx?: number;  // 持ち上げ系(liftHop/kbHop/aiHop/lungeOffY)の合計。影の heightPx に使う
+  shadowFloatFloor?: number; // 浮いた時の影の縮み・薄まりの下限(ShadowCasterReq.floatFloor へ)
   // ★息を止める(社長指示2026-09-17「攻撃する時や、攻撃後の隙は呼吸を止める」)。
   // 現在の呼吸の振れ幅(1=普通に呼吸 / 0=止めている)と、その最終更新時刻。**瞬間的に切り替えない**
   // (CLAUDE.md「動きの絶対ルール: 慣性」)ので、時定数つきの指数緩和で寄せる=フレームレート非依存。
@@ -4230,6 +4253,7 @@ interface ShadowCasterReq {
   silhouetteExempt?: boolean; // 松明/焚き火/緑卵=接地2枚のみ
   isStatic?: boolean;  // 木/壁/プロップ/city props/建物=距離クロスフェード(縮退)の対象
   heightPx?: number;   // 浮遊時の高さ(px, world単位)。省略=0(地上)
+  floatFloor?: number; // 浮いた時の縮み・薄まりの下限(0..1・省略=下限なし)。偶像の大ジャンプ=着地点が読める濃さを残す
 }
 
 /** ベイク済みシルエットテクスチャ+その幾何メタ(裁定F: pad補正に使う)。 */
@@ -7146,6 +7170,12 @@ export class PixiScene {
   private fxLatches = new Map<string, { t0: number; dur: number; armed: boolean; d: number[]; offAt?: number }>();
   // 「直前フレームに突進していた」敵のid(突進が明けた瞬間の土煙を出すための1フレーム記憶)。
   private dashWasOn = new Set<string>();
+  /** 大ジャンプの空中に居た偶像(本当の着地の瞬間=空中から出たフレームを拾う)。 */
+  private idolLeapWasAir = new Set<string>();
+  /** 偶像の直近の見た目の高さ(空中で倒された時、死体を宙から落とすため)。 */
+  private idolLastLift: { id: string; lift: number; at: number } | null = null;
+  /** 空中で倒された偶像の死体の落下(diedAt で識別)。 */
+  private idolCorpseFall: { diedAt: number; from: number } | null = null;
   // FX-V2a: 「直前フレームにgaze-windup中だった」敵のid(windup終了エッジ=発射の瞬間を捉える
   // ための1フレーム記憶。dashWasOnと同じ作法)。
   private gazeWindupWasOn = new Set<string>();
@@ -14384,7 +14414,7 @@ export class PixiScene {
         id: e.id, x: cx, y: cy,
         rawW: disp.w, rawH: disp.h, texture: view?.sprite.texture ?? null,
         alpha: horizonAlpha * foreFade, shadowFade: view?.shadowFade ?? 1,
-        flip: disp.flip, skewX: view?.sprite.skew.x ?? 0, heightPx: liftPx,
+        flip: disp.flip, skewX: view?.sprite.skew.x ?? 0, heightPx: liftPx, floatFloor: view?.shadowFloatFloor,
       });
     }
     // ---- 裏ボス討伐フェード(★致命4修正: 討伐の瞬間に影だけ消え、2.6秒間「影の無い巨体」が
@@ -15237,8 +15267,8 @@ export class PixiScene {
     const rawHeight = Math.max(0, req.heightPx ?? 0);
     const height = rawHeight > SHADOW_HEIGHT_DEADZONE_PX ? rawHeight - SHADOW_HEIGHT_DEADZONE_PX : 0;
     const t = Math.min(1, height / (req.rawH * SHADOW_FLOAT_T_HEIGHT_MULT));
-    const shrink = 1 - SHADOW_FLOAT_SHRINK * t;
-    const floatFade = 1 - SHADOW_FLOAT_FADE * t;
+    const shrink = Math.max(req.floatFloor ?? 0, 1 - SHADOW_FLOAT_SHRINK * t);
+    const floatFade = Math.max(req.floatFloor ?? 0, 1 - SHADOW_FLOAT_FADE * t);
     // ★D-2b「やること3」(社長指示v0.25.2815「縦横両方ね。絵の、ではなく絵の足元の」):
     // footX を「絵の実体が横に占める中心」へ寄せる。req.x は呼び出し側が渡す幾何中心
     // (アンカー0.5相当)なので、左右に余白のある素材だとそこは絵の実体の中心と一致しない。
@@ -20599,6 +20629,15 @@ export class PixiScene {
       const phaseLiftPx = phillSheet !== null ? (this.bossPhaseLiftSheetPx(idleTexKey, e, gameTime) + frameLift) * scale : 0;
       // 州の痙攣(アイドルの狙撃の硬直の最後のコマ・社長指示2026-10-20)。位置の揺れだけ(歪みではない)。
       const phaseTremble = phillSheet !== null ? this.bossPhaseTrembleSheetPx(idleTexKey, e, gameTime) : { dx: 0, dy: 0 };
+      // アイドルの大ジャンプの高さ(社長指示2026-10-20)。シートの有無に関係なく位置で上げる(立ち絵へフォールバックしても地面を滑らない)。
+      // 描画の位置だけ: 判定・影の接地点・遠近(足元のY)・地平線フェード(足元のY)・帯の減光は地面の座標のまま。
+      // 遠近の倍率は掛けない(下の行=宙の体に当たった血・数字の持ち上げ idolAirLiftOf と同じ高さにするため)。影は浮いたぶん小さく薄く(shadowLiftPx・下限あり)。
+      const idolLeapLift = e.type === 'idol' ? idolLeapLiftPx(e.bossState, e.bossStateUntil, gameTime) : 0;
+      if (e.type === 'idol') this.idolLastLift = { id: e.id, lift: idolLeapLift, at: Date.now() };
+      // しゃがみ: 位置だけ沈める(クリエイティブ監査#4・歪みではない)。溜めの前半で沈み切り、踏み切りまで保つ。
+      const idolCrouchSink = e.type === 'idol' && e.bossState === IDOL_LEAP_CROUCH_STATE
+        ? IDOL_LEAP_CROUCH_SINK_PX * Math.sin(Math.min(1, telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil) / 0.45) * Math.PI / 2)
+        : 0;
       // PACING_PUZZLE.md §10-4(浮遊)+§10-19(登場シーン)。視覚のみ=e.y/当たり判定は不変
       // (CLAUDE.md Y方向5点チェック: 地平線フェード/擬似遠近は上で既に対象外化。可視域/移動可能帯は
       // e.x/e.yそのものを一切動かさないため無関係。this.phillIntroState()が登場時の羽根撒きも駆動する)。
@@ -20691,7 +20730,8 @@ export class PixiScene {
       // lungeSqXを一切含まない「素のscale」を使う。持ち上げ系(liftHop/kbHop/lungeOffY)だけを
       // heightPx相当(shadowLiftPx)として別途渡す(=殴るたびに影が跳ねる/静止時に呼吸で脈動する事故を防ぐ)。
       view.shadowScale = scale;
-      view.shadowLiftPx = liftHop + kbHop - lungeOffY + idleHopPx + phaseLiftPx;
+      view.shadowLiftPx = liftHop + kbHop - lungeOffY + idleHopPx + phaseLiftPx + idolLeapLift;
+      view.shadowFloatFloor = e.type === 'idol' && e.bossState === IDOL_LEAP_AIR_STATE ? IDOL_LEAP_SHADOW_FLOOR : undefined;
       // ★検収差し戻し(中12): 「絵の下端」は単純な中心±テクスチャ高さ/2ではなく、テクスチャの
       // 実アルファ内容の下端(余白を除いた実体)を使う(社長報告: ヨルムンガルドで足元より80px級下に
       // 影が置かれていた=透明な余白を「絵の下端」と誤認していたため)。
@@ -20699,7 +20739,7 @@ export class PixiScene {
       view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5); // 論理の足元(実体下端。リフト/スカッシュ無し)
       view.sprite.position.set(
         Math.round(spx + liftShake + lungeOffX + biteShake + phaseTremble.dx * scale),
-        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff - idleHopPx - phaseLiftPx + phaseTremble.dy * scale),
+        Math.round(spy - liftHop - kbHop + lungeOffY - phillBob + phillIntroRise + phillDiveOff - idleHopPx - phaseLiftPx - idolLeapLift + idolCrouchSink + phaseTremble.dy * scale),
       );
       // idol専用の設置時向き(社長指示): 既存の裏ボス群に左右反転の仕組みは無い(facingLeftはShadowCloneState
       // 専用=プレイヤー分身の描画にしか使われていない)ため、idolだけに最小限の水平ミラーを足す。
@@ -23211,16 +23251,25 @@ export class PixiScene {
       }
       // T6線が扇状に(2発/Phase2は3発): 追尾弾の発射方向。弾自体が追ってくるので線は「発射の合図」。
       if (bs === 'idol-orb-windup') {
-        const prog = Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_TIMING.orb.windup));
+        // 溜めの長さは技の入り方で変わる(大ジャンプの着地直後は短い)=溜めの頭(bossWindupStartAt)〜明けで進みを出す
+        // (出る=溜め開始 / 消え切る=発射 を長さに関係なく守る)。頭が無い時だけ表の溜めで引く(旧と同じ)。
+        const prog = e.bossWindupStartAt !== undefined
+          ? telegraphProgress01(gameTime, e.bossWindupStartAt, e.bossStateUntil)
+          : Math.max(0, Math.min(1, 1 - ((e.bossStateUntil ?? gameTime) - gameTime) / IDOL_TIMING.orb.windup));
         // ★v0.25.3978: 狙い=tickが書いたヘイト対象(aiTarget)。詳細はidol-aim-windup側のコメント。
         const pl = useGameStore.getState().player;
         const ax = e.aiTargetX ?? (pl.x + pl.width / 2), ay = e.aiTargetY ?? (pl.y + pl.height / 2);
         const mz = gunMz(ax);
         const base = Math.atan2(ay - mz.y, ax - mz.x);
         const n = idolOrbCount(e.bossPhase === 2 ? 2 : 1);
+        // 短い溜め(大ジャンプの着地直後)は線を「狙いまでの距離×1.15」に縮める(クリエイティブ監査#2: 700pxだと流星の前半が
+        // 画面の外を流れ、300msの溜めの前半に赤が画面へ出ない)。判定の無い発射の合図なので長さは絵の都合で決めてよい。
+        const orbLen = idolOrbWindupIsShort(e)
+          ? Math.max(120, Math.hypot(ax - mz.x, ay - mz.y) * IDOL_LEAP_ORB_LINE_MUL)
+          : IDOL_FAN_VIS_RANGE;
         for (let k = 0; k < n; k++) {
           const a = base + (k - (n - 1) / 2) * IDOL_ORB_SPREAD_RAD;
-          this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * IDOL_FAN_VIS_RANGE, mz.y + Math.sin(a) * IDOL_FAN_VIS_RANGE, idolBulletHalfWidthVis('fan'), prog, now, telegraphStyleFor(e.type));
+          this.drawAngelBeamLine(o, mz.x, mz.y, mz.x + Math.cos(a) * orbLen, mz.y + Math.sin(a) * orbLen, idolBulletHalfWidthVis('fan'), prog, now, telegraphStyleFor(e.type));
         }
       }
       // 射撃部品(v0.25.2638): **数字から予告を引く**ので、社長が弾数/広がり/狙い方を変えると
@@ -23309,7 +23358,7 @@ export class PixiScene {
         if (bs === 'idol-aim-windup') idolWindMs = idolAimWindupVis();
         else if (bs === 'idol-fan-windup') idolWindMs = idolFanWindupVis();
         else if (bs === 'idol-snipe-windup') idolWindMs = IDOL_TIMING.snipe.windup;
-        else if (bs === 'idol-orb-windup') idolWindMs = IDOL_TIMING.orb.windup;
+        else if (bs === 'idol-orb-windup') idolWindMs = idolOrbWindMsVis(e); // 大ジャンプの着地直後は短い溜め
         else if (bs === 'idol-nade-windup') idolWindMs = IDOL_TIMING.nade.windup; // 手榴弾(v0.25.3442)も同じ震え+後ずさり
         else if (bs === 'idol-punch-windup') idolWindMs = idolPunchWindupVis();
         else if (bs !== undefined && bs.startsWith('idol-s') && bs.endsWith('-windup')) {
@@ -23321,8 +23370,20 @@ export class PixiScene {
           const pl = useGameStore.getState().player;
           const ax = (pl.x + pl.width / 2) - cx, ay = (pl.y + pl.height / 2) - cy;
           const al = Math.hypot(ax, ay) || 1;
-          const off = windupBackstepOffset(prog, now, -ax / al, -ay / al, 6);
-          view.sprite.position.x += off.x; view.sprite.position.y += off.y;
+          if (bs === 'idol-orb-windup' && e.bossWindupStartAt !== undefined && idolOrbWindupIsShort(e)) {
+            // 大ジャンプの着地直後(クリエイティブ監査#11): 着地の勢いのまま前へ数px滑って止まり、後ずさりはその後。
+            // 滑った分は後ずさりの間に戻す(溜めの終わりは通常の溜めと同じ後ずさりの位置=硬直への継ぎ目が変わらない)。
+            const since = gameTime - e.bossWindupStartAt;
+            const su = Math.min(1, since / IDOL_LEAP_LAND_SLIDE_MS);
+            const slide = IDOL_LEAP_LAND_SLIDE_PX * (1 - (1 - su) * (1 - su));
+            const bp = Math.max(0, Math.min(1, (since - IDOL_LEAP_LAND_SLIDE_MS) / Math.max(1, idolWindMs - IDOL_LEAP_LAND_SLIDE_MS)));
+            const off = windupBackstepOffset(bp, now, -ax / al, -ay / al, 6);
+            view.sprite.position.x += off.x + (ax / al) * slide * (1 - bp);
+            view.sprite.position.y += off.y + (ay / al) * slide * (1 - bp);
+          } else {
+            const off = windupBackstepOffset(prog, now, -ax / al, -ay / al, 6);
+            view.sprite.position.x += off.x; view.sprite.position.y += off.y;
+          }
         }
         // 社長裁定(v0.25.3437): idolの武器=プレイヤーのハンドガン(weapons/handgun-t1)を流用し、
         // 射撃技(aim/fan/snipe/orb/s1〜s8)の技中だけ構える(v3408「武器は技中のみ表示」と同じ扱い。
@@ -24436,6 +24497,7 @@ export class PixiScene {
       // ジャンプ/滑空も同じ「溜め→高速移動」なので横展開し、サイズに比例させて巨体の重量感を残す。
       const airborneCommit = e.aiPhase === 'g-jump-air' || e.aiPhase === 'g-trijump-air'
         || e.aiPhase === 'g-glide-active' || e.bossState === 'jump-attack';
+      // ※アイドルの大ジャンプは速度線を出さない(線は足元=床に引かれ、宙の体と離れて見える・クリエイティブ監査#6)。
       if (dashing || airborneCommit) {
         let mdx = e.vx ?? 0, mdy = e.vy ?? 0;
         if (Math.hypot(mdx, mdy) < 1) {
@@ -24549,6 +24611,26 @@ export class PixiScene {
         const r = (triAir ? GLEN_TRIJUMP_RADIUS : genericAir ? PUMPKIN_EXPLOSION_RADIUS : HB_TH.jump.radius) * DUST_SCALE;
         return [jx, jy, r];
       }, e.lastCounteredAt); // ★v0.25.3986: カウンター中断の絵キャンセル
+    }
+    // アイドルの大ジャンプ(社長指示2026-10-20)の派手さの絵(判定なし)。汎用ジャンプの台帳(着地点と時刻を踏み切りで焼く)には
+    // 載せない=**本当に着地した瞬間**(空中の州から出た瞬間)に焼く(品質監査A2: 時計が止まると焼いた時刻と着地がずれる)。
+    if (e.type === 'idol') {
+      const idolAir = e.bossState === IDOL_LEAP_AIR_STATE;
+      const idolCrouch = e.bossState === IDOL_LEAP_CROUCH_STATE;
+      const landedNow = !idolAir && this.idolLeapWasAir.has(e.id) && e.health > 0;
+      if (idolAir) this.idolLeapWasAir.add(e.id); else this.idolLeapWasAir.delete(e.id);
+      const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+      // しゃがみ: 足元に小さな埃(クリエイティブ監査#4)。
+      const crouchL = this.latchFx(`${e.id}:leapcrouch`, idolCrouch, DUST_MS, now, () => [ecx, ecy, IDOL_LEAP_DUST_R * DUST_SCALE * 0.32]);
+      if (crouchL) this.drawDust(crouchL.d[0], crouchL.d[1], crouchL.d[2], crouchL.t, this.dustTintForStage(), this.dustAlpha(crouchL.t), crouchL.t0);
+      // 踏み切り: 跳んだ地点(踏み切りで焼いた aiFrom=中心)に一発。着地より小さく。
+      const kickL = this.latchFx(`${e.id}:leapkick`, idolAir, DUST_MS, now,
+        () => [e.aiFromX ?? ecx, e.aiFromY ?? ecy, IDOL_LEAP_DUST_R * DUST_SCALE * 0.55]);
+      if (kickL) this.drawDust(kickL.d[0], kickL.d[1], kickL.d[2], kickL.t, this.dustTintForStage(), this.dustAlpha(kickL.t), kickL.t0);
+      // 着地: 着いた点に大きな埃の輪+地割れ。
+      const landL = this.latchFx(`${e.id}:leapland`, landedNow, DUST_MS, now, () => [ecx, ecy, IDOL_LEAP_DUST_R * DUST_SCALE]);
+      if (landL) this.drawDust(landL.d[0], landL.d[1], landL.d[2], landL.t, this.dustTintForStage(), this.dustAlpha(landL.t), landL.t0);
+      this.latchGroundCrack(`${e.id}:leapcrack`, landedNow, 0, now, () => [ecx, ecy, IDOL_LEAP_DUST_R * DUST_SCALE]);
     }
     // M51: 城ボス「ジャイアント」新スクリプトの予告描画(PACING_PUZZLE.md §6.26)。既存部品のみ流用
     // (T1赤ライン+終点リング=突進 / T2赤円=踏み鳴らし・飛び掛かり / T3赤い角ばった四角=薙ぎ払い /
@@ -30900,6 +30982,7 @@ export class PixiScene {
    */
   private dustTintForStage(): number {
     if (this.snowStage) return 0xe8f2ff;        // 雪原=舞い上がる雪
+    if (this.isLabStage) return 0xcdd6e2;       // 研究所=床の冷たい灰の粉塵(クリエイティブ監査#7: 森の土色は場違い)。暗い床で読める明るさ
     if (this.daylight) return 0xbfb8ae;         // 廃都=コンクリートの灰
     if (this.battlefieldStage) return 0xc9b9a6; // 城塞=乾いた土
     return 0xb9a68c;                            // 森/既定=土色
@@ -30922,7 +31005,8 @@ export class PixiScene {
     const KEYS = [0.7, 1.0, 0.7, 0.3, 0];
     const x = Math.max(0, Math.min(1, t)) * (KEYS.length - 1);
     const i = Math.min(KEYS.length - 2, Math.floor(x));
-    return KEYS[i] + (KEYS[i + 1] - KEYS[i]) * (x - i);
+    // 研究所の床は土ではなく薄い粉塵=塊に見えないよう不透明度を下げる(クリエイティブ監査#7)。
+    return (KEYS[i] + (KEYS[i + 1] - KEYS[i]) * (x - i)) * (this.isLabStage ? LAB_DUST_ALPHA_MUL : 1);
   }
   // V1(4)(FX_GAP_LEDGER.md): 砂埃の**決定的ジッター**用ハッシュ(0..1)。種はlatchの焼き付け時刻
   // (latchFxのt0)+焼き付け済み座標=**出現ごとに固定・フレーム間で不変**(毎フレーム変わって
@@ -31047,6 +31131,9 @@ export class PixiScene {
       sc = 1 + (this.dustJitterHash(seed, x + y, 3) - 0.5) * 0.3; // ±15%
       style = Math.min(2, Math.floor(this.dustJitterHash(seed, x - y, 7) * 3));
     }
+    // 研究所は灰色の4コマ帯だけ(別絵の dust-puff / dust-ring は土の橙で描かれていて、tint の乗算では灰にならない
+    // =研究所の床から森の土の塊が舞って見えた・クリエイティブ監査#7)。
+    if (this.isLabStage) style = 0;
     const puff = style === 1 ? getTexture('fx/dust-puff') : null;
     const ring = style === 2 ? getTexture('fx/dust-ring') : null;
     // 素材が未ロードなら従来の4コマ帯へ自動フォールバック(絵が出ない事故を作らない)。
@@ -31362,7 +31449,23 @@ export class PixiScene {
     const FADE_MS = 2600; // useGameLoop の BOSS_FADE_MS と一致(超過後は store 側が corpse を消す)
     // v0.25.2955: holdMs(死亡アテンションの尺)の間は t=0=無傷で見せ、その後に実時間で崩す
     // (社長指示「ストップとフラッシュが終わってから、時間停止のままゆっくり崩れ去る」)。
-    const t = Math.max(0, Math.min(1, (Date.now() - corpse.diedAt - (corpse.holdMs ?? 0)) / FADE_MS));
+    // 空中で倒された偶像(品質監査A3): 死んだ瞬間の高さから、止めの演出(holdMs)が明けたら重力で地面へ落とし、
+    // 落ち切ってから揺れ→崩れを始める(描画だけ。死体の位置=地面の点は store のまま)。
+    let fallLift = 0, fallMs = 0;
+    if (corpse.type === 'idol') {
+      if (this.idolCorpseFall?.diedAt !== corpse.diedAt) {
+        const ll = this.idolLastLift;
+        this.idolCorpseFall = { diedAt: corpse.diedAt, from: ll && ll.lift > 1 && corpse.diedAt - ll.at < 600 ? ll.lift : 0 };
+      }
+      const from = this.idolCorpseFall.from;
+      if (from > 0) {
+        fallMs = Math.sqrt((2 * from) / IDOL_CORPSE_FALL_G) * 1000;
+        const ft = Math.max(0, Date.now() - corpse.diedAt - (corpse.holdMs ?? 0)) / 1000;
+        fallLift = Math.max(0, from - 0.5 * IDOL_CORPSE_FALL_G * ft * ft);
+      }
+    }
+    // 落ちた分だけ崩れの尺を詰める(終わりの時刻は store が死体を消す時刻=hold+FADE_MS のまま=途中で消えない)。
+    const t = Math.max(0, Math.min(1, (Date.now() - corpse.diedAt - (corpse.holdMs ?? 0) - fallMs) / Math.max(1, FADE_MS - fallMs)));
     const flicker = 1 - t * (0.5 + 0.5 * Math.sin(now / 45)); // 終盤ほど深く明滅
     sp.visible = true;
     sp.texture = tex;
@@ -31401,7 +31504,7 @@ export class PixiScene {
     const baseX = fit ? stripCx + (0.5 - fit.cx) * spriteW : stripCx;
     // 通常経路の敵は足元アンカー(0.5,1)で描かれているので、中心アンカーに合わせて半分持ち上げる。
     const baseY = fit ? stripCy + (0.5 - fit.cy) * spriteH : corpse.y + corpse.h - spriteH / 2;
-    sp.position.set(Math.round(baseX + shakeX), Math.round(baseY + shakeY + sinkY));
+    sp.position.set(Math.round(baseX + shakeX), Math.round(baseY + shakeY + sinkY - fallLift));
     sp.zIndex = corpse.y + corpse.h + 1; // アクターと同じ y-sort 帯
     sp.alpha = Math.max(0, (1 - t) * flicker);
     // ③崩れている間は足元から瓦礫の砂埃。既存のプール済み drawDust をそのまま使う

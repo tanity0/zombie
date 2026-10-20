@@ -216,8 +216,9 @@ describe('個別再生: スキーマから生成できる形になっている',
     const moves = IDOL_PLAYABLES.filter(p => p.kind === 'move').map(p => p.key).sort();
     // 中核6技 + 射撃枠8つ(v0.25.2638)。射撃枠は**足していなければ見出しごと画面に出ない**ので、
     // ここに8つ並んでいても余計なボタンは現れない。
+    // + 大ジャンプ→追尾弾(leap・社長指示2026-10-20)。台本の段ではないが▶で1回見られる。
     expect(moves).toEqual([
-      'aim', 'fan', 'nade', 'orb', 'punch', 'roll',
+      'aim', 'fan', 'leap', 'nade', 'orb', 'punch', 'roll',
       's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8',
       'snipe',
     ]);
@@ -242,7 +243,7 @@ describe('個別再生: スキーマから生成できる形になっている',
     const e = getBossTuning('idol');
     expect(typeof e?.onPlay).toBe('function');
     expect(typeof e?.playState).toBe('function');
-    expect(e?.playables?.length).toBe(7 + 8 + 4); // 中核7(nade含む・v0.25.3442) + 射撃8枠 + 移動語彙4
+    expect(e?.playables?.length).toBe(7 + 1 + 8 + 4); // 中核7(nade含む・v0.25.3442) + 大ジャンプ1(2026-10-20) + 射撃8枠 + 移動語彙4
   });
 });
 

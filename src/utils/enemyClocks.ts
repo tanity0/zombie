@@ -66,6 +66,9 @@ export const isBossMidMove = (e: { bossState?: string }): boolean =>
   e.bossState !== undefined && e.bossState !== 'chase' && !isRecoverHoldPhase(e.bossState);
 
 export const isEnemyFrozenForClocks = (e: Enemy, gameTime: number, nowMs: number): boolean => {
+  // ★宙にいる間は時計を止めない(偶像の大ジャンプ・品質監査A2「紫で約3秒宙に静止」)。空中は着地まで飛び切ってから止まる
+  //   (紫が残っていれば着地後に気絶=idolTick)。下の紫(d)より前に置く=紫でも空中だけは止めない。
+  if (e.bossState === 'idol-leap') return false;
   // committed = 中断不可の実行中(空中ジャンプ・ダッシュ突進)。updateEnemies と同じ定義。
   const committed = e.aiPhase === 'jump' || e.aiPhase === 'charge';
   // (d)紫(完全気絶)は committed でも止まる。

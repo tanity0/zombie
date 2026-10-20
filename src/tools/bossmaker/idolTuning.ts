@@ -22,13 +22,31 @@ import {
 } from './bossScriptEdit';
 import { BEHAVIOR_CHOICES, stringLenWarnings } from './bossPresets';
 import type { BossZone } from '../../utils/bossSkeleton';
-import { requestIdolMovePlay, requestIdolVerbPlay, getIdolPlayback } from '../../utils/idolTick';
+import { requestIdolMovePlay, requestIdolVerbPlay, requestIdolLeapPlay, getIdolPlayback } from '../../utils/idolTick';
 import type { NeutralVerb } from '../../utils/bossSkeleton';
 
 const MOVE_LABEL: Record<IdolCoreMove, string> = {
   aim: '狙い撃ち(aim)', fan: '連射扇(fan)', roll: '離脱ローリング(roll)',
   punch: '至近の殴り(punch)', snipe: '狙撃線(snipe)', orb: '追尾弾(orb)',
   nade: '手榴弾(nade)', // v0.25.3442: プレイヤーの手榴弾と同じ仕様(速度118/信管2s/半径66/威力42)
+};
+
+/** 大ジャンプ→即・追尾弾(社長指示2026-10-20)。台本の段ではなく中立への割り込みなので、中核技とは別の見出し。 */
+export const LEAP_SECTION = '大ジャンプ→追尾弾(leap)';
+/** ▶の key(技の名前と被らない文字列)。 */
+export const LEAP_PLAY_KEY = 'leap';
+const leapFields = (): TuningField[] => {
+  const sec = LEAP_SECTION;
+  return [
+    { path: 'leap.triggerMs', label: '超遠に居続ける時間', group: 'move', section: sec, kind: 'ms', min: 0, max: 5000, step: 50, hint: '超遠(遠帯の上限より遠い)にこの時間居ると跳ぶ' },
+    { path: 'leap.cooldownMs', label: '次に跳べるまで', group: 'move', section: sec, kind: 'ms', min: 0, max: 30000, step: 250, hint: 'しゃがみの頭から数える。技の硬直の間は止まる' },
+    { path: 'leap.crouchMs', label: 'しゃがむ', group: 'move', section: sec, kind: 'ms', min: 0, max: 3000, step: 50, hint: '踏み切りの溜め(その場で止まる)' },
+    { path: 'leap.airMs', label: '空中', group: 'move', section: sec, kind: 'ms', min: 100, max: 3000, step: 50 },
+    { path: 'leap.heightPx', label: '跳ぶ高さ', group: 'move', section: sec, kind: 'px', min: 0, max: 600, step: 10, hint: '絵だけ。判定は地面のまま' },
+    { path: 'leap.standOffPx', label: '着地の手前の距離', group: 'move', section: sec, kind: 'px', min: 0, max: 1000, step: 10, hint: '狙いの相手からこれだけ手前に降りる' },
+    { path: 'leap.minGapPx', label: '着地の最短距離', group: 'move', section: sec, kind: 'px', min: 0, max: 600, step: 10, hint: '壁を避けて寄せた結果これより近いなら離して降りる' },
+    { path: 'leap.orbWindupMs', label: '着地後の追尾弾の予告', group: 'move', section: sec, kind: 'ms', min: 0, max: 3000, step: 50, hint: '通常の追尾弾の予告より短い=すぐ撃つ' },
+  ];
 };
 
 /** 射撃枠の見出し。**固定文字列**にする(社長が付けた名前は `sectionLabel` で後から差し替える)。 */
@@ -226,7 +244,7 @@ const behaviorFields = (): TuningField[] => [
 ];
 
 export const IDOL_TUNING_FIELDS: readonly TuningField[] = [
-  ...behaviorFields(), ...moveFields(), ...shotFields(),
+  ...behaviorFields(), ...moveFields(), ...leapFields(), ...shotFields(),
 ];
 export const IDOL_TUNING_TEXT_FIELDS: readonly TuningTextField[] = shotTextFields();
 
@@ -239,6 +257,7 @@ const VERB_LABEL: Record<NeutralVerb, string> = {
 
 export const IDOL_PLAYABLES: readonly PlayableAction[] = [
   ...IDOL_ALL_MOVES.map(m => ({ kind: 'move' as const, key: m, label: MOVE_LABEL[m], section: MOVE_LABEL[m] })),
+  { kind: 'move' as const, key: LEAP_PLAY_KEY, label: '大ジャンプ→追尾弾', section: LEAP_SECTION },
   // 射撃枠にも▶を出す。足していない枠は**見出しごと画面に出ない**(欄が全部隠れる)ので、
   // ここに8つ並べておいても余計なボタンは現れない。
   ...IDOL_SHOT_SLOTS.map(m => ({ kind: 'move' as const, key: m, label: '再生', section: shotSection(m) })),
@@ -277,6 +296,7 @@ const SECTION_HELP: Record<string, string> = {
   [MOVE_LABEL.punch]: '目の前の帯にダメージ。密着に居座らせないための技。',
   [MOVE_LABEL.snipe]: '細長い帯。まっすぐ下がるだけでは避けられない=横に動かせる技。',
   [MOVE_LABEL.orb]: '追いかけてくる弾。走っても振り切れないので、詰めて内側に入るのが答え。',
+  [LEAP_SECTION]: '大きく離れていると、跳んで主戦帯の縁まで来て、着地してすぐ追尾弾を撃つ。台本の段ではなく割り込み。\n着地そのものに判定は無い(ただの移動)。▶は距離と待ち時間を無視して1回だけ見せる(ループ無し)。',
   [VERB_SECTION]: '技を出さず、移動だけを見るための再生ボタン。',
   // 射撃枠は section が `射撃枠 s1`.. と枠ごとに違う文字列なので、8枠ぶんを機械的に展開する。
   ...Object.fromEntries(IDOL_SHOT_SLOTS.map(m => [shotSection(m), '画面から足した弾撃ち技。数字を変えると赤い予告の線も一緒に変わる。'])),
@@ -381,7 +401,8 @@ export const registerIdolTuning = (): void => {
     scripts: IDOL_SCRIPT_API,
     sectionHelp: SECTION_HELP,
     onPlay: (a, opts) => {
-      if (a.kind === 'move') requestIdolMovePlay(a.key as IdolMove, opts);
+      if (a.kind === 'move' && a.key === LEAP_PLAY_KEY) requestIdolLeapPlay({ solo: opts.solo });
+      else if (a.kind === 'move') requestIdolMovePlay(a.key as IdolMove, opts);
       else requestIdolVerbPlay(a.key as NeutralVerb);
     },
     playState: () => getIdolPlayback(),

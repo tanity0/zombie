@@ -436,6 +436,12 @@ put(LEDGER, ['idol-rest'], {
   coverage: 'none',
   note: 'idolの休符(v0.25.2613)。技は出ていない=避ける図形は無い。むしろプレイヤーが殴りに行く州。',
 });
+put(LEDGER, ['idol-leap-crouch', 'idol-leap'], {
+  coverage: 'none',
+  note: 'idolの大ジャンプ(社長指示2026-10-20)。しゃがむ→跳ぶ=ただの移動で、技としての判定(帯・円)は着地も含めて無い。'
+    + 'しゃがみは地上なので体の接触ダメージは他の州と同じく生きている。空中は接触も無い(combatTick/escortHit)。'
+    + '危険は着地直後の追尾弾(idol-orb-windup=弾そのもの)側。',
+});
 put(LEDGER, ['idol-roll-windup'], {
   coverage: 'none',
   note: '溜めの時点では突進先(aiTarget)が未確定=避ける向きが決められない。実行(idol-roll)側で足す。',
