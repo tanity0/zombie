@@ -3,6 +3,7 @@ import type { Enemy } from '../types/game';
 import {
   hasShotRecoil, shotRecoilStrength, addShotHit, shotHitVector, stampShotHits, newRecoilBody, kickRecoil, pushRecoilForce,
   advanceRecoil, recoilOffset, recoilParts, SHOT_RECOIL_IDOL, SHOT_RECOIL_CRAWLER, SHOT_RECOIL_STRENGTH_MAX, SHOT_FORCE_HOLD_MS,
+  SHOT_TREMBLE_IDOL_GUN,
   type RecoilSpec, type RecoilBody, type ShotHitAcc,
 } from './shotRecoil';
 
@@ -179,5 +180,33 @@ describe('shotRecoil: 撃たれた時の押し戻し(アイドル・変異塊)',
     expect(out[3]).toBe(blocked);
     expect(stampShotHits(out, hits, 4990)).toBe(out);
     expect(stampShotHits(list, new Map(), 0)).toBe(list);
+  });
+
+  it('変異塊の古い怯みは、同じ1発の衝撃の速い身震いにだけ組み込む(体ごと下がる成分・影は変わらない)', () => {
+    let a = advanceRecoil(newRecoilBody(SHOT_RECOIL_CRAWLER), SHOT_RECOIL_CRAWLER, T0);
+    let b = a;
+    a = kickRecoil(a, T0, handgun, 0);
+    b = kickRecoil(b, T0, handgun, 0, 1, 0, 5, 0);
+    let peakA = 0, peakB = 0;
+    for (let t = 16; t <= 400; t += 16) {
+      a = advanceRecoil(a, SHOT_RECOIL_CRAWLER, T0 + t);
+      b = advanceRecoil(b, SHOT_RECOIL_CRAWLER, T0 + t);
+      const pa = recoilParts(a, SHOT_RECOIL_CRAWLER), pb = recoilParts(b, SHOT_RECOIL_CRAWLER);
+      peakA = Math.max(peakA, pa.x); peakB = Math.max(peakB, pb.x);
+      expect(pb.bodyX).toBeCloseTo(pa.bodyX, 1); // 影の成分はほぼ同じ(上限の縮めの差だけ)
+    }
+    expect(peakB - peakA).toBeGreaterThan(3);   // 組み込んだ怯みのぶん、最初の身震いが大きい
+    expect(peakB - peakA).toBeLessThan(6);
+  });
+
+  it('赤い線の溜め中の銃の身震い: 撃たれた瞬間に立ち上がり、1〜2pxの間で揺れて収まる(上限2px)', () => {
+    const xs = run(SHOT_TREMBLE_IDOL_GUN, 600, [{ at: 0, ix: shotRecoilStrength(100) }]);
+    const peak = maxAbs(xs);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(SHOT_TREMBLE_IDOL_GUN.maxPx);
+    expect(Math.min(...xs.map(p => p.x))).toBeLessThan(-0.2); // 行き来する(身震い)
+    expect(maxAbs(xs.filter(p => p.t >= 300))).toBeLessThan(0.1);
+    const small = maxAbs(run(SHOT_TREMBLE_IDOL_GUN, 300, [{ at: 0, ix: handgun }]));
+    expect(small).toBeGreaterThan(0.8);
   });
 });

@@ -127,6 +127,14 @@ export const SHOT_RECOIL_CRAWLER: RecoilSpec = {
   modes: [{ omega: 38, zeta: 0.28, peakPx: 3.5 }, { omega: 4.2, zeta: 0.55, peakPx: 6 }],
   bodyMode: 1, delayMs: 45, maxPx: 40, yMul: 0.35, forcePx: 20, tremblePx: 2.2,
 };
+/**
+ * アイドルが赤い線(起点=銃口)を出して溜めている間に撃たれた時の、**手に持つ銃だけ**の小刻みな身震い(社長承認2026-10-20)。
+ * 体は押さない。速い減衰振動1本で、撃たれた瞬間に立ち上がり、慣性つきで1〜2pxの間を揺れて収まる(上限2px)。
+ */
+export const SHOT_TREMBLE_IDOL_GUN: RecoilSpec = {
+  modes: [{ omega: 60, zeta: 0.22, peakPx: 1.6 }],
+  bodyMode: 0, delayMs: 0, maxPx: 2, yMul: 0.6, forcePx: 0, tremblePx: 0,
+};
 /** 継続の力を、最後の打刻からこの間だけ効かせる(脈の間隔より長く=当たっている間は途切れない)。 */
 export const SHOT_FORCE_HOLD_MS = 360;
 
@@ -146,8 +154,8 @@ export interface RecoilBody {
   seenAt: number;
   /** 成分ごとの位置・速さ(px・px/s)。 */
   m: { x: number; y: number; vx: number; vy: number }[];
-  /** 体に乗る前の衝撃(at=乗り始めてよい時刻・遅れはまだ足していない)。 */
-  queue: { at: number; ix: number; iy: number }[];
+  /** 体に乗る前の衝撃(at=乗り始めてよい時刻・遅れはまだ足していない)。ex/ey=最初の成分(速い身震い)にだけ足す山の高さ(px)。 */
+  queue: { at: number; ix: number; iy: number; ex: number; ey: number }[];
   /** 押し続ける力: 向きつきの強さ・効く期限・今の効き(0〜1・なまし済み)。 */
   fx: number; fy: number; fUntil: number; fLevel: number;
 }
@@ -177,14 +185,17 @@ const unitPeak = (md: RecoilMode): number => {
 /**
  * 新しい衝撃を取り込む(打刻が取り込み済みより新しい時だけ)。notBefore=これより前には体に乗せない
  * (ヒットストップの明け。止めの間は押しを出さず、明けてから遅れ delayMs ののちに出る)。
+ * extraX/Y=同じ衝撃の中で、最初の成分(速い身震い)にだけ足す山の高さ(px)。変異塊の古い怯みを別の曲線で足さず、
+ * この1発の衝撃に組み込むのに使う(社長承認2026-10-20)。
  */
 export const kickRecoil = (
   b: RecoilBody, hitAt: number | undefined, ix: number | undefined, iy: number | undefined, mul = 1, notBefore = 0,
+  extraX = 0, extraY = 0,
 ): RecoilBody => {
   if (hitAt === undefined || !(hitAt > b.seenAt)) return b;
   const k = Math.max(0, mul);
   const q = b.queue.length >= QUEUE_CAP ? b.queue.slice(1) : b.queue.slice();
-  q.push({ at: Math.max(hitAt, notBefore), ix: (ix ?? 0) * k, iy: (iy ?? 0) * k });
+  q.push({ at: Math.max(hitAt, notBefore), ix: (ix ?? 0) * k, iy: (iy ?? 0) * k, ex: extraX * k, ey: extraY * k });
   return { ...b, seenAt: hitAt, queue: q };
 };
 
@@ -222,8 +233,8 @@ export const advanceRecoil = (b: RecoilBody, spec: RecoilSpec, now: number): Rec
         for (const q of due) {
           spec.modes.forEach((md, i) => {
             const v0 = md.peakPx / unitPeak(md);
-            m[i].vx += q.ix * v0;
-            m[i].vy += q.iy * spec.yMul * v0;
+            m[i].vx += q.ix * v0 + (i === 0 ? q.ex / unitPeak(md) : 0);
+            m[i].vy += q.iy * spec.yMul * v0 + (i === 0 ? q.ey * spec.yMul / unitPeak(md) : 0);
           });
         }
       }

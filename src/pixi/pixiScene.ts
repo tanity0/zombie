@@ -42,7 +42,7 @@ import { SIGNAL_STRIKE_DELAY_MS, type SignalStrike } from '../utils/signalLaunch
 import { playerHurtReactionOf, isHurtCancelled } from '../utils/playerHurt';
 // ★被弾リアクションの強さ(しなり/跳ね/フラッシュ/光/ノックバック/停止時間が読む唯一の窓口・2026-09-17)
 import { enemyHitReaction, hopMul, flashMul } from '../utils/hitFlinch';
-import { hasShotRecoil, newRecoilBody, kickRecoil, pushRecoilForce, advanceRecoil, recoilOffset, recoilParts, SHOT_RECOIL_IDOL, SHOT_RECOIL_CRAWLER, type RecoilBody } from '../utils/shotRecoil'; // 撃たれた時の押し戻し(アイドル・変異塊)
+import { hasShotRecoil, newRecoilBody, kickRecoil, pushRecoilForce, advanceRecoil, recoilOffset, recoilParts, SHOT_RECOIL_IDOL, SHOT_RECOIL_CRAWLER, SHOT_TREMBLE_IDOL_GUN, type RecoilBody } from '../utils/shotRecoil'; // 撃たれた時の押し戻し(アイドル・変異塊)
 import { fallenSoldiersInRange } from '../utils/endingScene';
 import {
   lichWarpPose, lichCircleVanishProgress, lichCircleAppearProgress, lichWarpTintStrength,
@@ -2887,8 +2887,10 @@ const LAB_CRAWLER_SLAM_LUNGE_PX = 46;
 const LAB_CRAWLER_FLINCH_PX = 5;
 /** 撃たれた時の押し戻し(utils/shotRecoil.ts・アイドルと変異塊)の量の倍率。実機で詰める用のツマミ(?shotrecoil=1.5 等)。 */
 const SHOT_RECOIL_MUL = Math.max(0, tsNum('shotrecoil', 1));
-/** アイドルの赤い線(起点=銃口)が出ている間の、体の押し戻しの割合(赤い予告と銃口のずれを小さく保つ)。 */
-const IDOL_RECOIL_TELEGRAPH_MUL = 0.3;
+/** アイドルの赤い線(起点=銃口)が出ている間の、体の押し戻しの割合。0=体は押さない(社長承認2026-10-20: 代わりに銃だけが小刻みに身震いする)。 */
+const IDOL_RECOIL_TELEGRAPH_MUL = 0;
+/** アイドルの被弾の白い光の最大の濃さの倍率(英雄型 0.35 と同じやり方・絵が透けて見えたまま光る)。 */
+const IDOL_HIT_FLASH_MUL = 0.4;
 /** アイドルの赤い線が銃口から出ている溜め(狙い撃ち・扇・狙撃線・追尾弾・射撃部品)。 */
 const idolLineTelegraphOn = (bs: string | undefined): boolean =>
   bs === 'idol-aim-windup' || bs === 'idol-fan-windup' || bs === 'idol-snipe-windup' || bs === 'idol-orb-windup'
@@ -4209,6 +4211,8 @@ interface ActorView {
   recoilX?: number; recoilY?: number;
   /** 押し戻しの弱め(赤い線の間=0.3)を滑らかに寄せる値と、その時刻。 */
   recoilMul?: number; recoilMulAt?: number;
+  /** 赤い線の溜め中に撃たれた時の、銃だけの小刻みな身震い(体は押さない)。 */
+  gunTremble?: RecoilBody; gunTrembleX?: number; gunTrembleY?: number;
   idolGunFireAt?: number;
   // v0.25.3044: 冷気ブレス本体の曲線ロープ(stage-4城ボスのみ生成・薙ぎ中だけ表示)。
   breathRope?: { rope: MeshRope; pts: Point[] };
@@ -5012,8 +5016,8 @@ export class PixiScene {
     prevHp: NaN, pend: 0,
     /** 次に光らせてよい間隔(毎回ばらす)・今の光の濃さ(0.4〜1)・怯みの量と尺・重い一撃の時刻と向き。 */
     gap: LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS, power: 1, flinchPx: LAB_CRAWLER_FLINCH_PX, flinchMs: LAB_CRAWLER_FLINCH_MS,
-    /** 怯みの動き出しの遅れ(ms)。弾の当たりの時は押し戻しと同じ質量の遅れ・それ以外は0。 */
-    flinchDelay: 0,
+    /** 弾の当たりで光った時=怯みを別の曲線で出さず、その量を押し戻しの最初の衝撃に組み込む(社長承認2026-10-20)。 */
+    foldShot: false,
     heavyAt: 0, heavyDir: 1, heavyPx: 0,
     /** 当たった点(光の円の中心)。 */
     hx: 0, hy: 0,
@@ -10992,6 +10996,7 @@ export class PixiScene {
     if (!Number.isFinite(hit.prevHp) || c.hp > hit.prevHp) hit.prevHp = c.hp;
     hit.pend += Math.max(0, hit.prevHp - c.hp);
     hit.prevHp = c.hp;
+    let foldPx = 0; // 弾の当たりの怯みを押し戻しの最初の衝撃へ組み込む量(px・向きつき)
     if (lastHitAt > hit.lastSeen) {
       hit.lastSeen = lastHitAt;
       if (realNow - hit.flashAt >= hit.gap) {
@@ -11002,7 +11007,7 @@ export class PixiScene {
         // 弾の当たり(押し戻しの打刻と同じ被弾)なら、怯みを押し戻しと**同じ向き・同じ遅れ(質量)**で出す=1つの動きに読ませる。
         const shotTrig = !!proxy && proxy.shotHitAt === lastHitAt && Math.abs(proxy.shotImpX ?? 0) > 1e-6;
         if (shotTrig) hit.dir = (proxy!.shotImpX ?? 0) > 0 ? 1 : -1;
-        hit.flinchDelay = shotTrig ? SHOT_RECOIL_CRAWLER.delayMs : 0;
+        hit.foldShot = shotTrig;
         hit.gap = LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS + Math.random() * (LAB_CRAWLER_HIT_FLASH_GAP_MAX_MS - LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS);
         hit.power = Math.max(LAB_CRAWLER_HIT_FLASH_MIN_POWER, Math.min(1, dmg / LAB_CRAWLER_HIT_FLASH_FULL_DMG));
         // 当たった点: プレイヤーに面した縁の少し内側・箱の中でプレイヤーに一番近い高さ(弾も近接も面した縁から入る。
@@ -11028,9 +11033,12 @@ export class PixiScene {
           hit.flinchPx = LAB_CRAWLER_FLINCH_PX;
           hit.flinchMs = LAB_CRAWLER_FLINCH_MS;
         }
+        // 弾の当たり: 怯みを別の曲線で足さず、その量を押し戻しの最初の衝撃(速い身震い)に組み込んで1つの動きにする。
+        // 近接(弾でない当たり)の怯みは今のまま。重い一撃のランタンの振れ(heavyAt)はそのまま。
+        if (hit.foldShot) { foldPx = hit.dir * hit.flinchPx; hit.flinchPx = 0; }
       }
     }
-    const flinchEl = realNow - hit.flashAt - hit.flinchDelay;
+    const flinchEl = realNow - hit.flashAt;
     const flinchX0 = hit.flashAt > 0 && flinchEl >= 0 && flinchEl < hit.flinchMs ? hit.dir * hit.flinchPx * crawlerFlinchCurve(flinchEl / hit.flinchMs) : 0;
     // ★撃たれた時の押し戻し(utils/shotRecoil.ts・社長指示2026-10-20「塊は撃たれても反応するように」)。代理が受けた弾の衝撃を本体の絵へ写す。
     // 1発では数pxの身震い・連射で積もって大きく下がり、戻りで少し前へのめる。上の怯み(近接と弾の共通)は消さずに足す(弾の時は向き・遅れを揃えてある)。
@@ -11041,7 +11049,7 @@ export class PixiScene {
       const before = this.crawlerShotRecoil.seenAt;
       // ヒットストップの間は体に乗せない(止めが明けてから質量の遅れののちに押しが出る)。
       const stopUntil = useGameStore.getState().hitstopUntil;
-      this.crawlerShotRecoil = kickRecoil(this.crawlerShotRecoil, proxy.shotHitAt, proxy.shotImpX, proxy.shotImpY, SHOT_RECOIL_MUL, stopUntil);
+      this.crawlerShotRecoil = kickRecoil(this.crawlerShotRecoil, proxy.shotHitAt, proxy.shotImpX, proxy.shotImpY, SHOT_RECOIL_MUL, stopUntil, foldPx, 0);
       this.crawlerShotRecoil = pushRecoilForce(this.crawlerShotRecoil, proxy.shotForceAt, proxy.shotForceX, proxy.shotForceY, SHOT_RECOIL_MUL);
       // 弾の向きでランタンを少し蹴る(重い一撃の振れより小さく)。前の振れに**足す**(上書きして位相を切らない)。
       if (this.crawlerShotRecoil.seenAt !== before && realNow - (this.crawlerShotSwings[this.crawlerShotSwings.length - 1]?.at ?? -1e9) > LAB_CRAWLER_SHOT_SWING_GAP_MS) {
@@ -20867,13 +20875,22 @@ export class PixiScene {
         const rnow = Date.now();
         let rb = this.shotRecoilStates.get(e.id) ?? newRecoilBody(SHOT_RECOIL_IDOL);
         // ヒットストップの間は体に乗せない(止めが明けてから押しが出る)。継続(火炎・光線)は押し続ける力。
-        rb = kickRecoil(rb, e.shotHitAt, e.shotImpX, e.shotImpY, SHOT_RECOIL_MUL, useGameStore.getState().hitstopUntil);
-        rb = pushRecoilForce(rb, e.shotForceAt, e.shotForceX, e.shotForceY, SHOT_RECOIL_MUL);
+        // 赤い線(起点=銃口)が出ている溜めの間は、体には衝撃・力を乗せない(体は押さない)。その衝撃は手に持つ銃の
+        // 小刻みな身震いへ回す(赤い線の起点・銃の置き場所そのものは変えない)。溜めの間に体のばねへ何も積まないので、
+        // 溜めが明けても溜まった押しが一気に出ることは無い(明けた後の弾から通常の押し戻し)。
+        const lineOn = idolLineTelegraphOn(e.bossState);
+        const stopUntil = useGameStore.getState().hitstopUntil;
+        let gt = view.gunTremble ?? newRecoilBody(SHOT_TREMBLE_IDOL_GUN);
+        if (lineOn) gt = kickRecoil(gt, e.shotHitAt, e.shotImpX, e.shotImpY, SHOT_RECOIL_MUL, stopUntil);
+        else gt = { ...gt, seenAt: Math.max(gt.seenAt, e.shotHitAt ?? 0) };
+        view.gunTremble = advanceRecoil(gt, SHOT_TREMBLE_IDOL_GUN, rnow);
+        rb = kickRecoil(rb, e.shotHitAt, e.shotImpX, e.shotImpY, lineOn ? 0 : SHOT_RECOIL_MUL, stopUntil);
+        if (!lineOn) rb = pushRecoilForce(rb, e.shotForceAt, e.shotForceX, e.shotForceY, SHOT_RECOIL_MUL);
         rb = advanceRecoil(rb, SHOT_RECOIL_IDOL, rnow);
         this.shotRecoilStates.set(e.id, rb);
         const ro = recoilOffset(rb, SHOT_RECOIL_IDOL);
         // 赤い線(起点=銃口)が出ている溜めの間は3割へ弱める(赤い予告と銃口のずれを小さく保つ)。切り替えは約60msで寄せる(跳ばない)。
-        const wantMul = idolLineTelegraphOn(e.bossState) ? IDOL_RECOIL_TELEGRAPH_MUL : 1;
+        const wantMul = lineOn ? IDOL_RECOIL_TELEGRAPH_MUL : 1;
         const mdt = view.recoilMulAt !== undefined ? Math.max(0, rnow - view.recoilMulAt) : 1e9;
         view.recoilMul = (view.recoilMul ?? wantMul) + (wantMul - (view.recoilMul ?? wantMul)) * (1 - Math.exp(-mdt / 60));
         view.recoilMulAt = rnow;
@@ -20881,6 +20898,8 @@ export class PixiScene {
         this.idolLastRecoil = { id: e.id, x: shotRx, y: shotRy, at: rnow };
       }
       view.recoilX = shotRx; view.recoilY = shotRy;
+      if (view.gunTremble) { const gto = recoilOffset(view.gunTremble, SHOT_TREMBLE_IDOL_GUN); view.gunTrembleX = gto.x; view.gunTrembleY = gto.y; }
+      else { view.gunTrembleX = 0; view.gunTrembleY = 0; }
       view.shadowGroundY = spy + scale * tex.height * (contentBottomFrac - 0.5) + shotRy; // 論理の足元(実体下端。リフト/スカッシュ無し)
       view.sprite.position.set(
         Math.round(spx + liftShake + lungeOffX + biteShake + phaseTremble.dx * scale + shotRx),
@@ -21401,7 +21420,10 @@ export class PixiScene {
         // 点滅(社長指示2026-10-16・ゾンビで試し): 白→消える→もう一度光る→減衰(utils/hitBlink)。他の型は従来の線形減衰。
         ? (HIT_BLINK_TYPES.has(e.type) ? hitBlinkStrength(now - e.lastHit) : Math.max(0, 1 - (now - e.lastHit) / ENEMY_HIT_FLASH_MS)) * flashMul(enemyHitReaction(e))
           // research/MUTANT_HERO.md: 英雄は三つ巴で常に誰かに殴られる巨体=全身白で構え(技の見分け)が消えないよう薄く。
-          * (e.type === 'mutant-hero' ? 0.35 : 1) : 0;
+          * (e.type === 'mutant-hero' ? 0.35 : 1)
+          // ステージ2のアイドル(社長承認2026-10-20): 撃たれて押される体の絵が白で塗り潰れて灰色の切り絵に見えないよう、
+          // 英雄と同じやり方で白の最大の濃さを下げる(絵が透けて見えたまま光る)。
+          * (e.type === 'idol' ? IDOL_HIT_FLASH_MUL : 1) : 0;
       // 延焼中の薄い赤点滅(社長指示v0.25.3272)/氷鈍化中の薄い水色点滅(社長指示v0.25.3276)。
       // 被弾フラッシュと同じシルエット機構を流用し、被弾(白)が出ていない間だけ弱い明滅を乗せる
       // (読むだけ・判定はstoreのburnUntil/iceSlowUntil)。
@@ -23581,7 +23603,8 @@ export class PixiScene {
                 ? { x: e.aiFromX, y: e.aiFromY }
                 : gunMz(cx + Math.cos(gunAng));
               // 撃たれた時の押し戻し(体と同じ量・赤い線の間は体と一緒に3割)を銃と閃光にも足す(体から銃が離れない)。
-              const rx = view.recoilX ?? 0, ry = view.recoilY ?? 0;
+              // 赤い線の溜め中に撃たれた時は、体の代わりに銃だけが小刻みに身震いする(gunTremble)。
+              const rx = (view.recoilX ?? 0) + (view.gunTrembleX ?? 0), ry = (view.recoilY ?? 0) + (view.gunTrembleY ?? 0);
               this.drawBountyWeapon(
                 e.id, 'weapons/handgun-t1',
                 gp.x - Math.cos(gunAng) * 8 * kickU + rx, gp.y - Math.sin(gunAng) * 8 * kickU + ease.dy + ry,
