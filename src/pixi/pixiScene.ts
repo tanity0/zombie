@@ -418,6 +418,7 @@ import { CIRCLE_SWEEP_HALF_W, CIRCLE_SWEEP_ALPHA_MULT, CIRCLE_SWEEP_STEPS, circl
 import { BAND_SWEEP_HALF_W, BAND_SWEEP_ALPHA_MULT, BAND_SWEEP_SLICES, bandSweepCenter, bandSweepAlphaAt, bandSweepSliceAlpha, sweepTelegraphProg, twoPhaseTelegraphProg } from '../utils/bandSweep';
 import { giantSweepWindowProg, giantNovaWindupProg } from '../utils/giantRedTelegraph';
 import { memoryTier, rimBakeBudgetMb, whiteBakeBudgetMb, canBakeWithin, shadowSilBudgetMb } from '../utils/memoryTier';
+import { allowBake, newBakeGovernor, BAKE_SATURATED_INTERVAL_MS } from '../utils/bakeGovernor'; // 天井に張り付いた時の焼き直しの間引き(ステージ4で急に重い)
 import { TRAP_PVP_DEBUFF_MS } from '../utils/trapDebuff'; // 対人トラップの3秒の見え方(drawTrapBind) // 焼きの天井をスマホ/PCで分ける(v0.25.4867)
 import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相の実効長(窓を追尾→溜めで通すため)
 
@@ -3513,6 +3514,7 @@ const SHADOW_FOOTX_SMOOTH_MS = 900;
 // (小さくすると「枠が尽きた時にどう見えるか」をその場で確認できる)。
 const SHADOW_SIL_CACHE_BUDGET_BYTES = Math.max(1, tsNum('silbudget', shadowSilBudgetMb(memoryTier()))) * 1024 * 1024; // スマホ16 / PC32(v0.25.5053)
 const SHADOW_BAKE_BUDGET_PER_FRAME = 4;
+const BAKE_GAP_MS = tsNum('bakegap', BAKE_SATURATED_INTERVAL_MS); // 天井に張り付いた時の焼き直しの間隔(utils/bakeGovernor)。?bakegap=
 
 // ---- 静止物(木/壁/プロップ/city props/建物)の距離クロスフェード(旧 OBJECT_SHADOW_MAX の代替) ------
 // ★未決E(閾値は実測後に決める・§3-9-B確定文言どおり初期値で着手): 可視域からの距離(px、
@@ -4530,6 +4532,10 @@ export class PixiScene {
   // 被弾フラッシュ用「真っ白シルエット」テクスチャのキャッシュ(元Texture→白ベイク)。加算で重ねると、
   // 暗い敵でも全面が白く光る(加算は元の色しか足せないので、白ベイクしないと暗部が光らない)。実行時はフィルタ不要=安い。
   private whiteTexCache = new Map<Texture, { rt: RenderTexture; usedAt: number; bytes: number }>();
+  /** 天井に張り付いた時の焼き直しの間引き(utils/bakeGovernor)。影・縁・白で別々に持つ。 */
+  private bakeGovShadow = newBakeGovernor();
+  private bakeGovRim = newBakeGovernor();
+  private bakeGovWhite = newBakeGovernor();
   private whiteBakeBytes = 0;
   // 向きの縁(§6)。焼いた縁テクスチャ: 元テクスチャ → 8方向ぶん。
   /**
@@ -14850,7 +14856,10 @@ export class PixiScene {
     // その絵は接地2枚だけの簡易影で待ち(`silhouetteEnsure` が null を返した時と同じ道)、
     // 枠が空いた次のフレーム以降で焼かれる。キューは `silhouetteQueued` が重複を弾くので溜まらない。
     if (!canBakeSilhouette(this.silhouetteCacheBytes, SHADOW_SIL_CACHE_BUDGET_BYTES)) return;
-    let budget = SHADOW_BAKE_BUDGET_PER_FRAME;
+    // 天井に張り付いている(退避した直後も天井の85%以上)間は、焼き直しを間引く(間に合わない物は直前のコマの影で待つ)。
+    const silFull = this.silhouetteCacheBytes >= SHADOW_SIL_CACHE_BUDGET_BYTES * 0.85;
+    if (silFull && this.silhouetteQueue.length > 0 && !allowBake(this.bakeGovShadow, true, Date.now(), BAKE_GAP_MS)) return;
+    let budget = silFull ? 1 : SHADOW_BAKE_BUDGET_PER_FRAME;
     // ★D-2: 絵の実体行の実測(`extract.pixels`=GPU読み戻し)は**同期待ちでフレームを止める**ので、
     // 1フレーム SHADOW_CONTENT_MEASURE_PER_FRAME 枚まで。未実測のものはキューの末尾へ回して
     // 次フレームに持ち越す(枠を使い切っても他の"実測済み"のベイクは進む=キューが詰まらない)。
@@ -19606,6 +19615,12 @@ export class PixiScene {
     const now = Date.now();
     const cached = this.whiteTexCache.get(src);
     if (cached) { cached.usedAt = now; return cached.rt; }
+    // 天井に張り付いている間は焼き直しを間引く(間に合わない物はこのフレームは光らせない)。
+    {
+      const limit = Math.max(1, WHITE_BAKE_BUDGET_MB) * 1024 * 1024;
+      const add = Math.max(1, src.width) * Math.max(1, src.height) * 4;
+      if (!allowBake(this.bakeGovWhite, this.whiteBakeBytes + add > limit, now, BAKE_GAP_MS)) return null;
+    }
     const tmp = new Sprite(src);
     const wrap = new Container();
     wrap.addChild(tmp);
@@ -19670,6 +19685,8 @@ export class PixiScene {
       const limit = Math.max(1, RIM_BAKE_BUDGET_MB) * 1024 * 1024;
       const add = bw * bh * 4;
       if (!canBakeWithin(this.rimBakeBytes, add, limit)) {
+        // 天井に張り付いている間は「捨てて焼き直す」を間引く(間に合わない物はこのフレームは縁を出さない)。
+        if (!allowBake(this.bakeGovRim, true, Date.now(), BAKE_GAP_MS)) return null;
         this.enforceRimBudget(add);
         if (!canBakeWithin(this.rimBakeBytes, add, limit)) return null;
       }
