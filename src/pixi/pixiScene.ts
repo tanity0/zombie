@@ -1577,6 +1577,7 @@ const MEDIC_DOWN_FRAME1_AT = 0.34;
 const JUN_TRANSFORM_PULL_ZOOM = 0.8;
 const JUN_TRANSFORM_PULL_TAU_S = 0.45;
 const JUN_TRANSFORM_PULL_BACK_TAU_S = 0.8;
+const JUN_COLLAPSE_FOCUS_TAU_S = 0.5; // ジュンが倒れる間、ボス戦の引きを打ち消して寄る速さ(実時間)
 const JUN_CASTLE_DARK_TINT_MIN = 0.42;
 const JUN_SNOW_TIME_SCALE = 0.4;
 const JUN_POST_TRANSFORM_MAX_MS = 8000;
@@ -9212,8 +9213,16 @@ export class PixiScene {
       const want = this.junPostTransformActive(s, rn) ? JUN_TRANSFORM_PULL_ZOOM : 1;
       const tau = want < this.junPull ? JUN_TRANSFORM_PULL_TAU_S : JUN_TRANSFORM_PULL_BACK_TAU_S;
       this.junPull += (want - this.junPull) * (1 - Math.exp(-rdt / tau));
+      // ★倒れている間は等倍で見せる(社長指示2026-10-22「カメラがボスモード(引き)になってるのでジュンがめっちゃ小さい。変身後に引きにして」)。
+      //   ハンター等の交戦で文脈ズームが引いたままだと、時間停止の中では文脈ズームが動かない(凍結時計)=小さいまま倒れていた。
+      //   倒れている間だけ、その引き(文脈ズーム×走りの引き)を打ち消す係数を実時間で寄せる。変身(vanishing)に入ったら1へ戻す=
+      //   上の変身の引き(junPull)と合わせて「変身してから引く」。
+      const focusWant = s.junDeparture?.phase === 'collapsing'
+        ? 1 / Math.max(0.05, Math.min(1, this.contextZoom * this.runZoom)) : 1;
+      const focusTau = focusWant > this.junFocus ? JUN_COLLAPSE_FOCUS_TAU_S : JUN_TRANSFORM_PULL_TAU_S;
+      this.junFocus += (focusWant - this.junFocus) * (1 - Math.exp(-rdt / focusTau));
     }
-    const zoom = this.idleZoom * this.contextZoom * this.runZoom * this.junPull * punch;
+    const zoom = this.idleZoom * this.contextZoom * this.runZoom * this.junPull * this.junFocus * punch;
     this.zwarpZoomNow = this.idleZoom * this.contextZoom; // KILL/カウンターの寄りパンチ(punch・瞬間ジャンプ)は歪みの入力から除く(監査B#7)
     // 寄り先(社長指示・v0.25.1498): KILLはキルされた対象(zoomTargetX/Y・世界座標)を画面中央の
     // 代わりに寄りの軸にする(zoomDecay>0=パンチ演出中のみ・カウンター等は指定なしで従来どおり中央)。
@@ -28946,6 +28955,8 @@ export class PixiScene {
   // 向きは store の esc.face を使う(描画のみ・シミュレーション非干渉)。
   // ステージ4のジュンの変身の引き(1=引かない)とその実時間の時計。
   private junPull = 1;
+  /** ジュンが倒れている間だけボス戦の引きを打ち消す係数(>=1)。変身で1へ戻る。 */
+  private junFocus = 1;
   private junPullLastNow = 0;
   private junCastleDark = 0;
   private junCastleDarkLastNow = 0;
