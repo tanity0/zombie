@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5191', items: [
+    'ゲーム内容の変更はありません。',
+  ] },
   { version: '0.25.5190', items: [
     'ゾンビは構えた瞬間に噛む向きが決まる。構えを見て裏や横へ回れば、一発目は空を噛む',
     'スケルトンの赤い予告は、走り出した時から。伏せている間は形で読む',
