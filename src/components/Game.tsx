@@ -11,7 +11,7 @@ import { isPixiRenderer, getAppliedResolution } from '../config/renderer';
 import { getAssistLightDebug } from '../pixi/pixiScene';
 import { getTexture } from '../pixi/pixiTextures';
 import { lastSuppressedError } from '../utils/errorBeacon';
-import { renderStatsText, bakedTextureText, sceneDiagText } from '../utils/renderStats';
+import { renderStatsText, bakedTextureText, sceneDiagText, takeBakeCalls } from '../utils/renderStats';
 import { prevBeatText, startCrashWatch, rendererMountCount } from '../utils/crashWatch';
 import { textureMemoryMB, textureTopGroups } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
@@ -390,16 +390,26 @@ const ErrBeacon: React.FC = () => {
       return `v${__APP_VERSION__} ${getSelectedStageId()} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} en${st.enemies.length}`
         + ` ${sceneDiagText()} st[fx${st.effects.length} pk${st.pickups.length} pj${st.projectiles.length} sm${st.summons.length}] 描画器${rendererMountCount()}代目`;
     });
+    // ★重さの手がかり(2026-10-23・社長実機「またステージ4でめちゃくちゃ重くなった」): 1秒あたりの描画回数(fps)と焼きの回数(bk)。
+    //   一時停止を押してもメニューが出ない時に、何がメニューを止めているか(停止[…])も出す。
+    let frames = 0, raf = 0;
+    const countFrame = () => { frames++; raf = requestAnimationFrame(countFrame); };
+    raf = requestAnimationFrame(countFrame);
     const iv = setInterval(() => {
       const msg = lastSuppressedError();
       // ★増え続けていないかを常に出す(v0.25.4347)。例外が出たら赤字でその後ろへ。
       const pv = prevBeatText();
-      const line = `${renderStatsText()} tex${textureMemoryMB()}MB ${bakedTextureText()}`
+      const fps = frames; frames = 0;
+      const st = useGameStore.getState();
+      const why = st.isPaused
+        ? ` 停止[${[st.tutorialPopup !== null && '説明', st.showUpgradeMenu && 'Lvup', st.showShopMenu && '店', st.showEventQuestMenu && '依頼', st.storyReturnPromptVisible && '帰還'].filter(Boolean).join(',') || 'メニュー'}]`
+        : '';
+      const line = `fps${fps} bk${takeBakeCalls()}${why} ${renderStatsText()} tex${textureMemoryMB()}MB ${bakedTextureText()}`
         + (pv ? ` · 前回最後 ${pv}` : '')
         + (msg ? ` · ERR ${msg}` : '');
       if (ref.current && ref.current.textContent !== line) ref.current.textContent = line;
     }, 1000);
-    return () => clearInterval(iv);
+    return () => { clearInterval(iv); cancelAnimationFrame(raf); };
   }, []);
   return <div ref={ref} style={{ color: 'rgba(255,80,80,0.9)', maxWidth: '90vw', whiteSpace: 'normal' }} />;
 };

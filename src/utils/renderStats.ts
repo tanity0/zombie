@@ -24,6 +24,15 @@ export const setRenderStats = (sprites: number, items: number): void => {
 let fxDiag = '';
 export const setFxDiag = (s: string): void => { fxDiag = s; };
 
+/**
+ * 焼き(RenderTexture への描き込み)の回数(2026-10-23・社長実機「またステージ4でめちゃくちゃ重くなった」)。
+ * 天井に張り付いた時の空回り(捨てては焼き直す)は**回数**で見ないと分からない(MB は天井で止まって見える)。
+ * pixiScene の renderBake 1点で数え、ErrBeacon が1秒ごとに読んで0へ戻す。
+ */
+let bakeCalls = 0;
+export const noteBakeCall = (): void => { bakeCalls++; };
+export const takeBakeCalls = (): number => { const n = bakeCalls; bakeCalls = 0; return n; };
+
 /** 表示側(Game.tsx の ErrBeacon が1秒ごとに読む)。 */
 export const renderStatsText = (): string => `fx ${effectItems}/${effectSprites}${fxDiag ? ` ${fxDiag}` : ''}`;
 

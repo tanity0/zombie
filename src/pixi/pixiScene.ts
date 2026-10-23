@@ -197,7 +197,7 @@ import { meleeHitFrame, meleeHitTexture } from '../utils/meleeHitFrames'; // 近
 import { skillBurstFrame, skillBurstTexture, skillBurstScale, skillBurstAlpha, skillBurstTint } from '../utils/skillBurstFrames'; // スキル取得の炸裂(v0.25.4343)
 import { reportSuppressedError } from '../utils/errorBeacon';
 import { labZombieSexOf } from '../utils/labZombieSex';
-import { setRenderStats, setFxDiag, setSceneDiag } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347 / 表示物と表の件数 v0.25.5054)
+import { setRenderStats, setFxDiag, setSceneDiag, noteBakeCall } from '../utils/renderStats'; // 実機で「増え続けていないか」を見る窓口(v0.25.4347 / 表示物と表の件数 v0.25.5054)
 import { trackBakedTexture, untrackBakedTexture, liveBakedTextures, type BakeKind } from '../utils/renderStats'; // 焼いたテクスチャの実測(v0.25.4375)
 import { windAt, setWorldWindScale, worldWindScaleFor } from '../utils/windGust';
 import { SENSOR_MINE_RADIUS, SENSOR_MINE_FUSE_MS, type SensorMineState } from '../utils/sensorMine';
@@ -37132,6 +37132,7 @@ export class PixiScene {
   private goalTalkFadeFrom = 0;
   private goalTalkFade = 1;
   private renderBake(content: Container, target: RenderTexture, clear?: boolean): void {
+    noteBakeCall(); // 1秒あたりの焼きの回数を計器へ(utils/renderStats・空回りの検知)
     if (!this.renderer) return;
     if (!this.bakeRoot || this.bakeRoot.destroyed) { this.bakeRoot = new Container(); this.bakeRoot.label = 'bakeRoot'; }
     const root = this.bakeRoot;
