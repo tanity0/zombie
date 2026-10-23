@@ -8,9 +8,13 @@
  * その文法をそのまま雑魚へ降ろす。
  *
  * ★色(CLAUDE.md「色と形の文法」・社長承認2026-09-17):
- *   **赤=カウンターできる技**(コウモリの掴み/スケルトンの噛み/ゾンビの2連)
- *   **紫=カウンターできない攻撃**(§12の噛みつき)
+ *   **赤=カウンターできる技**(`BiteSpec.counterable: true`=コウモリの掴み/スケルトンの噛み/ゾンビの2連/
+ *   リッチの転移噛み)
+ *   **紫=カウンターできない攻撃**(`counterable: false`=§12の噛みつき。本物のボス・城ボスの噛みつきも同じ紫)
  *   **線の形は共通**。出どころは `BiteSpec.counterable` の1箇所=判定と色が必ず一対になる。
+ *   描画は雑魚(`isBossType` の外)=地面とアクターの間の層に足元の高さで、ボス=地面の層に腰の高さの従来の線
+ *   (`BiteTelegraphLine.mobLine`)。色は両方とも下地=深い血の赤/深い紫・芯=赤系/紫系・**白に近いのは頭の点だけ**、
+ *   終点の印は地面に置いた潰れた楕円(縦横比0.45。雑魚は相手の足元=影の位置、ボスは線の終点)。
  *
  * ★線の終点は「**狙っている点**」(CLAUDE.md 攻撃ヴィジュアルの2分類①=判定に揃える)。
  * 終点 = 発火時の敵の中心 + 向き × (踏み込み距離 + 接触距離)。
@@ -23,8 +27,14 @@
  * **面ではない**。危険域の広さは主張せず、「**この方角の、この点に、この瞬間に来る**」だけを言う。
  */
 import type { Enemy } from '../types/game';
-import { biteSpecFor, bitePhaseOf, biteProgress, biteLungeFrac, BITE_CONTACT_DIST_PX } from './enemyBite';
+import {
+  biteSpecFor, bitePhaseOf, biteLungeFrac, biteLungeDistanceAtFire, BITE_CONTACT_DIST_PX, type BiteSpec,
+} from './enemyBite';
 import { enemyContactBox } from './collisionUtils';
+import { isBossType } from './enemyUtils';
+import {
+  ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_STAGGER_MS, SKELETON_CROUCH_MS, SKELETON_ARC_MS,
+} from './chaffMoves';
 
 /** プレイヤーの当たり判定の半幅(PLAYER_HITBOX=28 の半分)。enemyBite.ts の接触距離の導出と同じ値。 */
 const PLAYER_HALF_PX = 14;
@@ -50,10 +60,17 @@ export const biteContactDistPx = (e: Enemy): number => {
  * ⇒ **手前は敵の体の前縁から / 奥はプレイヤーの絵の手前で**終える。
  * **情報(方角と時刻)は1つも変わらない**——見えている区間だけを実際に見える所へ寄せる。
  */
-/** プレイヤーの絵の半幅ぶん手前で終える(絵の下に潜らせない)。 */
+/** プレイヤーの絵の半幅ぶん手前で終える(絵の下に潜らせない)。※地面の層で描く線(ボス)の値。 */
 const TRIM_NEAR_PLAYER_PX = 26;
-/** 切り詰めた後に最低限残す長さ(密着で発火しても線が消滅しないように)。 */
+/** 切り詰めた後に最低限残す長さ(密着で発火しても線が消滅しないように)。※地面の層で描く線(ボス)の値。 */
 const MIN_DRAWN_PX = 24;
+/**
+ * ★雑魚の線(`mobLine`)は描画側で**足元の高さ**へ写して引く(クリエイティブ監査2026-10-23 2巡目 #3:
+ * 腰の高さの線はプレイヤーの銃身の延長=レーザーサイトに、スケルトンでは胴を縦断する槍に見えた)。
+ * 写す量=攻撃側は自分の箱の底辺まで(`footFromOff`)、相手は当たり判定の底辺=足元・影の位置まで(`footToOff`)。
+ * **判定の中心(tx/ty)は変えない**——描く位置だけ足元へ写す。切り詰め(攻撃側の輪郭の外から引く)も描画側が
+ * 実際の絵の大きさ(遠近スケール込み)で決めるので、下の dfx〜dty はボスの線(地面の層・腰の高さ)だけが使う。
+ */
 
 export interface BiteTelegraphLine {
   /** 始点(=発火時の敵の中心。踏み込みで敵が動いても線は動かない)。**描くのは dfx/dfy から**。 */
@@ -81,17 +98,149 @@ export interface BiteTelegraphLine {
   biteMs: number;
   /** カウンターできるか。**true=赤 / false=紫**(色の出どころはここ1箇所)。 */
   counterable: boolean;
+  /** ★流星が出た時刻(gameTime)。**=溜めの始まり**(赤い予告の掟②)。 */
+  startAt: number;
+  /** ★流星が消え切る時刻(gameTime)。**=当たる時刻**(赤い予告の掟③)。`prog` はこの2点の間の割合。 */
+  hitAt: number;
+  /** ★向きが固まる時刻(gameTime)=発火(踏み込みに入る瞬間)。`startAt` と同じなら溜めの前段が無い技。 */
+  lockAt: number;
+  /** ★強調(1=通常)。ゾンビ2連の2発目は「まだ終わっていない」と伝えるため1より大きい(描画は終点の印を2回打つ)。 */
+  emphasis: number;
+  /**
+   * ★雑魚の描き方か。`isBossType` の外=true(地面とアクターの間の層に、足元の高さで引く・pixiScene の mobMeteor)/
+   * `isBossType`=false(地面の層に腰の高さの従来の線・dfx〜dty を使う)。
+   */
+  mobLine: boolean;
+  /** 攻撃側の中心(fx,fy)から足元(箱の底辺)までの縦の距離。描画が線を足元へ写すのに使う。 */
+  footFromOff: number;
+  /** 狙っている点(tx,ty)から相手の足元(当たり判定の底辺=影の位置)までの縦の距離。 */
+  footToOff: number;
 }
 
+/** ゾンビ2連の2発目(よろけ〜噛み2)の強調。 */
+export const BITE_SECOND_EMPHASIS = 1.35;
+
 /**
- * 予告の線を引く(出さない時は null)。
- * ★v0.25.5046(社長報告2026-10-14「ボスに近づくと、ノールックで攻撃される。これ噛みつきじゃない?」): 旧は
- * 「本物のボスと城ボスは自前の予告を持つので対象外(二重に出さない)」としていたが、**§12の噛みつき自体には
- * ボスの自前の予告は無い**(噛みつきは追跡中=技の外でしか出ない=技の帯・円と重なることがない)。ボスは巨体の
- * 乗算tintの紫点滅しか出ておらず、実機では「光っていない」に見えていた。全敵共通の予告として線もボスに出す。
- * 事実として: 2026-09-17 の除外は「雑魚の軽い攻撃」を対象にした時の線引き。
+ * ★流星の時間窓(社長指示2026-10-23「ゾンビとスケルトンの技、流星予告入れたい」)。
+ *
+ * 旧: 線は**噛み(`biteAt`)が立ってから**しか出ていなかった。ところがゾンビ2連の1発目は
+ * `biteAt` の前に**構え(z-red-pause・1秒)**が、2発目の前に**よろけ(z-stagger・160ms=2発目の溜め)**が、
+ * スケルトンの噛みは**しゃがみ(s-crouch)→回り込み(s-arc)**があり、そこが技の溜めの本体。
+ * ⇒ **溜めの始まりから赤が出ていない区間**があった(掟②違反)。
+ *
+ * ⇒ 流星は **startAt=溜めの始まり → hitAt=当たる時刻** の1本の窓で出す。時刻は全部シミュの状態から引く
+ * (描画側で推測しない):
+ *  - startAt(出る): ゾンビ1発目=構えの頭(`chaffBlinkAt − ZOMBIE_WINDUP_MS`)/ ゾンビ2発目=よろけの頭
+ *    (z-stagger 中は `aiPhaseUntil − ZOMBIE_STAGGER_MS`、z-bite2 では `biteAt − ZOMBIE_STAGGER_MS`)/
+ *    スケルトン=しゃがみの頭(`chaffMoveAt − SKELETON_CROUCH_MS`)/ それ以外(§12の噛みつき・コウモリ等)=`biteAt`。
+ *  - drawAt(線が満ちる=体の区切り): ゾンビ1発目=赤の点滅の頭(`chaffBlinkAt`=反って固まった瞬間)/
+ *    ゾンビ2発目=発火(よろけの明け)/ スケルトン=回り込みの頭 / それ以外=発火+溜め(従来どおり)。
+ *    満ちた後は命中まで根元から消えていく=**残っている赤の量=残り時間**。
+ *  - lockAt(向きが固まる): 発火(`biteAt`)。溜めの間は狙いへ追従し、ここで止まる(描画は一瞬強める)。
+ *  - hitAt(消え切る)= 発火 + 溜め + 噛み = `isBiteResolveDue` が真になる時刻(=判定の瞬間)。
+ * ★多段は段ごと(掟③): 2発目は自分のよろけの頭から自分の命中まで=1発目の窓と混ぜない。
  */
+interface MeteorWindow { startAt: number; drawAt: number; lockAt: number; hitAt: number }
+
+const biteWindowFromFire = (startAt: number, fireAt: number, spec: BiteSpec, drawAt?: number): MeteorWindow => ({
+  startAt,
+  drawAt: Math.min(drawAt ?? fireAt + spec.windupMs, fireAt + spec.windupMs),
+  lockAt: fireAt,
+  hitAt: fireAt + spec.windupMs + spec.biteMs,
+});
+
+/** 噛みが立っている(`biteAt>0`)間の窓。 */
+const firedBiteWindow = (e: Enemy, spec: BiteSpec): MeteorWindow => {
+  const biteAt = e.biteAt ?? 0;
+  if (e.type === 'zombie' && e.chaffMove === 'zombie-double' && e.aiPhase === 'z-bite1' && e.chaffBlinkAt !== undefined) {
+    return biteWindowFromFire(Math.min(biteAt, e.chaffBlinkAt - ZOMBIE_WINDUP_MS), biteAt, spec, Math.min(biteAt, e.chaffBlinkAt));
+  }
+  if (e.type === 'zombie' && e.chaffMove === 'zombie-double' && e.aiPhase === 'z-bite2') {
+    // よろけ(z-stagger)の頭は状態に残っていないので、発火(=よろけの明け)から尺ぶん戻す(ずれは1フレーム以内)。
+    return biteWindowFromFire(biteAt - ZOMBIE_STAGGER_MS, biteAt, spec, biteAt);
+  }
+  if (e.type === 'skeleton' && e.chaffMove === 'skel-bite' && e.aiPhase === 's-bite' && e.chaffMoveAt !== undefined) {
+    return biteWindowFromFire(Math.min(biteAt, e.chaffMoveAt - SKELETON_CROUCH_MS), biteAt, spec, Math.min(biteAt, e.chaffMoveAt));
+  }
+  return biteWindowFromFire(biteAt, biteAt, spec);
+};
+
+/**
+ * 噛みが**まだ立っていない**溜め(ゾンビの構え・よろけ / スケルトンのしゃがみ・回り込み)の窓と、その技の spec。
+ * 発火の時刻は状態機械の期限から決まる(z-red-pause・z-stagger=`aiPhaseUntil` / s-crouch=`aiPhaseUntil`+回り込み /
+ * s-arc=`aiStartedAt`+回り込み)。どれでもなければ null。
+ */
+export const preBiteMeteorWindow = (e: Enemy): (MeteorWindow & { spec: BiteSpec }) | null => {
+  if (e.biteAt !== undefined && e.biteAt > 0) return null;
+  if (e.type === 'zombie' && e.aiPhase === 'z-red-pause' && e.aiPhaseUntil !== undefined) {
+    const spec = biteSpecFor('zombie', 'zombie-double', 'z-bite1');
+    const blinkAt = e.chaffBlinkAt ?? e.aiPhaseUntil - ZOMBIE_STANCE_MS + ZOMBIE_WINDUP_MS;
+    return { ...biteWindowFromFire(blinkAt - ZOMBIE_WINDUP_MS, e.aiPhaseUntil, spec, blinkAt), spec };
+  }
+  if (e.type === 'zombie' && e.aiPhase === 'z-stagger' && e.aiPhaseUntil !== undefined) {
+    const spec = biteSpecFor('zombie', 'zombie-double', 'z-bite2');
+    return { ...biteWindowFromFire(e.aiPhaseUntil - ZOMBIE_STAGGER_MS, e.aiPhaseUntil, spec, e.aiPhaseUntil), spec };
+  }
+  if (e.type === 'skeleton' && e.aiPhase === 's-crouch' && e.aiPhaseUntil !== undefined) {
+    const spec = biteSpecFor('skeleton', 'skel-bite');
+    return {
+      ...biteWindowFromFire(e.aiPhaseUntil - SKELETON_CROUCH_MS, e.aiPhaseUntil + SKELETON_ARC_MS, spec, e.aiPhaseUntil),
+      spec,
+    };
+  }
+  if (e.type === 'skeleton' && e.aiPhase === 's-arc') {
+    const arcAt = e.aiStartedAt ?? e.chaffMoveAt;
+    if (arcAt === undefined) return null;
+    const spec = biteSpecFor('skeleton', 'skel-bite');
+    return { ...biteWindowFromFire(arcAt - SKELETON_CROUCH_MS, arcAt + SKELETON_ARC_MS, spec, arcAt), spec };
+  }
+  return null;
+};
+
+/** 線の幾何(始点・向き・届く長さ)から、両端を切り詰めた描く区間を作る(噛み・溜めの両方で同じ作法)。 */
+const lineGeometry = (
+  fx: number, fy: number, dirX: number, dirY: number, contact: number, reach: number,
+): Pick<BiteTelegraphLine, 'fx' | 'fy' | 'tx' | 'ty' | 'dfx' | 'dfy' | 'dtx' | 'dty'> => {
+  // 手前=敵の箱の半径(接触距離からプレイヤーの半幅を引いた残り)。奥=プレイヤーの絵の半幅。
+  // 足して全長を超える(=密着で発火した)時は、**比率を保ったまま両方を縮める**
+  // (片方だけ削ると線が敵側/プレイヤー側へ偏って、方角が読めなくなる)。
+  const trimNear0 = Math.max(0, contact - PLAYER_HALF_PX);
+  const trimFar0 = TRIM_NEAR_PLAYER_PX;
+  const room = Math.max(0, reach - MIN_DRAWN_PX);
+  const shrink = trimNear0 + trimFar0 > room ? room / Math.max(0.001, trimNear0 + trimFar0) : 1;
+  const tn = trimNear0 * shrink, tf = trimFar0 * shrink;
+  return {
+    fx, fy,
+    tx: fx + dirX * reach, ty: fy + dirY * reach,
+    dfx: fx + dirX * tn, dfy: fy + dirY * tn,
+    dtx: fx + dirX * (reach - tf), dty: fy + dirY * (reach - tf),
+  };
+};
+
+/** 窓から時刻の欄(prog/drawFrac/remainMs/pulseAt)を作る。 */
+const meteorTiming = (
+  w: MeteorWindow, gameTime: number,
+): Pick<BiteTelegraphLine, 'prog' | 'drawFrac' | 'remainMs' | 'pulseAt' | 'startAt' | 'hitAt' | 'lockAt'> => {
+  const span = Math.max(1, w.hitAt - w.startAt);
+  return {
+    prog: Math.max(0, Math.min(1, (gameTime - w.startAt) / span)),
+    drawFrac: Math.max(0.01, Math.min(0.99, (w.drawAt - w.startAt) / span)),
+    remainMs: Math.max(0, w.hitAt - gameTime),
+    // 脈の時計=**その攻撃自身の経過**(監査#3)。溜めの頭から数える=相が変わっても拍が途切れない。
+    pulseAt: gameTime - w.startAt,
+    startAt: w.startAt, hitAt: w.hitAt, lockAt: w.lockAt,
+  };
+};
+
+/** ゾンビ2連の2発目(よろけ〜噛み2)か。 */
+const isSecondBite = (e: Enemy): boolean =>
+  e.type === 'zombie' && (e.aiPhase === 'z-stagger' || (e.chaffMove === 'zombie-double' && e.aiPhase === 'z-bite2'));
+
 export const biteTelegraphLine = (e: Enemy, gameTime: number): BiteTelegraphLine | null => {
+  // ★リッチの転移噛み(§16-C)は線を出さない: 当たるのは**ワープ先**(lichBlinkAtX/Y の赤い円が予告)で、
+  //   biteDirX/Y はワープ元の古い向き=ここで線を引くと「ワープ元に赤」「赤いのに当たらない」になる
+  //   (§16-C「ワープ元には赤を1本も描かない」・品質監査2026-10-23 2巡目 A-1)。
+  if (e.chaffMove === 'lich-blink') return null;
   const phase = bitePhaseOf(e, gameTime);
   if (phase === 'none') return null;
   const dirX = e.biteDirX, dirY = e.biteDirY;
@@ -106,25 +255,60 @@ export const biteTelegraphLine = (e: Enemy, gameTime: number): BiteTelegraphLine
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
   const fx = ecx - dirX * lp * frac, fy = ecy - dirY * lp * frac;
   const contact = biteContactDistPx(e);
-  const reach = lp + contact;
-  // 手前=敵の箱の半径(接触距離からプレイヤーの半幅を引いた残り)。奥=プレイヤーの絵の半幅。
-  // 足して全長を超える(=密着で発火した)時は、**比率を保ったまま両方を縮める**
-  // (片方だけ削ると線が敵側/プレイヤー側へ偏って、方角が読めなくなる)。
-  const trimNear0 = Math.max(0, contact - PLAYER_HALF_PX);
-  const trimFar0 = TRIM_NEAR_PLAYER_PX;
-  const room = Math.max(0, reach - MIN_DRAWN_PX);
-  const shrink = trimNear0 + trimFar0 > room ? room / Math.max(0.001, trimNear0 + trimFar0) : 1;
-  const tn = trimNear0 * shrink, tf = trimFar0 * shrink;
   return {
-    fx, fy,
-    tx: fx + dirX * reach, ty: fy + dirY * reach,
-    dfx: fx + dirX * tn, dfy: fy + dirY * tn,
-    dtx: fx + dirX * (reach - tf), dty: fy + dirY * (reach - tf),
-    prog: biteProgress(e, gameTime),
-    drawFrac: spec.windupMs / total,
-    remainMs: Math.max(0, (e.biteAt ?? gameTime) + total - gameTime),
-    pulseAt: gameTime - (e.biteAt ?? gameTime),
+    ...lineGeometry(fx, fy, dirX, dirY, contact, lp + contact),
+    ...meteorTiming(firedBiteWindow(e, spec), gameTime),
     biteMs: spec.biteMs,
     counterable: spec.counterable,
+    emphasis: isSecondBite(e) ? BITE_SECOND_EMPHASIS : 1,
+    mobLine: !isBossType(e.type),
+    footFromOff: e.height / 2,
+    footToOff: PLAYER_HALF_PX,
+  };
+};
+
+/** 狙いの点(世界座標)。 */
+export interface AimPoint { x: number; y: number }
+
+/**
+ * ★雑魚の狙い(状態機械の `apx/apy` と同じ式): 軍人を追っている(`targetEscortId`)なら、その軍人が
+ * 狙える候補(`escortAggroCandidates`=見えていて倒れていない)に居る時だけ軍人の体の中心。それ以外は実プレイヤー。
+ */
+export const chaffAimPoint = (
+  e: Pick<Enemy, 'targetEscortId'>, player: AimPoint, escortCands: readonly { id: string; x: number; y: number }[],
+): AimPoint => {
+  if (e.targetEscortId !== undefined) {
+    const c = escortCands.find(k => k.id === e.targetEscortId);
+    if (c) return { x: c.x, y: c.y };
+  }
+  return player;
+};
+
+/**
+ * ★噛みが立つ前の溜め(ゾンビの構え・よろけ / スケルトンのしゃがみ・回り込み)の流星(社長指示2026-10-23)。
+ * 向きと長さは「**いま発火したら焼かれる値**」(=状態機械が発火の瞬間に焼く式と同じ: 向き=狙いへ /
+ * 踏み込み=`biteLungeDistanceAtFire`)。発火の瞬間に `biteTelegraphLine` へ切り替わっても線が跳ばない。
+ * **時刻は `preBiteMeteorWindow`**(シミュの期限から)。描画は `biteTelegraphLine` と同じキーで続けて描く
+ * (=1本の流星が溜めの頭から命中まで途切れない)。
+ */
+export const preBiteTelegraphLine = (e: Enemy, gameTime: number, aim: AimPoint): BiteTelegraphLine | null => {
+  const w = preBiteMeteorWindow(e);
+  if (!w || gameTime >= w.hitAt) return null;
+  if (e.type !== 'zombie' && e.type !== 'skeleton') return null;
+  const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+  const d = Math.hypot(aim.x - ecx, aim.y - ecy);
+  const bl = Math.max(0.001, d);
+  const dirX = (aim.x - ecx) / bl, dirY = (aim.y - ecy) / bl;
+  const contact = biteContactDistPx(e);
+  const lp = biteLungeDistanceAtFire(e.type, bl);
+  return {
+    ...lineGeometry(ecx, ecy, dirX, dirY, contact, lp + contact),
+    ...meteorTiming(w, gameTime),
+    biteMs: w.spec.biteMs,
+    counterable: w.spec.counterable,
+    emphasis: isSecondBite(e) ? BITE_SECOND_EMPHASIS : 1,
+    mobLine: true,
+    footFromOff: e.height / 2,
+    footToOff: PLAYER_HALF_PX,
   };
 };

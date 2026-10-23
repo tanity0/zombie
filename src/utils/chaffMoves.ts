@@ -355,7 +355,8 @@ export const zombieRecoverWalkRampMul = (rampAt: number | undefined, gameTime: n
  * **社長指示はこれを根本から置き換える**——強さや尺の調整ではない。
  *
  * ★いつ: bat/skeleton/lich は技が立った瞬間(`chaffMoveAt`)。**ゾンビは2026-10-14から構えで固まった瞬間**
- * (`chaffBlinkAt`・1発目の前 z-red-pause と2発目の前 z-stagger の2回・§16-3s)。 ★何回: 2回の点滅
+ * (`chaffBlinkAt`・1発目の前の構え z-red-pause の1回だけ。2発目の前の z-stagger=160msのよろけでは点かない・
+ * 社長指示2026-10-14「2回目は再度ターゲティングして、1歩進んですぐ噛む」)。 ★何回: 2回の点滅
  * (点灯→消灯→点灯→消灯)。 ★その後: 次の構え・技の終わりまで赤は一切出ない。
  */
 export const CHAFF_BLINK_ON_MS = 70;
@@ -402,15 +403,17 @@ export const zombieRedPauseMs = (id: string, spawnedAt?: number): number =>
 
 /**
  * ★ゾンビの構え(社長指示2026-10-14「**ゾンビの攻撃は素早く構え(後ろに反るモーション)て硬直したら赤点滅2回、
- * 1秒後に発動 を2回 に変更**」)。1発目(z-red-pause→踏み込み→噛み1)と2発目(z-stagger→噛み2)の**両方の前**に同じ構え:
+ * 1秒後に発動 を2回 に変更**」)。**構えは1発目の前(z-red-pause)だけ**:
  *   素早く後ろへ反る(`ZOMBIE_WINDUP_MS`)→ 反ったまま固まる。固まった瞬間に赤が2回点滅し、
- *   固まってから `ZOMBIE_HOLD_MS` で発動(1発目=踏み込み始め/2発目=噛み)。
+ *   構えの頭から `ZOMBIE_STANCE_MS`(1秒)で発動(1歩踏み込んで噛み1)。
+ *   2発目の前は構えず、`ZOMBIE_STAGGER_MS`(160ms)のよろけ(z-stagger)で狙い直してすぐ噛む
+ *   (社長指示2026-10-14「2回目は再度ターゲティングして、1歩進んですぐ噛む」)=このよろけが2発目の溜め。
  * 旧(§16-3z の「止まる→起こす→詰めの溜め」の3段・全長±30%・赤は踏み込み始め)はこれで置き換え。
  */
 export const ZOMBIE_WINDUP_MS = 150;
 // ★2026-10-14 社長「射程に入ったら…硬直してる絵までモーションして赤点滅2回。**ここまで1**」=構えの全長を1秒に(旧: 固まってから1秒)。
 export const ZOMBIE_HOLD_MS = 1000 - ZOMBIE_WINDUP_MS;
-/** 構えの全長(反る+固まる)。z-red-pause / z-stagger の長さ。 */
+/** 構えの全長(反る+固まる)。z-red-pause の長さ(z-stagger は `ZOMBIE_STAGGER_MS`=160msのよろけ)。 */
 export const ZOMBIE_STANCE_MS = ZOMBIE_WINDUP_MS + ZOMBIE_HOLD_MS;
 
 /** 3段の比率(§16-3z「止まる500→起こす900→詰めの溜め600」=25%:45%:30%。全長によらず一定)。※2026-10-14 以降は構えに置き換わり未使用(旧の記録)。 */

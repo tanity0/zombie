@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type { Enemy } from '../types/game';
-import { biteTelegraphLine } from './biteTelegraph';
-import { biteSpecFor, biteLungeFrac, BITE_CONTACT_DIST_PX } from './enemyBite';
+import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint } from './biteTelegraph';
+import {
+  biteSpecFor, biteLungeFrac, BITE_CONTACT_DIST_PX, biteLungeDistanceAtFire, isBiteResolveDue,
+} from './enemyBite';
+import {
+  ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_STAGGER_MS, SKELETON_CROUCH_MS, SKELETON_ARC_MS,
+} from './chaffMoves';
 
 const mk = (over: Partial<Enemy> = {}): Enemy => ({
   id: 'e1', type: 'zombie', x: 0, y: 0, width: 40, height: 60,
@@ -67,5 +72,136 @@ describe('雑魚の軽い攻撃の予告(流星ライン)', () => {
       expect(bl, type).not.toBeNull();
       expect(bl!.counterable, type).toBe(false); // §12=紫
     }
+  });
+});
+
+// ★社長指示2026-10-23「ゾンビとスケルトンの技、流星予告入れたい」。
+// 赤い予告の掟②「出る=溜めの始まり」/③「消え切る=当たる(多段は段ごと)」を、時刻の純関数で固定する。
+describe('★ゾンビ/スケルトンの技の流星(出る=溜めの頭・消え切る=当たる)', () => {
+  const T = 50_000;
+  const aim = { x: 20 + 60, y: 30 };   // 敵の中心(20,30)から右へ60px(1歩で噛める距離の内側)
+
+  it('ゾンビ2連の1発目: 構え(z-red-pause)の頭で出て、赤の点滅の頭で満ち、1発目の命中で消え切る', () => {
+    const spec1 = biteSpecFor('zombie', 'zombie-double', 'z-bite1');
+    const stance = mk({ aiPhase: 'z-red-pause', aiPhaseUntil: T + ZOMBIE_STANCE_MS, chaffBlinkAt: T + ZOMBIE_WINDUP_MS });
+    const l0 = preBiteTelegraphLine(stance, T, aim)!;
+    expect(l0).not.toBeNull();
+    expect(l0.startAt).toBe(T);                                              // 出る=構えの頭
+    expect(l0.prog).toBe(0);
+    const hit = T + ZOMBIE_STANCE_MS + spec1.windupMs + spec1.biteMs;
+    expect(l0.hitAt).toBe(hit);                                              // 1発目の命中
+    expect(l0.lockAt).toBe(T + ZOMBIE_STANCE_MS);                            // 向きが固まる=発火
+    expect(l0.drawFrac).toBeCloseTo(ZOMBIE_WINDUP_MS / (hit - T), 6);        // 満ちる=赤の点滅の頭
+    expect(l0.counterable).toBe(true);                                       // 赤(ゾンビ2連=カウンター可)
+    expect(l0.emphasis).toBe(1);
+    expect(l0.mobLine).toBe(true);
+    // 噛みが立った後(z-bite1)も同じ窓の続き=途切れない・時刻が動かない。
+    const fireAt = T + ZOMBIE_STANCE_MS;
+    const bite1 = mk({
+      ...stance, aiPhase: 'z-bite1', chaffMove: 'zombie-double', biteAt: fireAt, biteDirX: 1, biteDirY: 0,
+      biteLungePx: biteLungeDistanceAtFire('zombie', 60),
+    });
+    const l1 = biteTelegraphLine(bite1, fireAt)!;
+    expect(l1.startAt).toBe(T);
+    expect(l1.hitAt).toBe(hit);
+    expect(l1.drawFrac).toBeCloseTo(l0.drawFrac, 6);
+    expect(l1.prog).toBeCloseTo(preBiteTelegraphLine(stance, fireAt - 0.001, aim)!.prog, 4);
+    // 発火の瞬間の線は、溜めの最後の線と同じ所を指す(向き・長さ=発火で焼く値と同じ式)。
+    const lPre = preBiteTelegraphLine(stance, fireAt - 1, aim)!;
+    expect(l1.tx).toBeCloseTo(lPre.tx, 5);
+    expect(l1.ty).toBeCloseTo(lPre.ty, 5);
+    // 消え切る=当たる: 命中の1ms前はまだ進行中、命中の時刻で判定が解決し線は出ない。
+    expect(biteTelegraphLine(bite1, hit - 1)!.prog).toBeLessThan(1);
+    expect(isBiteResolveDue(bite1, hit - 1)).toBe(false);
+    expect(isBiteResolveDue(bite1, hit)).toBe(true);
+    expect(biteTelegraphLine(bite1, hit)).toBeNull();
+  });
+
+  it('ゾンビ2連の2発目: よろけ(z-stagger)の頭で出て、2発目の命中で消え切る(1発目と窓を混ぜない)・強調つき', () => {
+    const spec2 = biteSpecFor('zombie', 'zombie-double', 'z-bite2');
+    const stagger = mk({ aiPhase: 'z-stagger', aiPhaseUntil: T + ZOMBIE_STAGGER_MS, chaffMove: 'zombie-double' });
+    const ls = preBiteTelegraphLine(stagger, T, aim)!;
+    const hit = T + ZOMBIE_STAGGER_MS + spec2.windupMs + spec2.biteMs;
+    expect(ls.startAt).toBe(T);
+    expect(ls.hitAt).toBe(hit);
+    expect(ls.lockAt).toBe(T + ZOMBIE_STAGGER_MS);
+    expect(ls.emphasis).toBeGreaterThan(1);
+    const fireAt = T + ZOMBIE_STAGGER_MS;
+    const e = mk({ aiPhase: 'z-bite2', chaffMove: 'zombie-double', biteAt: fireAt, biteDirX: 1, biteDirY: 0 });
+    const l = biteTelegraphLine(e, fireAt)!;
+    expect(l.startAt).toBe(T);
+    expect(l.hitAt).toBe(hit);
+    expect(l.emphasis).toBeGreaterThan(1);
+    expect(isBiteResolveDue(e, hit - 1)).toBe(false);
+    expect(isBiteResolveDue(e, hit)).toBe(true);
+    expect(biteTelegraphLine(e, hit)).toBeNull();
+  });
+
+  it('スケルトンの噛み: しゃがみ(s-crouch)の頭で出て、回り込み(s-arc)の頭で満ち、噛み(s-bite)の命中で消え切る', () => {
+    const spec = biteSpecFor('skeleton', 'skel-bite');
+    const hit = T + SKELETON_CROUCH_MS + SKELETON_ARC_MS + spec.windupMs + spec.biteMs;
+    const drawFrac = SKELETON_CROUCH_MS / (hit - T);
+    const crouch = mk({ type: 'skeleton', aiPhase: 's-crouch', aiPhaseUntil: T + SKELETON_CROUCH_MS });
+    const lc = preBiteTelegraphLine(crouch, T, aim)!;
+    expect(lc.startAt).toBe(T);
+    expect(lc.hitAt).toBe(hit);
+    expect(lc.drawFrac).toBeCloseTo(drawFrac, 6);
+    expect(lc.lockAt).toBe(T + SKELETON_CROUCH_MS + SKELETON_ARC_MS);
+    expect(lc.counterable).toBe(true);
+    const arcAt = T + SKELETON_CROUCH_MS;
+    const arc = mk({ type: 'skeleton', aiPhase: 's-arc', aiPhaseUntil: arcAt + SKELETON_ARC_MS, aiStartedAt: arcAt, chaffMove: 'skel-bite', chaffMoveAt: arcAt });
+    const la = preBiteTelegraphLine(arc, arcAt + 100, aim)!;
+    expect(la.startAt).toBe(T);
+    expect(la.hitAt).toBe(hit);
+    expect(la.drawFrac).toBeCloseTo(drawFrac, 6);
+    const fireAt = arcAt + SKELETON_ARC_MS;
+    const bite = mk({ ...arc, aiPhase: 's-bite', biteAt: fireAt, biteDirX: 1, biteDirY: 0 });
+    const lb = biteTelegraphLine(bite, fireAt)!;
+    expect(lb.startAt).toBe(T);
+    expect(lb.hitAt).toBe(hit);
+    expect(lb.drawFrac).toBeCloseTo(drawFrac, 6);
+    expect(isBiteResolveDue(bite, hit - 1)).toBe(false);
+    expect(isBiteResolveDue(bite, hit)).toBe(true);
+    expect(biteTelegraphLine(bite, hit)).toBeNull();
+  });
+
+  it('前段の無い噛み(§12の噛みつき等)は従来どおり: 出る=発火・満ちる=溜めの終わり・向きの合図なし(lockAt=startAt)', () => {
+    const spec = biteSpecFor('zombie');
+    const l = biteTelegraphLine(mk({ biteAt: T, biteDirX: 1, biteDirY: 0 }), T)!;
+    expect(l.startAt).toBe(T);
+    expect(l.lockAt).toBe(T);
+    expect(l.hitAt).toBe(T + spec.windupMs + spec.biteMs);
+    expect(l.drawFrac).toBeCloseTo(spec.windupMs / (spec.windupMs + spec.biteMs), 6);
+  });
+
+  it('雑魚の線は足元へ写す材料を持つ(判定の中心 tx/ty は不変)/ ボスは従来の線(mobLine=false)', () => {
+    const e = mk({ biteAt: T, biteDirX: 1, biteDirY: 0, biteLungePx: 10 });
+    const mob = biteTelegraphLine(e, T)!;
+    expect(mob.mobLine).toBe(true);
+    expect(mob.footFromOff).toBe(e.height / 2);           // 攻撃側の中心→箱の底辺(足元)
+    expect(mob.footToOff).toBeGreaterThan(0);              // 狙いの点→相手の足元
+    expect(mob.tx - mob.fx).toBeCloseTo(10 + BITE_CONTACT_DIST_PX.zombie, 5); // 終点=狙っている点(足元へ写す前)
+    const boss = biteTelegraphLine(mk({ type: 'thor', biteAt: T, biteDirX: 1, biteDirY: 0 }), T)!;
+    expect(boss.mobLine).toBe(false);
+  });
+
+  it('★リッチの転移噛みは線を出さない(当たるのはワープ先の赤い円・ワープ元に赤を描かない)', () => {
+    const lich = mk({ type: 'lich', chaffMove: 'lich-blink', biteAt: T, biteDirX: 1, biteDirY: 0 });
+    expect(biteTelegraphLine(lich, T)).toBeNull();
+    expect(biteTelegraphLine(lich, T + 500)).toBeNull();
+  });
+
+  it('溜めの外(構え前・硬直・後退)では溜めの線を出さない', () => {
+    expect(preBiteTelegraphLine(mk({ aiPhase: 'z-wait', aiPhaseUntil: T + 500 }), T, aim)).toBeNull();
+    expect(preBiteTelegraphLine(mk({ aiPhase: 'z-recover', aiPhaseUntil: T + 900 }), T, aim)).toBeNull();
+    expect(preBiteTelegraphLine(mk({ aiPhase: 'zpause', aiPhaseUntil: T + 1000 }), T, aim)).toBeNull(); // 紫の突進の溜めは今回は出さない
+    expect(preBiteTelegraphLine(mk({ type: 'skeleton', aiPhase: 's-recover', aiPhaseUntil: T + 500 }), T, aim)).toBeNull();
+  });
+
+  it('狙い: 軍人を追っていて候補に居れば軍人、居なければ実プレイヤー(状態機械の apx/apy と同じ)', () => {
+    const p = { x: 1, y: 2 };
+    expect(chaffAimPoint({ targetEscortId: 'a' }, p, [{ id: 'a', x: 9, y: 8 }])).toEqual({ x: 9, y: 8 });
+    expect(chaffAimPoint({ targetEscortId: 'b' }, p, [{ id: 'a', x: 9, y: 8 }])).toBe(p);
+    expect(chaffAimPoint({}, p, [{ id: 'a', x: 9, y: 8 }])).toBe(p);
   });
 });
