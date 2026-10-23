@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5186', items: [
+    'オープニングの途中でタイトルの曲が流れてしまうことがあった。直った',
+  ] },
   { version: '0.25.5185', items: [
     'ステージ4でジュンが倒れる場面、カメラが引いたままでジュンが小さかった。倒れる間は寄って見せ、変身してから引く',
   ] },

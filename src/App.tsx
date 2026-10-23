@@ -20,7 +20,7 @@ import { installTestBridge, reportTestScreen, type TestScreenId } from './utils/
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore, BOSS_TEST_RUN } from './store/gameStore';
-import { setBgmScene, preloadAllAudio, unlockDanceAudio, primeMenuBgm, preloadStageBgm, setAudioSuspended, clearSfxThrottle, attachAudioGestureRecovery } from './audio/audioManager';
+import { setBgmScene, preloadAllAudio, unlockDanceAudio, primeMenuBgm, preloadStageBgm, setAudioSuspended, clearSfxThrottle, attachAudioGestureRecovery, setOpeningBgmHold } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { preloadClassPortraits, preloadClassWalkSprites } from './data/portraits';
 import { loadProgressBegin, loadProgressDone } from './utils/loadProgress';
@@ -101,6 +101,8 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     try { return new URLSearchParams(window.location.search).get('opening'); } catch { return null; }
   });
   const [showOpening, setShowOpening] = useState(openingParam === '1' || openingParam === '2' || openingParam === '3');
+  // オープニング中はタイトル曲を保留(読み込みが先に終わってメニューへ移ってもオープニングの裏で鳴らさない)。下の BGM の effect より先に置く=同じ描画で先に効く。
+  useEffect(() => { setOpeningBgmHold(showOpening); }, [showOpening]);
   // ステージ6(洋館)奥行き通路の単体プレビュー(?corridor=1・v0.25.2077の相談用プロトタイプ)。
   const [corridorPreview] = useState(() => {
     try { return new URLSearchParams(window.location.search).get('corridor') === '1'; } catch { return false; }

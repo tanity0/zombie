@@ -1306,7 +1306,21 @@ export const startBossBgmNow = (variant: string): void => {
 // 画面に応じてBGMを切替: menu=タイトル曲(public/audio/title.mp3) / game=ステージ曲 / off=停止。
 // menu→game でステージ曲へ、game→menu でタイトル曲へ自動で差し替わる(applyDanceAudio が bgmBaseTrack を流す)。
 // ブラウザの自動再生制限で menu の初回はユーザー操作まで鳴らないことがあるため、初回タップで再度呼ぶ。
+// ★オープニング中はタイトル曲を流さない(社長報告2026-10-23「オープニングの途中でタイトルのBGM流れてきちゃう」)。
+// START でオープニングと素材の読み込みが同時に始まり、読み込みが終わるとタイトルの裏でメニューへ移る(App の gameState='menu')。
+// その時の setBgmScene('menu')(と、メニューの最初のタップの再生キック)がオープニングの最中にタイトル曲を鳴らしていた。
+// ⇒ App がオープニングを出している間 hold を立てる。hold 中の 'menu' は保留して無音のまま、hold が外れた時に流す。
+let openingBgmHold = false;
+let menuBgmPending = false;
+export const setOpeningBgmHold = (on: boolean): void => {
+  if (on === openingBgmHold) return;
+  openingBgmHold = on;
+  if (!on && menuBgmPending) { menuBgmPending = false; setBgmScene('menu'); }
+};
+
 export const setBgmScene = (scene: 'menu' | 'game' | 'off', variant: string = 'default') => {
+  if (scene === 'menu' && openingBgmHold) { menuBgmPending = true; return; } // オープニングが明けたら流す
+  menuBgmPending = false;
   bgmSilenceHeld = false; // 場面が変わったら無音の保持は外す(リトライ・メニュー復帰で曲が戻る)
   if (scene === 'off') { releaseDeepReverseBgm(); stopCorridorRadioMix(); void setBgmActive(false); return; }
   if (scene === 'game') {
