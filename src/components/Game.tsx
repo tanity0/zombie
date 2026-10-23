@@ -390,25 +390,36 @@ const ErrBeacon: React.FC = () => {
       return `v${__APP_VERSION__} ${getSelectedStageId()} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} en${st.enemies.length}`
         + ` ${sceneDiagText()} st[fx${st.effects.length} pk${st.pickups.length} pj${st.projectiles.length} sm${st.summons.length}] 描画器${rendererMountCount()}代目`;
     });
-    // ★重さの手がかり(2026-10-23・社長実機「またステージ4でめちゃくちゃ重くなった」): 1秒あたりの描画回数(fps)と焼きの回数(bk)。
-    //   一時停止を押してもメニューが出ない時に、何がメニューを止めているか(停止[…])も出す。
-    let frames = 0, raf = 0;
-    const countFrame = () => { frames++; raf = requestAnimationFrame(countFrame); };
-    raf = requestAnimationFrame(countFrame);
-    const iv = setInterval(() => {
+    // ★重さの手がかり(2026-10-23・社長実機「またステージ4でめちゃくちゃ重くなった」「一時停止もショップも出ない・死んでも終わらない」):
+    //   1秒あたりの描画回数(fps)・焼きの回数(bk)・**タイマーが最後に動いてからの時間(tm・ms)**。
+    //   メニュー・ゲームオーバー・通信の文字送りはタイマー/React の再描画で動く。描画(rAF)は回っているのにそれらが動かない時、
+    //   tm が大きく伸びる=タイマーが回されていない、と名指しできる。行は**描画の周期で**書く(タイマーが止まっても行は動く)。
+    //   一時停止中は、メニューを止めている物(停止[…])も出す。
+    let frames = 0, raf = 0, lastTimerAt = performance.now(), lastLineAt = 0;
+    const iv = setInterval(() => { lastTimerAt = performance.now(); }, 250);
+    const writeLine = (now: number) => {
       const msg = lastSuppressedError();
       // ★増え続けていないかを常に出す(v0.25.4347)。例外が出たら赤字でその後ろへ。
       const pv = prevBeatText();
-      const fps = frames; frames = 0;
+      const sec = Math.max(0.001, (now - lastLineAt) / 1000);
+      const fps = Math.round(frames / sec); frames = 0;
+      const bk = Math.round(takeBakeCalls() / sec);
+      const tm = Math.round(now - lastTimerAt);
       const st = useGameStore.getState();
       const why = st.isPaused
         ? ` 停止[${[st.tutorialPopup !== null && '説明', st.showUpgradeMenu && 'Lvup', st.showShopMenu && '店', st.showEventQuestMenu && '依頼', st.storyReturnPromptVisible && '帰還'].filter(Boolean).join(',') || 'メニュー'}]`
         : '';
-      const line = `fps${fps} bk${takeBakeCalls()}${why} ${renderStatsText()} tex${textureMemoryMB()}MB ${bakedTextureText()}`
+      const line = `fps${fps} bk${bk} tm${tm}${why} ${renderStatsText()} tex${textureMemoryMB()}MB ${bakedTextureText()} ${sceneDiagText()}`
         + (pv ? ` · 前回最後 ${pv}` : '')
         + (msg ? ` · ERR ${msg}` : '');
       if (ref.current && ref.current.textContent !== line) ref.current.textContent = line;
-    }, 1000);
+    };
+    const countFrame = (now: number) => {
+      frames++;
+      if (now - lastLineAt >= 1000) { writeLine(now); lastLineAt = now; }
+      raf = requestAnimationFrame(countFrame);
+    };
+    raf = requestAnimationFrame(countFrame);
     return () => { clearInterval(iv); cancelAnimationFrame(raf); };
   }, []);
   return <div ref={ref} style={{ color: 'rgba(255,80,80,0.9)', maxWidth: '90vw', whiteSpace: 'normal' }} />;

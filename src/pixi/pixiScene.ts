@@ -38384,7 +38384,26 @@ export class PixiScene {
     ];
     const total = maps.reduce((a, [, n]) => a + n, 0);
     const top = maps.slice().sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => `${k}${n}`).join(',');
-    return `obj${obj} maps${total}(${top})`;
+    // 表示物がどの層で増えているか(2026-10-23・ステージ4で長く遊ぶと obj が起動直後の約2.6倍)。層ごとの子孫の数の上位3つ。
+    const layers: [string, number][] = [];
+    try {
+      for (const [k, v] of Object.entries(this.L)) {
+        if (!(v instanceof Container)) continue;
+        let n = 0;
+        const count = (c: Container): void => { n++; for (const ch of c.children) count(ch as Container); };
+        count(v);
+        layers.push([k, n]);
+      }
+    } catch { /* 畳み中など */ }
+    // 他の層を中に持つ層(stage/worldGroup 等の入れ物)は除く=実際に物が積まれる層だけで比べる。
+    const lc = new Set<Container>(Object.values(this.L).filter((v): v is Container => v instanceof Container));
+    const isWrapper = (k: string): boolean => {
+      const c = (this.L as unknown as Record<string, unknown>)[k];
+      for (const o of lc) { if (o === c) continue; for (let p = o.parent; p; p = p.parent) if (p === c) return true; }
+      return false;
+    };
+    const topL = layers.filter(([k]) => !isWrapper(k)).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => `${k}${n}`).join(',');
+    return `obj${obj}[${topL}] maps${total}(${top})`;
   }
 
   destroy() {
