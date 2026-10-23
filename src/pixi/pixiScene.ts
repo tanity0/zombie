@@ -261,7 +261,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase, TELEGRAPH_STYLE_BOSS } from '../utils/telegraphStyle';
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
-import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, type BiteTelegraphLine } from '../utils/biteTelegraph';
+import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
 import { escortAggroCandidates } from '../utils/escortView';
 import { enemyContactBox } from '../utils/collisionUtils'; // 確認用 ?hitbox=1
 import { biteFxRect, playerArtRect } from '../utils/biteFxHit'; // 確認用 ?hitbox=1
@@ -13134,40 +13134,29 @@ export class PixiScene {
     const pc = { x: aimSrc.player.x + aimSrc.player.width / 2, y: aimSrc.player.y + aimSrc.player.height / 2 };
     let escortCands: ReturnType<typeof escortAggroCandidates> | null = null;
     const aimOf = (e: Enemy) => {
-      if (e.targetEscortId === undefined) return pc;
+      if (e.targetEscortId === undefined) return { x: pc.x, y: pc.y, escort: false };
       if (!escortCands) escortCands = aimSrc.escorts.length > 0 ? escortAggroCandidates(aimSrc) : [];
       return chaffAimPoint(e, pc, escortCands);
     };
+    // 雑魚の線はこのフレームぶんを集めてから描く(群れの強弱=プレイヤーに近い順で上位だけ通常の強さ)。
+    const mobLines: { key: string; l: BiteTelegraphLine; e: Enemy; d: number }[] = [];
     for (const e of enemies) {
       // ★雑魚の軽い攻撃の予告=流星ライン(社長指示2026-09-17・`utils/biteTelegraph.ts` が正本)。
       // 赤=カウンター可の技 / 紫=カウンター不可の噛みつき。**線の形は共通**(色だけ替える)。
       // 溜めで伸び切り、根元から消え、**消え切った瞬間が判定**=ボスの予告と同じ読み方。
-      // ★社長指示2026-10-23「ゾンビとスケルトンの技、流星予告入れたい」: ゾンビ2連の1発目は構え(z-red-pause)の頭から、
-      //   2発目はよろけ(z-stagger)の頭から、スケルトンの噛みはしゃがみ(s-crouch)の頭から、**同じキー**で1本の流星として
+      // ★社長指示2026-10-23「ゾンビとスケルトンの技、流星予告入れたい」(+同日「推薦で」): ゾンビ2連の1発目は構え(z-red-pause)の頭から、
+      //   2発目はよろけ(z-stagger)の頭から、スケルトンの噛みは回り込み(s-arc)の頭から、**同じキー**で1本の流星として
       //   出す(噛みが立つと biteTelegraphLine が同じ窓の続きを返す=相が変わっても線は途切れない)。
-      // ★雑魚の線はアクターより上の層(mobMeteorGfx)で描く(敵の大きな絵に隠れないように)。ボスの線は従来どおり
-      //   地面の層(このg)に `dashLineTick` で描く(ボスの予告の層は変えない)。
+      // ★雑魚の線は地面とアクターの間の層(mobMeteorGfx)に足元の高さで描く。ボスの線は従来どおり
+      //   地面の層(このg)に腰の高さで描く(ボスの予告の層は変えない)。
       {
-        const bl = biteTelegraphLine(e, gameTime)
-          ?? ((e.type === 'zombie' || e.type === 'skeleton') ? preBiteTelegraphLine(e, gameTime, aimOf(e)) : null);
-        if ((bl !== null && !bl.mobLine) || (bl === null && isBossType(e.type))) {
-          const tgs = telegraphStyleFor(e.type);
-          const bossBitePal: [number, number, number] = bl?.counterable === false
-            ? [...PixiScene.BITE_TG_PURPLE] : [...PixiScene.BITE_TG_RED];
-          this.dashLineTick(
-            g, `${e.id}:bite`, bl !== null, bl?.remainMs ?? 0,
-            // ★描くのは切り詰めた区間(監査#1/#2)。敵の絵の下・プレイヤーの絵の下に潜らせない。
-            bl?.dfx ?? 0, bl?.dfy ?? 0, bl?.dtx ?? 0, bl?.dty ?? 0, now, bl?.prog ?? 0,
-            // 描き切る位置だけは**その技の溜めの割合**に差し替える。脈の時計は**その攻撃自身の経過**(監査#3)。
-            { ...tgs, drawFrac: bl?.drawFrac ?? tgs.drawFrac, pulseAt: bl?.pulseAt },
-            ...bossBitePal,
-            // 線が消え残ったまま技が消えた(中断)時は、残りを噛みの長さの6割(下限90ms・監査#10)で根元から消し切る。
-            // 足切り0=判定までの残りがどれだけ短くても、消え残りがあれば必ず消し切る(パッと消さない)。
-            Math.max(90, Math.round((bl?.biteMs ?? 200) * 0.6)), 0, true,
-          );
-        } else if (bl) {
-          this.mobMeteorTick(`${e.id}:bite`, bl, e, gameTime, now);
+        let bl = biteTelegraphLine(e, gameTime);
+        if (!bl && (e.type === 'zombie' || e.type === 'skeleton')) {
+          const a = aimOf(e);
+          bl = preBiteTelegraphLine(e, gameTime, a, a.escort);
         }
+        if (bl && !bl.mobLine) this.bossBiteTick(g, `${e.id}:bite`, bl, e, gameTime, now);
+        else if (bl) mobLines.push({ key: `${e.id}:bite`, l: bl, e, d: Math.hypot(e.x + e.width / 2 - pc.x, e.y + e.height / 2 - pc.y) });
       }
       // ★リッチの技「転移噛み」(§16-C)の赤い予告円。攻撃先(=着地点。`lichBlinkAtX/Y`。
       // C-3-a2/3で発火時に焼いた・以後動かない点)だけに描く——ワープ元には赤を1本も描かない
@@ -13241,7 +13230,19 @@ export class PixiScene {
           1 - chRemain / (WEREWOLF_WINDUP_MS / ENEMY_ATTACK_SPEED_MULT), telegraphStyleFor(e.type));
       }
     }
+    // ★群れの強弱(社長「推薦で」2026-10-23): プレイヤーを狙う線のうち、敵の中心がプレイヤーに近い3本だけ通常の強さ、
+    //   それ以外は1段薄く(順位は純関数 rankMobMeteors・境目はヒステリシスつき)。段の濃さ・太さは120ms前後で寄せる
+    //   (パッと切り替えない)。出る/消える時刻・形は不変(流星のまま)。軍人を狙う線は別扱い(細く・薄く・数えない)。
+    const forPlayer = mobLines.filter(m => !m.l.targetsEscort);
+    const full = rankMobMeteors(forPlayer, this.mobFullPrev);
+    this.mobFullPrev = full;
+    for (const m of mobLines) {
+      const tier = m.l.targetsEscort ? 'escort' : full.has(m.key) ? 'full' : 'dim';
+      this.mobMeteorTick(m.key, m.l, m.e, gameTime, now, this.mobTierEased(m.key, tier, now));
+    }
+    for (const key of this.mobTierEase.keys()) if (!this.mobMeteorSeen.has(key)) this.mobTierEase.delete(key);
     this.mobMeteorEndFrame(gameTime, now);
+    this.bossBiteEndFrame(g, gameTime, now);
   }
 
   // ================================================================================================
@@ -13274,7 +13275,27 @@ export class PixiScene {
   private static readonly MOB_CUT_MS = 150;
   private static readonly MOB_AIM_TAU_S = 0.06;
 
-  private mobMeteorTick(key: string, l: BiteTelegraphLine, e: Enemy, gameTime: number, now: number): void {
+  /** 段ごとの線の太さ・濃さ(full=通常 / dim=群れの4本目以降 / escort=軍人を狙う線=同じ赤のまま細く薄く)。 */
+  private static readonly MOB_TIER = {
+    full: { w: 1, a: 1 }, dim: { w: 0.85, a: 0.5 }, escort: { w: 0.6, a: 0.5 },
+  } as const;
+  /** 段の濃さ・太さを寄せる時定数(ms)。3τ≒120msで95%=パッと切り替えない。 */
+  private static readonly MOB_TIER_TAU_MS = 40;
+  private mobFullPrev: ReadonlySet<string> = new Set();
+  private mobTierEase = new Map<string, { w: number; a: number; at: number }>();
+
+  private mobTierEased(key: string, tier: keyof typeof PixiScene.MOB_TIER, now: number): { w: number; a: number } {
+    const tgt = PixiScene.MOB_TIER[tier];
+    const st = this.mobTierEase.get(key);
+    if (!st) { this.mobTierEase.set(key, { w: tgt.w, a: tgt.a, at: now }); return tgt; }
+    const k = 1 - Math.exp(-Math.max(0, Math.min(200, now - st.at)) / PixiScene.MOB_TIER_TAU_MS);
+    st.w += (tgt.w - st.w) * k; st.a += (tgt.a - st.a) * k; st.at = now;
+    return st;
+  }
+
+  private mobMeteorTick(
+    key: string, l: BiteTelegraphLine, e: Enemy, gameTime: number, now: number, tier: { w: number; a: number },
+  ): void {
     this.mobMeteorSeen.add(key);
     // 足元へ写す(判定の中心 fx,fy / tx,ty はそのまま=描く位置だけ)。
     const Fx = l.fx, Fy = l.fy + l.footFromOff;
@@ -13315,14 +13336,16 @@ export class PixiScene {
     const seg: MobMeteorSeg = {
       sx: Fx + ux * s0, sy: Fy + uy * s0, ex: Fx + ux * s1, ey: Fy + uy * s1, ok: s1 - s0 > 6,
       mx: Tx, my: Ty, decor, pal: l.counterable ? PixiScene.MOB_TG_RED : PixiScene.MOB_TG_PURPLE,
+      wMul: tier.w, aMul: tier.a,
     };
     const ph = PixiScene.meteorPhase(l.prog, l.drawFrac);
     this.mobMeteorArm.set(key, { seg, p: ph.p, er: ph.er, hitAt: l.hitAt });
     this.mobMeteorFade.delete(key);
     const pulse = 0.5 + 0.5 * Math.sin(l.pulseAt / 110);
     // 終点の印: 向きが固まる瞬間に締まって少し行き過ぎて戻る(減衰振動・始まりも終わりも段差なし)。
+    //   ゾンビ1発目は構えの頭(=向きを焼いた瞬間)、それ以外は溜めの終わり(判定の向きが狙いを追わなくなる瞬間)。
     let markScale = 1, markBoost = 0;
-    if (l.lockAt > l.startAt + 1) {
+    if (l.lockCue) {
       const u = (gameTime - l.lockAt) / PixiScene.MOB_LOCK_MARK_MS;
       if (u >= 0 && u < 1) {
         const d = 0.45 * Math.sin(2 * Math.PI * u) * Math.exp(-2.5 * u);
@@ -13365,12 +13388,14 @@ export class PixiScene {
     p: number, er: number, pulse: number, headIn: number, markScale: number, markBoost: number, alphaMul: number,
   ): void {
     if (p - er <= 0.001 && alphaMul >= 1) return;
+    alphaMul *= seg.aMul;
+    const wm = seg.wMul;
     // 終点の印(相手の足元の潰れた楕円)。満ちるまでに立ち上がり、消えるにつれ薄れる。
     const markA = Math.min(1, (Math.min(1, p / 0.6) * (0.5 + 0.3 * pulse) * (1 - er) + markBoost) * alphaMul);
     if (markA > 0.02) {
-      const rx = (13 + 1.5 * pulse) * seg.decor * markScale, ry = rx * 0.45;
+      const rx = (13 + 1.5 * pulse) * seg.decor * markScale * (0.6 + 0.4 * wm), ry = rx * 0.45;
       o.ellipse(seg.mx, seg.my, rx, ry).fill({ color: pal.base, alpha: markA * 0.3 });
-      o.ellipse(seg.mx, seg.my, rx, ry).stroke({ width: 2, color: pal.mark, alpha: markA });
+      o.ellipse(seg.mx, seg.my, rx, ry).stroke({ width: 2 * wm, color: pal.mark, alpha: markA });
     }
     if (!seg.ok || p - er <= 0.001) return;
     const dx = seg.ex - seg.sx, dy = seg.ey - seg.sy;
@@ -13379,8 +13404,8 @@ export class PixiScene {
     const drawn = Math.max(er, p - TAIL);
     if (drawn > er) {
       const [ax, ay] = P(er), [bx, by] = P(drawn);
-      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 4.5, color: pal.base, alpha: (0.55 + 0.1 * pulse) * alphaMul, cap: 'butt' });
-      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 1.6, color: pal.core, alpha: (0.72 + 0.15 * pulse) * alphaMul, cap: 'butt' });
+      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 4.5 * wm, color: pal.base, alpha: (0.55 + 0.1 * pulse) * alphaMul, cap: 'butt' });
+      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 1.6 * wm, color: pal.core, alpha: (0.72 + 0.15 * pulse) * alphaMul, cap: 'butt' });
     }
     // 流星の尾: drawn→p(頭ほど太く濃く)。分割の端は平ら=継ぎ目が玉に見えない。
     const SEGS = 8;
@@ -13390,15 +13415,56 @@ export class PixiScene {
       if (a1 - a0 <= 0.0005) continue;
       const k = (i + 1) / SEGS;
       const [ax, ay] = P(a0), [bx, by] = P(a1);
-      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 2.5 + 2.5 * k, color: pal.base, alpha: (0.45 + 0.4 * k) * alphaMul, cap: 'butt' });
-      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: 1 + 1.3 * k, color: pal.core, alpha: (0.45 + 0.5 * k * k) * alphaMul, cap: 'butt' });
+      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: (2.5 + 2.5 * k) * wm, color: pal.base, alpha: (0.45 + 0.4 * k) * alphaMul, cap: 'butt' });
+      o.moveTo(ax, ay).lineTo(bx, by).stroke({ width: (1 + 1.3 * k) * wm, color: pal.core, alpha: (0.45 + 0.5 * k * k) * alphaMul, cap: 'butt' });
     }
     // 頭の点(白に近いのはここだけ)。出始めはイーズイン、終点に近づくほど薄れて印と重ならない。
     const nearEnd = Math.max(0, Math.min(1, (p - 0.7) / 0.3));
     const headA = 0.9 * headIn * (1 - nearEnd * nearEnd * (3 - 2 * nearEnd)) * (1 - er) * alphaMul;
     if (headA > 0.02) {
       const [hx, hy] = P(p);
-      o.circle(hx, hy, (2 + 1.2 * pulse) * seg.decor * (0.4 + 0.6 * headIn)).fill({ color: pal.head, alpha: headA });
+      o.circle(hx, hy, (2 + 1.2 * pulse) * seg.decor * wm * (0.4 + 0.6 * headIn)).fill({ color: pal.head, alpha: headA });
+    }
+  }
+
+  // ================================================================================================
+  // ★ボスの噛みの線(地面の層・腰の高さの従来の線)。2026-10-23「推薦で」: 途中で止まった時(当たる時刻の前に線が消えた)は、
+  //   雑魚と同じく赤をすぐ灰へ落とし、攻撃側(線の根元)へ150msで縮めて退かせる=「赤いのに当たらない」を作らない。
+  //   ボスの他の技の線(dashLineTick の他の呼び手)には広げない(噛みの線だけ)。
+  // ================================================================================================
+  private bossBiteSeen = new Set<string>();
+  private bossBiteArm = new Map<string, { l: BiteTelegraphLine; style: TelegraphStyle; p: number; er: number }>();
+  private bossBiteFade = new Map<string, { l: BiteTelegraphLine; style: TelegraphStyle; p: number; er: number; t0: number }>();
+  private static readonly BOSS_BITE_CUT = [0x55555c, 0xb8b8c0, 0xd4d4da] as const;
+
+  private bossBiteTick(g: Graphics, key: string, l: BiteTelegraphLine, e: Enemy, gameTime: number, now: number): void {
+    void gameTime;
+    this.bossBiteSeen.add(key);
+    this.bossBiteFade.delete(key);
+    const tgs = telegraphStyleFor(e.type);
+    // 描き切る位置は**その技の溜めの割合**、脈の時計は**その攻撃自身の経過**(監査#3)。
+    const style: TelegraphStyle = { ...tgs, drawFrac: l.drawFrac, pulseAt: l.pulseAt };
+    const ph = PixiScene.meteorPhase(l.prog, style.drawFrac);
+    this.bossBiteArm.set(key, { l, style, p: ph.p, er: ph.er });
+    const pal = l.counterable ? PixiScene.BITE_TG_RED : PixiScene.BITE_TG_PURPLE;
+    // ★描くのは切り詰めた区間(監査#1/#2)。終点の印は潰れた楕円(雑魚の線と揃える・弾の二重丸に見せない)。
+    this.drawAngelDashLine(g, l.dfx, l.dfy, l.dtx, l.dty, now, l.prog, undefined, style, pal[0], pal[1], pal[2], true, true);
+  }
+
+  private bossBiteEndFrame(g: Graphics, gameTime: number, now: number): void {
+    for (const [key, a] of this.bossBiteArm) {
+      if (this.bossBiteSeen.has(key)) continue;
+      this.bossBiteArm.delete(key);
+      if (gameTime < a.l.hitAt && a.p - a.er > 0.001) this.bossBiteFade.set(key, { ...a, t0: now });
+    }
+    this.bossBiteSeen.clear();
+    const [b, c, h] = PixiScene.BOSS_BITE_CUT;
+    for (const [key, f] of this.bossBiteFade) {
+      const t = (now - f.t0) / PixiScene.MOB_CUT_MS;
+      if (t >= 1 || t < 0) { this.bossBiteFade.delete(key); continue; }
+      const k = t * t * (3 - 2 * t);
+      // 灰に落とし、残っている区間を根元(攻撃側)へ縮める: 描き=p·(1−k)、消し=er·(1−k)。
+      this.drawAngelDashLine(g, f.l.dfx, f.l.dfy, f.l.dtx, f.l.dty, now, f.p * (1 - k), f.er * (1 - k), f.style, b, c, h, false, true);
     }
   }
 
@@ -20732,8 +20798,14 @@ export class PixiScene {
       const until = e.aiPhaseUntil ?? gameTime;
       let dir = this.zombieStanceDir.get(e.id);
       if (!dir || dir.until !== until) {
-        const ply = useGameStore.getState().player;
-        const lang = Math.atan2((ply.y + ply.height / 2) - cy, (ply.x + ply.width / 2) - cx);
+        // ★体の向き=判定・予告の線と同じ「構えに入った瞬間に焼いた向き」(stanceDirX/Y・社長「推薦で」2026-10-23)。
+        //   焼かれていない古い状態だけ、従来どおりプレイヤーへの向きで補う。
+        let lang: number;
+        if (e.stanceDirX !== undefined && e.stanceDirY !== undefined) lang = Math.atan2(e.stanceDirY, e.stanceDirX);
+        else {
+          const ply = useGameStore.getState().player;
+          lang = Math.atan2((ply.y + ply.height / 2) - cy, (ply.x + ply.width / 2) - cx);
+        }
         dir = { until, cos: Math.cos(lang), sin: Math.sin(lang) };
         if (this.zombieStanceDir.size > 128) this.zombieStanceDir.clear();
         this.zombieStanceDir.set(e.id, dir);
@@ -21295,9 +21367,14 @@ export class PixiScene {
         // 英雄の昇天に見とれている間は英雄の方を向く(社長裁定2026-10-05)。向き直りは通常の振り向き(ENEMY_TURN_MS)で滑らかに。
         const aweFace = e.aweUntil !== undefined && now < e.aweUntil && e.aweFaceX !== undefined
           ? (e.aweFaceX >= e.x + e.width / 2 ? toRight : -toRight) : 0;
+        // ★ゾンビの構え〜1発目は、構えに入った瞬間に焼いた向き(stanceDirX)で左右を決める
+        //   (体の反り・噛みの判定・予告の線と同じ値=絵が判定と逆を向かない・社長「推薦で」2026-10-23)。
+        const stanceFace = e.type === 'zombie' && (e.aiPhase === 'z-red-pause' || e.aiPhase === 'z-bite1')
+          && e.stanceDirX !== undefined ? (e.stanceDirX >= 0 ? toRight : -toRight) : 0;
         const want = kbFacingLock ? cur
           : aweFace !== 0 ? aweFace
           : heroFace !== 0 ? heroFace
+          : stanceFace !== 0 ? stanceFace
           : bandDir !== 0 ? sweepFaceMulFor(bandDir, sweepSwing, cur)
             : bpSide !== 0 ? (bpSide > 0 ? toRight : -toRight)
               : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
@@ -22079,7 +22156,8 @@ export class PixiScene {
         `${e.id}:zombie-bite`, zRunning, zwMs + zbMs + zombieBiteTotalMs() + 200, now,
         () => {
           const bl = biteTelegraphLine(e, gameTime);
-          return [zDirX, bl?.tx ?? (cx + zDirX * 35), bl?.ty ?? (cy + zDirY * 35),
+          // 噛み跡は判定の四角と同じ中心(fxX/fxY)へ置く=絵と当たりが一緒に動く(1発目は焼いた向きの前方へずれる)。
+          return [zDirX, bl?.fxX ?? (cx + zDirX * 35), bl?.fyY ?? (cy + zDirY * 35),
             e.biteAt ?? gameTime, zombieBiteCounterable(e) ? 1 : 0];
         }, e.lastCounteredAt,
       );
@@ -27860,14 +27938,12 @@ export class PixiScene {
     // 320msの残光は技そのものより長い**一方、終盤で中断されると足切りに掛かって**パッと消える**
     // (慣性MUSTの禁じ手)。雑魚側は短い尺+足切り0を渡して、必ず消し切る。
     eraseMs = PixiScene.DASHLINE_ERASE_MS, minCutMs = 60,
-    // ★終点の印を地面に置いた潰れた楕円にする(ボスの噛みの線だけ・雑魚の線と揃える。既定=従来の真円の輪)。
-    markEllipse = false,
   ): void {
     if (windupOn) {
       const ph = PixiScene.meteorPhase(prog, style?.drawFrac);
       // arm[4]=残り / arm[5]=最後の描き / arm[6]=最後の消し(中断時に続きを消すため)。
       this.dashLineArm.set(key, [fx, fy, tx, ty, remainMs, ph.p, ph.er]);
-      this.drawAngelDashLine(o, fx, fy, tx, ty, now, prog, undefined, style, base, core, head, true, markEllipse);
+      this.drawAngelDashLine(o, fx, fy, tx, ty, now, prog, undefined, style, base, core, head, true);
       return;
     }
     const armed = this.dashLineArm.get(key);
@@ -27879,7 +27955,7 @@ export class PixiScene {
       const er0 = el.d[6] ?? 0;
       this.drawAngelDashLine(
         o, el.d[0], el.d[1], el.d[2], el.d[3], now, el.d[5] ?? 1,
-        er0 + (1 - er0) * el.t, style, base, core, head, false, markEllipse,
+        er0 + (1 - er0) * el.t, style, base, core, head, false,
       );
     }
   }
@@ -38748,4 +38824,6 @@ interface MobMeteorSeg {
   sx: number; sy: number; ex: number; ey: number; ok: boolean;
   mx: number; my: number; decor: number;
   pal: { base: number; core: number; head: number; mark: number };
+  /** 段の太さ・濃さ(群れの強弱・軍人を狙う線)。 */
+  wMul: number; aMul: number;
 }

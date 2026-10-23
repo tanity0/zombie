@@ -657,6 +657,14 @@ export interface Enemy {
    */
   biteDirX?: number;
   biteDirY?: number;
+  /**
+   * ★ゾンビ2連の1発目の向き(社長「推薦で」2026-10-23): 構え(z-red-pause)に**入った瞬間**に狙いへ向けて焼く単位ベクトル。
+   * 1発目はこの向きで噛み、噛みの絵=判定の四角もこの向きの前方(後ろの端=ゾンビの前の端)に置く
+   * (`biteTelegraph.zombieFirstBiteFxCenter`)=構えの後に真裏・斜め後ろ・真横へ回れば当たらない。
+   * 体の左右の向きと反り(pixiScene の構え)・予告の線も同じ値を読む。
+   */
+  stanceDirX?: number;
+  stanceDirY?: number;
   /** 雑魚の技の当たりの中心(=エフェクトの出る点・予告の線の終点)を噛みごとに焼いたもの。`biteTgtAt===biteAt` の間だけ有効(utils/biteFxHit)。 */
   biteTgtX?: number;
   biteTgtY?: number;

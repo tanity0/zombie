@@ -376,7 +376,7 @@ import { tickEnemyClockFreeze } from '../utils/enemyClocks';
 import {
   deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
   ZOMBIE_BAND_OUTER_PX, ZOMBIE_BAND_INNER_PX, ZOMBIE_STEP_REACH_PX,
-  ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_STAGGER_MS, // 2026-10-14 構え(反る→固まる・赤2回=全長1秒)→1歩で噛む→一拍で狙い直して1歩で噛む
+  ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_STAGGER_MS, zombieStanceDirPatch, zombieStanceDirOf, // 2026-10-14 構え(反る→固まる・赤2回=全長1秒)→1歩で噛む→一拍で狙い直して1歩で噛む
   ZOMBIE_RECOVER_MS, zombieLungeRampMul, // §16-3z「歯応え」の仕上げ(③硬直・②踏み込みの加速)
   zombieRecoverWalkRampMul, // §16-3zクリエイティブ監査#3(硬直→歩きの出足の1フレーム段差を消す)
   ZOMBIE_RETREAT_TARGET_PX, ZOMBIE_RETREAT_SPEED_MULT, zombieRetreatRampMul, // §16-A7条目(技を出し切ったら150pxへ離れる)
@@ -17279,7 +17279,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (biteDirX/Y)を焼かない。`biteTelegraphLine`(biteTelegraph.ts)はこの2つが
           // 未定義なら線を描かない=ファイルを分けずにここ1箇所で線を封じる。
           const isLichBlink = enemy.type === 'lich' && enemy.chaffMove === 'lich-blink';
-          if (bitePh === 'windup' && !isLichBlink) {
+          // ★ゾンビ2連の1発目は構えの頭で向きを固めてある(stanceDirX/Y)=溜めの間も追わない(社長「推薦で」2026-10-23)。
+          const isZombieFirstBite = enemy.type === 'zombie' && enemy.chaffMove === 'zombie-double' && enemy.aiPhase === 'z-bite1';
+          if (bitePh === 'windup' && !isLichBlink && !isZombieFirstBite) {
             // 構え始めた相手を追う(軍人へ向けた噛みは軍人を追う。その軍人が倒れた/見えなくなったら向きは動かさない=進行中の技は振り切る)。
             const follow = enemy.biteAimEscortId === undefined ? { x: pcx, y: pcy } : escortAimById.get(enemy.biteAimEscortId);
             if (follow) {
@@ -17430,11 +17432,14 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 構え明け→**1歩進んですぐ噛む**(社長指示2026-10-14「そこから、1歩進んですぐ噛む。ここは速攻」「前進はそれぞれ1歩分まで」)。
             //   旧=2倍速で射程75pxまで走り込む(z-lunge-in・最長1.8秒)は外した。踏み込みは噛みの溜めの中の1歩(BITE_LUNGE_CAP_PX)だけ。
             //   ここでchaffMoveが立つ(技の始まり)。向き・踏み込み距離は発火の瞬間に焼く(追尾しない)。
+            // ★向きは構えに入った瞬間に焼いた向き(stanceDirX/Y・社長「推薦で」2026-10-23「ゾンビは構えの頭で向きを固める」)。
+            //   構えの間に裏へ回られたら当たらない。踏み込み距離は従来どおりいまの距離から(1歩・上限あり)。
             const bl = Math.max(0.001, pdist);
+            const sd = zombieStanceDirOf(enemy);
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: 'z-bite1', chaffMove: 'zombie-double', chaffMoveAt: gameTime,
               biteAt: gameTime, biteAimEscortId: escortAim?.id,
-              biteDirX: (apx - ecx) / bl, biteDirY: (apy - ecy) / bl,
+              biteDirX: sd ? sd.x : (apx - ecx) / bl, biteDirY: sd ? sd.y : (apy - ecy) / bl,
               biteLungePx: biteLungeDistanceAtFire('zombie', bl),
             };
           }
@@ -17445,7 +17450,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             //   旧=2倍速で射程75pxまで走り込んでから噛む(構えの後)。
             if (pdist <= ZOMBIE_STEP_REACH_PX || gameTime >= phaseUntil) {
               playZombieGrowl(ecx, ecy);
-              return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };
+              return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS, ...zombieStanceDirPatch(ecx, ecy, apx, apy, enemy) };
             }
             // 2倍速で実プレイヤーへ直進(zrushと同じ書き味=フラフラ込み)。紫の追尾(旧zrush)は
             // 汎用の接近ターゲット(dx/dy=tgt基準)を追うが、こちらは「赤が来る」と確定した後の
@@ -17484,7 +17489,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               //   その場で構える。まだ遠ければ走って詰める(z-lunge-in=詰め・上限 ZOMBIE_LUNGE_MAX_MS・社長指示2026-10-16「赤が走り寄る」)→届いたら構える。
               if (pdist <= ZOMBIE_STEP_REACH_PX) {
                 playZombieGrowl(ecx, ecy);
-                return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS };
+                return { ...enemy, vx: 0, vy: 0, aiPhase: 'z-red-pause', aiPhaseUntil: gameTime + ZOMBIE_STANCE_MS, chaffBlinkAt: gameTime + ZOMBIE_WINDUP_MS, ...zombieStanceDirPatch(ecx, ecy, apx, apy, enemy) };
               }
               return { ...enemy, aiPhase: 'z-lunge-in', aiPhaseUntil: gameTime + ZOMBIE_LUNGE_MAX_MS };
             } else if (pdist <= ZOMBIE_BAND_INNER_PX) {

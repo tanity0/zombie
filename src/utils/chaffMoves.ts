@@ -416,6 +416,29 @@ export const ZOMBIE_HOLD_MS = 1000 - ZOMBIE_WINDUP_MS;
 /** 構えの全長(反る+固まる)。z-red-pause の長さ(z-stagger は `ZOMBIE_STAGGER_MS`=160msのよろけ)。 */
 export const ZOMBIE_STANCE_MS = ZOMBIE_WINDUP_MS + ZOMBIE_HOLD_MS;
 
+/**
+ * ★構えの向き(社長「推薦で」2026-10-23「ゾンビは構えの頭で向きを固める」)。
+ * 構え(z-red-pause)に入る瞬間に、狙い(apx/apy=軍人を追っていなければ実プレイヤー)への単位ベクトルを焼く。
+ * 1発目はこの向きで噛む=構えの後に裏へ回られたら当たらない(読んで動いた側が報われる)。
+ * 密着して向きが定まらない時は、直前の噛みの向き → 右向きの順で補う(0ベクトルを焼かない)。
+ */
+export const zombieStanceDirPatch = (
+  ecx: number, ecy: number, apx: number, apy: number,
+  prev?: Pick<Enemy, 'biteDirX' | 'biteDirY'>,
+): Pick<Enemy, 'stanceDirX' | 'stanceDirY'> => {
+  const dx = apx - ecx, dy = apy - ecy;
+  const d = Math.hypot(dx, dy);
+  if (d > 0.5) return { stanceDirX: dx / d, stanceDirY: dy / d };
+  const bx = prev?.biteDirX ?? 0, by = prev?.biteDirY ?? 0;
+  const bd = Math.hypot(bx, by);
+  if (bd > 0.001) return { stanceDirX: bx / bd, stanceDirY: by / bd };
+  return { stanceDirX: 1, stanceDirY: 0 };
+};
+
+/** 焼いた構えの向き(無ければ null=呼び手が従来どおり狙いへ向ける)。 */
+export const zombieStanceDirOf = (e: Pick<Enemy, 'stanceDirX' | 'stanceDirY'>): { x: number; y: number } | null =>
+  e.stanceDirX !== undefined && e.stanceDirY !== undefined ? { x: e.stanceDirX, y: e.stanceDirY } : null;
+
 /** 3段の比率(§16-3z「止まる500→起こす900→詰めの溜め600」=25%:45%:30%。全長によらず一定)。※2026-10-14 以降は構えに置き換わり未使用(旧の記録)。 */
 export const ZOMBIE_RP_STUMBLE_FRAC = 0.25;
 export const ZOMBIE_RP_RISE_FRAC = 0.45;

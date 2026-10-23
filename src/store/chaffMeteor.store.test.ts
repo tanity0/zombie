@@ -109,19 +109,66 @@ describe('ゾンビ2連(赤): 構えの頭で出て、1発目の命中で消え�
   });
 });
 
-describe('スケルトンの噛み(赤): しゃがみの頭で出て、噛みの命中で消え切る', () => {
-  it('s-crouch → s-arc → s-bite', () => {
+describe('スケルトンの噛み(赤): しゃがみは線なし・回り込みの頭で出て、噛みの命中で消え切る', () => {
+  it('s-crouch(線なし)→ s-arc → s-bite', () => {
     place('skeleton', 80);
-    const r = runUntilResolve(e => e.aiPhase === 's-crouch', 4000);
+    // しゃがみの間は1フレームも線が出ない(色なし=形で読む)。
+    for (let gt = START_GT; gt <= START_GT + 2000; gt += FRAME) {
+      frame(gt);
+      const e = first();
+      if (e.aiPhase === 's-arc') break;
+      expect(meteorOf(e, gt), `t=${gt - START_GT}`).toBeNull();
+    }
+    place('skeleton', 80);
+    const r = runUntilResolve(e => e.aiPhase === 's-arc', 4000);
     expect(r.gaps).toBe(0);
     expect(r.lastLine!.counterable).toBe(true);
-    // 出た時刻(しゃがみの頭)は1フレーム目で startAt=そのフレーム(runUntilResolve の中で確かめ済み)。
-    // 回り込み以降は「回り込みの頭 − しゃがみの尺」から引き直すので、しゃがみ明けが1フレーム遅れたぶん(≦16ms)だけずれる。
-    expect(r.lastLine!.startAt - r.startGt).toBeGreaterThanOrEqual(0);
-    expect(r.lastLine!.startAt - r.startGt).toBeLessThan(FRAME);
+    expect(r.lastLine!.startAt).toBe(r.startGt);                // 出る=回り込みの頭(chaffMoveAt)
     expect(r.lineAtResolve).toBeNull();
     // 消え切る=当たる: 噛みの線の hitAt は焼かれた biteAt から=解決は hitAt 以後の最初のフレーム。
     expect(r.resolveGt).toBeGreaterThanOrEqual(r.lastLine!.hitAt);
     expect(r.resolveGt - r.lastLine!.hitAt).toBeLessThan(FRAME);
+  });
+});
+
+describe('★ゾンビ1発目は構えの頭の向きで噛む(社長「推薦で」2026-10-23)・裏/横へ回れば当たらない', () => {
+  /**
+   * 構えに入った瞬間(向き=左=プレイヤーの方)の敵の中心を基準に、プレイヤーを (rx, ry) へ置き直して
+   * 1発目が解決するまで回す。返り値=1発目で受けたダメージ。
+   */
+  const firstBiteDamageAt = (rx: number, ry: number): number => {
+    place('zombie', ZOMBIE_STEP_REACH_PX - 3, { aiPhase: 'z-wait', aiPhaseUntil: START_GT + 5000 });
+    frame(START_GT);
+    const e0 = first();
+    expect(e0.aiPhase).toBe('z-red-pause');
+    expect(e0.stanceDirX).toBeCloseTo(-1, 5);
+    const ecx = e0.x + e0.width / 2, ecy = e0.y + e0.height / 2;
+    useGameStore.setState(s => ({
+      player: { ...s.player, x: ecx + rx - s.player.width / 2, y: ecy + ry - s.player.height / 2 },
+    }));
+    const hp0 = useGameStore.getState().player.health;
+    let fired = false;
+    for (let gt = START_GT + FRAME; gt <= START_GT + 3000; gt += FRAME) {
+      frame(gt);
+      const e = first();
+      const biting = e.biteAt !== undefined && e.biteAt > 0;
+      if (biting) fired = true;
+      if (fired && !biting) return hp0 - useGameStore.getState().player.health;
+    }
+    throw new Error('1発目が解決しなかった');
+  };
+  it('線の先(前方)に居れば当たる', () => {
+    expect(firstBiteDamageAt(-60, 0)).toBeGreaterThan(0);
+    expect(firstBiteDamageAt(-40, 0)).toBeGreaterThan(0);
+    expect(firstBiteDamageAt(-90, 0)).toBeGreaterThan(0);
+  });
+  it('真裏(36px以内を含む)に回れば当たらない', () => {
+    for (const rx of [20, 36, 60]) expect(firstBiteDamageAt(rx, 0), `rx=${rx}`).toBe(0);
+  });
+  it('斜め後ろに回れば当たらない', () => {
+    for (const [rx, ry] of [[30, 30], [30, -30], [45, 45], [45, -45]]) expect(firstBiteDamageAt(rx, ry), `(${rx},${ry})`).toBe(0);
+  });
+  it('真横(75〜95px)に回れば当たらない', () => {
+    for (const ry of [75, 85, 95, -75, -85, -95]) expect(firstBiteDamageAt(0, ry), `ry=${ry}`).toBe(0);
   });
 });

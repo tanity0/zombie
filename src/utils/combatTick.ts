@@ -1659,7 +1659,8 @@ export const applyContactDamage = (
       const fxTarget = e.chaffMove === 'zombie-double' || e.chaffMove === 'skel-bite' || e.chaffMove === 'bat-grab';
       if (fxTarget && e.biteTgtAt !== e.biteAt) {
         const bl0 = biteTelegraphLine(e, gameTime);
-        if (bl0) biteTgtLatches.push({ id: e.id, x: bl0.tx, y: bl0.ty, at: e.biteAt ?? 0 });
+        // 焼く点=エフェクトの絵と判定の四角の中心(`fxX/fyY`・線の終点と同じ点。ゾンビ1発目だけ焼いた向きの前方へずれる)。
+        if (bl0) biteTgtLatches.push({ id: e.id, x: bl0.fxX, y: bl0.fyY, at: e.biteAt ?? 0 });
       }
       if (!isBiteResolveDue(e, gameTime)) continue;              // まだ台本の途中
       // ★判定=**噛みの瞬間に敵の体とプレイヤーが重なっているか**(社長裁定2026-08-25)。

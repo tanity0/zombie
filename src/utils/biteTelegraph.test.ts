@@ -1,12 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import type { Enemy } from '../types/game';
-import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint } from './biteTelegraph';
+import {
+  biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, zombieFirstBiteFxCenter,
+  MOB_METEOR_RANK_HYSTERESIS_PX,
+} from './biteTelegraph';
+import { biteFxRect } from './biteFxHit';
 import {
   biteSpecFor, biteLungeFrac, BITE_CONTACT_DIST_PX, biteLungeDistanceAtFire, isBiteResolveDue,
 } from './enemyBite';
 import {
   ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_STAGGER_MS, SKELETON_CROUCH_MS, SKELETON_ARC_MS,
 } from './chaffMoves';
+import { ESCORT_BODY_SIZE } from './escortHealth';
 
 const mk = (over: Partial<Enemy> = {}): Enemy => ({
   id: 'e1', type: 'zombie', x: 0, y: 0, width: 40, height: 60,
@@ -90,7 +95,8 @@ describe('★ゾンビ/スケルトンの技の流星(出る=溜めの頭・消�
     expect(l0.prog).toBe(0);
     const hit = T + ZOMBIE_STANCE_MS + spec1.windupMs + spec1.biteMs;
     expect(l0.hitAt).toBe(hit);                                              // 1発目の命中
-    expect(l0.lockAt).toBe(T + ZOMBIE_STANCE_MS);                            // 向きが固まる=発火
+    expect(l0.lockAt).toBe(T);                                               // 向きが固まる=構えの頭(社長「推薦で」2026-10-23)
+    expect(l0.lockCue).toBe(true);
     expect(l0.drawFrac).toBeCloseTo(ZOMBIE_WINDUP_MS / (hit - T), 6);        // 満ちる=赤の点滅の頭
     expect(l0.counterable).toBe(true);                                       // 赤(ゾンビ2連=カウンター可)
     expect(l0.emphasis).toBe(1);
@@ -124,7 +130,7 @@ describe('★ゾンビ/スケルトンの技の流星(出る=溜めの頭・消�
     const hit = T + ZOMBIE_STAGGER_MS + spec2.windupMs + spec2.biteMs;
     expect(ls.startAt).toBe(T);
     expect(ls.hitAt).toBe(hit);
-    expect(ls.lockAt).toBe(T + ZOMBIE_STAGGER_MS);
+    expect(ls.lockAt).toBe(T + ZOMBIE_STAGGER_MS + spec2.windupMs);           // 噛み2の溜めが明ける=判定の向きが固まる
     expect(ls.emphasis).toBeGreaterThan(1);
     const fireAt = T + ZOMBIE_STAGGER_MS;
     const e = mk({ aiPhase: 'z-bite2', chaffMove: 'zombie-double', biteAt: fireAt, biteDirX: 1, biteDirY: 0 });
@@ -137,27 +143,26 @@ describe('★ゾンビ/スケルトンの技の流星(出る=溜めの頭・消�
     expect(biteTelegraphLine(e, hit)).toBeNull();
   });
 
-  it('スケルトンの噛み: しゃがみ(s-crouch)の頭で出て、回り込み(s-arc)の頭で満ち、噛み(s-bite)の命中で消え切る', () => {
+  it('スケルトンの噛み: しゃがみ(s-crouch)は線なし・回り込み(s-arc)の頭で出て、噛み(s-bite)の命中で消え切る', () => {
     const spec = biteSpecFor('skeleton', 'skel-bite');
-    const hit = T + SKELETON_CROUCH_MS + SKELETON_ARC_MS + spec.windupMs + spec.biteMs;
-    const drawFrac = SKELETON_CROUCH_MS / (hit - T);
-    const crouch = mk({ type: 'skeleton', aiPhase: 's-crouch', aiPhaseUntil: T + SKELETON_CROUCH_MS });
-    const lc = preBiteTelegraphLine(crouch, T, aim)!;
-    expect(lc.startAt).toBe(T);
-    expect(lc.hitAt).toBe(hit);
-    expect(lc.drawFrac).toBeCloseTo(drawFrac, 6);
-    expect(lc.lockAt).toBe(T + SKELETON_CROUCH_MS + SKELETON_ARC_MS);
-    expect(lc.counterable).toBe(true);
     const arcAt = T + SKELETON_CROUCH_MS;
+    const hit = arcAt + SKELETON_ARC_MS + spec.windupMs + spec.biteMs;
+    const crouch = mk({ type: 'skeleton', aiPhase: 's-crouch', aiPhaseUntil: arcAt });
+    expect(preBiteTelegraphLine(crouch, T, aim)).toBeNull();                 // しゃがみ=色なし(形で読む)
+    expect(preBiteTelegraphLine(crouch, arcAt - 1, aim)).toBeNull();
     const arc = mk({ type: 'skeleton', aiPhase: 's-arc', aiPhaseUntil: arcAt + SKELETON_ARC_MS, aiStartedAt: arcAt, chaffMove: 'skel-bite', chaffMoveAt: arcAt });
-    const la = preBiteTelegraphLine(arc, arcAt + 100, aim)!;
-    expect(la.startAt).toBe(T);
-    expect(la.hitAt).toBe(hit);
-    expect(la.drawFrac).toBeCloseTo(drawFrac, 6);
+    const la0 = preBiteTelegraphLine(arc, arcAt, aim)!;
+    expect(la0.startAt).toBe(arcAt);                                         // 出る=回り込みの頭(体の赤の点滅と同じ錨)
+    expect(la0.prog).toBe(0);
+    expect(la0.hitAt).toBe(hit);
+    expect(la0.counterable).toBe(true);
+    const drawFrac = la0.drawFrac;
+    expect(drawFrac).toBeGreaterThan(0);
+    expect(drawFrac).toBeLessThan(0.5);
     const fireAt = arcAt + SKELETON_ARC_MS;
     const bite = mk({ ...arc, aiPhase: 's-bite', biteAt: fireAt, biteDirX: 1, biteDirY: 0 });
     const lb = biteTelegraphLine(bite, fireAt)!;
-    expect(lb.startAt).toBe(T);
+    expect(lb.startAt).toBe(arcAt);
     expect(lb.hitAt).toBe(hit);
     expect(lb.drawFrac).toBeCloseTo(drawFrac, 6);
     expect(isBiteResolveDue(bite, hit - 1)).toBe(false);
@@ -165,11 +170,32 @@ describe('★ゾンビ/スケルトンの技の流星(出る=溜めの頭・消�
     expect(biteTelegraphLine(bite, hit)).toBeNull();
   });
 
-  it('前段の無い噛み(§12の噛みつき等)は従来どおり: 出る=発火・満ちる=溜めの終わり・向きの合図なし(lockAt=startAt)', () => {
+  it('★ゾンビ1発目: 構えの間は焼いた向き(stanceDir)のまま=狙いを追わない', () => {
+    const stance = mk({
+      aiPhase: 'z-red-pause', aiPhaseUntil: T + ZOMBIE_STANCE_MS, chaffBlinkAt: T + ZOMBIE_WINDUP_MS,
+      stanceDirX: 1, stanceDirY: 0,
+    });
+    const behind = { x: 20 - 60, y: 30 };                                   // プレイヤーが裏(左)へ回った
+    const l = preBiteTelegraphLine(stance, T + 500, behind)!;
+    expect(l.tx).toBeGreaterThan(l.fx);                                      // 線は焼いた右向きのまま
+    expect(l.ty).toBeCloseTo(l.fy, 6);
+  });
+
+  it('軍人を狙う線は targetsEscort=true・終点の印は軍人の足元へ写す', () => {
+    const e = mk({ biteAt: T, biteDirX: 1, biteDirY: 0, biteAimEscortId: 'esc-1' });
+    const l = biteTelegraphLine(e, T)!;
+    expect(l.targetsEscort).toBe(true);
+    expect(l.footToOff).toBe(ESCORT_BODY_SIZE / 2);
+    const lp = preBiteTelegraphLine(mk({ aiPhase: 'z-stagger', aiPhaseUntil: T + 160, chaffMove: 'zombie-double' }), T, aim, true)!;
+    expect(lp.targetsEscort).toBe(true);
+    expect(biteTelegraphLine(mk({ biteAt: T, biteDirX: 1, biteDirY: 0 }), T)!.targetsEscort).toBe(false);
+  });
+
+  it('前段の無い噛み(§12の噛みつき等)は従来どおり: 出る=発火・満ちる=溜めの終わり・向きの合図なし', () => {
     const spec = biteSpecFor('zombie');
     const l = biteTelegraphLine(mk({ biteAt: T, biteDirX: 1, biteDirY: 0 }), T)!;
     expect(l.startAt).toBe(T);
-    expect(l.lockAt).toBe(T);
+    expect(l.lockCue).toBe(false);
     expect(l.hitAt).toBe(T + spec.windupMs + spec.biteMs);
     expect(l.drawFrac).toBeCloseTo(spec.windupMs / (spec.windupMs + spec.biteMs), 6);
   });
@@ -200,8 +226,56 @@ describe('★ゾンビ/スケルトンの技の流星(出る=溜めの頭・消�
 
   it('狙い: 軍人を追っていて候補に居れば軍人、居なければ実プレイヤー(状態機械の apx/apy と同じ)', () => {
     const p = { x: 1, y: 2 };
-    expect(chaffAimPoint({ targetEscortId: 'a' }, p, [{ id: 'a', x: 9, y: 8 }])).toEqual({ x: 9, y: 8 });
-    expect(chaffAimPoint({ targetEscortId: 'b' }, p, [{ id: 'a', x: 9, y: 8 }])).toBe(p);
-    expect(chaffAimPoint({}, p, [{ id: 'a', x: 9, y: 8 }])).toBe(p);
+    expect(chaffAimPoint({ targetEscortId: 'a' }, p, [{ id: 'a', x: 9, y: 8 }])).toEqual({ x: 9, y: 8, escort: true });
+    expect(chaffAimPoint({ targetEscortId: 'b' }, p, [{ id: 'a', x: 9, y: 8 }])).toEqual({ x: 1, y: 2, escort: false });
+    expect(chaffAimPoint({}, p, [{ id: 'a', x: 9, y: 8 }])).toEqual({ x: 1, y: 2, escort: false });
   });
 });
+
+describe('★群れの強弱の順位(敵の中心とプレイヤーの距離・3本・ヒステリシス)', () => {
+  const items = [
+    { key: 'a', d: 50 }, { key: 'b', d: 80 }, { key: 'c', d: 100 }, { key: 'd', d: 110 }, { key: 'e', d: 200 },
+  ];
+  it('近い順に3本', () => {
+    expect([...rankMobMeteors(items, new Set())].sort()).toEqual(['a', 'b', 'c']);
+  });
+  it('前フレームで上位だった線は、ヒステリシス未満の差なら入れ替わらない(ちらつかない)', () => {
+    const near = [{ key: 'a', d: 50 }, { key: 'b', d: 80 }, { key: 'c', d: 100 + MOB_METEOR_RANK_HYSTERESIS_PX - 1 }, { key: 'd', d: 100 }];
+    expect(rankMobMeteors(near, new Set(['a', 'b', 'c'])).has('c')).toBe(true);
+    // ヒステリシスを超えて離れたら入れ替わる。
+    const far = [{ key: 'a', d: 50 }, { key: 'b', d: 80 }, { key: 'c', d: 100 + MOB_METEOR_RANK_HYSTERESIS_PX + 1 }, { key: 'd', d: 100 }];
+    expect(rankMobMeteors(far, new Set(['a', 'b', 'c'])).has('d')).toBe(true);
+  });
+  it('3本以下なら全部が通常の強さ', () => {
+    expect(rankMobMeteors(items.slice(0, 2), new Set()).size).toBe(2);
+  });
+});
+
+describe('★ゾンビ1発目の噛みの四角(絵=判定)は焼いた向きの前方・後ろの端がゾンビの前の端', () => {
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [Math.SQRT1_2, Math.SQRT1_2]] as const) {
+    it(`向き(${dx.toFixed(2)},${dy.toFixed(2)})`, () => {
+      const lp = 30, contact = BITE_CONTACT_DIST_PX.zombie;
+      const c = zombieFirstBiteFxCenter(0, 0, dx, dy, lp, contact);
+      const r = biteFxRect('zombie-double', c.x, c.y, dx >= 0)!;
+      const corners = [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]];
+      const back = Math.min(...corners.map(([x, y]) => x * dx + y * dy));
+      expect(back).toBeCloseTo(lp + contact - 14, 5);   // 前の端=踏み込み+体の半分
+    });
+  }
+  it('1発目の線の終点は四角の中に入っている(線の先に居れば当たる)', () => {
+    const e = mk({
+      aiPhase: 'z-bite1', chaffMove: 'zombie-double', biteAt: 1000, chaffBlinkAt: 0, biteDirX: -1, biteDirY: 0,
+      biteLungePx: biteLungeDistanceAtFire('zombie', 60),
+    });
+    const l = biteTelegraphLine(e, 1000)!;
+    const r = biteFxRect('zombie-double', l.fxX, l.fyY, false)!;
+    expect(l.tx).toBeGreaterThanOrEqual(r.x);
+    expect(l.tx).toBeLessThanOrEqual(r.x + r.w);
+    // 2発目・他の型は終点のまま(不変)。
+    const e2 = mk({ aiPhase: 'z-bite2', chaffMove: 'zombie-double', biteAt: 1000, biteDirX: -1, biteDirY: 0 });
+    const l2 = biteTelegraphLine(e2, 1000)!;
+    expect(l2.fxX).toBe(l2.tx);
+    expect(l2.fyY).toBe(l2.ty);
+  });
+});
+
