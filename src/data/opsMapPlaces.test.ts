@@ -25,7 +25,7 @@ describe('作戦室の地図の軌跡(THEONE_ROUND2 §2-5)', () => {
     expect(t.next?.id).toBe('stage-3');
   });
 
-  it('同じ場所が続く所(洋館→洋館跡地)は1つにまとめる', () => {
+  it('同じ場所が続く所(洋館→EXの洋館)は1つにまとめる', () => {
     const t = storyTrail(STAGES, new Set(['stage-6', 'stage-ex1']), null);
     expect(t.visited.length).toBe(1);
     expect(t.current?.id).toBe('stage-ex1');

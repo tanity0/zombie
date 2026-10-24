@@ -129,7 +129,7 @@ export const welcomeAppliesToRun = (input: WelcomeApplicabilityInput): boolean =
  * 既定はステージ中心=到着点 (0,0)(社長指示2026-09-19「ステージ中心からずらさないで」)。
  * 洋館(ステージ6)だけは到着点から下へ CORRIDOR_BOTTOM_LIMIT しか歩けないので、輪の**下端が歩ける範囲の下端に揃う**所まで上げる
  * (中心 y = 下の限界 − 半径 = 50 − 240 = −190)。輪の下側が入れない帯へ食い込まない=輪の全部が戦える場所になる。
- * EX の洋館跡地は対象外(社長「exではない」)。輪・敵の配置・段ごとの弾ドロップは全部この中心を使う(写さない)。
+ * EX の洋館は対象外(社長「exではない」)。輪・敵の配置・段ごとの弾ドロップは全部この中心を使う(写さない)。
  */
 export const welcomeRingCenter = (stageId: string, radius: number): { x: number; y: number } =>
   stageId === 'stage-6' ? { x: 0, y: Math.min(0, CORRIDOR_BOTTOM_LIMIT - radius) } : { x: 0, y: 0 };

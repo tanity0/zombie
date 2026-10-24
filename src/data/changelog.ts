@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5204', items: [
+    'EXステージの舞台をステージ6と同じ「旧市街地・洋館」に改めた。作戦地域の一覧と任務説明に、洋館の景色が出る',
+  ] },
   { version: '0.25.5203', items: [
     'キャラクター選択の4人の立ち絵が新しくなった',
   ] },

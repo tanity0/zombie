@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5204 — EXステージの名前を「洋館」へ・サムネイルを洋館の実画面に【2026-10-24 22:50 JST】
+- 社長指示「EXステージの名前は洋館跡地ではない。6と同じ洋館だわ」「このサムネイルは洋館から実際に撮ってきて」。
+- campaign.ts の stage-ex1: name 洋館跡地→古い洋館(ステージ6と同じ)・locationTitle 旧市街地・洋館跡地→旧市街地・洋館・概要/出撃説明/ブリーフィングの「洋館跡地で」→「洋館で」。exEnding.ts の「旧市街地の洋館跡地において」→「旧市街地の洋館において」。コメント(opsMapPlaces・welcomeScript・audioManager)も合わせた。storyCanon.test・opsMapPlaces.test の期待値を更新(data 356件通過)。更新情報の過去の項目は履歴なので触らない。
+- サムネイル: ヘッドレスでステージ6を 1624×906 で起動し、DOM の HUD と左上のゲージ(別キャンバス)・目印を外して撮影(主人公は小さく写る)。右端の余白を切って public/backgrounds/stage6-mansion-shot.jpg(1611×906・JPEG)。config/uiDesign.REGION_ART に stage-ex1 を追加。assets:ledger 更新・assets:check OK。
+- 検証: typecheck 0 / eslint 0。開発用の全開放で作戦地域の一覧と EX のブリーフィングを撮り、洋館の景色と「旧市街地・洋館」「洋館で既存分類に…」が出ることを確認。ステージ6のカードには絵が無いまま(指示の範囲外)。
+
 ## v0.25.5203 — キャラクター選択の立ち絵4枚を差し替え【2026-10-24 22:29 JST】
 - 社長支給(加工済み)「立ち絵差し替え」: public/sprites/portraits/ の portrait-sniper(1086×1448)・portrait-handgun・portrait-knife・portrait-shotgun(各1024×1536)を同名・同寸法で差し替え。assets:ledger 更新・assets:check OK(寸法の縮みなし)。キャッシュ用の印はファイル内容ハッシュなので自動で変わる。
 - 検証: ヘッドレスでキャラクター選択画面(ヘビーガンナー)を撮り、新しい立ち絵が出ることを確認。

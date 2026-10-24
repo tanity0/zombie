@@ -9,7 +9,7 @@ export const OPS_MAP_IMAGE = 'backgrounds/ops-map-archipelago.webp';
 export const OPS_MAP_W = 1816;
 export const OPS_MAP_H = 866;
 
-/** 場所の位置(原画に対する割合)。EX の洋館跡地は旧市街地・洋館と同じ所。 */
+/** 場所の位置(原画に対する割合)。EX はステージ6と同じ旧市街地・洋館。 */
 export const OPS_MAP_PLACES: Readonly<Record<string, readonly [number, number]>> = {
   'stage-tutorial': [0.15, 0.62], // 洞窟地帯(南西の荒廃地の山)
   'stage-1': [0.24, 0.52],        // 避難回廊
@@ -19,7 +19,7 @@ export const OPS_MAP_PLACES: Readonly<Record<string, readonly [number, number]>>
   'stage-5': [0.5, 0.5],          // 対変異体防衛本部(中央の軍事圏)
   'stage-6': [0.43, 0.62],        // 旧市街地・洋館
   'stage-7': [0.86, 0.12],        // 指定座標地点(北の果て)
-  'stage-ex1': [0.43, 0.62],      // 旧市街地・洋館跡地
+  'stage-ex1': [0.43, 0.62],      // 旧市街地・洋館(ステージ6と同じ)
   'stage-ex2': [0.43, 0.62],
 };
 
