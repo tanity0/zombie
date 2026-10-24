@@ -5268,6 +5268,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, dormant: false, aggroRange: undefined } : e) }));
                   H.phase = 'chase'; H.chaseStartAt = newGameTime;
                   useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                  playSfx('enemy-spotted'); // 見つかった音(社長支給2026-10-24「索敵系の敵に見つかった時の音」)
                   useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
                   spawnFlash('rgba(180,40,40,0.18)', 220);
                   // ハンター出現(発見)アテンション: カメラがハンターへ高速パン→ホールド→戻る(社長指示)。

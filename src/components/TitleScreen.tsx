@@ -318,11 +318,18 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   // 版を上げるたびに更新情報が出るので、OKを押しただけでゲームが始まってしまい、タイトル画面に用がある時
   // (タイトルのパネルを触る等)に必ず持っていかれた。**オープニングの起動は START タップ側へ一本化**する
   // (既読の版は元から tapStart が代行していた経路=そこに揃えただけ。音声解禁もSTARTというユーザー操作で行われる)。
+  // ★2026-10-24(社長指示「オープニングはタイトルの前に持ってきて(更新情報の直後)」): 更新情報の OK の直後にオープニングを流し、
+  // 終わればタイトルへ戻る(START からはもう流さない)。音声は OK のタップで解禁。版が既読で更新情報が出ない起動は、
+  // タイトルより前に音を鳴らせるタップが無いので、従来どおり START でオープニングを流す。
   const agree = () => {
     if (!showNotice) return;
     playSfx('ui-select');
     writeNoticeSeenVersion(__APP_VERSION__);
     setShowNotice(false);
+    if (!noticeHandledRef.current && onNoticeOk) {
+      noticeHandledRef.current = true;
+      onNoticeOk();
+    }
   };
 
   // STARTタップ → 先に本物ローディング(完了待ち) → 完了したら暗転

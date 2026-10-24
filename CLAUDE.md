@@ -12,6 +12,7 @@ Top-down HD-2D survival game. React + Zustand (simulation) + PixiJS (rendering).
 | **不具合の切り分け(★症状から引く)** | **ENGINEERING_NOTES.md §0 トラブルシューティング索引**(症状→最初の1手→過去の実例。**推測に入る前にここを引く**) |
 | 恒常ルール | この CLAUDE.md |
 | プレイヤー向け更新情報 | src/data/changelog.ts(ゲーム内表示の正) |
+| 外部素材の出典(クレジット用) | CREDITS.md(外部の素材を足したら1行足す・社長指示2026-10-24) |
 | 計測・調査の台帳 | research/ |
 | 実機テストの受け渡し | TEST_HANDOFF/(掟=同README.md) |
 | **ヘッドレスでゲーム画面を撮る手順** | **TEST_HANDOFF/HEADLESS.md**(毎回つまづく関門の潰し方・社長指示2026-08-22) |

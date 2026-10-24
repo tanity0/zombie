@@ -130,6 +130,7 @@ export type SfxKey =
   | 'boss-death'     // 裏ボス討伐(消滅)SE。長いので fadeOutMs でフェード
   | 'base-capture'   // 拠点開放SE
   | 'hunter-alert'   // ハンター変異体の検知(視界に入った=見られている)警告SE
+  | 'enemy-spotted'  // 索敵系の敵に見つかった(ステージ2の休眠敵が見つけて起きた・ハンターに発見された)。社長支給2026-10-24(ZapSplat)
   | 'screamer-cry'   // 変異体(叫喚型)の叫喚(発動)SE
   | 'idol-death'     // 偶像(アイドル)が倒れる時の叫び声(社長提供2026-10-05)
   | 'idol-laugh'     // アイドルの笑い声(社長提供2026-10-05・登場と、技の時にたまに)
@@ -246,6 +247,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
     volume: 1.0,
     minIntervalMs: 400,
   },
+  // 2.7秒の声。何体かが続けて見つけても重ならないよう、最短間隔は声の長さ程度。
+  'enemy-spotted': { src: `${import.meta.env.BASE_URL}audio/sfx/enemy-spotted.mp3`, volume: 0.9, minIntervalMs: 2500 },
   // 死神の横切り(短い不穏音・社長提供)。横切り開始と同時に1回(useGameLoop の doReaperCross)。
   'reaper-pass': {
     // v0.25.3695(社長報告「聞こえない」): 素材が他SEより約16dB小さかった(mean -35.9dB)。
@@ -1017,6 +1020,108 @@ export const playRadioStatic = () => {
   gain.connect(ctx.destination);
   src.start(t);
   src.stop(t + dur);
+};
+
+// テープが噛んだような「ブブブ」(オープニングの色抜け・社長指示2026-10-24「音がその間ブブブとなるのも。テープのバグみたいなやつ」)。
+// 合成(素材なし)。画面が飛ぶ1コマごとに音色を切り替える:
+//   芯=低いのこぎり波+1オクターブ下の矩形波を歪ませ、ローパスで籠もらせる。「ブブブ」の粒は 28〜36Hz の矩形で音量を刻んで作る。
+//   ヒス=白ノイズの帯域(テープの擦れ)/ハム=60・120Hz の電源のうなり(乱れの間ずっと薄く)。
+//   画面が元に戻るコマ(dx=dy=0=偽の回復)は芯を落としてヒスだけ残す。強さは飛び幅に比例。
+//   最後の2コマはテープが伸びるように音程が半分へ沈み、籠もっていく。映像はブツっと戻るが音は 0.12秒ほど尾を引く(慣性)。
+// steps=1コマずつの長さ(ms)と飛び幅(画面の飛びと同じ刻み)。戻り値=途中で止める。
+export const playTapeGlitch = (steps: readonly { ms: number; dx: number; dy: number }[]): (() => void) => {
+  if (muted || !steps.length) return () => {};
+  const ctx = ensureSfxContext();
+  if (!ctx) return () => {};
+  resumeSfxContext();
+  const t0 = ctx.currentTime + 0.005;
+  const total = steps.reduce((t, k) => t + k.ms, 0) / 1000;
+  const TAIL = 0.12;
+  const end = t0 + total + TAIL;
+  const out = ctx.createGain();
+  out.gain.value = 0.6 * sfxVolume;
+  out.connect(ctx.destination);
+  // 芯
+  const shaper = ctx.createWaveShaper();
+  const curve = new Float32Array(256);
+  for (let i = 0; i < 256; i++) { const x = i / 127.5 - 1; curve[i] = Math.tanh(x * 3.2); }
+  shaper.curve = curve;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.Q.value = 2.5;
+  const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+  const sub = ctx.createOscillator(); sub.type = 'square';
+  const subGain = ctx.createGain(); subGain.gain.value = 0.5;
+  const gate = ctx.createGain(); gate.gain.value = 0.5;
+  const lfo = ctx.createOscillator(); lfo.type = 'square';
+  const lfoDepth = ctx.createGain(); lfoDepth.gain.value = 0.5;
+  lfo.connect(lfoDepth); lfoDepth.connect(gate.gain);
+  const coreEnv = ctx.createGain(); coreEnv.gain.setValueAtTime(0, t0);
+  osc.connect(shaper); sub.connect(subGain); subGain.connect(shaper);
+  shaper.connect(lp); lp.connect(gate); gate.connect(coreEnv); coreEnv.connect(out);
+  // ヒス
+  const nLen = Math.floor(ctx.sampleRate * 0.5);
+  const nBuf = ctx.createBuffer(1, nLen, ctx.sampleRate);
+  const nd = nBuf.getChannelData(0);
+  for (let i = 0; i < nLen; i++) nd[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource(); noise.buffer = nBuf; noise.loop = true;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3000; bp.Q.value = 0.8;
+  const hissEnv = ctx.createGain(); hissEnv.gain.setValueAtTime(0, t0);
+  noise.connect(bp); bp.connect(hissEnv); hissEnv.connect(out);
+  // ハム
+  const humEnv = ctx.createGain();
+  humEnv.gain.setValueAtTime(0, t0);
+  humEnv.gain.linearRampToValueAtTime(0.12, t0 + 0.01);
+  humEnv.gain.setValueAtTime(0.12, t0 + total);
+  humEnv.gain.linearRampToValueAtTime(0, end);
+  const hum1 = ctx.createOscillator(); hum1.frequency.value = 60;
+  const hum2 = ctx.createOscillator(); hum2.frequency.value = 120;
+  const hum2g = ctx.createGain(); hum2g.gain.value = 0.6;
+  hum1.connect(humEnv); hum2.connect(hum2g); hum2g.connect(humEnv); humEnv.connect(out);
+
+  // コマごとの音色(同じ音の連続と大きな跳躍を混ぜる=交互にしない)
+  const FREQS = [74, 74, 61, 61, 52, 88, 86, 70, 58];
+  const LPS = [1800, 1100, 2200, 900, 1500, 2000, 1300, 1700, 1400];
+  const RATES = [31, 34, 28, 30, 29, 36, 33, 30, 32];
+  const n = steps.length;
+  let at = t0;
+  steps.forEach((k, i) => {
+    const len = k.ms / 1000;
+    const recovering = k.dx === 0 && k.dy === 0;
+    const strength = recovering ? 0 : Math.min(1, 0.35 + Math.hypot(k.dx, k.dy) / 40);
+    const f = FREQS[i % FREQS.length];
+    const tail = i >= n - 2; // 最後の2コマ=テープが伸びる
+    if (!tail) {
+      osc.frequency.setValueAtTime(f, at); sub.frequency.setValueAtTime(f / 2, at);
+      lp.frequency.setValueAtTime(LPS[i % LPS.length], at);
+    } else if (i === n - 2) {
+      osc.frequency.setValueAtTime(f, at); sub.frequency.setValueAtTime(f / 2, at);
+      lp.frequency.setValueAtTime(1400, at);
+      const stretchEnd = t0 + total;
+      osc.frequency.exponentialRampToValueAtTime(f * 0.5, stretchEnd); sub.frequency.exponentialRampToValueAtTime(f * 0.25, stretchEnd);
+      lp.frequency.exponentialRampToValueAtTime(350, stretchEnd);
+    }
+    lfo.frequency.setValueAtTime(RATES[i % RATES.length], at);
+    coreEnv.gain.setValueAtTime(coreEnv.gain.value, at);
+    coreEnv.gain.linearRampToValueAtTime(strength, at + 0.004);
+    hissEnv.gain.setValueAtTime(hissEnv.gain.value, at);
+    hissEnv.gain.linearRampToValueAtTime(recovering ? 0.05 : 0.25 * strength, at + 0.004);
+    at += len;
+  });
+  // 映像は戻っても、音は少し尾を引いて消える
+  coreEnv.gain.setValueAtTime(coreEnv.gain.value, t0 + total);
+  coreEnv.gain.linearRampToValueAtTime(0, end);
+  hissEnv.gain.setValueAtTime(hissEnv.gain.value, t0 + total);
+  hissEnv.gain.linearRampToValueAtTime(0, end);
+  const srcs: AudioScheduledSourceNode[] = [osc, sub, lfo, noise, hum1, hum2];
+  srcs.forEach(x => { try { x.start(t0); x.stop(end + 0.02); } catch { /* ignore */ } });
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    const now = ctx.currentTime;
+    try { out.gain.cancelScheduledValues(now); out.gain.setTargetAtTime(0, now, 0.01); } catch { /* ignore */ }
+    srcs.forEach(x => { try { x.stop(now + 0.05); } catch { /* ignore */ } });
+  };
 };
 
 // SFXのURLにクエリを足してキャッシュバスト(同名mp3/wav差し替えでも端末が古い音を掴まないように)。

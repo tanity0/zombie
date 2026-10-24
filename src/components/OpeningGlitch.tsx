@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { playTapeGlitch } from '../audio/audioManager';
 import {
   FRAME_MS, HOLD_DEFAULT, IDLE_MAX, beatSpan, planArenaBeats, planWalkBeats, planWalkIdleBeat, planWalkIdleWait,
   type Act, type ArenaTimes, type Beat, type GlitchSegment, type HoldTool,
@@ -11,7 +12,7 @@ import {
 //   freeze    場面の入れ物の中の夢の動き(粒・呼吸・光・紙吹雪・カメラ)を Web Animations API で止め、終わりで止まった分だけ
 //             先へ跳ばす(台本の時刻とずれない)。廊下は walkFreezeRef で主人公・スタッフ・カメラ(rAF)も止める。入力は止めない。
 //   cold      重ね(この部品の div)に「色を抜く層(saturation)」と「黒を持ち上げる層(screen・作品の光の色)」
-//   drain     主人公の画像だけ filter で彩度を落とす(jolt=その瞬間に場面ごと一瞬ずれてすぐ戻る)
+//   drain     主人公の画像だけ filter で彩度を落とす(jitter=抜けている間ずっと場面ごとガクガク飛ぶ+テープの噛んだ音)
 //   missing   人物(data-opg-figure)にマスク: 顔を柔らかい楕円で抜く/その人を薄くする(濃さは rAF で連続補間)
 //   ghost     人物の複製を1人だけ: 廊下=その場に置き去り(世界座標)/アリーナ=画面に固定(寄るカメラに置いていかれる)
 //   melt      細部のある所(主人公の足元の床・客席)をぼかす柔らかい塊。下へ垂れながら広がって消える
@@ -199,11 +200,39 @@ const OpeningGlitch: React.FC<{
           if (!fig) return;
           const from = { filter: 'saturate(1) brightness(1)' }, to = { filter: 'saturate(0.06) brightness(1.12)' };
           if (hold) { fig.style.filter = to.filter; track(() => { fig.style.filter = ''; }); return; }
-          // 色が抜ける瞬間、場面ごと一瞬だけずれてすぐ戻る(加減速なし=映像が一コマ飛ぶ。既存のカメラの動きには足し合わせる)。
-          if (a.jolt) {
-            const j = `translate(${a.jolt.dx}px, ${a.jolt.dy}px)`;
-            const ja = target.animate([{ transform: j }, { transform: j }], { duration: T(a.jolt.ms), composite: 'add' });
-            const jundo = track(() => ja.cancel());
+          // 色が抜けている間ずっと、場面ごとガクガク飛ぶ(1コマずつ位置が跳ぶ=加減速なし。既存のカメラの動きには足し合わせる)。
+          // 色が戻る瞬間に元の位置へ。同じ刻みでテープが噛んだような「ブブブ」を鳴らす。
+          if (a.jitter && a.jitter.length) {
+            const total = a.jitter.reduce((t, k) => t + k.ms, 0);
+            let acc = 0;
+            const frames: Keyframe[] = a.jitter.map(k => {
+              const f: Keyframe = { transform: `translate(${k.dx}px, ${k.dy}px)`, offset: acc / total, easing: 'step-end' };
+              acc += k.ms;
+              return f;
+            });
+            frames.push({ transform: 'translate(0px, 0px)', offset: 1 });
+            const ja = target.animate(frames, { duration: T(total), composite: 'add' });
+            // トラッキングのノイズ帯: 大きく飛んだコマにだけ白い細帯が横切る。縦のロールのコマは下から上へ駆け上がる。
+            const c = contentRect();
+            const band = addLayer({ left: `${c.x}px`, top: `${c.y}px`, width: `${c.w}px`, height: '8px', background: 'rgba(235,235,225,0.35)', mixBlendMode: 'screen', opacity: '0' });
+            const BAND_Y = [0.72, 0.35, 0.86, 0.5];
+            const bandFrames: Keyframe[] = [];
+            let acc2 = 0, bi = 0;
+            for (const k of a.jitter) {
+              const o0 = acc2 / total;
+              acc2 += k.ms;
+              if (Math.abs(k.dy) > 10) {
+                for (let q = 0; q < 4; q++) bandFrames.push({ offset: o0 + (k.ms / total) * (q / 4), opacity: 1, transform: `translateY(${c.h * (0.9 - q * 0.23)}px)`, easing: 'step-end' });
+              } else if (Math.abs(k.dx) >= 18) {
+                bandFrames.push({ offset: o0, opacity: 1, transform: `translateY(${c.h * BAND_Y[bi++ % BAND_Y.length]}px)`, easing: 'step-end' });
+              } else {
+                bandFrames.push({ offset: o0, opacity: 0, transform: 'translateY(0px)', easing: 'step-end' });
+              }
+            }
+            bandFrames.push({ offset: 1, opacity: 0, transform: 'translateY(0px)' });
+            band.animate(bandFrames, { duration: T(total), fill: 'forwards' });
+            const stopTape = playTapeGlitch(a.jitter.map(k => ({ ms: T(k.ms), dx: k.dx, dy: k.dy })));
+            const jundo = track(() => { ja.cancel(); band.remove(); stopTape(); });
             ja.onfinish = jundo;
           }
           const an = fig.animate(envFrames(a, from, to), { duration: T(a.in + a.hold + a.out) });

@@ -26,7 +26,7 @@ export type Act =
   /** 記憶が褪せる: 彩度を落とし黒を持ち上げる(コントラストが抜ける)。持ち上げの色は作品の光(廊下=灯りの琥珀/アリーナ=紫) */
   | { tool: 'cold'; at: number; in: number; hold: number; out: number; depth: number }
   /** 主人公の色だけが抜ける */
-  | { tool: 'drain'; at: number; in: number; hold: number; out: number; /** 色が抜ける瞬間、画面全体が一瞬だけずれてすぐ戻る(px・ms) */ jolt?: { dx: number; dy: number; ms: number } }
+  | { tool: 'drain'; at: number; in: number; hold: number; out: number; /** 色が抜けている間ずっと、画面全体がガクガクと飛ぶ(1コマずつの位置 px と長さ ms。長さの合計=hold)。テープが噛んだような音が同じ刻みで鳴る */ jitter?: readonly { dx: number; dy: number; ms: number }[] }
   /** 人が抜ける: face=顔が柔らかい楕円で抜ける(顔が思い出せない)/fade=その人が薄れる */
   | { tool: 'missing'; at: number; in: number; hold: number; out: number; mode: 'face' | 'fade'; who: 'hero' | 'others'; floor: number }
   /** 残像: 1人だけ。world=その場に置き去り(歩き去る本人との距離=時間の経過)/screen=画面に固定(寄るカメラに置いていかれる) */
@@ -82,6 +82,15 @@ export const beatSpan = (b: Beat): number => Math.max(0, ...b.acts.map(actEnd));
  * W4 時間: 「アナタを待ってるよ」が出て 1800ms 後(読み終わってから)、主人公の顔が抜け→時間が止まり→
  *    動き出しても止まった所に彼女の姿だけが置き去りになって薄れる。BGM が遠のく。
  */
+/**
+ * W3(色抜け)の画面の飛び方。1コマずつ [横px, 縦px, 長さms]。長さの合計=色抜けの長さ(450ms)。
+ * テープのトラッキング乱れの文法: 横に大きく裂ける→細かい痙攣→いったん元に戻る(偽の回復・音も止む)→縦に1回ロールして張り付く→ばらけて戻る。
+ * 斜めの小刻みな往復(手ブレ・地震に見える)にしない。縦はロールの1回だけ。
+ */
+export const W3_JITTER: readonly { dx: number; dy: number; ms: number }[] = [
+  { dx: 34, dy: 0, ms: 50 }, { dx: -6, dy: 0, ms: 17 }, { dx: 28, dy: 2, ms: 17 }, { dx: 0, dy: 0, ms: 70 },
+  { dx: -26, dy: -48, ms: 133 }, { dx: 10, dy: 0, ms: 17 }, { dx: -4, dy: 0, ms: 33 }, { dx: 18, dy: 0, ms: 50 }, { dx: -3, dy: 0, ms: 63 },
+];
 export const planWalkBeats = (rng: Rng): Beat[] => [
   {
     name: 'W1', subject: 'bg', at: 900, anchor: { line: 1, on: 'show' },
@@ -95,8 +104,9 @@ export const planWalkBeats = (rng: Rng): Beat[] => [
   {
     name: 'W3', subject: 'hero', at: 900, anchor: { line: 3, on: 'show' },
     // 色抜けはブツっと入ってブツっと戻す(社長指示2026-10-24「もっとブツっと切らないと、フワッとセピアになっても地味」)。
-    // 色が抜ける瞬間、カメラが一瞬だけずれてすぐ戻る(社長指示2026-10-24「一瞬だけ少しカメラがズレると不気味になる」)=映像が一コマ飛んだ感じ。
-    acts: [{ tool: 'drain', at: 0, in: 0, hold: 450, out: 0, jolt: { dx: 7, dy: -4, ms: 90 } }],
+    // 色が抜けている間ずっと画面がガクガク飛び、色が戻る瞬間に元の位置へ戻る(社長指示2026-10-24「カメラズレ、もっとわかりやすく。
+    // セピアとカメラズレを合わせて。画面がバグった感」)。刻みは不揃い・振れ幅も不揃い(機械的な等間隔にしない)。
+    acts: [{ tool: 'drain', at: 0, in: 0, hold: 450, out: 0, jitter: W3_JITTER }],
     bgm: { dip: 0.22, in: 120, hold: 380, out: 700 },
   },
   {

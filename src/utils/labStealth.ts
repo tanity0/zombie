@@ -69,3 +69,14 @@ export const evaluateLabLoseSight = (input: LabLoseSightInput): LabLoseSightResu
   const shouldDormant = (now - since) >= LAB_LOSE_SIGHT_MS;
   return { shouldDormant, losLostSince: since };
 };
+
+/**
+ * 「見つかった」音を鳴らすか(純関数・社長支給2026-10-24「索敵系の敵に見つかった時の音」)。
+ * ステージ2(研究所)の休眠敵が**視界で**プレイヤーを見つけて起きた瞬間だけ。撃たれて起きた時は鳴らさない(見つかったのではない)。
+ * 台本で起こす静止個体(aggroRange=0)・呼び手が除外するもの(アイドル=専用の発見の流れ・賞金首)も鳴らさない。
+ * ハンターの「発見」は別の経路(useGameLoop のハンター索敵)で同じ音を鳴らす。
+ */
+export const spottedSfxOnWake = (
+  e: { aggroRange?: number },
+  ctx: { labTheme: boolean; seen: boolean; excluded: boolean },
+): boolean => ctx.labTheme && ctx.seen && !ctx.excluded && (e.aggroRange ?? 0) > 0;

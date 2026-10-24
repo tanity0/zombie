@@ -165,7 +165,7 @@ import { isNoUpgradeState, noteNoUpgradeBossKill, featBossSlotKey } from '../dat
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
-import { evaluateLabLoseSight, LAB_VISION_RANGE, noticeOnHitPatch, HIT_NOTICE_MS } from '../utils/labStealth';
+import { evaluateLabLoseSight, LAB_VISION_RANGE, noticeOnHitPatch, HIT_NOTICE_MS, spottedSfxOnWake } from '../utils/labStealth';
 import { labEscapeRouteSlots } from '../utils/labSpawn'; // ステージ2: 資料の後の逃走経路の雑魚
 // distToSegment: M66(§6.26-11)の掃射/三連突進の吐息(回転帯)が毎フレーム自己検出するために使う純関数。
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -15217,6 +15217,10 @@ export const useGameStore = create<GameState>((set, get) => ({
               };
             }
             return { ...enemy, vx: 0, vy: 0 };
+          }
+          // 見つかった音(社長支給2026-10-24)。同時に何体起きても1回に聞こえるよう、SE側の最短間隔で間引く。
+          if (spottedSfxOnWake(enemy, { labTheme, seen, excluded: isBountyType(enemy.type) || enemy.type === 'idol' })) {
+            void import('../audio/audioManager').then(m => m.playSfx('enemy-spotted'));
           }
           return { ...enemy, dormant: false, vx: 0, vy: 0, bossLeashSince: undefined, ...(shotAwake ? { noticedUntil: gameTime + HIT_NOTICE_MS, losLostSince: undefined } : {}) };
         }

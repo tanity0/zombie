@@ -80,3 +80,17 @@ describe('攻撃を受けたら気付く(2026-10-24「索敵系の敵は全て�
     expect(evaluateLabLoseSight({ ...base, now: LOSE_MS + 10, noticedUntil: 5 }).shouldDormant).toBe(true);
   });
 });
+
+import { spottedSfxOnWake } from './labStealth';
+describe('見つかった音(社長支給2026-10-24「索敵系の敵に見つかった時の音」)', () => {
+  const sight = { aggroRange: 180 };
+  it('ステージ2で視界に入って起きた時だけ鳴る', () => {
+    expect(spottedSfxOnWake(sight, { labTheme: true, seen: true, excluded: false })).toBe(true);
+  });
+  it('撃たれて起きた(見つかっていない)・他のステージ・除外の型・台本で起こす静止個体は鳴らない', () => {
+    expect(spottedSfxOnWake(sight, { labTheme: true, seen: false, excluded: false })).toBe(false);
+    expect(spottedSfxOnWake(sight, { labTheme: false, seen: true, excluded: false })).toBe(false);
+    expect(spottedSfxOnWake(sight, { labTheme: true, seen: true, excluded: true })).toBe(false);
+    expect(spottedSfxOnWake({ aggroRange: 0 }, { labTheme: true, seen: true, excluded: false })).toBe(false);
+  });
+});

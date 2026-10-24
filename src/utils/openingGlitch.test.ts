@@ -117,11 +117,16 @@ describe('廊下', () => {
     expect(d.in).toBe(0);
     expect(d.out).toBe(0);
     expect(d.hold).toBeGreaterThan(0);
-    // 色が抜ける瞬間にカメラが一瞬ずれる(2026-10-24): 小さく(10px以内)・短く(1/10秒前後)。
-    expect(d.jolt).toBeDefined();
-    expect(Math.hypot(d.jolt!.dx, d.jolt!.dy)).toBeLessThanOrEqual(10);
-    expect(d.jolt!.ms).toBeGreaterThan(40);
-    expect(d.jolt!.ms).toBeLessThanOrEqual(150);
+    // 色が抜けている間ずっと画面がガクガク飛ぶ(2026-10-24「セピアとカメラズレを合わせて」「分かりやすく」)。
+    const j = d.jitter!;
+    expect(j.length).toBeGreaterThanOrEqual(4);
+    expect(j.reduce((t, k) => t + k.ms, 0)).toBe(d.hold); // 飛び始め=色が抜ける瞬間、飛び終わり=色が戻る瞬間
+    const amp = Math.max(...j.map(k => Math.hypot(k.dx, k.dy)));
+    expect(Math.max(...j.map(k => Math.abs(k.dx)))).toBeGreaterThanOrEqual(30); // 横ははっきり分かる幅で裂ける
+    expect(amp).toBeLessThanOrEqual(64);    // 画面から人が外れるほどではない
+    expect(new Set(j.map(k => k.ms)).size).toBeGreaterThan(2); // 刻みが等間隔でない
+    expect(j.some(k => k.dx === 0 && k.dy === 0)).toBe(true); // 途中でいったん戻る(偽の回復)
+    expect(j.filter(k => k.dy !== 0 && Math.abs(k.dy) > 10).length).toBe(1); // 縦に大きく動くのはロールの1回だけ
   });
   it('立ち止まりの1回は14〜20秒おき・背景だけ・打ち止めあり', () => {
     const rng = mulberry32(2);
