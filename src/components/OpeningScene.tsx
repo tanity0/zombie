@@ -190,6 +190,9 @@ const WALK_AUDIO = `${BASE}audio/op-corridor.mp3`;
 const WALK_AUDIO_VOLUME = 1;
 const PAN_SE_SRC = `${BASE}audio/sfx/handgun-fire.wav`; // パン!(紙吹雪と発砲で同音・社長指示)
 const PAN_SE_VOLUME = 0.64; // ゲーム内SE設定(audioManagerのhandgun-fire volume)に合わせる
+// 射撃シーンのホラーSE(社長支給2026-10-24「赤い背景になったら流して。画面フェードアウトして黒背景のシーンに入ったらこの音もフェードアウト」)。
+const GHOST_VOICE_SRC = `${BASE}audio/sfx/op-ghostly-voice.mp3`;
+const GHOST_VOICE_VOLUME = 0.85;
 // 蘇生パートの心拍(処置機器音の素材は無いので心拍のみ・spec)。会話中はループ・最終行後に一発だけ。
 const HEARTBEAT_SRC = `${BASE}audio/sfx/heartbeat.mp3`;
 const HEARTBEAT_LOOP_VOLUME = 0.5;    // 会話中の心拍ループ=低音量(spec「0.5前後」)
@@ -433,6 +436,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const audioRef = useRef<HTMLAudioElement[]>([]);   // アリーナ2音源(場面転換で止める)
   const walkAudioRef = useRef<HTMLAudioElement | null>(null); // 廊下BGM(遠くのラジオ・歩き中だけループ)
   const panRef = useRef<HTMLAudioElement[]>([]);     // パン!SE×2(発砲は場面転換後に鳴るため別管理)
+  const ghostRef = useRef<HTMLAudioElement | null>(null); // 射撃シーンのホラーSE(赤背景で鳴らし、暗転と一緒にフェードアウト)
+  const ghostFadeRaf = useRef(0);
   const heartRef = useRef<HTMLAudioElement[]>([]);   // 蘇生パート: [0]=会話中の心拍ループ / [1]=最終行後の一発(ループとは別要素)
   const stopArena = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; }); audioRef.current = []; };
   // 廊下BGMを止める(OPスキップ / アンマウント)。アリーナ2音源と重ねない。
@@ -454,7 +459,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     step();
   };
   const stopHearts = () => { heartRef.current.forEach(a => { if (a) { a.pause(); a.src = ''; } }); heartRef.current = []; };
-  const stopAudio = () => { stopArena(); stopWalkBgm(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; stopHearts(); };
+  const stopGhost = () => { cancelAnimationFrame(ghostFadeRaf.current); const g = ghostRef.current; if (g) { g.pause(); g.src = ''; } ghostRef.current = null; };
+  const stopAudio = () => { stopArena(); stopWalkBgm(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; stopHearts(); stopGhost(); };
   // rewindBgm: OP明けのタイトルBGMは必ず曲頭から(v0.25.2104)。過去にタイトル曲を再生済みだと
   // onDone側のsetBgmScene('menu')が同srcのため停止位置から途中再開してしまうのを防ぐ。
   // 乱れに合わせて揺らす BGM(鳴っていない要素は乱れ側が飛ばす)。
@@ -550,6 +556,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
 
     // パン!SE(HTMLAudio・2発ぶん事前生成=紙吹雪用と発砲用。currentTime巻き戻しの競合を避ける)。
     panRef.current = [0, 1].map(() => { const a = new Audio(PAN_SE_SRC); a.preload = 'auto'; a.volume = PAN_SE_VOLUME; return a; });
+    { const g = new Audio(GHOST_VOICE_SRC); g.preload = 'auto'; g.volume = GHOST_VOICE_VOLUME; ghostRef.current = g; } // 射撃シーンのホラーSE(下のプライミングで解錠)
     // アリーナ2音源もここ(タップ直後)で生成+プライミング(v0.25.2114): 歩きシーンがプレイヤー操作で
     // 長さ不定のため、アリーナ開始はジェスチャ有効期限切れ後になる。要素を今作って解錠しておく。
     if (!startAtShoot) audioRef.current = ARENA_AUDIO.map(src => { const a = new Audio(src); a.loop = true; a.preload = 'auto'; return a; });
@@ -567,7 +574,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // 断定。muted単独ではなく【muted+volume=0の二重ガード】にし、解錠後もunmuteせずその無音状態のまま
     // 即pause+巻き戻しで止め置く(対象は上のpanRef/heartRef/audioRef=OPが事前解錠する音源全て)。
     // 実際に聞かせる本再生は必ず unlockAndPlay を通し、muted解除+volume復元の両方をそこで行う。
-    [...panRef.current, ...heartRef.current, ...audioRef.current, ...(walkAudioRef.current ? [walkAudioRef.current] : [])].forEach(a => {
+    [...panRef.current, ...heartRef.current, ...audioRef.current, ...(walkAudioRef.current ? [walkAudioRef.current] : []), ...(ghostRef.current ? [ghostRef.current] : [])].forEach(a => {
       a.muted = true;
       a.volume = 0;
       a.play().then(() => {
@@ -629,6 +636,18 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       // 音声未解禁のURLプレビューでは鳴らない(本番=更新情報OKのジェスチャ後は鳴る)。
       if (!startAtShoot) ids.push(window.setTimeout(() => firePan(0), PAN_CONFETTI_MS)); // 紙吹雪パーン(1秒置いて)
       ids.push(window.setTimeout(() => firePan(1), base + 7500));           // 発砲(一閃の瞬間・v0.25.2075で7.5s)
+      // ホラーSE: 背景が赤一色になる瞬間(RED_FROM)に鳴らし、暗転(SHOOT_FADE_START から SHOOT_FADE_MS)と同じ尺で音量を0へ(社長支給2026-10-24)。
+      ids.push(window.setTimeout(() => { const g = ghostRef.current; if (!g) return; try { g.currentTime = 0; } catch { /* ignore */ } unlockAndPlay(g, GHOST_VOICE_VOLUME); }, base + RED_FROM));
+      ids.push(window.setTimeout(() => {
+        const g = ghostRef.current; if (!g) return;
+        const v0 = g.volume, t0 = performance.now();
+        const step = () => {
+          const u = Math.min(1, (performance.now() - t0) / SHOOT_FADE_MS);
+          try { g.volume = Math.max(0, v0 * (1 - u)); } catch { /* ignore */ }
+          if (u < 1) ghostFadeRaf.current = requestAnimationFrame(step); else g.pause();
+        };
+        ghostFadeRaf.current = requestAnimationFrame(step);
+      }, base + SHOOT_FADE_START));
       if (!startAtShoot) {
         // アングル切替=即表示のハードカット(社長指示v0.25.2072・旧クロスフェードは廃止)。
         [1, 2].forEach(i => {

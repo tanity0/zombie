@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5197', items: [
+    'オープニングのアイドルが撃つ場面、背景が赤く染まると亡霊のような声が流れ、暗転とともに遠のいていく',
+  ] },
   { version: '0.25.5196', items: [
     'オープニングで主人公の色が抜ける瞬間、画面がほんの一瞬だけずれる',
   ] },

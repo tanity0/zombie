@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5197 — オープニングの射撃シーンにホラーSE【2026-10-24 19:15 JST】
+- 社長支給(ホラーSE・GhostlyVoice 13.7秒)「オープニングのアイドルが撃ったシーン。赤い背景になったら流して。画面フェードアウトして黒背景のシーンに入ったらこの音もフェードアウトして」。
+- public/audio/sfx/op-ghostly-voice.mp3(新規)。OpeningScene.tsx: マウント時に生成して他の音と同じくプライミング(iOSの自動再生対策)。射撃シーンの RED_FROM(背景が赤一色になる瞬間・発砲の100ms後)で unlockAndPlay(音量0.85)、SHOOT_FADE_START から SHOOT_FADE_MS(3秒=画面の暗転と同じ尺)で音量を0へ(rAF)して止める。スキップ・破棄は stopAudio で止める。
+- 検証: typecheck 0 / eslint 0(既存の警告1) / assets:check OK。ヘッドレス(?opening=2): シーン開始から約7.6秒で鳴り始め、暗転の開始から3秒で音量 0.85→0 へ下がって止まることを確認。音の聞こえ方は実機で。
+
 ## v0.25.5196 — オープニングの色抜けの瞬間に画面が一瞬ずれる【2026-10-24 19:05 JST】
 - 社長指示「セピアになるとき、一瞬だけ少しカメラがズレると不気味になると思う。ホラー演出わかる？」。
 - openingGlitch.ts: drain に jolt(dx/dy/ms)。W3 の色抜けに jolt {dx:7, dy:-4, ms:90}。OpeningGlitch.tsx: 色が抜けるのと同じ瞬間に、場面の入れ物(target)へ translate を composite:'add' で90msだけ足す(加減速なし=映像が一コマ飛ぶ・既存のカメラの動きには足し合わせ)。スキップ・破棄では cancel。
