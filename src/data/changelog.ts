@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5198', items: [
+    'ステージ2の帰り道、変異塊が姿を現すと亡霊の声が流れ続ける。塊が消えれば声も消える',
+  ] },
   { version: '0.25.5197', items: [
     'オープニングのアイドルが撃つ場面、背景が赤く染まると亡霊のような声が流れ、暗転とともに遠のいていく',
   ] },

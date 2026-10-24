@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5198 — ステージ2の帰り道、塊が出ている間に亡霊の声をループ【2026-10-24 19:20 JST】
+- 社長指示「ステージ2の帰り道。資料拾った後、塊が登場したらループ再生。塊が消えたら音も消す」(素材はオープニングと同じ op-ghostly-voice.mp3)。
+- audioManager.ts: SFX 'escape-ghost'(warm:false=起動時に読まない・ステージ2の間に先読み)と setEscapeGhost(0..1)。引きずる音と同じネイティブループ+gain+番犬(呼ばれなくなって0.3秒でフェードして止まる=ポーズ・退出で止め忘れ無し)。mp3 の頭尻の無音を除いた区間を loopStart/loopEnd に取る(つなぎ目で途切れない)。鳴り始めはじわっと(τ0.6秒)。
+- labCrawlerTick.ts: 純関数 escapeGhostGain(資料後に出てきた塊=chasing の間だけ1・沈んで消える間は (1-u)^2 で絞り切る・倒して昇天したら0・塊なし0)。runLabCrawlerTick に ghost 引数、useGameLoop から setEscapeGhost を渡す。
+- テスト: crawlerDrag.test.ts に3件。typecheck 0 / eslint 0 / 循環import 新規なし。ヘッドレス(stage-2・labEscapeAt を立てて追跡を出す): 資料前は鳴らず、塊が出たフレームで 13.6秒の素材がループ(0.19〜12.79秒の区間)で鳴り始め、塊を消すと止まることを確認(ヘッドレスは2fpsで番犬が一度切れて掛け直しが入るが実機の60fpsでは起きない)。音量・聞こえ方は実機で。
+- 自己点検: 音だけの追加で、初心者ゾーン・緩の場面の挙動に触れない。
+
 ## v0.25.5197 — オープニングの射撃シーンにホラーSE【2026-10-24 19:15 JST】
 - 社長支給(ホラーSE・GhostlyVoice 13.7秒)「オープニングのアイドルが撃ったシーン。赤い背景になったら流して。画面フェードアウトして黒背景のシーンに入ったらこの音もフェードアウトして」。
 - public/audio/sfx/op-ghostly-voice.mp3(新規)。OpeningScene.tsx: マウント時に生成して他の音と同じくプライミング(iOSの自動再生対策)。射撃シーンの RED_FROM(背景が赤一色になる瞬間・発砲の100ms後)で unlockAndPlay(音量0.85)、SHOOT_FADE_START から SHOOT_FADE_MS(3秒=画面の暗転と同じ尺)で音量を0へ(rAF)して止める。スキップ・破棄は stopAudio で止める。

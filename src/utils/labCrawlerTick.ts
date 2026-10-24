@@ -46,6 +46,21 @@ export const crawlerDragGain = (gapPx: number, speed: number, ascending: boolean
   const move = Math.min(1, 0.4 + speed / 60);
   return dist * move;
 };
+/** 帰り道の亡霊の声のループ(社長指示2026-10-24)。0..1 を毎フレーム渡す(呼び手=audioManager.setEscapeGhost)。 */
+export type LabCrawlerGhost = (gain: number) => void;
+/**
+ * 亡霊の声の音量(純関数): 資料を拾った後に出てきた塊(chasing)が居る間だけ鳴る。距離では落とさない(帰り道全体の空気)。
+ * 沈んで消える間は消え切るまでに絞り切る/倒されて昇天したら止める/塊が居なければ無音。
+ */
+export const escapeGhostGain = (c: Pick<LabCrawler, 'chasing' | 'state' | 'stateAt'> | null, gameTime: number): number => {
+  if (!c || !c.chasing) return 0;
+  if (c.state === 'ascend') return 0;
+  if (c.state === 'vanish') {
+    const u = Math.min(1, Math.max(0, (gameTime - c.stateAt) / CRAWLER_VANISH_MS));
+    return (1 - u) * (1 - u);
+  }
+  return 1;
+};
 /** 目覚めのうめきはアテンションで画面に映すので、距離に関係なくこの音量で鳴らす。 */
 const WAKE_SFX_GAIN = 0.8;
 
@@ -270,13 +285,14 @@ const DEATH_SKYLIGHT_DELAY_MS = 450;
 const SCRAPE_EVERY_MS = 90;
 let lastScrapeAt = -Infinity;
 
-export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCrawlerSfx, drag?: LabCrawlerDrag): void => {
+export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCrawlerSfx, drag?: LabCrawlerDrag, ghost?: LabCrawlerGhost): void => {
   const st = useGameStore.getState();
   let c = st.labCrawler;
   if (!c) {
     // 昇天し終えた/置かない出撃: 代理が残っていれば外す。
     if (st.enemies.some(e => e.id === CRAWLER_PROXY_ID)) useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.id !== CRAWLER_PROXY_ID) }));
     drag?.(0);
+    ghost?.(0);
     return;
   }
   const p = st.player;
@@ -338,6 +354,7 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
       drag(crawlerDragGain(crawlerGapToPlayer(nc, pRect), Math.max(30, Math.hypot(nc.vx, nc.vy)), false) * (1 - u) * (1 - u));
     } else drag(crawlerDragGain(crawlerGapToPlayer(nc, pRect), Math.hypot(nc.vx, nc.vy), !crawlerSolid(nc)));
   }
+  ghost?.(escapeGhostGain(nc, gameTime));
 
   // ---- ④ 箱が重なった壁・プロップを壊す(起きている間・資料の前も後も) ----
   const breaks = nc ? collectBreaks(nc, gameTime, chaseAt ? Date.now() + CHASE_REVEAL_DELAY_MS : undefined) : [];

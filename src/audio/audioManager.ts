@@ -148,6 +148,7 @@ export type SfxKey =
   | 'hero-neigh' | 'hero-snort' | 'hero-gallop'
   // research/LAB_CRAWLER.md(ステージ2の変異塊・社長支給2026-10-19): 体を引きずる音(ループ専用=setCrawlerDrag が鳴らす)。
   | 'crawler-drag'
+  | 'escape-ghost'
   // 塊が攻撃してくる直前の音・登場時の音(社長支給2026-10-20「塊が攻撃してくる直前の音 登場時も鳴らす」)。同じ素材を2つの鍵で鳴らし分ける。
   | 'crawler-windup' | 'crawler-appear'
   // ステージ2でたまに遠くから鳴る音(社長支給2026-10-19)。playDistantSfx が遠さ(音量・こもり・左右)を付けて鳴らす。
@@ -494,6 +495,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'hero-gallop': { src: `${import.meta.env.BASE_URL}audio/sfx/hero-gallop.mp3`, volume: 0.9, minIntervalMs: 200 },
   // 塊が体を引きずる音はループ専用(playSfx では鳴らさない)。
   'crawler-drag': { src: `${import.meta.env.BASE_URL}audio/sfx/crawler-drag.mp3`, volume: 0.9, minIntervalMs: 200 },
+  // ステージ2の帰り道で塊が出ている間のループ(社長指示2026-10-24・オープニングの射撃シーンと同じ素材)。setEscapeGhost だけが鳴らす。
+  'escape-ghost': { src: `${import.meta.env.BASE_URL}audio/sfx/op-ghostly-voice.mp3`, volume: 0.7, minIntervalMs: 200, warm: false },
   // 素材は約2.85秒で、約1.4秒かけて膨らみ頂点へ達してから引く。叩きつけの溜め(短い)では途中から鳴らし、頂点が手の着く瞬間に来るようにする。
   'crawler-windup': { src: `${import.meta.env.BASE_URL}audio/sfx/crawler-windup.mp3`, volume: 1.0, minIntervalMs: 300, startAt: 0.8 },
   // 登場時は頭から全部鳴らす(膨らむ間がそのまま「来る」の溜めになる)。
@@ -1959,6 +1962,72 @@ export const setCrawlerDrag = (gainMult: number): void => {
   }
   if (crawlerDragWatchdog != null) clearTimeout(crawlerDragWatchdog);
   crawlerDragWatchdog = window.setTimeout(() => { crawlerDragWatchdog = null; stopCrawlerDrag(); }, 300);
+};
+
+// --- ステージ2の帰り道の亡霊の声(社長指示2026-10-24「資料拾った後、塊が登場したらループ再生。塊が消えたら音も消す」)。
+// 引きずる音と同じ「ネイティブループ1本+gain+番犬」。0..1 を毎フレーム渡す(呼び手=labCrawlerTick)。0 か呼ばれなくなったらフェードして止まる。
+// mp3 は頭と尻に無音の詰め物が入るので、鳴っている区間だけを loopStart/loopEnd に取る(つなぎ目で途切れない)。
+let escapeGhostSource: AudioBufferSourceNode | null = null;
+let escapeGhostGain: GainNode | null = null;
+let escapeGhostLast = -1;
+let escapeGhostWatchdog: number | null = null;
+const audibleSpan = (buffer: AudioBuffer): { start: number; end: number } => {
+  const ch = buffer.getChannelData(0);
+  const TH = 0.0008;
+  let a = 0, b = ch.length - 1;
+  while (a < b && Math.abs(ch[a]) < TH) a++;
+  while (b > a && Math.abs(ch[b]) < TH) b--;
+  if (b - a < buffer.sampleRate) return { start: 0, end: buffer.duration };
+  return { start: a / buffer.sampleRate, end: (b + 1) / buffer.sampleRate };
+};
+const stopEscapeGhost = () => {
+  if (escapeGhostWatchdog != null) { clearTimeout(escapeGhostWatchdog); escapeGhostWatchdog = null; }
+  const context = sfxContext;
+  const src = escapeGhostSource, gain = escapeGhostGain;
+  escapeGhostSource = null; escapeGhostGain = null; escapeGhostLast = -1;
+  if (!src) return;
+  if (context && gain) {
+    const now = context.currentTime;
+    try { gain.gain.cancelScheduledValues(now); gain.gain.setTargetAtTime(0, now, 0.35); } catch { /* ignore */ }
+    try { src.stop(now + 1.6); } catch { /* ignore */ }
+  } else {
+    try { src.stop(); } catch { /* ignore */ }
+  }
+};
+export const setEscapeGhost = (gainMult: number): void => {
+  const want = muted ? 0 : Math.max(0, Math.min(1, gainMult));
+  if (want <= 0.001) {
+    // 起動時には読まない(warm:false・長い素材)。ステージ2の間は 0 で呼ばれ続けるので、ここで先に読んでおく。
+    if (!sfxBuffers.has('escape-ghost') && sfxContext) loadSfxBuffer('escape-ghost');
+    stopEscapeGhost(); return;
+  }
+  const context = sfxContext ?? ensureSfxContext();
+  if (!context) return;
+  if (!escapeGhostSource) {
+    const buffer = sfxBuffers.get('escape-ghost');
+    if (!buffer) { loadSfxBuffer('escape-ghost'); return; }
+    resumeSfxContext();
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    const span = audibleSpan(buffer);
+    source.loopStart = span.start; source.loopEnd = span.end;
+    source.connect(gain);
+    gain.connect(context.destination);
+    gain.gain.setValueAtTime(0, context.currentTime);
+    try { source.start(0, span.start); } catch { /* ignore */ }
+    escapeGhostSource = source; escapeGhostGain = gain;
+  }
+  const vol = want * (SFX_SOURCES['escape-ghost']?.volume ?? 0.7) * sfxVolume;
+  if (Math.abs(vol - escapeGhostLast) > 0.02 && escapeGhostGain) {
+    // 出だしはじわっと(慣性)・絞る側は呼び手の減衰に素直に付いていく。
+    const tau = escapeGhostLast < 0 ? 0.6 : 0.2;
+    try { escapeGhostGain.gain.setTargetAtTime(vol, context.currentTime, tau); } catch { /* ignore */ }
+    escapeGhostLast = vol;
+  }
+  if (escapeGhostWatchdog != null) clearTimeout(escapeGhostWatchdog);
+  escapeGhostWatchdog = window.setTimeout(() => { escapeGhostWatchdog = null; stopEscapeGhost(); }, 300);
 };
 
 /**
