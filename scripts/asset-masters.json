@@ -3731,26 +3731,26 @@
   "sprites/portraits/portrait-handgun.png": {
    "w": 1024,
    "h": 1536,
-   "bytes": 1474800,
-   "sha": "4d8459789e526d2c"
+   "bytes": 2355066,
+   "sha": "cf1b6a13b7a81a8b"
   },
   "sprites/portraits/portrait-knife.png": {
    "w": 1024,
    "h": 1536,
-   "bytes": 2645643,
-   "sha": "a4c2609170395fc7"
+   "bytes": 2510867,
+   "sha": "dbc3941d2286c537"
   },
   "sprites/portraits/portrait-shotgun.png": {
    "w": 1024,
    "h": 1536,
-   "bytes": 2864869,
-   "sha": "b6bd9fedb0b4a236"
+   "bytes": 2726108,
+   "sha": "32915babc46d407b"
   },
   "sprites/portraits/portrait-sniper.png": {
    "w": 1086,
    "h": 1448,
-   "bytes": 2781740,
-   "sha": "b233903ac4c83d18"
+   "bytes": 2665366,
+   "sha": "9748ac839a8e3045"
   },
   "sprites/props/flame.png": {
    "w": 368,

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5203', items: [
+    'キャラクター選択の4人の立ち絵が新しくなった',
+  ] },
   { version: '0.25.5202', items: [
     'ステージ2の帰り道、前から研究所の獣が飛び出してすぐ横を駆け抜けていく。その背後で、変異塊が這い出しながらそれを叩き潰す。立ち止まると巻き込まれる',
   ] },
