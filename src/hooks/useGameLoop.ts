@@ -557,6 +557,7 @@ import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md
 import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, primeCorridorRadio, setHeroGallop, setCrawlerDrag, setEscapeGhost, playDistantSfx, setCorridorRadioBoost, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT, labRadioIdolDownFade } from '../world/labRadioMix';
+import { labBaitCamLead, labBaitLandDist, labBaitZoomTarget, LAB_BAIT_CAM_FORWARD_FRAC, LAB_BAIT_CAM_FWD_TAU_S, LAB_BAIT_CAM_BACK_TAU_S, LAB_BAIT_CAM_RETURN_TAU_S } from '../world/labBait';
 import { HEAVY_GRENADE_FUSE_MS, HEAVY_GRENADE_RADIUS, HEAVY_GRENADE_DAMAGE, HEAVY_GRENADE_SPEED } from '../utils/grenadeSpec';
 import { stepFollowChain, FOLLOW_SPEED_MULT } from '../utils/companionFollow';
 import { HUNTING_CHARGE_MS_BY_LEVEL } from '../config/hunting';
@@ -1961,6 +1962,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const camBossLeadYRef = useRef<number>(0);
   // v0.25.3063: 横のボス先読み(世界px・正=東)。縦と同じ目標ライン式・同じ時定数(社長裁定「2をまず揃える」)。
   const camBossLeadXRef = useRef<number>(0);
+  const labBaitCamReturnRef = useRef<number>(0); // 叩き潰しの登場の後、カメラの寄せを遅く戻している間=1
   const camEscapeLeadXRef = useRef<number>(0); // ステージ2の逃走: 塊の側へカメラを寄せる量(社長 2026-10-20「aとbで」のB)
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
@@ -9786,7 +9788,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           est.engaged = bossTargetNow != null;
           // contextZoomTargetで包む(敵数0=群衆項1)=?zoomlock固定も描画と一貫する。
-          const camZoomTarget = contextZoomTarget(0, false, bossTargetNow);
+          // 叩き潰しの登場(LAB_CRAWLER §11)の間は引く(描画の pixiScene と同じ式=湧き・回収の可視域が一致)。
+          const baitZoom = labBaitZoomTarget(useGameStore.getState().labBaitScene);
+          const camZoomTarget = contextZoomTarget(0, false, baitZoom != null ? Math.min(bossTargetNow ?? 1, baitZoom) : bossTargetNow);
           // v0.25.3019(社長裁定「案2で少し慣性を入れたら?」): 交戦中は描画側と同じ臨界減衰バネで
           // 距離に直結+慣性。解除後の戻りは従来の1次(RETURN_TAU)のまま。速度は解除時に捨てる。
           if (est.engaged) {
@@ -9851,8 +9855,25 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const gsc = useGameStore.getState();
           const lc = gsc.labCrawler;
           const escapeChase = labTheme && !indoor && gsc.labEscapeAt > 0 && !gsc.gameWon && !!lc && lc.chasing && crawlerSolid(lc);
-          const wantEsc = escapeChase && lc ? -crawlerGoalDir(lc) * gameBounds.width * LAB_ESCAPE_CAMERA_LEAD_FRAC : 0;
-          const ek = 1 - Math.exp(-baseDeltaTime / LAB_ESCAPE_CAMERA_TAU_S);
+          let wantEsc = escapeChase && lc ? -crawlerGoalDir(lc) * gameBounds.width * LAB_ESCAPE_CAMERA_LEAD_FRAC : 0;
+          // 叩き潰しの登場(LAB_CRAWLER §11): 突進の間は前へ振る(突進が読め、背後の塊が画面の外へ出る・速く)。生け贄が横を過ぎたら、
+          // 着地点 L(今のプレイヤーからの距離=溜めの間も追う)が映るまで後ろへ振る(重く)。前の2割は必ず残す。場面の後は遅く戻す。
+          const bsc = gsc.labBaitScene;
+          let escTau = labBaitCamReturnRef.current > 0 ? LAB_BAIT_CAM_RETURN_TAU_S : LAB_ESCAPE_CAMERA_TAU_S;
+          if (bsc && escapeChase) {
+            const halfView = gameBounds.width / Math.max(0.05, Math.min(1, gsc.viewZoom || 1)) / 2;
+            const back = bsc.passed || bsc.phase === 'lunge' || bsc.phase === 'tail';
+            const landNow = back && (bsc.phase === 'lunge' || bsc.phase === 'tail')
+              ? Math.abs(bsc.lx - (gsc.player.x + gsc.player.width / 2)) : labBaitLandDist();
+            wantEsc = back
+              ? -bsc.dir * labBaitCamLead(landNow, halfView, CAMERA_LOOKAHEAD_MAX, gameBounds.width, gameBounds.width * LAB_ESCAPE_CAMERA_LEAD_FRAC)
+              : bsc.dir * gameBounds.width * LAB_BAIT_CAM_FORWARD_FRAC;
+            escTau = back ? LAB_BAIT_CAM_BACK_TAU_S : LAB_BAIT_CAM_FWD_TAU_S;
+            labBaitCamReturnRef.current = 1;
+          } else if (labBaitCamReturnRef.current > 0 && Math.abs(wantEsc - camEscapeLeadXRef.current) < 4) {
+            labBaitCamReturnRef.current = 0; // 戻り切った
+          }
+          const ek = 1 - Math.exp(-baseDeltaTime / escTau);
           camEscapeLeadXRef.current += (wantEsc - camEscapeLeadXRef.current) * ek;
         }
         const targetCameraX = baseCamX + look.x + camBossLeadXRef.current + camEscapeLeadXRef.current; // v0.25.3063: 横のボス先読み

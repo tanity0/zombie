@@ -760,6 +760,8 @@ export interface Enemy {
   escortTarget?: string;
   /** ステージ2: 資料を拾った後の逃走経路に置いた雑魚(utils/labSpawn.labEscapeRouteSlots)。画面外の置き直し・上限の間引きで消さない(塊には食べられる)。 */
   escapeRoute?: boolean;
+  /** ステージ2: 塊の叩き潰しの登場の生け贄(research/LAB_CRAWLER.md §11)。k=何番目・used=発火済み(もう発火しない)・active=場面の最中(AI・接触ダメージ・狙いを止め、位置は labBaitTick が書く)・charging=走っている間(描画の突進の土煙・歩幅)。 */
+  labBait?: { k: number; used?: boolean; active?: boolean; charging?: boolean };
   // プレイヤーが近接ダメージを与えた敵=以後プレイヤーを狙う(救助の survivor 狙いから切替。社長指示)。
   meleeAggro?: boolean;
   // Difficulty metadata. Time and distance from the game origin both feed this

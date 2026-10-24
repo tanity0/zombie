@@ -25,6 +25,7 @@ import type { Rect } from '../world/obstacles';
 import { isCrawlerAbsorbable } from './crawlerAbsorb';
 import type { PlayableAreaCtx } from '../world/playableArea';
 import { npcSfxDistGain } from './npcSfx';
+import { labBaitBeforeStep, labBaitAfterStep } from './labBaitTick';
 
 /**
  * 塊の音(社長指示2026-10-19「音をつける」)。audioManager はここで import しない(ヘッドレス縛り)=呼び出し側が渡す。
@@ -323,6 +324,9 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
     if (nc) { c = nc; chaseAt = crawlerCenter(nc); }
   }
 
+  // ---- ②' 叩き潰しの登場(社長 2026-10-24・research/LAB_CRAWLER.md §11): 生け贄の発火・突進・塊の置き直しと溜めの開始 ----
+  if (!chaseAt && !died) c = labBaitBeforeStep(c, gameTime, dtSec, sfx) ?? c;
+
   // ---- ③ 状態機械・移動(出てきたフレーム・倒れたフレームは動かさない) ----
   let res: ReturnType<typeof stepLabCrawler> = { next: c, slam: null, absorbIds: [], playerPush: null, woke: false };
   if (!chaseAt && !died) {
@@ -345,7 +349,7 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
       chaseSpeed: crawlerChaseSpeedFor(p.walkMoveSpeed ?? p.effectiveMoveSpeed ?? p.speed),
     });
   }
-  const nc = res.next;
+  const nc = labBaitAfterStep(res.next, gameTime, dtSec); // 叩き潰しの登場: 這い込みの位置と速さの上書き・二段目のスロー・場面の終わり
   // 昇天の間は鳴らさない。沈んで消える間は、滑りの終わりまでゆっくり絞る(2巡目#13)。
   if (drag) {
     if (!nc) drag(0);
@@ -430,7 +434,7 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
     if (startIn > 0) setTimeout(moment, startIn); else moment();
     setTimeout(landing, startIn + crumbleMs);
   }
-  if (nc && nc.state === 'windup' && nc.slamMoving && Math.abs(nc.vx) > 20 && gameTime - lastScrapeAt >= SCRAPE_EVERY_MS) {
+  if (nc && nc.state === 'windup' && (nc.slamMoving || nc.sceneLunge) && Math.abs(nc.vx) > 20 && gameTime - lastScrapeAt >= SCRAPE_EVERY_MS) {
     // 進みながら溜める間(2巡目#1): 前の縁から地面を擦る土煙と、後ろに残る引きずり跡(暗く細長い煙)。
     lastScrapeAt = gameTime;
     const r = crawlerRect(nc);
@@ -440,19 +444,29 @@ export const runLabCrawlerTick = (gameTime: number, dtSec: number, sfx?: LabCraw
     gs.spawnSmoke(fx, fy, 50, 140, 0x8f8068, { alpha: 0.4, duration: 900, hRatio: 0.28, driftX: -dir * 30, driftY: -6 });
     gs.spawnSmoke(fx - dir * 40, fy + 2, 90, 120, 0x2e2822, { alpha: 0.3, duration: 1800, hRatio: 0.1 });
   }
-  if (nc && nc.state === 'windup' && (c.state !== 'windup' || nc.stateAt !== c.stateAt)) {
+  if (nc && nc.state === 'windup' && !nc.sceneLunge && (c.state !== 'windup' || nc.stateAt !== c.stateAt)) {
     // 叩きつけの溜めが始まった瞬間(プレイヤー狙いも雑魚狙いも): 社長支給の「攻撃してくる直前の音」(素材の0.8秒目から=頂点が手の着く頃)。
     // 距離で弱める(画面外の雑魚狙いは無音=npcSfxDistGain)。
     const wg = gainAt(nc.slamX, nc.slamY);
     if (wg > 0.01) sfx?.('crawler-windup', wg);
   }
+  // 叩き潰しの登場(LAB_CRAWLER §11)の一撃: 音は距離で弱めず、揺れは登場の格、潰した所に血・破片・低い土煙を足す(既存の取り込みの絵はそのまま続く)。
+  const sceneSlam = !!slam && !!c.sceneLunge;
   if (slam) {
-    const mag = crawlerSlamShakeMag(Math.hypot(pcx - slam.x, pcy - slam.y));
-    if (mag > 0.3) gs.triggerShake(SLAM_SHAKE_MS, mag);
+    const mag = sceneSlam ? 12 : crawlerSlamShakeMag(Math.hypot(pcx - slam.x, pcy - slam.y));
+    if (mag > 0.3) gs.triggerShake(sceneSlam ? 420 : SLAM_SHAKE_MS, mag);
     // 重い衝撃(爆風の経路の共通の衝撃音は塊の時だけ鳴らさない=ここで距離つきで鳴らす)。
-    sfx?.('heavy-impact', gainAt(slam.x, slam.y));
+    sfx?.('heavy-impact', sceneSlam ? 1 : gainAt(slam.x, slam.y));
   }
-  if (absorbed.size > 0 && slam) sfx?.('jump-land', gainAt(slam.x, slam.y) * 0.9);
+  if (absorbed.size > 0 && slam) sfx?.('jump-land', sceneSlam ? 0.9 : gainAt(slam.x, slam.y) * 0.9);
+  if (sceneSlam && slam) {
+    const squashed = st.enemies.filter(e => absorbed.has(e.id) && e.labBait);
+    const at = squashed[0] ? { x: squashed[0].x + squashed[0].width / 2, y: squashed[0].y + squashed[0].height } : { x: slam.x, y: slam.y };
+    for (let k = 0; k < 8; k++) gs.spawnBlood(at.x, at.y - 10, (Math.PI * 2 * k) / 8 + Math.random() * 0.4, 70 + Math.random() * 50);
+    gs.spawnMeleeBlood(at.x, at.y - 12, 90);
+    gs.spawnRubble(at.x, at.y - 8, 15, 200, LAB_DEBRIS_PALETTE.stone.shards);
+    spawnLowSmoke(gs, at.x, at.y - 2, 200, 0x9b8a6e, { alpha: 0.5, duration: 1500 });
+  }
   if (nc && nc.state === 'vanish' && c.state !== 'vanish') {
     // ゴール手前で沈んで消え始めた(2巡目#13): 遠ざかる唸り(低く小さく)・沈む切り口の線に沿った低い土煙・弱い揺れ。
     const r = crawlerRect(nc);

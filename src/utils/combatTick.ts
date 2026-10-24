@@ -1861,6 +1861,8 @@ export const applyContactDamage = (
     // research/LAB_CRAWLER.md §4: ステージ2の変異塊の代理は攻撃を受ける窓口だけ(接触ダメージ0)。触れても何も起きない
     // (塞ぐのは塊の箱=プレイヤーの移動側・当てるのは叩きつけの爆風)。
     if (isLabCrawlerProxyType(enemy.type)) return;
+    // 塊の叩き潰しの登場の生け贄が場面の最中(プレイヤーの横を走り抜けるだけ=当たらない・赤も出さない・LAB_CRAWLER §11)。
+    if (enemy.labBait?.active) return;
     // research/MUTANT_HERO.md: 英雄は接触ダメージを持たない(damage 0)。ここを通すと0ダメージの被弾が
     // 毎フレーム入り続けていた(社長報告2026-10-04「重なって延々とダメージ受けちゃう」)。当たるのは技だけ。
     if (isMutantHero(enemy.type) || enemy.type === 'mutant-liberty') return; // 解放軍群の旗手も接触ダメージ0(LIBERTY_HORDE §7)

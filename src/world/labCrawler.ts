@@ -267,6 +267,8 @@ export interface LabCrawler {
    * (社長決定2026-10-19 CRAWLER_CHASE_SLAM_ADVANCE_FRAC=0.5。雑魚を狙う(食べる)時は溜めの間ずっと止まる)。
    */
   slamMoving: boolean;
+  /** 叩き潰しの登場(LAB_CRAWLER §11)で這い込みながら溜めている(描画の前のめり・擦る土煙を動きながらの叩きつけと同じに出す)。 */
+  sceneLunge?: boolean;
   /** 回り込んだ直後の追いつき中(品質監査A4)。基準距離まで来たら false に戻り、以後は立たない。 */
   chaseCatchUp: boolean;
   /** この時刻以降に次の攻撃を始めてよい。 */
@@ -657,9 +659,9 @@ export const crawlerAttackFrame = (c: Pick<LabCrawler, 'state' | 'stateAt' | 'hi
 /** 手が着くコマ(7)の前のめり(クリエイティブ監査2巡目#1・描画だけ): 当たる直前に加速して前へ出て、着地の止まりの間は出たまま、戻りでゆっくり戻る。 */
 export const CRAWLER_SLAM_LUNGE_IN_MS = 110;
 export const CRAWLER_SLAM_LUNGE_OUT_MS = 340;
-/** 前のめりの量(0〜1)。動きながらの叩きつけ(slamMoving)だけ。前の縁の向きへ描画側が px を掛ける。 */
-export const crawlerSlamLunge = (c: Pick<LabCrawler, 'state' | 'stateAt' | 'hitAt' | 'slamMoving'>, gameTime: number): number => {
-  if (!c.slamMoving) return 0;
+/** 前のめりの量(0〜1)。動きながらの叩きつけ(slamMoving)と叩き潰しの登場の這い込み(sceneLunge)だけ。前の縁の向きへ描画側が px を掛ける。 */
+export const crawlerSlamLunge = (c: Pick<LabCrawler, 'state' | 'stateAt' | 'hitAt' | 'slamMoving' | 'sceneLunge'>, gameTime: number): number => {
+  if (!c.slamMoving && !c.sceneLunge) return 0;
   if (c.state === 'windup') {
     const left = c.hitAt - gameTime;
     return left < CRAWLER_SLAM_LUNGE_IN_MS ? easeIn2(1 - left / CRAWLER_SLAM_LUNGE_IN_MS) : 0;

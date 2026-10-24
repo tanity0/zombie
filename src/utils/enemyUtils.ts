@@ -489,7 +489,8 @@ export const getsDramaticDeath = (enemy: Enemy): boolean =>
 // これが唯一の判定=AI/攻撃/照準/被弾/対象選定の全経路がこの1関数で除外する(§26-2)。
 export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUntil !== undefined;
 /** 何も当たらない個体(英雄の昇天中=社長指示2026-10-05)。死体と同じく攻撃・照準の対象から外す。 */
-export const isUntouchable = (e: Pick<Enemy, 'bossState'>): boolean => e.bossState === 'hero-ascend';
+// ステージ2の塊の叩き潰しの登場の生け贄(場面の最中=labBait.active)も同じ扱い: 自動の狙い・攻撃が当たらない(潰される役を最後まで務める・LAB_CRAWLER §11)。
+export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait'>): boolean => e.bossState === 'hero-ascend' || !!e.labBait?.active;
 
 // UNIQUE_WEAPONS.md §19-3(監査A2・A9の是正): 銃の自動照準(weaponUtils.ts の module-local
 // `pickTarget`)と**同じ選び方**を、Player型に縛られない座標引数の形へ切り出したもの。

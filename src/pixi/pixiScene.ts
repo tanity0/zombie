@@ -262,6 +262,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase, TELEGRAPH_STYLE_BOSS } from '../utils/telegraphStyle';
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
+import { labBaitZoomTarget } from '../world/labBait';
 import { escortAggroCandidates } from '../utils/escortView';
 import { enemyContactBox } from '../utils/collisionUtils'; // 確認用 ?hitbox=1
 import { biteFxRect, playerArtRect } from '../utils/biteFxHit'; // 確認用 ?hitbox=1
@@ -9193,7 +9194,9 @@ export class PixiScene {
       nearCount++;
       if (isLargeForZoom(e.type)) hasLargeForZoom = true;
     }
-    let czTarget = contextZoomTarget(nearCount, hasLargeForZoom, bossDistanceTarget);
+    // 叩き潰しの登場(LAB_CRAWLER §11)の間は引く(塊の前半身・着地点・前へ逃げるプレイヤーを同時に収める。useGameLoop の推定と同じ式)。
+    const baitZoom = labBaitZoomTarget(s.labBaitScene);
+    let czTarget = contextZoomTarget(nearCount, hasLargeForZoom, baitZoom != null ? Math.min(bossDistanceTarget ?? 1, baitZoom) : bossDistanceTarget);
     // ★B9 走りのズーム引き(社長裁定2026-10-16「3秒かけてじわじわ広がる で」): 同じ向きに1秒以上走り続け(=速度ランプの
     //   sustain・utils/speedRamp)、近くに敵が居ない時だけ、3秒かけて RUN_ZOOM_MIN(0.85)まで引く。敵が近づく/止まる/切り返すと
     //   1秒で戻る。判定は純関数 runZoomTarget(cameraZoom.ts)で、湧き位置(useGameLoop)も同じ関数を読む=引いた分だけ外に湧く。
@@ -24941,7 +24944,8 @@ export class PixiScene {
       // その5州を、v0.25.4475 で**先例だったトールの分も**外した——**突進には既に溜めの流星ライン
       // (`dashLineTick`)が出ているので、走行中の帯は「流星のあとに残る紅いライン」に見える**。
       // **掟④は残るが、体帯という見せ方は採らない**(CLAUDE.md / PACING_PUZZLE.md §18-1(d) に記載)。
-      const dashPhase = e.aiPhase === 'charge' || e.aiPhase === 'g-dash-charge' || e.aiPhase === 'g-quad-charge';
+      const dashPhase = e.aiPhase === 'charge' || e.aiPhase === 'g-dash-charge' || e.aiPhase === 'g-quad-charge'
+        || !!e.labBait?.charging; // 塊の叩き潰しの登場の生け贄の突進(LAB_CRAWLER §11・突進という動作を持つ全員)
       // V1(2)(FX_GAP_LEDGER.md): 「突進という動作を持つ全員」へ横展開(掟「同じ動作を持つ全員に」)。
       // 追加: 裏ボス3体(mimir/jormungand/skadi)の 'dash' / ミゲル 'mdash-move' / ウリ 'thrust'(踏み込み突き)/
       // idol 'idol-roll'(離脱ローリング)。既存: トール 'issen-dash'・'tsuki'。
@@ -35929,7 +35933,7 @@ export class PixiScene {
     // ★★突進中はギアを上げる(社長指示2026-09-21「突時は倍速で」)。歩幅を長くするので、
     // **速度3倍 ÷ ギア1.5 = コマ送り2倍**になる。掛かるのは自転車の突進(`charge`)の間だけ。
     const i = enemyWalkFrame(e.id, frames, view.walkDist ?? 0, drawnHeightPx, gate,
-      enemyWalkPlaybackFor(idleTexKey), walkStrideMul(idleTexKey, e.aiPhase === 'charge'));
+      enemyWalkPlaybackFor(idleTexKey), walkStrideMul(idleTexKey, e.aiPhase === 'charge' || !!e.labBait?.charging));
     return i === null ? null : (slices[i] ?? null);
   }
 

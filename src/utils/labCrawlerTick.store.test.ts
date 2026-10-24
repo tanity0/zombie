@@ -163,7 +163,17 @@ describe('runLabCrawlerTick 第2版: 資料を拾った瞬間、前から出て�
     const st0 = useGameStore.getState();
     expect(st0.labEscapeAt).toBeGreaterThan(0);
     // 逃走経路にレベル1の雑魚が1画面1体で並ぶ(社長指示2026-10-20)。休眠・回収されない印つき・原点の手前まで。
-    const route = st0.enemies.filter(e => e.escapeRoute);
+    const route = st0.enemies.filter(e => e.escapeRoute && !e.labBait);
+    // 塊の叩き潰しの登場の生け贄(LAB_CRAWLER §11): レベル2が3体・視界0の休眠・資料とゴールの間。
+    const baits = st0.enemies.filter(e => e.labBait);
+    expect(baits).toHaveLength(3);
+    for (const b of baits) {
+      expect(b.type).toBe('lab-zombie-2');
+      expect(b.dormant).toBe(true);
+      expect(b.aggroRange).toBe(0);
+      expect(b.x + b.width / 2).toBeGreaterThan(-7000);
+      expect(b.x + b.width / 2).toBeLessThan(0);
+    }
     expect(route.length).toBeGreaterThan(5);
     for (const e of route) {
       expect(e.type).toBe('lab-zombie-1');

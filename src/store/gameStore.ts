@@ -166,6 +166,7 @@ import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
 import { evaluateLabLoseSight, LAB_VISION_RANGE, noticeOnHitPatch, HIT_NOTICE_MS, spottedSfxOnWake } from '../utils/labStealth';
+import { labBaitSlots, type LabBaitScene } from '../world/labBait';
 import { labEscapeRouteSlots } from '../utils/labSpawn'; // ステージ2: 資料の後の逃走経路の雑魚
 // distToSegment: M66(§6.26-11)の掃射/三連突進の吐息(回転帯)が毎フレーム自己検出するために使う純関数。
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -6500,6 +6501,8 @@ interface GameState {
   labIdolSide: number;
   /** ステージ2: アイドルを倒した時刻(gameTime・ms)。0=まだ。アイドル方面のBGMをここから絞って止める(社長指示2026-10-24「アイドル倒したらアイドルBGM止めて」)。 */
   labIdolDownAt: number;
+  /** ステージ2: 塊の叩き潰しの登場の進行中の場面(research/LAB_CRAWLER.md §11・utils/labBaitTick)。null=無し。 */
+  labBaitScene: LabBaitScene | null;
   escorts: EscortSoldier[];      // 護衛軍人NPC(4人・東西南北担当)。HPなし・前進&射撃&10秒占拠で解放。
   // PACING_PUZZLE.md §17-14: ウェルカムがあるランで、ウェルカムが終わるまで護衛NPCの名簿を
   // 預けておく置き場(escortsは空のまま=描画もtickも走らない=画面に存在しない)。ウェルカムが
@@ -7842,6 +7845,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   labEscapeBannerPending: false,
   labIdolSide: 0,
   labIdolDownAt: 0,
+  labBaitScene: null,
   escorts: [],
   pendingEscorts: [],
   junDeparture: null,
@@ -14779,6 +14783,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const updatedEnemies = postureUpdatedEnemies.map((enemy): Enemy => {
         // research/LAB_CRAWLER.md §4: ステージ2の変異塊の代理は動かない(位置・箱は labCrawlerTick が毎フレーム塊に合わせる)。
         if (isLabCrawlerProxyType(enemy.type)) return enemy;
+        // 塊の叩き潰しの登場の生け贄が場面の最中: 位置・速さは labBaitTick が書く(AI・押し・ノックバックを通さない・LAB_CRAWLER §11)。
+        if (enemy.labBait?.active) return enemy;
         // 裏ボス4体/天使6体/アイドル(=isHiddenBoss)は updateEnemies の追跡AIから除外。移動/攻撃/
         // 帰巣/再生は専用コントローラ(useGameLoop/angelBossTick/idolTick)が座標を直接書き込む
         // (死神と同じ方式)。v0.25.2895: 早期returnはノックバック適用ブロックの直後(liftUntilの
@@ -20975,8 +20981,20 @@ export const useGameStore = create<GameState>((set, get) => ({
           const e = spawnEnemyAt('lab-zombie-1', c.x - proto.width / 2, c.y - proto.height / 2, state.gameTime);
           return { ...e, escapeRoute: true, dormant: true, aggroRange: LAB_VISION_RANGE, vx: 0, vy: 0 };
         });
+      // 塊の叩き潰しの登場の生け贄(社長 2026-10-24・research/LAB_CRAWLER.md §11): 資料→ゴールを4等分した3点にレベル2を1体ずつ。
+      // 視界0の休眠(台本で動かす)。塊が居る出撃だけ。
+      const goalX = state.returnCircle ? state.returnCircle.x : labEscapeGoalX(state.labIdolSide, pcx);
+      const baitProto = spawnEnemyAt('lab-zombie-2', 0, 0, state.gameTime);
+      const baits = crawlerWillAppear
+        ? labBaitSlots(pcx, goalX, LAB_CORRIDOR_Y_LIMIT_PX, baitProto.height).map((sl, i) => {
+          const c = nudgeToClearLabSpot(sl.cx, sl.cy, baitProto.width, baitProto.height);
+          const e = spawnEnemyAt('lab-zombie-2', c.x - baitProto.width / 2, c.y - baitProto.height / 2, state.gameTime);
+          return { ...e, escapeRoute: true, dormant: true, aggroRange: 0, vx: 0, vy: 0, colorTier: undefined, labBait: { k: i + 1 } };
+        })
+        : [];
+      const added = [...escapeEnemies, ...baits];
       return {
-        ...(escapeEnemies.length ? { enemies: [...state.enemies, ...escapeEnemies] } : {}),
+        ...(added.length ? { enemies: [...state.enemies, ...added] } : {}),
         labEscapeAt: Math.max(1, state.gameTime),
         // ゴール=武器商人の手前(重ならない)・資料の側(社長指示2026-10-20「ゴールは武器商人の手前(重ならない)で」)。
         ...(state.returnCircle ? {} : { returnCircle: { x: labEscapeGoalX(state.labIdolSide, pcx), y: 0, radius: RETURN_CIRCLE_RADIUS, dwellMs: 0 } }),
@@ -23370,6 +23388,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // アイドル側には雑魚を置かない・湧かせない(書類の見張り3体はもともと書類=反対側にしか置かれない)。塊を置かない出撃は従来どおり。
         labIdolSide: labIdol && !vsEntryOfRun() && !isPracticeRun() ? Math.sign(labIdol.x) : 0,
         labIdolDownAt: 0,
+        labBaitScene: null,
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
         // §17-14: ウェルカムがあるランはescortsを空で始める(pendingEscortsへ預けてある。
         // useGameLoop.tsがウェルカム終了の瞬間にescortsへ移す=出陣)。
