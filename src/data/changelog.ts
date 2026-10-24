@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5205', items: [
+    '作戦室の地図が新しい絵になった',
+  ] },
   { version: '0.25.5204', items: [
     'EXステージの舞台をステージ6と同じ「旧市街地・洋館」に改めた。作戦地域の一覧と任務説明に、洋館の景色が出る',
   ] },

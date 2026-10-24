@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5205 — 作戦室の地図の絵を差し替え【2026-10-24 22:51 JST】
+- 社長支給「地図の絵を入れ替え」(1816×866=旧原画と同寸法・同じ構図)。原画は art-masters/maps/operations-map-parallel-archipelago-v2.png として足し(v1 は残す)、配信用の public/backgrounds/ops-map-archipelago.webp(1280×610)を v2 から作り直した。場所の割合(OPS_MAP_PLACES)は構図が同じなのでそのまま。assets:ledger 更新・assets:check OK。
+- 検証: スマホ縦(430×932)と PC(1280×720)で作戦室を撮り、新しい地図と NEXT の印(洞窟地帯=南西)が出ることを確認。
+
 ## v0.25.5204 — EXステージの名前を「洋館」へ・サムネイルを洋館の実画面に【2026-10-24 22:50 JST】
 - 社長指示「EXステージの名前は洋館跡地ではない。6と同じ洋館だわ」「このサムネイルは洋館から実際に撮ってきて」。
 - campaign.ts の stage-ex1: name 洋館跡地→古い洋館(ステージ6と同じ)・locationTitle 旧市街地・洋館跡地→旧市街地・洋館・概要/出撃説明/ブリーフィングの「洋館跡地で」→「洋館で」。exEnding.ts の「旧市街地の洋館跡地において」→「旧市街地の洋館において」。コメント(opsMapPlaces・welcomeScript・audioManager)も合わせた。storyCanon.test・opsMapPlaces.test の期待値を更新(data 356件通過)。更新情報の過去の項目は履歴なので触らない。
