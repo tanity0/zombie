@@ -1,0 +1,92 @@
+{
+  "runs": [
+    {
+      "run": 1,
+      "survivedSec": 17.901,
+      "minHp": 34,
+      "maxMobsNearGhost": 2,
+      "tally": {
+        "contact:ボス型": 3
+      },
+      "byFull": {
+        "contact:mimir": 3
+      },
+      "ghostdmgLines": [
+        "[GHOSTDMG] 12.9s contact:mimir dmg=38 hp→72",
+        "[GHOSTDMG] 13.9s contact:mimir dmg=38 hp→34",
+        "[GHOSTDMG] 17.9s contact:mimir dmg=38 hp→-4"
+      ],
+      "ghostLog": [
+        "[GHOST] 0s ghostHP=none 敵数=0 守護霊周辺の雑魚=0 ボス=- イベント=-",
+        "[GHOST] 0s ghostHP=none 敵数=0 守護霊周辺の雑魚=0 ボス=- イベント=-",
+        "[GHOST] 0s ghostHP=none 敵数=0 守護霊周辺の雑魚=0 ボス=- イベント=-",
+        "[GHOST] 0s ghostHP=none 敵数=0 守護霊周辺の雑魚=0 ボス=- イベント=-",
+        "[GHOST] 0s ghostHP=110 敵数=1 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 0s ghostHP=110 敵数=1 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 0s ghostHP=110 敵数=1 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 1s ghostHP=110 敵数=1 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 2s ghostHP=110 敵数=1 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 3s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 4s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 5s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 6s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 7s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 8s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 9s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 10s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 11s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 12s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 13s ghostHP=72 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 14s ghostHP=72 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 15s ghostHP=34 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 16s ghostHP=34 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 17s ghostHP=34 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 18s ghostHP=none 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-"
+      ],
+      "errors": []
+    },
+    {
+      "run": 2,
+      "survivedSec": 15.546,
+      "minHp": 34,
+      "maxMobsNearGhost": 1,
+      "tally": {
+        "contact:ボス型": 3
+      },
+      "byFull": {
+        "contact:mimir": 3
+      },
+      "ghostdmgLines": [
+        "[GHOSTDMG] 13.6s contact:mimir dmg=38 hp→72",
+        "[GHOSTDMG] 14.6s contact:mimir dmg=38 hp→34",
+        "[GHOSTDMG] 15.6s contact:mimir dmg=38 hp→-4"
+      ],
+      "ghostLog": [
+        "[GHOST] 0s ghostHP=none 敵数=0 守護霊周辺の雑魚=0 ボス=- イベント=-",
+        "[GHOST] 0s ghostHP=none 敵数=0 守護霊周辺の雑魚=0 ボス=- イベント=-",
+        "[GHOST] 0s ghostHP=none 敵数=0 守護霊周辺の雑魚=0 ボス=- イベント=-",
+        "[GHOST] 0s ghostHP=none 敵数=0 守護霊周辺の雑魚=0 ボス=- イベント=-",
+        "[GHOST] 0s ghostHP=110 敵数=1 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 0s ghostHP=110 敵数=1 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 0s ghostHP=110 敵数=1 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 1s ghostHP=110 敵数=1 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 2s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 3s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 4s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 5s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 6s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 7s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 8s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 9s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 10s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 11s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 12s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 13s ghostHP=110 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 14s ghostHP=72 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 15s ghostHP=34 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-",
+        "[GHOST] 16s ghostHP=none 敵数=2 守護霊周辺の雑魚=0 ボス=mimir イベント=-"
+      ],
+      "errors": []
+    }
+  ]
+}

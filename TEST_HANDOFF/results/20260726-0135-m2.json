@@ -1,0 +1,1591 @@
+{
+  "stage": "stage-2",
+  "renderer": "canvas",
+  "targetMs": 480000,
+  "smokeFallback": false,
+  "wallSec": 482,
+  "gameTimeMs": 481989,
+  "peakEnemies": 7,
+  "seenByType": {
+    "lab-zombie-3": 1,
+    "lab-zombie-2": 1,
+    "lab-zombie-1": 7
+  },
+  "banners": [],
+  "ammoSnapshot": [
+    {
+      "id": "lab-document",
+      "type": "lab-clear-item",
+      "x": -6091,
+      "y": -36
+    },
+    {
+      "id": "lab-phill-0",
+      "type": "ammo-phill",
+      "x": -4633,
+      "y": -127
+    },
+    {
+      "id": "lab-phill-1",
+      "type": "ammo-phill",
+      "x": -2491,
+      "y": -52
+    }
+  ],
+  "botReport": null,
+  "errors": [],
+  "samples": [
+    {
+      "wallSec": 0,
+      "gtSec": 2,
+      "x": -165,
+      "y": 17,
+      "hp": 110,
+      "lv": 1,
+      "kills": 0,
+      "en": 3,
+      "dorm": 3,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 1
+      }
+    },
+    {
+      "wallSec": 5,
+      "gtSec": 7,
+      "x": -614,
+      "y": -158,
+      "hp": 110,
+      "lv": 1,
+      "kills": 0,
+      "en": 4,
+      "dorm": 3,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 2
+      }
+    },
+    {
+      "wallSec": 10,
+      "gtSec": 12,
+      "x": -665,
+      "y": -182,
+      "hp": 110,
+      "lv": 1,
+      "kills": 0,
+      "en": 5,
+      "dorm": 4,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 3
+      }
+    },
+    {
+      "wallSec": 15,
+      "gtSec": 16,
+      "x": -701,
+      "y": -210,
+      "hp": 90,
+      "lv": 1,
+      "kills": 1,
+      "en": 5,
+      "dorm": 5,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 3
+      }
+    },
+    {
+      "wallSec": 20,
+      "gtSec": 21,
+      "x": -1071,
+      "y": -62,
+      "hp": 90,
+      "lv": 1,
+      "kills": 2,
+      "en": 5,
+      "dorm": 4,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 3
+      }
+    },
+    {
+      "wallSec": 25,
+      "gtSec": 26,
+      "x": -1085,
+      "y": -89,
+      "hp": 90,
+      "lv": 1,
+      "kills": 2,
+      "en": 6,
+      "dorm": 5,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 30,
+      "gtSec": 31,
+      "x": -1101,
+      "y": -101,
+      "hp": 90,
+      "lv": 1,
+      "kills": 2,
+      "en": 7,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 5
+      }
+    },
+    {
+      "wallSec": 35,
+      "gtSec": 36,
+      "x": -1151,
+      "y": -98,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 40,
+      "gtSec": 41,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 45,
+      "gtSec": 46,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 50,
+      "gtSec": 51,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 55,
+      "gtSec": 56,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 60,
+      "gtSec": 61,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 65,
+      "gtSec": 66,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 70,
+      "gtSec": 71,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 75,
+      "gtSec": 76,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 80,
+      "gtSec": 81,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 85,
+      "gtSec": 86,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 90,
+      "gtSec": 91,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 95,
+      "gtSec": 96,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 100,
+      "gtSec": 101,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 105,
+      "gtSec": 106,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 110,
+      "gtSec": 111,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 115,
+      "gtSec": 116,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 120,
+      "gtSec": 121,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 125,
+      "gtSec": 126,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 130,
+      "gtSec": 131,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 135,
+      "gtSec": 136,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 140,
+      "gtSec": 141,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 145,
+      "gtSec": 146,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 150,
+      "gtSec": 151,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 155,
+      "gtSec": 156,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 160,
+      "gtSec": 161,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 165,
+      "gtSec": 166,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 171,
+      "gtSec": 171,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 176,
+      "gtSec": 176,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 181,
+      "gtSec": 181,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 186,
+      "gtSec": 186,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 191,
+      "gtSec": 191,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 196,
+      "gtSec": 196,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 201,
+      "gtSec": 201,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 206,
+      "gtSec": 206,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 211,
+      "gtSec": 211,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 216,
+      "gtSec": 216,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 221,
+      "gtSec": 221,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 226,
+      "gtSec": 226,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 231,
+      "gtSec": 231,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 236,
+      "gtSec": 236,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 241,
+      "gtSec": 241,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 246,
+      "gtSec": 246,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 251,
+      "gtSec": 251,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 256,
+      "gtSec": 256,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 261,
+      "gtSec": 261,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 266,
+      "gtSec": 266,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 271,
+      "gtSec": 271,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 276,
+      "gtSec": 276,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 281,
+      "gtSec": 281,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 286,
+      "gtSec": 286,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 291,
+      "gtSec": 291,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 296,
+      "gtSec": 296,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 301,
+      "gtSec": 301,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 306,
+      "gtSec": 306,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 311,
+      "gtSec": 311,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 316,
+      "gtSec": 316,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 321,
+      "gtSec": 321,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 326,
+      "gtSec": 327,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 331,
+      "gtSec": 332,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 336,
+      "gtSec": 337,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 341,
+      "gtSec": 342,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 346,
+      "gtSec": 347,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 351,
+      "gtSec": 352,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 356,
+      "gtSec": 357,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 361,
+      "gtSec": 362,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 366,
+      "gtSec": 367,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 371,
+      "gtSec": 372,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 376,
+      "gtSec": 377,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 381,
+      "gtSec": 382,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 386,
+      "gtSec": 387,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 391,
+      "gtSec": 392,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 396,
+      "gtSec": 397,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 401,
+      "gtSec": 402,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 406,
+      "gtSec": 407,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 411,
+      "gtSec": 412,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 416,
+      "gtSec": 417,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 421,
+      "gtSec": 422,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 426,
+      "gtSec": 427,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 431,
+      "gtSec": 432,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 436,
+      "gtSec": 437,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 441,
+      "gtSec": 442,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 446,
+      "gtSec": 447,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 451,
+      "gtSec": 452,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 456,
+      "gtSec": 457,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 461,
+      "gtSec": 462,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 466,
+      "gtSec": 467,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 471,
+      "gtSec": 472,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 476,
+      "gtSec": 477,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    },
+    {
+      "wallSec": 481,
+      "gtSec": 482,
+      "x": -1189,
+      "y": -78,
+      "hp": 90,
+      "lv": 1,
+      "kills": 3,
+      "en": 6,
+      "dorm": 6,
+      "counts": {
+        "lab-zombie-3": 1,
+        "lab-zombie-2": 1,
+        "lab-zombie-1": 4
+      }
+    }
+  ]
+}

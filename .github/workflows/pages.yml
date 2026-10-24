@@ -2,11 +2,19 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main, claude/chat-context-continuity-saxlH]
+    # Actions ストレージ対策(2026-10-15・社長報告「アクションストレージ 100%」): 文書だけの push では配信物が変わらないので
+    # デプロイしない(1回のデプロイ=約400MBのアーティファクトを積む)。
+    paths-ignore:
+      - '**.md'
+      - 'research/**'
+      - 'TEST_HANDOFF/**'
+      - 'archive/**'
 
 permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write # デプロイ後にアーティファクトを消すため(下の cleanup)
 
 # Allow only one concurrent deployment; queue new pushes and don't cancel
 # in-progress runs (so a fresh commit while a deploy is mid-flight just waits).
@@ -14,16 +22,26 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# A/Bレース(v0.25.1369)の合成デプロイ(旧線=/zombie/ + 新線=/zombie/v2/)は 2026-10-15 に単一ビルドへ戻した
+# (社長裁定・新線 claude/direction-shift は 2026-07-05 で更新停止。Actions ストレージ対策=アーティファクトを約400MB→約200MBに半減)。
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      artifact_id: ${{ steps.pages-artifact.outputs.artifact_id }}
+    env:
+      # 公開URLのみ。Cloudflareの認証情報はGitHubへ渡さない。
+      GHOST_API_BASE: https://zombie-coop-signaling.tanity0-zombie.workers.dev
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: claude/chat-context-continuity-saxlH
       - uses: actions/setup-node@v4
         with: { node-version: 18 }
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
+      - id: pages-artifact
+        uses: actions/upload-pages-artifact@v3
         with: { path: ./dist }
 
   deploy:
@@ -35,3 +53,15 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+      # Actions ストレージ対策(2026-10-15): Pages のアーティファクト(約400MB)はデプロイが済めば用無しなのに、
+      # 既定の保持1日のあいだ課金対象のストレージに残る(1日20回 push すると 8GB 積まれる=無料枠 0.5GB/月を即超過)。
+      # デプロイの成否に関わらず、その場で消す。
+      - name: Delete pages artifact
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const id = Number('${{ needs.build.outputs.artifact_id }}');
+            if (!id) { core.info('no artifact id'); return; }
+            await github.rest.actions.deleteArtifact({ owner: context.repo.owner, repo: context.repo.repo, artifact_id: id });
+            core.info(`deleted artifact ${id}`);

@@ -1,0 +1,969 @@
+{
+  "generatedAt": "2026-08-04T06:09:29.181Z",
+  "appVersion": "0.25.2841",
+  "commit": "7cc84c149aa01f4593d111cf3524d9078c1335f5",
+  "headless": false,
+  "browserChannel": "chrome",
+  "baseUrl": "http://127.0.0.1:5199/zombie/",
+  "results": [
+    {
+      "case": "gate-miguel",
+      "label": "ゲートボス ミゲル",
+      "run": 1,
+      "outcome": "party-defeated",
+      "url": "http://127.0.0.1:5199/zombie/?smoke=1&bot=standard&botskill=master&stage=stage-1&gateboss=1&autotut=1&retry=1&ghost=1&ghostmode=top&ghostlog=1",
+      "engagementRealSec": 18.537,
+      "engagementGameSec": 16.74959999999999,
+      "navigationRealSec": 34.839,
+      "bossMaxHp": 8000,
+      "guardian": {
+        "name": "ばんび",
+        "health": 120,
+        "maxHealth": 120,
+        "classId": "rogue",
+        "level": 20,
+        "build": {
+          "maxHealth": 120,
+          "speed": 87,
+          "level": 20,
+          "gunKeys": [
+            "shotgun-t3"
+          ],
+          "activeGunKey": "shotgun-t3",
+          "meleeKey": "hatchet-t2",
+          "skills": [
+            "attack-shooter",
+            "ghost-shooter"
+          ],
+          "skillLevels": {
+            "attack-shooter": 2,
+            "ghost-shooter": 3
+          },
+          "equipment": {
+            "body": "body-mobility-4",
+            "arms": "arms-firepower-5",
+            "accessory": "accessory-crit-4"
+          },
+          "equipBonus": {
+            "moveSpeedMult": 1.35,
+            "killGraceMult": 1.15,
+            "damageMult": 2,
+            "fireRateMult": 1.1,
+            "reloadMult": 1,
+            "critBonus": 0.12,
+            "ammoDropBonus": 0,
+            "scrapBonus": 0.3
+          },
+          "critChance": 0,
+          "magBonus": 0,
+          "reloadMult": 1,
+          "subWeapons": [
+            "striker-hunting",
+            "flare-gun"
+          ],
+          "subWeaponLevels": {
+            "striker-hunting": 3,
+            "flare-gun": 3
+          },
+          "characterClass": "rogue"
+        }
+      },
+      "ghostSource": "top",
+      "ghostRecordId": null,
+      "remoteGuardian": false,
+      "teleports": 0,
+      "finalState": {
+        "gameTime": 16832.999999999993,
+        "boss": {
+          "id": "enemy-miguel-1785823450376-yxi7x",
+          "type": "miguel",
+          "health": 7301.6000000000095,
+          "maxHealth": 8000,
+          "bossState": "chase",
+          "dormant": false,
+          "distance": 70.8884107212706,
+          "boosted": true
+        },
+        "ghost": {
+          "name": "ばんび",
+          "health": 100,
+          "maxHealth": 120,
+          "classId": "rogue",
+          "level": 20,
+          "build": {
+            "maxHealth": 120,
+            "speed": 87,
+            "level": 20,
+            "gunKeys": [
+              "shotgun-t3"
+            ],
+            "activeGunKey": "shotgun-t3",
+            "meleeKey": "hatchet-t2",
+            "skills": [
+              "attack-shooter",
+              "ghost-shooter"
+            ],
+            "skillLevels": {
+              "attack-shooter": 2,
+              "ghost-shooter": 3
+            },
+            "equipment": {
+              "body": "body-mobility-4",
+              "arms": "arms-firepower-5",
+              "accessory": "accessory-crit-4"
+            },
+            "equipBonus": {
+              "moveSpeedMult": 1.35,
+              "killGraceMult": 1.15,
+              "damageMult": 2,
+              "fireRateMult": 1.1,
+              "reloadMult": 1,
+              "critBonus": 0.12,
+              "ammoDropBonus": 0,
+              "scrapBonus": 0.3
+            },
+            "critChance": 0,
+            "magBonus": 0,
+            "reloadMult": 1,
+            "subWeapons": [
+              "striker-hunting",
+              "flare-gun"
+            ],
+            "subWeaponLevels": {
+              "striker-hunting": 3,
+              "flare-gun": 3
+            },
+            "characterClass": "rogue"
+          }
+        },
+        "ghostSource": "top",
+        "ghostRecordId": null,
+        "player": {
+          "health": 0,
+          "maxHealth": 110,
+          "level": 1
+        },
+        "playerDead": true,
+        "gameOver": false,
+        "gameWon": false,
+        "corpseType": null,
+        "teleported": false
+      },
+      "fps": {
+        "frames": 524,
+        "elapsedMs": 21012.10000000149,
+        "average": 24.938011907423,
+        "medianFrameMs": 33.400000000001455,
+        "p95FrameMs": 66.70000000000073,
+        "p99FrameMs": 150.1999999999971
+      },
+      "environment": {
+        "visibilityState": "visible",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "hardwareConcurrency": 8,
+        "deviceMemory": 16,
+        "gpuVendor": "Google Inc. (AMD)",
+        "gpuRenderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x000015D8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "dpr": 2.0000000298023224,
+        "viewport": {
+          "width": 390,
+          "height": 844
+        }
+      },
+      "ghostPickResponses": [
+        {
+          "status": 200,
+          "url": "https://zombie-coop-signaling.tanity0-zombie.workers.dev/ghost/pick?slots=giantbat-stage-1%2Cmimir%2Cjormungand%2Cskadi%2Cthor%2Cmiguel%2Cjibril%2Crafi%2Curi%2Csuriel%2Cacrasiel%2Cidol&mode=top&anon=cc9f5058-252b-4449-b8e2-55aba4a5e12e",
+          "body": {
+            "epoch": 1,
+            "items": []
+          }
+        }
+      ],
+      "errors": [
+        "console: [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:5738:26)\n    at Object.get (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:6033:37)\n    at PixiScene.bakeSilhouette (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7430:38)\n    at PixiScene.drainSilhouetteQueue (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7294:26)\n    at PixiScene.syncShadowsV9 (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6938:10)\n    at PixiScene.syncShadows (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6785:10)\n    at PixiScene.sync (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:4403:10)\n    at TickerListener.tick [as _fn] (http://127.0.0.1:5199/zombie/src/pixi/PixiStage.tsx:179:17)\n    at TickerListener.emit (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2450:14)\n    at _Ticker2.update (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2831:29)"
+      ]
+    },
+    {
+      "case": "gate-miguel",
+      "label": "ゲートボス ミゲル",
+      "run": 2,
+      "outcome": "party-defeated",
+      "url": "http://127.0.0.1:5199/zombie/?smoke=1&bot=standard&botskill=master&stage=stage-1&gateboss=1&autotut=1&retry=1&ghost=1&ghostmode=top&ghostlog=1",
+      "engagementRealSec": 82.985,
+      "engagementGameSec": 78.76983472691782,
+      "navigationRealSec": 98.209,
+      "bossMaxHp": 8000,
+      "guardian": {
+        "name": "番匠",
+        "health": 290,
+        "maxHealth": 290,
+        "classId": "warrior",
+        "level": 20,
+        "build": {
+          "maxHealth": 290,
+          "speed": 87,
+          "level": 20,
+          "gunKeys": [
+            "handgun-t1"
+          ],
+          "activeGunKey": "handgun-t1",
+          "meleeKey": "tactical-knife-t4",
+          "skills": [
+            "time-keeper",
+            "overclock"
+          ],
+          "skillLevels": {
+            "time-keeper": 3,
+            "overclock": 3
+          },
+          "equipment": {
+            "body": "body-protection-4",
+            "arms": "special-arms",
+            "accessory": "accessory-ammo-5"
+          },
+          "equipBonus": {
+            "moveSpeedMult": 1,
+            "killGraceMult": 1.15,
+            "damageMult": 1.5,
+            "fireRateMult": 1.06,
+            "reloadMult": 0.75,
+            "critBonus": 0,
+            "ammoDropBonus": 0.3,
+            "scrapBonus": 0.4
+          },
+          "critChance": 0,
+          "magBonus": 0,
+          "reloadMult": 1,
+          "subWeapons": [
+            "heavy-grenade",
+            "turret"
+          ],
+          "subWeaponLevels": {
+            "heavy-grenade": 3,
+            "turret": 3
+          },
+          "characterClass": "warrior"
+        }
+      },
+      "ghostSource": "top",
+      "ghostRecordId": null,
+      "remoteGuardian": false,
+      "teleports": 0,
+      "finalState": {
+        "gameTime": 78869.83472691782,
+        "boss": {
+          "id": "enemy-miguel-1785823488227-3zsy5",
+          "type": "miguel",
+          "health": 3387,
+          "maxHealth": 8000,
+          "bossState": "volley-recover",
+          "dormant": false,
+          "distance": 324.41868976678705,
+          "boosted": true
+        },
+        "ghost": {
+          "name": "番匠",
+          "health": 100,
+          "maxHealth": 290,
+          "classId": "warrior",
+          "level": 20,
+          "build": {
+            "maxHealth": 290,
+            "speed": 87,
+            "level": 20,
+            "gunKeys": [
+              "handgun-t1"
+            ],
+            "activeGunKey": "handgun-t1",
+            "meleeKey": "tactical-knife-t4",
+            "skills": [
+              "time-keeper",
+              "overclock"
+            ],
+            "skillLevels": {
+              "time-keeper": 3,
+              "overclock": 3
+            },
+            "equipment": {
+              "body": "body-protection-4",
+              "arms": "special-arms",
+              "accessory": "accessory-ammo-5"
+            },
+            "equipBonus": {
+              "moveSpeedMult": 1,
+              "killGraceMult": 1.15,
+              "damageMult": 1.5,
+              "fireRateMult": 1.06,
+              "reloadMult": 0.75,
+              "critBonus": 0,
+              "ammoDropBonus": 0.3,
+              "scrapBonus": 0.4
+            },
+            "critChance": 0,
+            "magBonus": 0,
+            "reloadMult": 1,
+            "subWeapons": [
+              "heavy-grenade",
+              "turret"
+            ],
+            "subWeaponLevels": {
+              "heavy-grenade": 3,
+              "turret": 3
+            },
+            "characterClass": "warrior"
+          }
+        },
+        "ghostSource": "top",
+        "ghostRecordId": null,
+        "player": {
+          "health": 0,
+          "maxHealth": 110,
+          "level": 1
+        },
+        "playerDead": true,
+        "gameOver": false,
+        "gameWon": false,
+        "corpseType": null,
+        "teleported": false
+      },
+      "fps": {
+        "frames": 2369,
+        "elapsedMs": 85393.89999999851,
+        "average": 27.74202841186597,
+        "medianFrameMs": 33.39999999999418,
+        "p95FrameMs": 50.200000000004366,
+        "p99FrameMs": 66.80000000000291
+      },
+      "environment": {
+        "visibilityState": "visible",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "hardwareConcurrency": 8,
+        "deviceMemory": 16,
+        "gpuVendor": "Google Inc. (AMD)",
+        "gpuRenderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x000015D8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "dpr": 2.0000000298023224,
+        "viewport": {
+          "width": 390,
+          "height": 844
+        }
+      },
+      "ghostPickResponses": [
+        {
+          "status": 200,
+          "url": "https://zombie-coop-signaling.tanity0-zombie.workers.dev/ghost/pick?slots=giantbat-stage-1%2Cmimir%2Cjormungand%2Cskadi%2Cthor%2Cmiguel%2Cjibril%2Crafi%2Curi%2Csuriel%2Cacrasiel%2Cidol&mode=top&anon=206f20d2-c77b-47cb-b91f-ce16d73a4f14",
+          "body": {
+            "epoch": 1,
+            "items": []
+          }
+        }
+      ],
+      "errors": [
+        "console: [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:5738:26)\n    at Object.get (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:6033:37)\n    at PixiScene.bakeSilhouette (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7430:38)\n    at PixiScene.drainSilhouetteQueue (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7294:26)\n    at PixiScene.syncShadowsV9 (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6938:10)\n    at PixiScene.syncShadows (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6785:10)\n    at PixiScene.sync (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:4403:10)\n    at TickerListener.tick [as _fn] (http://127.0.0.1:5199/zombie/src/pixi/PixiStage.tsx:179:17)\n    at TickerListener.emit (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2450:14)\n    at _Ticker2.update (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2831:29)"
+      ]
+    },
+    {
+      "case": "gate-miguel",
+      "label": "ゲートボス ミゲル",
+      "run": 3,
+      "outcome": "party-defeated",
+      "url": "http://127.0.0.1:5199/zombie/?smoke=1&bot=standard&botskill=master&stage=stage-1&gateboss=1&autotut=1&retry=1&ghost=1&ghostmode=top&ghostlog=1",
+      "engagementRealSec": 58.724,
+      "engagementGameSec": 55.0703281675976,
+      "navigationRealSec": 74.933,
+      "bossMaxHp": 5000,
+      "guardian": {
+        "name": "早瀬",
+        "health": 120,
+        "maxHealth": 120,
+        "classId": "rogue",
+        "level": 20,
+        "build": {
+          "maxHealth": 120,
+          "speed": 87,
+          "level": 20,
+          "gunKeys": [
+            "handgun-t3"
+          ],
+          "activeGunKey": "handgun-t3",
+          "meleeKey": "machete-t3",
+          "skills": [
+            "attack-shooter",
+            "last-magazine"
+          ],
+          "skillLevels": {
+            "attack-shooter": 3,
+            "last-magazine": 3
+          },
+          "equipment": {
+            "body": "body-mobility-5",
+            "arms": "arms-handling-5",
+            "accessory": "accessory-crit-5"
+          },
+          "equipBonus": {
+            "moveSpeedMult": 1.4,
+            "killGraceMult": 1.2,
+            "damageMult": 1,
+            "fireRateMult": 1.1,
+            "reloadMult": 0.5,
+            "critBonus": 0.15,
+            "ammoDropBonus": 0,
+            "scrapBonus": 0.4
+          },
+          "critChance": 0,
+          "magBonus": 0,
+          "reloadMult": 1,
+          "subWeapons": [
+            "striker-hunting",
+            "shadow-clone"
+          ],
+          "subWeaponLevels": {
+            "striker-hunting": 3,
+            "shadow-clone": 3
+          },
+          "characterClass": "rogue"
+        }
+      },
+      "ghostSource": "top",
+      "ghostRecordId": null,
+      "remoteGuardian": false,
+      "teleports": 0,
+      "finalState": {
+        "gameTime": 55170.3281675976,
+        "boss": {
+          "id": "enemy-miguel-1785823591092-pnq5o",
+          "type": "miguel",
+          "health": 6796.6999999999825,
+          "maxHealth": 8000,
+          "bossState": "harai",
+          "dormant": false,
+          "distance": 213.4782719640683,
+          "boosted": true
+        },
+        "ghost": null,
+        "ghostSource": "top",
+        "ghostRecordId": null,
+        "player": {
+          "health": 0,
+          "maxHealth": 110,
+          "level": 1
+        },
+        "playerDead": true,
+        "gameOver": false,
+        "gameWon": false,
+        "corpseType": null,
+        "teleported": false
+      },
+      "fps": {
+        "frames": 1744,
+        "elapsedMs": 61173.10000000149,
+        "average": 28.50926305843512,
+        "medianFrameMs": 33.39999999999418,
+        "p95FrameMs": 50.200000000004366,
+        "p99FrameMs": 66.90000000000146
+      },
+      "environment": {
+        "visibilityState": "visible",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "hardwareConcurrency": 8,
+        "deviceMemory": 16,
+        "gpuVendor": "Google Inc. (AMD)",
+        "gpuRenderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x000015D8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "dpr": 2.0000000298023224,
+        "viewport": {
+          "width": 390,
+          "height": 844
+        }
+      },
+      "ghostPickResponses": [
+        {
+          "status": 200,
+          "url": "https://zombie-coop-signaling.tanity0-zombie.workers.dev/ghost/pick?slots=giantbat-stage-1%2Cmimir%2Cjormungand%2Cskadi%2Cthor%2Cmiguel%2Cjibril%2Crafi%2Curi%2Csuriel%2Cacrasiel%2Cidol&mode=top&anon=6adb553d-4ebe-426d-b06a-f1a3acef8c13",
+          "body": {
+            "epoch": 1,
+            "items": []
+          }
+        }
+      ],
+      "errors": [
+        "console: [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:5738:26)\n    at Object.get (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:6033:37)\n    at PixiScene.bakeSilhouette (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7430:38)\n    at PixiScene.drainSilhouetteQueue (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7294:26)\n    at PixiScene.syncShadowsV9 (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6938:10)\n    at PixiScene.syncShadows (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6785:10)\n    at PixiScene.sync (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:4403:10)\n    at TickerListener.tick [as _fn] (http://127.0.0.1:5199/zombie/src/pixi/PixiStage.tsx:179:17)\n    at TickerListener.emit (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2450:14)\n    at _Ticker2.update (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2831:29)"
+      ]
+    },
+    {
+      "case": "hidden-mimir",
+      "label": "裏ボス ミーミル",
+      "run": 1,
+      "outcome": "party-defeated",
+      "url": "http://127.0.0.1:5199/zombie/?smoke=1&bot=standard&botskill=master&stage=stage-1&bossnow=1&autotut=1&retry=1&ghost=1&ghostmode=top&ghostlog=1",
+      "engagementRealSec": 28.146,
+      "engagementGameSec": 22.62751549660591,
+      "navigationRealSec": 39.2,
+      "bossMaxHp": 14000,
+      "guardian": {
+        "name": "無銘",
+        "health": 290,
+        "maxHealth": 290,
+        "classId": "necromancer",
+        "level": 20,
+        "build": {
+          "maxHealth": 290,
+          "speed": 87,
+          "level": 20,
+          "gunKeys": [
+            "handgun-t1"
+          ],
+          "activeGunKey": "handgun-t1",
+          "meleeKey": "anti-mutant-knife-t5",
+          "skills": [
+            "knife-master",
+            "counter-master"
+          ],
+          "skillLevels": {
+            "knife-master": 3,
+            "counter-master": 3
+          },
+          "equipment": {
+            "body": "body-protection-4",
+            "arms": "arms-firepower-5",
+            "accessory": "accessory-crit-5"
+          },
+          "equipBonus": {
+            "moveSpeedMult": 1,
+            "killGraceMult": 1.15,
+            "damageMult": 2,
+            "fireRateMult": 1.1,
+            "reloadMult": 1,
+            "critBonus": 0.15,
+            "ammoDropBonus": 0,
+            "scrapBonus": 0.4
+          },
+          "critChance": 0,
+          "magBonus": 0,
+          "reloadMult": 1,
+          "subWeapons": [
+            "striker-quick-mag",
+            "murasame"
+          ],
+          "subWeaponLevels": {
+            "striker-quick-mag": 3,
+            "murasame": 3
+          },
+          "characterClass": "necromancer"
+        }
+      },
+      "ghostSource": "top",
+      "ghostRecordId": null,
+      "remoteGuardian": false,
+      "teleports": 0,
+      "finalState": {
+        "gameTime": 22677.51549660591,
+        "boss": {
+          "id": "enemy-mimir-1785823664480-qo5xn",
+          "type": "mimir",
+          "health": 20126,
+          "maxHealth": 22400,
+          "bossState": "chase",
+          "dormant": false,
+          "distance": 117.14788174348607,
+          "boosted": true
+        },
+        "ghost": null,
+        "ghostSource": "top",
+        "ghostRecordId": null,
+        "player": {
+          "health": 0,
+          "maxHealth": 110,
+          "level": 1
+        },
+        "playerDead": true,
+        "gameOver": false,
+        "gameWon": false,
+        "corpseType": null,
+        "teleported": false
+      },
+      "fps": {
+        "frames": 1100,
+        "elapsedMs": 30636.79999999702,
+        "average": 35.90453311051112,
+        "medianFrameMs": 33.299999999995634,
+        "p95FrameMs": 33.700000000004366,
+        "p99FrameMs": 83.29999999999927
+      },
+      "environment": {
+        "visibilityState": "visible",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "hardwareConcurrency": 8,
+        "deviceMemory": 16,
+        "gpuVendor": "Google Inc. (AMD)",
+        "gpuRenderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x000015D8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "dpr": 2.0000000298023224,
+        "viewport": {
+          "width": 390,
+          "height": 844
+        }
+      },
+      "ghostPickResponses": [
+        {
+          "status": 200,
+          "url": "https://zombie-coop-signaling.tanity0-zombie.workers.dev/ghost/pick?slots=giantbat-stage-1%2Cmimir%2Cjormungand%2Cskadi%2Cthor%2Cmiguel%2Cjibril%2Crafi%2Curi%2Csuriel%2Cacrasiel%2Cidol&mode=top&anon=acd5f7c4-219f-4e52-b42a-fb7cf7af9af6",
+          "body": {
+            "epoch": 1,
+            "items": []
+          }
+        }
+      ],
+      "errors": [
+        "console: [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:5738:26)\n    at Object.get (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:6033:37)\n    at PixiScene.bakeSilhouette (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7430:38)\n    at PixiScene.drainSilhouetteQueue (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7294:26)\n    at PixiScene.syncShadowsV9 (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6938:10)\n    at PixiScene.syncShadows (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6785:10)\n    at PixiScene.sync (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:4403:10)\n    at TickerListener.tick [as _fn] (http://127.0.0.1:5199/zombie/src/pixi/PixiStage.tsx:179:17)\n    at TickerListener.emit (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2450:14)\n    at _Ticker2.update (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2831:29)"
+      ]
+    },
+    {
+      "case": "hidden-mimir",
+      "label": "裏ボス ミーミル",
+      "run": 2,
+      "outcome": "party-defeated",
+      "url": "http://127.0.0.1:5199/zombie/?smoke=1&bot=standard&botskill=master&stage=stage-1&bossnow=1&autotut=1&retry=1&ghost=1&ghostmode=top&ghostlog=1",
+      "engagementRealSec": 24.253,
+      "engagementGameSec": 20.69625045499677,
+      "navigationRealSec": 35.356,
+      "bossMaxHp": 14000,
+      "guardian": {
+        "name": "あかね",
+        "health": 240,
+        "maxHealth": 240,
+        "classId": "necromancer",
+        "level": 20,
+        "build": {
+          "maxHealth": 240,
+          "speed": 87,
+          "level": 20,
+          "gunKeys": [
+            "shotgun-t2"
+          ],
+          "activeGunKey": "shotgun-t2",
+          "meleeKey": "machete-t3",
+          "skills": [
+            "time-keeper",
+            "knight"
+          ],
+          "skillLevels": {
+            "time-keeper": 3,
+            "knight": 3
+          },
+          "equipment": {
+            "body": "special-body",
+            "arms": "arms-handling-5",
+            "accessory": "accessory-ammo-5"
+          },
+          "equipBonus": {
+            "moveSpeedMult": 1.25,
+            "killGraceMult": 1.1,
+            "damageMult": 1,
+            "fireRateMult": 1.1,
+            "reloadMult": 0.5,
+            "critBonus": 0,
+            "ammoDropBonus": 0.3,
+            "scrapBonus": 0.4
+          },
+          "critChance": 0,
+          "magBonus": 0,
+          "reloadMult": 1,
+          "subWeapons": [
+            "striker-quick-mag",
+            "shield"
+          ],
+          "subWeaponLevels": {
+            "striker-quick-mag": 3,
+            "shield": 3
+          },
+          "characterClass": "necromancer"
+        }
+      },
+      "ghostSource": "top",
+      "ghostRecordId": null,
+      "remoteGuardian": false,
+      "teleports": 0,
+      "finalState": {
+        "gameTime": 20712.950454996768,
+        "boss": {
+          "id": "enemy-mimir-1785823707301-5cqy7",
+          "type": "mimir",
+          "health": 20773,
+          "maxHealth": 22400,
+          "bossState": "chase",
+          "dormant": false,
+          "distance": 117.18830629924621,
+          "boosted": true
+        },
+        "ghost": {
+          "name": "あかね",
+          "health": 240,
+          "maxHealth": 240,
+          "classId": "necromancer",
+          "level": 20,
+          "build": {
+            "maxHealth": 240,
+            "speed": 87,
+            "level": 20,
+            "gunKeys": [
+              "shotgun-t2"
+            ],
+            "activeGunKey": "shotgun-t2",
+            "meleeKey": "machete-t3",
+            "skills": [
+              "time-keeper",
+              "knight"
+            ],
+            "skillLevels": {
+              "time-keeper": 3,
+              "knight": 3
+            },
+            "equipment": {
+              "body": "special-body",
+              "arms": "arms-handling-5",
+              "accessory": "accessory-ammo-5"
+            },
+            "equipBonus": {
+              "moveSpeedMult": 1.25,
+              "killGraceMult": 1.1,
+              "damageMult": 1,
+              "fireRateMult": 1.1,
+              "reloadMult": 0.5,
+              "critBonus": 0,
+              "ammoDropBonus": 0.3,
+              "scrapBonus": 0.4
+            },
+            "critChance": 0,
+            "magBonus": 0,
+            "reloadMult": 1,
+            "subWeapons": [
+              "striker-quick-mag",
+              "shield"
+            ],
+            "subWeaponLevels": {
+              "striker-quick-mag": 3,
+              "shield": 3
+            },
+            "characterClass": "necromancer"
+          }
+        },
+        "ghostSource": "top",
+        "ghostRecordId": null,
+        "player": {
+          "health": 0,
+          "maxHealth": 110,
+          "level": 1
+        },
+        "playerDead": true,
+        "gameOver": false,
+        "gameWon": false,
+        "corpseType": null,
+        "teleported": false
+      },
+      "fps": {
+        "frames": 915,
+        "elapsedMs": 26764.5,
+        "average": 34.18707616432214,
+        "medianFrameMs": 33.29999999999927,
+        "p95FrameMs": 50,
+        "p99FrameMs": 83.39999999999782
+      },
+      "environment": {
+        "visibilityState": "visible",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "hardwareConcurrency": 8,
+        "deviceMemory": 16,
+        "gpuVendor": "Google Inc. (AMD)",
+        "gpuRenderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x000015D8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "dpr": 2.0000000298023224,
+        "viewport": {
+          "width": 390,
+          "height": 844
+        }
+      },
+      "ghostPickResponses": [
+        {
+          "status": 200,
+          "url": "https://zombie-coop-signaling.tanity0-zombie.workers.dev/ghost/pick?slots=giantbat-stage-1%2Cmimir%2Cjormungand%2Cskadi%2Cthor%2Cmiguel%2Cjibril%2Crafi%2Curi%2Csuriel%2Cacrasiel%2Cidol&mode=top&anon=b9ddaebd-f7f2-4495-8ac7-374cdfe27235",
+          "body": {
+            "epoch": 1,
+            "items": []
+          }
+        }
+      ],
+      "errors": [
+        "console: [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:5738:26)\n    at Object.get (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:6033:37)\n    at PixiScene.bakeSilhouette (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7430:38)\n    at PixiScene.drainSilhouetteQueue (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7294:26)\n    at PixiScene.syncShadowsV9 (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6938:10)\n    at PixiScene.syncShadows (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6785:10)\n    at PixiScene.sync (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:4403:10)\n    at TickerListener.tick [as _fn] (http://127.0.0.1:5199/zombie/src/pixi/PixiStage.tsx:179:17)\n    at TickerListener.emit (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2450:14)\n    at _Ticker2.update (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2831:29)"
+      ]
+    },
+    {
+      "case": "hidden-mimir",
+      "label": "裏ボス ミーミル",
+      "run": 3,
+      "outcome": "killed",
+      "url": "http://127.0.0.1:5199/zombie/?smoke=1&bot=standard&botskill=master&stage=stage-1&bossnow=1&autotut=1&retry=1&ghost=1&ghostmode=top&ghostlog=1",
+      "engagementRealSec": 21.014,
+      "engagementGameSec": 17.048468038396503,
+      "navigationRealSec": 31.985,
+      "bossMaxHp": 14000,
+      "guardian": {
+        "name": "フィル",
+        "health": 120,
+        "maxHealth": 120,
+        "classId": "rogue",
+        "level": 20,
+        "build": {
+          "maxHealth": 120,
+          "speed": 87,
+          "level": 20,
+          "gunKeys": [
+            "phill-revolver"
+          ],
+          "activeGunKey": "phill-revolver",
+          "meleeKey": "machete-t3",
+          "skills": [
+            "crit-up",
+            "attack-shooter"
+          ],
+          "skillLevels": {
+            "crit-up": 3,
+            "attack-shooter": 3
+          },
+          "equipment": {
+            "body": "body-mobility-5",
+            "arms": "arms-firepower-5",
+            "accessory": "accessory-crit-5"
+          },
+          "equipBonus": {
+            "moveSpeedMult": 1.4,
+            "killGraceMult": 1.2,
+            "damageMult": 2,
+            "fireRateMult": 1.1,
+            "reloadMult": 1,
+            "critBonus": 0.15,
+            "ammoDropBonus": 0,
+            "scrapBonus": 0.4
+          },
+          "critChance": 0,
+          "magBonus": 0,
+          "reloadMult": 1,
+          "subWeapons": [
+            "striker-hunting",
+            "fire-knife"
+          ],
+          "subWeaponLevels": {
+            "striker-hunting": 3,
+            "fire-knife": 3
+          },
+          "characterClass": "rogue",
+          "phillHeadshotRate": 1
+        }
+      },
+      "ghostSource": "top",
+      "ghostRecordId": null,
+      "remoteGuardian": false,
+      "teleports": 0,
+      "finalState": {
+        "gameTime": 17098.468038396502,
+        "boss": null,
+        "ghost": {
+          "name": "フィル",
+          "health": 82,
+          "maxHealth": 120,
+          "classId": "rogue",
+          "level": 20,
+          "build": {
+            "maxHealth": 120,
+            "speed": 87,
+            "level": 20,
+            "gunKeys": [
+              "phill-revolver"
+            ],
+            "activeGunKey": "phill-revolver",
+            "meleeKey": "machete-t3",
+            "skills": [
+              "crit-up",
+              "attack-shooter"
+            ],
+            "skillLevels": {
+              "crit-up": 3,
+              "attack-shooter": 3
+            },
+            "equipment": {
+              "body": "body-mobility-5",
+              "arms": "arms-firepower-5",
+              "accessory": "accessory-crit-5"
+            },
+            "equipBonus": {
+              "moveSpeedMult": 1.4,
+              "killGraceMult": 1.2,
+              "damageMult": 2,
+              "fireRateMult": 1.1,
+              "reloadMult": 1,
+              "critBonus": 0.15,
+              "ammoDropBonus": 0,
+              "scrapBonus": 0.4
+            },
+            "critChance": 0,
+            "magBonus": 0,
+            "reloadMult": 1,
+            "subWeapons": [
+              "striker-hunting",
+              "fire-knife"
+            ],
+            "subWeaponLevels": {
+              "striker-hunting": 3,
+              "fire-knife": 3
+            },
+            "characterClass": "rogue",
+            "phillHeadshotRate": 1
+          }
+        },
+        "ghostSource": "top",
+        "ghostRecordId": null,
+        "player": {
+          "health": 72,
+          "maxHealth": 110,
+          "level": 1
+        },
+        "playerDead": false,
+        "gameOver": false,
+        "gameWon": false,
+        "corpseType": "mimir",
+        "teleported": false
+      },
+      "fps": {
+        "frames": 725,
+        "elapsedMs": 21015.39999999851,
+        "average": 34.498510616026884,
+        "medianFrameMs": 33.29999999999927,
+        "p95FrameMs": 33.69999999999891,
+        "p99FrameMs": 83.40000000000146
+      },
+      "environment": {
+        "visibilityState": "visible",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+        "hardwareConcurrency": 8,
+        "deviceMemory": 16,
+        "gpuVendor": "Google Inc. (AMD)",
+        "gpuRenderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x000015D8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "dpr": 2.0000000298023224,
+        "viewport": {
+          "width": 390,
+          "height": 844
+        }
+      },
+      "ghostPickResponses": [
+        {
+          "status": 200,
+          "url": "https://zombie-coop-signaling.tanity0-zombie.workers.dev/ghost/pick?slots=giantbat-stage-1%2Cmimir%2Cjormungand%2Cskadi%2Cthor%2Cmiguel%2Cjibril%2Crafi%2Curi%2Csuriel%2Cacrasiel%2Cidol&mode=top&anon=fee7f396-829d-4148-9d59-e270660f23d6",
+          "body": {
+            "epoch": 1,
+            "items": []
+          }
+        }
+      ],
+      "errors": [
+        "console: [shadow-v9] bakeSilhouette failed (suppressed): TypeError: Cannot read properties of null (reading '0')\n    at BindGroup.getResource (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:5738:26)\n    at Object.get (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-BCYNJS54.js?v=5132bdbd:6033:37)\n    at PixiScene.bakeSilhouette (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7430:38)\n    at PixiScene.drainSilhouetteQueue (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:7294:26)\n    at PixiScene.syncShadowsV9 (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6938:10)\n    at PixiScene.syncShadows (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:6785:10)\n    at PixiScene.sync (http://127.0.0.1:5199/zombie/src/pixi/pixiScene.ts:4403:10)\n    at TickerListener.tick [as _fn] (http://127.0.0.1:5199/zombie/src/pixi/PixiStage.tsx:179:17)\n    at TickerListener.emit (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2450:14)\n    at _Ticker2.update (http://127.0.0.1:5199/zombie/node_modules/.vite/deps/chunk-G4RM2RMJ.js?v=5132bdbd:2831:29)"
+      ]
+    }
+  ]
+}

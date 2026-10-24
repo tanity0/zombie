@@ -1,0 +1,111 @@
+{
+  "cond": "TRIAL4",
+  "extra": "",
+  "generatedAt": "2026-08-15T14:41:30.105Z",
+  "results": [
+    {
+      "name": "TRIAL4-01",
+      "cond": "TRIAL4",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&stage=stage-1&director=1",
+      "realSec": 226,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 141970,
+        "deathCause": "地雷",
+        "kills": 37,
+        "playerLevel": 2,
+        "maxDepthPx": 2767,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 29
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 76,
+        "scrapSpent": 0,
+        "damageTaken": 124,
+        "goldEarned": 13,
+        "damageDealt": {
+          "gun": 609,
+          "melee": 350,
+          "other": 1218,
+          "total": 2177
+        },
+        "finisherKills": 14,
+        "meleeSwings": 40,
+        "meleeHits": 37,
+        "critStats": {
+          "total": {
+            "rngCrits": 23,
+            "guaranteedCrits": 0,
+            "hits": 123
+          },
+          "vsBoss": {
+            "rngCrits": 0,
+            "guaranteedCrits": 0,
+            "hits": 0
+          },
+          "vsTrash": {
+            "rngCrits": 23,
+            "guaranteedCrits": 0,
+            "hits": 123
+          },
+          "elapsedSec": 142
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 1,
+            "selectedByType": {
+              "skill": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 1,
+            "maxTier": 3
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 48,
+              "poi": 0,
+              "levelup": 0,
+              "other": 28
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 2,
+            "maxAreaReached": 1,
+            "runTimeMs": 141970
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 54173.0718166038,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "directorLast": "AI Director (read-only) | Intns | 0.99 | Perf | 0.35 | State | RELAX | 1.0s | near 0 · danger 0.7 · dmgSince 1s · kill/s 0.01 | Rank | 0 | buildup2 | esc+0.00 · cap+0 · xp×1.00 · pity 0.00 · up+0 | style バランス · prev[gate1] pk0wf0 pl0gh0 sc0ch4 | program relax | gate gate-number maxRung3 | R2-/T5 cap10 · normal",
+      "version": "pixi · v0.25.3488 · floor:SGC · res:1.0000000149011612/1.0000000149011612",
+      "modalClicks": 0,
+      "chartVisible": true,
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n研究対象区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n2767m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR2 暴食\n\n次の深さ デンジャーゾーン まで あと 233m\n\n死因：地雷\n\nRESULT\n生存時間\n02:22\n撃破\n37\nLv\n2\n最大コンボ\n10\nSCORE\nHIGH SCORE\n24172\nKILLスコア 11200\n詳細\n▴\n与ダメ\n2289\nトレジャー\n0\nスクラップ残\n102\nダメージスコア\n572\nKILLスコア\n11200\nコンボスコア\n3000\nトレジャー\n0\nスクラップスコア\n2040\n被ダメージスコア\n7360\nAIディレクター\n閉じる▴\nAI DIRECTOR\n難易度\n55\nZ1\nハンター\n紅き月\n城ボス\n宿敵\nランク(R1-R7)\nBUILD 63s (44%)\nPEAK 0回 0s (0%)\nRELAX 1回 80s (56%)\n獲得 +12g\n所持 12g\nもう一度プレイ\nメニューに戻る"
+    }
+  ]
+}

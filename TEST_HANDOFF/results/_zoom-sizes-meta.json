@@ -1,0 +1,169 @@
+{
+  "base": "http://localhost:5173/zombie/",
+  "sizes": [
+    {
+      "tag": "p360x800",
+      "w": 360,
+      "h": 800,
+      "name": "小Android"
+    },
+    {
+      "tag": "p375x667",
+      "w": 375,
+      "h": 667,
+      "name": "iPhone SE/寸詰まり"
+    },
+    {
+      "tag": "p390x844",
+      "w": 390,
+      "h": 844,
+      "name": "iPhone 13-15標準"
+    },
+    {
+      "tag": "p412x915",
+      "w": 412,
+      "h": 915,
+      "name": "Pixel"
+    },
+    {
+      "tag": "p430x932",
+      "w": 430,
+      "h": 932,
+      "name": "iPhone Pro Max"
+    }
+  ],
+  "modes": [
+    {
+      "tag": "norm",
+      "q": "",
+      "label": "通常"
+    },
+    {
+      "tag": "zoomlock",
+      "q": "&zoomlock=1",
+      "label": "最大引き固定"
+    }
+  ],
+  "consoleLog": [
+    {
+      "size": "p360x800",
+      "mode": "norm",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p360x800",
+      "mode": "norm",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p360x800",
+      "mode": "zoomlock",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p360x800",
+      "mode": "zoomlock",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p375x667",
+      "mode": "norm",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p375x667",
+      "mode": "norm",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p375x667",
+      "mode": "zoomlock",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p375x667",
+      "mode": "zoomlock",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p390x844",
+      "mode": "norm",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p390x844",
+      "mode": "norm",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p390x844",
+      "mode": "zoomlock",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p390x844",
+      "mode": "zoomlock",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p412x915",
+      "mode": "norm",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p412x915",
+      "mode": "norm",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p412x915",
+      "mode": "zoomlock",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p412x915",
+      "mode": "zoomlock",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p430x932",
+      "mode": "norm",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p430x932",
+      "mode": "norm",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p430x932",
+      "mode": "zoomlock",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    },
+    {
+      "size": "p430x932",
+      "mode": "zoomlock",
+      "type": "error",
+      "text": "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 0.25.2364 \n    at div\n "
+    }
+  ]
+}

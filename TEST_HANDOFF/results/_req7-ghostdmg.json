@@ -1,0 +1,40 @@
+{
+  "runs": [
+    {
+      "run": 1,
+      "survivedSec": 45.646,
+      "minHp": 34,
+      "reengage": 24,
+      "tally": {
+        "contact": 3
+      },
+      "byFull": {
+        "contact:mimir": 3
+      },
+      "ghostdmgLines": [
+        "[GHOSTDMG] 41.9s contact:mimir dmg=38 hp→72",
+        "[GHOSTDMG] 43.5s contact:mimir dmg=38 hp→34",
+        "[GHOSTDMG] 45.7s contact:mimir dmg=38 hp→-4"
+      ],
+      "errors": []
+    },
+    {
+      "run": 2,
+      "survivedSec": 49.417,
+      "minHp": 34,
+      "reengage": 25,
+      "tally": {
+        "contact": 3
+      },
+      "byFull": {
+        "contact:mimir": 3
+      },
+      "ghostdmgLines": [
+        "[GHOSTDMG] 44s contact:mimir dmg=38 hp→72",
+        "[GHOSTDMG] 45.2s contact:mimir dmg=38 hp→34",
+        "[GHOSTDMG] 49.4s contact:mimir dmg=38 hp→-4"
+      ],
+      "errors": []
+    }
+  ]
+}

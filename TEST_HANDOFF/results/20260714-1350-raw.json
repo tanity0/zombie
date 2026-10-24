@@ -1,0 +1,224 @@
+{
+  "generatedAt": "2026-07-14T14:08:45.974Z",
+  "runner": "scratchpad/botrun-win.mjs (Windows path fix + gate click + local baseUrl)",
+  "baseUrl": "http://localhost:5173/zombie/",
+  "config": {
+    "baseUrl": "https://tanity0.github.io/zombie/",
+    "runMs": 900000,
+    "headless": true,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "configs": [
+      {
+        "name": "baseline",
+        "persona": "standard",
+        "subs": null,
+        "skills": null
+      },
+      {
+        "name": "sensor-mine_lastmag-warmup",
+        "persona": "standard",
+        "subs": [
+          "sensor-mine"
+        ],
+        "skills": [
+          "last-magazine",
+          "warm-up"
+        ]
+      },
+      {
+        "name": "junk-weapon_magnet-runner",
+        "persona": "standard",
+        "subs": [
+          "junk-weapon"
+        ],
+        "skills": [
+          "magnet",
+          "runner"
+        ]
+      },
+      {
+        "name": "flare-gun_overclock-warmup",
+        "persona": "standard",
+        "subs": [
+          "flare-gun"
+        ],
+        "skills": [
+          "overclock",
+          "warm-up"
+        ]
+      },
+      {
+        "name": "support-sniper_overclock-lastmag",
+        "persona": "standard",
+        "subs": [
+          "support-sniper"
+        ],
+        "skills": [
+          "overclock",
+          "last-magazine"
+        ]
+      },
+      {
+        "name": "grenade_berserker-exploder",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "berserker",
+          "exploder"
+        ]
+      }
+    ]
+  },
+  "results": [
+    {
+      "config": "baseline",
+      "subs": null,
+      "skills": null,
+      "startedSec": 15,
+      "realSec": 190,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 156012,
+        "deathCause": "変異体(肥大型)",
+        "kills": 68,
+        "playerLevel": 3,
+        "maxDepthPx": 1267,
+        "maxAreaReached": 0,
+        "gold": 0
+      },
+      "errors": [],
+      "finalHud": "ゲームオーバー |  | 軍備配置区域の怠惰 に到達 |  | 自己最深 | 1267m⚑更新 | 昇格度 0 —— 阻んだのは 被ダメ(0) |  | 死因：変異体(肥大型) |  | RESULT | 生存時間 | 02:36 | 撃破 | 68 | Lv | 4 | 最大コンボ | 9 | SCORE | HIGH SCORE | 25900 | KILLスコア 16000 | 詳細 | ▾ | AIディレクター | 開く▾ | 失った装備 | 獲得 +12g / 換金 +3g / 所持 15g | 強化防弾ベスト | R2 | 最大体力 +90 | +2g | 強化バレル | R1 | ダメージ +20% | +1g | もう一度プレイ | メニューに戻る"
+    },
+    {
+      "config": "sensor-mine_lastmag-warmup",
+      "subs": [
+        "sensor-mine"
+      ],
+      "skills": [
+        "last-magazine",
+        "warm-up"
+      ],
+      "startedSec": 15,
+      "realSec": 127,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 101508,
+        "deathCause": "変異体(痩躯型)",
+        "kills": 57,
+        "playerLevel": 3,
+        "maxDepthPx": 1712,
+        "maxAreaReached": 1,
+        "gold": 0
+      },
+      "errors": [],
+      "finalHud": "COMBO | 3 | 01:41 | 🔩 0 | 0 | Lv 3 | 手榴弾 | Lv1 | センサー地雷 | Lv1 | 0/17 | pixi · v0.25.1707 · floor:SGC · res:1/1"
+    },
+    {
+      "config": "junk-weapon_magnet-runner",
+      "subs": [
+        "junk-weapon"
+      ],
+      "skills": [
+        "magnet",
+        "runner"
+      ],
+      "startedSec": 15,
+      "realSec": 85,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 60836,
+        "deathCause": "地雷",
+        "kills": 19,
+        "playerLevel": 1,
+        "maxDepthPx": 1563,
+        "maxAreaReached": 1,
+        "gold": 0
+      },
+      "errors": [],
+      "finalHud": "ゲームオーバー |  | 研究対象区域の怠惰 に到達 |  | 自己最深 | 1588m⚑更新 |  | 死因：地雷 |  | RESULT | 生存時間 | 01:01 | 撃破 | 19 | Lv | 1 | 最大コンボ | 5 | SCORE | HIGH SCORE | 17163 | 被ダメージスコア 9760 | 詳細 | ▾ | AIディレクター | 開く▾ | 獲得 +8g | 所持 8g | もう一度プレイ | メニューに戻る"
+    },
+    {
+      "config": "flare-gun_overclock-warmup",
+      "subs": [
+        "flare-gun"
+      ],
+      "skills": [
+        "overclock",
+        "warm-up"
+      ],
+      "startedSec": 14,
+      "realSec": 130,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 104492,
+        "deathCause": "変異体(肥大型)",
+        "kills": 56,
+        "playerLevel": 4,
+        "maxDepthPx": 901,
+        "maxAreaReached": 0,
+        "gold": 0
+      },
+      "errors": [],
+      "finalHud": "ゲームオーバー |  | 軍備配置区域の怠惰 に到達 |  | 自己最深 | 901m⚑更新 |  | 死因：変異体(肥大型) |  | RESULT | 生存時間 | 01:45 | 撃破 | 57 | Lv | 4 | 最大コンボ | 10 | SCORE | HIGH SCORE | 36504 | KILLスコア 22400 | 詳細 | ▾ | AIディレクター | 開く▾ | 失った装備 | 獲得 +18g / 換金 +3g / 所持 21g | ランニングシューズ | R1 | 移動速度 +10% | +1g | マガジンウェル | R1 | リロード -10% | +1g | 弾薬ポーチ | R1 | 弾薬ドロップ +10% | +1g | もう一度プレイ | メニューに戻る"
+    },
+    {
+      "config": "support-sniper_overclock-lastmag",
+      "subs": [
+        "support-sniper"
+      ],
+      "skills": [
+        "overclock",
+        "last-magazine"
+      ],
+      "startedSec": 14,
+      "realSec": 387,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 173507,
+        "deathCause": "変異体(肥大型)の落下攻撃",
+        "kills": 110,
+        "playerLevel": 4,
+        "maxDepthPx": 1118,
+        "maxAreaReached": 0,
+        "gold": 0
+      },
+      "errors": [],
+      "finalHud": "COMBO | 3 | 02:53 | 🔩 66 | 0 | Lv 4 | 手榴弾 | Lv1 | 援護射撃 | Lv1 | 2/24 | pixi · v0.25.1707 · floor:SGC · res:1/1"
+    },
+    {
+      "config": "grenade_berserker-exploder",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "berserker",
+        "exploder"
+      ],
+      "startedSec": 14,
+      "realSec": 190,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 162304,
+        "deathCause": "地雷",
+        "kills": 105,
+        "playerLevel": 5,
+        "maxDepthPx": 2183,
+        "maxAreaReached": 1,
+        "gold": 0
+      },
+      "errors": [],
+      "finalHud": "ゲームオーバー |  | 研究対象区域の怠惰 に到達 |  | 自己最深 | 2240m⚑更新 | 昇格度 81 —— 阻んだのは 被ダメ(81) |  | 死因：地雷 |  | RESULT | 生存時間 | 02:43 | 撃破 | 106 | Lv | 5 | 最大コンボ | 7 | SCORE | HIGH SCORE | 40529 | KILLスコア 19200 | 詳細 | ▾ | AIディレクター | 開く▾ | 失った装備 | 獲得 +20g / 換金 +3g / 所持 23g | 防弾ベスト | R1 | 最大体力 +50 | +1g | マガジンウェル | R1 | リロード -10% | +1g | 弾薬ポーチ | R1 | 弾薬ドロップ +10% | +1g | もう一度プレイ | メニューに戻る"
+    }
+  ]
+}
