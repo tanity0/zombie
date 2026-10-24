@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5206 — マークスマンの立ち絵を再差し替え【2026-10-24 22:52 JST】
+- 社長支給「マークスマンだけ入れ替え」: public/sprites/portraits/portrait-sniper.png を同名・同寸法(1086×1448)で差し替え。assets:ledger 更新・assets:check OK。
+- 検証: キャラクター選択でマークスマンを選んで撮り、新しい立ち絵が出ることを確認。
+
 ## v0.25.5205 — 作戦室の地図の絵を差し替え【2026-10-24 22:51 JST】
 - 社長支給「地図の絵を入れ替え」(1816×866=旧原画と同寸法・同じ構図)。原画は art-masters/maps/operations-map-parallel-archipelago-v2.png として足し(v1 は残す)、配信用の public/backgrounds/ops-map-archipelago.webp(1280×610)を v2 から作り直した。場所の割合(OPS_MAP_PLACES)は構図が同じなのでそのまま。assets:ledger 更新・assets:check OK。
 - 検証: スマホ縦(430×932)と PC(1280×720)で作戦室を撮り、新しい地図と NEXT の印(洞窟地帯=南西)が出ることを確認。
