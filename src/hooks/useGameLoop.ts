@@ -5251,17 +5251,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
             } else {
               const d = Math.hypot(hpx - (prim.x + prim.width / 2), hpy - (prim.y + prim.height / 2));
-              if (d <= HUNTER_DETECT_RANGE) {
+              // ★攻撃を受けたら気付く(社長指示2026-10-24「索敵系の敵は全て攻撃喰らっても気付く様にして」): 索敵中に撃たれたら即「発見」。
+              const shotWhileSearching = (prim.lastHit ?? 0) > 0;
+              if (d <= HUNTER_DETECT_RANGE || shotWhileSearching) {
                 H.spawnAt = newGameTime; // 索敵範囲にプレイヤーが入っている間は都度タイムアウトをリセット(社長指示)
-                if (H.detectStartAt === 0) {
+                if (shotWhileSearching) H.noticed = true;
+                if (H.detectStartAt === 0 && !shotWhileSearching) {
                   H.detectStartAt = newGameTime;
                   playSfx('hunter-alert'); // 視界に入った=見られている警告SE(社長提供)
                   // 検知=矢印を出す(被監視中の索敵個体に方角マーカー)。
                   useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.id === H.primaryId ? { ...e, hunterAlerted: true } : e) }));
                   H.noticed = true; // 気づかせた=立ち去りもアナウンスしてよい出撃(v0.25.2317)
                   useGameStore.setState({ eventBannerText: '何かに見られている…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-                } else if (newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS) {
-                  // 発見: 追跡開始。索敵個体を起こす。
+                } else if (shotWhileSearching || newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS) {
+                  // 発見: 追跡開始。索敵個体を起こす(撃たれた時は見られている段を飛ばして即)。
                   useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, dormant: false, aggroRange: undefined } : e) }));
                   H.phase = 'chase'; H.chaseStartAt = newGameTime;
                   useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });

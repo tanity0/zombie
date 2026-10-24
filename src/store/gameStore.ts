@@ -165,7 +165,7 @@ import { isNoUpgradeState, noteNoUpgradeBossKill, featBossSlotKey } from '../dat
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
 import { rescueSignalProcChance, selectRescueSignalTarget, pickRescueSignalAllyClass } from '../utils/rescueSignal';
-import { evaluateLabLoseSight, LAB_VISION_RANGE } from '../utils/labStealth';
+import { evaluateLabLoseSight, LAB_VISION_RANGE, noticeOnHitPatch, HIT_NOTICE_MS } from '../utils/labStealth';
 import { labEscapeRouteSlots } from '../utils/labSpawn'; // ステージ2: 資料の後の逃走経路の雑魚
 // distToSegment: M66(§6.26-11)の掃射/三連突進の吐息(回転帯)が毎フレーム自己検出するために使う純関数。
 import { isPlayerInAttackTelegraph } from '../utils/levelUpGate';
@@ -14260,8 +14260,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 社長裁定2026-10-05「攻撃されると気付く」: 守護霊からと、誰からか分からない被弾も打つ(英雄の気づき=heroTick)。
         ...(isMutantHero(enemy.type) && hateSource === 'ghost' && eff > 0 ? { heroGhostHitAt: state.gameTime } : {}),
         ...(isMutantHero(enemy.type) && hateSource === 'neutral' && eff > 0 ? { heroMobHitAt: state.gameTime } : {}) };
+      // ★攻撃を受けたら気付く(社長指示2026-10-24・utils/labStealth.noticeOnHitPatch): 視界で見つける型は被弾で起きて、しばらく見失わない。
+      const noticePatch = eff > 0 ? (noticeOnHitPatch(enemy, isBountyType(enemy.type) || enemy.type === 'idol', state.gameTime) ?? {}) : {};
       const updatedEnemies = enemies.map(e =>
-        e.id === id ? { ...e, health: newHealth, lastHit: hitAt, ...dotPatch, ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...dogHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
+        e.id === id ? { ...e, health: newHealth, lastHit: hitAt, ...noticePatch, ...dotPatch, ...(critBump?.patch ?? {}), ...(gunReward?.patch ?? {}), ...(meleeFatal?.patch ?? {}), ...(bossSlow ?? {}), ...hatePatch, ...mobHatePatch, ...dogHatePatch, ...gpGate.patch, ...pvpPatch, ...counteredPatch, ...hitStunPatch } : e
       );
       
       // Check if enemy was killed
@@ -15163,7 +15165,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ar = (enemy.aggroRange ?? 200) * 1; // 索敵範囲(PHILL運用に合わせ従来の半分=base等倍)
           const inRange = ddx * ddx + ddy * ddy <= ar * ar;
           const seen = inRange && !(losWalls.length > 0 && segmentBlocked(pcx, pcy, ecx2, ecy2, losWalls)); // 壁越しは見つからない
-          if (!seen) {
+          // ★攻撃を受けたら気付く(社長指示2026-10-24): damageEnemy を通らない被弾の経路(直接 lastHit を書く爆風など)の保険。
+          //   直近に被弾していれば、見えていなくても起きる(賞金首・アイドル・aggroRange=0 は除外=noticeOnHitPatch と同じ)。
+          const shotAwake = (enemy.aggroRange ?? 0) > 0 && !isBountyType(enemy.type) && enemy.type !== 'idol'
+            && (enemy.lastHit ?? 0) > 0 && Date.now() - (enemy.lastHit ?? 0) < 300;
+          if (!seen && !shotAwake) {
             // ハンター変異体は索敵中も静止せず、低速の「徘徊」で移動する(社長指示: ランダムっぽく
             // 見せて実はプレイヤーへじわじわ接近)。純関数(src/utils/hunterWander.ts)へ切り出し済み。
             // ただし立ち去りフェード中(hunterLeavingAt設定済み)はその場で静止する。
@@ -15212,7 +15218,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             return { ...enemy, vx: 0, vy: 0 };
           }
-          return { ...enemy, dormant: false, vx: 0, vy: 0, bossLeashSince: undefined };
+          return { ...enemy, dormant: false, vx: 0, vy: 0, bossLeashSince: undefined, ...(shotAwake ? { noticedUntil: gameTime + HIT_NOTICE_MS, losLostSince: undefined } : {}) };
         }
 
         // ★リーシュ(社長裁定v0.25.2418): 起きている城ボスがプレイヤーから離れ切ったら、
@@ -15259,7 +15265,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ecy3 = enemy.y + enemy.height / 2;
           const dist3 = Math.hypot(pcx - ecx3, pcy - ecy3);
           const blocked3 = losWalls.length > 0 && segmentBlocked(pcx, pcy, ecx3, ecy3, losWalls);
-          const lose = evaluateLabLoseSight({ losBlocked: blocked3, distance: dist3, losLostSince: enemy.losLostSince, now: gameTime });
+          const lose = evaluateLabLoseSight({ losBlocked: blocked3, distance: dist3, losLostSince: enemy.losLostSince, now: gameTime, noticedUntil: enemy.noticedUntil });
           if (lose.shouldDormant) {
             return {
               ...enemy, dormant: true, vx: 0, vy: 0,

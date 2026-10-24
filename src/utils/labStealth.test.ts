@@ -58,3 +58,25 @@ describe('evaluateLabLoseSight (ステージ2・視線切りで見失う)', () =
     expect(reseen.losLostSince).toBeUndefined();
   });
 });
+
+import { noticeOnHitPatch, HIT_NOTICE_MS, LAB_LOSE_SIGHT_MS as LOSE_MS } from './labStealth';
+describe('攻撃を受けたら気付く(2026-10-24「索敵系の敵は全て攻撃喰らっても気付く様にして」)', () => {
+  it('休眠中の視界で見つける型は、被弾で起きて一定時間「気付いている」', () => {
+    const p = noticeOnHitPatch({ dormant: true, aggroRange: 180 }, false, 1000);
+    expect(p).toEqual({ dormant: false, losLostSince: undefined, noticedUntil: 1000 + HIT_NOTICE_MS });
+  });
+  it('起きている時も、被弾で気付いている時間を延ばす(起こし直しはしない)', () => {
+    const p = noticeOnHitPatch({ dormant: false, aggroRange: 180 }, false, 5000);
+    expect(p).toEqual({ losLostSince: undefined, noticedUntil: 5000 + HIT_NOTICE_MS });
+  });
+  it('賞金首など除外の型・aggroRange が無い/0 の個体には何もしない', () => {
+    expect(noticeOnHitPatch({ dormant: true, aggroRange: 180 }, true, 0)).toBeNull();
+    expect(noticeOnHitPatch({ dormant: true, aggroRange: 0 }, false, 0)).toBeNull();
+    expect(noticeOnHitPatch({ dormant: true }, false, 0)).toBeNull();
+  });
+  it('気付いている間は、壁の向こう・遠くでも見失わない。期限が過ぎれば従来どおり見失う', () => {
+    const base = { losBlocked: true, distance: 900, losLostSince: 0 };
+    expect(evaluateLabLoseSight({ ...base, now: LOSE_MS + 10, noticedUntil: LOSE_MS + 100 }).shouldDormant).toBe(false);
+    expect(evaluateLabLoseSight({ ...base, now: LOSE_MS + 10, noticedUntil: 5 }).shouldDormant).toBe(true);
+  });
+});

@@ -914,6 +914,8 @@ export interface Enemy {
   // 屋内ステージ用: 固定配置の休眠敵。dormant 中は静止し、aggroRange 内にプレイヤーが
   // 入ると起床(dormant=false)して以後通常追跡。fixed=距離カリングの対象外(常駐)。
   dormant?: boolean;
+  /** 被弾で気付いている期限(gameTime・utils/labStealth.noticeOnHitPatch)。この間は見失わない。 */
+  noticedUntil?: number;
   // BOT_AND_GHOST.md G2/§3裁定: ゴースト召喚成立の瞬間に health/maxHealth へ GHOST_BOSS_HP_MULT(1.6)を
   // 1回だけ適用したか(二重適用防止フラグ)。ゴーストが死んでも戻さない=trueのまま据え置く。
   ghostHpBoosted?: boolean;
