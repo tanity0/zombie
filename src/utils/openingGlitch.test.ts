@@ -117,6 +117,11 @@ describe('廊下', () => {
     expect(d.in).toBe(0);
     expect(d.out).toBe(0);
     expect(d.hold).toBeGreaterThan(0);
+    // 色が抜ける瞬間にカメラが一瞬ずれる(2026-10-24): 小さく(10px以内)・短く(1/10秒前後)。
+    expect(d.jolt).toBeDefined();
+    expect(Math.hypot(d.jolt!.dx, d.jolt!.dy)).toBeLessThanOrEqual(10);
+    expect(d.jolt!.ms).toBeGreaterThan(40);
+    expect(d.jolt!.ms).toBeLessThanOrEqual(150);
   });
   it('立ち止まりの1回は14〜20秒おき・背景だけ・打ち止めあり', () => {
     const rng = mulberry32(2);

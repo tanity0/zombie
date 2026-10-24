@@ -26,7 +26,7 @@ export type Act =
   /** 記憶が褪せる: 彩度を落とし黒を持ち上げる(コントラストが抜ける)。持ち上げの色は作品の光(廊下=灯りの琥珀/アリーナ=紫) */
   | { tool: 'cold'; at: number; in: number; hold: number; out: number; depth: number }
   /** 主人公の色だけが抜ける */
-  | { tool: 'drain'; at: number; in: number; hold: number; out: number }
+  | { tool: 'drain'; at: number; in: number; hold: number; out: number; /** 色が抜ける瞬間、画面全体が一瞬だけずれてすぐ戻る(px・ms) */ jolt?: { dx: number; dy: number; ms: number } }
   /** 人が抜ける: face=顔が柔らかい楕円で抜ける(顔が思い出せない)/fade=その人が薄れる */
   | { tool: 'missing'; at: number; in: number; hold: number; out: number; mode: 'face' | 'fade'; who: 'hero' | 'others'; floor: number }
   /** 残像: 1人だけ。world=その場に置き去り(歩き去る本人との距離=時間の経過)/screen=画面に固定(寄るカメラに置いていかれる) */
@@ -95,7 +95,8 @@ export const planWalkBeats = (rng: Rng): Beat[] => [
   {
     name: 'W3', subject: 'hero', at: 900, anchor: { line: 3, on: 'show' },
     // 色抜けはブツっと入ってブツっと戻す(社長指示2026-10-24「もっとブツっと切らないと、フワッとセピアになっても地味」)。
-    acts: [{ tool: 'drain', at: 0, in: 0, hold: 450, out: 0 }],
+    // 色が抜ける瞬間、カメラが一瞬だけずれてすぐ戻る(社長指示2026-10-24「一瞬だけ少しカメラがズレると不気味になる」)=映像が一コマ飛んだ感じ。
+    acts: [{ tool: 'drain', at: 0, in: 0, hold: 450, out: 0, jolt: { dx: 7, dy: -4, ms: 90 } }],
     bgm: { dip: 0.22, in: 120, hold: 380, out: 700 },
   },
   {

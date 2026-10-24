@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5196', items: [
+    'オープニングで主人公の色が抜ける瞬間、画面がほんの一瞬だけずれる',
+  ] },
   { version: '0.25.5195', items: [
     '眠っていたり辺りを探っていたりする敵は、撃たれれば気付いて起きる。撃たれている間は見失わない',
     'ハンターは探っている途中で撃たれると、その場で発見する',
