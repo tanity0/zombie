@@ -24,6 +24,7 @@ import {
   type HeroMoveKey, type HeroShape, type HeroTargetCand,
 } from './heroScript';
 import { STRUCK_NOTICE_MS } from './frontSight';
+import { bossHomingSpeed } from './bossHoming';
 import { saveHeroAscended } from './heroAscended';
 import { SKILLS } from '../data/campaign';
 
@@ -587,7 +588,8 @@ export const runHeroTick = (
   const tgt = picked;
   if (s.homing && !tgt) {
     // 周回中の英雄は輪から離れすぎたら**駆けて**戻る(社長指示)。対策室の英雄は従来どおり半分の速さで巣へ。
-    const homeSpeed = ring ? HERO_GALLOP_SPEED : HERO_WALK_SPEED * HERO_HOMING_SPEED_MULT;
+    // 対策室の英雄も、撃てる距離に居られる間は駆けて離れる(社長指示2026-10-24「高速である程度だけ戻る」)。
+    const homeSpeed = ring ? HERO_GALLOP_SPEED : bossHomingSpeed(playerDist, HERO_WALK_SPEED * HERO_HOMING_SPEED_MULT, HERO_GALLOP_SPEED);
     walkToward({ ...hero, ...patch } as Enemy, homeCx, homeCy, homeSpeed, dt, gt, patch, HERO_HOME_ARRIVE_PX * 0.5);
     if (patch.bossState === undefined) patch.bossState = 'chase';
     sfx.gallop(sfxGain * (ring ? 0.9 : 0.6), gallopRate(homeSpeed));

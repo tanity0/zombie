@@ -15,6 +15,7 @@
 //    werewolf定数)を複製して使う(=誤学習防止。複製である旨は各定数のコメントに明記)。
 //  - ★v0.25.3558: 数値は bountyScript.ts の可変テーブル(BR_T/BM_T/BB_T/MK_T)へ移した。werewolf/
 //    pumpkin 由来の値は**テーブル側で複製**し、実体との一致を bountyScript.test.ts が機械検査する。
+import { bossHomingSpeed } from './bossHoming';
 import { counterClashPoint } from './counterClash';
 import type { Enemy, EnemyType, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
@@ -238,6 +239,8 @@ export const bountyBeyondActivityLimit = (
  * なぜ要るか: 活動限界だけを入れると、限界の外に立って撃つだけで「交戦に戻る→追う→限界を超える→
  * 帰る」を往復させられる=逃げ撃ち(ハメ)の土台になる。被弾で戻らなくすると成立しない。
  */
+/** 帰巣の走り出し(撃てる距離に居られる間)の速さ=賞金首の速さ×これ(プレイヤーの歩きより速く離れる)。 */
+export const BOUNTY_HOMING_ESCAPE_SPEED_MULT = 3.5; // 速さ50×3.5=175>プレイヤーの歩き(約120〜150)=追いかけても撃てる距離に居続けられない
 /** 帰巣中に撃たれたとみなす窓(壁時計 ms)。撃たれた直後だけ振り返る。 */
 export const BOUNTY_HOMING_HIT_REENGAGE_MS = 500;
 export const bountyHomingReengaged = (distanceToPlayer: number): boolean =>
@@ -2423,7 +2426,9 @@ export const runBountyTick = (
         let nx = bounty.x, ny = bounty.y;
         if (dl > ARRIVE_EPS_PX) {
           // §6.38 v7: bossSlowMult(クリの移動半減窓)を掛ける(帰巣中も他ボスの帰巣と同じ規約)。
-          const mv = Math.min(bounty.speed * BOSS_LEASH_RETURN_SPEED_MULT * deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime), dl);
+          // 撃てる距離にプレイヤーが居る間は高速で離れ、外へ出たらゆっくり(社長指示2026-10-24「高速である程度だけ戻る」)。
+          const retMult = bossHomingSpeed(dist, BOSS_LEASH_RETURN_SPEED_MULT, BOUNTY_HOMING_ESCAPE_SPEED_MULT);
+          const mv = Math.min(bounty.speed * retMult * deltaTime * moveSpeedMult * bossSlowMult(bounty, newGameTime), dl);
           nx = bounty.x + (dhx / dl) * mv;
           ny = bounty.y + (dhy / dl) * mv;
         } else {

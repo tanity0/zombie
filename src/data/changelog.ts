@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5212', items: [
+    '英雄と小ボスは持ち場へ戻る時、撃たれる距離から駆け足で離れる。撃ちたければ、こちらも持ち場の方へ詰めるしかない',
+  ] },
   { version: '0.25.5211', items: [
     '英雄と小ボスは、持ち場へ戻る途中でも撃たれれば振り返って襲ってくる。戻る背中を撃ち続けることはできない',
   ] },
