@@ -214,6 +214,7 @@ import { escortAdvance, escortShouldHoldForWelcome } from '../utils/escortAdvanc
 import { escortOffscreenStep, escortOffscreenPace, baseDirectionLabel, ESCORT_STRUGGLE_STALL_MS } from '../utils/escortOffscreen';
 import { welcomeAppliesToRun, welcomeAmmoDropPoint } from '../utils/welcomeScript';
 import { isWelcomeRetired } from '../utils/welcomeStreak';
+import { xpPickupsOverCap } from '../utils/xpPickupCap'; // 経験値の玉の上限(遠い玉から消す)
 import { loadEscortFollowEnabled, saveEscortFollowEnabled, followToggleBaseAt } from '../utils/escortFollowToggle';
 import { listTravelDestinations, type TravelDestination } from '../utils/fastTravel';
 // research/ESCORT_TARGETED.md: 進軍NPCの体力・倒れる・起こす / 画面内の定義 / 敵の狙い。
@@ -19703,7 +19704,14 @@ export const useGameStore = create<GameState>((set, get) => ({
           },
         );
       }
-      return { pickups: [...state.pickups, { ...scattered, x: placed.x, y: placed.y }] };
+      const next = [...state.pickups, { ...scattered, x: placed.x, y: placed.y }];
+      // 経験値の玉の上限(社長指示2026-10-24「上限越えたら消そう」): 超えたらプレイヤーからいちばん遠い玉から消す(utils/xpPickupCap)。
+      if (pickup.type === 'experience') {
+        const pl = state.player;
+        const drop = xpPickupsOverCap(next, pl.x + pl.width / 2, pl.y + pl.height / 2);
+        if (drop.length) { const ids = new Set(drop); return { pickups: next.filter(p => !ids.has(p.id)) }; }
+      }
+      return { pickups: next };
     });
   },
   

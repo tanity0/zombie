@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5193', items: [
+    '拾われずに残る経験値の玉に上限ができた。増えすぎたら遠くのものから消える',
+  ] },
   { version: '0.25.5192', items: [
     '長く遊ぶと重くなり、一時停止やショップ、死んだ後の画面が出なくなることがあった。重くなりにくくし、重い時も止まらないように',
     '死んだ時の寄りと引き戻しが、最後まで見えるようになった',
