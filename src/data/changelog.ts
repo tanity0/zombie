@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5211', items: [
+    '英雄と小ボスは、持ち場へ戻る途中でも撃たれれば振り返って襲ってくる。戻る背中を撃ち続けることはできない',
+  ] },
   { version: '0.25.5210', items: [
     '洋館の作戦地域の絵を、奥の窓と柱の並ぶ通路へ寄せた',
   ] },

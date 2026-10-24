@@ -33,6 +33,9 @@ export const HERO_HOME_LIMIT_PX = 1200;
 export const HERO_DISENGAGE_GRACE_MS = 1200;
 export const HERO_PLAYER_HIT_ENGAGE_MS = 3000;
 export const HERO_HOME_ARRIVE_PX = 60;
+/** 帰巣中に撃たれたら振り返るか(純関数): 帰巣を始めた後に撃たれていて、巣から活動の限界の内側に居る時。 */
+export const heroHomingReengage = (playerHitAt: number | undefined, homingAt: number, fromHomePx: number): boolean =>
+  playerHitAt !== undefined && playerHitAt > homingAt && fromHomePx <= HERO_HOME_LIMIT_PX;
 /** 昇天に見とれて立ち止まる範囲(英雄の中心から・画面くらい)。 */
 export const HERO_AWE_RANGE_PX = 900;
 export const HERO_HOME_DEFEND_PX = 200;
@@ -58,6 +61,8 @@ export interface HeroTickState {
   activeId: string | null;
   disengageSince: number | null;
   homing: boolean;
+  /** 帰巣を始めたゲーム時刻(これより後に撃たれたら振り返る判定に使う)。 */
+  homingAt: number;
   homeIdleSince: number | null;
   lastPos: { x: number; y: number } | null;
   /** 出現直後: 姿が画面に入るまでプレイヤーの方へ歩いて寄る(音が先・姿が後)。入ったら巣をそこへ置く。 */
@@ -75,7 +80,7 @@ export interface HeroTickState {
   stallRefX: number;
   stallRefY: number;
 }
-export const createHeroTickState = (): HeroTickState => ({ activeId: null, disengageSince: null, homing: false, homeIdleSince: null, lastPos: null, introDone: false, lastSnortAt: -1e9, roarLanded: false, detourR: 0, detourUntil: 0, stallRefAt: -1e9, stallRefAng: 0, stallRefX: 0, stallRefY: 0 });
+export const createHeroTickState = (): HeroTickState => ({ activeId: null, disengageSince: null, homing: false, homingAt: 0, homeIdleSince: null, lastPos: null, introDone: false, lastSnortAt: -1e9, roarLanded: false, detourR: 0, detourUntil: 0, stallRefAt: -1e9, stallRefAng: 0, stallRefX: 0, stallRefY: 0 });
 
 /** 蹄の拍は速さに比例(歩幅と拍を合わせる)。 */
 const gallopRate = (speed: number): number => Math.max(0.6, Math.min(1.2, (speed / HERO_WALK_SPEED) * 0.85));
@@ -523,8 +528,17 @@ export const runHeroTick = (
     currentId: hero.heroTargetId,
     struckPlayer: struckWithin(hero.heroPlayerHitAt), struckGhost: struckWithin(hero.heroGhostHitAt), struckMob: struckWithin(hero.heroMobHitAt),
   };
+  // 帰巣中にプレイヤーに撃たれたら、活動の限界(巣から HERO_HOME_LIMIT_PX)の内側なら振り返って戦う
+  // (社長報告2026-10-24「一定の距離離れると、英雄が定位置に戻るまで攻撃し放題になる」)。限界の外では従来どおり巣へ向かう
+  // (=遠くへ誘い出し続けることはできない)。純関数 heroHomingReengage。
+  if (s.homing) {
+    const ring0 = hero.heroPatrolR !== undefined ? heroPatrolNearest(hx, hy, hero.heroPatrolR) : null;
+    const hcx0 = ring0 ? ring0.x : (hero.homeX ?? hero.x) + hero.width / 2;
+    const hcy0 = ring0 ? ring0.y : (hero.homeY ?? hero.y) + hero.height / 2;
+    if (heroHomingReengage(hero.heroPlayerHitAt, s.homingAt, Math.hypot(hx - hcx0, hy - hcy0))) { s.homing = false; s.disengageSince = null; }
+  }
   const picked = s.homing
-    // 帰巣中は巣のそば(200px)で狙ってくる相手にだけ斬り返す(プレイヤーへは振り向かない)。
+    // 帰巣中は巣のそば(200px)で狙ってくる相手にだけ斬り返す(プレイヤーには撃たれた時だけ上で振り返る)。
     ? pickHeroTarget(hx, hy, cands.filter(c => c.id !== 'player'), hero.heroTargetId, hero.heroTargetUntil, gt, HERO_HOME_DEFEND_PX)
     : pickHeroTarget(hx, hy, cands.filter(c => heroNotices(hx, hy, faceX, faceY, c, noticeCtx)), hero.heroTargetId, hero.heroTargetUntil, gt,
       Infinity, false);
@@ -562,7 +576,7 @@ export const runHeroTick = (
     const out = fromHome > HERO_HOME_LIMIT_PX || (!ring && playerDist > HERO_LEASH_PLAYER_PX && !picked && !playerHitRecently);
     if (out) {
       if (s.disengageSince === null) s.disengageSince = gt;
-      if (fromHome > HERO_HOME_LIMIT_PX || gt - s.disengageSince >= HERO_DISENGAGE_GRACE_MS) { s.homing = true; s.disengageSince = null; }
+      if (fromHome > HERO_HOME_LIMIT_PX || gt - s.disengageSince >= HERO_DISENGAGE_GRACE_MS) { s.homing = true; s.homingAt = gt; s.disengageSince = null; }
     } else {
       s.disengageSince = null;
     }

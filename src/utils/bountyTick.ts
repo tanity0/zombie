@@ -238,6 +238,8 @@ export const bountyBeyondActivityLimit = (
  * なぜ要るか: 活動限界だけを入れると、限界の外に立って撃つだけで「交戦に戻る→追う→限界を超える→
  * 帰る」を往復させられる=逃げ撃ち(ハメ)の土台になる。被弾で戻らなくすると成立しない。
  */
+/** 帰巣中に撃たれたとみなす窓(壁時計 ms)。撃たれた直後だけ振り返る。 */
+export const BOUNTY_HOMING_HIT_REENGAGE_MS = 500;
 export const bountyHomingReengaged = (distanceToPlayer: number): boolean =>
   distanceToPlayer <= BOUNTY_AGGRO_RANGE_DEFAULT;
 
@@ -261,7 +263,7 @@ export interface BountyLeashDecision { engaged: boolean; homing: boolean }
  * | 向き | 条件 |
  * |---|---|
  * | 交戦 → 帰巣 | 活動限界(巣から1200px)の外に出た(**緩い**。プレイヤーが密着していても立てる) |
- * | 帰巣 → 交戦 | **活動限界の内側** かつ プレイヤーが380px以内(**厳しい**)。**被弾では戻らない** |
+ * | 帰巣 → 交戦 | **活動限界の内側** かつ (プレイヤーが380px以内 **か** 撃たれた直後)。限界の外では戻らない |
  *
  * **再交戦には「活動限界の内側であること」が要る。** 380pxだけを条件にすると、プレイヤーが密着して
  * いる限り帰巣ラッチが立たず、賞金首は**限界の外へどこまでも追ってくる**=この裁定の目的
@@ -272,7 +274,9 @@ export interface BountyLeashDecision { engaged: boolean; homing: boolean }
 export const decideBountyLeash = (input: BountyLeashInput): BountyLeashDecision => {
   const beyond = bountyBeyondActivityLimit(input.centerX, input.centerY, input.homeX, input.homeY);
   if (input.homing) {
-    const reengage = !beyond && bountyHomingReengaged(input.distanceToPlayer);
+    // 社長報告2026-10-24「一定の距離離れると、定位置に戻るまで攻撃し放題」: 限界の内側で撃たれたら振り返って戦う
+    // (旧: 被弾では戻らない=戻る背中を撃ち放題だった)。限界の外では従来どおり戻らない=誘い出しは封じたまま。
+    const reengage = !beyond && (bountyHomingReengaged(input.distanceToPlayer) || input.msSinceHit <= BOUNTY_HOMING_HIT_REENGAGE_MS);
     return reengage ? { engaged: true, homing: false } : { engaged: false, homing: true };
   }
   if (beyond) return { engaged: false, homing: true }; // 密着していても立てる(交戦→帰巣は緩い)
@@ -2384,7 +2388,7 @@ export const runBountyTick = (
   // ---- 交戦判定+リーシュ(§2/v6 A-3・B-4) ---------------------------------------------------
   const leashRadius = bossLeashDistancePx(bounty.type, false);
   // ★活動限界+帰巣ヒステリシス(社長裁定2026-08-22): 交戦/帰巣の2状態は純関数 decideBountyLeash が正本。
-  // 帰巣ラッチ(bountyHoming)が立っている間は**被弾では交戦に戻らない**(380px以内へ近づいた時だけ)。
+  // 帰巣ラッチ(bountyHoming)が立っている間は、活動限界の内側で380px以内へ近づかれたか撃たれた直後だけ交戦に戻る(2026-10-24)。
   const wasHoming = bounty.bountyHoming === true;
   const leash = decideBountyLeash({
     homing: wasHoming,

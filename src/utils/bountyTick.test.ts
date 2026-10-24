@@ -10,7 +10,7 @@ import {
   BOUNTY_LINGER_MS, BOUNTY_HIT_ENGAGE_MS, BOUNTY_BASE_HP, BOUNTY_DEPART_FADE_MS,
   BOUNTY_NATURAL_FIRST_MS, BOUNTY_NATURAL_MAX_COUNT, BOUNTY_NATURAL_SPAWN_AT_MS,
   BR_SHOT_UNIT_MS,
-  bountyBeyondActivityLimit, bountyHomingReengaged, decideBountyLeash,
+  bountyBeyondActivityLimit, bountyHomingReengaged, decideBountyLeash, BOUNTY_HOMING_HIT_REENGAGE_MS,
   BOUNTY_ACTIVITY_RADIUS_FROM_HOME_PX, BOUNTY_AGGRO_RANGE_DEFAULT,
   bountySpawnCenter, BOUNTY_SPAWN_Y_ABS_PX, BOUNTY_SPAWN_X_ABS_LIMIT_PX,
   requestBountyMovePlay, bountyPlaybackActive, getBountyPlayback, clearBountyPlayback,
@@ -1881,7 +1881,7 @@ describe('賞金首の活動限界(巣から1200px)', () => {
   });
 });
 
-describe('帰巣ヒステリシス(帰巣→交戦は380px以内だけ・被弾では戻らない)', () => {
+describe('帰巣ヒステリシス(帰巣→交戦は限界の内側で380px以内か撃たれた直後)', () => {
   it('再交戦の線は既存の起床範囲380px(新しい数字を作らない)', () => {
     expect(BOUNTY_AGGRO_RANGE_DEFAULT).toBe(380);
     expect(bountyHomingReengaged(380)).toBe(true);
@@ -1907,12 +1907,18 @@ describe('帰巣ヒステリシス(帰巣→交戦は380px以内だけ・被弾�
     expect(leash({ centerX: 1201, distanceToPlayer: 400 })).toEqual({ engaged: false, homing: true });
   });
 
-  it('★帰巣中は被弾しても交戦に戻らない(逃げ撃ちハメの封じ込め)', () => {
-    // 直前に被弾(msSinceHit=0)+距離700未満でも、帰巣中なら engaged=false のまま。
+  it('★帰巣中、限界の外では撃たれても戻らない(誘い出しの封じ込め)', () => {
     expect(leash({ homing: true, centerX: 1500, distanceToPlayer: 600, msSinceHit: 0 }))
       .toEqual({ engaged: false, homing: true });
-    // 巣へ戻って限界の内側に入っても、380pxより遠ければまだ帰巣中。
-    expect(leash({ homing: true, centerX: 1000, distanceToPlayer: 381, msSinceHit: 0 }))
+  });
+
+  it('★帰巣中、限界の内側で撃たれたら振り返って戦う(社長報告2026-10-24「戻るまで攻撃し放題」)', () => {
+    expect(leash({ homing: true, centerX: 1000, distanceToPlayer: 600, msSinceHit: 0 }))
+      .toEqual({ engaged: true, homing: false });
+    expect(leash({ homing: true, centerX: 1000, distanceToPlayer: 600, msSinceHit: BOUNTY_HOMING_HIT_REENGAGE_MS }))
+      .toEqual({ engaged: true, homing: false });
+    // 撃たれていなければ、380pxより遠い間はまだ帰巣中。
+    expect(leash({ homing: true, centerX: 1000, distanceToPlayer: 381, msSinceHit: BOUNTY_HOMING_HIT_REENGAGE_MS + 1 }))
       .toEqual({ engaged: false, homing: true });
   });
 
