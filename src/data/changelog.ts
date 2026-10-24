@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5194', items: [
+    'オープニングで主人公の色が抜ける一瞬が、ブツっと切り替わるように',
+  ] },
   { version: '0.25.5193', items: [
     '拾われずに残る経験値の玉に上限ができた。増えすぎたら遠くのものから消える',
   ] },

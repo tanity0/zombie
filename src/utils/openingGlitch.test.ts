@@ -63,7 +63,8 @@ describe('長さ・刻み・入りの順番', () => {
   });
   it('入りは ease-in で沈める長さ(60〜150ms)・戻りはそれより長い', () => {
     for (const b of beats) for (const a of b.acts) {
-      if ('in' in a && a.tool !== 'red') {
+      // 色抜け(drain)は例外=ブツっと入ってブツっと戻す(社長指示2026-10-24)。
+      if ('in' in a && a.tool !== 'red' && a.tool !== 'drain') {
         expect(a.in).toBeGreaterThanOrEqual(60); expect(a.in).toBeLessThanOrEqual(150);
         expect(a.out).toBeGreaterThan(a.in);
       }
@@ -111,6 +112,11 @@ describe('廊下', () => {
   it('「今日もかわいいですね」で主人公の色だけが抜ける', () => {
     const w3 = w.find(b => b.anchor?.line === 3)!;
     expect(w3.acts.map(a => a.tool)).toEqual(['drain']);
+    // ブツっと入ってブツっと戻す(2026-10-24): 入りも戻りも0ms=フワッと変わらない。
+    const d = w3.acts[0] as Extract<Act, { tool: 'drain' }>;
+    expect(d.in).toBe(0);
+    expect(d.out).toBe(0);
+    expect(d.hold).toBeGreaterThan(0);
   });
   it('立ち止まりの1回は14〜20秒おき・背景だけ・打ち止めあり', () => {
     const rng = mulberry32(2);

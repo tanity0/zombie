@@ -94,7 +94,8 @@ export const planWalkBeats = (rng: Rng): Beat[] => [
   { name: 'W2', subject: 'none', at: 1200, anchor: { line: 2, on: 'show' }, acts: [], bgm: { dip: 0.14, in: 150, hold: 200, out: 650 } },
   {
     name: 'W3', subject: 'hero', at: 900, anchor: { line: 3, on: 'show' },
-    acts: [{ tool: 'drain', at: 0, in: 150, hold: 350, out: 500 }],
+    // 色抜けはブツっと入ってブツっと戻す(社長指示2026-10-24「もっとブツっと切らないと、フワッとセピアになっても地味」)。
+    acts: [{ tool: 'drain', at: 0, in: 0, hold: 450, out: 0 }],
     bgm: { dip: 0.22, in: 120, hold: 380, out: 700 },
   },
   {
