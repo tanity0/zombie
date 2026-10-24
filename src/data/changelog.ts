@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5208', items: [
+    'タイトル画面の絵を描き直した',
+  ] },
   { version: '0.25.5207', items: [
     'ステージ6の作戦地域にも洋館の景色が付いた。EXステージは名前の頭に「EX」が付き、ステージ6と見分けられる',
   ] },
