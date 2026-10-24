@@ -1005,6 +1005,20 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       <div className="flex min-h-full flex-col">
         {/* ブリーフィング(監査B-5): 上部36vhに地域の絵(無いステージは絵を敷かず地=パネル色のまま)。
             戻るは絵の上に浮かせる小ボタン(Headerの帯は使わない=絵を目一杯に見せる)。 */}
+        {/* 戻るは画面に固定(社長指示2026-10-24「作戦室の戻るとかボタンのUIは画面固定」): 高さ0の sticky の箱に載せ、
+            本文をスクロールしても左上に残す(絵の上に浮かせる見た目は従来どおり)。 */}
+        <div className="sticky top-0 z-30 h-0">
+          <button
+            type="button"
+            onClick={() => { playSfx('ui-back'); setScreen({ name: 'stageSelect' }); }}
+            className="absolute flex h-9 items-center gap-1 px-2.5 text-white/85"
+            // 本文の上に重なっても読めるよう、暗い下地(絵の上でも沈む色)。
+            style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)', background: 'rgba(8,7,14,0.72)' }}
+            aria-label="戻る" data-nav-back
+          >
+            <PixelIcon name="chevron-left" size={16} className="gt-icon-outline" /><span className="gt-outline text-[12px]">戻る</span>
+          </button>
+        </div>
         <div className="relative flex-1 overflow-hidden" style={{ minHeight: 'calc(36vh / var(--hud-s, 1))' }}>
           {art && (
             <img
@@ -1017,15 +1031,6 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           {/* 下端をpanel色へグラデで溶かす(絵が無いステージでも同じグラデのみ乗る=破綻しない)。 */}
           <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(8,7,14,0) 45%, rgba(8,7,14,0.94) 100%)' }} />
           {/* B-24/B-25: 黒い箱を捨て、絵の上に直置き(縁=gt-outline/gt-icon-outline)。 */}
-          <button
-            type="button"
-            onClick={() => { playSfx('ui-back'); setScreen({ name: 'stageSelect' }); }}
-            className="absolute z-10 flex h-9 items-center gap-1 px-2.5 text-white/85"
-            style={{ top: 'max(env(safe-area-inset-top), 12px)', left: 'max(env(safe-area-inset-left), 12px)' }}
-            aria-label="戻る" data-nav-back
-          >
-            <PixelIcon name="chevron-left" size={16} className="gt-icon-outline" /><span className="gt-outline text-[12px]">戻る</span>
-          </button>
           <div className="absolute inset-x-0 bottom-0 px-4 pb-3">
             <p className="gt-outline text-[12px] font-semibold tracking-wide text-white/90">{stageDateLabel(stage)}</p>
             <p className="gt-outline text-[20px] font-bold text-white">{stage.locationTitle}</p>
@@ -1424,7 +1429,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           </header>
         ) : <Header title="装備" subtitle="全作戦共通" onBack={() => setScreen({ name: 'home' })} />}
         <LoadoutBody>
-        {COMMAND_UI_ENABLED && <nav className="development-tabs loadout-tabs" aria-label="装備内容">
+        {/* 切り替えは画面に固定(社長指示2026-10-24「戻るとかボタンのUIは画面固定」)。装備の本文だけがスクロールする。 */}
+        {COMMAND_UI_ENABLED && <nav className="development-tabs loadout-tabs sticky top-0 z-10" style={{ background: 'var(--menu-bg, #07060d)' }} aria-label="装備内容">
           {/* 英語の見出し+小さく日本語(社長指示2026-09-12「このメニュー部分は英語がいい」= 作戦室ホームの LOADOUT/GROWTH と同じ流儀) */}
           {/* 語はクリエイティブ監査(2026-09-12)で選び直し: 4タブとも「英語=種別の名詞 / 日本語=その訳語」で揃える(状態語・音写を混ぜない)。
               FIREARMS(GUNS はこの作品の重さに軽い)・SECONDARY(1語=幅が揃う)・OUTFIT(AVATAR は汎用語。添えは見出しと同じ「見た目」)。 */}
@@ -2804,6 +2810,8 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const visibleShelfKeys = COMMAND_UI_ENABLED ? orderedGunShelfKeys.filter(key => SLOT_TIERS.some(tier => SLOT_CANDIDATES[activeShelfCategory][tier].includes(key))) : orderedGunShelfKeys;
   return (
     <>
+      {/* 見出し・開発資金・部門の切り替えは画面に固定(社長指示2026-10-24「戻るとかボタンのUIは画面固定」)。 */}
+      <div className="sticky top-0 z-20" style={{ background: 'var(--menu-bg, #07060d)' }}>
       <Header title="開発施設" subtitle="銃の開発 / サブウェポン解放 / スキル強化訓練" onBack={onBack} />
       {COMMAND_UI_ENABLED && <div className="development-toolbar px-3">
         <div className="development-balance">開発資金 <strong>{goldBalance.toLocaleString()} G</strong></div>
@@ -2812,6 +2820,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         ] as const).map(([id, label]) => <button key={id} type="button" aria-pressed={department === id}
           onClick={() => { playSfx('ui-move'); setDepartment(id); }}>{label}</button>)}</nav>
       </div>}
+      </div>
       <div hidden={COMMAND_UI_ENABLED && department !== 'skills'} className="p-3">
         <SkillGacha />
       </div>
