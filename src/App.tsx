@@ -40,6 +40,7 @@ import GauntletRunner from './components/GauntletRunner';
 import { isGauntletRun } from './utils/gauntletMode';
 import { installMenuKeyNav } from './utils/menuNav';
 import { installGamepad } from './utils/gamepad';
+import { flushTimeAlive } from './utils/timeAliveSync';
 import NavCursor from './components/NavCursor';
 import NavPrompt from './components/NavPrompt';
 
@@ -123,7 +124,12 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   // ステージBGMはoff(BGMはEndingScreenのエンディング曲=ending.mp3だけ)。
   const [endingOverlay, setEndingOverlay] = useState(false);
   const resetGame = useGameStore(state => state.resetGame);
-  const gameStats = useGameStore(state => state.gameStats);
+  // ★結果画面に居る時だけ gameStats を読む(コード監査2026-10-23 UI B-3/SIM S-2・社長承認「画面全体の不要な再描画をやめる」)。
+  // 出撃中は撃破・被弾・XPのたびに gameStats が差し替わり、ここ(ルート)が丸ごと購読していると
+  // App→Game→HUD 全部が毎秒十数回再描画されていた。出撃中は null を返す=差し替わっても再描画しない。
+  // 結果画面ではシミュが止まっているので、ここで読む値は確定値(従来と同じ値)。
+  const onResultScreen = gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned';
+  const gameStats = useGameStore(state => (onResultScreen ? state.gameStats : null));
   // Pixi レンダラの初フレームが出るまで true にならない(PixiStage が setRendererReady)。
   // 出撃時のレンダラ初期化/テクスチャGPUアップロード中は、黒画面ではなくローディング画面を被せる。
   const rendererReady = useGameStore(state => state.rendererReady);
@@ -507,28 +513,37 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   };
 
   // ★useCallback で固定する(社長報告2026-08-31 の保険側の穴・v0.25.4095)。
-  // `Game.tsx` は「HPが0になったら 700ms 後に onGameOver」を useEffect で張っており、
-  // 依存配列に onGameOver が入っている。**毎レンダー新しい関数を渡すとタイマーが張り直され続け、
-  // App が 700ms 以内に再レンダーし続ける限り永久に発火しない**(=死亡の保険が効かない)。
+  // `Game.tsx` は「HPが0になったら(正規の尺+1秒)後に onGameOver」の保険を useEffect で張っており、
+  // 依存配列に onGameOver が入っている。**毎レンダー新しい関数を渡すと保険が張り直され続け、
+  // App が再レンダーし続ける限り永久に発火しない**(=死亡の保険が効かない)。
+  // ※結果画面へ送る正規の経路は useGameLoop(ループの rAF で死亡時刻+正規の尺を見る)。
   const handleGameOver = useCallback(() => {
     // ★ガントレット中は画面遷移を挟まない(駆動が次枠へ差し替える)。ここで gameState を動かすと
     // Game が一瞬アンマウントし、遅れて来た遷移が次の戦いの最中に届く事故になる。
     if (GAUNTLET_MODE) return;
     if (bare) { restartBareRoomRef.current(); return; }
+    flushTimeAlive(useGameStore.getState); // 生存時間を最後のtickの値へ(途中は1秒に1回しか書かない)
     setGameState('gameOver');
   }, [bare]);
 
-  const handleReturn = () => {
+  // ★onReturn / onVictory も固定する(コード監査2026-10-23 UI A-4)。中身は毎レンダーの最新を ref 経由で呼ぶ
+  // (中で使う startGame 等が毎レンダー作り直されるため。依存に入れると固定した意味が無くなる)。
+  const handleReturnImpl = () => {
     if (GAUNTLET_MODE) return; // 同上(ガントレットは駆動側が進める)
     if (bare) { restartBareRoom(); return; }
     // 商人「帰還」=任意撤収。進行(クリア解放)はさせず、スコア計上のリザルトへ。装備は持ち帰り可。
+    flushTimeAlive(useGameStore.getState);
     setGameState('returned');
   };
+  const handleReturnRef = useRef(handleReturnImpl);
+  handleReturnRef.current = handleReturnImpl;
+  const handleReturn = useCallback(() => handleReturnRef.current(), []);
 
-  const handleVictory = () => {
+  const handleVictoryImpl = () => {
     if (GAUNTLET_MODE) return; // 同上(ガントレットは駆動側が次枠へ差し替える)
     // ★bare(道具ページ)は**進行に一切触らない**。下のクリア解放・エンディング予約を通さない。
     if (bare) { restartBareRoom(); return; }
+    flushTimeAlive(useGameStore.getState); // 生存時間を最後のtickの値へ
     // ★練習ラン(ボスラッシュ)も進行に触らない(BOSS_MAKER.md §20-6)。リザルトは出すが、
     // クリア解放もエンディング予約もしない。永続化は practiceGuard が別途封じている
     // (=ここを1つ通してしまっても保存はされない)が、**エンディングが再生される**のは
@@ -562,6 +577,9 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     if (stageId === 'stage-ex1') { setGameState('exEnding'); return; }
     setGameState('victory');
   };
+  const handleVictoryRef = useRef(handleVictoryImpl);
+  handleVictoryRef.current = handleVictoryImpl;
+  const handleVictory = useCallback(() => handleVictoryRef.current(), []);
 
   const returnToMenu = () => {
     // v0.25.2576(社長報告): ?smoke起動(ボス戦テスト等)のセッションは、メニューへ戻る時に
@@ -604,11 +622,12 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     setGameState('menu');
   };
 
-  const handleBenchmarkComplete = (result: BenchmarkResult) => {
+  const handleBenchmarkComplete = useCallback((result: BenchmarkResult) => {
     setBenchmarkResult(result);
     setBenchmarkMode(false);
+    flushTimeAlive(useGameStore.getState);
     setGameState('gameOver');
-  };
+  }, []);
 
   return (
     <HudScaleProvider value={menuScale}>
@@ -682,7 +701,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
         /></HudScale>
       )}
 
-      {!bare && !GAUNTLET_MODE && !isPracticeRun() && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
+      {!bare && !GAUNTLET_MODE && !isPracticeRun() && gameStats && (gameState === 'gameOver' || gameState === 'victory' || gameState === 'returned') && (
         <HudScale z={0} interactive><GameOverScreen
           won={gameState === 'victory'}
           withdraw={gameState === 'returned'}

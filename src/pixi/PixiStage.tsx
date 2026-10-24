@@ -321,6 +321,13 @@ const PixiStage: React.FC<PixiStageProps> = ({ width, height, onContextLost }) =
           await preloadCorridorTextures(() => loadProgressDone());
           if (cancelled || sceneRef.current !== scene) return;
         }
+        // ★研究所にしか出ない敵と障害物(labActors)は、ローディング画面が明ける前に読み終える
+        // (コード監査2026-10-23 M-5: 起動時の常駐から外した代わり。研究所ゾンビは休眠したまま最初から画面に居るため、
+        // 以前と同じく「出撃した瞬間から絵がある」を保つ)。読み込み自体は init 冒頭の loadSpriteGroups で始まっている=ここは待つだけ。
+        if (sortieSpriteGroups().includes('labActors')) {
+          await trackLoad(loadSpriteGroups(['labActors']));
+          if (cancelled || sceneRef.current !== scene) return;
+        }
         // ここまでで全ステージ別素材の注入が済んだ=以後は各レイヤーのホールドを解除してよい
         // (未着だった素材はここで森へフォールバック確定。v0.25.2279・社長報告「たまにステージ1が
         // チラッと映る」対策。ホールド自体は pixiScene の syncLab 側)。

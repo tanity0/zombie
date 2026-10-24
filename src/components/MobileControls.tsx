@@ -12,7 +12,8 @@ const MobileControls: React.FC = () => {
   const handlePause = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    useGameStore.setState(state => ({ isPaused: !state.isPaused }));
+    // キーボード(Esc/P)と同じ門を通す(窓が自分で止めている間は切り替えない・コード監査2026-10-23 UI B-4)。
+    useGameStore.getState().togglePause();
   };
 
   return (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { spritePath } from '../utils/spriteLoader';
 import { useHudLandscape } from './HudScale';
+import { slowLineVisibleChars } from '../utils/slowLine';
 
 // 話者名 → 立ち絵のベースパス(spritePathの`${base}-0`)+枠幅。セリフ表示時に上半身(バスト)を出す。
 // 用語(社長決定v0.25.1851): この左上のモデル付き吹き出し=**「会話」**。会話は必ずモデル入り
@@ -68,23 +69,28 @@ const SheetPortrait = ({ src, frames, frame, h, alt }: { src: string; frames: nu
 
 // slow の行(ステージ4のジュンの離脱の一言・research/JUN_ESCORT.md): 文字をゆっくり送り、三点リーダで一度止まる
 // (道中の同じ文言と出し方で区別する)。三点リーダは間をおいてから出す=言い淀み。この小さな部品だけが再描画する。
-const SLOW_CHAR_MS = 120;
-const SLOW_ELLIPSIS_PAUSE_MS = 520;
+// ★送りは**描画の周期(rAF)**で、表示開始からの経過時間から文字数を出す(utils/slowLine・コード監査2026-10-23 UI B-2③)。
+// 旧: 1文字ごとの setTimeout の鎖=重い時にタイマーが後回しにされると「名前だけ出て本文が空」で止まった。
+// 速さ・溜めは旧実装と同じ(slowLine.test が旧実装の時刻と突き合わせている)。裏タブで rAF が止まった時の保険に粗いタイマーも併走。
 const SlowLine = ({ text }: { text: string }) => {
   const [n, setN] = useState(0);
   useEffect(() => {
     const chars = Array.from(text);
-    let i = 0;
-    let timer: ReturnType<typeof setTimeout>;
-    const step = () => {
-      i += 1;
-      setN(i);
-      if (i >= chars.length) return;
-      // 次が三点リーダなら一拍ためてから出す。
-      timer = setTimeout(step, chars[i] === '…' ? SLOW_ELLIPSIS_PAUSE_MS : SLOW_CHAR_MS);
+    const t0 = performance.now();
+    let raf = 0;
+    let shown = 0;
+    let finished = false;
+    const update = () => {
+      if (finished) return;
+      const k = slowLineVisibleChars(chars, performance.now() - t0);
+      if (k !== shown) { shown = k; setN(k); }
+      if (k >= chars.length) { finished = true; window.cancelAnimationFrame(raf); window.clearInterval(iv); }
     };
-    timer = setTimeout(step, SLOW_CHAR_MS);
-    return () => clearTimeout(timer);
+    const loop = () => { update(); if (!finished) raf = window.requestAnimationFrame(loop); };
+    const iv = window.setInterval(update, 250);
+    setN(0);
+    raf = window.requestAnimationFrame(loop);
+    return () => { finished = true; window.cancelAnimationFrame(raf); window.clearInterval(iv); };
   }, [text]);
   const chars = Array.from(text);
   return (

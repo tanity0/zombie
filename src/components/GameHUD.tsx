@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PixelIcon } from './PixelIcon';
 import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
+import { rafTimeout } from '../utils/rafTimeout';
 import { formatTime } from '../utils/renderUtils';
 import { hasWeaponIcon, weaponIconName, DESERTTECH_WEAPON_KEY } from '../utils/weaponUtils';
 import { weaponSlotClass } from '../utils/weaponTierColor'; // 武器スロットの段の色(社長指示2026-09-16)
@@ -142,8 +143,8 @@ const GameHUD: React.FC = () => {
     if (!lastWeaponGet?.holdMs) return;
     const left = lastWeaponGet.at + lastWeaponGet.holdMs - Date.now();
     if (left <= 0) return;
-    const id = window.setTimeout(() => bumpItemGet(v => v + 1), left + 10);
-    return () => window.clearTimeout(id);
+    // ★描画の周期でも進める(rafTimeout・コード監査2026-10-23 UI B-2⑦)。時刻は従来どおり。
+    return rafTimeout(() => bumpItemGet(v => v + 1), left + 10);
   }, [lastWeaponGet]);
   const isTreasureGet = lastWeaponGet?.kind === 'treasure';
   const isDataGet = lastWeaponGet?.kind === 'data'; // 研究所の重要データ確保(武器/トレジャーと同じバナーUI)

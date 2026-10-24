@@ -13,6 +13,7 @@ import { CUTIN_SERIF_STACK } from '../config/font';
 import { useGameStore, ATTENTION_IN_MS, ATTENTION_HOLD_MS } from '../store/gameStore';
 import { BOSS_CUTIN_FADEIN_MS, BOSS_CUTIN_FADEOUT_MS } from '../utils/attentionCutin';
 import { playSfx } from '../audio/audioManager';
+import { rafTimeout } from '../utils/rafTimeout';
 
 const BossCutin: React.FC = () => {
   const attention = useGameStore(s => s.attention);
@@ -37,10 +38,11 @@ const BossCutin: React.FC = () => {
     const hideAt = fadeOutAt + BOSS_CUTIN_FADEOUT_MS;         // 完全に消える(時間は既に動いている)
     const now = Date.now();
     if (now >= hideAt) { setVisible(false); setOpacity(0); return; }
-    const timers: ReturnType<typeof setTimeout>[] = [];
+    // ★描画の周期でも進める(rafTimeout・コード監査2026-10-23 UI B-2⑤)。時刻は従来どおり。
+    const timers: (() => void)[] = [];
     const at = (t: number, fn: () => void) => {
       if (Date.now() >= t) fn();
-      else timers.push(setTimeout(fn, t - Date.now()));
+      else timers.push(rafTimeout(fn, t - Date.now()));
     };
     at(showAt, () => {
       setVisible(true);
@@ -50,7 +52,7 @@ const BossCutin: React.FC = () => {
     });
     at(fadeOutAt, () => setOpacity(0));
     at(hideAt, () => setVisible(false));
-    return () => { timers.forEach(clearTimeout); setVisible(false); setOpacity(0); };
+    return () => { timers.forEach(cancel => cancel()); setVisible(false); setOpacity(0); };
   }, [cutin, startReal, cutinMs, holdMs]);
 
   if (!visible || !cutin) return null;

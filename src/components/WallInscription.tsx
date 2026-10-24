@@ -1,8 +1,9 @@
 // PACING_PUZZLE.md §5.17 M14 演出仕様(v0.25.1499): 大格=銘打ち(儀式=深さ踏破/ランク到達、REVENGE)。
 // キュー(store.wallEventQueue)の先頭を約4秒表示してから dequeueWallEvent() で次へ進む。
-// スロー・停止・ヒットストップなし=実時間(setTimeout)で進行。Pixi無関与・強glow不使用(負荷方針どおり)。
+// スロー・停止・ヒットストップなし=実時間で進行(rafTimeout=描画の周期とタイマーの早い方。コード監査2026-10-23 B-2)。Pixi無関与・強glow不使用(負荷方針どおり)。
 import { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { rafTimeout } from '../utils/rafTimeout';
 
 const TOTAL_MS = 4000;
 const FADE_MS = 800;
@@ -18,8 +19,8 @@ export default function WallInscription() {
   useEffect(() => {
     if (!current) { setActiveId(null); return; }
     setActiveId(current.id);
-    const t = setTimeout(() => useGameStore.getState().dequeueWallEvent(), TOTAL_MS);
-    return () => clearTimeout(t);
+    // ★描画の周期でも送る(タイマーが後回しにされても銘打ちが詰まらない・コード監査2026-10-23 UI B-2④)。尺は同じ。
+    return rafTimeout(() => useGameStore.getState().dequeueWallEvent(), TOTAL_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id]);
 

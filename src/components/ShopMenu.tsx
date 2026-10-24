@@ -1,5 +1,6 @@
 import React from 'react';
 import NoBounceScroller from './NoBounceScroller';
+import { rafTimeout } from '../utils/rafTimeout';
 import { shallow } from 'zustand/shallow';
 import {
   SHOP_AMMO_COST,
@@ -260,7 +261,8 @@ const ShopMenu: React.FC = () => {
     playSfx('ui-select');
     setLeaving(true);
     // 暗転(出)は速く、底で行き先へ置き、明け(store が受け持つ)は長く。
-    window.setTimeout(() => { if (!useGameStore.getState().fastTravelTo(id)) setLeaving(false); }, FAST_TRAVEL_DIM_MS);
+    // ★描画の周期でも進める(タイマーが後回しにされても暗転のまま止まらない・コード監査2026-10-23 UI B-2⑧)。尺は従来どおり。
+    rafTimeout(() => { if (!useGameStore.getState().fastTravelTo(id)) setLeaving(false); }, FAST_TRAVEL_DIM_MS);
   };
 
   return (

@@ -1304,7 +1304,14 @@ export const sheetFacesRight = (idleTexName: string | null | undefined): boolean
  * ①**常駐1.0MBを超えるシートを持つ立ち絵は、この表に必ず載っていること**
  * ②**この表のキーは実在するシートを持つこと**(打ち間違えると黙って起動時常駐に戻るため)。
  */
-export type SheetResidency = 'deferred' | 'eager';
+/**
+ * - `'deferred'` = 描こうとした瞬間に網が読む(カットイン等の猶予がある個体)。
+ * - `'eager'` = 起動時に読む(前触れなくその辺に居る・全ステージで出る個体)。
+ * - `'lab'` = **ステージ2(研究所)の出撃時に読む**(`pixiTextures` の遅延組 `labActors`。ローディング画面の間に読み終える)。
+ *   研究所にしか出ない個体用(コード監査2026-10-23 M-5・社長承認「ステージ2専用の素材を他のステージで読み込まない」)。
+ *   研究所の敵は休眠したまま最初から画面に居る=猶予が無いので `'deferred'` にはできないが、**他のステージでは1度も要らない**。
+ */
+export type SheetResidency = 'deferred' | 'eager' | 'lab';
 export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   // 死神(`reaper`)。歩き3.34MB。気配演出→カットインを挟んで出る。
   'reaper2-common': 'deferred',
@@ -1356,8 +1363,13 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
   'pumpkin-common': 'eager',   // 蜘蛛。跳び1.15MB
   'driller-common': 'eager',   // 削岩型。歩き1.12MB
   'reaper-common': 'eager',    // 伐採人(旧・死神の絵)。歩き1.02MB
-  'lab-zombie/lab-zombie-lv1-female': 'eager', // 研究所ゾンビLv1(女)。歩き1.03MB。休眠したまま最初から画面に居る
-  'lab-zombie/lab-zombie-lv3': 'eager',
+  // ▼研究所ゾンビ(ステージ2にしか出ない)。**休眠したまま最初から画面に居る**ので網任せ('deferred')にはしないが、
+  //   他のステージでは要らない ⇒ 'lab'=ステージ2の出撃時に読む(ローディングが明けるまでに読み終える)。
+  //   旧: 'eager'(全ステージで起動時に常駐していた・計約6.6MB)。
+  'lab-zombie/lab-zombie-lv1-female': 'lab', // 歩き1.03+攻撃0.81MB
+  'lab-zombie/lab-zombie-lv1-male': 'lab',   // 歩き0.68+攻撃0.66MB
+  'lab-zombie/lab-zombie-lv2': 'lab',        // 歩き0.83MB
+  'lab-zombie/lab-zombie-lv3': 'lab',        // 歩き1.36+跳び1.24MB
   // 馬乗り(変異)。歩き0.91+攻撃2.38=3.29MB。**ステージ3でしか出ず**、出現時に「賞金首出現」の告知を挟む=遅延
   // (間に合わなければ立ち絵へフォールバック=消えはしない)。
   'bounty-melee': 'deferred',
@@ -1375,7 +1387,11 @@ export const SHEET_RESIDENCY: Readonly<Record<string, SheetResidency>> = {
 
 /** そのシート群を起動時に読まない(=遅延組へ回す)か。表に無い立ち絵は**起動時**(既定)。 */
 export const sheetDeferred = (idleTexName: string): boolean =>
-  SHEET_RESIDENCY[idleTexName] === 'deferred';
+  SHEET_RESIDENCY[idleTexName] === 'deferred' || SHEET_RESIDENCY[idleTexName] === 'lab';
+
+/** そのシート群を出撃時に先読みするステージの組(`pixiTextures` の遅延組の名前)。無ければ null(網だけ/起動時)。 */
+export const sheetStageGroup = (idleTexName: string): 'labActors' | null =>
+  SHEET_RESIDENCY[idleTexName] === 'lab' ? 'labActors' : null;
 
 /** 7つのシート表を「立ち絵名 → シート名」の1本の並びにする(起動側と遅延側が**同じ並びを2つに割る**)。 */
 /**

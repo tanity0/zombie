@@ -11,7 +11,8 @@
 
 import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ALL_VARIANT_TEXTURES, ENEMY_VARIANT_SETS } from '../utils/enemyVariant';
-import { allEnemySheets, sheetDeferred } from '../utils/enemySheets';
+import { allEnemySheets, sheetDeferred, sheetStageGroup } from '../utils/enemySheets';
+import { LAB_PROP_SPRITES, LAB_ZOMBIE_IDLE_SPRITES, LAB_ZOMBIE_IDLE_SIZE, LAB_ZOMBIE_ASPECT_KEYS } from '../utils/labActorArt';
 import { ATLAS_PX2_OVERRIDES } from '../utils/atlasPxOverrides';
 import { ATLAS_RECTS } from '../utils/spriteAtlas';
 import { spritePath } from '../utils/spriteLoader';
@@ -76,6 +77,19 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'lab/lab-crawler-walk', scaleMode: 'nearest' },        // 4800x130 = 2.5MB
     { name: 'lab/lab-crawler-attack', scaleMode: 'nearest' },      // 6688x130 = 3.5MB
   ],
+  /**
+   * ★研究所(ステージ2)にしか出ない敵と障害物(コード監査2026-10-23 M-5・社長承認)。計 約11MB。
+   * 旧: 起動マニフェストにあり**全ステージで常駐**していた。研究所ゾンビは休眠したまま最初から画面に居る=
+   * 網任せにはできないので、ステージ2の出撃時に**ローディング画面が明ける前に読み終える**(PixiStage が待つ)。
+   * `scaleMode` は旧マニフェストの記述どおり(全部 nearest)。縦横比(当たり判定の帯)は `labActorArt` の寸法表から
+   * 起動時に入れる=読み込みの有無で判定は変わらない。
+   */
+  labActors: [
+    ...LAB_PROP_SPRITES.map(name => ({ name, scaleMode: 'nearest' as const })),          // 12枚 計4.6MB
+    ...LAB_ZOMBIE_IDLE_SPRITES.map(name => ({ name, scaleMode: 'nearest' as const })),   // 立ち絵4枚 計0.3MB
+    // 研究所ゾンビの歩き/攻撃/跳び(SHEET_RESIDENCY='lab')。計 約6.6MB。
+    ...ENEMY_SHEETS.filter(s => sheetStageGroup(s.idle) === 'labActors').map(s => ({ name: s.sheet, scaleMode: 'nearest' as const })),
+  ],
   // 訓練(洞窟)ステージの鍾乳石帯。2508x627 = 6.0MB。
   tutorial: [
     { name: 'tutorial-ceiling-band' },
@@ -126,7 +140,7 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
    * (立ち絵の `castle`/`bosses` と同じ理由)。**さらにシートは外れても立ち絵へ落ちる**ので、
    * 立ち絵より失敗が軽い。中身は `SHEET_RESIDENCY` が決める(ここに手で名前を書かない)。
    */
-  enemySheets: DEFERRED_ENEMY_SHEETS.map(s => ({ name: s.sheet, scaleMode: 'nearest' as const })),
+  enemySheets: DEFERRED_ENEMY_SHEETS.filter(s => !sheetStageGroup(s.idle)).map(s => ({ name: s.sheet, scaleMode: 'nearest' as const })),
 };
 
 /** 遅延組の索引(名前→scaleMode)。`getTexture` の網と `loadSpriteGroups` が引く。 */
@@ -810,19 +824,8 @@ export const ensureTextures = (): Promise<void> => {
       // 縦に無限リピート(NPOTのためwrap=repeatは描画側で明示)。
       { name: 'lab-clear-item', scaleMode: 'nearest' }, // 研究所クリア条件アイテム(拾うとクリア)
       { name: 'wire-anchor-tip', scaleMode: 'nearest' }, // ワイヤーアンカー先端(爪=左下基準。穴=右上にワイヤー接続)
-      // 研究所オブジェ(木の代わりの障害物。紫透過済み)。
-      { name: 'lab-props/lab-prop2-r1-c1', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r1-c2', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r1-c3', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r1-c4', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r2-c1', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r2-c2', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r2-c3', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r2-c4', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r3-c1', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r3-c2', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r3-c3', scaleMode: 'nearest' },
-      { name: 'lab-props/lab-prop2-r3-c4', scaleMode: 'nearest' },
+      // ★研究所オブジェ(木の代わりの障害物)はここから外した(コード監査2026-10-23 M-5)。
+      // ステージ2の出撃時だけ読む(DEFERRED_SPRITE_GROUPS.labActors)。
       // 救助イベントのNPC(射撃手/一般人 男女)。一般人は各2コマ歩き(0=待機,1=歩き)。紫背景は透過済み。
       // ヘルメット兵(射撃手)は歩きシート6コマ(社長支給2026-10-11・旧2コマ shooter-0/1 から差し替え・ESCORT_WALK_SHEETS で枠を切る)。
       { name: 'rescue/shooter-walk', scaleMode: 'nearest' },
@@ -830,11 +833,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'rescue/civ-m-1', scaleMode: 'nearest' },
       { name: 'rescue/civ-f-0', scaleMode: 'nearest' },
       { name: 'rescue/civ-f-1', scaleMode: 'nearest' },
-      // 研究所ゾンビ(Lv1/2 は男女、Lv3 は巨体1種)。
-      { name: 'lab-zombie/lab-zombie-lv1-male', scaleMode: 'nearest' },
-      { name: 'lab-zombie/lab-zombie-lv1-female', scaleMode: 'nearest' },
-      { name: 'lab-zombie/lab-zombie-lv2', scaleMode: 'nearest' }, // v0.25.2914: 男女廃止・1種へ(社長指示)
-      { name: 'lab-zombie/lab-zombie-lv3', scaleMode: 'nearest' },
+      // ★研究所ゾンビ(Lv1は男女・Lv2・Lv3)の立ち絵もここから外した(コード監査2026-10-23 M-5)。
+      // ステージ2の出撃時だけ読む(DEFERRED_SPRITE_GROUPS.labActors)。縦横比は下の regAspect が寸法表から入れる。
       // 進軍用NPC(護衛軍人)のユニーク立ち絵。soldierIndex で出し分け。旧3コマ(npc/<名>-0..2)は2026-10-07に削除(社長指示)。
       // 進軍NPCの歩きシート(社長支給2026-10-07・ESCORT_WALK_SHEETS で枠を切って登録)。
       { name: 'npc/edgar-walk', scaleMode: 'nearest' },
@@ -1437,9 +1437,12 @@ export const ensureTextures = (): Promise<void> => {
     regAspect('default:hunter', 'hunter'); // ハンター変異体(全ステージ共通の1枚絵)
     // ★screamer のアスペクトは ENEMY_VARIANT_SETS の一括登録(上)が入れる。ここで旧 `screamer`
     // (紫背景・1254角=アスペクト1.0)を再登録すると新素材(縦長)の頭スナップがズレるので置かない。
-    regAspect('default:lab-zombie-1', 'lab-zombie/lab-zombie-lv1-male');
-    regAspect('default:lab-zombie-2', 'lab-zombie/lab-zombie-lv2');
-    regAspect('default:lab-zombie-3', 'lab-zombie/lab-zombie-lv3');
+    // ★研究所ゾンビの立ち絵は遅延組(labActors)になったので、縦横比は**寸法表から**入れる(読み込みの有無で
+    // 当たり判定の帯=enemyHitStrip が変わらないように。表と実物の一致は labActorArt.test.ts が見る)。
+    for (const [key, texName] of LAB_ZOMBIE_ASPECT_KEYS) {
+      const sz = LAB_ZOMBIE_IDLE_SIZE[texName];
+      if (sz && sz.w > 0) setEnemyArtAspect(key, sz.h / sz.w);
+    }
 
     ready = true; // 一部失敗しても描画は継続(真っ暗を防ぐ)。
     void warmSkillIcons();  // ★ready の**後**に投げる(下のコメント参照)。失敗しても起動には一切触らない。
@@ -1536,6 +1539,13 @@ const shrinkLoadedTexture = (tex: Texture, url: string, div: number): Texture =>
   void Assets.unload(url).catch(() => { /* 解放できなくても描画は写しで続く */ });
   return out;
 };
+
+/**
+ * ★**読みに行かない**問い合わせ(コード監査2026-10-23 R-3/M-1)。読み込み済みなら返し、無ければ null。
+ * 診断表示など「今あるか」だけを見たい所はこちらを使う。`getTexture` は遅延組の安全網として**読みに行く**ので、
+ * 診断で呼ぶとその素材が全ステージで常駐してしまう(実例: 版数表示の `floor:` がステージ2の床約10MBを常駐させていた)。
+ */
+export const peekTexture = (name: string): Texture | null => textures.get(name) ?? null;
 
 export const getTexture = (name: string): Texture | null => {
   const t = textures.get(name);

@@ -418,7 +418,8 @@ import {
 } from '../utils/scriptPuzzle';
 import { shouldTriggerGate1, entersGate1Penalty, effectiveReaperRiskFloor } from '../utils/gate1';
 import { shouldTriggerGate2 } from '../utils/gate2';
-import { shouldFireDeathFallback } from '../utils/playerDeathWatch';
+import { shouldFireDeathFallback, shouldSendDeathResult } from '../utils/playerDeathWatch';
+import { noteTimeAlive, timeAliveWriteDue, flushTimeAlive, freezeTimeAliveAtDeath } from '../utils/timeAliveSync';
 import { isExStageRun, phillBossSpawnReady, surielGateSpawnReady, surielGateClearReady } from '../utils/exStage';
 import {
   EX_SURIEL_TRIGGER_Y, EX_SURIEL_NORTH_LOCK_Y, EX_SURIEL_SOUTH_LOCK_Y, EX_SURIEL_BGM_FADE_MS,
@@ -1511,7 +1512,7 @@ const LAB_SPAWN_COUNT_MAX = 1;
 const PLAYER_DEATH_SLOW_MS = DEATH_ZOOM_MS;
 // 死亡演出を見せ切ってからリザルトへ移るまで(旧1100ms=寄りのピーク中に画面が切り替わっていた)。
 // 寄り/スローの全長(1700)+余韻300ms。立ち絵の保持/フェード(pixiScene)もこの中に収まる。
-const PLAYER_DEATH_TO_RESULT_MS = DEATH_ZOOM_MS + 300;
+export const PLAYER_DEATH_TO_RESULT_MS = DEATH_ZOOM_MS + 300;
 const HEAVY_GRENADE_EXPLOSION_EFFECT_MS = 440;
 const COUNTER_REFLECT_SLOW_MS = 560;
 const GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS = 440;
@@ -1562,9 +1563,13 @@ const abortDogFetchFx = (job: DogFetchJob, effectId: string | null, nowMs: numbe
   e.duration = (nowMs - e.createdAt) + (DOG_FETCH_DURATION_MS - DOG_FETCH_PICKUP_MS);
 };
 
-export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: boolean } = {}) => {
+export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: boolean; trackFps?: boolean } = {}) => {
   const [fps, setFps] = useState(0);
   const benchmarkModeRef = useRef(Boolean(options.benchmarkMode));
+  // ★fps(React の state)は読む画面(統計トグルの PerfOverlay・ベンチ)がある時だけ書く(コード監査2026-10-23 UI B-9)。
+  // 読み手が居ないのに毎秒 setFps すると、Game とその子が毎秒まるごと再描画される。
+  const trackFpsRef = useRef(Boolean(options.trackFps));
+  trackFpsRef.current = Boolean(options.trackFps);
   const frameRef = useRef(0);
   const lastFrameTimeRef = useRef(0);
   // ★v0.25.4111(社長報告2026-09-01「音楽だけ流れて固まった。背景の雲は動いていて、キャラの足踏み・
@@ -1852,9 +1857,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 取り消さないと、保険(Game.tsx の700ms)で先にリザルトが出て「もう一度」を押した後、
   // 前の出撃の予約が新しい出撃の最中に届いて、もう一度リザルトが出ていた(社長報告2026-10-10・変異体対策室)。
   const deathToResultTimerRef = useRef<number | null>(null);
+  // ★死亡→結果画面は**描画の周期(このループの rAF)で進める**(コード監査2026-10-23 UI B-1/B-2・SIM S-3・社長承認)。
+  // 期限(実時間)を持ち、ループの毎フレームで見る。タイマーは保険として同じ期限で残す(先に来た方が1回だけ送る)。
+  // 重い時にタイマーが後回しにされても、描画が回っている限り結果画面へ移る。
+  const deathResultDueAtRef = useRef<number | null>(null);
+  const deathResultSentRef = useRef(false);
+  const onGameOverRef = useRef(onGameOver);
+  onGameOverRef.current = onGameOver;
+  const sendDeathResult = useCallback(() => {
+    if (deathResultSentRef.current) return;
+    deathResultSentRef.current = true;
+    if (deathToResultTimerRef.current !== null) window.clearTimeout(deathToResultTimerRef.current);
+    deathToResultTimerRef.current = null;
+    onGameOverRef.current();
+  }, []);
   useEffect(() => () => {
     if (deathToResultTimerRef.current !== null) window.clearTimeout(deathToResultTimerRef.current);
     deathToResultTimerRef.current = null;
+    deathResultDueAtRef.current = null;
   }, []);
   const dogFetchRef = useRef<DogFetchJob | null>(null);
   /** ★幻影のドッグ(拾わずに消す)。プレイヤーの枠と取り合わないよう主語ごとに持つ。 */
@@ -2226,6 +2246,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const emitBotReport = useCallback((outcome: 'death' | 'clear' | 'return') => {
     if (!BOT_PERSONA || botReportedRef.current) return;
     botReportedRef.current = true;
+    flushTimeAlive(useGameStore.getState); // 生存時間を最後のtickの値へ(1秒間引きの端数を戻す)
     const s = useGameStore.getState();
     // M35(§6.12): goldはgoldBalance読み(リザルト画面が加算する前=常に0)を廃止し、リザルト画面と同じ
     // 計算式(calculateResultScore+ゴールドラッシュ倍率=GameOverScreenのgoldEarnedと同値)を終了時点で評価。
@@ -2298,6 +2319,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const triggerPlayerDeath = useCallback((x: number, y: number) => {
     if (gameOverTriggeredRef.current) return;
     gameOverTriggeredRef.current = true;
+    // ★生存時間は死んだ瞬間の値で固定する(この後の死亡演出の約2秒=スロー中もゲーム時間は進む を数えない・品質監査6)。
+    {
+      const st = useGameStore.getState();
+      freezeTimeAliveAtDeath(st.gameTime, st.gameTime / 1000);
+      st.updateGameStats({ timeAlive: st.gameTime / 1000 });
+    }
     emitBotReport('death'); // M26-L: botモードなら死因つきレポートを先に確定(以降の後始末と独立)
     logKomaSummary();       // v0.25.2370: ?komalog=1 の時だけ、ランク較正用の要約をコンソールへ1回出す
     // PACING_PUZZLE.md §5.17 M14: 死亡確定時に最終同期(1秒間隔の間引きだと直近の数百msが漏れるため)。
@@ -2322,8 +2349,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     spawnBurst(x, y, '#ef4444', 36);
     spawnBurst(x, y, '#7f1d1d', 22);
     // 死亡演出(寄り+スロー+血)を見せ切ってからゲームオーバー画面へ(v0.25.2587: 1100→PLAYER_DEATH_TO_RESULT_MS)。
-    deathToResultTimerRef.current = window.setTimeout(onGameOver, PLAYER_DEATH_TO_RESULT_MS);
-  }, [onGameOver, spawnBurst, spawnFlash, spawnRing, emitBotReport]);
+    // ★正は rAF 側(ループ冒頭の shouldSendDeathResult)。タイマーは裏タブ等で rAF が止まった時の保険(同じ期限)。
+    deathResultSentRef.current = false;
+    deathResultDueAtRef.current = Date.now() + PLAYER_DEATH_TO_RESULT_MS;
+    deathToResultTimerRef.current = window.setTimeout(sendDeathResult, PLAYER_DEATH_TO_RESULT_MS);
+  }, [sendDeathResult, spawnBurst, spawnFlash, spawnRing, emitBotReport]);
 
   const spawnEggFluidSplash = useCallback((x: number, y: number, intensity = 1) => {
     const now = Date.now();
@@ -2601,6 +2631,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // the time origin current so we don't get a giant delta when it lapses.
       const nowMs = Date.now();
 
+      // ★死亡→結果画面(描画の周期で進める・アテンション/ヒットストップ等の早期returnより前で見る)。
+      if (shouldSendDeathResult(nowMs, deathResultDueAtRef.current, deathResultSentRef.current)) sendDeathResult();
+
       // ボス死亡attentionはこの直後から早期returnするため、崩壊SEの立ち上がりだけは停止判定より前で拾う。
       // 通常時は下のcorpse管理ブロックと同じrefで重複を防ぐ。
       {
@@ -2839,7 +2872,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // Update FPS counter
       fpsCounterRef.current.frames++;
       if (timestamp - fpsCounterRef.current.lastCheck >= 1000) {
-        setFps(fpsCounterRef.current.frames);
+        if (trackFpsRef.current) setFps(fpsCounterRef.current.frames);
         fpsCounterRef.current.frames = 0;
         fpsCounterRef.current.lastCheck = timestamp;
       }
@@ -3282,7 +3315,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         setGameTime(newGameTime, newRealGameTime);
         useGameStore.getState().updateNpcDialogue(newGameTime); // NPCセリフの表示進行(時間停止なし)
         useGameStore.getState().updateMerchantDwell(deltaTime * 1000); // 商人サークル3秒滞在→話しかけ(社長指示v0.25.1842)
-        updateGameStats({ timeAlive: gameTime / 1000 });
+        // ★生存時間は「秒が変わった時だけ」store へ書く(gameStats の毎フレーム差し替えをやめる・コード監査2026-10-23 S-2)。
+        // 最後のtickの値は記録しておき、リザルトへ移る瞬間に flushTimeAlive が書く=リザルトの値は従来と同じ。
+        // 死亡の後(演出の間)は記録しない=リザルトの生存時間は死んだ時点の値(freezeTimeAliveAtDeath)。
+        {
+          const ta = noteTimeAlive(newGameTime, gameTime / 1000);
+          if (ta !== null && timeAliveWriteDue(useGameStore.getState().gameStats.timeAlive, ta)) updateGameStats({ timeAlive: ta });
+        }
 
         // ★近接ヒットVFXの切り分け用(v0.25.4339・開発専用)。`?mhit=demo` の時だけ、近接と無関係に
         // プレイヤーの横で一定間隔に出す。「出ない」の原因が**発火条件**なのか**描画/素材**なのかを
@@ -17835,6 +17874,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     };
   }, [
     emitBotReport, // M26-L: botレポート(安定参照のuseCallback)
+    sendDeathResult, // 死亡→結果画面の送り(安定参照のuseCallback・依存は空)
     showTutorialOnce, // v0.25.2252: チュートリアル表示(安定参照のuseCallback=再実行しない)
     seenTutorials,    // v0.25.2253: 既読の遅延読み込み(同上)
     movePlayer,

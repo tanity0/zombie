@@ -42,3 +42,20 @@ export interface PlayerDeathWatchInput {
 /** 毎フレームこれが true になったフレームで `triggerPlayerDeath` を呼ぶ。 */
 export const shouldFireDeathFallback = (i: PlayerDeathWatchInput): boolean =>
   i.health <= 0 && !i.alreadyTriggered && !i.gameWon && !i.gameReturned;
+
+/**
+ * ★死亡→結果画面の送り(コード監査2026-10-23 UI B-1/B-2・社長承認)。
+ * ループ(rAF)の毎フレームで見て、期限(実時間)に達した最初のフレームで1回だけ結果画面へ送る。
+ * タイマーだけで送っていた頃は、重い時にタイマーが後回しにされると「死んでも終わらない」になった。
+ * `dueAtMs` = 死亡確定時刻 + 正規の尺(`PLAYER_DEATH_TO_RESULT_MS`)。未予約は null。
+ */
+export const shouldSendDeathResult = (nowMs: number, dueAtMs: number | null, alreadySent: boolean): boolean =>
+  dueAtMs !== null && !alreadySent && nowMs >= dueAtMs;
+
+/**
+ * Game.tsx の保険(HP0を見て結果画面へ送るタイマー)の尺。**正規の尺より必ず長く**して、
+ * 死亡演出(寄り+スロー+余韻)を途中で切らない(旧700msは正規の2000msより先に発火して毎回演出を切っていた)。
+ * 正規の経路(ループ)が何かの理由で送れなかった時だけ効く。
+ */
+export const DEATH_RESULT_SAFETY_EXTRA_MS = 1000;
+export const deathResultSafetyMs = (regularMs: number): number => regularMs + DEATH_RESULT_SAFETY_EXTRA_MS;

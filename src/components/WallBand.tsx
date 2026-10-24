@@ -4,6 +4,7 @@
 // イベント駆動(text/until変化時のみ)=毎フレーム再レンダーなし(CLAUDE.mdのReact規律)。
 import { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { rafTimeout } from '../utils/rafTimeout';
 
 export default function WallBand() {
   const text = useGameStore(s => s.wallBandText);
@@ -14,8 +15,8 @@ export default function WallBand() {
   useEffect(() => {
     if (!text || until <= Date.now()) return;
     setShown({ text, color });
-    const t = setTimeout(() => setShown(null), Math.max(0, until - Date.now()));
-    return () => clearTimeout(t);
+    // ★描画の周期でも進める(rafTimeout・コード監査2026-10-23 UI B-2⑥)。時刻は従来どおり。
+    return rafTimeout(() => setShown(null), Math.max(0, until - Date.now()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, until]);
 

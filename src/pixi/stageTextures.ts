@@ -135,7 +135,8 @@ export const prefetchStageTextures = (stage: { theme?: string; farBackdrop?: str
 export const sortieSpriteGroups = (): string[] => {
   const s = useGameStore.getState();
   if (s.corridorMode) return [];
-  if (s.stageTheme === 'lab') return ['lab'];
+  // 研究所: 背景(lab)+研究所にしか出ない敵と障害物(labActors・コード監査2026-10-23 M-5)。
+  if (s.stageTheme === 'lab') return ['lab', 'labActors'];
   if (s.farBackdrop === 'tutorial') return ['tutorial'];
   return [];
 };

@@ -1,4 +1,5 @@
 import { MAGNET_PULL_RADIUS_BY_LEVEL } from '../utils/magnetPull'; // スキル マグネット=吸い寄せ半径(社長裁定2026-09-13)
+import { canTogglePause } from '../utils/pauseGate';
 import type { RainArrow } from '../utils/arrowRain';
 import { tickSpawnWalk, resetSpawnWalk } from '../utils/spawnWalkBias';
 import { steerDirToward } from '../utils/mimirWheel';
@@ -7084,6 +7085,8 @@ interface GameState {
   setGameTime: (time: number, realTime?: number) => void;
   setBackgrounded: (v: boolean) => void; // タブ/アプリが裏かを設定(進行停止用)。visibility/ネイティブpauseから呼ぶ。
   setPaused: (paused: boolean) => void;
+  /** 手動の一時停止の切り替え(ピル/Esc・P/パッド共通の門)。窓が自分で止めている間は何もしない(utils/pauseGate)。 */
+  togglePause: () => void;
   setAmmoPickupAmount: (type: AmmoType, amount: number) => void;
   setUnlockedShopSkillCard: (key: SubWeaponKey, level: number) => void;
   purchasedSubLevels: Partial<Record<SubWeaponKey, number>>; // 開発施設で購入した陳列Lv(永続)。装備条件=Lv1以上
@@ -20600,6 +20603,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   setPaused: (paused) => {
     set({ isPaused: paused });
+  },
+
+  togglePause: () => {
+    set(state => (canTogglePause(state) ? { isPaused: !state.isPaused } : {}));
   },
 
   setAmmoPickupAmount: (type, amount) => {

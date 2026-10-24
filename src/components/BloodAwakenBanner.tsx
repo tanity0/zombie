@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { rafTimeout } from '../utils/rafTimeout';
 
 // ★B10 血の覚醒(社長指示2026-10-16「覚醒時、覚醒の英語を表示」): 覚醒に入った瞬間だけ、自機の上に英字「AWAKENING」を一拍出す。
 // 題字の運動は銘打ち(WallInscription)と同じ(字間が 0.34em→0.14em に締まる・Georgia 明朝)。色は覚醒の体と同じ朱。全長 1.8秒(消え 0.6秒)。
@@ -19,8 +20,8 @@ export const BloodAwakenBanner = () => {
     seen.current = startedAt;
     if (!awake) return;
     setShownKey(Date.now());
-    const t = window.setTimeout(() => setShownKey(null), TOTAL_MS);
-    return () => window.clearTimeout(t);
+    // ★描画の周期でも進める(rafTimeout・コード監査2026-10-23 UI B-2⑥)。尺は従来どおり。
+    return rafTimeout(() => setShownKey(null), TOTAL_MS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startedAt]);
   if (shownKey === null) return null;

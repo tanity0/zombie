@@ -41,7 +41,20 @@ const VirtualJoystick: React.FC = () => {
   const flickFiredRef = useRef<boolean>(false);
 
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
-  const [delta, setDelta] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // ★ノブの位置(指の移動ぶん)は React の state にしない(コード監査2026-10-23 UI B-8・社長承認「画面全体の不要な再描画をやめる」)。
+  // 指を置いている間ずっと pointermove ごとに再描画していた。値は ref に持ち、ノブの div の left/top を直接書く
+  // (描画時も同じ ref を読む=見え方は1pxも変わらない)。台座を置く/離すの2回だけ state(origin)で再描画する。
+  const deltaRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const nubRef = useRef<HTMLDivElement>(null);
+  const applyDelta = useCallback((d: { x: number; y: number }) => {
+    deltaRef.current = d;
+    const o = originRef.current;
+    const el = nubRef.current;
+    if (o && el) {
+      el.style.left = `${o.x + d.x - NUB_RADIUS}px`;
+      el.style.top = `${o.y + d.y - NUB_RADIUS}px`;
+    }
+  }, []);
 
   const setSwipeDirection = useGameStore(state => state.setSwipeDirection);
   const setTouchActive = useGameStore(state => state.setTouchActive);
@@ -218,7 +231,7 @@ const VirtualJoystick: React.FC = () => {
     pointerIdRef.current = null;
     originRef.current = null;
     setOrigin(null);
-    setDelta({ x: 0, y: 0 });
+    deltaRef.current = { x: 0, y: 0 };
     setTouchActive(false);
     setSwipeDirection(null);
   }, [setSwipeDirection, setTouchActive, beginMeleeSwing, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, tryFireRetaliation, dismountSkater]);
@@ -243,9 +256,9 @@ const VirtualJoystick: React.FC = () => {
     originRef.current = o;
     flickSamplesRef.current = [{ x: e.clientX, y: e.clientY, t: nowT }];
     setOrigin(o);
-    setDelta({ x: 0, y: 0 });
+    applyDelta({ x: 0, y: 0 });
     zoneRef.current?.setPointerCapture(e.pointerId);
-  }, [release, setTouchActive, mountSkater]);
+  }, [release, setTouchActive, mountSkater, applyDelta]);
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -276,7 +289,7 @@ const VirtualJoystick: React.FC = () => {
       const nx = dist > 0 ? rawX / dist : 0;
       const ny = dist > 0 ? rawY / dist : 0;
 
-      setDelta({ x: nx * clamped, y: ny * clamped });
+      applyDelta({ x: nx * clamped, y: ny * clamped });
 
       const norm = clamped / max;
       if (norm < DEAD_ZONE) {
@@ -293,7 +306,7 @@ const VirtualJoystick: React.FC = () => {
       // 世界が止まっている間(ボス撃破のアテンション等)は向きを書き換えない(社長報告2026-09-13・gameStore.isWorldFrozen)。
       if (!isWorldFrozen()) setLastDirection(dir);
     },
-    [setSwipeDirection, setLastDirection, tryFireRhythmFlick]
+    [setSwipeDirection, setLastDirection, tryFireRhythmFlick, applyDelta]
   );
 
   const handlePointerEnd = useCallback(
@@ -360,10 +373,11 @@ const VirtualJoystick: React.FC = () => {
             }}
           />
           <div
+            ref={nubRef}
             className="pointer-events-none absolute rounded-full"
             style={{
-              left: origin.x + delta.x - NUB_RADIUS,
-              top: origin.y + delta.y - NUB_RADIUS,
+              left: origin.x + deltaRef.current.x - NUB_RADIUS,
+              top: origin.y + deltaRef.current.y - NUB_RADIUS,
               width: NUB_RADIUS * 2,
               height: NUB_RADIUS * 2,
               background:

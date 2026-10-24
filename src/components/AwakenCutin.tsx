@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { CUTIN_SERIF_STACK } from '../config/font';
 import { useGameStore } from '../store/gameStore';
 import { AWAKEN_CUTIN_FADEIN_MS, AWAKEN_CUTIN_FADEOUT_MS, AWAKEN_CUTIN_HOLD_MS, AWAKEN_CUTIN_MS } from '../utils/awakenCutin';
+import { rafTimeout } from '../utils/rafTimeout';
 
 const AwakenCutin: React.FC = () => {
   const cutin = useGameStore(s => s.awakenCutin);
@@ -18,9 +19,10 @@ const AwakenCutin: React.FC = () => {
     if (!cutin) return;
     setShown({ skillName: cutin.skillName });
     setFadeOut(false);
-    const t1 = setTimeout(() => setFadeOut(true), AWAKEN_CUTIN_FADEIN_MS + AWAKEN_CUTIN_HOLD_MS);
-    const t2 = setTimeout(() => setShown(null), AWAKEN_CUTIN_MS);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    // ★描画の周期でも進める(rafTimeout・コード監査2026-10-23 UI B-2⑥)。尺は従来どおり。
+    const c1 = rafTimeout(() => setFadeOut(true), AWAKEN_CUTIN_FADEIN_MS + AWAKEN_CUTIN_HOLD_MS);
+    const c2 = rafTimeout(() => setShown(null), AWAKEN_CUTIN_MS);
+    return () => { c1(); c2(); };
   }, [cutin]);
 
   if (!shown) return null;

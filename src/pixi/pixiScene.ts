@@ -2850,6 +2850,8 @@ const LAB_DEBRIS_RESTORE_MARGIN = 120;
 const LAB_DEBRIS_DROP_MARGIN = 240;
 interface LabObstacleView {
   sprite: Sprite; baseScale: number; footY: number;
+  /** 絵がまだ届いていない時の素材名(届いたら絵と大きさの係数を入れ直す・品質監査 A-1)。届いていれば undefined。 */
+  pendingTex?: string;
   crumbleAt?: number; crumbleDir?: number; crumbleMs?: number; crumbleKind?: 'wall' | 'prop'; debris?: boolean;
   /** 薬液・カプセルの床の染み(楕円・2巡目#6)。 */
   stain?: Graphics; stainTint?: number;
@@ -3100,6 +3102,15 @@ const lerpColor = (a: number, b: number | string, t: number): number => {
 const STRONG_GLOW_HALO_MULT = Math.max(0.1, tsNum('glowhalo', 1.7));
 const STRONG_GLOW_CORE_MULT = Math.max(0.1, tsNum('glowcore', 0.62));
 const EFFECT_VIEWPORT_MARGIN = 180;
+// ★画面外の拾い物は描かない(コード監査2026-10-23 R-1・社長承認「画面の外の拾い物と影を描かない」)。
+// 拾い物そのもの(store)・判定・磁石・回収は一切触らない=**絵を作らない/捨てるだけ**(出現の演出の起点は覚えておく)。
+// 余白=絵(銃は枠1.5倍・遠近で最大1.85倍)+光の輪(半径×1.28)+投げ弧(24px)を十分に覆う量。
+// 判定は `distanceOutsideViewport`(実際の描画変換=全ズーム系・地平線の支点込みの可視域・visibleWorldRect)なので、
+// 最大引き(ZOOM_MIN_ABS)でも画面に入る前に描き始める。
+const PICKUP_CULL_MARGIN_PX = 240;
+// 同じ考えで投影影も「画面に掛かり得ない物」は置かない(R-1 の影側)。影の長さの最大(絵の高さ×伸び比率×強glowの
+// 伸びの上限)と横の広がり(接地2枚/奥側の広がり)に、この余白を足した距離より外なら隠す。
+const SHADOW_CULL_MARGIN_PX = 160;
 // 設置型シールド: スプライト表示と「ガチャン」着地スラムのパラメータ(実機調整TODO)。
 const SHIELD_DISPLAY_H = 92;     // 画面上の盾の高さ(px)。横幅はテクスチャ比で従属。
 const SHIELD_DEPLOY_MS = 200;    // 着地スラム演出の時間
@@ -4933,6 +4944,8 @@ export class PixiScene {
   private revisitMarker = false;
   // 拾い物は複数あるので配列で要求(id は 'pk:'+pickup.id)。syncPickups が毎フレーム作り直す。
   private pickupShadows: (BuildingShadowReq & { id: string })[] = [];
+  /** 計器: 直近のフレームで「画面に掛かり得ない」として置かなかった投影影の数(`__pixiScene` から読む・診断用)。 */
+  shadowCulledCount = 0;
   private introUntil = 0;       // 登場演出の終了時刻(store から毎フレーム反映)
   private introActive = false;  // 登場演出中(影スキップ判定用)
   // 障害物の「裏に回ったら透ける」用: プレイヤーの足元矩形(world)とフェードlerp係数を毎フレ更新。
@@ -7876,34 +7889,46 @@ export class PixiScene {
     return this.depthScaleWith(footWorldY, ENEMY_DEPTH_K, ENEMY_DEPTH_MIN, ENEMY_DEPTH_MAX);
   }
 
-  // 文脈ズームで引いた分だけ可視域(画面に映る world 範囲)が広がる。カリング境界もその分だけ
-  // 中心から広げないと、引き時に画面端へ現れるはずのエフェクト/リング/松明などが消えてしまう(社長報告)。
-  // contextZoom<1(引き)のときだけ拡張。zoom-in(idle/move/punch)は可視域を狭めるので拡張しない(=1.0据え置き)。
-  private zoomViewportOverscan(): { exW: number; exH: number; ox: number; oy: number } {
-    const zin = 1 / Math.min(1, (this.contextZoom || 1) * this.junPull); // >=1(引き)。ジュンの変身の引き(junPull)も含める
-    const exW = this.screenW * zin, exH = this.screenH * zin;
-    return { exW, exH, ox: (exW - this.screenW) / 2, oy: (exH - this.screenH) / 2 };
+  /**
+   * ★可視域(画面に映る world の範囲)を、**実際の描画変換から逆算**する(コード監査2026-10-23 品質監査 B-2)。
+   * 旧: `1 / min(1, contextZoom × junPull)` を画面中央から上下左右へ均等に広げていた。だが実際の引きは
+   * ①縦の支点が**地平線の高さ(pivotY=farH)**=広がりは上より**下へ大きく**出る ②走りの引き(runZoom)・
+   * ジュンの寄せ(junFocus)・寄りパンチも掛かる、ので、引いた時に**画面の下端の物を画面外と誤判定**していた
+   * (最大引き ?zoomlock=0.4 で下端の拾い物が描かれない等)。
+   * いまは worldGroup の拡大・支点・寄せと world のカメラ位置をそのまま使う=全ズーム系(ZOOM_MIN_ABS の最大引きを含む)で正しい。
+   * sync() の中ではズーム変換(worldGroup)を決めた後で呼ばれる。
+   * 寄り(拡大>1)の間は可視域が画面より狭くなるが、**等倍の画面より狭くはしない**(旧と同じ。寄りの戻りで端が欠けない)。
+   */
+  private visibleWorldRect(): { left: number; top: number; right: number; bottom: number } {
+    const wg = this.L.worldGroup;
+    const sc = wg.scale.x > 0 ? wg.scale.x : 1;
+    const wx = this.L.world.position.x, wy = this.L.world.position.y;
+    // 等倍(拡大なし)の画面
+    const l1 = -wx, t1 = -wy, r1 = -wx + this.screenW, b1 = -wy + this.screenH;
+    // 実際の変換: screen = wg.position + sc × (world.position + p)
+    const l = (0 - wg.position.x) / sc - wx;
+    const r = (this.screenW - wg.position.x) / sc - wx;
+    const t = (0 - wg.position.y) / sc - wy;
+    let b = (this.screenH - wg.position.y) / sc - wy;
+    let tt = t;
+    // 寄りの遠近(zwarp)が奥側の辺を縮めて画面の外の絵を縁に映している間は、フィルタ枠と同じだけ上下へ広げる(品質監査2巡目A-1)。
+    if (this.zwarpInList) { tt -= (this.screenH / sc) * this.zwarpPadTop; b += (this.screenH / sc) * this.zwarpPadBot; }
+    return { left: Math.min(l, l1), top: Math.min(tt, t1), right: Math.max(r, r1), bottom: Math.max(b, b1) };
   }
 
   private isPointNearViewport(
     x: number,
     y: number,
-    camera: { x: number; y: number },
+    _camera: { x: number; y: number },
     margin = EFFECT_VIEWPORT_MARGIN
   ) {
-    const { ox, oy } = this.zoomViewportOverscan();
-    return x >= camera.x - ox - margin &&
-      x <= camera.x + this.screenW + ox + margin &&
-      y >= camera.y - oy - margin &&
-      y <= camera.y + this.screenH + oy + margin;
+    const v = this.visibleWorldRect();
+    return x >= v.left - margin && x <= v.right + margin && y >= v.top - margin && y <= v.bottom + margin;
   }
 
   private distanceOutsideViewport(x: number, y: number, margin = 0) {
-    const { ox, oy } = this.zoomViewportOverscan();
-    const left = -this.L.world.position.x - ox - margin;
-    const top = -this.L.world.position.y - oy - margin;
-    const right = left + this.screenW + ox * 2 + margin * 2;
-    const bottom = top + this.screenH + oy * 2 + margin * 2;
+    const v = this.visibleWorldRect();
+    const left = v.left - margin, top = v.top - margin, right = v.right + margin, bottom = v.bottom + margin;
     const dx = x < left ? left - x : x > right ? x - right : 0;
     const dy = y < top ? top - y : y > bottom ? y - bottom : 0;
     return Math.hypot(dx, dy);
@@ -11658,7 +11683,8 @@ export class PixiScene {
 
   private makeLabPropView(variant: number, footX: number, footY: number): LabObstacleView {
     const row = Math.floor(variant / 4) + 1, col = (variant % 4) + 1;
-    const tex = getTexture(`lab-props/lab-prop2-r${row}-c${col}`);
+    const name = `lab-props/lab-prop2-r${row}-c${col}`;
+    const tex = getTexture(name);
     const sprite = new Sprite(tex ?? undefined);
     sprite.anchor.set(0.5, 1);
     sprite.tint = ENV_TINT; // 環境として暗く沈める(木/壁オブジェクトと同じ)
@@ -11667,7 +11693,19 @@ export class PixiScene {
     sprite.zIndex = footY; // 足元Yでプレイヤー/敵とY-sort(背面は被る)
     this.L.actorLayer.addChild(sprite);
     const baseScale = tex ? containScale(PROP_DISPLAY_H, PROP_DISPLAY_H, tex.width, tex.height) : 1;
-    return { sprite, baseScale, footY };
+    // ★研究所の障害物はステージ2の出撃時に読む組(labActors)になった(コード監査2026-10-23 M-5)。読み終わる前に
+    // 作られた物は空の絵のまま固定されてしまう(=見えない壁)ので、名前を覚えて syncLabProps が毎フレーム引き直す。
+    return { sprite, baseScale, footY, pendingTex: tex ? undefined : name };
+  }
+
+  /** 絵が届いていなかった障害物に、届いた絵と大きさの係数を入れ直す(届くまで毎フレーム呼ばれる・品質監査 A-1)。 */
+  private resolveLabPropTexture(entry: LabObstacleView): void {
+    if (!entry.pendingTex) return;
+    const tex = getTexture(entry.pendingTex);
+    if (!tex) return;
+    entry.sprite.texture = tex;
+    entry.baseScale = containScale(PROP_DISPLAY_H, PROP_DISPLAY_H, tex.width, tex.height);
+    entry.pendingTex = undefined;
   }
 
   /** 記録から作り直した残骸を、崩れ終わった姿(倒れ切って暗く平たい・染みは広がり切り)で置く(崩れの絵をもう一度流さない)。 */
@@ -11787,6 +11825,7 @@ export class PixiScene {
         entry = this.makeLabPropView(p.variant, p.footX, p.footY);
         this.propObjs.set(p.id, entry);
       }
+      this.resolveLabPropTexture(entry);
       if (entry.crumbleAt !== undefined || entry.debris) { entry.crumbleAt = undefined; entry.debris = false; entry.sprite.rotation = 0; entry.sprite.tint = ENV_TINT; entry.stain?.destroy(); entry.stain = undefined; entry.stainTint = undefined; } // 新しいランで立ち直った
       entry.sprite.scale.set(entry.baseScale * this.depthScale(entry.footY));
       this.applyObstacleAlpha(entry.sprite, entry.footY);
@@ -11802,6 +11841,7 @@ export class PixiScene {
     }
     for (const [id, entry] of this.propObjs) {
       if (seen.has(id)) continue;
+      this.resolveLabPropTexture(entry); // 残骸として作り直した物も、絵が届いていなければここで入れ直す
       // 変異塊に壊された物は、消す前に崩れ落ちる(慣性の掟: パッと消さない)。範囲外へ出ただけの物は従来どおり即破棄。
       if (isLabObstacleBroken(id) && this.tickLabObstacleCrumble(entry, id, s.labBrokenObstacles, cam, 'prop')) continue;
       entry.sprite.destroy(); entry.stain?.destroy(); this.propObjs.delete(id);
@@ -14762,6 +14802,7 @@ export class PixiScene {
     }
 
     const seen = new Set<string>();
+    this.shadowCulledCount = 0;
     const place = (req: ShadowCasterReq) =>
       this.placeShadowV9(req, seen, now, horizonTrimLerp, footXTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights, this.torchLights);
 
@@ -14997,6 +15038,14 @@ export class PixiScene {
     // ---- 拾い物 ----
     for (const ps of this.pickupShadows) {
       place({ id: ps.id, x: ps.x, y: ps.y, rawW: ps.rawW, rawH: ps.rawH, texture: ps.texture, alpha: ps.alpha, shadowFade: ps.shadowFade });
+    }
+    // 画面外の拾い物: 既にある影の枠は隠して残す(placeShadowV9 の画面外と同じ扱い=品質監査 B-3)。新しくは作らない。
+    for (const id of this.pickupShadowKeepIds) {
+      const e = this.shadowPoolV9.get(id);
+      if (!e) continue;
+      seen.add(id);
+      e.lastSeenAt = now;
+      e.core.visible = false; e.outer.visible = false; this.hideShadowSlots(e);
     }
     // ---- 救援アライ(スキル救難信号): 飛来・離脱中も影が地面に残るよう高さを明示的に渡す(仕様書確定)。
     for (const [id, v] of this.rescueAllyViews) {
@@ -15558,10 +15607,7 @@ export class PixiScene {
 
   /** 可視matrix(world座標)。distanceOutsideViewport と同じ式(margin=0)。 */
   private shadowVisibleRect(): { left: number; top: number; right: number; bottom: number } {
-    const { ox, oy } = this.zoomViewportOverscan();
-    const left = -this.L.world.position.x - ox;
-    const top = -this.L.world.position.y - oy;
-    return { left, top, right: left + this.screenW + ox * 2, bottom: top + this.screenH + oy * 2 };
+    return this.visibleWorldRect();
   }
 
   /** 線分と矩形が交差するか(§3-9-B: 両端が外でも中間が交差すれば描く=cineの巨大ボス対策)。 */
@@ -15708,6 +15754,22 @@ export class PixiScene {
     if (totalAlpha <= 0) {
       if (entry) { entry.core.visible = false; entry.outer.visible = false; this.hideShadowSlots(entry); }
       return;
+    }
+    // ★画面に掛かり得ない影は置かない・更新しない(R-1)。焼き(silhouetteEnsure)も頼まない。
+    // 既にある枠は「見た」扱いで残す(画面へ戻った時に作り直し・フェードインを起こさない)。
+    {
+      const lenMax = req.rawH * lenRatio * Math.max(1, SHADOW_GLOW_LEN_CAP) * shrink;
+      const sideMax = req.rawW * (3 * (req.scaleMult ?? 1) + SHADOW_FAR_MULT * SHADOW_PERSP_MAX)
+        + Math.abs(Math.tan(req.skewX ?? 0) * req.rawH);
+      if (this.distanceOutsideViewport(footX, footY, lenMax + sideMax + SHADOW_CULL_MARGIN_PX) > 0) {
+        if (entry) {
+          seen.add(req.id);
+          entry.lastSeenAt = now;
+          entry.core.visible = false; entry.outer.visible = false; this.hideShadowSlots(entry);
+        }
+        this.shadowCulledCount++;
+        return;
+      }
     }
     seen.add(req.id);
     if (!entry) {
@@ -15877,7 +15939,9 @@ export class PixiScene {
       const isAmb = i === 0;
       if (!isAmb && !sl.lightId) { if (sl.mesh) sl.mesh.visible = false; continue; }
       // ★未ベイクでも消さない: プール鍵が固定なのでスロットは前回テクスチャを持ち続けている。
-      const tex = bakedNow ?? sl.lastTexture;
+      // ★R-4: 前回の焼きが退避で捨てられていたら(destroyed)貼らない=簡易影(接地2枚)だけで待つ。
+      const lastTex = sl.lastTexture && !sl.lastTexture.destroyed ? sl.lastTexture : null;
+      const tex = bakedNow ?? lastTex;
       if (!tex) { if (sl.mesh) sl.mesh.visible = false; continue; }
 
       const dirX = isAmb ? ambDirX : sl.dirX;
@@ -33087,13 +33151,36 @@ export class PixiScene {
 
   // ---- pickups -------------------------------------------------------------
 
+  /** 計器: 直近の syncPickups で画面外として描かなかった拾い物の数(`__pixiScene` から読む・診断用)。 */
+  pickupCulledCount = 0;
+  /** 拾い物ごとの「store に現れた時刻」(初めて見た時刻)。出現の演出の起点。store から消えたら捨てる。 */
+  private pickupFirstSeen = new Map<string, number>();
+  /** 画面外で絵を捨てた拾い物の影の id。既にある影の枠は隠して残す(画面に戻った時に作り直し・フェードインを起こさない)。 */
+  private pickupShadowKeepIds: string[] = [];
+
   private syncPickups(pickups: Pickup[], now: number) {
     const seen = new Set<string>();
+    this.pickupCulledCount = 0;
+    this.pickupShadowKeepIds.length = 0;
     // 接地影は syncShadows のソフト方向影に統一。毎フレーム作り直す(後段で syncShadows が配置)。
     this.pickupShadows.length = 0;
     for (const p of pickups) {
       seen.add(p.id);
+      // 出現の演出(湧いて弾む)の起点=**store に現れた時刻**(初めてここで見た時刻)。画面外に居た間も数え続けるので、
+      // 一度も画面に入らなかった物が後から画面に入っても演出を流し直さない(品質監査 A-2)。
+      let bornAt = this.pickupFirstSeen.get(p.id);
+      if (bornAt === undefined) { bornAt = now; this.pickupFirstSeen.set(p.id, bornAt); }
       let entry = this.pickups.get(p.id);
+      // ★画面外(可視域+余白の外)は絵を作らず・更新もしない(コード監査2026-10-23 R-1)。既にある絵は**捨てる**
+      // (入れ物+図形を溜めない=品質監査 B-1)。画面に入れば作り直し、上の bornAt で同じ見た目(弾み済み)で出る。
+      // 影の要求も積まないが、既にある影の枠は残す(下の pickupShadowKeepIds・他の物と同じ扱い=品質監査 B-3)。
+      const pos0 = pickupDisplayPosition(p, now);
+      if (this.distanceOutsideViewport(pos0.x + 8, pos0.y + 8, PICKUP_CULL_MARGIN_PX) > 0) {
+        if (entry) { entry.container.destroy({ children: true }); this.pickups.delete(p.id); }
+        this.pickupShadowKeepIds.push('pk:' + p.id);
+        this.pickupCulledCount++;
+        continue;
+      }
       if (!entry) {
         const container = new Container();
         const glow = new Graphics();
@@ -33101,7 +33188,7 @@ export class PixiScene {
         glow.blendMode = 'add';
         container.addChild(glow, gfx);
         this.L.groundLayer.addChild(container);
-        entry = { container, glow, gfx, bornAt: now };
+        entry = { container, glow, gfx, bornAt };
         this.pickups.set(p.id, entry);
       }
       this.drawPickup(entry, p, now);
@@ -33111,6 +33198,9 @@ export class PixiScene {
         entry.container.destroy({ children: true });
         this.pickups.delete(id);
       }
+    }
+    for (const id of this.pickupFirstSeen.keys()) {
+      if (!seen.has(id)) this.pickupFirstSeen.delete(id);
     }
   }
 

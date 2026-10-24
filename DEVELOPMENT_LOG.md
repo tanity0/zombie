@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5192 — ソースコード調査の5つのバグ修正(画面外の拾い物・UIの時計を描画の周期へ・再描画・ステージ2素材・焼き/一時停止)【2026-10-24 14:50 JST】
+- 社長「はい」(v0.25.5191 の調査メモ3本からの提案5つ・仕様は変えない)。実装はサブエージェント(Opus)。
+- ①画面外の拾い物と影を描かない(RENDER R-1): 新設 visibleWorldRect(worldGroup の拡大・支点=引きは地平線・寄せ・world のカメラから逆算。走りの引き・ジュンの引き/寄せ・寄りパンチ・zwarp の縦の広げも入る)。可視域+240pxの外の拾い物は絵を捨て、出現の起点は pickupFirstSeen(store に現れた時刻)で保つ=画面に入っても演出を流し直さない。影は画面に掛かり得ない物を置かず枠を残す。isPointNearViewport/distanceOutsideViewport/shadowVisibleRect も visibleWorldRect へ(旧 zoomViewportOverscan は中央支点の仮定で引きの下端が最大約195px足りなかった)。実測: 画面外に約150個で obj +812 → +38。
+- ②UIの時計を描画の周期へ(UI B-1/B-2・SIM S-3): utils/rafTimeout(rAF とタイマーの早い方で1回)。死亡→結果はループの冒頭で期限を見る(playerDeathWatch)・Game.tsx の保険は正規の尺+1秒(旧700msが正規2000msより先に発火して死亡演出を毎回切っていた)。文字送り(utils/slowLine=経過時間で文字数)・Lvup窓450ms・銘打ち・カットイン類・取得表示・ファストトラベルも rafTimeout。タイマーが来ない状態の再現で、死亡→結果・Lvup窓・文字送りが止まらないことを確認。死亡の瞬間の生存時間を固定(timeAliveSync.freezeTimeAliveAtDeath)=演出の尺が伸びてもスコアは変わらない。
+- ③不要な再描画(UI B-3/B-8/B-9・SIM S-2): App の gameStats は結果画面の時だけ購読・handleVictory/Return を ref+useCallback で固定・timeAlive は秒が変わった時だけ書き結果へ移る時に flushTimeAlive・ジョイスティックのノブは ref で DOM 直書き・setFps は表示/ベンチ時だけ・Game の体力購読は boolean。実測: 放置15秒で App 32→0回・指60回で commit 291→36。
+- ④ステージ2素材(RENDER R-3): 版数表示は peekTexture(読まない問い合わせ)。遅延組 labActors(研究所の障害物・ゾンビの立ち絵・'lab' のシート)を新設しステージ2だけ読む(PixiStage は読み終えてからローディングを外す)。当たり判定の帯の縦横比は寸法表 labActorArt(原盤台帳と突き合わせるテスト)。初回出撃で絵の無いまま作られた障害物は pendingTex で毎フレーム引き直す(品質監査A-1)。ステージ4の常駐 167.8→146.5MB。
+- ⑤焼き/一時停止(RENDER R-4・UI B-4): 影は destroyed の焼きを貼らない。一時停止は utils/pauseGate.canTogglePause を store.togglePause に1本化(ポーズボタンもキーボードも同じ門)。
+- 監査: 品質2巡(1巡目 A2件=研究所の障害物の見えない壁・拾い物の出現の演出の流し直し→直した+B数件も直した/2巡目 A1件=zwarp の縦の広げを可視域に入れていない→設計チャットが2行で直した。2巡目の判断で3巡目は不要)。積んだ(B): 拾い物の間引きの緩衝帯・画面外の拾い物の影の枠が片付け対象外・syncGroundReflections と isNearScreen が旧式・visibleWorldRect の1フレーム1回化とテスト・ベンチの研究所の敵・ステージ2の後は研究所の素材が常駐し続ける・ボスメーカーの2回目以降の死亡(B-7)。拾い物の上限・合体は仕様変更=社長の判断待ち。
+- 検証: typecheck 0 / eslint 0(既存の警告2) / 循環import新規なし / assets:check OK / 全テスト緑(8322) / phone-guard 7画面×2寸法の配置差0。ヘッドレスで各項目の前後の数字と画を確認(scratchpad/fix5)。
+- 自己点検: 描画・UI・読み込みのみ(判定・バランス不変)=憲法第4条・第5条に抵触なし。
+
 ## v0.25.5191 — ソースコード調査(Fable×3)のメモを research/ へ【2026-10-24 01:51 JST】
 - 社長指示「fableエージェントにソースコード調査させてバグないか調査。ついでに改善、改良などアドバイスあればメモらせといて」。
 - 3分野に分けて並行(ソースは未編集・調査のみ): research/CODE_AUDIT_2026-10-23_SIM.md(シミュ)/ _RENDER.md(描画・性能・メモリ)/ _UI.md(画面・音・入力)。重点=ステージ4の長時間で重くなり一時停止/ショップ/ゲームオーバー/文字送りが止まる件。

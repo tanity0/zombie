@@ -9,7 +9,9 @@ import GameCanvas from './GameCanvas';
 import PixiStage from '../pixi/PixiStage';
 import { isPixiRenderer, getAppliedResolution } from '../config/renderer';
 import { getAssistLightDebug } from '../pixi/pixiScene';
-import { getTexture } from '../pixi/pixiTextures';
+import { peekTexture } from '../pixi/pixiTextures';
+import { rafTimeout } from '../utils/rafTimeout';
+import { deathResultSafetyMs } from '../utils/playerDeathWatch';
 import { lastSuppressedError } from '../utils/errorBeacon';
 import { renderStatsText, bakedTextureText, sceneDiagText, takeBakeCalls } from '../utils/renderStats';
 import { prevBeatText, startCrashWatch, rendererMountCount } from '../utils/crashWatch';
@@ -38,7 +40,7 @@ import MobileControls from './MobileControls';
 import VirtualJoystick from './VirtualJoystick';
 import MouseControls from './MouseControls';
 import BenchmarkOverlay, { type BenchmarkResult } from './BenchmarkOverlay';
-import { useGameLoop } from '../hooks/useGameLoop';
+import { useGameLoop, PLAYER_DEATH_TO_RESULT_MS } from '../hooks/useGameLoop';
 import { useGameControls } from '../hooks/useGameControls';
 import { computeViewport } from '../utils/viewport';
 import { playSfx } from '../audio/audioManager';
@@ -112,7 +114,8 @@ const Game: React.FC<GameProps> = ({
   const gameWon = useGameStore(state => state.gameWon);
   const gameReturned = useGameStore(state => state.gameReturned);
   // 死亡判定に使うのは health だけ。player 全体を購読すると移動で毎フレーム再描画され、子(HUD/Stage)へ波及する。
-  const playerHealth = useGameStore(state => state.player.health);
+  // ★「0以下か」の boolean だけを購読する(HP が変わるたびに Game 全体を描き直さない・品質監査 B-5)。
+  const playerDead = useGameStore(state => state.player.health <= 0);
   const setGameBounds = useGameStore(state => state.setGameBounds);
   const setPaused = useGameStore(state => state.setPaused);
 
@@ -122,7 +125,8 @@ const Game: React.FC<GameProps> = ({
   useEffect(() => { setGameplayMounted(true); return () => setGameplayMounted(false); }, []);
 
   // Start game loop
-  const { fps } = useGameLoop(onGameOver, { benchmarkMode });
+  // fps は読む画面(統計トグルの PerfOverlay・ベンチ)がある時だけ React へ渡す(毎秒の全体再描画をやめる・UI B-9)。
+  const { fps } = useGameLoop(onGameOver, { benchmarkMode, trackFps: showStatsOverlay || benchmarkMode });
 
   // Update window size and game bounds on resize or fullscreen change
   useEffect(() => {
@@ -166,12 +170,14 @@ const Game: React.FC<GameProps> = ({
   }, [setGameBounds]);
   
   // Check if player is dead
+  // ★保険(正はループの rAF で送る=useGameLoop の sendDeathResult)。旧 700ms は正規の尺(PLAYER_DEATH_TO_RESULT_MS)より
+  // 先に発火して、死亡演出(寄り+スロー)を毎回途中で切っていた(コード監査2026-10-23 UI B-1・社長承認)。
+  // 正規の尺より長く取り、ループが送れなかった時だけ効くようにする。描画の周期でも進む(rafTimeout)。
   useEffect(() => {
-    if (playerHealth <= 0) {
-      const timer = window.setTimeout(onGameOver, 700);
-      return () => window.clearTimeout(timer);
+    if (playerDead) {
+      return rafTimeout(onGameOver, deathResultSafetyMs(PLAYER_DEATH_TO_RESULT_MS));
     }
-  }, [playerHealth, onGameOver]);
+  }, [playerDead, onGameOver]);
 
   // Win the run the moment the finale boss is defeated.
   useEffect(() => {
@@ -193,23 +199,22 @@ const Game: React.FC<GameProps> = ({
       if (keyIdOf(e) === 'escape' || keyIdOf(e) === 'p') { // 物理キー(日本語入力オンでも P が効く・§11-3)
         if (e.repeat) return; // 長押しのリピートで 再開→再ポーズ を繰り返さない(メニュー操作の検収)
         // 説明画面(チュートリアル)は自分で一時停止を掛けて出る=ここで切り替えると、説明画面が出たままゲームが動き出す(PC版対応の調査で判明)。
-        if (!tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible) {
-          setPaused(!isPaused);
-        }
+        // 条件(窓が開いている間は切り替えない)は store の togglePause 1本に集約(指のピルと同じ門・UI A-2)。
+        useGameStore.getState().togglePause();
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPaused, setPaused, showEventQuestMenu, showShopMenu, showUpgradeMenu, storyReturnPromptVisible, tutorialPopupOpen]);
+  }, []);
 
   useEffect(() => {
     if (!showUpgradeMenu) {
       setShowUpgradeOverlay(false);
       return;
     }
-    const timer = window.setTimeout(() => setShowUpgradeOverlay(true), 450);
-    return () => window.clearTimeout(timer);
+    // ★描画の周期でも進める(タイマーが後回しにされても窓が出る・UI B-2②)。尺は従来どおり450ms。
+    return rafTimeout(() => setShowUpgradeOverlay(true), 450);
   }, [showUpgradeMenu]);
   
   // Prevent text selection from long-press, but DON'T preventDefault on
@@ -335,10 +340,7 @@ const Game: React.FC<GameProps> = ({
         }}
       >
         {isPixiRenderer() ? 'pixi' : 'canvas'} · v{__APP_VERSION__}
-        {' · '}floor:{getTexture('lab-floor/lab-floor-stage2') ? 'S' : '-'}{getTexture('lab-floor/lab-floor-ground') ? 'G' : '-'}{getTexture('lab-floor/lab-floor-clean') ? 'C' : '-'}
-        {' · '}mh:{getTexture('fx/melee-hit-01') ? 'T' : '-'}
-        {' · '}sk:{getTexture('skill/skills-sheet') ? 'S' : '-'}{getTexture('skill/warm-up') ? 'I' : '-'}
-        {' · '}res:{getAppliedResolution() || '?'}/{typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : '?'}
+        <AssetFlags />
         {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('lightdbg') === '1' && <LightDebug />}
         <ErrBeacon />
       </div>
@@ -346,6 +348,28 @@ const Game: React.FC<GameProps> = ({
     </HudLandscapeProvider>
     </HudScaleProvider>
   );
+};
+
+/**
+ * 左下の版数表示の素材フラグ(floor/mh/sk/res)。
+ * ★「読まない問い合わせ」(peekTexture)で見る。getTexture は遅延組の安全網として**読みに行く**ので、
+ *   ここで呼ぶとステージ2の床(約10MB)が全ステージで常駐していた(コード監査2026-10-23 R-3/M-1)。
+ * ★自分で1秒ごとに読み直す小さな部品(Game 本体の再描画に頼らない)。Game は出撃中ほぼ再描画しなくなったので
+ *   (gameStats/fps の購読を外した・同監査 B-3/B-9)、本体に置いたままだと最初の値で止まって見える。
+ *   文字列が変わった時だけ再描画する。
+ */
+const assetFlagsText = (): string =>
+  ` · floor:${peekTexture('lab-floor/lab-floor-stage2') ? 'S' : '-'}${peekTexture('lab-floor/lab-floor-ground') ? 'G' : '-'}${peekTexture('lab-floor/lab-floor-clean') ? 'C' : '-'}`
+  + ` · mh:${peekTexture('fx/melee-hit-01') ? 'T' : '-'}`
+  + ` · sk:${peekTexture('skill/skills-sheet') ? 'S' : '-'}${peekTexture('skill/warm-up') ? 'I' : '-'}`
+  + ` · res:${getAppliedResolution() || '?'}/${typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : '?'}`;
+const AssetFlags: React.FC = () => {
+  const [text, setText] = useState(assetFlagsText);
+  useEffect(() => {
+    const id = window.setInterval(() => setText(assetFlagsText()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  return <>{text}</>;
 };
 
 /**
