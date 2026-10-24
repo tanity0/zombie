@@ -160,10 +160,28 @@ export const CRAWLER_CHASE_TARGET_GAP_PX = 170;
 export const CRAWLER_CHASE_FAR_GAP_PX = 560;
 export const CRAWLER_CHASE_NEAR_MULT = 1.05;
 export const CRAWLER_CHASE_FAR_MULT = 1.6;
-/** 追跡の速さ(純関数): プレイヤーの歩きの速さ×(隙間で 1.05〜1.6 倍)。 */
+/**
+ * 大きく離された時の追い上げ(社長報告2026-10-24「離れると追いついてくる仕様入れた気がするけど、来ない」)。
+ * 実測: 最大1.6倍では詰める速さが歩きの0.6倍しかなく、雑魚を食べて止まるたび(加速もゆっくり)に差が開き、
+ * 一度画面の外へ離れると戻ってこなかった。FAR より遠い間は VERY_FAR まで倍率をさらに上げる。
+ */
+export const CRAWLER_CHASE_VERY_FAR_GAP_PX = 1300;
+export const CRAWLER_CHASE_VERY_FAR_MULT = 2.6;
+/** 追跡の速さ(純関数): プレイヤーの歩きの速さ×(隙間で 1.05〜1.6 倍、さらに離れると 2.6 倍まで)。 */
 export const crawlerChaseBandSpeed = (playerWalkSpeed: number, gapPx: number): number => {
   const t = Math.max(0, Math.min(1, (gapPx - CRAWLER_CHASE_TARGET_GAP_PX) / (CRAWLER_CHASE_FAR_GAP_PX - CRAWLER_CHASE_TARGET_GAP_PX)));
-  return Math.max(0, playerWalkSpeed) * (CRAWLER_CHASE_NEAR_MULT + (CRAWLER_CHASE_FAR_MULT - CRAWLER_CHASE_NEAR_MULT) * t);
+  const t2 = Math.max(0, Math.min(1, (gapPx - CRAWLER_CHASE_FAR_GAP_PX) / (CRAWLER_CHASE_VERY_FAR_GAP_PX - CRAWLER_CHASE_FAR_GAP_PX)));
+  const mult = CRAWLER_CHASE_NEAR_MULT + (CRAWLER_CHASE_FAR_MULT - CRAWLER_CHASE_NEAR_MULT) * t + (CRAWLER_CHASE_VERY_FAR_MULT - CRAWLER_CHASE_FAR_MULT) * t2;
+  return Math.max(0, playerWalkSpeed) * mult;
+};
+/**
+ * 追跡中、離れている時の加速度(px/s²)。すぐ後ろ(TARGET)では従来の CRAWLER_ACCEL_PX_S2(じわじわ)、FAR 以遠ではこれ。
+ * 使うのは既にプレイヤーの歩きの速さで這っている時だけ(止まりからの立ち上がりは従来どおりじわじわ)。
+ */
+export const CRAWLER_CHASE_FAR_ACCEL_PX_S2 = 200;
+export const crawlerChaseAccel = (gapPx: number): number => {
+  const t = Math.max(0, Math.min(1, (gapPx - CRAWLER_CHASE_TARGET_GAP_PX) / (CRAWLER_CHASE_FAR_GAP_PX - CRAWLER_CHASE_TARGET_GAP_PX)));
+  return CRAWLER_ACCEL_PX_S2 + (CRAWLER_CHASE_FAR_ACCEL_PX_S2 - CRAWLER_ACCEL_PX_S2) * t;
 };
 /**
  * 追跡中にプレイヤーを狙った叩きつけ(slamMoving)で、溜めの何割まで進み続けるか(0..1・品質監査2巡目A-0)。
@@ -551,8 +569,13 @@ export const stepLabCrawler = (c: LabCrawler, inp: CrawlerStepInput): CrawlerSte
   const vxCap = Math.max(CRAWLER_RUSH_SPEED, chaseSpeed);
   // 横は加速度で寄せる(止まりからは徐々に速く・社長指示2026-10-20)。縦の寄り(プレイヤーの高さへ)は従来の指数のまま。
   const fastMode = n.chasing || rushNow || Math.abs(n.vx) > CRAWLER_MAX_SPEED + 1e-6;
+  // 大きく離された時の追い上げ(2026-10-24): 止まりからプレイヤーの歩きの速さまではこれまでどおりじわじわ(社長「止まりからは徐々に」)。
+  // 既に歩きの速さで這っている時だけ、離れているほど強く加速して詰める(勢いが乗った巨体)。
+  const walkPace = baseChase / CRAWLER_CHASE_SPEED_MULT;
+  const accelUp = n.chasing && playerAhead && Math.abs(n.vx) >= walkPace
+    ? crawlerChaseAccel(crawlerGapToPlayer(n, inp.player)) : CRAWLER_ACCEL_PX_S2;
   let vx = Math.max(-vxCap, Math.min(vxCap, fastMode
-    ? approachCrawlerSpeed(n.vx, tvx, dt)
+    ? approachCrawlerSpeed(n.vx, tvx, dt, accelUp)
     : approachCrawlerSpeed(n.vx, tvx, dt, CRAWLER_SLOW_ACCEL_PX_S2, CRAWLER_SLOW_DECEL_PX_S2)));
   let vy = Math.max(-CRAWLER_MAX_SPEED_Y, Math.min(CRAWLER_MAX_SPEED_Y, n.vy + (tvy - n.vy) * ky));
 

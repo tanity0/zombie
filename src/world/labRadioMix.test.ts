@@ -44,3 +44,15 @@ describe('labRadioMixT(idol方向への進捗50%で切り替わり始め、90%�
     expect(labRadioMixT(0, 5000)).toBe(0);
   });
 });
+
+import { labRadioIdolDownFade, LAB_RADIO_IDOL_DOWN_FADE_MS } from './labRadioMix';
+describe('アイドルを倒したらアイドル方面のBGMを止める(社長 2026-10-24)', () => {
+  it('倒す前は1、倒した瞬間から絞り、絞り切ったら0', () => {
+    expect(labRadioIdolDownFade(0, 99999)).toBe(1);
+    expect(labRadioIdolDownFade(1000, 1000)).toBe(1);
+    const mid = labRadioIdolDownFade(1000, 1000 + LAB_RADIO_IDOL_DOWN_FADE_MS / 2);
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(1);
+    expect(labRadioIdolDownFade(1000, 1000 + LAB_RADIO_IDOL_DOWN_FADE_MS)).toBe(0);
+  });
+});

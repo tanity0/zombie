@@ -9,7 +9,7 @@ import {
   crawlerChaseSpawn, applyCrawlerDamage, crawlerObstacleHits, crawlerGapToPlayer,
   CRAWLER_CHASE_CATCHUP_GAP_PX, CRAWLER_CHASE_SLAM_ADVANCE_FRAC, CRAWLER_VANISH_GOAL_DIST_PX, CRAWLER_VANISH_MS, CRAWLER_VANISH_HOLD_MS, crawlerReachedGoal, crawlerGoalDir, crawlerVanishLook,
   approachCrawlerSpeed, CRAWLER_ACCEL_PX_S2, CRAWLER_DECEL_PX_S2,
-  crawlerChaseBandSpeed, CRAWLER_CHASE_TARGET_GAP_PX, CRAWLER_CHASE_FAR_GAP_PX, CRAWLER_CHASE_NEAR_MULT, CRAWLER_CHASE_FAR_MULT,
+  crawlerChaseBandSpeed, CRAWLER_CHASE_TARGET_GAP_PX, CRAWLER_CHASE_FAR_GAP_PX, CRAWLER_CHASE_NEAR_MULT, CRAWLER_CHASE_FAR_MULT, CRAWLER_CHASE_VERY_FAR_MULT,
   crawlerSlamLunge, CRAWLER_SLAM_LUNGE_IN_MS, CRAWLER_SLAM_LUNGE_OUT_MS, CRAWLER_IMPACT_HOLD_MS,
   type LabCrawler, type CrawlerStepInput, type CrawlerTarget,
 } from './labCrawler';
@@ -750,7 +750,9 @@ describe('最後の追いかけっこのゴム紐(社長 2026-10-20「ギリギ�
     expect(crawlerChaseBandSpeed(100, 0)).toBeCloseTo(100 * CRAWLER_CHASE_NEAR_MULT);
     expect(crawlerChaseBandSpeed(100, CRAWLER_CHASE_TARGET_GAP_PX)).toBeCloseTo(100 * CRAWLER_CHASE_NEAR_MULT);
     expect(crawlerChaseBandSpeed(100, CRAWLER_CHASE_FAR_GAP_PX)).toBeCloseTo(100 * CRAWLER_CHASE_FAR_MULT);
-    expect(crawlerChaseBandSpeed(100, 5000)).toBeCloseTo(100 * CRAWLER_CHASE_FAR_MULT);
+    // 大きく離された時はさらに速く(2026-10-24「離れると追いついてくる仕様…来ない」)。遠すぎても上限で止まる。
+    expect(crawlerChaseBandSpeed(100, 900)).toBeGreaterThan(100 * CRAWLER_CHASE_FAR_MULT);
+    expect(crawlerChaseBandSpeed(100, 5000)).toBeCloseTo(100 * CRAWLER_CHASE_VERY_FAR_MULT);
     const mid = crawlerChaseBandSpeed(100, (CRAWLER_CHASE_TARGET_GAP_PX + CRAWLER_CHASE_FAR_GAP_PX) / 2);
     expect(mid).toBeGreaterThan(100 * CRAWLER_CHASE_NEAR_MULT);
     expect(mid).toBeLessThan(100 * CRAWLER_CHASE_FAR_MULT);
@@ -771,5 +773,34 @@ describe('最後の追いかけっこのゴム紐(社長 2026-10-20「ギリギ�
     const late = gaps.slice(-15);
     expect(Math.max(...late)).toBeLessThan(CRAWLER_CHASE_TARGET_GAP_PX + 60); // 後半はずっとすぐ後ろ
     expect(gaps[0]).toBeGreaterThan(CRAWLER_CHASE_FAR_GAP_PX); // 最初は遠かった
+  });
+});
+
+describe('大きく離された時の追い上げ(社長 2026-10-24「離れると追いついてくる仕様入れた気がするけど、来ない」)', () => {
+  const walk = 125;
+  const run = (stopEverySec: number) => {
+    let px = 5000;
+    let c: LabCrawler | null = crawlerChaseSpawn(createLabCrawler({ x: -7000, y: 0 }), playerAt(px, 0), 1200, LAB, 0)!;
+    let t = 0;
+    const gaps: number[] = [];
+    for (let i = 0; i < 60 * 30 && c; i++) {
+      t += 1000 / 60;
+      px -= walk / 60;
+      // 雑魚を食べて止まった代わり: 一定おきに速さを0へ落とす(止まりからの立ち上がりは従来どおりじわじわ)。
+      if (stopEverySec > 0 && i > 0 && i % (60 * stopEverySec) === 0) c = { ...c, vx: 0 };
+      c = stepLabCrawler(c, input(t, 1 / 60, playerAt(px, 0), { chaseSpeed: walk * 1.1, targets: [] })).next;
+      if (c && i % 60 === 0) gaps.push(crawlerGapToPlayer(c, playerAt(px, 0)));
+    }
+    return gaps;
+  };
+  it('画面の外まで離れていても、10秒以内にゴム紐の距離(FAR)まで戻ってくる', () => {
+    const gaps = run(0);
+    expect(gaps[2]).toBeGreaterThan(1200); // 最初は大きく離れている
+    expect(gaps[10]).toBeLessThan(CRAWLER_CHASE_FAR_GAP_PX);
+  });
+  it('途中で何度も止まっても(雑魚を食べる)、離されっぱなしにならず詰めてくる', () => {
+    const gaps = run(6);
+    const late = gaps.slice(-8);
+    expect(Math.max(...late)).toBeLessThan(CRAWLER_CHASE_FAR_GAP_PX); // 後半は FAR より内側に居続ける
   });
 });

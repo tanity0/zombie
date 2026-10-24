@@ -18,3 +18,14 @@ export const labRadioMixT = (idolX: number | null, playerCenterX: number): numbe
   const raw = (d / L - 0.5) / 0.4;
   return Math.max(0, Math.min(1, raw));
 };
+
+/**
+ * アイドルを倒した後のアイドル方面のBGMの残り(0..1・純関数)。社長指示2026-10-24「アイドル倒したらアイドルBGM止めて」。
+ * 倒した瞬間からこの時間で絞り切る(ブツっと切らない=慣性)。downAt=0(まだ倒していない)なら 1。
+ */
+export const LAB_RADIO_IDOL_DOWN_FADE_MS = 2500;
+export const labRadioIdolDownFade = (downAt: number, now: number): number => {
+  if (!(downAt > 0)) return 1;
+  const u = Math.max(0, Math.min(1, (now - downAt) / LAB_RADIO_IDOL_DOWN_FADE_MS));
+  return (1 - u) * (1 - u);
+};

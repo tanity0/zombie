@@ -4217,6 +4217,8 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   // 偶像(アイドル)が倒れる時の叫び声(社長提供2026-10-05)。近接・銃/爆発の両方の撃破経路がここを通る。
   // 音は他と同じく動的 import で鳴らす(gameStore ↔ audioManager の循環を作らない=11555行と同じ作法)。
   if (enemy.type === 'idol') void import('../audio/audioManager').then(m => m.playSfx('idol-death'));
+  // アイドル方面のBGMを止める起点(useGameLoop が labRadioIdolDownFade で絞り切る)。
+  if (enemy.type === 'idol' && get().stageTheme === 'lab') useGameStore.setState({ labIdolDownAt: Math.max(1, get().gameTime) });
   // ★練習ラン(ボスラッシュ)は**狙った1体を倒したら終わり**(BOSS_MAKER.md §20-7-c)。
   // ゲート2/裏ボスは倒してもクリアにならない(帰還サークルは城ボス撃破が条件)ため、放っておくと
   // 「倒したのに終われない」=練習で一番使う導線が無い状態になる。勝ちにしてリザルトへ送る。
@@ -6496,6 +6498,8 @@ interface GameState {
   labEscapeBannerPending: boolean;
   /** ステージ2: アイドルが居る側の符号(+1/-1)。その側には雑魚を湧かせない(utils/labSpawn.isLabIdolSide)。アイドルを置かない出撃は 0(2026-10-19)。 */
   labIdolSide: number;
+  /** ステージ2: アイドルを倒した時刻(gameTime・ms)。0=まだ。アイドル方面のBGMをここから絞って止める(社長指示2026-10-24「アイドル倒したらアイドルBGM止めて」)。 */
+  labIdolDownAt: number;
   escorts: EscortSoldier[];      // 護衛軍人NPC(4人・東西南北担当)。HPなし・前進&射撃&10秒占拠で解放。
   // PACING_PUZZLE.md §17-14: ウェルカムがあるランで、ウェルカムが終わるまで護衛NPCの名簿を
   // 預けておく置き場(escortsは空のまま=描画もtickも走らない=画面に存在しない)。ウェルカムが
@@ -7837,6 +7841,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   labEscapeAt: 0,
   labEscapeBannerPending: false,
   labIdolSide: 0,
+  labIdolDownAt: 0,
   escorts: [],
   pendingEscorts: [],
   junDeparture: null,
@@ -23364,6 +23369,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         labBrokenObstacles: [],
         // アイドル側には雑魚を置かない・湧かせない(書類の見張り3体はもともと書類=反対側にしか置かれない)。塊を置かない出撃は従来どおり。
         labIdolSide: labIdol && !vsEntryOfRun() && !isPracticeRun() ? Math.sign(labIdol.x) : 0,
+        labIdolDownAt: 0,
         // 護衛NPC: 屋外(非ラボ)のみ出撃地点に4人配置。屋内/ラボでは出さない。
         // §17-14: ウェルカムがあるランはescortsを空で始める(pendingEscortsへ預けてある。
         // useGameLoop.tsがウェルカム終了の瞬間にescortsへ移す=出陣)。
