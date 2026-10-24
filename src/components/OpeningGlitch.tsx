@@ -12,7 +12,7 @@ import {
 //   freeze    場面の入れ物の中の夢の動き(粒・呼吸・光・紙吹雪・カメラ)を Web Animations API で止め、終わりで止まった分だけ
 //             先へ跳ばす(台本の時刻とずれない)。廊下は walkFreezeRef で主人公・スタッフ・カメラ(rAF)も止める。入力は止めない。
 //   cold      重ね(この部品の div)に「色を抜く層(saturation)」と「黒を持ち上げる層(screen・作品の光の色)」
-//   drain     主人公の画像だけ filter で彩度を落とす(jitter=抜けている間ずっと場面ごとガクガク飛ぶ+テープの噛んだ音)
+//   drain     場面全体をセピアに焼く(jitter=焼けている間ずっと場面ごとガクガク飛ぶ+テープの噛んだ音)
 //   missing   人物(data-opg-figure)にマスク: 顔を柔らかい楕円で抜く/その人を薄くする(濃さは rAF で連続補間)
 //   ghost     人物の複製を1人だけ: 廊下=その場に置き去り(世界座標)/アリーナ=画面に固定(寄るカメラに置いていかれる)
 //   melt      細部のある所(主人公の足元の床・客席)をぼかす柔らかい塊。下へ垂れながら広がって消える
@@ -196,9 +196,9 @@ const OpeningGlitch: React.FC<{
           return;
         }
         case 'drain': {
-          const fig = figures('hero')[0];
-          if (!fig) return;
-          const from = { filter: 'saturate(1) brightness(1)' }, to = { filter: 'saturate(0.06) brightness(1.12)' };
+          // 画面全体がセピアに焼ける(社長指示2026-10-24「画面全体セピアで」)。明るさは1を超えない(主人公だけ浮かない)。
+          const fig = target;
+          const from = { filter: 'none' }, to = { filter: 'sepia(0.9) saturate(0.55) contrast(1.25) brightness(0.95)' };
           if (hold) { fig.style.filter = to.filter; track(() => { fig.style.filter = ''; }); return; }
           // 色が抜けている間ずっと、場面ごとガクガク飛ぶ(1コマずつ位置が跳ぶ=加減速なし。既存のカメラの動きには足し合わせる)。
           // 色が戻る瞬間に元の位置へ。同じ刻みでテープが噛んだような「ブブブ」を鳴らす。

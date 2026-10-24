@@ -1618,6 +1618,14 @@ const ensureRadioLayer = (): HTMLAudioElement | null => {
   return el;
 };
 
+// ステージ2に入った時点で裏で読み込んでおく(社長報告2026-10-24「アイドル方面のBGMが流れ始めるのが遅い」)。
+// 以前は混ざり始める位置に着いてから初めて読み込みを始めていたので、ダウンロードが終わるまで鳴らなかった。
+export const primeCorridorRadio = (): void => {
+  if (LAB_RADIO_DISABLED || radioLayerEl) return;
+  const el = ensureRadioLayer();
+  try { el?.load(); } catch { /* ignore */ }
+};
+
 // ラジオ層の再生/停止と音量を現在の radioMix/bgmVolume/mute/bgmActive から再計算する。
 // setCorridorRadioMix だけでなく、mute切替・音量スライダー・BGM有効化の各経路からも呼び、
 // 「スライダーを動かしたら即反映」を保証する(社長指示)。

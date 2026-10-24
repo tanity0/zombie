@@ -107,7 +107,8 @@ export const planWalkBeats = (rng: Rng): Beat[] => [
     // 色が抜けている間ずっと画面がガクガク飛び、色が戻る瞬間に元の位置へ戻る(社長指示2026-10-24「カメラズレ、もっとわかりやすく。
     // セピアとカメラズレを合わせて。画面がバグった感」)。刻みは不揃い・振れ幅も不揃い(機械的な等間隔にしない)。
     acts: [{ tool: 'drain', at: 0, in: 0, hold: 450, out: 0, jitter: W3_JITTER }],
-    bgm: { dip: 0.22, in: 120, hold: 380, out: 700 },
+    // テープが噛んで回転が落ち、戻りながら追いつく(BGMの音程がよれる・2026-10-24 監査の推薦を社長が採用)。
+    bgm: { dip: 0.22, in: 120, hold: 380, out: 700, rate: 0.86 },
   },
   {
     name: 'W4', subject: 'time', at: 1800, anchor: { line: 4, on: 'show' },

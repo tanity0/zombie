@@ -109,7 +109,7 @@ describe('廊下', () => {
     expect(ghost.anchor).toBe('world');
     expect(ghost.at).toBe(freeze.at + freeze.hold); // 動き出した瞬間、止まっていた所に姿が残る
   });
-  it('「今日もかわいいですね」で主人公の色だけが抜ける', () => {
+  it('「今日もかわいいですね」で画面がセピアに焼け、テープのように乱れる', () => {
     const w3 = w.find(b => b.anchor?.line === 3)!;
     expect(w3.acts.map(a => a.tool)).toEqual(['drain']);
     // ブツっと入ってブツっと戻す(2026-10-24): 入りも戻りも0ms=フワッと変わらない。
@@ -191,7 +191,11 @@ describe('BGM', () => {
       if (!b.bgm) continue;
       expect(b.bgm.in).toBeGreaterThanOrEqual(80); expect(b.bgm.in).toBeLessThanOrEqual(150);
       expect(b.bgm.out).toBeGreaterThanOrEqual(400);
-      if (b.bgm.rate !== undefined) { expect(b.name).toBe('A4'); expect(b.bgm.rate).toBeGreaterThanOrEqual(0.95); }
+      // 音程のよれは山場(A4)のごく小さいものと、テープの乱れ(W3)だけ。
+      if (b.bgm.rate !== undefined) {
+        expect(['A4', 'W3']).toContain(b.name);
+        expect(b.bgm.rate).toBeGreaterThanOrEqual(b.name === 'W3' ? 0.8 : 0.95);
+      }
     }
   });
 });
