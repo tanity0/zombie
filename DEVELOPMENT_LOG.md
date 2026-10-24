@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5207 — ステージ6のカードにも洋館の画・EXの名前に「EX」【2026-10-24 22:55 JST】
+- 社長回答「はい(ステージ6にも同じ洋館の画)」「EXを名前の前に付けて」: config/uiDesign.REGION_ART に stage-6 も stage6-mansion-shot.jpg。campaign の stage-ex1 を name 'EX 古い洋館'・locationTitle 'EX 旧市街地・洋館'(隠しの stage-ex2 は触らない)。storyCanon.test の期待値を更新(data 356件通過)。
+- 社長依頼「タイトル画像のオリジナルください。書き直す」: public/backgrounds/title-the-one.png(1672×941)を送付(コード変更なし)。
+- 検証: typecheck 0 / eslint 0。作戦地域の一覧を撮り、ステージ6・EX のカードに洋館の景色、EX のカードに「EX 旧市街地・洋館」が出ることを確認。
+
 ## v0.25.5206 — マークスマンの立ち絵を再差し替え【2026-10-24 22:52 JST】
 - 社長支給「マークスマンだけ入れ替え」: public/sprites/portraits/portrait-sniper.png を同名・同寸法(1086×1448)で差し替え。assets:ledger 更新・assets:check OK。
 - 検証: キャラクター選択でマークスマンを選んで撮り、新しい立ち絵が出ることを確認。

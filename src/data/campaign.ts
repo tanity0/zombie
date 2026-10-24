@@ -503,14 +503,14 @@ export const STAGES: Stage[] = [
     id: 'stage-ex1',
     index: 101,
     kind: 'ex',
-    name: '古い洋館', // ★社長指示2026-10-24「EXステージの名前は洋館跡地ではない。6と同じ洋館」=ステージ6と同じ名前
+    name: 'EX 古い洋館', // ★社長指示2026-10-24「EXステージの名前は洋館跡地ではない。6と同じ洋館」「EXを名前の前に付けて」=ステージ6と同じ名前+EX
     area: 'クリア後 / 軍の正式任務',
     bgm: 'stage6', // ★社長指示2026-08-26: フィルと出会うまでステージ6曲。遭遇でフィル戦曲'ex'へ切替(useGameLoopのcrossToBossBgm)
     unlockBy: 'stage-7',
     day: 42,
     time: '03:40',
     timeLabel: '数日後／未明', // 統合正本5.2: 表示上の時間経過(数値日時へ変換しない)
-    locationTitle: '旧市街地・洋館',
+    locationTitle: 'EX 旧市街地・洋館',
     // PACING_PUZZLE.md §10-12#8(バッチ1): storyBossOnlyを廃止。中盤にスリィエルのゲート→撃破で
     // 最奥手前にphillboss(フィル)が出現する通常ステージ寄りの構成へ(旧: 開始通信なし・現地到着後
     // いきなり未確認変異体が出現し即戦闘=旧統合正本10.2は撤回)。

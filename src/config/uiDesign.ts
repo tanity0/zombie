@@ -10,7 +10,8 @@ export const REGION_ART: Readonly<Record<string, string>> = {
   'stage-4': 'stage4-far.jpg',
   'stage-5': 'stage5-far.jpg',
   'stage-7': 'stage7-far.jpg',
-  // EX はステージ6と同じ洋館(社長2026-10-24)。絵は洋館(ステージ6)のゲーム画面を実際に撮ったもの(社長「洋館から実際に撮ってきて」)。
+  // ステージ6と EX は同じ洋館(社長2026-10-24)。絵は洋館(ステージ6)のゲーム画面を実際に撮ったもの(社長「洋館から実際に撮ってきて」→ステージ6にも「はい」)。
+  'stage-6': 'stage6-mansion-shot.jpg',
   'stage-ex1': 'stage6-mansion-shot.jpg',
 };
 
