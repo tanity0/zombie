@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "931 files / 復号後 約704MB",
+ "generatedFor": "932 files / 復号後 約706MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -235,6 +235,12 @@
    "h": 906,
    "bytes": 252400,
    "sha": "260cd9194bb0ae4b"
+  },
+  "backgrounds/stage6-mansion-top.jpg": {
+   "w": 960,
+   "h": 540,
+   "bytes": 149614,
+   "sha": "4910fb0a6587b698"
   },
   "backgrounds/stage7-clouds-anim.png": {
    "w": 752,

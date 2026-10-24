@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5210', items: [
+    '洋館の作戦地域の絵を、奥の窓と柱の並ぶ通路へ寄せた',
+  ] },
   { version: '0.25.5209', items: [
     '任務説明の「戻る」、開発施設の見出しと切り替え、装備の切り替えが、下へスクロールしても画面に残る',
   ] },
