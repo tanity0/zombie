@@ -257,8 +257,8 @@
   "backgrounds/title-the-one.png": {
    "w": 1672,
    "h": 941,
-   "bytes": 2414769,
-   "sha": "a1c997a04abc0f07"
+   "bytes": 2328185,
+   "sha": "7680e070cfd2d2af"
   },
   "backgrounds/tutorial-far.jpg": {
    "w": 1672,
@@ -3743,26 +3743,26 @@
   "sprites/portraits/portrait-handgun.png": {
    "w": 1024,
    "h": 1536,
-   "bytes": 2355066,
-   "sha": "cf1b6a13b7a81a8b"
+   "bytes": 2378459,
+   "sha": "00a7912309d72a45"
   },
   "sprites/portraits/portrait-knife.png": {
    "w": 1024,
    "h": 1536,
-   "bytes": 2510867,
-   "sha": "dbc3941d2286c537"
+   "bytes": 2493804,
+   "sha": "77fbfb81d715652a"
   },
   "sprites/portraits/portrait-shotgun.png": {
    "w": 1024,
    "h": 1536,
-   "bytes": 2726108,
-   "sha": "32915babc46d407b"
+   "bytes": 2618158,
+   "sha": "e3bfcb12a1699ac4"
   },
   "sprites/portraits/portrait-sniper.png": {
    "w": 1086,
    "h": 1448,
-   "bytes": 2597224,
-   "sha": "063d650243fcb6c7"
+   "bytes": 2531379,
+   "sha": "810f5b2faf4bd1ab"
   },
   "sprites/props/flame.png": {
    "w": 368,

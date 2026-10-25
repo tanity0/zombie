@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5214', items: [
+    'タイトル画面の絵と、キャラクター選択の4人の立ち絵を新しくした',
+  ] },
   { version: '0.25.5213', items: [
     'ゾンビの噛みつきの牙が、予告の線と一緒に出る。線が消えていくほど顎が締まり、消え切った瞬間に噛みつく',
     '牙は小さく薄くゾンビの側から現れ、膨らんで構える。体が光るたびに脈打つ',
