@@ -154,6 +154,15 @@ npm run dev            # http://localhost:5173/zombie/
 (`scripts/botrun-local.mjs`/`run-e2e-sweep.mjs`)は `npm run build` → `vite preview --port 4173` を
 自前で行うので dev サーバは不要(2本を使う時はこの手順を読まなくてよい)。
 
+## 9. 短い技の絵を止めて撮る(2026-10-25・ゾンビの噛みつきで実測)
+- **時間を止める**: `requestAnimationFrame` を包み、毎フレームの前後で `gameTime` と対象の敵を固定値へ書き戻す
+  (`timeSlowScale` を極小にしても AI が状態を書き換えるので、それだけでは止まらない)。
+- **★技の絵は撮る前に消えていることがある**: 絵の多くは `latchFx`(pixiScene)のラッチで出していて、**寿命が壁時計
+  (`now`)で数えられる**(噛みつきなら約1.6秒)。ヘッドレスは1フレーム1秒前後なので、待っている間にラッチが切れて
+  **直前の evaluate で `sprite.visible` が true でも、撮った画には出ていない**。撮る直前に `__pixiScene.fxLatches.get(key).dur = 1e9` で延ばし、
+  `__gameStore.getState().captureFrame()`(同期→描画→dataURL)で撮る。
+- 流れ: 敵1体を `spawnEnemyAt`(`/zombie/src/utils/enemyUtils.ts` を動的 import)で置き、`biteAt = gameTime − 経過ms` を書いて撮る→経過msごとの画を `montage` で並べて見る。
+
 ## ★やってはいけないこと
 - `npx playwright install`(環境のブラウザを壊す/ダウンロードが走る)
 - クリックのループで関門を抜けようとする(**3で `?smoke=1` を使う**)

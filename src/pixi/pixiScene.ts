@@ -282,8 +282,8 @@ import {
 } from '../utils/skeletonClaw';
 // ★ゾンビの噛みつきVFX(社長支給2026-09-18・左向き)。爪と同じ作法。
 import {
-  usesZombieBiteFx, zombieBiteTiming, zombieBiteCounterable, zombieBiteTotalMs,
-  zombieBiteFrameWithWindup, zombieBiteAlpha, zombieBiteTexName,
+  usesZombieBiteFx,
+  zombieBiteFrameWithWindup, zombieBiteAlpha, zombieBiteTexName, zombieBiteIn, zombieBiteClose, zombieBitePulse,
   ZOMBIE_BITE_REF_W, ZOMBIE_BITE_W_PX,
 } from '../utils/zombieBiteFx';
 // ★ハンターの棺桶(社長支給2026-09-18)。ジャンプと突進の両方で振る。
@@ -320,7 +320,7 @@ import {
 } from '../utils/lichBlink'; // §16-C リッチの技「転移噛み」
 // §16-3z「歯応え」の仕上げ: ゾンビ赤2連の停止尺(姿勢の3段の合計に使う)と赤の脈(純関数)。
 import {
-  chaffMoveBlinkStrength,
+  chaffMoveBlinkStrength, CHAFF_BLINK_ON_MS, CHAFF_BLINK_OFF_MS, CHAFF_BLINK_COUNT,
   ZOMBIE_STANCE_MS, ZOMBIE_WINDUP_MS, ZOMBIE_HOLD_MS, ZOMBIE_STAGGER_MS, // 2026-10-14 構え(反る→固まる)・2発目の前の一拍の尺
   ZOMBIE_RECOVER_MS, // 硬直の姿勢(クリエイティブ監査#1)の尺
 } from '../utils/chaffMoves';
@@ -5305,6 +5305,11 @@ export class PixiScene {
   private skelClawSprites = new Map<string, Sprite>();     // スケルトンの引っ掻き痕(4コマ・敵ごと)
   private skelClawFxSprites = new Map<string, Sprite>();   // 同・VFX(5コマ)
   private zombieBiteSprites = new Map<string, Sprite>(); // ゾンビの噛みつきVFX(4コマ・敵ごと)
+  private zombieBite2Sprites = new Map<string, Sprite>(); // 同・2連の2発目(1発目の飛沫を抜き切らせたまま重ねる)
+  /** このフレームの噛みの予告の線(syncPumpkinTelegraph が書き、syncActors の牙の輪が読む=線と輪が同じ時刻・同じ点を見る)。 */
+  private zombieBiteLines = new Map<string, BiteTelegraphLine>();
+  /** 牙の輪を描いた位置(発火の瞬間に予測の芯→確定の芯へ寄せるための追従)。 */
+  private zombieBiteRingPos = new Map<string, { x: number; y: number; at: number }>();
   private coffinSwingSprites = new Map<string, Sprite>(); // ハンターの棺桶の斬撃(10コマ)
   private coffinSlamSprites = new Map<string, Sprite>();  // 同・地面の余韻(5コマ)
   private playerKnifeSetup = false;                        // テクスチャ/アンカー/親子付け済みか
@@ -13173,6 +13178,7 @@ export class PixiScene {
     g.clear();
     this.mobMeteorGfx.clear();
     this.mobMeteorSeen.clear();
+    this.zombieBiteLines.clear();
     // 雑魚の狙い(状態機械の apx/apy と同じ式)。軍人の候補は要る時だけ1回作る。
     const pc = { x: aimSrc.player.x + aimSrc.player.width / 2, y: aimSrc.player.y + aimSrc.player.height / 2 };
     let escortCands: ReturnType<typeof escortAggroCandidates> | null = null;
@@ -13198,6 +13204,7 @@ export class PixiScene {
           const a = aimOf(e);
           bl = preBiteTelegraphLine(e, gameTime, a, a.escort);
         }
+        if (bl && usesZombieBiteFx(e)) this.zombieBiteLines.set(e.id, bl);
         if (bl && !bl.mobLine) this.bossBiteTick(g, `${e.id}:bite`, bl, e, gameTime, now);
         else if (bl) mobLines.push({ key: `${e.id}:bite`, l: bl, e, d: Math.hypot(e.x + e.width / 2 - pc.x, e.y + e.height / 2 - pc.y) });
       }
@@ -16358,6 +16365,9 @@ export class PixiScene {
         if (skelClawFxSp) { skelClawFxSp.destroy(); this.skelClawFxSprites.delete(id); }
         const zombieBiteSp = this.zombieBiteSprites.get(id);
         if (zombieBiteSp) { zombieBiteSp.destroy(); this.zombieBiteSprites.delete(id); }
+        const zombieBite2Sp = this.zombieBite2Sprites.get(id);
+        if (zombieBite2Sp) { zombieBite2Sp.destroy(); this.zombieBite2Sprites.delete(id); }
+        this.zombieBiteRingPos.delete(`${id}:1`); this.zombieBiteRingPos.delete(`${id}:2`);
         const coffinSwingSp = this.coffinSwingSprites.get(id);
         if (coffinSwingSp) { coffinSwingSp.destroy(); this.coffinSwingSprites.delete(id); }
         const coffinSlamSp = this.coffinSlamSprites.get(id);
@@ -20621,6 +20631,7 @@ export class PixiScene {
     // ゾンビの噛みつきVFXも既定OFF。
     if (usesZombieBiteFx(e)) {
       const zb = this.zombieBiteSprites.get(e.id); if (zb) zb.visible = false;
+      const zb2 = this.zombieBite2Sprites.get(e.id); if (zb2) zb2.visible = false;
     }
     // スケルトンの爪も既定OFF(点けるのは噛みつきの分岐だけ=残留焼き付きを作らない)。
     if (usesSkeletonClaw(e)) {
@@ -22213,34 +22224,66 @@ export class PixiScene {
       }
     }
     // ★ゾンビの噛みつきVFX(社長支給2026-09-18「ゾンビ用の噛みつきVFX / 左向きですこれは」)。
-    // バット/スケルトンと**同じ作法**: 噛みつき台本の尺の上に乗せ、狙った点(=予告の線と同じ終点)へ落とし、
-    // ラッチで焼く。素材は左向きなので右向きの個体は反転する。
+    // 牙の輪は**予告の線と同じ窓**で出す(社長指摘2026-10-25「噛みつきの予告と噛みつきの絵が噛み合ってない」):
+    //   線が出た瞬間(溜めの頭。2連の1発目は構えの頭/2発目はよろけの頭)に輪も入り、線が満ちる間に締まり、
+    //   線が根元から消えていく間に強く締まって、消え切った瞬間(=当たる瞬間)に飛沫。時刻と点はこのフレームの線
+    //   (`zombieBiteLines`=syncPumpkinTelegraph が先に書く)から読む=線と輪が食い違わない。
+    //   置く点=判定の四角の中心(fxX/fyY・utils/biteFxHit)。発火前は予測の芯、発火で確定の芯へ寄せる。
+    //   2連の2発目は別のスプライトに出す=1発目の飛沫は抜き切ってから消える(差し替えで1フレームで消さない)。
+    // 素材は左向きなので右向きの個体は反転する。判定・尺は1msも触らない。
     if (usesZombieBiteFx(e)) {
-      const { windupMs: zwMs, biteMs: zbMs } = zombieBiteTiming(e);
-      const zRunning = e.biteAt !== undefined && e.biteAt > 0;
-      const zDirX = e.biteDirX ?? 1, zDirY = e.biteDirY ?? 0;
-      const ZL = this.latchFx(
-        `${e.id}:zombie-bite`, zRunning, zwMs + zbMs + zombieBiteTotalMs() + 200, now,
-        () => {
-          const bl = biteTelegraphLine(e, gameTime);
-          // 噛み跡は判定の四角と同じ中心(fxX/fxY)へ置く=絵と当たりが一緒に動く(1発目は焼いた向きの前方へずれる)。
-          return [zDirX, bl?.fxX ?? (cx + zDirX * 35), bl?.fyY ?? (cy + zDirY * 35),
-            e.biteAt ?? gameTime, zombieBiteCounterable(e) ? 1 : 0];
-        }, e.lastCounteredAt,
-      );
-      if (ZL) {
-        const [zdx, zax, zay, zat0, zctr] = ZL.d;
-        const zSinceWindup = gameTime - zat0;
-        const zSince = zSinceWindup - (zwMs + zbMs);
-        // ★§16-E: 溜めのあいだ(zSinceWindup < zwMs)は0コマ目(牙を構えた形)で静止。
-        // 溜め明けからの送りは従来(zombieBiteFrame=frameByHold)と1ミリも変えない。
-        const zf = zombieBiteFrameWithWindup(zSinceWindup, zwMs, zSince);
-        if (zf !== null) {
-          this.drawSkelClawSprite(
-            this.zombieBiteSprites, zombieBiteTexName(zf, zctr === 1), e.id, zax, zay,
-            ZOMBIE_BITE_W_PX / ZOMBIE_BITE_REF_W, zdx >= 0, zombieBiteAlpha(zSince) * artFade,
-          );
+      const zl = this.zombieBiteLines.get(e.id);
+      const zSecond = e.aiPhase === 'z-stagger' || e.aiPhase === 'z-bite2';
+      for (const slot of [1, 2] as const) {
+        const active = !!zl && (slot === 2) === zSecond;
+        const ZL = this.latchFx(
+          `${e.id}:zombie-bite${slot === 2 ? '2' : ''}`, active, 8000, now,
+          () => [0, 0, 0, 0, 0, 0, 0, 0], e.lastCounteredAt,
+        );
+        if (!ZL) continue;
+        const D = ZL.d;
+        if (active && zl) {
+          // 線が出ている間は毎フレーム線から写す(発火の前は狙いを追う予測、発火後は焼かれた値)。
+          const len = Math.hypot(zl.tx - zl.fx, zl.ty - zl.fy) || 1;
+          const pk = `${e.id}:${slot}`;
+          const prev = this.zombieBiteRingPos.get(pk);
+          let rx = zl.fxX, ry = zl.fyY;
+          if (prev && now - prev.at < 250) {
+            const k = 1 - Math.exp(-Math.max(0, now - prev.at) / 70); // 予測→確定の芯へ寄せる(跳ばない)
+            rx = prev.x + (zl.fxX - prev.x) * k; ry = prev.y + (zl.fyY - prev.y) * k;
+          }
+          this.zombieBiteRingPos.set(pk, { x: rx, y: ry, at: now });
+          D[0] = (zl.tx - zl.fx) / len; D[1] = (zl.ty - zl.fy) / len; D[2] = rx; D[3] = ry;
+          D[4] = zl.startAt; D[5] = zl.hitAt; D[6] = zl.biteMs; D[7] = zl.counterable ? 1 : 0;
         }
+        const [zux, zuy, zax, zay, zStart, zHit, zbMs, zctr] = D;
+        if (zHit <= 0) continue;
+        const zWin = Math.max(1, zHit - zStart - zbMs); // 溜め(線が出てから噛みに入るまで)
+        const zSinceWin = gameTime - zStart;
+        const zSince = gameTime - zHit; // 当たる瞬間=0
+        const zf = zombieBiteFrameWithWindup(zSinceWin, zWin, zSince, zbMs);
+        if (zf === null) continue;
+        const second = slot === 2;
+        const zin = zombieBiteIn(zSinceWin, zWin, second); // 小さく薄く、ゾンビ側から膨らんで今の位置へ
+        const zcl = zombieBiteClose(zSinceWin, zWin, zSince, zbMs, second); // 溜めでじわじわ→噛みで縦に強く締まる
+        // 体の点滅に合わせた脈(§12の噛みつき=溜めの中の2回目の点滅/2連の1発目=構えの赤の点滅)。
+        let edge: number | null = null;
+        if (zSince < 0) {
+          if (e.aiPhase === 'z-red-pause' && e.chaffBlinkAt !== undefined) {
+            const t = gameTime - e.chaffBlinkAt, cyc = CHAFF_BLINK_ON_MS + CHAFF_BLINK_OFF_MS;
+            if (t >= 0 && t < cyc * CHAFF_BLINK_COUNT) edge = t % cyc;
+          } else if (!second && e.chaffMove === undefined && e.biteAt !== undefined && e.biteAt > 0) {
+            const t = gameTime - e.biteAt, cyc = Math.max(1, (zWin) / 2);
+            if (t >= cyc && t < zWin) edge = t % cyc;
+          }
+        }
+        const zp = zombieBitePulse(edge);
+        const zbase = ZOMBIE_BITE_W_PX / ZOMBIE_BITE_REF_W * zin.scale * (1 + zp.scale);
+        this.drawSkelClawSprite(
+          second ? this.zombieBite2Sprites : this.zombieBiteSprites, zombieBiteTexName(zf, zctr === 1), e.id,
+          zax - zux * zin.backPx, zay - zuy * zin.backPx,
+          zbase * zcl.sx, zux >= 0, Math.min(1, zombieBiteAlpha(zSince) * artFade * zin.alpha * (zcl.alpha + zp.alpha)), false, zbase * zcl.sy,
+        );
       }
     }
     // ★ハンターの武器=棺桶(社長支給2026-09-18「ジャンプと、突進どちらもこれを振る」)。
@@ -36171,7 +36214,7 @@ export class PixiScene {
    */
   private drawSkelClawSprite(
     pool: Map<string, Sprite>, texName: string, id: string,
-    x: number, y: number, scale: number, flip: boolean, alpha: number, additive = false,
+    x: number, y: number, scale: number, flip: boolean, alpha: number, additive = false, scaleY = scale,
   ): void {
     const tex = getTexture(texName);
     if (!tex || tex.width === 0) return;
@@ -36182,7 +36225,7 @@ export class PixiScene {
     const want = additive ? 'add' : 'normal';
     if (sp.blendMode !== want) sp.blendMode = want;
     sp.anchor.set(0.5, 0.5);
-    sp.scale.set(flip ? -scale : scale, scale);
+    sp.scale.set(flip ? -scale : scale, scaleY);
     sp.position.set(x, y);
     sp.alpha = alpha;
     sp.visible = sp.alpha > 0.01;

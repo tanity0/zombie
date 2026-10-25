@@ -350,9 +350,12 @@ export const preBiteTelegraphLine = (
   const contact = biteContactDistPx(e);
   const lp = biteLungeDistanceAtFire(e.type, bl);
   const geo = lineGeometry(ecx, ecy, dirX, dirY, contact, lp + contact);
+  // 噛みの絵(牙の輪)は構えの頭から線と一緒に出る(社長指摘2026-10-25「予告と絵が噛み合ってない」)。
+  // ゾンビ1発目は発火後と同じ式で中心を出す=発火の瞬間に絵が跳ばない(踏み込み距離だけは発火まで今の距離から予測)。
+  const fxc = stance ? zombieFirstBiteFxCenter(ecx, ecy, dirX, dirY, lp, contact) : { x: geo.tx, y: geo.ty };
   return {
     ...geo,
-    fxX: geo.tx, fyY: geo.ty,
+    fxX: fxc.x, fyY: fxc.y,
     ...meteorTiming(w, gameTime),
     biteMs: w.spec.biteMs,
     counterable: w.spec.counterable,
