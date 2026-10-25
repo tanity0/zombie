@@ -92,3 +92,27 @@ export const isPoiRevealed = (poi: { x: number; y: number }, baseSites: BaseSite
   const base = baseSites.find(b => b.id === `base-${sector}`) ?? baseSites[sector];
   return !!base && base.status === 'captured';
 };
+
+// ★画面の目印の整理(社長指示2026-10-25「拠点開放後、裏ボス表示が常にいるのが紛らわしい…ルールが必要」→推薦で):
+// 遠くの目的地(POI=裏ボスの巣・病院・武器庫・警察署・洞窟)の画面端の矢印は、**プレイヤーが今いるエリア
+// (=その方角を担当する拠点のセクター)にある物だけ**出す。スタート地点(商人)の目印は従来どおり常に出す。
+// エリアの境目(斜め45°の線)ではちらつかないよう、今のエリアから少し外れても(AREA_HYSTERESIS_RAD)そのまま扱う。
+// スタート地点の近く(AREA_START_RADIUS_PX の内)は方角が定まらないので、直前のエリアを引き継ぐ(初めは無し)。
+export const AREA_HYSTERESIS_RAD = (8 * Math.PI) / 180;
+export const AREA_START_RADIUS_PX = worldDist(800);
+
+/** プレイヤーが今いるエリア(セクター番号)。`prev`=前のフレームの値(ヒステリシス用)。スタート地点の近くで初回なら null。 */
+export const playerAreaSector = (px: number, py: number, prev: number | null): number | null => {
+  if (Math.hypot(px, py) < AREA_START_RADIUS_PX) return prev;
+  const ang = Math.atan2(py, px);
+  if (prev !== null) {
+    let d = ang - prev * SECTOR_RAD;
+    d = Math.atan2(Math.sin(d), Math.cos(d)); // -π..π
+    if (Math.abs(d) <= SECTOR_RAD / 2 + AREA_HYSTERESIS_RAD) return prev;
+  }
+  return sectorIndexForAngle(ang);
+};
+
+/** この POI の矢印を画面に出すか(解放済み かつ 今いるエリアの物)。 */
+export const isPoiInPlayerArea = (poi: { x: number; y: number }, area: number | null): boolean =>
+  area !== null && poiSectorIndex(poi) === area;

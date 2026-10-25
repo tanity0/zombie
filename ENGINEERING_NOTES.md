@@ -76,6 +76,7 @@
 
 | 症状 | 最初の1手 | 過去の実例 | 節 |
 |---|---|---|---|
+| **裏ボスの巣の画面端の目印が出ない/別のボスを指す** | 呼び出し側(pixiScene の `revealedPois`)の2つの絞りを見る: ①巣を下げる条件が「交戦マークが1つでもある」になっていないか(=賞金首・英雄のマークで巣が消える)②実体を指す先を `isHiddenBoss`(天使・アイドル等も真)で探していないか。正は**この出撃の裏ボス本人**(`e.type === s.hiddenBoss`)だけ | v0.25.5216 画面の目印の整理(社長「推薦で」)の棚卸しで発見 | `world/pois.playerAreaSector`・poiArea.test |
 | **技の絵(牙・爪などのコマ絵)が、溜め明けから当たる直前まで一瞬消える/予告の線と動きが合わない** | **コマ送りの関数を溜めの頭〜流し切りまで2ms刻みで回し、`null` が挟まる区間が無いか**を見る(`frameWithWindupHold` は溜めの間だけ0コマ目で、溜め明け〜「当たる瞬間−前コマの尺」は `null`=消える)。噛みの区間は**線が根元から消えていく区間**なので、絵もそこで動かす | v0.25.5213 社長「噛みつきの予告と噛みつきの絵が噛み合ってない」→ ゾンビの牙は溜め明けから120ms(2連の1発目は80ms)消えていた。噛みの間に輪が締まり、線が消え切った瞬間に飛沫へ | `zombieBiteFrameWithWindup`・zombieBiteFx.test |
 | **ボス級(英雄・賞金首)が巣へ戻る途中、撃っても反撃せず撃ち放題** | 帰巣のラッチ(英雄 `heroTick` の `s.homing`/賞金首 `decideBountyLeash`)が被弾で解けるか。**活動の限界の内側で撃たれたら振り返る**のが正(限界の外は戻らない=誘い出し封じ) | v0.25.5211(英雄は帰巣中プレイヤーを狙いの候補から外していた/賞金首は「被弾では戻らない」の旧裁定) | `heroHomingReengage`・`BOUNTY_HOMING_HIT_REENGAGE_MS` |
 | **長く遊ぶと落ちる(落ちる直前の `bake…枚` が千枚超・`obj`/JSヒープがじわじわ増える)** | **`renderer.renderPipes.batch._batchersByInstructionSet` の件数を時間で見る**。Pixi 8.19 の BatcherPipe は**描いた根(RenderGroup)の命令列ごとに束ね役(DefaultBatcher)を作り、二度と捨てない**。焼くたびに `new Container()` を根にして `renderer.render` すると焼き1回=束ね役1つが永久に残り、壊した Sprite も束の中に残る | v0.25.5086 社長実機「落ちた」(stage-5 t237s・bake1202枚)→ ヘッドレスで束ね役が24秒に342→710 → 焼きは全部 `renderBake`(使い回しの根1つ)を通す=常に2個 | leak/batchers.mjs(scratchpad)・bakeLedger.test |

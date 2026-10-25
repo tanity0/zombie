@@ -345,7 +345,7 @@ import {
   bossEngagementDistancePx, isEngageableBoss,
 } from '../utils/bossEngagement';
 import { bossPostureMax, bossPostureNow, isBossPostureBroken, usesPostureSystem } from '../utils/bossPosture';
-import { getRunPois, isPoiRevealed, poiSectorIndex, type DetourPoiInput } from '../world/pois';
+import { getRunPois, isPoiRevealed, poiSectorIndex, playerAreaSector, isPoiInPlayerArea, type DetourPoiInput } from '../world/pois';
 import {
   HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
   HOSPITAL_FADE_MS, HOSPITAL_DISPLAY_H, hospitalCircleCenter,
@@ -2340,6 +2340,11 @@ const windupBackstepOffset = (
 const WEAPON_SPAWN_EASE_MS = 220; // 仕様レンジ180〜260msの中央値
 const WEAPON_SPAWN_DROP_PX = 15;  // 仕様レンジ12〜18pxの中央値
 // 画面の端の拠点の目印の記録(出/消えの慣性用・research/FAST_TRAVEL.md §2-5)。hiddenAt=出なくなった時刻(消えの最中)。
+/** 遠くの目的地の目印の状態(出入り・巣→本人の切り替え・向きの追従)。 */
+interface PoiArrowRec {
+  shownAt: number; hiddenAt: number | null; hideByScreen: boolean; lastNow: number;
+  angle: number; angleDisp: number; kind: string; live: boolean; liveMix: number; wakeAt: number | null;
+}
 interface BaseArrowRec { shownAt: number; hiddenAt: number | null; ex: number; ey: number; dx: number; dy: number; angle: number; color: number; captured: boolean }
 const weaponSpawnEase = (
   elapsedSinceAppearMs: number, remainBeforeVanishMs: number,
@@ -10249,7 +10254,12 @@ export class PixiScene {
     // 解放済み(=その方角の拠点が制圧済み)のPOIだけ方角矢印を出す。裏ボスは討伐後は出さない。
     // 出現/解放判定は固定の巣(セクター)で行い、矢印の指す先は「実際に出ている裏ボスの現在地」にする
     // (近接スポーンや追跡で巣からずれても本体を指す)。
-    const liveHiddenBoss = s.enemies.find(e => isHiddenBoss(e.type));
+    // ★この出撃の裏ボス本人だけ(旧: isHiddenBoss=天使・アイドル等も拾い、巣の矢印が別のボスを指し得た)。
+    const liveHiddenBoss = s.hiddenBoss ? s.enemies.find(e => e.type === s.hiddenBoss && e.health > 0) : undefined;
+    // ★画面の目印の整理(社長「推薦で」2026-10-25): 遠くの目的地は**今いるエリアの物だけ**(world/pois.playerAreaSector)。
+    if (s.gameTime < this.poiAreaLastGt - 1000) { this.poiArea = null; this.poiFirstShownAt.clear(); } // 新しい出撃
+    this.poiAreaLastGt = s.gameTime;
+    this.poiArea = playerAreaSector(s.player.x + s.player.width / 2, s.player.y + s.player.height / 2, this.poiArea);
     // §6.24 M48: 寄り道POI3種(病院/武器庫/警察署)は実際の位置(state)をそのまま渡す。以前は
     // hospitalの座標だけ内部で再計算していたが、位置が毎ランランダムになったため「同じ式を2箇所に
     // 持つ」やり方はもう安全ではない(乱数を2回引くと矢印と実体がズレる)。実体の位置を渡すだけにして
@@ -10270,10 +10280,13 @@ export class PixiScene {
       .filter(p => !(p.kind === 'boss' && s.hiddenBossDefeated))
       // 裏ボスが実際に出ている間は、巣のPOI矢印を下げてボスマークへ一本化する(同じ座標=下の .map で
       // 実体位置へ寄せているため、両方描くと同じ点に2枚重なるだけ)。情報は減らない(マークは常に出る)。
-      .filter(p => !(p.kind === 'boss' && markedBosses.length > 0))
+      // ★下げるのは**裏ボス本人が**交戦中のマークで出ている時だけ(旧: 賞金首・英雄などのマークが1つでもあると
+      //   巣の矢印が消え、裏ボスの印がどちらも出ない空白ができた)。
+      .filter(p => !(p.kind === 'boss' && liveHiddenBoss !== undefined && markedBosses.includes(liveHiddenBoss)))
       .filter(p => isPoiRevealed(p, s.baseSites))
+      .filter(p => isPoiInPlayerArea(p, this.poiArea)) // エリアは巣(固定の位置)で決める
       .map(p => (p.kind === 'boss' && liveHiddenBoss)
-        ? { ...p, x: liveHiddenBoss.x + liveHiddenBoss.width / 2, y: liveHiddenBoss.y + liveHiddenBoss.height / 2 }
+        ? { ...p, live: true, x: liveHiddenBoss.x + liveHiddenBoss.width / 2, y: liveHiddenBoss.y + liveHiddenBoss.height / 2 }
         : p);
     const alertedHunters = s.enemies.filter(e => e.type === 'hunter' && e.hunterAlerted && !e.hunterFleeing).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
     // 二人組クエストの強制目標(同時1体)。近く+画面外の時だけ縁矢印(syncArrows)。
@@ -38083,6 +38096,12 @@ export class PixiScene {
   // 拠点の目印(research/FAST_TRAVEL.md §2-5): 安全な拠点の id(syncArrows の直前に置く)と、目印が出た時刻(出の慣性用・実時間)。
   private arrowSafeBaseId: string | null = null;
   private baseArrowRecs = new Map<string, BaseArrowRec>();
+  /** 遠くの目的地(POI)の目印の出入り(慣性)と、初めて出た時刻(拠点を解放した知らせの強調用・出撃ごと)。 */
+  private poiArrowRecs = new Map<string, PoiArrowRec>();
+  private poiFirstShownAt = new Map<string, number>();
+  /** プレイヤーが今いるエリア(world/pois.playerAreaSector・ヒステリシスのため前の値を持つ)。 */
+  private poiArea: number | null = null;
+  private poiAreaLastGt = 0;
   private syncArrows(
     pickups: Pickup[],
     castle: CastleEvent,
@@ -38091,7 +38110,7 @@ export class PixiScene {
     _camera: { x: number; y: number },
     castleVisible: boolean,
     event: ActiveEvent | null,
-    pois: { x: number; y: number; kind: 'boss' | 'cave' | 'hospital' | 'armory' | 'police' }[] = [],
+    pois: { id?: string; x: number; y: number; kind: 'boss' | 'cave' | 'hospital' | 'armory' | 'police'; live?: boolean }[] = [],
     baseSites: { id?: string; x: number; y: number; status: string }[] = [],
     escorts: EscortSoldier[] = [],
     playerCenter?: { x: number; y: number },
@@ -38520,64 +38539,159 @@ export class PixiScene {
       g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
     }
 
-    // 探索の道標(POI): 拠点を解放した方角の洞窟/裏ボスを画面端の方向矢印で示す(社長指示)。
-    // 距離は出さない=矢印のみ。画面内に入っているPOIは出さない。boss=赤 / cave=琥珀。
-    for (const poi of pois) {
-      const tx = toScreenX(poi.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
-      const ty = toScreenY(poi.y);
-      if (tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH) continue; // 画面内なら不要
-      const angle = Math.atan2(ty - cyC, tx - cxC);
-      const dx = Math.cos(angle), dy = Math.sin(angle);
+    // 探索の道標(POI): 拠点を解放した方角の洞窟/裏ボス/寄り道を画面端の方向矢印で示す(社長指示)。
+    // ★今いるエリアの物だけ(呼び出し側で絞る・社長「推薦で」2026-10-25)。エリアを出入りする時は縁の外から滑り込み/沈んで消える(慣性)。
+    // ★拠点を解放して初めて出た時は、輪が大きく出て縮み、波紋を3回打つ(2.4秒)=「この方角に何かある」の知らせ。
+    // ★裏ボスは「巣(場所)」と「本人(今そこにいる)」で見た目を分ける: 巣=沈んだ色・脈打たない / 本人=赤く脈打つ。
+    // 距離は出さない=矢印のみ。画面内に入っているPOIは出さない。
+    const poiNow = Date.now();
+    const poiSeen = new Set<string>();
+    // 縁の上の点(向き→画面の縁までの距離)。巣→本人の切り替えでは向きを補間するので、点もこの1本で出す。
+    const edgeAt = (ang: number): { ex: number; ey: number; dx: number; dy: number } | null => {
+      const dx = Math.cos(ang), dy = Math.sin(ang);
       let tdist = Infinity;
       if (dx > 0.0001) tdist = Math.min(tdist, (this.screenW - marginX - cxC) / dx);
       else if (dx < -0.0001) tdist = Math.min(tdist, (marginX - cxC) / dx);
       if (dy > 0.0001) tdist = Math.min(tdist, (this.screenH - marginBottom - cyC) / dy);
       else if (dy < -0.0001) tdist = Math.min(tdist, (marginTop - cyC) / dy);
-      if (!isFinite(tdist)) continue;
-      const ex = cxC + dx * tdist;
-      const ey = cyC + dy * tdist;
-      const boss = poi.kind === 'boss';
-      const hospital = poi.kind === 'hospital';
-      const armory = poi.kind === 'armory'; // §6.24 M48
-      const police = poi.kind === 'police'; // §6.24 M48(旧称「研究施設跡」)
-      // 裏ボス=赤 / 病院=緑 / 武器庫=琥珀(スクラップ色・ShopMenuと同系) / 警察署=青 / 洞窟=琥珀
-      const color = boss ? 0xef4444 : hospital ? 0x4ade80 : armory ? 0xfbbf24 : police ? 0x38bdf8 : 0xf59e0b;
-      g.circle(ex, ey, 11).fill({ color: 0x020617, alpha: 0.9 });
-      g.circle(ex, ey, 10).stroke({ width: 1.5, color, alpha: 0.95 });
+      return isFinite(tdist) ? { ex: cxC + dx * tdist, ey: cyC + dy * tdist, dx, dy } : null;
+    };
+    const lerpC = (c1: number, c2: number, t: number): number => {
+      const r = ((c1 >> 16) & 255) + ((((c2 >> 16) & 255) - ((c1 >> 16) & 255)) * t);
+      const gg = ((c1 >> 8) & 255) + ((((c2 >> 8) & 255) - ((c1 >> 8) & 255)) * t);
+      const bb = (c1 & 255) + (((c2 & 255) - (c1 & 255)) * t);
+      return (Math.round(r) << 16) | (Math.round(gg) << 8) | Math.round(bb);
+    };
+    // 知らせの波紋: 最初が一番大きく、あとは余韻(間隔も大きさも揃えない)。[始まり(ms), 広がり切る半径, 濃さ]
+    const POI_RIPPLES: readonly (readonly [number, number, number])[] = [[0, 56, 1], [650, 40, 0.6], [1600, 30, 0.35]];
+    const POI_RIPPLE_MS = 800;
+    const POI_SWELL_MS = 600;
+    const POI_LIVE_MS = 520; // 巣→本人(目覚め)の色・脈・向きの移り変わり
+    const POI_WAKE_MS = 450;
+    const drawPoi = (rec: PoiArrowRec, key: string, am: number, slide: number): void => {
+      if (am <= 0.01) return;
+      const pt = edgeAt(rec.angleDisp);
+      if (!pt) return;
+      const { dx, dy } = pt;
+      const kind = rec.kind;
+      const boss = kind === 'boss';
+      const lm = boss ? rec.liveMix * rec.liveMix * (3 - 2 * rec.liveMix) : 1; // 巣0→本人1
+      const hospital = kind === 'hospital', armory = kind === 'armory', police = kind === 'police';
+      // 裏ボス: 巣=乾いた血の暗赤 / 本人=赤(目覚めで移る) / 病院=緑 / 武器庫=琥珀 / 警察署=青 / 洞窟=琥珀
+      const color = boss ? lerpC(0x8c2626, 0xef4444, lm) : hospital ? 0x4ade80 : armory ? 0xfbbf24 : police ? 0x38bdf8 : 0xf59e0b;
+      const first = this.poiFirstShownAt.get(key);
+      const since = first === undefined ? Infinity : poiNow - first;
+      // 出だしは輪が大きく、行き過ぎて元の大きさへ(easeOutBack)。膨らんでいる間は中心を内側へ寄せる(矢印の先を画面の外へ切らさない)。
+      const k0 = Math.min(1, since / POI_SWELL_MS);
+      const u = k0 - 1;
+      const scl = since === Infinity ? 1 : 1.7 - 0.7 * (1 + 2.7 * u * u * u + 1.7 * u * u);
+      const ex = pt.ex + dx * slide - dx * (scl - 1) * 14, ey = pt.ey + dy * slide - dy * (scl - 1) * 14;
+      const R = (v: number) => v * scl;
+      for (const [st, rEnd, a0] of POI_RIPPLES) {
+        const tt = (since - st) / POI_RIPPLE_MS;
+        if (tt < 0 || tt >= 1) continue;
+        const e = 1 - (1 - tt) ** 3; // 減速しながら広がる
+        g.circle(ex, ey, 12 + (rEnd - 12) * e).stroke({ width: 4 - 3 * e, color: boss ? 0xff8a7a : color, alpha: am * a0 * (1 - tt) });
+      }
+      // 目覚め(巣→本人)の一撃: 強い輪が1発だけ広がる。
+      if (boss && rec.wakeAt !== null && poiNow - rec.wakeAt < POI_WAKE_MS) {
+        const tw = (poiNow - rec.wakeAt) / POI_WAKE_MS, ew = 1 - (1 - tw) ** 3;
+        g.circle(ex, ey, 12 + 40 * ew).stroke({ width: 3.5 - 2.5 * ew, color: 0xef4444, alpha: am * (1 - tw) });
+      }
+      g.circle(ex, ey, R(11)).fill({ color: 0x020617, alpha: 0.9 * am });
+      g.circle(ex, ey, R(10)).stroke({ width: 1.5, color, alpha: (boss ? 0.85 + 0.1 * lm : 0.95) * am });
       if (boss) {
-        // ドクロ風: 白い頭+目。
-        g.circle(ex, ey - 1, 4.5).fill({ color: 0xe2e8f0, alpha: 0.96 });
-        g.rect(ex - 3, ey + 2, 6, 3).fill({ color: 0xe2e8f0, alpha: 0.96 });
-        g.circle(ex - 1.8, ey - 1, 1.2).fill({ color: 0x020617, alpha: 0.98 });
-        g.circle(ex + 1.8, ey - 1, 1.2).fill({ color: 0x020617, alpha: 0.98 });
+        // ドクロ: 丸い頭+細い顎・大きな眼窩・逆三角の鼻・歯の切れ目。巣は古い象牙色、本人は白。
+        const bone = lerpC(0xc2b49a, 0xe2e8f0, lm);
+        g.circle(ex, ey - R(1), R(4.5)).fill({ color: bone, alpha: 0.96 * am });
+        g.rect(ex - R(2.1), ey + R(2), R(4.2), R(3)).fill({ color: bone, alpha: 0.96 * am });
+        g.circle(ex - R(2), ey - R(0.5), R(1.7)).fill({ color: 0x020617, alpha: 0.98 * am });
+        g.circle(ex + R(2), ey - R(0.5), R(1.7)).fill({ color: 0x020617, alpha: 0.98 * am });
+        g.poly([ex - R(0.6), ey + R(1.2), ex + R(0.6), ey + R(1.2), ex, ey + R(2.3)]).fill({ color: 0x020617, alpha: 0.98 * am });
+        g.rect(ex - R(0.9), ey + R(3), R(0.8), R(2)).fill({ color: 0x020617, alpha: 0.9 * am });
+        g.rect(ex + R(0.1), ey + R(3), R(0.8), R(2)).fill({ color: 0x020617, alpha: 0.9 * am });
       } else if (hospital) {
         // 十字(医療)。
-        g.rect(ex - 1.8, ey - 6, 3.6, 12).fill({ color: 0xecfdf5, alpha: 0.96 });
-        g.rect(ex - 6, ey - 1.8, 12, 3.6).fill({ color: 0xecfdf5, alpha: 0.96 });
+        g.rect(ex - R(1.8), ey - R(6), R(3.6), R(12)).fill({ color: 0xecfdf5, alpha: 0.96 * am });
+        g.rect(ex - R(6), ey - R(1.8), R(12), R(3.6)).fill({ color: 0xecfdf5, alpha: 0.96 * am });
       } else if (armory) {
         // 木箱(装備クレート)風: 縁取りされた矩形+中央の留め線。
-        g.rect(ex - 5, ey - 4, 10, 8).fill({ color: 0x78350f, alpha: 0.95 });
-        g.rect(ex - 5, ey - 4, 10, 8).stroke({ width: 1, color: 0xfde68a, alpha: 0.9 });
-        g.moveTo(ex - 5, ey).lineTo(ex + 5, ey).stroke({ width: 1, color: 0xfde68a, alpha: 0.9 });
+        g.rect(ex - R(5), ey - R(4), R(10), R(8)).fill({ color: 0x78350f, alpha: 0.95 * am });
+        g.rect(ex - R(5), ey - R(4), R(10), R(8)).stroke({ width: 1, color: 0xfde68a, alpha: 0.9 * am });
+        g.moveTo(ex - R(5), ey).lineTo(ex + R(5), ey).stroke({ width: 1, color: 0xfde68a, alpha: 0.9 * am });
       } else if (police) {
         // 星バッジ風(簡易5角星)。
         const starPts: number[] = [];
         for (let k = 0; k < 10; k++) {
-          const rr2 = k % 2 === 0 ? 6 : 2.6;
+          const rr2 = R(k % 2 === 0 ? 6 : 2.6);
           const a2 = -Math.PI / 2 + (k * Math.PI) / 5;
           starPts.push(ex + Math.cos(a2) * rr2, ey + Math.sin(a2) * rr2);
         }
-        g.poly(starPts).fill({ color: 0xdbeafe, alpha: 0.96 });
+        g.poly(starPts).fill({ color: 0xdbeafe, alpha: 0.96 * am });
       } else {
         // 洞窟アーチ(半円の口)。
-        g.rect(ex - 5, ey - 1, 10, 6).fill({ color: 0x451a03, alpha: 0.96 });
-        g.circle(ex, ey - 1, 5).fill({ color: 0x451a03, alpha: 0.96 });
-        g.circle(ex, ey + 1, 3).fill({ color: 0x020617, alpha: 0.98 });
+        g.rect(ex - R(5), ey - R(1), R(10), R(6)).fill({ color: 0x451a03, alpha: 0.96 * am });
+        g.circle(ex, ey - R(1), R(5)).fill({ color: 0x451a03, alpha: 0.96 * am });
+        g.circle(ex, ey + R(1), R(3)).fill({ color: 0x020617, alpha: 0.98 * am });
       }
-      const hx = ex + dx * 15, hy = ey + dy * 15;
-      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const hx = ex + dx * R(15), hy = ey + dy * R(15);
+      const ca = Math.cos(rec.angleDisp), sa = Math.sin(rec.angleDisp);
       const rot = (px: number, py: number): [number, number] => [hx + px * ca - py * sa, hy + px * sa + py * ca];
-      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: pulse });
+      // 巣(場所)は脈打たない=「今そこにいる」と読ませない。本人になると脈打つ。
+      g.poly([...rot(7, 0), ...rot(-5, -6), ...rot(-5, 6)]).fill({ color, alpha: (boss ? 0.7 + (pulse - 0.7) * lm : pulse) * am });
+    };
+    const POI_IN_DELAY_MS = 180, POI_IN_MS = 380, POI_SLIDE_PX = 22;
+    const POI_LINGER_MS = 1200, POI_LINGER_ALPHA = 0.35, POI_SINK_MS = 300;
+    for (const poi of pois) {
+      const key = poi.id ?? `${poi.kind}:${Math.round(poi.x)},${Math.round(poi.y)}`;
+      const tx = toScreenX(poi.x); // 監査v0.25.3008(A-1): post-zoom実画面座標
+      const ty = toScreenY(poi.y);
+      const onScreen = tx >= 0 && tx <= this.screenW && ty >= 0 && ty <= this.screenH;
+      if (onScreen) { const r0 = this.poiArrowRecs.get(key); if (r0 && r0.hiddenAt === null) { r0.hiddenAt = poiNow; r0.hideByScreen = true; } continue; } // 画面内なら不要
+      const angle = Math.atan2(ty - cyC, tx - cxC);
+      poiSeen.add(key);
+      if (!this.poiFirstShownAt.has(key)) this.poiFirstShownAt.set(key, poiNow);
+      let rec = this.poiArrowRecs.get(key);
+      if (!rec || rec.hiddenAt !== null) {
+        // 消えかけ(後ろに残している途中)から戻る時は、出だしを途中から始める(一度消えてから出直さない)。
+        const back = rec && rec.hiddenAt !== null && !rec.hideByScreen ? POI_IN_DELAY_MS + POI_IN_MS * 0.6 : 0;
+        rec = { shownAt: poiNow - back, hiddenAt: null, hideByScreen: false, lastNow: poiNow, angle, angleDisp: rec?.angleDisp ?? angle,
+          kind: poi.kind, live: !!poi.live, liveMix: poi.live ? 1 : 0, wakeAt: null };
+        this.poiArrowRecs.set(key, rec);
+      }
+      const dt = Math.max(0, Math.min(100, poiNow - rec.lastNow)); rec.lastNow = poiNow;
+      if (!!poi.live && !rec.live) rec.wakeAt = poiNow; // 巣が目覚めた
+      rec.live = !!poi.live; rec.kind = poi.kind; rec.angle = angle;
+      rec.liveMix = Math.max(0, Math.min(1, rec.liveMix + (rec.live ? 1 : -1) * dt / POI_LIVE_MS));
+      // 向きは最短回りで追う(目覚めで指す先が巣→本人へ跳んでも、縁の上を滑って移る)。
+      const dA = Math.atan2(Math.sin(angle - rec.angleDisp), Math.cos(angle - rec.angleDisp));
+      rec.angleDisp += dA * (1 - Math.exp(-dt / (rec.liveMix < 1 && rec.live ? 140 : 60)));
+      // 出だし: 少し遅れて、減速しながら縁の外から滑り込む(消えは速く・出は遅く)。
+      const it = Math.max(0, Math.min(1, (poiNow - rec.shownAt - POI_IN_DELAY_MS) / POI_IN_MS));
+      const ie = 1 - (1 - it) ** 3;
+      drawPoi(rec, key, ie, POI_SLIDE_PX * (1 - ie));
+    }
+    // エリアを出た目印は「後ろに置いていく」: 薄く残してから縁の外へ沈む。画面に入った目印は従来どおり速く沈む。
+    for (const [k, rec] of this.poiArrowRecs) {
+      if (poiSeen.has(k)) continue;
+      // 裏ボス本人の交戦マーク(下の大きいドクロ)へ引き継いだ巣の目印は、残さず速く沈める(同じ相手の印を2つ並べない)。
+      if (rec.hiddenAt === null) { rec.hiddenAt = poiNow; rec.hideByScreen = rec.kind === 'boss' && bossMark.targets.length > 0; }
+      const h = poiNow - rec.hiddenAt;
+      if (rec.hideByScreen) {
+        const remain = WEAPON_SPAWN_EASE_MS - h;
+        if (remain <= 0) { this.poiArrowRecs.delete(k); continue; }
+        const oe = weaponSpawnEase(Infinity, remain);
+        drawPoi(rec, k, oe.alphaMul, oe.dy);
+        continue;
+      }
+      if (h >= POI_LINGER_MS + POI_SINK_MS) { this.poiArrowRecs.delete(k); continue; }
+      if (h < POI_LINGER_MS) {
+        const f = Math.min(1, h / 250), fe = 1 - (1 - f) ** 2;
+        drawPoi(rec, k, 1 - (1 - POI_LINGER_ALPHA) * fe, 0);
+      } else {
+        const o = (h - POI_LINGER_MS) / POI_SINK_MS, oe = o * o * o;
+        drawPoi(rec, k, POI_LINGER_ALPHA * (1 - oe), POI_SLIDE_PX * oe);
+      }
     }
 
     // 拠点の方向矢印: 近く(500px以内)で画面外のものだけ示す(社長指示=拠点の表示は半径500)。
