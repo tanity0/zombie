@@ -501,7 +501,9 @@ export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait'>): boolean 
 // maxDist2 を渡すとその外の敵を除外(既定=無制限。銃の自動照準は射程ゲートを別に持つため無制限のまま)。
 export const pickNearestTarget = (
   pcx: number, pcy: number, enemies: readonly Enemy[], gameTime: number, maxDist2 = Infinity,
+  isBlocked?: (e: Enemy) => boolean,
 ): Enemy | null => {
+  if (isBlocked) return pickNearestUnblocked(pcx, pcy, enemies, gameTime, maxDist2, isBlocked);
   let best: Enemy | null = null;
   let bestD2 = Infinity;
   let bestStunned: Enemy | null = null;
@@ -519,6 +521,30 @@ export const pickNearestTarget = (
     }
   }
   return best ?? bestStunned;
+};
+
+/**
+ * ★`pickNearestTarget` の「遮られている敵は飛ばす」版(社長「推薦で」2026-10-25: 壁や遮蔽物の向こうの敵にはオート射撃しない)。
+ * 近い順に並べて、遮られていない最初の1体を返す(スタン中は従来どおり最終手段)。遮りの判定は近い順に、
+ * 見つかるまでしか呼ばない=大抵1〜2回で済む。全員遮られていれば null(=撃たない)。
+ */
+const pickNearestUnblocked = (
+  pcx: number, pcy: number, enemies: readonly Enemy[], gameTime: number, maxDist2: number,
+  isBlocked: (e: Enemy) => boolean,
+): Enemy | null => {
+  const live: { e: Enemy; d2: number }[] = [];
+  const stunned: { e: Enemy; d2: number }[] = [];
+  for (const e of enemies) {
+    if (isCorpse(e) || isUntouchable(e)) continue;
+    const d2 = aimEnemyDist2(pcx, pcy, e);
+    if (d2 > maxDist2) continue;
+    (e.stunUntil !== undefined && gameTime < e.stunUntil ? stunned : live).push({ e, d2 });
+  }
+  for (const list of [live, stunned]) {
+    list.sort((a, b) => a.d2 - b.d2);
+    for (const c of list) if (!isBlocked(c.e)) return c.e;
+  }
+  return null;
 };
 
 // KILLされた通常敵が「死体化」の対象になり得るか(ボス系/ネームド/クエスト対象=getsDramaticDeath系は

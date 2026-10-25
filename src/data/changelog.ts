@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5215', items: [
+    '自動射撃は、壁や木の向こうに隠れた敵を狙わなくなった。撃てる敵のうち一番近い相手を撃ち、撃てる敵がいなければ撃たない',
+  ] },
   { version: '0.25.5214', items: [
     'タイトル画面の絵と、キャラクター選択の4人の立ち絵を新しくした',
   ] },

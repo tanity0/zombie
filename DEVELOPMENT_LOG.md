@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5215 — オート射撃は壁・遮蔽物の向こうの敵を狙わない【2026-10-25 17:59 JST】
+- **社長指示**: 「壁や遮蔽物がある時はオート射撃しない って処理重くなる?」→ 推薦(遮られていない中で一番近い敵を狙う・全員遮られていれば撃たない)に「推薦で進めて」。
+- **やったこと**:
+  - `gameStore.bulletBlockersAround(state, cx, cy, pad)` を新設=**弾を止めるもの**(屋内=lab壁+閉ドア+什器 / 研究所スキン=壁+遮蔽物 / 屋外=木の幹+トーチ+城〈ボス戦中・崩落後は除く〉)。弾の壁判定(`updateProjectiles` の `grenadeWallsFor`)をこの1本に置き換え(中身は同値)=弾が止まる所と狙わない所が食い違わない。
+  - `enemyUtils.pickNearestTarget` に `isBlocked` を足した(無しなら従来と1bit同値)。有りなら近い順に並べ、遮られていない最初の1体(スタン中は従来どおり最終手段)。
+  - `weaponUtils.pickTarget`(銃の自動照準・射程ゲート・狙いの向き)が撃ち手の周り900pxの遮るものを集め、撃ち手→敵の中心の線が横切る敵を飛ばす。全員遮られていれば射程ゲートで撃たない。サブウェポンの狙いは変えていない。
+- **負荷 1/10**: クールダウン明けの時だけ。遮るものの区域問い合わせ1回+近い順の線分判定(大抵1〜2回)。
+- **憲法の自己点検**: 第4条・第5条に抵触しない(湧き・ペース不変。撃つ相手の選び方だけ)。
+- **テスト**: `src/utils/aimBlocked.test.ts`(新規5件)+弾・射撃まわりの既存10ファイル緑。typecheck・lint・循環import OK。
+- **ファイル**: src/store/gameStore.ts / src/utils/enemyUtils.ts / src/utils/weaponUtils.ts / src/utils/aimBlocked.test.ts / src/data/changelog.ts / package.json
+
 ## v0.25.5214 — タイトル画像とキャラ選択の立ち絵4人を差し替え【2026-10-25 17:54 JST】
 - **社長指示**: 「タイトルとキャラ絵差し替え」(支給5枚)。
 - `public/backgrounds/title-the-one.png`(1672×941)/ `public/sprites/portraits/portrait-handgun.png`・`portrait-knife.png`・`portrait-shotgun.png`(1024×1536)/ `portrait-sniper.png`(1086×1448)。**寸法は全て従来と同じ**(原盤の上書きだが縮みなし=`assets:check` OK)。`npm run assets:ledger` で台帳更新。

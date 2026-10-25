@@ -4052,6 +4052,27 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     default: return 'サブウェポン';
   }
 };
+/**
+ * ★銃弾を止めるもの(=弾が当たると消える壁)を、中心(cx,cy)から pad の範囲で集める。
+ * 弾の壁判定(updateProjectiles)とオート射撃の狙い(weaponUtils の pickTarget=壁の向こうの敵は狙わない・
+ * 社長「推薦で」2026-10-25)が**同じ1本**を見る=「弾が止まる所の向こうは狙わない」が食い違わない。
+ * 屋内=lab壁(+閉ドア)+什器 / 研究所スキン=壁オブジェクト+遮蔽物 / 屋外=木の幹+トーチ+城(ボス戦中・崩落後は城を除く)。
+ */
+export const bulletBlockersAround = (s: GameState, cx: number, cy: number, pad: number): Rect[] => {
+  if (s.indoorMode) return [...labBlockingWalls(s.labDoors.filter(d => d.open).map(d => d.id)), ...s.labProps.map(p => p.rect)];
+  if (s.stageTheme === 'lab') return [
+    ...labWallsInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(wallRect),
+    ...labPropsInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(propRect),
+  ];
+  const trunks = treesInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(trunkRect);
+  const torches = s.breakableProps.filter(prop => prop.type === 'torch' && prop.health > 0).map(torchRect);
+  // v0.25.3054: ボス戦中は城の判定を弾も素通し(絵と判定の一致・見えない壁を作らない)。
+  // v0.25.3983: 崩落した城も同じく弾を遮らない(壁判定の撤去と同じ理由)。
+  return facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime) || s.castleEvent.collapsedAt !== undefined
+    ? [...trunks, ...torches]
+    : [...trunks, ...torches, castleRect(s.castleEvent)];
+};
+
 // 近接の壁越し不可(視線)判定に使う壁矩形を、ある中心(cx,cy)+半径(range)の周辺から集める。
 // プレイヤーのスイングと分身の攻撃で共用する(屋内=lab壁/閉ドア、研究所スキン=区画壁+遮蔽物、屋外=近傍の木)。
 const meleeWallsAround = (get: () => GameState, cx: number, cy: number, range: number): Rect[] => {
@@ -19389,7 +19410,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const currentTime = Date.now();
 
     set(state => {
-      const { projectiles, player, gameBounds, breakableProps, castleEvent, enemies } = state;
+      const { projectiles, player, gameBounds, enemies } = state;
       // 監査v0.25.3008: 弾のカリング半径は「一番引いた時(ZOOM_MIN_ABS)の可視域」を覆う値にする。
       // 旧値 max(W,H) は等倍前提で、ボス戦の最大引き(2.5倍)では画面内を飛ぶ弾が途中で消えていた
       // (CLAUDE.mdズーム掟のマージン基準に合わせる。弾数は有限で回転も速いため負荷影響は僅少)。
@@ -19397,29 +19418,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const playerCX = player.x + player.width / 2;
       const playerCY = player.y + player.height / 2;
       const indoor = state.indoorMode;
-      const indoorWalls = indoor ? [...labBlockingWalls(state.labDoors.filter(d => d.open).map(d => d.id)), ...state.labProps.map(p => p.rect)] : [];
-      const labTheme = state.stageTheme === 'lab';
-      const grenadeWallsFor = (p: Projectile) => {
-        if (indoor) return indoorWalls; // 屋内は labMap の壁(+閉ドア)。木/トーチは無し。
-        const cxp = p.x + p.width / 2, cyp = p.y + p.height / 2;
-        if (labTheme) return [ // 研究所スキン: 壁オブジェクト＋遮蔽物プロップ
-          ...labWallsInRegion(cxp - 260, cyp - 260, cxp + 260, cyp + 260).map(wallRect),
-          ...labPropsInRegion(cxp - 260, cyp - 260, cxp + 260, cyp + 260).map(propRect),
-        ];
-        const pad = 260;
-        const cx = p.x + p.width / 2;
-        const cy = p.y + p.height / 2;
-        const trunks = treesInRegion(cx - pad, cy - pad, cx + pad, cy + pad).map(trunkRect);
-        const torches = breakableProps
-          .filter(prop => prop.type === 'torch' && prop.health > 0)
-          .map(torchRect);
-        // v0.25.3054: ボス戦中は城の判定を弾も素通し(絵と判定の一致・見えない壁を作らない)。
-        // v0.25.3983: 崩落した城も同じく弾を遮らない(壁判定の撤去と同じ理由)。
-        return facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)
-          || castleEvent.collapsedAt !== undefined
-          ? [...trunks, ...torches]
-          : [...trunks, ...torches, castleRect(castleEvent)];
-      };
+      const indoorWalls = indoor ? bulletBlockersAround(state, playerCX, playerCY, 0) : [];
+      // 弾を止めるもの=`bulletBlockersAround`(オート射撃の狙いと同じ1本)。屋内は全体の壁を1回だけ作って使い回す。
+      const grenadeWallsFor = (p: Projectile) =>
+        indoor ? indoorWalls : bulletBlockersAround(state, p.x + p.width / 2, p.y + p.height / 2, 260);
       // 弾が壁に当たったら消す(貫通させない)。全ステージ共通(屋内=lab壁 / 屋外=木/トーチ/城)。
       // 対象: 銃弾/敵弾 + 飛行中の発火ナイフ(刺さった後は除外)。grenade はバウンド、ブーメランは戻る(各々別処理)。
       const BULLET_TYPES = new Set(['handgun', 'shotgun', 'rifle', 'enemy_bolt']);

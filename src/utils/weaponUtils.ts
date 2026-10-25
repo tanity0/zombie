@@ -1,5 +1,5 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
+import { useGameStore, bulletBlockersAround, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
 import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 弾速 ×1.5(発射時に確定)
 import { projectileHitCritChance } from './critPenalty';
 import { classifyProjectileDamageChannel, recordMeleeFromGun } from './botTelemetry';
@@ -7,6 +7,7 @@ import { DEV_WEAPON_KEY } from './devTestKnobs';
 import { playEnemyDeath, playSfx } from '../audio/audioManager';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { aimEnemyDist2, pickNearestTarget, isCorpse } from './enemyUtils';
+import { segmentBlocked } from '../world/obstacles';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
 import { bigBulletSizeMult } from './skillEffectsB7';
 import { isTrapDebuffed, TRAP_PVP_RELOAD_MULT } from './trapDebuff';
@@ -916,8 +917,18 @@ export const gunEffectiveRangePx = (weapon: Pick<Weapon, 'category' | 'rangeOver
 // UNIQUE_WEAPONS.md §19-3(監査A2・A9): 本体は enemyUtils.pickNearestTarget へ切り出した
 // (プレイヤー以外のオーナー=金環/守護霊発動サブが座標だけで呼べる形にするため)。
 // ここは「プレイヤー中心・現在のgameTime・射程無制限」を渡すだけの薄いラッパで、1bit同値。
-const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null =>
-  pickNearestTarget(player.x + player.width / 2, player.y + player.height / 2, enemies, useGameStore.getState().gameTime);
+// ★壁や遮蔽物の向こうの敵は狙わない(社長「推薦で」2026-10-25)。弾を止めるもの(`bulletBlockersAround`=弾の壁判定と
+// 同じ1本)を、撃ち手の中心から射程の目安ぶん集め、撃ち手→敵の中心の線が横切る敵を飛ばして、遮られていない一番近い敵を狙う。
+// 全員遮られていれば null=射程ゲートで撃たない。壁が1枚も無い所(森の開けた所)は従来と1bit同値。
+const AIM_BLOCKER_PAD_PX = 900;
+const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null => {
+  const st = useGameStore.getState();
+  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+  const walls = bulletBlockersAround(st, pcx, pcy, AIM_BLOCKER_PAD_PX);
+  if (walls.length === 0) return pickNearestTarget(pcx, pcy, enemies, st.gameTime);
+  return pickNearestTarget(pcx, pcy, enemies, st.gameTime, Infinity,
+    e => segmentBlocked(pcx, pcy, e.x + e.width / 2, e.y + e.height / 2, walls));
+};
 
 // Distance from the player center to the gun's chosen target, or Infinity when
 // the field is empty (used by the range gate).
