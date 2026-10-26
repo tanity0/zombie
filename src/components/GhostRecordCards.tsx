@@ -6,6 +6,7 @@
 // - **描くだけ**。保存・決算・ゲーム挙動には一切触らない(採用チェックの状態は呼び出し側が持つ)。
 // - store購読を持たない純表示コンポーネント=毎フレーム再描画しない(CLAUDE.md React再描画規律)。
 // - 文言・レイアウト・並びは**叩き台**(実機で社長調整前提)。数値の意味は台帳(playerTraits)のまま。
+import { AvatarSprite } from './AvatarSprite';
 import TapWord from './TapWord';
 import React from 'react';
 import type { BossClearCard, ClearTrend } from '../utils/ghostAlbum';
@@ -74,13 +75,8 @@ const AllyLine: React.FC<{
     <span className="flex items-center gap-1.5">
       {cls && (
         <span className="flex h-6 w-6 shrink-0 items-end justify-center overflow-hidden bg-sky-400/15">
-          <img
-            src={cls.sprite}
-            alt={cls.name}
-            draggable={false}
-            className="max-h-5 object-contain"
-            style={{ imageRendering: 'pixelated' }}
-          />
+          {/* 記録した時のアバター(社長指示2026-10-27「その当時の記録として」) */}
+          <AvatarSprite src={cls.sprite} avatarId={ally.build?.avatarId} alt={cls.name} className="max-h-5 object-contain" />
         </span>
       )}
       <span className="min-w-0 truncate">

@@ -1,3 +1,4 @@
+import { AvatarSprite } from './AvatarSprite';
 import React, { useEffect, useRef, useState } from 'react';
 import TapWord from './TapWord';
 import { PixelIcon } from './PixelIcon';
@@ -290,7 +291,7 @@ export const GhostBossDossier: React.FC<GhostBossDossierProps> = ({
               <div className="relative mt-3 flex items-center gap-3 border-y border-white/[0.07] bg-black/15 px-2 py-2.5">
                 <div className="flex h-16 w-16 shrink-0 items-end justify-center overflow-hidden border border-sky-200/10 bg-sky-300/[0.06]">
                   {character
-                    ? <img src={character.sprite} alt={character.name} draggable={false} className="max-h-14 object-contain" style={{ imageRendering: 'pixelated' }} />
+                    ? <AvatarSprite src={character.sprite} avatarId={snapshot?.avatarId} alt={character.name} className="max-h-14 object-contain" /> /* 記録した時のアバター */
                     : <span className="text-2xl text-white/20">◇</span>}
                 </div>
                 <div className="min-w-0 flex-1">

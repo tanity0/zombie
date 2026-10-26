@@ -113,9 +113,13 @@ import { nextOperationStage } from '../utils/dsHome';
 import { reportTestScreen, type TestScreenId } from '../utils/testBridge';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
 import { useHudHintsEnabled, setHudHintsEnabled, useWindowLandscape } from '../utils/hudHints'; // ゲーム中のボタン札の表示/非表示(research/PC_SUPPORT.md §14-7)
-import { subWeaponDisplayName, useGameStore, getCarriedEquipId, type GachaPullResult } from '../store/gameStore';
+import { subWeaponDisplayName, useGameStore, getCarriedEquipId, PLAYER_HITBOX, type GachaPullResult } from '../store/gameStore';
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
 import { AVATARS, AVATAR_IDS, type AvatarId } from '../data/avatars';
+import { AvatarSprite } from './AvatarSprite';
+import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl } from '../utils/avatarPlacement';
+import { PLAYER_VISUAL_SCALE } from '../pixi/renderSpec';
+import { PLAYER_ART_BASE_W } from '../pixi/pixiTextures';
 import { subWeaponIconName, avatarIconName } from '../data/subWeaponIcons';
 import { spritePath } from '../utils/spriteLoader';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
@@ -207,7 +211,9 @@ const MENU_WALK_ENABLED = typeof window === 'undefined' || new URLSearchParams(w
 // 実機バグ修正(v0.25.1580「ガタガタずれる/つなぎがおかしい」): <img>+pixelated の非整数スケールは
 // コマごとに nearest の間引き/太りが変わって輪郭が這う。→ キャンバスへ「整数倍nearest焼き→最終フィットは
 // 平滑」の2段にして、全コマ同一の量子化=剛体的な動きにする(setStateも廃止=再レンダ0)。
-const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: number }> = ({ idleSrc, alt, nudgeY }) => {
+// 社長指示2026-10-27「アバターは選択画面…にも反映」: 選んでいるアバターをコマごとに描き込む(置き方はゲーム中の焼き込みと同じ式・
+// utils/avatarPlacement)。耳は頭の位置の台帳(playerHeadAnchors)で各コマの頭に付く。
+const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: number; avatarId: AvatarId | null }> = ({ idleSrc, alt, nudgeY, avatarId }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -223,6 +229,10 @@ const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: numbe
     const seq = walkSequenceForIdleSrc(idleSrc);
     const frames = Math.max(...seq) + 1;
     for (let f = 0; f < frames; f++) { const im = new Image(); im.src = menuWalkFrameSrc(idleSrc, f); imgs.push(im); }
+    const avParts = avatarId && AVATARS[avatarId] ? AVATARS[avatarId].parts : [];
+    const partImgs = avParts.map(pt => { const im = new Image(); im.src = `${import.meta.env.BASE_URL}sprites/${pt.tex}.png`; return im; });
+    const baseName = spriteNameFromUrl(idleSrc);
+    const avBox = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
     let lastStep = -1;
     const stepMs = MENU_WALK_CYCLE_MS / seq.length;
     const draw = () => {
@@ -230,17 +240,32 @@ const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: numbe
       if (step === lastStep) return;
       const im = imgs[seq[step] ?? 0];
       if (!im || !im.complete || im.naturalWidth === 0) return; // 未ロード中は前コマ表示のまま(チラつき防止)
+      if (partImgs.some(pi => !pi.complete || pi.naturalWidth === 0)) return; // アバターが揃うまで前コマのまま(耳だけ遅れて出ない)
       lastStep = step;
       // 高解像度素材(社長決定v0.25.1763・NPC方式)の受け入れ: 素材がキャンバスより大きい=縮小になる時だけ
       // 平滑(linear相当)で焼く。等倍素材(現行)は従来どおり nearest(ドットの太りを全コマ均一に)=挙動不変。
       ctx.imageSmoothingEnabled = im.naturalWidth > canvas.width;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // アバター: 体の絵1px=キャンバスの kx px。足元=キャンバスの下端中央。尻尾(below)→体→耳(above)の順に描く。
+      const kx = canvas.width / im.naturalWidth, ky = canvas.height / im.naturalHeight;
+      const frameName = spriteNameFromUrl(im.src);
+      const d = headAnchorDelta(frameName, baseName) ?? { dx: 0, dy: 0 };
+      const drawParts = (which: 'above' | 'below') => avParts.forEach((pt, i) => {
+        if (pt.layer !== which) return;
+        const pi = partImgs[i];
+        const r = placeAvatarPart(pt, pi.naturalWidth, pi.naturalHeight, avBox, avBox, PLAYER_ART_BASE_W / im.naturalWidth, d.dx, d.dy);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(pi, canvas.width / 2 + r.left * kx, canvas.height + r.top * ky, r.width * kx, r.height * ky);
+      });
+      drawParts('below');
+      ctx.imageSmoothingEnabled = im.naturalWidth > canvas.width;
       ctx.drawImage(im, 0, 0, canvas.width, canvas.height);
+      drawParts('above');
     };
     draw();
     const iv = window.setInterval(draw, stepMs / 2);
     return () => window.clearInterval(iv);
-  }, [idleSrc]);
+  }, [idleSrc, avatarId]);
   return (
     <canvas
       ref={canvasRef}
@@ -1273,14 +1298,14 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                   <div className="absolute bottom-1 h-3 w-10 rounded-full blur-md" style={{ backgroundColor: cc.accent, opacity: on ? 0.85 : 0.3 }} />
                   {/* 選択中のクラスだけ歩きモーション(ドット絵)。非選択は従来の待機立ち絵。?menuwalk=0で全静止。 */}
                   {on && MENU_WALK_ENABLED ? (
-                    <WalkingClassSprite idleSrc={cc.sprite} alt={cc.name} nudgeY={cc.portraitNudgeY} />
+                    <WalkingClassSprite idleSrc={cc.sprite} alt={cc.name} nudgeY={cc.portraitNudgeY} avatarId={avatarId} />
                   ) : (
-                    <img
+                    <AvatarSprite
                       src={cc.sprite}
+                      avatarId={avatarId}
                       alt={cc.name}
-                      draggable={false}
                       className="relative max-h-[50px] object-contain"
-                      style={{ imageRendering: 'pixelated', transform: `translateY(${cc.portraitNudgeY}px) ${on ? 'scale(1.08)' : 'scale(1)'}`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
+                      style={{ transform: `translateY(${cc.portraitNudgeY}px) ${on ? 'scale(1.08)' : 'scale(1)'}`, transformOrigin: '50% 100%', transition: 'transform 140ms ease-out' }}
                     />
                   )}
                   <span className={`relative mt-0.5 text-[8px] leading-none ${on ? 'text-purple-100' : 'text-white/55'}`}>{cc.name}</span>

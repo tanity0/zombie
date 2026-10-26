@@ -378,6 +378,8 @@ import {
   SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS, SHADOW_STATIC_SLOTS,
   canBakeSilhouette, planSilhouetteEviction,
 } from '../utils/shadowSlots';
+import { placeAvatarPart } from '../utils/avatarPlacement';
+import { getAlchemyRockArt, getAlchemyDustTexture, alchemyRockLayout, alchemyRockSeed, alchemyPulse, alchemyTremble, ALCHEMY_ROCK_SIZES, ALCHEMY_ROCK_TARGET, ALCHEMY_FLY_MS, ALCHEMY_SETTLE_MS, ALCHEMY_FRAG_MS, ALCHEMY_PUSH_MS, ALCHEMY_SHATTER_MS, type AlchemyRockSpec } from './alchemyRocks';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 // SKILL_BUILD_REDESIGN.md §21(B5)/§24(社長指示2026-08-13): 枠光の判定は純関数のまま(pixiは読むだけ・
@@ -4145,6 +4147,13 @@ const actorShadowWidthFromSprite = (view: ActorView | undefined | null, fallback
 // One pooled actor view (player or enemy): a foot-anchored sprite plus a
 // behind-sprite reticle layer and an above-sprite overlay layer, all in one
 // container whose zIndex is the foot Y (the Y-sort key).
+/** 錬金砲の岩が砕けた後の欠片と金の粉(pixiScene.shatterAlchemyRocks)。bounced: -1=粉 / 0=まだ地面に当たっていない / 1=跳ねた後。 */
+interface AlchemyShard {
+  c: Container;
+  pieces: { sp: Sprite; vx: number; vy: number; bounced: number; endAt: number; s0: number }[];
+  groundY: number; g: number; lastNow: number; startAt: number;
+}
+
 interface ActorView {
   container: Container;
   light: Sprite;
@@ -4849,6 +4858,15 @@ export class PixiScene {
   // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-3是正・錬金砲): 石(Enemy.alchemyStoneStage)の見え方。
   // 敵の頭上に金の点を段数ぶん(1〜3個)。pooled Graphics(1個体1枚・専用素材は不要)。
   private alchemyStoneMarkers = new Map<string, Graphics>();
+  // 社長指示2026-10-27「的に金の岩が塊としてくっついていき、溜まり具合で大きくなっていく」: 石の段数を体に貼り付く
+  // 金の岩の塊で見せる(頭上の点はそのまま残す)。1個体につき岩12個+割れ目の光3+影1+光1(使い回し・生成は石が付いた時だけ)。
+  // 砕けた欠片は個体から切り離して alchemyShards で最後まで描き切る(慣性MUST)。
+  private alchemyRockFx = new Map<string, {
+    c: Container; rocks: Sprite[]; cracks: (Sprite | null)[]; glow: Sprite; shadow: Sprite; specs: AlchemyRockSpec[];
+    k: number[]; seed: number; stage: number; stageAt: number[]; impactAng: number[]; basis: number;
+    bob: number | null; lastNow: number; lastFootY?: number;
+  }>();
+  private alchemyShards: AlchemyShard[] = [];
 
   // ---- PACING_PUZZLE.md §10 バッチ3(フィル専用描画・L.phillLayer内) ----------------------------
   // 影/後光/羽をまとめる下敷きコンテナ(phillLayerのindex 0=最下へ挿す)。本体(view.container)は
@@ -16158,6 +16176,7 @@ export class PixiScene {
 
   private syncActors(player: Player, enemies: Enemy[], gameTime: number, now: number) {
     this.enemyCount = enemies.length;
+    this.tickAlchemyRockShatter(now);
 
     // Player
     if (!this.playerView) { this.playerView = this.makeActor(); }
@@ -16363,6 +16382,7 @@ export class PixiScene {
         if (nameLabel) { nameLabel.destroy(); this.namedFoeLabels.delete(id); }
         const stoneDots = this.alchemyStoneMarkers.get(id);
         if (stoneDots) { stoneDots.destroy(); this.alchemyStoneMarkers.delete(id); }
+        this.shatterAlchemyRocks(id, now); // 退場・討伐でも砕けて散る(散り終わったら tickAlchemyRockShatter が片付ける)
         // §6.38実機FB1追記(社長実測2026-08-15「討伐時に武器スプライトが消えず残った」・v0.25.3408):
         // 賞金首はcorpseEligible外=死亡と同時に`enemies`から即除去される(triggerDramaticDeathは
         // 除去前のスナップショットで動く別系統のFXなので、この個体視点のスプライトは巻き込まれない)。
@@ -18833,23 +18853,20 @@ export class PixiScene {
     if (hit && !hit.rt.destroyed) { hit.usedAt = nowMs; return hit.tex; }
     if (!isAvatarHeadMeasured(bodyTexName) || !isAvatarHeadMeasured(baselineTexName)) return null; // 計測待ち=今回は重ね描き
     const W = bodyTex.width, H = bodyTex.height; // orig(本体の寸法)
-    const toArt = 1 / Math.max(1e-6, artPerBoxPx); // 表示ボックスpx → 本体の絵のpx
     const headDy = avatarHeadDeltaPx(bodyTexName, baselineTexName);
     const headDx = avatarHeadCxDeltaPx(bodyTexName, baselineTexName);
     // 足元=原点。パーツの置き場所と四角を本体の絵のpxで出す(本体の絵は右向き=右向きの値をそのまま使う)。
+    // 式はメニュー/記録画面の絵と共有(utils/avatarPlacement.placeAvatarPart)。
     const placed: { tex: Texture; sc: number; x: number; y: number; part: AvatarPart }[] = [];
     let minX = -W / 2, maxX = W / 2, minY = -H, maxY = 0;
     for (const part of parts) {
       const ptex = getTexture(part.tex);
       if (!ptex || ptex.width <= 0) return null; // 素材待ち=今回は重ね描き(焼き損じを残さない)
-      const srcPx = part.sizeBasis === 'width' ? ptex.width : ptex.height;
-      const targetArt = (part.sizeBasis === 'width' ? boxW : boxH) * part.sizeFrac * toArt;
-      const sc = targetArt / Math.max(1, srcPx);
-      const x = part.offsetXFrac * boxW * toArt + headDx;
-      const y = part.offsetYFrac * boxH * toArt + (part.followsHead ? headDy : 0);
-      const w = ptex.width * sc, h = ptex.height * sc;
-      minX = Math.min(minX, x - part.anchorX * w); maxX = Math.max(maxX, x + (1 - part.anchorX) * w);
-      minY = Math.min(minY, y - part.anchorY * h); maxY = Math.max(maxY, y + (1 - part.anchorY) * h);
+      const r = placeAvatarPart(part, ptex.width, ptex.height, boxW, boxH, artPerBoxPx, headDx, headDy);
+      const sc = r.width / ptex.width;
+      const x = r.left + part.anchorX * r.width, y = r.top + part.anchorY * r.height;
+      minX = Math.min(minX, r.left); maxX = Math.max(maxX, r.left + r.width);
+      minY = Math.min(minY, r.top); maxY = Math.max(maxY, r.top + r.height);
       placed.push({ tex: ptex, sc, x, y, part });
     }
     const padL = Math.ceil(-W / 2 - minX), padR = Math.ceil(maxX - W / 2), padT = Math.ceil(-H - minY), padB = Math.ceil(maxY);
@@ -20852,7 +20869,7 @@ export class PixiScene {
     const walkTex = glenP2 ? glenP2Tex : bossStopped ? null : (atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
       ?? this.enemyIdleTexture(idleTexKey, e, now));
     const tex = e.type === 'guardian-phantom'
-      ? this.guardianPhantomTexture(view, now)
+      ? this.guardianPhantomTexture(view, e, now)
       : glenP2
         ? (glenP2Tex ?? getTexture('glen-boss2') ?? getTexture(idleTexKey))
         : (walkTex ?? getTexture(idleTexKey));
@@ -21897,6 +21914,7 @@ export class PixiScene {
         const dots = this.alchemyStoneMarkers.get(e.id);
         if (dots) dots.visible = false;
       }
+      this.syncAlchemyRocks(e.id, view, stoneStage, now, fb.footX, fb.footY);
     }
 
     // 被弾フラッシュ: 本体スプライトと同じ形/変形を白で加算オーバーレイし、絵(ピクセル)を一瞬光らせる。
@@ -36099,7 +36117,209 @@ export class PixiScene {
     return i === null ? null : (slices[i] ?? null);
   }
 
-  private guardianPhantomTexture(view: ActorView, now: number): ReturnType<typeof getTexture> {
+  /**
+   * 錬金砲の石: 体に付く金の岩の塊(視覚のみ・alchemyRocks.ts)。段が上がるたびに主役の岩が撃った側から飛んで来て
+   * めり込み、欠片がそこから飛び散って付く。古い岩は太らない。満タン(3段)は割れ目の光が脈打ち、塊が低く震える。
+   * 段0(起爆・武器替え)/死体化/退場では砕けて、放物線で地面に落ちて跳ねる。
+   */
+  private syncAlchemyRocks(id: string, view: ActorView, stage: number, now: number, footX: number, footY: number): void {
+    let rec = this.alchemyRockFx.get(id);
+    if (stage <= 0) { if (rec) this.shatterAlchemyRocks(id, now); return; }
+    const sp = view.sprite;
+    const tex = sp.texture;
+    if (!sp.visible || !tex || tex.width <= 1) { if (rec) rec.c.visible = false; return; }
+    const texel = Math.abs(sp.scale.y);
+    const H = tex.height * texel, W = tex.width * texel;
+    if (!rec) {
+      const art = getAlchemyRockArt();
+      const specs = alchemyRockLayout(alchemyRockSeed(id));
+      const basis = Math.min(H, 170);
+      // 岩の1ドット=敵の絵の1ドットの整数倍(回さない・端数で拡大しない)。倍率は作った時に1回だけ決める。
+      const k = ALCHEMY_ROCK_SIZES.map((N, i) => Math.max(1, Math.round((ALCHEMY_ROCK_TARGET[i] * basis) / (N * Math.max(1e-3, texel)))));
+      const c = new Container();
+      const shadow = new Sprite(getSoftGlowTexture());
+      shadow.anchor.set(0.5); shadow.tint = 0x000000; shadow.alpha = 0;
+      c.addChild(shadow);
+      const rocks = specs.map(spec => { const r = new Sprite(art[spec.size][spec.variant].tex); r.anchor.set(0.5, 0.55); r.visible = false; c.addChild(r); return r; });
+      const cracks = specs.map(spec => {
+        if (!spec.main) return null;
+        const g = new Sprite(art[spec.size][spec.variant].crack); g.anchor.set(0.5, 0.55); g.blendMode = 'add'; g.tint = 0xffb02a; g.visible = false; c.addChild(g); return g;
+      });
+      const glow = new Sprite(getSoftGlowTexture());
+      glow.anchor.set(0.5); glow.tint = 0xffc23a; glow.blendMode = 'add'; glow.alpha = 0;
+      c.addChild(glow);
+      // 本体の絵のすぐ上(被弾の白光より上・予告より下)=体に付いて見え、他の敵の手前には出ない。
+      view.container.addChildAt(c, view.container.getChildIndex(view.hitFlash) + 1);
+      rec = { c, rocks, cracks, glow, shadow, specs, k, seed: alchemyRockSeed(id), stage: 0, stageAt: [0, 0, 0, 0], impactAng: [0, 0, 0, 0], basis, bob: null, lastNow: now };
+      this.alchemyRockFx.set(id, rec);
+    }
+    const st = Math.max(1, Math.min(3, Math.round(stage)));
+    if (st > rec.stage) {
+      // 撃った側=プレイヤーの方から飛んで来る(段ごとに、その瞬間の向きを控える)。
+      const pl = useGameStore.getState().player;
+      const ang = Math.atan2(pl.y + pl.height / 2 - (footY - H * 0.5), pl.x + pl.width / 2 - footX);
+      for (let s2 = rec.stage + 1; s2 <= st; s2++) { rec.stageAt[s2] = now; rec.impactAng[s2] = ang; }
+    }
+    rec.stage = st;
+    const basis = rec.basis;
+    const side = sp.scale.x < 0 ? -1 : 1;
+    // 重い塊=体の上下の揺れに少し遅れて付いて行く(横は体と一緒=滑って見えない)。
+    const dt = Math.max(0, Math.min(100, now - rec.lastNow));
+    rec.lastNow = now;
+    rec.lastFootY = footY;
+    const bobTarget = sp.position.y - footY;
+    rec.bob = rec.bob === null ? bobTarget : rec.bob + (bobTarget - rec.bob) * (1 - Math.exp(-dt / 75));
+    const seed = rec.seed;
+    const ox = ((seed & 255) / 255 - 0.5) * 0.16 * W * side;
+    const oy = -H * (0.5 + ((seed >>> 8) & 255) / 255 * 0.1);
+    // 着弾で塊ごと押されて戻る(新しい段の着弾だけ)。
+    const tHit = now - rec.stageAt[st] - ALCHEMY_FLY_MS;
+    let pushX = 0, pushY = 0;
+    if (tHit >= 0 && tHit < ALCHEMY_PUSH_MS) {
+      const u = 1 - tHit / ALCHEMY_PUSH_MS;
+      const pa = rec.impactAng[st];
+      pushX = -Math.cos(pa) * 3.5 * u * u; pushY = -Math.sin(pa) * 3.5 * u * u;
+    }
+    const trem = st >= 3 ? alchemyTremble(now, seed) : { x: 0, y: 0 };
+    rec.c.position.set(Math.round(footX + ox + pushX + trem.x), Math.round(footY + rec.bob + oy + pushY + trem.y));
+    rec.c.visible = true;
+    const pulse = st >= 3 ? alchemyPulse(now) : 0;
+    let ext = 0;
+    for (let i = 0; i < rec.specs.length; i++) {
+      const spec = rec.specs[i];
+      const r = rec.rocks[i];
+      const cr = rec.cracks[i];
+      if (spec.stage > st) { r.visible = false; if (cr) cr.visible = false; continue; }
+      const t = now - rec.stageAt[spec.stage];
+      const slotX = spec.dx * basis * side, slotY = spec.dy * basis;
+      const sc = rec.k[spec.size] * texel;
+      let x = slotX, y = slotY, sx = 1, sy = 1;
+      const pa = rec.impactAng[spec.stage];
+      const ux = Math.cos(pa), uy = Math.sin(pa);
+      if (spec.main) {
+        if (t < ALCHEMY_FLY_MS) {
+          // 撃った側の外から加速して飛んで来る。
+          const p = t / ALCHEMY_FLY_MS;
+          const far = 0.45 * basis * (1 - p * p);
+          x = slotX + ux * far - ux * 2.5 * p * p; y = slotY + uy * far - uy * 2.5 * p * p;
+        } else if (t < ALCHEMY_FLY_MS + ALCHEMY_SETTLE_MS) {
+          // めり込んだ分が減速しながら戻る。当たった瞬間だけ潰れる。
+          const q = (t - ALCHEMY_FLY_MS) / ALCHEMY_SETTLE_MS;
+          const back = 2.5 * (1 - q) * (1 - q);
+          x = slotX - ux * back; y = slotY - uy * back;
+          const sq = Math.max(0, 1 - (t - ALCHEMY_FLY_MS) / 60);
+          sx = 1 + 0.15 * sq; sy = 1 - 0.2 * sq;
+        }
+      } else {
+        // 欠片: 主役の着弾点から飛び散って、減速しながら自分の場所に付く。
+        const tf = t - ALCHEMY_FLY_MS - spec.jitterMs;
+        if (tf < 0) { r.visible = false; if (cr) cr.visible = false; continue; }
+        if (tf < ALCHEMY_FRAG_MS) {
+          const m = rec.specs.find(q => q.stage === spec.stage && q.main);
+          const mx = (m?.dx ?? 0) * basis * side, my = (m?.dy ?? 0) * basis;
+          const q = tf / ALCHEMY_FRAG_MS;
+          const e = 1 - (1 - q) * (1 - q);
+          x = mx + (slotX - mx) * e; y = my + (slotY - my) * e;
+        }
+      }
+      r.visible = true;
+      r.position.set(Math.round(x), Math.round(y));
+      r.scale.set(sc * sx, sc * sy);
+      ext = Math.max(ext, Math.hypot(slotX, slotY) + ALCHEMY_ROCK_SIZES[spec.size] * sc * 0.5);
+      if (cr) {
+        cr.visible = pulse > 0.01;
+        if (cr.visible) { cr.position.copyFrom(r.position); cr.scale.copyFrom(r.scale); cr.alpha = 0.3 + 0.7 * pulse; }
+      }
+    }
+    // 接地の影(塊の下右へ少し)。浮いて見えないように。
+    rec.shadow.position.set(2, 2);
+    rec.shadow.scale.set((ext * 2.1) / 256);
+    rec.shadow.alpha = 0.35;
+    // 光: 1・2段は着弾の瞬間だけ。満タンは脈打つ(1・2段の約2倍)。
+    const flashT = tHit >= 0 ? tHit / 160 : 1;
+    const flash = flashT < 1 ? (1 - flashT) * (1 - flashT) : 0;
+    rec.glow.scale.set((ext * 2.4) / 256 * (1 + flash * 0.3));
+    rec.glow.alpha = Math.max(flash * 0.55, st >= 3 ? 0.18 + 0.42 * pulse : 0);
+  }
+
+  /** 塊を砕く(起爆・死亡・退場)。岩ごとに2〜3個の欠片に割れ、放物線で足元の高さへ落ちて1回跳ね、金の粉が舞う。 */
+  private shatterAlchemyRocks(id: string, now: number): void {
+    const rec = this.alchemyRockFx.get(id);
+    if (!rec) return;
+    this.alchemyRockFx.delete(id);
+    const c0 = rec.c;
+    if (c0.destroyed) return;
+    if (!c0.visible || !c0.parent) { c0.destroy({ children: true }); return; }
+    const art = getAlchemyRockArt();
+    const rnd = (() => { let s = (rec.seed ^ Math.floor(now)) >>> 0 || 1; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; })();
+    const c = new Container();
+    const origin = this.L.effectLayer.toLocal(c0.position, c0.parent);
+    c.position.copyFrom(origin);
+    this.L.effectLayer.addChild(c);
+    const groundY = (rec.lastFootY ?? (c0.position.y + rec.basis * 0.55)) - c0.position.y;
+    const scl = rec.basis / 100;
+    const pieces: AlchemyShard['pieces'] = [];
+    const smallK = rec.k[0];
+    for (let i = 0; i < rec.rocks.length; i++) {
+      const r = rec.rocks[i];
+      if (!r.visible) continue;
+      const spec = rec.specs[i];
+      const texel = Math.abs(r.scale.y) / Math.max(1, rec.k[spec.size]);
+      const n = spec.size === 0 ? 1 : spec.size === 1 ? 2 : 3;
+      const base = Math.hypot(r.position.x, r.position.y) < 1 ? -Math.PI / 2 : Math.atan2(r.position.y, r.position.x);
+      for (let j = 0; j < n; j++) {
+        const sp = new Sprite(art[0][Math.floor(rnd() * 3)].tex);
+        sp.anchor.set(0.5);
+        sp.scale.set(smallK * texel * (spec.size === 0 ? 1 : 1 + Math.round(rnd())));
+        sp.position.copyFrom(r.position);
+        c.addChild(sp);
+        const a = base + (rnd() - 0.5) * 1.6;
+        const v = (90 + rnd() * 110) * scl;
+        pieces.push({ sp, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - (150 + rnd() * 110) * scl, bounced: 0, endAt: now + 600 + rnd() * 200, s0: sp.scale.x });
+      }
+    }
+    for (let j = 0; j < 10; j++) {
+      const sp = new Sprite(getAlchemyDustTexture());
+      sp.anchor.set(0.5);
+      sp.scale.set(Math.max(1, Math.round(scl * 1.2)));
+      c.addChild(sp);
+      const a = rnd() * Math.PI * 2;
+      const v = (50 + rnd() * 90) * scl;
+      pieces.push({ sp, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40 * scl, bounced: -1, endAt: now + 380 + rnd() * 220, s0: sp.scale.x });
+    }
+    c0.destroy({ children: true });
+    this.alchemyShards.push({ c, pieces, groundY, g: 1100 * scl, lastNow: now, startAt: now });
+  }
+
+  private tickAlchemyRockShatter(now: number): void {
+    for (let i = this.alchemyShards.length - 1; i >= 0; i--) {
+      const sh = this.alchemyShards[i];
+      if (sh.c.destroyed || now - sh.startAt > ALCHEMY_SHATTER_MS + 200) { if (!sh.c.destroyed) sh.c.destroy({ children: true }); this.alchemyShards.splice(i, 1); continue; }
+      const dt = Math.max(0, Math.min(50, now - sh.lastNow)) / 1000;
+      sh.lastNow = now;
+      for (const pc of sh.pieces) {
+        if (!pc.sp.visible) continue;
+        if (pc.bounced < 0) {
+          // 粉: 空気に止められながら舞い、少し昇って消える。
+          pc.vx *= Math.exp(-dt * 5); pc.vy = pc.vy * Math.exp(-dt * 5) - 20 * dt;
+        } else {
+          pc.vy += sh.g * dt;
+        }
+        pc.sp.position.x += pc.vx * dt; pc.sp.position.y += pc.vy * dt;
+        if (pc.bounced >= 0 && pc.sp.position.y > sh.groundY && pc.vy > 0) {
+          pc.sp.position.y = sh.groundY;
+          if (pc.bounced === 0) { pc.vy *= -0.3; pc.vx *= 0.5; pc.bounced = 1; } else { pc.vy = 0; pc.vx *= Math.exp(-dt * 10); }
+        }
+        const left = pc.endAt - now;
+        if (left <= 0) { pc.sp.visible = false; continue; }
+        const f = Math.min(1, left / 200); // 最後の200msで縮みながら消える
+        pc.sp.alpha = f;
+        pc.sp.scale.set(pc.s0 * (0.5 + 0.5 * f));
+      }
+    }
+  }
+
+  private guardianPhantomTexture(view: ActorView, e: Enemy, now: number): ReturnType<typeof getTexture> {
     const player = useGameStore.getState().player;
     const fake = {
       ...player,
@@ -36111,7 +36331,20 @@ export class PixiScene {
     // 1フレーム遅れるが、歩き/待機の切り替えに1フレームの遅れは知覚されない。
     const walking = (view.motSpeed ?? 0) > PixiScene.GP_WALK_MIN_SPEED;
     const frame = playerWalkFrame(fake, now, walking, false);
-    return getTexture(playerTextureName(fake, frame, walking, false))
+    const bodyName = playerTextureName(fake, frame, walking, false);
+    const body = getTexture(bodyName);
+    // 社長指示2026-10-27「アバターは…幻影にも反映(その当時の記録として)」: 記録した時に着けていたアバター
+    // (`phantomBuild.avatarId`)を、本人・守護霊と同じ焼き込みで体の絵へ描き込む。大きさは本人の枠で決める
+    // (=本人と同じ耳の大きさ)。記録に無い/台帳から消えたIDは何も付けない。
+    const av = e.phantomBuild?.avatarId ?? null;
+    const parts = av && AVATARS[av] ? AVATARS[av].parts.filter(pt => !pt.live) : [];
+    if (av && body && parts.length > 0) {
+      const boxW = PLAYER_HITBOX * PLAYER_VISUAL_SCALE, boxH = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
+      const baked = this.avatarBakedBody(av, parts, body, bodyName, avatarHeadBaselineTexName(fake.characterClass, false, false),
+        playerBaseScale(fake, body, boxW, boxH), boxW, boxH);
+      if (baked) return baked;
+    }
+    return body
       ?? getTexture(PLAYER_IDLE_SPRITE[fake.characterClass] ?? 'player-scavenger-idle')
       ?? getTexture('player');
   }
