@@ -282,7 +282,162 @@ const ChronicleTimeline: React.FC = () => {
 // 残してあるのは下の「現在モード」表示だけ——**フラグが掛かっている時しか出ない**ようにしてある
 // (パラメータ残留事故 v0.25.2576 をその場で見抜くための安全表示なので、機能ごと消さない)。
 
+// ★タイトルの描き上げ(社長支給2026-10-27「人物線画_描き上げ_3秒.mp4」・「オープニングを3-4秒のアニメーションさせたい」)。
+// 起動して最初にタイトルが出る時だけ、暗闇に線画が光って描き上がり、一拍止めて、逆光の中心からカラーの絵が広がる
+// (同じ起動で戻って来た時は流さない)。線画はタイトル絵をなぞった物で、タイトル絵に対して 0.83 倍・中心が(-8, +12)px/1280×720
+// ずれている(重ね合わせで実測)。白地に黒線の動画を反転して screen で重ねる(暗い地では線だけが光る)。タップで飛ばせる。
+// 動きを減らす設定(prefers-reduced-motion)・`?nointro=1`・動画が出せない時は流さない(従来どおり最初から絵)。
+const INTRO_LINE_SCALE = 0.83;
+const INTRO_LINE_DX = -8 / 720; // 絵の高さに対する割合
+const INTRO_LINE_DY = 12 / 720;
+const INTRO_HOLD_MS = 350;      // 描き終わりの「止め」(線が一度だけ灯る)
+const INTRO_REVEAL_MS = 1000;   // 光の中心から色が広がり切るまで
+const INTRO_LINES_OUT_MS = 650; // 色が来たら線は先に消える
+const INTRO_ZOOM = 1.025;       // 描いている間にわずかに寄り、色が乗ると戻る(線と絵は同じ倍率で動く)
+/** 描く速さの緩急(動画の秒→再生速度): 頭はゆっくり、髪とマントの払いは速く、最後の一画は落とす。 */
+const introRate = (t: number): number => (t < 0.6 ? 0.9 : t < 2.6 ? 1.6 : 0.85);
+const INTRO_LINE_FILTER = (b: number) => `invert(1) sepia(0.6) saturate(2.4) hue-rotate(218deg) brightness(${b})`;
+const TITLE_BOX_CLASS = 'pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover landscape:!h-full landscape:!w-full landscape:!aspect-auto';
+const TITLE_BOX_WIDTH = 'min(calc(150vw / var(--hud-s, 1)), calc(150svh / var(--hud-s, 1)))';
+let introPlayedThisLoad = false;
+const introWanted = (): boolean => {
+  if (introPlayedThisLoad || typeof window === 'undefined') return false;
+  try {
+    if (new URLSearchParams(window.location.search).get('nointro') === '1') return false;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
+  } catch { /* 判定できなければ流す */ }
+  return true;
+};
+type IntroStep = 'lines' | 'hold' | 'reveal' | 'done';
+
+/**
+ * 線画の動画。<img> と同じ枠・同じ切り抜き(object-cover)で置き、絵の高さに合わせて縮めてずらす。
+ * 光のにじみは同じ動画をぼかしてもう1枚重ねて作る(動画は不透明なので drop-shadow では光らない)。
+ */
+const TitleLineIntro: React.FC<{ step: IntroStep; zoom: { v: string; ms: number }; onEnd: () => void }> = ({ step, zoom, onEnd }) => {
+  const ref = useRef<HTMLVideoElement>(null);
+  const glowRef = useRef<HTMLVideoElement>(null);
+  const [fit, setFit] = useState<string>('');
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    const measure = () => {
+      const w = v.clientWidth, h = v.clientHeight;
+      if (!w || !h) return;
+      const imgH = 720 * Math.max(w / 1280, h / 720); // object-cover で実際に出ている絵の高さ
+      setFit(`translate(${(INTRO_LINE_DX * imgH).toFixed(2)}px, ${(INTRO_LINE_DY * imgH).toFixed(2)}px) scale(${INTRO_LINE_SCALE})`);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(v);
+    // 再生が始まらない(自動再生の拒否・読めない形式・5秒たっても届かない)なら、絵へ進む。
+    const giveUp = window.setTimeout(() => { if (v.currentTime === 0) onEnd(); }, 5000);
+    v.play()?.catch(() => onEnd());
+    void glowRef.current?.play()?.catch(() => undefined);
+    // 速さの緩急と、にじみの動画の追従(ずれたら合わせる)。
+    let raf = 0;
+    const tick = () => {
+      const r = introRate(v.currentTime);
+      if (v.playbackRate !== r) v.playbackRate = r;
+      const g = glowRef.current;
+      if (g) {
+        if (g.playbackRate !== r) g.playbackRate = r;
+        if (Math.abs(g.currentTime - v.currentTime) > 0.06) g.currentTime = v.currentTime;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { ro.disconnect(); window.clearTimeout(giveUp); cancelAnimationFrame(raf); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // 描き終わりの止め: 線が一度だけ灯る(上がり90ms・戻り260ms)。
+  useEffect(() => {
+    if (step !== 'hold') return;
+    setFlash(true);
+    const t = window.setTimeout(() => setFlash(false), 90);
+    return () => window.clearTimeout(t);
+  }, [step]);
+  const gone = step === 'reveal' || step === 'done';
+  const common: React.CSSProperties = {
+    width: TITLE_BOX_WIDTH,
+    mixBlendMode: 'screen',
+    transform: fit || 'none',
+    transformOrigin: '50% 50%',
+    translate: '-50% -50%', // Tailwind の中央寄せは transform に乗るので、上書きした分をここで戻す
+    scale: zoom.v,
+  };
+  const fade = `opacity ${INTRO_LINES_OUT_MS}ms cubic-bezier(0.2, 0.6, 0.3, 1), scale ${zoom.ms}ms cubic-bezier(0.16, 0.8, 0.3, 1)`;
+  return (
+    <>
+      <video
+        ref={glowRef}
+        src={assetUrl('opening/title-lineart.mp4')}
+        muted playsInline preload="auto" aria-hidden
+        className={TITLE_BOX_CLASS}
+        style={{ ...common, filter: `${INTRO_LINE_FILTER(1.3)} blur(3px)`, opacity: gone ? 0 : 0.55, transition: fade }}
+      />
+      <video
+        ref={ref}
+        src={assetUrl('opening/title-lineart.mp4')}
+        muted playsInline preload="auto" aria-hidden
+        onEnded={onEnd}
+        onError={onEnd}
+        className={TITLE_BOX_CLASS}
+        style={{
+          ...common,
+          filter: INTRO_LINE_FILTER(flash ? 1.6 : 1.15),
+          opacity: gone ? 0 : 1,
+          transition: `${fade}, filter ${flash ? 90 : 260}ms ease-out`,
+        }}
+      />
+    </>
+  );
+};
+
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForAssets, onDone }) => {
+  // 描き上げ: lines=線画を描いている / hold=描き終わりの止め / reveal=色が広がっている途中 / done=いつものタイトル。
+  const [intro, setIntro] = useState<IntroStep>(() => (introWanted() ? 'lines' : 'done'));
+  const [revealAt, setRevealAt] = useState<number | null>(null);
+  const introRan = useRef(intro !== 'done').current;
+  useEffect(() => { if (intro !== 'done') introPlayedThisLoad = true; }, [intro]);
+  // 寄り: 描き始めてから 1→1.025 へゆっくり、色が乗ると 1 へ戻る(線と絵を同じ倍率で動かす)。
+  const [zoom, setZoom] = useState<{ v: string; ms: number }>({ v: '1', ms: 0 });
+  useEffect(() => {
+    if (intro !== 'lines') return;
+    const r = requestAnimationFrame(() => setZoom({ v: String(INTRO_ZOOM), ms: 2600 }));
+    return () => cancelAnimationFrame(r);
+  }, [intro]);
+  const startReveal = () => {
+    setIntro(cur => (cur === 'lines' || cur === 'hold' ? 'reveal' : cur));
+    setRevealAt(at => at ?? performance.now());
+    setZoom({ v: '1', ms: 1700 });
+  };
+  const endLines = () => setIntro(cur => (cur === 'lines' ? 'hold' : cur));
+  useEffect(() => {
+    if (intro === 'hold') { const t = window.setTimeout(startReveal, INTRO_HOLD_MS); return () => window.clearTimeout(t); }
+    if (intro === 'reveal') { const t = window.setTimeout(() => setIntro('done'), INTRO_REVEAL_MS + 200); return () => window.clearTimeout(t); }
+    return undefined;
+  }, [intro]);
+  // 色は逆光の中心(頭上の光の下)から外へ広がる。rAF で絵のマスクの半径を広げる(React は再描画しない)。
+  const titleImgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const im = titleImgRef.current;
+    if (!im || revealAt === null) return;
+    let raf = 0;
+    const step = () => {
+      const t = Math.min(1, (performance.now() - revealAt) / INTRO_REVEAL_MS);
+      const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // ゆっくり出て速く広がり、減速して収まる
+      const r = 140 * e;
+      const m = t >= 1 ? 'none' : `radial-gradient(circle at 50% 38%, #000 ${r.toFixed(1)}%, transparent ${(r + 15).toFixed(1)}%)`;
+      im.style.maskImage = m;
+      im.style.setProperty('-webkit-mask-image', m);
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [revealAt]);
+  const introBusy = intro === 'lines' || intro === 'hold'; // 描いている間は START を受け付けない(タップ=飛ばす)
   // 更新情報は「notice」フェーズを廃止し、常に'title'を基点に showNotice(表示中か)で重ねる形にする
   // (バッジから何度でも開き直せるようにするため)。既読版と現在の版が一致する時だけ最初から閉じておく。
   const alreadySeenThisVersion = useMemo(() => readNoticeSeenVersion() === __APP_VERSION__, []);
@@ -291,7 +446,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   // ★テストブリッジ(A)へ「更新情報モーダルが出ているか」を報告する。自動レビューはここで
   // OKを押す必要があるので、タイトルと区別が付かないと初見導線を通れない。
   // `?testbridge=1` が無ければ reportTestScreen は即returnする。
-  useEffect(() => { reportTestScreen(showNotice ? 'updateModal' : 'title'); }, [showNotice]);
+  useEffect(() => { reportTestScreen(showNotice && intro === 'done' ? 'updateModal' : 'title'); }, [showNotice, intro]);
   const [phase, setPhase] = useState<'title' | 'blackout' | 'loading'>('title');
   // OK(またはSTART経由の代行)が音声解禁+オープニング起動を1回だけ担うためのガード。
   const noticeHandledRef = useRef(false);
@@ -359,21 +514,28 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
     if ((e.key === 'Enter' || e.key === ' ') && phase === 'title') { e.preventDefault(); tapStart(); }
   };
 
+  // 描き上げの間は更新情報を後ろへ回す(絵が乗り切ってから出す)。
+  const noticeOpen = showNotice && intro === 'done';
   const heartbeatLine = SHOW_HEARTBEAT && phase === 'title' && !showNotice ? formatHeartbeat() : null;
   // パネルを開いている間は「どこをタップしても開始」を止める(スイッチを押し損ねてゲームが始まらないように)。
-  const titleInteractive = phase === 'title' && !showNotice;
+  const titleInteractive = phase === 'title' && !showNotice && intro === 'done';
+  // タイトルの文字・ボタン類は描いている間は出さず、色が乗り始めてから遅れてにじみ出る。
+  const uiOn = phase === 'title' && !showNotice && (intro === 'reveal' || intro === 'done');
+  // START が主役(先に・浮き上がって)、ほかは後から小さく(濃さだけ)。
+  const startFade: React.CSSProperties | undefined = introRan ? { animation: 'info-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) 600ms both' } : undefined;
+  const uiFade: React.CSSProperties | undefined = introRan ? { animation: 'gacha-dim-in 600ms ease-out 1100ms both' } : undefined;
 
   // ★自動レビューの掴み手(TEST_HANDOFF/REQUEST-devbridge.md §D)。下の <div> に属性を足すだけ=見た目は不変。
   // `data-screen` は reportTestScreen と同じ出し分け(A の screenId と同じ値)。
   // `title-start` は「押す物」=このルート自身(タイトルは画面全体が開始ボタン=aria-labelしか名前が無かった)。
   return (
     <div
-      onClick={titleInteractive ? tapStart : undefined}
+      onClick={titleInteractive ? tapStart : introBusy ? startReveal : undefined}
       onKeyDown={handleKey}
       role={titleInteractive ? 'button' : undefined}
       tabIndex={titleInteractive ? 0 : -1}
       aria-label={titleInteractive ? `${playDevice === 'mouse' ? 'クリック' : playDevice === 'pad' ? 'ボタン' : 'タップ'}して開始` : undefined}
-      data-screen={showNotice ? 'updateModal' : 'title'}
+      data-screen={noticeOpen ? 'updateModal' : 'title'}
       data-testid={titleInteractive ? 'title-start' : undefined}
       data-nav-default={titleInteractive ? '' : undefined} // パッドの A 1回で始まる(utils/menuNav・PC版 §11-5)
       data-nav-prompt-pos="left" // 操作の案内は左下(右下の NEWS を避ける)
@@ -382,19 +544,55 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       // メニュー操作のカーソル・案内の色はタイトルの紫を継ぐ(--nav-cursor-color / --nav-prompt-dim)
       style={{ cursor: titleInteractive ? 'pointer' : 'default', ['--nav-cursor-color' as string]: '#c9a3ff', ['--nav-prompt-dim' as string]: 'rgba(216,180,254,.6)' } as React.CSSProperties}
     >
+      {/* 描き上げの間の闇に置く逆光の予感(読み込み待ちと区別がつくように)。色が乗ると退く。 */}
+      {introRan && intro !== 'done' && (
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: 'radial-gradient(ellipse at 50% 40%, rgba(120,70,190,0.16), transparent 55%)',
+            animation: 'gacha-dim-in 600ms ease-out both',
+            opacity: intro === 'reveal' ? 0 : 1,
+            transition: `opacity ${INTRO_REVEAL_MS}ms ease-out`,
+          }}
+        />
+      )}
       <img
+        ref={titleImgRef}
         src={assetUrl('backgrounds/title-the-one.png')}
         alt=""
         draggable={false}
         // PC の横長: 絵(1672×941=ほぼ16:9)を画面いっぱいに敷く(正方形に切ってから拡大するとロゴの上が切れる・research/PC_SUPPORT.md 段3)。
-        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover landscape:!h-full landscape:!w-full landscape:!aspect-auto"
-        style={{ width: 'min(calc(150vw / var(--hud-s, 1)), calc(150svh / var(--hud-s, 1)))' }}
+        className={TITLE_BOX_CLASS}
+        style={{
+          width: TITLE_BOX_WIDTH,
+          // 描き上げ: 線画の間は隠す。色はマスク(上の rAF)で逆光の中心から広がり、寄りは線と同じ倍率で戻る。
+          ...(!introRan ? {} : {
+            opacity: intro === 'lines' || intro === 'hold' ? 0 : 1,
+            scale: zoom.v,
+            transition: `scale ${zoom.ms}ms cubic-bezier(0.16, 0.8, 0.3, 1)`,
+          }),
+        }}
       />
+      {intro !== 'done' && <TitleLineIntro step={intro} zoom={zoom} onEnd={endLines} />}
+      {/* 色が来る瞬間、頭上の光の柱が先に灯る(120msで灯り500msで減衰)。 */}
+      {introRan && revealAt !== null && intro !== 'done' && (
+        <div className={TITLE_BOX_CLASS} style={{ width: TITLE_BOX_WIDTH }}>
+          <div
+            className="absolute left-1/2 top-0 h-[44%] w-[5%] -translate-x-1/2"
+            style={{
+              background: 'linear-gradient(to bottom, transparent, rgba(232,206,255,0.85) 55%, rgba(232,206,255,0.4) 85%, transparent)',
+              filter: 'blur(6px)',
+              mixBlendMode: 'screen',
+              animation: 'title-pillar 620ms linear both',
+            }}
+          />
+        </div>
+      )}
       <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/60" />
 
       {/* バージョン表示: スタート画面(タイトル)の右上 */}
-      {phase === 'title' && !showNotice && (
-        <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] tabular-nums text-purple-200/75" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.7)' }}>
+      {uiOn && (
+        <span className="absolute top-3 right-3 px-2 py-0.5 text-[10px] tabular-nums text-purple-200/75" style={{ background: 'linear-gradient(95deg, rgba(9,8,14,0.7), rgba(9,8,14,0.15))', borderLeft: '2px solid rgba(168,85,247,0.7)', ...uiFade }}>
           v{__APP_VERSION__}
         </span>
       )}
@@ -403,8 +601,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           **出ていなかった**——この記録はゲーム中の左下にしか無く、落ちるとタイトルへ戻るので
           読む機会が無かった。落ちた直後に**最初に見る画面**がここなので、ここへ出す。
           記録が無い初回は何も出ない。 */}
-      {phase === 'title' && !showNotice && prevBeatText() && (
-        <div className="absolute bottom-12 left-3 max-w-[calc(92vw/var(--hud-s,1))] pointer-events-none">
+      {uiOn && prevBeatText() && (
+        <div className="absolute bottom-12 left-3 max-w-[calc(92vw/var(--hud-s,1))] pointer-events-none" style={uiFade}>
           <span className="px-2 py-1 text-[9px] leading-tight tabular-nums text-purple-200/55" style={{ fontFamily: 'var(--game-font), sans-serif' }}>
             前回最後 {prevBeatText()}
           </span>
@@ -413,8 +611,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
 
       {/* 現在モード表示(社長指示: パラメータ残留事故をその場で見抜く)。**掛かっている時だけ**出す
           ——通常プレイでは何も出ない。開発用の出撃メニューは bossmaker.html へ移した(v0.25.2862)。 */}
-      {phase === 'title' && !showNotice && LOADED_MODE.active && (
-        <div className="absolute bottom-3 left-3">
+      {uiOn && LOADED_MODE.active && (
+        <div className="absolute bottom-3 left-3" style={uiFade}>
           <span
             className="px-2 py-1 text-[10px] tracking-wider text-amber-300/90"
             style={{ background: 'rgba(120,53,15,0.35)', borderLeft: '2px solid rgba(251,191,36,0.7)' }}
@@ -438,7 +636,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       {/* 更新情報(起動画面・最初に表示。社長指示: 毎回のアップデート内容をここに出す)。
           クリエイティブ監査第2回・第2手A-7: 同じ版の既読は全面ポップアップを出さず、
           下のバッジからの再オープンでもこの同じ内容を使う。 */}
-      {showNotice && (
+      {noticeOpen && (
         <div data-nav-screen="changelog" data-nav-modal className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-4 py-6">
           <div className="relative flex max-h-full w-full max-w-md flex-col overflow-hidden" style={PANEL_STYLE}>
             {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。全件リストは必ずあふれる) */}
@@ -481,11 +679,11 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       )}
 
       {/* タイトル(the ONE): STARTタップ待機 */}
-      {phase === 'title' && !showNotice && (
+      {uiOn && (
         <div
           // PC の横長: 絵が全面なので下13%は人物の脚の間に刺さる → 足元の影の帯まで下げる(段3-2 クリエイティブ監査 #14)。
           className="absolute inset-x-0 flex flex-col items-center landscape:!bottom-[3%]"
-          style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 12%), 13%)' }}
+          style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 12%), 13%)', ...startFade }}
         >
           {/* クリーンな START: 細い紫ヘアラインを上下に添えるだけ(発光は控えめ)。 */}
           <span className="h-[1px] w-28 sm:w-40" style={{ background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.7), transparent)' }} />
@@ -503,7 +701,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
 
       {/* 更新情報バッジ(クリエイティブ監査第2回・第2手A-7): 既読の版はここから開き直せる。
           文字だけ・琥珀の小ボタン(PixelIconは付けない=仕様指定どおり)。 */}
-      {phase === 'title' && !showNotice && (
+      {uiOn && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); playSfx('ui-select'); setShowNotice(true); }}
@@ -514,6 +712,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
             background: 'rgba(24,15,38,0.55)',
             borderLeft: '2px solid rgba(168,85,247,0.7)',
             clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 100%, 0 100%)',
+            ...uiFade,
           }}
           aria-label="更新情報を開く"
         >

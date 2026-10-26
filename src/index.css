@@ -505,6 +505,13 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   .char-select .char-particles { left: calc(50% + 90px - 260px); right: auto; width: 520px; }
 }
 
+/* タイトルの描き上げ: 色が来る瞬間に頭上の光の柱が灯って減衰する(TitleScreen・120msで灯り500msで消える) */
+@keyframes title-pillar {
+  0% { opacity: 0; }
+  19% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 /* キャラ選択 左下の情報テキストも、立ち絵に合わせてフワッとフェードイン(切替で都度再生) */
 @keyframes info-rise {
   from { opacity: 0; transform: translateY(10px); }
