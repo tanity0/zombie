@@ -71,6 +71,8 @@ interface TitleScreenProps {
   onNoticeOk?: () => void;
   waitForAssets?: () => Promise<void>; // STARTタップ後に待つ本物の素材ロード完了
   onDone: () => void;                  // ローディング完了でメニューへ
+  /** タイトルに色が乗った瞬間(描き上げが無い時は出た瞬間)に1回だけ呼ぶ=タイトル曲の開始(社長指示2026-10-27)。 */
+  onReveal?: () => void;
 }
 
 // FF7リメイク風UIテーマ(社長指示・カラーは紫)。FF7Rメニューの肝を踏襲:
@@ -395,7 +397,7 @@ const TitleLineIntro: React.FC<{ step: IntroStep; zoom: { v: string; ms: number 
   );
 };
 
-const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForAssets, onDone }) => {
+const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForAssets, onDone, onReveal }) => {
   // 描き上げ: lines=線画を描いている / hold=描き終わりの止め / reveal=色が広がっている途中 / done=いつものタイトル。
   const [intro, setIntro] = useState<IntroStep>(() => (introWanted() ? 'lines' : 'done'));
   const [revealAt, setRevealAt] = useState<number | null>(null);
@@ -438,6 +440,19 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
     return () => cancelAnimationFrame(raf);
   }, [revealAt]);
   const introBusy = intro === 'lines' || intro === 'hold'; // 描いている間は START を受け付けない(タップ=飛ばす)
+  // 社長指示2026-10-27「色がついた直後からBGMは再生」: 色が乗り始めた瞬間(描き上げが無ければ出た瞬間)に1回だけ。
+  const revealedRef = useRef(false);
+  useEffect(() => {
+    if (revealedRef.current || introBusy) return;
+    // 親(App)の「タイトルは無音」の effect は子より後に走るので、1フレーム後に鳴らす(先に鳴らすと止められる)。
+    const r = requestAnimationFrame(() => {
+      if (revealedRef.current) return;
+      revealedRef.current = true;
+      onReveal?.();
+    });
+    return () => cancelAnimationFrame(r);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introBusy]);
   // 更新情報は「notice」フェーズを廃止し、常に'title'を基点に showNotice(表示中か)で重ねる形にする
   // (バッジから何度でも開き直せるようにするため)。既読版と現在の版が一致する時だけ最初から閉じておく。
   const alreadySeenThisVersion = useMemo(() => readNoticeSeenVersion() === __APP_VERSION__, []);

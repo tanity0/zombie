@@ -643,6 +643,9 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
           onNoticeOk={() => { setBgmScene('off'); unlockDanceAudio(); primeMenuBgm(); setShowOpening(true); }}
           waitForAssets={ensurePreload}                                // 同意後の本物ローディング(完了待ち)
           onDone={() => setGameState('menu')}                          // 暗転し切ったらセレクトへ
+          // タイトル曲は色が乗った直後から(社長指示2026-10-27)。ブラウザがタップ前の音を止めている時は、最初に触れた瞬間に鳴る
+          // (attachAudioGestureRecovery)。更新情報の OK でいったん止まり、オープニングの後に流れ直すのは従来どおり。
+          onReveal={() => setBgmScene('menu')}
         /></HudScale>
       )}
 

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5224', items: [
+    'タイトルの曲が、絵に色が乗った瞬間から流れる',
+  ] },
   { version: '0.25.5223', items: [
     '起動するとタイトルの少女が光る線で描き上がり、頭上の光から色が広がってタイトルになる。画面に触れると飛ばせる',
   ] },
