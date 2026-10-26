@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5225', items: [
+    'タイトルの描き上げは、オープニングを見終わった後に流れる。更新情報の後ろは暗いまま',
+  ] },
   { version: '0.25.5224', items: [
     'タイトルの曲が、絵に色が乗った瞬間から流れる',
   ] },

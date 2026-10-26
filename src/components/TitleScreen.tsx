@@ -16,6 +16,7 @@ import { normalizeNamedNamesInText } from '../utils/namedEnemy';
 import { parseBossTestMode, BOSS_TEST_ENTRIES } from '../utils/bossTest';
 import { enemyDeathLabel } from '../store/gameStore';
 import { bossCutinName } from '../data/bossCutin';
+import { titleIntroWanted, markTitleIntroPlayed } from '../utils/titleIntro'; // 描き上げは起動して最初の1回だけ
 
 // 現在モード(社長指示2026-07-31「いまどのモード(通常含めて)になってるか出しといて」)。
 // 強制出現フラグはモジュールロード時定数なので、**読込時のURL**をモジュールロード時に1回だけ写して
@@ -73,6 +74,8 @@ interface TitleScreenProps {
   onDone: () => void;                  // ローディング完了でメニューへ
   /** タイトルに色が乗った瞬間(描き上げが無い時は出た瞬間)に1回だけ呼ぶ=タイトル曲の開始(社長指示2026-10-27)。 */
   onReveal?: () => void;
+  /** オープニングが上に出ている間は true(描き上げはオープニングが明けてから始める)。 */
+  openingActive?: boolean;
 }
 
 // FF7リメイク風UIテーマ(社長指示・カラーは紫)。FF7Rメニューの肝を踏襲:
@@ -301,22 +304,13 @@ const introRate = (t: number): number => (t < 0.6 ? 0.9 : t < 2.6 ? 1.6 : 0.85);
 const INTRO_LINE_FILTER = (b: number) => `invert(1) sepia(0.6) saturate(2.4) hue-rotate(218deg) brightness(${b})`;
 const TITLE_BOX_CLASS = 'pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover landscape:!h-full landscape:!w-full landscape:!aspect-auto';
 const TITLE_BOX_WIDTH = 'min(calc(150vw / var(--hud-s, 1)), calc(150svh / var(--hud-s, 1)))';
-let introPlayedThisLoad = false;
-const introWanted = (): boolean => {
-  if (introPlayedThisLoad || typeof window === 'undefined') return false;
-  try {
-    if (new URLSearchParams(window.location.search).get('nointro') === '1') return false;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
-  } catch { /* 判定できなければ流す */ }
-  return true;
-};
-type IntroStep = 'lines' | 'hold' | 'reveal' | 'done';
+type IntroStep = 'wait' | 'lines' | 'hold' | 'reveal' | 'done';
 
 /**
  * 線画の動画。<img> と同じ枠・同じ切り抜き(object-cover)で置き、絵の高さに合わせて縮めてずらす。
  * 光のにじみは同じ動画をぼかしてもう1枚重ねて作る(動画は不透明なので drop-shadow では光らない)。
  */
-const TitleLineIntro: React.FC<{ step: IntroStep; zoom: { v: string; ms: number }; onEnd: () => void }> = ({ step, zoom, onEnd }) => {
+const TitleLineIntro: React.FC<{ step: Exclude<IntroStep, 'wait'>; zoom: { v: string; ms: number }; onEnd: () => void }> = ({ step, zoom, onEnd }) => {
   const ref = useRef<HTMLVideoElement>(null);
   const glowRef = useRef<HTMLVideoElement>(null);
   const [fit, setFit] = useState<string>('');
@@ -397,12 +391,15 @@ const TitleLineIntro: React.FC<{ step: IntroStep; zoom: { v: string; ms: number 
   );
 };
 
-const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForAssets, onDone, onReveal }) => {
-  // 描き上げ: lines=線画を描いている / hold=描き終わりの止め / reveal=色が広がっている途中 / done=いつものタイトル。
-  const [intro, setIntro] = useState<IntroStep>(() => (introWanted() ? 'lines' : 'done'));
+const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForAssets, onDone, onReveal, openingActive = false }) => {
+  // 描き上げ: wait=オープニング(または更新情報)が明けるのを待っている / lines=線画を描いている / hold=描き終わりの止め /
+  // reveal=色が広がっている途中 / done=いつものタイトル。
+  // ★社長指示2026-10-27「このタイトルはオープニングの後だよ」: 更新情報→オープニング→**ここで描き上げ**の順。
+  // 更新情報もオープニングも出ない起動(版が既読=オープニングは START の後)は、出た時に描く。
+  const [intro, setIntro] = useState<IntroStep>(() => (titleIntroWanted() ? 'wait' : 'done'));
   const [revealAt, setRevealAt] = useState<number | null>(null);
   const introRan = useRef(intro !== 'done').current;
-  useEffect(() => { if (intro !== 'done') introPlayedThisLoad = true; }, [intro]);
+  useEffect(() => { if (intro !== 'done' && intro !== 'wait') markTitleIntroPlayed(); }, [intro]);
   // 寄り: 描き始めてから 1→1.025 へゆっくり、色が乗ると 1 へ戻る(線と絵を同じ倍率で動かす)。
   const [zoom, setZoom] = useState<{ v: string; ms: number }>({ v: '1', ms: 0 });
   useEffect(() => {
@@ -439,7 +436,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
   }, [revealAt]);
-  const introBusy = intro === 'lines' || intro === 'hold'; // 描いている間は START を受け付けない(タップ=飛ばす)
+  const introDrawing = intro === 'lines' || intro === 'hold'; // 描いている間は START を受け付けない(タップ=飛ばす)
+  const introBusy = introDrawing || intro === 'wait';
   // 社長指示2026-10-27「色がついた直後からBGMは再生」: 色が乗り始めた瞬間(描き上げが無ければ出た瞬間)に1回だけ。
   const revealedRef = useRef(false);
   useEffect(() => {
@@ -457,11 +455,15 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   // (バッジから何度でも開き直せるようにするため)。既読版と現在の版が一致する時だけ最初から閉じておく。
   const alreadySeenThisVersion = useMemo(() => readNoticeSeenVersion() === __APP_VERSION__, []);
   const [showNotice, setShowNotice] = useState<boolean>(!alreadySeenThisVersion);
+  // 更新情報もオープニングも上に無くなったら描き始める。
+  useEffect(() => {
+    if (intro === 'wait' && !showNotice && !openingActive) setIntro('lines');
+  }, [intro, showNotice, openingActive]);
 
   // ★テストブリッジ(A)へ「更新情報モーダルが出ているか」を報告する。自動レビューはここで
   // OKを押す必要があるので、タイトルと区別が付かないと初見導線を通れない。
   // `?testbridge=1` が無ければ reportTestScreen は即returnする。
-  useEffect(() => { reportTestScreen(showNotice && intro === 'done' ? 'updateModal' : 'title'); }, [showNotice, intro]);
+  useEffect(() => { reportTestScreen(showNotice && (intro === 'done' || intro === 'wait') ? 'updateModal' : 'title'); }, [showNotice, intro]);
   const [phase, setPhase] = useState<'title' | 'blackout' | 'loading'>('title');
   // OK(またはSTART経由の代行)が音声解禁+オープニング起動を1回だけ担うためのガード。
   const noticeHandledRef = useRef(false);
@@ -530,7 +532,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   };
 
   // 描き上げの間は更新情報を後ろへ回す(絵が乗り切ってから出す)。
-  const noticeOpen = showNotice && intro === 'done';
+  const noticeOpen = showNotice && (intro === 'done' || intro === 'wait');
   const heartbeatLine = SHOW_HEARTBEAT && phase === 'title' && !showNotice ? formatHeartbeat() : null;
   // パネルを開いている間は「どこをタップしても開始」を止める(スイッチを押し損ねてゲームが始まらないように)。
   const titleInteractive = phase === 'title' && !showNotice && intro === 'done';
@@ -545,7 +547,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   // `title-start` は「押す物」=このルート自身(タイトルは画面全体が開始ボタン=aria-labelしか名前が無かった)。
   return (
     <div
-      onClick={titleInteractive ? tapStart : introBusy ? startReveal : undefined}
+      onClick={titleInteractive ? tapStart : introDrawing ? startReveal : undefined}
       onKeyDown={handleKey}
       role={titleInteractive ? 'button' : undefined}
       tabIndex={titleInteractive ? 0 : -1}
@@ -560,7 +562,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
       style={{ cursor: titleInteractive ? 'pointer' : 'default', ['--nav-cursor-color' as string]: '#c9a3ff', ['--nav-prompt-dim' as string]: 'rgba(216,180,254,.6)' } as React.CSSProperties}
     >
       {/* 描き上げの間の闇に置く逆光の予感(読み込み待ちと区別がつくように)。色が乗ると退く。 */}
-      {introRan && intro !== 'done' && (
+      {introRan && intro !== 'done' && intro !== 'wait' && (
         <div
           className="pointer-events-none absolute inset-0"
           style={{
@@ -582,13 +584,13 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           width: TITLE_BOX_WIDTH,
           // 描き上げ: 線画の間は隠す。色はマスク(上の rAF)で逆光の中心から広がり、寄りは線と同じ倍率で戻る。
           ...(!introRan ? {} : {
-            opacity: intro === 'lines' || intro === 'hold' ? 0 : 1,
+            opacity: intro === 'lines' || intro === 'hold' || intro === 'wait' ? 0 : 1,
             scale: zoom.v,
             transition: `scale ${zoom.ms}ms cubic-bezier(0.16, 0.8, 0.3, 1)`,
           }),
         }}
       />
-      {intro !== 'done' && <TitleLineIntro step={intro} zoom={zoom} onEnd={endLines} />}
+      {intro !== 'done' && intro !== 'wait' && <TitleLineIntro step={intro} zoom={zoom} onEnd={endLines} />}
       {/* 色が来る瞬間、頭上の光の柱が先に灯る(120msで灯り500msで減衰)。 */}
       {introRan && revealAt !== null && intro !== 'done' && (
         <div className={TITLE_BOX_CLASS} style={{ width: TITLE_BOX_WIDTH }}>

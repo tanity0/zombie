@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import Game from './components/Game';
 import MissionSelect from './components/MissionSelect';
 import TitleScreen from './components/TitleScreen';
+import { titleIntroWanted } from './utils/titleIntro';
 import GameOverScreen from './components/GameOverScreen';
 import EndingScreen from './components/EndingScreen';
 import ExEndingScreen from './components/ExEndingScreen';
@@ -646,6 +647,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
           // タイトル曲は色が乗った直後から(社長指示2026-10-27)。ブラウザがタップ前の音を止めている時は、最初に触れた瞬間に鳴る
           // (attachAudioGestureRecovery)。更新情報の OK でいったん止まり、オープニングの後に流れ直すのは従来どおり。
           onReveal={() => setBgmScene('menu')}
+          openingActive={showOpening} // 描き上げはオープニングが明けてから(社長指示2026-10-27「このタイトルはオープニングの後だよ」)
         /></HudScale>
       )}
 
@@ -726,7 +728,7 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       {/* オープニングシーン(?opening=1でプレビュー)。タイトルの上に全画面。暗転し切ったら onDone で外れる。 */}
       {/* BGMはオープニング完全終了(onDone=タイトルフェードイン明け)で開始(社長指示v0.25.2067
           「BGM流れるのは蘇生シーン終わってから」=フェードイン開始と同時のBGM開始を廃止)。 */}
-      {!bare && showOpening && <HudScale z={9990} interactive><OpeningScene onDone={() => { setShowOpening(false); setBgmScene('menu'); }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} /></HudScale>}
+      {!bare && showOpening && <HudScale z={9990} interactive><OpeningScene onDone={() => { setShowOpening(false); if (gameState !== 'title' || !titleIntroWanted()) setBgmScene('menu'); /* 描き上げが控えていれば、曲はタイトルの色が乗った瞬間に鳴る */ }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} /></HudScale>}
 
       {/* ステージ6(洋館)通路プレビュー(?corridor=1)。タイトル等の上に全画面。 */}
       {!bare && corridorPreview && <MansionCorridorPreview />}
