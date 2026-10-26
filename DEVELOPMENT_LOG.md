@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.5221 — SAME_ARENA §8-B2a: 間合いの癖の記録を v2 に作り直し+共有の許可リストへ【2026-10-27 01:31 JST】
+- 裁定(社長 2026-10-27「はい 袋式 振りのタイミングも推薦で」): #B2-1「進め方」=案1(段を分ける)/#B2-2「詰めに対する抜けの振りの抽選」=袋/#B2-3「カウンター狙いの意味」=当たる瞬間からの差。
+- `src/utils/meleeSpacing.ts`(記録 v2・`MELEE_SPACING_V=2`): 着手前監査の A2〜A5・C1 を是正。
+  - 接敵は**間合いから出るまで**1件(旧=最初の振りから600msで閉じ、近接CD 738〜820ms では2回目が入らなかった)。
+  - 相手が一覧から消えて終わった接敵は数えない。振り逃げ=最後の振りから600ms以内に出て、**自分で**相手と逆向きへ12px以上離れた時だけ(離れた量もその成分=踏み込みぶんを足さない)。
+  - 距離=プレイヤー中心→`enemyRangeRect` の最近点、射程=呼び出し側が渡す実射程。
+  - カウンター狙い=窓の中で**押した**時刻−窓が閉じた時刻の平均 `counterAimOffsetMs`(旧 `counterAimLagMs`=窓が開いてから打刻まで、を置き換え)。
+  - `blendMeleeSpacing`: 版の無い旧記録とは混ぜずに捨てて測り直す。
+- `src/utils/playerTraits.ts`: `meleeSwingPressedAt` のエッジを `pressedThisTick` に、`player.meleeReachPx`(省略=74)と `enemyRangeRect` を渡す。`src/utils/directorTick.ts`: `meleeReachPx: huntingMeleeRadius(player)`。
+- `shared/ghostSanitize.mjs`: `sanitizeMeleeSpacing`(v2 かつ n>0 だけ・範囲へ収める・null は null のまま)。**サーバの再デプロイが要る**(`server/` を wrangler で)。
+- 検証: typecheck/eslint(変更ファイル)/循環import 新規なし/`meleeSpacing.test.ts`(29件・v2 の分類を固定)・`playerTraits.test.ts`・`directorTick*`・`ghostOnline.test.ts`(v2 の通過と v1/n=0 の拒否)/`server` の node テスト 12件、すべて緑。
+- 挙動: 幻影の振り方はまだ変わらない(B-2b で記録を読む)。記録だけが変わる。
+- 自己点検: 憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に触れない(計測のみ)。監査: 設計の要る新しい仕組みは着手前監査(v0.25.5220)で通した内容の是正そのもの=追加監査なし。
+- 次の手渡し: 社長=サーバ再デプロイ。B-2b(幻影が記録で振る)は記録が溜まってから。
+- 状態変化: SAME_ARENA §8 間合いの癖 B-2 → 実装中(残り: B-2b)
+
 ## v0.25.5220 — SAME_ARENA §8-B2(幻影を間合いの癖で振らせる)の仕様と着手前監査→社長へ戻す【2026-10-27 01:06 JST】
 - **社長指示**: 2段の提案の②「当時の計画(記録した間合いの癖で幻影の近接を振らせる)を仕上げる」に「はい」(2026-10-26)。
 - **やったこと(文書のみ)**: research/SAME_ARENA.md に「§8-B2 仕様」を書いた。守護霊は対象外(カウンターの振りは既に記録で決まり、820msはプレイヤーと同じCD=リズムではない)と事実を訂正。

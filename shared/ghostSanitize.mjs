@@ -203,6 +203,29 @@ const sanitizeLungeStyle = (raw) => (isObject(raw) && finite(raw.chance) && fini
   n: int(raw.n, 0, 1_000_000),
 } : undefined;
 
+// SAME_ARENA §8-B2: 近接の間合いの癖(幻影が振る時刻の材料)。**v2 の記録だけ**通す
+// (v1 は測り方に誤りがあった=混ぜない)。測れなかった値は null のまま運ぶ(0にしない)。
+const MELEE_SPACING_V = 2;
+const nullableIn = (value, lo, hi) => (finite(value) ? clamp(value, lo, hi) : null);
+const sanitizeMeleeSpacing = (raw) => {
+  if (!isObject(raw) || raw.v !== MELEE_SPACING_V || !finite(raw.n) || raw.n <= 0) return undefined;
+  const rate = (value) => (finite(value) ? clamp(value, 0, 1) : 0);
+  return {
+    v: MELEE_SPACING_V,
+    n: int(raw.n, 0, 1_000_000),
+    swingLagMs: nullableIn(raw.swingLagMs, 0, 10_000),
+    reentryPerMin: finite(raw.reentryPerMin) ? clamp(raw.reentryPerMin, 0, 600) : 0,
+    backStepPx: nullableIn(raw.backStepPx, 0, 2_000),
+    holdBackStepPx: nullableIn(raw.holdBackStepPx, 0, 2_000),
+    swingsPerEpisode: finite(raw.swingsPerEpisode) ? clamp(raw.swingsPerEpisode, 0, 100) : 0,
+    preSwingRate: rate(raw.preSwingRate),
+    swingLeaveRate: rate(raw.swingLeaveRate),
+    holdRate: rate(raw.holdRate),
+    counterAimRate: nullableIn(raw.counterAimRate, 0, 1),
+    counterAimOffsetMs: nullableIn(raw.counterAimOffsetMs, -2_000, 2_000),
+  };
+};
+
 const sanitizePunish = (raw) => {
   if (!isObject(raw)) return undefined;
   const out = {};
@@ -261,6 +284,8 @@ export const sanitizeSharedProfile = (raw, expectedSlot) => {
   if (punish) out.punish = punish;
   const lungeStyle = sanitizeLungeStyle(raw.lungeStyle);
   if (lungeStyle) out.lungeStyle = lungeStyle;
+  const meleeSpacing = sanitizeMeleeSpacing(raw.meleeSpacing);
+  if (meleeSpacing) out.meleeSpacing = meleeSpacing;
   const srcName = displayNameFrom(raw.srcName);
   if (srcName) out.srcName = srcName;
   const arrivalComment = sanitizeGhostComment(raw.arrivalComment);

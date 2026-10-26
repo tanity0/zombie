@@ -71,4 +71,22 @@ describe('G6 online guardian rules', () => {
     const bad = sanitizeSharedProfile({ ...raw, lungeStyle: { chance: 'x' } }, 'thor') as { lungeStyle?: unknown } | null;
     expect(bad?.lungeStyle).toBeUndefined();
   });
+
+  it('SAME_ARENA §8-B2: 間合いの癖(meleeSpacing)は v2 だけを範囲へ収めて通し、測れなかった値は null のまま運ぶ', () => {
+    const base = {
+      v: 1, runs: 1, moveReactions: {}, subStyles: {},
+      bossStyles: { thor: { ...GHOST_PROFILE_DEFAULTS, subStyles: {}, at: 1 } },
+    };
+    const ms = {
+      v: 2, n: 12, swingLagMs: 310, reentryPerMin: 9, backStepPx: null, holdBackStepPx: 18,
+      swingsPerEpisode: 2.5, preSwingRate: 1.4, swingLeaveRate: 0.2, holdRate: 0.3,
+      counterAimRate: null, counterAimOffsetMs: -99999,
+    };
+    type Safe = { meleeSpacing?: Record<string, unknown> } | null;
+    const safe = sanitizeSharedProfile({ ...base, meleeSpacing: ms }, 'thor') as Safe;
+    expect(safe?.meleeSpacing).toMatchObject({ v: 2, n: 12, swingLagMs: 310, backStepPx: null, preSwingRate: 1, counterAimRate: null, counterAimOffsetMs: -2000 });
+    // v1(測り方に誤りがあった記録)・記録なしは通さない
+    expect((sanitizeSharedProfile({ ...base, meleeSpacing: { ...ms, v: undefined } }, 'thor') as Safe)?.meleeSpacing).toBeUndefined();
+    expect((sanitizeSharedProfile({ ...base, meleeSpacing: { ...ms, n: 0 } }, 'thor') as Safe)?.meleeSpacing).toBeUndefined();
+  });
 });

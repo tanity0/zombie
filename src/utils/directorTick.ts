@@ -9,7 +9,7 @@
 // レンダラーに依存しない(PixiJSをimportしない)。store(useGameStore)・audioManager(playSfx)への
 // 呼び出しは、他の src/utils/*.ts (例: inputActions.ts, weaponUtils.ts)と同じ既存パターンに倣う。
 
-import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED, RESCUE_ALLY_SPAWN_DIST } from '../store/gameStore';
+import { useGameStore, ENEMY_REMOVE_CAUSE, WALL_ENABLED, SPAWN_CLAMP_ENABLED, RESCUE_ALLY_SPAWN_DIST, huntingMeleeRadius } from '../store/gameStore';
 import { placeLabSpawn } from './labSpawn';
 import { OFFSCREEN_SPAWN_MARGIN } from './enemyUtils';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
@@ -868,6 +868,8 @@ export function runGhostAndTraitsStep(refs: GhostAndTraitsRefs, ctx: GhostAndTra
       lastDirection: player.lastDirection,
       // research/LUNGE_DODGE.md §2-1: 踏み込み(押した瞬間に書かれる速度と終わる時刻)。コマの `lg` 用。
       lungeVx: player.lungeVx, lungeVy: player.lungeVy, lungeUntil: player.lungeUntil,
+      // ★SAME_ARENA §8-B2: 間合いの癖の物差し=その時の近接の実射程。
+      meleeReachPx: huntingMeleeRadius(player),
     },
     // v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元。写し取りはplayerTraits側の
     // 純関数(snapshotPlayerBuild)がボス交戦中のtickだけ行う=ここは本人オブジェクトを渡すだけ。

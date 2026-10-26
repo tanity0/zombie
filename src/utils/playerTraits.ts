@@ -39,7 +39,7 @@ import {
 } from './meleeSpacing';
 import { bitePhaseOf, isBiteSubject } from './enemyBite';
 import { isBiteExemptType } from './enemyUtils';
-import { isHiddenBoss } from './enemyUtils';
+import { isHiddenBoss, enemyRangeRect } from './enemyUtils';
 import { enemyHitStrip } from '../pixi/renderSpec';
 import {
   createMoveReactionState, stepMoveReactions, markMoveReactionCounter, markMoveReactionHit,
@@ -480,6 +480,8 @@ interface Session {
   spacing: MeleeSpacingState;
   /** `meleeSwingCommitAt` の前tick値(エッジ検知。絶対時刻の引き算をしない=打刻の掟どおり)。 */
   lastSeenSwingCommitAt: number | null;
+  /** `meleeSwingPressedAt` の前tick値(カウンター狙いの「押した瞬間」のエッジ検知)。 */
+  lastSeenSwingPressedAt: number | null;
   // ---- research/AI_HUMANIZE.md B3(§4マイクロリズム) ----
   /** ①②④⑥⑧(操作の指紋の状態機械)。 */
   micro: MicroRhythmState;
@@ -533,6 +535,7 @@ const startSession = (gameTime: number): Session => ({
   clearedSlots: [],
   spacing: createMeleeSpacingState(),
   lastSeenSwingCommitAt: null,
+  lastSeenSwingPressedAt: null,
   micro: createMicroRhythmState(),
   pinchDistBuckets: new Array(DIST_BUCKET_COUNT).fill(0) as number[],
   punishSpeed: createPunishSpeedState(),
@@ -918,6 +921,8 @@ export interface PlayerTraitsTickInput {
     lastDirection?: { x: number; y: number } | null;
     /** research/LUNGE_DODGE.md §2-1: 踏み込みの速度と終わる時刻(Date.now)。省略=踏み込みを記録しない。 */
     lungeVx?: number; lungeVy?: number; lungeUntil?: number;
+    /** ★§8-B2: その時の近接の実射程(`huntingMeleeRadius`)。省略(旧呼び出し/テスト)=74。 */
+    meleeReachPx?: number;
   };
   /** v0.25.2514(§2.11 裁定1): ビルド写し(武器/スキル/装備/クリ率/サブ)の元になる本人オブジェクト。
    * 省略可(旧呼び出し/テスト)=その場合はビルド項目なしの旧snapshot相当だけを記録する。 */
@@ -1030,12 +1035,18 @@ export const tickPlayerTraits = (input: PlayerTraitsTickInput): void => {
   const commitAt = input.player.meleeSwingCommitAt ?? 0;
   const swungThisTick = s.lastSeenSwingCommitAt !== null && commitAt !== s.lastSeenSwingCommitAt;
   s.lastSeenSwingCommitAt = commitAt;
+  const pressAt = input.player.meleeSwingPressedAt ?? commitAt;
+  const pressedThisTick = s.lastSeenSwingPressedAt !== null && pressAt !== s.lastSeenSwingPressedAt;
+  s.lastSeenSwingPressedAt = pressAt;
   stepMeleeSpacing(s.spacing, {
     enemies: input.enemies,
     pcx, pcy,
-    reachPx: MELEE_RADIUS_MIRROR,
+    // §8-B2: 実射程・当たり判定の矩形の最近点まで(近接・銃と同じ物差し)。
+    reachPx: input.player.meleeReachPx ?? MELEE_RADIUS_MIRROR,
+    rangeRect: e => enemyRangeRect(e as Enemy),
     gameTime: input.gameTime,
     swungThisTick,
+    pressedThisTick,
     counterWindowOpen: counterOpportunityOpen(input.enemies, pcx, pcy, input.gameTime),
   });
 

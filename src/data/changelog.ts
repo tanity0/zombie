@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5221', items: [
+    '近接の間合いの癖の取り方を直した。幻影がこの記録で振るようになるのは、記録が溜まってから',
+  ] },
   { version: '0.25.5220', items: [
     'ゲーム内容の変更はありません。',
   ] },
