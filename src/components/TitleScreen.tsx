@@ -295,7 +295,9 @@ const ChronicleTimeline: React.FC = () => {
 const INTRO_LINE_SCALE = 0.83;
 const INTRO_LINE_DX = -8 / 720; // 絵の高さに対する割合
 const INTRO_LINE_DY = 12 / 720;
-const INTRO_HOLD_MS = 350;      // 描き終わりの「止め」(線が一度だけ灯る)
+// 色は描き終わる少し前から入り始める(社長指示2026-10-27「色入るフェードをほんの少しだけ前倒し・描き切る前から少し入っていく」)。
+// 動画の 2.55秒目(=最後の一画の手前・実時間で描き終わりの約0.5秒前)で色を入れ始め、線は描き切ってから一度灯って消える。
+const INTRO_COLOR_EARLY_S = 2.55;
 const INTRO_REVEAL_MS = 1000;   // 光の中心から色が広がり切るまで
 const INTRO_LINES_OUT_MS = 650; // 色が来たら線は先に消える
 const INTRO_ZOOM = 1.025;       // 描いている間にわずかに寄り、色が乗ると戻る(線と絵は同じ倍率で動く)
@@ -304,13 +306,15 @@ const introRate = (t: number): number => (t < 0.6 ? 0.9 : t < 2.6 ? 1.6 : 0.85);
 const INTRO_LINE_FILTER = (b: number) => `invert(1) sepia(0.6) saturate(2.4) hue-rotate(218deg) brightness(${b})`;
 const TITLE_BOX_CLASS = 'pointer-events-none absolute left-1/2 top-1/2 aspect-square max-w-none -translate-x-1/2 -translate-y-1/2 object-cover landscape:!h-full landscape:!w-full landscape:!aspect-auto';
 const TITLE_BOX_WIDTH = 'min(calc(150vw / var(--hud-s, 1)), calc(150svh / var(--hud-s, 1)))';
-type IntroStep = 'wait' | 'lines' | 'hold' | 'reveal' | 'done';
+type IntroStep = 'wait' | 'lines' | 'reveal' | 'done';
 
 /**
  * 線画の動画。<img> と同じ枠・同じ切り抜き(object-cover)で置き、絵の高さに合わせて縮めてずらす。
  * 光のにじみは同じ動画をぼかしてもう1枚重ねて作る(動画は不透明なので drop-shadow では光らない)。
  */
-const TitleLineIntro: React.FC<{ step: Exclude<IntroStep, 'wait'>; zoom: { v: string; ms: number }; onEnd: () => void }> = ({ step, zoom, onEnd }) => {
+const TitleLineIntro: React.FC<{
+  linesOut: boolean; zoom: { v: string; ms: number }; onEarly: () => void; onEnd: () => void;
+}> = ({ linesOut, zoom, onEarly, onEnd }) => {
   const ref = useRef<HTMLVideoElement>(null);
   const glowRef = useRef<HTMLVideoElement>(null);
   const [fit, setFit] = useState<string>('');
@@ -329,11 +333,13 @@ const TitleLineIntro: React.FC<{ step: Exclude<IntroStep, 'wait'>; zoom: { v: st
     ro.observe(v);
     // 再生が始まらない(自動再生の拒否・読めない形式・5秒たっても届かない)なら、絵へ進む。
     const giveUp = window.setTimeout(() => { if (v.currentTime === 0) onEnd(); }, 5000);
+    let early = false;
     v.play()?.catch(() => onEnd());
     void glowRef.current?.play()?.catch(() => undefined);
     // 速さの緩急と、にじみの動画の追従(ずれたら合わせる)。
     let raf = 0;
     const tick = () => {
+      if (!early && v.currentTime >= INTRO_COLOR_EARLY_S) { early = true; onEarly(); }
       const r = introRate(v.currentTime);
       if (v.playbackRate !== r) v.playbackRate = r;
       const g = glowRef.current;
@@ -347,14 +353,13 @@ const TitleLineIntro: React.FC<{ step: Exclude<IntroStep, 'wait'>; zoom: { v: st
     return () => { ro.disconnect(); window.clearTimeout(giveUp); cancelAnimationFrame(raf); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // 描き終わりの止め: 線が一度だけ灯る(上がり90ms・戻り260ms)。
-  useEffect(() => {
-    if (step !== 'hold') return;
+  // 描き切った瞬間: 線が一度だけ灯って(上がり90ms・戻り260ms)、それから消える。
+  const ended = () => {
     setFlash(true);
-    const t = window.setTimeout(() => setFlash(false), 90);
-    return () => window.clearTimeout(t);
-  }, [step]);
-  const gone = step === 'reveal' || step === 'done';
+    window.setTimeout(() => setFlash(false), 90);
+    onEnd();
+  };
+  const gone = linesOut;
   const common: React.CSSProperties = {
     width: TITLE_BOX_WIDTH,
     mixBlendMode: 'screen',
@@ -363,7 +368,7 @@ const TitleLineIntro: React.FC<{ step: Exclude<IntroStep, 'wait'>; zoom: { v: st
     translate: '-50% -50%', // Tailwind の中央寄せは transform に乗るので、上書きした分をここで戻す
     scale: zoom.v,
   };
-  const fade = `opacity ${INTRO_LINES_OUT_MS}ms cubic-bezier(0.2, 0.6, 0.3, 1), scale ${zoom.ms}ms cubic-bezier(0.16, 0.8, 0.3, 1)`;
+  const fade = `opacity ${INTRO_LINES_OUT_MS}ms cubic-bezier(0.2, 0.6, 0.3, 1) 120ms, scale ${zoom.ms}ms cubic-bezier(0.16, 0.8, 0.3, 1)`;
   return (
     <>
       <video
@@ -377,7 +382,7 @@ const TitleLineIntro: React.FC<{ step: Exclude<IntroStep, 'wait'>; zoom: { v: st
         ref={ref}
         src={assetUrl('opening/title-lineart.mp4')}
         muted playsInline preload="auto" aria-hidden
-        onEnded={onEnd}
+        onEnded={ended}
         onError={onEnd}
         className={TITLE_BOX_CLASS}
         style={{
@@ -392,8 +397,8 @@ const TitleLineIntro: React.FC<{ step: Exclude<IntroStep, 'wait'>; zoom: { v: st
 };
 
 const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForAssets, onDone, onReveal, openingActive = false }) => {
-  // 描き上げ: wait=オープニング(または更新情報)が明けるのを待っている / lines=線画を描いている / hold=描き終わりの止め /
-  // reveal=色が広がっている途中 / done=いつものタイトル。
+  // 描き上げ: wait=オープニング(または更新情報)が明けるのを待っている / lines=線画を描いている /
+  // reveal=色が広がっている途中(描き終わる少し前から・線はまだ描いている) / done=いつものタイトル。
   // ★社長指示2026-10-27「このタイトルはオープニングの後だよ」: 更新情報→オープニング→**ここで描き上げ**の順。
   // 更新情報もオープニングも出ない起動(版が既読=オープニングは START の後)は、出た時に描く。
   const [intro, setIntro] = useState<IntroStep>(() => (titleIntroWanted() ? 'wait' : 'done'));
@@ -407,17 +412,21 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
     const r = requestAnimationFrame(() => setZoom({ v: String(INTRO_ZOOM), ms: 2600 }));
     return () => cancelAnimationFrame(r);
   }, [intro]);
+  // 線が消え始めたか(描き切った/飛ばした)。色は線より先に入り始める(INTRO_COLOR_EARLY_S)。
+  const [linesOut, setLinesOut] = useState(false);
   const startReveal = () => {
-    setIntro(cur => (cur === 'lines' || cur === 'hold' ? 'reveal' : cur));
+    setIntro(cur => (cur === 'lines' ? 'reveal' : cur));
     setRevealAt(at => at ?? performance.now());
-    setZoom({ v: '1', ms: 1700 });
+    setZoom(z => (z.v === '1' && z.ms === 1700 ? z : { v: '1', ms: 1700 }));
   };
-  const endLines = () => setIntro(cur => (cur === 'lines' ? 'hold' : cur));
+  const endLines = () => { startReveal(); setLinesOut(true); };
   useEffect(() => {
-    if (intro === 'hold') { const t = window.setTimeout(startReveal, INTRO_HOLD_MS); return () => window.clearTimeout(t); }
-    if (intro === 'reveal') { const t = window.setTimeout(() => setIntro('done'), INTRO_REVEAL_MS + 200); return () => window.clearTimeout(t); }
-    return undefined;
-  }, [intro]);
+    if (intro !== 'reveal' || !linesOut || revealAt === null) return;
+    // 線が消え切り、色も広がり切ってから「いつものタイトル」へ。
+    const wait = Math.max(INTRO_LINES_OUT_MS + 250, revealAt + INTRO_REVEAL_MS + 200 - performance.now());
+    const t = window.setTimeout(() => setIntro('done'), wait);
+    return () => window.clearTimeout(t);
+  }, [intro, linesOut, revealAt]);
   // 色は逆光の中心(頭上の光の下)から外へ広がる。rAF で絵のマスクの半径を広げる(React は再描画しない)。
   const titleImgRef = useRef<HTMLImageElement>(null);
   useEffect(() => {
@@ -436,8 +445,8 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
   }, [revealAt]);
-  const introDrawing = intro === 'lines' || intro === 'hold'; // 描いている間は START を受け付けない(タップ=飛ばす)
-  const introBusy = introDrawing || intro === 'wait';
+  const introDrawing = intro === 'lines' || (intro === 'reveal' && !linesOut); // 描いている間は START を受け付けない(タップ=飛ばす)
+  const introBusy = intro === 'lines' || intro === 'wait'; // 色が入り始めるまで(曲・文字はここが明けてから)
   // 社長指示2026-10-27「色がついた直後からBGMは再生」: 色が乗り始めた瞬間(描き上げが無ければ出た瞬間)に1回だけ。
   const revealedRef = useRef(false);
   useEffect(() => {
@@ -547,7 +556,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   // `title-start` は「押す物」=このルート自身(タイトルは画面全体が開始ボタン=aria-labelしか名前が無かった)。
   return (
     <div
-      onClick={titleInteractive ? tapStart : introDrawing ? startReveal : undefined}
+      onClick={titleInteractive ? tapStart : introDrawing ? endLines : undefined}
       onKeyDown={handleKey}
       role={titleInteractive ? 'button' : undefined}
       tabIndex={titleInteractive ? 0 : -1}
@@ -584,13 +593,13 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           width: TITLE_BOX_WIDTH,
           // 描き上げ: 線画の間は隠す。色はマスク(上の rAF)で逆光の中心から広がり、寄りは線と同じ倍率で戻る。
           ...(!introRan ? {} : {
-            opacity: intro === 'lines' || intro === 'hold' || intro === 'wait' ? 0 : 1,
+            opacity: intro === 'lines' || intro === 'wait' ? 0 : 1,
             scale: zoom.v,
             transition: `scale ${zoom.ms}ms cubic-bezier(0.16, 0.8, 0.3, 1)`,
           }),
         }}
       />
-      {intro !== 'done' && intro !== 'wait' && <TitleLineIntro step={intro} zoom={zoom} onEnd={endLines} />}
+      {intro !== 'done' && intro !== 'wait' && <TitleLineIntro linesOut={linesOut} zoom={zoom} onEarly={startReveal} onEnd={endLines} />}
       {/* 色が来る瞬間、頭上の光の柱が先に灯る(120msで灯り500msで減衰)。 */}
       {introRan && revealAt !== null && intro !== 'done' && (
         <div className={TITLE_BOX_CLASS} style={{ width: TITLE_BOX_WIDTH }}>

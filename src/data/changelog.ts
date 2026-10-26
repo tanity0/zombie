@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5226', items: [
+    'タイトルの描き上げで、線を描き切る少し前から色が入り始める',
+  ] },
   { version: '0.25.5225', items: [
     'タイトルの描き上げは、オープニングを見終わった後に流れる。更新情報の後ろは暗いまま',
   ] },
