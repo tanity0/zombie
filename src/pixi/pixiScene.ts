@@ -365,7 +365,7 @@ import type { SceneLayers } from './layers';
 import {
   getTexture, PLAYER_ART_BASE_W, ESCORT_WALK_SHEETS, ESCORT_STAND_FRAME,
   FLAME_SHEET, FLAME_FRAMES, FLAME_FRAME_W, FLAME_FRAME_H, FLAME_LIGHT_FRAC, TORCH_STAND_RIM_ABOVE_FOOT,
-  avatarHeadDeltaPx, avatarHeadCxDeltaPx, GLEN_PART_ANIM_FRAMES, GLEN2_BODY_ANIM_FRAMES,
+  avatarHeadDeltaPx, avatarHeadCxDeltaPx, isAvatarHeadMeasured, GLEN_PART_ANIM_FRAMES, GLEN2_BODY_ANIM_FRAMES,
 } from './pixiTextures';
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
@@ -431,6 +431,9 @@ import { TELEGRAPH_TRACK_MS } from '../utils/telegraphTrack'; // §15追尾相�
  * (`textureMemoryMB()` は読み込んだ素材しか数えない)。新しく焼く物を足す時は必ずここを通すこと。
  * 数えるのは実ピクセル(`pixelWidth`)=GPUに載る実量。
  */
+/** アバターの焼き込みの解像度(体の絵の何倍で焼くか)と、持っておく焼きの上限。 */
+const AVATAR_BAKE_RES = 2;
+const AVATAR_BAKE_CACHE_MAX = 96;
 const bakeRenderTexture = (
   kind: BakeKind,
   opts: { width: number; height: number; antialias?: boolean; resolution?: number },
@@ -14826,8 +14829,10 @@ export class PixiScene {
 
     const seen = new Set<string>();
     this.shadowCulledCount = 0;
+    // ★アバターを焼き込んだ体の絵は、影には元の体の絵を使う(焼いた絵は trim を持つので影の切り詰め=★D-2/D-2b が外れ、
+    //   影が細く・足元の横補正が消える=品質監査2026-10-26 A-3)。影の形はアバター無しの時と同じ。
     const place = (req: ShadowCasterReq) =>
-      this.placeShadowV9(req, seen, now, horizonTrimLerp, footXTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights, this.torchLights);
+      this.placeShadowV9(req.texture ? { ...req, texture: this.avatarBakedSrc.get(req.texture) ?? req.texture } : req, seen, now, horizonTrimLerp, footXTrimLerp, ambDirX, ambDirY, lenRatio, densityMult, glowLights, this.torchLights);
 
     // ---- プレイヤー ----
     // §3-9-B: 登場演出中も影を出す(旧実装の「introActive中はスキップ」を撤廃)。
@@ -18417,7 +18422,19 @@ export class PixiScene {
     if (tex) {
       // v0.25.2465: テクスチャ割り当て漏れ=透明守護霊の修正(割り当ては必須のまま維持)。
       if (view.sprite.texture !== tex) view.sprite.texture = tex;
-      const sc = this.snapTexelScale(playerBaseScale(fakeGhost, tex, boxW, boxH) * dsc);
+      const gBase = playerBaseScale(fakeGhost, tex, boxW, boxH);
+      const sc = this.snapTexelScale(gBase * dsc);
+      // ★アバターの焼き込み(本体と同じ): 記録時のアバターを体のコマへ描き込んだ絵を出す。
+      this.ghostAvatarBaked = false;
+      {
+        const gAv = s.ghostBuild?.avatarId ?? null;
+        const gBk = gAv && AVATARS[gAv] ? AVATARS[gAv].parts.filter(pt => !pt.live) : []; // 記録のIDが台帳から消えていても落ちない
+        if (gAv && gBk.length > 0) {
+          const gk = warlordFullGhost && hasMurasame(fakeGhost);
+          const baked = this.avatarBakedBody(gAv, gBk, tex, bodyTexName2, avatarHeadBaselineTexName(gcls, warlordFullGhost, gk), gBase, boxW, boxH);
+          if (baked) { if (view.sprite.texture !== baked) view.sprite.texture = baked; this.ghostAvatarBaked = true; }
+        }
+      }
       view.sprite.scale.set(faceSign * sc, sc * actSqY);
       view.sprite.tint = GHOST_ALLY_TINT;
       view.sprite.position.set(
@@ -18473,7 +18490,7 @@ export class PixiScene {
     {
       const gAvatarId = s.ghostBuild?.avatarId ?? null;
       const gAvatarDef = gAvatarId ? AVATARS[gAvatarId] : null;
-      const gParts = gAvatarDef ? gAvatarDef.parts : [];
+      const gParts = gAvatarDef ? gAvatarDef.parts.filter(pt => !this.ghostAvatarBaked || pt.live) : [];
       const gWarlordKatana = warlordFullGhost && hasMurasame(fakeGhost);
       const gBaselineTexName = avatarHeadBaselineTexName(gcls, warlordFullGhost, gWarlordKatana);
       const gHeadDeltaY = tex ? avatarHeadDeltaPx(bodyTexName2, gBaselineTexName) * Math.abs(view.sprite.scale.y) : 0;
@@ -18783,6 +18800,85 @@ export class PixiScene {
   // 守護霊呼び出し(opts.zIndexBase指定): container=共有actorLayer(全アクター)なので前後は
   //   ghostKatanaBackと同じくzIndexで決める(addChild末尾+zIndex=footY±0.5)。
   // スプライトは一度作ったら使い回す(生成は初回のみ・毎フレームは位置/スケール更新だけ=プール済み)。
+  // ★アバターの焼き込み(社長「はい」2026-10-26「アバターの絵がずれる問題をなおしたい」→「プレイ時に焼き付けること可能?」)。
+  // 体の各コマ(待機・歩き・走り・近接の構え/振り抜き…)へ耳・尻尾を**描き込んだ1枚の絵**を、初めて表示する時に1回だけ作る。
+  // 本体スプライトはこの絵を出す=体の傾き・伸び縮み・反動・ノックバックの跳ね等、本体に掛かる動きが全部そのまま乗る
+  // (重ね描きは本体へ動きを足すたびに置いていかれ、6回以上直してきた)。
+  //  - 焼く絵は本体の絵と**同じ大きさ・同じ足元**として振る舞う(Texture の orig=本体の寸法、はみ出す耳・尻尾は
+  //    trim をマイナスへ広げて描く)=`tex.width` を読む倍率計算・アンカー(0.5,1)・縁の光等の写しは何も変わらない。
+  //  - 耳の位置は従来と同じ「コマごとの頭頂・頭の横中心の計測値」(pixiTextures)。計測が出る前は焼かず、従来の重ね描きで出す。
+  //  - `live: true` のパーツは焼かない(単体で動かす物)。焼くのは各コマを初めて出す時(1回きり)。
+  //  - キャッシュはアバターID×コマで持ち、上限を超えたら10秒使っていない物から捨てる。
+  //  - 焼いたパーツは体ごと左右反転する(`flipWithFacing: false` でも反転する=左右非対称のパーツは `live: true` にする)。
+  private avatarBakeCache = new Map<string, { rt: RenderTexture; tex: Texture; usedAt: number }>();
+  private avatarBakedSrc = new WeakMap<Texture, Texture>(); // 焼いた絵 → 元の体の絵
+  private playerAvatarBaked = false;
+  private ghostAvatarBaked = false;
+  private avatarBakedBody(
+    avatarId: string, parts: readonly AvatarPart[], bodyTex: Texture, bodyTexName: string, baselineTexName: string,
+    artPerBoxPx: number, boxW: number, boxH: number,
+  ): Texture | null {
+    if (!this.renderer || parts.length === 0 || !bodyTex || bodyTex.width <= 0) return null;
+    bodyTex = this.avatarBakedSrc.get(bodyTex) ?? bodyTex; // 焼いた絵を二重に焼かない(前のフレームの差し替えが残っていても元の絵へ戻す)
+    const nowMs = Date.now();
+    // 上限を超えたら、しばらく(10秒)使っていない物だけ捨てる(付け替えた古いアバター・別キャラのコマ)。
+    // 全部捨てると、同じフレームで既に貼った絵の元を壊す(本体→守護霊の順に呼ばれる=品質監査 B-7)。
+    if (this.avatarBakeCache.size > AVATAR_BAKE_CACHE_MAX) {
+      for (const [k, v] of this.avatarBakeCache) {
+        if (nowMs - v.usedAt > 10_000) { releaseBakedTexture('other', v.rt); this.avatarBakeCache.delete(k); }
+      }
+    }
+    const key = `${avatarId}|${bodyTexName}|${bodyTex.uid}|${Math.round(artPerBoxPx * 1000)}`;
+    const hit = this.avatarBakeCache.get(key);
+    if (hit && !hit.rt.destroyed) { hit.usedAt = nowMs; return hit.tex; }
+    if (!isAvatarHeadMeasured(bodyTexName) || !isAvatarHeadMeasured(baselineTexName)) return null; // 計測待ち=今回は重ね描き
+    const W = bodyTex.width, H = bodyTex.height; // orig(本体の寸法)
+    const toArt = 1 / Math.max(1e-6, artPerBoxPx); // 表示ボックスpx → 本体の絵のpx
+    const headDy = avatarHeadDeltaPx(bodyTexName, baselineTexName);
+    const headDx = avatarHeadCxDeltaPx(bodyTexName, baselineTexName);
+    // 足元=原点。パーツの置き場所と四角を本体の絵のpxで出す(本体の絵は右向き=右向きの値をそのまま使う)。
+    const placed: { tex: Texture; sc: number; x: number; y: number; part: AvatarPart }[] = [];
+    let minX = -W / 2, maxX = W / 2, minY = -H, maxY = 0;
+    for (const part of parts) {
+      const ptex = getTexture(part.tex);
+      if (!ptex || ptex.width <= 0) return null; // 素材待ち=今回は重ね描き(焼き損じを残さない)
+      const srcPx = part.sizeBasis === 'width' ? ptex.width : ptex.height;
+      const targetArt = (part.sizeBasis === 'width' ? boxW : boxH) * part.sizeFrac * toArt;
+      const sc = targetArt / Math.max(1, srcPx);
+      const x = part.offsetXFrac * boxW * toArt + headDx;
+      const y = part.offsetYFrac * boxH * toArt + (part.followsHead ? headDy : 0);
+      const w = ptex.width * sc, h = ptex.height * sc;
+      minX = Math.min(minX, x - part.anchorX * w); maxX = Math.max(maxX, x + (1 - part.anchorX) * w);
+      minY = Math.min(minY, y - part.anchorY * h); maxY = Math.max(maxY, y + (1 - part.anchorY) * h);
+      placed.push({ tex: ptex, sc, x, y, part });
+    }
+    const padL = Math.ceil(-W / 2 - minX), padR = Math.ceil(maxX - W / 2), padT = Math.ceil(-H - minY), padB = Math.ceil(maxY);
+    const rw = Math.ceil(W) + padL + padR, rh = Math.ceil(H) + padT + padB;
+    const fx = padL + W / 2, fy = padT + H; // 焼く絵の中の足元
+    const wrap = new Container();
+    for (const pl of placed.filter(q => q.part.layer === 'below')) {
+      const sp = new Sprite(pl.tex); sp.anchor.set(pl.part.anchorX, pl.part.anchorY); sp.scale.set(pl.sc); sp.position.set(fx + pl.x, fy + pl.y); wrap.addChild(sp);
+    }
+    const body = new Sprite(bodyTex); body.anchor.set(0.5, 1); body.position.set(fx, fy); wrap.addChild(body);
+    for (const pl of placed.filter(q => q.part.layer === 'above')) {
+      const sp = new Sprite(pl.tex); sp.anchor.set(pl.part.anchorX, pl.part.anchorY); sp.scale.set(pl.sc); sp.position.set(fx + pl.x, fy + pl.y); wrap.addChild(sp);
+    }
+    // 解像度は体の絵の AVATAR_BAKE_RES 倍(体のドットは最近傍でそのまま、耳・尻尾は従来の重ね描きに近い細かさで描ける=品質監査 A-2)。
+    const rt = bakeRenderTexture('other', { width: rw, height: rh, resolution: AVATAR_BAKE_RES });
+    rt.source.scaleMode = bodyTex.source.scaleMode; // 本体と同じ拡大の仕方(ドットはドットのまま)
+    this.renderBake(wrap, rt, true);
+    wrap.destroy({ children: true });
+    const tex = new Texture({
+      source: rt.source,
+      frame: new Rectangle(0, 0, rw, rh),
+      orig: new Rectangle(0, 0, W, H),
+      trim: new Rectangle(-padL, -padT, rw, rh),
+    });
+    this.avatarBakeCache.set(key, { rt, tex, usedAt: nowMs });
+    this.avatarBakedSrc.set(tex, bodyTex);
+    return tex;
+  }
+
   private syncAvatarPartLayer(
     pool: Sprite[], parts: AvatarPart[], above: boolean, container: Container,
     fb: { footX: number; footY: number; boxW: number; boxH: number },
@@ -19535,6 +19631,15 @@ export class PixiScene {
       const faceMul: number = wantFace;
       view.sprite.scale.set(sc * faceMul * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
       view.sprite.rotation = walkLean + actLean;
+      // ★アバターの焼き込み: 装備中なら、いま出す体のコマを耳・尻尾入りの絵へ差し替える(寸法・足元は同じ)。
+      this.playerAvatarBaked = false;
+      const bkAvatarId = useGameStore.getState().avatarId;
+      const bkParts = bkAvatarId && AVATARS[bkAvatarId] ? AVATARS[bkAvatarId].parts.filter(pt => !pt.live) : [];
+      if (bkAvatarId && bkParts.length > 0) {
+        const baked = this.avatarBakedBody(bkAvatarId, bkParts, view.sprite.texture, bodyTexName,
+          avatarHeadBaselineTexName(p.characterClass, warlordFull, warlordKatana), baseScale, fb.boxW, fb.boxH);
+        if (baked) { view.sprite.texture = baked; this.playerAvatarBaked = true; }
+      }
     }
     // ノックバック中の小さな跳ね(社長指示・敵と共通): knockbackUntil から進行度を逆算し sin の1山。
     const pKbHop = (p.knockbackUntil !== undefined && now < p.knockbackUntil)
@@ -19661,7 +19766,8 @@ export class PixiScene {
     {
       const avatarId = useGameStore.getState().avatarId;
       const avatarDef = avatarId ? AVATARS[avatarId] : null;
-      const parts = avatarDef ? avatarDef.parts : [];
+      // 焼き込めたコマでは、焼いていないパーツ(`live`)だけを重ねる。焼けなかった(計測待ち等)コマは従来どおり全部重ねる。
+      const parts = avatarDef ? avatarDef.parts.filter(pt => !this.playerAvatarBaked || pt.live) : [];
       // 頭頂追従(v0.25.3271): 「いま表示中のコマ」と「基準(待機絵)コマ」の頭頂差分(art px)に、
       // 本体の実表示スケール(baseScale×depthScale×演出squash込み=view.sprite.scale.yそのもの)を
       // 掛けて画面px化する。計測失敗/未計測は差分0(=現状と同じ表示)。

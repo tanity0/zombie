@@ -290,6 +290,9 @@ const headTopCache = new Map<string, number | null>();
 // 実測で前傾を正しく表すのは**頭部帯(コンテンツ上部18%)の横中心**(idle 39.0→run 47.5〜48.5px)。
 // 値は**フレーム中心基準(cx − w/2)**で持つ=キャンバス幅が違う素材どうしでも差分が座標系として成立。
 const headCxCache = new Map<string, number | null>();
+// ★画像の高さ(art px)。頭頂は「上端から数えた行」なので、足元(下端)基準で差を取るには高さが要る
+//   (コマごとに高さが違う=マークスマン待機64/走り67 等。上端基準の差だと走りで耳が3ドット沈んでいた・品質監査2026-10-26 A-1)。
+const headHCache = new Map<string, number>();
 const HEAD_BAND_FRAC = 0.18; // 頭部帯=コンテンツ高さの上から18%(実測でマークスマンの頭部を覆う)
 
 // ★計測の永続キャッシュ+リトライ(v0.25.3690・社長報告「またアバターずれてる。定期的にもどっちゃうのなぜ」):
@@ -300,8 +303,8 @@ const HEAD_BAND_FRAC = 0.18; // 頭部帯=コンテンツ高さの上から18%(�
 //    自動で失効して再計測(手動バンプ不要・assetUrlの規約に相乗り)。
 //  ②保存済みの値があれば fetch せず即採用(起動も軽くなる)。
 //  ③無ければ計測し、失敗時は2回までリトライ(1s/3s)。それでも駄目な時だけ従来どおり null(追従0)。
-const AVATAR_HEAD_LS_KEY = 'zombie:avatarHeadCache:v1';
-type HeadLsEntry = { top: number | null; cx: number | null };
+const AVATAR_HEAD_LS_KEY = 'zombie:avatarHeadCache:v2'; // v2=画像の高さ(h)を足した(v1の保存は読まない=計測し直し)
+type HeadLsEntry = { top: number | null; cx: number | null; h?: number };
 const headLsStore: Record<string, HeadLsEntry> = (() => {
   try {
     const raw = localStorage.getItem(AVATAR_HEAD_LS_KEY);
@@ -328,7 +331,8 @@ const loadImageWithRetry = async (src: string, retries: number): Promise<HTMLIma
 const measureHeadTop = async (name: string): Promise<void> => {
   const url = spritePath(name);
   const cached = headLsStore[url];
-  if (cached && typeof cached === 'object') {
+  if (cached && typeof cached === 'object' && (cached.top === null || typeof cached.h === 'number')) {
+    if (typeof cached.h === 'number') headHCache.set(name, cached.h);
     headTopCache.set(name, typeof cached.top === 'number' ? cached.top : null);
     headCxCache.set(name, typeof cached.cx === 'number' ? cached.cx : null);
     return;
@@ -358,6 +362,7 @@ const measureHeadTop = async (name: string): Promise<void> => {
       }
     }
     headTopCache.set(name, top);
+    headHCache.set(name, h);
     if (top === null) {
       headCxCache.set(name, null);
       headLsStore[url] = { top: null, cx: null }; saveHeadLs(); // 全行透明も決定的=保存
@@ -378,7 +383,7 @@ const measureHeadTop = async (name: string): Promise<void> => {
     }
     const cx = maxX >= minX ? (minX + maxX) / 2 - w / 2 : null;
     headCxCache.set(name, cx);
-    headLsStore[url] = { top, cx }; saveHeadLs(); // 成功値を保存=次回以降は失敗知らず・fetch不要
+    headLsStore[url] = { top, cx, h }; saveHeadLs(); // 成功値を保存=次回以降は失敗知らず・fetch不要
   } catch (e) {
     // リトライ2回でも失敗(回線等の一時事情)。保存はしない=次回起動で再挑戦。
     // このセッションは従来どおり追従0(null)へ落ちる(絵は出る・位置だけ素のオフセット)。
@@ -425,9 +430,11 @@ const measureAllAvatarHeadTops = (): Promise<void> => {
 
 /** 計測済みの頭頂行(art px)。未計測/計測失敗は null。 */
 export const getHeadTopRow = (name: string): number | null => headTopCache.get(name) ?? null;
+/** 頭頂の計測が済んでいるか(成功・失敗を問わず結果が出ているか)。アバターの焼き込みは計測が出るまで待つ。 */
+export const isAvatarHeadMeasured = (name: string): boolean => headTopCache.has(name);
 
 /**
- * 「いま表示中のテクスチャ」と「基準(待機絵)テクスチャ」の頭頂差分(art px・下=正)。
+ * 「いま表示中のテクスチャ」と「基準(待機絵)テクスチャ」の頭頂差分(art px・足元基準・下=正)。
  * どちらか一方でも未計測/計測失敗なら 0(=現状と同じ表示・フォールバック)。
  * 呼び出し側(pixiScene)がこれに実際の表示スケール(depthScale込み)を掛けて画面pxへ変換する。
  */
@@ -435,7 +442,10 @@ export const avatarHeadDeltaPx = (currentTexName: string, baselineTexName: strin
   const cur = headTopCache.get(currentTexName);
   const base = headTopCache.get(baselineTexName);
   if (cur == null || base == null) return 0;
-  return cur - base;
+  // 足元(下端)からの頭頂の高さの差(体の絵は足元基準で置く)。高さが無い(古い保存)時は従来の上端基準。
+  const hc = headHCache.get(currentTexName), hb = headHCache.get(baselineTexName);
+  if (hc === undefined || hb === undefined) return cur - base;
+  return (cur - hc) - (base - hb);
 };
 
 /**
