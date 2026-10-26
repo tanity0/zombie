@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5220', items: [
+    'ゲーム内容の変更はありません。',
+  ] },
   { version: '0.25.5219', items: [
     '幻影が、間合いに入った瞬間に振って近接を弾き返すことがなくなった。素早く踏み込んで斬れば先に届く',
     '幻影が近接を弾ける時間が、こちらのカウンターと同じ長さになった',
