@@ -9,6 +9,7 @@
 // Nearest-neighbour scaling keeps the pixel art crisp at any zoom, matching
 // the Canvas2D path's `imageSmoothingEnabled = false`.
 
+import { PLAYER_HEAD_ANCHORS } from '../data/playerHeadAnchors'; // アバターが付く頭の位置の台帳(社長「今後も流用するので覚えておいて」2026-10-26)
 import { Assets, Rectangle, Texture } from 'pixi.js';
 import { ALL_VARIANT_TEXTURES, ENEMY_VARIANT_SETS } from '../utils/enemyVariant';
 import { allEnemySheets, sheetDeferred, sheetStageGroup } from '../utils/enemySheets';
@@ -431,7 +432,7 @@ const measureAllAvatarHeadTops = (): Promise<void> => {
 /** 計測済みの頭頂行(art px)。未計測/計測失敗は null。 */
 export const getHeadTopRow = (name: string): number | null => headTopCache.get(name) ?? null;
 /** 頭頂の計測が済んでいるか(成功・失敗を問わず結果が出ているか)。アバターの焼き込みは計測が出るまで待つ。 */
-export const isAvatarHeadMeasured = (name: string): boolean => headTopCache.has(name);
+export const isAvatarHeadMeasured = (name: string): boolean => name in PLAYER_HEAD_ANCHORS || headTopCache.has(name);
 
 /**
  * 「いま表示中のテクスチャ」と「基準(待機絵)テクスチャ」の頭頂差分(art px・足元基準・下=正)。
@@ -439,6 +440,9 @@ export const isAvatarHeadMeasured = (name: string): boolean => headTopCache.has(
  * 呼び出し側(pixiScene)がこれに実際の表示スケール(depthScale込み)を掛けて画面pxへ変換する。
  */
 export const avatarHeadDeltaPx = (currentTexName: string, baselineTexName: string): number => {
+  // ★頭の位置の台帳(src/data/playerHeadAnchors.ts)が正。両方のコマが載っていれば台帳の頭頂の高さの差。
+  const ac = PLAYER_HEAD_ANCHORS[currentTexName], ab = PLAYER_HEAD_ANCHORS[baselineTexName];
+  if (ac && ab) return ab.y - ac.y; // 下=正(頭が低いコマほど正)
   const cur = headTopCache.get(currentTexName);
   const base = headTopCache.get(baselineTexName);
   if (cur == null || base == null) return 0;
@@ -455,6 +459,8 @@ export const avatarHeadDeltaPx = (currentTexName: string, baselineTexName: strin
  * 画面px化する(ミラー時は符号が反転して向きが自動的に合う)。未計測/計測失敗は 0(=現状表示)。
  */
 export const avatarHeadCxDeltaPx = (currentTexName: string, baselineTexName: string): number => {
+  const ac = PLAYER_HEAD_ANCHORS[currentTexName], ab = PLAYER_HEAD_ANCHORS[baselineTexName];
+  if (ac && ab) return ac.x - ab.x; // 台帳が正(頭の中心の横位置の差)
   const cur = headCxCache.get(currentTexName);
   const base = headCxCache.get(baselineTexName);
   if (cur == null || base == null) return 0;
