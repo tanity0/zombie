@@ -14,7 +14,7 @@ import {
 } from './phantomTick';
 import { phantomHitGate, playerIframeApplies } from './phantomGate';
 import { GUARDIAN_PHANTOM_TUNING as GP_T, PVP_DAMAGE_SCALE } from './phantomScript';
-import { phantomMeleeDamage } from './phantomTick';
+import { phantomMeleeDamage, reachSwingReady } from './phantomTick';
 import { COUNTER_REACH_DECL } from './counterReach';
 import { usesPostureSystem, applyBossPostureDamage } from './bossPosture';
 import { strongestGuardian } from '../data/fixedGuardians';
@@ -32,6 +32,18 @@ const START_GT = 10_000_000;
 const ORIGIN = 50_000; // 原点から遠く離す=施設/街プロップと無縁
 
 /** 幻影1体+プレイヤーの盤面を作り、tickを手動で進めるヘルパ(bountyTick.test.ts の setup を踏襲)。 */
+/**
+ * 間合いに入ってから人の反応の下限が経った状態の tick 状態(`reachSwingReady`・2026-10-26)。
+ * このファイルの多くの試験は「既に間合いに居る幻影が振る」場面を見るので、入った時刻を遠い過去に置く。
+ * 間合いへの出入りそのものは下の「反応の下限」の試験で見る。
+ */
+const primedState = (): ReturnType<typeof createPhantomTickState> => {
+  const st = createPhantomTickState();
+  st.activeId = useGameStore.getState().enemies.find(x => x.type === 'guardian-phantom')?.id ?? null;
+  st.reachEnteredAt = -Infinity;
+  return st;
+};
+
 const setup = (playerOffsetX: number, over: Partial<Enemy> = {}) => {
   const e = spawnEnemyAt(GUARDIAN_PHANTOM_TYPE, ORIGIN, ORIGIN, START_GT);
   Object.assign(e, over);
@@ -45,7 +57,7 @@ const setup = (playerOffsetX: number, over: Partial<Enemy> = {}) => {
     },
   }));
   let gt = START_GT;
-  const s = createPhantomTickState();
+  const s = primedState();
   const step = (ms: number): void => {
     gt += ms;
     useGameStore.setState({ gameTime: gt });
@@ -118,7 +130,7 @@ describe('① 即発近接(予告なし・プレイヤーと同じ周期)', () =
 describe('★プレイヤーが幻影の近接をカウンターする(v0.25.3869)', () => {
   it('カウンター窓が開いていれば、幻影の斬撃は通らず幻影の体勢だけが削れる(社長指示2026-08-27)', () => {
     const { cur } = setup(60);
-    const s = createPhantomTickState();
+    const s = primedState();
     runPhantomTick(cur(), s, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
     expect(cur().gpPendingSwingAt).toBeDefined(); // 幻影は前隙中
     // プレイヤーが窓を開けている(=幻影より後に振った状態)。
@@ -138,7 +150,7 @@ describe('★プレイヤーが幻影の近接をカウンターする(v0.25.386
 
   it('カウンターされた幻影は「敵と同じ」ノックバックを受ける(社長指示)', () => {
     const { cur } = setup(60);
-    const s = createPhantomTickState();
+    const s = primedState();
     runPhantomTick(cur(), s, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
     useGameStore.setState(ps => ({ player: { ...ps.player, counterWindowEnd: Date.now() + 10_000 } }));
     const gt = START_GT + 16 + MELEE_WINDUP_MS;
@@ -151,7 +163,7 @@ describe('★プレイヤーが幻影の近接をカウンターする(v0.25.386
 
   it('窓が閉じていれば従来どおり幻影の斬撃が通る(窓の有無だけが分岐)', () => {
     const { cur } = setup(60);
-    const s = createPhantomTickState();
+    const s = primedState();
     runPhantomTick(cur(), s, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
     useGameStore.setState(ps => ({ player: { ...ps.player, counterWindowEnd: 0 } }));
     const hpPlayer = useGameStore.getState().player.health;
@@ -354,7 +366,7 @@ describe('★成果物監査の再発防止(v0.25.3640)', () => {
     // setupのstepはNOOP固定なので、ここは直接runPhantomTickを1回だけ回す。
     const st = useGameStore.getState();
     const e = st.enemies[0];
-    const s = createPhantomTickState();
+    const s = primedState();
     runPhantomTick(e, s, START_GT + 16, 0.016, 1, START_GT + 16, sfx, () => 0.999); // 振り始め(前隙)
     expect(hurt).toBe(0); // ★前隙中はまだ当たっていない
     const gt1 = START_GT + 16 + MELEE_WINDUP_MS;
@@ -364,7 +376,7 @@ describe('★成果物監査の再発防止(v0.25.3640)', () => {
     // 近接はプレイヤーのi-frameを無視して通るようになったため)。代わりに訓練(M0)の「HP1で
     // 踏みとどまる」を使う=amountが0にクランプされHPが動かない、まさに旧バグと同じ形。
     useGameStore.setState(ps => ({ farBackdrop: 'tutorial', player: { ...ps.player, health: 1 } }));
-    const s2 = createPhantomTickState();
+    const s2 = primedState();
     runPhantomTick(useGameStore.getState().enemies[0], s2, START_GT + 5000, 0.016, 1, START_GT + 5000, sfx, () => 0.999);
     const gt2 = START_GT + 5000 + MELEE_WINDUP_MS;
     runPhantomTick(useGameStore.getState().enemies[0], s2, gt2, 0.016, 1, gt2, sfx, () => 0.999);
@@ -380,7 +392,7 @@ describe('★成果物監査の再発防止(v0.25.3640)', () => {
     // プレイヤーをi-frame中にする(直前に何かで被弾した状態)。
     useGameStore.setState(ps => ({ player: { ...ps.player, invulnerable: true, invulnerableTime: Date.now() } }));
     const before = useGameStore.getState().player.health;
-    const s2 = createPhantomTickState();
+    const s2 = primedState();
     runPhantomTick(useGameStore.getState().enemies[0], s2, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
     const gt3 = START_GT + 16 + MELEE_WINDUP_MS;
     runPhantomTick(useGameStore.getState().enemies[0], s2, gt3, 0.016, 1, gt3, NOOP_PHANTOM_SFX, () => 0.999);
@@ -434,8 +446,11 @@ describe('★成果物監査の再発防止(v0.25.3640)', () => {
   });
 });
 
-describe('③ パリィ(スイングの窓)→ 次tickで割り込み反撃', () => {
-  it('窓の中の近接はパリィされ gpParriedAt が立ち、次tickで周期を無視して振り返す', () => {
+// ★v0.25.3984(社長指示2026-08-27「近接カウンターはカウンターされた側の体勢値だけ削れる」)で
+// 旧D3「周期を無視した即反撃」は撤去済み。この試験は旧仕様を書いたまま、状態の初期化(個体の入れ替わりで
+// 周期タイマーが0に戻る)のおかげで偶然通っていた=2026-10-26 に今の仕様へ書き直した。
+describe('③ パリィ(スイングの窓)→ 即反撃は出ない(周期どおり)', () => {
+  it('窓の中の近接はパリィされ gpParriedAt が立つ。周期が明けるまで振り返さない', () => {
     const { id, step, cur, state } = setup(40);
     // ★v9: 成立条件は「幻影が今しがた振った=窓が開いている」こと(抽選ではない)。
     armSwing(id);
@@ -446,11 +461,12 @@ describe('③ パリィ(スイングの窓)→ 次tickで割り込み反撃', ()
     const parried = cur();
     expect(parried.gpParriedAt).toBe(useGameStore.getState().gameTime);
     expect(parried.health).toBe(hp);                       // パリィ=ダメージ0
-    // 近接周期を遠い未来へ置く=「周期を無視した割り込み」であることを固定する。
+    // 近接周期を遠い未来へ置く=周期を無視した割り込みが無いことを固定する。
+    const swungAt = cur().gpSwingAt;
     state.nextMeleeAt = START_GT + 1_000_000;
     step(16);
-    expect(cur().gpSwingAt).toBeDefined();                 // 反撃が出た
-    expect(state.nextMeleeAt).toBeLessThan(START_GT + 1_000_000); // 反撃後は周期タイマーがリセットされる
+    expect(cur().gpSwingAt).toBe(swungAt);                 // 新しい振りは出ない
+    expect(state.nextMeleeAt).toBe(START_GT + 1_000_000);  // 周期タイマーはそのまま
   });
 });
 
@@ -692,5 +708,33 @@ describe('被弾反撃: 幻影の近接も窓を開く(社長指示2026-10-10「
       opened = useGameStore.getState().hitRetaliation?.fromId === id;
     }
     expect(opened).toBe(true);
+  });
+});
+
+// ★社長「幻影があり得ない反応速度で近接をカウンターしてる気がする」(2026-10-26): 間合いに入ったその瞬間に振ると、
+// 振りがそのままパリィの窓になるので、踏み込んで斬った一撃(前隙200ms)を反応0msで弾いていた。
+describe('★間合いに入ってから人の反応の下限が経つまで振らない', () => {
+  it('reachSwingReady: 入った瞬間は振れない・下限が経てば振れる・外へ出たら数え直し', () => {
+    const R = HUMAN_REACTION_MS;
+    let g = reachSwingReady(true, null, 1000, R);
+    expect(g).toEqual({ enteredAt: 1000, ready: false });
+    g = reachSwingReady(true, g.enteredAt, 1000 + R - 1, R);
+    expect(g.ready).toBe(false);
+    g = reachSwingReady(true, g.enteredAt, 1000 + R, R);
+    expect(g.ready).toBe(true);
+    expect(reachSwingReady(false, g.enteredAt, 5000, R)).toEqual({ enteredAt: null, ready: false });
+  });
+  it('踏み込んで斬った一撃は、幻影の窓が開く前に当たる(先手が通る)', () => {
+    // プレイヤーが間合いに入った瞬間に押した: 当たりは前隙の後。幻影が振り始められるのは入って反応の下限の後。
+    expect(MELEE_WINDUP_MS).toBeLessThan(phantomProfile().reactionMs);
+  });
+  it('間合いに入った直後の tick では振らず、反応の下限の後に振る', () => {
+    const { cur } = setup(40);
+    const s = createPhantomTickState(); // 入った時刻を持っていない=今入った
+    runPhantomTick(cur(), s, START_GT + 16, 0.016, 1, START_GT + 16, NOOP_PHANTOM_SFX, () => 0.999);
+    expect(cur().gpSwingAt).toBeUndefined();
+    const t = START_GT + 16 + phantomProfile().reactionMs;
+    runPhantomTick(cur(), s, t, 0.016, 1, t, NOOP_PHANTOM_SFX, () => 0.999);
+    expect(cur().gpSwingAt).toBe(t);
   });
 });

@@ -4,10 +4,10 @@
 // 機構が生きていることの証明と、この経路の取りこぼし再発防止として恒久で残す。
 //
 // ★research/GHOST_BOSS.md v9(パリィの反応速度モデル化)で成立条件が変わった:
-// 近接パリィは counterChance の抽選ではなく、**幻影のスイングが開けた窓(COUNTER_WINDOW)**。
+// 近接パリィは counterChance の抽選ではなく、**幻影のスイングが開けた窓(COUNTER_ACCEPT_MS=プレイヤーのカウンター受付と同じ長さ)**。
 // よってこの経路も「窓の中は弾かれる/窓の外は素通り」の2ケースで固定する。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useGameStore, COUNTER_WINDOW } from './gameStore';
+import { useGameStore, COUNTER_ACCEPT_MS } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -41,7 +41,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 
 describe('診断: 通常斬り(triggerCounter)で幻影のパリィが発火するか', () => {
   it('窓の中(幻影が振った直後)なら、掃引がパリィ(gpParriedAt)になる', () => {
-    const e = setup(COUNTER_WINDOW - 50); // 窓の終わり際でもまだ開いている
+    const e = setup(COUNTER_ACCEPT_MS - 50); // 窓の終わり際でもまだ開いている
     const hp0 = e.health;
     useGameStore.getState().triggerCounter();
     const after = useGameStore.getState().enemies.find(x => x.id === e.id)!;
@@ -51,7 +51,7 @@ describe('診断: 通常斬り(triggerCounter)で幻影のパリィが発火す�
   });
 
   it('窓の外(スイングの隙/一度も振っていない)なら素通りしてダメージが通る', () => {
-    for (const swingAgo of [COUNTER_WINDOW, null]) {
+    for (const swingAgo of [COUNTER_ACCEPT_MS, null]) {
       useGameStore.getState().resetGame('assault');
       const e = setup(swingAgo);
       const hp0 = e.health;

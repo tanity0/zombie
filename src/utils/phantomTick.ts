@@ -41,7 +41,7 @@ import {
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
   meleeLungePx, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ関数=武器別も揃う)
   MELEE_RADIUS, WHIP_LENGTH_BY_LEVEL, whipLevel, // research/LUNGE_DODGE.md §4(b): プレイヤーの近接の届く距離(武器別)
-  COUNTER_WINDOW,                               // GHOST_BOSS.md v10: 弾を打ち返す振りを出す時機=着弾が窓の長さ以内
+  COUNTER_ACCEPT_MS,                            // GHOST_BOSS.md v10: 弾を打ち返す振りを出す時機=着弾が窓(プレイヤーの受付と同じ長さ)以内
   playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
   showPvpFatalOnPlayerPresentation,             // ★2026-08-27: 幻影→プレイヤーの致命もKILL演出(ズーム)
   skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
@@ -369,6 +369,12 @@ export interface PhantomTickState {
    * (上限で古いものから捨てると、弾が多い時に同じ弾で2回決め直す=品質監査 A-3)。
    */
   lunge?: { closingSince: number | null; closeInJudged: boolean; bulletPlans: Map<string, BulletPlan | 'done'> };
+  /**
+   * ★プレイヤーが近接の間合いに入った時刻(gameTime・間合いの外なら null)。間合いに入ってから
+   * 人の反応の下限(`phantomProfile().reactionMs`≥250ms)が経つまで、間合いを理由には振り始めない
+   * (社長「幻影があり得ない反応速度で近接をカウンターしてる」2026-10-26・`reachSwingReady`)。
+   */
+  reachEnteredAt?: number | null;
 }
 
 export const createPhantomTickState = (): PhantomTickState => ({
@@ -392,6 +398,22 @@ const resetPhantomRunState = (s: PhantomTickState): void => {
   s.reloadingWeaponId = '';
   s.growthAtkMult = 1;
   s.lunge = undefined;
+  s.reachEnteredAt = null;
+};
+
+/**
+ * ★間合いを理由に振ってよいか(純関数)。幻影の振りは攻撃であると同時にパリィの窓でもあるので、
+ * 間合いに入った**その瞬間**に振ると、踏み込んで斬ったプレイヤーの一撃(前隙200ms)を反応0msで弾けてしまう
+ * (社長「幻影があり得ない反応速度で近接をカウンターしてる」2026-10-26。SAME_ARENA §8 で見つけていた
+ * 「人に反応できない攻撃を弾く」と同じ根)。⇒ 間合いに入ってから反応の下限が経つまでは振らない。
+ * 間合いの外に出たら数え直し。弾への対処・詰めを避ける踏み込みは別の門(既に反応の下限が掛かっている)。
+ */
+export const reachSwingReady = (
+  inReach: boolean, enteredAt: number | null | undefined, gameTime: number, reactionMs: number,
+): { enteredAt: number | null; ready: boolean } => {
+  if (!inReach) return { enteredAt: null, ready: false };
+  const at = enteredAt ?? gameTime;
+  return { enteredAt: at, ready: gameTime - at >= reactionMs };
 };
 
 /** 人格ごとの抜け方(記録から写す・人格は個体ごとに固定なので名前で1回だけ組む)。 */
@@ -456,9 +478,9 @@ const pickPhantomEscapeLunge = (
     }
     if (act || !canSwing || plan === 'done' || plan === 'take') continue;
     if (plan === 'counter') {
-      // 着弾までが振りの窓(COUNTER_WINDOW)以内になったら普通の振り=窓の中で着く→ゲートが打ち返す。
+      // 着弾までが振りの窓(COUNTER_ACCEPT_MS=プレイヤーの受付と同じ長さ)以内になったら普通の振り=窓の中で着く→ゲートが打ち返す。
       const eta = bulletEtaMs(bcx, bcy, radius, p);
-      if (eta !== null && eta <= COUNTER_WINDOW) { act = { kind: 'counter' }; actId = p.id; }
+      if (eta !== null && eta <= COUNTER_ACCEPT_MS) { act = { kind: 'counter' }; actId = p.id; }
     } else {
       const dir = phantomBulletLungeDir(bcx, bcy, radius, walkSpeed, lungePx, MELEE_LUNGE_MS, p);
       if (dir) { act = { kind: 'escape', dir }; actId = p.id; }
@@ -1139,7 +1161,10 @@ export const runPhantomTick = (
   const escapeDir = bulletAct?.kind === 'escape' ? bulletAct.dir : null;
   // GHOST_BOSS.md v10: 弾を打ち返すための振り=普通の振り(踏み込みはプレイヤーの方・間合いの外なら空振り=プレイヤーが弾を返す時と同じ操作)。
   const counterSwing = bulletAct?.kind === 'counter';
-  if (canSwing && (escapeDir !== null || counterSwing || edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach)) {
+  // 間合いを理由に振るのは、間合いに入ってから人の反応の下限が経ってから(reachSwingReady)。
+  const reachGate = reachSwingReady(edgeDistTo(bcx, bcy, player) <= GP_T.melee.reach, s.reachEnteredAt, newGameTime, phantomProfile().reactionMs);
+  s.reachEnteredAt = reachGate.enteredAt;
+  if (canSwing && (escapeDir !== null || counterSwing || reachGate.ready)) {
     // 振り始め: 窓・絵・SE だけ(プレイヤーの beginMeleeSwing と同じ分割)。
     patch.gpSwingAt = newGameTime;
     patch.gpSwingAngle = Math.atan2((player.y + player.height / 2) - bcy, (player.x + player.width / 2) - bcx);

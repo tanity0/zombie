@@ -91,7 +91,7 @@ export interface PhantomHitGateInput {
    */
   gpSwingAt?: number;
   /**
-   * 近接パリィの窓の長さ(ms)。呼び出し側がプレイヤーと同じ `COUNTER_WINDOW` を渡す
+   * 近接パリィの窓の長さ(ms)。呼び出し側がプレイヤーのカウンター受付と同じ `COUNTER_ACCEPT_MS` を渡す
    * ——幻影のスイングは「攻撃であり、同時にカウンター窓でもある」=プレイヤーの機構の鏡。
    */
   swingWindowMs: number;

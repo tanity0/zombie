@@ -3526,7 +3526,9 @@ const gatePhantomHit = (
   // 近接パリィの窓: **storeに入った**スイング打刻を起点に、プレイヤーと同じ長さだけ開く
   // (幻影tickのパッチ合成が同フレーム後段なら1フレーム(16ms)の取りこぼしが出るが許容=仕様)。
   gpSwingAt: enemy.gpSwingAt,
-  swingWindowMs: COUNTER_WINDOW,
+  // ★窓の長さはプレイヤーのカウンター受付(COUNTER_ACCEPT_MS)と同じ。v0.25.3943 で受付を「振り1回の長さ」(COUNTER_WINDOW=400)
+  //   から分けた時に、ここだけ400のまま残っていた=幻影だけ受付が3割長かった(社長「あり得ない反応速度でカウンター」2026-10-26)。
+  swingWindowMs: COUNTER_ACCEPT_MS,
   // 対人ダメージ1/10(社長裁定2026-08-20「一旦」)。幻影以外は1=完全恒等。
   pvpDamageScale: isGuardianPhantom(enemy.type) ? PVP_DAMAGE_SCALE : 1,
   gpHitAt: enemy.gpHitAt,
