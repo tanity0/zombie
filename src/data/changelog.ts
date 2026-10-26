@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5218', items: [
+    'ヘビーガンナーとマークスマンの近接の振り、マークスマンの走りで猫耳が頭から外れていたのが直った',
+  ] },
   { version: '0.25.5217', items: [
     '猫耳と尻尾がキャラの絵に描き込まれるようになり、走っても攻撃しても体から離れなくなった',
     '走っている時に耳が頭に少し沈んだり浮いたりしていたのが直った',
