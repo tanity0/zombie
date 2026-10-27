@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5232', items: [
+    '敵を倒した時の血の破裂が見えにくかったので、大きく、明るい赤にした',
+  ] },
   { version: '0.25.5231', items: [
     'タイトルの描き上げで、線と色の絵が少しずれて重なっていたのが直った',
   ] },

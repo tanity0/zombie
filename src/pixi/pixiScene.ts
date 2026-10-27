@@ -37820,13 +37820,15 @@ export class PixiScene {
       const ds = this.depthScaleEnemy(e.floorY);
       const sm = Math.min(e.scale, 1.8) * ds; // 1片の大きさは頭打ち(量は数と距離で出す)
       const kOf = (px: number, n: number) => Math.max(1, Math.round((px * sm) / n));
-      const kGob = BLOOD_GOB_PX.map((n, i) => kOf([7, 11, 15][i], n));
-      const kDrop = Math.max(1, Math.round(sm));
-      const kStain = kOf(13, 14);
+      // ★v0.25.5232「目視で確認できない」: 実機の縮尺で塊と滴が数pxにしかならず見えなかった=約2倍へ(最小2倍)。
+      const kGob = BLOOD_GOB_PX.map((n, i) => Math.max(2, kOf([14, 22, 30][i], n)));
+      const kDrop = Math.max(2, Math.round(2 * sm));
+      const kStain = Math.max(2, kOf(26, 14));
       const kStar = kOf(18, 24);
       const kPool = Math.max(1, Math.round((28 * e.scale * ds) / 26));
       // シートの芯: ゾンビで1倍(70px)、大きい敵ほど整数倍で大きく(2.2倍で頭打ち)。
-      const kSheet = Math.max(1, Math.round(0.9 * Math.min(e.scale, 2.2) * ds));
+      // ★v0.25.5232: 1倍(70px)だとゾンビの体より小さく見えなかった=ゾンビで2倍(140px)・大きい敵ほど整数倍(上限5倍)。
+      const kSheet = Math.max(2, Math.round(2 * Math.min(e.scale, 2.5) * ds));
       c = new Container();
       const ground = new Container();
       const flash = new Sprite(getHitCoreGlowTexture());
@@ -37861,7 +37863,7 @@ export class PixiScene {
     c.visible = true;
     // 床の血の色: 着地から1秒で暗く沈む(乾く)。
     const dryTint = (since: number) => {
-      const v = Math.round(0x8a - (0x8a - 0x5a) * Math.min(1, Math.max(0, since) / BLOOD_BURST_DARKEN_MS));
+      const v = Math.round(0xd0 - (0xd0 - 0x80) * Math.min(1, Math.max(0, since) / BLOOD_BURST_DARKEN_MS));
       return (v << 16) | (v << 8) | v;
     };
     // 床の血の消え: 片ごとに±600msずらし、最後の800msで ease-in。

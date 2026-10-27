@@ -14,10 +14,11 @@ const lcg = (seed: number) => {
   return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
 };
 const hex = (c: string): [number, number, number] => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
-// ダークファンタジーの血: ほぼ黒い深紅。光が当たる1ドットだけ明るい(芯の絵だけ)。
-const HI = hex('#8e1712');
-const MID = hex('#560909');
-const LOW = hex('#2a0304');
+// 血の色。★v0.25.5232 社長指摘「血のVFX、目視で確認できない」: 監査の「ほぼ黒い深紅」(#8e1712/#560909/#2a0304)は
+// 夜の暗いステージで地面に溶けて見えなかった=明るい赤へ戻す(床の跡は描画側の tint で乾いて暗くなる)。
+const HI = hex('#d42a1e');
+const MID = hex('#9a1010');
+const LOW = hex('#560707');
 const SHINE = hex('#c8604e');
 
 const toTex = (W: number, H: number, paint: (set: (x: number, y: number, c: [number, number, number], a?: number) => void) => void): Texture => {
@@ -205,7 +206,7 @@ export const BLOOD_BURST_GRAVITY = 1500;
 export const BLOOD_BURST_FLASH_MS = 33;
 /** 芯=社長支給の血の破裂シート(fx/blood-burst)のコマ数と尺。 */
 export const BLOOD_BURST_SHEET_FRAMES = 8;
-export const BLOOD_BURST_SHEET_MS = 520;
+export const BLOOD_BURST_SHEET_MS = 720;
 export const BLOOD_BURST_POP_MS = 150;
 export const BLOOD_BURST_MIST_MS = 320;
 export const BLOOD_BURST_POOL_MS = 400;
