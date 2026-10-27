@@ -4856,11 +4856,8 @@ export class PixiScene {
   // PACING_PUZZLE.md §5.14 M13: 宿敵(ネームド)の頭上名前ラベル。同時1体・生成は湧き時1回だけ
   // なのでPixi Text可(CLAUDE.mdの「まれなcallout枠」)。毎フレーム再生成はしない=位置追従のみ。
   private namedFoeLabels = new Map<string, Text>();
-  // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-3是正・錬金砲): 石(Enemy.alchemyStoneStage)の見え方。
-  // 敵の頭上に金の点を段数ぶん(1〜3個)。pooled Graphics(1個体1枚・専用素材は不要)。
-  private alchemyStoneMarkers = new Map<string, Graphics>();
   // 社長指示2026-10-27「的に金の岩が塊としてくっついていき、溜まり具合で大きくなっていく」: 石の段数を体に貼り付く
-  // 金の岩の塊で見せる(頭上の点はそのまま残す)。1個体につき岩12個+割れ目の光3+影1+光1(使い回し・生成は石が付いた時だけ)。
+  // 金の岩の塊で見せる(旧・頭上の点は2026-10-27に撤去)。1個体につき岩12個+割れ目の光3+影1+光1(使い回し・生成は石が付いた時だけ)。
   // 砕けた欠片は個体から切り離して alchemyShards で最後まで描き切る(慣性MUST)。
   private alchemyRockFx = new Map<string, {
     c: Container; rocks: Sprite[]; cracks: (Sprite | null)[]; glow: Sprite; shadow: Sprite; specs: AlchemyRockSpec[];
@@ -16383,8 +16380,6 @@ export class PixiScene {
         if (sweepStreakSp) { sweepStreakSp.destroy(); this.surielSweepStreakFx.delete(id); }
         const nameLabel = this.namedFoeLabels.get(id);
         if (nameLabel) { nameLabel.destroy(); this.namedFoeLabels.delete(id); }
-        const stoneDots = this.alchemyStoneMarkers.get(id);
-        if (stoneDots) { stoneDots.destroy(); this.alchemyStoneMarkers.delete(id); }
         this.shatterAlchemyRocks(id, now); // 退場・討伐でも砕けて散る(散り終わったら tickAlchemyRockShatter が片付ける)
         // §6.38実機FB1追記(社長実測2026-08-15「討伐時に武器スプライトが消えず残った」・v0.25.3408):
         // 賞金首はcorpseEligible外=死亡と同時に`enemies`から即除去される(triggerDramaticDeathは
@@ -21888,35 +21883,11 @@ export class PixiScene {
       if (label) label.visible = false;
     }
 
-    // UNIQUE_WEAPONS.md §16-5c(バッチD検収A-3是正・錬金砲): 石の段数を敵の頭上に金の点で示す
-    // (1〜3個)。名前ラベルより少し高い位置に置く(宿敵/クエスト対象へ石が付いても重ならない)。
+    // 錬金砲の石: 体に付く金の岩の塊で段数を見せる(syncAlchemyRocks)。
+    // 旧・頭上の金の点(UNIQUE_WEAPONS.md §16-5c)は社長指示2026-10-27「消して」で撤去(岩の塊と二重になっていた)。
     {
-      // ★検収2巡目A-新2是正: **死体には出さない**(石は付けない側でも塞いだが、
-      // 既に付いている個体が死体化した1フレームで出るのを描画側でも止める=二重の網)。
+      // ★検収2巡目A-新2是正: **死体には出さない**(既に付いている個体が死体化した1フレームで出るのを描画側でも止める)。
       const stoneStage = isCorpse(e) ? 0 : (e.alchemyStoneStage ?? 0);
-      if (stoneStage > 0) {
-        let dots = this.alchemyStoneMarkers.get(e.id);
-        if (!dots) {
-          dots = new Graphics();
-          this.L.effectLayer.addChild(dots);
-          this.alchemyStoneMarkers.set(e.id, dots);
-        }
-        const n = Math.max(1, Math.min(3, Math.round(stoneStage)));
-        const dotR = 4;
-        const gap = 12;
-        const totalW = (n - 1) * gap;
-        dots.clear();
-        for (let i = 0; i < n; i++) {
-          const dx = -totalW / 2 + i * gap;
-          dots.circle(dx, 0, dotR).fill({ color: 0xfacc15 });
-          dots.circle(dx, 0, dotR).stroke({ color: 0x78350f, width: 1.5, alpha: 0.9 });
-        }
-        dots.position.set(Math.round(fb.footX), Math.round(fb.footY - fb.boxH - 22 - liftHop - aiHop - kbHop));
-        dots.visible = true;
-      } else {
-        const dots = this.alchemyStoneMarkers.get(e.id);
-        if (dots) dots.visible = false;
-      }
       this.syncAlchemyRocks(e.id, view, stoneStage, now, fb.footX, fb.footY);
     }
 

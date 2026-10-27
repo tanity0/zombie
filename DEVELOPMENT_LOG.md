@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5229 — 錬金砲の頭上の金の点を撤去【2026-10-27 10:44 JST】
+- 社長指示2026-10-27「消して」(錬金砲の頭上の金の点=UNIQUE_WEAPONS.md §16-5c の段数表示。v0.25.5222 の岩の塊と二重になっていた): `pixiScene` の `alchemyStoneMarkers`(頭上の点の Graphics・プール・退場時の片付け)を削除。段数は岩の塊(`syncAlchemyRocks`)だけで見せる。死体に出さない網はそのまま。
+- 同じ返事で: タイトルの描き上げの止めの音=「BGMなるならいらない」→ 付けない(曲は色が乗った瞬間から鳴る=v0.25.5224)。
+- 見た目の確認: 段1/2/3の敵を並べて撮影し、点が無く岩の塊だけが出ているのを目視。
+- 検証: typecheck/eslint(変更ファイル)。
+- 自己点検: 憲法第4条・第5条に触れない(見た目のみ)。
+
 ## v0.25.5228 — サーバ(守護霊オンライン)の本番反映を自動化【2026-10-27 10:39 JST】
 - 社長指示2026-10-27「再デプロイわからん、簡単にして」→ push の承認「はい」(同日): `.github/workflows/server-deploy.yml`(新規)。開発ブランチへの push で `server/`・`shared/` が変わった時に、D1 の移行→`wrangler deploy` を自動で回す。Actions 画面の「Run workflow」で手動でも出せる。
 - 認証は GitHub Secrets の `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` だけ。**未設定の間はテストだけ回して出さない**(赤くしない・notice を出す)。社長の作業=鍵を1回入れるだけ。

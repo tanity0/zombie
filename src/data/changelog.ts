@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5229', items: [
+    '錬金砲の石の数を示していた頭上の金の点をなくした。溜まり具合は体に付いた岩の塊で見る',
+  ] },
   { version: '0.25.5228', items: [
     'ゲーム内容の変更はありません。',
   ] },
