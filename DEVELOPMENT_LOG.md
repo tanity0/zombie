@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5228 — サーバ(守護霊オンライン)の本番反映を自動化【2026-10-27 10:39 JST】
+- 社長指示2026-10-27「再デプロイわからん、簡単にして」→ push の承認「はい」(同日): `.github/workflows/server-deploy.yml`(新規)。開発ブランチへの push で `server/`・`shared/` が変わった時に、D1 の移行→`wrangler deploy` を自動で回す。Actions 画面の「Run workflow」で手動でも出せる。
+- 認証は GitHub Secrets の `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` だけ。**未設定の間はテストだけ回して出さない**(赤くしない・notice を出す)。社長の作業=鍵を1回入れるだけ。
+- `server/README.md` に自動化の1段落を追記。
+- 次の手渡し: 社長が鍵を入れたら、Actions の「Run workflow」1回で v0.25.5221 の許可リスト(間合いの癖 v2)が本番へ出る。
+
 ## v0.25.5227 — 倒した時の血の破裂+大きい敵ほど覚醒に効く【2026-10-27 09:27 JST】
 - 社長指示2026-10-27「敵を倒した時、血飛沫と共に破裂する様にしたい。敵の大きさに比例して量が増える。近接は手前に(覚醒も早まる)、銃殺だと奥に(血が掛からないので覚醒には影響薄い)飛び散る」→ 提案3点に「はい」(新しいVFX・量は大きさで/大きい敵ほど覚醒に効く/既存の死亡ポップは残す)。
 - 見た目(`src/pixi/bloodBurst.ts` 新規・`pixiScene.drawBloodBurstSprite`・`VisualEffect` に `bloodBurst`):

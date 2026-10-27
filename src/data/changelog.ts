@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5228', items: [
+    'ゲーム内容の変更はありません。',
+  ] },
   { version: '0.25.5227', items: [
     '敵を倒すと血が破裂して飛び散る。近接で倒すと自分の方へ浴びせ、銃で倒すと奥へ細く噴く。大きい敵ほど遠くまで、たくさん散る',
     '倒した場所には血溜まりが、飛んだ先には跡が残り、乾いて暗くなってから消える',

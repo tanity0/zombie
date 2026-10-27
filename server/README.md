@@ -18,4 +18,5 @@ npm start
 
 テストは `npm test` です。
 
-本番反映は `npx wrangler d1 migrations apply zombie-ghost-online --remote` の後に `npm run deploy` を使います。GitHub Pagesへ渡すのは公開Worker URLだけで、Cloudflare認証情報は渡しません。
+本番反映は `npx wrangler d1 migrations apply zombie-ghost-online --remote` の後に `npm run deploy` を使います。
+**通常は手で打たない**: `.github/workflows/server-deploy.yml` が、開発ブランチへの push で `server/` か `shared/` が変わった時に同じ2手を自動で回します(GitHub の Secrets に `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を1回入れておく。未設定の間はテストだけ回して出さない)。Actions 画面の「Run workflow」で手動でも出せます。GitHub Pagesへ渡すのは公開Worker URLだけで、Cloudflare認証情報は渡しません。
