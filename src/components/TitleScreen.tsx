@@ -363,9 +363,11 @@ const TitleLineIntro: React.FC<{
   const common: React.CSSProperties = {
     width: TITLE_BOX_WIDTH,
     mixBlendMode: 'screen',
-    transform: fit || 'none',
+    // ★中央寄せ(-50%)も transform の先頭に入れる=タイトル絵(<img>: Tailwind の translate が transform・寄りは scale プロパティ)と
+    // 同じ順番にする。旧版は中央寄せを translate プロパティで掛けていたため、寄り(scale 1.025)の間だけ線が絵から
+    // 約8px(-50% × 0.025)ずれていた(社長指摘2026-10-27「オープニングの手書きと色付きがズレてる」)。
+    transform: `translate(-50%, -50%) ${fit}`,
     transformOrigin: '50% 50%',
-    translate: '-50% -50%', // Tailwind の中央寄せは transform に乗るので、上書きした分をここで戻す
     scale: zoom.v,
   };
   const fade = `opacity ${INTRO_LINES_OUT_MS}ms cubic-bezier(0.2, 0.6, 0.3, 1) 120ms, scale ${zoom.ms}ms cubic-bezier(0.16, 0.8, 0.3, 1)`;
