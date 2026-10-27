@@ -379,6 +379,7 @@ import {
   canBakeSilhouette, planSilhouetteEviction,
 } from '../utils/shadowSlots';
 import { placeAvatarPart } from '../utils/avatarPlacement';
+import { getBloodBurstArt, pickDrop, bloodBurstLayout, bloodBurstSeed, BLOOD_GOB_PX, BLOOD_BURST_GRAVITY, BLOOD_BURST_FLASH_MS, BLOOD_BURST_POP_MS, BLOOD_BURST_MIST_MS, BLOOD_BURST_POOL_MS, BLOOD_BURST_DARKEN_MS, BLOOD_BURST_FADE_MS, BLOOD_BURST_BODY_MS, type BloodBurstPiece } from './bloodBurst';
 import { getAlchemyRockArt, getAlchemyDustTexture, alchemyRockLayout, alchemyRockSeed, alchemyPulse, alchemyTremble, ALCHEMY_ROCK_SIZES, ALCHEMY_ROCK_TARGET, ALCHEMY_FLY_MS, ALCHEMY_SETTLE_MS, ALCHEMY_FRAG_MS, ALCHEMY_PUSH_MS, ALCHEMY_SHATTER_MS, type AlchemyRockSpec } from './alchemyRocks';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
@@ -7988,6 +7989,8 @@ export class PixiScene {
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.len);
       case 'blood':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.len);
+      case 'bloodBurst':
+        return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.reach * 1.3);
       case 'trail':
         return this.isPointNearViewport(e.fromX, e.fromY, camera) ||
           this.isPointNearViewport(e.toX, e.toY, camera);
@@ -33710,6 +33713,8 @@ export class PixiScene {
         this.drawFireJetSprite(e, now);
       } else if (e.kind === 'blood') {
         this.drawBloodSprite(e, now);
+      } else if (e.kind === 'bloodBurst') {
+        this.drawBloodBurstSprite(e, now);
       } else if (e.kind === 'slash') {
         // ★実機FB2(v0.25.3608「KILLエフェクト、斬撃のエフェクトは止めずにそのまま流して」):
         // KILL処刑演出(全停止)の間だけ、斬撃は凍結時計(hitstopFreezeNow)ではなく実時間で流し切る
@@ -37809,6 +37814,179 @@ export class PixiScene {
     sp.position.set(e.x, e.y);
     sp.tint = e.tint;
     sp.alpha = 1;
+  }
+
+  /**
+   * 倒した時の血の破裂(pixi/bloodBurst.ts・社長指示2026-10-27)。明るい1コマ→星形の芯がはじけ、霧の粒が散り、
+   * 塊と滴が重力の弧で床へ落ちる。床に落ちた跡と死んだ場所の血溜まりは**足の下の層**(groundLayer)に残り、乾いて暗くなってから消える。
+   * 近接は手前(プレイヤーの方)へ重く広く、うち3滴はプレイヤーの体に付いて垂れる。銃は奥へ細く長く噴く。
+   * ドットは回さない(滴は8方向×伸び3段の絵から選ぶ)・拡大は整数倍。位置は毎フレーム経過時間から求める(状態を持たない)。
+   */
+  private bloodBurstData = new WeakMap<Container, {
+    ground: Container; flash: Sprite; core: Sprite; puffs: Sprite[]; pool: Sprite;
+    pieces: Sprite[]; stains: (Sprite | null)[]; layout: BloodBurstPiece[];
+    ds: number; kGob: number[]; kDrop: number; kStain: number; kPool: number; kStar: number; seed: number;
+  }>();
+  private drawBloodBurstSprite(e: Extract<VisualEffect, { kind: 'bloodBurst' }>, now: number) {
+    let c = this.effects.get(e.id) as Container | undefined;
+    let d = c ? this.bloodBurstData.get(c) : undefined;
+    if (!c || !d) {
+      if (c) c.destroy({ children: true });
+      const art = getBloodBurstArt();
+      const seed = bloodBurstSeed(e.id);
+      const layout = bloodBurstLayout(seed, e.melee, e.scale);
+      const ds = this.depthScaleEnemy(e.floorY);
+      const sm = Math.min(e.scale, 1.8) * ds; // 1片の大きさは頭打ち(量は数と距離で出す)
+      const kOf = (px: number, n: number) => Math.max(1, Math.round((px * sm) / n));
+      const kGob = BLOOD_GOB_PX.map((n, i) => kOf([7, 11, 15][i], n));
+      const kDrop = Math.max(1, Math.round(sm));
+      const kStain = kOf(13, 14);
+      const kStar = kOf(18, 24);
+      const kPool = Math.max(1, Math.round((28 * e.scale * ds) / 26));
+      c = new Container();
+      const ground = new Container();
+      const flash = new Sprite(getHitCoreGlowTexture());
+      flash.anchor.set(0.5); flash.blendMode = 'add'; flash.tint = 0xffd2c4;
+      const core = new Sprite(art.star[seed % art.star.length]);
+      core.anchor.set(0.5);
+      const puffs = [0, 1, 2, 3].map(() => { const sp = new Sprite(art.puff); sp.anchor.set(0.5); return sp; });
+      c.addChild(core, ...puffs);
+      const pieces = layout.map(pc => {
+        const sp = new Sprite(pc.kind === 'gob' ? art.gob[pc.size][pc.variant] : art.drop[0][0]);
+        sp.anchor.set(0.5); sp.visible = false; c!.addChild(sp); return sp;
+      });
+      c.addChild(flash);
+      const pool = new Sprite(art.pool);
+      pool.anchor.set(0.45, 0.5); pool.visible = false;
+      ground.addChild(pool);
+      const stains = layout.map(pc => {
+        if (pc.onBody) return null;
+        const sp = new Sprite(pc.kind === 'gob' ? art.stain[pc.variant] : art.gob[0][pc.variant]);
+        sp.anchor.set(0.35, 0.5); sp.visible = false; ground.addChild(sp); return sp;
+      });
+      d = { ground, flash, core, puffs, pool, pieces, stains, layout, ds, kGob, kDrop, kStain, kPool, kStar, seed };
+      this.bloodBurstData.set(c, d);
+      this.L.effectLayer.addChild(c);
+      this.L.groundLayer.addChild(ground);
+      c.once('destroyed', () => { if (!ground.destroyed) ground.destroy({ children: true }); });
+      this.effects.set(e.id, c);
+    }
+    const art = getBloodBurstArt();
+    const ms = now - e.createdAt;
+    const dur = e.duration;
+    c.visible = true;
+    // 床の血の色: 着地から1秒で暗く沈む(乾く)。
+    const dryTint = (since: number) => {
+      const v = Math.round(0x8a - (0x8a - 0x5a) * Math.min(1, Math.max(0, since) / BLOOD_BURST_DARKEN_MS));
+      return (v << 16) | (v << 8) | v;
+    };
+    // 床の血の消え: 片ごとに±600msずらし、最後の800msで ease-in。
+    const stainAlpha = (jitter: number) => {
+      const start = Math.min(dur - BLOOD_BURST_FADE_MS + jitter, dur - 300);
+      if (ms <= start) return 1;
+      const u = Math.min(1, (ms - start) / Math.max(1, dur - start));
+      return Math.max(0, 1 - u * u);
+    };
+    // 明るい1コマ(はじけた瞬間)
+    d.flash.visible = ms < BLOOD_BURST_FLASH_MS + 16;
+    if (d.flash.visible) { d.flash.position.set(e.x, e.y); d.flash.scale.set((18 * d.kStar * 1.4 * 1.6) / 128); d.flash.alpha = 0.9; }
+    // 芯: 星形が減速して膨らみ切り、少し縮みながら消える
+    const pt = ms / BLOOD_BURST_POP_MS;
+    if (pt < 1.8) {
+      const k = pt < 1 ? 1.25 * (1 - Math.pow(1 - pt, 3)) : 1 + 0.25 * (1.8 - pt) / 0.8;
+      d.core.visible = true;
+      d.core.position.set(Math.round(e.x), Math.round(e.y));
+      d.core.scale.set(d.kStar * Math.max(0.05, k));
+      d.core.alpha = pt < 1 ? 1 : Math.max(0, (1.8 - pt) / 0.8);
+    } else d.core.visible = false;
+    // 霧の粒: 外へ広がりながら少し昇って消える
+    const mt = Math.min(1, ms / BLOOD_BURST_MIST_MS);
+    const me = 1 - (1 - mt) * (1 - mt);
+    for (let i = 0; i < d.puffs.length; i++) {
+      const sp = d.puffs[i];
+      const a = (i / d.puffs.length) * Math.PI * 2 + (d.seed % 7);
+      sp.visible = mt < 1;
+      sp.position.set(Math.round(e.x + Math.cos(a) * 9 * d.ds * me), Math.round(e.y + Math.sin(a) * 5 * d.ds * me - 7 * d.ds * me));
+      sp.scale.set(Math.max(1, Math.round(2 * d.ds)));
+      sp.alpha = 0.8 * (1 - mt) * (1 - mt);
+    }
+    // 死んだ場所の血溜まり(足の下・400msで広がる)
+    {
+      const u = Math.min(1, ms / BLOOD_BURST_POOL_MS);
+      const g = 1 - (1 - u) * (1 - u) * (1 - u);
+      d.pool.visible = true;
+      d.pool.position.set(Math.round(e.x), Math.round(e.floorY));
+      d.pool.scale.set(d.kPool * g, d.kPool * g);
+      d.pool.tint = dryTint(ms);
+      d.pool.alpha = stainAlpha(0);
+    }
+    // 塊と滴: 床の上は等速に近く進み(少しだけ減速)、高さは重力で落ちる(着地時刻から上向きの初速を逆算)。
+    const z0 = Math.max(0, e.floorY - e.y);
+    const g = BLOOD_BURST_GRAVITY * d.ds;
+    for (let i = 0; i < d.layout.length; i++) {
+      const pc = d.layout[i];
+      const sp = d.pieces[i];
+      const st = d.stains[i];
+      const t = ms - pc.delayMs;
+      if (t < 0) { sp.visible = false; if (st) st.visible = false; continue; }
+      const T = pc.flyMs / 1000;
+      const dir = e.angle + pc.dAng;
+      const sx = e.x, sy = e.floorY;
+      const ex2 = pc.onBody ? e.tx + Math.cos(dir + Math.PI / 2) * 6 * (i - 1) : e.x + Math.cos(dir) * pc.dist * e.reach;
+      const ey2 = pc.onBody ? e.ty : e.floorY + Math.sin(dir) * pc.dist * e.reach * 0.75;
+      const zEnd = pc.onBody ? e.bodyH * 0.45 : 0;
+      const vz = (zEnd - z0 + 0.5 * g * T * T) / T;
+      const u = Math.min(1, t / pc.flyMs);
+      if (u < 1) {
+        const tt = t / 1000;
+        const go = u * (1.2 - 0.2 * u);
+        const gx = sx + (ex2 - sx) * go, gy = sy + (ey2 - sy) * go;
+        const z = z0 + vz * tt - 0.5 * g * tt * tt;
+        sp.visible = true;
+        sp.alpha = 1;
+        sp.position.set(Math.round(gx), Math.round(gy - z));
+        if (pc.kind === 'drop') {
+          const dgo = (1.2 - 0.4 * u) / T;
+          const vx = (ex2 - sx) * dgo, vy = (ey2 - sy) * dgo - (vz - g * tt);
+          const stretch = 1 + Math.min(1.4, Math.hypot(vx, vy) / 400);
+          sp.texture = pickDrop(art, Math.atan2(vy, vx), stretch);
+          sp.scale.set(d.kDrop);
+        } else {
+          sp.scale.set(d.kGob[pc.size]);
+        }
+        if (st) st.visible = false;
+        continue;
+      }
+      const tl = t - pc.flyMs;
+      if (pc.onBody) {
+        // 体に付いた滴: 400ms 見えていて、6px 垂れながら消える
+        if (st) st.visible = false;
+        if (tl >= BLOOD_BURST_BODY_MS) { sp.visible = false; continue; }
+        const q = tl / BLOOD_BURST_BODY_MS;
+        sp.visible = true;
+        sp.texture = art.drop[2][1];
+        sp.scale.set(d.kDrop);
+        sp.position.set(Math.round(ex2), Math.round(ey2 - zEnd + 6 * d.ds * q));
+        sp.alpha = 1 - q * q;
+        continue;
+      }
+      // 着地: 塊は一瞬つぶれて(60ms)から床の跡へ。跡は進んできた向き(左右)に尾を引く。
+      if (pc.kind === 'gob' && tl < 60) {
+        sp.visible = true;
+        sp.alpha = 1;
+        sp.position.set(Math.round(ex2), Math.round(ey2));
+        sp.scale.set(d.kGob[pc.size] * 1.4, d.kGob[pc.size] * 0.7);
+      } else sp.visible = false;
+      if (st) {
+        const flip = Math.cos(dir) < 0 ? -1 : 1;
+        st.visible = pc.kind !== 'gob' || tl >= 60;
+        st.position.set(Math.round(ex2), Math.round(ey2));
+        if (pc.kind === 'gob') st.scale.set(d.kStain * flip, d.kStain);
+        else st.scale.set(d.kDrop * flip, d.kDrop * 0.5);
+        st.tint = dryTint(tl);
+        st.alpha = stainAlpha(pc.stainJitterMs);
+      }
+    }
   }
 
   private drawImageEffect(e: Extract<VisualEffect, { kind: 'image' }>, now: number) {

@@ -1,7 +1,7 @@
 // B10 血の覚醒(research/THEONE_ROUND2.md §3)の純関数テスト。配線は src/store/bloodAwaken.store.test.ts。
 import { describe, it, expect } from 'vitest';
 import {
-  bloodCapacity, bloodFill, BLOOD_CAP_MIN, bloodGainFor, bloodDryStep, bloodMeterNow, isBloodAwakening, bloodAwakenMult, bloodAwakenRedAlpha, bloodAwakenGlowAlpha, bloodPulseMult,
+  bloodCapacity, bloodFill, BLOOD_CAP_MIN, bloodGainFor, bloodSizeMul, BLOOD_SIZE_MUL_MAX, bloodDryStep, bloodMeterNow, isBloodAwakening, bloodAwakenMult, bloodAwakenRedAlpha, bloodAwakenGlowAlpha, bloodPulseMult,
   applyBloodGain, bloodAwakenStep, bloodOrbTarget, withoutBlood,
   BLOOD_AWAKEN_MS, BLOOD_AWAKEN_FADE_MS, BLOOD_DRY_DELAY_MS, BLOOD_RED_IN_MS, BLOOD_RED_SETTLE_MS, BLOOD_RED_OVERSHOOT, BLOOD_BODY_LAG_MS, BLOOD_BEAT_PERIOD_MS,
 } from './bloodAwaken';
@@ -41,6 +41,17 @@ describe('bloodGainFor(表 §3-1)', () => {
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 90 })).toBeCloseTo(0.03);
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 90.01 })).toBe(0);
     expect(bloodGainFor({ kind: 'gun-kill', distPx: 500 })).toBe(0);
+  });
+  it('★大きい敵ほど浴びる(社長 2026-10-27): ゾンビ=1倍・小さい敵も1倍・上限2倍。キルにだけ掛かり、命中だけには掛からない', () => {
+    expect(bloodSizeMul(36, 36)).toBeCloseTo(1);
+    expect(bloodSizeMul(26, 26)).toBe(1);                     // 小さい敵は減らさない
+    expect(bloodSizeMul(60, 60)).toBeCloseTo(Math.sqrt(60 / 36)); // 城ボス(giantbat)≒1.29
+    expect(bloodSizeMul(519, 90)).toBe(BLOOD_SIZE_MUL_MAX);   // 巨体は頭打ち
+    expect(bloodSizeMul(0, 0)).toBe(1);
+    expect(bloodGainFor({ kind: 'melee-kill', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.12);
+    expect(bloodGainFor({ kind: 'gun-kill', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.06);
+    expect(bloodGainFor({ kind: 'gun-kill', distPx: 500, sizeMul: 2 })).toBe(0); // 遠い銃キルは大きくても0
+    expect(bloodGainFor({ kind: 'melee-hit', distPx: 0, sizeMul: 2 })).toBeCloseTo(0.01);
   });
   it('加算は体力で変わらない(器の方が縮む)', () => {
     expect(bloodGainFor({ kind: 'melee-kill', distPx: 10 })).toBeCloseTo(0.06);

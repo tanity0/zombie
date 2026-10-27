@@ -114,7 +114,7 @@ import { cruiseTotalMsFor, cruiseStage, cruiseStageBonus, cruiseOthersRampMs, cr
 import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_PUZZLE.md §14-4-2(新死神・重大4/5)
 import { resetMapSightings } from '../utils/mapSightings';
 import { resetRunRoute } from '../utils/runRoutes';
-import { bloodAwakenMult, bloodGainFor, applyBloodGain } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
+import { bloodAwakenMult, bloodGainFor, applyBloodGain, bloodSizeMul } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
 import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
 import { meleeRecoverSpeedMult, MELEE_RECOVER_MS } from '../utils/meleeRecover'; // 近接を振ったあとの硬直(v0.25.4380)
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
@@ -4218,6 +4218,52 @@ const spawnDeathPop = (get: () => GameState, ex: number, ey: number, fromX: numb
   get().spawnSpray(ex, ey, dx, dy, 4, ['#fef3c7', '#fde68a', '#e5e7eb']);
 };
 
+// ★倒した時の血の破裂(社長指示2026-10-27「敵を倒した時、血飛沫と共に破裂する様にしたい。敵の大きさに比例して量が増える。
+// 近接は手前に(覚醒も早まる)、銃殺だと奥に(血が掛からないので覚醒には影響薄い)飛び散る」)。描画専用(判定ゼロ)。
+// 上の死亡ポップ(白い輪+粒)は残したまま、その上に足す。`?bloodburst=0` で出さない。
+// 量は大きさで出す(粒の数は固定=重さは敵の大きさに依らない・pixi/bloodBurst.ts)。同時に出ている破裂は上限まで(爆弾で一斉に倒れた時の暴発止め)。
+const BLOOD_BURST_ENABLED = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('bloodburst') !== '0';
+const BLOOD_BURST_MAX_ALIVE = 14;
+const BLOOD_BURST_MS = 5600; // 床の血は4〜6秒残る(乾いて暗くなってから消える)
+/** 破裂の大きさ(ゾンビ=1・当たり判定の幅×高さの平方根に比例・0.75〜4)。 */
+export const bloodBurstScale = (w: number, h: number): number => Math.max(0.75, Math.min(4, Math.sqrt(Math.max(0, w) * Math.max(0, h)) / 36));
+const spawnBloodBurst = (get: () => GameState, enemy: Enemy, fromX: number, fromY: number, melee: boolean): void => {
+  if (!BLOOD_BURST_ENABLED) return;
+  const st = get();
+  const now = Date.now();
+  // 上限を超えたら、いちばん古い破裂の床の血を今から消し始める(消さずに出さないと、一斉に倒した時に血が出ない)。
+  const bursts = st.effects.filter(e => e.kind === 'bloodBurst');
+  let shorten: string | null = null;
+  if (bursts.length >= BLOOD_BURST_MAX_ALIVE) {
+    let oldest = bursts[0];
+    for (const b of bursts) if (b.createdAt < oldest.createdAt) oldest = b;
+    shorten = oldest.id;
+  }
+  const ex = enemy.x + enemy.width / 2, ey = enemy.y + enemy.height / 2;
+  const scale = bloodBurstScale(enemy.width, enemy.height);
+  const toP = Math.atan2(fromY - ey, fromX - ex);
+  const distP = Math.hypot(fromX - ex, fromY - ey);
+  // 近接=手前(自分の方)へ浴びせる=足元まで届く / 銃=奥(自分から遠ざかる方)へ散る。
+  const angle = melee ? toP : toP + Math.PI;
+  // 近接=プレイヤーまで(体に浴びる)/ 銃=抜けた穴から細く長く奥へ。
+  const reach = melee ? Math.max(30, distP) : 100 + 70 * scale;
+  const p = st.player;
+  const fx: VisualEffect = {
+    kind: 'bloodBurst', id: `fx-bburst-${now}-${Math.random().toString(36).slice(2, 7)}`,
+    x: ex, y: ey, floorY: enemy.y + enemy.height, angle, reach, scale, melee,
+    tx: p.x + p.width / 2, ty: p.y + p.height, bodyH: p.height * 2.3,
+    createdAt: now, duration: BLOOD_BURST_MS,
+  };
+  // effects へ1件足す(get しか持たない呼び手と同じ流儀で useGameStore を直接書く)。
+  useGameStore.setState(state => {
+    const base = shorten === null ? state.effects
+      : state.effects.map(e => (e.id === shorten ? { ...e, duration: Math.min(e.duration, now - e.createdAt + 900) } : e));
+    const next = [...base, fx];
+    if (next.length > 400) next.splice(0, next.length - 400);
+    return { effects: next };
+  });
+};
+
 // 討伐で「FF風クランブル」統一演出(triggerDramaticDeath)を出す対象(getsDramaticDeath=ボス系/ネームド/
 // クエスト対象)の、討伐後フェード表示の長さ(ms)。useGameLoop の BOSS_FADE_MS / pixiScene の
 // syncBossCorpse 内 FADE_MS と同じ値で必ず揃える(3箇所で複製・pixiScene側の既存コメントと同じ運用)。
@@ -4754,7 +4800,7 @@ export const grantMeleeBlood = (get: () => GameState, kills: Enemy[], hitOnly: n
   const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
   let gain = 0;
   for (const e of kills) {
-    gain += bloodGainFor({ kind: 'melee-kill', distPx: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy) });
+    gain += bloodGainFor({ kind: 'melee-kill', distPx: Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy), sizeMul: bloodSizeMul(e.width, e.height) });
   }
   if (hitOnly > 0) gain += hitOnly * bloodGainFor({ kind: 'melee-hit', distPx: 0 });
   const patch = applyBloodGain(p, gain, st.gameTime);
@@ -4762,11 +4808,11 @@ export const grantMeleeBlood = (get: () => GameState, kills: Enemy[], hitOnly: n
 };
 
 /** B10 血の覚醒: 銃のキル(距離≤90pxだけ浴びる・遠距離は0)。呼び手(damageEnemy の 'gun' 枝)が条件を確かめて呼ぶ。 */
-export const grantGunBlood = (get: () => GameState, at: { x: number; y: number }): void => {
+export const grantGunBlood = (get: () => GameState, at: { x: number; y: number; w?: number; h?: number }): void => {
   const st = get();
   const p = st.player;
   const distPx = Math.hypot(at.x - (p.x + p.width / 2), at.y - (p.y + p.height / 2));
-  const gain = bloodGainFor({ kind: 'gun-kill', distPx });
+  const gain = bloodGainFor({ kind: 'gun-kill', distPx, sizeMul: bloodSizeMul(at.w ?? 0, at.h ?? 0) });
   const patch = applyBloodGain(p, gain, st.gameTime);
   if (patch) useGameStore.setState(s => ({ player: { ...s.player, ...patch } }));
 };
@@ -4847,6 +4893,7 @@ export const grantMeleeKillRewards = (
     // juice: FF風クランブル統一演出(ネームド/裏ボス/giantbat/hunter討伐)。近接キル経路。
     if (getsDramaticDeath(enemy)) triggerDramaticDeath(get, enemy, ex, ey);
     if (DEATHPOP_ENABLED) spawnDeathPop(get, ex, ey, player.x + player.width / 2, player.y + player.height / 2);
+    spawnBloodBurst(get, enemy, player.x + player.width / 2, player.y + player.height / 2, true); // 近接=手前へ浴びせる
     const xp = finisher
       ? Math.max(1, Math.round(enemy.experienceValue * 1.5))
       : enemy.experienceValue;
@@ -14075,7 +14122,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let bossFullStunAt: { x: number; y: number } | null = null; // 裏ボスが完全気絶(紫)に移行した位置(set後に紫FX)
     let bossFatalAt: { x: number; y: number; labelY: number; w: number; h: number } | null = null; // w/h=killFx流用(v0.25.3703)
     let namedFoeKilled: Enemy | null = null; // §5.14 M13: 宿敵討伐(set後にREVENGE演出+報酬)
-    let deathPopAt: { ex: number; ey: number; fromX: number; fromY: number } | null = null; // §5.23 M22 A3(set後に発火)
+    let deathPopAt: { ex: number; ey: number; fromX: number; fromY: number; enemy: Enemy } | null = null; // §5.23 M22 A3(set後に発火)
     let dramaticDeathAt: { enemy: Enemy; x: number; y: number } | null = null; // juice: FF風クランブル(set後に発火)
     let bountyChestAt: { id: string; x: number; y: number } | null = null; // §6.38 B3: 賞金首討伐=金箱ドロップ(set後にaddPickup)
     let appliedDamage = 0; // §6.21 M46計測用: 実際に加算された生ダメージ(HP床クランプ前・紅き夜補正後=既存damageDealtと同値)
@@ -14083,7 +14130,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     let bossClearedType: EnemyType | null = null; // BOT_AND_GHOST.md §2.10 G5: 撃破ボスの型(set後にnotifyBossClear)
     // SKILL_BUILD_REDESIGN.md §28(B7): キルの瞬間に判定するスキル2種(poi-thrallと同じ「set()内で
     // 候補だけ拾い、実際の抽選/適用はset()の外側で行う」流儀)。
-    let killedAt: { x: number; y: number } | null = null; // 吸血の発生位置(set後に判定)
+    let killedAt: { x: number; y: number; w?: number; h?: number } | null = null; // 吸血の発生位置(set後に判定)
     // v0.25.3703: グラビティショットはキル時→**射撃ヒット時**へ移設(社長指示)。ヒット位置をset内で拾い、
     // 抽選はset外(吸血と同じ流儀)。銃チャネル+プレイヤー起因+実ダメージ>0のみ。
     let gunHitAt: { x: number; y: number } | null = null;
@@ -14307,7 +14354,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (isAngelRewardType(enemy.type)) angelDefeated = enemy; // 天使撃破→落とし物(set後に出す)
         // SKILL_BUILD_REDESIGN.md §28(B7): 吸血/グラビティショットはキル全般が対象(仕様上ボス/宿敵の
         // 除外指定なし=poi-thrallと違い型を絞らない)。位置だけ拾い、抽選/適用はset()の外側で行う。
-        killedAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+        killedAt = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2, w: enemy.width, h: enemy.height };
         if (enemy.isNamed) namedFoeKilled = enemy; // §5.14 M13: 宿敵討伐
         // §6.24 M48「使役」: 通常敵(ボス/裏ボス/ネームド/エリートは対象外=D1)を倒した時だけ候補にする。
         // 実際の20%抽選/先着1体維持(D3)は set() の外側(post section)でownedの現在値を見て行う。
@@ -14327,7 +14374,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         deathPopAt = {
           ex: enemy.x + enemy.width / 2, ey: enemy.y + enemy.height / 2,
           fromX: state.player.x + state.player.width / 2, fromY: state.player.y + state.player.height / 2,
-        }; // §5.23 M22 A3: 銃/接触/爆発キルの死亡ポップ
+          enemy,
+        }; // §5.23 M22 A3: 銃/接触/爆発キルの死亡ポップ(+血の破裂は奥へ)
         tagRemove(id, 'kill'); // 消失ログ用: 通常撃破
         // PACING_REDESIGN.mdバッチ2(計測): ガン/接触/爆発キルを種別+スタイル集計へ記録(挙動には影響しない)。
         // バッチ3.5-Bの追補: 型ごとの最終キル時刻も記録(問題児リフラクトリ判定用)。
@@ -14526,9 +14574,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // §5.23 M22 A3: 銃/接触/爆発キルの死亡ポップ。
-    if (deathPopAt && DEATHPOP_ENABLED) {
-      const d = deathPopAt as { ex: number; ey: number; fromX: number; fromY: number };
-      spawnDeathPop(get, d.ex, d.ey, d.fromX, d.fromY);
+    if (deathPopAt) {
+      const d = deathPopAt as { ex: number; ey: number; fromX: number; fromY: number; enemy: Enemy };
+      if (DEATHPOP_ENABLED) spawnDeathPop(get, d.ex, d.ey, d.fromX, d.fromY);
+      spawnBloodBurst(get, d.enemy, d.fromX, d.fromY, false); // 銃/接触/爆発=奥へ散る
     }
 
     return killed;

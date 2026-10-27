@@ -79,6 +79,21 @@ export const BLOOD_GAIN_GUN_KILL_NEAR = 0.03;
 
 export type BloodGainKind = 'melee-kill' | 'melee-hit' | 'gun-kill';
 
+/** 大きさの倍率の基準(ゾンビの当たり判定の一辺・px)。 */
+export const BLOOD_SIZE_BASE_PX = 36;
+/** 大きさの倍率の上限(ボス級)。 */
+export const BLOOD_SIZE_MUL_MAX = 2;
+/**
+ * ★大きい敵ほど浴びる血が多い(社長 2026-10-27「敵の大きさに比例して量が増える」+ 覚醒にも効かせる=「はい」)。
+ * 大きさ=当たり判定の幅×高さの平方根。ゾンビ(36)を1倍、上限2倍。平方根で効かせる(面積に比例させると巨体が一撃で満ちる)。
+ * 小さい敵は1倍のまま(減らさない)。キル(近接・銃)にだけ掛ける。命中だけ(melee-hit)には掛けない。
+ */
+export const bloodSizeMul = (width: number, height: number): number => {
+  const size = Math.sqrt(Math.max(0, width) * Math.max(0, height));
+  if (!(size > 0)) return 1;
+  return Math.max(1, Math.min(BLOOD_SIZE_MUL_MAX, Math.sqrt(size / BLOOD_SIZE_BASE_PX)));
+};
+
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /**
@@ -87,12 +102,12 @@ const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
  *  - 銃キル: 距離≤90px で +0.03 / それ以上 0
  * distPx は呼び手がプレイヤー中心と敵中心で測る(melee-hit では使わない)。
  */
-export const bloodGainFor = (a: { kind: BloodGainKind; distPx: number }): number => {
+export const bloodGainFor = (a: { kind: BloodGainKind; distPx: number; sizeMul?: number }): number => {
   let base = 0;
   if (a.kind === 'melee-kill') base = a.distPx <= BLOOD_MELEE_NEAR_PX ? BLOOD_GAIN_MELEE_KILL_NEAR : BLOOD_GAIN_MELEE_KILL_FAR;
   else if (a.kind === 'melee-hit') base = BLOOD_GAIN_MELEE_HIT;
   else if (a.kind === 'gun-kill') base = a.distPx <= BLOOD_GUN_NEAR_PX ? BLOOD_GAIN_GUN_KILL_NEAR : 0;
-  return base;
+  return a.kind === 'melee-hit' ? base : base * (a.sizeMul ?? 1);
 };
 
 /** 覚醒中か。 */

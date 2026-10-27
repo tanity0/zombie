@@ -2981,6 +2981,21 @@ export type VisualEffect =
       tint?: number;       // 0xRRGGBB の tint(未指定=素のまま)
     }
   | {
+      // 倒した時の血の破裂(社長指示2026-10-27・描画専用=判定ゼロ・pixi/bloodBurst.ts)。粒の数は固定、敵の大きさで絵の大きさと距離が伸びる。
+      kind: 'bloodBurst';
+      id: string;
+      x: number; y: number;  // 破裂の中心(敵の胴)
+      floorY: number;        // 敵の足元(飛沫が落ちる床の高さ)
+      angle: number;         // 主な向き(近接=プレイヤーへ=手前 / 銃=プレイヤーから遠ざかる=奥)
+      reach: number;         // 主な飛沫が届く距離(world px)
+      scale: number;         // 敵の大きさ(ゾンビ=1)
+      melee: boolean;
+      tx: number; ty: number; // 近接: 浴びたプレイヤーの足元(体に着地する滴の行き先)
+      bodyH: number;          // 近接: 浴びたプレイヤーの背丈(滴が付く高さの元)
+      createdAt: number;
+      duration: number;
+    }
+  | {
       kind: 'ring';
       id: string;
       x: number; y: number;
