@@ -203,6 +203,9 @@ export const bloodBurstSeed = (id: string): number => {
 export const BLOOD_BURST_GRAVITY = 1500;
 /** 尺(ms): 明るい1コマ / 芯 / 霧 / 血溜まりが広がる / 床の血が暗く沈む / 床の血が消える / 体に付いた滴が見えている。 */
 export const BLOOD_BURST_FLASH_MS = 33;
+/** 芯=社長支給の血の破裂シート(fx/blood-burst)のコマ数と尺。 */
+export const BLOOD_BURST_SHEET_FRAMES = 8;
+export const BLOOD_BURST_SHEET_MS = 520;
 export const BLOOD_BURST_POP_MS = 150;
 export const BLOOD_BURST_MIST_MS = 320;
 export const BLOOD_BURST_POOL_MS = 400;

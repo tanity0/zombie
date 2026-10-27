@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5230', items: [
+    '敵を倒した時の血の破裂が、新しく描いた血しぶきの絵ではじけるようになった',
+  ] },
   { version: '0.25.5229', items: [
     '錬金砲の石の数を示していた頭上の金の点をなくした。溜まり具合は体に付いた岩の塊で見る',
   ] },

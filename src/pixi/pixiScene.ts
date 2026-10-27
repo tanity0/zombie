@@ -379,7 +379,7 @@ import {
   canBakeSilhouette, planSilhouetteEviction,
 } from '../utils/shadowSlots';
 import { placeAvatarPart } from '../utils/avatarPlacement';
-import { getBloodBurstArt, pickDrop, bloodBurstLayout, bloodBurstSeed, BLOOD_GOB_PX, BLOOD_BURST_GRAVITY, BLOOD_BURST_FLASH_MS, BLOOD_BURST_POP_MS, BLOOD_BURST_MIST_MS, BLOOD_BURST_POOL_MS, BLOOD_BURST_DARKEN_MS, BLOOD_BURST_FADE_MS, BLOOD_BURST_BODY_MS, type BloodBurstPiece } from './bloodBurst';
+import { BLOOD_BURST_SHEET_FRAMES, BLOOD_BURST_SHEET_MS, getBloodBurstArt, pickDrop, bloodBurstLayout, bloodBurstSeed, BLOOD_GOB_PX, BLOOD_BURST_GRAVITY, BLOOD_BURST_FLASH_MS, BLOOD_BURST_POP_MS, BLOOD_BURST_MIST_MS, BLOOD_BURST_POOL_MS, BLOOD_BURST_DARKEN_MS, BLOOD_BURST_FADE_MS, BLOOD_BURST_BODY_MS, type BloodBurstPiece } from './bloodBurst';
 import { getAlchemyRockArt, getAlchemyDustTexture, alchemyRockLayout, alchemyRockSeed, alchemyPulse, alchemyTremble, ALCHEMY_ROCK_SIZES, ALCHEMY_ROCK_TARGET, ALCHEMY_FLY_MS, ALCHEMY_SETTLE_MS, ALCHEMY_FRAG_MS, ALCHEMY_PUSH_MS, ALCHEMY_SHATTER_MS, type AlchemyRockSpec } from './alchemyRocks';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
@@ -37796,8 +37796,19 @@ export class PixiScene {
   private bloodBurstData = new WeakMap<Container, {
     ground: Container; flash: Sprite; core: Sprite; puffs: Sprite[]; pool: Sprite;
     pieces: Sprite[]; stains: (Sprite | null)[]; layout: BloodBurstPiece[];
-    ds: number; kGob: number[]; kDrop: number; kStain: number; kPool: number; kStar: number; seed: number;
+    ds: number; kGob: number[]; kDrop: number; kStain: number; kPool: number; kStar: number; kSheet: number; seed: number;
   }>();
+  private bloodBurstSheetCache: Texture[] | null = null;
+  /** 血の破裂シート(fx/blood-burst・8コマ)をコマに切って1回だけ持つ。読み込み前は null。 */
+  private bloodBurstSheetFrames(): Texture[] | null {
+    if (this.bloodBurstSheetCache) return this.bloodBurstSheetCache;
+    const tex = getTexture('fx/blood-burst');
+    if (!tex || tex.width < 8) return null;
+    const fw = Math.floor(tex.width / BLOOD_BURST_SHEET_FRAMES);
+    this.bloodBurstSheetCache = Array.from({ length: BLOOD_BURST_SHEET_FRAMES }, (_, c) =>
+      new Texture({ source: tex.source, frame: new Rectangle(c * fw, 0, fw, tex.height) }));
+    return this.bloodBurstSheetCache;
+  }
   private drawBloodBurstSprite(e: Extract<VisualEffect, { kind: 'bloodBurst' }>, now: number) {
     let c = this.effects.get(e.id) as Container | undefined;
     let d = c ? this.bloodBurstData.get(c) : undefined;
@@ -37814,6 +37825,8 @@ export class PixiScene {
       const kStain = kOf(13, 14);
       const kStar = kOf(18, 24);
       const kPool = Math.max(1, Math.round((28 * e.scale * ds) / 26));
+      // シートの芯: ゾンビで1倍(70px)、大きい敵ほど整数倍で大きく(2.2倍で頭打ち)。
+      const kSheet = Math.max(1, Math.round(0.9 * Math.min(e.scale, 2.2) * ds));
       c = new Container();
       const ground = new Container();
       const flash = new Sprite(getHitCoreGlowTexture());
@@ -37835,7 +37848,7 @@ export class PixiScene {
         const sp = new Sprite(pc.kind === 'gob' ? art.stain[pc.variant] : art.gob[0][pc.variant]);
         sp.anchor.set(0.35, 0.5); sp.visible = false; ground.addChild(sp); return sp;
       });
-      d = { ground, flash, core, puffs, pool, pieces, stains, layout, ds, kGob, kDrop, kStain, kPool, kStar, seed };
+      d = { ground, flash, core, puffs, pool, pieces, stains, layout, ds, kGob, kDrop, kStain, kPool, kStar, kSheet, seed };
       this.bloodBurstData.set(c, d);
       this.L.effectLayer.addChild(c);
       this.L.groundLayer.addChild(ground);
@@ -37861,9 +37874,21 @@ export class PixiScene {
     // 明るい1コマ(はじけた瞬間)
     d.flash.visible = ms < BLOOD_BURST_FLASH_MS + 16;
     if (d.flash.visible) { d.flash.position.set(e.x, e.y); d.flash.scale.set((18 * d.kStar * 1.4 * 1.6) / 128); d.flash.alpha = 0.9; }
-    // 芯: 星形が減速して膨らみ切り、少し縮みながら消える
+    // 芯: 社長支給の血の破裂シート(8コマ・中心から全方向にはじけて散る)。初めは速く進み、終わりへ減速する。
+    // シートが読めていない間だけ、自作の星形で代わりにはじける。
+    const sheet = this.bloodBurstSheetFrames();
     const pt = ms / BLOOD_BURST_POP_MS;
-    if (pt < 1.8) {
+    if (sheet) {
+      const st = ms / BLOOD_BURST_SHEET_MS;
+      if (st < 1) {
+        const p = 1 - Math.pow(1 - st, 2);
+        d.core.visible = true;
+        d.core.texture = sheet[Math.min(sheet.length - 1, Math.floor(p * sheet.length))];
+        d.core.position.set(Math.round(e.x), Math.round(e.y));
+        d.core.scale.set(d.kSheet);
+        d.core.alpha = st < 0.85 ? 1 : (1 - st) / 0.15;
+      } else d.core.visible = false;
+    } else if (pt < 1.8) {
       const k = pt < 1 ? 1.25 * (1 - Math.pow(1 - pt, 3)) : 1 + 0.25 * (1.8 - pt) / 0.8;
       d.core.visible = true;
       d.core.position.set(Math.round(e.x), Math.round(e.y));

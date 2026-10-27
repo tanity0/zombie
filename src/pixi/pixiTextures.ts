@@ -766,6 +766,9 @@ export const ensureTextures = (): Promise<void> => {
       // 常にステージ限定ではない(近接なら全ステージで出る)ので DEFERRED_SPRITE_GROUPS ではなく
       // ここ(起動マニフェスト)。scaleMode未指定=既定linear(ピクセルアートではないため)。
       { name: 'fx/kill-slash' },
+      // 倒した時の血の破裂の芯(社長支給2026-10-27「血」)。8コマの横並び(560×66・1コマ70×66)・透過あり・ドット絵=nearest。
+      // 全ステージの全キルで出るので起動マニフェスト(常駐 0.15MB)。
+      { name: 'fx/blood-burst', scaleMode: 'nearest' },
       // カウンター成立のガラスの砕け(社長支給2026-10-01)。15コマの横並び(4080×149・1コマ272×149)・透過あり。
       // カウンターは全ステージで出るので起動マニフェスト。写実のVFXなので既定linear。
       { name: 'fx/counter-shatter' },

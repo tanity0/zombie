@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "932 files / 復号後 約706MB",
+ "generatedFor": "933 files / 復号後 約707MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1201,6 +1201,12 @@
    "h": 302,
    "bytes": 112803,
    "sha": "21d7aea5bd4d0aed"
+  },
+  "sprites/fx/blood-burst.png": {
+   "w": 560,
+   "h": 66,
+   "bytes": 12489,
+   "sha": "78bf50f92d8e4df5"
   },
   "sprites/fx/blood-melee-0.png": {
    "w": 744,
