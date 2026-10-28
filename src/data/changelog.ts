@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5238', items: [
+    '火炎放射器の炎が強くなった',
+  ] },
   { version: '0.25.5237', items: [
     '火炎放射器が倍の長さ撃ち続けられるようになり、炙った敵はしばらく燃え続ける',
   ] },

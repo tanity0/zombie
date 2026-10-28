@@ -9,7 +9,7 @@ export const FLAMER_RANGE_PX = 90;
 export const FLAMER_CONE_RAD = 0.5;               // 扇の全角(rad)。半角は÷2
 export const FLAMER_HALF_ANGLE_RAD = FLAMER_CONE_RAD / 2;
 export const FLAMER_PULSE_MS = 100;
-export const FLAMER_PULSE_DAMAGE = 5;
+export const FLAMER_PULSE_DAMAGE = 7; // ★社長「はい」2026-10-28(「意外と弱い」→推薦の5→7)
 // ★社長指示2026-10-28「弾切れが早すぎる」「タマ持ちもよくする」: 40(4秒)→ 80(8秒照射)。
 export const FLAMER_MAG_SIZE = 80;
 // ★社長指示2026-10-28「延焼効果も付ける」(旧=武器自体に燃焼なし・UNIQUE_WEAPONS.md §16-2 の指定): 炎に触れた敵が燃える。
