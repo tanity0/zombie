@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5234', items: [
+    '銃で倒した時の血の塊が、遠くへ飛んで霧に消えず、敵のすぐ後ろに散って見えるようになった',
+  ] },
   { version: '0.25.5233', items: [
     'タイトルの描き上げで、描き終わった後に線が少し動いて見えていたのが直った',
   ] },

@@ -37931,7 +37931,8 @@ export class PixiScene {
       const dir = e.angle + pc.dAng;
       const sx = e.x, sy = e.floorY;
       const ex2 = pc.onBody ? e.tx + Math.cos(dir + Math.PI / 2) * 6 * (i - 1) : e.x + Math.cos(dir) * pc.dist * e.reach;
-      const ey2 = pc.onBody ? e.ty : e.floorY + Math.sin(dir) * pc.dist * e.reach * 0.75;
+      // 奥行き(画面の上下)は詰める。銃=奥(画面の上)へ飛ぶので強く詰める=地平線の霧・空へ逃がさない(v0.25.5234)。
+      const ey2 = pc.onBody ? e.ty : e.floorY + Math.sin(dir) * pc.dist * e.reach * (e.melee ? 0.75 : 0.4);
       const zEnd = pc.onBody ? e.bodyH * 0.45 : 0;
       const vz = (zEnd - z0 + 0.5 * g * T * T) / T;
       const u = Math.min(1, t / pc.flyMs);

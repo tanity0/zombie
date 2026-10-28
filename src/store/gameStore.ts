@@ -4246,7 +4246,9 @@ const spawnBloodBurst = (get: () => GameState, enemy: Enemy, fromX: number, from
   // 近接=手前(自分の方)へ浴びせる=足元まで届く / 銃=奥(自分から遠ざかる方)へ散る。
   const angle = melee ? toP : toP + Math.PI;
   // 近接=プレイヤーまで(体に浴びる)/ 銃=抜けた穴から細く長く奥へ。
-  const reach = melee ? Math.max(30, distP) : 100 + 70 * scale;
+  // ★v0.25.5234 社長指摘「プレイ中は血の塊が表示されてない気がする」: 銃で倒す敵はたいてい画面の上(奥)に居るので、
+  // 「奥=さらに上」へ 100+70×大きさ も飛ばすと、塊が地平線の霧・空へ消えて見えなかった。敵のすぐ後ろへ短く散らす。
+  const reach = melee ? Math.max(30, distP) : 45 + 35 * scale;
   const p = st.player;
   const fx: VisualEffect = {
     kind: 'bloodBurst', id: `fx-bburst-${now}-${Math.random().toString(36).slice(2, 7)}`,
