@@ -40,7 +40,7 @@ import {
   INTRO_DIALOGUE_TRIGGER_T,
   INTRO_LAND_SHAKE_MS, INTRO_LAND_SHAKE_MAG, REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG,
   COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, SHIJIN_TECH_SHAKE_MS, SHIJIN_TECH_SHAKE_MAG,
-  COUNTER_ACCEPT_MS, // v0.25.2525→v0.25.3943: 守護霊の弾反射の窓(プレイヤーの受付と同じ定数)
+  counterAcceptMsOf, // v0.25.2525→v0.25.3943: 守護霊の弾反射の窓(プレイヤーの受付と同じ式・記録の装備で延びる)
   SHIELD_BLOCK_SHAKE_MS, SHIELD_BLOCK_SHAKE_MAG, SHIELD_BREAK_HITSTOP_MS, SHIELD_BREAK_SHAKE_MS, SHIELD_BREAK_SHAKE_MAG,
   DRONE_BOOM_RADIUS, DRONE_BOOM_PULSE_MS, DRONE_BOOM_STOP_DMG_DIV, DRONE_BOOM_SPEED,
   CAMERA_FOLLOW_TAU, CAMERA_DANGER_TAU, CAMERA_RETURN_TAU, CAMERA_LOOKAHEAD_MAX,
@@ -12435,6 +12435,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 適用しない(成立時のダッシュで構えた位置を捨てるため)。既に計算済みのghostKatanaを
                 // そのまま注入する(isKatanaMode呼び出しの二重化を避ける)。
                 isKatanaEquipped: ghostKatana,
+                counterAcceptMs: counterAcceptMsOf(ghostOwner), // 記録の装備で受付が延びる(プレイヤーと同条件)
               });
               // v0.25.3981(実測用・?ghostlog=1): カウンター監視の開始エッジ(錨が新しく張られた瞬間)を
               // 画面ログへ。試行=抽選結果(しない=ロールがdodge/tank/抽選落ち)。記録専用・挙動不変。
@@ -12697,7 +12698,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const openGhostSwingWindow = (): void => {
                 useGameStore.setState(st => ({
                   summons: st.summons.map(s => s.id === ghostNow.id
-                    ? { ...s, ghostCounterWindowEnd: nowMs + COUNTER_ACCEPT_MS } // 隻狼型(v0.25.3943・プレイヤーと同値)
+                    ? { ...s, ghostCounterWindowEnd: nowMs + counterAcceptMsOf(ghostOwner), ghostCounterWindowOpenAt: nowMs } // 隻狼型(v0.25.3943・プレイヤーと同値。記録の装備で延びる)
                     : s),
                 }));
               };
@@ -12757,7 +12758,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const gscx = ghostNow.x + ghostNow.width / 2, gscy = ghostNow.y + ghostNow.height / 2;
                     setGhostCounterClaim({
                       bossId: boundBoss.id, ghostX: gscx, ghostY: gscy,
-                      dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs,
+                      dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs, windowMs: counterAcceptMsOf(ghostOwner),
                     });
                     // v0.25.3981(実測用・?ghostlog=1): 構え=請求を積んだ瞬間(通常近接)。記録専用。
                     if (GHOST_DMG_LOG_ENABLED) {
@@ -12896,7 +12897,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // カウンター成立の請求は通常近接と同じ扱い(一閃も「近接スイング」なので窓を拾う)。
                     setGhostCounterClaim({
                       bossId: boundBoss.id, ghostX: gmcx, ghostY: gmcy,
-                      dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs,
+                      dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs, windowMs: counterAcceptMsOf(ghostOwner),
                     });
                     // v0.25.3981(実測用・?ghostlog=1): 構え=請求を積んだ瞬間(刀の一閃)。記録専用。
                     if (GHOST_DMG_LOG_ENABLED) {

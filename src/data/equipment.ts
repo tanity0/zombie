@@ -70,13 +70,15 @@ const NORMAL_TABLES: Record<EquipLine, LineTable> = {
     { name: 'AI搭載スコープ', stats: [s('critChance', 0.12), s('scrap', 0.30)] },
     { name: '神経伝達スコープ', stats: [s('critChance', 0.15), s('scrap', 0.40)] }
   ],
-  // アクセ: 弾薬系(弾薬ドロップ / スクラップ)
+  // アクセ: 弾薬系(弾薬ドロップ / スクラップ / カウンター受付の延長)
+  // ★カウンター受付(社長指示2026-10-28「弾薬ドロップ率上昇系に、カウンター受付時間の延長も追加」・推薦の1段+0.02秒を採用):
+  // 5段目で受付300→400ms。3〜5段目は3ステになる(通常装備は最大2ステの例外・社長承知の上)。
   ammo: [
-    { name: '弾薬ポーチ', stats: [s('ammoDrop', 0.10)] },
-    { name: '予備弾薬袋', stats: [s('ammoDrop', 0.15)] },
-    { name: '軍用弾薬ベルト', stats: [s('ammoDrop', 0.20), s('scrap', 0.20)] },
-    { name: '弾薬収納ベスト', stats: [s('ammoDrop', 0.25), s('scrap', 0.30)] },
-    { name: 'ミリタリー収納ベスト', stats: [s('ammoDrop', 0.30), s('scrap', 0.40)] }
+    { name: '弾薬ポーチ', stats: [s('ammoDrop', 0.10), s('counterAccept', 0.02)] },
+    { name: '予備弾薬袋', stats: [s('ammoDrop', 0.15), s('counterAccept', 0.04)] },
+    { name: '軍用弾薬ベルト', stats: [s('ammoDrop', 0.20), s('scrap', 0.20), s('counterAccept', 0.06)] },
+    { name: '弾薬収納ベスト', stats: [s('ammoDrop', 0.25), s('scrap', 0.30), s('counterAccept', 0.08)] },
+    { name: 'ミリタリー収納ベスト', stats: [s('ammoDrop', 0.30), s('scrap', 0.40), s('counterAccept', 0.10)] }
   ],
   // special は通常テーブルを持たない(SPECIAL_DEFS で別管理)。
   special: []
@@ -141,7 +143,8 @@ const NEUTRAL_BONUS: EquipBonus = {
   reloadMult: 1,
   critBonus: 0,
   ammoDropBonus: 0,
-  scrapBonus: 0
+  scrapBonus: 0,
+  counterAcceptMs: 0
 };
 
 export const neutralEquipBonus = (): EquipBonus => ({ ...NEUTRAL_BONUS });
@@ -163,6 +166,7 @@ export const aggregateEquipBonus = (loadout: EquipLoadout): EquipBonus => {
         case 'critChance': b.critBonus += st.value; break;
         case 'ammoDrop': b.ammoDropBonus += st.value; break;
         case 'scrap': b.scrapBonus += st.value; break;
+        case 'counterAccept': b.counterAcceptMs += Math.round(st.value * 1000); break;
         case 'maxHealth': break; // maxHealth は別経路(加算ベイク)
       }
     }
@@ -199,6 +203,7 @@ export const equipStatLabel = (st: EquipStat): string => {
     case 'critChance': return `クリティカル率 ${pct(st.value)}`;
     case 'ammoDrop': return `弾薬ドロップ率 ${pct(st.value)}`;
     case 'scrap': return `スクラップ取得量 ${pct(st.value)}`;
+    case 'counterAccept': return `カウンター受付 +${st.value.toFixed(2)}秒`;
   }
 };
 

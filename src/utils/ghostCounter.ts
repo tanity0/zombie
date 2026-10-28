@@ -45,6 +45,7 @@ export interface GhostCounterClaim {
   ghostY: number;
   dmg: number;      // 確定クリのダメージ(ghostCounterDamage・借用装備基準/スキル倍率なし)
   atMs: number;     // ★判定時置換ミラー(2026-08-27): **振り始め**の時刻(Date.now)。旧: 前隙解決時。
+  windowMs?: number; // 受付の長さ(記録の装備で延びる=store.counterAcceptMsOf)。省略時=GHOST_COUNTER_CLAIM_MAX_AGE_MS。
 }
 
 /** 請求を覗く/消費する時の位置ゲートの切り替え(peek/consume 共通)。 */
@@ -116,7 +117,7 @@ export const setGhostCounterClaim = (claim: GhostCounterClaim): void => { pendin
  */
 export const peekGhostCounterClaim = (nowMs: number, opts?: GhostClaimGateOpts): GhostCounterClaim | null => {
   if (pendingClaim === null) return null;
-  if (nowMs - pendingClaim.atMs > GHOST_COUNTER_CLAIM_MAX_AGE_MS) {
+  if (nowMs - pendingClaim.atMs > (pendingClaim.windowMs ?? GHOST_COUNTER_CLAIM_MAX_AGE_MS)) {
     logReject('期限', `age=${Math.round(nowMs - pendingClaim.atMs)}ms`);
     return null;
   }

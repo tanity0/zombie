@@ -736,6 +736,8 @@ export interface GhostDriverInput {
    * store依存の判定(isKatanaMode)なので呼び出し側が注入する(meleeDistと同じ作法)。省略時=false。
    */
   isKatanaEquipped?: boolean;
+  /** カウンター受付の長さ(ms・記録の装備で延びる=store.counterAcceptMsOf)。省略時=COUNTER_ACCEPT_MS。 */
+  counterAcceptMs?: number;
 }
 
 export interface GhostDecision {
@@ -917,8 +919,8 @@ export const habitSwingAtFromPressOfs = (T: number, pressOfs: number | null): nu
  * 同じ式1本で弾く(=手写しの重複判定を作らない)。窓300ms=COUNTER_ACCEPT_MSは台帳からimport
  * (数値を書かない)。時計はgameTime側で完結(呼び出し側もswingAt/TともgameTime系のみを渡すこと)。
  */
-export const habitSwingWindowCoversT = (swingAt: number, T: number): boolean =>
-  swingAt <= T && T <= swingAt + COUNTER_ACCEPT_MS;
+export const habitSwingWindowCoversT = (swingAt: number, T: number, acceptMs: number = COUNTER_ACCEPT_MS): boolean =>
+  swingAt <= T && T <= swingAt + acceptMs;
 
 /** research/LUNGE_DODGE.md §3-2: 既定の抜けを出す、着弾までの残り(ms)。踏み込み90ms+余裕。 */
 export const GHOST_ESCAPE_LUNGE_LEAD_MS = 180;
@@ -1576,7 +1578,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
         // 「振らない」へ確定させる(=毎tick窓の再判定で偶然coverしても振り直さない。この機会は
         // このコマで確定済み=別のコマを発明しない)。
         // research/LUNGE_DODGE.md §3-1: 外・横へ踏み込んだ記録は「抜ける」ための振り=#17の例外(窓がTを覆わなくても振る)。
-        if (microHabitSwingAt !== undefined && !isEscapeLg(microHabitSwingLg) && !habitSwingWindowCoversT(microHabitSwingAt, TFrozen)) {
+        if (microHabitSwingAt !== undefined && !isEscapeLg(microHabitSwingLg) && !habitSwingWindowCoversT(microHabitSwingAt, TFrozen, input.counterAcceptMs)) {
           microHabitSwingAt = undefined;
         }
         microHabitResolved = true;
@@ -1595,7 +1597,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
       // 抜けの記録(外・横)は、CD待ちで着弾を過ぎたら振らない(抜ける意味が無い)。
       const escapeLg = isEscapeLg(microHabitSwingLg);
       if (habitAimReady && TFrozen !== undefined
-        && (escapeLg ? gameTime >= TFrozen : !habitSwingWindowCoversT(gameTime, TFrozen))) {
+        && (escapeLg ? gameTime >= TFrozen : !habitSwingWindowCoversT(gameTime, TFrozen, input.counterAcceptMs))) {
         counterWillAttempt = false;
         microHabitSwingAt = undefined;
       } else if (counterWillAttempt && microHabitResolved && habitAimReady && habitMeleeReady && counterMeleeReady) {
@@ -1612,7 +1614,7 @@ export const decideGhost = (input: GhostDriverInput): GhostDecision => {
         // 凍結は habitNewArm(=counterArmKeyNowが実際に変わった時)だけが張り直す。
         microHabitResolved = false; microHabitSwingAt = undefined;
         // 抜けの振りは、窓が着弾を覆う時だけカウンターの請求を積む(覆わない=抜けるだけ=積まない)。
-        meleeIsCounterAttempt = !escapeLg || (TFrozen !== undefined && habitSwingWindowCoversT(gameTime, TFrozen));
+        meleeIsCounterAttempt = !escapeLg || (TFrozen !== undefined && habitSwingWindowCoversT(gameTime, TFrozen, input.counterAcceptMs));
         microHabitSwingLg = undefined;
         // 抜けた後は着弾時の位置へ立ち直す(中へ歩き戻らない=品質監査 A-1)。
         if (escapeLg) { microHabitEscaped = true; microHabitTargetX = undefined; microHabitTargetY = undefined; }

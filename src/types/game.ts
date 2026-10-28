@@ -505,7 +505,8 @@ export type EquipStatKey =
   | 'reload'      // リロード時間短縮(正の割合=短縮量)
   | 'critChance'  // クリ率(割合・3%刻み)
   | 'ammoDrop'    // 弾薬ドロップ(割合)
-  | 'scrap';      // スクラップ(割合)
+  | 'scrap'       // スクラップ(割合)
+  | 'counterAccept'; // カウンター受付時間の延長(秒。社長指示2026-10-28・弾薬系に1段+0.02秒)
 // 1ステータス分の効果。value の単位: maxHealth=HPポイント、それ以外=割合(0.20=+20%、reloadは短縮量)。
 export interface EquipStat { key: EquipStatKey; value: number }
 // 静的な装備定義(data/equipment.ts)。
@@ -530,6 +531,7 @@ export interface EquipBonus {
   critBonus: number;      // Σクリ率(加算)
   ammoDropBonus: number;  // Σ弾薬ドロップ(加算)
   scrapBonus: number;     // Σスクラップ(加算)
+  counterAcceptMs: number; // Σカウンター受付の延長(ms・加算)
 }
 
 
@@ -1745,6 +1747,8 @@ export interface Summon {
   // 近接スイング(通常スイング/刀の一閃)を起点に開く。窓中に自分へ当たった敵弾を反射する
   // (反射のたびに COUNTER_EXTEND_PER_HIT で延長=プレイヤーと同じ連続反射)。他kindでは常にundefined。
   ghostCounterWindowEnd?: number;
+  // 窓が開いた時刻(Date.now基準・描画のリングの起点)。装備で受付が延びると「終わり−定数」では開いた時刻が出ないため。
+  ghostCounterWindowOpenAt?: number;
   /**
    * ★守護霊の近接の前隙(社長裁定2026-08-24・SAME_ARENA.md §7)。振り始めた時刻(**nowMs**)。
    * `MELEE_WINDUP_MS` 経過後に useGameLoop が判定を解決する。プレイヤー(`pendingSwingAt`)・

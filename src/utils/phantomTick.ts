@@ -41,7 +41,7 @@ import {
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
   meleeLungePx, MELEE_LUNGE_MS, knockbackSpeedFor, // ★踏み込み(プレイヤーと同じ関数=武器別も揃う)
   MELEE_RADIUS, WHIP_LENGTH_BY_LEVEL, whipLevel, // research/LUNGE_DODGE.md §4(b): プレイヤーの近接の届く距離(武器別)
-  COUNTER_ACCEPT_MS,                            // GHOST_BOSS.md v10: 弾を打ち返す振りを出す時機=着弾が窓(プレイヤーの受付と同じ長さ)以内
+  counterAcceptMsOf,                            // GHOST_BOSS.md v10: 弾を打ち返す振りを出す時機=着弾が窓(プレイヤーの受付と同じ長さ)以内
   playerPvpChipPatch,                           // ★SAME_ARENA §9: プレイヤー体勢の削り(紫入りの破棄込み)
   showPvpFatalOnPlayerPresentation,             // ★2026-08-27: 幻影→プレイヤーの致命もKILL演出(ズーム)
   skillBenkeiCritBonus, skillKnifeMasterMeleeCrit, // ★裁定①: 近接クリ式のミラー(検収監査 中⑥)
@@ -486,7 +486,7 @@ const pickPhantomEscapeLunge = (
     if (plan === 'counter') {
       // 着弾までが振りの窓(COUNTER_ACCEPT_MS=プレイヤーの受付と同じ長さ)以内になったら普通の振り=窓の中で着く→ゲートが打ち返す。
       const eta = bulletEtaMs(bcx, bcy, radius, p);
-      if (eta !== null && eta <= COUNTER_ACCEPT_MS) { act = { kind: 'counter' }; actId = p.id; }
+      if (eta !== null && eta <= counterAcceptMsOf(combatActorPlayer(phantom.id))) { act = { kind: 'counter' }; actId = p.id; }
     } else {
       const dir = phantomBulletLungeDir(bcx, bcy, radius, walkSpeed, lungePx, MELEE_LUNGE_MS, p);
       if (dir) { act = { kind: 'escape', dir }; actId = p.id; }
@@ -703,6 +703,7 @@ export const decidePhantom = (
     },
     // ★AI_HUMANIZE.md B3(§4「専用乱数流」・シード=敵id): 既存randとは別系統。
     microSeed: hashSeed(phantom.id),
+    counterAcceptMs: counterAcceptMsOf(combatActorPlayer(phantom.id)), // 記録の装備で受付が延びる(プレイヤーと同条件)
     // 「標的が居ない時はプレイヤーへ寄る」フォールバック用の座標。幻影に守るべき主は居ないので
     // 自分自身を渡す=そのフォールバックは実質何もしない(標的は常に居るので通らない)。
     player: { x: phantom.x, y: phantom.y, width: phantom.width, height: phantom.height },

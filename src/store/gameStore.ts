@@ -31,7 +31,7 @@ import {
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, JunDeparture, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
-  DashLocomotionState, EquipLoadout, EquipSlot, ConsumableKey,
+  DashLocomotionState, EquipLoadout, EquipSlot, ConsumableKey, EquipBonus,
   BloodSpike, GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯/グラビティショットの状態
   PauseReason, // ★なぜ止まっているか(テストブリッジ用・遊びの仕様には使わない)
 } from '../types/game';
@@ -1787,6 +1787,9 @@ export const PLAYER_MELEE_SWING_MS = MELEE_WINDUP_MS + PLAYER_MELEE_FOLLOW_MS;
  *   だった。実機で「合わせるのが難しい」(予告の消え切りと押しどきが200〜400msズレる)ため隻狼型へ。
  * 隻狼の実数値: 発生0F・受付12F(0.2秒)=本値と同一。
  */
+/** 受付の長さ(装備の延長込み・社長指示2026-10-28)。主語=プレイヤー/守護霊・幻影の疑似Player(記録の装備)。 */
+export const counterAcceptMsOf = (p?: { equipBonus?: Partial<EquipBonus> } | null): number =>
+  COUNTER_ACCEPT_MS + Math.max(0, p?.equipBonus?.counterAcceptMs ?? 0);
 export const COUNTER_ACCEPT_MS = 300; // ms the acceptance window stays open FROM the trigger(社長裁定2026-08-26「300msに100延長で」。隻狼型導入時v0.25.3943は200=隻狼の12Fと同値だった=事実)
 /**
  * ★カウンターが成立するか(唯一の判定・v0.25.3926で1本化)。
@@ -3528,7 +3531,7 @@ const gatePhantomHit = (
   gpSwingAt: enemy.gpSwingAt,
   // ★窓の長さはプレイヤーのカウンター受付(COUNTER_ACCEPT_MS)と同じ。v0.25.3943 で受付を「振り1回の長さ」(COUNTER_WINDOW=400)
   //   から分けた時に、ここだけ400のまま残っていた=幻影だけ受付が3割長かった(社長「あり得ない反応速度でカウンター」2026-10-26)。
-  swingWindowMs: COUNTER_ACCEPT_MS,
+  swingWindowMs: isGuardianPhantom(enemy.type) ? counterAcceptMsOf(combatActorPlayer(enemy.id)) : COUNTER_ACCEPT_MS, // 記録の装備で延びる(プレイヤーと同条件)
   // 対人ダメージ1/10(社長裁定2026-08-20「一旦」)。幻影以外は1=完全恒等。
   pvpDamageScale: isGuardianPhantom(enemy.type) ? PVP_DAMAGE_SCALE : 1,
   gpHitAt: enemy.gpHitAt,
@@ -9022,7 +9025,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         pendingSwingAt: now,
         meleeSwingAt: now,
         counterWindowStart: now, // 隻狼型(v0.25.3943): 受付は押した瞬間から
-        counterWindowEnd: now + COUNTER_ACCEPT_MS,
+        counterWindowEnd: now + counterAcceptMsOf(state.player), // 装備で延びる(社長指示2026-10-28)
         counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
       },
     }));
@@ -9249,7 +9252,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           player: {
             ...player,
             counterWindowStart: now, // 隻狼型(v0.25.3943)
-            counterWindowEnd: now + COUNTER_ACCEPT_MS,
+            counterWindowEnd: now + counterAcceptMsOf(player),
             counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
           },
         });
@@ -9282,7 +9285,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         player: {
           ...state.player,
           counterWindowStart: swingAt, // 隻狼型(v0.25.3943): 受付は押した瞬間から
-          counterWindowEnd: swingAt + COUNTER_ACCEPT_MS,
+          counterWindowEnd: swingAt + counterAcceptMsOf(state.player),
           counterCooldownEnd: counterCd,
         }
       }));
@@ -9322,7 +9325,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         player: {
           ...state.player,
           counterWindowStart: swingAt, // 隻狼型(v0.25.3943)
-          counterWindowEnd: swingAt + COUNTER_ACCEPT_MS,
+          counterWindowEnd: swingAt + counterAcceptMsOf(state.player),
           // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
           counterCooldownEnd: swingAt + (counterWindowMs + COUNTER_COOLDOWN + WHIP_COOLDOWN_EXTRA_MS) * meleeCooldownMult(player),
         }
@@ -9892,7 +9895,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 破棄した窓をここで開き直さない(旧: 無条件書き=紫入り直後300ms弾パリィが生きていた)。
         // ★被弾反撃(ret)は窓もCDも張らない・開き直さない(近接/カウンターの待ち時間は変えない=CDの影響を受けず、CDも進めない)。
         counterWindowStart: ret ? state.player.counterWindowStart : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt, // 隻狼型(v0.25.3943)
-        counterWindowEnd: ret ? state.player.counterWindowEnd : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt + COUNTER_ACCEPT_MS,
+        counterWindowEnd: ret ? state.player.counterWindowEnd : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt + counterAcceptMsOf(state.player),
         // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
         counterCooldownEnd: ret ? state.player.counterCooldownEnd : swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
         huntingCharged: false,

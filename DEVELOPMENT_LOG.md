@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5242 — 弾薬系の装備にカウンター受付の延長(1段+0.02秒)【2026-10-28 21:52 JST】
+- 社長 2026-10-28「装備の弾薬ドロップ率上昇系に、カウンター受付時間の延長も追加。0.05ずつすると?」→ 0.05だと5段目550ms(振り368msより長く早置き潰しが効かなくなる)と答え、推薦1段+0.02秒(5段目400ms)→「どっちも推薦」で採用。
+  - `data/equipment.ts`: 弾薬系の5段に `counterAccept` 0.02〜0.10秒。3〜5段目は3ステ(通常装備は最大2ステの例外・社長に事前に伝えた上で採用)。集計 `EquipBonus.counterAcceptMs`・説明文「カウンター受付 +0.02秒」。
+  - `gameStore.counterAcceptMsOf(p)`=COUNTER_ACCEPT_MS+装備の延長(欄が無い古い記録は0)。プレイヤーの受付窓を張る箇所(gameStore 内で `counterWindowEnd` に `COUNTER_ACCEPT_MS` を足していた5箇所すべて)をこれに。
+  - 守護霊: 弾返しの窓(`ghostCounterWindowEnd`)・ボスへのカウンターの請求の期限(`GhostCounterClaim.windowMs`)・振る判断(`decideGhost` の `counterAcceptMs`→`habitSwingWindowCoversT`)を記録の装備どおりに。窓のリングは開いた時刻 `ghostCounterWindowOpenAt` から光る(終わり−定数では延びた分だけ遅れて光るため)。
+  - 幻影: パリィ窓(`phantomHitGate` の `swingWindowMs`)・振る判断・弾を打ち返す振りの時機を記録の装備どおりに。
+  - 変えていないもの: 近接の弧が育ち切る時刻(絵・300ms固定)/振りのCD/サーバの記録の検査(装備の効果は持ち物のidから組み直すので不要)。
+- 5段目の400msは振りの絵(368ms)より32ms長いが、振り1サイクル(CDの基準 400ms)には収まる(前の返信で「振り1回の長さに収まる」と書いたのは、この1サイクルの意味)。
+- 検証: typecheck/eslint/循環import。装備・守護霊・幻影・カウンター系のテスト30ファイル(新規3件含む)緑。
+- 自己点検: 憲法第4条・第5条に触れない(装備の効果の追加)。
+
 ## v0.25.5241 — 塊弾の弾の絵(社長支給・10コマ)【2026-10-28 21:43 JST】
 - 社長支給2026-10-28「塊弾の弾素材。最後の3コマをループ」: `public/sprites/fx/blob-shot.png`(700×66・1コマ70×66・透過・ドット絵)。起動マニフェストへ nearest で登録(常駐0.18MB)。`assets:ledger` 更新・`assets:check` 緑。
   - コマ: 1〜7=撃ち出し(彗星→渦へ育つ)を45msずつ1回、8〜10=90msずつループ(`utils/blobShot.ts` の `blobSheetFrame`・テスト付き)。1ドット=世界1px(ループのコマの中身≈62px が当たりの直径52より少し外)。

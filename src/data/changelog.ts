@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5242', items: [
+    '弾薬系のアクセサリーに、カウンターを受け付ける時間を延ばす効果が付いた。段が上がるほど長く、守護霊と幻影も記録の装備どおりに効く',
+  ] },
   { version: '0.25.5241', items: [
     '塊弾の弾が紫の渦に。撃った瞬間は尾を引いて飛び出し、育ちながら渦を巻く',
   ] },

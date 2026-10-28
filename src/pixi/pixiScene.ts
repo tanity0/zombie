@@ -18892,7 +18892,7 @@ export class PixiScene {
     if (this.ghostCounterRing) this.ghostCounterRing.visible = false; // 既定OFF(下で出す時だけON)
     const gWinEnd = lifecycleActive ? 0 : (s.ghostCounterWindowEnd ?? 0);
     if (now <= gWinEnd) {
-      const gOpenAt = gWinEnd - COUNTER_ACCEPT_MS; // 隻狼型(v0.25.3943)
+      const gOpenAt = s.ghostCounterWindowOpenAt ?? gWinEnd - COUNTER_ACCEPT_MS; // 隻狼型(v0.25.3943)。装備で受付が延びても開いた瞬間に光る
       const gt = (now - gOpenAt) / 140;
       if (gt >= 0 && gt < 1) {
         const gr = 74;
