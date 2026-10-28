@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DOG_EXCLUDED_TYPES, dogEligiblePickups } from './dogFetch';
+import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogLostReturnPatch } from './dogFetch';
 import type { Pickup, PickupType } from '../types/game';
 
 // ★社長裁定2026-08-25「犬がそのレベルで拾うものをそのまま移せばいい」=
@@ -65,5 +65,12 @@ describe('dogTrackTarget(狙いの追跡)', () => {
   it('狙い無し/投擲中は keep(座標据え置き)', () => {
     expect(dogTrackTarget([pk('a', 0, 0)], null, 0)).toEqual({ kind: 'keep' });
     expect(dogTrackTarget([pk('a', 0, 0, { throwStartAt: 0, throwDuration: 500 })], 'a', 100)).toEqual({ kind: 'keep' });
+  });
+});
+
+describe('狙いが消えた犬は戻り切るまで同じ仕事のまま(社長報告2026-10-28「犬が大量に出てくる」)', () => {
+  it('中止しても仕事は残り、戻りの尺のあとで空く。その間は拾わない(collected)・狙いも持たない', () => {
+    const p = dogLostReturnPatch(10_000, 580);
+    expect(p).toEqual({ aborted: true, collected: true, targetId: null, finishAt: 10_580 });
   });
 });

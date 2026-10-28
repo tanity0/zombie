@@ -106,7 +106,7 @@ import {
 import { computeWarpLandingPoint, computeWarpFlyinStart } from '../utils/rescueQuestWarp'; // 二人組クエストv2(§2-8・B4)
 import { pushShieldRect, clampShieldPlacementRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { PVP_DAMAGE_SCALE, pvpHitDamageForGate } from '../utils/phantomScript'; // 対人1/10(社長裁定2026-08-20)
-import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget } from '../utils/dogFetch';
+import { DOG_EXCLUDED_TYPES, dogEligiblePickups, dogTrackTarget, dogLostReturnPatch } from '../utils/dogFetch';
 import { HERO_DOG_FETCH_ARRIVE_PX, HERO_DOG_FETCH_TIMEOUT_MS, HERO_DOG_FETCH_RETURN_MS } from '../utils/heroDog';
 import { HIT_BLINK_TYPES } from '../utils/hitBlink';
 // healthDropMult は utils/gunKillDrops.ts へ移した(品質監査#4)
@@ -1540,6 +1540,8 @@ type DogFetchJob = {
   // 社長指示2026-10-15「イヌが出てる時、拾うだけの犬が出ないようにして」: 英雄の犬が居る間は dogFetch 効果(拾うだけの犬)を出さず、
   // 英雄の犬が拾い物へ走る(store.heroDogFetch)。回収は着いた時(HERO_DOG_FETCH_ARRIVE_PX)か安全網の時刻。
   heroDog: boolean;
+  /** 狙いが消えて中止し、引き返している最中(utils/dogFetch.dogLostReturnPatch)。拾わない・噛まない・戻り切ってもCDを消費しない。 */
+  aborted?: boolean;
 };
 /** 場に居る英雄の犬(去りかけは除く)。ドッグの拾い物を代行させるかの判定に使う。 */
 const liveHeroDog = () => useGameStore.getState().summons.find(s => s.kind === 'hero-dog' && s.expiresAt === undefined);
@@ -1566,6 +1568,11 @@ const abortDogFetchFx = (job: DogFetchJob, effectId: string | null, nowMs: numbe
   e.targetX = curX; e.targetY = curY;
   e.pickupAt = nowMs;
   e.duration = (nowMs - e.createdAt) + (DOG_FETCH_DURATION_MS - DOG_FETCH_PICKUP_MS);
+};
+/** 狙いが消えた犬: 引き返す絵へ切り替え、戻り切るまで同じ仕事のまま残す(同時に1匹・CDは消費しない)。 */
+const abortDogFetchJob = (job: DogFetchJob, nowMs: number): void => {
+  abortDogFetchFx(job, job.effectId, nowMs);
+  Object.assign(job, dogLostReturnPatch(nowMs, DOG_FETCH_DURATION_MS - DOG_FETCH_PICKUP_MS));
 };
 
 export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: boolean; trackFps?: boolean } = {}) => {
@@ -10393,11 +10400,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (pj && !pj.collected) {
                 const tr = dogTrackTarget(useGameStore.getState().pickups, pj.targetId, pdNow);
                 if (tr.kind === 'follow') { pj.targetX = tr.x; pj.targetY = tr.y; syncDogFetchFxTarget(pj.effectId, tr.x, tr.y); }
-                else if (tr.kind === 'lost') { abortDogFetchFx(pj, pj.effectId, pdNow); phantomDogRef.current = null; }
+                else if (tr.kind === 'lost') abortDogFetchJob(pj, pdNow); // 戻り切るまで同じ犬のまま(同時に1匹)
               }
             }
             const job = phantomDogRef.current;
-            if (job) {
+            if (job?.aborted) {
+              // 狙いが消えて引き返している犬: 噛まない・消さない。戻り切ったら CD を消費せず空ける(社長裁定2026-09-13)。
+              if (pdNow >= job.finishAt) phantomDogRef.current = null;
+            } else if (job) {
               // 噛み: 往復の補間位置がプレイヤーに近づいたら1回だけ。ダメージは対人補正込み。
               const t = Math.max(0, Math.min(1, (pdNow - job.startedAt) / DOG_FETCH_DURATION_MS));
               const outFrac = DOG_FETCH_PICKUP_MS / DOG_FETCH_DURATION_MS;
@@ -10509,7 +10519,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (!hf || hf.x !== tr.x || hf.y !== tr.y) useGameStore.setState({ heroDogFetch: { x: tr.x, y: tr.y } });
                 }
               }
-              else if (tr.kind === 'lost') { abortDogFetchFx(job, job.effectId, nowMs); dogFetchRef.current = null; clearHeroDogFetch(); }
+              else if (tr.kind === 'lost') {
+                // 英雄の犬の代行は犬そのものが場に居続ける=仕事だけ消せばよい。拾うだけの犬は戻り切るまで同じ犬のまま(同時に1匹)。
+                if (job.heroDog) { dogFetchRef.current = null; clearHeroDogFetch(); }
+                else abortDogFetchJob(job, nowMs);
+              }
               // 社長指示2026-10-15「英雄犬が倒れた時は通常のドッグ効果」: 代行中に英雄の犬が居なくなった(倒れた/去った)ら、
               // その場から**通常のドッグ(拾うだけの犬)に引き継ぐ**=主人の所から改めて往復する(CD・回収は通常どおり)。
               if (job.heroDog && dogFetchRef.current === job && !liveHeroDog()) {
@@ -10530,7 +10544,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           const activeFetch = dogFetchRef.current;
 
-          if (activeFetch) {
+          if (activeFetch?.aborted) {
+            // 狙いが消えて引き返している犬: 噛まない・拾わない。戻り切ったら CD を消費せず空ける(社長裁定2026-09-13)。
+            if (nowMs >= activeFetch.finishAt) dogFetchRef.current = null;
+          } else if (activeFetch) {
             // 移動軌道上の敵を噛む: 現在のドッグ位置(出発→対象→プレイヤーへ戻る)を補間で求め、
             // 近接した未噛みの敵に小ダメージ+小ノックバック。英雄の犬の代行中は補間の犬が居ないので噛まない(犬自身の噛みは updateSummons)。
             if (!activeFetch.heroDog) {

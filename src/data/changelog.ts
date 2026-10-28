@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5246', items: [
+    'ドッグの犬が何匹も重なって走り回ることがあったのを直した。狙った拾い物を先に取られた犬は、戻ってから次へ向かう',
+  ] },
   { version: '0.25.5245', items: [
     'スコープと弾薬系のアクセサリーは、最初の段からスクラップが多く拾えるように',
   ] },

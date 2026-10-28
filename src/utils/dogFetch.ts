@@ -46,6 +46,19 @@ export const dogTrackTarget = (pickups: readonly Pickup[], targetId: string | nu
   return { kind: 'follow', x: p.x + 8, y: p.y + 8 };
 };
 
+/**
+ * 狙いが消えた('lost')時の往復の扱い(社長報告2026-10-28「まだドッグで、犬が大量に出てくる時がある」)。
+ * 旧: 中止した犬は「今いる所から引き返す」絵を残したまま**仕事(job)だけ即座に消していた**ので、次のフレームで
+ * 新しい犬が出発できた。マグネットがコインを先に吸い続ける場面では、これが毎フレームのように繰り返され、
+ * **引き返していく犬が何匹も重なって見えた**。
+ * 新: 中止しても**戻り切るまでは同じ仕事のまま**にする(=同時に1匹)。「CD を消費しない」(社長裁定2026-09-13)は
+ * そのまま=戻り切った瞬間に次が出られる。戻る間は拾わない・噛まない。
+ */
+export interface DogLostPatch { aborted: true; collected: true; targetId: null; finishAt: number }
+export const dogLostReturnPatch = (nowMs: number, returnMs: number): DogLostPatch => ({
+  aborted: true, collected: true, targetId: null, finishAt: nowMs + Math.max(0, returnMs),
+});
+
 export interface DogEligibleInput {
   pickups: readonly Pickup[];
   /** 中心座標(狙いを選ぶ時=主語の中心 / 消す・拾う時=目標地点)。 */
