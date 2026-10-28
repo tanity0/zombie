@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5245', items: [
+    'スコープと弾薬系のアクセサリーは、最初の段からスクラップが多く拾えるように',
+  ] },
   { version: '0.25.5244', items: [
     '強化に「カウンター受付」を追加。段を上げるほど、少し早く振っても弾ける',
     'カウンターを受け付ける時間の延長は、弾薬系のアクセサリーから外した',

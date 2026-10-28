@@ -64,8 +64,9 @@ const NORMAL_TABLES: Record<EquipLine, LineTable> = {
   ],
   // アクセ: クリ系(クリ率 / スクラップ)
   crit: [
-    { name: '精密スコープ', stats: [s('critChance', 0.03)] },
-    { name: 'レーザースコープ', stats: [s('critChance', 0.06)] },
+    // ★スクラップは1段目から(社長指示2026-10-28「スクラップは1段目から入れて」=1段+10%・2段+15%で3段目の+20%へつなぐ)。
+    { name: '精密スコープ', stats: [s('critChance', 0.03), s('scrap', 0.10)] },
+    { name: 'レーザースコープ', stats: [s('critChance', 0.06), s('scrap', 0.15)] },
     { name: 'ミリタリースコープ', stats: [s('critChance', 0.09), s('scrap', 0.20)] },
     { name: 'AI搭載スコープ', stats: [s('critChance', 0.12), s('scrap', 0.30)] },
     { name: '神経伝達スコープ', stats: [s('critChance', 0.15), s('scrap', 0.40)] }
@@ -73,8 +74,9 @@ const NORMAL_TABLES: Record<EquipLine, LineTable> = {
   // アクセ: 弾薬系(弾薬ドロップ / スクラップ)
   // ※2026-10-28 にカウンター受付の延長を一度足したが、社長指示「装備に付けるのはやめる。強化にいれる」で強化(data/playerUpgrades.ts)へ移した。
   ammo: [
-    { name: '弾薬ポーチ', stats: [s('ammoDrop', 0.10)] },
-    { name: '予備弾薬袋', stats: [s('ammoDrop', 0.15)] },
+    // ★スクラップは1段目から(社長指示2026-10-28・クリ系と同じ値)。
+    { name: '弾薬ポーチ', stats: [s('ammoDrop', 0.10), s('scrap', 0.10)] },
+    { name: '予備弾薬袋', stats: [s('ammoDrop', 0.15), s('scrap', 0.15)] },
     { name: '軍用弾薬ベルト', stats: [s('ammoDrop', 0.20), s('scrap', 0.20)] },
     { name: '弾薬収納ベスト', stats: [s('ammoDrop', 0.25), s('scrap', 0.30)] },
     { name: 'ミリタリー収納ベスト', stats: [s('ammoDrop', 0.30), s('scrap', 0.40)] }
