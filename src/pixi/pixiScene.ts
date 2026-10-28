@@ -34,6 +34,7 @@ import type {
   BloodSpike, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
   GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショットの渦(v0.25.3276)
   SkillKey, // スキル取得の頭上マーク(v0.25.4342)がアイコンを引くのに使う
+  Weapon,
 } from '../types/game';
 // ENDING_SCENE.md 演出仕様v2: 兵士/フィルの状態機械(純関数・シミュレーション)はここでは読むだけ。
 import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endingScene';
@@ -4845,6 +4846,7 @@ export class PixiScene {
   private eyeLaserHalo: Sprite | null = null;
   // 火炎放射器の扇(固定本数のstreak sprite。pooled・毎フレーム再生成しない)。
   private flamerStreaks: Sprite[] = [];
+  private ghostFlamerStreaks: Sprite[] = [];
   private newGunsFx: NewGunsFx | null = null; // research/NEW_GUNS.md: 新しい銃3挺の絵
   // §6.28-19(バッチM63): アクラシエルの結晶の槍(acrasielSpears)。設置中の槍スプライト+T5円テレグラフ
   // (ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
@@ -10080,6 +10082,7 @@ export class PixiScene {
     this.syncIceLanceFloors(s.iceLanceFloors, s.gameTime); // UNIQUE_WEAPONS.md §16-2: 氷槍ライフルの床
     this.syncEyeLaser(s.player, s.eyeLaserBeam, s.gameTime); // UNIQUE_WEAPONS.md §16-2: アイレーザーの溜め/照射
     this.syncFlamerCone(s.player, s.flamerCone, s.gameTime, now); // UNIQUE_WEAPONS.md §16-2: 火炎放射器の扇
+    this.syncGhostFlamerCone(s.summons, s.gameTime, now); // §17-6b G6: 守護霊の火炎放射器(同じ絵・同じ式)
     // research/NEW_GUNS.md(第4版): 塊弾・衛星弾・スキャンの扇と印(描くだけ・判定は utils/newGunsTick.ts)。
     (this.newGunsFx ??= new NewGunsFx(this.L.groundLayer, this.L.effectLayer))
       .sync(s.enemies, s.player, s.projectiles, s.gameTime, now, fy => this.depthScaleEnemy(fy));
@@ -17120,19 +17123,33 @@ export class PixiScene {
   // 瞬間に消える=CLAUDE.md慣性MUST違反)。噴射開始(flamerSprayStartAt)からの経過でα/長さを
   // 立ち上げ、最終パルス後はWEAPON_SPAWN_EASE_MSで減衰させる。
   private syncFlamerCone(player: Player, cone: { dirX: number; dirY: number } | null, gameTime: number, now: number) {
+    const gun = player.weapons.find(w => w.key === FLAMER_WEAPON_KEY);
+    this.drawFlamerStreaks(this.flamerStreaks, gun, player.x + player.width / 2, player.y + player.height / 2, cone, gameTime, now);
+  }
+
+  // UNIQUE_WEAPONS.md §17-6b G6: 守護霊(同時に1体)の炎。帳簿(flamerNextPulseAt/flamerSprayStartAt)は守護霊の銃、向きは ghostFlamerDir。
+  private syncGhostFlamerCone(summons: readonly Summon[], gameTime: number, now: number) {
+    const g = summons.find(x => x.kind === 'ghost-ally');
+    const gun = g?.ghostWeapons?.find(w => w.key === FLAMER_WEAPON_KEY);
+    this.drawFlamerStreaks(this.ghostFlamerStreaks, gun, g ? g.x + g.width / 2 : 0, g ? g.y + g.height / 2 : 0, g?.ghostFlamerDir ?? null, gameTime, now);
+  }
+
+  private drawFlamerStreaks(
+    streaks: Sprite[], gun: Weapon | undefined, pcx: number, pcy: number,
+    cone: { dirX: number; dirY: number } | null, gameTime: number, now: number,
+  ) {
     const FLAMER_STREAKS = 5;
-    if (this.flamerStreaks.length === 0) {
+    if (streaks.length === 0) {
       for (let i = 0; i < FLAMER_STREAKS; i++) {
         const sp = new Sprite(Texture.WHITE);
         sp.anchor.set(0, 0.5);
         sp.blendMode = 'add';
         this.L.effectLayer.addChild(sp);
-        this.flamerStreaks.push(sp);
+        streaks.push(sp);
       }
     }
-    const gun = player.weapons.find(w => w.key === FLAMER_WEAPON_KEY);
     if (!gun || !cone) {
-      for (const sp of this.flamerStreaks) sp.visible = false;
+      for (const sp of streaks) sp.visible = false;
       return;
     }
     const lastPulseAt = gun.flamerNextPulseAt !== undefined ? gun.flamerNextPulseAt - FLAMER_PULSE_MS : -Infinity;
@@ -17145,7 +17162,7 @@ export class PixiScene {
     const decayEased = decayT * decayT * decayT;
     const decayMul = 1 - decayEased;
     if (decayMul <= 0.001) {
-      for (const sp of this.flamerStreaks) sp.visible = false;
+      for (const sp of streaks) sp.visible = false;
       return;
     }
     // 噴射開始からの経過で立ち上げ(ease-out=減速しながら上がる。weaponSpawnEaseのinEasedと同じ式)。
@@ -17153,15 +17170,13 @@ export class PixiScene {
     const sprayStartAt = gun.flamerSprayStartAt ?? lastPulseAt;
     const growT = Math.max(0, Math.min(1, (gameTime - sprayStartAt) / WEAPON_SPAWN_EASE_MS));
     const growEased = 1 - Math.pow(1 - growT, 3);
-    const pcx = player.x + player.width / 2;
-    const pcy = player.y + player.height / 2;
     const baseAng = Math.atan2(cone.dirY, cone.dirX);
     for (let i = 0; i < FLAMER_STREAKS; i++) {
       const t = FLAMER_STREAKS > 1 ? i / (FLAMER_STREAKS - 1) : 0.5;
       const ang = baseAng + (t - 0.5) * FLAMER_HALF_ANGLE_RAD * 2;
       // 各streakにわずかな瞬き(火のちらつき)。1本ずつ位相をずらす(単調な明滅にしない)。
       const flick = 0.75 + 0.25 * Math.sin(now * 0.02 + i * 1.7);
-      const sp = this.flamerStreaks[i];
+      const sp = streaks[i];
       sp.position.set(pcx, pcy);
       sp.rotation = ang;
       sp.width = Math.max(0.5, FLAMER_RANGE_PX * growEased);

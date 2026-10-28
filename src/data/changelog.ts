@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5239', items: [
+    '火炎放射器を持った守護霊が、ボスへ炎を吹き付けて燃やすようになった',
+  ] },
   { version: '0.25.5238', items: [
     '火炎放射器の炎が強くなった',
   ] },

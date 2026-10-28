@@ -230,7 +230,7 @@ import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisi
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
 // rollWeaponKey は utils/gunKillDrops.ts へ移した(品質監査#4)
-import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey, Summon, SkillKey, Enemy } from '../types/game';
+import type { AmmoType, Pickup, Projectile, EnemyType, Player, ShadowCloneState, SubWeaponKey, Summon, SkillKey, Enemy, Weapon } from '../types/game';
 import {
   checkCollision,
   enemyContactBox,
@@ -320,8 +320,7 @@ import {
   createIceLanceFloor, tickIceLanceFloors,
 } from '../utils/iceLanceFloor';
 import {
-  FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, pickFanHits,
-  FLAMER_BURN_MS, FLAMER_BURN_TICK_DAMAGE,
+  FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, pickFanHits, flamerBurnPatch,
 } from '../utils/flamerCone';
 import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs, turretNextReadyAt } from '../utils/turretTuning';
 import {
@@ -12191,6 +12190,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // またはスキル「守護霊」=G3)。
         // 召喚/解散/ボスHP倍率はdirectorTick.tsのrunGhostAndTraitsStepが担当し、ここは
         // 「もう場に居るゴースト1体」の意思決定(ghostDriver.ts)を実行に移すだけ。
+        // UNIQUE_WEAPONS.md §17-6b G4: 守護霊の火炎放射器の炎1回。当て口(applyBeamPulse)はこの後ろで定義されるので、
+        // ここでは積むだけにして、プレイヤーの炎の直後(同じフレーム)で当てる。守護霊は同時に1体。
+        let ghostFlamerPulse: { ghostId: string; cx: number; cy: number; dirX: number; dirY: number; damage: number } | null = null;
         {
           const ghostNow = useGameStore.getState().summons.find(s => s.kind === 'ghost-ally');
           if (ghostNow) {
@@ -12421,7 +12423,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // UNIQUE_WEAPONS.md §17-6(検収監査A-2の是正): 非投射武器(アイレーザー/火炎放射器)は
                   // 弾を作らない(buildGhostGunShotsが[]を返す)ので、頭脳側でも射程0にして
                   // 「撃つ」を選ばせない(そうしないと空撃ちで弾消費+SEだけが発生する)。
-                  gunRangePx: gun && !ghostKatana && !ghostReloadingWeaponId && (gun.magazine ?? 0) > 0 && !gun.nonProjectile
+                  // §17-6b G1: 火炎放射器だけは守護霊も撃つ(炎の射程を渡す)。アイレーザー等は従来どおり0。
+                  gunRangePx: gun && !ghostKatana && !ghostReloadingWeaponId && (gun.magazine ?? 0) > 0
+                    && (!gun.nonProjectile || gun.key === FLAMER_WEAPON_KEY)
                     ? gunEffectiveRangePx(gun) : 0,
                   meleeDamage: meleeWeapon?.damage ?? 6,
                 },
@@ -12777,7 +12781,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   (boundBoss.x + boundBoss.width / 2) - (resolved.x + ghostNow.width / 2),
                   (boundBoss.y + boundBoss.height / 2) - (resolved.y + ghostNow.height / 2),
                 ) <= GUNBLADE_MELEE_RANGE_PX);
-              if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana && !gun.nonProjectile && !gunbladeGuardianMeleeRangeNow) {
+              if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana && gun.key === FLAMER_WEAPON_KEY) {
+                // §17-6b G2〜G5: 守護霊の火炎放射器。弾は作らず、束縛中のボスへ向けた炎1回を積む(当てるのは後ろ)。
+                // 間隔・弾の減り・噴射の立ち上がりの帳簿はプレイヤーの炎と同じ欄(flamerNextPulseAt/flamerSprayStartAt)。
+                if (gameTime >= (gun.flamerNextPulseAt ?? 0) && (gun.magazine ?? 0) > 0 && !ghostReloadingWeaponId) {
+                  const gcx = resolved.x + ghostNow.width / 2, gcy = resolved.y + ghostNow.height / 2;
+                  const gdx = boundBoss.x + boundBoss.width / 2 - gcx, gdy = boundBoss.y + boundBoss.height / 2 - gcy;
+                  const gdl = Math.max(0.001, Math.hypot(gdx, gdy));
+                  ghostFlamerPulse = {
+                    ghostId: ghostNow.id, cx: gcx, cy: gcy, dirX: gdx / gdl, dirY: gdy / gdl,
+                    damage: Math.max(1, Math.round(gunShotBaseDamage(gun, ghostOwner, gameTime))),
+                  };
+                  const wasSpraying = gameTime - ((gun.flamerNextPulseAt ?? -Infinity) - FLAMER_PULSE_MS) < FLAMER_PULSE_MS * 2;
+                  const firedGun: Weapon = {
+                    ...weaponAfterGunShot(gun, ghostOwner, nowMs),
+                    flamerNextPulseAt: gameTime + FLAMER_PULSE_MS,
+                    flamerSprayStartAt: wasSpraying ? gun.flamerSprayStartAt : gameTime,
+                  };
+                  ghostWeapons = ghostWeapons.map(w => w.id === firedGun.id ? firedGun : w);
+                  gun = firedGun;
+                  const flDir = { dirX: ghostFlamerPulse.dirX, dirY: ghostFlamerPulse.dirY };
+                  useGameStore.setState(st => ({
+                    summons: st.summons.map(s => s.id === ghostNow.id ? { ...s, ghostWeapons, ghostFlamerDir: flDir } : s),
+                  }));
+                }
+              } else if (decision.action === 'shoot' && boundBoss && gun && !ghostKatana && !gun.nonProjectile && !gunbladeGuardianMeleeRangeNow) {
                 // 銃 = **計測時ビルドのアクティブ銃**。マガジン/発射間隔/リロードはプレイヤーと同じ、
                 // リザーブ弾だけはプレイヤーと完全分離して非消費(除外4)。
                 // GHOST-GUN-PARITY: 飛翔特性(count発/拡散/PROJECTILE_SPEED_MULT/projectileSize/
@@ -14608,6 +14636,29 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // 火炎放射器の炎1回(扇で拾う→壁で弾く→共通の当て口→延焼)。プレイヤーと守護霊が同じこの1本を通る(§17-6b)。
+        const fireFlamerPulse = (
+          cx: number, cy: number, dirX: number, dirY: number, pulseDamage: number, ownerGhostId: string | undefined,
+          aimable?: readonly Enemy[], walls?: ReturnType<typeof beamWalls>,
+        ): void => {
+          const st = useGameStore.getState();
+          const pool = aimable ?? st.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e));
+          const w = walls ?? beamWalls(cx, cy, FLAMER_RANGE_PX + 40);
+          const candidates = pickFanHits(cx, cy, dirX, dirY, FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, pool);
+          const hits = w.length === 0
+            ? candidates
+            : candidates.filter(e => !segmentBlocked(cx, cy, e.x + e.width / 2, e.y + e.height / 2, w));
+          applyBeamPulse(hits, pulseDamage, ownerGhostId, '#ff9d4d', ownerGhostId ? 'pickup-xp-flamer-ghost' : 'pickup-xp-flamer', { x: cx, y: cy });
+          // ★延焼(社長指示2026-10-28「延焼効果も付ける」): 炎に触れた敵を燃やす。刻むのは既存の tickBurningEnemies。
+          if (hits.length > 0) {
+            const burnIds = new Set(hits.map(h => h.id));
+            const burnAt = gameTime;
+            useGameStore.setState(st2 => ({
+              enemies: st2.enemies.map(e => (burnIds.has(e.id) && !isCorpse(e) ? { ...e, ...flamerBurnPatch(e, burnAt, ownerGhostId !== undefined) } : e)),
+            }));
+          }
+        };
+
         // 火炎放射器(shotgun-t3-flamer・UNIQUE_WEAPONS.md §16-2): 弾を撃たず前方の扇(0.5rad・
         // 射程90px)に持続判定。100msごとに5ダメージ+弾1消費(装填40=4秒照射)。弾切れで標準
         // リロードへ(既存武器と同じ経路)。射程内に敵が居る間だけ照射する(他の銃の自動射撃と同じ
@@ -14646,22 +14697,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const dy = flTarget.y + flTarget.height / 2 - flPcy;
                 const dist = Math.max(0.001, Math.hypot(dx, dy));
                 const dirX = dx / dist, dirY = dy / dist;
-                const candidates = pickFanHits(flPcx, flPcy, dirX, dirY, FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, flAimable);
-                const hits = flWalls.length === 0
-                  ? candidates
-                  : candidates.filter(e => !segmentBlocked(flPcx, flPcy, e.x + e.width / 2, e.y + e.height / 2, flWalls));
                 const pulseDamage = Math.max(1, Math.round(gunShotBaseDamage(flGun, flPlayer, gameTime)));
-                applyBeamPulse(hits, pulseDamage, undefined, '#ff9d4d', 'pickup-xp-flamer', { x: flPcx, y: flPcy });
-                // ★延焼(社長指示2026-10-28「延焼効果も付ける」): 炎に触れた敵を燃やす。刻むのは既存の tickBurningEnemies。
-                if (hits.length > 0) {
-                  const burnIds = new Set(hits.map(h => h.id));
-                  const burnAt = gameTime;
-                  useGameStore.setState(st => ({
-                    enemies: st.enemies.map(e => (burnIds.has(e.id) && !isCorpse(e)
-                      ? { ...e, burnUntil: Math.max(e.burnUntil ?? 0, burnAt + FLAMER_BURN_MS), burnDpsTick: Math.max(e.burnDpsTick ?? 0, FLAMER_BURN_TICK_DAMAGE) }
-                      : e)),
-                  }));
-                }
+                fireFlamerPulse(flPcx, flPcy, dirX, dirY, pulseDamage, undefined, flAimable, flWalls);
                 // ★検収監査A-5是正: パルスが途切れていた(=新しい噴射の立ち上がり)時だけ
                 // flamerSprayStartAtを更新する。継続中の噴射では最初の開始時刻を保持したまま
                 // (pixiSceneがそこからの経過でα/長さを一度だけ立ち上げ、以後は定常表示にする)。
@@ -14686,6 +14723,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.getState().setFlamerCone({ dirX, dirY });
               }
             }
+          }
+        }
+        // §17-6b G4: 守護霊の炎(上の守護霊の処理で積んだ1回)。守護霊がこの間に消えていたら当てない。
+        if (ghostFlamerPulse) {
+          const gfp: { ghostId: string; cx: number; cy: number; dirX: number; dirY: number; damage: number } = ghostFlamerPulse;
+          if (useGameStore.getState().summons.some(s => s.id === gfp.ghostId)) {
+            fireFlamerPulse(gfp.cx, gfp.cy, gfp.dirX, gfp.dirY, gfp.damage, gfp.ghostId);
           }
         }
 
@@ -15666,7 +15710,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const incGameTime = gameTime;
             useGameStore.setState(state => ({
               enemies: state.enemies.map(e =>
-                e.id === enemyId ? { ...e, burnUntil: incGameTime + burn.durationMs, burnDpsTick: burn.dps } : e),
+                e.id === enemyId ? { ...e, burnUntil: incGameTime + burn.durationMs, burnDpsTick: burn.dps, burnByGhost: undefined } : e),
             }));
             if (burn.floorRadius !== null && incGameTime >= incendiaryFloorNextAtRef.current) {
               incendiaryFloorNextAtRef.current = incGameTime + INCENDIARY_FLOOR_CD_MS;

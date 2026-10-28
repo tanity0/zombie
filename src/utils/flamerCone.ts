@@ -17,6 +17,19 @@ export const FLAMER_MAG_SIZE = 80;
 export const FLAMER_BURN_MS = 2500;
 export const FLAMER_BURN_TICK_DAMAGE = 3; // 500msごと=毎秒6
 
+/**
+ * 炎に触れた相手(敵/プレイヤー)の燃焼の付け直し。燃えていれば時間を延ばし、強さは高い方
+ * (UNIQUE_WEAPONS.md §17-6b: プレイヤー・守護霊・幻影の炎が同じこの1本を使う)。
+ */
+export const flamerBurnPatch = (
+  cur: { burnUntil?: number; burnDpsTick?: number }, now: number, byGhost = false, tickDamage = FLAMER_BURN_TICK_DAMAGE,
+): { burnUntil: number; burnDpsTick: number; burnByGhost: boolean | undefined } => ({
+  burnUntil: Math.max(cur.burnUntil ?? 0, now + FLAMER_BURN_MS),
+  burnDpsTick: Math.max(cur.burnDpsTick ?? 0, tickDamage),
+  // 刻みのヘイト・撃破の帰属=直近に炙った側(守護霊の炎なら守護霊)。
+  burnByGhost: byGhost || undefined,
+});
+
 export const FLAMER_RELOAD_MS_RAW = 1500; // CATALOGへ書く生値(§17-2と同じ×2規則で実効3000ms)
 
 export const flamerEffectiveReloadMs = (reloadMsRaw = FLAMER_RELOAD_MS_RAW): number =>

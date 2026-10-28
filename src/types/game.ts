@@ -1606,6 +1606,8 @@ export interface Enemy {
   burnUntil?: number;
   burnDpsTick?: number;
   lastBurnTickAt?: number;
+  // UNIQUE_WEAPONS.md §17-6b G5: 直近に燃やしたのが守護霊の炎か(刻みのヘイト・撃破を守護霊へ帰属させる)。プレイヤー側の付与で外れる。
+  burnByGhost?: boolean;
   // B7: 血の履帯(blood-treads)の棘(tickBloodSpikes)のDoTスロットル打刻(250ms・molotovのlastFireHitAtと同じ流儀)。
   lastSpikeHitAt?: number;
   // UNIQUE_WEAPONS.md §16-2(バッチD・錬金砲 glauncher-t2-alchemy限定): 金の石の段階(1-3・
@@ -1708,6 +1710,8 @@ export interface Summon {
   // v0.25.2830: 守護霊も独立した2人目のプレイヤーとして、プレイヤーと同じWeapon[]・リロード状態を
   // 自前で持つ。リザーブ弾だけは従来の除外4どおり非消費(空マガジンは同じ時間を掛けて満タンへ戻る)。
   ghostWeapons?: Weapon[];
+  // UNIQUE_WEAPONS.md §17-6b G6: 守護霊の火炎放射器の直近の炎の向き(描画が読むだけ・プレイヤーの gameStore.flamerCone と同じ役)。
+  ghostFlamerDir?: { dirX: number; dirY: number };
   ghostReloadEndsAt?: number;
   ghostReloadingWeaponId?: string;
   ghostLastMeleeAt?: number;   // 近接のクールダウンゲート(ms・Date.now基準)。

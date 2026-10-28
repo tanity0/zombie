@@ -10563,25 +10563,26 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (infected.length > 0) {
           const iSet = new Set(infected);
           set(state => ({
-            enemies: state.enemies.map(e => iSet.has(e.id) ? { ...e, burnUntil: gameTime + burn.durationMs, burnDpsTick: burn.dps } : e),
+            enemies: state.enemies.map(e => iSet.has(e.id) ? { ...e, burnUntil: gameTime + burn.durationMs, burnDpsTick: burn.dps, burnByGhost: undefined } : e),
           }));
         }
       }
     }
-    const hits: { id: string; x: number; y: number; dmg: number }[] = [];
+    const hits: { id: string; x: number; y: number; dmg: number; byGhost: boolean }[] = [];
     for (const e of enemies) {
       if (e.burnUntil === undefined || gameTime >= e.burnUntil) continue;
       if (gameTime - (e.lastBurnTickAt ?? -Infinity) < INCENDIARY_BURN_TICK_MS) continue;
       const dps = e.burnDpsTick ?? 0;
       if (dps <= 0) continue;
-      hits.push({ id: e.id, x: e.x + e.width / 2, y: e.y, dmg: dps });
+      hits.push({ id: e.id, x: e.x + e.width / 2, y: e.y, dmg: dps, byGhost: e.burnByGhost === true });
     }
     if (hits.length === 0) return;
     set(state => ({
       enemies: state.enemies.map(e => hits.some(h => h.id === e.id) ? { ...e, lastBurnTickAt: gameTime } : e),
     }));
     for (const h of hits) {
-      get().damageEnemy(h.id, h.dmg, false, false, false, 'dot'); // 持続ダメージ=シェイク対象外(社長指示2026-09-13)
+      // 守護霊の炎で燃えている分はヘイト・撃破を守護霊へ(UNIQUE_WEAPONS.md §17-6b G5)。
+      get().damageEnemy(h.id, h.dmg, false, false, false, 'dot', h.byGhost ? 'ghost' : undefined); // 持続ダメージ=シェイク対象外(社長指示2026-09-13)
       get().spawnDamageNumber(h.x, h.y, h.dmg, false, { enemyId: h.id });
     }
   },
