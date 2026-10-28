@@ -92,6 +92,9 @@ export const growthGoldMult = (activeLevel: number): number => 1 + perLevel('gol
 /** スクラップ効率: 拾ったスクラップの倍率(ラン開始時の Player.scrapMult の初期値として焼く)。 */
 export const growthScrapMult = (activeLevel: number): number => 1 + perLevel('scrap') * eff(activeLevel);
 
+/** カウンター受付: 受付の延長(ms)。適用点は store.counterAcceptMsOf(受付窓を張る全箇所が読む1本)。 */
+export const growthCounterAcceptMs = (activeLevel: number): number => Math.round(perLevel('counter') * 1000 * eff(activeLevel));
+
 /** 経験値効率: 獲得XPの倍率(適用点は gainExperience=経験値付与の唯一の出どころ)。 */
 export const growthXpMult = (activeLevel: number): number => 1 + perLevel('xp') * eff(activeLevel);
 

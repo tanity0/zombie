@@ -2,8 +2,7 @@
 // いちばんTierが低い部位を置換」。純関数 armoryTargetSlot の不変条件を機械化する。
 // SKILL_BUILD_REDESIGN.md §16-3/§18-1の4(特殊装備は置換候補から除外)の反映も含む。
 import { describe, it, expect } from 'vitest';
-import { armoryTargetSlot, emptyEquipLoadout, merchantEquipShelf, merchantEquipStepForSlot, aggregateEquipBonus, equipmentDescription, equipmentDef } from './equipment';
-import { counterAcceptMsOf, COUNTER_ACCEPT_MS } from '../store/gameStore';
+import { armoryTargetSlot, emptyEquipLoadout, merchantEquipShelf, merchantEquipStepForSlot } from './equipment';
 import type { EquipLoadout } from '../types/game';
 
 const rngSeq = (...values: number[]) => {
@@ -113,24 +112,5 @@ describe('merchantEquipStepForSlot / merchantEquipShelf(§13-1+§16-7: 商人の
     const loadout: EquipLoadout = { body: 'body-protection-2', arms: null, accessory: 'special-accessory' };
     const first = merchantEquipShelf(loadout);
     for (let i = 0; i < 20; i++) expect(merchantEquipShelf(loadout)).toEqual(first);
-  });
-});
-
-describe('弾薬系のカウンター受付の延長(社長指示2026-10-28・1段+0.02秒)', () => {
-  it('段ごとに +20ms ずつ延び、5段目で受付は400ms', () => {
-    for (let tier = 1; tier <= 5; tier++) {
-      const b = aggregateEquipBonus({ ...emptyEquipLoadout(), accessory: `accessory-ammo-${tier}` });
-      expect(b.counterAcceptMs).toBe(20 * tier);
-    }
-    const top = aggregateEquipBonus({ ...emptyEquipLoadout(), accessory: 'accessory-ammo-5' });
-    expect(counterAcceptMsOf({ equipBonus: top })).toBe(400);
-  });
-  it('付けていない・古い記録(欄なし)は従来の受付のまま', () => {
-    expect(counterAcceptMsOf({ equipBonus: aggregateEquipBonus(emptyEquipLoadout()) })).toBe(COUNTER_ACCEPT_MS);
-    expect(counterAcceptMsOf({ equipBonus: {} })).toBe(COUNTER_ACCEPT_MS);
-    expect(counterAcceptMsOf(null)).toBe(COUNTER_ACCEPT_MS);
-  });
-  it('説明文に受付の延長が出る', () => {
-    expect(equipmentDescription(equipmentDef('accessory', 'ammo', 1)!)).toContain('カウンター受付 +0.02秒');
   });
 });

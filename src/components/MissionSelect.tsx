@@ -2961,6 +2961,8 @@ const PlayerGrowth: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           // 基準は有効段数(メーター)=いま実際に効いている量。体力は加算値・他は%。
           const cumLabel = def.id === 'health'
             ? `+${def.perLevel * cur.active}`
+            // カウンター受付は秒(2026-10-28)。
+            : def.id === 'counter' ? `+${(def.perLevel * cur.active).toFixed(2)}秒`
             : `+${Math.round(def.perLevel * cur.active * 100)}%`;
           return (
             <div key={def.id} className="ff7r-fade-right flex items-center gap-2 rounded-none px-3 py-2 text-white">

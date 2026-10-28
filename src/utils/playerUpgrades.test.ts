@@ -18,7 +18,7 @@ const mem = new Map<string, string>();
 
 const {
   PLAYER_UPGRADES_KEY, activeUpgradeLevel, effectiveAmmoMax, effectiveAmmoMaxMap, emptyPlayerUpgrades,
-  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, growthScrapMult, growthXpMult, loadPlayerUpgrades,
+  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, growthScrapMult, growthXpMult, growthCounterAcceptMs, loadPlayerUpgrades,
   normalizePlayerUpgrades, playerUpgradeCost, savePlayerUpgrades,
 } = await import('./playerUpgrades');
 const { PLAYER_UPGRADE_COSTS, PLAYER_UPGRADE_IDS, PLAYER_UPGRADE_MAX_LEVEL } = await import('../data/playerUpgrades');
@@ -179,5 +179,17 @@ describe('価格表', () => {
   it('次の1段の価格は購入済み段数で決まり、上限まで買うと0(=買えない)', () => {
     expect([0, 1, 2, 3, 4].map(playerUpgradeCost)).toEqual([...PLAYER_UPGRADE_COSTS]);
     expect(playerUpgradeCost(PLAYER_UPGRADE_MAX_LEVEL)).toBe(0);
+  });
+});
+
+describe('強化「カウンター受付」(社長指示2026-10-28「強化にいれる。0.02で」)', () => {
+  it('0段は延長なし、1段+20ms、5段で+100ms(受付300→400ms)', async () => {
+    const { counterAcceptMsOf, COUNTER_ACCEPT_MS } = await import('../store/gameStore');
+    expect(growthCounterAcceptMs(0)).toBe(0);
+    expect(growthCounterAcceptMs(1)).toBe(20);
+    expect(growthCounterAcceptMs(5)).toBe(100);
+    expect(counterAcceptMsOf({ growthCounterAcceptMs: growthCounterAcceptMs(5) })).toBe(COUNTER_ACCEPT_MS + 100);
+    expect(counterAcceptMsOf({})).toBe(COUNTER_ACCEPT_MS); // 欠損(旧データの記録)=延長なし
+    expect(counterAcceptMsOf(null)).toBe(COUNTER_ACCEPT_MS);
   });
 });

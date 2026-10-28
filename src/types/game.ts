@@ -241,6 +241,8 @@ export interface Player extends DashLocomotionState {
   growthGoldMult: number;
   /** 経験値効率の育成倍率(既定1.0)。gainExperience(付与の唯一の出どころ)が掛ける。 */
   growthXpMult: number;
+  // 強化「カウンター受付」の焼き値(ms・社長指示2026-10-28「強化にいれる。0.02で」)。出撃時に1回だけ焼く。欠損=0。
+  growthCounterAcceptMs?: number;
   /** DDAの参照HP = profile.maxHp + 育成HP加算(装備HPは含めない)。difficultyScaler の入力。 */
   ddaBaseHp: number;
   /** スコア倍率(社長裁定2026-08-20: メーター1本フルで−0.2・ゴールド系統は数えない・既定1.0)。
@@ -477,6 +479,8 @@ export interface PlayerBuildSnapshot {
    * 欠損(旧データ)は消費側で 1.0=0段扱い。HPは maxHealth に既に含まれている(追加不要)。
    */
   growthAtkMult?: number;
+  /** 計測時の強化「カウンター受付」(ms)。欠損(旧データ)=0。 */
+  growthCounterAcceptMs?: number;
   // ---- 裁定4(PHILL): 撃破ラン中の発射数とヘッドショット数(率はrateへ丸めて保存) ----
   phillShots?: number;
   phillHeadshots?: number;
@@ -505,8 +509,7 @@ export type EquipStatKey =
   | 'reload'      // リロード時間短縮(正の割合=短縮量)
   | 'critChance'  // クリ率(割合・3%刻み)
   | 'ammoDrop'    // 弾薬ドロップ(割合)
-  | 'scrap'       // スクラップ(割合)
-  | 'counterAccept'; // カウンター受付時間の延長(秒。社長指示2026-10-28・弾薬系に1段+0.02秒)
+  | 'scrap';      // スクラップ(割合)
 // 1ステータス分の効果。value の単位: maxHealth=HPポイント、それ以外=割合(0.20=+20%、reloadは短縮量)。
 export interface EquipStat { key: EquipStatKey; value: number }
 // 静的な装備定義(data/equipment.ts)。
@@ -531,7 +534,6 @@ export interface EquipBonus {
   critBonus: number;      // Σクリ率(加算)
   ammoDropBonus: number;  // Σ弾薬ドロップ(加算)
   scrapBonus: number;     // Σスクラップ(加算)
-  counterAcceptMs: number; // Σカウンター受付の延長(ms・加算)
 }
 
 

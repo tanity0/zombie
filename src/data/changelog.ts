@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5244', items: [
+    '強化に「カウンター受付」を追加。段を上げるほど、少し早く振っても弾ける',
+    'カウンターを受け付ける時間の延長は、弾薬系のアクセサリーから外した',
+  ] },
   { version: '0.25.5243', items: [
     '塊弾が残す焦げ跡・火の粉・土埃も、紫の渦に合う色になった',
   ] },

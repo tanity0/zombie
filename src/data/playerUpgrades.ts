@@ -7,7 +7,7 @@
 //   完全に一致する、が最重要の不変条件)。
 
 /** 育成の系統id。 */
-export type PlayerUpgradeId = 'health' | 'attack' | 'ammo' | 'xp' | 'scrap' | 'gold';
+export type PlayerUpgradeId = 'health' | 'attack' | 'ammo' | 'xp' | 'scrap' | 'counter' | 'gold';
 
 /** 各系統の上限段数。 */
 export const PLAYER_UPGRADE_MAX_LEVEL = 5;
@@ -47,6 +47,8 @@ export const PLAYER_UPGRADES: readonly PlayerUpgradeDef[] = [
   // スクラップ効率(社長指示2026-10-13「強化にスクラップ効率を追加。20%から100%まで」)=1段+20%・5段で+100%。
   // 拾ったスクラップの量に掛かる(パッシブ「スクラップ獲得数アップ」の scrapMult と同じ倍率へ足す)。
   { id: 'scrap',  label: 'スクラップ効率', perLevel: 0.20, perLevelLabel: '+20%', desc: '拾うスクラップが増える' },
+  // カウンター受付(社長指示2026-10-28「強化にいれる。0.02で」)=1段+0.02秒(受付300ms→5段で400ms)。単位は秒。
+  { id: 'counter', label: 'カウンター受付', perLevel: 0.02, perLevelLabel: '+0.02秒', desc: '少し早く振っても弾ける' },
   { id: 'gold',   label: 'ゴールド獲得', perLevel: 0.10, perLevelLabel: '+10%', desc: '同じ戦果で持ち帰るGが増える' },
 ];
 
@@ -66,7 +68,8 @@ export const PLAYER_UPGRADE_SCORE_PENALTY_PER_METER = 0.1;
 // 経験値効率もラン内の強さ(レベル=スキル)に直結するため対象に含める(社長裁定「ゴールド強化は
 // スコア対象外。その他は換金も下げる」の一貫・v0.25.3679)。4本フルで×0.6。
 // スクラップ効率もラン内の強化(武器庫・ラン内の買い物)に直結するため対象に含める(同じ裁定の一貫・2026-10-13)。5本フルで×0.5。
-export const SCORE_PENALTY_UPGRADE_IDS: readonly PlayerUpgradeId[] = ['health', 'attack', 'ammo', 'xp', 'scrap'];
+// カウンター受付もラン内の強さに直結するため対象に含める(同じ裁定の一貫・2026-10-28)。6本フルで×0.4。
+export const SCORE_PENALTY_UPGRADE_IDS: readonly PlayerUpgradeId[] = ['health', 'attack', 'ammo', 'xp', 'scrap', 'counter'];
 
 /** 台帳の1行を引く(未定義のidは呼べない=型で塞いである)。 */
 export const playerUpgradeDef = (id: PlayerUpgradeId): PlayerUpgradeDef =>

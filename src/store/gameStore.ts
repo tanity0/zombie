@@ -31,7 +31,7 @@ import {
   WeaponMerchant, ShopItemKey, StageTheme, EventQuestNpc, Summon,
   RhythmState, RhythmArrow, ShijinGod, RhythmPending, IntroLine, LabDoor, LabButton, LabProp,
   ActiveEvent, ShadowCloneState, BaseSite, EscortSoldier, JunDeparture, EnemyType, Weapon, RedNight, GroundFire, BossFire, RescueAlly, ThrownBag, AcrasielSpear,
-  DashLocomotionState, EquipLoadout, EquipSlot, ConsumableKey, EquipBonus,
+  DashLocomotionState, EquipLoadout, EquipSlot, ConsumableKey,
   BloodSpike, GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯/グラビティショットの状態
   PauseReason, // ★なぜ止まっているか(テストブリッジ用・遊びの仕様には使わない)
 } from '../types/game';
@@ -316,7 +316,7 @@ import { isNoAmmoRun, vsStartAmmo, vsEntryOfRun } from '../utils/vsTest';
 // 引数で渡す=utils→store の逆流を作らない)。計測路(ガントレット)の述語は依存ゼロの葉から読む。
 import {
   PLAYER_UPGRADES_KEY, activeUpgradeLevel, effectiveAmmoMaxMap, emptyPlayerUpgrades,
-  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, growthScrapMult, growthXpMult, loadPlayerUpgrades, playerUpgradeCost,
+  growthAttackMult, growthGoldMult, growthMaxHpBonus, growthScoreMult, growthScrapMult, growthXpMult, growthCounterAcceptMs, loadPlayerUpgrades, playerUpgradeCost,
   savePlayerUpgrades, type PlayerUpgradeState,
 } from '../utils/playerUpgrades';
 import { PLAYER_UPGRADE_MAX_LEVEL, type PlayerUpgradeId } from '../data/playerUpgrades';
@@ -1787,9 +1787,9 @@ export const PLAYER_MELEE_SWING_MS = MELEE_WINDUP_MS + PLAYER_MELEE_FOLLOW_MS;
  *   だった。実機で「合わせるのが難しい」(予告の消え切りと押しどきが200〜400msズレる)ため隻狼型へ。
  * 隻狼の実数値: 発生0F・受付12F(0.2秒)=本値と同一。
  */
-/** 受付の長さ(装備の延長込み・社長指示2026-10-28)。主語=プレイヤー/守護霊・幻影の疑似Player(記録の装備)。 */
-export const counterAcceptMsOf = (p?: { equipBonus?: Partial<EquipBonus> } | null): number =>
-  COUNTER_ACCEPT_MS + Math.max(0, p?.equipBonus?.counterAcceptMs ?? 0);
+/** 受付の長さ(強化「カウンター受付」の延長込み・社長指示2026-10-28)。主語=プレイヤー/守護霊・幻影の疑似Player(記録の強化)。 */
+export const counterAcceptMsOf = (p?: { growthCounterAcceptMs?: number } | null): number =>
+  COUNTER_ACCEPT_MS + Math.max(0, p?.growthCounterAcceptMs ?? 0);
 export const COUNTER_ACCEPT_MS = 300; // ms the acceptance window stays open FROM the trigger(社長裁定2026-08-26「300msに100延長で」。隻狼型導入時v0.25.3943は200=隻狼の12Fと同値だった=事実)
 /**
  * ★カウンターが成立するか(唯一の判定・v0.25.3926で1本化)。
@@ -3531,7 +3531,7 @@ const gatePhantomHit = (
   gpSwingAt: enemy.gpSwingAt,
   // ★窓の長さはプレイヤーのカウンター受付(COUNTER_ACCEPT_MS)と同じ。v0.25.3943 で受付を「振り1回の長さ」(COUNTER_WINDOW=400)
   //   から分けた時に、ここだけ400のまま残っていた=幻影だけ受付が3割長かった(社長「あり得ない反応速度でカウンター」2026-10-26)。
-  swingWindowMs: isGuardianPhantom(enemy.type) ? counterAcceptMsOf(combatActorPlayer(enemy.id)) : COUNTER_ACCEPT_MS, // 記録の装備で延びる(プレイヤーと同条件)
+  swingWindowMs: isGuardianPhantom(enemy.type) ? counterAcceptMsOf(combatActorPlayer(enemy.id)) : COUNTER_ACCEPT_MS, // 記録の強化で延びる(プレイヤーと同条件)
   // 対人ダメージ1/10(社長裁定2026-08-20「一旦」)。幻影以外は1=完全恒等。
   pvpDamageScale: isGuardianPhantom(enemy.type) ? PVP_DAMAGE_SCALE : 1,
   gpHitAt: enemy.gpHitAt,
@@ -7756,6 +7756,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     growthAmmoMax: { ...AMMO_MAX },
     growthGoldMult: 1,
     growthXpMult: 1,
+    growthCounterAcceptMs: 0,
     ddaBaseHp: PLAYER_BASE_HP,
     critChance: 0,
     quickMagCritUntil: 0,
@@ -9025,7 +9026,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         pendingSwingAt: now,
         meleeSwingAt: now,
         counterWindowStart: now, // 隻狼型(v0.25.3943): 受付は押した瞬間から
-        counterWindowEnd: now + counterAcceptMsOf(state.player), // 装備で延びる(社長指示2026-10-28)
+        counterWindowEnd: now + counterAcceptMsOf(state.player), // 強化で延びる(社長指示2026-10-28)
         counterCooldownEnd: now + (COUNTER_WINDOW + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
       },
     }));
@@ -22822,6 +22823,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const bakedGrowthAmmoMax = effectiveAmmoMaxMap(AMMO_MAX, activeUpgradeLevel(growthMeters, 'ammo'));
     const bakedGrowthGoldMult = growthGoldMult(activeUpgradeLevel(growthMeters, 'gold'));
     const bakedGrowthXpMult = growthXpMult(activeUpgradeLevel(growthMeters, 'xp'));
+    const bakedGrowthCounterAcceptMs = growthCounterAcceptMs(activeUpgradeLevel(growthMeters, 'counter'));
     // スクラップ効率(社長指示2026-10-13): パッシブ「スクラップ獲得数アップ」が足し込む scrapMult の初期値として焼く。
     const bakedGrowthScrapMult = growthScrapMult(activeUpgradeLevel(growthMeters, 'scrap'));
     // スコア倍率(社長裁定2026-08-20): メーター1本フルで−0.2・ゴールド系統は数えない。計測路は上と同じく0段=1.0。
@@ -23235,6 +23237,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           growthAmmoMax: bakedGrowthAmmoMax,
           growthGoldMult: bakedGrowthGoldMult,
           growthXpMult: bakedGrowthXpMult,
+          growthCounterAcceptMs: bakedGrowthCounterAcceptMs,
           ddaBaseHp: bakedDdaBaseHp,
           critChance: 0,
           quickMagCritUntil: 0,
