@@ -321,6 +321,7 @@ import {
 } from '../utils/iceLanceFloor';
 import {
   FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, pickFanHits,
+  FLAMER_BURN_MS, FLAMER_BURN_TICK_DAMAGE,
 } from '../utils/flamerCone';
 import { TURRET_DURATION_BY_LEVEL, turretLevelFromDuration, turretFireIntervalMs, turretNextReadyAt } from '../utils/turretTuning';
 import {
@@ -14651,6 +14652,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   : candidates.filter(e => !segmentBlocked(flPcx, flPcy, e.x + e.width / 2, e.y + e.height / 2, flWalls));
                 const pulseDamage = Math.max(1, Math.round(gunShotBaseDamage(flGun, flPlayer, gameTime)));
                 applyBeamPulse(hits, pulseDamage, undefined, '#ff9d4d', 'pickup-xp-flamer', { x: flPcx, y: flPcy });
+                // ★延焼(社長指示2026-10-28「延焼効果も付ける」): 炎に触れた敵を燃やす。刻むのは既存の tickBurningEnemies。
+                if (hits.length > 0) {
+                  const burnIds = new Set(hits.map(h => h.id));
+                  const burnAt = gameTime;
+                  useGameStore.setState(st => ({
+                    enemies: st.enemies.map(e => (burnIds.has(e.id) && !isCorpse(e)
+                      ? { ...e, burnUntil: Math.max(e.burnUntil ?? 0, burnAt + FLAMER_BURN_MS), burnDpsTick: Math.max(e.burnDpsTick ?? 0, FLAMER_BURN_TICK_DAMAGE) }
+                      : e)),
+                  }));
+                }
                 // ★検収監査A-5是正: パルスが途切れていた(=新しい噴射の立ち上がり)時だけ
                 // flamerSprayStartAtを更新する。継続中の噴射では最初の開始時刻を保持したまま
                 // (pixiSceneがそこからの経過でα/長さを一度だけ立ち上げ、以後は定常表示にする)。

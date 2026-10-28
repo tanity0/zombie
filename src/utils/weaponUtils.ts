@@ -185,10 +185,11 @@ const CATALOG: Record<string, WeaponDef> = {
   'shotgun-t1-cycle': { key: 'shotgun-t1-cycle', name: '切替式ショットガン', type: 'shotgun', category: 'shotgun', tier: 1, damage: CYCLE_MODE_STATS.shot.damage, cooldown: 1000, projectileSpeed: 470, projectileSize: 7, count: CYCLE_MODE_STATS.shot.count, magSize: 3, reloadMs: 1000, spreadRadOverride: CYCLE_MODE_STATS.shot.spreadRadOverride },
 
   // UNIQUE_WEAPONS.md §16-2/§17-2(バッチC-1)。火炎放射器(T3): 弾を撃たず前方の扇(0.5rad)へ
-  // 射程90px(rangeOverride)の持続判定。100msごとに5ダメージ・弾1消費(装填40=4秒照射)。
+  // 射程90px(rangeOverride)の持続判定。100msごとに5ダメージ・弾1消費(装填80=8秒照射)。
   // damage/magSize/reloadMsはflamerCone.tsが単一の出どころ(サイクル式と二重管理しない)。
   // cooldownは未使用(fireWeaponの自動射撃を通らない状態機械=useGameLoop.ts)。
-  // 武器自体に燃焼は持たせない(社長指定)。サイクル実効DPS=28.57(既定shotgun-t3比+6.3%・§5-2)。
+  // ★延焼あり(社長指示2026-10-28「延焼効果も付ける」・旧=燃焼なしの指定)。装填80=8秒照射(同「タマ持ちもよくする」)。
+  // サイクル実効DPS=36.36(既定shotgun-t3比+35%・延焼ぶんは別)。
   'shotgun-t3-flamer': { key: 'shotgun-t3-flamer', name: '火炎放射器', type: 'shotgun', category: 'shotgun', tier: 3, damage: FLAMER_PULSE_DAMAGE, cooldown: 100, count: 1, magSize: FLAMER_MAG_SIZE, reloadMs: FLAMER_RELOAD_MS_RAW, rangeOverride: FLAMER_RANGE_PX, nonProjectile: true },
 
   // UNIQUE_WEAPONS.md §16-2(バッチC-2)。誘導散弾ショットガン(T3): 各ペレットが近くの敵へ誘導する
@@ -515,7 +516,7 @@ const WEAPON_DESC: Record<string, string> = {
   // 散弾(6dmg/5発/広い散り)⇔スラッグ(30dmg/1発/直進)が反転する。距離では切り替わらない。
   'shotgun-t1-cycle': 'リロードするたびに、広がる散弾と、まっすぐ飛ぶ重い1発が交互に切り替わる',
   // 火炎放射器(§16-2/バッチC-1): flamerCone.ts。弾を撃たず前方の扇に持続ダメージ。撃っている間ずっと弾を消費する。
-  'shotgun-t3-flamer': '弾の代わりに前方へ炎を吹き付ける。撃っている間、弾が減り続ける',
+  'shotgun-t3-flamer': '弾の代わりに前方へ炎を吹き付ける。炙られた敵はしばらく燃え続ける。撃っている間、弾が減り続ける',
   // ライフル(射程が長い)。貫通の規則は2種類(useGameLoop の removeIt):
   //  ・pierce:N → 倒したかに関わらず **N+1体**に当たるまで進む(マグナムは N=1=2体)
   //  ・passthrough のみ → **倒した敵は貫いて進み、倒せなければそこで止まる**

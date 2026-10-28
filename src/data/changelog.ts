@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5237', items: [
+    '火炎放射器が倍の長さ撃ち続けられるようになり、炙った敵はしばらく燃え続ける',
+  ] },
   { version: '0.25.5236', items: [
     '救難信号の救助イベントを、しばらく起きないようにした(ステージのボスと重なっていたため)',
   ] },

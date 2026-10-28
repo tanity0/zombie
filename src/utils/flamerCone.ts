@@ -10,7 +10,13 @@ export const FLAMER_CONE_RAD = 0.5;               // 扇の全角(rad)。半角�
 export const FLAMER_HALF_ANGLE_RAD = FLAMER_CONE_RAD / 2;
 export const FLAMER_PULSE_MS = 100;
 export const FLAMER_PULSE_DAMAGE = 5;
-export const FLAMER_MAG_SIZE = 40;
+// ★社長指示2026-10-28「弾切れが早すぎる」「タマ持ちもよくする」: 40(4秒)→ 80(8秒照射)。
+export const FLAMER_MAG_SIZE = 80;
+// ★社長指示2026-10-28「延焼効果も付ける」(旧=武器自体に燃焼なし・UNIQUE_WEAPONS.md §16-2 の指定): 炎に触れた敵が燃える。
+// 刻みは既存の延焼(tickBurningEnemies・500msごと)。燃えている間にもう一度炙られると時間が延びる(強さは高い方)。
+export const FLAMER_BURN_MS = 2500;
+export const FLAMER_BURN_TICK_DAMAGE = 3; // 500msごと=毎秒6
+
 export const FLAMER_RELOAD_MS_RAW = 1500; // CATALOGへ書く生値(§17-2と同じ×2規則で実効3000ms)
 
 export const flamerEffectiveReloadMs = (reloadMsRaw = FLAMER_RELOAD_MS_RAW): number =>
