@@ -379,7 +379,7 @@ import {
   canBakeSilhouette, planSilhouetteEviction,
 } from '../utils/shadowSlots';
 import { placeAvatarPart } from '../utils/avatarPlacement';
-import { BLOOD_BURST_SHEET_FRAMES, BLOOD_BURST_SHEET_MS, getBloodBurstArt, pickDrop, bloodBurstLayout, bloodBurstSeed, BLOOD_GOB_PX, BLOOD_BURST_GRAVITY, BLOOD_BURST_FLASH_MS, BLOOD_BURST_POP_MS, BLOOD_BURST_MIST_MS, BLOOD_BURST_POOL_MS, BLOOD_BURST_DARKEN_MS, BLOOD_BURST_FADE_MS, BLOOD_BURST_BODY_MS, type BloodBurstPiece } from './bloodBurst';
+import { BLOOD_BURST_SHEET_FRAMES, BLOOD_BURST_SHEET_FRAME_MS, BLOOD_BURST_BLAST_PX, getBloodBurstArt, pickDrop, bloodBurstLayout, bloodBurstSeed, BLOOD_GOB_PX, BLOOD_BURST_GRAVITY, BLOOD_BURST_POP_MS, BLOOD_BURST_POOL_MS, BLOOD_BURST_DARKEN_MS, BLOOD_BURST_FADE_MS, BLOOD_BURST_BODY_MS, type BloodBurstPiece } from './bloodBurst';
 import { getAlchemyRockArt, getAlchemyDustTexture, alchemyRockLayout, alchemyRockSeed, alchemyPulse, alchemyTremble, ALCHEMY_ROCK_SIZES, ALCHEMY_ROCK_TARGET, ALCHEMY_FLY_MS, ALCHEMY_SETTLE_MS, ALCHEMY_FRAG_MS, ALCHEMY_PUSH_MS, ALCHEMY_SHATTER_MS, type AlchemyRockSpec } from './alchemyRocks';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
@@ -37794,11 +37794,12 @@ export class PixiScene {
    * ドットは回さない(滴は8方向×伸び3段の絵から選ぶ)・拡大は整数倍。位置は毎フレーム経過時間から求める(状態を持たない)。
    */
   private bloodBurstData = new WeakMap<Container, {
-    ground: Container; flash: Sprite; core: Sprite; puffs: Sprite[]; pool: Sprite;
+    ground: Container; flash: Sprite; core: Sprite; pool: Sprite; blast: number; chained: boolean;
     pieces: Sprite[]; stains: (Sprite | null)[]; layout: BloodBurstPiece[];
     ds: number; kGob: number[]; kDrop: number; kStain: number; kPool: number; kStar: number; kSheet: number; seed: number;
   }>();
   private bloodBurstSheetCache: Texture[] | null = null;
+  private bloodBurstRecent: { x: number; y: number; at: number }[] = [];
   /** 血の破裂シート(fx/blood-burst・8コマ)をコマに切って1回だけ持つ。読み込み前は null。 */
   private bloodBurstSheetFrames(): Texture[] | null {
     if (this.bloodBurstSheetCache) return this.bloodBurstSheetCache;
@@ -37816,32 +37817,41 @@ export class PixiScene {
       if (c) c.destroy({ children: true });
       const art = getBloodBurstArt();
       const seed = bloodBurstSeed(e.id);
-      const layout = bloodBurstLayout(seed, e.melee, e.scale);
+      const layout = bloodBurstLayout(seed, e.melee, e.scale, e.angle);
       const ds = this.depthScaleEnemy(e.floorY);
       const sm = Math.min(e.scale, 1.8) * ds; // 1片の大きさは頭打ち(量は数と距離で出す)
       const kOf = (px: number, n: number) => Math.max(1, Math.round((px * sm) / n));
       // ★v0.25.5232「目視で確認できない」: 実機の縮尺で塊と滴が数pxにしかならず見えなかった=約2倍へ(最小2倍)。
-      const kGob = BLOOD_GOB_PX.map((n, i) => Math.max(2, kOf([14, 22, 30][i], n)));
-      const kDrop = Math.max(2, Math.round(2 * sm));
+      // 塊・滴の画素の倍率は芯のシートと揃える(1つの破裂に粗さを混ぜない・上限4)。kSheet は下で決まるので後で上書きする。
+      let kGob = BLOOD_GOB_PX.map((n, i) => Math.max(2, kOf([14, 22, 30][i], n)));
+      let kDrop = Math.max(2, Math.round(2 * sm));
       const kStain = Math.max(2, kOf(26, 14));
       const kStar = kOf(18, 24);
       const kPool = Math.max(1, Math.round((28 * e.scale * ds) / 26));
       // シートの芯: ゾンビで1倍(70px)、大きい敵ほど整数倍で大きく(2.2倍で頭打ち)。
       // ★v0.25.5232: 1倍(70px)だとゾンビの体より小さく見えなかった=ゾンビで2倍(140px)・大きい敵ほど整数倍(上限5倍)。
-      const kSheet = Math.max(2, Math.round(2 * Math.min(e.scale, 2.5) * ds));
+      // ★v0.25.5235 社長「倒した瞬間に爆発して血がドカン!っていうの想像してる」: ゾンビで3倍(210px=体の約2倍)・大きい敵ほど整数倍(上限7倍)。
+      // 4倍(280px)は画面の横幅を覆い、自分のキャラと敵の赤い予告を隠した=3倍で止める。
+      // 連鎖: 直前200ms以内に近く(150px)で別の破裂があったら、光を出さず芯を1段小さく(群れを続けて倒すと画面が飛ぶ)。
+      const chained = this.bloodBurstRecent.some(r => now - r.at < 200 && Math.hypot(r.x - e.x, r.y - e.y) < 150);
+      this.bloodBurstRecent = [...this.bloodBurstRecent.filter(r => now - r.at < 400), { x: e.x, y: e.y, at: now }];
+      const kSheet = Math.max(2, Math.round(3 * Math.min(e.scale, 2.5) * ds) - (chained ? 1 : 0));
+      const kPiece = Math.min(kSheet, 4);
+      kGob = kGob.map(() => kPiece);
+      kDrop = kPiece;
+      const blast = BLOOD_BURST_BLAST_PX * Math.pow(Math.min(e.scale, 3), 0.8) * ds; // 全方向へ爆ぜる半径
       c = new Container();
       const ground = new Container();
       const flash = new Sprite(getHitCoreGlowTexture());
       flash.anchor.set(0.5); flash.blendMode = 'add'; flash.tint = 0xffd2c4;
+      flash.visible = false;
       const core = new Sprite(art.star[seed % art.star.length]);
       core.anchor.set(0.5);
-      const puffs = [0, 1, 2, 3].map(() => { const sp = new Sprite(art.puff); sp.anchor.set(0.5); return sp; });
-      c.addChild(core, ...puffs);
+      c.addChild(flash, core); // 光は芯の後ろ(赤を白く飛ばさない)
       const pieces = layout.map(pc => {
         const sp = new Sprite(pc.kind === 'gob' ? art.gob[pc.size][pc.variant] : art.drop[0][0]);
         sp.anchor.set(0.5); sp.visible = false; c!.addChild(sp); return sp;
       });
-      c.addChild(flash);
       const pool = new Sprite(art.pool);
       pool.anchor.set(0.45, 0.5); pool.visible = false;
       ground.addChild(pool);
@@ -37850,7 +37860,7 @@ export class PixiScene {
         const sp = new Sprite(pc.kind === 'gob' ? art.stain[pc.variant] : art.gob[0][pc.variant]);
         sp.anchor.set(0.35, 0.5); sp.visible = false; ground.addChild(sp); return sp;
       });
-      d = { ground, flash, core, puffs, pool, pieces, stains, layout, ds, kGob, kDrop, kStain, kPool, kStar, kSheet, seed };
+      d = { ground, flash, core, pool, pieces, stains, layout, ds, kGob, kDrop, kStain, kPool, kStar, kSheet, blast, seed, chained };
       this.bloodBurstData.set(c, d);
       this.L.effectLayer.addChild(c);
       this.L.groundLayer.addChild(ground);
@@ -37873,22 +37883,28 @@ export class PixiScene {
       const u = Math.min(1, (ms - start) / Math.max(1, dur - start));
       return Math.max(0, 1 - u * u);
     };
-    // 明るい1コマ(はじけた瞬間)
-    d.flash.visible = ms < BLOOD_BURST_FLASH_MS + 16;
-    if (d.flash.visible) { d.flash.position.set(e.x, e.y); d.flash.scale.set((18 * d.kStar * 1.4 * 1.6) / 128); d.flash.alpha = 0.9; }
+    // 爆ぜた瞬間の熱い赤の光(小さく・16ms全開→24msで消える・芯の後ろ)。連鎖の時は出さない。
+    d.flash.visible = !d.chained && ms < 40;
+    if (d.flash.visible) {
+      d.flash.position.set(e.x, e.y);
+      d.flash.scale.set((d.blast * 0.5) / 64);
+      d.flash.tint = 0xff4a2a;
+      d.flash.alpha = 0.85 * (ms < 16 ? 1 : 1 - (ms - 16) / 24);
+    }
     // 芯: 社長支給の血の破裂シート(8コマ・中心から全方向にはじけて散る)。初めは速く進み、終わりへ減速する。
     // シートが読めていない間だけ、自作の星形で代わりにはじける。
     const sheet = this.bloodBurstSheetFrames();
     const pt = ms / BLOOD_BURST_POP_MS;
     if (sheet) {
-      const st = ms / BLOOD_BURST_SHEET_MS;
-      if (st < 1) {
-        const p = 1 - Math.pow(1 - st, 2);
+      // コマごとの表示時間の表(密な最初のコマを長く・後ろは速く)。最後のコマは表示時間の中で薄れる。
+      let acc = 0, idx = -1;
+      for (let f = 0; f < BLOOD_BURST_SHEET_FRAME_MS.length; f++) { if (ms < acc + BLOOD_BURST_SHEET_FRAME_MS[f]) { idx = f; break; } acc += BLOOD_BURST_SHEET_FRAME_MS[f]; }
+      if (idx >= 0) {
         d.core.visible = true;
-        d.core.texture = sheet[Math.min(sheet.length - 1, Math.floor(p * sheet.length))];
+        d.core.texture = sheet[Math.min(sheet.length - 1, idx)];
         d.core.position.set(Math.round(e.x), Math.round(e.y));
         d.core.scale.set(d.kSheet);
-        d.core.alpha = st < 0.85 ? 1 : (1 - st) / 0.15;
+        d.core.alpha = idx < sheet.length - 1 ? 1 : 1 - (ms - acc) / BLOOD_BURST_SHEET_FRAME_MS[idx];
       } else d.core.visible = false;
     } else if (pt < 1.8) {
       const k = pt < 1 ? 1.25 * (1 - Math.pow(1 - pt, 3)) : 1 + 0.25 * (1.8 - pt) / 0.8;
@@ -37897,17 +37913,6 @@ export class PixiScene {
       d.core.scale.set(d.kStar * Math.max(0.05, k));
       d.core.alpha = pt < 1 ? 1 : Math.max(0, (1.8 - pt) / 0.8);
     } else d.core.visible = false;
-    // 霧の粒: 外へ広がりながら少し昇って消える
-    const mt = Math.min(1, ms / BLOOD_BURST_MIST_MS);
-    const me = 1 - (1 - mt) * (1 - mt);
-    for (let i = 0; i < d.puffs.length; i++) {
-      const sp = d.puffs[i];
-      const a = (i / d.puffs.length) * Math.PI * 2 + (d.seed % 7);
-      sp.visible = mt < 1;
-      sp.position.set(Math.round(e.x + Math.cos(a) * 9 * d.ds * me), Math.round(e.y + Math.sin(a) * 5 * d.ds * me - 7 * d.ds * me));
-      sp.scale.set(Math.max(1, Math.round(2 * d.ds)));
-      sp.alpha = 0.8 * (1 - mt) * (1 - mt);
-    }
     // 死んだ場所の血溜まり(足の下・400msで広がる)
     {
       const u = Math.min(1, ms / BLOOD_BURST_POOL_MS);
@@ -37930,9 +37935,11 @@ export class PixiScene {
       const T = pc.flyMs / 1000;
       const dir = e.angle + pc.dAng;
       const sx = e.x, sy = e.floorY;
-      const ex2 = pc.onBody ? e.tx + Math.cos(dir + Math.PI / 2) * 6 * (i - 1) : e.x + Math.cos(dir) * pc.dist * e.reach;
+      const dirR = pc.radial ? pc.dAng : dir;
+      const reachR = pc.radial ? d.blast : e.reach;
+      const ex2 = pc.onBody ? e.tx + Math.cos(dir + Math.PI / 2) * 6 * (i - 1) : e.x + Math.cos(dirR) * pc.dist * reachR;
       // 奥行き(画面の上下)は詰める。銃=奥(画面の上)へ飛ぶので強く詰める=地平線の霧・空へ逃がさない(v0.25.5234)。
-      const ey2 = pc.onBody ? e.ty : e.floorY + Math.sin(dir) * pc.dist * e.reach * (e.melee ? 0.75 : 0.4);
+      const ey2 = pc.onBody ? e.ty : e.floorY + Math.sin(dirR) * pc.dist * reachR * (pc.radial ? 0.6 : e.melee ? 0.75 : 0.4);
       const zEnd = pc.onBody ? e.bodyH * 0.45 : 0;
       const vz = (zEnd - z0 + 0.5 * g * T * T) / T;
       const u = Math.min(1, t / pc.flyMs);
@@ -37940,17 +37947,23 @@ export class PixiScene {
         const tt = t / 1000;
         const go = u * (1.2 - 0.2 * u);
         const gx = sx + (ex2 - sx) * go, gy = sy + (ey2 - sy) * go;
-        const z = z0 + vz * tt - 0.5 * g * tt * tt;
+        // 床を這う滴は床すれすれ(高さ0〜4px)を走る。それ以外は重力の弧。
+        const z = pc.skim ? 4 * d.ds * Math.sin(Math.PI * u) : z0 + vz * tt - 0.5 * g * tt * tt;
         sp.visible = true;
         sp.alpha = 1;
         sp.position.set(Math.round(gx), Math.round(gy - z));
         if (pc.kind === 'drop') {
           const dgo = (1.2 - 0.4 * u) / T;
-          const vx = (ex2 - sx) * dgo, vy = (ey2 - sy) * dgo - (vz - g * tt);
+          const vx = (ex2 - sx) * dgo, vy = (ey2 - sy) * dgo - (pc.skim ? 0 : vz - g * tt);
           const stretch = 1 + Math.min(1.4, Math.hypot(vx, vy) / 400);
           sp.texture = pickDrop(art, Math.atan2(vy, vx), stretch);
           sp.scale.set(d.kDrop);
         } else {
+          // 塊は飛び出した直後(前半40%)は伸びた滴の形、後半で丸い塊に戻る。
+          if (u < 0.4) {
+            const dgo = (1.2 - 0.4 * u) / T;
+            sp.texture = pickDrop(art, Math.atan2((ey2 - sy) * dgo - (vz - g * tt), (ex2 - sx) * dgo), 2.4);
+          } else sp.texture = art.gob[pc.size][pc.variant];
           sp.scale.set(d.kGob[pc.size]);
         }
         if (st) st.visible = false;
@@ -37971,13 +37984,14 @@ export class PixiScene {
       }
       // 着地: 塊は一瞬つぶれて(60ms)から床の跡へ。跡は進んできた向き(左右)に尾を引く。
       if (pc.kind === 'gob' && tl < 60) {
+        sp.texture = art.gob[pc.size][pc.variant];
         sp.visible = true;
         sp.alpha = 1;
         sp.position.set(Math.round(ex2), Math.round(ey2));
         sp.scale.set(d.kGob[pc.size] * 1.4, d.kGob[pc.size] * 0.7);
       } else sp.visible = false;
       if (st) {
-        const flip = Math.cos(dir) < 0 ? -1 : 1;
+        const flip = Math.cos(dirR) < 0 ? -1 : 1;
         st.visible = pc.kind !== 'gob' || tl >= 60;
         st.position.set(Math.round(ex2), Math.round(ey2));
         if (pc.kind === 'gob') st.scale.set(d.kStain * flip, d.kStain);

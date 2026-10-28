@@ -158,6 +158,10 @@ export interface BloodBurstPiece {
   delayMs: number;
   /** 近接だけ: プレイヤーの体に着地する滴(浴びる)。 */
   onBody: boolean;
+  /** 全方向へ爆ぜる片(★社長 2026-10-28「倒した瞬間に爆発して血がドカン!」)。距離は爆ぜる半径に対する割合・dAng は絶対の向き。 */
+  radial?: boolean;
+  /** 床すれすれを外へ走る滴(高さ0〜4px)=床を這う衝撃。 */
+  skim?: boolean;
   /** 床の染みが消え始めるずれ(ms・±600)。 */
   stainJitterMs: number;
 }
@@ -168,7 +172,7 @@ export interface BloodBurstPiece {
  *  - 銃: 抜けた穴から細く長く噴く(塊2・滴多め・扇0.3・速い)。
  * 滴の数は大きさで増える(9+6×(大きさ−1)・最大24)。
  */
-export const bloodBurstLayout = (seed: number, melee: boolean, scale: number): BloodBurstPiece[] => {
+export const bloodBurstLayout = (seed: number, melee: boolean, scale: number, angle = 0): BloodBurstPiece[] => {
   const rnd = lcg(seed);
   const out: BloodBurstPiece[] = [];
   const fan = melee ? 0.9 : 0.3;
@@ -185,6 +189,26 @@ export const bloodBurstLayout = (seed: number, melee: boolean, scale: number): B
       dist: body ? 1 : 0.4 + rnd() * 0.75,
       flyMs: melee ? 280 + rnd() * 240 : 180 + rnd() * 220,
       delayMs: Math.floor(rnd() * 20), onBody: body, stainJitterMs: jitter() });
+  }
+  // ★爆ぜる(全方向・一瞬で遠くへ)。抜けていく向き(angle)へ数と距離を偏らせる(8個中5個は±60°・距離は向きほど長い)。
+  // 重い塊のうち3個は高く上がって遅れて降ってくる(550〜800ms)。
+  const towards = (a: number) => 0.5 + 0.6 * Math.max(0, Math.cos(a - angle));
+  for (let i = 0; i < 8; i++) {
+    const a = i < 5 ? angle + (rnd() - 0.5) * 2 * (Math.PI / 3) : rnd() * Math.PI * 2;
+    out.push({ kind: 'gob', size: rnd() < 0.5 ? 2 : 1, variant: Math.floor(rnd() * 3), dAng: a,
+      dist: (0.55 + rnd() * 0.55) * towards(a), flyMs: i < 3 ? 550 + rnd() * 250 : 170 + rnd() * 140,
+      delayMs: Math.floor(rnd() * 40), onBody: false, stainJitterMs: jitter(), radial: true });
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = rnd() * Math.PI * 2;
+    out.push({ kind: 'drop', size: 0, variant: Math.floor(rnd() * 3), dAng: a,
+      dist: (0.6 + rnd() * 0.7) * towards(a), flyMs: 160 + rnd() * 180, delayMs: Math.floor(rnd() * 40), onBody: false, stainJitterMs: jitter(), radial: true });
+  }
+  // 床を這う衝撃: 平たい滴16個が床すれすれを外へ走る(赤い輪の代わり=床の赤い円は「避けるもの」なので使わない)
+  for (let i = 0; i < 16; i++) {
+    const a = ((i + rnd()) / 16) * Math.PI * 2;
+    out.push({ kind: 'drop', size: 0, variant: Math.floor(rnd() * 3), dAng: a,
+      dist: (0.7 + rnd() * 0.5) * towards(a), flyMs: 180 + rnd() * 120, delayMs: Math.floor(rnd() * 25), onBody: false, stainJitterMs: jitter(), radial: true, skim: true });
   }
   // 追い吹き(少し遅れて小さく4粒)
   for (let i = 0; i < 4; i++) {
@@ -206,7 +230,11 @@ export const BLOOD_BURST_GRAVITY = 1500;
 export const BLOOD_BURST_FLASH_MS = 33;
 /** 芯=社長支給の血の破裂シート(fx/blood-burst)のコマ数と尺。 */
 export const BLOOD_BURST_SHEET_FRAMES = 8;
-export const BLOOD_BURST_SHEET_MS = 720;
+export const BLOOD_BURST_SHEET_MS = 640;
+/** 爆ぜる半径(敵の大きさ1・world px)。 */
+export const BLOOD_BURST_BLAST_PX = 95;
+/** 芯のシートのコマごとの表示時間(ms)。支給の絵はコマ自体に勢いが描かれている=密な最初のコマを長く、後ろを速く流す(合計375ms)。 */
+export const BLOOD_BURST_SHEET_FRAME_MS = [70, 60, 50, 45, 40, 35, 35, 40] as const;
 export const BLOOD_BURST_POP_MS = 150;
 export const BLOOD_BURST_MIST_MS = 320;
 export const BLOOD_BURST_POOL_MS = 400;

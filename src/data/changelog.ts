@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5235', items: [
+    '敵を倒した瞬間、血がドカンと爆ぜるようになった。全方向へ飛び散り、重い塊は高く上がって遅れて降ってくる',
+    '続けて倒した時は、光を抑えて画面が白く飛ばないようにした',
+  ] },
   { version: '0.25.5234', items: [
     '銃で倒した時の血の塊が、遠くへ飛んで霧に消えず、敵のすぐ後ろに散って見えるようになった',
   ] },
