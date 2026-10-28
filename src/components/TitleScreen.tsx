@@ -301,6 +301,8 @@ const INTRO_COLOR_EARLY_S = 2.55;
 const INTRO_REVEAL_MS = 1000;   // 光の中心から色が広がり切るまで
 const INTRO_LINES_OUT_MS = 650; // 色が来たら線は先に消える
 const INTRO_ZOOM = 1.025;       // 描いている間にわずかに寄り、色が乗ると戻る(線と絵は同じ倍率で動く)
+const INTRO_ZOOM_BACK_MS = 520; // 寄りを戻す尺=色が入り始めてから描き終わるまで(動画 2.55→3.0秒・最後は0.85倍速)。描き終わった後は動かない
+const INTRO_ZOOM_EASE = 'cubic-bezier(0.3, 0.55, 0.35, 1)'; // 減速して止まる
 /** 描く速さの緩急(動画の秒→再生速度): 頭はゆっくり、髪とマントの払いは速く、最後の一画は落とす。 */
 const introRate = (t: number): number => (t < 0.6 ? 0.9 : t < 2.6 ? 1.6 : 0.85);
 const INTRO_LINE_FILTER = (b: number) => `invert(1) sepia(0.6) saturate(2.4) hue-rotate(218deg) brightness(${b})`;
@@ -345,7 +347,7 @@ const TitleLineIntro: React.FC<{
       const g = glowRef.current;
       if (g) {
         if (g.playbackRate !== r) g.playbackRate = r;
-        if (Math.abs(g.currentTime - v.currentTime) > 0.06) g.currentTime = v.currentTime;
+        if (Math.abs(g.currentTime - v.currentTime) > 0.03) g.currentTime = v.currentTime;
       }
       raf = requestAnimationFrame(tick);
     };
@@ -355,6 +357,9 @@ const TitleLineIntro: React.FC<{
   }, []);
   // 描き切った瞬間: 線が一度だけ灯って(上がり90ms・戻り260ms)、それから消える。
   const ended = () => {
+    // にじみの動画は本体と同じコマで止める(遅れて残りの線を描き足すと、描き終わった後に線が動いて見える・社長指摘2026-10-28)。
+    const g = glowRef.current, v = ref.current;
+    if (g && v) { g.pause(); g.currentTime = v.currentTime; }
     setFlash(true);
     window.setTimeout(() => setFlash(false), 90);
     onEnd();
@@ -370,7 +375,7 @@ const TitleLineIntro: React.FC<{
     transformOrigin: '50% 50%',
     scale: zoom.v,
   };
-  const fade = `opacity ${INTRO_LINES_OUT_MS}ms cubic-bezier(0.2, 0.6, 0.3, 1) 120ms, scale ${zoom.ms}ms cubic-bezier(0.16, 0.8, 0.3, 1)`;
+  const fade = `opacity ${INTRO_LINES_OUT_MS}ms cubic-bezier(0.2, 0.6, 0.3, 1) 120ms, scale ${zoom.ms}ms ${INTRO_ZOOM_EASE}`;
   return (
     <>
       <video
@@ -419,7 +424,9 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
   const startReveal = () => {
     setIntro(cur => (cur === 'lines' ? 'reveal' : cur));
     setRevealAt(at => at ?? performance.now());
-    setZoom(z => (z.v === '1' && z.ms === 1700 ? z : { v: '1', ms: 1700 }));
+    // 寄りは描き終わる瞬間に戻し切る(色が入り始める=描き終わりの約0.5秒前から戻す)。描き終わった後に線と絵が縮み続けると
+    // 「描き終わった後に動いている」に見える(社長指摘2026-10-28「終わった後動いてる気がする」・旧=1.7秒かけて戻していた)。
+    setZoom(z => (z.v === '1' && z.ms === INTRO_ZOOM_BACK_MS ? z : { v: '1', ms: INTRO_ZOOM_BACK_MS }));
   };
   const endLines = () => { startReveal(); setLinesOut(true); };
   useEffect(() => {
@@ -597,7 +604,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           ...(!introRan ? {} : {
             opacity: intro === 'lines' || intro === 'wait' ? 0 : 1,
             scale: zoom.v,
-            transition: `scale ${zoom.ms}ms cubic-bezier(0.16, 0.8, 0.3, 1)`,
+            transition: `scale ${zoom.ms}ms ${INTRO_ZOOM_EASE}`,
           }),
         }}
       />
