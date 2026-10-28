@@ -3,7 +3,8 @@
 // 素材は塊弾の弾(fx/blob-shot・社長支給2026-10-28)だけ。ほかは Graphics。読み込み前は塊を Graphics で描く(消えない)。強glow(投影影を落とす光源)も使わない。図形は上限つき:
 // 塊≤4・回る弾≤8・放った弾≤16・扇1・印≤MARK_DRAW_MAX・接点≤12・出来事≤16・焦げ跡≤6。
 // 2分類(CLAUDE.md): 塊の輪郭・玉の芯は当たりと同じ大きさ(=見えている所が当たる)。土埃・ひび・火の粉・尾・外光は派手さの絵。
-// 色: スキャン=彩度を落とした青白い燐光+白い芯 / 衛星弾=ランタンの炎の濁った琥珀 / 塊=冷えかけの鉱滓(縁だけ熱い)。
+// 色: スキャン=彩度を落とした青白い燐光+白い芯 / 衛星弾=ランタンの炎の濁った琥珀 / 塊=紫の渦(支給の絵)と、周りの焦げ・火の粉・土埃も紫寄り
+// (絵の読み込み前の Graphics の塊だけは冷えかけの鉱滓の色のまま)。
 // 会心(#fbbf24)・レベルアップ(#fde68a)・弾薬回収(#67e8f9)・危険の赤/紫とは別の色にしてある。
 import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import { getTexture } from './pixiTextures';
@@ -30,9 +31,12 @@ const BLOB_RIM = 0xffa646;
 const BLOB_HEAT = 0xe0832a;
 const COOL_RED = 0x8a2c1c;    // 冷える途中の鈍い赤
 const COOL_ASH = 0x5b5650;    // 冷え切った灰
-const SCORCH = 0x150d08;
-const DUST = 0x9c8a70;
-const SMOKE = 0xb3aba1;
+// 塊弾の周りの演出(焦げ線・熾火・火の粉・土埃・発射の煙・止まった時のひび)は、弾の絵(紫の渦・社長支給2026-10-28)に合わせて
+// 紫へ寄せる(社長「はい」2026-10-28=推薦。量・大きさ・形は変えない)。地面の焦げは黒紫、熾火と火の粉は渦の縁の明るい紫。
+const VOID_EMBER = 0xc77dff;  // 熾火・火の粉(渦の縁の明るい紫)
+const VOID_SCORCH = 0x170b22; // 焦げ(黒に寄せた紫)
+const VOID_DUST = 0x8a7f9c;   // 土埃(灰に紫を混ぜる=地面の土の色を残す)
+const VOID_SMOKE = 0xaba3ba;  // 発射の煙
 
 // 塊弾の弾の絵: コマの決め方は utils/blobShot.ts の blobSheetFrame(1ドット=世界1px・ループのコマの中身≈62px が当たりの直径52より少し外へ)。
 
@@ -301,10 +305,10 @@ export class NewGunsFx {
       const k = 1 - (gameTime - c.t) / TRAIL_MS;
       if (k <= 0) continue;
       g.moveTo(a.x, a.y + BLOB_RADIUS_PX * 0.5).lineTo(c.x, c.y + BLOB_RADIUS_PX * 0.5)
-        .stroke({ width: 9 * k, color: SCORCH, alpha: 0.5 * k, cap: 'round' });
+        .stroke({ width: 9 * k, color: VOID_SCORCH, alpha: 0.5 * k, cap: 'round' });
       // 焦げの中に残る熾火(先に冷える)。
       g.moveTo(a.x, a.y + BLOB_RADIUS_PX * 0.5).lineTo(c.x, c.y + BLOB_RADIUS_PX * 0.5)
-        .stroke({ width: 2.2 * k, color: BLOB_HEAT, alpha: 0.55 * k * k, cap: 'round' });
+        .stroke({ width: 2.2 * k, color: VOID_EMBER, alpha: 0.55 * k * k, cap: 'round' });
     }
     if (sc <= 0.01) return null;
     const R = BLOB_RADIUS_PX * sc;
@@ -409,8 +413,8 @@ export class NewGunsFx {
       const t = (gameTime - s.at) / SCORCH_MS;
       if (t >= 1 || t < 0) { this.scorches.splice(i, 1); continue; }
       const a = 0.5 * (1 - easeInQuad(t));
-      g.ellipse(s.x, s.y, s.r * 1.15, s.r * 0.42).fill({ color: SCORCH, alpha: a });
-      g.ellipse(s.x - s.r * 0.2, s.y + 1, s.r * 0.6, s.r * 0.22).fill({ color: SCORCH, alpha: a * 0.8 });
+      g.ellipse(s.x, s.y, s.r * 1.15, s.r * 0.42).fill({ color: VOID_SCORCH, alpha: a });
+      g.ellipse(s.x - s.r * 0.2, s.y + 1, s.r * 0.6, s.r * 0.22).fill({ color: VOID_SCORCH, alpha: a * 0.8 });
     }
   }
 
@@ -427,7 +431,7 @@ export class NewGunsFx {
         const x = c.x + Math.sin(ph * 5 + k * 1.9 + ci) * 5;
         const y = c.y - rise;
         const ember = k % 2 === 0;
-        f.circle(x, y, (ember ? 1.8 : 3.2) * (1 - ph * 0.6)).fill({ color: ember ? BLOB_RIM : 0xcfc6bb, alpha: (ember ? 0.9 : 0.3) * (1 - ph) });
+        f.circle(x, y, (ember ? 1.8 : 3.2) * (1 - ph * 0.6)).fill({ color: ember ? VOID_EMBER : 0xcdc4d8, alpha: (ember ? 0.9 : 0.3) * (1 - ph) });
       }
     }
     for (let pi = 0; pi < pushed.length; pi++) {
@@ -437,7 +441,7 @@ export class NewGunsFx {
       for (let k = 0; k < 3; k++) {
         const ph = frac(gameTime / 420 + k / 3 + pi * 0.21);
         const d = 4 + k * 7 + ph * 6;
-        g.circle(p.x + bx * d, p.y + by * d - ph * 4, 3 + k * 2 + ph * 3).fill({ color: DUST, alpha: 0.22 * (1 - ph) });
+        g.circle(p.x + bx * d, p.y + by * d - ph * 4, 3 + k * 2 + ph * 3).fill({ color: VOID_DUST, alpha: 0.22 * (1 - ph) });
       }
     }
   }
@@ -452,7 +456,7 @@ export class NewGunsFx {
       for (let i = 0; i < 3; i++) {
         const d = 6 + 40 * easeOutCubic(t) + i * 8;
         f.circle(ev.x + ev.dirX * d, ev.y + ev.dirY * d - t * 6, 5 + 12 * t + i * 3)
-          .fill({ color: SMOKE, alpha: 0.5 * Math.pow(1 - t, 1.5) * (1 - i * 0.22) });
+          .fill({ color: VOID_SMOKE, alpha: 0.5 * Math.pow(1 - t, 1.5) * (1 - i * 0.22) });
       }
     } else if (ev.kind === 'blob-stop') {
       const t = age / 650;
@@ -462,7 +466,7 @@ export class NewGunsFx {
         const a = ang + (i / 6 - 0.5) * 1.9;
         const d = 6 + 48 * easeOutCubic(t) * (0.7 + 0.3 * frac(i * 0.618));
         f.circle(ev.x + Math.cos(a) * d, ev.y + Math.sin(a) * d - t * 8, 4 + 9 * t)
-          .fill({ color: DUST, alpha: 0.38 * Math.pow(1 - t, 2) });
+          .fill({ color: VOID_DUST, alpha: 0.38 * Math.pow(1 - t, 2) });
       }
       // ひび線4本(地面)。素早く走ってから薄れる。
       const run = easeOutCubic(age / 140);
@@ -486,12 +490,12 @@ export class NewGunsFx {
           gx += Math.cos(aj) * L / 3; gy += Math.sin(aj) * L / 3;
           pts.push(ev.x + gx, gy0 + gy * GY);
         }
-        g.poly(pts, false).stroke({ width: 4, color: SCORCH, alpha: 0.85 * fade, join: 'miter' });
+        g.poly(pts, false).stroke({ width: 4, color: VOID_SCORCH, alpha: 0.85 * fade, join: 'miter' });
         // 先端の短い熾火(最後の区間の後ろ半分だけ)。先に冷える。
         const n = pts.length;
         const tx = pts[n - 2], ty = pts[n - 1], px = pts[n - 4], py = pts[n - 3];
         g.moveTo(px + (tx - px) * 0.5, py + (ty - py) * 0.5).lineTo(tx, ty)
-          .stroke({ width: 1.2, color: BLOB_RIM, alpha: 0.85 * fade * fade, cap: 'round' });
+          .stroke({ width: 1.2, color: VOID_EMBER, alpha: 0.85 * fade * fade, cap: 'round' });
       }
     } else if (ev.kind === 'sat-release' && ev.dirs) {
       const t = age / 260;

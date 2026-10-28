@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5243', items: [
+    '塊弾が残す焦げ跡・火の粉・土埃も、紫の渦に合う色になった',
+  ] },
   { version: '0.25.5242', items: [
     '弾薬系のアクセサリーに、カウンターを受け付ける時間を延ばす効果が付いた。段が上がるほど長く、守護霊と幻影も記録の装備どおりに効く',
   ] },
