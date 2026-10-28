@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { flamerCycleDps, flamerEffectiveReloadMs, pickFanHits, FLAMER_HALF_ANGLE_RAD, flamerBurnPatch, FLAMER_BURN_MS, FLAMER_BURN_TICK_DAMAGE } from './flamerCone';
+import { flamerCycleDps, flamerEffectiveReloadMs, pickFanHits, FLAMER_HALF_ANGLE_RAD, flamerBurnPatch, FLAMER_BURN_MS, FLAMER_BURN_TICK_DAMAGE,
+  phantomFlamerPulseAt, phantomFlamerPhase, PHANTOM_FLAMER_WINDUP_MS, FLAMER_PULSE_MS } from './flamerCone';
 
 describe('flamerCone(火炎放射器・UNIQUE_WEAPONS.md §5-2/§16-1)', () => {
   it('実効リロード(raw1500ms)は×2規則で3000msになる', () => {
@@ -54,5 +55,13 @@ describe('pickFanHits', () => {
     expect(flamerBurnPatch({}, 1000)).toEqual({ burnUntil: 1000 + FLAMER_BURN_MS, burnDpsTick: FLAMER_BURN_TICK_DAMAGE, burnByGhost: undefined });
     const longer = flamerBurnPatch({ burnUntil: 99999, burnDpsTick: 9 }, 1000, true);
     expect(longer).toEqual({ burnUntil: 99999, burnDpsTick: 9, burnByGhost: true });
+  });
+
+  it('幻影の炎: 最初の炎=溜め明け(紫の予告が流れ切る瞬間)、以後100msごと(§17-6b)', () => {
+    expect(phantomFlamerPulseAt(1000, 0)).toBe(1000 + PHANTOM_FLAMER_WINDUP_MS);
+    expect(phantomFlamerPulseAt(1000, 3)).toBe(1000 + PHANTOM_FLAMER_WINDUP_MS + 3 * FLAMER_PULSE_MS);
+    expect(phantomFlamerPhase(undefined, 5000)).toBe('none');
+    expect(phantomFlamerPhase(1000, 1000 + PHANTOM_FLAMER_WINDUP_MS - 1)).toBe('windup');
+    expect(phantomFlamerPhase(1000, 1000 + PHANTOM_FLAMER_WINDUP_MS)).toBe('spray');
   });
 });

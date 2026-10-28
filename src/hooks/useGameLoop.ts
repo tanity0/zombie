@@ -207,6 +207,7 @@ import {
 import {
   runPhantomTick, createPhantomTickState, pickActivePhantom, type PhantomSfx,
   phantomSupportsSub, // ★幻影が主語になれるサブの白リスト(未実装の種は自爆するのでプレイヤーへ落とす)
+  tickPlayerFlamerBurn,
 } from '../utils/phantomTick';
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
@@ -9393,7 +9394,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (activePhantom && !useGameStore.getState().bossMaker.paused) {
             runPhantomTick(
               activePhantom, phantomStateRef.current, newGameTime, deltaTime, MOVE_SPEED_MULT, Date.now(),
-              PHANTOM_SFX,
+              PHANTOM_SFX, Math.random, beamWalls, // §17-6b: 幻影の炎もプレイヤーの炎と同じ壁で止まる
             );
           }
          } catch (err) {
@@ -13051,6 +13052,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 爆縮吸引も同じ毎フレーム更新(設置・付与は各スキルの発火点=命中/キル/移動軌跡が行う。
         // ここは寿命切れ回収+ダメージ/吸引の消化のみ)。
         useGameStore.getState().tickBurningEnemies();
+        tickPlayerFlamerBurn(); // UNIQUE_WEAPONS.md §17-6b P5: 幻影の炎で付いたプレイヤーの延焼
         useGameStore.getState().tickBloodSpikes();
         useGameStore.getState().tickGravityWells();
 

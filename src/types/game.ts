@@ -174,6 +174,12 @@ export interface Player extends DashLocomotionState {
    * ★`INVULN_MS` より古い項は書き込みのたびに掃除する(際限なく増やさない)。
    */
   iframeBySource?: Record<string, number>;
+  // UNIQUE_WEAPONS.md §17-6b P5: 幻影の火炎放射器で燃えている間(gameTime)。500msごとに burnDpsTick を持続ダメージで削る
+  // (敵の延焼と同じく怯まない)。burnSourceId=燃やした幻影(その幻影ごとの被弾無敵・死因の記録に使う)。
+  burnUntil?: number;
+  burnDpsTick?: number;
+  lastBurnTickAt?: number;
+  burnSourceId?: string;
   /**
    * ★近接の前隙(社長裁定2026-08-24・SAME_ARENA.md §7): 指を離した時刻(Date.now)。
    * `MELEE_WINDUP_MS` 経過後に **useGameLoop が判定を解決**する。0=前隙中の振りは無い。
@@ -1020,6 +1026,14 @@ export interface Enemy {
   gpShotAt?: number;
   /** その射撃の向き(rad)。 */
   gpShotAngle?: number;
+  // UNIQUE_WEAPONS.md §17-6b P2: 幻影の火炎放射器(すべて gameTime)。gpFlamerWindupAt が在る間=溜め〜噴射の一続き
+  // (溜め開始の時刻。最初の炎=+PHANTOM_FLAMER_WINDUP_MS)。向き(gpFlamerAngle)は一続きの間固定。
+  // gpFlamerPulses=この一続きで出した炎の数。LastPulseAt/SprayStartAt は炎の絵の立ち上がり・減衰用に一続きの後も残す。
+  gpFlamerWindupAt?: number;
+  gpFlamerAngle?: number;
+  gpFlamerPulses?: number;
+  gpFlamerLastPulseAt?: number;
+  gpFlamerSprayStartAt?: number;
   // ---- O-3b-2 召喚系(分身・援護射撃)・research/SAME_ARENA.md §3-d-4(社長裁定「そのままの仕様で」) ----
   /** 幻影が出した分身(プレイヤーの store.shadowClone / 守護霊の Summon.ghostShadowClone と同型・同ルール)。
    * 狙いだけプレイヤーへ向ける(器・寿命・攻撃間隔・最大1体は共通)。 */

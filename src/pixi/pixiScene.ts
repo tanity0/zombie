@@ -34,7 +34,6 @@ import type {
   BloodSpike, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
   GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): グラビティショットの渦(v0.25.3276)
   SkillKey, // スキル取得の頭上マーク(v0.25.4342)がアイコンを引くのに使う
-  Weapon,
 } from '../types/game';
 // ENDING_SCENE.md 演出仕様v2: 兵士/フィルの状態機械(純関数・シミュレーション)はここでは読むだけ。
 import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endingScene';
@@ -217,7 +216,7 @@ import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
 // (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
 import type { PersistentBeam } from '../utils/persistentBeam';
 import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
-import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS } from '../utils/flamerCone';
+import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, PHANTOM_FLAMER_WINDUP_MS, phantomFlamerPhase } from '../utils/flamerCone';
 import { NewGunsFx } from './newGunsFx'; // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
 import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
@@ -4847,6 +4846,9 @@ export class PixiScene {
   // 火炎放射器の扇(固定本数のstreak sprite。pooled・毎フレーム再生成しない)。
   private flamerStreaks: Sprite[] = [];
   private ghostFlamerStreaks: Sprite[] = [];
+  private phantomFlamerStreaks: Sprite[] = [];
+  private phantomFlamerGfx = new Graphics();   // 幻影の炎の紫の扇(予告/噴射中の縁)
+  private playerBurnGfx = new Graphics();      // 燃えているプレイヤーの炎
   private newGunsFx: NewGunsFx | null = null; // research/NEW_GUNS.md: 新しい銃3挺の絵
   // §6.28-19(バッチM63): アクラシエルの結晶の槍(acrasielSpears)。設置中の槍スプライト+T5円テレグラフ
   // (ジブリル火=syncBossFiresと同型の「共有Graphics1枚+スプライトプール」方式)。
@@ -10083,6 +10085,8 @@ export class PixiScene {
     this.syncEyeLaser(s.player, s.eyeLaserBeam, s.gameTime); // UNIQUE_WEAPONS.md §16-2: アイレーザーの溜め/照射
     this.syncFlamerCone(s.player, s.flamerCone, s.gameTime, now); // UNIQUE_WEAPONS.md §16-2: 火炎放射器の扇
     this.syncGhostFlamerCone(s.summons, s.gameTime, now); // §17-6b G6: 守護霊の火炎放射器(同じ絵・同じ式)
+    this.syncPhantomFlamer(s.enemies, s.gameTime, now); // §17-6b P2: 幻影の火炎放射器(紫の扇の予告+炎)
+    this.syncPlayerBurn(s.player, s.gameTime, now); // §17-6b P5: 幻影の炎で燃えているプレイヤー
     // research/NEW_GUNS.md(第4版): 塊弾・衛星弾・スキャンの扇と印(描くだけ・判定は utils/newGunsTick.ts)。
     (this.newGunsFx ??= new NewGunsFx(this.L.groundLayer, this.L.effectLayer))
       .sync(s.enemies, s.player, s.projectiles, s.gameTime, now, fy => this.depthScaleEnemy(fy));
@@ -17134,9 +17138,147 @@ export class PixiScene {
     this.drawFlamerStreaks(this.ghostFlamerStreaks, gun, g ? g.x + g.width / 2 : 0, g ? g.y + g.height / 2 : 0, g?.ghostFlamerDir ?? null, gameTime, now);
   }
 
+  // UNIQUE_WEAPONS.md §17-6b P2: 幻影の火炎放射器。予告と判定は同じ扇(phantomFlamerFan=半径 FLAMER_RANGE_PX・半角
+  // FLAMER_HALF_ANGLE_RAD・根元=幻影の中心)。紫=打ち返せない攻撃(色の文法)。
+  // 溜め: 扇の流星(外→内・消え切った瞬間=最初の炎)。噴射: 当たり得る間ずっと紫の縁(最後の炎で store が欄を消す=同時に消える)。
+  private static readonly PHANTOM_TG_STYLE = telegraphStyleFor('guardian-phantom');
+  private syncPhantomFlamer(enemies: readonly Enemy[], gameTime: number, now: number) {
+    const g = this.phantomFlamerGfx;
+    // 地面の層だと夜の暗さに沈んで溜めの扇が読めない(実寸で確認)=炎の筋と同じ層に置く。
+    if (!g.parent) this.L.effectLayer.addChild(g);
+    g.clear();
+    const ph = enemies.find(e => e.type === 'guardian-phantom' && (e.gpFlamerWindupAt !== undefined || e.gpFlamerLastPulseAt !== undefined));
+    if (!ph) { this.drawFlamerStreaks(this.phantomFlamerStreaks, undefined, 0, 0, null, gameTime, now); return; }
+    const cx = ph.x + ph.width / 2, cy = ph.y + ph.height / 2;
+    const ang = ph.gpFlamerAngle ?? 0;
+    const a0 = ang - FLAMER_HALF_ANGLE_RAD, a1 = ang + FLAMER_HALF_ANGLE_RAD;
+    const R = FLAMER_RANGE_PX;
+    const phase = phantomFlamerPhase(ph.gpFlamerWindupAt, gameTime);
+    // 扇の縁: 横の2辺は細く、外周の弧(=扇の口)を太く。
+    const edges = (alpha: number, sideW: number, arcW: number) => {
+      g.moveTo(cx + Math.cos(a0) * R, cy + Math.sin(a0) * R).lineTo(cx, cy).lineTo(cx + Math.cos(a1) * R, cy + Math.sin(a1) * R)
+        .stroke({ width: sideW, color: 0xa855f7, alpha });
+      g.moveTo(cx + Math.cos(a0) * R, cy + Math.sin(a0) * R).arc(cx, cy, R, a0, a1).stroke({ width: arcW, color: 0xc084fc, alpha });
+    };
+    if (phase === 'windup') {
+      const prog = Math.max(0, Math.min(1, (gameTime - (ph.gpFlamerWindupAt ?? gameTime)) / PHANTOM_FLAMER_WINDUP_MS));
+      const mask = this.drawSweepSectorFill(g, cx, cy, R, a0, a1, prog, 0x9333ea, 0.75 * TELEGRAPH_FILL_MULT, PixiScene.PHANTOM_TG_STYLE);
+      edges((0.55 + 0.4 * prog) * mask, 1.5 + prog, 3 + 3 * prog);
+      // 銃口の種火(溜めに合わせて育つ・ゆらぐ)。撃つ本人の手元で「点いた」が見える。
+      const mx = cx + Math.cos(ang) * ph.width * 0.45, my = cy + Math.sin(ang) * ph.width * 0.45;
+      const grow = prog * prog * (3 - 2 * prog);
+      const fl = 0.8 + 0.2 * Math.sin(now / 45) + 0.1 * Math.sin(now / 23);
+      const pr = (2 + 5 * grow) * fl;
+      g.circle(mx, my, pr * 2.4).fill({ color: 0x7b2cbf, alpha: 0.22 * grow });
+      g.ellipse(mx, my - pr * 0.3, pr, pr * 1.5).fill({ color: 0xc77dff, alpha: 0.75 * grow });
+      g.circle(mx, my - pr * 0.2, pr * 0.45).fill({ color: 0xf3e8ff, alpha: 0.9 * grow });
+    } else if (phase === 'spray') {
+      // 着火の瞬間に縁が一度太く光り(フレア)、減速しながら落ち着く。以後は炎のちらつきに合わせてわずかに脈打つ。
+      const since = gameTime - (ph.gpFlamerSprayStartAt ?? gameTime);
+      const flareT = Math.max(0, 1 - since / 220);
+      const flare = flareT * flareT;
+      const breathe = 0.85 + 0.1 * Math.sin(now / 55) + 0.05 * Math.sin(now / 31);
+      edges(Math.min(1, breathe + 0.15 * flare), 1.5 + 1.5 * flare, 3 + 4 * flare);
+    }
+    const last = ph.gpFlamerLastPulseAt;
+    this.drawFlamerStreaks(
+      this.phantomFlamerStreaks,
+      last !== undefined ? { flamerNextPulseAt: last + FLAMER_PULSE_MS, flamerSprayStartAt: ph.gpFlamerSprayStartAt } : undefined,
+      cx, cy, { dirX: Math.cos(ang), dirY: Math.sin(ang) }, gameTime, now,
+      [0xd59cff, 0x8b2fd6], // 幻影の炎は紫寄り(打ち返せない攻撃=紫の文法。扇の縁と中身の色の意味を揃える)
+    );
+  }
+
+  // §17-6b P5: 幻影の炎で燃えているプレイヤー(派手さの絵=判定なし)。上へ伸びる炎の舌+昇る火の粉+足元の照り返し。
+  // 炎は動く向きの逆へなびき、何本かは体の後ろ(地面の層)に回る。着火で膨らみ、燃え尽きで萎んで煙が一筋上がる(慣性MUST)。
+  private playerBurnBackGfx = new Graphics();
+  private playerBurnSmokeGfx = new Graphics();
+  private playerBurnStartAt = -Infinity;
+  private playerBurnEndAt = -Infinity;
+  private syncPlayerBurn(player: Player, gameTime: number, now: number) {
+    const g = this.playerBurnGfx, gb = this.playerBurnBackGfx, gs = this.playerBurnSmokeGfx;
+    if (!g.parent) { g.blendMode = 'add'; this.L.effectLayer.addChild(g); }
+    // 体の後ろの炎と足元の照り返しも加算(通常合成だと暗い地面で茶色い土の塊に見えた=実寸で確認)。
+    if (!gb.parent) { gb.blendMode = 'add'; this.L.groundLayer.addChild(gb); }
+    if (!gs.parent) this.L.effectLayer.addChild(gs);
+    g.clear(); gb.clear(); gs.clear();
+    const cx = player.x + player.width / 2;
+    const footY = player.y + player.height;
+    const H = player.height;
+    const until = player.burnUntil;
+    const burning = until !== undefined && gameTime < until && player.health > 0;
+    if (!burning) {
+      if (this.playerBurnStartAt > -Infinity) { this.playerBurnEndAt = now; this.playerBurnStartAt = -Infinity; }
+      // 燃え尽きた後の煙(700ms・上りながら薄く広がる)。
+      const st = (now - this.playerBurnEndAt) / 700;
+      if (st >= 0 && st < 1) {
+        const e = 1 - (1 - st) * (1 - st);
+        for (let i = 0; i < 3; i++) {
+          const r = H * (0.28 + 0.35 * e) * (1 - i * 0.2);
+          gs.circle(cx + Math.sin(i * 2.1 + st * 3) * H * 0.12, footY - H * (0.7 + 0.9 * e + i * 0.25), r)
+            .fill({ color: 0x9a948c, alpha: 0.6 * (1 - st) * (1 - i * 0.25) }); // 暗い地面で読める灰(暗い色だと夜に溶けて消えた)
+        }
+      }
+      return;
+    }
+    if (this.playerBurnStartAt === -Infinity) this.playerBurnStartAt = now;
+    const inT = Math.min(1, (now - this.playerBurnStartAt) / 220);
+    const grow = 1 - (1 - inT) * (1 - inT) * (1 - inT);
+    const outT = Math.min(1, (until - gameTime) / 400);
+    const env = grow * outT * outT * (3 - 2 * outT);
+    // なびき: 動いている向きの逆へ先端を流す。
+    const sp = Math.hypot(player.vx, player.vy);
+    const lean = sp > 5 ? Math.min(1, sp / 220) : 0;
+    const lx = sp > 5 ? -player.vx / sp : 0;
+    // 足元の照り返し(投影影は落とさない)。
+    gb.ellipse(cx, footY - 1, player.width * 1.1, H * 0.22).fill({ color: 0xff7a1a, alpha: 0.20 * env });
+    const tongues = [
+      { dx: -0.42, base: 0.62, s: 1.0, ph: 0, back: false }, { dx: 0.40, base: 0.48, s: 1.25, ph: 1.9, back: false },
+      { dx: -0.08, base: 0.20, s: 0.7, ph: 3.7, back: true }, { dx: 0.18, base: 0.82, s: 0.85, ph: 5.1, back: false },
+      { dx: -0.25, base: 0.35, s: 0.6, ph: 2.6, back: true }, { dx: 0.05, base: 0.55, s: 0.95, ph: 4.4, back: true },
+    ];
+    for (const t of tongues) {
+      const o = t.back ? gb : g;
+      const flick = 0.78 + 0.22 * Math.sin(now / 70 + t.ph) + 0.1 * Math.sin(now / 33 + t.ph * 2.3);
+      // 体(当たりの箱=絵とほぼ同寸)に対してこのくらい無いと、細い舌が絵に紛れて実寸で読めない(撮って確認)。
+      const h = H * 0.8 * t.s * flick * (0.35 + 0.65 * env);
+      const w = h * 0.38;
+      const bx = cx + t.dx * player.width + Math.sin(now / 140 + t.ph) * w * 0.25;
+      const by = footY - H * t.base;
+      const tipX = bx + lx * lean * h * 0.7 + Math.sin(now / 90 + t.ph) * w * 0.5;
+      const tipY = by - h * (1 - 0.35 * lean);
+      const a = (t.back ? 0.55 : 0.75) * env;
+      // 外側(暗い赤茶)→中(橙)→芯(白寄り)。先の尖った舌の形。
+      for (const [k, col, al] of [[1, 0x8a2a0e, 0.55], [0.68, 0xff8a2a, 0.8], [0.36, 0xfff1d0, 0.95]] as const) {
+        const ww = w * k, tx = bx + (tipX - bx) * (1 - 0.15 * (1 - k)), ty = by + (tipY - by) * (0.55 + 0.45 * k);
+        // 2次曲線3本(左の辺→先端→右の辺→丸い底)を点に割って多角形で塗る。
+        const pts: number[] = [];
+        const quad = (x0: number, y0: number, qx: number, qy: number, x1: number, y1: number) => {
+          for (let n = 0; n < 6; n++) {
+            const u = n / 6, v = 1 - u;
+            pts.push(v * v * x0 + 2 * v * u * qx + u * u * x1, v * v * y0 + 2 * v * u * qy + u * u * y1);
+          }
+        };
+        quad(bx - ww, by, bx - ww * 0.9, by - h * 0.45 * k, tx, ty);
+        quad(tx, ty, bx + ww * 0.9, by - h * 0.45 * k, bx + ww, by);
+        quad(bx + ww, by, bx, by + ww * 0.6, bx - ww, by);
+        o.poly(pts).fill({ color: col, alpha: al * a });
+      }
+    }
+    // 昇る火の粉(各粒が自分の周期で上がって消える)。
+    for (let i = 0; i < 7; i++) {
+      const per = 520 + i * 90;
+      const u = ((now + i * 211) % per) / per;
+      const ex = cx + Math.sin(i * 1.7) * player.width * 0.45 + lx * lean * u * H * 0.5 + Math.sin(now / 120 + i) * 2;
+      const ey = footY - H * (0.4 + 0.9 * u);
+      g.circle(ex, ey, 1.4 + (i % 3) * 0.5).fill({ color: i % 2 ? 0xffd27a : 0xff9a3a, alpha: 0.85 * (1 - u) * env });
+    }
+  }
+
   private drawFlamerStreaks(
-    streaks: Sprite[], gun: Weapon | undefined, pcx: number, pcy: number,
+    streaks: Sprite[], gun: { flamerNextPulseAt?: number; flamerSprayStartAt?: number } | undefined, pcx: number, pcy: number,
     cone: { dirX: number; dirY: number } | null, gameTime: number, now: number,
+    tints: readonly [number, number] = [0xffb347, 0xff5a1f],
   ) {
     const FLAMER_STREAKS = 5;
     if (streaks.length === 0) {
@@ -17181,7 +17323,7 @@ export class PixiScene {
       sp.rotation = ang;
       sp.width = Math.max(0.5, FLAMER_RANGE_PX * growEased);
       sp.height = 10 * flick;
-      sp.tint = i % 2 === 0 ? 0xffb347 : 0xff5a1f; // 橙〜赤の交互(炎らしい揺らぎ)
+      sp.tint = i % 2 === 0 ? tints[0] : tints[1]; // 橙〜赤の交互(炎らしい揺らぎ。幻影は紫寄り)
       sp.alpha = 0.55 * flick * decayMul;
       sp.visible = true;
     }

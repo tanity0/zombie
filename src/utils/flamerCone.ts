@@ -30,6 +30,18 @@ export const flamerBurnPatch = (
   burnByGhost: byGhost || undefined,
 });
 
+// UNIQUE_WEAPONS.md §17-6b P2: 幻影の火炎放射器=溜め(紫の扇の予告・向き固定)→噴射(炎12回・向き固定)の一続き。
+export const PHANTOM_FLAMER_WINDUP_MS = 450;
+export const PHANTOM_FLAMER_PULSES = 12; // ×FLAMER_PULSE_MS=1.2秒の噴射
+
+/** 一続きの k 回目(0始まり)の炎の予定時刻。0回目=溜め明け=紫の予告が流れ切る瞬間。 */
+export const phantomFlamerPulseAt = (windupAt: number, k: number): number =>
+  windupAt + PHANTOM_FLAMER_WINDUP_MS + k * FLAMER_PULSE_MS;
+
+/** 一続きの今の段階。'windup'=予告中(当たらない) / 'spray'=次の炎を待っている(当たり得る=紫の縁を出す)。 */
+export const phantomFlamerPhase = (windupAt: number | undefined, now: number): 'none' | 'windup' | 'spray' =>
+  windupAt === undefined ? 'none' : now < phantomFlamerPulseAt(windupAt, 0) ? 'windup' : 'spray';
+
 export const FLAMER_RELOAD_MS_RAW = 1500; // CATALOGへ書く生値(§17-2と同じ×2規則で実効3000ms)
 
 export const flamerEffectiveReloadMs = (reloadMsRaw = FLAMER_RELOAD_MS_RAW): number =>

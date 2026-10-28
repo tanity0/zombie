@@ -58,7 +58,7 @@ import {
 } from './pvpPosture';
 import { HUMAN_REACTION_MS } from './bossSkeleton'; // ★人の反応時間(このゲームの正本)。幻影の反応下限に使う
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
-import { rectsOverlap } from '../world/obstacles'; // ★B6(盾押し・§6)
+import { rectsOverlap, segmentBlocked, type Rect } from '../world/obstacles'; // ★B6(盾押し・§6) / §17-6b: 炎が壁で止まる
 import { pushShieldRect } from '../world/shieldPush'; // ★B6(盾押し・§6): 純関数
 import { createEnemyProjectile } from './enemyUtils';
 import { distToBandRect } from './geometry';
@@ -69,11 +69,17 @@ import {
   gunShotCritChance, GUNBLADE_WEAPON_KEY,
   isManualOnlyGunKey, manualOnlyFallbackWeapon, // UNIQUE_WEAPONS.md §16-3b(検収B-2是正): 幻影も守護霊/ボットと同じフォールバックを踏む
   isPhantomTargetBullet, // GHOST_BOSS.md v10: 弾パリィ(ゲート)と同じ「プレイヤーの直接銃の弾」の1本
+  FLAMER_WEAPON_KEY, // UNIQUE_WEAPONS.md §17-6b: 非投射武器のうち火炎放射器だけは幻影も撃つ
 } from './weaponUtils';
+import {
+  FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_BURN_TICK_DAMAGE, PHANTOM_FLAMER_PULSES,
+  phantomFlamerPulseAt, flamerBurnPatch,
+} from './flamerCone';
+import { shapeHitsCircle, type ThirdPartyShape } from './thirdPartyShape';
 // UNIQUE_WEAPONS.md §16-2/§17-5(バッチC-2・ガンブレード): 幻影の至近モード距離ゲート
 // (「撃たないだけ」・実装者の裁量=最終報告に記載)。
 import { GUNBLADE_MELEE_RANGE_PX } from './gunbladeMelee';
-import { GRAVITY_SHOT_BOSS_SLOW_MULT } from './skillEffectsB7';
+import { GRAVITY_SHOT_BOSS_SLOW_MULT, INCENDIARY_BURN_TICK_MS } from './skillEffectsB7';
 import {
   decideGhost, GHOST_COUNTER_MELEE_PERIOD_MS, type GhostDecision, type GhostProfile,
   shouldGhostClaimSub, withSynthesizedMicroRhythm, ghostIsMovingNow,
@@ -571,7 +577,8 @@ const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string, 
 const phantomGunRangePx = (s: PhantomTickState): number =>
   // UNIQUE_WEAPONS.md §17-6(検収監査A-2の是正): 非投射武器(アイレーザー/火炎放射器)は幻影も
   // 撃たない(等価実装はしない)。判定は`nonProjectile`フラグ1本(キー直書きにしない)。
-  s.gun && !s.reloadingWeaponId && (s.gun.magazine ?? 0) > 0 && !s.gun.nonProjectile
+  // §17-6b P1: 火炎放射器だけは撃つ(炎の射程を渡す)。
+  s.gun && !s.reloadingWeaponId && (s.gun.magazine ?? 0) > 0 && (!s.gun.nonProjectile || s.gun.key === FLAMER_WEAPON_KEY)
     ? gunEffectiveRangePx({ category: s.gun.ammoType, rangeOverride: s.gun.rangeOverride })
     : 0;
 
@@ -978,6 +985,102 @@ const consumePhantomParry = (
  * @param nowMs       `Date.now()`。リロード・shove窓・decideGhost の内部CDはこの時計。
  * @param rand        [0,1) の乱数(テストで固定できるよう注入口。既定 Math.random)。
  */
+// =================================================================================================
+// 火炎放射器(UNIQUE_WEAPONS.md §17-6b P2〜P6): 溜め(紫の扇の予告・向き固定)→噴射(炎12回・向き固定)
+// =================================================================================================
+
+/** 溜め〜噴射を打ち切る(紫も同時に消える=描画は gpFlamerWindupAt を見ている)。 */
+const abortPhantomFlamer = (phantom: Enemy, patch: Partial<Enemy>): void => {
+  if (phantom.gpFlamerWindupAt === undefined) return;
+  patch.gpFlamerWindupAt = undefined;
+  patch.gpFlamerPulses = undefined;
+};
+
+/** 炎の扇(判定・紫の予告・第三者の当たりの全部が同じこの形)。 */
+export const phantomFlamerFan = (cx: number, cy: number, angle: number): Extract<ThirdPartyShape, { kind: 'fan' }> => ({
+  kind: 'fan', cx, cy, angle, halfArc: FLAMER_HALF_ANGLE_RAD, radius: FLAMER_RANGE_PX,
+});
+
+/** 幻影の炎の死因の文字。 */
+export const phantomFlamerSource = (): string => `${phantomDisplayLabel()}の火炎`;
+
+/**
+ * 一続きの中で、予定時刻が来た炎を1回出す(1tickに1回まで=フレーム落ちでは一続きが少し延びるが、
+ * 紫の縁はその間ずっと出ているので「紫が消えている間は当たらない」は崩れない)。
+ */
+const stepPhantomFlamer = (
+  phantom: Enemy, s: PhantomTickState, bcx: number, bcy: number, sfx: PhantomSfx, patch: Partial<Enemy>,
+  newGameTime: number, wallsNear: (cx: number, cy: number, pad: number) => Rect[],
+): void => {
+  const windupAt = phantom.gpFlamerWindupAt;
+  if (windupAt === undefined) return;
+  const done = phantom.gpFlamerPulses ?? 0;
+  if (newGameTime < phantomFlamerPulseAt(windupAt, done)) return;
+  const gun = s.gun;
+  if (!gun || gun.key !== FLAMER_WEAPON_KEY || s.reloadingWeaponId !== '' || (gun.magazine ?? 0) <= 0) {
+    abortPhantomFlamer(phantom, patch);
+    return;
+  }
+  const angle = phantom.gpFlamerAngle ?? 0;
+  const fan = phantomFlamerFan(bcx, bcy, angle);
+  const m = phantomAtkMults(phantom.id, gun, newGameTime);
+  // 量=プレイヤーの炎と同じ素の1回ぶん×幻影の倍率×育成×対人倍率。クリ無し(プレイヤーの炎の脈もクリ無し)。
+  const dmg = gun.damage * m.outgoingMult * s.growthAtkMult * PVP_DAMAGE_SCALE;
+  hitThirdParties(fan, dmg, phantom.id, `${GUARDIAN_PHANTOM_TYPE}:flamer`);
+  const st = useGameStore.getState();
+  const p = st.player;
+  const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
+  const walls = wallsNear(bcx, bcy, FLAMER_RANGE_PX + 40);
+  if (p.health > 0
+    && shapeHitsCircle(fan, pcx, pcy, Math.max(p.width, p.height) / 2)
+    && !(walls.length > 0 && segmentBlocked(bcx, bcy, pcx, pcy, walls))
+    && !shieldGuardsPlayerLine(bcx, bcy, 'guardian-phantom')) {
+    // 延焼は被弾無敵で弾かれた炎でも付ける(プレイヤーの炎も扇に入った全員に付ける)。強さは対人倍率ぶん。
+    const burn = flamerBurnPatch(p, newGameTime, false, FLAMER_BURN_TICK_DAMAGE * PVP_DAMAGE_SCALE);
+    useGameStore.setState(st2 => ({
+      player: { ...st2.player, burnUntil: burn.burnUntil, burnDpsTick: burn.burnDpsTick, burnSourceId: phantom.id },
+    }));
+    const hpBefore = useGameStore.getState().player.health;
+    // 怯ませない持続ダメージ(プレイヤーの炎が幻影に当たる時と同じ扱い)。damagerType は渡さない
+    // (渡すと幻影の近接だけの「被弾無敵を素通り」に入る)。この幻影ごとの被弾無敵=1秒に1回まで。
+    useGameStore.getState().damagePlayer(
+      dmg, phantomFlamerSource(), undefined, undefined, undefined, undefined, undefined, phantom.id, undefined,
+      { type: GUARDIAN_PHANTOM_TYPE, id: phantom.id }, { dot: true },
+    );
+    if (useGameStore.getState().player.health < hpBefore) sfx.hurt();
+  }
+  s.gun = { ...gun, magazine: Math.max(0, (gun.magazine ?? 0) - 1), lastFired: Date.now() };
+  const pulses = done + 1;
+  patch.gpFlamerLastPulseAt = newGameTime;
+  if (done === 0) patch.gpFlamerSprayStartAt = newGameTime;
+  if (pulses >= PHANTOM_FLAMER_PULSES) abortPhantomFlamer(phantom, patch); // 最後の炎=ここで紫の縁も消える
+  else patch.gpFlamerPulses = pulses;
+};
+
+/**
+ * §17-6b P5: プレイヤーの延焼(幻影の炎で付く)を500msごとに刻む。敵の延焼(tickBurningEnemies)と同じ間隔・
+ * 同じ「持続ダメージ=怯まない」扱い。燃やした幻影ごとの被弾無敵で間引かれる(炎の脈と同じ相手)。
+ * 幻影が倒れた後も燃え尽きるまで続く。
+ */
+export const tickPlayerFlamerBurn = (): void => {
+  const st = useGameStore.getState();
+  const p = st.player;
+  if (p.burnUntil === undefined) return;
+  const gt = st.gameTime;
+  if (gt >= p.burnUntil || p.health <= 0) {
+    useGameStore.setState(s2 => ({ player: { ...s2.player, burnUntil: undefined, burnDpsTick: undefined, lastBurnTickAt: undefined, burnSourceId: undefined } }));
+    return;
+  }
+  if (gt - (p.lastBurnTickAt ?? -Infinity) < INCENDIARY_BURN_TICK_MS) return;
+  useGameStore.setState(s2 => ({ player: { ...s2.player, lastBurnTickAt: gt } }));
+  const dmg = p.burnDpsTick ?? 0;
+  if (dmg <= 0) return;
+  useGameStore.getState().damagePlayer(
+    dmg, phantomFlamerSource(), undefined, undefined, undefined, undefined, undefined, p.burnSourceId, undefined,
+    { type: GUARDIAN_PHANTOM_TYPE, id: p.burnSourceId }, { dot: true },
+  );
+};
+
 export const runPhantomTick = (
   phantom: Enemy,
   s: PhantomTickState,
@@ -987,6 +1090,8 @@ export const runPhantomTick = (
   nowMs: number,
   sfx: PhantomSfx = NOOP_PHANTOM_SFX,
   rand: () => number = Math.random,
+  // §17-6b: 炎を止める壁(useGameLoop の beamWalls=プレイヤーの炎と同じ壁)。既定=壁なし(テスト用)。
+  wallsNear: (cx: number, cy: number, pad: number) => Rect[] = () => [],
 ): void => {
   const st0 = useGameStore.getState();
   const player = st0.player;
@@ -1016,6 +1121,7 @@ export const runPhantomTick = (
         patch.x = c.x; patch.y = c.y;
       }
       patch.vx = nvx; patch.vy = nvy;
+      abortPhantomFlamer(phantom, patch); // §17-6b P6: 紫(体勢崩れ)で溜めも噴射も打ち切る
       applyPatch(phantom.id, patch);
       return;
     }
@@ -1037,10 +1143,11 @@ export const runPhantomTick = (
   ], isEnemyFrozenForClocks(phantom, newGameTime, nowMs), newGameTime, nowMs);
 
   // ---- 気絶・拘束・浮き: 何もしない(★ノックバックは含めない=殴っても止まらない) ----------------
-  if (isFrozen(phantom, newGameTime, nowMs)) { applyPatch(phantom.id, patch); return; }
+  if (isFrozen(phantom, newGameTime, nowMs)) { abortPhantomFlamer(phantom, patch); applyPatch(phantom.id, patch); return; }
 
   // ---- パリィの即反撃(周期を無視した割り込み) ---------------------------------------------------
   const parried = consumePhantomParry(phantom, s, player, bcx, bcy, sfx, patch, newGameTime);
+  if (parried) abortPhantomFlamer(phantom, patch); // §17-6b P6: パリィされたら打ち切る
 
   // ---- 銃の状態(リロード)を進める --------------------------------------------------------------
   stepPhantomGun(s, nowMs, phantom.id, phantom.gpTrapDebuffUntil ?? 0);
@@ -1144,14 +1251,31 @@ export const runPhantomTick = (
   }
 
   // ---- 銃撃(bossState 機械から独立。プレイヤーが移動しながら撃つのと同じ層) ----------------------
-  if (decision.action === 'shoot') firePhantomShot(phantom, s, bcx, bcy, sfx, patch, newGameTime, rand);
+  // §17-6b P2: 火炎放射器は「撃つ」で溜めを始め(向きをプレイヤーへ固定)、以後は一続きが自分で進む。
+  const flamerOn = !parried && phantom.gpFlamerWindupAt !== undefined;
+  if (flamerOn) {
+    stepPhantomFlamer(phantom, s, bcx, bcy, sfx, patch, newGameTime, wallsNear);
+  } else if (decision.action === 'shoot') {
+    if (s.gun?.key === FLAMER_WEAPON_KEY) {
+      // 振りの前隙の最中は始めない(踏み込みで根元が滑る)。
+      if (!s.reloadingWeaponId && (s.gun.magazine ?? 0) > 0 && phantom.gpPendingSwingAt === undefined) {
+        patch.gpFlamerWindupAt = newGameTime;
+        patch.gpFlamerPulses = 0;
+        patch.gpFlamerAngle = Math.atan2((player.y + player.height / 2) - bcy, (player.x + player.width / 2) - bcx);
+      }
+    } else {
+      firePhantomShot(phantom, s, bcx, bcy, sfx, patch, newGameTime, rand);
+    }
+  }
+  // 溜め・噴射の間は振らない・踏み込まない(扇の根元が滑ると「紫を見て抜ける」が崩れる・P2)。
+  const flamerBusy = ('gpFlamerWindupAt' in patch ? patch.gpFlamerWindupAt : phantom.gpFlamerWindupAt) !== undefined;
 
   // ---- 近接(即発ミラー・自前周期タイマー単独) -----------------------------------------------------
   // ★`decision.action==='melee'` は門番にしない: decideGhost が melee 意図を返すのは縁74px以内だけで、
   //   reach160の外側が死ぬ(GHOST_BOSS.md v6 2.)。距離は decideGhost へ注入したのと同じ edgeDistTo。
   // ★前隙(社長裁定2026-08-24・SAME_ARENA.md §7): 振り**始め**にカウンター窓(gpSwingAt)を開き、
   // 判定は MELEE_WINDUP_MS 後に解決する=プレイヤーと同条件。
-  const canSwing = !parried && phantom.gpPendingSwingAt === undefined && newGameTime >= s.nextMeleeAt;
+  const canSwing = !parried && !flamerBusy && phantom.gpPendingSwingAt === undefined && newGameTime >= s.nextMeleeAt;
   // research/LUNGE_DODGE.md §4(段L3): 抜けの踏み込み(弾/詰め)。振りそのものなので届かなくても振る。
   const bulletAct = pickPhantomEscapeLunge(
     phantom, s, player, st0.projectiles, bcx, bcy,

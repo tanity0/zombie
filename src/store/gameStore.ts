@@ -6948,7 +6948,7 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }) => boolean; // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean }) => boolean; // opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -12469,8 +12469,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     return { boomerang, flare, junk, clone, mine, goldRing };
   },
 
-  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove, sourceId, retaliateFromId, killerHint) => {
+  damagePlayer: (rawAmount, source, fromX, fromY, damagerType, damagerWasNamed, damageSourceMove, sourceId, retaliateFromId, killerHint, opts) => {
     const { player } = get();
+    // ★持続ダメージ(炎・延焼)。敵の延焼('dot')と同じく怯ませない(UNIQUE_WEAPONS.md §17-6b)。
+    const dot = opts?.dot === true;
 
     // 二人組クエストv2 §2-8(納品ロック): 納品成立後は被弾を入口で無条件に棄却する。
     // invulnerable(INVULN_MS=1000)は自動失効するため使えない(会話は7〜10秒続く)。
@@ -12516,7 +12518,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 働いたら吹き飛ばさず、しゃがみ/移動ロック/銃ロックの時計(lastHurtAt/lastHurtTier)を**書かない**(読み手3つが自然に素通りする)。
     // 代わりに hurtArmoredAt を書く(爆風側の「命中した」の旗と、踏ん張りの絵の起点)。無敵・ヒットストップ・被弾反撃の窓・シェイク・被弾演出は従来どおり。
     // 蝙蝠の掴み・対人体勢は別の状態なのでここでは防がない。
-    const armored = rawAmount > 0 && skilled > 0
+    const armored = !dot && rawAmount > 0 && skilled > 0
       && playerSuperArmorActive(player, skilled, Date.now(), get().gameTime, PLAYER_MELEE_SWING_MS);
     // 訓練(M0)は**死なない**(社長指示v0.25.2302「チュートリアルではHPは1になるけど死なない。
     // 衛生兵が1秒後には回復しちゃう」)。ハンターのジャンプ攻撃のような大ダメージでもHP1で踏みとどまる。
@@ -12606,7 +12608,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★HP0(死亡演出中)には張らない(§14-4-8 A-1 の再発防止テストが守っている不変条件)。
       // HP0でも damagePlayer は i-frame を張り直すので amount>0 が立ち続ける=ガードが無いと
       // 死亡演出のあいだ1000msごとに停止が入る。**とどめの一撃には入る**(被弾前のHPで見るため)。
-      const stopUntilNext = (amount > 0 && state.player.health > 0)
+      const stopUntilNext = (amount > 0 && state.player.health > 0 && !dot)
         ? Math.max(state.hitstopUntil, Date.now() + playerHurtReactionOf(hurtTier).stopMs)
         : state.hitstopUntil;
       return {
@@ -12616,7 +12618,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         gameStats: amount > 0 ? {
           ...state.gameStats,
           damageTaken: state.gameStats.damageTaken + amount,
-          hitsTaken: state.gameStats.hitsTaken + 1,
+          hitsTaken: state.gameStats.hitsTaken + (dot ? 0 : 1),
           minHpFrac: Math.min(
             state.gameStats.minHpFrac,
             state.player.maxHealth > 0 ? newHealth / state.player.maxHealth : 1,
@@ -12633,19 +12635,19 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { lastDamagerType: k.type, lastDamagerWasNamed: k.wasNamed, lastDamagerWelcome: k.welcome, lastDamagerId: k.id };
         })() : {}),
         // Real damage kicks off a screen shake.
-        shakeUntil: amount > 0 ? Date.now() + SHAKE_MS : state.shakeUntil,
-        shakeMag: amount > 0 ? SHAKE_MAG : state.shakeMag,
-        shakeDur: amount > 0 ? SHAKE_MS : state.shakeDur,
+        shakeUntil: amount > 0 && !dot ? Date.now() + SHAKE_MS : state.shakeUntil,
+        shakeMag: amount > 0 && !dot ? SHAKE_MAG : state.shakeMag,
+        shakeDur: amount > 0 && !dot ? SHAKE_MS : state.shakeDur,
         // §5.23 M22 C1: 被弾源→プレイヤーのノックバック向きへ揺れを寄せる(?dirfx=0で従来の等方揺れ)。
-        shakeDirX: amount > 0 ? (DIRFX_ENABLED ? dirX : 0) : state.shakeDirX,
-        shakeDirY: amount > 0 ? (DIRFX_ENABLED ? dirY : 0) : state.shakeDirY,
+        shakeDirX: amount > 0 && !dot ? (DIRFX_ENABLED ? dirX : 0) : state.shakeDirX,
+        shakeDirY: amount > 0 && !dot ? (DIRFX_ENABLED ? dirY : 0) : state.shakeDirY,
         hitstopUntil: stopUntilNext, // 理由は上の stopUntilNext
         // ★被弾反撃の受付窓(research/HIT_RETALIATION.md §1)。**retaliateFromId が指名された実被弾だけ**が開く(弾・床・罠・爆発は渡さない
         // =新しい技を足しても勝手には開かない)。開く瞬間=被弾の瞬間(ヒットストップ中から入力を受ける)。閉じる=ストップ明け+300ms。
         // 窓の最中に指名なしの被弾(弾・床)が来ても何もしない(閉じない・開き直さない)。死亡では閉じる。相手が居なければ開かない。
         hitRetaliation: newHealth <= 0
           ? null
-          : (amount > 0 && retaliateFromId !== undefined && state.player.health > 0)
+          : (amount > 0 && !dot && retaliateFromId !== undefined && state.player.health > 0)
             ? (() => {
                 const src = state.enemies.find(e => e.id === retaliateFromId);
                 if (!src) return state.hitRetaliation;
@@ -12660,8 +12662,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         player: {
           ...state.player,
           health: newHealth,
-          invulnerable: amount > 0,
-          invulnerableTime: Date.now(),
+          // 持続ダメージは全体の被弾無敵を張らない(燃えている間ほかの攻撃が素通りしない・敵ごとの記録は下で張る)。
+          invulnerable: dot ? state.player.invulnerable : amount > 0,
+          invulnerableTime: dot ? state.player.invulnerableTime : Date.now(),
           // research/AI_HUMANIZE.md B1(§1-1 ctxHit・記録専用): 実ダメージ(amount>0)の瞬間だけ打刻。
           // gameTime系(判定・挙動には使わない=habitEpisode.tsの被弾コンテキスト判定専用)。
           lastDamagedAtGame: amount > 0 ? state.gameTime : state.player.lastDamagedAtGame,
@@ -12671,13 +12674,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (=バグにしか見えない)状態だった。**窓を閉じる1箇所で全成立経路(7箇所)に効く**
           // ——どの経路も counterWindowEnd を読むため、判定コードには一切触らない。
           // `?lastcounter=1` で旧挙動(被弾していてもカウンター可)へ完全復帰(A/B比較用)。
-          counterWindowEnd: (amount > 0 && !LATE_COUNTER_ENABLED) ? 0 : state.player.counterWindowEnd,
+          counterWindowEnd: (amount > 0 && !dot && !LATE_COUNTER_ENABLED) ? 0 : state.player.counterWindowEnd,
           // ★被弾リアクションの打刻(描画専用・判定不変)。この間だけ本体の絵がしゃがみへ替わる。
           // 段(軽/中/重)は**実際に減ったHP**(amount=軽減後)と最大HPの割合で決まる。
-          lastHurtAt: (amount > 0 && !armored) ? kbNow : state.player.lastHurtAt,
+          lastHurtAt: (amount > 0 && !armored && !dot) ? kbNow : state.player.lastHurtAt,
           // B3 巡航: 被弾(吹き飛び・しゃがみの付く当たり)で段0へ。スーパーアーマーで耐えた被弾・M0 の踏みとどまり(amount=0)では戻さない。
-          ...((amount > 0 && !armored) ? { speedRampSustainMs: 0 } : {}),
-          lastHurtTier: (amount > 0 && !armored) ? hurtTier : state.player.lastHurtTier,
+          ...((amount > 0 && !armored && !dot) ? { speedRampSustainMs: 0 } : {}),
+          lastHurtTier: (amount > 0 && !armored && !dot) ? hurtTier : state.player.lastHurtTier,
           hurtArmoredAt: (amount > 0 && armored) ? kbNow : state.player.hurtArmoredAt, // B12: アーマーで受けた被弾の時刻(描画の起点・爆風の旗)
           // B12 見せ方(描画専用・判定には使わない): アーマーで受けた被弾の向き(踏ん張りの傾きの向き)。向きが無い被弾(fromX 未指定)は 0=傾かない。
           hurtArmoredDirX: (amount > 0 && armored) ? dirX : state.player.hurtArmoredDirX,
@@ -12707,7 +12710,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // スキル: 反射神経 = 被弾時(amount>0)、CD明けならプレイヤー中心に反撃爆発(ランチャー値)+
     // 近傍敵を 2× ノックバック。CD 1秒。被弾イベント由来なのでスロー無し(CLAUDE.md)。
-    if (amount > 0) {
+    // 持続ダメージ(炎・延焼)では起こさない(500msごとに反撃爆発が出る、を作らない)。
+    if (amount > 0 && !dot) {
       const cur = get();
       const p = cur.player;
       const rfLv = skillLevel(p, 'reflex');
