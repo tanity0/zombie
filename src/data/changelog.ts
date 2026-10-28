@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5236', items: [
+    '救難信号の救助イベントを、しばらく起きないようにした(ステージのボスと重なっていたため)',
+  ] },
   { version: '0.25.5235', items: [
     '敵を倒した瞬間、血がドカンと爆ぜるようになった。全方向へ飛び散り、重い塊は高く上がって遅れて降ってくる',
     '続けて倒した時は、光を抑えて画面が白く飛ばないようにした',

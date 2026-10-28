@@ -799,6 +799,9 @@ const AREA_SECTOR_ENTER_DIST = worldDist(1200);   // 担当エリア進入セリ
 // ウェルカム台本(§17)に掛けた実時間に関わらず**固定+60秒**(WELCOME_FORCE_END_MS=台本の予算と
 // 同じ1分)。素の値=2:00(初回発火)。
 const ARENA_FIRE_AFTER_MS = 120000; // 初回発火(ウェルカム終了から2:00)
+// ★社長指示2026-10-28「7分に出てくる救難信号一旦やめて。城ボスと被ってる」: 2分ごとの抽選から救助(「救難信号受信」)を外す。
+// コードは残す(true に戻せば元どおり)。開発用の `?arenanow=rescue`(FORCE_ARENA)では今までどおり出せる。
+const RESCUE_ARENA_ENABLED = false;
 const ARENA_FIRE_INTERVAL_MS = 120000; // 以降の発火間隔(=2分ごと。社長指示。初回以降はランの時計に対して相対=+60秒はずらさない)
 // 紅き夜の発火判定時刻は「5分以上でランダム」(社長指示)。出撃ごとに 5〜9分の範囲で1回だけ抽選時刻を決める。
 // 社長指示v0.25.3317: 紅き月は**7:00固定発動・毎ラン確定**(旧: 5〜9分ランダム判定×発生率30%を廃止)。
@@ -4516,9 +4519,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   : FORCE_ARENA === 'egg' ? 'egg'
                   // バッチ5追補: EVENTS_ENABLED時、ランダムタイマーはrescue/eggのみ(horde/bossは関所頭側)。
                   : EVENTS_ENABLED
-                    ? (rescueFiredRef.current ? 'egg' : (['rescue', 'egg'] as const)[Math.floor(Math.random() * 2)])
+                    ? (rescueFiredRef.current || !RESCUE_ARENA_ENABLED ? 'egg' : (['rescue', 'egg'] as const)[Math.floor(Math.random() * 2)])
                     // レスキューは1出撃で最大1回(社長指示)=発生済みなら抽選候補から除外。
-                    : rescueFiredRef.current
+                    : rescueFiredRef.current || !RESCUE_ARENA_ENABLED
                       ? (['horde', 'boss', 'egg'] as const)[Math.floor(Math.random() * 3)]
                       : (['horde', 'boss', 'rescue', 'egg'] as const)[Math.floor(Math.random() * 4)];
               }
