@@ -4,6 +4,7 @@ import {
   BLOB_RADIUS_PX, BLOB_SPEED_PX_PER_SEC, BLOB_TICK_MS, BLOB_LIFE_MS, BLOB_FADE_MS, BLOB_NUMBER_BATCH_MS,
   createBlobShot, stepBlobShot, isBlobExpired, isBlobFading, blobVisualScale, blobPushOut, circleOverlapsRect,
   accumulateBlobNumber, blobReachPx, BLOB_TICK_DAMAGE, type BlobNumberLedger, type BlobStepEnemy,
+  blobSheetFrame, BLOB_SHEET_FRAMES, BLOB_INTRO_FRAMES, BLOB_INTRO_FRAME_MS, BLOB_LOOP_FRAME_MS,
 } from './blobShot';
 
 const never = (): boolean => false;
@@ -151,5 +152,16 @@ describe('品質監査#3: 射程=消え始めるまでに進める道のり(約4
   it('blobReachPx は約404px', () => {
     expect(blobReachPx()).toBeGreaterThan(400);
     expect(blobReachPx()).toBeLessThan(408);
+  });
+});
+
+describe('塊弾の弾の絵のコマ(blobSheetFrame・社長支給2026-10-28「最後の3コマをループ」)', () => {
+  it('撃ち出しの7コマを1回だけ順に出し、その後は最後の3コマをループする', () => {
+    const intro = BLOB_INTRO_FRAMES * BLOB_INTRO_FRAME_MS;
+    for (let k = 0; k < BLOB_INTRO_FRAMES; k++) expect(blobSheetFrame(k * BLOB_INTRO_FRAME_MS)).toBe(k);
+    const loop = [0, 1, 2, 3, 4, 5].map(i => blobSheetFrame(intro + i * BLOB_LOOP_FRAME_MS));
+    expect(loop).toEqual([7, 8, 9, 7, 8, 9]);
+    expect(blobSheetFrame(BLOB_LIFE_MS)).toBeGreaterThanOrEqual(BLOB_INTRO_FRAMES);
+    expect(blobSheetFrame(BLOB_LIFE_MS)).toBeLessThan(BLOB_SHEET_FRAMES);
   });
 });

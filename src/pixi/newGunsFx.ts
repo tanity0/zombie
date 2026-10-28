@@ -1,14 +1,15 @@
 // research/NEW_GUNS.md(第4版): 新しい銃3挺の絵(塊弾の塊・衛星弾の玉・スキャンの扇と印)。
 // ★描くだけ。判定・位置は utils/newGunsTick.ts(getNewGunsView)と store(enemies.scanMarkUntil・projectiles)を読む。
-// 素材は使わない(Graphics のみ)。強glow(投影影を落とす光源)も使わない。図形は上限つき:
+// 素材は塊弾の弾(fx/blob-shot・社長支給2026-10-28)だけ。ほかは Graphics。読み込み前は塊を Graphics で描く(消えない)。強glow(投影影を落とす光源)も使わない。図形は上限つき:
 // 塊≤4・回る弾≤8・放った弾≤16・扇1・印≤MARK_DRAW_MAX・接点≤12・出来事≤16・焦げ跡≤6。
 // 2分類(CLAUDE.md): 塊の輪郭・玉の芯は当たりと同じ大きさ(=見えている所が当たる)。土埃・ひび・火の粉・尾・外光は派手さの絵。
 // 色: スキャン=彩度を落とした青白い燐光+白い芯 / 衛星弾=ランタンの炎の濁った琥珀 / 塊=冷えかけの鉱滓(縁だけ熱い)。
 // 会心(#fbbf24)・レベルアップ(#fde68a)・弾薬回収(#67e8f9)・危険の赤/紫とは別の色にしてある。
-import { Container, Graphics } from 'pixi.js';
+import { Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
+import { getTexture } from './pixiTextures';
 import type { Enemy, Player, Projectile } from '../types/game';
 import { getNewGunsView, type NewGunsEvent } from '../utils/newGunsTick';
-import { BLOB_RADIUS_PX, BLOB_LIFE_MS, BLOB_FADE_MS, blobVisualScale, blobSpeedAt, BLOB_SPEED_PX_PER_SEC, type BlobShot } from '../utils/blobShot';
+import { BLOB_RADIUS_PX, BLOB_LIFE_MS, BLOB_FADE_MS, blobVisualScale, blobSpeedAt, BLOB_SPEED_PX_PER_SEC, BLOB_SHEET_FRAMES, blobSheetFrame, type BlobShot } from '../utils/blobShot';
 import { SAT_BULLET_RADIUS_PX, SAT_ORBIT_RADIUS_PX, SAT_SPAWN_EASE_MS, SAT_RELEASE_IDLE_MS, SATELLITE_WEAPON_KEY, satelliteOrbitPoint, type SatelliteOrbit } from '../utils/satelliteOrbit';
 import {
   SCAN_FAN_HALF_ANGLE_RAD, SCAN_FAN_LENGTH_PX, SCAN_SWEEP_MS, scanFanSweepFrac, scanFanGroundAngle, scanFanScreenPoint, scanBeatPhase, SCAN_BEAT_MS, SCAN_WEAPON_KEY, SCAN_FAN_GROUND_Y_SCALE, isScanMarked, scanMarkRemainFrac,
@@ -32,6 +33,8 @@ const COOL_ASH = 0x5b5650;    // 冷え切った灰
 const SCORCH = 0x150d08;
 const DUST = 0x9c8a70;
 const SMOKE = 0xb3aba1;
+
+// 塊弾の弾の絵: コマの決め方は utils/blobShot.ts の blobSheetFrame(1ドット=世界1px・ループのコマの中身≈62px が当たりの直径52より少し外へ)。
 
 const MARK_DRAW_MAX = 24;
 const MARK_POP_MS = 240;
@@ -75,6 +78,9 @@ export class NewGunsFx {
   private readonly fanGfx = new Graphics();
   private readonly fx = new Graphics();
   private readonly blobState = new Map<string, BlobFxState>();
+  private readonly blobSprites = new Map<string, Sprite>();
+  private readonly blobLayer = new Container();
+  private blobFrames: Texture[] | null = null;
   private readonly scorches: { x: number; y: number; at: number; r: number }[] = [];
   /** 足元の拍の弧の出入り(0..1)。持ち替えで消える/持つと現れる時に慣性をつける。 */
   private footBeatK = 0;
@@ -85,6 +91,18 @@ export class NewGunsFx {
     groundLayer.addChild(this.ground);
     groundLayer.addChild(this.fanGfx); // 扇は地面に倒した形=地面の層(敵・自分の足の下)
     effectLayer.addChild(this.fx);
+    effectLayer.addChild(this.blobLayer); // 弾の絵は熱のひび等の Graphics より上
+  }
+
+  /** 塊弾の弾のシートをコマに切って1回だけ持つ。読み込み前は null(=Graphics の塊で描く)。 */
+  private blobSheetFrames(): Texture[] | null {
+    if (this.blobFrames) return this.blobFrames;
+    const tex = getTexture('fx/blob-shot');
+    if (!tex || tex.width < BLOB_SHEET_FRAMES) return null;
+    const fw = Math.floor(tex.width / BLOB_SHEET_FRAMES);
+    this.blobFrames = Array.from({ length: BLOB_SHEET_FRAMES }, (_, c) =>
+      new Texture({ source: tex.source, frame: new Rectangle(c * fw, 0, fw, tex.height) }));
+    return this.blobFrames;
   }
 
   sync(
@@ -207,6 +225,7 @@ export class NewGunsFx {
   private drawBlobs(gameTime: number, g: Graphics, f: Graphics, blobs: readonly BlobShot[]): void {
     const live = new Set<string>();
     const draws: BlobDraw[] = [];
+    const frames = this.blobSheetFrames();
     for (const b of blobs) {
       live.add(b.id);
       let st = this.blobState.get(b.id);
@@ -228,7 +247,27 @@ export class NewGunsFx {
       if (b.stoppedAt === undefined && (!last || gameTime - last.t >= 30)) st.trail.push({ x: b.x, y: b.y, t: gameTime });
       while (st.trail.length > 0 && gameTime - st.trail[0].t > TRAIL_MS) st.trail.shift();
       const d = this.prepBlob(gameTime, g, b, st);
-      if (d) draws.push(d);
+      if (frames) {
+        // 弾の絵(焦げ線・足元の影は prepBlob が地面へ描いたまま)。大きさは絵のコマが育つので、撃ち出しの膨らみは掛けず、
+        // 寿命の終わりの縮みだけを掛ける。向き: 左へ進む時は左右反転(渦を逆さにしない)+上下の傾きだけ回す。
+        let sp = this.blobSprites.get(b.id);
+        if (!sp) { sp = new Sprite(frames[0]); sp.anchor.set(0.5); this.blobLayer.addChild(sp); this.blobSprites.set(b.id, sp); }
+        const age = gameTime - b.bornAt;
+        sp.texture = frames[blobSheetFrame(age)];
+        const fade = clamp01((age - (BLOB_LIFE_MS - BLOB_FADE_MS)) / BLOB_FADE_MS);
+        const k = 1 - fade * fade;
+        const flip = b.dirX < 0 ? -1 : 1;
+        sp.scale.set(flip * k, k);
+        sp.rotation = Math.atan2(b.dirY, Math.abs(b.dirX)) * flip;
+        sp.position.set(b.x, b.y);
+        sp.alpha = 1 - 0.35 * fade;
+        sp.visible = k > 0.01;
+      } else if (d) draws.push(d);
+    }
+    for (const [id, sp] of this.blobSprites) {
+      if (live.has(id)) continue;
+      sp.destroy();
+      this.blobSprites.delete(id);
     }
     // 重なった塊が融け合って見えるよう、縁を全部先に描き、本体を後からまとめて描く(1個ずつ重ねるとコインの山に見える)。
     for (const d of draws) {

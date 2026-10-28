@@ -36,6 +36,20 @@ export const blobReachPx = (): number => {
   return BLOB_SPEED_PX_PER_SEC * (t + BLOB_LAUNCH_KICK * (BLOB_LAUNCH_TAU_MS / 1000) * (1 - Math.exp(-t * 1000 / BLOB_LAUNCH_TAU_MS)));
 };
 
+// 塊弾の弾の絵(10コマ・1コマ70×66)。1〜7コマ=撃ち出し(彗星→渦へ育つ)を順に1回、8〜10コマ=ループ。
+// 1ドット=世界1px で、ループのコマの中身(約62px)が当たり(直径52)より少し外へはみ出す=渦の芯と輪が当たりの大きさ。
+export const BLOB_SHEET_FRAMES = 10;
+export const BLOB_INTRO_FRAMES = 7;
+export const BLOB_INTRO_FRAME_MS = 45;
+export const BLOB_LOOP_FRAME_MS = 90;
+/** 塊弾の弾のコマ(年齢 ms から)。撃ち出しの7コマを1回→残り3コマをループ。 */
+export const blobSheetFrame = (ageMs: number): number => {
+  const a = Math.max(0, ageMs);
+  const intro = BLOB_INTRO_FRAMES * BLOB_INTRO_FRAME_MS;
+  if (a < intro) return Math.floor(a / BLOB_INTRO_FRAME_MS);
+  return BLOB_INTRO_FRAMES + (Math.floor((a - intro) / BLOB_LOOP_FRAME_MS) % (BLOB_SHEET_FRAMES - BLOB_INTRO_FRAMES));
+};
+
 export interface BlobShot {
   id: string;
   /** 塊の中心(世界px)。 */
