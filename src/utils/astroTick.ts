@@ -21,7 +21,7 @@ import { frontConeSees, FRONT_SIGHT_PX, FRONT_SIGHT_LOSE_PX } from './frontSight
 import {
   ASTRO_PATROL_SPEED, ASTRO_ENGAGE_SPEED_MULT, ASTRO_DECEL_S, ASTRO_STOPPED_FRAC, ASTRO_HOVER_LOOP_LO,
   ASTRO_THROW_GAP_MIN_MS, ASTRO_THROW_GAP_MAX_MS, ASTRO_REST_MIN_MS, ASTRO_REST_MAX_MS, ASTRO_ARRIVE_PX,
-  ASTRO_STUCK_MS, ASTRO_STUCK_PX, ASTRO_HIT_ALERT_MS, ASTRO_LOSE_MS, ASTRO_RELEASE_MS, ASTRO_THROW_ANIM_MS,
+  ASTRO_STUCK_MS, ASTRO_STUCK_PX, ASTRO_HIT_ALERT_MS, ASTRO_LOSE_MS, ASTRO_RELEASE_MS, astroThrowEndMs,
   ASTRO_METEOR_COOLDOWN_MS, ASTRO_BOUQUET_HEAL_FRAC, ASTRO_DEBRIS_RADIUS, ASTRO_DEBRIS_DAMAGE,
   stepAstroHover, stepAstroPeriodicLand, type AstroPeriodicLand, astroCanMove, stepAstroVelocity, astroArriveSpeed, astroBandPull, astroPoiCandidates, pickAstroPoi,
   pickAstroThrow, astroThrowPlan, astroLingerMs, astroMeteorShake, astroRainStep, type AstroRainState,
@@ -155,7 +155,7 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
       Object.assign(patch, { astroThrowAt: undefined, astroThrowKind: undefined });
       s.curThrowId = null; s.nextThrowAt = null;
       throwing = false;
-    } else if (t >= ASTRO_THROW_ANIM_MS) {
+    } else if (t >= astroThrowEndMs(e.astroThrowKind)) { // 隕石は落ちて腕を下ろし切るまで
       Object.assign(patch, { astroThrowAt: undefined, astroThrowKind: undefined });
       s.curThrowId = null; s.nextThrowAt = null; // 浮き直しが終わってから次の間隔を数える
       throwing = false;

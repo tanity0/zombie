@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5273', items: [
+    '宇宙飛行群(変異)は旗を高く掲げてから投げつけてくる',
+    '隕石を呼ぶ時は、落ちてくるまで手を掲げたまま。落ちた瞬間に腕を下ろす',
+  ] },
   { version: '0.25.5272', items: [
     '宇宙飛行群(変異)の周りに降り注ぐ残骸は紫の印。弾けないので避ける。狙って落としてくる残骸は今までどおり赤',
   ] },

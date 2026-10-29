@@ -263,7 +263,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase, TELEGRAPH_STYLE_BOSS } from '../utils/telegraphStyle';
 import { hunterWarpAlpha } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
-import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_HOVER_ALIGN, ASTRO_HOVER_FRAME_W, ASTRO_SHEET_H, ASTRO_RAIN_SINK_MS, ASTRO_DEBRIS_FIRST_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
+import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, astroThrowFrame, ASTRO_THROW_HAND, ASTRO_THROW_TOP_FRAME, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_HOVER_ALIGN, ASTRO_HOVER_FRAME_W, ASTRO_SHEET_H, ASTRO_RAIN_SINK_MS, ASTRO_DEBRIS_FIRST_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
 import { labBaitZoomTarget } from '../world/labBait';
@@ -17892,6 +17892,8 @@ export class PixiScene {
     const style = telegraphStyleFor('mutant-astro');
     // 手を離す7コマ目の触手の手の位置(支給の絵の実測: 足元から約60px・向いている側へ約48px)。投げた物はここから出る。
     const HAND_PX = 60, HAND_FWD_PX = 48;
+    // 投げの絵のドット→世界の大きさ(ASTRO_THROW_HAND を手の位置へ写す時の倍率。手を離すコマで HAND_PX/HAND_FWD_PX とほぼ一致)。
+    const HAND_ART_K = 0.9;
     const LIE_ROT = Math.PI / 2 - 0.2; // 花束が地面に寝た角度
     const ASTRO_GROUND_TINT = 0xbdb4aa; // 地面に置いた物は夜の地面に沈める(白い外板・旗が光って浮かない・監査#17)。乗算なので黒く潰さない程度
     const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -17970,9 +17972,12 @@ export class PixiScene {
       // 打ち上げの筋の尺: 隕石は560ms。残骸は1枚目が空から落ち始める前に上り切る(落ちる絵と逆さまに見せない・品質監査 A1)。
       const launchMs = t.kind === 'meteor' ? 560 : Math.max(90, ASTRO_DEBRIS_FIRST_MS - 220);
       if ((t.kind === 'meteor' || (t.kind === 'debris' && !t.ambient && t.id.endsWith('-0'))) && sinceRel >= 0 && sinceRel < launchMs) {
-        const hy = footY - handH;
         const dirX = t.x >= t.fromX ? 1 : -1;
-        const at = (kk: number) => { const e2 = 1 - (1 - kk) * (1 - kk); return { x: handX + dirX * 80 * dsFrom * e2, y: hy + (viewTopWorld - 80 - hy) * e2 }; };
+        // 隕石は上げたままの手(5コマ目)から打ち上がる(落ちるまで手を上げたまま・社長指示2026-10-29)。
+        const topHand = ASTRO_THROW_HAND[ASTRO_THROW_TOP_FRAME];
+        const hy = t.kind === 'meteor' ? footY - topHand[1] * HAND_ART_K * dsFrom : footY - handH;
+        const hx0 = t.kind === 'meteor' ? t.fromX + dirX * topHand[0] * HAND_ART_K * dsFrom : handX;
+        const at = (kk: number) => { const e2 = 1 - (1 - kk) * (1 - kk); return { x: hx0 + dirX * 80 * dsFrom * e2, y: hy + (viewTopWorld - 80 - hy) * e2 }; };
         const k = sinceRel / launchMs;
         let prev = at(k);
         for (let j = 1; j <= 6; j++) {
@@ -18024,7 +18029,22 @@ export class PixiScene {
         const flyRot = flagAng - Math.PI / 2; // 竿の根元(絵の下)を前にして飛ぶ
         const restRot = -side * 0.32; // 刺さった後は上が投げ手の側へ傾く(槍が刺さった形)
         const FOOT_X = 6 / 66, FOOT_Y = 65 / 66;
-        if (flying || held) {
+        // 掲げる(社長指示2026-10-29「旗を掲げてから投げる」): 腕を上げ始めてから手を離すまで、旗は絵の手の先に握られている。
+        // 上げる間は竿を立てて少し後ろへ倒し、手が一番上(5コマ目)で一拍掲げ、6コマ目で前へ倒しながら振り出す。
+        const raising = live && !flying && gameTime >= t.bornAt + 40;
+        if (raising) {
+          const fr = Math.max(1, Math.min(7, astroThrowFrame(gameTime - t.bornAt, 'flag')));
+          const hp = ASTRO_THROW_HAND[fr];
+          const hx = t.fromX + side * hp[0] * HAND_ART_K * dsFrom, hy = footY - hp[1] * HAND_ART_K * dsFrom;
+          const ds = this.depthScale(footY);
+          const upRot = side * 0.28; // 竿の先が投げる側の逆へ少し倒れる(振りかぶり)
+          const swing = fr <= ASTRO_THROW_TOP_FRAME ? 0 : Math.min(1, (fr - ASTRO_THROW_TOP_FRAME) / 2);
+          let dr = flyRot - upRot; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+          const sway = fr === ASTRO_THROW_TOP_FRAME ? Math.sin(gameTime / 47) * 0.05 : 0; // 掲げている間、布の重みで竿がわずかに揺れる
+          if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.skyFxLayer, hx, hy + 16 * ds, upRot + dr * swing * swing + sway, 1.2 * ds * -side, 1.2 * ds, 1, FOOT_X, FOOT_Y)) {
+            this.drawAstroFlag(a, hx, hy + 16 * ds, flagAng, ds, gameTime, 1, false);
+          }
+        } else if (flying) {
           const u = flyU * flyU * 0.3 + flyU * 0.7; // 素早く一直線(わずかに加速)
           // 手元から刺さる点へ。終点は刺さった旗と同じ点(=刺さる瞬間に跳ばない)。
           const gx = handX + (c.tx - handX) * u, gy = footY + (c.ty - footY) * u;
@@ -36948,7 +36968,7 @@ export class PixiScene {
     getTexture('fx/astro-throws');
     getTexture('fx/astro-flag-fly');
     if (e.astroThrowAt !== undefined) {
-      const i = Math.max(0, Math.min(ASTRO_THROW_FRAMES - 1, Math.floor((gameTime - e.astroThrowAt) / ASTRO_THROW_FRAME_MS)));
+      const i = Math.max(0, Math.min(ASTRO_THROW_FRAMES - 1, astroThrowFrame(gameTime - e.astroThrowAt, e.astroThrowKind))); // 旗は掲げてから・隕石は落ちるまで手を上げたまま
       return this.sheetSlices('mutant-astro-throw', ASTRO_THROW_FRAMES)?.[i] ?? null;
     }
     const f = Math.max(0, Math.min(ASTRO_HOVER_FRAMES - 1, e.astroHoverFrame ?? 0));

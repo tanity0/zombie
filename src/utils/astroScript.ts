@@ -146,6 +146,38 @@ export const astroHitOffsetMs = (kind: AstroThrowKind, i = 0): number => {
   }
 };
 
+/**
+ * 投げの絵のコマ(投げ始めからの ms)。手を離す時刻(7コマ目=490ms)と当たる時刻はどの物でも変えない。
+ * - 旗: 掲げてから投げる(社長指示2026-10-29「旗を掲げてから投げる」)=腕を上げる0〜4を詰めて、手が一番上の5コマ目で一拍掲げる。
+ * - 隕石: 落ちるまで手を上げたまま、落ちる瞬間に下ろす(社長指示2026-10-29)=5コマ目で止め、当たる時刻から6〜12を再生。
+ */
+export const ASTRO_THROW_TOP_FRAME = 5;
+export const ASTRO_FLAG_RAISE_FRAME_MS = 42;
+export const ASTRO_FLAG_HOLD_UNTIL_MS = ASTRO_RELEASE_MS - 70; // 420ms まで掲げる→6・7コマ目(70ms ずつ)で投げる
+export const astroThrowFrame = (t: number, kind: AstroThrowKind | undefined): number => {
+  const tt = Math.max(0, t);
+  const last = ASTRO_THROW_FRAMES - 1;
+  if (kind === 'flag') {
+    if (tt < ASTRO_THROW_TOP_FRAME * ASTRO_FLAG_RAISE_FRAME_MS) return Math.floor(tt / ASTRO_FLAG_RAISE_FRAME_MS);
+    if (tt < ASTRO_FLAG_HOLD_UNTIL_MS) return ASTRO_THROW_TOP_FRAME;
+    return Math.min(last, ASTRO_THROW_TOP_FRAME + 1 + Math.floor((tt - ASTRO_FLAG_HOLD_UNTIL_MS) / ASTRO_THROW_FRAME_MS));
+  }
+  if (kind === 'meteor') {
+    const hit = astroHitOffsetMs('meteor');
+    if (tt < ASTRO_THROW_TOP_FRAME * ASTRO_THROW_FRAME_MS) return Math.floor(tt / ASTRO_THROW_FRAME_MS);
+    if (tt < hit) return ASTRO_THROW_TOP_FRAME;
+    return Math.min(last, ASTRO_THROW_TOP_FRAME + 1 + Math.floor((tt - hit) / ASTRO_THROW_FRAME_MS));
+  }
+  return Math.min(last, Math.floor(tt / ASTRO_THROW_FRAME_MS));
+};
+/** 投げの絵が終わる時刻(投げ始めからの ms)。隕石は落ちてから腕を下ろし切るまで。 */
+export const astroThrowEndMs = (kind: AstroThrowKind | undefined): number =>
+  kind === 'meteor' ? astroHitOffsetMs('meteor') + (ASTRO_THROW_FRAMES - 1 - ASTRO_THROW_TOP_FRAME) * ASTRO_THROW_FRAME_MS : ASTRO_THROW_ANIM_MS;
+/** 投げのコマごとの手の先(絵のドット・足元から[向いている側へ, 上へ]・支給の絵の実測)。旗を掲げる間、旗はこの点に握られる。 */
+export const ASTRO_THROW_HAND: readonly (readonly [number, number])[] = [
+  [40, 30], [69, 72], [69, 107], [71, 147], [60, 169], [49, 180], [61, 147], [65, 57], [46, 140], [46, 134], [45, 135], [44, 138], [45, 138],
+];
+
 /** 台帳の1件=予告1つ+当たり1つ(残骸は8件)。投げ始めに全部積み、手を離す前に取り消されたら投げ単位で消す。 */
 export interface AstroThrowEntry {
   id: string;

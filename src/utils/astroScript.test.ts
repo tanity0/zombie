@@ -274,3 +274,24 @@ describe('宇宙飛行群: 周りに降り注ぐ残骸(§12-1)', () => {
     expect(astroRainStep(p.filter(a => a.sinkAt === undefined), null, { x: 0, y: 0 }, ok, 31000, Math.random, st2)).toEqual(p.filter(a => a.sinkAt === undefined));
   });
 });
+
+import { astroThrowFrame, astroThrowEndMs, ASTRO_THROW_TOP_FRAME, ASTRO_THROW_HAND, ASTRO_THROW_FRAMES as TF, astroHitOffsetMs as hitMs, ASTRO_RELEASE_MS as REL } from './astroScript';
+describe('投げのコマ(社長指示2026-10-29: 旗は掲げてから投げる・隕石は落ちるまで手を上げたまま)', () => {
+  it('どの物も手を離すコマ(7)は手を離す時刻のまま', () => {
+    for (const k of ['missile', 'flag', 'debris', 'bouquet'] as const) expect(astroThrowFrame(REL, k)).toBe(7);
+  });
+  it('旗は手が一番上のコマで一拍止まる', () => {
+    expect(astroThrowFrame(250, 'flag')).toBe(ASTRO_THROW_TOP_FRAME);
+    expect(astroThrowFrame(400, 'flag')).toBe(ASTRO_THROW_TOP_FRAME);
+    expect(astroThrowFrame(250, 'missile')).toBe(3);
+  });
+  it('隕石は落ちる瞬間まで手を上げたまま、落ちてから下ろし切って終わる', () => {
+    const hit = hitMs('meteor');
+    expect(astroThrowFrame(REL, 'meteor')).toBe(ASTRO_THROW_TOP_FRAME);
+    expect(astroThrowFrame(hit - 1, 'meteor')).toBe(ASTRO_THROW_TOP_FRAME);
+    expect(astroThrowFrame(hit, 'meteor')).toBe(ASTRO_THROW_TOP_FRAME + 1);
+    expect(astroThrowFrame(astroThrowEndMs('meteor') - 1, 'meteor')).toBe(TF - 1);
+    expect(astroThrowEndMs('meteor')).toBeGreaterThan(hit);
+    expect(ASTRO_THROW_HAND).toHaveLength(TF);
+  });
+});
