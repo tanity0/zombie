@@ -103,6 +103,7 @@ import {
   SCREAMER_BUFF_MS,
   PLAYER_KNOCKBACK_MS,
   retaliationReadyTarget, // ★被弾反撃の「いま出せるか」(入力と同じ1本・HIT_RETALIATION.md §7)
+  type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
@@ -218,7 +219,7 @@ import type { PersistentBeam } from '../utils/persistentBeam';
 import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, PHANTOM_FLAMER_WINDUP_MS, phantomFlamerPhase } from '../utils/flamerCone';
 import { NewGunsFx } from './newGunsFx';
-import { wraithScreamRisePx, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_FRAMES, WRAITH_GROWTH_SINK_MS, wraithWarpState, wraithLiftPx, wraithScreamFrame, wraithFloatFrame, wraithScreamBodyH, WRAITH_SCREAM_FRAMES, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_ALIGN_X, WRAITH_FLOAT_ALIGN_X, WRAITH_SCREAM_FRAME_W, WRAITH_FLOAT_FRAME_W, WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_RADIUS } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
+import { wraithScreamRisePx, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_FRAMES, WRAITH_GROWTH_SINK_MS, wraithWarpState, wraithLiftPx, wraithScreamFrame, wraithFloatFrame, wraithScreamBodyH, WRAITH_SCREAM_FRAMES, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_ALIGN_X, WRAITH_FLOAT_ALIGN_X, WRAITH_SCREAM_FRAME_W, WRAITH_FLOAT_FRAME_W, WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_RADIUS, WRAITH_POINT_FRAMES, WRAITH_POINT_FRAME_W, WRAITH_POINT_ALIGN_X, wraithPointFrame, WRAITH_CURSE_HOVER_PX, WRAITH_GRAVE_STONE_KEEP } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
 import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
@@ -7308,6 +7309,8 @@ export class PixiScene {
   private warpOutWasOn = new Set<string>();
   private warpInWasOn = new Set<string>();
   private tossLastDir = new Map<string, { x: number; y: number }>();
+  /** 亡霊の指差しで滑った雑魚(埃を亡霊の靄の色にする・WRAITH_MUTANT.md §11)。 */
+  private tossFreeIds = new Set<string>();
   private escKickFx = new Map<string, EscortKick>();
   private escKickLift = new Map<string, number>(); // 兵士の跳躍の高さ(影の place() へ heightPx として渡す) // 兵士の蹴り(v3.1)の最後の段取り(蹴りが終わった後も着地/蹴り抜きの埃を描き切るため) // 兵士のトスの飛んだ向き(着地の埃を後ろへ引くため・着地後2秒で捨てる)
   private acrasielWarpOutPos = new Map<string, { x: number; y: number }>();
@@ -16677,22 +16680,30 @@ export class PixiScene {
   // 相乗りしているため、専用の定数を用意する(骨刃=ラフィ・羽=フィル・既定=スカジ)。
   private static readonly RAFI_TG_STYLE = telegraphStyleFor('rafi');
   /** blade の `visual` からその刃の主(ラフィ/フィル/スカジ)のスタイルを引く(A-4)。 */
-  private static bladeTgStyle(visual?: 'ice' | 'bone' | 'feather'): TelegraphStyle {
+  private static readonly WRAITH_TG_STYLE = telegraphStyleFor('mutant-wraith');
+  /** 呪いの墓石の赤い帯と影(地面の層・§11)。 */
+  private graveBandGfx = new Graphics();
+  /** 呪いの墓石の絵(根元の瓦礫を切った上側だけ・コマごと)。 */
+  private graveFlyCut = new Map<number, Texture>();
+  private static bladeTgStyle(visual?: SkadiBladeVisual): TelegraphStyle {
     return visual === 'bone' ? PixiScene.RAFI_TG_STYLE
       : visual === 'feather' ? PixiScene.PHILL_TG_STYLE
-        : PixiScene.SKADI_TG_STYLE;
+        : visual === 'grave' ? PixiScene.WRAITH_TG_STYLE
+          : PixiScene.SKADI_TG_STYLE;
   }
   private syncSkadiHazards(
     markers: { id: string; x: number; y: number; bornAt: number; fireAt: number }[],
     // PACING_PUZZLE.md §10-13/§10-14#8(フィル羽根散弾=visual:'feather'): バッチ3でfx/phill-feather
     // テクスチャ+専用サイズ/向きを配線(下のbtex/nativeAngle分岐)。判定/挙動はice/boneと共通のまま
     // (§10-14#8=既存共有配列にvisualを増やしただけ・新配列は作らない)。
-    blades: { id: string; x: number; y: number; angle: number; launched: boolean; launchAt: number; expireAt: number; visual?: 'ice' | 'bone' | 'feather' }[],
+    blades: readonly SkadiBlade[],
     gameTime: number,
     now: number,
   ) {
     const g = this.skadiHazardGfx;
     g.clear();
+    if (this.graveBandGfx.parent !== this.L.groundLayer) this.L.groundLayer.addChild(this.graveBandGfx);
+    this.graveBandGfx.clear();
     const seen = new Set<string>();
     // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 氷塊マーカーはスカジ専用(終端)。
     const pulse = 0.5 + 0.5 * Math.sin(gameTime / PixiScene.SKADI_TG_STYLE.pulseMs);
@@ -16731,8 +16742,10 @@ export class PixiScene {
     const REOPEN_KICK_MS = 240;
     let lastFanLaunchAt = -Infinity;
     for (const b of blades) if (b.launched && b.launchAt > lastFanLaunchAt) lastFanLaunchAt = b.launchAt;
+    // research/WRAITH_MUTANT.md §11 呪い: 墓石は生えていた時の絵(コマ・倍率・左右)のまま。
+    const graveFrames = blades.some(b => b.visual === 'grave') ? this.sheetSlices('props/wraith-growths', WRAITH_GROWTH_FRAMES) : null;
     for (const b of blades) {
-      const btex = b.visual === 'bone' ? boneTex : b.visual === 'feather' ? featherTex : iceTex;
+      const btex = b.visual === 'bone' ? boneTex : b.visual === 'feather' ? featherTex : b.visual === 'grave' ? (graveFrames?.[b.grave?.variant ?? 0] ?? null) : iceTex;
       if (!btex) continue;
       seen.add(b.id);
       // (A-4・品質監査1巡目): この共有配列は骨刃(ラフィ=visual:'bone')・羽根散弾(フィル=
@@ -16745,12 +16758,23 @@ export class PixiScene {
       // 狙い角は設置時に確定済みなので、前倒しでも「赤=実際の進路」は崩れない(判定と厳密一致の掟)。
       // 幅=命中半径×2(氷塊円と同じく自機半径ぶんは足さない)。骨刃(ラフィ)・氷刃(スカジ)共通。
       const preMs = b.launchAt - gameTime; // 発射までの残りms(発射後は負)
-      if (b.launched || preMs <= SKADI_BLADE_LINE_PRE_MS) {
-        const remainPx = b.launched
+      // 墓石の帯は地面の層へ描く(亡霊や雑魚の体の上を赤く塗らない・クリエイティブ監査#9)。氷刃・骨刃・羽は従来どおり。
+      const bg = b.visual === 'grave' ? this.graveBandGfx : g;
+      // 墓石(呪い)は浮き上がった瞬間=その墓石の溜めの始まりから赤い帯を出す(赤い予告の掟②・§11)。
+      const linePre = b.visual === 'grave' && b.grave ? Math.max(1, b.launchAt - b.grave.liftAt) : SKADI_BLADE_LINE_PRE_MS;
+      if (b.launched || preMs <= linePre) {
+        let remainPx = b.launched
           ? Math.max(0, (b.expireAt - gameTime) / 1000) * SKADI_BLADE_SPEED
           : (SKADI_BLADE_LIFE_MS / 1000) * SKADI_BLADE_SPEED;
-        const fadeIn = b.launched ? 1 : Math.max(0, Math.min(1, 1 - preMs / SKADI_BLADE_LINE_PRE_MS));
-        if (remainPx > 1 && fadeIn > 0) {
+        // 墓石の溜めの帯は、浮いた瞬間に決めた長さ(プレイヤーの少し先まで)で固定する: 全長(約1750px)のままだと
+        // 流れが長い道のりに薄く引き延ばされ、プレイヤーの上の赤が早く抜け過ぎる。飛び出したら全長へ慣性つきで伸ばす
+        // (当たり得る間ずっと赤=掟④は飛んでいる間の全長で満たす・クリエイティブ監査#8)。
+        if (b.visual === 'grave' && b.grave?.bandPx !== undefined) {
+          const k = b.launched ? 1 - Math.pow(1 - Math.min(1, Math.max(0, gameTime - b.launchAt) / 240), 3) : 0;
+          remainPx = Math.min(remainPx, b.grave.bandPx + (remainPx - b.grave.bandPx) * k);
+        }
+        const fadeIn = b.launched ? 1 : Math.max(0, Math.min(1, 1 - preMs / linePre));
+        if (remainPx > 1 && (fadeIn > 0 || b.visual === 'grave')) {
           const ex = b.x + Math.cos(b.angle) * remainPx;
           const ey = b.y + Math.sin(b.angle) * remainPx;
           const baseA = (0.30 + 0.15 * bPulse) * TELEGRAPH_FILL_MULT;
@@ -16772,18 +16796,23 @@ export class PixiScene {
               const s0 = i * skSt, s1 = s0 + skSt;
               const x0 = b.x + (ex - b.x) * s0, y0 = b.y + (ey - b.y) * s0;
               const x1 = b.x + (ex - b.x) * s1, y1 = b.y + (ey - b.y) * s1;
-              g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: a });
-              g.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 2, color: 0xff6b6b, alpha: Math.min(1, 0.5 * BAND_SWEEP_A) * w });
+              bg.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: a });
+              bg.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 2, color: 0xff6b6b, alpha: Math.min(1, 0.5 * BAND_SWEEP_A) * w });
             }
           } else {
             // 発射後(飛行中)は**全形のまま**=「実行中は全形」の従来意図(§11-2d の uniform と同じ扱い)。
-            g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: baseA * fadeIn });
-            g.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: 2, color: 0xff6b6b, alpha: 0.5 * fadeIn });
+            bg.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: SKADI_BLADE_HIT * 2, color: 0xff2a2a, alpha: baseA * fadeIn });
+            bg.moveTo(b.x, b.y).lineTo(ex, ey).stroke({ width: 2, color: 0xff6b6b, alpha: 0.5 * fadeIn });
           }
         }
       }
       let sp = this.skadiBladePool.get(b.id);
-      if (!sp) { sp = new Sprite(btex); sp.anchor.set(0.5, 0.5); this.skadiHazardContainer.addChild(sp); this.skadiBladePool.set(b.id, sp); }
+      if (!sp) {
+        sp = new Sprite(btex); sp.anchor.set(0.5, 0.5);
+        // 墓石はキャラと同じ層で足元のYで前後を並べる(抜けた瞬間に奥の墓石が手前へ跳ばない・検収 A-3)。
+        (b.visual === 'grave' ? this.L.actorLayer : this.skadiHazardContainer).addChild(sp);
+        this.skadiBladePool.set(b.id, sp);
+      }
       if (sp.texture !== btex) sp.texture = btex; // 差し替え(プール再利用時の保険)
       // §10-14#11「当たる羽根=大きめ+赤い軌跡+直進」: 判定半径(SKADI_BLADE_HIT)は共通のまま、
       // 絵だけ一回り大きく(撒き羽根=PHILL_FEATHER_SIZE_PX=30pxより明確に大きい=見分けが付く)。
@@ -16800,8 +16829,8 @@ export class PixiScene {
       // 発射直前(赤ラインが出る=SKADI_BLADE_LINE_PRE_MS窓)だけ、発射方向と逆へ震え+後ずさり。
       // 描画オフセットのみ(判定はstore側のb.x/y・発射時刻を一切変えない)。骨刃(rafi)/氷刃(skadi)共通。
       let bOffX = 0, bOffY = 0;
-      if (!b.launched && preMs <= SKADI_BLADE_LINE_PRE_MS) {
-        const bProg = Math.max(0, Math.min(1, 1 - preMs / SKADI_BLADE_LINE_PRE_MS));
+      if (!b.launched && preMs <= linePre) {
+        const bProg = Math.max(0, Math.min(1, 1 - preMs / linePre));
         const bOff = windupBackstepOffset(bProg, now, -Math.cos(b.angle), -Math.sin(b.angle), 10, 2.0, 0.3);
         bOffX = bOff.x; bOffY = bOff.y;
       }
@@ -16819,6 +16848,42 @@ export class PixiScene {
       }
       sp.position.set(b.x + bOffX, b.y + bOffY);
       sp.alpha = b.launched ? 1 : (0.4 + 0.2 * bPulse); // 設置中は薄い予告→発射後くっきり(A-4=刃の主の型で脈)
+      if (b.visual === 'grave' && b.grave) {
+        // 墓石: 生えていた時と同じ大きさ・同じ夜の色・同じ手前の薄れ。根元の瓦礫は地面に残す(切った上側だけが浮く・クリエイティブ監査#1#2)。
+        // 浮く間は地面から剥がれる一瞬に強くガタつき、少し落ち着いてから飛び出す直前にまた強まる(墓石ごとに揺れをずらす・#5)。
+        // 飛んでいる間はゆっくり回り始める(動き出しは緩やか)。足元には浮きの高さで縮む影(#4)。
+        const gr = b.grave;
+        let cut = this.graveFlyCut.get(gr.variant);
+        if (!cut) {
+          cut = new Texture({ source: btex.source, frame: new Rectangle(btex.frame.x, btex.frame.y, btex.frame.width, Math.max(1, Math.round(btex.frame.height * WRAITH_GRAVE_STONE_KEEP))) });
+          this.graveFlyCut.set(gr.variant, cut);
+        }
+        if (sp.texture !== cut) sp.texture = cut;
+        const footY = b.y + WRAITH_CURSE_HOVER_PX;
+        const ds = this.depthScale(footY);
+        const fullH = btex.frame.height * gr.scale * ds, stoneH = cut.frame.height * gr.scale * ds;
+        sp.scale.set(gr.scale * ds * (gr.flip ? -1 : 1), gr.scale * ds);
+        const pre = Math.max(1, b.launchAt - gr.liftAt);
+        const u = Math.max(0, Math.min(1, (gameTime - gr.liftAt) / pre));
+        const c = 1.1;
+        const up = b.launched ? 1 : 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2);
+        const plantedY = footY - (fullH - stoneH) - stoneH / 2; // 瓦礫の上に立っていた時の石の中心
+        const ph = stablePhase(b.id);
+        const amp = b.launched ? 0 : (u < 0.18 ? 1 - (u / 0.18) * 0.72 : u > 0.72 ? 0.28 + ((u - 0.72) / 0.28) * 0.72 : 0.28) * (2.2 + (ph % 1.3));
+        const jx = (Math.sin(now / 23 + ph) * 0.6 + Math.sin(now / 9.7 + ph * 2.3) * 0.4) * amp;
+        const jy = (Math.sin(now / 29 + ph * 1.7) * 0.5 + Math.sin(now / 13.1 + ph) * 0.5) * amp * 0.6;
+        sp.position.set(b.x + bOffX + jx, plantedY + (b.y - plantedY) * up + bOffY + jy);
+        const ft = b.launched ? Math.max(0, gameTime - b.launchAt) / 1000 : 0;
+        const spinDir = Math.cos(b.angle) >= 0 ? 1 : -1;
+        sp.rotation = b.launched ? spinDir * 4.2 * ft * ft / (ft + 0.35) : jx * 0.018;
+        sp.skew.x = 0;
+        sp.tint = this.envTintNow();
+        sp.alpha = this.horizonActorAlpha(footY) * this.foregroundActorAlpha(footY);
+        sp.zIndex = footY;
+        const lift = Math.max(0, Math.min(1, up));
+        const rx = 19 * gr.scale * ds * (1 - 0.3 * lift);
+        this.graveBandGfx.ellipse(b.x, footY - 2, rx, rx * 0.34).fill({ color: 0x000000, alpha: 0.34 * (1 - 0.45 * lift) * sp.alpha });
+      }
       sp.visible = true;
     }
     for (const [id, sp] of this.skadiBlockPool) { if (!seen.has(id)) { sp.destroy(); this.skadiBlockPool.delete(id); } }
@@ -22267,7 +22332,8 @@ export class PixiScene {
     // 亡霊: 体を起点にする(社長指示2026-10-29「上下には揺れるけど。左右はうまく合わせて」)=コマごとの体の横のずれを支点で打ち消す。
     if (e.type === 'mutant-wraith') {
       const k = this.wraithFrameOf(e, gameTime);
-      view.sprite.anchor.set(0.5 - (k.scream ? WRAITH_SCREAM_ALIGN_X[k.f] / WRAITH_SCREAM_FRAME_W : WRAITH_FLOAT_ALIGN_X[k.f] / WRAITH_FLOAT_FRAME_W), 1);
+      view.sprite.anchor.set(0.5 - (k.scream ? WRAITH_SCREAM_ALIGN_X[k.f] / WRAITH_SCREAM_FRAME_W
+        : k.point ? WRAITH_POINT_ALIGN_X[k.f] / WRAITH_POINT_FRAME_W : WRAITH_FLOAT_ALIGN_X[k.f] / WRAITH_FLOAT_FRAME_W), 1);
     }
     // ---- 歩行二次モーション(①②③・v0.25.2899・視覚のみ) ----------------------------------------
     // 実移動速度を論理座標の差分から推定(指数平滑)。移動と同期して揺れるので、止まっている敵
@@ -22433,7 +22499,15 @@ export class PixiScene {
     // 亡霊: 叫び続けている間(当たった後)は体が震える(位置だけ=絵は歪めない・クリエイティブ監査#8)。
     const wraithTremor = e.type === 'mutant-wraith' && e.wraithScreamAt !== undefined && gameTime - e.wraithScreamAt >= WRAITH_SCREAM_WINDUP_MS
       ? (Math.sin(now / 23) * 0.6 + Math.sin(now / 11 + 1.3) * 0.4) * 2.6 : 0;
-    view.sprite.position.set(Math.round(fb.footX + liftShake + sweepWindupTremor + wraithTremor),
+    // 呪い: 墓石が1つ抜けるたびに、体を指先の方へ数px突き出して戻す(位置だけ・1秒の拍を亡霊が刻む・クリエイティブ監査#16)。
+    let wraithPush = 0;
+    if (e.type === 'mutant-wraith' && e.wraithPointKind === 'curse' && e.wraithPointLowerAt === undefined) {
+      let last = -Infinity;
+      for (const b of useGameStore.getState().skadiIceBlades) if (b.enemyId === e.id && b.grave && b.grave.liftAt > last) last = b.grave.liftAt;
+      const since = gameTime - last;
+      if (since >= 0 && since < 380) wraithPush = ((e.heroFaceX ?? -1) >= 0 ? 1 : -1) * 6 * Math.sin(Math.PI * Math.pow(since / 380, 0.6));
+    }
+    view.sprite.position.set(Math.round(fb.footX + liftShake + sweepWindupTremor + wraithTremor + wraithPush),
       Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx - heroLift));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
@@ -25964,6 +26038,8 @@ export class PixiScene {
       // ★兵士のトスの着地の砂埃(ESCORT_TOSS.md §4・派手さの絵=判定なし)。ジャンプの着地(足元中心の円)と分けるため、
       // **滑ってきた向きの後ろへ尾を引く**低い埃を3つ(足元・後ろ・さらに後ろへ小さく)=「投げ捨てられて滑り止まった」(検収クリエイティブ A-4)。
       const tossLandOn = e.escortTossLandedAt !== undefined && gameTime - e.escortTossLandedAt >= 0 && gameTime - e.escortTossLandedAt < 120;
+      // 亡霊の指差しで滑った雑魚だけ、埃を亡霊の裾の靄の色へ寄せる(黄土色の蹴りの埃と分ける・埃は消さない・クリエイティブ監査#14)。
+      const tossDustTint = this.tossFreeIds.has(e.id) ? 0xb9b2c2 : this.dustTintForStage();
       const tossL = this.latchFx(`${e.id}:tossland`, tossLandOn, DUST_MS, now, () => {
         const vx = this.tossLastDir.get(e.id)?.x ?? 0, vy = this.tossLastDir.get(e.id)?.y ?? 0;
         return [fb.footX, fb.footY, Math.max(e.width, e.height), vx, vy];
@@ -25971,14 +26047,15 @@ export class PixiScene {
       if (tossL) {
         const [dx0, dy0, sz, bx, by] = tossL.d;
         for (const [k, sc] of [[0, DUST_SCALE * 0.9], [0.55, DUST_SCALE * 0.7], [1.05, DUST_SCALE * 0.45]] as const) {
-          this.drawDust(dx0 - bx * sz * k, dy0 - by * sz * k * 0.6, sz * sc, tossL.t, this.dustTintForStage(), this.dustAlpha(tossL.t), tossL.t0 + k * 97);
+          this.drawDust(dx0 - bx * sz * k, dy0 - by * sz * k * 0.6, sz * sc, tossL.t, tossDustTint, this.dustAlpha(tossL.t), tossL.t0 + k * 97);
         }
       }
       if (e.escortToss) {
         const l = Math.hypot(e.escortToss.toX - e.escortToss.fromX, e.escortToss.toY - e.escortToss.fromY) || 1;
         if (this.tossLastDir.size > 16) this.tossLastDir.clear(); // 消えた個体の分が溜まらないように(8秒に1回なので通常は1〜2件)
         this.tossLastDir.set(e.id, { x: (e.escortToss.toX - e.escortToss.fromX) / l, y: (e.escortToss.toY - e.escortToss.fromY) / l });
-      } else if (e.escortTossLandedAt === undefined || gameTime - e.escortTossLandedAt > 2000) this.tossLastDir.delete(e.id);
+        if (e.escortToss.free) { if (this.tossFreeIds.size > 32) this.tossFreeIds.clear(); this.tossFreeIds.add(e.id); }
+      } else if (e.escortTossLandedAt === undefined || gameTime - e.escortTossLandedAt > 2000) { this.tossLastDir.delete(e.id); this.tossFreeIds.delete(e.id); }
       // ★v3.1: 滑っている間は突進の速度線を出さず(「自分の意志で走る」記号のため)、通った地面に砂埃を置き去りにする
       // (道のりの 15%/45%/75% を通過した瞬間に1つずつ・最初が大きい=滑り込みの跡・クリエイティブ監査 v3 #10)。
       // 着いた後も DUST_MS の間は描き続ける(置き去りの埃は滑り終わっても残る)。
@@ -25991,7 +26068,7 @@ export class PixiScene {
         TRAIL.forEach(([mark, size, dur, seed], k) => {
           const L = this.latchFx(`${e.id}:tosstrail${k}`, !!tz && tt >= mark && tt < mark + 0.2, dur, now,
             () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DUST_SCALE * size]);
-          if (L) this.drawDust(L.d[0], L.d[1], L.d[2], L.t, this.dustTintForStage(), this.dustAlpha(L.t), L.t0 + seed);
+          if (L) this.drawDust(L.d[0], L.d[1], L.d[2], L.t, tossDustTint, this.dustAlpha(L.t), L.t0 + seed);
         });
       }
 
@@ -36839,16 +36916,24 @@ export class PixiScene {
   }
 
   /** research/WRAITH_MUTANT.md: 今のコマ(叫びの間は叫びのシート・それ以外は浮遊のループ)。 */
-  private wraithFrameOf(e: Enemy, gameTime: number): { scream: boolean; f: number } {
+  private wraithFrameOf(e: Enemy, gameTime: number): { scream: boolean; point?: boolean; f: number } {
     if (e.wraithScreamAt !== undefined) return { scream: true, f: wraithScreamFrame(gameTime - e.wraithScreamAt) };
+    if (e.wraithPointAt !== undefined) {
+      const low = e.wraithPointLowerAt;
+      return { scream: false, point: true, f: wraithPointFrame(gameTime - e.wraithPointAt, low !== undefined ? gameTime - low : undefined,
+        low !== undefined ? wraithPointFrame(low - e.wraithPointAt) : 3) };
+    }
     return { scream: false, f: wraithFloatFrame(gameTime, e.wraithPhase ?? 0) };
   }
   private wraithTexture(e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
     getTexture('mutant-wraith-scream'); // 姿が見えた時点で叫びのシートも取りに行く(最初の叫びの絵が欠けない)
+    getTexture('mutant-wraith-point'); // 指差し(§11)も同じ
+    getTexture('props/wraith-growths'); // 呪いの墓石の絵(生える前に技が来ても欠けない)
     const k = this.wraithFrameOf(e, gameTime);
     return k.scream
       ? this.sheetSlices('mutant-wraith-scream', WRAITH_SCREAM_FRAMES)?.[k.f] ?? null
-      : this.sheetSlices('mutant-wraith-float', WRAITH_FLOAT_FRAMES)?.[k.f] ?? null;
+      : k.point ? this.sheetSlices('mutant-wraith-point', WRAITH_POINT_FRAMES)?.[k.f] ?? null
+        : this.sheetSlices('mutant-wraith-float', WRAITH_FLOAT_FRAMES)?.[k.f] ?? null;
   }
 
   /** research/ASTRONAUT_HORDE.md §3/§4: 投げの間は投げのシート(1コマ70ms)、それ以外は浮遊のシートの今のコマ(制御が進める)。 */

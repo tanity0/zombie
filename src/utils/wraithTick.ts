@@ -10,6 +10,7 @@ import { playSfx } from '../audio/audioManager';
 import { npcSfxDistGain } from './npcSfx';
 import { bossFaceWant, bossFaceDeadzonePx } from './bossFacing';
 import { FRONT_SIGHT_LOSE_PX } from './frontSight';
+import { escortKickableState, ESCORT_TOSS_MS } from './escortToss';
 import { placeAt, nearestTarget, astroRunPois } from './astroTick';
 import {
   stepAstroVelocity, astroArriveSpeed, pickAstroPoi, ASTRO_HIT_ALERT_MS, ASTRO_LOSE_MS, ASTRO_ARRIVE_PX,
@@ -18,8 +19,10 @@ import {
 import {
   WRAITH_PATROL_SPEED, WRAITH_ORBIT_SPEED, WRAITH_REVERSE_MIN_MS, WRAITH_REVERSE_MAX_MS, wraithOrbitTarget, wraithOppositePoint,
   wraithOrbitAngle, wraithOrbitPoint, WRAITH_WARP_CHANCE, WRAITH_WARP_COOLDOWN_MS, WRAITH_WARP_ROLL_GAP_MS, wraithWarpState,
-  wraithGrowthStep, wraithGraveSolids, isWraithGrave, type WraithGrowthState,
+  wraithGrowthStep, wraithGraveSolids, isWraithGrave, type WraithGrowthState, type WraithGrowth, WRAITH_CURSE_MARK_MS,
   WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_HOLD_MS, WRAITH_HEAD_Y_PX, wraithFloatFrame, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_RADIUS, WRAITH_SCREAM_DAMAGE, WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS,
+  pickWraithSkill, type WraithSkill, WRAITH_POINT_RAISE_MS, WRAITH_POINT_LOWER_MS, WRAITH_FLING_RANGE_PX, WRAITH_FLING_MIN_PLAYER_PX, WRAITH_FLING_MAX_PLAYER_PX, WRAITH_CURSE_GAP_MS, WRAITH_FLING_MIN, WRAITH_FLING_MAX,
+  WRAITH_FLING_HOLD_MS, wraithFlingLandings, pickWraithCurseGraves, wraithCurseLiftAt, WRAITH_CURSE_MAX, WRAITH_CURSE_PRE_MS, WRAITH_CURSE_HOVER_PX, WRAITH_CURSE_TAIL_MS,
 } from './wraithScript';
 
 export interface WraithTickState {
@@ -37,14 +40,27 @@ export interface WraithTickState {
   lastRollAt: number; lastWarpAt: number; warpMoved: boolean;
   /** 叫びが当たった時刻(追い打ちの輪を時間をずらして出す)と、出した輪の数。裾の靄を出した時刻。 */
   screamHitAt: number; screamEchoes: number; lastTrailAt: number;
+  /** §11 指差しの技: 前に使った技(同じ技を続けない)・指差しで飛ばす雑魚・飛ばしたか・呪いで抜く墓石の数(予定)・抜いた数・最後に抜いた時刻(腕を上げ始めてからの ms)。 */
+  lastSkill: WraithSkill | null; flingIds: string[]; flingDone: boolean; curseTotal: number; curseIdx: number; curseLastLift: number;
+  /** 合図を出した雑魚の数・印を付けた墓石の番号とid・雑魚が着地する時刻(重い音を1回)。 */
+  flingMarked: number; curseMarkFor: number; curseMarkId: string | null; flingLandAt: number | null;
 }
 export const createWraithTickState = (): WraithTickState => ({
   activeId: null, heading: 0, speed: 0, pois: [], poiIdx: null, prevPoi: null, resting: false, restUntil: null,
   stuckAt: 0, stuckD: Infinity, lostSince: null, orbitDir: 1, nextReverseAt: 0, nextScreamAt: null, screamHit: false,
   lastRollAt: -1e9, lastWarpAt: -1e9, warpMoved: true, screamHitAt: -1e9, screamEchoes: 0, lastTrailAt: -1e9,
+  lastSkill: null, flingIds: [], flingDone: false, curseTotal: 0, curseIdx: 0, curseLastLift: 0,
+  flingMarked: 0, curseMarkFor: -1, curseMarkId: null, flingLandAt: null,
 });
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
+/** 確認用: `?wraithskill=fling|curse|scream` で、使える時はその技だけを選ぶ(§11)。 */
+const FORCE_SKILL: WraithSkill | null = (() => {
+  const v = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('wraithskill');
+  return v === 'fling' || v === 'curse' || v === 'scream' ? v : null;
+})();
+/** 次の技までの間隔(5〜8秒)。確認用のつまみがある時は短く(すぐ見られる)。 */
+const skillGapMs = (): number => (FORCE_SKILL ? 1200 : rand(WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS));
 
 export const pickActiveWraith = (enemies: readonly Enemy[]): Enemy | undefined =>
   enemies.find(e => e.type === 'mutant-wraith' && !isCorpse(e) && e.health > 0);
@@ -58,6 +74,27 @@ const passableOnOrbit = (e: Enemy, cx: number, cy: number, p: { x: number; y: nu
     if (Math.hypot(r.x + e.width / 2 - q.x, r.y + e.height / 2 - q.y) < 4) return r;
   }
   return placeAt(e, p.x, p.y);
+};
+
+/**
+ * §11 指差し: 飛ばせる雑魚(兵士の蹴り飛ばしと同じ型・状態の条件)。亡霊から近い順に最大6体。
+ * 技の途中(aiPhase・chaffMove)・気絶・打ち上げ・拘束の雑魚は飛ばさない(赤が出ている技を別の所へ持ち込まない・§11-1 A3)。
+ * 画面の中で、プレイヤーから 200〜700px(§11-1 A6)。
+ */
+const flingOk = (m: Enemy, gt: number, nowMs: number, pcx: number, pcy: number, inView: (x: number, y: number) => boolean): boolean => {
+  if (m.escortToss || !escortKickableState(m) || m.aiPhase !== undefined || m.chaffMove !== undefined) return false;
+  if ((m.stunUntil !== undefined && gt < m.stunUntil) || (m.rootUntil !== undefined && gt < m.rootUntil) || (m.liftUntil !== undefined && nowMs < m.liftUntil)) return false;
+  const mx = m.x + m.width / 2, my = m.y + m.height / 2;
+  const d = Math.hypot(mx - pcx, my - pcy);
+  return d >= WRAITH_FLING_MIN_PLAYER_PX && d <= WRAITH_FLING_MAX_PLAYER_PX && inView(mx, my);
+};
+const flingCandidates = (e: Enemy, enemies: readonly Enemy[], pcx: number, pcy: number, gt: number, nowMs: number, inView: (x: number, y: number) => boolean): Enemy[] => {
+  const bx = e.x + e.width / 2, by = e.y + e.height / 2;
+  return enemies
+    .filter(m => m.id !== e.id && flingOk(m, gt, nowMs, pcx, pcy, inView)
+      && Math.hypot(m.x + m.width / 2 - bx, m.y + m.height / 2 - by) <= WRAITH_FLING_RANGE_PX)
+    .sort((a, b) => Math.hypot(a.x + a.width / 2 - bx, a.y + a.height / 2 - by) - Math.hypot(b.x + b.width / 2 - bx, b.y + b.height / 2 - by))
+    .slice(0, WRAITH_FLING_MAX);
 };
 
 /**
@@ -93,7 +130,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
   if (alerted && !wasAlerted) {
     s.orbitDir = Math.random() < 0.5 ? 1 : -1;
     s.nextReverseAt = gt + rand(WRAITH_REVERSE_MIN_MS, WRAITH_REVERSE_MAX_MS);
-    s.nextScreamAt = gt + rand(WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS);
+    s.nextScreamAt = gt + skillGapMs();
   }
   if (!alerted && wasAlerted) { s.stuckAt = gt; s.stuckD = Infinity; s.nextScreamAt = null; }
 
@@ -118,7 +155,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     if ((collapse || held) && !s.screamHit) {
       // 溜めの途中で崩された=叫びは消え、予告も消える(紫が残って当たらない、を作らない)。
       patch.wraithScreamAt = undefined; screaming = false;
-      s.nextScreamAt = gt + rand(WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS);
+      s.nextScreamAt = gt + skillGapMs();
     } else if (t >= WRAITH_SCREAM_WINDUP_MS && !s.screamHit) {
       s.screamHit = true;
       const blast: PumpkinBlast = { x: bx, y: by, radius: WRAITH_SCREAM_RADIUS, damage: WRAITH_SCREAM_DAMAGE, enemyId: e.id, moveKey: 'wraith-scream', noParry: true };
@@ -134,7 +171,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     } else if (t >= WRAITH_SCREAM_WINDUP_MS + WRAITH_SCREAM_HOLD_MS) {
       patch.wraithScreamAt = undefined; screaming = false;
       patch.wraithPhase = -gt; // 浮遊へ戻る時は髪のまとまった0コマ目から(でたらめな位相へ跳ばない)
-      s.nextScreamAt = gt + rand(WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS);
+      s.nextScreamAt = gt + skillGapMs();
     }
   }
 
@@ -145,8 +182,114 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     else if (s.screamEchoes === 1 && since >= 230) { s.screamEchoes = 2; st.spawnRing(bx, by - WRAITH_HEAD_Y_PX * 0.5, 20, WRAITH_SCREAM_RADIUS * 1.05, 'rgba(150,120,200,0.65)', 9, 480); }
   }
 
+  // ---- 指差しの技(指差し=雑魚を吹き飛ばす/呪い=墓石を飛ばす・§11) ----
+  let pointing = e.wraithPointAt !== undefined;
+  if (pointing) {
+    const t = gt - (e.wraithPointAt as number);
+    const pl = st.player;
+    const pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;
+    const sg = npcSfxDistGain(bx, by, pcx, pcy, st.camera, st.gameBounds);
+    if (e.wraithPointLowerAt !== undefined) {
+      if (gt - e.wraithPointLowerAt >= WRAITH_POINT_LOWER_MS) {
+        patch.wraithPointAt = undefined; patch.wraithPointLowerAt = undefined; patch.wraithPointKind = undefined; pointing = false;
+        patch.wraithPhase = -gt; // 浮遊の0コマ目へ戻る(叫びと同じ)
+        s.nextScreamAt = gt + skillGapMs();
+      }
+    } else if (collapse || held || blocked) {
+      // 崩された/見失わせる場面に入った(§11-1 A5): まだ飛んでいない雑魚は飛ばない・まだ抜けていない墓石は抜けない(もう浮いた墓石は予告どおり飛ぶ)。腕を下ろす。
+      s.flingIds = []; s.curseTotal = s.curseIdx;
+      patch.wraithPointLowerAt = gt;
+    } else if (e.wraithPointKind === 'fling') {
+      // 「掴まれた」の合図: 亡霊に近い雑魚から順に、少しずつ遅れて足元に靄(亡霊の手が届いていく・クリエイティブ監査#13)。
+      while (!s.flingDone && s.flingMarked < s.flingIds.length && t >= s.flingMarked * 45) {
+        const m = st.enemies.find(q => q.id === s.flingIds[s.flingMarked]);
+        s.flingMarked++;
+        if (m) st.spawnRing(m.x + m.width / 2, m.y + m.height, 64, 16, 'rgba(196,188,210,0.6)', 8, Math.max(160, WRAITH_POINT_RAISE_MS - s.flingMarked * 45));
+      }
+      if (!s.flingDone && t >= WRAITH_POINT_RAISE_MS) {
+        s.flingDone = true;
+        // 腕が伸び切った瞬間に一斉に飛ぶ(その時に生きていて、まだ飛ばせる物だけ・着地点はその時のプレイヤーの周り)。
+        const ids = new Set(s.flingIds);
+        const vw = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
+        const mobs = st.enemies.filter(m => ids.has(m.id)
+          && flingOk(m, gt, nowMs, pcx, pcy, (x, y) => x >= vw.left && x <= vw.right && y >= vw.top && y <= vw.bottom));
+        if (mobs.length > 0) {
+          const lands = wraithFlingLandings(mobs.map(m => ({ x: m.x + m.width / 2, y: m.y + m.height / 2 })), pcx, pcy);
+          const to = new Map(mobs.map((m, i) => [m.id, lands[i]]));
+          const now = Date.now();
+          useGameStore.setState(s2 => ({
+            enemies: s2.enemies.map(en => {
+              const l = to.get(en.id);
+              if (!l) return en;
+              return {
+                ...en,
+                escortToss: { fromX: en.x, fromY: en.y, toX: l.x - en.width / 2, toY: l.y - en.height / 2, startAt: gt, endAt: gt + ESCORT_TOSS_MS, free: true },
+                escortTossLandedAt: undefined,
+                // 押しは今で打ち切る(技の途中の雑魚はそもそも選ばない=flingOk)。
+                knockbackUntil: (en.knockbackUntil ?? 0) > now ? now : en.knockbackUntil, knockbackVx: 0, knockbackVy: 0, vx: 0, vy: 0,
+              };
+            }),
+          }));
+          for (const m of mobs) st.spawnBurst(m.x + m.width / 2, m.y + m.height, '#b9b2c2', 10, 0, -1);
+          // 一斉に動き出す山場: 軽い揺れ(叫びより軽く)と、指先から靄の一吹き。着地で重い音を1回(クリエイティブ監査#15)。
+          if (onScreen) st.triggerShake(260, 7);
+          const face = (e.heroFaceX ?? -1) >= 0 ? 1 : -1;
+          st.spawnBurst(bx + face * 42, by - WRAITH_HEAD_Y_PX * 0.62, '#d6d0de', 14, face, 0);
+          if (sg > 0.01) playSfx('crawler-drag', 0.6 * sg, undefined, 0.8);
+          s.flingLandAt = gt + ESCORT_TOSS_MS;
+        }
+        s.flingIds = [];
+      }
+      if (t >= WRAITH_POINT_RAISE_MS + WRAITH_FLING_HOLD_MS) patch.wraithPointLowerAt = gt;
+    } else {
+      // 呪い: 腕が伸び切った瞬間に1つ目、以後1秒ごとに1つ。その瞬間に飛ばせる墓石を選び直す(沈んだ・近づかれた墓石は使わない)。
+      // 1フレームに1つだけ・前の墓石から必ず1秒空ける(止まっていたフレームの後にまとめて抜けない・§11-1 A5)。
+      const view = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
+      const inView = (x: number, y: number) => x >= view.left && x <= view.right && y >= view.top && y <= view.bottom;
+      const nextLiftT = Math.max(wraithCurseLiftAt(s.curseIdx), s.curseIdx > 0 ? s.curseLastLift + WRAITH_CURSE_GAP_MS : 0);
+      const choices = (): WraithGrowth[] => pickWraithCurseGraves(useGameStore.getState().wraithGrowths, { x: bx, y: e.y + e.height }, { x: pcx, y: pl.y + pl.height }, gt, inView);
+      // 次に抜く墓石にだけ、抜ける少し前に印(縮む靄)。1秒ごとの「来るぞ」の拍(クリエイティブ監査#10)。
+      if (s.curseIdx < s.curseTotal && s.curseMarkFor !== s.curseIdx && t >= nextLiftT - WRAITH_CURSE_MARK_MS) {
+        s.curseMarkFor = s.curseIdx;
+        const mk = choices()[0];
+        s.curseMarkId = mk?.id ?? null;
+        if (mk) st.spawnRing(mk.x, mk.y - 4, 60, 14, 'rgba(196,188,210,0.55)', 7, WRAITH_CURSE_MARK_MS);
+      }
+      if (s.curseIdx < s.curseTotal && t >= nextLiftT) {
+        const list = choices();
+        const g = list.find(q => q.id === s.curseMarkId) ?? list[0]; // 印を付けた墓石を優先(印が嘘にならない)
+        if (!g) s.curseTotal = s.curseIdx;
+        else {
+        s.curseIdx++; s.curseLastLift = t;
+        // 台帳から外す=壁でなくなる(runWraithGrowths が次のフレームで壁を写し直す)。根元に土が散る。
+        useGameStore.setState(s2 => ({ wraithGrowths: s2.wraithGrowths.filter(q => q.id !== g.id) }));
+        const hx = g.x, hy = g.y - WRAITH_CURSE_HOVER_PX;
+        st.spawnSkadiBlade(hx, hy, Math.atan2(pcy - hy, pcx - hx), gt + WRAITH_CURSE_PRE_MS, e.id, 'grave',
+          { variant: g.variant, scale: g.scale, flip: g.flip, liftAt: gt, bandPx: Math.hypot(pcx - hx, pcy - hy) + 240 });
+        st.spawnBurst(g.x, g.y, '#6b5a48', 16, 0, -1);
+        st.spawnRing(g.x, g.y - 6, 10, 46 * g.scale, 'rgba(120,104,88,0.6)', 5, 420);
+        // 抜けた跡: 暗い土の穴がしばらく残る(ほとんど広がらず、ゆっくり薄れる・クリエイティブ監査#3)。
+        st.spawnRing(g.x, g.y - 3, 15 * g.scale, 19 * g.scale, 'rgba(34,26,20,0.6)', 11, 3200);
+        const gg = npcSfxDistGain(g.x, g.y, pcx, pcy, st.camera, st.gameBounds);
+        // 石が地面から抜ける低い音。1つ目から5つ目へ少しずつ高くなる(緊張を積む・クリエイティブ監査#17)。
+        if (gg > 0.01) playSfx('anchor-plant', 0.55 * gg, undefined, 0.55 + 0.07 * (s.curseIdx - 1));
+        }
+      }
+      if (s.curseIdx >= s.curseTotal && t >= (s.curseIdx > 0 ? s.curseLastLift + WRAITH_CURSE_PRE_MS + WRAITH_CURSE_TAIL_MS : WRAITH_POINT_RAISE_MS)) {
+        patch.wraithPointLowerAt = gt;
+      }
+    }
+  }
+
+  if (s.flingLandAt !== null && gt >= s.flingLandAt) {
+    s.flingLandAt = null;
+    const pl = st.player;
+    const g = npcSfxDistGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
+    if (g > 0.01) playSfx('heavy-impact', 0.6 * g, undefined, 0.8); // 雑魚が囲みに着いた重い音(1回だけ)
+  }
+
   // ---- ワープの抽選(見つけて回っている時だけ・被弾ごと600msに1回・3割・§8 A4) ----
-  if (wasAlerted && alerted && !warping && !screaming && !collapse && !held && gt - s.lastWarpAt >= WRAITH_WARP_COOLDOWN_MS
+  if (wasAlerted && alerted && !warping && !screaming && !pointing && !collapse && !held && gt - s.lastWarpAt >= WRAITH_WARP_COOLDOWN_MS
     && nowMs - (e.lastHit ?? 0) <= 120 && nowMs - s.lastRollAt >= WRAITH_WARP_ROLL_GAP_MS) {
     s.lastRollAt = nowMs;
     if (Math.random() < WRAITH_WARP_CHANCE) {
@@ -171,7 +314,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
   const pv = Math.hypot(st.player.vx ?? 0, st.player.vy ?? 0);
   let vmax = alerted ? WRAITH_ORBIT_SPEED + Math.min(pv, PLAYER_BASE_SPEED * GAME_SPEED * 1.5) : WRAITH_PATROL_SPEED;
   let wantH = s.heading, wantS = 0;
-  if (collapse || held || screaming || warping) {
+  if (collapse || held || screaming || pointing || warping) {
     wantS = 0;
   } else if (alerted) {
     if (gt >= s.nextReverseAt) { s.orbitDir = s.orbitDir === 1 ? -1 : 1; s.nextReverseAt = gt + rand(WRAITH_REVERSE_MIN_MS, WRAITH_REVERSE_MAX_MS); }
@@ -182,12 +325,33 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
       // 止まり切って、髪がまとまったコマ(浮遊の0〜1・15)に来たら溜めに入る=浮遊から叫びの0コマ目へ切り替わる時に髪が跳ばない(クリエイティブ監査#9)。
       const ff = wraithFloatFrame(gt, e.wraithPhase ?? 0);
       if (s.speed < vmax * ASTRO_STOPPED_FRAC && (ff <= 1 || ff === WRAITH_FLOAT_FRAMES - 1)) {
-        patch.wraithScreamAt = gt; s.screamHit = false;
-        // 溜めの始まり: 冷たい息を吸い込む音と、頭の高さへ縮んでいく靄(口の開きを見る前に「来る」が分かる・クリエイティブ監査#5/#6)。
-        const pl = st.player;
-        const g = npcSfxDistGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
-        if (g > 0.01) playSfx('hurricane', 0.3 * g, undefined, 0.45);
-        st.spawnRing(bx, by - WRAITH_HEAD_Y_PX, 150, 14, 'rgba(196,186,214,0.5)', 10, WRAITH_SCREAM_WINDUP_MS);
+        // 今使える技から1つ(同じ技を続けない・§11)。
+        const pl0 = st.player;
+        const pcx0 = pl0.x + pl0.width / 2, pcy0 = pl0.y + pl0.height / 2;
+        const view0 = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
+        const mobs = flingCandidates(e, st.enemies, pcx0, pcy0, gt, nowMs, (x, y) => x >= view0.left && x <= view0.right && y >= view0.top && y <= view0.bottom);
+        const graves = pickWraithCurseGraves(st.wraithGrowths, { x: bx, y: e.y + e.height }, { x: pcx0, y: pl0.y + pl0.height }, gt,
+          (x, y) => x >= view0.left && x <= view0.right && y >= view0.top && y <= view0.bottom);
+        const can = { fling: mobs.length >= WRAITH_FLING_MIN, curse: graves.length > 0 };
+        const skill = FORCE_SKILL && (FORCE_SKILL === 'scream' || can[FORCE_SKILL]) ? FORCE_SKILL : pickWraithSkill(can, s.lastSkill, Math.random);
+        s.lastSkill = skill;
+        if (skill !== 'scream') {
+          patch.wraithPointAt = gt; patch.wraithPointKind = skill; patch.wraithPointLowerAt = undefined; s.nextScreamAt = null;
+          s.flingDone = false; s.flingIds = skill === 'fling' ? mobs.map(m => m.id) : [];
+          s.curseTotal = skill === 'curse' ? Math.min(WRAITH_CURSE_MAX, graves.length) : 0; s.curseIdx = 0; s.curseLastLift = 0;
+          // 合図(雑魚の足元の靄・次の墓石の印)は指している間に順に出す(上の指差しの処理)。
+          s.flingMarked = 0; s.curseMarkFor = -1; s.curseMarkId = null; s.flingLandAt = null;
+          // 指差しの始まりは叫び・ワープ(風)と違う音=耳で叫びと分かれる(クリエイティブ監査#17)。
+          const g0 = npcSfxDistGain(bx, by, pcx0, pcy0, st.camera, st.gameBounds);
+          if (g0 > 0.01) playSfx('summon', 0.5 * g0, undefined, 0.7);
+        } else {
+          patch.wraithScreamAt = gt; s.screamHit = false;
+          // 溜めの始まり: 冷たい息を吸い込む音と、頭の高さへ縮んでいく靄(口の開きを見る前に「来る」が分かる・クリエイティブ監査#5/#6)。
+          const pl = st.player;
+          const g = npcSfxDistGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
+          if (g > 0.01) playSfx('hurricane', 0.3 * g, undefined, 0.45);
+          st.spawnRing(bx, by - WRAITH_HEAD_Y_PX, 150, 14, 'rgba(196,186,214,0.5)', 10, WRAITH_SCREAM_WINDUP_MS);
+        }
       }
     } else {
       const q = wraithOrbitTarget(tgt.x, tgt.y, bx, by, s.orbitDir, dt * 1000);
@@ -306,4 +470,37 @@ export const runWraithGrowths = (gt: number): void => {
   const solids = wraithGraveSolids(next, gt);
   const prev = wraithGraveRects();
   if (solids.length !== prev.length || solids.some((r, i) => r.x !== prev[i].x || r.y !== prev[i].y)) setWraithGraveRects(solids);
+};
+
+// ---- 呪いの墓石の後始末と飛ぶ間の粒(§11・クリエイティブ監査#6/#18) ----
+let graveTrailAt = -1e9;
+/**
+ * 毎フレーム: 飛んでいる墓石は土くれと苔色の粒を後ろへこぼす(間引き)。
+ * 持ち主の亡霊が倒れたら、浮いていた墓石・飛んでいた墓石は落ちて砕ける(1フレームで消さない)。
+ */
+export const runWraithGraveFx = (gt: number): void => {
+  const st = useGameStore.getState();
+  const graves = st.skadiIceBlades.filter(b => b.visual === 'grave');
+  if (graves.length === 0) return;
+  const dead = new Set(st.enemies.filter(en => en.type === 'mutant-wraith' && (isCorpse(en) || !(en.health > 0))).map(en => en.id));
+  const gone = graves.filter(b => dead.has(b.enemyId));
+  if (gone.length > 0) {
+    for (const b of gone) {
+      const gy = b.y + WRAITH_CURSE_HOVER_PX;
+      st.spawnBurst(b.x, gy - 10, '#a8a29e', 14, 0, 1);
+      st.spawnBurst(b.x, gy, '#6b5a48', 10, 0, -1);
+      st.spawnRing(b.x, gy - 4, 10, 44, 'rgba(150,140,130,0.6)', 5, 420);
+    }
+    const ids = new Set(gone.map(b => b.id));
+    useGameStore.setState(s2 => ({ skadiIceBlades: s2.skadiIceBlades.filter(b => !ids.has(b.id)) }));
+  }
+  if (gt - graveTrailAt >= 80 || gt < graveTrailAt) {
+    graveTrailAt = gt;
+    for (const b of graves) {
+      if (!b.launched || dead.has(b.enemyId)) continue;
+      const l = Math.hypot(b.vx, b.vy) || 1;
+      const tx = b.x - (b.vx / l) * 22, ty = b.y - (b.vy / l) * 22;
+      st.spawnBurst(tx, ty, Math.random() < 0.6 ? '#6b5a48' : '#4d5a40', 3 + Math.floor(Math.random() * 3), 0, 1);
+    }
+  }
 };

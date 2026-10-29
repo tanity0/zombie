@@ -146,3 +146,52 @@ describe('宇宙飛行群と亡霊の出現(1ランにどちらか1体だけ・2
     expect(n.astro / (n.astro + n.wraith)).toBeLessThan(0.55);
   });
 });
+
+import {
+  wraithPointFrame, pickWraithSkill, wraithFlingLandings, pickWraithCurseGraves, wraithCurseLiftAt, WRAITH_POINT_RAISE_MS, WRAITH_POINT_LOWER_MS,
+  WRAITH_POINT_FRAMES, WRAITH_POINT_ALIGN_X, WRAITH_FLING_RING_PX, WRAITH_CURSE_MAX, WRAITH_CURSE_GAP_MS, WRAITH_CURSE_MIN_PLAYER_PX, WRAITH_GROWTH_GROW_MS as GROW,
+} from './wraithScript';
+describe('亡霊: 指差しの技(§11)', () => {
+  it('腕は0→3で上がり、指している間は3〜7を往復し、下ろすと3→0', () => {
+    expect(wraithPointFrame(0)).toBe(0);
+    expect(wraithPointFrame(WRAITH_POINT_RAISE_MS - 1)).toBe(3);
+    const hold = new Set<number>();
+    for (let t = WRAITH_POINT_RAISE_MS; t < WRAITH_POINT_RAISE_MS + 3000; t += 20) hold.add(wraithPointFrame(t));
+    expect([...hold].sort()).toEqual([3, 4, 5, 6, 7]);
+    expect(wraithPointFrame(5000, 0)).toBe(3);
+    expect(wraithPointFrame(5000, WRAITH_POINT_LOWER_MS)).toBe(0);
+    // 上げている途中で止めたら、そのコマから下ろす(伸び切りのコマへ跳ばない)
+    expect(wraithPointFrame(5000, 0, 1)).toBe(1);
+    expect(wraithPointFrame(5000, 90, 1)).toBe(0);
+    expect(WRAITH_POINT_ALIGN_X).toHaveLength(WRAITH_POINT_FRAMES);
+  });
+  it('同じ技は、他に使える技がある時は続けない。使えない技は選ばない', () => {
+    for (let i = 0; i < 50; i++) {
+      const r = () => i / 50;
+      expect(pickWraithSkill({ fling: true, curse: true }, 'curse', r)).not.toBe('curse');
+      expect(pickWraithSkill({ fling: false, curse: false }, 'scream', r)).toBe('scream');
+      expect(['scream', 'curse']).toContain(pickWraithSkill({ fling: false, curse: true }, null, r));
+    }
+  });
+  it('吹き飛ばした雑魚はプレイヤーを囲む輪の上に等間隔で降りる', () => {
+    const mobs = [{ x: 300, y: 10 }, { x: -280, y: 40 }, { x: 20, y: -300 }, { x: 10, y: 320 }];
+    const l = wraithFlingLandings(mobs, 0, 0);
+    for (const p of l) expect(Math.hypot(p.x, p.y)).toBeCloseTo(WRAITH_FLING_RING_PX);
+    const ang = l.map(p => Math.atan2(p.y, p.x)).sort((a, b) => a - b);
+    for (let i = 1; i < ang.length; i++) expect(ang[i] - ang[i - 1]).toBeCloseTo(Math.PI / 2);
+    // それぞれ来た側へ降りる(右から来た物は右・左から来た物は左)
+    expect(l[0].x).toBeGreaterThan(0); expect(l[1].x).toBeLessThan(0);
+  });
+  it('呪い: 1秒に1つ・最大5つ。生え切った墓石だけ・プレイヤーに近すぎる物と花は使わない', () => {
+    expect(wraithCurseLiftAt(1) - wraithCurseLiftAt(0)).toBe(WRAITH_CURSE_GAP_MS);
+    expect(wraithCurseLiftAt(0)).toBe(WRAITH_POINT_RAISE_MS);
+    const base = { scale: 1.4, flip: false, bornAt: 0 };
+    const pieces = [...Array(8).keys()].map(i => ({ ...base, id: `g${i}`, x: 200 + i * 20, y: 0, variant: i % 4 }));
+    pieces.push({ ...base, id: 'flower', x: 205, y: 0, variant: 5 });
+    pieces.push({ ...base, id: 'young', x: 201, y: 0, variant: 0, bornAt: 10000 });
+    pieces.push({ ...base, id: 'near', x: WRAITH_CURSE_MIN_PLAYER_PX - 10, y: 0, variant: 0 });
+    const got = pickWraithCurseGraves(pieces, { x: 200, y: 0 }, { x: 0, y: 0 }, GROW + 1, () => true);
+    expect(got).toHaveLength(WRAITH_CURSE_MAX);
+    expect(got.map(g => g.id)).toEqual(['g0', 'g1', 'g2', 'g3', 'g4']);
+  });
+});

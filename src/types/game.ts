@@ -630,7 +630,8 @@ export interface Enemy {
   corpseStartY?: number;
   // ★兵士のトス(research/ESCORT_TOSS.md)。兵士の会心で気絶した敵をプレイヤーの手前へ飛ばしている間だけ在る(ゲーム時間)。
   // 敵の更新は死体の直後・他の何より先にこの欄を見て from→to を ease-out で動かす(ノックバックの欄は使わない)。
-  escortToss?: { fromX: number; fromY: number; toX: number; toY: number; startAt: number; endAt: number };
+  // free=気絶していなくても滑り切る(亡霊の指差し=research/WRAITH_MUTANT.md §11・着地しても気絶しない普通の雑魚)。
+  escortToss?: { fromX: number; fromY: number; toX: number; toY: number; startAt: number; endAt: number; free?: boolean };
   escortTossLandedAt?: number; // 着地した時刻(ゲーム時間・描画の砂埃/バウンド/気絶の輪のポップの起点)
   /**
    * v0.25.2607(社長裁定): **押し道具(鞭・シールドバッシュ)による押し**の有効期限。
@@ -1457,6 +1458,10 @@ export interface Enemy {
   wraithWarpOutAt?: number;
   wraithPhased?: boolean;
   wraithPhase?: number;
+  /** §11: 指差しの腕を上げ始めた時刻(gameTime・居る間は指差し中)/下ろし始めた時刻/どちらの技か。 */
+  wraithPointAt?: number;
+  wraithPointLowerAt?: number;
+  wraithPointKind?: 'fling' | 'curse';
   astroHoverAcc?: number;
   astroHoverDir?: 1 | -1;
   /** §4: 投げ始め(gameTime)と投げている物。undefined=投げていない。投げの絵のコマと手を離す時刻の起点。 */

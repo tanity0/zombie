@@ -381,6 +381,15 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       // 爆発ではない=全画面の橙のフラッシュは出さない。輪は太さ・速さ・色をばらす(等間隔の波紋にしない)。
       // 判定の円の縁より外まで届く一番大きな輪だけここで出す(追い打ちの輪・頭の高さの輪・光は wraithTick が時間をずらして出す)。
       fx.spawnRing(b.x, b.y, 24, b.radius * 1.5, 'rgba(196,160,255,0.85)', 12, 700);
+    } else if (b.moveKey === 'wraith-grave') {
+      // research/WRAITH_MUTANT.md §11 呪い: 墓石が砕ける。石の破片(明るい灰と苔の暗い緑)と土煙(爆発ではない=全画面の明滅なし)。
+      // 派手さの絵=判定の半径より大きく外へ散らす。量は1つずつ揺らす(5つ続くので同じ型を押したように見せない)。
+      // 弾いた時は墓石の所で砕く(判定の中心=プレイヤーの体の上で砕けない・大きさも当たった時と同じ・クリエイティブ監査#11)。
+      const gx = b.fxAt?.x ?? b.x, gy = b.fxAt?.y ?? b.y;
+      fx.spawnBurst(gx, gy, '#a8a29e', 16 + Math.floor(Math.random() * 8));
+      fx.spawnBurst(gx, gy, '#57534e', 8 + Math.floor(Math.random() * 6));
+      fx.spawnBurst(gx, gy + 8, '#4d5a40', 4 + Math.floor(Math.random() * 4));
+      fx.spawnRing(gx, gy, 8, 48 + Math.random() * 16, 'rgba(168,162,158,0.75)', 5, 380);
     } else if (b.moveKey === 'astro-flag') {
       // §4 国旗: 刺さった所に土が跳ね、帯に沿って風に巻かれた土埃(爆発ではない=全画面の明滅なし)。
       const c = b.capsule;
@@ -474,7 +483,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
           : b.moveKey === 'jo-slam' || b.moveKey === 'crawler-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨'
-          : b.moveKey === 'astro-missile' ? 'ミサイル' : b.moveKey === 'astro-flag' ? '国旗' : b.moveKey === 'astro-debris' ? '残骸' : b.moveKey === 'astro-meteor' ? '隕石' : b.moveKey === 'wraith-scream' ? '叫び' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
+          : b.moveKey === 'astro-missile' ? 'ミサイル' : b.moveKey === 'astro-flag' ? '国旗' : b.moveKey === 'astro-debris' ? '残骸' : b.moveKey === 'astro-meteor' ? '隕石' : b.moveKey === 'wraith-scream' ? '叫び' : b.moveKey === 'wraith-grave' ? '墓石' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const hurtAtBefore = useGameStore.getState().player.lastHurtAt; // この一撃で段が付いたかを見分ける(下の押し出し)
         const armoredAtBefore = useGameStore.getState().player.hurtArmoredAt; // B12: アーマーで受けたかを見分ける(下の押し出し)
         const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastOwnerLabel)}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined, { type: blastEnemyType, id: b.enemyId }); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く

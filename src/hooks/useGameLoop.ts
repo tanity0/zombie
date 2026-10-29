@@ -213,7 +213,7 @@ import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '
 import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ringPoint, sectorOfPos, HUNTER_PATROL_START_MS, HUNTER_WARP_FADE_MS, HUNTER_PATROL_SPEED } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
 import { stepHunterPatrol } from '../utils/hunterPatrolTick';
 import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, runAstroScatter, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
-import { runWraithTick, createWraithTickState, pickActiveWraith, releaseWraithOwner, runWraithGrowths } from '../utils/wraithTick'; // research/WRAITH_MUTANT.md
+import { runWraithTick, createWraithTickState, pickActiveWraith, releaseWraithOwner, runWraithGrowths, runWraithGraveFx } from '../utils/wraithTick'; // research/WRAITH_MUTANT.md
 import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES, pickRunMutantBoss, type RunMutantBoss } from '../utils/wraithScript';
 import { astroSpawnPick } from '../utils/astroScript';
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
@@ -9574,6 +9574,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           releaseWraithOwner(wraithStateRef.current);
           if (!gsW.bossMaker.paused) runWraithGrowths(newGameTime); // 近づくと地面から生えてくる墓石と花(§9)
+          if (!gsW.bossMaker.paused) runWraithGraveFx(newGameTime); // 呪いの墓石の粒・亡霊が倒れた時に砕く(§11)
          } catch (err) {
           if (!wraithCtrlErrLogged) { wraithCtrlErrLogged = true; console.error('[wraith] controller error (suppressed after first):', err); }
           reportSuppressedError('wraith', err);

@@ -5951,6 +5951,14 @@ export interface WallInscriptionEvent {
 // G4a追加: moveKey=この爆発がどの技のものか(BOT_AND_GHOST.md §2.9 技への反応表の計測タグ。**記録専用**=
 // 判定・ダメージには一切使わず、combatTick.applyPumpkinBlastDamageがdamagePlayerのdamageSourceMoveへ
 // 渡すだけ。未設定=従来どおりタグ無し)。
+/** 氷刃の列を共用する飛ぶ物の見た目(判定・挙動は共通)。grave=亡霊の呪いの墓石(research/WRAITH_MUTANT.md §11・絵は生えていた墓石のまま)。 */
+export type SkadiBladeVisual = 'ice' | 'bone' | 'feather' | 'grave';
+export interface SkadiBlade {
+  id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string;
+  visual?: SkadiBladeVisual;
+  /** visual='grave' の時だけ: 生えていた墓石の絵(コマ・倍率・左右)と、浮き上がった時刻(gameTime=赤い帯の出始め)。 */
+  grave?: { variant: number; scale: number; flip: boolean; liftAt: number; bandPx?: number };
+}
 export interface PumpkinBlast {
   x: number; y: number; radius: number; damage: number; enemyId: string; ice?: boolean;
   capsule?: { fx: number; fy: number; tx: number; ty: number; halfWidth: number };
@@ -5976,6 +5984,8 @@ export interface PumpkinBlast {
    * 持ち主(遠くで号令した旗手)には何も起きない=吹き飛ばない・怯まない・体勢も削らない(矢を弾いただけ)。
    */
   parryLocal?: boolean;
+  /** 演出を出す位置(判定の中心と違う時だけ)。呪いの墓石を弾いた時=判定はプレイヤーの周り・砕けるのは墓石の所(WRAITH_MUTANT.md §11)。 */
+  fxAt?: { x: number; y: number };
   /**
    * research/ASTRONAUT_HORDE.md §8 A5(隕石=紫の文法): **弾けない**。カウンター中でもプレイヤーに当たり、守護霊のカウンター請求も使わない。
    * 盾(blastBlockedByShield)は今までどおり防ぐ(盾はカウンターではない)。
@@ -6369,7 +6379,7 @@ interface GameState {
   pumpkinBlasts: PumpkinBlast[];
   // 裏ボス スカジの氷ハザード。markers=足元の氷塊テレグラフ(赤サークル2秒→起爆)、blades=設置後に発射される氷刃。
   skadiIceMarkers: { id: string; x: number; y: number; bornAt: number; fireAt: number; enemyId: string }[];
-  skadiIceBlades: { id: string; x: number; y: number; angle: number; launchAt: number; launched: boolean; vx: number; vy: number; expireAt: number; enemyId: string; visual?: 'ice' | 'bone' | 'feather' }[];
+  skadiIceBlades: SkadiBlade[];
   // 火炎瓶(molotov)が設置した地面の火だまり。lifetime/DoTは tickGroundFires が処理、描画は pixiScene が直読み。
   groundFires: GroundFire[];
   // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘。lifetime/DoTは tickBloodSpikes が
@@ -7076,7 +7086,7 @@ interface GameState {
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
-  spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string, visual?: 'ice' | 'bone' | 'feather') => void; // visual='bone'=ラフィの骨刃(見た目のみ差し替え・判定/挙動はスカジ刃と同じ)
+  spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string, visual?: SkadiBladeVisual, grave?: SkadiBlade['grave']) => void; // visual='bone'=ラフィの骨刃(見た目のみ差し替え・判定/挙動はスカジ刃と同じ)
   // NPCセリフ: キューに追加 / 毎フレームの表示進行(useGameLoopから呼ぶ)。
   enqueueNpcDialogue: (lines: { name: string; text: string; portrait?: string; slow?: boolean }[]) => void;
   updateNpcDialogue: (gameTime: number) => void;
@@ -14621,8 +14631,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   spawnSkadiIce: (x, y, bornAt, fireAt, enemyId) => set(s => ({
     skadiIceMarkers: [...s.skadiIceMarkers, { id: `sice${skadiHazardSeq++}`, x, y, bornAt, fireAt, enemyId }],
   })),
-  spawnSkadiBlade: (x, y, angle, launchAt, enemyId, visual = 'ice') => set(s => ({
-    skadiIceBlades: [...s.skadiIceBlades, { id: `sbld${skadiHazardSeq++}`, x, y, angle, launchAt, launched: false, vx: 0, vy: 0, expireAt: 0, enemyId, visual }],
+  spawnSkadiBlade: (x, y, angle, launchAt, enemyId, visual = 'ice', grave) => set(s => ({
+    skadiIceBlades: [...s.skadiIceBlades, { id: `sbld${skadiHazardSeq++}`, x, y, angle, launchAt, launched: false, vx: 0, vy: 0, expireAt: 0, enemyId, visual, ...(grave ? { grave } : {}) }],
   })),
 
   enqueueNpcDialogue: (lines) => {
@@ -14998,9 +15008,36 @@ export const useGameStore = create<GameState>((set, get) => ({
           const tz = enemy.escortToss;
           const ddx = tz.toX - tz.fromX, ddy = tz.toY - tz.fromY, ddl = Math.hypot(ddx, ddy) || 1;
           // 飛行中に気絶が外れた(強個体に近接が入った等)=その場で着地扱いにして通常の処理へ戻す(検収品質 B-6)。
-          if (!(enemy.stunUntil !== undefined && gameTime < enemy.stunUntil)) {
+          // 亡霊の指差し(free)は気絶していない雑魚をそのまま滑らせる(research/WRAITH_MUTANT.md §11)。
+          if (!tz.free && !(enemy.stunUntil !== undefined && gameTime < enemy.stunUntil)) {
             tossLandings.push({ x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height, dirX: ddx / ddl, dirY: ddy / ddl });
             return { ...enemy, escortToss: undefined, escortTossLandedAt: gameTime };
+          }
+          if (tz.free) {
+            // 亡霊の指差し(§11-1 A4): 前のフレームの位置から12px以下の歩みで進め、押し戻された所で着地する
+            // (線の上の位置を毎回押し出すだけだと、壁の中ほどを越えた所で向こう側へ抜ける)。
+            const dd = gameTime >= tz.endAt ? ddl : escortTossSlideDist(gameTime, tz.startAt, tz.endAt, ddl);
+            const wx = tz.fromX + (ddx / ddl) * dd, wy = tz.fromY + (ddy / ddl) * dd;
+            let cx = enemy.x, cy = enemy.y, hitWall = false;
+            const n = Math.max(1, Math.ceil(Math.hypot(wx - cx, wy - cy) / 12));
+            const stx = (wx - cx) / n, sty = (wy - cy) / n, stl = Math.hypot(stx, sty);
+            // 行ける帯も通す(帯の外へ着地させない・CLAUDE.md「アクターを新しく動かす時は clampRectToPlayableArea」・検収 A-1)。
+            const flCtx: PlayableAreaCtx = {
+              farBackdrop: state.farBackdrop, labTheme, corridorMode: state.corridorMode,
+              m0AdvanceLimitX: state.m0AdvanceLimitX, corridorRunInActive: state.corridorRunInActive,
+            };
+            for (let i = 0; i < n && stl > 0.01; i++) {
+              const r0 = resolveMove(cx + stx, cy + sty);
+              const r = clampRectToPlayableArea(r0.x, r0.y, enemy.width, enemy.height, flCtx, cx);
+              const gain = ((r.x - cx) * stx + (r.y - cy) * sty) / stl;
+              cx = r.x; cy = r.y;
+              if (gain < stl * 0.3) { hitWall = true; break; }
+            }
+            if (hitWall || gameTime >= tz.endAt) {
+              tossLandings.push({ x: cx + enemy.width / 2, y: cy + enemy.height, dirX: ddx / ddl, dirY: ddy / ddl });
+              return { ...enemy, x: cx, y: cy, vx: 0, vy: 0, escortToss: undefined, escortTossLandedAt: gameTime };
+            }
+            return { ...enemy, x: cx, y: cy, vx: 0, vy: 0 };
           }
           if (gameTime >= tz.endAt) {
             const land = resolveMove(tz.toX, tz.toY);
@@ -18515,6 +18552,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 全消滅していた)。skadiIceBlades配列は複数ボスで共用しているが、判定は「その刃のenemyIdが
       // 今も盤面に居るか」の1本で足りる=visual種別を見る必要がそもそも無い。
       const blaOwnerIds = new Set(state.enemies.map(e => e.id));
+      // 亡霊の呪いの墓石は、亡霊が倒れた時に砕けて落ちる(wraithTick.runWraithGraveFx が死体を見て砕く=1フレームで消さない)。
       const activeBlades = state.skadiIceBlades.filter(b => blaOwnerIds.has(b.enemyId));
       const skadiIceBlades = activeBlades
         .map(b => {
@@ -18540,7 +18578,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               const cp = shieldContactPoint(b.x - b.vx * deltaTime, b.y - b.vy * deltaTime, b.x, b.y, friendlyShield);
               const ownerType = enemies.find(e => e.id === b.enemyId)?.type;
               shieldGuardHits.push({ shield: friendlyShield, type: ownerType, srcX: b.x, srcY: b.y,
-                blade: { x: cp.x, y: cp.y, dx: b.vx / bl, dy: b.vy / bl, color: b.visual === 'bone' ? '#e7e5e4' : b.visual === 'feather' ? '#fde68a' : '#bfe6ff' } });
+                blade: { x: cp.x, y: cp.y, dx: b.vx / bl, dy: b.vy / bl, color: b.visual === 'bone' ? '#e7e5e4' : b.visual === 'feather' ? '#fde68a' : b.visual === 'grave' ? '#a8a29e' : '#bfe6ff' } });
               return false;
             }
           }
@@ -18550,14 +18588,17 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (体勢値・Counter!演出・無敵・CDリファンドは通常どおり=parryNoDamage)。
           // ice=true は青の起爆FX/skadi-ice SEを選ぶフラグ(既存のice/bone両方=true実装をそのまま維持)。
           // フィルの羽根散弾(visual:'feather')だけは新規なので氷のFXにしない(既定のオレンジ起爆へ)。
-          const iceFx = b.visual !== 'feather';
+          // 亡霊の呪いの墓石(visual:'grave')も氷ではない=石の砕ける FX(moveKey 'wraith-grave'・combatTick)。
+          const iceFx = b.visual !== 'feather' && b.visual !== 'grave';
+          // 墓石を弾いた効果はプレイヤー側だけ(遠くの亡霊は跳ばない・気絶も解けない=矢の雨と同じ parryLocal・§11-1 A2)。
+          const bMove = b.visual === 'grave' ? { moveKey: 'wraith-grave', parryLocal: true } : {};
           if (counterOpen && d <= meleeR) {
             // カウンター成立: プレイヤー中心(半径meleeR)のブラストでパリィ→消化側でカウンター扱いになる。
-            pumpkinBlasts.push({ x: pcx, y: pcy, radius: meleeR, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: iceFx, parryNoDamage: true });
+            pumpkinBlasts.push({ x: pcx, y: pcy, radius: meleeR, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: iceFx, parryNoDamage: true, ...bMove, ...(b.visual === 'grave' ? { fxAt: { x: b.x, y: b.y } } : {}) });
             return false;
           }
           if (d <= SKADI_BLADE_HIT + pr) {
-            pumpkinBlasts.push({ x: b.x, y: b.y, radius: SKADI_BLADE_HIT, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: iceFx, parryNoDamage: true });
+            pumpkinBlasts.push({ x: b.x, y: b.y, radius: SKADI_BLADE_HIT, damage: SKADI_BLADE_DAMAGE, enemyId: b.enemyId, ice: iceFx, parryNoDamage: true, ...bMove });
             return false;
           }
           return true;
@@ -18568,7 +18609,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (shouldEmitThrottled(gameTime, runClocks.skadiBlade, SKADI_SPARKLE_BLADE_MS)) {
         runClocks.skadiBlade = gameTime;
         for (const b of skadiIceBlades) {
-          if (!b.launched || b.visual === 'bone') continue;
+          if (!b.launched || b.visual === 'bone' || b.visual === 'grave') continue;
           const bl = Math.hypot(b.vx, b.vy) || 1;
           quadBreathSparkles.push({
             x: b.x - (b.vx / bl) * SKADI_SPARKLE_BLADE_BACK_PX + (Math.random() - 0.5) * 26,

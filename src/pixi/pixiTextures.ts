@@ -159,6 +159,8 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
   wraith: [
     { name: 'mutant-wraith-float', scaleMode: 'nearest' },
     { name: 'mutant-wraith-scream', scaleMode: 'nearest' },
+    // 指差し(社長支給2026-10-29・8コマ×75=600x152=0.36MB)。指差し・呪いの2つの技が同じ絵を使う。§11。
+    { name: 'mutant-wraith-point', scaleMode: 'nearest' },
     // 近づくと地面から生えてくる墓石と花(社長支給2026-10-29・392x66=0.10MB・8コマ×49)。§9。
     { name: 'props/wraith-growths', scaleMode: 'nearest' },
   ],

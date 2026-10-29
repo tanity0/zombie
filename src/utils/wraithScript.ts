@@ -236,3 +236,104 @@ export const pickRunMutantBoss = (rng: () => number): RunMutantBoss => {
   if (rng() >= RUN_MUTANT_BOSS_CHANCE) return 'none';
   return rng() < 0.5 ? 'astro' : 'wraith';
 };
+
+// ---- 指差しの技2つ=指差し・呪い(§11) ----
+/** 指差しのシート(mutant-wraith-point): 8コマ・1コマ75×152。0〜2=腕を上げる・3〜7=指している。 */
+export const WRAITH_POINT_FRAMES = 8;
+export const WRAITH_POINT_FRAME_W = 75;
+/** 体を起点にする寄せ(絵のドット・右へ+・浮遊の0コマ目と同じ所へ・§11 実測)。 */
+export const WRAITH_POINT_ALIGN_X: readonly number[] = [0.5, -0.6, -2.7, -6.6, -6.3, -6.6, -6.4, -6.8];
+export const WRAITH_POINT_RAISE_FRAME_MS = 90;
+/** 腕が伸び切るまで(0→3)。この瞬間に雑魚が飛ぶ/1つ目の墓石が抜ける。 */
+export const WRAITH_POINT_RAISE_MS = 4 * WRAITH_POINT_RAISE_FRAME_MS;
+export const WRAITH_POINT_HOLD_FRAME_MS = 120;
+/** 下ろす(3→0)。 */
+export const WRAITH_POINT_LOWER_MS = 3 * WRAITH_POINT_RAISE_FRAME_MS;
+/** 指している間の往復(コマ・ms)。端のコマで長く止まり、間隔もそろえない(機械的な往復にしない・クリエイティブ監査#16)。 */
+const WRAITH_POINT_HOLD_SEQ: readonly (readonly [number, number])[] = [[3, 210], [4, 110], [5, 95], [6, 120], [7, 230], [6, 105], [5, 125], [4, 90]];
+const WRAITH_POINT_HOLD_CYCLE = WRAITH_POINT_HOLD_SEQ.reduce((a, [, d]) => a + d, 0);
+/**
+ * 指差しのコマ。since=腕を上げ始めてからの ms、lowerSince=下ろし始めてからの ms(まだなら undefined)、
+ * lowerFrom=下ろし始めた時のコマ(上げている途中で止めた時はそこから戻す=伸び切りのコマへ跳ばない・検収 A-2)。
+ * 上げる 0→3(出だしはゆっくり・最後で一気に伸ばす。合計は同じ) / 指している間は 3〜7 を往復 / 下ろす 3→0。
+ */
+export const wraithPointFrame = (since: number, lowerSince?: number, lowerFrom = 3): number => {
+  if (lowerSince !== undefined) {
+    const from = Math.max(0, Math.min(3, lowerFrom));
+    return Math.max(0, from - Math.floor(Math.max(0, lowerSince) / WRAITH_POINT_RAISE_FRAME_MS));
+  }
+  if (since < WRAITH_POINT_RAISE_MS) return Math.max(0, Math.min(3, Math.floor(4 * Math.pow(Math.max(0, since) / WRAITH_POINT_RAISE_MS, 1.6))));
+  let k = (since - WRAITH_POINT_RAISE_MS) % WRAITH_POINT_HOLD_CYCLE;
+  for (const [f, d] of WRAITH_POINT_HOLD_SEQ) { if (k < d) return f; k -= d; }
+  return 3;
+};
+
+export type WraithSkill = 'scream' | 'fling' | 'curse';
+/** 今使える技から1つ。前と同じ技は、他に使える技がある時は選ばない(§11)。 */
+export const pickWraithSkill = (can: { fling: boolean; curse: boolean }, last: WraithSkill | null, rng: () => number): WraithSkill => {
+  const all: WraithSkill[] = ['scream'];
+  if (can.fling) all.push('fling');
+  if (can.curse) all.push('curse');
+  const pool = all.length > 1 && last !== null ? all.filter(k => k !== last) : all;
+  return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
+};
+
+/** 指差し(雑魚を吹き飛ばす)。 */
+export const WRAITH_FLING_RANGE_PX = 560;
+export const WRAITH_FLING_MIN_PLAYER_PX = 200;
+export const WRAITH_FLING_MAX_PLAYER_PX = 700;
+export const WRAITH_FLING_MIN = 2;
+export const WRAITH_FLING_MAX = 6;
+/** 着地の輪(プレイヤーの中心から)。 */
+export const WRAITH_FLING_RING_PX = 110;
+/** 腕を伸ばしてから下ろし始めるまで。 */
+export const WRAITH_FLING_HOLD_MS = 600;
+/**
+ * 着地点。プレイヤーの周りの輪の上で等間隔に並べ、それぞれの来た向きに一番近い並びへ回す(道が交差しにくい)。
+ * mobs=雑魚の中心(並びは返り値と同じ順)。
+ */
+export const wraithFlingLandings = (mobs: readonly { x: number; y: number }[], px: number, py: number, ringPx = WRAITH_FLING_RING_PX): { x: number; y: number }[] => {
+  const n = mobs.length;
+  if (n === 0) return [];
+  const ang = mobs.map(m => Math.atan2(m.y - py, m.x - px));
+  const order = ang.map((_, i) => i).sort((i, j) => ang[i] - ang[j]);
+  const step = (Math.PI * 2) / n;
+  // 回す量=「来た向き − 並びの角」の円の平均(全体を一番ずらさない回し方)。
+  let sx = 0, sy = 0;
+  order.forEach((i, k) => { const d = ang[i] - k * step; sx += Math.cos(d); sy += Math.sin(d); });
+  const a0 = n === 1 ? ang[0] : Math.atan2(sy, sx);
+  const out: { x: number; y: number }[] = new Array(n);
+  order.forEach((i, k) => { const a = a0 + k * step; out[i] = { x: px + Math.cos(a) * ringPx, y: py + Math.sin(a) * ringPx }; });
+  return out;
+};
+
+/** 呪い(墓石を飛ばす)。 */
+export const WRAITH_CURSE_RANGE_PX = 520;
+export const WRAITH_CURSE_MIN_PLAYER_PX = 160;
+export const WRAITH_CURSE_MAX = 5;
+/** 1つずつの間隔(社長「1秒に一個」)。 */
+export const WRAITH_CURSE_GAP_MS = 1000;
+/** 浮き上がってから飛び出すまで(=その墓石の溜め・赤い帯はこの間ずっと流れる)。 */
+export const WRAITH_CURSE_PRE_MS = 600;
+/** 浮いた墓石の判定の中心=足元からこれだけ上(描画の持ち上げと同じ値)。 */
+/** 浮く墓石の絵は根元の瓦礫を切った上側だけ(瓦礫は地面に残る・クリエイティブ監査#2)。 */
+export const WRAITH_GRAVE_STONE_KEEP = 0.8;
+export const WRAITH_CURSE_HOVER_PX = 84; // 地面に立っていた時の絵の中心から約30px上へ浮く(§11-1 C2)
+/** 最後の墓石が飛び出してから下ろし始めるまで。 */
+export const WRAITH_CURSE_TAIL_MS = 300;
+/** 次に抜く墓石の印を、抜けるこれだけ前に出す。 */
+export const WRAITH_CURSE_MARK_MS = 320;
+/** k 個目(0始まり)の墓石が抜ける時刻(腕を上げ始めてからの ms)。 */
+export const wraithCurseLiftAt = (k: number): number => WRAITH_POINT_RAISE_MS + k * WRAITH_CURSE_GAP_MS;
+/** 飛ばせる墓石(生え切っている・沈み始めていない・亡霊から近い・プレイヤーから離れている・画面の中)。亡霊に近い順に最大5つ。 */
+export const pickWraithCurseGraves = (
+  pieces: readonly WraithGrowth[], wraith: { x: number; y: number }, player: { x: number; y: number }, gt: number,
+  inView: (x: number, y: number) => boolean,
+): WraithGrowth[] =>
+  pieces
+    .filter(g => isWraithGrave(g.variant) && g.sinkAt === undefined && gt - g.bornAt >= WRAITH_GROWTH_GROW_MS
+      && Math.hypot(g.x - wraith.x, g.y - wraith.y) <= WRAITH_CURSE_RANGE_PX
+      && Math.hypot(g.x - player.x, g.y - player.y) >= WRAITH_CURSE_MIN_PLAYER_PX
+      && inView(g.x, g.y))
+    .sort((a, b) => Math.hypot(a.x - wraith.x, a.y - wraith.y) - Math.hypot(b.x - wraith.x, b.y - wraith.y))
+    .slice(0, WRAITH_CURSE_MAX);
