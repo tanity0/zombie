@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "939 files / 復号後 約710MB",
+ "generatedFor": "941 files / 復号後 約710MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3019,6 +3019,18 @@
    "h": 202,
    "bytes": 30572,
    "sha": "a33bced96c8cbde5"
+  },
+  "sprites/mutant-wraith-float.png": {
+   "w": 1088,
+   "h": 108,
+   "bytes": 92076,
+   "sha": "b3800f145b1da99b"
+  },
+  "sprites/mutant-wraith.png": {
+   "w": 68,
+   "h": 108,
+   "bytes": 3381,
+   "sha": "344b38f8a06e79ae"
   },
   "sprites/npc/chen-down.png": {
    "w": 110,

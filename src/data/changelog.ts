@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5264', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5263', items: [
     'オープニングが始まるまでの読み込みが短くなった',
   ] },
