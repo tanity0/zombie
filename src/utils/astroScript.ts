@@ -11,8 +11,14 @@ export const ASTRO_THROW_FRAME_W = 146;
 export const ASTRO_SHEET_H = 182;
 /** 浮遊の1コマ(ms・叩き台)。 */
 export const ASTRO_HOVER_FRAME_MS = 60;
-/** 浮き切ったとみなすコマ(持ち上げが満ちる・投げの間合いを数え始める)。 */
+/** 移動中にピンポンする範囲(最後の3コマ)。浮き切ったとみなすコマ(持ち上げが満ちる・投げの間合いを数え始める)。 */
 export const ASTRO_HOVER_LOOP_LO = 8;
+/**
+ * 浮遊の往復(8〜10コマ)で体を固定する寄せ(絵のドット・[横, 縦])。シートの中でヘルメットが8コマ目から
+ * 9コマ目で(+4.7, +4.4)、10コマ目で(−1.8, +7.8)ずれている(実測)ので、その分だけ絵を逆へ寄せる=
+ * ヘルメットと胴は止まったまま、脚と噴射だけが動く(社長指示2026-10-29「移動中は体を固定」「動いてる時のアニメーションが止まってる」)。
+ */
+export const ASTRO_HOVER_ALIGN: Readonly<Record<number, readonly [number, number]>> = { 9: [-4.7, -4.4], 10: [1.8, -7.8] };
 export const ASTRO_HOVER_TOP = ASTRO_HOVER_FRAMES - 1;
 /** 動き出してよいコマ(浮き上がりの途中から慣性でゆっくり動き出す・§8 A4)。 */
 export const ASTRO_MOVE_FRAME = 6;
@@ -230,8 +236,8 @@ export const astroThrowPlan = (
 export interface AstroHoverAnim { frame: number; acc: number; dir: 1 | -1 }
 
 /**
- * 浮遊のコマを進める。wantAir=浮きたい(0→10へ進み、10で止める)/ 降りたい(今のコマから0まで逆に)。
- * 移動中は体を固定する(社長指示2026-10-29「移動中は体を固定にして なんかグラグラしてる」=8〜10の往復はシートの中で体が前後に傾くため)。
+ * 浮遊のコマを進める。wantAir=浮きたい(0→10→8〜10ピンポン)/ 降りたい(今のコマから0まで逆に)。
+ * 往復の間の体のずれは描画が ASTRO_HOVER_ALIGN で消す(体は固定・脚と噴射だけ動く)。
  * collapse=崩し・気絶で落ちる(推力が抜けて、地面に近いほど速く落ちる=重力の加速・§10)。普通の着地も上でためて最後を速める。
  */
 export const stepAstroHover = (a: AstroHoverAnim, wantAir: boolean, dtMs: number, collapse = false): AstroHoverAnim => {
@@ -239,16 +245,22 @@ export const stepAstroHover = (a: AstroHoverAnim, wantAir: boolean, dtMs: number
   acc += Math.max(0, dtMs);
   for (let guard = 0; guard < 64; guard++) {
     // 崩れて落ちる時は推力が抜けて加速しながら落ちる(上=60ms → 地面の手前=24ms・重力の向き)。
+    // 浮遊のピンポンは折り返し(8・10)で一拍溜める=機械的な等間隔の震えにしない(クリエイティブ監査#2・#12)。
     const per = !wantAir && collapse
       ? ASTRO_HOVER_FRAME_MS * (0.4 + 0.6 * (frame / ASTRO_HOVER_TOP))
+      : wantAir && (frame === ASTRO_HOVER_TOP || (frame === ASTRO_HOVER_LOOP_LO && dir === -1)) ? ASTRO_HOVER_FRAME_MS * 1.6
       // 降りる時は浮き上がりの巻き戻しにしない: 上で推力を絞って一瞬ため、地面が近づくほど速く落ちてドスンで止まる(監査2巡目#6)。
       : !wantAir ? ASTRO_HOVER_FRAME_MS * (0.55 + 0.75 * (frame / ASTRO_HOVER_TOP))
       : ASTRO_HOVER_FRAME_MS;
     if (acc < per) break;
     acc -= per;
     if (wantAir) {
-      if (frame < ASTRO_HOVER_TOP) { frame++; dir = 1; }
-      else { acc = 0; break; } // 浮き切ったら10で止める(往復しない)
+      if (frame < ASTRO_HOVER_LOOP_LO) { frame++; dir = 1; }
+      else {
+        if (frame >= ASTRO_HOVER_TOP) dir = -1;
+        else if (frame <= ASTRO_HOVER_LOOP_LO) dir = 1;
+        frame += dir;
+      }
     } else if (frame > 0) {
       frame--; dir = -1;
     } else {

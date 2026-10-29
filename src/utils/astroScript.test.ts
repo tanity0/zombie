@@ -3,7 +3,7 @@ import {
   pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroRainStep, ASTRO_RAIN_CAP, ASTRO_RAIN_NEAR_PX, ASTRO_RAIN_RING_MIN, ASTRO_RAIN_RING_MAX, ASTRO_RAIN_FIRST_MIN_PX, ASTRO_RAIN_FIRST_MAX_PX, ASTRO_RAIN_WARN_MS, ASTRO_RAIN_GAP_MIN_MS, ASTRO_RAIN_GAP_MAX_MS, ASTRO_RAIN_SINK_MS, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
   astroPoiCandidates, pickAstroPoi, astroSpawnPick, astroBandPull, astroMeteorShake,
   ASTRO_RELEASE_MS, ASTRO_DEBRIS_COUNT, ASTRO_DEBRIS_SPREAD_PX, ASTRO_DEBRIS_GAP_PX, ASTRO_FLAG_BEYOND_PX, ASTRO_FLAG_MIN_LENGTH, ASTRO_ARRIVE_PX,
-  ASTRO_LIFT_PX, ASTRO_TURN_RAD_PER_S, ASTRO_ACCEL_S, ASTRO_DECEL_S, type AstroThrowKind, type AstroHoverAnim,
+  ASTRO_LIFT_PX, ASTRO_HOVER_ALIGN, ASTRO_TURN_RAD_PER_S, ASTRO_ACCEL_S, ASTRO_DECEL_S, type AstroThrowKind, type AstroHoverAnim,
 } from './astroScript';
 
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -64,15 +64,20 @@ describe('宇宙飛行群: 投げる物の抽選', () => {
 });
 
 describe('宇宙飛行群: 浮遊のコマ(§3)', () => {
-  it('浮く時は0→10へ順に進み、移動中は10で止める(体を固定・往復しない)', () => {
+  it('浮く時は0→10へ順に進み、移動中は8・9・10をピンポン(折り返しで一拍溜める)', () => {
     let a: AstroHoverAnim = { frame: 0, acc: 0, dir: 1 };
     const seq: number[] = [0];
-    for (let i = 0; i < 400; i++) {
+    const held: Record<number, number> = {};
+    for (let i = 0; i < 200; i++) {
       a = stepAstroHover(a, true, 10);
       if (seq[seq.length - 1] !== a.frame) seq.push(a.frame);
+      if (seq.length > 11) held[a.frame] = (held[a.frame] ?? 0) + 10;
     }
-    expect(seq).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    expect(a.frame).toBe(10);
+    expect(seq.slice(1, 17)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 9, 10, 9, 8]);
+    expect(held[10]).toBeGreaterThan(held[9] / 2); // 10は1回の滞在が9より長い(9は往復で2回通る)
+  });
+  it('往復の間は体の寄せで固定する(寄せの表は往復のコマだけ)', () => {
+    expect(Object.keys(ASTRO_HOVER_ALIGN).map(Number).every(f => f > 8 && f <= 10)).toBe(true);
   });
   it('着地は今のコマから0まで逆にたどる(上でためて、地面が近いほど速い)', () => {
     let a: AstroHoverAnim = { frame: 9, acc: 0, dir: 1 };

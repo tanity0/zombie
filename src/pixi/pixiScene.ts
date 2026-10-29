@@ -261,7 +261,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase, TELEGRAPH_STYLE_BOSS } from '../utils/telegraphStyle';
 import { hunterWarpAlpha } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
-import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_RAIN_SINK_MS, ASTRO_DEBRIS_FIRST_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
+import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_HOVER_ALIGN, ASTRO_HOVER_FRAME_W, ASTRO_SHEET_H, ASTRO_RAIN_SINK_MS, ASTRO_DEBRIS_FIRST_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
 import { labBaitZoomTarget } from '../world/labBait';
@@ -22201,6 +22201,11 @@ export class PixiScene {
       this.syncSheetTipGlow(e.id, view, phillSheet?.name ?? null, tex, now, e, gameTime);
     } else {
     view.sprite.anchor.set(0.5, 1);
+    // 宇宙飛行群: 浮遊の往復(8〜10コマ)の体のずれを支点で打ち消す=ヘルメットと胴は止まり、脚と噴射だけ動く(社長指示2026-10-29)。
+    if (e.type === 'mutant-astro' && e.astroThrowAt === undefined) {
+      const al = ASTRO_HOVER_ALIGN[Math.round(e.astroHoverFrame ?? 0)];
+      if (al) view.sprite.anchor.set(0.5 - al[0] / ASTRO_HOVER_FRAME_W, 1 - al[1] / ASTRO_SHEET_H);
+    }
     // ---- 歩行二次モーション(①②③・v0.25.2899・視覚のみ) ----------------------------------------
     // 実移動速度を論理座標の差分から推定(指数平滑)。移動と同期して揺れるので、止まっている敵
     // (気絶/拘束/紫/休眠/壁ハマり)は自然に静止する=状態フラグを個別に見る必要が無い。
