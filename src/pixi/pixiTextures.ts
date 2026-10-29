@@ -148,6 +148,8 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'mutant-astro-throw', scaleMode: 'nearest' },
     // 投げる物(社長支給2026-10-29・66×66×12=左からミサイル/花束/国旗/隕石/残骸8種)。届くまでは仮の図形で描く。
     { name: 'fx/astro-throws', scaleMode: 'nearest' },
+    // 飛んでいる国旗(社長支給2026-10-29・48×90・穂先が左下=絵の下端左・竿を長くした絵)。刺さった後は astro-throws の旗。
+    { name: 'fx/astro-flag-fly', scaleMode: 'nearest' },
   ],
   /**
    * ★ボス級の**アニメーションシート**(社長指示2026-09-24「乗せて」)。**所属は付けない=網だけで拾う**

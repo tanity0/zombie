@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "938 files / 復号後 約710MB",
+ "generatedFor": "939 files / 復号後 約710MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1063,6 +1063,12 @@
    "h": 28,
    "bytes": 1466,
    "sha": "96a1ea0805c35948"
+  },
+  "sprites/fx/astro-flag-fly.png": {
+   "w": 48,
+   "h": 90,
+   "bytes": 2854,
+   "sha": "3839f3d7e1a8a665"
   },
   "sprites/fx/astro-throws.png": {
    "w": 792,

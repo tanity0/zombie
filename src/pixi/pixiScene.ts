@@ -17574,6 +17574,23 @@ export class PixiScene {
    * 花束は攻撃ではない=赤も紫も使わず、白い花びら。投げる物の絵は社長支給(fx/astro-throws)・読み込み前だけ仮の図形。
    */
   private astroGroundGfx = new Graphics();
+  /** 飛んでいる旗の絵の竿の向き(竿の上端→穂先=絵の (16,20)→(2,89) の実測)。 */
+  private static readonly ASTRO_FLAG_FLY_POLE_RAD = Math.atan2(69, -14);
+  /** 飛んでいる旗の専用の絵(fx/astro-flag-fly)。穂先(左下)を基準点にして置く。投げる物の使い回しと同じ持ち主の印で片付く。 */
+  private placeAstroFlyFlag(id: string, tex: Texture, x: number, y: number, rot: number, s: number, mirror: boolean): void {
+    let sp = this.astroArtPool.get(id);
+    if (!sp) { sp = new Sprite(tex); this.astroArtPool.set(id, sp); }
+    sp.texture = tex;
+    if (sp.parent !== this.L.skyFxLayer) this.L.skyFxLayer.addChild(sp);
+    sp.anchor.set(2 / 48, 89 / 90);
+    sp.position.set(x, y);
+    sp.rotation = rot;
+    sp.scale.set(mirror ? -s : s, s);
+    sp.alpha = 1;
+    sp.tint = 0xffffff;
+    sp.visible = true;
+    this.astroArtSeen.add(id);
+  }
   /** 支給の絵のミサイルは先が左下(約138°)を向いて描かれている。 */
   private static readonly ASTRO_MISSILE_ART_ANG_RAD = Math.atan2(42, -47);
   private astroAirGfx = new Graphics();
@@ -17777,7 +17794,14 @@ export class PixiScene {
           const gx = handX + (c.tx - handX) * u, gy = footY + (c.ty - footY) * u;
           const ds = this.depthScale(gy);
           const fy2 = gy - handH * (1 - u);
-          if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.skyFxLayer, gx, fy2, flyRot, 1.2 * ds * -side * appear, 1.2 * ds * appear, 1, FOOT_X, FOOT_Y)) {
+          // 飛んでいる旗は支給の専用の絵(竿が長い・布が後ろへなびく)。穂先(絵の左下)を進む向きへ向け、
+          // 左へ投げた時は左右を返して布が上側へなびくようにする。読み込み前は刺さった旗の絵で代用。
+          const flyTex = getTexture('fx/astro-flag-fly');
+          if (flyTex) {
+            const mirror = Math.cos(flagAng) < 0;
+            const rot = flagAng - (mirror ? Math.PI - PixiScene.ASTRO_FLAG_FLY_POLE_RAD : PixiScene.ASTRO_FLAG_FLY_POLE_RAD);
+            this.placeAstroFlyFlag(t.id, flyTex, gx, fy2, rot, 1.1 * ds, mirror);
+          } else if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.skyFxLayer, gx, fy2, flyRot, 1.2 * ds * -side * appear, 1.2 * ds * appear, 1, FOOT_X, FOOT_Y)) {
             this.drawAstroFlag(a, gx, fy2, flagAng, ds, gameTime, 1, true);
           }
         } else if (t.resolved) {
@@ -36598,6 +36622,7 @@ export class PixiScene {
     // 姿が見えた時点で投げのシートと投げる物の絵も取りに行く(網は使う瞬間の1枚しか引かない=最初の投げの絵が欠ける・品質監査 A1)。
     getTexture('mutant-astro-throw');
     getTexture('fx/astro-throws');
+    getTexture('fx/astro-flag-fly');
     if (e.astroThrowAt !== undefined) {
       const i = Math.max(0, Math.min(ASTRO_THROW_FRAMES - 1, Math.floor((gameTime - e.astroThrowAt) / ASTRO_THROW_FRAME_MS)));
       return this.sheetSlices('mutant-astro-throw', ASTRO_THROW_FRAMES)?.[i] ?? null;

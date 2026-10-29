@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5254', items: [
+    '宇宙飛行群が投げる国旗は、長い竿の槍のように飛び、布が後ろへなびく',
+  ] },
   { version: '0.25.5253', items: [
     'ハンターの巡回は時計回りに。毎回ちがう場所から回り始める',
   ] },
