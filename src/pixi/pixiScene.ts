@@ -261,7 +261,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase, TELEGRAPH_STYLE_BOSS } from '../utils/telegraphStyle';
 import { hunterWarpAlpha } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
-import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_RAIN_SINK_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
+import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_RAIN_SINK_MS, ASTRO_DEBRIS_FIRST_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
 import { labBaitZoomTarget } from '../world/labBait';
@@ -17636,16 +17636,18 @@ export class PixiScene {
       const hz = this.horizonActorAlpha(p.y);
       const sx = p.flip ? -s : s;
       if (gameTime < p.landAt) {
-        // 落ちてくる間(§12-1): 技の残骸と同じく空からほぼ一直線に叩きつける(赤い予告は出さない=当たらない)。
-        const u = clamp01((gameTime - p.bornAt) / Math.max(1, p.landAt - p.bornAt)), k = u * u;
+        // 落ちてくる間(§12-1): 技の残骸と同じく、刺さる直前に空からほぼ一直線に叩きつける(赤い予告は投げ物の台帳の当たりが描く)。
+        const fallAt = p.landAt - (p.fallMs ?? 220);
+        if (gameTime < fallAt) continue;
+        const u = clamp01((gameTime - fallAt) / Math.max(1, p.landAt - fallAt)), k = u * u;
         const stx = p.x + (h1 < 0.5 ? -1 : 1) * (20 + 50 * h2), sty = p.y - 520;
         const px = stx + (p.x - stx) * k, py = sty + (p.y - sty) * k;
         gu.ellipse(p.x, p.y, (6 + 16 * u) * s, (2.5 + 6 * u) * s).fill({ color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
         // 速さの筋: 根元が太く濃く、尾へ細く薄れる(1本の棒に見せない)。
-        const tl = (40 + 80 * u) * ds, ang = Math.atan2(py - sty, px - stx), cx = Math.cos(ang), cy = Math.sin(ang);
+        const tl = (30 + 50 * u) * ds, ang = Math.atan2(py - sty, px - stx), cx = Math.cos(ang), cy = Math.sin(ang);
         for (let k = 0; k < 3; k++) {
           skg.moveTo(px - cx * tl * k / 3, py - cy * tl * k / 3).lineTo(px - cx * tl * (k + 1) / 3, py - cy * tl * (k + 1) / 3)
-            .stroke({ width: (7 - 2 * k) * s, color: 0xf97316, alpha: 0.3 * (1 - k / 3) * hz });
+            .stroke({ width: (26 - 7 * k) * s, color: 0xf97316, alpha: 0.16 * (1 - k / 3) * hz });
         }
         const rotD = p.rot + (1 - u) * 0.6 * (h0 > 0.5 ? 1 : -1);
         this.placeAstroArt(p.id, astroThrowArtFrame('debris', p.variant), this.L.skyFxLayer, px, py, rotD, sx, s, hz);
@@ -17840,11 +17842,13 @@ export class PixiScene {
       }
       // ---- 手から空へ打ち上げる(隕石・残骸は空から来る=投げた動作と降ってくる物をつなぐ・監査#15) ----
       // 手で投げ上げた物は上がるほど減速する(ease-out)。腕の振りの向きへ少し傾いた弧で、上がるほど細く消える軌跡。紫は使わない(監査2巡目#4・#5)。
-      if ((t.kind === 'meteor' || (t.kind === 'debris' && t.id.endsWith('-0'))) && sinceRel >= 0 && sinceRel < 560) {
+      // 打ち上げの筋の尺: 隕石は560ms。残骸は1枚目が空から落ち始める前に上り切る(落ちる絵と逆さまに見せない・品質監査 A1)。
+      const launchMs = t.kind === 'meteor' ? 560 : Math.max(90, ASTRO_DEBRIS_FIRST_MS - 220);
+      if ((t.kind === 'meteor' || (t.kind === 'debris' && !t.ambient && t.id.endsWith('-0'))) && sinceRel >= 0 && sinceRel < launchMs) {
         const hy = footY - handH;
         const dirX = t.x >= t.fromX ? 1 : -1;
         const at = (kk: number) => { const e2 = 1 - (1 - kk) * (1 - kk); return { x: handX + dirX * 80 * dsFrom * e2, y: hy + (viewTopWorld - 80 - hy) * e2 }; };
-        const k = sinceRel / 560;
+        const k = sinceRel / launchMs;
         let prev = at(k);
         for (let j = 1; j <= 6; j++) {
           const q = at(Math.max(0, k - j * 0.035));
@@ -17929,6 +17933,7 @@ export class PixiScene {
           }
         }
       } else if (t.kind === 'debris') {
+        if (t.ambient) continue; // 周りに降り注ぐ残骸の当たり: 予告だけ描く(落ちる絵・刺さった絵は syncAstroScatter)
         // 社長指示2026-10-29「破片はすごい早さで(勢いで)地面に刺さる感じに」: 空からほぼ一直線に叩きつけ、角から地面へ刺さる。
         // 1枚ずつ落ちる長さ・角度・刺さる深さ・震えを散らす(8枚が同じ動きにならない)。
         const h1 = rainHash01(t.x, t.y, 11), h2 = rainHash01(t.x, t.y, 12), h3 = rainHash01(t.x, t.y, 13), h4 = rainHash01(t.x, t.y, 14);
@@ -17979,9 +17984,13 @@ export class PixiScene {
           const u = flyU * flyU;
           const px = st.x + (t.x - st.x) * u, py = st.y + (t.y - st.y) * u;
           const ds = this.depthScale(t.y);
-          const size = (0.45 + 1.0 * flyU) * ds;
-          const art = this.placeAstroArt(t.id, astroThrowArtFrame('meteor'), this.L.skyFxLayer, px, py, gameTime / 900, 1.05 * size, 1.05 * size, 1); // 絵のドットが粗く崩れない倍率まで(最大約1.5倍)
-          this.drawAstroMeteor(sk, skg, px, py, Math.atan2(t.y - st.y, t.x - st.x), size, gameTime, !art);
+          // 近づくほど大きく(社長指示2026-10-29「近づいてきた時の隕石の絵を大きく」)。終わりほど急に膨らむ=迫ってくる。最大約3倍。判定の円は不変。
+          const size = (0.45 + 2.4 * Math.pow(flyU, 1.4)) * ds;
+          const art = this.placeAstroArt(t.id, astroThrowArtFrame('meteor'), this.L.skyFxLayer, px, py, gameTime / 900, 1.05 * size, 1.05 * size, 1);
+          // 尾の炎は今までの大きさのまま(岩と一緒に膨らませると画面を覆う)。絵が無い時の仮の岩だけ岩の大きさで描く。
+          const trail = (0.45 + 1.0 * flyU) * ds;
+          if (art) this.drawAstroMeteor(sk, skg, px, py, Math.atan2(t.y - st.y, t.x - st.x), trail, gameTime, false);
+          else this.drawAstroMeteor(sk, skg, px, py, Math.atan2(t.y - st.y, t.x - st.x), size, gameTime, true);
         } else if (t.resolved) {
           // クレーター(絵だけ): 焼けた窪みと、紫に燻る破片。最大の技の跡として旗と同じくらい残す。
           const age = gameTime - t.hitAt, f = 1 - Math.pow(clamp01(age / ASTRO_METEOR_CRATER_MS), 2);

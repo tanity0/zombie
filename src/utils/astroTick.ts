@@ -22,7 +22,7 @@ import {
   ASTRO_PATROL_SPEED, ASTRO_ENGAGE_SPEED_MULT, ASTRO_DECEL_S, ASTRO_STOPPED_FRAC, ASTRO_HOVER_LOOP_LO,
   ASTRO_THROW_GAP_MIN_MS, ASTRO_THROW_GAP_MAX_MS, ASTRO_REST_MIN_MS, ASTRO_REST_MAX_MS, ASTRO_ARRIVE_PX,
   ASTRO_STUCK_MS, ASTRO_STUCK_PX, ASTRO_HIT_ALERT_MS, ASTRO_LOSE_MS, ASTRO_RELEASE_MS, ASTRO_THROW_ANIM_MS,
-  ASTRO_METEOR_COOLDOWN_MS, ASTRO_BOUQUET_HEAL_FRAC,
+  ASTRO_METEOR_COOLDOWN_MS, ASTRO_BOUQUET_HEAL_FRAC, ASTRO_DEBRIS_RADIUS, ASTRO_DEBRIS_DAMAGE,
   stepAstroHover, astroCanMove, stepAstroVelocity, astroArriveSpeed, astroBandPull, astroPoiCandidates, pickAstroPoi,
   pickAstroThrow, astroThrowPlan, astroLingerMs, astroMeteorShake, astroRainStep, type AstroRainState,
   type AstroPoi, type AstroThrowKind, type AstroThrowEntry,
@@ -428,18 +428,27 @@ export const runAstroThrows = (gt: number): void => {
 const rainState: AstroRainState = { nextAt: 0, seq: 0 };
 let rainLastGt = 0;
 /**
- * 宇宙飛行群の周りに降り注ぐ残骸を進める(毎フレーム)。プレイヤーが近い間だけ1〜3秒に1枚降らせる。判定は持たない(見た目だけ)。
+ * 宇宙飛行群の周りに降り注ぐ残骸を進める(毎フレーム)。プレイヤーが近い間だけ1〜1.5秒に1枚降らせる。
+ * 1枚ごとに当たり(技の残骸と同じ大きさ・ダメージ・弾ける)を、降り始めに赤い予告つきで投げ物の台帳へ積む(刺さる瞬間に消え切る)。
+ * 当たりの絵は描かない(`ambient`)=空から落ちる絵と刺さった絵はこの台帳(`astroScatter`)が描く。
  */
 export const runAstroScatter = (gt: number): void => {
-  if (gt < rainLastGt) rainState.nextAt = 0; // ランを跨いだ(時計が戻った)
+  if (gt < rainLastGt) { rainState.nextAt = 0; rainState.wasNear = false; rainState.lastAt = undefined; } // ランを跨いだ(時計が戻った)
   rainLastGt = gt;
   const st = useGameStore.getState();
   const a = pickActiveAstro(st.enemies);
-  if (!a && st.astroScatter.length === 0) return;
+  if (!a && st.astroScatter.length === 0) { rainState.wasNear = false; return; } // 居ない間は「近い」を持ち越さない(次に現れた時の1枚目)
   const p = st.player;
   const astro = a ? { x: a.x + a.width / 2, y: a.y + a.height } : null;
   // 建物・木・岩に埋まらない所だけ(立てる所の判定=レスキューの出現位置と同じ使い方)。
   const canPlace = (x: number, y: number) => { const r = resolveBountyMove(x - 20, y - 20, { width: 40, height: 40 }); return Math.hypot(r.x - (x - 20), r.y - (y - 20)) < 2; };
   const next = astroRainStep(st.astroScatter, astro, { x: p.x + p.width / 2, y: p.y + p.height / 2 }, canPlace, gt, Math.random, rainState);
-  if (next !== st.astroScatter) useGameStore.setState({ astroScatter: next });
+  if (next === st.astroScatter) return;
+  const old = new Set(st.astroScatter.map(q => q.id));
+  const hits: AstroThrowEntry[] = a ? next.filter(q => !old.has(q.id)).map(q => ({
+    id: q.id, throwId: q.id, ownerId: a.id, kind: 'debris', ambient: true,
+    bornAt: q.bornAt, releaseAt: q.bornAt, hitAt: q.landAt, fromX: astro!.x, fromY: astro!.y,
+    x: q.x, y: q.y, radius: ASTRO_DEBRIS_RADIUS, damage: ASTRO_DEBRIS_DAMAGE, variant: q.variant,
+  })) : [];
+  useGameStore.setState(s2 => ({ astroScatter: next, ...(hits.length > 0 ? { astroThrows: [...s2.astroThrows, ...hits] } : {}) }));
 };

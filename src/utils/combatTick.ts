@@ -281,7 +281,12 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   // research/ASTRONAUT_HORDE.md §4: 宇宙飛行群の投げ物。爆発(ミサイル・隕石)は爆発音を重ね、国旗・残骸は地面に刺さる音。
   if (blasts.some(b => b.moveKey === 'astro-missile' || b.moveKey === 'astro-meteor')) fx.playSfx('bomb');
   if (blasts.some(b => b.moveKey === 'astro-flag')) fx.playSfx('anchor-plant', 0.8);
-  if (blasts.some(b => b.moveKey === 'astro-debris')) fx.playSfx('anchor-plant', 0.45);
+  // 残骸: 周りに降り注ぐ物(§12-1)は本体から離れた所にも落ちるので、聞こえる距離で弱める(画面の外で同じ大きさで鳴り続けない)。
+  if (blasts.some(b => b.moveKey === 'astro-debris')) {
+    const st0 = useGameStore.getState(), pl = st0.player, pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;
+    const g = Math.max(...blasts.filter(b => b.moveKey === 'astro-debris').map(b => npcSfxDistGain(b.x, b.y, pcx, pcy, st0.camera, st0.gameBounds)));
+    if (g > 0.02) fx.playSfx('anchor-plant', 0.45 * g);
+  }
   if (blasts.some(b => b.moveKey === 'liberty-arrow')) fx.playSfx('anchor-plant', 0.5); // 矢の雨: 土に突き立つ音(旗振りと耳で区別できるように。同じフレームに何本刺さっても1回)
   if (blasts.some(b => b.moveKey === 'hero-slam')) fx.playSfx('hero-slam');
   if (blasts.some(b => b.moveKey === 'hero-slash')) fx.playSfx('hero-slash');

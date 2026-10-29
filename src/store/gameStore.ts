@@ -6917,7 +6917,7 @@ interface GameState {
   libertyOrphanArrows: { ownerId: string; ownerX: number; hits: { x: number; y: number; radius: number; bornAt: number; fireAt: number }[]; stuck: { x: number; y: number; at: number; tilt: number }[] } | null;
   /** research/ASTRONAUT_HORDE.md §8 A7・§9: 宇宙飛行群が投げた物の台帳(予告+当たり)。投げ手とは別=倒れても最後まで飛んで当たる。 */
   astroThrows: AstroThrowEntry[];
-  /** research/ASTRONAUT_HORDE.md §11: 宇宙飛行群の周りに散らばる残骸(見た目だけの置物・判定なし)。 */
+  /** research/ASTRONAUT_HORDE.md §12-1: 宇宙飛行群の周りに降り注ぐ残骸の絵(落ちる・刺さる・沈む)。当たりは astroThrows の ambient の項目が持つ。 */
   astroScatter: AstroScatterPiece[];
   setSignalStrikes: (strikes: readonly SignalStrike[]) => void;
   spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)

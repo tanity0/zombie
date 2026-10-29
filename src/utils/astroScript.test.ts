@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroRainStep, ASTRO_RAIN_CAP, ASTRO_RAIN_NEAR_PX, ASTRO_RAIN_RING_MIN, ASTRO_RAIN_RING_MAX, ASTRO_RAIN_AVOID_PLAYER_PX, ASTRO_RAIN_GAP_MIN_MS, ASTRO_RAIN_GAP_MAX_MS, ASTRO_RAIN_SINK_MS, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
+  pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroRainStep, ASTRO_RAIN_CAP, ASTRO_RAIN_NEAR_PX, ASTRO_RAIN_RING_MIN, ASTRO_RAIN_RING_MAX, ASTRO_RAIN_FIRST_MIN_PX, ASTRO_RAIN_FIRST_MAX_PX, ASTRO_RAIN_WARN_MS, ASTRO_RAIN_GAP_MIN_MS, ASTRO_RAIN_GAP_MAX_MS, ASTRO_RAIN_SINK_MS, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
   astroPoiCandidates, pickAstroPoi, astroSpawnPick, astroBandPull, astroMeteorShake,
   ASTRO_RELEASE_MS, ASTRO_DEBRIS_COUNT, ASTRO_DEBRIS_SPREAD_PX, ASTRO_DEBRIS_GAP_PX, ASTRO_FLAG_BEYOND_PX, ASTRO_FLAG_MIN_LENGTH, ASTRO_ARRIVE_PX,
   ASTRO_LIFT_PX, ASTRO_TURN_RAD_PER_S, ASTRO_ACCEL_S, ASTRO_DECEL_S, type AstroThrowKind, type AstroHoverAnim,
@@ -13,8 +13,8 @@ describe('宇宙飛行群: 投げる物の時刻(§9)', () => {
     expect(ASTRO_RELEASE_MS).toBe(490);
     expect(astroHitOffsetMs('missile')).toBe(1090);
     expect(astroHitOffsetMs('flag')).toBe(610);
-    expect(astroHitOffsetMs('debris', 0)).toBe(1190);
-    expect(astroHitOffsetMs('debris', 7)).toBe(2240);
+    expect(astroHitOffsetMs('debris', 0)).toBe(790);
+    expect(astroHitOffsetMs('debris', 7)).toBe(1630);
     expect(astroHitOffsetMs('meteor')).toBe(4490);
     expect(astroHitOffsetMs('bouquet')).toBe(1190);
   });
@@ -183,7 +183,7 @@ describe('宇宙飛行群: 周りに降り注ぐ残骸(§12-1)', () => {
     for (let t = 0; t <= ms; t += 16) { const q = astroRainStep(p, astro, player, ok, t, rng, st); if (q.length > p.length || q.some(a => !p.includes(a) && !p.some(b => b.id === a.id))) born.push(t); p = q; }
     return { p, born };
   };
-  it('プレイヤーが近い間だけ、1〜3秒に1枚降る', () => {
+  it('プレイヤーが近い間だけ、1〜1.5秒に1枚降る', () => {
     const near = run({ x: 0, y: 0 }, { x: ASTRO_RAIN_NEAR_PX - 10, y: 0 }, 20000);
     expect(near.born.length).toBeGreaterThanOrEqual(Math.floor(20000 / ASTRO_RAIN_GAP_MAX_MS));
     expect(near.born.length).toBeLessThanOrEqual(Math.ceil(20000 / ASTRO_RAIN_GAP_MIN_MS) + 1);
@@ -191,18 +191,39 @@ describe('宇宙飛行群: 周りに降り注ぐ残骸(§12-1)', () => {
     expect(run({ x: 0, y: 0 }, { x: ASTRO_RAIN_NEAR_PX + 10, y: 0 }, 20000).p).toHaveLength(0);
     expect(run(null, { x: 0, y: 0 }, 20000).p).toHaveLength(0);
   });
-  it('落ちる所は本体の周りの輪の中で、プレイヤーのすぐ近くには落とさない', () => {
-    const st = { nextAt: 0, seq: 0 }, rng = rng0(11);
-    let p: ReturnType<typeof astroRainStep> = [];
-    const seen = new Map<string, { x: number; y: number }>();
-    for (let t = 0; t <= 200000; t += 50) { p = astroRainStep(p, { x: 0, y: 0 }, { x: 200, y: 0 }, ok, t, rng, st); for (const a of p) seen.set(a.id, a); }
-    expect(seen.size).toBeGreaterThan(50);
-    for (const a of seen.values()) {
-      const d = Math.hypot(a.x, a.y);
-      expect(d).toBeGreaterThanOrEqual(ASTRO_RAIN_RING_MIN - 1e-6);
-      expect(d).toBeLessThanOrEqual(ASTRO_RAIN_RING_MAX + 1e-6);
-      expect(Math.hypot(a.x - 200, a.y)).toBeGreaterThanOrEqual(ASTRO_RAIN_AVOID_PLAYER_PX);
+  it('近づいた瞬間に1枚目がプレイヤーのそばへ。以後は本体の周りの輪の中。どれも降り始めから決まった尺で刺さる', () => {
+    for (let n = 0; n < 30; n++) {
+      const st = { nextAt: 0, seq: 0 }, rng = rng0(11 + n);
+      let p: ReturnType<typeof astroRainStep> = [];
+      // 遠くから近づく: 最初の数フレームは遠い
+      for (let t = 0; t < 200; t += 16) p = astroRainStep(p, { x: 0, y: 0 }, { x: 5000, y: 0 }, ok, t, rng, st);
+      expect(p).toHaveLength(0);
+      const seen: ReturnType<typeof astroRainStep> = [];
+      for (let t = 200; t <= 30000; t += 16) { p = astroRainStep(p, { x: 0, y: 0 }, { x: 900, y: 0 }, ok, t, rng, st); for (const a of p) if (!seen.some(b => b.id === a.id)) seen.push(a); }
+      expect(seen[0].bornAt).toBe(200); // 入った瞬間
+      const d0 = Math.hypot(seen[0].x - 900, seen[0].y);
+      expect(d0).toBeGreaterThanOrEqual(ASTRO_RAIN_FIRST_MIN_PX - 1e-6);
+      expect(d0).toBeLessThanOrEqual(ASTRO_RAIN_FIRST_MAX_PX + 1e-6);
+      for (const a of seen.slice(1)) {
+        const d = Math.hypot(a.x, a.y);
+        expect(d).toBeGreaterThanOrEqual(ASTRO_RAIN_RING_MIN - 1e-6);
+        expect(d).toBeLessThanOrEqual(ASTRO_RAIN_RING_MAX + 1e-6);
+      }
+      for (const a of seen) { expect(a.landAt - a.bornAt).toBe(ASTRO_RAIN_WARN_MS); expect(a.fallMs).toBeLessThan(ASTRO_RAIN_WARN_MS); }
     }
+  });
+  it('1000pxの境目を出入りしても、降る間隔は最低の間隔より詰まらない(品質監査 A3)', () => {
+    const st = { nextAt: 0, seq: 0 }, rng = rng0(21);
+    let p: ReturnType<typeof astroRainStep> = [];
+    const born: number[] = [];
+    for (let t = 0; t <= 20000; t += 16) {
+      const inside = Math.floor(t / 300) % 2 === 0; // 0.3秒ごとに出入り
+      const q = astroRainStep(p, { x: 0, y: 0 }, { x: inside ? ASTRO_RAIN_NEAR_PX - 5 : ASTRO_RAIN_NEAR_PX + 5, y: 0 }, ok, t, rng, st);
+      for (const a of q) if (!p.some(b => b.id === a.id)) born.push(a.bornAt);
+      p = q;
+    }
+    expect(born.length).toBeGreaterThan(5);
+    for (let i = 1; i < born.length; i++) expect(born[i] - born[i - 1]).toBeGreaterThanOrEqual(ASTRO_RAIN_GAP_MIN_MS);
   });
   it('上限を超えたら一番古い物から沈み、沈み切ったら消える(パッと消さない)', () => {
     const st = { nextAt: 0, seq: 0 }, rng = rng0(5);

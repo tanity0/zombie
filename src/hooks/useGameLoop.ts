@@ -9493,7 +9493,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          // 投げた物の台帳は投げ手の制御と別に回す(制御が例外で止まっても、飛んでいる物は予告どおり当たる・§8 A7)。
          try {
           runAstroThrows(newGameTime);
-          runAstroScatter(newGameTime); // 周りに散らばる残骸(先に残骸が見えて、近くにいると分かる・§11)
+          if (!useGameStore.getState().bossMaker.paused) runAstroScatter(newGameTime); // 周りに降り注ぐ残骸(近づくと降り始める・当たりあり・§12-1)。時間を止めている間は降らせない
          } catch (err) {
           if (!astroThrowsErrLogged) { astroThrowsErrLogged = true; console.error('[astro] throws error (suppressed after first):', err); }
           reportSuppressedError('astro-throws', err);

@@ -80,9 +80,9 @@ export const ASTRO_DEBRIS_SPREAD_PX = 260;
 export const ASTRO_DEBRIS_GAP_PX = 60;
 export const ASTRO_DEBRIS_RADIUS = 46;
 export const ASTRO_DEBRIS_DAMAGE = 14;
-/** 1枚目は離してから700ms、以後1枚ごとに150ms。 */
-export const ASTRO_DEBRIS_FIRST_MS = 700;
-export const ASTRO_DEBRIS_STEP_MS = 150;
+/** 1枚目は離してから300ms、以後1枚ごとに120ms(社長指示2026-10-29「予告もっと短くていい。よけるのが簡単すぎる」・旧700/150)。 */
+export const ASTRO_DEBRIS_FIRST_MS = 300;
+export const ASTRO_DEBRIS_STEP_MS = 120;
 /** 残骸の種類(社長支給の絵=8種)。1回の投げで8枚とも違う絵になる。 */
 export const ASTRO_DEBRIS_VARIANTS = 8;
 /** 投げる物の絵(fx/astro-throws・66×66×12)のコマ。左からミサイル/花束/国旗/隕石/残骸8種(社長「左上から順番通り」)。 */
@@ -137,6 +137,8 @@ export interface AstroThrowEntry {
   /** 残骸の形の種類・傾き。 */
   variant?: number;
   tilt?: number;
+  /** 周りに降り注ぐ残骸(§12-1)の当たり: 予告と当たりだけを持ち、絵は周りの残骸の台帳(`astroScatter`)が描く。 */
+  ambient?: boolean;
   /** 命中を解決した(以後は残る絵だけ)。 */
   resolved?: boolean;
   /** 花束がプレイヤーに当たって跳ね返った。 */
@@ -359,14 +361,19 @@ export const astroMeteorShake = (msToHit: number): number => {
 };
 
 // ---- 周りに降り注ぐ残骸(§12-1・社長指示2026-10-29「プレイヤーが敵との距離700px以内に入ったら、空から残骸が降り始める」) ----
-/** 降り始める距離・間隔・落ちる輪・プレイヤーから離す距離・上限・叩きつける尺・古い物が沈んで消える尺。 */
-export const ASTRO_RAIN_NEAR_PX = 700;
+/**
+ * 降り始める距離・間隔・落ちる輪・最初の1枚のプレイヤーからの距離・上限・予告の尺(=降り始めから刺さるまで)・叩きつける尺・古い物が沈んで消える尺。
+ * 社長指示2026-10-29「1000px以内に変更 すぐプレイヤーの近くに1つ目は降ってくる。1秒-1.5秒置きに降ってくる。ちなみにこれもダメージあり」。
+ */
+export const ASTRO_RAIN_NEAR_PX = 1000;
 export const ASTRO_RAIN_GAP_MIN_MS = 1000;
-export const ASTRO_RAIN_GAP_MAX_MS = 3000;
+export const ASTRO_RAIN_GAP_MAX_MS = 1500;
 export const ASTRO_RAIN_RING_MIN = 120;
 export const ASTRO_RAIN_RING_MAX = 450;
-export const ASTRO_RAIN_AVOID_PLAYER_PX = 160;
+export const ASTRO_RAIN_FIRST_MIN_PX = 70;
+export const ASTRO_RAIN_FIRST_MAX_PX = 170;
 export const ASTRO_RAIN_CAP = 8;
+export const ASTRO_RAIN_WARN_MS = 700;
 export const ASTRO_RAIN_FALL_MIN_MS = 170;
 export const ASTRO_RAIN_FALL_MAX_MS = 280;
 export const ASTRO_RAIN_SINK_MS = 600;
@@ -378,17 +385,19 @@ export interface AstroScatterPiece {
   x: number; y: number;
   /** 外板の絵(0..7)・刺さった傾き(rad)・大きさ・埋まらずに見えている割合・煙が昇るか・左右反転。 */
   variant: number; rot: number; scale: number; keep: number; smoke: boolean; flip?: boolean;
-  /** 落ち始め・刺さる時刻(gameTime)。 */
-  bornAt: number; landAt: number;
+  /** 予告が出た時刻・刺さる(=当たる)時刻・空から叩きつける尺(gameTime・ms)。 */
+  bornAt: number; landAt: number; fallMs: number;
   /** 上限を超えて沈み始めた時刻(この後 ASTRO_RAIN_SINK_MS で消える)。 */
   sinkAt?: number;
 }
 
-export interface AstroRainState { nextAt: number; seq: number }
+/** nextAt=次に降らせる時刻・wasNear=前の回に近かったか・firstPending=次の1枚はプレイヤーのそば・lastAt=最後に降らせた時刻。 */
+export interface AstroRainState { nextAt: number; seq: number; wasNear?: boolean; firstPending?: boolean; lastAt?: number }
 
 /**
- * 周りに降り注ぐ残骸を1回分進める(見た目だけ・判定なし)。astro=場にいる宇宙飛行群の足元(居なければ null)、player=プレイヤーの中心。
- * 近ければ間隔ごとに1枚降らせる。上限を超えたら一番古い物を沈める。沈み切った物は消す。
+ * 周りに降り注ぐ残骸を1回分進める。astro=場にいる宇宙飛行群の足元(居なければ null)、player=プレイヤーの中心。
+ * 近ければ間隔ごとに1枚降らせる(近づいた最初の1枚はすぐ・プレイヤーのそば、以後は本体の周りの輪)。当たりは呼び手が予告つきで積む。
+ * 上限を超えたら一番古い物を沈める。沈み切った物は消す。
  * canPlace=建物・木などに埋まらない所か。変わらなければ同じ配列を返す。
  */
 export const astroRainStep = (
@@ -402,14 +411,23 @@ export const astroRainStep = (
     out = pieces.filter(p => p.sinkAt === undefined || gt < p.sinkAt + ASTRO_RAIN_SINK_MS);
   }
   const near = !!astro && Math.hypot(player.x - astro.x, player.y - astro.y) <= ASTRO_RAIN_NEAR_PX;
-  if (!near) { st.nextAt = Math.max(st.nextAt, gt); }
+  // 近づいた瞬間に1枚目(プレイヤーのそば)。ただし前に降らせてから最低の間隔は空ける=境目を出入りしても詰まらない(品質監査 A3)。
+  if (near && !st.wasNear) {
+    st.firstPending = true;
+    st.nextAt = Math.max(gt, (st.lastAt ?? -Infinity) + ASTRO_RAIN_GAP_MIN_MS);
+  }
+  st.wasNear = near;
+  if (!near) { st.firstPending = false; st.nextAt = Math.max(st.nextAt, gt); }
   else if (gt >= st.nextAt) {
+    const first = !!st.firstPending;
     st.nextAt = gt + ASTRO_RAIN_GAP_MIN_MS + rng() * (ASTRO_RAIN_GAP_MAX_MS - ASTRO_RAIN_GAP_MIN_MS);
     for (let tries = 0; tries < 8; tries++) {
       const a = rng() * Math.PI * 2;
-      const r = Math.sqrt(ASTRO_RAIN_RING_MIN ** 2 + rng() * (ASTRO_RAIN_RING_MAX ** 2 - ASTRO_RAIN_RING_MIN ** 2)); // 輪の中で面積に一様
-      const x = astro!.x + Math.cos(a) * r, y = astro!.y + Math.sin(a) * r;
-      if (Math.hypot(x - player.x, y - player.y) < ASTRO_RAIN_AVOID_PLAYER_PX) continue; // 技の残骸と取り違えない
+      // 1枚目はプレイヤーのそば(「近くにいる」を最初の一撃で知らせる)。以後は本体の周りの輪の中で面積に一様。
+      const r = first ? ASTRO_RAIN_FIRST_MIN_PX + rng() * (ASTRO_RAIN_FIRST_MAX_PX - ASTRO_RAIN_FIRST_MIN_PX)
+        : Math.sqrt(ASTRO_RAIN_RING_MIN ** 2 + rng() * (ASTRO_RAIN_RING_MAX ** 2 - ASTRO_RAIN_RING_MIN ** 2));
+      const c = first ? player : astro!;
+      const x = c.x + Math.cos(a) * r, y = c.y + Math.sin(a) * r;
       if (!canPlace(x, y)) continue;
       // 大きい塊を少し・小さい破片を多め。煙は大きい塊から。
       const big = rng() < 0.35;
@@ -419,8 +437,10 @@ export const astroRainStep = (
         rot: (rng() - 0.5) * 0.52, // ±15°まで(描き込まれた光の向きを壊さない)
         scale: big ? 1.15 + rng() * 0.45 : 0.45 + rng() * 0.35, keep: 0.55 + rng() * 0.3,
         smoke: big ? rng() < 0.85 : rng() < ASTRO_SCATTER_SMOKE_FRAC * 0.25, flip: rng() < 0.5,
-        bornAt: gt, landAt: gt + ASTRO_RAIN_FALL_MIN_MS + rng() * (ASTRO_RAIN_FALL_MAX_MS - ASTRO_RAIN_FALL_MIN_MS),
+        bornAt: gt, landAt: gt + ASTRO_RAIN_WARN_MS, fallMs: ASTRO_RAIN_FALL_MIN_MS + rng() * (ASTRO_RAIN_FALL_MAX_MS - ASTRO_RAIN_FALL_MIN_MS),
       });
+      st.lastAt = gt;
+      st.firstPending = false;
       break;
     }
   }
