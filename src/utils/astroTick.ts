@@ -2,7 +2,7 @@
 // 流儀は解放軍群(libertyTick)と同じ「store を読んで patch を書く」。動かすのはここだけ(updateEnemies は素通り)。
 //
 // 掟:
-//  - 移動は必ず ①障害物(resolveBountyMove)→ ②行ける帯(clampRectToPlayableArea)の順で通す。
+//  - 移動は行ける帯(clampRectToPlayableArea)だけを通す(浮いている=障害物は透き通る・社長指示2026-10-29)。
 //  - 浮いて見えるのは絵だけ(判定・影・帯の y は地面のまま=上下の5つの副作用に触れない)。
 //  - 投げるのは必ず着地してから・姿が画面に入っている時だけ。投げた物は台帳(store.astroThrows)に置き、
 //    投げ手が倒れても最後まで飛んで当たる。手を離す前に崩されたら、その投げの分を台帳から消す(赤が残って当たらない、を作らない)。
@@ -70,11 +70,12 @@ const playCtx = (): PlayableAreaCtx => {
     corridorRunInActive: st0.corridorRunInActive,
   };
 };
-/** 中心座標を、その体が立てる左上座標へ(①障害物 → ②行ける帯)。 */
-const placeAt = (e: Enemy, cx: number, cy: number): { x: number; y: number } => {
-  const c = resolveBountyMove(cx - e.width / 2, cy - e.height / 2, { width: e.width, height: e.height });
-  return clampRectToPlayableArea(c.x, c.y, e.width, e.height, playCtx());
-};
+/**
+ * 中心座標を、その体が居てよい左上座標へ(行ける帯だけ)。
+ * 宇宙飛行群と亡霊は浮いている=木・小物・施設・墓石を透き通る(社長指示2026-10-29「亡霊と宇宙飛行群はオブジェクトの影響を受けない(透き通る)」)。
+ */
+export const placeAt = (e: Enemy, cx: number, cy: number): { x: number; y: number } =>
+  clampRectToPlayableArea(cx - e.width / 2, cy - e.height / 2, e.width, e.height, playCtx());
 
 /** 交戦中の最高速=プレイヤーの素の移動速度の0.7倍(下がっても追いつける=倒せる敵にする)。 */
 export const astroEngageSpeed = (): number => PLAYER_BASE_SPEED * GAME_SPEED * ASTRO_ENGAGE_SPEED_MULT;
@@ -90,7 +91,7 @@ export const astroRunPois = (): AstroPoi[] => {
 };
 
 /** 見つける相手(プレイヤー/守護霊)のうち一番近い者と、前方の扇で見つけたか。 */
-const nearestTarget = (bx: number, by: number, faceX: number, faceY: number): { x: number; y: number; d: number; seen: boolean; ghost: boolean } => {
+export const nearestTarget = (bx: number, by: number, faceX: number, faceY: number): { x: number; y: number; d: number; seen: boolean; ghost: boolean } => {
   const st = useGameStore.getState();
   let best = { x: bx, y: by, d: Infinity, seen: false, ghost: false };
   let seen = false;

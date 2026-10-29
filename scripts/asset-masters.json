@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "942 files / 復号後 約711MB",
+ "generatedFor": "943 files / 復号後 約711MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -4117,6 +4117,12 @@
    "h": 43,
    "bytes": 1559,
    "sha": "ee0a016ae8f84e25"
+  },
+  "sprites/props/wraith-growths.png": {
+   "w": 392,
+   "h": 66,
+   "bytes": 21772,
+   "sha": "7a7e61b44092c014"
   },
   "sprites/pumpkin-common-jump.png": {
    "w": 2355,

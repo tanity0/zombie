@@ -53,7 +53,9 @@ export const usesPostureSystem = (e: PostureSubject): boolean =>
     // research/LIBERTY_HORDE.md §7: 解放軍群の旗手も同じ(ボス級・ENGAGEABLE の外)。
     || e.type === 'mutant-liberty'
     // research/ASTRONAUT_HORDE.md: 宇宙飛行群も同じ(ボス級・ENGAGEABLE の外)。
-    || e.type === 'mutant-astro');
+    || e.type === 'mutant-astro'
+    // research/WRAITH_MUTANT.md: 亡霊も同じ(ボス級・ENGAGEABLE の外)。
+    || e.type === 'mutant-wraith');
 
 export type BossPostureImpact = 'counter' | 'melee' | 'heavy' | 'gun-crit' | 'reflect';
 
@@ -111,6 +113,7 @@ export const bossPostureMax = (e: PostureSubject): number => {
   if (type === 'mutant-hero') return 90; // research/MUTANT_HERO.md §1: 賞金首と同じ90
   if (type === 'mutant-liberty') return 90; // research/LIBERTY_HORDE.md §7: 英雄と同じ90
   if (type === 'mutant-astro') return 90; // research/ASTRONAUT_HORDE.md: 解放軍群と同じ90
+  if (type === 'mutant-wraith') return 90; // research/WRAITH_MUTANT.md §8 A1: 宇宙飛行群と同じ90
   return 100;
 };
 

@@ -136,6 +136,7 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'mutant-liberty', scaleMode: 'nearest' },  // 150x202 = 0.12MB(解放軍群(変異)の旗手の立ち絵=歩きの1コマ目)
     { name: 'mutant-liberty-weapon', scaleMode: 'nearest' }, // 70x86 = 0.02MB(旗手の旗・社長支給のドット絵)
     { name: 'mutant-astro', scaleMode: 'nearest' },    // 156x182 = 0.11MB(宇宙飛行群(変異)の立ち絵=浮遊シートの0コマ目を切り出し)
+    { name: 'mutant-wraith', scaleMode: 'nearest' },   // 96x152 = 0.06MB(亡霊(変異体)の立ち絵=浮遊シートの0コマ目を切り出し)
   ],
   /**
    * 宇宙飛行群(変異)の浮遊(11コマ・1716x182=1.25MB)と投げ(13コマ・1898x182=1.38MB)。research/ASTRONAUT_HORDE.md。
@@ -150,6 +151,16 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'fx/astro-throws', scaleMode: 'nearest' },
     // 飛んでいる国旗(社長支給2026-10-29・48×90・穂先が左下=絵の下端左・竿を長くした絵)。刺さった後は astro-throws の旗。
     { name: 'fx/astro-flag-fly', scaleMode: 'nearest' },
+  ],
+  /**
+   * 亡霊(変異体)の浮遊(16コマ・1536x152=0.93MB)と叫び(16コマ・1216x135=0.66MB)。research/WRAITH_MUTANT.md。
+   * 宇宙飛行群と同じく遠くを彷徨う個体=遅延組・網だけで拾う。姿が見えた時点で描画(`pixiScene.wraithTexture`)が叫びのシートも引く。
+   */
+  wraith: [
+    { name: 'mutant-wraith-float', scaleMode: 'nearest' },
+    { name: 'mutant-wraith-scream', scaleMode: 'nearest' },
+    // 近づくと地面から生えてくる墓石と花(社長支給2026-10-29・392x66=0.10MB・8コマ×49)。§9。
+    { name: 'props/wraith-growths', scaleMode: 'nearest' },
   ],
   /**
    * ★ボス級の**アニメーションシート**(社長指示2026-09-24「乗せて」)。**所属は付けない=網だけで拾う**

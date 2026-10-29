@@ -178,6 +178,8 @@ export const ENEMY_STATS: Record<EnemyType, EnemyStats> = {
   // research/ASTRONAUT_HORDE.md(宇宙飛行群(変異)・ボス級): 判定=解放軍群と同じ足元 110×60。体当たりは無し(damage 0=投げる敵)。
   //  ・speed は astroTick が自分で動かす。health はスポーン側が上書きする(解放軍群と同じ式・初めて画面に入った時)。
   'mutant-astro': { width: 110, height: 60, speed: 70, health: 2000, damage: 0, experienceValue: 0 },
+  // research/WRAITH_MUTANT.md §8 A1: 亡霊(変異体)。動かすのは wraithTick、体力はスポーン側(宇宙飛行群と同じ式)。
+  'mutant-wraith': { width: 60, height: 50, speed: 80, health: 2000, damage: 0, experienceValue: 0 },
   // research/LAB_CRAWLER.md §4: ステージ2の変異塊の代理(攻撃を受ける窓口だけ)。寸法・体力は utils/labCrawlerProxy.ts が
   // 毎フレーム塊に合わせて書く(ここの値は使わない)。動かない・接触ダメージ0・経験値0。
   'lab-crawler': { width: 742, height: 300, speed: 0, health: 37564, damage: 0, experienceValue: 0 },
@@ -194,7 +196,7 @@ export const isMutantHero = (t: EnemyType): boolean => t === 'mutant-hero';
  * 英雄は本編で出撃直後から最後まで遠くの輪を回っているので、数えると**上限の枠を1つずっと食う**(初心者ゾーンの密度まで下がる)。
  */
 export const countsTowardEnemyCap = (e: { type: EnemyType; hordeLeaderId?: string }): boolean =>
-  e.type !== 'mutant-hero' && e.type !== 'mutant-liberty' && e.type !== 'mutant-astro' && e.hordeLeaderId === undefined // 解放軍群(旗手+取り巻き)も別カウント(LIBERTY_HORDE §6)
+  e.type !== 'mutant-hero' && e.type !== 'mutant-liberty' && e.type !== 'mutant-astro' && e.type !== 'mutant-wraith' && e.hordeLeaderId === undefined // 解放軍群(旗手+取り巻き)も別カウント(LIBERTY_HORDE §6)
   && !isLabCrawlerProxyType(e.type); // ステージ2の変異塊の代理は敵の数に入れない(LAB_CRAWLER §4)
 /**
  * research/LAB_CRAWLER.md §4(第2版): ステージ2の変異塊の**代理**か。攻撃を受ける窓口だけの Enemy(描かない・動かない・
@@ -232,9 +234,11 @@ export const bandHitsBox = (
 /** research/LIBERTY_HORDE.md: 解放軍群の旗手か。動かすのは libertyTick だけ(updateEnemies は素通り)。 */
 export const isLibertyBearer = (t: EnemyType): boolean => t === 'mutant-liberty';
 /** 体で塞ぐボス(接触ダメージ0=重なると被弾処理だけが走る事故を避ける・英雄 v0.25.4820 と同じ)。 */
-export const isBodyWallBoss = (t: EnemyType): boolean => t === 'mutant-hero' || t === 'mutant-liberty' || t === 'mutant-astro';
+export const isBodyWallBoss = (t: EnemyType): boolean => t === 'mutant-hero' || t === 'mutant-liberty' || t === 'mutant-astro' || t === 'mutant-wraith';
 /** research/ASTRONAUT_HORDE.md: 宇宙飛行群(変異)か。動かすのは astroTick だけ(updateEnemies は素通り)。 */
 export const isMutantAstro = (t: EnemyType): boolean => t === 'mutant-astro';
+/** research/WRAITH_MUTANT.md: 亡霊(変異体)か。動かすのは wraithTick だけ(updateEnemies は素通り)。 */
+export const isMutantWraith = (t: EnemyType): boolean => t === 'mutant-wraith';
 /** 列に並んでいる/戻っている取り巻き(通常AIを素通りし、旗手の制御が座標を書く)。 */
 export const isHordeFollower = (e: { hordeLeaderId?: string; hordeState?: string }): boolean =>
   e.hordeLeaderId !== undefined && (e.hordeState === 'follow' || e.hordeState === 'return');
@@ -408,6 +412,8 @@ export const isBossType = (t: EnemyType): boolean =>
   isLibertyBearer(t) ||
   // research/ASTRONAUT_HORDE.md: 宇宙飛行群もボス級(社長裁定2026-10-29)。「ボス戦」には入れない。
   isMutantAstro(t) ||
+  // research/WRAITH_MUTANT.md: 亡霊もボス級(社長回答2026-10-29)。「ボス戦」には入れない(宇宙飛行群と同じ)。
+  isMutantWraith(t) ||
   // research/LAB_CRAWLER.md §4: ステージ2の変異塊の代理もボス級の固さ(社長「ノックバックしない・体勢は崩れない」)。「ボス戦」には入れない。
   isLabCrawlerProxyType(t);
 
@@ -497,7 +503,8 @@ export const getsDramaticDeath = (enemy: Enemy): boolean =>
 export const isCorpse = (e: Pick<Enemy, 'corpseUntil'>): boolean => e.corpseUntil !== undefined;
 /** 何も当たらない個体(英雄の昇天中=社長指示2026-10-05)。死体と同じく攻撃・照準の対象から外す。 */
 // ステージ2の塊の叩き潰しの登場の生け贄(場面の最中=labBait.active)も同じ扱い: 自動の狙い・攻撃が当たらない(潰される役を最後まで務める・LAB_CRAWLER §11)。
-export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait'>): boolean => e.bossState === 'hero-ascend' || !!e.labBait?.active;
+// 亡霊のワープ中(消えて現れるまでの500ms・research/WRAITH_MUTANT.md §8 A3)も同じ。
+export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait' | 'wraithPhased'>): boolean => e.bossState === 'hero-ascend' || !!e.labBait?.active || !!e.wraithPhased;
 
 // UNIQUE_WEAPONS.md §19-3(監査A2・A9の是正): 銃の自動照準(weaponUtils.ts の module-local
 // `pickTarget`)と**同じ選び方**を、Player型に縛られない座標引数の形へ切り出したもの。
@@ -806,7 +813,9 @@ const CONSTANT_STRENGTH_TYPES = new Set<EnemyType>(['giantbat', 'reaper', 'hange
   // research/LIBERTY_HORDE.md(旗手): 同上。
   'mutant-liberty',
   // research/ASTRONAUT_HORDE.md(宇宙飛行群): 同上(体力はスポーン側が決める)。
-  'mutant-astro']);
+  'mutant-astro',
+  // research/WRAITH_MUTANT.md(亡霊): 同上。
+  'mutant-wraith']);
 // ステージ2(ラボ)専用の敵は固定難易度(エリア/色/時間で変動させない・社長指定)。lab-zombie 本来のステータスを使う。
 const LAB_FIXED_TYPES = new Set<EnemyType>(['lab-zombie-1', 'lab-zombie-2', 'lab-zombie-3']);
 // エリア → [青影, 紫影, 赤影] の出現確率(絶対値・社長指定)。残りは無色。
@@ -1335,6 +1344,7 @@ export const getEnemyColor = (type: EnemyType): string => {
   switch (type) {
     case 'bat':      return '#1f1b2c';  // near-black purple
     case 'skeleton': return '#e7e3d3';  // bone white
+    case 'mutant-wraith': return '#cfc8d6'; // 亡霊(変異体)=くすんだ白布(崩れ散る粒の色・research/WRAITH_MUTANT.md)
     case 'zombie':   return '#5a7a3c';  // sickly green
     case 'plant':    return '#7e2a86';  // pink-purple
     case 'ghost':    return '#cbd5e1';  // pale blue-white

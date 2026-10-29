@@ -130,6 +130,8 @@ export const checkProjectileEnemyCollisions = (
       // ジャンプ攻撃中(空中)の敵は当たり判定そのものを外す=あらゆる飛び道具をすり抜けさせる
       // (盾は別経路=敵AIの shield 判定で処理されるので影響しない)。
       if (enemy.aiPhase === 'jump') return;
+      // 亡霊のワープ中(research/WRAITH_MUTANT.md §8 A3)も同じ=撃っても素通り。
+      if (enemy.wraithPhased) return;
 
       // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 死体は弾をすり抜けさせる(貫通弾のpierce/
       // passthroughを消費させない・死体に攻撃が吸われる事故を防ぐ)。
@@ -209,7 +211,7 @@ export const checkEnemySummonCollisions = (
   const out: { enemyId: string; summonId: string; damage: number }[] = [];
   for (const enemy of enemies) {
     if (isCorpse(enemy)) continue; // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 召喚への接触ダメージから除外
-    if (enemy.type === 'mutant-hero' || enemy.type === 'mutant-liberty' || enemy.type === 'mutant-astro') continue; // research/MUTANT_HERO.md: 英雄は接触で傷つけない(damage 0の被弾演出も出さない)
+    if (enemy.type === 'mutant-hero' || enemy.type === 'mutant-liberty' || enemy.type === 'mutant-astro' || enemy.type === 'mutant-wraith') continue; // research/MUTANT_HERO.md: 英雄は接触で傷つけない(damage 0の被弾演出も出さない)
     for (const s of summons) {
       // research/HERO_DOG.md §6: 英雄の犬も接触で傷つく(去りかけ=expiresAt ありは当たらない)。
       if (s.kind !== 'normal' && s.kind !== 'ghost-ally' && !(s.kind === 'hero-dog' && s.expiresAt === undefined)) continue;

@@ -34,7 +34,9 @@ export const isMarkedBoss = (e: Pick<Enemy, 'type' | 'isStoryBoss'>): boolean =>
   // research/LIBERTY_HORDE.md §7: 解放軍群の旗手も(ただし交戦中だけ=下の isMarkedBossVisible)。
   || e.type === 'mutant-liberty'
   // research/ASTRONAUT_HORDE.md: 宇宙飛行群も(交戦中だけ=下の isMarkedBossVisible)。
-  || e.type === 'mutant-astro';
+  || e.type === 'mutant-astro'
+  // research/WRAITH_MUTANT.md: 亡霊も(交戦中だけ)。
+  || e.type === 'mutant-wraith';
 
 /** 賞金首の矢印マーカー有効距離(§6.38 B1.5-5)。
  * ★2026-08-26 社長指示「いる間はマーク表示。近づいたらじゃなくて」で**距離ゲートは撤廃**
@@ -61,7 +63,7 @@ export const isMarkedBossVisible = (
   // 直近に殴った間だけ(裏ボスの「マークは交戦中だけ」と同じ)。出会う前から矢印が出続けると、輪の上で偶然出会う驚きが消える。
   // 対策室・ボステストの英雄(heroPatrolR なし)は従来どおり常に出す。
   // 解放軍群の旗手は周回でも確認用の枠でも、**見つけている間と直近に殴られた間だけ**。
-  if (e.type === 'mutant-liberty' || e.type === 'mutant-astro') return e.libAlerted === true || now - e.lastHit <= BOSS_ENGAGE_GRACE_MS;
+  if (e.type === 'mutant-liberty' || e.type === 'mutant-astro' || e.type === 'mutant-wraith') return e.libAlerted === true || now - e.lastHit <= BOSS_ENGAGE_GRACE_MS;
   if (e.type === 'mutant-hero' && e.heroPatrolR !== undefined) {
     return e.heroTargetId === 'player' || e.heroTargetId === 'ghost' || now - e.lastHit <= BOSS_ENGAGE_GRACE_MS;
   }

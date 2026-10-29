@@ -217,7 +217,8 @@ import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
 import type { PersistentBeam } from '../utils/persistentBeam';
 import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, PHANTOM_FLAMER_WINDUP_MS, phantomFlamerPhase } from '../utils/flamerCone';
-import { NewGunsFx } from './newGunsFx'; // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
+import { NewGunsFx } from './newGunsFx';
+import { wraithScreamRisePx, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_FRAMES, WRAITH_GROWTH_SINK_MS, wraithWarpState, wraithLiftPx, wraithScreamFrame, wraithFloatFrame, wraithScreamBodyH, WRAITH_SCREAM_FRAMES, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_ALIGN_X, WRAITH_FLOAT_ALIGN_X, WRAITH_SCREAM_FRAME_W, WRAITH_FLOAT_FRAME_W, WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_RADIUS } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
 import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
@@ -7294,7 +7295,8 @@ export class PixiScene {
   /** 偶像の直近の見た目の高さ(空中で倒された時、死体を宙から落とすため)。 */
   private idolLastLift: { id: string; lift: number; at: number } | null = null;
   private astroLastLook: { lift: number; tex: Texture; face: number; at: number } | null = null;
-  private astroCorpseLook: { diedAt: number; lift: number; tex: Texture | null; face: number } | null = null;
+  private wraithLastLook: { lift: number; tex: Texture; face: number; at: number; anchorX: number } | null = null;
+  private astroCorpseLook: { diedAt: number; lift: number; tex: Texture | null; face: number; anchorX?: number } | null = null;
   /** 空中で倒された偶像の死体の落下(diedAt で識別)。 */
   private idolCorpseFall: { diedAt: number; from: number } | null = null;
   // FX-V2a: 「直前フレームにgaze-windup中だった」敵のid(windup終了エッジ=発射の瞬間を捉える
@@ -9499,7 +9501,8 @@ export class PixiScene {
         if (tsNum('tsbossfocus', 1) > 0) {
           const scrH = this.screenH * vpScale;
           for (const e of s.enemies) {
-            if (!(isEngageableBoss(e.type) || heroFocusEligible(e)) || e.dormant === true || e.bossState === 'return' || e.health <= 0) continue; // 英雄: 技の溜め〜当たりは狙いが誰でもピントを外さない
+            // 亡霊(research/WRAITH_MUTANT.md): 見つけて周りを回っている間はピントを合わせる(すぐ横で叫びの口が開くのが読める)。
+            if (!(isEngageableBoss(e.type) || heroFocusEligible(e) || (e.type === 'mutant-wraith' && e.libAlerted === true)) || e.dormant === true || e.bossState === 'return' || e.health <= 0) continue; // 英雄: 技の溜め〜当たりは狙いが誰でもピントを外さない
             const v = this.enemies.get(e.id);
             if (!v || !v.sprite.visible || v.container.alpha <= 0.01 || !v.container.visible) continue;
             const bb = v.sprite.getBounds();
@@ -9962,6 +9965,7 @@ export class PixiScene {
     this.syncLabProps(); // 遮蔽物プロップ(研究所スキン・区画生成。森/屋内では no-op)
     this.syncCityProps(); // ステージ3(廃都)の散布オブジェクト(その他ステージでは no-op)
     this.syncForestFlowers(); // ステージ1(森)の装飾花(その他ステージでは no-op)
+    this.syncWraithGrowths(); // research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石と花(立ち物・足元のYで並べる)
     this.syncCorridorBackdrop(now); // ステージ6(洋館・corridorMode)の疑似3D通路背景(その他ステージでは no-op)
     // 最前面の天井帯: チュートリアル(洞窟)=鍾乳石帯(上寄せループ)。lab(研究所屋外)のケーブル帯は
     // 支給遠景1枚だけを表示する方針のため非表示化(社長指示v0.25.2181)。後日改めて設置予定。
@@ -10079,6 +10083,7 @@ export class PixiScene {
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
     this.syncLibertyArrows(s.enemies, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top, s.libertyOrphanArrows); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
     this.syncAstroThrows(s.astroThrows, s.astroScatter, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top, now); // research/ASTRONAUT_HORDE.md §4: 投げた物(投げ手が画面外・倒れた後でも描く)・§11 周りの残骸
+    this.syncWraithTelegraph(s.enemies, s.gameTime); // research/WRAITH_MUTANT.md §4: 亡霊の叫びの紫の円
     this.syncPlayerArrowRain(s.arrowRainShots, s.arrowRainStuck, s.gameTime); // research/ARROW_RAIN.md
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
@@ -11954,6 +11959,56 @@ export class PixiScene {
     }
     for (const [id, entry] of this.cityPropObjs) {
       if (!seen.has(id)) { entry.sprite.destroy(); this.cityPropObjs.delete(id); }
+    }
+  }
+
+  /**
+   * research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石と花。花・街の小物と同じ立ち物(足元のYで並べる・地平線と手前の薄れ・環境の色)。
+   * 地面から突き上がる=絵の上側だけを見せて下端を地面に置き、伸びるほど見える割合を増やす(沈む時は逆)。花は風でしなる。
+   */
+  private wraithGrowthObjs = new Map<string, Sprite>();
+  private wraithGrowthCut = new Map<string, Texture>();
+  private syncWraithGrowths(): void {
+    const s = useGameStore.getState();
+    const list = s.wraithGrowths;
+    if (list.length === 0 && this.wraithGrowthObjs.size === 0) return;
+    const frames = list.length > 0 ? this.sheetSlices('props/wraith-growths', WRAITH_GROWTH_FRAMES) : null;
+    const tint = this.envTintNow();
+    const seen = new Set<string>();
+    for (const g of list) {
+      const full = frames?.[g.variant];
+      if (!full) continue;
+      if (this.distanceOutsideViewport(g.x, g.y, 140) > 0) continue;
+      const r = wraithGrowthRise(s.gameTime, g);
+      if (r <= 0.02) continue;
+      const keep = Math.max(0.05, Math.min(1, Math.round(Math.min(1, r) * 20) / 20));
+      const key = `${g.variant}:${keep.toFixed(2)}`;
+      let tex = this.wraithGrowthCut.get(key);
+      if (!tex) {
+        tex = keep >= 1 ? full : new Texture({ source: full.source, frame: new Rectangle(full.frame.x, full.frame.y, full.frame.width, Math.max(1, Math.round(full.frame.height * keep))) });
+        this.wraithGrowthCut.set(key, tex);
+      }
+      seen.add(g.id);
+      let sp = this.wraithGrowthObjs.get(g.id);
+      if (!sp) {
+        sp = new Sprite(tex);
+        sp.anchor.set(0.5, 1);
+        this.L.actorLayer.addChild(sp);
+        this.wraithGrowthObjs.set(g.id, sp);
+      }
+      sp.texture = tex;
+      sp.position.set(g.x, g.y);
+      sp.zIndex = g.y; // 立ち物=足元Yでアクター/敵とY-sort
+      const ds = this.depthScale(g.y);
+      const over = r > 1 ? r : 1; // 伸び切る直前の行き過ぎ(少し伸びて戻る)
+      sp.scale.set(g.scale * ds * (g.flip ? -1 : 1), g.scale * ds * over);
+      sp.tint = tint;
+      const sinkFade = g.sinkAt !== undefined ? Math.max(0, 1 - (s.gameTime - g.sinkAt) / WRAITH_GROWTH_SINK_MS) : 1;
+      sp.alpha = this.horizonActorAlpha(g.y) * this.foregroundActorAlpha(g.y) * sinkFade;
+      sp.skew.x = isWraithGrave(g.variant) ? 0 : this.windNow * FLOWER_WIND_SKEW;
+    }
+    for (const [id, sp] of this.wraithGrowthObjs) {
+      if (!seen.has(id)) { sp.destroy(); this.wraithGrowthObjs.delete(id); }
     }
   }
 
@@ -21580,7 +21635,8 @@ export class PixiScene {
     //   技/歩き/待機のコマを1枚も引かない=技の途中の姿で固まらない(`utils/bossStopArt.ts`)。
     const bossStopped = bossStoppedForArt(e, gameTime, isHiddenBoss(e.type));
     // research/ASTRONAUT_HORDE.md §3: 宇宙飛行群の浮遊・投げのコマ。崩れて落ちる間も逆再生で降りる絵を出す(§8 B3)=止まった時の立ち絵の例外。
-    const astroTex = e.type === 'mutant-astro' ? this.astroTexture(e, gameTime) : null;
+    // research/WRAITH_MUTANT.md: 亡霊の浮遊・叫びのコマも同じ通し(止まった時の立ち絵の例外=崩れている間も漂う)。
+    const astroTex = e.type === 'mutant-astro' ? this.astroTexture(e, gameTime) : e.type === 'mutant-wraith' ? this.wraithTexture(e, gameTime) : null;
     const atkTex = astroTex ?? (bossStopped ? null : this.enemyScreamTexture(idleTexKey, e, gameTime)
       ?? this.enemySweepTexture(idleTexKey, e, gameTime)
       ?? this.enemyJumpTexture(idleTexKey, e, gameTime)
@@ -21892,7 +21948,9 @@ export class PixiScene {
     // research/HUNTER_PATROL.md: 巡回のワープ(薄れて消える→薄れて現れる)も「そこに居ない」の濃さとして掛ける。
     const hunterLeaveFade = (e.hunterLeavingAt !== undefined
       ? Math.max(0, 1 - (gameTime - e.hunterLeavingAt) / HUNTER_LEAVE_FADE_MS)
-      : 1) * (e.type === 'hunter' ? hunterWarpAlpha(gameTime, e.hunterWarpOutAt, e.hunterWarpInAt) : 1);
+      : 1) * (e.type === 'hunter' ? hunterWarpAlpha(gameTime, e.hunterWarpOutAt, e.hunterWarpInAt) : 1)
+      // research/WRAITH_MUTANT.md §8 A3: 亡霊のワープ(薄れて消える→反対側に薄れて現れる)も同じ「そこに居ない」の濃さ(本体・影・光)。
+      * (e.type === 'mutant-wraith' ? wraithWarpState(gameTime, e.wraithWarpOutAt).alpha : 1);
     // PACING_PUZZLE.md §6.38 B1(賞金首): 滞在1分満了+帰巣完了後のフェード退場(hunterLeaveFadeと同型)。
     const bountyDepartFade = e.bountyDepartAt !== undefined
       ? Math.max(0, 1 - (gameTime - e.bountyDepartAt) / BOUNTY_DEPART_FADE_MS)
@@ -22206,6 +22264,11 @@ export class PixiScene {
       const al = ASTRO_HOVER_ALIGN[Math.round(e.astroHoverFrame ?? 0)];
       if (al) view.sprite.anchor.set(0.5 - al[0] / ASTRO_HOVER_FRAME_W, 1 - al[1] / ASTRO_SHEET_H);
     }
+    // 亡霊: 体を起点にする(社長指示2026-10-29「上下には揺れるけど。左右はうまく合わせて」)=コマごとの体の横のずれを支点で打ち消す。
+    if (e.type === 'mutant-wraith') {
+      const k = this.wraithFrameOf(e, gameTime);
+      view.sprite.anchor.set(0.5 - (k.scream ? WRAITH_SCREAM_ALIGN_X[k.f] / WRAITH_SCREAM_FRAME_W : WRAITH_FLOAT_ALIGN_X[k.f] / WRAITH_FLOAT_FRAME_W), 1);
+    }
     // ---- 歩行二次モーション(①②③・v0.25.2899・視覚のみ) ----------------------------------------
     // 実移動速度を論理座標の差分から推定(指数平滑)。移動と同期して揺れるので、止まっている敵
     // (気絶/拘束/紫/休眠/壁ハマり)は自然に静止する=状態フラグを個別に見る必要が無い。
@@ -22320,7 +22383,7 @@ export class PixiScene {
           : backpedalFaceSide(vx, e.x + e.width / 2, bpPl.x + bpPl.width / 2);
         // research/MUTANT_HERO.md: 英雄の向きは制御(heroTick)が決める(左右が入れ替わる前に一拍止まってから)。
         // research/LIBERTY_HORDE.md: 解放軍群の旗手も、止まって叫ぶ間は相手の方を向く(制御が heroFaceX を書く)。
-        const heroFace = (e.type === 'mutant-hero' || e.type === 'mutant-liberty' || e.type === 'mutant-astro') && e.heroFaceX !== undefined ? (e.heroFaceX > 0 ? toRight : -toRight) : 0;
+        const heroFace = (e.type === 'mutant-hero' || e.type === 'mutant-liberty' || e.type === 'mutant-astro' || e.type === 'mutant-wraith') && e.heroFaceX !== undefined ? (e.heroFaceX > 0 ? toRight : -toRight) : 0;
         // 英雄の昇天に見とれている間は英雄の方を向く(社長裁定2026-10-05)。向き直りは通常の振り向き(ENEMY_TURN_MS)で滑らかに。
         const aweFace = e.aweUntil !== undefined && now < e.aweUntil && e.aweFaceX !== undefined
           ? (e.aweFaceX >= e.x + e.width / 2 ? toRight : -toRight) : 0;
@@ -22365,13 +22428,19 @@ export class PixiScene {
       : 0;
     // research/MUTANT_HERO.md: 英雄の跳躍の高さ(見た目だけ・判定は地面のまま=CLAUDE.md「Y方向」の掟)。
     // research/ASTRONAUT_HORDE.md §8 A4: 宇宙飛行群の浮遊も同じ(絵だけ持ち上げる・判定・影・帯の y は地面のまま)。
-    const heroLift = e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1)) : 0;
-    view.sprite.position.set(Math.round(fb.footX + liftShake + sweepWindupTremor),
+    const heroLift = e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1))
+      : e.type === 'mutant-wraith' ? wraithLiftPx(gameTime, e.wraithPhase ?? 0) + (e.wraithScreamAt !== undefined ? wraithScreamRisePx(gameTime - e.wraithScreamAt) : 0) : 0;
+    // 亡霊: 叫び続けている間(当たった後)は体が震える(位置だけ=絵は歪めない・クリエイティブ監査#8)。
+    const wraithTremor = e.type === 'mutant-wraith' && e.wraithScreamAt !== undefined && gameTime - e.wraithScreamAt >= WRAITH_SCREAM_WINDUP_MS
+      ? (Math.sin(now / 23) * 0.6 + Math.sin(now / 11 + 1.3) * 0.4) * 2.6 : 0;
+    view.sprite.position.set(Math.round(fb.footX + liftShake + sweepWindupTremor + wraithTremor),
       Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx - heroLift));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
     // 宇宙飛行群: 倒れた瞬間の浮き・コマ・向きを死体へ引き継ぐ(宙から1フレームで地面へ落ちない・品質監査2巡目 A1)。
     if (e.type === 'mutant-astro' && tex) this.astroLastLook = { lift: heroLift, tex, face: faceMul < 0 ? -1 : 1, at: Date.now() };
+    // 亡霊も同じ(コマ・浮き・向き・体を止める寄せを死体へ引き継ぐ・設計 §8 A8)。
+    if (e.type === 'mutant-wraith' && tex) this.wraithLastLook = { lift: heroLift, tex, face: faceMul < 0 ? -1 : 1, at: Date.now(), anchorX: view.sprite.anchor.x };
 
     if (tex) {
       view.sprite.texture = tex;
@@ -22413,6 +22482,8 @@ export class PixiScene {
           ...BOSS_PHASE_SHEETS.map(c => [idleTexKey === c.idle ? c.bodyH : null, c.name] as const),
           // ★技ごとの差し替えシート。ここに並べないと**その技の間だけ倍率の補正が外れる**。
           ...giantAltSweepSheets(idleTexKey).map(a => [a.bodyH, a.name] as const),
+          // research/WRAITH_MUTANT.md §4: 亡霊の叫び。シートが足元支点で少しずつズームしている=コマごとの本体の高さで浮遊と同じ背丈へ。
+          [idleTexKey === 'mutant-wraith' ? wraithScreamBodyH(frameIdx) : null, 'mutant-wraith-scream'] as const,
         ]) {
           if (bh === null) continue;
           const sl = this.enemyWalkFrames.get(name);
@@ -22513,7 +22584,7 @@ export class PixiScene {
       // ★検収差し戻し(中11)対応: 影の寸法は呼吸/被弾スカッシュ/crouch・jump(aiSqX/Y)を含まない
       // 「素のscale」(sc)を使う。持ち上げ系(liftHop/aiHop/kbHop/lungeOffY)は heightPx 相当として渡す。
       view.shadowScale = sc;
-      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY + (e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1)) : 0);
+      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY + (e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1)) : e.type === 'mutant-wraith' ? wraithLiftPx(gameTime, e.wraithPhase ?? 0) : 0);
       // faceMul(③振り向き)は符号を持つ=ミラー。歩幅スカッシュ(motSqX/Y)は他の変形と同じ掛け算合成。
       // ★死体は**縦に潰れて横に広がりながら**消える(社長指示2026-08-25「突然パっと消えちゃうので、
       // すこし吹っ飛んで潰れて消えるようにして」)。判定には一切関与しない純粋な描画。
@@ -32891,7 +32962,12 @@ export class PixiScene {
       const ok = ll && corpse.diedAt - ll.at < 600;
       this.astroCorpseLook = { diedAt: corpse.diedAt, lift: ok ? ll.lift : 0, tex: ok ? ll.tex : null, face: ok ? ll.face : 1 };
     }
-    const astroLook = corpse.type === 'mutant-astro' ? this.astroCorpseLook : null;
+    if (corpse.type === 'mutant-wraith' && this.astroCorpseLook?.diedAt !== corpse.diedAt) {
+      const ll = this.wraithLastLook;
+      const ok = ll && corpse.diedAt - ll.at < 600;
+      this.astroCorpseLook = { diedAt: corpse.diedAt, lift: ok ? ll.lift : 0, tex: ok ? ll.tex : null, face: ok ? ll.face : 1, anchorX: ok ? ll.anchorX : 0.5 };
+    }
+    const astroLook = corpse.type === 'mutant-astro' || corpse.type === 'mutant-wraith' ? this.astroCorpseLook : null;
     const tex = astroLook?.tex ? astroLook.tex : corpse.glenBoss2
       ? (getTexture('glen-boss2') ?? getTexture(this.enemyTexKey(corpse.type, '')))
       : isPhantomCorpse
@@ -32970,7 +33046,9 @@ export class PixiScene {
     const sqX = 1 + BOSS_CORPSE_SPREAD * ce;
     const sinkY = (spriteH * (1 - sqY)) / 2;      // 足元を地面に残したまま潰すための沈み込み
     sp.scale.set(scale * sqX * (astroLook?.face ?? 1), scale * sqY);
-    const baseX = fit ? stripCx + (0.5 - fit.cx) * spriteW : stripCx;
+    // 亡霊: 生きていた時の「体を止める寄せ」を死体にも残す(横に跳ばない・設計 §8 A8)。
+    const lookShiftX = astroLook?.anchorX !== undefined ? (0.5 - astroLook.anchorX) * spriteW * (astroLook.face ?? 1) : 0;
+    const baseX = (fit ? stripCx + (0.5 - fit.cx) * spriteW : stripCx) + lookShiftX;
     // 通常経路の敵は足元アンカー(0.5,1)で描かれているので、中心アンカーに合わせて半分持ち上げる。
     const baseY = fit ? stripCy + (0.5 - fit.cy) * spriteH : corpse.y + corpse.h - spriteH / 2;
     sp.position.set(Math.round(baseX + shakeX + corpseRecoilX), Math.round(baseY + shakeY + sinkY - fallLift + corpseRecoilY));
@@ -36737,6 +36815,41 @@ export class PixiScene {
    * ★予兆のリング・SE・揺れには一切触っていない(「元々のエフェクトは消さない」)。
    */
   private screamEndMemo = new Map<string, number>();
+
+  /**
+   * research/WRAITH_MUTANT.md §4: 叫びの予告=紫の円(弾けない)。溜めの始まりに出て外から内へ流れ、当たる瞬間(溜め明け)に消え切る。
+   * 円の中心と半径は制御が積む爆風と同じ(体の判定の中心・WRAITH_SCREAM_RADIUS)。
+   */
+  private wraithTeleGfx = new Graphics();
+  private syncWraithTelegraph(enemies: readonly Enemy[], gameTime: number): void {
+    const g = this.wraithTeleGfx;
+    if (g.parent !== this.L.groundLayer) this.L.groundLayer.addChild(g);
+    g.clear();
+    const style = telegraphStyleFor('mutant-wraith');
+    for (const e of enemies) {
+      if (e.type !== 'mutant-wraith' || e.wraithScreamAt === undefined || isCorpse(e)) continue;
+      const t = gameTime - e.wraithScreamAt;
+      if (t < 0 || t >= WRAITH_SCREAM_WINDUP_MS) continue;
+      const prog = t / WRAITH_SCREAM_WINDUP_MS;
+      const x = e.x + e.width / 2, y = e.y + e.height / 2;
+      const mask = CIRCLE_SWEEP_ON ? this.drawSweepCircleFill(g, x, y, WRAITH_SCREAM_RADIUS, prog, 0x9333ea, 0.3, style)
+        : (g.circle(x, y, WRAITH_SCREAM_RADIUS).fill({ color: 0x9333ea, alpha: 0.12 + 0.14 * prog }), 1);
+      g.circle(x, y, WRAITH_SCREAM_RADIUS).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.9 * mask });
+    }
+  }
+
+  /** research/WRAITH_MUTANT.md: 今のコマ(叫びの間は叫びのシート・それ以外は浮遊のループ)。 */
+  private wraithFrameOf(e: Enemy, gameTime: number): { scream: boolean; f: number } {
+    if (e.wraithScreamAt !== undefined) return { scream: true, f: wraithScreamFrame(gameTime - e.wraithScreamAt) };
+    return { scream: false, f: wraithFloatFrame(gameTime, e.wraithPhase ?? 0) };
+  }
+  private wraithTexture(e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
+    getTexture('mutant-wraith-scream'); // 姿が見えた時点で叫びのシートも取りに行く(最初の叫びの絵が欠けない)
+    const k = this.wraithFrameOf(e, gameTime);
+    return k.scream
+      ? this.sheetSlices('mutant-wraith-scream', WRAITH_SCREAM_FRAMES)?.[k.f] ?? null
+      : this.sheetSlices('mutant-wraith-float', WRAITH_FLOAT_FRAMES)?.[k.f] ?? null;
+  }
 
   /** research/ASTRONAUT_HORDE.md §3/§4: 投げの間は投げのシート(1コマ70ms)、それ以外は浮遊のシートの今のコマ(制御が進める)。 */
   private astroTexture(e: Enemy, gameTime: number): ReturnType<typeof getTexture> {

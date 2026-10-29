@@ -96,6 +96,8 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   // 規則正しい直立歩行(uneven 0)にして、歩きは立ち絵の歩きコマ側だけに任せる。
   // research/ASTRONAUT_HORDE.md: 宇宙飛行群(変異)。絵は浮遊・投げのコマを制御が送る=歩行の揺れ・傾ぎは掛けない。左向きの絵を相手の方へミラー。
   'mutant-astro': { kind: 'hover', bobPx: 0, rockRad: 0, sqAmp: 0, strideHz: 0.5, uneven: 0, faceMove: true },
+  // research/WRAITH_MUTANT.md: 亡霊(変異体)。浮遊のコマと漂いは描画が自分で付ける=歩行の揺れ・傾ぎは掛けない。
+  'mutant-wraith': { kind: 'hover', bobPx: 0, rockRad: 0, sqAmp: 0, strideHz: 0.5, uneven: 0, faceMove: true },
   'guardian-phantom': { kind: 'walk', bobPx: 1.0, rockRad: 0.026, sqAmp: 0.024, strideHz: 2.1, uneven: 0, faceMove: false },
 };
 

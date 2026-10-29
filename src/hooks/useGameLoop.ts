@@ -213,6 +213,8 @@ import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '
 import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ringPoint, sectorOfPos, HUNTER_PATROL_START_MS, HUNTER_WARP_FADE_MS, HUNTER_PATROL_SPEED } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
 import { stepHunterPatrol } from '../utils/hunterPatrolTick';
 import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, runAstroScatter, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
+import { runWraithTick, createWraithTickState, pickActiveWraith, releaseWraithOwner, runWraithGrowths } from '../utils/wraithTick'; // research/WRAITH_MUTANT.md
+import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES } from '../utils/wraithScript';
 import { astroSpawnPick } from '../utils/astroScript';
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
@@ -1421,17 +1423,19 @@ const FORCE_HERO = evParam('heronow') === '1';
  * research/MUTANT_HERO.md §2-0(社長裁定 #6「対策室でもゾンビを湧かせる」): 英雄の演習だけ**雑魚の湧き**(通常の湧き・盤面の維持)を開ける。
  * 城ボス・イベント・紅き夜・ハンター・死神などは練習ランのまま止める(noSpawn は従来どおり)=雑魚だけ。
  */
-const HERO_PRACTICE_MOBS = !NOSPAWN && isPracticeRun() && (practiceForces('heronow') || practiceForces('libertynow') || practiceForces('astronow')); // 解放軍群・宇宙飛行群の枠も雑魚だけ開ける(LIBERTY_HORDE §9)
+const HERO_PRACTICE_MOBS = !NOSPAWN && isPracticeRun() && (practiceForces('heronow') || practiceForces('libertynow') || practiceForces('astronow') || practiceForces('wraithnow')); // 解放軍群・宇宙飛行群の枠も雑魚だけ開ける(LIBERTY_HORDE §9)
 // research/LIBERTY_HORDE.md §9: 解放軍群のデバッグ出現 `?libertynow=1`(対策室の枠は practiceForces('libertynow') で相乗り)。
 const FORCE_LIBERTY = evParam('libertynow') === '1';
 // research/ASTRONAUT_HORDE.md §7: 宇宙飛行群のデバッグ出現 `?astronow=1`(対策室の枠は practiceForces('astronow'))。
 const FORCE_ASTRO = evParam('astronow') === '1';
+// research/WRAITH_MUTANT.md: 亡霊のデバッグ出現 `?wraithnow=1`(対策室の枠は practiceForces('wraithnow'))。
+const FORCE_WRAITH = evParam('wraithnow') === '1';
 /**
  * research/MUTANT_HERO.md §2-1(社長指示2026-10-04): 本編の英雄=ステージ1・3・4・5でデンジャーゾーンの真ん中の輪を周回。
  * ボス戦テスト・ボスメーカー・湧き止め(nospawn)の読込では出さない(テストの相手が増えないように)。
  */
 const HERO_PATROL_BLOCKED = NOSPAWN
-  || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bountynow', 'phantomnow', 'phillnow', 'heronow', 'libertynow', 'astronow', 'bossmaker', 'vs'].some(k => evParam(k) !== null);
+  || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bountynow', 'phantomnow', 'phillnow', 'heronow', 'libertynow', 'astronow', 'wraithnow', 'bossmaker', 'vs'].some(k => evParam(k) !== null);
 // BOSS_MAKER.md §21(1対1の間合い): `?vs=<相手>` で、選んだ相手だけを1体出す開発用の枠。
 // 他の強制出現フラグと同じくモジュールロード時に1回だけ読む(切替は再読込)。
 const VS_ENTRY = vsEntryOfRun();
@@ -1480,6 +1484,7 @@ let phantomCtrlErrLogged = false;                    // 守護霊ボス「幻影
 const hunterNotBusy = (phase: string): boolean => phase === 'idle' || phase === 'patrol';
 let astroThrowsErrLogged = false;
 let astroCtrlErrLogged = false;                      // 宇宙飛行群(変異)制御例外のログも初回だけ(本体はastroTick.ts)
+let wraithCtrlErrLogged = false; // research/WRAITH_MUTANT.md
 let libertyCtrlErrLogged = false;                    // 解放軍群(変異)制御例外のログも初回だけ(本体はlibertyTick.ts)
 let heroCtrlErrLogged = false;                       // 英雄(変異)制御例外のログも初回だけ(本体はheroTick.ts)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
@@ -2037,6 +2042,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const astroForceRef = useRef(false);
   const astroStateRef = useRef(createAstroTickState());
   const astroCutinIdRef = useRef<string | null>(null);
+  const wraithForceRef = useRef(false); // research/WRAITH_MUTANT.md
+  const wraithStateRef = useRef(createWraithTickState());
+  const wraithCutinIdRef = useRef<string | null>(null);
   // §6.38 B2a: 賞金首のラン内状態(照準速度/懲罰タイマ/コンボ進行/取り巻き召喚済みか)。
   // idolStateRefと同じ流儀(idolTick.tsを手本・bountyTick.ts参照)。同時1体なので単一refでよい。
   const bountyStateRef = useRef(createBountyTickState());
@@ -3476,6 +3484,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           heroForceRef.current = false; heroStateRef.current = createHeroTickState(); heroCutinIdRef.current = null; setHeroGallop(0); // 英雄(research/MUTANT_HERO.md)
           libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); resetOrphanLibertyArrows(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
           astroForceRef.current = false; astroStateRef.current = createAstroTickState(); astroCutinIdRef.current = null; // 宇宙飛行群(research/ASTRONAUT_HORDE.md)
+          wraithForceRef.current = false; wraithStateRef.current = createWraithTickState(); wraithCutinIdRef.current = null; // 亡霊(research/WRAITH_MUTANT.md)
           // ★SAME_ARENA O-5: 幻影の人格も新ランで捨てる。持ち越すと**前のランの他人**の癖・名前で
           // 戦うことになる(v0.25.3838のボスリラックス跨ぎと同型の"ラン跨ぎの漏れ")。
           clearPhantomIdentity();
@@ -9094,6 +9103,49 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               astroCutinIdRef.current = null;
             }
           }
+          // research/WRAITH_MUTANT.md §2: 亡霊(変異体)。宇宙飛行群と同じ枠(ステージ1・3・4・5・出撃3秒・遠くの POI)。確認用の枠は同じ作りの小さな輪。
+          // 置く POI は宇宙飛行群の居る所から離す(同じ所に2体のボス級を重ねない)。
+          {
+            const forceWraith = FORCE_WRAITH || practiceForces('wraithnow');
+            const patrolWraith = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
+              && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+            if ((forceWraith || patrolWraith) && !wraithForceRef.current && newGameTime >= 3000) {
+              wraithForceRef.current = true;
+              const st0 = useGameStore.getState();
+              const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+              let cx: number, cy: number;
+              let ring: { cx: number; cy: number; r: number } | null = null;
+              let poiStart: { pois: ReturnType<typeof astroRunPois>; index: number } | null = null;
+              if (forceWraith) {
+                const z0 = Math.max(0.3, Math.min(1, st0.viewZoom || 1));
+                cx = pcx;
+                cy = pcy - (st0.gameBounds.height / 2 / z0 + 140);
+                ring = { cx, cy: cy - LIB_PRACTICE_PATROL_R, r: LIB_PRACTICE_PATROL_R };
+              } else {
+                const astroNow = st0.enemies.find(e => e.type === 'mutant-astro');
+                const all = astroRunPois();
+                const cands = astroNow ? all.filter(c => Math.hypot(c.x - (astroNow.x + astroNow.width / 2), c.y - (astroNow.y + astroNow.height / 2)) > 600) : all;
+                const use = cands.length > 0 ? cands : all;
+                const at = astroSpawnPick(use, { x: pcx, y: pcy }, worldDist(3000), Math.random);
+                cx = at.x; cy = at.y;
+                poiStart = { pois: all, index: all.indexOf(use[at.index]) };
+              }
+              const wE = spawnEnemyAt('mutant-wraith', cx - 30, cy - 25, newGameTime);
+              const wHp = Math.round(bountyMaxHealth(areaIndexForPos(cx, cy), newGameTime) * stageBossDiffMults().hp);
+              wE.health = wHp; wE.maxHealth = wHp;
+              wE.dormant = false;
+              wE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない(別カウント)
+              wE.heroFaceX = -1;
+              wE.wraithPhase = Math.floor(Math.random() * WRAITH_FLOAT_FRAMES * WRAITH_FLOAT_FRAME_MS);
+              if (ring) { wE.astroRingCx = ring.cx; wE.astroRingCy = ring.cy; wE.astroRingR = ring.r; }
+              useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.type !== 'mutant-wraith') }));
+              addEnemy(wE);
+              wraithStateRef.current = poiStart && poiStart.index >= 0
+                ? { ...createWraithTickState(), activeId: wE.id, stuckAt: newGameTime, pois: poiStart.pois, prevPoi: poiStart.index }
+                : createWraithTickState();
+              wraithCutinIdRef.current = null;
+            }
+          }
           if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
             phantomForceRef.current = true;
             // ★research/SAME_ARENA.md O-5: 幻影の「中身」をここで1回だけ決める。
@@ -9489,6 +9541,34 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          } catch (err) {
           if (!astroCtrlErrLogged) { astroCtrlErrLogged = true; console.error('[astro] controller error (suppressed after first):', err); }
           reportSuppressedError('astro', err);
+         }
+         // --- 亡霊(変異体)(research/WRAITH_MUTANT.md)コントローラ ---
+         // ★この1体を動かすのはここだけ(gameStore.updateEnemies は isMutantWraith で素通りする)。
+         try {
+          const gsW = useGameStore.getState();
+          const activeWraith = pickActiveWraith(gsW.enemies);
+          if (activeWraith && !gsW.bossMaker.paused) {
+            const wOnScreen = isPointInZoomedViewport(activeWraith.x + activeWraith.width / 2, activeWraith.y + activeWraith.height / 2, gsW.camera, gsW.gameBounds, gsW.viewZoom);
+            if (wraithCutinIdRef.current !== activeWraith.id && wOnScreen && !gsW.attention) {
+              wraithCutinIdRef.current = activeWraith.id;
+              if (activeWraith.health >= activeWraith.maxHealth) {
+                const hp2 = Math.round(bountyMaxHealth(areaIndexForPos(activeWraith.x + activeWraith.width / 2, activeWraith.y + activeWraith.height / 2), newGameTime) * stageBossDiffMults().hp);
+                useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === activeWraith.id ? { ...e, health: hp2, maxHealth: hp2 } : e) }));
+              }
+              const wAc = bossArtCenter(activeWraith);
+              useGameStore.getState().triggerAttention(wAc.x, wAc.y, bossCutinPayload('mutant-wraith'));
+              useGameStore.setState({ eventBannerText: '亡霊(変異体)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+            }
+            // 見失わせる場面(§8 A5): ステージボス戦・ボスに追われている・紅き夜・大きなイベント・屋内・帰還サークル。
+            const g2 = useGameStore.getState();
+            const wBlocked = g2.bossFightNow || g2.bossChasing || g2.redNight?.phase === 'active' || !!g2.activeEvent || g2.indoorMode || g2.returnCircle !== null;
+            if (!g2.attention) runWraithTick(activeWraith, wraithStateRef.current, newGameTime, deltaTime, Date.now(), wBlocked);
+          }
+          releaseWraithOwner(wraithStateRef.current);
+          if (!gsW.bossMaker.paused) runWraithGrowths(newGameTime); // 近づくと地面から生えてくる墓石と花(§9)
+         } catch (err) {
+          if (!wraithCtrlErrLogged) { wraithCtrlErrLogged = true; console.error('[wraith] controller error (suppressed after first):', err); }
+          reportSuppressedError('wraith', err);
          }
          // 投げた物の台帳は投げ手の制御と別に回す(制御が例外で止まっても、飛んでいる物は予告どおり当たる・§8 A7)。
          try {

@@ -125,7 +125,7 @@ export const isBossTestOrPracticeRun = (): boolean =>
 // 台帳: 守護霊メニューと同じ基礎台帳(GHOST_DOSSIER_SLOTS)+形態別の派生枠
 // ---------------------------------------------------------------------------------------------
 /** 出撃のさせ方。`param=null` = 強制出現パラメータ不要(ステージへ出撃すれば勝手に出る)。 */
-export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow' | 'libertynow' | 'astronow' | null;
+export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow' | 'libertynow' | 'astronow' | 'wraithnow' | null;
 
 export interface PracticeSlot {
   slotKey: string;              // 基本はGHOST_DOSSIER_SLOTS.slotKeyと同一。形態別掲載だけ固有キー。
@@ -327,7 +327,19 @@ const MUTANT_ASTRO_SLOT: PracticeSlot = {
   reachable: false,
   alwaysUnlocked: true,
 };
-export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, MUTANT_HERO_SLOT, MUTANT_LIBERTY_SLOT, MUTANT_ASTRO_SLOT, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT];
+// research/WRAITH_MUTANT.md §8 A1: 亡霊(変異体)。宇宙飛行群と同じ作りの確認用の枠(常時解放・雑魚も湧く)。
+export const MUTANT_WRAITH_SLOT_KEY = 'mutant-wraith@practice';
+const MUTANT_WRAITH_SLOT: PracticeSlot = {
+  slotKey: MUTANT_WRAITH_SLOT_KEY,
+  encounterSlotKey: 'mutant-wraith',
+  bossType: 'mutant-wraith',
+  stageId: 'stage-1',
+  param: 'wraithnow',
+  label: '亡霊(変異体)',
+  reachable: false,
+  alwaysUnlocked: true,
+};
+export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, MUTANT_HERO_SLOT, MUTANT_LIBERTY_SLOT, MUTANT_ASTRO_SLOT, MUTANT_WRAITH_SLOT, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT];
 
 // ★変異体対策室のカテゴリ表示順の正(社長指示v0.25.3444「小ボスは一番上だろ」)。
 // v3444では上の PRACTICE_SLOTS の並びだけを直したが、画面(BossRush.tsx)は**カテゴリごとに区切って
@@ -366,6 +378,7 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
   if (slot.bossType === 'mutant-hero') return HERO_MAX_HP; // 社長指示2026-10-05: 固定の上限20000(出てくる時は半分)
   if (slot.bossType === 'mutant-liberty') return BOUNTY_BASE_HP; // 解放軍群は賞金首と同じ式
   if (slot.bossType === 'mutant-astro') return BOUNTY_BASE_HP; // 宇宙飛行群も同じ式(ASTRONAUT_HORDE §2b)
+  if (slot.bossType === 'mutant-wraith') return BOUNTY_BASE_HP; // 亡霊も同じ式(WRAITH_MUTANT §2)
   // research/GHOST_BOSS.md(幻影): 裏ボス方式=倍率を一切通さないので、スポーン時に書く値=実効HP。
   // その値は「初期プレイヤーHP+育成の体力加算」(装備補正なし)なので、表示も同じ式で出す。
   // ★基準クラスの注意(GROWTH.md v4): 実戦は「そのランのプレイヤーのクラス」(player.ddaBaseHp)、

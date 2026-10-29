@@ -277,7 +277,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   // スカジ氷=専用SE(社長提供) / それ以外(パンプキン着地等)=heavy-impact。
   // research/MUTANT_HERO.md: 英雄の斬撃・タックルは自分の音(下)。叩きつけ(棹立ち・跳躍)は重い音のまま。
   // ステージ2の這う塊(crawler-slam)は自分の配線(labCrawlerTick)が距離で弱めて鳴らすので、ここでは鳴らさない。
-  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-') && b.moveKey !== 'liberty-flag' && b.moveKey !== 'liberty-arrow' && b.moveKey !== 'crawler-slam' && b.moveKey !== 'astro-flag' && b.moveKey !== 'astro-debris')) fx.playSfx('heavy-impact');
+  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-') && b.moveKey !== 'liberty-flag' && b.moveKey !== 'liberty-arrow' && b.moveKey !== 'crawler-slam' && b.moveKey !== 'astro-flag' && b.moveKey !== 'astro-debris' && b.moveKey !== 'wraith-scream')) fx.playSfx('heavy-impact');
   // research/ASTRONAUT_HORDE.md §4: 宇宙飛行群の投げ物。爆発(ミサイル・隕石)は爆発音を重ね、国旗・残骸は地面に刺さる音。
   if (blasts.some(b => b.moveKey === 'astro-missile' || b.moveKey === 'astro-meteor')) fx.playSfx('bomb');
   if (blasts.some(b => b.moveKey === 'astro-flag')) fx.playSfx('anchor-plant', 0.8);
@@ -376,6 +376,11 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       }
       fx.spawnBurst(b.x, b.y, '#fff7ed', 30);
       fx.spawnGlow(b.x, b.y, b.radius * 1.5, 'rgba(196,160,255,', 900);
+    } else if (b.moveKey === 'wraith-scream') {
+      // research/WRAITH_MUTANT.md §4 亡霊の叫び(紫=弾けない): 声の衝撃が紫がかった灰色の輪になって外へ何重にも広がる(派手さの絵=判定より外まで)。
+      // 爆発ではない=全画面の橙のフラッシュは出さない。輪は太さ・速さ・色をばらす(等間隔の波紋にしない)。
+      // 判定の円の縁より外まで届く一番大きな輪だけここで出す(追い打ちの輪・頭の高さの輪・光は wraithTick が時間をずらして出す)。
+      fx.spawnRing(b.x, b.y, 24, b.radius * 1.5, 'rgba(196,160,255,0.85)', 12, 700);
     } else if (b.moveKey === 'astro-flag') {
       // §4 国旗: 刺さった所に土が跳ね、帯に沿って風に巻かれた土埃(爆発ではない=全画面の明滅なし)。
       const c = b.capsule;
@@ -461,7 +466,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
         // ステージ2の這う塊は敵配列に居ない=型の代わりに持ち主の名札で名前を引く(「変異塊の叩きつけ」)。
         // 宇宙飛行群の投げ物は投げ手が倒れた後も当たる=持ち主が居なくても名前を空にしない(ASTRONAUT_HORDE §9)。
-        const blastOwnerLabel = blastEnemyType ?? (b.moveKey === 'crawler-slam' ? b.enemyId : b.moveKey?.startsWith('astro-') ? 'mutant-astro' : '');
+        const blastOwnerLabel = blastEnemyType ?? (b.moveKey === 'crawler-slam' ? b.enemyId : b.moveKey?.startsWith('astro-') ? 'mutant-astro' : b.moveKey === 'wraith-scream' ? 'mutant-wraith' : '');
         // G4a: b.moveKey=どの技の爆発か(記録専用タグ・未設定なら従来どおりundefined)。
         // 検収監査#6: 死因の技名はmoveKeyで分ける(削岩型の突きが「落下攻撃」と表示されていた)。
         // 検収監査#6の継承(§14-2): 死因の技名はmoveKeyで分ける(伐採人の薙ぎ払いが「落下攻撃」と
@@ -469,7 +474,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
           : b.moveKey === 'jo-slam' || b.moveKey === 'crawler-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨'
-          : b.moveKey === 'astro-missile' ? 'ミサイル' : b.moveKey === 'astro-flag' ? '国旗' : b.moveKey === 'astro-debris' ? '残骸' : b.moveKey === 'astro-meteor' ? '隕石' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
+          : b.moveKey === 'astro-missile' ? 'ミサイル' : b.moveKey === 'astro-flag' ? '国旗' : b.moveKey === 'astro-debris' ? '残骸' : b.moveKey === 'astro-meteor' ? '隕石' : b.moveKey === 'wraith-scream' ? '叫び' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const hurtAtBefore = useGameStore.getState().player.lastHurtAt; // この一撃で段が付いたかを見分ける(下の押し出し)
         const armoredAtBefore = useGameStore.getState().player.hurtArmoredAt; // B12: アーマーで受けたかを見分ける(下の押し出し)
         const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastOwnerLabel)}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined, { type: blastEnemyType, id: b.enemyId }); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
@@ -1914,7 +1919,7 @@ export const applyContactDamage = (
     if (enemy.labBait?.active) return;
     // research/MUTANT_HERO.md: 英雄は接触ダメージを持たない(damage 0)。ここを通すと0ダメージの被弾が
     // 毎フレーム入り続けていた(社長報告2026-10-04「重なって延々とダメージ受けちゃう」)。当たるのは技だけ。
-    if (isMutantHero(enemy.type) || enemy.type === 'mutant-liberty' || enemy.type === 'mutant-astro') return; // 解放軍群の旗手・宇宙飛行群も接触ダメージ0(LIBERTY_HORDE §7・ASTRONAUT_HORDE §2c)
+    if (isMutantHero(enemy.type) || enemy.type === 'mutant-liberty' || enemy.type === 'mutant-astro' || enemy.type === 'mutant-wraith') return; // 解放軍群の旗手・宇宙飛行群も接触ダメージ0(LIBERTY_HORDE §7・ASTRONAUT_HORDE §2c)
     // PACING_PUZZLE.md §14-4-8b(A-3): 神付きは1tickにつき1体。既に発火していたら、この関数呼び出し
     // (=このtick)の残りの接触解決を丸ごと打ち切る(forEachの実質break)。
     if (kamitsukiTriggeredThisTick) return;

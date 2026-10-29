@@ -188,7 +188,9 @@ import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
 import type { AstroThrowEntry, AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
-import { isBossType, isTrueBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isMutantAstro, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isGate2AngelBoss, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob, isLabCrawlerProxyType, blastAnchorOf } from '../utils/enemyUtils';
+import type { WraithGrowth } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md §9
+import { clearWraithGraves, resolveWraithGraveCollision } from '../world/wraithGraves';
+import { isBossType, isTrueBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isMutantAstro, isMutantWraith, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isGate2AngelBoss, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob, isLabCrawlerProxyType, blastAnchorOf } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
@@ -2121,6 +2123,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'mutant-hero': '英雄(変異)', // research/MUTANT_HERO.md(社長命名2026-10-03)
   'mutant-liberty': '解放軍群(変異)', // research/LIBERTY_HORDE.md(社長命名2026-10-04)
   'mutant-astro': '宇宙飛行群(変異)', // research/ASTRONAUT_HORDE.md(社長命名2026-10-29)
+  'mutant-wraith': '亡霊(変異体)', // research/WRAITH_MUTANT.md(社長命名2026-10-29)
 };
 // 社長指示v0.25.3451「なぜUIによって名前の出し方を変えるの?全部の箇所で統一に決まってる」:
 // 城ボス(giantbat)もステージ別の台帳名(bossCutin=名前の正本)で表示する。死因・討伐バナー・歴史年表の
@@ -6919,6 +6922,8 @@ interface GameState {
   astroThrows: AstroThrowEntry[];
   /** research/ASTRONAUT_HORDE.md §12-1: 宇宙飛行群の周りに降り注ぐ残骸の絵(落ちる・刺さる・沈む)。当たりは astroThrows の ambient の項目が持つ。 */
   astroScatter: AstroScatterPiece[];
+  /** research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石と花(見た目+墓石は伸び切ったら壁=world/wraithGraves)。 */
+  wraithGrowths: WraithGrowth[];
   setSignalStrikes: (strikes: readonly SignalStrike[]) => void;
   spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
@@ -7543,7 +7548,9 @@ export const resolveOutOfSolids = (
     { x: hospitalResolved.x, y: hospitalResolved.y, width: w, height: h }, ctx.armory, ctx.armoryTaken);
   const cityResolved = noFac ? armoryResolved : resolvePoliceCollision(
     { x: armoryResolved.x, y: armoryResolved.y, width: w, height: h }, ctx.police, ctx.policeTaken);
-  if (!labTheme) return cityResolved;
+  // research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石(伸び切った物だけ)。無ければ素通し=負荷ゼロ。
+  const graveResolved = resolveWraithGraveCollision({ x: cityResolved.x, y: cityResolved.y, width: w, height: h });
+  if (!labTheme) return graveResolved;
   // 研究所スキン: 壁オブジェクト+遮蔽プロップ。近傍区画のみ問い合わせる(全区画走査を避ける)。
   const rgn = [cityResolved.x - 120, cityResolved.y - 120, cityResolved.x + w + 120, cityResolved.y + h + 120] as const;
   const walls = [...labWallsInRegion(...rgn).map(wallRect), ...labPropsInRegion(...rgn).map(propRect)];
@@ -7875,6 +7882,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   libertyOrphanArrows: null,
   astroThrows: [],
   astroScatter: [],
+  wraithGrowths: [],
   firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
@@ -9399,7 +9407,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const targetIds: string[] = [];
       for (const e of enemies) {
         if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue; // 深奥チェイサーは近接対象(ボス級)
-        if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 鞭の標的選定から除外
+        if (isCorpse(e) || isUntouchable(e)) continue; // KILL吹き飛び(死体・§26-2): 鞭の標的選定から除外 / 英雄の昇天中・亡霊のワープ中
         const ex = e.x + e.width / 2 - pcx;
         const ey = e.y + e.height / 2 - pcy;
         const along = ex * ux + ey * uy;
@@ -9582,7 +9590,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       hasShieldShove && shieldShoves.some(sh => rectsOverlap({ x: e.x, y: e.y, width: e.width, height: e.height }, sh.swept));
     const isStunnedNow = (e: Enemy): boolean => e.stunUntil !== undefined && gameTime < e.stunUntil;
     const scanTargetId = pickScanMarkTarget(
-      enemies.filter(e => !(ret && e.id !== ret.targetId) && !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e)
+      enemies.filter(e => !(ret && e.id !== ret.targetId) && !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e) && !isUntouchable(e)
         && isScanMarked(e, gameTime)
         // 社長決定2026-10-18: 盾のバッシュと、気絶中の強個体への3倍にも印を掛ける(=ここで「1体だけ」の枠を使う)。
         // 掛けないのは気絶中の即死(処刑)と、ボスの気絶への5倍(紫の報酬を含む)=その敵では枠を使わない。
@@ -9596,6 +9604,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (ret && enemy.id !== ret.targetId) { survivors.push(enemy); continue; } // ★被弾反撃: 相手はその1体だけ
       if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) { survivors.push(enemy); continue; } // 深奥チェイサーは近接対象(ボス級)
       if (isCorpse(enemy)) { survivors.push(enemy); continue; } // KILL吹き飛び(死体・§26-2): 近接カウンター対象から除外
+      if (isUntouchable(enemy)) { survivors.push(enemy); continue; } // 英雄の昇天中・亡霊のワープ中(research/WRAITH_MUTANT.md §8 A3)は近接も素通り(damageEnemy を通らない経路)
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
       // ノックバック方向用の中心差分(距離は enemyMeleeDist を使うが、向きは中心→敵で算出)。
@@ -10899,7 +10908,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // research/NEW_GUNS.md §4(スキャンセンサー): プレイヤーの刀は「この斬撃の標的のうち一番近い印付きの1体」だけ
     // 雑魚×3.1/ボス級×5.2(Lvに関係なく1つ)。守護霊の刀は仲間=印付き全員へ ×1.6(抑えない)。
     const katanaScanTargetId = isGhost ? undefined : pickScanMarkTarget(
-      enemies.filter(e => targetIds.includes(e.id) && !isCorpse(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
+      enemies.filter(e => targetIds.includes(e.id) && !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
         // 一閃が気絶中の敵へ入る一撃のうち、即死(処刑)とボスの5倍には印を掛けない=枠を使わない。
         // 強個体の3倍には掛ける(社長決定2026-10-18)。
         && !(allowFinisher && e.stunUntil !== undefined && gameTime < e.stunUntil && !isEliteHeavyStun(e, gameTime))),
@@ -10909,7 +10918,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (const enemy of enemies) {
       // ジャンプ攻撃中(空中)はあらゆる近接の当たり判定を外す(=無敵。盾は敵AI側で別処理)。
       if (enemy.aiPhase === 'jump' || isUntouchable(enemy)) { survivors.push(enemy); continue; } // 英雄の昇天中も当たらない
-      if (!targetIds.includes(enemy.id) || (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) || isCorpse(enemy)) {
+      if (!targetIds.includes(enemy.id) || (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) || isCorpse(enemy) || isUntouchable(enemy)) {
         // KILL吹き飛び(死体・§26-2): 死体は標的から除外(targetIds選定側で既に除いてあるが二重ガード)
         survivors.push(enemy);
         continue;
@@ -11269,14 +11278,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     // research/NEW_GUNS.md §4(スキャンセンサー): 鞭は近接と同じ倍率(雑魚×2.75/ボス級×4.7)を、線が当てる中で
     // 一番近い印付きの1体だけに掛ける。
     const whipScanTargetId = pickScanMarkTarget(
-      enemies.filter(e => targetIds.includes(e.id) && !isCorpse(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
+      enemies.filter(e => targetIds.includes(e.id) && !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
         // 気絶中の敵への一撃のうち、即死(処刑)とボスの5倍には印を掛けない=枠を使わない。強個体の3倍には掛ける(社長決定2026-10-18)。
         && !(e.stunUntil !== undefined && gameTime < e.stunUntil && !isEliteHeavyStun(e, gameTime))),
       gameTime, e => enemyMeleeDist(pcx, pcy, e),
     );
 
     for (const enemy of enemies) {
-      if (!targetIds.includes(enemy.id) || (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) || isCorpse(enemy)) {
+      if (!targetIds.includes(enemy.id) || (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) || isCorpse(enemy) || isUntouchable(enemy)) {
         // KILL吹き飛び(死体・§26-2): 死体は標的から除外(targetIds選定側で既に除いてあるが二重ガード)
         survivors.push(enemy);
         continue;
@@ -14182,6 +14191,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (enemy.aiPhase === 'jump') return { enemies };
       // 英雄の昇天中(社長指示2026-10-05=正規ルートで倒した後の5秒)は何も通らない。
       if (isMutantHero(enemy.type) && enemy.bossState === 'hero-ascend') return { enemies };
+      // research/WRAITH_MUTANT.md §8 A3: 亡霊のワープ中(消えて現れるまで)は何も通らない(銃・継続ダメージ・爆風の入口。近接と鞭は triggerCounter・performWhipStrike で別に素通り)。
+      if (enemy.wraithPhased) return { enemies };
 
       // research/MUTANT_HERO.md §6-2(社長「画面に映っていない時は…喰らわないでよい」): 画面外の英雄は
       // どの攻撃も受けない。入口はここ1か所(銃・近接・爆発・継続の全経路が通る)。
@@ -14929,10 +14940,12 @@ export const useGameStore = create<GameState>((set, get) => ({
               { x: hospitalR.x, y: hospitalR.y, width: enemy.width, height: enemy.height },
               state.armory, state.armoryTaken,
             );
-            pos = resolvePoliceCollision(
+            const policeR = resolvePoliceCollision(
               { x: armoryR.x, y: armoryR.y, width: enemy.width, height: enemy.height },
               state.police, state.policeTaken,
             );
+            // research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石は敵にも壁(プレイヤーと同じ)。
+            pos = resolveWraithGraveCollision({ x: policeR.x, y: policeR.y, width: enemy.width, height: enemy.height });
           }
           // 帰還サークルの「敵を入れない」押し出しは撤廃(社長指示v0.25.3318: 指離せば即ゴールなので
           // セーフゾーンが不要になった。旧v0.25.2589の攻撃禁止側と同時に撤去)。
@@ -15187,6 +15200,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (isLibertyBearer(enemy.type) || isHordeFollower(enemy)) return enemy;
         // research/ASTRONAUT_HORDE.md: 宇宙飛行群は astroTick だけが動かす。
         if (isMutantAstro(enemy.type)) return enemy;
+        // research/WRAITH_MUTANT.md: 亡霊も wraithTick だけが動かす。
+        if (isMutantWraith(enemy.type)) return enemy;
 
         // Bosses pop up briefly when they take melee finisher-grade damage;
         // while airborne they should read as caught, not still advancing.
@@ -19828,7 +19843,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (isMutantHero(enemy.type)) return;
     // research/LIBERTY_HORDE.md §5: 補充されたバット男は何も落とさない(社長裁定)。旗手は★未決 #2「旗手の報酬」の裁定まで落とさない。
     if (enemy.hordeRefill || isLibertyBearer(enemy.type)) return;
-    if (isMutantAstro(enemy.type)) return; // research/ASTRONAUT_HORDE.md ★未決 #7「報酬」の裁定まで落とさない
+    if (isMutantAstro(enemy.type) || isMutantWraith(enemy.type)) return; // research/ASTRONAUT_HORDE.md・WRAITH_MUTANT.md §5: 経験値は落とさない
     // 難易度⑤(DirectorRank): HARVEST相当のフェーズ中だけ有効な倍率(通常は1)。useGameLoopが毎フレーム更新。
     // 宿敵は同じ型の普通の敵の4倍(社長指示2026-10-09「報酬は元の敵の4倍の中身」・NAMED_LOOT_MULT)。
     const v = Math.round((value ?? enemy.experienceValue) * getDirectorRewardMult() * (enemy.isNamed ? NAMED_LOOT_MULT : 1));
@@ -19843,7 +19858,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   dropEnemyCurrency: (enemy, x, y) => {
     if (isMutantHero(enemy.type)) return; // research/MUTANT_HERO.md: 英雄は何も落とさない(上と同じ)
     if (enemy.hordeRefill || isLibertyBearer(enemy.type)) return; // research/LIBERTY_HORDE.md §5(上と同じ)
-    if (isMutantAstro(enemy.type)) return; // research/ASTRONAUT_HORDE.md(上と同じ)
+    if (isMutantAstro(enemy.type) || isMutantWraith(enemy.type)) return; // research/ASTRONAUT_HORDE.md・WRAITH_MUTANT.md(上と同じ)
     // PACING_PUZZLE.md §7-11c(3): レール(elite)のドロップバイアス=トレジャー。既定(rail未指定)は
     // railTreasureDropMultが1を返すため無改変。トレジャー抽選の唯一の出どころ(dropEnemyCurrency)に乗算。
     const treasureChance = Math.max(0, Math.min(1,
@@ -22789,6 +22804,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetCritDecay(); // ★§13-3e クリ減衰の台帳を新ランでクリア(前ランの敵IDの記憶を持ち越さない)
     resetHandcannonDecay(); // UNIQUE_WEAPONS.md §13-1: ハンドキャノン減衰の台帳も新ランでクリア
     clearDestroyedObstacles(); // 裏ボスに壊された木/プロップの欠番を新ランで復活させる。
+    clearWraithGraves(); // 亡霊の近くに生えた墓石の壁も新ランで消す(research/WRAITH_MUTANT.md §9)。
     const validClass = ['warrior', 'mage', 'rogue', 'necromancer'].includes(characterClass)
       ? characterClass as CharacterClass
       : 'warrior';
@@ -23363,6 +23379,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         libertyOrphanArrows: null, // 旗手が倒れた後の矢の雨(ランを跨がない)
         astroThrows: [], // 宇宙飛行群の投げ物(ランを跨がない)
         astroScatter: [], // 宇宙飛行群の周りの残骸(ランを跨がない)
+        wraithGrowths: [], // 亡霊の近くに生えた物(ランを跨がない)
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},

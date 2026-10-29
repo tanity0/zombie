@@ -28,6 +28,8 @@ const BOSS_ICON: Record<string, string> = {
   'mutant-liberty': 'mutant-liberty',
   // research/ASTRONAUT_HORDE.md: 立ち絵(浮遊の0コマ目)。
   'mutant-astro': 'mutant-astro',
+  // research/WRAITH_MUTANT.md: 立ち絵(浮遊の0コマ目)。
+  'mutant-wraith': 'mutant-wraith',
 };
 
 // 城ボス(giantbat)だけは**全ステージに出る同じ敵**で、絵はステージごとに差し替わる

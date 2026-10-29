@@ -1452,6 +1452,11 @@ export interface Enemy {
   libArrowStuck?: { x: number; y: number; at: number; tilt: number }[];
   /** research/ASTRONAUT_HORDE.md §3: 浮遊のコマ(0..10)・コマの持ち越し(ms)・ピンポンの向き。 */
   astroHoverFrame?: number;
+  // research/WRAITH_MUTANT.md: 亡霊の叫びの溜めの始まり(gameTime・居る間は叫び中)/ワープの消え始め(gameTime)/ワープ中=当たらない(照準・弾・爆風・damageEnemy の入口が見る)/漂いとコマの個体ごとの位相。
+  wraithScreamAt?: number;
+  wraithWarpOutAt?: number;
+  wraithPhased?: boolean;
+  wraithPhase?: number;
   astroHoverAcc?: number;
   astroHoverDir?: 1 | -1;
   /** §4: 投げ始め(gameTime)と投げている物。undefined=投げていない。投げの絵のコマと手を離す時刻の起点。 */
@@ -1936,6 +1941,8 @@ export type EnemyType =
   | 'mutant-liberty'
   // research/ASTRONAUT_HORDE.md: 宇宙飛行群(変異)。浮いて彷徨い、着地してから物を投げる(ボス級・1体)。
   | 'mutant-astro'
+  // research/WRAITH_MUTANT.md: 亡霊(変異体)。浮いて彷徨い、見つけた相手の周りを回る。撃つとたまに反対側へワープ。叫び(紫=弾けない)(ボス級・1体)。
+  | 'mutant-wraith'
   // research/LAB_CRAWLER.md §4(第2版): ステージ2の変異塊の**代理**。攻撃を受ける窓口だけ(描かない・動かない・落とさない)。
   // 本体は store の labCrawler(world/labCrawler.ts)。代理の作り方と同期は utils/labCrawlerProxy.ts / labCrawlerTick.ts。
   | 'lab-crawler';
