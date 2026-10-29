@@ -352,3 +352,85 @@ export const astroMeteorShake = (msToHit: number): number => {
   const u = 1 - Math.min(1, (msToHit - 500) / (ASTRO_METEOR_FALL_MS - 500));
   return 0.12 + 0.88 * u * u;
 };
+
+// ---- 周りに散らばる残骸(§11・社長指示2026-10-29「先にそれを見て、あ、近くにいるなってわかる感じ」) ----
+/** 置く範囲の半径・個数・残骸どうしの間・消す距離(半径の倍)・見直しの間隔。叩き台。 */
+export const ASTRO_SCATTER_RADIUS = 950;
+export const ASTRO_SCATTER_COUNT = 14;
+export const ASTRO_SCATTER_GAP = 70;
+export const ASTRO_SCATTER_KEEP_MULT = 1.15; // 後ろへ尾を引いて溜めない(品質監査 A1)
+export const ASTRO_SCATTER_STEP_MS = 250;
+export const ASTRO_SCATTER_SMOKE_FRAC = 0.4;
+/** 新しく足す所は進む向きへこの割合(半径に対して)だけ寄せる=行く先に残骸が先にある(品質監査 A1)。 */
+export const ASTRO_SCATTER_LEAD_FRAC = 0.8;
+/** 進んでいる時、後ろ側はこの割合(半径に対して)より離れたら手放す。 */
+export const ASTRO_SCATTER_BEHIND_FRAC = 0.7;
+/** 本体の足元のすぐ近くには置かない。 */
+export const ASTRO_SCATTER_MIN_FROM_CENTER = 140;
+/** 画面の中に置いてよいのは上側の霞の帯だけ(この割合より上)=遠くから浮かび上がる。目の前では湧かない(品質監査 A2)。 */
+export const ASTRO_SCATTER_HAZE_FRAC = 0.3;
+/** 霞の中から浮かび上がる尺(画面の外に置いた物は短く)。 */
+export const ASTRO_SCATTER_FADE_HAZE_MS = 1500;
+export const ASTRO_SCATTER_FADE_MS = 400;
+
+export interface AstroScatterPiece {
+  id: string;
+  x: number; y: number;
+  /** 外板の絵(0..7)・傾き(rad)・大きさ・埋まらずに見えている割合・煙が昇るか・左右反転。 */
+  variant: number; rot: number; scale: number; keep: number; smoke: boolean; flip?: boolean;
+  /** 置いた時刻(gameTime・描画の薄れて現れる起点)。 */
+  bornAt: number;
+  /** 画面の上側の霞の中に置いた(ゆっくり浮かび上がる)。 */
+  haze?: boolean;
+}
+
+/**
+ * 残骸の置き直し。center=宇宙飛行群の足元(居なければ null=新しく置かない)、dir=進む向き(単位ベクトル・止まっていれば null)。
+ * view=画面の見えている範囲(描画の範囲より広めに取った物)。置くのは画面の外か、画面の上側の霞の帯(遠く)だけ。
+ * 消すのは画面の外だけ(画面の中の遠い残骸は、画面から出るまで残す)。canPlace=建物・木などに埋まらない所か。
+ */
+export const astroScatterStep = (
+  pieces: readonly AstroScatterPiece[], center: { x: number; y: number } | null, dir: { x: number; y: number } | null,
+  view: { left: number; right: number; top: number; bottom: number }, canPlace: (x: number, y: number) => boolean,
+  gt: number, rng: () => number, seq: { n: number },
+): AstroScatterPiece[] => {
+  const keepR = ASTRO_SCATTER_RADIUS * ASTRO_SCATTER_KEEP_MULT;
+  const inView = (x: number, y: number) => x >= view.left && x <= view.right && y >= view.top && y <= view.bottom;
+  const hazeBottom = view.top + (view.bottom - view.top) * ASTRO_SCATTER_HAZE_FRAC;
+  // 残す=本体の円の中。進んでいる時は、通り過ぎた後ろ側を早めに手放す(半径の0.7倍より後ろ)=行く先に残骸が集まる。
+  const keepHere = (p: { x: number; y: number }): boolean => {
+    if (!center) return false;
+    const dx = p.x - center.x, dy = p.y - center.y, d = Math.hypot(dx, dy);
+    if (d > keepR) return false;
+    if (dir && dx * dir.x + dy * dir.y < 0 && d > ASTRO_SCATTER_RADIUS * ASTRO_SCATTER_BEHIND_FRAC) return false;
+    return true;
+  };
+  const out = pieces.filter(p => inView(p.x, p.y) || keepHere(p));
+  if (!center) return out.length === pieces.length ? (pieces as AstroScatterPiece[]) : out;
+  const near = out.filter(keepHere).length;
+  let need = ASTRO_SCATTER_COUNT - near;
+  const lead = dir ? { x: center.x + dir.x * ASTRO_SCATTER_RADIUS * ASTRO_SCATTER_LEAD_FRAC, y: center.y + dir.y * ASTRO_SCATTER_RADIUS * ASTRO_SCATTER_LEAD_FRAC } : center;
+  for (let tries = 0; need > 0 && tries < 48; tries++) {
+    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * ASTRO_SCATTER_RADIUS;
+    const x = lead.x + Math.cos(a) * r, y = lead.y + Math.sin(a) * r;
+    const dc = Math.hypot(x - center.x, y - center.y);
+    if (dc > ASTRO_SCATTER_RADIUS || dc < ASTRO_SCATTER_MIN_FROM_CENTER) continue; // 置くのは本体の円の中だけ
+    const vis = inView(x, y);
+    if (vis && y > hazeBottom) continue; // 画面の中は上側の霞の帯だけ
+    if (out.some(p => Math.hypot(p.x - x, p.y - y) < ASTRO_SCATTER_GAP)) continue;
+    if (!canPlace(x, y)) continue;
+    // 大きい塊を少し・小さい破片を多め(どれも同じ大きさだと置物を並べたように見える)。煙と火は大きい塊から。
+    const big = rng() < 0.35;
+    out.push({
+      id: `astro-scatter-${++seq.n}`, x, y,
+      variant: Math.floor(rng() * ASTRO_DEBRIS_VARIANTS) % ASTRO_DEBRIS_VARIANTS,
+      rot: (rng() - 0.5) * 0.52, // ±15°まで(描き込まれた光の向きを壊さない)
+      scale: big ? 1.15 + rng() * 0.45 : 0.45 + rng() * 0.35, keep: 0.55 + rng() * 0.3,
+      smoke: big ? rng() < 0.85 : rng() < ASTRO_SCATTER_SMOKE_FRAC * 0.25, flip: rng() < 0.5, bornAt: gt, haze: vis,
+    });
+    need--;
+  }
+  // 変わっていなければ同じ配列を返す(店へ無駄に書かない)。
+  if (out.length === pieces.length && out.every((p, i) => p === pieces[i])) return pieces as AstroScatterPiece[];
+  return out;
+};

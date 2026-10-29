@@ -187,7 +187,7 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import type { AstroThrowEntry } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
+import type { AstroThrowEntry, AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import { isBossType, isTrueBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isMutantAstro, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isGate2AngelBoss, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob, isLabCrawlerProxyType, blastAnchorOf } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
@@ -6917,6 +6917,8 @@ interface GameState {
   libertyOrphanArrows: { ownerId: string; ownerX: number; hits: { x: number; y: number; radius: number; bornAt: number; fireAt: number }[]; stuck: { x: number; y: number; at: number; tilt: number }[] } | null;
   /** research/ASTRONAUT_HORDE.md §8 A7・§9: 宇宙飛行群が投げた物の台帳(予告+当たり)。投げ手とは別=倒れても最後まで飛んで当たる。 */
   astroThrows: AstroThrowEntry[];
+  /** research/ASTRONAUT_HORDE.md §11: 宇宙飛行群の周りに散らばる残骸(見た目だけの置物・判定なし)。 */
+  astroScatter: AstroScatterPiece[];
   setSignalStrikes: (strikes: readonly SignalStrike[]) => void;
   spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
@@ -7872,6 +7874,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   signalStrikes: [],
   libertyOrphanArrows: null,
   astroThrows: [],
+  astroScatter: [],
   firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
@@ -23359,6 +23362,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         signalStrikes: [], // ★同上(シグナルランチャーの予約済み空爆。UNIQUE_WEAPONS.md §16-5受け入れ条件5)
         libertyOrphanArrows: null, // 旗手が倒れた後の矢の雨(ランを跨がない)
         astroThrows: [], // 宇宙飛行群の投げ物(ランを跨がない)
+        astroScatter: [], // 宇宙飛行群の周りの残骸(ランを跨がない)
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},

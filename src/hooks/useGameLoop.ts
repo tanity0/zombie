@@ -212,7 +212,7 @@ import {
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
 import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ringPoint, sectorOfPos, HUNTER_PATROL_START_MS, HUNTER_WARP_FADE_MS, HUNTER_PATROL_SPEED } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
 import { stepHunterPatrol } from '../utils/hunterPatrolTick';
-import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
+import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, runAstroScatter, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
 import { astroSpawnPick } from '../utils/astroScript';
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
@@ -9493,6 +9493,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          // 投げた物の台帳は投げ手の制御と別に回す(制御が例外で止まっても、飛んでいる物は予告どおり当たる・§8 A7)。
          try {
           runAstroThrows(newGameTime);
+          runAstroScatter(newGameTime); // 周りに散らばる残骸(先に残骸が見えて、近くにいると分かる・§11)
          } catch (err) {
           if (!astroThrowsErrLogged) { astroThrowsErrLogged = true; console.error('[astro] throws error (suppressed after first):', err); }
           reportSuppressedError('astro-throws', err);

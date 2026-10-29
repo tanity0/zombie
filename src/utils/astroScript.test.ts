@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
+  pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroScatterStep, ASTRO_SCATTER_COUNT, ASTRO_SCATTER_RADIUS, ASTRO_SCATTER_GAP, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
   astroPoiCandidates, pickAstroPoi, astroSpawnPick, astroBandPull, astroMeteorShake,
   ASTRO_RELEASE_MS, ASTRO_DEBRIS_COUNT, ASTRO_FLAG_LENGTH, ASTRO_ARRIVE_PX,
   ASTRO_LIFT_PX, ASTRO_BOB_PX, ASTRO_TURN_RAD_PER_S, ASTRO_ACCEL_S, ASTRO_DECEL_S, type AstroThrowKind, type AstroHoverAnim,
@@ -164,5 +164,57 @@ describe('宇宙飛行群: 投げる物の絵(社長支給の並び)', () => {
       const plan = astroThrowPlan('debris', 't', 'e', { x: 0, y: 0 }, { x: 0, y: 0 }, 0, Math.random);
       expect(new Set(plan.map(p => astroThrowArtFrame('debris', p.variant))).size).toBe(8);
     }
+  });
+});
+
+describe('宇宙飛行群: 周りに散らばる残骸(§11)', () => {
+  const far = { left: 1e6, right: 1e6 + 1, top: 1e6, bottom: 1e6 + 1 }; // 画面はずっと遠く=全部「画面の外」
+  const ok = () => true;
+  it('中心の周りの円の中に決まった数を置き、残骸どうしは離す', () => {
+    const seq = { n: 0 };
+    const p = astroScatterStep([], { x: 1000, y: 0 }, null, far, ok, 0, Math.random, seq);
+    expect(p).toHaveLength(ASTRO_SCATTER_COUNT);
+    for (const a of p) expect(Math.hypot(a.x - 1000, a.y)).toBeLessThanOrEqual(ASTRO_SCATTER_RADIUS + 1e-6);
+    for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) expect(Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y)).toBeGreaterThanOrEqual(ASTRO_SCATTER_GAP);
+  });
+  it('移動して遠くなった残骸は消え、新しい周りへ置き直す', () => {
+    const seq = { n: 0 };
+    const p0 = astroScatterStep([], { x: 0, y: 0 }, null, far, ok, 0, Math.random, seq);
+    const p1 = astroScatterStep(p0, { x: 5000, y: 0 }, null, far, ok, 250, Math.random, seq);
+    expect(p1).toHaveLength(ASTRO_SCATTER_COUNT);
+    for (const a of p1) expect(Math.hypot(a.x - 5000, a.y)).toBeLessThanOrEqual(ASTRO_SCATTER_RADIUS + 1e-6);
+  });
+  it('進んでいる時は、行く先の側に多く置く(後ろへ尾を引かない)', () => {
+    let ahead = 0, total = 0;
+    let seed = 12345;
+    const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    for (let n = 0; n < 40; n++) {
+      const seq = { n: 0 };
+      let p: ReturnType<typeof astroScatterStep> = [];
+      for (let k = 0; k < 60; k++) p = astroScatterStep(p, { x: k * 20, y: 0 }, { x: 1, y: 0 }, far, ok, k * 250, rng, seq); // 右へ進み続ける
+      for (const a of p) { total++; if (a.x > 59 * 20) ahead++; }
+    }
+    // 置き直しの規則を直す前は前方が2割を切っていた(品質監査の模擬)。円の半分近くが前にあること。
+    expect(ahead / total).toBeGreaterThan(0.4);
+  });
+  it('画面の中では、上側の霞の帯にだけ置く(目の前で湧かない)。画面の中の物は消さない', () => {
+    const seq = { n: 0 };
+    const view = { left: -500, right: 500, top: -1000, bottom: 1000 }; // 霞の帯= y < -400
+    const p0 = astroScatterStep([], { x: 0, y: 0 }, null, view, ok, 0, Math.random, seq);
+    for (const a of p0) if (a.x >= -500 && a.x <= 500 && a.y >= -1000 && a.y <= 1000) { expect(a.y).toBeLessThan(-400); expect(a.haze).toBe(true); }
+    const kept = [{ ...p0[0], id: 'v', x: 0, y: 0 }];
+    const p1 = astroScatterStep(kept, { x: 9000, y: 0 }, null, view, ok, 250, Math.random, seq);
+    expect(p1.some(a => a.id === 'v')).toBe(true);
+  });
+  it('建物などに埋まる所・本体の足元のすぐ近くには置かない', () => {
+    const seq = { n: 0 };
+    const p = astroScatterStep([], { x: 0, y: 0 }, null, far, (x) => x < 0, 0, Math.random, seq);
+    for (const a of p) { expect(a.x).toBeLessThan(0); expect(Math.hypot(a.x, a.y)).toBeGreaterThanOrEqual(140); }
+  });
+  it('居なければ新しく置かず、画面の外のものから消える。変わらなければ同じ配列', () => {
+    const seq = { n: 0 };
+    const p0 = astroScatterStep([], { x: 0, y: 0 }, null, far, ok, 0, Math.random, seq);
+    expect(astroScatterStep(p0, { x: 0, y: 0 }, null, far, ok, 250, Math.random, seq)).toBe(p0);
+    expect(astroScatterStep(p0, null, null, far, ok, 250, Math.random, seq)).toHaveLength(0);
   });
 });

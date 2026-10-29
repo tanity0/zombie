@@ -261,7 +261,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase, TELEGRAPH_STYLE_BOSS } from '../utils/telegraphStyle';
 import { hunterWarpAlpha } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
-import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, type AstroThrowEntry } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
+import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_SCATTER_FADE_MS, ASTRO_SCATTER_FADE_HAZE_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
 import { labBaitZoomTarget } from '../world/labBait';
@@ -10078,7 +10078,7 @@ export class PixiScene {
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
     this.syncLibertyArrows(s.enemies, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top, s.libertyOrphanArrows); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
-    this.syncAstroThrows(s.astroThrows, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top); // research/ASTRONAUT_HORDE.md §4: 投げた物(投げ手が画面外・倒れた後でも描く)
+    this.syncAstroThrows(s.astroThrows, s.astroScatter, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top, now); // research/ASTRONAUT_HORDE.md §4: 投げた物(投げ手が画面外・倒れた後でも描く)・§11 周りの残骸
     this.syncPlayerArrowRain(s.arrowRainShots, s.arrowRainStuck, s.gameTime); // research/ARROW_RAIN.md
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
@@ -17598,16 +17598,21 @@ export class PixiScene {
   /** 空から降りてくる物(隕石・落ちてくる残骸): 地平線の覆いの外の層(発光を下・岩を上)。 */
   private astroSkyGlowGfx = new Graphics();
   private astroSkyGfx = new Graphics();
-  private syncAstroThrows(list: readonly AstroThrowEntry[], gameTime: number, viewTopWorld: number): void {
+  private syncAstroThrows(list: readonly AstroThrowEntry[], scatter: readonly AstroScatterPiece[], gameTime: number, viewTopWorld: number, now: number): void {
     const g = this.astroGroundGfx, a = this.astroAirGfx, gl = this.astroGlowGfx, sk = this.astroSkyGfx, skg = this.astroSkyGlowGfx;
     if (!g.parent) this.L.groundLayer.addChild(g);
     if (!gl.parent) { gl.blendMode = 'add'; this.L.effectLayer.addChild(gl); }
     if (!a.parent) this.L.effectLayer.addChild(a);
     if (!skg.parent) { skg.blendMode = 'add'; this.L.skyFxLayer.addChild(skg); }
     if (!sk.parent) this.L.skyFxLayer.addChild(sk);
-    g.clear(); a.clear(); gl.clear(); sk.clear(); skg.clear();
+    // 地面に置いた物の足元の影・土の縁は、絵の入れ物の一番下(=絵の下・赤い予告の下)に描く。
+    const gu = this.astroGroundUnderGfx;
+    const art = this.astroGroundArtLayer();
+    if (gu.parent !== art) art.addChildAt(gu, 0);
+    g.clear(); a.clear(); gl.clear(); sk.clear(); skg.clear(); gu.clear();
     this.astroArtSeen.clear();
-    this.syncAstroThrowsBody(list, gameTime, viewTopWorld, g, a, sk, skg);
+    this.syncAstroThrowsBody(list, gameTime, viewTopWorld, g, a, sk, skg, gu);
+    this.syncAstroScatter(scatter, gameTime, now, gu, g, a, gl);
     for (const [id, sp] of this.astroArtPool) { if (!this.astroArtSeen.has(id)) { sp.destroy(); this.astroArtPool.delete(id); } }
     if (this.astroSkyStart.size > 0) {
       const ids = new Set(list.map(t => t.id));
@@ -17615,9 +17620,109 @@ export class PixiScene {
     }
   }
 
+  /**
+   * research/ASTRONAUT_HORDE.md §11: 宇宙飛行群の周りに散らばる残骸(見た目だけ)。外板の絵を地面に半分埋めて置き、
+   * 3割ほどから細い煙を昇らせる(落ちてまだ新しい=近くにいる)。画面の外の物は描かない。
+   */
+  private syncAstroScatter(scatter: readonly AstroScatterPiece[], gameTime: number, now: number, gu: Graphics, g: Graphics, a: Graphics, gl: Graphics): void {
+    // 夜の地面に沈める色(投げた物の地面の色より一段暗く、月明かりの青へ寄せる=落ちてしばらく経った物)。霞の中から現れる時は霞の色から。
+    const TINT = 0x9c9ea8, HAZE = 0x5d6470;
+    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+    for (const p of scatter) {
+      if (this.distanceOutsideViewport(p.x, p.y, 120) > 0) continue;
+      const ds = this.depthScale(p.y);
+      const u = clamp01((gameTime - p.bornAt) / (p.haze ? ASTRO_SCATTER_FADE_HAZE_MS : ASTRO_SCATTER_FADE_MS));
+      const e = 1 - Math.pow(1 - u, 3); // 出始めが早く、終わりが緩む
+      // 霞の中に置いた物は、透けて湧くのではなく霞の色の影から形が出てくる。地平線の薄れも掛ける(森や空の上に浮かない)。
+      const hz = this.horizonActorAlpha(p.y);
+      const fade = (p.haze ? Math.min(1, e * 1.8) : e) * hz;
+      if (fade <= 0.01) continue;
+      const tint = p.haze ? lerpColor(HAZE, TINT, e) : TINT;
+      const s = 0.95 * p.scale * ds;
+      const h0 = rainHash01(p.x, p.y, 300), h1 = rainHash01(p.x, p.y, 301), h2 = rainHash01(p.x, p.y, 302);
+      // 引きずった跡: 落ちてきた向き(物ごとに左右どちらか)へ伸びる削れ。煙の出ている物は周りが焦げている。
+      const side = h1 < 0.5 ? -1 : 1;
+      const len = (26 + 34 * h2) * s;
+      for (let k = 0; k < 4; k++) {
+        const f = k / 3;
+        gu.ellipse(p.x + side * len * f, p.y + 1 + f * 1.5 * s, (17 - 9 * f) * s, (5 - 2.5 * f) * s)
+          .fill({ color: 0x140f0b, alpha: (0.42 - 0.24 * f) * fade });
+      }
+      if (p.smoke) {
+        gu.ellipse(p.x + side * 4 * s, p.y + 2 * s, 34 * s, 10 * s).fill({ color: 0x0c0907, alpha: 0.22 * fade });
+        gu.ellipse(p.x - side * 6 * s, p.y + 1 * s, 24 * s, 7 * s).fill({ color: 0x0c0907, alpha: 0.18 * fade });
+      }
+      const sx = p.flip ? -s : s;
+      if (!this.placeAstroArt(p.id, astroThrowArtFrame('debris', p.variant), this.L.groundLayer, p.x, p.y + 2 * ds, p.rot, sx, s, fade, 0.5, 1, tint, p.keep)) continue;
+      // 切り口を土で隠す: 刺さった根元に盛り上がった土と、はね上げた土くれ(まっすぐな切り口を見せない)。
+      // 切り口は絵と一緒に傾いているので、土も切り口の線に沿って盛る(水平に盛ると下がった側の角がはみ出す)。
+      const cr = Math.cos(p.rot), sr = Math.sin(p.rot), half = 66 * s * 0.46, by = p.y + 2 * ds;
+      for (let k = 0; k < 7; k++) {
+        const t = (k / 6 - 0.5) * 2 * half, hk = rainHash01(p.x, p.y, 310 + k);
+        const lx = p.x + cr * t, ly = by + sr * t;
+        g.ellipse(lx, ly + 0.6 * s, (6.5 + 3 * hk) * s, (3.2 + 1.4 * hk) * s).fill({ color: 0x15120e, alpha: 0.92 * fade });
+        g.ellipse(lx + (hk - 0.5) * 3 * s, ly - 0.8 * s, (3.5 + 2 * hk) * s, 1.6 * s).fill({ color: 0x221d17, alpha: 0.75 * fade });
+      }
+      for (let k = 0; k < 5; k++) {
+        const ck = rainHash01(p.x, p.y, 320 + k), cy = rainHash01(p.x, p.y, 330 + k + 20);
+        const t = (ck - 0.5) * 2.5 * half;
+        g.ellipse(p.x + cr * t, by + sr * t + (cy - 0.2) * 5 * s, (1.6 + 2.2 * cy) * s, (1.1 + 1.2 * ck) * s)
+          .fill({ color: k % 2 ? 0x13100c : 0x1e1913, alpha: 0.85 * fade });
+      }
+      if (!p.smoke) continue;
+      // 根元で燻る火: 揺らぎの重なった不規則な明滅(一定の波にしない)。裂けた縁に火の粉が点き、ときどき爆ぜて昇る。
+      const fl = (t: number) => 0.5 + 0.22 * Math.sin(t / 97) + 0.18 * Math.sin(t / 233 + 1.7) + 0.1 * Math.sin(t / 61 + 4.1);
+      const ember = clamp01(fl(now + h0 * 5000));
+      // 光は縁の立たない重ね塗り(加算なので芯ほど明るい=硬い円盤に見せない)。
+      for (let k = 0; k < 4; k++) {
+        const r = 1 - k * 0.22;
+        gl.ellipse(p.x + (h0 - 0.5) * 6 * s, p.y - 3 * s, 24 * s * r, 11 * s * r).fill({ color: k < 2 ? 0x9a3412 : 0xea580c, alpha: 0.075 * ember * fade });
+      }
+      const topY = p.y + 2 * ds - 66 * s * p.keep;
+      for (let k = 0; k < 4; k++) {
+        const hk = rainHash01(p.x, p.y, 330 + k), hv = rainHash01(p.x, p.y, 340 + k);
+        const on = clamp01(fl(now * (0.8 + 0.6 * hk) + k * 900) * 1.6 - 0.45);
+        if (on <= 0) continue;
+        const ex = p.x + (hk - 0.5) * 40 * s * (p.flip ? -1 : 1), ey = topY + (0.2 + 0.7 * hv) * (p.y - topY);
+        gl.circle(ex, ey, 3.2 * s).fill({ color: 0xfb923c, alpha: 0.45 * on * fade });
+        gl.circle(ex, ey, 1.3 * s).fill({ color: 0xfde68a, alpha: 0.9 * on * fade });
+      }
+      for (let k = 0; k < 3; k++) {
+        const per = 900 + 500 * rainHash01(p.x, p.y, 350 + k);
+        const ph = ((now + k * 377 + h0 * 3000) % per) / per;
+        const rise = 1 - Math.pow(1 - ph, 2); // 爆ぜて速く昇り、減速する
+        gl.circle(p.x + (rainHash01(p.x, p.y, 360 + k) - 0.5) * 24 * s + Math.sin(ph * 6 + k) * 5 * ds, p.y - 6 * s - rise * 70 * ds, 1.4 * ds)
+          .fill({ color: 0xfdba74, alpha: 0.85 * (1 - ph) * fade });
+      }
+      // 昇る煙: 大きさ・速さの揃わない塊が、根元の濃い煤から薄い灰へ変わりながら、風に流されて上で崩れる。
+      for (let k = 0; k < 6; k++) {
+        const hk = rainHash01(p.x, p.y, 370 + k);
+        const per = 2300 + 1500 * hk;
+        const ph = ((now + hk * per + k * 431) % per) / per;
+        const shear = Math.pow(ph, 1.6) * 46 * ds; // 上ほど風に流される
+        const wob = Math.sin(now / (600 + 300 * hk) + k * 2.1) * (4 + 8 * ph) * ds;
+        const sx0 = p.x + (hk - 0.5) * 10 * s + shear + wob;
+        const sy0 = p.y - 8 * s - ph * (110 + 50 * hk) * ds;
+        const r = (6 + ph * (14 + 10 * hk)) * ds;
+        const al = 0.2 * (1 - ph) * Math.min(1, ph * 5) * fade;
+        const col = lerpColor(0x3f3a36, 0x8f8c8a, ph);
+        a.circle(sx0, sy0, r).fill({ color: col, alpha: al });
+        a.circle(sx0 + r * 0.55, sy0 - r * 0.25, r * 0.7).fill({ color: col, alpha: al * 0.8 });
+        a.circle(sx0 - r * 0.45, sy0 + r * 0.2, r * 0.6).fill({ color: col, alpha: al * 0.6 });
+      }
+    }
+  }
+
   /** 投げる物の絵(社長支給 fx/astro-throws)の置き場。絵が読み込めていなければ false=呼び手が仮の図形を描く。 */
   private astroArtPool = new Map<string, Sprite>();
   private astroCutTex = new Map<string, Texture>();
+  private astroGroundArt: Container | null = null;
+  private astroGroundUnderGfx = new Graphics();
+  private astroGroundArtLayer(): Container {
+    if (!this.astroGroundArt) this.astroGroundArt = new Container();
+    if (this.astroGroundArt.parent !== this.L.groundLayer) this.L.groundLayer.addChildAt(this.astroGroundArt, 0);
+    return this.astroGroundArt;
+  }
   private astroArtSeen = new Set<string>();
   private placeAstroArt(id: string, frame: number, layer: Container, x: number, y: number, rot: number,
     sx: number, sy: number, alpha: number, ax = 0.5, ay = 0.5, tint = 0xffffff, keepFrac = 1): boolean {
@@ -17637,7 +17742,10 @@ export class PixiScene {
     let sp = this.astroArtPool.get(id);
     if (!sp) { sp = new Sprite(tex); this.astroArtPool.set(id, sp); }
     sp.texture = tex;
-    if (sp.parent !== layer) layer.addChild(sp);
+    // 地面に置く物(刺さった旗・外板・花束・周りの残骸)は地面の層のいちばん下の専用の入れ物へ=赤い予告や血の床の下に敷く
+    // (地面の層は足した順に重なる=後から足した絵が予告を隠す事故を作らない・品質監査 A4)。
+    const target = layer === this.L.groundLayer ? this.astroGroundArtLayer() : layer;
+    if (sp.parent !== target) target.addChild(sp);
     sp.anchor.set(ax, ay);
     sp.position.set(x, y);
     sp.rotation = rot;
@@ -17658,7 +17766,7 @@ export class PixiScene {
   }
 
   private syncAstroThrowsBody(list: readonly AstroThrowEntry[], gameTime: number, viewTopWorld: number,
-    g: Graphics, a: Graphics, sk: Graphics, skg: Graphics): void {
+    g: Graphics, a: Graphics, sk: Graphics, skg: Graphics, gu: Graphics): void {
     if (list.length === 0) return;
     const style = telegraphStyleFor('mutant-astro');
     // 手を離す7コマ目の触手の手の位置(支給の絵の実測: 足元から約60px・向いている側へ約48px)。投げた物はここから出る。
@@ -17816,7 +17924,7 @@ export class PixiScene {
           const fall = clamp01(tk / 0.67); // 倒れ切ってから(最後の300ms)沈むように消える
           const rot = flyRot + dr * k + wob - side * 1.3 * fall * fall;
           const fade = 1 - clamp01((tk - 0.67) / 0.33);
-          g.ellipse(c.tx, c.ty + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.35 * fade });
+          gu.ellipse(c.tx, c.ty + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.35 * fade });
           if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.groundLayer, c.tx, c.ty, rot, 1.2 * ds * -side, 1.2 * ds, fade, FOOT_X, FOOT_Y, ASTRO_GROUND_TINT)) {
             this.drawAstroFlag(g, c.tx, c.ty, flagAng + wob, ds, gameTime, fade, false);
           }
@@ -17856,8 +17964,8 @@ export class PixiScene {
           const fade = 1 - Math.pow(sinkK, 1.6);
           const groundY = t.y;
           // えぐれた土(刺さった所の黒い傷と、跳ねた土の縁)
-          g.ellipse(t.x, groundY, (18 + 6 * h2) * ds, (5 + 2 * h2) * ds).fill({ color: 0x1a120c, alpha: 0.55 * fade });
-          g.ellipse(t.x + (h4 - 0.5) * 8 * ds, groundY - 1, (24 + 8 * h1) * ds, (6 + 2 * h1) * ds).stroke({ width: 2 * ds, color: 0x5a4636, alpha: 0.6 * fade });
+          gu.ellipse(t.x, groundY, (18 + 6 * h2) * ds, (5 + 2 * h2) * ds).fill({ color: 0x1a120c, alpha: 0.55 * fade });
+          gu.ellipse(t.x + (h4 - 0.5) * 8 * ds, groundY - 1, (24 + 8 * h1) * ds, (6 + 2 * h1) * ds).stroke({ width: 2 * ds, color: 0x5a4636, alpha: 0.6 * fade });
           // 刺さった深さぶん絵の下側を切り落とし、切り口を地面に立てる。最後はさらに沈む(見えている割合を減らす)。
           const keep = Math.max(0.2, Math.round((0.88 - sinkPx / 66 - 0.25 * sinkK * sinkK) * 20) / 20);
           if (!this.placeAstroArt(t.id, astroThrowArtFrame('debris', t.variant), this.L.groundLayer, t.x, groundY + 2 * ds, stickRot + quiver, 0.95 * ds, 0.95 * ds, fade, 0.5, 1, ASTRO_GROUND_TINT, keep)) {
@@ -17921,7 +18029,7 @@ export class PixiScene {
             const back = t.bounced ? dir * 46 : 0;
             const sinkK = clamp01((age - (ASTRO_BOUQUET_LIE_MS - 700)) / 700); // 最後は沈むように薄れる
             const fade = 1 - Math.pow(sinkK, 1.6);
-            g.ellipse(t.x + back, t.y + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.25 * fade });
+            gu.ellipse(t.x + back, t.y + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.25 * fade });
             if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.groundLayer, t.x + back, t.y + 4 * ds * sinkK * sinkK, LIE_ROT, 0.85 * ds, 0.85 * ds, fade, 0.5, ANC_Y, ASTRO_GROUND_TINT)) {
               this.drawAstroBouquet(g, t.x + back, t.y - 4 * ds, 1.35, ds, fade);
             }

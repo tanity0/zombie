@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5255', items: [
+    '宇宙飛行群の近くには、ロケットの残骸が散らばっている。煙が上がっていたら、近くにいる',
+  ] },
   { version: '0.25.5254', items: [
     '宇宙飛行群が投げる国旗は、長い竿の槍のように飛び、布が後ろへなびく',
   ] },

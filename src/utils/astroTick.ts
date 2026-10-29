@@ -24,7 +24,7 @@ import {
   ASTRO_STUCK_MS, ASTRO_STUCK_PX, ASTRO_HIT_ALERT_MS, ASTRO_LOSE_MS, ASTRO_RELEASE_MS, ASTRO_THROW_ANIM_MS,
   ASTRO_METEOR_COOLDOWN_MS, ASTRO_BOUQUET_HEAL_FRAC,
   stepAstroHover, astroCanMove, stepAstroVelocity, astroArriveSpeed, astroBandPull, astroPoiCandidates, pickAstroPoi,
-  pickAstroThrow, astroThrowPlan, astroLingerMs, astroMeteorShake,
+  pickAstroThrow, astroThrowPlan, astroLingerMs, astroMeteorShake, astroScatterStep, ASTRO_SCATTER_STEP_MS,
   type AstroPoi, type AstroThrowKind, type AstroThrowEntry,
 } from './astroScript';
 
@@ -422,4 +422,31 @@ export const runAstroThrows = (gt: number): void => {
     }
   }
   if (changed) useGameStore.setState(s2 => ({ astroThrows: out, pumpkinBlasts: blasts.length > 0 ? [...s2.pumpkinBlasts, ...blasts] : s2.pumpkinBlasts }));
+};
+
+// ---- 周りに散らばる残骸(§11) ----
+let scatterNextAt = 0;
+const scatterSeq = { n: 0 };
+/**
+ * 宇宙飛行群の周りの残骸を見直す(ASTRO_SCATTER_STEP_MS ごと)。置く・消すのは画面(ズーム込みの可視域+余白)の外だけ。
+ * 居なければ新しく置かず、画面の外へ出たものから消す。判定は持たない(見た目だけ)。
+ */
+export const runAstroScatter = (gt: number): void => {
+  if (gt < scatterNextAt - ASTRO_SCATTER_STEP_MS * 4) scatterNextAt = 0; // ランを跨いだ(時計が戻った)
+  if (gt < scatterNextAt) return;
+  scatterNextAt = gt + ASTRO_SCATTER_STEP_MS;
+  const st = useGameStore.getState();
+  const a = pickActiveAstro(st.enemies);
+  if (!a && st.astroScatter.length === 0) return;
+  // 「画面の中」は実際に描かれる範囲より広めに取る(品質監査 A3): 走りの引き(viewZoom に入らない約0.85倍)と、
+  // 引いた時に下へ広がる描画(支点が地平線)・絵の高さ(遠近の最大×傾き)・煙の昇る高さのぶん、横と上は+260、下は+420。
+  const vb0 = zoomedViewportBounds(st.camera, st.gameBounds, Math.max(0.3, (st.viewZoom || 1) * 0.85));
+  const view = { left: vb0.left - 260, right: vb0.right + 260, top: vb0.top - 260, bottom: vb0.bottom + 420 };
+  const center = a ? { x: a.x + a.width / 2, y: a.y + a.height } : null;
+  const sp = a ? Math.hypot(a.vx ?? 0, a.vy ?? 0) : 0;
+  const dir = a && sp > 5 ? { x: (a.vx ?? 0) / sp, y: (a.vy ?? 0) / sp } : null;
+  // 建物・木・岩に埋まらない所だけ(立てる所の判定=レスキューの出現位置と同じ使い方)。
+  const canPlace = (x: number, y: number) => { const r = resolveBountyMove(x - 20, y - 20, { width: 40, height: 40 }); return Math.hypot(r.x - (x - 20), r.y - (y - 20)) < 2; };
+  const next = astroScatterStep(st.astroScatter, center, dir, view, canPlace, gt, Math.random, scatterSeq);
+  if (next !== st.astroScatter) useGameStore.setState({ astroScatter: next });
 };
