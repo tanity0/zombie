@@ -261,7 +261,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase, TELEGRAPH_STYLE_BOSS } from '../utils/telegraphStyle';
 import { hunterWarpAlpha } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
-import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_SCATTER_FADE_MS, ASTRO_SCATTER_FADE_HAZE_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
+import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_RAIN_SINK_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
 import { labBaitZoomTarget } from '../world/labBait';
@@ -17612,7 +17612,7 @@ export class PixiScene {
     g.clear(); a.clear(); gl.clear(); sk.clear(); skg.clear(); gu.clear();
     this.astroArtSeen.clear();
     this.syncAstroThrowsBody(list, gameTime, viewTopWorld, g, a, sk, skg, gu);
-    this.syncAstroScatter(scatter, gameTime, now, gu, g, a, gl);
+    this.syncAstroScatter(scatter, gameTime, now, gu, g, a, gl, skg);
     for (const [id, sp] of this.astroArtPool) { if (!this.astroArtSeen.has(id)) { sp.destroy(); this.astroArtPool.delete(id); } }
     if (this.astroSkyStart.size > 0) {
       const ids = new Set(list.map(t => t.id));
@@ -17624,22 +17624,41 @@ export class PixiScene {
    * research/ASTRONAUT_HORDE.md §11: 宇宙飛行群の周りに散らばる残骸(見た目だけ)。外板の絵を地面に半分埋めて置き、
    * 3割ほどから細い煙を昇らせる(落ちてまだ新しい=近くにいる)。画面の外の物は描かない。
    */
-  private syncAstroScatter(scatter: readonly AstroScatterPiece[], gameTime: number, now: number, gu: Graphics, g: Graphics, a: Graphics, gl: Graphics): void {
-    // 夜の地面に沈める色(投げた物の地面の色より一段暗く、月明かりの青へ寄せる=落ちてしばらく経った物)。霞の中から現れる時は霞の色から。
-    const TINT = 0x9c9ea8, HAZE = 0x5d6470;
+  private syncAstroScatter(scatter: readonly AstroScatterPiece[], gameTime: number, now: number, gu: Graphics, g: Graphics, a: Graphics, gl: Graphics, skg: Graphics): void {
+    // 夜の地面に沈める色(投げた物の地面の色より一段暗く、月明かりの青へ寄せる=落ちてしばらく経った物)。
+    const TINT = 0x9c9ea8;
     const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
     for (const p of scatter) {
-      if (this.distanceOutsideViewport(p.x, p.y, 120) > 0) continue;
+      if (this.distanceOutsideViewport(p.x, p.y, 160) > 0) continue;
       const ds = this.depthScale(p.y);
-      const u = clamp01((gameTime - p.bornAt) / (p.haze ? ASTRO_SCATTER_FADE_HAZE_MS : ASTRO_SCATTER_FADE_MS));
-      const e = 1 - Math.pow(1 - u, 3); // 出始めが早く、終わりが緩む
-      // 霞の中に置いた物は、透けて湧くのではなく霞の色の影から形が出てくる。地平線の薄れも掛ける(森や空の上に浮かない)。
-      const hz = this.horizonActorAlpha(p.y);
-      const fade = (p.haze ? Math.min(1, e * 1.8) : e) * hz;
-      if (fade <= 0.01) continue;
-      const tint = p.haze ? lerpColor(HAZE, TINT, e) : TINT;
       const s = 0.95 * p.scale * ds;
       const h0 = rainHash01(p.x, p.y, 300), h1 = rainHash01(p.x, p.y, 301), h2 = rainHash01(p.x, p.y, 302);
+      const hz = this.horizonActorAlpha(p.y);
+      const sx = p.flip ? -s : s;
+      if (gameTime < p.landAt) {
+        // 落ちてくる間(§12-1): 技の残骸と同じく空からほぼ一直線に叩きつける(赤い予告は出さない=当たらない)。
+        const u = clamp01((gameTime - p.bornAt) / Math.max(1, p.landAt - p.bornAt)), k = u * u;
+        const stx = p.x + (h1 < 0.5 ? -1 : 1) * (20 + 50 * h2), sty = p.y - 520;
+        const px = stx + (p.x - stx) * k, py = sty + (p.y - sty) * k;
+        gu.ellipse(p.x, p.y, (6 + 16 * u) * s, (2.5 + 6 * u) * s).fill({ color: 0x000000, alpha: (0.12 + 0.3 * u) * hz });
+        // 速さの筋: 根元が太く濃く、尾へ細く薄れる(1本の棒に見せない)。
+        const tl = (40 + 80 * u) * ds, ang = Math.atan2(py - sty, px - stx), cx = Math.cos(ang), cy = Math.sin(ang);
+        for (let k = 0; k < 3; k++) {
+          skg.moveTo(px - cx * tl * k / 3, py - cy * tl * k / 3).lineTo(px - cx * tl * (k + 1) / 3, py - cy * tl * (k + 1) / 3)
+            .stroke({ width: (7 - 2 * k) * s, color: 0xf97316, alpha: 0.3 * (1 - k / 3) * hz });
+        }
+        const rotD = p.rot + (1 - u) * 0.6 * (h0 > 0.5 ? 1 : -1);
+        this.placeAstroArt(p.id, astroThrowArtFrame('debris', p.variant), this.L.skyFxLayer, px, py, rotD, sx, s, hz);
+        continue;
+      }
+      // 刺さった瞬間の震え(速く大きく→すぐ収まる)。上限を超えた古い物は、さらに沈みながら薄れて消える(消滅にも慣性)。
+      const age = gameTime - p.landAt;
+      const quiver = age < 360 ? Math.sin(age / 14) * 0.16 * (1 - age / 360) * (1 - age / 360) : 0;
+      const sinkK = p.sinkAt !== undefined ? clamp01((gameTime - p.sinkAt) / ASTRO_RAIN_SINK_MS) : 0;
+      const fade = (1 - Math.pow(sinkK, 1.6)) * hz;
+      if (fade <= 0.01) continue;
+      const keep = Math.max(0.2, Math.round((p.keep - 0.3 * sinkK * sinkK) * 20) / 20);
+      const tint = TINT;
       // 引きずった跡: 落ちてきた向き(物ごとに左右どちらか)へ伸びる削れ。煙の出ている物は周りが焦げている。
       const side = h1 < 0.5 ? -1 : 1;
       const len = (26 + 34 * h2) * s;
@@ -17652,8 +17671,7 @@ export class PixiScene {
         gu.ellipse(p.x + side * 4 * s, p.y + 2 * s, 34 * s, 10 * s).fill({ color: 0x0c0907, alpha: 0.22 * fade });
         gu.ellipse(p.x - side * 6 * s, p.y + 1 * s, 24 * s, 7 * s).fill({ color: 0x0c0907, alpha: 0.18 * fade });
       }
-      const sx = p.flip ? -s : s;
-      if (!this.placeAstroArt(p.id, astroThrowArtFrame('debris', p.variant), this.L.groundLayer, p.x, p.y + 2 * ds, p.rot, sx, s, fade, 0.5, 1, tint, p.keep)) continue;
+      if (!this.placeAstroArt(p.id, astroThrowArtFrame('debris', p.variant), this.L.groundLayer, p.x, p.y + 2 * ds, p.rot + quiver, sx, s, fade, 0.5, 1, tint, keep)) continue;
       // 切り口を土で隠す: 刺さった根元に盛り上がった土と、はね上げた土くれ(まっすぐな切り口を見せない)。
       // 切り口は絵と一緒に傾いているので、土も切り口の線に沿って盛る(水平に盛ると下がった側の角がはみ出す)。
       const cr = Math.cos(p.rot), sr = Math.sin(p.rot), half = 66 * s * 0.46, by = p.y + 2 * ds;
@@ -17670,29 +17688,10 @@ export class PixiScene {
           .fill({ color: k % 2 ? 0x13100c : 0x1e1913, alpha: 0.85 * fade });
       }
       if (!p.smoke) continue;
-      // 根元で燻る火: 揺らぎの重なった不規則な明滅(一定の波にしない)。裂けた縁に火の粉が点き、ときどき爆ぜて昇る。
-      const fl = (t: number) => 0.5 + 0.22 * Math.sin(t / 97) + 0.18 * Math.sin(t / 233 + 1.7) + 0.1 * Math.sin(t / 61 + 4.1);
-      const ember = clamp01(fl(now + h0 * 5000));
-      // 光は縁の立たない重ね塗り(加算なので芯ほど明るい=硬い円盤に見せない)。
+      // 根元で燻る火: 縁の立たない淡い光を置くだけ(明滅・火の粉は付けない=キラキラさせない・社長指示2026-10-29)。
       for (let k = 0; k < 4; k++) {
         const r = 1 - k * 0.22;
-        gl.ellipse(p.x + (h0 - 0.5) * 6 * s, p.y - 3 * s, 24 * s * r, 11 * s * r).fill({ color: k < 2 ? 0x9a3412 : 0xea580c, alpha: 0.075 * ember * fade });
-      }
-      const topY = p.y + 2 * ds - 66 * s * p.keep;
-      for (let k = 0; k < 4; k++) {
-        const hk = rainHash01(p.x, p.y, 330 + k), hv = rainHash01(p.x, p.y, 340 + k);
-        const on = clamp01(fl(now * (0.8 + 0.6 * hk) + k * 900) * 1.6 - 0.45);
-        if (on <= 0) continue;
-        const ex = p.x + (hk - 0.5) * 40 * s * (p.flip ? -1 : 1), ey = topY + (0.2 + 0.7 * hv) * (p.y - topY);
-        gl.circle(ex, ey, 3.2 * s).fill({ color: 0xfb923c, alpha: 0.45 * on * fade });
-        gl.circle(ex, ey, 1.3 * s).fill({ color: 0xfde68a, alpha: 0.9 * on * fade });
-      }
-      for (let k = 0; k < 3; k++) {
-        const per = 900 + 500 * rainHash01(p.x, p.y, 350 + k);
-        const ph = ((now + k * 377 + h0 * 3000) % per) / per;
-        const rise = 1 - Math.pow(1 - ph, 2); // 爆ぜて速く昇り、減速する
-        gl.circle(p.x + (rainHash01(p.x, p.y, 360 + k) - 0.5) * 24 * s + Math.sin(ph * 6 + k) * 5 * ds, p.y - 6 * s - rise * 70 * ds, 1.4 * ds)
-          .fill({ color: 0xfdba74, alpha: 0.85 * (1 - ph) * fade });
+        gl.ellipse(p.x + (h0 - 0.5) * 6 * s, p.y - 3 * s, 24 * s * r, 11 * s * r).fill({ color: k < 2 ? 0x9a3412 : 0xea580c, alpha: 0.06 * fade });
       }
       // 昇る煙: 大きさ・速さの揃わない塊が、根元の濃い煤から薄い灰へ変わりながら、風に流されて上で崩れる。
       for (let k = 0; k < 6; k++) {
@@ -22352,7 +22351,7 @@ export class PixiScene {
       : 0;
     // research/MUTANT_HERO.md: 英雄の跳躍の高さ(見た目だけ・判定は地面のまま=CLAUDE.md「Y方向」の掟)。
     // research/ASTRONAUT_HORDE.md §8 A4: 宇宙飛行群の浮遊も同じ(絵だけ持ち上げる・判定・影・帯の y は地面のまま)。
-    const heroLift = e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1), now) : 0;
+    const heroLift = e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1)) : 0;
     view.sprite.position.set(Math.round(fb.footX + liftShake + sweepWindupTremor),
       Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx - heroLift));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
@@ -22500,7 +22499,7 @@ export class PixiScene {
       // ★検収差し戻し(中11)対応: 影の寸法は呼吸/被弾スカッシュ/crouch・jump(aiSqX/Y)を含まない
       // 「素のscale」(sc)を使う。持ち上げ系(liftHop/aiHop/kbHop/lungeOffY)は heightPx 相当として渡す。
       view.shadowScale = sc;
-      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY + (e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1), now) : 0);
+      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY + (e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1)) : 0);
       // faceMul(③振り向き)は符号を持つ=ミラー。歩幅スカッシュ(motSqX/Y)は他の変形と同じ掛け算合成。
       // ★死体は**縦に潰れて横に広がりながら**消える(社長指示2026-08-25「突然パっと消えちゃうので、
       // すこし吹っ飛んで潰れて消えるようにして」)。判定には一切関与しない純粋な描画。

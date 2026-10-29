@@ -11,7 +11,7 @@ export const ASTRO_THROW_FRAME_W = 146;
 export const ASTRO_SHEET_H = 182;
 /** 浮遊の1コマ(ms・叩き台)。 */
 export const ASTRO_HOVER_FRAME_MS = 60;
-/** 移動中にピンポンする範囲(最後の3コマ)。 */
+/** 浮き切ったとみなすコマ(持ち上げが満ちる・投げの間合いを数え始める)。 */
 export const ASTRO_HOVER_LOOP_LO = 8;
 export const ASTRO_HOVER_TOP = ASTRO_HOVER_FRAMES - 1;
 /** 動き出してよいコマ(浮き上がりの途中から慣性でゆっくり動き出す・§8 A4)。 */
@@ -24,7 +24,6 @@ export const ASTRO_THROW_ANIM_MS = ASTRO_THROW_FRAMES * ASTRO_THROW_FRAME_MS; //
 
 /** 描画の持ち上げ(絵だけ・判定は地面のまま)。 */
 export const ASTRO_LIFT_PX = 26; // クリエイティブ監査#11: 18では大きな体に対して浮いているのが読めない
-export const ASTRO_BOB_PX = 4.2;
 
 // ---- 動き ----
 /** 巡回の速さ(px/s)。 */
@@ -67,14 +66,18 @@ export const ASTRO_MISSILE_RADIUS = 110;
 export const ASTRO_MISSILE_DAMAGE = 22;
 
 export const ASTRO_FLAG_FLY_MS = 120;
-export const ASTRO_FLAG_LENGTH = 700;
+/** 国旗はプレイヤーの少し後ろまで届く(§12-3・社長指示2026-10-29)。近すぎる時も最低この長さ。 */
+export const ASTRO_FLAG_BEYOND_PX = 120;
+export const ASTRO_FLAG_MIN_LENGTH = 220;
 export const ASTRO_FLAG_HALF_W = 18;
 export const ASTRO_FLAG_DAMAGE = 26;
 /** 刺さった旗が残る(判定なし)・最後に薄れる。 */
 export const ASTRO_FLAG_STUCK_MS = 5000;
 
 export const ASTRO_DEBRIS_COUNT = 8;
-export const ASTRO_DEBRIS_SPREAD_PX = 350;
+/** 投げ始めのプレイヤーの位置を中心にこの半径の内へ落とす(§12-2「明確にプレイヤーに当たりを付けた範囲内でランダム落下」)。1枚はプレイヤーの所そのもの。 */
+export const ASTRO_DEBRIS_SPREAD_PX = 260;
+export const ASTRO_DEBRIS_GAP_PX = 60;
 export const ASTRO_DEBRIS_RADIUS = 46;
 export const ASTRO_DEBRIS_DAMAGE = 14;
 /** 1枚目は離してから700ms、以後1枚ごとに150ms。 */
@@ -187,7 +190,8 @@ export const astroThrowPlan = (
     case 'flag': {
       const dx = target.x - from.x, dy = target.y - from.y, l = Math.hypot(dx, dy);
       const ux = l > 1e-6 ? dx / l : 1, uy = l > 1e-6 ? dy / l : 0;
-      const tx = from.x + ux * ASTRO_FLAG_LENGTH, ty = from.y + uy * ASTRO_FLAG_LENGTH;
+      const len = Math.max(ASTRO_FLAG_MIN_LENGTH, l + ASTRO_FLAG_BEYOND_PX);
+      const tx = from.x + ux * len, ty = from.y + uy * len;
       return [{
         ...base, id: `${throwId}-0`, hitAt: start + astroHitOffsetMs('flag'), x: tx, y: ty, radius: ASTRO_FLAG_HALF_W, damage: ASTRO_FLAG_DAMAGE,
         capsule: { fx: from.x, fy: from.y, tx, ty, halfWidth: ASTRO_FLAG_HALF_W },
@@ -198,11 +202,20 @@ export const astroThrowPlan = (
       // 8枚とも違う外板にする(並びは毎回ばらす)。
       const kinds = Array.from({ length: ASTRO_DEBRIS_VARIANTS }, (_, k) => k);
       for (let k = kinds.length - 1; k > 0; k--) { const j = Math.floor(rng() * (k + 1)) % (k + 1); [kinds[k], kinds[j]] = [kinds[j], kinds[k]]; }
-      for (let i = 0; i < ASTRO_DEBRIS_COUNT; i++) {
+      // 置く所: 1枚はプレイヤーの立っていた所そのもの(何番目に落ちるかは無作為)、残りは円の中に無作為(枚どうし離す)。
+      const onTarget = Math.floor(rng() * ASTRO_DEBRIS_COUNT) % ASTRO_DEBRIS_COUNT;
+      const pts: { x: number; y: number }[] = [{ x: target.x, y: target.y }];
+      for (let tries = 0; pts.length < ASTRO_DEBRIS_COUNT && tries < 400; tries++) {
         const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * ASTRO_DEBRIS_SPREAD_PX;
+        const q = { x: target.x + Math.cos(a) * r, y: target.y + Math.sin(a) * r };
+        if (tries < 300 && pts.some(p => Math.hypot(p.x - q.x, p.y - q.y) < ASTRO_DEBRIS_GAP_PX)) continue;
+        pts.push(q);
+      }
+      [pts[0], pts[onTarget]] = [pts[onTarget], pts[0]];
+      for (let i = 0; i < ASTRO_DEBRIS_COUNT; i++) {
         out.push({
           ...base, id: `${throwId}-${i}`, hitAt: start + astroHitOffsetMs('debris', i),
-          x: target.x + Math.cos(a) * r, y: target.y + Math.sin(a) * r, radius: ASTRO_DEBRIS_RADIUS, damage: ASTRO_DEBRIS_DAMAGE,
+          x: pts[i].x, y: pts[i].y, radius: ASTRO_DEBRIS_RADIUS, damage: ASTRO_DEBRIS_DAMAGE,
           variant: kinds[i % kinds.length], tilt: (rng() - 0.5) * 1.2,
         });
       }
@@ -215,7 +228,8 @@ export const astroThrowPlan = (
 export interface AstroHoverAnim { frame: number; acc: number; dir: 1 | -1 }
 
 /**
- * 浮遊のコマを進める。wantAir=浮きたい(0→10→8〜10ピンポン)/ 降りたい(今のコマから0まで逆に)。
+ * 浮遊のコマを進める。wantAir=浮きたい(0→10へ進み、10で止める)/ 降りたい(今のコマから0まで逆に)。
+ * 移動中は体を固定する(社長指示2026-10-29「移動中は体を固定にして なんかグラグラしてる」=8〜10の往復はシートの中で体が前後に傾くため)。
  * collapse=崩し・気絶で落ちる(推力が抜けて、地面に近いほど速く落ちる=重力の加速・§10)。普通の着地も上でためて最後を速める。
  */
 export const stepAstroHover = (a: AstroHoverAnim, wantAir: boolean, dtMs: number, collapse = false): AstroHoverAnim => {
@@ -223,22 +237,16 @@ export const stepAstroHover = (a: AstroHoverAnim, wantAir: boolean, dtMs: number
   acc += Math.max(0, dtMs);
   for (let guard = 0; guard < 64; guard++) {
     // 崩れて落ちる時は推力が抜けて加速しながら落ちる(上=60ms → 地面の手前=24ms・重力の向き)。
-    // 浮遊のピンポンは折り返し(8・10)で一拍溜める=機械的な等間隔の震えにしない(クリエイティブ監査#2・#12)。
     const per = !wantAir && collapse
       ? ASTRO_HOVER_FRAME_MS * (0.4 + 0.6 * (frame / ASTRO_HOVER_TOP))
-      : wantAir && (frame === ASTRO_HOVER_TOP || (frame === ASTRO_HOVER_LOOP_LO && dir === -1)) ? ASTRO_HOVER_FRAME_MS * 1.6
       // 降りる時は浮き上がりの巻き戻しにしない: 上で推力を絞って一瞬ため、地面が近づくほど速く落ちてドスンで止まる(監査2巡目#6)。
       : !wantAir ? ASTRO_HOVER_FRAME_MS * (0.55 + 0.75 * (frame / ASTRO_HOVER_TOP))
       : ASTRO_HOVER_FRAME_MS;
     if (acc < per) break;
     acc -= per;
     if (wantAir) {
-      if (frame < ASTRO_HOVER_LOOP_LO) { frame++; dir = 1; }
-      else {
-        if (frame >= ASTRO_HOVER_TOP) dir = -1;
-        else if (frame <= ASTRO_HOVER_LOOP_LO) dir = 1;
-        frame += dir;
-      }
+      if (frame < ASTRO_HOVER_TOP) { frame++; dir = 1; }
+      else { acc = 0; break; } // 浮き切ったら10で止める(往復しない)
     } else if (frame > 0) {
       frame--; dir = -1;
     } else {
@@ -253,16 +261,13 @@ export const stepAstroHover = (a: AstroHoverAnim, wantAir: boolean, dtMs: number
 export const astroCanMove = (frame: number): boolean => frame >= ASTRO_MOVE_FRAME;
 
 /**
- * 描画の持ち上げ(px・絵だけ)。0〜2コマ=0、3〜8コマ=比例して0→ASTRO_LIFT_PX、浮遊中(8〜10)は揺れを足す。
- * frame はコマの合間の値(小数)でよい=60msごとの階段にしない。揺れは2つの周期を重ねて不揃いに。t=揺れの時計(ms)。
+ * 描画の持ち上げ(px・絵だけ)。0〜2コマ=0、3〜8コマ=比例して0→ASTRO_LIFT_PX、浮き切った後は一定(移動中は体を固定=上下に揺らさない・社長指示2026-10-29)。
+ * frame はコマの合間の値(小数)でよい=60msごとの階段にしない。
  */
-export const astroLiftPx = (frame: number, t: number): number => {
+export const astroLiftPx = (frame: number): number => {
   if (frame <= 2) return 0;
   const k = Math.min(1, (frame - 2) / (ASTRO_HOVER_LOOP_LO - 2));
-  const s = k * k * (3 - 2 * k); // 浮き始めと浮き切りで緩む
-  const bobK = Math.max(0, Math.min(1, frame - (ASTRO_HOVER_LOOP_LO - 1)));
-  const bob = (Math.sin(t / 520) * 3 + Math.sin(t / 233 + 1.3) * 1.2) * (ASTRO_BOB_PX / 4.2) * bobK;
-  return s * ASTRO_LIFT_PX + bob;
+  return k * k * (3 - 2 * k) * ASTRO_LIFT_PX; // 浮き始めと浮き切りで緩む
 };
 
 /** 浮遊のコマの合間の値(描画の持ち上げを滑らかにするため)。 */
@@ -353,84 +358,78 @@ export const astroMeteorShake = (msToHit: number): number => {
   return 0.12 + 0.88 * u * u;
 };
 
-// ---- 周りに散らばる残骸(§11・社長指示2026-10-29「先にそれを見て、あ、近くにいるなってわかる感じ」) ----
-/** 置く範囲の半径・個数・残骸どうしの間・消す距離(半径の倍)・見直しの間隔。叩き台。 */
-export const ASTRO_SCATTER_RADIUS = 950;
-export const ASTRO_SCATTER_COUNT = 14;
-export const ASTRO_SCATTER_GAP = 70;
-export const ASTRO_SCATTER_KEEP_MULT = 1.15; // 後ろへ尾を引いて溜めない(品質監査 A1)
-export const ASTRO_SCATTER_STEP_MS = 250;
+// ---- 周りに降り注ぐ残骸(§12-1・社長指示2026-10-29「プレイヤーが敵との距離700px以内に入ったら、空から残骸が降り始める」) ----
+/** 降り始める距離・間隔・落ちる輪・プレイヤーから離す距離・上限・叩きつける尺・古い物が沈んで消える尺。 */
+export const ASTRO_RAIN_NEAR_PX = 700;
+export const ASTRO_RAIN_GAP_MIN_MS = 1000;
+export const ASTRO_RAIN_GAP_MAX_MS = 3000;
+export const ASTRO_RAIN_RING_MIN = 120;
+export const ASTRO_RAIN_RING_MAX = 450;
+export const ASTRO_RAIN_AVOID_PLAYER_PX = 160;
+export const ASTRO_RAIN_CAP = 8;
+export const ASTRO_RAIN_FALL_MIN_MS = 170;
+export const ASTRO_RAIN_FALL_MAX_MS = 280;
+export const ASTRO_RAIN_SINK_MS = 600;
 export const ASTRO_SCATTER_SMOKE_FRAC = 0.4;
-/** 新しく足す所は進む向きへこの割合(半径に対して)だけ寄せる=行く先に残骸が先にある(品質監査 A1)。 */
-export const ASTRO_SCATTER_LEAD_FRAC = 0.8;
-/** 進んでいる時、後ろ側はこの割合(半径に対して)より離れたら手放す。 */
-export const ASTRO_SCATTER_BEHIND_FRAC = 0.7;
-/** 本体の足元のすぐ近くには置かない。 */
-export const ASTRO_SCATTER_MIN_FROM_CENTER = 140;
-/** 画面の中に置いてよいのは上側の霞の帯だけ(この割合より上)=遠くから浮かび上がる。目の前では湧かない(品質監査 A2)。 */
-export const ASTRO_SCATTER_HAZE_FRAC = 0.3;
-/** 霞の中から浮かび上がる尺(画面の外に置いた物は短く)。 */
-export const ASTRO_SCATTER_FADE_HAZE_MS = 1500;
-export const ASTRO_SCATTER_FADE_MS = 400;
 
 export interface AstroScatterPiece {
   id: string;
+  /** 刺さる所(足元)。 */
   x: number; y: number;
-  /** 外板の絵(0..7)・傾き(rad)・大きさ・埋まらずに見えている割合・煙が昇るか・左右反転。 */
+  /** 外板の絵(0..7)・刺さった傾き(rad)・大きさ・埋まらずに見えている割合・煙が昇るか・左右反転。 */
   variant: number; rot: number; scale: number; keep: number; smoke: boolean; flip?: boolean;
-  /** 置いた時刻(gameTime・描画の薄れて現れる起点)。 */
-  bornAt: number;
-  /** 画面の上側の霞の中に置いた(ゆっくり浮かび上がる)。 */
-  haze?: boolean;
+  /** 落ち始め・刺さる時刻(gameTime)。 */
+  bornAt: number; landAt: number;
+  /** 上限を超えて沈み始めた時刻(この後 ASTRO_RAIN_SINK_MS で消える)。 */
+  sinkAt?: number;
 }
 
+export interface AstroRainState { nextAt: number; seq: number }
+
 /**
- * 残骸の置き直し。center=宇宙飛行群の足元(居なければ null=新しく置かない)、dir=進む向き(単位ベクトル・止まっていれば null)。
- * view=画面の見えている範囲(描画の範囲より広めに取った物)。置くのは画面の外か、画面の上側の霞の帯(遠く)だけ。
- * 消すのは画面の外だけ(画面の中の遠い残骸は、画面から出るまで残す)。canPlace=建物・木などに埋まらない所か。
+ * 周りに降り注ぐ残骸を1回分進める(見た目だけ・判定なし)。astro=場にいる宇宙飛行群の足元(居なければ null)、player=プレイヤーの中心。
+ * 近ければ間隔ごとに1枚降らせる。上限を超えたら一番古い物を沈める。沈み切った物は消す。
+ * canPlace=建物・木などに埋まらない所か。変わらなければ同じ配列を返す。
  */
-export const astroScatterStep = (
-  pieces: readonly AstroScatterPiece[], center: { x: number; y: number } | null, dir: { x: number; y: number } | null,
-  view: { left: number; right: number; top: number; bottom: number }, canPlace: (x: number, y: number) => boolean,
-  gt: number, rng: () => number, seq: { n: number },
+export const astroRainStep = (
+  pieces: readonly AstroScatterPiece[], astro: { x: number; y: number } | null, player: { x: number; y: number },
+  canPlace: (x: number, y: number) => boolean, gt: number, rng: () => number, st: AstroRainState,
 ): AstroScatterPiece[] => {
-  const keepR = ASTRO_SCATTER_RADIUS * ASTRO_SCATTER_KEEP_MULT;
-  const inView = (x: number, y: number) => x >= view.left && x <= view.right && y >= view.top && y <= view.bottom;
-  const hazeBottom = view.top + (view.bottom - view.top) * ASTRO_SCATTER_HAZE_FRAC;
-  // 残す=本体の円の中。進んでいる時は、通り過ぎた後ろ側を早めに手放す(半径の0.7倍より後ろ)=行く先に残骸が集まる。
-  const keepHere = (p: { x: number; y: number }): boolean => {
-    if (!center) return false;
-    const dx = p.x - center.x, dy = p.y - center.y, d = Math.hypot(dx, dy);
-    if (d > keepR) return false;
-    if (dir && dx * dir.x + dy * dir.y < 0 && d > ASTRO_SCATTER_RADIUS * ASTRO_SCATTER_BEHIND_FRAC) return false;
-    return true;
-  };
-  const out = pieces.filter(p => inView(p.x, p.y) || keepHere(p));
-  if (!center) return out.length === pieces.length ? (pieces as AstroScatterPiece[]) : out;
-  const near = out.filter(keepHere).length;
-  let need = ASTRO_SCATTER_COUNT - near;
-  const lead = dir ? { x: center.x + dir.x * ASTRO_SCATTER_RADIUS * ASTRO_SCATTER_LEAD_FRAC, y: center.y + dir.y * ASTRO_SCATTER_RADIUS * ASTRO_SCATTER_LEAD_FRAC } : center;
-  for (let tries = 0; need > 0 && tries < 48; tries++) {
-    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * ASTRO_SCATTER_RADIUS;
-    const x = lead.x + Math.cos(a) * r, y = lead.y + Math.sin(a) * r;
-    const dc = Math.hypot(x - center.x, y - center.y);
-    if (dc > ASTRO_SCATTER_RADIUS || dc < ASTRO_SCATTER_MIN_FROM_CENTER) continue; // 置くのは本体の円の中だけ
-    const vis = inView(x, y);
-    if (vis && y > hazeBottom) continue; // 画面の中は上側の霞の帯だけ
-    if (out.some(p => Math.hypot(p.x - x, p.y - y) < ASTRO_SCATTER_GAP)) continue;
-    if (!canPlace(x, y)) continue;
-    // 大きい塊を少し・小さい破片を多め(どれも同じ大きさだと置物を並べたように見える)。煙と火は大きい塊から。
-    const big = rng() < 0.35;
-    out.push({
-      id: `astro-scatter-${++seq.n}`, x, y,
-      variant: Math.floor(rng() * ASTRO_DEBRIS_VARIANTS) % ASTRO_DEBRIS_VARIANTS,
-      rot: (rng() - 0.5) * 0.52, // ±15°まで(描き込まれた光の向きを壊さない)
-      scale: big ? 1.15 + rng() * 0.45 : 0.45 + rng() * 0.35, keep: 0.55 + rng() * 0.3,
-      smoke: big ? rng() < 0.85 : rng() < ASTRO_SCATTER_SMOKE_FRAC * 0.25, flip: rng() < 0.5, bornAt: gt, haze: vis,
-    });
-    need--;
+  let out: AstroScatterPiece[] | null = null;
+  const edit = () => (out ??= pieces.slice());
+  // 沈み切った物を消す。
+  if (pieces.some(p => p.sinkAt !== undefined && gt >= p.sinkAt + ASTRO_RAIN_SINK_MS)) {
+    out = pieces.filter(p => p.sinkAt === undefined || gt < p.sinkAt + ASTRO_RAIN_SINK_MS);
   }
-  // 変わっていなければ同じ配列を返す(店へ無駄に書かない)。
-  if (out.length === pieces.length && out.every((p, i) => p === pieces[i])) return pieces as AstroScatterPiece[];
-  return out;
+  const near = !!astro && Math.hypot(player.x - astro.x, player.y - astro.y) <= ASTRO_RAIN_NEAR_PX;
+  if (!near) { st.nextAt = Math.max(st.nextAt, gt); }
+  else if (gt >= st.nextAt) {
+    st.nextAt = gt + ASTRO_RAIN_GAP_MIN_MS + rng() * (ASTRO_RAIN_GAP_MAX_MS - ASTRO_RAIN_GAP_MIN_MS);
+    for (let tries = 0; tries < 8; tries++) {
+      const a = rng() * Math.PI * 2;
+      const r = Math.sqrt(ASTRO_RAIN_RING_MIN ** 2 + rng() * (ASTRO_RAIN_RING_MAX ** 2 - ASTRO_RAIN_RING_MIN ** 2)); // 輪の中で面積に一様
+      const x = astro!.x + Math.cos(a) * r, y = astro!.y + Math.sin(a) * r;
+      if (Math.hypot(x - player.x, y - player.y) < ASTRO_RAIN_AVOID_PLAYER_PX) continue; // 技の残骸と取り違えない
+      if (!canPlace(x, y)) continue;
+      // 大きい塊を少し・小さい破片を多め。煙は大きい塊から。
+      const big = rng() < 0.35;
+      edit().push({
+        id: `astro-rain-${++st.seq}`, x, y,
+        variant: Math.floor(rng() * ASTRO_DEBRIS_VARIANTS) % ASTRO_DEBRIS_VARIANTS,
+        rot: (rng() - 0.5) * 0.52, // ±15°まで(描き込まれた光の向きを壊さない)
+        scale: big ? 1.15 + rng() * 0.45 : 0.45 + rng() * 0.35, keep: 0.55 + rng() * 0.3,
+        smoke: big ? rng() < 0.85 : rng() < ASTRO_SCATTER_SMOKE_FRAC * 0.25, flip: rng() < 0.5,
+        bornAt: gt, landAt: gt + ASTRO_RAIN_FALL_MIN_MS + rng() * (ASTRO_RAIN_FALL_MAX_MS - ASTRO_RAIN_FALL_MIN_MS),
+      });
+      break;
+    }
+  }
+  // 上限: 沈んでいない物が上限を超えたら、古い順に沈める(パッと消さない)。
+  const cur: readonly AstroScatterPiece[] = out ?? pieces;
+  const live = cur.filter(p => p.sinkAt === undefined);
+  if (live.length > ASTRO_RAIN_CAP) {
+    const drop = new Set(live.slice(0, live.length - ASTRO_RAIN_CAP).map(p => p.id));
+    out = cur.map(p => (drop.has(p.id) ? { ...p, sinkAt: gt } : p));
+  }
+  return out ?? (pieces as AstroScatterPiece[]);
 };

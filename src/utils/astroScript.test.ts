@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroScatterStep, ASTRO_SCATTER_COUNT, ASTRO_SCATTER_RADIUS, ASTRO_SCATTER_GAP, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
+  pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroRainStep, ASTRO_RAIN_CAP, ASTRO_RAIN_NEAR_PX, ASTRO_RAIN_RING_MIN, ASTRO_RAIN_RING_MAX, ASTRO_RAIN_AVOID_PLAYER_PX, ASTRO_RAIN_GAP_MIN_MS, ASTRO_RAIN_GAP_MAX_MS, ASTRO_RAIN_SINK_MS, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
   astroPoiCandidates, pickAstroPoi, astroSpawnPick, astroBandPull, astroMeteorShake,
-  ASTRO_RELEASE_MS, ASTRO_DEBRIS_COUNT, ASTRO_FLAG_LENGTH, ASTRO_ARRIVE_PX,
-  ASTRO_LIFT_PX, ASTRO_BOB_PX, ASTRO_TURN_RAD_PER_S, ASTRO_ACCEL_S, ASTRO_DECEL_S, type AstroThrowKind, type AstroHoverAnim,
+  ASTRO_RELEASE_MS, ASTRO_DEBRIS_COUNT, ASTRO_DEBRIS_SPREAD_PX, ASTRO_DEBRIS_GAP_PX, ASTRO_FLAG_BEYOND_PX, ASTRO_FLAG_MIN_LENGTH, ASTRO_ARRIVE_PX,
+  ASTRO_LIFT_PX, ASTRO_TURN_RAD_PER_S, ASTRO_ACCEL_S, ASTRO_DECEL_S, type AstroThrowKind, type AstroHoverAnim,
 } from './astroScript';
 
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -24,13 +24,24 @@ describe('宇宙飛行群: 投げる物の時刻(§9)', () => {
     expect(plan).toHaveLength(ASTRO_DEBRIS_COUNT);
     expect(plan.every(p => p.bornAt === 1000)).toBe(true);
     expect(new Set(plan.map(p => p.hitAt)).size).toBe(ASTRO_DEBRIS_COUNT);
-    for (const p of plan) expect(Math.hypot(p.x - 400, p.y)).toBeLessThanOrEqual(350 + 1e-6);
+    for (const p of plan) expect(Math.hypot(p.x - 400, p.y)).toBeLessThanOrEqual(ASTRO_DEBRIS_SPREAD_PX + 1e-6);
+  });
+  it('残骸は1枚がプレイヤーの所そのものへ落ち、残りも枚どうし離れる(§12-2)', () => {
+    let seed = 7;
+    const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    for (let n = 0; n < 50; n++) {
+      const plan = astroThrowPlan('debris', 't', 'e', { x: 0, y: 0 }, { x: 400, y: 50 }, 0, rng);
+      expect(plan.filter(p => p.x === 400 && p.y === 50)).toHaveLength(1);
+      for (let i = 0; i < plan.length; i++) for (let j = i + 1; j < plan.length; j++) expect(Math.hypot(plan[i].x - plan[j].x, plan[i].y - plan[j].y)).toBeGreaterThanOrEqual(ASTRO_DEBRIS_GAP_PX);
+    }
   });
 
-  it('国旗の帯は投げ手の位置から狙った向きへ700(起点固定)', () => {
-    const [f] = astroThrowPlan('flag', 't', 'e', { x: 100, y: 100 }, { x: 100, y: 300 }, 0, Math.random);
-    expect(f.capsule).toEqual({ fx: 100, fy: 100, tx: 100, ty: 100 + ASTRO_FLAG_LENGTH, halfWidth: 18 });
+  it('国旗の帯は投げ手の位置からプレイヤーの少し後ろまで(起点固定・§12-3)', () => {
+    const [f] = astroThrowPlan('flag', 't', 'e', { x: 100, y: 100 }, { x: 100, y: 500 }, 0, Math.random);
+    expect(f.capsule).toEqual({ fx: 100, fy: 100, tx: 100, ty: 500 + ASTRO_FLAG_BEYOND_PX, halfWidth: 18 });
     expect(f.hitAt).toBe(610);
+    const [g] = astroThrowPlan('flag', 't', 'e', { x: 0, y: 0 }, { x: 30, y: 0 }, 0, Math.random);
+    expect(g.capsule!.tx).toBeCloseTo(ASTRO_FLAG_MIN_LENGTH);
   });
 });
 
@@ -53,17 +64,15 @@ describe('宇宙飛行群: 投げる物の抽選', () => {
 });
 
 describe('宇宙飛行群: 浮遊のコマ(§3)', () => {
-  it('浮く時は0→10へ順に進み、移動中は8・9・10をピンポン(折り返しで一拍溜める)', () => {
+  it('浮く時は0→10へ順に進み、移動中は10で止める(体を固定・往復しない)', () => {
     let a: AstroHoverAnim = { frame: 0, acc: 0, dir: 1 };
     const seq: number[] = [0];
-    const held: Record<number, number> = {};
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 400; i++) {
       a = stepAstroHover(a, true, 10);
       if (seq[seq.length - 1] !== a.frame) seq.push(a.frame);
-      if (seq.length > 11) held[a.frame] = (held[a.frame] ?? 0) + 10;
     }
-    expect(seq.slice(1, 17)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 9, 10, 9, 8]);
-    expect(held[10]).toBeGreaterThan(held[9] / 2); // 10は1回の滞在が9より長い(9は往復で2回通る)
+    expect(seq).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(a.frame).toBe(10);
   });
   it('着地は今のコマから0まで逆にたどる(上でためて、地面が近いほど速い)', () => {
     let a: AstroHoverAnim = { frame: 9, acc: 0, dir: 1 };
@@ -83,16 +92,13 @@ describe('宇宙飛行群: 浮遊のコマ(§3)', () => {
     expect(c[c.length - 1]).toBeLessThan(n[n.length - 1]);
     expect(c[c.length - 1] - c[c.length - 2]).toBeLessThan(c[1] - c[0]);
   });
-  it('持ち上げは絵だけ: 0〜2コマは0、8コマで18、浮遊中は±3の揺れ', () => {
-    expect(astroLiftPx(0, 0)).toBe(0);
-    expect(astroLiftPx(2, 0)).toBe(0);
-    expect(astroLiftPx(5, 0)).toBeGreaterThan(0);
-    expect(astroLiftPx(5, 0)).toBeLessThan(ASTRO_LIFT_PX);
-    for (let t = 0; t < 5000; t += 37) {
-      const v = astroLiftPx(10, t);
-      expect(v).toBeGreaterThanOrEqual(ASTRO_LIFT_PX - ASTRO_BOB_PX - 1e-9);
-      expect(v).toBeLessThanOrEqual(ASTRO_LIFT_PX + ASTRO_BOB_PX + 1e-9);
-    }
+  it('持ち上げは絵だけ: 0〜2コマは0、浮き切ったら一定(上下に揺らさない)', () => {
+    expect(astroLiftPx(0)).toBe(0);
+    expect(astroLiftPx(2)).toBe(0);
+    expect(astroLiftPx(5)).toBeGreaterThan(0);
+    expect(astroLiftPx(5)).toBeLessThan(ASTRO_LIFT_PX);
+    expect(astroLiftPx(8)).toBe(ASTRO_LIFT_PX);
+    expect(astroLiftPx(10)).toBe(ASTRO_LIFT_PX);
   });
 });
 
@@ -167,54 +173,57 @@ describe('宇宙飛行群: 投げる物の絵(社長支給の並び)', () => {
   });
 });
 
-describe('宇宙飛行群: 周りに散らばる残骸(§11)', () => {
-  const far = { left: 1e6, right: 1e6 + 1, top: 1e6, bottom: 1e6 + 1 }; // 画面はずっと遠く=全部「画面の外」
+describe('宇宙飛行群: 周りに降り注ぐ残骸(§12-1)', () => {
   const ok = () => true;
-  it('中心の周りの円の中に決まった数を置き、残骸どうしは離す', () => {
-    const seq = { n: 0 };
-    const p = astroScatterStep([], { x: 1000, y: 0 }, null, far, ok, 0, Math.random, seq);
-    expect(p).toHaveLength(ASTRO_SCATTER_COUNT);
-    for (const a of p) expect(Math.hypot(a.x - 1000, a.y)).toBeLessThanOrEqual(ASTRO_SCATTER_RADIUS + 1e-6);
-    for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) expect(Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y)).toBeGreaterThanOrEqual(ASTRO_SCATTER_GAP);
+  const rng0 = (seed: number) => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const run = (astro: { x: number; y: number } | null, player: { x: number; y: number }, ms: number, rng = rng0(3)) => {
+    const st = { nextAt: 0, seq: 0 };
+    let p: ReturnType<typeof astroRainStep> = [];
+    const born: number[] = [];
+    for (let t = 0; t <= ms; t += 16) { const q = astroRainStep(p, astro, player, ok, t, rng, st); if (q.length > p.length || q.some(a => !p.includes(a) && !p.some(b => b.id === a.id))) born.push(t); p = q; }
+    return { p, born };
+  };
+  it('プレイヤーが近い間だけ、1〜3秒に1枚降る', () => {
+    const near = run({ x: 0, y: 0 }, { x: ASTRO_RAIN_NEAR_PX - 10, y: 0 }, 20000);
+    expect(near.born.length).toBeGreaterThanOrEqual(Math.floor(20000 / ASTRO_RAIN_GAP_MAX_MS));
+    expect(near.born.length).toBeLessThanOrEqual(Math.ceil(20000 / ASTRO_RAIN_GAP_MIN_MS) + 1);
+    for (let i = 1; i < near.born.length; i++) expect(near.born[i] - near.born[i - 1]).toBeGreaterThanOrEqual(ASTRO_RAIN_GAP_MIN_MS - 16);
+    expect(run({ x: 0, y: 0 }, { x: ASTRO_RAIN_NEAR_PX + 10, y: 0 }, 20000).p).toHaveLength(0);
+    expect(run(null, { x: 0, y: 0 }, 20000).p).toHaveLength(0);
   });
-  it('移動して遠くなった残骸は消え、新しい周りへ置き直す', () => {
-    const seq = { n: 0 };
-    const p0 = astroScatterStep([], { x: 0, y: 0 }, null, far, ok, 0, Math.random, seq);
-    const p1 = astroScatterStep(p0, { x: 5000, y: 0 }, null, far, ok, 250, Math.random, seq);
-    expect(p1).toHaveLength(ASTRO_SCATTER_COUNT);
-    for (const a of p1) expect(Math.hypot(a.x - 5000, a.y)).toBeLessThanOrEqual(ASTRO_SCATTER_RADIUS + 1e-6);
-  });
-  it('進んでいる時は、行く先の側に多く置く(後ろへ尾を引かない)', () => {
-    let ahead = 0, total = 0;
-    let seed = 12345;
-    const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-    for (let n = 0; n < 40; n++) {
-      const seq = { n: 0 };
-      let p: ReturnType<typeof astroScatterStep> = [];
-      for (let k = 0; k < 60; k++) p = astroScatterStep(p, { x: k * 20, y: 0 }, { x: 1, y: 0 }, far, ok, k * 250, rng, seq); // 右へ進み続ける
-      for (const a of p) { total++; if (a.x > 59 * 20) ahead++; }
+  it('落ちる所は本体の周りの輪の中で、プレイヤーのすぐ近くには落とさない', () => {
+    const st = { nextAt: 0, seq: 0 }, rng = rng0(11);
+    let p: ReturnType<typeof astroRainStep> = [];
+    const seen = new Map<string, { x: number; y: number }>();
+    for (let t = 0; t <= 200000; t += 50) { p = astroRainStep(p, { x: 0, y: 0 }, { x: 200, y: 0 }, ok, t, rng, st); for (const a of p) seen.set(a.id, a); }
+    expect(seen.size).toBeGreaterThan(50);
+    for (const a of seen.values()) {
+      const d = Math.hypot(a.x, a.y);
+      expect(d).toBeGreaterThanOrEqual(ASTRO_RAIN_RING_MIN - 1e-6);
+      expect(d).toBeLessThanOrEqual(ASTRO_RAIN_RING_MAX + 1e-6);
+      expect(Math.hypot(a.x - 200, a.y)).toBeGreaterThanOrEqual(ASTRO_RAIN_AVOID_PLAYER_PX);
     }
-    // 置き直しの規則を直す前は前方が2割を切っていた(品質監査の模擬)。円の半分近くが前にあること。
-    expect(ahead / total).toBeGreaterThan(0.4);
   });
-  it('画面の中では、上側の霞の帯にだけ置く(目の前で湧かない)。画面の中の物は消さない', () => {
-    const seq = { n: 0 };
-    const view = { left: -500, right: 500, top: -1000, bottom: 1000 }; // 霞の帯= y < -400
-    const p0 = astroScatterStep([], { x: 0, y: 0 }, null, view, ok, 0, Math.random, seq);
-    for (const a of p0) if (a.x >= -500 && a.x <= 500 && a.y >= -1000 && a.y <= 1000) { expect(a.y).toBeLessThan(-400); expect(a.haze).toBe(true); }
-    const kept = [{ ...p0[0], id: 'v', x: 0, y: 0 }];
-    const p1 = astroScatterStep(kept, { x: 9000, y: 0 }, null, view, ok, 250, Math.random, seq);
-    expect(p1.some(a => a.id === 'v')).toBe(true);
+  it('上限を超えたら一番古い物から沈み、沈み切ったら消える(パッと消さない)', () => {
+    const st = { nextAt: 0, seq: 0 }, rng = rng0(5);
+    let p: ReturnType<typeof astroRainStep> = [];
+    let maxLive = 0;
+    for (let t = 0; t <= 120000; t += 16) {
+      const before = p;
+      p = astroRainStep(p, { x: 0, y: 0 }, { x: 600, y: 0 }, ok, t, rng, st);
+      maxLive = Math.max(maxLive, p.filter(a => a.sinkAt === undefined).length);
+      for (const b of before) if (!p.some(a => a.id === b.id)) { expect(b.sinkAt).toBeDefined(); expect(t - b.sinkAt!).toBeGreaterThanOrEqual(ASTRO_RAIN_SINK_MS); }
+      const sinking = p.filter(a => a.sinkAt !== undefined), live = p.filter(a => a.sinkAt === undefined);
+      for (const s of sinking) for (const l of live) expect(s.bornAt).toBeLessThanOrEqual(l.bornAt); // 沈むのは古い方
+    }
+    expect(maxLive).toBe(ASTRO_RAIN_CAP);
   });
-  it('建物などに埋まる所・本体の足元のすぐ近くには置かない', () => {
-    const seq = { n: 0 };
-    const p = astroScatterStep([], { x: 0, y: 0 }, null, far, (x) => x < 0, 0, Math.random, seq);
-    for (const a of p) { expect(a.x).toBeLessThan(0); expect(Math.hypot(a.x, a.y)).toBeGreaterThanOrEqual(140); }
-  });
-  it('居なければ新しく置かず、画面の外のものから消える。変わらなければ同じ配列', () => {
-    const seq = { n: 0 };
-    const p0 = astroScatterStep([], { x: 0, y: 0 }, null, far, ok, 0, Math.random, seq);
-    expect(astroScatterStep(p0, { x: 0, y: 0 }, null, far, ok, 250, Math.random, seq)).toBe(p0);
-    expect(astroScatterStep(p0, null, null, far, ok, 250, Math.random, seq)).toHaveLength(0);
+  it('埋まる所には落とさない。変わらなければ同じ配列', () => {
+    const st = { nextAt: 0, seq: 0 };
+    let p: ReturnType<typeof astroRainStep> = [];
+    for (let t = 0; t <= 30000; t += 50) p = astroRainStep(p, { x: 0, y: 0 }, { x: 0, y: 600 }, (x) => x < 0, t, rng0(9), st);
+    for (const a of p) expect(a.x).toBeLessThan(0);
+    const st2 = { nextAt: 1e9, seq: 0 };
+    expect(astroRainStep(p.filter(a => a.sinkAt === undefined), null, { x: 0, y: 0 }, ok, 31000, Math.random, st2)).toEqual(p.filter(a => a.sinkAt === undefined));
   });
 });
