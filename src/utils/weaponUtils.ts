@@ -169,7 +169,8 @@ const CATALOG: Record<string, WeaponDef> = {
   // damage は**カウンターの元値**=ショットガンT2の damage(品質監査#13・スキャン=ハンドガンT2と同じ考え方)。
   // 放った弾・回る弾のダメージは satelliteOrbit.ts の定数(SAT_SHOT_DAMAGE/SAT_CONTACT_DAMAGE)を使う。
   // cooldown は「1つ増える間隔」(表示・参考のみ)。
-  [SATELLITE_WEAPON_KEY]: { key: SATELLITE_WEAPON_KEY, name: '衛星弾', type: 'shotgun', category: 'shotgun', tier: 2, damage: 0 /* 下で shotgun-t2 から引く */, cooldown: SAT_ADD_MS, count: 1, nonProjectile: true, noAmmo: true },
+  // 表示名は「呪銃」(社長命名2026-10-29・旧名=衛星弾。id は変えない=保存データのキーはそのまま)。
+  [SATELLITE_WEAPON_KEY]: { key: SATELLITE_WEAPON_KEY, name: '呪銃', type: 'shotgun', category: 'shotgun', tier: 2, damage: 0 /* 下で shotgun-t2 から引く */, cooldown: SAT_ADD_MS, count: 1, nonProjectile: true, noAmmo: true },
   'shotgun-t2-coil': { key: 'shotgun-t2-coil', name: 'コイルショットガン', type: 'shotgun', category: 'shotgun', tier: 2, damage: 5, cooldown: 780, projectileSpeed: 470, projectileSize: 7, count: 9, magSize: 3, reloadMs: 1800, spreadRadOverride: 0 },
 
   // UNIQUE_WEAPONS.md §16-2/§17-1(バッチB)。収束型ショットガン(T1): 命中した射撃ごとに散り角が
