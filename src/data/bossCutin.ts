@@ -48,7 +48,7 @@ const NAMED_BOSS_CUTIN_NAME: Partial<Record<EnemyType, string>> = {
   // research/MUTANT_HERO.md: 社長命名2026-10-03。
   'mutant-hero': '英雄(変異)',
   // research/LIBERTY_HORDE.md: 社長命名2026-10-04。
-  'mutant-liberty': '解放軍群(変異)',
+  'mutant-liberty': '解放群(変異)',
   // research/ASTRONAUT_HORDE.md: 社長命名2026-10-29。
   'mutant-astro': '宇宙飛行群(変異)',
   // research/WRAITH_MUTANT.md: 社長命名2026-10-29。

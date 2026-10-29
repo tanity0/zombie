@@ -198,7 +198,7 @@ import { runLabCrawlerTick, breakLabObstaclesInSweep } from '../utils/labCrawler
 import { crawlerGoalDir, crawlerSolid } from '../world/labCrawler'; // 逃走中のカメラの寄せ
 import { labDistantDue } from '../utils/labDistantSound'; // ステージ2でたまに遠くから鳴る音
 import {
-  runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
+  runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, mutantFieldMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
   bountyPlaybackActive, clearBountyPlayback,
   bountySpawnBlocked, bountyNaturalSpawnReady, anyBountyEngaged, bountySpawnCenter,
   type BountySfx,
@@ -9035,7 +9035,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 cx = Math.cos(a0) * R; cy = Math.sin(a0) * R;
               }
               const lE = spawnEnemyAt('mutant-liberty', cx - 55, cy - 30, newGameTime);
-              const lHp = Math.round(bountyMaxHealth(areaIndexForPos(cx, cy), newGameTime) * stageBossDiffMults().hp);
+              const lHp = Math.round(mutantFieldMaxHealth(areaIndexForPos(cx, cy), newGameTime) * stageBossDiffMults().hp);
               lE.health = lHp; lE.maxHealth = lHp;
               lE.dormant = false;
               lE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない(別カウント・§6)
@@ -9093,7 +9093,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 poiStart = { pois: cands, index: at.index };
               }
               const aE = spawnEnemyAt('mutant-astro', cx - 55, cy - 30, newGameTime);
-              const aHp = Math.round(bountyMaxHealth(areaIndexForPos(cx, cy), newGameTime) * stageBossDiffMults().hp);
+              const aHp = Math.round(mutantFieldMaxHealth(areaIndexForPos(cx, cy), newGameTime) * stageBossDiffMults().hp);
               aE.health = aHp; aE.maxHealth = aHp;
               aE.dormant = false;
               aE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない(別カウント)
@@ -9139,7 +9139,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 poiStart = { pois: all, index: all.indexOf(use[at.index]) };
               }
               const wE = spawnEnemyAt('mutant-wraith', cx - 30, cy - 25, newGameTime);
-              const wHp = Math.round(bountyMaxHealth(areaIndexForPos(cx, cy), newGameTime) * stageBossDiffMults().hp);
+              const wHp = Math.round(mutantFieldMaxHealth(areaIndexForPos(cx, cy), newGameTime) * stageBossDiffMults().hp);
               wE.health = wHp; wE.maxHealth = wHp;
               wE.dormant = false;
               wE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない(別カウント)
@@ -9503,7 +9503,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (libertyCutinIdRef.current !== activeLib.id && libOnScreen && !useGameStore.getState().attention) {
               libertyCutinIdRef.current = activeLib.id;
               if (activeLib.health >= activeLib.maxHealth) {
-                const hp2 = Math.round(bountyMaxHealth(areaIndexForPos(activeLib.x + activeLib.width / 2, activeLib.y + activeLib.height / 2), newGameTime) * stageBossDiffMults().hp);
+                const hp2 = Math.round(mutantFieldMaxHealth(areaIndexForPos(activeLib.x + activeLib.width / 2, activeLib.y + activeLib.height / 2), newGameTime) * stageBossDiffMults().hp);
                 useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === activeLib.id ? { ...e, health: hp2, maxHealth: hp2 } : e) }));
               }
               const lAc = bossArtCenter(activeLib);
@@ -9511,7 +9511,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 遠くで叫んでいる群れの声(英雄の嘶きと同じ場所・距離で減衰)。
               playSfx('screamer-cry', npcSfxDistGain(lAc.x, lAc.y, useGameStore.getState().player.x + useGameStore.getState().player.width / 2,
                 useGameStore.getState().player.y + useGameStore.getState().player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
-              useGameStore.setState({ eventBannerText: '解放軍群(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              useGameStore.setState({ eventBannerText: '解放群(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
             // カットイン(時間停止)を出したフレームは進めない=溜めの予兆(実時間)と溜め(ゲーム時間)をずらさない。
             if (!useGameStore.getState().attention) runLibertyTick(activeLib, libertyStateRef.current, newGameTime, deltaTime, Date.now());
@@ -9536,7 +9536,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (astroCutinIdRef.current !== activeAstro.id && aOnScreen && !useGameStore.getState().attention) {
               astroCutinIdRef.current = activeAstro.id;
               if (activeAstro.health >= activeAstro.maxHealth) {
-                const hp2 = Math.round(bountyMaxHealth(areaIndexForPos(activeAstro.x + activeAstro.width / 2, activeAstro.y + activeAstro.height / 2), newGameTime) * stageBossDiffMults().hp);
+                const hp2 = Math.round(mutantFieldMaxHealth(areaIndexForPos(activeAstro.x + activeAstro.width / 2, activeAstro.y + activeAstro.height / 2), newGameTime) * stageBossDiffMults().hp);
                 useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === activeAstro.id ? { ...e, health: hp2, maxHealth: hp2 } : e) }));
               }
               const aAc = bossArtCenter(activeAstro);
@@ -9560,7 +9560,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (wraithCutinIdRef.current !== activeWraith.id && wOnScreen && !gsW.attention) {
               wraithCutinIdRef.current = activeWraith.id;
               if (activeWraith.health >= activeWraith.maxHealth) {
-                const hp2 = Math.round(bountyMaxHealth(areaIndexForPos(activeWraith.x + activeWraith.width / 2, activeWraith.y + activeWraith.height / 2), newGameTime) * stageBossDiffMults().hp);
+                const hp2 = Math.round(mutantFieldMaxHealth(areaIndexForPos(activeWraith.x + activeWraith.width / 2, activeWraith.y + activeWraith.height / 2), newGameTime) * stageBossDiffMults().hp);
                 useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === activeWraith.id ? { ...e, health: hp2, maxHealth: hp2 } : e) }));
               }
               const wAc = bossArtCenter(activeWraith);

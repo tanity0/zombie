@@ -24,7 +24,7 @@ import { activeUpgradeLevel, growthMaxHpBonus, loadPlayerUpgrades } from './play
 import { isBountyType } from './enemyUtils';
 // ★HP基準値は依存ゼロの葉(bountyDims.ts)から直接読む。bountyTick.ts経由にすると
 // 「gameStore → bossPractice → bountyTick → gameStore」の循環importになる(v0.25.3390の教訓と同型)。
-import { BOUNTY_BASE_HP } from './bountyDims';
+import { BOUNTY_BASE_HP, MUTANT_FIELD_BASE_HP } from './bountyDims';
 import { GLEN_FORM1_HP_MULT } from './glenChain';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段(HP係数)。**生の台帳を直接読む**——表示は常に
 // 「プレイヤーが見る実戦の値」で、計測路の中立化(utils/stageDiffMults)は一覧を出さない場面の話なので
@@ -220,7 +220,10 @@ const toPracticeSlot = (slot: GhostDossierSlot): PracticeSlot => {
  * 本編と同じ流れ(形態1討伐→アテンション明けに形態2が同位置に湧く)を練習でもそのまま踏む。
  * 形態2だけを直接練習したい時は開発用の直リンク `?practice=1&practicephase=2` が残っている。
  */
-const GHOST_DERIVED_SLOTS: readonly PracticeSlot[] = GHOST_DOSSIER_SLOTS.map(toPracticeSlot);
+// 研究所跡(stage-2)の城ボス枠は並べない(本編にボスが居ない=社長指示2026-10-29「MAIN のPHILL研究所はボスいないはず」。
+// v§20-10 の裁定は「?」のまま並べる、だった)。守護霊の記録・ガントレット側の台帳(GHOST_DOSSIER_SLOTS)は触らない。
+export const PRACTICE_HIDDEN_SLOT_KEYS: readonly string[] = ['giantbat@stage-2'];
+const GHOST_DERIVED_SLOTS: readonly PracticeSlot[] = GHOST_DOSSIER_SLOTS.filter(s => !PRACTICE_HIDDEN_SLOT_KEYS.includes(s.slotKey)).map(toPracticeSlot);
 
 // ---------------------------------------------------------------------------------------------
 // §6.38 掲載裁定: 賞金首4種(GHOST_DOSSIER_SLOTS由来ではない独立追記枠)。
@@ -311,7 +314,7 @@ const MUTANT_LIBERTY_SLOT: PracticeSlot = {
   bossType: 'mutant-liberty',
   stageId: 'stage-1',
   param: 'libertynow',
-  label: '解放軍群(変異)',
+  label: '解放群(変異)',
   reachable: false,
   alwaysUnlocked: true,
 };
@@ -376,9 +379,8 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
   if (isBountyType(slot.bossType)) return BOUNTY_BASE_HP;
   // research/MUTANT_HERO.md: 英雄は賞金首と同じ式(基準値×スポーン時の難易度)=一覧も基準値。
   if (slot.bossType === 'mutant-hero') return HERO_MAX_HP; // 社長指示2026-10-05: 固定の上限20000(出てくる時は半分)
-  if (slot.bossType === 'mutant-liberty') return BOUNTY_BASE_HP; // 解放軍群は賞金首と同じ式
-  if (slot.bossType === 'mutant-astro') return BOUNTY_BASE_HP; // 宇宙飛行群も同じ式(ASTRONAUT_HORDE §2b)
-  if (slot.bossType === 'mutant-wraith') return BOUNTY_BASE_HP; // 亡霊も同じ式(WRAITH_MUTANT §2)
+  // 解放群・宇宙飛行群・亡霊: 賞金首と同じ式で基礎だけ10000(社長指示2026-10-29)。
+  if (slot.bossType === 'mutant-liberty' || slot.bossType === 'mutant-astro' || slot.bossType === 'mutant-wraith') return MUTANT_FIELD_BASE_HP;
   // research/GHOST_BOSS.md(幻影): 裏ボス方式=倍率を一切通さないので、スポーン時に書く値=実効HP。
   // その値は「初期プレイヤーHP+育成の体力加算」(装備補正なし)なので、表示も同じ式で出す。
   // ★基準クラスの注意(GROWTH.md v4): 実戦は「そのランのプレイヤーのクラス」(player.ddaBaseHp)、

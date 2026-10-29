@@ -34,7 +34,7 @@ import { maikoBoomProgress, maikoBounceTotalMs } from './maikoBoom'; // 手毬�
 // ★予告寸法は依存ゼロの葉(bountyDims.ts)が正=ここでは使うだけ+従来の消費者(pixiScene/テスト)の
 // ために named re-export する。gameStoreから直接importしない理由はbountyDims.ts冒頭を読むこと
 // (循環import起動全損 v0.25.3390 の再発防止)。
-import { BOUNTY_AGGRO_RANGE_DEFAULT, BOUNTY_BASE_HP } from './bountyDims';
+import { BOUNTY_AGGRO_RANGE_DEFAULT, BOUNTY_BASE_HP, MUTANT_FIELD_BASE_HP } from './bountyDims';
 // 区域境界の正本(湧き位置の数字を写さず、帯から導出する)。
 import { AREA_THRESHOLDS } from './enemyUtils';
 export { BOUNTY_BASE_HP };
@@ -134,6 +134,9 @@ import {
 /** §3「HP: 基準2000(叩き台)×スポーン時の実効難易度倍率」。 */
 export const bountyMaxHealth = (area: number, gameTimeMs: number): number =>
   Math.round(BOUNTY_BASE_HP * bountyEffectiveValueMult(area, gameTimeMs));
+/** 野を巡る変異体のボス級(解放群・宇宙飛行群・亡霊)。式は賞金首と同じで基礎だけ違う(MUTANT_FIELD_BASE_HP)。 */
+export const mutantFieldMaxHealth = (area: number, gameTimeMs: number): number =>
+  Math.round(MUTANT_FIELD_BASE_HP * bountyEffectiveValueMult(area, gameTimeMs));
 
 /** 滞在2分(§2・延長計画2026-10-12で1分→2分)。dormantのまま(=交戦していない)これだけ経つと退場する。gameTime基準(ポーズで進まない)。 */
 export const BOUNTY_LINGER_MS = 120000; // 延長計画(社長指示2026-10-12「賞金首の消える時間も延長」): 60秒→120秒

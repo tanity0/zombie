@@ -46,7 +46,8 @@ export const SOFTLOCK_EXCLUDED_STATES: ReadonlySet<string> = new Set([
  * `guardian-phantom@practice`(research/GHOST_BOSS.md の実験枠「決闘」)は**未検証のボスを自動テストへ
  * 混ぜない**ため。安定したらこの行を外す(=外せば自動的にガントレットへ入る)。
  */
-export const GAUNTLET_SKIP_SLOT_KEYS: readonly string[] = ['giantbat@stage-2', 'guardian-phantom@practice'];
+// 研究所跡(giantbat@stage-2)は対策室の一覧そのものから外した(bossPractice.PRACTICE_HIDDEN_SLOT_KEYS・社長指示2026-10-29)=ここに書かない。
+export const GAUNTLET_SKIP_SLOT_KEYS: readonly string[] = ['guardian-phantom@practice'];
 
 export const gauntletSlots = (slots: readonly PracticeSlot[] = PRACTICE_SLOTS): readonly PracticeSlot[] =>
   slots.filter(s => !GAUNTLET_SKIP_SLOT_KEYS.includes(s.slotKey));

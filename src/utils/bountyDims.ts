@@ -26,6 +26,9 @@ export const PUMPKIN_EXPLOSION_RADIUS = 54;
  * 勝てる。4000HPにする。小ボスの他も同じく」=4体共通の基準値なのでここ1箇所で全員に効く。
  * 城ボス系は現状ステイ=触らない)。 */
 export const BOUNTY_BASE_HP = 4000;
+/** 野を巡る変異体のボス級(解放群・宇宙飛行群・亡霊)の基礎HP(社長指示2026-10-29「解放群 宇宙飛行群 亡霊 の基礎HPを10000に」)。
+ * 式は賞金首と同じ(基礎×実効難易度倍率×ステージの難度)。英雄は固定の上限(HERO_MAX_HP)なので対象外。 */
+export const MUTANT_FIELD_BASE_HP = 10000;
 
 // ---- 賞金首4種の技の寸法は `bountyScript.ts`(可変テーブル)へ移設した(v0.25.3558) ----
 // 旧: BR_SIGN_TIP_PX / BB_SWEEP_HALFWIDTH / BB_LEAP_RADIUS / MK_NAGINATA_HALFWIDTH /

@@ -2121,7 +2121,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'bounty-balance': '鋏(変異)',
   'bounty-maiko': '舞妓(変異)',
   'mutant-hero': '英雄(変異)', // research/MUTANT_HERO.md(社長命名2026-10-03)
-  'mutant-liberty': '解放軍群(変異)', // research/LIBERTY_HORDE.md(社長命名2026-10-04)
+  'mutant-liberty': '解放群(変異)', // research/LIBERTY_HORDE.md(社長命名2026-10-04「解放軍群」→2026-10-29「解放群」)
   'mutant-astro': '宇宙飛行群(変異)', // research/ASTRONAUT_HORDE.md(社長命名2026-10-29)
   'mutant-wraith': '亡霊(変異体)', // research/WRAITH_MUTANT.md(社長命名2026-10-29)
 };

@@ -27,7 +27,7 @@ import type { CharacterClass } from '../types/game';
 // research/GHOST_BOSS.md: 守護霊ボス「幻影」の区分「duel」(決闘)も同様にこの画面だけの追加。
 type PracticeCategory = GhostDossierCategory | 'bounty' | 'duel' | 'neutral';
 const PRACTICE_CATEGORY_LABEL: Record<PracticeCategory, string> = {
-  ...GHOST_DOSSIER_CATEGORY_LABEL, bounty: '賞金首', duel: '決闘', neutral: '中立',
+  ...GHOST_DOSSIER_CATEGORY_LABEL, bounty: '賞金首', duel: '決闘', neutral: '徘徊', // 野を巡る変異体(社長指示2026-10-29「中立を違うタイトルに」)
 };
 const CATEGORY_OF = new Map(GHOST_DOSSIER_SLOTS.map(s => [s.slotKey, s.category]));
 // ★未知キーは 'story' に落ちる。新しい独立枠を足したら**必ずここに分岐を書く**
@@ -37,10 +37,8 @@ const categoryOf = (slot: PracticeSlot): PracticeCategory =>
   ?? (isBountyType(slot.bossType) ? 'bounty'
     : slot.bossType === 'guardian-phantom' ? 'duel'
     : slot.bossType === 'mutant-hero' ? 'neutral'
-    // research/LIBERTY_HORDE.md §9: 解放軍群(変異)は本編の野に居るボス級=「ステージボス」の棚(明示)。
-    : slot.bossType === 'mutant-liberty' ? 'story'
-    : slot.bossType === 'mutant-astro' ? 'story' // research/ASTRONAUT_HORDE.md §7(解放軍群と同じ棚)
-    : slot.bossType === 'mutant-wraith' ? 'story' // research/WRAITH_MUTANT.md(宇宙飛行群と同じ棚)
+    // 解放群・宇宙飛行群・亡霊は英雄と同じ棚(野を巡る変異体・社長指示2026-10-29)。
+    : slot.bossType === 'mutant-liberty' || slot.bossType === 'mutant-astro' || slot.bossType === 'mutant-wraith' ? 'neutral'
     : 'story');
 
 const bossName = (slot: PracticeSlot): string => slot.label ?? enemyDeathLabel(slot.bossType);

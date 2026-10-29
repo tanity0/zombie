@@ -1,7 +1,7 @@
 // ボスラッシュ(練習モード)の台帳テスト。BOSS_MAKER.md §20-8-b の受け入れ条件を機械化する。
 import { describe, it, expect } from 'vitest';
 import {
-  PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth,
+  PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceSlotByKey, practiceBossHealth, PRACTICE_HIDDEN_SLOT_KEYS,
   practiceSlotUnlocked, GUARDIAN_PHANTOM_SLOT_KEY, MUTANT_HERO_SLOT_KEY, MUTANT_LIBERTY_SLOT_KEY, MUTANT_ASTRO_SLOT_KEY, MUTANT_WRAITH_SLOT_KEY, GUARDIAN_PHANTOM_LABEL, GUARDIAN_PHANTOM_PRACTICE_LABEL,
 } from './bossPractice';
 import { GHOST_DOSSIER_SLOTS } from './ghostDossier';
@@ -29,10 +29,11 @@ const ghostDerivedSlots = () =>
 
 describe('ボスラッシュの台帳', () => {
   it('守護霊メニューと同じ台帳をそのまま使う(形態別の独立枠は置かない)', () => {
-    expect(ghostDerivedSlots().map(s => s.slotKey)).toEqual(GHOST_DOSSIER_SLOTS.map(s => s.slotKey));
+    // 研究所跡(城ボス不在)だけは対策室に並べない(社長指示2026-10-29)。
+    expect(ghostDerivedSlots().map(s => s.slotKey)).toEqual(GHOST_DOSSIER_SLOTS.map(s => s.slotKey).filter(k => !PRACTICE_HIDDEN_SLOT_KEYS.includes(k)));
     // 台帳の総数 = 守護霊メニュー由来 + 賞金首4 + 決闘1(幻影)+ 中立1(英雄・research/MUTANT_HERO.md)+ 解放軍群1(research/LIBERTY_HORDE.md)+ 宇宙飛行群1(research/ASTRONAUT_HORDE.md)+ 亡霊1(research/WRAITH_MUTANT.md)。
     expect(duelSlots()).toHaveLength(1);
-    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length + BOUNTY_ENEMY_TYPES.size + 1 + 1 + 1 + 1 + 1);
+    expect(PRACTICE_SLOTS).toHaveLength(GHOST_DOSSIER_SLOTS.length - PRACTICE_HIDDEN_SLOT_KEYS.length + BOUNTY_ENEMY_TYPES.size + 1 + 1 + 1 + 1 + 1);
   });
 
   // ★社長裁定v0.25.3600「第二形態は第一形態と合体させて。第一倒したら第二に移行」。
@@ -110,8 +111,8 @@ describe('ボスラッシュの台帳', () => {
     // ★社長指示2026-09-29「アクラシエルは出番が無いはずなので一旦ゲーム内から非表示」: 遭遇不能のまま一覧に残していた
     //   acrasiel を台帳(GHOST_DOSSIER_SLOTS)から外した=ここにも出ない。
     // 英雄(research/MUTANT_HERO.md §2-0)も本編のステージは社長検討中=対策室だけに置く(常時解放)。
-    expect(unreachable).toEqual(['giantbat@stage-2', GUARDIAN_PHANTOM_SLOT_KEY, MUTANT_HERO_SLOT_KEY, MUTANT_LIBERTY_SLOT_KEY, MUTANT_ASTRO_SLOT_KEY, MUTANT_WRAITH_SLOT_KEY].sort());
-    expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length); // 既存枠を外していない
+    expect(unreachable).toEqual([GUARDIAN_PHANTOM_SLOT_KEY, MUTANT_HERO_SLOT_KEY, MUTANT_LIBERTY_SLOT_KEY, MUTANT_ASTRO_SLOT_KEY, MUTANT_WRAITH_SLOT_KEY].sort());
+    expect(ghostDerivedSlots()).toHaveLength(GHOST_DOSSIER_SLOTS.length - PRACTICE_HIDDEN_SLOT_KEYS.length); // 外したのは研究所跡だけ
   });
 });
 
