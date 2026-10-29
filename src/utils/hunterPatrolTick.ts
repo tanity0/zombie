@@ -4,7 +4,7 @@ import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove } from '../store/gameStore';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { heroPatrolNext } from './heroScript';
-import { HUNTER_PATROL_SPEED, HUNTER_PATROL_ACCEL_S } from './hunterPatrol';
+import { HUNTER_PATROL_SPEED, HUNTER_PATROL_ACCEL_S, HUNTER_PATROL_DIR } from './hunterPatrol';
 
 const placeAt = (e: Enemy, cx: number, cy: number): { x: number; y: number } => {
   const st = useGameStore.getState();
@@ -19,7 +19,7 @@ const placeAt = (e: Enemy, cx: number, cy: number): { x: number; y: number } => 
 };
 
 /**
- * 輪に沿って1フレーム進める(画面で見て反時計回り・英雄と同じ)。wantSpeed へ慣性つきで寄せる(0なら止まる)。
+ * 輪に沿って1フレーム進める(画面で見て時計回り=英雄と逆・社長指示2026-10-29)。wantSpeed へ慣性つきで寄せる(0なら止まる)。
  * まっすぐ進めない時は斜めへ逸れる。返り値=速さ(呼び手が持ち越す)と、書き込む位置・速度。
  */
 export const stepHunterPatrol = (
@@ -29,7 +29,7 @@ export const stepHunterPatrol = (
   const acc = (HUNTER_PATROL_SPEED / HUNTER_PATROL_ACCEL_S) * dt;
   const sp = wantSpeed > speed ? Math.min(wantSpeed, speed + acc) : Math.max(wantSpeed, speed - acc);
   if (sp <= 0.01) return { speed: 0, patch: { vx: 0, vy: 0 } };
-  const nx = heroPatrolNext(cx, cy, R, Math.min(240, R * 0.6));
+  const nx = heroPatrolNext(cx, cy, R, -HUNTER_PATROL_DIR * Math.min(240, R * 0.6)); // 英雄の式は反時計回り=先読みの符号を逆にして時計回り
   const dx = nx.x - cx, dy = nx.y - cy, l = Math.hypot(dx, dy) || 1;
   const ux = dx / l, uy = dy / l;
   const step = sp * dt;

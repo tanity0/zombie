@@ -14,13 +14,21 @@ describe('ハンターの巡回: 区画', () => {
     const open = hunterOpenSectors([base(0, false), base(1, true), base(2, false), base(3, true)]);
     expect([...open].sort()).toEqual([0, 2]);
   });
-  it('次の未解放の区画は、角度が減る向き(画面で反時計回り)に数える。解放済みは飛ばす', () => {
-    const open = new Set([0, 2]);
+  it('次の未解放の区画は、角度が増える向き(画面で時計回り)に数える。解放済みは飛ばす', () => {
+    const open = new Set([0, 3]);
     const a = nextOpenSectorEntryAngle(0, open)!;
-    // 区画0の次(角度が減る向き)は区画3(解放済み)→区画2
-    expect(sectorOfPos(ringPoint(a, 6000).x, ringPoint(a, 6000).y)).toBe(2);
-    // 入り口=区画の上の境界の少し内側(この先、角度が減って区画の中を進む)
-    expect(sectorOfPos(ringPoint(a + 0.2, 6000).x, ringPoint(a + 0.2, 6000).y)).not.toBe(2);
+    // 区画0の次(角度が増える向き)は区画1・2(解放済み)→区画3
+    expect(sectorOfPos(ringPoint(a, 6000).x, ringPoint(a, 6000).y)).toBe(3);
+    // 入り口=区画の下の境界の少し内側(この先、角度が増えて区画の中を進む)
+    expect(sectorOfPos(ringPoint(a - 0.2, 6000).x, ringPoint(a - 0.2, 6000).y)).not.toBe(3);
+    expect(sectorOfPos(ringPoint(a + 0.6, 6000).x, ringPoint(a + 0.6, 6000).y)).toBe(3);
+  });
+  it('置く点は毎回ばらける(未解放の区画の中のどこからでも始まる)', () => {
+    const secs = new Set<number>();
+    const angs: number[] = [];
+    for (let n = 0; n < 200; n++) { const p = hunterPatrolSpawnPoint(new Set([0, 1, 2, 3]), { x: 0, y: 0 }, 6000, seeded(n * 7 + 3))!; secs.add(sectorOfPos(p.x, p.y)); angs.push(p.angle); }
+    expect(secs.size).toBe(4);
+    expect(new Set(angs.map(a => Math.round(a * 10))).size).toBeGreaterThan(40);
   });
   it('全部解放済みなら行き先は無い', () => {
     expect(nextOpenSectorEntryAngle(1, new Set())).toBeNull();

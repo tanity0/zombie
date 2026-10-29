@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5253', items: [
+    'ハンターの巡回は時計回りに。毎回ちがう場所から回り始める',
+  ] },
   { version: '0.25.5252', items: [
     'ハンターは出撃直後から、デンジャーゾーンをぐるりと速く巡回する。解放した地域は通らず、気配ごと次の地域へ飛ぶ',
     '「何かに見られている…」は、ハンターの視界の円に入った時だけ。姿の見えないまま見張られることはなくなった',

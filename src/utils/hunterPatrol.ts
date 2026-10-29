@@ -28,14 +28,21 @@ export const hunterOpenSectors = (bases: readonly { x: number; y: number; status
 };
 
 /**
- * 巡回の向き(画面で見て反時計回り=角度が減る向き・英雄と同じ)で、今の区画の次から数えて最初の未解放の区画の
- * 入り口の角度。未解放が無ければ null。今の区画しか未解放が無い時も、その区画の入り口(一周して戻る)。
+ * 巡回の向き: 社長指示2026-10-29「ハンターは時計回りに」=画面で見て時計回り(画面は下ほど y が大きいので、角度が増える向き)。
+ * 英雄(反時計回り)とは逆に回る。
+ */
+export const HUNTER_PATROL_DIR = 1;
+
+/**
+ * 巡回の向き(時計回り=角度が増える向き)で、今の区画の次から数えて最初の未解放の区画の入り口の角度。
+ * 未解放が無ければ null。今の区画しか未解放が無い時も、その区画の入り口(一周して戻る)。
  */
 export const nextOpenSectorEntryAngle = (curSector: number, open: ReadonlySet<number>): number | null => {
   if (open.size === 0) return null;
   for (let k = 1; k <= POI_SECTORS; k++) {
-    const j = (((curSector - k) % POI_SECTORS) + POI_SECTORS) % POI_SECTORS;
-    if (open.has(j)) return j * SECTOR_RAD + SECTOR_RAD / 2 - HUNTER_SECTOR_ENTRY_MARGIN_RAD; // 角度が減る向きに入る=上の境界が入り口
+    const j = (((curSector + HUNTER_PATROL_DIR * k) % POI_SECTORS) + POI_SECTORS) % POI_SECTORS;
+    // 角度が増える向きに入る=下の境界が入り口(少し内側)
+    if (open.has(j)) return j * SECTOR_RAD - HUNTER_PATROL_DIR * (SECTOR_RAD / 2 - HUNTER_SECTOR_ENTRY_MARGIN_RAD);
   }
   return null;
 };
