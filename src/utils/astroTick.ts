@@ -351,6 +351,8 @@ let lastMeteorRumbleAt = -1e9;
 const blastOf = (t: AstroThrowEntry): PumpkinBlast => {
   const base: PumpkinBlast = { x: t.x, y: t.y, radius: t.radius, damage: t.damage, enemyId: t.ownerId, moveKey: `astro-${t.kind}` };
   if (t.kind === 'meteor') return { ...base, noParry: true };
+  // 周りに降り注ぐ残骸(技ではない方)は紫=弾けない(社長指示2026-10-29「技じゃない方の破片は紫(カウンター不可)」)。
+  if (t.ambient) return { ...base, noParry: true };
   // 赤=弾ける。弾いた効果はプレイヤー側だけ(遠くの投げ手には何も起きない=矢の雨と同じ)。
   const parry = { parryLocal: true as const, parryNoDamage: true as const };
   if (t.kind === 'flag' && t.capsule) return { ...base, ...parry, capsule: t.capsule, origin: { x: t.capsule.fx, y: t.capsule.fy } };

@@ -17911,7 +17911,12 @@ export class PixiScene {
       const appear = 1;
       // ---- 予告(流星) ----
       if (live) {
-        if (t.kind === 'missile' || t.kind === 'debris') {
+        if (t.kind === 'debris' && t.ambient) {
+          // 周りに降り注ぐ残骸(技ではない方)=紫(弾けない・色と形の文法②・社長指示2026-10-29)。形と流れは技の残骸と同じ。
+          const mask = CIRCLE_SWEEP_ON ? this.drawSweepCircleFill(g, t.x, t.y, t.radius, prog, 0x9333ea, 0.28, style)
+            : (g.circle(t.x, t.y, t.radius).fill({ color: 0x9333ea, alpha: 0.12 + 0.12 * prog }), 1);
+          g.circle(t.x, t.y, t.radius).stroke({ width: 1.5, color: 0xc084fc, alpha: 0.85 * mask });
+        } else if (t.kind === 'missile' || t.kind === 'debris') {
           const mask = CIRCLE_SWEEP_ON ? this.drawSweepCircleFill(g, t.x, t.y, t.radius, prog, 0xff2a2a, 0.26, style)
             : (g.circle(t.x, t.y, t.radius).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * prog }), 1);
           g.circle(t.x, t.y, t.radius).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * mask });

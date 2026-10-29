@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5272', items: [
+    '宇宙飛行群(変異)の周りに降り注ぐ残骸は紫の印。弾けないので避ける。狙って落としてくる残骸は今までどおり赤',
+  ] },
   { version: '0.25.5271', items: [
     '解放群(変異)・宇宙飛行群(変異)・亡霊(変異体)がしぶとくなった',
     '変異体対策室: 野を巡る変異体は英雄と同じ「徘徊」の棚にまとめた。研究所跡の空き枠はなくした',
