@@ -23,7 +23,7 @@ import {
   ASTRO_THROW_GAP_MIN_MS, ASTRO_THROW_GAP_MAX_MS, ASTRO_REST_MIN_MS, ASTRO_REST_MAX_MS, ASTRO_ARRIVE_PX,
   ASTRO_STUCK_MS, ASTRO_STUCK_PX, ASTRO_HIT_ALERT_MS, ASTRO_LOSE_MS, ASTRO_RELEASE_MS, ASTRO_THROW_ANIM_MS,
   ASTRO_METEOR_COOLDOWN_MS, ASTRO_BOUQUET_HEAL_FRAC, ASTRO_DEBRIS_RADIUS, ASTRO_DEBRIS_DAMAGE,
-  stepAstroHover, astroCanMove, stepAstroVelocity, astroArriveSpeed, astroBandPull, astroPoiCandidates, pickAstroPoi,
+  stepAstroHover, stepAstroPeriodicLand, type AstroPeriodicLand, astroCanMove, stepAstroVelocity, astroArriveSpeed, astroBandPull, astroPoiCandidates, pickAstroPoi,
   pickAstroThrow, astroThrowPlan, astroLingerMs, astroMeteorShake, astroRainStep, type AstroRainState,
   type AstroPoi, type AstroThrowKind, type AstroThrowEntry,
 } from './astroScript';
@@ -49,11 +49,13 @@ export interface AstroTickState {
   /** 今の投げの ID(取り消し用)と、手を離した音を鳴らしたか。 */
   curThrowId: string | null;
   released: boolean;
+  /** 投げていない時の定期の着地(§3・社長指示2026-10-29)。 */
+  periodic: AstroPeriodicLand;
 }
 export const createAstroTickState = (): AstroTickState => ({
   activeId: null, heading: 0, speed: 0, pois: [], poiIdx: null, prevPoi: null, resting: false, restUntil: null,
   stuckAt: 0, stuckD: Infinity, lostSince: null, nextThrowAt: null, wantThrow: false, lastKind: null,
-  meteorReadyAt: 0, seq: 0, curThrowId: null, released: false,
+  meteorReadyAt: 0, seq: 0, curThrowId: null, released: false, periodic: { nextAt: null, holdUntil: null },
 });
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
@@ -178,6 +180,16 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
   let landReq = false;
   const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
   const inInner = (x: number, y: number, m: number) => x >= vb.left + m && x <= vb.right - m && y >= vb.top + m && y <= vb.bottom - m;
+  // 投げていない時(巡回・対策室の輪)の定期の着地。見つけている間は投げで降りるので数えない。
+  const periodicOn = !throwing && !collapse && !held && !alerted && !s.resting;
+  let periodicLand = false;
+  if (periodicOn) {
+    const r = stepAstroPeriodicLand(s.periodic, gt, anim0.frame, Math.random);
+    s.periodic = { nextAt: r.nextAt, holdUntil: r.holdUntil };
+    periodicLand = r.land;
+  } else {
+    s.periodic = { nextAt: null, holdUntil: null };
+  }
   if (throwing || collapse || held) {
     landReq = true;
   } else if (alerted) {
@@ -234,6 +246,8 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
       }
     }
   }
+
+  if (periodicLand) landReq = true;
 
   // ---- 慣性つきの速さ ----
   const canMove = astroCanMove(anim0.frame) && !throwing && !collapse && !held;

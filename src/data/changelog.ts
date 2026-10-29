@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5262', items: [
+    '宇宙飛行群(変異)は飛び回るだけでなく、ときどき地面に降りて一息つく',
+  ] },
   { version: '0.25.5261', items: [
     '宇宙飛行群(変異)は移動中も噴射と脚が動く。体の位置はぶれない',
   ] },

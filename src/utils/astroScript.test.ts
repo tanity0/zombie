@@ -3,7 +3,7 @@ import {
   pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroRainStep, ASTRO_RAIN_CAP, ASTRO_RAIN_NEAR_PX, ASTRO_RAIN_RING_MIN, ASTRO_RAIN_RING_MAX, ASTRO_RAIN_FIRST_MIN_PX, ASTRO_RAIN_FIRST_MAX_PX, ASTRO_RAIN_WARN_MS, ASTRO_RAIN_GAP_MIN_MS, ASTRO_RAIN_GAP_MAX_MS, ASTRO_RAIN_SINK_MS, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
   astroPoiCandidates, pickAstroPoi, astroSpawnPick, astroBandPull, astroMeteorShake,
   ASTRO_RELEASE_MS, ASTRO_DEBRIS_COUNT, ASTRO_DEBRIS_SPREAD_PX, ASTRO_DEBRIS_GAP_PX, ASTRO_FLAG_BEYOND_PX, ASTRO_FLAG_MIN_LENGTH, ASTRO_ARRIVE_PX,
-  ASTRO_LIFT_PX, ASTRO_HOVER_ALIGN, ASTRO_TURN_RAD_PER_S, ASTRO_ACCEL_S, ASTRO_DECEL_S, type AstroThrowKind, type AstroHoverAnim,
+  ASTRO_LIFT_PX, ASTRO_HOVER_ALIGN, stepAstroPeriodicLand, ASTRO_PERIODIC_LAND_GAP_MIN_MS, ASTRO_PERIODIC_LAND_GAP_MAX_MS, ASTRO_PERIODIC_LAND_REST_MIN_MS, ASTRO_PERIODIC_LAND_REST_MAX_MS, ASTRO_TURN_RAD_PER_S, ASTRO_ACCEL_S, ASTRO_DECEL_S, type AstroThrowKind, type AstroHoverAnim,
 } from './astroScript';
 
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]; };
@@ -104,6 +104,27 @@ describe('宇宙飛行群: 浮遊のコマ(§3)', () => {
     expect(astroLiftPx(5)).toBeLessThan(ASTRO_LIFT_PX);
     expect(astroLiftPx(8)).toBe(ASTRO_LIFT_PX);
     expect(astroLiftPx(10)).toBe(ASTRO_LIFT_PX);
+  });
+});
+
+describe('宇宙飛行群: 定期の着地', () => {
+  it('浮き切ってから6〜10秒で降り、着いてから1.5〜2.5秒休んで、また浮く', () => {
+    for (let n = 0; n < 30; n++) {
+      let p = { nextAt: null as number | null, holdUntil: null as number | null };
+      let frame = 10, landStart = -1, groundAt = -1, upAt = -1;
+      for (let t = 0; t < 30000 && upAt < 0; t += 16) {
+        const r = stepAstroPeriodicLand(p, t, frame, Math.random);
+        p = { nextAt: r.nextAt, holdUntil: r.holdUntil };
+        if (r.land && landStart < 0) landStart = t;
+        if (r.land) frame = Math.max(0, frame - 1); else if (landStart >= 0) frame = Math.min(10, frame + 1);
+        if (frame === 0 && groundAt < 0) groundAt = t;
+        if (landStart >= 0 && !r.land && upAt < 0) upAt = t;
+      }
+      expect(landStart).toBeGreaterThanOrEqual(ASTRO_PERIODIC_LAND_GAP_MIN_MS - 16);
+      expect(landStart).toBeLessThanOrEqual(ASTRO_PERIODIC_LAND_GAP_MAX_MS + 16);
+      expect(upAt - groundAt).toBeGreaterThanOrEqual(ASTRO_PERIODIC_LAND_REST_MIN_MS - 32);
+      expect(upAt - groundAt).toBeLessThanOrEqual(ASTRO_PERIODIC_LAND_REST_MAX_MS + 32);
+    }
   });
 });
 

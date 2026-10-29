@@ -51,6 +51,30 @@ export const ASTRO_THROW_GAP_MAX_MS = 5000;
 /** POI に着いてからの休み。 */
 export const ASTRO_REST_MIN_MS = 2000;
 export const ASTRO_REST_MAX_MS = 4000;
+/** 投げていない時も定期的に降りて休む(社長指示2026-10-29「定期的に着地するようにして(アニメも)」)。浮き切ってからこの間で降り、着いてからこの間休む。 */
+export const ASTRO_PERIODIC_LAND_GAP_MIN_MS = 6000;
+export const ASTRO_PERIODIC_LAND_GAP_MAX_MS = 10000;
+export const ASTRO_PERIODIC_LAND_REST_MIN_MS = 1500;
+export const ASTRO_PERIODIC_LAND_REST_MAX_MS = 2500;
+
+/** 定期の着地の時計。nextAt=次に降り始める時刻(null=まだ浮き切っていない)、holdUntil=降りている(-1=着くまで・それ以上=この時刻まで休む・null=飛んでいる)。 */
+export interface AstroPeriodicLand { nextAt: number | null; holdUntil: number | null }
+
+/** 定期の着地を1回分進める。frame=浮遊のコマ。返り値の land=今は降りたい(呼び手は止まってから降ろす)。 */
+export const stepAstroPeriodicLand = (p: AstroPeriodicLand, gt: number, frame: number, rng: () => number): AstroPeriodicLand & { land: boolean } => {
+  let { nextAt, holdUntil } = p;
+  if (holdUntil !== null) {
+    if (holdUntil === -1 && frame === 0) holdUntil = gt + ASTRO_PERIODIC_LAND_REST_MIN_MS + rng() * (ASTRO_PERIODIC_LAND_REST_MAX_MS - ASTRO_PERIODIC_LAND_REST_MIN_MS);
+    if (holdUntil !== -1 && gt >= holdUntil) { holdUntil = null; nextAt = null; return { nextAt, holdUntil, land: false }; }
+    return { nextAt, holdUntil, land: true };
+  }
+  if (nextAt === null) {
+    if (frame >= ASTRO_HOVER_LOOP_LO) nextAt = gt + ASTRO_PERIODIC_LAND_GAP_MIN_MS + rng() * (ASTRO_PERIODIC_LAND_GAP_MAX_MS - ASTRO_PERIODIC_LAND_GAP_MIN_MS);
+    return { nextAt, holdUntil, land: false };
+  }
+  if (gt >= nextAt) return { nextAt, holdUntil: -1, land: true };
+  return { nextAt, holdUntil, land: false };
+};
 /** 着いた=POI の点からこの距離以内。詰まり=この時間でこの距離も近づけない。 */
 export const ASTRO_ARRIVE_PX = 220;
 export const ASTRO_STUCK_MS = 6000;
