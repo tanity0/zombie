@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "941 files / 復号後 約711MB",
+ "generatedFor": "942 files / 復号後 約711MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3025,6 +3025,12 @@
    "h": 152,
    "bytes": 202723,
    "sha": "c573920965e5e57a"
+  },
+  "sprites/mutant-wraith-scream.png": {
+   "w": 1216,
+   "h": 135,
+   "bytes": 138345,
+   "sha": "eb1a6ec33391d5a8"
   },
   "sprites/mutant-wraith.png": {
    "w": 96,
