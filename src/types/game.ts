@@ -1147,6 +1147,13 @@ export interface Enemy {
   // ハンター変異体: 索敵タイムアウトで立ち去る際のフェードアウト開始 gameTime。設定中は静止し、
   // HUNTER_LEAVE_FADE_MS 経過で消滅する(useGameLoop.ts)。描画側(pixiScene.ts)はこれを基にαを下げる。
   hunterLeavingAt?: number;
+  /** research/HUNTER_PATROL.md: 巡回中のハンターの輪の半径(原点中心)。設定中は store の徘徊で動かさない(巡回の制御が動かす)。 */
+  hunterPatrolR?: number;
+  /** ワープ(薄れて消える/現れる)の開始時刻(gameTime)。描画の濃さだけに使う。 */
+  hunterWarpOutAt?: number;
+  hunterWarpInAt?: number;
+  /** 巡回中のハンターが今は見つけない(大きなイベント・演出・通信の最中)。視界の円も出さない。 */
+  hunterWatchOff?: boolean;
   // パニッシャーで「巻き込まれて」ノックバックした敵の印。これ以上は連鎖させない(1次まで)。
   punisherHopped?: boolean;
   // 抱卵型(旧ghost): 次に緑卵を撒く gameTime(ms)。バースト中は0.5秒間隔、完了後は3秒CD。

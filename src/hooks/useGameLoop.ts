@@ -210,6 +210,8 @@ import {
   tickPlayerFlamerBurn,
 } from '../utils/phantomTick';
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
+import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ringPoint, sectorOfPos, HUNTER_PATROL_START_MS, HUNTER_WARP_FADE_MS, HUNTER_PATROL_SPEED } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
+import { stepHunterPatrol } from '../utils/hunterPatrolTick';
 import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
 import { astroSpawnPick } from '../utils/astroScript';
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
@@ -389,7 +391,7 @@ import { createPinchState, pityLevel } from '../utils/pityDirector';
 import { createBoredomState, stepBoredom, boredomBonus } from '../utils/boredomDirector';
 import { shouldFireBoredomArena, BOREDOM_ARENA_START_MS, BOREDOM_ARENA_CD_MS } from '../utils/boredomArena';
 import {
-  isHunterSafeBaseNearby, shouldTriggerViciousHunter, pickViciousSpawnPoint, VICIOUS_REARM_MS,
+  isHunterSafeBaseNearby, VICIOUS_REARM_MS,
 } from '../utils/viciousHunter';
 import { hunterCinematic, hunterRetreatCinematic } from '../utils/hunterGate';
 import {
@@ -1256,12 +1258,8 @@ const DUO_COMM_QUIET_LEAD_MS = 10_000;
 // 二人組クエストv2(§2-8・B4): 帰還サークルへの着地点=「縁寄り」(中心からradius*この比率)。
 // 見た目の置き場所のみで判定・バランスには影響しない(叩き台。実機調整前提)。
 const WARP_LANDING_EDGE_FRAC = 0.75;
-// PACING_PUZZLE.md §5.21 M20追補(社長設計v0.25.1533・修正v0.25.1534): 凶悪ハンターは索敵フェーズを
-// 廃止し、デンジャー入場(制圧0)から一定時間後に索敵をスキップして「見つかった状態」(chase)で発動する。
-// 視界サークル/再配置ラッシュは凶悪版では出さない(撤去)。`?viciousdelay=<ms>`で調整可(実機調整前提)。
-// ★緩和(社長指示2026-08-22): 3000 → 10000。待ちの入り口で予兆(「何かに見られている…」)を出し、
-// この10秒が明けてから発見(chase)。通常ハンターのHUNTER_DISCOVER_MSと同値=「特別ルールではなく常時」。
-const VICIOUS_DISCOVER_DELAY_MS = evNum('viciousdelay', 10000);
+// (旧)凶悪ハンター(デンジャー入場・拠点0で姿の無い予兆→10秒後に発見状態で湧く)は撤去した
+// (research/HUNTER_PATROL.md・社長指示2026-10-29「解放されてない地域のみ巡回に変更」「見られているは視界の中にいる時のみ」)。
 const FORCE_CASTLE_BOSS = evParam('castlenow') === '1'; // 城ボス即時
 const FORCE_HIDDEN_BOSS = evParam('bossnow') === '1';   // テスト: 裏ボスをプレイヤーの近く(画面外)へ即出現
 // PACING_PUZZLE.md §6.28-13 W7 / §6.28-21★3(バッチM52): カウンター(パリィ)作法の統一。
@@ -1478,6 +1476,8 @@ let crawlerCtrlErrLogged = false;                    // ステージ2の這う�
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
 let phantomCtrlErrLogged = false;                    // 守護霊ボス「幻影」制御例外のログも初回だけ(本体はphantomTick.ts)
+/** research/HUNTER_PATROL.md: ハンターが「イベント中」でないか(輪を巡回しているだけは他のイベントを止めない)。 */
+const hunterNotBusy = (phase: string): boolean => phase === 'idle' || phase === 'patrol';
 let astroThrowsErrLogged = false;
 let astroCtrlErrLogged = false;                      // 宇宙飛行群(変異)制御例外のログも初回だけ(本体はastroTick.ts)
 let libertyCtrlErrLogged = false;                    // 解放軍群(変異)制御例外のログも初回だけ(本体はlibertyTick.ts)
@@ -1678,7 +1678,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const gateEventPendingRef = useRef<{ eventKind: 'horde' | 'boss'; phaseKey: string; sizeMult: number } | null>(null);
   // ハンター変異体イベントの状態機械(専用コントローラ)。phase が idle 以外の間=他イベント抑止。
   const hunterRef = useRef({
-    phase: 'idle' as 'idle' | 'search' | 'chase' | 'retreat',
+    // research/HUNTER_PATROL.md: 'patrol'=輪を巡回中(イベントではない=他イベントを止めない)。'search' 以降が「近くに来ている」イベント。
+    phase: 'idle' as 'idle' | 'patrol' | 'search' | 'chase' | 'retreat',
+    patrolReadyAt: 0,            // 巡回の個体を輪に置いてよい gameTime(倒された/退いた後の間隔)
     eventsThisRun: 0,            // この出撃で発生した回数(最大 HUNTER_MAX_PER_RUN)
     nextEligibleAt: HUNTER_START_MS, // 次に出せる gameTime(再出現CD)
     spawnAt: 0,                  // 索敵開始(出現)時刻
@@ -1705,6 +1707,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
     // (「何かに見られている…」or「発見された！」を出した)出撃だけを対象にするためのフラグ。
     noticed: false,
   });
+  // research/HUNTER_PATROL.md: 巡回のワープと慣性(速さ)。
+  const hunterPatrolRef = useRef({ warpOutAt: null as number | null, warpTo: null as { x: number; y: number } | null, toNear: false, speed: 0 });
   // 叫喚型(screamer)ディレクター: 次に出せる gameTime(消滅後CD)。同時1体・5分以降・CDで何度でも。
   const screamerRef = useRef({ nextEligibleAt: SCREAMER_START_MS });
   // 難易度④(関所ライブ補正): 現在の関所キー / 関所突入時のHP割合 / 平滑化した escalation 補正。
@@ -3383,7 +3387,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           m0CritLandedRef.current = false;
           m0LatePopupRef.current = null;
           // ハンター変異体イベントも新ランで全リセット(回数/CD/状態機械/優勢判定の履歴)。
-          hunterRef.current = { phase: 'idle', eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0, noticed: false, retreatLeadInAt: 0 };
+          hunterPatrolRef.current = { warpOutAt: null, warpTo: null, toNear: false, speed: 0 };
+          hunterRef.current = { phase: 'idle', patrolReadyAt: 0, eventsThisRun: 0, nextEligibleAt: HUNTER_START_MS, spawnAt: 0, detectStartAt: 0, chaseStartAt: 0, reinforced: 0, primaryId: '', vicious: false, viciousRearmAt: 0, viciousPendingAt: 0, noticed: false, retreatLeadInAt: 0 };
           hunterKillsRef.current = [];
           hunterPrevHpRef.current = -1;
           hunterLastDmgAtRef.current = -1e9;
@@ -4463,7 +4468,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               nextEligibleAt: boredomArenaNextEligibleAtRef.current,
               bossChasing: useGameStore.getState().bossChasing,
               bossEngaged: bossEngagedBA,
-              hunterIdle: hunterRef.current.phase === 'idle',
+              hunterIdle: hunterRef.current.phase === 'idle' || hunterRef.current.phase === 'patrol', // 巡回中はイベントではない
               redNightActive: redNightActiveNowBA,
               boredomReady,
             });
@@ -4516,8 +4521,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // (v0.25.3549「湧いたが未交戦の窓」)と同じ構造。基準を**存命(dormant含む)**へ。
             // 賞金首側は元からactiveEvent中に湧かない(bountySpawnBlocked)ので、これで両向きに排他が閉じる。
             const bountyBlocksArena = useGameStore.getState().enemies.some(e => isBountyType(e.type));
-            const gateEventReady = pendingGE != null && !useGameStore.getState().bossChasing && !bossEngagedArena && hunterRef.current.phase === 'idle' && !redNightActiveNow && !bountyBlocksArena;
-            const arenaReady = gateEventReady || ((FORCE_ARENA != null || directorTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !bossEngagedArena && hunterRef.current.phase === 'idle' && arenaProducerOk && !bountyBlocksArena);
+            const gateEventReady = pendingGE != null && !useGameStore.getState().bossChasing && !bossEngagedArena && hunterNotBusy(hunterRef.current.phase) && !redNightActiveNow && !bountyBlocksArena;
+            const arenaReady = gateEventReady || ((FORCE_ARENA != null || directorTime >= nextArenaAtRef.current) && !useGameStore.getState().bossChasing && !bossEngagedArena && hunterNotBusy(hunterRef.current.phase) && arenaProducerOk && !bountyBlocksArena);
             if (arenaReady) {
               const pcx = player.x + player.width / 2;
               const pcy = player.y + player.height / 2;
@@ -4825,6 +4830,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   gate1PenaltyActiveRef.current = false;
                   useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'hunter') })); // ハンター消滅
                   hunterRef.current.phase = 'idle';
+                  hunterRef.current.patrolReadyAt = newGameTime + HUNTER_RESPAWN_CD_MIN_MS; // 巡回へ戻るのは間隔の後
                   hunterRef.current.detectStartAt = 0; hunterRef.current.chaseStartAt = 0; hunterRef.current.reinforced = 0; hunterRef.current.primaryId = '';
                   const wm2 = useGameStore.getState().wallMeta;
                   if (WALL_ENABLED && isFirstWallBreach(wm2, 3)) {
@@ -4893,7 +4899,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // (山=関所中に窓が開いても抽選を消費せず次の緩まで毎フレーム再判定=自然に遅延)。
           // ?events=0で本ゲートを無効化(従来どおり時間+デンジャーゾーンだけで判定)。
           // §6.38 v6 A-2(B4配線): 賞金首交戦中は紅き夜を先送りする(他の大イベントと同じ「重ねない」扱い)。
-          const rnBigEventActive = !!(rnGs.activeEvent && rnGs.activeEvent.kind !== 'rescue') || hunterRef.current.phase !== 'idle'
+          const rnBigEventActive = !!(rnGs.activeEvent && rnGs.activeEvent.kind !== 'rescue') || !hunterNotBusy(hunterRef.current.phase)
             || anyBountyEngaged(rnGs.enemies, player, Date.now());
           // 社長裁定(v0.25.1380「2:コマ基準で」): パズル方式ON時の「緩フェーズ中にしか開始しない」は
           // 旧PHASES時刻表ではなくコマで判定する(緩コマ=relax/harvest中のみ開始可。通常/ピーク中に
@@ -5013,7 +5019,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (
               policeArmedRef.current &&
               isNearPolice(player, ppos) &&
-              !pgs.bossChasing && hunterRef.current.phase === 'idle' &&
+              !pgs.bossChasing && hunterNotBusy(hunterRef.current.phase) &&
               !facilitiesLocked(pgs.bossFightNow, pgs.bossFightLastTrueAt, newGameTime)
             ) {
               // §7-16: アリーナの中心は建物の位置そのものではなく policeArenaCenter(建物の手前)。
@@ -5107,7 +5113,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // コントローラごと停止=死神をlabで止めるのと同じ扱い)。ストーリーボス専用ラン(M7)も出さない。
         // PACING_PUZZLE.md §10-14#4(維持): EXはstoryBossOnlyを廃止したが、この抑止の対象としては
         // 維持する(既存コメントが名指ししていた「M7/EX」の意図をisExStageRun()で引き継ぐ)。
-        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && !noSpawn) {
+        // research/HUNTER_PATROL.md: 湧き止め(通信の静けさ・走り込み等)の間も、巡回中の個体だけは輪を回り続ける
+        // (止めると全速から瞬間停止=慣性MUSTに反する)。その間は見つけない・近くへ来ない・新しく置かない。
+        if (!danceTest && !indoor && !labTheme && !storyBoss && !isExStageRun() && !tutorialStage && !endingStage && (!noSpawn || hunterRef.current.phase === 'patrol')) {
           const H = hunterRef.current;
           const hs = useGameStore.getState();
           const hpx = hs.player.x + hs.player.width / 2;
@@ -5163,148 +5171,187 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             H.vicious = false;
             H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0; H.primaryId = '';
             H.noticed = false; // 次の出撃のために「気づかれた」フラグを畳む(v0.25.2317)
+            H.patrolReadyAt = newGameTime + HUNTER_RESPAWN_CD_MIN_MS + Math.random() * HUNTER_RESPAWN_CD_SPAN_MS; // 輪へ戻るのは間隔の後
           };
           const clearAllHunters = () => useGameStore.setState(s => ({ enemies: s.enemies.filter(e => e.type !== 'hunter') }));
 
-          if (H.phase === 'idle') {
-            // PACING_PUZZLE.md §5.21 M20 軸2: デンジャー入場(r>=3000)時、拠点を1つも制圧していなければ
-            // 優勢ゲート無視で凶悪ハンターを即発生させる(既存の優勢判定より優先してチェック)。
-            const viciousReady = shouldTriggerViciousHunter({
-              gameTime: newGameTime,
-              hunterStartMs: HUNTER_START_MS,
-              spawnBlocked,
-              hunterIdle: true,
-              playerAreaIdx: areaZoneIndexFor(Math.hypot(hpx, hpy)),
-              capturedBaseCount: hs.baseSites.filter(b => b.status === 'captured').length,
-              viciousRearmAt: H.viciousRearmAt,
-              gate1PassedThisRun: gate1PassedThisRunRef.current, // このランでゲート1通過=停止・次ランで復活(社長決定v0.25.1669)
-            });
-            if (viciousReady) {
-              // M20追補(v0.25.1533/1534): 索敵フェーズは無し。入場検知から VICIOUS_DISCOVER_DELAY_MS
-              // 待ってから、索敵をスキップして「見つかった状態」(chase)へ直接発動する。
-              // ★社長裁定2026-08-22(分ける): その**待ちの入り口**で「通信」だけを出す——
-              // **hunter-alert SE + バナー「何かに見られている…」の2点。個体は置かない**
-              // (社長「デンジャーハンターだけ**現れずに**10秒の猶予」)。
-              //   方角マーカーは「敵1体に付く旗」なので出すには個体が要るが、置くと
-              //   ①10秒間そのハンターを**倒せてしまう**(デンジャーに拠点0で入った罰が無効化できる)
-              //   ②`syncHunterVision` が薄紫の視界サークルを描く(v0.25.1533で撤去したものが戻る)
-              //   の2つが付いてくる。**姿を見せない**ことでどちらも起きない。
-              // ★索敵フェーズ(phase='search')は復活させない=通るのはこの凶悪経路のまま
-              // (視界サークルの明滅・再配置ラッシュ v0.25.1531/1532 の経路には入らない)。
-              if (H.viciousPendingAt === 0) {
-                H.viciousPendingAt = newGameTime;
-                playSfx('hunter-alert'); // 予兆SE(通常ハンターの「見られている」と同じ音)
-                H.noticed = true;        // 気づかせた=立ち去りもアナウンスしてよい出撃(v0.25.2317)
+          // ---- research/HUNTER_PATROL.md(社長指示2026-10-29): 巡回・ワープ・見られている ----
+          // ハンターは出撃直後からデンジャーゾーンの輪(英雄と同じ輪)を、未解放の地域だけ巡回する(解放済みはワープで飛ばす)。
+          // 余裕がある時は、巡回中の個体がプレイヤーの近くへワープしてくる(旧: 近くの画面外に新しく湧く)。
+          // 「何かに見られている…」は視界の円の中にいる時だけ(旧・凶悪ハンターの姿の無い予兆は撤去)。全域解放で居なくなる。
+          const open = hunterOpenSectors(hs.baseSites);
+          const ringR = heroPatrolRadius(AREA_THRESHOLDS);
+          const P = hunterPatrolRef.current;
+          const respawnCd = () => HUNTER_RESPAWN_CD_MIN_MS + Math.random() * HUNTER_RESPAWN_CD_SPAN_MS;
+          const patchHunter = (id: string, patch: Partial<Enemy>) =>
+            useGameStore.setState(s => ({ enemies: s.enemies.map(e => (e.id === id ? { ...e, ...patch } : e)) }));
+          /** ワープを始める(薄れて消える→ to に現れる)。toNear=近くへ来た(現れたら索敵)/false=輪の上へ(現れたら巡回)。 */
+          const startWarp = (id: string, to: { x: number; y: number }, toNear: boolean) => {
+            P.warpOutAt = newGameTime; P.warpTo = to; P.toNear = toNear; P.speed = 0;
+            patchHunter(id, { hunterWarpOutAt: newGameTime, hunterWarpInAt: undefined, vx: 0, vy: 0, hunterPatrolR: ringR, dormant: true, aggroRange: 0, hunterWatchOff: false });
+          };
+          /** 近くから輪へ戻す(索敵切れ・拠点へ近づいた・演出の割り込み)。未解放が無ければ立ち去る。 */
+          const sendBackToRing = (prim: Enemy) => {
+            H.phase = 'patrol'; H.detectStartAt = 0;
+            H.nextEligibleAt = directorTime + respawnCd(); // 次に近くへ来られるのは間隔の後
+            const to = hunterPatrolSpawnPoint(open, { x: hpx, y: hpy }, ringR, Math.random);
+            if (to) { patchHunter(prim.id, { hunterAlerted: false, hunterLeavingAt: undefined }); startWarp(prim.id, to, false); }
+            else patchHunter(prim.id, { hunterAlerted: false, hunterLeavingAt: newGameTime, hunterPatrolR: ringR, vx: 0, vy: 0 });
+          };
+          /** 視界の円の判定(入った=「見られている」→5秒で発見→追跡)。撃たれたら即発見。 */
+          const watchStep = (prim: Enemy): 'none' | 'watching' | 'found' => {
+            const d = Math.hypot(hpx - (prim.x + prim.width / 2), hpy - (prim.y + prim.height / 2));
+            // ★攻撃を受けたら気付く(社長指示2026-10-24「索敵系の敵は全て攻撃喰らっても気付く様にして」): 索敵中に撃たれたら即「発見」。
+            const shotWhileSearching = (prim.lastHit ?? 0) > 0;
+            if (d <= HUNTER_DETECT_RANGE || shotWhileSearching) {
+              H.spawnAt = newGameTime; // 索敵範囲にプレイヤーが入っている間は都度タイムアウトをリセット(社長指示)
+              if (shotWhileSearching) H.noticed = true;
+              if (H.detectStartAt === 0 && !shotWhileSearching) {
+                H.detectStartAt = newGameTime;
+                playSfx('hunter-alert'); // 視界に入った=見られている警告SE(社長提供)
+                // 検知=矢印を出す(被監視中の索敵個体に方角マーカー)。
+                patchHunter(prim.id, { hunterAlerted: true });
+                H.noticed = true; // 気づかせた=立ち去りもアナウンスしてよい出撃(v0.25.2317)
                 useGameStore.setState({ eventBannerText: '何かに見られている…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                return 'watching';
               }
-              if (newGameTime - H.viciousPendingAt >= VICIOUS_DISCOVER_DELAY_MS) {
-                // 猶予の間は姿が無いので、ここで従来どおり「見つかった状態」の1体を湧かせる
-                // (=罰が予兆で無効化されることもない)。
-                const spawnPos = pickViciousSpawnPoint(hpx, hpy, HUNTER_DETECT_RANGE);
-                H.primaryId = spawnHunter(false, spawnPos); // search=false=最初から発見済み(alerted)
-                const atX = spawnPos.x, atY = spawnPos.y;
+              if (shotWhileSearching || newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS) {
+                // 発見: 追跡開始。索敵個体を起こす(撃たれた時は見られている段を飛ばして即)。巡回の印も外す(通常AIで追う)。
+                useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter'
+                  ? { ...e, dormant: false, aggroRange: undefined, hunterPatrolR: undefined, hunterWarpOutAt: undefined, hunterWarpInAt: undefined } : e) }));
                 H.phase = 'chase'; H.chaseStartAt = newGameTime; H.reinforced = 0;
-                H.vicious = true;
-                H.viciousPendingAt = 0;
-                H.eventsThisRun += 1;
                 useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+                playSfx('enemy-spotted'); // 見つかった音(社長支給2026-10-24「索敵系の敵に見つかった時の音」)
                 useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
                 spawnFlash('rgba(180,40,40,0.18)', 220);
+                // ハンター出現(発見)アテンション: カメラがハンターへ高速パン→ホールド→戻る(社長指示)。
                 // 社長裁定2026-08-28「ハンターも入れて『監視者』」: 発見(1波1回)にカットイン。
-                useGameStore.getState().triggerAttention(atX, atY, bossCutinPayload('hunter'));
+                useGameStore.getState().triggerAttention(prim.x + prim.width / 2, prim.y + prim.height / 2, bossCutinPayload('hunter'));
+                return 'found';
+              }
+              return 'watching';
+            }
+            if (H.detectStartAt !== 0) {
+              H.detectStartAt = 0; // 範囲外へ逃げ切った=セーフ(検知リセット)
+              patchHunter(prim.id, { hunterAlerted: false }); // 矢印も消す
+              useGameStore.setState({ eventBannerText: '気配が消えた…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            }
+            return 'none';
+          };
+          /** 余裕がある時の「近くへワープしてくる」判定(旧・近くに湧く通常ハンターの判定をそのまま使う)。 */
+          const nearWarpReady = (): boolean => {
+            if (directorTime < HUNTER_START_MS || H.eventsThisRun >= HUNTER_MAX_PER_RUN || directorTime < H.nextEligibleAt || spawnBlocked) return false;
+            // 旧・優勢判定(6項目中4つ以上)。バッチ7で既定は退屈シグナルへ統合するが、?events=0の
+            // 従来復帰用にロジック自体は残す。
+            // 監査v0.25.3008: カメラ矩形→プレイヤー中心(ズーム連動カメラ下げで南側が漏れて過少カウントに)。
+            const hpcx = hs.player.x + hs.player.width / 2, hpcy = hs.player.y + hs.player.height / 2;
+            const onscreen = hs.enemies.reduce((n, e) => {
+              if (isBossType(e.type) || e.type === 'hunter') return n;
+              const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
+              return (Math.abs(ex - hpcx) <= gameBounds.width / 2 && Math.abs(ey - hpcy) <= gameBounds.height / 2) ? n + 1 : n;
+            }, 0);
+            const captured = hs.baseSites.filter(b => b.status === 'captured').length;
+            const gun = getActiveGun(hs.player);
+            const ammoOk = !!(gun && gun.ammoType && ((gun.magazine ?? 0) + ammoPoolFor(hs.player, gun.ammoType)) >= effectiveMagSize(gun, hs.player));
+            const score =
+              (newGameTime - hunterLastDmgAtRef.current >= HUNTER_FAV_NODAMAGE_MS ? 1 : 0) +
+              (killsSince(20000) >= HUNTER_FAV_KILLS_20S ? 1 : 0) +
+              (onscreen <= HUNTER_FAV_ONSCREEN_MAX ? 1 : 0) +
+              (captured >= 1 ? 1 : 0) +
+              (ammoOk ? 1 : 0) +
+              (killsSince(6000) >= HUNTER_FAV_STREAK_6S ? 1 : 0);
+            // バッチ7: 独自の6項目優勢判定を廃止し、退屈シグナル(バッチ1の上振れ枠)に統合。
+            // 上振れ枠(+数、天井BORED_BONUS_MAX)を使い切ってもなお余裕(退屈)な相手にだけ、質の
+            // 緊張の切り札として出す。ピンチ猶予も追加。CDは変更なし。?events=0で旧判定に復帰。
+            const hunterProducerOk = !EVENTS_ENABLED || eventGateOk({
+              bigEventActive: false, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current,
+              boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0,
+            });
+            return EVENTS_ENABLED
+              ? (hunterBoredomReady(boredomBonus(upswingRef.current.boredMs, boredStartMsForAggro(currentStageAggro()))) && hunterProducerOk)
+              : score >= HUNTER_FAV_SCORE_NEEDED;
+          };
+
+          if (H.phase === 'idle') {
+            // 巡回の個体を輪の上(未解放の地域)に置く: 出撃直後から。倒された/退いた後は再出現の間隔を置いてから。
+            if (hs.baseSites.length > 0 && open.size > 0 && newGameTime >= HUNTER_PATROL_START_MS && newGameTime >= H.patrolReadyAt && !cinematic
+              && !isBossMakerRun() && !isPracticeRun()) {
+              const at = hunterPatrolSpawnPoint(open, { x: hpx, y: hpy }, ringR, Math.random);
+              if (at) {
+                const id = spawnHunter(true, at);
+                patchHunter(id, { hunterPatrolR: ringR, hunterWarpInAt: newGameTime });
+                H.primaryId = id;
+                H.phase = 'patrol'; H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0; H.noticed = false;
+                P.warpOutAt = null; P.speed = 0;
+              }
+            }
+          } else if (H.phase === 'patrol') {
+            const prim = hs.enemies.find(e => e.id === H.primaryId);
+            if (!prim) {
+              // 巡回中に倒された(撃たれて発見→追跡に入る前に倒し切った等)=間隔を置いて輪へ戻る。
+              H.phase = 'idle'; H.primaryId = ''; H.detectStartAt = 0; H.patrolReadyAt = newGameTime + respawnCd();
+            } else if (prim.hunterLeavingAt !== undefined) {
+              // 全域を解放した=立ち去りの薄れが終わったら居なくなる。
+              if (newGameTime - prim.hunterLeavingAt >= HUNTER_LEAVE_FADE_MS) { clearAllHunters(); H.phase = 'idle'; H.primaryId = ''; }
+            } else if (open.size === 0) {
+              patchHunter(prim.id, { hunterLeavingAt: newGameTime, vx: 0, vy: 0, hunterAlerted: false });
+              if (H.noticed) useGameStore.setState({ eventBannerText: 'ハンターが去っていった', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+            } else if (P.warpOutAt !== null) {
+              // ワープ中(薄れて消える)。消え切ったら行き先に置き、薄れて現れる。
+              if (newGameTime - P.warpOutAt >= HUNTER_WARP_FADE_MS) {
+                const to = P.warpTo ?? { x: hpx, y: hpy };
+                const patch: Partial<Enemy> = { x: to.x - prim.width / 2, y: to.y - prim.height / 2, vx: 0, vy: 0, hunterWarpOutAt: undefined, hunterWarpInAt: newGameTime };
+                if (P.toNear) {
+                  patch.hunterPatrolR = undefined; // 近くでは今までの索敵(徘徊)で動く
+                  H.phase = 'search'; H.spawnAt = newGameTime; H.detectStartAt = 0;
+                }
+                patchHunter(prim.id, patch);
+                P.warpOutAt = null; P.warpTo = null; P.speed = 0;
               }
             } else {
-              // 条件が崩れた(退避/拠点制圧等)=待機解除。個体は置いていないので引き上げるものは無いが、
-              // 予兆だけ出して発動しなかった出撃を「気づかせた」に数えない(立ち去りアナウンスの対象外)。
-              if (H.viciousPendingAt !== 0) H.noticed = false;
-              H.viciousPendingAt = 0;
-              if (directorTime >= HUNTER_START_MS && H.eventsThisRun < HUNTER_MAX_PER_RUN && directorTime >= H.nextEligibleAt && !spawnBlocked) { // ★§17-15: イベントの時計はウェルカム終了から0(directorTime)
-              // 旧・優勢判定(6項目中4つ以上)。バッチ7で既定は退屈シグナルへ統合するが、?events=0の
-              // 従来復帰用にロジック自体は残す。
-              // 監査v0.25.3008: カメラ矩形→プレイヤー中心(ズーム連動カメラ下げで南側が漏れて過少カウントに)。
-              const hpcx = hs.player.x + hs.player.width / 2, hpcy = hs.player.y + hs.player.height / 2;
-              const onscreen = hs.enemies.reduce((n, e) => {
-                if (isBossType(e.type) || e.type === 'hunter') return n;
-                const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-                return (Math.abs(ex - hpcx) <= gameBounds.width / 2 && Math.abs(ey - hpcy) <= gameBounds.height / 2) ? n + 1 : n;
-              }, 0);
-              const captured = hs.baseSites.filter(b => b.status === 'captured').length;
-              const gun = getActiveGun(hs.player);
-              const ammoOk = !!(gun && gun.ammoType && ((gun.magazine ?? 0) + ammoPoolFor(hs.player, gun.ammoType)) >= effectiveMagSize(gun, hs.player));
-              const score =
-                (newGameTime - hunterLastDmgAtRef.current >= HUNTER_FAV_NODAMAGE_MS ? 1 : 0) +
-                (killsSince(20000) >= HUNTER_FAV_KILLS_20S ? 1 : 0) +
-                (onscreen <= HUNTER_FAV_ONSCREEN_MAX ? 1 : 0) +
-                (captured >= 1 ? 1 : 0) +
-                (ammoOk ? 1 : 0) +
-                (killsSince(6000) >= HUNTER_FAV_STREAK_6S ? 1 : 0);
-              // バッチ7: 独自の6項目優勢判定を廃止し、退屈シグナル(バッチ1の上振れ枠)に統合。
-              // 上振れ枠(+数、天井BORED_BONUS_MAX)を使い切ってもなお余裕(退屈)な相手にだけ、質の
-              // 緊張の切り札として出す。ピンチ猶予も追加。CDは変更なし。?events=0で旧判定に復帰。
-              const hunterProducerOk = !EVENTS_ENABLED || eventGateOk({
-                bigEventActive: false, gameTime: newGameTime, pityBlockUntilMs: pityEventBlockUntilRef.current,
-                boardDebt: DEBT_ENABLED ? boardDebtRef.current : 0,
-              });
-              const ready = EVENTS_ENABLED
-                ? (hunterBoredomReady(boredomBonus(upswingRef.current.boredMs, boredStartMsForAggro(currentStageAggro()))) && hunterProducerOk)
-                : score >= HUNTER_FAV_SCORE_NEEDED;
-              if (ready) {
-                H.primaryId = spawnHunter(true);
-                H.phase = 'search'; H.spawnAt = newGameTime; H.detectStartAt = 0; H.chaseStartAt = 0; H.reinforced = 0;
-                H.eventsThisRun += 1;
+              const appearing = prim.hunterWarpInAt !== undefined && newGameTime - prim.hunterWarpInAt < HUNTER_WARP_FADE_MS;
+              // 大きなイベント(囲い・紅き夜・警察署など)・演出・通信の最中は見つけない(今までハンターと重ねなかった場面)。円も出さない。
+              const watchOff = cinematic || !!hs.activeEvent || noSpawn;
+              if ((prim.hunterWatchOff ?? false) !== watchOff) {
+                patchHunter(prim.id, { hunterWatchOff: watchOff });
+                if (watchOff && H.detectStartAt !== 0) { H.detectStartAt = 0; patchHunter(prim.id, { hunterAlerted: false }); }
               }
+              const w = appearing || watchOff ? 'none' : watchStep(prim);
+              if (w === 'found') {
+                // 追跡へ(上の watchStep が切り替えた)
+              } else if (w === 'watching') {
+                // 見ている間は減速して止まる(高速で通り過ぎない)。
+                const r = stepHunterPatrol(prim, ringR, P.speed, 0, deltaTime);
+                P.speed = r.speed; patchHunter(prim.id, r.patch);
+              } else if (!appearing && !watchOff && nearWarpReady() && open.has(sectorOfPos(hpx, hpy))) {
+                // 余裕がある時は近くへワープしてくる(プレイヤーが未解放の地域にいる時だけ)。
+                H.eventsThisRun += 1;
+                startWarp(prim.id, offscreenSpawn(), true);
+              } else {
+                const cx = prim.x + prim.width / 2, cy = prim.y + prim.height / 2;
+                const sec = sectorOfPos(cx, cy);
+                const nextA = open.has(sec) ? null : nextOpenSectorEntryAngle(sec, open);
+                if (nextA !== null) startWarp(prim.id, ringPoint(nextA, ringR), false); // 解放済みの地域はワープしてパス
+                else {
+                  const r = stepHunterPatrol(prim, ringR, P.speed, cinematic ? 0 : HUNTER_PATROL_SPEED, deltaTime); // 演出の間はゆっくり止まって待つ
+                  P.speed = r.speed; patchHunter(prim.id, r.patch);
+                }
               }
             }
           } else if (H.phase === 'search') {
             const prim = hs.enemies.find(e => e.id === H.primaryId);
-            if (!prim || cinematic || nearAnyBase) {
-              clearAllHunters(); endHunterEvent(); // 撃破/演出割り込み=即座に立ち去る(フェード無し)
-            } else if (prim.hunterLeavingAt !== undefined) {
-              // フェードアウト中(索敵タイムアウト後): 経過を待って消滅させる。
-              if (newGameTime - prim.hunterLeavingAt >= HUNTER_LEAVE_FADE_MS) {
-                clearAllHunters(); endHunterEvent();
-              }
+            if (!prim) {
+              endHunterEvent(); // 撃破=間隔を置いて輪へ戻る
+            } else if (cinematic || nearAnyBase || open.size === 0) {
+              sendBackToRing(prim); // 演出の割り込み/拠点へ近づいた/全域を解放した=輪へ戻る(未解放が無ければ立ち去る)
             } else if (newGameTime - H.spawnAt >= HUNTER_SEARCH_MAX_MS) {
-              // 索敵タイムアウト: 即消滅ではなくフェードアウトを開始する(社長指示)。
-              // M20追補(v0.25.1533/1534): 凶悪ハンターはこの索敵フェーズ自体に入らなくなった
-              // (デンジャー入場から即chaseへ)ため、ここに来るのは通常ハンターのみ。
-              useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, hunterLeavingAt: newGameTime } : e) }));
-              // 社長指示v0.25.2317: 立ち去りもアナウンスする(従来は無言でフェードアウトしていた)。
-              // ただし一度も気づかせていない索敵個体は報せない(存在自体のネタバレになるため)。
-              if (H.noticed) {
-                useGameStore.setState({ eventBannerText: 'ハンターが去っていった', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-              }
+              // 索敵タイムアウト: 輪へ戻る(薄れて消える)。社長指示v0.25.2317: 立ち去りもアナウンスする
+              // (ただし一度も気づかせていない索敵個体は報せない=存在自体のネタバレになるため)。
+              if (H.noticed) useGameStore.setState({ eventBannerText: 'ハンターが去っていった', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              sendBackToRing(prim);
             } else {
-              const d = Math.hypot(hpx - (prim.x + prim.width / 2), hpy - (prim.y + prim.height / 2));
-              // ★攻撃を受けたら気付く(社長指示2026-10-24「索敵系の敵は全て攻撃喰らっても気付く様にして」): 索敵中に撃たれたら即「発見」。
-              const shotWhileSearching = (prim.lastHit ?? 0) > 0;
-              if (d <= HUNTER_DETECT_RANGE || shotWhileSearching) {
-                H.spawnAt = newGameTime; // 索敵範囲にプレイヤーが入っている間は都度タイムアウトをリセット(社長指示)
-                if (shotWhileSearching) H.noticed = true;
-                if (H.detectStartAt === 0 && !shotWhileSearching) {
-                  H.detectStartAt = newGameTime;
-                  playSfx('hunter-alert'); // 視界に入った=見られている警告SE(社長提供)
-                  // 検知=矢印を出す(被監視中の索敵個体に方角マーカー)。
-                  useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.id === H.primaryId ? { ...e, hunterAlerted: true } : e) }));
-                  H.noticed = true; // 気づかせた=立ち去りもアナウンスしてよい出撃(v0.25.2317)
-                  useGameStore.setState({ eventBannerText: '何かに見られている…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-                } else if (shotWhileSearching || newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS) {
-                  // 発見: 追跡開始。索敵個体を起こす(撃たれた時は見られている段を飛ばして即)。
-                  useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter' ? { ...e, dormant: false, aggroRange: undefined } : e) }));
-                  H.phase = 'chase'; H.chaseStartAt = newGameTime;
-                  useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-                  playSfx('enemy-spotted'); // 見つかった音(社長支給2026-10-24「索敵系の敵に見つかった時の音」)
-                  useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
-                  spawnFlash('rgba(180,40,40,0.18)', 220);
-                  // ハンター出現(発見)アテンション: カメラがハンターへ高速パン→ホールド→戻る(社長指示)。
-                  // 社長裁定2026-08-28「ハンターも入れて『監視者』」: 発見(1波1回)にカットイン。
-                  useGameStore.getState().triggerAttention(prim.x + prim.width / 2, prim.y + prim.height / 2, bossCutinPayload('hunter'));
-                }
-              } else if (H.detectStartAt !== 0) {
-                H.detectStartAt = 0; // 範囲外へ逃げ切った=セーフ(検知リセット)
-                useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.id === H.primaryId ? { ...e, hunterAlerted: false } : e) })); // 矢印も消す
-                useGameStore.setState({ eventBannerText: '気配が消えた…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-              }
+              const appearing = prim.hunterWarpInAt !== undefined && newGameTime - prim.hunterWarpInAt < HUNTER_WARP_FADE_MS;
+              if (!appearing) watchStep(prim);
             }
           } else if (H.phase === 'chase') {
             const huntersAlive = hs.enemies.filter(e => e.type === 'hunter');

@@ -15279,6 +15279,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             // ハンター変異体は索敵中も静止せず、低速の「徘徊」で移動する(社長指示: ランダムっぽく
             // 見せて実はプレイヤーへじわじわ接近)。純関数(src/utils/hunterWander.ts)へ切り出し済み。
             // ただし立ち去りフェード中(hunterLeavingAt設定済み)はその場で静止する。
+            // research/HUNTER_PATROL.md: 巡回中(輪を回る・ワープ中)のハンターは巡回の制御(useGameLoop)だけが動かす。
+            if (enemy.type === 'hunter' && enemy.hunterPatrolR !== undefined) return enemy;
             if (enemy.type === 'hunter' && enemy.hunterLeavingAt === undefined) {
               const priorWander = (enemy.hunterWanderTargetX !== undefined && enemy.hunterWanderTargetY !== undefined && enemy.hunterWanderNextAt !== undefined)
                 ? { wanderTargetX: enemy.hunterWanderTargetX, wanderTargetY: enemy.hunterWanderTargetY, wanderNextAt: enemy.hunterWanderNextAt }

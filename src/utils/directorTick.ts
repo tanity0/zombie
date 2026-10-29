@@ -1499,7 +1499,7 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
 
 export interface DirectorSignalRefs {
   directorRef: Ref<{ state: DirectorState; prevHp: number; prevKills: number; nextSampleMs: number }>;
-  hunterRef: Ref<{ phase: 'idle' | 'search' | 'chase' | 'retreat' }>;
+  hunterRef: Ref<{ phase: 'idle' | 'patrol' | 'search' | 'chase' | 'retreat' }>;
   gatePressureRef: Ref<{ state: { pressure: number } }>;
 }
 

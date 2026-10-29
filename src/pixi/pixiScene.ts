@@ -260,6 +260,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase, TELEGRAPH_STYLE_BOSS } from '../utils/telegraphStyle';
+import { hunterWarpAlpha } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
 import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, type AstroThrowEntry } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
@@ -21748,9 +21749,10 @@ export class PixiScene {
     const foreFade = bossFixed ? 1 : this.foregroundActorAlpha(fb.footY);
     // ハンターの索敵タイムアウト立ち去り: hunterLeavingAt(gameTime基準)から HUNTER_LEAVE_FADE_MS
     // かけて透明化(社長指示)。useGameLoop側もgameTime基準で消滅判定するため同じ時計を使う。
-    const hunterLeaveFade = e.hunterLeavingAt !== undefined
+    // research/HUNTER_PATROL.md: 巡回のワープ(薄れて消える→薄れて現れる)も「そこに居ない」の濃さとして掛ける。
+    const hunterLeaveFade = (e.hunterLeavingAt !== undefined
       ? Math.max(0, 1 - (gameTime - e.hunterLeavingAt) / HUNTER_LEAVE_FADE_MS)
-      : 1;
+      : 1) * (e.type === 'hunter' ? hunterWarpAlpha(gameTime, e.hunterWarpOutAt, e.hunterWarpInAt) : 1);
     // PACING_PUZZLE.md §6.38 B1(賞金首): 滞在1分満了+帰巣完了後のフェード退場(hunterLeaveFadeと同型)。
     const bountyDepartFade = e.bountyDepartAt !== undefined
       ? Math.max(0, 1 - (gameTime - e.bountyDepartAt) / BOUNTY_DEPART_FADE_MS)
@@ -22561,7 +22563,7 @@ export class PixiScene {
     if (horizonAlpha <= 0) view.light.visible = false;
     else {
       this.syncEnemyLight(view, e, fb.footX, fb.footY, now);
-      view.light.alpha *= horizonAlpha * reaperWarpFade;
+      view.light.alpha *= horizonAlpha * reaperWarpFade * hunterLeaveFade; // ハンターの立ち去り・ワープも光ごと薄れる
     }
 
     // Behind-sprite layer: stun reticle (+ a colour placeholder if no texture).
@@ -30010,8 +30012,13 @@ export class PixiScene {
       if (e.type !== 'hunter' || e.hunterFleeing) continue;
       const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
       if (this.distanceOutsideViewport(cx, cy, R + 40) > 0) continue; // 円が完全に画面外なら描かない
-      g.circle(cx, cy, R).fill({ color: 0x7c3aed, alpha: 0.05 });                          // 薄い紫の塗り
-      g.circle(cx, cy, R).stroke({ width: 3, color: 0xa78bfa, alpha: 0.12 + 0.08 * pulse }); // 境界(脈動)
+      // ワープ中・立ち去り中は円も一緒に薄れる(体だけ消えて円が残らない)。
+      const gt0 = useGameStore.getState().gameTime;
+      const va = hunterWarpAlpha(gt0, e.hunterWarpOutAt, e.hunterWarpInAt)
+        * (e.hunterLeavingAt !== undefined ? Math.max(0, 1 - (gt0 - e.hunterLeavingAt) / HUNTER_LEAVE_FADE_MS) : 1);
+      if (va <= 0.01 || e.hunterWatchOff) continue; // 見つけない間(大きなイベント・演出の最中)は円を出さない=円が出ていれば必ず見られる
+      g.circle(cx, cy, R).fill({ color: 0x7c3aed, alpha: 0.05 * va });                          // 薄い紫の塗り
+      g.circle(cx, cy, R).stroke({ width: 3, color: 0xa78bfa, alpha: (0.12 + 0.08 * pulse) * va }); // 境界(脈動)
     }
   }
 
