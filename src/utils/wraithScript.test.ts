@@ -195,3 +195,17 @@ describe('亡霊: 指差しの技(§11)', () => {
     expect(got.map(g => g.id)).toEqual(['g0', 'g1', 'g2', 'g3', 'g4']);
   });
 });
+
+import { wraithBattleActive, WRAITH_BATTLE_RANGE_PX } from './wraithScript';
+describe('亡霊と戦っている間(§12)', () => {
+  const pl = { x: 0, y: 0, width: 20, height: 20, health: 100 };
+  const w = { type: 'mutant-wraith' as const, health: 100, corpseUntil: undefined, libAlerted: true, x: 100, y: 0, width: 60, height: 50 };
+  it('気づいていて近くに居る間だけ。倒れた・見失った・遠い・プレイヤーが倒れたら終わる', () => {
+    expect(wraithBattleActive([w], pl)).toBe(true);
+    expect(wraithBattleActive([{ ...w, libAlerted: false }], pl)).toBe(false);
+    expect(wraithBattleActive([{ ...w, corpseUntil: 5000 }], pl)).toBe(false);
+    expect(wraithBattleActive([{ ...w, health: 0 }], pl)).toBe(false);
+    expect(wraithBattleActive([{ ...w, x: WRAITH_BATTLE_RANGE_PX + 100 }], pl)).toBe(false);
+    expect(wraithBattleActive([w], { ...pl, health: 0 })).toBe(false);
+  });
+});

@@ -1,5 +1,6 @@
 // 宇宙飛行群(変異)の純関数(research/ASTRONAUT_HORDE.md)。store も PixiJS も読まない=ヘッドレスでテストする。
 // 「群」はヘルメットの中に複数体いるという設定で、場に出るのは1体(社長 2026-10-29)。
+import { ZOOM_MIN_ABS } from './cameraZoom';
 
 // ---- 絵(シート) ----
 /** 浮遊のシート(mutant-astro-hover): 11コマ・1コマ156px。0=着地の立ち → 3〜=噴射 → 8〜10=浮遊。 */
@@ -520,4 +521,31 @@ export const astroRainStep = (
     out = cur.map(p => (drop.has(p.id) ? { ...p, sinkAt: gt } : p));
   }
   return out ?? (pieces as AstroScatterPiece[]);
+};
+
+// ---- 隕石の時のカメラ(社長指示2026-10-29「隕石の時は、ズームを最大引きにして少しカメラ位置を隕石寄りにズラす」) ----
+/** 隕石の間の引き(一番引いた倍率)。 */
+export const ASTRO_METEOR_ZOOM = ZOOM_MIN_ABS;
+/** 落ちてからこの間は引いたまま(着弾と跡を見せてから戻る)。 */
+export const ASTRO_METEOR_VIEW_HOLD_MS = 700;
+/** カメラを隕石の方へ寄せる割合(プレイヤーから落ちる所までの距離に掛ける)と上限(画面幅に対する比)。 */
+export const ASTRO_METEOR_CAM_LEAD_FRAC = 0.3;
+export const ASTRO_METEOR_CAM_LEAD_MAX_FRAC = 0.22;
+/**
+ * 投げ始めから落ちて少し後までの隕石(描画のズームとカメラ・湧きの可視域が同じ1本を読む)。無ければ null。
+ * 隕石の落ちる所を返す(カメラを寄せる先)。複数あれば一番早く落ちる物。
+ */
+export const astroMeteorView = (throws: readonly AstroThrowEntry[], gt: number): { zoom: number; x: number; y: number } | null => {
+  let best: AstroThrowEntry | null = null;
+  for (const t of throws) {
+    if (t.kind !== 'meteor' || gt < t.bornAt || gt >= t.hitAt + ASTRO_METEOR_VIEW_HOLD_MS) continue;
+    if (!best || t.hitAt < best.hitAt) best = t;
+  }
+  return best ? { zoom: ASTRO_METEOR_ZOOM, x: best.x, y: best.y } : null;
+};
+/** カメラを隕石の方へ寄せる量(世界px・クランプ済み)。 */
+export const astroMeteorCamLead = (dx: number, dy: number, viewW: number): { x: number; y: number } => {
+  const lx = dx * ASTRO_METEOR_CAM_LEAD_FRAC, ly = dy * ASTRO_METEOR_CAM_LEAD_FRAC;
+  const l = Math.hypot(lx, ly), max = viewW * ASTRO_METEOR_CAM_LEAD_MAX_FRAC;
+  return l > max && l > 0 ? { x: lx * max / l, y: ly * max / l } : { x: lx, y: ly };
 };

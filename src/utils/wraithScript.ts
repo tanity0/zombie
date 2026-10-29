@@ -1,6 +1,9 @@
 // 亡霊(変異体)の純関数(research/WRAITH_MUTANT.md)。store も PixiJS も読まない=ヘッドレスでテストする。
 // 社長 2026-10-29「こいつもフワフワ浮いており、プレイヤーの周りを周回する。攻撃されるとたまに反対側にワープもする」。
 
+import type { Enemy } from '../types/game';
+import { isCorpse } from './enemyUtils';
+
 // ---- 絵(シート) ----
 /** 浮遊のシート(mutant-wraith-float): 16コマ・1コマ96×152。ループ。 */
 export const WRAITH_FLOAT_FRAMES = 16;
@@ -337,3 +340,20 @@ export const pickWraithCurseGraves = (
       && inView(g.x, g.y))
     .sort((a, b) => Math.hypot(a.x - wraith.x, a.y - wraith.y) - Math.hypot(b.x - wraith.x, b.y - wraith.y))
     .slice(0, WRAITH_CURSE_MAX);
+
+// ---- 亡霊と戦っている間(§12) ----
+/** 戦っている間とみなす亡霊とプレイヤーの距離の上限(画面の外で気づかれただけでは始めない)。 */
+export const WRAITH_BATTLE_RANGE_PX = 900;
+/**
+ * 亡霊と戦っている間(音を下げる・地面と遠景を暗くするの両方がこの1本を見る)。
+ * 生きていて(死体でない)、こちらに気づいていて、近くに居て、プレイヤーが生きている間。
+ */
+export const wraithBattleActive = (
+  enemies: readonly Pick<Enemy, 'type' | 'health' | 'corpseUntil' | 'libAlerted' | 'x' | 'y' | 'width' | 'height'>[],
+  player: { x: number; y: number; width: number; height: number; health: number },
+): boolean => {
+  if (!(player.health > 0)) return false;
+  const px = player.x + player.width / 2, py = player.y + player.height / 2;
+  return enemies.some(e => e.type === 'mutant-wraith' && !isCorpse(e) && e.health > 0 && e.libAlerted === true
+    && Math.hypot(e.x + e.width / 2 - px, e.y + e.height / 2 - py) <= WRAITH_BATTLE_RANGE_PX);
+};

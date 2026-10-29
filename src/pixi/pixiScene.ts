@@ -219,7 +219,7 @@ import type { PersistentBeam } from '../utils/persistentBeam';
 import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, PHANTOM_FLAMER_WINDUP_MS, phantomFlamerPhase } from '../utils/flamerCone';
 import { NewGunsFx } from './newGunsFx';
-import { wraithScreamRisePx, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_FRAMES, WRAITH_GROWTH_SINK_MS, wraithWarpState, wraithLiftPx, wraithScreamFrame, wraithFloatFrame, wraithScreamBodyH, WRAITH_SCREAM_FRAMES, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_ALIGN_X, WRAITH_FLOAT_ALIGN_X, WRAITH_SCREAM_FRAME_W, WRAITH_FLOAT_FRAME_W, WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_RADIUS, WRAITH_POINT_FRAMES, WRAITH_POINT_FRAME_W, WRAITH_POINT_ALIGN_X, wraithPointFrame, WRAITH_CURSE_HOVER_PX, WRAITH_GRAVE_STONE_KEEP } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
+import { wraithScreamRisePx, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_FRAMES, WRAITH_GROWTH_SINK_MS, wraithWarpState, wraithLiftPx, wraithScreamFrame, wraithFloatFrame, wraithScreamBodyH, WRAITH_SCREAM_FRAMES, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_ALIGN_X, WRAITH_FLOAT_ALIGN_X, WRAITH_SCREAM_FRAME_W, WRAITH_FLOAT_FRAME_W, WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_RADIUS, WRAITH_POINT_FRAMES, WRAITH_POINT_FRAME_W, WRAITH_POINT_ALIGN_X, wraithPointFrame, WRAITH_CURSE_HOVER_PX, WRAITH_GRAVE_STONE_KEEP, wraithBattleActive } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
 import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
@@ -263,7 +263,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase, TELEGRAPH_STYLE_BOSS } from '../utils/telegraphStyle';
 import { hunterWarpAlpha } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
-import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, astroThrowFrame, ASTRO_THROW_HAND, ASTRO_THROW_TOP_FRAME, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_HOVER_ALIGN, ASTRO_HOVER_FRAME_W, ASTRO_SHEET_H, ASTRO_RAIN_SINK_MS, ASTRO_DEBRIS_FIRST_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
+import { astroLiftPx, astroMeteorView, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, astroThrowFrame, ASTRO_THROW_HAND, ASTRO_THROW_TOP_FRAME, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, ASTRO_HOVER_ALIGN, ASTRO_HOVER_FRAME_W, ASTRO_SHEET_H, ASTRO_RAIN_SINK_MS, ASTRO_DEBRIS_FIRST_MS, type AstroThrowEntry, type AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
 import { labBaitZoomTarget } from '../world/labBait';
@@ -8968,6 +8968,7 @@ export class PixiScene {
 
   sync() {
     this.restoreForestPreview();
+    this.restoreWraithDarkness(); // 前フレームに掛けた亡霊戦の暗さを戻してから描く(§12)
     this.restoreZwarpActors(); // 前フレームの逆変形(ズーム時の遠近)を戻してから描く
     const s0 = useGameStore.getState();
     // ステージ2の変異塊の代理(攻撃を受ける窓口だけの Enemy・research/LAB_CRAWLER.md §4)は描かない:
@@ -9240,7 +9241,10 @@ export class PixiScene {
       if (isLargeForZoom(e.type)) hasLargeForZoom = true;
     }
     // 叩き潰しの登場(LAB_CRAWLER §11)の間は引く(塊の前半身・着地点・前へ逃げるプレイヤーを同時に収める。useGameLoop の推定と同じ式)。
-    const baitZoom = labBaitZoomTarget(s.labBaitScene);
+    // 宇宙飛行群の隕石の間も一番引く(ASTRONAUT_HORDE.md §12-8・useGameLoop のカメラ推定と同じ式)。
+    const meteorView = astroMeteorView(s.astroThrows, s.gameTime);
+    const baitZoomRaw = labBaitZoomTarget(s.labBaitScene);
+    const baitZoom = meteorView ? Math.min(baitZoomRaw ?? 1, meteorView.zoom) : baitZoomRaw;
     let czTarget = contextZoomTarget(nearCount, hasLargeForZoom, baitZoom != null ? Math.min(bossDistanceTarget ?? 1, baitZoom) : bossDistanceTarget);
     // ★B9 走りのズーム引き(社長裁定2026-10-16「3秒かけてじわじわ広がる で」): 同じ向きに1秒以上走り続け(=速度ランプの
     //   sustain・utils/speedRamp)、近くに敵が居ない時だけ、3秒かけて RUN_ZOOM_MIN(0.85)まで引く。敵が近づく/止まる/切り返すと
@@ -10082,6 +10086,7 @@ export class PixiScene {
     this.flushWeaponVanish(now);
     this.syncLockIndicators(s.enemies, s.homingLocks, now);
     this.syncSkadiHazards(s.skadiIceMarkers, s.skadiIceBlades, s.gameTime, now);
+    this.syncWraithDarkness(s.enemies); // 亡霊と戦っている間は地面と遠景だけ暗く、切れかけの灯りのように明滅(WRAITH_MUTANT.md §12)
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
     this.syncLibertyArrows(s.enemies, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top, s.libertyOrphanArrows); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
@@ -10474,6 +10479,7 @@ export class PixiScene {
       this.syncFireflies(s.camera, junSeq ? rn : now);
     }
     this.applyForestPreview();
+    this.applyWraithDarkness(); // 亡霊と戦っている間の地面と遠景の暗さ(フレームの最後・§12)
     this.syncZoomWarp(s.player.vx ?? 0, s.player.vy ?? 0, realNow); // ★必ず最後(このフレームの世界が全部揃ってから1枚に描く)
   }
 
@@ -12005,7 +12011,9 @@ export class PixiScene {
       const ds = this.depthScale(g.y);
       const over = r > 1 ? r : 1; // 伸び切る直前の行き過ぎ(少し伸びて戻る)
       sp.scale.set(g.scale * ds * (g.flip ? -1 : 1), g.scale * ds * over);
-      sp.tint = tint;
+      const gm = this.wraithGroundTintMul(); // 亡霊と戦っている間は地面と一緒に沈む(§12)
+      sp.tint = gm >= 0.999 ? tint
+        : (Math.round(((tint >> 16) & 255) * gm) << 16) | (Math.round(((tint >> 8) & 255) * gm) << 8) | Math.round((tint & 255) * gm);
       const sinkFade = g.sinkAt !== undefined ? Math.max(0, 1 - (s.gameTime - g.sinkAt) / WRAITH_GROWTH_SINK_MS) : 1;
       sp.alpha = this.horizonActorAlpha(g.y) * this.foregroundActorAlpha(g.y) * sinkFade;
       sp.skew.x = isWraithGrave(g.variant) ? 0 : this.windNow * FLOWER_WIND_SKEW;
@@ -36938,6 +36946,96 @@ export class PixiScene {
         : (g.circle(x, y, WRAITH_SCREAM_RADIUS).fill({ color: 0x9333ea, alpha: 0.12 + 0.14 * prog }), 1);
       g.circle(x, y, WRAITH_SCREAM_RADIUS).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.9 * mask });
     }
+  }
+
+  /**
+   * research/WRAITH_MUTANT.md §12: 亡霊と戦っている間は、地面(床の帯)と遠景(空・地平の森・手前の森の帯)だけを暗くし、
+   * 1.5〜4秒おきに切れかけた灯りのように2〜4回すばやく明滅させる。キャラ・敵・エフェクト・HUD は暗くしない(画面ごとは暗くしない)。
+   * 遠景の色は他の所(背景の切り替え・昼夜)も書くので、最後に自分が書いた値と違ったら「元の色」を取り直してから掛ける。
+   */
+  private wraithDarkK = 1;
+  private wraithDarkAt = 0;
+  /** 明滅: 残りの回数・次の1回の時刻・いまの1回の深さ(1=明滅なし)・暗/明の順番・最後の1回か。 */
+  private wraithFlick = { nextAt: 0, left: 0, pulseUntil: 0, val: 1, dark: true, wasBattle: false, lastWarp: -1, lastScreamHit: -1 };
+  /** 床・中景(地平の森・霧)・空の明るさ(0..1)。明滅は床に強く、遠いほど浅い(クリエイティブ監査#2#7)。 */
+  private wraithDarkLayers = { ground: 1, mid: 1, sky: 1 };
+  private wraithDarkOriginals = new Map<Sprite | TilingSprite, number>();
+  /** 明滅の1回分を差し込む(型: 落ちる→一瞬つく→深く落ちる…と交互・最後が一番深く少し長い・揺らすのは長さと深さだけ=#6)。 */
+  private wraithFlickBurst(n: number, nowR: number): void {
+    const fl = this.wraithFlick;
+    fl.left = n; fl.pulseUntil = nowR; fl.dark = true;
+  }
+  /** 暗さの係数を進める(毎フレーム・色はまだ書かない)。 */
+  private syncWraithDarkness(enemies: readonly Enemy[]): void {
+    const nowR = Date.now();
+    const dt = this.wraithDarkAt === 0 ? 0 : Math.min(0.1, (nowR - this.wraithDarkAt) / 1000);
+    this.wraithDarkAt = nowR;
+    const st = useGameStore.getState();
+    // 戦っている間の定義は音の側と同じ1本(wraithScript.wraithBattleActive)。ポーズ中は今の暗さのまま止める(明滅もしない)。
+    const battle = wraithBattleActive(enemies, st.player);
+    if (st.isPaused) return;
+    const fl = this.wraithFlick;
+    // 区切りの明滅: 戦いの始まり(見つかった瞬間)・倒した瞬間(祓った一瞬)・亡霊のワープと叫びの瞬間(光と出来事を結ぶ・#8#9#14)。
+    const w = enemies.find(e => e.type === 'mutant-wraith');
+    if (battle && !fl.wasBattle) this.wraithFlickBurst(3, nowR);
+    if (!battle && fl.wasBattle && w && (isCorpse(w) || !(w.health > 0))) this.wraithFlickBurst(2, nowR);
+    fl.wasBattle = battle;
+    if (battle && w) {
+      if (w.wraithWarpOutAt !== undefined && w.wraithWarpOutAt !== fl.lastWarp) { fl.lastWarp = w.wraithWarpOutAt; this.wraithFlickBurst(2, nowR); }
+      const hitAt = w.wraithScreamAt !== undefined ? w.wraithScreamAt + WRAITH_SCREAM_WINDUP_MS : -1;
+      if (hitAt > 0 && st.gameTime >= hitAt && hitAt !== fl.lastScreamHit) { fl.lastScreamHit = hitAt; this.wraithFlickBurst(3, nowR); }
+    }
+    const target = battle ? 0.5 : 1;
+    const tau = battle ? 0.8 / 3 : 1.5 / 3; // 約0.8秒で沈み、約1.5秒で戻る(指数で近づく=止まり際がゆっくり)
+    this.wraithDarkK += (target - this.wraithDarkK) * (1 - Math.exp(-dt / tau));
+    if (!battle && this.wraithDarkK > 0.999) this.wraithDarkK = 1;
+    // 乱数の明滅(戦っている間だけ・1.5〜4秒おき)。区切りの明滅は戦いの外でも最後まで出し切る。
+    if (battle && this.wraithDarkK < 0.85 && fl.left === 0 && nowR >= fl.nextAt) this.wraithFlickBurst(2 + Math.floor(Math.random() * 3), nowR);
+    if (fl.left > 0 && nowR >= fl.pulseUntil) {
+      fl.left--;
+      const last = fl.left === 0;
+      fl.val = fl.dark ? (last ? 0.3 : 0.5 + Math.random() * 0.15) : 1.45 + Math.random() * 0.3;
+      fl.pulseUntil = nowR + (last ? 90 + Math.random() * 50 : 35 + Math.random() * 45);
+      fl.dark = !fl.dark;
+      if (last) fl.nextAt = nowR + 1500 + Math.random() * 2500;
+    }
+    if (fl.left === 0 && nowR >= fl.pulseUntil) { fl.val += (1 - fl.val) * Math.min(1, dt * 30); if (Math.abs(fl.val - 1) < 0.002) fl.val = 1; }
+    const k = this.wraithDarkK, v = fl.val;
+    const lay = (depth: number, flickW: number) => Math.max(0.15, Math.min(1, (1 - (1 - k) * depth) * (1 + (v - 1) * flickW)));
+    this.wraithDarkLayers = { ground: lay(1, 1), mid: lay(0.75, 0.45), sky: lay(0.5, 0.2) };
+  }
+  /**
+   * research/WRAITH_MUTANT.md §12: 地面と遠景の色に暗さを掛ける(フレームの最後=他の所が今フレームの色を書き終えた後)。
+   * 次のフレームの頭で元の色へ戻す(restoreWraithDarkness)=他の色の書き込み(昼夜・背景の差し替え・雪の地面・森の試作)とぶつからない
+   * (applyForestPreview と同じ型)。床が一番深く・地平の森と霧はその次・空は浅く沈む。沈むほど赤から抜けて冷える(#2#3)。
+   * 月(本体・光・暈)は「最後に残る光」として沈めない(#1)。キャラ・敵・エフェクト・HUD・近景の森は触らない=画面ごとは暗くしない。
+   */
+  private applyWraithDarkness(): void {
+    const L = this.wraithDarkLayers;
+    if (L.ground >= 0.999 && L.mid >= 0.999 && L.sky >= 0.999) return;
+    const paint = (sp: Sprite | TilingSprite, f: number) => {
+      if (sp.destroyed || !sp.visible || f >= 0.999) return;
+      const base = Number(sp.tint);
+      if (!this.wraithDarkOriginals.has(sp)) this.wraithDarkOriginals.set(sp, base);
+      const cool = 1 - f; // 沈むほど冷える
+      const r = Math.round(((base >> 16) & 255) * f * (1 - 0.22 * cool)), g = Math.round(((base >> 8) & 255) * f * (1 - 0.1 * cool)), b = Math.round((base & 255) * Math.min(1, f * (1 + 0.05 * cool)));
+      sp.tint = (Math.min(255, r) << 16) | (Math.min(255, g) << 8) | Math.min(255, b);
+    };
+    paint(this.L.farBackdrop, L.sky);
+    for (const sky of this.stage1Sky) paint(sky, L.sky);
+    paint(this.stage1Castle, L.mid);
+    paint(this.L.horizonForest, L.mid);
+    for (const ridge of this.horizonRidgeCopies) paint(ridge, L.mid);
+    paint(this.L.nearHorizon, L.mid);
+    paint(this.snowHorizonFog, L.mid);
+    for (const fog of this.fogLayers) paint(fog.sp as Sprite | TilingSprite, L.mid); // 霧も沈める(暗い地面の上で霧だけ光らない・#4)
+    for (const strip of this.L.groundStrips) paint(strip, L.ground);
+  }
+  /** 亡霊の墓石と花も地面と一緒に沈める(地面に置かれた物・#5)。syncWraithGrowths が掛ける倍率。 */
+  private wraithGroundTintMul(): number { return this.wraithDarkLayers.ground; }
+  private restoreWraithDarkness(): void {
+    for (const [sp, tint] of this.wraithDarkOriginals) if (!sp.destroyed) sp.tint = tint;
+    this.wraithDarkOriginals.clear();
   }
 
   /** research/WRAITH_MUTANT.md: 今のコマ(叫びの間は叫びのシート・それ以外は浮遊のループ)。 */

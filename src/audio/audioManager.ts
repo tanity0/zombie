@@ -150,6 +150,8 @@ export type SfxKey =
   // research/LAB_CRAWLER.md(ステージ2の変異塊・社長支給2026-10-19): 体を引きずる音(ループ専用=setCrawlerDrag が鳴らす)。
   | 'crawler-drag'
   | 'escape-ghost'
+  // research/WRAITH_MUTANT.md §12(社長支給2026-10-29): 亡霊と戦っている間に交互に重ねて鳴らす2本(setWraithBattleAudio だけが鳴らす)。
+  | 'wraith-swell' | 'wraith-voice'
   // 塊が攻撃してくる直前の音・登場時の音(社長支給2026-10-20「塊が攻撃してくる直前の音 登場時も鳴らす」)。同じ素材を2つの鍵で鳴らし分ける。
   | 'crawler-windup' | 'crawler-appear'
   // ステージ2でたまに遠くから鳴る音(社長支給2026-10-19)。playDistantSfx が遠さ(音量・こもり・左右)を付けて鳴らす。
@@ -500,6 +502,9 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'crawler-drag': { src: `${import.meta.env.BASE_URL}audio/sfx/crawler-drag.mp3`, volume: 0.9, minIntervalMs: 200 },
   // ステージ2の帰り道で塊が出ている間のループ(社長指示2026-10-24・オープニングの射撃シーンと同じ素材)。setEscapeGhost だけが鳴らす。
   'escape-ghost': { src: `${import.meta.env.BASE_URL}audio/sfx/op-ghostly-voice.mp3`, volume: 0.7, minIntervalMs: 200, warm: false },
+  // 鳴っている部分の大きさ(実測 RMS: swell 約-21dB / voice 約-15dB)を耳で揃える=交互に鳴っても脈打たない(クリエイティブ監査#11)。
+  'wraith-swell': { src: `${import.meta.env.BASE_URL}audio/sfx/wraith-swell.mp3`, volume: 1.0, minIntervalMs: 200, warm: false },
+  'wraith-voice': { src: `${import.meta.env.BASE_URL}audio/sfx/wraith-voice.mp3`, volume: 0.5, minIntervalMs: 200, warm: false },
   // 素材は約2.85秒で、約1.4秒かけて膨らみ頂点へ達してから引く。叩きつけの溜め(短い)では途中から鳴らし、頂点が手の着く瞬間に来るようにする。
   'crawler-windup': { src: `${import.meta.env.BASE_URL}audio/sfx/crawler-windup.mp3`, volume: 1.0, minIntervalMs: 300, startAt: 0.8 },
   // 登場時は頭から全部鳴らす(膨らむ間がそのまま「来る」の溜めになる)。
@@ -578,7 +583,11 @@ let radioMix = 0;
 // ★無音の保持(社長指示2026-10-14「exステージ、スリィエル倒したら一旦bgmをフェードアウト」): 立っている間は
 //   どの経路(再生の掛け直し・音量設定・ダック)から実効音量を引いても0=曲が勝手に戻らない。次の曲の開始/場面切替で外れる。
 let bgmSilenceHeld = false;
-const effectiveBgmVolume = () => (bgmSilenceHeld ? 0 : bgmVolume * bgmDuck * (1 - radioMix));
+// 亡霊と戦っている間はBGMを大きく下げる(research/WRAITH_MUTANT.md §12・setWraithBattleAudio がフェードで動かす)。
+let wraithBgmDuck = 1;
+/** 最後に走ったフェードが「無音まで落とす」だった時の番号(その間は亡霊戦の戻しが音量を書かない)。 */
+let bgmFadedOutToken = -1;
+const effectiveBgmVolume = () => (bgmSilenceHeld ? 0 : bgmVolume * bgmDuck * wraithBgmDuck * (1 - radioMix));
 /** 今、実際に鳴っている音量(フェードの始点。無音の保持中なら0)。 */
 const currentBgmLevel = (): number => (bgmGain ? bgmGain.gain.value : (bgm?.volume ?? 0));
 // ダンスビートB方式(v0.25.1339): メトロノームのキックが埋もれないよう、ダンス曲を軽くダックする。
@@ -1346,6 +1355,7 @@ export const fadeOutBgmToSilence = (fadeMs = 800): void => {
   if (!bgm || !bgmActive || muted) return;
   if (bgmSilenceHeld) return; // 既に無音で保持している(スリィエル撃破後のEX)=鳴らし直してから落とす段差を作らない
   const token = ++bossBgmFadeToken;
+  bgmFadedOutToken = token; // 落とし切った後に亡霊戦の音量の戻しが曲を鳴らし直さない(§12)
   const startVol = effectiveBgmVolume() * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
   const t0 = performance.now();
   const step = () => {
@@ -1430,6 +1440,7 @@ export const setBgmScene = (scene: 'menu' | 'game' | 'off', variant: string = 'd
   if (scene === 'menu' && openingBgmHold) { menuBgmPending = true; return; } // オープニングが明けたら流す
   menuBgmPending = false;
   bgmSilenceHeld = false; // 場面が変わったら無音の保持は外す(リトライ・メニュー復帰で曲が戻る)
+  resetWraithBattleAudio(); // 亡霊戦の下げ・声も場面が変わったら即やめる(タイトルで曲が1割から上がらない・§12)
   if (scene === 'off') { releaseDeepReverseBgm(); stopCorridorRadioMix(); void setBgmActive(false); return; }
   if (scene === 'game') {
     if (variant !== currentGameVariant) { releaseDeepReverseBgm(); stopCorridorRadioMix(); currentGameVariant = variant; }
@@ -1583,12 +1594,12 @@ export const setPeakLayer = (active: boolean) => {
     if (shouldPlay) {
       try { el.currentTime = 0; } catch { /* ignore */ } // 1回転仕様: 各PEAK窓の頭から鳴らし直す
       void el.play().catch(() => { /* ignore: unlocks on next user gesture like other tracks */ });
-      fadePeakLayer(PEAK_LAYER_VOLUME * bgmVolume, PEAK_BGM_DUCK);
+      fadePeakLayer(PEAK_LAYER_VOLUME * bgmVolume * wraithBgmDuck, PEAK_BGM_DUCK);
     } else {
       fadePeakLayer(0, 1);
     }
   } else if (shouldPlay && peakLayerEl && peakLayerFadeTimer == null) {
-    peakLayerEl.volume = PEAK_LAYER_VOLUME * bgmVolume; // 稼働中の音量スライダー変更に追従
+    peakLayerEl.volume = PEAK_LAYER_VOLUME * bgmVolume * wraithBgmDuck; // 稼働中の音量スライダー変更・亡霊戦の下げに追従
   }
 };
 
@@ -2141,6 +2152,143 @@ export const setEscapeGhost = (gainMult: number): void => {
   }
   if (escapeGhostWatchdog != null) clearTimeout(escapeGhostWatchdog);
   escapeGhostWatchdog = window.setTimeout(() => { escapeGhostWatchdog = null; stopEscapeGhost(); }, 300);
+};
+
+// ---- 亡霊と戦っている間の音(research/WRAITH_MUTANT.md §12) ----
+// 2本を交互に鳴らし、次は前の音の「鳴っている部分」が終わる少し前から重ねる(後ろの長い無音を待たない)。
+// 毎フレーム setWraithBattleAudio(active) を呼ぶ。止まったら(呼ばれなくなったら)見張りが自分で止める(setEscapeGhost と同じ型)。
+const WRAITH_BGM_DUCK = 0.1;
+const WRAITH_DUCK_IN_MS = 1200, WRAITH_DUCK_OUT_MS = 2000;
+const WRAITH_LAYER_OVERLAP_S = 0.9;
+// 1本目は人の声として聞こえる voice(見つかった瞬間の合図・#9)。次を入れる時刻は1本ずつ耳で決めた値(鳴らし始めからの秒・#12)。
+const WRAITH_LAYER_KEYS: readonly SfxKey[] = ['wraith-voice', 'wraith-swell'];
+const WRAITH_LAYER_NEXT_S: Readonly<Record<string, number>> = { 'wraith-swell': 4.0, 'wraith-voice': 5.6 };
+let wraithBattleOn = false;
+let wraithLayerGain: GainNode | null = null;
+let wraithLayerPan: StereoPannerNode | null = null;
+let wraithLayerVol = -1;
+let wraithLayerSources: AudioBufferSourceNode[] = [];
+let wraithLayerNextAt = 0;   // 次の音を鳴らし始める AudioContext の時刻
+let wraithLayerIdx = 0;
+let wraithDuckTimer: number | null = null;
+let wraithWatchdog: number | null = null;
+/** 鳴っている部分(約 -46dB より大きい所)。後ろの残響の薄い尾は「鳴っている」に数えない=次の音を前倒しで重ねる基準。 */
+const wraithAudibleSpan = (buffer: AudioBuffer): { start: number; end: number } => {
+  const ch = buffer.getChannelData(0);
+  const TH = 0.01; // 約 -40dB(実測: 2本とも尾の残響はこれより小さい)
+  let a = 0, b = ch.length - 1;
+  while (a < b && Math.abs(ch[a]) < TH) a++;
+  while (b > a && Math.abs(ch[b]) < TH) b--;
+  if (b - a < buffer.sampleRate) return { start: 0, end: buffer.duration };
+  return { start: a / buffer.sampleRate, end: (b + 1) / buffer.sampleRate };
+};
+const fadeWraithBgmDuck = (target: number, ms: number) => {
+  if (wraithDuckTimer != null) { clearInterval(wraithDuckTimer); wraithDuckTimer = null; }
+  const start = wraithBgmDuck, steps = Math.max(1, Math.round(ms / 50));
+  const tok = bossBgmFadeToken;
+  // 倍率だけを動かす。ボス曲・無音へのフェードが途中で始まった/無音へ落とし切っている間は、音量を直に書かない
+  // (次にどこかが実効音量を引いた時に倍率が効く=他のフェードと上書きし合わない・監査 A5)。
+  const write = () => {
+    if (bossBgmFadeToken !== tok || bossBgmFadeToken === bgmFadedOutToken || bgmSilenceHeld) return;
+    applyDuckedBgmVolume();
+    if (peakLayerActive && peakLayerEl && peakLayerFadeTimer == null) peakLayerEl.volume = PEAK_LAYER_VOLUME * bgmVolume * wraithBgmDuck;
+  };
+  let i = 0;
+  wraithDuckTimer = window.setInterval(() => {
+    i++;
+    const u = i / steps, e = u * u * (3 - 2 * u); // 動き出しと止まりに加減速(慣性)
+    wraithBgmDuck = i >= steps ? target : start + (target - start) * e;
+    write();
+    if (i >= steps && wraithDuckTimer != null) { clearInterval(wraithDuckTimer); wraithDuckTimer = null; }
+  }, ms / steps);
+};
+const stopWraithBattleAudio = () => {
+  if (wraithWatchdog != null) { clearTimeout(wraithWatchdog); wraithWatchdog = null; }
+  if (!wraithBattleOn) return;
+  wraithBattleOn = false;
+  fadeWraithBgmDuck(1, WRAITH_DUCK_OUT_MS);
+  const context = sfxContext, gain = wraithLayerGain, srcs = wraithLayerSources;
+  wraithLayerGain = null; wraithLayerSources = []; wraithLayerPan = null; wraithLayerVol = -1;
+  if (context && gain) {
+    const now = context.currentTime;
+    // 倒した後も最後の声の尾を少し残し、その中から BGM が戻る(#14)。
+    try { gain.gain.cancelScheduledValues(now); gain.gain.setTargetAtTime(0, now + 0.4, 0.6); } catch { /* ignore */ }
+    for (const src of srcs) { try { src.stop(now + 2.5); } catch { /* ignore */ } }
+  }
+};
+/** 場面の切り替え・アンマウント: 下げを即1へ戻し、声を止める(フェードしない)。 */
+export const resetWraithBattleAudio = (): void => {
+  if (wraithDuckTimer != null) { clearInterval(wraithDuckTimer); wraithDuckTimer = null; }
+  if (wraithWatchdog != null) { clearTimeout(wraithWatchdog); wraithWatchdog = null; }
+  wraithBgmDuck = 1;
+  if (wraithBattleOn) {
+    wraithBattleOn = false;
+    const context = sfxContext, gain = wraithLayerGain, srcs = wraithLayerSources;
+    wraithLayerGain = null; wraithLayerSources = []; wraithLayerPan = null; wraithLayerVol = -1;
+    if (context && gain) { const now = context.currentTime; try { gain.gain.setTargetAtTime(0, now, 0.15); } catch { /* ignore */ } for (const src of srcs) { try { src.stop(now + 0.8); } catch { /* ignore */ } } }
+  }
+};
+/**
+ * 毎フレーム呼ぶ。active=亡霊と戦っている間(wraithScript.wraithBattleActive)。hold=ポーズ中(レベルアップ含む)は
+ * 下げたまま保ち、新しい声を予約しない(鳴っている1本は鳴り切る)=再開した時に下げ直し・頭からの鳴り直しが起きない(監査 A4)。
+ */
+export const setWraithBattleAudio = (active: boolean, hold = false, pan = 0): void => {
+  if (hold && wraithBattleOn) {
+    if (wraithWatchdog != null) clearTimeout(wraithWatchdog);
+    wraithWatchdog = window.setTimeout(() => { wraithWatchdog = null; stopWraithBattleAudio(); }, 300);
+    if (sfxContext) wraithLayerNextAt = Math.max(wraithLayerNextAt, sfxContext.currentTime + 0.6);
+    return;
+  }
+  if (!active || muted) {
+    // 戦っていない間に素材を先に読む(長い素材=起動時には読まない)。
+    for (const k of WRAITH_LAYER_KEYS) if (!sfxBuffers.has(k) && sfxContext) loadSfxBuffer(k);
+    stopWraithBattleAudio(); return;
+  }
+  const context = sfxContext ?? ensureSfxContext();
+  if (!context) return;
+  if (!wraithBattleOn) {
+    wraithBattleOn = true;
+    fadeWraithBgmDuck(WRAITH_BGM_DUCK, WRAITH_DUCK_IN_MS);
+    resumeSfxContext();
+    const gain = context.createGain();
+    // 亡霊の左右に軽く寄せる(周りを回っているのが耳で分かる・#13)。
+    const panner = typeof context.createStereoPanner === 'function' ? context.createStereoPanner() : null;
+    if (panner) { gain.connect(panner); panner.connect(context.destination); } else gain.connect(context.destination);
+    gain.gain.setValueAtTime(0, context.currentTime);
+    gain.gain.setTargetAtTime(sfxVolume, context.currentTime, 0.12); // 見つかった瞬間に立つ(じわっと始めない・#9)
+    wraithLayerGain = gain; wraithLayerSources = []; wraithLayerPan = panner; wraithLayerVol = sfxVolume;
+    wraithLayerNextAt = context.currentTime + 0.05; wraithLayerIdx = 0;
+  }
+  // SE の音量を途中で変えたら追従する(#15)。左右は亡霊の位置へ(ゆっくり)。
+  if (wraithLayerGain && Math.abs(wraithLayerVol - sfxVolume) > 0.01) { try { wraithLayerGain.gain.setTargetAtTime(sfxVolume, context.currentTime, 0.2); } catch { /* ignore */ } wraithLayerVol = sfxVolume; }
+  if (wraithLayerPan) { try { wraithLayerPan.pan.setTargetAtTime(Math.max(-0.6, Math.min(0.6, pan)), context.currentTime, 0.3); } catch { /* ignore */ } }
+  // 次の音の予約(鳴らし始めの0.5秒前に組む)。読み込み前なら読むだけで待つ。
+  if (wraithLayerGain && context.currentTime >= wraithLayerNextAt - 0.5) {
+    const key = WRAITH_LAYER_KEYS[wraithLayerIdx % WRAITH_LAYER_KEYS.length];
+    const buffer = sfxBuffers.get(key);
+    if (!buffer) loadSfxBuffer(key);
+    else {
+      const src = context.createBufferSource();
+      const g = context.createGain();
+      g.gain.value = SFX_SOURCES[key]?.volume ?? 0.8;
+      src.buffer = buffer;
+      src.connect(g); g.connect(wraithLayerGain);
+      const span = wraithAudibleSpan(buffer);
+      const at = Math.max(context.currentTime, wraithLayerNextAt);
+      // 毎回少しだけ揺らす(鳴らし始めの位置・速さ±3%・次を入れる時刻)=約12秒の周期が耳に残らない(#10)。
+      const rate = 0.97 + Math.random() * 0.06;
+      src.playbackRate.value = rate;
+      const off = span.start + Math.random() * 0.25;
+      try { src.start(at, off); } catch { /* ignore */ }
+      src.onended = () => { wraithLayerSources = wraithLayerSources.filter(q => q !== src); };
+      wraithLayerSources.push(src);
+      const nextS = WRAITH_LAYER_NEXT_S[key] ?? Math.max(1, span.end - span.start - WRAITH_LAYER_OVERLAP_S);
+      wraithLayerNextAt = at + (nextS + (Math.random() - 0.5) * 0.5) / rate;
+      wraithLayerIdx++;
+    }
+  }
+  if (wraithWatchdog != null) clearTimeout(wraithWatchdog);
+  wraithWatchdog = window.setTimeout(() => { wraithWatchdog = null; stopWraithBattleAudio(); }, 300);
 };
 
 /**

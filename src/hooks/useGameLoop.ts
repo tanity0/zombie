@@ -214,8 +214,8 @@ import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ri
 import { stepHunterPatrol } from '../utils/hunterPatrolTick';
 import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, runAstroScatter, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
 import { runWraithTick, createWraithTickState, pickActiveWraith, releaseWraithOwner, runWraithGrowths, runWraithGraveFx } from '../utils/wraithTick'; // research/WRAITH_MUTANT.md
-import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES, pickRunMutantBoss, type RunMutantBoss } from '../utils/wraithScript';
-import { astroSpawnPick } from '../utils/astroScript';
+import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES, pickRunMutantBoss, wraithBattleActive, type RunMutantBoss } from '../utils/wraithScript';
+import { astroSpawnPick, astroMeteorView, astroMeteorCamLead } from '../utils/astroScript';
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
 import { loadHeroAscended } from '../utils/heroAscended';
@@ -561,7 +561,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
-import { registerKillChainSfxRate, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, primeCorridorRadio, setHeroGallop, setCrawlerDrag, setEscapeGhost, playDistantSfx, setCorridorRadioBoost, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
+import { registerKillChainSfxRate, setWraithBattleAudio, resetWraithBattleAudio, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, primeCorridorRadio, setHeroGallop, setCrawlerDrag, setEscapeGhost, playDistantSfx, setCorridorRadioBoost, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT, labRadioIdolDownFade } from '../world/labRadioMix';
 import { labBaitCamLead, labBaitLandDist, labBaitZoomTarget, LAB_BAIT_CAM_FORWARD_FRAC, LAB_BAIT_CAM_FWD_TAU_S, LAB_BAIT_CAM_BACK_TAU_S, LAB_BAIT_CAM_RETURN_TAU_S } from '../world/labBait';
@@ -1989,6 +1989,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // v0.25.3063: 横のボス先読み(世界px・正=東)。縦と同じ目標ライン式・同じ時定数(社長裁定「2をまず揃える」)。
   const camBossLeadXRef = useRef<number>(0);
   const labBaitCamReturnRef = useRef<number>(0); // 叩き潰しの登場の後、カメラの寄せを遅く戻している間=1
+  const camMeteorLeadRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 }); // 宇宙飛行群の隕石の落ちる所へカメラを寄せる量(ASTRONAUT_HORDE §12-8)
   const camEscapeLeadXRef = useRef<number>(0); // ステージ2の逃走: 塊の側へカメラを寄せる量(社長 2026-10-20「aとbで」のB)
   // ダンスタイムBGM切替の前回状態(リズムの active 変化を検出して setDanceMode する)。
   const danceModeRef = useRef<boolean>(false);
@@ -2875,6 +2876,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           ? puzzlePeakSnap.komaKind === 'peak'
           : (gs.stageTheme !== 'lab' && !gs.indoorMode && phaseAt(gs.gameTime).kind === 'gate');
         setPeakLayer(!gs.isPaused && gs.player.health > 0 && (scriptedPeak || gs.redNight?.phase === 'active'));
+        // 亡霊と戦っている間はBGMを大きく下げ、亡霊の声を交互に重ねる(research/WRAITH_MUTANT.md §12)。ポーズ中は下げたまま保つ。
+        {
+          const wNow = gs.enemies.find(e => e.type === 'mutant-wraith');
+          const wPan = wNow ? ((wNow.x + wNow.width / 2) - (gs.player.x + gs.player.width / 2)) / 420 : 0; // 亡霊の左右(声を寄せる)
+          setWraithBattleAudio(wraithBattleActive(gs.enemies, gs.player), gs.isPaused, wPan);
+        }
       }
 
       // ステージ2(屋外ラボ廊下)BGMクロスフェード(社長指示): ゴール資料と反対方面(=idolの居る方向)へ
@@ -10024,7 +10031,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           est.engaged = bossTargetNow != null;
           // contextZoomTargetで包む(敵数0=群衆項1)=?zoomlock固定も描画と一貫する。
           // 叩き潰しの登場(LAB_CRAWLER §11)の間は引く(描画の pixiScene と同じ式=湧き・回収の可視域が一致)。
-          const baitZoom = labBaitZoomTarget(useGameStore.getState().labBaitScene);
+          // 宇宙飛行群の隕石の間も一番引く(research/ASTRONAUT_HORDE.md §12-8・描画 pixiScene と同じ式)。
+          const meteorView = astroMeteorView(useGameStore.getState().astroThrows, useGameStore.getState().gameTime);
+          const baitZoomRaw = labBaitZoomTarget(useGameStore.getState().labBaitScene);
+          const baitZoom = meteorView ? Math.min(baitZoomRaw ?? 1, meteorView.zoom) : baitZoomRaw;
           const camZoomTarget = contextZoomTarget(0, false, baitZoom != null ? Math.min(bossTargetNow ?? 1, baitZoom) : bossTargetNow);
           // v0.25.3019(社長裁定「案2で少し慣性を入れたら?」): 交戦中は描画側と同じ臨界減衰バネで
           // 距離に直結+慣性。解除後の戻りは従来の1次(RETURN_TAU)のまま。速度は解除時に捨てる。
@@ -10053,6 +10063,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 同じ時定数でカメラ本体に掛ける(旧・描画側の横パンは退役=機構を1本化)。
           const wantLeadX = est.engaged ? bossCameraLeadX(bossNearDx, gameBounds.width, est.z, bossNearHalfW) : 0;
           camBossLeadXRef.current += (wantLeadX - camBossLeadXRef.current) * lk;
+          // 隕石の落ちる所へカメラを少し寄せる(入り0.5秒・戻り1.0秒=ボスの先読みと同じ時定数・慣性)。正=東/南(世界の向き)。
+          const ml = meteorView ? astroMeteorCamLead(meteorView.x - pcCamX, meteorView.y - pcCamY, gameBounds.width) : { x: 0, y: 0 };
+          const mk = 1 - Math.exp(-baseDeltaTime / (meteorView ? 0.5 : 1.0));
+          camMeteorLeadRef.current.x += (ml.x - camMeteorLeadRef.current.x) * mk;
+          camMeteorLeadRef.current.y += (ml.y - camMeteorLeadRef.current.y) * mk;
         }
         // プレイヤーを中央より下へ(屋内/ラボは中央維持=スポーン補正と一致)。上(進行先)の視界を広げる。
         // 洋館通路は下げ量を増やす(v0.25.2148・社長指示「敵が出てきて見える位置をもう少し上に」)。
@@ -10064,7 +10079,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : gameBounds.height * zoomCameraDownFrac(
               useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC,
               camBossZoomRef.current.z))
-          + camBossLeadYRef.current;
+          + camBossLeadYRef.current
+          - camMeteorLeadRef.current.y; // 隕石へ寄せる縦(南=正の寄せはカメラを南へ=下げ量を減らす)
         const baseCamY = pcCamY - gameBounds.height / 2 - camDownOff;
         // 危険時(敵が近い): 追従をタイトにし先読みを切ってプレイヤーを中心寄りに(接近戦で安定)。
         const dangerR2 = CAMERA_DANGER_RADIUS * CAMERA_DANGER_RADIUS;
@@ -10111,7 +10127,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const ek = 1 - Math.exp(-baseDeltaTime / escTau);
           camEscapeLeadXRef.current += (wantEsc - camEscapeLeadXRef.current) * ek;
         }
-        const targetCameraX = baseCamX + look.x + camBossLeadXRef.current + camEscapeLeadXRef.current; // v0.25.3063: 横のボス先読み
+        const targetCameraX = baseCamX + look.x + camBossLeadXRef.current + camEscapeLeadXRef.current + camMeteorLeadRef.current.x; // v0.25.3063: 横のボス先読み(+隕石へ寄せる)
         const targetCameraY = baseCamY + look.y;
         // 指数追従(危険時はタイトな τ)。
         const followTau = Math.max(0.001, danger ? CAMERA_DANGER_TAU : CAMERA_FOLLOW_TAU);
@@ -10124,7 +10140,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ★横もボス先読みのぶんを基準に測る(2026-10-01「ボスが見切れてる」)。縦(offY)は camDownOff に
         // 縦の先読みが入っているので先読みを差し引いて測れていたが、横は差し引いておらず、**先読みそのものを
         // 遅れとみなして画面幅の7%へ引き戻していた**(実測: 先読みが欲しい量222wpxに対し実際22wpx)。
-        const offX = (pcCamX - camX) - gameBounds.width / 2 + camBossLeadXRef.current + camEscapeLeadXRef.current;
+        const offX = (pcCamX - camX) - gameBounds.width / 2 + camBossLeadXRef.current + camEscapeLeadXRef.current + camMeteorLeadRef.current.x;
         const offY = (pcCamY - camY) - gameBounds.height / 2 - camDownOff; // 下げ量を基準に(=ずらした構図からのラグを測る)
         const offD = Math.hypot(offX, offY);
         if (offD > maxLag && maxLag > 0) { const s2 = 1 - maxLag / offD; camX += offX * s2; camY += offY * s2; }
@@ -17326,7 +17342,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           : gameBounds.height * zoomCameraDownFrac(
               useGameStore.getState().corridorMode ? CORRIDOR_CAMERA_DOWN_FRAC : CAMERA_DOWN_OFFSET_FRAC,
               camBossZoomRef.current.z))
-          + camBossLeadYRef.current;
+          + camBossLeadYRef.current
+          - camMeteorLeadRef.current.y; // カメラ(camDownOff)と完全に同じ式(隕石へ寄せる縦も)
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
         // ボス交戦域では距離によって最大0.58まで動くため最深値を安全側に採る。通常時は従来の純関数どおり。
         const bossCameraMayPull = allEnemiesNow.some(e => {
@@ -17335,7 +17352,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const bossCameraRange = bossEngagementDistancePx(e.type, true, e.isStoryBoss === true);
           return dx * dx + dy * dy <= bossCameraRange * bossCameraRange;
         });
-        const spawnZoomTarget = bossCameraMayPull
+        const spawnZoomTarget = bossCameraMayPull || astroMeteorView(useGameStore.getState().astroThrows, useGameStore.getState().gameTime)
           ? ZOOM_MIN_ABS
           // ★B9: 走りの引き(描画と同じ純関数)も湧き位置へ反映=引いた分だけ外に湧く(目標値=安全側)。
           : Math.min(contextZoomTarget(nearEnemies.length, nearEnemies.some(e => isLargeForZoom(e.type))),
@@ -18197,6 +18214,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       setHurricaneRumble(false); // アンマウント時に鳴動を確実に停止
       setHeartbeatLoop(false); // 心音ループも確実に停止
       setPeakLayer(false); // PEAK重ねSEも確実に停止
+      resetWraithBattleAudio(); // 亡霊戦の下げと声も確実に戻す
       setDanceMode(false);       // ダンスタイム解除(メインBGMの音量を確実に戻す)
       setDanceBeatDuck(false);   // B方式のダックも確実に戻す
       danceModeRef.current = false;

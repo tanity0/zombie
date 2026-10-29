@@ -162,7 +162,8 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
       useGameStore.setState(s2 => ({ pumpkinBlasts: [...s2.pumpkinBlasts, blast] }));
       const pl = st.player;
       const g = npcSfxDistGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
-      if (g > 0.01) { playSfx('screamer-cry', 0.9 * g, undefined, 0.72); playSfx('hurricane', 0.35 * g, undefined, 0.5); }
+      // 叫び声はアイドルが倒れる時の声を少し高く(社長指示2026-10-29)。下に低い風を敷くのは今までどおり。
+      if (g > 0.01) { playSfx('idol-death', 0.9 * g, undefined, 1.12); playSfx('hurricane', 0.35 * g, undefined, 0.5); }
       if (onScreen) st.triggerShake(700, 16); // カウンターできない範囲技=重く揺らす(クリエイティブ監査#11)
       // 声の出どころ=頭の高さから広がる輪と、影を落とさない淡い光(声は光源ではない=投影影なし・クリエイティブ監査#6/#12)。
       st.spawnRing(bx, by - WRAITH_HEAD_Y_PX, 10, WRAITH_SCREAM_RADIUS * 0.9, 'rgba(226,214,244,0.8)', 8, 520);
@@ -235,7 +236,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
           if (onScreen) st.triggerShake(260, 7);
           const face = (e.heroFaceX ?? -1) >= 0 ? 1 : -1;
           st.spawnBurst(bx + face * 42, by - WRAITH_HEAD_Y_PX * 0.62, '#d6d0de', 14, face, 0);
-          if (sg > 0.01) playSfx('crawler-drag', 0.6 * sg, undefined, 0.8);
+          if (sg > 0.01) playSfx('reaper-pass', 0.7 * sg, undefined, 0.85); // 霊が横切る音(引きずる音はループ専用の素材なので使わない)
           s.flingLandAt = gt + ESCORT_TOSS_MS;
         }
         s.flingIds = [];
@@ -341,9 +342,9 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
           s.curseTotal = skill === 'curse' ? Math.min(WRAITH_CURSE_MAX, graves.length) : 0; s.curseIdx = 0; s.curseLastLift = 0;
           // 合図(雑魚の足元の靄・次の墓石の印)は指している間に順に出す(上の指差しの処理)。
           s.flingMarked = 0; s.curseMarkFor = -1; s.curseMarkId = null; s.flingLandAt = null;
-          // 指差しの始まりは叫び・ワープ(風)と違う音=耳で叫びと分かれる(クリエイティブ監査#17)。
+          // 指差し・呪いの始まりは塊(変異体)の登場の音(社長指示2026-10-29)=叫び・ワープ(風)と耳で分かれる。
           const g0 = npcSfxDistGain(bx, by, pcx0, pcy0, st.camera, st.gameBounds);
-          if (g0 > 0.01) playSfx('summon', 0.5 * g0, undefined, 0.7);
+          if (g0 > 0.01) playSfx('crawler-appear', 0.8 * g0);
         } else {
           patch.wraithScreamAt = gt; s.screamHit = false;
           // 溜めの始まり: 冷たい息を吸い込む音と、頭の高さへ縮んでいく靄(口の開きを見る前に「来る」が分かる・クリエイティブ監査#5/#6)。

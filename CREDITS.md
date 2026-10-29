@@ -5,5 +5,7 @@
 
 | 出典 | 素材(リポジトリ内) | 元のファイル名 | 使い道 | 追加 |
 |---|---|---|---|---|
+| ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/wraith-swell.mp3 | zapsplat_horror_swell_mysterious_sinisher_whining_swell_ghostly_cold_eerie_002_104548.mp3 | 亡霊(変異体)と戦っている間(交互に重ねる1本目) | v0.25.5274 |
+| ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/wraith-voice.mp3 | bottlerocket_GhostlyVoice_Musical_03.mp3 | 亡霊(変異体)と戦っている間(交互に重ねる2本目) | v0.25.5274 |
 | ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/enemy-spotted.mp3 | zapsplat_horror_voice_ghostly_vocalisation_12163.mp3 | 索敵系の敵に見つかった時 | v0.25.5199 |
 | ZapSplat(https://www.zapsplat.com/) | public/audio/sfx/op-ghostly-voice.mp3 | bottlerocket_GhostlyVoice_Musical_02.mp3 | オープニングの射撃シーン・ステージ2の帰り道 | v0.25.5197 |
