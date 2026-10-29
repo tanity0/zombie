@@ -94,6 +94,8 @@ const ENEMY_MOTION_TABLE: Partial<Record<string, EnemyMotionSpec>> = {
   // research/GHOST_BOSS.md(守護霊ボス「幻影」)= **プレイヤーのクラス立ち絵**なので、雑魚の既定
   // (MOT_HOBBLER・uneven 0.25=千鳥足)に落ちると「もう1人のプレイヤー」に見えない。
   // 規則正しい直立歩行(uneven 0)にして、歩きは立ち絵の歩きコマ側だけに任せる。
+  // research/ASTRONAUT_HORDE.md: 宇宙飛行群(変異)。絵は浮遊・投げのコマを制御が送る=歩行の揺れ・傾ぎは掛けない。左向きの絵を相手の方へミラー。
+  'mutant-astro': { kind: 'hover', bobPx: 0, rockRad: 0, sqAmp: 0, strideHz: 0.5, uneven: 0, faceMove: true },
   'guardian-phantom': { kind: 'walk', bobPx: 1.0, rockRad: 0.026, sqAmp: 0.024, strideHz: 2.1, uneven: 0, faceMove: false },
 };
 

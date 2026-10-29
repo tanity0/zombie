@@ -1443,6 +1443,17 @@ export interface Enemy {
   /** 号令を始めた時刻(gameTime)=号令の絵(`-volley`)のコマの起点。 */
   libVolleyCastAt?: number;
   libArrowStuck?: { x: number; y: number; at: number; tilt: number }[];
+  /** research/ASTRONAUT_HORDE.md §3: 浮遊のコマ(0..10)・コマの持ち越し(ms)・ピンポンの向き。 */
+  astroHoverFrame?: number;
+  astroHoverAcc?: number;
+  astroHoverDir?: 1 | -1;
+  /** §4: 投げ始め(gameTime)と投げている物。undefined=投げていない。投げの絵のコマと手を離す時刻の起点。 */
+  astroThrowAt?: number;
+  astroThrowKind?: 'missile' | 'flag' | 'debris' | 'meteor' | 'bouquet';
+  /** §7: 対策室・ボス戦テストの小さな輪(中心・半径)。undefined=本編の POI 巡回。 */
+  astroRingCx?: number;
+  astroRingCy?: number;
+  astroRingR?: number;
   /** バット男(取り巻き)が属する旗手のID。★既存の bountyEscortId は使わない(親の退場で一掃する意味を持つため)。 */
   hordeLeaderId?: string;
   /** 取り巻きの状態: follow=列に並ぶ / chase=通常AIで向かう / return=列の自分の位置へ戻る。follow/return は通常AIを素通り。 */
@@ -1916,6 +1927,8 @@ export type EnemyType =
   | 'mutant-hero'
   // research/LIBERTY_HORDE.md: 解放軍群(変異)の旗手。叫んで周りの敵を強化する(自分は攻撃しない)。後ろにバット男5体。
   | 'mutant-liberty'
+  // research/ASTRONAUT_HORDE.md: 宇宙飛行群(変異)。浮いて彷徨い、着地してから物を投げる(ボス級・1体)。
+  | 'mutant-astro'
   // research/LAB_CRAWLER.md §4(第2版): ステージ2の変異塊の**代理**。攻撃を受ける窓口だけ(描かない・動かない・落とさない)。
   // 本体は store の labCrawler(world/labCrawler.ts)。代理の作り方と同期は utils/labCrawlerProxy.ts / labCrawlerTick.ts。
   | 'lab-crawler';

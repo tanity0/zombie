@@ -187,7 +187,8 @@ import {
 import { openCrate, rollTier23Gun } from '../utils/weaponDrop';
 import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
-import { isBossType, isTrueBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isGate2AngelBoss, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob, isLabCrawlerProxyType, blastAnchorOf } from '../utils/enemyUtils';
+import type { AstroThrowEntry } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
+import { isBossType, isTrueBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isMutantAstro, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isGate2AngelBoss, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob, isLabCrawlerProxyType, blastAnchorOf } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
 import { BOUNTY_AGGRO_RANGE_DEFAULT } from '../utils/bountyDims'; // ★葉から取る(bountyTick から直接取ると循環import=起動全損・v0.25.4097)
 // research/AI_HUMANIZE.md B2 ★未決#14(社長裁定2026-09-02=(a)): 城ボス9州の予告寸法は葉モジュール
@@ -2119,6 +2120,7 @@ const ENEMY_DEATH_LABELS: Record<string, string> = {
   'bounty-maiko': '舞妓(変異)',
   'mutant-hero': '英雄(変異)', // research/MUTANT_HERO.md(社長命名2026-10-03)
   'mutant-liberty': '解放軍群(変異)', // research/LIBERTY_HORDE.md(社長命名2026-10-04)
+  'mutant-astro': '宇宙飛行群(変異)', // research/ASTRONAUT_HORDE.md(社長命名2026-10-29)
 };
 // 社長指示v0.25.3451「なぜUIによって名前の出し方を変えるの?全部の箇所で統一に決まってる」:
 // 城ボス(giantbat)もステージ別の台帳名(bossCutin=名前の正本)で表示する。死因・討伐バナー・歴史年表の
@@ -5972,6 +5974,11 @@ export interface PumpkinBlast {
    */
   parryLocal?: boolean;
   /**
+   * research/ASTRONAUT_HORDE.md §8 A5(隕石=紫の文法): **弾けない**。カウンター中でもプレイヤーに当たり、守護霊のカウンター請求も使わない。
+   * 盾(blastBlockedByShield)は今までどおり防ぐ(盾はカウンターではない)。
+   */
+  noParry?: boolean;
+  /**
    * ★被弾反撃(research/HIT_RETALIATION.md §2): **近接系の技の当たりにだけ**積む側が立てる。立っている時だけ、combatTick の解決行が
    * `damagePlayer` へ `retaliateFromId`(=enemyId)を渡し、食らった相手へのはじき返しの窓が開く。
    * 爆発・飛び道具・床・設置物には立てない(未指定=開かない=新しい技を足しても勝手には開かない)。
@@ -6908,6 +6915,8 @@ interface GameState {
    * (亡骸は0.5秒で場から消えるため)。判定は libertyTick.runOrphanLibertyArrows、描画は pixiScene.syncLibertyArrows。
    */
   libertyOrphanArrows: { ownerId: string; ownerX: number; hits: { x: number; y: number; radius: number; bornAt: number; fireAt: number }[]; stuck: { x: number; y: number; at: number; tilt: number }[] } | null;
+  /** research/ASTRONAUT_HORDE.md §8 A7・§9: 宇宙飛行群が投げた物の台帳(予告+当たり)。投げ手とは別=倒れても最後まで飛んで当たる。 */
+  astroThrows: AstroThrowEntry[];
   setSignalStrikes: (strikes: readonly SignalStrike[]) => void;
   spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number) => void; // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
@@ -7862,6 +7871,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   flamerCone: null,
   signalStrikes: [],
   libertyOrphanArrows: null,
+  astroThrows: [],
   firstAidKitState: createFirstAidKitState(),
   projectiles: [],
   pickups: [],
@@ -15172,6 +15182,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (isHiddenBoss(enemy.type) || isBountyType(enemy.type) || isGuardianPhantom(enemy.type) || isMutantHero(enemy.type)) return enemy;
         // research/LIBERTY_HORDE.md: 旗手と、列に並んでいる/戻っている取り巻きは libertyTick だけが動かす(二重駆動の禁止)。
         if (isLibertyBearer(enemy.type) || isHordeFollower(enemy)) return enemy;
+        // research/ASTRONAUT_HORDE.md: 宇宙飛行群は astroTick だけが動かす。
+        if (isMutantAstro(enemy.type)) return enemy;
 
         // Bosses pop up briefly when they take melee finisher-grade damage;
         // while airborne they should read as caught, not still advancing.
@@ -19811,6 +19823,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (isMutantHero(enemy.type)) return;
     // research/LIBERTY_HORDE.md §5: 補充されたバット男は何も落とさない(社長裁定)。旗手は★未決 #2「旗手の報酬」の裁定まで落とさない。
     if (enemy.hordeRefill || isLibertyBearer(enemy.type)) return;
+    if (isMutantAstro(enemy.type)) return; // research/ASTRONAUT_HORDE.md ★未決 #7「報酬」の裁定まで落とさない
     // 難易度⑤(DirectorRank): HARVEST相当のフェーズ中だけ有効な倍率(通常は1)。useGameLoopが毎フレーム更新。
     // 宿敵は同じ型の普通の敵の4倍(社長指示2026-10-09「報酬は元の敵の4倍の中身」・NAMED_LOOT_MULT)。
     const v = Math.round((value ?? enemy.experienceValue) * getDirectorRewardMult() * (enemy.isNamed ? NAMED_LOOT_MULT : 1));
@@ -19825,6 +19838,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   dropEnemyCurrency: (enemy, x, y) => {
     if (isMutantHero(enemy.type)) return; // research/MUTANT_HERO.md: 英雄は何も落とさない(上と同じ)
     if (enemy.hordeRefill || isLibertyBearer(enemy.type)) return; // research/LIBERTY_HORDE.md §5(上と同じ)
+    if (isMutantAstro(enemy.type)) return; // research/ASTRONAUT_HORDE.md(上と同じ)
     // PACING_PUZZLE.md §7-11c(3): レール(elite)のドロップバイアス=トレジャー。既定(rail未指定)は
     // railTreasureDropMultが1を返すため無改変。トレジャー抽選の唯一の出どころ(dropEnemyCurrency)に乗算。
     const treasureChance = Math.max(0, Math.min(1,
@@ -23342,6 +23356,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         flamerCone: null, // ★同上
         signalStrikes: [], // ★同上(シグナルランチャーの予約済み空爆。UNIQUE_WEAPONS.md §16-5受け入れ条件5)
         libertyOrphanArrows: null, // 旗手が倒れた後の矢の雨(ランを跨がない)
+        astroThrows: [], // 宇宙飛行群の投げ物(ランを跨がない)
         firstAidKitState: createFirstAidKitState(),
         breakableProps: runBreakables,
         destroyedBreakableProps: {},

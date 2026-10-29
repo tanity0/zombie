@@ -31,6 +31,7 @@ const PARAM_NOTE: Record<BossTestEntry['param'], string> = {
   phillnow: '前方へ即出現(EXボス「フィル(変異体)」・PACING_PUZZLE.md §10)',
   heronow: '3秒後に画面外から出現・ゾンビも湧く・ウェルカムイベントなし(中立・research/MUTANT_HERO.md)',
   libertynow: '3秒後に画面の上へ旗手+バット男5体・雑魚は湧かない(連れているコウモリだけ・research/LIBERTY_HORDE.md)',
+  astronow: '3秒後に画面の上へ宇宙飛行群・雑魚は湧かない(research/ASTRONAUT_HORDE.md)',
 };
 
 // 社長報告v0.25.2852「ボス戦モードが守護霊必須になっててソロで戦えない」: **なし(ソロ)を先頭に足す**。

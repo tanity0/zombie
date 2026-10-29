@@ -50,6 +50,9 @@ const ENEMY_VISUAL_SCALE: Partial<Record<Enemy['type'], number>> = {
   'mutant-hero': 2.4,
   // research/LIBERTY_HORDE.md §8: 解放軍群の旗手。英雄と同じボス帯の背丈(判定の足元も英雄と同じ 110×60)。
   'mutant-liberty': 2.4,
+  // research/ASTRONAUT_HORDE.md: 宇宙飛行群。絵(156×182)を解放軍群(150×202を1.07倍)と同じドットの細かさで出す倍率
+  //   (枠の高さ 60×2.16×1.5=194 → 182の絵が1.07倍)。判定の足元は解放軍群と同じ 110×60。
+  'mutant-astro': 2.16,
 };
 
 // A foot-anchored draw box in WORLD space. `footX/footY` is the bottom-centre

@@ -260,6 +260,7 @@ import { multiHitMilestoneTier, comboMilestoneAmp, milestoneSpring, milestoneTin
 // research/CREATIVE_AUDIT_2026-09-11.md #25(b): 赤予告の「呼吸」を敵の区分で3種に。純関数1本
 // (敵の型→見え方の時間配分/質感)を読むだけ。判定に関わる値はここでは1つも動かさない。
 import { telegraphStyleFor, type TelegraphStyle, meteorPhase as tgMeteorPhase, TELEGRAPH_STYLE_BOSS } from '../utils/telegraphStyle';
+import { astroLiftPx, astroThrowArtFrame, ASTRO_THROW_ART_FRAMES, ASTRO_THROW_FRAMES, ASTRO_THROW_FRAME_MS, ASTRO_HOVER_FRAMES, ASTRO_FLAG_STUCK_MS, ASTRO_DEBRIS_LIE_MS, ASTRO_BOUQUET_LIE_MS, ASTRO_MISSILE_SCORCH_MS, ASTRO_METEOR_CRATER_MS, astroHoverFrameF, type AstroThrowEntry } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEligible, heroSwingArc, HERO_SHEETS, HERO_STRIKE_MS, HERO_ROAR_RISE_MS, HERO_ROAR_HOLD_MS, type HeroShape, type HeroMoveKey } from '../utils/heroScript'; // research/MUTANT_HERO.md
 import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
 import { labBaitZoomTarget } from '../world/labBait';
@@ -9100,6 +9101,7 @@ export class PixiScene {
     this.L.danceUiLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
     // フィル専用層(§10-12#10)も同じオフセットで追従(前例=danceUiLayerと同じ作法)。
     this.L.phillLayer.position.set(-s.camera.x + sx, -s.camera.y + sy);
+    this.L.skyFxLayer.position.set(-s.camera.x + sx, -s.camera.y + sy); // 空から降りてくる物(ASTRONAUT_HORDE §9)
 
     // ズーム(描画のみ): worldGroup を画面中央=プレイヤー基準で拡大。
     //  ・待機ズーム: 手を離して静止している間だけ少し寄る(滑らかに/操作再開で1.0へ)。
@@ -10073,6 +10075,7 @@ export class PixiScene {
     this.syncSurielRing(s.enemies, s.gameTime, now); // §6.28-18: スリィエルの環(待機中も頭上に浮遊描画)
     this.syncAcrasielSpears(s.acrasielSpears, s.gameTime, now); // §6.28-19: アクラシエルの結晶の槍
     this.syncLibertyArrows(s.enemies, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top, s.libertyOrphanArrows); // research/LIBERTY_HORDE.md §4c: 矢の雨(旗手が画面外でも描く)
+    this.syncAstroThrows(s.astroThrows, s.gameTime, zoomedViewportBounds(s.camera, s.gameBounds, s.viewZoom).top); // research/ASTRONAUT_HORDE.md §4: 投げた物(投げ手が画面外・倒れた後でも描く)
     this.syncPlayerArrowRain(s.arrowRainShots, s.arrowRainStuck, s.gameTime); // research/ARROW_RAIN.md
     this.syncGroundFires(s.groundFires, now); // 火炎瓶(molotov)の地面の火(松明と同じ炎を流用)
     this.syncBloodSpikes(s.bloodSpikes, s.gameTime, now); // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯(blood-treads)の棘
@@ -17562,6 +17565,403 @@ export class PixiScene {
   }
 
   /**
+   * research/ASTRONAUT_HORDE.md §4: 宇宙飛行群が投げた物。store の台帳(`astroThrows`)を読むだけ(判定は astroTick)。
+   * 投げ手の体とは別の通し=投げ手が画面外・倒れた後でも、予告と飛んでいる物を必ず描く。
+   * 予告: 赤い円(ミサイル・残骸)/赤い帯(国旗)/紫の円(隕石・弾けない)は流星=投げ始めに出て、当たる瞬間に消え切る。
+   * 花束は攻撃ではない=赤も紫も使わず、花の色の淡い輪。投げる物の絵は社長支給を待つ間の仮の図形(★未決 #6)。
+   */
+  private astroGroundGfx = new Graphics();
+  /** 支給の絵のミサイルは先が左下(約138°)を向いて描かれている。 */
+  private static readonly ASTRO_MISSILE_ART_ANG_RAD = Math.atan2(42, -47);
+  private astroAirGfx = new Graphics();
+  private astroGlowGfx = new Graphics();
+  /** 空から降りてくる物(隕石・落ちてくる残骸): 地平線の覆いの外の層(発光を下・岩を上)。 */
+  private astroSkyGlowGfx = new Graphics();
+  private astroSkyGfx = new Graphics();
+  private syncAstroThrows(list: readonly AstroThrowEntry[], gameTime: number, viewTopWorld: number): void {
+    const g = this.astroGroundGfx, a = this.astroAirGfx, gl = this.astroGlowGfx, sk = this.astroSkyGfx, skg = this.astroSkyGlowGfx;
+    if (!g.parent) this.L.groundLayer.addChild(g);
+    if (!gl.parent) { gl.blendMode = 'add'; this.L.effectLayer.addChild(gl); }
+    if (!a.parent) this.L.effectLayer.addChild(a);
+    if (!skg.parent) { skg.blendMode = 'add'; this.L.skyFxLayer.addChild(skg); }
+    if (!sk.parent) this.L.skyFxLayer.addChild(sk);
+    g.clear(); a.clear(); gl.clear(); sk.clear(); skg.clear();
+    this.astroArtSeen.clear();
+    this.syncAstroThrowsBody(list, gameTime, viewTopWorld, g, a, sk, skg);
+    for (const [id, sp] of this.astroArtPool) { if (!this.astroArtSeen.has(id)) { sp.destroy(); this.astroArtPool.delete(id); } }
+    if (this.astroSkyStart.size > 0) {
+      const ids = new Set(list.map(t => t.id));
+      for (const id of this.astroSkyStart.keys()) if (!ids.has(id)) this.astroSkyStart.delete(id);
+    }
+  }
+
+  /** 投げる物の絵(社長支給 fx/astro-throws)の置き場。絵が読み込めていなければ false=呼び手が仮の図形を描く。 */
+  private astroArtPool = new Map<string, Sprite>();
+  private astroArtSeen = new Set<string>();
+  private placeAstroArt(id: string, frame: number, layer: Container, x: number, y: number, rot: number,
+    sx: number, sy: number, alpha: number, ax = 0.5, ay = 0.5, tint = 0xffffff): boolean {
+    const tex = this.sheetSlices('fx/astro-throws', ASTRO_THROW_ART_FRAMES)?.[frame];
+    if (!tex) return false;
+    let sp = this.astroArtPool.get(id);
+    if (!sp) { sp = new Sprite(tex); this.astroArtPool.set(id, sp); }
+    sp.texture = tex;
+    if (sp.parent !== layer) layer.addChild(sp);
+    sp.anchor.set(ax, ay);
+    sp.position.set(x, y);
+    sp.rotation = rot;
+    sp.scale.set(sx, sy);
+    sp.alpha = alpha;
+    sp.tint = tint;
+    sp.visible = true;
+    this.astroArtSeen.add(id);
+    return true;
+  }
+
+  /** 空から降りてくる物の落ち始め(世界座標)。最初に描いたフレームで焼く=プレイヤーが走っても空の軌道が画面に張り付いて滑らない。 */
+  private astroSkyStart = new Map<string, { x: number; y: number }>();
+  private astroSkyStartOf(id: string, mk: () => { x: number; y: number }): { x: number; y: number } {
+    let v = this.astroSkyStart.get(id);
+    if (!v) { v = mk(); this.astroSkyStart.set(id, v); }
+    return v;
+  }
+
+  private syncAstroThrowsBody(list: readonly AstroThrowEntry[], gameTime: number, viewTopWorld: number,
+    g: Graphics, a: Graphics, sk: Graphics, skg: Graphics): void {
+    if (list.length === 0) return;
+    const style = telegraphStyleFor('mutant-astro');
+    const HAND_PX = 150; // 投げ手の足元から手を離す高さ(絵の腕が上がり切った辺り)
+    const LIE_ROT = Math.PI / 2 - 0.2; // 花束が地面に寝た角度
+    const ASTRO_GROUND_TINT = 0xbdb4aa; // 地面に置いた物は夜の地面に沈める(白い外板・旗が光って浮かない・監査#17)。乗算なので黒く潰さない程度
+    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+    for (const t of list) {
+      if (gameTime < t.bornAt) continue;
+      const prog = clamp01((gameTime - t.bornAt) / Math.max(1, t.hitAt - t.bornAt));
+      const live = !t.resolved && gameTime < t.hitAt;
+      const footY = t.fromY + 30;
+      const dsFrom = this.depthScale(footY);
+      const handH = HAND_PX * dsFrom;
+      const flyU = clamp01((gameTime - t.releaseAt) / Math.max(1, t.hitAt - t.releaseAt));
+      const flying = live && gameTime >= t.releaseAt;
+      const sinceRel = gameTime - t.releaseAt;
+      const appear = 0.65 + 0.35 * clamp01(sinceRel / 90); // 手を離した瞬間に完成形で湧かない
+      // ---- 予告(流星) ----
+      if (live) {
+        if (t.kind === 'missile' || t.kind === 'debris') {
+          const mask = CIRCLE_SWEEP_ON ? this.drawSweepCircleFill(g, t.x, t.y, t.radius, prog, 0xff2a2a, 0.26, style)
+            : (g.circle(t.x, t.y, t.radius).fill({ color: 0xff3030, alpha: 0.12 + 0.12 * prog }), 1);
+          g.circle(t.x, t.y, t.radius).stroke({ width: 1.5, color: 0xff5555, alpha: 0.85 * mask });
+        } else if (t.kind === 'meteor') {
+          // 紫=弾けない(色と形の文法)。巨大なので縁を太く。落ちてくる影は縁がぼけたまま、近づくほど濃く締まる。
+          const mask = CIRCLE_SWEEP_ON ? this.drawSweepCircleFill(g, t.x, t.y, t.radius, prog, 0x9333ea, 0.3, style)
+            : (g.circle(t.x, t.y, t.radius).fill({ color: 0x9333ea, alpha: 0.12 + 0.14 * prog }), 1);
+          g.circle(t.x, t.y, t.radius).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.9 * mask });
+          const sh = clamp01(sinceRel / Math.max(1, t.hitAt - t.releaseAt));
+          const dsY = this.depthScale(t.y);
+          for (let k2 = 0; k2 < 4; k2++) {
+            const sc = 1 + k2 * 0.38 * (1 - 0.5 * sh);
+            g.ellipse(t.x, t.y, (30 + 90 * sh * sh) * dsY * sc, (12 + 36 * sh * sh) * dsY * sc)
+              .fill({ color: 0x000000, alpha: (0.04 + 0.14 * sh) * (1 - k2 * 0.22) });
+          }
+        } else if (t.kind === 'flag' && t.capsule) {
+          const c = t.capsule;
+          const halfWin = Math.max(0.02, style.bandHalfW ?? BAND_SWEEP_W);
+          const center = bandSweepCenter(prog, halfWin, CIRCLE_SWEEP_EASE, style.easePow);
+          const ddx = c.tx - c.fx, ddy = c.ty - c.fy, l = Math.hypot(ddx, ddy) || 1;
+          const nx = -ddy / l * c.halfWidth, ny = ddx / l * c.halfWidth;
+          const N = BAND_SWEEP_SLICES;
+          for (let i = 0; i < N; i++) {
+            const s0 = i / N, s1 = (i + 1) / N;
+            const al = Math.min(1, 0.26 * BAND_SWEEP_A) * bandSweepAlphaAt((s0 + s1) / 2, center, halfWin);
+            if (al <= 0.003) continue;
+            const ax = c.fx + ddx * s0, ay = c.fy + ddy * s0, bx2 = c.fx + ddx * s1, by2 = c.fy + ddy * s1;
+            g.poly([ax + nx, ay + ny, bx2 + nx, by2 + ny, bx2 - nx, by2 - ny, ax - nx, ay - ny]).fill({ color: 0xff2a2a, alpha: al });
+            g.moveTo(ax + nx, ay + ny).lineTo(bx2 + nx, by2 + ny).stroke({ width: 1.5, color: 0xff5555, alpha: Math.min(1, al * 2.6) });
+            g.moveTo(ax - nx, ay - ny).lineTo(bx2 - nx, by2 - ny).stroke({ width: 1.5, color: 0xff5555, alpha: Math.min(1, al * 2.6) });
+          }
+        } else if (t.kind === 'bouquet') {
+          // 攻撃の円ではない目印(監査#26): 落ちてくる所の周りに、弔いの白い花びらがゆっくり舞う。線の輪は引かない。
+          const N = 11;
+          for (let i = 0; i < N; i++) {
+            const h1 = rainHash01(t.x, t.y, i + 3), h2 = rainHash01(t.x, t.y, i + 31);
+            const an = (i / N) * Math.PI * 2 + h1 * 0.5 + gameTime / (2600 + 900 * h2);
+            const rr = t.radius * (0.5 + 0.5 * h2) + Math.sin(gameTime / 410 + i) * 4;
+            const px = t.x + Math.cos(an) * rr, py = t.y + Math.sin(an) * rr;
+            const rot = an + (gameTime / 700) * (h1 > 0.5 ? 1 : -1);
+            const c = Math.cos(rot), s2 = Math.sin(rot), L = 5 + 2.5 * h1, W = 2.2;
+            g.poly([px + c * L, py + s2 * L, px - s2 * W, py + c * W, px - c * L, py - s2 * L, px + s2 * W, py - c * W])
+              .fill({ color: h1 > 0.82 ? 0x8b1e2a : 0xf2ece2, alpha: 0.75 * clamp01(prog * 3) });
+          }
+          g.circle(t.x, t.y, t.radius).fill({ color: 0xf2ece2, alpha: 0.05 });
+        }
+      }
+      // ---- 手から空へ打ち上げる(隕石・残骸は空から来る=投げた動作と降ってくる物をつなぐ・監査#15) ----
+      if ((t.kind === 'meteor' || (t.kind === 'debris' && t.id.endsWith('-0'))) && sinceRel >= 0 && sinceRel < 520) {
+        const k = sinceRel / 520;
+        const hy = footY - handH;
+        const y = hy + (viewTopWorld - 60 - hy) * k * k;
+        const col = t.kind === 'meteor' ? 0xc084fc : 0xfb923c;
+        skg.moveTo(t.fromX, y + (40 + 140 * k) * dsFrom).lineTo(t.fromX, y).stroke({ width: 5 * dsFrom, color: col, alpha: 0.75 * (1 - 0.5 * k) });
+        skg.circle(t.fromX, y, 8 * dsFrom).fill({ color: 0xfff7ed, alpha: 0.9 });
+      }
+      // ---- 飛んでいる物・残る物 ----
+      if (t.kind === 'missile') {
+        if (flying) {
+          const d = Math.hypot(t.x - t.fromX, t.y - footY);
+          const H = 120 + d * 0.3;
+          const ue = 0.35 * flyU + 0.65 * flyU * flyU; // 離した直後はゆっくり、点火して加速(着く時刻は同じ)
+          const gx = t.fromX + (t.x - t.fromX) * ue, gy = footY + (t.y - footY) * ue;
+          const h = handH * (1 - ue) + H * 4 * ue * (1 - ue);
+          const ang = Math.atan2((t.y - footY) + handH - H * 4 * (1 - 2 * ue), t.x - t.fromX);
+          const ds = this.depthScale(gy);
+          const ign = clamp01(sinceRel / 160); // 点火は一拍遅れて全開になる
+          g.ellipse(gx, gy, 10 * ds, 4 * ds).fill({ color: 0x000000, alpha: 0.18 + 0.25 * flyU });
+          for (let k = 1; k <= 5; k++) {
+            const uk = Math.max(0, ue - k * 0.05);
+            const kx = t.fromX + (t.x - t.fromX) * uk, ky = footY + (t.y - footY) * uk - (handH * (1 - uk) + H * 4 * uk * (1 - uk));
+            sk.circle(kx, ky, (4 + k * 2.2) * ds).fill({ color: 0xb8b2ac, alpha: (0.3 - k * 0.05) * ign });
+          }
+          // 絵の先は左下(約138°)を向いている=進む向きへ回す。噴射の炎は絵の後ろに足す(派手さの絵)。霞ませない層に置く。
+          const art = this.placeAstroArt(t.id, astroThrowArtFrame('missile'), this.L.skyFxLayer, gx, gy - h, ang - PixiScene.ASTRO_MISSILE_ART_ANG_RAD, 0.95 * ds * appear, 0.95 * ds * appear, 1);
+          this.drawAstroMissile(sk, skg, gx, gy - h, ang, ds, !art, ign);
+        } else if (t.resolved) {
+          // 焦げ跡(絵だけ)。燻りの火の粉が消えてから跡が薄れる。
+          const age = gameTime - t.hitAt, f = 1 - Math.pow(clamp01(age / ASTRO_MISSILE_SCORCH_MS), 2);
+          const ds = this.depthScale(t.y);
+          g.ellipse(t.x, t.y, t.radius * 0.5 * ds, t.radius * 0.36 * ds).fill({ color: 0x17110d, alpha: 0.5 * f });
+          for (let i = 0; i < 6; i++) {
+            const h1 = rainHash01(t.x, t.y, i + 50), h2 = rainHash01(t.x, t.y, i + 70);
+            const on = Math.sin(gameTime / (90 + 60 * h1) + i) > 0.2 ? 1 : 0.35;
+            g.circle(t.x + (h1 - 0.5) * t.radius * 0.7 * ds, t.y + (h2 - 0.5) * t.radius * 0.5 * ds, 1.8 * ds)
+              .fill({ color: 0xfb923c, alpha: 0.8 * on * clamp01(1 - age / 1400) });
+          }
+        }
+      } else if (t.kind === 'flag') {
+        const c = t.capsule;
+        if (!c) continue;
+        const flagAng = Math.atan2(c.ty - c.fy, c.tx - c.fx);
+        const side = Math.cos(flagAng) >= 0 ? 1 : -1;
+        const flyRot = flagAng - Math.PI / 2; // 竿の根元(絵の下)を前にして飛ぶ
+        const restRot = -side * 0.32; // 刺さった後は上が投げ手の側へ傾く(槍が刺さった形)
+        const FOOT_X = 6 / 66, FOOT_Y = 65 / 66;
+        if (flying) {
+          const u = flyU * flyU * 0.3 + flyU * 0.7; // 素早く一直線(わずかに加速)
+          // 手元から刺さる点へ。終点は刺さった旗と同じ点(=刺さる瞬間に跳ばない)。
+          const gx = c.fx + (c.tx - c.fx) * u, gy = footY + (c.ty - footY) * u;
+          const ds = this.depthScale(gy);
+          const fy2 = gy - handH * 0.6 * (1 - u);
+          if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.skyFxLayer, gx, fy2, flyRot, 1.2 * ds * -side * appear, 1.2 * ds * appear, 1, FOOT_X, FOOT_Y)) {
+            this.drawAstroFlag(a, gx, fy2, flagAng, ds, gameTime, 1, true);
+          }
+        } else if (t.resolved) {
+          const age = gameTime - t.hitAt;
+          if (age >= ASTRO_FLAG_STUCK_MS) continue;
+          const ds = this.depthScale(c.ty);
+          // 刺さった瞬間は飛んできた角度のまま→揺れながら立ち姿へ収まる。最後は投げ手の側へ倒れてから消える(消滅にも慣性)。
+          const k = 1 - Math.pow(1 - clamp01(age / 320), 3);
+          let dr = restRot - flyRot; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+          const wob = age < 700 ? Math.sin(age / 26) * 0.16 * (1 - age / 700) : 0;
+          const tk = clamp01((age - (ASTRO_FLAG_STUCK_MS - 900)) / 900);
+          const rot = flyRot + dr * k + wob - side * 1.25 * tk * tk;
+          const fade = 1 - clamp01((tk - 0.55) / 0.45);
+          g.ellipse(c.tx, c.ty + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.35 * fade });
+          if (!this.placeAstroArt(t.id, astroThrowArtFrame('flag'), this.L.groundLayer, c.tx, c.ty, rot, 1.2 * ds * -side, 1.2 * ds, fade, FOOT_X, FOOT_Y, ASTRO_GROUND_TINT)) {
+            this.drawAstroFlag(g, c.tx, c.ty, flagAng + wob, ds, gameTime, fade, false);
+          }
+        }
+      } else if (t.kind === 'debris') {
+        // 1枚ずつ落ち方を散らす(落ちる長さ・横の流れ・回転の量と向き)=8枚が同じ動きにならない(監査#16)。
+        const h1 = rainHash01(t.x, t.y, 11), h2 = rainHash01(t.x, t.y, 12), h3 = rainHash01(t.x, t.y, 13), h4 = rainHash01(t.x, t.y, 14);
+        const fallMs = 450 + 300 * h2;
+        const spin = (3 + 5 * h3) * (h4 > 0.5 ? 1 : -1);
+        const tilt = t.tilt ?? 0;
+        if (live && gameTime >= t.hitAt - fallMs) {
+          const u = 1 - (t.hitAt - gameTime) / fallMs;
+          const k = u * u;
+          const st = this.astroSkyStartOf(t.id, () => ({
+            x: t.x + (t.fromX >= t.x ? 1 : -1) * (40 + 90 * h1), y: Math.min(t.y - 260, viewTopWorld - 90),
+          }));
+          const px = st.x + (t.x - st.x) * k, py = st.y + (t.y - st.y) * k;
+          const ds = this.depthScale(t.y);
+          g.ellipse(t.x, t.y, (6 + 14 * u) * ds, (2.5 + 5 * u) * ds).fill({ color: 0x000000, alpha: 0.1 + 0.3 * u });
+          const rotD = tilt + u * spin;
+          if (this.placeAstroArt(t.id, astroThrowArtFrame('debris', t.variant), this.L.skyFxLayer, px, py, rotD, 0.95 * ds, 0.95 * ds, 1)) {
+            // 大気で焼けた外板: 赤熱の照りと、後ろへ引く火の粉。
+            for (const [r0, al] of [[34, 0.07], [25, 0.1], [17, 0.14], [10, 0.2]] as const) skg.circle(px, py, r0 * ds).fill({ color: 0xf97316, alpha: al });
+            skg.circle(px, py, 6 * ds).fill({ color: 0xfde68a, alpha: 0.35 });
+            for (let j = 1; j <= 3; j++) skg.circle(px + (st.x - px) * 0.06 * j, py + (st.y - py) * 0.06 * j, (3.5 - j * 0.8) * ds).fill({ color: 0xfdba74, alpha: 0.7 - j * 0.18 });
+          } else this.drawAstroDebris(sk, skg, px, py, rotD, t.variant ?? 0, ds, 1, true);
+        } else if (t.resolved) {
+          const age = gameTime - t.hitAt;
+          if (age >= ASTRO_DEBRIS_LIE_MS) continue;
+          const ds = this.depthScale(t.y);
+          const settle = age < 260 ? Math.sin(age / 260 * Math.PI) * 6 * ds : 0; // 打って小さく跳ねる
+          const sinkK = clamp01((age - (ASTRO_DEBRIS_LIE_MS - 600)) / 600); // 最後は地面へ沈みながら消える
+          const yy = t.y - settle + 9 * ds * sinkK * sinkK;
+          const fade = 1 - Math.pow(sinkK, 1.6);
+          if (this.placeAstroArt(t.id, astroThrowArtFrame('debris', t.variant), this.L.groundLayer, t.x, yy, tilt + spin, 0.95 * ds, 0.95 * ds, fade, 0.5, 0.8, ASTRO_GROUND_TINT)) {
+            g.ellipse(t.x, t.y + 1, 22 * ds, 6 * ds).fill({ color: 0x000000, alpha: 0.3 * fade });
+          } else this.drawAstroDebris(g, null, t.x, yy, tilt + spin, t.variant ?? 0, ds, fade, false);
+        }
+      } else if (t.kind === 'meteor') {
+        if (flying) {
+          // 空の可視域の上端から加速しながら降りてくる(絵だけ・判定は地面の着弾点)。来る向きは毎回ばらす。
+          const h1 = rainHash01(t.x, t.y, 21), h2 = rainHash01(t.x, t.y, 22);
+          const st = this.astroSkyStartOf(t.id, () => ({ x: t.x + (h1 > 0.5 ? 1 : -1) * (80 + 200 * h2), y: viewTopWorld - 120 }));
+          const u = flyU * flyU;
+          const px = st.x + (t.x - st.x) * u, py = st.y + (t.y - st.y) * u;
+          const ds = this.depthScale(t.y);
+          const size = (0.45 + 1.0 * flyU) * ds;
+          const art = this.placeAstroArt(t.id, astroThrowArtFrame('meteor'), this.L.skyFxLayer, px, py, gameTime / 900, 1.05 * size, 1.05 * size, 1); // 絵のドットが粗く崩れない倍率まで(最大約1.5倍)
+          this.drawAstroMeteor(sk, skg, px, py, Math.atan2(t.y - st.y, t.x - st.x), size, gameTime, !art);
+        } else if (t.resolved) {
+          // クレーター(絵だけ): 焼けた窪みと、紫に燻る破片。最大の技の跡として旗と同じくらい残す。
+          const age = gameTime - t.hitAt, f = 1 - Math.pow(clamp01(age / ASTRO_METEOR_CRATER_MS), 2);
+          const ds = this.depthScale(t.y), R = t.radius * 0.42 * ds;
+          g.ellipse(t.x, t.y, R * 1.25, R * 0.9).fill({ color: 0x2a1d16, alpha: 0.4 * f });
+          g.ellipse(t.x, t.y, R, R * 0.7).fill({ color: 0x0f0a08, alpha: 0.6 * f });
+          g.ellipse(t.x, t.y, R, R * 0.7).stroke({ width: 3 * ds, color: 0x5b4334, alpha: 0.7 * f });
+          for (let i = 0; i < 9; i++) {
+            const h1 = rainHash01(t.x, t.y, i + 90), h2 = rainHash01(t.x, t.y, i + 110);
+            const an = h1 * Math.PI * 2, rr = R * (0.2 + 0.9 * h2);
+            const on = 0.5 + 0.5 * Math.sin(gameTime / (140 + 90 * h1) + i * 1.7);
+            g.circle(t.x + Math.cos(an) * rr, t.y + Math.sin(an) * rr * 0.7, (1.6 + 1.6 * h2) * ds)
+              .fill({ color: i % 3 === 0 ? 0xfb923c : 0xa855f7, alpha: 0.85 * on * clamp01(1 - age / 3500) });
+          }
+        }
+      } else if (t.kind === 'bouquet') {
+        const ANC_Y = 0.75;
+        if (flying) {
+          const d = Math.hypot(t.x - t.fromX, t.y - footY);
+          const H = 90 + d * 0.25;
+          const u = flyU;
+          const gx = t.fromX + (t.x - t.fromX) * u, gy = footY + (t.y - footY) * u;
+          const h = handH * (1 - u) + H * 4 * u * (1 - u);
+          const ds = this.depthScale(gy);
+          g.ellipse(gx, gy, 8 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.15 + 0.2 * u });
+          // ゆっくり回りながら、着く時に地面に寝る角度へ(着いた瞬間に角度が跳ばない)。
+          if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.skyFxLayer, gx, gy - h, -0.5 + (LIE_ROT + 0.5) * u, 0.85 * ds * appear, 0.85 * ds * appear, 1, 0.5, ANC_Y)) {
+            this.drawAstroBouquet(a, gx, gy - h, u * 7, ds, 1);
+          }
+        } else if (t.resolved) {
+          const age = gameTime - t.hitAt;
+          if (age >= ASTRO_BOUQUET_LIE_MS) continue;
+          const ds = this.depthScale(t.y);
+          const dir = t.fromX >= t.x ? 1 : -1;
+          if (t.bounced && age < 520) {
+            // 当たって軽く跳ね返る(上へ弾んで、投げ手の側へ少し戻りながら落ちる)。回っても寝た角度へ戻って着く。
+            const u = age / 520;
+            const hop = 54 * 4 * u * (1 - u);
+            if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.skyFxLayer, t.x + dir * 46 * u, t.y - hop, LIE_ROT + 1.4 * Math.sin(Math.PI * u), 0.85 * ds, 0.85 * ds, 1, 0.5, ANC_Y)) {
+              this.drawAstroBouquet(a, t.x + dir * 46 * u, t.y - 10 - hop, 7 + u * 4, ds, 1);
+            }
+          } else {
+            const back = t.bounced ? dir * 46 : 0;
+            const sinkK = clamp01((age - (ASTRO_BOUQUET_LIE_MS - 700)) / 700); // 最後は沈むように薄れる
+            const fade = 1 - Math.pow(sinkK, 1.6);
+            g.ellipse(t.x + back, t.y + 2, 9 * ds, 3 * ds).fill({ color: 0x000000, alpha: 0.25 * fade });
+            if (!this.placeAstroArt(t.id, astroThrowArtFrame('bouquet'), this.L.groundLayer, t.x + back, t.y + 4 * ds * sinkK * sinkK, LIE_ROT, 0.85 * ds, 0.85 * ds, fade, 0.5, ANC_Y, ASTRO_GROUND_TINT)) {
+              this.drawAstroBouquet(g, t.x + back, t.y - 4 * ds, 1.35, ds, fade);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /** 仮の図形: ミサイル(白い胴・赤い先・橙の噴射)。ang=進む向き。 */
+  private drawAstroMissile(o: Graphics, glow: Graphics, x: number, y: number, ang: number, ds: number, body = true, ign = 1): void {
+    const c = Math.cos(ang), s2 = Math.sin(ang);
+    const P = (fx: number, fy: number): [number, number] => [x + fx * c * ds - fy * s2 * ds, y + fx * s2 * ds + fy * c * ds];
+    const flick = (0.75 + 0.25 * Math.sin(performance.now() / 30)) * ign;
+    glow.poly([...P(-14, -4), ...P(-14 - 22 * flick, 0), ...P(-14, 4)]).fill({ color: 0xfb923c, alpha: 0.9 * ign });
+    glow.circle(...P(-16, 0), 7 * ds).fill({ color: 0xfde68a, alpha: 0.55 * ign });
+    if (!body) return;
+    o.poly([...P(-14, -4.5), ...P(10, -4.5), ...P(10, 4.5), ...P(-14, 4.5)]).fill({ color: 0xe7e5e4 });
+    o.poly([...P(10, -4.5), ...P(19, 0), ...P(10, 4.5)]).fill({ color: 0xb91c1c });
+    o.poly([...P(-14, -4.5), ...P(-19, -9), ...P(-10, -4.5)]).fill({ color: 0x57534e });
+    o.poly([...P(-14, 4.5), ...P(-19, 9), ...P(-10, 4.5)]).fill({ color: 0x57534e });
+    o.poly([...P(-4, -4.5), ...P(2, -4.5), ...P(2, 4.5), ...P(-4, 4.5)]).fill({ color: 0x292524, alpha: 0.5 });
+  }
+
+  /** 仮の図形: 架空の国の旗(白地に深紅の円・竿の側に朱の縦帯)。竿の先=(x,y)。flying=竿を進む向きへ寝かせる。 */
+  private drawAstroFlag(o: Graphics, x: number, y: number, ang: number, ds: number, t: number, alpha: number, flying: boolean): void {
+    const L = 78 * ds;
+    // 刺さっている時は先が地面に埋まり、竿は投げ手の側へ傾いて立つ。飛んでいる時は向きのまま寝る。
+    const lean = flying ? ang + Math.PI : -Math.PI / 2 + (Math.cos(ang) >= 0 ? -0.42 : 0.42);
+    const ex = x + Math.cos(lean) * L, ey = y + Math.sin(lean) * L * (flying ? 0.5 : 1);
+    o.moveTo(x, y).lineTo(ex, ey).stroke({ width: 2.6 * ds, color: 0x3f2f22, alpha });
+    o.circle(ex, ey, 2.4 * ds).fill({ color: 0xd4af37, alpha });
+    // 布: 竿の上寄りから横へ。風で波打つ(端ほど大きく)。
+    const side = Math.cos(ang) >= 0 ? -1 : 1;
+    const top = { x: ex + (x - ex) * 0.04, y: ey + (y - ey) * 0.04 };
+    const W = 40 * ds, Hh = 26 * ds, N = 6;
+    const pts: number[] = [];
+    for (let i = 0; i <= N; i++) { const u = i / N; pts.push(top.x + side * W * u, top.y + Math.sin(t / 90 - u * 3) * 3.2 * ds * u); }
+    for (let i = N; i >= 0; i--) { const u = i / N; pts.push(top.x + side * W * u, top.y + Hh + Math.sin(t / 90 - u * 3 + 0.6) * 3.2 * ds * u); }
+    o.poly(pts).fill({ color: 0xf5f0e6, alpha });
+    o.poly([top.x, top.y, top.x + side * 6 * ds, top.y, top.x + side * 6 * ds, top.y + Hh, top.x, top.y + Hh]).fill({ color: 0xc2410c, alpha });
+    o.circle(top.x + side * W * 0.56, top.y + Hh * 0.5 + Math.sin(t / 90 - 1.7) * 1.8 * ds, 7 * ds).fill({ color: 0x9f1239, alpha });
+  }
+
+  /** 仮の図形: ロケットの外板の残骸(3種)。falling=熱を帯びた縁を光らせる。 */
+  private drawAstroDebris(o: Graphics, glow: Graphics | null, x: number, y: number, rot: number, variant: number, ds: number, alpha: number, falling: boolean): void {
+    const c = Math.cos(rot), s2 = Math.sin(rot);
+    const P = (fx: number, fy: number): number[] => [x + (fx * c - fy * s2) * ds, y + (fx * s2 + fy * c) * ds];
+    const shape: number[][] = variant === 0
+      ? [[-20, -9], [18, -12], [22, 6], [-16, 10]]          // 曲がった外板
+      : variant === 1
+        ? [[-14, -14], [14, -10], [10, 14], [-12, 12], [-18, 0]] // 割れた板
+        : [[-6, -20], [8, 12], [-12, 14]];                   // 尾翼
+    const flat = shape.flatMap(([fx, fy]) => P(fx, fy));
+    if (falling && glow) glow.poly(flat).stroke({ width: 5 * ds, color: 0xfb923c, alpha: 0.55 });
+    o.poly(flat).fill({ color: variant === 2 ? 0xd6d3d1 : 0xe7e5e4, alpha });
+    o.poly(flat).stroke({ width: 1.4 * ds, color: 0x44403c, alpha });
+    if (variant === 0) o.poly([...P(-20, -9), ...P(-4, -10), ...P(0, 8), ...P(-16, 10)]).fill({ color: 0x1c1917, alpha: 0.45 * alpha }); // 焦げ
+    if (variant === 1) { for (const [fx, fy] of [[-8, -6], [6, -4], [2, 8]]) o.circle(...(P(fx, fy) as [number, number]), 1.4 * ds).fill({ color: 0x57534e, alpha }); }
+    if (variant === 2) o.poly([...P(-6, -20), ...P(0, -8), ...P(-9, -6)]).fill({ color: 0xb91c1c, alpha });
+  }
+
+  /** 仮の図形: 隕石(焼けた岩+紫と白の尾)。ang=落ちる向き。 */
+  private drawAstroMeteor(o: Graphics, glow: Graphics, x: number, y: number, ang: number, size: number, t: number, body = true): void {
+    // 尾: 岩の後ろへ細くなっていく炎(外=紫・中=藤色・芯=白熱)。縁を揺らして燃えている感じを出す。
+    const bx = Math.cos(ang + Math.PI), by = Math.sin(ang + Math.PI), nx = -by, ny = bx;
+    for (const [len, w, col, al] of [[230, 34, 0x6d28d9, 0.22], [170, 24, 0xc084fc, 0.3], [100, 13, 0xfef3c7, 0.45]] as const) {
+      const pts: number[] = [];
+      const N = 8;
+      for (let i = 0; i <= N; i++) {
+        const u = i / N, wob = (Math.sin(t / 45 + i * 1.7) * 4 + Math.sin(t / 23 + i * 3.1) * 2.5) * size * u;
+        const hw = w * size * (1 - u) * (1 - u * 0.3);
+        pts.push(x + bx * len * size * u + nx * (hw + wob), y + by * len * size * u + ny * (hw + wob));
+      }
+      for (let i = N; i >= 0; i--) {
+        const u = i / N, wob = (Math.sin(t / 45 + i * 1.7 + 1.1) * 4 + Math.sin(t / 29 + i * 2.3) * 2.5) * size * u;
+        const hw = w * size * (1 - u) * (1 - u * 0.3);
+        pts.push(x + bx * len * size * u - nx * (hw + wob), y + by * len * size * u - ny * (hw + wob));
+      }
+      glow.poly(pts).fill({ color: col, alpha: al });
+    }
+    if (!body) return;
+    const R = 30 * size, pts: number[] = [];
+    for (let i = 0; i < 9; i++) { const aa = (i / 9) * Math.PI * 2 + t / 600; const rr = R * (0.82 + 0.18 * Math.sin(i * 2.7)); pts.push(x + Math.cos(aa) * rr, y + Math.sin(aa) * rr); }
+    o.poly(pts).fill({ color: 0x3b2a22 });
+    o.poly(pts).stroke({ width: 3 * size, color: 0xfb923c, alpha: 0.85 });
+    o.circle(x - R * 0.25, y - R * 0.2, R * 0.28).fill({ color: 0x57412f });
+  }
+
+  /** 仮の図形: 花束(生成りの包み+桃・白・黄の花)。 */
+  private drawAstroBouquet(o: Graphics, x: number, y: number, rot: number, ds: number, alpha: number): void {
+    const c = Math.cos(rot), s2 = Math.sin(rot);
+    const P = (fx: number, fy: number): [number, number] => [x + (fx * c - fy * s2) * ds, y + (fx * s2 + fy * c) * ds];
+    o.poly([...P(-3, 14), ...P(-9, -2), ...P(9, -2), ...P(3, 14)]).fill({ color: 0xf5f0e6, alpha });
+    o.poly([...P(-3, 14), ...P(-9, -2), ...P(9, -2), ...P(3, 14)]).stroke({ width: 1, color: 0xa8a29e, alpha });
+    o.moveTo(...P(-2, 0)).lineTo(...P(-5, -9)).stroke({ width: 1.2 * ds, color: 0x4d7c0f, alpha });
+    o.moveTo(...P(2, 0)).lineTo(...P(5, -10)).stroke({ width: 1.2 * ds, color: 0x4d7c0f, alpha });
+    for (const [fx, fy, col, r] of [[-6, -9, 0xf9a8d4, 4.2], [5, -10, 0xfbcfe8, 4], [0, -13, 0xfafafa, 4.4], [-1, -6, 0xfde68a, 3.2], [7, -5, 0xf472b6, 3]] as const) {
+      o.circle(...P(fx, fy), r * ds).fill({ color: col, alpha });
+    }
+  }
+
+  /**
    * research/ARROW_RAIN.md: サブウェポン「矢の雨」。判定は useGameLoop、ここは store の矢を読むだけ。
    * 旗手の矢と同じ描き方。**赤い予告は描かない**(自分の攻撃=プレイヤーへの危険ではない)。
    * 矢はプレイヤーの側(fromX)から斜めに、画面の上の外から加速して落ちる。刺さった矢は少し残って薄れる。
@@ -20999,7 +21399,9 @@ export class PixiScene {
     // ★ボスが止まっている間(紫の完全気絶・致命後の停止)は**立ち絵で止める**(社長指示2026-09-29「技の見た目で止めずに、立ち絵で止めて」)。
     //   技/歩き/待機のコマを1枚も引かない=技の途中の姿で固まらない(`utils/bossStopArt.ts`)。
     const bossStopped = bossStoppedForArt(e, gameTime, isHiddenBoss(e.type));
-    const atkTex = bossStopped ? null : this.enemyScreamTexture(idleTexKey, e, gameTime)
+    // research/ASTRONAUT_HORDE.md §3: 宇宙飛行群の浮遊・投げのコマ。崩れて落ちる間も逆再生で降りる絵を出す(§8 B3)=止まった時の立ち絵の例外。
+    const astroTex = e.type === 'mutant-astro' ? this.astroTexture(e, gameTime) : null;
+    const atkTex = astroTex ?? (bossStopped ? null : this.enemyScreamTexture(idleTexKey, e, gameTime)
       ?? this.enemySweepTexture(idleTexKey, e, gameTime)
       ?? this.enemyJumpTexture(idleTexKey, e, gameTime)
       ?? this.enemyShotTexture(idleTexKey, e, now)
@@ -21010,7 +21412,7 @@ export class PixiScene {
       ?? this.enemyAttackTexture(idleTexKey, e, gameTime)
       // ★カウンターで技が消された直後だけ、出ていたコマを数コマぶん逆再生して「弾かれた」を見せる
       // (社長指示2026-09-23)。攻撃のコマが出ている間は当然こちらへ来ない=通常再生が優先。
-      ?? this.enemyCounterRewindTexture(e, now);
+      ?? this.enemyCounterRewindTexture(e, now));
     // ★別スプライトの武器(チェーンソー/鞭/鋏/手毬)の「振りを戻す」(社長指示2026-09-23)。
     // 本体のコマの巻き戻しと**同じ時計・同じイージング**で、覚えた振りの軌跡を逆順に描き直す。
     // **敵の座標には一切触れない**(「位置はずらさない。その後の台本が空振りするから」)。
@@ -21021,7 +21423,7 @@ export class PixiScene {
     // ★グレン第二形態の本体のアニメ(社長支給2026-09-27「第二形態の本体」)。形態2はこのコマを
     // 「手で描いたコマ」として扱う=疑似呼吸・技の伸び縮み・傾ぎを掛けない(形態1のシートは拾わない)。
     const glenP2Tex = glenP2 && !bossStopped ? this.glenForm2BodyTexture(e.id, now) : null;
-    const walkTex = glenP2 ? glenP2Tex : bossStopped ? null : (atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
+    const walkTex = glenP2 ? glenP2Tex : bossStopped && !astroTex ? null : (atkTex ?? this.enemyWalkTexture(idleTexKey, e, view, now, gameTime, fb.boxH)
       ?? this.enemyIdleTexture(idleTexKey, e, now));
     const tex = e.type === 'guardian-phantom'
       ? this.guardianPhantomTexture(view, e, now)
@@ -21732,7 +22134,7 @@ export class PixiScene {
           : backpedalFaceSide(vx, e.x + e.width / 2, bpPl.x + bpPl.width / 2);
         // research/MUTANT_HERO.md: 英雄の向きは制御(heroTick)が決める(左右が入れ替わる前に一拍止まってから)。
         // research/LIBERTY_HORDE.md: 解放軍群の旗手も、止まって叫ぶ間は相手の方を向く(制御が heroFaceX を書く)。
-        const heroFace = (e.type === 'mutant-hero' || e.type === 'mutant-liberty') && e.heroFaceX !== undefined ? (e.heroFaceX > 0 ? toRight : -toRight) : 0;
+        const heroFace = (e.type === 'mutant-hero' || e.type === 'mutant-liberty' || e.type === 'mutant-astro') && e.heroFaceX !== undefined ? (e.heroFaceX > 0 ? toRight : -toRight) : 0;
         // 英雄の昇天に見とれている間は英雄の方を向く(社長裁定2026-10-05)。向き直りは通常の振り向き(ENEMY_TURN_MS)で滑らかに。
         const aweFace = e.aweUntil !== undefined && now < e.aweUntil && e.aweFaceX !== undefined
           ? (e.aweFaceX >= e.x + e.width / 2 ? toRight : -toRight) : 0;
@@ -21776,7 +22178,8 @@ export class PixiScene {
       )
       : 0;
     // research/MUTANT_HERO.md: 英雄の跳躍の高さ(見た目だけ・判定は地面のまま=CLAUDE.md「Y方向」の掟)。
-    const heroLift = e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : 0;
+    // research/ASTRONAUT_HORDE.md §8 A4: 宇宙飛行群の浮遊も同じ(絵だけ持ち上げる・判定・影・帯の y は地面のまま)。
+    const heroLift = e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1), now) : 0;
     view.sprite.position.set(Math.round(fb.footX + liftShake + sweepWindupTremor),
       Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx - heroLift));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
@@ -21922,7 +22325,7 @@ export class PixiScene {
       // ★検収差し戻し(中11)対応: 影の寸法は呼吸/被弾スカッシュ/crouch・jump(aiSqX/Y)を含まない
       // 「素のscale」(sc)を使う。持ち上げ系(liftHop/aiHop/kbHop/lungeOffY)は heightPx 相当として渡す。
       view.shadowScale = sc;
-      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY + (e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : 0);
+      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY + (e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1), now) : 0);
       // faceMul(③振り向き)は符号を持つ=ミラー。歩幅スカッシュ(motSqX/Y)は他の変形と同じ掛け算合成。
       // ★死体は**縦に潰れて横に広がりながら**消える(社長指示2026-08-25「突然パっと消えちゃうので、
       // すこし吹っ飛んで潰れて消えるようにして」)。判定には一切関与しない純粋な描画。
@@ -36128,6 +36531,19 @@ export class PixiScene {
    * ★予兆のリング・SE・揺れには一切触っていない(「元々のエフェクトは消さない」)。
    */
   private screamEndMemo = new Map<string, number>();
+
+  /** research/ASTRONAUT_HORDE.md §3/§4: 投げの間は投げのシート(1コマ70ms)、それ以外は浮遊のシートの今のコマ(制御が進める)。 */
+  private astroTexture(e: Enemy, gameTime: number): ReturnType<typeof getTexture> {
+    // 姿が見えた時点で投げのシートと投げる物の絵も取りに行く(網は使う瞬間の1枚しか引かない=最初の投げの絵が欠ける・品質監査 A1)。
+    getTexture('mutant-astro-throw');
+    getTexture('fx/astro-throws');
+    if (e.astroThrowAt !== undefined) {
+      const i = Math.max(0, Math.min(ASTRO_THROW_FRAMES - 1, Math.floor((gameTime - e.astroThrowAt) / ASTRO_THROW_FRAME_MS)));
+      return this.sheetSlices('mutant-astro-throw', ASTRO_THROW_FRAMES)?.[i] ?? null;
+    }
+    const f = Math.max(0, Math.min(ASTRO_HOVER_FRAMES - 1, e.astroHoverFrame ?? 0));
+    return this.sheetSlices('mutant-astro-hover', ASTRO_HOVER_FRAMES)?.[f] ?? null;
+  }
 
   /**
    * research/LIBERTY_HORDE.md §4c: 矢の雨の号令の絵(社長支給2026-10-04)。技の間(号令→最後の矢が刺さるまで)は

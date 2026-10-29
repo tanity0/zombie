@@ -49,6 +49,8 @@ export interface SceneLayers {
   // 同じカメラオフセットを適用)。フィルは「浮いている」ので、地平線フェード/擬似遠近/tilt-shiftの
   // 対象から外すのが意図(§10-14#6)。danceUiLayerより後(=上)に置く=通常のゲームプレイ演出より前面。
   phillLayer: Container;
+  /** research/ASTRONAUT_HORDE.md §9: 空から降りてくる物(隕石・落ちてくる残骸)。filteredWorld の外=地平線の覆いに切られない。カメラオフセット追従。 */
+  skyFxLayer: Container;
   uiLayer: Container;
   cinePlates: Container;   // 寄り演出の近景の板(画面空間・frontForest と uiLayer の間。research/CINEMATIC_CAMERA.md §6・v0.25.4296)
 }
@@ -111,8 +113,9 @@ export const buildLayers = (
   const danceUiLayer = new Container();
   // フィル専用レイヤー(§10-12#10)。danceUiLayerと同じ扱い=filteredWorldの外・カメラオフセット追従。
   const phillLayer = new Container();
+  const skyFxLayer = new Container();
   // nearHorizon は horizonForest の「手前(上=後で描画)」・gameplay(filteredWorld)の「後ろ」に置く。
-  worldGroup.addChild(groundBase, horizonForest, nearHorizon, filteredWorld, danceUiLayer, phillLayer);
+  worldGroup.addChild(groundBase, horizonForest, nearHorizon, filteredWorld, danceUiLayer, phillLayer, skyFxLayer);
 
   const uiLayer = new Container();
   const cinePlates = new Container();
@@ -139,6 +142,7 @@ export const buildLayers = (
     lightingLayer,
     danceUiLayer,
     phillLayer,
+    skyFxLayer,
     uiLayer,
     cinePlates,
   };

@@ -51,7 +51,9 @@ export const usesPostureSystem = (e: PostureSubject): boolean =>
     // research/MUTANT_HERO.md §10a: 英雄はボス戦の判定(ENGAGEABLE)の外だが、ボス級の体勢値(紫・処刑)は付ける=名指しで足す。
     || e.type === 'mutant-hero'
     // research/LIBERTY_HORDE.md §7: 解放軍群の旗手も同じ(ボス級・ENGAGEABLE の外)。
-    || e.type === 'mutant-liberty');
+    || e.type === 'mutant-liberty'
+    // research/ASTRONAUT_HORDE.md: 宇宙飛行群も同じ(ボス級・ENGAGEABLE の外)。
+    || e.type === 'mutant-astro');
 
 export type BossPostureImpact = 'counter' | 'melee' | 'heavy' | 'gun-crit' | 'reflect';
 
@@ -108,6 +110,7 @@ export const bossPostureMax = (e: PostureSubject): number => {
   if (isBountyType(type)) return 90;
   if (type === 'mutant-hero') return 90; // research/MUTANT_HERO.md §1: 賞金首と同じ90
   if (type === 'mutant-liberty') return 90; // research/LIBERTY_HORDE.md §7: 英雄と同じ90
+  if (type === 'mutant-astro') return 90; // research/ASTRONAUT_HORDE.md: 解放軍群と同じ90
   return 100;
 };
 

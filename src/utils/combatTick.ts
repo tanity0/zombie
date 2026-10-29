@@ -277,7 +277,11 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
   // スカジ氷=専用SE(社長提供) / それ以外(パンプキン着地等)=heavy-impact。
   // research/MUTANT_HERO.md: 英雄の斬撃・タックルは自分の音(下)。叩きつけ(棹立ち・跳躍)は重い音のまま。
   // ステージ2の這う塊(crawler-slam)は自分の配線(labCrawlerTick)が距離で弱めて鳴らすので、ここでは鳴らさない。
-  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-') && b.moveKey !== 'liberty-flag' && b.moveKey !== 'liberty-arrow' && b.moveKey !== 'crawler-slam')) fx.playSfx('heavy-impact');
+  if (blasts.some(b => !b.ice && !b.moveKey?.startsWith('hero-') && b.moveKey !== 'liberty-flag' && b.moveKey !== 'liberty-arrow' && b.moveKey !== 'crawler-slam' && b.moveKey !== 'astro-flag' && b.moveKey !== 'astro-debris')) fx.playSfx('heavy-impact');
+  // research/ASTRONAUT_HORDE.md §4: 宇宙飛行群の投げ物。爆発(ミサイル・隕石)は爆発音を重ね、国旗・残骸は地面に刺さる音。
+  if (blasts.some(b => b.moveKey === 'astro-missile' || b.moveKey === 'astro-meteor')) fx.playSfx('bomb');
+  if (blasts.some(b => b.moveKey === 'astro-flag')) fx.playSfx('anchor-plant', 0.8);
+  if (blasts.some(b => b.moveKey === 'astro-debris')) fx.playSfx('anchor-plant', 0.45);
   if (blasts.some(b => b.moveKey === 'liberty-arrow')) fx.playSfx('anchor-plant', 0.5); // 矢の雨: 土に突き立つ音(旗振りと耳で区別できるように。同じフレームに何本刺さっても1回)
   if (blasts.some(b => b.moveKey === 'hero-slam')) fx.playSfx('hero-slam');
   if (blasts.some(b => b.moveKey === 'hero-slash')) fx.playSfx('hero-slash');
@@ -346,6 +350,43 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       // research/LIBERTY_HORDE.md §4c: 矢が刺さる。土が跳ねる粒と小さな土煙の輪(矢の絵と刺さった跡は描画が出す)。全画面フラッシュなし。
       fx.spawnBurst(b.x, b.y, '#a08a70', 12);
       fx.spawnRing(b.x, b.y, 4, b.radius * 0.9, 'rgba(160,138,112,0.6)', 3, 300);
+    } else if (b.moveKey === 'astro-missile') {
+      // research/ASTRONAUT_HORDE.md §4 ミサイル: 中範囲の爆発(派手さの絵=判定より外まで火と煙)。
+      fx.spawnFlash('rgba(255,150,60,0.18)', 220);
+      fx.spawnRing(b.x, b.y, 10, b.radius * 1.35, 'rgba(255,170,80,0.95)', 6, 420);
+      fx.spawnRing(b.x, b.y, 6, b.radius * 0.95, 'rgba(60,40,32,0.8)', 5, 520);
+      fx.spawnBurst(b.x, b.y, '#fb923c', 26);
+      fx.spawnBurst(b.x, b.y, '#fde68a', 12);
+      fx.spawnBurst(b.x, b.y, '#3f3a36', 14);
+      fx.spawnGlow(b.x, b.y, b.radius * 1.4, 'rgba(255,150,60,', 380);
+    } else if (b.moveKey === 'astro-meteor') {
+      // §4 隕石: 超広範囲(紫=弾けない)。白く焼けた閃光→紫の衝撃の輪が二重→土と岩の破片を縁まで撒く。
+      fx.spawnFlash('rgba(236,226,255,0.42)', 420);
+      fx.spawnRing(b.x, b.y, 24, b.radius * 1.3, 'rgba(196,160,255,0.95)', 14, 820);
+      fx.spawnRing(b.x, b.y, 16, b.radius * 0.95, 'rgba(255,214,170,0.9)', 10, 620);
+      fx.spawnRing(b.x, b.y, 10, b.radius * 0.55, 'rgba(70,52,44,0.85)', 8, 700);
+      for (let i = 0; i < 9; i++) { // 破片は角度も距離も量もばらす(等角に並べない)
+        const a = (i / 9) * Math.PI * 2 + Math.random() * 0.6, r = b.radius * (0.25 + Math.random() * 0.7);
+        fx.spawnBurst(b.x + Math.cos(a) * r, b.y + Math.sin(a) * r, i % 3 === 0 ? '#c4b5fd' : '#7c6a58', 14 + Math.floor(Math.random() * 16));
+      }
+      fx.spawnBurst(b.x, b.y, '#fff7ed', 30);
+      fx.spawnGlow(b.x, b.y, b.radius * 1.5, 'rgba(196,160,255,', 900);
+    } else if (b.moveKey === 'astro-flag') {
+      // §4 国旗: 刺さった所に土が跳ね、帯に沿って風に巻かれた土埃(爆発ではない=全画面の明滅なし)。
+      const c = b.capsule;
+      if (c) {
+        fx.spawnBurst(c.tx, c.ty, '#a08a70', 18);
+        fx.spawnRing(c.tx, c.ty, 6, 54, 'rgba(160,138,112,0.75)', 4, 360);
+        for (let i = 1; i <= 4; i++) {
+          const u = (i - 0.5 + Math.random()) / 5;
+          fx.spawnBurst(c.fx + (c.tx - c.fx) * u, c.fy + (c.ty - c.fy) * u, '#b9a58c', 4 + Math.floor(Math.random() * 5));
+        }
+      }
+    } else if (b.moveKey === 'astro-debris') {
+      // §4 残骸: 外板が地面を打つ火花と土煙(8回続くので全画面の明滅は出さない)。
+      fx.spawnBurst(b.x, b.y, '#e2e8f0', 12);
+      fx.spawnBurst(b.x, b.y, '#8a7a68', 10);
+      fx.spawnRing(b.x, b.y, 6, b.radius * 1.3, 'rgba(200,190,176,0.7)', 4, 360);
     } else if (b.moveKey === 'crawler-slam') {
       // ステージ2の這う塊の叩きつけ(world/labCrawler.ts)。爆発ではない=全画面の橙のフラッシュは出さない。
       // 手が地面を打った土煙(シートの砂埃と同じ明るいベージュ)と大きな輪、飛び散る破片(派手さの絵=判定より大きく外へ)。
@@ -404,7 +445,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       }
     }
     if (inBlast) {
-      if (counterActive) {
+      if (counterActive && !b.noParry) { // 隕石(noParry)は弾けない=紫の文法(ASTRONAUT_HORDE §8 A5)
         // カウンター成立は無敵中でも弾く(=確実にノックバック+クリ反撃)。
         // ※以前は !invulnerable を前提にしていたため、被弾i-frame中だとパリィが
         //   丸ごとスキップされ「カウンターしたのにノックバックしない」が起きていた。
@@ -413,14 +454,16 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       } else if (!bp.invulnerable) {
         const blastEnemyType = useGameStore.getState().enemies.find(e => e.id === b.enemyId)?.type;
         // ステージ2の這う塊は敵配列に居ない=型の代わりに持ち主の名札で名前を引く(「変異塊の叩きつけ」)。
-        const blastOwnerLabel = blastEnemyType ?? (b.moveKey === 'crawler-slam' ? b.enemyId : '');
+        // 宇宙飛行群の投げ物は投げ手が倒れた後も当たる=持ち主が居なくても名前を空にしない(ASTRONAUT_HORDE §9)。
+        const blastOwnerLabel = blastEnemyType ?? (b.moveKey === 'crawler-slam' ? b.enemyId : b.moveKey?.startsWith('astro-') ? 'mutant-astro' : '');
         // G4a: b.moveKey=どの技の爆発か(記録専用タグ・未設定なら従来どおりundefined)。
         // 検収監査#6: 死因の技名はmoveKeyで分ける(削岩型の突きが「落下攻撃」と表示されていた)。
         // 検収監査#6の継承(§14-2): 死因の技名はmoveKeyで分ける(伐採人の薙ぎ払いが「落下攻撃」と
         // 表示される取りこぼしを防ぐ)。
         const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
-          : b.moveKey === 'jo-slam' || b.moveKey === 'crawler-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
+          : b.moveKey === 'jo-slam' || b.moveKey === 'crawler-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨'
+          : b.moveKey === 'astro-missile' ? 'ミサイル' : b.moveKey === 'astro-flag' ? '国旗' : b.moveKey === 'astro-debris' ? '残骸' : b.moveKey === 'astro-meteor' ? '隕石' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const hurtAtBefore = useGameStore.getState().player.lastHurtAt; // この一撃で段が付いたかを見分ける(下の押し出し)
         const armoredAtBefore = useGameStore.getState().player.hurtArmoredAt; // B12: アーマーで受けたかを見分ける(下の押し出し)
         const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastOwnerLabel)}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined, { type: blastEnemyType, id: b.enemyId }); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
@@ -487,7 +530,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           //   ⇒ **「パリティが揃っていない」という理由でここを直さないこと。**
           // ★判定時置換ミラー(2026-08-27): 位置ゲートは既定OFFになった(inAttackZone opts は
           // contactGate へ反転。この経路は inBlastGhost がゾーン幾何で確認済み=opts不要)。
-          const gClaim = b.parryLocal ? null : consumeGhostCounterClaim(b.enemyId, Date.now()); // 矢の雨(parryLocal)で旗手への請求を使わない
+          const gClaim = b.parryLocal || b.noParry ? null : consumeGhostCounterClaim(b.enemyId, Date.now()); // 矢の雨(parryLocal)で旗手への請求を使わない
           if (gClaim) {
             applyGhostCounterEffect(owner, gacx, gacy, { claim: gClaim, sfxGain: npcSfxDistGain(gacx, gacy, bpcx, bpcy, useGameStore.getState().camera, useGameStore.getState().gameBounds) }, (key, gain) => fx.playSfx(key, gain));
           } else {
@@ -1865,7 +1908,7 @@ export const applyContactDamage = (
     if (enemy.labBait?.active) return;
     // research/MUTANT_HERO.md: 英雄は接触ダメージを持たない(damage 0)。ここを通すと0ダメージの被弾が
     // 毎フレーム入り続けていた(社長報告2026-10-04「重なって延々とダメージ受けちゃう」)。当たるのは技だけ。
-    if (isMutantHero(enemy.type) || enemy.type === 'mutant-liberty') return; // 解放軍群の旗手も接触ダメージ0(LIBERTY_HORDE §7)
+    if (isMutantHero(enemy.type) || enemy.type === 'mutant-liberty' || enemy.type === 'mutant-astro') return; // 解放軍群の旗手・宇宙飛行群も接触ダメージ0(LIBERTY_HORDE §7・ASTRONAUT_HORDE §2c)
     // PACING_PUZZLE.md §14-4-8b(A-3): 神付きは1tickにつき1体。既に発火していたら、この関数呼び出し
     // (=このtick)の残りの接触解決を丸ごと打ち切る(forEachの実質break)。
     if (kamitsukiTriggeredThisTick) return;

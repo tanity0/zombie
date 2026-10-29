@@ -25,7 +25,7 @@ export interface BossTestEntry {
    * (ゾンビは通常どおり湧く=三つ巴を試せる)。
    * libertynow=解放軍群(変異)(research/LIBERTY_HORDE.md)を開始3秒後に画面の上のすぐ外へ旗手+バット男5体で置く。
    */
-  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow' | 'libertynow';
+  param: 'bossnow' | 'idolnow' | 'gateboss' | 'castlenow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow' | 'libertynow' | 'astronow';
   /** param==='bountynow'の時だけ意味を持つ副パラメータ(?bountytype=)。4種の型を選ぶ。 */
   bountyType?: 'ranged' | 'melee' | 'balance' | 'maiko';
   /**
@@ -70,6 +70,8 @@ export const BOSS_TEST_ENTRIES: readonly BossTestEntry[] = [
   { boss: 'mutant-hero', stageId: 'stage-1', param: 'heronow', noWelcome: true },
   // research/LIBERTY_HORDE.md §9: 解放軍群(変異)。ボス戦ではない(ENGAGEABLE の外)=守護霊の網羅検査からは外す(bossTest.test.ts)。
   { boss: 'mutant-liberty', stageId: 'stage-1', param: 'libertynow', noMobs: true },
+  // research/ASTRONAUT_HORDE.md §7: 宇宙飛行群(変異)。解放軍群と同じ枠(ボス戦ではない)。
+  { boss: 'mutant-astro', stageId: 'stage-1', param: 'astronow', noMobs: true },
 ];
 
 export interface BossTestOptions {
@@ -124,7 +126,7 @@ export const bossTestQuery = (e: BossTestEntry, opts: BossTestOptions): string =
 // ---- 現在モードの表示(社長指示2026-07-31「いまどのモードになってるか出しといて」) ---------------
 // パラメータ残留事故(v0.25.2576で修正)の再発をその場で見抜くための可視化。強制出現フラグは
 // モジュールロード時定数なので、**ページ読込時のURL**が今セッションの真実=それを解析して表示する。
-export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker', 'bountynow', 'heronow', 'libertynow'] as const;
+export const FORCE_PARAMS = ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bossmaker', 'bountynow', 'heronow', 'libertynow', 'astronow'] as const;
 
 export interface BossTestModeInfo {
   active: boolean;                          // いずれかのテスト系パラメータが生きているか

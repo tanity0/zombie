@@ -135,6 +135,19 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     { name: 'mutant-hero-weapon', scaleMode: 'nearest' }, // 211x32 = 0.03MB(英雄のサーベル・社長支給のドット版)
     { name: 'mutant-liberty', scaleMode: 'nearest' },  // 150x202 = 0.12MB(解放軍群(変異)の旗手の立ち絵=歩きの1コマ目)
     { name: 'mutant-liberty-weapon', scaleMode: 'nearest' }, // 70x86 = 0.02MB(旗手の旗・社長支給のドット絵)
+    { name: 'mutant-astro', scaleMode: 'nearest' },    // 156x182 = 0.11MB(宇宙飛行群(変異)の立ち絵=浮遊シートの0コマ目を切り出し)
+  ],
+  /**
+   * 宇宙飛行群(変異)の浮遊(11コマ・1716x182=1.25MB)と投げ(13コマ・1898x182=1.38MB)。research/ASTRONAUT_HORDE.md。
+   * ステージ1・3・4・5の遠くを彷徨う個体で、姿が見えてからカットイン=遅延組。**所属は付けない=網だけで拾う**
+   * 姿が見えた時点で描画(`pixiScene.astroTexture`)が投げのシートと投げる物の絵も引く=最初の投げで絵が欠けない。
+   * 外れても立ち絵(投げる物は仮の図形)へ落ちる。
+   */
+  astro: [
+    { name: 'mutant-astro-hover', scaleMode: 'nearest' },
+    { name: 'mutant-astro-throw', scaleMode: 'nearest' },
+    // 投げる物(社長支給2026-10-29・66×66×12=左からミサイル/花束/国旗/隕石/残骸8種)。届くまでは仮の図形で描く。
+    { name: 'fx/astro-throws', scaleMode: 'nearest' },
   ],
   /**
    * ★ボス級の**アニメーションシート**(社長指示2026-09-24「乗せて」)。**所属は付けない=網だけで拾う**

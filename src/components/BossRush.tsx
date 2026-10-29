@@ -39,6 +39,7 @@ const categoryOf = (slot: PracticeSlot): PracticeCategory =>
     : slot.bossType === 'mutant-hero' ? 'neutral'
     // research/LIBERTY_HORDE.md §9: 解放軍群(変異)は本編の野に居るボス級=「ステージボス」の棚(明示)。
     : slot.bossType === 'mutant-liberty' ? 'story'
+    : slot.bossType === 'mutant-astro' ? 'story' // research/ASTRONAUT_HORDE.md §7(解放軍群と同じ棚)
     : 'story');
 
 const bossName = (slot: PracticeSlot): string => slot.label ?? enemyDeathLabel(slot.bossType);

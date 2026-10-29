@@ -210,6 +210,8 @@ import {
   tickPlayerFlamerBurn,
 } from '../utils/phantomTick';
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
+import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
+import { astroSpawnPick } from '../utils/astroScript';
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
 import { loadHeroAscended } from '../utils/heroAscended';
@@ -1421,15 +1423,17 @@ const FORCE_HERO = evParam('heronow') === '1';
  * research/MUTANT_HERO.md §2-0(社長裁定 #6「対策室でもゾンビを湧かせる」): 英雄の演習だけ**雑魚の湧き**(通常の湧き・盤面の維持)を開ける。
  * 城ボス・イベント・紅き夜・ハンター・死神などは練習ランのまま止める(noSpawn は従来どおり)=雑魚だけ。
  */
-const HERO_PRACTICE_MOBS = !NOSPAWN && isPracticeRun() && (practiceForces('heronow') || practiceForces('libertynow')); // 解放軍群の枠も雑魚だけ開ける(LIBERTY_HORDE §9)
+const HERO_PRACTICE_MOBS = !NOSPAWN && isPracticeRun() && (practiceForces('heronow') || practiceForces('libertynow') || practiceForces('astronow')); // 解放軍群・宇宙飛行群の枠も雑魚だけ開ける(LIBERTY_HORDE §9)
 // research/LIBERTY_HORDE.md §9: 解放軍群のデバッグ出現 `?libertynow=1`(対策室の枠は practiceForces('libertynow') で相乗り)。
 const FORCE_LIBERTY = evParam('libertynow') === '1';
+// research/ASTRONAUT_HORDE.md §7: 宇宙飛行群のデバッグ出現 `?astronow=1`(対策室の枠は practiceForces('astronow'))。
+const FORCE_ASTRO = evParam('astronow') === '1';
 /**
  * research/MUTANT_HERO.md §2-1(社長指示2026-10-04): 本編の英雄=ステージ1・3・4・5でデンジャーゾーンの真ん中の輪を周回。
  * ボス戦テスト・ボスメーカー・湧き止め(nospawn)の読込では出さない(テストの相手が増えないように)。
  */
 const HERO_PATROL_BLOCKED = NOSPAWN
-  || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bountynow', 'phantomnow', 'phillnow', 'heronow', 'libertynow', 'bossmaker', 'vs'].some(k => evParam(k) !== null);
+  || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bountynow', 'phantomnow', 'phillnow', 'heronow', 'libertynow', 'astronow', 'bossmaker', 'vs'].some(k => evParam(k) !== null);
 // BOSS_MAKER.md §21(1対1の間合い): `?vs=<相手>` で、選んだ相手だけを1体出す開発用の枠。
 // 他の強制出現フラグと同じくモジュールロード時に1回だけ読む(切替は再読込)。
 const VS_ENTRY = vsEntryOfRun();
@@ -1474,6 +1478,7 @@ let crawlerCtrlErrLogged = false;                    // ステージ2の這う�
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
 let phantomCtrlErrLogged = false;                    // 守護霊ボス「幻影」制御例外のログも初回だけ(本体はphantomTick.ts)
+let astroCtrlErrLogged = false;                      // 宇宙飛行群(変異)制御例外のログも初回だけ(本体はastroTick.ts)
 let libertyCtrlErrLogged = false;                    // 解放軍群(変異)制御例外のログも初回だけ(本体はlibertyTick.ts)
 let heroCtrlErrLogged = false;                       // 英雄(変異)制御例外のログも初回だけ(本体はheroTick.ts)
 let loopErrLogged = false;                           // ループ本体例外のログも初回だけ
@@ -2024,6 +2029,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const libertyForceRef = useRef(false);
   const libertyStateRef = useRef(createLibertyTickState());
   const libertyCutinIdRef = useRef<string | null>(null);
+  const astroForceRef = useRef(false);
+  const astroStateRef = useRef(createAstroTickState());
+  const astroCutinIdRef = useRef<string | null>(null);
   // §6.38 B2a: 賞金首のラン内状態(照準速度/懲罰タイマ/コンボ進行/取り巻き召喚済みか)。
   // idolStateRefと同じ流儀(idolTick.tsを手本・bountyTick.ts参照)。同時1体なので単一refでよい。
   const bountyStateRef = useRef(createBountyTickState());
@@ -3461,6 +3469,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
           heroForceRef.current = false; heroStateRef.current = createHeroTickState(); heroCutinIdRef.current = null; setHeroGallop(0); // 英雄(research/MUTANT_HERO.md)
           libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); resetOrphanLibertyArrows(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
+          astroForceRef.current = false; astroStateRef.current = createAstroTickState(); astroCutinIdRef.current = null; // 宇宙飛行群(research/ASTRONAUT_HORDE.md)
           // ★SAME_ARENA O-5: 幻影の人格も新ランで捨てる。持ち越すと**前のランの他人**の癖・名前で
           // 戦うことになる(v0.25.3838のボスリラックス跨ぎと同型の"ラン跨ぎの漏れ")。
           clearPhantomIdentity();
@@ -8995,6 +9004,48 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               libertyCutinIdRef.current = null;
             }
           }
+          // research/ASTRONAUT_HORDE.md §2b/§8: 宇宙飛行群(変異)。本編=ステージ1・3・4・5で、POI のうちプレイヤーから3000以上離れた所の
+          // 着いた距離ぶん手前に置き、POI を無作為に巡る(astroTick)。確認用の枠(?astronow=1 / 対策室)=プレイヤーの上・画面の端のすぐ外に置き、
+          // そこを下端にした小さな輪を回る(解放軍群と同じ作り・§7)。
+          {
+            const forceAstro = FORCE_ASTRO || practiceForces('astronow');
+            const patrolAstro = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
+              && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+            if ((forceAstro || patrolAstro) && !astroForceRef.current && newGameTime >= 3000) {
+              astroForceRef.current = true;
+              const st0 = useGameStore.getState();
+              const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+              let cx: number, cy: number;
+              let ring: { cx: number; cy: number; r: number } | null = null;
+              let poiStart: { pois: ReturnType<typeof astroRunPois>; index: number } | null = null;
+              if (forceAstro) {
+                const z0 = Math.max(0.3, Math.min(1, st0.viewZoom || 1));
+                cx = pcx;
+                cy = pcy - (st0.gameBounds.height / 2 / z0 + 140);
+                ring = { cx, cy: cy - LIB_PRACTICE_PATROL_R, r: LIB_PRACTICE_PATROL_R };
+              } else {
+                const cands = astroRunPois();
+                const at = astroSpawnPick(cands, { x: pcx, y: pcy }, worldDist(3000), Math.random);
+                cx = at.x; cy = at.y;
+                poiStart = { pois: cands, index: at.index };
+              }
+              const aE = spawnEnemyAt('mutant-astro', cx - 55, cy - 30, newGameTime);
+              const aHp = Math.round(bountyMaxHealth(areaIndexForPos(cx, cy), newGameTime) * stageBossDiffMults().hp);
+              aE.health = aHp; aE.maxHealth = aHp;
+              aE.dormant = false;
+              aE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない(別カウント)
+              aE.heroFaceX = -1;
+              aE.astroHoverFrame = 0; aE.astroHoverAcc = 0; aE.astroHoverDir = 1;
+              if (ring) { aE.astroRingCx = ring.cx; aE.astroRingCy = ring.cy; aE.astroRingR = ring.r; }
+              useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.type !== 'mutant-astro') }));
+              addEnemy(aE);
+              // 置いた所の POI は「直前の行き先」にしておく=最初は別の POI へ向かう(設計 §2b)。
+              astroStateRef.current = poiStart
+                ? { ...createAstroTickState(), activeId: aE.id, stuckAt: newGameTime, pois: poiStart.pois, prevPoi: poiStart.index }
+                : createAstroTickState();
+              astroCutinIdRef.current = null;
+            }
+          }
           if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
             phantomForceRef.current = true;
             // ★research/SAME_ARENA.md O-5: 幻影の「中身」をここで1回だけ決める。
@@ -9362,6 +9413,35 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
          } catch (err) {
           if (!libertyCtrlErrLogged) { libertyCtrlErrLogged = true; console.error('[liberty] controller error (suppressed after first):', err); }
           reportSuppressedError('liberty', err);
+         }
+        }
+
+        // --- 宇宙飛行群(変異)(research/ASTRONAUT_HORDE.md)コントローラ ---
+        // ★動かすのはここだけ(gameStore.updateEnemies は素通りする)。投げた物の台帳は投げ手と別に毎フレーム進める。
+        if (!danceTest && !useGameStore.getState().gameWon) {
+         try {
+          const activeAstro = pickActiveAstro(useGameStore.getState().enemies);
+          if (activeAstro && !useGameStore.getState().bossMaker.paused) {
+            // 姿が画面に入った最初のフレームでカットイン(解放軍群と同じ・1体につき1回)。体力は出会った場所と時刻で決め直す(手付かずの時だけ)。
+            const aOnScreen = isPointInZoomedViewport(activeAstro.x + activeAstro.width / 2, activeAstro.y + activeAstro.height / 2,
+              useGameStore.getState().camera, useGameStore.getState().gameBounds, useGameStore.getState().viewZoom);
+            if (astroCutinIdRef.current !== activeAstro.id && aOnScreen && !useGameStore.getState().attention) {
+              astroCutinIdRef.current = activeAstro.id;
+              if (activeAstro.health >= activeAstro.maxHealth) {
+                const hp2 = Math.round(bountyMaxHealth(areaIndexForPos(activeAstro.x + activeAstro.width / 2, activeAstro.y + activeAstro.height / 2), newGameTime) * stageBossDiffMults().hp);
+                useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === activeAstro.id ? { ...e, health: hp2, maxHealth: hp2 } : e) }));
+              }
+              const aAc = bossArtCenter(activeAstro);
+              useGameStore.getState().triggerAttention(aAc.x, aAc.y, bossCutinPayload('mutant-astro'));
+              useGameStore.setState({ eventBannerText: 'ヘルメットの奥で、いくつもの声。宇宙飛行群(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+            }
+            if (!useGameStore.getState().attention) runAstroTick(activeAstro, astroStateRef.current, newGameTime, deltaTime, Date.now());
+          }
+          releaseAstroOwner(astroStateRef.current, newGameTime);
+          runAstroThrows(newGameTime);
+         } catch (err) {
+          if (!astroCtrlErrLogged) { astroCtrlErrLogged = true; console.error('[astro] controller error (suppressed after first):', err); }
+          reportSuppressedError('astro', err);
          }
         }
 
