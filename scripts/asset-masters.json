@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "934 files / 復号後 約707MB",
+ "generatedFor": "936 files / 復号後 約709MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2929,6 +2929,18 @@
    "h": 256,
    "bytes": 35084,
    "sha": "b95bbb3f93d44d9f"
+  },
+  "sprites/mutant-astro-hover.png": {
+   "w": 1716,
+   "h": 182,
+   "bytes": 204742,
+   "sha": "e93af9523f74d91c"
+  },
+  "sprites/mutant-astro-throw.png": {
+   "w": 1898,
+   "h": 182,
+   "bytes": 243482,
+   "sha": "705f85ee58cca56f"
   },
   "sprites/mutant-hero-fog.png": {
    "w": 912,

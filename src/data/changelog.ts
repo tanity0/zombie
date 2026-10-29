@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5247', items: [
+    'ゲーム内容の変更はありません。',
+  ] },
   { version: '0.25.5246', items: [
     'ドッグの犬が何匹も重なって走り回ることがあったのを直した。狙った拾い物を先に取られた犬は、戻ってから次へ向かう',
   ] },
