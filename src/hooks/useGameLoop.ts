@@ -9481,7 +9481,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               const aAc = bossArtCenter(activeAstro);
               useGameStore.getState().triggerAttention(aAc.x, aAc.y, bossCutinPayload('mutant-astro'));
-              useGameStore.setState({ eventBannerText: 'ヘルメットの奥で、いくつもの声。宇宙飛行群(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              useGameStore.setState({ eventBannerText: '宇宙飛行群(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
             if (!useGameStore.getState().attention) runAstroTick(activeAstro, astroStateRef.current, newGameTime, deltaTime, Date.now());
           }
@@ -9512,7 +9512,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (旧: 本編の周回の英雄は出会った時刻の強さで体力を決め直していた。社長指示2026-10-05で体力は固定=決め直さない。)
               const hAc = bossArtCenter(activeHero);
               useGameStore.getState().triggerAttention(hAc.x, hAc.y, bossCutinPayload('mutant-hero'));
-              useGameStore.setState({ eventBannerText: '蹄の音。英雄(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+              useGameStore.setState({ eventBannerText: '英雄(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
               HERO_SFX.neigh(npcSfxDistGain(hAc.x, hAc.y, player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
             }
             runHeroTick(activeHero, heroStateRef.current, newGameTime, deltaTime, Date.now(), HERO_SFX, isPracticeRun());

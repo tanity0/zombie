@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5256', items: [
+    '宇宙飛行群(変異)と英雄(変異)が現れた時の通信を、ほかの敵と同じ書き方に揃えた',
+  ] },
   { version: '0.25.5255', items: [
     '宇宙飛行群の近くには、ロケットの残骸が散らばっている。煙が上がっていたら、近くにいる',
   ] },
