@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5259', items: [
+    '塊弾は開発施設の店売りから外れ、宇宙飛行群(変異)を倒すと設計図が手に入る',
+  ] },
   { version: '0.25.5258', items: [
     '宇宙飛行群(変異)の周りに降る残骸は当たると痛い。近づいた途端、すぐそばに1枚目が落ちてくる',
     '投げてくる残骸は、赤い予告から着地までが短くなった',

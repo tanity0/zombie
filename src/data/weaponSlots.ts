@@ -75,6 +75,8 @@ export const BOSS_UNLOCK: Record<string, string> = {
   'giantbat@stage-7': 'glauncher-t3-signal', // グレン = 城ボス stage-7
   // UNIQUE_WEAPONS.md §17-10(#U16裁定・バッチC漏れの是正)。社長の割当表(§18-1)より。
   'miguel': 'rifle-t3-railgun', // ミゲル
+  // research/ASTRONAUT_HORDE.md ★未決 #7「報酬」(社長指示2026-10-29「このボスを倒すと塊銃(グラヴィティガン)の設計図」)。
+  'mutant-astro': 'glauncher-t2-blob', // 宇宙飛行群(変異)→塊弾(旧・店売りの仮置きから移した)
 };
 
 // ボス撃破→サブウェポンの「設計図」入手(UNIQUE_WEAPONS.md §19-6・監査A1の是正)。
@@ -96,6 +98,7 @@ export const SUB_BOSS_UNLOCK: Partial<Record<EnemyType, SubWeaponKey>> = {
 // 切替式SGもバッチBで店売りに加わった(BOSS_UNLOCKに割当が無い=社長の割当表§18-1に対応行なし)。
 // research/NEW_GUNS.md(第4版)の3挺: 設計書は「入手は既存の特殊銃と同じ(ドロップ・武器箱)」までで、解放元
 // (ボスの設計図か店売りか)の割当が無い。★仮に店売りへ置いた(入れ忘れると永久に入手不能になるため)。割当が決まったら移す。
-export const STORE_SOLD_KEYS: string[] = ['handgun-t1-crossbow', 'rifle-t1-bolt', 'shotgun-t1-cycle', 'glauncher-t2-blob', 'shotgun-t2-satellite', 'handgun-t2-scan'];
+// 塊弾は宇宙飛行群(変異)の設計図へ移した(社長指示2026-10-29)。
+export const STORE_SOLD_KEYS: string[] = ['handgun-t1-crossbow', 'rifle-t1-bolt', 'shotgun-t1-cycle', 'shotgun-t2-satellite', 'handgun-t2-scan'];
 /** research/NEW_GUNS.md の3挺。「全武器開発」の実績(FEAT_ALL_WEAPON_KEYS)の対象に入れない=既に達成した人が未達に戻らない(品質監査#15)。 */
 export const FEAT_EXCLUDED_WEAPON_KEYS: readonly string[] = ['glauncher-t2-blob', 'shotgun-t2-satellite', 'handgun-t2-scan'];
