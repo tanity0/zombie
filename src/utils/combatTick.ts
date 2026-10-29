@@ -362,12 +362,12 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     } else if (b.moveKey === 'astro-meteor') {
       // §4 隕石: 超広範囲(紫=弾けない)。白く焼けた閃光→紫の衝撃の輪が二重→土と岩の破片を縁まで撒く。
       fx.spawnFlash('rgba(236,226,255,0.42)', 420);
-      fx.spawnRing(b.x, b.y, 24, b.radius * 1.3, 'rgba(196,160,255,0.95)', 14, 820);
+      fx.spawnRing(b.x, b.y, 24, b.radius * 1.3, 'rgba(196,160,255,0.95)', 14, 820); // 紫の輪=弾けない一撃だったことの残響(判定の円と同じ色)
       fx.spawnRing(b.x, b.y, 16, b.radius * 0.95, 'rgba(255,214,170,0.9)', 10, 620);
       fx.spawnRing(b.x, b.y, 10, b.radius * 0.55, 'rgba(70,52,44,0.85)', 8, 700);
       for (let i = 0; i < 9; i++) { // 破片は角度も距離も量もばらす(等角に並べない)
         const a = (i / 9) * Math.PI * 2 + Math.random() * 0.6, r = b.radius * (0.25 + Math.random() * 0.7);
-        fx.spawnBurst(b.x + Math.cos(a) * r, b.y + Math.sin(a) * r, i % 3 === 0 ? '#c4b5fd' : '#7c6a58', 14 + Math.floor(Math.random() * 16));
+        fx.spawnBurst(b.x + Math.cos(a) * r, b.y + Math.sin(a) * r, Math.random() < 0.3 ? '#fdba74' : Math.random() < 0.5 ? '#7c6a58' : '#5a4636', 14 + Math.floor(Math.random() * 16));
       }
       fx.spawnBurst(b.x, b.y, '#fff7ed', 30);
       fx.spawnGlow(b.x, b.y, b.radius * 1.5, 'rgba(196,160,255,', 900);
@@ -384,9 +384,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       }
     } else if (b.moveKey === 'astro-debris') {
       // §4 残骸: 外板が地面を打つ火花と土煙(8回続くので全画面の明滅は出さない)。
-      fx.spawnBurst(b.x, b.y, '#e2e8f0', 12);
-      fx.spawnBurst(b.x, b.y, '#8a7a68', 10);
-      fx.spawnRing(b.x, b.y, 6, b.radius * 1.3, 'rgba(200,190,176,0.7)', 4, 360);
+      // 外板が勢いよく地面に刺さる: 土が上へ噴き、火花が散る(8回続くので全画面の明滅は出さない)。量は1枚ずつ揺らす。
+      fx.spawnBurst(b.x, b.y, '#8a7a68', 12 + Math.floor(Math.random() * 8));
+      fx.spawnBurst(b.x, b.y, '#fde68a', 6 + Math.floor(Math.random() * 6));
+      fx.spawnRing(b.x, b.y, 6, b.radius * (1.1 + Math.random() * 0.4), 'rgba(200,190,176,0.7)', 4, 320);
     } else if (b.moveKey === 'crawler-slam') {
       // ステージ2の這う塊の叩きつけ(world/labCrawler.ts)。爆発ではない=全画面の橙のフラッシュは出さない。
       // 手が地面を打った土煙(シートの砂埃と同じ明るいベージュ)と大きな輪、飛び散る破片(派手さの絵=判定より大きく外へ)。

@@ -1478,6 +1478,7 @@ let crawlerCtrlErrLogged = false;                    // ステージ2の這う�
 let angelCtrlErrLogged = false;                      // 天使(ゲート2ボス)制御例外のログも初回だけ(本体はangelBossTick.ts)
 let bountyCtrlErrLogged = false;                     // 賞金首(§6.38)制御例外のログも初回だけ(本体はbountyTick.ts)
 let phantomCtrlErrLogged = false;                    // 守護霊ボス「幻影」制御例外のログも初回だけ(本体はphantomTick.ts)
+let astroThrowsErrLogged = false;
 let astroCtrlErrLogged = false;                      // 宇宙飛行群(変異)制御例外のログも初回だけ(本体はastroTick.ts)
 let libertyCtrlErrLogged = false;                    // 解放軍群(変異)制御例外のログも初回だけ(本体はlibertyTick.ts)
 let heroCtrlErrLogged = false;                       // 英雄(変異)制御例外のログも初回だけ(本体はheroTick.ts)
@@ -9438,10 +9439,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (!useGameStore.getState().attention) runAstroTick(activeAstro, astroStateRef.current, newGameTime, deltaTime, Date.now());
           }
           releaseAstroOwner(astroStateRef.current, newGameTime);
-          runAstroThrows(newGameTime);
          } catch (err) {
           if (!astroCtrlErrLogged) { astroCtrlErrLogged = true; console.error('[astro] controller error (suppressed after first):', err); }
           reportSuppressedError('astro', err);
+         }
+         // 投げた物の台帳は投げ手の制御と別に回す(制御が例外で止まっても、飛んでいる物は予告どおり当たる・§8 A7)。
+         try {
+          runAstroThrows(newGameTime);
+         } catch (err) {
+          if (!astroThrowsErrLogged) { astroThrowsErrLogged = true; console.error('[astro] throws error (suppressed after first):', err); }
+          reportSuppressedError('astro-throws', err);
          }
         }
 

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   pickAstroThrow, astroThrowPlan, astroThrowArtFrame, astroHitOffsetMs, stepAstroHover, astroLiftPx, stepAstroVelocity, astroArriveSpeed,
   astroPoiCandidates, pickAstroPoi, astroSpawnPick, astroBandPull, astroMeteorShake,
-  ASTRO_RELEASE_MS, ASTRO_HOVER_FRAME_MS, ASTRO_DEBRIS_COUNT, ASTRO_FLAG_LENGTH, ASTRO_ARRIVE_PX,
+  ASTRO_RELEASE_MS, ASTRO_DEBRIS_COUNT, ASTRO_FLAG_LENGTH, ASTRO_ARRIVE_PX,
   ASTRO_LIFT_PX, ASTRO_BOB_PX, ASTRO_TURN_RAD_PER_S, ASTRO_ACCEL_S, ASTRO_DECEL_S, type AstroThrowKind, type AstroHoverAnim,
 } from './astroScript';
 
@@ -53,11 +53,6 @@ describe('宇宙飛行群: 投げる物の抽選', () => {
 });
 
 describe('宇宙飛行群: 浮遊のコマ(§3)', () => {
-  const run = (a: AstroHoverAnim, air: boolean, steps: number, collapse = false) => {
-    const seen: number[] = [];
-    for (let i = 0; i < steps; i++) { a = stepAstroHover(a, air, ASTRO_HOVER_FRAME_MS, collapse); seen.push(a.frame); }
-    return { a, seen };
-  };
   it('浮く時は0→10へ順に進み、移動中は8・9・10をピンポン(折り返しで一拍溜める)', () => {
     let a: AstroHoverAnim = { frame: 0, acc: 0, dir: 1 };
     const seq: number[] = [0];
@@ -70,10 +65,12 @@ describe('宇宙飛行群: 浮遊のコマ(§3)', () => {
     expect(seq.slice(1, 17)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 9, 10, 9, 8]);
     expect(held[10]).toBeGreaterThan(held[9] / 2); // 10は1回の滞在が9より長い(9は往復で2回通る)
   });
-  it('着地は今のコマから0まで逆にたどる', () => {
-    const { seen, a } = run({ frame: 9, acc: 0, dir: 1 }, false, 12);
-    expect(seen.slice(0, 9)).toEqual([8, 7, 6, 5, 4, 3, 2, 1, 0]);
-    expect(a.frame).toBe(0);
+  it('着地は今のコマから0まで逆にたどる(上でためて、地面が近いほど速い)', () => {
+    let a: AstroHoverAnim = { frame: 9, acc: 0, dir: 1 };
+    const seq: number[] = [9], at: number[] = [];
+    for (let t = 1; t <= 2000 && a.frame > 0; t++) { a = stepAstroHover(a, false, 1); if (seq[seq.length - 1] !== a.frame) { seq.push(a.frame); at.push(t); } }
+    expect(seq).toEqual([9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
+    expect(at[at.length - 1] - at[at.length - 2]).toBeLessThan(at[1] - at[0]);
   });
   it('崩れて落ちる時は通常より速く、地面に近いほど加速する(重力の向き)', () => {
     const timeTo0 = (collapse: boolean) => {

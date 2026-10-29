@@ -166,7 +166,7 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
         if (k === 'missile') playSfx('grenade-launcher-fire', 0.8 * g);
         else if (k === 'flag') playSfx('whip-swing', g, undefined, 1.2);
         else if (k === 'debris') playSfx('whip-swing', g, undefined, 0.62);
-        else if (k === 'meteor') { playSfx('whip-swing', 0.7 * g, undefined, 0.55); playSfx('boss-warning', 0.55 * g); }
+        else if (k === 'meteor') { playSfx('whip-swing', 0.7 * g, undefined, 0.55); playSfx('hurricane', 0.4 * g, undefined, 0.6); } // 空の向こうの唸り
         else playSfx('whip-swing', 0.45 * g, undefined, 1.45);
       }
     }
@@ -251,13 +251,21 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
     const fy = e.y + e.height;
     const pl = st.player;
     const g = npcSfxDistGain(bx, fy, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
-    if (g > 0.01) playSfx(collapse || held ? 'heavy-impact' : 'jump-land', (collapse || held ? 0.8 : 1) * g);
-    st.spawnRing(bx, fy, 14, 120, 'rgba(176,156,132,0.75)', 6, 520);
-    st.spawnBurst(bx - 30, fy, '#a8927a', 12, 0, -1);
-    st.spawnBurst(bx + 30, fy, '#a8927a', 12, 0, -1);
+    // この敵だけの着地音(ほかの敵のジャンプの着地と聞き分ける): 重い地響きを低く+金属の足が土を噛む音。
+    if (g > 0.01) {
+      playSfx('heavy-impact', (collapse || held ? 0.85 : 0.6) * g, undefined, collapse || held ? 0.7 : 0.82);
+      playSfx('anchor-plant', 0.5 * g, undefined, 0.72);
+    }
+    st.spawnRing(bx, fy, 14, 110 + Math.random() * 30, 'rgba(120,102,84,0.5)', 5, 520);
+    // 土煙は左右で量も位置も変える(噴射の向きの側=後ろへ多く巻き上がる)。
+    const back = (e.heroFaceX ?? -1) >= 0 ? -1 : 1;
+    st.spawnBurst(bx + back * (24 + Math.random() * 16), fy, '#a8927a', 14 + Math.floor(Math.random() * 6), 0, -1);
+    st.spawnBurst(bx - back * (18 + Math.random() * 14), fy, '#8f7b66', 6 + Math.floor(Math.random() * 5), 0, -1);
   } else if (anim0.frame === 2 && anim.frame === 3) {
-    st.spawnBurst(bx, e.y + e.height, '#c084fc', 14, 0, -1);
-    st.spawnRing(bx, e.y + e.height, 8, 70, 'rgba(192,132,252,0.6)', 4, 380);
+    // 浮き上がりの噴射: 絵の噴射に合わせた淡い藤色の白熱(攻撃の紫と取り違えない明るさ・監査2巡目#1)。
+    const back = (e.heroFaceX ?? -1) >= 0 ? -1 : 1;
+    st.spawnBurst(bx + back * 20, e.y + e.height, '#ede4ff', 10 + Math.floor(Math.random() * 6), 0, -1);
+    st.spawnRing(bx, e.y + e.height, 8, 60 + Math.random() * 20, 'rgba(237,228,255,0.5)', 3, 360);
   }
   if (anim.frame !== anim0.frame || anim.acc !== anim0.acc || anim.dir !== anim0.dir) {
     Object.assign(patch, { astroHoverFrame: anim.frame, astroHoverAcc: anim.acc, astroHoverDir: anim.dir });
@@ -407,7 +415,11 @@ export const runAstroThrows = (gt: number): void => {
     lastMeteorShakeAt = gt;
     useGameStore.getState().triggerShake(320, Math.round(2 + 12 * shake));
     // 地鳴り: 揺れに合わせて低い唸りを強めていく(設計 §5・品質監査 C3)。
-    if (gt - lastMeteorRumbleAt >= 600) { lastMeteorRumbleAt = gt; playSfx('heavy-impact', 0.12 + 0.5 * shake, undefined, 0.45); }
+    // 間隔は着弾へ向けて詰め、毎回少し揺らす(メトロノームにしない)。
+    if (gt - lastMeteorRumbleAt >= (700 - 450 * shake) * (0.8 + Math.random() * 0.4)) {
+      lastMeteorRumbleAt = gt;
+      playSfx('heavy-impact', 0.12 + 0.5 * shake, undefined, 0.4 + Math.random() * 0.12);
+    }
   }
   if (changed) useGameStore.setState(s2 => ({ astroThrows: out, pumpkinBlasts: blasts.length > 0 ? [...s2.pumpkinBlasts, ...blasts] : s2.pumpkinBlasts }));
 };

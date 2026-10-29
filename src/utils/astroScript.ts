@@ -87,7 +87,7 @@ export const ASTRO_THROW_ART_FRAMES = 12;
 export const astroThrowArtFrame = (kind: AstroThrowKind, variant = 0): number =>
   kind === 'missile' ? 0 : kind === 'bouquet' ? 1 : kind === 'flag' ? 2 : kind === 'meteor' ? 3
     : 4 + (((variant % ASTRO_DEBRIS_VARIANTS) + ASTRO_DEBRIS_VARIANTS) % ASTRO_DEBRIS_VARIANTS);
-export const ASTRO_DEBRIS_LIE_MS = 1800;
+export const ASTRO_DEBRIS_LIE_MS = 2600; // 刺さった外板が残る時間(絵だけ)
 
 export const ASTRO_METEOR_FALL_MS = 4000;
 export const ASTRO_METEOR_RADIUS = 380;
@@ -216,7 +216,7 @@ export interface AstroHoverAnim { frame: number; acc: number; dir: 1 | -1 }
 
 /**
  * 浮遊のコマを進める。wantAir=浮きたい(0→10→8〜10ピンポン)/ 降りたい(今のコマから0まで逆に)。
- * collapse=崩し・気絶で落ちる(逆再生を倍速で始め、地面に近づくほどゆっくり=減速つき・§8 B3)。
+ * collapse=崩し・気絶で落ちる(推力が抜けて、地面に近いほど速く落ちる=重力の加速・§10)。普通の着地も上でためて最後を速める。
  */
 export const stepAstroHover = (a: AstroHoverAnim, wantAir: boolean, dtMs: number, collapse = false): AstroHoverAnim => {
   let { frame, acc, dir } = a;
@@ -227,6 +227,8 @@ export const stepAstroHover = (a: AstroHoverAnim, wantAir: boolean, dtMs: number
     const per = !wantAir && collapse
       ? ASTRO_HOVER_FRAME_MS * (0.4 + 0.6 * (frame / ASTRO_HOVER_TOP))
       : wantAir && (frame === ASTRO_HOVER_TOP || (frame === ASTRO_HOVER_LOOP_LO && dir === -1)) ? ASTRO_HOVER_FRAME_MS * 1.6
+      // 降りる時は浮き上がりの巻き戻しにしない: 上で推力を絞って一瞬ため、地面が近づくほど速く落ちてドスンで止まる(監査2巡目#6)。
+      : !wantAir ? ASTRO_HOVER_FRAME_MS * (0.55 + 0.75 * (frame / ASTRO_HOVER_TOP))
       : ASTRO_HOVER_FRAME_MS;
     if (acc < per) break;
     acc -= per;
