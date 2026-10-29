@@ -283,7 +283,7 @@ const CATALOG: Record<string, WeaponDef> = {
   // utils/newGunsTick.ts が撃ち・動かし・当てる。
   // damage は**カウンターの元値**=グレネードガンT2の damage(品質監査#13)。塊の1回のダメージは blobShot.BLOB_TICK_DAMAGE。
   // rangeOverride=塊が消え始めるまでに進める道のり(約404px・ズーム補正しない=品質監査#3)。
-  [BLOB_WEAPON_KEY]: { key: BLOB_WEAPON_KEY, name: '塊弾', type: 'rifle', category: 'glauncher', tier: 2, damage: 0 /* 下で glauncher-t2 から引く */, cooldown: BLOB_COOLDOWN_MS, count: 1, magSize: BLOB_MAG_SIZE, reloadMs: BLOB_RELOAD_MS_RAW, rangeOverride: blobReachPx, nonProjectile: true },
+  [BLOB_WEAPON_KEY]: { key: BLOB_WEAPON_KEY, name: 'グラヴィティガン', type: 'rifle', category: 'glauncher', tier: 2, damage: 0 /* 下で glauncher-t2 から引く */, cooldown: BLOB_COOLDOWN_MS, count: 1, magSize: BLOB_MAG_SIZE, reloadMs: BLOB_RELOAD_MS_RAW, rangeOverride: blobReachPx, nonProjectile: true },
   'glauncher-t2-alchemy': { key: 'glauncher-t2-alchemy', name: '錬金砲', type: 'rifle', category: 'glauncher', tier: 2, damage: 30, cooldown: 700, projectileSpeed: 440, projectileSize: 15, count: 1, magSize: 4, reloadMs: 1900, passthrough: true },
 
   // UNIQUE_WEAPONS.md §16-2/§16-3b/§16-5(バッチD)。シグナルランチャー(T3): 手動専用

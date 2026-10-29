@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5260', items: [
+    '塊弾の名前がグラヴィティガンに変わった',
+  ] },
   { version: '0.25.5259', items: [
     '塊弾は開発施設の店売りから外れ、宇宙飛行群(変異)を倒すと設計図が手に入る',
   ] },

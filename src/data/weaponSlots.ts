@@ -76,7 +76,7 @@ export const BOSS_UNLOCK: Record<string, string> = {
   // UNIQUE_WEAPONS.md §17-10(#U16裁定・バッチC漏れの是正)。社長の割当表(§18-1)より。
   'miguel': 'rifle-t3-railgun', // ミゲル
   // research/ASTRONAUT_HORDE.md ★未決 #7「報酬」(社長指示2026-10-29「このボスを倒すと塊銃(グラヴィティガン)の設計図」)。
-  'mutant-astro': 'glauncher-t2-blob', // 宇宙飛行群(変異)→塊弾(旧・店売りの仮置きから移した)
+  'mutant-astro': 'glauncher-t2-blob', // 宇宙飛行群(変異)→グラヴィティガン(旧名=塊弾・社長命名2026-10-29。旧・店売りの仮置きから移した)
 };
 
 // ボス撃破→サブウェポンの「設計図」入手(UNIQUE_WEAPONS.md §19-6・監査A1の是正)。
