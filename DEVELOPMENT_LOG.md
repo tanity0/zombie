@@ -1,5 +1,8 @@
 # Development Log
 
+## v0.25.5265 — 亡霊(変異体): 浮遊シートの差し替え【2026-10-29 21:03 JST】
+- 社長支給2026-10-29「ごめん亡霊差し替え」: `public/sprites/mutant-wraith-float.png` を 1536×152・16コマ×96px に差し替え、立ち絵 `mutant-wraith.png`(96×152)を切り直した(寸法は大きくなる向き=原盤の縮みなし・`assets:ledger`/`assets:check` 緑)。設計書 §1 の寸法を更新。
+
 ## v0.25.5264 — 亡霊(変異体): 素材の受領と設計書【2026-10-29 21:00 JST】
 - 社長支給2026-10-29「新敵 亡霊(変異体)」の浮遊シート(1088×108・16コマ×68px・下端揃え=実測)を原盤 `public/sprites/mutant-wraith-float.png` に保存し、0コマ目を立ち絵 `mutant-wraith.png` に切り出した(`assets:ledger` 更新・`assets:check` 緑)。まだゲームからは読まない。
 - 設計書 `research/WRAITH_MUTANT.md`(社長の言葉+確認の回答=ボス級・攻撃は後で・宇宙飛行群と同じ枠・報酬は銃の設計図)。着手前の品質監査に出している。
