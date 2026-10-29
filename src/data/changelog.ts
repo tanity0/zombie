@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5263', items: [
+    'オープニングが始まるまでの読み込みが短くなった',
+  ] },
   { version: '0.25.5262', items: [
     '宇宙飛行群(変異)は飛び回るだけでなく、ときどき地面に降りて一息つく',
   ] },

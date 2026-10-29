@@ -32,11 +32,12 @@ import OpeningGlitch from './OpeningGlitch';
 // 【重要】ズームは CSS keyframe(コンポジタ駆動)。rAF毎フレームsetStateは残像不具合+React再描画禁止で不可。
 // フェーズ/コマ進行は少数のsetTimeoutのみ(毎フレーム更新なし)。
 
+import { OPENING_HERO, OPENING_WALK_BG, OPENING_WALK_BG_BLUR, OPENING_WALK_FRAMES, OPENING_NPC_FRAMES, OPENING_WALK_ASSETS } from '../data/openingWalkAssets';
 const BASE = import.meta.env.BASE_URL;
 const A = (f: string) => `${BASE}opening/${f}`;
 // hero-blue: v0.25.2100で色ありドット絵素材に同名差し替え→旧素材のキャッシュ対策で一回きりのバスター付き
 // (再差し替え時はこの値を上げる。全openingアセットに毎版バスターを付けると版ごとに全再取得になるため個別対応)。
-const HERO = A('hero-blue.png?v=2101'), TWIN = A('sil-twin.png'), BOB = A('sil-bob.png');
+const HERO = OPENING_HERO, TWIN = A('sil-twin.png'), BOB = A('sil-bob.png');
 const SHOOTER = (n: number) => A(`shoot/shooter-${n}.png`);
 // victim: v0.25.2102でドット絵5コマ(社長支給シート232×264等分)に同名差し替え→一回きりのバスター付き。
 const VICTIM = (n: number) => A(`shoot/victim-${n}.png?v=2102`);
@@ -44,8 +45,8 @@ const BLOOD = (n: number) => A(`shoot/blood-${n}.png`);
 // ── 楽屋通路の歩きシーン(アリーナ前・社長指示v0.25.2114) ──
 // 左端からキャラがフェードインし、右へ歩く(プレイヤー操作=画面を押している間だけ歩く)。横スクロールのみ。
 // 右端に到達するとアリーナ(既存のOPタイムライン)が始まる=以降のタイマーは全て「歩き完了」起点。
-const WALK_BG = A('walk-stage-bg.png');
-const WALK_FRAMES = Array.from({ length: 4 }, (_, n) => A(`walk/hero-walk-${n}.png`)); // 4コマ歩きサイクル(社長支給・抜き済みシートを帯分割・v0.25.2115で正素材へ差し替え)
+const WALK_BG = OPENING_WALK_BG;
+const WALK_FRAMES = OPENING_WALK_FRAMES; // 4コマ歩きサイクル(社長支給・抜き済みシートを帯分割・v0.25.2115で正素材へ差し替え)
 const WALK_BG_AR = 1891 / 831;  // 舞台素材のアスペクト(幅/高さ)
 const WALK_SPEED = 100;         // 歩行速度(bg表示px/s)。200→120(v0.25.2116)→100(v0.25.2137「もう少し遅く」)
 const WALK_ANIM_MS = 150;       // 歩きコマ間隔(4コマ=1周0.6s・叩き台)
@@ -77,7 +78,7 @@ const WALK_LINE_MS = 3600;
 // (112×202・下端=足元)で分割。wait=stop行トリガー地点の少し先に素のまま(左向き)で立つ →
 // talk=会話中(プレイヤーは移動ロック) → leave=会話が終わると右へ(scaleX(-1)で反転)歩き出し
 // フェードアウトして消える(社長指示)。
-const NPC_FRAMES = Array.from({ length: 8 }, (_, n) => A(`walk/npc-walk-${n}.png`));
+const NPC_FRAMES = OPENING_NPC_FRAMES;
 const NPC_IDLE = NPC_FRAMES[2];  // 待機ポーズ=脚が閉じた通過コマ(専用idle素材は無いので流用)
 const WALK_NPC_HR = 0.15;        // 表示高(bg高さ比。主役0.16よりわずかに小さめ)
 const NPC_AHEAD = 70;            // stop行トリガー地点→NPC立ち位置の距離(bg表示px・右端にはクランプ)
@@ -89,7 +90,7 @@ const WALK_STAGE_Y_OFFSET = -40; // ステージ全体の縦オフセット(px)�
 // 被写界深度(v0.25.2116「プレイヤーの直ぐ裏からぼかし」): 事前ブラー版bg(walk-stage-bg-blur.png・
 // blur9px焼き込み)を縦グラデマスクで重ねる=壁(奥)はボケ、彼女と歩いている床だけシャープ。
 // アリーナDOFと同じ「ランタイムぼかしゼロ」方式(モバイルのfilter/backdrop-filterの罠を回避)。
-const WALK_BG_BLUR = A('walk-stage-bg-blur.png');
+const WALK_BG_BLUR = OPENING_WALK_BG_BLUR;
 // ── 夢の演出(v0.25.2144・社長指示「夢の世界なのでパーティクルふわふわ+ライトは全てグロー」) ──
 // 浮遊パーティクル: 画面全体を漂う光の粒(CSSアニメのみ・毎フレームJSなし=負荷1/10)。
 const WALK_MOTES = Array.from({ length: 26 }, (_, i) => ({
@@ -597,7 +598,7 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       im.src = src;
       return trackLoad(im.decode().catch(() => {}).then(() => { onOne?.(); }));
     });
-    const walkAssets = startAtShoot ? [] : [WALK_BG, WALK_BG_BLUR, ...WALK_FRAMES, ...NPC_FRAMES, HERO]; // HERO=停止中の立ち絵(v0.25.2121)/NPC=待ち構えるスタッフ(v0.25.2131)
+    const walkAssets = startAtShoot ? [] : [...OPENING_WALK_ASSETS]; // HERO=停止中の立ち絵(v0.25.2121)/NPC=待ち構えるスタッフ(v0.25.2131)
     const mainAssets = [
       ...SHOTS.map(s => s.bg), ...SHOTS.map(s => s.bgBlur), HERO, TWIN, BOB, A('shoot-stage.png'),
       ...[1, 2, 3, 4, 5, 6].map(SHOOTER), ...[1, 2, 3, 4, 5].map(VICTIM), ...[1, 2, 3].map(BLOOD),
@@ -613,10 +614,15 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
       Promise.all(walkP).then(() => {}),
       new Promise<void>(res => { ids.push(window.setTimeout(res, 45000)); }),
     ]).then(() => { if (!cancelled) setReady(true); });
-    Promise.race([
-      Promise.all(dec(mainAssets)).then(() => {}),
-      new Promise<void>(res => { ids.push(window.setTimeout(res, 60000)); }),
-    ]).then(() => { if (!cancelled) setMainReady(true); });
+    // 本編素材は歩きシーンの素材が揃ってから読み始める(同時に始めると通信を取り合って「Loading...」が長引く・社長指示2026-10-29)。
+    // 歩いている間(数秒〜)に読み終わるので、アリーナの開始は遅れない(mainReady を待つ作りは今までどおり)。
+    Promise.all(walkP).then(() => {
+      if (cancelled) return;
+      Promise.race([
+        Promise.all(dec(mainAssets)).then(() => {}),
+        new Promise<void>(res => { ids.push(window.setTimeout(res, 60000)); }),
+      ]).then(() => { if (!cancelled) setMainReady(true); });
+    });
     return () => { cancelled = true; ids.forEach(id => window.clearTimeout(id)); stopAudio(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

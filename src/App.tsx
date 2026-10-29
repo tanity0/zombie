@@ -23,6 +23,7 @@ import { CharacterClass, GameState } from './types/game';
 import { useGameStore, BOSS_TEST_RUN } from './store/gameStore';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio, primeMenuBgm, preloadStageBgm, setAudioSuspended, clearSfxThrottle, attachAudioGestureRecovery, setOpeningBgmHold } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
+import { preloadOpeningWalk } from './data/openingWalkAssets';
 import { preloadClassPortraits, preloadClassWalkSprites } from './data/portraits';
 import { loadProgressBegin, loadProgressDone } from './utils/loadProgress';
 import {
@@ -251,7 +252,13 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
   };
 
   useEffect(() => {
-    void ensurePreload(); // タイトル表示と並行して素材DLを先行開始(体感待ち時間を短縮)
+    // タイトル表示と並行して素材DLを先行開始(体感待ち時間を短縮)。
+    // ただし先にオープニングの楽屋通路の素材(約2.7MB)だけを読み切ってから本体を始める
+    // (社長指示2026-10-29: 本体の大量の素材と取り合って、オープニングの「Loading...」が毎回出ていた)。
+    // 上限6秒で本体へ進む(回線が詰まっても本体を止めない)。START が先に押されたら waitForAssets が本体をすぐ始める。
+    if (bare) { void ensurePreload(); return; }
+    void preloadOpeningWalk(6000).then(() => ensurePreload());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // バックグラウンド化(タブ/アプリが裏に回る)でBGM(タイトル曲含む)とゲーム進行を一括で止め、
