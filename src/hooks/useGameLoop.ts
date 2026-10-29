@@ -214,7 +214,7 @@ import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ri
 import { stepHunterPatrol } from '../utils/hunterPatrolTick';
 import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, runAstroScatter, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
 import { runWraithTick, createWraithTickState, pickActiveWraith, releaseWraithOwner, runWraithGrowths } from '../utils/wraithTick'; // research/WRAITH_MUTANT.md
-import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES } from '../utils/wraithScript';
+import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES, pickRunMutantBoss, type RunMutantBoss } from '../utils/wraithScript';
 import { astroSpawnPick } from '../utils/astroScript';
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
@@ -2043,6 +2043,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const astroStateRef = useRef(createAstroTickState());
   const astroCutinIdRef = useRef<string | null>(null);
   const wraithForceRef = useRef(false); // research/WRAITH_MUTANT.md
+  // 本編で出る変異体のボス級(宇宙飛行群か亡霊のどちらか1体だけ・20%)。ランの最初に1回だけ引く(社長指示2026-10-29)。
+  const runMutantBossRef = useRef<RunMutantBoss | null>(null);
   const wraithStateRef = useRef(createWraithTickState());
   const wraithCutinIdRef = useRef<string | null>(null);
   // §6.38 B2a: 賞金首のラン内状態(照準速度/懲罰タイマ/コンボ進行/取り巻き召喚済みか)。
@@ -3485,6 +3487,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); resetOrphanLibertyArrows(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
           astroForceRef.current = false; astroStateRef.current = createAstroTickState(); astroCutinIdRef.current = null; // 宇宙飛行群(research/ASTRONAUT_HORDE.md)
           wraithForceRef.current = false; wraithStateRef.current = createWraithTickState(); wraithCutinIdRef.current = null; // 亡霊(research/WRAITH_MUTANT.md)
+          runMutantBossRef.current = null; // 次のランで引き直す
           // ★SAME_ARENA O-5: 幻影の人格も新ランで捨てる。持ち越すと**前のランの他人**の癖・名前で
           // 戦うことになる(v0.25.3838のボスリラックス跨ぎと同型の"ラン跨ぎの漏れ")。
           clearPhantomIdentity();
@@ -9066,8 +9069,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // そこを下端にした小さな輪を回る(解放軍群と同じ作り・§7)。
           {
             const forceAstro = FORCE_ASTRO || practiceForces('astronow');
-            const patrolAstro = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
+            const patrolAstroStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
               && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+            // 本編は20%でどちらか1体だけ(社長指示2026-10-29)。確認用の枠(force)はいつでも出す。
+            if (patrolAstroStage && runMutantBossRef.current === null) runMutantBossRef.current = pickRunMutantBoss(Math.random);
+            const patrolAstro = patrolAstroStage && runMutantBossRef.current === 'astro';
             if ((forceAstro || patrolAstro) && !astroForceRef.current && newGameTime >= 3000) {
               astroForceRef.current = true;
               const st0 = useGameStore.getState();
@@ -9107,8 +9113,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 置く POI は宇宙飛行群の居る所から離す(同じ所に2体のボス級を重ねない)。
           {
             const forceWraith = FORCE_WRAITH || practiceForces('wraithnow');
-            const patrolWraith = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
+            const patrolWraithStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
               && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+            if (patrolWraithStage && runMutantBossRef.current === null) runMutantBossRef.current = pickRunMutantBoss(Math.random);
+            const patrolWraith = patrolWraithStage && runMutantBossRef.current === 'wraith';
             if ((forceWraith || patrolWraith) && !wraithForceRef.current && newGameTime >= 3000) {
               wraithForceRef.current = true;
               const st0 = useGameStore.getState();

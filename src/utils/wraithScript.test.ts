@@ -133,3 +133,16 @@ describe('亡霊: 近づくと地面から生えてくる物(§9)', () => {
     expect(p).toHaveLength(0);
   });
 });
+
+import { pickRunMutantBoss, RUN_MUTANT_BOSS_CHANCE } from './wraithScript';
+describe('宇宙飛行群と亡霊の出現(1ランにどちらか1体だけ・20%)', () => {
+  it('2割のランでどちらか1体・残りは出ない。出る時は半々', () => {
+    let seed = 1;
+    const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const n = { astro: 0, wraith: 0, none: 0 };
+    for (let i = 0; i < 20000; i++) n[pickRunMutantBoss(rng)]++;
+    expect((n.astro + n.wraith) / 20000).toBeCloseTo(RUN_MUTANT_BOSS_CHANCE, 1);
+    expect(n.astro / (n.astro + n.wraith)).toBeGreaterThan(0.45);
+    expect(n.astro / (n.astro + n.wraith)).toBeLessThan(0.55);
+  });
+});

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5268', items: [
+    '宇宙飛行群(変異)と亡霊(変異体)は、いつも居るわけではない。出会えるのは時々、どちらか一方だけ',
+  ] },
   { version: '0.25.5267', items: [
     '新しい敵、亡霊(変異体)。ふわふわ漂い、見つけた相手の周りを回る',
     '撃つと、ふっと消えて向こう側に現れることがある。回る足が鈍ったら叫びの前触れ。紫の叫びは弾けない',

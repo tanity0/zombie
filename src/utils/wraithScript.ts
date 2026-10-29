@@ -227,3 +227,12 @@ export const wraithGrowthStep = (
 /** 伸び切った墓石の壁の四角(沈み始めた物は外す)。 */
 export const wraithGraveSolids = (pieces: readonly WraithGrowth[], gt: number): { x: number; y: number; width: number; height: number }[] =>
   pieces.filter(p => isWraithGrave(p.variant) && p.sinkAt === undefined && (gt - p.bornAt) / WRAITH_GROWTH_GROW_MS >= WRAITH_GROWTH_SOLID_AT).map(wraithGraveFoot);
+
+// ---- 出るかどうか(社長指示2026-10-29「宇宙飛行群と亡霊は必ず出現する訳ではない。それぞれどっちかのみ。20%の確率」) ----
+/** 1ランで本編に変異体のボス級(宇宙飛行群か亡霊)が出る確率。出る時はどちらか1体だけ(半々)。 */
+export const RUN_MUTANT_BOSS_CHANCE = 0.2;
+export type RunMutantBoss = 'astro' | 'wraith' | 'none';
+export const pickRunMutantBoss = (rng: () => number): RunMutantBoss => {
+  if (rng() >= RUN_MUTANT_BOSS_CHANCE) return 'none';
+  return rng() < 0.5 ? 'astro' : 'wraith';
+};
