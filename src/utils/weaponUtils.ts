@@ -847,14 +847,13 @@ export const WEAPON_ICON_KEYS: ReadonlySet<string> = new Set<string>([
   // ライフルのユニーク第2弾3種(社長支給素材2026-09-07)。
   // ★★これで**ユニーク武器21挺すべての絵が揃った**(ハンドガン6/ショットガン6/ライフル6/ランチャー3)。
   'rifle-t1-bolt', 'rifle-t2-icelance', 'rifle-t3-eyelaser',
+  // research/NEW_GUNS.md の新しい3挺(社長支給素材2026-10-30): グラヴィティガン・呪銃・スキャンセンサー。
+  BLOB_WEAPON_KEY, SATELLITE_WEAPON_KEY, SCAN_WEAPON_KEY,
 ]);
-// research/NEW_GUNS.md: 新しい3挺はまだ専用の絵が無い。近い銃の絵を仮で使う(素材が届いたらこの表から消して
-// WEAPON_ICON_KEYS へ足す)。HUD・拾い物・装備欄・取得トーストの全部がこの2関数を通るので、ここ1箇所で済む。
-const WEAPON_ICON_ALIAS: Readonly<Record<string, string>> = {
-  [BLOB_WEAPON_KEY]: 'glauncher-t2',
-  [SATELLITE_WEAPON_KEY]: 'shotgun-t2-coil',
-  [SCAN_WEAPON_KEY]: 'handgun-t2',
-};
+// 専用の絵がまだ無い銃に、近い銃の絵を仮で使う表(素材が届いたらこの表から消して WEAPON_ICON_KEYS へ足す)。
+// HUD・拾い物・装備欄・取得トーストの全部がこの2関数を通るので、ここ1箇所で済む。
+// research/NEW_GUNS.md の新しい3挺は 2026-10-30 に専用の絵が届いた=今は空。
+const WEAPON_ICON_ALIAS: Readonly<Record<string, string>> = {};
 const iconKeyOf = (key: string): string => WEAPON_ICON_ALIAS[key] ?? key;
 export const hasWeaponIcon = (key: string | undefined | null): boolean => !!key && WEAPON_ICON_KEYS.has(iconKeyOf(key));
 export const weaponIconName = (key: string): string => `weapons/${iconKeyOf(key)}`;

@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5292 — 新しい3挺の銃の絵(グラヴィティガン・呪銃・スキャンセンサー)【2026-10-31 00:23 JST】
+- 社長支給の1枚(270×66・3挺が横並び)を、透明な隙間で切り分けて `public/sprites/weapons/` へ: glauncher-t2-blob.png(81×58)/ shotgun-t2-satellite.png(83×64・離れた紫の火の粉1粒を含む)/ handgun-t2-scan.png(86×55)。
+- 登録は2か所(`pixiTextures` の読み込み一覧・`weaponUtils.WEAPON_ICON_KEYS`)。仮の代用の絵の表(`WEAPON_ICON_ALIAS`)は空に。素材の台帳を更新(assets:check OK)。
+- 確認(ヘッドレス・`?weapon=`): HUD の銃の欄に3挺それぞれの新しい絵が出る。地面に落ちた時の絵は未撮影(同じ呼び出し口・読み込み一覧に登録済み)。
+- 変更: public/sprites/weapons/(3枚) / src/pixi/pixiTextures.ts / src/utils/weaponUtils.ts / 素材の台帳 / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5291 — 亡霊の縄張り(逃げ切れない問題)【2026-10-30 19:24 JST】
 - 社長報告「幽霊は追いかけてくる範囲が狭い(移動が速いので逃げきれない問題)」→裁定「縄張りを作る」。設計=research/WRAITH_MUTANT.md §18。
 - 最初に見つけた所が中心・半径900px。プレイヤーが外へ出たら見失って中心へ戻る(戻る間は見ても追わない・撃たれたら縄張りの中でだけ振り向く)。落ち着いて20秒で縄張りを忘れる。純関数 `inWraithTerritory`(+テスト)。

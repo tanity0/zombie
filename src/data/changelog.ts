@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5292', items: [
+    'グラヴィティガン・呪銃・スキャンセンサーに専用の絵が付いた',
+  ] },
   { version: '0.25.5291', items: [
     '亡霊(変異体)には縄張りがある。見つかった場所から十分に離れれば、追うのを諦めて戻っていく',
   ] },

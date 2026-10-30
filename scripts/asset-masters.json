@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "944 files / 復号後 約712MB",
+ "generatedFor": "947 files / 復号後 約712MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -5282,6 +5282,12 @@
    "bytes": 6879,
    "sha": "258e06e0f17caa84"
   },
+  "sprites/weapons/glauncher-t2-blob.png": {
+   "w": 81,
+   "h": 58,
+   "bytes": 2013,
+   "sha": "4f8260875de66e8c"
+  },
   "sprites/weapons/glauncher-t2.png": {
    "w": 52,
    "h": 31,
@@ -5329,6 +5335,12 @@
    "h": 64,
    "bytes": 9409,
    "sha": "5e9667bff014de02"
+  },
+  "sprites/weapons/handgun-t2-scan.png": {
+   "w": 86,
+   "h": 55,
+   "bytes": 1675,
+   "sha": "9c10e405ca2c9002"
   },
   "sprites/weapons/handgun-t2.png": {
    "w": 49,
@@ -5455,6 +5467,12 @@
    "h": 54,
    "bytes": 7475,
    "sha": "26573600606ca806"
+  },
+  "sprites/weapons/shotgun-t2-satellite.png": {
+   "w": 83,
+   "h": 64,
+   "bytes": 2075,
+   "sha": "ad7a6061bbe64f83"
   },
   "sprites/weapons/shotgun-t2-suppress.png": {
    "w": 186,

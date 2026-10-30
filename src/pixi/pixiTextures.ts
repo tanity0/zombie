@@ -674,6 +674,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'weapons/rifle-t1-bolt', scaleMode: 'nearest' },
       { name: 'weapons/rifle-t2-icelance', scaleMode: 'nearest' },
       { name: 'weapons/rifle-t3-eyelaser', scaleMode: 'nearest' },
+      // research/NEW_GUNS.md の新しい3挺(社長支給素材2026-10-30)。グラヴィティガン・呪銃・スキャンセンサー。
+      { name: 'weapons/glauncher-t2-blob', scaleMode: 'nearest' },
+      { name: 'weapons/shotgun-t2-satellite', scaleMode: 'nearest' },
+      { name: 'weapons/handgun-t2-scan', scaleMode: 'nearest' },
       // 近接(ナイフ系)アイコン。銃と同じピックアップ/HUDアイコン(攻撃モーション用ではない)。
       { name: 'weapons/knife-t1', scaleMode: 'nearest' },
       { name: 'weapons/hatchet-t2', scaleMode: 'nearest' },
