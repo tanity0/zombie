@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5285', items: [
+    'iPhone・iPad で、亡霊(変異体)に近づいても曲が鳴りっぱなしだったのを直した。近づくと曲が消え、離れると戻る',
+  ] },
   { version: '0.25.5284', items: [
     '亡霊(変異体)は周りの敵が少ないと、叫ぶように口を開いてコウモリを三体呼び出し、続けて指差しでけしかけてくる。呼ばれる場所には先に灰色の靄が溜まる',
   ] },

@@ -3,6 +3,7 @@
 
 import { assetUrl, withAssetVersion } from '../config/assetUrl';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
+import { wraithBgmMuteNext, isVolumeLockedDevice } from './wraithBgmMute';
 
 const MUTED_KEY = 'zombie:audioMuted';
 const LEGACY_BGM_MUTED_KEY = 'zombie:bgmMuted';
@@ -702,7 +703,7 @@ const playBgmRobust = () => {
   const token = ++bgmPlayToken;
   const tryPlay = () => {
     if (!bgm || token !== bgmPlayToken || !bgmActive || muted) return;
-    bgm.muted = false; // 事前解錠(primeMenuBgm)はミュートのまま置くので、実再生の瞬間にここで初めて解除
+    bgm.muted = wraithIosBgmMuted; // 事前解錠(primeMenuBgm)はミュートのまま置くので、実再生の瞬間にここで初めて解除(亡霊戦で消している間は消したまま)
     const v = effectiveBgmVolume() * (danceBeatDuckActive ? DANCE_BGM_BEAT_DUCK : 1);
     if (bgmGain) bgmGain.gain.value = v;
     else bgm.volume = v;
@@ -2185,6 +2186,20 @@ let wraithLayerSources: AudioBufferSourceNode[] = [];
 let wraithLayerNextAt = 0;   // 次の音を鳴らし始める AudioContext の時刻
 let wraithLayerIdx = 0;
 let wraithWatchdog: number | null = null;
+/**
+ * iPhone/iPad は音声要素の音量の書き込みを無視する(BGM は素再生=element.volume)=近さに比例した下げが効かない
+ * (社長報告2026-10-30「対策室の亡霊、BGM ずっと鳴ってる。ボリュームも変わらず」)。その端末だけ、近づいたら曲を消し離れたら戻す
+ * (社長裁定2026-10-30「iPhoneは近づくと消す」)。`?iosbgm=1` で PC でもこの扱いにできる(確認用)。
+ */
+const VOLUME_LOCKED = typeof navigator !== 'undefined' && (
+  isVolumeLockedDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints ?? 0)
+  || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('iosbgm') === '1'));
+let wraithIosBgmMuted = false;
+const applyWraithIosMute = (on: boolean) => {
+  if (on === wraithIosBgmMuted) { if (bgm && on && !bgm.muted) bgm.muted = true; return; }
+  wraithIosBgmMuted = on;
+  if (bgm) bgm.muted = on;
+};
 /** 鳴っている部分(約 -40dB より大きい所)。後ろの残響の薄い尾は「鳴っている」に数えない=次の音を前倒しで重ねる基準。 */
 const wraithAudibleSpan = (buffer: AudioBuffer): { start: number; end: number } => {
   const ch = buffer.getChannelData(0);
@@ -2217,6 +2232,7 @@ export const resetWraithBattleAudio = (): void => {
   if (wraithWatchdog != null) { clearTimeout(wraithWatchdog); wraithWatchdog = null; }
   wraithMix = 0; wraithMixAt = 0;
   if (wraithBgmDuck !== 1) { wraithBgmDuck = 1; writeWraithBgmDuck(); }
+  applyWraithIosMute(false);
   stopWraithLayers(0.25);
 };
 /**
@@ -2224,7 +2240,7 @@ export const resetWraithBattleAudio = (): void => {
  * 新しい声を予約しない(鳴っている1本は鳴り切る)。pan=亡霊の左右(声を寄せる)。
  */
 /** 開発用: 亡霊の音の今の状態(ヘッドレスの確認用)。 */
-export const getWraithAudioDebug = () => ({ mix: wraithMix, duck: wraithBgmDuck, layers: wraithBattleOn, effective: effectiveBgmVolume(), bgmActive, muted, busy: performance.now() < bgmFadeBusyUntil, fadedOut: bossBgmFadeToken === bgmFadedOutToken, held: bgmSilenceHeld });
+export const getWraithAudioDebug = () => ({ mix: wraithMix, duck: wraithBgmDuck, layers: wraithBattleOn, effective: effectiveBgmVolume(), bgmActive, muted, busy: performance.now() < bgmFadeBusyUntil, fadedOut: bossBgmFadeToken === bgmFadedOutToken, held: bgmSilenceHeld, elVol: bgm ? +bgm.volume.toFixed(3) : null, elMuted: bgm ? bgm.muted : null, locked: VOLUME_LOCKED, routed: bgmRouted, paused: bgm ? bgm.paused : null });
 export const setWraithAudioMix = (mix: number, hold = false, pan = 0): void => {
   const nowP = performance.now();
   const dt = wraithMixAt === 0 ? 0 : Math.min(0.2, (nowP - wraithMixAt) / 1000);
@@ -2240,6 +2256,7 @@ export const setWraithAudioMix = (mix: number, hold = false, pan = 0): void => {
   // BGM は近さに比例して下がる(1 → 約1割)。
   const duck = 1 - (1 - WRAITH_BGM_DUCK) * wraithMix;
   if (Math.abs(duck - wraithBgmDuck) > 0.002 || (duck === 1 && wraithBgmDuck !== 1)) { wraithBgmDuck = duck; writeWraithBgmDuck(); }
+  if (VOLUME_LOCKED) applyWraithIosMute(wraithBgmMuteNext(wraithIosBgmMuted, wraithMix));
   // 素材は遠いうちに読む(長い素材=起動時には読まない)。
   if (sfxContext) for (const k of WRAITH_LAYER_KEYS) if (!sfxBuffers.has(k)) loadSfxBuffer(k);
   if (wraithMix < 0.005) { stopWraithLayers(0.6); return; }
