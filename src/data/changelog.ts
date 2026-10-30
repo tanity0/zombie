@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5287', items: [
+    '亡霊(変異体)の指差しで飛ばされる敵は、宙に吊り上げられ、木や建物をすり抜けて飛んでくる',
+  ] },
   { version: '0.25.5286', items: [
     'iPhone・iPad で、亡霊(変異体)に近づくと効果音まで全部消えてしまうことがあったのを直した',
   ] },

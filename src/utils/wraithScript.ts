@@ -459,6 +459,21 @@ export const wraithSummonSpots = (
   return ring(WRAITH_SUMMON_DISTS_PX[WRAITH_SUMMON_DISTS_PX.length - 1], a0);
 };
 
+/**
+ * 指差しで飛ばされる雑魚の浮き(描画の持ち上げ・px)。§16: 浮いたまま飛ぶ(社長指示2026-10-30)。
+ * 3つに分ける(クリエイティブ監査#4): ①始めの25%で吊り上げる(減速しながら最高点へ=掴まれて持ち上がる)
+ * ②80%まで高さを保って運ばれる(横の動きはこの間に済む) ③最後の20%で加速して落ちる(重力)。
+ */
+export const WRAITH_FLING_LIFT_PX = 46;
+export const wraithFlingLiftPx = (gt: number, startAt: number, endAt: number): number => {
+  const u = (gt - startAt) / Math.max(1, endAt - startAt);
+  if (u <= 0 || u >= 1) return 0;
+  if (u < 0.25) { const x = u / 0.25; return WRAITH_FLING_LIFT_PX * (1 - (1 - x) * (1 - x)); }
+  if (u < 0.8) return WRAITH_FLING_LIFT_PX;
+  const x = (u - 0.8) / 0.2;
+  return WRAITH_FLING_LIFT_PX * (1 - x * x);
+};
+
 /** プレイヤーの後ろ(向いている側の反対)の周回の楕円の上の点。向きが無ければ null。 */
 export const wraithBehindPoint = (cx: number, cy: number, faceX: number, faceY: number): { x: number; y: number } | null => {
   const l = Math.hypot(faceX, faceY);

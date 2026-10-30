@@ -15014,30 +15014,22 @@ export const useGameStore = create<GameState>((set, get) => ({
             return { ...enemy, escortToss: undefined, escortTossLandedAt: gameTime };
           }
           if (tz.free) {
-            // 亡霊の指差し(§11-1 A4): 前のフレームの位置から12px以下の歩みで進め、押し戻された所で着地する
-            // (線の上の位置を毎回押し出すだけだと、壁の中ほどを越えた所で向こう側へ抜ける)。
+            // 亡霊の指差し(research/WRAITH_MUTANT.md §16・社長指示2026-10-30「指さしで飛ばされる敵は浮いてる状態で飛ばして オブジェなどを貫通」):
+            // 浮いたまま飛ぶ=木・小物・建物・墓石を貫通する(壁で止めない)。行ける帯だけは通す(帯の外へ着地させない・CLAUDE.md「アクターを
+            // 新しく動かす時は clampRectToPlayableArea」)。着地した所が壁の中なら押し出す(埋まったまま動けなくしない)。
             const dd = gameTime >= tz.endAt ? ddl : escortTossSlideDist(gameTime, tz.startAt, tz.endAt, ddl);
             const wx = tz.fromX + (ddx / ddl) * dd, wy = tz.fromY + (ddy / ddl) * dd;
-            let cx = enemy.x, cy = enemy.y, hitWall = false;
-            const n = Math.max(1, Math.ceil(Math.hypot(wx - cx, wy - cy) / 12));
-            const stx = (wx - cx) / n, sty = (wy - cy) / n, stl = Math.hypot(stx, sty);
-            // 行ける帯も通す(帯の外へ着地させない・CLAUDE.md「アクターを新しく動かす時は clampRectToPlayableArea」・検収 A-1)。
             const flCtx: PlayableAreaCtx = {
               farBackdrop: state.farBackdrop, labTheme, corridorMode: state.corridorMode,
               m0AdvanceLimitX: state.m0AdvanceLimitX, corridorRunInActive: state.corridorRunInActive,
             };
-            for (let i = 0; i < n && stl > 0.01; i++) {
-              const r0 = resolveMove(cx + stx, cy + sty);
-              const r = clampRectToPlayableArea(r0.x, r0.y, enemy.width, enemy.height, flCtx, cx);
-              const gain = ((r.x - cx) * stx + (r.y - cy) * sty) / stl;
-              cx = r.x; cy = r.y;
-              if (gain < stl * 0.3) { hitWall = true; break; }
+            const r = clampRectToPlayableArea(wx, wy, enemy.width, enemy.height, flCtx, enemy.x);
+            if (gameTime >= tz.endAt) {
+              const land = resolveMove(r.x, r.y);
+              tossLandings.push({ x: land.x + enemy.width / 2, y: land.y + enemy.height, dirX: ddx / ddl, dirY: ddy / ddl });
+              return { ...enemy, x: land.x, y: land.y, vx: 0, vy: 0, escortToss: undefined, escortTossLandedAt: gameTime };
             }
-            if (hitWall || gameTime >= tz.endAt) {
-              tossLandings.push({ x: cx + enemy.width / 2, y: cy + enemy.height, dirX: ddx / ddl, dirY: ddy / ddl });
-              return { ...enemy, x: cx, y: cy, vx: 0, vy: 0, escortToss: undefined, escortTossLandedAt: gameTime };
-            }
-            return { ...enemy, x: cx, y: cy, vx: 0, vy: 0 };
+            return { ...enemy, x: r.x, y: r.y, vx: 0, vy: 0 };
           }
           if (gameTime >= tz.endAt) {
             const land = resolveMove(tz.toX, tz.toY);

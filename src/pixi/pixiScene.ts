@@ -219,7 +219,7 @@ import type { PersistentBeam } from '../utils/persistentBeam';
 import { EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, RAILGUN_WEAPON_KEY, CROSSBOW_WEAPON_KEY, ROCKET_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, isGrenadeGunKey } from '../utils/weaponUtils';
 import { FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, FLAMER_PULSE_MS, PHANTOM_FLAMER_WINDUP_MS, phantomFlamerPhase } from '../utils/flamerCone';
 import { NewGunsFx } from './newGunsFx';
-import { wraithScreamRisePx, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_FRAMES, WRAITH_GROWTH_SINK_MS, wraithWarpState, wraithLiftPx, wraithScreamFrame, wraithFloatFrame, wraithScreamBodyH, WRAITH_SCREAM_FRAMES, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_ALIGN_X, WRAITH_FLOAT_ALIGN_X, WRAITH_SCREAM_FRAME_W, WRAITH_FLOAT_FRAME_W, WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_RADIUS, WRAITH_POINT_FRAMES, WRAITH_POINT_FRAME_W, WRAITH_POINT_ALIGN_X, wraithPointFrame, WRAITH_CURSE_HOVER_PX, WRAITH_GRAVE_STONE_KEEP, wraithBattleActive } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
+import { wraithScreamRisePx, wraithGrowthRise, isWraithGrave, WRAITH_GROWTH_FRAMES, WRAITH_GROWTH_SINK_MS, wraithWarpState, wraithLiftPx, wraithScreamFrame, wraithFloatFrame, wraithScreamBodyH, WRAITH_SCREAM_FRAMES, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_ALIGN_X, WRAITH_FLOAT_ALIGN_X, WRAITH_SCREAM_FRAME_W, WRAITH_FLOAT_FRAME_W, WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_RADIUS, WRAITH_POINT_FRAMES, WRAITH_POINT_FRAME_W, WRAITH_POINT_ALIGN_X, wraithPointFrame, WRAITH_CURSE_HOVER_PX, WRAITH_GRAVE_STONE_KEEP, wraithBattleActive, wraithFlingLiftPx, WRAITH_FLING_LIFT_PX } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md // research/NEW_GUNS.md: 塊弾・衛星弾・スキャンセンサーの絵
 import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
@@ -22542,8 +22542,10 @@ export class PixiScene {
       const since = gameTime - last;
       if (since >= 0 && since < 380) wraithPush = ((e.heroFaceX ?? -1) >= 0 ? 1 : -1) * 6 * Math.sin(Math.PI * Math.pow(since / 380, 0.6));
     }
+    // 亡霊の指差しで飛ばされる雑魚は浮いたまま飛ぶ(§16・絵だけ持ち上げる=判定・影は地面のまま)。
+    const flingLift = e.escortToss?.free ? wraithFlingLiftPx(gameTime, e.escortToss.startAt, e.escortToss.endAt) : 0; // 影へ渡す値と同じ物差し(監査#7)
     view.sprite.position.set(Math.round(fb.footX + liftShake + sweepWindupTremor + wraithTremor + wraithPush),
-      Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx - heroLift));
+      Math.round(fb.footY - liftHop - aiHop - kbHop - motBob + eggSinkPx - heroLift - flingLift));
     view.sprite.rotation = motRot; // 足元アンカー(0.5,1)なので回転=足元支点の傾ぎ。毎フレーム代入=OFF時は0へ戻る
     view.sprite.alpha = artFade; // 抱卵型(旧ghost)は地上敵=半透明/浮遊を廃止(不透明＋接地影あり)
     // 宇宙飛行群: 倒れた瞬間の浮き・コマ・向きを死体へ引き継ぐ(宙から1フレームで地面へ落ちない・品質監査2巡目 A1)。
@@ -22693,7 +22695,7 @@ export class PixiScene {
       // ★検収差し戻し(中11)対応: 影の寸法は呼吸/被弾スカッシュ/crouch・jump(aiSqX/Y)を含まない
       // 「素のscale」(sc)を使う。持ち上げ系(liftHop/aiHop/kbHop/lungeOffY)は heightPx 相当として渡す。
       view.shadowScale = sc;
-      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY + (e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1)) : e.type === 'mutant-wraith' ? wraithLiftPx(gameTime, e.wraithPhase ?? 0) : 0);
+      view.shadowLiftPx = liftHop + aiHop + kbHop - lungeOffY + (e.escortToss?.free ? wraithFlingLiftPx(gameTime, e.escortToss.startAt, e.escortToss.endAt) : 0) + (e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1)) : e.type === 'mutant-wraith' ? wraithLiftPx(gameTime, e.wraithPhase ?? 0) : 0);
       // faceMul(③振り向き)は符号を持つ=ミラー。歩幅スカッシュ(motSqX/Y)は他の変形と同じ掛け算合成。
       // ★死体は**縦に潰れて横に広がりながら**消える(社長指示2026-08-25「突然パっと消えちゃうので、
       // すこし吹っ飛んで潰れて消えるようにして」)。判定には一切関与しない純粋な描画。
@@ -22968,6 +22970,8 @@ export class PixiScene {
     if (e.type === 'guardian-phantom') this.drawGuardianPhantom(view, e, gameTime, now, fb, cx, cy);
     // research/LIBERTY_HORDE.md §5(クリエイティブ監査 #4): 補充されたコウモリは**旗手の足元から這い上がる**
     // (下から持ち上がる ease-out+フェードイン=慣性MUST「パッと出ない」)。描くだけ・判定は store のまま。
+    // §16: 亡霊の指差しで浮いて飛ぶ間は、霊に掴まれて半ば透ける(木や建物を抜ける理由を絵で見せる・クリエイティブ監査#2)。浮きに合わせて慣性つきで薄く→戻る。
+    if (e.escortToss?.free) view.sprite.alpha *= 1 - 0.35 * (wraithFlingLiftPx(gameTime, e.escortToss.startAt, e.escortToss.endAt) / WRAITH_FLING_LIFT_PX);
     // research/WRAITH_MUTANT.md §15-1: 亡霊に呼ばれたコウモリも同じ這い上がり(置き場所の地面から・ずれた時刻で)。始まる前は見せない。
     if ((e.hordeRefill || e.wraithSummoned) && e.spawnedAt !== undefined) {
       const t = (gameTime - e.spawnedAt) / HORDE_REFILL_RISE_MS;
@@ -26104,7 +26108,8 @@ export class PixiScene {
         const TRAIL = [[0.3, 0.42, 520, 31], [0.58, 0.6, 700, 74], [0.82, 0.86, 900, 19]] as const;
         TRAIL.forEach(([mark, size, dur, seed], k) => {
           const L = this.latchFx(`${e.id}:tosstrail${k}`, !!tz && tt >= mark && tt < mark + 0.2, dur, now,
-            () => [fb.footX, fb.footY, Math.max(e.width, e.height) * DUST_SCALE * size]);
+            // 亡霊の指差しで浮いて飛ぶ時は、地面ではなく体の高さに置く=体から後ろへ流れる靄の尾(§16 クリエイティブ監査#3)。
+            () => [fb.footX, fb.footY - (tz?.free ? wraithFlingLiftPx(gameTime, tz.startAt, tz.endAt) * 0.8 : 0), Math.max(e.width, e.height) * DUST_SCALE * size]);
           if (L) this.drawDust(L.d[0], L.d[1], L.d[2], L.t, tossDustTint, this.dustAlpha(L.t), L.t0 + seed);
         });
       }
@@ -37176,7 +37181,8 @@ export class PixiScene {
         || (e.rootUntil !== undefined && gameTime < e.rootUntil),
       // ★押されている/浮かされている間は歩かない(Date.now 系)。
       pushedOrLifted: (e.knockbackUntil !== undefined && now < e.knockbackUntil)
-        || (e.liftUntil !== undefined && now < e.liftUntil),
+        || (e.liftUntil !== undefined && now < e.liftUntil)
+        || e.escortToss !== undefined, // 飛ばされている間は歩かない(宙で脚が回らない・§16 クリエイティブ監査#1)
     };
     const px = view.walkPrevX, py = view.walkPrevY;
     view.walkPrevX = e.x; view.walkPrevY = e.y;

@@ -293,3 +293,15 @@ describe('亡霊: 召喚の置き場所(§15-1)', () => {
     expect(pts.every(q => q.x > 250)).toBe(true);
   });
 });
+
+import { wraithFlingLiftPx, WRAITH_FLING_LIFT_PX } from './wraithScript';
+describe('亡霊: 指差しで飛ぶ雑魚の浮き(§16)', () => {
+  it('始まりと着地は地面・吊り上げて保ち、最後に落ちる(途中で跳ねない)', () => {
+    expect(wraithFlingLiftPx(0, 0, 420)).toBe(0);
+    expect(wraithFlingLiftPx(420, 0, 420)).toBe(0);
+    let max = 0, prev = 0, ups = 0, downs = 0;
+    for (let t = 0; t <= 420; t += 10) { const v = wraithFlingLiftPx(t, 0, 420); max = Math.max(max, v); if (v > prev + 1e-9) { if (downs) ups = 99; } else if (v < prev - 1e-9) downs++; prev = v; }
+    expect(max).toBeCloseTo(WRAITH_FLING_LIFT_PX, 0);
+    expect(ups).not.toBe(99); // 上がって→下がる、の1山
+  });
+});
