@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5282', items: [
+    '亡霊(変異体)の叫び声や技の音が、姿が見えているのに鳴らないことがあったのを直した',
+    '亡霊の近くで曲が勝手に戻ってしまうことがあったのを直した',
+  ] },
   { version: '0.25.5281', items: [
     '亡霊(変異体)の体力を少し減らした',
   ] },

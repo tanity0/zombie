@@ -57,6 +57,15 @@ export const createWraithTickState = (): WraithTickState => ({
 });
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
+/**
+ * 亡霊の音の大きさ。見えていれば必ず聞こえる(下限0.4)。npcSfxDistGain は等倍の画面の範囲で切るので、画面を引いている時や
+ * 画面の端を回っている時は、見えている亡霊の叫び・指差しの音が0になっていた(社長報告2026-10-30「叫びの時、SE流れてる?」)。
+ */
+const wraithSfxGain = (x: number, y: number, ppx: number, ppy: number): number => {
+  const st = useGameStore.getState();
+  const g = npcSfxDistGain(x, y, ppx, ppy, st.camera, st.gameBounds);
+  return isPointInZoomedViewport(x, y, st.camera, st.gameBounds, st.viewZoom) ? Math.max(g, 0.4) : g;
+};
 /** 確認用: `?wraithskill=fling|curse|scream` で、使える時はその技だけを選ぶ(§11)。 */
 const FORCE_SKILL: WraithSkill | null = (() => {
   const v = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('wraithskill');
@@ -171,7 +180,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
       const blast: PumpkinBlast = { x: bx, y: by, radius: WRAITH_SCREAM_RADIUS, damage: WRAITH_SCREAM_DAMAGE, enemyId: e.id, moveKey: 'wraith-scream', noParry: true };
       useGameStore.setState(s2 => ({ pumpkinBlasts: [...s2.pumpkinBlasts, blast] }));
       const pl = st.player;
-      const g = npcSfxDistGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
+      const g = wraithSfxGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2);
       // 叫び声はアイドルが倒れる時の声を少し高く(社長指示2026-10-29)。下に低い風を敷くのは今までどおり。
       if (g > 0.01) { playSfx('idol-death', 0.9 * g, undefined, 1.12); playSfx('hurricane', 0.35 * g, undefined, 0.5); }
       if (onScreen) st.triggerShake(700, 16); // カウンターできない範囲技=重く揺らす(クリエイティブ監査#11)
@@ -199,7 +208,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     const t = gt - (e.wraithPointAt as number);
     const pl = st.player;
     const pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;
-    const sg = npcSfxDistGain(bx, by, pcx, pcy, st.camera, st.gameBounds);
+    const sg = wraithSfxGain(bx, by, pcx, pcy);
     if (e.wraithPointLowerAt !== undefined) {
       if (gt - e.wraithPointLowerAt >= WRAITH_POINT_LOWER_MS) {
         patch.wraithPointAt = undefined; patch.wraithPointLowerAt = undefined; patch.wraithPointKind = undefined; pointing = false;
@@ -282,7 +291,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
         st.spawnRing(g.x, g.y - 6, 10, 46 * g.scale, 'rgba(120,104,88,0.6)', 5, 420);
         // 抜けた跡: 暗い土の穴がしばらく残る(ほとんど広がらず、ゆっくり薄れる・クリエイティブ監査#3)。
         st.spawnRing(g.x, g.y - 3, 15 * g.scale, 19 * g.scale, 'rgba(34,26,20,0.6)', 11, 3200);
-        const gg = npcSfxDistGain(g.x, g.y, pcx, pcy, st.camera, st.gameBounds);
+        const gg = wraithSfxGain(g.x, g.y, pcx, pcy);
         // 石が地面から抜ける低い音。1つ目から5つ目へ少しずつ高くなる(緊張を積む・クリエイティブ監査#17)。
         if (gg > 0.01) playSfx('anchor-plant', 0.55 * gg, undefined, 0.55 + 0.07 * (s.curseIdx - 1));
         }
@@ -296,7 +305,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
   if (s.flingLandAt !== null && gt >= s.flingLandAt) {
     s.flingLandAt = null;
     const pl = st.player;
-    const g = npcSfxDistGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
+    const g = wraithSfxGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2);
     if (g > 0.01) playSfx('heavy-impact', 0.6 * g, undefined, 0.8); // 雑魚が囲みに着いた重い音(1回だけ)
   }
 
@@ -305,7 +314,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     patch.wraithWarpOutAt = gt; patch.wraithPhased = true;
     s.lastWarpAt = gt; s.warpMoved = false;
     const pl = st.player;
-    const g = npcSfxDistGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
+    const g = wraithSfxGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2);
     if (g > 0.01) playSfx('hurricane', 0.35 * g, undefined, 0.7); // 低い風が抜ける音
     // 霧(派手さの絵): 消える所に大きく広がる灰の霧。現れる所には先に霧を溜める=背後へ回られたと分かる(クリエイティブ監査#2)。
     for (const [x, y] of [[bx, by - 40], [dst.x, dst.y - 40]] as const) {
@@ -371,14 +380,14 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
           // 合図(雑魚の足元の靄・次の墓石の印)は指している間に順に出す(上の指差しの処理)。
           s.flingMarked = 0; s.curseMarkFor = -1; s.curseMarkId = null; s.flingLandAt = null;
           // 指差し・呪いの始まりは塊(変異体)の登場の音(社長指示2026-10-29)=叫び・ワープ(風)と耳で分かれる。
-          const g0 = npcSfxDistGain(bx, by, pcx0, pcy0, st.camera, st.gameBounds);
+          const g0 = wraithSfxGain(bx, by, pcx0, pcy0);
           if (g0 > 0.01) playSfx('crawler-appear', 0.8 * g0);
         } else {
           if (s.pinchChain) s.pinchChain = false;
           patch.wraithScreamAt = gt; s.screamHit = false;
           // 溜めの始まり: 冷たい息を吸い込む音と、頭の高さへ縮んでいく靄(口の開きを見る前に「来る」が分かる・クリエイティブ監査#5/#6)。
           const pl = st.player;
-          const g = npcSfxDistGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
+          const g = wraithSfxGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2);
           if (g > 0.01) playSfx('hurricane', 0.3 * g, undefined, 0.45);
           st.spawnRing(bx, by - WRAITH_HEAD_Y_PX, 150, 14, 'rgba(196,186,214,0.5)', 10, WRAITH_SCREAM_WINDUP_MS);
         }

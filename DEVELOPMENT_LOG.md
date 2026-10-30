@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5282 — 亡霊の音の修正(叫びSE・BGMの戻り)【2026-10-30 12:55 JST】
+- 社長報告「叫びの時SE流れてる?対策室でBGMもなりっぱなし」への修正。原因は2つ:
+  1. `setWraithAudioMix` の見張り(呼ばれなくなったら戦闘音を解除)が **400ms** で、カットイン・ヒットストップ等でゲームループの該当ブロックが飛ばされる間に BGM の絞りが解けていた → **3000ms**。
+  2. 亡霊の SE は `npcSfxDistGain`(ズームしていない半画面の箱の外=0)で、**ズームが引いて見えている位置でも無音**になっていた → `wraithTick.wraithSfxGain`: ズーム後の可視域に居れば最低 0.4。
+- DEV 限定の確認窓口: `window.__sfxLog`(直近200件のSE)/ `getWraithAudioDebug()`。
+- 確認(ヘッドレス・対策室 `?practice=1&wraithnow=1`・消音解除): 近づくと mix≈0.66 / BGM 係数≈0.41 / 2層ループ on。叫び時に `idol-death` が鳴ることを `__sfxLog` で確認。
+- 自己点検: 憲法第4条・第5条に抵触しない(音の配線のみ)。
+- 変更: src/audio/audioManager.ts / src/utils/wraithTick.ts / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5281 — 亡霊の基礎HP 6666【2026-10-30 12:02 JST】
 - 社長指示2026-10-30「亡霊のHPは6666に変更」: `WRAITH_BASE_HP=6666`(`mutantFieldMaxHealth` に基礎を渡す)。出現時の2か所と対策室の表示。解放群・宇宙飛行群は10000のまま。WRAITH_MUTANT.md §14。
 - 確認: bossPractice・bountyTick のテスト・typecheck・lint。

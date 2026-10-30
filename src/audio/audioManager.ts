@@ -1741,6 +1741,11 @@ export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number, 
   }
 
   sfxLastPlayedAt.set(key, now);
+  if (import.meta.env.DEV && typeof window !== 'undefined') { // 開発用: 鳴らした SE の記録(ヘッドレスの確認用・本番には入らない)
+    const w = window as unknown as { __sfxLog?: { key: string; gain: number; at: number }[] };
+    (w.__sfxLog ??= []).push({ key, gain: +(gainMult).toFixed(3), at: Math.round(now) });
+    if (w.__sfxLog.length > 200) w.__sfxLog.shift();
+  }
   const source = context.createBufferSource();
   const gain = context.createGain();
   source.buffer = buffer;
@@ -2218,12 +2223,16 @@ export const resetWraithBattleAudio = (): void => {
  * 毎フレーム呼ぶ。mix=亡霊との近さ(0=遠い/居ない・1=すぐそば)。hold=ポーズ中(レベルアップ含む)は今の混ざり具合のまま保ち、
  * 新しい声を予約しない(鳴っている1本は鳴り切る)。pan=亡霊の左右(声を寄せる)。
  */
+/** 開発用: 亡霊の音の今の状態(ヘッドレスの確認用)。 */
+export const getWraithAudioDebug = () => ({ mix: wraithMix, duck: wraithBgmDuck, layers: wraithBattleOn, effective: effectiveBgmVolume(), bgmActive, muted, busy: performance.now() < bgmFadeBusyUntil, fadedOut: bossBgmFadeToken === bgmFadedOutToken, held: bgmSilenceHeld });
 export const setWraithAudioMix = (mix: number, hold = false, pan = 0): void => {
   const nowP = performance.now();
   const dt = wraithMixAt === 0 ? 0 : Math.min(0.2, (nowP - wraithMixAt) / 1000);
   wraithMixAt = nowP;
   if (wraithWatchdog != null) clearTimeout(wraithWatchdog);
-  wraithWatchdog = window.setTimeout(() => { wraithWatchdog = null; resetWraithBattleAudio(); }, 400);
+  // 呼ばれなくなったら(画面を離れた・アンマウント)戻す。カットインや一瞬の重い処理で毎フレームが途切れても戻さないよう長めに待つ
+  // (旧0.4秒=カットインのたびに BGM が一気に戻っていた・社長報告2026-10-30「BGMもなりっぱなし」)。
+  wraithWatchdog = window.setTimeout(() => { wraithWatchdog = null; resetWraithBattleAudio(); }, 3000);
   if (hold) { if (sfxContext && wraithBattleOn) wraithLayerNextAt = Math.max(wraithLayerNextAt, sfxContext.currentTime + 0.6); return; }
   const target = muted ? 0 : Math.max(0, Math.min(1, mix));
   wraithMix += (target - wraithMix) * (1 - Math.exp(-dt / WRAITH_MIX_TAU_S));
