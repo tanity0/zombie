@@ -24,7 +24,7 @@ import {
   ASTRO_STUCK_MS, ASTRO_STUCK_PX, ASTRO_HIT_ALERT_MS, ASTRO_LOSE_MS, ASTRO_RELEASE_MS, astroThrowEndMs,
   ASTRO_METEOR_COOLDOWN_MS, ASTRO_BOUQUET_HEAL_FRAC, ASTRO_DEBRIS_RADIUS, ASTRO_DEBRIS_DAMAGE,
   stepAstroHover, stepAstroPeriodicLand, type AstroPeriodicLand, astroCanMove, stepAstroVelocity, astroArriveSpeed, astroBandPull, astroPoiCandidates, pickAstroPoi,
-  nextAstroScriptThrow, astroDebrisCount, isAstroPinch, astroThrowPlan, astroLingerMs, astroMeteorShake, astroRainStep, type AstroRainState,
+  ASTRO_SCRIPT, astroScriptChainAfter, astroDebrisCount, isAstroPinch, astroThrowPlan, astroLingerMs, astroMeteorShake, astroRainStep, type AstroRainState,
   type AstroPoi, type AstroThrowKind, type AstroThrowEntry,
 } from './astroScript';
 
@@ -43,6 +43,8 @@ export interface AstroTickState {
   nextThrowAt: number | null;
   /** 投げるために降りている途中。 */
   wantThrow: boolean;
+  /** 台本の続き(旗を投げ終えたら、着地したまま破片の雨へ続ける)。null=次の着地は旗から。 */
+  chainNext: AstroThrowKind | null;
   lastKind: AstroThrowKind | null;
   meteorReadyAt: number;
   seq: number;
@@ -54,7 +56,7 @@ export interface AstroTickState {
 }
 export const createAstroTickState = (): AstroTickState => ({
   activeId: null, heading: 0, speed: 0, pois: [], poiIdx: null, prevPoi: null, resting: false, restUntil: null,
-  stuckAt: 0, stuckD: Infinity, lostSince: null, nextThrowAt: null, wantThrow: false, lastKind: null,
+  stuckAt: 0, stuckD: Infinity, lostSince: null, nextThrowAt: null, wantThrow: false, chainNext: null, lastKind: null,
   meteorReadyAt: 0, seq: 0, curThrowId: null, released: false, periodic: { nextAt: null, holdUntil: null },
 });
 
@@ -142,7 +144,7 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
     } else s.lostSince = null;
   }
   if (alerted !== wasAlerted) patch.libAlerted = alerted;
-  if (!alerted && wasAlerted) { s.wantThrow = false; s.nextThrowAt = null; s.stuckAt = gt; s.stuckD = Infinity; }
+  if (!alerted && wasAlerted) { s.wantThrow = false; s.chainNext = null; s.nextThrowAt = null; s.stuckAt = gt; s.stuckD = Infinity; }
   const vmax = alerted ? vmaxEngage : ASTRO_PATROL_SPEED;
 
   // ---- 投げの途中 ----
@@ -153,12 +155,17 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
       // 手を離す前に崩された=投げは消え、予告も消える。
       dropThrow(s.curThrowId, gt);
       Object.assign(patch, { astroThrowAt: undefined, astroThrowKind: undefined });
-      s.curThrowId = null; s.nextThrowAt = null;
+      s.curThrowId = null; s.nextThrowAt = null; s.chainNext = null; // 崩されたら台本は最初(旗)から
       throwing = false;
     } else if (t >= astroThrowEndMs(e.astroThrowKind)) { // 隕石は落ちて腕を下ろし切るまで
       Object.assign(patch, { astroThrowAt: undefined, astroThrowKind: undefined });
       s.curThrowId = null; s.nextThrowAt = null; // 浮き直しが終わってから次の間隔を数える
       throwing = false;
+      // 台本(社長指示2026-10-30「旗投げと破片の雨は単発では出さない。移動もはさまない。着地したら旗を投げて、立ったまま次の破片の雨に移る」):
+      // 旗を投げ終えたら浮かずに(着地したまま)すぐ破片の雨へ。破片の雨の後は浮いて動き、次の着地は旗から。
+      const nx = astroScriptChainAfter(e.astroThrowKind);
+      if (nx && !collapse && !held && alerted && onScreen) { s.chainNext = nx; s.wantThrow = true; }
+      else s.chainNext = null;
     } else if (t >= ASTRO_RELEASE_MS && !s.released) {
       s.released = true;
       const pl = st.player;
@@ -196,7 +203,7 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
   } else if (alerted) {
     if (s.nextThrowAt === null && !s.wantThrow && anim0.frame >= ASTRO_HOVER_LOOP_LO) s.nextThrowAt = gt + rand(ASTRO_THROW_GAP_MIN_MS, ASTRO_THROW_GAP_MAX_MS);
     if (!s.wantThrow && s.nextThrowAt !== null && gt >= s.nextThrowAt && onScreen && st.player.health > 0) s.wantThrow = true;
-    if (s.wantThrow && !onScreen) { s.wantThrow = false; s.nextThrowAt = gt + 800; } // 降りている間に画面の外へ出た=やり直し
+    if (s.wantThrow && !onScreen) { s.wantThrow = false; s.chainNext = null; s.nextThrowAt = gt + 800; } // 降りている間に画面の外へ出た=やり直し(台本も旗から)
     if (s.wantThrow) {
       landReq = true;
     } else if (!inInner(bx, by, 60)) {
@@ -313,8 +320,9 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
 
   // ---- 投げ始め(着地し切った=0コマ) ----
   if (s.wantThrow && !throwing && !collapse && !held && anim.frame === 0 && onScreen && alerted) {
-    // 台本(旗投げ → 破片の雨)。ピンチ(体力半分以下)は破片の雨が2倍(社長指示2026-10-30)。
-    const kind = nextAstroScriptThrow(s.lastKind);
+    // 台本(着地したら旗 → 立ったまま破片の雨)。ピンチ(体力半分以下)は破片の雨が2倍(社長指示2026-10-30)。
+    const kind = s.chainNext ?? ASTRO_SCRIPT[0];
+    s.chainNext = null;
     const id = `astro-${e.id}-${++s.seq}`;
     const entries = astroThrowPlan(kind, id, e.id, { x: bx, y: by }, { x: tgt.x, y: tgt.y }, gt, Math.random, astroDebrisCount(isAstroPinch(e.health, e.maxHealth)));
     if (kind === 'bouquet' && tgt.ghost) for (const en of entries) en.toGhost = true;

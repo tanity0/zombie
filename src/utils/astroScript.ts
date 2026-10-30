@@ -219,10 +219,16 @@ export const astroLingerMs = (kind: AstroThrowKind): number =>
     : ASTRO_MISSILE_SCORCH_MS;
 
 /**
- * ★台本(社長指示2026-10-30「宇宙飛行群、台本化 旗投げ→破片の雨 で」): 旗投げ → 破片の雨 をくり返す(旗から始める)。
+ * ★台本(社長指示2026-10-30「宇宙飛行群、台本化 旗投げ→破片の雨 で」「単発では出さない。移動もはさまない。着地したら旗を投げて、立ったまま次の破片の雨に移る」):
+ * 1回の着地で 旗投げ → 破片の雨 を続けて投げる(間に浮かない・動かない)。破片の雨の後に浮いて動き、次の着地はまた旗から。
  * ミサイル・隕石・花束は今は台本に入れていない(作りは残してある=台本に足せばそのまま出る)。
  */
 export const ASTRO_SCRIPT: readonly AstroThrowKind[] = ['flag', 'debris'];
+/** 1回の着地の中で、この物を投げ終えたら続けて投げる物(台本の次)。台本の最後の後は null=浮いて動く。 */
+export const astroScriptChainAfter = (kind: AstroThrowKind | undefined): AstroThrowKind | null => {
+  const i = kind === undefined ? -1 : ASTRO_SCRIPT.indexOf(kind);
+  return i >= 0 && i < ASTRO_SCRIPT.length - 1 ? ASTRO_SCRIPT[i + 1] : null;
+};
 export const nextAstroScriptThrow = (prev: AstroThrowKind | null): AstroThrowKind => {
   const i = prev === null ? -1 : ASTRO_SCRIPT.indexOf(prev);
   return ASTRO_SCRIPT[(i + 1) % ASTRO_SCRIPT.length];

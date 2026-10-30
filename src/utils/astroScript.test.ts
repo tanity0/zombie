@@ -296,8 +296,14 @@ describe('投げのコマ(社長指示2026-10-29: 旗は掲げてから投げる
   });
 });
 
-import { nextAstroScriptThrow, astroDebrisCount, isAstroPinch, astroThrowPlan as plan2, ASTRO_DEBRIS_COUNT as DC } from './astroScript';
+import { nextAstroScriptThrow, astroDebrisCount, isAstroPinch, astroThrowPlan as plan2, ASTRO_DEBRIS_COUNT as DC, astroScriptChainAfter, ASTRO_SCRIPT } from './astroScript';
 describe('台本(社長指示2026-10-30: 旗投げ→破片の雨・ピンチで破片の雨が2倍)', () => {
+  it('1回の着地で旗→破片の雨を続けて投げ、破片の雨の後は浮く(単発では出さない)', () => {
+    expect(ASTRO_SCRIPT[0]).toBe('flag');
+    expect(astroScriptChainAfter('flag')).toBe('debris');
+    expect(astroScriptChainAfter('debris')).toBeNull();
+    expect(astroScriptChainAfter('meteor')).toBeNull();
+  });
   it('旗から始まり、旗→破片の雨をくり返す', () => {
     expect(nextAstroScriptThrow(null)).toBe('flag');
     expect(nextAstroScriptThrow('flag')).toBe('debris');

@@ -1423,7 +1423,9 @@ const FORCE_HERO = evParam('heronow') === '1';
  * research/MUTANT_HERO.md §2-0(社長裁定 #6「対策室でもゾンビを湧かせる」): 英雄の演習だけ**雑魚の湧き**(通常の湧き・盤面の維持)を開ける。
  * 城ボス・イベント・紅き夜・ハンター・死神などは練習ランのまま止める(noSpawn は従来どおり)=雑魚だけ。
  */
-const HERO_PRACTICE_MOBS = !NOSPAWN && isPracticeRun() && (practiceForces('heronow') || practiceForces('libertynow') || practiceForces('astronow') || practiceForces('wraithnow')); // 解放軍群・宇宙飛行群の枠も雑魚だけ開ける(LIBERTY_HORDE §9)
+// ★毎回その時の練習の状態で決める(社長報告2026-10-30「対策室の亡霊では雑魚を…」の調査で判明): 旧版はページを開いた瞬間に
+//   一度だけ決まる定数だったため、ページを読み直さずに出撃する変異体対策室では**一度も雑魚が湧いていなかった**。
+const heroPracticeMobs = (): boolean => !NOSPAWN && isPracticeRun() && (practiceForces('heronow') || practiceForces('libertynow') || practiceForces('astronow') || practiceForces('wraithnow')); // 解放群・宇宙飛行群・亡霊の枠も雑魚だけ開ける(LIBERTY_HORDE §9)
 // research/LIBERTY_HORDE.md §9: 解放軍群のデバッグ出現 `?libertynow=1`(対策室の枠は practiceForces('libertynow') で相乗り)。
 const FORCE_LIBERTY = evParam('libertynow') === '1';
 // research/ASTRONAUT_HORDE.md §7: 宇宙飛行群のデバッグ出現 `?astronow=1`(対策室の枠は practiceForces('astronow'))。
@@ -17458,7 +17460,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         if (
           !danceTest &&
           !indoor &&
-          (!noSpawn || HERO_PRACTICE_MOBS) && // ?nospawn=1 デバッグ: 旧スポナーも止める(社長試作v0.25.1861)/ 英雄の演習は雑魚だけ湧かせる(MUTANT_HERO #6)
+          (!noSpawn || heroPracticeMobs()) && // ?nospawn=1 デバッグ: 旧スポナーも止める(社長試作v0.25.1861)/ 英雄の演習は雑魚だけ湧かせる(MUTANT_HERO #6)
           // PACING_PUZZLE.md §10-20#9(旧注記を訂正): 上のコメントは「storyBossOnly廃止によりEXは
           // コード変更なしで自然に解放される」としていたが、これはEXの敵完全封鎖(社長指示2026-08-21
           // 「このステージは雑魚敵も封鎖」)と矛盾する。この旧経路はboss-phase窓でのみ有効化される
@@ -17810,7 +17812,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // ★★§17-11 B3(監査A-1・MUST): ウェルカム台本中(welcomeActive)はここも止める
         // (puzzleActiveNowはfalseにしない=旧スポナーの復活を防ぐための別ゲート。下の旧スポナーの
         // 枝にも同じ !welcomeActive が要る=片方だけでは通常湧きが止まらない)。
-        if ((!noSpawn || HERO_PRACTICE_MOBS) && !isExStageRun() && !welcomeActive) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
+        if ((!noSpawn || heroPracticeMobs()) && !isExStageRun() && !welcomeActive) runKomaBoardMaintenance( // ?nospawn=1 デバッグ: パズル盤面の湧きも止める(社長試作v0.25.1861)
           {
             puzzleKomaRef, puzzleHitRef, puzzleClockRef, puzzleCdRef, puzzleSoftenRef, directorRef, namedFoeRef,
             rankPaceRef,
