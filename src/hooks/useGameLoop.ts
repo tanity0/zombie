@@ -96,6 +96,7 @@ import {
   isInReturnCircle, // 二人組クエストv2(§2-8・B4): 納品の3秒滞在の判定(returnCircle.radiusは対象のフィールドをそのまま読む)
   currentFriendlyShield, noteShieldGuardFrom, noteShieldBeam, shieldGuardsPlayerLine, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
   clearScanMarkNumberNotes, // research/NEW_GUNS.md §4: 印の数字メモをフレームの頭で捨てる
+  baseSoldierName,
 } from '../store/gameStore';
 import { shieldBlocksArea, shieldBlocksLine, splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md
 import { METAL_PALETTE, shieldBeamPalette, reflectAlongTravel, takeTechniqueStart, BEAM_HOLD_TICK_MS, beamHoldGain, type GuardPalette, type TechniqueGateState } from '../utils/shieldGuardFx'; // 防いだ演出の色・間引き・曲線(第2回クリエイティブ監査)
@@ -215,7 +216,7 @@ import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ri
 import { stepHunterPatrol } from '../utils/hunterPatrolTick';
 import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, runAstroScatter, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
 import { runWraithTick, createWraithTickState, pickActiveWraith, releaseWraithOwner, runWraithGrowths, runWraithGraveFx } from '../utils/wraithTick'; // research/WRAITH_MUTANT.md
-import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES, pickRunMutantBoss, wraithAudioMix, type RunMutantBoss } from '../utils/wraithScript';
+import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES, pickRunMutantBoss, wraithAudioMix, mutantOmenLine, pickOmenSpeaker, type RunMutantBoss } from '../utils/wraithScript';
 import { astroSpawnPick, astroMeteorView, astroMeteorCamLead } from '../utils/astroScript';
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
@@ -2049,6 +2050,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const wraithForceRef = useRef(false); // research/WRAITH_MUTANT.md
   // 本編で出る変異体のボス級(宇宙飛行群か亡霊のどちらか1体だけ・20%)。ランの最初に1回だけ引く(社長指示2026-10-29)。
   const runMutantBossRef = useRef<RunMutantBoss | null>(null);
+  const mutantOmenDoneRef = useRef(false); // 変異体の前触れの一言(このランで判定済みか)
   const wraithStateRef = useRef(createWraithTickState());
   const wraithCutinIdRef = useRef<string | null>(null);
   // §6.38 B2a: 賞金首のラン内状態(照準速度/懲罰タイマ/コンボ進行/取り巻き召喚済みか)。
@@ -3497,6 +3499,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           astroForceRef.current = false; astroStateRef.current = createAstroTickState(); astroCutinIdRef.current = null; // 宇宙飛行群(research/ASTRONAUT_HORDE.md)
           wraithForceRef.current = false; wraithStateRef.current = createWraithTickState(); wraithCutinIdRef.current = null; // 亡霊(research/WRAITH_MUTANT.md)
           runMutantBossRef.current = null; // 次のランで引き直す
+          mutantOmenDoneRef.current = false;
           // ★SAME_ARENA O-5: 幻影の人格も新ランで捨てる。持ち越すと**前のランの他人**の癖・名前で
           // 戦うことになる(v0.25.3838のボスリラックス跨ぎと同型の"ラン跨ぎの漏れ")。
           clearPhantomIdentity();
@@ -9071,6 +9074,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 return rp ? { x: rp.x + ringCx, y: rp.y + ringCy } : { x: cx + back, y: cy };
               });
               libertyCutinIdRef.current = null;
+            }
+          }
+          // 変異体が出るランは、最初の通信に隊員の一言を混ぜる(社長指示2026-10-30: 亡霊「寒気がする・・・」/宇宙飛行群「通信が少しおかしい？」)。
+          // 抽選は下の2つの出現の枠と同じ所で、それより先に1回だけ引く(抽選の結果・確率は変えない)。確認用の枠(?wraithnow=1 等)も本編の出撃なら言う。
+          if (!mutantOmenDoneRef.current && !isPracticeRun() && !isBossMakerRun()) {
+            mutantOmenDoneRef.current = true;
+            const mutantStage = !HERO_PATROL_BLOCKED && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+            if (mutantStage && runMutantBossRef.current === null) runMutantBossRef.current = pickRunMutantBoss(Math.random);
+            const omenBoss: RunMutantBoss = (FORCE_WRAITH || practiceForces('wraithnow')) ? 'wraith'
+              : (FORCE_ASTRO || practiceForces('astronow')) ? 'astro'
+              : mutantStage ? (runMutantBossRef.current ?? 'none') : 'none';
+            const omen = mutantOmenLine(omenBoss);
+            if (omen) {
+              const sto = useGameStore.getState();
+              const sortieSpeaker = sto.npcDialogue?.name ?? sto.npcDialogueQueue[0]?.name ?? null;
+              const names = [...sto.escorts, ...sto.pendingEscorts].map(e => baseSoldierName(e.soldierIndex));
+              const who = pickOmenSpeaker(names, sortieSpeaker, Math.random);
+              if (who) useGameStore.setState(s2 => ({ npcDialogueQueue: [...s2.npcDialogueQueue, { name: who, text: omen }] }));
             }
           }
           // research/ASTRONAUT_HORDE.md §2b/§8: 宇宙飛行群(変異)。本編=ステージ1・3・4・5で、POI のうちプレイヤーから3000以上離れた所の

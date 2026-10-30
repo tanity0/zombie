@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5283', items: [
+    '亡霊が潜む出撃では、出撃直後の通信で隊員の誰かが寒気を訴える。宇宙飛行群の時は通信の乱れを気にする',
+  ] },
   { version: '0.25.5282', items: [
     '亡霊(変異体)の叫び声や技の音が、姿が見えているのに鳴らないことがあったのを直した',
     '亡霊の近くで曲が勝手に戻ってしまうことがあったのを直した',

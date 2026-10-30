@@ -240,6 +240,21 @@ export const pickRunMutantBoss = (rng: () => number): RunMutantBoss => {
   return rng() < 0.5 ? 'astro' : 'wraith';
 };
 
+/** 変異体が出るランの「最初の通信」に混ざる一言(社長指示2026-10-30)。出ないランは null。 */
+export const MUTANT_OMEN_LINES: Record<Exclude<RunMutantBoss, 'none'>, string> = {
+  wraith: '寒気がする・・・',
+  astro: '通信が少しおかしい？',
+};
+export const mutantOmenLine = (boss: RunMutantBoss): string | null => (boss === 'none' ? null : MUTANT_OMEN_LINES[boss]);
+/** 言う人: 出撃の通信を言った人とは別の隊員(居なければ同じ人)。隊員が居ない出撃は null=言わない。 */
+export const pickOmenSpeaker = (names: readonly string[], sortieSpeaker: string | null, rng: () => number): string | null => {
+  const uniq = [...new Set(names)];
+  if (!uniq.length) return null;
+  const others = uniq.filter(n => n !== sortieSpeaker);
+  const pool = others.length ? others : uniq;
+  return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
+};
+
 // ---- 指差しの技2つ=指差し・呪い(§11) ----
 /** 指差しのシート(mutant-wraith-point): 8コマ・1コマ75×152。0〜2=腕を上げる・3〜7=指している。 */
 export const WRAITH_POINT_FRAMES = 8;

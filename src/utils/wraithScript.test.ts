@@ -147,6 +147,20 @@ describe('宇宙飛行群と亡霊の出現(1ランにどちらか1体だけ・2
   });
 });
 
+import { mutantOmenLine, pickOmenSpeaker } from './wraithScript';
+describe('変異体が出るランの最初の通信の一言', () => {
+  it('亡霊=寒気がする・宇宙飛行群=通信がおかしい・出ないランは言わない', () => {
+    expect(mutantOmenLine('wraith')).toBe('寒気がする・・・');
+    expect(mutantOmenLine('astro')).toBe('通信が少しおかしい？');
+    expect(mutantOmenLine('none')).toBeNull();
+  });
+  it('言う人は出撃の通信とは別の隊員。1人しか居なければその人・隊員ゼロなら言わない', () => {
+    for (let i = 0; i < 20; i++) expect(pickOmenSpeaker(['A', 'B', 'C'], 'B', () => i / 20)).not.toBe('B');
+    expect(pickOmenSpeaker(['A'], 'A', () => 0.9)).toBe('A');
+    expect(pickOmenSpeaker([], null, () => 0)).toBeNull();
+  });
+});
+
 import {
   wraithPointFrame, pickWraithSkill, wraithFlingLandings, pickWraithCurseGraves, wraithCurseLiftAt, WRAITH_POINT_RAISE_MS, WRAITH_POINT_LOWER_MS,
   WRAITH_POINT_FRAMES, WRAITH_POINT_ALIGN_X, WRAITH_FLING_RING_PX, WRAITH_CURSE_MAX, WRAITH_CURSE_GAP_MS, WRAITH_CURSE_MIN_PLAYER_PX, WRAITH_GROWTH_GROW_MS as GROW,
