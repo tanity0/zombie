@@ -135,8 +135,8 @@ import {
 export const bountyMaxHealth = (area: number, gameTimeMs: number): number =>
   Math.round(BOUNTY_BASE_HP * bountyEffectiveValueMult(area, gameTimeMs));
 /** 野を巡る変異体のボス級(解放群・宇宙飛行群・亡霊)。式は賞金首と同じで基礎だけ違う(MUTANT_FIELD_BASE_HP)。 */
-export const mutantFieldMaxHealth = (area: number, gameTimeMs: number): number =>
-  Math.round(MUTANT_FIELD_BASE_HP * bountyEffectiveValueMult(area, gameTimeMs));
+export const mutantFieldMaxHealth = (area: number, gameTimeMs: number, base = MUTANT_FIELD_BASE_HP): number =>
+  Math.round(base * bountyEffectiveValueMult(area, gameTimeMs));
 
 /** 滞在2分(§2・延長計画2026-10-12で1分→2分)。dormantのまま(=交戦していない)これだけ経つと退場する。gameTime基準(ポーズで進まない)。 */
 export const BOUNTY_LINGER_MS = 120000; // 延長計画(社長指示2026-10-12「賞金首の消える時間も延長」): 60秒→120秒

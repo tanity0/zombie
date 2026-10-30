@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5281', items: [
+    '亡霊(変異体)の体力を少し減らした',
+  ] },
   { version: '0.25.5280', items: [
     '宇宙飛行群(変異)は降り立つと、旗を投げ、そのまま立ち止まって破片の雨を降らせる。旗だけ・破片の雨だけで終わることはない',
     '変異体対策室: 英雄・解放群・宇宙飛行群・亡霊の演習で、周りの敵が湧かなかったのを直した',

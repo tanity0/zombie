@@ -197,6 +197,7 @@ import { hasShotRecoil, stampShotHits, addShotHit, type ShotHitAcc } from '../ut
 import { runLabCrawlerTick, breakLabObstaclesInSweep } from '../utils/labCrawlerTick'; // ステージ2の這う塊(+アイドルの拳で壁を壊す)
 import { crawlerGoalDir, crawlerSolid } from '../world/labCrawler'; // 逃走中のカメラの寄せ
 import { labDistantDue } from '../utils/labDistantSound'; // ステージ2でたまに遠くから鳴る音
+import { WRAITH_BASE_HP } from '../utils/bountyDims'; // 亡霊の基礎HP(社長指示2026-10-30)
 import {
   runBountyTick, createBountyTickState, pickActiveBounty, bountyMaxHealth, mutantFieldMaxHealth, BOUNTY_AGGRO_RANGE_DEFAULT,
   bountyPlaybackActive, clearBountyPlayback,
@@ -9147,7 +9148,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 poiStart = { pois: all, index: all.indexOf(use[at.index]) };
               }
               const wE = spawnEnemyAt('mutant-wraith', cx - 30, cy - 25, newGameTime);
-              const wHp = Math.round(mutantFieldMaxHealth(areaIndexForPos(cx, cy), newGameTime) * stageBossDiffMults().hp);
+              const wHp = Math.round(mutantFieldMaxHealth(areaIndexForPos(cx, cy), newGameTime, WRAITH_BASE_HP) * stageBossDiffMults().hp); // 亡霊は基礎6666(社長指示2026-10-30)
               wE.health = wHp; wE.maxHealth = wHp;
               wE.dormant = false;
               wE.fixed = true; // 上限の間引き・距離の回収・イベントの一掃で消さない(別カウント)
@@ -9568,7 +9569,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (wraithCutinIdRef.current !== activeWraith.id && wOnScreen && !gsW.attention) {
               wraithCutinIdRef.current = activeWraith.id;
               if (activeWraith.health >= activeWraith.maxHealth) {
-                const hp2 = Math.round(mutantFieldMaxHealth(areaIndexForPos(activeWraith.x + activeWraith.width / 2, activeWraith.y + activeWraith.height / 2), newGameTime) * stageBossDiffMults().hp);
+                const hp2 = Math.round(mutantFieldMaxHealth(areaIndexForPos(activeWraith.x + activeWraith.width / 2, activeWraith.y + activeWraith.height / 2), newGameTime, WRAITH_BASE_HP) * stageBossDiffMults().hp);
                 useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => e.id === activeWraith.id ? { ...e, health: hp2, maxHealth: hp2 } : e) }));
               }
               const wAc = bossArtCenter(activeWraith);
