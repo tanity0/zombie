@@ -677,8 +677,20 @@ const persistMuted = () => {
 
 // いま BGM 要素に読み込ませてあるトラックURL。v0.25.280ではこの1要素だけを戦闘/ダンスで差し替える。
 let bgmSrc = GAME_BGM.default;
+/**
+ * マナーモード(消音スイッチ)では全部の音を鳴らさない(社長指示2026-10-30「マナーモードで音が消えるは、むしろいい。他のゲームもそう」)。
+ * iOS は音声要素で曲を鳴らすと「音楽の再生」扱いになり、消音スイッチを無視して鳴る(実機確認)。Safari 17〜 の音の扱いを
+ * 「周りの音」(ambient=消音スイッチに従う)に固定する。曲を素再生(?bgmroute=off)で鳴らす時は触らない(§12-4 の仮の対応側)。
+ */
+const setAmbientAudioSession = () => {
+  if (!BGM_USE_WEBAUDIO_ROUTING || typeof navigator === 'undefined') return;
+  const sess = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+  if (!sess) return;
+  try { if (sess.type !== 'ambient') sess.type = 'ambient'; } catch { /* ignore */ }
+};
 const ensureBgm = () => {
   if (bgm || typeof Audio === 'undefined') return;
+  setAmbientAudioSession();
   bgm = new Audio(bgmSrc);
   bgm.loop = true;
   bgm.preload = 'auto';
@@ -813,7 +825,9 @@ export const getDanceBeatAnchorMs = (): number | null => {
 // 切り分け(v0.25.266): BGM を WebAudio(MediaElementSource)経由にすると、要素を一度掴んだ後の src 差し替えで
 // 無音になる(265で再現)。ここを false にして“要素の素再生(element.volume)”にし、差し替え後に音が出るか確認。
 // ?bgmroute=on を付けると従来の WebAudio ルーティングに戻す。
-const BGM_USE_WEBAUDIO_ROUTING = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bgmroute') === 'on';
+// ★2026-10-30(社長の iPhone 実機確認「1〜3は大丈夫」=曲の切り替えで無音にならない・亡霊で段階的に下がる・音量が効く)で既定を経路に通す方へ戻した。
+// `?bgmroute=off` で素再生(element.volume)に戻せる(逃げ道)。research/WRAITH_MUTANT.md §12-5。
+const BGM_USE_WEBAUDIO_ROUTING = typeof window === 'undefined' || new URLSearchParams(window.location.search).get('bgmroute') !== 'off';
 const ensureBgmRouting = () => {
   if (!BGM_USE_WEBAUDIO_ROUTING) return; // 素再生(element.volume)を使う
   if (bgmRouted) return;
