@@ -464,6 +464,11 @@ export const wraithSummonSpots = (
  * 3つに分ける(クリエイティブ監査#4): ①始めの25%で吊り上げる(減速しながら最高点へ=掴まれて持ち上がる)
  * ②80%まで高さを保って運ばれる(横の動きはこの間に済む) ③最後の20%で加速して落ちる(重力)。
  */
+/** §17: 指差しで置かれた雑魚が、攻撃へ強制で入る印の有効時間(ms・ゲーム時間)。過ぎたら諦める(気絶・拘束等で入れなかった)。 */
+export const WRAITH_FORCE_WINDOW_MS = 2000;
+/** §17: この雑魚はいま攻撃へ強制で入る印を持っているか。 */
+export const isWraithForced = (e: Pick<Enemy, 'wraithForcedAt'>, gt: number): boolean =>
+  e.wraithForcedAt !== undefined && gt - e.wraithForcedAt >= 0 && gt - e.wraithForcedAt < WRAITH_FORCE_WINDOW_MS;
 export const WRAITH_FLING_LIFT_PX = 46;
 export const wraithFlingLiftPx = (gt: number, startAt: number, endAt: number): number => {
   const u = (gt - startAt) / Math.max(1, endAt - startAt);

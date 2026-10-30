@@ -189,6 +189,7 @@ import { nextLevelThreshold, expNeededForLevels } from '../utils/levelCurve';
 import { slasherLungePx } from '../utils/slasherLunge';
 import type { AstroThrowEntry, AstroScatterPiece } from '../utils/astroScript'; // research/ASTRONAUT_HORDE.md
 import type { WraithGrowth } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md §9
+import { isWraithForced } from '../utils/wraithScript'; // research/WRAITH_MUTANT.md §17
 import { clearWraithGraves, resolveWraithGraveCollision } from '../world/wraithGraves';
 import { isBossType, isTrueBossType, isHiddenBoss, usesBossCrit, resistsChipKnockback, enemyRangeRect, getsDramaticDeath, getsDeathAttention, getEnemyColor, resolveEnemyTarget, spawnEnemyAt, areaIndexForPos, OFFSCREEN_RECYCLE_MARGIN, getEnemyBaseSpeed, setCorridorSpawn, setAreaDistanceScale, createEnemyProjectile, isFinalBossKill, isCorpse, isUntouchable, corpseEligible, isBountyType, isGuardianPhantom, isMutantHero, isLibertyBearer, isMutantAstro, isMutantWraith, isBodyWallBoss, isHordeFollower, isArenaSweepProtected, setStageDifficultyMults, isPumpkinTier, isBiteExemptType, isReaperFamily, isTerminalReaper, isGate2AngelBoss, isHangedman, AREA_THRESHOLDS, pickNearestTarget, isEscortAggroMob, isLabCrawlerProxyType, blastAnchorOf } from '../utils/enemyUtils';
 // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2): 出現位置のジオメトリ(純関数)+賞金首の索敵圏既定値。
@@ -14889,14 +14890,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       const chaffLookup = new Map(postureUpdatedEnemies.map(e => [e.id, e] as const));
       // ★型をまたいで数える(§16-8「bat/skeleton/ゾンビが1つの枠を共有する」)。型ごとの
       // 「取ってよいか」の申告(wantsSlot)を1本の関数に束ねてderiveChaffMoveGrantsへ渡す。
-      const chaffGrants = deriveChaffMoveGrants(postureUpdatedEnemies, pcx, pcy, cand => {
+      const chaffGrants = new Set(deriveChaffMoveGrants(postureUpdatedEnemies, pcx, pcy, cand => {
         const full = chaffLookup.get(cand.id);
         if (full === undefined) return false;
         if (full.type === 'zombie') return zombieWantsChaffRedSlot(full, gameTime, pcx, pcy);
         if (full.type === 'bat') return batWantsChaffSlot(full, gameTime, pcx, pcy);
         if (full.type === 'skeleton') return skeletonWantsChaffSlot(full, gameTime, pcx, pcy);
         return false;
-      });
+      }));
+      // §17: 亡霊の指差しで置かれた個体は、2体までの上限を超えて構えてよい(一斉に)。印の無い個体の枠は今までどおり。
+      for (const e of postureUpdatedEnemies) if (e.aiPhase === undefined && isWraithForced(e, gameTime)) chaffGrants.add(e.id);
       const updatedEnemies = postureUpdatedEnemies.map((enemy): Enemy => {
         // research/LAB_CRAWLER.md §4: ステージ2の変異塊の代理は動かない(位置・箱は labCrawlerTick が毎フレーム塊に合わせる)。
         if (isLabCrawlerProxyType(enemy.type)) return enemy;
@@ -15027,7 +15030,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (gameTime >= tz.endAt) {
               const land = resolveMove(r.x, r.y);
               tossLandings.push({ x: land.x + enemy.width / 2, y: land.y + enemy.height, dirX: ddx / ddl, dirY: ddy / ddl });
-              return { ...enemy, x: land.x, y: land.y, vx: 0, vy: 0, escortToss: undefined, escortTossLandedAt: gameTime };
+              // §17(社長指示2026-10-30「敵が配置された瞬間、一斉にその敵たちが攻撃発動を強制実行」): 印を付け、技・噛みつきの待ち時間を外す。
+              // 入る前の条件(間合い・帯の待ち・枠の上限)は型ごとの入口が印を見て飛ばす。技そのもの(予告・判定・硬直)は変えない。
+              // 待ち時間の値は消さない(兼用の欄がある・監査#5)=印のある間だけ型ごとの入口が見ない。植物は撃つ間隔を明けて、閉じる溜めへすぐ入れる。
+              return { ...enemy, x: land.x, y: land.y, vx: 0, vy: 0, escortToss: undefined, escortTossLandedAt: gameTime,
+                wraithForcedAt: gameTime, ...(enemy.type === 'plant' ? { lastShot: 0 } : {}) };
             }
             return { ...enemy, x: r.x, y: r.y, vx: 0, vy: 0 };
           }
@@ -17212,8 +17219,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             const moved = resolveMove(enemy.x + (bdx / bl) * back, enemy.y + (bdy / bl) * back);
             return { ...enemy, x: moved.x, y: moved.y, vx: (bdx / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT, vy: (bdy / bl) * enemy.speed * DASH_WINDUP_BACKSTEP_MULT };
           }
-          if (enemy.type !== 'giantbat' && enemy.type !== 'hunter' && dist <= WEREWOLF_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)
-            && !keepBlocksTechnique(enemy.type, enemy.id, enemy.spawnedAt, WEREWOLF_TRIGGER_RANGE, dist)) {
+          const dogForced = isWraithForced(enemy, gameTime); // §17: 指差しで置かれた=距離と技の待ち時間を見ずに突進の溜めへ
+          if (enemy.type !== 'giantbat' && enemy.type !== 'hunter' && (dist <= WEREWOLF_TRIGGER_RANGE || dogForced) && dist > 12 && (dogForced || gameTime >= (enemy.aiReadyAt ?? 0))
+            && (dogForced || !keepBlocksTechnique(enemy.type, enemy.id, enemy.spawnedAt, WEREWOLF_TRIGGER_RANGE, dist))) {
             // 溜め開始時に狙い点を確定(=赤ラインの終点)。
             // 突進距離 = プレイヤーまでの距離 + 80px(プレイヤーの少し先で止まる。社長指示)。
             const reach = dist + DASH_OVERSHOOT_PX;
@@ -17395,7 +17403,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★リッチの技「転移噛み」(§16-C・社長確定2026-09-18)。中心間140px以内・CD明け
         // (`biteReadyAt`)・まだ何も構えていなければ発火する。**プレイヤーとの距離で見る**
         // (`tgt`ではない=召喚/救助対象ではなくプレイヤー本人。C-1)。
-        if (lichBlinkShouldFire(enemy, gameTime, Math.hypot(apx - (enemy.x + enemy.width / 2), apy - (enemy.y + enemy.height / 2)))) {
+        // §17: 指差しで置かれたリッチは、噛みつきの待ち時間と距離を見ずに転移噛みへ(プレイヤーが動いても一斉に来る・監査#2)。
+        const lichForced = isWraithForced(enemy, gameTime);
+        if (lichBlinkShouldFire(lichForced ? { ...enemy, biteReadyAt: undefined } : enemy, gameTime, lichForced ? 0 : Math.hypot(apx - (enemy.x + enemy.width / 2), apy - (enemy.y + enemy.height / 2)))) {
           const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
           const target = lichBlinkTargetPoint(apx, apy, ecx, ecy);
           const lbCtx: PlayableAreaCtx = {
@@ -17650,8 +17660,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 「赤が先」: 枠が取れていれば赤(z-red-pause)、内縁(100px)に達していて枠が無ければ紫
           // (旧zpauseへフォールスルー)、どちらでもなければ素通り(z-waitのまま歩き続け、次フレーム
           // 再判定=§16-1「枠を取れなかった個体は旧挙動のまま歩いて詰める」)。
+          // §17: 指差しで置かれた=帯の待ちを飛ばして赤の2連へ(枠は上で与えてある)。
+          const zForced = isWraithForced(enemy, gameTime);
+          if (phase === undefined && zForced) phase = 'z-wait';
           if (phase === 'z-wait') {
-            if (pdist > ZOMBIE_BAND_OUTER_PX) {
+            if (pdist > ZOMBIE_BAND_OUTER_PX && !zForced) { // 指差しで置かれた間は帯の外へ出ても諦めない(走り寄る・監査#2)
               phase = undefined; phaseUntil = 0; // 帯の外へ戻った=待ちを解除→通常接近へ
             } else if (chaffGrants.has(enemy.id)) {
               // ★赤が決まった(社長指示2026-10-14「射程に入ったら…赤点滅2回」): 1歩で噛める距離(ZOMBIE_STEP_REACH_PX)に居れば
@@ -17864,10 +17877,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           // **コウモリの円は技そのものが半径100へ膨らむ**ので、帯の内側から出しても位置が直る
           // ——掛けると「帯の内側に居るコウモリが二度と円へ入れない」だけになる
           // (§16-B B-9 Q-9「枠を取った bat は b-orbit で半径100へ膨らむ=仕様として許容」と矛盾していた)。
-          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= BAT_ORBIT_RADIUS_PX) {
+          const batForced = isWraithForced(enemy, gameTime); // §17: 間合いを飛ばし、円は即座に切り上げて構え(赤)へ
+          if (phase === undefined && chaffGrants.has(enemy.id) && (pdist <= BAT_ORBIT_RADIUS_PX || batForced)) {
             return {
               ...enemy, vx: 0, vy: 0, aiPhase: 'b-orbit',
-              aiPhaseUntil: gameTime + batOrbitDurationMs(enemy.id, enemy.spawnedAt),
+              aiPhaseUntil: batForced ? gameTime : gameTime + batOrbitDurationMs(enemy.id, enemy.spawnedAt),
               chaffOrbitCx: apx, chaffOrbitCy: apy,
             };
           }
@@ -17990,7 +18004,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ── 構え前(aiPhase未設定): 枠が空いて間合い(100px)に達していればしゃがみへ ─────────
           // ★同上(v0.25.4453の是正)。**骸骨の弧も技そのものが「プレイヤー中心から100pxの横」へ
           // 運ぶ**ので、帯の内側から出しても位置が直る。ゲートは掛けない。
-          if (phase === undefined && chaffGrants.has(enemy.id) && pdist <= SKELETON_TRIGGER_PX) {
+          if (phase === undefined && chaffGrants.has(enemy.id) && (pdist <= SKELETON_TRIGGER_PX || isWraithForced(enemy, gameTime))) { // §17: 指差しは間合いを飛ばす
             return { ...enemy, vx: 0, vy: 0, aiPhase: 's-crouch', aiPhaseUntil: gameTime + SKELETON_CROUCH_MS };
           }
           // それ以外は旧挙動のまま歩いて詰める→下の共通のチャフ移動へフォールスルーする。

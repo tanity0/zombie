@@ -305,3 +305,14 @@ describe('亡霊: 指差しで飛ぶ雑魚の浮き(§16)', () => {
     expect(ups).not.toBe(99); // 上がって→下がる、の1山
   });
 });
+
+import { isWraithForced, WRAITH_FORCE_WINDOW_MS } from './wraithScript';
+describe('亡霊: 指差しで置いた雑魚の強制攻撃の印(§17)', () => {
+  it('置いた時刻から有効時間の間だけ', () => {
+    expect(isWraithForced({ wraithForcedAt: 1000 }, 999)).toBe(false);
+    expect(isWraithForced({ wraithForcedAt: 1000 }, 1000)).toBe(true);
+    expect(isWraithForced({ wraithForcedAt: 1000 }, 1000 + WRAITH_FORCE_WINDOW_MS - 1)).toBe(true);
+    expect(isWraithForced({ wraithForcedAt: 1000 }, 1000 + WRAITH_FORCE_WINDOW_MS)).toBe(false);
+    expect(isWraithForced({}, 1000)).toBe(false);
+  });
+});

@@ -1459,6 +1459,8 @@ export interface Enemy {
   wraithSummonAt?: number;
   /** §15: 亡霊に呼ばれたコウモリ(描画=置き場所の地面から這い上がる・spawnedAt 起点。判定・扱いは普通の雑魚)。 */
   wraithSummoned?: boolean;
+  /** §17: 亡霊の指差しで置かれた時刻(gameTime)。WRAITH_FORCE_WINDOW_MS の間、入る前の条件を飛ばしてその型の攻撃へすぐ入る。 */
+  wraithForcedAt?: number;
   wraithWarpOutAt?: number;
   wraithPhased?: boolean;
   wraithPhase?: number;

@@ -23,7 +23,7 @@ import {
   wraithGrowthStep, wraithGraveSolids, isWraithGrave, type WraithGrowthState, type WraithGrowth, WRAITH_CURSE_MARK_MS,
   WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_HOLD_MS, WRAITH_HEAD_Y_PX, wraithFloatFrame, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_RADIUS, WRAITH_SCREAM_DAMAGE, WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS,
   pickWraithSkill, type WraithSkill, isWraithPinch, wraithPinchNext, wraithBehindPoint, WRAITH_PINCH_STEP_GAP_MS, WRAITH_POINT_RAISE_MS, WRAITH_POINT_LOWER_MS, WRAITH_FLING_RANGE_PX, WRAITH_FLING_MIN_PLAYER_PX, WRAITH_FLING_MAX_PLAYER_PX, WRAITH_CURSE_GAP_MS, WRAITH_FLING_MIN, WRAITH_FLING_MAX,
-  wraithSummonSpots, WRAITH_SUMMON_SCREEN_MAX, WRAITH_SUMMON_HORIZON_PAD_PX, WRAITH_SUMMON_BOTTOM_PAD_PX, WRAITH_SUMMON_STAGGER_MS, WRAITH_SUMMON_FRESH_MS,
+  isWraithForced, wraithSummonSpots, WRAITH_SUMMON_SCREEN_MAX, WRAITH_SUMMON_HORIZON_PAD_PX, WRAITH_SUMMON_BOTTOM_PAD_PX, WRAITH_SUMMON_STAGGER_MS, WRAITH_SUMMON_FRESH_MS,
   WRAITH_FLING_HOLD_MS, wraithFlingLandings, pickWraithCurseGraves, wraithCurseLiftAt, WRAITH_CURSE_MAX, WRAITH_CURSE_PRE_MS, WRAITH_CURSE_HOVER_PX, WRAITH_CURSE_TAIL_MS,
 } from './wraithScript';
 
@@ -209,6 +209,14 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     const since = gt - s.screamHitAt;
     if (s.screamEchoes === 0 && since >= 90) { s.screamEchoes = 1; st.spawnRing(bx, by, 40, WRAITH_SCREAM_RADIUS * 1.2, 'rgba(214,206,226,0.7)', 5, 860); }
     else if (s.screamEchoes === 1 && since >= 230) { s.screamEchoes = 2; st.spawnRing(bx, by - WRAITH_HEAD_Y_PX * 0.5, 20, WRAITH_SCREAM_RADIUS * 1.05, 'rgba(150,120,200,0.65)', 9, 480); }
+  }
+
+  // ---- §17: 指差しで置いた雑魚の「攻撃へ強制で入る」印は、入った(技の相か噛みつきの溜めが立った)ら外す。有効時間を過ぎた物も外す ----
+  // 噛みつきの溜めは「印より後に立った」物だけ数える(噛み終わった個体に古い biteAt が残る・監査#1)。
+  const forcedDone = (m: Enemy) => m.wraithForcedAt !== undefined
+    && (m.aiPhase !== undefined || (m.biteAt !== undefined && m.biteAt >= m.wraithForcedAt) || !isWraithForced(m, gt));
+  if (st.enemies.some(forcedDone)) {
+    useGameStore.setState(s2 => ({ enemies: s2.enemies.map(m => (forcedDone(m) ? { ...m, wraithForcedAt: undefined } : m)) }));
   }
 
   // ---- 召喚(§15・§15-1): 叫びと同じモーションで口を開き、開き切った瞬間にコウモリ3体が口元から飛び出す。予告・判定は無い ----

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5288', items: [
+    '亡霊(変異体)の指差しで周りに置かれた敵は、降り立った瞬間に一斉に襲いかかってくる',
+  ] },
   { version: '0.25.5287', items: [
     '亡霊(変異体)の指差しで飛ばされる敵は、宙に吊り上げられ、木や建物をすり抜けて飛んでくる',
   ] },
