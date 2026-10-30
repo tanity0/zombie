@@ -568,6 +568,14 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
 let bgm: HTMLAudioElement | null = null;
 let bgmGain: GainNode | null = null; // BGM routed through WebAudio so its volume
 let bgmRouted = false;               // is controllable on iOS (element.volume isn't)
+let bgmAnalyser: AnalyserNode | null = null; // 確認用(経路に通した曲の信号の大きさ)
+const bgmSignalRms = (): number | null => {
+  if (!bgmAnalyser) return null;
+  const buf = new Float32Array(bgmAnalyser.fftSize);
+  bgmAnalyser.getFloatTimeDomainData(buf);
+  let sum = 0; for (const v of buf) sum += v * v;
+  return +Math.sqrt(sum / buf.length).toFixed(4);
+};
 let bgmActive = false;
 let muted = false;
 let bgmVolume = DEFAULT_BGM_VOLUME;
@@ -818,6 +826,8 @@ const ensureBgmRouting = () => {
     bgmGain.gain.value = effectiveBgmVolume();
     source.connect(bgmGain);
     bgmGain.connect(ctx.destination);
+    // 確認用: 曲が実際に経路へ流れているか(差し替え後の無音=v0.25.265 の事故が今も起きるか)を数値で見る。
+    try { bgmAnalyser = ctx.createAnalyser(); bgmAnalyser.fftSize = 512; source.connect(bgmAnalyser); } catch { bgmAnalyser = null; }
     bgmRouted = true;
   } catch {
     // Routing unsupported — fall back to element volume (works on desktop).
@@ -2252,7 +2262,7 @@ export const resetWraithBattleAudio = (): void => {
  * 新しい声を予約しない(鳴っている1本は鳴り切る)。pan=亡霊の左右(声を寄せる)。
  */
 /** 開発用: 亡霊の音の今の状態(ヘッドレスの確認用)。 */
-export const getWraithAudioDebug = () => ({ mix: wraithMix, duck: wraithBgmDuck, layers: wraithBattleOn, effective: effectiveBgmVolume(), bgmActive, muted, busy: performance.now() < bgmFadeBusyUntil, fadedOut: bossBgmFadeToken === bgmFadedOutToken, held: bgmSilenceHeld, elVol: bgm ? +bgm.volume.toFixed(3) : null, elMuted: bgm ? bgm.muted : null, locked: VOLUME_LOCKED, routed: bgmRouted, paused: bgm ? bgm.paused : null });
+export const getWraithAudioDebug = () => ({ mix: wraithMix, duck: wraithBgmDuck, layers: wraithBattleOn, effective: effectiveBgmVolume(), bgmActive, muted, busy: performance.now() < bgmFadeBusyUntil, fadedOut: bossBgmFadeToken === bgmFadedOutToken, held: bgmSilenceHeld, elVol: bgm ? +bgm.volume.toFixed(3) : null, elMuted: bgm ? bgm.muted : null, locked: VOLUME_LOCKED, routed: bgmRouted, paused: bgm ? bgm.paused : null, src: bgmSrc, ct: bgm ? +bgm.currentTime.toFixed(2) : null, rs: bgm ? bgm.readyState : null, rms: bgmSignalRms(), gain: bgmGain ? +bgmGain.gain.value.toFixed(3) : null });
 export const setWraithAudioMix = (mix: number, hold = false, pan = 0): void => {
   const nowP = performance.now();
   const dt = wraithMixAt === 0 ? 0 : Math.min(0.2, (nowP - wraithMixAt) / 1000);
@@ -2268,7 +2278,7 @@ export const setWraithAudioMix = (mix: number, hold = false, pan = 0): void => {
   // BGM は近さに比例して下がる(1 → 約1割)。
   const duck = 1 - (1 - WRAITH_BGM_DUCK) * wraithMix;
   if (Math.abs(duck - wraithBgmDuck) > 0.002 || (duck === 1 && wraithBgmDuck !== 1)) { wraithBgmDuck = duck; writeWraithBgmDuck(); }
-  if (VOLUME_LOCKED) { const want = wraithBgmMuteNext(wraithIosBgmMuted, wraithMix); applyWraithIosMute(want && (wraithIosBgmMuted || holdPlaybackSession())); }
+  if (VOLUME_LOCKED && !bgmRouted) { const want = wraithBgmMuteNext(wraithIosBgmMuted, wraithMix); applyWraithIosMute(want && (wraithIosBgmMuted || holdPlaybackSession())); }
   // 素材は遠いうちに読む(長い素材=起動時には読まない)。
   if (sfxContext) for (const k of WRAITH_LAYER_KEYS) if (!sfxBuffers.has(k)) loadSfxBuffer(k);
   if (wraithMix < 0.005) { stopWraithLayers(0.6); return; }
