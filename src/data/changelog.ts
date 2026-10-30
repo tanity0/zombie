@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5291', items: [
+    '亡霊(変異体)には縄張りがある。見つかった場所から十分に離れれば、追うのを諦めて戻っていく',
+  ] },
   { version: '0.25.5290', items: [
     'iPhone・iPad でも、亡霊(変異体)に近づくと曲が少しずつ小さくなる。オプションの曲の音量も効くようになった',
     'マナーモードの時は、曲も効果音も鳴らない',

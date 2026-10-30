@@ -23,7 +23,7 @@ import {
   wraithGrowthStep, wraithGraveSolids, isWraithGrave, type WraithGrowthState, type WraithGrowth, WRAITH_CURSE_MARK_MS,
   WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_HOLD_MS, WRAITH_HEAD_Y_PX, wraithFloatFrame, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_RADIUS, WRAITH_SCREAM_DAMAGE, WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS,
   pickWraithSkill, type WraithSkill, isWraithPinch, wraithPinchNext, wraithBehindPoint, WRAITH_PINCH_STEP_GAP_MS, WRAITH_POINT_RAISE_MS, WRAITH_POINT_LOWER_MS, WRAITH_FLING_RANGE_PX, WRAITH_FLING_MIN_PLAYER_PX, WRAITH_FLING_MAX_PLAYER_PX, WRAITH_CURSE_GAP_MS, WRAITH_FLING_MIN, WRAITH_FLING_MAX,
-  isWraithForced, wraithSummonSpots, WRAITH_SUMMON_SCREEN_MAX, WRAITH_SUMMON_HORIZON_PAD_PX, WRAITH_SUMMON_BOTTOM_PAD_PX, WRAITH_SUMMON_STAGGER_MS, WRAITH_SUMMON_FRESH_MS,
+  isWraithForced, inWraithTerritory, WRAITH_HOME_ARRIVE_PX, WRAITH_TERRITORY_FORGET_MS, wraithSummonSpots, WRAITH_SUMMON_SCREEN_MAX, WRAITH_SUMMON_HORIZON_PAD_PX, WRAITH_SUMMON_BOTTOM_PAD_PX, WRAITH_SUMMON_STAGGER_MS, WRAITH_SUMMON_FRESH_MS,
   WRAITH_FLING_HOLD_MS, wraithFlingLandings, pickWraithCurseGraves, wraithCurseLiftAt, WRAITH_CURSE_MAX, WRAITH_CURSE_PRE_MS, WRAITH_CURSE_HOVER_PX, WRAITH_CURSE_TAIL_MS,
 } from './wraithScript';
 
@@ -52,6 +52,8 @@ export interface WraithTickState {
   summonHit: boolean; summonThenFling: boolean;
   /** 召喚の置き場所(溜めの始まりに決め、靄を溜める)。 */
   summonSpots: { x: number; y: number }[];
+  /** 縄張り(§18): 中心(最初に見つけた所)・中心へ戻っている最中か・落ち着いた時刻。 */
+  territory: { x: number; y: number } | null; homing: boolean; calmSince: number | null;
 }
 export const createWraithTickState = (): WraithTickState => ({
   activeId: null, heading: 0, speed: 0, pois: [], poiIdx: null, prevPoi: null, resting: false, restUntil: null,
@@ -61,6 +63,7 @@ export const createWraithTickState = (): WraithTickState => ({
   flingMarked: 0, curseMarkFor: -1, curseMarkId: null, flingLandAt: null,
   pinchStep: 0, warpBehind: false, pinchChain: false,
   summonHit: false, summonThenFling: false, summonSpots: [],
+  territory: null, homing: false, calmSince: null,
 });
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
@@ -139,8 +142,11 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
   const wasAlerted = e.libAlerted === true;
   let alerted = wasAlerted;
   const struck = nowMs - (e.lastHit ?? 0) <= ASTRO_HIT_ALERT_MS;
+  // 縄張り(§18・社長裁定「縄張りを作る」): プレイヤーが最初に見つけた所から離れ過ぎたら諦めて中心へ戻る。戻っている間は見ても追わない(撃たれたら縄張りの中でだけ振り向く)。
+  const inTerr = inWraithTerritory(s.territory, st.player.x + st.player.width / 2, st.player.y + st.player.height / 2);
   if (blocked) { alerted = false; s.lostSince = null; }
-  else if (tgt.seen || struck) { alerted = true; s.lostSince = null; }
+  else if (((tgt.seen && !s.homing) || struck) && inTerr) { alerted = true; s.lostSince = null; s.homing = false; }
+  else if (wasAlerted && !inTerr) { alerted = false; s.lostSince = null; s.homing = s.territory !== null; }
   else if (wasAlerted) {
     if (tgt.d > FRONT_SIGHT_LOSE_PX) {
       if (s.lostSince === null) s.lostSince = gt;
@@ -148,6 +154,11 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     } else s.lostSince = null;
   }
   if (alerted !== wasAlerted) patch.libAlerted = alerted;
+  if (alerted && !s.territory) s.territory = { x: bx, y: by };
+  // 落ち着いて(見つけておらず戻ってもいない)しばらく経ったら縄張りを忘れる=別の場所で新しく見つけられる。
+  if (alerted || s.homing) s.calmSince = null;
+  else if (s.calmSince === null) s.calmSince = gt;
+  else if (s.territory && gt - s.calmSince >= WRAITH_TERRITORY_FORGET_MS) s.territory = null;
   if (alerted && !wasAlerted) {
     s.orbitDir = Math.random() < 0.5 ? 1 : -1;
     s.nextReverseAt = gt + rand(WRAITH_REVERSE_MIN_MS, WRAITH_REVERSE_MAX_MS);
@@ -499,6 +510,11 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
       wantH = Math.atan2(q.y - by, q.x - bx);
       wantS = vmax;
     }
+  } else if (s.homing && s.territory) {
+    // 縄張りの中心へ戻る(§18)。着いたら普段の巡回へ。
+    const d = Math.hypot(s.territory.x - bx, s.territory.y - by);
+    if (d <= WRAITH_HOME_ARRIVE_PX) s.homing = false;
+    else { wantH = Math.atan2(s.territory.y - by, s.territory.x - bx); wantS = astroArriveSpeed(Math.max(0, d - WRAITH_HOME_ARRIVE_PX * 0.5), vmax); }
   } else if (e.astroRingR !== undefined) {
     // 対策室・ボス戦テスト: 置いた場所を下端にした小さな輪を回る(宇宙飛行群と同じ)。
     const cx = e.astroRingCx ?? bx, cy = e.astroRingCy ?? by, R = e.astroRingR;

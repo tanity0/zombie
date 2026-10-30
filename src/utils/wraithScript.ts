@@ -234,6 +234,17 @@ export const wraithGraveSolids = (pieces: readonly WraithGrowth[], gt: number): 
 // ---- 出るかどうか(社長指示2026-10-29「宇宙飛行群と亡霊は必ず出現する訳ではない。それぞれどっちかのみ。20%の確率」) ----
 /** 1ランで本編に変異体のボス級(宇宙飛行群か亡霊)が出る確率。出る時はどちらか1体だけ(半々)。 */
 export const RUN_MUTANT_BOSS_CHANCE = 0.2;
+
+// ---- 縄張り(§18・社長裁定2026-10-30「縄張りを作る」=逃げ切れない問題) ----
+/** 見つけた場所を中心にした縄張りの半径(px)。プレイヤーがこれより外へ出たら諦めて中心へ戻る。 */
+export const WRAITH_TERRITORY_PX = 900;
+/** 戻り切ったとみなす距離(px)。 */
+export const WRAITH_HOME_ARRIVE_PX = 60;
+/** 落ち着いて(見つけておらず戻ってもいない)この時間が経ったら縄張りを忘れる(別の場所で新しく見つけられる)。 */
+export const WRAITH_TERRITORY_FORGET_MS = 20000;
+/** プレイヤーが縄張りの中に居るか(縄張りがまだ無ければ中とみなす)。 */
+export const inWraithTerritory = (territory: { x: number; y: number } | null, px: number, py: number): boolean =>
+  !territory || Math.hypot(px - territory.x, py - territory.y) <= WRAITH_TERRITORY_PX;
 export type RunMutantBoss = 'astro' | 'wraith' | 'none';
 export const pickRunMutantBoss = (rng: () => number): RunMutantBoss => {
   if (rng() >= RUN_MUTANT_BOSS_CHANCE) return 'none';

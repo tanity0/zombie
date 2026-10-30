@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5291 — 亡霊の縄張り(逃げ切れない問題)【2026-10-30 19:24 JST】
+- 社長報告「幽霊は追いかけてくる範囲が狭い(移動が速いので逃げきれない問題)」→裁定「縄張りを作る」。設計=research/WRAITH_MUTANT.md §18。
+- 最初に見つけた所が中心・半径900px。プレイヤーが外へ出たら見失って中心へ戻る(戻る間は見ても追わない・撃たれたら縄張りの中でだけ振り向く)。落ち着いて20秒で縄張りを忘れる。純関数 `inWraithTerritory`(+テスト)。
+- 確認(ヘッドレス・対策室): 見つけさせてからプレイヤーを1300px先へ → 次の確認で見失い、中心へ戻り始める。
+- 自己点検: 憲法第4条・第5条に抵触しない(亡霊の追跡のみ)。
+- 変更: src/utils/wraithTick.ts / src/utils/wraithScript.ts(+test) / research/WRAITH_MUTANT.md / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5290 — 曲を効果音の経路で鳴らすのを既定に・マナーモードでは鳴らさない【2026-10-30 19:14 JST】
 - 社長の iPhone 実機確認(`?bgmroute=on`): 曲の切り替えで無音にならない/亡霊で段階的に下がる/音量が効く=OK。マナーモードでも鳴る=NG。社長「マナーモードで音が消えるは、むしろいい」。
 - 既定を経路に通す方へ(`BGM_USE_WEBAUDIO_ROUTING`・`?bgmroute=off` で素再生へ戻せる)。曲の要素を作る時に Safari 17〜 の `navigator.audioSession.type='ambient'`(消音スイッチに従う)へ。経路に通っている間は iPhone の「近づくと消す」(v0.25.5285/5286)は動かない。

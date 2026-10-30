@@ -316,3 +316,12 @@ describe('亡霊: 指差しで置いた雑魚の強制攻撃の印(§17)', () =>
     expect(isWraithForced({}, 1000)).toBe(false);
   });
 });
+
+import { inWraithTerritory, WRAITH_TERRITORY_PX } from './wraithScript';
+describe('亡霊: 縄張り(§18)', () => {
+  it('縄張りが無ければ中・半径の内は中・外は外', () => {
+    expect(inWraithTerritory(null, 99999, 0)).toBe(true);
+    expect(inWraithTerritory({ x: 0, y: 0 }, WRAITH_TERRITORY_PX, 0)).toBe(true);
+    expect(inWraithTerritory({ x: 0, y: 0 }, WRAITH_TERRITORY_PX + 1, 0)).toBe(false);
+  });
+});
