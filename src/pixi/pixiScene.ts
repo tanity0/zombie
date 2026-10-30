@@ -22528,9 +22528,11 @@ export class PixiScene {
     // research/MUTANT_HERO.md: 英雄の跳躍の高さ(見た目だけ・判定は地面のまま=CLAUDE.md「Y方向」の掟)。
     // research/ASTRONAUT_HORDE.md §8 A4: 宇宙飛行群の浮遊も同じ(絵だけ持ち上げる・判定・影・帯の y は地面のまま)。
     const heroLift = e.type === 'mutant-hero' ? heroLiftPx(e, gameTime) : e.type === 'mutant-astro' ? astroLiftPx(astroHoverFrameF(e.astroHoverFrame ?? 0, e.astroHoverAcc ?? 0, e.astroHoverDir ?? 1))
-      : e.type === 'mutant-wraith' ? wraithLiftPx(gameTime, e.wraithPhase ?? 0) + (e.wraithScreamAt !== undefined ? wraithScreamRisePx(gameTime - e.wraithScreamAt) : 0) : 0;
+      : e.type === 'mutant-wraith' ? wraithLiftPx(gameTime, e.wraithPhase ?? 0) + ((e.wraithScreamAt ?? e.wraithSummonAt) !== undefined ? wraithScreamRisePx(gameTime - (e.wraithScreamAt ?? e.wraithSummonAt as number)) : 0) : 0;
     // 亡霊: 叫び続けている間(当たった後)は体が震える(位置だけ=絵は歪めない・クリエイティブ監査#8)。
-    const wraithTremor = e.type === 'mutant-wraith' && e.wraithScreamAt !== undefined && gameTime - e.wraithScreamAt >= WRAITH_SCREAM_WINDUP_MS
+    // 召喚(§15)も叫びと同じモーション(浮き上がり・震え・コマ)。紫の予告・地面の明滅は叫びだけ(召喚は何も当てない)。
+    const wraithMouthAt = e.wraithScreamAt ?? e.wraithSummonAt;
+    const wraithTremor = e.type === 'mutant-wraith' && wraithMouthAt !== undefined && gameTime - wraithMouthAt >= WRAITH_SCREAM_WINDUP_MS
       ? (Math.sin(now / 23) * 0.6 + Math.sin(now / 11 + 1.3) * 0.4) * 2.6 : 0;
     // 呪い: 墓石が1つ抜けるたびに、体を指先の方へ数px突き出して戻す(位置だけ・1秒の拍を亡霊が刻む・クリエイティブ監査#16)。
     let wraithPush = 0;
@@ -22966,9 +22968,11 @@ export class PixiScene {
     if (e.type === 'guardian-phantom') this.drawGuardianPhantom(view, e, gameTime, now, fb, cx, cy);
     // research/LIBERTY_HORDE.md §5(クリエイティブ監査 #4): 補充されたコウモリは**旗手の足元から這い上がる**
     // (下から持ち上がる ease-out+フェードイン=慣性MUST「パッと出ない」)。描くだけ・判定は store のまま。
-    if (e.hordeRefill && e.spawnedAt !== undefined) {
+    // research/WRAITH_MUTANT.md §15-1: 亡霊に呼ばれたコウモリも同じ這い上がり(置き場所の地面から・ずれた時刻で)。始まる前は見せない。
+    if ((e.hordeRefill || e.wraithSummoned) && e.spawnedAt !== undefined) {
       const t = (gameTime - e.spawnedAt) / HORDE_REFILL_RISE_MS;
-      if (t >= 0 && t < 1) {
+      if (t < 0) view.sprite.alpha = 0;
+      else if (t < 1) {
         const ease = 1 - Math.pow(1 - t, 3);
         view.sprite.position.y += (1 - ease) * HORDE_REFILL_RISE_PX * this.depthScaleEnemy(fb.footY);
         view.sprite.alpha *= ease;
@@ -37040,7 +37044,8 @@ export class PixiScene {
 
   /** research/WRAITH_MUTANT.md: 今のコマ(叫びの間は叫びのシート・それ以外は浮遊のループ)。 */
   private wraithFrameOf(e: Enemy, gameTime: number): { scream: boolean; point?: boolean; f: number } {
-    if (e.wraithScreamAt !== undefined) return { scream: true, f: wraithScreamFrame(gameTime - e.wraithScreamAt) };
+    const mouthAt = e.wraithScreamAt ?? e.wraithSummonAt; // 召喚(§15)は叫びと同じコマ
+    if (mouthAt !== undefined) return { scream: true, f: wraithScreamFrame(gameTime - mouthAt) };
     if (e.wraithPointAt !== undefined) {
       const low = e.wraithPointLowerAt;
       return { scream: false, point: true, f: wraithPointFrame(gameTime - e.wraithPointAt, low !== undefined ? gameTime - low : undefined,

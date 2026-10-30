@@ -4,7 +4,7 @@ import type { Enemy } from '../types/game';
 import { useGameStore, PLAYER_BASE_SPEED, resolveBountyMove, type PumpkinBlast } from '../store/gameStore';
 import { setWraithGraveRects, wraithGraveRects } from '../world/wraithGraves';
 import { GAME_SPEED } from '../config/gameSpeed';
-import { isCorpse } from './enemyUtils';
+import { isCorpse, spawnEnemyAt } from './enemyUtils';
 import { isPointInZoomedViewport, zoomedViewportBounds } from './cameraZoom';
 import { playSfx } from '../audio/audioManager';
 import { npcSfxDistGain } from './npcSfx';
@@ -12,6 +12,7 @@ import { bossFaceWant, bossFaceDeadzonePx } from './bossFacing';
 import { FRONT_SIGHT_LOSE_PX } from './frontSight';
 import { escortKickableState, ESCORT_TOSS_MS } from './escortToss';
 import { placeAt, nearestTarget, astroRunPois } from './astroTick';
+import { renderedViewRect } from './spawnRefill';
 import {
   stepAstroVelocity, astroArriveSpeed, pickAstroPoi, ASTRO_HIT_ALERT_MS, ASTRO_LOSE_MS, ASTRO_ARRIVE_PX,
   ASTRO_STUCK_MS, ASTRO_STUCK_PX, ASTRO_REST_MIN_MS, ASTRO_REST_MAX_MS, ASTRO_STOPPED_FRAC, type AstroPoi,
@@ -22,6 +23,7 @@ import {
   wraithGrowthStep, wraithGraveSolids, isWraithGrave, type WraithGrowthState, type WraithGrowth, WRAITH_CURSE_MARK_MS,
   WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_HOLD_MS, WRAITH_HEAD_Y_PX, wraithFloatFrame, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_RADIUS, WRAITH_SCREAM_DAMAGE, WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS,
   pickWraithSkill, type WraithSkill, isWraithPinch, wraithPinchNext, wraithBehindPoint, WRAITH_PINCH_STEP_GAP_MS, WRAITH_POINT_RAISE_MS, WRAITH_POINT_LOWER_MS, WRAITH_FLING_RANGE_PX, WRAITH_FLING_MIN_PLAYER_PX, WRAITH_FLING_MAX_PLAYER_PX, WRAITH_CURSE_GAP_MS, WRAITH_FLING_MIN, WRAITH_FLING_MAX,
+  wraithSummonSpots, WRAITH_SUMMON_SCREEN_MAX, WRAITH_SUMMON_HORIZON_PAD_PX, WRAITH_SUMMON_BOTTOM_PAD_PX, WRAITH_SUMMON_STAGGER_MS, WRAITH_SUMMON_FRESH_MS,
   WRAITH_FLING_HOLD_MS, wraithFlingLandings, pickWraithCurseGraves, wraithCurseLiftAt, WRAITH_CURSE_MAX, WRAITH_CURSE_PRE_MS, WRAITH_CURSE_HOVER_PX, WRAITH_CURSE_TAIL_MS,
 } from './wraithScript';
 
@@ -46,6 +48,10 @@ export interface WraithTickState {
   flingMarked: number; curseMarkFor: number; curseMarkId: string | null; flingLandAt: number | null;
   /** ピンチ用の台本(§13): 次の手・後ろへ回り込むワープの最中か・台本の手で続けるか(次の手まで短く空ける)。 */
   pinchStep: number; warpBehind: boolean; pinchChain: boolean;
+  /** 召喚(§15): コウモリを呼んだか(溜め明け)・呼び終えて次の番を指差しにするか。 */
+  summonHit: boolean; summonThenFling: boolean;
+  /** 召喚の置き場所(溜めの始まりに決め、靄を溜める)。 */
+  summonSpots: { x: number; y: number }[];
 }
 export const createWraithTickState = (): WraithTickState => ({
   activeId: null, heading: 0, speed: 0, pois: [], poiIdx: null, prevPoi: null, resting: false, restUntil: null,
@@ -54,6 +60,7 @@ export const createWraithTickState = (): WraithTickState => ({
   lastSkill: null, flingIds: [], flingDone: false, curseTotal: 0, curseIdx: 0, curseLastLift: 0,
   flingMarked: 0, curseMarkFor: -1, curseMarkId: null, flingLandAt: null,
   pinchStep: 0, warpBehind: false, pinchChain: false,
+  summonHit: false, summonThenFling: false, summonSpots: [],
 });
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
@@ -66,10 +73,10 @@ const wraithSfxGain = (x: number, y: number, ppx: number, ppy: number): number =
   const g = npcSfxDistGain(x, y, ppx, ppy, st.camera, st.gameBounds);
   return isPointInZoomedViewport(x, y, st.camera, st.gameBounds, st.viewZoom) ? Math.max(g, 0.4) : g;
 };
-/** 確認用: `?wraithskill=fling|curse|scream` で、使える時はその技だけを選ぶ(§11)。 */
-const FORCE_SKILL: WraithSkill | null = (() => {
+/** 確認用: `?wraithskill=fling|curse|scream` で、使える時はその技だけを選ぶ(§11)。`summon` は技の番を必ず召喚つきの指差しにする(§15-1)。 */
+const FORCE_SKILL: WraithSkill | 'summon' | null = (() => {
   const v = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('wraithskill');
-  return v === 'fling' || v === 'curse' || v === 'scream' ? v : null;
+  return v === 'fling' || v === 'curse' || v === 'scream' || v === 'summon' ? v : null;
 })();
 /** 次の技までの間隔(5〜8秒)。確認用のつまみがある時は短く(すぐ見られる)。 */
 const skillGapMs = (): number => (FORCE_SKILL ? 1200 : rand(WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS));
@@ -98,7 +105,9 @@ const flingOk = (m: Enemy, gt: number, nowMs: number, pcx: number, pcy: number, 
   if ((m.stunUntil !== undefined && gt < m.stunUntil) || (m.rootUntil !== undefined && gt < m.rootUntil) || (m.liftUntil !== undefined && nowMs < m.liftUntil)) return false;
   const mx = m.x + m.width / 2, my = m.y + m.height / 2;
   const d = Math.hypot(mx - pcx, my - pcy);
-  return d >= WRAITH_FLING_MIN_PLAYER_PX && d <= WRAITH_FLING_MAX_PLAYER_PX && inView(mx, my);
+  // 召喚(§15)で呼んだばかりのコウモリは近くても飛ばす(縦長の画面では200px以上の所に置き切れない=呼んだのに指差しで飛ばない、を作らない)。
+  const fresh = m.wraithSummoned && m.spawnedAt !== undefined && gt - m.spawnedAt < WRAITH_SUMMON_FRESH_MS;
+  return (fresh || d >= WRAITH_FLING_MIN_PLAYER_PX) && d <= WRAITH_FLING_MAX_PLAYER_PX && inView(mx, my);
 };
 const flingCandidates = (e: Enemy, enemies: readonly Enemy[], pcx: number, pcy: number, gt: number, nowMs: number, inView: (x: number, y: number) => boolean): Enemy[] => {
   const bx = e.x + e.width / 2, by = e.y + e.height / 2;
@@ -200,6 +209,53 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     const since = gt - s.screamHitAt;
     if (s.screamEchoes === 0 && since >= 90) { s.screamEchoes = 1; st.spawnRing(bx, by, 40, WRAITH_SCREAM_RADIUS * 1.2, 'rgba(214,206,226,0.7)', 5, 860); }
     else if (s.screamEchoes === 1 && since >= 230) { s.screamEchoes = 2; st.spawnRing(bx, by - WRAITH_HEAD_Y_PX * 0.5, 20, WRAITH_SCREAM_RADIUS * 1.05, 'rgba(150,120,200,0.65)', 9, 480); }
+  }
+
+  // ---- 召喚(§15・§15-1): 叫びと同じモーションで口を開き、開き切った瞬間にコウモリ3体が口元から飛び出す。予告・判定は無い ----
+  let summoning = e.wraithSummonAt !== undefined;
+  if (summoning) {
+    const t = gt - (e.wraithSummonAt as number);
+    if (!s.summonHit && (collapse || held || blocked || st.player.health <= 0)) {
+      // 溜めの途中で止められた/見失わせる場面に入った=呼ばない・続く指差しもしない。
+      patch.wraithSummonAt = undefined; summoning = false;
+      s.summonThenFling = false; s.pinchChain = false;
+      s.nextScreamAt = gt + skillGapMs();
+    } else if (!s.summonHit && t >= WRAITH_SCREAM_WINDUP_MS) {
+      s.summonHit = true;
+      const pl = st.player;
+      const pcx = pl.x + pl.width / 2, pcy = pl.y + pl.height / 2;
+      const g = wraithSfxGain(bx, by, pcx, pcy);
+      // 叫びと同じ声・同じ揺れ(社長指示「モーションは叫びのモーションで、画面揺れ、叫びSEで発動」)。
+      if (g > 0.01) { playSfx('idol-death', 0.9 * g, undefined, 1.12); playSfx('hurricane', 0.35 * g, undefined, 0.5); }
+      // 揺れは叫びより短く(何も当てない技=被弾の重さにしない・クリエイティブ監査#8)。
+      if (onScreen) st.triggerShake(450, 16);
+      // 溜めの間に靄を溜めておいた置き場所(s.summonSpots)の地面から、少しずつずれて這い上がる(滑らせない・クリエイティブ監査#1/#5)。
+      const mx = bx + ((e.heroFaceX ?? -1) >= 0 ? 1 : -1) * 8, my = by - WRAITH_HEAD_Y_PX * 0.7;
+      if (!s.summonSpots.length) {
+        // 置き場所を決める前に状態が作り直された時の保険(溜めの始まりと同じ決め方)。
+        const rv = renderedViewRect(st.camera.x, st.camera.y, st.gameBounds.width, st.gameBounds.height, st.viewZoom);
+        s.summonSpots = wraithSummonSpots(pcx, pcy, bx, by, { left: rv.left, right: rv.right, top: rv.horizonY + WRAITH_SUMMON_HORIZON_PAD_PX, bottom: rv.bottom - WRAITH_SUMMON_BOTTOM_PAD_PX });
+      }
+      const bats: Enemy[] = s.summonSpots.map((q, i) => {
+        const b = spawnEnemyAt('bat', q.x, q.y, gt);
+        const c = resolveBountyMove(q.x - b.width / 2, q.y - b.height / 2, { width: b.width, height: b.height });
+        const at = placeAt(b, c.x + b.width / 2, c.y + b.height / 2); // ①障害物 → ②行ける帯
+        return { ...b, x: at.x, y: at.y, dormant: false, wraithSummoned: true, spawnedAt: gt + (WRAITH_SUMMON_STAGGER_MS[i] ?? 0) };
+      });
+      useGameStore.setState(s2 => ({ enemies: [...s2.enemies, ...bats] }));
+      // 口元から吐き出される靄と、這い上がる足元の土煙(赤でも紫でもない=当たらない)。
+      st.spawnBurst(mx, my, '#c9c2d6', 22, 0, -1);
+      for (const b of bats) {
+        st.spawnRing(b.x + b.width / 2, b.y + b.height, 18, 80, 'rgba(150,144,160,0.5)', 16, 900);
+        st.spawnBurst(b.x + b.width / 2, b.y + b.height, '#8f889c', 12, 0, -1);
+      }
+      s.summonSpots = [];
+    } else if (t >= WRAITH_SCREAM_WINDUP_MS + WRAITH_SCREAM_HOLD_MS) {
+      patch.wraithSummonAt = undefined; summoning = false;
+      patch.wraithPhase = -gt; // 浮遊の0コマ目へ(叫びと同じ)
+      // 呼んだ直後は選び直さずに指差しへ(0.35秒+姿勢が整うまで)。
+      s.nextScreamAt = gt + WRAITH_PINCH_STEP_GAP_MS;
+    }
   }
 
   // ---- 指差しの技(指差し=雑魚を吹き飛ばす/呪い=墓石を飛ばす・§11) ----
@@ -325,7 +381,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
   };
 
   // ---- ワープの抽選(見つけて回っている時だけ・被弾ごと600msに1回・3割・§8 A4) ----
-  if (wasAlerted && alerted && !warping && !screaming && !pointing && !collapse && !held && gt - s.lastWarpAt >= WRAITH_WARP_COOLDOWN_MS
+  if (wasAlerted && alerted && !warping && !screaming && !summoning && !s.summonThenFling && !pointing && !collapse && !held && gt - s.lastWarpAt >= WRAITH_WARP_COOLDOWN_MS
     && nowMs - (e.lastHit ?? 0) <= 120 && nowMs - s.lastRollAt >= WRAITH_WARP_ROLL_GAP_MS) {
     s.lastRollAt = nowMs;
     if (Math.random() < WRAITH_WARP_CHANCE) { startWarp(wraithOppositePoint(tgt.x, tgt.y, bx, by)); warping = true; } // 同じフレームで叫びの溜めに入らない(品質監査 A3)
@@ -335,7 +391,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
   const pv = Math.hypot(st.player.vx ?? 0, st.player.vy ?? 0);
   let vmax = alerted ? WRAITH_ORBIT_SPEED + Math.min(pv, PLAYER_BASE_SPEED * GAME_SPEED * 1.5) : WRAITH_PATROL_SPEED;
   let wantH = s.heading, wantS = 0;
-  if (collapse || held || screaming || pointing || warping) {
+  if (collapse || held || screaming || summoning || pointing || warping) {
     wantS = 0;
   } else if (alerted) {
     if (gt >= s.nextReverseAt) { s.orbitDir = s.orbitDir === 1 ? -1 : 1; s.nextReverseAt = gt + rand(WRAITH_REVERSE_MIN_MS, WRAITH_REVERSE_MAX_MS); }
@@ -353,21 +409,59 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
         const mobs = flingCandidates(e, st.enemies, pcx0, pcy0, gt, nowMs, (x, y) => x >= view0.left && x <= view0.right && y >= view0.top && y <= view0.bottom);
         const graves = pickWraithCurseGraves(st.wraithGrowths, { x: bx, y: e.y + e.height }, { x: pcx0, y: pl0.y + pl0.height }, gt,
           (x, y) => x >= view0.left && x <= view0.right && y >= view0.top && y <= view0.bottom);
-        const can = { fling: mobs.length >= WRAITH_FLING_MIN, curse: graves.length > 0 };
+        // 召喚(§15): 指差しの番で画面の敵が3体以下なら、先にコウモリを呼ぶ=敵が少なくても指差しを選べる。
+        // 呼んだ直後の番(summonThenFling)はもう呼ばない(呼んだのに飛ばせない時は指差しをしない)。
+        const thenFling = s.summonThenFling;
+        s.summonThenFling = false;
+        const screenFoes = st.enemies.filter(m => m.id !== e.id && !isCorpse(m) && m.health > 0 && !m.dormant
+          && m.x + m.width / 2 >= view0.left && m.x + m.width / 2 <= view0.right && m.y + m.height / 2 >= view0.top && m.y + m.height / 2 <= view0.bottom).length;
+        const canSummon = !thenFling && (FORCE_SKILL === 'summon' || screenFoes <= WRAITH_SUMMON_SCREEN_MAX);
+        const flingNow = mobs.length >= WRAITH_FLING_MIN;
+        const can = { fling: flingNow || canSummon, curse: graves.length > 0 };
         // ピンチ(体力が半分以下)は台本: 指差し → 後ろへ回り込むワープ → 呪い(§13・社長指示2026-10-30)。それ以外は今使える技から1つ。
         const pinch = !FORCE_SKILL && isWraithPinch(e.health, e.maxHealth);
-        let skill: WraithSkill | 'warp';
+        let skill: WraithSkill | 'warp' | 'summon' | null;
         if (pinch) {
           const nx = wraithPinchNext(s.pinchStep, can);
           s.pinchStep = nx.next;
           skill = nx.action;
           s.pinchChain = nx.next !== 0; // 締めの手(呪い/叫び)の後は普段の間隔
+        } else if (thenFling) {
+          // 呼んだ直後: 選び直さずに指差し。飛ばせる雑魚が2体未満なら指差しはせず普段の間隔へ。
+          s.pinchChain = false; s.pinchStep = 0;
+          skill = flingNow ? 'fling' : null;
         } else {
           s.pinchChain = false; s.pinchStep = 0;
-          skill = FORCE_SKILL && (FORCE_SKILL === 'scream' || can[FORCE_SKILL]) ? FORCE_SKILL : pickWraithSkill(can, s.lastSkill, Math.random);
+          const force = FORCE_SKILL === 'summon' ? 'fling' : FORCE_SKILL;
+          skill = force && (force === 'scream' || can[force]) ? force : pickWraithSkill(can, s.lastSkill, Math.random);
         }
-        if (skill !== 'warp') s.lastSkill = skill;
-        if (skill === 'warp') {
+        if (skill === 'fling' && canSummon && (FORCE_SKILL === 'summon' || screenFoes <= WRAITH_SUMMON_SCREEN_MAX)) {
+          skill = 'summon';
+          if (pinch) { s.pinchStep = 0; s.pinchChain = true; } // 台本の段は指差しが実際に出た時に進む
+        }
+        if (skill === 'warp' || skill === null) { /* 記録しない */ } else s.lastSkill = skill === 'summon' ? 'fling' : skill;
+        if (skill === null) {
+          s.nextScreamAt = gt + skillGapMs();
+        } else if (skill === 'summon') {
+          patch.wraithSummonAt = gt; s.summonHit = false; s.summonThenFling = true; s.nextScreamAt = null;
+          // 溜めの始まりは叫びと同じ(冷たい息を吸い込む音と、頭の高さへ縮んでいく靄)。
+          const g = wraithSfxGain(bx, by, pcx0, pcy0);
+          if (g > 0.01) playSfx('hurricane', 0.3 * g, undefined, 0.45);
+          st.spawnRing(bx, by - WRAITH_HEAD_Y_PX, 150, 14, 'rgba(196,186,214,0.5)', 10, WRAITH_SCREAM_WINDUP_MS);
+          // 置き場所を今決め、溜めの間そこに灰色の靄を溜める=叫びではなく「呼ぶ」技だと場所ごと分かる(クリエイティブ監査#7)。
+          // 置ける所=実際に映る範囲のうち地平線より下・画面の下端の暗がりより上(CLAUDE.md「Y方向」の表の1行目・監査#2)。
+          const rv = renderedViewRect(st.camera.x, st.camera.y, st.gameBounds.width, st.gameBounds.height, st.viewZoom);
+          const spots = wraithSummonSpots(pcx0, pcy0, bx, by, { left: rv.left, right: rv.right, top: rv.horizonY + WRAITH_SUMMON_HORIZON_PAD_PX, bottom: rv.bottom - WRAITH_SUMMON_BOTTOM_PAD_PX });
+          // 揃えない: 半径と角度に少し揺らぎ(横一列に整列しない・監査#4)。
+          s.summonSpots = spots.map(q => {
+            const dx = q.x - pcx0, dy = q.y - pcy0, d = Math.hypot(dx, dy) + rand(-24, 24), a = Math.atan2(dy, dx) + rand(-0.14, 0.14);
+            return { x: pcx0 + Math.cos(a) * d, y: pcy0 + Math.sin(a) * d };
+          });
+          for (const q of s.summonSpots) {
+            st.spawnRing(q.x, q.y + 20, 90, 22, 'rgba(150,144,160,0.4)', 18, WRAITH_SCREAM_WINDUP_MS);
+            st.spawnRing(q.x, q.y + 20, 50, 10, 'rgba(120,114,132,0.35)', 12, WRAITH_SCREAM_WINDUP_MS * 0.8);
+          }
+        } else if (skill === 'warp') {
           // 後ろへ回り込む(現れる所=プレイヤーの向いている側の反対の周回の上)。向きが無ければ今の位置の反対側。
           const face = pl0.lastDirection ?? { x: 0, y: 0 };
           const dst = wraithBehindPoint(pcx0, pcy0, face.x, face.y) ?? wraithOppositePoint(tgt.x, tgt.y, bx, by);

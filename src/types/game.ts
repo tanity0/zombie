@@ -1455,6 +1455,10 @@ export interface Enemy {
   astroHoverFrame?: number;
   // research/WRAITH_MUTANT.md: 亡霊の叫びの溜めの始まり(gameTime・居る間は叫び中)/ワープの消え始め(gameTime)/ワープ中=当たらない(照準・弾・爆風・damageEnemy の入口が見る)/漂いとコマの個体ごとの位相。
   wraithScreamAt?: number;
+  /** research/WRAITH_MUTANT.md §15: 召喚(コウモリを呼ぶ)の溜めの始まり(gameTime)。叫びと同じモーションだが予告・判定は無い。 */
+  wraithSummonAt?: number;
+  /** §15: 亡霊に呼ばれたコウモリ(描画=置き場所の地面から這い上がる・spawnedAt 起点。判定・扱いは普通の雑魚)。 */
+  wraithSummoned?: boolean;
   wraithWarpOutAt?: number;
   wraithPhased?: boolean;
   wraithPhase?: number;

@@ -261,3 +261,35 @@ describe('ピンチ用の台本(社長指示2026-10-30: 指差し→後ろへワ
     expect(wraithBehindPoint(0, 0, 0, 0)).toBeNull();
   });
 });
+
+import { wraithSummonSpots, WRAITH_SUMMON_INSET_PX } from './wraithScript';
+describe('亡霊: 召喚の置き場所(§15-1)', () => {
+  const view = { left: -202, right: 202, top: -466, bottom: 466 }; // スマホ縦長・等倍
+  it('3点ともプレイヤーから200px以上・可視域の内側', () => {
+    for (const [wx, wy] of [[170, 0], [-170, 0], [0, -95], [0, 95], [120, 70]]) {
+      const pts = wraithSummonSpots(0, 0, wx, wy, view);
+      expect(pts).toHaveLength(3);
+      for (const q of pts) {
+        expect(Math.hypot(q.x, q.y)).toBeGreaterThanOrEqual(200);
+        expect(q.x).toBeGreaterThanOrEqual(view.left + WRAITH_SUMMON_INSET_PX);
+        expect(q.x).toBeLessThanOrEqual(view.right - WRAITH_SUMMON_INSET_PX);
+        expect(q.y).toBeGreaterThanOrEqual(view.top + WRAITH_SUMMON_INSET_PX);
+        expect(q.y).toBeLessThanOrEqual(view.bottom - WRAITH_SUMMON_INSET_PX);
+      }
+    }
+  });
+  it('亡霊が上に居れば上側・下に居れば下側に置く', () => {
+    expect(wraithSummonSpots(0, 0, 0, -95, view).every(q => q.y < 0)).toBe(true);
+    expect(wraithSummonSpots(0, 0, 0, 95, view).every(q => q.y > 0)).toBe(true);
+  });
+  it('地平線より上には置かない(上が狭い縦長では、亡霊が上でも下側へ回す)', () => {
+    const v = { left: -215, right: 215, top: -183, bottom: 397 };
+    const pts = wraithSummonSpots(0, 0, 0, -120, v);
+    expect(pts.every(q => q.y >= v.top + 50 && Math.hypot(q.x, q.y) >= 200)).toBe(true);
+  });
+  it('横長(PC)なら亡霊の真横に置ける', () => {
+    const wide = { left: -640, right: 640, top: -360, bottom: 360 };
+    const pts = wraithSummonSpots(0, 0, 170, 0, wide);
+    expect(pts.every(q => q.x > 250)).toBe(true);
+  });
+});

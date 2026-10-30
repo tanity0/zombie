@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5284', items: [
+    '亡霊(変異体)は周りの敵が少ないと、叫ぶように口を開いてコウモリを三体呼び出し、続けて指差しでけしかけてくる。呼ばれる場所には先に灰色の靄が溜まる',
+  ] },
   { version: '0.25.5283', items: [
     '亡霊が潜む出撃では、出撃直後の通信で隊員の誰かが寒気を訴える。宇宙飛行群の時は通信の乱れを気にする',
   ] },

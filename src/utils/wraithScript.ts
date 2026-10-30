@@ -415,6 +415,50 @@ export const wraithPinchNext = (step: number, can: { fling: boolean; curse: bool
   if (st === 1) return { action: 'warp', next: 2 };
   return { action: can.curse ? 'curse' : 'scream', next: 0 };
 };
+// ---- 召喚=指差しの初段(§15・社長指示2026-10-30「画面に敵が３体以下の場合に発動 batを３体呼び出す」) ----
+/** 画面の敵がこの数以下なら、指差しの前にコウモリを呼ぶ。 */
+export const WRAITH_SUMMON_SCREEN_MAX = 3;
+export const WRAITH_SUMMON_COUNT = 3;
+/** 置き場所=プレイヤーからこの距離の輪の上(入らなければ順に近づける)。指差しで飛ばせる距離(200px以上)を保つ。 */
+export const WRAITH_SUMMON_DISTS_PX = [320, 280, 240, 215] as const;
+/** 3点の間の角度(rad・約26°)。 */
+export const WRAITH_SUMMON_SPREAD_RAD = 0.45;
+/** 可視域の端からの余白(px)。 */
+export const WRAITH_SUMMON_INSET_PX = 50;
+/** 地平線から下へこれだけ空けた所より下にだけ置く(地平線の近くは敵が透けて消える)。呼ぶ側が view.top に足して渡す。 */
+export const WRAITH_SUMMON_HORIZON_PAD_PX = 60;
+/** 画面の下端はケラレと霧で暗い=ここまで空ける(呼ぶ側が view.bottom から引いて渡す・クリエイティブ監査#2)。 */
+export const WRAITH_SUMMON_BOTTOM_PAD_PX = 90;
+/** 3体が這い上がり始める時刻のずれ(ms・揃えない=クリエイティブ監査#4)。 */
+export const WRAITH_SUMMON_STAGGER_MS = [0, 80, 170] as const;
+/** 呼んでからこの間は、プレイヤーに近くても指差しで飛ばせる(続く指差しで必ず使う)。 */
+export const WRAITH_SUMMON_FRESH_MS = 5000;
+/**
+ * コウモリ3体の置き場所(中心)。亡霊の居る向きに一番近い所から順に、3点とも可視域(端から余白)に入る向きを探す。
+ * 入らなければ距離を縮めて探し直す。どこにも入らなければ亡霊の向きのまま一番近い距離(押し戻しは呼ぶ側)。
+ */
+export const wraithSummonSpots = (
+  px: number, py: number, wx: number, wy: number,
+  view: { left: number; right: number; top: number; bottom: number },
+): { x: number; y: number }[] => {
+  const a0 = Math.atan2(wy - py, wx - px);
+  const n = WRAITH_SUMMON_COUNT;
+  const ring = (d: number, c: number) => Array.from({ length: n }, (_, i) => {
+    const a = c + (i - (n - 1) / 2) * WRAITH_SUMMON_SPREAD_RAD;
+    return { x: px + Math.cos(a) * d, y: py + Math.sin(a) * d };
+  });
+  const inside = (q: { x: number; y: number }) => q.x >= view.left + WRAITH_SUMMON_INSET_PX && q.x <= view.right - WRAITH_SUMMON_INSET_PX
+    && q.y >= view.top + WRAITH_SUMMON_INSET_PX && q.y <= view.bottom - WRAITH_SUMMON_INSET_PX;
+  for (const d of WRAITH_SUMMON_DISTS_PX) {
+    for (let k = 0; k <= 36; k++) {
+      const da = (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 18);
+      const pts = ring(d, a0 + da);
+      if (pts.every(inside)) return pts;
+    }
+  }
+  return ring(WRAITH_SUMMON_DISTS_PX[WRAITH_SUMMON_DISTS_PX.length - 1], a0);
+};
+
 /** プレイヤーの後ろ(向いている側の反対)の周回の楕円の上の点。向きが無ければ null。 */
 export const wraithBehindPoint = (cx: number, cy: number, faceX: number, faceY: number): { x: number; y: number } | null => {
   const l = Math.hypot(faceX, faceY);
