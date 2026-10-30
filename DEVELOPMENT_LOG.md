@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5286 — 亡霊戦で全部の音が消える件(iPhone)【2026-10-30 14:56 JST】
+- 社長報告「亡霊戦の音の消え方がおかしい。すべての音が消える。そして出たりもする」(v0.25.5285 の iPhone で曲を消す処理の後)。
+- 見立て: 曲の要素を `muted` にすると iOS が「音楽を再生中」の扱い(playback)を外し、効果音(WebAudio)が消音スイッチに従って黙る。消える/戻るは消音の切り替え(近さ 0.5/0.4)と一致。実機でしか再現できない=社長にマナーモードだったかを確認中。
+- 対処: 消す前に `navigator.audioSession.type='playback'`(Safari 17〜)で扱いを固定。固定できない端末では曲を消さない。確認用 `?iosbgm=1` は固定を飛ばす。
+- 自己点検: 憲法第4条・第5条に抵触しない(音のみ)。
+- 変更: src/audio/audioManager.ts / research/WRAITH_MUTANT.md / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5285 — iPhone/iPad は亡霊に近づくと曲を消す【2026-10-30 14:48 JST】
 - 社長報告「変異体対策室の亡霊のBGM、ずっと鳴ってる。ボリュームも変わらず」。原因: 曲は素再生(element.volume・v0.25.266〜)で、**iPhone/iPad は要素の音量の書き込みを無視**する。PC のヘッドレスでは要素の音量が近さで 1→0.4 に下がることを確認済み(=PC/Android では効いていた)。
 - 社長裁定「iPhoneは近づくと消す」: その端末だけ、近さ 0.5 以上で `bgm.muted`、0.4 未満で戻す(`audio/wraithBgmMute.ts` の純関数+テスト)。場面の切り替え・見張りの解除で必ず戻す。曲を鳴らし直す時も消したまま。確認用 `?iosbgm=1`。

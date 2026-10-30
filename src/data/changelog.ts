@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5286', items: [
+    'iPhone・iPad で、亡霊(変異体)に近づくと効果音まで全部消えてしまうことがあったのを直した',
+  ] },
   { version: '0.25.5285', items: [
     'iPhone・iPad で、亡霊(変異体)に近づいても曲が鳴りっぱなしだったのを直した。近づくと曲が消え、離れると戻る',
   ] },

@@ -2191,9 +2191,21 @@ let wraithWatchdog: number | null = null;
  * (社長報告2026-10-30「対策室の亡霊、BGM ずっと鳴ってる。ボリュームも変わらず」)。その端末だけ、近づいたら曲を消し離れたら戻す
  * (社長裁定2026-10-30「iPhoneは近づくと消す」)。`?iosbgm=1` で PC でもこの扱いにできる(確認用)。
  */
+const FORCE_IOS_BGM = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('iosbgm') === '1';
 const VOLUME_LOCKED = typeof navigator !== 'undefined' && (
-  isVolumeLockedDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints ?? 0)
-  || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('iosbgm') === '1'));
+  isVolumeLockedDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints ?? 0) || FORCE_IOS_BGM);
+/**
+ * 曲の要素を消音にすると、iOS は「音楽を再生中」の扱いを外し、効果音(WebAudio)まで消音スイッチ(マナーモード)に従って
+ * 黙る(社長報告2026-10-30「亡霊戦の音の消え方がおかしい。すべての音が消える。そして出たりもする」)。
+ * 消す前に音の扱いを「再生」に固定する(Safari 17〜 の navigator.audioSession)。固定できない端末では曲を消さない
+ * (=鳴りっぱなしの方が、全部の音が消えるよりまし)。
+ */
+const holdPlaybackSession = (): boolean => {
+  if (FORCE_IOS_BGM) return true; // 確認用(PC には音の扱いの切り替えが無い)
+  const sess = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+  if (!sess) return false;
+  try { if (sess.type !== 'playback') sess.type = 'playback'; return sess.type === 'playback'; } catch { return false; }
+};
 let wraithIosBgmMuted = false;
 const applyWraithIosMute = (on: boolean) => {
   if (on === wraithIosBgmMuted) { if (bgm && on && !bgm.muted) bgm.muted = true; return; }
@@ -2256,7 +2268,7 @@ export const setWraithAudioMix = (mix: number, hold = false, pan = 0): void => {
   // BGM は近さに比例して下がる(1 → 約1割)。
   const duck = 1 - (1 - WRAITH_BGM_DUCK) * wraithMix;
   if (Math.abs(duck - wraithBgmDuck) > 0.002 || (duck === 1 && wraithBgmDuck !== 1)) { wraithBgmDuck = duck; writeWraithBgmDuck(); }
-  if (VOLUME_LOCKED) applyWraithIosMute(wraithBgmMuteNext(wraithIosBgmMuted, wraithMix));
+  if (VOLUME_LOCKED) { const want = wraithBgmMuteNext(wraithIosBgmMuted, wraithMix); applyWraithIosMute(want && (wraithIosBgmMuted || holdPlaybackSession())); }
   // 素材は遠いうちに読む(長い素材=起動時には読まない)。
   if (sfxContext) for (const k of WRAITH_LAYER_KEYS) if (!sfxBuffers.has(k)) loadSfxBuffer(k);
   if (wraithMix < 0.005) { stopWraithLayers(0.6); return; }
