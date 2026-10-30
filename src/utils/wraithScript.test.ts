@@ -209,3 +209,19 @@ describe('亡霊と戦っている間(§12)', () => {
     expect(wraithBattleActive([w], { ...pl, health: 0 })).toBe(false);
   });
 });
+
+import { wraithAudioMix, WRAITH_AUDIO_FAR_PX, WRAITH_AUDIO_NEAR_PX } from './wraithScript';
+describe('亡霊に近づいた時の音の混ざり具合(§12-3・花と同じ距離感)', () => {
+  const pl = { x: 0, y: 0, width: 20, height: 20, health: 100 };
+  const w = (dx: number) => ({ type: 'mutant-wraith' as const, health: 100, corpseUntil: undefined, x: 10 + dx - 30, y: 20 - 50, width: 60, height: 50 });
+  it('遠いと0・近づくほど増え・すぐそばで1。花が生え始める距離から入り始める', () => {
+    expect(wraithAudioMix([w(WRAITH_AUDIO_FAR_PX + 10)], pl)).toBe(0);
+    const a = wraithAudioMix([w(900)], pl), b = wraithAudioMix([w(500)], pl);
+    expect(a).toBeGreaterThan(0); expect(b).toBeGreaterThan(a);
+    expect(wraithAudioMix([w(WRAITH_AUDIO_NEAR_PX - 10)], pl)).toBe(1);
+  });
+  it('倒れた亡霊・プレイヤーが倒れた時は0', () => {
+    expect(wraithAudioMix([{ ...w(100), corpseUntil: 9 }], pl)).toBe(0);
+    expect(wraithAudioMix([w(100)], { ...pl, health: 0 })).toBe(0);
+  });
+});

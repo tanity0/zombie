@@ -214,7 +214,7 @@ import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ri
 import { stepHunterPatrol } from '../utils/hunterPatrolTick';
 import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, runAstroScatter, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
 import { runWraithTick, createWraithTickState, pickActiveWraith, releaseWraithOwner, runWraithGrowths, runWraithGraveFx } from '../utils/wraithTick'; // research/WRAITH_MUTANT.md
-import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES, pickRunMutantBoss, wraithBattleActive, type RunMutantBoss } from '../utils/wraithScript';
+import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES, pickRunMutantBoss, wraithAudioMix, type RunMutantBoss } from '../utils/wraithScript';
 import { astroSpawnPick, astroMeteorView, astroMeteorCamLead } from '../utils/astroScript';
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
@@ -561,7 +561,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
-import { registerKillChainSfxRate, setWraithBattleAudio, resetWraithBattleAudio, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, primeCorridorRadio, setHeroGallop, setCrawlerDrag, setEscapeGhost, playDistantSfx, setCorridorRadioBoost, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
+import { registerKillChainSfxRate, setWraithAudioMix, resetWraithBattleAudio, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, primeCorridorRadio, setHeroGallop, setCrawlerDrag, setEscapeGhost, playDistantSfx, setCorridorRadioBoost, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT, labRadioIdolDownFade } from '../world/labRadioMix';
 import { labBaitCamLead, labBaitLandDist, labBaitZoomTarget, LAB_BAIT_CAM_FORWARD_FRAC, LAB_BAIT_CAM_FWD_TAU_S, LAB_BAIT_CAM_BACK_TAU_S, LAB_BAIT_CAM_RETURN_TAU_S } from '../world/labBait';
@@ -2876,11 +2876,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           ? puzzlePeakSnap.komaKind === 'peak'
           : (gs.stageTheme !== 'lab' && !gs.indoorMode && phaseAt(gs.gameTime).kind === 'gate');
         setPeakLayer(!gs.isPaused && gs.player.health > 0 && (scriptedPeak || gs.redNight?.phase === 'active'));
-        // 亡霊と戦っている間はBGMを大きく下げ、亡霊の声を交互に重ねる(research/WRAITH_MUTANT.md §12)。ポーズ中は下げたまま保つ。
         {
           const wNow = gs.enemies.find(e => e.type === 'mutant-wraith');
           const wPan = wNow ? ((wNow.x + wNow.width / 2) - (gs.player.x + gs.player.width / 2)) / 420 : 0; // 亡霊の左右(声を寄せる)
-          setWraithBattleAudio(wraithBattleActive(gs.enemies, gs.player), gs.isPaused, wPan);
+          setWraithAudioMix(wraithAudioMix(gs.enemies, gs.player), gs.isPaused, wPan); // 亡霊に近いほどBGMが下がり、声が入る(花と同じ距離感・§12-3)
         }
       }
 

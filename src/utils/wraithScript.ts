@@ -357,3 +357,28 @@ export const wraithBattleActive = (
   return enemies.some(e => e.type === 'mutant-wraith' && !isCorpse(e) && e.health > 0 && e.libAlerted === true
     && Math.hypot(e.x + e.width / 2 - px, e.y + e.height / 2 - py) <= WRAITH_BATTLE_RANGE_PX);
 };
+
+// ---- 亡霊に近づいた時の音(§12-3・社長指示2026-10-30「近づくと徐々にBGMがフェードアウトしていき(距離に応じて)、代わりにSEがフェードインしてくる。花とかと連動した距離間」) ----
+/** 音が混ざり始める距離=花と墓石が生え始める距離(WRAITH_GROWTH_NEAR_PX)。 */
+export const WRAITH_AUDIO_FAR_PX = WRAITH_GROWTH_NEAR_PX;
+/** 混ざり切る距離=生える間隔が一番詰まる距離(wraithGrowthGapMs の 200)。 */
+export const WRAITH_AUDIO_NEAR_PX = 200;
+/**
+ * 亡霊との近さ(0=遠い・居ない/1=すぐそば)。足元どうしの距離で、花と同じ距離感(1200px で入り始め 200px で混ざり切る)。
+ * 出始めと終わりがなめらか(smoothstep)。倒れた亡霊・プレイヤーが倒れた時は 0。
+ */
+export const wraithAudioMix = (
+  enemies: readonly Pick<Enemy, 'type' | 'health' | 'corpseUntil' | 'x' | 'y' | 'width' | 'height'>[],
+  player: { x: number; y: number; width: number; height: number; health: number },
+): number => {
+  if (!(player.health > 0)) return 0;
+  const px = player.x + player.width / 2, py = player.y + player.height;
+  let best = 0;
+  for (const e of enemies) {
+    if (e.type !== 'mutant-wraith' || isCorpse(e) || !(e.health > 0)) continue;
+    const d = Math.hypot(e.x + e.width / 2 - px, e.y + e.height - py);
+    const u = Math.max(0, Math.min(1, (WRAITH_AUDIO_FAR_PX - d) / (WRAITH_AUDIO_FAR_PX - WRAITH_AUDIO_NEAR_PX)));
+    best = Math.max(best, u * u * (3 - 2 * u));
+  }
+  return best;
+};

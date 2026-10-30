@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5277', items: [
+    '亡霊(変異体)に近づくほど曲が遠のき、すすり泣くような声が近づいてくる。花や墓石が生え始める辺りから',
+  ] },
   { version: '0.25.5276', items: [
     'タイトルの線画が描き上がる間、絵が左上へずれて戻る揺れが直った',
   ] },
