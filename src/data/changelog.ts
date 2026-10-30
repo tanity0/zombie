@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5279', items: [
+    '追い詰められた亡霊(変異体)は、指差しで敵をけしかけ、背後へ回り込み、墓石を飛ばしてくる。息つく間もなく続けて',
+  ] },
   { version: '0.25.5278', items: [
     '宇宙飛行群(変異)は、旗を投げつけ、続けて破片の雨を降らせる。この順に繰り返す。旗は弾き返せる',
     '追い詰めると破片の雨が倍に増える',

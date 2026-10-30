@@ -225,3 +225,25 @@ describe('亡霊に近づいた時の音の混ざり具合(§12-3・花と同じ
     expect(wraithAudioMix([w(100)], { ...pl, health: 0 })).toBe(0);
   });
 });
+
+import { wraithPinchNext, isWraithPinch, wraithBehindPoint, wraithOrbitAngle as orbAng } from './wraithScript';
+describe('ピンチ用の台本(社長指示2026-10-30: 指差し→後ろへワープ→呪い)', () => {
+  it('体力が半分以下でピンチ。指差し→ワープ→呪い→(最初へ)', () => {
+    expect(isWraithPinch(5000, 10000)).toBe(true);
+    expect(isWraithPinch(6000, 10000)).toBe(false);
+    const can = { fling: true, curse: true };
+    let st = 0; const seq: string[] = [];
+    for (let i = 0; i < 6; i++) { const n = wraithPinchNext(st, can); seq.push(n.action); st = n.next; }
+    expect(seq).toEqual(['fling', 'warp', 'curse', 'fling', 'warp', 'curse']);
+  });
+  it('雑魚が居なければ指差しを飛ばしてワープ、墓石が無ければ叫びで締める', () => {
+    expect(wraithPinchNext(0, { fling: false, curse: true }).action).toBe('warp');
+    expect(wraithPinchNext(2, { fling: true, curse: false }).action).toBe('scream');
+  });
+  it('後ろ=向いている側の反対の周回の上', () => {
+    const p = wraithBehindPoint(0, 0, 1, 0)!; // 右を向いている
+    expect(p.x).toBeLessThan(0);
+    expect(Math.abs(Math.cos(orbAng(0, 0, p.x, p.y)) + 1)).toBeLessThan(1e-6);
+    expect(wraithBehindPoint(0, 0, 0, 0)).toBeNull();
+  });
+});

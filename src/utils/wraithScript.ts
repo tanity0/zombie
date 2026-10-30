@@ -382,3 +382,27 @@ export const wraithAudioMix = (
   }
   return best;
 };
+
+// ---- ピンチ用の台本(社長指示2026-10-30「亡霊 ピンチ用台本 指さし→ワープでプレイヤーの後ろに回り込み→呪い」) ----
+/** ピンチ=体力が半分以下(宇宙飛行群と同じ)。 */
+export const WRAITH_PINCH_HP_FRAC = 0.5;
+export const isWraithPinch = (health: number, maxHealth: number): boolean => maxHealth > 0 && health <= maxHealth * WRAITH_PINCH_HP_FRAC;
+/** 台本の手の間(ms): 前の手が終わってから次の手まで(続けざま=一気に畳みかける)。 */
+export const WRAITH_PINCH_STEP_GAP_MS = 350;
+export type WraithPinchAction = 'fling' | 'warp' | 'curse' | 'scream';
+/**
+ * 台本の次の手。step=0 指差し / 1 後ろへワープ / 2 呪い(次は0へ戻る)。
+ * 指差しは飛ばせる雑魚が居なければ飛ばしてワープへ。呪いは墓石が無ければ叫びで締める。
+ */
+export const wraithPinchNext = (step: number, can: { fling: boolean; curse: boolean }): { action: WraithPinchAction; next: number } => {
+  const st = ((step % 3) + 3) % 3;
+  if (st === 0) return can.fling ? { action: 'fling', next: 1 } : { action: 'warp', next: 2 };
+  if (st === 1) return { action: 'warp', next: 2 };
+  return { action: can.curse ? 'curse' : 'scream', next: 0 };
+};
+/** プレイヤーの後ろ(向いている側の反対)の周回の楕円の上の点。向きが無ければ null。 */
+export const wraithBehindPoint = (cx: number, cy: number, faceX: number, faceY: number): { x: number; y: number } | null => {
+  const l = Math.hypot(faceX, faceY);
+  if (l < 1e-6) return null;
+  return wraithOrbitPoint(cx, cy, Math.atan2(-faceY / l, -faceX / l));
+};

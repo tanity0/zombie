@@ -21,7 +21,7 @@ import {
   wraithOrbitAngle, wraithOrbitPoint, WRAITH_WARP_CHANCE, WRAITH_WARP_COOLDOWN_MS, WRAITH_WARP_ROLL_GAP_MS, wraithWarpState,
   wraithGrowthStep, wraithGraveSolids, isWraithGrave, type WraithGrowthState, type WraithGrowth, WRAITH_CURSE_MARK_MS,
   WRAITH_SCREAM_WINDUP_MS, WRAITH_SCREAM_HOLD_MS, WRAITH_HEAD_Y_PX, wraithFloatFrame, WRAITH_FLOAT_FRAMES, WRAITH_SCREAM_RADIUS, WRAITH_SCREAM_DAMAGE, WRAITH_SCREAM_GAP_MIN_MS, WRAITH_SCREAM_GAP_MAX_MS,
-  pickWraithSkill, type WraithSkill, WRAITH_POINT_RAISE_MS, WRAITH_POINT_LOWER_MS, WRAITH_FLING_RANGE_PX, WRAITH_FLING_MIN_PLAYER_PX, WRAITH_FLING_MAX_PLAYER_PX, WRAITH_CURSE_GAP_MS, WRAITH_FLING_MIN, WRAITH_FLING_MAX,
+  pickWraithSkill, type WraithSkill, isWraithPinch, wraithPinchNext, wraithBehindPoint, WRAITH_PINCH_STEP_GAP_MS, WRAITH_POINT_RAISE_MS, WRAITH_POINT_LOWER_MS, WRAITH_FLING_RANGE_PX, WRAITH_FLING_MIN_PLAYER_PX, WRAITH_FLING_MAX_PLAYER_PX, WRAITH_CURSE_GAP_MS, WRAITH_FLING_MIN, WRAITH_FLING_MAX,
   WRAITH_FLING_HOLD_MS, wraithFlingLandings, pickWraithCurseGraves, wraithCurseLiftAt, WRAITH_CURSE_MAX, WRAITH_CURSE_PRE_MS, WRAITH_CURSE_HOVER_PX, WRAITH_CURSE_TAIL_MS,
 } from './wraithScript';
 
@@ -44,6 +44,8 @@ export interface WraithTickState {
   lastSkill: WraithSkill | null; flingIds: string[]; flingDone: boolean; curseTotal: number; curseIdx: number; curseLastLift: number;
   /** 合図を出した雑魚の数・印を付けた墓石の番号とid・雑魚が着地する時刻(重い音を1回)。 */
   flingMarked: number; curseMarkFor: number; curseMarkId: string | null; flingLandAt: number | null;
+  /** ピンチ用の台本(§13): 次の手・後ろへ回り込むワープの最中か・台本の手で続けるか(次の手まで短く空ける)。 */
+  pinchStep: number; warpBehind: boolean; pinchChain: boolean;
 }
 export const createWraithTickState = (): WraithTickState => ({
   activeId: null, heading: 0, speed: 0, pois: [], poiIdx: null, prevPoi: null, resting: false, restUntil: null,
@@ -51,6 +53,7 @@ export const createWraithTickState = (): WraithTickState => ({
   lastRollAt: -1e9, lastWarpAt: -1e9, warpMoved: true, screamHitAt: -1e9, screamEchoes: 0, lastTrailAt: -1e9,
   lastSkill: null, flingIds: [], flingDone: false, curseTotal: 0, curseIdx: 0, curseLastLift: 0,
   flingMarked: 0, curseMarkFor: -1, curseMarkId: null, flingLandAt: null,
+  pinchStep: 0, warpBehind: false, pinchChain: false,
 });
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
@@ -141,11 +144,18 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     s.warpMoved = true;
     const pl = st.player;
     const cx = alerted ? tgt.x : pl.x + pl.width / 2, cy = alerted ? tgt.y : pl.y + pl.height / 2;
-    const q = passableOnOrbit(e, cx, cy, wraithOppositePoint(cx, cy, bx, by));
+    // 台本の回り込み(§13)はプレイヤーの後ろ(向いている側の反対)へ。それ以外は今の位置の反対側。
+    const face = pl.lastDirection ?? { x: 0, y: 0 };
+    const behind = s.warpBehind ? wraithBehindPoint(pl.x + pl.width / 2, pl.y + pl.height / 2, face.x, face.y) : null;
+    const q = passableOnOrbit(e, behind ? pl.x + pl.width / 2 : cx, behind ? pl.y + pl.height / 2 : cy, behind ?? wraithOppositePoint(cx, cy, bx, by));
     Object.assign(patch, q, { vx: 0, vy: 0 });
     s.speed = 0;
   }
-  if (ws.done && e.wraithWarpOutAt !== undefined) patch.wraithWarpOutAt = undefined;
+  if (ws.done && e.wraithWarpOutAt !== undefined) {
+    patch.wraithWarpOutAt = undefined;
+    // 台本の回り込みが終わった=すぐ次の手(呪い)へ。
+    if (s.warpBehind) { s.warpBehind = false; s.nextScreamAt = gt + WRAITH_PINCH_STEP_GAP_MS; }
+  }
   let warping = !ws.done;
 
   // ---- 叫び(紫=弾けない・溜めの始まりに予告が出て、溜め明けの瞬間に当たる・§4) ----
@@ -194,7 +204,8 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
       if (gt - e.wraithPointLowerAt >= WRAITH_POINT_LOWER_MS) {
         patch.wraithPointAt = undefined; patch.wraithPointLowerAt = undefined; patch.wraithPointKind = undefined; pointing = false;
         patch.wraithPhase = -gt; // 浮遊の0コマ目へ戻る(叫びと同じ)
-        s.nextScreamAt = gt + skillGapMs();
+        // 台本の途中(指差しの後)ならすぐ次の手、締め(呪い)の後は普段の間隔。
+        s.nextScreamAt = gt + (s.pinchChain ? WRAITH_PINCH_STEP_GAP_MS : skillGapMs());
       }
     } else if (collapse || held || blocked) {
       // 崩された/見失わせる場面に入った(§11-1 A5): まだ飛んでいない雑魚は飛ばない・まだ抜けていない墓石は抜けない(もう浮いた墓石は予告どおり飛ぶ)。腕を下ろす。
@@ -289,26 +300,26 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     if (g > 0.01) playSfx('heavy-impact', 0.6 * g, undefined, 0.8); // 雑魚が囲みに着いた重い音(1回だけ)
   }
 
+  // ワープを始める(消える所と現れる所に霧・低い風の音)。dst=現れる所(霧を先に溜める)。
+  const startWarp = (dst: { x: number; y: number }): void => {
+    patch.wraithWarpOutAt = gt; patch.wraithPhased = true;
+    s.lastWarpAt = gt; s.warpMoved = false;
+    const pl = st.player;
+    const g = npcSfxDistGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
+    if (g > 0.01) playSfx('hurricane', 0.35 * g, undefined, 0.7); // 低い風が抜ける音
+    // 霧(派手さの絵): 消える所に大きく広がる灰の霧。現れる所には先に霧を溜める=背後へ回られたと分かる(クリエイティブ監査#2)。
+    for (const [x, y] of [[bx, by - 40], [dst.x, dst.y - 40]] as const) {
+      st.spawnRing(x, y, 70, 20, 'rgba(176,170,186,0.45)', 26, 1100);
+      st.spawnRing(x, y + 20, 30, 110, 'rgba(150,144,160,0.35)', 18, 1300);
+      st.spawnBurst(x, y, '#aaa3b4', 16, 0, -1);
+    }
+  };
+
   // ---- ワープの抽選(見つけて回っている時だけ・被弾ごと600msに1回・3割・§8 A4) ----
   if (wasAlerted && alerted && !warping && !screaming && !pointing && !collapse && !held && gt - s.lastWarpAt >= WRAITH_WARP_COOLDOWN_MS
     && nowMs - (e.lastHit ?? 0) <= 120 && nowMs - s.lastRollAt >= WRAITH_WARP_ROLL_GAP_MS) {
     s.lastRollAt = nowMs;
-    if (Math.random() < WRAITH_WARP_CHANCE) {
-      patch.wraithWarpOutAt = gt; patch.wraithPhased = true;
-      s.lastWarpAt = gt; s.warpMoved = false;
-      warping = true; // 同じフレームで叫びの溜めに入らない(品質監査 A3)
-      const pl = st.player;
-      const g = npcSfxDistGain(bx, by, pl.x + pl.width / 2, pl.y + pl.height / 2, st.camera, st.gameBounds);
-      if (g > 0.01) playSfx('hurricane', 0.35 * g, undefined, 0.7); // 低い風が抜ける音
-      // 霧(派手さの絵): 消える所に大きく広がる灰の霧。現れる所には先に霧を溜める=背後へ回られたと分かる(クリエイティブ監査#2)。
-      const cx = tgt.x, cy = tgt.y;
-      const dst = wraithOppositePoint(cx, cy, bx, by);
-      for (const [x, y] of [[bx, by - 40], [dst.x, dst.y - 40]] as const) {
-        st.spawnRing(x, y, 70, 20, 'rgba(176,170,186,0.45)', 26, 1100);
-        st.spawnRing(x, y + 20, 30, 110, 'rgba(150,144,160,0.35)', 18, 1300);
-        st.spawnBurst(x, y, '#aaa3b4', 16, 0, -1);
-      }
-    }
+    if (Math.random() < WRAITH_WARP_CHANCE) { startWarp(wraithOppositePoint(tgt.x, tgt.y, bx, by)); warping = true; } // 同じフレームで叫びの溜めに入らない(品質監査 A3)
   }
 
   // ---- 望む向き・速さ ----
@@ -334,9 +345,26 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
         const graves = pickWraithCurseGraves(st.wraithGrowths, { x: bx, y: e.y + e.height }, { x: pcx0, y: pl0.y + pl0.height }, gt,
           (x, y) => x >= view0.left && x <= view0.right && y >= view0.top && y <= view0.bottom);
         const can = { fling: mobs.length >= WRAITH_FLING_MIN, curse: graves.length > 0 };
-        const skill = FORCE_SKILL && (FORCE_SKILL === 'scream' || can[FORCE_SKILL]) ? FORCE_SKILL : pickWraithSkill(can, s.lastSkill, Math.random);
-        s.lastSkill = skill;
-        if (skill !== 'scream') {
+        // ピンチ(体力が半分以下)は台本: 指差し → 後ろへ回り込むワープ → 呪い(§13・社長指示2026-10-30)。それ以外は今使える技から1つ。
+        const pinch = !FORCE_SKILL && isWraithPinch(e.health, e.maxHealth);
+        let skill: WraithSkill | 'warp';
+        if (pinch) {
+          const nx = wraithPinchNext(s.pinchStep, can);
+          s.pinchStep = nx.next;
+          skill = nx.action;
+          s.pinchChain = nx.next !== 0; // 締めの手(呪い/叫び)の後は普段の間隔
+        } else {
+          s.pinchChain = false; s.pinchStep = 0;
+          skill = FORCE_SKILL && (FORCE_SKILL === 'scream' || can[FORCE_SKILL]) ? FORCE_SKILL : pickWraithSkill(can, s.lastSkill, Math.random);
+        }
+        if (skill !== 'warp') s.lastSkill = skill;
+        if (skill === 'warp') {
+          // 後ろへ回り込む(現れる所=プレイヤーの向いている側の反対の周回の上)。向きが無ければ今の位置の反対側。
+          const face = pl0.lastDirection ?? { x: 0, y: 0 };
+          const dst = wraithBehindPoint(pcx0, pcy0, face.x, face.y) ?? wraithOppositePoint(tgt.x, tgt.y, bx, by);
+          startWarp(dst);
+          s.warpBehind = true; s.nextScreamAt = null;
+        } else if (skill !== 'scream') {
           patch.wraithPointAt = gt; patch.wraithPointKind = skill; patch.wraithPointLowerAt = undefined; s.nextScreamAt = null;
           s.flingDone = false; s.flingIds = skill === 'fling' ? mobs.map(m => m.id) : [];
           s.curseTotal = skill === 'curse' ? Math.min(WRAITH_CURSE_MAX, graves.length) : 0; s.curseIdx = 0; s.curseLastLift = 0;
@@ -346,6 +374,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
           const g0 = npcSfxDistGain(bx, by, pcx0, pcy0, st.camera, st.gameBounds);
           if (g0 > 0.01) playSfx('crawler-appear', 0.8 * g0);
         } else {
+          if (s.pinchChain) s.pinchChain = false;
           patch.wraithScreamAt = gt; s.screamHit = false;
           // 溜めの始まり: 冷たい息を吸い込む音と、頭の高さへ縮んでいく靄(口の開きを見る前に「来る」が分かる・クリエイティブ監査#5/#6)。
           const pl = st.player;
