@@ -552,7 +552,7 @@ import {
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { tickNewGuns } from '../utils/newGunsTick'; // research/NEW_GUNS.md: 新しい銃3挺の進行
 import { dropGunKillLoot } from '../utils/gunKillDrops'; // 弾で倒した時の撃破演出とドロップ(品質監査#4)
-import { isScanMarked, scanMarkMeleeMult, SCAN_MARK_RANGED_MULT } from '../utils/scanSensor';
+import { scanMarkMeleeMult, scanMarkRangedMult } from '../utils/scanSensor';
 import { ammoBearingGuns } from '../utils/weaponUtils'; // 弾倉の無い銃を除いた所持銃(research/NEW_GUNS.md 品質監査#5)
 import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
@@ -16384,7 +16384,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // damageEnemy へは「印を使った」旗を渡す(×1.6 を二重に掛けない)。
                   const wireScanMult = postureFatal ? 1
                     : wireHate === 'player' ? scanMarkMeleeMult(tgt, gameTime, 'melee')
-                      : (isScanMarked(tgt, gameTime) ? SCAN_MARK_RANGED_MULT : 1);
+                      : scanMarkRangedMult(tgt, gameTime);
                   const wireHitDamage = postureFatal ? meleeDmg : bdmg * wireScanMult;
                   useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, false, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null, undefined, undefined, undefined, true); // 打撃(爆風ではない・v0.25.4284)
                   spawnDamageNumber(tcx, tgt.y, wireHitDamage, true, { scanMarked: wireScanMult !== 1 });

@@ -47,9 +47,48 @@ export const scanBeatPhase = (gameTime: number): number => {
   return (g % SCAN_BEAT_MS) / SCAN_BEAT_MS;
 };
 
-/** 印が今効いているか。 */
-export const isScanMarked = (e: Pick<Enemy, 'scanMarkUntil'>, gameTime: number): boolean =>
-  e.scanMarkUntil !== undefined && gameTime < e.scanMarkUntil;
+// ── 印の重ね(§4-2・社長指示2026-10-30「重ねられるようにするか？」「5段目でクリティカル扱い」) ──
+/** 印の最大段。 */
+export const SCAN_STACK_MAX = 5;
+/** 銃・サブ・仲間の攻撃の1段あたりの上乗せ(1段 ×1.2 → 5段 ×2.0)。 */
+export const SCAN_STACK_RANGED_STEP = 0.2;
+/** 近接の印の倍率(雑魚・段ごと・段は使い切らない)。ボス級はこれに SCAN_STACK_BOSS_RATIO、刀は SCAN_STACK_KATANA_RATIO を掛ける。 */
+export const SCAN_STACK_MELEE_MOB_MULT = [1, 1.6, 1.9, 2.2, 2.5, 3.0] as const;
+export const SCAN_STACK_BOSS_RATIO = 1.7;
+export const SCAN_STACK_KATANA_RATIO = 3.1 / 2.75;
+
+/**
+ * 今の段。最後に掃いた時の段(scanStacks)から、印の時間(3秒)が切れるたびに1段ずつ減る。
+ * 旧形式(scanStacks が無く scanMarkUntil だけ)は1段とみなす。
+ */
+export const scanStacksAt = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks'>, gameTime: number): number => {
+  if (e.scanMarkUntil === undefined) return 0;
+  const base = Math.max(0, Math.min(SCAN_STACK_MAX, e.scanStacks ?? 1));
+  if (gameTime < e.scanMarkUntil) return base;
+  const lost = 1 + Math.floor((gameTime - e.scanMarkUntil) / SCAN_MARK_MS);
+  return Math.max(0, base - lost);
+};
+/** 扇に入った時に書く値(1段重ね・残り時間は3秒に戻る)。 */
+export const scanMarkAddStack = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks'>, gameTime: number): { scanStacks: number; scanMarkUntil: number } => ({
+  scanStacks: Math.min(SCAN_STACK_MAX, scanStacksAt(e, gameTime) + 1),
+  scanMarkUntil: gameTime + SCAN_MARK_MS,
+});
+/** 銃・サブ・仲間の攻撃の印の倍率(段に比例)。印が無ければ 1。 */
+export const scanMarkRangedMult = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks'>, gameTime: number): number => {
+  const n = scanStacksAt(e, gameTime);
+  return n > 0 ? 1 + SCAN_STACK_RANGED_STEP * n : 1;
+};
+
+/** 次の1重ねが減るまでの残り(0..1)。足元の輪が欠けていく割合。印が無ければ 0。 */
+export const scanStackRemainFrac = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks'>, gameTime: number): number => {
+  if (e.scanMarkUntil === undefined || scanStacksAt(e, gameTime) <= 0) return 0;
+  if (gameTime < e.scanMarkUntil) return Math.max(0, Math.min(1, (e.scanMarkUntil - gameTime) / SCAN_MARK_MS));
+  return 1 - ((gameTime - e.scanMarkUntil) % SCAN_MARK_MS) / SCAN_MARK_MS;
+};
+
+/** 印が今効いているか(段が1以上)。 */
+export const isScanMarked = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks'>, gameTime: number): boolean =>
+  scanStacksAt(e, gameTime) > 0;
 
 /** 印の残り(0..1)。描画の輪が欠けていく割合に使う。 */
 export const scanMarkRemainFrac = (e: Pick<Enemy, 'scanMarkUntil'>, gameTime: number): number =>
@@ -58,14 +97,18 @@ export const scanMarkRemainFrac = (e: Pick<Enemy, 'scanMarkUntil'>, gameTime: nu
 /** 雑魚/ボス級の区分。ボス級=ボス式の会心(×5)を受ける型(usesBossCrit)。 */
 export const scanMarkIsBossClass = (t: EnemyType): boolean => usesBossCrit(t);
 
-/** 近接・刀・鞭の印の倍率(段・Lv に関係なく1つ)。印が無ければ 1。 */
+/** 近接・刀・鞭の印の倍率(§4-2: 段に比例・段は使い切らない・ナイフの段/Lvには関係なし)。印が無ければ 1。 */
 export const scanMarkMeleeMult = (
-  e: Pick<Enemy, 'type' | 'scanMarkUntil'>, gameTime: number, kind: ScanMeleeKind,
+  e: Pick<Enemy, 'type' | 'scanMarkUntil' | 'scanStacks'>, gameTime: number, kind: ScanMeleeKind,
 ): number => {
-  if (!isScanMarked(e, gameTime)) return 1;
-  const table = kind === 'katana' ? SCAN_MARK_KATANA_MULT : SCAN_MARK_MELEE_MULT;
-  return scanMarkIsBossClass(e.type) ? table.boss : table.mob;
+  const n = scanStacksAt(e, gameTime);
+  if (n <= 0) return 1;
+  const mob = SCAN_STACK_MELEE_MOB_MULT[n];
+  const m = scanMarkIsBossClass(e.type) ? mob * SCAN_STACK_BOSS_RATIO : mob;
+  return kind === 'katana' ? m * SCAN_STACK_KATANA_RATIO : m;
 };
+/** 扇で印が最大段に「上がった瞬間」か(社長指示2026-10-30「5段目のスキャンでクリティカル状態」=止めるのは上がった時だけ)。 */
+export const scanStackReachedFull = (before: number, after: number): boolean => before < SCAN_STACK_MAX && after >= SCAN_STACK_MAX;
 
 /**
  * 1振りで倍率が効く「一番近い印付きの1体」を選ぶ。候補は**この振りが実際に当てる敵**を渡す
@@ -93,6 +136,8 @@ export const pickScanMarkTarget = <T extends Pick<Enemy, 'id' | 'scanMarkUntil'>
  */
 export interface ScanMarkDamageInput {
   marked: boolean;
+  /** 今の段(§4-2)。省略時は1段。 */
+  stacks?: number;
   amount: number;
   enemyHealth: number;
   postureImpact: string | null | undefined;
@@ -103,7 +148,7 @@ export const scanMarkDamageMult = (i: ScanMarkDamageInput): number => {
   if (!i.marked || i.handledByCaller || i.rewardActive) return 1;
   if (i.postureImpact === 'counter' || i.postureImpact === 'reflect') return 1;
   if (i.amount >= i.enemyHealth) return 1; // 即死
-  return SCAN_MARK_RANGED_MULT;
+  return 1 + SCAN_STACK_RANGED_STEP * Math.max(1, Math.min(SCAN_STACK_MAX, i.stacks ?? 1)); // §4-2: 段に比例(1段×1.2〜5段×2.0)
 };
 
 /** 近接の会心率に足す印の上乗せ(印付きの雑魚だけ)。呼び手は「色の補正の後」の値に足してから上限を取る。 */

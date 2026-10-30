@@ -13,7 +13,7 @@ import { getNewGunsView, type NewGunsEvent } from '../utils/newGunsTick';
 import { BLOB_RADIUS_PX, BLOB_LIFE_MS, BLOB_FADE_MS, blobVisualScale, blobSpeedAt, BLOB_SPEED_PX_PER_SEC, BLOB_SHEET_FRAMES, blobSheetFrame, type BlobShot } from '../utils/blobShot';
 import { SAT_BULLET_RADIUS_PX, SAT_ORBIT_RADIUS_PX, SAT_SPAWN_EASE_MS, SAT_RELEASE_IDLE_MS, SATELLITE_WEAPON_KEY, satelliteOrbitPoint, type SatelliteOrbit } from '../utils/satelliteOrbit';
 import {
-  SCAN_FAN_HALF_ANGLE_RAD, SCAN_FAN_LENGTH_PX, SCAN_SWEEP_MS, scanFanSweepFrac, scanFanGroundAngle, scanFanScreenPoint, scanBeatPhase, SCAN_BEAT_MS, SCAN_WEAPON_KEY, SCAN_FAN_GROUND_Y_SCALE, isScanMarked, scanMarkRemainFrac,
+  SCAN_FAN_HALF_ANGLE_RAD, SCAN_FAN_LENGTH_PX, SCAN_SWEEP_MS, scanFanSweepFrac, scanFanGroundAngle, scanFanScreenPoint, scanBeatPhase, SCAN_BEAT_MS, SCAN_WEAPON_KEY, SCAN_FAN_GROUND_Y_SCALE, isScanMarked, scanStackRemainFrac, scanStacksAt, SCAN_STACK_MAX,
   type ScanFan,
 } from '../utils/scanSensor';
 import { enemyFootBox, enemyHeadY, enemyHitStrip } from './renderSpec';
@@ -608,7 +608,9 @@ export class NewGunsFx {
       if (n >= MARK_DRAW_MAX) break;
       if (!isScanMarked(e, gameTime)) continue;
       n++;
-      const remain = scanMarkRemainFrac(e, gameTime);
+      // §4-2: 輪=次の1重ねが減るまでの残り。最後の1重ねの時だけ消え際に薄れる。
+      const stacks = scanStacksAt(e, gameTime);
+      const remain = scanStackRemainFrac(e, gameTime);
       const fb = enemyFootBox(e);
       const ds = depthEnemy(fb.footY);
       const strip = enemyHitStrip(e);
@@ -616,10 +618,12 @@ export class NewGunsFx {
       const pop = at !== undefined ? easeOutCubic((gameTime - at) / MARK_POP_MS) : 1;
       const hitK = e.lastHit ? Math.pow(clamp01(1 - (now - e.lastHit) / 120), 1.5) : 0;
       const blink = sweptIds.has(e.id) ? sweptBlink : 0;
-      const rx = Math.max(12, strip.width * 0.62) * ds * (1 + 0.6 * (1 - pop) + 0.12 * hitK);
+      // 気絶中は黄色の気絶の輪と重ならないよう内側へ縮める(クリエイティブ監査#8)。
+      const stunned = e.stunUntil !== undefined && gameTime < e.stunUntil;
+      const rx = Math.max(12, strip.width * 0.62) * ds * (1 + 0.6 * (1 - pop) + 0.12 * hitK) * (stunned ? 0.72 : 1);
       const ry = rx * 0.36;
       const a0 = 0.9 * (0.4 + 0.6 * pop);
-      const tail = remain < 0.14 ? remain / 0.14 : 1;
+      const tail = stacks <= 1 && remain < 0.14 ? remain / 0.14 : 1;
       const sweepA = Math.PI * 2 * remain;
       const start = -Math.PI / 2;
       const pts: number[] = [];
@@ -628,15 +632,33 @@ export class NewGunsFx {
         const a = start + (sweepA * i) / seg;
         pts.push(fb.footX + Math.cos(a) * rx, fb.footY + Math.sin(a) * ry);
       }
-      g.poly(pts, false).stroke({ width: 3 + 3 * hitK, color: SCAN, alpha: Math.min(1, a0 * tail * (0.75 + hitK)) });
+      // 重ねるほど太く明るく(4で大きく跳ねて王手に見せる・クリエイティブ監査#6)。
+      const stackW = [0, 0, 0.6, 1.3, 2.6, 3.4][Math.min(SCAN_STACK_MAX, stacks)];
+      g.poly(pts, false).stroke({ width: 3 + stackW + 3 * hitK, color: SCAN, alpha: Math.min(1, a0 * tail * (0.75 + 0.05 * stacks + hitK)) });
       g.poly(pts, false).stroke({ width: 1, color: WHITE, alpha: Math.min(1, (0.6 * a0 + hitK + blink) * tail) });
       const headY = fb.footY - (fb.footY - enemyHeadY(e, false)) * ds;
       const drop = (1 - pop) * 14;
       const cy = headY - 16 * ds - drop;
-      const s = 5.5 * Math.max(0.7, ds) * (1 + 0.45 * hitK);
+      // 5重ね=菱形が大きく脈打つ(印の色のまま=会心の金・危険の赤/紫と混ぜない)。
+      const full = stacks >= SCAN_STACK_MAX;
+      // 鼓動の形(二拍・立ち上がりが鋭く減衰がゆっくり=待機の呼吸に見せない・クリエイティブ監査#5)。
+      const beat = (now % 760) / 760;
+      const thump = (t: number) => (t < 0 ? 0 : Math.exp(-t * 9));
+      const pulse = full ? Math.min(1, thump(beat) + 0.7 * thump(beat - 0.22)) : 0;
+      const s = 5.5 * Math.max(0.7, ds) * (1 + 0.45 * hitK) * (full ? 1.35 + 0.45 * pulse : 1);
       const dia = [fb.footX, cy - s * 1.25, fb.footX + s, cy, fb.footX, cy + s * 1.25, fb.footX - s, cy];
+      if (full) f.circle(fb.footX, cy, s * 2.2).fill({ color: SCAN, alpha: (0.18 + 0.22 * pulse) * a0 * tail });
       f.poly(dia).fill({ color: SCAN, alpha: 0.85 * a0 * tail }).stroke({ width: 1.2, color: WHITE, alpha: 0.9 * a0 * tail });
-      if (hitK + blink > 0.01) f.poly(dia).fill({ color: WHITE, alpha: Math.min(1, hitK + blink) * tail });
+      if (hitK + blink + pulse * 0.5 > 0.01) f.poly(dia).fill({ color: WHITE, alpha: Math.min(1, hitK + blink + pulse * 0.45) * tail });
+      // 重ねの数=菱形の上に常に5つの枠(空きは暗い縁だけ・満ちた枠は塗る)=「あと何回で5か」が読める・並びは動かない(クリエイティブ監査#1/#3)。
+      const dotR = 3.2 * Math.max(0.8, ds);
+      const gap = dotR * 2.7;
+      const dy = cy - 5.5 * Math.max(0.7, ds) * 1.6 - dotR * 2.4;
+      for (let k = 0; k < SCAN_STACK_MAX; k++) {
+        const dx = fb.footX + (k - (SCAN_STACK_MAX - 1) / 2) * gap;
+        if (k < stacks) f.circle(dx, dy, dotR).fill({ color: full ? WHITE : SCAN, alpha: 0.95 * a0 * tail }).stroke({ width: 1.2, color: WHITE, alpha: 0.8 * a0 * tail });
+        else f.circle(dx, dy, dotR * 0.85).fill({ color: 0x0b1220, alpha: 0.45 * a0 * tail }).stroke({ width: 1.2, color: SCAN, alpha: 0.55 * a0 * tail });
+      }
     }
   }
 }

@@ -67,7 +67,7 @@ import type { IceLanceFloor } from '../utils/iceLanceFloor';
 import { coilConvergeMs, coilLateralOffsetPx } from '../utils/coilShotgun';
 import { homingPelletTurnRateRadPerSec } from '../utils/homingShotgun';
 // research/NEW_GUNS.md §4(スキャンセンサー): 印の倍率・除外・1体だけの選び方(純関数)。
-import { SCAN_WEAPON_KEY, isScanMarked, scanMarkDamageMult, scanMarkMeleeMult, pickScanMarkTarget, scanMarkMeleeCritBonus, scanMarkMeleePostureMult, SCAN_MARK_RANGED_MULT, isEliteHeavyStun } from '../utils/scanSensor';
+import { SCAN_WEAPON_KEY, isScanMarked, scanMarkDamageMult, scanMarkMeleeMult, pickScanMarkTarget, scanMarkMeleeCritBonus, scanMarkMeleePostureMult, scanMarkRangedMult, scanStacksAt, isEliteHeavyStun } from '../utils/scanSensor';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
@@ -8861,7 +8861,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // research/NEW_GUNS.md §4: スケボーはスキル(サブ扱い)=印付きへ ×1.6。
         const eDmg = (skAwaken
           ? Math.max(1, Math.round(dmg * (0.55 + (1 - Math.sqrt(d2) / bashRange) * 0.45)))
-          : dmg) * gpDmgScale * (isScanMarked(enemy, s.gameTime) ? SCAN_MARK_RANGED_MULT : 1);
+          : dmg) * gpDmgScale * scanMarkRangedMult(enemy, s.gameTime);
         dealtSum += eDmg;
         const nh = Math.max(0, enemy.health - eDmg);
         if (nh <= 0) { killedList.push({ enemy, finisher: false }); continue; }
@@ -10265,7 +10265,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
       // research/NEW_GUNS.md §4: 分身はサブウェポン=印の倍率は ×1.6(1体だけの規則は近接の振りの話なので掛けない)。
       const cloneScan = isScanMarked(enemy, gameTime);
-      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale * (cloneScan ? SCAN_MARK_RANGED_MULT : 1); // 分身はサブ武器=血の覚醒の×1.5は掛けない(社長裁定: 与ダメ+50%は近接+銃だけ・検収品質監査C)
+      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale * (cloneScan ? scanMarkRangedMult(enemy, gameTime) : 1); // 分身はサブ武器=血の覚醒の×1.5は掛けない(社長裁定: 与ダメ+50%は近接+銃だけ・検収品質監査C)
       damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: cloneScan });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
@@ -10987,7 +10987,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           // 社長決定2026-10-18: 強個体の3倍にも印の倍率(プレイヤーの刀=刀の雑魚の倍率・1体だけ/守護霊=×1.6)。
           const heavyScanMult = isGhost
-            ? (isScanMarked(enemy, gameTime) ? SCAN_MARK_RANGED_MULT : 1)
+            ? scanMarkRangedMult(enemy, gameTime)
             : (enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1);
           const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT * heavyScanMult;
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
@@ -11017,7 +11017,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const katanaScanMult = isGhost
-        ? (isScanMarked(enemy, gameTime) ? SCAN_MARK_RANGED_MULT : 1)
+        ? scanMarkRangedMult(enemy, gameTime)
         : (enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1);
       let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * katanaScanMult;
       // ★SAME_ARENA §9(検収監査 重大③): 刀にも致命(×5+最大HP25%)とmelee削り(site1と同型)。
@@ -14263,6 +14263,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 印の無い敵は ×1(=従来と1bitも変わらない)。
       const scanMult = scanMarkDamageMult({
         marked: isScanMarked(enemy, state.gameTime),
+        stacks: scanStacksAt(enemy, state.gameTime),
         amount: gatedAmount,
         enemyHealth: enemy.health,
         postureImpact,

@@ -1673,6 +1673,8 @@ export interface Enemy {
    * (重ねても強くならない・入り直せば3秒に戻る)。倍率の読み手は utils/scanSensor.ts の純関数だけ。
    */
   scanMarkUntil?: number;
+  /** research/NEW_GUNS.md §4-2: 最後に掃いた時の印の段(1〜5)。今の段は scanStacksAt で計算する(3秒ごとに1段ずつ減る)。 */
+  scanStacks?: number;
   /**
    * ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。硬直に入った瞬間に「行動の時計」の
    * 残り(期限型)/経過(始点型)を畳んで預かる袋。書き手は `src/utils/enemyClocks.ts` の

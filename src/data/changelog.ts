@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5293', items: [
+    'スキャンセンサーの印が重なるようになった。重ねるほど銃でも近接でも大きく効き、五つ重なると敵がその場で止まる。止まった雑魚は近接で確実に仕留められる',
+    '印の上に五つの枠が並び、あと何回で止められるかが見える',
+  ] },
   { version: '0.25.5292', items: [
     'グラヴィティガン・呪銃・スキャンセンサーに専用の絵が付いた',
   ] },

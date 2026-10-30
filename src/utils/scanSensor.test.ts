@@ -1,7 +1,7 @@
 // research/NEW_GUNS.md §4(スキャンセンサー)の純関数。§7-6「テストで固定する約束」のうち純関数で言えるもの。
 import { describe, it, expect } from 'vitest';
 import {
-  SCAN_BEAT_MS, SCAN_MARK_MS, SCAN_SWEEP_MS, SCAN_MARK_RANGED_MULT, SCAN_MARK_MELEE_MULT, SCAN_MARK_KATANA_MULT,
+  SCAN_BEAT_MS, SCAN_MARK_MS, SCAN_SWEEP_MS,
   scanBeatIndex, scanBeatPhase, isScanMarked, scanMarkRemainFrac, scanMarkMeleeMult, pickScanMarkTarget,
   scanMarkDamageMult, scanMarkMeleeCritBonus, scanMarkMeleePostureMult, scanFanSweepFrac, scanMarkUntilFrom,
   SCAN_FAN_GROUND_Y_SCALE, SCAN_FAN_LENGTH_PX, SCAN_FAN_HALF_ANGLE_RAD, scanFanGroundAngle, scanFanScreenPoint,
@@ -57,15 +57,14 @@ describe('印の期限', () => {
   });
 });
 
-describe('§7-6 近接・刀の倍率は段・Lvで変わらない(1つの数)', () => {
-  it('近接: 雑魚×2.75・ボス級×4.7 / 刀: 雑魚×3.1・ボス級×5.2 / 鞭は近接と同じ', () => {
-    expect(scanMarkMeleeMult(mob(10), 0, 'melee')).toBe(SCAN_MARK_MELEE_MULT.mob);
-    expect(scanMarkMeleeMult(boss(10), 0, 'melee')).toBe(SCAN_MARK_MELEE_MULT.boss);
-    expect(scanMarkMeleeMult(mob(10), 0, 'katana')).toBe(SCAN_MARK_KATANA_MULT.mob);
-    expect(scanMarkMeleeMult(boss(10), 0, 'katana')).toBe(SCAN_MARK_KATANA_MULT.boss);
-    expect(scanMarkMeleeMult(mob(10), 0, 'whip')).toBe(SCAN_MARK_MELEE_MULT.mob);
-    expect(SCAN_MARK_MELEE_MULT).toEqual({ mob: 2.75, boss: 4.7 });
-    expect(SCAN_MARK_KATANA_MULT).toEqual({ mob: 3.1, boss: 5.2 });
+describe('§4-2 近接の印の倍率は重ねの数で決まる(ナイフの段・Lvの区別は無い)', () => {
+  it('雑魚: 1重ね×1.6〜5重ね×3.0 / ボス級は雑魚の1.7倍 / 刀は近接の3.1/2.75倍 / 鞭は近接と同じ', () => {
+    const st = (n: number, b = false) => ({ ...(b ? boss(10) : mob(10)), scanStacks: n });
+    expect(scanMarkMeleeMult(st(1), 0, 'melee')).toBeCloseTo(1.6);
+    expect(scanMarkMeleeMult(st(5), 0, 'melee')).toBeCloseTo(3.0);
+    expect(scanMarkMeleeMult(st(5, true), 0, 'melee')).toBeCloseTo(5.1);
+    expect(scanMarkMeleeMult(st(3), 0, 'katana')).toBeCloseTo(2.2 * 3.1 / 2.75);
+    expect(scanMarkMeleeMult(st(2), 0, 'whip')).toBeCloseTo(1.9);
   });
   it('印が切れていれば ×1', () => {
     expect(scanMarkMeleeMult(mob(10), 10, 'melee')).toBe(1);
@@ -89,9 +88,10 @@ describe('§7-6 1振りで倍率が効くのは1体だけ', () => {
 
 describe('§7-6 中央経路(damageEnemy)の ×1.6 と掛けない所', () => {
   const base = { marked: true, amount: 10, enemyHealth: 100, postureImpact: null, rewardActive: false, handledByCaller: false };
-  it('銃・サブ・仲間は ×1.6', () => {
-    expect(scanMarkDamageMult(base)).toBe(SCAN_MARK_RANGED_MULT);
-    expect(SCAN_MARK_RANGED_MULT).toBe(1.6);
+  it('銃・サブ・仲間は段に比例(§4-2: 1段×1.2〜5段×2.0)', () => {
+    expect(scanMarkDamageMult(base)).toBeCloseTo(1.2);
+    expect(scanMarkDamageMult({ ...base, stacks: 3 })).toBeCloseTo(1.6);
+    expect(scanMarkDamageMult({ ...base, stacks: 5 })).toBeCloseTo(2.0);
   });
   it('カウンターの反撃・打ち返した弾には掛けない', () => {
     expect(scanMarkDamageMult({ ...base, postureImpact: 'counter' })).toBe(1);
@@ -177,5 +177,34 @@ describe('気絶中の強個体の3倍(印の倍率を受ける相手)', () => {
     expect(isEliteHeavyStun({ ...base, type: 'pumpkin' as EnemyType }, 0)).toBe(false);
     // 紫中の強個体は即死(致命の一撃)=false。
     expect(isEliteHeavyStun({ ...base, type: 'pumpkin' as EnemyType, stunUntil: 100, bossFullStunUntil: 100 }, 0)).toBe(false);
+  });
+});
+
+import { scanStacksAt, scanMarkAddStack, scanMarkRangedMult, scanStackReachedFull, SCAN_STACK_MAX } from './scanSensor';
+describe('§4-2 印の重ね', () => {
+  it('扇に入るたびに1段・最大5段・残り時間は3秒に戻る', () => {
+    let e: { scanMarkUntil?: number; scanStacks?: number } = {};
+    for (let i = 0; i < 7; i++) e = scanMarkAddStack(e, i * 1200);
+    expect(e.scanStacks).toBe(SCAN_STACK_MAX);
+    expect(e.scanMarkUntil).toBe(6 * 1200 + 3000);
+  });
+  it('3秒扇に入らないと1段ずつ減る', () => {
+    const e = { scanStacks: 4, scanMarkUntil: 3000 };
+    expect(scanStacksAt(e, 2999)).toBe(4);
+    expect(scanStacksAt(e, 3000)).toBe(3);
+    expect(scanStacksAt(e, 5999)).toBe(3);
+    expect(scanStacksAt(e, 6000)).toBe(2);
+    expect(scanStacksAt(e, 30000)).toBe(0);
+  });
+  it('減った後に重ねると、減った段から1段上がる', () => {
+    expect(scanMarkAddStack({ scanStacks: 4, scanMarkUntil: 3000 }, 6500).scanStacks).toBe(3);
+  });
+  it('銃・仲間は1段×1.2〜5段×2.0・印が無ければ×1 / 止まるのは5段へ上がった瞬間だけ', () => {
+    expect(scanMarkRangedMult({ scanStacks: 1, scanMarkUntil: 100 }, 0)).toBeCloseTo(1.2);
+    expect(scanMarkRangedMult({ scanStacks: 5, scanMarkUntil: 100 }, 0)).toBeCloseTo(2.0);
+    expect(scanMarkRangedMult({}, 0)).toBe(1);
+    expect(scanStackReachedFull(4, 5)).toBe(true);
+    expect(scanStackReachedFull(5, 5)).toBe(false);
+    expect(scanStackReachedFull(3, 4)).toBe(false);
   });
 });

@@ -13,7 +13,7 @@ import type { Enemy, Player, Projectile } from '../types/game';
 import {
   useGameStore, isKatanaMode, isAttackLocked, isSeekerActive, skillLevel, SKATER_LOCK_ENABLED,
   skillOutgoingDamageMult, skillBloodAwakenDamageMult, resolveShieldWalls, shieldPlayableCtx, PLAYER_MELEE_SWING_MS,
-  sniperGunMult, skillComboMasterMult,
+  sniperGunMult, skillComboMasterMult, bossCritStopPatch, STUN_DURATION_MS,
 } from '../store/gameStore';
 import { isPvpIncapacitated } from './pvpPosture';
 import { isHurtGunLocked } from './playerHurt';
@@ -23,7 +23,7 @@ import {
   getActiveGun, gunEffectiveRangePx, effectiveFireCooldown, isReloading, weaponAfterGunShot,
   gunShotBaseDamage, gunShotCritChance, gunFireSfxKey,
 } from './weaponUtils';
-import { pickNearestTarget, isCorpse, isReaperFamily, isTerminalReaper, resistsChipKnockback } from './enemyUtils';
+import { pickNearestTarget, isCorpse, isReaperFamily, isTerminalReaper, resistsChipKnockback, isBossType, isHangedman } from './enemyUtils';
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
 import { recoilSpecForWeapon } from './combatFeel';
@@ -39,8 +39,8 @@ import {
   satelliteTouchesRect, satelliteContactReady, assignSatelliteTargets, type SatelliteOrbit, type SatelliteBulletPose,
 } from './satelliteOrbit';
 import {
-  SCAN_WEAPON_KEY, SCAN_SWEEP_MS, pickScanFanHits, scanBeatIndex, scanMarkUntilFrom,
-  isScanMarked, scanMarkDamageMult, type ScanFan,
+  SCAN_WEAPON_KEY, SCAN_SWEEP_MS, pickScanFanHits, scanBeatIndex,
+  isScanMarked, scanMarkDamageMult, scanStacksAt, scanMarkAddStack, scanStackReachedFull, SCAN_STACK_MAX, type ScanFan,
 } from './scanSensor';
 
 /** 描画が読む今の姿(読むだけ。書き換えない)。 */
@@ -174,7 +174,7 @@ const hitEnemy = (e: Enemy, dmg: number, killChainSlowOk: boolean | undefined, d
   }
   // 数字に出す量=印の倍率の後(HPに掛かったのと同じ判定を純関数で引き直す)。
   const mult = scanMarkDamageMult({
-    marked: isScanMarked(e, st.gameTime), amount: dmg, enemyHealth: e.health, postureImpact: null,
+    marked: isScanMarked(e, st.gameTime), stacks: scanStacksAt(e, st.gameTime), amount: dmg, enemyHealth: e.health, postureImpact: null,
     rewardActive: false, handledByCaller: false,
   });
   if (killed) {
@@ -458,14 +458,36 @@ const tickScan = (gameTime: number, holding: boolean, locked: boolean): void => 
       const hits = pickScanFanHits(p.x + p.width / 2, p.y + p.height, scanFan.dirX, scanFan.dirY, aimableEnemies(st.enemies));
       if (hits.length > 0) {
         const ids = new Set(hits.map(e => e.id));
-        const until = scanMarkUntilFrom(gameTime);
+        // §4-2: 1重ね増やす(減った後の重ね+1・最大5)。4→5重ねに上がった瞬間だけクリティカル状態(近接の会心と同じ止め方・ダメージ無し)。
+        const pl = useGameStore.getState().player;
+        const patches = new Map<string, Partial<Enemy>>();
+        const critAt: { x: number; y: number }[] = [];
+        let topStack = 0;
         for (const e of hits) {
           // 新しく付いた(切れていた)敵だけ「付いた瞬間」を打ち直す=輪の立ち上がり。延長は輪が満ちに戻るだけ。
           if (!isScanMarked(e, gameTime)) scanMarkedAt.set(e.id, gameTime);
+          const before = scanStacksAt(e, gameTime);
+          const add = scanMarkAddStack(e, gameTime);
+          topStack = Math.max(topStack, add.scanStacks);
+          let patch: Partial<Enemy> = add;
+          if (scanStackReachedFull(before, add.scanStacks) && !isHangedman(e.type)) {
+            const bossStop = bossCritStopPatch(e, gameTime, pl.stunDurationMult ?? 1);
+            if (bossStop) patch = { ...patch, ...bossStop };
+            else if (!isBossType(e.type)) patch = { ...patch, stunUntil: gameTime + STUN_DURATION_MS * (pl.stunDurationMult ?? 1) };
+            critAt.push({ x: e.x + e.width / 2, y: e.y + e.height / 2 });
+          }
+          patches.set(e.id, patch);
         }
         scanSweptIds = ids; scanSweptAt = gameTime; // 掃いて印が付いた敵の白い点滅(描画)
-        useGameStore.setState(s => ({ enemies: s.enemies.map(e => (ids.has(e.id) ? { ...e, scanMarkUntil: until } : e)) }));
-        playSfx('homing-lock', 0.3);
+        useGameStore.setState(s => ({ enemies: s.enemies.map(e => { const pt = patches.get(e.id); return pt ? { ...e, ...pt } : e; }) }));
+        // 重ねるほど音階で高く(根音→長2度→長3度→5度→長7度=4で解決前の緊張)。5重ねに上がった敵があれば会心の音と止まりの輪・揺れと光。
+        const SCAN_STACK_PITCH = [1, 1, 1.122, 1.26, 1.498, 1.888];
+        playSfx('homing-lock', 0.3, undefined, SCAN_STACK_PITCH[Math.min(SCAN_STACK_MAX, topStack)]);
+        if (critAt.length > 0) {
+          const st2 = useGameStore.getState();
+          playSfx('headshot', 0.8); // 銃の会心と同じ音
+          for (const c of critAt) { st2.spawnRing(c.x, c.y, 6, 30, 'rgba(250, 204, 21, 0.9)', 2, 260); st2.spawnCritImpact(c.x, c.y); }
+        }
       }
       scanFan = { ...scanFan, resolved: true, marked: true };
     }

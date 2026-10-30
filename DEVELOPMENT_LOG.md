@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5293 — スキャンセンサーの印の重ね・5重ねでクリティカル状態【2026-10-31 08:37 JST】
+- 社長「面白くないな。重ねられるようにするか？」→推薦「重ね+起爆」に「はい」→訂正「5段目のスキャンでクリティカル状態になる。ダメージはないが、雑魚は確実にKILLできて、強個体以上でも大ダメージ狙える(倍率も乗る)」。設計=research/NEW_GUNS.md §4-2(書き直し)。
+- 重ね(最大5・扇ごと+1・3秒で1つずつ減る・最後に掃いた時の重ねと時刻から計算=毎フレーム書かない)。銃・サブ・仲間 ×(1+0.2×重ね)/近接 雑魚 1.6〜3.0・ボス級×1.7・刀×3.1/2.75(重ねは殴っても減らない)。4→5に上がった瞬間だけクリティカル状態(近接の会心と同じ止め方=雑魚・強個体は気絶/ボス級は bossCritStopPatch・ダメージ無し・完全気絶の数えには乗せない)→雑魚は気絶中の処刑で確実に倒せる・強個体は気絶中の3倍×印の倍率。
+- 純関数 `scanStacksAt` / `scanMarkAddStack` / `scanMarkRangedMult` / `scanStackReachedFull` / `scanStackRemainFrac`(+テスト)。銃・分身・刀(守護霊)・ワイヤー(守護霊)・中央経路・塊弾の数字の倍率を重ねに比例へ差し替え。
+- 監査: 着手前の品質監査(opus)10件→社長の訂正と合わせて設計を整理。(A)相当「重ねを使い切る起爆だと毎回1重ねで殴る方が得・自動の振りが勝手に使い切る」→起爆と周りへの弾けを取り下げ(重ねは減らない)。分身・スケボー・守護霊の区分を明記。クリエイティブ監査(opus)8件→5件反映(5つの枠・鼓動の脈打ち・重ねるほど太い輪・音階・気絶中は輪を内側へ)、3件(B)(§4-2)。次の巡は回さない: (A)相当は反映済み・新しい角度なし。
+- 確認(ヘッドレス・対策室・`?weapon=handgun-t2-scan`): 1〜4重ねの敵の頭上に5つの枠が並び、満ちた数が読める。4→5で止まる瞬間・5重ねの脈打ちは画で未確認(5重ねの敵が HUD の陰)=実機待ち。
+- 自己点検: 憲法第4条・第5条に抵触しない(スキャンセンサー所持時のみ)。
+- 変更: src/utils/scanSensor.ts(+test) / src/utils/newGunsTick.ts / src/pixi/newGunsFx.ts / src/store/gameStore.ts / src/hooks/useGameLoop.ts / src/types/game.ts / research/NEW_GUNS.md / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5292 — 新しい3挺の銃の絵(グラヴィティガン・呪銃・スキャンセンサー)【2026-10-31 00:23 JST】
 - 社長支給の1枚(270×66・3挺が横並び)を、透明な隙間で切り分けて `public/sprites/weapons/` へ: glauncher-t2-blob.png(81×58)/ shotgun-t2-satellite.png(83×64・離れた紫の火の粉1粒を含む)/ handgun-t2-scan.png(86×55)。
 - 登録は2か所(`pixiTextures` の読み込み一覧・`weaponUtils.WEAPON_ICON_KEYS`)。仮の代用の絵の表(`WEAPON_ICON_ALIAS`)は空に。素材の台帳を更新(assets:check OK)。
