@@ -328,7 +328,7 @@ const TitleLineIntro: React.FC<{
       const w = v.clientWidth, h = v.clientHeight;
       if (!w || !h) return;
       const imgH = 720 * Math.max(w / 1280, h / 720); // object-cover で実際に出ている絵の高さ
-      setFit(`translate(${(INTRO_LINE_DX * imgH).toFixed(2)}px, ${(INTRO_LINE_DY * imgH).toFixed(2)}px) scale(${INTRO_LINE_SCALE})`);
+      setFit(`translate(${(INTRO_LINE_DX * imgH).toFixed(2)}px, ${(INTRO_LINE_DY * imgH).toFixed(2)}px)`);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -371,8 +371,12 @@ const TitleLineIntro: React.FC<{
     // ★中央寄せ(-50%)も transform の先頭に入れる=タイトル絵(<img>: Tailwind の translate が transform・寄りは scale プロパティ)と
     // 同じ順番にする。旧版は中央寄せを translate プロパティで掛けていたため、寄り(scale 1.025)の間だけ線が絵から
     // 約8px(-50% × 0.025)ずれていた(社長指摘2026-10-27「オープニングの手書きと色付きがズレてる」)。
-    transform: `translate(-50%, -50%) ${fit}`,
-    transformOrigin: '50% 50%',
+    // ★寄り(scale プロパティ)の支点は画面の中心=絵の中心(社長指摘2026-10-30「線画、少し左にずれて戻ってくる」)。
+    //   支点を箱の中心(50% 50%)にすると、中央寄せの -50% をずらす**前**の箱の中心が支点になり、1.025倍の間だけ
+    //   絵全体が左上へ約1.25%(箱の幅の)ずれて戻っていた。支点を左上(=ずらした後の画面の中心)に置き、
+    //   線画の 0.83 倍は transform の中で自分の中心に掛ける(線と絵の重なりは今までと同じ)。
+    transform: `translate(-50%, -50%) ${fit} translate(50%, 50%) scale(${INTRO_LINE_SCALE}) translate(-50%, -50%)`,
+    transformOrigin: '0 0',
     scale: zoom.v,
   };
   const fade = `opacity ${INTRO_LINES_OUT_MS}ms cubic-bezier(0.2, 0.6, 0.3, 1) 120ms, scale ${zoom.ms}ms ${INTRO_ZOOM_EASE}`;
@@ -604,6 +608,7 @@ const TitleScreen: React.FC<TitleScreenProps> = ({ onStart, onNoticeOk, waitForA
           ...(!introRan ? {} : {
             opacity: intro === 'lines' || intro === 'wait' ? 0 : 1,
             scale: zoom.v,
+            transformOrigin: '0 0', // 寄りの支点=画面の中心(線画と同じ・左へずれて戻らない)
             transition: `scale ${zoom.ms}ms ${INTRO_ZOOM_EASE}`,
           }),
         }}

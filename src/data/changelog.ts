@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5276', items: [
+    'タイトルの線画が描き上がる間、絵が左上へずれて戻る揺れが直った',
+  ] },
   { version: '0.25.5275', items: [
     'グラヴィティガンの塊は、触れた敵を捕まえて真ん中へじわじわ引きずり込む。捕まった敵は塊ごと運ばれていく',
   ] },
