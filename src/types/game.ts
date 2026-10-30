@@ -1675,6 +1675,8 @@ export interface Enemy {
   scanMarkUntil?: number;
   /** research/NEW_GUNS.md §4-2: 最後に掃いた時の印の段(1〜5)。今の段は scanStacksAt で計算する(3秒ごとに1段ずつ減る)。 */
   scanStacks?: number;
+  /** §4-2: 5重ねで入るクリティカル状態(ヘッドショット状態)の終わり(gameTime)。この間はスキャンが入らない・終わると重ねは0に戻る。 */
+  scanCritUntil?: number;
   /**
    * ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。硬直に入った瞬間に「行動の時計」の
    * 残り(期限型)/経過(始点型)を畳んで預かる袋。書き手は `src/utils/enemyClocks.ts` の

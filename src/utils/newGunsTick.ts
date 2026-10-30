@@ -13,7 +13,7 @@ import type { Enemy, Player, Projectile } from '../types/game';
 import {
   useGameStore, isKatanaMode, isAttackLocked, isSeekerActive, skillLevel, SKATER_LOCK_ENABLED,
   skillOutgoingDamageMult, skillBloodAwakenDamageMult, resolveShieldWalls, shieldPlayableCtx, PLAYER_MELEE_SWING_MS,
-  sniperGunMult, skillComboMasterMult, bossCritStopPatch, STUN_DURATION_MS,
+  sniperGunMult, skillComboMasterMult, bossCritStopPatch,
 } from '../store/gameStore';
 import { isPvpIncapacitated } from './pvpPosture';
 import { isHurtGunLocked } from './playerHurt';
@@ -40,7 +40,7 @@ import {
 } from './satelliteOrbit';
 import {
   SCAN_WEAPON_KEY, SCAN_SWEEP_MS, pickScanFanHits, scanBeatIndex,
-  isScanMarked, scanMarkDamageMult, scanStacksAt, scanMarkAddStack, scanStackReachedFull, SCAN_STACK_MAX, type ScanFan,
+  isScanMarked, scanMarkDamageMult, scanStacksAt, scanMarkAddStack, scanStackReachedFull, SCAN_STACK_MAX, isScanCrit, SCAN_CRIT_MS, SCAN_DETONATED, drainScanDetonations, type ScanFan,
 } from './scanSensor';
 
 /** 描画が読む今の姿(読むだけ。書き換えない)。 */
@@ -434,6 +434,18 @@ const releaseSatellites = (poses: SatelliteBulletPose[], angVel: number, gameTim
 const SCAN_FAN_FADE_MS = 260;
 
 const tickScan = (gameTime: number, holding: boolean, locked: boolean): void => {
+  // 手動の近接で起爆した敵の重ねを消す(前のフレームの近接の各経路が予約した分・§4-2)。弾ける輪と音。
+  const det = drainScanDetonations();
+  if (det) {
+    useGameStore.setState(s => ({ enemies: s.enemies.map(e => (det.has(e.id) ? { ...e, ...SCAN_DETONATED } : e)) }));
+    const st0 = useGameStore.getState();
+    for (const [, c] of det) {
+      st0.spawnRing(c.x, c.y, 8, 70, 'rgba(159,216,208,0.95)', 4, 380);
+      st0.spawnRing(c.x, c.y, 4, 44, 'rgba(255,255,255,0.9)', 2, 240);
+      st0.spawnBurst(c.x, c.y, '#9fd8d0', 14);
+    }
+    playSfx('homing-fire', 0.45, undefined, 1.25);
+  }
   const beat = scanBeatIndex(gameTime);
   if (scanLastBeat < 0) scanLastBeat = beat; // ランの頭(または初めて見た拍)は拍としない
   const st = useGameStore.getState();
@@ -455,7 +467,8 @@ const tickScan = (gameTime: number, holding: boolean, locked: boolean): void => 
       scanFan = { ...scanFan, resolved: true, marked: false, abortedAt: gameTime };
     } else if (gameTime - scanFan.startAt >= SCAN_SWEEP_MS) {
       // 地面に倒した扇(根元=プレイヤーの足元・敵は足元で見る)。描画と同じ関数で形を作る(scanSensor.ts)。
-      const hits = pickScanFanHits(p.x + p.width / 2, p.y + p.height, scanFan.dirX, scanFan.dirY, aimableEnemies(st.enemies));
+      // クリティカル状態(5重ね)の敵にはスキャンが入らない(社長指示)。
+      const hits = pickScanFanHits(p.x + p.width / 2, p.y + p.height, scanFan.dirX, scanFan.dirY, aimableEnemies(st.enemies).filter(e => !isScanCrit(e, gameTime)));
       if (hits.length > 0) {
         const ids = new Set(hits.map(e => e.id));
         // §4-2: 1重ね増やす(減った後の重ね+1・最大5)。4→5重ねに上がった瞬間だけクリティカル状態(近接の会心と同じ止め方・ダメージ無し)。
@@ -471,9 +484,11 @@ const tickScan = (gameTime: number, holding: boolean, locked: boolean): void => 
           topStack = Math.max(topStack, add.scanStacks);
           let patch: Partial<Enemy> = add;
           if (scanStackReachedFull(before, add.scanStacks) && !isHangedman(e.type)) {
+            // ヘッドショット状態(黄色の輪)=クリティカル状態。3秒で独自に解ける(社長指示)。雑魚・強個体は3秒の気絶、ボス級は会心の足止め。
+            patch = { ...patch, scanCritUntil: gameTime + SCAN_CRIT_MS, scanMarkUntil: gameTime + SCAN_CRIT_MS };
             const bossStop = bossCritStopPatch(e, gameTime, pl.stunDurationMult ?? 1);
             if (bossStop) patch = { ...patch, ...bossStop };
-            else if (!isBossType(e.type)) patch = { ...patch, stunUntil: gameTime + STUN_DURATION_MS * (pl.stunDurationMult ?? 1) };
+            else if (!isBossType(e.type)) patch = { ...patch, stunUntil: Math.max(e.stunUntil ?? 0, gameTime + SCAN_CRIT_MS) };
             critAt.push({ x: e.x + e.width / 2, y: e.y + e.height / 2 });
           }
           patches.set(e.id, patch);

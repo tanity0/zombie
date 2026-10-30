@@ -67,7 +67,7 @@ import type { IceLanceFloor } from '../utils/iceLanceFloor';
 import { coilConvergeMs, coilLateralOffsetPx } from '../utils/coilShotgun';
 import { homingPelletTurnRateRadPerSec } from '../utils/homingShotgun';
 // research/NEW_GUNS.md §4(スキャンセンサー): 印の倍率・除外・1体だけの選び方(純関数)。
-import { SCAN_WEAPON_KEY, isScanMarked, scanMarkDamageMult, scanMarkMeleeMult, pickScanMarkTarget, scanMarkMeleeCritBonus, scanMarkMeleePostureMult, scanMarkRangedMult, scanStacksAt, isEliteHeavyStun } from '../utils/scanSensor';
+import { SCAN_WEAPON_KEY, isScanMarked, scanMarkDamageMult, scanMarkMeleeMult, pickScanMarkTarget, scanMarkMeleeCritBonus, scanMarkMeleePostureMult, scanMarkRangedMult, scanStacksAt, noteScanDetonation, isEliteHeavyStun } from '../utils/scanSensor';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
@@ -9658,6 +9658,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 社長決定2026-10-18: バッシュにも印の近接倍率(雑魚×2.75/ボス級×4.7)。この振りの「1体だけ」の枠を使う。
         // 対人の致命(紫の報酬)には掛けない(素の値から致命を計算する)。
         const bashScanMult = enemy.id === scanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
+        if (bashScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
         const bashBase = meleeDamage * SHIELD_BASH_DAMAGE_MULT * gpDmgScale;
         let dmg = bashBase * bashScanMult;
         let bashScanShown = bashScanMult !== 1;
@@ -9714,6 +9715,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const fatal = stunnedHit.kind === 'boss' ? applyBrokenMeleeFatal(enemy, meleeExecBase * gpDmgScale, gameTime) : null;
         // 社長決定2026-10-18: 気絶中の強個体への3倍にも印の近接倍率(強個体=雑魚の倍率)。ボスの5倍・紫の報酬には掛けない。
         const heavyScanMult = stunnedHit.kind === 'heavy' && enemy.id === scanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
+        if (heavyScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
         const dmg = (fatal?.damage ?? stunnedHit.dmg) * retMult * heavyScanMult; // 被弾反撃は最終ダメージの×2(処刑の分岐も含む)
         // ★v0.25.4153(社長裁定2026-09-05「強個体はボスと同じく致命の一撃でキル演出は入る。でも
         // 黄色クリティカルではならないのが一貫性」): **強個体もボスと同じ線で揃える**——
@@ -9761,6 +9763,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // research/NEW_GUNS.md §4: 印の倍率(雑魚×2.75/ボス級×4.7・段に関係なく1つ)は選ばれた1体だけ。
       const scanHit = enemy.id === scanTargetId;
       const scanMult = scanHit ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
+      if (scanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
       let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult;
       // ★SAME_ARENA §9(対人体勢): 紫中の幻影への近接=致命の一撃(×5+最大HP25%・裁定②)。
       // 紫でなければ melee(0.04)の削り+クリなら2/3減速。
@@ -11347,6 +11350,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (stunnedMeleeOutcome(enemy, gameTime) === 'heavy') {
           bossFinishHit = true;
           const heavyScanMult = enemy.id === whipScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'whip') : 1; // 社長決定2026-10-18
+          if (heavyScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
           const dmg = whipExecBase * ELITE_MELEE_STUN_MULT * heavyScanMult;
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
           damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
@@ -11367,6 +11371,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy, true);
       const whipScanMult = enemy.id === whipScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'whip') : 1;
+      if (whipScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
       let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult;
       // ★SAME_ARENA §9(検収監査 重大③): 鞭にも致命(×5+最大HP25%)とmelee削り(site1と同型・鞭はプレイヤー本人のみの武器)。
       let pvpMeleePatch: Partial<Enemy> = {};

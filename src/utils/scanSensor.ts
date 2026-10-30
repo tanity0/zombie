@@ -61,33 +61,51 @@ export const SCAN_STACK_KATANA_RATIO = 3.1 / 2.75;
  * 今の段。最後に掃いた時の段(scanStacks)から、印の時間(3秒)が切れるたびに1段ずつ減る。
  * 旧形式(scanStacks が無く scanMarkUntil だけ)は1段とみなす。
  */
-export const scanStacksAt = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks'>, gameTime: number): number => {
+/** 5重ねのクリティカル状態の長さ(ms・社長指示「3秒で自動解除(クリティカルは独自の解除)」)。 */
+export const SCAN_CRIT_MS = 3000;
+/** クリティカル状態(5重ねで入る)の最中か。この間はスキャンが入らない。 */
+export const isScanCrit = (e: Pick<Enemy, 'scanCritUntil'>, gameTime: number): boolean =>
+  e.scanCritUntil !== undefined && gameTime < e.scanCritUntil;
+export const scanStacksAt = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks' | 'scanCritUntil'>, gameTime: number): number => {
   if (e.scanMarkUntil === undefined) return 0;
+  // クリティカル状態の間は5重ねのまま、解けたら0に戻る(独自の解除)。
+  if (e.scanCritUntil !== undefined) return gameTime < e.scanCritUntil ? SCAN_STACK_MAX : 0;
   const base = Math.max(0, Math.min(SCAN_STACK_MAX, e.scanStacks ?? 1));
   if (gameTime < e.scanMarkUntil) return base;
   const lost = 1 + Math.floor((gameTime - e.scanMarkUntil) / SCAN_MARK_MS);
   return Math.max(0, base - lost);
 };
 /** 扇に入った時に書く値(1段重ね・残り時間は3秒に戻る)。 */
-export const scanMarkAddStack = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks'>, gameTime: number): { scanStacks: number; scanMarkUntil: number } => ({
+export const scanMarkAddStack = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks' | 'scanCritUntil'>, gameTime: number): { scanStacks: number; scanMarkUntil: number; scanCritUntil: undefined } => ({
   scanStacks: Math.min(SCAN_STACK_MAX, scanStacksAt(e, gameTime) + 1),
   scanMarkUntil: gameTime + SCAN_MARK_MS,
+  scanCritUntil: undefined,
 });
+/** 手動の近接で起爆した(重ねを使い切った)後に書く値。クリティカル状態も解く。 */
+export const SCAN_DETONATED: { scanStacks: undefined; scanMarkUntil: undefined; scanCritUntil: undefined } = { scanStacks: undefined, scanMarkUntil: undefined, scanCritUntil: undefined };
+// 起爆の予約(手動の近接の各経路が「この敵で起爆した」と書く→亡霊ではなく新しい銃の制御が次のフレームの頭でまとめて重ねを消す)。
+// 経路ごとに敵の書き換え方が違うため、消す処理を1か所に集める(同じフレームの自動の斬りは重ねの倍率を使ってよい=消すのは次のフレーム)。
+const scanDetonations = new Map<string, { x: number; y: number }>();
+export const noteScanDetonation = (enemyId: string, x: number, y: number): void => { scanDetonations.set(enemyId, { x, y }); };
+export const drainScanDetonations = (): Map<string, { x: number; y: number }> | null => {
+  if (scanDetonations.size === 0) return null;
+  const out = new Map(scanDetonations); scanDetonations.clear(); return out;
+};
 /** 銃・サブ・仲間の攻撃の印の倍率(段に比例)。印が無ければ 1。 */
-export const scanMarkRangedMult = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks'>, gameTime: number): number => {
+export const scanMarkRangedMult = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks' | 'scanCritUntil'>, gameTime: number): number => {
   const n = scanStacksAt(e, gameTime);
   return n > 0 ? 1 + SCAN_STACK_RANGED_STEP * n : 1;
 };
 
 /** 次の1重ねが減るまでの残り(0..1)。足元の輪が欠けていく割合。印が無ければ 0。 */
-export const scanStackRemainFrac = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks'>, gameTime: number): number => {
+export const scanStackRemainFrac = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks' | 'scanCritUntil'>, gameTime: number): number => {
   if (e.scanMarkUntil === undefined || scanStacksAt(e, gameTime) <= 0) return 0;
   if (gameTime < e.scanMarkUntil) return Math.max(0, Math.min(1, (e.scanMarkUntil - gameTime) / SCAN_MARK_MS));
   return 1 - ((gameTime - e.scanMarkUntil) % SCAN_MARK_MS) / SCAN_MARK_MS;
 };
 
 /** 印が今効いているか(段が1以上)。 */
-export const isScanMarked = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks'>, gameTime: number): boolean =>
+export const isScanMarked = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks' | 'scanCritUntil'>, gameTime: number): boolean =>
   scanStacksAt(e, gameTime) > 0;
 
 /** 印の残り(0..1)。描画の輪が欠けていく割合に使う。 */
@@ -99,7 +117,7 @@ export const scanMarkIsBossClass = (t: EnemyType): boolean => usesBossCrit(t);
 
 /** 近接・刀・鞭の印の倍率(§4-2: 段に比例・段は使い切らない・ナイフの段/Lvには関係なし)。印が無ければ 1。 */
 export const scanMarkMeleeMult = (
-  e: Pick<Enemy, 'type' | 'scanMarkUntil' | 'scanStacks'>, gameTime: number, kind: ScanMeleeKind,
+  e: Pick<Enemy, 'type' | 'scanMarkUntil' | 'scanStacks' | 'scanCritUntil'>, gameTime: number, kind: ScanMeleeKind,
 ): number => {
   const n = scanStacksAt(e, gameTime);
   if (n <= 0) return 1;

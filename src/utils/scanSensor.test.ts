@@ -208,3 +208,27 @@ describe('§4-2 印の重ね', () => {
     expect(scanStackReachedFull(3, 4)).toBe(false);
   });
 });
+
+import { isScanCrit, SCAN_CRIT_MS, SCAN_DETONATED, noteScanDetonation, drainScanDetonations } from './scanSensor';
+describe('§4-2 5重ねのクリティカル状態と起爆', () => {
+  it('クリティカル状態の間は5重ね・3秒で解けたら0に戻る', () => {
+    const e = { scanStacks: 5, scanMarkUntil: 1000 + SCAN_CRIT_MS, scanCritUntil: 1000 + SCAN_CRIT_MS };
+    expect(isScanCrit(e, 1000)).toBe(true);
+    expect(scanStacksAt(e, 1000 + SCAN_CRIT_MS - 1)).toBe(5);
+    expect(scanStacksAt(e, 1000 + SCAN_CRIT_MS)).toBe(0);
+    expect(isScanCrit(e, 1000 + SCAN_CRIT_MS)).toBe(false);
+  });
+  it('解けた後のスキャンは1重ねから・クリティカル状態の印は外れる', () => {
+    const e = { scanStacks: 5, scanMarkUntil: 4000, scanCritUntil: 4000 };
+    const add = scanMarkAddStack(e, 5000);
+    expect(add.scanStacks).toBe(1);
+    expect(add.scanCritUntil).toBeUndefined();
+  });
+  it('起爆=重ねとクリティカル状態を消す(予約は次のフレームの頭でまとめて)', () => {
+    expect(scanStacksAt({ scanStacks: 3, scanMarkUntil: 100, ...SCAN_DETONATED }, 0)).toBe(0);
+    noteScanDetonation('a', 1, 2); noteScanDetonation('a', 1, 2); noteScanDetonation('b', 3, 4);
+    const d = drainScanDetonations();
+    expect(d?.size).toBe(2);
+    expect(drainScanDetonations()).toBeNull();
+  });
+});
