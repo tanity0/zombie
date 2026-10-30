@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   BLOB_RADIUS_PX, BLOB_SPEED_PX_PER_SEC, BLOB_TICK_MS, BLOB_LIFE_MS, BLOB_FADE_MS, BLOB_NUMBER_BATCH_MS,
-  createBlobShot, stepBlobShot, isBlobExpired, isBlobFading, blobVisualScale, blobPushOut, circleOverlapsRect,
+  createBlobShot, stepBlobShot, isBlobExpired, isBlobFading, blobVisualScale, blobPushOut, circleOverlapsRect, blobPullStep, BLOB_PULL_RAMP_MS,
   accumulateBlobNumber, blobReachPx, BLOB_TICK_DAMAGE, type BlobNumberLedger, type BlobStepEnemy,
   blobSheetFrame, BLOB_SHEET_FRAMES, BLOB_INTRO_FRAMES, BLOB_INTRO_FRAME_MS, BLOB_LOOP_FRAME_MS,
 } from './blobShot';
@@ -44,13 +44,34 @@ describe('進み方', () => {
     expect(b.stoppedAt).toBeDefined();
     expect(circleOverlapsRect(b.x, b.y, BLOB_RADIUS_PX, heavy)).toBe(false);
   });
-  it('押せる敵は押しのける(進む向きへ押し出す量が出る)', () => {
-    const b = createBlobShot('b', 0, 0, 1, 0, 0, 12);
-    const r = stepBlobShot(b, 0.016, 16, [enemy('z', 20, 0)], never, all);
-    expect(r.blob.stoppedAt).toBeUndefined();
-    const p = r.pushes.find(x => x.id === 'z');
-    expect(p).toBeDefined();
-    expect(p!.dx).toBeGreaterThan(0);
+  it('当たった押せる敵は捕まえて、塊と一緒に動かしながら真ん中へじわじわ寄せる(社長指示2026-10-29)', () => {
+    let b = { ...createBlobShot('b', 0, 0, 1, 0, 0, 12), bornAt: -1000 }; // 膨らみ切った塊
+    const z = enemy('z', 20, -10, 20, 20); // 中心(30,0)=塊の縁に触れている
+    let zx = z.x, zy = z.y;
+    const d0 = Math.hypot(zx + 10 - b.x, zy + 10 - b.y);
+    for (let gt = 0; gt <= 1500; gt += 16) {
+      const r = stepBlobShot(b, 0.016, gt, [{ ...z, x: zx, y: zy }], never, all);
+      b = r.blob;
+      const p = r.pushes.find(x => x.id === 'z');
+      if (p) { zx += p.dx; zy += p.dy; }
+    }
+    expect(b.stoppedAt).toBeUndefined();
+    expect(b.captured?.z).toBeDefined();
+    const d1 = Math.hypot(zx + 10 - b.x, zy + 10 - b.y);
+    expect(d1).toBeLessThan(d0 * 0.3); // 真ん中まで寄った(塊は1.5秒で約170px進んでいる=連れて行かれた)
+  });
+  it('寄せる力は捕まえた直後は弱く、少しずつ強まる(慣性)・真ん中を越えない', () => {
+    const a = blobPullStep(30, 0, 0, 0, 0.016, 0);
+    const c = blobPullStep(30, 0, 0, 0, 0.016, BLOB_PULL_RAMP_MS);
+    expect(Math.abs(a.dx)).toBeLessThan(Math.abs(c.dx));
+    const z = blobPullStep(0.5, 0, 0, 0, 1, BLOB_PULL_RAMP_MS);
+    expect(0.5 + z.dx).toBeGreaterThanOrEqual(-1e-9);
+  });
+  it('押せない敵(ボス・強個体)は捕まえない', () => {
+    const b = { ...createBlobShot('b', 0, 0, 1, 0, 0, 12), bornAt: -1000 };
+    const r = stepBlobShot(b, 0.016, 16, [enemy('boss', 20, -10, 20, 20)], never, () => false);
+    expect(r.pushes).toEqual([]);
+    expect(r.blob.captured?.boss).toBeUndefined();
   });
   it('中心が矩形に埋まっていても押し出す向きが決まる', () => {
     const p = blobPushOut(0, 0, BLOB_RADIUS_PX, { x: -5, y: -5, width: 10, height: 10 }, 1, 0);

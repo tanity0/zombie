@@ -65,6 +65,8 @@ export interface BlobShot {
   nextTickAt: number;
   /** 1回のダメージ(撃った時に確定した銃のスキル倍率込み・出す側の倍率は適用時)。 */
   tickDamage: number;
+  /** 引き寄せている敵(敵id → 捕まえた gameTime)。社長指示2026-10-29「当たった敵を真ん中にジワジワ引き寄せる」。 */
+  captured?: Readonly<Record<string, number>>;
 }
 
 export interface BlobRect { x: number; y: number; width: number; height: number }
@@ -128,12 +130,34 @@ export const blobVisualScale = (b: Pick<BlobShot, 'bornAt'>, gameTime: number): 
 export const blobHitRadius = (b: Pick<BlobShot, 'bornAt'>, gameTime: number): number => BLOB_RADIUS_PX * blobVisualScale(b, gameTime);
 /** 「触れている」の余白(押し出した直後・接して止まった直後は重なり0)。 */
 export const BLOB_TOUCH_SLACK_PX = 2;
+/**
+ * 引き寄せ(グラヴィティガン・社長指示2026-10-29「当たった敵を真ん中にジワジワ引き寄せる」)。
+ * 一度触れた押せる敵を捕まえ、塊の真ん中へ寄せ続ける。進んでいる塊には連れて行かれる(塊の動きぶんは一緒に動く)。
+ * 寄せる速さは真ん中からの距離に比例(遠いほど速く・真ん中で0)+下限。捕まえてから BLOB_PULL_RAMP_MS かけて強まる(慣性)。
+ * 塊の縁から BLOB_PULL_ESCAPE_PX より外へ出られたら放す(押されて弾き出された等)。消える0.4秒は放す。
+ */
+export const BLOB_PULL_RATE_PER_S = 2.2;
+export const BLOB_PULL_MIN_PX_PER_S = 30;
+export const BLOB_PULL_MAX_PX_PER_S = 200;
+export const BLOB_PULL_RAMP_MS = 300;
+export const BLOB_PULL_ESCAPE_PX = 70;
+/** 1 step で敵の中心を塊の真ん中へ寄せる量(真ん中を越えない)。carry=塊がこの step で動いた量(連れて行く)。 */
+export const blobPullStep = (
+  ex: number, ey: number, bx: number, by: number, dtSec: number, sinceCaptureMs: number, carryX = 0, carryY = 0,
+): { dx: number; dy: number } => {
+  const vx = bx - ex, vy = by - ey, d = Math.hypot(vx, vy);
+  const ramp = Math.min(1, Math.max(0, sinceCaptureMs) / BLOB_PULL_RAMP_MS);
+  const rampE = ramp * ramp * (3 - 2 * ramp);
+  const speed = Math.min(BLOB_PULL_MAX_PX_PER_S, BLOB_PULL_MIN_PX_PER_S + d * BLOB_PULL_RATE_PER_S) * rampE;
+  const step = d > 1e-6 ? Math.min(d, speed * dtSec) : 0;
+  return { dx: carryX + (d > 1e-6 ? (vx / d) * step : 0), dy: carryY + (d > 1e-6 ? (vy / d) * step : 0) };
+};
 
 export interface BlobStepEnemy extends BlobRect { id: string }
 
 export interface BlobStepResult {
   blob: BlobShot;
-  /** 押しのけ(呼び手が行ける帯へ収めてから敵の位置へ足す)。 */
+  /** 引き寄せ(呼び手が壁と行ける帯へ収めてから敵の位置へ足す)。名前は旧「押しのけ」のまま。 */
   pushes: { id: string; dx: number; dy: number }[];
   /** この step でダメージを受ける敵(200msごと)。 */
   hitIds: string[];
@@ -177,13 +201,30 @@ export const stepBlobShot = (
       b = { ...b, x: nx, y: ny };
     }
   }
-  // 押しのけ(止まった後も、重なってきた押せる敵は外へ押し出す=塊の中に敵が埋まらない)。消える間はしない。
+  // 引き寄せ(社長指示2026-10-29「当たった敵を真ん中にジワジワ引き寄せる」=旧「押しのけ」を置き換え)。
+  // 触れた押せる敵を捕まえ、塊の真ん中へ寄せる(進んでいる塊は連れて行く)。消える0.4秒は放す。
   if (!fading) {
+    const carryX = b.x - blob.x, carryY = b.y - blob.y;
+    const cap: Record<string, number> = { ...(b.captured ?? {}) };
     for (const e of enemies) {
       if (!isPushable(e)) continue;
-      const p = blobPushOut(b.x, b.y, R, e, b.dirX, b.dirY);
-      if (p) pushes.push({ id: e.id, dx: p.dx, dy: p.dy });
+      if (cap[e.id] === undefined && circleOverlapsRect(b.x, b.y, R + BLOB_TOUCH_SLACK_PX, e)) cap[e.id] = gameTime;
     }
+    const present = new Set<string>();
+    for (const e of enemies) {
+      const at = cap[e.id];
+      if (at === undefined || !isPushable(e)) continue;
+      // 塊の縁から遠く離れたら放す(壁で動けない・別の押しで弾き出された)。
+      if (!circleOverlapsRect(b.x, b.y, R + BLOB_PULL_ESCAPE_PX, e)) continue;
+      present.add(e.id);
+      const p = blobPullStep(e.x + e.width / 2, e.y + e.height / 2, b.x, b.y, dtSec, gameTime - at, carryX, carryY);
+      if (Math.abs(p.dx) + Math.abs(p.dy) > 1e-4) pushes.push({ id: e.id, dx: p.dx, dy: p.dy });
+    }
+    const kept: Record<string, number> = {};
+    for (const id of present) kept[id] = cap[id];
+    b = { ...b, captured: kept };
+  } else if (b.captured && Object.keys(b.captured).length > 0) {
+    b = { ...b, captured: {} };
   }
   const hitIds: string[] = [];
   if (gameTime >= b.nextTickAt) {
