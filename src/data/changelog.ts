@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5278', items: [
+    '宇宙飛行群(変異)は、旗を投げつけ、続けて破片の雨を降らせる。この順に繰り返す。旗は弾き返せる',
+    '追い詰めると破片の雨が倍に増える',
+  ] },
   { version: '0.25.5277', items: [
     '亡霊(変異体)に近づくほど曲が遠のき、すすり泣くような声が近づいてくる。花や墓石が生え始める辺りから',
   ] },

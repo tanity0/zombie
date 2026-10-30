@@ -295,3 +295,22 @@ describe('投げのコマ(社長指示2026-10-29: 旗は掲げてから投げる
     expect(ASTRO_THROW_HAND).toHaveLength(TF);
   });
 });
+
+import { nextAstroScriptThrow, astroDebrisCount, isAstroPinch, astroThrowPlan as plan2, ASTRO_DEBRIS_COUNT as DC } from './astroScript';
+describe('台本(社長指示2026-10-30: 旗投げ→破片の雨・ピンチで破片の雨が2倍)', () => {
+  it('旗から始まり、旗→破片の雨をくり返す', () => {
+    expect(nextAstroScriptThrow(null)).toBe('flag');
+    expect(nextAstroScriptThrow('flag')).toBe('debris');
+    expect(nextAstroScriptThrow('debris')).toBe('flag');
+  });
+  it('体力が半分以下はピンチ=破片の雨が2倍。枚数ぶんの当たりと予告が積まれる', () => {
+    expect(isAstroPinch(5000, 10000)).toBe(true);
+    expect(isAstroPinch(5001, 10000)).toBe(false);
+    expect(astroDebrisCount(true)).toBe(DC * 2);
+    let seed = 7; const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const e = plan2('debris', 't', 'o', { x: 0, y: 0 }, { x: 200, y: 0 }, 0, rng, astroDebrisCount(true));
+    expect(e).toHaveLength(DC * 2);
+    const hits = e.map(q => q.hitAt);
+    expect(new Set(hits).size).toBe(hits.length); // 1枚ずつ別の時刻に落ちる(多段は段ごと)
+  });
+});

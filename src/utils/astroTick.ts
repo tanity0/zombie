@@ -24,7 +24,7 @@ import {
   ASTRO_STUCK_MS, ASTRO_STUCK_PX, ASTRO_HIT_ALERT_MS, ASTRO_LOSE_MS, ASTRO_RELEASE_MS, astroThrowEndMs,
   ASTRO_METEOR_COOLDOWN_MS, ASTRO_BOUQUET_HEAL_FRAC, ASTRO_DEBRIS_RADIUS, ASTRO_DEBRIS_DAMAGE,
   stepAstroHover, stepAstroPeriodicLand, type AstroPeriodicLand, astroCanMove, stepAstroVelocity, astroArriveSpeed, astroBandPull, astroPoiCandidates, pickAstroPoi,
-  pickAstroThrow, astroThrowPlan, astroLingerMs, astroMeteorShake, astroRainStep, type AstroRainState,
+  nextAstroScriptThrow, astroDebrisCount, isAstroPinch, astroThrowPlan, astroLingerMs, astroMeteorShake, astroRainStep, type AstroRainState,
   type AstroPoi, type AstroThrowKind, type AstroThrowEntry,
 } from './astroScript';
 
@@ -313,9 +313,10 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
 
   // ---- 投げ始め(着地し切った=0コマ) ----
   if (s.wantThrow && !throwing && !collapse && !held && anim.frame === 0 && onScreen && alerted) {
-    const kind = pickAstroThrow(s.lastKind, s.meteorReadyAt, gt, Math.random);
+    // 台本(旗投げ → 破片の雨)。ピンチ(体力半分以下)は破片の雨が2倍(社長指示2026-10-30)。
+    const kind = nextAstroScriptThrow(s.lastKind);
     const id = `astro-${e.id}-${++s.seq}`;
-    const entries = astroThrowPlan(kind, id, e.id, { x: bx, y: by }, { x: tgt.x, y: tgt.y }, gt, Math.random);
+    const entries = astroThrowPlan(kind, id, e.id, { x: bx, y: by }, { x: tgt.x, y: tgt.y }, gt, Math.random, astroDebrisCount(isAstroPinch(e.health, e.maxHealth)));
     if (kind === 'bouquet' && tgt.ghost) for (const en of entries) en.toGhost = true;
     useGameStore.setState(stt => ({ astroThrows: [...stt.astroThrows, ...entries] }));
     Object.assign(patch, {

@@ -219,7 +219,23 @@ export const astroLingerMs = (kind: AstroThrowKind): number =>
     : ASTRO_MISSILE_SCORCH_MS;
 
 /**
+ * ★台本(社長指示2026-10-30「宇宙飛行群、台本化 旗投げ→破片の雨 で」): 旗投げ → 破片の雨 をくり返す(旗から始める)。
+ * ミサイル・隕石・花束は今は台本に入れていない(作りは残してある=台本に足せばそのまま出る)。
+ */
+export const ASTRO_SCRIPT: readonly AstroThrowKind[] = ['flag', 'debris'];
+export const nextAstroScriptThrow = (prev: AstroThrowKind | null): AstroThrowKind => {
+  const i = prev === null ? -1 : ASTRO_SCRIPT.indexOf(prev);
+  return ASTRO_SCRIPT[(i + 1) % ASTRO_SCRIPT.length];
+};
+/** ピンチ=体力が半分以下(社長指示2026-10-30「ピンチになると、破片の雨の量が2倍」)。 */
+export const ASTRO_PINCH_HP_FRAC = 0.5;
+export const isAstroPinch = (health: number, maxHealth: number): boolean => maxHealth > 0 && health <= maxHealth * ASTRO_PINCH_HP_FRAC;
+/** 破片の雨の枚数(ピンチで2倍)。 */
+export const astroDebrisCount = (pinch: boolean): number => (pinch ? ASTRO_DEBRIS_COUNT * 2 : ASTRO_DEBRIS_COUNT);
+
+/**
  * 次に投げる物を選ぶ(重み付き)。直前と同じ物は選ばない。隕石は前回から20秒は選ばない。
+ * ★今は台本(nextAstroScriptThrow)が選ぶ=これは使っていない(台本をやめる時に戻す)。
  * rng は 0..1。
  */
 export const pickAstroThrow = (
@@ -243,8 +259,10 @@ export const pickAstroThrow = (
 export const astroThrowPlan = (
   kind: AstroThrowKind, throwId: string, ownerId: string,
   from: { x: number; y: number }, target: { x: number; y: number }, start: number, rng: () => number,
+  debrisCount = ASTRO_DEBRIS_COUNT,
 ): AstroThrowEntry[] => {
   const base = { throwId, ownerId, kind, bornAt: start, releaseAt: start + ASTRO_RELEASE_MS, fromX: from.x, fromY: from.y };
+  const N = Math.max(1, Math.round(debrisCount));
   switch (kind) {
     case 'missile':
       return [{ ...base, id: `${throwId}-0`, hitAt: start + astroHitOffsetMs('missile'), x: target.x, y: target.y, radius: ASTRO_MISSILE_RADIUS, damage: ASTRO_MISSILE_DAMAGE }];
@@ -268,16 +286,16 @@ export const astroThrowPlan = (
       const kinds = Array.from({ length: ASTRO_DEBRIS_VARIANTS }, (_, k) => k);
       for (let k = kinds.length - 1; k > 0; k--) { const j = Math.floor(rng() * (k + 1)) % (k + 1); [kinds[k], kinds[j]] = [kinds[j], kinds[k]]; }
       // 置く所: 1枚はプレイヤーの立っていた所そのもの(何番目に落ちるかは無作為)、残りは円の中に無作為(枚どうし離す)。
-      const onTarget = Math.floor(rng() * ASTRO_DEBRIS_COUNT) % ASTRO_DEBRIS_COUNT;
+      const onTarget = Math.floor(rng() * N) % N;
       const pts: { x: number; y: number }[] = [{ x: target.x, y: target.y }];
-      for (let tries = 0; pts.length < ASTRO_DEBRIS_COUNT && tries < 400; tries++) {
+      for (let tries = 0; pts.length < N && tries < 400; tries++) {
         const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * ASTRO_DEBRIS_SPREAD_PX;
         const q = { x: target.x + Math.cos(a) * r, y: target.y + Math.sin(a) * r };
         if (tries < 300 && pts.some(p => Math.hypot(p.x - q.x, p.y - q.y) < ASTRO_DEBRIS_GAP_PX)) continue;
         pts.push(q);
       }
       [pts[0], pts[onTarget]] = [pts[onTarget], pts[0]];
-      for (let i = 0; i < ASTRO_DEBRIS_COUNT; i++) {
+      for (let i = 0; i < Math.min(N, pts.length); i++) {
         out.push({
           ...base, id: `${throwId}-${i}`, hitAt: start + astroHitOffsetMs('debris', i),
           x: pts[i].x, y: pts[i].y, radius: ASTRO_DEBRIS_RADIUS, damage: ASTRO_DEBRIS_DAMAGE,
