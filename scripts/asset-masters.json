@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "947 files / 復号後 約712MB",
+ "generatedFor": "949 files / 復号後 約712MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -619,6 +619,18 @@
    "h": 128,
    "bytes": 2088,
    "sha": "6d04b0d6434567fb"
+  },
+  "sprites/avatar-devil-horns.png": {
+   "w": 48,
+   "h": 30,
+   "bytes": 1710,
+   "sha": "df9d304ab96f63e4"
+  },
+  "sprites/avatar-devil-tail.png": {
+   "w": 49,
+   "h": 32,
+   "bytes": 1640,
+   "sha": "a93c6f8fba0fd585"
   },
   "sprites/bat-female-attack.png": {
    "w": 702,

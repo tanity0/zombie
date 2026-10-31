@@ -693,6 +693,8 @@ export const ensureTextures = (): Promise<void> => {
       // AvatarPart.tex と一致させる(視覚専用・判定なし)。ドット絵タッチ=nearest。
       { name: 'avatar-cat-ears', scaleMode: 'nearest' }, // 100×48
       { name: 'avatar-cat-tail', scaleMode: 'nearest' }, // 76×128
+      { name: 'avatar-devil-horns', scaleMode: 'nearest' }, // 48×30(第2弾「悪魔セット」)
+      { name: 'avatar-devil-tail', scaleMode: 'nearest' }, // 49×32
       // 裏ボス スカジの氷ハザード(氷塊テレグラフ / 飛ぶ氷の刃)。ピクセルアート=nearest。
       { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },

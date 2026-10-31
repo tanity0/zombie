@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.5301 — 新アバター「悪魔セット」(角2本+尻尾)【2026-11-01 01:37 JST】
+- 社長支給の画像(角2本+尻尾を横に並べた1枚・162×34・縁は透明/不透明の2値)を切り分けて素材にした:
+  `public/sprites/avatar-devil-horns.png`(48×30=角2本を間を10空けて1枚に並べた)/ `avatar-devil-tail.png`(49×32・右上が付け根)。
+- `src/data/avatars.ts` に `devil-set`「悪魔セット」を1行足した。角=猫耳と同じ置き方(頭頂追従・above)で、
+  社長指示「同じく一本は後ろに」= `leadingHalfBehind: true`(進行方向側の角が頭の裏)。尻尾=below・付け根を腰へ(右向きで背中側)。
+- メニューの絵の枡は角の絵(`subWeaponIcons`)。素材台帳を更新(`assets:ledger`)。
+- 確認(ヘッドレス・430×932 dpr2): 右向き/左向きで、手前の角は髪の前・奥の角は頭の裏、尻尾は背中側の腰から出ているのを見た
+  (1回目は尻尾が膝の高さだったので腰へ上げて撮り直し)。
+- 憲法第4条・第5条: 見た目だけ=抵触なし。
+- 変更: public/sprites/avatar-devil-horns.png / public/sprites/avatar-devil-tail.png / src/data/avatars.ts /
+  src/data/subWeaponIcons.ts / src/pixi/pixiTextures.ts / scripts/asset-masters.json / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5300 — 猫耳をほんの少し上へ【2026-11-01 00:11 JST】
 - 社長「ほんの少しだけ上へ」。耳の `offsetYFrac` -0.76 → -0.78。
 - 確認(ヘッドレス・430×932 dpr2): 変更前/右向き/左向きを並べて見た。

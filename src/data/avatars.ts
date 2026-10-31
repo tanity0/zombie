@@ -13,7 +13,7 @@
 // 視覚専用(判定/移動/攻撃に一切影響しない)。CLAUDE.md「レンダリングとゲームロジックの分離」に
 // 従い、ここは renderer-agnostic なデータのみ(PixiJS import なし)。
 
-export type AvatarId = 'cat-set';
+export type AvatarId = 'cat-set' | 'devil-set';
 
 export interface AvatarPart {
   /** src/pixi/pixiTextures.ts の standalone リストに登録したテクスチャ名。 */
@@ -95,6 +95,36 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         offsetYFrac: 0,
         sizeFrac: 0.42, // v0.25.3255「もっと小さく」: 0.6→0.42
         sizeBasis: 'height',
+        flipWithFacing: true,
+      },
+    ],
+  },
+  // 第2弾「悪魔セット」(社長支給2026-10-31): 角2本(頭・above)+尻尾(腰から後ろへ・below)。
+  // 角は猫耳と同じく、進行方向側の1本を頭の裏へ回す(社長指示「同じく一本は後ろに」)。
+  'devil-set': {
+    id: 'devil-set',
+    name: '悪魔セット',
+    parts: [
+      {
+        tex: 'avatar-devil-horns', // 48×30(支給の角2本を1枚に並べた物)
+        layer: 'above',
+        anchorX: 0.5, anchorY: 1,
+        offsetXFrac: 0.05,
+        offsetYFrac: -0.78,
+        sizeFrac: 0.4,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+        followsHead: true,
+        leadingHalfBehind: true,
+      },
+      {
+        tex: 'avatar-devil-tail', // 49×32(右上が付け根・左下が先端)
+        layer: 'below',
+        anchorX: 0.95, anchorY: 0.08, // 付け根を腰に置く
+        offsetXFrac: -0.05,
+        offsetYFrac: -0.52,
+        sizeFrac: 0.5,
+        sizeBasis: 'width',
         flipWithFacing: true,
       },
     ],

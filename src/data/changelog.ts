@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5301', items: [
+    '新しいアバター「悪魔セット」。角と尻尾が付き、進む向きの側の角は頭の後ろに隠れる',
+  ] },
   { version: '0.25.5300', items: [
     '猫耳セットの耳を、ほんの少し上へ',
   ] },
