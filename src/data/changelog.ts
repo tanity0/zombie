@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5296', items: [
+    '北部封鎖区域の最初の関門は、最初の二つの波で敵が減った。赤い敵と叫喚型はそのまま',
+  ] },
   { version: '0.25.5295', items: [
     'スキャンセンサーの印が効くのは、自分の近接の一撃だけになった。銃や仲間、勝手に出る斬撃では弾けない',
     '印は重ねるほど深く入る。急いで叩くより、五つ重ねて足が止まったところへ',

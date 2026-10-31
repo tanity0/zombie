@@ -32,10 +32,12 @@ describe('§17-10 台本の中身(社長確定の表と一致)', () => {
       [{ type: 'pumpkin', count: 1 }],
     ]);
   });
-  it('S4-2段目: ゾンビ1(赤)・バット2・プラント2・叫喚型1(2026-09-18差し替え後)', () => {
+  it('S4: 1段目 バット1(赤)・スケルトン1(赤)・プラント1 / 2段目 ゾンビ1(赤)・プラント2・叫喚型1(2026-10-31差し替え後)', () => {
+    expect(WELCOME_SCRIPT['stage-4']![0]).toEqual([
+      { type: 'bat', count: 1, tier: 'red' }, { type: 'skeleton', count: 1, tier: 'red' }, { type: 'plant', count: 1 },
+    ]);
     expect(WELCOME_SCRIPT['stage-4']![1]).toEqual([
-      { type: 'zombie', count: 1, tier: 'red' }, { type: 'bat', count: 2 },
-      { type: 'plant', count: 2 }, { type: 'screamer', count: 1 },
+      { type: 'zombie', count: 1, tier: 'red' }, { type: 'plant', count: 2 }, { type: 'screamer', count: 1 },
     ]);
   });
   it('赤が1体も居ない段が5つ(S1-3/S3-2/S4-3/S5-3/S6-1)=意図して空けた「たまに」', () => {

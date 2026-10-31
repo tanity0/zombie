@@ -51,16 +51,11 @@ export const WELCOME_SCRIPT: Partial<Record<string, WelcomeUnit[][]>> = {
     [{ type: 'bat', count: 1 }, { type: 'skeleton', count: 1 }, { type: 'zombie', count: 1, tier: 'red' }],
   ],
   'stage-4': [
-    [
-      { type: 'bat', count: 1, tier: 'red' }, { type: 'bat', count: 1 },
-      { type: 'skeleton', count: 1, tier: 'red' }, { type: 'zombie', count: 1 }, { type: 'plant', count: 1 },
-    ],
-    // ★S4の2段目は差し替え済み(社長指示2026-09-18「ゾンビ1赤 バット2 プラント2 咆哮1」)。
-    // 咆哮1=screamer(叫喚型・変異体)。特別枠(SPECIAL_SLOTS)を通さず台本から直接湧かす(§17-11 B3)。
-    [
-      { type: 'zombie', count: 1, tier: 'red' }, { type: 'bat', count: 2 },
-      { type: 'plant', count: 2 }, { type: 'screamer', count: 1 },
-    ],
+    // ★S4の1・2段目は色なしの数合わせを抜いた(社長指示2026-10-31「クリアむずすぎる」→
+    // 「1:赤いコウモリ 赤い骸骨 植物 / 2:赤いゾンビ 植物2 叫喚型」)。赤3体と叫喚型は残す。
+    [{ type: 'bat', count: 1, tier: 'red' }, { type: 'skeleton', count: 1, tier: 'red' }, { type: 'plant', count: 1 }],
+    // 叫喚型=screamer(変異体)。特別枠(SPECIAL_SLOTS)を通さず台本から直接湧かす(§17-11 B3)。
+    [{ type: 'zombie', count: 1, tier: 'red' }, { type: 'plant', count: 2 }, { type: 'screamer', count: 1 }],
     [{ type: 'driller', count: 1 }, { type: 'zombie', count: 1 }],
   ],
   'stage-5': [
