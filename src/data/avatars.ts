@@ -80,7 +80,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         // v0.25.3255 社長実機報告「ズレてる・もっと小さく」: 浮いて見えたため頭頂へ下げ(−0.92→−0.76)、
         // 幅も半分に(0.9→0.45)。
         offsetYFrac: -0.76,
-        sizeFrac: 0.45,
+        sizeFrac: 0.4, // 社長指示2026-10-31「もう少し耳を小さく」0.45→0.4
         sizeBasis: 'width',
         // 前へずらした(offsetXFrac>0)ので、重ね描きの時も向きで左右を入れ替える(焼き込みは体ごと反転=元から入れ替わる)。
         flipWithFacing: true,

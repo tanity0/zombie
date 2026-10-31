@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5299', items: [
+    '猫耳セットの耳をひと回り小さくした',
+  ] },
   { version: '0.25.5298', items: [
     '猫耳セットの耳を、少し顔の向きの側へ寄せた',
   ] },
