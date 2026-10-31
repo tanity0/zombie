@@ -1,0 +1,256 @@
+{
+  "schema": "run-manifest/1",
+  "run": {
+    "mode": "smoke",
+    "url": "http://localhost:4173/zombie/?smoke=1&autotut=1&testbridge=1&bot=standard&botskill=casual&stage=stage-1",
+    "stamp": "20260917-1016",
+    "startedAt": "2026-09-17T10:16:23.291Z",
+    "endedAt": "2026-09-17T10:19:25.310Z",
+    "realSec": 182,
+    "endedReason": "timeLimit",
+    "stateSource": "bridge"
+  },
+  "build": {
+    "version": "0.25.4435",
+    "commit": "c2995e55"
+  },
+  "env": {
+    "os": "win32 x64",
+    "node": "v24.16.0",
+    "browser": "153.0.8010.48",
+    "headed": true,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "deviceScaleFactor": 1,
+    "isMobile": false,
+    "hasTouch": false,
+    "server": "http://localhost:4173/zombie/"
+  },
+  "query": {
+    "smoke": "1",
+    "autotut": "1",
+    "testbridge": "1",
+    "bot": "standard",
+    "botskill": "casual",
+    "stage": "stage-1"
+  },
+  "seed": {
+    "requested": null,
+    "effective": null,
+    "note": "src/側に seed の口が無いため未固定(REQUEST-devbridge.md P0-3)"
+  },
+  "observed": {
+    "gateClicks": 1,
+    "shopFixes": 0,
+    "maxEnemies": 10,
+    "consoleErrorCount": 1,
+    "firstRunSearchMs": null,
+    "finalState": {
+      "via": "bridge",
+      "buildVersion": "0.25.4435",
+      "gitCommit": "c2995e55",
+      "stageId": "stage-1",
+      "screenId": "gameplay",
+      "gameTime": 149606,
+      "isPaused": false,
+      "pauseReason": null,
+      "showShopMenu": false,
+      "showEventQuestMenu": false,
+      "showUpgradeMenu": false,
+      "tutorialPopup": false,
+      "playerAlive": true,
+      "health": 27,
+      "level": 3,
+      "x": 1370,
+      "y": 1207,
+      "botPersona": "standard",
+      "botSkill": "casual",
+      "botGoal": "none",
+      "enemyCount": 10,
+      "bossTypes": [],
+      "resultState": null,
+      "deathCause": null,
+      "botReportReady": false,
+      "lastProgressAt": 1789640364526,
+      "lastSignificantEventAt": 1789640352136,
+      "screen": "gameplay",
+      "botReport": null,
+      "buttons": [
+        {
+          "text": "1/18",
+          "aria": "ショットガン"
+        },
+        {
+          "text": "",
+          "aria": "Audio off"
+        }
+      ]
+    },
+    "botReport": null
+  },
+  "screenshots": [
+    {
+      "trigger": "firstLevelUp",
+      "atRealSec": 72,
+      "atGameSec": 51,
+      "kept": "20260917-1016-smoke-firstLevelUp.png",
+      "tempPath": null
+    },
+    {
+      "trigger": "maxEnemies",
+      "atRealSec": 20,
+      "atGameSec": 4,
+      "kept": "20260917-1016-smoke-maxEnemies.png",
+      "tempPath": null
+    },
+    {
+      "trigger": "timeout",
+      "atRealSec": 182,
+      "atGameSec": 149,
+      "kept": "20260917-1016-smoke-timeout.png",
+      "tempPath": null
+    },
+    {
+      "trigger": "gameplayStarted",
+      "atRealSec": 17,
+      "atGameSec": 1,
+      "kept": "20260917-1016-smoke-gameplayStarted.png",
+      "tempPath": null
+    }
+  ],
+  "tempDir": "C:\\Users\\tanity\\AppData\\Local\\Temp\\zombie-observe-1789640182045",
+  "events": [
+    {
+      "realSec": 0,
+      "gameSec": null,
+      "eventType": "boot",
+      "note": "http://localhost:4173/zombie/?smoke=1&autotut=1&testbridge=1&bot=standard&botskill=casual&stage=stage-1"
+    },
+    {
+      "realSec": 2,
+      "gameSec": null,
+      "eventType": "gateClicked",
+      "note": "OK"
+    },
+    {
+      "realSec": 15,
+      "gameSec": 1,
+      "eventType": "gameplayStarted"
+    },
+    {
+      "realSec": 20,
+      "gameSec": 4,
+      "eventType": "maxEnemies",
+      "note": "同時 3 体"
+    },
+    {
+      "realSec": 27,
+      "gameSec": 11,
+      "eventType": "maxEnemies",
+      "note": "同時 6 体"
+    },
+    {
+      "realSec": 34,
+      "gameSec": 17,
+      "eventType": "maxEnemies",
+      "note": "同時 9 体"
+    },
+    {
+      "realSec": 47,
+      "gameSec": null,
+      "eventType": "consoleError",
+      "note": "[PixiStage] sync error (suppressed after first): TypeError: Cannot read properties of null (reading 'set')\n    at v (htt"
+    },
+    {
+      "realSec": 71,
+      "gameSec": 51,
+      "eventType": "levelUp",
+      "note": "Lv1 → Lv2"
+    },
+    {
+      "realSec": 90,
+      "gameSec": 68,
+      "eventType": "damageTaken",
+      "note": "130 → 121"
+    },
+    {
+      "realSec": 94,
+      "gameSec": 72,
+      "eventType": "damageTaken",
+      "note": "121 → 110"
+    },
+    {
+      "realSec": 99,
+      "gameSec": 75,
+      "eventType": "damageTaken",
+      "note": "110 → 103"
+    },
+    {
+      "realSec": 104,
+      "gameSec": 80,
+      "eventType": "damageTaken",
+      "note": "103 → 96"
+    },
+    {
+      "realSec": 105,
+      "gameSec": 81,
+      "eventType": "damageTaken",
+      "note": "96 → 88"
+    },
+    {
+      "realSec": 112,
+      "gameSec": 87,
+      "eventType": "damageTaken",
+      "note": "88 → 81"
+    },
+    {
+      "realSec": 115,
+      "gameSec": 90,
+      "eventType": "damageTaken",
+      "note": "81 → 73"
+    },
+    {
+      "realSec": 116,
+      "gameSec": 90,
+      "eventType": "damageTaken",
+      "note": "73 → 66"
+    },
+    {
+      "realSec": 118,
+      "gameSec": 92,
+      "eventType": "damageTaken",
+      "note": "66 → 58"
+    },
+    {
+      "realSec": 124,
+      "gameSec": 97,
+      "eventType": "damageTaken",
+      "note": "58 → 40"
+    },
+    {
+      "realSec": 132,
+      "gameSec": 105,
+      "eventType": "levelUp",
+      "note": "Lv2 → Lv3"
+    },
+    {
+      "realSec": 169,
+      "gameSec": 139,
+      "eventType": "damageTaken",
+      "note": "40 → 27"
+    },
+    {
+      "realSec": 181,
+      "gameSec": 148,
+      "eventType": "timeout"
+    }
+  ],
+  "consoleErrors": [
+    {
+      "realSec": 47,
+      "text": "[PixiStage] sync error (suppressed after first): TypeError: Cannot read properties of null (reading 'set')\n    at v (http://localhost:4173/zombie/assets/bootstrap-VaQ1m7un.js:1337:258029)\n    at jt.drawRim (http://localhost:4173/zombie/assets/bootstrap-VaQ1m7un.js:1337:258263)\n    at jt.syncRimLights (http://localhost:4173/zombie/assets/bootstrap-VaQ1m7un.js:1337:256755)\n    at jt.sync (http://localhost:4173/zombie/assets/bootstrap-VaQ1m7un.js:1337:111844)\n    at oF.T [as _fn] (http://localhost:4173/zombie/assets/bootstrap-VaQ1m7un.js:1337:542822)\n    at oF.emit (http://localhost:4173/zombie/a"
+    }
+  ]
+}
