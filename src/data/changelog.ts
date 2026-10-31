@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5297', items: [
+    '猫耳セットの耳は、向いている側の片耳が頭の後ろに回る',
+  ] },
   { version: '0.25.5296', items: [
     '北部封鎖区域の最初の関門は、最初の二つの波で敵が減った。赤い敵と叫喚型はそのまま',
   ] },

@@ -27,6 +27,31 @@ export const placeAvatarPart = (
   return { left: x - part.anchorX * width, top: y - part.anchorY * height, width, height };
 };
 
+/**
+ * パーツを描く単位(ほとんどのパーツは1枚のまま。`leadingHalfBehind` の物は左右の半分に割る)。
+ * u0..u1 = パーツの絵の横の範囲(0〜1)、anchorX = その範囲の中でのアンカー(全体のアンカーと同じ点に来る値)。
+ * 割っても全体を描いた時と1pxも位置が変わらない(左右反転した時も、アンカーの点を軸に同じ所へ来る)。
+ */
+export interface AvatarPartPiece { part: AvatarPart; layer: 'above' | 'below'; u0: number; u1: number; anchorX: number }
+
+const piece = (part: AvatarPart, layer: 'above' | 'below', u0: number, u1: number): AvatarPartPiece =>
+  ({ part, layer, u0, u1, anchorX: (part.anchorX - u0) / (u1 - u0) });
+
+/**
+ * @param faceRight 画面で右を向いているか。体の絵(右向き)へ描く時・焼き込み・メニューの絵は true。
+ *   左右反転しないパーツ(`flipWithFacing: false`)を左向きで重ね描く時だけ、進行方向側=絵の左半分になる。
+ */
+export const avatarPartPieces = (parts: readonly AvatarPart[], faceRight = true): AvatarPartPiece[] => {
+  const out: AvatarPartPiece[] = [];
+  for (const part of parts) {
+    if (!part.leadingHalfBehind) { out.push(piece(part, part.layer, 0, 1)); continue; }
+    const leadingIsRight = faceRight || part.flipWithFacing;
+    out.push(leadingIsRight ? piece(part, part.layer, 0, 0.5) : piece(part, part.layer, 0.5, 1));
+    out.push(leadingIsRight ? piece(part, 'below', 0.5, 1) : piece(part, 'below', 0, 0.5));
+  }
+  return out;
+};
+
 /** 台帳(playerHeadAnchors)だけで出す頭のずれ。台帳に無いコマは null(呼び出し側の自動計測へ落とす)。 */
 export const headAnchorDelta = (currentName: string, baselineName: string): { dx: number; dy: number } | null => {
   const ac = PLAYER_HEAD_ANCHORS[currentName], ab = PLAYER_HEAD_ANCHORS[baselineName];

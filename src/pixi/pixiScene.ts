@@ -382,7 +382,7 @@ import {
   SHADOW_GLOW_LEN_CAP, SHADOW_EXPL_FADE_MS, SHADOW_TOTAL_MESH_MAX, SHADOW_EXPL_SLOTS, SHADOW_STATIC_SLOTS,
   canBakeSilhouette, planSilhouetteEviction,
 } from '../utils/shadowSlots';
-import { placeAvatarPart } from '../utils/avatarPlacement';
+import { placeAvatarPart, avatarPartPieces, type AvatarPartPiece } from '../utils/avatarPlacement';
 import { BLOOD_BURST_SHEET_FRAMES, BLOOD_BURST_SHEET_FRAME_MS, BLOOD_BURST_BLAST_PX, getBloodBurstArt, pickDrop, bloodBurstLayout, bloodBurstSeed, BLOOD_GOB_PX, BLOOD_BURST_GRAVITY, BLOOD_BURST_POP_MS, BLOOD_BURST_POOL_MS, BLOOD_BURST_DARKEN_MS, BLOOD_BURST_FADE_MS, BLOOD_BURST_BODY_MS, type BloodBurstPiece } from './bloodBurst';
 import { getAlchemyRockArt, getAlchemyDustTexture, alchemyRockLayout, alchemyRockSeed, alchemyPulse, alchemyTremble, ALCHEMY_ROCK_SIZES, ALCHEMY_ROCK_TARGET, ALCHEMY_FLY_MS, ALCHEMY_SETTLE_MS, ALCHEMY_FRAG_MS, ALCHEMY_PUSH_MS, ALCHEMY_SHATTER_MS, type AlchemyRockSpec } from './alchemyRocks';
 import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
@@ -19406,13 +19406,13 @@ export class PixiScene {
       const gBodyDeltaX = tex ? avatarHeadCxDeltaPx(bodyTexName2, gBaselineTexName) * view.sprite.scale.x : 0;
       const gAvatarAlpha = tex ? GHOST_ALLY_ALPHA * lifecycleAlpha : 0;
       this.syncAvatarPartLayer(
-        this.ghostAvatarAbove, gParts.filter(pt => pt.layer === 'above'), true, this.L.actorLayer,
+        this.ghostAvatarAbove, avatarPartPieces(gParts, faceSign > 0).filter(pc => pc.layer === 'above'), true, this.L.actorLayer,
         { footX, footY, boxW, boxH }, dsc, 0, 0, 0, actOffX, actOffY, gAvatarAlpha, faceSign, gHeadDeltaY, gBodyDeltaX,
         1, actSqY, // v0.25.3346: 守護霊の本体scale(sc×actSqY)と同じ反動スカッシュをパーツへも
         { tint: GHOST_ALLY_TINT, zIndexBase: footY },
       );
       this.syncAvatarPartLayer(
-        this.ghostAvatarBelow, gParts.filter(pt => pt.layer === 'below'), false, this.L.actorLayer,
+        this.ghostAvatarBelow, avatarPartPieces(gParts, faceSign > 0).filter(pc => pc.layer === 'below'), false, this.L.actorLayer,
         { footX, footY, boxW, boxH }, dsc, 0, 0, 0, actOffX, actOffY, gAvatarAlpha, faceSign, gHeadDeltaY, gBodyDeltaX,
         1, actSqY,
         { tint: GHOST_ALLY_TINT, zIndexBase: footY },
@@ -19761,13 +19761,18 @@ export class PixiScene {
     const rw = Math.ceil(W) + padL + padR, rh = Math.ceil(H) + padT + padB;
     const fx = padL + W / 2, fy = padT + H; // 焼く絵の中の足元
     const wrap = new Container();
-    for (const pl of placed.filter(q => q.part.layer === 'below')) {
-      const sp = new Sprite(pl.tex); sp.anchor.set(pl.part.anchorX, pl.part.anchorY); sp.scale.set(pl.sc); sp.position.set(fx + pl.x, fy + pl.y); wrap.addChild(sp);
-    }
+    // パーツは描く単位(avatarPartPieces)で置く=`leadingHalfBehind` の耳は進行方向側(右向きの絵の右半分)だけ体の後ろ。
+    const drawPieces = (layer: 'above' | 'below') => {
+      for (const pl of placed) {
+        for (const pc of avatarPartPieces([pl.part])) {
+          if (pc.layer !== layer) continue;
+          const sp = new Sprite(this.avatarPieceTex(pl.tex, pc)); sp.anchor.set(pc.anchorX, pl.part.anchorY); sp.scale.set(pl.sc); sp.position.set(fx + pl.x, fy + pl.y); wrap.addChild(sp);
+        }
+      }
+    };
+    drawPieces('below');
     const body = new Sprite(bodyTex); body.anchor.set(0.5, 1); body.position.set(fx, fy); wrap.addChild(body);
-    for (const pl of placed.filter(q => q.part.layer === 'above')) {
-      const sp = new Sprite(pl.tex); sp.anchor.set(pl.part.anchorX, pl.part.anchorY); sp.scale.set(pl.sc); sp.position.set(fx + pl.x, fy + pl.y); wrap.addChild(sp);
-    }
+    drawPieces('above');
     // 解像度は体の絵の AVATAR_BAKE_RES 倍(体のドットは最近傍でそのまま、耳・尻尾は従来の重ね描きに近い細かさで描ける=品質監査 A-2)。
     const rt = bakeRenderTexture('other', { width: rw, height: rh, resolution: AVATAR_BAKE_RES });
     rt.source.scaleMode = bodyTex.source.scaleMode; // 本体と同じ拡大の仕方(ドットはドットのまま)
@@ -19784,8 +19789,24 @@ export class PixiScene {
     return tex;
   }
 
+  // パーツの絵の横の一部(u0..u1)だけのテクスチャ(割らない物は元の絵そのもの)。作った物は元の絵ごとに覚えて使い回す。
+  private avatarPieceTexCache = new WeakMap<Texture, Map<string, Texture>>();
+  private avatarPieceTex(tex: Texture, pc: Pick<AvatarPartPiece, 'u0' | 'u1'>): Texture {
+    if (pc.u0 <= 0 && pc.u1 >= 1) return tex;
+    let m = this.avatarPieceTexCache.get(tex);
+    if (!m) { m = new Map(); this.avatarPieceTexCache.set(tex, m); }
+    const k = `${pc.u0}|${pc.u1}`;
+    let t = m.get(k);
+    if (!t) {
+      const f = tex.frame;
+      t = new Texture({ source: tex.source, frame: new Rectangle(f.x + f.width * pc.u0, f.y, f.width * (pc.u1 - pc.u0), f.height) });
+      m.set(k, t);
+    }
+    return t;
+  }
+
   private syncAvatarPartLayer(
-    pool: Sprite[], parts: AvatarPart[], above: boolean, container: Container,
+    pool: Sprite[], pieces: AvatarPartPiece[], above: boolean, container: Container,
     fb: { footX: number; footY: number; boxW: number; boxH: number },
     dsc: number, bob: number, introOffX: number, introOffY: number, actOffX: number, actOffY: number,
     bodyAlpha: number, face: number,
@@ -19798,7 +19819,7 @@ export class PixiScene {
     sqX = 1, sqY = 1,
     opts?: { tint?: number; zIndexBase?: number }, // 守護霊描画用(青白tint+cross-actor zIndexソート)
   ): void {
-    for (let i = 0; i < parts.length; i++) {
+    for (let i = 0; i < pieces.length; i++) {
       let sp = pool[i];
       if (!sp) {
         sp = new Sprite();
@@ -19808,11 +19829,12 @@ export class PixiScene {
         else container.addChildAt(sp, 1);             // 本体より背面(下・reticleとspriteの間)
         pool[i] = sp;
       }
-      const part = parts[i];
+      const pc = pieces[i];
+      const part = pc.part;
       const tex = getTexture(part.tex);
       if (!tex || tex.width === 0) { sp.visible = false; continue; }
-      sp.texture = tex;
-      sp.anchor.set(part.anchorX, part.anchorY);
+      sp.texture = this.avatarPieceTex(tex, pc);
+      sp.anchor.set(pc.anchorX, part.anchorY);
       const srcPx = part.sizeBasis === 'width' ? tex.width : tex.height;
       const targetPx = (part.sizeBasis === 'width' ? fb.boxW : fb.boxH) * dsc * part.sizeFrac;
       const sc = srcPx > 0 ? targetPx / srcPx : 0;
@@ -19830,7 +19852,7 @@ export class PixiScene {
       if (opts?.zIndexBase !== undefined) sp.zIndex = opts.zIndexBase + (above ? 0.5 : -0.5);
     }
     // 選択中アバターが変わってパーツ数が減った場合、余ったプール分は隠すだけ(destroyしない=使い回し)。
-    for (let i = parts.length; i < pool.length; i++) {
+    for (let i = pieces.length; i < pool.length; i++) {
       const sp = pool[i];
       if (sp) sp.visible = false;
     }
@@ -20685,12 +20707,12 @@ export class PixiScene {
       const avSqX = introSqX * walkSqX * actSqX;
       const avSqY = introSqY * walkSqY * actSqY;
       this.syncAvatarPartLayer(
-        this.playerAvatarAbove, parts.filter(pt => pt.layer === 'above'), true, view.container,
+        this.playerAvatarAbove, avatarPartPieces(parts, face > 0).filter(pc => pc.layer === 'above'), true, view.container,
         fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY, bodyDeltaX,
         avSqX, avSqY,
       );
       this.syncAvatarPartLayer(
-        this.playerAvatarBelow, parts.filter(pt => pt.layer === 'below'), false, view.container,
+        this.playerAvatarBelow, avatarPartPieces(parts, face > 0).filter(pc => pc.layer === 'below'), false, view.container,
         fb, dsc, bob, introOffX, introOffY, actOffX, actOffY, view.sprite.alpha, face, headDeltaY, bodyDeltaX,
         avSqX, avSqY,
       );

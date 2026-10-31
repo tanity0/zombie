@@ -50,6 +50,13 @@ export interface AvatarPart {
    * ★焼いたパーツは体ごと左右反転する(`flipWithFacing` は効かない)。左右非対称で反転させたくない物は `live: true`。
    */
   live?: boolean;
+  /**
+   * true = 絵の**進行方向側の半分**だけ頭の裏(本体より後ろ)へ回す。残りの半分は `layer` のまま
+   * (社長指示2026-10-31「猫耳、片耳(進行方向の方)をレイヤー下(頭の裏に表示)にできたりする?」「アバター毎に指定する」)。
+   * 左右2つが1枚の絵になっている物(猫耳)用。1本ツノのような真ん中の1つの物には付けない(=全部 `layer` のまま)。
+   * 割り方は utils/avatarPlacement.avatarPartPieces の1本。
+   */
+  leadingHalfBehind?: boolean;
 }
 
 export interface AvatarDef {
@@ -77,6 +84,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         sizeBasis: 'width',
         flipWithFacing: false, // 耳は左右対称の絵なので反転不要
         followsHead: true, // v0.25.3271: 頭頂追従(歩き/しゃがみ/攻撃で頭が動いてもズレない)
+        leadingHalfBehind: true, // 進行方向側の耳は頭の裏(社長指示2026-10-31)
       },
       {
         tex: 'avatar-cat-tail', // 76×128

@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5297 — アバターのパーツに「進行方向側の半分を頭の裏へ」の指定(猫耳に適用)【2026-10-31 22:18 JST】
+- 社長「猫耳、片耳(進行方向の方)をレイヤー下(頭の裏に表示)にできたりする?」「これはアバター毎に指定する。一本ツノとか出てきたら、それはレイヤー上のままになると思う」。
+- `AvatarPart.leadingHalfBehind`(既定なし=割らない)。割り方は `utils/avatarPlacement.avatarPartPieces` の1本(進行方向側の半分=layer 'below'、残り=台帳のlayer。半分のアンカーは全体と同じ点=位置は1pxも変わらない)。
+- 描く4か所を揃えた: ゲーム中の焼き込み(`avatarBakedBody`)/焼く前の重ね描き(`syncAvatarPartLayer`・本人と守護霊)/メニューの歩く絵(MissionSelect の canvas)/記録画面の絵(AvatarSprite=clip-path)。幻影は焼き込みを通るので同じ。
+- 確認(ヘッドレス・430×932 dpr2・猫耳セット): 右向き=右の耳が髪の後ろ・左の耳は前/左向き=左右が入れ替わる。テスト avatarPlacement 9件緑。
+- 監査: 社長が見え方を指定した変更(片耳を頭の裏へ)なので、クリエイティブ監査は付けていない。
+- 変更: src/data/avatars.ts / src/utils/avatarPlacement.ts(+test) / src/pixi/pixiScene.ts / src/components/AvatarSprite.tsx / src/components/MissionSelect.tsx / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5296 — 北部封鎖区域(S4)のウェルカム台本の1・2段目を軽く【2026-10-31 21:23 JST】
 - 社長「北部のウェルカムイベントの敵見せて クリアむずすぎるわ」→「1:赤いコウモリ 赤い骸骨 植物 / 2:赤いゾンビ 植物2 叫喚型」で「はい」。
 - S4: 1段目 バット1(赤)・バット1・スケルトン1(赤)・ゾンビ1・プラント1 → **バット1(赤)・スケルトン1(赤)・プラント1**/2段目 ゾンビ1(赤)・バット2・プラント2・叫喚型1 → **ゾンビ1(赤)・プラント2・叫喚型1**。3段目(削岩型1・ゾンビ1)は据え置き。13体→9体、赤3体と叫喚型は残す。

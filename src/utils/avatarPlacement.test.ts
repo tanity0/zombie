@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl } from './avatarPlacement';
+import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl, avatarPartPieces } from './avatarPlacement';
 import { AVATARS } from '../data/avatars';
 import { PLAYER_HEAD_ANCHORS } from '../data/playerHeadAnchors';
 
@@ -42,5 +42,29 @@ describe('headAnchorDelta / spriteNameFromUrl', () => {
 
   it('URL(版の印つき)からテクスチャ名を取る', () => {
     expect(spriteNameFromUrl('/zombie/sprites/player-magnum-walk-1.png?v=abc')).toBe('player-magnum-walk-1');
+  });
+});
+
+// 社長指示2026-10-31「猫耳、片耳(進行方向の方)をレイヤー下(頭の裏に表示)」「アバター毎に指定する」。
+describe('avatarPartPieces', () => {
+  const ears = AVATARS['cat-set'].parts.find(p => p.tex === 'avatar-cat-ears')!;
+  const tail = AVATARS['cat-set'].parts.find(p => p.tex === 'avatar-cat-tail')!;
+
+  it('猫耳は進行方向側(右向きの絵では右半分)だけ頭の裏・もう片方は上のまま', () => {
+    const pcs = avatarPartPieces([ears]);
+    expect(pcs.map(p => [p.layer, p.u0, p.u1])).toEqual([['above', 0, 0.5], ['below', 0.5, 1]]);
+  });
+  it('反転しないパーツを左向きで重ね描く時は、絵の左半分が頭の裏', () => {
+    const pcs = avatarPartPieces([{ ...ears, flipWithFacing: false }], false);
+    expect(pcs.map(p => [p.layer, p.u0, p.u1])).toEqual([['above', 0.5, 1], ['below', 0, 0.5]]);
+  });
+  it('指定の無いパーツ(尻尾・1本ツノのような物)は割らずに台帳のレイヤーのまま', () => {
+    expect(avatarPartPieces([tail]).map(p => [p.layer, p.u0, p.u1, p.anchorX])).toEqual([['below', 0, 1, tail.anchorX]]);
+    expect(avatarPartPieces([{ ...ears, leadingHalfBehind: undefined }]).map(p => [p.layer, p.u0, p.u1])).toEqual([['above', 0, 1]]);
+  });
+  it('割った半分のアンカーは全体のアンカーと同じ点を指す(位置が1pxも変わらない)', () => {
+    for (const pc of avatarPartPieces([ears])) {
+      expect(pc.u0 + pc.anchorX * (pc.u1 - pc.u0)).toBeCloseTo(ears.anchorX);
+    }
   });
 });

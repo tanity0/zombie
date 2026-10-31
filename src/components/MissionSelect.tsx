@@ -117,7 +117,7 @@ import { subWeaponDisplayName, useGameStore, getCarriedEquipId, PLAYER_HITBOX, t
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
 import { AVATARS, AVATAR_IDS, type AvatarId } from '../data/avatars';
 import { AvatarSprite } from './AvatarSprite';
-import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl } from '../utils/avatarPlacement';
+import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl, avatarPartPieces } from '../utils/avatarPlacement';
 import { PLAYER_VISUAL_SCALE } from '../pixi/renderSpec';
 import { PLAYER_ART_BASE_W } from '../pixi/pixiTextures';
 import { subWeaponIconName, avatarIconName } from '../data/subWeaponIcons';
@@ -250,12 +250,17 @@ const WalkingClassSprite: React.FC<{ idleSrc: string; alt: string; nudgeY: numbe
       const kx = canvas.width / im.naturalWidth, ky = canvas.height / im.naturalHeight;
       const frameName = spriteNameFromUrl(im.src);
       const d = headAnchorDelta(frameName, baseName) ?? { dx: 0, dy: 0 };
+      // 描く単位(avatarPartPieces)ごと=`leadingHalfBehind` の耳は進行方向側(右向きの絵の右半分)だけ体の後ろ。
       const drawParts = (which: 'above' | 'below') => avParts.forEach((pt, i) => {
-        if (pt.layer !== which) return;
         const pi = partImgs[i];
         const r = placeAvatarPart(pt, pi.naturalWidth, pi.naturalHeight, avBox, avBox, PLAYER_ART_BASE_W / im.naturalWidth, d.dx, d.dy);
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(pi, canvas.width / 2 + r.left * kx, canvas.height + r.top * ky, r.width * kx, r.height * ky);
+        for (const pc of avatarPartPieces([pt])) {
+          if (pc.layer !== which) continue;
+          const du = pc.u1 - pc.u0;
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(pi, pi.naturalWidth * pc.u0, 0, pi.naturalWidth * du, pi.naturalHeight,
+            canvas.width / 2 + (r.left + r.width * pc.u0) * kx, canvas.height + r.top * ky, r.width * du * kx, r.height * ky);
+        }
       });
       drawParts('below');
       ctx.imageSmoothingEnabled = im.naturalWidth > canvas.width;

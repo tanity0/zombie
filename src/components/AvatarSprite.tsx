@@ -7,7 +7,7 @@ import { AVATARS, type AvatarId } from '../data/avatars';
 import { PLAYER_HITBOX } from '../store/gameStore';
 import { PLAYER_VISUAL_SCALE } from '../pixi/renderSpec';
 import { PLAYER_ART_BASE_W } from '../pixi/pixiTextures'; // クラス絵の表示基準幅(体の絵1pxが枠の何pxに当たるかの元)
-import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl } from '../utils/avatarPlacement';
+import { placeAvatarPart, headAnchorDelta, spriteNameFromUrl, avatarPartPieces } from '../utils/avatarPlacement';
 
 const BOX = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
 const partUrl = (tex: string): string => `${import.meta.env.BASE_URL}sprites/${tex}.png`;
@@ -66,13 +66,16 @@ export const AvatarSprite: React.FC<{
   // 体の絵の中の%で置く(体の絵がどの大きさで出ても一緒に伸び縮みする)。待機絵なので頭のずれは0。
   const name = spriteNameFromUrl(src);
   const d = headAnchorDelta(name, name) ?? { dx: 0, dy: 0 };
-  const layer = (which: 'above' | 'below') => ready ? parts.map((part, i) => {
-    if (part.layer !== which) return null;
+  // 描く単位(avatarPartPieces)ごとに出す=`leadingHalfBehind` の耳は進行方向側(右向きの絵の右半分)だけ体の後ろ。
+  // 割った半分は同じ絵を全体の大きさで置き、clip-path で片側だけ見せる。
+  const layer = (which: 'above' | 'below') => ready ? parts.flatMap((part, i) => avatarPartPieces([part]).map(pc => {
+    if (pc.layer !== which) return null;
     const ps = sizes[i]!;
     const r = placeAvatarPart(part, ps.w, ps.h, BOX, BOX, PLAYER_ART_BASE_W / body.w, d.dx, d.dy);
+    const clip = pc.u0 > 0 || pc.u1 < 1 ? `inset(0 ${(1 - pc.u1) * 100}% 0 ${pc.u0 * 100}%)` : undefined;
     return (
       <img
-        key={part.tex}
+        key={`${part.tex}|${pc.u0}`}
         src={partUrl(part.tex)}
         alt=""
         draggable={false}
@@ -84,10 +87,11 @@ export const AvatarSprite: React.FC<{
           width: `${(r.width / body.w) * 100}%`,
           imageRendering: 'pixelated',
           zIndex: which === 'above' ? 2 : 0,
+          clipPath: clip,
         }}
       />
     );
-  }) : null;
+  })) : null;
   // 外側の枠は体の絵の位置ずらし(transform)を受け継がない=体の絵の style は体にだけ付ける。ずらしは枠ごと動かす。
   const { transform, transformOrigin, transition, ...bodyStyle } = style ?? {};
   return (
