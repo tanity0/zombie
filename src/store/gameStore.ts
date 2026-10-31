@@ -67,7 +67,7 @@ import type { IceLanceFloor } from '../utils/iceLanceFloor';
 import { coilConvergeMs, coilLateralOffsetPx } from '../utils/coilShotgun';
 import { homingPelletTurnRateRadPerSec } from '../utils/homingShotgun';
 // research/NEW_GUNS.md §4(スキャンセンサー): 印の倍率・除外・1体だけの選び方(純関数)。
-import { SCAN_WEAPON_KEY, isScanMarked, scanMarkDamageMult, scanMarkMeleeMult, pickScanMarkTarget, scanMarkMeleeCritBonus, scanMarkMeleePostureMult, scanMarkRangedMult, scanStacksAt, noteScanDetonation, isEliteHeavyStun } from '../utils/scanSensor';
+import { SCAN_WEAPON_KEY, isScanMarked, scanMarkMeleeMult, pickScanMarkTarget, scanMarkMeleeCritBonus, scanMarkMeleePostureMult, noteScanDetonation, isEliteHeavyStun } from '../utils/scanSensor';
 import { computeJunkShot, JUNK_WEAPON_PELLETS } from '../utils/junkWeapon';
 import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
 import {
@@ -3744,22 +3744,6 @@ export const isGameTimeStopped = (): boolean => {
  * ※移動はここでは止めない(isInputLockedの範囲は変えない=アテンション中に歩けるのは従来どおり)。
  */
 // ─────────────────────────────────────────────────────────────────────────
-// research/NEW_GUNS.md §4「ダメージの数字は、倍率を掛けた後の値を出す」の受け渡し(品質監査#9で id 照合へ)。
-// damageEnemy は数字を出さない(呼び手が直後に spawnDamageNumber を呼ぶ)ので、印の倍率が効いた命中を
-// **その敵の id で**覚え、呼び手が spawnDamageNumber に同じ id(opts.enemyId)を渡した時だけ掛ける(隣の敵に付かない)。
-// 使ったら消す。使われなかったメモはフレームの頭で全部捨てる(clearScanMarkNumberNotes・useGameLoop が毎フレーム呼ぶ)。
-const scanMarkNumberNotes = new Map<string, number>();
-const noteScanMarkNumber = (enemyId: string, mult: number): void => { scanMarkNumberNotes.set(enemyId, mult); };
-const takeScanMarkNumber = (enemyId: string): number | null => {
-  const m = scanMarkNumberNotes.get(enemyId);
-  if (m === undefined) return null;
-  scanMarkNumberNotes.delete(enemyId);
-  return m;
-};
-/** フレームの頭で、使われなかったメモを捨てる。 */
-export const clearScanMarkNumberNotes = (): void => { if (scanMarkNumberNotes.size > 0) scanMarkNumberNotes.clear(); };
-/** テスト用: 残っているメモの数。 */
-export const scanMarkNumberNoteCount = (): number => scanMarkNumberNotes.size;
 /** 印のついた敵へのダメージ数字の縁取りの色(スキャンの燐光と同じ色・赤/紫は使わない)。芯は白(会心なら金)。 */
 export const SCAN_MARK_NUMBER_OUTLINE = 0x9fd8d0;
 /** 印の数字は HP バーの線と重ならないよう、少し上へずらして出す(描画のみ)。 */
@@ -5133,14 +5117,6 @@ const applyMeleeFinishSkillSpread = (
   if (!finisherOccurred) return;
   if (hasSkill(player, 'reaper')) {
     const r2 = range * range;
-    // research/NEW_GUNS.md §4(スキャンセンサー): フィニッシュの波及も近接の1振り。ボスへの×5のうち、
-    // 一番近い印付きの1体だけ近接の倍率(ボス級×4.7)。即死(通常敵)には掛けない。どちらも ×1.6 を二重に掛けない旗を渡す。
-    const spreadGt = get().gameTime;
-    const spreadScanTargetId = pickScanMarkTarget(
-      get().enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e) && isBossType(e.type)
-        && (blastAnchorOf(e, pcx, pcy).x - pcx) ** 2 + (blastAnchorOf(e, pcx, pcy).y - pcy) ** 2 <= r2),
-      spreadGt, e => Math.hypot(e.x + e.width / 2 - pcx, e.y + e.height / 2 - pcy),
-    );
     for (const e of get().enemies) {
       if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue; // 不倒の通常リーパーは対象外。深奥チェイサーは近接対象(ボス級)なので含める
       if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象選定から除外
@@ -5150,13 +5126,13 @@ const applyMeleeFinishSkillSpread = (
       get().spawnMeleeBlood(ecx, ecy - idolAirLift(e), e.width); // 近接の血飛沫=プレイヤーへ向かって飛ぶ(v0.25.2026)
       if (isBossType(e.type)) {
         // ボスは即死しない=近接フィニッシュ相当ダメージ(×5)。フィニッシュ波及なのでviaMeleeFinish=true
-        const spreadScanMult = e.id === spreadScanTargetId ? scanMarkMeleeMult(e, spreadGt, 'melee') : 1;
-        const dmg = Math.max(1, Math.round(baseMeleeDamage * BOSS_MELEE_STUN_MULT * spreadScanMult));
-        get().damageEnemy(e.id, dmg, false, false, true, undefined, undefined, undefined, undefined, undefined, undefined, true);
-        get().spawnDamageNumber(ecx, e.y, dmg, true, { scanMarked: spreadScanMult !== 1 });
+        // research/NEW_GUNS.md §4-2: フィニッシュの波及は自動で斬る系=スキャンの倍率は乗らない。
+        const dmg = Math.max(1, Math.round(baseMeleeDamage * BOSS_MELEE_STUN_MULT));
+        get().damageEnemy(e.id, dmg, false, false, true);
+        get().spawnDamageNumber(ecx, e.y, dmg, true);
         get().spawnBurst(ecx, ecy, '#a855f7', 10);
       } else {
-        const killed = get().damageEnemy(e.id, e.health + 1, false, false, true, undefined, undefined, undefined, undefined, undefined, undefined, true); // 即死(フィニッシュ波及)
+        const killed = get().damageEnemy(e.id, e.health + 1, false, false, true); // 即死(フィニッシュ波及)
         if (killed) {
           get().spawnBurst(ecx, ecy, '#a855f7', 14);
           get().dropEnemyXp(e, ecx, ecy, 'pickup-xp-reaper');
@@ -5793,12 +5769,7 @@ const applySlasherChainStrike = (
   // v0.25.3931 で初撃の「命中しないとチェーンが始まらない」を外したので、**追撃側も揃える**:
   // 誰も居なくても**振る**(段を消費してチェーンは進む)。前隙200msが入った今、
   // 連撃の途中で相手が射程外へ出るのは普通に起きるため、そこで手が止まるのは操作として不自然。
-  // research/NEW_GUNS.md §4(スキャンセンサー): 追撃も近接の1振り=射程内の一番近い印付きの1体だけ雑魚×2.75/ボス級×4.7。
-  // damageEnemy へは「印を使った」旗を渡す(×1.6 を二重に掛けない・1体以外にも掛けない)。
-  const chainScanTargetId = pickScanMarkTarget(
-    get().enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e) && enemyMeleeDist(pcx, pcy, e) <= meleeRange),
-    gameTime, e => enemyMeleeDist(pcx, pcy, e),
-  );
+  // research/NEW_GUNS.md §4-2: 追撃は自動で斬る系=スキャンの倍率は乗らない。
   for (const e of get().enemies) {
     if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
     if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は追撃対象から除外
@@ -5815,16 +5786,15 @@ const applySlasherChainStrike = (
     // ★v0.25.3640(成果物監査A): スラッシャー追撃は**近接**なので、幻影ゲートへ 'melee' で通す
     // (パリィ抽選の対象になる)。無効化(無敵/パリィ)されたら数字・斬撃・血飛沫・KBを出さない
     // (「数字は出るのにHPが減らない」偽演出の禁止=監査Q1-1と同型)。幻影以外には従来と1bitも変わらない。
-    const chainScanMult = e.id === chainScanTargetId ? scanMarkMeleeMult(e, gameTime, 'melee') : 1;
-    const eDmg = dmg * chainScanMult;
-    const k = get().damageEnemy(e.id, eDmg, false, false, false, 'other', 'player', null, 1, 'melee', undefined, true);
+    const eDmg = dmg;
+    const k = get().damageEnemy(e.id, eDmg, false, false, false, 'other', 'player', null, 1, 'melee');
     const eAfter = get().enemies.find(x => x.id === e.id);
     const gpDeflected = isGuardianPhantom(e.type)
       && !!eAfter && (eAfter.gpBlockedAt === gameTime || eAfter.gpParriedAt === gameTime);
     if (gpDeflected) continue; // hit/hitIds は積み済み=チェーンの進行は従来どおり(空振り扱いにしない)
     // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): スラッシャー追撃も近接武器の打撃。
     if (!k) get().applyDrillerRetreat(e.id);
-    get().spawnDamageNumber(ecx, e.y, eDmg, false, { scanMarked: chainScanMult !== 1 });
+    get().spawnDamageNumber(ecx, e.y, eDmg, false);
     get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.95)');
     get().spawnMeleeBlood(ecx, ecy - idolAirLift(e), e.width); // 近接の血飛沫(v0.25.2026)
     if (k) {
@@ -7083,7 +7053,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral' | 'dog', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean, scanMarkHandled?: boolean) => boolean; // scanMarkHandled: research/NEW_GUNS.md §4 近接が自分の経路で印の倍率を掛けた(または1体だけの規則で外した)=ここで×1.6を掛けない / killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
+  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral' | 'dog', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -8858,10 +8828,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         hitAt.push({ x: ecx, y: enemy.y - idolAirLift(enemy) });
         // 覚醒: 爆発の距離減衰(中心1.0〜外周0.55)。非覚醒: 従来どおり等倍。
-        // research/NEW_GUNS.md §4: スケボーはスキル(サブ扱い)=印付きへ ×1.6。
         const eDmg = (skAwaken
           ? Math.max(1, Math.round(dmg * (0.55 + (1 - Math.sqrt(d2) / bashRange) * 0.45)))
-          : dmg) * gpDmgScale * scanMarkRangedMult(enemy, s.gameTime);
+          : dmg) * gpDmgScale;
         dealtSum += eDmg;
         const nh = Math.max(0, enemy.health - eDmg);
         if (nh <= 0) { killedList.push({ enemy, finisher: false }); continue; }
@@ -10266,10 +10235,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      // research/NEW_GUNS.md §4: 分身はサブウェポン=印の倍率は ×1.6(1体だけの規則は近接の振りの話なので掛けない)。
-      const cloneScan = isScanMarked(enemy, gameTime);
-      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale * (cloneScan ? scanMarkRangedMult(enemy, gameTime) : 1); // 分身はサブ武器=血の覚醒の×1.5は掛けない(社長裁定: 与ダメ+50%は近接+銃だけ・検収品質監査C)
-      damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: cloneScan });
+      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale; // 分身はサブ武器=血の覚醒の×1.5は掛けない(社長裁定: 与ダメ+50%は近接+銃だけ・検収品質監査C)
+      damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
       const nh = Math.max(0, enemy.health - dmg);
@@ -10919,9 +10886,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const katanaHitEnemyIds: string[] = []; // スキル 救難信号: 一閃(allowFinisher時)でヒットした敵ID(発動判定/対象選定用)
     // research/GHOST_BOSS.md v6: 幻影に**有効打**が入った時の打刻(同時1体なので1枠でよい)。
     let gpHitPatch: { id: string; patch: Partial<Enemy> } | null = null;
-    // research/NEW_GUNS.md §4(スキャンセンサー): プレイヤーの刀は「この斬撃の標的のうち一番近い印付きの1体」だけ
-    // 雑魚×3.1/ボス級×5.2(Lvに関係なく1つ)。守護霊の刀は仲間=印付き全員へ ×1.6(抑えない)。
-    const katanaScanTargetId = isGhost ? undefined : pickScanMarkTarget(
+    // research/NEW_GUNS.md §4-2(スキャンセンサー): 倍率が乗るのはプレイヤーの**一閃**(縮地・被弾反撃=自分で出す斬撃)だけ。
+    // 「この斬撃の標的のうち一番近い印付きの1体」へ近接の倍率×刀の比、当てたら起爆。自動斬り・守護霊の刀には乗らない。
+    const katanaScanTargetId = isGhost || !allowFinisher ? undefined : pickScanMarkTarget(
       enemies.filter(e => targetIds.includes(e.id) && !isCorpse(e) && !isUntouchable(e) && !(isReaperFamily(e.type) && !isTerminalReaper(e))
         // 一閃が気絶中の敵へ入る一撃のうち、即死(処刑)とボスの5倍には印を掛けない=枠を使わない。
         // 強個体の3倍には掛ける(社長決定2026-10-18)。
@@ -10988,10 +10955,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // §6.22 M47仕様①: 強個体はHP50%以上だと即死せず近接ダメージ×3+気絶解除。
         if (stunnedMeleeOutcome(enemy, gameTime) === 'heavy') {
           bossFinishHit = true;
-          // 社長決定2026-10-18: 強個体の3倍にも印の倍率(プレイヤーの刀=刀の雑魚の倍率・1体だけ/守護霊=×1.6)。
-          const heavyScanMult = isGhost
-            ? scanMarkRangedMult(enemy, gameTime)
-            : (enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1);
+          // 社長決定2026-10-18: 強個体の3倍にも印の倍率(一閃=刀の倍率・1体だけ・起爆)。
+          const heavyScanMult = enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1;
+          if (heavyScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 一閃は手動の近接=起爆
           const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT * heavyScanMult;
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
           damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
@@ -11019,9 +10985,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         meleeHitCritChance(KATANA_CRIT_CHANCE_BY_LEVEL[katanaLevel(player)], player, gameTime, enemy, !isGhost);
       // ダッシュの3倍は基礎値側に掛け、クリ倍率は既存近接どおり最後に掛ける
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
-      const katanaScanMult = isGhost
-        ? scanMarkRangedMult(enemy, gameTime)
-        : (enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1);
+      const katanaScanMult = enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1;
+      if (katanaScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 一閃は手動の近接=起爆
       let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * katanaScanMult;
       // ★SAME_ARENA §9(検収監査 重大③): 刀にも致命(×5+最大HP25%)とmelee削り(site1と同型)。
       // 本人由来のみ=守護霊の刀(isGhost)は削らない・致命も出さない。
@@ -14158,7 +14123,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSourceIn = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk, scanMarkHandled = false) => {
+  damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSourceIn = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
     // research/ESCORT_TARGETED.md §5: 進軍NPCの弾は起因側 `escort:<id>`。**ヘイトのバケツだけ**軍人ごとに積み(下の hatePatch)、
     // それ以外の判定(揺れ・クリ・撃破カウント・英雄の被弾記録 …)はこれまでどおり 'player' 扱いのまま=軍人の弾の挙動は1bitも変えない。
     const hateEscortId = escortIdOfSide(hateSourceIn === 'neutral' || hateSourceIn === 'dog' ? undefined : hateSourceIn);
@@ -14263,20 +14228,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         labelY: enemy.y - 6,
         w: enemy.width, h: enemy.height,
       };
-      // research/NEW_GUNS.md §4(スキャンセンサー): 印の倍率は gatedAmount に掛ける(幻影の関門の後・
-      // 紫の報酬と紅き夜の半減の前)。カウンター/打ち返し/紫の報酬/即死/呼び手が扱った近接には掛けない。
-      // 印の無い敵は ×1(=従来と1bitも変わらない)。
-      const scanMult = scanMarkDamageMult({
-        marked: isScanMarked(enemy, state.gameTime),
-        stacks: scanStacksAt(enemy, state.gameTime),
-        amount: gatedAmount,
-        enemyHealth: enemy.health,
-        postureImpact,
-        rewardActive: !!gunReward || !!meleeFatal || pvpFatal !== null,
-        handledByCaller: scanMarkHandled,
-      });
-      if (scanMult !== 1) noteScanMarkNumber(enemy.id, scanMult);
-      const resolvedAmount = meleeFatal?.damage ?? pvpFatal ?? gunReward?.damage ?? gatedAmount * scanMult;
+      // research/NEW_GUNS.md §4-2: スキャンの印の倍率は手動の近接の各経路が自分で掛ける=ここ(銃・サブ・仲間)では掛けない。
+      const resolvedAmount = meleeFatal?.damage ?? pvpFatal ?? gunReward?.damage ?? gatedAmount;
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
       const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
       appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)
@@ -24307,12 +24260,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 代理に当たった数字だけ(enemyId か、代理の箱の中心に出された数字)。
     { const st0 = get(); if (st0.labCrawler && isCrawlerDamageNumber(x, y, st0.labCrawler, opts?.enemyId)) { const pl = st0.player; const q = crawlerDamageNumberAt(x, y, st0.labCrawler, pl.x + pl.width / 2, pl.y + pl.height / 2, Math.random(), crawlerDmgNumberViewX(st0.camera, st0.gameBounds, st0.viewZoom)); x = q.x; y = q.y; } }
     // research/NEW_GUNS.md §4: 印のある敵に当てた数字は倍率の後の値を、少し大きく色違いで出す。
-    let scanMarked = false;
-    if (opts?.scanMarked !== undefined) scanMarked = opts.scanMarked;
-    else if (opts?.enemyId !== undefined) {
-      const m = takeScanMarkNumber(opts.enemyId);
-      if (m !== null) { value = value * m; scanMarked = true; }
-    }
+    const scanMarked = opts?.scanMarked ?? false;
     // LEVEL_GROWTH.md §11 代替b: 攻撃が変わるカードの後の**最初の1発**(非クリ)だけ白→金に光る。消費したら窓を閉じる。
     const flash = !crit && get().levelUpFlashArmed && get().gameTime < get().levelUpEmphasisUntil;
     if (flash) set({ levelUpFlashArmed: false });

@@ -2,12 +2,13 @@
 // 弾を撃たない銃。出撃中ずっと 1.2 秒ごとに「拍」が回り、拍が来た時にこの銃を持っていれば
 // 向いている方へ細い扇(開き40°・長さ260)を 0.25 秒かけて根元から先へ掃く。掃き終わった時に
 // まだこの銃を持っていれば、扇に入った敵へ 3 秒の「印」を付ける(重ねても強くならない・入り直せば3秒に戻る)。
-// 印の付いた敵は、プレイヤーの銃・サブ・仲間の攻撃で ×1.6、近接で 雑魚×2.75/ボス級×4.7、
-// 刀で 雑魚×3.1/ボス級×5.2(段・Lvに関係なく1つ)。1振りで倍率が効くのは「一番近い印付きの1体」だけ。
+// §4-2(社長指示2026-10-31「近接で叩いた時だけ倍率に」): 印の倍率が乗るのは**手動の近接で叩いた一撃だけ**
+// (ナイフの振り・盾のバッシュ・気絶中の強個体への一撃・鞭・ワイヤーの斬り下ろし・刀の一閃)。叩くと重ねを使い切る(起爆)。
+// 銃・サブ・仲間・自動で斬る系(刀の自動斬り・分身・スラッシャーの追撃・フィニッシュの波及)には倍率が乗らない。
+// 1振りで倍率が効くのは「一番近い印付きの1体」だけ。
 //
 // このモジュールは**純関数と定数だけ**(storeを読まない)。掛ける場所は
-//  - damageEnemy(gameStore.ts)= `scanMarkDamageMult`(遠隔・サブ・仲間 ×1.6 と除外条件)
-//  - damageEnemy を通らない近接(ナイフの振り/刀/鞭)= `pickScanMarkTarget` + `scanMarkMeleeMult`
+//  - 手動の近接の各経路 = `pickScanMarkTarget` + `scanMarkMeleeMult` + `noteScanDetonation`
 //  - 拍と扇= `scanBeatIndex` / `scanFanSweepFrac` / 扇は地面に倒した形(`scanFanContains`・`scanFanScreenPoint`)
 import type { Enemy, EnemyType } from '../types/game';
 import { usesBossCrit } from './enemyUtils';
@@ -25,12 +26,6 @@ export const SCAN_FAN_LENGTH_PX = 260;
 export const SCAN_SWEEP_MS = 250;
 export const SCAN_MARK_MS = 3000;
 
-/** プレイヤーの銃の弾・サブウェポン・仲間の攻撃(Ng)。 */
-export const SCAN_MARK_RANGED_MULT = 1.6;
-/** プレイヤーの近接(ナイフの振り・どの段でも)と鞭。 */
-export const SCAN_MARK_MELEE_MULT = { mob: 2.75, boss: 4.7 } as const;
-/** 刀(どの Lv でも)。 */
-export const SCAN_MARK_KATANA_MULT = { mob: 3.1, boss: 5.2 } as const;
 /** 印付きの雑魚への近接の会心 +15%(色の補正の後・上限の前)。 */
 export const SCAN_MARK_MELEE_CRIT_BONUS = 0.15;
 /** 印付きのボスへの近接の当たりで、'melee' の体勢削り 0.04 を 0.09 相当へ(impactMult)。 */
@@ -50,10 +45,11 @@ export const scanBeatPhase = (gameTime: number): number => {
 // ── 印の重ね(§4-2・社長指示2026-10-30「重ねられるようにするか？」「5段目でクリティカル扱い」) ──
 /** 印の最大段。 */
 export const SCAN_STACK_MAX = 5;
-/** 銃・サブ・仲間の攻撃の1段あたりの上乗せ(1段 ×1.2 → 5段 ×2.0)。 */
-export const SCAN_STACK_RANGED_STEP = 0.2;
-/** 近接の印の倍率(雑魚・段ごと・段は使い切らない)。ボス級はこれに SCAN_STACK_BOSS_RATIO、刀は SCAN_STACK_KATANA_RATIO を掛ける。 */
-export const SCAN_STACK_MELEE_MOB_MULT = [1, 1.6, 1.9, 2.2, 2.5, 3.0] as const;
+/**
+ * 手動の近接の印の倍率(雑魚・重ねごと・叩くと使い切る)。ボス級はこれに SCAN_STACK_BOSS_RATIO、刀の一閃は SCAN_STACK_KATANA_RATIO を掛ける。
+ * 溜めるほど得になるよう、重ね1つあたりの上乗せが重ねるほど大きくなる曲線(1重ねで叩き続けるより5重ねで叩く方が強い)。
+ */
+export const SCAN_STACK_MELEE_MOB_MULT = [1, 1.6, 2.8, 4.0, 5.4, 7.2] as const;
 export const SCAN_STACK_BOSS_RATIO = 1.7;
 export const SCAN_STACK_KATANA_RATIO = 3.1 / 2.75;
 
@@ -91,12 +87,6 @@ export const drainScanDetonations = (): Map<string, { x: number; y: number }> | 
   if (scanDetonations.size === 0) return null;
   const out = new Map(scanDetonations); scanDetonations.clear(); return out;
 };
-/** 銃・サブ・仲間の攻撃の印の倍率(段に比例)。印が無ければ 1。 */
-export const scanMarkRangedMult = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks' | 'scanCritUntil'>, gameTime: number): number => {
-  const n = scanStacksAt(e, gameTime);
-  return n > 0 ? 1 + SCAN_STACK_RANGED_STEP * n : 1;
-};
-
 /** 次の1重ねが減るまでの残り(0..1)。足元の輪が欠けていく割合。印が無ければ 0。 */
 export const scanStackRemainFrac = (e: Pick<Enemy, 'scanMarkUntil' | 'scanStacks' | 'scanCritUntil'>, gameTime: number): number => {
   if (e.scanMarkUntil === undefined || scanStacksAt(e, gameTime) <= 0) return 0;
@@ -115,7 +105,7 @@ export const scanMarkRemainFrac = (e: Pick<Enemy, 'scanMarkUntil'>, gameTime: nu
 /** 雑魚/ボス級の区分。ボス級=ボス式の会心(×5)を受ける型(usesBossCrit)。 */
 export const scanMarkIsBossClass = (t: EnemyType): boolean => usesBossCrit(t);
 
-/** 近接・刀・鞭の印の倍率(§4-2: 段に比例・段は使い切らない・ナイフの段/Lvには関係なし)。印が無ければ 1。 */
+/** 手動の近接・刀の一閃・鞭の印の倍率(§4-2: 重ねに比例・ナイフの段/Lvには関係なし)。印が無ければ 1。 */
 export const scanMarkMeleeMult = (
   e: Pick<Enemy, 'type' | 'scanMarkUntil' | 'scanStacks' | 'scanCritUntil'>, gameTime: number, kind: ScanMeleeKind,
 ): number => {
@@ -143,30 +133,6 @@ export const pickScanMarkTarget = <T extends Pick<Enemy, 'id' | 'scanMarkUntil'>
     if (d < bestD) { bestD = d; best = e.id; }
   }
   return best;
-};
-
-/**
- * damageEnemy(中央経路)で gatedAmount に掛ける印の倍率。**掛けない所**:
- *  - カウンターの反撃(postureImpact==='counter')/ 打ち返した弾(postureImpact==='reflect')
- *  - 紫の時間の報酬が働く時(applyBrokenGunReward / applyBrokenMeleeFatal / 対人の致命)
- *  - 即死(この一撃だけで残りHPを削り切る量=倍率を掛けても結果が変わらない)
- *  - 呼び手が「印を使った」旗を立てた時(近接が自分の経路で倍率を掛けた/1体だけの規則で外した)
- */
-export interface ScanMarkDamageInput {
-  marked: boolean;
-  /** 今の段(§4-2)。省略時は1段。 */
-  stacks?: number;
-  amount: number;
-  enemyHealth: number;
-  postureImpact: string | null | undefined;
-  rewardActive: boolean;
-  handledByCaller: boolean;
-}
-export const scanMarkDamageMult = (i: ScanMarkDamageInput): number => {
-  if (!i.marked || i.handledByCaller || i.rewardActive) return 1;
-  if (i.postureImpact === 'counter' || i.postureImpact === 'reflect') return 1;
-  if (i.amount >= i.enemyHealth) return 1; // 即死
-  return 1 + SCAN_STACK_RANGED_STEP * Math.max(1, Math.min(SCAN_STACK_MAX, i.stacks ?? 1)); // §4-2: 段に比例(1段×1.2〜5段×2.0)
 };
 
 /** 近接の会心率に足す印の上乗せ(印付きの雑魚だけ)。呼び手は「色の補正の後」の値に足してから上限を取る。 */

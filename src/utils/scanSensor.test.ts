@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   SCAN_BEAT_MS, SCAN_MARK_MS, SCAN_SWEEP_MS,
   scanBeatIndex, scanBeatPhase, isScanMarked, scanMarkRemainFrac, scanMarkMeleeMult, pickScanMarkTarget,
-  scanMarkDamageMult, scanMarkMeleeCritBonus, scanMarkMeleePostureMult, scanFanSweepFrac, scanMarkUntilFrom,
+  scanMarkMeleeCritBonus, scanMarkMeleePostureMult, scanFanSweepFrac, scanMarkUntilFrom,
   SCAN_FAN_GROUND_Y_SCALE, SCAN_FAN_LENGTH_PX, SCAN_FAN_HALF_ANGLE_RAD, scanFanGroundAngle, scanFanScreenPoint,
   scanFanContains, pickScanFanHits, isEliteHeavyStun,
 } from './scanSensor';
@@ -58,13 +58,22 @@ describe('印の期限', () => {
 });
 
 describe('§4-2 近接の印の倍率は重ねの数で決まる(ナイフの段・Lvの区別は無い)', () => {
-  it('雑魚: 1重ね×1.6〜5重ね×3.0 / ボス級は雑魚の1.7倍 / 刀は近接の3.1/2.75倍 / 鞭は近接と同じ', () => {
+  it('雑魚: 1重ね×1.6〜5重ね×7.2 / ボス級は雑魚の1.7倍 / 刀は近接の3.1/2.75倍 / 鞭は近接と同じ', () => {
     const st = (n: number, b = false) => ({ ...(b ? boss(10) : mob(10)), scanStacks: n });
     expect(scanMarkMeleeMult(st(1), 0, 'melee')).toBeCloseTo(1.6);
-    expect(scanMarkMeleeMult(st(5), 0, 'melee')).toBeCloseTo(3.0);
-    expect(scanMarkMeleeMult(st(5, true), 0, 'melee')).toBeCloseTo(5.1);
-    expect(scanMarkMeleeMult(st(3), 0, 'katana')).toBeCloseTo(2.2 * 3.1 / 2.75);
-    expect(scanMarkMeleeMult(st(2), 0, 'whip')).toBeCloseTo(1.9);
+    expect(scanMarkMeleeMult(st(5), 0, 'melee')).toBeCloseTo(7.2);
+    expect(scanMarkMeleeMult(st(5, true), 0, 'melee')).toBeCloseTo(7.2 * 1.7);
+    expect(scanMarkMeleeMult(st(3), 0, 'katana')).toBeCloseTo(4.0 * 3.1 / 2.75);
+    expect(scanMarkMeleeMult(st(2), 0, 'whip')).toBeCloseTo(2.8);
+  });
+  it('溜めるほど得(叩くと使い切るので、重ね1つあたりの上乗せが重ねるほど大きい)', () => {
+    const st = (n: number, b = false) => ({ ...(b ? boss(10) : mob(10)), scanStacks: n });
+    for (const b of [false, true]) {
+      for (let n = 1; n < 5; n++) {
+        const per = (k: number) => (scanMarkMeleeMult(st(k, b), 0, 'melee') - 1) / k;
+        expect(per(n + 1)).toBeGreaterThan(per(n));
+      }
+    }
   });
   it('印が切れていれば ×1', () => {
     expect(scanMarkMeleeMult(mob(10), 10, 'melee')).toBe(1);
@@ -83,27 +92,6 @@ describe('§7-6 1振りで倍率が効くのは1体だけ', () => {
   });
   it('印付きが居なければ undefined', () => {
     expect(pickScanMarkTarget([{ id: 'a', scanMarkUntil: undefined, d: 1 }], 0, e => e.d)).toBeUndefined();
-  });
-});
-
-describe('§7-6 中央経路(damageEnemy)の ×1.6 と掛けない所', () => {
-  const base = { marked: true, amount: 10, enemyHealth: 100, postureImpact: null, rewardActive: false, handledByCaller: false };
-  it('銃・サブ・仲間は段に比例(§4-2: 1段×1.2〜5段×2.0)', () => {
-    expect(scanMarkDamageMult(base)).toBeCloseTo(1.2);
-    expect(scanMarkDamageMult({ ...base, stacks: 3 })).toBeCloseTo(1.6);
-    expect(scanMarkDamageMult({ ...base, stacks: 5 })).toBeCloseTo(2.0);
-  });
-  it('カウンターの反撃・打ち返した弾には掛けない', () => {
-    expect(scanMarkDamageMult({ ...base, postureImpact: 'counter' })).toBe(1);
-    expect(scanMarkDamageMult({ ...base, postureImpact: 'reflect' })).toBe(1);
-  });
-  it('紫の報酬が働く時・即死・呼び手が扱った近接には掛けない', () => {
-    expect(scanMarkDamageMult({ ...base, rewardActive: true })).toBe(1);
-    expect(scanMarkDamageMult({ ...base, amount: 100 })).toBe(1);
-    expect(scanMarkDamageMult({ ...base, handledByCaller: true })).toBe(1);
-  });
-  it('印が無ければ ×1(=3挺を持たない時は1bitも変わらない)', () => {
-    expect(scanMarkDamageMult({ ...base, marked: false })).toBe(1);
   });
 });
 
@@ -180,7 +168,7 @@ describe('気絶中の強個体の3倍(印の倍率を受ける相手)', () => {
   });
 });
 
-import { scanStacksAt, scanMarkAddStack, scanMarkRangedMult, scanStackReachedFull, SCAN_STACK_MAX } from './scanSensor';
+import { scanStacksAt, scanMarkAddStack, scanStackReachedFull, SCAN_STACK_MAX } from './scanSensor';
 describe('§4-2 印の重ね', () => {
   it('扇に入るたびに1段・最大5段・残り時間は3秒に戻る', () => {
     let e: { scanMarkUntil?: number; scanStacks?: number } = {};
@@ -199,10 +187,7 @@ describe('§4-2 印の重ね', () => {
   it('減った後に重ねると、減った段から1段上がる', () => {
     expect(scanMarkAddStack({ scanStacks: 4, scanMarkUntil: 3000 }, 6500).scanStacks).toBe(3);
   });
-  it('銃・仲間は1段×1.2〜5段×2.0・印が無ければ×1 / 止まるのは5段へ上がった瞬間だけ', () => {
-    expect(scanMarkRangedMult({ scanStacks: 1, scanMarkUntil: 100 }, 0)).toBeCloseTo(1.2);
-    expect(scanMarkRangedMult({ scanStacks: 5, scanMarkUntil: 100 }, 0)).toBeCloseTo(2.0);
-    expect(scanMarkRangedMult({}, 0)).toBe(1);
+  it('止まるのは5段へ上がった瞬間だけ', () => {
     expect(scanStackReachedFull(4, 5)).toBe(true);
     expect(scanStackReachedFull(5, 5)).toBe(false);
     expect(scanStackReachedFull(3, 4)).toBe(false);
@@ -225,7 +210,8 @@ describe('§4-2 5重ねのクリティカル状態と起爆', () => {
     expect(add.scanCritUntil).toBeUndefined();
   });
   it('起爆=重ねとクリティカル状態を消す(予約は次のフレームの頭でまとめて)', () => {
-    expect(scanStacksAt({ scanStacks: 3, scanMarkUntil: 100, ...SCAN_DETONATED }, 0)).toBe(0);
+    const marked = { scanStacks: 3, scanMarkUntil: 100 };
+    expect(scanStacksAt({ ...marked, ...SCAN_DETONATED }, 0)).toBe(0);
     noteScanDetonation('a', 1, 2); noteScanDetonation('a', 1, 2); noteScanDetonation('b', 3, 4);
     const d = drainScanDetonations();
     expect(d?.size).toBe(2);

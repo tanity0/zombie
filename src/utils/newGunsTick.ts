@@ -40,7 +40,7 @@ import {
 } from './satelliteOrbit';
 import {
   SCAN_WEAPON_KEY, SCAN_SWEEP_MS, pickScanFanHits, scanBeatIndex,
-  isScanMarked, scanMarkDamageMult, scanStacksAt, scanMarkAddStack, scanStackReachedFull, SCAN_STACK_MAX, isScanCrit, SCAN_CRIT_MS, SCAN_DETONATED, drainScanDetonations, type ScanFan,
+  isScanMarked, scanStacksAt, scanMarkAddStack, scanStackReachedFull, SCAN_STACK_MAX, isScanCrit, SCAN_CRIT_MS, SCAN_DETONATED, drainScanDetonations, type ScanFan,
 } from './scanSensor';
 
 /** 描画が読む今の姿(読むだけ。書き換えない)。 */
@@ -172,17 +172,12 @@ const hitEnemy = (e: Enemy, dmg: number, killChainSlowOk: boolean | undefined, d
       return next === s.enemies ? {} : { enemies: next as Enemy[] };
     });
   }
-  // 数字に出す量=印の倍率の後(HPに掛かったのと同じ判定を純関数で引き直す)。
-  const mult = scanMarkDamageMult({
-    marked: isScanMarked(e, st.gameTime), stacks: scanStacksAt(e, st.gameTime), amount: dmg, enemyHealth: e.health, postureImpact: null,
-    rewardActive: false, handledByCaller: false,
-  });
   if (killed) {
     playEnemyDeath();
     const k = killCtx ?? { indoor: st.indoorMode, ammoSmart: true, ammoDirector: true, noAmmoRun: false };
     dropGunKillLoot(e, { ...k, player: useGameStore.getState().player, gameTime: st.gameTime, dirX, dirY });
   }
-  return { killed, shown: dmg * mult };
+  return { killed, shown: dmg };
 };
 
 export interface NewGunsTickInput {

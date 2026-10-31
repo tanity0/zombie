@@ -95,7 +95,6 @@ import {
   spawnRescueQuestPoint, EVENT_NPC_MIN_DISTANCE, // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-3・B2)
   isInReturnCircle, // 二人組クエストv2(§2-8・B4): 納品の3秒滞在の判定(returnCircle.radiusは対象のフィールドをそのまま読む)
   currentFriendlyShield, noteShieldGuardFrom, noteShieldBeam, shieldGuardsPlayerLine, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
-  clearScanMarkNumberNotes, // research/NEW_GUNS.md §4: 印の数字メモをフレームの頭で捨てる
   baseSoldierName,
 } from '../store/gameStore';
 import { shieldBlocksArea, shieldBlocksLine, splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md
@@ -552,7 +551,7 @@ import {
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { tickNewGuns } from '../utils/newGunsTick'; // research/NEW_GUNS.md: 新しい銃3挺の進行
 import { dropGunKillLoot } from '../utils/gunKillDrops'; // 弾で倒した時の撃破演出とドロップ(品質監査#4)
-import { scanMarkMeleeMult, scanMarkRangedMult, noteScanDetonation } from '../utils/scanSensor';
+import { scanMarkMeleeMult, noteScanDetonation } from '../utils/scanSensor';
 import { ammoBearingGuns } from '../utils/weaponUtils'; // 弾倉の無い銃を除いた所持銃(research/NEW_GUNS.md 品質監査#5)
 import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
@@ -2990,7 +2989,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       // 必ず立つ=永久停止はない。canvasレンダラ(rendererReadyを使わない)は対象外。
       if (!useGameStore.getState().isPaused && !useGameStore.getState().backgrounded
           && (!isPixiRenderer() || useGameStore.getState().rendererReady)) {
-        clearScanMarkNumberNotes(); // research/NEW_GUNS.md §4: 前のフレームで使われなかった印の数字メモを捨てる
         const loopState = useGameStore.getState();
         const {
           gameTime,
@@ -16379,15 +16377,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // §5.21-追補4: フィニッシュ相当ダメージなのでviaMeleeFinish=true
                   // (nonLethalBoss=trueで即死自体は元々しない)。
                   const postureFatal = wireHate === 'player' && isBossPostureBroken(tgt, gameTime);
-                  // research/NEW_GUNS.md §4(スキャンセンサー): ワイヤーの斬り下ろしは近接の1振り(相手は1体)=
-                  // 印があれば近接の倍率(ボス級×4.7)。紫の致命(postureFatal)には掛けない。守護霊のワイヤーは仲間=×1.6。
-                  // damageEnemy へは「印を使った」旗を渡す(×1.6 を二重に掛けない)。
-                  const wireScanMult = postureFatal ? 1
-                    : wireHate === 'player' ? scanMarkMeleeMult(tgt, gameTime, 'melee')
-                      : scanMarkRangedMult(tgt, gameTime);
+                  // research/NEW_GUNS.md §4-2(スキャンセンサー): プレイヤーのワイヤーの斬り下ろしは手動の近接(相手は1体)=
+                  // 印があれば近接の倍率・起爆。紫の致命(postureFatal)と守護霊のワイヤーには掛けない。
+                  const wireScanMult = postureFatal || wireHate !== 'player' ? 1 : scanMarkMeleeMult(tgt, gameTime, 'melee');
                   const wireHitDamage = postureFatal ? meleeDmg : bdmg * wireScanMult;
                   if (wireHate === 'player' && wireScanMult !== 1) noteScanDetonation(tgt.id, tcx, tgt.y + tgt.height / 2); // §4-2: ワイヤーの斬り下ろしは手動の近接=起爆
-                  useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, false, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null, undefined, undefined, undefined, true); // 打撃(爆風ではない・v0.25.4284)
+                  useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, false, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null); // 打撃(爆風ではない・v0.25.4284)
                   spawnDamageNumber(tcx, tgt.y, wireHitDamage, true, { scanMarked: wireScanMult !== 1 });
                 } else {
                   useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1, false, false, true, wireChannel, wireHate); // 即死フィニッシュ

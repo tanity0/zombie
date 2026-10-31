@@ -1,13 +1,13 @@
 // research/NEW_GUNS.md §4/§7-6(スキャンセンサー): ストアを実際に動かして「テストで固定する約束」を固定する。
-//  - 近接・刀の倍率は段・Lvで変わらない(印付きの1振りのダメージは、段が上がるほど増える)
+//  - 近接・刀の一閃の倍率は段・Lvで変わらない(印付きの1振りのダメージは、段が上がるほど増える)
 //  - 1振りで倍率が効くのは1体だけ
-//  - 紫・カウンター・打ち返しには掛からない
+//  - §4-2: 倍率が乗るのは手動の近接だけ(銃・サブ・仲間・刀の自動斬りには乗らない)・手動の近接は起爆する
 //  - スキャンを持っている間、ストライカーの ×1.5 が付かない
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, strikerMeleeMult } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { createWeapon, MELEE_KEYS } from '../utils/weaponUtils';
-import { SCAN_WEAPON_KEY, SCAN_MARK_MELEE_MULT, SCAN_MARK_KATANA_MULT, SCAN_MARK_RANGED_MULT } from '../utils/scanSensor';
+import { SCAN_WEAPON_KEY, SCAN_STACK_MELEE_MOB_MULT, SCAN_STACK_BOSS_RATIO, SCAN_STACK_KATANA_RATIO, drainScanDetonations } from '../utils/scanSensor';
 import type { Enemy, EnemyType } from '../types/game';
 
 let now = 5_000_000;
@@ -20,11 +20,14 @@ const setup = (klass: 'warrior' | 'rogue' = 'warrior') => {
   }));
 };
 const center = () => { const p = useGameStore.getState().player; return { x: p.x + p.width / 2, y: p.y + p.height / 2 }; };
-const enemyAt = (type: EnemyType, dx: number, dy: number, id: string, marked: boolean, health = 99999): Enemy => {
+/** 1重ねの近接の倍率(雑魚)。 */
+const M1 = SCAN_STACK_MELEE_MOB_MULT[1];
+/** marked: true=1重ね / 数=その重ね。 */
+const enemyAt = (type: EnemyType, dx: number, dy: number, id: string, marked: boolean | number, health = 99999): Enemy => {
   const c = center();
   const e = spawnEnemyAt(type, 0, 0, useGameStore.getState().gameTime);
   e.x = c.x + dx - e.width / 2; e.y = c.y + dy - e.height / 2; e.health = health; e.maxHealth = health; e.id = id;
-  if (marked) e.scanMarkUntil = useGameStore.getState().gameTime + 3000;
+  if (marked) { e.scanMarkUntil = useGameStore.getState().gameTime + 3000; e.scanStacks = marked === true ? 1 : marked; }
   return e;
 };
 const hpOf = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)?.health ?? 0;
@@ -47,7 +50,7 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('§7-6 近接の倍率は段で変わらない(印付きの1振りは段が上がるほど増える)', () => {
-  it('ナイフ t1〜t5: 印あり÷印なし = 雑魚×2.75(全段同じ)・印ありのダメージは段ごとに増える', () => {
+  it('ナイフ t1〜t5: 印あり÷印なし = 雑魚の1重ねの倍率(全段同じ)・印ありのダメージは段ごとに増える', () => {
     setup();
     let prevMarked = 0;
     for (const key of MELEE_KEYS) {
@@ -57,44 +60,76 @@ describe('§7-6 近接の倍率は段で変わらない(印付きの1振りは�
       now += 5000;
       const marked = swingDamage([enemyAt('zombie', 30, 0, 'z', true)], 'z');
       expect(plain).toBeGreaterThan(0);
-      expect(marked / plain).toBeCloseTo(SCAN_MARK_MELEE_MULT.mob, 5);
+      expect(marked / plain).toBeCloseTo(M1, 5);
       expect(marked).toBeGreaterThan(prevMarked);
       prevMarked = marked;
     }
   });
-  it('ボス級(ボス式の会心を受ける型)は ×4.7', () => {
+  it('ボス級(ボス式の会心を受ける型)は雑魚の1.7倍', () => {
     setup();
     now += 5000;
     const plain = swingDamage([enemyAt('hunter', 30, 0, 'h', false)], 'h');
     now += 5000;
     const marked = swingDamage([enemyAt('hunter', 30, 0, 'h', true)], 'h');
-    expect(marked / plain).toBeCloseTo(SCAN_MARK_MELEE_MULT.boss, 5);
+    expect(marked / plain).toBeCloseTo(M1 * SCAN_STACK_BOSS_RATIO, 5);
+  });
+  it('5重ねで叩くと雑魚×7.2', () => {
+    setup();
+    now += 5000;
+    const plain = swingDamage([enemyAt('zombie', 30, 0, 'z', false)], 'z');
+    now += 5000;
+    const marked = swingDamage([enemyAt('zombie', 30, 0, 'z', 5)], 'z');
+    expect(marked / plain).toBeCloseTo(SCAN_STACK_MELEE_MOB_MULT[5], 5);
   });
 });
 
-describe('§7-6 刀の倍率はLvで変わらない', () => {
-  it('刀 Lv1〜3: 印あり÷印なし = 雑魚×3.1(全Lv同じ)・印ありのダメージはLvごとに増える', () => {
+describe('§7-6 刀の一閃の倍率はLvで変わらない/自動斬りには乗らない', () => {
+  it('刀 Lv1〜3 の一閃: 印あり÷印なし = 近接の倍率×刀の比(全Lv同じ)・印ありのダメージはLvごとに増える', () => {
     setup();
     let prevMarked = 0;
     for (const lv of [1, 2, 3]) {
       useGameStore.setState(st => ({ player: { ...st.player, subWeapons: ['katana'], subWeaponLevels: { ...st.player.subWeaponLevels, katana: lv } } }));
       useGameStore.setState({ enemies: [enemyAt('zombie', 30, 0, 'z', false)] });
       let before = hpOf('z');
-      useGameStore.getState().performKatanaStrike(['z'], 1, false);
+      useGameStore.getState().performKatanaStrike(['z'], 1, true);
       const plain = before - hpOf('z');
       useGameStore.setState({ enemies: [enemyAt('zombie', 30, 0, 'z', true)] });
       before = hpOf('z');
-      useGameStore.getState().performKatanaStrike(['z'], 1, false);
+      useGameStore.getState().performKatanaStrike(['z'], 1, true);
       const marked = before - hpOf('z');
-      expect(marked / plain).toBeCloseTo(SCAN_MARK_KATANA_MULT.mob, 5);
+      expect(marked / plain).toBeCloseTo(M1 * SCAN_STACK_KATANA_RATIO, 5);
       expect(marked).toBeGreaterThan(prevMarked);
       prevMarked = marked;
     }
   });
+  it('刀の自動斬り(allowFinisher=false)は印があっても素のダメージ・起爆しない', () => {
+    setup();
+    useGameStore.setState(st => ({ player: { ...st.player, subWeapons: ['katana'], subWeaponLevels: { ...st.player.subWeaponLevels, katana: 1 } } }));
+    useGameStore.setState({ enemies: [enemyAt('zombie', 30, 0, 'z', false)] });
+    let before = hpOf('z');
+    useGameStore.getState().performKatanaStrike(['z'], 1, false);
+    const plain = before - hpOf('z');
+    drainScanDetonations();
+    useGameStore.setState({ enemies: [enemyAt('zombie', 30, 0, 'z', 5)] });
+    before = hpOf('z');
+    useGameStore.getState().performKatanaStrike(['z'], 1, false);
+    expect(before - hpOf('z')).toBeCloseTo(plain, 5);
+    expect(drainScanDetonations()).toBeNull();
+  });
+});
+
+describe('§4-2 手動の近接は起爆する', () => {
+  it('ナイフの振りが印付きに当たると起爆の予約が入る', () => {
+    setup();
+    drainScanDetonations();
+    now += 5000;
+    swingDamage([enemyAt('zombie', 30, 0, 'z', 3)], 'z');
+    expect(drainScanDetonations()?.has('z')).toBe(true);
+  });
 });
 
 describe('§7-6 1振りで倍率が効くのは1体だけ', () => {
-  it('印付きが2体届く時、近い方だけ ×2.75・遠い方は素のダメージ', () => {
+  it('印付きが2体届く時、近い方だけ倍率・遠い方は素のダメージ', () => {
     setup();
     now += 5000;
     const plain = swingDamage([enemyAt('zombie', 30, 0, 'solo', false)], 'solo');
@@ -103,72 +138,36 @@ describe('§7-6 1振りで倍率が効くのは1体だけ', () => {
     const bNear = hpOf('near'), bFar = hpOf('far');
     useGameStore.getState().triggerCounter();
     const dNear = bNear - hpOf('near'), dFar = bFar - hpOf('far');
-    expect(dNear / plain).toBeCloseTo(SCAN_MARK_MELEE_MULT.mob, 5);
+    expect(dNear / plain).toBeCloseTo(M1, 5);
     expect(dFar).toBeCloseTo(plain, 5);
   });
-  it('刀の一閃が2体に当たる時も、近い方だけ ×3.1', () => {
+  it('刀の一閃が2体に当たる時も、近い方だけ倍率', () => {
     setup();
     useGameStore.setState(st => ({ player: { ...st.player, subWeapons: ['katana'], subWeaponLevels: { ...st.player.subWeaponLevels, katana: 1 } } }));
     useGameStore.setState({ enemies: [enemyAt('zombie', 30, 0, 'p', false)] });
     let b = hpOf('p');
-    useGameStore.getState().performKatanaStrike(['p'], 3, false);
+    useGameStore.getState().performKatanaStrike(['p'], 3, true);
     const plain = b - hpOf('p');
     useGameStore.setState({ enemies: [enemyAt('zombie', 25, 0, 'near', true), enemyAt('zombie', 70, 0, 'far', true)] });
     b = hpOf('near'); const bf = hpOf('far');
-    useGameStore.getState().performKatanaStrike(['near', 'far'], 3, false);
-    expect((b - hpOf('near')) / plain).toBeCloseTo(SCAN_MARK_KATANA_MULT.mob, 5);
+    useGameStore.getState().performKatanaStrike(['near', 'far'], 3, true);
+    expect((b - hpOf('near')) / plain).toBeCloseTo(M1 * SCAN_STACK_KATANA_RATIO, 5);
     expect(bf - hpOf('far')).toBeCloseTo(plain, 5);
   });
 });
 
-describe('§7-6 中央経路: 銃・サブ・仲間は ×1.6、紫・カウンター・打ち返しには掛からない', () => {
-  it('銃の弾(gun)・サブ(other)・守護霊(ghost)は ×1.6', () => {
+describe('§4-2 中央経路: 銃・サブ・仲間には倍率が乗らない', () => {
+  it('5重ねの敵でも、銃の弾(gun)・サブ(other)・守護霊(ghost)は素のダメージ', () => {
     setup();
-    useGameStore.setState({ enemies: [enemyAt('zombie', 300, 0, 'm', true)] });
+    useGameStore.setState({ enemies: [enemyAt('zombie', 300, 0, 'm', 5)] });
     let b = hpOf('m');
     useGameStore.getState().damageEnemy('m', 10, false, false, false, 'gun', 'player');
-    expect(b - hpOf('m')).toBeCloseTo(10 * SCAN_MARK_RANGED_MULT, 5);
+    expect(b - hpOf('m')).toBe(10);
     b = hpOf('m');
     useGameStore.getState().damageEnemy('m', 10, true, false, false, 'other', 'player');
-    expect(b - hpOf('m')).toBeCloseTo(10 * SCAN_MARK_RANGED_MULT, 5);
+    expect(b - hpOf('m')).toBe(10);
     b = hpOf('m');
     useGameStore.getState().damageEnemy('m', 10, false, false, false, null, 'ghost');
-    expect(b - hpOf('m')).toBeCloseTo(10 * SCAN_MARK_RANGED_MULT, 5);
-  });
-  it('印の無い敵は従来どおり(×1)', () => {
-    setup();
-    useGameStore.setState({ enemies: [enemyAt('zombie', 300, 0, 'u', false)] });
-    const b = hpOf('u');
-    useGameStore.getState().damageEnemy('u', 10, false, false, false, 'gun', 'player');
-    expect(b - hpOf('u')).toBe(10);
-  });
-  it('カウンターの反撃・打ち返した弾には掛からない', () => {
-    setup();
-    useGameStore.setState({ enemies: [enemyAt('zombie', 300, 0, 'm', true)] });
-    let b = hpOf('m');
-    useGameStore.getState().damageEnemy('m', 10, false, true, false, 'other', 'player', 'counter');
-    expect(b - hpOf('m')).toBe(10);
-    b = hpOf('m');
-    useGameStore.getState().damageEnemy('m', 10, false, false, false, 'other', 'player', 'reflect');
-    expect(b - hpOf('m')).toBe(10);
-  });
-  it('紫の報酬(applyBrokenGunReward)が働く時は掛からない', () => {
-    setup();
-    const gt = useGameStore.getState().gameTime;
-    const e = enemyAt('zombie', 300, 0, 'p', true);
-    e.colorTier = 'red'; // 体勢値を持つ型
-    e.bossFullStunUntil = gt + 5000;
-    e.bossBreakRewardRemaining = 100000;
-    useGameStore.setState({ enemies: [e] });
-    const b = hpOf('p');
-    useGameStore.getState().damageEnemy('p', 10, false, false, false, 'gun', 'player');
-    expect(b - hpOf('p')).toBe(10 + 10 * 4); // 報酬そのまま(×1.6 を掛けない)
-  });
-  it('呼び手が「印を使った」旗を渡したら掛からない(近接の二重掛けを防ぐ)', () => {
-    setup();
-    useGameStore.setState({ enemies: [enemyAt('zombie', 300, 0, 'm', true)] });
-    const b = hpOf('m');
-    useGameStore.getState().damageEnemy('m', 10, false, false, false, 'other', 'player', null, 1, 'melee', undefined, true);
     expect(b - hpOf('m')).toBe(10);
   });
 });
@@ -221,32 +220,8 @@ describe('§4 弾切れとみなさない/ほかが全部弾切れならスキ�
   });
 });
 
-describe('品質監査#9: 数字の倍率メモは敵の id で渡す(隣の敵に付かない・残らない)', () => {
-  it('別の敵の id では掛からず、同じ id で掛かる。使ったメモは消え、残りはフレーム頭で捨てる', async () => {
-    const { clearScanMarkNumberNotes, scanMarkNumberNoteCount } = await import('./gameStore');
-    setup();
-    clearScanMarkNumberNotes(); // 前のテストの残り(このテストでは「フレームの頭」に当たる)
-    useGameStore.setState({ enemies: [enemyAt('zombie', 300, 0, 'a', true), enemyAt('zombie', 330, 0, 'b', false)], effects: [] });
-    const st = useGameStore.getState();
-    st.damageEnemy('a', 10, false, false, false, 'gun', 'player');
-    expect(scanMarkNumberNoteCount()).toBe(1);
-    st.spawnDamageNumber(0, 0, 10, false, { enemyId: 'b' });
-    const n1 = useGameStore.getState().effects.at(-1) as { value: number; outline?: number };
-    expect(n1.value).toBe(10);
-    expect(n1.outline).toBeUndefined();
-    st.spawnDamageNumber(0, 0, 10, false, { enemyId: 'a' });
-    const n2 = useGameStore.getState().effects.at(-1) as { value: number; outline?: number };
-    expect(n2.value).toBe(16);
-    expect(n2.outline).toBeDefined();
-    expect(scanMarkNumberNoteCount()).toBe(0);
-    st.damageEnemy('a', 10, false, false, false, 'gun', 'player');
-    clearScanMarkNumberNotes();
-    expect(scanMarkNumberNoteCount()).toBe(0);
-  });
-});
-
 describe('品質監査#14+社長決定2026-10-18: 気絶中の即死は枠を使わない/強個体の3倍とバッシュは印の倍率を受けて枠を使う', () => {
-  it('一番近い印付きが気絶中の雑魚(即死)なら、次に近い印付きが ×2.75', () => {
+  it('一番近い印付きが気絶中の雑魚(即死)なら、次に近い印付きが倍率', () => {
     setup();
     now += 5000;
     const plain = swingDamage([enemyAt('zombie', 30, 0, 'solo', false)], 'solo');
@@ -256,21 +231,21 @@ describe('品質監査#14+社長決定2026-10-18: 気絶中の即死は枠を使
     useGameStore.setState(st => ({ enemies: [stunned, enemyAt('zombie', -50, 0, 'second', true)], player: { ...st.player, counterCooldownEnd: 0 } }));
     const b = hpOf('second');
     useGameStore.getState().triggerCounter();
-    expect((b - hpOf('second')) / plain).toBeCloseTo(SCAN_MARK_MELEE_MULT.mob, 5);
+    expect((b - hpOf('second')) / plain).toBeCloseTo(M1, 5);
   });
   const stunnedElite = (dx: number, id: string, marked: boolean): Enemy => {
     const e = enemyAt('pumpkin', dx, 0, id, marked);
     e.stunUntil = useGameStore.getState().gameTime + 5000;
     return e;
   };
-  it('気絶中の強個体への3倍は、印があると ×2.75(雑魚の倍率)', () => {
+  it('気絶中の強個体への3倍は、印があると雑魚の倍率', () => {
     setup();
     now += 5000;
     const plain = swingDamage([stunnedElite(25, 'el', false)], 'el');
     now += 5000;
     const marked = swingDamage([stunnedElite(25, 'el', true)], 'el');
     expect(plain).toBeGreaterThan(0);
-    expect(marked / plain).toBeCloseTo(SCAN_MARK_MELEE_MULT.mob, 5);
+    expect(marked / plain).toBeCloseTo(M1, 5);
   });
   it('気絶中の強個体が一番近い印付きなら枠を使う=次に近い印付きは素のダメージ', () => {
     setup();
@@ -294,7 +269,7 @@ describe('品質監査#14+社長決定2026-10-18: 気絶中の即死は枠を使
       player: { ...st.player, counterCooldownEnd: 0, lastDirection: { x: 1, y: 0 } },
     }));
   };
-  it('盾のバッシュも、印があると ×2.75・枠を使う(次に近い印付きは素のダメージ)', () => {
+  it('盾のバッシュも、印があると倍率・枠を使う(次に近い印付きは素のダメージ)', () => {
     setup();
     now += 5000;
     withShield([enemyAt('zombie', 45, 0, 'b', false)]);
@@ -308,7 +283,7 @@ describe('品質監査#14+社長決定2026-10-18: 気絶中の即死は枠を使
     withShield([enemyAt('zombie', 45, 0, 'b', true)]);
     before = hpOf('b');
     useGameStore.getState().triggerCounter();
-    expect((before - hpOf('b')) / plainBash).toBeCloseTo(SCAN_MARK_MELEE_MULT.mob, 5);
+    expect((before - hpOf('b')) / plainBash).toBeCloseTo(M1, 5);
     now += 5000;
     const plain = swingDamage([enemyAt('zombie', -60, 0, 'solo', false)], 'solo');
     now += 5000;
