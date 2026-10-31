@@ -76,13 +76,14 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         tex: 'avatar-cat-ears', // 100×48
         layer: 'above',
         anchorX: 0.5, anchorY: 1, // 素材下端中央=頭頂に置く基準点
-        offsetXFrac: 0,
+        offsetXFrac: 0.05, // 社長指示2026-10-31「耳少し位置を前に移動」(右向き基準=進行方向へ)
         // v0.25.3255 社長実機報告「ズレてる・もっと小さく」: 浮いて見えたため頭頂へ下げ(−0.92→−0.76)、
         // 幅も半分に(0.9→0.45)。
         offsetYFrac: -0.76,
         sizeFrac: 0.45,
         sizeBasis: 'width',
-        flipWithFacing: false, // 耳は左右対称の絵なので反転不要
+        // 前へずらした(offsetXFrac>0)ので、重ね描きの時も向きで左右を入れ替える(焼き込みは体ごと反転=元から入れ替わる)。
+        flipWithFacing: true,
         followsHead: true, // v0.25.3271: 頭頂追従(歩き/しゃがみ/攻撃で頭が動いてもズレない)
         leadingHalfBehind: true, // 進行方向側の耳は頭の裏(社長指示2026-10-31)
       },

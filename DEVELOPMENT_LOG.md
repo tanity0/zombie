@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5298 — 猫耳を少し前(進行方向)へ【2026-10-31 23:21 JST】
+- 社長「これ、耳少し位置を前に移動」。耳の `offsetXFrac` 0 → 0.05(右向き基準=進行方向)。
+- 前へずらしたので耳も `flipWithFacing: true` に(焼き込みは体ごと反転=元から入れ替わる。焼く前の重ね描きでも左向きで前へ寄るように)。
+- 確認(ヘッドレス・430×932 dpr2): 変更前/右向き/左向きを並べ、耳が向いている側へ寄っているのを見た。avatarPlacement・playerHeadAnchors のテスト緑。
+- 変更: src/data/avatars.ts / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5297 — アバターのパーツに「進行方向側の半分を頭の裏へ」の指定(猫耳に適用)【2026-10-31 22:18 JST】
 - 社長「猫耳、片耳(進行方向の方)をレイヤー下(頭の裏に表示)にできたりする?」「これはアバター毎に指定する。一本ツノとか出てきたら、それはレイヤー上のままになると思う」。
 - `AvatarPart.leadingHalfBehind`(既定なし=割らない)。割り方は `utils/avatarPlacement.avatarPartPieces` の1本(進行方向側の半分=layer 'below'、残り=台帳のlayer。半分のアンカーは全体と同じ点=位置は1pxも変わらない)。
