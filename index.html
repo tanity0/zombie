@@ -77,58 +77,6 @@
         display: none;
       }
     </style>
-    <!-- 起動の失敗を画面に出す(v0.25.5315・社長報告「スマホで一番最初からまっくら」)。
-         スマホでは console が見えず、React が描く前に落ちると画面に何も残らない。ゲームが出るまでの間だけ、
-         捕まえていない例外・スクリプトの読み込み失敗・15秒たっても画面が空、を赤字で下に出す。
-         出たあと(#root に中身が入った後)は何もしない=いつものプレイには一切出ない。 -->
-    <script>
-      (function () {
-        var shown = false;
-        window.__bootStage = 'html';
-        function booted() { var r = document.getElementById('root'); return !!(r && r.children.length); }
-        var t0 = Date.now(), box = null, first = '';
-        // 起動に要るファイル(main の script・modulepreload・css)が届いたか。届いた物は resource timing に載る。
-        function files() {
-          var want = [], els = document.querySelectorAll('script[type=module][src],link[rel=modulepreload],link[rel=stylesheet]');
-          for (var i = 0; i < els.length; i++) want.push(els[i].src || els[i].href);
-          var got = {}, es = performance.getEntriesByType ? performance.getEntriesByType('resource') : [];
-          for (var j = 0; j < es.length; j++) got[es[j].name] = es[j];
-          return want.map(function (u) {
-            var e = got[u], n = u.split('/').pop().split('?')[0];
-            return (e ? '届いた ' + Math.round(e.duration / 100) / 10 + '秒 ' + (e.transferSize ? Math.round(e.transferSize / 1024) + 'KB' : e.decodedBodySize ? '(端末の保存分)' : '(中身なし)') : '未着') + ' ' + n;
-          }).join('\n');
-        }
-        function paint() {
-          if (!box) return;
-          if (booted()) { box.remove(); box = null; return; }
-          box.textContent = '起動エラー(段階: ' + window.__bootStage + ' / ' + Math.round((Date.now() - t0) / 1000) + '秒)\n' + first +
-            '\n' + files() + '\n' + navigator.userAgent;
-        }
-        function show(msg) {
-          if (shown) return; shown = true; first = msg;
-          box = document.createElement('div');
-          box.id = 'boot-diag';
-          box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:2147483647;' +
-            'font:12px/1.45 monospace;color:#ff7070;background:rgba(0,0,0,.88);padding:8px 10px;white-space:pre-wrap;word-break:break-all;pointer-events:none';
-          (document.body || document.documentElement).appendChild(box);
-          paint();
-          // 届くのが遅いだけなのか止まっているのかを見分けるため、映るまで毎秒書き直す(映ったら消える)。
-          var iv = setInterval(function () { paint(); if (!box) clearInterval(iv); }, 1000);
-        }
-        window.addEventListener('error', function (e) {
-          if (booted()) return;
-          var t = e.target, src = t && t !== window ? (t.src || t.href || '') : '';
-          if (src) { if (/\.(js|mjs|css)(\?|$)/.test(src)) show('読み込み失敗: ' + src.slice(-90)); return; }
-          var f = (e.filename || '').split('/').pop();
-          show((e.message || String(e.error)) + (f ? ' @' + f + ':' + e.lineno + ':' + e.colno : ''));
-        }, true);
-        window.addEventListener('unhandledrejection', function (e) {
-          if (booted()) return;
-          var r = e.reason; show('promise: ' + (r && r.message ? r.message : String(r)));
-        });
-        setTimeout(function () { if (!booted()) show('15秒たっても画面が出ていません'); }, 15000);
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

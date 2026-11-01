@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5319', items: [
+    '起動に失敗した時の赤い表示を取り外した',
+  ] },
   { version: '0.25.5318', items: [
     'ゲーム内容の変更はありません',
   ] },
