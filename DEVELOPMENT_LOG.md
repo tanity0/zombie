@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5310 — 猫耳セットの絵を高さ32の物へ差し替え【2026-11-01 13:52 JST】
+- 社長支給の2枚(尻尾19×32・耳28×14)を `-v2` の名前で足した: `avatar-cat-ears-v2.png`(余白を落として24×12)/
+  `avatar-cat-tail-v2.png`(19×32)。旧素材(100×48/76×128)は public に原盤として残す。これで全6セットが高さ32基準に揃った。
+- 置き方は前のまま(縦横比がほぼ同じ=見た目の大きさも同じ)。`avatarPlacement.test.ts` のパーツ名を新しい名前へ。
+- 確認(ヘッドレス・430×932 dpr2): 差し替え前/右向き/左向きを並べて見た(進行方向側の耳は頭の裏のまま)。
+- 変更: public/sprites/avatar-cat-*-v2.png(2枚)/ src/data/avatars.ts / src/data/subWeaponIcons.ts / src/pixi/pixiTextures.ts /
+  src/utils/avatarPlacement.test.ts / scripts/asset-masters.json / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5309 — 海賊セットの絵を高さ32の物へ差し替え【2026-11-01 13:42 JST】
 - 社長「海賊差し替え」(帽子・剣を横に並べた1枚・88×34=他のセットと同じ高さ32基準)。切り分けて `-v2` の名前で足した:
   `avatar-pirate-hat-v2.png`(40×31)/ `avatar-pirate-sword-v2.png`(33×32・前回と同じく柄が前に来るよう左右反転)。

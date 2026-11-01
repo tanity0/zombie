@@ -5,7 +5,7 @@ import { PLAYER_HEAD_ANCHORS } from '../data/playerHeadAnchors';
 
 // アバターの置き方はゲーム中の焼き込みとメニュー/記録画面で同じ1本の式(社長指示2026-10-26/2026-10-27)。
 describe('placeAvatarPart', () => {
-  const ears = AVATARS['cat-set'].parts.find(p => p.tex === 'avatar-cat-ears')!;
+  const ears = AVATARS['cat-set'].parts.find(p => p.tex === 'avatar-cat-ears-v2')!;
 
   it('枠の割合で大きさと位置が決まり、アンカーぶん左上へずれる', () => {
     // 体の絵1px=枠1px(拡大率1)、頭のずれ0。耳=幅基準 sizeFrac。
@@ -23,7 +23,7 @@ describe('placeAvatarPart', () => {
   });
 
   it('頭に付くパーツだけが頭のずれを受ける', () => {
-    const tail = AVATARS['cat-set'].parts.find(p => p.tex === 'avatar-cat-tail')!;
+    const tail = AVATARS['cat-set'].parts.find(p => p.tex === 'avatar-cat-tail-v2')!;
     const e0 = placeAvatarPart(ears, 100, 48, 64, 64, 1, 0, 0), e1 = placeAvatarPart(ears, 100, 48, 64, 64, 1, 3, 5);
     expect(e1.left - e0.left).toBeCloseTo(3);
     expect(e1.top - e0.top).toBeCloseTo(ears.followsHead ? 5 : 0);
@@ -47,8 +47,8 @@ describe('headAnchorDelta / spriteNameFromUrl', () => {
 
 // 社長指示2026-10-31「猫耳、片耳(進行方向の方)をレイヤー下(頭の裏に表示)」「アバター毎に指定する」。
 describe('avatarPartPieces', () => {
-  const ears = AVATARS['cat-set'].parts.find(p => p.tex === 'avatar-cat-ears')!;
-  const tail = AVATARS['cat-set'].parts.find(p => p.tex === 'avatar-cat-tail')!;
+  const ears = AVATARS['cat-set'].parts.find(p => p.tex === 'avatar-cat-ears-v2')!;
+  const tail = AVATARS['cat-set'].parts.find(p => p.tex === 'avatar-cat-tail-v2')!;
 
   it('猫耳は進行方向側(右向きの絵では右半分)だけ頭の裏・もう片方は上のまま', () => {
     const pcs = avatarPartPieces([ears]);

@@ -73,7 +73,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
     name: '猫耳セット',
     parts: [
       {
-        tex: 'avatar-cat-ears', // 100×48
+        tex: 'avatar-cat-ears-v2', // 24×12(2026-11-01 社長が高さ32基準で描き直した物。旧100×48は原盤として public に残す)
         layer: 'above',
         anchorX: 0.5, anchorY: 1, // 素材下端中央=頭頂に置く基準点
         offsetXFrac: 0.05, // 社長指示2026-10-31「耳少し位置を前に移動」(右向き基準=進行方向へ)
@@ -88,7 +88,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         leadingHalfBehind: true, // 進行方向側の耳は頭の裏(社長指示2026-10-31)
       },
       {
-        tex: 'avatar-cat-tail', // 76×128
+        tex: 'avatar-cat-tail-v2', // 19×32(同上。旧76×128)
         layer: 'below',
         anchorX: 0.5, anchorY: 1, // 素材下端中央=足元に置く基準点(木/障害物と同じ足元アンカー規約)
         offsetXFrac: -0.28, // 右向き基準で後方(左)へ。左向き時は flipWithFacing で符号反転=常に背後

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5310', items: [
+    '猫耳セットの耳と尻尾を、ほかのアバターと同じ粗さのドットに描き直した物へ差し替え',
+  ] },
   { version: '0.25.5309', items: [
     '海賊セットの絵を、ほかのアバターと同じ粗さのドットに描き直した物へ差し替え',
   ] },

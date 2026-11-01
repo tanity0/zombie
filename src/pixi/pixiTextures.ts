@@ -691,8 +691,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'first-aid-kit', scaleMode: 'nearest' },   // 救急鞄(空鞄投擲の見た目)
       // アバターシステム(試験・第1弾「猫耳セット」・社長支給v0.25.3217)。名前は src/data/avatars.ts の
       // AvatarPart.tex と一致させる(視覚専用・判定なし)。ドット絵タッチ=nearest。
-      { name: 'avatar-cat-ears', scaleMode: 'nearest' }, // 100×48
-      { name: 'avatar-cat-tail', scaleMode: 'nearest' }, // 76×128
+      { name: 'avatar-cat-ears-v2', scaleMode: 'nearest' }, // 24×12(高さ32基準の描き直し版)
+      { name: 'avatar-cat-tail-v2', scaleMode: 'nearest' }, // 19×32
       { name: 'avatar-devil-horns', scaleMode: 'nearest' }, // 48×30(第2弾「悪魔セット」)
       { name: 'avatar-devil-tail', scaleMode: 'nearest' }, // 49×32
       { name: 'avatar-angel-wings', scaleMode: 'nearest' }, // 81×33(第3弾「天使セット」)
