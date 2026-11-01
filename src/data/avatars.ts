@@ -229,7 +229,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         tex: 'avatar-ghost-sotoba', // 59×52(支給の38×64を斜めに回した物)
         layer: 'below',
         anchorX: 0.5, anchorY: 0.5,
-        offsetXFrac: -0.2,
+        offsetXFrac: -0.16, // 社長指示2026-11-01「もう少しだけ右へ」-0.2→-0.16
         offsetYFrac: -0.55,
         sizeFrac: 0.7,
         sizeBasis: 'width',
@@ -241,7 +241,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         layer: 'above',
         anchorX: 0.5, anchorY: 1,
         offsetXFrac: 0.04,
-        offsetYFrac: -0.8,
+        offsetYFrac: -0.82, // 社長指示2026-11-01「もう少しだけ上」-0.8→-0.82
         sizeFrac: 0.28,
         sizeBasis: 'width',
         flipWithFacing: true,

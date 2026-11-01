@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5306 — お化けセット: 三角布を少し上・卒塔婆を少し右へ【2026-11-01 13:12 JST】
+- 社長「三角巾もう少しだけ上」「卒塔婆はもう少しだけ右へ」。三角布 `offsetYFrac` -0.8 → -0.82、卒塔婆 `offsetXFrac` -0.2 → -0.16(右向き基準=進む向きの側へ)。
+- 確認(ヘッドレス・430×932 dpr2): 変更前/右向き/左向きを並べて見た。
+- 変更: src/data/avatars.ts / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5305 — 新アバター「お化けセット」(三角布+火の玉2つ+卒塔婆)【2026-11-01 13:05 JST】
 - 社長支給の画像(三角布・大小の火の玉・卒塔婆を横に並べた1枚・188×66・縁は2値)を切り分けて素材にした:
   `avatar-ghost-tenkan.png`(30×15)/ `avatar-ghost-fire-big.png`(27×43)/ `avatar-ghost-fire-small.png`(20×32)/
