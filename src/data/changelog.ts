@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5327', items: [
+    '弾を食う銃は、拾った弾1つで多く装填できる。火炎放射器、マシンピストル、ガンブレード、錬金砲が対象。持てる弾の数と拾った時の補充も、その銃の撃ち方に見合った量になった',
+    '残弾の表示と拾った時の数字は、その銃で撃てる発数で出る',
+  ] },
   { version: '0.25.5326', items: [
     'うさぎセットの尻尾を少し体寄りに',
   ] },

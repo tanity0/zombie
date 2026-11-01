@@ -685,6 +685,22 @@ export const allyFallbackWeapon = (weapon: Weapon): Weapon => {
 /** 弾倉と予備弾を持つ銃(弾ドロップの弾種選び・弾薬ディレクターが数える銃)。弾倉の無い銃(noAmmo)を除く。 */
 export const ammoBearingGuns = (player: Player): Weapon[] => getGuns(player).filter(w => !w.noAmmo);
 
+/**
+ * 予備弾1つが、その銃の何発ぶんになるか(社長指示2026-11-01「銃の弾薬母数と、拾った時の補充量を、銃の特性に合わせて変更して。
+ * たとえば、火炎放射器とかは消費量多い割に母数と補充量があまりにも低い」)。
+ * 予備弾は弾の種類(ハンドガン/ショットガン/…)ごとに共通なので、銃ごとの「母数」と「補充量」はこの換算で決まる
+ * (母数=種類の上限×k発・1回拾う=種類の補充量×k発)。
+ * k は「撃ち続けた時に1秒あたり使う発数(リロード込み)」を、同じ種類の基本の銃(T1)と比べた倍率を丸めた値。
+ * 1未満(基本の銃より弾を食わない)は1のまま=どの銃も今より減らさない。載っていない銃は1。
+ */
+export const ROUNDS_PER_AMMO: Readonly<Record<string, number>> = {
+  'shotgun-t3-flamer': 12,     // 7.3発/秒(ショットガンT1の12倍)
+  'handgun-t3': 3,             // マシンピストル 5.4発/秒(ハンドガンT1の3.1倍)
+  'handgun-t3-gunblade': 3,    // ガンブレード 4.8発/秒(2.7倍)
+  'glauncher-t2-alchemy': 2,   // 錬金砲 0.61発/秒(グレネードガンT1の1.8倍)
+};
+export const weaponRoundsPerAmmo = (w: Pick<Weapon, 'key'>): number => ROUNDS_PER_AMMO[w.key ?? ''] ?? 1;
+
 // Player-state RESERVE pool value for an ammo type.
 export const ammoPoolFor = (player: Player, type: AmmoType): number =>
   player[AMMO_FIELD[type]];
@@ -761,10 +777,13 @@ export interface MagazineRefillResult {
  */
 export const refillWeaponMagazine = (w: Weapon, p: Player, reserve: number): MagazineRefillResult => {
   const need = Math.max(0, effectiveMagSize(w, p) - (w.magazine ?? 0));
-  const moved = Math.min(need, Math.max(0, reserve));
+  // 予備弾1つ=この銃の k 発(弾を食う銃ほど大きい・社長指示2026-11-01)。払うのは足した発数を k で割って切り上げた数。
+  const k = weaponRoundsPerAmmo(w);
+  const moved = Math.min(need, Math.max(0, reserve) * k);
+  const cost = k === 1 ? moved : Math.ceil(moved / k);
   return {
     weapon: moved > 0 ? { ...w, magazine: (w.magazine ?? 0) + moved } : w,
-    reserve: reserve - moved,
+    reserve: reserve - cost,
     moved,
   };
 };
@@ -1357,6 +1376,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
   // (弾倉は減らないがリザーブは減る=総弾数が増えるわけではない。リザーブ0なら補填されず普通に消費)。
   const gsAwaken = skillLevel(player, 'ghost-shooter') >= 3;
   const gsRefillProc = gsAwaken && Math.random() < 0.30;
+  // 予備弾1つ=k発の銃(weaponRoundsPerAmmo)は、1発の補填に払う予備弾も1/k(1/kの確率で1つ払う=平均で釣り合う)。
+  const gsPayReserve = Math.random() < 1 / weaponRoundsPerAmmo(weapon);
   useGameStore.setState(state => {
     // UNIQUE_WEAPONS.md §16-2/§17-8 C-3(デザートテック・棚卸し対象): ゴーストシューター補填も
     // weaponAmmoTypeFor(実際に消費している弾種)から引く(weapon.ammoType固定ではない)。
@@ -1386,7 +1407,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
             : withFocus;
         }),
         // ★無限弾武器はreserveを実フィールドへ書き戻さない(infiniteAmmoの規則・§17-3)。
-        ...(doRefill && gsField && !weapon.infiniteAmmo ? ({ [gsField]: gsReserve - 1 } as Partial<Player>) : {}),
+        ...(doRefill && gsPayReserve && gsField && !weapon.infiniteAmmo ? ({ [gsField]: gsReserve - 1 } as Partial<Player>) : {}),
       },
     };
   });

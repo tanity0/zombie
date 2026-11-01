@@ -4,7 +4,7 @@ import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
 import { rafTimeout } from '../utils/rafTimeout';
 import { formatTime } from '../utils/renderUtils';
-import { hasWeaponIcon, weaponIconName, DESERTTECH_WEAPON_KEY } from '../utils/weaponUtils';
+import { hasWeaponIcon, weaponIconName, DESERTTECH_WEAPON_KEY, weaponRoundsPerAmmo } from '../utils/weaponUtils';
 import { weaponSlotClass } from '../utils/weaponTierColor'; // 武器スロットの段の色(社長指示2026-09-16)
 import { resolveDesertTechAmmoType } from '../utils/desertTechAmmo'; // UNIQUE_WEAPONS.md §16-2(バッチB・デザートテック)
 import { spritePath } from '../utils/spriteLoader';
@@ -455,6 +455,8 @@ const GameHUD: React.FC = () => {
                   : gun.ammoType;
                 // UNIQUE_WEAPONS.md §16-2/§17-3(監査A-3): 無限弾武器はHUDに実弾数ではなく「∞」を出す。
                 const reserve = ammoType ? ammoFieldFor(ammoType) : 0;
+                // 予備弾はこの銃の発数で出す(予備弾1つ=k発・weaponRoundsPerAmmo)。
+                const reserveRounds = reserve * weaponRoundsPerAmmo(gun);
                 const mag = gun.magazine ?? 0;
                 // research/NEW_GUNS.md §3/§4: 弾倉も予備弾も持たない銃(衛星弾・スキャンセンサー)は弾切れにならない=数字も出さない。
                 const dry = !gun.infiniteAmmo && !gun.noAmmo && mag <= 0 && reserve <= 0;
@@ -481,7 +483,7 @@ const GameHUD: React.FC = () => {
                         dry ? 'text-red-400 animate-pulse' : 'text-white'
                       }`}
                     >
-                      {mag}<span className="text-[7px] text-white/45">/{gun.infiniteAmmo ? '∞' : reserve}</span>
+                      {mag}<span className="text-[7px] text-white/45">/{gun.infiniteAmmo ? '∞' : reserveRounds}</span>
                     </span>}
                   </button>
                 );

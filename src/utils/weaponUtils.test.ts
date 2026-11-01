@@ -7,6 +7,7 @@ import {
   resolveShotgunSpreadRad, computeShotDirections, fireWeapon, DUALRANGE_WEAPON_KEY,
   isGrenadeGunKey, isManualOnlyGunKey, hasManualAimGunKey, manualOnlyFallbackWeapon,
   ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY,
+  ROUNDS_PER_AMMO, weaponRoundsPerAmmo,
 } from './weaponUtils';
 import { spawnEnemyAt } from './enemyUtils';
 import { DUAL_RANGE_STATS } from './dualRangeGun';
@@ -108,6 +109,36 @@ describe('shared magazine/reload cycle', () => {
     expect(afterShot.lastFired).toBe(1234);
     const filled = refillWeaponMagazine(afterShot, player, Number.POSITIVE_INFINITY);
     expect(filled.weapon.magazine).toBe(effectiveMagSize(gun, player));
+  });
+});
+
+// 社長指示2026-11-01「銃の弾薬母数と、拾った時の補充量を、銃の特性に合わせて変更して」: 予備弾1つ=k発の換算。
+describe('予備弾の換算(弾を食う銃ほど予備弾1つで多く装填)', () => {
+  const player = () => useGameStore.getState().player;
+  it('火炎放射器は予備弾1つで12発。空から満タン(80発)に予備弾7つ(切り上げ)', () => {
+    const w = { ...createWeapon('shotgun-t3-flamer'), magazine: 0 };
+    expect(weaponRoundsPerAmmo(w)).toBe(12);
+    const r = refillWeaponMagazine(w, player(), 24);
+    expect(r.weapon.magazine).toBe(effectiveMagSize(w, player()));
+    expect(r.reserve).toBe(24 - Math.ceil(effectiveMagSize(w, player()) / 12));
+  });
+  it('予備弾が足りない時は、予備弾×k発まで入って予備弾は0', () => {
+    const w = { ...createWeapon('shotgun-t3-flamer'), magazine: 0 };
+    const r = refillWeaponMagazine(w, player(), 2);
+    expect(r.weapon.magazine).toBe(24);
+    expect(r.reserve).toBe(0);
+  });
+  it('表に無い銃は1発=予備弾1つ(今までどおり)', () => {
+    const w = { ...createWeapon('handgun-t1'), magazine: 0 };
+    expect(weaponRoundsPerAmmo(w)).toBe(1);
+    const r = refillWeaponMagazine(w, player(), 72);
+    expect(72 - r.reserve).toBe(r.moved);
+  });
+  it('表の銃はすべて実在し、k は2以上の整数', () => {
+    for (const [key, k] of Object.entries(ROUNDS_PER_AMMO)) {
+      expect(createWeapon(key).key).toBe(key);
+      expect(Number.isInteger(k) && k >= 2).toBe(true);
+    }
   });
 });
 
