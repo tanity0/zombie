@@ -9,6 +9,9 @@ import { bootstrapRuntime, fontsReady } from './bootstrap';
 import { installGlobalErrorBeacon } from './utils/errorBeacon';
 import { loadPrevBeat } from './utils/crashWatch';
 
+// 起動の段階(index.html の起動エラー表示が「どこまで進んで落ちたか」を出すのに使う・v0.25.5315)。
+const bootStage = (s: string) => { (window as unknown as { __bootStage?: string }).__bootStage = s; };
+bootStage('main');
 installGlobalErrorBeacon(); // 捕まえていない例外も左下へ赤字で出す(v0.25.4347)
 // ★前回の最後の状態は**起動時に1回だけ**読む(v0.25.4351)。Game のマウント時に読むと、
 // 同じセッションで2戦目に入った時に**自分がさっき書いた記録**を「前回」として読んでしまう。
@@ -17,6 +20,7 @@ bootstrapRuntime();
 
 // 同梱書体が揃ってから最初の描画(上限 2.5 秒・bootstrap.ts 参照)。書体が後から差し替わる瞬間を画面に出さないため。
 void fontsReady.then(() => {
+  bootStage('render');
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <App />

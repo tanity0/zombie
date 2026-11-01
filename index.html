@@ -77,6 +77,38 @@
         display: none;
       }
     </style>
+    <!-- 起動の失敗を画面に出す(v0.25.5315・社長報告「スマホで一番最初からまっくら」)。
+         スマホでは console が見えず、React が描く前に落ちると画面に何も残らない。ゲームが出るまでの間だけ、
+         捕まえていない例外・スクリプトの読み込み失敗・15秒たっても画面が空、を赤字で下に出す。
+         出たあと(#root に中身が入った後)は何もしない=いつものプレイには一切出ない。 -->
+    <script>
+      (function () {
+        var shown = false;
+        window.__bootStage = 'html';
+        function booted() { var r = document.getElementById('root'); return !!(r && r.children.length); }
+        function show(msg) {
+          if (shown) return; shown = true;
+          var d = document.createElement('div');
+          d.id = 'boot-diag';
+          d.style.cssText = 'position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:2147483647;' +
+            'font:12px/1.45 monospace;color:#ff7070;background:rgba(0,0,0,.88);padding:8px 10px;white-space:pre-wrap;word-break:break-all;pointer-events:none';
+          d.textContent = '起動エラー(段階: ' + window.__bootStage + ')\n' + msg + '\n' + navigator.userAgent;
+          (document.body || document.documentElement).appendChild(d);
+        }
+        window.addEventListener('error', function (e) {
+          if (booted()) return;
+          var t = e.target, src = t && t !== window ? (t.src || t.href || '') : '';
+          if (src) { if (/\.(js|mjs|css)(\?|$)/.test(src)) show('読み込み失敗: ' + src.slice(-90)); return; }
+          var f = (e.filename || '').split('/').pop();
+          show((e.message || String(e.error)) + (f ? ' @' + f + ':' + e.lineno + ':' + e.colno : ''));
+        }, true);
+        window.addEventListener('unhandledrejection', function (e) {
+          if (booted()) return;
+          var r = e.reason; show('promise: ' + (r && r.message ? r.message : String(r)));
+        });
+        setTimeout(function () { if (!booted()) show('15秒たっても画面が出ていません'); }, 15000);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
