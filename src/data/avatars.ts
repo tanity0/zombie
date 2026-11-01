@@ -280,7 +280,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         tex: 'avatar-jiangshi-coffin', // 22×32(札を貼った棺)
         layer: 'below',
         anchorX: 0.5, anchorY: 0.5,
-        offsetXFrac: -0.16,
+        offsetXFrac: -0.22, // 社長指示2026-11-01「キョンシーの背中パーツもう少し左に」-0.16→-0.22
         offsetYFrac: -0.5,
         sizeFrac: 0.6,
         sizeBasis: 'height',

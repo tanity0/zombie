@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5324', items: [
+    'キョンシーセットの背中の棺を、少し背中側へずらした',
+  ] },
   { version: '0.25.5323', items: [
     '迫ってくるハンターは、一度見つかりかけたら下がっても追ってくる。拠点の上と、未確認の境界を越えた後は迫ってこない',
     'ハンターの向きの切り替えと止まり方がなめらかになった',
