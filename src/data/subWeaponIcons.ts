@@ -29,5 +29,6 @@ const AVATAR_ICON: Partial<Record<AvatarId, string>> = {
   'pirate-set': 'avatar-pirate-hat-v2',
   'ghost-set': 'avatar-ghost-fire-big-v2',
   'jiangshi-set': 'avatar-jiangshi-hat',
+  'maid-set': 'avatar-maid-headdress',
 };
 export const avatarIconName = (id: AvatarId): string | null => AVATAR_ICON[id] ?? null;

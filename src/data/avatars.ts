@@ -13,7 +13,7 @@
 // 視覚専用(判定/移動/攻撃に一切影響しない)。CLAUDE.md「レンダリングとゲームロジックの分離」に
 // 従い、ここは renderer-agnostic なデータのみ(PixiJS import なし)。
 
-export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set' | 'pirate-set' | 'ghost-set' | 'jiangshi-set';
+export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set' | 'pirate-set' | 'ghost-set' | 'jiangshi-set' | 'maid-set';
 
 export interface AvatarPart {
   /** src/pixi/pixiTextures.ts の standalone リストに登録したテクスチャ名。 */
@@ -294,6 +294,34 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         offsetXFrac: -0.04,
         offsetYFrac: -0.85,
         sizeFrac: 0.48,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+        followsHead: true,
+      },
+    ],
+  },
+  // 第8弾「メイドセット」(社長支給2026-11-01・高さ32基準): ヘッドドレス(頭・above)+大きなリボン(腰の後ろ・below)。
+  'maid-set': {
+    id: 'maid-set',
+    name: 'メイドセット',
+    parts: [
+      {
+        tex: 'avatar-maid-bow', // 30×32(エプロンの後ろの大きなリボン)
+        layer: 'below',
+        anchorX: 0.5, anchorY: 0.4,
+        offsetXFrac: -0.3,
+        offsetYFrac: -0.42,
+        sizeFrac: 0.42,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+      },
+      {
+        tex: 'avatar-maid-headdress', // 36×32(フリルの弧+両脇の黒いリボン)
+        layer: 'above',
+        anchorX: 0.5, anchorY: 0.12, // 弧のてっぺんを頭頂に置く
+        offsetXFrac: 0.02,
+        offsetYFrac: -0.9,
+        sizeFrac: 0.5,
         sizeBasis: 'width',
         flipWithFacing: true,
         followsHead: true,

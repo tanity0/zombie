@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5312 — 新アバター「メイドセット」(ヘッドドレス+腰のリボン)【2026-11-01 14:19 JST】
+- 社長支給の画像(ヘッドドレス・大きなリボンを横に並べた1枚・80×34・高さ32基準)を切り分けて素材にした:
+  `avatar-maid-headdress.png`(36×32・フリルの弧+両脇の黒いリボン)/ `avatar-maid-bow.png`(30×32)。
+- `src/data/avatars.ts` に `maid-set`「メイドセット」を1行足した。ヘッドドレス=above・弧のてっぺんを頭頂に置き頭頂追従
+  (1枚物=頭の裏へ回す割りは無し)。リボン=below・腰の後ろ。メニューの絵の枡はヘッドドレス。素材台帳を更新。
+- 確認(ヘッドレス・430×932 dpr2): 右向き/左向きで、フリルが髪の上から顔の周りを縁取り、両脇の黒いリボンが肩の高さに垂れ、
+  腰の後ろにリボンが出るのを見た(1回目はヘッドドレスが額まで被っていたので、上げて小さくし撮り直し)。
+- 憲法第4条・第5条: 見た目だけ=抵触なし。
+- 変更: public/sprites/avatar-maid-*.png(2枚)/ src/data/avatars.ts / src/data/subWeaponIcons.ts / src/pixi/pixiTextures.ts /
+  scripts/asset-masters.json / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5311 — 新アバター「キョンシーセット」(札の帽子+棺)【2026-11-01 14:10 JST】
 - 社長支給の画像(帽子・棺を横に並べた1枚・90×34・高さ32基準)を切り分けて素材にした:
   `avatar-jiangshi-hat.png`(24×24・札が右下へ垂れ、房が左)/ `avatar-jiangshi-coffin.png`(22×32)。
