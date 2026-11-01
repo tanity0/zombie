@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5302', items: [
+    '新しいアバター「天使セット」。頭の上に光の輪、背中に白い翼',
+  ] },
   { version: '0.25.5301', items: [
     '新しいアバター「悪魔セット」。角と尻尾が付き、進む向きの側の角は頭の後ろに隠れる',
   ] },

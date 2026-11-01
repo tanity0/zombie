@@ -13,7 +13,7 @@
 // 視覚専用(判定/移動/攻撃に一切影響しない)。CLAUDE.md「レンダリングとゲームロジックの分離」に
 // 従い、ここは renderer-agnostic なデータのみ(PixiJS import なし)。
 
-export type AvatarId = 'cat-set' | 'devil-set';
+export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set';
 
 export interface AvatarPart {
   /** src/pixi/pixiTextures.ts の standalone リストに登録したテクスチャ名。 */
@@ -126,6 +126,36 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         sizeFrac: 0.5,
         sizeBasis: 'width',
         flipWithFacing: true,
+      },
+    ],
+  },
+  // 第3弾「天使セット」(社長支給2026-11-01): 輪(頭の上・above)+翼(背中・below)。
+  // 翼は大きい翼を後ろ側、小さい翼を左右反転して進行方向側に並べた1枚(社長指示「右のやつは反転」)。
+  'angel-set': {
+    id: 'angel-set',
+    name: '天使セット',
+    parts: [
+      {
+        tex: 'avatar-angel-wings', // 81×33(左=大きい翼 / 右=小さい翼を反転・間を6空けた)
+        layer: 'below',
+        anchorX: 0.617, anchorY: 0.4, // 2枚の付け根の間=背中に置く基準点
+        offsetXFrac: -0.05,
+        offsetYFrac: -0.68,
+        sizeFrac: 0.9,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+        followsHead: true, // しゃがみ・走りで上体と一緒に動く
+      },
+      {
+        tex: 'avatar-angel-halo', // 32×15
+        layer: 'above',
+        anchorX: 0.5, anchorY: 1,
+        offsetXFrac: 0.03,
+        offsetYFrac: -0.86,
+        sizeFrac: 0.32,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+        followsHead: true,
       },
     ],
   },
