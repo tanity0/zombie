@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5325', items: [
+    'ハンターは常に1体だけ。追われている間に増援が来なくなった',
+  ] },
   { version: '0.25.5324', items: [
     'キョンシーセットの背中の棺を、少し背中側へずらした',
   ] },

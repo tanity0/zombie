@@ -881,10 +881,7 @@ const HUNTER_DETECT_RANGE = HUNTER_VISION_RANGE; // 索敵範囲(=視界範囲�
 const HUNTER_DISCOVER_MS = 5000;           // 検知範囲に5秒残ると発見
 const HUNTER_SEARCH_MAX_MS = 26000;        // 索敵のまま未発見が続くと立ち去る(フェードアウト開始)。
                                             // ただし索敵範囲にプレイヤーが入っている間はこのタイマーを都度リセットする(社長指示)。
-const HUNTER_REINFORCE_1_MS = 20000;       // 追跡20秒で2体目
-const HUNTER_REINFORCE_2_MS = 40000;       // 追跡40秒で3体目
 const HUNTER_CHASE_MAX_MS = 60000;         // 追跡の上限(これを超えたら諦めて撤退=kiteで永久追跡＆他イベント停止を防ぐ)
-const HUNTER_MAX_ALIVE = 3;                // 同時最大3体
 const HUNTER_BASE_SAFE_RADIUS = 150;       // 開放前を含む拠点へこの距離まで近づくとハンターが撤退
 const HUNTER_FLEE_SPEED = 300;             // 撤退移動速度(px/s)
 const HUNTER_DESPAWN_DIST = 1500;          // 撤退でプレイヤーからこの距離離れたら消滅
@@ -5401,17 +5398,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (huntersAlive.length === 0) {
               endHunterEvent(); // 全滅=イベント終了
             } else {
-              const total = huntersAlive.length;
               const elapsed = newGameTime - H.chaseStartAt;
-              // §5.21-追補(社長決定v0.25.1536・最終締め): 凶悪ハンター(制圧0)は常に1体のみ・増援なし。
-              // 増援は通常ハンター(非凶悪)だけに適用する。
-              if (!H.vicious && H.reinforced < 1 && elapsed >= HUNTER_REINFORCE_1_MS && total < HUNTER_MAX_ALIVE) {
-                spawnHunter(false); H.reinforced = 1;
-                useGameStore.setState({ eventBannerText: 'ハンターの増援', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-              } else if (!H.vicious && H.reinforced < 2 && elapsed >= HUNTER_REINFORCE_2_MS && total < HUNTER_MAX_ALIVE) {
-                spawnHunter(false); H.reinforced = 2;
-                useGameStore.setState({ eventBannerText: 'ハンターの増援', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-              }
+              // 社長指示2026-11-01「ハンターが2体以上出るやつやめよう。一体のみに。」: 追跡中の増援(20秒で2体目・40秒で3体目)を撤去。
+              // ハンターは常に1体だけ(旧・凶悪ハンターの「1体のみ・増援なし」=v0.25.1536 を全ハンターへ)。
               // 撤退トリガ: 開放前を含む拠点へ逃げ込む / ボス・リーパー・演出が始まった / 追跡が上限を超えた(諦め)。
               const chasedOut = elapsed >= HUNTER_CHASE_MAX_MS; // kiteで永久追跡＆他イベント停止を防ぐ
               // M20追補(社長明確化v0.25.1534)「デンジャーを出る=手前へ戻る」: 凶悪ハンターはプレイヤーが
