@@ -211,7 +211,7 @@ import {
   tickPlayerFlamerBurn,
 } from '../utils/phantomTick';
 import { runHeroTick, createHeroTickState, pickActiveHero, type HeroSfx } from '../utils/heroTick'; // research/MUTANT_HERO.md
-import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ringPoint, sectorOfPos, HUNTER_PATROL_START_MS, HUNTER_WARP_FADE_MS, HUNTER_PATROL_SPEED } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
+import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ringPoint, sectorOfPos, HUNTER_PATROL_START_MS, HUNTER_WARP_FADE_MS, HUNTER_PATROL_SPEED, HUNTER_RUSH_SPEED, hunterRushActive, hunterRushNext } from '../utils/hunterPatrol'; // research/HUNTER_PATROL.md
 import { stepHunterPatrol } from '../utils/hunterPatrolTick';
 import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, runAstroScatter, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
 import { runWraithTick, createWraithTickState, pickActiveWraith, releaseWraithOwner, runWraithGrowths, runWraithGraveFx } from '../utils/wraithTick'; // research/WRAITH_MUTANT.md
@@ -5339,11 +5339,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (watchOff && H.detectStartAt !== 0) { H.detectStartAt = 0; patchHunter(prim.id, { hunterAlerted: false }); }
               }
               const w = appearing || watchOff ? 'none' : watchStep(prim);
+              // 拠点解放前の急接近(社長指示2026-11-01): 拠点0のままプレイヤーがデンジャーゾーンに入ると、
+              // デンジャーゾーンの帯から出ずに、輪に沿って(帯の向きが主)すごい速さでプレイヤーへ向かってくる。
+              // 視界の円に入ったら今までどおり止まって見る→5秒で発見→追跡。
+              const pcx = prim.x + prim.width / 2, pcy = prim.y + prim.height / 2;
+              // 大きなイベント・演出・通信の最中(watchOff=見つけない間)は急接近もしない(見つけないまま目の前に居座らない)。
+              const rushing = !watchOff && hunterRushActive(hs.baseSites.filter(b => b.status === 'captured').length, Math.hypot(hpx, hpy), AREA_THRESHOLDS[1]);
+              const rushTo = rushing ? hunterRushNext(pcx, pcy, hpx, hpy, AREA_THRESHOLDS[1], AREA_THRESHOLDS[2], Math.min(240, ringR * 0.6)) : undefined;
               if (w === 'found') {
                 // 追跡へ(上の watchStep が切り替えた)
               } else if (w === 'watching') {
-                // 見ている間は減速して止まる(高速で通り過ぎない)。
-                const r = stepHunterPatrol(prim, ringR, P.speed, 0, deltaTime);
+                // 見ている間は減速して止まる(高速で通り過ぎない)。急接近中は向かっていた向きのまま止まる。
+                const r = stepHunterPatrol(prim, ringR, P.speed, 0, deltaTime, rushTo);
+                P.speed = r.speed; patchHunter(prim.id, r.patch);
+              } else if (rushing && !appearing) {
+                const r = stepHunterPatrol(prim, ringR, P.speed, HUNTER_RUSH_SPEED, deltaTime, rushTo);
                 P.speed = r.speed; patchHunter(prim.id, r.patch);
               } else if (!appearing && !watchOff && nearWarpReady() && open.has(sectorOfPos(hpx, hpy))) {
                 // 余裕がある時は近くへワープしてくる(プレイヤーが未解放の地域にいる時だけ)。

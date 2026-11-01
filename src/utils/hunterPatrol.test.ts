@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   hunterOpenSectors, nextOpenSectorEntryAngle, hunterPatrolSpawnPoint, sectorOfPos, ringPoint, hunterWarpAlpha,
   HUNTER_WARP_FADE_MS, HUNTER_PATROL_SPAWN_MIN_DIST,
+  hunterRushActive, hunterRushNext, HUNTER_RUSH_BAND_MARGIN, HUNTER_RUSH_SPEED, HUNTER_PATROL_SPEED,
 } from './hunterPatrol';
 
 /** 決まった並びの乱数(テストを確率で落とさない)。 */
@@ -52,5 +53,46 @@ describe('ハンターの巡回: ワープ(パッと消えない)', () => {
     expect(hunterWarpAlpha(500, 100, 500)).toBe(0);
     expect(hunterWarpAlpha(500 + HUNTER_WARP_FADE_MS, 100, 500)).toBe(1);
     expect(hunterWarpAlpha(0, undefined, undefined)).toBe(1);
+  });
+});
+
+// 社長指示2026-11-01「ハンター、拠点解放前だと、デンジャーゾーンに入るとすごいスピードでこちらにデンジャーゾーンから出ない範囲で
+// (つまりX軸主体で)向かってくる」。
+describe('ハンターの急接近(拠点解放前・デンジャーゾーン)', () => {
+  const rIn = 4500, rOut = 7500, lo = rIn + HUNTER_RUSH_BAND_MARGIN, hi = rOut - HUNTER_RUSH_BAND_MARGIN;
+  it('拠点0でデンジャーゾーンより奥にいる時だけ。拠点を1つでも解放した/手前にいる時はしない', () => {
+    expect(hunterRushActive(0, 4600, rIn)).toBe(true);
+    expect(hunterRushActive(0, 9000, rIn)).toBe(true);
+    expect(hunterRushActive(0, 4400, rIn)).toBe(false);
+    expect(hunterRushActive(1, 6000, rIn)).toBe(false);
+  });
+  it('巡回よりずっと速い', () => expect(HUNTER_RUSH_SPEED).toBeGreaterThanOrEqual(HUNTER_PATROL_SPEED * 2.5));
+  it('反対側にいても帯から出ずに弧で回ってくる(輪の内側を横切らない)', () => {
+    let x = 6000, y = 0; // 右
+    const px = -6000, py = 300; // 左(わずかに下=時計回りの方が近い)
+    for (let i = 0; i < 400; i++) {
+      const n = hunterRushNext(x, y, px, py, rIn, rOut, 240);
+      const r = Math.hypot(n.x, n.y);
+      expect(r).toBeGreaterThanOrEqual(lo - 1e-6);
+      expect(r).toBeLessThanOrEqual(hi + 1e-6);
+      x = n.x; y = n.y;
+    }
+    expect(Math.hypot(x - px, y - py)).toBeLessThan(5); // 着いた
+  });
+  it('近い側の回り方で向かう', () => {
+    const n = hunterRushNext(6000, 0, 0, 6000, rIn, rOut, 240); // プレイヤーは角度+90°
+    expect(Math.atan2(n.y, n.x)).toBeGreaterThan(0);
+    const m = hunterRushNext(6000, 0, 0, -6000, rIn, rOut, 240); // −90°
+    expect(Math.atan2(m.y, m.x)).toBeLessThan(0);
+  });
+  it('遠い間は帯に沿って横へ走る(奥行きの寄せは角度の残りに比例=ほぼ動かない)', () => {
+    const n = hunterRushNext(6000, 0, -4700, 100, rIn, rOut, 240); // 反対側の手前寄り
+    // 1歩(240px)のうち奥行きへの寄せは1割未満=横(帯の向き)が主。
+    expect(Math.abs(Math.hypot(n.x, n.y) - 6000)).toBeLessThan(240 * 0.1);
+  });
+  it('プレイヤーが帯の奥(外)にいる時は帯の外縁で止まる', () => {
+    let x = 6000, y = 0;
+    for (let i = 0; i < 200; i++) { const n = hunterRushNext(x, y, 9500, 200, rIn, rOut, 240); x = n.x; y = n.y; }
+    expect(Math.hypot(x, y)).toBeCloseTo(hi, 3);
   });
 });

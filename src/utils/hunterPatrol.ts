@@ -47,6 +47,45 @@ export const nextOpenSectorEntryAngle = (curSector: number, open: ReadonlySet<nu
   return null;
 };
 
+/**
+ * 拠点解放前の急接近(社長指示2026-11-01「ハンター、拠点解放前だと、デンジャーゾーンに入るとすごいスピードでこちらに
+ * デンジャーゾーンから出ない範囲で(つまりX軸主体で)向かってくる」)。
+ * 速さは巡回(240)の3倍の叩き台。走るプレイヤーよりずっと速い=逃げ切れない、が「すごいスピード」。
+ */
+export const HUNTER_RUSH_SPEED = 720;
+/** デンジャーゾーンの帯の縁から、この幅だけ内側を走る(縁の上で区域の出入りを繰り返さない)。 */
+export const HUNTER_RUSH_BAND_MARGIN = 120;
+
+/** 急接近するか: 拠点を1つも解放していない かつ プレイヤーがデンジャーゾーン(内縁 rIn)より奥にいる。 */
+export const hunterRushActive = (capturedBases: number, playerDist: number, rIn: number): boolean =>
+  capturedBases === 0 && playerDist >= rIn;
+
+/**
+ * 急接近の次の目標点。デンジャーゾーンの帯 [rIn, rOut](縁から HUNTER_RUSH_BAND_MARGIN 内側)から出ずに、
+ * **輪に沿って(=帯の向きが主)** プレイヤーの方角へ `lookahead` px 先の点。
+ * - 角度は近い側の回り方で進む(時計回り・反時計回りのどちらか短い方)。
+ * - 半径(帯の中での奥行き)は、角度の残りに比例してプレイヤーの奥行きへ寄せる=遠い間はほぼ帯に沿って横に走り、
+ *   近づくにつれてプレイヤーの奥行きへ寄る。プレイヤーが帯の外(手前/奥)にいる時は帯の縁で止まる。
+ * まっすぐ結ぶと輪の内側(デンジャーゾーンの手前)を横切るので、弦ではなく弧で進む。
+ */
+export const hunterRushNext = (
+  cx: number, cy: number, px: number, py: number, rIn: number, rOut: number, lookahead: number,
+): { x: number; y: number } => {
+  let lo = rIn + HUNTER_RUSH_BAND_MARGIN, hi = rOut - HUNTER_RUSH_BAND_MARGIN;
+  if (lo > hi) lo = hi = (rIn + rOut) / 2;
+  const clampR = (r: number) => Math.max(lo, Math.min(hi, r));
+  const a = Math.atan2(cy, cx), r = Math.hypot(cx, cy);
+  const pa = Math.atan2(py, px), pr = clampR(Math.hypot(px, py));
+  let da = pa - a;
+  while (da > Math.PI) da -= Math.PI * 2;
+  while (da < -Math.PI) da += Math.PI * 2;
+  const maxDa = lookahead / Math.max(1, r);
+  const stepA = Math.max(-maxDa, Math.min(maxDa, da));
+  const frac = Math.abs(da) < 1e-9 ? 1 : Math.abs(stepA) / Math.abs(da);
+  const nr = clampR(r + (pr - r) * frac);
+  return { x: Math.cos(a + stepA) * nr, y: Math.sin(a + stepA) * nr };
+};
+
 /** 輪の上の点。 */
 export const ringPoint = (angle: number, R: number): { x: number; y: number } => ({ x: Math.cos(angle) * R, y: Math.sin(angle) * R });
 

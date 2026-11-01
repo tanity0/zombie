@@ -21,18 +21,22 @@ const placeAt = (e: Enemy, cx: number, cy: number): { x: number; y: number } => 
 /**
  * 輪に沿って1フレーム進める(画面で見て時計回り=英雄と逆・社長指示2026-10-29)。wantSpeed へ慣性つきで寄せる(0なら止まる)。
  * まっすぐ進めない時は斜めへ逸れる。返り値=速さ(呼び手が持ち越す)と、書き込む位置・速度。
+ * `towards` を渡すと、輪の巡回ではなくその点へ向かう(拠点解放前の急接近=`hunterRushNext` の点)。
+ * 加減速は「速い方の速さ」を HUNTER_PATROL_ACCEL_S で出し切る/止め切る=急接近の速さでも動き出し・止まりは同じ長さ(慣性)。
  */
 export const stepHunterPatrol = (
-  e: Enemy, R: number, speed: number, wantSpeed: number, dt: number,
+  e: Enemy, R: number, speed: number, wantSpeed: number, dt: number, towards?: { x: number; y: number },
 ): { speed: number; patch: Partial<Enemy> } => {
   const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
-  const acc = (HUNTER_PATROL_SPEED / HUNTER_PATROL_ACCEL_S) * dt;
+  const acc = (Math.max(HUNTER_PATROL_SPEED, wantSpeed, speed) / HUNTER_PATROL_ACCEL_S) * dt;
   const sp = wantSpeed > speed ? Math.min(wantSpeed, speed + acc) : Math.max(wantSpeed, speed - acc);
   if (sp <= 0.01) return { speed: 0, patch: { vx: 0, vy: 0 } };
-  const nx = heroPatrolNext(cx, cy, R, -HUNTER_PATROL_DIR * Math.min(240, R * 0.6)); // 英雄の式は反時計回り=先読みの符号を逆にして時計回り
+  const nx = towards ?? heroPatrolNext(cx, cy, R, -HUNTER_PATROL_DIR * Math.min(240, R * 0.6)); // 英雄の式は反時計回り=先読みの符号を逆にして時計回り
   const dx = nx.x - cx, dy = nx.y - cy, l = Math.hypot(dx, dy) || 1;
+  // 向かう点に着いている(帯の縁でプレイヤーを待つ等)=その場で止まる。行き過ぎて往復しない。
+  if (towards && l < 1) return { speed: 0, patch: { vx: 0, vy: 0 } };
   const ux = dx / l, uy = dy / l;
-  const step = sp * dt;
+  const step = towards ? Math.min(sp * dt, l) : sp * dt;
   let p = placeAt(e, cx + ux * step, cy + uy * step);
   const gain = (q: { x: number; y: number }) => (q.x + e.width / 2 - cx) * ux + (q.y + e.height / 2 - cy) * uy;
   if (gain(p) < step * 0.35) {

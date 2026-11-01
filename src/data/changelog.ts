@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5322', items: [
+    '拠点をひとつも解放しないままデンジャーゾーンに入ると、ハンターがゾーンの中を回り込んで猛スピードで迫ってくる',
+  ] },
   { version: '0.25.5321', items: [
     'アタックシューターで弾が大きくならなくなった。銃ダメージの上昇と、覚醒で敵を吹き飛ばす力はそのまま',
   ] },
