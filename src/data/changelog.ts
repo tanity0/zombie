@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5314', items: [
+    'メイドセットの腰のリボンを少し体寄りに',
+  ] },
   { version: '0.25.5313', items: [
     'メイドセットのヘッドドレスを少し上へ',
   ] },

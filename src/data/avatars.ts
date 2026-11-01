@@ -309,7 +309,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         tex: 'avatar-maid-bow', // 30×32(エプロンの後ろの大きなリボン)
         layer: 'below',
         anchorX: 0.5, anchorY: 0.4,
-        offsetXFrac: -0.3,
+        offsetXFrac: -0.25, // 社長指示2026-11-01「リボンもう少し右に」-0.3→-0.25
         offsetYFrac: -0.42,
         sizeFrac: 0.42,
         sizeBasis: 'width',
