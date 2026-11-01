@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5313', items: [
+    'メイドセットのヘッドドレスを少し上へ',
+  ] },
   { version: '0.25.5312', items: [
     '新しいアバター「メイドセット」。フリルのヘッドドレスと、腰の後ろの大きなリボン',
   ] },
