@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.5304 — 新アバター「海賊セット」(帽子+鞘入りの剣)【2026-11-01 12:30 JST】
+- 社長支給の画像は**白地のJPG(1602×724・ドットを約7倍に拡大した絵・格子は不揃い)**だったので、外周からの塗りつぶしで背景を抜き
+  (剣の鍔の内側の白も抜いた)、1/7へ平均で縮め、縁を2値・色を48色へ減色した物を素材にした:
+  `public/sprites/avatar-pirate-hat.png`(99×79)/ `avatar-pirate-sword.png`(81×81・柄が前に来るよう左右反転)。
+  ※支給の元画像(拡大版のJPG)はリポジトリに入れていない(社長の手元が原盤)。
+- `src/data/avatars.ts` に `pirate-set`「海賊セット」を1行足した。帽子=above・かぶり口を頭に置き頭頂追従(1枚物なので頭の裏へ回す割りは無し)。
+  剣=below・腰の後ろから鞘の先が背中側の下へ出る。メニューの絵の枡は帽子。素材台帳を更新(`assets:ledger`)。
+- 確認(ヘッドレス・430×932 dpr2): 右向き/左向きで、帽子が髪の上にかぶさり、鞘が背中側の足元へ伸びるのを見た
+  (1回目は帽子が目に掛かり・剣がほぼ隠れていたので、帽子を上へ・剣を後ろへ出して撮り直し)。
+- 憲法第4条・第5条: 見た目だけ=抵触なし。
+- 変更: public/sprites/avatar-pirate-hat.png / public/sprites/avatar-pirate-sword.png / src/data/avatars.ts /
+  src/data/subWeaponIcons.ts / src/pixi/pixiTextures.ts / scripts/asset-masters.json / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5303 — 新アバター「うさぎセット」(垂れ耳+丸い尻尾)【2026-11-01 12:23 JST】
 - 社長支給の画像(耳2本・丸い尻尾を横に並べた1枚・114×34・縁は2値)を切り分けて素材にした:
   `public/sprites/avatar-bunny-ears.png`(72×32=支給の2本の並びのまま)/ `avatar-bunny-tail.png`(21×21)。

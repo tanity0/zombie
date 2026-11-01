@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5304', items: [
+    '新しいアバター「海賊セット」。羽根付きの帽子と、腰に下げた鞘入りの剣',
+  ] },
   { version: '0.25.5303', items: [
     '新しいアバター「うさぎセット」。垂れた耳と丸い尻尾',
   ] },

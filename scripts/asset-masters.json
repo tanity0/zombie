@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "953 files / 復号後 約712MB",
+ "generatedFor": "955 files / 復号後 約712MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -655,6 +655,18 @@
    "h": 32,
    "bytes": 1640,
    "sha": "a93c6f8fba0fd585"
+  },
+  "sprites/avatar-pirate-hat.png": {
+   "w": 99,
+   "h": 79,
+   "bytes": 9687,
+   "sha": "1d833d340171c4c7"
+  },
+  "sprites/avatar-pirate-sword.png": {
+   "w": 81,
+   "h": 81,
+   "bytes": 5905,
+   "sha": "7450fc6a22841bb4"
   },
   "sprites/bat-female-attack.png": {
    "w": 702,

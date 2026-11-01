@@ -13,7 +13,7 @@
 // 視覚専用(判定/移動/攻撃に一切影響しない)。CLAUDE.md「レンダリングとゲームロジックの分離」に
 // 従い、ここは renderer-agnostic なデータのみ(PixiJS import なし)。
 
-export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set';
+export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set' | 'pirate-set';
 
 export interface AvatarPart {
   /** src/pixi/pixiTextures.ts の standalone リストに登録したテクスチャ名。 */
@@ -186,6 +186,36 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         sizeFrac: 0.22,
         sizeBasis: 'width',
         flipWithFacing: true,
+      },
+    ],
+  },
+  // 第5弾「海賊セット」(社長支給2026-11-01): 帽子(頭・above)+鞘に入った剣(腰・below)。
+  // 支給は白地のJPG(ドットを約7倍に拡大した絵)。背景を抜いて1/7へ縮めた物を素材にした。
+  // 剣は柄が前(右向きの絵の右上)・先が後ろへ下がる向きに左右反転してある。
+  'pirate-set': {
+    id: 'pirate-set',
+    name: '海賊セット',
+    parts: [
+      {
+        tex: 'avatar-pirate-sword', // 81×81(左右反転済み=右上が柄・左下が鞘の先)
+        layer: 'below',
+        anchorX: 0.5, anchorY: 0.5,
+        offsetXFrac: -0.2,
+        offsetYFrac: -0.36,
+        sizeFrac: 0.6,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+      },
+      {
+        tex: 'avatar-pirate-hat', // 99×79(左に羽根・左下に赤い布の垂れ)
+        layer: 'above',
+        anchorX: 0.6, anchorY: 0.68, // 帽子のかぶり口(赤い帯の下)の真ん中を頭に置く
+        offsetXFrac: 0.02,
+        offsetYFrac: -0.8,
+        sizeFrac: 0.62,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+        followsHead: true,
       },
     ],
   },
