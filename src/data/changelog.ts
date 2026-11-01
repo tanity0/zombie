@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5318', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5317', items: [
     '起動が遅い時の赤い表示に、届いたファイルと待っている秒数が出る。映った時点で消える',
   ] },
