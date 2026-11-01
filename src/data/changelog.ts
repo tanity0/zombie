@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5309', items: [
+    '海賊セットの絵を、ほかのアバターと同じ粗さのドットに描き直した物へ差し替え',
+  ] },
   { version: '0.25.5308', items: [
     'お化けセットの絵を描き直した物に差し替え',
   ] },

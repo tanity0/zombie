@@ -192,12 +192,13 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
   // 第5弾「海賊セット」(社長支給2026-11-01): 帽子(頭・above)+鞘に入った剣(腰・below)。
   // 支給は白地のJPG(ドットを約7倍に拡大した絵)。背景を抜いて1/7へ縮めた物を素材にした。
   // 剣は柄が前(右向きの絵の右上)・先が後ろへ下がる向きに左右反転してある。
+  // 2026-11-01 社長が高さ32の絵に差し替え(表示の大きさは sizeFrac のまま)。旧素材は原盤として public に残す。
   'pirate-set': {
     id: 'pirate-set',
     name: '海賊セット',
     parts: [
       {
-        tex: 'avatar-pirate-sword', // 81×81(左右反転済み=右上が柄・左下が鞘の先)
+        tex: 'avatar-pirate-sword-v2', // 33×32(支給の高さ32の絵・左右反転済み=右上が柄・左下が鞘の先)
         layer: 'below',
         anchorX: 0.5, anchorY: 0.5,
         offsetXFrac: -0.2,
@@ -207,7 +208,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         flipWithFacing: true,
       },
       {
-        tex: 'avatar-pirate-hat', // 99×79(左に羽根・左下に赤い布の垂れ)
+        tex: 'avatar-pirate-hat-v2', // 40×31(支給の高さ32の絵・左に羽根・左下に赤い布の垂れ)
         layer: 'above',
         anchorX: 0.6, anchorY: 0.68, // 帽子のかぶり口(赤い帯の下)の真ん中を頭に置く
         offsetXFrac: 0.02,

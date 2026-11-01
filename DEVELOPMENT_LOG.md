@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5309 — 海賊セットの絵を高さ32の物へ差し替え【2026-11-01 13:42 JST】
+- 社長「海賊差し替え」(帽子・剣を横に並べた1枚・88×34=他のセットと同じ高さ32基準)。切り分けて `-v2` の名前で足した:
+  `avatar-pirate-hat-v2.png`(40×31)/ `avatar-pirate-sword-v2.png`(33×32・前回と同じく柄が前に来るよう左右反転)。
+  旧素材(拡大JPGを1/7にした99×79/81×81)は public に原盤として残す(同名上書きは `assets:check` に掛かる)。
+- 置き方は前のまま=表示の大きさは同じで、ドットが他のセットと揃った。
+- 確認(ヘッドレス・430×932 dpr2): 差し替え前/右向き/左向きを並べて見た。
+- 変更: public/sprites/avatar-pirate-*-v2.png(2枚)/ src/data/avatars.ts / src/data/subWeaponIcons.ts / src/pixi/pixiTextures.ts /
+  scripts/asset-masters.json / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5308 — お化けセットの絵を差し替え【2026-11-01 13:34 JST】
 - 社長「差し替え」(三角布・火の玉2つ・卒塔婆を横に並べた1枚・104×34=前の約半分の細かさ)。切り分けて `-v2` の名前で足した:
   `avatar-ghost-tenkan-v2.png`(15×8)/ `avatar-ghost-fire-big-v2.png`(14×22)/ `avatar-ghost-fire-small-v2.png`(10×16)/
