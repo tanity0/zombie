@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.5311 — 新アバター「キョンシーセット」(札の帽子+棺)【2026-11-01 14:10 JST】
+- 社長支給の画像(帽子・棺を横に並べた1枚・90×34・高さ32基準)を切り分けて素材にした:
+  `avatar-jiangshi-hat.png`(24×24・札が右下へ垂れ、房が左)/ `avatar-jiangshi-coffin.png`(22×32)。
+- `src/data/avatars.ts` に `jiangshi-set`「キョンシーセット」を1行足した。帽子=above・頭頂追従・札が顔に掛かる位置
+  (帽子は1枚物=頭の裏へ回す割りは無し)。棺=below・背中・頭頂追従。メニューの絵の枡は帽子。素材台帳を更新。
+  ※2つ目の絵は「札を貼った棺」と読んで背中に置いた(社長の指定なし=違えば置き直す)。
+- 確認(ヘッドレス・430×932 dpr2): 右向き/左向きで、帽子が髪を覆って札が顔の片側に垂れ、棺が背中側の肩の後ろから覗くのを見た
+  (1回目は帽子の上に髪が覗いたので、少し上げて大きくして撮り直し)。
+- 憲法第4条・第5条: 見た目だけ=抵触なし。
+- 変更: public/sprites/avatar-jiangshi-*.png(2枚)/ src/data/avatars.ts / src/data/subWeaponIcons.ts / src/pixi/pixiTextures.ts /
+  scripts/asset-masters.json / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5310 — 猫耳セットの絵を高さ32の物へ差し替え【2026-11-01 13:52 JST】
 - 社長支給の2枚(尻尾19×32・耳28×14)を `-v2` の名前で足した: `avatar-cat-ears-v2.png`(余白を落として24×12)/
   `avatar-cat-tail-v2.png`(19×32)。旧素材(100×48/76×128)は public に原盤として残す。これで全6セットが高さ32基準に揃った。

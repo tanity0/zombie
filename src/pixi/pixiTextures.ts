@@ -705,6 +705,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'avatar-ghost-fire-big-v2', scaleMode: 'nearest' }, // 14×22
       { name: 'avatar-ghost-fire-small-v2', scaleMode: 'nearest' }, // 10×16
       { name: 'avatar-ghost-sotoba-v2', scaleMode: 'nearest' }, // 31×26
+      { name: 'avatar-jiangshi-hat', scaleMode: 'nearest' }, // 24×24(第7弾「キョンシーセット」)
+      { name: 'avatar-jiangshi-coffin', scaleMode: 'nearest' }, // 22×32
       // 裏ボス スカジの氷ハザード(氷塊テレグラフ / 飛ぶ氷の刃)。ピクセルアート=nearest。
       { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },

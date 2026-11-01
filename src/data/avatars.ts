@@ -13,7 +13,7 @@
 // 視覚専用(判定/移動/攻撃に一切影響しない)。CLAUDE.md「レンダリングとゲームロジックの分離」に
 // 従い、ここは renderer-agnostic なデータのみ(PixiJS import なし)。
 
-export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set' | 'pirate-set' | 'ghost-set';
+export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set' | 'pirate-set' | 'ghost-set' | 'jiangshi-set';
 
 export interface AvatarPart {
   /** src/pixi/pixiTextures.ts の standalone リストに登録したテクスチャ名。 */
@@ -268,6 +268,35 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         sizeFrac: 0.22,
         sizeBasis: 'height',
         flipWithFacing: true,
+      },
+    ],
+  },
+  // 第7弾「キョンシーセット」(社長支給2026-11-01・高さ32基準): 札の下がった帽子(頭・above)+札を貼った棺(背中・below)。
+  'jiangshi-set': {
+    id: 'jiangshi-set',
+    name: 'キョンシーセット',
+    parts: [
+      {
+        tex: 'avatar-jiangshi-coffin', // 22×32(札を貼った棺)
+        layer: 'below',
+        anchorX: 0.5, anchorY: 0.5,
+        offsetXFrac: -0.16,
+        offsetYFrac: -0.5,
+        sizeFrac: 0.6,
+        sizeBasis: 'height',
+        flipWithFacing: true,
+        followsHead: true,
+      },
+      {
+        tex: 'avatar-jiangshi-hat', // 24×24(右下へ札が垂れる・左へ房)
+        layer: 'above',
+        anchorX: 0.5, anchorY: 0.5,
+        offsetXFrac: -0.04,
+        offsetYFrac: -0.85,
+        sizeFrac: 0.48,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+        followsHead: true,
       },
     ],
   },

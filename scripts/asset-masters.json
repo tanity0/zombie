@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "967 files / 復号後 約712MB",
+ "generatedFor": "969 files / 復号後 約712MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -715,6 +715,18 @@
    "h": 15,
    "bytes": 337,
    "sha": "77b4218090e9d12c"
+  },
+  "sprites/avatar-jiangshi-coffin.png": {
+   "w": 22,
+   "h": 32,
+   "bytes": 585,
+   "sha": "20563b3841601152"
+  },
+  "sprites/avatar-jiangshi-hat.png": {
+   "w": 24,
+   "h": 24,
+   "bytes": 436,
+   "sha": "2e31f67f87efbeb1"
   },
   "sprites/avatar-pirate-hat-v2.png": {
    "w": 40,
