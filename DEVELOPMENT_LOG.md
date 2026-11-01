@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.5305 — 新アバター「お化けセット」(三角布+火の玉2つ+卒塔婆)【2026-11-01 13:05 JST】
+- 社長支給の画像(三角布・大小の火の玉・卒塔婆を横に並べた1枚・188×66・縁は2値)を切り分けて素材にした:
+  `avatar-ghost-tenkan.png`(30×15)/ `avatar-ghost-fire-big.png`(27×43)/ `avatar-ghost-fire-small.png`(20×32)/
+  `avatar-ghost-sotoba.png`(59×52)。卒塔婆は社長指示「尻尾の代わりに斜めに背中に」で、8倍→28度回転→1/8(最近傍)で
+  ドットのまま斜めにした物(先が後ろ上)。
+- `src/data/avatars.ts` に `ghost-set`「お化けセット」を1行足した。三角布=above・額(頭頂追従)。火の玉=above・
+  大きい方は背中側の腰の横、小さい方は進行方向側の頭の横に浮かぶ(焼き込み=静止)。卒塔婆=below・背中で斜め・頭頂追従。
+  メニューの絵の枡は大きい火の玉。素材台帳を更新(`assets:ledger`)。
+- 確認(ヘッドレス・430×932 dpr2): 右向き/左向きで、三角布が額、卒塔婆が背中側の肩の後ろから斜めに覗き、火の玉が体の両脇に浮くのを見た
+  (1回目は三角布が顔に被っていたので額へ上げ、火の玉の位置も詰めて撮り直し・計3回)。
+- 憲法第4条・第5条: 見た目だけ=抵触なし。
+- 変更: public/sprites/avatar-ghost-*.png(4枚)/ src/data/avatars.ts / src/data/subWeaponIcons.ts / src/pixi/pixiTextures.ts /
+  scripts/asset-masters.json / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5304 — 新アバター「海賊セット」(帽子+鞘入りの剣)【2026-11-01 12:30 JST】
 - 社長支給の画像は**白地のJPG(1602×724・ドットを約7倍に拡大した絵・格子は不揃い)**だったので、外周からの塗りつぶしで背景を抜き
   (剣の鍔の内側の白も抜いた)、1/7へ平均で縮め、縁を2値・色を48色へ減色した物を素材にした:

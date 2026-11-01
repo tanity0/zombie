@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5305', items: [
+    '新しいアバター「お化けセット」。額の三角布、そばに浮かぶ青い火の玉、背中に斜めの卒塔婆',
+  ] },
   { version: '0.25.5304', items: [
     '新しいアバター「海賊セット」。羽根付きの帽子と、腰に下げた鞘入りの剣',
   ] },

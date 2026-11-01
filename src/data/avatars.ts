@@ -13,7 +13,7 @@
 // 視覚専用(判定/移動/攻撃に一切影響しない)。CLAUDE.md「レンダリングとゲームロジックの分離」に
 // 従い、ここは renderer-agnostic なデータのみ(PixiJS import なし)。
 
-export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set' | 'pirate-set';
+export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set' | 'pirate-set' | 'ghost-set';
 
 export interface AvatarPart {
   /** src/pixi/pixiTextures.ts の standalone リストに登録したテクスチャ名。 */
@@ -216,6 +216,56 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         sizeBasis: 'width',
         flipWithFacing: true,
         followsHead: true,
+      },
+    ],
+  },
+  // 第6弾「お化けセット」(社長支給2026-11-01): 額の三角布(頭・above)+周りに浮かぶ火の玉2つ(above)+卒塔婆(背中・below)。
+  // 社長指示「卒塔婆は尻尾の代わりに斜めに背中に」: 支給の絵を斜めに回した物(先が後ろ上・ドットのまま回転)を背中に置く。
+  'ghost-set': {
+    id: 'ghost-set',
+    name: 'お化けセット',
+    parts: [
+      {
+        tex: 'avatar-ghost-sotoba', // 59×52(支給の38×64を斜めに回した物)
+        layer: 'below',
+        anchorX: 0.5, anchorY: 0.5,
+        offsetXFrac: -0.2,
+        offsetYFrac: -0.55,
+        sizeFrac: 0.7,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+        followsHead: true,
+      },
+      {
+        tex: 'avatar-ghost-tenkan', // 30×15(額の三角布)
+        layer: 'above',
+        anchorX: 0.5, anchorY: 1,
+        offsetXFrac: 0.04,
+        offsetYFrac: -0.8,
+        sizeFrac: 0.28,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+        followsHead: true,
+      },
+      {
+        tex: 'avatar-ghost-fire-big', // 27×43(背中側の肩の横に浮かぶ)
+        layer: 'above',
+        anchorX: 0.5, anchorY: 1,
+        offsetXFrac: -0.48,
+        offsetYFrac: -0.28,
+        sizeFrac: 0.3,
+        sizeBasis: 'height',
+        flipWithFacing: true,
+      },
+      {
+        tex: 'avatar-ghost-fire-small', // 20×32(進行方向側の頭の横に浮かぶ)
+        layer: 'above',
+        anchorX: 0.5, anchorY: 1,
+        offsetXFrac: 0.36,
+        offsetYFrac: -0.68,
+        sizeFrac: 0.22,
+        sizeBasis: 'height',
+        flipWithFacing: true,
       },
     ],
   },

@@ -701,6 +701,10 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'avatar-bunny-tail', scaleMode: 'nearest' }, // 21×21
       { name: 'avatar-pirate-hat', scaleMode: 'nearest' }, // 99×79(第5弾「海賊セット」)
       { name: 'avatar-pirate-sword', scaleMode: 'nearest' }, // 81×81
+      { name: 'avatar-ghost-tenkan', scaleMode: 'nearest' }, // 30×15(第6弾「お化けセット」)
+      { name: 'avatar-ghost-fire-big', scaleMode: 'nearest' }, // 27×43
+      { name: 'avatar-ghost-fire-small', scaleMode: 'nearest' }, // 20×32
+      { name: 'avatar-ghost-sotoba', scaleMode: 'nearest' }, // 59×52
       // 裏ボス スカジの氷ハザード(氷塊テレグラフ / 飛ぶ氷の刃)。ピクセルアート=nearest。
       { name: 'zan' }, // 刀フィニッシュの習字「斬」(拡大表示なので既定linearで滑らかに)
       { name: 'torch', scaleMode: 'nearest' },
