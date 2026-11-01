@@ -5220,9 +5220,28 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (to) { patchHunter(prim.id, { hunterAlerted: false, hunterLeavingAt: undefined }); startWarp(prim.id, to, false); }
             else patchHunter(prim.id, { hunterAlerted: false, hunterLeavingAt: newGameTime, hunterPatrolR: ringR, vx: 0, vy: 0 });
           };
-          /** 視界の円の判定(入った=「見られている」→5秒で発見→追跡)。撃たれたら即発見。 */
-          const watchStep = (prim: Enemy): 'none' | 'watching' | 'found' => {
+          /**
+           * 視界の円の判定(入った=「見られている」→5秒で発見→追跡)。撃たれたら即発見。
+           * keepDetect=急接近中: 一度「見られている」になったら、円の外へ出ても発見までの計測を続ける(円の出入りで
+           * 「気配が消えた…」と「何かに見られている…」を繰り返さない・下がり続けて逃げ切れない)。
+           * 円の外にいる間は 'tracking'(呼び手はそのまま寄り続ける)。
+           */
+          const watchStep = (prim: Enemy, keepDetect = false): 'none' | 'watching' | 'tracking' | 'found' => {
             const d = Math.hypot(hpx - (prim.x + prim.width / 2), hpy - (prim.y + prim.height / 2));
+            const discover = (): 'found' => {
+              // 発見: 追跡開始。索敵個体を起こす(撃たれた時は見られている段を飛ばして即)。巡回の印も外す(通常AIで追う)。
+              useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter'
+                ? { ...e, dormant: false, aggroRange: undefined, hunterPatrolR: undefined, hunterWarpOutAt: undefined, hunterWarpInAt: undefined } : e) }));
+              H.phase = 'chase'; H.chaseStartAt = newGameTime; H.reinforced = 0;
+              useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
+              playSfx('enemy-spotted'); // 見つかった音(社長支給2026-10-24「索敵系の敵に見つかった時の音」)
+              useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
+              spawnFlash('rgba(180,40,40,0.18)', 220);
+              // ハンター出現(発見)アテンション: カメラがハンターへ高速パン→ホールド→戻る(社長指示)。
+              // 社長裁定2026-08-28「ハンターも入れて『監視者』」: 発見(1波1回)にカットイン。
+              useGameStore.getState().triggerAttention(prim.x + prim.width / 2, prim.y + prim.height / 2, bossCutinPayload('hunter'));
+              return 'found';
+            };
             // ★攻撃を受けたら気付く(社長指示2026-10-24「索敵系の敵は全て攻撃喰らっても気付く様にして」): 索敵中に撃たれたら即「発見」。
             const shotWhileSearching = (prim.lastHit ?? 0) > 0;
             if (d <= HUNTER_DETECT_RANGE || shotWhileSearching) {
@@ -5237,21 +5256,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.setState({ eventBannerText: '何かに見られている…', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
                 return 'watching';
               }
-              if (shotWhileSearching || newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS) {
-                // 発見: 追跡開始。索敵個体を起こす(撃たれた時は見られている段を飛ばして即)。巡回の印も外す(通常AIで追う)。
-                useGameStore.setState(s => ({ enemies: s.enemies.map(e => e.type === 'hunter'
-                  ? { ...e, dormant: false, aggroRange: undefined, hunterPatrolR: undefined, hunterWarpOutAt: undefined, hunterWarpInAt: undefined } : e) }));
-                H.phase = 'chase'; H.chaseStartAt = newGameTime; H.reinforced = 0;
-                useGameStore.setState({ eventBannerText: 'ハンターに発見された！', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
-                playSfx('enemy-spotted'); // 見つかった音(社長支給2026-10-24「索敵系の敵に見つかった時の音」)
-                useGameStore.getState().triggerShake(REAPER_SUMMON_SHAKE_MS, REAPER_SUMMON_SHAKE_MAG);
-                spawnFlash('rgba(180,40,40,0.18)', 220);
-                // ハンター出現(発見)アテンション: カメラがハンターへ高速パン→ホールド→戻る(社長指示)。
-                // 社長裁定2026-08-28「ハンターも入れて『監視者』」: 発見(1波1回)にカットイン。
-                useGameStore.getState().triggerAttention(prim.x + prim.width / 2, prim.y + prim.height / 2, bossCutinPayload('hunter'));
-                return 'found';
-              }
+              if (shotWhileSearching || newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS) return discover();
               return 'watching';
+            }
+            if (keepDetect && H.detectStartAt !== 0) {
+              return newGameTime - H.detectStartAt >= HUNTER_DISCOVER_MS ? discover() : 'tracking';
             }
             if (H.detectStartAt !== 0) {
               H.detectStartAt = 0; // 範囲外へ逃げ切った=セーフ(検知リセット)
@@ -5338,21 +5347,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 patchHunter(prim.id, { hunterWatchOff: watchOff });
                 if (watchOff && H.detectStartAt !== 0) { H.detectStartAt = 0; patchHunter(prim.id, { hunterAlerted: false }); }
               }
-              const w = appearing || watchOff ? 'none' : watchStep(prim);
               // 拠点解放前の急接近(社長指示2026-11-01): 拠点0のままプレイヤーがデンジャーゾーンに入ると、
               // デンジャーゾーンの帯から出ずに、輪に沿って(帯の向きが主)すごい速さでプレイヤーへ向かってくる。
-              // 視界の円に入ったら今までどおり止まって見る→5秒で発見→追跡。
+              // 視界の円に入ったら今までどおり止まって見る→5秒で発見→追跡。一度見られたら円の外へ下がっても計測は続く。
               const pcx = prim.x + prim.width / 2, pcy = prim.y + prim.height / 2;
-              // 大きなイベント・演出・通信の最中(watchOff=見つけない間)は急接近もしない(見つけないまま目の前に居座らない)。
-              const rushing = !watchOff && hunterRushActive(hs.baseSites.filter(b => b.status === 'captured').length, Math.hypot(hpx, hpy), AREA_THRESHOLDS[1]);
+              // しない時: 大きなイベント・演出・通信の最中(watchOff=見つけない間。見つけないまま目の前に居座らない)/
+              // 拠点の上にいる(拠点はハンターの安全地帯=追跡も退く)/このランでゲート1を通過した(旧・凶悪ハンターと同じ解除)。
+              const rushing = !watchOff && !nearAnyBase && !gate1PassedThisRunRef.current
+                && hunterRushActive(hs.baseSites.filter(b => b.status === 'captured').length, Math.hypot(hpx, hpy), AREA_THRESHOLDS[1]);
               const rushTo = rushing ? hunterRushNext(pcx, pcy, hpx, hpy, AREA_THRESHOLDS[1], AREA_THRESHOLDS[2], Math.min(240, ringR * 0.6)) : undefined;
+              const w = appearing || watchOff ? 'none' : watchStep(prim, rushing);
               if (w === 'found') {
                 // 追跡へ(上の watchStep が切り替えた)
               } else if (w === 'watching') {
                 // 見ている間は減速して止まる(高速で通り過ぎない)。急接近中は向かっていた向きのまま止まる。
                 const r = stepHunterPatrol(prim, ringR, P.speed, 0, deltaTime, rushTo);
                 P.speed = r.speed; patchHunter(prim.id, r.patch);
-              } else if (rushing && !appearing) {
+              } else if (rushing && !appearing) { // 'tracking'(見られた後に円の外へ下がった)もここ=寄り続ける
                 const r = stepHunterPatrol(prim, ringR, P.speed, HUNTER_RUSH_SPEED, deltaTime, rushTo);
                 P.speed = r.speed; patchHunter(prim.id, r.patch);
               } else if (!appearing && !watchOff && nearWarpReady() && open.has(sectorOfPos(hpx, hpy))) {
