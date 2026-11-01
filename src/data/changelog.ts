@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5316', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5315', items: [
     '起動に失敗して画面が真っ暗のままの時、画面の下に理由が赤い字で出る',
   ] },
