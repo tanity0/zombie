@@ -695,7 +695,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'avatar-cat-tail-v2', scaleMode: 'nearest' }, // 19×32
       { name: 'avatar-devil-horns', scaleMode: 'nearest' }, // 48×30(第2弾「悪魔セット」)
       { name: 'avatar-devil-tail', scaleMode: 'nearest' }, // 49×32
-      { name: 'avatar-angel-wings', scaleMode: 'nearest' }, // 81×33(第3弾「天使セット」)
+      { name: 'avatar-angel-wings-v2', scaleMode: 'nearest' }, // 83×33(第3弾「天使セット」・右の小さい翼を右上へずらした版)
       { name: 'avatar-angel-halo', scaleMode: 'nearest' }, // 32×15
       { name: 'avatar-bunny-ears', scaleMode: 'nearest' }, // 72×32(第4弾「うさぎセット」)
       { name: 'avatar-bunny-tail', scaleMode: 'nearest' }, // 21×21

@@ -136,12 +136,15 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
     name: '天使セット',
     parts: [
       {
-        tex: 'avatar-angel-wings', // 81×33(左=大きい翼 / 右=小さい翼を反転・間を6空けた)
+        // 83×33(左=大きい翼 / 右=小さい翼を反転)。社長指示2026-11-01「右側の羽 少し右上へ」で、
+        // 右の小さい翼だけを素材の2px右・2px上へずらした版(-v2)。元の81×33は原盤として残す。
+        // 置く点・1画素の大きさは元と同じ(アンカー=元の49.98px÷83、大きさ=0.9×83/81)=左の大きい翼は1pxも動かない。
+        tex: 'avatar-angel-wings-v2',
         layer: 'below',
-        anchorX: 0.617, anchorY: 0.4, // 2枚の付け根の間=背中に置く基準点
+        anchorX: 0.6022, anchorY: 0.4, // 2枚の付け根の間=背中に置く基準点
         offsetXFrac: -0.05,
         offsetYFrac: -0.68,
-        sizeFrac: 0.9,
+        sizeFrac: 0.9222,
         sizeBasis: 'width',
         flipWithFacing: true,
         followsHead: true, // しゃがみ・走りで上体と一緒に動く

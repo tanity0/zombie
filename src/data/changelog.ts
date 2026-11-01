@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5329', items: [
+    '天使セットの右側の小さい羽を、少し右上へ',
+  ] },
   { version: '0.25.5328', items: [
     'ゲーム内容の変更はありません',
   ] },

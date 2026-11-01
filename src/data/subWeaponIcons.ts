@@ -24,7 +24,7 @@ export const subWeaponIconName = (key: SubWeaponKey): string | null => SUB_ICON[
 const AVATAR_ICON: Partial<Record<AvatarId, string>> = {
   'cat-set': 'avatar-cat-ears-v2',
   'devil-set': 'avatar-devil-horns',
-  'angel-set': 'avatar-angel-wings',
+  'angel-set': 'avatar-angel-wings-v2',
   'bunny-set': 'avatar-bunny-ears',
   'pirate-set': 'avatar-pirate-hat-v2',
   'ghost-set': 'avatar-ghost-fire-big-v2',

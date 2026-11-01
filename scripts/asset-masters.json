@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "971 files / 復号後 約712MB",
+ "generatedFor": "972 files / 復号後 約712MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -613,6 +613,12 @@
    "h": 15,
    "bytes": 844,
    "sha": "eca3de47054d9f62"
+  },
+  "sprites/avatar-angel-wings-v2.png": {
+   "w": 83,
+   "h": 33,
+   "bytes": 3121,
+   "sha": "e00db821cae03e5b"
   },
   "sprites/avatar-angel-wings.png": {
    "w": 81,
