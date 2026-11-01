@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5326', items: [
+    'うさぎセットの尻尾を少し体寄りに',
+  ] },
   { version: '0.25.5325', items: [
     'ハンターは常に1体だけ。追われている間に増援が来なくなった',
   ] },

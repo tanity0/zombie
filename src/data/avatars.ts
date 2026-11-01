@@ -181,7 +181,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         tex: 'avatar-bunny-tail', // 21×21
         layer: 'below',
         anchorX: 0.5, anchorY: 0.5,
-        offsetXFrac: -0.3,
+        offsetXFrac: -0.26, // 社長指示2026-11-01「うさぎの尻尾、もう少しだけ右へ」-0.3→-0.26
         offsetYFrac: -0.42,
         sizeFrac: 0.22,
         sizeBasis: 'width',
