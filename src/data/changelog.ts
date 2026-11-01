@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5320', items: [
+    'メイドセットの腰のリボンをさらに体へ寄せ、ヘッドドレスをひと回り小さく',
+  ] },
   { version: '0.25.5319', items: [
     '起動に失敗した時の赤い表示を取り外した',
   ] },

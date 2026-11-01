@@ -309,7 +309,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         tex: 'avatar-maid-bow', // 30×32(エプロンの後ろの大きなリボン)
         layer: 'below',
         anchorX: 0.5, anchorY: 0.4,
-        offsetXFrac: -0.25, // 社長指示2026-11-01「リボンもう少し右に」-0.3→-0.25
+        offsetXFrac: -0.19, // 社長指示2026-11-01「リボンもう少し右に」-0.3→-0.25→「もっと右に入れて」-0.19
         offsetYFrac: -0.42,
         sizeFrac: 0.42,
         sizeBasis: 'width',
@@ -321,7 +321,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         anchorX: 0.5, anchorY: 0.12, // 弧のてっぺんを頭頂に置く
         offsetXFrac: 0.02,
         offsetYFrac: -0.95, // 社長指示2026-11-01「カチューシャもう少し上に」-0.9→-0.95
-        sizeFrac: 0.5,
+        sizeFrac: 0.44, // 社長指示2026-11-01「カチューシャは少しちいさく」0.5→0.44
         sizeBasis: 'width',
         flipWithFacing: true,
         followsHead: true,
