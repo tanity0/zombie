@@ -12,10 +12,6 @@ import { MOLOTOV_FIRE_RADIUS } from './molotov';
 
 const clampLv = (level: number): number => Math.max(0, Math.min(3, Math.floor(level || 0)));
 
-// ---- ビッグバレット(normal): 弾サイズ×1.3/1.5/1.7(判定と絵を同時拡大。貫通/跳弾/壁衝突は不変) ----
-export const BIG_BULLET_SIZE_MULT_BY_LEVEL: readonly number[] = [1, 1.3, 1.5, 1.7];
-export const bigBulletSizeMult = (level: number): number => BIG_BULLET_SIZE_MULT_BY_LEVEL[clampLv(level)];
-
 // ---- アイスショット(normal): 命中で鈍足+キル時氷片3(0.3倍・全Lv) ----
 // 社長裁定v0.25.3280「レベル1で40% 2秒/2で50% 2.5秒/3で60% 3秒。ボスは半分の効果で発動」:
 // 旧(20%/30%/40%・1s/1s/1.5s・ボス対象外)から強化+ボス解禁(強度のみ半分・時間はそのまま)。

@@ -2,7 +2,6 @@
 // (判定値・確率はrng注入で決定的に)。
 import { describe, it, expect } from 'vitest';
 import {
-  bigBulletSizeMult, BIG_BULLET_SIZE_MULT_BY_LEVEL,
   iceShotSlowParams, ICE_SHOT_SHARD_COUNT, ICE_SHOT_SHARD_DMG_MULT,
   rollVampireHeal, VAMPIRE_PROC_CHANCE, VAMPIRE_HEAL_BY_LEVEL,
   incendiaryBurnParams, INCENDIARY_FLOOR_SMALL_RADIUS, INCENDIARY_FLOOR_LARGE_RADIUS,
@@ -16,16 +15,6 @@ import {
 
 // 決定的な擬似rng: 常に同じ値を返す/一度だけ違う値を返す等、テストごとに用意する。
 const constRng = (v: number) => () => v;
-
-describe('big-bullet: 弾サイズ×1.3/1.5/1.7', () => {
-  it('未所持(Lv0)は等倍', () => expect(bigBulletSizeMult(0)).toBe(1));
-  it('Lv1/2/3', () => {
-    expect(bigBulletSizeMult(1)).toBeCloseTo(1.3);
-    expect(bigBulletSizeMult(2)).toBeCloseTo(1.5);
-    expect(bigBulletSizeMult(3)).toBeCloseTo(1.7);
-  });
-  it('テーブル長は4(index0=未所持含む)', () => expect(BIG_BULLET_SIZE_MULT_BY_LEVEL.length).toBe(4));
-});
 
 describe('ice-shot: 鈍足20%/30%/40%・1s/1s/1.5s', () => {
   // 社長裁定v0.25.3280: 40%/50%/60%・2s/2.5s/3s(ボスは強度のみ半分=ICE_SHOT_BOSS_EFFECT_MULT)。

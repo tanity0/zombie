@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5321', items: [
+    'アタックシューターで弾が大きくならなくなった。銃ダメージの上昇と、覚醒で敵を吹き飛ばす力はそのまま',
+  ] },
   { version: '0.25.5320', items: [
     'メイドセットの腰のリボンをさらに体へ寄せ、ヘッドドレスをひと回り小さく',
   ] },

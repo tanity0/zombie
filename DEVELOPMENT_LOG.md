@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.5321 — アタックシューターの「弾が大きくなる」を撤去【2026-11-01 17:21 JST】
+
+社長指示「**アタックシューターのスキル 弾が大きくなる は辞める**」。
+- `src/utils/weaponUtils.ts`:
+  - 発射の弾の大きさを、武器の値のまま(`shotSize = size`)にした。
+  - 旧ビッグバレット由来の ×1.3/1.5/1.7 は、v0.25.3297 で attack-shooter に統合されていた。これを外した。
+  - 当たり判定と見た目の両方が、元の大きさに戻る。
+- 撤去した部品: `src/utils/skillEffectsB7.ts` の `bigBulletSizeMult`/`BIG_BULLET_SIZE_MULT_BY_LEVEL`(呼び手は上の1か所だけだった)と、そのテスト。
+- `src/data/campaign.ts` のスキル説明2か所から、弾の大きさの記述を外した。
+- **残したもの**:
+  - 銃ダメージ +10/20/30%(`skillAttackShooterGunMult`)
+  - 覚醒(Lv3)の近接級ノックバック
+- 検証: typecheck 緑 / eslint 0。関連テスト(skillEffectsB7・skills・sim・fixedGuardians・railBias・runSkillDraft・skillIcons・weaponUtils)はすべて通った。
+- 憲法第4条・第5条: スキル1つの効果を減らすだけで、湧き・台本には触れないので抵触なし。
+
 ## v0.25.5320 — メイドセット: リボンをさらに右へ・ヘッドドレスを小さく【2026-11-01 17:18 JST】
 
 社長指示「**メイドアバターセットのリボンもっと右に入れて。カチューシャは少しちいさく**」。

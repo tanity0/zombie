@@ -9,7 +9,6 @@ import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { aimEnemyDist2, pickNearestTarget, isCorpse } from './enemyUtils';
 import { segmentBlocked } from '../world/obstacles';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
-import { bigBulletSizeMult } from './skillEffectsB7';
 import { isTrapDebuffed, TRAP_PVP_RELOAD_MULT } from './trapDebuff';
 import { HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL } from '../config/hunting';
 import { SLOT_CATEGORIES, SLOT_CANDIDATES } from '../data/weaponSlots';
@@ -1276,11 +1275,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
   //   スキル ラストマガジン: 弾倉最後の1発(この発射で空になるトリガー1回分=発射前の残弾1)×2.0/2.5/3.0。
   //   ショットガンは最終シェルの全ペレットに乗る(shotDamage共通)。命中時の他倍率とは乗算(§6.8 M31)。
   const shotDamage = gunShotBaseDamage(shotWeapon, player, gtFire);
-  // スキル: ビッグバレット = 弾サイズ×1.3/1.5/1.7(見た目と当たり判定を同時拡大。速度・貫通数・
-  // 跳弾回数・壁衝突は不変=§28-2)。プレイヤー自身の銃弾のみ(ghost-gun/support-sniperは対象外)。
-  // 社長指示v0.25.3297「ビッグバレットが地味なのでアタックシューターと統合」: 弾サイズ拡大は
-  // attack-shooterのLvで発動(big-bulletはRETIRED)。倍率表(×1.3/1.5/1.7)はそのまま流用。
-  const shotSize = size * bigBulletSizeMult(skillLevel(player, 'attack-shooter'));
+  // 弾の大きさは武器の値のまま。アタックシューターの「弾が大きくなる」(旧ビッグバレットの×1.3/1.5/1.7・
+  // v0.25.3297で統合)は社長指示2026-11-01「弾が大きくなる は辞める」で撤去=銃ダメージ増と覚醒のKBだけが残る。
+  const shotSize = size;
 
   const projectiles: Projectile[] = [];
   for (let i = 0; i < count; i++) {
