@@ -221,12 +221,13 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
   },
   // 第6弾「お化けセット」(社長支給2026-11-01): 額の三角布(頭・above)+周りに浮かぶ火の玉2つ(above)+卒塔婆(背中・below)。
   // 社長指示「卒塔婆は尻尾の代わりに斜めに背中に」: 支給の絵を斜めに回した物(先が後ろ上・ドットのまま回転)を背中に置く。
+  // 2026-11-01 社長が細かさを落とした絵に差し替え(表示の大きさは sizeFrac のまま=同じ)。旧素材は原盤として public に残す。
   'ghost-set': {
     id: 'ghost-set',
     name: 'お化けセット',
     parts: [
       {
-        tex: 'avatar-ghost-sotoba', // 59×52(支給の38×64を斜めに回した物)
+        tex: 'avatar-ghost-sotoba-v2', // 31×26(支給の19×31を斜めに回した物・2026-11-01差し替え)
         layer: 'below',
         anchorX: 0.5, anchorY: 0.5,
         offsetXFrac: -0.08, // 社長指示2026-11-01「もう少しだけ右へ」-0.2→-0.16、「もっと右」→-0.08
@@ -237,7 +238,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         followsHead: true,
       },
       {
-        tex: 'avatar-ghost-tenkan', // 30×15(額の三角布)
+        tex: 'avatar-ghost-tenkan-v2', // 15×8(額の三角布・差し替え)
         layer: 'above',
         anchorX: 0.5, anchorY: 1,
         offsetXFrac: 0.04,
@@ -248,7 +249,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         followsHead: true,
       },
       {
-        tex: 'avatar-ghost-fire-big', // 27×43(背中側の肩の横に浮かぶ)
+        tex: 'avatar-ghost-fire-big-v2', // 14×22(背中側の腰の横に浮かぶ・差し替え)
         layer: 'above',
         anchorX: 0.5, anchorY: 1,
         offsetXFrac: -0.48,
@@ -258,7 +259,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         flipWithFacing: true,
       },
       {
-        tex: 'avatar-ghost-fire-small', // 20×32(進行方向側の頭の横に浮かぶ)
+        tex: 'avatar-ghost-fire-small-v2', // 10×16(進行方向側の頭の横に浮かぶ・差し替え)
         layer: 'above',
         anchorX: 0.5, anchorY: 1,
         offsetXFrac: 0.36,

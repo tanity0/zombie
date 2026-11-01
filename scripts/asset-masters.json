@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "959 files / 復号後 約712MB",
+ "generatedFor": "963 files / 復号後 約712MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -656,11 +656,23 @@
    "bytes": 1640,
    "sha": "a93c6f8fba0fd585"
   },
+  "sprites/avatar-ghost-fire-big-v2.png": {
+   "w": 14,
+   "h": 22,
+   "bytes": 345,
+   "sha": "5139d6a6319f54b0"
+  },
   "sprites/avatar-ghost-fire-big.png": {
    "w": 27,
    "h": 43,
    "bytes": 581,
    "sha": "3b0f34064f3a3826"
+  },
+  "sprites/avatar-ghost-fire-small-v2.png": {
+   "w": 10,
+   "h": 16,
+   "bytes": 299,
+   "sha": "a2ad21ffd7b9c22e"
   },
   "sprites/avatar-ghost-fire-small.png": {
    "w": 20,
@@ -668,11 +680,23 @@
    "bytes": 431,
    "sha": "1c937fe1f93b8397"
   },
+  "sprites/avatar-ghost-sotoba-v2.png": {
+   "w": 31,
+   "h": 26,
+   "bytes": 551,
+   "sha": "7a733def3ce9edc6"
+  },
   "sprites/avatar-ghost-sotoba.png": {
    "w": 59,
    "h": 52,
    "bytes": 1419,
    "sha": "171dd3d20ed9d491"
+  },
+  "sprites/avatar-ghost-tenkan-v2.png": {
+   "w": 15,
+   "h": 8,
+   "bytes": 248,
+   "sha": "9532dffdff5eae06"
   },
   "sprites/avatar-ghost-tenkan.png": {
    "w": 30,

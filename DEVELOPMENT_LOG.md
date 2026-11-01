@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5308 — お化けセットの絵を差し替え【2026-11-01 13:34 JST】
+- 社長「差し替え」(三角布・火の玉2つ・卒塔婆を横に並べた1枚・104×34=前の約半分の細かさ)。切り分けて `-v2` の名前で足した:
+  `avatar-ghost-tenkan-v2.png`(15×8)/ `avatar-ghost-fire-big-v2.png`(14×22)/ `avatar-ghost-fire-small-v2.png`(10×16)/
+  `avatar-ghost-sotoba-v2.png`(31×26=支給の19×31を前回と同じく斜めに回した物)。
+  ※同じ名前で上書きすると寸法が縮む=原盤の掟(`assets:check`)に掛かるので、旧素材は public に原盤として残し、台帳と表だけ新しい名前へ。
+- 置き方(位置・大きさの割合)は前のまま=表示の大きさは同じで、ドットが粗くなった。
+- 確認(ヘッドレス・430×932 dpr2): 差し替え前/右向き/左向きを並べて見た。
+- 変更: public/sprites/avatar-ghost-*-v2.png(4枚)/ src/data/avatars.ts / src/data/subWeaponIcons.ts / src/pixi/pixiTextures.ts /
+  scripts/asset-masters.json / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5307 — お化けセット: 卒塔婆をもっと右へ【2026-11-01 13:24 JST】
 - 社長「卒塔婆もっと右」。卒塔婆 `offsetXFrac` -0.16 → -0.08(右向き基準)。
 - 確認(ヘッドレス・430×932 dpr2): 変更前/右向き/左向きを並べて見た。

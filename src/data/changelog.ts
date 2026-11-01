@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5308', items: [
+    'お化けセットの絵を描き直した物に差し替え',
+  ] },
   { version: '0.25.5307', items: [
     'お化けセットの卒塔婆を、さらに前寄りに',
   ] },
