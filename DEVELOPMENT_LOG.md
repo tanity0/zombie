@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.5303 — 新アバター「うさぎセット」(垂れ耳+丸い尻尾)【2026-11-01 12:23 JST】
+- 社長支給の画像(耳2本・丸い尻尾を横に並べた1枚・114×34・縁は2値)を切り分けて素材にした:
+  `public/sprites/avatar-bunny-ears.png`(72×32=支給の2本の並びのまま)/ `avatar-bunny-tail.png`(21×21)。
+- `src/data/avatars.ts` に `bunny-set`「うさぎセット」を1行足した。耳=付け根(上端寄りの真ん中)を頭頂より少し上に置き、
+  先が頭の横へ垂れる・頭頂追従・猫耳/角と同じく進行方向側の1本を頭の裏(`leadingHalfBehind`)。尻尾=below・腰の後ろ。
+  メニューの絵の枡は耳。素材台帳を更新(`assets:ledger`)。
+- 確認(ヘッドレス・430×932 dpr2): 右向き/左向きで、耳が頭の両横に垂れ(手前は髪の前・奥は頭の裏)、尻尾が背中側の腰に出るのを見た
+  (1回目は耳が顔に被り・尻尾が服に隠れていたので、耳を上へ・尻尾を後ろへ出して撮り直し)。
+- 憲法第4条・第5条: 見た目だけ=抵触なし。
+- 変更: public/sprites/avatar-bunny-ears.png / public/sprites/avatar-bunny-tail.png / src/data/avatars.ts /
+  src/data/subWeaponIcons.ts / src/pixi/pixiTextures.ts / scripts/asset-masters.json / package.json / src/data/changelog.ts / DEVELOPMENT_LOG.md
+
 ## v0.25.5302 — 新アバター「天使セット」(輪+翼)【2026-11-01 12:17 JST】
 - 社長支給の画像(輪・大きい翼・小さい翼を横に並べた1枚・153×34・縁は2値)を切り分けて素材にした:
   `public/sprites/avatar-angel-halo.png`(32×15)/ `avatar-angel-wings.png`(81×33=左に大きい翼、右に小さい翼を

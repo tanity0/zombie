@@ -13,7 +13,7 @@
 // 視覚専用(判定/移動/攻撃に一切影響しない)。CLAUDE.md「レンダリングとゲームロジックの分離」に
 // 従い、ここは renderer-agnostic なデータのみ(PixiJS import なし)。
 
-export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set';
+export type AvatarId = 'cat-set' | 'devil-set' | 'angel-set' | 'bunny-set';
 
 export interface AvatarPart {
   /** src/pixi/pixiTextures.ts の standalone リストに登録したテクスチャ名。 */
@@ -156,6 +156,36 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         sizeBasis: 'width',
         flipWithFacing: true,
         followsHead: true,
+      },
+    ],
+  },
+  // 第4弾「うさぎセット」(社長支給2026-11-01): 垂れ耳2本(頭・above)+丸い尻尾(腰の後ろ・below)。
+  // 耳は猫耳・角と同じく、進行方向側の1本を頭の裏へ回す。
+  'bunny-set': {
+    id: 'bunny-set',
+    name: 'うさぎセット',
+    parts: [
+      {
+        tex: 'avatar-bunny-ears', // 72×32(支給の並びのまま=付け根が真ん中寄りの上、先が外へ垂れる)
+        layer: 'above',
+        anchorX: 0.5, anchorY: 0.15, // 付け根(上端寄りの真ん中)を頭頂に置く
+        offsetXFrac: 0.03,
+        offsetYFrac: -0.92,
+        sizeFrac: 0.55,
+        sizeBasis: 'width',
+        flipWithFacing: true,
+        followsHead: true,
+        leadingHalfBehind: true,
+      },
+      {
+        tex: 'avatar-bunny-tail', // 21×21
+        layer: 'below',
+        anchorX: 0.5, anchorY: 0.5,
+        offsetXFrac: -0.3,
+        offsetYFrac: -0.42,
+        sizeFrac: 0.22,
+        sizeBasis: 'width',
+        flipWithFacing: true,
       },
     ],
   },
