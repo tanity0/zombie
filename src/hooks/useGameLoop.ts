@@ -220,6 +220,7 @@ import { astroSpawnPick, astroMeteorView, astroMeteorCamLead } from '../utils/as
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
 import { loadHeroAscended } from '../utils/heroAscended';
+import { markBossesEncountered } from '../utils/bossEncounter'; // 出撃前のボス一覧: 変異体の「出会った」(社長指示2026-11-02)
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties, heroAsTarget } from '../utils/heroBlast';
 import { hateEscortSource } from '../utils/escortView';
@@ -9548,6 +9549,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               const lAc = bossArtCenter(activeLib);
               useGameStore.getState().triggerAttention(lAc.x, lAc.y, bossCutinPayload('mutant-liberty'));
+              markBossesEncountered(new Set(['mutant-liberty'])); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
               // 遠くで叫んでいる群れの声(英雄の嘶きと同じ場所・距離で減衰)。
               playSfx('screamer-cry', npcSfxDistGain(lAc.x, lAc.y, useGameStore.getState().player.x + useGameStore.getState().player.width / 2,
                 useGameStore.getState().player.y + useGameStore.getState().player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
@@ -9581,6 +9583,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               const aAc = bossArtCenter(activeAstro);
               useGameStore.getState().triggerAttention(aAc.x, aAc.y, bossCutinPayload('mutant-astro'));
+              markBossesEncountered(new Set(['mutant-astro'])); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
               useGameStore.setState({ eventBannerText: '宇宙飛行群(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
             if (!useGameStore.getState().attention) runAstroTick(activeAstro, astroStateRef.current, newGameTime, deltaTime, Date.now());
@@ -9605,6 +9608,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               const wAc = bossArtCenter(activeWraith);
               useGameStore.getState().triggerAttention(wAc.x, wAc.y, bossCutinPayload('mutant-wraith'));
+              markBossesEncountered(new Set(['mutant-wraith'])); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
               useGameStore.setState({ eventBannerText: '亡霊(変異体)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
             // 見失わせる場面(§8 A5): ステージボス戦・ボスに追われている・紅き夜・大きなイベント・屋内・帰還サークル。
@@ -9641,6 +9645,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (旧: 本編の周回の英雄は出会った時刻の強さで体力を決め直していた。社長指示2026-10-05で体力は固定=決め直さない。)
               const hAc = bossArtCenter(activeHero);
               useGameStore.getState().triggerAttention(hAc.x, hAc.y, bossCutinPayload('mutant-hero'));
+              markBossesEncountered(new Set(['mutant-hero'])); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
               useGameStore.setState({ eventBannerText: '英雄(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
               HERO_SFX.neigh(npcSfxDistGain(hAc.x, hAc.y, player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
             }

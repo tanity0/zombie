@@ -124,6 +124,10 @@ import { subWeaponIconName, avatarIconName } from '../data/subWeaponIcons';
 import { spritePath } from '../utils/spriteLoader';
 import { DEV_TOOLS_ENABLED } from '../config/devtools';
 import { Ff7rButton } from './ff7r';
+import { SortieBossBrief } from './SortieBossBrief';
+import { sortieBossRoster, type SortieBoss } from '../utils/sortieBossRoster';
+import { hasEncounteredBoss } from '../utils/bossEncounter';
+import { loadHeroAscended } from '../utils/heroAscended';
 import type { CharacterClass, SubWeaponKey, SkillKey } from '../types/game';
 import { portraitSrcFor, menuWalkFrameSrc } from '../data/portraits';
 import { walkSequenceForIdleSrc } from '../pixi/playerWalkSheets';
@@ -558,6 +562,10 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     if (stageId) prefetchStageTextures(getStage(stageId));
   }, [screen]);
   const [selectedClass, setSelectedClass] = useState<CharacterClass>('warrior');
+  // 出撃前のボス一覧(社長指示2026-11-02)。START で開き、閉じた瞬間に出撃する。
+  const [sortieBrief, setSortieBrief] = useState<{ stageId: string; charId: CharacterClass; mission: SelectedMission; roster: SortieBoss[] } | null>(null);
+  // 画面が変われば一覧は必ず閉じる(古いステージの一覧が別の出撃に残らない)。
+  useEffect(() => { setSortieBrief(null); }, [screen]);
   const [freeMode, setFreeMode] = useState(false);               // 出撃がフリー(周回・会話なし)か
   // 守護霊(同行者)ピッカー(社長指示2026-08-20: 装備から同行者欄を外し、キャラ選択の右端の
   // 「守護霊枠」から選ぶ)。開閉だけのUI状態なのでローカルstate。
@@ -1217,6 +1225,15 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
         {/* 立ち絵の発光と同系の光の粒(足元から立ち上る) */}
         <CharSelectParticles />
 
+        {sortieBrief && (
+          <SortieBossBrief
+            stageId={sortieBrief.stageId}
+            roster={sortieBrief.roster}
+            onDone={() => { const b = sortieBrief; setSortieBrief(null); startMission(b.stageId, b.charId, b.mission); }}
+            onCancel={() => setSortieBrief(null)}
+          />
+        )}
+
         {/* 戻る(左上) */}
         <button
           onClick={() => { playSfx('ui-back'); setGhostPickerOpen(false); setScreen({ name: 'missionDetail', stageId, mission: missionKind }); }}
@@ -1258,7 +1275,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </div>
             {/* スタート(右下)=FF7R風の紫ボタン(社長指示で旧・緑PNGは破棄)。 */}
             <Ff7rButton
-              onClick={() => startMission(stageId, effectiveClass, missionKind)}
+              onClick={() => {
+                // 出撃前のボス一覧(社長指示2026-11-02)。会えるボスが居ないステージ(チュートリアル等)はそのまま出撃。
+                const roster = sortieBossRoster(stageId, hasEncounteredBoss, { heroAscended: loadHeroAscended() });
+                if (roster.length === 0) { startMission(stageId, effectiveClass, missionKind); return; }
+                playSfx('ui-select');
+                setSortieBrief({ stageId, charId: effectiveClass, mission: missionKind, roster });
+              }}
               className="shrink-0 min-w-[150px] active:scale-95 transition-transform"
               ariaLabel="スタート"
               testId="charselect-start"
