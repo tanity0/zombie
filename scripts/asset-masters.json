@@ -3606,37 +3606,37 @@
    "w": 78,
    "h": 64,
    "bytes": 4189,
-   "sha": "4284d6140b2562cb"
+   "sha": "a9780cae826ab0b3"
   },
   "sprites/player-scavenger-run-1.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4321,
-   "sha": "c87cf926e8ba94f2"
+   "bytes": 4315,
+   "sha": "9e7013d10f9f5ba3"
   },
   "sprites/player-scavenger-run-2.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4249,
-   "sha": "2225363c1accaa7e"
+   "bytes": 4248,
+   "sha": "64f852ea8426fdec"
   },
   "sprites/player-scavenger-run-3.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4085,
-   "sha": "69fe5d446c6c9469"
+   "bytes": 4081,
+   "sha": "1db0f1a826963fa7"
   },
   "sprites/player-scavenger-run-4.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4182,
-   "sha": "8c5d97a9ef2add52"
+   "bytes": 4189,
+   "sha": "9e2f7bfa31a4796f"
   },
   "sprites/player-scavenger-run-5.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4169,
-   "sha": "1db23aa1f47a1b8e"
+   "bytes": 4174,
+   "sha": "939fdcf47ac766f7"
   },
   "sprites/player-scavenger-walk-0.png": {
    "w": 78,
