@@ -5132,6 +5132,26 @@ const applyVampireMeleeHeal = (
   });
 };
 
+// スキル「英雄」(社長指示2026-11-02「満タンでない場合、攻撃のたびに5%HP」→数え方は「近接が当たるたび」):
+// 体力が満タンでない時、近接が敵に当たった1振りごとに最大体力の5%回復。吸血の覚醒(同じ5%)と併用でき、両方持てば両方回復する。
+// 満タンかどうかは当たった瞬間(吸血の回復より前)の体力で見る。守護霊・分身などの疑似の主語では回復しない。
+export const HERO_MELEE_HEAL_FRAC = 0.05;
+const applyHeroMeleeHeal = (get: () => GameState, player: Player, hitEnemyIds: string[]) => {
+  if (hitEnemyIds.length === 0 || player.pseudoActor || !player.skills.includes('hero')) return;
+  const p0 = get().player;
+  if (p0.maxHealth <= 0 || p0.health >= p0.maxHealth || p0.health <= 0) return;
+  const heal = Math.max(1, Math.round(p0.maxHealth * HERO_MELEE_HEAL_FRAC));
+  useGameStore.setState(state => ({
+    player: { ...state.player, health: Math.min(state.player.maxHealth, state.player.health + heal) },
+  }));
+  get().spawnCallout(p0.x + p0.width / 2, p0.y - 34, `+${heal}`, '#f5c542');
+};
+/** 近接が当たった時の回復の合流点(英雄 → 吸血の覚醒の順)。近接4経路(素手/分身/刀/ムチ)がここを呼ぶ。 */
+const applyMeleeHitHeals = (get: () => GameState, player: Player, hitEnemyIds: string[], fallbackX: number, fallbackY: number) => {
+  applyHeroMeleeHeal(get, player, hitEnemyIds);
+  applyVampireMeleeHeal(get, player, hitEnemyIds, fallbackX, fallbackY);
+};
+
 // スキル: リーパー(super) = 近接フィニッシュを決めた瞬間、その近接攻撃範囲(プレイヤー中心の
 // 同じスイング範囲)内の敵全員にもフィニッシュ(即死)を波及。ボスは即死せず、近接フィニッシュ
 // 相当ダメージ(スタン中ボスへの近接と同じ ×BOSS_MELEE_STUN_MULT)。reaper型(特殊敵)は対象外。
@@ -10134,7 +10154,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // スキル: 救難信号(近接ヒット時、一定確率で味方が援護攻撃=必中・倍率1)。
     applyRescueSignalProc(get, player, swingBaseDamage, meleeHitEnemyIds, pcx, pcy);
     // 吸血覚醒(Lv3・v0.25.3300): 近接ヒットでも1%回復(1スイング1回・控えめdrain)。
-    applyVampireMeleeHeal(get, player, meleeHitEnemyIds, pcx, pcy);
+    applyMeleeHitHeals(get, player, meleeHitEnemyIds, pcx, pcy);
     get().registerMultiHit(slashAt.length); // キャラ固有 ヘビーガンナー: 近接が2体以上に当たれば爆発範囲バフ
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
       notifySkillProcFor(player, 'counter-master');
@@ -10385,7 +10405,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // スキル: 救難信号(§6.10 M33⑦: 分身のヒットでも発動判定。基本近接/刀と同条件・索敵起点は分身中心)。
     applyRescueSignalProc(get, player, meleeDamage, cloneHitEnemyIds, ccx, ccy);
     // 吸血覚醒(Lv3・v0.25.3300): 分身の近接ヒットでも1%回復(同じ動作を持つ全員に付ける)。
-    if (!isGhost) applyVampireMeleeHeal(get, player, cloneHitEnemyIds, ccx, ccy);
+    if (!isGhost) applyMeleeHitHeals(get, player, cloneHitEnemyIds, ccx, ccy);
   },
 
   // ★O-3b-2(SAME_ARENA.md §3-d-4「そのままの仕様で」): 幻影の分身は enemies ではなく
@@ -11243,7 +11263,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (allowFinisher) {
       applyRescueSignalProc(get, player, baseDamage * damageMult, katanaHitEnemyIds, pcx, pcy);
       // 吸血覚醒(Lv3・v0.25.3300): 刀のヒットでも1%回復。
-      applyVampireMeleeHeal(get, player, katanaHitEnemyIds, pcx, pcy);
+      applyMeleeHitHeals(get, player, katanaHitEnemyIds, pcx, pcy);
     }
 
     if (!isGhost && killed.length > 0) get().registerPlayerKills(killed.length, true); // 戦闘の手触り②(v0.25.4269): 本人の刀のキルも段へ
@@ -11513,7 +11533,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 鞭の通常打撃基準=meleeBase×WHIP_DAMAGE_MULT を素通し)。
     applyRescueSignalProc(get, player, meleeBase * WHIP_DAMAGE_MULT, whipHitEnemyIds, pcx, pcy);
     // 吸血覚醒(Lv3・v0.25.3300): 鞭のヒットでも1%回復。
-    applyVampireMeleeHeal(get, player, whipHitEnemyIds, pcx, pcy);
+    applyMeleeHitHeals(get, player, whipHitEnemyIds, pcx, pcy);
     let whipFinishFull = false; // 処刑が起きたか。揺れの finish 倍率はCD内でも掛ける(v0.25.4301)
     if (finisherHit || bossFinishHit) {
       const [ztx, zty] = whipBossFatalHits[0]
