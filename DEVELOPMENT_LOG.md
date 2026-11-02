@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5349 — ストライカーの走り6コマを差し替え(社長支給)【2026-11-02 22:28 JST】
+- 社長支給の横並び6コマ(366×66=1コマ61×66)を、既存と同じ 78×64 の6枚へ切り出して `public/sprites/player-scavenger-run-0..5.png` を差し替え(ストライカー=rogue=scavenger の接頭辞)。上2px(全コマ透明)を落とし、横は9px右へ寄せて体の中心を既存(x≈39)に合わせた。足元は下端のまま。並び RUN_SEQ_6 は不変。
+- 体の絵を差し替えたので `node scripts/avatar-head-anchors.mjs --write` を回し、確認用の画で6コマとも頭の印が頭頂に乗っているのを目視。台帳の変化は scavenger-run の6行だけ。
+- `assets:ledger` 更新・`assets:check` 原盤OK(寸法同じの差し替え)。旧6枚は scratch に退避(リポジトリ外)。
+- 確認: 新旧6コマを並べた画(4倍)で大きさ・位置が揃っていることを目視。
+
 ## v0.25.5348 — 刀を持っている時の近接の振りに振りの音【2026-11-02 22:12 JST】
 - 社長報告「刀装備時にナイフ振るとSEが鳴らない?」=鳴っていなかった。原因: `triggerCounter` の刀の分岐は振りを確定させる(窓・CD・打刻・小物破壊)が攻撃しないので `swung:false` を返し、呼び手(useGameLoop の前隙明け・PC入力 inputActions)は `swung` の時だけ 'melee' を鳴らしていた。
 - 直し: `CounterTriggerResult.katanaSwing`(刀の振りが確定した時だけ true)を足し、2つの呼び手で `swung || katanaSwing` の時に 'melee' を鳴らす。`swung` の意味(攻撃した振り=一振り再生・被弾反撃などが読む)は変えていない。テスト1本(meleeHitCombo.store.test)。

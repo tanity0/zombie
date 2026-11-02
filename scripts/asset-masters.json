@@ -3605,38 +3605,38 @@
   "sprites/player-scavenger-run-0.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4192,
-   "sha": "2fb5f017e747f72e"
+   "bytes": 4189,
+   "sha": "4284d6140b2562cb"
   },
   "sprites/player-scavenger-run-1.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4129,
-   "sha": "5d2af0dc08f7e22a"
+   "bytes": 4321,
+   "sha": "c87cf926e8ba94f2"
   },
   "sprites/player-scavenger-run-2.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4017,
-   "sha": "c02e3e0a0952403d"
+   "bytes": 4249,
+   "sha": "2225363c1accaa7e"
   },
   "sprites/player-scavenger-run-3.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4066,
-   "sha": "4ecb6097f1f9480e"
+   "bytes": 4085,
+   "sha": "69fe5d446c6c9469"
   },
   "sprites/player-scavenger-run-4.png": {
    "w": 78,
    "h": 64,
-   "bytes": 3950,
-   "sha": "9da5d3280e0b40e0"
+   "bytes": 4182,
+   "sha": "8c5d97a9ef2add52"
   },
   "sprites/player-scavenger-run-5.png": {
    "w": 78,
    "h": 64,
-   "bytes": 4075,
-   "sha": "3b48e5e45e0e8267"
+   "bytes": 4169,
+   "sha": "1db23aa1f47a1b8e"
   },
   "sprites/player-scavenger-walk-0.png": {
    "w": 78,
