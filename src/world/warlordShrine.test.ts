@@ -14,7 +14,7 @@ describe('武将の祠(research/POI_TOUCH_SHRINE.md §2)', () => {
         const got = SHRINE_SLOTS.map(s => a[s]);
         expect(new Set(got).size).toBe(3);
         expect(got).not.toContain(boss);
-        for (const g of got) expect(g).toBeGreaterThanOrEqual(0), expect(g).toBeLessThan(POI_SECTORS);
+        for (const g of got) { expect(g).toBeGreaterThanOrEqual(0); expect(g).toBeLessThan(POI_SECTORS); }
       }
     }
   });
