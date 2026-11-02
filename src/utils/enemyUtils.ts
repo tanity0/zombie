@@ -513,11 +513,24 @@ export const isUntouchable = (e: Pick<Enemy, 'bossState' | 'labBait' | 'wraithPh
 // オーナーがプレイヤーとは限らないサブウェポン(金環・守護霊発動)がプレイヤー中心を素通しせず
 // 呼べるように、ここへ置く(enemyUtils.ts は gameStore を import しないので循環参照が起きない)。
 // maxDist2 を渡すとその外の敵を除外(既定=無制限。銃の自動照準は射程ゲートを別に持つため無制限のまま)。
+// ★near2(社長指示2026-11-02「近くにクリティカルの敵がほかにいない場合は、銃でうつ」): スタン中(クリティカル)は最終手段のまま、
+// ただし「最終手段」を**近く(near2=射程²)の中で**判断する。旧: 盤上に1体でもスタンしていない敵が居ればそちらを選び、
+// それが射程の外だと射程ゲートで撃たない=近くのスタン中の敵を永遠に撃たなかった。
+// 順: 近くのスタンしていない敵 → 近くのスタン中の敵 → (近くに誰も居ない時は従来どおり)スタンしていない最寄り → スタン中の最寄り。
+// near2 を渡さなければ(=Infinity)従来と1bit同値。
+const choosePreferLive = (
+  live: Enemy | null, liveD2: number, stunned: Enemy | null, stunnedD2: number, near2: number,
+): Enemy | null => {
+  if (live && liveD2 <= near2) return live;
+  if (stunned && stunnedD2 <= near2) return stunned;
+  return live ?? stunned;
+};
+
 export const pickNearestTarget = (
   pcx: number, pcy: number, enemies: readonly Enemy[], gameTime: number, maxDist2 = Infinity,
-  isBlocked?: (e: Enemy) => boolean,
+  isBlocked?: (e: Enemy) => boolean, near2 = Infinity,
 ): Enemy | null => {
-  if (isBlocked) return pickNearestUnblocked(pcx, pcy, enemies, gameTime, maxDist2, isBlocked);
+  if (isBlocked) return pickNearestUnblocked(pcx, pcy, enemies, gameTime, maxDist2, isBlocked, near2);
   let best: Enemy | null = null;
   let bestD2 = Infinity;
   let bestStunned: Enemy | null = null;
@@ -534,7 +547,7 @@ export const pickNearestTarget = (
       bestD2 = d2; best = e;
     }
   }
-  return best ?? bestStunned;
+  return choosePreferLive(best, bestD2, bestStunned, bestStunnedD2, near2);
 };
 
 /**
@@ -544,7 +557,7 @@ export const pickNearestTarget = (
  */
 const pickNearestUnblocked = (
   pcx: number, pcy: number, enemies: readonly Enemy[], gameTime: number, maxDist2: number,
-  isBlocked: (e: Enemy) => boolean,
+  isBlocked: (e: Enemy) => boolean, near2 = Infinity,
 ): Enemy | null => {
   const live: { e: Enemy; d2: number }[] = [];
   const stunned: { e: Enemy; d2: number }[] = [];
@@ -554,11 +567,13 @@ const pickNearestUnblocked = (
     if (d2 > maxDist2) continue;
     (e.stunUntil !== undefined && gameTime < e.stunUntil ? stunned : live).push({ e, d2 });
   }
-  for (const list of [live, stunned]) {
+  const firstOpen = (list: { e: Enemy; d2: number }[]) => {
     list.sort((a, b) => a.d2 - b.d2);
-    for (const c of list) if (!isBlocked(c.e)) return c.e;
-  }
-  return null;
+    for (const c of list) if (!isBlocked(c.e)) return c;
+    return null;
+  };
+  const l = firstOpen(live), s = firstOpen(stunned);
+  return choosePreferLive(l?.e ?? null, l?.d2 ?? Infinity, s?.e ?? null, s?.d2 ?? Infinity, near2);
 };
 
 // KILLされた通常敵が「死体化」の対象になり得るか(ボス系/ネームド/クエスト対象=getsDramaticDeath系は

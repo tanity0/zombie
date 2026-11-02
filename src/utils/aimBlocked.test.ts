@@ -35,3 +35,19 @@ describe('オート射撃の狙い: 遮られている敵は飛ばす', () => {
     expect(pickNearestTarget(0, 0, [far], 0, 100 * 100, blockedBy([wall]))).toBeNull();
   });
 });
+
+describe('近くにスタンしていない敵が居なければ、近くのスタン中(クリティカル)の敵を撃つ(社長指示2026-11-02)', () => {
+  const stunnedNear = at('sn', 60, 0, { stunUntil: 1000 });
+  const liveFar = at('lf', 600, 0);
+  const liveNear = at('ln', 0, 80);
+  const near2 = 200 * 200;
+  it('射程の外にしかスタンしていない敵が居なければ、射程内のスタン中の敵を選ぶ(旧: 遠い敵を選んで撃たなかった)', () => {
+    expect(pickNearestTarget(0, 0, [stunnedNear, liveFar], 0)?.id).toBe('lf'); // near2 なし=従来
+    expect(pickNearestTarget(0, 0, [stunnedNear, liveFar], 0, Infinity, undefined, near2)?.id).toBe('sn');
+    expect(pickNearestTarget(0, 0, [stunnedNear, liveFar], 0, Infinity, blockedBy([]), near2)?.id).toBe('sn');
+  });
+  it('射程内にスタンしていない敵が居ればそちらが先(スタン中は最終手段のまま)', () => {
+    expect(pickNearestTarget(0, 0, [stunnedNear, liveNear, liveFar], 0, Infinity, undefined, near2)?.id).toBe('ln');
+    expect(pickNearestTarget(0, 0, [stunnedNear, liveNear, liveFar], 0, Infinity, blockedBy([]), near2)?.id).toBe('ln');
+  });
+});

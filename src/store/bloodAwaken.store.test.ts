@@ -19,7 +19,7 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { computeEffectiveMoveSpeed, type EffectiveMoveSpeedInput } from '../utils/playerMoveSpeed';
 import { resolveGhostBuild } from '../utils/ghostBuild';
 import { buildPseudoPlayer } from '../utils/playerBuild';
-import { fireWeapon, createWeapon, AMMO_FIELD } from '../utils/weaponUtils';
+import { fireWeapon, createWeapon, AMMO_FIELD, effectiveFireCooldown } from '../utils/weaponUtils';
 import { bloodAwakenMult, BLOOD_AWAKEN_MS } from '../utils/bloodAwaken';
 import type { Player } from '../types/game';
 
@@ -202,18 +202,19 @@ describe('覚醒中の倍率の配線', () => {
     // 省略(=スマホ・通常)は従来と同値
     expect(computeEffectiveMoveSpeed({ ...base, awakenSpeedMult: 1 })).toBe(plain);
   });
-  it('弾速 ×1.5 は発射時に確定: 覚醒中に撃った弾だけ速い', () => {
+  it('覚醒中は発射間隔が1.5倍速い(社長指示2026-11-02「弾速(発射間隔)が1.5倍」)。弾の飛ぶ速さは変わらない', () => {
     const p = st().player;
     const gun = { ...createWeapon('handgun-t1'), lastFired: 0 };
     const target = spawnEnemyAt('zombie', p.x, p.y, st().gameTime);
     useGameStore.setState(s => ({ enemies: [target], player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(w => w.isMelee)], activeWeaponId: gun.id } }));
+    const cdNormal = effectiveFireCooldown(gun, st().player);
     const normal = fireWeapon(gun, st().player, [target]);
     expect(normal.length).toBe(1);
     awaken();
+    expect(cdNormal / effectiveFireCooldown(gun, st().player)).toBeCloseTo(1.5);
     const boosted = fireWeapon({ ...gun, lastFired: 0 }, st().player, [target]);
     expect(boosted.length).toBe(1);
-    expect(boosted[0].speed / normal[0].speed).toBeCloseTo(1.5);
-    expect(normal[0].speed).toBeGreaterThan(0); // 先に撃った弾は変わらない
+    expect(boosted[0].speed).toBeCloseTo(normal[0].speed);
   });
   it('時間の速さ(timeScale)は触らない: 覚醒の倍率に時間の項は無い', () => {
     expect(Object.keys(bloodAwakenMult({ bloodAwakenUntil: 99999 }, 0)).sort()).toEqual(['boost']);

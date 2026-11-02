@@ -154,7 +154,7 @@ import {
 } from '../config/shijin';
 import type { SkillProcEntry } from '../utils/skillProcFeed';
 import { pushSkillProc, shiftSkillProc, isSkillProcShown } from '../utils/skillProcFeed';
-import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponRoundsPerAmmo, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage } from '../utils/weaponUtils';
+import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponRoundsPerAmmo, awakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
 import { alchemyStoneDetonateDamage, alchemyStoneDetonateRadius } from '../utils/alchemyStone';
 import { type SignalStrike, SIGNAL_STRIKE_DELAY_MS, SIGNAL_STRIKE_RADIUS_PX } from '../utils/signalLauncher';
@@ -1598,6 +1598,11 @@ export const CRIT_DAMAGE_MULT = 1.5;
 // boss deals 5× melee damage (and shakes off the stun) instead of an instakill.
 export const BOSS_CRIT_DAMAGE_MULT = 5;
 export const BOSS_MELEE_STUN_MULT = 5;
+/** クリティカル中(気絶 stunUntil / ボス式のクリティカル bossSlowUntil)の敵へのプレイヤーの銃弾 ×1.2(社長指示2026-11-02「設定されてなければ1.2倍」)。
+ *  紫(体勢崩し)の銃の報酬(applyBrokenGunReward)とは重ねない(紫の間はそちらが優先)。 */
+export const CRIT_STATE_GUN_DAMAGE_MULT = 1.2;
+export const isEnemyInCritState = (e: Pick<Enemy, 'stunUntil' | 'bossSlowUntil'>, gameTime: number): boolean =>
+  (e.stunUntil !== undefined && gameTime < e.stunUntil) || (e.bossSlowUntil !== undefined && gameTime < e.bossSlowUntil);
 // v0.25.2490(社長裁定・雑魚ヘイト): ゴースト起因ダメージを受けた雑魚がゴーストへ向く時間(gameTime ms)。
 // 被弾のたびに更新。切れる/ゴースト消滅でプレイヤー狙いへ戻る(resolveEnemyTarget側)。実機調整前提の叩き台。
 export const GHOST_MOB_HATE_MS = 5000;
@@ -13068,7 +13073,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
     // バーサーカー覚醒(Lv3・v0.25.3300): HP40%以下は連射+10%(通常射撃と同じ倍率をPHILLにも適用)。
-    if (now - weapon.lastFired < (weapon.cooldown ?? 1000) / ((player.equipBonus?.fireRateMult ?? 1) * berserkerAwakenFireRateMult(player))) return;
+    if (now - weapon.lastFired < (weapon.cooldown ?? 1000) / ((player.equipBonus?.fireRateMult ?? 1) * awakenFireRateMult(player))) return;
     // GAME_AUDIT #10: 通常射撃(weaponUtils)と同じダメージ倍率を適用する。従来は連射装備だけ
     // 効いてダメージ装備・スキル・スカベンジャーが素通りだった(速くなるが強くならない非対称)。
     // スキル: ラストマガジン = 弾倉最後の1発 ×2.0/2.5/3.0(PHILLも対象・§6.8 M31)。
@@ -13161,7 +13166,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
-    if (now - (weapon.manualLastFired ?? 0) < (weapon.cooldown ?? 1300) / ((player.equipBonus?.fireRateMult ?? 1) * berserkerAwakenFireRateMult(player))) return;
+    if (now - (weapon.manualLastFired ?? 0) < (weapon.cooldown ?? 1300) / ((player.equipBonus?.fireRateMult ?? 1) * awakenFireRateMult(player))) return;
     // firePhillShotと同じ合流点(スカベンジャー/アタックシューター/消費カード/装備/ラストマガジン)。
     const railgunDamage = weapon.damage * scavengerGunMult(player, get().gameTime) * skillAttackShooterGunMult(player) * consumableAttackMult(player, get().gameTime) * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
     const pcx = player.x + player.width / 2;
@@ -13237,7 +13242,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     if (isReloading(player, weapon.id)) return;
     if ((weapon.magazine ?? 0) <= 0) { get().autoSwitchIfDry(); return; }
-    if (now - weapon.lastFired < (weapon.cooldown ?? 1400) / ((player.equipBonus?.fireRateMult ?? 1) * berserkerAwakenFireRateMult(player))) return;
+    if (now - weapon.lastFired < (weapon.cooldown ?? 1400) / ((player.equipBonus?.fireRateMult ?? 1) * awakenFireRateMult(player))) return;
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
     const strikeX = pcx + player.phillReticleDX;
@@ -14320,7 +14325,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         w: enemy.width, h: enemy.height,
       };
       // research/NEW_GUNS.md §4-2: スキャンの印の倍率は手動の近接の各経路が自分で掛ける=ここ(銃・サブ・仲間)では掛けない。
-      const resolvedAmount = meleeFatal?.damage ?? pvpFatal ?? gunReward?.damage ?? gatedAmount;
+      // クリティカル中の敵へのプレイヤーの銃弾 ×1.2(紫の報酬が出ている時は重ねない)。
+      const critStateGun = !gunReward && damageChannel === 'gun' && hateSource === 'player' && isEnemyInCritState(enemy, state.gameTime)
+        ? gatedAmount * CRIT_STATE_GUN_DAMAGE_MULT : null;
+      const resolvedAmount = meleeFatal?.damage ?? pvpFatal ?? gunReward?.damage ?? critStateGun ?? gatedAmount;
       // 紅き夜中は敵HP実質2倍(プレイヤーダメージを半分に落とす)。
       const eff = (state.redNight?.phase === 'active' || RN_ENEMY_FORCE) ? Math.max(1, Math.floor(resolvedAmount / 2)) : resolvedAmount;
       appliedDamage = eff; // §6.21 M46計測用(set後にchannel別加算)

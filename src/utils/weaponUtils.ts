@@ -1,6 +1,6 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, notifySkillProcFor, bulletBlockersAround, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
-import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 弾速 ×1.5(発射時に確定)
+import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 発射間隔を ×1.5 速く(awakenFireRateMult)
 import { projectileHitCritChance } from './critPenalty';
 import { classifyProjectileDamageChannel, recordMeleeFromGun } from './botTelemetry';
 import { DEV_WEAPON_KEY } from './devTestKnobs';
@@ -758,9 +758,16 @@ export const berserkerAwakenFireRateMult = (p: Player): number =>
     ? BERSERKER_AWAKEN_FIRE_RATE_MULT
     : 1;
 
+/**
+ * 連射の倍率(装備以外の上乗せ): バーサーカー覚醒(×1.1)× 血の覚醒(×1.5・社長指示2026-11-02「覚醒中は弾速(発射間隔)が1.5倍」)。
+ * 血の覚醒は他の倍率と同じく終わりの1秒で 1.0 へ戻る(bloodAwakenMult)。疑似Player(守護霊等)は血が落ちているので 1。
+ */
+export const awakenFireRateMult = (p: Player): number =>
+  berserkerAwakenFireRateMult(p) * bloodAwakenMult(p, useGameStore.getState().gameTime).boost;
+
 // 装備(腕)込みの実効発射間隔。プレイヤーと守護霊が同じ1本を使う。
 export const effectiveFireCooldown = (w: Weapon, p: Player): number =>
-  w.cooldown / ((p.equipBonus?.fireRateMult ?? 1) * berserkerAwakenFireRateMult(p));
+  w.cooldown / ((p.equipBonus?.fireRateMult ?? 1) * awakenFireRateMult(p));
 
 // Is this specific gun currently mid-reload?
 export const isReloading = (p: Player, weaponId: string): boolean =>
@@ -945,12 +952,16 @@ const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null => {
   const st = useGameStore.getState();
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const walls = bulletBlockersAround(st, pcx, pcy, AIM_BLOCKER_PAD_PX);
-  if (walls.length === 0) return pickNearestTarget(pcx, pcy, enemies, st.gameTime);
+  // 「近く」=今の銃の射程(社長指示2026-11-02: 近くにスタンしていない敵が居なければ、近くのスタン中の敵を撃つ)。
+  const gun = getActiveGun(player);
+  const nearPx = gun ? gunEffectiveRangePx(gun) : Infinity;
+  const near2 = nearPx * nearPx;
+  if (walls.length === 0) return pickNearestTarget(pcx, pcy, enemies, st.gameTime, Infinity, undefined, near2);
   // 遮りは「狙う点」まで(ふつうは中心。変異塊の代理=742×300 の箱は、プレイヤーにいちばん近い縁=blastAnchorOf)。
   // ★社長報告2026-11-02「塊に向けて銃が撃たれない」: 中心で見ると廊下では中心への線がほぼ必ず壁を横切り、
   // 「壁の向こうの敵」扱いで自動射撃の候補から外れていた。
   return pickNearestTarget(pcx, pcy, enemies, st.gameTime, Infinity,
-    e => { const a = blastAnchorOf(e, pcx, pcy); return segmentBlocked(pcx, pcy, a.x, a.y, walls); });
+    e => { const a = blastAnchorOf(e, pcx, pcy); return segmentBlocked(pcx, pcy, a.x, a.y, walls); }, near2);
 };
 
 // Distance from the player center to the gun's chosen target, or Infinity when
@@ -1255,9 +1266,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
   // GHOST-GUN-PARITY: 拡散角/サイズ・速度の計算式は共通ヘルパへ抽出しただけ(値は不変)。
   const shotDirections = computeShotDirections(shotWeapon, baseDir);
   const { size, speed: baseSpeed } = projectileFlightStats(shotWeapon);
-  // B10 血の覚醒(THEONE_ROUND2 §3-1): 弾速 ×1.5は**発射時に確定**(飛行中の弾は変わらない・射程も伸びる=副作用として許容)。
-  // 守護霊は buildGhostGunShots 側(この関数を通らない)・疑似Playerは血が落ちているので影響しない。
-  const speed = baseSpeed * bloodAwakenMult(player, useGameStore.getState().gameTime).boost;
+  // B10 血の覚醒: 旧「弾速 ×1.5」(弾が飛ぶ速さ)は社長指示2026-11-02「弾速(発射間隔)が1.5倍」で**発射間隔**へ付け替えた
+  // (awakenFireRateMult)。弾の飛ぶ速さは覚醒で変わらない。
+  const speed = baseSpeed;
   // UNIQUE_WEAPONS.md §16-2(バッチC-2・コイルSG・2026-09-07 C-2検収A-1で確定): 「中心線からの
   // 横ズレ」方式(coilShotgun.ts)の起点になる、ペレットiごとの振幅(px・±COIL_AMPLITUDE_PXへ等間隔)。
   // 基礎の拡散角は持たせない(CATALOGのspreadRadOverride:0)ので、computeShotDirectionsは
