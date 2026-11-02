@@ -1,4 +1,4 @@
-// research/MUTANT_HERO.md §1b(社長指示2026-10-05)スキル「英雄」: HPが満タンの間だけ、移動速度・与ダメージ・被ダメージ ×1.3。
+// research/MUTANT_HERO.md §1b(社長指示2026-10-05)スキル「英雄」: 移動速度・与ダメージ・被ダメージ ×1.3(社長指示2026-11-02で満タンの条件を外し常時)。
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useGameStore, skillHeroMult, skillHeroActive, skillIncomingDamageMult, skillOutgoingDamageMult, HERO_SKILL_MULT } from '../store/gameStore';
 import { SKILLS, GACHA_EXCLUDED_SKILLS, SKILL_KEYS } from '../data/campaign';
@@ -6,13 +6,13 @@ import { SKILLS, GACHA_EXCLUDED_SKILLS, SKILL_KEYS } from '../data/campaign';
 beforeEach(() => { useGameStore.getState().resetGame('warrior'); });
 
 describe('スキル「英雄」', () => {
-  it('HPが満タンの間だけ ×1.3、満タンでなければ効かない', () => {
+  it('体力に関係なく常時 ×1.3、スキルが無ければ効かない', () => {
     const p = useGameStore.getState().player;
     const full = { ...p, skills: ['hero' as const], health: p.maxHealth };
-    const hurt = { ...full, health: p.maxHealth - 1 };
+    const hurt = { ...full, health: 1 };
     expect(skillHeroActive(full)).toBe(true);
     expect(skillHeroMult(full)).toBe(HERO_SKILL_MULT);
-    expect(skillHeroMult(hurt)).toBe(1);
+    expect(skillHeroMult(hurt)).toBe(HERO_SKILL_MULT);
     expect(skillHeroMult({ ...full, skills: [] })).toBe(1);
   });
   it('与ダメージと被ダメージの両方に掛かる', () => {

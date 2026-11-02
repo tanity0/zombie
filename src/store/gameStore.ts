@@ -2296,11 +2296,11 @@ export const skillIncomingDamageMult = (player: Player, gameTime: number): numbe
   return (kl ? [1, 0.8, 0.7, 0.6][kl] : 1) * (hasSkill(player, 'berserker') ? 1.2 : 1)
     * consumableProtectionMult(player, gameTime) * skillHeroMult(player);
 };
-// research/MUTANT_HERO.md §1b(社長指示2026-10-05)スキル「英雄」: HPが満タンの間だけ、移動速度・与ダメージ・被ダメージが ×1.3。
-// 満タンでない時は1(=効かない)。Lv不問の固定。
+// research/MUTANT_HERO.md §1b(社長指示2026-10-05)スキル「英雄」: 移動速度・与ダメージ・被ダメージが ×1.3。Lv不問の固定。
+// ★社長指示2026-11-02: 「HPが満タンの間だけ」を外して常時(犬と同じ)。旧: 満タンでない時は1。
 export const HERO_SKILL_MULT = 1.3;
 export const skillHeroActive = (player: Pick<Player, 'skills' | 'health' | 'maxHealth'>): boolean =>
-  player.skills.includes('hero') && player.maxHealth > 0 && player.health >= player.maxHealth;
+  player.skills.includes('hero');
 export const skillHeroMult = (player: Pick<Player, 'skills' | 'health' | 'maxHealth'>): number =>
   skillHeroActive(player) ? HERO_SKILL_MULT : 1;
 // 社長指示v0.25.3303 カウンターマスター覚醒(Lv3): カウンター成立直後3秒間、全攻撃力+30%。
@@ -2331,7 +2331,7 @@ export const skillOutgoingDamageMult = (player: Player): number => {
     && skillLevel(player, 'counter-master') >= 3
     ? COUNTER_MASTER_AWAKEN_DMG_MULT
     : 1;
-  const heroMult = skillHeroMult(player); // スキル「英雄」: HP満タンの間 ×1.3
+  const heroMult = skillHeroMult(player); // スキル「英雄」: 常時 ×1.3
   const bl = skillLevel(player, 'berserker');
   if (!bl || player.maxHealth <= 0) return alcMult * cmMult * growthMult * heroMult;
   const k = [0, 1, 1.25, 1.5][bl];
@@ -8266,7 +8266,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       //   +100%の手前で止まる(utils/cruise.ts cruiseSpeedMult)。段(+20/30/40%)は段の時間で、上乗せは min(段の総時間,1秒) で立ち上がる。
       const othersSum = (skillRunnerSpeedMult(player, reloading) - 1) + (standardSpeedBonusMult(player) - 1)
         + (consumableSpeedMult(player, state.gameTime) - 1) + ((player.equipBonus?.moveSpeedMult ?? 1) - 1)
-        + (skillHeroMult(player) - 1); // スキル「英雄」: HP満タンの間 +30%
+        + (skillHeroMult(player) - 1); // スキル「英雄」: 常時 +30%
       const stageBonusNow = SPEED_RAMP_ENABLED ? cruiseStageBonus(nextSpeedRamp.sustainMs, cruiseT) : CRUISE_STAGE_BONUS[CRUISE_STAGE_MAX];
       const bonusMult = cruiseSpeedMult(stageBonusNow, othersSum, rampFrac);
       const moveSpeedInput = {
@@ -11664,8 +11664,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const dog = state.summons.find(isHeroDog);
     const mode = heroDogPresence({
       // 社長指示2026-11-02「英雄のスキルで、犬は常時出っ放し」: 犬は体力に関係なく、スキルを持っている間はずっと居る。
-      // (速度・ダメージ±30%は従来どおり満タンの間だけ=skillHeroActive。犬だけを切り離した)
-      heroActive: state.player.skills.includes('hero'),
+      heroActive: skillHeroActive(state.player),
       hasDog: dog !== undefined,
       dogLeaving: dog !== undefined && isHeroDogLeaving(dog),
       respawnAt: state.heroDogRespawnAt,

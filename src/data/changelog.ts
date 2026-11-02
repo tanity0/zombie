@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5342', items: [
+    'スキル「英雄」の速さと攻撃の強化は、体力が減っても常に効く。受けるダメージが増えるのも常に',
+  ] },
   { version: '0.25.5341', items: [
     'スキル「英雄」の犬は、体力が減ってもずっとついてくる',
   ] },
