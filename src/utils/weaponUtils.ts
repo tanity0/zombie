@@ -1,5 +1,5 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, bulletBlockersAround, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
+import { useGameStore, notifySkillProcFor, bulletBlockersAround, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
 import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 弾速 ×1.5(発射時に確定)
 import { projectileHitCritChance } from './critPenalty';
 import { classifyProjectileDamageChannel, recordMeleeFromGun } from './botTelemetry';
@@ -1282,7 +1282,10 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
   const fireShooterShot = fireShooterReady && Math.random() < [0, 0.2, 0.25, 0.3][fireShooterLv];
   if (fireShooterShot) {
     useGameStore.setState(state => ({ player: { ...state.player, fireShooterCdUntil: gtFire + 3000 } }));
+    notifySkillProcFor(player, 'fire-shooter');
   }
+  // スキル発動の表示: ラストマガジン=弾倉の最後の1発を撃った瞬間(倍率は gunShotBaseDamage が乗せる)。
+  if (skillLevel(player, 'last-magazine') && (weapon.magazine ?? 0) === 1) notifySkillProcFor(player, 'last-magazine');
   const FIRE_SHOOTER_RADIUS = 66; // = HEAVY_GRENADE_RADIUS
   // 社長指示v0.25.3300 ファイアシューター覚醒(Lv3): 爆発弾が大爆発になる(半径×1.8=
   // ボムカウンター自分中心大爆発と同じ「大爆発」倍率)。
@@ -1378,6 +1381,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
   const gsRefillProc = gsAwaken && Math.random() < 0.30;
   // 予備弾1つ=k発の銃(weaponRoundsPerAmmo)は、1発の補填に払う予備弾も1/k(1/kの確率で1つ払う=平均で釣り合う)。
   const gsPayReserve = Math.random() < 1 / weaponRoundsPerAmmo(weapon);
+  let ghostShooterProc = false;
   useGameStore.setState(state => {
     // UNIQUE_WEAPONS.md §16-2/§17-8 C-3(デザートテック・棚卸し対象): ゴーストシューター補填も
     // weaponAmmoTypeFor(実際に消費している弾種)から引く(weapon.ammoType固定ではない)。
@@ -1395,6 +1399,8 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
           // 覚醒時はrand=1固定で内部の非消費抽選を潰す(=必ず消費)→ 補填でmagazineを戻す。
           const shot = gsAwaken ? weaponAfterGunShot(w, player, now, () => 1) : weaponAfterGunShot(w, player, now);
           const refilled = doRefill ? { ...shot, magazine: (shot.magazine ?? 0) + 1 } : shot;
+          // ゴーストシューターが効いた(弾倉が減らなかった/覚醒の補填が入った)=発動の表示(set の外で出す)。
+          if ((refilled.magazine ?? 0) >= (w.magazine ?? 0) && skillLevel(player, 'ghost-shooter')) ghostShooterProc = true;
           // UNIQUE_WEAPONS.md §16-2: デュアルレンジのモードはここで確定・持ち越す。
           const withDualRange = nextDualRangeMode !== undefined ? { ...refilled, dualRangeMode: nextDualRangeMode } : refilled;
           // UNIQUE_WEAPONS.md §16-2(収束型SG): この発射で使った散り角(2.5秒リセット済みかもしれない
@@ -1411,6 +1417,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       },
     };
   });
+  if (ghostShooterProc) notifySkillProcFor(player, 'ghost-shooter');
 
   // UNIQUE_WEAPONS.md §16-2/§16-5(バッチD・ロケットランチャー): 「溜め(500ms)」の実装フック。
   // 発射直後の弾を速度0のままROCKET_CHARGE_MSだけその場に置く(=通常の敵衝突判定がそのまま

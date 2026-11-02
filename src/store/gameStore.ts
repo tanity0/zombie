@@ -152,6 +152,8 @@ import {
   randomRhythmPrompt, arrowFromDir, BYAKKO_DURATION_MS, BYAKKO_INTERVAL_MS,
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
+import type { SkillProcEntry } from '../utils/skillProcFeed';
+import { pushSkillProc } from '../utils/skillProcFeed';
 import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponRoundsPerAmmo, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
 import { alchemyStoneDetonateDamage, alchemyStoneDetonateRadius } from '../utils/alchemyStone';
@@ -5038,6 +5040,7 @@ export const applyRescueSignalProc = (
   // いなければ target=null=発動スキップ(社長指示v0.25.1615「ハンドガン範囲までしか索敵しない/いなければ発動しない」)。
   const target = selectRescueSignalTarget(hitEnemyIds[0], get().enemies, pcx, pcy, RANGE_BY_CATEGORY.handgun);
   if (!target) return;
+  notifySkillProcFor(player, 'rescue-signal');
   const klass = pickRescueSignalAllyClass(player.characterClass);
   // 出現位置=プレイヤーの現在向き(lastDirection)の逆側(=背後)。向き不明時は下向き基準にフォールバック。
   const ld = player.lastDirection;
@@ -5053,6 +5056,33 @@ export const applyRescueSignalProc = (
   );
 };
 
+// ---- スキル発動の表示(社長指示2026-11-01「スキル発動時は通信欄下に表示したい」→「効いた瞬間に新しく出す」) ----
+// プレイヤー自身のスキルが効いた瞬間に呼ぶ(守護霊・ゴースト・味方の分では呼ばない)。間引き・並びは utils/skillProcFeed。
+let skillProcLastAt: Partial<Record<SkillKey, number>> = {};
+let skillProcSeq = 0;
+export const resetSkillProcThrottle = (): void => { skillProcLastAt = {}; };
+export const notifySkillProc = (key: SkillKey): void => {
+  const now = Date.now();
+  const r = pushSkillProc(useGameStore.getState().skillProcFeed, skillProcLastAt, key, now, ++skillProcSeq);
+  if (!r) return;
+  skillProcLastAt = r.lastAt;
+  useGameStore.setState({ skillProcFeed: r.feed });
+};
+/**
+ * 持ち主がプレイヤー本人の時だけ出す(守護霊・分身の主語=疑似Player は別の skills 配列を持つ)。
+ * Player は更新のたびに作り直されるので参照比較はせず、skills 配列(装備が変わらない限り同じ物)で見分ける。
+ */
+export const notifySkillProcFor = (owner: Pick<Player, 'skills'> | null | undefined, key: SkillKey): void => {
+  if (!owner || owner.skills !== useGameStore.getState().player.skills) return;
+  notifySkillProc(key);
+};
+/** ボマーの抽選+表示(当たった時だけ、持ち主が本人なら出す)。抽選そのものは rollBomberScatter のまま。 */
+export const rollBomberScatterAndNotify = (owner: Player): boolean => {
+  const ok = rollBomberScatter(owner);
+  if (ok) notifySkillProcFor(owner, 'bomber');
+  return ok;
+};
+
 // 社長指示v0.25.3300 吸血覚醒(Lv3): 近接攻撃のヒットでも最大HPの1%回復。粒度は救難信号と同じ
 // 「1スイング1回」(複数体を同時に斬っても1回)。吸収エフェクトは控えめ=drain1本を短めに流すだけで
 // +数字のcalloutは出さない(キル時の既存演出との差別化)。
@@ -5063,6 +5093,7 @@ export const applyRescueSignalProc = (
 const applyVampireKillHeal = (get: () => GameState, at: { x: number; y: number }) => {
   const heal = rollVampireHeal(skillLevel(get().player, 'vampire'));
   if (heal <= 0) return;
+  notifySkillProc('vampire');
   useGameStore.setState(state => ({
     player: { ...state.player, health: Math.min(state.player.maxHealth, state.player.health + heal) },
   }));
@@ -5116,6 +5147,7 @@ const applyMeleeFinishSkillSpread = (
 ) => {
   if (!finisherOccurred) return;
   if (hasSkill(player, 'reaper')) {
+    notifySkillProcFor(player, 'reaper');
     const r2 = range * range;
     for (const e of get().enemies) {
       if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue; // 不倒の通常リーパーは対象外。深奥チェイサーは近接対象(ボス級)なので含める
@@ -5142,6 +5174,7 @@ const applyMeleeFinishSkillSpread = (
   }
   const shockLv = skillLevel(player, 'execution-shock');
   if (shockLv) {
+    notifySkillProcFor(player, 'execution-shock');
     // 社長指示v0.25.3281「衝撃波が新しい要素になっちゃうので、爆発で揃えて」: 独自の"衝撃波"を
     // やめ、既存の**爆発**要素に統一。①絵=手榴弾の爆発FXと同じ組(橙リング幅5+橙バースト20+
     // 暗赤バースト8+橙グロー) ②判定=「全ての爆発」規約どおり skillExplosionMult を半径/ダメージ
@@ -5604,6 +5637,7 @@ const placeSensorMineOnSwing = (
     recordSubUse('sensor-mine'); // M35計測: setSubWeaponCooldown経由をやめたため手動合流点
     if (smCd.overclockProc) {
       recordOverclockProc(); // §6.13: 成立=そのチャージを即再準備(smDuration=0で表現済み)
+      notifySkillProc('overclock');
       // §21(B5)枠光: 視覚のみ。手動合流点なのでここでも点ける(setSubWeaponCooldown経由と同じ扱い)。
       // 覚醒(Lv3・v0.25.3300): proc成立時に銃もクイックリロード(3地点共通の1本)。
       useGameStore.setState(s => ({ player: { ...s.player, overclockLightUntil: s.gameTime + OVERCLOCK_LIGHT_MS, ...overclockAwakenReloadPatch(s.player) } }));
@@ -5640,9 +5674,11 @@ const openShukuchiWindow = (get: () => GameState): void => {
   const { windowMs } = shukuchiParams(skillLevel(p, 'shukuchi'));
   // 連鎖: ワープ斬撃の撃破=+1 / それ以外の撃破は、窓が開いている間なら**そのまま残す**(社長裁定2026-10-01:
   // 「途切れたらリセット」=窓が切れるかワープ斬撃で倒せなかった時だけ0) / 窓が閉じていれば0から。
+  const wasOpen = shukuchiWindowOpen(p.shukuchiWindowUntil, get().gameTime);
   const chain = p.shukuchiStriking
     ? (p.shukuchiChain ?? 0) + 1
-    : shukuchiWindowOpen(p.shukuchiWindowUntil, get().gameTime) ? (p.shukuchiChain ?? 0) : 0;
+    : wasOpen ? (p.shukuchiChain ?? 0) : 0;
+  if (!wasOpen) notifySkillProc('shukuchi'); // 窓が開いた瞬間だけ(延長では出さない)
   useGameStore.setState(st => ({ player: {
     ...st.player, shukuchiWindowUntil: st.gameTime + windowMs, shukuchiChain: chain,
   } }));
@@ -7217,6 +7253,8 @@ interface GameState {
    * シミュ層がレンダラの都合(シートのどのマスか)を知らないようにするため。resetGameでnullへ。
    */
   skillPickFx: { key: SkillKey; lv: number; rarity: 'normal' | 'rare' | 'super'; at: number } | null;
+  /** スキルが効いた瞬間の表示(通信欄の下・utils/skillProcFeed)。発動の時だけ書き換わる=HUD は毎フレーム描き直さない。 */
+  skillProcFeed: SkillProcEntry[];
   rerollUpgradeOptions: () => void;             // スクラップを払い、表示中の3枚を全引き直し(スクラップ択は残置)
   banishSkillFromRun: (key: SkillKey) => void;  // 無料・ラン中2回まで。そのスキルを以後の抽選から除外
   gachaDupeCounts: Partial<Record<SkillKey, number>>;   // ガチャのスキル別「被り回数」(Lv抽選表の参照・永続)
@@ -7904,6 +7942,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   pauseReason: undefined,
   showUpgradeMenu: false,
   skillPickFx: null,
+  skillProcFeed: [],
   levelUpIntroUntil: 0,
   levelUpEmphasisUntil: 0,
   levelUpFlashArmed: false,
@@ -10809,7 +10848,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を爆発ダメージにも乗算。
       const baseDmg = b.damage * exMult * skillOutgoingDamageMult(get().player); // b.damage=FIRST_AID_KIT_THROW_DAMAGE(爆発中心の基準)
       // §6.10 M33③: ボマー = 救急鞄の爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
-      if (rollBomberScatter(get().player)) { // v0.25.3306: 確率発動(30/40/50%)
+      if (rollBomberScatterAndNotify(get().player)) { // v0.25.3306: 確率発動(30/40/50%)
         // ボマー覚醒(Lv3・v0.25.3300): ミニ手榴弾4つ(通常3つ)。
         for (const mini of buildBomberMinis(cx, cy, `bag-${b.id}`, undefined, undefined, bomberMiniCount(get().player))) get().addProjectile(mini);
         get().spawnBurst(cx, cy, '#fbbf24', 8);
@@ -12723,6 +12762,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const p = cur.player;
       const rfLv = skillLevel(p, 'reflex');
       if (rfLv && cur.gameTime >= p.reflexCdUntil) {
+        notifySkillProc('reflex');
         const pcx = p.x + p.width / 2;
         const pcy = p.y + p.height / 2;
         const exMult = skillExplosionMult(p);
@@ -12761,6 +12801,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2;
         get().spawnRing(pcx, pcy, 8, 60, 'rgba(148,163,184,0.7)', 3, 320);
         set(state => ({ player: { ...state.player, seekerUntil: state.gameTime + SEEKER_DURATION_MS, seekerCdUntil: state.gameTime + SEEKER_COOLDOWN_MS } }));
+        notifySkillProc('seeker');
       }
     }
 
@@ -13591,6 +13632,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       );
       if (cd.overclockProc) {
         recordOverclockProc(); // M35: 成立回数の計測のみ
+        queueMicrotask(() => notifySkillProc('overclock')); // スキル発動の表示(set の中から store を書かない)
         // §21(B5)枠光: 視覚のみ・判定/CDには不干渉(CDは元々「即再使用可」のまま=返り値以外は従来どおり)。
         // 覚醒(Lv3・v0.25.3300): proc成立時に銃もクイックリロード(3地点共通の1本)。
         return { player: { ...state.player, overclockLightUntil: state.gameTime + OVERCLOCK_LIGHT_MS, ...overclockAwakenReloadPatch(state.player) } };
@@ -14543,6 +14585,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const gravLv = skillLevel(get().player, 'gravity-shot');
       const well = rollGravityShotWell(gravLv);
       if (well) {
+        notifySkillProc('gravity-shot');
         gravityShotNextRollAt = Date.now() + GRAVITY_SHOT_PROC_CD_MS;
         const p = gunHitAt as { x: number; y: number };
         // 覚醒(Lv3・v0.25.3300): 2倍の長さで引き寄せ続ける。
@@ -18828,6 +18871,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // v0.25.3299 一拍目(接触)の小FX: ぶつかった衝撃の読み。二拍目(下)の大シェイク/数字と区別する。
     for (const c of punisherContacts) get().spawnBurst(c.x, c.y, '#fca5a5', 6);
     if (punisherHits.length > 0 && punisherDmg > 0) {
+      if (hasSkill(get().player, 'punisher')) notifySkillProc('punisher'); // ボムカウンター覚醒だけで起きた巻き込みは出さない
       // v0.25.3265 社長指示「パニッシュが起きたら画面揺れ」→ v0.25.4284: 揺れは下の damageEnemy(巻き込みダメージ)が
       // registerImpact に乗せる(同フレームの複数体は1事象に合算)。専用定数は撤去。
       for (const id of punisherHits) {
@@ -20595,6 +20639,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const gt = state.gameTime;
       const benkeiMs = skillBenkeiBuffMs(state.player); // 10/12/15s(Lv)
       const benkeiProc = changed && hasSkill(state.player, 'benkei') && gt >= state.player.benkeiCdUntil;
+      if (benkeiProc) queueMicrotask(() => notifySkillProc('benkei')); // スキル発動の表示(set の中から store を書かない)
       const benkei = benkeiProc
         ? { benkeiBuffUntil: gt + benkeiMs, benkeiCdUntil: gt + benkeiMs + 3000 }
         : {};
@@ -22729,6 +22774,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetMapSightings(); // 一時停止の地図の「出会った敵」は出撃ごと(THEONE_ROUND2 §2-3)
     resetRunRoute(); // 一時停止の地図の「今回歩いた道」も出撃ごと(THEONE_ROUND2 §2-6)
     resetSpawnWalk(); // 湧く向きの寄せ(PACING_PUZZLE §20)も前ランから持ち越さない
+    resetSkillProcThrottle(); // スキル発動の表示の間引きも出撃ごと
     const state = get();
     // v0.25.2476: 前ランのサブ様式集計(fold)+プロファイル保存の決算は、リザルト画面を閉じる操作
     // (GameOverScreenのsettlePendingTraits)へ移動した(社長裁定「今回のプレイを守護霊に反映しない」を
@@ -23474,6 +23520,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         isPaused: false,
         showUpgradeMenu: false,
         skillPickFx: null, // 新ランに前回の頭上マークを持ち越さない
+        skillProcFeed: [], // スキル発動の表示も持ち越さない(間引きの記録は resetSkillProcThrottle)
         showShopMenu: false,
         showEventQuestMenu: false,
         shopReopenAt: 0,

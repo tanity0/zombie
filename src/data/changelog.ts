@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5331', items: [
+    'スキルが効いた瞬間、通信の下にそのスキルの絵と名前が短く出る',
+  ] },
   { version: '0.25.5330', items: [
     'ゲーム内容の変更はありません',
   ] },

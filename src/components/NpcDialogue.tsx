@@ -3,6 +3,11 @@ import { useGameStore } from '../store/gameStore';
 import { spritePath } from '../utils/spriteLoader';
 import { useHudLandscape } from './HudScale';
 import { slowLineVisibleChars } from '../utils/slowLine';
+import { SKILLS, skillIcon } from '../data/campaign';
+import { useSkillIconSheet } from '../utils/useSkillIconSheet';
+import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
+import { nextSkillProcExpiry, SKILL_PROC_SHOW_MS } from '../utils/skillProcFeed';
+import type { SkillKey } from '../types/game';
 
 // 話者名 → 立ち絵のベースパス(spritePathの`${base}-0`)+枠幅。セリフ表示時に上半身(バスト)を出す。
 // 用語(社長決定v0.25.1851): この左上のモデル付き吹き出し=**「会話」**。会話は必ずモデル入り
@@ -102,6 +107,48 @@ const SlowLine = ({ text }: { text: string }) => {
   );
 };
 
+/** スキルの絵(単体ファイル→1枚シート→絵文字の順・RunHud と同じ引き方)。 */
+const SkillProcIcon = ({ k }: { k: SkillKey }) => {
+  const sheet = useSkillIconSheet();
+  const single = skillSingleIconName(k);
+  if (single) return <img src={spritePath(single)} alt="" className="w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />;
+  const st = sheet && hasSkillIcon(k) ? skillIconStyle(k, sheet.url, 20, sheet) : null;
+  return st ? <span style={st} aria-hidden /> : <span className="text-[13px] leading-none">{skillIcon(k)}</span>;
+};
+
+/**
+ * スキルが効いた瞬間の表示(社長指示2026-11-01「スキル発動時は通信欄下に表示したい」→「効いた瞬間に新しく出す」)。
+ * 通信(会話)の板のすぐ下に、絵+名前の行を積む(新しい物が下)。並び・間引き・消える時刻は utils/skillProcFeed。
+ * 購読は発動の時だけ変わる配列だけ=毎フレーム描き直さない。消える時刻にだけ1回起きて描き直す。
+ */
+const SkillProcRows = () => {
+  const feed = useGameStore(s => s.skillProcFeed);
+  const [, wake] = useState(0);
+  useEffect(() => {
+    const t = nextSkillProcExpiry(feed.filter(e => Date.now() - e.at < SKILL_PROC_SHOW_MS));
+    if (t === null) return;
+    const id = window.setTimeout(() => wake(n => n + 1), Math.max(0, t - Date.now()) + 30);
+    return () => window.clearTimeout(id);
+  });
+  const now = Date.now();
+  const rows = feed.filter(e => now - e.at < SKILL_PROC_SHOW_MS);
+  if (rows.length === 0) return null;
+  return (
+    <div className="flex flex-col items-start gap-1 mt-1.5">
+      {rows.map(e => (
+        <div
+          key={e.id}
+          className="skill-proc-row glass-pill flex items-center gap-1.5 py-0.5 pl-1 text-[12px] leading-none gt-solid"
+          style={{ paddingRight: 28, animationDuration: `${SKILL_PROC_SHOW_MS}ms` }}
+        >
+          <span className="relative w-5 h-5 shrink-0 flex items-center justify-center overflow-hidden"><SkillProcIcon k={e.key} /></span>
+          <span className="font-bold text-sky-200/95 gt-outline whitespace-nowrap">{SKILLS[e.key].name}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // NPCリアルタイムセリフのHUD表示(時間停止なし・軽量)。表示位置はアテンションバナーと同じ左上ゾーンで、
 // 優先度は「コンボ > アテンション > NPCセリフ」。コンボ/バナーの有無に応じて下へずらして重ならないようにする。
 // 毎フレーム再描画しないよう、狭いセレクタ(派生プリミティブ)で購読する。
@@ -110,10 +157,11 @@ export const NpcDialogue = () => {
   const comboActive = useGameStore(s => s.meleeHitComboCount >= 2 && s.meleeHitComboUntil >= s.gameTime); // HUD の COMBO(近接ヒット表示)と同じ条件
   const bannerActive = useGameStore(s => !!s.eventBannerText && s.eventBannerUntil >= s.gameTime);
   const landscape = useHudLandscape();
-  if (!npc) return null;
+  const hasProc = useGameStore(s => s.skillProcFeed.length > 0); // 会話が無くてもスキル発動は同じ位置に出す
+  if (!npc && !hasProc) return null;
   const topPx = 132 + (comboActive ? 58 : 0) + (bannerActive ? 58 : 0);
   // 話者の立ち絵(あれば)。portrait指定があれば名前より優先(例: 変異後グレンの頭部)。
-  const portrait = NPC_PORTRAIT[npc.portrait ?? npc.name];
+  const portrait = npc ? NPC_PORTRAIT[npc.portrait ?? npc.name] : undefined;
   const portraitBase = portrait?.base;
   const portraitBoxW = portrait?.boxW ?? 40;
   return (
@@ -134,7 +182,7 @@ export const NpcDialogue = () => {
       }}
     >
       {/* 枠なし・上半身絵と文字を同一の右フェード背景に。高さは文字に合わせ、上半身絵は上にはみ出してOK。 */}
-      <div
+      {npc && <div
         className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug gt-solid"
         style={{ paddingRight: 44, overflow: 'visible' }}
       >
@@ -169,7 +217,8 @@ export const NpcDialogue = () => {
           <span className="block font-bold text-amber-300/95 gt-outline">{npc.name}</span>
           {npc.slow ? <SlowLine key={npc.until} text={npc.text} /> : <span className="text-white/90">{npc.text}</span>}
         </div>
-      </div>
+      </div>}
+      <SkillProcRows />
     </div>
   );
 };

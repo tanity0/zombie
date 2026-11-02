@@ -54,6 +54,7 @@ import { LICH_BLINK_RADIUS_PX } from './lichBlink'; // §16-C: 予告円の半�
 import { BAT_GRAB_HOLD_MS } from './chaffMoves'; // ★PACING_PUZZLE.md §16-1(bat の掴み)
 import { EGG_BLAST_RADIUS } from '../world/mines';
 import {
+  notifySkillProc,
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   useGameStore, isSeekerActive, skillLevel, counterReplyDamage, enemyDeathLabel, combatActorPlayer,
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
@@ -920,6 +921,7 @@ const applyCounterReflect = (
   // §28-1追加: 弾幕の王は反射弾に貫通1を持たせ(全Lv共通)、体勢削り倍率も弾へ載せて命中時に運ぶ
   // (postureMult。damageEnemyの呼び出し側=useGameLoopの命中処理がprojectile.postureMultを読む)。
   if (bkLv) {
+    if (ghostId === undefined) notifySkillProc('barrage-king'); // スキル発動の表示(本人の打ち返しだけ)
     const postureMult = barrageKingMult(bkLv);
     // 社長指示v0.25.3300 弾幕の王 覚醒(Lv3): 反射弾の貫通が無限になる(通常はBARRAGE_KING_PIERCE=1)。
     const bkPierce = bkLv >= 3 ? Number.POSITIVE_INFINITY : BARRAGE_KING_PIERCE;
@@ -930,6 +932,7 @@ const applyCounterReflect = (
   // スキル: ボムカウンター = 反射弾がランチャー弾化し、命中で GRENADE_* 爆発。
   const bcLv = skillLevel(subject, 'bomb-counter');
   if (bcLv) {
+    if (ghostId === undefined) notifySkillProc('bomb-counter'); // スキル発動の表示(本人の打ち返しだけ)
     const bcRadiusMult = [0, 1, 1.15, 1.3][bcLv];
     const bcDmgMult = [0, 1, 1.25, 1.5][bcLv];
     useGameStore.setState(state => ({

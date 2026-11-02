@@ -258,7 +258,8 @@ import {
   SUPPORT_SNIPER_CD_MS_BY_LEVEL, SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_INSET,
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
-import { buildBomberMinis, bomberMiniCount, rollBomberScatter } from '../utils/bomberScatter';
+import { buildBomberMinis, bomberMiniCount } from '../utils/bomberScatter';
+import { rollBomberScatterAndNotify, notifySkillProc, notifySkillProcFor } from '../store/gameStore'; // スキル発動の表示(通信欄の下)
 import { computeFirstAidKitTick, isFirstAidKitEmpty, createFirstAidKitState, type FirstAidKitAmmoType, type FirstAidKitState } from '../utils/firstAidKit';
 
 // GHOST-SUBS-FINAL(v0.25.2563): 守護霊の救急鞄の初期在庫。**型はプレイヤーと同じ**FirstAidKitStateで、
@@ -11380,6 +11381,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               skillOverclockChance(subWeaponPlayer), skillCooldownMult(subWeaponPlayer), ssTick.cdRemainingMs);
             if (ssCd.overclockProc) {
               recordOverclockProc(); // M35: 援護射撃タイマー側の成立計測
+              notifySkillProc('overclock');
               // §21(B5)枠光: 視覚のみ。専用タイマー式=手動合流点なので他2箇所と同じくここでも点ける。
               // 覚醒(Lv3・v0.25.3300): proc成立時に銃もクイックリロード(3地点共通の1本)。
               useGameStore.setState(s => ({ player: { ...s.player, overclockLightUntil: s.gameTime + OVERCLOCK_LIGHT_MS, ...overclockAwakenReloadPatch(s.player) } }));
@@ -13973,7 +13975,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // スキル: ボマー = 手榴弾が起爆する前に一度だけ、周囲へ子グレネード3発を散布し
           // 親の信管を +1s 延長(再アームは1回のみ)。子は ×1/3 ダメージの小型手榴弾。
           // 周期/サブ武器の爆発なのでスロー無し(CLAUDE.md)。
-          if (!grenade.bomberSpawned && rollBomberScatter(useGameStore.getState().player)) { // v0.25.3306: 確率発動(30/40/50%)
+          if (!grenade.bomberSpawned && rollBomberScatterAndNotify(useGameStore.getState().player)) { // v0.25.3306: 確率発動(30/40/50%)
             const nowB = Date.now();
             useGameStore.setState(state => ({
               projectiles: state.projectiles.map(p =>
@@ -14111,7 +14113,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
           useGameStore.getState().registerMultiHit(glHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
           // §6.10 M33③: ボマー = 転がり弾の爆発でも子グレネードを散布(着弾爆発と同じ扱い・再散布なし)。
-          if (rollBomberScatter(rsPlayer)) {
+          if (rollBomberScatterAndNotify(rsPlayer)) {
             for (const mini of buildBomberMinis(sx, sy, `glroll-${shell.id}`, undefined, undefined, bomberMiniCount(rsPlayer))) addProjectile(mini);
             spawnBurst(sx, sy, '#fbbf24', 8);
           }
@@ -14141,7 +14143,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 ?? useGameStore.getState().player;
               const smIsGhost = smGhostId !== undefined;
               // スキル: ボマー = 起爆時にミニ手榴弾3個散布(手榴弾と同じ子グレネード処理。子は再散布しない)。
-              if (rollBomberScatter(smActor)) { // v0.25.3306: 確率発動(30/40/50%)
+              if (rollBomberScatterAndNotify(smActor)) { // v0.25.3306: 確率発動(30/40/50%)
                 const nowB = Date.now();
                 const smMiniN = bomberMiniCount(smActor); // ボマー覚醒(Lv3・v0.25.3300)=4つ
                 for (let k = 0; k < smMiniN; k++) {
@@ -14268,7 +14270,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               removeProjectile(knife.id);
               playSfx('bomb');
               // §6.10 M33③: ボマー = 発火ナイフの爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
-              if (rollBomberScatter(useGameStore.getState().player)) { // v0.25.3306: 確率発動(30/40/50%)
+              if (rollBomberScatterAndNotify(useGameStore.getState().player)) { // v0.25.3306: 確率発動(30/40/50%)
                 // ボマー覚醒(Lv3・v0.25.3300)=4つ
                 for (const mini of buildBomberMinis(bx, by, `fk-${knife.id}`, undefined, undefined, bomberMiniCount(useGameStore.getState().player))) {
                   addProjectile({ ...mini, ownerGhost: knife.ownerGhost }); // 視覚専用: ゴースト発は子も青白
@@ -15769,7 +15771,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.getState().registerMultiHit(glHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
             // §6.10 M33③: ボマー = グレネードランチャー弾(メインT3/タレットランチャー弾)の着弾爆発でも
             // 子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
-            if (rollBomberScatter(skillPlayer)) { // v0.25.3306: 確率発動(30/40/50%)
+            if (rollBomberScatterAndNotify(skillPlayer)) { // v0.25.3306: 確率発動(30/40/50%)
               // ボマー覚醒(Lv3・v0.25.3300)=4つ
               for (const mini of buildBomberMinis(blastX, blastY, `gl-${projectileId}`, undefined, undefined, bomberMiniCount(skillPlayer))) addProjectile(mini);
               spawnBurst(blastX, blastY, '#fbbf24', 8);
@@ -15852,7 +15854,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }));
             }
             // スキル: ボマー = ホーミング弾命中時にも子グレネード3発を散布。
-            if (projectile.weaponType === 'homing-missile' && !projectile.bomberSpawned && rollBomberScatter(skillPlayer)) { // v0.25.3306: 確率発動(30/40/50%)
+            if (projectile.weaponType === 'homing-missile' && !projectile.bomberSpawned && rollBomberScatterAndNotify(skillPlayer)) { // v0.25.3306: 確率発動(30/40/50%)
               const nowB = Date.now();
               useGameStore.setState(state => ({
                 projectiles: state.projectiles.map(p =>
@@ -15916,6 +15918,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 ...(projectile.ricochet ? { ricochet2: true } : {}), // 覚醒の二次跳弾=これ以上跳ねない
               });
               spawnBurst(ox, oy, '#fcd34d', 5);
+              notifySkillProcFor(skillPlayer, 'ricochet');
               // ★社長指示2026-09-11「跳弾が発動した時、その起点に小さめのフラッシュを発生させて」。
               // 起点=跳ね返った元の敵の中心(ox,oy)。**判定は持たない**=攻撃ヴィジュアルの分類②。
               // 半径は既存の最小段 GLOW_R_XS(「新しい数字を発明しない」=glowTiersの6段から取る)。
@@ -15934,6 +15937,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             !projectile.explodeOnHit && !isGrenadeGunKey(projectile.weaponKey) && // v0.25.3291: グレネード系全キー除外
             echoLv && rollEchoShot(echoLv)
           ) {
+            notifySkillProcFor(skillPlayer, 'echo-shot');
             addProjectile({
               ...projectile,
               id: `proj-echo-${projectileId}-${Date.now()}`,
@@ -18137,7 +18141,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }));
             }
             // §6.10 M33③: ボマー = ボムカウンター爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
-            if (rollBomberScatter(currentPlayer)) { // v0.25.3306: 確率発動(30/40/50%)
+            if (rollBomberScatterAndNotify(currentPlayer)) { // v0.25.3306: 確率発動(30/40/50%)
               // ボマー覚醒(Lv3・v0.25.3300)=4つ
               for (const mini of buildBomberMinis(bcx, bcy, `bc-${currentPlayer.lastCounterSuccessTime}`, undefined, undefined, bomberMiniCount(currentPlayer))) addProjectile(mini);
               spawnBurst(bcx, bcy, '#fbbf24', 8);
