@@ -40,3 +40,15 @@ describe('スキル発動の表示の並び', () => {
     expect(nextSkillProcWake([], 0)).toBeNull();
   });
 });
+
+describe('表示するのは確率で起きるスキルだけ(社長指示2026-11-02)', () => {
+  it('吸血など確実に起きるものは出さず、確率のものは出す', async () => {
+    const { isSkillProcShown } = await import('./skillProcFeed');
+    for (const k of ['vampire', 'reaper', 'execution-shock', 'shukuchi', 'counter-master', 'reflex', 'gravity-shot', 'punisher', 'benkei', 'barrage-king', 'bomb-counter', 'last-magazine'] as const) {
+      expect(isSkillProcShown(k), k).toBe(false);
+    }
+    for (const k of ['overclock', 'ricochet', 'echo-shot', 'rescue-signal', 'bomber', 'seeker', 'poi-thrall', 'ghost-shooter', 'fire-shooter'] as const) {
+      expect(isSkillProcShown(k), k).toBe(true);
+    }
+  });
+});

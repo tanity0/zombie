@@ -12,6 +12,16 @@ export const SKILL_PROC_MAX_ROWS = 3;
 /** 同じ瞬間(この間隔以内)に効いた行どうしは、入ってくる時刻をこれだけずらす。 */
 export const SKILL_PROC_STAGGER_MS = 80;
 
+/**
+ * 表示するスキル=確率で起きるものだけ(社長指示2026-11-02「確実に発動するタイプは表示しない。吸血とか」)。
+ * 条件を満たせば必ず起きるもの(吸血・死神・処刑・縮地・カウンターマスター・反射神経・グラビティショット・
+ * パニッシャー・弁慶・弾幕の王・ボムカウンター・ラストマガジン)は出さない。新しく確率のスキルへ表示を足す時はここへ足す。
+ */
+export const SKILL_PROC_CHANCE_KEYS: ReadonlySet<SkillKey> = new Set<SkillKey>([
+  'overclock', 'ricochet', 'echo-shot', 'rescue-signal', 'bomber', 'seeker', 'poi-thrall', 'ghost-shooter', 'fire-shooter',
+]);
+export const isSkillProcShown = (key: SkillKey): boolean => SKILL_PROC_CHANCE_KEYS.has(key);
+
 export interface SkillProcEntry {
   id: number;
   key: SkillKey;
