@@ -456,8 +456,9 @@ const AVATAR_HEAD_TRACK_NAMES: string[] = [
       : [`player-${prefix}-run-0`, `player-${prefix}-run-1`, `player-${prefix}-run-2`, `player-${prefix}-run-3`, `player-${prefix}-run-4`]),
   ]),
   // 武将セット(特殊3点フル装備)立ち絵。frame0=待機相当(playerWalkFrameは!walkingでframe0を返す)。
-  'player-warlord-gun-walk-0', 'player-warlord-gun-walk-1', 'player-warlord-gun-walk-2',
-  'player-warlord-katana-walk-0', 'player-warlord-katana-walk-1', 'player-warlord-katana-walk-2',
+  // 侍の甲冑(社長支給2026-11-02の6コマ・青=銃/赤=刀)。旧 player-warlord-*-walk(3コマ)は原盤として public に残し、読まない。
+  ...[0, 1, 2, 3, 4, 5].map(i => `player-samurai-blue-walk-${i}`),
+  ...[0, 1, 2, 3, 4, 5].map(i => `player-samurai-red-walk-${i}`),
 ];
 
 /** 頭頂キャッシュを1回だけ埋める(ensureTextures内部から並列で叩かれる)。 */
@@ -599,12 +600,10 @@ export const ensureTextures = (): Promise<void> => {
       'player-scavenger-melee-ready',
       'player-scavenger-melee-swing',
       // 武将セット(特殊3点)フル装備時の立ち絵。小烏丸も装備していれば刀バージョン。
-      'player-warlord-gun-walk-0',
-      'player-warlord-gun-walk-1',
-      'player-warlord-gun-walk-2',
-      'player-warlord-katana-walk-0',
-      'player-warlord-katana-walk-1',
-      'player-warlord-katana-walk-2',
+      'player-samurai-blue-walk-0', 'player-samurai-blue-walk-1', 'player-samurai-blue-walk-2',
+      'player-samurai-blue-walk-3', 'player-samurai-blue-walk-4', 'player-samurai-blue-walk-5',
+      'player-samurai-red-walk-0', 'player-samurai-red-walk-1', 'player-samurai-red-walk-2',
+      'player-samurai-red-walk-3', 'player-samurai-red-walk-4', 'player-samurai-red-walk-5',
       'dog-walk-0',
       'dog-walk-1',
       'treasure-1',

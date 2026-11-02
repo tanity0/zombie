@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "972 files / 復号後 約712MB",
+ "generatedFor": "984 files / 復号後 約712MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -3565,6 +3565,78 @@
    "h": 64,
    "bytes": 5173,
    "sha": "9f517fdc39dc3ac2"
+  },
+  "sprites/player-samurai-blue-walk-0.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5139,
+   "sha": "3e3695abaed06af4"
+  },
+  "sprites/player-samurai-blue-walk-1.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5395,
+   "sha": "bd31ea68301d5e2a"
+  },
+  "sprites/player-samurai-blue-walk-2.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5499,
+   "sha": "9af1152341ce4e37"
+  },
+  "sprites/player-samurai-blue-walk-3.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5272,
+   "sha": "85522c25df0dc58d"
+  },
+  "sprites/player-samurai-blue-walk-4.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5188,
+   "sha": "54951bc075eea260"
+  },
+  "sprites/player-samurai-blue-walk-5.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5210,
+   "sha": "eeab5f82301d4a8f"
+  },
+  "sprites/player-samurai-red-walk-0.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5242,
+   "sha": "259a2ed26827ec7a"
+  },
+  "sprites/player-samurai-red-walk-1.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 4955,
+   "sha": "55a3b5bc434fadf0"
+  },
+  "sprites/player-samurai-red-walk-2.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5332,
+   "sha": "ded10ef7051cd252"
+  },
+  "sprites/player-samurai-red-walk-3.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5009,
+   "sha": "162d57dbf94a17ed"
+  },
+  "sprites/player-samurai-red-walk-4.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5031,
+   "sha": "9e3ea7d12c7c5677"
+  },
+  "sprites/player-samurai-red-walk-5.png": {
+   "w": 64,
+   "h": 70,
+   "bytes": 5372,
+   "sha": "5515ee1a1faffdeb"
   },
   "sprites/player-scavenger-game-0.png": {
    "w": 96,

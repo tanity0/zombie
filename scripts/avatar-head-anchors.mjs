@@ -24,9 +24,10 @@ for (const c of CLASSES) {
   const names = fs.readdirSync(SPR).filter(f => f.startsWith(`player-${c}-`) && /-(idle|walk-\d|run-\d|melee-ready|melee-swing)\.png$/.test(f)).map(f => f.replace(/\.png$/, ''));
   for (const n of names.sort()) frames.push({ name: n, ref: idle });
 }
-for (const w of ['gun', 'katana']) {
-  const ref = `player-warlord-${w}-walk-0`;
-  for (const f of fs.readdirSync(SPR).filter(f => f.startsWith(`player-warlord-${w}-walk-`) && f.endsWith('.png'))) frames.push({ name: f.replace(/\.png$/, ''), ref });
+// 武将(侍の甲冑): 旧3コマ(player-warlord-*-walk・原盤として残置)と、社長支給2026-11-02の6コマ(player-samurai-*-walk)。
+for (const pre of ['player-warlord-gun-walk', 'player-warlord-katana-walk', 'player-samurai-blue-walk', 'player-samurai-red-walk']) {
+  const ref = `${pre}-0`;
+  for (const f of fs.readdirSync(SPR).filter(f => f.startsWith(`${pre}-`) && f.endsWith('.png'))) frames.push({ name: f.replace(/\.png$/, ''), ref });
 }
 const dataUrl = n => 'data:image/png;base64,' + fs.readFileSync(path.join(SPR, n + '.png')).toString('base64');
 const imgs = {};

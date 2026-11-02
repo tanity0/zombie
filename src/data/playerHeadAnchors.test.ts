@@ -5,7 +5,7 @@ import { PLAYER_HEAD_ANCHORS } from './playerHeadAnchors';
 
 // 素材の実在は Vite の glob で数える(@types/node に依存しない・playerWalkSheets.test と同じ作法)。
 const FILES = Object.keys(import.meta.glob('../../public/sprites/player-*.png', { query: '?url' })).map(k => k.split('/').pop() as string);
-const BODY = /^player-(magnum|shotgun|striker|scavenger)-(idle|walk-\d|run-\d|melee-ready|melee-swing)\.png$|^player-warlord-(gun|katana)-walk-\d\.png$/;
+const BODY = /^player-(magnum|shotgun|striker|scavenger)-(idle|walk-\d|run-\d|melee-ready|melee-swing)\.png$|^player-warlord-(gun|katana)-walk-\d\.png$|^player-samurai-(blue|red)-walk-\d\.png$/;
 
 describe('アバターが付く頭の位置の台帳', () => {
   const bodies = FILES.filter(f => BODY.test(f)).map(f => f.replace(/\.png$/, ''));

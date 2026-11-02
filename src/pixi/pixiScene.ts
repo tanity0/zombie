@@ -377,7 +377,7 @@ import {
 import { getAppliedResolution } from '../config/renderer';
 import { snapTexelRatio } from '../utils/texelSnap';
 import { sortieSkinLayersExpected, type StageSkinLayer } from './stageTextures';
-import { WALK_SEQ_2, WALK_SEQ_6, WALK_SEQ_WARLORD, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
+import { WALK_SEQ_2, WALK_SEQ_6, WALK_SEQ_SAMURAI, RUN_SEQ_5, RUN_SEQ_6 } from './playerWalkSheets';
 import { AVATARS, type AvatarPart } from '../data/avatars'; // アバターシステム(試験・第1弾)。台帳は renderer-agnostic、ここは読んで描くだけ。
 import {
   glowFalloff, glowLenMult, glowScore, explosionSilAlpha, ambientSilAlpha,
@@ -1776,7 +1776,8 @@ const playerWalkFrame = (p: Player, now: number, walking: boolean, running = fal
   // クラス絵用の並び(5コマ/走り)をそのまま渡すと存在しないコマ番号を要求してしまい、
   // drawPlayer のフォールバックで既定スキン(player.png)が混入する(v0.25.2316修正)。
   // 並びだけ3コマ用に差し替え、周期(=歩行bobと共有するクロック)は据え置く。
-  const sequence = hasFullWarlordSet(p.equipment) ? WALK_SEQ_WARLORD
+  // ★社長支給2026-11-02: 侍の甲冑は6コマ(player-samurai-*-walk)になった=6コマの順送り。
+  const sequence = hasFullWarlordSet(p.equipment) ? WALK_SEQ_SAMURAI
     : runAnim ? playerRunSequence(p) : playerWalkSequence(p);
   const cycle = runAnim ? PLAYER_RUN_CYCLE_MS : playerWalkCycleMs(p);
   const index = Math.floor((now % cycle) / (cycle / sequence.length));
@@ -1811,8 +1812,8 @@ const playerTextureName = (p: Player, frame: number, walking = true, running = f
       : p.characterClass === 'necromancer' ? `player-striker-run-${frame}`
       : `player-magnum-run-${frame}`;
   }
-  return warlordKatana ? `player-warlord-katana-walk-${frame}`
-    : warlordFull ? `player-warlord-gun-walk-${frame}`
+  return warlordKatana ? `player-samurai-red-walk-${frame}`
+    : warlordFull ? `player-samurai-blue-walk-${frame}`
     : p.characterClass === 'mage' ? `player-magnum-walk-${frame}`
     : p.characterClass === 'warrior' ? `player-shotgun-walk-${frame}`
     : p.characterClass === 'necromancer' ? `player-striker-walk-${frame}`
@@ -1823,7 +1824,7 @@ const playerTextureName = (p: Player, frame: number, walking = true, running = f
 // 見ながら調整されている前提なので、耳の頭頂差分は「いまのコマ」からこの絵の頭頂を引いて求める。
 // 武将フル装備中は待機絵が無い(playerTextureNameがframe0=歩き絵を返す)ので、そのframe0を基準にする。
 const avatarHeadBaselineTexName = (characterClass: Player['characterClass'], warlordFull: boolean, warlordKatana: boolean): string => {
-  if (warlordFull) return warlordKatana ? 'player-warlord-katana-walk-0' : 'player-warlord-gun-walk-0';
+  if (warlordFull) return warlordKatana ? 'player-samurai-red-walk-0' : 'player-samurai-blue-walk-0';
   return PLAYER_IDLE_SPRITE[characterClass] ?? 'player';
 };
 // 立ち絵のベース拡大率(クラス絵=幅基準 / 武将立ち絵=高さ基準 / 不明クラス=枠内接)。分身と共有。

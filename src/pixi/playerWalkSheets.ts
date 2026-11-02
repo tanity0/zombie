@@ -16,6 +16,8 @@ export const WALK_SEQ_6: readonly number[] = [0, 1, 2, 3, 4, 5];
 export const WALK_SEQ_2: readonly number[] = [0, 1];
 /** 武将立ち絵(3コマ: 0=接地A / 1=中割り / 2=接地B)の歩き。5コマ勢と同じ「端を重複させない往復」。 */
 export const WALK_SEQ_WARLORD: readonly number[] = [0, 1, 2, 1];
+/** 侍の甲冑(武将セット)の歩き6コマ(社長支給2026-11-02・青=銃/赤=刀)= 1周を6コマで描いた順送り。 */
+export const WALK_SEQ_SAMURAI: readonly number[] = [0, 1, 2, 3, 4, 5];
 /** 走り5コマ(マークスマン/ストライカー/スカベンジャー)= 前方ループ(折り返さない)。 */
 export const RUN_SEQ_5: readonly number[] = [0, 1, 2, 3, 4];
 /** 走り6コマ(ヘビーガンナー・スカベンジャー)= 前方ループ。 */
@@ -38,8 +40,12 @@ export const WALK_SHEET_SEQUENCES: ReadonlyArray<{ prefix: string; sequence: rea
   { prefix: 'player-shotgun-run', sequence: RUN_SEQ_6 },
   // 武将セット(特殊3点)フル装備の立ち絵。小烏丸ありは刀(赤)・無しは銃(青)の**別シート**
   // (tintではない)。どちらも3コマなので同じ並びを使う。
+  // ★社長支給2026-11-02で6コマの新しい絵(青サムライ/赤サムライ)へ差し替え。旧3コマ(player-warlord-*-walk・93/98×108)は
+  //   原盤として public に残す(縮小版で上書きしない掟=寸法が違うので別名で足した)。旧の並びは台帳の検査のため残す。
   { prefix: 'player-warlord-gun-walk', sequence: WALK_SEQ_WARLORD },
   { prefix: 'player-warlord-katana-walk', sequence: WALK_SEQ_WARLORD },
+  { prefix: 'player-samurai-blue-walk', sequence: WALK_SEQ_SAMURAI },
+  { prefix: 'player-samurai-red-walk', sequence: WALK_SEQ_SAMURAI },
 ];
 
 /**

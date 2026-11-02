@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { WALK_SHEET_SEQUENCES, WALK_SEQ_WARLORD, WALK_SEQ_5, walkSequenceForIdleSrc } from './playerWalkSheets';
+import { WALK_SHEET_SEQUENCES, WALK_SEQ_WARLORD, WALK_SEQ_SAMURAI, WALK_SEQ_5, walkSequenceForIdleSrc } from './playerWalkSheets';
 
 // 実バグ(v0.25.2316): 武将立ち絵は3コマしか無いのに、クラス絵の5コマ用の並び
 // [0,1,2,3,4,3,2,1] をそのまま渡していた。存在しないコマ番号は getTexture が null を返し、
@@ -38,6 +38,14 @@ describe('プレイヤー歩行/走行のコマ並びと素材の突き合わせ
     expect(WALK_SEQ_WARLORD.filter(f => f === 2)).toHaveLength(1);
   });
 
+  it('侍の甲冑(社長支給2026-11-02)は青・赤とも6コマの順送りで、並びの最大コマ<実在コマ数', () => {
+    const blue = WALK_SHEET_SEQUENCES.find(s => s.prefix === 'player-samurai-blue-walk');
+    const red = WALK_SHEET_SEQUENCES.find(s => s.prefix === 'player-samurai-red-walk');
+    expect(blue?.sequence).toBe(WALK_SEQ_SAMURAI);
+    expect(red?.sequence).toBe(WALK_SEQ_SAMURAI);
+    expect(frameCount('player-samurai-blue-walk')).toBe(6);
+    expect(frameCount('player-samurai-red-walk')).toBe(6);
+  });
   it('銃(青)と刀(赤)の武将は別シート=同じ並びを共有する(tintではない)', () => {
     const gun = WALK_SHEET_SEQUENCES.find(s => s.prefix === 'player-warlord-gun-walk');
     const katana = WALK_SHEET_SEQUENCES.find(s => s.prefix === 'player-warlord-katana-walk');
