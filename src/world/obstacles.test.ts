@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { footRect, rectsOverlap, segmentBlocked, segmentIntersectsRect, resolveAabb, type Rect } from './obstacles';
+import { footRect, rectsOverlap, segmentBlocked, segmentIntersectsRect, resolveAabb, touchesFromBelow, TOUCH_GAP, TOUCH_SIDE_PAD, type Rect } from './obstacles';
 
 describe('footRect', () => {
   it('anchors the box bottom-centre at the foot (bottom edge on footY)', () => {
@@ -53,5 +53,24 @@ describe('resolveAabb', () => {
     expect(out.x).toBe(-2);           // pushed left out of the wall
     // after resolution the actor no longer overlaps the wall
     expect(rectsOverlap({ ...actor, x: out.x, y: out.y }, wall)).toBe(false);
+  });
+});
+
+describe('touchesFromBelow(POIの絵に下から触れたら発動・社長指示2026-11-02)', () => {
+  const obj = { x: 0, y: 0, width: 100, height: 40 }; // 下端 y=40
+  const actor = (x: number, y: number) => ({ x, y, width: 28, height: 28 });
+  it('下から押し付けている(上端=下端)と true。少し離れていても TOUCH_GAP 内なら true', () => {
+    expect(touchesFromBelow(actor(36, 40), obj)).toBe(true);
+    expect(touchesFromBelow(actor(36, 40 + TOUCH_GAP - 1), obj)).toBe(true);
+  });
+  it('離れている・横から・上(裏)からは false', () => {
+    expect(touchesFromBelow(actor(36, 40 + TOUCH_GAP + 2), obj)).toBe(false);
+    expect(touchesFromBelow(actor(100 + TOUCH_SIDE_PAD + 1, 40), obj)).toBe(false); // 右へ外れている
+    expect(touchesFromBelow(actor(-28, 10), obj)).toBe(false);  // 左の横から(中心が下端より上)
+    expect(touchesFromBelow(actor(36, -28), obj)).toBe(false);  // 上(裏)から
+  });
+  it('押し出しで resolveAabb した直後の位置でも true(実際の流れ)', () => {
+    const moved = resolveAabb({ x: 36, y: 30, width: 28, height: 28 }, [obj]);
+    expect(touchesFromBelow({ x: moved.x, y: moved.y, width: 28, height: 28 }, obj)).toBe(true);
   });
 });

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5353', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5352', items: [
     '侍の甲冑(青・赤)の絵が新しくなり、歩きがなめらかに',
   ] },

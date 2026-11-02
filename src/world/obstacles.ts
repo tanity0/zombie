@@ -27,6 +27,18 @@ export const rectsOverlap = (a: Rect, b: Rect): boolean =>
   a.x < b.x + b.width && a.x + a.width > b.x &&
   a.y < b.y + b.height && a.y + a.height > b.y;
 
+// ★POIの「絵に下から触れたら発動」(社長指示2026-11-02・research/POI_TOUCH_SHRINE.md §1)。
+// 当たり判定は resolveAabb で押し出されるので「重なったまま」は起きない。押し出された位置(プレイヤーの上端=
+// objRect の下端)を、下端に沿った細い帯で拾う。「下から」=プレイヤーの中心が下端より下(画面の手前=建物の正面)の時だけ。
+export const TOUCH_SIDE_PAD = 6; // 帯を左右に広げる量(角をかすめた時も拾う)
+export const TOUCH_GAP = 8;      // 帯を下端より下へ伸ばす量(押し出しの丸めや1フレの離れを吸収)
+export const touchesFromBelow = (actor: Rect, obj: Rect): boolean => {
+  const bottom = obj.y + obj.height;
+  if (actor.y + actor.height / 2 <= bottom) return false; // 中心が下端より上=横・裏から
+  const band: Rect = { x: obj.x - TOUCH_SIDE_PAD, y: bottom - 4, width: obj.width + TOUCH_SIDE_PAD * 2, height: 4 + TOUCH_GAP };
+  return rectsOverlap(actor, band);
+};
+
 // 線分(x1,y1)-(x2,y2)が矩形 w と交差するか(Liang-Barsky クリップ)。視線/近接の壁越し判定用。
 export const segmentIntersectsRect = (
   x1: number, y1: number, x2: number, y2: number, w: Rect
