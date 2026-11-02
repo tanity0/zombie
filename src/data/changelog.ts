@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5348', items: [
+    '刀を持っている時に近接を振っても、振りの音が鳴るようになった',
+  ] },
   { version: '0.25.5347', items: [
     '覚醒中は銃の連射が速くなる。弾が飛ぶ速さは元に戻した',
     '近くに他の敵がいない時は、気絶している敵にも銃が撃つ',

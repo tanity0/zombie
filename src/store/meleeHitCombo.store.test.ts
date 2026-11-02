@@ -67,3 +67,13 @@ describe('頭上の倒した数(N KILLS)', () => {
     expect(banner().length).toBe(0);
   });
 });
+
+describe('刀を持っている時の振り(社長報告2026-11-02「刀装備時にナイフ振るとSEが鳴らない」)', () => {
+  it('振りは確定し、攻撃はしない(swung=false)が katanaSwing=true を返す=呼び手が振りの音を鳴らせる', () => {
+    useGameStore.getState().resetGame('warrior');
+    useGameStore.setState(s => ({ player: { ...s.player, subWeapons: [...s.player.subWeapons, 'katana'], counterCooldownEnd: 0 } }));
+    const r = useGameStore.getState().triggerCounter();
+    expect(r.swung).toBe(false);
+    expect(r.katanaSwing).toBe(true);
+  });
+});

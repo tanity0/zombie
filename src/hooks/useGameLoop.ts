@@ -8894,7 +8894,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 出口4つのうち**使われない1つ**に書いていたため、実機で一度も出なかった(社長報告「一振り再生機能してない」)。
             // `counter.swung` は全経路の集約(ナイフ/鞭/刀/ガンブレード)なので、ここなら取りこぼさない。
             if (counter.swung) playCineDemoOnSwing();
-            if (counter.swung && !isWhip && !killFxJustFired) playSfx('melee');
+            // 刀を持っている時の振り(katanaSwing)も振りの音を鳴らす(攻撃はしないので swung は false のまま)。
+            if ((counter.swung || counter.katanaSwing) && !isWhip && !killFxJustFired) playSfx('melee');
             if (counter.finish && !killFxJustFired) playSfx('melee-finish');
             else if (counter.hit && !isWhip && !killFxJustFired) playSfx('slash-damage');
             if (counter.killed > 0) playEnemyDeath();

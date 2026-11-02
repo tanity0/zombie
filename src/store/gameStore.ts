@@ -697,7 +697,8 @@ const SMALL_GLOW_MIN_DURATION_MS = 80;
 // `finish` = a melee finisher executed a normal enemy, or finisher-grade
 // damage landed on a stunned boss (drives the kill.mp3 sound).
 // `killed` = how many enemies the swing killed (drives the zombie death grunt).
-export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number };
+// katanaSwing: 刀を持っている時の振り(攻撃はしない=swung は false のまま・振りの音だけ鳴らす。社長報告2026-11-02「刀装備時にナイフ振るとSEが鳴らない」)。
+export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number; katanaSwing?: boolean };
 
 // 制圧イベント(ステージ1メインミッション等のサブクエスト時のみ有効・通常は無効)。
 // 原点中心・半径3200の円周に4か所(90度刻み=東西南北)固定。サークル内10秒で制圧→武器商人がそこへ移動(=安全地帯)。
@@ -9386,7 +9387,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().noteMeleeSwingPressedAt(swingAt);
       // 刀でも松明・卵を破壊できる(刀の間合いの円)。
       get().breakPropsAlong(pcx, pcy, 1, 0, 0, katanaRange(player), swingBaseDamage * 2.5);
-      return { swung: false, hit: false, finish: false, killed: 0 };
+      return { swung: false, hit: false, finish: false, killed: 0, katanaSwing: true };
     }
 
     // 鞭装備中: 通常ナイフのスイープを鞭に置き換える(刀と同様、グレネード起爆/

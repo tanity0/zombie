@@ -23,7 +23,7 @@ export const performTapAction = () => {
   const counter = useGameStore.getState().triggerCounter();
   // 鞭装備中はナイフ用の汎用音を出さない(鞭専用SE=whip-swing/whip-hit に任せる)。
   const isWhip = useGameStore.getState().player.subWeapons.includes('whip');
-  if (counter.swung && !isWhip) playSfx('melee');
+  if ((counter.swung || counter.katanaSwing) && !isWhip) playSfx('melee'); // 刀を持っている時の振りも振りの音(社長報告2026-11-02)
   if (counter.finish) playSfx('melee-finish');
   else if (counter.hit && !isWhip) playSfx('slash-damage');
   if (counter.killed > 0) playEnemyDeath(); // slain enemies grunt
