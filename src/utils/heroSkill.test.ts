@@ -1,19 +1,21 @@
 // research/MUTANT_HERO.md §1b(社長指示2026-10-05)スキル「英雄」: 満タンの間だけ移動速度・与ダメージ ×1.3。被ダメージ ×1.3 は常時(社長指示2026-11-02)。
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useGameStore, skillHeroMult, skillHeroActive, skillIncomingDamageMult, skillOutgoingDamageMult, HERO_SKILL_MULT, HERO_MELEE_HEAL_FRAC } from '../store/gameStore';
+import { useGameStore, skillHeroMult, skillHeroActive, skillIncomingDamageMult, skillOutgoingDamageMult, HERO_SKILL_MULT, HERO_MELEE_HEAL_FRAC, HERO_ACTIVE_HP_FRAC } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import { SKILLS, GACHA_EXCLUDED_SKILLS, SKILL_KEYS } from '../data/campaign';
 
 beforeEach(() => { useGameStore.getState().resetGame('warrior'); });
 
 describe('スキル「英雄」', () => {
-  it('速度・与ダメはHPが満タンの間だけ ×1.3、満タンでなければ効かない', () => {
+  it('速度・与ダメはHPが50%以上の間だけ ×1.3、50%未満では効かない(社長指示2026-11-02)', () => {
     const p = useGameStore.getState().player;
     const full = { ...p, skills: ['hero' as const], health: p.maxHealth };
-    const hurt = { ...full, health: p.maxHealth - 1 };
+    const half = { ...full, health: Math.ceil(p.maxHealth * HERO_ACTIVE_HP_FRAC) };
+    const low = { ...full, health: Math.ceil(p.maxHealth * HERO_ACTIVE_HP_FRAC) - 1 };
     expect(skillHeroActive(full)).toBe(true);
     expect(skillHeroMult(full)).toBe(HERO_SKILL_MULT);
-    expect(skillHeroMult(hurt)).toBe(1);
+    expect(skillHeroMult(half)).toBe(HERO_SKILL_MULT);
+    expect(skillHeroMult(low)).toBe(1);
     expect(skillHeroMult({ ...full, skills: [] })).toBe(1);
   });
   it('与ダメージと被ダメージの両方に掛かる', () => {
@@ -37,7 +39,7 @@ describe('スキル「英雄」', () => {
   });
 });
 
-describe('スキル「英雄」: 満タンでない時、近接が当たるたびに最大体力の5%回復(社長指示2026-11-02)', () => {
+describe('スキル「英雄」: 体力50%未満の時、近接が当たるたびに最大体力の5%回復・50%まで(社長指示2026-11-02)', () => {
   const strike = (skills: string[], health: number) => {
     useGameStore.getState().resetGame('warrior');
     const st = useGameStore.getState();
@@ -48,12 +50,13 @@ describe('スキル「英雄」: 満タンでない時、近接が当たるた�
     useGameStore.getState().performKatanaStrike([e.id], 1, true);
     return useGameStore.getState().player.health;
   };
-  it('満タンでなければ5%(200→+10)戻る', () => {
-    expect(strike(['hero'], 100)).toBe(100 + 200 * HERO_MELEE_HEAL_FRAC);
+  it('50%未満なら5%(200→+10)戻る', () => {
+    expect(strike(['hero'], 50)).toBe(50 + 200 * HERO_MELEE_HEAL_FRAC);
   });
-  it('満タンなら戻らない(上限を超えない)・英雄が無ければ戻らない', () => {
-    expect(strike(['hero'], 200)).toBe(200);
-    expect(strike([], 100)).toBe(100);
-    expect(strike(['hero'], 195)).toBe(200);
+  it('50%を超えては戻さない・50%以上や英雄無しでは戻らない', () => {
+    expect(strike(['hero'], 95)).toBe(100);
+    expect(strike(['hero'], 100)).toBe(100);
+    expect(strike(['hero'], 150)).toBe(150);
+    expect(strike([], 50)).toBe(50);
   });
 });

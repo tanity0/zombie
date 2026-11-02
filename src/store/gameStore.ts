@@ -2296,12 +2296,14 @@ export const skillIncomingDamageMult = (player: Player, gameTime: number): numbe
   return (kl ? [1, 0.8, 0.7, 0.6][kl] : 1) * (hasSkill(player, 'berserker') ? 1.2 : 1)
     * consumableProtectionMult(player, gameTime) * skillHeroIncomingMult(player);
 };
-// research/MUTANT_HERO.md §1b(社長指示2026-10-05)スキル「英雄」: HPが満タンの間だけ、移動速度・与ダメージが ×1.3。Lv不問の固定。
-// ★社長指示2026-11-02「英雄スキルは犬以外は満タン時のみのまま」「常に被ダメは30%増加」:
-//   被ダメージ ×1.3 は満タンに関係なく常時(skillHeroIncomingMult)。犬も常時(updateHeroDog)。
+// research/MUTANT_HERO.md §1b(社長指示2026-10-05)スキル「英雄」: 移動速度・与ダメージが ×1.3。Lv不問の固定。
+// ★社長指示2026-11-02「満タン時ではなく50%以上の時にする」: 効くのは体力が最大の50%以上の間(旧: 満タンの間だけ)。
+//   被ダメージ ×1.3 は体力に関係なく常時(skillHeroIncomingMult)。犬も常時(updateHeroDog)。
 export const HERO_SKILL_MULT = 1.3;
+/** 速度・与ダメが効く体力の割合(この割合以上)。下回ると近接の回復(applyHeroMeleeHeal)に切り替わる。 */
+export const HERO_ACTIVE_HP_FRAC = 0.5;
 export const skillHeroActive = (player: Pick<Player, 'skills' | 'health' | 'maxHealth'>): boolean =>
-  player.skills.includes('hero') && player.maxHealth > 0 && player.health >= player.maxHealth;
+  player.skills.includes('hero') && player.maxHealth > 0 && player.health >= player.maxHealth * HERO_ACTIVE_HP_FRAC;
 /** 被ダメージの倍率(英雄を持っていれば常時 ×1.3)。 */
 export const skillHeroIncomingMult = (player: Pick<Player, 'skills'>): number =>
   player.skills.includes('hero') ? HERO_SKILL_MULT : 1;
@@ -2335,7 +2337,7 @@ export const skillOutgoingDamageMult = (player: Player): number => {
     && skillLevel(player, 'counter-master') >= 3
     ? COUNTER_MASTER_AWAKEN_DMG_MULT
     : 1;
-  const heroMult = skillHeroMult(player); // スキル「英雄」: HP満タンの間 ×1.3
+  const heroMult = skillHeroMult(player); // スキル「英雄」: HP50%以上の間 ×1.3
   const bl = skillLevel(player, 'berserker');
   if (!bl || player.maxHealth <= 0) return alcMult * cmMult * growthMult * heroMult;
   const k = [0, 1, 1.25, 1.5][bl];
@@ -5132,15 +5134,17 @@ const applyVampireMeleeHeal = (
   });
 };
 
-// スキル「英雄」(社長指示2026-11-02「満タンでない場合、攻撃のたびに5%HP」→数え方は「近接が当たるたび」):
-// 体力が満タンでない時、近接が敵に当たった1振りごとに最大体力の5%回復。吸血の覚醒(同じ5%)と併用でき、両方持てば両方回復する。
-// 満タンかどうかは当たった瞬間(吸血の回復より前)の体力で見る。守護霊・分身などの疑似の主語では回復しない。
+// スキル「英雄」(社長指示2026-11-02「50%までは攻撃のたびに5%回復」・数え方は「近接が当たるたび」):
+// 体力が最大の50%未満の時、近接が敵に当たった1振りごとに最大体力の5%回復(50%まで=それを超えては戻さない)。
+// 50%以上では速度・与ダメ ×1.3(skillHeroActive)に切り替わる。吸血の覚醒(同じ5%)と併用でき、両方持てば両方回復する。
+// 50%未満かどうかは当たった瞬間(吸血の回復より前)の体力で見る。守護霊・分身などの疑似の主語では回復しない。
 export const HERO_MELEE_HEAL_FRAC = 0.05;
 const applyHeroMeleeHeal = (get: () => GameState, player: Player, hitEnemyIds: string[]) => {
   if (hitEnemyIds.length === 0 || player.pseudoActor || !player.skills.includes('hero')) return;
   const p0 = get().player;
-  if (p0.maxHealth <= 0 || p0.health >= p0.maxHealth || p0.health <= 0) return;
-  const heal = Math.max(1, Math.round(p0.maxHealth * HERO_MELEE_HEAL_FRAC));
+  const cap = p0.maxHealth * HERO_ACTIVE_HP_FRAC;
+  if (p0.maxHealth <= 0 || p0.health >= cap || p0.health <= 0) return;
+  const heal = Math.max(1, Math.min(Math.round(p0.maxHealth * HERO_MELEE_HEAL_FRAC), Math.ceil(cap - p0.health)));
   useGameStore.setState(state => ({
     player: { ...state.player, health: Math.min(state.player.maxHealth, state.player.health + heal) },
   }));
@@ -8291,7 +8295,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       //   +100%の手前で止まる(utils/cruise.ts cruiseSpeedMult)。段(+20/30/40%)は段の時間で、上乗せは min(段の総時間,1秒) で立ち上がる。
       const othersSum = (skillRunnerSpeedMult(player, reloading) - 1) + (standardSpeedBonusMult(player) - 1)
         + (consumableSpeedMult(player, state.gameTime) - 1) + ((player.equipBonus?.moveSpeedMult ?? 1) - 1)
-        + (skillHeroMult(player) - 1); // スキル「英雄」: HP満タンの間 +30%
+        + (skillHeroMult(player) - 1); // スキル「英雄」: HP50%以上の間 +30%
       const stageBonusNow = SPEED_RAMP_ENABLED ? cruiseStageBonus(nextSpeedRamp.sustainMs, cruiseT) : CRUISE_STAGE_BONUS[CRUISE_STAGE_MAX];
       const bonusMult = cruiseSpeedMult(stageBonusNow, othersSum, rampFrac);
       const moveSpeedInput = {

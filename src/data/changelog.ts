@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5345', items: [
+    'スキル「英雄」の速さと攻撃の強化は、体力が半分以上あれば効く。半分を切ると、近接を当てるたびに半分まで体力が戻っていく',
+  ] },
   { version: '0.25.5344', items: [
     'スキル「英雄」は、体力が満タンでない時に近接を当てるたび体力が少し戻る。吸血と一緒に持てば両方戻る',
   ] },
