@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5339', items: [
+    'ステージ2の変異塊は、叩きつける瞬間に前へ滑り込んでくる。赤い円は少し先に出るので、思ったより離れないと当たる',
+  ] },
   { version: '0.25.5338', items: [
     'ボスが現れる直前に画面が一瞬止まるのを減らした',
   ] },

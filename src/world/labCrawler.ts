@@ -297,6 +297,25 @@ export const crawlerBodyFoot = (c: Pick<LabCrawler, 'x' | 'y'>): { x: number; y:
 /** 今の向きで叩きつけたら円がどこへ落ちるか(絵の手のひらが地面に着く所)。 */
 export const crawlerSlamCenter = (c: Pick<LabCrawler, 'x' | 'y' | 'facingLeft'>): { x: number; y: number } =>
   ({ x: c.x + (c.facingLeft ? -1 : 1) * CRAWLER_SLAM_FWD_PX, y: c.y - CRAWLER_SLAM_HAND_UP_PX });
+
+/**
+ * 叩きつけの滑り込み(社長指示2026-11-02「塊の叩く技、少し前進しつつ叩く に変更。叩くと同時に前にスライドして叩く感じ。
+ * なので赤サークルより少し手前から動いてくるイメージ。射程はいまのまま。なので思ったより距離取らないと当たる」)。
+ * 赤い円(=当たる所・大きさは今のまま)は、滑り込んだ後に手が着く所=今の手の位置よりこの距離だけ前に置く。
+ * 塊は溜めの最後の CRAWLER_SLAM_SLIDE_MS で、この距離を加速→減速で前へ滑り込み、当たる瞬間に手が円の真ん中に着く。
+ */
+export const CRAWLER_SLAM_SLIDE_PX = 110;
+export const CRAWLER_SLAM_SLIDE_MS = 300;
+/** 滑り込んだ後に手が着く所(=赤い円の中心)。 */
+export const crawlerSlamTarget = (c: Pick<LabCrawler, 'x' | 'y' | 'facingLeft'>): { x: number; y: number } => {
+  const s = crawlerSlamCenter(c);
+  return { x: s.x + (c.facingLeft ? -1 : 1) * CRAWLER_SLAM_SLIDE_PX, y: s.y };
+};
+/** 溜めのこの時刻までに滑り込んだ割合(0..1・加速→減速)。溜めの最後の CRAWLER_SLAM_SLIDE_MS だけ動く。 */
+export const crawlerSlamSlideFrac = (c: Pick<LabCrawler, 'hitAt'>, t: number): number => {
+  const u = Math.max(0, Math.min(1, (t - (c.hitAt - CRAWLER_SLAM_SLIDE_MS)) / CRAWLER_SLAM_SLIDE_MS));
+  return u * u * (3 - 2 * u);
+};
 /**
  * プレイヤーに面した縁の少し内側の x(描画・演出の出どころ用・判定には使わない)。箱は幅約740でスマホの画面より広いので、
  * 中心に出す絵(倒れた時の光・土煙)は画面の外になりやすい。プレイヤーが箱の上下に居る時はプレイヤーの x(箱の中に収める)。
@@ -502,7 +521,8 @@ export const stepLabCrawler = (c: LabCrawler, inp: CrawlerStepInput): CrawlerSte
         absorbIds.push(tg.id);
         absorbing.push({ id: tg.id, type: tg.type ?? '', x: tg.cx, y: tg.footY ?? tg.cy, w: tg.w ?? tg.r * 2, h: tg.h ?? tg.r * 2, at: n.hitAt });
       }
-      n = { ...n, state: 'recover', stateAt: n.hitAt, absorbed: n.absorbed + absorbIds.length, absorbing };
+      // 滑り込みの勢いは叩きつけで止まる(手が床に着いた所で止まる=戻りで流れていかない)。
+      n = { ...n, state: 'recover', stateAt: n.hitAt, absorbed: n.absorbed + absorbIds.length, absorbing, vx: 0, vy: 0 };
     }
   }
   if (n.state === 'recover' && t - n.stateAt >= CRAWLER_RECOVER_MS) {
@@ -521,7 +541,7 @@ export const stepLabCrawler = (c: LabCrawler, inp: CrawlerStepInput): CrawlerSte
   // 攻撃の開始: 手の届く範囲(前方の円)にプレイヤーか雑魚が入ったら。両方居れば近い方(=どちらでも溜めは同じ)。
   // 追跡中に狙ったのがプレイヤーなら、溜め・戻りの間も進み続ける(slamMoving・品質監査A1)。雑魚なら止まって食べる。
   if (n.state === 'move' && t >= n.nextAttackAt) {
-    const s = crawlerSlamCenter(n);
+    const s = crawlerSlamTarget(n); // 円=滑り込んだ後に手が着く所(射程の判定もこの円)
     let nearest: CrawlerTarget | null = null;
     let nearestD = Infinity;
     for (const tg of inp.targets) {
@@ -579,6 +599,12 @@ export const stepLabCrawler = (c: LabCrawler, inp: CrawlerStepInput): CrawlerSte
   let vx = Math.max(-vxCap, Math.min(vxCap, fastMode
     ? approachCrawlerSpeed(n.vx, tvx, dt, accelUp)
     : approachCrawlerSpeed(n.vx, tvx, dt, CRAWLER_SLOW_ACCEL_PX_S2, CRAWLER_SLOW_DECEL_PX_S2)));
+  // 溜めの最後は前へ滑り込む(このフレームで進む割合の差ぶん=加速→減速。這う速さの上限・慣性の寄せは通らない)。
+  // 叩き潰しの登場の這い込み(sceneLunge・labBaitTick が位置と円を決める台本)は対象外。
+  if (n.state === 'windup' && !n.sceneLunge && dt > 0) {
+    const df = crawlerSlamSlideFrac(n, t) - crawlerSlamSlideFrac(n, t - dt * 1000);
+    if (df > 0) vx = (n.facingLeft ? -1 : 1) * CRAWLER_SLAM_SLIDE_PX * df / dt;
+  }
   let vy = Math.max(-CRAWLER_MAX_SPEED_Y, Math.min(CRAWLER_MAX_SPEED_Y, n.vy + (tvy - n.vy) * ky));
 
   let playerPush: CrawlerStepResult['playerPush'] = null;
@@ -614,7 +640,7 @@ export const stepLabCrawler = (c: LabCrawler, inp: CrawlerStepInput): CrawlerSte
   }
   // 進みながら溜めている叩きつけの円は塊と一緒に動かす(描かれる円=次のフレームに当たる円=手の位置)。
   if (n.slamMoving && n.state === 'windup' && windupAdvancing) {
-    const s = crawlerSlamCenter(n);
+    const s = crawlerSlamTarget(n);
     n = { ...n, slamX: s.x, slamY: s.y };
   }
   n = { ...n, vx, vy, pressing };

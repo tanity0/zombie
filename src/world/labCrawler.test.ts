@@ -10,6 +10,7 @@ import {
   CRAWLER_CHASE_CATCHUP_GAP_PX, CRAWLER_CHASE_SLAM_ADVANCE_FRAC, CRAWLER_VANISH_GOAL_DIST_PX, CRAWLER_VANISH_MS, CRAWLER_VANISH_HOLD_MS, crawlerReachedGoal, crawlerGoalDir, crawlerVanishLook,
   approachCrawlerSpeed, CRAWLER_ACCEL_PX_S2, CRAWLER_DECEL_PX_S2,
   crawlerChaseBandSpeed, CRAWLER_CHASE_TARGET_GAP_PX, CRAWLER_CHASE_FAR_GAP_PX, CRAWLER_CHASE_NEAR_MULT, CRAWLER_CHASE_FAR_MULT, CRAWLER_CHASE_VERY_FAR_MULT,
+  crawlerSlamTarget, CRAWLER_SLAM_SLIDE_PX, CRAWLER_SLAM_SLIDE_MS,
   crawlerSlamLunge, CRAWLER_SLAM_LUNGE_IN_MS, CRAWLER_SLAM_LUNGE_OUT_MS, CRAWLER_IMPACT_HOLD_MS,
   type LabCrawler, type CrawlerStepInput, type CrawlerTarget,
 } from './labCrawler';
@@ -198,7 +199,8 @@ describe('ステージ2の這う塊: 叩きつけ(★赤い予告の掟)', () =>
     expect(stepLabCrawler(mid, input(c1.hitAt - 1, 1 / 60, moved)).slam).toBeNull();
   });
 
-  it('攻撃中は前へ進まない(慣性で減速するだけ・加速しない)', () => {
+  it('攻撃中は、溜めの最後の滑り込み以外は前へ進まない(慣性で減速するだけ)。滑り込みは前へ CRAWLER_SLAM_SLIDE_PX', () => {
+    // 社長指示2026-11-02「塊の叩く技、少し前進しつつ叩く」: 溜めの最後 CRAWLER_SLAM_SLIDE_MS だけ前へ滑り込む。
     const { c0, p } = setup();
     const moving: LabCrawler = { ...c0, vx: -CRAWLER_MAX_SPEED, vy: 0 };
     let c = stepLabCrawler(moving, input(1000, 1 / 60, p)).next!;
@@ -208,13 +210,34 @@ describe('ステージ2の這う塊: 叩きつけ(★赤い予告の掟)', () =>
     let t = 1000;
     while (c.state === 'windup' || c.state === 'recover') {
       t += 1000 / 60;
+      const sliding = c.state === 'windup' && t > c.hitAt - CRAWLER_SLAM_SLIDE_MS;
       c = stepLabCrawler(c, input(t, 1 / 60, p)).next!;
       if (c.state === 'move') break; // 戻りが明けて動き出した(=攻撃が終わった)
       const sp = Math.hypot(c.vx, c.vy);
-      expect(sp).toBeLessThanOrEqual(prev + 1e-9);
+      if (!sliding) expect(sp).toBeLessThanOrEqual(prev + 1e-9);
       prev = sp;
     }
-    expect(Math.abs(c.x - x0)).toBeLessThan(CRAWLER_MAX_SPEED * 0.8 + 0.5); // 慣性の滑りぶんだけ(v0×τ)
+    // 慣性の滑り(v0×τ)+滑り込みの距離。向いている方(左)へ。
+    expect(Math.abs(c.x - x0)).toBeLessThan(CRAWLER_SLAM_SLIDE_PX + CRAWLER_MAX_SPEED * 0.8 + 0.5);
+    expect(Math.abs(c.x - x0)).toBeGreaterThan(CRAWLER_SLAM_SLIDE_PX * 0.9);
+  });
+
+  it('滑り込んだ後、手は赤い円の真ん中に着く(円の大きさは今のまま)', () => {
+    const { c0, p } = setup();
+    let c = stepLabCrawler({ ...c0, vx: 0, vy: 0 }, input(1000, 1 / 60, p)).next!;
+    expect(c.state).toBe('windup');
+    const circle = { x: c.slamX, y: c.slamY };
+    let t = 1000;
+    let hit: { x: number; y: number; radius: number } | null = null;
+    while (!hit) {
+      t += 1000 / 60;
+      const r = stepLabCrawler(c, input(t, 1 / 60, p));
+      if (r.slam) { hit = r.slam; c = r.next!; break; }
+      c = r.next!;
+    }
+    expect(hit.radius).toBe(CRAWLER_SLAM_RADIUS);
+    expect(hit.x).toBeCloseTo(circle.x, 5);
+    expect(Math.abs(crawlerSlamCenter(c).x - circle.x)).toBeLessThan(6); // 手の位置=円の中心
   });
 
   it('戻りの後は間を空けてから次の攻撃', () => {
@@ -376,7 +399,7 @@ describe('ステージ2の這う塊 第2版: 資料を拾った瞬間、前か�
     // まず追跡の速さまで走らせる
     for (let i = 0; i < 120; i++) c = stepLabCrawler(c, input(i * 16, 1 / 60, p, { chaseSpeed: 150, targets: [] })).next!;
     expect(Math.abs(c.vx)).toBeGreaterThan(100);
-    const s = crawlerSlamCenter(c);
+    const s = crawlerSlamTarget(c); // 円=滑り込んだ後に手が着く所
     const mobT = { id: 'm', isPlayer: false, cx: s.x, cy: s.y, r: 14, type: 'zombie', footY: s.y + 14, w: 28, h: 28 };
     const t0 = 2000;
     let w = stepLabCrawler(c, input(t0, 1 / 60, p, { chaseSpeed: 150, targets: [mobT] })).next!;
@@ -385,8 +408,9 @@ describe('ステージ2の這う塊 第2版: 資料を拾った瞬間、前か�
     let t = t0; let prev = Math.abs(w.vx);
     while (w.state !== 'move') {
       t += 16;
+      const sliding = w.state === 'windup' && t > w.hitAt - CRAWLER_SLAM_SLIDE_MS; // 溜めの最後の滑り込み(社長指示2026-11-02)は除く
       w = stepLabCrawler(w, input(t, 1 / 60, p, { chaseSpeed: 150, targets: t < w.hitAt ? [mobT] : [] })).next!;
-      if (w.state !== 'move') { expect(Math.abs(w.vx)).toBeLessThanOrEqual(prev + 1e-6); prev = Math.abs(w.vx); }
+      if (w.state !== 'move') { if (!sliding) expect(Math.abs(w.vx)).toBeLessThanOrEqual(prev + 1e-6); prev = Math.abs(w.vx); }
     }
     expect(prev).toBeLessThan(10); // 一瞬止まる
     expect(w.nextAttackAt).toBeGreaterThanOrEqual(t - 16 + CRAWLER_COOLDOWN_MS - 20);
@@ -589,8 +613,8 @@ describe('ステージ2の這う塊 第2版(品質監査A1): 追跡中にプレ�
     const dt = 1 / 60;
     let t = 0;
     // 後ろから追いつかれる時、プレイヤーが最初に入るのは円の前の縁(塊は後ろから来る)。
-    let px = crawlerSlamCenter(c).x + CRAWLER_SLAM_RADIUS + 6;
-    const py = crawlerSlamCenter(c).y;
+    let px = crawlerSlamTarget(c).x + CRAWLER_SLAM_RADIUS + 6; // 円=滑り込んだ後に手が着く所(社長指示2026-11-02)
+    const py = crawlerSlamTarget(c).y;
     c = stepLabCrawler(c, input(t, dt, playerAt(px, py), { chaseSpeed })).next!;
     expect(c.state).toBe('windup');
     let slam: { x: number; y: number } | null = null;
