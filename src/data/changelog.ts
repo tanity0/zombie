@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5335', items: [
+    'メイドセットのヘッドドレスをもうひと回り小さく',
+  ] },
   { version: '0.25.5334', items: [
     '血の覚醒中はリロードが無い。弾倉が空になった瞬間、予備の弾から満タンまで入る',
   ] },

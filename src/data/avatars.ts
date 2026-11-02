@@ -324,7 +324,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         anchorX: 0.5, anchorY: 0.12, // 弧のてっぺんを頭頂に置く
         offsetXFrac: 0.02,
         offsetYFrac: -0.95, // 社長指示2026-11-01「カチューシャもう少し上に」-0.9→-0.95
-        sizeFrac: 0.44, // 社長指示2026-11-01「カチューシャは少しちいさく」0.5→0.44
+        sizeFrac: 0.40, // 社長指示2026-11-01「カチューシャは少しちいさく」0.5→0.44→2026-11-02「カチューシャの方だけ少し小さく」0.40
         sizeBasis: 'width',
         flipWithFacing: true,
         followsHead: true,
