@@ -114,7 +114,7 @@ import { cruiseTotalMsFor, cruiseStage, cruiseStageBonus, cruiseOthersRampMs, cr
 import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_PUZZLE.md §14-4-2(新死神・重大4/5)
 import { resetMapSightings } from '../utils/mapSightings';
 import { resetRunRoute } from '../utils/runRoutes';
-import { bloodAwakenMult, bloodGainFor, applyBloodGain, bloodSizeMul } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
+import { bloodAwakenMult, bloodGainFor, applyBloodGain, bloodSizeMul, isBloodAwakening } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
 import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
 import { meleeRecoverSpeedMult, MELEE_RECOVER_MS } from '../utils/meleeRecover'; // 近接を振ったあとの硬直(v0.25.4380)
 import { knockbackCdReady } from '../utils/reaper2'; // PACING_PUZZLE.md §14-4-3(使者のKB特例=免疫CD無視)
@@ -20704,6 +20704,29 @@ export const useGameStore = create<GameState>((set, get) => ({
     // set()の外側で副作用(resetHandcannonDecay)を呼ぶため、候補だけここで拾う(他の同種フラグと同じ流儀)。
     let handcannonReloaded = false;
     let reloadMoved = 0; // research/WEAPON_AI_TEST.md S2-a: リロード成立3経路のうち通常分。
+    // B10 血の覚醒中はリロード無し(社長指示2026-11-02「覚醒中はリロード無し に変更」→「予備弾から即補充」):
+    // 構えている銃の弾倉が空になった瞬間、予備弾から満タンまで即座に入れる(待ち時間0・予備弾は今までどおり減る)。
+    // 空になった時だけ入れる=弾倉1本ごとの性質(切替式の反転・ハンドキャノンの減衰リセット・換算kの切り上げ)は1本に1回のまま。
+    // 予備弾が尽きていれば何もしない(通常どおり持ち替え/近接へ)。
+    set(state => {
+      const p = state.player;
+      if (!isBloodAwakening(p, state.gameTime)) return {};
+      const w = getActiveGun(p);
+      if (!w?.ammoType || w.noAmmo || (w.magazine ?? 0) > 0) return {};
+      const ammoType = weaponAmmoTypeFor(w, p);
+      const field = ammoType ? AMMO_FIELD[ammoType] : undefined;
+      const filled = refillWeaponMagazine(w, p, weaponReloadReserve(w, p));
+      if (filled.moved <= 0) return {};
+      reloadMoved = filled.moved;
+      if (w.key === HANDCANNON_WEAPON_KEY) handcannonReloaded = true;
+      const weapon = w.key === CYCLE_WEAPON_KEY ? { ...filled.weapon, cycleMode: nextCycleMode(w.cycleMode) } : filled.weapon;
+      return { player: {
+        ...p,
+        ...(w.infiniteAmmo || !field ? {} : { [field]: filled.reserve }),
+        weapons: p.weapons.map(g => (g.id === w.id ? weapon : g)),
+        ...(p.reloadingWeaponId === w.id ? { reloadingWeaponId: '', reloadEndsAt: 0 } : {}),
+      } };
+    });
     set(state => {
       const p = state.player;
       if (!p.reloadingWeaponId || Date.now() < p.reloadEndsAt) return {};

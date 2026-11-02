@@ -19,7 +19,7 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { computeEffectiveMoveSpeed, type EffectiveMoveSpeedInput } from '../utils/playerMoveSpeed';
 import { resolveGhostBuild } from '../utils/ghostBuild';
 import { buildPseudoPlayer } from '../utils/playerBuild';
-import { fireWeapon, createWeapon } from '../utils/weaponUtils';
+import { fireWeapon, createWeapon, AMMO_FIELD } from '../utils/weaponUtils';
 import { bloodAwakenMult, BLOOD_AWAKEN_MS } from '../utils/bloodAwaken';
 import type { Player } from '../types/game';
 
@@ -279,5 +279,44 @@ describe('血の滴(spawnBloodDrip): 足の線で止まり、小さな点とし�
     now += 301;
     st().updateEffects(0.016);
     expect(dripIds().length).toBe(0);
+  });
+});
+
+// 社長指示2026-11-02「覚醒中はリロード無し に変更」→「予備弾から即補充」。
+describe('覚醒中はリロード無し(弾倉が空になった瞬間に予備弾から即補充)', () => {
+  const activeGun = () => st().player.weapons.find(w => w.id === st().player.activeWeaponId)!;
+  const field = () => AMMO_FIELD[activeGun().ammoType!];
+  const reserve = () => st().player[field()];
+  const emptyActive = (r: number) => useGameStore.setState(s => ({
+    player: { ...s.player, [field()]: r, weapons: s.player.weapons.map(w => (w.id === s.player.activeWeaponId ? { ...w, magazine: 0 } : w)) },
+  }));
+  it('覚醒中: 空になったら待たずに満タン・予備弾はその分減る・リロード中なら解除', () => {
+    awaken();
+    emptyActive(40);
+    useGameStore.setState(s => ({ player: { ...s.player, reloadingWeaponId: activeGun().id, reloadEndsAt: Date.now() + 99999 } }));
+    const mag = activeGun().magSize!;
+    st().tickReload();
+    expect(activeGun().magazine).toBe(mag);
+    expect(reserve()).toBe(40 - mag);
+    expect(st().player.reloadingWeaponId).toBe('');
+  });
+  it('覚醒中でも弾倉に弾が残っている間は入れない(空になった時だけ)', () => {
+    awaken();
+    emptyActive(40);
+    useGameStore.setState(s => ({ player: { ...s.player, weapons: s.player.weapons.map(w => (w.id === s.player.activeWeaponId ? { ...w, magazine: 1 } : w)) } }));
+    st().tickReload();
+    expect(activeGun().magazine).toBe(1);
+    expect(reserve()).toBe(40);
+  });
+  it('覚醒していなければ今までどおり(即補充しない)', () => {
+    emptyActive(40);
+    st().tickReload();
+    expect(activeGun().magazine).toBe(0);
+  });
+  it('予備弾が0なら入らない', () => {
+    awaken();
+    emptyActive(0);
+    st().tickReload();
+    expect(activeGun().magazine).toBe(0);
   });
 });

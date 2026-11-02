@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5334', items: [
+    '血の覚醒中はリロードが無い。弾倉が空になった瞬間、予備の弾から満タンまで入る',
+  ] },
   { version: '0.25.5333', items: [
     'ナイフマスターを付けていても、敵が弾薬を落とし、空からの弾薬の補給も来る',
   ] },
