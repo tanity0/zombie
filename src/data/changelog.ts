@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5341', items: [
+    'スキル「英雄」の犬は、体力が減ってもずっとついてくる',
+  ] },
   { version: '0.25.5340', items: [
     'START を押すと、その地域で出会うかもしれないボスが並ぶ。まだ会っていない相手は「?」のまま',
     '一覧は少し待つか画面を押せば出撃、戻るで取り消し',

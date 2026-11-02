@@ -14,7 +14,7 @@ const dog = () => useGameStore.getState().summons.find(isHeroDog);
 describe('英雄の犬(store)', () => {
   beforeEach(() => { setTreesDisabled(true); useGameStore.getState().resetGame('warrior'); });
 
-  it('スキル「英雄」+HP満タンで現れ、HPは100固定', () => {
+  it('スキル「英雄」で現れ、HPは100固定', () => {
     useGameStore.getState().updateHeroDog();
     expect(dog()).toBeUndefined();
     giveHero(true);
@@ -22,13 +22,20 @@ describe('英雄の犬(store)', () => {
     expect(dog()?.health).toBe(HERO_DOG_HP);
     expect(dog()?.maxHealth).toBe(100);
   });
-  it('HPが満タンでなくなると去る(expiresAt)。満タンに戻れば呼び戻す', () => {
+  it('HPが満タンでなくても去らない=常時ついてくる(社長指示2026-11-02)。満タンでない時から居ても現れる', () => {
     giveHero(true); useGameStore.getState().updateHeroDog();
     giveHero(false); useGameStore.getState().updateHeroDog();
-    expect(dog()?.expiresAt).toBeDefined();
-    giveHero(true); useGameStore.getState().updateHeroDog();
     expect(dog()?.expiresAt).toBeUndefined();
     expect(useGameStore.getState().summons.filter(isHeroDog).length).toBe(1);
+    useGameStore.getState().resetGame('warrior');
+    giveHero(false); useGameStore.getState().updateHeroDog();
+    expect(dog()?.health).toBe(HERO_DOG_HP);
+  });
+  it('スキルを失うと去る(expiresAt)', () => {
+    giveHero(true); useGameStore.getState().updateHeroDog();
+    useGameStore.setState(s => ({ player: { ...s.player, skills: s.player.skills.filter(k => k !== 'hero') } }));
+    useGameStore.getState().updateHeroDog();
+    expect(dog()?.expiresAt).toBeDefined();
   });
   it('死ぬと消え、10秒後に戻る', () => {
     giveHero(true); useGameStore.getState().updateHeroDog();
@@ -109,7 +116,9 @@ describe('英雄の犬(store)', () => {
   });
   it('去りかけの犬は敵の接触で傷つかない', () => {
     giveHero(true); useGameStore.getState().updateHeroDog();
-    giveHero(false); useGameStore.getState().updateHeroDog();
+    // 去るのはスキルを失った時だけ(社長指示2026-11-02で体力では去らなくなった)
+    useGameStore.setState(s => ({ player: { ...s.player, skills: s.player.skills.filter(k => k !== 'hero') } }));
+    useGameStore.getState().updateHeroDog();
     const d = dog()!;
     useGameStore.getState().damageSummon(d.id, 50, d.x - 50, d.y);
     expect(dog()?.health).toBe(100);

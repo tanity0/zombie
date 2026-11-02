@@ -11663,7 +11663,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     const dog = state.summons.find(isHeroDog);
     const mode = heroDogPresence({
-      heroActive: skillHeroActive(state.player),
+      // 社長指示2026-11-02「英雄のスキルで、犬は常時出っ放し」: 犬は体力に関係なく、スキルを持っている間はずっと居る。
+      // (速度・ダメージ±30%は従来どおり満タンの間だけ=skillHeroActive。犬だけを切り離した)
+      heroActive: state.player.skills.includes('hero'),
       hasDog: dog !== undefined,
       dogLeaving: dog !== undefined && isHeroDogLeaving(dog),
       respawnAt: state.heroDogRespawnAt,

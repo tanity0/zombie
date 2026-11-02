@@ -1,6 +1,7 @@
 // research/HERO_DOG.md(社長指示2026-10-15): スキル「英雄」の相棒の犬。
 // 「犬が常時ついてくるようになり、近くの敵に噛みつき、敵のヘイトを取る(体力は100固定)。
 //  死ぬと消えるが、10秒後に自動復活。これもHP満タン時のみ。」
+// ★社長指示2026-11-02「英雄のスキルで、犬は常時出っ放し」: 体力満タンの条件は外した(スキルを持っている間はずっと居る)。
 // ここは純関数と定数だけ(store 非依存・テスト対象)。配線は gameStore.updateHeroDog / updateSummons。
 
 import type { Enemy, Summon } from '../types/game';
@@ -29,7 +30,7 @@ export const HERO_DOG_LUNGE_SPEED = HERO_DOG_SPEED * 1.6; // 噛む瞬間の跳�
 export const HERO_DOG_W = 30;
 export const HERO_DOG_H = 22;
 export const HERO_DOG_HATE_MS = 5000;       // 噛まれた雑魚・強個体が犬を追う時間(噛むたび更新)。守護霊の GHOST_MOB_HATE_MS と同じ5秒
-export const HERO_DOG_LEAVE_MS = 700;       // HPが満タンでなくなって走り去る時間(薄れながら主人から離れる)
+export const HERO_DOG_LEAVE_MS = 700;       // スキルを失って走り去る時間(薄れながら主人から離れる)
 export const HERO_DOG_ENTRY_DIST = 260;     // 現れる時は主人からこの距離の外から走り込む(最寄りの敵と反対側)
 export const HERO_DOG_FLINCH_PX = 26;       // 被弾でダメージ源と反対へ跳ね退く距離(体長の半分=見える量)
 export const HERO_DOG_FLINCH_MS = 140;
@@ -44,14 +45,14 @@ export const HERO_DOG_FETCH_TIMEOUT_MS = 3000;  // 着けなくてもこの時�
 export const HERO_DOG_FETCH_RETURN_MS = 400;    // 回収からCD開始までの一拍
 
 export const isHeroDog = (s: Pick<Summon, 'kind'>): boolean => s.kind === 'hero-dog';
-/** 去っている最中(HPが満タンでなくなった=走り去りながら薄れる)。噛まない・当たらない。 */
+/** 去っている最中(スキルを失った=走り去りながら薄れる)。噛まない・当たらない。 */
 export const isHeroDogLeaving = (s: Pick<Summon, 'kind' | 'expiresAt'>): boolean =>
   s.kind === 'hero-dog' && s.expiresAt !== undefined;
 
 export type HeroDogPresence = 'spawn' | 'leave' | 'keep' | 'none';
 /**
  * 毎フレームの「居る/居ない」。
- * - 英雄が効いていて(スキル所持+HP満タン)犬が居ない → 復活待ちでなければ 'spawn'
+ * - 英雄が効いていて(スキル所持。社長指示2026-11-02で体力満タンの条件は外した)犬が居ない → 復活待ちでなければ 'spawn'
  * - 英雄が効いていて犬が居る → 'keep'(去りかけていても呼び戻す=呼び手が expiresAt を消す)
  * - 英雄が効いていなくて犬が居る(まだ去っていない) → 'leave'
  */
