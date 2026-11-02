@@ -7,10 +7,11 @@ describe('flamerCone(火炎放射器・UNIQUE_WEAPONS.md §5-2/§16-1)', () => {
     expect(flamerEffectiveReloadMs(1500)).toBe(3000);
   });
 
-  it('80弾×7ダメージ・100ms間隔のサイクル実効DPSは50.91(既定shotgun-t3=26.87比+89%・延焼は別)', () => {
+  it('80弾×11ダメージ・100ms間隔のサイクル実効DPSは80.0(既定shotgun-t3=26.87比×3.0・延焼は別)', () => {
     // ★社長指示2026-10-28「弾切れが早すぎる」「意外と弱い」→ 装填40→80・1回5→7+延焼。旧は既定比±10%の帯(28.57)だった。
+    // ★社長指示2026-11-02「もっと強くしたい 弱い」→ 1回7→11(旧DPS 50.91)。
     const dps = flamerCycleDps();
-    expect(dps).toBeCloseTo(50.91, 1);
+    expect(dps).toBeCloseTo(80.0, 1);
   });
 
   it('半角は0.25rad(扇0.5radの半分)', () => {

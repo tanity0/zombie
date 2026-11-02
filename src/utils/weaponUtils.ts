@@ -189,7 +189,7 @@ const CATALOG: Record<string, WeaponDef> = {
   // damage/magSize/reloadMsはflamerCone.tsが単一の出どころ(サイクル式と二重管理しない)。
   // cooldownは未使用(fireWeaponの自動射撃を通らない状態機械=useGameLoop.ts)。
   // ★延焼あり(社長指示2026-10-28「延焼効果も付ける」・旧=燃焼なしの指定)。装填80=8秒照射(同「タマ持ちもよくする」)。
-  // サイクル実効DPS=50.91(既定shotgun-t3比+89%・延焼ぶんは別・1回7=社長「はい」2026-10-28)。
+  // サイクル実効DPS=80.0(既定shotgun-t3比×3.0・延焼ぶんは別・1回11=社長指示2026-11-02「もっと強くしたい 弱い」。旧 1回7=50.91)。
   'shotgun-t3-flamer': { key: 'shotgun-t3-flamer', name: '火炎放射器', type: 'shotgun', category: 'shotgun', tier: 3, damage: FLAMER_PULSE_DAMAGE, cooldown: 100, count: 1, magSize: FLAMER_MAG_SIZE, reloadMs: FLAMER_RELOAD_MS_RAW, rangeOverride: FLAMER_RANGE_PX, nonProjectile: true },
 
   // UNIQUE_WEAPONS.md §16-2(バッチC-2)。誘導散弾ショットガン(T3): 各ペレットが近くの敵へ誘導する
