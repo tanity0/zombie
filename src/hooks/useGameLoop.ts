@@ -14938,10 +14938,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const st = useGameStore.getState();
           const pool = aimable ?? st.enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e));
           const w = walls ?? beamWalls(cx, cy, FLAMER_RANGE_PX + 40);
-          const candidates = pickFanHits(cx, cy, dirX, dirY, FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, pool);
+          // 変異塊の代理(巨大な箱)は中心ではなくいちばん近い縁で測る(社長報告2026-11-02「塊に向けて銃が撃たれない」と同じ原因)。
+          const crawlerNear = (e: Enemy) => (isLabCrawlerProxyType(e.type) ? blastAnchorOf(e, cx, cy) : null);
+          const candidates = pickFanHits(cx, cy, dirX, dirY, FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, pool, crawlerNear);
           const hits = w.length === 0
             ? candidates
-            : candidates.filter(e => !segmentBlocked(cx, cy, e.x + e.width / 2, e.y + e.height / 2, w));
+            : candidates.filter(e => { const a = blastAnchorOf(e, cx, cy); return !segmentBlocked(cx, cy, a.x, a.y, w); });
           applyBeamPulse(hits, pulseDamage, ownerGhostId, '#ff9d4d', ownerGhostId ? 'pickup-xp-flamer-ghost' : 'pickup-xp-flamer', { x: cx, y: cy });
           // ★延焼(社長指示2026-10-28「延焼効果も付ける」): 炎に触れた敵を燃やす。刻むのは既存の tickBurningEnemies。
           if (hits.length > 0) {

@@ -18,6 +18,13 @@ export const CRAWLER_PROXY_ID = 'lab-crawler';
 /** 代理の体力の下駄。1フレームにこれ以上のダメージは入らない(=代理は撃破されない)。 */
 export const CRAWLER_PROXY_HP_PAD = 1_000_000;
 
+/**
+ * 自動射撃の射程の上乗せ(px)。社長報告2026-11-02「塊に向けて銃が撃たれない」: 追う塊は縁とプレイヤーの隙間を
+ * CRAWLER_CHASE_TARGET_GAP_PX(170)に保つ=ショットガン(140)・ハンドガン(170)の射程のすぐ外に居続けて撃てなかった。
+ * 塊だけは射程の判定をこれだけ甘くする(弾はもともと射程より遠くまで飛ぶ=届く)。
+ */
+export const CRAWLER_GUN_RANGE_BONUS_PX = 120;
+
 /** 代理を置くべきか: 起きていて判定がある間だけ(待機中・昇天中は置かない)。 */
 export const crawlerProxyWanted = (c: LabCrawler | null): c is LabCrawler => !!c && c.awake && crawlerSolid(c);
 

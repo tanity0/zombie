@@ -602,3 +602,30 @@ describe('レールガン(rifle-t3-railgun)のCATALOG+オート射撃(§17-10)',
     expect(isManualOnlyGunKey(RAILGUN_WEAPON_KEY)).toBe(false);
   });
 });
+
+// 社長報告2026-11-02「塊に向けて銃が撃たれない」: 変異塊の代理(742×300の箱)は射程の判定を甘くし、狙いは近い縁へ。
+describe('変異塊の代理への自動射撃', () => {
+  beforeEach(() => { useGameStore.getState().resetGame('warrior'); });
+  const setup = (gapPx: number, type: 'lab-crawler' | 'zombie') => {
+    const player = useGameStore.getState().player;
+    const gun = { ...createWeapon('shotgun-t1'), lastFired: 0 };
+    const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+    // 箱の下の縁をプレイヤーの中心の gapPx 上に置く(横はプレイヤーを中に含む広さ)
+    const e = spawnEnemyAt(type, pcx, pcy, useGameStore.getState().gameTime);
+    const w = type === 'lab-crawler' ? 742 : e.width, h = type === 'lab-crawler' ? 300 : e.height;
+    const t = { ...e, x: pcx - w / 2 + 100, y: pcy - gapPx - h, width: w, height: h };
+    useGameStore.setState(s => ({ enemies: [t], player: { ...s.player, weapons: [gun, ...s.player.weapons.filter(x => x.isMelee)], activeWeaponId: gun.id } }));
+    return fireWeapon(gun, useGameStore.getState().player, [t]);
+  };
+  it('塊の縁がショットガンの射程(140)のすぐ外=追う塊の隙間(170)でも撃つ', () => {
+    expect(setup(170, 'lab-crawler').length).toBeGreaterThan(0);
+  });
+  it('ふつうの敵は今までどおり射程の外では撃たない', () => {
+    expect(setup(170, 'zombie').length).toBe(0);
+  });
+  it('塊の弾は箱の近い縁へ向かう(中心=右上ではなく真上へ)', () => {
+    const shots = setup(170, 'lab-crawler');
+    const avgX = shots.reduce((a, s) => a + s.direction.x, 0) / shots.length;
+    expect(Math.abs(avgX)).toBeLessThan(0.2);
+  });
+});

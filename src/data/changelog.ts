@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5337', items: [
+    'ステージ2の変異塊に、追われている間も銃が自動で撃つようになった。狙いは塊のいちばん近い所',
+  ] },
   { version: '0.25.5336', items: [
     '火炎放射器の炎がさらに強くなった',
   ] },

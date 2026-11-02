@@ -6,7 +6,8 @@ import { classifyProjectileDamageChannel, recordMeleeFromGun } from './botTeleme
 import { DEV_WEAPON_KEY } from './devTestKnobs';
 import { playEnemyDeath, playSfx } from '../audio/audioManager';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
-import { aimEnemyDist2, pickNearestTarget, isCorpse } from './enemyUtils';
+import { blastAnchorOf, aimEnemyDist2, pickNearestTarget, isCorpse, isLabCrawlerProxyType } from './enemyUtils';
+import { CRAWLER_GUN_RANGE_BONUS_PX } from './labCrawlerProxy';
 import { segmentBlocked } from '../world/obstacles';
 import { zoomCompensatedWorldDistance } from './cameraZoom';
 import { isTrapDebuffed, TRAP_PVP_RELOAD_MULT } from './trapDebuff';
@@ -945,8 +946,11 @@ const pickTarget = (player: Player, enemies: Enemy[]): Enemy | null => {
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const walls = bulletBlockersAround(st, pcx, pcy, AIM_BLOCKER_PAD_PX);
   if (walls.length === 0) return pickNearestTarget(pcx, pcy, enemies, st.gameTime);
+  // 遮りは「狙う点」まで(ふつうは中心。変異塊の代理=742×300 の箱は、プレイヤーにいちばん近い縁=blastAnchorOf)。
+  // ★社長報告2026-11-02「塊に向けて銃が撃たれない」: 中心で見ると廊下では中心への線がほぼ必ず壁を横切り、
+  // 「壁の向こうの敵」扱いで自動射撃の候補から外れていた。
   return pickNearestTarget(pcx, pcy, enemies, st.gameTime, Infinity,
-    e => segmentBlocked(pcx, pcy, e.x + e.width / 2, e.y + e.height / 2, walls));
+    e => { const a = blastAnchorOf(e, pcx, pcy); return segmentBlocked(pcx, pcy, a.x, a.y, walls); });
 };
 
 // Distance from the player center to the gun's chosen target, or Infinity when
@@ -955,7 +959,9 @@ const nearestEnemyDistance = (player: Player, enemies: Enemy[]): number => {
   const target = pickTarget(player, enemies);
   if (!target) return Infinity;
   // 射程ゲートも帯(AABB)の最近点距離(裏ボス)。中心基準だと巨体の縁で射程外扱いになる。
-  return Math.sqrt(aimDist2(player.x + player.width / 2, player.y + player.height / 2, target));
+  const d = Math.sqrt(aimDist2(player.x + player.width / 2, player.y + player.height / 2, target));
+  // 変異塊の代理は射程の判定を甘くする(追う塊が射程のすぐ外に居続けて撃てない・CRAWLER_GUN_RANGE_BONUS_PX)。
+  return isLabCrawlerProxyType(target.type) ? Math.max(0, d - CRAWLER_GUN_RANGE_BONUS_PX) : d;
 };
 
 // Aim helper: point at the chosen target, falling back to the last movement
@@ -965,8 +971,10 @@ const aimDirection = (player: Player, enemies: Enemy[]): { x: number; y: number 
   if (closest) {
     const pcx = player.x + player.width / 2;
     const pcy = player.y + player.height / 2;
-    const dx = closest.x + closest.width / 2 - pcx;
-    const dy = closest.y + closest.height / 2 - pcy;
+    // 狙う点=中心(変異塊の代理だけはいちばん近い縁=pickTarget の遮りの判定と同じ点)。
+    const a = blastAnchorOf(closest, pcx, pcy);
+    const dx = a.x - pcx;
+    const dy = a.y - pcy;
     const dist = Math.max(0.001, Math.sqrt(dx * dx + dy * dy));
     return { x: dx / dist, y: dy / dist };
   }

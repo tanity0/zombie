@@ -66,3 +66,16 @@ describe('pickFanHits', () => {
     expect(phantomFlamerPhase(1000, 1000 + PHANTOM_FLAMER_WINDUP_MS)).toBe('spray');
   });
 });
+
+// 社長報告2026-11-02「塊に向けて銃が撃たれない」: 巨大な箱(変異塊の代理)は中心ではなくいちばん近い縁で測る。
+describe('pickFanHits: 測る点の差し替え(変異塊の代理)', () => {
+  const big = { id: 'crawler', x: 100, y: -400, width: 742, height: 300 }; // 中心は(471,-250)=右上の遠く
+  it('中心で測ると、目の前の縁へ向けた扇には入らない', () => {
+    expect(pickFanHits(0, 0, 1, -1, 200, 0.25, [big]).length).toBe(0); // 縁(100,-100)=-45°へ向けても、中心(-28°)は扇の外
+  });
+  it('いちばん近い縁で測れば入る', () => {
+    const near = (e: typeof big) => ({ x: Math.max(e.x, Math.min(e.x + e.width, 0)), y: Math.max(e.y, Math.min(e.y + e.height, 0)) });
+    // 近い縁=(100,-100)。そちらへ向けた扇・射程200で拾える。
+    expect(pickFanHits(0, 0, 1, -1, 200, 0.25, [big], near).map(e => e.id)).toEqual(['crawler']);
+  });
+});

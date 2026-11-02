@@ -70,14 +70,17 @@ export interface FanHittableEnemy { id: string; x: number; y: number; width: num
 export const pickFanHits = <T extends FanHittableEnemy>(
   px: number, py: number, dirX: number, dirY: number,
   rangePx: number, halfAngleRad: number, enemies: readonly T[],
+  /** 中心ではなくこの点で測る敵(変異塊の代理=742×300 の箱のいちばん近い縁)。null=従来どおり中心+概算半径。 */
+  nearPointOf?: (e: T) => { x: number; y: number } | null,
 ): T[] => {
   const aimAngle = Math.atan2(dirY, dirX);
   return enemies.filter(e => {
-    const cx = e.x + e.width / 2;
-    const cy = e.y + e.height / 2;
+    const near = nearPointOf?.(e) ?? null;
+    const cx = near ? near.x : e.x + e.width / 2;
+    const cy = near ? near.y : e.y + e.height / 2;
     const dx = cx - px, dy = cy - py;
     const dist = Math.hypot(dx, dy);
-    const r = Math.max(e.width, e.height) / 2;
+    const r = near ? 0 : Math.max(e.width, e.height) / 2;
     if (dist > rangePx + r) return false;
     if (dist < 1e-6) return true; // ほぼ同位置=角度不定だが範囲内なので当たり扱い
     const angle = Math.atan2(dy, dx);
