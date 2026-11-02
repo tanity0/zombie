@@ -3,7 +3,7 @@
 // (塊弾・回る衛星弾で倒した時も**同じ経路**を通すため)。中身・順番・確率は移す前と1bitも変えていない。
 // URL のツマミ(?ammosmart / ?ammodir / 弾ゼロのラン)は呼び手(useGameLoop)のモジュール定数なので、ctx で受け取る。
 import type { AmmoType, Enemy, Player } from '../types/game';
-import { useGameStore, AMMO_MAX, hasSkill } from '../store/gameStore';
+import { useGameStore, AMMO_MAX } from '../store/gameStore';
 import { getActiveGun, ammoBearingGuns, ammoPoolFor } from './weaponUtils';
 import { isPumpkinTier, areaIndexForDist } from './enemyUtils';
 import { ammoDirectorRate } from './ammoDirector';
@@ -81,10 +81,10 @@ export const dropGunKillLoot = (enemy: Enemy, ctx: GunKillDropCtx): void => {
     dirPct / 100 + (useGameStore.getState().player.ammoDropBonus ?? 0) + (useGameStore.getState().player.equipBonus?.ammoDropBonus ?? 0),
   ));
   // 研究所(屋内)は通常ドロップ無し: PHILL弾は固定3箇所＋近接フィニッシュのみ。
-  // ナイフマスターは弾薬ドロップ0%(社長指示)。
+  // 旧: ナイフマスターは弾薬ドロップ0%。社長指示2026-11-02「ナイフマスターの弾薬ドロップ無しはやめて」で撤去。
   // M0(訓練)は弾を拾う教習まで抽選ドロップを封印(社長指示v0.25.2319・m0Unlocked.ammo)。
   if (
-    !indoor && !hasSkill(player, 'knife-master')
+    !indoor
     // §21-4(弾ゼロ): ★弾薬ディレクタは**備蓄0を枯渇と見て率を上げる**ので、何もしないと「弾ゼロにするほど落ちる」。ここで完全に塞ぐ。
     && !ctx.noAmmoRun
     && useGameStore.getState().m0Unlocked.ammo

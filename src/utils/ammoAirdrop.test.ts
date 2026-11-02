@@ -16,7 +16,6 @@ const queueRng = (values: number[]): (() => number) => {
 
 const baseInput = (overrides: Partial<AirdropTickInput> = {}): AirdropTickInput => ({
   tutorialStage: false,
-  knifeMaster: false,
   gameTime: 100000,
   worldAmmoCount: 0,
   lastAmmoDropAt: 0,
@@ -70,15 +69,6 @@ describe('shouldSpawnAirdrop (useGameLoop.ts空輸弾薬の挙動保存切り出
   it('チュートリアル中はspawnしない', () => {
     const r = shouldSpawnAirdrop(baseInput({
       tutorialStage: true,
-      lastAmmoDropAt: 0, gameTime: 999999,
-      rng: queueRng([]),
-    }));
-    expect(r.spawn).toBeNull();
-  });
-
-  it('ナイフマスター所持中はspawnしない', () => {
-    const r = shouldSpawnAirdrop(baseInput({
-      knifeMaster: true,
       lastAmmoDropAt: 0, gameTime: 999999,
       rng: queueRng([]),
     }));

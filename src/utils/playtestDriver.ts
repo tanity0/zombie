@@ -744,7 +744,6 @@ export const runPlaytestTick = (refs: PlaytestRefs, opts: PlaytestTickOptions): 
   // 一度も試験されない)。演出(spawnRing)は他FXと同様ヘッドレスではNOOP=呼ばない。
   const airdropTick = shouldSpawnAirdrop({
     tutorialStage: false, // ヘッドレスにチュートリアル演出は無い(常に本編扱い)
-    knifeMaster: hasSkill(s.player, 'knife-master'),
     gameTime: t,
     worldAmmoCount: s.pickups.filter(
       p => p.worldDrop && (p.type === 'ammo-handgun' || p.type === 'ammo-shotgun' || p.type === 'ammo-rifle')

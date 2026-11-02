@@ -17879,7 +17879,6 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         ).length;
         const airdropTick = shouldSpawnAirdrop({
           tutorialStage: tutorialStage || endingStage, // チュートリアル/エンディング(仮組み)はアイテム(弾薬エアドロップ)も無し(社長指示v0.25.1818・ENDING_SCENE.md)
-          knifeMaster: hasSkill(useGameStore.getState().player, 'knife-master'), // ナイフマスターは弾薬ドロップ0%(社長指示)
           gameTime,
           worldAmmoCount,
           lastAmmoDropAt: lastAmmoDropRef.current,

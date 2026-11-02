@@ -4926,9 +4926,9 @@ export const grantMeleeKillRewards = (
       ? pickAmmoDropType(ownedAmmoTypes.map(t => ({ type: t, reserve: ammoPoolFor(player, t), max: AMMO_MAX[t] })), gun?.noAmmo ? undefined : gun?.ammoType)
       : null;
     const dropType = smartType ?? (gun?.noAmmo ? undefined : gun?.ammoType) ?? ownedAmmoTypes[0];
-    // ナイフマスターは弾薬ドロップ0%(何をしても。社長指示)。
+    // 旧: ナイフマスターは弾薬ドロップ0%。社長指示2026-11-02「ナイフマスターの弾薬ドロップ無しはやめて」で撤去。
     // M0(訓練)は弾を拾う教習まで抽選ドロップを封印(社長指示v0.25.2319・m0Unlocked.ammo)。
-    if (dropType && !hasSkill(player, 'knife-master') && get().m0Unlocked.ammo && Math.random() < ammoChance) {
+    if (dropType && get().m0Unlocked.ammo && Math.random() < ammoChance) {
       get().addPickup({
         id: `pickup-ammo-melee-${enemy.id}`,
         x: ex - 8 + 14, y: ey - 8,

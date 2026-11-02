@@ -20,7 +20,6 @@ export const AIRDROP_EQUIPPED_WEIGHT = 0.7; // 弾種: 構え銃70%/所持ラン
 
 export interface AirdropTickInput {
   tutorialStage: boolean;   // チュートリアル中は発生しない(社長指示v0.25.1818)
-  knifeMaster: boolean;     // ナイフマスターは弾薬ドロップ0%(社長指示)
   gameTime: number;
   worldAmmoCount: number;   // 現在フィールドにあるworldDrop弾薬(ammo-*)ピックアップ数
   lastAmmoDropAt: number;   // 呼び出し側refの現在値(前回投下時刻。未投下は0)
@@ -56,7 +55,6 @@ export const shouldSpawnAirdrop = (input: AirdropTickInput): AirdropTickResult =
   if (
     input.tutorialStage ||
     input.worldAmmoCount >= AIRDROP_MAX_WORLD_DROPS ||
-    input.knifeMaster ||
     !(input.gameTime - input.lastAmmoDropAt > delay)
   ) {
     return { nextAmmoDropDelayMs: delay, spawn: null };
