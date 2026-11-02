@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5332', items: [
+    'スキルの表示が左から滑り込み、消える時は下の行がなめらかに詰まる。同じスキルが続けて効くと「×2」と数える',
+    'スキルの表示は一時停止の間は止まる。守護霊が効かせた分は出ない。PCでは会話の上に積まれる',
+  ] },
   { version: '0.25.5331', items: [
     'スキルが効いた瞬間、通信の下にそのスキルの絵と名前が短く出る',
   ] },

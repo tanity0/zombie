@@ -1052,10 +1052,15 @@ export const gunShotBaseDamage = (
   weapon: Pick<Weapon, 'damage' | 'magazine'>,
   player: Player,
   gameTime: number,
-): number =>
-  weapon.damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player)
-  * consumableAttackMult(player, gameTime)
-  * (player.equipBonus?.damageMult ?? 1) * skillLastMagazineMult(player, weapon.magazine ?? 0);
+): number => {
+  const lastMag = skillLastMagazineMult(player, weapon.magazine ?? 0);
+  // スキル発動の表示: ラストマガジンが乗った瞬間(銃の全経路=通常/PHILL/レールガン/光線/火炎/塊銃…がここを通る)。
+  // 守護霊・幻影の分は notifySkillProcFor が pseudoActor で除く。
+  if (lastMag > 1) notifySkillProcFor(player, 'last-magazine');
+  return weapon.damage * scavengerGunMult(player, gameTime) * skillAttackShooterGunMult(player)
+    * consumableAttackMult(player, gameTime)
+    * (player.equipBonus?.damageMult ?? 1) * lastMag;
+};
 
 // GHOST-BUILD-1(共通ヘルパ): 発射時のクリ率(0..1)。fireWeaponの `critChance` の式を値を変えずに抽出。
 //  = 武器基礎 + 本体(レベルアップ)+ 装備(クリ系)+ クイックマガジン + 弁慶(旧ウォームアップ項は
@@ -1284,8 +1289,6 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
     useGameStore.setState(state => ({ player: { ...state.player, fireShooterCdUntil: gtFire + 3000 } }));
     notifySkillProcFor(player, 'fire-shooter');
   }
-  // スキル発動の表示: ラストマガジン=弾倉の最後の1発を撃った瞬間(倍率は gunShotBaseDamage が乗せる)。
-  if (skillLevel(player, 'last-magazine') && (weapon.magazine ?? 0) === 1) notifySkillProcFor(player, 'last-magazine');
   const FIRE_SHOOTER_RADIUS = 66; // = HEAVY_GRENADE_RADIUS
   // 社長指示v0.25.3300 ファイアシューター覚醒(Lv3): 爆発弾が大爆発になる(半径×1.8=
   // ボムカウンター自分中心大爆発と同じ「大爆発」倍率)。

@@ -93,6 +93,8 @@ export interface PvpPostureState {
 }
 
 export interface Player extends DashLocomotionState {
+  /** 守護霊・幻影・分身の主語として作った疑似Player(utils/ghostBuild.resolveGhostBuild が付ける)。本人は undefined。スキル発動の表示を本人だけに出すのに使う。 */
+  pseudoActor?: boolean;
   x: number;
   y: number;
   // Velocity (px/s). Movement is smoothed toward the input target so the player

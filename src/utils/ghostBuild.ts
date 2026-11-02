@@ -29,7 +29,8 @@ export interface GhostBuild {
 /** スナップショット(欠損可)+召喚時の本人から、ゴーストのビルドを1組組み立てる(純関数)。 */
 export const resolveGhostBuild = (snap: PlayerBuildSnapshot | undefined, live: Player): GhostBuild => {
   // B10 血の覚醒: 本人の血・覚醒を守護霊の疑似Playerに乗せない(旧プロファイル=snap無しは live をそのまま返すので、ここでも落とす)。
-  const pseudo = withoutBlood(buildPseudoPlayer(snap, live));
+  // pseudoActor: 本人ではない主語の印(スキル発動の表示を本人の分だけに出す・gameStore.notifySkillProcFor)。
+  const pseudo: Player = { ...withoutBlood(buildPseudoPlayer(snap, live)), pseudoActor: true };
   if (!buildHasLoadout(snap) || snap === undefined) {
     // 旧プロファイル(ロードアウト未記録)=従来どおり召喚時のプレイヤーの現在装備を借用する。
     const guns = live.weapons.filter(w => !w.isMelee);

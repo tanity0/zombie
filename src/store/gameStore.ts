@@ -153,7 +153,7 @@ import {
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
 import type { SkillProcEntry } from '../utils/skillProcFeed';
-import { pushSkillProc } from '../utils/skillProcFeed';
+import { pushSkillProc, shiftSkillProc } from '../utils/skillProcFeed';
 import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponRoundsPerAmmo, berserkerAwakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
 import { alchemyStoneDetonateDamage, alchemyStoneDetonateRadius } from '../utils/alchemyStone';
@@ -5057,29 +5057,29 @@ export const applyRescueSignalProc = (
 };
 
 // ---- スキル発動の表示(社長指示2026-11-01「スキル発動時は通信欄下に表示したい」→「効いた瞬間に新しく出す」) ----
-// プレイヤー自身のスキルが効いた瞬間に呼ぶ(守護霊・ゴースト・味方の分では呼ばない)。間引き・並びは utils/skillProcFeed。
-let skillProcLastAt: Partial<Record<SkillKey, number>> = {};
+// プレイヤー本人のスキルが効いた瞬間に呼ぶ。守護霊・幻影・護衛の分は呼び手が除くか、notifySkillProcFor が除く。
+// 並び・数え方・消える時刻は utils/skillProcFeed。
 let skillProcSeq = 0;
-export const resetSkillProcThrottle = (): void => { skillProcLastAt = {}; };
 export const notifySkillProc = (key: SkillKey): void => {
-  const now = Date.now();
-  const r = pushSkillProc(useGameStore.getState().skillProcFeed, skillProcLastAt, key, now, ++skillProcSeq);
-  if (!r) return;
-  skillProcLastAt = r.lastAt;
-  useGameStore.setState({ skillProcFeed: r.feed });
+  useGameStore.setState(s => ({ skillProcFeed: pushSkillProc(s.skillProcFeed, key, Date.now(), ++skillProcSeq) }));
+};
+/** 一時停止していた分だけ表示の時刻を先送りする(表示側が再開の時に呼ぶ)。 */
+export const shiftSkillProcFeed = (ms: number): void => {
+  if (ms <= 0) return;
+  useGameStore.setState(s => (s.skillProcFeed.length ? { skillProcFeed: shiftSkillProc(s.skillProcFeed, ms) } : {}));
 };
 /**
- * 持ち主がプレイヤー本人の時だけ出す(守護霊・分身の主語=疑似Player は別の skills 配列を持つ)。
- * Player は更新のたびに作り直されるので参照比較はせず、skills 配列(装備が変わらない限り同じ物)で見分ける。
+ * 持ち主がプレイヤー本人の時だけ出す。守護霊・幻影・分身の主語(疑似Player)は ghostActorPlayer / soloGhost が
+ * `pseudoActor: true` を付けて作るので、それで見分ける(skills 配列は本人の物を借りていることがあり、見分けに使えない)。
  */
-export const notifySkillProcFor = (owner: Pick<Player, 'skills'> | null | undefined, key: SkillKey): void => {
-  if (!owner || owner.skills !== useGameStore.getState().player.skills) return;
+export const notifySkillProcFor = (owner: Pick<Player, 'pseudoActor'> | null | undefined, key: SkillKey): void => {
+  if (!owner || owner.pseudoActor) return;
   notifySkillProc(key);
 };
 /** ボマーの抽選+表示(当たった時だけ、持ち主が本人なら出す)。抽選そのものは rollBomberScatter のまま。 */
-export const rollBomberScatterAndNotify = (owner: Player): boolean => {
+export const rollBomberScatterAndNotify = (owner: Player, isPlayersOwn = true): boolean => {
   const ok = rollBomberScatter(owner);
-  if (ok) notifySkillProcFor(owner, 'bomber');
+  if (ok && isPlayersOwn) notifySkillProcFor(owner, 'bomber');
   return ok;
 };
 
@@ -5093,7 +5093,7 @@ export const rollBomberScatterAndNotify = (owner: Player): boolean => {
 const applyVampireKillHeal = (get: () => GameState, at: { x: number; y: number }) => {
   const heal = rollVampireHeal(skillLevel(get().player, 'vampire'));
   if (heal <= 0) return;
-  notifySkillProc('vampire');
+  if (get().player.health < get().player.maxHealth) notifySkillProc('vampire'); // 満タンで回復0の時は出さない
   useGameStore.setState(state => ({
     player: { ...state.player, health: Math.min(state.player.maxHealth, state.player.health + heal) },
   }));
@@ -5115,6 +5115,7 @@ const applyVampireMeleeHeal = (
   if (hitEnemyIds.length === 0) return;
   if (skillLevel(player, 'vampire') < 3) return;
   const heal = Math.max(1, Math.round(get().player.maxHealth * VAMPIRE_AWAKEN_MELEE_HEAL_FRAC));
+  if (get().player.health < get().player.maxHealth) notifySkillProcFor(player, 'vampire'); // 覚醒の近接回復(満タンでは出さない)
   useGameStore.setState(state => ({
     player: { ...state.player, health: Math.min(state.player.maxHealth, state.player.health + heal) },
   }));
@@ -5147,13 +5148,14 @@ const applyMeleeFinishSkillSpread = (
 ) => {
   if (!finisherOccurred) return;
   if (hasSkill(player, 'reaper')) {
-    notifySkillProcFor(player, 'reaper');
+    let reaped = 0;
     const r2 = range * range;
     for (const e of get().enemies) {
       if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue; // 不倒の通常リーパーは対象外。深奥チェイサーは近接対象(ボス級)なので含める
       if (isCorpse(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象選定から除外
       const { x: ecx, y: ecy } = blastAnchorOf(e, pcx, pcy); // 変異塊の代理は箱の中で一番近い点(LAB_CRAWLER §4)
       if ((ecx - pcx) ** 2 + (ecy - pcy) ** 2 > r2) continue;
+      reaped++;
       get().spawnSlash(ecx, ecy, 'rgba(168,85,247,0.95)');
       get().spawnMeleeBlood(ecx, ecy - idolAirLift(e), e.width); // 近接の血飛沫=プレイヤーへ向かって飛ぶ(v0.25.2026)
       if (isBossType(e.type)) {
@@ -5171,6 +5173,7 @@ const applyMeleeFinishSkillSpread = (
         }
       }
     }
+    if (reaped > 0) notifySkillProcFor(player, 'reaper'); // 巻き込んだ敵がいた時だけ
   }
   const shockLv = skillLevel(player, 'execution-shock');
   if (shockLv) {
@@ -5678,7 +5681,6 @@ const openShukuchiWindow = (get: () => GameState): void => {
   const chain = p.shukuchiStriking
     ? (p.shukuchiChain ?? 0) + 1
     : wasOpen ? (p.shukuchiChain ?? 0) : 0;
-  if (!wasOpen) notifySkillProc('shukuchi'); // 窓が開いた瞬間だけ(延長では出さない)
   useGameStore.setState(st => ({ player: {
     ...st.player, shukuchiWindowUntil: st.gameTime + windowMs, shukuchiChain: chain,
   } }));
@@ -8667,6 +8669,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ...state.player, shukuchiStrikeAt: 0, shukuchiStriking: reachable,
       ...(reachable ? {} : { shukuchiStrikeMult: undefined }),
     } }));
+    if (reachable) notifySkillProc('shukuchi'); // スキル発動の表示: 瞬間移動して刃が届いた瞬間
     // 斬撃=**通常の近接の振りそのもの**(前隙なし=押した時刻を渡す)。ダメージの上乗せは triggerCounter が読む。
     const r = get().triggerCounter(pressAt);
     let { swung, hit, finish, killed } = r;
@@ -10129,6 +10132,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     applyVampireMeleeHeal(get, player, meleeHitEnemyIds, pcx, pcy);
     get().registerMultiHit(slashAt.length); // キャラ固有 ヘビーガンナー: 近接が2体以上に当たれば爆発範囲バフ
     if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
+      notifySkillProcFor(player, 'counter-master');
       counterMasterKnockback(get, pcx, pcy, counterMasterKbScale(player));
     }
     // スキル スラッシャーのチェーン開始はこの近接スイングの set()(player.slasherChainReadyAt)で行う。
@@ -14545,6 +14549,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnGlow(tx, ty, GLOW_R_S, 'rgba(56,189,248,', 360);
         get().spawnBurst(tx, ty, '#38bdf8', 18);
         get().spawnCallout(tx, ty - 20, '使役！', '#38bdf8');
+        notifySkillProc('poi-thrall');
       }
     }
 
@@ -22774,7 +22779,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     resetMapSightings(); // 一時停止の地図の「出会った敵」は出撃ごと(THEONE_ROUND2 §2-3)
     resetRunRoute(); // 一時停止の地図の「今回歩いた道」も出撃ごと(THEONE_ROUND2 §2-6)
     resetSpawnWalk(); // 湧く向きの寄せ(PACING_PUZZLE §20)も前ランから持ち越さない
-    resetSkillProcThrottle(); // スキル発動の表示の間引きも出撃ごと
     const state = get();
     // v0.25.2476: 前ランのサブ様式集計(fold)+プロファイル保存の決算は、リザルト画面を閉じる操作
     // (GameOverScreenのsettlePendingTraits)へ移動した(社長裁定「今回のプレイを守護霊に反映しない」を
@@ -23520,7 +23524,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         isPaused: false,
         showUpgradeMenu: false,
         skillPickFx: null, // 新ランに前回の頭上マークを持ち越さない
-        skillProcFeed: [], // スキル発動の表示も持ち越さない(間引きの記録は resetSkillProcThrottle)
+        skillProcFeed: [], // スキル発動の表示も持ち越さない
         showShopMenu: false,
         showEventQuestMenu: false,
         shopReopenAt: 0,

@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
-import { useGameStore } from '../store/gameStore';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useGameStore, shiftSkillProcFeed } from '../store/gameStore';
 import { spritePath } from '../utils/spriteLoader';
 import { useHudLandscape } from './HudScale';
 import { slowLineVisibleChars } from '../utils/slowLine';
 import { SKILLS, skillIcon } from '../data/campaign';
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
-import { nextSkillProcExpiry, SKILL_PROC_SHOW_MS } from '../utils/skillProcFeed';
+import { nextSkillProcWake, skillProcAlive, skillProcLeaving } from '../utils/skillProcFeed';
 import type { SkillKey } from '../types/game';
 
 // 話者名 → 立ち絵のベースパス(spritePathの`${base}-0`)+枠幅。セリフ表示時に上半身(バスト)を出す。
@@ -116,35 +116,90 @@ const SkillProcIcon = ({ k }: { k: SkillKey }) => {
   return st ? <span style={st} aria-hidden /> : <span className="text-[13px] leading-none">{skillIcon(k)}</span>;
 };
 
+/** レア度の色(左端の細い印)。RunHud のスキル欄の縁と同じ色=同じスキルだと結び付く。 */
+const PROC_RARITY_COLOR: Record<'normal' | 'rare' | 'super', string> = {
+  normal: 'rgba(148,163,184,0.75)', rare: 'rgba(192,132,252,0.9)', super: 'rgba(252,211,77,0.95)',
+};
+
 /**
  * スキルが効いた瞬間の表示(社長指示2026-11-01「スキル発動時は通信欄下に表示したい」→「効いた瞬間に新しく出す」)。
- * 通信(会話)の板のすぐ下に、絵+名前の行を積む(新しい物が下)。並び・間引き・消える時刻は utils/skillProcFeed。
- * 購読は発動の時だけ変わる配列だけ=毎フレーム描き直さない。消える時刻にだけ1回起きて描き直す。
+ * 通信(会話)の板の下に、絵+名前の行を積む(新しい物が下)。並び・数え方・消える時刻は utils/skillProcFeed。
+ * - 会話の板とは別の層に見せる: 板を敷かず、左端にレア度の細い印+縁取り文字。絵は立ち絵の列、名前は会話の本文の列に揃える。
+ * - 入る: 左から慣性つきで滑り込み、少し行き過ぎて戻る。同じ瞬間に効いた行は時間差で入る。最新の行の絵は一度ふくらむ。
+ * - 消える: 左へ引っ込みながら行の高さを畳む=下の行は跳ばずに詰まる(上限超えで押し出された行も同じ動き)。
+ * - 同じスキルがまた効くと、行は増えずに「×N」が増え、絵がふくらみ直す。
+ * - 一時停止の間は動きも時計も止める(再開時に止めていた分だけ先送り)。
+ * 購読は発動の時だけ変わる配列と一時停止の真偽だけ=毎フレーム描き直さない。描き直しは時刻の境目で1回ずつ。
  */
-const SkillProcRows = () => {
+const SkillProcRows = ({ align }: { align: number }) => {
   const feed = useGameStore(s => s.skillProcFeed);
+  const paused = useGameStore(s => s.isPaused || s.showUpgradeMenu);
   const [, wake] = useState(0);
+  const pausedAtRef = useRef<number | null>(null);
+  // 会話の板が出る/消えると行の塊の位置が変わる=跳ばずに慣性つきで移る(前の位置から今の位置へ)。
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const prevTopRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) { prevTopRef.current = null; return; }
+    const top = el.getBoundingClientRect().top;
+    const prev = prevTopRef.current;
+    prevTopRef.current = top;
+    if (prev === null || Math.abs(prev - top) < 1) return;
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${prev - top}px)`;
+    void el.offsetHeight; // 前の位置を一度描かせてから戻す
+    el.style.transition = 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)';
+    el.style.transform = 'translateY(0)';
+  });
   useEffect(() => {
-    const t = nextSkillProcExpiry(feed.filter(e => Date.now() - e.at < SKILL_PROC_SHOW_MS));
+    if (paused) { if (pausedAtRef.current === null) pausedAtRef.current = Date.now(); return; }
+    if (pausedAtRef.current !== null) { const ms = Date.now() - pausedAtRef.current; pausedAtRef.current = null; shiftSkillProcFeed(ms); return; }
+    const t = nextSkillProcWake(feed, Date.now());
     if (t === null) return;
-    const id = window.setTimeout(() => wake(n => n + 1), Math.max(0, t - Date.now()) + 30);
+    const id = window.setTimeout(() => wake(n => n + 1), Math.max(0, t - Date.now()) + 16);
     return () => window.clearTimeout(id);
   });
-  const now = Date.now();
-  const rows = feed.filter(e => now - e.at < SKILL_PROC_SHOW_MS);
+  const now = pausedAtRef.current ?? Date.now();
+  const rows = feed.filter(e => skillProcAlive(e, now));
   if (rows.length === 0) return null;
+  const newestId = rows.reduce((a, e) => (e.at >= a.at ? e : a), rows[0]).id;
+  const playState = paused ? 'paused' : 'running';
   return (
-    <div className="flex flex-col items-start gap-1 mt-1.5">
-      {rows.map(e => (
-        <div
-          key={e.id}
-          className="skill-proc-row glass-pill flex items-center gap-1.5 py-0.5 pl-1 text-[12px] leading-none gt-solid"
-          style={{ paddingRight: 28, animationDuration: `${SKILL_PROC_SHOW_MS}ms` }}
-        >
-          <span className="relative w-5 h-5 shrink-0 flex items-center justify-center overflow-hidden"><SkillProcIcon k={e.key} /></span>
-          <span className="font-bold text-sky-200/95 gt-outline whitespace-nowrap">{SKILLS[e.key].name}</span>
-        </div>
-      ))}
+    <div ref={boxRef} className="flex flex-col items-start" style={{ margin: '6px 0' }}>
+      {rows.map(e => {
+        const leaving = skillProcLeaving(e, now);
+        const sinceIn = now - e.at - e.delay;
+        const rarity = SKILLS[e.key].rarity;
+        return (
+          <div
+            key={e.id}
+            className={`skill-proc-row flex items-center ${leaving ? 'is-out' : ''}`}
+            style={{
+              // 入る動きは「入ってから経った時間」ぶん進めた所から(描き直しで頭から再生し直さない)。
+              animationDelay: leaving ? "0ms" : `${Math.round(-sinceIn)}ms`, // 同時に効いた行の時間差(正)も、入ってから経った分(負)もここで
+              animationPlayState: playState,
+              paddingLeft: 4,
+            }}
+          >
+            <span className="skill-proc-mark self-stretch" style={{ background: PROC_RARITY_COLOR[rarity] }} />
+            <span className="relative shrink-0 flex items-center justify-center" style={{ width: align - 8, height: 20 }}>
+              <span
+                key={e.hits}
+                className={`relative w-5 h-5 flex items-center justify-center overflow-hidden ${e.id === newestId || e.hits > 1 ? 'skill-proc-pop' : ''}`}
+                style={{ animationPlayState: playState }}
+              ><SkillProcIcon k={e.key} /></span>
+            </span>
+            <span
+              className="text-[11px] font-bold tracking-wide gt-outline whitespace-nowrap transition-colors duration-300"
+              style={{ color: e.id === newestId ? 'rgba(224,242,254,1)' : 'rgba(186,200,214,0.78)' }}
+            >
+              {SKILLS[e.key].name}
+              {e.hits > 1 && <span key={e.hits} className="skill-proc-pop inline-block ml-1 text-[10px] text-amber-200/95" style={{ animationPlayState: playState }}>×{e.hits}</span>}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -164,6 +219,8 @@ export const NpcDialogue = () => {
   const portrait = npc ? NPC_PORTRAIT[npc.portrait ?? npc.name] : undefined;
   const portraitBase = portrait?.base;
   const portraitBoxW = portrait?.boxW ?? 40;
+  // スキル発動の行の名前を会話の本文の列に揃える(板の左余白6+立ち絵の幅+隙間6+印2)。
+  const procAlign = 6 + portraitBoxW + 6 + 2;
   return (
     <div
       data-phone-guard-skip // 会話は乱数で文言と長さが変わる=スマホの回帰チェック(scripts/phone-guard.mjs)の対象外
@@ -181,6 +238,8 @@ export const NpcDialogue = () => {
         maxWidth: 'min(calc(66vw / var(--hud-s, 1)), 300px)',
       }}
     >
+      {/* PC の横長は会話が画面の一番下=下に置く場所が無いので、行は会話の上に積む(下揃えの入れ物の中で上へ伸びる=会話は動かない)。 */}
+      {landscape && <SkillProcRows align={procAlign} />}
       {/* 枠なし・上半身絵と文字を同一の右フェード背景に。高さは文字に合わせ、上半身絵は上にはみ出してOK。 */}
       {npc && <div
         className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug gt-solid"
@@ -218,7 +277,7 @@ export const NpcDialogue = () => {
           {npc.slow ? <SlowLine key={npc.until} text={npc.text} /> : <span className="text-white/90">{npc.text}</span>}
         </div>
       </div>}
-      <SkillProcRows />
+      {!landscape && <SkillProcRows align={procAlign} />}
     </div>
   );
 };

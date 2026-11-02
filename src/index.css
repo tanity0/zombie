@@ -158,14 +158,29 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
     border: none;
     border-radius: 0;
   }
-  /* スキル発動の行(NpcDialogue の SkillProcRows)。左から慣性つきで滑り込み(行き過ぎて戻る)、
-     しばらく留まり、少し上へ逃げながら消える。尺は要素の animationDuration(=SKILL_PROC_SHOW_MS)。 */
-  .skill-proc-row { animation-name: skill-proc-row; animation-fill-mode: both; animation-timing-function: linear; }
-  @keyframes skill-proc-row {
-    0%   { opacity: 0; transform: translateX(-22px); animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1.25); }
-    11%  { opacity: 1; transform: translateX(0); }
-    80%  { opacity: 1; transform: translate(0, 0); animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6); }
-    100% { opacity: 0; transform: translate(6px, -5px); }
+  /* スキル発動の行(NpcDialogue の SkillProcRows)。
+     入る: 左から56px、慣性で少し行き過ぎて(+7px)戻る。消える(.is-out): 左へ引っ込みながら高さを畳む=下の行が跳ばない。 */
+  .skill-proc-row {
+    max-height: 26px; margin-bottom: 2px;
+    animation: skill-proc-in 520ms linear both;
+  }
+  .skill-proc-row.is-out { animation: skill-proc-out 320ms cubic-bezier(0.55, 0, 0.75, 0.4) both; }
+  .skill-proc-mark { width: 2px; margin-right: 6px; border-radius: 1px; }
+  @keyframes skill-proc-in {
+    0%   { opacity: 0; transform: translateX(-56px); animation-timing-function: cubic-bezier(0.16, 0.85, 0.3, 1); }
+    62%  { opacity: 1; transform: translateX(7px); animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
+    100% { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes skill-proc-out {
+    0%   { opacity: 1; transform: translateX(0); max-height: 26px; margin-bottom: 2px; }
+    55%  { opacity: 0; transform: translateX(-28px); max-height: 26px; margin-bottom: 2px; }
+    100% { opacity: 0; transform: translateX(-34px); max-height: 0; margin-bottom: 0; }
+  }
+  /* 効いた瞬間に絵(と×N)が一度ふくらむ。 */
+  .skill-proc-pop { animation: skill-proc-pop 340ms cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+  @keyframes skill-proc-pop {
+    0%   { transform: scale(1.6); filter: brightness(1.8); }
+    100% { transform: scale(1); filter: brightness(1); }
   }
   /* 中央寄せのHUD文字(プレイ時間など)用: 両サイドへフェードアウトする黒背景(透明感あり)・枠なし。 */
   .glass-pill-both {
