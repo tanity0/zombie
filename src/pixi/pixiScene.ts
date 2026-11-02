@@ -116,7 +116,10 @@ import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
 import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
-import { warmEnemySheets } from './pixiTextures';
+import { warmEnemySheets, prewarmEnemySheetsGpu } from './pixiTextures';
+import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
+/** 城ボスの絵を出現の最短時刻のこれだけ前から先読み+GPU転送する(メモリを使い始める時刻と、間に合う余裕の釣り合い)。 */
+const CASTLE_BOSS_GPU_PREWARM_MS = 45_000;
 import { sheetHeightFix } from '../utils/sheetFit';
 import { bossFaceWant, bossFaceDeadzonePx, BOSS_TURN_MIN_MS } from '../utils/bossFacing';
 import { bossStoppedForArt } from '../utils/bossStopArt';
@@ -10068,6 +10071,12 @@ export class PixiScene {
     for (const sp of this.bossGunMuzzleSprites.values()) sp.visible = false;
     // ★syncActors より前: 取り込まれた敵の姿は、敵の絵が片付けられる前(=このフレーム)に覚える必要がある。
     this.syncLabCrawler(s.labCrawler, s.gameTime, now, s.attention !== null, crawlerProxy?.lastHit ?? 0, s.player.x + s.player.width / 2, s.player.y + s.player.height / 2, crawlerProxy);
+    // 城ボスの絵を出現の少し前に読み込み+GPUへ転送しておく(社長「はい」2026-11-02「アテンションの直前に一瞬操作不能で止まる」)。
+    // 出現の最短時刻(CASTLE_BOSS_MIN_TIME_MS)の CASTLE_BOSS_GPU_PREWARM_MS 前から。出た後・城の無いステージでは何もしない(1回の比較で抜ける)。
+    if (this.renderer && s.castleEvent && !s.castleEvent.bossSpawned && s.gameTime >= CASTLE_BOSS_MIN_TIME_MS - CASTLE_BOSS_GPU_PREWARM_MS) {
+      const r = this.renderer;
+      prewarmEnemySheetsGpu(this.enemyTexKey('giantbat', ''), tex => { try { r.texture.initSource(tex.source); } catch { /* 転送に失敗しても初めて描く時に従来どおり転送される */ } });
+    }
     this.syncActors(s.player, s.enemies, s.gameTime, now);
     // §6.38 B2b: 舞妓の花びらpool更新(全体で1回・enemyループの外)。
     const petalDtSec = this.lastPetalStepAt === null ? 0 : Math.min(0.1, Math.max(0, (now - this.lastPetalStepAt) / 1000));

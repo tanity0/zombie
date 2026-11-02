@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5338', items: [
+    'ボスが現れる直前に画面が一瞬止まるのを減らした',
+  ] },
   { version: '0.25.5337', items: [
     'ステージ2の変異塊に、追われている間も銃が自動で撃つようになった。狙いは塊のいちばん近い所',
   ] },

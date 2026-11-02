@@ -199,6 +199,24 @@ export const warmEnemySheets = (idleTexName: string): void => {
   }
 };
 
+/**
+ * ★出てくる前に読み込み、GPUへの転送まで済ませる(社長「はい」2026-11-02・城ボスの出現の直前に一瞬止まる件)。
+ * `warmEnemySheets` は読み込み(デコード)だけで、GPUへの転送は「初めて描く瞬間」に本体の処理の中で起きる=
+ * 数MBのシートだとスマホでそこが一瞬止まる。出現の少し前に読み込み+転送(upload)を先に済ませておく。
+ * 立ち絵そのもの(起動時に読む物もある)も転送する。同じ立ち絵は1回だけ。
+ */
+const gpuWarmedIdles = new Set<string>();
+export const prewarmEnemySheetsGpu = (idleTexName: string, upload: (t: Texture) => void): void => {
+  if (gpuWarmedIdles.has(idleTexName)) return;
+  gpuWarmedIdles.add(idleTexName);
+  warmEnemySheets(idleTexName);
+  const idle = textures.get(idleTexName);
+  if (idle) upload(idle);
+  for (const n of DEFERRED_SHEETS_BY_IDLE.get(idleTexName) ?? []) {
+    void requestDeferredSprite(n).then(() => { const tex = textures.get(n); if (tex) upload(tex); });
+  }
+};
+
 const requestDeferredSprite = (name: string): Promise<void> => {
   const hit = deferredInFlight.get(name);
   if (hit) return hit;
