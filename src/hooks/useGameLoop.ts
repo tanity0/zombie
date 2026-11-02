@@ -260,7 +260,7 @@ import {
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
 import { buildBomberMinis, bomberMiniCount } from '../utils/bomberScatter';
-import { rollBomberScatterAndNotify, notifySkillProc } from '../store/gameStore'; // スキル発動の表示(通信欄の下)
+import { rollBomberScatterAndNotify, notifySkillProc, warlordAutoSlashMult } from '../store/gameStore'; // スキル発動の表示(通信欄の下)
 import { computeFirstAidKitTick, isFirstAidKitEmpty, createFirstAidKitState, type FirstAidKitAmmoType, type FirstAidKitState } from '../utils/firstAidKit';
 
 // GHOST-SUBS-FINAL(v0.25.2563): 守護霊の救急鞄の初期在庫。**型はプレイヤーと同じ**FirstAidKitStateで、
@@ -10370,7 +10370,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (targetId) {
               lastKatanaSlashRef.current = gameTime;
               // 近接フィニッシュは一閃のみ: オート斬撃はallowFinisher=false。
-              const result = performKatanaStrike([targetId], 1, false);
+              const result = performKatanaStrike([targetId], 1, false, undefined, warlordAutoSlashMult(kp)); // 侍の甲冑(青・赤)は ×1.5
               if (result.finish) playSfx('melee-finish');
               else if (result.hit) playSfx('slash-damage');
               if (result.killed > 0) playEnemyDeath();

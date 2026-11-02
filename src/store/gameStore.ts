@@ -369,7 +369,7 @@ import { hasSkillIcon, skillSingleIconName } from '../data/skillIcons'; // ス�
 import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX(stage-ex1)専用分岐の判定
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
-import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
+import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, hasFullWarlordSet, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, segmentIntersectsRect, type Rect } from '../world/obstacles';
 import { friendlyShieldRect, splitBeamAtShield, beamStripsHit, shieldBlocksArea, shieldBlocksLine, shieldContactPoint, type BeamShieldSplit, type BeamStrip } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md: シールドで技を防ぐ
 import { shieldGuardCostFor, shieldBeamDrainFor } from '../utils/shieldGuardCost'; // research/SHIELD_BLOCK.md §8: 盾の代償
@@ -2013,6 +2013,20 @@ export const KATANA_DAMAGE_BY_LEVEL = [0, 10, 12, 14] as const;
 // クリ率はレベル制(確定仕様): Lv1 10% / Lv2 20% / Lv3 30%。
 export const KATANA_CRIT_CHANCE_BY_LEVEL = [0, 0.10, 0.20, 0.30] as const;
 export const KATANA_DASH_DAMAGE_MULT = 3; // 一閃 = 刀オート斬撃の3倍(仕様確定値)
+// 侍の甲冑(社長指示2026-11-02): 武将セット(特殊3点)を揃えると立ち絵が侍の甲冑になる。小烏丸(murasame)無し=青、有り=赤。
+//  - 青: 刀の自動斬撃のダメージ ×1.5
+//  - 赤: 青の効果に加えて、技の一閃(一閃ダッシュ・縮地のワープ斬撃・被弾反撃の一閃)のダメージ ×2
+// 掛けるのは当たった敵への打撃だけ(performKatanaStrike の strikeMult)。プレイヤー本人だけ(守護霊・分身などの疑似の主語には付けない)。
+export const WARLORD_AUTO_SLASH_MULT = 1.5;
+export const WARLORD_ISSEN_MULT = 2;
+export const warlordArmor = (p: Pick<Player, 'equipment' | 'subWeapons' | 'pseudoActor'>): 'blue' | 'red' | null => {
+  if (p.pseudoActor || !p.equipment || !hasFullWarlordSet(p.equipment)) return null;
+  return p.subWeapons.includes('murasame') ? 'red' : 'blue';
+};
+export const warlordAutoSlashMult = (p: Pick<Player, 'equipment' | 'subWeapons' | 'pseudoActor'>): number =>
+  warlordArmor(p) ? WARLORD_AUTO_SLASH_MULT : 1;
+export const warlordIssenMult = (p: Pick<Player, 'equipment' | 'subWeapons' | 'pseudoActor'>): number =>
+  warlordArmor(p) === 'red' ? WARLORD_ISSEN_MULT : 1;
 // TODO(刀): 仮値。一閃の所要時間は操作感を見て調整する。
 export const KATANA_DASH_MS = 180;
 // 一閃の距離・当たり幅も現状より少し狭く(128/26)。
@@ -8706,7 +8720,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (target && reachable && isKatanaMode(get().player)) {
       // 社長裁定(2026-10-01): 刀のワープ斬撃は**一閃**(一閃の倍率・処刑可=死神も乗る)。
       // 連鎖の上乗せは strikeMult(敵への打撃だけ)。一閃の倍率は damageMult(死神の波及・救難信号の基準も一閃と同じ)。
-      const k = get().performKatanaStrike([target.id], KATANA_DASH_DAMAGE_MULT, true, undefined, p0.shukuchiStrikeMult ?? 1);
+      const k = get().performKatanaStrike([target.id], KATANA_DASH_DAMAGE_MULT, true, undefined, (p0.shukuchiStrikeMult ?? 1) * warlordIssenMult(get().player));
       swung = true; hit = hit || k.hit; finish = finish || k.finish; killed += k.killed;
     }
     // スラッシャーのジャストリング(追撃の受付)はワープ斬撃では出さない(社長指定)。
@@ -9348,7 +9362,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★被弾反撃(research/HIT_RETALIATION.md §4): 刀の振りは攻撃しない(刀はオート斬撃)ので、縮地のワープ斬撃と同じく
       // 相手へ刀の一閃を直接出す(一閃の倍率 × retMult)。窓・CDは張らない(上の ret の取り決め)。
       if (ret) {
-        const k = get().performKatanaStrike([ret.targetId], KATANA_DASH_DAMAGE_MULT, true, undefined, retMult);
+        const k = get().performKatanaStrike([ret.targetId], KATANA_DASH_DAMAGE_MULT, true, undefined, retMult * warlordIssenMult(get().player));
         return { swung: true, hit: k.hit, finish: k.finish, killed: k.killed };
       }
       // 村雨は打ち返し(カウンター)もクールダウン無しで連発可能。刀は通常CD。
@@ -12264,7 +12278,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const zanX = pcx + ux * travel / 2;
         const zanY = pcy + uy * travel / 2;
         const result = targetIds.length > 0
-          ? get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true, ghostId)
+          ? get().performKatanaStrike(targetIds, KATANA_DASH_DAMAGE_MULT, true, ghostId, ghostId ? 1 : warlordIssenMult(striker))
           : { finish: false };
         // 経路上の松明などを破壊(近接フィニッシュと同等の高ダメージ)。
         const propDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(striker)] * KATANA_DASH_DAMAGE_MULT * 2.5;

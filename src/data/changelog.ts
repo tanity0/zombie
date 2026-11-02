@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5346', items: [
+    '武将の装備を3つ揃えて侍の甲冑になると、刀の自動の斬撃が強くなる。小烏丸を持った赤い甲冑なら、一閃の威力も倍に',
+  ] },
   { version: '0.25.5345', items: [
     'スキル「英雄」の速さと攻撃の強化は、体力が半分以上あれば効く。半分を切ると、近接を当てるたびに半分まで体力が戻っていく',
   ] },
