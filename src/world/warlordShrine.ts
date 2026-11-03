@@ -7,7 +7,7 @@
 import type { EquipSlot } from '../types/game';
 import { footRect, resolveAabb, type Rect } from './obstacles';
 import { POI_SECTORS } from './pois';
-import { sectorAngle, DETOUR_CIRCLE_RADIUS, DETOUR_DWELL_MS, DETOUR_CIRCLE_FRONT_OFFSET } from './detourPoi';
+import { sectorAngle, DETOUR_DWELL_MS } from './detourPoi';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
 
 export type ShrineSlot = EquipSlot; // 'body' | 'arms' | 'accessory'
@@ -92,13 +92,15 @@ export const resolveShrineCollision = (rect: Rect, shrines: readonly ShrineState
 };
 
 // ---- 3秒サークル(社長裁定2026-11-02「いつもの3秒サークル」=寄り道の旧方式と同じ値・同じ置き方) ----
-export const SHRINE_CIRCLE_RADIUS = DETOUR_CIRCLE_RADIUS; // 95
+/** 社長指示2026-11-03「円ももっと小さくていい」: 寄り道の旧円(95)より小さく。 */
+export const SHRINE_CIRCLE_RADIUS = 60;
 export const SHRINE_DWELL_MS = DETOUR_DWELL_MS;           // 3000
 /** サークルが出はじめる距離(中心から)。病院の旧 HOSPITAL_CIRCLE_REVEAL_DIST と同じ。 */
 export const SHRINE_CIRCLE_REVEAL_DIST = 340;
-/** 円の中心=祠の足元の手前(+Y)。当たり判定(土台)と重ならない。 */
+/** 円の中心=祠の足元の手前(+Y)。小さくした円が祠から離れて見えないよう寄せる(円の上端は土台の下端から25px=重ならない)。 */
+export const SHRINE_CIRCLE_FRONT_OFFSET = 85;
 export const shrineCircleCenter = (s: { x: number; y: number }): { x: number; y: number } =>
-  ({ x: s.x, y: s.y + DETOUR_CIRCLE_FRONT_OFFSET });
+  ({ x: s.x, y: s.y + SHRINE_CIRCLE_FRONT_OFFSET });
 
 /** プレイヤー(矩形の中心)が入っている、まだ取っていない祠の円(無ければ null)。 */
 export const shrineCircleAt = (

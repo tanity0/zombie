@@ -1211,6 +1211,9 @@ const poiIntelPatch = (
 };
 // 武将の祠の通信(クリエイティブ監査2026-11-03 #3/#4/#13): 寄り道と同じく、その方角の護衛が左上の会話で1行言う
 // (帯は1枠しかなく上書きされるので使わない)。護衛が居ない出撃だけ帯へ落とす。1ラン1回/祠は呼び出し側が shrineIntelShown で見る。
+const SHRINE_INTEL_LINE: Record<ShrineSlot, string> = {
+  body: '甲冑が祀られている', arms: '籠手が祀られている', accessory: '兜が祀られている',
+};
 const shrineLinePatch = (state: GameState, pos: { x: number; y: number }, text: string): Partial<GameState> => {
   const speaker = pickPoiIntelSpeaker(state.escorts, poiSectorIndex(pos));
   const sol = speaker ? soldierByIndex(speaker.soldierIndex) : null;
@@ -21598,19 +21601,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       const { dwellMs, done } = tickShrineDwell(sameSlot ? prev.ms : 0, !!at, deltaTime * 1000);
       if (!at) return prev.ms > 0 || prev.slot ? { shrineDwell: { slot: null, ms: 0 } } : {};
       const def = specialEquipmentForSlot(at.slot);
-      // 円に入った時の一言は祠ごとに1ラン1回(縁を出入りしても言い直さない・監査#4)。円と弧で分かる手順は言わない(監査#3)。
+      // 円に入った時の一言は祠ごとに1ラン1回(縁を出入りしても言い直さない・監査#4)。
+      // 文言は社長指示2026-11-03「甲冑が祀られている/兜が祀られている/籠手が祀られている みたいなシンプルなのでいい」。
       let intel: Partial<GameState> = {};
       if (!state.shrineIntelShown[at.slot]) {
-        const cur = equipmentById(state.player.equipment[at.slot]);
-        const text = cur && !cur.special
-          ? `${def.name}が祀ってある。着けるなら、${cur.name}は置いていくことになる`
-          : `${def.name}が祀ってある。持っていけ`;
-        intel = { ...shrineLinePatch(state, at, text), shrineIntelShown: { ...state.shrineIntelShown, [at.slot]: true } };
+        intel = { ...shrineLinePatch(state, at, SHRINE_INTEL_LINE[at.slot]), shrineIntelShown: { ...state.shrineIntelShown, [at.slot]: true } };
       }
       if (done) {
         const player = equipDefOnPlayer(state.player, def.id);
         // 3つ揃った瞬間だけ別の一言(監査#13)。立ち絵の差し替えは既存の仕組み。
-        const setLine = hasFullWarlordSet(player.equipment) ? shrineLinePatch({ ...state, ...intel } as GameState, at, '鎧、小手、兜。揃ったな') : {};
+        const setLine = hasFullWarlordSet(player.equipment) ? shrineLinePatch({ ...state, ...intel } as GameState, at, '甲冑、籠手、兜。揃ったな') : {};
         return {
           ...intel,
           ...setLine,

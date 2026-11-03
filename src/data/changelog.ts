@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5359', items: [
+    '武将の祠の手前の円が小さくなり、祠のすぐ前に寄った',
+    '祠に着いた時の仲間の一言が短くなった',
+  ] },
   { version: '0.25.5358', items: [
     '汚染帯のさらに奥に、武将の祠が三つ立つ。鎧・小手・兜がひとつずつ祀られていて、手前の円で待つと身に着く',
     '今の装備は置いていくことになる。三つ揃えると侍の甲冑の姿に',
