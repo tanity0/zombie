@@ -9,8 +9,10 @@ const entry = (stageId: string, kind: ChronicleKind, detail: string): ChronicleE
   ({ key: `${stageId}::${kind}::${detail}`, stageId, kind, label: '', at: 1 });
 
 describe('年表の達成数 / 全体数', () => {
-  it('全体数は83(屋外本編4ステージ×16+研究所1+洋館1+ステージ7の1+EX2+全体初回4+実績10)', () => {
-    expect(CHRONICLE_SLOTS.length).toBe(83);
+  // 社長指示2026-11-02: 区域は研究対象区域を外しデンジャー以降の3つ=屋外本編は1ステージ15枠(旧16)。
+  it('全体数は79(屋外本編4ステージ×15+研究所1+洋館1+ステージ7の1+EX2+全体初回4+実績10)', () => {
+    expect(CHRONICLE_SLOTS.length).toBe(79);
+    expect(CHRONICLE_SLOTS.some(s => s.kind === 'zone' && s.detail === '1')).toBe(false);
   });
 
   it('枠に重複が無い', () => {
@@ -26,9 +28,9 @@ describe('年表の達成数 / 全体数', () => {
   });
 
   it('記録なし=0 / 全部埋めれば分母と一致', () => {
-    expect(chronicleProgress([])).toEqual({ got: 0, total: 83 });
+    expect(chronicleProgress([])).toEqual({ got: 0, total: 79 });
     const all = CHRONICLE_SLOTS.map(s => entry(s.stageId ?? 'stage-1', s.kind, s.detail ?? 'x'));
-    expect(chronicleProgress(all).got).toBe(83);
+    expect(chronicleProgress(all).got).toBe(79);
   });
 
   it('拠点は旧形式の記録(方位付き)が何件あっても1枠', () => {

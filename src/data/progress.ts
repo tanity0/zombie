@@ -591,7 +591,10 @@ export const loadChronicle = (): ChronicleEntry[] => {
       typeof e.kind === 'string' && typeof e.label === 'string' && typeof e.at === 'number')
       // ステージ6の道中記録(エリア/ランク/討伐等)は年表に載せない(社長指示v0.25.2150
       // 「クリアしたか否かだけ」)。既存セーブに記録済みの分も読み出しで非表示(データは残す=可逆)。
-      .filter(e => !(e.stageId === 'stage-6' && e.kind !== 'clear'));
+      .filter(e => !(e.stageId === 'stage-6' && e.kind !== 'clear'))
+      // 区域の到達はデンジャーゾーン以降だけ(社長指示2026-11-02「研究対象エリアはバッヂに含まない(年表も)デンジャー以降から」)。
+      // 既存セーブの「研究対象区域に到達」(zone 1)も読み出しで非表示(データは残す=可逆)。
+      .filter(e => !(e.kind === 'zone' && e.key.endsWith('::zone::1')));
   } catch {
     return [];
   }
@@ -630,6 +633,8 @@ export const getChronicleStartAt = (): number => {
 // マイルストーンを初回のみ記録する(既に同キーがあれば false=何もしない)。phrase=ステージ見出しを
 // 除いた出来事の文(例「深層域に到達」)。ステージ見出しは内部で前置する。イベント発火時のみ呼ばれる
 // (毎フレームではない)ので localStorage 読み書き1回で十分軽い(負荷1/10)。
+/** 年表に載せる区域の到達の最小(2=デンジャーゾーン)。研究対象区域(1)は載せない(社長指示2026-11-02)。 */
+export const CHRONICLE_MIN_ZONE = 2;
 export const recordChronicle = (
   stageId: string, kind: ChronicleKind, detail: string, phrase: string
 ): boolean => {
@@ -638,6 +643,8 @@ export const recordChronicle = (
   // あとは薬・特殊変異体の件」)。クリア(kind='clear')だけ通す。薬(再訪=SUB)・EX(特殊変異体)は
   // 別ミッション/別ステージIDなのでこのフィルタには掛からない。
   if (stageId === 'stage-6' && kind !== 'clear') return false;
+  // 区域の到達はデンジャーゾーン(zone 2)以降だけ載せる(社長指示2026-11-02)。研究対象区域(zone 1)は記録しない。
+  if (kind === 'zone' && Number(detail) < CHRONICLE_MIN_ZONE) return false;
   const key = `${stageId}::${kind}::${detail}`;
   const list = loadChronicle();
   if (list.some(e => e.key === key)) return false;

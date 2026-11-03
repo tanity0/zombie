@@ -220,18 +220,27 @@ describe('年表のステージ6フィルタ(社長指示v0.25.2150「クリア�
 
   it("recordChronicle: stage-6の'clear'は記録される(他ステージは従来どおり)", () => {
     expect(recordChronicle('stage-6', 'clear', 'clear', 'クリア')).toBe(true);
-    expect(recordChronicle('stage-1', 'zone', '1', '研究対象区域に到達')).toBe(true);
+    expect(recordChronicle('stage-1', 'zone', '2', 'デンジャーゾーンに到達')).toBe(true);
     const list = loadChronicle();
-    expect(list.map(e => e.key)).toEqual(['stage-6::clear::clear', 'stage-1::zone::1']);
+    expect(list.map(e => e.key)).toEqual(['stage-6::clear::clear', 'stage-1::zone::2']);
+  });
+
+  it('研究対象区域(zone 1)の到達は年表に載せない・既存の記録も読み出しで非表示(社長指示2026-11-02)', () => {
+    expect(recordChronicle('stage-1', 'zone', '1', '研究対象区域に到達')).toBe(false);
+    backing['zombie.progress.chronicle'] = JSON.stringify([
+      { key: 'stage-1::zone::1', stageId: 'stage-1', kind: 'zone', label: 'ステージ1 研究対象区域に到達', at: 1 },
+      { key: 'stage-1::zone::2', stageId: 'stage-1', kind: 'zone', label: 'ステージ1 デンジャーゾーンに到達', at: 2 },
+    ]);
+    expect(loadChronicle().map(e => e.key)).toEqual(['stage-1::zone::2']);
   });
 
   it('loadChronicle: 既存セーブに残るstage-6の道中記録は読み出しで非表示(遡及)', () => {
     backing['zombie.progress.chronicle'] = JSON.stringify([
       { key: 'stage-6::zone::3', stageId: 'stage-6', kind: 'zone', label: 'ステージ6 未確認汚染エリアに到達', at: 1 },
       { key: 'stage-6::clear::clear', stageId: 'stage-6', kind: 'clear', label: 'ステージ6 クリア', at: 2 },
-      { key: 'stage-1::zone::1', stageId: 'stage-1', kind: 'zone', label: 'ステージ1 研究対象区域に到達', at: 3 },
+      { key: 'stage-1::zone::2', stageId: 'stage-1', kind: 'zone', label: 'ステージ1 デンジャーゾーンに到達', at: 3 },
     ]);
-    expect(loadChronicle().map(e => e.key)).toEqual(['stage-6::clear::clear', 'stage-1::zone::1']);
+    expect(loadChronicle().map(e => e.key)).toEqual(['stage-6::clear::clear', 'stage-1::zone::2']);
   });
 
   it('markStageCleared(stage-6): 年表にクリア1件だけ載る(冪等)', () => {

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5356', items: [
+    '年表の区域の到達は、デンジャーゾーンから載るようになった',
+  ] },
   { version: '0.25.5355', items: [
     '廃病院・武器庫・警察署は、足元の光っている所へ正面から踏み込むと使える。手前の円で待つ必要はなくなった',
     '警察署の囲いが建物の前に寄った',

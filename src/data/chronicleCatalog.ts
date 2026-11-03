@@ -13,6 +13,7 @@
 // 分子は「この表の枠のうち、記録が1つでも当たっている枠の数」。旧形式の記録(方位付きの拠点等)や
 // 表に無い記録は数えない=分子が分母を超えることは無い。
 import type { ChronicleEntry, ChronicleKind } from './progress';
+import { CHRONICLE_MIN_ZONE } from './progress';
 import { STAGES } from './campaign';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 import { FEAT_KEYS } from './chronicleFeats';
@@ -32,7 +33,8 @@ const buildSlots = (): ChronicleSlot[] => {
   const add = (stageId: string | null, kind: ChronicleKind, detail: string | null) =>
     slots.push({ stageId, kind, detail });
   for (const stageId of CHRONICLE_FULL_STAGES) {
-    for (let z = 1; z <= 4; z++) add(stageId, 'zone', String(z));
+    // 区域はデンジャーゾーン(2)以降(社長指示2026-11-02「研究対象エリアは…含まない」)。
+    for (let z = CHRONICLE_MIN_ZONE; z <= 4; z++) add(stageId, 'zone', String(z));
     for (let r = 2; r <= 7; r++) add(stageId, 'rank', String(r));
     add(stageId, 'boss', 'giantbat');
     const hidden = STAGES.find(s => s.id === stageId)?.hiddenBoss;
