@@ -20,9 +20,10 @@ export const SCAN_FALLBACK_GUN_KEY = 'handgun-t2';
 /** カウンターの名目の damage(ハンドガン T2 の1発・§4「カウンター」)。CATALOG の damage にこの値を書く。 */
 export const SCAN_NOMINAL_DAMAGE = 9;
 
-export const SCAN_BEAT_MS = 1200;
+// 社長指示2026-11-03「スキャンセンサーの間隔早めて。2倍くらい。あと射程距離ももう少し長く」: 拍 1200→600ms、扇の長さ 260→320px。
+export const SCAN_BEAT_MS = 600;
 export const SCAN_FAN_HALF_ANGLE_RAD = (40 / 2) * Math.PI / 180;
-export const SCAN_FAN_LENGTH_PX = 260;
+export const SCAN_FAN_LENGTH_PX = 320;
 export const SCAN_SWEEP_MS = 250;
 export const SCAN_MARK_MS = 3000;
 

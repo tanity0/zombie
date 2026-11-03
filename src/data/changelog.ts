@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5357', items: [
+    'スキャンセンサーが倍の速さで掃くようになり、届く距離も少し伸びた',
+  ] },
   { version: '0.25.5356', items: [
     '年表の区域の到達は、デンジャーゾーンから載るようになった',
   ] },
