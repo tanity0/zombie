@@ -376,7 +376,7 @@ import { bossNeutralDelayMs, bossRebuildIdForEnemy } from '../utils/bossRebuild'
 import { labZoneKey, LAB_START_SAFE_RADIUS } from '../world/labWalls';
 import { RESCUE_RADIUS, RESCUE_ATTACKERS } from '../world/rescue';
 import { bossLairPos, poiSectorIndex } from '../world/pois';
-import { POLICE_ARENA_RADIUS, isNearPolice, isPoliceRearmed, policeArenaCenter } from '../world/police';
+import { POLICE_ARENA_RADIUS, isPoliceRearmed, policeArenaCenter, touchesPolice, isApproachingPolice } from '../world/police';
 import { POLICE_REWARD_SKILLS, SKILLS } from '../data/campaign';
 import { ALCHEMY_CHANNEL_MS } from '../utils/summonUtils';
 import { resolveAabb, rectsOverlap } from '../world/obstacles';
@@ -5033,13 +5033,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 失敗後の再武装(v0.25.2389): 警察署から十分離れたら、また挑めるように戻す。
             // 「報酬を取り上げる」のではなく「一度出るまで掴まない」形にして無限ループだけを断つ。
             if (!policeArmedRef.current && isPoliceRearmed(player, ppos)) policeArmedRef.current = true;
+            // 品質監査A2(research/POI_TOUCH_SHRINE.md §3): 「ここが何で・どうすれば・何が貰えるか」の通信は**近づいた時**に1回(触れる前に言う)。
+            if (!pgs.poiIntelShown?.police && isApproachingPolice(pgs.player, ppos) && !facilitiesLocked(pgs.bossFightNow, pgs.bossFightLastTrueAt, newGameTime)) {
+              useGameStore.getState().showPoiIntel('police');
+            }
             // v0.25.3054(社長報告「ボス戦中に拠点発見すると閉じ込められて…ボスは去っていきバグる」):
             // ボス交戦中(+復帰猶予)は発火させない(施設ロックfacilitiesLocked=商人/POIと同じ関所)。
             // ★イベント抑止の原則(2026-08-22): 裏ボスの「存命」判定は撤去し、**交戦中に一本化**
             // (facilitiesLockedはbossFightNow=bossEngagedNow基準なので裏ボスもここに含まれる)。
             if (
               policeArmedRef.current &&
-              isNearPolice(player, ppos) &&
+              // ★社長指示2026-11-02(research/POI_TOUCH_SHRINE.md §1): 建物に正面(下)から触れた瞬間に囲い(旧: 囲いの円に入った瞬間)。
+              // 当たりの押し出し後の位置で見る(ストアの最新の player)。
+              touchesPolice(pgs.player, ppos) &&
               !pgs.bossChasing && hunterNotBusy(hunterRef.current.phase) &&
               !facilitiesLocked(pgs.bossFightNow, pgs.bossFightLastTrueAt, newGameTime)
             ) {

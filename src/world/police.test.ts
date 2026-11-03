@@ -3,13 +3,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   POLICE_DIST, POLICE_ARENA_RADIUS, POLICE_HITBOX_W, POLICE_HITBOX_H, POLICE_REARM_RADIUS,
-  policePos, policeRect, resolvePoliceCollision, isNearPolice, isPoliceRearmed, policeArenaCenter,
+  policePos, policeRect, resolvePoliceCollision, isNearPolice, isPoliceRearmed, policeArenaCenter, touchesPolice,
 } from './police';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { worldDist } from '../config/worldScale';
 import { detourPosForSector, DETOUR_ANGLE_SCATTER_RAD } from './detourPoi';
 import { poiSectorIndex } from './pois';
-import { rectsOverlap } from './obstacles';
 
 describe('policePos(研究対象区域の中間・§6.24)', () => {
   // v0.25.3172(社長指示「警察署はデンジャーに寄せる」): 拠点(3200)より内側にあると
@@ -134,22 +133,24 @@ describe('建物の大きさ(アリーナとの比率・v0.25.2389)', () => {
   });
 });
 
-// §7-16(社長指示2026-08-15・確定仕様): アリーナ(サークル)矩形とPOI当たり判定(footRect)の重なりはゼロ。
-describe('アリーナ=POIの手前(§7-16「サークル矩形∩POI当たり判定=空」)', () => {
+// §7-16(社長指示2026-08-15)の「アリーナ矩形∩POI当たり判定=空」は、社長裁定2026-11-02(research/POI_TOUCH_SHRINE.md §3)で変更:
+// 発動が「建物に下から触れた瞬間」になったので、**触れた位置のプレイヤーが囲いの内側**であることを固定する。
+describe('アリーナ=建物の手前・触れた位置が内側(社長裁定2026-11-02)', () => {
   const sectors = [0, 1, 2, 3];
   const offsets = [-DETOUR_ANGLE_SCATTER_RAD, 0, DETOUR_ANGLE_SCATTER_RAD];
-
-  it('アリーナのbboxは建物の当たり判定(footRect)と重ならない(全セクター×角度スキャッタ)', () => {
+  it('建物に下から触れている位置のプレイヤー(中心)は囲いの内側', () => {
     for (const sector of sectors) {
       for (const offsetRad of offsets) {
         const pos = policePos(sector, offsetRad);
-        const c = policeArenaCenter(pos);
-        const arenaBox = {
-          x: c.x - POLICE_ARENA_RADIUS, y: c.y - POLICE_ARENA_RADIUS,
-          width: POLICE_ARENA_RADIUS * 2, height: POLICE_ARENA_RADIUS * 2,
-        };
-        expect(rectsOverlap(arenaBox, policeRect(pos))).toBe(false);
+        const r = policeRect(pos);
+        const player = { x: pos.x - 14, y: r.y + r.height, width: 28, height: 28 };
+        expect(touchesPolice(player, pos)).toBe(true);
+        expect(isNearPolice(player, pos)).toBe(true);
       }
     }
+  });
+  it('囲いの中心は建物の足元より手前(+Y)のまま', () => {
+    const pos = policePos(0, 0);
+    expect(policeArenaCenter(pos).y).toBeGreaterThan(pos.y);
   });
 });

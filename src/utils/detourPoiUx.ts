@@ -33,12 +33,14 @@ export const POI_DWELL_SEC = Math.round(DETOUR_DWELL_MS / 1000);
 export const poiIntelLine = (kind: PoiKind): string => {
   switch (kind) {
     case 'hospital':
-      return `廃病院だ。サークルの中で${POI_DWELL_SEC}秒待つとワクチンが手に入る。死んでも一度だけ復活できる`;
+      // ★社長指示2026-11-02: 発動は「建物に正面から触れる」(research/POI_TOUCH_SHRINE.md §1)。通信は近づいた時に出る。
+      // 効果の説明は入手のトーストに任せる(通信は仲間の口調で「どこへ・何がある」だけ・クリエイティブ監査#4)。
+      return '廃病院だ。正面から踏み込め。ワクチンがまだ残ってる';
     case 'armory':
       // §6.24-W(社長裁定v0.25.2533): 報酬は装備→**銃(Tier3)**へ変更。文言も銃に合わせる。
-      return `武器庫だ。スクラップ${ARMORY_SCRAP_COST}で軍用の銃と交換できる。サークルの中で${POI_DWELL_SEC}秒待つ`;
+      return `武器庫だ。スクラップ${ARMORY_SCRAP_COST}あれば扉が開く。正面から踏み込め、中に軍用の銃がある`;
     case 'police':
-      return '警察署だ。近づくと敵に囲まれる。全滅させると、警察署だけのスキルをこの出撃の間だけ使える';
+      return '警察署だ。正面から踏み込めば囲まれるぞ。片付けたら、署の装備を借りられる';
   }
 };
 

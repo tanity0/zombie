@@ -353,15 +353,10 @@ import {
 } from '../utils/bossEngagement';
 import { bossPostureMax, bossPostureNow, isBossPostureBroken, usesPostureSystem } from '../utils/bossPosture';
 import { getRunPois, isPoiRevealed, poiSectorIndex, playerAreaSector, isPoiInPlayerArea, type DetourPoiInput } from '../world/pois';
-import {
-  HOSPITAL_CIRCLE_RADIUS, HOSPITAL_CIRCLE_REVEAL_DIST, HOSPITAL_DWELL_MS,
-  HOSPITAL_FADE_MS, HOSPITAL_DISPLAY_H, hospitalCircleCenter,
-} from '../world/hospital';
-import {
-  ARMORY_CIRCLE_RADIUS, ARMORY_CIRCLE_REVEAL_DIST, ARMORY_DWELL_MS,
-  ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryCircleCenter,
-} from '../world/armory';
-import { POLICE_FADE_MS, POLICE_DISPLAY_H } from '../world/police';
+import { HOSPITAL_FADE_MS, HOSPITAL_DISPLAY_H, hospitalRect } from '../world/hospital';
+import { ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryRect, ARMORY_SCRAP_COST } from '../world/armory';
+import { POLICE_FADE_MS, POLICE_DISPLAY_H, policeRect } from '../world/police';
+import { touchesFromBelow, rectsOverlap, TOUCH_SIDE_PAD } from '../world/obstacles';
 import { HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_DEATH_HOLD_MS, HERO_DOG_DEATH_FADE_MS, heroDogDeathPose } from '../utils/heroDog';
 import { HIT_BLINK_TYPES, hitBlinkStrength, bloodFlashStrength } from '../utils/hitBlink';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE, ALCHEMY_ATTACK_INTERVAL_MS } from '../utils/summonUtils';
@@ -5108,6 +5103,11 @@ export class PixiScene {
   // §6.24 M48: 武器庫(病院と同じサークル+滞在の枠組み)/警察署(建物のみ・アリーナ方式でサークルなし)。
   private armorySprite = new Sprite();
   private armoryGfx = new Graphics();
+  // 警察署の入口の光(社長指示2026-11-02「触れて発動」の手がかり・病院/武器庫と同じ地面の層)。
+  private policeGfx = new Graphics();
+  /** 寄り道の建物ごとの「横/裏から当たり始めた時刻」(入口の光を一度強く脈打たせる・クリエイティブ監査#3)。 */
+  private poiSideBumpAt: Record<string, number> = {};
+  private poiSideBumping: Record<string, boolean> = {};
   private armoryShadow: BuildingShadowReq | null = null;
   private policeSprite = new Sprite();
   private policeShadow: BuildingShadowReq | null = null;
@@ -6226,6 +6226,7 @@ export class PixiScene {
       this.exBarrierGfx, // §10-20#4: EX結界/南の膜(金色の光の膜・地面・world座標)
       this.hospitalGfx, // 病院サークル(地面・world座標)
       this.armoryGfx, // §6.24 M48: 武器庫サークル(地面・world座標。病院と同じ)
+      this.policeGfx, // 警察署の入口の光(地面・world座標)
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
       this.pumpkinTelegraph,
       this.mobMeteorGfx, // ★雑魚の噛みの流星(地面の予告の直上・アクターより下・足元の高さで引く)
@@ -6259,6 +6260,7 @@ export class PixiScene {
     this.L.actorLayer.addChild(this.hospitalSprite);
     // §6.24 M48: 武器庫(病院と同じ規約)/警察署(建物のみ・アリーナ方式でサークルなし)。
     this.armoryGfx.blendMode = 'add';
+    this.policeGfx.blendMode = 'add';
     this.armorySprite.anchor.set(0.5, 1);
     this.armorySprite.visible = false;
     this.L.actorLayer.addChild(this.armorySprite);
@@ -10240,6 +10242,7 @@ export class PixiScene {
     this.policeSprite.alpha *= facFade;
     this.hospitalGfx.alpha = facFade;
     this.armoryGfx.alpha = facFade;
+    this.policeGfx.alpha = facFade;
     this.baseSitesGfx.alpha = facFade;
     if (this.hospitalShadow) this.hospitalShadow.alpha *= facFade;
     if (this.armoryShadow) this.armoryShadow.alpha *= facFade;
@@ -30156,29 +30159,9 @@ export class PixiScene {
       alpha: horizonAlpha * 0.8 * this.foregroundActorAlpha(footY), shadowFade: fade,
     };
 
-    // サークルは「近づいたら」出す(社長指示)。距離でフェードイン=遠くから見えて煩くならない。
-    if (s.hospitalTaken) return;
-    // §7-16: サークルは建物の位置そのものではなく、その手前(hospitalCircleCenter)に出す。
-    const c = hospitalCircleCenter(pos);
-    const p = s.player;
-    const dist = Math.hypot(p.x + p.width / 2 - c.x, p.y + p.height / 2 - c.y);
-    const near = Math.max(0, Math.min(1, (HOSPITAL_CIRCLE_REVEAL_DIST - dist) / 120));
-    if (near <= 0) return;
-    const pulse = 0.5 + 0.5 * Math.sin(now / 240);
-    const a = (0.34 + 0.2 * pulse) * near;
-    const color = 0x86efac; // 医療=緑(帰還サークルと同じ「安全」の色)
-    g.circle(c.x, c.y, HOSPITAL_CIRCLE_RADIUS - 4).fill({ color, alpha: (0.06 + 0.05 * pulse) * near });
-    g.circle(c.x, c.y, HOSPITAL_CIRCLE_RADIUS).stroke({ width: 6, color, alpha: a * 0.6 });
-    g.circle(c.x, c.y, HOSPITAL_CIRCLE_RADIUS - 3).stroke({ width: 2, color, alpha: a });
-    // 滞在進捗の外周円弧(帰還サークルと同じ読み方)。arc 前に moveTo して地面を横切る線を防ぐ。
-    const frac = Math.max(0, Math.min(1, s.hospitalDwellMs / HOSPITAL_DWELL_MS));
-    if (frac > 0) {
-      const start = -Math.PI / 2;
-      const rr = HOSPITAL_CIRCLE_RADIUS + 5;
-      g.moveTo(c.x + Math.cos(start) * rr, c.y + Math.sin(start) * rr)
-        .arc(c.x, c.y, rr, start, start + Math.PI * 2 * frac)
-        .stroke({ width: 4, color: 0xdcfce7, alpha: 0.95 });
-    }
+    // ★社長指示2026-11-02(research/POI_TOUCH_SHRINE.md §1): 発動を「建物に正面から触れる」に変えたので、手前の円と滞在の弧は描かない
+    // (円が残ると「円に入れば発動」と読めて嘘になる)。旧: 近づくと緑の円+3秒の弧。代わりに触れる帯の上に入口の光(クリエイティブ監査#1)。
+    if (!s.hospitalTaken) this.drawPoiThreshold(g, 'hospital', hospitalRect(pos), 0x86efac, now, d, {});
   }
 
   // 武器庫(PACING_PUZZLE.md §6.24 M48): 病院と同じ枠組み(サークル+3秒滞在)。**描くだけ**
@@ -30233,34 +30216,60 @@ export class PixiScene {
       alpha: horizonAlpha * 0.8 * this.foregroundActorAlpha(footY), shadowFade: fade,
     };
 
-    if (s.armoryTaken) return;
-    // §7-16: サークルは建物の位置そのものではなく、その手前(armoryCircleCenter)に出す。
-    const c = armoryCircleCenter(pos);
-    const p = s.player;
-    const dist = Math.hypot(p.x + p.width / 2 - c.x, p.y + p.height / 2 - c.y);
-    const near = Math.max(0, Math.min(1, (ARMORY_CIRCLE_REVEAL_DIST - dist) / 120));
-    if (near <= 0) return;
-    const pulse = 0.5 + 0.5 * Math.sin(now / 240);
-    const a = (0.34 + 0.2 * pulse) * near;
-    const color = 0xfbbf24; // スクラップ=琥珀(ShopMenuのSCRAP表示と同系色。病院の緑と見分けが付く)
-    g.circle(c.x, c.y, ARMORY_CIRCLE_RADIUS - 4).fill({ color, alpha: (0.06 + 0.05 * pulse) * near });
-    g.circle(c.x, c.y, ARMORY_CIRCLE_RADIUS).stroke({ width: 6, color, alpha: a * 0.6 });
-    g.circle(c.x, c.y, ARMORY_CIRCLE_RADIUS - 3).stroke({ width: 2, color, alpha: a });
-    const frac = Math.max(0, Math.min(1, s.armoryDwellMs / ARMORY_DWELL_MS));
-    if (frac > 0) {
-      const start = -Math.PI / 2;
-      const rr = ARMORY_CIRCLE_RADIUS + 5;
-      g.moveTo(c.x + Math.cos(start) * rr, c.y + Math.sin(start) * rr)
-        .arc(c.x, c.y, rr, start, start + Math.PI * 2 * frac)
-        .stroke({ width: 4, color: 0xfef3c7, alpha: 0.95 });
+    // ★社長指示2026-11-02(research/POI_TOUCH_SHRINE.md §1): 発動を「建物に正面から触れる」に変えたので、手前の円と滞在の弧は描かない。
+    // 代わりに入口の光。スクラップが足りない時は沈ませる(触れる前に分かる・クリエイティブ監査#9)。
+    if (!s.armoryTaken) this.drawPoiThreshold(g, 'armory', armoryRect(pos), 0xfbbf24, now, d, { dim: s.player.straps < ARMORY_SCRAP_COST });
+  }
+
+  /**
+   * 寄り道の建物の「入口の光」(社長指示2026-11-02「触れて発動」の手がかり・クリエイティブ監査#1/#3/#12)。描くだけ。
+   * - 触れる帯(当たり判定の下端・左右 TOUCH_SIDE_PAD)と同じ幅の光の線を、足元のすぐ手前の地面に引く=見たまま判定。
+   * - 近づくにつれて ease-out で現れる(慣性の掟・旧円の直線的な現れ方はやめた)。
+   * - 横や裏から建物に当たり始めると一度強く脈打つ(「ここ」と正面へ目を呼ぶ)。赤は使わない。
+   * - 警察署だけは青い回転灯の明滅(報酬の建物ではなく、踏み込むと囲まれる)。
+   * 負荷1/10: Graphics の線3本(加算)。投影影は落とさない。
+   */
+  private drawPoiThreshold(
+    g: Graphics, key: string, r: { x: number; y: number; width: number; height: number },
+    color: number, now: number, d: number, opts: { dim?: boolean; police?: boolean },
+  ) {
+    const p = useGameStore.getState().player;
+    const actor = { x: p.x, y: p.y, width: p.width, height: p.height };
+    const bx = r.x + r.width / 2, by = r.y + r.height;
+    const dist = Math.hypot(p.x + p.width / 2 - bx, p.y + p.height / 2 - by);
+    const t = Math.max(0, Math.min(1, (420 - dist) / 200));
+    const near = 1 - (1 - t) ** 3; // ease-out
+    // 横/裏から当たっている(建物を少し広げた矩形に重なっているが、下からの帯ではない)。立ち上がりだけを記録する。
+    const around = { x: r.x - 10, y: r.y - 10, width: r.width + 20, height: r.height + 20 };
+    const side = rectsOverlap(actor, around) && !touchesFromBelow(actor, r);
+    if (side && !this.poiSideBumping[key]) this.poiSideBumpAt[key] = now;
+    this.poiSideBumping[key] = side;
+    const bumpT = Math.max(0, 1 - (now - (this.poiSideBumpAt[key] ?? -1e9)) / 700);
+    const bump = bumpT * bumpT; // 速く立って ease で引く
+    const k0 = Math.max(near, bump);
+    if (k0 <= 0.01) return;
+    let k = k0 * (opts.dim ? 0.32 : 1);
+    if (opts.police) {
+      // 回転灯: 鋭い明滅(位置で少しずらす)。
+      const ph = (now / 520 + r.x * 0.003) % 1;
+      k *= 0.35 + 0.65 * Math.pow(Math.max(0, Math.sin(ph * Math.PI * 2)), 3);
+    } else {
+      k *= 0.82 + 0.18 * Math.sin(now / 420 + r.x * 0.01);
     }
+    k = Math.min(1, k + bump * 0.6);
+    const x1 = r.x - TOUCH_SIDE_PAD, x2 = r.x + r.width + TOUCH_SIDE_PAD;
+    const y = by + 3 * d;
+    g.moveTo(x1, y).lineTo(x2, y).stroke({ width: 16 * d, color, alpha: 0.10 * k, cap: 'round' });
+    g.moveTo(x1, y).lineTo(x2, y).stroke({ width: 6 * d, color, alpha: 0.30 * k, cap: 'round' });
+    g.moveTo(x1 + 4, y).lineTo(x2 - 4, y).stroke({ width: 2 * d, color: 0xffffff, alpha: 0.55 * k, cap: 'round' });
   }
 
   // 警察署(PACING_PUZZLE.md §6.24 M48。旧称「研究施設跡」)。サークル+滞在ではなくアリーナ方式
   // (近づくと囲いイベントが発生=useGameLoop側。中心はpoliceArenaCenter=建物の手前)なので、
   // ここは建物の見た目だけを描く。§7-16で病院/武器庫と同じ**高さ基準**(城と同スケール)へ統一
   // (旧: 幅基準)。負荷1/10: スプライト1枚。
-  private syncPolice(_now: number) {
+  private syncPolice(now: number) {
+    this.policeGfx.clear();
     const s = useGameStore.getState();
     const pos = s.police;
     if (!pos || s.indoorMode) {
@@ -30306,6 +30315,9 @@ export class PixiScene {
       rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
       alpha: horizonAlpha * 0.8 * this.foregroundActorAlpha(footY), shadowFade: fade,
     };
+    // 入口の光(社長指示2026-11-02「触れて発動」の手がかり)。警察署だけ青い回転灯の明滅。囲いの最中は出さない。
+    const pe = s.activeEvent;
+    if (!s.policeTaken && !(pe && pe.policeArena)) this.drawPoiThreshold(this.policeGfx, 'police', policeRect(pos), 0x60a5fa, now, d, { police: true });
   }
 
   // 制圧イベントの拠点。状態で色分け(未制圧=琥珀/制圧=緑/安全地帯=青)。制圧済みはHPバー＋軍人2体マーカー。

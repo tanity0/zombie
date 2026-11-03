@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5355', items: [
+    '廃病院・武器庫・警察署は、足元の光っている所へ正面から踏み込むと使える。手前の円で待つ必要はなくなった',
+    '警察署の囲いが建物の前に寄った',
+    '武器庫でスクラップが足りない時は、あといくら要るかを言う',
+  ] },
   { version: '0.25.5354', items: [
     'ゲーム内容の変更はありません',
   ] },

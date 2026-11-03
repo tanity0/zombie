@@ -11,7 +11,7 @@
 //
 // この層は renderer-agnostic(PixiJS非依存)。座標・当たり判定・滞在判定の純関数だけを置く。
 // 描画は pixiScene、滞在の進行と付与(スクラップ消費+装備ロール)は gameStore が、ここの値を読んで行う。
-import { footRect, resolveAabb, type Rect } from './obstacles';
+import { footRect, resolveAabb, touchesFromBelow, type Rect } from './obstacles';
 import {
   DETOUR_DIST, DETOUR_CIRCLE_RADIUS, DETOUR_DWELL_MS, DETOUR_CIRCLE_FRONT_OFFSET, detourPosForSector,
 } from './detourPoi';
@@ -95,3 +95,15 @@ export const tickArmoryDwell = (
   const next = dwellMs + Math.max(0, dtMs);
   return { dwellMs: Math.min(ARMORY_DWELL_MS, next), done: dwellMs < ARMORY_DWELL_MS && next >= ARMORY_DWELL_MS };
 };
+
+// ★社長指示2026-11-02「poi全部、オブジェクトの絵に下から触れると発動」(research/POI_TOUCH_SHRINE.md §1):
+// 旧「手前の円に3秒」から、**建物の当たり判定(=絵の下端)に正面(下)から触れている間**に発動へ。
+export const touchesArmory = (
+  player: { x: number; y: number; width: number; height: number },
+  pos: { x: number; y: number } | null,
+): boolean => !!pos && touchesFromBelow(player, armoryRect(pos));
+/** 近づいた(建物の足元から ARMORY_CIRCLE_REVEAL_DIST 以内)=「正面から触れる」の通信を出す距離(品質監査A2)。 */
+export const isApproachingArmory = (
+  player: { x: number; y: number; width: number; height: number },
+  pos: { x: number; y: number } | null,
+): boolean => !!pos && Math.hypot(player.x + player.width / 2 - pos.x, player.y + player.height / 2 - pos.y) <= ARMORY_CIRCLE_REVEAL_DIST;

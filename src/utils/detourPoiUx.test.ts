@@ -16,28 +16,31 @@ describe('poiIntelLine(進入時の通信)', () => {
   it('3種とも「何の場所か」「何をすれば」「何が貰えるか」を1行で言う', () => {
     const h = poiIntelLine('hospital');
     expect(h).toContain('病院');
-    expect(h).toContain('サークル');
+    expect(h).toContain('正面から');
     expect(h).toContain('ワクチン');
 
     const a = poiIntelLine('armory');
     expect(a).toContain('武器庫');
-    expect(a).toContain('サークル');
+    expect(a).toContain('正面から'); // 社長指示2026-11-02: 発動=建物に正面から触れる
     expect(a).toContain('銃'); // §6.24-W: 報酬=銃(Tier3)へ変更(v0.25.2533)
 
     const p = poiIntelLine('police');
     expect(p).toContain('警察署');
-    expect(p).toContain('全滅');
-    expect(p).toContain('この出撃');
+    expect(p).toContain('囲まれる'); // 何をすれば(踏み込む→囲まれる)
+    expect(p).toContain('片付けたら'); // 何が貰えるか(「この出撃の間だけ」は入手トーストの但し書きが言う・クリエイティブ監査#4)
   });
 
   it('武器庫の通信は取引内容(スクラップいくらで交換か)を含む=同意なしの自動支払いにしない(裁定a)', () => {
     expect(poiIntelLine('armory')).toContain(`スクラップ${ARMORY_SCRAP_COST}`);
   });
 
-  it('滞在秒は定数(DETOUR_DWELL_MS)から埋まる=秒数を変えても文面が嘘にならない', () => {
+  it('3種とも「正面から」を言う・「サークル」「待つ」は言わない(社長指示2026-11-02=触れて発動)', () => {
     expect(POI_DWELL_SEC).toBe(Math.round(DETOUR_DWELL_MS / 1000));
-    expect(poiIntelLine('hospital')).toContain(`${POI_DWELL_SEC}秒`);
-    expect(poiIntelLine('armory')).toContain(`${POI_DWELL_SEC}秒`);
+    for (const k of ['police', 'armory', 'hospital'] as const) {
+      expect(poiIntelLine(k)).toContain('正面から');
+      expect(poiIntelLine(k)).not.toContain('サークル');
+      expect(poiIntelLine(k)).not.toContain('待つ');
+    }
   });
 
   it('1行(改行を含まない)', () => {

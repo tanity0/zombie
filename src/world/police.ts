@@ -10,7 +10,7 @@
 //
 // この層は renderer-agnostic(PixiJS非依存)。座標・当たり判定・近接判定の純関数だけを置く。
 // 描画は pixiScene、アリーナの発生/進行/報酬付与は useGameLoop/gameStore が、ここの値を読んで行う。
-import { footRect, resolveAabb, type Rect } from './obstacles';
+import { footRect, resolveAabb, touchesFromBelow, type Rect } from './obstacles';
 import { DETOUR_DIST, detourPosForSector } from './detourPoi';
 
 /** デンジャーゾーン(AREA_THRESHOLDS[1]〜[2])の手前寄り。v0.25.3172で 2250(研究対象区域の中点)から移動。
@@ -27,8 +27,11 @@ export const POLICE_FADE_MS = 900;
 // §7-16(社長指示2026-08-15): アリーナ(=このPOIの「サークル」)は建物の当たり判定と重ならない位置=
 // 「目の前(手前側)」へ置く。この世界の「手前」は常に+Y(detourPoi.ts の DETOUR_CIRCLE_FRONT_OFFSET
 // と同じ理屈)。病院/武器庫と半径が違う(240)ので、ここに個別定義する。
-const POLICE_ARENA_FRONT_GAP = 20; // 重なりゼロに足す余白(px)。病院/武器庫と同じ余白。
-export const POLICE_ARENA_FRONT_OFFSET = POLICE_ARENA_RADIUS + POLICE_ARENA_FRONT_GAP; // = 260
+// ★社長裁定2026-11-02(research/POI_TOUCH_SHRINE.md §3): 発動を「建物に下から触れた瞬間」に変えたので、
+// 触れた位置(建物の足元のすぐ下)のプレイヤーが囲いの内側に入るよう、囲いを建物へ60px寄せた(260→200)。
+// 囲いの北の端(足元の40px上)は建物の土台に少し掛かる=§7-16「重なりゼロ」はこの裁定で変更。
+const POLICE_ARENA_FRONT_GAP = -40; // 旧 +20(重なりゼロの余白)
+export const POLICE_ARENA_FRONT_OFFSET = POLICE_ARENA_RADIUS + POLICE_ARENA_FRONT_GAP; // = 200(旧 260)
 
 // 素材(社長支給v0.25.2352・public/sprites/police.png・520×472の等角ピクセルアート)。
 // §7-16: 見た目のスケール感を城と揃える。旧300px幅(高さ換算で約272px相当)から、城と同じ
@@ -116,3 +119,16 @@ export const isPoliceRearmed = (
   const px = player.x + player.width / 2, py = player.y + player.height / 2;
   return Math.hypot(px - c.x, py - c.y) > POLICE_REARM_RADIUS;
 };
+
+// ★社長指示2026-11-02「poi全部、オブジェクトの絵に下から触れると発動」(research/POI_TOUCH_SHRINE.md §1):
+// 旧「囲いの円(半径240)に入った瞬間」(isNearPolice は再挑戦の判定と参照用に残置)から、**建物に正面(下)から触れた瞬間**へ。
+export const touchesPolice = (
+  player: { x: number; y: number; width: number; height: number },
+  pos: { x: number; y: number } | null,
+): boolean => !!pos && touchesFromBelow(player, policeRect(pos));
+/** 近づいた(建物の足元から340以内・病院/武器庫と同じ)=「正面から触れる」の通信を出す距離(品質監査A2)。 */
+export const POLICE_APPROACH_DIST = 340;
+export const isApproachingPolice = (
+  player: { x: number; y: number; width: number; height: number },
+  pos: { x: number; y: number } | null,
+): boolean => !!pos && Math.hypot(player.x + player.width / 2 - pos.x, player.y + player.height / 2 - pos.y) <= POLICE_APPROACH_DIST;

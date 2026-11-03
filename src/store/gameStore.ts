@@ -346,9 +346,9 @@ import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision, setCityPropsDisabled, cityPropsInRegion, cityPropRect, cityPropDef } from '../world/cityProps';
-import { hospitalPos as hospitalSpot, resolveHospitalCollision, isInHospitalCircle, tickHospitalDwell } from '../world/hospital';
+import { hospitalPos as hospitalSpot, resolveHospitalCollision, touchesHospital, isApproachingHospital } from '../world/hospital';
 import { detourAngleOffset } from '../world/detourPoi';
-import { armoryPos as armorySpot, resolveArmoryCollision, isInArmoryCircle, tickArmoryDwell, ARMORY_SCRAP_COST } from '../world/armory';
+import { armoryPos as armorySpot, resolveArmoryCollision, touchesArmory, isApproachingArmory, ARMORY_SCRAP_COST } from '../world/armory';
 import { policePos as policeSpot, resolvePoliceCollision } from '../world/police';
 import { assignDetourSectors } from '../world/detourPoi';
 import { bossSectorIndex, poiSectorIndex } from '../world/pois';
@@ -21427,11 +21427,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) return {};
       const pos = state.hospital;
       if (!pos || state.hospitalTaken || state.gameWon) return {};
-      const inside = isInHospitalCircle(state.player, pos);
-      const { dwellMs, done } = tickHospitalDwell(state.hospitalDwellMs, inside, deltaTime * 1000);
-      // §6.24-UX 確定要件1: サークルに入った瞬間、「ここが何で・何をすれば・何が貰えるか」を通信で1回。
-      const justEntered = dwellMs > 0 && state.hospitalDwellMs <= 0;
-      const intel = justEntered ? poiIntelPatch(state, 'hospital', pos) : {};
+      // ★社長指示2026-11-02(research/POI_TOUCH_SHRINE.md §1): 建物に正面(下)から触れた瞬間に入手(旧: 手前の円に3秒)。
+      // §6.24-UX 確定要件1: 「ここが何で・何をすれば・何が貰えるか」の通信は**近づいた時**に1回(品質監査A2=触れる前に言う)。
+      void deltaTime;
+      const done = touchesHospital(state.player, pos);
+      const dwellMs = 0;
+      const intel = isApproachingHospital(state.player, pos) || done ? poiIntelPatch(state, 'hospital', pos) : {};
       if (done) {
         unlocked = true;
         return {
@@ -21451,8 +21452,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           wallBandColor: 'white' as const,
         };
       }
-      if (dwellMs === state.hospitalDwellMs) return intel; // 円外で0のまま=書き込み省略(毎フレのsetを避ける)
-      return { ...intel, hospitalDwellMs: dwellMs };
+      return intel;
     });
     if (unlocked) {
       recordChronicleGlobalFirst(getSelectedStageId(), 'poi', 'hospital', `初めて${POI_LABEL.hospital}を開放`, true);
@@ -21474,22 +21474,27 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) return {};
       const pos = state.armory;
       if (!pos || state.armoryTaken || state.gameWon) return {};
-      const inside = isInArmoryCircle(state.player, pos);
-      const { dwellMs, done } = tickArmoryDwell(state.armoryDwellMs, inside, deltaTime * 1000);
+      // ★社長指示2026-11-02(research/POI_TOUCH_SHRINE.md §1): 建物に正面(下)から触れている間に取引(旧: 手前の円に3秒)。
+      // armoryDwellMs は「この接近中に不足を言った」印(1/0)に流用=不足の知らせは**近づくたびに1回**(340の外へ出たら0へ・クリエイティブ監査#9)。
+      void deltaTime;
+      const done = touchesArmory(state.player, pos);
+      const approaching = isApproachingArmory(state.player, pos);
       // ★社長報告v0.25.2425「サークル溜まっても何も起きない。おそらく金が足りないから?
       // これ足りないならサークル入ったときに『スクラップ100必要』とか言ってほしい」。
       // 旧実装は**足りない時に本当に何も起きない**(無言)ので、POIが壊れているようにしか見えなかった。
       // ①円に入った瞬間 ②溜め切った瞬間 の2回、不足していることと必要量/所持量を出す。
       const shortOnScrap = state.player.straps < ARMORY_SCRAP_COST;
-      const justEntered = dwellMs > 0 && state.armoryDwellMs <= 0;
-      // §6.24-UX 確定要件1(裁定a): サークルに入った瞬間、取引内容(スクラップいくらで何と交換か)を
-      // 含む通信を1回。**不足時の警告バナーは従来どおり毎回出す**(別枠なので両立する)。
-      const intel = justEntered ? poiIntelPatch(state, 'armory', pos) : {};
-      if (shortOnScrap && (justEntered || done)) {
+      const warnedBefore = approaching && state.armoryDwellMs > 0;
+      const justEntered = done && shortOnScrap && !warnedBefore; // この接近で初めて触れて足りない
+      const dwellMs = !approaching ? 0 : (warnedBefore || justEntered ? 1 : 0);
+      // §6.24-UX 確定要件1(裁定a): 取引内容(スクラップいくらで何と交換か)を含む通信を、**近づいた時**に1回(品質監査A2)。
+      // **不足時の警告バナーは触れ始めごとに出す**(別枠なので両立する)。
+      const intel = approaching || done ? poiIntelPatch(state, 'armory', pos) : {};
+      if (justEntered) {
         return {
           ...intel,
           armoryDwellMs: dwellMs,
-          eventBannerText: `武器庫にはスクラップ${ARMORY_SCRAP_COST}が必要 (所持 ${Math.floor(state.player.straps)})`,
+          eventBannerText: `スクラップが足りない。あと${Math.max(1, Math.ceil(ARMORY_SCRAP_COST - state.player.straps))}`,
           eventBannerUntil: state.gameTime + 2200,
         };
       }
@@ -21534,7 +21539,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           wallBandColor: 'white' as const,
         };
       }
-      if (dwellMs === state.armoryDwellMs) return intel; // 円外で0のまま=書き込み省略(毎フレのsetを避ける)
+      if (dwellMs === state.armoryDwellMs) return intel; // 触れていない/触れ続けている=印は変わらない
       return { ...intel, armoryDwellMs: dwellMs };
     });
     // §6.24-W: Tier3銃の付与(grantWeaponが弾薬重複/アクティブ切替/武器トーストまで面倒を見る)。
