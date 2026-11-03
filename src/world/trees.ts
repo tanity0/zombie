@@ -10,6 +10,7 @@
 
 import { Rect, footRect, resolveAabb } from './obstacles';
 import { isObstacleDestroyed } from './destructibles';
+import { isInPoiClearing } from './poiClearings';
 
 export const TREE_CELL = 220;
 
@@ -36,6 +37,8 @@ const treeInCell = (cx: number, cy: number): TreeInstance | null => {
   // Keep the spawn point (world origin) clear so the player never starts
   // trapped inside a trunk.
   if (Math.abs(footX) < 150 && Math.abs(footY) < 150) return null;
+  // POI(寄り道の建物・武将の祠)の前は空き地(社長指示2026-11-03)。
+  if (isInPoiClearing(footX, footY)) return null;
   const key = `${cx}_${cy}`;
   // 裏ボスに踏み潰されて破壊された木は欠番(描画・当たり判定とも同時に消える)。生成キーのみで判定=軽い。
   if (isObstacleDestroyed(key)) return null;

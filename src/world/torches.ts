@@ -1,4 +1,5 @@
 import { Rect, footRect, resolveAabb } from './obstacles';
+import { isInPoiClearing } from './poiClearings';
 
 export const TORCH_CELL = 410; // 密度UP(社長指示・460→410=グリッドを詰める)。出過ぎたら430へ。
 
@@ -26,6 +27,7 @@ const torchInCell = (cx: number, cy: number, bonusChance = 0): TorchInstance | n
   const footX = cx + TORCH_CELL / 2 + ox;
   const footY = cy + TORCH_CELL / 2 + oy;
   if (Math.abs(footX) < 190 && Math.abs(footY) < 190) return null;
+  if (isInPoiClearing(footX, footY)) return null; // POIの前は空き地(社長指示2026-11-03)
   return { id: `torch-${cx}_${cy}`, footX, footY, scale };
 };
 

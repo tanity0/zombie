@@ -7,6 +7,8 @@
 //
 // 配置はステージ1限定(FLOWER_STAGES)。他の森ステージへ広げたい場合は id を追加するだけ。
 
+import { isInPoiClearing } from './poiClearings';
+
 export interface ForestFlower {
   id: string;
   footX: number;   // 足元(Y-sortキー・スプライトのアンカー 0.5,1)
@@ -57,6 +59,7 @@ export const forestFlowersInRegion = (
         const footX = cx * FLOWER_ZONE + FLOWER_ZONE * (0.1 + 0.8 * hash2(cx * 1.7 + k * 6.3 + 3.1, cy * 2.1 - k * 4.2 + 5.5));
         const footY = cy * FLOWER_ZONE + FLOWER_ZONE * (0.1 + 0.8 * hash2(cx * 2.9 - k * 4.7 + 8.2, cy * 1.3 + k * 3.1 - 7.7));
         if (Math.hypot(footX, footY) < FLOWER_SAFE_RADIUS) continue;
+        if (isInPoiClearing(footX, footY)) continue; // POIの前は空き地(社長指示2026-11-03)
         const variant = Math.floor(hash2(cx * 5.1 + k * 1.9, cy * 4.3 - k * 2.2) * FLOWER_VARIANTS) % FLOWER_VARIANTS;
         const scale = 0.62 + hash2(cx * 0.8 + k * 3.6, cy * 1.5 - k * 0.9) * 0.30; // 0.62〜0.92
         out.push({ id: `fl-${cx}-${cy}-${k}`, footX, footY, scale, variant });

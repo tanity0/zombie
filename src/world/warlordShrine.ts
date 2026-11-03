@@ -34,8 +34,9 @@ export const SHRINE_DISPLAY_H = 170;
 /** 当たり判定=土台(段)だけ。絵(約460〜500×580〜630)の下の段の幅に合わせる。 */
 export const SHRINE_HITBOX_W = 96;
 export const SHRINE_HITBOX_H = 30;
-/** 取った後のフェードアウト(ms)。 */
-export const SHRINE_FADE_MS = 900;
+/** 取った後、祠が崩れ去るまで(ms)。社長指示2026-11-03「取ったら祠は崩れ去る」。前30%は震え、残りで傾きながら加速して沈む(城の崩落と同じ型)。 */
+export const SHRINE_CRUMBLE_MS = 2000;
+export const SHRINE_CRUMBLE_TREMOR_FRAC = 0.3;
 
 export interface ShrineState {
   slot: ShrineSlot;

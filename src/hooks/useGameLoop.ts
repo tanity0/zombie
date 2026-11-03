@@ -2110,6 +2110,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // v0.25.3983(城の崩壊・社長指示): 崩落開始(castleEvent.collapsedAt)後の追加の砂埃の波を1回ずつ積む
   // (at=処理済みのcollapsedAt / wave=次に出す波の添字)。リセットは collapsedAt が消えた時(新しいラン)。
   const castleCollapseDustRef = useRef<{ at: number; wave: number }>({ at: 0, wave: 0 });
+  // 武将の祠が崩れ去る時の砂埃の波(祠ごとに「処理済みの取った時刻」と次の波の添字)。城の崩落と同じ作り。
+  const shrineCrumbleRef = useRef<Record<string, { at: number; wave: number }>>({});
   // §6.38 v9(完全コピー原則): 賞金首も城ボスと同じ「出現エフェクトが消えてからカメラアテンション
   // +カットイン」の並びにする(castleAttnRefと同型。null=予約なし)。
   const bountyAttnRef = useRef<{ at: number; x: number; y: number; cutin: ReturnType<typeof bossCutinPayload> } | null>(null);
@@ -5030,6 +5032,38 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (after.shrines.filter(sh => sh.takenAt !== undefined).length > takenBefore) {
             playSfx('anchor-plant');
             if (hasFullWarlordSet(after.player.equipment)) playSfx('subquest-clear');
+          }
+          // 取った祠は崩れ去る(社長指示2026-11-03)。震えの始まり・沈む途中・沈み切りの4波で砂埃と瓦礫を足元へ
+          // (②派手さの絵=判定なし・event-only)。崩れは加速するので後の波ほど大きく、最後が着地。
+          const SHRINE_DUST_WAVES_MS = [0, 650, 1150, 1700];
+          for (const sh of after.shrines) {
+            if (sh.takenAt === undefined) continue;
+            const r = shrineCrumbleRef.current[sh.slot] ?? { at: -1, wave: 0 };
+            if (r.at !== sh.takenAt) { r.at = sh.takenAt; r.wave = 0; }
+            shrineCrumbleRef.current[sh.slot] = r;
+            const el = after.gameTime - sh.takenAt;
+            while (r.wave < SHRINE_DUST_WAVES_MS.length && el >= SHRINE_DUST_WAVES_MS[r.wave]) {
+              const w = r.wave;
+              const last = w === SHRINE_DUST_WAVES_MS.length - 1;
+              const wide = 40 + w * 18;
+              after.spawnBurst(sh.x - wide / 2 + wide * Math.random(), sh.y - 4, w % 2 === 0 ? '#a8a29e' : '#78716c', Math.round(10 + w * 5));
+              if (w > 0) {
+                after.spawnBurst(sh.x - wide, sh.y - 2, '#78716c', 6 + w * 2);
+                after.spawnBurst(sh.x + wide, sh.y - 2, '#78716c', 6 + w * 2);
+              }
+              // 土煙の雲(粒だけだと小さくて見えない=派手さの絵は大きく)。後の波ほど大きく、最後は祠を呑む。
+              // 柔らかい光の板(spawnSmoke)は森の霧の帯の中では撮影で見えなかったので、もこもこの絵(fx/dust-puff)を使う。
+              for (let k = 0; k < (last ? 3 : 2); k++) {
+                const off = (k - (last ? 1 : 0.5)) * (34 + w * 12);
+                after.spawnImageMark(sh.x + off, sh.y - 4 - k * 4, 'fx/dust-puff', { scale: (0.7 + w * 0.18) * (last ? 1.35 : 1), duration: (last ? 1500 : 1000) + k * 120 });
+              }
+              // 瓦礫は石と、祠の朱の柱・黒い屋根の木片。
+              after.spawnRubble(sh.x, sh.y - 40 - w * 8, last ? 16 : 4 + w * 3, wide * 1.6, ['#78716c', '#57534e', '#7f1d1d', '#292524']);
+              after.spawnRing(sh.x, sh.y, 12, (90 + 30 * w) * (last ? 1.6 : 1), 'rgba(168,162,158,0.55)', 3, last ? 900 : 600);
+              after.triggerShake(last ? 520 : 180, last ? 6 : 2 + w);
+              if (last) after.spawnImageMark(sh.x, sh.y, 'fx/ground-crack', { scale: 1.4, duration: 2400 });
+              r.wave += 1;
+            }
           }
         }
 

@@ -358,7 +358,7 @@ import { ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryRect, ARMORY_SCRAP_COST } from 
 import { POLICE_FADE_MS, POLICE_DISPLAY_H, policeRect } from '../world/police';
 import { touchesFromBelow, rectsOverlap, TOUCH_SIDE_PAD } from '../world/obstacles';
 import {
-  SHRINE_TEXTURE, SHRINE_DISPLAY_H, SHRINE_FADE_MS, SHRINE_CIRCLE_RADIUS, SHRINE_CIRCLE_REVEAL_DIST, SHRINE_DWELL_MS, shrineCircleCenter,
+  SHRINE_TEXTURE, SHRINE_DISPLAY_H, SHRINE_CRUMBLE_MS, SHRINE_CRUMBLE_TREMOR_FRAC, SHRINE_CIRCLE_RADIUS, SHRINE_CIRCLE_REVEAL_DIST, SHRINE_DWELL_MS, shrineCircleCenter,
 } from '../world/warlordShrine';
 import { HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_DEATH_HOLD_MS, HERO_DOG_DEATH_FADE_MS, heroDogDeathPose } from '../utils/heroDog';
 import { HIT_BLINK_TYPES, hitBlinkStrength, bloodFlashStrength } from '../utils/hitBlink';
@@ -30376,9 +30376,11 @@ export class PixiScene {
       const sp = this.shrineSprites[i];
       const sh = list[i];
       if (!sh) { sp.visible = false; continue; }
-      // 取った後は、しばらく保ってから沈むように消える(線形にしない=慣性・監査#11)。
-      const ft = sh.takenAt !== undefined ? Math.max(0, Math.min(1, (s.gameTime - sh.takenAt) / SHRINE_FADE_MS)) : 0;
-      const fade = 1 - ft * ft * ft;
+      // 取ったら崩れ去る(社長指示2026-11-03)。城の崩落と同じ型: 震え(前30%・徐々に強く)→傾きながら加速して沈む(t²=重力)
+      // →終盤で土煙に呑まれて消える。砂埃・瓦礫・揺れは useGameLoop が取った瞬間と沈む途中に積む。
+      const colP = sh.takenAt !== undefined ? Math.max(0, Math.min(1, (s.gameTime - sh.takenAt) / SHRINE_CRUMBLE_MS)) : null;
+      const sinkP = colP === null ? 0 : Math.max(0, (colP - SHRINE_CRUMBLE_TREMOR_FRAC) / (1 - SHRINE_CRUMBLE_TREMOR_FRAC));
+      const fade = colP === null ? 1 : Math.max(0, 1 - sinkP * sinkP * 1.25);
       const tex = getTexture(SHRINE_TEXTURE[sh.slot]);
       const footY = sh.y;
       const horizonAlpha = this.horizonActorAlpha(footY);
@@ -30388,7 +30390,19 @@ export class PixiScene {
       const sc = (SHRINE_DISPLAY_H * d) / tex.height;
       sp.texture = tex;
       sp.scale.set(sc);
-      sp.position.set(Math.round(sh.x), Math.round(footY));
+      {
+        const H = SHRINE_DISPLAY_H * d;
+        const tremor = colP === null ? 0
+          : (Math.sin(now / 17) * 0.7 + Math.sin(now / 6.5) * 0.3) * (colP < SHRINE_CRUMBLE_TREMOR_FRAC
+            ? 7 * (0.3 + 0.7 * (colP / SHRINE_CRUMBLE_TREMOR_FRAC))
+            : 6 * (1 - sinkP * 0.6));
+        const side = sh.takenAt !== undefined && (Math.round(sh.takenAt) & 1) === 0 ? 1 : -1;
+        const lean = colP === null ? 0 : side * 0.2 * (colP < SHRINE_CRUMBLE_TREMOR_FRAC
+          ? 0.15 * (colP / SHRINE_CRUMBLE_TREMOR_FRAC) ** 2
+          : 0.15 + 0.85 * sinkP * sinkP);
+        sp.position.set(Math.round(sh.x + tremor), Math.round(footY + sinkP * sinkP * H * 1.05));
+        sp.rotation = lean;
+      }
       sp.zIndex = footY;
       sp.tint = this.envTintNow();
       sp.visible = true;

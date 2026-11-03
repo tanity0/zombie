@@ -373,6 +373,7 @@ import { hasSkillIcon, skillSingleIconName } from '../data/skillIcons'; // ス�
 import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX(stage-ex1)専用分岐の判定
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
+import { setPoiClearings } from '../world/poiClearings';
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, hasFullWarlordSet, specialEquipmentForSlot, equipmentDescription, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, segmentIntersectsRect, type Rect } from '../world/obstacles';
 import { friendlyShieldRect, splitBeamAtShield, beamStripsHit, shieldBlocksArea, shieldBlocksLine, shieldContactPoint, type BeamShieldSplit, type BeamStrip } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md: シールドで技を防ぐ
@@ -24739,6 +24740,20 @@ setHateEscortProvider(() => hateEscortSource(useGameStore.getState()));
     lastBroken = st.labBrokenObstacles;
     setLabBrokenObstacleIds(lastBroken.map(b => b.id));
   });
+}
+
+// POI(寄り道の建物・武将の祠)の前の空き地(world/poiClearings・社長指示2026-11-03)。位置が変わった時だけ作り直す
+// (resetGame・巻き戻しの復元のどちらでも追従する=上の labBrokenObstacles と同じ型・負荷 1/10)。
+{
+  let last: unknown[] = [];
+  const sync = (st: GameState) => {
+    const cur = [st.hospital, st.armory, st.police, st.shrines];
+    if (cur.every((v, i) => v === last[i])) return;
+    last = cur;
+    setPoiClearings([st.hospital, st.armory, st.police, ...st.shrines]);
+  };
+  sync(useGameStore.getState());
+  useGameStore.subscribe(sync);
 }
 
 // DEVビルド限定のデバッグハンドル(__pixiSceneと同じ趣旨・v0.25.1831)。ヘッドレス実機テストが
