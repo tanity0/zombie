@@ -852,6 +852,10 @@ export const ensureTextures = (): Promise<void> => {
       // §6.24 M48: 寄り道POIの一般化(社長支給素材v0.25.2352・アルファ透過あり)。
       { name: 'police', scaleMode: 'nearest' }, // 警察署(専用スキル入手・アリーナ方式)
       { name: 'armory', scaleMode: 'nearest' }, // 武器庫(100スクラップでTier3装備確定入手)
+      // 武将の祠(research/POI_TOUCH_SHRINE.md §2・社長支給v0.25.3217)。寄り道の建物と同じ読み込み(負荷2/10=約3.6MB)。
+      { name: 'poi-yoroi', scaleMode: 'nearest' },
+      { name: 'poi-kote', scaleMode: 'nearest' },
+      { name: 'poi-kabuto', scaleMode: 'nearest' },
       { name: 'magic-circle' },        // 既定(linear)のまま
       { name: 'whip-hurricane' },      // 既定のまま
       { name: 'whip' },                // 既定のまま

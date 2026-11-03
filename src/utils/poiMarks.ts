@@ -7,4 +7,5 @@ export const POI_MARK_COLOR: Record<Poi['kind'], string> = {
   cave: '#F59E0B',
   armory: '#FBBF24', // §6.24 M48: 武器庫(スクラップ色)
   police: '#60A5FA', // §6.24 M48: 警察署
+  shrine: '#F0ABFC', // 武将の祠(紫がかった桃=他のどの印とも被らない・研究 POI_TOUCH_SHRINE §3 A7)
 };

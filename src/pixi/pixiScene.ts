@@ -357,6 +357,9 @@ import { HOSPITAL_FADE_MS, HOSPITAL_DISPLAY_H, hospitalRect } from '../world/hos
 import { ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryRect, ARMORY_SCRAP_COST } from '../world/armory';
 import { POLICE_FADE_MS, POLICE_DISPLAY_H, policeRect } from '../world/police';
 import { touchesFromBelow, rectsOverlap, TOUCH_SIDE_PAD } from '../world/obstacles';
+import {
+  SHRINE_TEXTURE, SHRINE_DISPLAY_H, SHRINE_FADE_MS, SHRINE_CIRCLE_RADIUS, SHRINE_CIRCLE_REVEAL_DIST, SHRINE_DWELL_MS, shrineCircleCenter,
+} from '../world/warlordShrine';
 import { HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_DEATH_HOLD_MS, HERO_DOG_DEATH_FADE_MS, heroDogDeathPose } from '../utils/heroDog';
 import { HIT_BLINK_TYPES, hitBlinkStrength, bloodFlashStrength } from '../utils/hitBlink';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE, ALCHEMY_ATTACK_INTERVAL_MS } from '../utils/summonUtils';
@@ -5105,6 +5108,15 @@ export class PixiScene {
   private armoryGfx = new Graphics();
   // 警察署の入口の光(社長指示2026-11-02「触れて発動」の手がかり・病院/武器庫と同じ地面の層)。
   private policeGfx = new Graphics();
+  // 武将の祠(research/POI_TOUCH_SHRINE.md §2/§3): 本体3枚(actorLayer で y-sort)+手前の3秒サークル(地面・加算)+影。
+  private shrineSprites: Sprite[] = [];
+  private shrineGfx = new Graphics();
+  /** 溜めに合わせて祠の奥に灯る光(祠の絵の手前・加算)。監査2026-11-03 #8。 */
+  private shrineGlowGfx = new Graphics();
+  /** 祠ごとの見た目の溜め(出たら巻き戻す=見た目だけ)と、円に入った時刻(入った瞬間に一度ふくらむ)。 */
+  private shrineVis = new Map<string, { frac: number; enterAt: number; inside: boolean }>();
+  private shrineLastNow = 0;
+  private shrineShadows: (BuildingShadowReq & { id: string })[] = [];
   /** 寄り道の建物ごとの「横/裏から当たり始めた時刻」(入口の光を一度強く脈打たせる・クリエイティブ監査#3)。 */
   private poiSideBumpAt: Record<string, number> = {};
   private poiSideBumping: Record<string, boolean> = {};
@@ -6227,6 +6239,7 @@ export class PixiScene {
       this.hospitalGfx, // 病院サークル(地面・world座標)
       this.armoryGfx, // §6.24 M48: 武器庫サークル(地面・world座標。病院と同じ)
       this.policeGfx, // 警察署の入口の光(地面・world座標)
+      this.shrineGfx, // 武将の祠の3秒サークル(地面・world座標)
       this.hunterVisionGfx, // ハンター視界範囲(薄紫・地面・world座標)
       this.pumpkinTelegraph,
       this.mobMeteorGfx, // ★雑魚の噛みの流星(地面の予告の直上・アクターより下・足元の高さで引く)
@@ -6261,6 +6274,7 @@ export class PixiScene {
     // §6.24 M48: 武器庫(病院と同じ規約)/警察署(建物のみ・アリーナ方式でサークルなし)。
     this.armoryGfx.blendMode = 'add';
     this.policeGfx.blendMode = 'add';
+    this.shrineGfx.blendMode = 'add';
     this.armorySprite.anchor.set(0.5, 1);
     this.armorySprite.visible = false;
     this.L.actorLayer.addChild(this.armorySprite);
@@ -10139,6 +10153,7 @@ export class PixiScene {
     this.syncHospital(now); // 廃病院(通常ステージのみ。無いステージでは即 return=no-op)
     this.syncArmory(now); // §6.24 M48: 武器庫(同上)
     this.syncPolice(now); // §6.24 M48: 警察署(同上)
+    this.syncShrines(now); // 武将の祠(寄り道が立つ出撃のみ。無ければ即 return)
     this.syncBaseSites(s.baseSites, now, s.safeBaseId, s.labArmory,
       // ステージ2の武器商人=拠点の武器庫と同じ絵(同じ層・同じ加算)で描く(社長指示2026-10-18)。
       s.stageTheme === 'lab' && !s.merchantHidden ? s.weaponMerchant : null);
@@ -10243,6 +10258,10 @@ export class PixiScene {
     this.hospitalGfx.alpha = facFade;
     this.armoryGfx.alpha = facFade;
     this.policeGfx.alpha = facFade;
+    this.shrineGfx.alpha = facFade;
+    this.shrineGlowGfx.alpha = facFade;
+    for (const sp of this.shrineSprites) { sp.alpha *= facFade; if (facFade <= 0.01) sp.visible = false; }
+    for (const sh of this.shrineShadows) sh.alpha *= facFade;
     this.baseSitesGfx.alpha = facFade;
     if (this.hospitalShadow) this.hospitalShadow.alpha *= facFade;
     if (this.armoryShadow) this.armoryShadow.alpha *= facFade;
@@ -10330,6 +10349,8 @@ export class PixiScene {
       { kind: 'hospital', pos: !s.hospitalTaken ? s.hospital : null },
       { kind: 'armory', pos: !s.armoryTaken ? s.armory : null },
       { kind: 'police', pos: !s.policeTaken ? s.police : null },
+      // 武将の祠(3つ・id で区別)。取った祠は出さない。
+      ...s.shrines.map(sh => ({ kind: 'shrine' as const, id: `shrine-${sh.slot}`, pos: sh.takenAt === undefined ? { x: sh.x, y: sh.y } : null })),
     ];
     // 交戦中のボス(社長指示v0.25.2657「(ゲーム中も)ボス交戦中は画面外のボスマーク表示」/
     // v0.25.2658「**交戦中だけ**」)。誰がボスか・交戦中かの定義は utils/bossMarker.ts に1本化
@@ -14807,6 +14828,7 @@ export class PixiScene {
       const pl = this.policeShadow;
       this.placeShadowSprite('police', pl.x, pl.y, pl.legacyW, pl.alpha * (pl.shadowFade ?? 1), seen);
     }
+    for (const sh of this.shrineShadows) this.placeShadowSprite(sh.id, sh.x, sh.y, sh.legacyW, sh.alpha * (sh.shadowFade ?? 1), seen);
     // 護衛軍人NPC(屋外のみ・他アクターと同じ足影)。
     const escIntroFade = this.currentIntroFade(now);
     for (const esc of escorts) {
@@ -15095,6 +15117,7 @@ export class PixiScene {
       const pl = this.policeShadow;
       place({ id: 'police', x: pl.x, y: pl.y, rawW: pl.rawW, rawH: pl.rawH, texture: pl.texture, alpha: pl.alpha, shadowFade: pl.shadowFade });
     }
+    for (const sh of this.shrineShadows) place({ id: sh.id, x: sh.x, y: sh.y, rawW: sh.rawW, rawH: sh.rawH, texture: sh.texture, alpha: sh.alpha, shadowFade: sh.shadowFade });
     // ---- 護衛軍人NPC ----
     const escIntroFade = this.currentIntroFade(now);
     for (const esc of escorts) {
@@ -30320,6 +30343,116 @@ export class PixiScene {
     if (!s.policeTaken && !(pe && pe.policeArena)) this.drawPoiThreshold(this.policeGfx, 'police', policeRect(pos), 0x60a5fa, now, d, { police: true });
   }
 
+  // 武将の祠(research/POI_TOUCH_SHRINE.md §2/§3・社長裁定「いつもの3秒サークル」)。**描くだけ**(滞在・付与は store の updateShrines)。
+  // 寄り道の建物と同じ規約: 足元アンカー・高さ基準(SHRINE_DISPLAY_H)・y-sort・裏に回ると透ける・取ったらフェード。
+  // 手前の円は近づくと ease-out で現れ、3秒の弧が満ちる(旧・病院の円と同じ読み方)。色は祠の印(紫がかった桃)。負荷1/10。
+  // 祠の奥の灯り(加算の同心円を重ねた柔らかい光・投影影は落とさない=負荷はほぼ無し)。
+  private drawShrineGlow(x: number, y: number, footY: number, d: number, k: number, alpha: number) {
+    if (k <= 0.01) return;
+    const gg = this.shrineGlowGfx;
+    const rings: readonly (readonly [number, number])[] = [[46, 0.10], [32, 0.16], [20, 0.26], [10, 0.5]];
+    gg.zIndex = footY + 0.5; // その祠の絵のすぐ手前(手前を通る敵やプレイヤーより奥)
+    for (const [r, al] of rings) gg.circle(x, y, r * d * (0.7 + 0.3 * k)).fill({ color: 0xffe8c2, alpha: al * k * alpha });
+  }
+
+  private syncShrines(now: number) {
+    const s = useGameStore.getState();
+    const g = this.shrineGfx;
+    g.clear();
+    this.shrineGlowGfx.clear();
+    if (!this.shrineGlowGfx.parent) { this.shrineGlowGfx.blendMode = 'add'; this.L.actorLayer.addChild(this.shrineGlowGfx); }
+    const shrineDt = Math.max(0, Math.min(100, now - this.shrineLastNow));
+    this.shrineLastNow = now;
+    this.shrineShadows = [];
+    const list = s.indoorMode ? [] : s.shrines;
+    while (this.shrineSprites.length < list.length) {
+      const sp = new Sprite();
+      sp.anchor.set(0.5, 1);
+      sp.visible = false;
+      this.L.actorLayer.addChild(sp);
+      this.shrineSprites.push(sp);
+    }
+    for (let i = 0; i < this.shrineSprites.length; i++) {
+      const sp = this.shrineSprites[i];
+      const sh = list[i];
+      if (!sh) { sp.visible = false; continue; }
+      // 取った後は、しばらく保ってから沈むように消える(線形にしない=慣性・監査#11)。
+      const ft = sh.takenAt !== undefined ? Math.max(0, Math.min(1, (s.gameTime - sh.takenAt) / SHRINE_FADE_MS)) : 0;
+      const fade = 1 - ft * ft * ft;
+      const tex = getTexture(SHRINE_TEXTURE[sh.slot]);
+      const footY = sh.y;
+      const horizonAlpha = this.horizonActorAlpha(footY);
+      const onScreen = this.distanceOutsideViewport(sh.x, footY, POI_CIRCLE_CULL_MARGIN) <= 0;
+      if (fade <= 0 || !tex || horizonAlpha <= 0 || !onScreen) { sp.visible = false; continue; }
+      const d = this.depthScale(footY);
+      const sc = (SHRINE_DISPLAY_H * d) / tex.height;
+      sp.texture = tex;
+      sp.scale.set(sc);
+      sp.position.set(Math.round(sh.x), Math.round(footY));
+      sp.zIndex = footY;
+      sp.tint = this.envTintNow();
+      sp.visible = true;
+      this.applyObstacleAlpha(sp, footY);
+      sp.alpha *= fade;
+      this.shrineShadows.push({
+        id: `shrine-${sh.slot}`,
+        x: sh.x, y: footY,
+        legacyW: Math.min(120 * d, tex.width * sc * 0.5),
+        rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
+        alpha: horizonAlpha * 0.8 * this.foregroundActorAlpha(footY), shadowFade: fade,
+      });
+      const c = shrineCircleCenter(sh);
+      const vis = this.shrineVis.get(sh.slot) ?? { frac: 0, enterAt: -1e9, inside: false };
+      this.shrineVis.set(sh.slot, vis);
+      if (sh.takenAt !== undefined) {
+        // 満ちた瞬間: 輪が外へ広がりながら減速して薄れる(パッと消さない・監査#10)。祠の灯りも同じ尺で引く。
+        const k = Math.max(0, Math.min(1, (s.gameTime - sh.takenAt) / 560));
+        if (k < 1) {
+          const e = 1 - (1 - k) ** 3;
+          g.circle(c.x, c.y, SHRINE_CIRCLE_RADIUS + 70 * e).stroke({ width: 5 * (1 - k) + 1, color: 0xfdf4ff, alpha: 0.9 * (1 - k) ** 1.5 });
+          g.circle(c.x, c.y, SHRINE_CIRCLE_RADIUS - 3 + 26 * e).stroke({ width: 2, color: 0xf0abfc, alpha: 0.6 * (1 - k) });
+        }
+        const gk = Math.max(0, 1 - (s.gameTime - sh.takenAt) / 900);
+        if (gk > 0) this.drawShrineGlow(sh.x, footY - SHRINE_DISPLAY_H * d * 0.42, footY, d, gk * gk, sp.alpha);
+        vis.frac = 0;
+        continue;
+      }
+      // 手前の3秒サークル(近づくと ease-out で現れる)。
+      const p = s.player;
+      const dist = Math.hypot(p.x + p.width / 2 - c.x, p.y + p.height / 2 - c.y);
+      const t = Math.max(0, Math.min(1, (SHRINE_CIRCLE_REVEAL_DIST - dist) / 140));
+      const near = 1 - (1 - t) ** 3;
+      if (near <= 0) continue;
+      const inside = s.shrineDwell.slot === sh.slot;
+      const realFrac = inside ? Math.max(0, Math.min(1, s.shrineDwell.ms / SHRINE_DWELL_MS)) : 0;
+      if (inside && !vis.inside) vis.enterAt = now;
+      vis.inside = inside;
+      // 見た目の溜め: 入っている間は判定どおり、出たら短く巻き戻す(判定の0リセットはそのまま・監査#10)。
+      vis.frac = realFrac >= vis.frac ? realFrac : Math.max(realFrac, vis.frac - (shrineDt / 320) * Math.max(0.35, vis.frac));
+      const frac = vis.frac;
+      // 脈は溜まるほど速く・明るく(等速の明滅にしない・監査#9)。入った瞬間に一度ふくらむ。
+      const beatHz = 0.55 + 2.2 * frac * frac;
+      const pulse = 0.5 + 0.5 * Math.sin((now / 1000) * Math.PI * 2 * beatHz + i * 1.7);
+      const ek = Math.max(0, Math.min(1, (now - vis.enterAt) / 420));
+      const swell = ek < 1 ? Math.sin(ek * Math.PI) * (1 - ek) * 1.6 : 0;
+      const a = (0.34 + 0.2 * pulse + 0.25 * frac + 0.3 * swell) * near;
+      const color = 0xf0abfc;
+      const R0 = SHRINE_CIRCLE_RADIUS + 10 * swell;
+      g.circle(c.x, c.y, R0 - 4).fill({ color, alpha: (0.06 + 0.05 * pulse + 0.08 * frac) * near });
+      g.circle(c.x, c.y, R0).stroke({ width: 6, color, alpha: Math.min(1, a) * 0.6 });
+      g.circle(c.x, c.y, R0 - 3).stroke({ width: 2, color, alpha: Math.min(1, a) });
+      if (frac > 0.002) {
+        const start = -Math.PI / 2;
+        const rr = SHRINE_CIRCLE_RADIUS + 5;
+        g.moveTo(c.x + Math.cos(start) * rr, c.y + Math.sin(start) * rr)
+          .arc(c.x, c.y, rr, start, start + Math.PI * 2 * frac)
+          .stroke({ width: 4, color: 0xfdf4ff, alpha: 0.95 * (inside ? 1 : 0.6) });
+        // 祠の奥(中身の位置)が溜めに合わせて灯る=円と祠がつながる。
+        this.drawShrineGlow(sh.x, footY - SHRINE_DISPLAY_H * d * 0.42, footY, d, frac * (0.75 + 0.25 * pulse), sp.alpha);
+      }
+    }
+  }
+
   // 制圧イベントの拠点。状態で色分け(未制圧=琥珀/制圧=緑/安全地帯=青)。制圧済みはHPバー＋軍人2体マーカー。
   // 描画は画面内の拠点のみ(画面外はカリング=軽量)。攻撃者は通常敵として敵レンダラが描く。
   // 武器庫(中央の小サークル)= 指を離すと遠隔で武器商人を利用(社長指示)。琥珀=ショップ色・小さめ。
@@ -39801,7 +39934,7 @@ export class PixiScene {
     _camera: { x: number; y: number },
     castleVisible: boolean,
     event: ActiveEvent | null,
-    pois: { id?: string; x: number; y: number; kind: 'boss' | 'cave' | 'hospital' | 'armory' | 'police'; live?: boolean }[] = [],
+    pois: { id?: string; x: number; y: number; kind: 'boss' | 'cave' | 'hospital' | 'armory' | 'police' | 'shrine'; live?: boolean }[] = [],
     baseSites: { id?: string; x: number; y: number; status: string }[] = [],
     escorts: EscortSoldier[] = [],
     playerCenter?: { x: number; y: number },
@@ -40267,9 +40400,9 @@ export class PixiScene {
       const kind = rec.kind;
       const boss = kind === 'boss';
       const lm = boss ? rec.liveMix * rec.liveMix * (3 - 2 * rec.liveMix) : 1; // 巣0→本人1
-      const hospital = kind === 'hospital', armory = kind === 'armory', police = kind === 'police';
-      // 裏ボス: 巣=乾いた血の暗赤 / 本人=赤(目覚めで移る) / 病院=緑 / 武器庫=琥珀 / 警察署=青 / 洞窟=琥珀
-      const color = boss ? lerpC(0x8c2626, 0xef4444, lm) : hospital ? 0x4ade80 : armory ? 0xfbbf24 : police ? 0x38bdf8 : 0xf59e0b;
+      const hospital = kind === 'hospital', armory = kind === 'armory', police = kind === 'police', shrine = kind === 'shrine';
+      // 裏ボス: 巣=乾いた血の暗赤 / 本人=赤(目覚めで移る) / 病院=緑 / 武器庫=琥珀 / 警察署=青 / 武将の祠=紫がかった桃 / 洞窟=琥珀
+      const color = boss ? lerpC(0x8c2626, 0xef4444, lm) : hospital ? 0x4ade80 : armory ? 0xfbbf24 : police ? 0x38bdf8 : shrine ? 0xf0abfc : 0xf59e0b;
       const first = this.poiFirstShownAt.get(key);
       const since = first === undefined ? Infinity : poiNow - first;
       // 出だしは輪が大きく、行き過ぎて元の大きさへ(easeOutBack)。膨らんでいる間は中心を内側へ寄せる(矢印の先を画面の外へ切らさない)。
@@ -40319,6 +40452,21 @@ export class PixiScene {
           starPts.push(ex + Math.cos(a2) * rr2, ey + Math.sin(a2) * rr2);
         }
         g.poly(starPts).fill({ color: 0xdbeafe, alpha: 0.96 * am });
+      } else if (shrine) {
+        // 武将の祠: 支給の絵と同じ「屋根のある祠」の形(鳥居は絵に無い=クリエイティブ監査2026-11-03 #7)。
+        // 扉の中に部位の印を抜く(兜=三日月の前立て / 小手=縦2本 / 鎧=胴)=3本の矢印を見分けて「兜だけ取りに行く」を選べる。
+        const tc = 0xfdf4ff, dk = 0x3b0a3f;
+        g.poly([ex - R(7.5), ey - R(1.8), ex, ey - R(7.5), ex + R(7.5), ey - R(1.8)]).fill({ color: tc, alpha: 0.96 * am });
+        g.rect(ex - R(5), ey - R(1.8), R(10), R(7.2)).fill({ color: tc, alpha: 0.96 * am });
+        if (key.endsWith('accessory')) {
+          g.circle(ex, ey + R(1.6), R(2.6)).fill({ color: dk, alpha: 0.96 * am });
+          g.circle(ex, ey + R(0.4), R(2.2)).fill({ color: tc, alpha: 0.96 * am });
+        } else if (key.endsWith('arms')) {
+          g.rect(ex - R(2.6), ey - R(0.2), R(1.6), R(4.6)).fill({ color: dk, alpha: 0.96 * am });
+          g.rect(ex + R(1), ey - R(0.2), R(1.6), R(4.6)).fill({ color: dk, alpha: 0.96 * am });
+        } else {
+          g.poly([ex - R(2.8), ey - R(0.2), ex + R(2.8), ey - R(0.2), ex + R(2), ey + R(4.4), ex - R(2), ey + R(4.4)]).fill({ color: dk, alpha: 0.96 * am });
+        }
       } else {
         // 洞窟アーチ(半円の口)。
         g.rect(ex - R(5), ey - R(1), R(10), R(6)).fill({ color: 0x451a03, alpha: 0.96 * am });

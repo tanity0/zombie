@@ -13,7 +13,7 @@ import { POI_SECTORS } from '../world/pois';
 export interface PauseMapData {
   player: { x: number; y: number; dirX: number; dirY: number };
   bases: { x: number; y: number; captured: boolean }[];
-  pois: { x: number; y: number; kind: 'boss' | 'cave' | 'armory' | 'police' | 'hospital' }[]; // 発見済みで、まだ取り終えていない所だけ(取り終えたら消す)
+  pois: { x: number; y: number; kind: 'boss' | 'cave' | 'armory' | 'police' | 'hospital' | 'shrine' }[]; // 発見済みで、まだ取り終えていない所だけ(取り終えたら消す)
   route: readonly (readonly (readonly [number, number])[])[]; // §2-6 今回歩いた道(1.5秒ごとの自分の位置・素早い移動の所で線が切れる)
   threats: { x: number; y: number }[]; // §2-3: この出撃で出会ったボス級(強個体を除く)・宿敵の今の位置
 }

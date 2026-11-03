@@ -21,6 +21,7 @@ import { getArchiveRecord, unlockRecordsForStage, markRecordRead, type ArchiveRe
 import { AREA_ZONE_NAMES, AREA_THRESHOLDS, isLabCrawlerProxyType } from '../utils/enemyUtils';
 /** ステージ2(研究所)のリザルトで、区域名をすべてこの名前に揃える(社長指示2026-10-20)。 */
 const LAB_RESULT_ZONE_NAME = '未確認汚染エリア';
+const SHRINE_LABEL_BY_ID: Record<string, string> = { 'shrine-body': '鎧の祠', 'shrine-arms': '小手の祠', 'shrine-accessory': '兜の祠' };
 import { clampRank, promotionScore, PROMOTION_BOTTLENECK_LABEL } from '../utils/rankAssessor';
 import { isKomaLogEnabled, komaLogSummary, logKomaSummary } from '../utils/komaLog';
 import { hasPendingTraitRecords, settlePendingTraits, pendingBossClears, loadPlayerProfile } from '../utils/playerTraits';
@@ -416,16 +417,19 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const hospitalPos = useGameStore(s => s.hospital);
   const armoryPos = useGameStore(s => s.armory);
   const policePos = useGameStore(s => s.police);
+  const shrines = useGameStore(s => s.shrines);
   const reachPois = useMemo(() => {
-    const label: Record<string, string> = { boss: '裏ボスの巣', hospital: '廃病院', armory: '武器庫', police: '警察署', cave: '洞窟' };
+    const label: Record<string, string> = { boss: '裏ボスの巣', hospital: '廃病院', armory: '武器庫', police: '警察署', cave: '洞窟', shrine: '武将の祠' };
     return getRunPois(hiddenBoss, [
       { kind: 'hospital', pos: hospitalPos },
       { kind: 'armory', pos: armoryPos },
       { kind: 'police', pos: policePos },
+      ...shrines.map(sh => ({ kind: 'shrine' as const, id: `shrine-${sh.slot}`, pos: { x: sh.x, y: sh.y } })),
     ])
       .filter(p => isPoiRevealed(p, baseSites))
-      .map(p => ({ dist: Math.hypot(p.x, p.y), label: label[p.kind] ?? p.kind, kind: p.kind }));
-  }, [hiddenBoss, hospitalPos, armoryPos, policePos, baseSites]);
+      // 祠は3つあるので部位で呼び分ける(どの深さに何があったか読めるように・名前は一覧の key も兼ねる=監査#6)。
+      .map(p => ({ dist: Math.hypot(p.x, p.y), label: SHRINE_LABEL_BY_ID[p.id] ?? label[p.kind] ?? p.kind, kind: p.kind }));
+  }, [hiddenBoss, hospitalPos, armoryPos, policePos, shrines, baseSites]);
 
   // ハイスコア更新(ベンチ以外。死亡/クリア問わずスコアを記録)。更新できたら HIGH SCORE 表示。
   const [isHighScore, setIsHighScore] = useState(false);

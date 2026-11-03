@@ -22,7 +22,7 @@ interface PoiPin {
   /** 原点からの距離(px=m扱い)。 */
   dist: number;
   label: string;
-  kind: 'boss' | 'cave' | 'hospital' | 'armory' | 'police'; // armory/police = PACING_PUZZLE.md §6.24 M48
+  kind: 'boss' | 'cave' | 'hospital' | 'armory' | 'police' | 'shrine'; // armory/police = PACING_PUZZLE.md §6.24 M48 / shrine=武将の祠
 }
 
 interface ResultReachProps {
@@ -65,6 +65,7 @@ const POI_MARK: Record<PoiPin['kind'], { icon: string; color: string }> = {
   cave: { icon: '◗', color: POI_MARK_COLOR.cave },
   armory: { icon: '▣', color: POI_MARK_COLOR.armory }, // §6.24 M48: 武器庫(スクラップ色)
   police: { icon: '★', color: POI_MARK_COLOR.police }, // §6.24 M48: 警察署
+  shrine: { icon: '⌂', color: POI_MARK_COLOR.shrine }, // 武将の祠(屋根の祠の形。絵文字は端末でカラーになり色が効かない=監査#6)
 };
 
 const ResultReach: React.FC<ResultReachProps> = ({

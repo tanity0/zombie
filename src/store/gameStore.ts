@@ -349,6 +349,10 @@ import { resolveCityPropCollision, setCityPropsDisabled, cityPropsInRegion, city
 import { hospitalPos as hospitalSpot, resolveHospitalCollision, touchesHospital, isApproachingHospital } from '../world/hospital';
 import { detourAngleOffset } from '../world/detourPoi';
 import { armoryPos as armorySpot, resolveArmoryCollision, touchesArmory, isApproachingArmory, ARMORY_SCRAP_COST } from '../world/armory';
+import {
+  SHRINE_SLOTS, assignShrineSectors, shrinePosForSector, resolveShrineCollision, shrineCircleAt, tickShrineDwell,
+  type ShrineState, type ShrineSlot,
+} from '../world/warlordShrine';
 import { policePos as policeSpot, resolvePoliceCollision } from '../world/police';
 import { assignDetourSectors } from '../world/detourPoi';
 import { bossSectorIndex, poiSectorIndex } from '../world/pois';
@@ -369,7 +373,7 @@ import { hasSkillIcon, skillSingleIconName } from '../data/skillIcons'; // ス�
 import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX(stage-ex1)専用分岐の判定
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
-import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, hasFullWarlordSet, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
+import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, hasFullWarlordSet, specialEquipmentForSlot, equipmentDescription, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, segmentIntersectsRect, type Rect } from '../world/obstacles';
 import { friendlyShieldRect, splitBeamAtShield, beamStripsHit, shieldBlocksArea, shieldBlocksLine, shieldContactPoint, type BeamShieldSplit, type BeamStrip } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md: シールドで技を防ぐ
 import { shieldGuardCostFor, shieldBeamDrainFor } from '../utils/shieldGuardCost'; // research/SHIELD_BLOCK.md §8: 盾の代償
@@ -1204,6 +1208,14 @@ const poiIntelPatch = (
   }
   // キュー直積み(tryNpcLine のCD/詰まり防止キャップを通さない)=1ラン1回の通信を取りこぼさない。
   return { poiIntelShown: shown, npcDialogueQueue: [...state.npcDialogueQueue, { name: sol.name, text }] };
+};
+// 武将の祠の通信(クリエイティブ監査2026-11-03 #3/#4/#13): 寄り道と同じく、その方角の護衛が左上の会話で1行言う
+// (帯は1枠しかなく上書きされるので使わない)。護衛が居ない出撃だけ帯へ落とす。1ラン1回/祠は呼び出し側が shrineIntelShown で見る。
+const shrineLinePatch = (state: GameState, pos: { x: number; y: number }, text: string): Partial<GameState> => {
+  const speaker = pickPoiIntelSpeaker(state.escorts, poiSectorIndex(pos));
+  const sol = speaker ? soldierByIndex(speaker.soldierIndex) : null;
+  if (!sol) return { eventBannerText: text, eventBannerUntil: state.gameTime + 4000 };
+  return { npcDialogueQueue: [...state.npcDialogueQueue, { name: sol.name, text }] };
 };
 const createBaseSites = (): BaseSite[] => {
   const sites: BaseSite[] = [];
@@ -6784,6 +6796,8 @@ interface GameState {
     name: string; at: number; color?: string;
     kind?: 'weapon' | 'treasure' | 'data' | 'poi-skill' | 'poi-equip' | 'poi-vaccine';
     weaponKey?: string; treasureVariant?: number; desc?: string; note?: string;
+    /** 祠で身に着けた装備のid(トーストに装備の絵を出す・監査#5)。 */
+    equipDefId?: string;
     /** 表示の長さ(ms・未指定=5000)。ステージ2の資料(変異塊が回り込む経路)だけ短くする(LAB_CRAWLER §4)。 */
     holdMs?: number;
   } | null;
@@ -7439,6 +7453,13 @@ interface GameState {
   hospitalTaken: boolean;                               // ワクチン入手済み(以後サークルも矢印も出さない)
   hospitalTakenAt: number;                              // 入手した gameTime(描画のフェードアウト用)
   updateHospital: (deltaTime: number) => void;          // 毎フレーム: サークル内滞在を計測し3秒でワクチン付与
+  // 武将の祠(research/POI_TOUCH_SHRINE.md §2/§3・SKILL_BUILD_REDESIGN.md §13-5): 鎧/小手/兜の3つ。寄り道と同じ3セクターの未確認汚染帯。
+  // 祠の手前の円に3秒とどまると、その部位の武将装備を装備(今の装備は入れ替え)。取った祠は消える。
+  shrines: ShrineState[];
+  shrineDwell: { slot: ShrineSlot | null; ms: number };
+  /** 祠の円に入った時の一言を出したか(祠ごとに1ラン1回)。 */
+  shrineIntelShown: Record<ShrineSlot, boolean>;
+  updateShrines: (deltaTime: number) => void;
   // PACING_PUZZLE.md §6.24 M48: 寄り道POI(病院の一般化)。武器庫=デンジャーゾーンの中間。
   // 拠点を解放するとその方角の矢印が出る(病院と同じ POI 仕組み)。3秒とどまり100スクラップを
   // 払うとTier3装備を確定入手。位置は毎ラン、裏ボス/病院/警察署と被らないセクターへランダムに割り当て。
@@ -7596,6 +7617,8 @@ export const resolveOutOfSolids = (
     hospital: GameState['hospital']; hospitalTaken: boolean;
     armory: GameState['armory']; armoryTaken: boolean;
     police: GameState['police']; policeTaken: boolean;
+    /** 武将の祠(未指定=当たらない)。ボス戦中は他の施設と同じく消える(facilitiesHidden)。 */
+    shrines?: readonly ShrineState[];
     // v0.25.3054(社長指示・監査指摘「絵だけ消すと見えない壁になる」): ボス戦中は施設(城/病院/
     // 武器庫/警察署)の当たり判定も消す=絵と判定を常に一致させる。木/松明/街プロップは施設では
     // ないので残す(消えるのは「ボス戦中に非表示になる施設」だけ)。
@@ -7618,8 +7641,10 @@ export const resolveOutOfSolids = (
     { x: hospitalResolved.x, y: hospitalResolved.y, width: w, height: h }, ctx.armory, ctx.armoryTaken);
   const cityResolved = noFac ? armoryResolved : resolvePoliceCollision(
     { x: armoryResolved.x, y: armoryResolved.y, width: w, height: h }, ctx.police, ctx.policeTaken);
+  const shrineResolved = (noFac || !ctx.shrines || ctx.shrines.length === 0) ? cityResolved
+    : resolveShrineCollision({ x: cityResolved.x, y: cityResolved.y, width: w, height: h }, ctx.shrines);
   // research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石(伸び切った物だけ)。無ければ素通し=負荷ゼロ。
-  const graveResolved = resolveWraithGraveCollision({ x: cityResolved.x, y: cityResolved.y, width: w, height: h });
+  const graveResolved = resolveWraithGraveCollision({ x: shrineResolved.x, y: shrineResolved.y, width: w, height: h });
   if (!labTheme) return graveResolved;
   // 研究所スキン: 壁オブジェクト+遮蔽プロップ。近傍区画のみ問い合わせる(全区画走査を避ける)。
   const rgn = [cityResolved.x - 120, cityResolved.y - 120, cityResolved.x + w + 120, cityResolved.y + h + 120] as const;
@@ -7647,6 +7672,7 @@ export const resolveBountyMove = (
       hospital: s.hospital, hospitalTaken: s.hospitalTaken,
       armory: s.armory, armoryTaken: s.armoryTaken,
       police: s.police, policeTaken: s.policeTaken,
+      shrines: s.shrines,
       facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
     },
   );
@@ -7744,6 +7770,7 @@ export const resolveShieldWalls = (candidate: Rect): { x: number; y: number } =>
     hospital: s.hospital, hospitalTaken: s.hospitalTaken,
     armory: s.armory, armoryTaken: s.armoryTaken,
     police: s.police, policeTaken: s.policeTaken,
+    shrines: s.shrines,
     facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
   });
 };
@@ -8115,6 +8142,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   hospitalDwellMs: 0,
   hospitalTaken: false,
   hospitalTakenAt: 0,
+  shrines: [],
+  shrineDwell: { slot: null, ms: 0 },
+  shrineIntelShown: { body: false, arms: false, accessory: false },
   armory: null,
   armoryDwellMs: 0,
   armoryTaken: false,
@@ -8463,6 +8493,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           hospital: state.hospital, hospitalTaken: state.hospitalTaken,
           armory: state.armory, armoryTaken: state.armoryTaken,
           police: state.police, policeTaken: state.policeTaken,
+          shrines: state.shrines,
           facilitiesHidden: facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime), // v0.25.3054
         });
         newX = solidResolved.x;
@@ -15018,8 +15049,11 @@ export const useGameStore = create<GameState>((set, get) => ({
               { x: armoryR.x, y: armoryR.y, width: enemy.width, height: enemy.height },
               state.police, state.policeTaken,
             );
+            // 武将の祠の土台も敵に当たる(プレイヤーと同じ)。ボス戦中は消える(他の施設・プレイヤー側と同じ=見えない壁を作らない)。
+            const shrineR = (state.shrines.length === 0 || facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, gameTime))
+              ? policeR : resolveShrineCollision({ x: policeR.x, y: policeR.y, width: enemy.width, height: enemy.height }, state.shrines);
             // research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石は敵にも壁(プレイヤーと同じ)。
-            pos = resolveWraithGraveCollision({ x: policeR.x, y: policeR.y, width: enemy.width, height: enemy.height });
+            pos = resolveWraithGraveCollision({ x: shrineR.x, y: shrineR.y, width: enemy.width, height: enemy.height });
           }
           // 帰還サークルの「敵を入れない」押し出しは撤廃(社長指示v0.25.3318: 指離せば即ゴールなので
           // セーフゾーンが不要になった。旧v0.25.2589の攻撃禁止側と同時に撤去)。
@@ -19927,6 +19961,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             hospital: state.hospital, hospitalTaken: state.hospitalTaken,
             armory: state.armory, armoryTaken: state.armoryTaken,
             police: state.police, policeTaken: state.policeTaken,
+            shrines: state.shrines,
           },
         );
       }
@@ -21547,6 +21582,46 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (unlocked) {
       recordChronicleGlobalFirst(getSelectedStageId(), 'poi', 'armory', `初めて${POI_LABEL.armory}を開放`, true);
     }
+  },
+
+  // 武将の祠(research/POI_TOUCH_SHRINE.md §2/§3・社長裁定「いつもの3秒サークル」): 祠の手前の円に3秒とどまると、その部位の
+  // 武将装備を装備(今の装備は入れ替え)し、祠はフェードアウトして消える。円に入った瞬間に、中身と入れ替わる装備を言う(§3 A2/A3)。
+  updateShrines: (deltaTime) => {
+    set(state => {
+      if (state.shrines.length === 0 || state.gameWon) return {};
+      if (facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) {
+        return state.shrineDwell.ms > 0 ? { shrineDwell: { slot: null, ms: 0 } } : {};
+      }
+      const at = shrineCircleAt(state.player, state.shrines);
+      const prev = state.shrineDwell;
+      const sameSlot = at && prev.slot === at.slot;
+      const { dwellMs, done } = tickShrineDwell(sameSlot ? prev.ms : 0, !!at, deltaTime * 1000);
+      if (!at) return prev.ms > 0 || prev.slot ? { shrineDwell: { slot: null, ms: 0 } } : {};
+      const def = specialEquipmentForSlot(at.slot);
+      // 円に入った時の一言は祠ごとに1ラン1回(縁を出入りしても言い直さない・監査#4)。円と弧で分かる手順は言わない(監査#3)。
+      let intel: Partial<GameState> = {};
+      if (!state.shrineIntelShown[at.slot]) {
+        const cur = equipmentById(state.player.equipment[at.slot]);
+        const text = cur && !cur.special
+          ? `${def.name}が祀ってある。着けるなら、${cur.name}は置いていくことになる`
+          : `${def.name}が祀ってある。持っていけ`;
+        intel = { ...shrineLinePatch(state, at, text), shrineIntelShown: { ...state.shrineIntelShown, [at.slot]: true } };
+      }
+      if (done) {
+        const player = equipDefOnPlayer(state.player, def.id);
+        // 3つ揃った瞬間だけ別の一言(監査#13)。立ち絵の差し替えは既存の仕組み。
+        const setLine = hasFullWarlordSet(player.equipment) ? shrineLinePatch({ ...state, ...intel } as GameState, at, '鎧、小手、兜。揃ったな') : {};
+        return {
+          ...intel,
+          ...setLine,
+          shrineDwell: { slot: null, ms: 0 },
+          shrines: state.shrines.map(s => s.slot === at.slot ? { ...s, takenAt: state.gameTime } : s),
+          player,
+          lastWeaponGet: { name: def.name, at: Date.now(), color: '#f0abfc', kind: 'poi-equip', desc: equipmentDescription(def), equipDefId: def.id },
+        };
+      }
+      return { ...intel, shrineDwell: { slot: at.slot, ms: dwellMs } };
+    });
   },
 
   // §6.24-UX 確定要件1: 寄り道POIの進入/発動時の通信(1ラン1回/種)。病院/武器庫は各 update*
@@ -23345,6 +23420,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         police: detourSectors ? policeSpot(detourSectors.police, detourAngleOffset(Math.random())) : null,
         policeTaken: false,
         policeTakenAt: 0,
+        // 武将の祠: 寄り道が使った3セクターへ独立に1つずつ(§3 B1)。練習ラン・ボスメーカーでは出さない(§3 B6=★3「初期装備で開始」)。
+        shrines: (() => {
+          if (!detourSectors || isPracticeRun() || isBossMakerRun()) return [];
+          const sec = assignShrineSectors(bossSectorIndex(hiddenBoss), Math.random, [detourSectors.police, detourSectors.armory, detourSectors.hospital]);
+          return SHRINE_SLOTS.map(slot => ({ slot, ...shrinePosForSector(slot, sec[slot], detourAngleOffset(Math.random())) }));
+        })(),
+        shrineDwell: { slot: null, ms: 0 },
+        shrineIntelShown: { body: false, arms: false, accessory: false },
         poiIntelShown: emptyPoiIntelShown(), // §6.24-UX: 進入時の通信は「1ラン1回/種」=新ランで戻す
 
         kogarasuUnlockedThisRun: false,

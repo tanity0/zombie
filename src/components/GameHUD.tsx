@@ -8,6 +8,7 @@ import { hasWeaponIcon, weaponIconName, DESERTTECH_WEAPON_KEY, weaponRoundsPerAm
 import { weaponSlotClass } from '../utils/weaponTierColor'; // 武器スロットの段の色(社長指示2026-09-16)
 import { resolveDesertTechAmmoType } from '../utils/desertTechAmmo'; // UNIQUE_WEAPONS.md §16-2(バッチB・デザートテック)
 import { spritePath } from '../utils/spriteLoader';
+import { hasEquipIcon, equipIconName } from '../data/equipment';
 import VitalsOrb from './VitalsOrb';
 import { NpcDialogue } from './NpcDialogue';
 import { useHudLandscape } from './HudScale';
@@ -156,8 +157,11 @@ const GameHUD: React.FC = () => {
       ? lastWeaponGet.kind
       : null;
   const poiGetIcon = poiGetKind === 'poi-skill' ? '✨' : poiGetKind === 'poi-equip' ? '🎖️' : '💉';
+  // 祠の装備はその装備の絵を出し、即座に装備されるので「身に着けた」(クリエイティブ監査2026-11-03 #5)。
+  const poiEquipImg = poiGetKind === 'poi-equip' && lastWeaponGet?.equipDefId && hasEquipIcon(lastWeaponGet.equipDefId)
+    ? spritePath(equipIconName(lastWeaponGet.equipDefId)) : null;
   const poiGetLabel =
-    poiGetKind === 'poi-skill' ? 'スキルを入手！' : poiGetKind === 'poi-equip' ? '装備を入手！' : 'ワクチンを入手！';
+    poiGetKind === 'poi-skill' ? 'スキルを入手！' : poiGetKind === 'poi-equip' ? '身に着けた' : 'ワクチンを入手！';
   const poiGetLabelClass =
     poiGetKind === 'poi-skill' ? 'text-sky-200/85' : poiGetKind === 'poi-equip' ? 'text-amber-100/85' : 'text-emerald-100/85';
 
@@ -203,6 +207,8 @@ const GameHUD: React.FC = () => {
             {isTreasureGet && lastWeaponGet!.treasureVariant
               // トレジャーは拾った実物の画像(treasure-N)を表示(社長指示)。variant が無ければ💎にフォールバック。
               ? <img src={spritePath(`treasure-${lastWeaponGet!.treasureVariant}`)} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
+              : poiEquipImg
+              ? <img src={poiEquipImg} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
               : !isTreasureGet && !isDataGet && !poiGetKind && hasWeaponIcon(lastWeaponGet!.weaponKey)
               ? <img src={spritePath(weaponIconName(lastWeaponGet!.weaponKey!))} alt="" className="w-7 h-7 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} />
               : <span className="text-xl">{poiGetKind ? poiGetIcon : isTreasureGet ? '💎' : isDataGet ? '💾' : '🔫'}</span>}

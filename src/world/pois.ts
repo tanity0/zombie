@@ -17,7 +17,7 @@ export interface Poi {
   id: string;
   x: number;
   y: number;
-  kind: 'boss' | 'cave' | DetourPoiKind;
+  kind: 'boss' | 'cave' | DetourPoiKind | 'shrine'; // shrine=武将の祠(research/POI_TOUCH_SHRINE.md §3 B2・3つとも同じ種類・id で区別)
 }
 
 // 拠点の数=方角の数(createBaseSites の BASE_SITE_COUNT と一致)。8→4(東西南北・社長指示)。
@@ -74,13 +74,13 @@ const STAGE_CAVES: Poi[] = [
 // ランダム化に伴い2箇所が食い違う土台になるため廃止した)。呼び出し側(store の実際の位置=
 // resetGame で1度だけ確定させた値)をそのまま渡してもらう=矢印は常に実体と一致する。
 // `detours` は「この出撃に立っていて、まだ入手/攻略されていない」ものだけを渡す(既定=空配列)。
-export interface DetourPoiInput { kind: DetourPoiKind; pos: { x: number; y: number } | null }
+export interface DetourPoiInput { kind: DetourPoiKind | 'shrine'; pos: { x: number; y: number } | null; id?: string }
 export const getRunPois = (hiddenBoss: EnemyType | null, detours: DetourPoiInput[] = []): Poi[] => {
   const out: Poi[] = [...STAGE_CAVES];
   const lair = bossLairPos(hiddenBoss);
   if (lair) out.push({ id: `lair-${hiddenBoss}`, x: lair.x, y: lair.y, kind: 'boss' });
   for (const d of detours) {
-    if (d.pos) out.push({ id: d.kind, x: d.pos.x, y: d.pos.y, kind: d.kind });
+    if (d.pos) out.push({ id: d.id ?? d.kind, x: d.pos.x, y: d.pos.y, kind: d.kind });
   }
   return out;
 };

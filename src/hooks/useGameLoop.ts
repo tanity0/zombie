@@ -588,6 +588,7 @@ import {
   SHIJIN_FINISH_BOSS_DAMAGE, SHIJIN_FINISH_SCREEN_MARGIN, DANCE_BEAT_MODE,
 } from '../config/shijin';
 import type { RhythmArrow, RhythmPending, ShijinGod } from '../types/game';
+import { hasFullWarlordSet } from '../data/equipment';
 
 // ゲームプレイ中の「プレイヤーの移動」と「敵の移動」だけを倍速にする係数。
 // movePlayer / updateEnemies に渡す deltaTime にのみ掛ける(弾・召喚・軍人・進行・演出・
@@ -5018,6 +5019,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const arBefore = useGameStore.getState().armoryTaken;
           useGameStore.getState().updateArmory(deltaTime);
           if (!arBefore && useGameStore.getState().armoryTaken) playSfx('weapon-pickup');
+        }
+
+        // 武将の祠(research/POI_TOUCH_SHRINE.md §2/§3): 手前の円に3秒で、その部位の武将装備。取った瞬間だけSE(病院と同じ流儀)。
+        {
+          const takenBefore = useGameStore.getState().shrines.filter(sh => sh.takenAt !== undefined).length;
+          useGameStore.getState().updateShrines(deltaTime);
+          // 銃を拾う音ではなく、重いものを据える音(クリエイティブ監査2026-11-03 #12)。3つ揃った時だけ達成のジングルを重ねる(#13)。
+          const after = useGameStore.getState();
+          if (after.shrines.filter(sh => sh.takenAt !== undefined).length > takenBefore) {
+            playSfx('anchor-plant');
+            if (hasFullWarlordSet(after.player.equipment)) playSfx('subquest-clear');
+          }
         }
 
         // 警察署アリーナ(§6.24 M48 F1): 近づくと既存の囲いイベント(horde)をそのまま発生させる。
