@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5362', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5361', items: [
     '深層域の敵がずっと硬く、重い一撃を持つようになった',
     '深層域にいる間は休む間もなく襲撃が続く。深層域を出れば、いつもの波に戻る',
