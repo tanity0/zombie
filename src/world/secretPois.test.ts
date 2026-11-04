@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   secretPoisForStage, ALL_SECRET_POI_DEFS, SECRET_MIN_DIST, secretPoiTouchedBy, secretPoiRect, secretSepiaMult,
-  SECRET_COLOR_LEAD_PX, secretPoiDefsForStage, isNearSecretPoi, SECRET_RELAX_DIST, secretChroniclePhrase, excludeNearSecretPois,
+  SECRET_COLOR_LEAD_PX, secretPoiDefsForStage, isNearSecretPoi, SECRET_RELAX_DIST, secretChroniclePhrase, excludeNearSecretPois, secretEjectDir,
 } from './secretPois';
 import { bossLairPos } from './pois';
 import { REAPER_CONFIG } from '../config/reaper';
@@ -104,5 +104,15 @@ describe('英雄たち(変異体の巡回)のルートに入らない', () => {
       const lair = bossLairPos(boss)!;
       expect(excludeNearSecretPois([lair], secretPoisForStage(s))).toHaveLength(1);
     }
+  });
+});
+
+describe('ボス戦明けの弾き出しの向き', () => {
+  it('土台に重なっていれば中心から外向き・重なっていなければ null', () => {
+    const p = { x: 0, y: 0 };
+    const r = secretPoiRect(p);
+    const right = secretEjectDir({ x: r.x + r.width - 10, y: r.y + 4, width: 28, height: 28 }, [p])!;
+    expect(right.dx).toBeGreaterThan(0);
+    expect(secretEjectDir({ x: 500, y: 500, width: 28, height: 28 }, [p])).toBeNull();
   });
 });

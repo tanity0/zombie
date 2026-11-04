@@ -374,7 +374,10 @@ import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { setPoiClearings } from '../world/poiClearings';
-import { secretPoisForStage, resolveSecretPoiCollision, secretPoiTouchedBy, secretChroniclePhrase, type SecretPoi } from '../world/secretPois';
+import { secretPoisForStage, resolveSecretPoiCollision, secretPoiTouchedBy, secretChroniclePhrase, secretEjectDir, SECRET_EJECT_SPEED, SECRET_EJECT_MS, type SecretPoi } from '../world/secretPois';
+/** 隠れ処の土台として当たる物(弾き出しの間は当てない=ノックバックで滑り出させる)。 */
+const secretSolids = (s: { secretPois: SecretPoi[]; secretEjectUntil: number; gameTime: number }): SecretPoi[] =>
+  s.secretEjectUntil > s.gameTime ? [] : s.secretPois;
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, hasFullWarlordSet, specialEquipmentForSlot, equipmentDescription, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, segmentIntersectsRect, type Rect } from '../world/obstacles';
 import { friendlyShieldRect, splitBeamAtShield, beamStripsHit, shieldBlocksArea, shieldBlocksLine, shieldContactPoint, type BeamShieldSplit, type BeamStrip } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md: シールドで技を防ぐ
@@ -7467,6 +7470,10 @@ interface GameState {
   secretFoundThisRun: number;
   /** このランで既に年表と照らした隠しPOI(触れ続けても毎フレーム年表を読み直さない・品質監査B-2)。 */
   secretCheckedIds: readonly string[];
+  /** ボス戦中(施設ロック中)だったか(明けた瞬間を拾う)。 */
+  secretLockedPrev: boolean;
+  /** 弾き出しの間(gameTime)。この間は隠れ処の土台に当てない=ノックバックで滑り出る。 */
+  secretEjectUntil: number;
   updateSecretPois: () => void;
   shrineDwell: { slot: ShrineSlot | null; ms: number };
   /** 祠の円に入った時の一言を出したか(祠ごとに1ラン1回)。 */
@@ -7688,7 +7695,7 @@ export const resolveBountyMove = (
       hospital: s.hospital, hospitalTaken: s.hospitalTaken,
       armory: s.armory, armoryTaken: s.armoryTaken,
       police: s.police, policeTaken: s.policeTaken,
-      shrines: s.shrines, secretPois: s.secretPois,
+      shrines: s.shrines, secretPois: secretSolids(s),
       facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
     },
   );
@@ -7786,7 +7793,7 @@ export const resolveShieldWalls = (candidate: Rect): { x: number; y: number } =>
     hospital: s.hospital, hospitalTaken: s.hospitalTaken,
     armory: s.armory, armoryTaken: s.armoryTaken,
     police: s.police, policeTaken: s.policeTaken,
-    shrines: s.shrines, secretPois: s.secretPois,
+    shrines: s.shrines, secretPois: secretSolids(s),
     facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
   });
 };
@@ -8162,6 +8169,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   secretPois: [],
   secretFoundThisRun: 0,
   secretCheckedIds: [],
+  secretLockedPrev: false,
+  secretEjectUntil: 0,
   shrineDwell: { slot: null, ms: 0 },
   shrineIntelShown: { body: false, arms: false, accessory: false },
   armory: null,
@@ -8512,7 +8521,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           hospital: state.hospital, hospitalTaken: state.hospitalTaken,
           armory: state.armory, armoryTaken: state.armoryTaken,
           police: state.police, policeTaken: state.policeTaken,
-          shrines: state.shrines, secretPois: state.secretPois,
+          shrines: state.shrines, secretPois: secretSolids(state),
           facilitiesHidden: facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime), // v0.25.3054
         });
         newX = solidResolved.x;
@@ -15073,7 +15082,7 @@ export const useGameStore = create<GameState>((set, get) => ({
               ? policeR : resolveShrineCollision({ x: policeR.x, y: policeR.y, width: enemy.width, height: enemy.height }, state.shrines);
             // 隠しPOIの土台も敵に当たる(祠と同じ)。
             const secretR = (state.secretPois.length === 0 || facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, gameTime))
-              ? shrineR : resolveSecretPoiCollision({ x: shrineR.x, y: shrineR.y, width: enemy.width, height: enemy.height }, state.secretPois);
+              ? shrineR : resolveSecretPoiCollision({ x: shrineR.x, y: shrineR.y, width: enemy.width, height: enemy.height }, secretSolids(state));
             // research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石は敵にも壁(プレイヤーと同じ)。
             pos = resolveWraithGraveCollision({ x: secretR.x, y: secretR.y, width: enemy.width, height: enemy.height });
           }
@@ -19983,7 +19992,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             hospital: state.hospital, hospitalTaken: state.hospitalTaken,
             armory: state.armory, armoryTaken: state.armoryTaken,
             police: state.police, policeTaken: state.policeTaken,
-            shrines: state.shrines, secretPois: state.secretPois,
+            shrines: state.shrines, secretPois: secretSolids(state),
           },
         );
       }
@@ -21648,7 +21657,34 @@ export const useGameStore = create<GameState>((set, get) => ({
   updateSecretPois: () => {
     set(state => {
       if (state.secretPois.length === 0 || state.gameWon) return {};
-      if (facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) return {};
+      // ボス戦中(施設ロック中)は灰色になって当たり判定が無い(描画は pixiScene・判定は resolveOutOfSolids が noFac で外す)。
+      if (facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) {
+        return state.secretLockedPrev ? {} : { secretLockedPrev: true };
+      }
+      if (state.secretLockedPrev) {
+        // ★明けた瞬間(社長指示2026-11-04「ボス戦終わった時に重なり判定ある場合はノックバックでふっ飛ばそう」):
+        // 土台に重なっているプレイヤーと敵を、既存のノックバックで外へ弾き出す。弾き出しの間は土台に当てない
+        // (当てると押し出しで瞬間移動になる=ふっ飛ばない)。重なっていなければ何も起きない。
+        const now = Date.now();
+        const patch: Partial<GameState> = { secretLockedPrev: false, secretEjectUntil: state.gameTime + SECRET_EJECT_MS + 80 };
+        const pd = secretEjectDir(state.player, state.secretPois);
+        if (pd) {
+          patch.player = {
+            ...state.player,
+            knockbackVx: pd.dx * SECRET_EJECT_SPEED, knockbackVy: pd.dy * SECRET_EJECT_SPEED,
+            knockbackUntil: now + SECRET_EJECT_MS, knockbackMs: SECRET_EJECT_MS,
+          };
+        }
+        let moved = false;
+        const enemies = state.enemies.map(e => {
+          const d = secretEjectDir(e, state.secretPois);
+          if (!d) return e;
+          moved = true;
+          return { ...e, knockbackVx: d.dx * SECRET_EJECT_SPEED, knockbackVy: d.dy * SECRET_EJECT_SPEED, knockbackUntil: now + KNOCKBACK_DURATION };
+        });
+        if (moved) patch.enemies = enemies;
+        return patch;
+      }
       const hit = secretPoiTouchedBy(state.player, state.secretPois);
       if (!hit || state.secretCheckedIds.includes(hit.id)) return {};
       const secretCheckedIds = [...state.secretCheckedIds, hit.id];
@@ -23463,6 +23499,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? secretPoisForStage(getSelectedStageId()) : [],
         secretFoundThisRun: 0,
         secretCheckedIds: [],
+        secretLockedPrev: false,
+        secretEjectUntil: 0,
         shrines: (() => {
           if (!detourSectors || isPracticeRun() || isBossMakerRun()) return [];
           const sec = assignShrineSectors(bossSectorIndex(hiddenBoss), Math.random, [detourSectors.police, detourSectors.armory, detourSectors.hospital]);

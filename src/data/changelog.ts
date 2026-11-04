@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5365', items: [
+    '深層域の奥の手直し',
+  ] },
   { version: '0.25.5364', items: [
     '深層域の奥の手直し',
   ] },

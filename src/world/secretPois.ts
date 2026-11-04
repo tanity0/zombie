@@ -121,6 +121,27 @@ export const secretPoiTouchedBy = (actor: Rect, pois: readonly SecretPoi[]): Sec
   return null;
 };
 
+// ---- ボス戦が明けた時に重なっていたら弾き出す(社長指示2026-11-04) ----
+/** 弾き出しの初速(px/s)と尺(ms)。減衰はプレイヤー/敵の既存のノックバック(線形に0)のまま。 */
+export const SECRET_EJECT_SPEED = 900;
+export const SECRET_EJECT_MS = 320;
+/**
+ * 隠れ処の土台に重なっている体を、どちらへ弾き出すか(単位ベクトル)。重なっていなければ null。
+ * 向き=土台の中心から体の中心へ。ほぼ真上に重なっている時は手前(+Y=画面下)へ。
+ */
+export const secretEjectDir = (actor: Rect, pois: readonly { x: number; y: number }[]): { dx: number; dy: number } | null => {
+  for (const p of pois) {
+    const r = secretPoiRect(p);
+    const overlap = actor.x < r.x + r.width && actor.x + actor.width > r.x && actor.y < r.y + r.height && actor.y + actor.height > r.y;
+    if (!overlap) continue;
+    const dx = (actor.x + actor.width / 2) - (r.x + r.width / 2);
+    const dy = (actor.y + actor.height / 2) - (r.y + r.height / 2);
+    const len = Math.hypot(dx, dy);
+    return len < 1 ? { dx: 0, dy: 1 } : { dx: dx / len, dy: dy / len };
+  }
+  return null;
+};
+
 // ---- 英雄たち(変異体の巡回)のルートに入らない(社長指示2026-11-04) ----
 /** 巡回先の候補から外す半径(隠れ処の強制リラックスの範囲より広く取る)。 */
 export const SECRET_PATROL_AVOID_DIST = 1200;

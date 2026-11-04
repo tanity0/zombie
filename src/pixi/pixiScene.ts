@@ -5118,6 +5118,8 @@ export class PixiScene {
   private secretSepia = 1;
   private secretSepiaLastNow = 0;
   private secretArtRequested = false;
+  /** ボス戦中に隠れ処を灰色に沈めるフィルタ(1枚を使い回す・掛かるのは画面内の数枚だけ=負荷2/10)。 */
+  private secretGrayFilter: ColorMatrixFilter | null = null;
   private shrineGfx = new Graphics();
   /** 溜めに合わせて祠の奥に灯る光(祠の絵の手前・加算)。監査2026-11-03 #8。 */
   private shrineGlowGfx = new Graphics();
@@ -10271,8 +10273,7 @@ export class PixiScene {
     this.shrineGlowGfx.alpha = facFade;
     for (const sp of this.shrineSprites) { sp.alpha *= facFade; if (facFade <= 0.01) sp.visible = false; }
     for (const sh of this.shrineShadows) sh.alpha *= facFade;
-    for (const sp of this.secretSprites) { sp.alpha *= facFade; if (facFade <= 0.01) sp.visible = false; }
-    for (const sh of this.secretShadows) sh.alpha *= facFade;
+    // 隠れ処はボス戦中も消さない=灰色に沈める(syncSecretPois が facilityFade を見て掛ける・社長指示2026-11-04)。
     this.baseSitesGfx.alpha = facFade;
     if (this.hospitalShadow) this.hospitalShadow.alpha *= facFade;
     if (this.armoryShadow) this.armoryShadow.alpha *= facFade;
@@ -30415,11 +30416,21 @@ export class PixiScene {
       sp.tint = this.envTintNow();
       sp.visible = true;
       this.applyObstacleAlpha(sp, p.y);
+      // ボス戦中(施設ロック中)は灰色に沈めて少し薄く(当たり判定は store 側で外れている)。施設のフェードと同じ尺で出入りする。
+      const gray = 1 - this.facilityFade;
+      if (gray > 0.01) {
+        if (!this.secretGrayFilter) { this.secretGrayFilter = new ColorMatrixFilter(); this.secretGrayFilter.desaturate(); }
+        this.secretGrayFilter.alpha = gray;
+        if (!sp.filters || (sp.filters as Filter[])[0] !== this.secretGrayFilter) sp.filters = [this.secretGrayFilter];
+        sp.alpha *= 1 - 0.4 * gray;
+      } else if (sp.filters) {
+        sp.filters = null;
+      }
       this.secretShadows.push({
         id: p.id, x: p.x, y: p.y,
         legacyW: Math.min(120 * d, tex.width * sc * 0.5),
         rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
-        alpha: horizonAlpha * 0.7 * this.foregroundActorAlpha(p.y),
+        alpha: horizonAlpha * 0.7 * this.foregroundActorAlpha(p.y) * (1 - 0.5 * gray),
       });
     }
   }
