@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   secretPoisForStage, ALL_SECRET_POI_DEFS, SECRET_MIN_DIST, secretPoiTouchedBy, secretPoiRect, secretSepiaMult,
-  SECRET_COLOR_LEAD_PX, secretPoiDefsForStage, isNearSecretPoi, SECRET_RELAX_DIST, secretChroniclePhrase,
+  SECRET_COLOR_LEAD_PX, secretPoiDefsForStage, isNearSecretPoi, SECRET_RELAX_DIST, secretChroniclePhrase, excludeNearSecretPois,
 } from './secretPois';
 import { bossLairPos } from './pois';
 import { REAPER_CONFIG } from '../config/reaper';
@@ -88,5 +88,21 @@ describe('隠しPOIの名前と年表の文', () => {
     const byId = (id: string) => ALL_SECRET_POI_DEFS.find(d => d.id === id)!;
     expect(secretChroniclePhrase(byId('secret-08'))).toBe('七号観測室に足を踏み入れた');
     expect(secretChroniclePhrase(byId('secret-04'))).toBe('喰われた獣を見つけた');
+  });
+});
+
+// 社長指示2026-11-04「このPOIは英雄たちのルートにも入らない」。
+describe('英雄たち(変異体の巡回)のルートに入らない', () => {
+  it('隠れ処そのものと、その近くの点は巡回先の候補から外れる', () => {
+    const secrets = secretPoisForStage('stage-1');
+    const near = { x: secrets[0].x + 300, y: secrets[0].y };
+    const far = { x: 0, y: 9000 };
+    expect(excludeNearSecretPois([secrets[0], near, far, null], secrets)).toEqual([far]);
+  });
+  it('今の巡回先の候補(裏ボスの巣)は、どのステージでも外されない=隠れ処から十分離れている', () => {
+    for (const [s, boss] of [['stage-1', 'mimir'], ['stage-3', 'jormungand'], ['stage-4', 'skadi'], ['stage-5', 'thor']] as const) {
+      const lair = bossLairPos(boss)!;
+      expect(excludeNearSecretPois([lair], secretPoisForStage(s))).toHaveLength(1);
+    }
   });
 });

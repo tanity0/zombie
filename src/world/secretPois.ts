@@ -121,6 +121,26 @@ export const secretPoiTouchedBy = (actor: Rect, pois: readonly SecretPoi[]): Sec
   return null;
 };
 
+// ---- 英雄たち(変異体の巡回)のルートに入らない(社長指示2026-11-04) ----
+/** 巡回先の候補から外す半径(隠れ処の強制リラックスの範囲より広く取る)。 */
+export const SECRET_PATROL_AVOID_DIST = 1200;
+/**
+ * 変異体(宇宙飛行群・亡霊ほか)の巡回先の候補から、隠れ処の近くの点を外す。
+ * 隠れ処そのものは候補に入れない(秘密=誰も案内しない)。今の候補(巣・寄り道の建物・拠点・深層域より手前の無作為な点)は
+ * どれも隠れ処から離れているが、将来候補を足しても入らないようにここを通す。
+ */
+export const excludeNearSecretPois = <T extends { x: number; y: number }>(
+  cands: readonly (T | null | undefined)[], secrets: readonly { x: number; y: number }[],
+): T[] => {
+  const out: T[] = [];
+  for (const c of cands) {
+    if (!c) continue;
+    if (secrets.some(s => Math.hypot(c.x - s.x, c.y - s.y) < SECRET_PATROL_AVOID_DIST)) continue;
+    out.push(c);
+  }
+  return out;
+};
+
 // ---- 近くでは敵の湧きを強制リラックス(社長指示2026-11-04「このPOIの近くは敵の湧きも強制リラックスに」) ----
 /**
  * この距離以内に隠しPOIがあれば、湧きを緩(リラックス)のコマとして読む。「画面に捉えた」と同じくらいの近さ

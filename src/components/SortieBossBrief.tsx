@@ -211,7 +211,8 @@ export const SortieBossBrief: React.FC<Props> = ({ stageId, roster, onDone, onCa
           })}
         </div>
 
-        {secrets.length > 0 && (() => {
+        {/* 社長指示2026-11-04「見つけるまで秘密で」: そのステージで1つ見つけるまで行ごと出さない(存在そのものを1つ目で知らせる)。 */}
+        {secrets.some(x => x.found) && (() => {
           const rowStart = 360 + restN * 40;
           return (
             <div className="mt-3">

@@ -18,6 +18,7 @@ import { playSfx } from '../audio/audioManager';
 import { npcSfxDistGain } from './npcSfx';
 import { bossFaceWant, bossFaceDeadzonePx } from './bossFacing';
 import { frontConeSees, FRONT_SIGHT_PX, FRONT_SIGHT_LOSE_PX } from './frontSight';
+import { excludeNearSecretPois } from '../world/secretPois';
 import {
   ASTRO_PATROL_SPEED, ASTRO_ENGAGE_SPEED_MULT, ASTRO_DECEL_S, ASTRO_STOPPED_FRAC, ASTRO_HOVER_LOOP_LO,
   ASTRO_THROW_GAP_MIN_MS, ASTRO_THROW_GAP_MAX_MS, ASTRO_REST_MIN_MS, ASTRO_REST_MAX_MS, ASTRO_ARRIVE_PX,
@@ -88,7 +89,8 @@ export const astroRunPois = (): AstroPoi[] => {
   const pois = getRunPois(st.hiddenBoss, [
     { kind: 'hospital', pos: st.hospital }, { kind: 'armory', pos: st.armory }, { kind: 'police', pos: st.police },
   ]);
-  return astroPoiCandidates([...pois, ...st.baseSites.map(b => ({ x: b.x, y: b.y }))], { x: 0, y: 0 },
+  // 隠れ処(research/HIDDEN_POI.md)は巡回先に入れない・近くの点も外す(社長指示2026-11-04「英雄たちのルートにも入らない」)。
+  return astroPoiCandidates(excludeNearSecretPois([...pois, ...st.baseSites.map(b => ({ x: b.x, y: b.y }))], st.secretPois), { x: 0, y: 0 },
     worldDist(6000), worldDist(11000), Math.random);
 };
 
