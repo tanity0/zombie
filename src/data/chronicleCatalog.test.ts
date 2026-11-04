@@ -10,8 +10,10 @@ const entry = (stageId: string, kind: ChronicleKind, detail: string): ChronicleE
 
 describe('年表の達成数 / 全体数', () => {
   // 社長指示2026-11-02: 区域は研究対象区域を外しデンジャー以降の3つ=屋外本編は1ステージ15枠(旧16)。
-  it('全体数は79(屋外本編4ステージ×15+研究所1+洋館1+ステージ7の1+EX2+全体初回4+実績10)', () => {
-    expect(CHRONICLE_SLOTS.length).toBe(79);
+  // 社長指示2026-11-04: 隠しPOI30(ステージ1・3=7、4・5=8・kind 'cave')を足して 109。
+  it('全体数は109(屋外本編4ステージ×15+隠しPOI30+研究所1+洋館1+ステージ7の1+EX2+全体初回4+実績10)', () => {
+    expect(CHRONICLE_SLOTS.length).toBe(109);
+    expect(CHRONICLE_SLOTS.filter(s => s.kind === 'cave')).toHaveLength(30);
     expect(CHRONICLE_SLOTS.some(s => s.kind === 'zone' && s.detail === '1')).toBe(false);
   });
 
@@ -28,9 +30,9 @@ describe('年表の達成数 / 全体数', () => {
   });
 
   it('記録なし=0 / 全部埋めれば分母と一致', () => {
-    expect(chronicleProgress([])).toEqual({ got: 0, total: 79 });
+    expect(chronicleProgress([])).toEqual({ got: 0, total: 109 });
     const all = CHRONICLE_SLOTS.map(s => entry(s.stageId ?? 'stage-1', s.kind, s.detail ?? 'x'));
-    expect(chronicleProgress(all).got).toBe(79);
+    expect(chronicleProgress(all).got).toBe(109);
   });
 
   it('拠点は旧形式の記録(方位付き)が何件あっても1枠', () => {

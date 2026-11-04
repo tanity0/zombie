@@ -17,6 +17,7 @@ import { CHRONICLE_MIN_ZONE } from './progress';
 import { STAGES } from './campaign';
 import { GATE2_BOSS_TYPE_BY_STAGE } from '../config/gateBoss';
 import { FEAT_KEYS } from './chronicleFeats';
+import { secretPoiDefsForStage } from '../world/secretPois';
 
 /** 年表の1枠。stageId/detail が null の枠は「どのステージ/どの detail でも1つあれば埋まる」。 */
 export interface ChronicleSlot {
@@ -44,6 +45,8 @@ const buildSlots = (): ChronicleSlot[] => {
     add(stageId, 'hunter', 'hunter');
     add(stageId, 'reaper', 'reaper');
     add(stageId, 'redNight', 'redNight');
+    // 隠しPOI(research/HIDDEN_POI.md・kind 'cave'・detail=secret-NN)。ステージ1・3=7、4・5=8。
+    for (const d of secretPoiDefsForStage(stageId)) add(stageId, 'cave', d.id);
   }
   add('stage-2', 'boss', 'idol');
   add('stage-6', 'clear', 'clear');

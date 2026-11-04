@@ -116,7 +116,7 @@ import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
 import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
-import { warmEnemySheets, prewarmEnemySheetsGpu } from './pixiTextures';
+import { warmEnemySheets, prewarmEnemySheetsGpu, loadSpriteGroups } from './pixiTextures';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 /** 城ボスの絵を出現の最短時刻のこれだけ前から先読み+GPU転送する(メモリを使い始める時刻と、間に合う余裕の釣り合い)。 */
 const CASTLE_BOSS_GPU_PREWARM_MS = 45_000;
@@ -360,6 +360,7 @@ import { touchesFromBelow, rectsOverlap, TOUCH_SIDE_PAD } from '../world/obstacl
 import {
   SHRINE_TEXTURE, SHRINE_DISPLAY_H, SHRINE_CRUMBLE_MS, SHRINE_CRUMBLE_TREMOR_FRAC, SHRINE_CIRCLE_RADIUS, SHRINE_CIRCLE_REVEAL_DIST, SHRINE_DWELL_MS, shrineCircleCenter,
 } from '../world/warlordShrine';
+import { SECRET_DISPLAY_H, SECRET_MIN_DIST, secretSepiaMult } from '../world/secretPois';
 import { HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_DEATH_HOLD_MS, HERO_DOG_DEATH_FADE_MS, heroDogDeathPose } from '../utils/heroDog';
 import { HIT_BLINK_TYPES, hitBlinkStrength, bloodFlashStrength } from '../utils/hitBlink';
 import { ALCHEMY_SUMMON_TINT, ALCHEMY_CHANNEL_MS, ALCHEMY_RARE_SUCTION_PULL_RANGE, ALCHEMY_ATTACK_INTERVAL_MS } from '../utils/summonUtils';
@@ -5110,6 +5111,13 @@ export class PixiScene {
   private policeGfx = new Graphics();
   // 武将の祠(research/POI_TOUCH_SHRINE.md §2/§3): 本体3枚(actorLayer で y-sort)+手前の3秒サークル(地面・加算)+影。
   private shrineSprites: Sprite[] = [];
+  /** 隠しPOI(research/HIDDEN_POI.md)。地図・矢印には出さない=絵と影だけ。 */
+  private secretSprites: Sprite[] = [];
+  private secretShadows: (BuildingShadowReq & { id: string })[] = [];
+  /** 深層域のセピアに掛ける係数(1=そのまま / 0=色が戻る)。syncSecretPois が毎フレーム決め、syncDeepZoneGrade が読む。 */
+  private secretSepia = 1;
+  private secretSepiaLastNow = 0;
+  private secretArtRequested = false;
   private shrineGfx = new Graphics();
   /** 溜めに合わせて祠の奥に灯る光(祠の絵の手前・加算)。監査2026-11-03 #8。 */
   private shrineGlowGfx = new Graphics();
@@ -10154,6 +10162,7 @@ export class PixiScene {
     this.syncArmory(now); // §6.24 M48: 武器庫(同上)
     this.syncPolice(now); // §6.24 M48: 警察署(同上)
     this.syncShrines(now); // 武将の祠(寄り道が立つ出撃のみ。無ければ即 return)
+    this.syncSecretPois(realNow); // 隠しPOI(ステージ1・3・4・5の深層域のみ。無ければ即 return)
     this.syncBaseSites(s.baseSites, now, s.safeBaseId, s.labArmory,
       // ステージ2の武器商人=拠点の武器庫と同じ絵(同じ層・同じ加算)で描く(社長指示2026-10-18)。
       s.stageTheme === 'lab' && !s.merchantHidden ? s.weaponMerchant : null);
@@ -10262,6 +10271,8 @@ export class PixiScene {
     this.shrineGlowGfx.alpha = facFade;
     for (const sp of this.shrineSprites) { sp.alpha *= facFade; if (facFade <= 0.01) sp.visible = false; }
     for (const sh of this.shrineShadows) sh.alpha *= facFade;
+    for (const sp of this.secretSprites) { sp.alpha *= facFade; if (facFade <= 0.01) sp.visible = false; }
+    for (const sh of this.secretShadows) sh.alpha *= facFade;
     this.baseSitesGfx.alpha = facFade;
     if (this.hospitalShadow) this.hospitalShadow.alpha *= facFade;
     if (this.armoryShadow) this.armoryShadow.alpha *= facFade;
@@ -10301,6 +10312,8 @@ export class PixiScene {
       s.redNight?.phase === 'active',
       s.gateActive, // ゲート戦闘中はセピアの切替を凍結(社長指示v0.25.1667)
       s.deepZoneLocked, // ゲート2未クリアの間は深層セピアに入らない(社長報告v0.25.1670)
+      // 隠しPOIを画面に捉えた時だけセピアが抜けて色が戻る(research/HIDDEN_POI.md §4)。無いステージは常に1。
+      s.secretPois.length ? this.secretSepia : 1,
     );
     this.drawRescueSurvivors(s.rescueSurvivors, now);
     this.syncDecoys(s.projectiles, now);
@@ -14829,6 +14842,7 @@ export class PixiScene {
       this.placeShadowSprite('police', pl.x, pl.y, pl.legacyW, pl.alpha * (pl.shadowFade ?? 1), seen);
     }
     for (const sh of this.shrineShadows) this.placeShadowSprite(sh.id, sh.x, sh.y, sh.legacyW, sh.alpha * (sh.shadowFade ?? 1), seen);
+    for (const sh of this.secretShadows) this.placeShadowSprite(sh.id, sh.x, sh.y, sh.legacyW, sh.alpha, seen);
     // 護衛軍人NPC(屋外のみ・他アクターと同じ足影)。
     const escIntroFade = this.currentIntroFade(now);
     for (const esc of escorts) {
@@ -15118,6 +15132,7 @@ export class PixiScene {
       place({ id: 'police', x: pl.x, y: pl.y, rawW: pl.rawW, rawH: pl.rawH, texture: pl.texture, alpha: pl.alpha, shadowFade: pl.shadowFade });
     }
     for (const sh of this.shrineShadows) place({ id: sh.id, x: sh.x, y: sh.y, rawW: sh.rawW, rawH: sh.rawH, texture: sh.texture, alpha: sh.alpha, shadowFade: sh.shadowFade });
+    for (const sh of this.secretShadows) place({ id: sh.id, x: sh.x, y: sh.y, rawW: sh.rawW, rawH: sh.rawH, texture: sh.texture, alpha: sh.alpha });
     // ---- 護衛軍人NPC ----
     const escIntroFade = this.currentIntroFade(now);
     for (const esc of escorts) {
@@ -30346,6 +30361,69 @@ export class PixiScene {
   // 武将の祠(research/POI_TOUCH_SHRINE.md §2/§3・社長裁定「いつもの3秒サークル」)。**描くだけ**(滞在・付与は store の updateShrines)。
   // 寄り道の建物と同じ規約: 足元アンカー・高さ基準(SHRINE_DISPLAY_H)・y-sort・裏に回ると透ける・取ったらフェード。
   // 手前の円は近づくと ease-out で現れ、3秒の弧が満ちる(旧・病院の円と同じ読み方)。色は祠の印(紫がかった桃)。負荷1/10。
+  // 隠しPOI(research/HIDDEN_POI.md §8)。**描くだけ**(発見は store の updateSecretPois)。寄り道の建物と同じ規約:
+  // 足元アンカー・高さ基準(SECRET_DISPLAY_H)・y-sort・裏に回ると透ける。画面外は描かない(深層域の奥にしか無い)。
+  // 絵は遅延組(secretPoi)=初めて画面に入った時に網(getTexture)が取りに行く。負荷1/10(Sprite×最大8)。
+  private syncSecretPois(now: number) {
+    const s = useGameStore.getState();
+    this.secretShadows = [];
+    const list = s.indoorMode ? [] : s.secretPois;
+    // 画面に捉えた時だけ色が戻る(§4)。判定は画面の内外(絵の中心が画面の縁からどれだけ外か)。
+    // ボス戦中は絵も判定も消えている=色も戻さない(「色が戻ったのに何も無い」を作らない・品質監査A-6)。
+    // 地平線より奥(画面の上の空と森の帯)では絵が消えている=そこで色を戻すと「色が戻ったのに何も無い」になるので、
+    // 地平線の薄れ(horizonActorAlpha)を掛ける=手がかりと答えが同時に見える(クリエイティブ監査#2)。
+    let gain = 0;
+    for (const p of list) {
+      const out = this.distanceOutsideViewport(p.x, p.y - (SECRET_DISPLAY_H * this.depthScale(p.y)) / 2);
+      const g = (1 - secretSepiaMult(out)) * this.horizonActorAlpha(p.y);
+      if (g > gain) gain = g;
+    }
+    const target = 1 - gain * this.facilityFade;
+    // 戻り方を非対称に: 色はゆっくりにじみ戻り(約1.4秒)、離れると早く抜ける(約0.45秒)=見失う感じ(監査#13)。
+    const dt = this.secretSepiaLastNow ? Math.min(0.1, Math.max(0, (now - this.secretSepiaLastNow) / 1000)) : 0;
+    this.secretSepiaLastNow = now;
+    const tau = target < this.secretSepia ? 1.4 : 0.45;
+    this.secretSepia = dt > 0 ? this.secretSepia + (target - this.secretSepia) * (1 - Math.exp(-dt / tau)) : target;
+    // 絵は深層域に入ったら先に取りに行く(初めて画面に入った数フレーム、判定だけ在る見えない壁にしない・監査B-5)。
+    if (list.length && !this.secretArtRequested
+      && Math.hypot(s.player.x, s.player.y) >= SECRET_MIN_DIST - 1500) {
+      this.secretArtRequested = true;
+      void loadSpriteGroups(['secretPoi']);
+    }
+    while (this.secretSprites.length < list.length) {
+      const sp = new Sprite();
+      sp.anchor.set(0.5, 1);
+      sp.visible = false;
+      this.L.actorLayer.addChild(sp);
+      this.secretSprites.push(sp);
+    }
+    for (let i = 0; i < this.secretSprites.length; i++) {
+      const sp = this.secretSprites[i];
+      const p = list[i];
+      if (!p) { sp.visible = false; continue; }
+      const onScreen = this.distanceOutsideViewport(p.x, p.y, POI_CIRCLE_CULL_MARGIN) <= 0;
+      if (!onScreen) { sp.visible = false; continue; }
+      const tex = getTexture(p.texture);
+      const horizonAlpha = this.horizonActorAlpha(p.y);
+      if (!tex || horizonAlpha <= 0) { sp.visible = false; continue; }
+      const d = this.depthScale(p.y);
+      const sc = (SECRET_DISPLAY_H * d) / tex.height;
+      sp.texture = tex;
+      sp.scale.set(sc);
+      sp.position.set(Math.round(p.x), Math.round(p.y));
+      sp.zIndex = p.y;
+      sp.tint = this.envTintNow();
+      sp.visible = true;
+      this.applyObstacleAlpha(sp, p.y);
+      this.secretShadows.push({
+        id: p.id, x: p.x, y: p.y,
+        legacyW: Math.min(120 * d, tex.width * sc * 0.5),
+        rawW: tex.width * sc, rawH: tex.height * sc, texture: tex,
+        alpha: horizonAlpha * 0.7 * this.foregroundActorAlpha(p.y),
+      });
+    }
+  }
+
   // 祠の奥の灯り(加算の同心円を重ねた柔らかい光・投影影は落とさない=負荷はほぼ無し)。
   private drawShrineGlow(x: number, y: number, footY: number, d: number, k: number, alpha: number) {
     if (k <= 0.01) return;
@@ -33385,7 +33463,7 @@ export class PixiScene {
   // ColorMatrixFilter を掛け、enter/exit を約1秒でフェード(filter.alpha 補間)。描画のみ=store非干渉。
   // 紅き夜(redNightActive)中は血赤マトリクスに切り替え、距離によらず全画面に掛ける。
   // amount≈0 のときはフィルタを外して全画面パスを発生させない(非深層域での追加コスト無し)。
-  private syncDeepZoneGrade(eligible: boolean, originDist: number, now: number, redNightActive: boolean, gateActive = false, deepLocked = false) {
+  private syncDeepZoneGrade(eligible: boolean, originDist: number, now: number, redNightActive: boolean, gateActive = false, deepLocked = false, secretMult = 1) {
     if (!DEEP_ZONE_GRADE_ENABLED) return;
     const dt = this.lastGradeNow ? Math.min(0.1, (now - this.lastGradeNow) / 1000) : 0;
     this.lastGradeNow = now;
@@ -33419,7 +33497,8 @@ export class PixiScene {
       }
     }
 
-    const target = this.deepGradeOn ? 1 : 0;
+    // 隠しPOIの近くでは深層域のセピアを弱める(紅き夜の赤は対象外=紅き夜が優先)。フィルタ自体のフェードはこの下でそのまま掛かる。
+    const target = this.deepGradeOn ? (redNightActive ? 1 : secretMult) : 0;
     if (this.deepGradeAmount !== target) {
       const step = dt / DEEP_ZONE_GRADE_FADE_S;
       this.deepGradeAmount = target > this.deepGradeAmount

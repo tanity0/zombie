@@ -7,6 +7,9 @@ import { enemyDeathLabel } from '../store/gameStore';
 import { bossIconSrc } from '../utils/bossIcon';
 import { PixelIcon } from './PixelIcon';
 import type { SortieBoss, SortieBossKind } from '../utils/sortieBossRoster';
+import { secretPoiDefsForStage, type SecretPoiDef } from '../world/secretPois';
+import { isSecretPoiFound } from '../data/progress';
+import { spritePath } from '../utils/spriteLoader';
 
 /** 自動で出撃するまでの時間。押せばすぐ出る。 */
 export const SORTIE_BRIEF_HOLD_MS = 2800;
@@ -60,6 +63,34 @@ const Tile: React.FC<{ b: SortieBoss; size: number; delay: number; lead: boolean
   );
 };
 
+/** 隠しPOIの札(research/HIDDEN_POI.md §5)。見つけた場所だけ絵と名前、まだの場所は「?」。ボスの札と同じ寸法・同じ読み方。 */
+// compact=背の低い画面(iPhone SE 等)。札を小さくして1行に収め、名前は出さない(一覧が画面からはみ出さない・品質監査A-5)。
+const SecretTile: React.FC<{ d: SecretPoiDef; found: boolean; size: number; compact: boolean; delay: number; qDur: number; qDelay: number }> = ({ d, found, size, compact, delay, qDur, qDelay }) => (
+  <div className={`sortie-brief-tile min-w-0 text-center ${found ? '' : 'is-unknown'}`} style={{ animationDelay: `${delay}ms`, width: compact ? Math.round(size * 1.25) + 4 : Math.round(size * 1.25) + 16 }}>
+    {/* 札は絵の比率(約1.25:1)。発見済みは絵そのものに縁があるので枠を外す。縮小なので pixelated にしない(潰れて読めない・監査#12)。 */}
+    <div
+      className={`mx-auto flex items-center justify-center overflow-hidden ${found ? '' : 'border border-white/[0.09]'}`}
+      style={{
+        width: Math.round(size * 1.25), height: size,
+        ...(found ? {} : { background: 'radial-gradient(circle at 50% 62%, rgba(150,110,70,0.10), rgba(0,0,0,0.35) 72%)', boxShadow: 'inset 0 0 14px rgba(0,0,0,0.9)' }),
+      }}
+    >
+      {found
+        ? <img src={spritePath(d.texture)} alt="" draggable={false} className="object-contain" style={{ maxHeight: size, maxWidth: Math.round(size * 1.25) }} />
+        : <span className="sortie-brief-q flex h-full w-full items-center justify-center font-bold text-white/30" style={{ fontSize: Math.round(size * 0.4), animationDuration: `${qDur}ms`, animationDelay: `${qDelay}ms` }}>?</span>}
+    </div>
+    {!compact && (
+      <div className="mt-1 flex h-4 items-center justify-center">
+        {found
+          ? <span className="truncate text-[10px] font-semibold tracking-tight text-white/85" style={JP_FONT}>{d.name}</span>
+          : <span className="block h-px w-5 bg-white/20" />}
+      </div>
+    )}
+  </div>
+);
+/** 背の低い画面か(出た時に1回だけ見る)。 */
+const isShortScreen = (): boolean => typeof window !== 'undefined' && window.innerHeight < 760;
+
 interface Props {
   stageId: string;
   roster: readonly SortieBoss[];
@@ -101,6 +132,10 @@ export const SortieBossBrief: React.FC<Props> = ({ stageId, roster, onDone, onCa
   // 「?」の明滅は札ごとに周期と位相をずらす(全部が同時に瞬かない)。描き直しで変わらないよう1回だけ決める。
   const qTiming = useMemo(() => roster.map(() => ({ dur: 2100 + Math.round(Math.random() * 900), delay: -Math.round(Math.random() * 2500) })), [roster]);
 
+  // 隠しPOI(ステージ1・3・4・5のみ)。発見済みは年表の記録で引く(出た時に1回だけ読む)。
+  const secrets = useMemo(() => secretPoiDefsForStage(stageId).map(d => ({ d, found: isSecretPoiFound(stageId, d.id) })), [stageId]);
+  const secretCompact = useMemo(isShortScreen, []);
+  const secretTiming = useMemo(() => secrets.map(() => ({ dur: 2100 + Math.round(Math.random() * 900), delay: -Math.round(Math.random() * 2500) })), [secrets]);
   const stage = getStage(stageId);
   const known = roster.filter(b => b.known).length;
   const lead = roster.filter(b => LEAD_KINDS.includes(b.kind));
@@ -175,6 +210,24 @@ export const SortieBossBrief: React.FC<Props> = ({ stageId, roster, onDone, onCa
             );
           })}
         </div>
+
+        {secrets.length > 0 && (() => {
+          const rowStart = 360 + restN * 40;
+          return (
+            <div className="mt-3">
+              <div className="sortie-brief-tile mb-1 flex items-baseline justify-between text-[10px] tracking-[0.24em] text-amber-100/50" style={{ animationDelay: `${rowStart}ms` }}>
+                <span style={JP_FONT}>隠れ処</span>
+                <span className="tracking-normal text-white/45 tabular-nums" style={JP_FONT}>{secrets.filter(x => x.found).length} / {secrets.length}</span>
+              </div>
+              {/* 大きい札は4枚ずつ(7=4+3 / 8=4+4)に揃える=端数の行が偶然に見えない(監査#11)。小さい札は1行。 */}
+              <div className="grid gap-x-1 gap-y-2" style={{ gridTemplateColumns: `repeat(${secretCompact ? secrets.length : 4}, max-content)` }}>
+                {secrets.map((x, j) => (
+                  <SecretTile key={x.d.id} d={x.d} found={x.found} size={secretCompact ? 28 : 52} compact={secretCompact} delay={rowStart + j * 40} qDur={secretTiming[j].dur} qDelay={secretTiming[j].delay} />
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* 出撃までの残り(押せばすぐ出る)。 */}
         <button

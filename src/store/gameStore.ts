@@ -374,6 +374,7 @@ import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { setPoiClearings } from '../world/poiClearings';
+import { secretPoisForStage, resolveSecretPoiCollision, secretPoiTouchedBy, secretChroniclePhrase, type SecretPoi } from '../world/secretPois';
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, hasFullWarlordSet, specialEquipmentForSlot, equipmentDescription, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, segmentIntersectsRect, type Rect } from '../world/obstacles';
 import { friendlyShieldRect, splitBeamAtShield, beamStripsHit, shieldBlocksArea, shieldBlocksLine, shieldContactPoint, type BeamShieldSplit, type BeamStrip } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md: シールドで技を防ぐ
@@ -7460,6 +7461,13 @@ interface GameState {
   // 武将の祠(research/POI_TOUCH_SHRINE.md §2/§3・SKILL_BUILD_REDESIGN.md §13-5): 鎧/小手/兜の3つ。寄り道と同じ3セクターの未確認汚染帯。
   // 祠の手前の円に3秒とどまると、その部位の武将装備を装備(今の装備は入れ替え)。取った祠は消える。
   shrines: ShrineState[];
+  /** 隠しPOI(research/HIDDEN_POI.md)。ステージ1・3・4・5の深層域に固定。地図・矢印には出さない。 */
+  secretPois: SecretPoi[];
+  /** このランで初めて見つけた隠しPOIの数(useGameLoop が増えたのを見てSEを鳴らす)。 */
+  secretFoundThisRun: number;
+  /** このランで既に年表と照らした隠しPOI(触れ続けても毎フレーム年表を読み直さない・品質監査B-2)。 */
+  secretCheckedIds: readonly string[];
+  updateSecretPois: () => void;
   shrineDwell: { slot: ShrineSlot | null; ms: number };
   /** 祠の円に入った時の一言を出したか(祠ごとに1ラン1回)。 */
   shrineIntelShown: Record<ShrineSlot, boolean>;
@@ -7623,6 +7631,8 @@ export const resolveOutOfSolids = (
     police: GameState['police']; policeTaken: boolean;
     /** 武将の祠(未指定=当たらない)。ボス戦中は他の施設と同じく消える(facilitiesHidden)。 */
     shrines?: readonly ShrineState[];
+    /** 隠しPOI(research/HIDDEN_POI.md・未指定=当たらない)。ボス戦中は他の施設と同じく消える。 */
+    secretPois?: readonly SecretPoi[];
     // v0.25.3054(社長指示・監査指摘「絵だけ消すと見えない壁になる」): ボス戦中は施設(城/病院/
     // 武器庫/警察署)の当たり判定も消す=絵と判定を常に一致させる。木/松明/街プロップは施設では
     // ないので残す(消えるのは「ボス戦中に非表示になる施設」だけ)。
@@ -7647,8 +7657,10 @@ export const resolveOutOfSolids = (
     { x: armoryResolved.x, y: armoryResolved.y, width: w, height: h }, ctx.police, ctx.policeTaken);
   const shrineResolved = (noFac || !ctx.shrines || ctx.shrines.length === 0) ? cityResolved
     : resolveShrineCollision({ x: cityResolved.x, y: cityResolved.y, width: w, height: h }, ctx.shrines);
+  const secretResolved = (noFac || !ctx.secretPois || ctx.secretPois.length === 0) ? shrineResolved
+    : resolveSecretPoiCollision({ x: shrineResolved.x, y: shrineResolved.y, width: w, height: h }, ctx.secretPois);
   // research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石(伸び切った物だけ)。無ければ素通し=負荷ゼロ。
-  const graveResolved = resolveWraithGraveCollision({ x: shrineResolved.x, y: shrineResolved.y, width: w, height: h });
+  const graveResolved = resolveWraithGraveCollision({ x: secretResolved.x, y: secretResolved.y, width: w, height: h });
   if (!labTheme) return graveResolved;
   // 研究所スキン: 壁オブジェクト+遮蔽プロップ。近傍区画のみ問い合わせる(全区画走査を避ける)。
   const rgn = [cityResolved.x - 120, cityResolved.y - 120, cityResolved.x + w + 120, cityResolved.y + h + 120] as const;
@@ -7676,7 +7688,7 @@ export const resolveBountyMove = (
       hospital: s.hospital, hospitalTaken: s.hospitalTaken,
       armory: s.armory, armoryTaken: s.armoryTaken,
       police: s.police, policeTaken: s.policeTaken,
-      shrines: s.shrines,
+      shrines: s.shrines, secretPois: s.secretPois,
       facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
     },
   );
@@ -7774,7 +7786,7 @@ export const resolveShieldWalls = (candidate: Rect): { x: number; y: number } =>
     hospital: s.hospital, hospitalTaken: s.hospitalTaken,
     armory: s.armory, armoryTaken: s.armoryTaken,
     police: s.police, policeTaken: s.policeTaken,
-    shrines: s.shrines,
+    shrines: s.shrines, secretPois: s.secretPois,
     facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
   });
 };
@@ -8147,6 +8159,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   hospitalTaken: false,
   hospitalTakenAt: 0,
   shrines: [],
+  secretPois: [],
+  secretFoundThisRun: 0,
+  secretCheckedIds: [],
   shrineDwell: { slot: null, ms: 0 },
   shrineIntelShown: { body: false, arms: false, accessory: false },
   armory: null,
@@ -8497,7 +8512,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           hospital: state.hospital, hospitalTaken: state.hospitalTaken,
           armory: state.armory, armoryTaken: state.armoryTaken,
           police: state.police, policeTaken: state.policeTaken,
-          shrines: state.shrines,
+          shrines: state.shrines, secretPois: state.secretPois,
           facilitiesHidden: facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime), // v0.25.3054
         });
         newX = solidResolved.x;
@@ -15056,8 +15071,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 武将の祠の土台も敵に当たる(プレイヤーと同じ)。ボス戦中は消える(他の施設・プレイヤー側と同じ=見えない壁を作らない)。
             const shrineR = (state.shrines.length === 0 || facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, gameTime))
               ? policeR : resolveShrineCollision({ x: policeR.x, y: policeR.y, width: enemy.width, height: enemy.height }, state.shrines);
+            // 隠しPOIの土台も敵に当たる(祠と同じ)。
+            const secretR = (state.secretPois.length === 0 || facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, gameTime))
+              ? shrineR : resolveSecretPoiCollision({ x: shrineR.x, y: shrineR.y, width: enemy.width, height: enemy.height }, state.secretPois);
             // research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石は敵にも壁(プレイヤーと同じ)。
-            pos = resolveWraithGraveCollision({ x: shrineR.x, y: shrineR.y, width: enemy.width, height: enemy.height });
+            pos = resolveWraithGraveCollision({ x: secretR.x, y: secretR.y, width: enemy.width, height: enemy.height });
           }
           // 帰還サークルの「敵を入れない」押し出しは撤廃(社長指示v0.25.3318: 指離せば即ゴールなので
           // セーフゾーンが不要になった。旧v0.25.2589の攻撃禁止側と同時に撤去)。
@@ -19965,7 +19983,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             hospital: state.hospital, hospitalTaken: state.hospitalTaken,
             armory: state.armory, armoryTaken: state.armoryTaken,
             police: state.police, policeTaken: state.policeTaken,
-            shrines: state.shrines,
+            shrines: state.shrines, secretPois: state.secretPois,
           },
         );
       }
@@ -21622,6 +21640,24 @@ export const useGameStore = create<GameState>((set, get) => ({
         };
       }
       return { ...intel, shrineDwell: { slot: at.slot, ms: dwellMs } };
+    });
+  },
+
+  // 隠しPOI(research/HIDDEN_POI.md §3): 正面(下)から触れたら発見。初めての場所だけ年表(kind 'cave'=発見済みの正本)に載せ、帯を出す。
+  // 発見済みの場所に触れても何も起きない(報酬は★未決 #1)。ボス戦中は施設と同じく消えている=触れない。
+  updateSecretPois: () => {
+    set(state => {
+      if (state.secretPois.length === 0 || state.gameWon) return {};
+      if (facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) return {};
+      const hit = secretPoiTouchedBy(state.player, state.secretPois);
+      if (!hit || state.secretCheckedIds.includes(hit.id)) return {};
+      const secretCheckedIds = [...state.secretCheckedIds, hit.id];
+      if (!recordChronicle(getSelectedStageId(), 'cave', hit.id, secretChroniclePhrase(hit))) return { secretCheckedIds };
+      return {
+        secretCheckedIds,
+        secretFoundThisRun: state.secretFoundThisRun + 1,
+        eventBannerText: hit.name, eventBannerUntil: state.gameTime + 3200,
+      };
     });
   },
 
@@ -23422,6 +23458,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         policeTaken: false,
         policeTakenAt: 0,
         // 武将の祠: 寄り道が使った3セクターへ独立に1つずつ(§3 B1)。練習ラン・ボスメーカーでは出さない(§3 B6=★3「初期装備で開始」)。
+        // 隠しPOI(research/HIDDEN_POI.md): ステージ1・3・4・5の深層域に固定。練習ラン・ボスメーカー・屋内・通路・エンディングでは出さない。
+        secretPois: (!state.danceTestMode && !indoor && !corridorMode && !bossMakerRoom && farBackdrop !== 'ending' && !isPracticeRun())
+          ? secretPoisForStage(getSelectedStageId()) : [],
+        secretFoundThisRun: 0,
+        secretCheckedIds: [],
         shrines: (() => {
           if (!detourSectors || isPracticeRun() || isBossMakerRun()) return [];
           const sec = assignShrineSectors(bossSectorIndex(hiddenBoss), Math.random, [detourSectors.police, detourSectors.armory, detourSectors.hospital]);
@@ -24747,10 +24788,10 @@ setHateEscortProvider(() => hateEscortSource(useGameStore.getState()));
 {
   let last: unknown[] = [];
   const sync = (st: GameState) => {
-    const cur = [st.hospital, st.armory, st.police, st.shrines];
+    const cur = [st.hospital, st.armory, st.police, st.shrines, st.secretPois];
     if (cur.every((v, i) => v === last[i])) return;
     last = cur;
-    setPoiClearings([st.hospital, st.armory, st.police, ...st.shrines]);
+    setPoiClearings([st.hospital, st.armory, st.police, ...st.shrines, ...st.secretPois]);
   };
   sync(useGameStore.getState());
   useGameStore.subscribe(sync);

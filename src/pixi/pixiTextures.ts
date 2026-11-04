@@ -91,6 +91,11 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     // 研究所ゾンビの歩き/攻撃/跳び(SHEET_RESIDENCY='lab')。計 約6.6MB。
     ...ENEMY_SHEETS.filter(s => sheetStageGroup(s.idle) === 'labActors').map(s => ({ name: s.sheet, scaleMode: 'nearest' as const })),
   ],
+  /**
+   * 隠しPOIの絵30枚(research/HIDDEN_POI.md §8・各 約205×170 = 0.14MB・計 約4MB)。**所属は付けない=網だけで拾う**。
+   * 深層域の奥にしか無く、地図にも出ない=起動時に常駐させる理由が無い。初めて画面に入った時に取りに行く(数フレームで届く)。
+   */
+  secretPoi: Array.from({ length: 30 }, (_, i) => ({ name: `secret-poi/secret-poi-${String(i + 1).padStart(2, '0')}`, scaleMode: 'nearest' as const })),
   // 訓練(洞窟)ステージの鍾乳石帯。2508x627 = 6.0MB。
   tutorial: [
     { name: 'tutorial-ceiling-band' },

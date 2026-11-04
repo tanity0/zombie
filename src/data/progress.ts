@@ -654,6 +654,10 @@ export const recordChronicle = (
   return true;
 };
 
+/** 隠しPOI(research/HIDDEN_POI.md)を見つけたことがあるか。正本は年表の記録(kind 'cave')=保存先を別に持たない。 */
+export const isSecretPoiFound = (stageId: string, secretId: string): boolean =>
+  loadChronicle().some(e => e.key === `${stageId}::cave::${secretId}`);
+
 // 年表の「ゲーム全体で初回のみ」記録(社長裁定2026-07-31)。拠点は「初めて拠点を開放」の1件だけ、
 // POIは「初めて警察署を開放」等**種別(detail)ごとに全体1件**だけを載せる(2件目以降はどのステージでも
 // 載せない=年表が同種で埋まるのを防ぐ)。ガードは kind 単位(perDetail=false・拠点)か kind+detail

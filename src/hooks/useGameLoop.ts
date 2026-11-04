@@ -5033,6 +5033,23 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             playSfx('anchor-plant');
             if (hasFullWarlordSet(after.player.equipment)) playSfx('subquest-clear');
           }
+          // 隠しPOI(research/HIDDEN_POI.md): 正面(下)から触れたら発見。初めての場所だけ記録=その時だけ音。
+          {
+            const foundBefore = after.secretFoundThisRun;
+            after.updateSecretPois();
+            const gsF = useGameStore.getState();
+            if (gsF.secretFoundThisRun > foundBefore) {
+              playSfx('subquest-clear');
+              // 触れた瞬間に洞の奥が灯り、土が舞う(色は画面に入った時に戻り切っているので、触れた瞬間の手応えは世界の側に出す・
+              // クリエイティブ監査#8)。どちらも判定の無い派手さの絵。光は投影影を落とさない(noShadow=負荷ほぼ無し)。
+              const sp = gsF.secretPois.find(q => q.id === gsF.secretCheckedIds[gsF.secretCheckedIds.length - 1]);
+              if (sp) {
+                gsF.spawnGlow(sp.x, sp.y - 70, 150, 'rgba(255,214,150,', 1600, true);
+                gsF.spawnImageMark(sp.x - 30, sp.y - 6, 'fx/dust-puff', { scale: 0.8, duration: 1100 });
+                gsF.spawnImageMark(sp.x + 34, sp.y - 2, 'fx/dust-puff', { scale: 0.7, duration: 1300 });
+              }
+            }
+          }
           // 取った祠は崩れ去る(社長指示2026-11-03)。震えの始まり・沈む途中・沈み切りの4波で砂埃と瓦礫を足元へ
           // (②派手さの絵=判定なし・event-only)。崩れは加速するので後の波ほど大きく、最後が着地。
           const SHRINE_DUST_WAVES_MS = [0, 650, 1150, 1700];

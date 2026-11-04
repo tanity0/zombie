@@ -200,9 +200,12 @@ export const nextKomaKind = (kind: KomaKind4): KomaKind4 =>
  */
 export const isDeepForcedPeak = (playerAreaIdx: number, deepZoneLocked: boolean): boolean =>
   playerAreaIdx >= 4 && !deepZoneLocked;
-/** 湧きのパラメータを読むコマ(コマ自体の kind は書き換えない)。ボス交戦中=緩 > 深層域=ピーク > 今のコマ。 */
-export const spawnKomaFor = (kind: KomaKind4, bossRelax: boolean, deepPeak: boolean): KomaKind4 =>
-  bossRelax ? 'relax' : deepPeak ? 'peak' : kind;
+/**
+ * 湧きのパラメータを読むコマ(コマ自体の kind は書き換えない)。
+ * ボス交戦中=緩 > 隠しPOIの近く=緩(社長指示2026-11-04) > 深層域=ピーク > 今のコマ。
+ */
+export const spawnKomaFor = (kind: KomaKind4, bossRelax: boolean, deepPeak: boolean, secretRelax = false): KomaKind4 =>
+  (bossRelax || secretRelax) ? 'relax' : deepPeak ? 'peak' : kind;
 
 export const KOMA_BASE_MS = 40000;          // 各コマ基本40秒(社長決定v0.25.1384)
 export const KOMA_EXTENSION_MAX_MS = 30000; // 通常/ピークの処理待ち延長上限(叩き台。超えたら強制切替)

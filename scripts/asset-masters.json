@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "984 files / 復号後 約712MB",
+ "generatedFor": "1014 files / 復号後 約716MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -4507,6 +4507,186 @@
    "h": 128,
    "bytes": 18354,
    "sha": "2cd59aee3a9d4564"
+  },
+  "sprites/secret-poi/secret-poi-01.png": {
+   "w": 209,
+   "h": 170,
+   "bytes": 70531,
+   "sha": "985e8b355e251fac"
+  },
+  "sprites/secret-poi/secret-poi-02.png": {
+   "w": 201,
+   "h": 166,
+   "bytes": 67438,
+   "sha": "0df52ae0e6a62241"
+  },
+  "sprites/secret-poi/secret-poi-03.png": {
+   "w": 206,
+   "h": 172,
+   "bytes": 70961,
+   "sha": "520a01a2fa6f6093"
+  },
+  "sprites/secret-poi/secret-poi-04.png": {
+   "w": 206,
+   "h": 169,
+   "bytes": 67690,
+   "sha": "c56a3cf0e1159832"
+  },
+  "sprites/secret-poi/secret-poi-05.png": {
+   "w": 204,
+   "h": 173,
+   "bytes": 75218,
+   "sha": "e59f0de136810090"
+  },
+  "sprites/secret-poi/secret-poi-06.png": {
+   "w": 206,
+   "h": 173,
+   "bytes": 69867,
+   "sha": "2507503612bb276c"
+  },
+  "sprites/secret-poi/secret-poi-07.png": {
+   "w": 206,
+   "h": 169,
+   "bytes": 67462,
+   "sha": "dd2cf906ab5e0db4"
+  },
+  "sprites/secret-poi/secret-poi-08.png": {
+   "w": 202,
+   "h": 163,
+   "bytes": 68416,
+   "sha": "20b77f65ab9eeebd"
+  },
+  "sprites/secret-poi/secret-poi-09.png": {
+   "w": 202,
+   "h": 159,
+   "bytes": 67513,
+   "sha": "6ab6d11526b329f1"
+  },
+  "sprites/secret-poi/secret-poi-10.png": {
+   "w": 206,
+   "h": 167,
+   "bytes": 64757,
+   "sha": "db39f9cd19bad030"
+  },
+  "sprites/secret-poi/secret-poi-11.png": {
+   "w": 204,
+   "h": 168,
+   "bytes": 69711,
+   "sha": "d0436f3f0ad44f37"
+  },
+  "sprites/secret-poi/secret-poi-12.png": {
+   "w": 205,
+   "h": 166,
+   "bytes": 69811,
+   "sha": "789eac43de679e31"
+  },
+  "sprites/secret-poi/secret-poi-13.png": {
+   "w": 206,
+   "h": 163,
+   "bytes": 68062,
+   "sha": "64e5fc6e1c9e8728"
+  },
+  "sprites/secret-poi/secret-poi-14.png": {
+   "w": 205,
+   "h": 160,
+   "bytes": 69602,
+   "sha": "cb6e42deef466a87"
+  },
+  "sprites/secret-poi/secret-poi-15.png": {
+   "w": 208,
+   "h": 161,
+   "bytes": 67536,
+   "sha": "cd1a6840157962a5"
+  },
+  "sprites/secret-poi/secret-poi-16.png": {
+   "w": 209,
+   "h": 159,
+   "bytes": 67457,
+   "sha": "cf6e45db8520507b"
+  },
+  "sprites/secret-poi/secret-poi-17.png": {
+   "w": 207,
+   "h": 162,
+   "bytes": 66575,
+   "sha": "62e8b148ed1f5187"
+  },
+  "sprites/secret-poi/secret-poi-18.png": {
+   "w": 207,
+   "h": 161,
+   "bytes": 68731,
+   "sha": "b1392ac9f3fd07fb"
+  },
+  "sprites/secret-poi/secret-poi-19.png": {
+   "w": 203,
+   "h": 161,
+   "bytes": 69073,
+   "sha": "dd0a5c30405e904c"
+  },
+  "sprites/secret-poi/secret-poi-20.png": {
+   "w": 205,
+   "h": 158,
+   "bytes": 66798,
+   "sha": "0f111013cc03b416"
+  },
+  "sprites/secret-poi/secret-poi-21.png": {
+   "w": 204,
+   "h": 161,
+   "bytes": 66701,
+   "sha": "2592060029d32d1d"
+  },
+  "sprites/secret-poi/secret-poi-22.png": {
+   "w": 207,
+   "h": 159,
+   "bytes": 67682,
+   "sha": "65f4d266f2382bda"
+  },
+  "sprites/secret-poi/secret-poi-23.png": {
+   "w": 205,
+   "h": 161,
+   "bytes": 67291,
+   "sha": "d4fe80f950d1f9be"
+  },
+  "sprites/secret-poi/secret-poi-24.png": {
+   "w": 208,
+   "h": 162,
+   "bytes": 71243,
+   "sha": "2c7e78d40030cd33"
+  },
+  "sprites/secret-poi/secret-poi-25.png": {
+   "w": 204,
+   "h": 172,
+   "bytes": 71589,
+   "sha": "07fd9f8de66d494a"
+  },
+  "sprites/secret-poi/secret-poi-26.png": {
+   "w": 206,
+   "h": 170,
+   "bytes": 72754,
+   "sha": "bbe245be94ebac83"
+  },
+  "sprites/secret-poi/secret-poi-27.png": {
+   "w": 205,
+   "h": 174,
+   "bytes": 75194,
+   "sha": "9330c2c37a9f8f96"
+  },
+  "sprites/secret-poi/secret-poi-28.png": {
+   "w": 203,
+   "h": 172,
+   "bytes": 74033,
+   "sha": "dca331ffa2196a88"
+  },
+  "sprites/secret-poi/secret-poi-29.png": {
+   "w": 204,
+   "h": 171,
+   "bytes": 72227,
+   "sha": "b6da014152120a53"
+  },
+  "sprites/secret-poi/secret-poi-30.png": {
+   "w": 205,
+   "h": 169,
+   "bytes": 71984,
+   "sha": "da840e857a2aab5c"
   },
   "sprites/shield-down.png": {
    "w": 101,

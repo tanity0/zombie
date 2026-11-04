@@ -426,3 +426,12 @@ describe('深層域の強制ピーク', () => {
     }
   });
 });
+
+describe('隠しPOIの近くの強制リラックス(湧きのコマ)', () => {
+  it('隠しPOIの近くは深層域のピークより緩が優先', () => {
+    for (const k of ['relax', 'harvest', 'normal', 'peak'] as const) {
+      expect(spawnKomaFor(k, false, true, true)).toBe('relax');
+      expect(spawnKomaFor(k, false, false, true)).toBe('relax');
+    }
+  });
+});

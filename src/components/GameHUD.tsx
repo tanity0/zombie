@@ -9,6 +9,7 @@ import { weaponSlotClass } from '../utils/weaponTierColor'; // 武器スロッ�
 import { resolveDesertTechAmmoType } from '../utils/desertTechAmmo'; // UNIQUE_WEAPONS.md §16-2(バッチB・デザートテック)
 import { spritePath } from '../utils/spriteLoader';
 import { hasEquipIcon, equipIconName } from '../data/equipment';
+import { SECRET_POI_NAMES } from '../world/secretPois';
 import VitalsOrb from './VitalsOrb';
 import { NpcDialogue } from './NpcDialogue';
 import { useHudLandscape } from './HudScale';
@@ -266,10 +267,12 @@ const GameHUD: React.FC = () => {
               : 'glass-pill px-3 py-1 text-[13px] font-bold tracking-wide gt-solid'}
             style={{
               // research/MUTANT_HERO.md: 英雄(変異)の告知は骨の色(霧と刃の弧と同じ系統=この敵の色を HUD にも通す)。
-              color: /蹄の音/.test(eventBannerText) ? '#e7dccb'
+              // research/HIDDEN_POI.md: 隠しPOIの発見は琥珀(出撃前の一覧の発見済みの札と同じ系統=危険の赤や事務の水色にしない)。
+              color: SECRET_POI_NAMES.has(eventBannerText) ? '#fde6b8'
+                : /蹄の音/.test(eventBannerText) ? '#e7dccb'
                 : eventBannerText === '賞金首は去った' ? 'rgba(186,230,253,0.75)'
                 : /成功|達成|救難|凌いだ/.test(eventBannerText) ? '#bbf7d0' : /危険|デンジャー|汚染|深層|検知/.test(eventBannerText) ? '#fecaca' : '#bae6fd',
-              border: `1px solid ${/蹄の音/.test(eventBannerText) ? 'rgba(231,220,203,0.45)' : eventBannerText === '賞金首は去った' ? 'rgba(56,189,248,0.35)'
+              border: `1px solid ${SECRET_POI_NAMES.has(eventBannerText) ? 'rgba(253,230,184,0.4)' : /蹄の音/.test(eventBannerText) ? 'rgba(231,220,203,0.45)' : eventBannerText === '賞金首は去った' ? 'rgba(56,189,248,0.35)'
                 : /成功|達成|救難|凌いだ/.test(eventBannerText) ? 'rgba(74,222,128,0.6)' : /危険|デンジャー|汚染|深層|検知/.test(eventBannerText) ? 'rgba(239,68,68,0.6)' : 'rgba(56,189,248,0.6)'}`,
             }}
           >

@@ -14,6 +14,7 @@ import { placeLabSpawn } from './labSpawn';
 import { OFFSCREEN_SPAWN_MARGIN } from './enemyUtils';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { clampRectToPlayableArea } from '../world/playableArea';
+import { isNearSecretPoi } from '../world/secretPois';
 import {
   isFirstRankReach, markRankReached, markSelfHighestRank, WALL_RANK_NAMES_EN, rankLabel,
 } from './wallProgress';
@@ -229,10 +230,10 @@ let bossRelaxLastTrueAt = 0;
 export const resetBossRelaxState = (): void => {
   bossRelaxPrev = false;
   bossRelaxLastTrueAt = 0;
-  deepPeakPrev = false;
+  komaOverridePrev = null;
 };
-// 深層域の強制ピーク(scriptPuzzle.isDeepForcedPeak)の前フレームの値。出た瞬間の後始末(緩の台本破棄・HUDのコマ表示)に使う。
-let deepPeakPrev = false;
+// コマの上書き(隠しPOIの近く=緩 / 深層域=ピーク)の前フレームの値。外れた瞬間の後始末(緩の台本破棄・HUDのコマ表示)に使う。
+let komaOverridePrev: 'relax' | 'peak' | null = null;
 
 // PACING_PUZZLE.md §7-11c(2): ランク床(決定済み仕様)。既定ON。?rankfloor=0で無効化(比較用)。
 const RANK_FLOOR_ENABLED = typeof window === 'undefined'
@@ -421,7 +422,11 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   if (bossEngagedRaw) bossRelaxLastTrueAt = gameTime;
   const bossRelax = BOSS_RELAX_ENABLED && bossRelaxWithTail(bossEngagedRaw, bossRelaxLastTrueAt, gameTime);
   // ★深層域は常にピーク(社長指示2026-11-04)。ボス交戦中の強制リラックスが優先。
-  const deepPeak = !bossRelax && isDeepForcedPeak(playerAreaIdx, useGameStore.getState().deepZoneLocked);
+  // ★隠しPOIの近くは強制リラックス(社長指示2026-11-04)。深層域のピークより優先(ボス交戦中の緩はさらに優先)。
+  const gsNow = useGameStore.getState();
+  const secretRelax = !bossRelax && gsNow.secretPois.length > 0
+    && isNearSecretPoi(player.x + player.width / 2, player.y + player.height / 2, gsNow.secretPois);
+  const deepPeak = !bossRelax && !secretRelax && isDeepForcedPeak(playerAreaIdx, gsNow.deepZoneLocked);
   // PACING_PUZZLE.md §7-11c(2): ランク床(案A)。ステージ×経過msから現在の床を毎tick再計算し、
   // minRankへ焼く(査定側のapplyRankDeltaはstate.minRankを下限として読むので、降格もこれより下へは
   // 落ちない)。?rankfloor=0で無効化(常に1=床なし)。
@@ -519,12 +524,14 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // M6(§4-D): 台本の「片付き」駆動ローテーション(通常/ピーク中のみ)。時間では切り替えない。
   const inScriptKoma = koma.kind === 'normal' || koma.kind === 'peak';
   // 深層域の強制ピーク中は、今のコマが緩でも台本を回す(ピークとして湧く)。コマの査定・切替は今のコマのまま。
-  const scriptKomaNow = inScriptKoma || deepPeak;
-  if (deepPeakPrev !== deepPeak) {
-    // 出た瞬間: 今のコマが緩(リラックス/ハーベスト)なら、深層で回していた台本を破棄(緩に入った時と同じ=邪魔者は自然消化)。
-    if (!deepPeak && !inScriptKoma) { koma.script = null; koma.scriptSpawned = { ...ZERO_NUISANCE }; }
-    deepPeakPrev = deepPeak;
-    useGameStore.setState(st => ({ hudDirector: { ...st.hudDirector, koma: deepPeak ? 'peak' : koma.kind } }));
+  // 隠しPOIの近く(緩)では台本の邪魔者も新しく出さない(在席は自然消化)。
+  const scriptKomaNow = (inScriptKoma || deepPeak) && !secretRelax;
+  const komaOverride: 'relax' | 'peak' | null = secretRelax ? 'relax' : deepPeak ? 'peak' : null;
+  if (komaOverridePrev !== komaOverride) {
+    // 外れた瞬間: 今のコマが緩(リラックス/ハーベスト)なら、上書き中に回していた台本を破棄(緩に入った時と同じ=邪魔者は自然消化)。
+    if (komaOverride === null && !inScriptKoma) { koma.script = null; koma.scriptSpawned = { ...ZERO_NUISANCE }; }
+    komaOverridePrev = komaOverride;
+    useGameStore.setState(st => ({ hudDirector: { ...st.hudDirector, koma: komaOverride ?? koma.kind } }));
   }
   const scriptCleared = koma.script == null
     || isScriptCleared(nuisanceTarget(koma.script), koma.scriptSpawned, aliveNuisance);
@@ -548,9 +555,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // 再開する。上書き方式(kindだけ差し替え)だと戦闘中に周期が空回りして、ボス撃破直後にいきなり
   // ピークが来る等の事故になる。
   // 深層域の強制ピーク中も同じく凍結(出たら止めた所から続き=「深層域を出ると通常サイクルに戻る」)。
-  if (!bossRelax && !deepPeak) koma.elapsedMs += deltaTime * 1000;
+  if (!bossRelax && !deepPeak && !secretRelax) koma.elapsedMs += deltaTime * 1000;
   const baseDone = koma.elapsedMs >= KOMA_BASE_MS;
-  const switchNow = !deepPeak && (inScriptKoma
+  const switchNow = !deepPeak && !secretRelax && (inScriptKoma
     ? ((baseDone && scriptCleared) || koma.elapsedMs >= KOMA_BASE_MS + KOMA_EXTENSION_MAX_MS)
     : baseDone);
   if (switchNow) {
@@ -632,7 +639,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // ③湧きのパラメータだけ 'relax' として読む(コマ自体の kind は書き換えない=①の凍結と両立)。
   // リラックス = チャフ目標が上限の40% / 湧きCDがランク基準の2倍。**ゼロではない**ので、
   // 弾薬・回復のドロップ経路は細るだけで止まらない(長期戦で枯れない)。
-  const spawnKoma = spawnKomaFor(koma.kind, bossRelax, deepPeak);
+  const spawnKoma = spawnKomaFor(koma.kind, bossRelax, deepPeak, secretRelax);
   // ★v0.25.3495(社長指示「リラックスさせて」): AIディレクターのRELAXが持つ湧きレバー2本
   // (湧き間隔/盤面上限)をここで初めて実際に効かせる。従来この2本は旧スポーナー
   // (!puzzleActiveNow)しか読んでおらず、通常プレイでは死んでいた(aiDirector.ts の
@@ -646,7 +653,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // 0体なら湧き間隔×0.3(下限0.3秒)、1体なら×0.5。1度に1体は decideNextSpawn のまま(§0.5)。
   // ボス交戦中の強制リラックスには掛けない(ボス戦の湧き方は従来どおり)。
   let cdMs = cadence.cdMs;
-  if (!bossRelax) {
+  if (!bossRelax && !secretRelax) {
     const gb = useGameStore.getState().gameBounds;
     const vz = Math.min(useGameStore.getState().viewZoom || 1, spawnBounds.width > 0 ? gb.width / spawnBounds.width : 1);
     // カメラの推定=useGameLoop のカメラ目標と同じ「プレイヤー中心−画面の半分−カメラ下げ(spawnViewOffsetY)」。
