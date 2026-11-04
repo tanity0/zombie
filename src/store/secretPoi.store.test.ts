@@ -14,17 +14,17 @@ beforeEach(() => {
 describe('隠れ処とボス戦', () => {
   it('ボス戦が明けた瞬間に土台へ重なっていたプレイヤーは外へノックバックで飛ぶ・その間は土台に当たらない', () => {
     const r = secretPoiRect(POI);
-    useGameStore.setState(s => ({ secretLockedPrev: true, player: { ...s.player, x: r.x + r.width / 2 - s.player.width / 2, y: r.y + r.height - s.player.height + 2 } }));
-    useGameStore.getState().updateSecretPois();
+    useGameStore.setState(s => ({ facilityLockedPrev: true, player: { ...s.player, x: r.x + r.width / 2 - s.player.width / 2, y: r.y + r.height - s.player.height + 2 } }));
+    useGameStore.getState().updateFacilityEject();
     const s = useGameStore.getState();
-    expect(s.secretLockedPrev).toBe(false);
+    expect(s.facilityLockedPrev).toBe(false);
     expect(Math.hypot(s.player.knockbackVx ?? 0, s.player.knockbackVy ?? 0)).toBeCloseTo(SECRET_EJECT_SPEED, 0);
     expect((s.player.knockbackUntil ?? 0)).toBeGreaterThan(Date.now());
-    expect(s.secretEjectUntil).toBeGreaterThan(s.gameTime);
+    expect(s.facilityEjectUntil).toBeGreaterThan(s.gameTime);
   });
   it('重なっていなければ何も飛ばない', () => {
-    useGameStore.setState(s => ({ secretLockedPrev: true, player: { ...s.player, x: 0, y: 0, knockbackVx: 0, knockbackVy: 0 } }));
-    useGameStore.getState().updateSecretPois();
+    useGameStore.setState(s => ({ facilityLockedPrev: true, player: { ...s.player, x: 0, y: 0, knockbackVx: 0, knockbackVy: 0 } }));
+    useGameStore.getState().updateFacilityEject();
     expect(useGameStore.getState().player.knockbackVx ?? 0).toBe(0);
   });
   it('ボス戦中(施設ロック中)は触れても見つからない', () => {
@@ -33,6 +33,17 @@ describe('隠れ処とボス戦', () => {
     const before = useGameStore.getState().secretFoundThisRun;
     useGameStore.getState().updateSecretPois();
     expect(useGameStore.getState().secretFoundThisRun).toBe(before);
-    expect(useGameStore.getState().secretLockedPrev).toBe(true);
+    useGameStore.getState().updateFacilityEject();
+    expect(useGameStore.getState().facilityLockedPrev).toBe(true);
+  });
+});
+
+describe('施設全般のボス戦明けの弾き出し', () => {
+  it('城・寄り道の建物・祠に重なっていても弾き出す(病院で確認)', () => {
+    useGameStore.setState(s => ({ secretPois: [], hospital: { x: 3000, y: 3000 }, hospitalTaken: false, facilityLockedPrev: true,
+      player: { ...s.player, x: 3000 - s.player.width / 2, y: 3000 - s.player.height - 4, knockbackVx: 0, knockbackVy: 0 } }));
+    useGameStore.getState().updateFacilityEject();
+    const s = useGameStore.getState();
+    expect(Math.hypot(s.player.knockbackVx ?? 0, s.player.knockbackVy ?? 0)).toBeCloseTo(SECRET_EJECT_SPEED, 0);
   });
 });

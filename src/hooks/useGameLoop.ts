@@ -5023,6 +5023,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (!arBefore && useGameStore.getState().armoryTaken) playSfx('weapon-pickup');
         }
 
+        // ★ボス戦が明けた瞬間、施設の土台に重なっている者をノックバックで弾き出す(社長指示2026-11-04・全施設)。
+        useGameStore.getState().updateFacilityEject();
         // 武将の祠(research/POI_TOUCH_SHRINE.md §2/§3): 手前の円に3秒で、その部位の武将装備。取った瞬間だけSE(病院と同じ流儀)。
         {
           const takenBefore = useGameStore.getState().shrines.filter(sh => sh.takenAt !== undefined).length;

@@ -129,9 +129,11 @@ export const SECRET_EJECT_MS = 320;
  * 隠れ処の土台に重なっている体を、どちらへ弾き出すか(単位ベクトル)。重なっていなければ null。
  * 向き=土台の中心から体の中心へ。ほぼ真上に重なっている時は手前(+Y=画面下)へ。
  */
-export const secretEjectDir = (actor: Rect, pois: readonly { x: number; y: number }[]): { dx: number; dy: number } | null => {
-  for (const p of pois) {
-    const r = secretPoiRect(p);
+export const secretEjectDir = (actor: Rect, pois: readonly { x: number; y: number }[]): { dx: number; dy: number } | null =>
+  ejectDirFromRects(actor, pois.map(secretPoiRect));
+/** 施設の土台(複数)のどれかに重なっている体を、どちらへ弾き出すか(単位ベクトル・重なっていなければ null)。全施設で共通。 */
+export const ejectDirFromRects = (actor: Rect, rects: readonly Rect[]): { dx: number; dy: number } | null => {
+  for (const r of rects) {
     const overlap = actor.x < r.x + r.width && actor.x + actor.width > r.x && actor.y < r.y + r.height && actor.y + actor.height > r.y;
     if (!overlap) continue;
     const dx = (actor.x + actor.width / 2) - (r.x + r.width / 2);

@@ -346,14 +346,14 @@ import { OVERCLOCK_LIGHT_MS } from '../utils/frameLight';
 import { BOSS_CUTIN_MS, shouldIgnoreAttention, isCutinRepeat, type AttentionCutin } from '../utils/attentionCutin'; // §6.36 ボス出現カットイン
 import { clearDestroyedObstacles } from '../world/destructibles';
 import { resolveCityPropCollision, setCityPropsDisabled, cityPropsInRegion, cityPropRect, cityPropDef } from '../world/cityProps';
-import { hospitalPos as hospitalSpot, resolveHospitalCollision, touchesHospital, isApproachingHospital } from '../world/hospital';
+import { hospitalPos as hospitalSpot, resolveHospitalCollision, touchesHospital, isApproachingHospital, hospitalRect } from '../world/hospital';
 import { detourAngleOffset } from '../world/detourPoi';
-import { armoryPos as armorySpot, resolveArmoryCollision, touchesArmory, isApproachingArmory, ARMORY_SCRAP_COST } from '../world/armory';
+import { armoryPos as armorySpot, resolveArmoryCollision, touchesArmory, isApproachingArmory, ARMORY_SCRAP_COST, armoryRect } from '../world/armory';
 import {
-  SHRINE_SLOTS, assignShrineSectors, shrinePosForSector, resolveShrineCollision, shrineCircleAt, tickShrineDwell,
+  SHRINE_SLOTS, assignShrineSectors, shrinePosForSector, resolveShrineCollision, shrineCircleAt, tickShrineDwell, shrineRect,
   type ShrineState, type ShrineSlot,
 } from '../world/warlordShrine';
-import { policePos as policeSpot, resolvePoliceCollision } from '../world/police';
+import { policePos as policeSpot, resolvePoliceCollision, policeRect } from '../world/police';
 import { assignDetourSectors } from '../world/detourPoi';
 import { bossSectorIndex, poiSectorIndex } from '../world/pois';
 // PACING_PUZZLE.md §6.24-UX(POI-UX): 寄り道POIの通信/入手トースト/解放帯の文言とゲート(純関数)。
@@ -374,10 +374,14 @@ import { isExStageRun } from '../utils/exStage'; // PACING_PUZZLE.md §10-20: EX
 import type { SkillRarity } from '../data/campaign';
 import { CONSUMABLE_DURATION_MS } from '../data/consumables';
 import { setPoiClearings } from '../world/poiClearings';
-import { secretPoisForStage, resolveSecretPoiCollision, secretPoiTouchedBy, secretChroniclePhrase, secretEjectDir, SECRET_EJECT_SPEED, SECRET_EJECT_MS, type SecretPoi } from '../world/secretPois';
-/** 隠れ処の土台として当たる物(弾き出しの間は当てない=ノックバックで滑り出させる)。 */
-const secretSolids = (s: { secretPois: SecretPoi[]; secretEjectUntil: number; gameTime: number }): SecretPoi[] =>
-  s.secretEjectUntil > s.gameTime ? [] : s.secretPois;
+import { secretPoisForStage, resolveSecretPoiCollision, secretPoiTouchedBy, secretChroniclePhrase, secretPoiRect, ejectDirFromRects, SECRET_EJECT_SPEED, SECRET_EJECT_MS, type SecretPoi } from '../world/secretPois';
+/**
+ * ★施設(城・寄り道の建物・祠・隠れ処)の当たり判定を外している間か。ボス戦中(施設ロック)と、ボス戦が明けた直後の
+ * 弾き出しの間(facilityEjectUntil)。弾き出しの間に当てると押し出しで瞬間移動になる=ふっ飛ばない(社長指示2026-11-04)。
+ * 絵はボス戦中も灰色で残る(描画は pixiScene.applyFacilityGray)。t=判定する時刻(省略=s.gameTime)。
+ */
+const facilitySolidsOff = (s: { bossFightNow: boolean; bossFightLastTrueAt: number; gameTime: number; facilityEjectUntil: number }, t = s.gameTime): boolean =>
+  facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, t) || s.facilityEjectUntil > t;
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, hasFullWarlordSet, specialEquipmentForSlot, equipmentDescription, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
 import { footRect, rectsOverlap, resolveAabb, segmentBlocked, segmentIntersectsRect, type Rect } from '../world/obstacles';
 import { friendlyShieldRect, splitBeamAtShield, beamStripsHit, shieldBlocksArea, shieldBlocksLine, shieldContactPoint, type BeamShieldSplit, type BeamStrip } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md: シールドで技を防ぐ
@@ -852,7 +856,7 @@ const makeEscorts = (px: number, py: number, corridorRow = false, playerMaxHealt
 // ステージ4のジュンの道筋(research/JUN_ESCORT.md): 城の当たり箱(崩れた後・ボス戦で施設が隠れている間は無し=resolveOutOfSolids と同じ)。
 const junCastlePathRect = (s: GameState): Rect | null =>
   (s.castleEvent.collapsedAt !== undefined || s.farBackdrop === 'tutorial' || s.stageTheme === 'lab'
-    || facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime)) ? null : castleRect(s.castleEvent);
+    || facilitySolidsOff(s)) ? null : castleRect(s.castleEvent);
 // 道筋で回り込む障害物=城+歩く範囲の木の幹+散布物(車両・見張り台)。押し戻しは resolveShieldWalls が別に掛ける。
 const junPathObstacles = (s: GameState, ax: number, ay: number, bx: number, by: number): Rect[] => {
   const pad = 160;
@@ -7470,11 +7474,13 @@ interface GameState {
   secretFoundThisRun: number;
   /** このランで既に年表と照らした隠しPOI(触れ続けても毎フレーム年表を読み直さない・品質監査B-2)。 */
   secretCheckedIds: readonly string[];
-  /** ボス戦中(施設ロック中)だったか(明けた瞬間を拾う)。 */
-  secretLockedPrev: boolean;
-  /** 弾き出しの間(gameTime)。この間は隠れ処の土台に当てない=ノックバックで滑り出る。 */
-  secretEjectUntil: number;
   updateSecretPois: () => void;
+  /** ボス戦中(施設ロック中)だったか(明けた瞬間を拾う)。 */
+  facilityLockedPrev: boolean;
+  /** ボス戦明けの弾き出しの間(gameTime)。この間は施設の土台に当てない=ノックバックで滑り出る。 */
+  facilityEjectUntil: number;
+  /** 毎フレーム: ボス戦が明けた瞬間、施設の土台に重なっている者をノックバックで弾き出す。 */
+  updateFacilityEject: () => void;
   shrineDwell: { slot: ShrineSlot | null; ms: number };
   /** 祠の円に入った時の一言を出したか(祠ごとに1ラン1回)。 */
   shrineIntelShown: Record<ShrineSlot, boolean>;
@@ -7695,8 +7701,8 @@ export const resolveBountyMove = (
       hospital: s.hospital, hospitalTaken: s.hospitalTaken,
       armory: s.armory, armoryTaken: s.armoryTaken,
       police: s.police, policeTaken: s.policeTaken,
-      shrines: s.shrines, secretPois: secretSolids(s),
-      facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
+      shrines: s.shrines, secretPois: s.secretPois,
+      facilitiesHidden: facilitySolidsOff(s),
     },
   );
 };
@@ -7793,8 +7799,8 @@ export const resolveShieldWalls = (candidate: Rect): { x: number; y: number } =>
     hospital: s.hospital, hospitalTaken: s.hospitalTaken,
     armory: s.armory, armoryTaken: s.armoryTaken,
     police: s.police, policeTaken: s.policeTaken,
-    shrines: s.shrines, secretPois: secretSolids(s),
-    facilitiesHidden: facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, s.gameTime),
+    shrines: s.shrines, secretPois: s.secretPois,
+    facilitiesHidden: facilitySolidsOff(s),
   });
 };
 
@@ -8169,8 +8175,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   secretPois: [],
   secretFoundThisRun: 0,
   secretCheckedIds: [],
-  secretLockedPrev: false,
-  secretEjectUntil: 0,
+  facilityLockedPrev: false,
+  facilityEjectUntil: 0,
   shrineDwell: { slot: null, ms: 0 },
   shrineIntelShown: { body: false, arms: false, accessory: false },
   armory: null,
@@ -8521,8 +8527,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           hospital: state.hospital, hospitalTaken: state.hospitalTaken,
           armory: state.armory, armoryTaken: state.armoryTaken,
           police: state.police, policeTaken: state.policeTaken,
-          shrines: state.shrines, secretPois: secretSolids(state),
-          facilitiesHidden: facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime), // v0.25.3054
+          shrines: state.shrines, secretPois: state.secretPois,
+          facilitiesHidden: facilitySolidsOff(state), // v0.25.3054 / ボス戦明けの弾き出しの間も外す(2026-11-04)
         });
         newX = solidResolved.x;
         newY = solidResolved.y;
@@ -15053,8 +15059,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             const torchR = resolveTorchCollision({ x: tr.x, y: tr.y, width: enemy.width, height: enemy.height }, solidProps);
             // 城(屋外・非ラボ)も敵にブロック(プレイヤーと同じ。従来は敵だけすり抜けていた)。
             // v0.25.3054: ボス戦中は城の判定も消す(プレイヤー側resolveOutOfSolidsと同じ・見えない壁を作らない)。
-            const castleR = (labTheme || state.farBackdrop === 'tutorial'
-              || facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, gameTime))
+            // ★施設はボス戦中(+明けの弾き出しの間)は敵にも当たらない(灰色で残るだけ・社長指示2026-11-04)。
+            const facOff = facilitySolidsOff(state, gameTime);
+            const castleR = (labTheme || state.farBackdrop === 'tutorial' || facOff)
               ? torchR : resolveCastleCollision({ x: torchR.x, y: torchR.y, width: enemy.width, height: enemy.height }, state.castleEvent);
             // ラボ壁＋ラボプロップ(研究所スキン)。labProps も敵に当たり判定(従来は壁のみ=プロップすり抜け)。
             const labRects = labTheme ? [...labWallRects, ...labPropRects] : labWallRects;
@@ -15064,25 +15071,25 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 街/雪原プロップ(バス/塔/トラック等)は敵にも当たり判定(プレイヤーと同じ)。森等カタログ無しは即return=no-op。
             const propR = resolveCityPropCollision(state.farBackdrop, { x: wallR.x, y: wallR.y, width: enemy.width, height: enemy.height });
             // 病院の土台は敵にも当たり判定(プレイヤーと同じ=すり抜け防止)。
-            const hospitalR = resolveHospitalCollision(
+            const hospitalR = facOff ? propR : resolveHospitalCollision(
               { x: propR.x, y: propR.y, width: enemy.width, height: enemy.height },
               state.hospital, state.hospitalTaken,
             );
             // §6.24 M48: 武器庫/警察署も同様に敵の当たり判定へ加える(プレイヤーと同じ規約)。
-            const armoryR = resolveArmoryCollision(
+            const armoryR = facOff ? hospitalR : resolveArmoryCollision(
               { x: hospitalR.x, y: hospitalR.y, width: enemy.width, height: enemy.height },
               state.armory, state.armoryTaken,
             );
-            const policeR = resolvePoliceCollision(
+            const policeR = facOff ? armoryR : resolvePoliceCollision(
               { x: armoryR.x, y: armoryR.y, width: enemy.width, height: enemy.height },
               state.police, state.policeTaken,
             );
             // 武将の祠の土台も敵に当たる(プレイヤーと同じ)。ボス戦中は消える(他の施設・プレイヤー側と同じ=見えない壁を作らない)。
-            const shrineR = (state.shrines.length === 0 || facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, gameTime))
+            const shrineR = (state.shrines.length === 0 || facOff)
               ? policeR : resolveShrineCollision({ x: policeR.x, y: policeR.y, width: enemy.width, height: enemy.height }, state.shrines);
             // 隠しPOIの土台も敵に当たる(祠と同じ)。
-            const secretR = (state.secretPois.length === 0 || facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, gameTime))
-              ? shrineR : resolveSecretPoiCollision({ x: shrineR.x, y: shrineR.y, width: enemy.width, height: enemy.height }, secretSolids(state));
+            const secretR = (state.secretPois.length === 0 || facOff)
+              ? shrineR : resolveSecretPoiCollision({ x: shrineR.x, y: shrineR.y, width: enemy.width, height: enemy.height }, state.secretPois);
             // research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石は敵にも壁(プレイヤーと同じ)。
             pos = resolveWraithGraveCollision({ x: secretR.x, y: secretR.y, width: enemy.width, height: enemy.height });
           }
@@ -19992,7 +19999,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             hospital: state.hospital, hospitalTaken: state.hospitalTaken,
             armory: state.armory, armoryTaken: state.armoryTaken,
             police: state.police, policeTaken: state.policeTaken,
-            shrines: state.shrines, secretPois: secretSolids(state),
+            shrines: state.shrines, secretPois: state.secretPois,
           },
         );
       }
@@ -21657,34 +21664,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   updateSecretPois: () => {
     set(state => {
       if (state.secretPois.length === 0 || state.gameWon) return {};
-      // ボス戦中(施設ロック中)は灰色になって当たり判定が無い(描画は pixiScene・判定は resolveOutOfSolids が noFac で外す)。
-      if (facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) {
-        return state.secretLockedPrev ? {} : { secretLockedPrev: true };
-      }
-      if (state.secretLockedPrev) {
-        // ★明けた瞬間(社長指示2026-11-04「ボス戦終わった時に重なり判定ある場合はノックバックでふっ飛ばそう」):
-        // 土台に重なっているプレイヤーと敵を、既存のノックバックで外へ弾き出す。弾き出しの間は土台に当てない
-        // (当てると押し出しで瞬間移動になる=ふっ飛ばない)。重なっていなければ何も起きない。
-        const now = Date.now();
-        const patch: Partial<GameState> = { secretLockedPrev: false, secretEjectUntil: state.gameTime + SECRET_EJECT_MS + 80 };
-        const pd = secretEjectDir(state.player, state.secretPois);
-        if (pd) {
-          patch.player = {
-            ...state.player,
-            knockbackVx: pd.dx * SECRET_EJECT_SPEED, knockbackVy: pd.dy * SECRET_EJECT_SPEED,
-            knockbackUntil: now + SECRET_EJECT_MS, knockbackMs: SECRET_EJECT_MS,
-          };
-        }
-        let moved = false;
-        const enemies = state.enemies.map(e => {
-          const d = secretEjectDir(e, state.secretPois);
-          if (!d) return e;
-          moved = true;
-          return { ...e, knockbackVx: d.dx * SECRET_EJECT_SPEED, knockbackVy: d.dy * SECRET_EJECT_SPEED, knockbackUntil: now + KNOCKBACK_DURATION };
-        });
-        if (moved) patch.enemies = enemies;
-        return patch;
-      }
+      // ボス戦中(+明けの弾き出しの間)は灰色で当たり判定が無い=触れても見つからない(弾き出しは updateFacilityEject)。
+      if (facilitySolidsOff(state)) return {};
       const hit = secretPoiTouchedBy(state.player, state.secretPois);
       if (!hit || state.secretCheckedIds.includes(hit.id)) return {};
       const secretCheckedIds = [...state.secretCheckedIds, hit.id];
@@ -21694,6 +21675,43 @@ export const useGameStore = create<GameState>((set, get) => ({
         secretFoundThisRun: state.secretFoundThisRun + 1,
         eventBannerText: hit.name, eventBannerUntil: state.gameTime + 3200,
       };
+    });
+  },
+
+  // ★ボス戦が明けた瞬間(社長指示2026-11-04「ボス戦終わった時に重なり判定ある場合はノックバックでふっ飛ばそう」):
+  // 施設(城・寄り道の建物・祠・隠れ処)の土台に重なっているプレイヤーと敵を、既存のノックバックで外へ弾き出す。
+  // 弾き出しの間(facilityEjectUntil)は施設の土台に当てない=滑って飛び出す。重なっていなければ何も起きない。
+  updateFacilityEject: () => {
+    set(state => {
+      const locked = facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime);
+      if (locked) return state.facilityLockedPrev ? {} : { facilityLockedPrev: true };
+      if (!state.facilityLockedPrev) return {};
+      const rects: Rect[] = [];
+      if (!state.indoorMode && state.stageTheme !== 'lab' && state.farBackdrop !== 'tutorial' && state.castleEvent.collapsedAt === undefined) rects.push(castleRect(state.castleEvent));
+      if (state.hospital && !state.hospitalTaken) rects.push(hospitalRect(state.hospital));
+      if (state.armory && !state.armoryTaken) rects.push(armoryRect(state.armory));
+      if (state.police && !state.policeTaken) rects.push(policeRect(state.police));
+      for (const sh of state.shrines) if (sh.takenAt === undefined) rects.push(shrineRect(sh));
+      for (const sp of state.secretPois) rects.push(secretPoiRect(sp));
+      const now = Date.now();
+      const patch: Partial<GameState> = { facilityLockedPrev: false, facilityEjectUntil: state.gameTime + SECRET_EJECT_MS + 80 };
+      const pd = ejectDirFromRects(state.player, rects);
+      if (pd) {
+        patch.player = {
+          ...state.player,
+          knockbackVx: pd.dx * SECRET_EJECT_SPEED, knockbackVy: pd.dy * SECRET_EJECT_SPEED,
+          knockbackUntil: now + SECRET_EJECT_MS, knockbackMs: SECRET_EJECT_MS,
+        };
+      }
+      let moved = false;
+      const enemies = state.enemies.map(e => {
+        const d = ejectDirFromRects(e, rects);
+        if (!d) return e;
+        moved = true;
+        return { ...e, knockbackVx: d.dx * SECRET_EJECT_SPEED, knockbackVy: d.dy * SECRET_EJECT_SPEED, knockbackUntil: now + KNOCKBACK_DURATION };
+      });
+      if (moved) patch.enemies = enemies;
+      return patch;
     });
   },
 
@@ -23499,8 +23517,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           ? secretPoisForStage(getSelectedStageId()) : [],
         secretFoundThisRun: 0,
         secretCheckedIds: [],
-        secretLockedPrev: false,
-        secretEjectUntil: 0,
+        facilityLockedPrev: false,
+        facilityEjectUntil: 0,
         shrines: (() => {
           if (!detourSectors || isPracticeRun() || isBossMakerRun()) return [];
           const sec = assignShrineSectors(bossSectorIndex(hiddenBoss), Math.random, [detourSectors.police, detourSectors.armory, detourSectors.hospital]);

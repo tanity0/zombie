@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5366', items: [
+    'ボス戦の間、城・廃病院・武器庫・警察署・武将の祠は消えずに灰色に沈み、通り抜けられる',
+    'ボス戦が終わった時に建物の足元へ入り込んでいたら、外へ弾き飛ばされる',
+  ] },
   { version: '0.25.5365', items: [
     '深層域の奥の手直し',
   ] },

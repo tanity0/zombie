@@ -5118,8 +5118,8 @@ export class PixiScene {
   private secretSepia = 1;
   private secretSepiaLastNow = 0;
   private secretArtRequested = false;
-  /** ボス戦中に隠れ処を灰色に沈めるフィルタ(1枚を使い回す・掛かるのは画面内の数枚だけ=負荷2/10)。 */
-  private secretGrayFilter: ColorMatrixFilter | null = null;
+  /** ボス戦中に施設の絵を灰色に沈めるフィルタ(1枚を使い回す・掛かるのは画面内の数枚だけ=負荷2/10)。 */
+  private facilityGrayFilter: ColorMatrixFilter | null = null;
   private shrineGfx = new Graphics();
   /** 溜めに合わせて祠の奥に灯る光(祠の絵の手前・加算)。監査2026-11-03 #8。 */
   private shrineGlowGfx = new Graphics();
@@ -10071,12 +10071,14 @@ export class PixiScene {
     // ★v0.25.3425修正: 城は「代入」だと syncCastle が lerp した内部alpha(裏回り透過・地平フェード)を
     // 毎フレーム上書きして殺してしまう(社長報告「城の裏回っても透けない」の正体)。min合成にする=
     // 通常時(facFade=1)は内部alphaが生き、ボス戦フェード時(facFade→0)はフェードが勝つ。
-    this.castleView.alpha = Math.min(this.castleView.alpha, facFade);
-    if (this.castleShadow) this.castleShadow.alpha *= facFade;
+    // ★城はボス戦中も消さず灰色に沈める(社長指示2026-11-04・旧v0.25.3054は消していた)。商人と召喚陣は従来どおり消える。
+    const facGray = 1 - facFade;
+    this.castleView.alpha = Math.min(this.castleView.alpha, this.applyFacilityGray(this.castleView, facGray));
+    if (this.castleShadow) this.castleShadow.alpha *= 1 - 0.5 * facGray;
     this.castleSummonCircle.alpha *= facFade;
     this.merchantView.alpha = facFade;
     if (this.merchantShadow) this.merchantShadow.alpha *= facFade;
-    if (facFade <= 0.01) { this.castleView.visible = false; this.merchantView.visible = false; }
+    if (facFade <= 0.01) { this.merchantView.visible = false; }
     this.syncBreakableProps(s.breakableProps, now);
     this.syncPickups(s.pickups, now);
     this.syncPumpkinTelegraph(s.enemies, now, s.gameTime, s); // ジャンプ攻撃の着地予告(赤い影)
@@ -10263,26 +10265,22 @@ export class PixiScene {
       }
     }
     // v0.25.3054: 施設フェードの適用(POI建物3種+サークル+拠点サークル+影リクエスト)。
-    this.hospitalSprite.alpha *= facFade;
-    this.armorySprite.alpha *= facFade;
-    this.policeSprite.alpha *= facFade;
+    // ★寄り道の建物・祠もボス戦中は灰色に沈めて残す(社長指示2026-11-04)。入口の光・円・弧(=使えるの合図)は従来どおり消える。
+    this.hospitalSprite.alpha *= this.applyFacilityGray(this.hospitalSprite, facGray);
+    this.armorySprite.alpha *= this.applyFacilityGray(this.armorySprite, facGray);
+    this.policeSprite.alpha *= this.applyFacilityGray(this.policeSprite, facGray);
     this.hospitalGfx.alpha = facFade;
     this.armoryGfx.alpha = facFade;
     this.policeGfx.alpha = facFade;
     this.shrineGfx.alpha = facFade;
     this.shrineGlowGfx.alpha = facFade;
-    for (const sp of this.shrineSprites) { sp.alpha *= facFade; if (facFade <= 0.01) sp.visible = false; }
-    for (const sh of this.shrineShadows) sh.alpha *= facFade;
+    for (const sp of this.shrineSprites) sp.alpha *= this.applyFacilityGray(sp, facGray);
+    for (const sh of this.shrineShadows) sh.alpha *= 1 - 0.5 * facGray;
     // 隠れ処はボス戦中も消さない=灰色に沈める(syncSecretPois が facilityFade を見て掛ける・社長指示2026-11-04)。
     this.baseSitesGfx.alpha = facFade;
-    if (this.hospitalShadow) this.hospitalShadow.alpha *= facFade;
-    if (this.armoryShadow) this.armoryShadow.alpha *= facFade;
-    if (this.policeShadow) this.policeShadow.alpha *= facFade;
-    if (facFade <= 0.01) {
-      this.hospitalSprite.visible = false;
-      this.armorySprite.visible = false;
-      this.policeSprite.visible = false;
-    }
+    if (this.hospitalShadow) this.hospitalShadow.alpha *= 1 - 0.5 * facGray;
+    if (this.armoryShadow) this.armoryShadow.alpha *= 1 - 0.5 * facGray;
+    if (this.policeShadow) this.policeShadow.alpha *= 1 - 0.5 * facGray;
     this.resetBloodPools(); // 血溜まり(E-5): 前フレームで使った枚数を超えたぶんを消す(消し忘れ防止)
     this.syncHunterVision(s.enemies, now);
     this.drawEscorts(escortsDrawn, now, s.gameTime, s.junDeparture); // 護衛軍人NPC(屋外のみ。屋内/ラボでは s.escorts=[] でプルーン)
@@ -30365,6 +30363,24 @@ export class PixiScene {
   // 隠しPOI(research/HIDDEN_POI.md §8)。**描くだけ**(発見は store の updateSecretPois)。寄り道の建物と同じ規約:
   // 足元アンカー・高さ基準(SECRET_DISPLAY_H)・y-sort・裏に回ると透ける。画面外は描かない(深層域の奥にしか無い)。
   // 絵は遅延組(secretPoi)=初めて画面に入った時に網(getTexture)が取りに行く。負荷1/10(Sprite×最大8)。
+  /**
+   * ★ボス戦中の施設は消さずに灰色に沈める(社長指示2026-11-04「ボス戦中はグレーアウトして当たり判定も無しに」→「はい」=全施設)。
+   * gray=0..1(施設のフェードと同じ尺)。彩度を落とし、ほんの少し薄く(1-0.15×gray)。当たり判定・発火は store 側の施設ロックが外す。
+   * 戻り値=薄めた係数(影にも掛ける用)。
+   */
+  private applyFacilityGray(obj: Container, gray: number): number {
+    if (gray > 0.01) {
+      // 彩度を落としてから少し明るく(夜の霧の中で灰色が黒に沈まないように=「灰色の建物」と読める)。
+      if (!this.facilityGrayFilter) { this.facilityGrayFilter = new ColorMatrixFilter(); this.facilityGrayFilter.desaturate(); this.facilityGrayFilter.brightness(1.3, true); }
+      this.facilityGrayFilter.alpha = gray;
+      if (!obj.filters || (obj.filters as Filter[])[0] !== this.facilityGrayFilter) obj.filters = [this.facilityGrayFilter];
+    } else if (obj.filters) {
+      obj.filters = null;
+    }
+    // 薄めるのは少しだけ(灰色にした上で薄めすぎると、夜の霧の帯の中で見えなくなる=「消えた」と同じになる・撮影で確認)。
+    return 1 - 0.15 * gray;
+  }
+
   private syncSecretPois(now: number) {
     const s = useGameStore.getState();
     this.secretShadows = [];
@@ -30418,14 +30434,7 @@ export class PixiScene {
       this.applyObstacleAlpha(sp, p.y);
       // ボス戦中(施設ロック中)は灰色に沈めて少し薄く(当たり判定は store 側で外れている)。施設のフェードと同じ尺で出入りする。
       const gray = 1 - this.facilityFade;
-      if (gray > 0.01) {
-        if (!this.secretGrayFilter) { this.secretGrayFilter = new ColorMatrixFilter(); this.secretGrayFilter.desaturate(); }
-        this.secretGrayFilter.alpha = gray;
-        if (!sp.filters || (sp.filters as Filter[])[0] !== this.secretGrayFilter) sp.filters = [this.secretGrayFilter];
-        sp.alpha *= 1 - 0.4 * gray;
-      } else if (sp.filters) {
-        sp.filters = null;
-      }
+      sp.alpha *= this.applyFacilityGray(sp, gray);
       this.secretShadows.push({
         id: p.id, x: p.x, y: p.y,
         legacyW: Math.min(120 * d, tex.width * sc * 0.5),
