@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5361', items: [
+    '深層域の敵がずっと硬く、重い一撃を持つようになった',
+    '深層域にいる間は休む間もなく襲撃が続く。深層域を出れば、いつもの波に戻る',
+  ] },
   { version: '0.25.5360', items: [
     '武将の祠は、装備を取ると震えて傾き、土煙と瓦礫を上げて崩れ去る',
     '廃病院・武器庫・警察署・武将の祠の前は空き地に。木や松明が入口をふさがない',

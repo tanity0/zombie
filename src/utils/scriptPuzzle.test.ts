@@ -7,7 +7,7 @@ import {
   peakRedTier,
   nextKomaKind, KOMA_ORDER, KOMA_START_KIND, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
   chaffWeightsForKoma, chaffTargetForKoma, rampIntervalForKoma, cdForKoma, stepChaffRamp, noRedTierForKoma,
-  bossRelaxChaffTarget, RELAX_CHAFF_TARGET_MAX,
+  bossRelaxChaffTarget, RELAX_CHAFF_TARGET_MAX, isDeepForcedPeak, spawnKomaFor,
   isScriptCleared, selectRotationPattern, LOWER_MIX_CHANCE, LOWER_MIX_CHANCE_HIT,
   ZERO_NUISANCE, type NuisanceCounts,
 } from './scriptPuzzle';
@@ -408,5 +408,21 @@ describe('リラックスは「ゼロではなく少しは出る」(社長指示
     expect(bossRelaxChaffTarget(20)).toBe(2);
     // 湧き間隔×2(ランク基準)は従来どおり
     expect(cdForKoma('relax', 1, R7_CAP_MIN, false, false)).toBe(cdBasisForRank(1, R7_CAP_MIN) * 2);
+  });
+});
+
+// 社長指示2026-11-04「常に強制ピーク状態(深層域を出ると通常サイクルに戻る)」。
+describe('深層域の強制ピーク', () => {
+  it('深層域(区域4)で、深層域が解錠済みの時だけ真', () => {
+    expect(isDeepForcedPeak(4, false)).toBe(true);
+    expect(isDeepForcedPeak(4, true)).toBe(false);  // ゲート2を倒す前
+    expect(isDeepForcedPeak(3, false)).toBe(false); // 深層域の外=通常サイクル
+  });
+  it('湧きのコマ: ボス交戦中の緩 > 深層域のピーク > 今のコマ', () => {
+    for (const k of ['relax', 'harvest', 'normal', 'peak'] as const) {
+      expect(spawnKomaFor(k, false, true)).toBe('peak');
+      expect(spawnKomaFor(k, true, true)).toBe('relax');
+      expect(spawnKomaFor(k, false, false)).toBe(k);
+    }
   });
 });

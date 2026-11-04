@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, spawnEnemyAtWithTier, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2, isBountyType, corpseEligible, isArenaSweepProtected, resistsChipKnockback, isPumpkinTier } from './enemyUtils';
+import { areaIndexForPos, isBossType, isHiddenBoss, isValidForArea, AREA_COUNT, AREA_MAX_ENEMIES, AREA_SPEED_MULT, resolveEnemyTarget, spawnEnemyAt, spawnEnemyAtWithTier, getEnemyFireProfile, generateEnemy, getEnemyBaseSize, createEnemyProjectile, getsDramaticDeath, getsDeathAttention, isFinalBossKill, usesBossCrit, aimEnemyDist2, isBountyType, corpseEligible, isArenaSweepProtected, resistsChipKnockback, isPumpkinTier, DEEP_ZONE_STRENGTH_MULT, areaStrengthBase } from './enemyUtils';
 import { isEngageableBoss } from './bossEngagement';
 import type { Enemy, Player, Summon, GameBounds, EnemyType } from '../types/game';
 import { HIDDEN_BOSS_HEALTH } from '../config/bossHealth';
@@ -722,5 +722,28 @@ describe('湧く辺(spawnSideFromRoll)', () => {
     expect(sideFromRoll(1, 1280, 720)).toBe(3);
     expect(sideFromRoll(-0.1, 1280, 720)).toBe(0);
     expect(sideFromRoll(1, 405, 878)).toBe(3);
+  });
+});
+
+// 社長指示2026-11-04「深層域はHP・攻撃力が4倍」。
+describe('深層域の HP・攻撃力(DEEP_ZONE_STRENGTH_MULT)', () => {
+  it('深層域で湧いた個体は軍備配置の同型の4倍(色なしで比べる)', () => {
+    const shallow = spawnEnemyAtWithTier('zombie', 0, 0, 0, 'none');
+    const deep = spawnEnemyAtWithTier('zombie', DEEP_X, 0, 0, 'none');
+    expect(DEEP_ZONE_STRENGTH_MULT).toBe(4);
+    expect(deep.maxHealth).toBeCloseTo(shallow.maxHealth * 4, 0);
+    expect(deep.damage).toBeCloseTo(shallow.damage * 4, 3);
+  });
+  it('浅い場所で10分を過ぎても4倍にはならない(時間で迫るのは従来の表の 2.1 まで)', () => {
+    const late = spawnEnemyAtWithTier('zombie', 0, 0, 20 * 60 * 1000, 'none');
+    const shallow = spawnEnemyAtWithTier('zombie', 0, 0, 0, 'none');
+    expect(late.maxHealth).toBeCloseTo(shallow.maxHealth * 2.1, 0);
+    expect(areaStrengthBase(3, 4)).toBeCloseTo(2.1, 5);
+    expect(areaStrengthBase(4, 4)).toBe(4);
+  });
+  it('固定強度タイプ(ジャイアントバット)は深層域でも強くならない', () => {
+    const shallow = spawnEnemyAtWithTier('giantbat', 0, 0, 0, 'none');
+    const deep = spawnEnemyAtWithTier('giantbat', DEEP_X, 0, 0, 'none');
+    expect(deep.maxHealth).toBeCloseTo(shallow.maxHealth, 0);
   });
 });

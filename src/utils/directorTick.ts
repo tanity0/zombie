@@ -94,6 +94,7 @@ import {
   ZERO_NUISANCE, NUISANCE_TYPES,
   nextKomaKind, KOMA_BASE_MS, KOMA_EXTENSION_MAX_MS,
   chaffWeightsForKoma, chaffTargetForKoma, bossRelaxChaffTarget, rampIntervalForKoma, cdForKoma, stepChaffRamp,
+  isDeepForcedPeak, spawnKomaFor,
   peakRedTier, noRedTierForKoma,
   isScriptCleared, selectRotationPattern, allPatternsSeen,
   type FormationPattern, type NuisanceCounts, type SpecialType, type KomaKind4, type ChaffRampState,
@@ -228,7 +229,10 @@ let bossRelaxLastTrueAt = 0;
 export const resetBossRelaxState = (): void => {
   bossRelaxPrev = false;
   bossRelaxLastTrueAt = 0;
+  deepPeakPrev = false;
 };
+// 深層域の強制ピーク(scriptPuzzle.isDeepForcedPeak)の前フレームの値。出た瞬間の後始末(緩の台本破棄・HUDのコマ表示)に使う。
+let deepPeakPrev = false;
 
 // PACING_PUZZLE.md §7-11c(2): ランク床(決定済み仕様)。既定ON。?rankfloor=0で無効化(比較用)。
 const RANK_FLOOR_ENABLED = typeof window === 'undefined'
@@ -416,6 +420,8 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // リラックスを維持する(撃破/離脱は区別しない)。判定は施設ロックと同型の純関数へ切り出し済み。
   if (bossEngagedRaw) bossRelaxLastTrueAt = gameTime;
   const bossRelax = BOSS_RELAX_ENABLED && bossRelaxWithTail(bossEngagedRaw, bossRelaxLastTrueAt, gameTime);
+  // ★深層域は常にピーク(社長指示2026-11-04)。ボス交戦中の強制リラックスが優先。
+  const deepPeak = !bossRelax && isDeepForcedPeak(playerAreaIdx, useGameStore.getState().deepZoneLocked);
   // PACING_PUZZLE.md §7-11c(2): ランク床(案A)。ステージ×経過msから現在の床を毎tick再計算し、
   // minRankへ焼く(査定側のapplyRankDeltaはstate.minRankを下限として読むので、降格もこれより下へは
   // 落ちない)。?rankfloor=0で無効化(常に1=床なし)。
@@ -512,9 +518,17 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
 
   // M6(§4-D): 台本の「片付き」駆動ローテーション(通常/ピーク中のみ)。時間では切り替えない。
   const inScriptKoma = koma.kind === 'normal' || koma.kind === 'peak';
+  // 深層域の強制ピーク中は、今のコマが緩でも台本を回す(ピークとして湧く)。コマの査定・切替は今のコマのまま。
+  const scriptKomaNow = inScriptKoma || deepPeak;
+  if (deepPeakPrev !== deepPeak) {
+    // 出た瞬間: 今のコマが緩(リラックス/ハーベスト)なら、深層で回していた台本を破棄(緩に入った時と同じ=邪魔者は自然消化)。
+    if (!deepPeak && !inScriptKoma) { koma.script = null; koma.scriptSpawned = { ...ZERO_NUISANCE }; }
+    deepPeakPrev = deepPeak;
+    useGameStore.setState(st => ({ hudDirector: { ...st.hudDirector, koma: deepPeak ? 'peak' : koma.kind } }));
+  }
   const scriptCleared = koma.script == null
     || isScriptCleared(nuisanceTarget(koma.script), koma.scriptSpawned, aliveNuisance);
-  if (inScriptKoma && scriptCleared && koma.elapsedMs < KOMA_BASE_MS) {
+  if (scriptKomaNow && scriptCleared && (koma.elapsedMs < KOMA_BASE_MS || deepPeak)) {
     // コマの基本時間内なら次の台本を引く(基本=現ランク・時々1ランク下を混ぜる。未見優先・直前禁止)。
     // 40秒到達後はもう引かない=現台本の片付きがコマ切替の合図になる(下の切替判定)。
     const picked = selectRotationPattern(
@@ -533,11 +547,12 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // ①コマ時計の凍結(社長裁定v0.25.2412): ボス戦は4コマ周期の「幕間」として扱い、倒したら続きから
   // 再開する。上書き方式(kindだけ差し替え)だと戦闘中に周期が空回りして、ボス撃破直後にいきなり
   // ピークが来る等の事故になる。
-  if (!bossRelax) koma.elapsedMs += deltaTime * 1000;
+  // 深層域の強制ピーク中も同じく凍結(出たら止めた所から続き=「深層域を出ると通常サイクルに戻る」)。
+  if (!bossRelax && !deepPeak) koma.elapsedMs += deltaTime * 1000;
   const baseDone = koma.elapsedMs >= KOMA_BASE_MS;
-  const switchNow = inScriptKoma
+  const switchNow = !deepPeak && (inScriptKoma
     ? ((baseDone && scriptCleared) || koma.elapsedMs >= KOMA_BASE_MS + KOMA_EXTENSION_MAX_MS)
-    : baseDone;
+    : baseDone);
   if (switchNow) {
     // 査定(§3-B/4-C 2段構え): 通常末=仮査定 / ピーク末=検証査定(確定は次の通常開始時に反映)。
     if (koma.kind === 'normal') {
@@ -611,13 +626,13 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   const rank = puzzleClockRef.current.rank;
   const capRaw = capForState(puzzleClockRef.current);
   // 締め(§3-D・通常/ピーク限定): 無被弾15秒+(Perf>=0.6 or 盤面<目標が15秒継続)。緩め優先。
-  const tightenedNow = inScriptKoma && !softenedNow
+  const tightenedNow = scriptKomaNow && !softenedNow
     && msSinceLastHit >= TIGHTEN_NO_HIT_MS
     && (directorRef.current.state.performance >= TIGHTEN_PERF_MIN || koma.belowTargetMs >= TIGHTEN_STARVE_MS);
   // ③湧きのパラメータだけ 'relax' として読む(コマ自体の kind は書き換えない=①の凍結と両立)。
   // リラックス = チャフ目標が上限の40% / 湧きCDがランク基準の2倍。**ゼロではない**ので、
   // 弾薬・回復のドロップ経路は細るだけで止まらない(長期戦で枯れない)。
-  const spawnKoma = bossRelax ? 'relax' : koma.kind;
+  const spawnKoma = spawnKomaFor(koma.kind, bossRelax, deepPeak);
   // ★v0.25.3495(社長指示「リラックスさせて」): AIディレクターのRELAXが持つ湧きレバー2本
   // (湧き間隔/盤面上限)をここで初めて実際に効かせる。従来この2本は旧スポーナー
   // (!puzzleActiveNow)しか読んでおらず、通常プレイでは死んでいた(aiDirector.ts の
@@ -654,7 +669,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     dtMs: deltaTime * 1000,
     komaTarget: komaChaffTarget,
     rampIntervalMs: rampIntervalForKoma(spawnKoma, tightenedNow),
-    holdIncrease: koma.kind !== 'harvest' && msSinceLastHit < 10000, // §3-A被弾ホールド(盛り演出のハーベストは対象外)
+    holdIncrease: spawnKoma !== 'harvest' && msSinceLastHit < 10000, // §3-A被弾ホールド(盛り演出のハーベストは対象外)
     // v0.25.3705(社長裁定①): ピークは目標を即スナップ=バナー「多数の変異体を検知」と圧の立ち上がりを
     // 一致させる(bossRelax中はspawnKomaが'relax'になるので自動的にスナップしない)。
     snapUp: spawnKoma === 'peak',
@@ -663,10 +678,10 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   // v0.25.3177: 緩コマ(relax/harvest)は**ノルマ0**を渡すだけで新規投入が止まる(欠員判定が
   // 「出した数 < ノルマ」になったため)。在席ぶんの盤面枠は下の Math.max(ノルマ, 在籍数) が確保する
   // =旧 noNewSupplyNuisanceTarget と同じ結果。
-  const nuisanceTargetCounts = inScriptKoma && koma.script
+  const nuisanceTargetCounts = scriptKomaNow && koma.script
     ? nuisanceTarget(koma.script)
     : ZERO_NUISANCE;
-  const areaForSpecial = inScriptKoma ? playerAreaIdx : -1;
+  const areaForSpecial = scriptKomaNow ? playerAreaIdx : -1;
   const wantedNuisance = NUISANCE_TYPES.reduce((s, t) => s + Math.max(nuisanceTargetCounts[t], aliveNuisance[t]), 0);
   const wantedSpecial = (aliveSpecial.screamer ?? 0) + (aliveSpecial.ghost ?? 0)
     + (inScriptKoma ? 0 : 0); // 特別枠の欠員はdecideNextSpawnが埋める(目標計上は在席+欠員でなく在席のみ=控えめ側)
@@ -708,7 +723,7 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
     // ★v0.25.3546(社長裁定「①の1は入れていい」): ピークのコマの**最初のチャフ**を赤にする。
     // 追加で湧かせるのではなく既存の1体に色を乗せるだけなので、盤面数・湧きCD・バースト禁止(§0.5)
     // の規律には一切触れない。判定の理由と経緯は scriptPuzzle.ts の `peakRedTier` に集約してある。
-    const forcedTier = peakRedTier(koma.kind, decision.slot, koma.peakRedSpawned);
+    const forcedTier = peakRedTier(spawnKoma, decision.slot, koma.peakRedSpawned);
     // PACING_PUZZLE.md §9-3①(台本nuisance枠の実体化): decision.type==='pumpkin' の時だけ
     // resolvePumpkinTier で実際に湧かせる型を差し替える。帳簿(scriptSpawned・下)は decision.type
     // (='pumpkin')のまま消化する=実体化のみの差し替え。

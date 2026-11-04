@@ -191,6 +191,19 @@ export const KOMA_START_KIND: KomaKind4 = 'harvest';
 export const nextKomaKind = (kind: KomaKind4): KomaKind4 =>
   KOMA_ORDER[(KOMA_ORDER.indexOf(kind) + 1) % KOMA_ORDER.length];
 
+/**
+ * ★深層域は常にピーク(社長指示2026-11-04「常に強制ピーク状態(深層域を出ると通常サイクルに戻る)」)。
+ * プレイヤーが深層域(区域4)に居て、深層域が解錠済み(ゲート2撃破後=セピア・逆再生BGMと同じ条件)の間だけ真。
+ * 真の間、湧きは**ピークのコマとして**読み(チャフ満量・台本・特別枠・赤い個体)、4コマの時計は止める
+ * (ボス戦の強制リラックスと同じ「幕間」扱い)=出たら止めた所から通常サイクルの続きに戻る。
+ * ボス交戦中の強制リラックスの方が優先(ボス戦の難しさは雑魚の数から来ない=v0.25.2412)。
+ */
+export const isDeepForcedPeak = (playerAreaIdx: number, deepZoneLocked: boolean): boolean =>
+  playerAreaIdx >= 4 && !deepZoneLocked;
+/** 湧きのパラメータを読むコマ(コマ自体の kind は書き換えない)。ボス交戦中=緩 > 深層域=ピーク > 今のコマ。 */
+export const spawnKomaFor = (kind: KomaKind4, bossRelax: boolean, deepPeak: boolean): KomaKind4 =>
+  bossRelax ? 'relax' : deepPeak ? 'peak' : kind;
+
 export const KOMA_BASE_MS = 40000;          // 各コマ基本40秒(社長決定v0.25.1384)
 export const KOMA_EXTENSION_MAX_MS = 30000; // 通常/ピークの処理待ち延長上限(叩き台。超えたら強制切替)
 

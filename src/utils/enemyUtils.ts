@@ -754,6 +754,15 @@ export const areaIndexForPos = (x: number, y: number): number => {
 // エリア基礎難易度倍率(社長指定)。最終倍率 = エリア基礎 × 色付き倍率(時間スケールは廃止)。
 // export: §6.38(賞金首)のHPスポーン後パッチ(2000×実効難易度倍率)が同じ表を引くため。
 export const AREA_BASE_DIFFICULTY = [1.0, 1.2, 1.45, 1.75, 2.1];
+/**
+ * ★深層域の HP・攻撃力(社長指示2026-11-04「深層域はHP・攻撃力が4倍」)。**実際に深層域(区域4)で湧いた個体だけ**に、
+ * 上の表の 2.1 に代えて掛ける。時間で迫る仮想区域(timeDifficulty・10分で区域4相当)は表の 2.1 のまま=
+ * 浅い場所で10分を過ぎても4倍にはならない(「深層域は」の指示の範囲だけを変える)。速さ・色の率は従来どおり。
+ * 固定強度の型(死神・裏ボス・変異体ほか)と研究所の敵は従来どおり対象外。
+ */
+export const DEEP_ZONE_STRENGTH_MULT = 4;
+export const areaStrengthBase = (realArea: number, effArea: number): number =>
+  realArea >= 4 ? DEEP_ZONE_STRENGTH_MULT : lerpAreaTable(AREA_BASE_DIFFICULTY, effArea);
 // エリア別の「速さ」倍率(社長指定v0.25.2317)。敵の移動速度と敵弾の弾速に掛ける。
 // 研究対象区域までは等速(1.0)、デンジャー以降で 1.2 → 1.5 → 2.0 と上がる。
 // HP/攻撃力(AREA_BASE_DIFFICULTY)とは別軸=「硬さ」ではなく「捌く難しさ」で深さを表現する。
@@ -1034,7 +1043,7 @@ const buildEnemy = (
   // で強さ/速度のテーブルを引く(8:00で最深部相当)。**色付き(レア)率は上の rollColorTierForArea が
   // 実エリアのまま引いている=エリア固定(社長指示)。**
   const effArea = fixed ? area : effectiveDifficultyArea(area, gameTime);
-  const areaBase = fixed ? 1 : lerpAreaTable(AREA_BASE_DIFFICULTY, effArea);
+  const areaBase = fixed ? 1 : areaStrengthBase(area, effArea);
   // 社長指定v0.25.2317: エリアが深いほど動きが速くなる(固定強度タイプは対象外)。時間軸も同様に迫る。
   const areaSpeed = fixed ? 1 : lerpAreaTable(AREA_SPEED_MULT, effArea);
   // research/STAGE_DIFFICULTY.md: ステージ難度の階段(雑魚)。**攻撃係数は diffDmg 自体に掛ける**
