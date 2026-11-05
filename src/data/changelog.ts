@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5368', items: [
+    '武将の祠は画面の端の矢印にも地図にも出なくなった。自分の足で探す',
+  ] },
   { version: '0.25.5367', items: [
     '跳弾が出ると、跳ねた所に小さな金の火花と「キン」という音',
     'エコーショット・ファイアシューター・ゴーストシューターも、出た瞬間にそれぞれの光と音で分かる。オーバークロックにも音',

@@ -10362,7 +10362,7 @@ export class PixiScene {
       { kind: 'armory', pos: !s.armoryTaken ? s.armory : null },
       { kind: 'police', pos: !s.policeTaken ? s.police : null },
       // 武将の祠(3つ・id で区別)。取った祠は出さない。
-      ...s.shrines.map(sh => ({ kind: 'shrine' as const, id: `shrine-${sh.slot}`, pos: sh.takenAt === undefined ? { x: sh.x, y: sh.y } : null })),
+      // 武将の祠はマークに出さない(社長指示2026-11-05)=画面端の矢印・地図・結果画面のどこにも載せない。
     ];
     // 交戦中のボス(社長指示v0.25.2657「(ゲーム中も)ボス交戦中は画面外のボスマーク表示」/
     // v0.25.2658「**交戦中だけ**」)。誰がボスか・交戦中かの定義は utils/bossMarker.ts に1本化

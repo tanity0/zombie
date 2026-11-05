@@ -24,7 +24,7 @@ const readPauseMap = (): PauseMapData | null => {
   const pois = getRunPois(s.hiddenBoss, [
     { kind: 'hospital', pos: s.hospital }, { kind: 'armory', pos: s.armory }, { kind: 'police', pos: s.police },
     // 武将の祠(取った祠は出さない=寄り道の「取り終えたら消す」と同じ)。
-    ...s.shrines.map(sh => ({ kind: 'shrine' as const, id: `shrine-${sh.slot}`, pos: sh.takenAt === undefined ? { x: sh.x, y: sh.y } : null })),
+    // 武将の祠は地図に出さない(社長指示2026-11-05「武将の祠はマークに出さない」)。
   ]).filter(q => isPoiRevealed(q, s.baseSites));
   const taken: Partial<Record<PauseMapData['pois'][number]['kind'], boolean>> = {
     shrine: false,

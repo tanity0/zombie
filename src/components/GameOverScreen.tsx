@@ -417,19 +417,18 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const hospitalPos = useGameStore(s => s.hospital);
   const armoryPos = useGameStore(s => s.armory);
   const policePos = useGameStore(s => s.police);
-  const shrines = useGameStore(s => s.shrines);
   const reachPois = useMemo(() => {
     const label: Record<string, string> = { boss: '裏ボスの巣', hospital: '廃病院', armory: '武器庫', police: '警察署', cave: '洞窟', shrine: '武将の祠' };
     return getRunPois(hiddenBoss, [
       { kind: 'hospital', pos: hospitalPos },
       { kind: 'armory', pos: armoryPos },
       { kind: 'police', pos: policePos },
-      ...shrines.map(sh => ({ kind: 'shrine' as const, id: `shrine-${sh.slot}`, pos: { x: sh.x, y: sh.y } })),
+      // 武将の祠は結果画面の到達の断面にも出さない(社長指示2026-11-05「武将の祠はマークに出さない」)。
     ])
       .filter(p => isPoiRevealed(p, baseSites))
       // 祠は3つあるので部位で呼び分ける(どの深さに何があったか読めるように・名前は一覧の key も兼ねる=監査#6)。
       .map(p => ({ dist: Math.hypot(p.x, p.y), label: SHRINE_LABEL_BY_ID[p.id] ?? label[p.kind] ?? p.kind, kind: p.kind }));
-  }, [hiddenBoss, hospitalPos, armoryPos, policePos, shrines, baseSites]);
+  }, [hiddenBoss, hospitalPos, armoryPos, policePos, baseSites]);
 
   // ハイスコア更新(ベンチ以外。死亡/クリア問わずスコアを記録)。更新できたら HIGH SCORE 表示。
   const [isHighScore, setIsHighScore] = useState(false);
