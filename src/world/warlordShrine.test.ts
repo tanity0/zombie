@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   assignShrineSectors, shrinePosForSector, SHRINE_DIST, SHRINE_SLOTS, shrineRect, resolveShrineCollision,
-  shrineCircleAt, shrineCircleCenter, tickShrineDwell, SHRINE_DWELL_MS,
+  shrineCircleAt, shrineCircleCenter, tickShrineDwell, SHRINE_DWELL_MS, shrineMarkVisible, SHRINE_MARK_NEAR_DIST,
 } from './warlordShrine';
 import { AREA_THRESHOLDS } from '../utils/enemyUtils';
 import { POI_SECTORS } from './pois';
@@ -54,5 +54,15 @@ describe('武将の祠(research/POI_TOUCH_SHRINE.md §2)', () => {
     expect(d.done).toBe(true);
     expect(tickShrineDwell(d.dwellMs, true, 20).done).toBe(false);
     expect(tickShrineDwell(1500, false, 16).dwellMs).toBe(0);
+  });
+});
+
+// 社長指示2026-11-05「祠は近くまで来たら表示で」。
+describe('祠の印は近くまで来た時だけ', () => {
+  it('近く(SHRINE_MARK_NEAR_DIST 以内)で取っていない祠だけ真', () => {
+    const sh = { slot: 'body' as const, x: 9000, y: 0 };
+    expect(shrineMarkVisible(sh, 9000 - SHRINE_MARK_NEAR_DIST + 10, 0)).toBe(true);
+    expect(shrineMarkVisible(sh, 9000 - SHRINE_MARK_NEAR_DIST - 10, 0)).toBe(false);
+    expect(shrineMarkVisible({ ...sh, takenAt: 1 }, 9000, 0)).toBe(false);
   });
 });

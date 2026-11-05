@@ -34,6 +34,15 @@ export const SHRINE_DISPLAY_H = 170;
 /** 当たり判定=土台(段)だけ。絵(約460〜500×580〜630)の下の段の幅に合わせる。 */
 export const SHRINE_HITBOX_W = 96;
 export const SHRINE_HITBOX_H = 30;
+/**
+ * 画面端の矢印に祠を出す距離(社長指示2026-11-05「祠は近くまで来たら表示で」)。遠くからは案内しない(地図・結果画面には出さない)。
+ * 1600=スマホ縦で画面の外の、すぐそこ(画面の縦半分 約470 の3倍強)。
+ */
+export const SHRINE_MARK_NEAR_DIST = 1600;
+/** 祠の印を出すか(取っていない祠で、プレイヤーが近い時だけ)。 */
+export const shrineMarkVisible = (s: ShrineState, px: number, py: number): boolean =>
+  s.takenAt === undefined && Math.hypot(px - s.x, py - s.y) <= SHRINE_MARK_NEAR_DIST;
+
 /** 取った後、祠が崩れ去るまで(ms)。社長指示2026-11-03「取ったら祠は崩れ去る」。前30%は震え、残りで傾きながら加速して沈む(城の崩落と同じ型)。 */
 export const SHRINE_CRUMBLE_MS = 2000;
 export const SHRINE_CRUMBLE_TREMOR_FRAC = 0.3;

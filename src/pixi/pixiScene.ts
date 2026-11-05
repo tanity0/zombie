@@ -358,7 +358,7 @@ import { ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryRect, ARMORY_SCRAP_COST } from 
 import { POLICE_FADE_MS, POLICE_DISPLAY_H, policeRect } from '../world/police';
 import { touchesFromBelow, rectsOverlap, TOUCH_SIDE_PAD } from '../world/obstacles';
 import {
-  SHRINE_TEXTURE, SHRINE_DISPLAY_H, SHRINE_CRUMBLE_MS, SHRINE_CRUMBLE_TREMOR_FRAC, SHRINE_CIRCLE_RADIUS, SHRINE_CIRCLE_REVEAL_DIST, SHRINE_DWELL_MS, shrineCircleCenter,
+  SHRINE_TEXTURE, SHRINE_DISPLAY_H, SHRINE_CRUMBLE_MS, SHRINE_CRUMBLE_TREMOR_FRAC, SHRINE_CIRCLE_RADIUS, SHRINE_CIRCLE_REVEAL_DIST, SHRINE_DWELL_MS, shrineCircleCenter, shrineMarkVisible,
 } from '../world/warlordShrine';
 import { SECRET_DISPLAY_H, SECRET_MIN_DIST, secretSepiaMult } from '../world/secretPois';
 import { HERO_DOG_BITE_INTERVAL_MS, HERO_DOG_DEATH_HOLD_MS, HERO_DOG_DEATH_FADE_MS, heroDogDeathPose } from '../utils/heroDog';
@@ -10362,7 +10362,9 @@ export class PixiScene {
       { kind: 'armory', pos: !s.armoryTaken ? s.armory : null },
       { kind: 'police', pos: !s.policeTaken ? s.police : null },
       // 武将の祠(3つ・id で区別)。取った祠は出さない。
-      // 武将の祠はマークに出さない(社長指示2026-11-05)=画面端の矢印・地図・結果画面のどこにも載せない。
+      // 武将の祠は遠くからはマークに出さない(社長指示2026-11-05)。近くまで来た時だけ画面端の矢印に出す(「祠は近くまで来たら表示で」)。
+      ...s.shrines.map(sh => ({ kind: 'shrine' as const, id: `shrine-${sh.slot}`,
+        pos: shrineMarkVisible(sh, s.player.x + s.player.width / 2, s.player.y + s.player.height / 2) ? { x: sh.x, y: sh.y } : null })),
     ];
     // 交戦中のボス(社長指示v0.25.2657「(ゲーム中も)ボス交戦中は画面外のボスマーク表示」/
     // v0.25.2658「**交戦中だけ**」)。誰がボスか・交戦中かの定義は utils/bossMarker.ts に1本化
@@ -10378,8 +10380,9 @@ export class PixiScene {
       // ★下げるのは**裏ボス本人が**交戦中のマークで出ている時だけ(旧: 賞金首・英雄などのマークが1つでもあると
       //   巣の矢印が消え、裏ボスの印がどちらも出ない空白ができた)。
       .filter(p => !(p.kind === 'boss' && liveHiddenBoss !== undefined && markedBosses.includes(liveHiddenBoss)))
-      .filter(p => isPoiRevealed(p, s.baseSites))
-      .filter(p => isPoiInPlayerArea(p, this.poiArea)) // エリアは巣(固定の位置)で決める
+      // 祠は「近くまで来たら」が唯一の条件(拠点の解放・区域の絞り込みは掛けない=近いのに出ないを作らない)。
+      .filter(p => p.kind === 'shrine' || isPoiRevealed(p, s.baseSites))
+      .filter(p => p.kind === 'shrine' || isPoiInPlayerArea(p, this.poiArea)) // エリアは巣(固定の位置)で決める
       .map(p => (p.kind === 'boss' && liveHiddenBoss)
         ? { ...p, live: true, x: liveHiddenBoss.x + liveHiddenBoss.width / 2, y: liveHiddenBoss.y + liveHiddenBoss.height / 2 }
         : p);

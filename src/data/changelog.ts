@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5369', items: [
+    '武将の祠は、近くまで来ると画面の端に印が出る。地図には出ない',
+  ] },
   { version: '0.25.5368', items: [
     '武将の祠は画面の端の矢印にも地図にも出なくなった。自分の足で探す',
   ] },
