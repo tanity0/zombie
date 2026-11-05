@@ -3073,6 +3073,8 @@ export type VisualEffect =
       width: number;
       createdAt: number;
       duration: number;
+      /** 広がりを減速させ(出始めが速く止まり際で緩む)、後半で消す。未指定=従来の一定の速さ(既存の全用途は不変)。 */
+      easeOut?: boolean;
     }
   | {
       // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。

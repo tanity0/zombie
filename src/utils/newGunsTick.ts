@@ -11,7 +11,7 @@
 // (既存の銃・近接・サブの挙動は1bitも変わらない)。
 import type { Enemy, Player, Projectile } from '../types/game';
 import {
-  notifySkillProc,
+  notifySkillProc, spawnSkillProcFx,
   useGameStore, isKatanaMode, isAttackLocked, isSeekerActive, skillLevel, SKATER_LOCK_ENABLED,
   skillOutgoingDamageMult, skillBloodAwakenDamageMult, resolveShieldWalls, shieldPlayableCtx, PLAYER_MELEE_SWING_MS,
   sniperGunMult, skillComboMasterMult, bossCritStopPatch,
@@ -318,7 +318,10 @@ const tryFireBlob = (gameTime: number): void => {
   }));
   // スキル発動の表示: ゴーストシューターで弾倉が減らなかった(fireWeapon と同じ判定)。
   const magAfter = useGameStore.getState().player.weapons.find(w => w.id === gun.id)?.magazine ?? 0;
-  if (magAfter >= (gun.magazine ?? 0) && skillLevel(p, 'ghost-shooter')) notifySkillProc('ghost-shooter');
+  if (magAfter >= (gun.magazine ?? 0) && skillLevel(p, 'ghost-shooter')) {
+    notifySkillProc('ghost-shooter');
+    spawnSkillProcFx('ghost-shooter', sx, sy); // 銃口を白く小さく光らせる(社長指示2026-11-05)
+  }
   playSfx(gunFireSfxKey(gun.category, gun.key));
   const rs = recoilSpecForWeapon(gun);
   st.triggerKick(rs.kickPx, rs.kickMs, -dirX, -dirY, rs.overshoot);

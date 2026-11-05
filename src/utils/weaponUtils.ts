@@ -1,5 +1,5 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
-import { useGameStore, notifySkillProcFor, bulletBlockersAround, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
+import { useGameStore, notifySkillProcFor, spawnSkillProcFx, bulletBlockersAround, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
 import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 発射間隔を ×1.5 速く(awakenFireRateMult)
 import { projectileHitCritChance } from './critPenalty';
 import { classifyProjectileDamageChannel, recordMeleeFromGun } from './botTelemetry';
@@ -1307,6 +1307,9 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
   if (fireShooterShot) {
     useGameStore.setState(state => ({ player: { ...state.player, fireShooterCdUntil: gtFire + 3000 } }));
     notifySkillProcFor(player, 'fire-shooter');
+    // 爆発弾になった一発の出どころ(手元)を小さく光らせる(社長指示2026-11-05)。守護霊・幻影の分は出さない(本人だけ)。
+    // 位置=銃口(体の中心から射撃の向きへ少し先)。胴体に重ねると「自分が光った/被弾した」に見える(監査#4)。
+    if (!player.pseudoActor) spawnSkillProcFx('fire-shooter', player.x + player.width / 2 + baseDir.x * 26, player.y + player.height / 2 + baseDir.y * 26);
   }
   const FIRE_SHOOTER_RADIUS = 66; // = HEAVY_GRENADE_RADIUS
   // 社長指示v0.25.3300 ファイアシューター覚醒(Lv3): 爆発弾が大爆発になる(半径×1.8=
@@ -1439,7 +1442,11 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       },
     };
   });
-  if (ghostShooterProc) notifySkillProcFor(player, 'ghost-shooter');
+  if (ghostShooterProc) {
+    notifySkillProcFor(player, 'ghost-shooter');
+    // 弾倉が減らなかった一発=手元を白く小さく光らせる(社長指示2026-11-05)。本人だけ。
+    if (!player.pseudoActor) spawnSkillProcFx('ghost-shooter', player.x + player.width / 2 + baseDir.x * 26, player.y + player.height / 2 + baseDir.y * 26);
+  }
 
   // UNIQUE_WEAPONS.md §16-2/§16-5(バッチD・ロケットランチャー): 「溜め(500ms)」の実装フック。
   // 発射直後の弾を速度0のままROCKET_CHARGE_MSだけその場に置く(=通常の敵衝突判定がそのまま

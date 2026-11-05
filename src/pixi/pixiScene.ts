@@ -35142,11 +35142,13 @@ export class PixiScene {
     const base = (c as { __ringBase?: number }).__ringBase ?? 64;
     const ringSp = c.children[0] as Sprite;
     const coreSp = c.children[1] as Sprite;
-    const radius = e.startRadius + (e.endRadius - e.startRadius) * t;
+    // easeOut=減速して止まり、後半で消える(スキル発動の輪・慣性)。未指定は従来どおり一定の速さ。
+    const tr = e.easeOut ? 1 - (1 - t) ** 3 : t;
+    const radius = e.startRadius + (e.endRadius - e.startRadius) * tr;
     const s = radius / base;
     c.visible = true;
     c.position.set(e.x, e.y);
-    c.alpha = 1 - t;
+    c.alpha = e.easeOut ? 1 - t * t : 1 - t;
     ringSp.scale.set(s);
     ringSp.alpha = this.cssAlpha(e.color);
     coreSp.scale.set(s);

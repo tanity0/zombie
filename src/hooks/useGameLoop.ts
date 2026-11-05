@@ -260,7 +260,7 @@ import {
 } from '../utils/supportSniper';
 import { activeFlareTargets, pruneFlares } from '../utils/flareGun';
 import { buildBomberMinis, bomberMiniCount } from '../utils/bomberScatter';
-import { rollBomberScatterAndNotify, notifySkillProc, warlordAutoSlashMult } from '../store/gameStore'; // スキル発動の表示(通信欄の下)
+import { rollBomberScatterAndNotify, notifySkillProc, spawnSkillProcFx, warlordAutoSlashMult } from '../store/gameStore'; // スキル発動の表示(通信欄の下)
 import { computeFirstAidKitTick, isFirstAidKitEmpty, createFirstAidKitState, type FirstAidKitAmmoType, type FirstAidKitState } from '../utils/firstAidKit';
 
 // GHOST-SUBS-FINAL(v0.25.2563): 守護霊の救急鞄の初期在庫。**型はプレイヤーと同じ**FirstAidKitStateで、
@@ -793,8 +793,6 @@ const GATE_ARENA_RADIUS = 300;         // §5.21-追補7: ゲート2専用の広
 // (判定は持たない純粋な演出)。drawImageEffect は t>0.7 からフェードするので、900なら
 // 約630ms はっきり見えて残り270msで消える。
 const CROSSBOW_ARROW_STUCK_MS = 900;
-// ★社長指示2026-09-11: 跳弾(リコシェ)の起点フラッシュの尺。「小さめ」=既定320msより短く一瞬で消す。
-const RICOCHET_FLASH_MS = 180;
 // ゲート1専用半径(社長指示v0.25.3188「ゲート1の広さを1.5倍に」): 300→450。ゲート2は据え置き
 // (ミゲルの周回半径250=GATE_ARENA_RADIUS基準の式が生きているため、共用のまま広げると巻き添えになる)。
 // 拘束・縁湧き・脱走判定は activeEvent.radius(イベントに保存した値)を読むので、生成箇所だけで揃う。
@@ -16005,7 +16003,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 半径は既存の最小段 GLOW_R_XS(「新しい数字を発明しない」=glowTiersの6段から取る)。
               // ★noShadow=true: CLAUDE.md の実測「**重いのは強glowが落とす投影影**(1個≈2ms=予算の
               // 約12%)。glowの絵そのものは無料」に従い、投影影への参加だけを断つ(見た目は同じ)。負荷1/10。
-              useGameStore.getState().spawnGlow(ox, oy, GLOW_R_XS, 'rgba(253,230,138,', RICOCHET_FLASH_MS, true);
+              // ★社長指示2026-11-05「跳弾発動時は、発動ポイントを小さく光らせて、SE鳴らして」: 光を少し長く+細い輪(spawnSkillProcFx)。
+              // 音は notifySkillProc の入口(本人の弾だけ)。
+              spawnSkillProcFx('ricochet', ox, oy);
             }
           }
 
@@ -16019,6 +16019,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             echoLv && rollEchoShot(echoLv)
           ) {
             if (!isGhostShot && !isEscortShot) notifySkillProc('echo-shot');
+            spawnSkillProcFx('echo-shot', hitPt.x, hitPt.y); // 写しが生まれた所を小さく光らせる(社長指示2026-11-05)
             addProjectile({
               ...projectile,
               id: `proj-echo-${projectileId}-${Date.now()}`,

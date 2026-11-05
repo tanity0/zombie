@@ -80,6 +80,8 @@ export type SfxKey =
   | 'katana-dash'
   | 'counter'
   | 'satellite-release' // 衛星弾を放つ瞬間(counter.mp3 の金属の鳴りを高く・小さく流用)
+  | 'ricochet-ping'   // 跳弾が発動した瞬間(counter.mp3 をさらに高く・短く・小さく=弾が金属に弾かれる「キン」・社長指示2026-11-05)
+  | 'skill-proc-chime' // 確率スキルが発動した瞬間(エコー/ファイア/ゴーストシューター・オーバークロック。counter.mp3 を少し高く・短く)
   | 'enemy-hit'
   | 'enemy-kill'
   | 'pickup'
@@ -446,6 +448,26 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   },
   // 衛星弾を放つ瞬間の「キン」(research/NEW_GUNS.md §3・社長決定2026-10-18「専用の音」)。新しい素材は作らず、
   // 金属の鳴りが澄んでいる counter.mp3 を少し高く・小さく回して、カウンター成功(等速・大音量)と聞き分けられるようにする。
+  // ★スキル発動の音(社長指示2026-11-05「跳弾発動時は…SE鳴らして」「他のスキルにもスキル発動を分かりやすくする演出」)。
+  // 新しい素材は使わず counter.mp3 の金属の鳴りを流用(衛星弾と同じ作法)。跳弾は頻繁に起きるので一番高く・短く・小さく、間隔を空ける。
+  'ricochet-ping': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/counter.mp3`,
+    volume: 0.38,
+    playbackRate: 1.9,
+    maxDurationMs: 220,
+    fadeOutMs: 120,
+    minIntervalMs: 90,
+  },
+  // カウンター成功の「キン」を何本も流用すると本物のカウンターの音が埋もれる(クリエイティブ監査#5)ので、こちらはロックオンの電子音を短く。
+  // 高さはスキルごとに呼び手が変える(gameStore.SKILL_PROC_SFX)。
+  'skill-proc-chime': {
+    src: `${import.meta.env.BASE_URL}audio/sfx/homing-lock.mp3`,
+    volume: 0.5,
+    playbackRate: 1.25,
+    maxDurationMs: 260,
+    fadeOutMs: 120,
+    minIntervalMs: 120,
+  },
   'satellite-release': {
     src: `${import.meta.env.BASE_URL}audio/sfx/counter.mp3`,
     volume: 0.6,

@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import type { TutorialSlide } from '../data/tutorials';
 import { isAvatarId, type AvatarId } from '../data/avatars';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
+import type { SfxKey } from '../audio/audioManager';
 import { AWAKEN_CUTIN_MS } from '../utils/awakenCutin'; // SKILL_BUILD_REDESIGN.md §24
 import { generateEquipmentChoices, generateSkillUpgradeChoices, generateReplacementSkillOption, SCRAP_REWARD as LEVELUP_SCRAP_REWARD, STAT_CARD_HP, STAT_CARD_ATK } from '../utils/upgradeUtils';
 import { canAcquireRunSkill, rerollPrice, MAX_BANISH_PER_RUN, MAX_CARRY_SKILLS, type RunSkillDraftInput } from '../utils/runSkillDraft';
@@ -5110,9 +5111,61 @@ export const applyRescueSignalProc = (
 // プレイヤー本人のスキルが効いた瞬間に呼ぶ。守護霊・幻影・護衛の分は呼び手が除くか、notifySkillProcFor が除く。
 // 並び・数え方・消える時刻は utils/skillProcFeed。
 let skillProcSeq = 0;
+/**
+ * 確率スキルが効いた瞬間の音(社長指示2026-11-05)。表示(通信欄の下の行)と同じ入口で鳴らす=鳴らし忘れが出ない。
+ * 光と輪は発動した場所が要るので呼び手が spawnSkillProcFx を呼ぶ。救難信号・ボマー・シーカー・寄生は結果そのものが
+ * 目と耳に届く(援軍・爆弾・輪・「使役!」)ので音を足さない(二重に鳴らさない)。
+ */
+// 音の高さはスキルごとに変える(耳でどれが出たか分かる・クリエイティブ監査#6)。跳弾は連発するので毎回少し揺らす(#7)。
+// エコーは同じ音を少し遅れてもう一度(写し)。
+const SKILL_PROC_SFX: Partial<Record<SkillKey, { key: SfxKey; rate: number; jitter?: number; echoMs?: number }>> = {
+  ricochet: { key: 'ricochet-ping', rate: 1, jitter: 0.06 },
+  'echo-shot': { key: 'skill-proc-chime', rate: 1, echoMs: 60 },
+  'fire-shooter': { key: 'skill-proc-chime', rate: 0.82 },
+  'ghost-shooter': { key: 'skill-proc-chime', rate: 1.22 },
+  overclock: { key: 'skill-proc-chime', rate: 1.08 },
+};
 export const notifySkillProc = (key: SkillKey): void => {
   if (!isSkillProcShown(key)) return; // 確実に起きるスキルは出さない(社長指示2026-11-02)
   useGameStore.setState(s => ({ skillProcFeed: pushSkillProc(s.skillProcFeed, key, Date.now(), ++skillProcSeq) }));
+  const sfx = SKILL_PROC_SFX[key];
+  if (sfx) {
+    const rate = sfx.rate * (1 + (sfx.jitter ? (Math.random() * 2 - 1) * sfx.jitter : 0));
+    void import('../audio/audioManager').then(m => {
+      m.playSfx(sfx.key, 1, undefined, rate);
+      if (sfx.echoMs) setTimeout(() => m.playSfx(sfx.key, 0.6, undefined, rate * 1.12), sfx.echoMs);
+    });
+  }
+};
+/**
+ * 確率スキルが発動した場所を小さく光らせる(社長指示2026-11-05「発動ポイントを小さく光らせて」)。判定なし=攻撃ヴィジュアルの分類②。
+ * 形と尺はスキルの意味で変える(色だけ違う同じ絵にしない・クリエイティブ監査#1)。輪は減速して止まる(慣性)。
+ * 既存の合図(護衛の会心の金の輪 6→30/幅2・撃破の白い小リング 4→28)と寸法をずらす(#2)。色は赤・紫を使わない。負荷1/10。
+ * - 跳弾=小さく鋭く(短い光+細く速い輪)/エコー=輪が2重にずれて生まれる(写し)/ファイア=暖色の光を一回り大きく/
+ *   ゴースト=輪なしの白い光がゆっくり消える(弾倉が減らなかった=幽か)。
+ */
+export const spawnSkillProcFx = (key: SkillKey, x: number, y: number): void => {
+  const st = useGameStore.getState();
+  switch (key) {
+    case 'ricochet':
+      st.spawnGlow(x, y, GLOW_R_XS, 'rgba(253,230,138,', 150, true);
+      st.spawnRing(x, y, 2, 18, 'rgba(253,230,138,0.95)', 1, 150, true);
+      return;
+    case 'echo-shot':
+      st.spawnGlow(x, y, GLOW_R_XS, 'rgba(125,211,252,', 260, true);
+      st.spawnRing(x, y, 4, 22, 'rgba(125,211,252,0.9)', 1.5, 260, true);
+      setTimeout(() => useGameStore.getState().spawnRing(x, y, 8, 36, 'rgba(125,211,252,0.6)', 1.5, 300, true), 70);
+      return;
+    case 'fire-shooter':
+      st.spawnGlow(x, y, GLOW_R_S, 'rgba(251,146,60,', 300, true);
+      st.spawnRing(x, y, 5, 40, 'rgba(249,115,22,0.85)', 3, 280, true);
+      return;
+    case 'ghost-shooter':
+      st.spawnGlow(x, y, GLOW_R_XS, 'rgba(226,232,240,', 480, true);
+      return;
+    default:
+      return;
+  }
 };
 /** 一時停止していた分だけ表示の時刻を先送りする(表示側が再開の時に呼ぶ)。 */
 export const shiftSkillProcFeed = (ms: number): void => {
@@ -7611,7 +7664,7 @@ interface GameState {
   // rot(v0.25.4202): 絵の向き(rad)。VisualEffect側は元から rot を持っていたが、この入口が渡していなかった。
   // cols/additive(社長指示2026-09-16・fx/kill-slash): 横並びシートのコマ送り/加算合成。未指定=従来どおり。
   spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number }) => void;
-  spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number) => void;
+  spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number, easeOut?: boolean) => void;
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
   // noShadow(§24追加・既定false=挙動不変): trueで支配光(syncShadowsV9)への参加を断つ=見た目はそのまま。
@@ -24672,7 +24725,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  spawnRing: (x, y, startRadius, endRadius, color, width = 3, duration = 500) => {
+  spawnRing: (x, y, startRadius, endRadius, color, width = 3, duration = 500, easeOut = false) => {
     { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 変異塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     set(state => ({
@@ -24683,7 +24736,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           id: `fx-ring-${now}-${Math.random().toString(36).slice(2, 6)}`,
           x, y, startRadius, endRadius, color, width,
           createdAt: now,
-          duration
+          duration,
+          ...(easeOut ? { easeOut: true } : {}),
         }
       ]
     }));
