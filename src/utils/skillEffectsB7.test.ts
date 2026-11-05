@@ -6,6 +6,7 @@ import {
   rollVampireHeal, VAMPIRE_PROC_CHANCE, VAMPIRE_HEAL_BY_LEVEL,
   incendiaryBurnParams, INCENDIARY_FLOOR_SMALL_RADIUS, INCENDIARY_FLOOR_LARGE_RADIUS,
   executionShockParams,
+  blastKbFalloff,
   rollGravityShotWell, GRAVITY_SHOT_PULL_SPEED, GRAVITY_SHOT_PULL_MS,
   rollEchoShot,
   barrageKingMult, BARRAGE_KING_PIERCE,
@@ -60,11 +61,11 @@ describe('incendiary-round: Lv1燃焼のみ/Lv2+炎床小/Lv3燃焼強化+炎床
   it('未所持は無効', () => expect(incendiaryBurnParams(0)).toEqual({ dps: 0, durationMs: 0, floorRadius: null }));
 });
 
-describe('execution-shock: 半径80/100/120・近接表示ダメの30/40/50%', () => {
+describe('execution-shock: 半径120/150/180・近接表示ダメの30/40/50%', () => {
   it('Lv1/2/3', () => {
-    expect(executionShockParams(1)).toEqual({ radius: 80, pct: 0.3 });
-    expect(executionShockParams(2)).toEqual({ radius: 100, pct: 0.4 });
-    expect(executionShockParams(3)).toEqual({ radius: 120, pct: 0.5 });
+    expect(executionShockParams(1)).toEqual({ radius: 120, pct: 0.3 });
+    expect(executionShockParams(2)).toEqual({ radius: 150, pct: 0.4 });
+    expect(executionShockParams(3)).toEqual({ radius: 180, pct: 0.5 });
   });
 });
 
@@ -116,4 +117,16 @@ describe('blood-treads: 棘2秒・秒2/3秒・秒3/4秒・秒4(幅24px・tick250
 
 describe('bomb-counter追加(§28-1): 自分中心爆発を大爆発に(半径×1.8)', () => {
   it('叩き台の倍率', () => expect(BOMB_COUNTER_SELF_BLAST_RADIUS_MULT).toBeCloseTo(1.8));
+});
+
+// 社長指示2026-11-05「近場ではノックバックを伸ばし、少し離れたところでは短くする」。
+describe('処刑の爆発: 爆心からの距離でノックバックが短くなる', () => {
+  it('爆心は今より長く、少し離れると今より短く、遠いほど単調に短い', () => {
+    expect(blastKbFalloff(0, 180)).toBeGreaterThan(1.4);
+    expect(blastKbFalloff(180 * 0.5, 180)).toBeLessThan(1);
+    expect(blastKbFalloff(180, 180)).toBeLessThan(0.5);
+    let prev = Infinity;
+    for (let d = 0; d <= 180; d += 10) { const v = blastKbFalloff(d, 180); expect(v).toBeLessThanOrEqual(prev); prev = v; }
+    expect(blastKbFalloff(400, 180)).toBe(blastKbFalloff(180, 180)); // 半径の外は縁の値(呼び手は半径内だけ呼ぶ)
+  });
 });

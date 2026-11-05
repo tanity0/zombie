@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5370', items: [
+    '処刑の爆発が広くなった',
+    '爆発で吹き飛ぶ距離は爆心からの近さで変わる。真ん中の敵は大きく飛び、端の敵はあまり動かない',
+  ] },
   { version: '0.25.5369', items: [
     '武将の祠は、近くまで来ると画面の端に印が出る。地図には出ない',
   ] },

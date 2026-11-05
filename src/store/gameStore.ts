@@ -50,7 +50,7 @@ import {
   INCENDIARY_BURN_TICK_MS,
   incendiaryBurnParams, // v0.25.3300 延焼弾覚醒(感染)の燃焼パラメータ
   iceShotSlowParams, ICE_SHOT_BOSS_EFFECT_MULT, // v0.25.3300 血の履帯覚醒(鈍足)=アイスLv1相当
-  executionShockParams,
+  executionShockParams, blastKbFalloff,
 } from '../utils/skillEffectsB7';
 import { FirstAidKitState, createFirstAidKitState } from '../utils/firstAidKit';
 import { SensorMineState, placeSensorMine, SENSOR_MINE_CAP_BY_LEVEL, SENSOR_MINE_CHARGE_COOLDOWN_MS, sensorMineChargesReady, consumeSensorMineCharge } from '../utils/sensorMine';
@@ -5307,7 +5307,7 @@ const applyMeleeFinishSkillSpread = (
     // 社長指示v0.25.3281「衝撃波が新しい要素になっちゃうので、爆発で揃えて」: 独自の"衝撃波"を
     // やめ、既存の**爆発**要素に統一。①絵=手榴弾の爆発FXと同じ組(橙リング幅5+橙バースト20+
     // 暗赤バースト8+橙グロー) ②判定=「全ての爆発」規約どおり skillExplosionMult を半径/ダメージ
-    // に乗算(エクスプローダーが効く)。Lv別の基礎値(半径80/100/120・30/40/50%)は不変。
+    // に乗算(エクスプローダーが効く)。Lv別の基礎値は半径120/150/180(2026-11-05に1.5倍)・30/40/50%。
     const { radius: baseRadius, pct } = executionShockParams(shockLv);
     const exMult = skillExplosionMult(player);
     const radius = baseRadius * exMult;
@@ -5339,7 +5339,9 @@ const applyMeleeFinishSkillSpread = (
         const shockKb = shockLv >= 3
           ? knockbackSpeedFor(SKILL_BLAST_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED
           : 1;
-        get().knockbackEnemy(e.id, dx / dist, dy / dist, shockKb * exKb, Math.max(3, shockKb) * exKb);
+        // 社長指示2026-11-05: 爆心に近いほど遠くへ・離れるほど短く(blastKbFalloff。上限も同じ倍率で動かす)。
+        const fall = blastKbFalloff(dist, radius);
+        get().knockbackEnemy(e.id, dx / dist, dy / dist, shockKb * exKb * fall, Math.max(3, shockKb) * exKb * fall);
       } else {
         get().spawnBurst(ecx, ecy, '#f97316', 10);
       }

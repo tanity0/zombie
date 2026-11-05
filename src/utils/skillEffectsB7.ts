@@ -60,15 +60,27 @@ export const INCENDIARY_BURN_TICK_MS = 500; // molotovのMOLOTOV_DOT_INTERVAL_MS
 // (CLAUDE.mdの負荷ルール=bounded/event-onlyに反する)。仕様に無いため安全側で裏CDを設ける。
 export const INCENDIARY_FLOOR_CD_MS = 800;
 
-// ---- 処刑の衝撃波(rare): 近接フィニッシュ時 半径80/100/120・近接表示ダメの30/40/50%(KB共通) ----
+// ---- 処刑の衝撃波(rare): 近接フィニッシュ時 半径120/150/180・近接表示ダメの30/40/50% ----
+// 社長指示2026-11-05「爆風範囲を拡大」: 半径を1.5倍(旧80/100/120)。
 export interface ExecutionShock { radius: number; pct: number }
 export const EXECUTION_SHOCK_BY_LEVEL: readonly ExecutionShock[] = [
   { radius: 0, pct: 0 },
-  { radius: 80, pct: 0.3 },
-  { radius: 100, pct: 0.4 },
-  { radius: 120, pct: 0.5 },
+  { radius: 120, pct: 0.3 },
+  { radius: 150, pct: 0.4 },
+  { radius: 180, pct: 0.5 },
 ];
 export const executionShockParams = (level: number): ExecutionShock => EXECUTION_SHOCK_BY_LEVEL[clampLv(level)];
+
+// 社長指示2026-11-05「ノックバックは爆心地からの距離で飛距離が連動して短くなっていく。遠い程、影響を
+// 受けづらい。今より、近場では伸ばし、少し離れたところでは短くする」。
+// 飛距離の倍率(今=1)。爆心で1.6倍、半径の約3割の所で今と同じ、縁で0.35倍。二乗で落ちるので
+// 爆心のまわりだけが大きく飛び、少し離れると急に効きが鈍る。
+export const BLAST_KB_FALLOFF_CENTER = 1.6;
+export const BLAST_KB_FALLOFF_EDGE = 0.35;
+export const blastKbFalloff = (dist: number, radius: number): number => {
+  const t = radius > 0 ? Math.min(1, Math.max(0, dist / radius)) : 1;
+  return BLAST_KB_FALLOFF_EDGE + (BLAST_KB_FALLOFF_CENTER - BLAST_KB_FALLOFF_EDGE) * (1 - t) * (1 - t);
+};
 
 // ---- グラビティショット(rare): 射撃ヒットの20/30/40%で爆縮(引き寄せ120px/s×0.4s・半径100/120/140)
 // (v0.25.3703・社長指示でキル時→ヒット時へ。抽選関数自体は不変=呼び出し時機だけが変わった) ----
