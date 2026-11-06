@@ -132,7 +132,7 @@ import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodD
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
 import {
-  enemyHitReaction, hitReactionStrength, knockbackSpeedMul, knockbackDurationMul, hitStopMul,
+  enemyHitReaction, hitReactionStrength, knockbackSpeedMul, knockbackDurationMul, hitStopMul, hitStopMulForDamage,
   FLINCH_FULL_DAMAGE_FRAC, FLINCH_FULL_DAMAGE_FRAC_BOSS,
 } from '../utils/hitFlinch';
 import { impactDamageOf, mergeImpactEntries, strongestImpact, IMPACT_MELEE_MIN, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
@@ -712,7 +712,8 @@ const SMALL_GLOW_MIN_DURATION_MS = 80;
 // damage landed on a stunned boss (drives the kill.mp3 sound).
 // `killed` = how many enemies the swing killed (drives the zombie death grunt).
 // katanaSwing: 刀を持っている時の振り(攻撃はしない=swung は false のまま・振りの音だけ鳴らす。社長報告2026-11-02「刀装備時にナイフ振るとSEが鳴らない」)。
-export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number; katanaSwing?: boolean };
+// hits: この振りで切った敵の数(命中音の重ねに使う・2026-11-06)。返さない経路は「当たったら1」。
+export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number; katanaSwing?: boolean; hits?: number };
 
 // 制圧イベント(ステージ1メインミッション等のサブクエスト時のみ有効・通常は無効)。
 // 原点中心・半径3200の円周に4か所(90度刻み=東西南北)固定。サークル内10秒で制圧→武器商人がそこへ移動(=安全地帯)。
@@ -2690,11 +2691,16 @@ export const CRIT_LIGHT_GAP_MS = 120;
 // 戦闘の手触り①(v0.25.4269・監査A是正): 近接3経路(カウンター/刀/鞭)は damageEnemy を通らず survivors.push で
 // HPを直接書くので、同じ局所ストップをここから配る。止めている間はノックバックの期限も同じだけ後ろへ
 // (止めが明けた瞬間に満額で飛ぶ)。ボス級は nextHitStunUntil が undefined を返す=何も足さない。
-const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil'>, now: number, shoveToo = false): Partial<Enemy> => {
-  const u = nextHitStunUntil(enemy.type, enemy.hitStunUntil, now);
-  if (u === undefined) return {};
+// ★社長指示2026-11-06「近接で切ってる時の心地よさを増やしたい」: ①止めの長さを**このヒットの重さ**で決める
+// (`hitStopMulForDamage`=damageEnemy と同じ窓口。旧: 倍率なし=一律で、ハンドガン1発より短かった)
+// ②`lastHitDmg` を書く(旧: 近接は書いておらず、のけぞり・跳ね・光の強さが**前回の被弾の値の使い回し**だった)。
+const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil' | 'maxHealth'>, now: number, dmg: number, shoveToo = false): Partial<Enemy> => {
+  const u = nextHitStunUntil(enemy.type, enemy.hitStunUntil, now, hitStopMulForDamage(enemy.type, dmg, enemy.maxHealth));
+  if (u === undefined) return { lastHitDmg: dmg };
   const kbUntil = now + KNOCKBACK_DURATION + (u - now);
-  return shoveToo ? { hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil } : { hitStunUntil: u, knockbackUntil: kbUntil };
+  return shoveToo
+    ? { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil }
+    : { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil };
 };
 let critImpactAt = 0; // spawnCritImpact の光の畳み込み用(Date.now)
 // (MELEE_SWING_SHAKE_* / SHIELD_BASH_SHAKE_* は v0.25.4284 で撤去=近接の揺れも impactShakeFor(ダメージの√・bash ×1.5)へ)
@@ -10021,7 +10027,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + KNOCKBACK_DURATION,
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
-          ...meleeHitStunPatch(enemy, now), // 戦闘の手触り①(v0.25.4269): 近接も局所ストップ(knockbackUntil を上書き=止めの残りぶん後ろ)
+          ...meleeHitStunPatch(enemy, now, dmg), // 戦闘の手触り①(v0.25.4269): 近接も局所ストップ(knockbackUntil を上書き=止めの残りぶん後ろ)
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断(laser-broken遷移+中断CD+体幹'counter')
           ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(melee削り/2/3減速/致命後daze)
@@ -10039,6 +10045,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: 0,
           knockbackVy: 0,
           knockbackUntil: now + 100,
+          lastHitDmg: dmg, // 2026-11-06: のけぞりの強さをこのヒットの重さで(meleeHitStunPatch と同じ)
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: 同上
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
@@ -10350,7 +10357,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       swung: true,
       hit: slashAt.length > 0 || propHit || trapShoves.length > 0 || hasShieldShove,
       finish: finisherHit || bossFinishHit,
-      killed: killed.length
+      killed: killed.length,
+      hits: slashAt.length,
     };
   },
 
@@ -11258,7 +11266,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackUntil: now + KNOCKBACK_DURATION,
           knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: bossSlowUntil(半減)が計算のみで未適用だった漏れ
-          ...(isGhost ? {} : meleeHitStunPatch(enemy, now)), // 戦闘の手触り①(v0.25.4269): 本人の刀だけ局所ストップ
+          ...(isGhost ? { lastHitDmg: dmg } : meleeHitStunPatch(enemy, now, dmg)), // 戦闘の手触り①(v0.25.4269): 本人の刀だけ局所ストップ
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17: 完全気絶カウント/発動を反映(最後に展開して優先)
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
           ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(刀のmelee削り/致命後daze)
@@ -11272,6 +11280,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVx: 0,
           knockbackVy: 0,
           knockbackUntil: now + 100,
+          lastHitDmg: dmg, // 2026-11-06: のけぞりの強さをこのヒットの重さで(meleeHitStunPatch と同じ)
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: 同上
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
@@ -11597,7 +11606,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         knockbackUntil: now + KNOCKBACK_DURATION,
         knockbackShoveUntil: now + KNOCKBACK_DURATION, // v0.25.2607: 押し道具=ボスにも効く
         knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS,
-        ...meleeHitStunPatch(enemy, now, true), // 戦闘の手触り①(v0.25.4269): 鞭も局所ストップ(shove の期限も同じだけ後ろ)
+        ...meleeHitStunPatch(enemy, now, dmg, true), // 戦闘の手触り①(v0.25.4269): 鞭も局所ストップ(shove の期限も同じだけ後ろ)
         ...(bossBump?.patch ?? {}), // 紫カウント/発動を反映(最後に展開して優先=刀5490と同じ作法)
         ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
         ...pvpMeleePatch, // ★SAME_ARENA §9: 対人体勢(鞭のmelee削り/致命後daze)

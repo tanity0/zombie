@@ -232,3 +232,19 @@ export const stepFloorParticle = (
   if (vy > 80) return { y: floorY, vx: vx * 0.55, vy: -vy * CASING_BOUNCE, rested: false };
   return { y: floorY, vx: 0, vy: 0, rested: true };
 };
+
+// ---- 近接の命中音の重ね方(社長指示2026-11-06「近接で切ってる時の心地よさを増やしたい」) ----
+// 1振りで何体切っても命中音は1回・音程も毎回同じだった。①毎回わずかに音程を揺らす(同じ音の連打に聞こえない)
+// ②2体・3体と同時に切れたら、少し遅らせて音程をずらした同じ音を重ねる(まとめて切れたのが耳で分かる)。
+// 重ねは3層まで(何体切っても音の壁にしない)。
+export interface SfxLayer { delayMs: number; rate: number; gain: number }
+export const MELEE_HIT_SFX_MAX_LAYERS = 3;
+export const MELEE_HIT_SFX_JITTER = 0.04;
+export const meleeHitSfxLayers = (hits: number, rand: () => number = Math.random): SfxLayer[] => {
+  const n = Math.max(1, Math.min(MELEE_HIT_SFX_MAX_LAYERS, Math.floor(hits)));
+  const j = (amp: number) => 1 + (rand() * 2 - 1) * amp;
+  const layers: SfxLayer[] = [{ delayMs: 0, rate: j(MELEE_HIT_SFX_JITTER), gain: 1 }];
+  if (n >= 2) layers.push({ delayMs: 32, rate: 0.9 * j(0.03), gain: 0.6 });
+  if (n >= 3) layers.push({ delayMs: 61, rate: 1.1 * j(0.03), gain: 0.45 });
+  return layers;
+};

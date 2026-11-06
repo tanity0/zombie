@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   hitReactionStrength, enemyHitReaction,
   FLINCH_MIN_STRENGTH, FLINCH_FULL_DAMAGE_FRAC, FLINCH_FULL_DAMAGE_FRAC_BOSS, FLINCH_FULL_DAMAGE_ABS,
-  flinchMul, hopMul, flashMul, knockbackSpeedMul, knockbackDurationMul, hitStopMul,
+  flinchMul, hopMul, flashMul, knockbackSpeedMul, knockbackDurationMul, hitStopMul, hitStopMulForDamage,
 } from './hitFlinch';
 
 // 実測の基準(2026-09-17): ゾンビの実効HPは ENEMY_STATS.health(40) × ENEMY_HP_MULT(5) ≈ 200。
@@ -129,5 +129,16 @@ describe('反応ごとの倍率 — 「今の普通の一発」が今と同じ�
     for (const f of [flinchMul, hopMul, flashMul, knockbackSpeedMul, knockbackDurationMul, hitStopMul]) {
       expect(f(FLINCH_MIN_STRENGTH)).toBeGreaterThan(0.25);
     }
+  });
+});
+
+// 社長指示2026-11-06: 近接も「重い一撃ほど長く止まる」(damageEnemy と同じ窓口)。
+describe('ダメージ→停止時間の倍率(近接と銃で同じ窓口)', () => {
+  it('重いほど長く、雑魚への満額の一撃は今の一律(1.0)より長い', () => {
+    const light = hitStopMulForDamage('zombie', 2, 100);
+    const heavy = hitStopMulForDamage('zombie', 60, 100);
+    expect(heavy).toBeGreaterThan(light);
+    expect(heavy).toBeCloseTo(hitStopMul(1));
+    expect(heavy).toBeGreaterThan(1);
   });
 });

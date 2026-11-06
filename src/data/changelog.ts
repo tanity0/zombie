@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5371', items: [
+    '近接の素振りの音が、指を離した瞬間に鳴る',
+    '何体もまとめて切ると、斬った音が重なって厚くなる',
+    '重い一撃ほど、切られた敵が長く止まる',
+  ] },
   { version: '0.25.5370', items: [
     '処刑の爆発が広くなった',
     '爆発で吹き飛ぶ距離は爆心からの近さで変わる。真ん中の敵は大きく飛び、端の敵はあまり動かない',

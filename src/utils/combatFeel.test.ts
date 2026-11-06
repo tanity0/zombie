@@ -4,6 +4,7 @@ import {
   stepKillChain, killChainTier, killChainSfxRate, killChainEdgePulseMs, killChainEdgeEnvelope, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SFX_JITTER,
   recoilSpecForWeapon, recoilKickOffset, recoilKickDir, RECOIL_KICK_MAX_PX, RECOIL_HEAVY_PX,
   casingSpecFor, casingVelocity, stepFloorParticle, isEnemyAttacking,
+  meleeHitSfxLayers, MELEE_HIT_SFX_MAX_LAYERS, MELEE_HIT_SFX_JITTER,
 } from './combatFeel';
 
 describe('戦闘の手触り(utils/combatFeel・社長指示2026-09-13)', () => {
@@ -169,5 +170,25 @@ describe('★攻撃中スーパーアーマー(isEnemyAttacking)', () => {
   });
   it('気絶が明ければアーマーは戻る', () => {
     expect(isEnemyAttacking({ chaffMove: 'bat-grab', stunUntil: T }, T)).toBe(true);
+  });
+});
+
+// 社長指示2026-11-06「近接で切ってる時の心地よさを増やしたい」: 命中音の揺らぎと重ね。
+describe('近接の命中音: 音程を揺らし、同時に切った数だけ重ねる(3層まで)', () => {
+  it('1体=1層、2体=2層、3体以上=3層で頭打ち', () => {
+    expect(meleeHitSfxLayers(1)).toHaveLength(1);
+    expect(meleeHitSfxLayers(2)).toHaveLength(2);
+    expect(meleeHitSfxLayers(3)).toHaveLength(MELEE_HIT_SFX_MAX_LAYERS);
+    expect(meleeHitSfxLayers(12)).toHaveLength(MELEE_HIT_SFX_MAX_LAYERS);
+    expect(meleeHitSfxLayers(0)).toHaveLength(1); // 呼ばれた時点で当たっている=最低1
+  });
+  it('1層目は遅れなし・満音量で、音程は揺らぎの幅の中で毎回変わる', () => {
+    const lo = meleeHitSfxLayers(1, () => 0)[0], hi = meleeHitSfxLayers(1, () => 1)[0];
+    expect(lo.delayMs).toBe(0); expect(lo.gain).toBe(1);
+    expect(lo.rate).toBeCloseTo(1 - MELEE_HIT_SFX_JITTER); expect(hi.rate).toBeCloseTo(1 + MELEE_HIT_SFX_JITTER);
+  });
+  it('重ねる層は少し遅れ、1層目より小さく、音程が1層目とずれる', () => {
+    const [a, b, c] = meleeHitSfxLayers(3, () => 0.5);
+    for (const l of [b, c]) { expect(l.delayMs).toBeGreaterThan(a.delayMs); expect(l.gain).toBeLessThan(a.gain); expect(Math.abs(l.rate - a.rate)).toBeGreaterThan(0.05); }
   });
 });

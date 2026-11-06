@@ -1828,6 +1828,46 @@ export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number, 
   }
 };
 
+// 同じSEを、遅らせ・音程・音量を変えて重ねて鳴らす(社長指示2026-11-06 近接の命中音)。
+// 間引き(minIntervalMs)は**束ごと**に1回だけ見る=重ねの2層目以降が自分の間引きで消えない。
+export const playSfxLayers = (key: SfxKey, layers: readonly { delayMs: number; rate: number; gain: number }[]) => {
+  if (muted || layers.length === 0) return;
+  if (danceActive && DANCE_MUTED_SFX.has(key)) return;
+  const config = SFX_SOURCES[key];
+  if (!config) return;
+  const now = typeof window === 'undefined' ? Date.now() : (window.performance?.now() ?? Date.now());
+  const lastPlayedAt = sfxLastPlayedAt.get(key) ?? 0;
+  if (config.minIntervalMs && now - lastPlayedAt < config.minIntervalMs) return;
+  const context = ensureSfxContext();
+  if (!context) return;
+  resumeSfxContext();
+  const buffer = sfxBuffers.get(key);
+  if (!buffer) { loadSfxBuffer(key); return; }
+  sfxLastPlayedAt.set(key, now);
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    const w = window as unknown as { __sfxLog?: { key: string; gain: number; at: number }[] };
+    for (const l of layers) (w.__sfxLog ??= []).push({ key, gain: +(l.gain).toFixed(3), at: Math.round(now + l.delayMs) });
+    if ((w.__sfxLog?.length ?? 0) > 200) w.__sfxLog!.splice(0, w.__sfxLog!.length - 200);
+  }
+  const offset = Math.min(config.startAt ?? 0, Math.max(0, buffer.duration - 0.001));
+  const capMs = config.maxDurationMs;
+  const duration = capMs ? Math.min(capMs / 1000, Math.max(0.001, buffer.duration - offset)) : undefined;
+  for (const l of layers) {
+    if (l.gain <= 0) continue;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.playbackRate.value = (config.playbackRate ?? 1) * l.rate;
+    gain.gain.value = (config.volume ?? 1) * sfxVolume * l.gain;
+    source.connect(gain);
+    gain.connect(context.destination);
+    const at = context.currentTime + Math.max(0, l.delayMs) / 1000;
+    try {
+      if (duration) source.start(at, offset, duration); else source.start(at, offset);
+    } catch { /* 再生失敗はゲームを止めない */ }
+  }
+};
+
 // ダンスビートB方式(v0.25.1339): 指定した AudioContext 時刻に予約再生する。playSfx とほぼ同じ経路
 // (バッファ/ゲイン/接続)だが、即時(start(0,...))ではなく指定時刻に start する点だけが違う。
 // minIntervalMs のスロットル/sfxLastPlayedAt 更新はしない(呼び出し側=danceBeat.tsが「次の1拍だけ」

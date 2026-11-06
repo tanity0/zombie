@@ -300,7 +300,7 @@ import {
   pickNearestTarget, // UNIQUE_WEAPONS.md §19-3: 金環の対象取得(各金環が独立に最寄りの敵を取る)
   countsTowardEnemyCap, blastAnchorOf, isLabCrawlerProxyType, bandHitsBox, // blastAnchorOf=変異塊の代理の爆発・手応えの点(LAB_CRAWLER §4) / research/MUTANT_HERO.md §2-1: 英雄は湧き上限に数えない
 } from '../utils/enemyUtils';
-import { killChainSfxRate, recoilSpecForWeapon, casingSpecFor , GUN_STOP_BASE_MS, GUN_STOP_MAX_MULT, GUN_STOP_AWAKEN_MULT, GUN_STOP_DUTY } from '../utils/combatFeel';
+import { killChainSfxRate, meleeHitSfxLayers, recoilSpecForWeapon, casingSpecFor , GUN_STOP_BASE_MS, GUN_STOP_MAX_MULT, GUN_STOP_AWAKEN_MULT, GUN_STOP_DUTY } from '../utils/combatFeel';
 import { comboMilestoneCrossed, milestoneSfxRate } from '../utils/comboMilestone';
 // 戦闘の手触り②: 撃破SEのピッチはstoreの段(killChainTier)から。audioManagerはstoreをimportできないので登録式。
 registerKillChainSfxRate(() => killChainSfxRate(useGameStore.getState().killChainTier, Math.random()));
@@ -564,7 +564,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
-import { registerKillChainSfxRate, setWraithAudioMix, resetWraithBattleAudio, playSfx, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, primeCorridorRadio, setHeroGallop, setCrawlerDrag, setEscapeGhost, playDistantSfx, setCorridorRadioBoost, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
+import { registerKillChainSfxRate, setWraithAudioMix, resetWraithBattleAudio, playSfx, playSfxLayers, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, primeCorridorRadio, setHeroGallop, setCrawlerDrag, setEscapeGhost, playDistantSfx, setCorridorRadioBoost, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT, labRadioIdolDownFade } from '../world/labRadioMix';
 import { labBaitCamLead, labBaitLandDist, labBaitZoomTarget, LAB_BAIT_CAM_FORWARD_FRAC, LAB_BAIT_CAM_FWD_TAU_S, LAB_BAIT_CAM_BACK_TAU_S, LAB_BAIT_CAM_RETURN_TAU_S } from '../world/labBait';
@@ -2121,6 +2121,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const glenPartsPrevRef = useRef<{ id: string; count: number | null } | null>(null);
   // v0.25.3038: ヒットストップ中のエフェクト実時間tick用の前フレーム時刻(0=非停止中)。
   const hitstopFxLastRef = useRef(0);
+  const swingSfxPlayedForRef = useRef(0); // 素振りの音を鳴らした前隙(pendingSwingAt)=離した瞬間に1回だけ(2026-11-06)
   // the ONE ストーリーボス(M7)の進行: 出現済みか / 終幕(勝利化)予定時刻(0=未予約)。
   const storyBossSpawnedRef = useRef(false);
   const storyBossWinAtRef = useRef(0);
@@ -8951,6 +8952,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // **前隙中にカウンターされたら pendingSwingAt は 0 に戻っている**=ここへ来ない(振りが中断)。
         {
           const pendAt = useGameStore.getState().player.pendingSwingAt;
+          // ★素振りの音は**指を離した瞬間**に鳴らす(社長指示2026-11-06「近接で切ってる時の心地よさを増やしたい」)。
+          // 旧: 判定と同時=指を離してから前隙(200ms)遅れて鳴っていた。前隙の頭(pendingSwingAt が立った最初のフレーム)で
+          // 1回だけ鳴らし、判定時の素振り音はこの振りでは鳴らさない。命中音は従来どおり当たった瞬間。
+          if (pendAt > 0 && swingSfxPlayedForRef.current !== pendAt) {
+            swingSfxPlayedForRef.current = pendAt;
+            const st0 = useGameStore.getState();
+            const kfx0 = st0.killFx;
+            const kfxBusy0 = !!kfx0 && Date.now() - kfx0.startAt < KILLFX_TOTAL_MS;
+            if (!st0.player.subWeapons.includes('whip') && !kfxBusy0) playSfx('melee');
+          }
           // 前隙の長さは**武器で変わる**(ナイフ200 / 鞭250・社長指示2026-08-24)。
           if (pendAt > 0 && Date.now() - pendAt >= meleeWindupMs(useGameStore.getState().player)) {
             useGameStore.setState(st => ({ player: { ...st.player, pendingSwingAt: 0 } }));
@@ -8965,9 +8976,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // `counter.swung` は全経路の集約(ナイフ/鞭/刀/ガンブレード)なので、ここなら取りこぼさない。
             if (counter.swung) playCineDemoOnSwing();
             // 刀を持っている時の振り(katanaSwing)も振りの音を鳴らす(攻撃はしないので swung は false のまま)。
-            if ((counter.swung || counter.katanaSwing) && !isWhip && !killFxJustFired) playSfx('melee');
+            // 素振りの音は前隙の頭で鳴らし済み(上)。ここで鳴らすのは前隙の頭を取りこぼした時だけ。
+            if ((counter.swung || counter.katanaSwing) && !isWhip && !killFxJustFired && swingSfxPlayedForRef.current !== pendAt) playSfx('melee');
             if (counter.finish && !killFxJustFired) playSfx('melee-finish');
-            else if (counter.hit && !isWhip && !killFxJustFired) playSfx('slash-damage');
+            // 命中音: 毎回わずかに音程を揺らし、同時に切った数だけ(3層まで)重ねる(combatFeel.meleeHitSfxLayers)。
+            else if (counter.hit && !isWhip && !killFxJustFired) playSfxLayers('slash-damage', meleeHitSfxLayers(counter.hits ?? 1));
             if (counter.killed > 0) playEnemyDeath();
           }
         }

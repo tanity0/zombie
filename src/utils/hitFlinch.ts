@@ -109,3 +109,10 @@ export const flashMul = (r: number): number => Math.min(1, 0.61 + 0.6 * r);
 export const knockbackSpeedMul = (r: number): number => 0.73 + 0.42 * r;
 export const knockbackDurationMul = (r: number): number => 0.87 + 0.20 * r;
 export const hitStopMul = (r: number): number => 0.71 + 0.84 * r;
+/**
+ * このヒットの実ダメージ → 停止時間の倍率(`damageEnemy` と同じ計算を1本にしたもの)。
+ * 社長指示2026-11-06「近接で切ってる時の心地よさを増やしたい」: 近接3経路はこれまで倍率を渡さず
+ * 一律(=ハンドガン1発より短い)だった。近接もこの窓口を通す=重い一撃ほど長く止まる。
+ */
+export const hitStopMulForDamage = (type: EnemyType, damage: number, maxHealth: number): number =>
+  hitStopMul(hitReactionStrength(damage, maxHealth, isBossType(type) ? FLINCH_FULL_DAMAGE_FRAC_BOSS : FLINCH_FULL_DAMAGE_FRAC));
