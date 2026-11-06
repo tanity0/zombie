@@ -4,7 +4,7 @@ import {
   stepKillChain, killChainTier, killChainSfxRate, killChainEdgePulseMs, killChainEdgeEnvelope, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SFX_JITTER,
   recoilSpecForWeapon, recoilKickOffset, recoilKickDir, RECOIL_KICK_MAX_PX, RECOIL_HEAVY_PX,
   casingSpecFor, casingVelocity, stepFloorParticle, isEnemyAttacking,
-  meleeHitSfxLayers, MELEE_HIT_SFX_MAX_LAYERS, MELEE_HIT_SFX_JITTER,
+  meleeHitSfxLayers, MELEE_HIT_SFX_MAX_LAYERS, MELEE_HIT_SFX_JITTER, MELEE_HIT_SFX_LAYER_MS,
 } from './combatFeel';
 
 describe('戦闘の手触り(utils/combatFeel・社長指示2026-09-13)', () => {
@@ -190,5 +190,17 @@ describe('近接の命中音: 音程を揺らし、同時に切った数だけ�
   it('重ねる層は少し遅れ、1層目より小さく、音程が1層目とずれる', () => {
     const [a, b, c] = meleeHitSfxLayers(3, () => 0.5);
     for (const l of [b, c]) { expect(l.delayMs).toBeGreaterThan(a.delayMs); expect(l.gain).toBeLessThan(a.gain); expect(Math.abs(l.rate - a.rate)).toBeGreaterThan(0.05); }
+  });
+  it('重ねる層は下へだけずらし(和音にしない)、頭の当たりだけ鳴らす(短く切る)。1層目は切らない', () => {
+    for (const r of [0, 0.5, 1]) {
+      const [a, b, c] = meleeHitSfxLayers(3, () => r);
+      expect(b.rate).toBeLessThan(a.rate); expect(c.rate).toBeLessThan(b.rate);
+      expect(a.maxMs).toBeUndefined(); expect(b.maxMs).toBe(MELEE_HIT_SFX_LAYER_MS); expect(c.maxMs).toBe(MELEE_HIT_SFX_LAYER_MS);
+    }
+  });
+  it('重ねても合計の音量は1層の1.6倍まで(音割れを防ぐ)・遅れは毎回少し揺れる', () => {
+    const sum = meleeHitSfxLayers(3, () => 0.5).reduce((s, l) => s + l.gain, 0);
+    expect(sum).toBeLessThanOrEqual(1.6);
+    expect(meleeHitSfxLayers(3, () => 0)[1].delayMs).not.toBe(meleeHitSfxLayers(3, () => 1)[1].delayMs);
   });
 });

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   hitReactionStrength, enemyHitReaction,
   FLINCH_MIN_STRENGTH, FLINCH_FULL_DAMAGE_FRAC, FLINCH_FULL_DAMAGE_FRAC_BOSS, FLINCH_FULL_DAMAGE_ABS,
-  flinchMul, hopMul, flashMul, knockbackSpeedMul, knockbackDurationMul, hitStopMul, hitStopMulForDamage,
+  flinchMul, hopMul, flashMul, knockbackSpeedMul, knockbackDurationMul, hitStopMul, meleeHitStopMul, MELEE_STOP_FULL_FRAC,
 } from './hitFlinch';
 
 // 実測の基準(2026-09-17): ゾンビの実効HPは ENEMY_STATS.health(40) × ENEMY_HP_MULT(5) ≈ 200。
@@ -133,12 +133,15 @@ describe('反応ごとの倍率 — 「今の普通の一発」が今と同じ�
 });
 
 // 社長指示2026-11-06: 近接も「重い一撃ほど長く止まる」(damageEnemy と同じ窓口)。
-describe('ダメージ→停止時間の倍率(近接と銃で同じ窓口)', () => {
-  it('重いほど長く、雑魚への満額の一撃は今の一律(1.0)より長い', () => {
-    const light = hitStopMulForDamage('zombie', 2, 100);
-    const heavy = hitStopMulForDamage('zombie', 60, 100);
-    expect(heavy).toBeGreaterThan(light);
-    expect(heavy).toBeCloseTo(hitStopMul(1));
-    expect(heavy).toBeGreaterThan(1);
+describe('近接の止めの倍率(最大HPに対する割合で決める)', () => {
+  it('重いほど長く、満額は最大HPの25%を削る一撃・下限は共通の最小の強さ', () => {
+    const hp = 400;
+    expect(meleeHitStopMul(hp * MELEE_STOP_FULL_FRAC, hp)).toBeCloseTo(hitStopMul(1));
+    expect(meleeHitStopMul(hp, hp)).toBeCloseTo(hitStopMul(1));
+    expect(meleeHitStopMul(1, hp)).toBeCloseTo(hitStopMul(FLINCH_MIN_STRENGTH));
+    expect(meleeHitStopMul(hp * 0.2, hp)).toBeGreaterThan(meleeHitStopMul(hp * 0.1, hp));
+  });
+  it('2本目以降の武器の普通の一撃(最大HPの1割)では満額にならない=クリ等の重い一撃と差が残る', () => {
+    expect(meleeHitStopMul(40, 400)).toBeLessThan(meleeHitStopMul(100, 400) - 0.3);
   });
 });

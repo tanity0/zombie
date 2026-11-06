@@ -1830,7 +1830,7 @@ export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number, 
 
 // 同じSEを、遅らせ・音程・音量を変えて重ねて鳴らす(社長指示2026-11-06 近接の命中音)。
 // 間引き(minIntervalMs)は**束ごと**に1回だけ見る=重ねの2層目以降が自分の間引きで消えない。
-export const playSfxLayers = (key: SfxKey, layers: readonly { delayMs: number; rate: number; gain: number }[]) => {
+export const playSfxLayers = (key: SfxKey, layers: readonly { delayMs: number; rate: number; gain: number; maxMs?: number }[]) => {
   if (muted || layers.length === 0) return;
   if (danceActive && DANCE_MUTED_SFX.has(key)) return;
   const config = SFX_SOURCES[key];
@@ -1862,8 +1862,16 @@ export const playSfxLayers = (key: SfxKey, layers: readonly { delayMs: number; r
     source.connect(gain);
     gain.connect(context.destination);
     const at = context.currentTime + Math.max(0, l.delayMs) / 1000;
+    // 層ごとに長さを切る(重ねの2層目以降は頭の当たりだけ)。切る所は短くフェードしてプツッと鳴らさない。
+    const len = l.maxMs ? Math.min(l.maxMs / 1000, duration ?? Math.max(0.001, buffer.duration - offset)) : duration;
+    if (l.maxMs && len) {
+      const peak = gain.gain.value;
+      const fade = Math.min(0.06, len * 0.5);
+      gain.gain.setValueAtTime(peak, at + len - fade);
+      gain.gain.linearRampToValueAtTime(0, at + len);
+    }
     try {
-      if (duration) source.start(at, offset, duration); else source.start(at, offset);
+      if (len) source.start(at, offset, len); else source.start(at, offset);
     } catch { /* 再生失敗はゲームを止めない */ }
   }
 };

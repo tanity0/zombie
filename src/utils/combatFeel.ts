@@ -237,14 +237,19 @@ export const stepFloorParticle = (
 // 1振りで何体切っても命中音は1回・音程も毎回同じだった。①毎回わずかに音程を揺らす(同じ音の連打に聞こえない)
 // ②2体・3体と同時に切れたら、少し遅らせて音程をずらした同じ音を重ねる(まとめて切れたのが耳で分かる)。
 // 重ねは3層まで(何体切っても音の壁にしない)。
-export interface SfxLayer { delayMs: number; rate: number; gain: number }
+// クリエイティブ監査(2026-11-06)反映: ①素材は約1秒鳴り続けるので、重ねる層は**頭の当たりだけ**(短く切る)=
+// 厚くなるのは斬った瞬間で、尾は1層目だけ ②重ねる層は**下へだけ**ずらす(上下対称だと和音に聞こえる)=重さ側
+// ③遅れにも数msの揺らぎ(毎回同じ「ダダダ」にしない) ④重ねる時は1層目を下げ、合計の音量を抑える(音割れ)。
+export interface SfxLayer { delayMs: number; rate: number; gain: number; maxMs?: number }
 export const MELEE_HIT_SFX_MAX_LAYERS = 3;
 export const MELEE_HIT_SFX_JITTER = 0.04;
+export const MELEE_HIT_SFX_LAYER_MS = 150;
 export const meleeHitSfxLayers = (hits: number, rand: () => number = Math.random): SfxLayer[] => {
   const n = Math.max(1, Math.min(MELEE_HIT_SFX_MAX_LAYERS, Math.floor(hits)));
   const j = (amp: number) => 1 + (rand() * 2 - 1) * amp;
-  const layers: SfxLayer[] = [{ delayMs: 0, rate: j(MELEE_HIT_SFX_JITTER), gain: 1 }];
-  if (n >= 2) layers.push({ delayMs: 32, rate: 0.9 * j(0.03), gain: 0.6 });
-  if (n >= 3) layers.push({ delayMs: 61, rate: 1.1 * j(0.03), gain: 0.45 });
+  const dj = () => Math.round((rand() * 2 - 1) * 6);
+  const layers: SfxLayer[] = [{ delayMs: 0, rate: j(MELEE_HIT_SFX_JITTER), gain: n >= 2 ? 0.72 : 1 }];
+  if (n >= 2) layers.push({ delayMs: 30 + dj(), rate: 0.86 * j(0.02), gain: 0.5, maxMs: MELEE_HIT_SFX_LAYER_MS });
+  if (n >= 3) layers.push({ delayMs: 62 + dj(), rate: 0.78 * j(0.02), gain: 0.38, maxMs: MELEE_HIT_SFX_LAYER_MS });
   return layers;
 };

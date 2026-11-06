@@ -110,9 +110,11 @@ export const knockbackSpeedMul = (r: number): number => 0.73 + 0.42 * r;
 export const knockbackDurationMul = (r: number): number => 0.87 + 0.20 * r;
 export const hitStopMul = (r: number): number => 0.71 + 0.84 * r;
 /**
- * このヒットの実ダメージ → 停止時間の倍率(`damageEnemy` と同じ計算を1本にしたもの)。
- * 社長指示2026-11-06「近接で切ってる時の心地よさを増やしたい」: 近接3経路はこれまで倍率を渡さず
- * 一律(=ハンドガン1発より短い)だった。近接もこの窓口を通す=重い一撃ほど長く止まる。
+ * 近接の止めの倍率(社長指示2026-11-06「近接で切ってる時の心地よさを増やしたい」)。近接3経路はこれまで倍率を
+ * 渡さず一律(=ハンドガン1発より短い)だった。クリエイティブ監査(同日)反映: 共通の物差し(14ダメージ・最大HPの6%で満額)だと、
+ * 2本目の近接武器から先は**ほぼ全ての一撃が満額**になり「一律120ms→一律186ms」に変わるだけだった。
+ * 近接は**最大HPの25%を削る一撃で満額**に置く=武器が強くなっても、軽い一撃と重い一撃(クリ等)の差が残る。
  */
-export const hitStopMulForDamage = (type: EnemyType, damage: number, maxHealth: number): number =>
-  hitStopMul(hitReactionStrength(damage, maxHealth, isBossType(type) ? FLINCH_FULL_DAMAGE_FRAC_BOSS : FLINCH_FULL_DAMAGE_FRAC));
+export const MELEE_STOP_FULL_FRAC = 0.25;
+export const meleeHitStopMul = (damage: number, maxHealth: number): number =>
+  hitStopMul(Math.min(1, Math.max(FLINCH_MIN_STRENGTH, (Math.max(0, damage) / Math.max(1, maxHealth)) / MELEE_STOP_FULL_FRAC)));

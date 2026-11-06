@@ -8956,11 +8956,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 旧: 判定と同時=指を離してから前隙(200ms)遅れて鳴っていた。前隙の頭(pendingSwingAt が立った最初のフレーム)で
           // 1回だけ鳴らし、判定時の素振り音はこの振りでは鳴らさない。命中音は従来どおり当たった瞬間。
           if (pendAt > 0 && swingSfxPlayedForRef.current !== pendAt) {
-            swingSfxPlayedForRef.current = pendAt;
             const st0 = useGameStore.getState();
             const kfx0 = st0.killFx;
             const kfxBusy0 = !!kfx0 && Date.now() - kfx0.startAt < KILLFX_TOTAL_MS;
-            if (!st0.player.subWeapons.includes('whip') && !kfxBusy0) playSfx('melee');
+            // 印は**実際に鳴らした時だけ**立てる(鳴らさなかった振りは判定時の保険で鳴る=監査2026-11-06)。
+            if (!st0.player.subWeapons.includes('whip') && !kfxBusy0) { playSfx('melee'); swingSfxPlayedForRef.current = pendAt; }
           }
           // 前隙の長さは**武器で変わる**(ナイフ200 / 鞭250・社長指示2026-08-24)。
           if (pendAt > 0 && Date.now() - pendAt >= meleeWindupMs(useGameStore.getState().player)) {
@@ -9823,7 +9823,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const killFxSk = !!kfxSk && Date.now() - kfxSk.startAt < KILLFX_TOTAL_MS;
             if (sk.swung && !isWhipSk && !killFxSk) playSfx('melee');
             if (sk.finish && !killFxSk) playSfx('melee-finish');
-            else if (sk.hit && !isWhipSk && !killFxSk) playSfx('slash-damage');
+            else if (sk.hit && !isWhipSk && !killFxSk) playSfxLayers('slash-damage', meleeHitSfxLayers(sk.hits ?? 1));
             if (sk.killed > 0) playEnemyDeath();
           }
         }
@@ -9837,7 +9837,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const killFxRt = !!kfxRt && Date.now() - kfxRt.startAt < KILLFX_TOTAL_MS;
             if (rt.swung && !isWhipRt && !killFxRt) playSfx('melee');
             if (rt.finish && !killFxRt) playSfx('melee-finish');
-            else if (rt.hit && !isWhipRt && !killFxRt) playSfx('slash-damage');
+            else if (rt.hit && !isWhipRt && !killFxRt) playSfxLayers('slash-damage', meleeHitSfxLayers(rt.hits ?? 1));
             if (rt.killed > 0) playEnemyDeath();
             // 「Counter!」の文字を赤い帯で出す(社長指示2026-10-09「こっちは赤ラインのcounterって入れて」)。
             // 普通のカウンターは青い帯(bg 0x2563eb)=被弾反撃は赤で見分ける。当たった時だけ(空振りに文字を出さない)。
@@ -10456,7 +10456,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 近接フィニッシュは一閃のみ: オート斬撃はallowFinisher=false。
               const result = performKatanaStrike([targetId], 1, false, undefined, warlordAutoSlashMult(kp)); // 侍の甲冑(青・赤)は ×1.5
               if (result.finish) playSfx('melee-finish');
-              else if (result.hit) playSfx('slash-damage');
+              else if (result.hit) playSfxLayers('slash-damage', meleeHitSfxLayers(1)); // 近接の命中音は全経路で同じ(揺らぎ)
               if (result.killed > 0) playEnemyDeath();
             }
           }

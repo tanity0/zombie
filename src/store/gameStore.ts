@@ -127,12 +127,12 @@ import {
   type HitRetaliationWindow, makeRetaliationWindow, isRetaliationWindowOpen, retaliationAngleOk, isRetaliateTargetEligible,
   isRetaliationBlocked, retaliationReady, RETALIATE_DAMAGE_MULT, RETALIATE_LUNGE_MS,
 } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
-import { isEnemyAttacking } from '../utils/combatFeel';
+import { isEnemyAttacking, meleeHitSfxLayers } from '../utils/combatFeel';
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
 import {
-  enemyHitReaction, hitReactionStrength, knockbackSpeedMul, knockbackDurationMul, hitStopMul, hitStopMulForDamage,
+  enemyHitReaction, hitReactionStrength, knockbackSpeedMul, knockbackDurationMul, hitStopMul, meleeHitStopMul,
   FLINCH_FULL_DAMAGE_FRAC, FLINCH_FULL_DAMAGE_FRAC_BOSS,
 } from '../utils/hitFlinch';
 import { impactDamageOf, mergeImpactEntries, strongestImpact, IMPACT_MELEE_MIN, type ImpactEntry, type ImpactFlags } from '../utils/impactShake'; // 揺れの整理(research/SHAKE_UNIFY.md・社長承認2026-09-14)
@@ -2692,10 +2692,10 @@ export const CRIT_LIGHT_GAP_MS = 120;
 // HPを直接書くので、同じ局所ストップをここから配る。止めている間はノックバックの期限も同じだけ後ろへ
 // (止めが明けた瞬間に満額で飛ぶ)。ボス級は nextHitStunUntil が undefined を返す=何も足さない。
 // ★社長指示2026-11-06「近接で切ってる時の心地よさを増やしたい」: ①止めの長さを**このヒットの重さ**で決める
-// (`hitStopMulForDamage`=damageEnemy と同じ窓口。旧: 倍率なし=一律で、ハンドガン1発より短かった)
+// (`meleeHitStopMul`=最大HPに対する割合。旧: 倍率なし=一律で、ハンドガン1発より短かった)
 // ②`lastHitDmg` を書く(旧: 近接は書いておらず、のけぞり・跳ね・光の強さが**前回の被弾の値の使い回し**だった)。
 const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil' | 'maxHealth'>, now: number, dmg: number, shoveToo = false): Partial<Enemy> => {
-  const u = nextHitStunUntil(enemy.type, enemy.hitStunUntil, now, hitStopMulForDamage(enemy.type, dmg, enemy.maxHealth));
+  const u = nextHitStunUntil(enemy.type, enemy.hitStunUntil, now, meleeHitStopMul(dmg, enemy.maxHealth));
   if (u === undefined) return { lastHitDmg: dmg };
   const kbUntil = now + KNOCKBACK_DURATION + (u - now);
   return shoveToo
@@ -5887,6 +5887,17 @@ const reserveShukuchiWarp = (get: () => GameState, now: number): boolean => {
   return true;
 };
 
+// ★タッチのスラッシャー連撃の音(クリエイティブ監査2026-11-06で発見): タッチの連撃(beginMeleeSwing / 先行入力の
+// pumpSlasherQueuedTap)は結果を捨てていて、素振り音も命中音も**どこからも鳴っていなかった**。結果を捨てる2か所から鳴らす。
+// (PC/ボットの triggerCounter 経由は呼び手が結果で鳴らすので、ここは通さない=二重に鳴らさない)。
+const playSlasherChainSfx = (get: () => GameState, r: CounterTriggerResult | null) => {
+  if (!r || !r.swung || get().player.subWeapons.includes('whip')) return;
+  void import('../audio/audioManager').then(m => {
+    m.playSfx('melee');
+    if (r.hit) m.playSfxLayers('slash-damage', meleeHitSfxLayers(r.hits ?? 1));
+    if (r.killed > 0) m.playEnemyDeath();
+  });
+};
 const applySlasherChainStrike = (
   get: () => GameState,
   player: Player,
@@ -9232,6 +9243,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         return false; // チェーンCD中=予約のみ(発動はuseGameLoopのpumpSlasherQueuedTap)
       } else {
         const chained = applySlasherChainStrike(get, p, get().gameTime, rgt);
+        playSlasherChainSfx(get, chained);
         if (chained) return true; // 追撃成立(空振りでも成立=v3934。窓・通常CD・前隙は開かない=PCのチェーン経路と同じ)
         // null=不発条件(紫中等)→下の通常経路へ落とす
       }
@@ -19206,7 +19218,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().setSlasherCombo(0, 0); // 予約したまま長時間止まっていた(ポーズ等)場合は破棄
       return;
     }
-    applySlasherChainStrike(get, get().player, s0.gameTime, s0.realGameTime);
+    playSlasherChainSfx(get, applySlasherChainStrike(get, get().player, s0.gameTime, s0.realGameTime));
   },
   setSlasherCombo: (readyAt, step) => {
     // readyAt=0(チェーン終了/破棄)の時は先行入力の予約も一緒に破棄する(持ち越さない)。
