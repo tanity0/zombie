@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5374', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5373', items: [
     'スカベンジャーが一回り大きく見えるようになった。当たり判定は変わらない',
   ] },
