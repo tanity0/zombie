@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5373', items: [
+    'スカベンジャーが一回り大きく見えるようになった。当たり判定は変わらない',
+  ] },
   { version: '0.25.5372', items: [
     'スラッシャーの連撃で、振りの音も斬った音も鳴っていなかったのを直した',
     '軽い一撃と重い一撃で、斬られた敵の止まり方に差が出る',

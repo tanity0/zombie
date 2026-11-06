@@ -1839,6 +1839,13 @@ const playerBaseScale = (p: Player, tex: Texture, boxW: number, boxH: number): n
     p.characterClass === 'rogue' || p.characterClass === 'necromancer';
   return knownClass ? PLAYER_ART_BASE_W / tex.width : containScale(boxW, boxH, tex.width, tex.height);
 };
+// ★クラスごとの見た目の倍率(社長指示2026-11-07「スカベンジャーだけかもだけど、スケールが少し小さい」→「はい」)。
+// スカベンジャー(necromancer=player-striker-*)は背の高さは他クラス・NPCと同じ(実測64px)だが、頭が小さく手足が細い
+// 等身の高い絵なので、並ぶと一回り小さく見える。**絵だけ**1.1倍(判定・攻撃範囲・移動は不変)。
+// ピクセルスナップの**外側**に掛ける(内側だと±13%の帯で元の整数へ丸め戻されて効かない)。武将フル装備は別の絵なので対象外。
+const PLAYER_CLASS_VISUAL_MUL: Partial<Record<Player['characterClass'], number>> = { necromancer: 1.1 };
+const playerClassVisualMul = (p: Pick<Player, 'characterClass' | 'equipment'>): number =>
+  hasFullWarlordSet(p.equipment) ? 1 : (PLAYER_CLASS_VISUAL_MUL[p.characterClass] ?? 1);
 // プレイヤーのピクセルスナップ(v0.25.1768-1774): 1ドット=キャンバス整数px へ丸めて
 // 「半端な拡大率」由来のドット潰れ(1px/2px列のまだら)を根治する。復帰フラグ ?psnap=0。
 //  ・帯内(常用機のフルスクリーン係数0.889〜1.086)では整数1へスナップ=プレイヤーはキャンバス等倍固定
@@ -18772,7 +18779,7 @@ export class PixiScene {
       const boxW = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
       const boxH = PLAYER_HITBOX * PLAYER_VISUAL_SCALE;
       const baseScale = playerBaseScale(fakeAlly, bodyTex, boxW, boxH);
-      const sc = this.snapTexelScale(baseScale * dsc); // 本体と同じピクセルスナップ(案1)
+      const sc = this.snapTexelScale(baseScale * dsc) * playerClassVisualMul(fakeAlly); // 本体と同じピクセルスナップ(案1)・クラスの見た目倍率
       const bx = this.snapToScreenPixel(footX, this.L.world.position.x) + offX;
       const by = this.snapToScreenPixel(footY - hop, this.L.world.position.y) + offY;
       body.texture = bodyTex;
@@ -18953,7 +18960,7 @@ export class PixiScene {
     const boxH = pose.height * PLAYER_VISUAL_SCALE;
     const player = useGameStore.getState().player;
     const fakeGhost = { ...player, characterClass: klass, equipment: ALLY_PLAIN_EQUIP };
-    const sc = this.snapTexelScale(playerBaseScale(fakeGhost, tex, boxW, boxH) * this.depthScale(footY));
+    const sc = this.snapTexelScale(playerBaseScale(fakeGhost, tex, boxW, boxH) * this.depthScale(footY)) * playerClassVisualMul(fakeGhost);
     spr.scale.set((pose.facing === -1 ? -1 : 1) * sc, sc);
     spr.position.set(
       this.snapToScreenPixel(footX, this.L.world.position.x),
@@ -19386,7 +19393,7 @@ export class PixiScene {
       // v0.25.2465: テクスチャ割り当て漏れ=透明守護霊の修正(割り当ては必須のまま維持)。
       if (view.sprite.texture !== tex) view.sprite.texture = tex;
       const gBase = playerBaseScale(fakeGhost, tex, boxW, boxH);
-      const sc = this.snapTexelScale(gBase * dsc);
+      const sc = this.snapTexelScale(gBase * dsc) * playerClassVisualMul(fakeGhost);
       // ★アバターの焼き込み(本体と同じ): 記録時のアバターを体のコマへ描き込んだ絵を出す。
       this.ghostAvatarBaked = false;
       {
@@ -20604,7 +20611,7 @@ export class PixiScene {
       // 通常クラス絵は従来どおり幅基準。ピクセルスナップ(案1)は遠近まで掛けた素のスケールに適用し、
       // 登場演出(introScale)や歩行スカッシュ等の演出係数はその外側(=演出は殺さない)。
       const baseScale = playerBaseScale(p, tex, fb.boxW, fb.boxH);
-      const sc = this.snapTexelScale(baseScale * this.depthScale(fb.footY)) * introScale;
+      const sc = this.snapTexelScale(baseScale * this.depthScale(fb.footY)) * introScale * playerClassVisualMul(p);
       // ★KILL処刑演出v2中は跳びつく相手の方を向く(帰還中も相手を見たまま後ろへ跳ぶ)。
       const flip = killPose
         ? killPose.faceLeft
@@ -21485,7 +21492,7 @@ export class PixiScene {
     const footX = clone.x + clone.width / 2;
     const footY = clone.y + clone.height;
     const baseScale = playerBaseScale(texSubject, gray, boxW, boxH);
-    const sc = this.snapTexelScale(baseScale * this.depthScale(footY)); // 本体と同じピクセルスナップ(案1)
+    const sc = this.snapTexelScale(baseScale * this.depthScale(footY)) * playerClassVisualMul(texSubject); // 本体と同じピクセルスナップ(案1)・クラスの見た目倍率
     spr.scale.set(clone.facingLeft ? -sc : sc, sc);
     spr.position.set(
       this.snapToScreenPixel(footX, this.L.world.position.x),
