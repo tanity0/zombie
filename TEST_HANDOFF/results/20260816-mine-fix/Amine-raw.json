@@ -1,0 +1,648 @@
+{
+  "cond": "Amine",
+  "extra": "",
+  "generatedAt": "2026-08-16T01:41:19.193Z",
+  "results": [
+    {
+      "name": "Amine-01",
+      "cond": "Amine",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&botskill=casual&stage=stage-1&director=1",
+      "realSec": 237,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 148976,
+        "deathCause": "地雷",
+        "kills": 41,
+        "playerLevel": 3,
+        "maxDepthPx": 3432,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 30
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 87,
+        "scrapSpent": 0,
+        "damageTaken": 116,
+        "goldEarned": 16,
+        "damageDealt": {
+          "gun": 1673,
+          "melee": 595,
+          "other": 592,
+          "total": 2860
+        },
+        "finisherKills": 21,
+        "meleeSwings": 55,
+        "meleeHits": 58,
+        "critStats": {
+          "total": {
+            "rngCrits": 37,
+            "guaranteedCrits": 1,
+            "hits": 178
+          },
+          "vsBoss": {
+            "rngCrits": 0,
+            "guaranteedCrits": 0,
+            "hits": 1
+          },
+          "vsTrash": {
+            "rngCrits": 37,
+            "guaranteedCrits": 1,
+            "hits": 177
+          },
+          "elapsedSec": 149
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 2,
+            "selectedByType": {
+              "skill": 2
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 39,
+              "poi": 0,
+              "levelup": 0,
+              "other": 48
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 3,
+            "maxAreaReached": 2,
+            "runTimeMs": 148976
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 46521.396740045675,
+                "level": 2
+              },
+              {
+                "gameTimeMs": 85045.14343454145,
+                "level": 3
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "directorLast": "AI Director (read-only) | Intns | 1.00 | Perf | 0.40 | State | RELAX | 2.8s | near 6 · danger 1.0 · dmgSince 0s · kill/s 0.00 | Rank | 0 | buildup2 | esc+0.00 · cap+0 · xp×1.00 · pity 0.61 · up+0 | style バランス · prev[gate1] pk0wf2 pl0gh0 sc0ch3 | program relax | gate gate-number maxRung3 | R3-/T10 cap10 · peak",
+      "version": "pixi · v0.25.3488 · floor:SGC · res:1.0000000149011612/1.0000000149011612",
+      "modalClicks": 0,
+      "chartVisible": true,
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\nデンジャーゾーンのランク3 色欲 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n3439m\n怠\nR1\n暴\nR2\n色\n⚑R3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR3 色欲\n\n次の深さ 未確認汚染エリア まで あと 1561m\n\n死因：変異体(獣化型)\n\nRESULT\n生存時間\n02:29\n撃破\n41\nLv\n3\n最大コンボ\n10\nSCORE\nHIGH SCORE\n31840\nKILLスコア 16800\n詳細\n▴\n与ダメ\n3123\nトレジャー\n0\nスクラップ残\n87\nダメージスコア\n780\nKILLスコア\n16800\nコンボスコア\n3000\nトレジャー\n0\nスクラップスコア\n1740\n被ダメージスコア\n9520\n昇格度 0 —— 阻んだのは 被ダメ(0)\nAIディレクター\n閉じる▴\nAI DIRECTOR\n難易度\n48\nZ1\nZ0\nZ1\nZ0\nZ1\nZ0\nZ1\nZ2\nハンター\n紅き月\n城ボス\n宿敵\nランク(R1-R7)\nBUILD 42s (28%)\nPEAK 1回 28s (18%)\nRELAX 1回 80s (53%)\n獲得 +15g\n所持 15g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "name": "Amine-02",
+      "cond": "Amine",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&botskill=casual&stage=stage-1&director=1",
+      "realSec": 264,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 160274,
+        "deathCause": "変異体(狩猟型)の落下攻撃",
+        "kills": 32,
+        "playerLevel": 4,
+        "maxDepthPx": 3346,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 33
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 366,
+        "scrapSpent": 0,
+        "damageTaken": 130,
+        "goldEarned": 11,
+        "damageDealt": {
+          "gun": 890,
+          "melee": 624,
+          "other": 1120,
+          "total": 2634
+        },
+        "finisherKills": 6,
+        "meleeSwings": 44,
+        "meleeHits": 46,
+        "critStats": {
+          "total": {
+            "rngCrits": 17,
+            "guaranteedCrits": 2,
+            "hits": 177
+          },
+          "vsBoss": {
+            "rngCrits": 2,
+            "guaranteedCrits": 2,
+            "hits": 35
+          },
+          "vsTrash": {
+            "rngCrits": 15,
+            "guaranteedCrits": 0,
+            "hits": 142
+          },
+          "elapsedSec": 160
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 3,
+            "selectedByType": {
+              "skill": 3
+            }
+          },
+          "knifeFromBox": {
+            "grants": 1,
+            "maxTier": 3
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 292,
+              "poi": 0,
+              "levelup": 0,
+              "other": 74
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 4,
+            "maxAreaReached": 2,
+            "runTimeMs": 160274
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 50758.067182881,
+                "level": 2
+              },
+              {
+                "gameTimeMs": 142332.2784079592,
+                "level": 3
+              },
+              {
+                "gameTimeMs": 143522.2591776315,
+                "level": 4
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "directorLast": "AI Director (read-only) | Intns | 1.00 | Perf | 0.40 | State | PEAK | 0.6s | near 2 · danger 1.0 · dmgSince 1s · kill/s 0.00 | Rank | 0 | buildup2 | esc+0.00 · cap+0 · xp×1.00 · pity 0.04 · up+0 | style バランス · prev[gate1] pk0wf0 pl0gh0 sc0ch4 | program lesson-wolf | gate gate-number maxRung3 | R2-/T8 cap10 · peak",
+      "version": "pixi · v0.25.3488 · floor:SGC · res:1.0000000149011612/1.0000000149011612",
+      "modalClicks": 0,
+      "chartVisible": true,
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\nデンジャーゾーンのランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n3519m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR2 暴食\n\n次の深さ 未確認汚染エリア まで あと 1481m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:41\n撃破\n32\nLv\n4\n最大コンボ\n3\nSCORE\nHIGH SCORE\n23342\n被ダメージスコア 9600\n詳細\n▴\n与ダメ\n2890\nトレジャー\n0\nスクラップ残\n366\nダメージスコア\n722\nKILLスコア\n4800\nコンボスコア\n900\nトレジャー\n0\nスクラップスコア\n7320\n被ダメージスコア\n9600\n昇格度 101 —— 阻んだのは 処理(101)\nAIディレクター\n閉じる▴\nAI DIRECTOR\n難易度\n58\nZ1\nZ2\nハンター\n紅き月\n城ボス\n宿敵\nランク(R1-R7)\nBUILD 70s (43%)\nPEAK 1回 11s (7%)\nRELAX 1回 80s (50%)\n獲得 +11g\n所持 11g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "name": "Amine-03",
+      "cond": "Amine",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&botskill=casual&stage=stage-1&director=1",
+      "realSec": 268,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 115933,
+        "deathCause": "敵の飛び道具",
+        "kills": 58,
+        "playerLevel": 3,
+        "maxDepthPx": 1324,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 24
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 0,
+        "scrapSpent": 0,
+        "damageTaken": 117,
+        "goldEarned": 18,
+        "damageDealt": {
+          "gun": 1207,
+          "melee": 1351,
+          "other": 534,
+          "total": 3092
+        },
+        "finisherKills": 26,
+        "meleeSwings": 88,
+        "meleeHits": 114,
+        "critStats": {
+          "total": {
+            "rngCrits": 42,
+            "guaranteedCrits": 1,
+            "hits": 308
+          },
+          "vsBoss": {
+            "rngCrits": 0,
+            "guaranteedCrits": 0,
+            "hits": 0
+          },
+          "vsTrash": {
+            "rngCrits": 42,
+            "guaranteedCrits": 1,
+            "hits": 308
+          },
+          "elapsedSec": 116
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 2,
+            "selectedByType": {
+              "skill": 2
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 0
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 3,
+            "maxAreaReached": 0,
+            "runTimeMs": 115933
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 45782.24010091723,
+                "level": 2
+              },
+              {
+                "gameTimeMs": 72424.98706882082,
+                "level": 3
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "directorLast": "AI Director (read-only) | Intns | 1.00 | Perf | 0.09 | State | RELAX | 0.5s | near 3 · danger 0.5 · dmgSince 1s · kill/s 0.13 | Rank | 1 | gate1 | esc+0.12 · cap+1 · xp×1.08 · pity 0.00 · up+0 | style 近接 · prev[buildup1] pk0wf0 pl0gh0 sc0ch52 | program relax | gate gate-number maxRung3 | R2-/T6 cap10 · normal",
+      "version": "pixi · v0.25.3488 · floor:SGC · res:1.0000000149011612/1.0000000149011612",
+      "modalClicks": 0,
+      "chartVisible": true,
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n軍備配置区域のランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n1324m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR2 暴食\n\n次の深さ 研究対象区域 まで あと 176m\n\n死因：敵の飛び道具\n\nRESULT\n生存時間\n01:56\n撃破\n58\nLv\n3\n最大コンボ\n18\nSCORE\nHIGH SCORE\n37663\nKILLスコア 20800\n詳細\n▴\n与ダメ\n3295\nトレジャー\n0\nスクラップ残\n0\nダメージスコア\n823\nKILLスコア\n20800\nコンボスコア\n5400\nトレジャー\n0\nスクラップスコア\n0\n被ダメージスコア\n10640\nAIディレクター\n閉じる▴\nAI DIRECTOR\n難易度\n55\nハンター\n紅き月\n城ボス\n宿敵\nランク(R1-R7)\nBUILD 37s (32%)\nPEAK 0回 0s (0%)\nRELAX 1回 80s (68%)\n獲得 +18g\n所持 18g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "name": "Amine-04",
+      "cond": "Amine",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&botskill=casual&stage=stage-1&director=1",
+      "realSec": 349,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 174844,
+        "deathCause": "変異体(痩躯型)",
+        "kills": 40,
+        "playerLevel": 2,
+        "maxDepthPx": 2188,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 35
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 59,
+        "scrapSpent": 0,
+        "damageTaken": 146,
+        "goldEarned": 8,
+        "damageDealt": {
+          "gun": 1673,
+          "melee": 826,
+          "other": 754,
+          "total": 3253
+        },
+        "finisherKills": 6,
+        "meleeSwings": 54,
+        "meleeHits": 61,
+        "critStats": {
+          "total": {
+            "rngCrits": 27,
+            "guaranteedCrits": 1,
+            "hits": 173
+          },
+          "vsBoss": {
+            "rngCrits": 0,
+            "guaranteedCrits": 0,
+            "hits": 0
+          },
+          "vsTrash": {
+            "rngCrits": 27,
+            "guaranteedCrits": 1,
+            "hits": 173
+          },
+          "elapsedSec": 175
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 1,
+            "selectedByType": {
+              "skill": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 29,
+              "poi": 0,
+              "levelup": 0,
+              "other": 30
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 2,
+            "maxAreaReached": 1,
+            "runTimeMs": 174844
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 43519.74098894192,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "directorLast": "AI Director (read-only) | Intns | 1.00 | Perf | 0.39 | State | PEAK | 2.5s | near 5 · danger 0.0 · dmgSince 0s · kill/s 0.17 | Rank | 0 | buildup2 | esc+0.00 · cap+0 · xp×1.00 · pity 1.00 · up+0 | style バランス · prev[gate1] pk0wf0 pl0gh0 sc0ch6 | program relax | gate gate-number maxRung3 | R3-/T10 cap10 · peak",
+      "version": "pixi · v0.25.3488 · floor:SGC · res:1.0000000149011612/1.0000000149011612",
+      "modalClicks": 0,
+      "chartVisible": true,
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n研究対象区域のランク3 色欲 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n2188m\n怠\nR1\n暴\nR2\n色\n⚑R3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR3 色欲\n\n次の深さ デンジャーゾーン まで あと 812m\n\n死因：変異体(痩躯型)\n\nRESULT\n生存時間\n02:55\n撃破\n40\nLv\n2\n最大コンボ\n3\nSCORE\nHIGH SCORE\n15281\n被ダメージスコア 7520\n詳細\n▴\n与ダメ\n3525\nトレジャー\n0\nスクラップ残\n59\nダメージスコア\n881\nKILLスコア\n4800\nコンボスコア\n900\nトレジャー\n0\nスクラップスコア\n1180\n被ダメージスコア\n7520\n昇格度 86 —— 阻んだのは 処理(86)\nAIディレクター\n閉じる▴\nAI DIRECTOR\n難易度\n64\nZ1\nZ0\nハンター\n紅き月\n城ボス\n宿敵\nランク(R1-R7)\nBUILD 44s (25%)\nPEAK 1回 52s (30%)\nRELAX 1回 80s (45%)\n獲得 +7g\n所持 7g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "name": "Amine-05",
+      "cond": "Amine",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&botskill=casual&stage=stage-1&director=1",
+      "realSec": 356,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 184493,
+        "deathCause": "変異体(狩猟型)",
+        "kills": 43,
+        "playerLevel": 2,
+        "maxDepthPx": 4199,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 37
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 33,
+        "scrapSpent": 0,
+        "damageTaken": 134,
+        "goldEarned": 9,
+        "damageDealt": {
+          "gun": 891,
+          "melee": 938,
+          "other": 1142,
+          "total": 2971
+        },
+        "finisherKills": 8,
+        "meleeSwings": 55,
+        "meleeHits": 70,
+        "critStats": {
+          "total": {
+            "rngCrits": 25,
+            "guaranteedCrits": 7,
+            "hits": 218
+          },
+          "vsBoss": {
+            "rngCrits": 0,
+            "guaranteedCrits": 7,
+            "hits": 17
+          },
+          "vsTrash": {
+            "rngCrits": 25,
+            "guaranteedCrits": 0,
+            "hits": 201
+          },
+          "elapsedSec": 184
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 1,
+            "selectedByType": {
+              "skill": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 33
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 2,
+            "maxAreaReached": 2,
+            "runTimeMs": 184493
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 35453.80541695333,
+                "level": 2
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "directorLast": "AI Director (read-only) | Intns | 1.00 | Perf | 0.26 | State | PEAK | 2.4s | near 1 · danger 1.0 · dmgSince 0s · kill/s 2.13 | Rank | 0 | buildup2 | esc+0.00 · cap+0 · xp×1.00 · pity 0.52 · up+0 | style バランス · prev[gate1] pk0wf0 pl0gh0 sc0ch4 | program lesson-wolf | gate gate-number maxRung3 | R2-/T10 cap10 · peak",
+      "version": "pixi · v0.25.3488 · floor:SGC · res:1.0000000149011612/1.0000000149011612",
+      "modalClicks": 0,
+      "chartVisible": true,
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\nデンジャーゾーンのランク2 暴食 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n4199m\n怠\nR1\n暴\n⚑R2\n色\nR3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR2 暴食\n\n次の深さ 未確認汚染エリア まで あと 801m\n\n死因：変異体(狩猟型)\n\nRESULT\n生存時間\n03:05\n撃破\n52\nLv\n2\n最大コンボ\n6\nSCORE\nHIGH SCORE\n19301\n被ダメージスコア 9248\n詳細\n▴\n与ダメ\n3175\nトレジャー\n0\nスクラップ残\n53\nダメージスコア\n793\nKILLスコア\n6400\nコンボスコア\n1800\nトレジャー\n0\nスクラップスコア\n1060\n被ダメージスコア\n9248\n昇格度 115 —— 阻んだのは 処理(115)\nAIディレクター\n閉じる▴\nAI DIRECTOR\n難易度\n59\nZ1\nZ2\nハンター\n紅き月\n城ボス\n宿敵\nランク(R1-R7)\nBUILD 70s (38%)\nPEAK 1回 35s (19%)\nRELAX 1回 79s (43%)\n獲得 +9g\n所持 9g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "name": "Amine-06",
+      "cond": "Amine",
+      "url": "http://localhost:4173/zombie/?smoke=1&bot=standard&botskill=casual&stage=stage-1&director=1",
+      "realSec": 249,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 159747,
+        "deathCause": "地雷",
+        "kills": 38,
+        "playerLevel": 3,
+        "maxDepthPx": 3431,
+        "maxAreaReached": 2,
+        "subUses": {
+          "heavy-grenade": 32
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 12,
+        "scrapSpent": 0,
+        "damageTaken": 131,
+        "goldEarned": 11,
+        "damageDealt": {
+          "gun": 1044,
+          "melee": 504,
+          "other": 540,
+          "total": 2088
+        },
+        "finisherKills": 13,
+        "meleeSwings": 42,
+        "meleeHits": 46,
+        "critStats": {
+          "total": {
+            "rngCrits": 30,
+            "guaranteedCrits": 1,
+            "hits": 211
+          },
+          "vsBoss": {
+            "rngCrits": 1,
+            "guaranteedCrits": 1,
+            "hits": 10
+          },
+          "vsTrash": {
+            "rngCrits": 29,
+            "guaranteedCrits": 0,
+            "hits": 201
+          },
+          "elapsedSec": 160
+        },
+        "runTelemetry": {
+          "bossEntries": [],
+          "upgrades": {
+            "offered": 2,
+            "selectedByType": {
+              "consumable": 1,
+              "skill": 1
+            }
+          },
+          "knifeFromBox": {
+            "grants": 0,
+            "maxTier": 0
+          },
+          "scrap": {
+            "income": {
+              "kill": 0,
+              "box": 0,
+              "poi": 0,
+              "levelup": 0,
+              "other": 12
+            },
+            "expenseByItem": {}
+          },
+          "merchantLog": [],
+          "dda": [
+            {
+              "gameTimeMs": 0,
+              "skillCount": 0,
+              "oldValue": 0,
+              "newValue": 0
+            }
+          ],
+          "final": {
+            "outcome": "death",
+            "playerLevel": 3,
+            "maxAreaReached": 2,
+            "runTimeMs": 159747
+          },
+          "slotFillTiming": {
+            "filledAt": [
+              {
+                "gameTimeMs": 84012.06858412024,
+                "level": 3
+              }
+            ],
+            "specialEquipAt": []
+          }
+        }
+      },
+      "directorLast": "AI Director (read-only) | Intns | 1.00 | Perf | 0.37 | State | RELAX | 0.4s | near 4 · danger 1.0 · dmgSince 0s · kill/s 0.00 | Rank | 0 | buildup2 | esc+0.00 · cap+0 · xp×1.00 · pity 0.00 · up+0 | style バランス · prev[gate1] pk0wf1 pl0gh0 sc0ch1 | program lesson-wolf | gate gate-number maxRung3 | R3-/T6 cap10 · peak",
+      "version": "pixi · v0.25.3488 · floor:SGC · res:1.0000000149011612/1.0000000149011612",
+      "modalClicks": 1,
+      "chartVisible": true,
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\nデンジャーゾーンのランク3 色欲 に到達\n\n0\n2k\n4k\n6k\n8k\n10k\n軍備配置区域\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\n⚑今回\n3431m\n怠\nR1\n暴\nR2\n色\n⚑R3\n強\nR4\n嫉\nR5\n憤\nR6\n傲\nR7\n七つの大罪\nR3 色欲\n\n次の深さ 未確認汚染エリア まで あと 1569m\n\n死因：変異体(狩猟型)の落下攻撃\n\nRESULT\n生存時間\n02:40\n撃破\n38\nLv\n3\n最大コンボ\n8\nSCORE\nHIGH SCORE\n18572\nKILLスコア 10400\n詳細\n▴\n与ダメ\n2608\nトレジャー\n0\nスクラップ残\n12\nダメージスコア\n652\nKILLスコア\n10400\nコンボスコア\n2400\nトレジャー\n0\nスクラップスコア\n240\n被ダメージスコア\n4880\n昇格度 0 —— 阻んだのは 被ダメ(0)\nAIディレクター\n閉じる▴\nAI DIRECTOR\n難易度\n55\nZ1\nZ2\nハンター\n紅き月\n城ボス\n宿敵\nランク(R1-R7)\nBUILD 70s (43%)\nPEAK 1回 11s (7%)\nRELAX 1回 80s (50%)\n獲得 +9g\n所持 9g\nもう一度プレイ\nメニューに戻る"
+    }
+  ]
+}

@@ -32,6 +32,11 @@ export const rhythmIntervalForLevel = (level: number): number => {
   return 60000 / RHYTHM_BPM_BY_LEVEL[lvl];
 };
 export const RHYTHM_LEAD_MS = 600;            // モード開始〜最初のジャストまでの猶予
+// ダンスビートB方式(v0.25.1339)のON/OFF。?beat=0 で従来(曲アンカー同期)へ完全復帰(切り分け用)。
+// useGameLoop と gameStore(ジャスト吸着のSE予約)の両方が読むため、URL読みをここへ一本化する。
+export const DANCE_BEAT_MODE = typeof window === 'undefined'
+  ? true
+  : new URLSearchParams(window.location.search).get('beat') !== '0';
 // プレイ中の位相リシンク(自動アンカーの定期版)。曲が正確なテンポでも実時計/音声クロックの微差や
 // fps低下で僅かにズレうるので、たまに曲の実再生位置からビートグリッド起点を補正する。
 // 重くならない頻度(数秒に1回)＋閾値超えのズレだけ最小限に動かす(毎フレーム同期=ブルブルは避ける)。
@@ -59,7 +64,6 @@ export const rhythmBeatOffsetForLevel = (level: number): number => {
   return beatOffsetOverrides[lvl] ?? RHYTHM_BEAT_OFFSET_MS_BY_LEVEL[lvl];
 };
 export const RHYTHM_SUCCESS_WINDOW_MS = 180;  // 成功判定幅(±ms)。ほんの少し甘めに調整
-export const RHYTHM_JUST_WINDOW_MS = 75;      // ジャスト判定幅(±ms)。演出区別+少し甘め
 export const RHYTHM_INPUT_DEBOUNCE_MS = 90;   // 連続入力の最短間隔(多重判定防止)
 // フリックは「触れてから振り終わるまで」の所要時間ぶん遅れて確定するため、その遅延を差し引いて
 // 判定し(=指が動き始めた瞬間で見る)、さらにフリックだけ少しだけ判定窓を広げる。
@@ -74,7 +78,6 @@ export const RHYTHM_START_INVULN_MS = 600;    // TODO: 開始直後の無敵(仮
 // フリック=盾バッシュ風スライド。プレイヤーがフリック方向へ短く滑って攻撃する。
 export const SHIJIN_SLIDE_DISTANCE = 58;       // TODO: 滑る距離(盾バッシュ50相当)
 export const SHIJIN_SLIDE_MS = 150;            // TODO: 滑りの所要時間
-export const RHYTHM_PROMPT_LEN = 4;           // 1パターンの矢印数(全部で4)
 export const SHIJIN_FINISH_COUNT = 4;         // 四神技4回成功で全体フィニッシュ
 export const RHYTHM_ARROWS: RhythmArrow[] = ['up', 'down', 'left', 'right'];
 // ランダムな4矢印プロンプトを生成(1本目=四神決定)。
@@ -83,8 +86,7 @@ export const randomRhythmPrompt = (): RhythmArrow[] =>
 // フリックのベクトル → 主軸の矢印。
 export const arrowFromDir = (x: number, y: number): RhythmArrow =>
   Math.abs(x) >= Math.abs(y) ? (x >= 0 ? 'right' : 'left') : (y >= 0 ? 'down' : 'up');
-// 表示用: 矢印グリフと四神の和名(コマンドUI/オーバーレイで使用)。
-export const ARROW_GLYPH: Record<RhythmArrow, string> = { up: '↑', down: '↓', left: '←', right: '→' };
+// (旧・文字グリフ表ARROW_GLYPHはv0.25.1373で削除: 矢印表示は下のドット絵矢印に完全移行済みで未参照だった。)
 
 // リズムゲーム風の太いドット絵矢印(7x7)。上向きを基準に90°回転で4方向。Pixiオーバーレイと
 // HUD(左上コマンド)の両方で同じ形を使う。
@@ -178,7 +180,5 @@ export const RHYTHM_TAP_GLOW_ALPHA = 0.18;    // タップ発光の最大強さ(
 export const RHYTHM_JUST_BURST_MS = 360;       // バースト演出の長さ(これを過ぎたら描かない)
 export const RHYTHM_JUST_RING_MAX_SCALE = 3.4; // サークルが最終的に広がる倍率(足元の輪 rw/rh 基準)
 export const RHYTHM_JUST_FLICK_TRAVEL = 46;    // フリック矢印が向き方向へ飛ぶ距離(px)
-export const RHYTHM_JUST_HIT_COLOR = 0xfde68a;  // 通常JUST(金)※巡回色未使用時のフォールバック
-export const RHYTHM_JUST_FIRE_COLOR = 0x7dd3fc; // 四神技完成(水色で差別化)
 // JUST成功ごとに巡回する発光色: 赤→青→緑→黄(judgeSeq % 4 で選択)。
 export const RHYTHM_JUST_CYCLE_COLORS = [0xff3b30, 0x3b82f6, 0x22c55e, 0xfacc15];

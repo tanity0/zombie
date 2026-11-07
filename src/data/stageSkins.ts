@@ -9,7 +9,7 @@
 // 現在 pixiScene が参照しているのは horizon1Visible のみ(遠景森1の有無)。残り(far/ground/front/horizon2)は
 // 既存の apply* 経路が担当中で、本表は将来の移行先として宣言済み(値は現状の挙動に一致)。
 
-export type StageSkinKey = 'forest' | 'lab' | 'city' | 'snow';
+export type StageSkinKey = 'forest' | 'lab' | 'city' | 'snow' | 'tutorial' | 'mansion';
 
 export interface StageSkin {
   far: StageSkinKey | 'forest';   // 遠景パノラマの種類
@@ -24,13 +24,20 @@ export interface StageSkin {
 export const STAGE_SKINS: Record<StageSkinKey, StageSkin> = {
   // ステージ1: 狂い咲きの森(夜の森)
   forest: { far: 'forest', ground: 'forest', horizon1Visible: true, horizon2: 'forest', front: 'forest', daylightNoon: false, topHang: null },
-  // ステージ2: 研究所跡(野外ラボ)。遠景森1(帯)＋遠景森2(機材シルエット)とも表示。
-  // (横向きで「森が上に来る」件は縦持ちガードで横自体を塞いだため、ここで消す必要はない。)
-  lab:    { far: 'lab', ground: 'lab', horizon1Visible: true, horizon2: 'lab', front: 'forest', daylightNoon: false, topHang: null },
+  // ステージ2: 研究所跡(野外ラボ)。社長指示(v0.25.2181)により支給遠景(stage2-lab-far.jpg)
+  // 1枚だけを表示し、遠景森1(帯)は非表示化(旧値true=horizonForest・nearHorizon・frontForestの
+  // 4-5層が同じ画面帯に重なって「遠景が透けて見える」原因だった。実測: pixiScene.ts参照)。
+  // 森レイヤーは後日改めて設置予定(社長)。
+  lab:    { far: 'lab', ground: 'lab', horizon1Visible: false, horizon2: 'lab', front: 'forest', daylightNoon: false, topHang: null },
   // ステージ3: リモート研究施設(正午の廃都)。
   city:   { far: 'city', ground: 'city', horizon1Visible: true, horizon2: 'city', front: 'city', daylightNoon: true, topHang: null },
   // ステージ4: 封鎖地域(雪原の要塞)。遠景森2は無し、地平帯=氷壁。
   snow:   { far: 'snow', ground: 'snow', horizon1Visible: true, horizon2: null, front: 'snow', daylightNoon: false, topHang: null },
+  // チュートリアル: 洞窟。遠景森1=岩帯(tutorial-horizon-rocks・v0.25.1810で社長支給)。
+  // 配置は「川に少しだけ頭が被る」位置(pixiSceneのtutorial分岐参照)。
+  tutorial: { far: 'tutorial', ground: 'tutorial', horizon1Visible: true, horizon2: null, front: 'forest', daylightNoon: false, topHang: null },
+  // ステージ6: 古い洋館(corridorMode)。屋内の廊下なので森シルエット帯は出さない(v0.25.2110)。
+  mansion: { far: 'mansion', ground: 'forest', horizon1Visible: false, horizon2: null, front: 'forest', daylightNoon: false, topHang: null },
 };
 
 // 現在の出撃状態(stageTheme / farBackdrop)からスキンキーを解決。屋外専用(屋内は別パイプライン)。
@@ -38,5 +45,7 @@ export const resolveStageSkinKey = (stageTheme: string, farBackdrop: string): St
   if (stageTheme === 'lab') return 'lab';
   if (farBackdrop === 'city') return 'city';
   if (farBackdrop === 'snow') return 'snow';
+  if (farBackdrop === 'tutorial') return 'tutorial';
+  if (farBackdrop === 'mansion') return 'mansion'; // corridorMode(呼び出し側が'mansion'を渡す)
   return 'forest';
 };

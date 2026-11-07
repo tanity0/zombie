@@ -1,0 +1,2444 @@
+// ★カウンター憲法(v0.25.3948): 「カウンター可能局面」の代表例を issen-windup → issen-dash へ差し替えた。
+// 憲法で溜め(windup)は成立機会から消えたため(isCounterOpportunityNow)、待つ価値のある州=実行中で表す。
+// BOT_AND_GHOST.md G2(ゴースト本体)。純関数の意思決定(decideGhost)+補助関数を検証する。
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  decideGhost, defaultGhostProfile, ghostLeashWarp,
+  ghostSubUseIntervalMs, ghostSubClaimIntervalMs, GHOST_SUB_USE_MAX_INTERVAL_MS,
+  shouldGhostClaimSub, DEFAULT_SUB_USES_PER_MIN,
+  ghostRunEnabled, GUARDIAN_SPIRIT_SKILL,
+  GHOST_LEASH_PX, GHOST_MELEE_RANGE, GHOST_BOSS_HP_MULT,
+  rollGhostMoveReaction, GHOST_MOVE_ROLL_MIN_N, GHOST_MOVE_ROLL_TIMEOUT_MS, GHOST_DEFAULT_MOVE_STAT,
+  ghostReactionMs, ghostMoveChance, ghostApproachChance, ghostDesiredDist,
+  ghostCounterWaitExpired, ghostDodgeVector,
+  ghostDodgeLateralFrac, GHOST_DODGE_DIR_MAX_RAD,
+  drawPunishMode, // GHOST-CMD-2A(§2.18追補): 隙コマンドのモード抽選(2モード袋)
+  stepGhostDanger, GHOST_DANGER_MEMORY_MS, GHOST_BULLET_TANK_MS,
+  GHOST_REACTION_MIN_MS, GHOST_REACTION_MAX_MS, GHOST_WINDUP_SAFE_MARGIN_PX,
+  GHOST_COUNTER_WAIT_MS, GHOST_DEFAULT_STATIONARY_FRAC, GHOST_APPROACH_MIN_CHANCE,
+  GHOST_ORBIT_BASE_FRAC, GHOST_ORBIT_IDLE_FRAC, GHOST_ORBIT_TANK_FRAC, GHOST_BOSS_BODY_AVOID_PX,
+  GHOST_COUNTER_MELEE_PERIOD_MS, // GHOST-COUNTER-PARITY(社長指示1)
+  withSynthesizedMicroRhythm, // research/AI_HUMANIZE.md B3(§3合成既定分布)
+  // research/AI_HUMANIZE.md B2(§2守護霊再生)。
+  resolveHabitStage, pickHabitPositionEpisode, pickHabitSwingEpisode, habitPositionTarget,
+  habitSwingAtFromPressOfs, habitSwingWindowCoversT, GHOST_HABIT_STAGE1_MIN_N,
+  type GhostSelf, type GhostProfile, type GhostWeapon, type GhostDriverInput, type GhostMoveRoll,
+} from './ghostDriver';
+import { jumpDodge, botSkillProfile } from './botSkill';
+import { resetGhostCommandBags } from './commandBag';
+import { resetModeBags } from './modeBag'; // GHOST-CMD-2A: 隙コマンドの2モード袋(ラン単位)
+import { PUNISH_AFTER_COUNTER_MS } from './punishWindow';
+import { COUNTER_WINDOW, COUNTER_COOLDOWN, COUNTER_ACCEPT_MS } from '../store/gameStore'; // GHOST-COUNTER-PARITY: 定数を写さずimportして検証する
+import type { Enemy, Projectile } from '../types/game';
+import { mulberry32 } from './botUpgradePolicy'; // ★B3検収(重大1): 占有率保存の受け入れテスト用の決定的乱数流
+import { meanStillMs, stillStartChance, sampleStillMs } from './microRhythmReplay';
+import type { MicroBin3Dist } from './microRhythm';
+import type { HabitEpisode } from './habitEpisode';
+
+// §2.18(GHOST-CMD-1): 技への反応の決定はラン単位の袋(モジュールシングルトン)から引くようになった。
+// テスト間で袋(残枚数・連続tank回数)を持ち越さない=各テストは「ラン開始直後」から始まる。
+beforeEach(() => resetGhostCommandBags());
+
+const mkBoss = (overrides: Partial<Enemy> = {}): Enemy => ({
+  id: 'boss-1', x: 0, y: 0, width: 40, height: 40, speed: 0,
+  health: 100, maxHealth: 100, damage: 10, type: 'thor', experienceValue: 0,
+  lastHit: 0, lastShot: 0,
+  ...overrides,
+} as unknown as Enemy);
+
+// lastShotAt/lastMeleeAtは既定で「大昔」にしておき、クールダウンを意図的に検証するテストだけが
+// 個別に上書きする(そうしないとGHOST_MELEE_COOLDOWN_MS(600ms)がnowMs=0付近のテストを毎回ブロックする)。
+const mkGhost = (overrides: Partial<GhostSelf> = {}): GhostSelf => ({
+  x: 0, y: 0, width: 20, height: 20, maxHealth: 110, facing: 1, lastShotAt: -1_000_000, lastMeleeAt: -1_000_000,
+  ...overrides,
+});
+
+// v0.25.2564: プレイヤーと同じ「体の縁」距離(gameStore.enemyMeleeDist の裏ボス分岐=生AABB最近点と
+// 同じ幾何)。純関数側はstoreに依存しないので、テストは同じ幾何のローカル実装を注入する。
+const aabbMeleeDist = (cx: number, cy: number, e: Enemy): number => {
+  const nx = Math.max(e.x, Math.min(cx, e.x + e.width));
+  const ny = Math.max(e.y, Math.min(cy, e.y + e.height));
+  return Math.hypot(cx - nx, cy - ny);
+};
+
+const PROFILE: GhostProfile = {
+  reactionMs: 200, counterChance: 1, preferredDist: 180, meleeBias: 1, mobility: 1, hitsPerMin: 0,
+  subUsesPerMin: 2,
+};
+const WEAPON: GhostWeapon = { gunDamage: 10, gunIntervalMs: 300, gunRangePx: 400, meleeDamage: 20 };
+
+const baseDriverInput = (over: Partial<GhostDriverInput> = {}): GhostDriverInput => ({
+  ghost: mkGhost(),
+  player: { x: 0, y: 0, width: 20, height: 20 },
+  enemies: [],
+  projectiles: [],
+  meleeDist: aabbMeleeDist,
+  profile: PROFILE,
+  weapon: WEAPON,
+  gameTime: 0,
+  nowMs: 0,
+  rand: () => 0, // 既定は「常に成功/常に発火」側(0 < どんな確率でも成功)
+  ...over,
+});
+
+describe('defaultGhostProfile: botSkillのcasual相当から変換', () => {
+  it('reactionMs/counterChanceはcasualの値そのまま', () => {
+    const casual = botSkillProfile('casual');
+    const p = defaultGhostProfile();
+    expect(p.reactionMs).toBe(casual.reactionMs);
+    expect(p.counterChance).toBe(casual.counterChance);
+  });
+});
+
+describe('ghostLeashWarp: プレイヤーから600px超えたら瞬時にワープ', () => {
+  it('600px以内なら null(ワープしない)', () => {
+    const ghost = { x: 500, y: 0, width: 20, height: 20 };
+    const player = { x: 0, y: 0, width: 20, height: 20 };
+    expect(ghostLeashWarp(ghost, player)).toBeNull();
+  });
+
+  it('600pxを超えたらプレイヤー付近の座標を返す', () => {
+    const ghost = { x: GHOST_LEASH_PX + 100, y: 0, width: 20, height: 20 };
+    const player = { x: 0, y: 0, width: 20, height: 20 };
+    const w = ghostLeashWarp(ghost, player);
+    expect(w).not.toBeNull();
+    // 戻り値は「プレイヤーの近傍」であること(厳密な演出位置はBOT_AND_GHOST.mdが「後回しでよい」とする範囲)。
+    const d = Math.hypot((w!.x + 10) - (player.x + 10), (w!.y + 10) - (player.y + 10));
+    expect(d).toBeLessThan(GHOST_LEASH_PX);
+  });
+});
+
+// ==== §2.12 行動品質(v0.25.2529)。原則「選択=計測値・実行=常に本気」 =========================
+describe('§2.12 要件1: dodgeStrength逆写像の廃止(実行は常に本気)', () => {
+  it('被弾/分(hitsPerMin)が幾つでも回避ベクトルの強さは1(=全力)で変わらない', () => {
+    const boss = mkBoss({ x: 1000, y: 0, aiPhase: 'jump' as Enemy['aiPhase'], aiTargetX: 15, aiTargetY: 10 });
+    const v = ghostDodgeVector(10, 10, [boss], [], 110);
+    expect(v).not.toBeNull();
+    expect(Math.hypot(v!.x, v!.y)).toBeCloseTo(1, 5); // 単位ベクトル=減衰なし
+  });
+
+  it('全ボス予告台帳(ghostTelegraph)の差分も回避ベクトルへ合成される', () => {
+    // 'sweep'(実行中の薙ぎ)は既存 telegraphDodge が拾わない状態=台帳の差分だけで避けられること。
+    const uri = mkBoss({
+      type: 'uri' as Enemy['type'], bossState: 'sweep',
+      x: 2000, y: 2000, aiFromX: 0, aiFromY: 0, aiTargetX: 300, aiTargetY: 0,
+    });
+    const v = ghostDodgeVector(150, 20, [uri], [], 110);
+    expect(v).not.toBeNull();
+    expect(v!.y).toBeGreaterThan(0); // 帯(y=0)の下側へ抜ける
+  });
+});
+
+describe('§2.12 純関数(反応遅延/移動リズム/間合い/見切り)', () => {
+  it('ghostReactionMs: 100-800にclamp(異常値は下限)', () => {
+    expect(ghostReactionMs(320)).toBe(320);
+    expect(ghostReactionMs(0)).toBe(GHOST_REACTION_MIN_MS);
+    expect(ghostReactionMs(5000)).toBe(GHOST_REACTION_MAX_MS);
+    expect(ghostReactionMs(Number.NaN)).toBe(GHOST_REACTION_MIN_MS);
+  });
+
+  it('ghostMoveChance: mobilityと(1-stationaryFrac)の平均。止まる癖が強いほど動かない', () => {
+    expect(ghostMoveChance(1, 0)).toBe(1);
+    expect(ghostMoveChance(0, 1)).toBe(0);
+    expect(ghostMoveChance(0.6, 0.35)).toBeCloseTo(0.625, 5);
+    // 欠損(旧プロファイル)は既定のstationaryFracで評価する
+    expect(ghostMoveChance(0.6)).toBeCloseTo(ghostMoveChance(0.6, GHOST_DEFAULT_STATIONARY_FRAC), 5);
+    expect(ghostMoveChance(0.5, 0.2)).toBeGreaterThan(ghostMoveChance(0.5, 0.9)); // 単調
+  });
+
+  it('ghostApproachChance: 接近が少ない人ほど詰めが遅いが、床(0.25)で固まらない', () => {
+    expect(ghostApproachChance(6)).toBe(1);
+    expect(ghostApproachChance(3)).toBeCloseTo(0.5, 5);
+    expect(ghostApproachChance(0)).toBe(GHOST_APPROACH_MIN_CHANCE);
+    expect(ghostApproachChance(undefined)).toBeGreaterThan(0);
+  });
+
+  it('ghostDesiredDist: 予告中だけ安全マージンを足す', () => {
+    expect(ghostDesiredDist(180, false)).toBe(180);
+    expect(ghostDesiredDist(180, true)).toBe(180 + GHOST_WINDUP_SAFE_MARGIN_PX);
+  });
+
+  it('ghostCounterWaitExpired: 窓が開いてから約1秒で見切る', () => {
+    expect(ghostCounterWaitExpired(undefined, 99999)).toBe(false);
+    expect(ghostCounterWaitExpired(0, GHOST_COUNTER_WAIT_MS - 1)).toBe(false);
+    expect(ghostCounterWaitExpired(0, GHOST_COUNTER_WAIT_MS)).toBe(true);
+  });
+});
+
+describe('§2.12 要件2: 反応遅延(回避の開始をreactionMsだけ遅らせる)', () => {
+  const boss = (): Enemy => mkBoss({
+    x: 1000, y: 0, aiPhase: 'jump' as Enemy['aiPhase'], aiTargetX: 15, aiTargetY: 10,
+  });
+
+  it('危険を見た最初のtickは回避しない(認知時刻だけ記録する)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss()], nowMs: 1000,
+      profile: { ...PROFILE, reactionMs: 300 },
+    }));
+    expect(d.dangerSeenAt).toBe(1000);
+    expect(d.moveX).toBeGreaterThan(0); // まだ気づいていない=平時の間合い(接近)のまま
+  });
+
+  it('reactionMs経過後は回避する(遅い人ほど反応が遅れる=個性)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: 1000 }), enemies: [boss()], nowMs: 1300,
+      profile: { ...PROFILE, reactionMs: 300 },
+    }));
+    expect(d.moveX).toBeLessThan(0); // 着地点(+x)から逃げる
+  });
+
+  // GHOST-BULLET-TECH A(v0.25.2543): 危険が消えた瞬間にリセットする旧仕様は廃止。
+  // 記憶(GHOST_DANGER_MEMORY_MS)が切れて初めてリセットされる。
+  it('危険が消えても記憶の間は認知を保つ(弾の波ごとに盲目窓を作らない)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: 1000, dangerLastAt: 1200 }),
+      enemies: [mkBoss({ x: 1000, y: 0, bossState: 'chase' })], nowMs: 1300,
+    }));
+    expect(d.dangerSeenAt).toBe(1000);
+    expect(d.dangerLastAt).toBe(1200); // 危険が見えていないtickでは更新しない=ここから失効を数える
+  });
+
+  it('記憶が切れたら認知はリセットされる(次の危険でまた遅れる)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: 1000, dangerLastAt: 1200 }),
+      enemies: [mkBoss({ x: 1000, y: 0, bossState: 'chase' })],
+      nowMs: 1200 + GHOST_DANGER_MEMORY_MS + 1,
+    }));
+    expect(d.dangerSeenAt).toBeUndefined();
+  });
+
+  it('記憶が生きている間に危険が戻ったら、遅延を払い直さず即回避する(遅延はエピソードに1回)', () => {
+    const seen = 1000;
+    const gap = GHOST_DANGER_MEMORY_MS - 100; // 記憶が切れる直前に次の波が来る
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: seen, dangerLastAt: seen + 100 }),
+      enemies: [boss()], nowMs: seen + 100 + gap,
+      profile: { ...PROFILE, reactionMs: 800 }, // 反応が最も遅い人でも即応する
+    }));
+    expect(d.moveX).toBeLessThan(0); // 着地点(+x)から逃げる=盲目窓が再発生していない
+    expect(d.dangerSeenAt).toBe(seen); // エピソードは同じまま(認知時刻は据え置き)
+  });
+});
+
+describe('GHOST-BULLET-TECH A: stepGhostDanger(認知の持続・純関数)', () => {
+  it('危険なし→認知: 初認知のtickでは反応しない(認知時刻だけ記録)', () => {
+    const r = stepGhostDanger(undefined, true, 1000, 300);
+    expect(r.reacted).toBe(false);
+    expect(r.memory).toEqual({ seenAt: 1000, lastDangerAt: 1000 });
+  });
+
+  it('認知→反応済み: reactionMs経過で反応する(境界=以上)', () => {
+    expect(stepGhostDanger({ seenAt: 1000, lastDangerAt: 1200 }, true, 1299, 300).reacted).toBe(false);
+    expect(stepGhostDanger({ seenAt: 1000, lastDangerAt: 1200 }, true, 1300, 300).reacted).toBe(true);
+  });
+
+  it('反応済み→記憶: 危険が消えてもエピソードは残り、lastDangerAtは進まない', () => {
+    const r = stepGhostDanger({ seenAt: 1000, lastDangerAt: 1200 }, false, 2000, 300);
+    expect(r.memory).toEqual({ seenAt: 1000, lastDangerAt: 1200 });
+    expect(r.reacted).toBe(false); // 避ける対象が無いtick
+  });
+
+  it('記憶→失効: 最後に危険を見てからGHOST_DANGER_MEMORY_MSを過ぎたらエピソードを閉じる', () => {
+    const prev = { seenAt: 1000, lastDangerAt: 1200 };
+    const keep = stepGhostDanger(prev, false, 1200 + GHOST_DANGER_MEMORY_MS, 300);
+    expect(keep.memory).toEqual(prev); // ちょうどは保持(超えたら失効)
+    const gone = stepGhostDanger(prev, false, 1200 + GHOST_DANGER_MEMORY_MS + 1, 300);
+    expect(gone.memory).toBeUndefined();
+  });
+
+  it('失効後の危険は「初認知」からやり直す(また反応が遅れる=個性が消えない)', () => {
+    const prev = { seenAt: 1000, lastDangerAt: 1200 };
+    const t = 1200 + GHOST_DANGER_MEMORY_MS + 1;
+    const r = stepGhostDanger(prev, true, t, 300);
+    expect(r.memory).toEqual({ seenAt: t, lastDangerAt: t });
+    expect(r.reacted).toBe(false);
+  });
+
+  it('旧状態(lastDangerAt無し)は記憶が生きている扱い=移行tickで遅延を払い直さない', () => {
+    const r = stepGhostDanger({ seenAt: 0 }, true, 99999, 300);
+    expect(r.reacted).toBe(true);
+    expect(r.memory?.seenAt).toBe(0);
+  });
+});
+
+describe('§2.12 要件3: 予告中だけ安全マージンを足して退避する', () => {
+  it('予告(windup)中は preferredDist+マージン まで下がる', () => {
+    // 距離200 = preferredDist(180)の帯(±40)の中=平時なら動かない。予告中は目標が300へ伸びるので下がる。
+    // v0.25.2610: マージンが乗るのは 'fallback'(=タイムアウト安全弁)と「カウンターを諦めた」時だけに
+    // なった(記録なしは既定の袋を引くようになったため)。ここでは持ち越しロールで fallback を明示して測る。
+    const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'issen-dash' });
+    const ghost = mkGhost({
+      x: 0, y: 0, width: 0, height: 0, dangerSeenAt: 0,
+      moveRoll: { moveKey: 'thor-issen', decision: 'fallback' as const, rolledAtMs: 5000 },
+    });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [boss], nowMs: 5000, profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.moveX).toBeLessThan(0); // ボス(右)から離れる
+  });
+
+  it('平時(chase)・帯の中は前後せず、ボス正対の横流れ(オービット)をする(§2.12追補)', () => {
+    const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'chase' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 0, height: 0 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [boss], nowMs: 5000, profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.moveX).toBeCloseTo(0, 5); // 前後(接近/後退)成分なし=間合いは維持
+    expect(Math.abs(d.moveY)).toBeCloseTo(GHOST_ORBIT_BASE_FRAC, 5); // 接線方向へ横流れ
+  });
+
+  it("'tank'ロール(苦手技=食らいに行く)の時はマージンを足さない", () => {
+    const boss = mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'issen-dash' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 0, height: 0, dangerSeenAt: 0 });
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 0, hitRate: 1 } },
+    };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 5000, rand: () => 0 }));
+    expect(d.moveRoll?.decision).toBe('tank');
+    expect(d.moveX).toBeCloseTo(0, 5); // 目標間合いは180のまま=帯の中なので下がらない(前後成分なし)
+    // §2.12追補: tank予告中も棒立ちしない=「避けようとして間に合わない」ゆっくり横歩き
+    expect(Math.abs(d.moveY)).toBeCloseTo(GHOST_ORBIT_TANK_FRAC, 5);
+  });
+});
+
+describe('§2.12 要件4: 移動リズム(平時のみ)・危険時は必ず動く', () => {
+  it('立ち止まる癖(stationaryFrac)が強い人の止まりtickは、完全停止ではなく遅い横流れ(§2.12追補)', () => {
+    const boss = mkBoss({ x: 1000, y: 0, bossState: 'chase' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss],
+      profile: { ...PROFILE, mobility: 1, stationaryFrac: 1 }, // moveChance=0.5
+      rand: () => 0.9, // 0.9 >= 0.5 → 止まりtick
+    }));
+    expect(Math.abs(d.moveX)).toBeLessThan(0.05); // 接近はしない(「詰めない」個性は維持)
+    expect(Math.hypot(d.moveX, d.moveY)).toBeCloseTo(GHOST_ORBIT_IDLE_FRAC, 5); // 遅い横流れで足は止めない
+  });
+
+  it('危険時(予告中)はリズムを無視して必ず動く', () => {
+    const boss = mkBoss({ x: 1000, y: 0, bossState: 'issen-dash' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss],
+      profile: { ...PROFILE, mobility: 0, stationaryFrac: 1 }, // 平時なら絶対に止まる設定
+      rand: () => 0.99,
+    }));
+    expect(d.moveX).toBeGreaterThan(0);
+  });
+
+  it('接近リズム(approachPerMin)が低いと、平時に詰めず横へ流れるtickが出る(§2.12追補)', () => {
+    const boss = mkBoss({ x: 1000, y: 0, bossState: 'chase' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), enemies: [boss],
+      // 移動ゲートは通す(rand=0.5 < moveChance=1)が、接近ゲート(0.25)は通さない。
+      profile: { ...PROFILE, mobility: 1, stationaryFrac: 0, approachPerMin: 0 },
+      rand: () => 0.5,
+    }));
+    expect(Math.abs(d.moveX)).toBeLessThan(0.05); // 詰めない(接近成分はほぼゼロ)
+    expect(Math.hypot(d.moveX, d.moveY)).toBeCloseTo(GHOST_ORBIT_IDLE_FRAC, 5); // 立ち尽くさず横へ流れる
+  });
+});
+
+describe('§2.12 要件6: カウンター待ちは約1秒で見切って離脱する', () => {
+  const bossNear = (): Enemy => mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
+
+  it('見切る前は窓を見ている(銃で代替しない)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 10, height: 10, counterPendingAt: 0, counterWillAttempt: false }),
+      enemies: [bossNear()], nowMs: GHOST_COUNTER_WAIT_MS - 1,
+      profile: { ...PROFILE, counterChance: 0, meleeBias: 0 },
+    }));
+    expect(d.action).toBe('none');
+  });
+
+  it('約1秒待って成立しなければ見切り、通常行動(銃)へ戻る', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 10, height: 10, counterPendingAt: 0, counterWillAttempt: false }),
+      enemies: [bossNear()], nowMs: GHOST_COUNTER_WAIT_MS,
+      profile: { ...PROFILE, counterChance: 0, meleeBias: 0 },
+    }));
+    expect(d.action).toBe('shoot');
+    expect(d.counterWillAttempt).toBe(false);
+  });
+
+  it("見切った後は'counter'ロールでも張り付かない(間合いへ戻る=離脱)", () => {
+    const boss = mkBoss({ x: 30, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } },
+    };
+    const ghost = mkGhost({
+      x: 0, y: 0, width: 10, height: 10, counterPendingAt: 0, counterWillAttempt: true,
+      dangerSeenAt: 0, moveRoll: { moveKey: 'thor-issen', decision: 'counter', rolledAtMs: 0 },
+    });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [boss], profile, nowMs: GHOST_COUNTER_WAIT_MS + 100, rand: () => 0.9,
+    }));
+    expect(d.moveX).toBeLessThan(0); // 詰める(+x)のをやめて離れる
+  });
+
+  it('窓が閉じれば待ち状態はクリアされる(次の窓ではまた構える)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 10, height: 10, counterPendingAt: 0, counterWillAttempt: true }),
+      enemies: [mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'chase' })],
+      nowMs: GHOST_COUNTER_WAIT_MS + 500, profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.counterPendingAt).toBeUndefined();
+  });
+});
+
+describe('§2.12追補: オービット(社長裁定「ぼーっと立たない・ボスを正面に横に歩く」)', () => {
+  const bandBoss = (): Enemy => mkBoss({ x: 200, y: 0, width: 0, height: 0, bossState: 'chase' });
+
+  it('旋回方向(orbitSign)は持ち越され、反転確率を引かない限り変わらない', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 0, height: 0, orbitSign: 1 }),
+      enemies: [bandBoss()], nowMs: 5000,
+      profile: { ...PROFILE, meleeBias: 0, stationaryFrac: 0 },
+      rand: () => 0.5, // flip(0.004)は引かない・移動ゲートは通る
+    }));
+    expect(d.orbitSign).toBe(1);
+    expect(d.moveY).toBeLessThan(0); // sign=1の接線方向(このジオメトリでは-y)
+  });
+
+  it('反転確率を引いたtickは旋回方向が反転する', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 0, height: 0, orbitSign: 1 }),
+      enemies: [bandBoss()], nowMs: 5000,
+      profile: { ...PROFILE, meleeBias: 0, stationaryFrac: 0 },
+      rand: () => 0.001, // flip(0.004)を引く
+    }));
+    expect(d.orbitSign).toBe(-1);
+    expect(d.moveY).toBeGreaterThan(0); // 反転後の接線方向(+y)
+  });
+
+  it('カウンター待ち(射程内)の静止だけは維持される=意味のある静止', () => {
+    const boss = mkBoss({ x: 30, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } },
+    };
+    const ghost = mkGhost({
+      x: 0, y: 0, width: 10, height: 10, counterPendingAt: 4900, counterWillAttempt: true,
+      dangerSeenAt: 0, moveRoll: { moveKey: 'thor-issen', decision: 'counter', rolledAtMs: 4900 },
+    });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [boss], profile, nowMs: 5000, rand: () => 0.9, // 見切り(1秒)前
+    }));
+    expect(d.moveX).toBe(0);
+    expect(d.moveY).toBe(0);
+  });
+});
+
+describe('decideGhost: 標的が居ない', () => {
+  it('プレイヤーへ寄る(戦闘はしない)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 200, y: 0 }),
+      player: { x: 0, y: 0, width: 20, height: 20 },
+      enemies: [],
+    }));
+    expect(d.action).toBe('none');
+    expect(d.targetId).toBeNull();
+    expect(d.moveX).toBeLessThan(0); // プレイヤーは左側
+  });
+});
+
+describe('decideGhost: 雑魚回避(v0.25.2470・社長裁定「雑魚は基本的に避けつつボスと戦う」)', () => {
+  it('至近の雑魚から離れる向きが移動に混ざる(狙いはボスのまま)', () => {
+    const boss = mkBoss({ x: 1000, y: 0 });
+    const mob = mkBoss({ id: 'mob-1', type: 'zombie', x: 10, y: 60, width: 20, height: 20 }); // すぐ下に雑魚
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [boss, mob],
+      boundBossId: 'boss-1',
+    }));
+    expect(d.targetId).toBe('boss-1');      // 雑魚に流れない
+    expect(d.moveX).toBeGreaterThan(0);     // ボス(右)へは向かい続ける
+    expect(d.moveY).toBeLessThan(0);        // 下の雑魚から上へ逃げる成分が混ざる
+  });
+  it('boundBossIdがあれば雑魚が近くてもボスを狙う', () => {
+    const boss = mkBoss({ x: 500, y: 0 });
+    const mob = mkBoss({ id: 'mob-1', type: 'zombie', x: 30, y: 0, width: 20, height: 20 }); // ボスより近い雑魚
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [mob, boss],
+      boundBossId: 'boss-1',
+    }));
+    expect(d.targetId).toBe('boss-1');
+  });
+});
+
+describe('decideGhost: 間合い管理(preferredDistへ寄せる)', () => {
+  it('preferredDistより遠い時は接近する', () => {
+    const boss = mkBoss({ x: 1000, y: 0 });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [boss],
+    }));
+    expect(d.targetId).toBe('boss-1');
+    expect(d.moveX).toBeGreaterThan(0); // ボスは右側=接近は+x
+  });
+
+  it('preferredDistより近い時は離れる', () => {
+    const boss = mkBoss({ x: 20, y: 0, width: 10, height: 10 }); // ごく至近
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [boss],
+      profile: { ...PROFILE, meleeBias: 0 }, // 近接を打たせず移動だけ見る
+    }));
+    expect(d.moveX).toBeLessThan(0); // ボスは右側=離れるのは-x
+  });
+
+  it('mobilityが低い人の止まりtickも、完全停止ではなく遅い横流れになる(§2.12追補)', () => {
+    const boss = mkBoss({ x: 1000, y: 0 });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [boss],
+      profile: { ...PROFILE, mobility: 0.3 },
+      rand: () => 0.9, // 0.9 >= moveChance → 止まりtick
+    }));
+    expect(Math.abs(d.moveX)).toBeLessThan(0.05); // 接近はしない
+    expect(Math.hypot(d.moveX, d.moveY)).toBeCloseTo(GHOST_ORBIT_IDLE_FRAC, 5); // 遅い横流れ
+  });
+});
+
+describe('decideGhost: 攻撃(近接/銃)', () => {
+  it('近接圏内・meleeBias成立・非カウンター局面なら近接攻撃', () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'chase' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, width: 10, height: 10 }),
+      enemies: [boss],
+      profile: { ...PROFILE, meleeBias: 1 },
+      rand: () => 0, // 0 < meleeBias(1) → 近接成立
+    }));
+    expect(d.action).toBe('melee');
+    expect(d.lastMeleeAt).toBe(0);
+  });
+
+  it('近接圏外・gunRangePx以内・CD明けなら射撃', () => {
+    const boss = mkBoss({ x: 300, y: 0 });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [boss],
+    }));
+    expect(d.action).toBe('shoot');
+    expect(d.lastShotAt).toBe(0);
+  });
+
+  it('銃のクールダウン中は撃たない', () => {
+    const boss = mkBoss({ x: 300, y: 0 });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, lastShotAt: 100 }),
+      enemies: [boss],
+      nowMs: 200, // interval=300未満
+    }));
+    expect(d.action).toBe('none');
+  });
+
+  it('カウンター可能局面(実行中=憲法v0.25.3948で溜めは機会から除外)は即座に撃たず、reactionMs経過後に成立する', () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
+    const first = decideGhost(baseDriverInput({ ghost, enemies: [boss], nowMs: 0 }));
+    expect(first.action).toBe('none'); // reactionMs(200)未経過
+    expect(first.counterPendingAt).toBe(0);
+    expect(first.counterWillAttempt).toBe(true); // rand()=0 < counterChance(1)
+
+    const second = decideGhost(baseDriverInput({
+      ghost: { ...ghost, counterPendingAt: first.counterPendingAt, counterWillAttempt: first.counterWillAttempt },
+      enemies: [boss], nowMs: 250, // reactionMs(200)経過
+    }));
+    expect(second.action).toBe('melee');
+    expect(second.counterPendingAt).toBeUndefined(); // 1機会=1回で窓を閉じる
+  });
+
+  it('カウンター不成立の抽選(rand>=counterChance)でも、カウンター可能局面の間は銃で代替しない', () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [boss], nowMs: 1000, profile: { ...PROFILE, counterChance: 0 }, rand: () => 0.5,
+    }));
+    expect(d.counterWillAttempt).toBe(false);
+    expect(d.action).toBe('none'); // 窓を見ている最中は近接も銃も出さない(BOT_AND_GHOST.md実装の統一)
+  });
+
+  it('カウンター可能局面が終われば(chaseに戻れば)通常どおり射程内で銃に代替する', () => {
+    const boss = mkBoss({ x: 300, y: 0, bossState: 'chase' });
+    const ghost = mkGhost({ x: 0, y: 0 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [boss], nowMs: 1000, profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.action).toBe('shoot');
+  });
+});
+
+describe('decideGhost: 回避が間合い管理より優先される', () => {
+  it('ボスのジャンプ着地(aoe脅威)がある時は、通常の間合い接近(+x)ではなく回避(-x)を優先する', () => {
+    // ボス本体は遠く+x側(=素の間合い管理なら接近方向は+x)。ただし着地点(aiTargetX/Y)はゴースト
+    // のすぐ+x側=着地から逃げる方向は-x。両者を意図的に逆向きにして「回避が勝った」ことを符号で確認する。
+    const boss = mkBoss({
+      x: 1000, y: 0, aiPhase: 'jump' as Enemy['aiPhase'],
+      aiTargetX: 15, aiTargetY: 10,
+    });
+    // §2.12(1) 反応遅延: 認知済み(dangerSeenAt)+reactionMs経過後の状態で見る(遅延そのものは専用の
+    // describeで検証する)。
+    const ghost = mkGhost({ x: 0, y: 0, dangerSeenAt: 0 }); // 中心(10,10)
+    const profile: GhostProfile = { ...PROFILE, hitsPerMin: 0 };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 5000 }));
+
+    const expectedDodge = jumpDodge(10, 10, boss);
+    expect(expectedDodge).not.toBeNull();
+    expect(expectedDodge!.ux).toBeLessThan(0); // 着地点(x=15)から見て左(-x)へ逃げるはず
+    expect(d.moveX).toBeLessThan(0); // 素の接近(+x)ではなく回避(-x)が勝っている
+  });
+});
+
+describe('定数(BOT_AND_GHOST.md §3裁定)', () => {
+  it('GHOST_BOSS_HP_MULT=1.6 / GHOST_MELEE_RANGE=74(MELEE_RADIUSの複製)', () => {
+    // GHOST_HP_FRAC(0.6)は v0.25.2468 廃止=計測時スナップショットの100%再現へ(社長裁定)。
+    expect(GHOST_BOSS_HP_MULT).toBe(1.6);
+    expect(GHOST_MELEE_RANGE).toBe(74);
+  });
+});
+
+describe('G2.6: サブウェポン使用の予約(subUsesPerMinノブ)', () => {
+  it('defaultGhostProfile は subUsesPerMin=DEFAULT_SUB_USES_PER_MIN(控えめな既定値)を持つ', () => {
+    expect(defaultGhostProfile().subUsesPerMin).toBe(DEFAULT_SUB_USES_PER_MIN);
+  });
+
+  it('ghostSubUseIntervalMs: 使用回数/分→間隔ms(2回/分=30秒間隔)。0以下は null(使わない人)', () => {
+    expect(ghostSubUseIntervalMs(2)).toBe(30000);
+    expect(ghostSubUseIntervalMs(6)).toBe(10000);
+    expect(ghostSubUseIntervalMs(0)).toBeNull();
+    expect(ghostSubUseIntervalMs(-1)).toBeNull();
+  });
+
+  // v0.25.2472(社長指示「守護霊のサブウェポンは実装されないなら、してほしい」): ボス交戦中の頻度の床。
+  // 予約間隔は min(プロファイル由来, GHOST_SUB_USE_MAX_INTERVAL_MS=25秒)。
+  it('ghostSubClaimIntervalMs: プロファイル間隔と床(25秒)の小さい方。使わない人(<=0)も床で拾う', () => {
+    expect(GHOST_SUB_USE_MAX_INTERVAL_MS).toBe(25_000);
+    expect(ghostSubClaimIntervalMs(6)).toBe(10000);                          // 実測が頻繁ならそのまま
+    expect(ghostSubClaimIntervalMs(2)).toBe(GHOST_SUB_USE_MAX_INTERVAL_MS); // 30秒 → 床の25秒へ
+    expect(ghostSubClaimIntervalMs(0)).toBe(GHOST_SUB_USE_MAX_INTERVAL_MS); // 使わない人も交戦中は床
+    expect(ghostSubClaimIntervalMs(-1)).toBe(GHOST_SUB_USE_MAX_INTERVAL_MS);
+  });
+
+  it('shouldGhostClaimSub: 前回使用から実効間隔(床込み)が空いたら予約する', () => {
+    expect(shouldGhostClaimSub(0, 25000, 2)).toBe(true);   // ちょうど床間隔=予約可
+    expect(shouldGhostClaimSub(0, 24999, 2)).toBe(false);  // まだ間隔前
+    expect(shouldGhostClaimSub(10000, 34999, 2)).toBe(false);
+    expect(shouldGhostClaimSub(10000, 35000, 2)).toBe(true);
+    expect(shouldGhostClaimSub(0, 10000, 6)).toBe(true);   // 実測6回/分=10秒間隔はそのまま
+    expect(shouldGhostClaimSub(0, 9999, 6)).toBe(false);
+  });
+
+  it('shouldGhostClaimSub: subUsesPerMin<=0(サブを使わない人)も交戦中は床(25秒)で予約する', () => {
+    // 旧仕様(〜v0.25.2471)は一生予約しなかった。社長指示の床(20〜30秒に1回)で挙動変更。
+    expect(shouldGhostClaimSub(0, 24999, 0)).toBe(false);
+    expect(shouldGhostClaimSub(0, 25000, 0)).toBe(true);
+  });
+});
+
+// ==== G4b(BOT_AND_GHOST.md §2.9(4)): 技への反応の再現 ==========================================
+const randNever = (): number => { throw new Error('rand must not be consumed'); };
+
+describe('G4b rollGhostMoveReaction: ロールの状態機械(純関数)', () => {
+  const TABLE = { 'thor-issen': { n: 5, counterRate: 0.3, hitRate: 0.4 } }; // dodgeRate=0.3
+
+  it('技なし(chase等)・標的なしは undefined(ロールしない・randも消費しない)', () => {
+    expect(rollGhostMoveReaction(undefined, null, TABLE, 0, randNever)).toBeUndefined();
+    const chase = mkBoss({ bossState: 'chase' });
+    expect(rollGhostMoveReaction(undefined, chase, TABLE, 0, randNever)).toBeUndefined();
+  });
+
+  // v0.25.2603(社長指示「ちゃんと広げて揃えましょう」): 天使/idol/裏ボスの近接・AoE技も台帳へ入った
+  // ので、'harai' 等は**キーが付く**ようになった(記録が無ければ下のテストのとおり fallback)。
+  // キー未定義=**技ではない状態**(移動/追跡)だけ。ここはその回帰に差し替える。
+  it('技ではない状態(移動/追跡)は undefined=従来挙動', () => {
+    const miguel = mkBoss({ type: 'miguel' as Enemy['type'], bossState: 'counter-leap' });
+    expect(rollGhostMoveReaction(undefined, miguel, TABLE, 0, randNever)).toBeUndefined();
+    const jibril = mkBoss({ type: 'jibril' as Enemy['type'], bossState: 'warp-windup' });
+    expect(rollGhostMoveReaction(undefined, jibril, TABLE, 0, randNever)).toBeUndefined();
+  });
+
+  // §2.18裁定(GHOST-CMD-1): 旧ゲート「n<3はfallback」(§2.9(1))は廃止。「n=1は確定行動になる=
+  // 仕様として許容」により、fallbackはn=0(記録なし)とキー未定義だけになった(GHOST_MOVE_ROLL_MIN_N=1)。
+  // v0.25.2610(社長裁定「1で」): 記録が無い技も**既定の袋**を引く。旧挙動(全部 'fallback')は
+  // 「詰める理由」が一度も生まれず、間合いの安全マージンが常時乗って永久カイター化する原因だった
+  // (社長報告「データ持ってないAIが遠くをキープしててほぼ何もしない。ボスがくると逃げるだけ」)。
+  it('n=0(記録なし)の技・表に無い技は「既定の配分」で引く(fallbackではない)', () => {
+    expect(GHOST_MOVE_ROLL_MIN_N).toBe(1);
+    const boss = mkBoss({ bossState: 'issen-dash' });
+    const none = { 'thor-issen': { n: GHOST_MOVE_ROLL_MIN_N - 1, counterRate: 1, hitRate: 0 } };
+    for (const table of [none, {}, undefined]) {
+      resetGhostCommandBags();
+      const d = rollGhostMoveReaction(undefined, boss, table, 0, () => 0)?.decision;
+      expect(d).not.toBe('fallback');
+      expect(['counter', 'dodge', 'tank']).toContain(d);
+    }
+  });
+
+  it('既定の配分は counter4 / dodge4 / tank2(社長承認「カウンター4割・回避4割・耐える2割」)', () => {
+    expect(GHOST_DEFAULT_MOVE_STAT).toEqual({ n: 10, counterRate: 0.4, hitRate: 0.2 });
+    const boss = mkBoss({ bossState: 'issen-dash' });
+    // 新品の袋(counter4 / dodge4 / tank2)からの初引き: v=r*10 → <4=counter / <8=dodge / 残り=tank
+    for (const [r, want] of [[0, 'counter'], [0.39, 'counter'], [0.5, 'dodge'], [0.79, 'dodge'], [0.9, 'tank']] as const) {
+      resetGhostCommandBags();
+      expect(rollGhostMoveReaction(undefined, boss, {}, 0, () => r)?.decision).toBe(want);
+    }
+  });
+
+  it('n=1は確定行動(§2.18裁定「仕様として許容」): 乱数によらず記録の1枚がそのまま出る', () => {
+    const boss = mkBoss({ bossState: 'issen-dash' });
+    const one = { 'thor-issen': { n: 1, counterRate: 1, hitRate: 0 } };
+    for (const r of [0, 0.5, 0.999]) {
+      resetGhostCommandBags();
+      expect(rollGhostMoveReaction(undefined, boss, one, 0, () => r)?.decision).toBe('counter');
+    }
+  });
+
+  // §2.18(GHOST-CMD-1): 決定の出どころは毎回の確率ロール→袋式の1枚引きへ。袋=[counter2, dodge1, tank2]
+  // (n=5, 0.3/0.4: counter=round(1.5)=2 / tank=min(round(2.0)=2, 3)=2 / dodge=1)。新品の袋からの
+  // 初引きは残枚数から一様=乱数の区間が枚数比になる。
+  it('n>=1: 袋式の1枚引き(新品の袋: r<2/5→counter / r<3/5→dodge / 残り→tank)', () => {
+    const boss = mkBoss({ bossState: 'issen-dash' });
+    const first = (r: number) => {
+      resetGhostCommandBags(); // 新品の袋からの初引きを見る(引くたび袋は減る=毎回リセット)
+      return rollGhostMoveReaction(undefined, boss, TABLE, 0, () => r)?.decision;
+    };
+    expect(first(0.39)).toBe('counter'); // 0.39*5=1.95 < counter(2)
+    expect(first(0.41)).toBe('dodge');   // 2.05 < counter+dodge(3)
+    expect(first(0.59)).toBe('dodge');   // 2.95 < 3
+    expect(first(0.61)).toBe('tank');    // 3.05 >= 3
+  });
+
+  it('袋は引き切りで割合=記録どおり(5回の決定の内訳が枚数と一致する)', () => {
+    const boss = mkBoss({ bossState: 'issen-dash' });
+    const tally = { counter: 0, dodge: 0, tank: 0, fallback: 0 };
+    // 技1回=1引き。技の解決(prev=undefinedで渡す)を5回繰り返す=同じ袋から5枚引き切る。
+    for (const r of [0.99, 0.01, 0.62, 0.34, 0.77]) {
+      const roll = rollGhostMoveReaction(undefined, boss, TABLE, 0, () => r);
+      tally[roll!.decision] += 1;
+    }
+    expect(tally).toEqual({ counter: 2, dodge: 1, tank: 2, fallback: 0 });
+  });
+
+  it('同じ技が続く間は振り直さない(技1回の発動=1ロール。randも消費しない)', () => {
+    const boss = mkBoss({ bossState: 'issen-dash' }); // issen-windup→issen-dashは同じ技ファミリー
+    const prev: GhostMoveRoll = { moveKey: 'thor-issen', decision: 'counter', rolledAtMs: 100 };
+    expect(rollGhostMoveReaction(prev, boss, TABLE, 500, randNever)).toBe(prev);
+  });
+
+  it('技が切り替わったら(連携含む)新しくロールし直す', () => {
+    const prev: GhostMoveRoll = { moveKey: 'thor-issen', decision: 'counter', rolledAtMs: 0 };
+    const tsuki = mkBoss({ bossState: 'tsuki-windup' });
+    const table = { ...TABLE, 'thor-tsuki': { n: 9, counterRate: 0, hitRate: 1 } };
+    const next = rollGhostMoveReaction(prev, tsuki, table, 1000, () => 0.5);
+    expect(next?.moveKey).toBe('thor-tsuki');
+    expect(next?.decision).toBe('tank'); // counterRate=0/dodgeRate=0
+  });
+
+  it('技の解決(キーがnullへ)でリセット=undefined', () => {
+    const prev: GhostMoveRoll = { moveKey: 'thor-issen', decision: 'tank', rolledAtMs: 0 };
+    expect(rollGhostMoveReaction(prev, mkBoss({ bossState: 'chase' }), TABLE, 500, randNever)).toBeUndefined();
+    expect(rollGhostMoveReaction(prev, null, TABLE, 500, randNever)).toBeUndefined();
+  });
+
+  it('タイムアウト(同一技が異常に長い)は fallback=従来挙動へ落とす(振り直しはしない)', () => {
+    const prev: GhostMoveRoll = { moveKey: 'thor-issen', decision: 'tank', rolledAtMs: 0 };
+    const boss = mkBoss({ bossState: 'issen-dash' });
+    const after = rollGhostMoveReaction(prev, boss, TABLE, GHOST_MOVE_ROLL_TIMEOUT_MS + 1, randNever);
+    expect(after?.decision).toBe('fallback');
+    expect(after?.moveKey).toBe('thor-issen');
+  });
+
+  it('giantbatはaiPhaseから技ファミリーを導出する(g-quad-breath-windup→g-quad)', () => {
+    const giant = mkBoss({ type: 'giantbat' as Enemy['type'], bossState: undefined, aiPhase: 'g-quad-breath-windup' as Enemy['aiPhase'] });
+    const table = { 'g-quad': { n: 3, counterRate: 0, hitRate: 0 } }; // dodgeRate=1
+    expect(rollGhostMoveReaction(undefined, giant, table, 0, () => 0.5)?.decision).toBe('dodge');
+  });
+});
+
+describe('G4b decideGhost: 技への反応の再現(ロールが挙動を切り替える)', () => {
+  it("'tank'(苦手の再現): この技に限り回避を抑制=逃げずに間合い管理を続ける", () => {
+    // 既存テスト「回避が間合い管理より優先される」と同じ脅威配置(着地点はゴーストのすぐ+x側=
+    // 回避なら-x)だが、bossStateが技(issen-windup)でロールがtank→回避せず素の接近(+x)に戻る。
+    const boss = mkBoss({
+      x: 1000, y: 0, bossState: 'issen-dash',
+      aiPhase: 'jump' as Enemy['aiPhase'], aiTargetX: 15, aiTargetY: 10,
+    });
+    const ghost = mkGhost({ x: 0, y: 0 });
+    const profile: GhostProfile = { ...PROFILE, hitsPerMin: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 0, hitRate: 1 } } };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0 }));
+    expect(d.moveRoll?.decision).toBe('tank');
+    expect(d.moveX).toBeGreaterThan(0); // 回避(-x)ではなく接近(+x)=逃げていない
+  });
+
+  it("'counter': 窓が開いたら counterChance に関係なく必ず構える(既存カウンター試行を優先発動)", () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
+    const profile: GhostProfile = { ...PROFILE, counterChance: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } } };
+    const first = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 0, rand: () => 0.5 }));
+    expect(first.moveRoll?.decision).toBe('counter');
+    expect(first.counterWillAttempt).toBe(true); // counterChance=0でも構える(ロールが優先)
+    const second = decideGhost(baseDriverInput({
+      ghost: { ...ghost, counterPendingAt: first.counterPendingAt, counterWillAttempt: first.counterWillAttempt, moveRoll: first.moveRoll },
+      enemies: [boss], profile, nowMs: 250, rand: () => 0.5,
+    }));
+    expect(second.action).toBe('melee'); // reactionMs経過後に成立(既存ロジックのまま)
+  });
+
+  it("'counter': 射程外なら回避もmobilityゲートも通さず間合いへ詰める(カウンターしにいく)", () => {
+    const boss = mkBoss({ x: 300, y: 0, bossState: 'issen-dash' });
+    const ghost = mkGhost({ x: 0, y: 0 });
+    const profile: GhostProfile = { ...PROFILE, mobility: 0, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } } };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0.5 }));
+    expect(d.moveRoll?.decision).toBe('counter');
+    expect(d.moveX).toBeGreaterThan(0); // mobility=0(従来なら静止)でも詰めに行く
+  });
+
+  it("'dodge'相当のロール: この技では構えない(counterChance=1でもcounterWillAttempt=false)", () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
+    const profile: GhostProfile = { ...PROFILE, counterChance: 1, moveReactions: { 'thor-issen': { n: 5, counterRate: 0, hitRate: 0 } } };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0.5 }));
+    expect(d.moveRoll?.decision).toBe('dodge');
+    expect(d.counterWillAttempt).toBe(false);
+  });
+
+  // §2.18裁定(GHOST-CMD-1): 旧「n<3はfallback」→新ゲートn<1。n=0(記録なし)だけが従来挙動へ落ちる
+  // (n=1は確定行動=仕様として許容・記録がある所を集計デフォで上書きしない)。
+  it('n=0(記録なし)でも既定の袋を引く(v0.25.2610・旧: fallback)', () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
+    const ghost = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
+    const profile: GhostProfile = { ...PROFILE, counterChance: 1, moveReactions: { 'thor-issen': { n: 0, counterRate: 0, hitRate: 1 } } };
+    resetGhostCommandBags();
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, rand: () => 0.5 }));
+    expect(d.moveRoll?.decision).not.toBe('fallback');
+    expect(['counter', 'dodge', 'tank']).toContain(d.moveRoll?.decision);
+  });
+
+  it('ロールは技1回につき1回=2tick目も同じ決定を持ち越す(振り直さない)', () => {
+    const boss = mkBoss({ x: 300, y: 0, bossState: 'issen-dash' });
+    const ghost = mkGhost({ x: 0, y: 0 });
+    const profile: GhostProfile = { ...PROFILE, moveReactions: { 'thor-issen': { n: 5, counterRate: 1, hitRate: 0 } } };
+    const first = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 0, rand: () => 0.5 }));
+    expect(first.moveRoll?.decision).toBe('counter');
+    // 2tick目のrandは0.99(もし振り直すならtank側)だが、持ち越したロールがそのまま返る。
+    const second = decideGhost(baseDriverInput({
+      ghost: { ...ghost, moveRoll: first.moveRoll }, enemies: [boss], profile, nowMs: 16, rand: () => 0.99,
+    }));
+    expect(second.moveRoll).toBe(first.moveRoll);
+  });
+});
+
+describe('G3: ghostRunEnabled(召喚ゲート=計測停止ゲートの共通判定)', () => {
+  it('?ghost=1(開発用)は装備なしでも有効(従来どおり動く)', () => {
+    expect(ghostRunEnabled(true, [])).toBe(true);
+    expect(ghostRunEnabled(true, ['runner'])).toBe(true);
+  });
+
+  it('守護霊(guardian-spirit)を装備していれば有効(G3の本則)', () => {
+    expect(GUARDIAN_SPIRIT_SKILL).toBe('guardian-spirit');
+    expect(ghostRunEnabled(false, [GUARDIAN_SPIRIT_SKILL])).toBe(true);
+    expect(ghostRunEnabled(false, ['runner', GUARDIAN_SPIRIT_SKILL])).toBe(true);
+  });
+
+  it('どちらも無ければ無効(通常プレイは無改変)', () => {
+    expect(ghostRunEnabled(false, [])).toBe(false);
+    expect(ghostRunEnabled(false, ['runner', 'seeker'])).toBe(false);
+  });
+});
+
+// ==== GHOST-BULLET-TECH B(弾技の得手不得手・v0.25.2543) =========================================
+// 社長方針「弾も技である以上、記録に弾を避ける確率、避ける動きもあるべき」。
+// 弾技にも技ロール(counter/dodge/tank)が効き、'tank'を引いた弾技の弾だけを避けなくなる。
+const mkProj = (over: Partial<Projectile> = {}): Projectile => ({
+  id: 'p1', x: -104, y: 6, width: 10, height: 10, speed: 400, damage: 5,
+  direction: { x: 1, y: 0 }, weaponType: 'enemy_bolt', duration: 4000, createdAt: 0,
+  passthrough: false, hitEnemies: [], hostile: true, reflected: false,
+  ...over,
+} as Projectile);
+
+describe('GHOST-BULLET-TECH B: 弾技にも技ロールが効く', () => {
+  const mimirBurst = (): Enemy => mkBoss({ type: 'mimir', x: 1000, y: 0, bossState: 'burst' });
+
+  it('弾技のキー(裏ボスburst)でロールできる=弾も「技」として扱われる', () => {
+    const table = { 'mimir-burst': { n: 5, counterRate: 0, hitRate: 1 } };
+    expect(rollGhostMoveReaction(undefined, mimirBurst(), table, 0, () => 0.5)?.moveKey).toBe('mimir-burst');
+    expect(rollGhostMoveReaction(undefined, mimirBurst(), table, 0, () => 0.5)?.decision).toBe('tank');
+  });
+
+  it('記録が無い弾技も既定の袋を引く(v0.25.2610・旧: フォールバック)', () => {
+    resetGhostCommandBags();
+    const roll = rollGhostMoveReaction(undefined, mimirBurst(), {}, 0, () => 0);
+    expect(roll?.decision).not.toBe('fallback');
+    expect(['counter', 'dodge', 'tank']).toContain(roll?.decision);
+  });
+
+  // 是正(v0.25.2543): 旧 GHOST_DODGE_PROFILE.dodge='aoe' は botSkill の段階表で
+  // 「弾を1発も避けない段」だった(dodgeHandles('aoe','projectile')===false)=守護霊は敵弾を
+  // 一切避けていなかった。'all' へ是正した不変条件をここで固定する。
+  it('守護霊は敵弾を回避対象にする(弾を避けない段に戻ったら落ちる)', () => {
+    expect(ghostDodgeVector(10, 10, [], [mkProj()], 110)).not.toBeNull();
+  });
+
+  // v0.25.2547(社長裁定「オンにして」): 接触(体当たり)回避を有効化。規格はbotSkill既存の
+  // 「接触ダメージ >= 最大HPの20%(CONTACT_DANGER_HP_FRAC)の敵が260px以内 → 離れる」のまま
+  // (ゴースト専用モデルなし=§2.11追補ドクトリン)。
+  it('危険な接触(damage>=最大HPの20%)からは離れる(v0.25.2547・接触回避オン)', () => {
+    const mob = mkBoss({ type: 'zombie' as Enemy['type'], x: 120, y: 10, width: 20, height: 20, damage: 38 });
+    const v = ghostDodgeVector(10, 10, [mob], [], 110); // 38 >= 110*0.2=22 → 危険=離れる
+    expect(v).not.toBeNull();
+    expect(v!.x).toBeLessThan(0); // 敵は右側=左へ離れる
+  });
+
+  it('弱い接触(damage<最大HPの20%)は避けない=「敵に触れると逃げる」人にはしない', () => {
+    const mob = mkBoss({ type: 'zombie' as Enemy['type'], x: 120, y: 10, width: 20, height: 20, damage: 38 });
+    expect(ghostDodgeVector(10, 10, [mob], [], 400)).toBeNull(); // 38 < 400*0.2=80 → 危険でない
+  });
+
+  it('maxHealth=0(未配線)では接触回避は働かない(明示の無効値)', () => {
+    const mob = mkBoss({ type: 'zombie' as Enemy['type'], x: 120, y: 10, width: 20, height: 20, damage: 9999 });
+    expect(ghostDodgeVector(10, 10, [mob], [], 0)).toBeNull();
+  });
+
+  it("ghostDodgeVector: 'tank'した弾技の弾だけ避けない(タグ無し/別の技の弾は避ける)", () => {
+    const tagged = mkProj({ srcMoveKey: 'mimir-burst' });
+    expect(ghostDodgeVector(10, 10, [], [tagged], 110)).not.toBeNull();               // 平時は避ける
+    expect(ghostDodgeVector(10, 10, [], [tagged], 110, undefined, 'mimir-burst')).toBeNull();    // 苦手=避けない
+    expect(ghostDodgeVector(10, 10, [], [mkProj()], 110, undefined, 'mimir-burst')).not.toBeNull(); // タグ無しは常に避ける
+    expect(ghostDodgeVector(10, 10, [], [mkProj({ srcMoveKey: 'idol-fan' })], 110, undefined, 'mimir-burst')).not.toBeNull();
+  });
+
+  it("'tank'を引いた弾技は、技が終わって弾だけ残っても弾の寿命ぶん避けない", () => {
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, moveReactions: { 'mimir-burst': { n: 5, counterRate: 0, hitRate: 1 } },
+    };
+    const bullet = mkProj({ srcMoveKey: 'mimir-burst' });
+    // ① 技の最中に tank を引く=避けない弾の記憶が立つ。
+    const rolled = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), enemies: [mimirBurst()], projectiles: [bullet],
+      profile, nowMs: 1000, rand: () => 0,
+    }));
+    expect(rolled.moveRoll?.decision).toBe('tank');
+    expect(rolled.tankedBulletKey).toBe('mimir-burst');
+    expect(rolled.tankedBulletUntil).toBe(1000 + GHOST_BULLET_TANK_MS);
+
+    // ② 技が終わった(chase)後も、記憶が生きている間はその弾を避けない=間合い管理(接近)を続ける。
+    const carried = mkGhost({
+      x: 0, y: 0, dangerSeenAt: 0, dangerLastAt: 1000,
+      tankedBulletKey: rolled.tankedBulletKey, tankedBulletUntil: rolled.tankedBulletUntil,
+    });
+    const after = decideGhost(baseDriverInput({
+      ghost: carried, enemies: [mkBoss({ type: 'mimir', x: 1000, y: 0, bossState: 'chase' })],
+      projectiles: [bullet], profile, nowMs: 1500, rand: () => 0,
+    }));
+    expect(after.moveX).toBeGreaterThan(0); // ボス(+x)へ寄る=弾から逃げていない
+    expect(after.tankedBulletKey).toBe('mimir-burst');
+
+    // ③ 期限が切れたら、同じ弾を今度は避ける(苦手の再現は技1回ぶんで終わる)。
+    const expired = decideGhost(baseDriverInput({
+      ghost: { ...carried, dangerLastAt: 1000 + GHOST_BULLET_TANK_MS },
+      enemies: [mkBoss({ type: 'mimir', x: 1000, y: 0, bossState: 'chase' })],
+      projectiles: [bullet], profile, nowMs: 1000 + GHOST_BULLET_TANK_MS, rand: () => 0,
+    }));
+    expect(expired.tankedBulletKey).toBeUndefined();
+    expect(expired.moveY).toBeLessThan(0); // 弾の進行方向(+x)に対して横(-y)へ外す
+  });
+
+  it("'dodge'/'fallback'の弾技は従来どおり全部避ける(苦手の再現は'tank'だけ)", () => {
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, moveReactions: { 'mimir-burst': { n: 5, counterRate: 0, hitRate: 0 } },
+    };
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, dangerSeenAt: 0, dangerLastAt: 1000 }),
+      enemies: [mimirBurst()], projectiles: [mkProj({ srcMoveKey: 'mimir-burst' })],
+      profile, nowMs: 1000, rand: () => 0.5,
+    }));
+    expect(d.moveRoll?.decision).toBe('dodge');
+    expect(d.tankedBulletKey).toBeUndefined();
+    expect(d.moveY).toBeLessThan(0); // 本気で避ける
+  });
+});
+
+// ==== v0.25.2564: ボス体当たり対策(縁基準の射程+体の常時回避)===================================
+// 実測(テスト依頼#7/#8): 守護霊の死因はほぼ contact:mimir のみ。旧実装は①距離が全て中心間
+// =巨体ボス(mimir幅248)では体内に立たないと近接/カウンター不成立、②接触回避の閾値
+// (damage>=最大HPの20%)が高HP記録では反応しない、の合わせ技で体当たりを食らい続けていた。
+describe('v0.25.2564: 縁基準の近接射程(パリティ=プレイヤーのenemyMeleeDistと同じ物差し)', () => {
+  // 巨体ボス(mimir級=248×248)。ghost(20×20)を右縁から60pxに置く: 縁60 ≤ 74(圏内)だが
+  // 中心間は184 > 74=旧実装(中心間)なら近接不成立だった配置。
+  const bigBoss = (over: Partial<Enemy> = {}): Enemy =>
+    mkBoss({ type: 'mimir' as Enemy['type'], x: 0, y: 0, width: 248, height: 248, bossState: 'chase', ...over });
+
+  it('巨体ボスは体内に立たなくても縁から74px以内で近接が成立する', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 298, y: 114 }), // 中心(308,124): 縁(x=248)から60px
+      enemies: [bigBoss()],
+      profile: { ...PROFILE, meleeBias: 1 },
+    }));
+    expect(d.action).toBe('melee');
+  });
+
+  it("'counter'ロールの接近も縁基準で止まる(巨体の中心まで突っ込まない)", () => {
+    const profile: GhostProfile = {
+      ...PROFILE, moveReactions: { 'mimir-burst': { n: 5, counterRate: 1, hitRate: 0 } },
+    };
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 298, y: 114 }),
+      enemies: [bigBoss({ bossState: 'burst' })], profile, rand: () => 0.5,
+    }));
+    expect(d.moveRoll?.decision).toBe('counter');
+    expect(d.moveX).toBe(0); // 縁60 ≤ 74=射程内なので詰めない(旧: 中心間184>74で体へ突っ込み続けた)
+    expect(d.moveY).toBe(0);
+  });
+
+  // v0.25.2567(監査9-2の是正): 銃の射程ゲートはプレイヤーと同じ式(裏ボス=AABB最近点)。
+  it('銃: 裏ボスは縁基準=短射程(ショットガン級)でも体外から撃てる(旧: 中心間で永久に射程外)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 298, y: 114 }), // 縁から60px・中心間184
+      enemies: [bigBoss()],
+      profile: { ...PROFILE, meleeBias: 0 },
+      weapon: { ...WEAPON, gunRangePx: 120 }, // ショットガンの射程。旧実装: 184>120で撃てなかった
+    }));
+    expect(d.action).toBe('shoot');
+  });
+
+  // ★v0.25.3170(社長指示「当たり判定の四隅でみて」): giantbat(城ボス)等も**縁基準**へ変更。
+  // 旧テストはここで 'none'(中心基準のまま)を固定していたが、それが是正対象そのものだった。
+  it('銃: giantbat(城ボス)も縁基準=中心基準なら射程外の位置から撃てる', () => {
+    const giant = mkBoss({ type: 'giantbat' as Enemy['type'], x: 400, y: 0, bossState: 'chase' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), // 中心(10,10)→giantbat中心(420,20)=中心間410 > 射程400
+      enemies: [giant],
+      profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.action).toBe('shoot'); // 帯の左辺までは約384px=射程内
+  });
+
+  it('銃: 縁で測っても遠ければ従来どおり撃たない(射程が無限になったわけではない)', () => {
+    const giant = mkBoss({ type: 'giantbat' as Enemy['type'], x: 900, y: 0, bossState: 'chase' });
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [giant],
+      profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    expect(d.action).toBe('none');
+  });
+
+  // v0.25.2567(監査9-3の是正): 間合い管理(preferredDist)も縁基準(計測=bossBandDist=縁と同じ単位)。
+  it('間合い管理: 縁からpreferredDistに立てば帯の中=前後せず横流れ(旧: 中心間で体内を目指した)', () => {
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 418, y: 114 }), // 中心(428,124): 縁(x=248)から180=preferredDistちょうど
+      enemies: [bigBoss()],
+      profile: { ...PROFILE, meleeBias: 0 },
+    }));
+    // 旧実装: 中心間304 > 180+40 → 接近(-x)し続けて体へ向かった。新: 帯の中=接線オービット。
+    expect(Math.abs(d.moveX)).toBeLessThan(1e-6);
+    expect(Math.abs(d.moveY)).toBeCloseTo(GHOST_ORBIT_BASE_FRAC, 5);
+  });
+});
+
+describe('v0.25.2564: ボスの体は常時回避対象(HP閾値なし・縁基準)', () => {
+  // maxHealth=400 → 既存の接触規格(damage>=最大HPの20%)では危険にならない(damage10<80)
+  // =旧実装なら反応しなかった条件で、ボスの体だけは避けることを固定する。
+  const smallBoss = (): Enemy => mkBoss({ x: 0, y: 0, width: 40, height: 40 }); // type=thor(ボス)
+
+  it('縁からGHOST_BOSS_BODY_AVOID_PX未満なら、最大HPに関わらず体の中心から離れる', () => {
+    const v = ghostDodgeVector(60, 20, [smallBoss()], [], 400, aabbMeleeDist); // 縁(x=40)から20px
+    expect(v).not.toBeNull();
+    expect(v!.x).toBeGreaterThan(0); // 中心(20,20)の反対=+xへ
+    expect(Math.abs(v!.y)).toBeLessThan(1e-6);
+  });
+
+  it('縁からGHOST_BOSS_BODY_AVOID_PX以上は反発しない(近接の踏み込み(74px圏)を殺さない)', () => {
+    const v = ghostDodgeVector(40 + GHOST_BOSS_BODY_AVOID_PX + 1, 20, [smallBoss()], [], 400, aabbMeleeDist);
+    expect(v).toBeNull();
+  });
+
+  it('非ボス(雑魚)の体には効かない=雑魚は既存の接触規格(damage>=最大HPの20%)だけ', () => {
+    const mob = mkBoss({ id: 'mob-1', type: 'zombie' as Enemy['type'], x: 0, y: 0, width: 40, height: 40 });
+    expect(ghostDodgeVector(60, 20, [mob], [], 400, aabbMeleeDist)).toBeNull();
+  });
+
+  it('meleeDist未注入(旧経路の直接呼び出し)では働かない=注入時のみ有効', () => {
+    expect(ghostDodgeVector(60, 20, [smallBoss()], [], 400)).toBeNull();
+  });
+});
+
+// ==== GHOST-CMD-1B(§2.18-2/-3): 避け方向の癖(dodgeの味付け・円形脅威の接線バイアス)=============
+// suriel 'ring-spin'(circle-self r=92)=台帳(ghostTelegraph)が円形タグ付きで足す脅威。
+// 中心(20,20)の右(100,20)に立つ=放射方向は+x・接線は±y(orbitSignの側)=角度の期待値が読みやすい。
+describe('GHOST-CMD-1B: 避け方向の癖(円形脅威の接線バイアス)', () => {
+  const spinBoss = (): Enemy => mkBoss({ type: 'suriel' as Enemy['type'], x: 0, y: 0, bossState: 'ring-spin' });
+
+  it('ghostDodgeLateralFrac: 欠損/n=0/away10割は0・lateral+through(前抜け)を横に畳む', () => {
+    expect(ghostDodgeLateralFrac(undefined)).toBe(0);
+    expect(ghostDodgeLateralFrac({ n: 0, awayRate: 0, lateralRate: 1 })).toBe(0);
+    expect(ghostDodgeLateralFrac({ n: 3, awayRate: 1, lateralRate: 0 })).toBe(0);
+    expect(ghostDodgeLateralFrac({ n: 3, awayRate: 0.5, lateralRate: 0.2 })).toBeCloseTo(0.5, 10); // lateral0.2+through0.3
+    expect(ghostDodgeLateralFrac({ n: 3, awayRate: 0, lateralRate: 0 })).toBe(1); // through10割もv1では横へ
+  });
+
+  it('lateralFrac=1で45°(=GHOST_DODGE_DIR_MAX_RADの上限)・orbitSign=1の接線側へ回る', () => {
+    const v = ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined,
+      { n: 4, awayRate: 0, lateralRate: 1 }, 1);
+    expect(v).not.toBeNull();
+    expect(Math.atan2(v!.y, v!.x)).toBeCloseTo(GHOST_DODGE_DIR_MAX_RAD, 5); // = π/4
+  });
+
+  it('lateralFrac=0.5で22.5°・orbitSign=-1なら反対の接線側へ回る', () => {
+    const dir = { n: 4, awayRate: 0.5, lateralRate: 0.5 };
+    const right = ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined, dir, 1);
+    expect(Math.atan2(right!.y, right!.x)).toBeCloseTo(Math.PI / 8, 5);
+    const left = ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined, dir, -1);
+    expect(Math.atan2(left!.y, left!.x)).toBeCloseTo(-Math.PI / 8, 5);
+  });
+
+  it('帯脅威は幾何のまま(バイアスが乗らない=従来とベクトル一致)', () => {
+    const uri = mkBoss({
+      type: 'uri' as Enemy['type'], bossState: 'sweep',
+      x: 2000, y: 2000, aiFromX: 0, aiFromY: 0, aiTargetX: 300, aiTargetY: 0,
+    });
+    const base = ghostDodgeVector(150, 20, [uri], [], 110);
+    const biased = ghostDodgeVector(150, 20, [uri], [], 110, undefined, undefined,
+      { n: 9, awayRate: 0, lateralRate: 1 }, 1);
+    expect(biased).toEqual(base);
+  });
+
+  it('dodgeDir欠損・n=0・away10割はバイアス0=従来とベクトルもビット一致', () => {
+    const plain = ghostDodgeVector(100, 20, [spinBoss()], [], 0);
+    expect(plain).toEqual({ x: 1, y: 0 }); // 放射そのまま(回転なしの基準値)
+    expect(ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined, undefined, 1)).toEqual(plain);
+    expect(ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined,
+      { n: 0, awayRate: 0, lateralRate: 1 }, 1)).toEqual(plain);
+    expect(ghostDodgeVector(100, 20, [spinBoss()], [], 0, undefined, undefined,
+      { n: 4, awayRate: 1, lateralRate: 0 }, 1)).toEqual(plain); // まっすぐ下がる人=癖ゼロ
+  });
+
+  it('decideGhost: profile.dodgeDir+orbitSignが回避の移動へ配線される(向きはorbitSignの接線側)', () => {
+    const profile: GhostProfile = { ...PROFILE, dodgeDir: { n: 4, awayRate: 0, lateralRate: 1 } };
+    const input = (orbitSign: 1 | -1) => baseDriverInput({
+      ghost: mkGhost({ x: 90, y: 10, dangerSeenAt: 0, dangerLastAt: 1000, orbitSign }), // 中心(100,20)
+      enemies: [spinBoss()], boundBossId: 'boss-1',
+      profile, nowMs: 1000, rand: () => 0.5, // 0.5 ≥ FLIP_CHANCE=旋回は反転しない
+    });
+    const right = decideGhost(input(1));
+    expect(Math.atan2(right.moveY, right.moveX)).toBeCloseTo(Math.PI / 4, 5);
+    const left = decideGhost(input(-1));
+    expect(Math.atan2(left.moveY, left.moveX)).toBeCloseTo(-Math.PI / 4, 5);
+  });
+
+  it('dodgeDirはrandを消費しない(消費回数・行動の決定とも従来と同一)', () => {
+    const run = (profile: GhostProfile) => {
+      let calls = 0;
+      const d = decideGhost(baseDriverInput({
+        ghost: mkGhost({ x: 90, y: 10, dangerSeenAt: 0, dangerLastAt: 1000, orbitSign: 1 }),
+        enemies: [spinBoss()], boundBossId: 'boss-1', profile, nowMs: 1000,
+        rand: () => { calls += 1; return 0.5; },
+      }));
+      return { d, calls };
+    };
+    const plain = run(PROFILE);
+    const biased = run({ ...PROFILE, dodgeDir: { n: 4, awayRate: 0, lateralRate: 1 } });
+    expect(biased.calls).toBe(plain.calls); // 回転は決定的=乱数消費は不変
+    expect(biased.d.action).toBe(plain.d.action); // 変わるのは回避ベクトルの向きだけ
+  });
+});
+
+// ==== GHOST-CMD-2A(§2.18追補): 隙コマンド(気絶/技後硬直/カウンター直後 × 詰めて叩く/撃つ) ======
+describe('decideGhost GHOST-CMD-2A: 隙コマンド(punish)の消費', () => {
+  beforeEach(() => resetModeBags());
+
+  // 遠い(+x)ボス。気絶させると stun 文脈の窓が開く。
+  const farBoss = (over: Partial<Enemy> = {}) => mkBoss({ x: 600, y: 0, ...over });
+  const stunned = (over: Partial<Enemy> = {}) => farBoss({ stunUntil: 5000, ...over });
+  // 近接射程内(縁40px)に立つゴースト+meleeBias=0=「通常なら絶対に振らない人」。
+  const nearBoss = (over: Partial<Enemy> = {}) => mkBoss({ x: 300, y: 0, ...over });
+  const NO_MELEE: GhostProfile = { ...PROFILE, meleeBias: 0, counterChance: 0 };
+  // 0.99 = 移動リズム(ghostMoveChance≈0.825)のゲートを必ず外す乱数。
+  //        rush はリズムを通さない=符号で「詰めに行った」ことを判別できる。
+  const LAZY = () => 0.99;
+
+  it('記録なし(punish欠損)でも窓が開けば既定の rush=縁74pxへ詰める(リズムのゲートを通さない)', () => {
+    const idle = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, orbitSign: -1 }), enemies: [farBoss()], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(idle.moveX).toBeLessThan(0.1);   // 窓なし=止まり癖tick(横流れ)=ボスへ詰めない
+    expect(idle.punishContext).toBeUndefined();
+    expect(idle.punishMode).toBeUndefined();
+
+    const rush = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, orbitSign: -1 }), enemies: [stunned()], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(rush.punishContext).toBe('stun');
+    expect(rush.punishMode).toBe('rush');
+    expect(rush.moveX).toBeGreaterThan(0.9); // ボス(+x)へ真っ直ぐ詰める
+  });
+
+  it("rush中は射程内で必ず melee(meleeBias抽選を通さない)/'shoot'記録なら従来どおり撃つ", () => {
+    const ghost = () => mkGhost({ x: 250, y: 0, orbitSign: -1 }); // 中心(260,10)=縁から40px
+    const noWindow = decideGhost(baseDriverInput({
+      ghost: ghost(), enemies: [nearBoss()], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(noWindow.action).toBe('shoot'); // meleeBias=0=通常は振らない
+
+    const rush = decideGhost(baseDriverInput({
+      ghost: ghost(), enemies: [nearBoss({ stunUntil: 5000 })], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(rush.punishMode).toBe('rush');
+    expect(rush.action).toBe('melee'); // 気絶中の処刑は実行側(applyGhostMeleeFinisher)が受け持つ
+
+    // 記録が「撃つ人」(rushRate=0)なら決めつけない=従来どおり(振らない/撃つ)。
+    const shoot = decideGhost(baseDriverInput({
+      ghost: ghost(), enemies: [nearBoss({ stunUntil: 5000 })], boundBossId: 'boss-1',
+      profile: { ...NO_MELEE, punish: { stun: { n: 4, rushRate: 0 } } },
+      rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(shoot.punishMode).toBe('shoot');
+    expect(shoot.action).toBe('shoot');
+  });
+
+  it('rush中でも回避(dodge)が上位=他の脅威は避けながら詰める', () => {
+    const bullet = mkProj(); // +x方向へ飛ぶ弾(ゴーストの左手前から)
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, orbitSign: -1, dangerSeenAt: 0, dangerLastAt: 1000 }),
+      enemies: [stunned()], boundBossId: 'boss-1', projectiles: [bullet],
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(d.punishMode).toBe('rush');  // 窓は開いている(モードは引けている)
+    expect(d.moveY).toBeLessThan(0);    // が、移動は弾を外す横方向(-y)=回避が勝つ
+  });
+
+  it('窓が閉じたら通常の意思決定へ戻る(文脈/モードを持ち越さない)', () => {
+    const opened = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, orbitSign: -1 }), enemies: [stunned()], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 1000, gameTime: 1000,
+    }));
+    expect(opened.punishContext).toBe('stun');
+    const closed = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 0, y: 0, orbitSign: -1,
+        punishContext: opened.punishContext, punishMode: opened.punishMode,
+      }),
+      enemies: [farBoss({ stunUntil: 5000 })], boundBossId: 'boss-1',
+      profile: NO_MELEE, rand: LAZY, nowMs: 6000, gameTime: 6000, // 気絶が切れた
+    }));
+    expect(closed.punishContext).toBeUndefined();
+    expect(closed.punishMode).toBeUndefined();
+    expect(closed.moveX).toBeLessThan(0.1); // 詰めをやめて通常(横流れ)へ
+  });
+
+  it('乱数消費: 窓なし/記録なしは0回、記録ありは文脈開始tickの1回のみ(同じ窓では引き直さない)', () => {
+    const run = (over: Partial<GhostDriverInput>, ghostOver: Partial<GhostSelf> = {}) => {
+      let calls = 0;
+      const d = decideGhost(baseDriverInput({
+        ghost: mkGhost({ x: 0, y: 0, orbitSign: -1, ...ghostOver }), // orbitSign指定=初期化の1回を除く
+        enemies: [farBoss()], boundBossId: 'boss-1', profile: NO_MELEE,
+        nowMs: 1000, gameTime: 1000,
+        rand: () => { calls += 1; return 0.99; },
+        ...over,
+      }));
+      return { d, calls };
+    };
+    // 窓なし: 旋回反転(1)+移動リズム(1)= 2回(隙コマンドは1回も引かない)。
+    const plain = run({});
+    expect(plain.calls).toBe(2);
+    // 窓あり・記録なし: 引く札が無い=デフォルトrush。rushはリズムを通さない=旋回反転(1)のみ。
+    const noRecord = run({ enemies: [stunned()] });
+    expect(noRecord.d.punishMode).toBe('rush');
+    expect(noRecord.calls).toBe(1);
+    // 窓あり・記録あり: 旋回反転(1)+モード抽選(1)= 2回。
+    const withRecord = run({
+      enemies: [stunned()], profile: { ...NO_MELEE, punish: { stun: { n: 4, rushRate: 1 } } },
+    });
+    expect(withRecord.d.punishMode).toBe('rush');
+    expect(withRecord.calls).toBe(2);
+    // 同じ窓の続き(文脈/モードを持ち越し): 抽選は起きない=旋回反転(1)のみ。
+    const carried = run(
+      { enemies: [stunned()], profile: { ...NO_MELEE, punish: { stun: { n: 4, rushRate: 1 } } } },
+      { punishContext: 'stun', punishMode: 'rush' },
+    );
+    expect(carried.calls).toBe(1);
+  });
+
+  it('drawPunishMode: 引き切りで割合が記録どおり(n=10・rushRate=0.7 → rush7/shoot3)', () => {
+    const values = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95];
+    let i = 0;
+    const rand = () => values[i++ % values.length];
+    const drawn = Array.from({ length: 10 }, () =>
+      drawPunishMode({ stun: { n: 10, rushRate: 0.7 } }, 'stun', rand));
+    expect(drawn.filter(m => m === 'rush').length).toBe(7);
+    expect(drawn.filter(m => m === 'shoot').length).toBe(3);
+  });
+
+  it('drawPunishMode: 記録なし/n=0は既定のrush・rushRate=0の記録は常にshoot(決めつけない)', () => {
+    expect(drawPunishMode(undefined, 'stun', () => 0)).toBe('rush');
+    expect(drawPunishMode({ stun: { n: 0, rushRate: 0 } }, 'stun', () => 0)).toBe('rush');
+    for (let k = 0; k < 6; k++) {
+      expect(drawPunishMode({ recover: { n: 3, rushRate: 0 } }, 'recover', () => 0)).toBe('shoot');
+    }
+  });
+
+  it('afterCounter: 自分のカウンター成立から1200ms(ghostLastCounterAt)が窓の錨点', () => {
+    const at = (lastCounterAtMs: number | undefined, nowMs: number) => decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0, orbitSign: -1, lastCounterAtMs }),
+      enemies: [farBoss()], boundBossId: 'boss-1', profile: NO_MELEE,
+      rand: LAZY, nowMs, gameTime: nowMs,
+    }));
+    expect(at(1000, 1500).punishContext).toBe('afterCounter');
+    expect(at(1000, 1000 + PUNISH_AFTER_COUNTER_MS).punishContext).toBeUndefined();
+    expect(at(undefined, 1500).punishContext).toBeUndefined();
+  });
+});
+
+// GHOST-COUNTER-PARITY(社長指示「プレイヤーと揃えろ」・実装タスク): 守護霊のカウンターを
+// プレイヤーと機械的に揃える4差分のうち、ghostDriver純関数側で検証できる2つ(①CD周期 ③意図フラグ)。
+describe('GHOST-COUNTER-PARITY: カウンター成立可能なCDをプレイヤーと揃える(社長指示1・3)', () => {
+  it('GHOST_COUNTER_MELEE_PERIOD_MS はプレイヤーのCOUNTER_WINDOW+COUNTER_COOLDOWNをimportした値そのもの(手写ししない)', () => {
+    expect(GHOST_COUNTER_MELEE_PERIOD_MS).toBe(COUNTER_WINDOW + COUNTER_COOLDOWN);
+    expect(GHOST_COUNTER_MELEE_PERIOD_MS).toBe(820); // 現行値の固定(400+420)。値そのものが変わったら要再確認。
+  });
+
+  it('カウンターするつもりで振ったスイングは820ms周期でしか成立できない(通常近接CD=600msだけでは再試行できない)', () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
+    const ghost0 = mkGhost({ x: 0, y: 0, width: 10, height: 10 });
+
+    // 1回目: reactionMs(200)経過後に成立(既存挙動と同じ)。
+    const opened = decideGhost(baseDriverInput({ ghost: ghost0, enemies: [boss], nowMs: 0 }));
+    expect(opened.counterPendingAt).toBe(0);
+    expect(opened.counterWillAttempt).toBe(true);
+    const first = decideGhost(baseDriverInput({
+      ghost: { ...ghost0, counterPendingAt: opened.counterPendingAt, counterWillAttempt: opened.counterWillAttempt },
+      enemies: [boss], nowMs: 250,
+    }));
+    expect(first.action).toBe('melee');
+    expect(first.meleeIsCounterAttempt).toBe(true);
+    expect(first.lastCounterAttemptAt).toBe(250);
+    expect(first.lastMeleeAt).toBe(250);
+
+    // 2回目の機会: 通常近接CD(600ms)は明けたが、カウンター周期(820ms)はまだ明けていない区間
+    // (250+600=850 <= t < 250+820=1070)。meleeReady/aimReadyは満たしていてもブロックされる。
+    const blocked = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 0, y: 0, width: 10, height: 10,
+        lastMeleeAt: first.lastMeleeAt, lastCounterAttemptAt: first.lastCounterAttemptAt,
+        counterPendingAt: 600, counterWillAttempt: true, // reactionMs(200)は850-600=250で経過済み
+      }),
+      enemies: [boss], nowMs: 850,
+    }));
+    expect(blocked.action).toBe('none'); // 成立しうるスイング自体が出ない(請求も積みようがない)
+    expect(blocked.counterPendingAt).toBe(600); // 見切ってもいない(次tickでまた狙える)
+    expect(blocked.counterWillAttempt).toBe(true);
+
+    // 820ms周期が明けた瞬間(250+820=1070)からは同じ入力で成立する。
+    const reopened = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 0, y: 0, width: 10, height: 10,
+        lastMeleeAt: first.lastMeleeAt, lastCounterAttemptAt: first.lastCounterAttemptAt,
+        counterPendingAt: 600, counterWillAttempt: true,
+      }),
+      enemies: [boss], nowMs: 1070,
+    }));
+    expect(reopened.action).toBe('melee');
+    expect(reopened.meleeIsCounterAttempt).toBe(true);
+    expect(reopened.lastCounterAttemptAt).toBe(1070);
+  });
+
+  it('通常近接スイングの間隔(600ms)はカウンター周期の新設で変わっていない(非カウンター局面)', () => {
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'chase' }); // 非カウンター局面
+    const ghost = mkGhost({
+      x: 0, y: 0, width: 10, height: 10,
+      lastMeleeAt: 0, lastCounterAttemptAt: 0, // 両CDの起点を同時刻にして「820msの影響が漏れていないか」を見る
+    });
+    const profile: GhostProfile = { ...PROFILE, meleeBias: 1 };
+
+    const tooSoon = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 599 }));
+    expect(tooSoon.action).not.toBe('melee'); // 通常CD(600)未経過
+
+    // ちょうど600ms: 通常CDだけで振れる(カウンター周期820msの影響を受けていない証明)。
+    const onTime = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: 600 }));
+    expect(onTime.action).toBe('melee');
+    expect(onTime.meleeIsCounterAttempt).toBe(false); // 通常近接=カウンター試行ではない
+  });
+
+  it('ボスが「成立しうる状態」でも、ghostDriverが見切って通常近接で振った時はmeleeIsCounterAttempt=falseのまま(意図しないスイングで請求を積まない)', () => {
+    // bossState='issen-dash' はisBossCounterableNowApprox上は「成立しうる」状態のまま(見切り後も変わらない)。
+    // 旧実装(useGameLoop側でボス状態を独立に再計算)だとここが誤ってtrueになっていた(社長指示3の対象バグ)。
+    const boss = mkBoss({ x: 10, y: 0, width: 10, height: 10, bossState: 'issen-dash' });
+    const ghost = mkGhost({
+      x: 0, y: 0, width: 10, height: 10,
+      counterPendingAt: 0, counterWillAttempt: false, // GHOST_COUNTER_WAIT_MS経過で見切り済みにする
+    });
+    const profile: GhostProfile = { ...PROFILE, counterChance: 0, meleeBias: 1 };
+    const d = decideGhost(baseDriverInput({ ghost, enemies: [boss], profile, nowMs: GHOST_COUNTER_WAIT_MS }));
+    expect(d.action).toBe('melee'); // 見切り後の通常近接(meleeBias=1)で振っている
+    expect(d.meleeIsCounterAttempt).toBe(false); // が、カウンターするつもりの振りではない
+  });
+});
+
+// ★v0.25.3979(社長報告「やはり守護霊はカウンターを取ってない」): 表の予告(着弾逆算)の構えは
+// **近接間合い74pxでゲートしない**——守護霊は普段 preferredDist(180〜300px)に立つため、帯・円
+// (リーチ170〜310px)の成立域内に居ても構えが始まらず、請求が一度も積まれなかった。
+// 離れた位置からの「構え→着弾逆算の振り(意図フラグ付き)」までの駆動連鎖を固定する。
+describe('表の予告×離れた守護霊: 74px外でも構えて着弾逆算で振る(v0.25.3979)', () => {
+  it('賞金首の360度ムチ溜め(750ms)を180px離れて監視し、着弾の直前に counter意図の振りが出る', () => {
+    const boss = mkBoss({
+      id: 'bm-1', type: 'bounty-melee', x: 200, y: 0, width: 40, height: 40,
+      bossState: 'bm-whip360-windup', bossStateUntil: 750,
+    } as Partial<Enemy>);
+    // t=600: まだ振らない(remaining=150ms > lead≈93ms)。構え(pendingAt/willAttempt)は立つ。
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), // 縁まで180px(>74)=旧実装なら counterable=false で終わり
+      enemies: [boss],
+      gameTime: 600, nowMs: 600,
+    }));
+    expect(d1.meleeIsCounterAttempt).toBe(false);
+    expect(d1.counterPendingAt).toBe(600);
+    expect(d1.counterWillAttempt).toBe(true);
+    expect(d1.action).not.toBe('shoot'); // 構え中は銃を挟まない(willAttempt=trueの霊)
+    // t=700: remaining=50ms <= lead → counter意図の振り(請求はこの瞬間に積まれる=useGameLoop側)。
+    const d2 = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 0, y: 0,
+        counterPendingAt: d1.counterPendingAt, counterWillAttempt: d1.counterWillAttempt,
+        counterArmKey: d1.counterArmKey,
+        lastCounterAttemptAt: d1.lastCounterAttemptAt,
+      }),
+      enemies: [boss],
+      gameTime: 700, nowMs: 700,
+    }));
+    expect(d2.action).toBe('melee');
+    expect(d2.meleeIsCounterAttempt).toBe(true);
+  });
+
+  it('着弾まで1秒超の予告(長い溜めの頭)は見切り扱い=まだ構えて突っ立たない', () => {
+    const boss = mkBoss({
+      id: 'bm-1', type: 'bounty-melee', x: 200, y: 0, width: 40, height: 40,
+      bossState: 'bm-whip360-windup', bossStateUntil: 2000,
+    } as Partial<Enemy>);
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [boss],
+      gameTime: 0, nowMs: 0,
+    }));
+    expect(d.meleeIsCounterAttempt).toBe(false);
+    expect(d.action).toBe('shoot'); // 見切り中=通常どおり撃つ(棒立ちしない)
+  });
+});
+
+// ★v0.25.3982(社長スクショの実測ログで確定): 城ボス(giantbat)の着弾予告(aiPhase基準の
+// GIANT_IMPACT_AT_WINDUP_END)がv3979の距離ゲート撤廃から漏れていた——監視が密着になる技
+// (g-dash-charge)でしか始まらず、g-stomp/g-trishot/g-bolt等の予告は請求ゼロでゾーン被弾だけだった。
+describe('城ボスの着弾予告×離れた守護霊(v0.25.3982)', () => {
+  it('踏み鳴らし溜め(g-stomp-windup)を250px離れて監視し、着弾の直前にcounter意図の振りが出る', () => {
+    const boss = mkBoss({
+      id: 'g-1', type: 'giantbat', x: 270, y: 0, width: 40, height: 40,
+      aiPhase: 'g-stomp-windup' as Enemy['aiPhase'], aiPhaseUntil: 900,
+    } as Partial<Enemy>);
+    // t=500: remaining=400ms > lead≈93ms → まだ振らない。監視(pendingAt/willAttempt)は立つ。
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }), // 縁まで250px(>74)=v3981以前は counterable=false
+      enemies: [boss],
+      gameTime: 500, nowMs: 500,
+    }));
+    expect(d1.counterPendingAt).toBe(500);
+    expect(d1.counterWillAttempt).toBe(true);
+    expect(d1.meleeIsCounterAttempt).toBe(false);
+    // t=850: remaining=50ms <= lead → counter意図の振り(請求はuseGameLoop側で積まれ、
+    // 消費は既存の爆風パリィ=combatTick.applyPumpkinBlastDamageのゾーン幾何が決める)。
+    const d2 = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 0, y: 0,
+        counterPendingAt: d1.counterPendingAt, counterWillAttempt: d1.counterWillAttempt,
+        counterArmKey: d1.counterArmKey,
+        lastCounterAttemptAt: d1.lastCounterAttemptAt,
+      }),
+      enemies: [boss],
+      gameTime: 850, nowMs: 850,
+    }));
+    expect(d2.action).toBe('melee');
+    expect(d2.meleeIsCounterAttempt).toBe(true);
+  });
+
+  it('死に予告(g-jump-windup=終わりに着弾しない)は離れていても構えない(従来どおり)', () => {
+    const boss = mkBoss({
+      id: 'g-1', type: 'giantbat', x: 270, y: 0, width: 40, height: 40,
+      aiPhase: 'g-jump-windup' as Enemy['aiPhase'], aiPhaseUntil: 900,
+    } as Partial<Enemy>);
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 0, y: 0 }),
+      enemies: [boss],
+      gameTime: 850, nowMs: 850,
+    }));
+    expect(d.meleeIsCounterAttempt).toBe(false);
+    expect(d.counterPendingAt).toBeUndefined();
+  });
+});
+
+// research/AI_HUMANIZE.md B3(§4マイクロリズムの写し)。decideGhost自身は`profile.microRhythm`の
+// **有無**だけで分岐する(scalarからの自動合成はしない=withSynthesizedMicroRhythmは呼び出し側の責務)。
+describe('AI_HUMANIZE B3: マイクロリズムの写し(decideGhost)', () => {
+  const boss = () => mkBoss({ x: 400, y: 0 });
+
+  it('分布なしプロファイル(microRhythm未定義)の移動は現行と一致(§7)', () => {
+    // 既存PROFILEはmicroRhythmを持たない=新規コードは一切分岐しない。同じrand列で決定的に
+    // 同じ結果になることを確認する(microSeedを渡しても分布が無ければ何も変わらない)。
+    const rand = () => 0.4;
+    const withoutSeed = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile: PROFILE, rand,
+    }));
+    const withSeed = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile: PROFILE, rand,
+      microSeed: 12345,
+    }));
+    expect(withSeed).toEqual(withoutSeed);
+  });
+
+  it('①置換でmobilityが生きる: mobility=1(常に動く)なら止まりエピソードに入らない', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, mobility: 1, microRhythm: { stillness: { n: 20, rate0: 0, rate1: 0 } }, // rate2(long)=1
+    };
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile,
+      rand: () => 0.99, // mobility判定は`rand() < mobility`。0.99<1=true(=動く)
+    }));
+    // 動く判定=true なので止まりエピソードは開始されない(microIdleUntil=0=未設定のまま)。
+    expect(d.microIdleUntil).toBe(0);
+    expect(Math.hypot(d.moveX, d.moveY)).toBeGreaterThan(0);
+  });
+
+  it('①置換でmobilityが生きる: mobility=0(常に止まる癖)なら止まりエピソードへ入りやすい', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, mobility: 0, microRhythm: { stillness: { n: 20, rate0: 1, rate1: 0 } }, // 全て短い止まり
+    };
+    // ★B3検収(重大1是正)以降、止まり開始確率は`rand() < mobility`そのものではなく、旧ghostMoveChance
+    // の占有率を保存するstillStartChance逆算式から出る(microRhythmReplay.stillStartChance参照)。
+    // mobility=0/既定stationaryFrac(0.35)/短い止まりのみ(平均100ms)だと開始確率は約0.257なので、
+    // 十分に高いrandで確実に「止まる」側を引く。
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile,
+      rand: () => 0.99,
+      microSeed: 1,
+    }));
+    expect(d.microIdleUntil).toBeDefined();
+    expect(d.microIdleUntil).toBeGreaterThan(0);
+  });
+
+  it('④は既存の毎tick反転抽選を「引いて捨てる」=rand消費回数は分布の有無で変わらない', () => {
+    const countCalls = (profile: GhostProfile): number => {
+      let calls = 0;
+      const rand = () => { calls += 1; return 0.4; };
+      decideGhost(baseDriverInput({
+        ghost: mkGhost({ orbitSign: 1 }), enemies: [boss()], boundBossId: 'boss-1', profile,
+        rand, microSeed: 7,
+      }));
+      return calls;
+    };
+    const without = countCalls(PROFILE);
+    const withOrbit = countCalls({ ...PROFILE, microRhythm: { orbit: { n: 10, rightRate: 0.5 } } });
+    expect(withOrbit).toBe(without); // 既存rand流の消費回数は不変(専用流mrandは別カウンタ)
+  });
+
+  it('⑦punishRushへの合成: recover窓が開いた瞬間は⑦分布の遅延ぶんpunishRushが遅れる', () => {
+    const recoverBoss = mkBoss({ x: 40, y: 0, bossState: 'harai-recover' }); // 近接射程内
+    const profile: GhostProfile = {
+      ...PROFILE, punish: { recover: { n: 10, rushRate: 1 } },
+      // 遅延分布=常に「様子見」(bin2)側=500ms以上の遅延を引く前提のテスト。
+      microRhythm: { punishRecoverSpeed: { n: 10, rate0: 0, rate1: 0 } },
+    };
+    const d0 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1, lastMeleeAt: -1_000_000 }),
+      enemies: [recoverBoss], boundBossId: 'boss-1', profile,
+      rand: () => 0.01, nowMs: 0, gameTime: 0, microSeed: 3,
+    }));
+    // 窓が開いた直後(遅延中)はまだ詰めない=射程外なら接近しない(punishRushがまだ効いていない)。
+    expect(d0.microPunishDelayUntil).toBeDefined();
+    expect(d0.microPunishDelayUntil).toBeGreaterThan(0);
+    // 遅延が過ぎたnowMsで同じ窓の続きとして呼ぶと詰める側(punishRush有効)になる。
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        orbitSign: 1, lastMeleeAt: -1_000_000,
+        punishContext: 'recover', punishMode: 'rush', microPunishDelayUntil: d0.microPunishDelayUntil,
+      }),
+      enemies: [recoverBoss], boundBossId: 'boss-1', profile,
+      rand: () => 0.01, nowMs: d0.microPunishDelayUntil!, gameTime: 0, microSeed: 3,
+    }));
+    // 詰める判断が有効なら、射程内で近接を振っている(action==='melee')はず。
+    expect(d1.action).toBe('melee');
+  });
+
+  it('withSynthesizedMicroRhythm: 既にmicroRhythmを持つプロファイルは変更しない(実測が最優先)', () => {
+    const withReal: GhostProfile = { ...PROFILE, microRhythm: { orbit: { n: 99, rightRate: 0.9 } } };
+    expect(withSynthesizedMicroRhythm(withReal)).toBe(withReal);
+  });
+
+  it('withSynthesizedMicroRhythm: 欠損時は決定的にスカラーから合成する(同じスカラー→同じ分布)', () => {
+    const a = withSynthesizedMicroRhythm({ ...PROFILE, stationaryFrac: 0.4, hitsPerMin: 5, preferredDist: 200 });
+    const b = withSynthesizedMicroRhythm({ ...PROFILE, stationaryFrac: 0.4, hitsPerMin: 5, preferredDist: 200 });
+    expect(a.microRhythm).toEqual(b.microRhythm);
+    expect(a.microRhythm).toBeDefined();
+  });
+
+  it('①エピソード中もrandを「引いて捨てる」(中1): stillnessあり合成分布でのrand消費回数は分布無しと不変', () => {
+    const countCalls = (profile: GhostProfile): number => {
+      let calls = 0;
+      const rand = () => { calls += 1; return 0.4; };
+      let ghost: GhostSelf = mkGhost({ orbitSign: 1 });
+      let gameTime = 0;
+      // 数tick回して「アイドル中(rand消費が無いと壊れる分岐)」も踏む。
+      for (let i = 0; i < 5; i++) {
+        const d = decideGhost(baseDriverInput({
+          ghost, enemies: [boss()], boundBossId: 'boss-1', profile, rand, microSeed: 11, gameTime, nowMs: gameTime,
+        }));
+        ghost = { ...ghost, microIdleUntil: d.microIdleUntil, microDrawIndex: d.microDrawIndex, orbitSign: d.orbitSign ?? 1 };
+        gameTime += 16;
+      }
+      return calls;
+    };
+    const without = countCalls(PROFILE);
+    const withStillness = countCalls({
+      ...PROFILE, mobility: 0.3,
+      microRhythm: { stillness: { n: 20, rate0: 1, rate1: 0 } }, // 短い止まりのみ=すぐアイドルへ入る
+    });
+    expect(withStillness).toBe(without);
+  });
+});
+
+// research/AI_HUMANIZE.md B3(§4マイクロリズムの写し・検収2巡目=B3検収の是正)。
+describe('AI_HUMANIZE B3検収: ①占有率の保存(重大1)', () => {
+  const TICK_MS = 1000 / 60;
+
+  /** decideGhostと同じ状態機械を直接シミュレートする(逆算式そのものの検算)。 */
+  const simulateFormula = (targetOcc: number, dist: MicroBin3Dist, seed: number, ticks: number): number => {
+    const rand = mulberry32(seed);
+    const meanStill = meanStillMs(dist);
+    let gameTime = 0, microIdleUntil = 0, movingTicks = 0;
+    for (let i = 0; i < ticks; i++) {
+      let moving: boolean;
+      const r = rand();
+      if (gameTime < microIdleUntil) {
+        moving = false;
+      } else {
+        const pStart = stillStartChance(targetOcc, meanStill, TICK_MS);
+        moving = r < 1 - pStart;
+        if (!moving) microIdleUntil = gameTime + sampleStillMs(dist, rand);
+      }
+      if (moving) movingTicks += 1;
+      gameTime += TICK_MS;
+    }
+    return movingTicks / ticks;
+  };
+
+  /**
+   * decideGhost本体を通したend-to-endの受け入れテスト。「止まりtickか」は外からは直接見えないが、
+   * `decision.microIdleUntil > その時のgameTime` であれば必ず「このtickは止まり(moving=false)」
+   * ——理由: moving=trueの時はmicroIdleUntilを一切更新しない(=入力時点で既にgameTime以下だった値の
+   * まま)。moving=falseの時(継続中/新規開始のどちらも)は必ずgameTimeより先の値になる。
+   */
+  const simulateViaDecideGhost = (mobility: number, seed: number, ticks: number): { movingRate: number; targetOcc: number } => {
+    const stationaryFrac = GHOST_DEFAULT_STATIONARY_FRAC;
+    const targetOcc = ghostMoveChance(mobility, stationaryFrac);
+    const profile = withSynthesizedMicroRhythm({
+      ...PROFILE, mobility, stationaryFrac, counterChance: 0, // カウンター待ちの静止(意味のある例外)を除外
+    });
+    const rand = mulberry32(seed);
+    let ghost: GhostSelf = mkGhost({ orbitSign: 1 });
+    let gameTime = 0;
+    let stillTicks = 0;
+    const bossE = mkBoss({ x: 400, y: 0 });
+    for (let i = 0; i < ticks; i++) {
+      const d = decideGhost(baseDriverInput({
+        ghost, enemies: [bossE], boundBossId: 'boss-1', profile, rand, microSeed: 4242, gameTime, nowMs: gameTime,
+      }));
+      if ((d.microIdleUntil ?? 0) > gameTime) stillTicks += 1;
+      ghost = {
+        ...ghost,
+        lastShotAt: d.lastShotAt, lastMeleeAt: d.lastMeleeAt, orbitSign: d.orbitSign ?? ghost.orbitSign,
+        microDrawIndex: d.microDrawIndex, microIdleUntil: d.microIdleUntil,
+        microMeleeCooldownMs: d.microMeleeCooldownMs, microDrawnDist: d.microDrawnDist,
+        microDrawnDistSig: d.microDrawnDistSig, microOrbitRedrawAt: d.microOrbitRedrawAt,
+        microHitReactMode: d.microHitReactMode, microHitReactUntil: d.microHitReactUntil,
+        microHitReactAnchor: d.microHitReactAnchor, microPunishDelayUntil: d.microPunishDelayUntil,
+        microDecisionMode: d.microDecisionMode, microDecisionUntil: d.microDecisionUntil,
+        counterPendingAt: d.counterPendingAt, counterWillAttempt: d.counterWillAttempt,
+        lastCounterAttemptAt: d.lastCounterAttemptAt,
+        punishContext: d.punishContext, punishMode: d.punishMode,
+      };
+      gameTime += TICK_MS;
+    }
+    return { movingRate: 1 - stillTicks / ticks, targetOcc };
+  };
+
+  it.each([0.5, 0.7, 0.9])('mobility=%s: 逆算式そのもののmoving率が旧ghostMoveChanceの±10%以内(合成分布・60fps長時間)', (mobility) => {
+    const targetOcc = ghostMoveChance(mobility, GHOST_DEFAULT_STATIONARY_FRAC);
+    const composed = withSynthesizedMicroRhythm({ ...PROFILE, mobility, stationaryFrac: GHOST_DEFAULT_STATIONARY_FRAC });
+    const dist = composed.microRhythm!.stillness!;
+    const movingRate = simulateFormula(targetOcc, dist, Math.round(mobility * 1009) + 3, 30000);
+    expect(movingRate).toBeGreaterThanOrEqual(targetOcc * 0.9);
+    expect(movingRate).toBeLessThanOrEqual(Math.min(1, targetOcc * 1.1));
+  });
+
+  it.each([0.5, 0.7, 0.9])('mobility=%s: decideGhost本体を通したmoving率も旧ghostMoveChanceの±10%以内(受け入れ条件)', (mobility) => {
+    const { movingRate, targetOcc } = simulateViaDecideGhost(mobility, Math.round(mobility * 733) + 7, 20000);
+    expect(movingRate).toBeGreaterThanOrEqual(targetOcc * 0.9);
+    expect(movingRate).toBeLessThanOrEqual(Math.min(1, targetOcc * 1.1));
+  });
+
+  it('⑧の凍結が動くtick単発で即再抽選されない(占有率是正後の固定): microDecisionModeは⑧分布の間隔が明けるまで同じモードを保つ', () => {
+    // decisionInterval=常に「遅い」(bin2)側=長い凍結。stillnessは無し(=常にmoving判定へ入る)にして
+    // 「動くtick」を連続させ、その間microDecisionModeが毎tick再抽選されていないことを見る。
+    const profile: GhostProfile = {
+      ...PROFILE, mobility: 1, counterChance: 0,
+      microRhythm: { decisionInterval: { n: 20, rate0: 0, rate1: 0 } }, // 遅い(bin2)のみ
+    };
+    let ghost: GhostSelf = mkGhost({ orbitSign: 1 });
+    let gameTime = 0;
+    const bossE = mkBoss({ x: 400, y: 0 });
+    const modes: Array<string | undefined> = [];
+    for (let i = 0; i < 5; i++) {
+      const d = decideGhost(baseDriverInput({
+        ghost, enemies: [bossE], boundBossId: 'boss-1', profile,
+        rand: () => 0.01, microSeed: 5, gameTime, nowMs: gameTime,
+      }));
+      modes.push(d.microDecisionMode);
+      ghost = {
+        ...ghost, orbitSign: d.orbitSign ?? 1, microDrawIndex: d.microDrawIndex,
+        microDecisionMode: d.microDecisionMode, microDecisionUntil: d.microDecisionUntil,
+        microIdleUntil: d.microIdleUntil,
+      };
+      gameTime += 16;
+    }
+    // 全tickが「動くtick」(mobility=1・stillness未指定)なのに、モードは1回引いたら固定=毎tick別モードに散らない。
+    expect(new Set(modes).size).toBe(1);
+  });
+});
+
+// research/AI_HUMANIZE.md B3(§4マイクロリズムの写し・検収2巡目=B3検収の是正)。
+describe('AI_HUMANIZE B3検収: ②CD床クランプ(重大2)', () => {
+  it('sampleSwingIntervalMsが密(短い)側を引いても、次の通常近接CDはGHOST_MELEE_COOLDOWN_MS(600ms)未満にならない', () => {
+    const denseBoss = mkBoss({ x: 40, y: 0 }); // 近接射程内
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 1,
+      microRhythm: { swingInterval: { n: 20, rate0: 1, rate1: 0 } }, // 密(bin0=200〜500ms)のみ
+    };
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ orbitSign: 1, lastMeleeAt: -1_000_000 }),
+      enemies: [denseBoss], boundBossId: 'boss-1', profile,
+      rand: () => 0.01, microSeed: 6, nowMs: 0, gameTime: 0,
+    }));
+    expect(d.action).toBe('melee');
+    expect(d.microMeleeCooldownMs).toBeDefined();
+    expect(d.microMeleeCooldownMs!).toBeGreaterThanOrEqual(600);
+  });
+});
+
+// research/AI_HUMANIZE.md B3(§4マイクロリズムの写し・検収2巡目=B3検収の是正)。
+describe('AI_HUMANIZE B3検収: ⑥完全停止2枝の是正(重大3)', () => {
+  it('「下がる」(mode0)は帯内(離脱済み)でも完全停止せずドリフト床(orbitVec)で動く', () => {
+    const farBoss = mkBoss({ x: 1000, y: 0 }); // GHOST_MOVE_BAND_PX*4より遠い=既に離脱済みの帯
+    const profile: GhostProfile = {
+      ...PROFILE, microRhythm: { hitReact: { n: 20, rate0: 1, rate1: 0 } }, // 常に「下がる」(bin0)
+    };
+    const ghost = mkGhost({ orbitSign: 1, lastHit: 100 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [farBoss], boundBossId: 'boss-1', profile,
+      rand: () => 0.99, microSeed: 8, gameTime: 200, nowMs: 200,
+    }));
+    expect(d.microHitReactMode).toBe(0);
+    expect(Math.hypot(d.moveX, d.moveY)).toBeGreaterThan(0); // 完全停止(0,0)ではない
+  });
+
+  it('「殴り返す」(mode2)は射程内でも完全停止せずドリフト床(orbitVec)で動く', () => {
+    const nearBoss = mkBoss({ x: 40, y: 0 }); // 近接射程内
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, // meleeBias抽選では振らない設定でも即振り配線が効くかは別テストで見る
+      microRhythm: { hitReact: { n: 20, rate0: 0, rate1: 0 } }, // 常に「殴り返す」(bin2)
+    };
+    const ghost = mkGhost({ orbitSign: 1, lastHit: 100 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [nearBoss], boundBossId: 'boss-1', profile,
+      rand: () => 0.99, microSeed: 9, gameTime: 200, nowMs: 200,
+    }));
+    expect(d.microHitReactMode).toBe(2);
+    expect(Math.hypot(d.moveX, d.moveY)).toBeGreaterThan(0); // 完全停止(0,0)ではない
+  });
+
+  it('「殴り返す」(mode2)は射程内ならmeleeBias抽選なしで即振り(punishRushと同型)', () => {
+    const nearBoss = mkBoss({ x: 40, y: 0 }); // 近接射程内
+    const profile: GhostProfile = {
+      ...PROFILE, meleeBias: 0, // meleeBias抽選に絶対乗らない設定
+      microRhythm: { hitReact: { n: 20, rate0: 0, rate1: 0 } }, // 常に「殴り返す」
+    };
+    const ghost = mkGhost({ orbitSign: 1, lastHit: 100, lastMeleeAt: -1_000_000 });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [nearBoss], boundBossId: 'boss-1', profile,
+      // randは常に1に近い値=meleeBias抽選(rand()<0)なら絶対外れる値。それでも振れることを見る。
+      rand: () => 0.999999, microSeed: 10, gameTime: 200, nowMs: 200,
+    }));
+    expect(d.action).toBe('melee');
+  });
+});
+
+describe('AI_HUMANIZE B3検収: 軽3(⑥期限失効の無標的経路)', () => {
+  it('標的が1tick居ない間も、期限切れのmicroHitReactModeはundefinedへ落ちる', () => {
+    const ghost = mkGhost({
+      orbitSign: 1, microHitReactMode: 2, microHitReactUntil: 100,
+    });
+    const d = decideGhost(baseDriverInput({
+      ghost, enemies: [], boundBossId: 'boss-1', profile: PROFILE, // 標的なし(boundBossId不在=フォールバックも空)
+      rand: () => 0.5, gameTime: 500, nowMs: 500, // 500 >= microHitReactUntil(100)=期限切れ
+    }));
+    expect(d.microHitReactMode).toBeUndefined();
+  });
+});
+
+// =================================================================================================
+// research/AI_HUMANIZE.md B2(守護霊再生・§2/§2-7/§2-8)。
+// =================================================================================================
+const mkEp = (over: Partial<HabitEpisode> = {}): HabitEpisode => ({
+  posA: 100, posB: 0, sub: 0, pressOfs: null, ctxHp: 0, ctxHit: 0, seq: 1, ...over,
+});
+
+describe('AI_HUMANIZE B2: habitSwingAtFromPressOfs(§8裁定済み#16・記録が押下基準なので再生は減算しない)', () => {
+  it('pressOfs=nullはnull(§2-8確定事項#2=A2「振らない」)', () => {
+    expect(habitSwingAtFromPressOfs(10_000, null)).toBeNull();
+  });
+  it('T + pressOfs(再生側で減算しない)', () => {
+    expect(habitSwingAtFromPressOfs(10_000, 100)).toBe(10_000 + 100);
+    expect(habitSwingAtFromPressOfs(10_000, -300)).toBe(10_000 - 300);
+  });
+});
+
+describe('AI_HUMANIZE B2: habitSwingWindowCoversT(§8裁定済み#17・社長裁定2026-09-02=(b))', () => {
+  const T = 10_000;
+  it('窓[swingAt, swingAt+COUNTER_ACCEPT_MS]がTを覆えば true', () => {
+    expect(habitSwingWindowCoversT(T - 150, T)).toBe(true); // 150ms前に振る→窓内
+    expect(habitSwingWindowCoversT(T, T)).toBe(true); // ちょうど振った瞬間に着弾(両端含む)
+    expect(habitSwingWindowCoversT(T - COUNTER_ACCEPT_MS, T)).toBe(true); // 窓の下端(両端含む)
+  });
+  it('Tより後に振る、または窓がCOUNTER_ACCEPT_MSより先に閉じるなら false', () => {
+    expect(habitSwingWindowCoversT(T + 1, T)).toBe(false); // 着弾の後に振る
+    expect(habitSwingWindowCoversT(T - COUNTER_ACCEPT_MS - 1, T)).toBe(false); // 早すぎて着弾前に窓が閉じる
+  });
+});
+
+describe('AI_HUMANIZE B2: resolveHabitStage(§2フォールバック3段)', () => {
+  it('コマ≥3(GHOST_HABIT_STAGE1_MIN_N)なら段1', () => {
+    expect(GHOST_HABIT_STAGE1_MIN_N).toBe(3);
+    const profile: GhostProfile = { ...PROFILE, moveHabits: { k: [mkEp(), mkEp(), mkEp()] } };
+    expect(resolveHabitStage(profile, 'k', 'band')).toBe(1);
+  });
+  it('コマ<3だが族の累計n≥5(HABIT_FAMILY_MIN_N)なら段2', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, moveHabits: { k: [mkEp(), mkEp()] },
+      habitFamily: { band: { n: 5, avgPosA: 100, avgPosB: 0, avgPressOfs: 50, pressRatePct: 60 } },
+    };
+    expect(resolveHabitStage(profile, 'k', 'band')).toBe(2);
+  });
+  it('どちらも無ければ段3(現行モデル)', () => {
+    expect(resolveHabitStage(PROFILE, 'k', 'band')).toBe(3);
+    expect(resolveHabitStage(PROFILE, 'k', null)).toBe(3);
+  });
+  it('族が閾値未満(n<5)なら段2にならず段3', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, habitFamily: { band: { n: 4, avgPosA: 0, avgPosB: 0, avgPressOfs: null, pressRatePct: 0 } },
+    };
+    expect(resolveHabitStage(profile, 'k', 'band')).toBe(3);
+  });
+});
+
+describe('AI_HUMANIZE B2: 選択の決定性(§2-1位置選択のタイ崩し=裁定済み#7=(a))', () => {
+  it('距離が同じコマが複数ある時は専用乱数流(mrand)で1件だけ選ぶ(実在コマのみ)', () => {
+    const episodes = [mkEp({ posA: 10, seq: 1 }), mkEp({ posA: 20, seq: 1 }), mkEp({ posA: 30, seq: 1 })];
+    // 全て同じseq/ctx=距離は等しい(位置は選択に使わない=posAはここでは無視される)。
+    const pick0 = pickHabitPositionEpisode(episodes, 1, 0, 0, () => 0);
+    const pick1 = pickHabitPositionEpisode(episodes, 1, 0, 0, () => 0.5);
+    const pick2 = pickHabitPositionEpisode(episodes, 1, 0, 0, () => 0.99);
+    expect(pick0).toBe(episodes[0]);
+    expect(pick1).toBe(episodes[1]);
+    expect(pick2).toBe(episodes[2]);
+  });
+  it('距離が違えば最近傍1件が決定的に選ばれる(タイでなければmrandを問わない)', () => {
+    const episodes = [mkEp({ seq: 1 }), mkEp({ seq: 5 }), mkEp({ seq: 20 })];
+    const pick = pickHabitPositionEpisode(episodes, 1, 0, 0, () => 0.99); // seq=1が最近傍のはず
+    expect(pick).toBe(episodes[0]);
+  });
+  it('空配列はnull', () => {
+    expect(pickHabitPositionEpisode([], 1, 0, 0, () => 0)).toBeNull();
+  });
+});
+
+describe('AI_HUMANIZE B2: pickHabitSwingEpisode(§2-3振り選択=図形ローカル位置+sub+seq/ctxの最近傍)', () => {
+  it('図形ローカル位置が最も近いコマを選ぶ', () => {
+    const near = mkEp({ posA: 100, posB: 0, pressOfs: 111 });
+    const far = mkEp({ posA: 0, posB: 100, pressOfs: 222 });
+    const ep = pickHabitSwingEpisode([far, near], 1.0, 0, 0, 1, 0, 0);
+    expect(ep).toBe(near);
+    expect(ep?.pressOfs).toBe(111);
+  });
+  it('sub不一致は距離+1のペナルティ(帯indexが違えば遠いとみなす)', () => {
+    const sameSub = mkEp({ posA: 0, posB: 0, sub: 2, pressOfs: 1 });
+    const otherSub = mkEp({ posA: 0, posB: 0, sub: 0, pressOfs: 2 }); // posA/posBは一致するがsubが違う
+    const ep = pickHabitSwingEpisode([otherSub, sameSub], 0, 0, 2, 1, 0, 0);
+    expect(ep).toBe(sameSub);
+  });
+});
+
+describe('AI_HUMANIZE B2: 段1(コマ再生)の駆動(decideGhost統合)', () => {
+  const T = 10_000;
+  const bossAt = (): Enemy => mkBoss({
+    id: 'thor-1', type: 'thor', x: 300, y: -20, width: 40, height: 40,
+    bossState: 'issen-windup', bossStateUntil: T,
+    aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0,
+  });
+  // 3件とも同一のposA/posB/sub/ctx=どのtickでもpickHabitSwingEpisodeが決定的に同じ1件を選ぶ
+  // (このテストでは「pressOfsから振り始めが決まること」だけを見たいので、位置選択の揺れを排除する)。
+  const episodesWithPressOfs = (pressOfs: number | null): HabitEpisode[] =>
+    [mkEp({ pressOfs }), mkEp({ pressOfs }), mkEp({ pressOfs })];
+
+  // ★裁定済み#17(社長裁定2026-09-02=(b)「窓が着弾Tを覆えない記録では振らない」)是正: pressOfsは
+  // 窓(COUNTER_ACCEPT_MS=300)を覆う値でなければ振らなくなったため、この統合テストのpressOfsは
+  // 従来の+100(=窓の外・振らない側)から-100(=窓の内側)へ差し替える。T+pressOfsの式そのものは不変。
+  it('pressOfs=-100・T=10000 → 振り始め9900(=T+pressOfs・§8裁定済み#16=再生側は減算しない)ちょうどで振る', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, counterChance: 0, // 段3なら絶対に振らない設定(段1が上書きすることの証明)
+      moveHabits: { 'thor:issen-windup': episodesWithPressOfs(-100) },
+    };
+    const boss = bossAt();
+    // T-500(振り判断時点)ちょうどで解決する。
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(d1.microHabitResolved).toBe(true);
+    expect(d1.microHabitSwingAt).toBe(T - 100); // 9900
+    expect(d1.action).not.toBe('melee'); // まだ9900に達していない
+    expect(d1.moveRoll).toBeDefined(); // 袋抽選(rollGhostMoveReaction)は段1でも引かれている
+    const carry = (d: ReturnType<typeof decideGhost>): GhostSelf => mkGhost({
+      x: 300, y: -300, lastMeleeAt: -1_000_000,
+      counterPendingAt: d.counterPendingAt, counterWillAttempt: d.counterWillAttempt, counterArmKey: d.counterArmKey,
+      lastCounterAttemptAt: d.lastCounterAttemptAt, moveRoll: d.moveRoll,
+      microHabitTFrozen: d.microHabitTFrozen, microHabitSwingAt: d.microHabitSwingAt,
+      microHabitResolved: d.microHabitResolved, microHabitTargetX: d.microHabitTargetX,
+      microHabitTargetY: d.microHabitTargetY, microHabitArmKey: d.microHabitArmKey,
+      microHabitSeqCounts: d.microHabitSeqCounts,
+    });
+    // 1ms手前(9899)はまだ振らない。
+    const before = decideGhost(baseDriverInput({
+      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 101, nowMs: T - 101,
+    }));
+    expect(before.action).not.toBe('melee');
+    // 9900ちょうどで振る(意図フラグ付き。窓[9900,10200]はT=10000を覆う)。
+    const swing = decideGhost(baseDriverInput({
+      ghost: carry(before), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+    }));
+    expect(swing.action).toBe('melee');
+    expect(swing.meleeIsCounterAttempt).toBe(true);
+  });
+
+  it('§8裁定済み#17(社長裁定2026-09-02=(b)): 窓(300ms)がTを覆えないpressOfs(例: 着弾の1.2秒前)は振らない。CDも消費せず銃が撃てる', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, counterChance: 0, // 段3なら絶対に振らない設定(段1が上書きすることの証明)
+      moveHabits: { 'thor:issen-windup': episodesWithPressOfs(-1200) }, // 窓[-300,0]の外(1.2秒前)
+    };
+    const boss = bossAt();
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    // 計算上の振り始め(T-1200)は窓(300ms)がTを覆えない=決定した瞬間に「振らない」へ確定する
+    // (pressOfsの値だけで事前に切るのではなく、実際に振る時刻=microHabitSwingAtそのもので判定)。
+    expect(d1.microHabitResolved).toBe(true);
+    expect(d1.microHabitSwingAt).toBeUndefined();
+    expect(d1.action).not.toBe('melee'); // 窓がTを覆えない=振らない
+    expect(d1.counterWillAttempt).toBe(false); // 沈黙させない(gunHeldByWatchが解ける)
+    expect(d1.lastCounterAttemptAt).toBeUndefined(); // CD(820ms周期)を消費していない
+    // 銃が届く設定でも棒立ちにならず撃てる。
+    const near = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile,
+      weapon: { ...WEAPON, gunRangePx: 10_000 },
+      gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(near.action).toBe('shoot');
+    // T到達まで待っても振らない・CDは消費されないまま(microHabitSwingAt=undefinedで確定済みなので
+    // gameTimeが窓[T-300,T]へ入っても振り直さない=遅れて偶然合うのを狙い撃ちにしない)。
+    const atT = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 300, y: -300, lastMeleeAt: -1_000_000,
+        counterPendingAt: d1.counterPendingAt, counterWillAttempt: d1.counterWillAttempt, counterArmKey: d1.counterArmKey,
+        lastCounterAttemptAt: d1.lastCounterAttemptAt,
+        microHabitTFrozen: d1.microHabitTFrozen, microHabitSwingAt: d1.microHabitSwingAt,
+        microHabitResolved: d1.microHabitResolved,
+      }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T, nowMs: T,
+    }));
+    expect(atT.action).not.toBe('melee');
+    expect(atT.lastCounterAttemptAt).toBeUndefined();
+  });
+
+  it('§8裁定済み#17: 着弾の後のpressOfs(例: +200ms)も窓がTを覆えないので決定した瞬間に振らないへ確定する', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, counterChance: 0,
+      moveHabits: { 'thor:issen-windup': episodesWithPressOfs(200) }, // 窓[-300,0]の外(着弾の後)
+    };
+    const boss = bossAt();
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(d1.microHabitResolved).toBe(true);
+    expect(d1.microHabitSwingAt).toBeUndefined(); // 計算上の振り始め(T+200)は着弾より後=窓が覆えない
+    expect(d1.action).not.toBe('melee');
+    expect(d1.counterWillAttempt).toBe(false);
+    // 着弾を過ぎても振らないまま(次の機会に備えてCDは温存)。
+    const atT = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 300, y: -300, lastMeleeAt: -1_000_000,
+        counterPendingAt: d1.counterPendingAt, counterWillAttempt: d1.counterWillAttempt, counterArmKey: d1.counterArmKey,
+        lastCounterAttemptAt: d1.lastCounterAttemptAt,
+        microHabitTFrozen: d1.microHabitTFrozen, microHabitSwingAt: d1.microHabitSwingAt,
+        microHabitResolved: d1.microHabitResolved,
+      }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T + 200, nowMs: T + 200,
+    }));
+    expect(atT.action).not.toBe('melee');
+    expect(atT.counterWillAttempt).toBe(false);
+    expect(atT.lastCounterAttemptAt).toBeUndefined();
+  });
+
+  it('pressOfs=null(押していないコマ)は振らない=着弾時刻を過ぎても action は melee にならない(§2-8確定事項#2)', () => {
+    const profile: GhostProfile = {
+      ...PROFILE, counterChance: 1, // 段3なら必ず振る設定(段1が上書きすることの証明=対照)
+      moveHabits: { 'thor:issen-windup': episodesWithPressOfs(null) },
+    };
+    const boss = bossAt();
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(d1.microHabitResolved).toBe(true);
+    expect(d1.microHabitSwingAt).toBeUndefined();
+    expect(d1.counterWillAttempt).toBe(false);
+    // §2-8確定事項#3(A3)「振らない時は沈黙させない」=構え中に銃を挟む(gunHeldByWatchが偽になる)。
+    // 銃が届く設定で確かめる。
+    const near = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile,
+      weapon: { ...WEAPON, gunRangePx: 10_000 },
+      gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(near.action).toBe('shoot');
+    // T到達後も振らない。
+    const atT = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: 300, y: -300, lastMeleeAt: -1_000_000,
+        counterPendingAt: d1.counterPendingAt, counterWillAttempt: d1.counterWillAttempt, counterArmKey: d1.counterArmKey,
+        microHabitTFrozen: d1.microHabitTFrozen, microHabitSwingAt: d1.microHabitSwingAt,
+        microHabitResolved: d1.microHabitResolved,
+      }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T, nowMs: T,
+    }));
+    expect(atT.action).not.toBe('melee');
+  });
+
+  it('段3(コマ<3・族<5)はcounterChance/袋の従来ロジックのままビット同一(§7受け入れ条件3)', () => {
+    const boss = bossAt();
+    const scenario = (profile: GhostProfile) => decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 40, y: -20, lastMeleeAt: -1_000_000 }), // 近接射程内
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100, rand: () => 0.01,
+    }));
+    const without = scenario(PROFILE);
+    // moveHabitsフィールド自体は存在するが、このキーのコマは2件(<3=段1未達)=段3のまま。
+    const withThinData: GhostProfile = {
+      ...PROFILE, moveHabits: { 'thor:issen-windup': [mkEp({ pressOfs: 999 }), mkEp({ pressOfs: 999 })] },
+    };
+    const withThin = scenario(withThinData);
+    expect(withThin).toEqual(without);
+  });
+
+  it('★v5是正「移動分岐の入り方」: 位置取りはdodge/tankロールでも同じ(reactionで分岐しない=袋の移動分岐を使わない)', () => {
+    const boss = bossAt();
+    const profile: GhostProfile = {
+      ...PROFILE,
+      moveHabits: { 'thor:issen-windup': episodesWithPressOfs(null) }, // pressOfs=null=振らない技(位置取りだけ見る)
+      // 'thor-issen'の技ロールを'tank'に固定する(counterRate=0・hitRate=1)。
+      moveReactions: { 'thor-issen': { n: 5, counterRate: 0, hitRate: 1 } },
+    };
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(d.moveRoll?.decision).toBe('tank'); // 前提: 実際にtankロールが引かれている
+    // 段3なら'tank'ロールは移動リズム(平時の間合い管理)へ落ちるだけだが、段1は習慣位置分岐へ
+    // 置き換わる=位置取りのpick(microHabitTargetX/Y)が実行されていることで確認する。
+    expect(d.microHabitTargetX).toBeDefined();
+    expect(d.microHabitTargetY).toBeDefined();
+  });
+
+  it('§2-1「到達後は静止してよい」: 目標(デッドバンド内)に居る時は移動しない', () => {
+    const boss = bossAt();
+    const profile: GhostProfile = {
+      ...PROFILE, moveHabits: { 'thor:issen-windup': episodesWithPressOfs(null) },
+    };
+    // ★§2-8確定事項#13(=a): 段1の位置取りは予告の立ち上がりから始まる=counterWatchingの1000ms待ちより前。
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 900, nowMs: T - 900,
+    }));
+    expect(d1.microHabitTargetX).toBeDefined();
+    expect(d1.microHabitTargetY).toBeDefined();
+    // ゴースト中心(x+width/2)を目標へちょうど重ねて再度呼ぶ。
+    const d2 = decideGhost(baseDriverInput({
+      ghost: mkGhost({
+        x: d1.microHabitTargetX! - 10, y: d1.microHabitTargetY! - 10, lastMeleeAt: -1_000_000,
+        counterPendingAt: d1.counterPendingAt, counterWillAttempt: d1.counterWillAttempt, counterArmKey: d1.counterArmKey,
+        microHabitTargetX: d1.microHabitTargetX, microHabitTargetY: d1.microHabitTargetY,
+        microHabitTFrozen: d1.microHabitTFrozen, microHabitArmKey: d1.microHabitArmKey,
+        microHabitSeqCounts: d1.microHabitSeqCounts,
+      }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 899, nowMs: T - 899,
+    }));
+    expect(d2.moveX).toBe(0);
+    expect(d2.moveY).toBe(0);
+  });
+});
+
+// =================================================================================================
+// 検収是正#3/#4(2026-09-02): 段2の回避外しが位置取り分岐と同じ条件で立つこと・州単位で落ちること。
+// =================================================================================================
+describe('AI_HUMANIZE B2 検収是正#3: 段2の回避外し・位置取りの条件を一致させる', () => {
+  const T = 10_000;
+  // 帯(y=0・x:0〜600)の技。telegraphDodgeの汎用判定(bs.endsWith('-windup'))が拾う=既存の
+  // 「全ボス予告台帳」ではなくbase側(botSkill.telegraphDodge)の脅威で確かめる(検収#4の対象と同じ経路)。
+  const bossWithBandThreat = (extra: Partial<Enemy> = {}): Enemy => mkBoss({
+    id: 'thor-1', type: 'thor', x: 300, y: -20, width: 40, height: 40,
+    bossState: 'issen-windup', bossStateUntil: T,
+    aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0,
+    ...extra,
+  });
+  const stage2Profile: GhostProfile = {
+    ...PROFILE,
+    habitFamily: { band: { n: 5, avgPosA: 100, avgPosB: 0, avgPressOfs: null, pressRatePct: 0 } },
+  };
+  const stage3Profile: GhostProfile = { ...PROFILE }; // moveHabits/habitFamily無し=常に段3(コマ台帳の対象外と同じ挙動)
+  // ゴースト中心(300,90): 帯(y=0)の下90px=帯の危険域(halfWidth64+margin40=104未満)には入るが、
+  // ボス本体の縁(y=20)からは70px=**GHOST_BOSS_BODY_AVOID_PX(48)の外**にしてある(実測で確認: 48未満だと
+  // 「ボスの体は常時回避対象」という別機構の反発ベクトルが常時混ざり、抑止の有無を判別できなくなるため)。
+  // dangerSeenAt/dangerLastAtを300ms前に設定=反応遅延(reactionMs=200)を初手から満たす
+  // (優先度: このテストは「抑止/位置取りの条件」だけを見たいので反応遅延の立ち上がりは排除する)。
+  const ghostNearBand = (gameTime: number): GhostSelf => mkGhost({
+    x: 290, y: 80, lastMeleeAt: -1_000_000,
+    dangerSeenAt: gameTime - 300, dangerLastAt: gameTime - 300,
+  });
+
+  it('counterWatchingより前(見切り済み=残り1000ms超)は、段2は段3と同じ動きになる(抑止も位置取りも起きない)', () => {
+    const gameTime = T - 1500; // windupImpactAt-gameTime=1500 > GHOST_COUNTER_WAIT_MS(1000)=counterGaveUp=true
+    const d2 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage2Profile, gameTime, nowMs: gameTime,
+    }));
+    const d3 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage3Profile, gameTime, nowMs: gameTime,
+    }));
+    expect(d2.microHabitTargetX).toBeUndefined(); // 位置取りは起きていない
+    expect(d2.moveX).toBeCloseTo(d3.moveX, 6); // 段2/段3で同じ(=抑止されておらず、同じ回避ベクトルを使っている)
+    expect(d2.moveY).toBeCloseTo(d3.moveY, 6);
+    expect(d3.moveY).toBeGreaterThan(0); // 前提: 段3は帯から離れる方向(+y)へ実際に回避している
+  });
+
+  it('counterWatchingが立った後(残り1000ms以内)は、段2は位置取りへ切り替わり、段3の回避と一致しなくなる', () => {
+    const gameTime = T - 900; // windupImpactAt-gameTime=900 <= 1000 = counterGaveUp=false(counterWatching=true)
+    // rand=0.5: 段3側の技ロール(袋式)が'counter'を引かないようにする(counter/tank/dodgeの均等でない
+    // 配分のうちcounter/tankを外す値。'counter'だと「詰めて窓を待つ」分岐が回避より先に選ばれてしまい、
+    // このテストが見たい「段3=回避し続ける」という前提が別の分岐で壊れる=このテストの主題ではない)。
+    const rand = () => 0.5;
+    const d2 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage2Profile, gameTime, nowMs: gameTime, rand,
+    }));
+    const d3 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage3Profile, gameTime, nowMs: gameTime, rand,
+    }));
+    expect(d3.moveY).toBeGreaterThan(0); // 段3(現行モデル)は引き続き帯から離れる方向へ回避する(ビット同一)
+    // 段2はこの技の予告回避が抑止され、位置取り分岐(族の平均位置)へ切り替わっている=段3と同じ回避の動きにならない。
+    expect(d2.microHabitTargetX).toBeDefined();
+    expect(d2.moveY === d3.moveY && d2.moveX === d3.moveX).toBe(false);
+  });
+
+  it('★#19を段2にも: 族の平均posBが飽和していたら、位置取りをせず回避も抑止しない(段3と同じ動きへ落ちる)', () => {
+    // 版タグでコマを捨てた直後は**ほぼ全州が段2**なので、ここを素通しにすると
+    // 「避けた記録が帯の縁(=当たる場所)に化ける」穴がそのまま残る。平均は1個のスカラーで
+    // 個別除外ができないため、飽和していたら位置取りごと諦める(段1の全飽和と同じ扱い)。
+    const gameTime = T - 900; // counterWatching中=本来なら位置取りと抑止が効く局面
+    const rand = () => 0.5;
+    const saturated: GhostProfile = {
+      ...PROFILE,
+      habitFamily: { band: { n: 5, avgPosA: 100, avgPosB: 100, avgPressOfs: null, pressRatePct: 0 } }, // avgPosB=1.00=飽和
+    };
+    const dSat = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: saturated, gameTime, nowMs: gameTime, rand,
+    }));
+    const d3 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage3Profile, gameTime, nowMs: gameTime, rand,
+    }));
+    expect(dSat.microHabitTargetX).toBeUndefined();   // 位置取りをしない
+    expect(dSat.moveX).toBeCloseTo(d3.moveX, 6);      // 抑止も外れる=段3と同じ回避ベクトル
+    expect(dSat.moveY).toBeCloseTo(d3.moveY, 6);
+  });
+
+  it('検収是正#4: 州単位の抑止(同時進行の別ハザード=giantDelayedHitsは抑止されず避け続ける)', () => {
+    const gameTime = T - 900; // counterWatching中(#3のテストと同じ時刻=抑止/位置取りが本来なら効く局面)
+    // 帯の技(この技の予告)とは無関係な遅延ダメージの円をゴーストの近くへ追加する
+    // (三連射の三拍目・滑空の二撃目・床などの「同時進行の別ハザード」の代用)。
+    const boss = bossWithBandThreat({
+      giantDelayedHits: [{ x: 300, y: 70, radius: 30, bornAt: 0, fireAt: 0 }],
+    });
+    const withDelayed = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [boss], boundBossId: 'thor-1',
+      profile: stage2Profile, gameTime, nowMs: gameTime,
+    }));
+    // 帯(この技)の予告は抑止されているのに、giantDelayedHits(別ハザード)がまだ避けるものとして
+    // 残っているので、activeDodge分岐が選ばれ続け、位置取り(microHabitTargetX)は**この tick では**
+    // 発火しない(§2-1「activeDodge非nullなら回避を優先」)。
+    expect(withDelayed.microHabitTargetX).toBeUndefined();
+    expect(Math.hypot(withDelayed.moveX, withDelayed.moveY)).toBeGreaterThan(0); // 実際に回避で動いている
+    // 対照: giantDelayedHitsが無ければ、この技の予告だけが唯一の脅威=抑止されて回避するものが無くなり、
+    // 位置取りへ落ちる(microHabitTargetXが定まる)。
+    const withoutDelayed = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(gameTime), enemies: [bossWithBandThreat()], boundBossId: 'thor-1',
+      profile: stage2Profile, gameTime, nowMs: gameTime,
+    }));
+    expect(withoutDelayed.microHabitTargetX).toBeDefined();
+  });
+});
+
+// =================================================================================================
+// AI_HUMANIZE B2 検収2巡目(A)是正(2026-09-03・社長裁定「①a ②a」)。
+// A-1(§8裁定済み#18=(a)「段2は立ち位置だけ・振りは段3」): 段2は振りをコマ/族pressOfsで決めない
+// (段3=現行モデルの抽選[袋ロール+counterChance]と同じ式へ一本化)。位置取りだけ段2に残る。
+// =================================================================================================
+describe('AI_HUMANIZE B2 検収2巡目 A-1(§8裁定済み#18): 段2は立ち位置だけ・振りは段3', () => {
+  const T = 10_000;
+  const bossAt = (): Enemy => mkBoss({
+    id: 'thor-1', type: 'thor', x: 300, y: -20, width: 40, height: 40,
+    bossState: 'issen-windup', bossStateUntil: T,
+    aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0,
+  });
+  const stage2Profile: GhostProfile = {
+    ...PROFILE,
+    habitFamily: { band: { n: 5, avgPosA: 100, avgPosB: 0, avgPressOfs: -1200, pressRatePct: 100 } },
+  };
+
+  it('段2はmicroHabitSwingAt/microHabitResolvedを作らない(コマ台帳の振り経路=段1専用に一本化)', () => {
+    expect(resolveHabitStage(stage2Profile, 'thor:issen-windup', 'band')).toBe(2); // 前提
+    const boss = bossAt();
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile: stage2Profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(d.microHabitSwingAt).toBeUndefined();
+    // microHabitResolvedは「新しい機会(habitNewArm)」の張り直しで段に関わらずfalseへ初期化される
+    // (§2-8確定事項#4の錨と同じ器)ので、ここでの証拠はmicroHabitSwingAtが一切作られないことの方
+    // (=microHabitResolved=trueへ進む§2-3の決定ブロック自体に段2は入らない)。
+    expect(d.microHabitResolved).toBe(false);
+    // pressRatePct=100/avgPressOfs=-1200(旧実装なら「窓を覆えない=毎回振らない」に固定されていたはずの
+    // 値)を渡しているのに、族データが振りに一切使われないことの直接証拠でもある。
+  });
+
+  it('段2の振り判断(action/counterWillAttempt/lastCounterAttemptAt/meleeIsCounterAttempt)は段3(現行モデル)とビット一致する', () => {
+    const boss = bossAt();
+    const stage3Profile: GhostProfile = { ...PROFILE };
+    expect(resolveHabitStage(stage3Profile, 'thor:issen-windup', 'band')).toBe(3); // 前提(データ無し)
+    const scenario = (profile: GhostProfile) => decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 310, y: -50, lastMeleeAt: -1_000_000 }), // 近接射程内(縁距離20<74)
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100, rand: () => 0.01,
+    }));
+    const d3 = scenario(stage3Profile);
+    const d2 = scenario(stage2Profile);
+    expect(d2.action).toBe(d3.action);
+    expect(d2.counterWillAttempt).toBe(d3.counterWillAttempt);
+    expect(d2.lastCounterAttemptAt).toBe(d3.lastCounterAttemptAt);
+    expect(d2.meleeIsCounterAttempt).toBe(d3.meleeIsCounterAttempt);
+    expect(d2.microHabitSwingAt).toBeUndefined(); // 段2はmicroHabitSwingAtを経由しない
+  });
+
+  it('段2でも位置取りは効く(族平均posA/posBからの逆写像が移動目標になる=A-1は振りだけを段3化した)', () => {
+    const boss = bossAt();
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 500, y: 300, lastMeleeAt: -1_000_000 }), // 帯・ボス双方から離れた位置
+      enemies: [boss], boundBossId: 'thor-1', profile: stage2Profile, gameTime: T - 900, nowMs: T - 900,
+    }));
+    expect(d.microHabitTargetX).toBeDefined();
+    expect(d.microHabitTargetY).toBeDefined();
+  });
+});
+
+// =================================================================================================
+// AI_HUMANIZE B2 検収2巡目 A-2(§8裁定済み#19=(a)「飽和した位置記録は使わない」):
+// band族のposBがクランプ上限(±100)に張り付いているコマは位置取りの候補から外す。
+// 円/体(posA側)の飽和は対象外=現行のまま。
+// =================================================================================================
+describe('AI_HUMANIZE B2 検収2巡目 A-2(§8裁定済み#19): 飽和した位置記録は使わない', () => {
+  const T = 10_000;
+  const bossAt = (): Enemy => mkBoss({
+    id: 'thor-1', type: 'thor', x: 300, y: -20, width: 40, height: 40,
+    bossState: 'issen-windup', bossStateUntil: T,
+    aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0, // 帯: fx=0,fy=0→tx=600,ty=0・halfWidth=80
+  });
+  const mkEpAt = (posA: number, posB: number, seq = 1): HabitEpisode =>
+    ({ posA, posB, sub: 0, pressOfs: null, ctxHp: 0, ctxHit: 0, seq });
+
+  it('band族: posBが飽和(±100)しているコマは位置選択の候補から外れ、残りのコマから選ばれる', () => {
+    // 3件とも seq/ctx が同一=habitPositionDist(位置は選択に使わない=seq/ctxのみ)がタイになる。
+    // microRhythm無し=タイ崩しのmrandは常に0(先頭)を返す固定カーソル(★検収是正・軽2)なので、
+    // フィルタが無ければ「先頭(飽和・posB=100)」が決定的に選ばれるはずの配置にしてある。
+    const episodes = [
+      mkEpAt(100, 100, 1), // 飽和(縁ぎりぎり or 大きく避けた区別が付かない値)=候補から外れるはず
+      mkEpAt(100, -100, 1), // 反対側の飽和=同じく除外
+      mkEpAt(100, 50, 1), // 非飽和=これだけが残る
+    ];
+    const profile: GhostProfile = { ...PROFILE, moveHabits: { 'thor:issen-windup': episodes } };
+    const boss = bossAt();
+    const d = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 500, y: 300, lastMeleeAt: -1_000_000 }), // 帯・脅威から離れた位置=位置取りだけが動く
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 900, nowMs: T - 900,
+    }));
+    expect(resolveHabitStage(profile, 'thor:issen-windup', 'band')).toBe(1); // 前提: 段1(コマ3件)
+    // posA=1.0(t=1→x=600)・posB=0.5(→perpPx=0.5*80=40)=非飽和コマの逆写像。飽和コマ(posB=±1→±80)ではない。
+    expect(d.microHabitTargetX).toBeCloseTo(600, 5);
+    expect(d.microHabitTargetY).toBeCloseTo(40, 5);
+  });
+
+  it('band族: その州で使えるコマが全て飽和していたら位置取りをしない(通常の間合い管理へ)し、回避抑止も掛けない', () => {
+    const allSaturated: GhostProfile = {
+      ...PROFILE,
+      moveHabits: { 'thor:issen-windup': [mkEpAt(100, 100, 1), mkEpAt(100, 100, 2), mkEpAt(100, -100, 3)] },
+    };
+    const stage3Profile: GhostProfile = { ...PROFILE }; // moveHabits無し=常に段3(対照)
+    expect(resolveHabitStage(allSaturated, 'thor:issen-windup', 'band')).toBe(1); // 前提: 段1(コマ3件)
+    const boss = bossAt();
+    const gameTime = T - 900; // counterWatching中(=位置取り/抑止が本来なら効く局面)
+    const rand = () => 0.5; // 段3側の技ロールが'counter'を引かない値(検収是正#3のテストと同じ理由)
+    // ゴースト中心(300,90)=帯(y=0)下90px(帯の危険域=halfWidth80+margin40=120未満)・ボス体縁からは
+    // 70px(GHOST_BOSS_BODY_AVOID_PX=48の外)=検収是正#3のghostNearBandと同じ配置(体反発と混ざらない)。
+    const ghostNearBand = (): GhostSelf => mkGhost({
+      x: 290, y: 80, lastMeleeAt: -1_000_000,
+      dangerSeenAt: gameTime - 300, dangerLastAt: gameTime - 300,
+    });
+    const d = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(), enemies: [boss], boundBossId: 'thor-1', profile: allSaturated, gameTime, nowMs: gameTime, rand,
+    }));
+    const d3 = decideGhost(baseDriverInput({
+      ghost: ghostNearBand(), enemies: [boss], boundBossId: 'thor-1', profile: stage3Profile, gameTime, nowMs: gameTime, rand,
+    }));
+    expect(d.microHabitTargetX).toBeUndefined(); // 位置取りをしていない
+    expect(d3.moveY).toBeGreaterThan(0); // 前提: 段3(対照)は帯から離れる方向(+y)へ実際に回避している
+    expect(d.moveX).toBeCloseTo(d3.moveX, 6); // 段3と同じ動き=回避抑止も掛かっていない(普通に避けている)
+    expect(d.moveY).toBeCloseTo(d3.moveY, 6);
+  });
+
+  it('円/体(posA=距離側)の飽和は対象外=現行のまま(isHabitPosBSaturatedはband族でしか呼ばない)', () => {
+    // habitPositionTarget/unhabitPosはA-2で一切変更していない=circleのposA=2(飽和)は
+    // 従来どおり外側(半径×2)へ戻る(v0.25.2567の「中心距離は使わない」教訓の再確認)。
+    const shape = { kind: 'circle' as const, cx: 0, cy: 0, radius: 100 };
+    const pt = habitPositionTarget(
+      shape, { fromX: 0, fromY: 0, toX: 1, toY: 0 }, { x: -10, y: -10, width: 20, height: 20 },
+      2, 0, 0, 999, 999,
+    )!;
+    expect(Math.hypot(pt.x, pt.y)).toBeCloseTo(200, 5); // 半径100×posA=2=外側(安全側)のまま
+  });
+});
+
+// =================================================================================================
+// 検収是正#5(2026-09-02): TFrozenのフォールバックは時計を混ぜない・州が続く間は凍結を保持する。
+// =================================================================================================
+describe('AI_HUMANIZE B2 検収是正#5: TFrozenは州(counterArmKey)が続く間ずっと保持される', () => {
+  const T = 10_000;
+  const bossAt = (bossStateUntil: number): Enemy => mkBoss({
+    id: 'thor-1', type: 'thor', x: 300, y: -20, width: 40, height: 40,
+    bossState: 'issen-windup', bossStateUntil,
+    aiFromX: 0, aiFromY: 0, aiTargetX: 600, aiTargetY: 0,
+  });
+  const episodesWithPressOfs = (pressOfs: number | null): HabitEpisode[] =>
+    [mkEp({ pressOfs }), mkEp({ pressOfs }), mkEp({ pressOfs })];
+  // ★裁定済み#17是正: pressOfsは窓(COUNTER_ACCEPT_MS=300)を覆う値でなければ振らなくなったため、
+  // このdescribe(TFrozen保持の検証)ではpressOfs=-100(窓の内側)を使う。
+  const profile: GhostProfile = {
+    ...PROFILE, counterChance: 0,
+    moveHabits: { 'thor:issen-windup': episodesWithPressOfs(-100) },
+  };
+  const carry = (d: ReturnType<typeof decideGhost>): GhostSelf => mkGhost({
+    x: 300, y: -300, lastMeleeAt: -1_000_000,
+    counterPendingAt: d.counterPendingAt, counterWillAttempt: d.counterWillAttempt, counterArmKey: d.counterArmKey,
+    lastCounterAttemptAt: d.lastCounterAttemptAt, moveRoll: d.moveRoll,
+    microHabitTFrozen: d.microHabitTFrozen, microHabitSwingAt: d.microHabitSwingAt,
+    microHabitResolved: d.microHabitResolved, microHabitTargetX: d.microHabitTargetX,
+    microHabitTargetY: d.microHabitTargetY, microHabitArmKey: d.microHabitArmKey,
+    microHabitSeqCounts: d.microHabitSeqCounts,
+  });
+
+  it('振り成立後もmicroHabitTFrozenは消えない(州が続く限り保持=旧実装はここでundefinedへ落としていた)', () => {
+    const boss = bossAt(T);
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    expect(d1.microHabitTFrozen).toBe(T); // habitNewArmの瞬間に凍結
+    // §8裁定済み#16: 振り始めはT-100(=T+pressOfs・再生側は減算しない)。
+    const swing = decideGhost(baseDriverInput({
+      ghost: carry(d1), enemies: [boss], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+    }));
+    expect(swing.action).toBe('melee'); // 振りが成立した
+    // ★検収是正#5: 旧実装はここでmicroHabitTFrozenをundefinedへ戻していた(=次の解決がnowMsへ
+    // フォールバックし、時計が混ざるバグの温床になっていた)。新実装は凍結を保持する。
+    expect(swing.microHabitTFrozen).toBe(T);
+  });
+
+  it('振り成立後、同じ州のまま着弾時刻(bossStateUntil)が後退しても(賞金首KB等)、2回目の解決は元の凍結Tを使う', () => {
+    const boss1 = bossAt(T);
+    const d1 = decideGhost(baseDriverInput({
+      ghost: mkGhost({ x: 300, y: -300, lastMeleeAt: -1_000_000 }),
+      enemies: [boss1], boundBossId: 'thor-1', profile, gameTime: T - 500, nowMs: T - 500,
+    }));
+    const swing = decideGhost(baseDriverInput({
+      ghost: carry(d1), enemies: [boss1], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+    }));
+    expect(swing.action).toBe('melee');
+    expect(swing.counterPendingAt).toBeUndefined(); // 振り成立で錨は一旦外れる(次の機会に備える)
+    // 同じ州(bossState文字列は不変='issen-windup')のまま、着弾時刻(bossStateUntil)だけ大きく後退させる
+    // (賞金首KB中の後退の代用)。armKeyが変わっていないのでhabitNewArmは立たない=凍結は張り直らない。
+    const boss2 = bossAt(T - 5000);
+    const resolveAgain = decideGhost(baseDriverInput({
+      ghost: carry(swing), enemies: [boss2], boundBossId: 'thor-1', profile, gameTime: T - 100, nowMs: T - 100,
+    }));
+    // 生のwindupImpactAt(T-5000)ではなく、凍結済みのT(10000)を基準に解決している
+    // (§8裁定済み#16=microHabitSwingAt = T + pressOfs(-100) = 9900のまま)。
+    expect(resolveAgain.microHabitSwingAt).toBe(T - 100);
+    expect(resolveAgain.microHabitTFrozen).toBe(T); // 凍結値そのものも据え置き
+  });
+});
+
+describe('AI_HUMANIZE B2: habitPositionTarget(§2-1逆写像+48px床クランプ)', () => {
+  const bossRect = { x: 0, y: 0, width: 40, height: 40 };
+  it('帯: posA/posB/subから世界座標を復元する', () => {
+    const shape = { kind: 'band' as const, bands: [{ fx: 0, fy: 0, tx: 300, ty: 0, halfWidth: 40 }] };
+    const axis = { fromX: 0, fromY: 0, toX: 0, toY: 0 };
+    const pt = habitPositionTarget(shape, axis, bossRect, 0.5, 0.5, 0, 20, 20)!;
+    expect(pt.x).toBeCloseTo(150, 5);
+    expect(pt.y).toBeCloseTo(20, 5); // +posB*halfWidth(=20)ぶん帯の外側(法線)へ
+  });
+  it('逆写像した点がボスの縁から48px未満なら床にクランプする(体内目標を作らない)', () => {
+    // 円半径10・posA=0(中心)=ボスの至近距離になるはずの州。
+    const shape = { kind: 'circle' as const, cx: 20, cy: 20, radius: 10 };
+    const axis = { fromX: 20, fromY: 20, toX: 20, toY: 20 }; // 軸退化
+    const pt = habitPositionTarget(shape, axis, bossRect, 0, 0, 0, 200, 20 /* 現在角=0度 */)!;
+    // ボス矩形(0,0,40,40)の縁からの距離が48px未満にならないよう押し出されているはず。
+    const edge = Math.max(0, Math.hypot(pt.x - 20, pt.y - 20) - 0); // 中心からの距離の目安チェック
+    expect(edge).toBeGreaterThanOrEqual(48 - 1e-6);
+  });
+});

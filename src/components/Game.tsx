@@ -1,25 +1,71 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { setGameplayMounted } from '../utils/menuNav';
+import { keyIdOf } from '../hooks/useGameControls';
+import { HudScale, HudScaleProvider, HudLandscapeProvider } from './HudScale';
+import { hudScaleFor } from '../utils/viewport';
+import { usePointerKind } from '../utils/inputDevice';
 import { useGameStore } from '../store/gameStore';
 import GameCanvas from './GameCanvas';
 import PixiStage from '../pixi/PixiStage';
-import { isPixiRenderer } from '../config/renderer';
-import { getTexture } from '../pixi/pixiTextures';
+import { isPixiRenderer, getAppliedResolution } from '../config/renderer';
+import { getAssistLightDebug } from '../pixi/pixiScene';
+import { peekTexture } from '../pixi/pixiTextures';
+import { rafTimeout } from '../utils/rafTimeout';
+import { deathResultSafetyMs } from '../utils/playerDeathWatch';
+import { lastSuppressedError } from '../utils/errorBeacon';
+import { renderStatsText, bakedTextureText, sceneDiagText, takeBakeCalls } from '../utils/renderStats';
+import { prevBeatText, startCrashWatch, rendererMountCount } from '../utils/crashWatch';
+import { textureMemoryMB, textureTopGroups } from '../pixi/pixiTextures';
 import GameHUD from './GameHUD';
 import PerfOverlay from './PerfOverlay';
+import DebugOverlay from './DebugOverlay';
+import GhostDamageLog from './GhostDamageLog';
+import KbLogOverlay from './KbLogOverlay';
+import DirectorOverlay from './DirectorOverlay';
 import StatsHud from './StatsHud';
+import RunHud from './RunHud';
 import DanceTapMeter from './DanceTapMeter';
+import WallBand from './WallBand';
+import AwakenCutin from './AwakenCutin'; // SKILL_BUILD_REDESIGN.md §24: 覚醒カットイン帯(非ブロッキング)
+import WallInscription from './WallInscription';
 import UpgradeMenu from './UpgradeMenu';
 import PauseMenu from './PauseMenu';
+import { isBossMakerRun } from '../utils/bossTest';
+import StoryReturnPrompt from './StoryReturnPrompt';
+import TutorialPopup from './TutorialPopup';
+import BossCutin from './BossCutin';
 import ShopMenu from './ShopMenu';
-import EventQuestMenu from './EventQuestMenu';
 import IntroDialogue from './IntroDialogue';
 import MobileControls from './MobileControls';
 import VirtualJoystick from './VirtualJoystick';
 import MouseControls from './MouseControls';
-import FullscreenButton from './FullscreenButton';
 import BenchmarkOverlay, { type BenchmarkResult } from './BenchmarkOverlay';
-import { useGameLoop } from '../hooks/useGameLoop';
+import { useGameLoop, PLAYER_DEATH_TO_RESULT_MS } from '../hooks/useGameLoop';
 import { useGameControls } from '../hooks/useGameControls';
+import { computeViewport } from '../utils/viewport';
+import { playSfx } from '../audio/audioManager';
+import { getSelectedStageId } from '../data/progress';
+
+// the ONE 洋館［SUB］再訪(統合正本9.3): 保存槽(洋館)接近中だけ出す操作表示［投与する］。
+// 購読は boolean 1個(medicinePromptVisible・変化時のみ書かれる)=React再レンダ規律準拠の孤立小コンポーネント。
+const MedicinePrompt: React.FC = () => {
+  const visible = useGameStore(s => s.medicinePromptVisible);
+  if (!visible) return null;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        playSfx('ui-select');
+        useGameStore.getState().useGlenMedicine();
+      }}
+      className="absolute left-1/2 z-40 -translate-x-1/2 rounded-none border border-amber-300/60 bg-black/70 px-5 py-3 text-[14px] font-bold tracking-wide text-amber-100 shadow-lg backdrop-blur-sm active:bg-black/85"
+      style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 132px), 148px)' }}
+    >
+      ［投与する］
+    </button>
+  );
+};
 
 interface GameProps {
   onGameOver: () => void;
@@ -38,73 +84,100 @@ const Game: React.FC<GameProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-  const [isTouch, setIsTouch] = useState(
-    typeof window !== 'undefined' &&
-      ('ontouchstart' in window || navigator.maxTouchPoints > 0)
-  );
+  // WebGLコンテキストロスト時の再構築世代(v0.25.2160): PixiStageがロストを通知したらkeyを変えて
+  // 再マウント=レンダラ/シーン/テクスチャを作り直す。シミュ状態はstoreにあるためゲームは続きから。
+  const [pixiEpoch, setPixiEpoch] = useState(0);
+  // 操作層: 最後に触れた入力(指/マウス)で切り替える(タッチとマウスの両方がある端末・research/PC_SUPPORT.md)。
+  const isTouch = usePointerKind() === 'touch';
 
   const isPaused = useGameStore(state => state.isPaused);
+  const tutorialPopupOpen = useGameStore(state => state.tutorialPopup !== null); // boolean派生=開閉時のみ再描画
   const showStatsOverlay = useGameStore(state => state.showStatsOverlay);
+  // ボスメーカーの部屋ではゲームHUDを消す(社長指示v0.25.2628「重なって邪魔」)。
+  // レベル円/サブ武器欄/武器スロット/スコアは調整に不要。**派生boolean購読**なので
+  // 毎フレーム再描画しない(CLAUDE.md React再描画の規律)。ライブ表示はメーカー側に残る。
+  const makerHideHud = useGameStore(state => state.bossMaker.active && state.bossMaker.hideHud);
+  // エンディングステージ(観賞シーン): 一時停止ピルを出さない(社長報告2026-08-29「機能してない」——
+  // 聴取記録オーバーレイ(z-110)がタップを吸うので押せない。代わりのスキップはEndingScreen側)。
+  const endingStage = useGameStore(state => state.farBackdrop === 'ending');
+  // 凍結診断オンスクリーン表示(?debug=1)。
+  const debugOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1';
+  // AIディレクターのライブ可視化。★v0.25.3594(社長指示「数値とるラン、ステータスをラン中に表示は
+  // やめて、リザルトだけにして。プレイしずらい」): ?director=1 ではラン中に出さない(記録と
+  // リザルト表示は従来どおり)。ライブ表示が要る診断時だけ ?directorhud=1 で出す(読むだけ=挙動不変)。
+  const directorOverlay = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('directorhud') === '1';
   const showUpgradeMenu = useGameStore(state => state.showUpgradeMenu);
   const showShopMenu = useGameStore(state => state.showShopMenu);
   const showEventQuestMenu = useGameStore(state => state.showEventQuestMenu);
+  const storyReturnPromptVisible = useGameStore(state => state.storyReturnPromptVisible);
   const [showUpgradeOverlay, setShowUpgradeOverlay] = useState(false);
   const gameWon = useGameStore(state => state.gameWon);
   const gameReturned = useGameStore(state => state.gameReturned);
   // 死亡判定に使うのは health だけ。player 全体を購読すると移動で毎フレーム再描画され、子(HUD/Stage)へ波及する。
-  const playerHealth = useGameStore(state => state.player.health);
+  // ★「0以下か」の boolean だけを購読する(HP が変わるたびに Game 全体を描き直さない・品質監査 B-5)。
+  const playerDead = useGameStore(state => state.player.health <= 0);
   const setGameBounds = useGameStore(state => state.setGameBounds);
   const setPaused = useGameStore(state => state.setPaused);
 
   // Set up game controls
   useGameControls();
+  // メニューのキーボード操作(utils/menuNav): ゲームが動いている間は矢印=移動なので出さない(一時停止中だけ出す)。
+  useEffect(() => { setGameplayMounted(true); return () => setGameplayMounted(false); }, []);
 
   // Start game loop
-  const { fps } = useGameLoop(onGameOver, { benchmarkMode });
+  // fps は読む画面(統計トグルの PerfOverlay・ベンチ)がある時だけ React へ渡す(毎秒の全体再描画をやめる・UI B-9)。
+  const { fps } = useGameLoop(onGameOver, { benchmarkMode, trackFps: showStatsOverlay || benchmarkMode });
 
-  // Detect touch capability (re-checks if device profile changes mid-session)
-  useEffect(() => {
-    const check = () => {
-      setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
-    };
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
-  
   // Update window size and game bounds on resize or fullscreen change
   useEffect(() => {
     const updateSize = () => {
-      if (containerRef.current) {
-        const { width, height } = containerRef.current.getBoundingClientRect();
-        setWindowSize({ width, height });
-        setGameBounds({ width, height });
-      } else {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        setWindowSize({ width, height });
-        setGameBounds({ width, height });
-      }
+      const r = containerRef.current?.getBoundingClientRect();
+      const width = r ? r.width : window.innerWidth;
+      const height = r ? r.height : window.innerHeight;
+      // 開閉途中などの一時的なゼロ寸法で背景と論理ビューを潰さない。
+      if (width <= 0 || height <= 0) return;
+      setWindowSize({ width, height });                 // 端末px(レンダラ/PixiStage 用)
+      // 画面外判定(スポーン/カリング/画面端マーカー)は固定ビューの論理寸法で統一=機種で挙動が変わらない。
+      const vp = computeViewport(width, height);
+      setGameBounds({ width: vp.logicalW, height: vp.logicalH });
     };
     
     updateSize();
-    
+
+    // モバイルは回転直後の innerWidth/Height(=getBoundingClientRect)が確定前で古い値を返すことがある。
+    // 縦↔横の切替後にレイアウトが崩れる(床が画面を占拠する)ため、回転時は即時＋遅延で再計測して確実に追従。
+    const timers: number[] = [];
+    const updateSizeSoon = () => {
+      updateSize();
+      timers.push(window.setTimeout(updateSize, 250));
+      timers.push(window.setTimeout(updateSize, 600));
+    };
+
     window.addEventListener('resize', updateSize);
+    // 折りたたみ・表示領域の変更も同じコンテナ寸法で描画/判定/入力へ渡す。
+    const sizeObserver = new ResizeObserver(updateSize);
+    if (containerRef.current) sizeObserver.observe(containerRef.current);
+    window.addEventListener('orientationchange', updateSizeSoon);
     document.addEventListener('fullscreenchange', updateSize);
-    
+
     return () => {
+      timers.forEach(id => clearTimeout(id));
+      sizeObserver.disconnect();
       window.removeEventListener('resize', updateSize);
+      window.removeEventListener('orientationchange', updateSizeSoon);
       document.removeEventListener('fullscreenchange', updateSize);
     };
   }, [setGameBounds]);
   
   // Check if player is dead
+  // ★保険(正はループの rAF で送る=useGameLoop の sendDeathResult)。旧 700ms は正規の尺(PLAYER_DEATH_TO_RESULT_MS)より
+  // 先に発火して、死亡演出(寄り+スロー)を毎回途中で切っていた(コード監査2026-10-23 UI B-1・社長承認)。
+  // 正規の尺より長く取り、ループが送れなかった時だけ効くようにする。描画の周期でも進む(rafTimeout)。
   useEffect(() => {
-    if (playerHealth <= 0) {
-      const timer = window.setTimeout(onGameOver, 700);
-      return () => window.clearTimeout(timer);
+    if (playerDead) {
+      return rafTimeout(onGameOver, deathResultSafetyMs(PLAYER_DEATH_TO_RESULT_MS));
     }
-  }, [playerHealth, onGameOver]);
+  }, [playerDead, onGameOver]);
 
   // Win the run the moment the finale boss is defeated.
   useEffect(() => {
@@ -123,24 +196,25 @@ const Game: React.FC<GameProps> = ({
   // Handle keyboard pause toggle
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key === 'p') {
-        if (!showUpgradeMenu && !showShopMenu && !showEventQuestMenu) {
-          setPaused(!isPaused);
-        }
+      if (keyIdOf(e) === 'escape' || keyIdOf(e) === 'p') { // 物理キー(日本語入力オンでも P が効く・§11-3)
+        if (e.repeat) return; // 長押しのリピートで 再開→再ポーズ を繰り返さない(メニュー操作の検収)
+        // 説明画面(チュートリアル)は自分で一時停止を掛けて出る=ここで切り替えると、説明画面が出たままゲームが動き出す(PC版対応の調査で判明)。
+        // 条件(窓が開いている間は切り替えない)は store の togglePause 1本に集約(指のピルと同じ門・UI A-2)。
+        useGameStore.getState().togglePause();
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPaused, setPaused, showEventQuestMenu, showShopMenu, showUpgradeMenu]);
+  }, []);
 
   useEffect(() => {
     if (!showUpgradeMenu) {
       setShowUpgradeOverlay(false);
       return;
     }
-    const timer = window.setTimeout(() => setShowUpgradeOverlay(true), 450);
-    return () => window.clearTimeout(timer);
+    // ★描画の周期でも進める(タイマーが後回しにされても窓が出る・UI B-2②)。尺は従来どおり450ms。
+    return rafTimeout(() => setShowUpgradeOverlay(true), 450);
   }, [showUpgradeMenu]);
   
   // Prevent text selection from long-press, but DON'T preventDefault on
@@ -149,10 +223,14 @@ const Game: React.FC<GameProps> = ({
   // upgrade menu). Page scrolling is already disabled via
   // `touch-action: none` in the global CSS.
   
+  // PC の横長: HUD とゲーム中のメニューを枠の高さに合わせて拡大(research/PC_SUPPORT.md 段3)。スマホは1=従来どおり。
+  const hudScale = hudScaleFor(windowSize.width, windowSize.height);
   return (
+    <HudScaleProvider value={hudScale}>
+    <HudLandscapeProvider value={windowSize.width > windowSize.height}>
     <div 
       ref={containerRef} 
-      className="relative w-full h-full bg-gray-900"
+      className="game-frame relative w-full h-full bg-gray-900"
       style={{ 
         touchAction: 'none',
         overflow: 'hidden'
@@ -161,7 +239,12 @@ const Game: React.FC<GameProps> = ({
       {/* World view: PixiJS (?renderer=pixi) or the original Canvas2D
           renderer (default). The React HUD below overlays either one. */}
       {isPixiRenderer() ? (
-        <PixiStage width={windowSize.width} height={windowSize.height} />
+        <PixiStage
+          key={pixiEpoch}
+          width={windowSize.width}
+          height={windowSize.height}
+          onContextLost={() => setPixiEpoch(e => e + 1)}
+        />
       ) : (
         <GameCanvas width={windowSize.width} height={windowSize.height} />
       )}
@@ -172,10 +255,22 @@ const Game: React.FC<GameProps> = ({
       {/* PC(非タッチ): マウス照準 + 左クリック=タップ / 右クリック=フリック。HUDより手前(z低)に置く。 */}
       {!isTouch && <MouseControls />}
 
-      <GameHUD />
+      {!makerHideHud && <HudScale z={40}><GameHUD /></HudScale>}
+      {/* SKILL_BUILD_REDESIGN.md §23-2条件5: 消費カード発動中は残秒を常時表示(統計トグルとは独立)。 */}
+      {!makerHideHud && <HudScale z={40}><RunHud /></HudScale>}
+      {/* PACING_PUZZLE.md §5.17 M14: 到達譜=二軸の壁の演出(中格=帯/大格=銘打ち)。 */}
+      {/* PC の横長: 帯・銘打ち・カットインも HUD と同じ倍率で拡大(段3-2)。スマホは倍率1=箱を作らない(display:contents)。 */}
+      <HudScale z={35}><WallBand /></HudScale>
+      <HudScale z={35}><WallInscription /></HudScale>
+      {/* SKILL_BUILD_REDESIGN.md §24: スキル覚醒(Lv3到達)のカットイン帯。ゲームは止めない。 */}
+      <HudScale z={92}><AwakenCutin /></HudScale>
       {/* 撃破/DMG/SCRAP + FPS/負荷表示は TOP画面のトグルで有り/無し(既定=無し)。 */}
       {showStatsOverlay && <StatsHud />}
       {showStatsOverlay && <PerfOverlay fps={fps} />}
+      {debugOverlay && <DebugOverlay />}
+      <GhostDamageLog />{/* v0.25.2591: ?ghostlog=1 の被弾ログを画面に出す(スマホでコンソールが見られないため) */}
+      <KbLogOverlay />{/* v0.25.3958: ?kblog=1 の敵大移動/消失ログを画面に出す(同上) */}
+      {directorOverlay && <DirectorOverlay />}
       <DanceTapMeter />{/* テスト用タップms計測(?dev=0で非表示・ダンス中のみ) */}
       {benchmarkMode && (
         <div
@@ -188,27 +283,44 @@ const Game: React.FC<GameProps> = ({
       {benchmarkMode && onBenchmarkComplete && (
         <BenchmarkOverlay fps={fps} onComplete={onBenchmarkComplete} />
       )}
-      <FullscreenButton target={containerRef} />
-      {isTouch && <MobileControls />}
+      {/* 一時停止の入口: タッチは従来どおり。PC にも出す(マウスだけで遊ぶ人が Esc を知らずに詰まない=クリエイティブ監査 #3)。 */}
+      {!makerHideHud && !endingStage && <HudScale z={30}><MobileControls /></HudScale>}
       
-      {isPaused && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && (
-        <PauseMenu onResume={() => setPaused(false)} onQuit={onGameOver} />
+      {/* §6.36 ボス出現カットイン(HUDより最前面・cutin窓の1.1秒だけ) */}
+      <HudScale z={95}><BossCutin /></HudScale>
+
+      {/* チュートリアルの操作説明ポップアップ(表示中はisPaused=trueだがPauseMenuは出さない=ポップアップ優先) */}
+      {tutorialPopupOpen && <HudScale z={90} interactive><TutorialPopup /></HudScale>}
+      {isPaused && !tutorialPopupOpen && !showUpgradeMenu && !showShopMenu && !showEventQuestMenu && !storyReturnPromptVisible && (
+        <HudScale z={50} interactive><PauseMenu
+          onResume={() => setPaused(false)}
+          // ★v0.25.3561(社長報告「ボスメーカー、メニューボタンが効いてない」): ボスメーカーの部屋では
+          // 「メニューに戻る」で**出撃メニュー(ボス選択)へ戻す**。従来は onGameOver → bare の
+          // restartBareRoom() で**部屋がリスタートするだけ**だった(偶像1体の時代は戻る必要が無く潜伏。
+          // v0.25.3558で5体になり、ボスを切り替えるにはメニューへ戻る必要が生まれて露呈)。
+          // クエリを消せばメニューが出る(tools/bossmaker/main.tsx の出し分け=URLに出撃フラグがあるか)。
+          onQuit={() => { if (isBossMakerRun()) { window.location.search = ''; return; } onGameOver(); }}
+        /></HudScale>
       )}
+
+      {storyReturnPromptVisible && <HudScale z={60} interactive><StoryReturnPrompt /></HudScale>}
       
       {showUpgradeOverlay && (
-        <UpgradeMenu />
+        <HudScale z={50} interactive><UpgradeMenu /></HudScale>
       )}
 
       {showShopMenu && (
-        <ShopMenu />
+        <HudScale z={50} interactive><ShopMenu /></HudScale>
       )}
 
-      {showEventQuestMenu && (
-        <EventQuestMenu />
-      )}
+      {/* 二人組(クエストNPC)の会話ポップアップは廃止(社長指示v0.25.1681)。
+          受領=会話サークル3秒滞在(拠点解放式メーター)+左上NPC会話へ移行。 */}
 
       {/* 登場時のセリフ(時間停止・オートタイプ)。表示中だけ自前 raf で更新。 */}
-      <IntroDialogue />
+      <HudScale z={50}><IntroDialogue /></HudScale>
+
+      {/* 洋館再訪: 保存槽接近中の［投与する］(統合正本9.3・修正差分メモD-09)。 */}
+      <HudScale z={50}><MedicinePrompt /></HudScale>
 
       {/* In-play version marker (bottom-left): same source as the title's
           top-right badge (__APP_VERSION__ = package.json version) so the
@@ -228,10 +340,113 @@ const Game: React.FC<GameProps> = ({
         }}
       >
         {isPixiRenderer() ? 'pixi' : 'canvas'} · v{__APP_VERSION__}
-        {' · '}floor:{getTexture('lab-floor/lab-floor-stage2') ? 'S' : '-'}{getTexture('lab-floor/lab-floor-ground') ? 'G' : '-'}{getTexture('lab-floor/lab-floor-clean') ? 'C' : '-'}
+        <AssetFlags />
+        {typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('lightdbg') === '1' && <LightDebug />}
+        <ErrBeacon />
       </div>
     </div>
+    </HudLandscapeProvider>
+    </HudScaleProvider>
   );
+};
+
+/**
+ * 左下の版数表示の素材フラグ(floor/mh/sk/res)。
+ * ★「読まない問い合わせ」(peekTexture)で見る。getTexture は遅延組の安全網として**読みに行く**ので、
+ *   ここで呼ぶとステージ2の床(約10MB)が全ステージで常駐していた(コード監査2026-10-23 R-3/M-1)。
+ * ★自分で1秒ごとに読み直す小さな部品(Game 本体の再描画に頼らない)。Game は出撃中ほぼ再描画しなくなったので
+ *   (gameStats/fps の購読を外した・同監査 B-3/B-9)、本体に置いたままだと最初の値で止まって見える。
+ *   文字列が変わった時だけ再描画する。
+ */
+const assetFlagsText = (): string =>
+  ` · floor:${peekTexture('lab-floor/lab-floor-stage2') ? 'S' : '-'}${peekTexture('lab-floor/lab-floor-ground') ? 'G' : '-'}${peekTexture('lab-floor/lab-floor-clean') ? 'C' : '-'}`
+  + ` · mh:${peekTexture('fx/melee-hit-01') ? 'T' : '-'}`
+  + ` · sk:${peekTexture('skill/skills-sheet') ? 'S' : '-'}${peekTexture('skill/warm-up') ? 'I' : '-'}`
+  + ` · res:${getAppliedResolution() || '?'}/${typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : '?'}`;
+const AssetFlags: React.FC = () => {
+  const [text, setText] = useState(assetFlagsText);
+  useEffect(() => {
+    const id = window.setInterval(() => setText(assetFlagsText()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  return <>{text}</>;
+};
+
+/**
+ * ★v0.25.2780: 補助光の連動(周りの明るさでプレイヤー光を引く)の実測値を出す。`?lightdbg=1` の時だけ。
+ * 社長「何も変わってない?」に目視で答えられず推測でチューニングしかけたので、**数字を出す**。
+ * ★React再描画規律(CLAUDE.md): stateを持たず、**refのtextContentを rAF で書き換えるだけ**。
+ * 毎フレーム更新でも React は1度も再描画しない。
+ */
+const LightDebug: React.FC = () => {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const d = getAssistLightDebug();
+      if (ref.current) ref.current.textContent = ` · light:${d.b.toFixed(2)} punch:${d.punch.toFixed(2)} mult:${d.mult.toFixed(2)} n:${d.lights}`;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <span ref={ref} />;
+};
+
+/**
+ * v0.25.3324: 握り潰しtry/catch(drawEnemy/天使/裏ボス/アイドル/ループ本体)の例外要約を左下に赤字で出す。
+ * 実機ではconsoleが見えず、アクラシエルの「白く歪んだまま固まる」報告(3度目)の実例外源が
+ * 特定できないための観測装置。エラーが無ければ何も描かない。
+ * ★React再描画規律: stateを持たず refのtextContentを1秒間隔で書き換えるだけ(LightDebugと同じ作法)。
+ */
+const ErrBeacon: React.FC = () => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // ★落ちるとページごと再読み込みされるので、**生きている間の数字を端末へ置いておく**(v0.25.4349)。
+    // 次の起動でそれを読んで出す=落ちる直前の状態が必ず残る。社長「落ちた時はトップに戻っちゃうので
+    // ステータスなんて見れないよ」への回答。
+    startCrashWatch(() => {
+      const st = useGameStore.getState();
+      // ★v0.25.4375: `tex` は**読み込んだ素材しか数えない**。実行中に焼く分(縁/影/白)は別口で出す。
+      // v0.25.5054(社長質問「長時間プレイするほど落ちる確率が上がる?」): 時間で増える物を名指しできるよう、
+      // 表示物の総数・敵IDで持つ表の件数(描画側)と store の配列の長さを足す。
+      // v0.25.5065: どのステージで落ちたかを行に残す(社長実機 v0.25.5062 t133s・合計212MBで落ちた件の切り分け用)。
+      return `v${__APP_VERSION__} ${getSelectedStageId()} t${Math.floor(st.gameTime / 1000)}s ${renderStatsText()} tex${textureMemoryMB()}MB(${textureTopGroups()}) ${bakedTextureText()} en${st.enemies.length}`
+        + ` ${sceneDiagText()} st[fx${st.effects.length} pk${st.pickups.length} pj${st.projectiles.length} sm${st.summons.length}] 描画器${rendererMountCount()}代目`;
+    });
+    // ★重さの手がかり(2026-10-23・社長実機「またステージ4でめちゃくちゃ重くなった」「一時停止もショップも出ない・死んでも終わらない」):
+    //   1秒あたりの描画回数(fps)・焼きの回数(bk)・**タイマーが最後に動いてからの時間(tm・ms)**。
+    //   メニュー・ゲームオーバー・通信の文字送りはタイマー/React の再描画で動く。描画(rAF)は回っているのにそれらが動かない時、
+    //   tm が大きく伸びる=タイマーが回されていない、と名指しできる。行は**描画の周期で**書く(タイマーが止まっても行は動く)。
+    //   一時停止中は、メニューを止めている物(停止[…])も出す。
+    let frames = 0, raf = 0, lastTimerAt = performance.now(), lastLineAt = 0;
+    const iv = setInterval(() => { lastTimerAt = performance.now(); }, 250);
+    const writeLine = (now: number) => {
+      const msg = lastSuppressedError();
+      // ★増え続けていないかを常に出す(v0.25.4347)。例外が出たら赤字でその後ろへ。
+      const pv = prevBeatText();
+      const sec = Math.max(0.001, (now - lastLineAt) / 1000);
+      const fps = Math.round(frames / sec); frames = 0;
+      const bk = Math.round(takeBakeCalls() / sec);
+      const tm = Math.round(now - lastTimerAt);
+      const st = useGameStore.getState();
+      const why = st.isPaused
+        ? ` 停止[${[st.tutorialPopup !== null && '説明', st.showUpgradeMenu && 'Lvup', st.showShopMenu && '店', st.showEventQuestMenu && '依頼', st.storyReturnPromptVisible && '帰還'].filter(Boolean).join(',') || 'メニュー'}]`
+        : '';
+      const line = `fps${fps} bk${bk} tm${tm}${why} ${renderStatsText()} tex${textureMemoryMB()}MB ${bakedTextureText()} ${sceneDiagText()}`
+        + (pv ? ` · 前回最後 ${pv}` : '')
+        + (msg ? ` · ERR ${msg}` : '');
+      if (ref.current && ref.current.textContent !== line) ref.current.textContent = line;
+    };
+    const countFrame = (now: number) => {
+      frames++;
+      if (now - lastLineAt >= 1000) { writeLine(now); lastLineAt = now; }
+      raf = requestAnimationFrame(countFrame);
+    };
+    raf = requestAnimationFrame(countFrame);
+    return () => { clearInterval(iv); cancelAnimationFrame(raf); };
+  }, []);
+  return <div ref={ref} style={{ color: 'rgba(255,80,80,0.9)', maxWidth: '90vw', whiteSpace: 'normal' }} />;
 };
 
 export default Game;

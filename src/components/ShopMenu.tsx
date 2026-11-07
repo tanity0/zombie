@@ -1,18 +1,29 @@
 import React from 'react';
+import NoBounceScroller from './NoBounceScroller';
+import { rafTimeout } from '../utils/rafTimeout';
 import { shallow } from 'zustand/shallow';
 import {
   SHOP_AMMO_COST,
+  shopAmmoAmount,
+  AMMO_MAX,
   SHOP_CLASS_SKILL_COST,
   SHOP_DOG_COST,
   SHOP_KATANA_COST,
   SHOP_MEDKIT_COST,
   SHOP_SUBWEAPON_SELL_VALUE,
   SHOP_VACCINE_COST,
+  EQUIP_SHOP_COST_BY_TIER, // SKILL_BUILD_REDESIGN.md §18-1の2: 商人の装備区画価格表(Tier1→5)
   subWeaponDisplayName,
-  useGameStore
+  useGameStore,
+  travelDestinationsOf, // ファストトラベル(research/FAST_TRAVEL.md)
+  baseSoldierName,
 } from '../store/gameStore';
-import type { AmmoType, ShopItemKey, SubWeaponKey } from '../types/game';
+import { hasTravelTargets } from '../utils/fastTravel';
+import type { AmmoType, EquipSlot, ShopItemKey, SubWeaponKey } from '../types/game';
 import { CHARACTER_SUBWEAPON_KEYS } from '../data/campaign';
+import { subWeaponUpgradeNoteText } from '../data/subWeaponUpgradeNotes';
+import { merchantEquipShelf, equipmentById, equipmentDescription, hasEquipIcon, equipIconName } from '../data/equipment';
+import { spritePath } from '../utils/spriteLoader';
 import { playSfx } from '../audio/audioManager';
 
 type ShopEntry = {
@@ -33,19 +44,40 @@ type SkillShopEntry = {
   disabled?: boolean;
 };
 
+// SKILL_BUILD_REDESIGN.md §13-1+§16-7+§18-1: 商人の装備区画(指名買いカタログ)の1枚。
+// defId=null は売り切れ(特殊装備 or 最上段到達)を表す=押せない。
+// 社長裁定v0.25.3464「案2」(装備の枠が買うまで分からない件): 枠のアイコン。
+// 対応は社長指定=**体=人型 / 銃=銃 / 小物=バッグ**(枠の呼び名は決まっていないので文字は足さない)。
+const EQUIP_SLOT_BADGE: Record<EquipSlot, string> = { body: '🧍', arms: '🔫', accessory: '🎒' };
+
+type EquipShopEntry = {
+  key: string;
+  slot: EquipSlot;
+  defId: string | null;
+  name: string;
+  description: string;
+  cost: number;
+  disabled: boolean;
+};
+
 const ammoLabel: Record<AmmoType, string> = {
   handgun: 'ハンドガン弾',
   shotgun: 'ショットガン弾',
   rifle: 'ライフル弾',
-  phill: 'ＰＨＩＬＬ弾'
+  phill: 'PHILL弾',
+  glauncher: 'ライフル弾' // グレネードガンはライフル弾共用(v0.25.3290)
 };
 
 const ammoShopKey: Record<AmmoType, ShopItemKey> = {
   handgun: 'ammo-handgun',
   shotgun: 'ammo-shotgun',
   rifle: 'ammo-rifle',
-  phill: 'ammo-phill'
+  phill: 'ammo-phill',
+  glauncher: 'ammo-rifle'
 };
+
+/** 輸送の暗転(出)の長さ(ms)。明けは store の FAST_TRAVEL_REVEAL_MS(長め)。 */
+const FAST_TRAVEL_DIM_MS = 200;
 
 const ShopMenu: React.FC = () => {
   // player 全体を購読するとシム稼働中は毎フレーム再描画になるため、ショップで使う
@@ -57,15 +89,31 @@ const ShopMenu: React.FC = () => {
       straps: state.player.straps,
       weapons: state.player.weapons,
       subWeapons: state.player.subWeapons,
-      subWeaponLevels: state.player.subWeaponLevels
+      subWeaponLevels: state.player.subWeaponLevels,
+      ammoHandgun: state.player.ammoHandgun,
+      ammoShotgun: state.player.ammoShotgun,
+      ammoRifle: state.player.ammoRifle,
+      ammoPhill: state.player.ammoPhill,
+      ammoGlauncher: state.player.ammoGlauncher, // v0.25.4000: 独立プール化
+
+      // 弾薬上限は育成の焼き値(research/GROWTH.md v4)。resetGame で1回作った安定参照なので
+      // shallow 比較でも毎フレーム再描画にならない。
+      growthAmmoMax: state.player.growthAmmoMax,
+      equipment: state.player.equipment // 商人の装備区画用(購入時以外は同一参照=再描画規律)
     }),
     shallow
   );
+  // 弾がMAXのタイプは購入不可(disabled)。
+  const ammoNow: Record<AmmoType, number> = {
+    handgun: player.ammoHandgun, shotgun: player.ammoShotgun, rifle: player.ammoRifle, phill: player.ammoPhill,
+    glauncher: player.ammoGlauncher // v0.25.4000: 独立プール化(旧: ammoRifle共用)
+  };
   const ammoPickupAmounts = useGameStore(state => state.ammoPickupAmounts);
   const unlockedShopSkillCards = useGameStore(state => state.unlockedShopSkillCards);
   const vaccinePurchased = useGameStore(state => state.vaccinePurchased);
   const buyShopItem = useGameStore(state => state.buyShopItem);
   const buySkillCardFromShop = useGameStore(state => state.buySkillCardFromShop);
+  const buyEquipmentFromShop = useGameStore(state => state.buyEquipmentFromShop);
   const sellSubWeapon = useGameStore(state => state.sellSubWeapon);
   const closeShop = useGameStore(state => state.closeShop);
   const returnToBase = useGameStore(state => state.returnToBase);
@@ -78,16 +126,24 @@ const ShopMenu: React.FC = () => {
     : labTheme ? ['handgun', 'shotgun', 'rifle', 'phill'] : ['handgun', 'shotgun', 'rifle'];
   // lab テーマでは PHILL 銃を無料配布(未所持時のみ)。社長指示: 武器商人が無料で販売。
   const hasPhillGun = player.weapons.some(w => !w.isMelee && w.category === 'phill');
-  const ammoEntries = ammoTypes.map(type => ({
-    key: ammoShopKey[type],
-    name: ammoLabel[type],
-    description: `+${ammoPickupAmounts[type]}発`,
-    cost: SHOP_AMMO_COST,
-    ammoType: type
-  }));
+  const ammoEntries = ammoTypes.map(type => {
+    const maxed = ammoNow[type] >= (player.growthAmmoMax[type] ?? AMMO_MAX[type]);
+    return {
+      key: ammoShopKey[type],
+      name: ammoLabel[type],
+      description: maxed ? 'MAX' : `+${shopAmmoAmount(type, ammoPickupAmounts)}発`, // 商人量(handgun25/rifle15・v0.25.2168)
+      cost: SHOP_AMMO_COST,
+      ammoType: type,
+      disabled: maxed
+    };
+  });
   const skillEntries: SkillShopEntry[] = (Object.entries(unlockedShopSkillCards) as [SubWeaponKey, number][])
-    // キャラ固有サブウェポン(職スキル枠)はショップで扱わない(キャラ固有スキル化)。
-    .filter(([skillKey, unlockedLevel]) => unlockedLevel > 0 && !CHARACTER_SUBWEAPON_KEYS.includes(skillKey))
+    // キャラ固有サブウェポン(職スキル枠)は他クラスの分は扱わないが、**自分が装備している固定サブは陳列する**
+    // (社長指示v0.25.3322→v0.25.3440「最初から上限まで解放(ゲームプレイ中レベル上げれる)」。
+    //  v3322でrunShopUnlocksに陳列Lv3を積んだが、この除外フィルタが残っていて一度も商人に並んで
+    //  いなかった=ラン中に固定サブのLvを上げる手段が無かった)。
+    .filter(([skillKey, unlockedLevel]) => unlockedLevel > 0
+      && (!CHARACTER_SUBWEAPON_KEYS.includes(skillKey) || player.subWeapons.includes(skillKey)))
     .map(([skillKey, unlockedLevel]) => {
       const currentLevel = player.subWeaponLevels[skillKey] ?? 0;
       const cappedUnlock = Math.min(3, Math.max(0, unlockedLevel));
@@ -95,8 +151,14 @@ const ShopMenu: React.FC = () => {
       return {
         key: `skill-${skillKey}` as const,
         skillKey,
-        name: `${subWeaponDisplayName(skillKey)} ${maxedForStock ? 'MAX' : `Lv${currentLevel + 1}`}`,
-        description: maxedForStock ? `陳列Lv${cappedUnlock}まで購入済み` : `スキルカード 陳列Lv${cappedUnlock}`,
+        // 社長指示v0.25.3440(表記): 陳列上限で頭打ちの時に「MAX」と書くと真の上限(Lv3)と紛らわしい。
+        // 本当のLv3だけMAX表記、陳列上限止まりは現在Lvをそのまま出す(グレーアウトで買えないのは見て分かる)。
+        name: `${subWeaponDisplayName(skillKey)} ${currentLevel >= 3 ? 'MAX'
+          : maxedForStock ? `Lv${currentLevel}` : `Lv${currentLevel + 1}`}`,
+        // 社長指示(強化ポイント表示): 陳列在庫(陳列Lv)の内部用語は出さず、「買うとどう強くなるか」を
+        // 台帳(subWeaponUpgradeNotes.ts)から出す。上限で買えない時は現在Lv表記(名前側)のまま、
+        // 説明欄は短く「これ以上強化できない」。
+        description: maxedForStock ? 'これ以上強化できない' : subWeaponUpgradeNoteText(skillKey, currentLevel + 1),
         cost: skillKey === 'dog' ? SHOP_DOG_COST : skillKey === 'katana' ? SHOP_KATANA_COST : SHOP_CLASS_SKILL_COST,
         disabled: maxedForStock
       };
@@ -104,7 +166,7 @@ const ShopMenu: React.FC = () => {
   const entries: (ShopEntry | SkillShopEntry)[] = [
     ...(labTheme ? [{
       key: 'buy-phill' as const,
-      name: 'ＰＨＩＬＬ-銃',
+      name: 'PHILLガン',
       description: hasPhillGun ? '所持済み' : '無料配布・ヘッドショット対応',
       cost: 0,
       disabled: hasPhillGun,
@@ -114,18 +176,44 @@ const ShopMenu: React.FC = () => {
     {
       key: 'medkit',
       name: '救急セット',
-      description: '即時にHP30%回復',
+      description: player.health >= player.maxHealth ? '満タン' : '最大体力の30%回復',
       cost: SHOP_MEDKIT_COST,
       disabled: player.health >= player.maxHealth
     },
     {
       key: 'vaccine',
       name: 'ワクチン',
-      description: vaccinePurchased ? '購入済み' : '一度だけ死亡時に復活',
+      description: vaccinePurchased ? '購入済み' : '死亡時に1回だけ復活',
       cost: SHOP_VACCINE_COST,
       disabled: vaccinePurchased
     }
   ];
+
+  // SKILL_BUILD_REDESIGN.md §13-1+§16-7+§18-1: 商人の装備区画(指名買いカタログ・棚は生成しない)。
+  // 未装備スロット=両系統Tier1を2枚/装備済み(Tier<5)=次の一段1枚/特殊 or 最上段=売り切れ表示。
+  const equipEntries: EquipShopEntry[] = merchantEquipShelf(player.equipment).flatMap((step): EquipShopEntry[] => {
+    if (step.kind === 'sold-out') {
+      const cur = equipmentById(player.equipment[step.slot]);
+      return [{
+        key: `equip-${step.slot}-soldout`, slot: step.slot, defId: null,
+        name: cur?.name ?? '???', description: '売り切れ', cost: 0, disabled: true,
+      }];
+    }
+    const defs = step.kind === 'next' ? [step.def] : step.options;
+    return defs.map((def): EquipShopEntry => {
+      const cost = EQUIP_SHOP_COST_BY_TIER[def.tier - 1] ?? Infinity;
+      return {
+        key: `equip-${step.slot}-${def.id}`, slot: step.slot, defId: def.id,
+        name: def.name, description: equipmentDescription(def), cost, disabled: player.straps < cost,
+      };
+    });
+  });
+
+  const handleBuyEquip = (entry: EquipShopEntry) => {
+    playSfx('ui-select');
+    if (entry.disabled || !entry.defId) return;
+    buyEquipmentFromShop(entry.slot, entry.defId);
+  };
 
   // サブウェポン換金: 装備中(選択した)サブを自動で売却。ロードアウトはサブ1枠なので通常は1個。
   // 職固有スキル(CHARACTER_SUBWEAPON_KEYS)は売れない。複数所持時は先頭(=選択したロードアウト)から。
@@ -149,33 +237,121 @@ const ShopMenu: React.FC = () => {
     }
   };
 
+  // ── 輸送(ファストトラベル・research/FAST_TRAVEL.md)。ショップを開いている間は世界が止まっている=開いた時の1回だけ組む
+  //    (選択子で毎回新しい配列を返すと購読が回り続けるため、getState を1回読む)。
+  const [tab, setTab] = React.useState<'shop' | 'travel'>('shop');
+  const [leaving, setLeaving] = React.useState(false);
+  const travel = React.useMemo(() => {
+    const st = useGameStore.getState();
+    return travelDestinationsOf(st).map(d => {
+      const esc = d.baseId ? st.escorts.find(e => e.baseId === d.baseId) : undefined;
+      return { ...d, who: esc ? baseSoldierName(esc.soldierIndex) : null };
+    });
+  }, []);
+  const showTravel = hasTravelTargets(travel);
+  // 「連れて歩く」のオン/オフ(research/ESCORT_FOLLOW.md §9-8・社長指示「商人メニューに入れて」)。軍人の居る出撃だけ出す。
+  const followOn = useGameStore(state => state.escortFollowEnabled);
+  const showFollow = React.useMemo(() => {
+    const st = useGameStore.getState();
+    return !st.corridorMode && st.stageTheme !== 'lab' && !st.indoorMode && (st.escorts.length > 0 || st.pendingEscorts.length > 0);
+  }, []);
+  const here = travel.find(d => d.current) ?? null; // 今いる所は一覧から外し、見出しに「◯◯から」と置く
+  const goTravel = (id: string) => {
+    if (leaving) return;
+    playSfx('ui-select');
+    setLeaving(true);
+    // 暗転(出)は速く、底で行き先へ置き、明け(store が受け持つ)は長く。
+    // ★描画の周期でも進める(タイマーが後回しにされても暗転のまま止まらない・コード監査2026-10-23 UI B-2⑧)。尺は従来どおり。
+    rafTimeout(() => { if (!useGameStore.getState().fastTravelTo(id)) setLeaving(false); }, FAST_TRAVEL_DIM_MS);
+  };
+
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center px-3 pointer-events-auto">
       <div className="absolute inset-0 bg-black/55" />
-      <div className="relative glass-panel rounded-3xl w-full max-w-lg overflow-hidden border border-white/10">
+      {/* ★社長報告2026-08-26「武器商人メニューがスクロールできない」: パネルが画面より高くなると
+          overflow-hiddenで下がただ切れていた(スクロール手段なし)。パネルを画面内(max-h-[86dvh])に
+          収めた縦フレックスにし、中身(商品/装備)だけをスクロール領域にする。ヘッダと「帰還/閉じる」は
+          常に見える(スクロールで迷子にしない)。 */}
+      <div className="relative glass-panel command-panel rounded-none w-full max-w-lg overflow-hidden max-h-[calc(86dvh/var(--hud-s,1))] flex flex-col">
         <div className="px-4 pt-4 pb-2 flex items-start justify-between gap-3">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">WEAPON MERCHANT</div>
-            <h2 className="text-xl font-bold text-white">武器商人</h2>
+            {tab === 'travel' ? (<>
+              <div className="text-[10px] uppercase tracking-[0.24em] text-emerald-200/65">TRANSPORT</div>
+              <h2 className="text-xl font-bold text-white">輸送網</h2>
+              {here && <div className="mt-0.5 text-[11px] tracking-[0.12em] text-white/50">{here.label}から</div>}
+            </>) : (<>
+              <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200/65">WEAPON MERCHANT</div>
+              <h2 className="text-xl font-bold text-white">武器商人</h2>
+            </>)}
           </div>
-          <div className="rounded-2xl bg-amber-300/12 border border-amber-200/20 px-3 py-1 text-right">
+          <div className="rounded-none bg-amber-300/12 px-3 py-1 text-right">
             <div className="text-[9px] tracking-widest text-amber-100/60">SCRAP</div>
             <div className="text-lg font-black text-amber-100 tabular-nums">{player.straps}s</div>
           </div>
         </div>
+        {showTravel && (
+          <div data-nav-tabs className="px-4 pb-2 flex gap-5" role="tablist">
+            {([['shop', '補給'], ['travel', '輸送']] as const).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={tab === k}
+                onClick={() => { if (tab !== k) { playSfx('ui-move'); setTab(k); } }}
+                className={`relative pb-1 text-[13px] font-bold tracking-[0.2em] transition-colors ${tab === k ? 'text-white' : 'text-white/40'}`}
+              >
+                {label}
+                <span aria-hidden className="absolute left-0 right-0 -bottom-px h-[2px] origin-left transition-transform duration-200"
+                  style={{ background: '#e0a33a', transform: tab === k ? 'scaleX(1)' : 'scaleX(0)' }} />
+              </button>
+            ))}
+          </div>
+        )}
 
+        {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開) */}
+        <NoBounceScroller className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y overscroll-contain no-scrollbar">
+        {tab === 'travel' ? (
+          <div className="px-4 pb-3 flex flex-col gap-2">
+            {travel.filter(d => !d.current).map(d => (
+              <button
+                key={d.id}
+                type="button"
+                disabled={d.current || leaving}
+                onClick={() => goTravel(d.id)}
+                className={`relative flex items-center gap-3 rounded-none border px-3 py-2.5 text-left transition ${
+                  d.current ? 'bg-purple-400/[0.03] border-purple-400/[0.08]' : 'bg-purple-400/[0.08] border-purple-400/[0.15] active:scale-[0.98]'
+                }`}
+              >
+                <span aria-hidden className="self-stretch w-[3px]" style={{ background: d.baseId ? '#34d399' : '#fbbf24', opacity: d.current ? 0.35 : 0.9 }} />
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-[13px] font-bold ${d.current ? 'text-white/45' : 'text-white'}`}>
+                    {d.label}
+                  </span>
+                  {(d.who || (d.hasMerchant && d.baseId)) && (
+                    <span className="mt-0.5 block text-[10px] tracking-[0.08em] text-white/45">
+                      {d.who && <>守備 {d.who}</>}
+                      {d.who && d.hasMerchant && d.baseId && <span className="mx-1.5 text-white/25">/</span>}
+                      {d.hasMerchant && d.baseId && <span className="text-amber-200/60">武器商人</span>}
+                    </span>
+                  )}
+                </span>
+                {d.attacked && <span className="shrink-0 text-[11px] font-bold tracking-[0.1em] text-rose-400">交戦中</span>}
+              </button>
+            ))}
+          </div>
+        ) : (<>
         <div className="px-4 pb-3 grid grid-cols-2 gap-2">
           {entries.map(entry => {
             const canBuy = !entry.disabled && player.straps >= entry.cost;
             return (
               <button
-                key={`${entry.key}-${entry.ammoType ?? ''}`}
+                key={`${entry.key}-${('ammoType' in entry ? entry.ammoType : undefined) ?? ''}`}
                 onClick={() => handleBuy(entry)}
                 disabled={!canBuy}
-                className={`rounded-2xl border px-3 py-2 text-left transition ${
+                className={`rounded-none border px-3 py-2 text-left transition ${
                   canBuy
-                    ? 'bg-white/8 border-white/15 active:scale-[0.98]'
-                    : 'bg-white/[0.03] border-white/8 opacity-45'
+                    ? 'bg-purple-400/8 border-purple-400/15 active:scale-[0.98]'
+                    : 'bg-purple-400/[0.03] border-purple-400/8 opacity-45'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -192,12 +368,84 @@ const ShopMenu: React.FC = () => {
           })}
         </div>
 
+        <div className="px-4 pb-3">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-amber-200/55 mb-1.5">装備</div>
+          <div className="grid grid-cols-2 gap-2">
+            {equipEntries.map(entry => {
+              const canBuy = !entry.disabled;
+              return (
+                <button
+                  key={entry.key}
+                  onClick={() => handleBuyEquip(entry)}
+                  disabled={!canBuy}
+                  className={`rounded-none border px-3 py-2 text-left transition ${
+                    canBuy
+                      ? 'bg-purple-400/8 border-purple-400/15 active:scale-[0.98]'
+                      : 'bg-purple-400/[0.03] border-purple-400/8 opacity-45'
+                  }`}
+                >
+                  {/* 社長指示v0.25.3462「装備が売ってるところ、ちゃんと装備の絵を表示して」:
+                      レベルアップ画面(UpgradeMenu)と同じ作法で、専用アイコンがあれば画像・
+                      無ければ絵文字(特殊=🏯/通常=🛡️)にフォールバックする。 */}
+                  <div className="flex items-start gap-2">
+                    <div className="w-11 h-11 shrink-0 flex items-center justify-center overflow-hidden bg-purple-400/10 text-xl">
+                      {entry.defId && hasEquipIcon(entry.defId)
+                        ? (
+                          <img
+                            src={spritePath(equipIconName(entry.defId))}
+                            alt=""
+                            className="w-full h-full object-contain"
+                            style={{ imageRendering: 'pixelated' }}
+                            draggable={false}
+                          />
+                        )
+                        : (equipmentById(entry.defId)?.special ? '🏯' : '🛡️')}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      {/* 社長裁定v0.25.3464「案2」: どの枠を埋めるのかが買う前に分かるよう、枠のアイコンを添える
+                          (体=人型/銃=銃/小物=バッグ。社長指定の対応そのまま)。 */}
+                      <div className="text-[13px] font-bold text-white truncate">
+                        <span className="mr-1 align-middle text-[12px]" aria-hidden>{EQUIP_SLOT_BADGE[entry.slot]}</span>
+                        {entry.name}
+                      </div>
+                      <div className="text-[10px] leading-tight text-white/50">{entry.description}</div>
+                    </div>
+                    <div className="text-[12px] font-black text-amber-200 tabular-nums whitespace-nowrap">
+                      {entry.defId === null ? '—' : `${entry.cost}s`}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {showFollow && (
+          <div className="px-4 pb-3">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-amber-200/55 mb-1.5">同行</div>
+            {/* 「連れて歩く」のオン/オフ(research/ESCORT_FOLLOW.md §9-8)。札は今の状態だけ(押すと入れ替わる)。待機も「選んだ姿」として色を持つ。 */}
+            <button
+              type="button"
+              onClick={() => { playSfx('ui-move'); useGameStore.getState().toggleEscortFollow(); }}
+              aria-label={followOn ? '軍人の同行: 連れていく。押すと待たせる' : '軍人の同行: 待たせる。押すと連れていく'}
+              className="relative flex h-11 w-full items-center gap-3 rounded-none border border-purple-400/[0.15] bg-purple-400/[0.06] px-3 text-left active:scale-[0.99]"
+            >
+              <span aria-hidden className="self-stretch my-1.5 w-[3px]"
+                style={{ background: followOn ? '#e0a33a' : '#9fb8c8', transition: followOn ? 'background 90ms ease-out' : 'background 260ms ease-in-out' }} />
+              <span className="min-w-0 flex-1 text-[13px] font-bold text-white">軍人の同行</span>
+              <span className="shrink-0 text-[12px] font-bold tracking-[0.16em]"
+                style={{ color: followOn ? '#e0a33a' : '#b9cfdc', transition: followOn ? 'color 90ms ease-out' : 'color 260ms ease-in-out' }}>
+                {followOn ? '連れていく' : '待たせる'}
+              </span>
+            </button>
+          </div>
+        )}
         {sellTarget && (
           <div className="px-4 pb-3">
             <div className="text-[10px] uppercase tracking-[0.2em] text-amber-200/55 mb-1.5">サブウェポン換金</div>
             <button
               onClick={() => handleSell(sellTarget)}
-              className="w-full rounded-2xl border px-3 py-2 text-left transition bg-white/8 border-white/15 active:scale-[0.98]"
+              className="w-full rounded-none border px-3 py-2 text-left transition bg-purple-400/8 border-purple-400/15 active:scale-[0.98]"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -209,23 +457,32 @@ const ShopMenu: React.FC = () => {
             </button>
           </div>
         )}
+        </>)}
+        </NoBounceScroller>
 
-        <div className="px-4 pb-4 space-y-2">
+        <div className="px-4 pb-4 space-y-2 shrink-0">
+
+          {/* 帰還(撤収)は補給のタブだけ。輸送のタブで「動く」と「やめる」を並べない(クリエイティブ監査)。 */}
+          {tab === 'shop' && (
           <button
             onClick={() => { playSfx('ui-select'); returnToBase(); }}
-            className="w-full rounded-2xl border border-amber-300/40 bg-amber-400/15 py-2.5 text-sm font-bold text-amber-100"
+            className="w-full rounded-none bg-amber-400/15 py-2.5 text-sm font-bold text-amber-100"
           >
             帰還する
-            <span className="block text-[10px] font-normal text-amber-100/70">装備を1つ持ち帰り撤収（スコア計上・進行/クリアボーナスなし）</span>
+            <span className="block text-[10px] font-normal text-amber-100/70">撤収（スコアは残る。クリアにはならない）</span>
           </button>
+          )}
           <button
             onClick={closeShop}
-            className="w-full rounded-2xl bg-white/10 border border-white/10 py-3 text-sm font-bold text-white/90"
+            className="w-full rounded-none bg-purple-400/10 py-3 text-sm font-bold text-white/90"
           >
             閉じる
           </button>
         </div>
       </div>
+      {/* 輸送の暗転(出): 押した瞬間から速く黒へ。底で store が行き先へ置き、明けは store の黒い明け(spawnFlash)が受け持つ。 */}
+      <div aria-hidden className="pointer-events-none absolute inset-0"
+        style={{ background: '#040508', opacity: leaving ? 1 : 0, transition: `opacity ${FAST_TRAVEL_DIM_MS}ms cubic-bezier(0.55,0,0.85,0.35)` }} />
     </div>
   );
 };

@@ -1,0 +1,117 @@
+{
+  "generatedAt": "2026-07-28T03:14:56.385Z",
+  "config": {
+    "baseUrl": "local",
+    "runMs": 900000,
+    "headless": true,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "configs": [
+      {
+        "name": "hospital-regression-a",
+        "persona": "standard",
+        "subs": [
+          "heavy-grenade"
+        ],
+        "skills": [
+          "exploder"
+        ]
+      },
+      {
+        "name": "hospital-regression-b",
+        "persona": "standard",
+        "subs": [
+          "flare-gun"
+        ],
+        "skills": [
+          "warm-up"
+        ]
+      }
+    ]
+  },
+  "results": [
+    {
+      "config": "hospital-regression-a",
+      "subs": [
+        "heavy-grenade"
+      ],
+      "skills": [
+        "exploder"
+      ],
+      "realSec": 138,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 119449,
+        "deathCause": "変異体(徘徊型)",
+        "kills": 68,
+        "playerLevel": 3,
+        "maxDepthPx": 1312,
+        "maxAreaReached": 0,
+        "subUses": {
+          "heavy-grenade": 24
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 43,
+        "scrapSpent": 0,
+        "damageTaken": 124,
+        "goldEarned": 15,
+        "damageDealt": {
+          "gun": 1533,
+          "melee": 1190,
+          "other": 1993,
+          "total": 4716
+        },
+        "finisherKills": 19,
+        "meleeSwings": 78,
+        "meleeHits": 85
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n軍備配置区域の怠惰 に到達\n\nDEPTH\n1312m⚑最深更新\n軍備配置区域\n⚑\n研究対象区域\nデンジャーゾーン\n未確認汚染エリア\n深層域\nRANK\nR1 / 7\n怠惰\n⚑\nSLOTH\n暴食\nGLUTTONY\n色欲\nLUST\n強欲\nGREED\n嫉妬\nENVY\n憤怒\nWRATH\n傲慢\nPRIDE\n\n次の深さ 研究対象区域 まで あと 188m\n\n次の罪 暴食 まで あと1昇格\n\n死因：変異体(徘徊型)\n\nRESULT\n生存時間\n02:00\n撃破\n68\nLv\n3\n最大コンボ\n12\nSCORE\nHIGH SCORE\n30229\nKILLスコア 15200\n詳細\n▾\nAIディレクター\n開く▾\n失った装備\n獲得 +15g / 換金 +2g / 所持 17g\nマガジンウェル\nR1\nリロード -10%\n+1g\n精密スコープ\nR1\nクリ率 +3%\n+1g\nもう一度プレイ\nメニューに戻る"
+    },
+    {
+      "config": "hospital-regression-b",
+      "subs": [
+        "flare-gun"
+      ],
+      "skills": [
+        "warm-up"
+      ],
+      "realSec": 127,
+      "smokeFallback": false,
+      "botReport": {
+        "persona": "standard",
+        "outcome": "death",
+        "survivedMs": 109347,
+        "deathCause": "吸血コウモリ",
+        "kills": 49,
+        "playerLevel": 3,
+        "maxDepthPx": 2075,
+        "maxAreaReached": 1,
+        "subUses": {
+          "heavy-grenade": 23,
+          "flare-gun": 11
+        },
+        "overclockProcs": 0,
+        "scrapEarned": 20,
+        "scrapSpent": 0,
+        "damageTaken": 110,
+        "goldEarned": 15,
+        "damageDealt": {
+          "gun": 816,
+          "melee": 693,
+          "other": 949,
+          "total": 2458
+        },
+        "finisherKills": 18,
+        "meleeSwings": 51,
+        "meleeHits": 59
+      },
+      "errors": [],
+      "finalBodySnippet": "任務失敗\n\n研究対象区域の怠惰 に到達\n\nDEPTH\n2075m⚑最深更新\n軍備配置区域\n研究対象区域\n⚑\nデンジャーゾーン\n未確認汚染エリア\n深層域\nRANK\nR1 / 7\n怠惰\n⚑\nSLOTH\n暴食\nGLUTTONY\n色欲\nLUST\n強欲\nGREED\n嫉妬\nENVY\n憤怒\nWRATH\n傲慢\nPRIDE\n\n次の深さ デンジャーゾーン まで あと 925m\n\n次の罪 暴食 まで あと1昇格\n\n死因：吸血コウモリ\n\nRESULT\n生存時間\n01:50\n撃破\n49\nLv\n3\n最大コンボ\n13\nSCORE\nHIGH SCORE\n30090\nKILLスコア 14400\n詳細\n▾\nAIディレクター\n開く▾\n失った装備\n獲得 +15g / 換金 +2g / 所持 17g\nランニングシューズ\nR1\n移動速度 +10%\n+1g\n弾薬ポーチ\nR1\n弾薬ドロップ +10%\n+1g\nもう一度プレイ\nメニューに戻"
+    }
+  ]
+}

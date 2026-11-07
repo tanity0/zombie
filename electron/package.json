@@ -1,0 +1,27 @@
+{
+  "name": "the-one-pc",
+  "private": true,
+  "version": "0.0.0",
+  "description": "the ONE — PC 版(Electron で包む)。中身は ../dist(npm run build の出力)をそのまま使う。research/PC_SUPPORT.md §12",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "ZOMBIE_SMOKE=1 electron .",
+    "dist": "electron-builder",
+    "dist:dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "jp.tanity.theone",
+    "productName": "the ONE",
+    "directories": { "output": "release" },
+    "files": ["main.cjs"],
+    "extraResources": [{ "from": "../dist", "to": "dist" }],
+    "win": { "target": ["nsis", "portable"] },
+    "mac": { "target": ["dmg"], "category": "public.app-category.games" },
+    "linux": { "target": ["AppImage"] }
+  }
+}
