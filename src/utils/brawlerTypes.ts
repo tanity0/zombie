@@ -48,5 +48,8 @@ export interface BrawlerState {
   pressAt: number;
   /** 弾を拾って技ポイントが増えた時刻(Date.now・HUD の数字を一瞬明るくする合図)。 */
   gainAt?: number;
+  /** 5段目の貫通突進(社長指示2026-11-07「5段目は一閃みたいに敵やオブジェクトを貫通する技」)を踏み出した地点。未設定=溜めの間。 */
+  palmFromX?: number;
+  palmFromY?: number;
 }
 

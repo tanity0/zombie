@@ -30,7 +30,8 @@ export const BRAWLER_STAGES: readonly BrawlerStageSpec[] = [
   { stage: 2, windupMs: 60, recoveryMs: 140, mult: 0.35, kb: 'none', hitstopMs: 45, shape: 'single', dashPx: 60 },
   { stage: 3, windupMs: 120, recoveryMs: 230, mult: 0.8, kb: 'normal', hitstopMs: 80, shape: 'fist', dashPx: 60 },
   { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.0, kb: 'none', hitstopMs: 90, shape: 'landing', dashPx: 50 },
-  { stage: 5, windupMs: 150, recoveryMs: 350, mult: 1.3, kb: 'big', hitstopMs: 140, shape: 'band', dashPx: 0 },
+  // 5段目=一閃型の貫通突進(社長指示2026-11-07)。前隙 250 = 溜め 100 + 突き抜け 150。判定は抜け切った瞬間に軌跡の帯で一括(§9-26)。
+  { stage: 5, windupMs: 250, recoveryMs: 250, mult: 1.3, kb: 'big', hitstopMs: 140, shape: 'band', dashPx: 0 }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
 ];
 export const brawlerStageSpec = (stage: number): BrawlerStageSpec =>
   BRAWLER_STAGES[Math.max(1, Math.min(5, Math.round(stage))) - 1];
@@ -63,6 +64,14 @@ export const BRAWLER_FIST_RADIUS = 28;       // 3段目の拳の周り(§2-2)
 export const BRAWLER_LANDING_RADIUS = 70;    // 4段目の着地点の円(§2-2)
 export const BRAWLER_BAND_LEN = 160;         // 5段目の帯(§2-2)
 export const BRAWLER_BAND_HALF_W = 22;       // 幅44の半分
+/** 5段目の突き抜け(§2-2・§9-26): 溜め→帯の長さぶん加速して抜ける。溜め = 前隙 − 突き抜け。 */
+export const BRAWLER_PALM_DASH_MS = 150;
+export const BRAWLER_PALM_PASS_PX = BRAWLER_BAND_LEN;
+/** 抜けた先の減速(止めが明けた後に滑って止まる距離と尺)。 */
+export const BRAWLER_PALM_SETTLE_PX = 22;
+export const BRAWLER_PALM_SETTLE_MS = 120;
+/** 吹き飛ばしの向き: 軌跡から横へ外向き+進む向きへ少し(抜けた後ろで左右へ割れる)。 */
+export const BRAWLER_PALM_KB_FORWARD = 0.4;
 export const BRAWLER_JUMP_VIS_PX = 48;       // 4段目の見た目の跳ぶ高さ(判定は地面のまま・§2-3)
 export const BRAWLER_LIFT_MS = 450;          // 4段目の浮かせの足止め(§7-10)
 export const BRAWLER_LIFT_VIS_PX = 26;       // 浮かせの絵の高さ(§7-10)
@@ -147,8 +156,10 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
   const spec = brawlerStageSpec(stage);
   return {
     ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, startAt: t,
-    windupMs: quick ? 0 : spec.windupMs, recoveryMs: spec.recoveryMs,
+    // 前隙なし(受けた直後)でも5段目は突き抜ける時間だけは要る(溜めだけ消える)。
+    windupMs: quick ? (spec.stage === 5 ? BRAWLER_PALM_DASH_MS : 0) : spec.windupMs, recoveryMs: spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, buffered: false,
+    palmFromX: undefined, palmFromY: undefined,
     // 前隙なしは1回きり(受けた直後の最初の1発だけ)。
     quickUntil: quick ? 0 : s.quickUntil,
     // 通常攻撃を押したら蹴りの連続は切れる(§7-5)。
@@ -183,6 +194,29 @@ export const brawlerPressDecision = (s: BrawlerState, t: number): 'start' | 'buf
   if (s.resolved && s.connected) return 'buffer'; // 当たった瞬間(止めの間を含む)から戻りの終わりまで
   if (el >= total - BRAWLER_WHIFF_BUFFER_MS) return 'buffer'; // 空振り(または判定前)の段は戻りの終わり 150ms 前から
   return 'drop';
+};
+
+/** 5段目の突き抜けを踏み出す時刻か(溜めが終わった・まだ踏み出していない)。 */
+export const brawlerPalmDashDue = (s: BrawlerState, t: number): boolean =>
+  s.phase === 'attack' && s.stage === 5 && !s.resolved && s.palmFromX === undefined
+  && brawlerElapsed(s, t) >= Math.max(0, s.windupMs - BRAWLER_PALM_DASH_MS);
+/** 5段目で突き抜けている最中か(敵とオブジェクトをすり抜ける・無敵の間)。 */
+export const isBrawlerPalmDashing = (s: BrawlerState | undefined): boolean =>
+  !!s && s.phase === 'attack' && s.stage === 5 && !s.resolved && s.palmFromX !== undefined;
+/**
+ * 抜けた後ろの敵を吹き飛ばす向き(単位ベクトル)。軌跡(x0,y0 から ux,uy)の横へ外向き+進む向きへ少し。
+ * 軌跡のちょうど上の敵は side(+1/-1)の側へ(呼び手が敵ごとに交互に決める=全員が同じ側へ飛ばない)。
+ */
+export const brawlerPassKbDir = (
+  ecx: number, ecy: number, x0: number, y0: number, ux: number, uy: number, side: 1 | -1,
+): { x: number; y: number } => {
+  const um = Math.hypot(ux, uy) || 1; ux /= um; uy /= um;
+  const cross = (ecx - x0) * uy - (ecy - y0) * ux; // >0 = 進む向きの右手(画面座標)
+  const sgn = Math.abs(cross) < 4 ? side : (cross > 0 ? 1 : -1);
+  const px = uy * sgn, py = -ux * sgn;
+  const vx = px + ux * BRAWLER_PALM_KB_FORWARD, vy = py + uy * BRAWLER_PALM_KB_FORWARD;
+  const m = Math.hypot(vx, vy) || 1;
+  return { x: vx / m, y: vy / m };
 };
 
 /** 弾を拾った時の技ポイント(上限で止める)。増えた時だけ gainAt を打つ(上限なら状態は同じ物を返す)。 */
@@ -515,11 +549,14 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
         return { ...base, tex: 'ready', sqY: 1 - 0.22 * land + wob, sqX: 1 + 0.16 * land - wob * 0.6, lean: 0.04 };
       }
       case 5: {
-        // 掌底: しゃがみの絵のまま体を前へ大きく突き出す(前隙=引き → 突き)。伸び切った形で一拍止め、ゆっくり戻す(#5)。
-        if (!hit) return { ...base, tex: 'ready', lean: -0.04, push: -12 * easeOut(pre), sqX: 1 - 0.06 * pre };
-        const HOLD = 0.38;
+        // 一閃型の掌底(§9-26): 溜め=引いて沈む → 突き抜け=伸び切った形で前へ倒れ込む(体は本当に動く=push は小さく)
+        // → 抜けた先で伸び切った形のまま一拍止まり、ゆっくり戻す(#5)。
+        const charge = Math.max(0, s.windupMs - BRAWLER_PALM_DASH_MS);
+        if (!hit && el < charge) { const q = Math.min(1, el / Math.max(1, charge)); return { ...base, tex: 'ready', lean: -0.06 * q, push: -10 * easeOut(q), sqX: 1 - 0.07 * q, sqY: 1 - 0.05 * q }; }
+        if (!hit) { const q = Math.min(1, (el - charge) / BRAWLER_PALM_DASH_MS); const k = easeOut(Math.min(1, q * 2.5)); return { ...base, tex: 'ready', lean: 0.48 * k, push: 10 * k, sqX: 1 + 0.18 * k, sqY: 1 - 0.1 * k }; }
+        const HOLD = 0.4;
         const th = post < HOLD ? 1 : 1 - easeIn((post - HOLD) / (1 - HOLD)) * 0.35 - easeOut((post - HOLD) / (1 - HOLD)) * 0.65;
-        return { ...base, tex: 'ready', lean: 0.4 * th, push: 50 * th, sqX: 1 + 0.16 * th, sqY: 1 - 0.1 * th };
+        return { ...base, tex: 'ready', lean: 0.48 * th, push: 10 * th, sqX: 1 + 0.16 * th, sqY: 1 - 0.1 * th };
       }
       default: return { ...base, tex: 'ready' };
     }

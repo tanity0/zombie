@@ -3072,6 +3072,9 @@ export type VisualEffect =
       moveX?: number;      // 寿命の間に加速→減速で動く量(world px)
       moveY?: number;
       alpha?: number;      // 不透明度の上限(既定1)
+      // 格闘(社長指示2026-11-07「既存の素材をもっと色々活用して」)向けの拡張。未指定=従来どおり。
+      frames?: string[];   // 別ファイルのコマ送り(例 fx/slash-burst-0..4)。進捗で送り、最終コマで止める(frameEaseOut も効く)。texture は1コマ目
+      followPlayer?: boolean; // x,y をプレイヤーの中心からのずれとして読む(体と一緒に動く絵=飛び蹴りの筋)
     }
   | {
       // 倒した時の血の破裂(社長指示2026-10-27・描画専用=判定ゼロ・pixi/bloodBurst.ts)。粒の数は固定、敵の大きさで絵の大きさと距離が伸びる。

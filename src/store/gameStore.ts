@@ -736,6 +736,8 @@ export interface BrawlerStrikeOpts {
     ignoreImmune?: boolean;
     /** ボス級は強さ半分(5段目・飛び蹴り3発目・大踏み潰し)。 */
     bossHalf?: boolean;
+    /** 5段目の貫通突進: 軌跡(x0,y0 から ux,uy)の横へ外向きに吹き飛ばす(敵ごとに向きが変わる・dirX/dirY より優先)。 */
+    passLine?: { x0: number; y0: number; ux: number; uy: number };
   };
   /** 4段目の浮かせ(450ms 足止め・絵だけ浮く)。 */
   lift?: boolean;
@@ -4267,6 +4269,54 @@ const brawlerLungePatch = (dx: number, dy: number, dist: number, ms: number, now
   const v = BR.accelLungeSpeed(dist, ms);
   return { lungeVx: (dx / dist) * v, lungeVy: (dy / dist) * v, lungeUntil: now + ms, lungeMs: ms, lungeShape: 'accel', lungeHoldUntil: 0 };
 };
+/** 5段目: 抜けた先の減速(止めの間は器を止め、明けたら滑って止まる)。 */
+const brawlerPalmSettlePatch = (dirX: number, dirY: number, holdMs: number, now: number): Partial<Player> => {
+  const v = knockbackSpeedFor(BR.BRAWLER_PALM_SETTLE_PX, BR.BRAWLER_PALM_SETTLE_MS);
+  return { lungeVx: dirX * v, lungeVy: dirY * v, lungeUntil: now + BR.BRAWLER_PALM_SETTLE_MS, lungeMs: BR.BRAWLER_PALM_SETTLE_MS, lungeShape: 'decel', lungeHoldUntil: now + Math.max(0, holdMs) };
+};
+/** 5段目: 突き抜けを踏み出す(溜めの後)。相手が居れば向きを取り直し、帯の長さぶん加速して抜ける。一閃と同じく抜ける間だけ無敵。 */
+const startBrawlerPalmDash = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState): void => {
+  const p = get().player;
+  const now = Date.now();
+  const c = brawlerCenter(p);
+  let target = s.targetId ? get().enemies.find(e => e.id === s.targetId) ?? null : null;
+  if (target && !BR.isBrawlerTargetable(target)) target = null;
+  const dir = target ? BR.brawlerAimDir(c.x, c.y, target, { x: s.dirX, y: s.dirY }) : { x: s.dirX, y: s.dirY };
+  const ms = BR.BRAWLER_PALM_DASH_MS;
+  const L = BR.BRAWLER_PALM_PASS_PX;
+  setBrawler(set, { ...s, palmFromX: c.x, palmFromY: c.y, dirX: dir.x, dirY: dir.y }, {
+    lastDirection: { x: dir.x, y: dir.y },
+    ...brawlerLungePatch(dir.x * L, dir.y * L, L, ms, now),
+    // 一閃と同じ無敵(既存の被弾無敵を再利用し、切れる時刻が抜け切りと揃うよう開始時刻を過去へずらす)。
+    invulnerable: true,
+    invulnerableTime: now - Math.max(0, INVULN_MS - ms),
+  });
+  brawlerSfx('whip-swing', 0.75, 0.62 * brJitter(), 200);
+  brawlerSfx('homing-fire', 0.35, 1.5, 160);
+};
+/** 5段目: 軌跡の上の壊せる物(松明など)を壊す(一閃と同じ扱い・§9-26)。 */
+const brawlerPalmBreakProps = (get: () => GameState, palm: { x0: number; y0: number; ux: number; uy: number; travel: number }, p: Player): void => {
+  const melee = p.weapons.find(w => w.isMelee);
+  const dmg = meleeSwingBaseDamage(melee, p) * BR.brawlerStageSpec(5).mult * 2.5;
+  for (const prop of get().breakableProps) {
+    if (prop.type === 'uv-bar') continue;
+    const ex = prop.footX - palm.x0, ey = prop.footY - palm.y0;
+    const along = ex * palm.ux + ey * palm.uy;
+    if (along < -prop.width / 2 || along > palm.travel + prop.width / 2) continue;
+    if (Math.abs(ex * palm.uy - ey * palm.ux) > BR.BRAWLER_BAND_HALF_W + prop.width / 2) continue;
+    const broken = get().damageBreakableProp(prop.id, dmg);
+    get().spawnEffect({ kind: 'meleeHit', id: `mhit-palmprop-${prop.id}-${Date.now()}`, x: prop.footX, y: prop.footY - prop.height * 0.6, size: 120, tint: BR.BRAWLER_COLOR_HEX, createdAt: Date.now(), duration: 240, rot: Math.random() * Math.PI * 2 });
+    if (!broken) continue;
+    if (broken.type === 'mine') {
+      get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
+      get().spawnRing(broken.footX, broken.footY - 8, 5, 50, 'rgba(132,204,22,0.82)', 4, 320);
+    } else {
+      get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
+      get().spawnRing(broken.footX, broken.footY - 18, 6, 34, 'rgba(251,146,60,0.8)', 3, 320);
+      get().dropBreakablePropLoot(broken);
+    }
+  }
+};
 /** 当たった後の反動(止めの間は器を止め、明けたら短く減速して止まる)。 */
 const brawlerRecoilPatch = (dirX: number, dirY: number, holdMs: number, now: number): Partial<Player> => {
   const ms = 90;
@@ -4296,7 +4346,12 @@ const brawlerHitPatch = (
   }
   // 向き: 帯の向き > 円の中心から外向き > プレイヤーから外向き。
   let ux: number, uy: number;
-  if (bs.kb.dirX !== undefined && bs.kb.dirY !== undefined) { ux = bs.kb.dirX; uy = bs.kb.dirY; }
+  if (bs.kb.passLine) {
+    const L = bs.kb.passLine;
+    const side: 1 | -1 = (enemy.id.charCodeAt(enemy.id.length - 1) & 1) ? 1 : -1; // 軌跡のちょうど上の敵は id で左右に振り分ける
+    const d = BR.brawlerPassKbDir(ecx, ecy, L.x0, L.y0, L.ux, L.uy, side);
+    ux = d.x; uy = d.y;
+  } else if (bs.kb.dirX !== undefined && bs.kb.dirY !== undefined) { ux = bs.kb.dirX; uy = bs.kb.dirY; }
   else { const ox = bs.kb.fromX ?? pcx, oy = bs.kb.fromY ?? pcy; ux = ecx - ox; uy = ecy - oy; }
   const un = Math.hypot(ux, uy);
   if (un > 1e-6) { ux /= un; uy /= un; } else { ux = 0; uy = 1; }
@@ -4419,6 +4474,19 @@ const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Part
         : { dx: dir.x * BR.BRAWLER_KICK_NO_TARGET_PX, dy: dir.y * BR.BRAWLER_KICK_NO_TARGET_PX, dist: BR.BRAWLER_KICK_NO_TARGET_PX };
       extra = { ...extra, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, BR.BRAWLER_TECHS.kick.windupMs, now) };
       brawlerSfx('whip-swing', 0.55, (kickN >= 3 ? 0.78 : 0.92) * brJitter(), 160);
+      // ★蹴りの筋(社長指示2026-11-07「キャラクターの移動に横長の斬撃の絵を被せれば蹴ってるように見える」)。
+      // dash-wind(横長の白い羽の筋・尖った先が進む側)を体に付けて(followPlayer)、蹴り脚の高さ=足元寄りに被せる。3発目は大きく長く。
+      {
+        const big = kickN >= BR.BRAWLER_KICK_MAX;
+        const ang = Math.atan2(dir.y, dir.x);
+        // 絵の幅(world px)= 130×scale×(233/64)×scaleX。羽の広い側=体(足)、尖った尻尾=後ろへ引く。
+        const sc = big ? 0.2 : 0.14, sx = big ? 1.6 : 1.3;
+        const back = 130 * sc * (233 / 64) * sx / 2 - 12;
+        brawlerFx(get, -dir.x * back, p.height * 0.18 - dir.y * back * 0.5, 'fx/dash-wind', {
+          followPlayer: true, scale: sc, scaleX: sx, rot: ang,
+          duration: BR.BRAWLER_TECHS.kick.windupMs + (big ? 90 : 50), fadeFrom: 0.6, moveX: dir.x * (big ? 26 : 16), moveY: dir.y * (big ? 26 : 16), alpha: 0.95,
+        });
+      }
     } else {
       brawlerSfx('whip-swing', 0.5, 1.25 * brJitter(), 140);
     }
@@ -4474,23 +4542,40 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       ids = BR.brawlerFistTargets(st.enemies, c.x, c.y, dir.x, dir.y, target, radius, walls);
     } else if (spec.shape === 'landing') {
       ids = BR.brawlerCircleTargets(st.enemies, c.x, c.y + p.height / 2 - 6, BR.BRAWLER_LANDING_RADIUS, walls);
-    } else {
-      ids = BR.brawlerBandTargets(st.enemies, c.x, c.y, dir.x, dir.y, walls);
+    }
+    // 5段目=一閃型の貫通突進(§9-26): **実際に通った軌跡**(踏み出した地点 → 抜け切った今の位置)の帯で一括して当てる(一閃と同じく、
+    // 壁で止まれば短くなる=見たまんまが当たり)。向きは踏み出した時に焼いた向き。後ろの敵は軌跡の横へ外向きに割れて飛ぶ。
+    const palm = spec.shape === 'band'
+      ? (() => {
+        const x0 = s.palmFromX ?? c.x, y0 = s.palmFromY ?? c.y;
+        const travel = Math.max(0, (c.x - x0) * s.dirX + (c.y - y0) * s.dirY);
+        return { x0, y0, ux: s.dirX, uy: s.dirY, travel };
+      })()
+      : null;
+    if (palm) {
+      const pw = meleeWallsAround(get, palm.x0, palm.y0, palm.travel + 60);
+      ids = BR.brawlerBandTargets(st.enemies, palm.x0, palm.y0, palm.ux, palm.uy, pw, palm.travel);
     }
     const r = strike(ids, {
       mult: spec.mult, stunMs: spec.hitstopMs, postureMult: spec.mult,
-      kb: spec.kb === 'big' ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } : { kind: spec.kb },
+      kb: spec.kb === 'big'
+        ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true, ...(palm ? { passLine: { x0: palm.x0, y0: palm.y0, ux: palm.ux, uy: palm.uy } } : {}) }
+        : { kind: spec.kb },
       ...(spec.shape === 'landing' ? { lift: true } : {}),
     });
+    if (palm) brawlerPalmBreakProps(get, palm, p);
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
-    const next = BR.brawlerAfterResolve({ ...s, dirX: dir.x, dirY: dir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs });
+    const fdir = palm ? { x: palm.ux, y: palm.uy } : dir;
+    const next = BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs });
     setBrawler(set, next, {
-      lastDirection: { x: dir.x, y: dir.y },
-      // 当てた=反動の減速 / 空振り=詰めの 'accel' を 'decel' に戻す(古い形を残さない・検収 A-6)。
-      ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, spec.hitstopMs, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
+      lastDirection: { x: fdir.x, y: fdir.y },
+      // 5段目: 抜けた先で(当てたら一拍止まってから)減速して止まる。
+      // ほか: 当てた=反動の減速 / 空振り=詰めの 'accel' を 'decel' に戻す(古い形を残さない・検収 A-6)。
+      ...(palm ? brawlerPalmSettlePatch(fdir.x, fdir.y, hits > 0 ? spec.hitstopMs : 0, now)
+        : hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, spec.hitstopMs, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
-    brawlerStageFx(get, s.stage, c, dir, r, target);
+    brawlerStageFx(get, s.stage, c, fdir, r, target, palm);
     return;
   }
 
@@ -4513,6 +4598,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
     g.spawnRing(foot.x, foot.y, 10, BR.BRAWLER_STOMP_RADIUS * 0.8, 'rgba(255,255,255,0.75)', 3, 300, true);
     g.spawnGlow(foot.x, foot.y, GLOW_R_XL, 'rgba(241,230,200,', 320, true);
+    brawlerGroundBreakFx(get, foot.x, foot.y, true);
     g.triggerShake(260, 16, 0, 1);
     for (const h of r.hitAt ?? []) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.stomp);
     brawlerSfx('brawler-stomp', 1.0, 0.92);
@@ -4555,6 +4641,18 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       brawlerSpark(get, h, c, big ? BR.BRAWLER_SPARK.closer : BR.BRAWLER_SPARK.weak);
       if (big) brawlerClosingFx(get, h.x, h.y, dir);
     }
+    // 当たった瞬間に筋が伸び切って前へ抜ける+蹴り脚の弧(vfx/slash_02 の三日月・膨らみを前へ)。3発目は弧をもう1枚(fx/slash-arc)。
+    {
+      const ang = Math.atan2(dir.y, dir.x);
+      const fy = c.y + p.height * 0.18;
+      brawlerFx(get, c.x, fy, 'fx/dash-wind', {
+        scale: big ? 0.22 : 0.16, scaleX: big ? 2.0 : 1.5, rot: ang, duration: big ? 220 : 160, fadeFrom: 0.15, moveX: dir.x * (big ? 70 : 44), moveY: dir.y * (big ? 70 : 44), alpha: 0.9,
+      });
+      brawlerFx(get, c.x + dir.x * 30, fy - 4 + dir.y * 14, 'vfx/slash_02', {
+        scale: big ? 0.8 : 0.55, scaleY: 0.8, rot: ang - Math.PI / 2, duration: big ? 260 : 180, fadeFrom: 0.25, moveX: dir.x * 18, moveY: dir.y * 18, alpha: 1,
+      });
+      if (big) brawlerFx(get, c.x + dir.x * 34, fy - 8, 'fx/slash-arc', { scale: 0.62, scaleX: 0.5, rot: ang + Math.PI, duration: 240, fadeFrom: 0.3, moveX: dir.x * 26, moveY: dir.y * 26 });
+    }
     brawlerSfx('brawler-hit', hits > 0 ? (big ? 1.1 : 0.8) : 0.35, (big ? 0.66 : 1.0) * brJitter(), big ? 300 : 200);
     if (hits > 0) brawlerSfx('whip-hit', 0.55, (big ? 0.7 : 0.85) * brJitter(), 160, 10);
     if (big && hits > 0) brawlerSfx('heavy-impact', 0.95, 0.85);
@@ -4594,10 +4692,27 @@ const brawlerSpark = (
   g.spawnGlow(x, y, k.glow, 'rgba(241,230,200,', Math.round(k.ms * 0.8), true);
 };
 
+/**
+ * 既存の素材を白金の加算で重ねる小道具(社長指示2026-11-07「既存の素材をもっと色々活用して、他の技とかも魅せて」)。
+ * 白い素材は乗算 tint で白金になる(色付き素材は呼び手が tint を外す)。動きは spawnImageMark の加速→減速(慣性)。
+ */
+type BrawlerFxOpts = NonNullable<Parameters<GameState['spawnImageMark']>[3]>;
+const brawlerFx = (get: () => GameState, x: number, y: number, tex: string, o: BrawlerFxOpts): void => {
+  get().spawnImageMark(x, y, tex, { additive: true, tint: BR.BRAWLER_COLOR_HEX, noPop: true, ...o });
+};
+const BR_SKILL_BURST_FRAMES = Array.from({ length: 13 }, (_, i) => `fx/skill-burst-${String(i).padStart(2, '0')}`);
+const BR_COFFIN_SLAM_FRAMES = Array.from({ length: 5 }, (_, i) => `fx/coffin-slam-${i}`);
+/** 地面の割れ+砕けて跳ねる礫(4段目の着地・下の大踏み潰し)。big=大踏み潰し。 */
+const brawlerGroundBreakFx = (get: () => GameState, fx: number, fy: number, big: boolean): void => {
+  get().spawnImageMark(fx, fy, 'fx/ground-crack', { scale: big ? 1.25 : 0.62, scaleY: 0.5, duration: big ? 1500 : 1000, fadeFrom: 0.55, noPop: true, alpha: 0.9 });
+  get().spawnImageMark(fx, fy - (big ? 34 : 18), BR_COFFIN_SLAM_FRAMES[0], { frames: BR_COFFIN_SLAM_FRAMES, scale: big ? 1.0 : 0.5, duration: big ? 520 : 400, frameEaseOut: true, noPop: true, fadeFrom: 0.5 });
+};
+
 /** 各段の当たりの絵と音(§4)。判定は持たない。 */
 const brawlerStageFx = (
   get: () => GameState, stage: number, c: { x: number; y: number }, dir: { x: number; y: number },
   r: CounterTriggerResult, target: Enemy | null,
+  palm: { x0: number; y0: number; ux: number; uy: number; travel: number } | null = null,
 ): void => {
   const g = get();
   const now = Date.now();
@@ -4624,6 +4739,13 @@ const brawlerStageFx = (
     case 2: {
       // 1段目=前の手 / 2段目=逆の手(絵の反転は pixi が状態から)。
       fistAfterimage(0.2, 18, stage === 2 ? -1 : 1);
+      // 拳に添える速さの筋(dash-wind を短く・白金)。拳の後ろから前へ抜ける。
+      {
+        const side = stage === 2 ? -1 : 1;
+        brawlerFx(get, c.x + dir.x * 4 - dir.y * side * 6, c.y - 8 + dir.y * 4 + dir.x * side * 3, 'fx/dash-wind', {
+          scale: 0.12, scaleX: 0.85, rot: ang, duration: 150, fadeFrom: 0.25, moveX: dir.x * 22, moveY: dir.y * 22, alpha: 0.85,
+        });
+      }
       for (const h of hitAt) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.weak);
       if (hits > 0) hitSfx();
       break;
@@ -4631,6 +4753,11 @@ const brawlerStageFx = (
     case 3: {
       // アッパー: 向きの決まり(敵の方)のまま、突き上げる分だけ少し上へ起こす(§9-23)。
       fistAfterimage(0.24, 24, 1, dir.x, dir.y - 0.55);
+      // 突き上げの弧(slash-arc を縦の三日月に・膨らみを前へ)。下から上へ抜ける。
+      // 火花(強=118px)より大きく・長く出して、火花の上へ抜けて見えるようにする。
+      brawlerFx(get, c.x + dir.x * 22, c.y + 4 + dir.y * 10, 'fx/slash-arc', {
+        scale: 0.78, scaleX: 0.5, rot: ang + Math.PI, duration: 320, fadeFrom: 0.35, moveY: -46, alpha: 1,
+      });
       for (const h of hitAt) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.strong);
       if (hits > 0) {
         hitSfx();
@@ -4643,6 +4770,7 @@ const brawlerStageFx = (
       g.spawnRing(fx, fy, 12, BR.BRAWLER_LANDING_RADIUS * 1.35, BR.BRAWLER_RGBA(0.85), 4, 340, true);
       g.triggerShake(160, 8, 0, 1);
       fistAfterimage(0.22, 16, 1); // 着地の打ち下ろし(向き=敵の方)
+      brawlerGroundBreakFx(get, fx, c.y + 16, false);
       for (const h of hitAt) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.land);
       brawlerSfx('brawler-stomp', 0.8, 1.1);
       brawlerSfx('heavy-impact', 0.6, 0.72, undefined, 16);
@@ -4650,14 +4778,32 @@ const brawlerStageFx = (
       break;
     }
     case 5: {
-      // 掌底: 赤い衝撃波は使わない。短く・速く伸びる帯(dust-ring を横長)+先端で散る白金の粒+大きめの拳の残像。
-      const tipX = c.x + dir.x * BR.BRAWLER_BAND_LEN * 0.85, tipY = c.y + dir.y * BR.BRAWLER_BAND_LEN * 0.85;
-      g.spawnImageMark(c.x + dir.x * 54, c.y + dir.y * 54, 'fx/dust-ring', {
-        scale: 0.5, duration: 170, additive: true, tint: BR.BRAWLER_COLOR_HEX, rot: ang, noPop: true, fadeFrom: 0.15,
-        scaleX: 1.45, scaleY: 0.5, moveX: dir.x * 70, moveY: dir.y * 70, alpha: 0.75,
+      // 一閃型の掌底(§9-26): 抜けた軌跡に一閃の線を残す(ビームに見せない=抜けた後に残って、前へ流れながら消える)。
+      // c = 抜け切った位置。始点は踏み出した地点。
+      const x0 = palm?.x0 ?? c.x - dir.x * 60, y0 = palm?.y0 ?? c.y - dir.y * 60;
+      const travel = Math.max(20, palm?.travel ?? 60);
+      const mx = (x0 + c.x) / 2, my = (y0 + c.y) / 2 - 6;
+      // 線: dash-wind(白い羽の筋)を軌跡の長さへ伸ばす。尖った先が抜けた側。
+      brawlerFx(get, mx, my, 'fx/dash-wind', {
+        scale: 0.15, scaleX: (travel + 50) / (0.15 * 130 * (233 / 64)), rot: ang, duration: 460, fadeFrom: 0.3, moveX: dir.x * 16, moveY: dir.y * 16, alpha: 0.85,
       });
-      g.spawnEffect({ kind: 'meleeHit', id: `mhit-palm-${now}`, x: c.x + dir.x * 84, y: c.y + dir.y * 84, size: 110, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: 220, sx: 1.4, rot: ang });
-      g.spawnBurst(tipX, tipY, BR.BRAWLER_COLOR, 12, dir.x, dir.y); // 先端で散らす(ビームに見せない)
+      // 線に沿って残る空気のうねり(trace_04 を軌跡へ寝かせる)。線より長く残る。
+      brawlerFx(get, mx, my, 'vfx/trace_04', {
+        scale: (travel + 30) / 130, scaleX: 0.7, rot: ang + Math.PI / 2, duration: 700, fadeFrom: 0.2, moveX: dir.x * 10, moveY: dir.y * 10 - 6, alpha: 0.55,
+      });
+      // 元の帯(dust-ring を横長)は軌跡の上へ移した。
+      g.spawnImageMark(mx, my, 'fx/dust-ring', {
+        scale: 0.5, duration: 200, additive: true, tint: BR.BRAWLER_COLOR_HEX, rot: ang, noPop: true, fadeFrom: 0.15,
+        scaleX: Math.max(1.2, travel / 70), scaleY: 0.45, moveX: dir.x * 30, moveY: dir.y * 30, alpha: 0.6,
+      });
+      // 抜けた先: 炸裂のコマ送り(skill-burst を白金)+前へ開く衝撃の円錐(fx/shockwave・社長指示で赤の素材も可)。
+      const tipX = c.x + dir.x * 16, tipY = c.y - 6 + dir.y * 16;
+      brawlerFx(get, tipX, tipY, BR_SKILL_BURST_FRAMES[0], { frames: BR_SKILL_BURST_FRAMES, scale: 0.55, rot: ang, duration: 420, frameEaseOut: true, fadeFrom: 0.5, alpha: 0.85 });
+      g.spawnImageMark(tipX + dir.x * 26, tipY + dir.y * 26, 'fx/shockwave', {
+        scale: 0.3, scaleX: 0.9, rot: ang + Math.PI, duration: 240, noPop: true, fadeFrom: 0.2, additive: true, moveX: dir.x * 40, moveY: dir.y * 40, alpha: 0.75,
+      });
+      g.spawnEffect({ kind: 'meleeHit', id: `mhit-palm-${now}`, x: tipX + dir.x * 20, y: tipY + dir.y * 20, size: 110, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: 220, sx: 1.4, rot: ang });
+      g.spawnBurst(tipX, tipY, BR.BRAWLER_COLOR, 12, dir.x, dir.y); // 先端で散らす
       fistAfterimage(0.28, 30, 1);
       for (const h of hitAt) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.closer);
       if (hits > 0) {
@@ -4743,6 +4889,8 @@ const explodeBrawlerKiko = (get: () => GameState, x: number, y: number): void =>
   }
   const g = get();
   g.spawnExplosionFx(x, y, radius);
+  // 残る煙(vfx/smoke_04・沈んだ灰でゆっくり昇る)=延焼の気配。fx/hitfire は撮って比べた結果やめた(この大きさだと四角い柱に見える=§9-27)。
+  g.spawnImageMark(x, y - 10, 'vfx/smoke_04', { scale: 0.9, duration: 1100, noPop: true, fadeFrom: 0.25, tint: 0x6b625a, alpha: 0.5, moveY: -34, rot: Math.random() * Math.PI * 2 });
   g.spawnEffect({ kind: 'meleeHit', id: `mhit-kikox-${Date.now()}`, x, y, size: radius * 2.6, tint: BR.BRAWLER_COLOR_HEX, createdAt: Date.now(), duration: MELEE_HIT_DUR });
   g.spawnRing(x, y, 10, radius * 1.3, BR.BRAWLER_RGBA(0.9), 4, 360, true);
   g.spawnGlow(x, y, GLOW_R_L, 'rgba(255,240,210,', 320, true);
@@ -8319,7 +8467,7 @@ interface GameState {
   spawnCounterShatter: (x: number, y: number) => void;
   // rot(v0.25.4202): 絵の向き(rad)。VisualEffect側は元から rot を持っていたが、この入口が渡していなかった。
   // cols/additive(社長指示2026-09-16・fx/kill-slash): 横並びシートのコマ送り/加算合成。未指定=従来どおり。
-  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number; scaleX?: number; scaleY?: number; moveX?: number; moveY?: number; alpha?: number }) => void;
+  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number; scaleX?: number; scaleY?: number; moveX?: number; moveY?: number; alpha?: number; frames?: string[]; followPlayer?: boolean }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number, easeOut?: boolean) => void;
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
@@ -9009,7 +9157,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => {
       const { player, gameBounds, swipeDirection, swipeStrength, breakableProps, castleEvent } = state;
       // UV バーは光源/装飾(松明の代わり)で当たり判定なし=移動は通す。地雷は踏むまで通す。
-      const solidProps = breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
+      // ★格闘の5段目の突き抜け(社長指示2026-11-07「一閃みたいに敵やオブジェクトを貫通する」)の間は、壊せる物と敵の体をすり抜ける。
+      // 木・建物・壁・行ける帯・囲いの円は今までどおり止まる(一閃と同じ)。
+      const palmPass = BR.isBrawlerPalmDashing(player.brawler);
+      const solidProps = palmPass ? [] : breakableProps.filter(p => p.type !== 'mine' && p.type !== 'uv-bar');
       void gameBounds; // World is effectively infinite — no clamp.
 
       // Reload movement penalty is kept as a single multiplier for tuning.
@@ -9262,7 +9413,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // (`biteWallRect`)。当たり判定そのもので塞ぐと、プレイヤーが攻撃の四角の中に
         // 立っていられず「ぶつかりに行かないと当たらない」状態になる(§12・enemyBite.ts に理由)。
         {
-          const blockers: Rect[] = playerEnemyBodyBlockers(state.enemies, state.gameTime, newX, newY);
+          const blockers: Rect[] = palmPass ? [] : playerEnemyBodyBlockers(state.enemies, state.gameTime, newX, newY);
           // ステージ2の這う塊も壁と同じく塞ぐ(すり抜けられない)。昇天中は判定なし=通れる。
           const lc = state.labCrawler;
           if (lc && crawlerSolid(lc)) {
@@ -9700,6 +9851,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         set(state => ({ player: { ...state.player, counterWindowStart: Math.min(state.player.counterWindowStart, now), counterWindowEnd: now + remain } }));
       }
     }
+    // 5段目: 溜めが終わったら突き抜けを踏み出す(判定は抜け切った時刻=前隙の終わり)。
+    { const sp = get().player.brawler; if (sp && BR.brawlerPalmDashDue(sp, get().gameTime)) startBrawlerPalmDash(get, set, sp); }
     for (let i = 0; i < 3; i++) {
       const s = get().player.brawler;
       if (!s) return;
@@ -9752,6 +9905,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
       get().spawnGlow(px, py, GLOW_R_L, 'rgba(255,248,230,', 260, true);
       get().spawnBurst(px, py, BR.BRAWLER_COLOR, 10, dx / (dl || 1), dy / (dl || 1));
+      // 受けた面に走る稲妻(vfx/spark_04)と、受けの線に沿った閃き(vfx/flare_01)。どちらも白金の加算。
+      const ra = Math.atan2(dy, dx);
+      brawlerFx(get, px, py, 'vfx/spark_04', { scale: 1.3, rot: ra + (Math.random() * 2 - 1) * 0.6, duration: 320, fadeFrom: 0.35, alpha: 1 });
+      brawlerFx(get, px, py, 'vfx/spark_04', { scale: 0.9, rot: ra + Math.PI + (Math.random() * 2 - 1) * 0.6, duration: 260, fadeFrom: 0.3, alpha: 0.9 });
+      brawlerFx(get, px, py, 'vfx/flare_01', { scale: 1.1, scaleX: 2.2, rot: ra + Math.PI / 2, duration: 200, fadeFrom: 0.2, alpha: 1 });
     }
     brawlerSfx('counter', 0.9, 0.92);
     brawlerSfx('heavy-impact', 0.7, 0.68, undefined, 14);
@@ -25462,6 +25620,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       ...(opts?.moveX !== undefined ? { moveX: opts.moveX } : {}),
       ...(opts?.moveY !== undefined ? { moveY: opts.moveY } : {}),
       ...(opts?.alpha !== undefined ? { alpha: opts.alpha } : {}),
+      ...(opts?.frames ? { frames: opts.frames } : {}),
+      ...(opts?.followPlayer ? { followPlayer: true } : {}),
       createdAt: now,
       duration: opts?.duration ?? 900,
     };

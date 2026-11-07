@@ -8029,6 +8029,7 @@ export class PixiScene {
       case 'damageNumber':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN);
       case 'image':
+        if (e.followPlayer) return true; // 体に付いた絵(x,y はずれ)=プレイヤーは常に画面内
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + 200);
       case 'ring':
         return this.isPointNearViewport(e.x, e.y, camera, EFFECT_VIEWPORT_MARGIN + e.endRadius);
@@ -39461,7 +39462,7 @@ export class PixiScene {
   // 砂埃は既存の drawDust(研究所では灰色の帯=dustTintForStage)、残像はプレイヤーの絵の複製、気功の弾は加算の光。
   private brawlerTrail: { x: number; y: number; t: number }[] = [];
   private brawlerGhosts: Sprite[] = [];
-  private brawlerKikoViews = new Map<string, { halo: Sprite; core: Sprite; flame: Sprite; tail: Sprite }>();
+  private brawlerKikoViews = new Map<string, { halo: Sprite; core: Sprite; flame: Sprite; tail: Sprite; blob: Sprite }>();
   private brawlerAura: Sprite | null = null;
   private drawBrawlerFx(p: Player, footX: number, footY: number, dsc: number, body: Sprite, now: number): void {
     const s = p.brawler;
@@ -39495,7 +39496,8 @@ export class PixiScene {
     const r0 = Math.max(p.width, p.height);
     // 詰めの出発点に砂埃1つ(1〜3段・蹴り)。
     const dashing = (s.phase === 'attack' && s.stage <= 3 && !s.resolved && s.windupMs > 0 && (p.lungeUntil ?? 0) > Date.now())
-      || (s.phase === 'tech' && s.tech === 'kick' && !s.resolved);
+      || (s.phase === 'tech' && s.tech === 'kick' && !s.resolved)
+      || BRW.isBrawlerPalmDashing(s); // 5段目の突き抜けの踏み出し
     const dashL = this.latchFx('brawler:dash', dashing, DUST_MS * 0.7, now, () => [footX - s.dirX * 8, footY - s.dirY * 4]);
     if (dashL) this.drawDust(dashL.d[0], dashL.d[1], r0 * 0.5 * dsc, dashL.t, tint, this.dustAlpha(dashL.t) * 0.75, dashL.t0);
     // 4段目の着地(6個)・下の大踏み潰し(12個): 判定より大きく(派手さの絵)。
@@ -39539,8 +39541,10 @@ export class PixiScene {
     this.brawlerTrail.push({ x: body.position.x, y: body.position.y, t: now });
     while (this.brawlerTrail.length > 0 && now - this.brawlerTrail[0].t > 160) this.brawlerTrail.shift();
     const kicking = s.phase === 'tech' && s.tech === 'kick' && el < s.windupMs + 90;
-    const nG = kicking ? (s.kickN >= BRW.BRAWLER_KICK_MAX ? 3 : 2) : 0;
-    const fade = kicking && s.resolved ? Math.max(0, 1 - (el - s.windupMs) / 90) : 1;
+    // 5段目の突き抜け(と抜けた直後)も残像を3枚(一閃の速さ)。
+    const palmGhost = s.phase === 'attack' && s.stage === 5 && s.palmFromX !== undefined && el < s.windupMs + 90;
+    const nG = palmGhost ? 3 : kicking ? (s.kickN >= BRW.BRAWLER_KICK_MAX ? 3 : 2) : 0;
+    const fade = (kicking || palmGhost) && s.resolved ? Math.max(0, 1 - (el - s.windupMs) / 90) : 1;
     for (let i = 0; i < 3; i++) {
       let g = this.brawlerGhosts[i];
       if (i >= nG) { if (g) g.visible = false; continue; }
@@ -39566,7 +39570,10 @@ export class PixiScene {
   private hideBrawlerGhosts(): void {
     for (const g of this.brawlerGhosts) g.visible = false;
   }
-  /** 気功の弾: 白い芯+固有色の光+炸裂のコマ(紫の blob-shot は使わない=紫はカウンター不可の色)。 */
+  /**
+   * 気功の弾(社長指示2026-11-07): 塊弾の絵 blob-shot を金へ色相を回した派生(fx/blob-shot-gold・10コマ)をコマ送りで育て、
+   * 8〜10コマ目を回し続ける。後ろの白金の尾・橙の火の芯(延焼の前触れ)は残す。白い光球は弾の絵に置き換えた。
+   */
   private drawBrawlerKiko(kikos: readonly { id: string; x: number; y: number; dirX: number; dirY: number; createdAt: number }[], now: number): void {
     const seen = new Set<string>();
     for (const k of kikos) {
@@ -39574,7 +39581,8 @@ export class PixiScene {
       let v = this.brawlerKikoViews.get(k.id);
       if (!v) {
         const mk = (): Sprite => { const sp = new Sprite(getSoftGlowTexture()); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add'; this.L.effectLayer.addChild(sp); return sp; };
-        v = { tail: mk(), halo: mk(), flame: mk(), core: mk() };
+        const blob = new Sprite(); blob.anchor.set(0.5, 0.5); blob.blendMode = 'add'; this.L.effectLayer.addChild(blob);
+        v = { tail: mk(), halo: mk(), flame: mk(), core: mk(), blob };
         this.brawlerKikoViews.set(k.id, v);
       }
       const age = Math.max(0, now - k.createdAt);
@@ -39595,17 +39603,45 @@ export class PixiScene {
       // 炸裂のコマを橙で回す=火の芯(火の気配・クリエイティブ監査 #16)。外側の光と白い芯は白金のまま。
       if (ft) { v.flame.texture = ft; setGlow(v.flame, 46 * grow, 0xffa04a, 0.95); v.flame.rotation = age / 70; }
       else v.flame.visible = false;
-      setGlow(v.core, 26 * grow * pulse, 0xffffff, 1);
+      // 弾の絵: 1〜7コマ=撃ち出しで育つ(慣性=出だしが速い)→ 8〜10コマ=回り続ける。
+      const sheet = getTexture('fx/blob-shot-gold');
+      if (sheet) {
+        const cacheKey = 'fx/blob-shot-gold:10';
+        let frames = this.imageEffectFrameCache.get(cacheKey);
+        if (!frames || frames.length !== 10) {
+          const fw = Math.floor(sheet.width / 10);
+          frames = Array.from({ length: 10 }, (_, c) => new Texture({ source: sheet.source, frame: new Rectangle(c * fw, 0, fw, sheet.height) }));
+          this.imageEffectFrameCache.set(cacheKey, frames);
+        }
+        const g7 = Math.min(1, age / 200);
+        const idx = g7 < 1 ? Math.min(6, Math.floor((1 - (1 - g7) * (1 - g7)) * 7)) : 7 + (Math.floor(age / 60) % 3);
+        v.blob.texture = frames[idx];
+        const sc = (84 / Math.max(1, frames[idx].height)) * (0.75 + 0.25 * grow);
+        v.blob.scale.set(sc, sc);
+        v.blob.rotation = ang; // 絵は右向き(彗星の尾が左)
+        v.blob.position.set(k.x, k.y);
+        v.blob.alpha = 1; v.blob.visible = true;
+        setGlow(v.core, 16 * grow * pulse, 0xfff4d6, 0.85);
+        v.halo.alpha = 0.45;
+      } else {
+        v.blob.visible = false;
+        setGlow(v.core, 26 * grow * pulse, 0xffffff, 1);
+      }
     }
     for (const [id, v] of this.brawlerKikoViews) {
       if (seen.has(id)) continue;
-      for (const sp of [v.tail, v.halo, v.flame, v.core]) sp.destroy();
+      for (const sp of [v.tail, v.halo, v.flame, v.core, v.blob]) sp.destroy();
       this.brawlerKikoViews.delete(id);
     }
   }
 
   private drawImageEffect(e: Extract<VisualEffect, { kind: 'image' }>, now: number) {
-    const tex = getTexture(e.texture);
+    // 別ファイルのコマ送り(格闘・社長指示2026-11-07)。進捗でコマを選び、最終コマで止める。
+    const tProg = Math.min(1, (now - e.createdAt) / e.duration);
+    const frameName = e.frames && e.frames.length > 0
+      ? e.frames[pickImageEffectFrame(e.frameEaseOut ? 1 - (1 - tProg) * (1 - tProg) : tProg, e.frames.length)] ?? e.texture
+      : e.texture;
+    const tex = getTexture(frameName) ?? getTexture(e.texture);
     let sp = this.effects.get(e.id);
     if (!tex) { if (sp) sp.visible = false; return; }
     if (!(sp instanceof Sprite)) {
@@ -39652,7 +39688,10 @@ export class PixiScene {
     const driftSec = (now - e.createdAt) / 1000;
     // 格闘(§7-6): 寿命の間に加速→減速で動く(慣性)。未指定=0=従来どおり。
     const mv = t * t * (3 - 2 * t);
-    spr.position.set(e.x + (e.driftX ?? 0) * driftSec + (e.moveX ?? 0) * mv, e.y + (e.driftY ?? 0) * driftSec + (e.moveY ?? 0) * mv);
+    // followPlayer: x,y はプレイヤーの中心からのずれ(体と一緒に動く絵・格闘の飛び蹴りの筋)。
+    let ox = 0, oy = 0;
+    if (e.followPlayer) { const pl = useGameStore.getState().player; ox = pl.x + pl.width / 2; oy = pl.y + pl.height / 2; }
+    spr.position.set(ox + e.x + (e.driftX ?? 0) * driftSec + (e.moveX ?? 0) * mv, oy + e.y + (e.driftY ?? 0) * driftSec + (e.moveY ?? 0) * mv);
     const fadeFrom = Math.max(0, Math.min(0.99, e.fadeFrom ?? 0.7));
     spr.alpha = (e.alpha ?? 1) * (t < fadeFrom ? 1 : Math.max(0, 1 - (t - fadeFrom) / (1 - fadeFrom))); // 後半でフェード
   }

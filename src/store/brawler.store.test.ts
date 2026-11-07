@@ -7,6 +7,7 @@ import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
 import { BRAWLER_GUARD_MS } from '../utils/brawler';
+import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 
 const NO_INPUT = { up: false, down: false, left: false, right: false } as never;
 let now = 7_000_000;
@@ -404,5 +405,51 @@ describe('格闘: 弾を拾っても技ポイントが増える(社長指示2026
     useGameStore.setState(st => ({ player: { ...st.player, subWeapons: [], brawler: undefined } }));
     pickAmmo('a3');
     expect(useGameStore.getState().player.brawler).toBeUndefined();
+  });
+});
+
+describe('格闘: 5段目=一閃型の貫通突進(社長指示2026-11-07)', () => {
+  const pressStage5 = () => {
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...(st.player.brawler ?? useGameStore.getState().player.brawler!), nextStage: 5, chainUntil: st.gameTime + 1000 } } }));
+    expect(useGameStore.getState().brawlerPress()).toBe(true);
+    expect(br().stage).toBe(5);
+  };
+  const init = () => { useGameStore.getState().brawlerPress(); advance(250); };
+  it('相手をすり抜けて向こう側へ出る(抜ける間は無敵)', () => {
+    setup();
+    init();
+    useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });
+    const ez = useGameStore.getState().enemies[0];
+    const ecx = ez.x + ez.width / 2;
+    pressStage5();
+    advance(150); // 溜め(100)+突き抜けの途中
+    expect(useGameStore.getState().player.invulnerable).toBe(true);
+    for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
+    expect(br().resolved).toBe(true);
+    expect(center().x).toBeGreaterThan(ecx + ez.width / 2); // 相手の向こう側
+    expect(hpOf('z')).toBeLessThan(99999);
+  });
+  it('軌跡の上の複数の敵に当たる', () => {
+    setup();
+    init();
+    useGameStore.setState({ enemies: [zombieAt(45, 0, 'a'), zombieAt(110, 4, 'b'), zombieAt(150, -6, 'c'), zombieAt(80, 120, 'off')] });
+    pressStage5();
+    for (let k = 0; k < 60 && !br().resolved; k++) advance(10);
+    expect(hpOf('a')).toBeLessThan(99999);
+    expect(hpOf('b')).toBeLessThan(99999);
+    expect(hpOf('c')).toBeLessThan(99999);
+    expect(hpOf('off')).toBe(99999); // 帯の外
+    expect(br().points).toBe(1); // 何体巻き込んでも1
+  });
+  it('行ける帯の外へは出ない(研究所の上下)', () => {
+    setup();
+    useGameStore.setState({ stageTheme: 'lab' });
+    init();
+    useGameStore.setState(st => ({ player: { ...st.player, y: -LAB_CORRIDOR_Y_LIMIT_PX + 30 - st.player.height / 2, lastDirection: { x: 0, y: -1 } } }));
+    useGameStore.setState({ enemies: [zombieAt(0, -40, 'z')] });
+    pressStage5();
+    for (let k = 0; k < 60 && !br().resolved; k++) advance(10);
+    advance(300);
+    expect(center().y).toBeGreaterThanOrEqual(-LAB_CORRIDOR_Y_LIMIT_PX - 1e-6);
   });
 });

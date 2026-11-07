@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Enemy } from '../types/game';
 import {
-  BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
+  BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS,
+  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
   brawlerStartAttack, brawlerStartTech, brawlerPressDecision, brawlerAfterResolve, brawlerDueEvent, brawlerFinish,
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
@@ -230,10 +231,28 @@ describe('格闘: 絵(クリエイティブ監査)', () => {
     for (let p = 0; p <= 1; p += 0.01) top = Math.max(top, brawlerStompHeight(p));
     expect(top).toBeGreaterThan(BRAWLER_JUMP_VIS_PX);
   });
-  it('掌底は伸び切った形で一拍止まる(戻りの最初は押し出しが最大のまま)', () => {
+  it('掌底は抜けた先で伸び切った形のまま一拍止まる(戻りの最初は前傾が最大のまま・§9-26)', () => {
     const s = { ...brawlerStartAttack(initialBrawlerState(), 5, 0, false), resolved: true };
-    expect(brawlerPoseAt(s, 160)?.push).toBe(brawlerPoseAt(s, 250)?.push);
-    expect(brawlerPoseAt(s, 160)!.push).toBeGreaterThanOrEqual(44);
+    expect(brawlerPoseAt(s, 260)?.lean).toBe(brawlerPoseAt(s, 330)?.lean);
+    expect(brawlerPoseAt(s, 260)!.lean).toBeGreaterThanOrEqual(0.45);
+  });
+  it('5段目: 溜め(前隙−突き抜け)が終わった時に踏み出す・受けた直後は溜めだけ消える', () => {
+    const s = brawlerStartAttack(initialBrawlerState(), 5, 0, false);
+    expect(brawlerPalmDashDue(s, 99)).toBe(false);
+    expect(brawlerPalmDashDue(s, 100)).toBe(true);
+    expect(brawlerPalmDashDue({ ...s, palmFromX: 0, palmFromY: 0 }, 120)).toBe(false);
+    expect(isBrawlerPalmDashing({ ...s, palmFromX: 0, palmFromY: 0 })).toBe(true);
+    const q = brawlerStartAttack(initialBrawlerState(), 5, 0, true);
+    expect(q.windupMs).toBe(BRAWLER_PALM_DASH_MS);
+    expect(brawlerPalmDashDue(q, 0)).toBe(true);
+  });
+  it('5段目の吹き飛ばしは軌跡の横へ外向き+前へ少し(左右に割れる)', () => {
+    const up = brawlerPassKbDir(50, -10, 0, 0, 1, 0, 1);
+    const dn = brawlerPassKbDir(50, 10, 0, 0, 1, 0, 1);
+    expect(up.y).toBeLessThan(0);
+    expect(dn.y).toBeGreaterThan(0);
+    expect(up.x).toBeGreaterThan(0);
+    expect(Math.sign(brawlerPassKbDir(50, 0, 0, 0, 1, 0, -1).y)).toBe(-Math.sign(brawlerPassKbDir(50, 0, 0, 0, 1, 0, 1).y)); // 軌跡の上は side で左右に振り分ける
   });
   it('段ごとの音程は等間隔に下げない', () => {
     const steps = [1, 2, 3, 4].map(i => +(BRAWLER_HIT_PITCH[i] - BRAWLER_HIT_PITCH[i + 1]).toFixed(3));
