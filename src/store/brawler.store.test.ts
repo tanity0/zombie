@@ -1,7 +1,9 @@
 // ★サブウェポン「格闘」(research/BRAWLER.md)をストアで実際に動かして固める。
 // 5段のつながり・ヒットストップ・技ポイント・技(構え/大踏み潰し/気功/飛び蹴り)・近接専用モード・守護霊の疑似プレイヤー。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode } from './gameStore';
+import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH } from './gameStore';
+import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
+import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
 import { BRAWLER_GUARD_MS } from '../utils/brawler';
@@ -278,5 +280,97 @@ describe('格闘: 指定打撃の分岐(§8-1 の止めるもの/残すもの)',
     expect(hpOf('z')).toBeLessThan(99999);
     expect(br().points).toBe(2);
     expect(br().nextStage).toBe(1);
+  });
+});
+
+describe('格闘: 検収の(A)', () => {
+  const guardNow = () => {
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 5 } } }));
+    useGameStore.getState().brawlerTech(0, -1);
+    advance(20);
+  };
+  it('A-1 構えの窓で弾を打ち返す: 打ち返しは残り、青い「Counter!」・カウンターの音・停止/スロー/寄りは出ない', () => {
+    setup();
+    useGameStore.setState({ enemies: [] });
+    guardNow();
+    const c = center();
+    const proj = {
+      id: 'ep', x: c.x - 5, y: c.y - 5, width: 10, height: 10, speed: 0, damage: 10, noCounter: true,
+      direction: { x: -1, y: 0 }, weaponType: 'handgun', hostile: true, reflected: false, passthrough: false, hitEnemies: [], duration: 5000, createdAt: now, critChance: 0,
+    } as unknown as Projectile;
+    useGameStore.setState({ projectiles: [proj] });
+    const calls: string[] = [];
+    const fx = { ...NOOP_COMBAT_EFFECTS,
+      spawnCallout: (_x: number, _y: number, t: string) => { calls.push(`callout:${t}`); },
+      playSfx: (k: string) => { calls.push(`sfx:${k}`); },
+      triggerHitImpact: () => { calls.push('impact'); },
+    } as typeof NOOP_COMBAT_EFFECTS;
+    const slow0 = useGameStore.getState().timeSlowUntil, stop0 = useGameStore.getState().hitstopUntil;
+    const hp0 = useGameStore.getState().player.health;
+    applyEnemyProjectileHits(now, useGameStore.getState().player, false, 0, useGameStore.getState().gameTime, fx, { grenadeBlastRadius: 0, grenadeBlastDamageMult: 0, counterReflectSlowMs: 0 });
+    const pr = useGameStore.getState().projectiles.find(x => x.id === 'ep');
+    expect(pr?.hostile).toBe(false); // 紫の弾も打ち返した(効果は残る)
+    expect(useGameStore.getState().player.health).toBe(hp0);
+    expect(calls).not.toContain('callout:Counter!');
+    expect(calls).not.toContain('sfx:counter');
+    expect(calls).not.toContain('impact');
+    expect(useGameStore.getState().timeSlowUntil).toBe(slow0);
+    expect(useGameStore.getState().hitstopUntil).toBe(stop0);
+    expect(useGameStore.getState().player.brawler!.guardHitAt).toBe(now); // 白金の受けは出た
+  });
+  it('A-1 構えの窓の中は triggerHitImpact(停止・スロー・寄り)を出さない(取りこぼし経路の保険)', () => {
+    setup();
+    guardNow();
+    const slow0 = useGameStore.getState().timeSlowUntil, stop0 = useGameStore.getState().hitstopUntil;
+    useGameStore.getState().triggerHitImpact(100, 100, 8, 1);
+    expect(useGameStore.getState().timeSlowUntil).toBe(slow0);
+    expect(useGameStore.getState().hitstopUntil).toBe(stop0);
+  });
+  it('A-2 気功で倒した敵は経験値を落とし、断末魔を鳴らす', () => {
+    setup();
+    useGameStore.setState(st => ({ enemies: [zombieAt(-200, 0, 'k', 1)], player: { ...st.player, brawler: undefined } }));
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 2 } } }));
+    const pk0 = useGameStore.getState().pickups.length;
+    drainBrawlerSfx();
+    useGameStore.getState().brawlerTech(-1, 0);
+    advance(500);
+    expect(useGameStore.getState().enemies.find(e => e.id === 'k' && e.health > 0 && e.corpseUntil === undefined)).toBeUndefined();
+    expect(useGameStore.getState().pickups.length).toBeGreaterThan(pk0);
+    expect(drainBrawlerSfx().map(b => b.key)).toContain(BRAWLER_SFX_DEATH);
+  });
+  it('A-3 拳で倒したら断末魔を鳴らす', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(45, 0, 'z', 1)] });
+    drainBrawlerSfx();
+    useGameStore.getState().brawlerPress();
+    advance(70);
+    expect(drainBrawlerSfx().map(b => b.key)).toContain(BRAWLER_SFX_DEATH);
+  });
+  it('A-5 武器庫の円の中: 押した瞬間は店を開く(段は出さない)/段の判定の時刻では店を開かない(ポイントを失わない)', () => {
+    setup();
+    const c = center();
+    useGameStore.setState(st => ({ enemies: [zombieAt(45, 0, 'z')], baseSites: [{ ...st.baseSites[0], x: c.x, y: c.y, status: 'captured' }], shopReopenAt: 0 }));
+    expect(useGameStore.getState().brawlerPress()).toBe(true);
+    expect(useGameStore.getState().showShopMenu).toBe(true);
+    expect(useGameStore.getState().player.brawler?.phase ?? 'idle').toBe('idle');
+    const site = useGameStore.getState().baseSites[0];
+    useGameStore.setState({ showShopMenu: false, isPaused: false, baseSites: [] });
+    useGameStore.getState().brawlerPress(); // 円の外で押す
+    useGameStore.setState({ baseSites: [site] }); // 判定の時刻には円の中
+    advance(70);
+    expect(useGameStore.getState().showShopMenu).toBe(false);
+    expect(br().points).toBe(1);
+  });
+  it('A-6 被弾反撃の飛び込みは格闘の詰めの形を持ち越さない', () => {
+    setup();
+    useGameStore.setState(st => ({ player: { ...st.player, lungeShape: 'accel', lungeHoldUntil: now + 999 } }));
+    useGameStore.setState({ enemies: [zombieAt(100, 0, 'z')] });
+    useGameStore.setState(st => ({ player: { ...st.player, invulnerable: false } }));
+    useGameStore.getState().damagePlayer(5, 'test', undefined, undefined, undefined, undefined, undefined, undefined, 'z');
+    useGameStore.getState().tryHitRetaliation(1, 0);
+    expect(useGameStore.getState().player.lungeShape).toBe('decel');
+    expect(useGameStore.getState().player.lungeHoldUntil).toBe(0);
   });
 });

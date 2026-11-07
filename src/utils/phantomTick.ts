@@ -48,6 +48,7 @@ import {
   resolveShieldWalls, shieldPlayableCtx, // ★B6(盾押し・§6)
   spawnShadowCloneOnSwing, // ★O-3b-2(SAME_ARENA §3-d-4): 分身の生成入口。player/ghost-allyと同じ1本
   shieldGuardsPlayerLine, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
+  brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
 } from '../store/gameStore';
 import { phantomAsOwner } from './subWeaponOwner'; // ★O-3b-2: 分身の生成入口へ渡すオーナー形
 import { softCapCritChance } from './critSoftCap'; // ★§13-3d: 近接クリ式のミラーに同じソフトキャップ
@@ -768,13 +769,16 @@ const counteredByPlayer = (
   // crit=false(確定クリ廃止に伴い、クリ付随の移動半減=bossCritSlowPatchも発生させない)。
   // gpSource='counter' は維持=幻影ゲートで「近接カウンター」(パリィ不可・i-frame貫通)のまま。
   g.damageEnemy(phantomId, 0, false, false, false, 'other', 'player', 'counter', 1, 'counter');
-  sfx.parry();
-  g.spawnRing(bcx, bcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-  g.spawnBurst(bcx, bcy, '#38bdf8', 14);
-  g.spawnGlow(bcx, bcy, 43, 'rgba(56,189,248,', 360);
-  g.spawnCallout(bcx, bcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-  { const cl = counterClashPoint(pcx, pcy, bcx, bcy); g.spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
-  g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, bcx, bcy);
+  // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
+  if (!brawlerGuardCounterFx(bcx, bcy)) {
+    sfx.parry();
+    g.spawnRing(bcx, bcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+    g.spawnBurst(bcx, bcy, '#38bdf8', 14);
+    g.spawnGlow(bcx, bcy, 43, 'rgba(56,189,248,', 360);
+    g.spawnCallout(bcx, bcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+    { const cl = counterClashPoint(pcx, pcy, bcx, bcy); g.spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
+    g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, bcx, bcy);
+  }
 };
 
 const swingPhantomMelee = (

@@ -1043,8 +1043,10 @@ const COMBAT_TICK_AI_LEDGER: { where: string; match: RegExp; count: number }[] =
     match: /^aiFromX: leapFrom\.x, aiFromY: leapFrom\.y,$/, count: 1 },
   { where: '★同・到達点=counterLeapTarget の戻り値',
     match: /^aiTargetX: leapTo\.x, aiTargetY: leapTo\.y,$/, count: 1 },
+  // v0.25.5385(格闘 検収 A): 突進パリィの技の中断(dashParriedEnemyPatch)の1本は utils/enemyBite.ts の
+  // counterInterruptPatch へ移した(格闘の大踏み潰しと共有)=combatTick.ts に残るのは1本。
   { where: 'ノックバック解除時の後片付け(照準を捨てる=undefined で消す)',
-    match: /^aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,$/, count: 2 },
+    match: /^aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,$/, count: 1 },
 ];
 
 describe('★combatTick.ts の counter-leap も同じ純関数から出す(9巡目 重大3)', () => {

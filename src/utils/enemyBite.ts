@@ -18,7 +18,7 @@
 //  3. **踏み込みは絵で見せ、敵の当たり判定は動かさない。** 判定を動かすと壁・「行ける帯」の
 //     クランプを自前で書くことになり、v0.25.3875 と同型の穴を作る(CLAUDE.md「Visual vs hitbox」)。
 import type { Enemy, EnemyType } from '../types/game';
-import { isTrueBossType } from './enemyUtils';
+import { isTrueBossType, isBossType } from './enemyUtils';
 import { isPassThroughPhase, isPassThroughBossState } from './enemyMotion';
 import { LICH_BLINK_WINDUP_MS, LICH_BLINK_BITE_MS } from './lichBlink';
 
@@ -925,3 +925,67 @@ export const BITE_BLINK_TINT = 0x9333ea;
  * (全敵とも紫のまま=§12は1bitも変えない)。
  */
 export const biteBlinkTintFor = (_type: EnemyType, _move?: NonNullable<Enemy['chaffMove']>): number => BITE_BLINK_TINT;
+
+/**
+ * カウンターを受けても**技を中断しない**フェーズ(社長指示v0.25.3145「尻尾攻撃、カウンターで中断しないで」)。
+ * 尻尾の叩きつけ→弾の連射は「叩きつけたら必ず撃ち切る」1つの技として設計されているので、
+ * 途中でカウンターが刺さっても**フェーズを消さない**(=残りの連射が出る)。
+ * カウンター自体は従来どおり成立する(ダメージ・確定クリ・ノックバックは入る)——**報酬は消さず、
+ * 技の完走だけを守る**。「薙ぎ払いは出し切る」(社長指示v0.25.3106)と同じ思想の、判定側での実装。
+ * (v0.25.5385 で combatTick.ts から移設=格闘の大踏み潰しの取り消しと共有・research/BRAWLER.md §8-1)
+ */
+export const COUNTER_UNINTERRUPTIBLE_PHASES: readonly string[] = [
+  'g-tailslam-windup', 'g-tailslam-active', 'g-tailslam-volley', 'g-tailslam-recover',
+];
+
+/**
+ * ★カウンター成立と同じ「出していた技の中断」の欄(突進/ジャンプのパリィ `dashParriedEnemyPatch` から切り出し)。
+ * 噛み・§16の技・突進/ジャンプの相を消し、技後CD・硬直を書く。中断しない技(尻尾)は相を触らない。
+ * 格闘の大踏み潰しの強制ノックバック(攻撃中の雑魚・強個体の技を取り消してから押す)も**この1本**を通す。
+ */
+export const counterInterruptPatch = (
+  e: Enemy, gameTimeNow: number, chaffMoveOverride?: NonNullable<Enemy['chaffMove']>,
+): Partial<Enemy> => {
+  const keepPhase = e.aiPhase !== undefined && COUNTER_UNINTERRUPTIBLE_PHASES.includes(e.aiPhase);
+  // ★PACING_PUZZLE.md §16-7 穴2(実装者視点監査A-2): カウンター経路も「いま出している技」の spec を使う(型基準の既定ではなく)。
+  // ★検収監査A-1: e.chaffMove ではなく effectiveMove(呼び手の持ち回り優先)で引く。
+  const effectiveMove = chaffMoveOverride ?? e.chaffMove;
+  const techSpec = biteSpecFor(e.type, effectiveMove, e.aiPhase);
+  return {
+    // ★噛みつきもここで中断する(v0.25.3922)。消さないと `biteAt` が生きたまま残り、
+    // 踏み込みの絶対座標の上書きが**弾き飛ばしたノックバックを打ち消して起点へ引き戻す**。
+    biteAt: 0,
+    biteReadyAt: gameTimeNow + techSpec.recoverMs,
+    // ★PACING_PUZZLE.md §16-H #H-6(社長裁定2026-09-20「A」): **カウンターにも噛みつき直後と同じ
+    // 硬直を書く**。実測(H-9)で、カウンターは全型に成立するのに**硬直が付くのは雑魚だけ**だった——
+    // 気絶5秒は成立側が `if (!killed && !boss)` で書いており、`isBossType`(強個体3種+城ボス+研究所Lv3+
+    // 裏ボス)はそこで丸ごと外れる。そして**この patch はどの型にも `biteRecoverUntil` を書いていない**。
+    // 通常の噛み解決(#H-5)も技の `-recover` 相も硬直を持つのに、**カウンターだけが「硬直の付かない
+    // 攻撃の終わり方」**になっていた=設計の穴。
+    // ★長さは `COUNTER_RECOVER_STILL_MS`(2000ms)。#H-7(社長指摘2026-09-20「普通に着地した時より、
+    // カウンター後の方が硬直が短い」)で 350 → 2000 へ。**通常の技後硬直より短いとカウンターを
+    // 取るほど損**になるので、一番長い通常硬直(パンプキンの着地)に揃えてある。
+    // ★副作用(実測・H-10): カウンター直後の押し出しが 83px → 64px になる(全型)。即時の弾き飛ばし
+    // (`COUNTER_KNOCKBACK_LAUNCH`)は不変で、そのあとの速度スライドを硬直が飲む。
+    // これは既存の不変条件どおり(`biteRecover.test.ts`「★硬直中は1pxも動かない」)。
+    // ★`keepPhase`(中断しない技=尻尾の叩きつけ)には掛けない——`chaffMove` を消すので
+    // updateEnemies の硬直ブロック(`chaffMove === undefined` ゲート)に掛かり、**技が完走しなくなる**。
+    ...(keepPhase ? {} : { biteRecoverUntil: gameTimeNow + COUNTER_RECOVER_STILL_MS }),
+    // ★§16-7b「中断(カウンター成立含む)は消す+技後CDを書く」(訂正版・§16-7穴2)。
+    chaffMove: undefined, chaffBlinkAt: undefined,
+    ...(effectiveMove !== undefined ? { chaffMoveCdUntil: gameTimeNow + techSpec.recoverMs } : {}),
+    // 突進/ジャンプ中断。※ COUNTER_UNINTERRUPTIBLE_PHASES の技だけは技を消さない(社長指示v0.25.3145)。
+    ...(keepPhase ? {} : {
+      aiPhase: undefined,
+      aiPhaseUntil: undefined, aiStartedAt: undefined,
+      aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+      // ★v0.25.4592(社長裁定2026-09-23「**でも台本は続ける**」): **ボスには抽選ゲートを書かない。**
+      // `aiReadyAt` は城ボス(giantbat/グレン)の**技抽選ゲートそのもの**
+      // (useGameLoop:3512「技抽選ゲートは aiReadyAt。bossNextActionAt は城ボスでは読まれない」)。
+      // ここで +1200ms 書くと、**カウンターは技を消すだけでなく台本ごと1.2秒止めていた**。
+      // 出していた技を消す(=三連ツキは全部キャンセル)のは従来どおりで、**次の技へ進む足だけ外す**。
+      // 雑魚は従来どおり(§16-7bの技後CD・気絶5秒と組みで設計されているため触らない)。
+      ...(isBossType(e.type) ? {} : { aiReadyAt: gameTimeNow + 1200 }),
+    }),
+  };
+};

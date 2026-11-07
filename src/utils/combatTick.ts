@@ -49,6 +49,7 @@ import {
   biteBodyOverlapsPlayer, isBiteInterruptedByMove, isBiteFrozen, BITE_RECOVER_STILL_MS,
   COUNTER_RECOVER_STILL_MS,
   isInBiteCircle, // ★§16-C(転移噛み・C-3-a1): この技だけ判定を円で取る
+  counterInterruptPatch, // カウンター成立の技の中断(格闘の大踏み潰しと共有)
 } from './enemyBite';
 import { LICH_BLINK_RADIUS_PX } from './lichBlink'; // §16-C: 予告円の半径=判定円の半径(C-4)
 import { BAT_GRAB_HOLD_MS } from './chaffMoves'; // ★PACING_PUZZLE.md §16-1(bat の掴み)
@@ -70,6 +71,7 @@ import {
   REFLECT_DAMAGE_MULTIPLIER, // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王の倍率計算に使う基準値
   counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
   playerPvpChipPatch, // ★SAME_ARENA §9(対人体勢): 幻影の弾クリ/弾パリィ返しの被弾でプレイヤー体勢を削る
+  brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
 } from '../store/gameStore';
 import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_ARENA §9: クリ被弾の2/3減速+紫中の弾パリィ停止
 // v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
@@ -590,14 +592,17 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     const pnow = Date.now();
     // 通常カウンター(弾反射)と同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
     fx.addMeleeFinishCombo(1);
-    fx.playSfx('counter');
-    fx.spawnGlow(bpcx, bpcy, GLOW_R_L, 'rgba(56,189,248,', 360);
-    fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
-    fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
-    fx.spawnRing(bpcx, bpcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-    fx.spawnBurst(bpcx, bpcy, '#38bdf8', 14);
-    fx.spawnCallout(bpcx, bpcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-    { const b0 = parriedEnemyIds[0] ?? localParries[0]; const cl = counterClashPoint(bpcx, bpcy, b0.bx, b0.by); useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点(弾いた爆風/帯の方へ)
+    // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
+    if (!brawlerGuardCounterFx(bpcx, bpcy)) {
+      fx.playSfx('counter');
+      fx.spawnGlow(bpcx, bpcy, GLOW_R_L, 'rgba(56,189,248,', 360);
+      fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
+      fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
+      fx.spawnRing(bpcx, bpcy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+      fx.spawnBurst(bpcx, bpcy, '#38bdf8', 14);
+      fx.spawnCallout(bpcx, bpcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+      { const b0 = parriedEnemyIds[0] ?? localParries[0]; const cl = counterClashPoint(bpcx, bpcy, b0.bx, b0.by); useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // カウンターした地点(弾いた爆風/帯の方へ)
+    }
     useGameStore.setState(st => ({
       // 弾いた直後は敵がプレイヤーに重なっている(着地)ので、通常接触ダメージで被弾しないよう
       // 短い無敵(i-frame)を付与。これで「カウンターしたのに被弾」を防ぐ。
@@ -1139,17 +1144,20 @@ export const applyEnemyProjectileHits = (
     // 持ち主IDを渡す=交戦中のボス本人の弾だけが窓の外でも数えられる。同フレームの複数弾は通知側で1成立に畳む。
     for (const id of reflectedOwnerIds) notifyCounterHit(id);
     fx.addMeleeFinishCombo(1);
-    fx.playSfx('counter');
-    const pcx = player.x + player.width / 2;
-    const pcy = player.y + player.height / 2;
-    fx.spawnGlow(pcx, pcy, GLOW_R_L, 'rgba(56,189,248,', tunables.counterReflectSlowMs);
-    // カウンター: ストップ→(後で)揺れ+寄りズーム(社長指示)。ダンス中はストップ抜きで即時。
-    fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
-    fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
-    fx.spawnRing(pcx, pcy, 14, 135, 'rgba(56,189,248,0.9)', 3, tunables.counterReflectSlowMs);
-    fx.spawnBurst(pcx, pcy, '#38bdf8', 14);
-    fx.spawnCallout(pcx, pcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-    { const cl = reflectedAt ? counterClashPoint(pcx, pcy, reflectedAt.x, reflectedAt.y) : { x: pcx, y: pcy }; useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // 弾を打ち返した地点
+    // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
+    if (!brawlerGuardCounterFx(reflectedAt?.x ?? player.x + player.width / 2, reflectedAt?.y ?? player.y + player.height / 2)) {
+      fx.playSfx('counter');
+      const pcx = player.x + player.width / 2;
+      const pcy = player.y + player.height / 2;
+      fx.spawnGlow(pcx, pcy, GLOW_R_L, 'rgba(56,189,248,', tunables.counterReflectSlowMs);
+      // カウンター: ストップ→(後で)揺れ+寄りズーム(社長指示)。ダンス中はストップ抜きで即時。
+      fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG);
+      fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
+      fx.spawnRing(pcx, pcy, 14, 135, 'rgba(56,189,248,0.9)', 3, tunables.counterReflectSlowMs);
+      fx.spawnBurst(pcx, pcy, '#38bdf8', 14);
+      fx.spawnCallout(pcx, pcy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+      { const cl = reflectedAt ? counterClashPoint(pcx, pcy, reflectedAt.x, reflectedAt.y) : { x: pcx, y: pcy }; useGameStore.getState().spawnCounterShatter(cl.x, cl.y); } // 弾を打ち返した地点
+    }
   }
 };
 
@@ -1287,9 +1295,6 @@ export const isDashParryCounterPhase = (enemy: Pick<Enemy, 'type' | 'aiPhase'>):
  * カウンター自体は従来どおり成立する(ダメージ・確定クリ・ノックバックは入る)——**報酬は消さず、
  * 技の完走だけを守る**。「薙ぎ払いは出し切る」(社長指示v0.25.3106)と同じ思想の、判定側での実装。
  */
-const COUNTER_UNINTERRUPTIBLE_PHASES: readonly string[] = [
-  'g-tailslam-windup', 'g-tailslam-active', 'g-tailslam-volley', 'g-tailslam-recover',
-];
 
 export const dashParriedEnemyPatch = (
   e: Enemy, originX: number, originY: number, pnow: number, gameTimeNow: number,
@@ -1300,8 +1305,6 @@ export const dashParriedEnemyPatch = (
   chaffMoveOverride?: NonNullable<Enemy['chaffMove']>,
 ): Enemy => {
   const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
-  // 中断しない技は、フェーズ関連のフィールドを**1つも触らない**で返す(下の一括クリアを免除)。
-  const keepPhase = e.aiPhase !== undefined && COUNTER_UNINTERRUPTIBLE_PHASES.includes(e.aiPhase);
   // ジャンプ同様、突進中の敵は攻め手に重なって向きが潰れることがある。
   // 距離が小さいときは突進してきた向き(aiFrom→現在)の逆=「来た方へ弾き返す」を使う。
   let ndx = ecx - originX, ndy = ecy - originY;
@@ -1313,49 +1316,10 @@ export const dashParriedEnemyPatch = (
     else { ndx = 0; ndy = -1; d = 1; }
   }
   const ux = ndx / d, uy = ndy / d;
-  // ★PACING_PUZZLE.md §16-7 穴2(実装者視点監査A-2): カウンター経路も「いま出している技」の
-  // spec を使う(型基準の既定ではなく)。§16の技(chaffMove定義)は技後CD(bat 6000/skeleton 5000/
-  // ゾンビ2連 4000)を書かないと、赤を返した0.6秒後に §12 の紫噛みが連鎖してしまう。
-  // ★検収監査A-1: e.chaffMove ではなく effectiveMove(呼び手の持ち回り優先)で引く。
-  const effectiveMove = chaffMoveOverride ?? e.chaffMove;
-  const techSpec = biteSpecFor(e.type, effectiveMove, e.aiPhase);
   return {
     ...e,
-    // ★噛みつきもここで中断する(v0.25.3922)。消さないと `biteAt` が生きたまま残り、
-    // 踏み込みの絶対座標の上書きが**弾き飛ばしたノックバックを打ち消して起点へ引き戻す**。
-    biteAt: 0,
-    biteReadyAt: gameTimeNow + techSpec.recoverMs,
-    // ★PACING_PUZZLE.md §16-H #H-6(社長裁定2026-09-20「A」): **カウンターにも噛みつき直後と同じ
-    // 硬直を書く**。実測(H-9)で、カウンターは全型に成立するのに**硬直が付くのは雑魚だけ**だった——
-    // 気絶5秒は成立側が `if (!killed && !boss)` で書いており、`isBossType`(強個体3種+城ボス+研究所Lv3+
-    // 裏ボス)はそこで丸ごと外れる。そして**この patch はどの型にも `biteRecoverUntil` を書いていない**。
-    // 通常の噛み解決(#H-5)も技の `-recover` 相も硬直を持つのに、**カウンターだけが「硬直の付かない
-    // 攻撃の終わり方」**になっていた=設計の穴。
-    // ★長さは `COUNTER_RECOVER_STILL_MS`(2000ms)。#H-7(社長指摘2026-09-20「普通に着地した時より、
-    // カウンター後の方が硬直が短い」)で 350 → 2000 へ。**通常の技後硬直より短いとカウンターを
-    // 取るほど損**になるので、一番長い通常硬直(パンプキンの着地)に揃えてある。
-    // ★副作用(実測・H-10): カウンター直後の押し出しが 83px → 64px になる(全型)。即時の弾き飛ばし
-    // (`COUNTER_KNOCKBACK_LAUNCH`)は不変で、そのあとの速度スライドを硬直が飲む。
-    // これは既存の不変条件どおり(`biteRecover.test.ts`「★硬直中は1pxも動かない」)。
-    // ★`keepPhase`(中断しない技=尻尾の叩きつけ)には掛けない——`chaffMove` を消すので
-    // updateEnemies の硬直ブロック(`chaffMove === undefined` ゲート)に掛かり、**技が完走しなくなる**。
-    ...(keepPhase ? {} : { biteRecoverUntil: gameTimeNow + COUNTER_RECOVER_STILL_MS }),
-    // ★§16-7b「中断(カウンター成立含む)は消す+技後CDを書く」(訂正版・§16-7穴2)。
-    chaffMove: undefined, chaffBlinkAt: undefined,
-    ...(effectiveMove !== undefined ? { chaffMoveCdUntil: gameTimeNow + techSpec.recoverMs } : {}),
-    // 突進/ジャンプ中断。※ COUNTER_UNINTERRUPTIBLE_PHASES の技だけは技を消さない(社長指示v0.25.3145)。
-    ...(keepPhase ? {} : {
-      aiPhase: undefined,
-      aiPhaseUntil: undefined, aiStartedAt: undefined,
-      aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-      // ★v0.25.4592(社長裁定2026-09-23「**でも台本は続ける**」): **ボスには抽選ゲートを書かない。**
-      // `aiReadyAt` は城ボス(giantbat/グレン)の**技抽選ゲートそのもの**
-      // (useGameLoop:3512「技抽選ゲートは aiReadyAt。bossNextActionAt は城ボスでは読まれない」)。
-      // ここで +1200ms 書くと、**カウンターは技を消すだけでなく台本ごと1.2秒止めていた**。
-      // 出していた技を消す(=三連ツキは全部キャンセル)のは従来どおりで、**次の技へ進む足だけ外す**。
-      // 雑魚は従来どおり(§16-7bの技後CD・気絶5秒と組みで設計されているため触らない)。
-      ...(isBossType(e.type) ? {} : { aiReadyAt: gameTimeNow + 1200 }),
-    }),
+    // カウンター成立の「出していた技の中断」は1本(utils/enemyBite.ts の counterInterruptPatch・格闘の大踏み潰しと共有)。
+    ...counterInterruptPatch(e, gameTimeNow, chaffMoveOverride),
     // 即時に弾き飛ばし+凍結系/ノックバック無敵を全解除(ジャンプカウンターと同根の対策)。
     // ★中断しない技でも位置は動く(弾き返しの手応えは残す)。帯は溜め開始で焼いた aiFrom→aiTarget を
     //   そのまま使うので、本体が押されても**赤い予告と判定はズレない**(判定の正本は焼いた座標)。
@@ -2166,9 +2130,12 @@ export const applyContactDamage = (
     }));
     const pp = useGameStore.getState().player;
     const ppx = pp.x + pp.width / 2, ppy = pp.y + pp.height / 2;
-    fx.playSfx('counter');
-    fx.spawnRing(ppx, ppy, 10, 60, 'rgba(56,189,248,0.85)', 3, 260);
-    fx.spawnBurst(ppx, ppy, '#38bdf8', 8);
+    // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
+    if (!brawlerGuardCounterFx(ppx, ppy)) {
+      fx.playSfx('counter');
+      fx.spawnRing(ppx, ppy, 10, 60, 'rgba(56,189,248,0.85)', 3, 260);
+      fx.spawnBurst(ppx, ppy, '#38bdf8', 8);
+    }
   }
   // V1(3): 打刻の反映(視覚専用フィールドのみ更新・判定/ダメージ/移動は1bitも変えない)。
   // i-frameで接触ダメージは高々1回/無敵窓なので、このsetStateはダメージが入ったtickにしか走らない。
@@ -2190,17 +2157,20 @@ export const applyContactDamage = (
     const ppx = collPlayer.x + collPlayer.width / 2, ppy = collPlayer.y + collPlayer.height / 2;
     // 通常カウンターと同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
     fx.addMeleeFinishCombo(1);
-    fx.playSfx('counter');
-    fx.spawnGlow(ppx, ppy, GLOW_R_L, 'rgba(56,189,248,', 360);
-    fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
-    fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
-    fx.spawnRing(ppx, ppy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-    fx.spawnBurst(ppx, ppy, '#38bdf8', 14);
-    fx.spawnCallout(ppx, ppy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-    {
-      const de = useGameStore.getState().enemies.find(e => e.id === dashParried[0]);
-      const cl = de ? counterClashPoint(ppx, ppy, de.x + de.width / 2, de.y + de.height / 2) : { x: ppx, y: ppy };
-      useGameStore.getState().spawnCounterShatter(cl.x, cl.y); // カウンターした地点(弾いた敵の方へ)
+    // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
+    if (!brawlerGuardCounterFx(ppx, ppy)) {
+      fx.playSfx('counter');
+      fx.spawnGlow(ppx, ppy, GLOW_R_L, 'rgba(56,189,248,', 360);
+      fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
+      fx.markMeleeSwingFx(); // §5.22-追補(社長決定v0.25.1536): カウンターにも近接スイングを出す
+      fx.spawnRing(ppx, ppy, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+      fx.spawnBurst(ppx, ppy, '#38bdf8', 14);
+      fx.spawnCallout(ppx, ppy - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+      {
+        const de = useGameStore.getState().enemies.find(e => e.id === dashParried[0]);
+        const cl = de ? counterClashPoint(ppx, ppy, de.x + de.width / 2, de.y + de.height / 2) : { x: ppx, y: ppy };
+        useGameStore.getState().spawnCounterShatter(cl.x, cl.y); // カウンターした地点(弾いた敵の方へ)
+    }
     }
     useGameStore.setState(st => ({
       // 弾いた直後は突進してきた敵が重なっているので、短い無敵で次フレームの接触被弾を防ぐ。

@@ -393,7 +393,7 @@ import { METAL_PALETTE, shieldBeamPalette } from '../utils/shieldGuardFx'; // �
 import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): 純関数(src/world/shieldPush.test.ts)
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
-import { isBiteSubject, isHarmlessFootWallSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS, BAT_WINDUP_STILL_MS, biteLungeDistanceAtFire } from '../utils/enemyBite';
+import { counterInterruptPatch, isBiteSubject, isHarmlessFootWallSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS, BAT_WINDUP_STILL_MS, biteLungeDistanceAtFire } from '../utils/enemyBite';
 // ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。旧 `deferFrozenClocksBy`(凍結dtの毎フレーム
 // 繰り下げ)は**破棄**して、この「残りを預かって明けた瞬間に書き直す」1本へ置き換えた(H-3)。
 import { tickEnemyClockFreeze } from '../utils/enemyClocks';
@@ -4230,6 +4230,13 @@ export const drainBrawlerSfx = (): BrawlerSfx[] => {
   return q;
 };
 const BRAWLER_SFX_EMPTY: BrawlerSfx[] = [];
+/** 音の列の特別なキー: 敵の断末魔(`playEnemyDeath`・SfxKey ではない)。 */
+export const BRAWLER_SFX_DEATH = '__enemy-death';
+/** 格闘の当たりで倒した/処刑した時の音(ナイフと同じ・検収 A-3)。 */
+const brawlerKillSfx = (r: CounterTriggerResult): void => {
+  if (r.finish) brawlerSfx('melee-finish');
+  if (r.killed > 0) brawlerSfx(BRAWLER_SFX_DEATH);
+};
 /** 毎発わずかに音程を揺らす(§4)。 */
 const brJitter = (): number => 0.94 + Math.random() * 0.12;
 /** 気功の弾の時計(gameTime の前回値)。 */
@@ -4314,17 +4321,9 @@ const brawlerHitPatch = (
       ...(kind === 'big' ? { knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS, brawlerBlownAt: now } : {}),
     });
     // 下の大踏み潰しの強制ノックバック: 攻撃中の雑魚・強個体はその技を取り消してから押す(カウンター成立と同じ取り消し=予告も消える)。
+    // 取り消しの欄はカウンター成立と同じ1本(utils/enemyBite.ts counterInterruptPatch)。凍結系も解く(押しを邪魔させない)。
     if (forced && attacking) {
-      const spec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
-      Object.assign(out, {
-        biteAt: 0, biteReadyAt: gameTime + spec.recoverMs,
-        chaffMove: undefined, chaffBlinkAt: undefined,
-        ...(enemy.chaffMove !== undefined ? { chaffMoveCdUntil: gameTime + spec.recoverMs } : {}),
-        aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
-        aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
-        aiReadyAt: gameTime + 1200,
-        lastCounteredAt: now,
-      });
+      Object.assign(out, counterInterruptPatch(enemy, gameTime), { liftUntil: undefined, rootUntil: undefined, lastCounteredAt: now });
     }
   }
   // 4段目の浮かせ(足止め 450ms・絵だけ浮く)。ボス級・攻撃中の敵は浮かない(§7-10)。止めの後に展開する。
@@ -4332,6 +4331,45 @@ const brawlerHitPatch = (
     Object.assign(out, { knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + Math.max(stopMs, BR.BRAWLER_LIFT_MS), brawlerLiftAt: now });
   }
   return out;
+};
+
+/**
+ * 武器庫(制圧拠点中央の小サークル・研究所のアイドル手前)で指を離す=遠隔で武器商人を開く。開いたら true。
+ * ナイフ(triggerCounter)は窓と CD も張る(windowPatch)。格闘は押した瞬間の素の入力だけで開き、窓は張らない
+ * (段・技の判定の時刻では開かない=技ポイントを失わない・検収 A-5)。
+ */
+const openArmoryShopIfInside = (
+  get: () => GameState, set: (p: Partial<GameState>) => void, pcx: number, pcy: number, windowPatch: Partial<Player> | null,
+): boolean => {
+  const st = get();
+  const gameTime = st.gameTime;
+  // 紅き夜中は開かない(拠点近接の「やり過ごし」が別途処理)。
+  // v0.25.3054(社長指示・監査指摘): ボス戦中(+復帰猶予)は開かない——ボス戦中は指を離し続ける
+  // ため、拠点の近くで戦うと必ず踏んでいた(「閉じ込められて何もできず」の最有力経路)。
+  if (st.showShopMenu || st.showUpgradeMenu || gameTime < st.shopReopenAt || st.redNight?.phase === 'active'
+    || facilitiesLocked(st.bossFightNow, st.bossFightLastTrueAt, gameTime)) return false;
+  // 研究所のアイドル手前の遠隔ショップ(2026-10-11)も、制圧済みの拠点の武器庫と同じ扱い(常に開いている)。
+  const la = st.labArmory;
+  const armories = la ? [...st.baseSites, { x: la.x, y: la.y, status: 'captured' as const }] : st.baseSites;
+  for (const b of armories) {
+    if (b.status !== 'captured') continue;
+    const adx = b.x - pcx, ady = b.y - pcy;
+    if (adx * adx + ady * ady > ARMORY_RADIUS * ARMORY_RADIUS) continue;
+    set({
+      showShopMenu: true,
+      isPaused: true,
+      pauseReason: 'shop',
+      touchActive: false,
+      swipeDirection: null,
+      swipeStrength: 1,
+      ...(windowPatch ? { player: { ...get().player, ...windowPatch } } : {}),
+    });
+    get().spawnRing(b.x, b.y - 26, 12, 58, 'rgba(251,191,36,0.88)', 3, SHOP_INTERACT_RING_MS);
+    get().spawnGlow(b.x, b.y - 28, GLOW_R_S, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
+    get().spawnCallout(b.x, b.y - 70, 'SHOP', '#fde68a');
+    return true;
+  }
+  return false;
 };
 
 /** 通常攻撃の段を始める(相手を選び・向きを相手へ・詰めを器へ載せる・振りの音)。 */
@@ -4445,10 +4483,12 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       ...(spec.shape === 'landing' ? { lift: true } : {}),
     });
     const hits = r.hits ?? 0;
+    brawlerKillSfx(r);
     const next = BR.brawlerAfterResolve({ ...s, dirX: dir.x, dirY: dir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs });
     setBrawler(set, next, {
       lastDirection: { x: dir.x, y: dir.y },
-      ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, spec.hitstopMs, now) : {}),
+      // 当てた=反動の減速 / 空振り=詰めの 'accel' を 'decel' に戻す(古い形を残さない・検収 A-6)。
+      ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, spec.hitstopMs, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
     brawlerStageFx(get, s.stage, c, dir, r, target);
     return;
@@ -4467,6 +4507,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
     });
     const hits = r.hits ?? 0;
+    brawlerKillSfx(r);
     setBrawler(set, BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: BR.BRAWLER_STOMP_HITSTOP_MS }),
       hits > 0 ? { lungeHoldUntil: now + BR.BRAWLER_STOMP_HITSTOP_MS } : {});
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
@@ -4503,10 +4544,11 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       kb: big ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } : { kind: 'normal', dirX: dir.x, dirY: dir.y },
     });
     const hits = r.hits ?? 0;
+    brawlerKillSfx(r);
     const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: hs });
     setBrawler(set, { ...after, kickChainUntil: big ? 0 : t + BR.BRAWLER_KICK_CHAIN_MS, kickCount: big ? 0 : s.kickN }, {
       lastDirection: { x: dir.x, y: dir.y },
-      ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, hs, now) : {}),
+      ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, hs, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
     for (const h of r.hitAt ?? []) {
       g.spawnEffect({ kind: 'meleeHit', id: `mhit-kick-${now}-${h.id}`, x: h.x, y: h.y, size: big ? 280 : 200, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
@@ -4653,6 +4695,11 @@ const explodeBrawlerKiko = (get: () => GameState, x: number, y: number): void =>
     get().spawnDamageNumber(e.x + e.width / 2, e.y, dmg, false, { enemyId: id });
     dealt += dmg;
     if (!killed) burnIds.push(id);
+    else {
+      // 倒した敵は手榴弾の爆発と同じく経験値を落とし、断末魔を鳴らす(検収 A-2)。
+      get().dropEnemyXp(e, e.x + e.width / 2, e.y + e.height / 2, `pickup-xp-kiko-${Date.now()}-${id}`);
+      brawlerSfx(BRAWLER_SFX_DEATH);
+    }
   }
   if (burnIds.length > 0 && burn.dps > 0) {
     const bs = new Set(burnIds);
@@ -6752,6 +6799,16 @@ export const currentFriendlyShield = (projectiles?: readonly { weaponType?: stri
   if (isBrawlerGuarding(st.player, st.gameTime)) return brawlerGuardBodyRect(st.player);
   return friendlyShieldRect(projectiles ?? st.projectiles);
 };
+/**
+ * ★格闘の構えの窓の中でカウンターが成立した時の演出の差し替え(research/BRAWLER.md §8-5)。構え中なら白金の受けを出して true
+ * =呼び手は通常カウンターの演出(青い輪・光・「Counter!」・音・停止・スロー・寄り)を出さない。効果(打ち返し・気絶・コンボ)は呼び手が残す。
+ */
+export const brawlerGuardCounterFx = (x: number, y: number): boolean => {
+  const st = useGameStore.getState();
+  if (!isBrawlerGuarding(st.player, st.gameTime)) return false;
+  st.brawlerGuardReceive(x, y);
+  return true;
+};
 /** 構えの体の矩形(盾の代わり)。 */
 export const brawlerGuardBodyRect = (p: Player): Rect => ({ x: p.x, y: p.y, width: p.width, height: p.height });
 
@@ -6815,6 +6872,9 @@ const attackerKeyOf = (a: ShieldGuardInput['attacker']): string | undefined =>
  */
 export const noteShieldGuard = (shield: Rect, g: ShieldGuardInput = {}): void => {
   const scx = shield.x + shield.width / 2, scy = shield.y + shield.height / 2;
+  // ★格闘の構え中の「盾」はプレイヤーの体(research/BRAWLER.md §8-5)。細いレーザーは体の面で切れて damagePlayer まで届かない
+  // ことがあるので、ここで白金の受けを出す。本物の盾(守護霊の盾など)の耐久は削らない。
+  { const st = useGameStore.getState(); if (isBrawlerGuarding(st.player, st.gameTime)) { st.brawlerGuardReceive(g.x ?? scx, g.y ?? scy); return; } }
   const cost = g.cost ?? shieldGuardCostFor(attackerTypeOf(g.attacker));
   const entry: ShieldGuardFxEntry = {
     x: g.x ?? scx, y: g.y ?? scy, dx: g.dx ?? 0, dy: g.dy ?? 1, kind: g.kind ?? 'hit',
@@ -9476,6 +9536,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         lungeVy: moves ? (my / md) * spd : 0,
         lungeUntil: moves ? now + RETALIATE_LUNGE_MS : 0,
         lungeMs: RETALIATE_LUNGE_MS,
+        lungeShape: 'decel', // 格闘の詰め('accel')を持ち越さない(検収 A-6)
+        lungeHoldUntil: 0,
         retaliateStrikeAt: now + (moves ? RETALIATE_LUNGE_MS : 0),
         retaliateTargetId: target.id,
       },
@@ -9547,6 +9609,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!isBrawlerMode(p)) return false;
     if (!brawlerGateOk(get)) return false;
     const s = p.brawler ?? BR.initialBrawlerState();
+    // 武器庫の円の中で押した=店を開く(段は出さない・検収 A-5)。行動の最中の押下(先行入力)では開かない。
+    if (s.phase === 'idle' && openArmoryShopIfInside(get, set, p.x + p.width / 2, p.y + p.height / 2, null)) return true;
     const d = BR.brawlerPressDecision(s, st.gameTime);
     if (d === 'drop') return false;
     if (d === 'buffer') { setBrawler(set, { ...s, buffered: true }); return true; }
@@ -9949,6 +10013,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           lungeVy: (ld.y / lm) * spd,
           lungeUntil: now + MELEE_LUNGE_MS,
           lungeMs: undefined, // 被弾反撃の飛び込み(120ms)の尺を持ち越さない
+          lungeShape: 'decel', // 格闘の詰め('accel')・止めを持ち越さない(検収 A-6)
+          lungeHoldUntil: 0,
         } }));
       }
     }
@@ -9986,8 +10052,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const retMult = ret?.mult ?? 1;
     const {
       player, gameTime, realGameTime, enemies, projectiles,
-      showShopMenu, showUpgradeMenu,
-      shopReopenAt
     } = get();
     // 帰還サークル内の攻撃停止は撤廃(社長指示v0.25.3318: 指離せば即ゴールなので不要)。
     // MOVEMENT_REWORK.md 仕様2(社長確定v0.25.2442): スケーター乗車中は攻撃封印(例外なし)。
@@ -10022,6 +10086,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const b0 = get().player.brawler ?? BR.initialBrawlerState();
       setBrawler(set, { ...b0, nextStage: 1, chainUntil: 0, buffered: false });
       brawlerStageFx(get, 3, pc0, dir0, r0, tgt);
+      brawlerKillSfx(r0);
       return r0;
     }
     // ★縮地(§32): PC/ボットの直呼び(前隙なし)もタッチと同じくワープ斬撃の予約へ。斬撃と音は
@@ -10163,36 +10228,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 紅き夜中は開かない(拠点近接の「やり過ごし」が別途処理)。
     // v0.25.3054(社長指示・監査指摘): ボス戦中(+復帰猶予)は開かない——ボス戦中は指を離し続ける
     // ため、拠点の近くで戦うと必ず踏んでいた(「閉じ込められて何もできず」の最有力経路)。
-    if ((!ret || bs) && !showShopMenu && !showUpgradeMenu && gameTime >= shopReopenAt && get().redNight?.phase !== 'active'
-      && !facilitiesLocked(get().bossFightNow, get().bossFightLastTrueAt, gameTime)) {
-      // 研究所のアイドル手前の遠隔ショップ(2026-10-11)も、制圧済みの拠点の武器庫と同じ扱い(常に開いている)。
-      const la = get().labArmory;
-      const armories = la ? [...get().baseSites, { x: la.x, y: la.y, status: 'captured' as const }] : get().baseSites;
-      for (const b of armories) {
-        if (b.status !== 'captured') continue;
-        const adx = b.x - pcx, ady = b.y - pcy;
-        if (adx * adx + ady * ady > ARMORY_RADIUS * ARMORY_RADIUS) continue;
-        set({
-          showShopMenu: true,
-          isPaused: true,
-          pauseReason: 'shop',
-          touchActive: false,
-          swipeDirection: null,
-          swipeStrength: 1,
-          // 格闘(§8-1): 窓は開かずにショップだけ開く。
-          player: bs ? get().player : {
-            ...player,
-            counterWindowStart: now, // 隻狼型(v0.25.3943)
-            counterWindowEnd: now + counterAcceptMsOf(player),
-            counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
-          },
-        });
-        get().spawnRing(b.x, b.y - 26, 12, 58, 'rgba(251,191,36,0.88)', 3, SHOP_INTERACT_RING_MS);
-        get().spawnGlow(b.x, b.y - 28, GLOW_R_S, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
-        get().spawnCallout(b.x, b.y - 70, 'SHOP', '#fde68a');
-        if (bs) return { swung: true, hit: false, finish: false, killed: 0, hits: 0 };
-        return { swung: true, hit: true, finish: false, killed: 0 };
-      }
+    if (!ret && openArmoryShopIfInside(get, set, pcx, pcy, {
+      counterWindowStart: now, // 隻狼型(v0.25.3943)
+      counterWindowEnd: now + counterAcceptMsOf(player),
+      counterCooldownEnd: now + COUNTER_WINDOW + COUNTER_COOLDOWN,
+    })) {
+      return { swung: true, hit: true, finish: false, killed: 0 };
     }
 
     // 二人組(クエストNPC)の会話ポップアップは廃止(社長指示v0.25.1681)。受領は「会話サークル内に
@@ -24946,6 +24987,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ダンス中(四神舞)は gameTime を止めるとリズムが乱れるためストップ抜き=全て即時。
     // v0.25.2585: targetX/Y 指定時はその点へ寄る(守護霊のカウンター=成立位置)。未指定は従来どおり中央。
     // v0.25.4294(CINEMATIC_CAMERA v2): カウンターの寄りは**短く・硬く切る**(320ms/保持240)。スロー(700)とは同期しない=演目の時間構造を変える。
+    // ★格闘の構えの窓の中は停止もスローも寄りも出さない(取りこぼした経路の保険・research/BRAWLER.md §8-5)。
+    if (isBrawlerGuarding(get().player, get().gameTime)) return;
     get().triggerZoom(zoomMag, COUNTER_ZOOM_MS, COUNTER_ZOOM_HOLD_MS, targetX, targetY, 'counter');
     // v0.25.4284: shakeMag<=0 は「揺れは registerImpact 側(ダメージ由来)が出す」=ここでは停止/ズーム/スローだけ。
     if (get().rhythm.active) {

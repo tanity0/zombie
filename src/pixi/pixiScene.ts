@@ -39956,7 +39956,8 @@ export class PixiScene {
     // 刀装備中は通常ナイフの剣閃テレグラフを出さない。カウンターが実際に
     // 成立した直後だけ既存のカウンターエフェクト(剣閃+リング)を表示する。
     const katana = player.subWeapons.includes('katana') || player.subWeapons.includes('murasame');
-    const counterFxVisible = !katana || now - player.lastCounterSuccessTime < 360;
+    // ★格闘はナイフの攻撃範囲の輪と三日月を出さない(素手=ナイフの間合いの絵は嘘になる。構えの受けは白金の絵が受け持つ・検収 A-4)。
+    const counterFxVisible = isBrawlerMode(player) ? false : (!katana || now - player.lastCounterSuccessTime < 360);
     if (this.counterReachRing) this.counterReachRing.visible = false; // 既定OFF(下で出す時だけON)
     // ★実機FB10(v0.25.3617・社長スクショ「キル時に発生して止まってる斬撃の弧はこれ」): 正体は
     // この**カウンター窓のリング+クレセント**。KILL全停止中は now が凍る=約140msで消えるはずの

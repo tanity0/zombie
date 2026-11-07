@@ -27,6 +27,7 @@ import {
   BOSS_CRIT_DAMAGE_MULT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_ZOOM_MAG,
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult, bossCritCdMult,
   shieldGuardsPlayerArea, shieldGuardsPlayerLine, currentFriendlyShield, noteShieldBeam, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
+  brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
 } from '../store/gameStore';
 import { splitBeamAtShield, beamStripsHit, type BeamShieldSplit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: レーザー=壁(光線の幅)
 import { getActiveGun } from './weaponUtils';
@@ -276,14 +277,17 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   const cp = st.player;
   const pnow = Date.now();
   st.addMeleeFinishCombo(1);
-  sfx.counter();
-  st.spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
-  st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
-  st.markMeleeSwingFx();
-  st.spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
-  st.spawnBurst(hitX, hitY, '#38bdf8', 14);
-  st.spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-  { const cl = counterClashPoint(cp.x + cp.width / 2, cp.y + cp.height / 2, hitX, hitY); st.spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
+  // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
+  if (!brawlerGuardCounterFx(hitX, hitY)) {
+    sfx.counter();
+    st.spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
+    st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
+    st.markMeleeSwingFx();
+    st.spawnRing(hitX, hitY, 14, 135, 'rgba(56,189,248,0.9)', 3, 360);
+    st.spawnBurst(hitX, hitY, '#38bdf8', 14);
+    st.spawnCallout(hitX, hitY - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+    { const cl = counterClashPoint(cp.x + cp.width / 2, cp.y + cp.height / 2, hitX, hitY); st.spawnCounterShatter(cl.x, cl.y); } // カウンターした地点
+  }
   // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
   useGameStore.setState(stt => ({ player: {
     ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
