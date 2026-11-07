@@ -4401,9 +4401,8 @@ const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Part
     setBrawler(set, { ...get().player.brawler!, flashAt: now });
   }
   if (kind === 'guard') {
-    // 体の光は1秒かけて絞っていく(窓の残りが見える)。加算=沈まない(影は落とさない=負荷0)。
-    g.spawnGlow(c.x, c.y - 8, GLOW_R_L, 'rgba(241,230,200,', BR.BRAWLER_GUARD_MS, true);
-    g.spawnRing(c.x, c.y - 4, 58, 16, BR.BRAWLER_RGBA(0.85), 3, BR.BRAWLER_GUARD_MS, true);
+    // 窓の残りが見える輪(外から体へ絞っていく)。体の光そのものは pixi が構えの残り時間から描く(加算=沈まない)。
+    g.spawnRing(c.x, c.y - 4, 70, 30, BR.BRAWLER_RGBA(0.8), 3, BR.BRAWLER_GUARD_MS, true);
   }
 };
 
@@ -4542,8 +4541,8 @@ const brawlerStageFx = (
   const fistAfterimage = (scale: number, len: number, side: number) => {
     const ox = -dir.y * side * 10, oy = dir.x * side * 10;
     g.spawnImageMark(c.x + ox + dir.x * 14, c.y - 6 + oy + dir.y * 14, 'fx/idol-fist', {
-      scale, duration: 220, additive: true, tint: BR.BRAWLER_COLOR_HEX, rot: ang - Math.PI / 2, noPop: true, fadeFrom: 0.25,
-      scaleX: 0.8, scaleY: 1.25, moveX: dir.x * len, moveY: dir.y * len, alpha: 0.55,
+      scale, duration: 300, additive: true, tint: BR.BRAWLER_COLOR_HEX, rot: ang - Math.PI / 2, noPop: true, fadeFrom: 0.35,
+      scaleX: 0.8, scaleY: 1.25, moveX: dir.x * len, moveY: dir.y * len, alpha: 0.7,
     });
   };
   switch (stage) {
@@ -4583,7 +4582,7 @@ const brawlerStageFx = (
         scale: 0.62, duration: 320, additive: true, tint: BR.BRAWLER_COLOR_HEX, rot: ang, noPop: true, fadeFrom: 0.3,
         scaleX: 1.9, scaleY: 0.55, moveX: dir.x * 46, moveY: dir.y * 46, alpha: 0.7,
       });
-      g.spawnEffect({ kind: 'meleeHit', id: `mhit-palm-${now}`, x: c.x + dir.x * 46, y: c.y + dir.y * 46, size: 260, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR, sx: 1.7, rot: ang });
+      g.spawnEffect({ kind: 'meleeHit', id: `mhit-palm-${now}`, x: c.x + dir.x * 100, y: c.y + dir.y * 100, size: 150, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR, sx: 1.6, rot: ang }); // 帯の中ほど(体を覆い切らない)
       fistAfterimage(0.6, 70, 1);
       for (const h of hitAt) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 280, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
       if (hits > 0) {
@@ -9621,8 +9620,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const now = Date.now();
     const s = p.brawler;
     const c = brawlerCenter(p);
-    // 受けた直後0.5秒は次の通常攻撃が前隙なしで出る(社長決定 #7)。
-    const next: BR.BrawlerState = { ...s, quickUntil: st.gameTime + BR.BRAWLER_GUARD_QUICK_MS };
+    // 受けた直後0.5秒は次の通常攻撃が前隙なしで出る(社長決定 #7)。構えは1秒固定で途中に動けないので、
+    // 0.5秒は「受けた時刻と構えの終わりの遅い方」から数える(★未決 §9-4: 構えの最中に切れて使えない窓にしない)。
+    const next: BR.BrawlerState = { ...s, quickUntil: Math.max(st.gameTime, s.guardUntil) + BR.BRAWLER_GUARD_QUICK_MS };
     // 近接の届く距離の相手は気絶させる(社長決定 #6・§8-5): 雑魚・強個体=通常の気絶 / ボス級=会心の足止め(減衰込み)。遠い相手は無効だけ。
     if (sourceId) {
       const e = st.enemies.find(en => en.id === sourceId);
@@ -9637,7 +9637,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     setBrawler(set, { ...next, guardHitAt: now });
     // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
     get().triggerHitImpact(Math.max(60, COUNTER_HITSTOP_MS), COUNTER_SHAKE_MS + 60, COUNTER_SHAKE_MAG, 0, x, y);
-    get().spawnFlash(BR.BRAWLER_RGBA(0.24), 140);
+    get().spawnFlash('rgba(255,252,244,0.16)', 120);
     get().spawnRing(c.x, c.y, 16, 132, BR.BRAWLER_RGBA(0.95), 5, 380, true);
     get().spawnRing(c.x, c.y, 8, 70, 'rgba(255,255,255,0.9)', 3, 240, true);
     get().spawnGlow(c.x, c.y - 6, GLOW_R_XL, 'rgba(255,248,230,', 320, true);

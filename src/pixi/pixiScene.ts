@@ -39459,14 +39459,35 @@ export class PixiScene {
   private brawlerTrail: { x: number; y: number; t: number }[] = [];
   private brawlerGhosts: Sprite[] = [];
   private brawlerKikoViews = new Map<string, { halo: Sprite; core: Sprite; flame: Sprite; tail: Sprite }>();
+  private brawlerAura: Sprite | null = null;
   private drawBrawlerFx(p: Player, footX: number, footY: number, dsc: number, body: Sprite, now: number): void {
     const s = p.brawler;
     const st = useGameStore.getState();
     this.drawBrawlerKiko(st.brawlerKiko, now);
-    if (!s || !isBrawlerMode(p)) { this.hideBrawlerGhosts(); return; }
+    if (!s || !isBrawlerMode(p)) { this.hideBrawlerGhosts(); if (this.brawlerAura) this.brawlerAura.visible = false; return; }
     const gt = st.gameTime;
     const el = BRW.brawlerElapsed(s, gt);
     const tint = this.dustTintForStage();
+    // 構えの体の光(加算=沈まない)。1秒かけて絞っていく=窓の残りが見える(§3-2)。受けた瞬間は一度膨らむ。
+    {
+      const remain = BRW.isBrawlerGuardingAt(s, gt) ? Math.max(0, s.guardUntil - gt) / BRW.BRAWLER_GUARD_MS : 0;
+      if (remain > 0) {
+        if (!this.brawlerAura) {
+          this.brawlerAura = new Sprite(getSoftGlowTexture());
+          this.brawlerAura.anchor.set(0.5, 0.5);
+          this.brawlerAura.blendMode = 'add';
+        }
+        const aura = this.brawlerAura;
+        if (aura.parent !== body.parent && body.parent) body.parent.addChild(aura);
+        const hitPop = Math.max(0, 1 - (Date.now() - s.guardHitAt) / 220);
+        const size = (54 + 46 * remain + 40 * hitPop) * dsc;
+        aura.scale.set(size / Math.max(1, aura.texture.height));
+        aura.position.set(body.position.x, body.position.y - Math.abs(body.height) * 0.45);
+        aura.tint = BRW.BRAWLER_COLOR_HEX;
+        aura.alpha = Math.min(1, 0.25 + 0.55 * Math.pow(remain, 0.6) + 0.4 * hitPop);
+        aura.visible = true;
+      } else if (this.brawlerAura) this.brawlerAura.visible = false;
+    }
     const r0 = Math.max(p.width, p.height);
     // 詰めの出発点に砂埃1つ(1〜3段・蹴り)。
     const dashing = (s.phase === 'attack' && s.stage <= 3 && !s.resolved && s.windupMs > 0 && (p.lungeUntil ?? 0) > Date.now())
@@ -39487,7 +39508,7 @@ export class PixiScene {
       }
     };
     ringDust('brawler:land', landing, 6, BRW.BRAWLER_LANDING_RADIUS * 0.8 * dsc, r0 * 0.7 * dsc);
-    ringDust('brawler:stomp', stomping, 12, BRW.BRAWLER_STOMP_RADIUS * 0.75 * dsc, r0 * 0.95 * dsc);
+    ringDust('brawler:stomp', stomping, 12, BRW.BRAWLER_STOMP_RADIUS * 1.0 * dsc, r0 * 1.1 * dsc);
     ringDust('brawler:kick', kickLand, s.kickN >= BRW.BRAWLER_KICK_MAX ? 4 : 2, r0 * 0.35 * dsc, r0 * 0.5 * dsc);
     // 締めで吹き飛んだ敵の足元に地面を擦る砂埃の尾(締めの直後だけ走査=常時の全走査はしない)。
     if (Date.now() - s.flashAt < 700) {
