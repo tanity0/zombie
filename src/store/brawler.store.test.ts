@@ -236,3 +236,47 @@ describe('格闘: 技(§3)', () => {
     expect(hpOf('z')).toBeLessThan(99999);
   });
 });
+
+describe('格闘: 指定打撃の分岐(§8-1 の止めるもの/残すもの)', () => {
+  it('窓・CD・ナイフの絵(meleeSwingAt)・斬撃の絵は出さず、COMBO と打刻(押した時刻)は残す', () => {
+    setup();
+    useGameStore.setState(st => ({ enemies: [zombieAt(45, 0, 'z')], player: { ...st.player, skills: [...(st.player.skills ?? []), 'slasher'] as never, skillLevels: { ...(st.player.skillLevels ?? {}), slasher: 1 } as never } }));
+    const p0 = useGameStore.getState().player;
+    const pressAt = now;
+    useGameStore.getState().brawlerPress();
+    advance(70);
+    const s = useGameStore.getState();
+    expect(hpOf('z')).toBeLessThan(99999);
+    expect(s.player.counterWindowEnd).toBe(p0.counterWindowEnd);
+    expect(s.player.counterCooldownEnd).toBe(p0.counterCooldownEnd);
+    expect(s.player.meleeSwingAt).toBe(p0.meleeSwingAt);
+    expect(s.player.slasherChainReadyAt).toBe(p0.slasherChainReadyAt); // スラッシャーは効かない
+    expect(s.player.meleeSwingPressedAt).toBe(pressAt);
+    expect(s.player.meleeSwingCommitAt).toBeGreaterThan(0);
+    expect(s.meleeHitComboCount).toBeGreaterThan(0);
+    expect(s.effects.some(e => e.kind === 'slash')).toBe(false);
+  });
+  it('1・2段目は押さない(敵の速さ0)・3段目は押す・止めは段の表の ms(再発火ガードなし)', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(45, 0, 'z')] });
+    useGameStore.getState().brawlerPress();
+    advance(60);
+    const z1 = useGameStore.getState().enemies.find(e => e.id === 'z')!;
+    expect(z1.knockbackVx ?? 0).toBe(0);
+    expect((z1.hitStunUntil ?? 0) - now).toBe(45);
+    useGameStore.getState().brawlerPress(); // 先行入力→2段目
+    for (let k = 0; k < 40 && br().stage !== 2; k++) advance(10);
+    for (let k = 0; k < 20 && !br().resolved; k++) advance(10);
+    const z2 = useGameStore.getState().enemies.find(e => e.id === 'z')!;
+    expect(z2.hitStunUntil ?? 0).toBeGreaterThan(now); // 2段目も止まる(ガードを外した)
+  });
+  it('被弾反撃は3段目の指定打撃で出す: 技ポイントに数えない・段は1段目へ', () => {
+    setup();
+    useGameStore.setState(st => ({ enemies: [zombieAt(45, 0, 'z')], player: { ...st.player, brawler: { ...(st.player.brawler ?? ({} as never)), points: 2, nextStage: 3, chainUntil: 1e12 } as never } }));
+    const r = useGameStore.getState().triggerCounter(undefined, { targetId: 'z', mult: 2 });
+    expect(r.hits).toBe(1);
+    expect(hpOf('z')).toBeLessThan(99999);
+    expect(br().points).toBe(2);
+    expect(br().nextStage).toBe(1);
+  });
+});

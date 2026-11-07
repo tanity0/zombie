@@ -4522,6 +4522,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
 const brawlerClosingFx = (get: () => GameState, x: number, y: number, dir: { x: number; y: number }): void => {
   const g = get();
   g.triggerShake(220, 14, dir.x, dir.y);
+  g.triggerZoom(0.1, 220, 40, x, y, 'counter'); // カメラの小さな押し込み(スローは使わない)
   g.spawnRing(x, y, 10, 96, BR.BRAWLER_RGBA(0.9), 4, 320, true);
   const at = Date.now();
   useGameStore.setState(st => (st.player.brawler ? { player: { ...st.player, brawler: { ...st.player.brawler, flashAt: at } } } : {}));
@@ -4548,6 +4549,8 @@ const brawlerStageFx = (
   switch (stage) {
     case 1:
     case 2: {
+      // 2段目は体を反転しない。逆の手は、拳の残像を体の反対側から出すことと体の傾きで見せる(§8-2)。
+      if (stage === 2) fistAfterimage(0.26, 22, -1);
       for (const h of hitAt) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 160, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
       if (hits > 0) {
         brawlerSfx('brawler-kick', 0.75, (1.12 - stage * 0.04) * brJitter(), 160);
@@ -9636,7 +9639,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (now - s.guardHitAt < 140) { setBrawler(set, next); return; } // 光線などで毎フレーム来る受けは絵と音を間引く
     setBrawler(set, { ...next, guardHitAt: now });
     // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
-    get().triggerHitImpact(Math.max(60, COUNTER_HITSTOP_MS), COUNTER_SHAKE_MS + 60, COUNTER_SHAKE_MAG, 0, x, y);
+    // 画面全体は止めない・スローも使わない(カウンターの絵の時間停止は撤回済み+サブウェポンのスロー禁則)。揺れと小さな寄りで受ける。
+    get().triggerShake(COUNTER_SHAKE_MS + 80, COUNTER_SHAKE_MAG * 1.4, c.x - x, c.y - y);
+    get().triggerZoom(0.14, 260, 60, c.x, c.y, 'counter');
     get().spawnFlash('rgba(255,252,244,0.16)', 120);
     get().spawnRing(c.x, c.y, 16, 132, BR.BRAWLER_RGBA(0.95), 5, 380, true);
     get().spawnRing(c.x, c.y, 8, 70, 'rgba(255,255,255,0.9)', 3, 240, true);

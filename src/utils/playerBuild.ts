@@ -124,7 +124,7 @@ export const buildHasLoadout = (snap: PlayerBuildSnapshot | undefined): boolean 
  * `isMeleeOnlyMode` は Player を見るだけなので、疑似Player に 'brawler' が残ると守護霊の銃まで止まる=ここで外す。
  */
 export const withoutBrawler = (p: Player): Player =>
-  p.subWeapons.includes('brawler')
+  p.subWeapons?.includes('brawler')
     ? { ...p, subWeapons: p.subWeapons.filter(k => k !== 'brawler'), brawler: undefined }
     : p;
 
