@@ -154,7 +154,7 @@ export const AVATARS: Record<AvatarId, AvatarDef> = {
         layer: 'above',
         anchorX: 0.5, anchorY: 1,
         offsetXFrac: 0.03,
-        offsetYFrac: -0.86,
+        offsetYFrac: -0.93, // 社長指示2026-11-07「輪っかをもう少し上に」: -0.86→-0.93(体の表示枠の7%≒4〜5px上)
         sizeFrac: 0.32,
         sizeBasis: 'width',
         flipWithFacing: true,

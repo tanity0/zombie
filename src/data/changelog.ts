@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5375', items: [
+    '天使セットの輪が、頭の少し上に浮くようになった',
+  ] },
   { version: '0.25.5374', items: [
     'ゲーム内容の変更はありません',
   ] },

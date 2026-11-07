@@ -1,5 +1,10 @@
 # Development Log
 
+## v0.25.5375 — 天使セットの輪を少し上へ【2026-11-07 12:12 JST】
+- 社長指示「天使アバター、輪っかをもう少し上に」。`src/data/avatars.ts` の angel-set の輪 `offsetYFrac` -0.86→-0.93(体の表示枠の7%≒4〜5px上)。
+- 確認: ヘビーガンナー・スカベンジャーで前後を撮影。前=輪が髪の上端に重なっていた / 後=頭の少し上に浮く。`npm run typecheck` / `playerHeadAnchors.test.ts` / eslint。
+- 変更: `src/data/avatars.ts` `src/data/changelog.ts` `package.json`
+
 ## v0.25.5374 — 配信(GitHub Pages)の待ち時間の上限を30分へ【2026-11-07 08:29 JST】
 - 社長報告「pushされてない」→ 調査: push は届いていた。失敗していたのは配信の最後の段(`actions/deploy-pages`)。
   - 11/4〜11/5 は1.5〜4分で通っていた。11/6 から約10〜11分かかるようになり、既定の上限10分を超えた回が失敗した(5371失敗 / 5372ぎりぎり成功 / 5373は2回失敗)。
