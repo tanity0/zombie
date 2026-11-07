@@ -86,6 +86,21 @@ export const BRAWLER_BIG_KB_MULT = 4;        // 掌底=今の近接の4倍(§2-2
 export const BRAWLER_STANDOFF_PX = 24;       // 詰めの止まる所(相手の帯の縁から)
 /** 5ポイント技の出だしの溜め(画面をわずかに暗くする・§3-1)。 */
 export const BRAWLER_SUPER_FLASH_MS = 100;
+/**
+ * 段ごとの音程(1段目→5段目)。等間隔に下げない=段ごとに個別の値(クリエイティブ監査 #7)。
+ * swing=振りの風切り / hit=肉を打つ音。0番は使わない。
+ */
+export const BRAWLER_SWING_PITCH = [1, 1.1, 1.02, 0.84, 0.8, 0.68] as const;
+export const BRAWLER_HIT_PITCH = [1, 1.18, 1.08, 0.88, 0.82, 0.64] as const;
+export const BRAWLER_HIT_GAIN = [1, 0.7, 0.75, 0.95, 0.85, 1.1] as const;
+/** 当たりの白い炸裂の大きさ(world px)と尺(ms)。弱は敵の半分以下・短く。大きいのは強・締めだけ(クリエイティブ監査 #1)。 */
+export const BRAWLER_SPARK = {
+  weak: { size: 54, ms: 200, glow: 22 },
+  strong: { size: 118, ms: 300, glow: 34 },
+  land: { size: 96, ms: 260, glow: 30 },
+  closer: { size: 170, ms: 360, glow: 42 },
+  stomp: { size: 150, ms: 340, glow: 40 },
+} as const;
 /** 格闘の固有色(§4: 彩度を落とした白金。加算の芯は白)。 */
 export const BRAWLER_COLOR = '#f1e6c8';
 export const BRAWLER_COLOR_HEX = 0xf1e6c8;
@@ -421,6 +436,8 @@ export interface BrawlerPose {
   sqY: number;
   /** 拳の残像を体のどちら側から出すか(2段目は逆の手=-1)。 */
   hand: 1 | -1;
+  /** 絵を左右反転して逆の手を形で見せる(2段目・クリエイティブ監査 #5)。 */
+  flip: boolean;
 }
 const easeOut = (x: number): number => 1 - (1 - x) * (1 - x);
 const easeIn = (x: number): number => x * x;
@@ -430,6 +447,15 @@ export const brawlerJumpHeight = (p: number): number => {
   if (p < 0.4) return BRAWLER_JUMP_VIS_PX * easeOut(p / 0.4);
   if (p < 0.6) return BRAWLER_JUMP_VIS_PX * (1 - 0.06 * ((p - 0.4) / 0.2));
   return BRAWLER_JUMP_VIS_PX * 0.94 * (1 - easeIn((p - 0.6) / 0.4));
+};
+/** 大踏み潰しの跳び(溜めの後 0.42〜1)。4段目より高い(#6)。上りは速く・頂点は短く・叩きつけは加速。 */
+export const BRAWLER_STOMP_VIS_PX = 66;
+export const brawlerStompHeight = (p: number): number => {
+  if (p <= 0.42 || p >= 1) return 0;
+  const q = (p - 0.42) / 0.58;
+  if (q < 0.5) return BRAWLER_STOMP_VIS_PX * easeOut(q / 0.5);
+  if (q < 0.62) return BRAWLER_STOMP_VIS_PX;
+  return BRAWLER_STOMP_VIS_PX * (1 - easeIn((q - 0.62) / 0.38));
 };
 /** 浮かせの絵の高さ: 上りは速く・頂点で少し止まり・落ちは加速(§7-10)。u=0..1。 */
 export const brawlerLiftHeight = (u: number): number => {
@@ -442,7 +468,7 @@ export const brawlerLiftHeight = (u: number): number => {
 /** いまの体の形。連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ・§4)。 */
 export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPose | null => {
   if (!s) return null;
-  const base: BrawlerPose = { tex: null, lean: 0, push: 0, jump: 0, sqX: 1, sqY: 1, hand: 1 };
+  const base: BrawlerPose = { tex: null, lean: 0, push: 0, jump: 0, sqX: 1, sqY: 1, hand: 1, flip: false };
   if (s.phase === 'idle') {
     // つながりの受付が残っている間はしゃがみ(構え)で待つ。
     if (s.nextStage > 1 && t <= s.chainUntil) return { ...base, tex: 'ready', lean: 0.05 };
@@ -462,7 +488,7 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
         // 弱: しゃがみの絵のまま体を前へ大きく滑らせ、前へ傾ける。2段目は逆の手(残像と傾きの向き)。
         const hand: 1 | -1 = s.stage === 2 ? -1 : 1;
         const thrust = hit ? 1 - easeOut(post) : easeIn(pre);
-        return { ...base, tex: 'ready', lean: (0.12 + 0.16 * thrust) * (s.stage === 2 ? 0.7 : 1), push: 14 * thrust, sqX: 1 + 0.08 * thrust, sqY: 1 - 0.06 * thrust, hand };
+        return { ...base, tex: 'ready', lean: 0.12 + 0.16 * thrust, push: 14 * thrust, sqX: 1 + 0.08 * thrust, sqY: 1 - 0.06 * thrust, hand, flip: s.stage === 2 };
       }
       case 3: {
         // 強(アッパー): しゃがみで溜め → 振り上げの絵で突き上げる。
@@ -481,10 +507,11 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
         return { ...base, tex: 'ready', sqY: 1 - 0.22 * land + wob, sqX: 1 + 0.16 * land - wob * 0.6, lean: 0.04 };
       }
       case 5: {
-        // 掌底: しゃがみの絵のまま体を前へ大きく突き出す(前隙=引き → 突き)。
-        if (!hit) return { ...base, tex: 'ready', lean: 0.06, push: -8 * easeOut(pre), sqX: 1 - 0.04 * pre };
-        const th = 1 - easeOut(post);
-        return { ...base, tex: 'ready', lean: 0.32 * th, push: 22 * th, sqX: 1 + 0.14 * th, sqY: 1 - 0.08 * th };
+        // 掌底: しゃがみの絵のまま体を前へ大きく突き出す(前隙=引き → 突き)。伸び切った形で一拍止め、ゆっくり戻す(#5)。
+        if (!hit) return { ...base, tex: 'ready', lean: -0.04, push: -12 * easeOut(pre), sqX: 1 - 0.06 * pre };
+        const HOLD = 0.38;
+        const th = post < HOLD ? 1 : 1 - easeIn((post - HOLD) / (1 - HOLD)) * 0.35 - easeOut((post - HOLD) / (1 - HOLD)) * 0.65;
+        return { ...base, tex: 'ready', lean: 0.4 * th, push: 50 * th, sqX: 1 + 0.16 * th, sqY: 1 - 0.1 * th };
       }
       default: return { ...base, tex: 'ready' };
     }
@@ -495,20 +522,26 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
       return { ...base, tex: 'ready', sqY: 0.94 + breath, sqX: 1.04 - breath };
     }
     case 'stomp': {
-      if (!hit) return { ...base, tex: 'swing', jump: 16 * easeOut(pre), sqY: 1 + 0.06 * pre };
+      // 大踏み潰し: 長めの溜め(しゃがみで沈む)→ 4段目より高く跳んで → 叩きつけ(#6)。
+      if (!hit) {
+        if (pre < 0.42) { const q = pre / 0.42; return { ...base, tex: 'ready', sqY: 1 - 0.2 * easeOut(q), sqX: 1 + 0.12 * easeOut(q) }; }
+        return { ...base, tex: 'swing', jump: brawlerStompHeight(pre), sqY: 1.06, sqX: 0.96 };
+      }
       const land = Math.max(0, 1 - post * 2.5);
-      return { ...base, tex: 'ready', sqY: 1 - 0.26 * land, sqX: 1 + 0.2 * land };
+      return { ...base, tex: 'ready', sqY: 1 - 0.28 * land, sqX: 1 + 0.22 * land };
     }
     case 'kiko': {
-      if (!hit) return { ...base, tex: 'ready', lean: -0.05 * pre, push: -6 * pre };
+      // 気功: 溜め=振り上げ(頭上に集める)→ 放つ=しゃがみ+前傾で突き出す(#4)。
+      if (!hit) return { ...base, tex: 'swing', lean: -0.08 * pre, push: -6 * pre, sqY: 1 + 0.05 * pre };
       const th = 1 - easeOut(post);
-      return { ...base, tex: 'swing', lean: 0.18 * th, push: 12 * th, sqX: 1 + 0.08 * th };
+      return { ...base, tex: 'ready', lean: 0.3 * th, push: 16 * th, sqX: 1 + 0.1 * th, sqY: 1 - 0.06 * th };
     }
     case 'kick': {
+      // 飛び蹴り: 滞空中はしゃがみ+強い前傾 → 当たった瞬間に振り上げの絵へ変える(#4)。
       const big = s.kickN >= BRAWLER_KICK_MAX;
-      if (!hit) return { ...base, tex: 'swing', jump: (big ? 30 : 18) * Math.sin(Math.PI * Math.min(1, pre)), lean: 0.36, push: 6 };
+      if (!hit) return { ...base, tex: 'ready', jump: (big ? 30 : 18) * Math.sin(Math.PI * Math.min(1, pre)), lean: 0.55, push: 8 };
       const th = 1 - easeOut(post);
-      return { ...base, tex: 'ready', lean: 0.2 * th, sqY: 1 - 0.14 * th, sqX: 1 + 0.1 * th };
+      return { ...base, tex: post < 0.45 ? 'swing' : 'ready', lean: 0.25 * th, push: 6 * th, sqY: 1 - 0.12 * th, sqX: 1 + 0.08 * th };
     }
     default: return { ...base, tex: 'ready' };
   }

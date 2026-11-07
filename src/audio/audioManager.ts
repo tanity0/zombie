@@ -113,7 +113,8 @@ export type SfxKey =
   | 'hurricane'
   | 'heartbeat' // 瀕死(低HP)中の心音ループ素材(setHeartbeatLoopが再生。playSfx直呼びはしない)
   | 'dance-kick'
-  | 'brawler-kick' // 格闘の肉を打つ音(素材は kick-drum.mp3・dance-kick と間引きを共有しないための別キー=research/BRAWLER.md §4)
+  | 'brawler-hit'   // 格闘の肉を打つ音(素材は shot-damage.mp3 を短く・別キー=間引きを他と共有しない・research/BRAWLER.md §9)
+  | 'brawler-stomp' // 格闘の着地・踏み潰しの重い打撃(素材は heavy-impact.mp3 を低く・敵の着地音 jump-land と分ける)
   | 'dance-kick-just' // JUST成功音(dance-kickのピッチ上げ。B方式のメトロノームと聞き分ける)
   | 'heavy-impact'
   | 'boss-intro'
@@ -505,7 +506,8 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   // メトロノーム(拍そのもの)と同じ素材だと聞き分けられないため、B方式(v0.25.1339)ではJUST成功音を
   // ピッチ上げ(playbackRate 1.3)で差別化する(dance-kick-just)。素材追加なし=同じmp3を再利用。
   'dance-kick': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60 },
-  'brawler-kick': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 40, maxDurationMs: 220 },
+  'brawler-hit': { src: `${import.meta.env.BASE_URL}audio/sfx/shot-damage.mp3`, volume: 1.4, minIntervalMs: 30, maxDurationMs: 300 },
+  'brawler-stomp': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.6, minIntervalMs: 60, playbackRate: 0.6 },
   'dance-kick-just': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60, playbackRate: 1.3 },
   // 盾バッシュ命中 / ジャンプ攻撃の着地(社長提供SE)。音が小さめなのでゲインで増幅(0.9→1.8)。
   'heavy-impact': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.8, minIntervalMs: 60 },

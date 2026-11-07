@@ -20643,7 +20643,7 @@ export class PixiScene {
         ? killPose.faceLeft
         : (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0));
       const wantFace: -1 | 1 = flip ? -1 : 1;
-      const faceMul: number = wantFace;
+      const faceMul: number = wantFace * (brPose?.flip ? -1 : 1); // 格闘の2段目は絵を反転して逆の手を形で見せる(クリエイティブ監査 #5)
       view.sprite.scale.set(sc * faceMul * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
       view.sprite.rotation = walkLean + actLean;
       // ★アバターの焼き込み: 装備中なら、いま出す体のコマを耳・尻尾入りの絵へ差し替える(寸法・足元は同じ)。
@@ -22095,8 +22095,14 @@ export class PixiScene {
 
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     // ★格闘の4段目の浮かせ(research/BRAWLER.md §7-10): 絵だけ 26px 浮いて落ちる(上りは速く・頂点で少し止まり・落ちは加速)。判定は地面のまま。
-    const brLiftPx = e.brawlerLiftAt !== undefined ? BRW.brawlerLiftHeight((Date.now() - e.brawlerLiftAt) / BRW.BRAWLER_LIFT_MS) : 0;
-    const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX + brLiftPx;
+    // 高さは敵の絵の高さに比例(大型でも浮いて見える・判定と足止めの時間は変えない=クリエイティブ監査 #13)。基準=絵の高さ110pxで26px。
+    const brLiftPx = e.brawlerLiftAt !== undefined
+      ? BRW.brawlerLiftHeight((Date.now() - e.brawlerLiftAt) / BRW.BRAWLER_LIFT_MS) * Math.max(0.8, fb.boxH / 110) : 0;
+    // ★格闘の止めの間の震え: 当てた方向に沿って、止めの残りとともに減衰(#12)。絵だけ。
+    const brShakeLeft = e.brawlerShakeUntil !== undefined ? e.brawlerShakeUntil - Date.now() : 0;
+    const brShakeAmp = brShakeLeft > 0 ? Math.min(4.5, 1 + brShakeLeft / 28) * (((Math.floor(Date.now() / 16) & 1) === 0) ? 1 : -0.6) : 0;
+    const brShakeX = brShakeAmp * (e.brawlerShakeDx ?? 1), brShakeY = brShakeAmp * (e.brawlerShakeDy ?? 0);
+    const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX + brLiftPx - brShakeY;
     // ★★産卵の震え(社長指示2026-09-22「この人は攻撃が無いので、卵を産むときに震える感じにします」)。
     // 抱卵型(卵体)は攻撃を持たない代わりに、**卵が出る瞬間へ向けて体が痙攣する**。
     // 形と尺は `utils/eggTremble.ts` の1本(縦が主・横が従 / 独立した痙攣 / 放出の一発 / 連射の起伏)。
@@ -22118,10 +22124,7 @@ export class PixiScene {
     // v0.25.3069: 踏み鳴らしの震え(aiShake)もここへ合流させる。liftShake は下の位置決めと
     // ステージ4/5の足元ズレ補正の**両方**で使われる唯一の横オフセットなので、別変数を足すと
     // 雪原/戦場だけ震えが消える(同じ値を2箇所で管理しない)。
-    // ★格闘のヒットストップの間、相手の絵を数pxずつ小刻みに震わせる(絵だけ・判定は動かない・§2-4)。実時間で数える(止めの長さは実時間)。
-    const brShakeLeft = e.brawlerShakeUntil !== undefined ? e.brawlerShakeUntil - Date.now() : 0;
-    const brShake = brShakeLeft > 0 ? (((Math.floor(Date.now() / 16) & 1) === 0 ? 1 : -1) * Math.min(3.2, 1.2 + brShakeLeft / 40)) : 0;
-    const liftShake = (liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0) + aiShake + brShake;
+    const liftShake = (liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0) + aiShake + brShakeX; // 格闘の止めの震え(上・当てた方向)
     // ノックバック中の小さな跳ね(社長指示): 被弾(lastHit)を起点に sin の1山ぶんポンと跳ねる。
     // バグ修正(社長報告v0.25.1476): ノックバックCD中(knockbackImmuneUntil)は0速度のまま
     // knockbackUntilだけ再利用してその場に凍結させる経路があり(gameStore.ts)、速度チェック無しだと
@@ -39479,12 +39482,13 @@ export class PixiScene {
         }
         const aura = this.brawlerAura;
         if (aura.parent !== body.parent && body.parent) body.parent.addChild(aura);
-        const hitPop = Math.max(0, 1 - (Date.now() - s.guardHitAt) / 220);
-        const size = (54 + 46 * remain + 40 * hitPop) * dsc;
+        // 残り時間に比例して等速で絞る(輪は出さない=クリエイティブ監査 #9)。受けた瞬間だけ短く膨らむ。
+        const hitPop = Math.max(0, 1 - (Date.now() - s.guardHitAt) / 160);
+        const size = (34 + 76 * remain + 30 * hitPop) * dsc;
         aura.scale.set(size / Math.max(1, aura.texture.height));
         aura.position.set(body.position.x, body.position.y - Math.abs(body.height) * 0.45);
         aura.tint = BRW.BRAWLER_COLOR_HEX;
-        aura.alpha = Math.min(1, 0.25 + 0.55 * Math.pow(remain, 0.6) + 0.4 * hitPop);
+        aura.alpha = Math.min(1, 0.15 + 0.7 * remain + 0.4 * hitPop);
         aura.visible = true;
       } else if (this.brawlerAura) this.brawlerAura.visible = false;
     }
@@ -39498,13 +39502,18 @@ export class PixiScene {
     const landing = s.phase === 'attack' && s.stage === 4 && s.resolved && el < s.windupMs + 120;
     const stomping = s.phase === 'tech' && s.tech === 'stomp' && s.resolved && el < s.windupMs + 120;
     const kickLand = s.phase === 'tech' && s.tech === 'kick' && s.resolved && el < s.windupMs + 100;
+    // 砂埃は角度・距離・大きさ・数をばらつかせる(焼いた時刻を種にした決定的な乱数=フレーム間では揺れない・クリエイティブ監査 #11)。
+    const rnd = (seed: number): number => { const x = Math.sin(seed * 12.9898) * 43758.5453; return x - Math.floor(x); };
     const ringDust = (key: string, active: boolean, n: number, ringR: number, puffR: number) => {
       const L = this.latchFx(key, active, DUST_MS, now, () => [footX, footY]);
       if (!L) return;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + (L.t0 % 7) * 0.3;
-        const spread = ringR * (0.55 + 0.45 * (1 - (1 - L.t) * (1 - L.t))); // 外へ広がって減速
-        this.drawDust(L.d[0] + Math.cos(a) * spread, L.d[1] + Math.sin(a) * spread * 0.5, puffR * (0.8 + ((i * 37) % 5) * 0.08), L.t, tint, this.dustAlpha(L.t), L.t0 + i * 53);
+      const count = Math.max(2, n - 1 + Math.floor(rnd(L.t0) * 3));
+      const a0 = rnd(L.t0 + 1) * Math.PI * 2;
+      for (let i = 0; i < count; i++) {
+        const a = a0 + (i / count) * Math.PI * 2 + (rnd(L.t0 + i * 7.1) - 0.5) * 0.9;
+        const reach = 0.6 + rnd(L.t0 + i * 3.3) * 0.65;
+        const spread = ringR * reach * (0.55 + 0.45 * (1 - (1 - L.t) * (1 - L.t))); // 外へ広がって減速
+        this.drawDust(L.d[0] + Math.cos(a) * spread, L.d[1] + Math.sin(a) * spread * 0.5, puffR * (0.65 + rnd(L.t0 + i * 5.7) * 0.7), L.t, tint, this.dustAlpha(L.t), L.t0 + i * 53);
       }
     };
     ringDust('brawler:land', landing, 6, BRW.BRAWLER_LANDING_RADIUS * 0.8 * dsc, r0 * 0.7 * dsc);
@@ -39517,7 +39526,10 @@ export class PixiScene {
         const age = Date.now() - e.brawlerBlownAt;
         if (age < 0 || age > 520) continue;
         for (let k = 0; k < 3; k++) {
-          const on = age >= k * 90 && age < k * 90 + 60;
+          // 尾の間隔も揺らす(個体と順番ごとに 60〜130ms)。
+          let hseed = 0; for (let ci = 0; ci < e.id.length; ci++) hseed = (hseed * 31 + e.id.charCodeAt(ci)) | 0;
+          const at = k === 0 ? 0 : k * 60 + Math.floor(rnd(hseed + k) * 70) * (k === 1 ? 1 : 1.3);
+          const on = age >= at && age < at + 60;
           const L = this.latchFx(`brawler:blow:${e.id}:${k}`, on, DUST_MS * 0.8, now, () => [e.x + e.width / 2, e.y + e.height]);
           if (L) this.drawDust(L.d[0], L.d[1], Math.max(e.width, e.height) * 0.45 * dsc, L.t, tint, this.dustAlpha(L.t) * 0.8, L.t0);
         }
@@ -39580,7 +39592,8 @@ export class PixiScene {
       setGlow(v.tail, 70 * grow, BRW.BRAWLER_COLOR_HEX, 0.38, -k.dirX * 26, -k.dirY * 26, 2.4);
       setGlow(v.halo, 66 * grow * pulse, BRW.BRAWLER_COLOR_HEX, 0.85);
       const ft = getTexture(meleeHitTexture(meleeHitFrame(((age / 260) % 1) * 0.6 + 0.15)));
-      if (ft) { v.flame.texture = ft; setGlow(v.flame, 52 * grow, BRW.BRAWLER_COLOR_HEX, 0.9); v.flame.rotation = age / 90; }
+      // 炸裂のコマを橙で回す=火の芯(火の気配・クリエイティブ監査 #16)。外側の光と白い芯は白金のまま。
+      if (ft) { v.flame.texture = ft; setGlow(v.flame, 46 * grow, 0xffa04a, 0.95); v.flame.rotation = age / 70; }
       else v.flame.visible = false;
       setGlow(v.core, 26 * grow * pulse, 0xffffff, 1);
     }

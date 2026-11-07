@@ -4291,6 +4291,8 @@ const brawlerHitPatch = (
   if (stopMs > 0) {
     out.hitStunUntil = now + stopMs;
     out.brawlerShakeUntil = now + stopMs;
+    const sdx = ecx - pcx, sdy = ecy - pcy, sdl = Math.hypot(sdx, sdy) || 1;
+    out.brawlerShakeDx = sdx / sdl; out.brawlerShakeDy = sdy / sdl; // 当てた方向に沿って震える(絵だけ)
   }
   // 向き: 帯の向き > 円の中心から外向き > プレイヤーから外向き。
   let ux: number, uy: number;
@@ -4389,8 +4391,8 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now };
   const ap = quick ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerApproach(c.x, c.y, target, spec.dashPx);
   setBrawler(set, s, { lastDirection: { x: dir.x, y: dir.y }, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, spec.windupMs, now) });
-  // 振りの音(空振りの連打も無音にしない・1段目→5段目へ少しずつ低く)。
-  brawlerSfx('whip-swing', stage >= 4 ? 0.55 : 0.4, (1.05 - stage * 0.06) * brJitter(), 140);
+  // 振りの音(空振りの連打も無音にしない・段ごとに個別の音程=等間隔に下げない)。
+  brawlerSfx('whip-swing', stage >= 4 ? 0.55 : 0.4, BR.BRAWLER_SWING_PITCH[spec.stage] * brJitter(), 140);
   // 詰めの出発点に砂埃(pixi が brawler の状態から描く)。
 };
 
@@ -4431,17 +4433,14 @@ const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Part
   const g = get();
   // 5ポイント技の出だし: 0.1秒だけ画面をわずかに暗く+体に閃光+専用の音(§3-1)。
   if (BR.BRAWLER_TECHS[kind].cost >= 5) {
-    g.spawnFlash('rgba(6,6,10,0.32)', BR.BRAWLER_SUPER_FLASH_MS);
-    g.spawnGlow(c.x, c.y - 6, GLOW_R_M, 'rgba(255,248,230,', 260, true);
-    g.spawnRing(c.x, c.y, 6, 64, BR.BRAWLER_RGBA(0.95), 3, 220, true);
+    // 暗転は濃く・短く・切れ味よく(スローは使わない・クリエイティブ監査 #10)。体の閃光は白金の加算。
+    g.spawnFlash('rgba(0,0,0,0.62)', BR.BRAWLER_SUPER_FLASH_MS * 0.7);
+    g.spawnGlow(c.x, c.y - 6, GLOW_R_M, 'rgba(255,248,230,', 220, true);
     brawlerSfx('heavy-impact', 0.45, 1.35, 260);
     brawlerSfx('homing-fire', 0.4, 0.62, 260);
     setBrawler(set, { ...get().player.brawler!, flashAt: now });
   }
-  if (kind === 'guard') {
-    // 窓の残りが見える輪(外から体へ絞っていく)。体の光そのものは pixi が構えの残り時間から描く(加算=沈まない)。
-    g.spawnRing(c.x, c.y - 4, 70, 30, BR.BRAWLER_RGBA(0.8), 3, BR.BRAWLER_GUARD_MS, true);
-  }
+  // 構えの残り時間は体の光だけで見せる(pixi が等速で絞る・輪は出さない=クリエイティブ監査 #9)。
 };
 
 /** 判定の時刻に来た行動を解く(通常攻撃・技)。 */
@@ -4514,10 +4513,10 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     g.spawnRing(foot.x, foot.y, 10, BR.BRAWLER_STOMP_RADIUS * 0.8, 'rgba(255,255,255,0.75)', 3, 300, true);
     g.spawnGlow(foot.x, foot.y, GLOW_R_XL, 'rgba(241,230,200,', 320, true);
     g.triggerShake(260, 16, 0, 1);
-    for (const h of r.hitAt ?? []) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 240, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
-    brawlerSfx('jump-land', 1.0, 0.78);
+    for (const h of r.hitAt ?? []) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.stomp);
+    brawlerSfx('brawler-stomp', 1.0, 0.92);
     brawlerSfx('heavy-impact', 0.9, 0.7, undefined, 20);
-    if (hits > 0) brawlerSfx('brawler-kick', 0.9, 0.7 * brJitter());
+    if (hits > 0) brawlerSfx('brawler-hit', 1.0, 0.62 * brJitter(), 260);
     return;
   }
   if (s.tech === 'kiko') {
@@ -4529,8 +4528,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       brawlerKiko: [...state.brawlerKiko.slice(-5), { id: `kiko-${now}`, x: sx, y: sy, dirX: d.x, dirY: d.y, traveled: 0, createdAt: now }],
       player: { ...state.player, brawler: { ...s, resolved: true, dirX: d.x, dirY: d.y }, lastDirection: { x: d.x, y: d.y } },
     }));
-    g.spawnEffect({ kind: 'meleeHit', id: `mhit-kiko0-${now}`, x: sx, y: sy, size: 120, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+    g.spawnEffect({ kind: 'meleeHit', id: `mhit-kiko0-${now}`, x: sx, y: sy, size: 84, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: 240, rot: Math.random() * Math.PI * 2 });
     g.spawnGlow(sx, sy, GLOW_R_S, 'rgba(255,248,230,', 200, true);
+    g.spawnBurst(sx, sy, '#fb923c', 6, d.x, d.y); // 火の気配(橙の火の粉・クリエイティブ監査 #16)
     brawlerSfx('whip-swing', 0.55, 1.45 * brJitter(), 120);
     brawlerSfx('homing-fire', 0.55, 0.72, 220);
     return;
@@ -4551,10 +4551,10 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, hs, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
     for (const h of r.hitAt ?? []) {
-      g.spawnEffect({ kind: 'meleeHit', id: `mhit-kick-${now}-${h.id}`, x: h.x, y: h.y, size: big ? 280 : 200, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+      brawlerSpark(get, h, c, big ? BR.BRAWLER_SPARK.closer : BR.BRAWLER_SPARK.weak);
       if (big) brawlerClosingFx(get, h.x, h.y, dir);
     }
-    brawlerSfx('brawler-kick', hits > 0 ? 0.95 : 0.5, (big ? 0.72 : 0.9) * brJitter());
+    brawlerSfx('brawler-hit', hits > 0 ? (big ? 1.1 : 0.8) : 0.35, (big ? 0.66 : 1.0) * brJitter(), big ? 300 : 200);
     if (hits > 0) brawlerSfx('whip-hit', 0.55, (big ? 0.7 : 0.85) * brJitter(), 160, 10);
     if (big && hits > 0) brawlerSfx('heavy-impact', 0.95, 0.85);
   }
@@ -4565,9 +4565,32 @@ const brawlerClosingFx = (get: () => GameState, x: number, y: number, dir: { x: 
   const g = get();
   g.triggerShake(220, 14, dir.x, dir.y);
   g.triggerZoom(0.1, 220, 40, x, y, 'counter'); // カメラの小さな押し込み(スローは使わない)
-  g.spawnRing(x, y, 10, 96, BR.BRAWLER_RGBA(0.9), 4, 320, true);
   const at = Date.now();
   useGameStore.setState(st => (st.player.brawler ? { player: { ...st.player, brawler: { ...st.player.brawler, flashAt: at } } } : {}));
+};
+
+/**
+ * 当たりの白い炸裂(クリエイティブ監査 #1・#2)。中心は敵の中心ではなく**当たった側の縁**(プレイヤーに近い帯の縁)。
+ * 毎発ランダムに回す。白金は乗算 tint に頼らず、加算の白金の芯(小さな光=影を落とさない)を重ねて出す。
+ */
+const brawlerSpark = (
+  get: () => GameState, h: { x: number; y: number; id: string }, c: { x: number; y: number },
+  k: { size: number; ms: number; glow: number },
+): void => {
+  const g = get();
+  const e = g.enemies.find(en => en.id === h.id);
+  let x = h.x, y = h.y;
+  if (e) {
+    const r = enemyRangeRect(e);
+    const nx = Math.max(r.x, Math.min(c.x, r.x + r.width));
+    const ny = Math.max(r.y, Math.min(c.y, r.y + r.height));
+    // 縁から少しだけ内へ・胴の高さへ(絵は帯より上に伸びる)。
+    x = nx + (h.x - nx) * 0.2;
+    y = Math.min(ny, h.y) - Math.min(18, e.height * 0.3);
+  }
+  const now = Date.now();
+  g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}-${(Math.random() * 1e6) | 0}`, x, y, size: k.size, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: k.ms, rot: Math.random() * Math.PI * 2 });
+  g.spawnGlow(x, y, k.glow, 'rgba(241,230,200,', Math.round(k.ms * 0.8), true);
 };
 
 /** 各段の当たりの絵と音(§4)。判定は持たない。 */
@@ -4580,32 +4603,36 @@ const brawlerStageFx = (
   const hitAt = r.hitAt ?? [];
   const hits = hitAt.length;
   const ang = Math.atan2(dir.y, dir.x);
-  // 拳の残像(アイドルの拳の絵を固有色・加算・低αで突く方向へ伸ばす。ナックルが下端=突く向き)。2段目は逆の手(体の反対側から)。
-  const fistAfterimage = (scale: number, len: number, side: number) => {
-    const ox = -dir.y * side * 10, oy = dir.x * side * 10;
-    g.spawnImageMark(c.x + ox + dir.x * 14, c.y - 6 + oy + dir.y * 14, 'fx/idol-fist', {
-      scale, duration: 300, additive: true, tint: BR.BRAWLER_COLOR_HEX, rot: ang - Math.PI / 2, noPop: true, fadeFrom: 0.35,
-      scaleX: 0.8, scaleY: 1.25, moveX: dir.x * len, moveY: dir.y * len, alpha: 0.7,
+  // ★パンチの絵(社長指示2026-11-07「通常攻撃時は、パンチの絵を小さく出して。進行方向(ターゲティング時はそっち向き)に」)。
+  // アイドルの拳の絵を**拳と読める形のまま小さく**(体の半分前後)、毎段出す。向き=狙っている敵の方(居なければ向いている方=dir)。
+  // 手の先(体から向きの方へ少し離した所)から、慣性つき(加速→減速)で前へ伸びて消える。side=+1 前の手 / -1 逆の手(2段目)。
+  const fistAfterimage = (scale: number, len: number, side: number, ux = dir.x, uy = dir.y) => {
+    const um = Math.hypot(ux, uy) || 1; ux /= um; uy /= um;
+    const hx = c.x + ux * 18 - uy * side * 6, hy = c.y - 8 + uy * 14 + ux * side * 3;
+    g.spawnImageMark(hx, hy, 'fx/idol-fist', {
+      scale, duration: 210, additive: false, tint: 0xfffaf0, rot: Math.atan2(uy, ux) - Math.PI / 2, noPop: true, fadeFrom: 0.45,
+      moveX: ux * len, moveY: uy * len, alpha: 0.95,
     });
+  };
+  const hitSfx = (extraGain = 1) => {
+    brawlerSfx('brawler-hit', BR.BRAWLER_HIT_GAIN[stage] * extraGain, BR.BRAWLER_HIT_PITCH[stage] * brJitter(), stage <= 2 ? 180 : 280);
+    brawlerSfx('whip-hit', 0.4, BR.BRAWLER_HIT_PITCH[stage] * 1.1 * brJitter(), 110, 8);
   };
   switch (stage) {
     case 1:
     case 2: {
-      // 2段目は体を反転しない。逆の手は、拳の残像を体の反対側から出すことと体の傾きで見せる(§8-2)。
-      if (stage === 2) fistAfterimage(0.26, 22, -1);
-      for (const h of hitAt) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 160, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
-      if (hits > 0) {
-        brawlerSfx('brawler-kick', 0.75, (1.12 - stage * 0.04) * brJitter(), 160);
-        brawlerSfx('whip-hit', 0.45, 1.1 * brJitter(), 110, 8);
-      }
+      // 1段目=前の手 / 2段目=逆の手(絵の反転は pixi が状態から)。
+      fistAfterimage(0.2, 18, stage === 2 ? -1 : 1);
+      for (const h of hitAt) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.weak);
+      if (hits > 0) hitSfx();
       break;
     }
     case 3: {
-      fistAfterimage(0.36, 34, 1);
-      for (const h of hitAt) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 220, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+      // アッパー: 向きの決まり(敵の方)のまま、突き上げる分だけ少し上へ起こす(§9-23)。
+      fistAfterimage(0.24, 24, 1, dir.x, dir.y - 0.55);
+      for (const h of hitAt) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.strong);
       if (hits > 0) {
-        brawlerSfx('brawler-kick', 0.9, 0.96 * brJitter());
-        brawlerSfx('whip-hit', 0.5, 0.95 * brJitter(), 140, 8);
+        hitSfx();
         brawlerSfx('heavy-impact', 0.55, 1.15, undefined, 12);
       }
       break;
@@ -4614,25 +4641,27 @@ const brawlerStageFx = (
       const fx = c.x, fy = c.y + 14;
       g.spawnRing(fx, fy, 12, BR.BRAWLER_LANDING_RADIUS * 1.35, BR.BRAWLER_RGBA(0.85), 4, 340, true);
       g.triggerShake(160, 8, 0, 1);
-      for (const h of hitAt) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 190, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
-      brawlerSfx('jump-land', 0.85, 0.95);
+      fistAfterimage(0.22, 16, 1); // 着地の打ち下ろし(向き=敵の方)
+      for (const h of hitAt) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.land);
+      brawlerSfx('brawler-stomp', 0.8, 1.1);
       brawlerSfx('heavy-impact', 0.6, 0.72, undefined, 16);
-      if (hits > 0) brawlerSfx('brawler-kick', 0.8, 0.82 * brJitter());
+      if (hits > 0) hitSfx();
       break;
     }
     case 5: {
-      // 掌底: 赤い衝撃波は使わない。dust-ring を向きへ横長に伸ばした帯 + meleeHit を横長に + 拳の残像を大きく。
-      const bx = c.x + dir.x * BR.BRAWLER_BAND_LEN * 0.45, by = c.y + dir.y * BR.BRAWLER_BAND_LEN * 0.45;
-      g.spawnImageMark(bx, by, 'fx/dust-ring', {
-        scale: 0.62, duration: 320, additive: true, tint: BR.BRAWLER_COLOR_HEX, rot: ang, noPop: true, fadeFrom: 0.3,
-        scaleX: 1.9, scaleY: 0.55, moveX: dir.x * 46, moveY: dir.y * 46, alpha: 0.7,
+      // 掌底: 赤い衝撃波は使わない。短く・速く伸びる帯(dust-ring を横長)+先端で散る白金の粒+大きめの拳の残像。
+      const tipX = c.x + dir.x * BR.BRAWLER_BAND_LEN * 0.85, tipY = c.y + dir.y * BR.BRAWLER_BAND_LEN * 0.85;
+      g.spawnImageMark(c.x + dir.x * 54, c.y + dir.y * 54, 'fx/dust-ring', {
+        scale: 0.5, duration: 170, additive: true, tint: BR.BRAWLER_COLOR_HEX, rot: ang, noPop: true, fadeFrom: 0.15,
+        scaleX: 1.45, scaleY: 0.5, moveX: dir.x * 70, moveY: dir.y * 70, alpha: 0.75,
       });
-      g.spawnEffect({ kind: 'meleeHit', id: `mhit-palm-${now}`, x: c.x + dir.x * 100, y: c.y + dir.y * 100, size: 150, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR, sx: 1.6, rot: ang }); // 帯の中ほど(体を覆い切らない)
-      fistAfterimage(0.6, 70, 1);
-      for (const h of hitAt) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 280, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+      g.spawnEffect({ kind: 'meleeHit', id: `mhit-palm-${now}`, x: c.x + dir.x * 84, y: c.y + dir.y * 84, size: 110, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: 220, sx: 1.4, rot: ang });
+      g.spawnBurst(tipX, tipY, BR.BRAWLER_COLOR, 12, dir.x, dir.y); // 先端で散らす(ビームに見せない)
+      fistAfterimage(0.28, 30, 1);
+      for (const h of hitAt) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.closer);
       if (hits > 0) {
         brawlerClosingFx(get, hitAt[0].x, hitAt[0].y, dir);
-        brawlerSfx('brawler-kick', 1.0, 0.74 * brJitter());
+        hitSfx(1.1);
         brawlerSfx('heavy-impact', 1.0, 0.8, undefined, 10);
       } else {
         brawlerSfx('heavy-impact', 0.35, 1.2);
@@ -4668,7 +4697,11 @@ const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Parti
     }
     if (hitX === null && traveled >= BR.BRAWLER_KIKO_RANGE) { hitX = nx; hitY = ny; }
     if (hitX !== null) blasts.push({ x: hitX, y: hitY });
-    else keep.push({ ...k, x: nx, y: ny, traveled });
+    else {
+      keep.push({ ...k, x: nx, y: ny, traveled });
+      // 火の気配: 飛んでいる間、後ろへ橙の火の粉をこぼす(間隔は揺らす・クリエイティブ監査 #16)。
+      if (Math.random() < 0.3) get().spawnBurst(nx - k.dirX * 10, ny - k.dirY * 10, Math.random() < 0.5 ? '#fb923c' : '#fde68a', 2, -k.dirX, -k.dirY);
+    }
   }
   set(() => ({ brawlerKiko: keep }));
   for (const b of blasts) explodeBrawlerKiko(get, b.x, b.y);
@@ -9628,12 +9661,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const kind = neutral ? null : BR.classifyBrawlerFlick(dirX, dirY);
     if (!kind || !BR.brawlerTechAllowed(s, kind, t)) {
       // 方向の決まらない入力・出せない時は技を出さない(短い空振りの音・§7-5)。
-      if (!isBrawlerGuardingAt(s, t)) { brawlerSfx('whip-swing', 0.22, 1.6, 70); setBrawler(set, { ...s, denyAt: Date.now() }); }
+      if (!isBrawlerGuardingAt(s, t)) { brawlerSfx('ui-deny', 0.5, 0.72, 160); setBrawler(set, { ...s, denyAt: Date.now() }); }
       return false;
     }
     if (!BR.brawlerCanPay(s, kind)) {
-      // ポイント不足: 何も出さない(HUD の数字が震え、体から短い空振りの音=社長決定 #8)。
-      brawlerSfx('whip-swing', 0.25, 1.55, 70);
+      // ポイント不足: 何も出さない(HUD の数字が震えて一瞬沈み、鈍い音=社長決定 #8・クリエイティブ監査 #18)。
+      brawlerSfx('ui-deny', 0.55, 0.72, 160);
       setBrawler(set, { ...s, denyAt: Date.now() });
       return false;
     }
@@ -9707,10 +9740,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().triggerShake(COUNTER_SHAKE_MS + 80, COUNTER_SHAKE_MAG * 1.4, c.x - x, c.y - y);
     get().triggerZoom(0.14, 260, 60, c.x, c.y, 'counter');
     get().spawnFlash('rgba(255,252,244,0.16)', 120);
-    get().spawnRing(c.x, c.y, 16, 132, BR.BRAWLER_RGBA(0.95), 5, 380, true);
-    get().spawnRing(c.x, c.y, 8, 70, 'rgba(255,255,255,0.9)', 3, 240, true);
-    get().spawnGlow(c.x, c.y - 6, GLOW_R_XL, 'rgba(255,248,230,', 320, true);
-    get().spawnEffect({ kind: 'meleeHit', id: `mhit-guard-${now}`, x: (x + c.x) / 2, y: (y + c.y) / 2, size: 230, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+    // 受けた所で砕ける(カウンターの砕けの素材を白金・加算で・輪は出さない=クリエイティブ監査 #8)。
+    {
+      const dx = x - c.x, dy = y - c.y, dl = Math.hypot(dx, dy);
+      const px = dl > 1 ? c.x + (dx / dl) * Math.min(26, dl) : c.x, py = dl > 1 ? c.y - 6 + (dy / dl) * Math.min(26, dl) : c.y - 6;
+      get().spawnImageMark(px, py, COUNTER_SHATTER_TEXTURE, {
+        scale: COUNTER_SHATTER_SCALE * 1.25, duration: COUNTER_SHATTER_DURATION_MS, cols: COUNTER_SHATTER_COLS, noPop: true,
+        fadeFrom: COUNTER_SHATTER_FADE_FROM, frameEaseOut: true, tint: BR.BRAWLER_COLOR_HEX, additive: true,
+        rot: Math.atan2(dy, dx) + (Math.random() * 2 - 1) * 0.35,
+      });
+      get().spawnGlow(px, py, GLOW_R_L, 'rgba(255,248,230,', 260, true);
+      get().spawnBurst(px, py, BR.BRAWLER_COLOR, 10, dx / (dl || 1), dy / (dl || 1));
+    }
     brawlerSfx('counter', 0.9, 0.92);
     brawlerSfx('heavy-impact', 0.7, 0.68, undefined, 14);
   },

@@ -66,8 +66,8 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
   // 格闘: レベルで技ポイントの上限が増え(5→10→20)、左の気功の延焼が強くなる(Lv3)。
   // 根拠: src/utils/brawler.ts BRAWLER_POINT_CAP_BY_LEVEL / src/utils/skillEffectsB7.ts incendiaryBurnParams(格闘のLvで引く)
   brawler: {
-    lv2: '技を溜めておける数が増える',
-    lv3: '技を溜めておける数が増え、気功の炎が強くなる',
+    lv2: '技ポイントを多く溜めておける',
+    lv3: '気功の炎が長く強く燃える。技ポイントもさらに溜まる',
   },
   murasame: {
     lv2: null,

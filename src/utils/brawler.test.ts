@@ -6,7 +6,7 @@ import {
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
-  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
+  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompHeight, BRAWLER_JUMP_VIS_PX, BRAWLER_HIT_PITCH, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
 } from './brawler';
 
 const foe = (id: string, cx: number, cy: number, over: Partial<Enemy> = {}): Enemy => ({
@@ -200,5 +200,34 @@ describe('格闘: 絵', () => {
     expect(brawlerPoseAt(s, 300)?.tex).toBe('ready');
     expect(brawlerPoseAt(s, 1000)).toBeNull();
     expect(brawlerPoseAt(brawlerStartAttack(s, 3, 2000, false), 2200)?.tex).toBe('swing');
+  });
+});
+
+describe('格闘: 絵(クリエイティブ監査)', () => {
+  it('2段目は絵を反転して逆の手を形で見せる・1段目は反転しない', () => {
+    expect(brawlerPoseAt(brawlerStartAttack(initialBrawlerState(), 2, 0, false), 30)?.flip).toBe(true);
+    expect(brawlerPoseAt(brawlerStartAttack(initialBrawlerState(), 1, 0, false), 30)?.flip).toBe(false);
+  });
+  it('気功: 溜め=振り上げ / 放つ=しゃがみ。飛び蹴り: 滞空=しゃがみ / 当たった瞬間=振り上げ', () => {
+    const k = brawlerStartTech(initialBrawlerState(), 'kiko', 0);
+    expect(brawlerPoseAt(k, 60)?.tex).toBe('swing');
+    expect(brawlerPoseAt({ ...k, resolved: true }, 140)?.tex).toBe('ready');
+    const f = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);
+    expect(brawlerPoseAt(f, 60)?.tex).toBe('ready');
+    expect(brawlerPoseAt({ ...f, resolved: true }, 125)?.tex).toBe('swing');
+  });
+  it('大踏み潰しの跳びは4段目より高い', () => {
+    let top = 0;
+    for (let p = 0; p <= 1; p += 0.01) top = Math.max(top, brawlerStompHeight(p));
+    expect(top).toBeGreaterThan(BRAWLER_JUMP_VIS_PX);
+  });
+  it('掌底は伸び切った形で一拍止まる(戻りの最初は押し出しが最大のまま)', () => {
+    const s = { ...brawlerStartAttack(initialBrawlerState(), 5, 0, false), resolved: true };
+    expect(brawlerPoseAt(s, 160)?.push).toBe(brawlerPoseAt(s, 250)?.push);
+    expect(brawlerPoseAt(s, 160)!.push).toBeGreaterThanOrEqual(44);
+  });
+  it('段ごとの音程は等間隔に下げない', () => {
+    const steps = [1, 2, 3, 4].map(i => +(BRAWLER_HIT_PITCH[i] - BRAWLER_HIT_PITCH[i + 1]).toFixed(3));
+    expect(new Set(steps).size).toBeGreaterThan(1);
   });
 });

@@ -772,6 +772,9 @@ export interface Enemy {
   brawlerLiftAt?: number;
   /** ★格闘のヒットストップの間の小刻みな震え(Date.now・絵だけ=判定は動かない・§2-4)。 */
   brawlerShakeUntil?: number;
+  /** 震える向き(単位・当てた方向)。 */
+  brawlerShakeDx?: number;
+  brawlerShakeDy?: number;
   /** ★格闘の締めで大きく吹き飛ばされた時刻(Date.now・足元に地面を擦る砂埃の尾を描く・§2-4)。 */
   brawlerBlownAt?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
