@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5376 — 移動近接のノックバックを1.5倍【2026-11-07 15:00 JST】
+- 社長指示「移動近接の場合、敵のノックバック距離をもう少し伸ばす」。
+- 「移動近接」=走りながら離して**踏み込んだ振り**(判定は踏み込みと同じ `isRunningForMeleeLunge`)。`beginMeleeSwing` で起点時刻を `runningSwingAt` に控え、前隙の解決(`triggerCounter(swingStartAt)`)で一致した振りだけ対象(被弾反撃などの別経路は対象外)。
+- 新しい純関数 `meleeKnockbackSpeed(falloff, slasherForce, moving)`:従来の式(通常 `KNOCKBACK_SPEED×(0.5+0.5×近さ)` / スラッシャーの強制25px)に、移動近接なら `MOVING_MELEE_KB_MULT=1.5` を掛ける。飛距離はおよそ9〜19px → 14〜28px(スラッシャー25→37.5px)。
+- 対象外: 鞭(元から通常の約3倍で弾く)。ノックバック免疫(1.75秒)の中は従来どおり押さない。
+- 確認: `npm run typecheck` / 新テスト `src/store/movingMeleeKb.test.ts` / 近接まわりのテスト / eslint / 循環import。
+- 自己点検: 初心者ゾーン・緩の荒らしには触れない(近接の手応えのみ)。
+- 変更: `src/store/gameStore.ts` `src/store/movingMeleeKb.test.ts` `src/data/changelog.ts` `package.json`
+
 ## v0.25.5375 — 天使セットの輪を少し上へ【2026-11-07 12:12 JST】
 - 社長指示「天使アバター、輪っかをもう少し上に」。`src/data/avatars.ts` の angel-set の輪 `offsetYFrac` -0.86→-0.93(体の表示枠の7%≒4〜5px上)。
 - 確認: ヘビーガンナー・スカベンジャーで前後を撮影。前=輪が髪の上端に重なっていた / 後=頭の少し上に浮く。`npm run typecheck` / `playerHeadAnchors.test.ts` / eslint。

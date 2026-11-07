@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5376', items: [
+    '走りながら斬ると、敵がいつもより遠くへ吹き飛ぶ',
+  ] },
   { version: '0.25.5375', items: [
     '天使セットの輪が、頭の少し上に浮くようになった',
   ] },

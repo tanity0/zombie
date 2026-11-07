@@ -1909,6 +1909,18 @@ export const isRunningForMeleeLunge = (
 export const meleeLungePx = (player: Player, running: boolean = true): number =>
   running ? (player.subWeapons.includes('whip') ? WHIP_LUNGE_PX : MELEE_LUNGE_PX) : 0;
 /**
+ * ★移動近接(走りながら離して踏み込んだ振り)のノックバック倍率(社長指示2026-11-07「移動近接の場合、敵のノックバック距離を
+ * もう少し伸ばす」)。「走り」の判定は踏み込みと同じ `isRunningForMeleeLunge`(=踏み込んだ振りだけ)。
+ * 飛距離は速さ×時間なので、速さに掛けた倍率がそのまま距離の倍率。ナイフ(素手の近接)の通常のノックバックとスラッシャーの
+ * 強制ノックバックに掛ける。鞭は元から大きく弾く(通常の約3倍)ので対象外。
+ */
+export const MOVING_MELEE_KB_MULT = 1.5;
+export const meleeKnockbackSpeed = (falloff: number, slasherForce: boolean, moving: boolean): number =>
+  (slasherForce ? knockbackSpeedFor(SLASHER_FORCE_KB_PX, KNOCKBACK_DURATION) : KNOCKBACK_SPEED * (0.5 + falloff * 0.5))
+  * (moving ? MOVING_MELEE_KB_MULT : 1);
+// 走りで踏み込んだ振りの起点(beginMeleeSwing の now)。前隙の解決(triggerCounter(swingStartAt))で一致したら移動近接。
+let runningSwingAt = 0;
+/**
  * その主語(プレイヤー / 疑似Player)の**近接の前隙**。前隙を測る側は `MELEE_WINDUP_MS` を
  * 直接読まず**必ずこの関数を通す**——武器ごとに変えたくなった時、**ここ1箇所に分岐を足せば
  * 判定も絵も同時に追従する**(測る場所が散らばっていると、片方だけ直って嘘の絵になる)。
@@ -9271,6 +9283,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★二段階の踏み込み(v0.25.3957): 指を離した瞬間の走り/歩きで距離を分ける。
         // swipeDirection/swipeStrength は release() が状態を消す**前**にここへ来る(VirtualJoystickの順序)。
         const runningNow = isRunningForMeleeLunge(p, get().swipeDirection, get().swipeStrength);
+        runningSwingAt = runningNow ? now : 0; // 移動近接の印(判定時にノックバックを伸ばす)
         const spd = knockbackSpeedFor(meleeLungePx(p, runningNow), MELEE_LUNGE_MS); // 武器別(走り: 鞭=20px/ナイフ=30px、立ち/歩き=0=その場で振る)
         set(state => ({ player: {
           ...state.player,
@@ -9371,6 +9384,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // これをしないと窓が200ms後ろへずれ、CDも1周期あたり200ms伸びてしまう(実質の弱体化)。
     // 演出の時刻(エフェクトのcreatedAt等)は従来どおり `now` のまま=絵は今この瞬間に出る。
     const swingAt = swingStartAt ?? now;
+    // ★移動近接=走りで踏み込んだ振りの解決(被弾反撃などの別経路は対象外)。ノックバックを MOVING_MELEE_KB_MULT 倍。
+    const movingSwing = !ret && swingStartAt !== undefined && swingStartAt === runningSwingAt;
 
     // 近接スイングの揺れは「通常ヒット時のみ」(空振りは揺らさない/フィニッシュ・カウンターは
     // それぞれのインパクト演出に任せる)。判定が出揃う関数末尾で発火する(社長指示)。
@@ -10026,9 +10041,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // falloff(減衰)は従来どおり判定距離distを使う(挙動不変)。
         const norm = Math.max(0.001, Math.hypot(dx, dy));
         const falloff = 1 - dist / meleeRange;
-        const speed = slasherForce
-          ? knockbackSpeedFor(SLASHER_FORCE_KB_PX, KNOCKBACK_DURATION)
-          : KNOCKBACK_SPEED * (0.5 + falloff * 0.5); // v0.25.3260: 50px化(3257)を社長指示で撤回=従来値へ
+        // v0.25.3260: 50px化(3257)を社長指示で撤回=従来値へ。2026-11-07: 移動近接は ×MOVING_MELEE_KB_MULT。
+        const speed = meleeKnockbackSpeed(falloff, slasherForce, movingSwing);
         survivors.push({
           ...enemy,
           health: newHealth,
