@@ -4288,8 +4288,11 @@ const startBrawlerPalmDash = (get: () => GameState, set: (fn: (s: GameState) => 
     lastDirection: { x: dir.x, y: dir.y },
     ...brawlerLungePatch(dir.x * L, dir.y * L, L, ms, now),
     // 一閃と同じ無敵(既存の被弾無敵を再利用し、切れる時刻が抜け切りと揃うよう開始時刻を過去へずらす)。
+    // 既に長い無敵(被弾の無敵など)が残っていれば縮めない(縮地と同じ・検収 A-3)。
     invulnerable: true,
-    invulnerableTime: now - Math.max(0, INVULN_MS - ms),
+    invulnerableTime: p.invulnerable
+      ? Math.max(p.invulnerableTime, now - Math.max(0, INVULN_MS - ms))
+      : now - Math.max(0, INVULN_MS - ms),
   });
   brawlerSfx('whip-swing', 0.75, 0.62 * brJitter(), 200);
   brawlerSfx('homing-fire', 0.35, 1.5, 160);
@@ -9382,9 +9385,21 @@ export const useGameStore = create<GameState>((set, get) => ({
       const candidate = warpTo
         ? { x: warpTo.x, y: warpTo.y, width: player.width, height: player.height }
         : { x: player.x + vx * deltaTime, y: player.y + vy * deltaTime, width: player.width, height: player.height };
+      // ★格闘の速い踏み込み(5段目の突き抜け・詰め・飛び蹴り='accel' の器)は1フレームで最大20px超動くため、
+      // 幹(高さ約12px)を中心ごと越えて向こう側へ押し出される(検収 A-1)。1回あたり6px以下に刻んで壁・木の解決を通し、
+      // 止められた刻みで移動を打ち切る(残りの速度も0)。刀の一閃は別件(触らない)。
+      const brawlerSweep = !warpTo && lungeActive && player.lungeShape === 'accel';
+      let brawlerSweepStopped = false;
+      const sweepSolve = (solve: (r: Rect) => { x: number; y: number }): { x: number; y: number } => {
+        if (!brawlerSweep) return solve(candidate);
+        const r = BR.sweepResolve(player.x, player.y, candidate.x - player.x, candidate.y - player.y, player.width, player.height, BR.BRAWLER_SWEEP_STEP_PX, solve);
+        brawlerSweepStopped = r.stopped;
+        return r;
+      };
       if (state.indoorMode) {
         const openIds = state.labDoors.filter(d => d.open).map(d => d.id);
-        const r = resolveAabb(candidate, [...labBlockingWalls(openIds), ...state.labProps.map(p => p.rect)]);
+        const labWalls = [...labBlockingWalls(openIds), ...state.labProps.map(p => p.rect)];
+        const r = sweepSolve(rc => resolveAabb(rc, labWalls));
         newX = r.x; newY = r.y;
       } else {
         // 研究所スキンは木/城を出さない(社長指示)=その当たり判定もスキップ。
@@ -9392,14 +9407,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 遮蔽物の連鎖(木/松明/城/街プロップ/病院/武器庫/警察署/ラボ壁)は resolveOutOfSolids に
         // 一本化した(v0.25.2424)。**アイテムの着地点も同じ関数を通す**ので、「プレイヤーが立てない
         // 場所にはアイテムも落ちない」が構造的に保証される。連鎖の順序・中身は移設前と1つも変えていない。
-        const solidResolved = resolveOutOfSolids(candidate, {
+        const solidCtx = {
           labTheme, farBackdrop: get().farBackdrop, solidProps, castleEvent,
           hospital: state.hospital, hospitalTaken: state.hospitalTaken,
           armory: state.armory, armoryTaken: state.armoryTaken,
           police: state.police, policeTaken: state.policeTaken,
           shrines: state.shrines, secretPois: state.secretPois,
           facilitiesHidden: facilitySolidsOff(state), // v0.25.3054 / ボス戦明けの弾き出しの間も外す(2026-11-04)
-        });
+        };
+        const solidResolved = sweepSolve(rc => resolveOutOfSolids(rc, solidCtx));
         newX = solidResolved.x;
         newY = solidResolved.y;
         // ★敵をすり抜けない(社長報告2026-08-25「敵をプレイヤーはすり抜けない。今回から
@@ -9627,6 +9643,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           aimY,
           shukuchiWarpTo: undefined,
           ...(lungeHeld ? { lungeUntil: player.lungeUntil + deltaTime * 1000 } : {}),
+          // 格闘の速い踏み込みが壁・木に止められた: 踏み込みを打ち切り、残りの速度も0(A-1)。
+          ...(brawlerSweepStopped ? { lungeUntil: 0, lungeVx: 0, lungeVy: 0, vx: 0, vy: 0 } : {}),
         }
       };
     });

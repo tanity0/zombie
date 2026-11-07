@@ -845,6 +845,15 @@ export const ensureTextures = (): Promise<void> => {
       // 格闘の気功の弾(社長指示2026-11-07「気功っぽい絵…色は適当に変えれば使える」)。blob-shot の色相を金へ回した派生(原盤は上書きしない)。
       // 同じ10コマ・700×66。格闘はどのステージでも持てるので起動マニフェスト(常駐 0.18MB)。
       { name: 'fx/blob-shot-gold', scaleMode: 'nearest' },
+      // 格闘の「動きの影」7枚(社長支給2026-11-07・青く光る輪郭+紺の中身・右向き)。技を出す時に本人の上へ前のめりに重ねる。
+      // 格闘はどのステージでも持てるので起動マニフェスト。ドット絵=nearest。
+      { name: 'fx/brawler-stand-punch', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand-heavy', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand-slam', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand-palm', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand-guard', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand-hadou', scaleMode: 'nearest' },
+      { name: 'fx/brawler-stand-kick', scaleMode: 'nearest' },
       // カウンター成立のガラスの砕け(社長支給2026-10-01)。15コマの横並び(4080×149・1コマ272×149)・透過あり。
       // カウンターは全ステージで出るので起動マニフェスト。写実のVFXなので既定linear。
       { name: 'fx/counter-shatter' },
@@ -878,7 +887,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fog-alpha', scaleMode: 'linear' },     // 森下の霧素材(アルファ透過版=通常合成で重ねる)
       // 寄り演目のVFX(research/CINEMATIC_CAMERA.md §8・Kenney Particle Pack/CC0・v0.25.4306)。
       // ★`spritePath` は `sprites/<name>.png` しか見ないので **public/sprites/vfx/** に置く(public/vfx/ では引けない)。
-      // `spark_04`(枝分かれした電撃)は語彙が無いので**登録しない**(ロードだけされて描かれない状態を作らない)。
+      // `spark_04`(枝分かれした電撃)は当時は使い道が無く登録していなかった。格闘の構えの受けの稲妻で使うので登録した(2026-11-07・常駐 0.26MB)。
       { name: 'vfx/flare_01', scaleMode: 'linear' },  // 硬い芯+水平の条=指向性ワイプ / 極小の火の粉
       { name: 'vfx/light_01', scaleMode: 'linear' },  // ピントの外れたボケ輪(前景)
       { name: 'vfx/light_02', scaleMode: 'linear' },
@@ -887,6 +896,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'vfx/smoke_08', scaleMode: 'linear' },
       { name: 'vfx/trace_04', scaleMode: 'linear' },  // うねった煙の筋=空気の流れ
       { name: 'vfx/slash_02', scaleMode: 'linear' },  // 三日月=相手の縁取り(リムライト)
+      { name: 'vfx/spark_04', scaleMode: 'linear' },  // 枝分かれした電撃=格闘の構えの受け
       { name: 'zoom-cloud', scaleMode: 'nearest' },   // 引き雲(社長支給v0.25.3011・ドット絵透過版。深い引きの時だけ最前面に流す)
       // 研究施設(屋内)アセット。サブディレクトリ込みの名前で登録(spritePath が sprites/<name>.png)。
       // ★lab-wall-open-*/lab-wall-closed-*/lab-wall-side-long/lab-wall-side-block{1,2,3} はバッチ4

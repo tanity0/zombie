@@ -1,13 +1,14 @@
 // ★サブウェポン「格闘」(research/BRAWLER.md)をストアで実際に動かして固める。
 // 5段のつながり・ヒットストップ・技ポイント・技(構え/大踏み潰し/気功/飛び蹴り)・近接専用モード・守護霊の疑似プレイヤー。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH } from './gameStore';
+import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH, INVULN_MS } from './gameStore';
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
 import { BRAWLER_GUARD_MS } from '../utils/brawler';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
+import { treesInRegion, trunkRect } from '../world/trees';
 
 const NO_INPUT = { up: false, down: false, left: false, right: false } as never;
 let now = 7_000_000;
@@ -451,5 +452,58 @@ describe('格闘: 5段目=一閃型の貫通突進(社長指示2026-11-07)', () 
     for (let k = 0; k < 60 && !br().resolved; k++) advance(10);
     advance(300);
     expect(center().y).toBeGreaterThanOrEqual(-LAB_CORRIDOR_Y_LIMIT_PX - 1e-6);
+  });
+});
+
+describe('格闘: 5段目の突き抜けは木の幹を素通りしない(検収 A-1)・無敵を縮めない(A-3)', () => {
+  const step = (ms: number, dt: number) => {
+    const end = now + ms;
+    while (now < end) {
+      now += dt;
+      useGameStore.setState(st => ({ gameTime: st.gameTime + dt }));
+      useGameStore.getState().movePlayer(NO_INPUT, dt / 1000);
+      useGameStore.getState().tickBrawler();
+    }
+  };
+  const pressStage5 = () => {
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, nextStage: 5, chainUntil: st.gameTime + 1000 } } }));
+    expect(useGameStore.getState().brawlerPress()).toBe(true);
+  };
+  const tree = () => treesInRegion(1000, 1000, 6000, 6000)[0];
+  for (const dt of [17, 33]) {
+    it(`幹の真上から下向き(${dt}ms 刻み)でも幹の手前で止まる`, () => {
+      setup();
+      useGameStore.getState().brawlerPress(); advance(400);
+      const r = trunkRect(tree());
+      useGameStore.setState(st => ({ enemies: [], player: { ...st.player, x: r.x + r.width / 2 - st.player.width / 2, y: r.y - 60 - st.player.height, lastDirection: { x: 0, y: 1 } } }));
+      pressStage5();
+      for (let k = 0; k < 100 && !br().resolved; k++) step(dt, dt);
+      step(400, dt);
+      const p = useGameStore.getState().player;
+      expect(p.y + p.height).toBeLessThanOrEqual(r.y + 0.5);
+    });
+    it(`幹の横から(${dt}ms 刻み)でも幹の手前で止まる`, () => {
+      setup();
+      useGameStore.getState().brawlerPress(); advance(400);
+      const r = trunkRect(tree());
+      useGameStore.setState(st => ({ enemies: [], player: { ...st.player, x: r.x - 60 - st.player.width, y: r.y + r.height - st.player.height, lastDirection: { x: 1, y: 0 } } }));
+      pressStage5();
+      for (let k = 0; k < 100 && !br().resolved; k++) step(dt, dt);
+      step(400, dt);
+      const p = useGameStore.getState().player;
+      expect(p.x + p.width).toBeLessThanOrEqual(r.x + 0.5);
+    });
+  }
+  it('溜め中に被弾した無敵は、突き抜けを踏み出しても本来の長さまで続く', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });
+    pressStage5();
+    useGameStore.setState(st => ({ player: { ...st.player, invulnerable: true, invulnerableTime: Date.now() } }));
+    const hurtAt = Date.now();
+    advance(200); // 溜め(100)を越えて踏み出す
+    const p = useGameStore.getState().player;
+    expect(p.invulnerable).toBe(true);
+    expect(p.invulnerableTime + INVULN_MS).toBeGreaterThanOrEqual(hurtAt + INVULN_MS);
   });
 });

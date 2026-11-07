@@ -420,6 +420,27 @@ export const brawlerBandTargets = (
   return out;
 };
 
+/** 速い踏み込みを刻む1回あたりの最大距離(px)。幹(高さ約12px)を中心ごと越えない大きさ(検収 A-1)。 */
+export const BRAWLER_SWEEP_STEP_PX = 6;
+/**
+ * 1フレームの移動 (dx,dy) を stepPx 以下に刻み、刻みごとに solve(壁・木の押し出し)を通す。
+ * 押し出された刻みでそこまでにする(stopped=true)=速い踏み込みが壁を素通りしない。
+ */
+export const sweepResolve = (
+  x0: number, y0: number, dx: number, dy: number, w: number, h: number, stepPx: number,
+  solve: (r: Rect) => { x: number; y: number },
+): { x: number; y: number; stopped: boolean } => {
+  const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / Math.max(0.5, stepPx)));
+  let x = x0, y = y0;
+  for (let i = 0; i < n; i++) {
+    const wx = x + dx / n, wy = y + dy / n;
+    const r = solve({ x: wx, y: wy, width: w, height: h });
+    x = r.x; y = r.y;
+    if (Math.abs(r.x - wx) > 0.01 || Math.abs(r.y - wy) > 0.01) return { x, y, stopped: true };
+  }
+  return { x, y, stopped: false };
+};
+
 /** 詰めの行き先(相手の帯の縁から standOff 手前・最大 maxPx)。相手が居なければ動かない。 */
 export const brawlerApproach = (
   px: number, py: number, target: Enemy | null, maxPx: number, standOff = BRAWLER_STANDOFF_PX,
@@ -505,6 +526,65 @@ export const brawlerLiftHeight = (u: number): number => {
   if (u < 0.3) return BRAWLER_LIFT_VIS_PX * easeOut(u / 0.3);
   if (u < 0.5) return BRAWLER_LIFT_VIS_PX;
   return BRAWLER_LIFT_VIS_PX * (1 - easeIn((u - 0.5) / 0.5));
+};
+
+// ---------------------------------------------------------------------------------------------
+// 動きの影(スタンド)・社長指示2026-11-07「動きの影パーツを用意したので、これをスタンドの様に薄く光らせて重ねて表示するのはどう?」
+// +「むしろ当たり判定のヴィジュアルとしてキャラの上に前のめりに出していいと思う。武器の代わりって感じ。」
+// 絵は右向き。tipU/tipV = 打つ手足の先(絵の中の割合)。ここを当たりの所へ合わせて置く(pixi)。heightPx = 表示の高さ(world px)。
+// ---------------------------------------------------------------------------------------------
+export type BrawlerStandKind = 'punch' | 'heavy' | 'slam' | 'palm' | 'guard' | 'hadou' | 'kick';
+export interface BrawlerStandSpec { tex: string; tipU: number; tipV: number; heightPx: number }
+export const BRAWLER_STAND: Readonly<Record<BrawlerStandKind, BrawlerStandSpec>> = {
+  punch: { tex: 'fx/brawler-stand-punch', tipU: 0.95, tipV: 0.33, heightPx: 80 },
+  heavy: { tex: 'fx/brawler-stand-heavy', tipU: 0.96, tipV: 0.3, heightPx: 92 },
+  slam: { tex: 'fx/brawler-stand-slam', tipU: 0.55, tipV: 0.9, heightPx: 92 },
+  palm: { tex: 'fx/brawler-stand-palm', tipU: 0.88, tipV: 0.22, heightPx: 92 },
+  guard: { tex: 'fx/brawler-stand-guard', tipU: 0.62, tipV: 0.34, heightPx: 84 },
+  hadou: { tex: 'fx/brawler-stand-hadou', tipU: 0.93, tipV: 0.3, heightPx: 88 },
+  kick: { tex: 'fx/brawler-stand-kick', tipU: 0.96, tipV: 0.3, heightPx: 92 },
+};
+/** 下の大踏み潰しの影は着地の円に合わせて大きく。 */
+export const BRAWLER_STAND_STOMP_MULT = 1.45;
+export interface BrawlerStandFrame {
+  kind: BrawlerStandKind;
+  /** 体の前(0)→当たりの所(1)→その先へ抜ける(>1)。 */
+  ext: number;
+  /** 不透明度(加算で描く)。 */
+  alpha: number;
+  /** 2段目=逆の手(体の反対側へずらして少し小さく)。 */
+  backHand: boolean;
+  /** 下の大踏み潰し(影を大きく)。 */
+  big: boolean;
+}
+/**
+ * いまの影の形(判定は持たない・pixi が読む)。慣性: 前隙で体から前へにじみ出る(加速)→ 当たる瞬間に当たりの所まで伸び切る
+ * (止めの間は段の時計が止まる=そこで止まる)→ 戻りで前へ抜けながら減速して消える。構えは出ている間うっすら脈打つ。
+ */
+export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerStandFrame | null => {
+  if (!s || s.phase === 'idle') return null;
+  let kind: BrawlerStandKind;
+  if (s.phase === 'attack') {
+    kind = s.stage <= 2 ? 'punch' : s.stage === 3 ? 'heavy' : s.stage === 4 ? 'slam' : 'palm';
+  } else {
+    if (!s.tech) return null;
+    kind = s.tech === 'guard' ? 'guard' : s.tech === 'stomp' ? 'slam' : s.tech === 'kiko' ? 'hadou' : 'kick';
+  }
+  const el = Math.max(0, brawlerElapsed(s, t));
+  const base = { kind, backHand: s.phase === 'attack' && s.stage === 2, big: s.tech === 'stomp' };
+  if (kind === 'guard') {
+    const remain = s.guardUntil > t ? (s.guardUntil - t) / BRAWLER_GUARD_MS : 0;
+    const appear = easeOut(Math.min(1, el / 90));
+    const out = remain < 0.12 ? remain / 0.12 : 1; // 終わり際に減速して消える
+    return { ...base, ext: 1, alpha: (0.5 + 0.08 * Math.sin(el / 110)) * appear * out };
+  }
+  const hit = el >= s.windupMs;
+  if (!hit) {
+    const pre = s.windupMs > 0 ? Math.min(1, el / s.windupMs) : 1;
+    return { ...base, ext: 0.55 * easeIn(pre), alpha: 0.3 + 0.55 * easeOut(pre) };
+  }
+  const post = Math.min(1, (el - s.windupMs) / Math.max(1, s.recoveryMs));
+  return { ...base, ext: 1 + 0.35 * easeOut(post), alpha: 0.85 * (1 - easeIn(post)) };
 };
 
 /** いまの体の形。連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ・§4)。 */

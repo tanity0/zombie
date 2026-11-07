@@ -39464,12 +39464,78 @@ export class PixiScene {
   private brawlerGhosts: Sprite[] = [];
   private brawlerKikoViews = new Map<string, { halo: Sprite; core: Sprite; flame: Sprite; tail: Sprite; blob: Sprite }>();
   private brawlerAura: Sprite | null = null;
+  private brawlerStand: Sprite | null = null;
+  /**
+   * ★動きの影(スタンド・社長指示2026-11-07)。技を出す間だけ、本人の上の層へ前のめりに重ねる「武器の代わり」の絵。
+   * 打つ手足の先(BRAWLER_STAND の tip)を、その段の当たりの所(相手の帯の縁・着地の円・帯の先)へ合わせて置く=判定の所まで届いて見える。
+   * 加算で描く=紺の中身は本人を暗く潰さず、青い輪郭だけが光る。形と時間は utils/brawler の brawlerStandAt(純関数)が決める。
+   */
+  private drawBrawlerStand(p: Player, s: BRW.BrawlerState, gt: number, footY: number, dsc: number, body: Sprite): void {
+    const f = BRW.brawlerStandAt(s, gt);
+    const spec = f ? BRW.BRAWLER_STAND[f.kind] : null;
+    const tex = spec ? getTexture(spec.tex) : null;
+    if (!f || !spec || !tex || f.alpha <= 0.01) { if (this.brawlerStand) this.brawlerStand.visible = false; return; }
+    if (!this.brawlerStand) { this.brawlerStand = new Sprite(); this.brawlerStand.blendMode = 'add'; }
+    const sp = this.brawlerStand;
+    const parent = body.parent;
+    if (parent && (sp.parent !== parent || parent.children[parent.children.length - 1] !== sp)) parent.addChild(sp); // 本人の上の層
+    const st = useGameStore.getState();
+    const cx = p.x + p.width / 2, cy = p.y + p.height / 2;
+    const dm = Math.hypot(s.dirX, s.dirY) || 1;
+    const ux = s.dirX / dm, uy = s.dirY / dm;
+    // 見た目の体の中心(跳びの高さも入る)。
+    const bodyH = Math.abs(body.height);
+    const bx = body.position.x, by = body.position.y - bodyH * 0.5;
+    // 当たりの所。
+    let hx: number, hy: number;
+    if (f.kind === 'slam') {
+      hx = cx + ux * 8; hy = footY - 2;
+    } else if (f.kind === 'punch' || f.kind === 'heavy') {
+      // 相手の体の手前の縁まで(相手の中心までの距離−体の幅の約1/3)。届く距離(近接の半径の目安 84)で頭打ち。
+      const tgt = s.targetId ? st.enemies.find(e => e.id === s.targetId) ?? null : null;
+      const d = tgt ? Math.hypot(tgt.x + tgt.width / 2 - cx, tgt.y + tgt.height / 2 - cy) - tgt.width * 0.33 : 40;
+      const reach = Math.max(30, Math.min(84, d));
+      hx = cx + ux * reach; hy = cy + uy * reach - 6;
+    } else {
+      const reach = f.kind === 'guard' ? 14 : f.kind === 'palm' ? 46 : 32;
+      hx = cx + ux * reach; hy = cy + uy * reach - 6;
+    }
+    // 体の前(0)→当たりの所(1)→その先(>1)。踏み潰しは上から地面へ落とす。
+    let tx: number, ty: number;
+    if (f.kind === 'slam') {
+      const fromY = hy - 56;
+      tx = hx; ty = f.ext <= 1 ? fromY + (hy - fromY) * f.ext : hy + (f.ext - 1) * 8;
+    } else {
+      const fx0 = bx + ux * 6, fy0 = by + uy * 6;
+      tx = f.ext <= 1 ? fx0 + (hx - fx0) * f.ext : hx + ux * (f.ext - 1) * 44;
+      ty = f.ext <= 1 ? fy0 + (hy - fy0) * f.ext : hy + uy * (f.ext - 1) * 44;
+    }
+    // 2段目=逆の手: 体の反対側(奥)へずらして少し小さく(左右反転すると拳が後ろを向いて当たりの所へ届かない=§9-29)。
+    if (f.backHand) { tx += -uy * 7; ty += ux * 4 - 3; }
+    // 向き: 左なら左右反転。上下は傾きで表す(±0.75rad まで=逆さまに見せない)+前のめり。
+    const left = ux < -0.05 || (Math.abs(ux) <= 0.05 && (p.lastDirection?.x ?? 1) < 0);
+    const lean = f.kind === 'slam' || f.kind === 'guard' ? 0.06 : 0.14;
+    const a = Math.max(-0.75, Math.min(0.75, Math.atan2(uy, Math.abs(ux) < 1e-3 ? 1e-3 : Math.abs(ux)))) + lean;
+    const h = spec.heightPx * (f.big ? BRW.BRAWLER_STAND_STOMP_MULT : 1) * (f.backHand ? 0.9 : 1) * dsc;
+    const k = h / tex.height;
+    sp.texture = tex;
+    sp.anchor.set(spec.tipU, spec.tipV);
+    sp.scale.set(left ? -k : k, k);
+    sp.rotation = f.kind === 'slam' ? (left ? -lean : lean) : (left ? -a : a);
+    sp.position.set(tx, ty);
+    // 構えは受けた瞬間だけ強く光る。
+    const pop = f.kind === 'guard' ? Math.max(0, 1 - (Date.now() - s.guardHitAt) / 220) : 0;
+    sp.alpha = Math.min(1, f.alpha + 0.5 * pop);
+    sp.tint = 0xffffff; // 頂いた青のまま
+    sp.visible = true;
+  }
   private drawBrawlerFx(p: Player, footX: number, footY: number, dsc: number, body: Sprite, now: number): void {
     const s = p.brawler;
     const st = useGameStore.getState();
     this.drawBrawlerKiko(st.brawlerKiko, now);
-    if (!s || !isBrawlerMode(p)) { this.hideBrawlerGhosts(); if (this.brawlerAura) this.brawlerAura.visible = false; return; }
+    if (!s || !isBrawlerMode(p)) { this.hideBrawlerGhosts(); if (this.brawlerAura) this.brawlerAura.visible = false; if (this.brawlerStand) this.brawlerStand.visible = false; return; }
     const gt = st.gameTime;
+    this.drawBrawlerStand(p, s, gt, footY, dsc, body);
     const el = BRW.brawlerElapsed(s, gt);
     const tint = this.dustTintForStage();
     // 構えの体の光(加算=沈まない)。1秒かけて絞っていく=窓の残りが見える(§3-2)。受けた瞬間は一度膨らむ。

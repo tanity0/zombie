@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Enemy } from '../types/game';
 import {
   BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS,
-  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
+  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
   brawlerStartAttack, brawlerStartTech, brawlerPressDecision, brawlerAfterResolve, brawlerDueEvent, brawlerFinish,
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
@@ -257,5 +257,35 @@ describe('格闘: 絵(クリエイティブ監査)', () => {
   it('段ごとの音程は等間隔に下げない', () => {
     const steps = [1, 2, 3, 4].map(i => +(BRAWLER_HIT_PITCH[i] - BRAWLER_HIT_PITCH[i + 1]).toFixed(3));
     expect(new Set(steps).size).toBeGreaterThan(1);
+  });
+});
+
+describe('格闘: 速い踏み込みの刻み(A-1)と動きの影', () => {
+  it('刻みごとに押し出しを通し、押された刻みで止まる', () => {
+    // y=20 から下は壁(上へ押し返す)
+    const solve = (r: { x: number; y: number; width: number; height: number }) => ({ x: r.x, y: Math.min(r.y, 20 - r.height) });
+    const out = sweepResolve(0, 0, 0, 60, 10, 10, 6, solve);
+    expect(out.stopped).toBe(true);
+    expect(out.y).toBe(10);
+    expect(sweepResolve(0, 0, 0, 5, 10, 10, 6, solve).stopped).toBe(false);
+  });
+  it('影: 前隙で体から前へにじみ出る→当たる瞬間に伸び切る→戻りで前へ抜けながら消える', () => {
+    const s = brawlerStartAttack(initialBrawlerState(), 1, 0, false);
+    const a = brawlerStandAt(s, 10)!, b = brawlerStandAt(s, 50)!;
+    expect(a.kind).toBe('punch');
+    expect(b.ext).toBeGreaterThan(a.ext);
+    expect(b.ext).toBeLessThan(1);
+    const hit = brawlerStandAt({ ...s, resolved: true }, 60)!;
+    expect(hit.ext).toBe(1);
+    const late = brawlerStandAt({ ...s, resolved: true }, 190)!;
+    expect(late.ext).toBeGreaterThan(1);
+    expect(late.alpha).toBeLessThan(hit.alpha);
+    expect(brawlerStandAt({ ...s, phase: 'idle' }, 60)).toBeNull();
+  });
+  it('影の割り当て: 2段目=逆の手 / 3段=heavy / 4段・下=slam / 5段=palm / 上=guard / 左=hadou / 右=kick', () => {
+    const at = (st: number) => brawlerStandAt(brawlerStartAttack(initialBrawlerState(), st, 0, false), 5)!;
+    expect([at(2).kind, at(2).backHand, at(3).kind, at(4).kind, at(5).kind]).toEqual(['punch', true, 'heavy', 'slam', 'palm']);
+    const tk = (k: 'guard' | 'stomp' | 'kiko' | 'kick') => brawlerStandAt(brawlerStartTech(initialBrawlerState(), k, 0), 5)!;
+    expect([tk('guard').kind, tk('stomp').kind, tk('stomp').big, tk('kiko').kind, tk('kick').kind]).toEqual(['guard', 'slam', true, 'hadou', 'kick']);
   });
 });
