@@ -6,6 +6,7 @@ import type { MolotovCycleState } from '../utils/molotov';
 import type { AcrasielPlan } from '../utils/acrasielScript';
 import type { FirstAidKitState } from '../utils/firstAidKit';
 import type { AvatarId } from '../data/avatars'; // アバターシステム(試験・第1弾)。依存ゼロの純データモジュール(循環しない)。
+import type { BrawlerState } from '../utils/brawlerTypes'; // サブウェポン「格闘」の状態機械(research/BRAWLER.md・型だけ)
 import type { SwordLungePlan } from '../utils/swordLunge'; // 剣ボスの踏み込み計画(依存ゼロの純関数モジュール=循環しない)。
 
 // Game state types
@@ -201,6 +202,15 @@ export interface Player extends DashLocomotionState {
    * (減衰を固定の90msで割っていた器へ、`knockbackMs` と同型の持続時間欄を足した)。
    */
   lungeMs?: number;
+  /**
+   * ★踏み込みの器の形(research/BRAWLER.md §8-2)。未指定/'decel'=従来(初速最大→線形に0)。
+   * 'accel'=加速して最大速度のまま当たる(格闘のダッシュ・跳び・飛び蹴り)。
+   */
+  lungeShape?: 'decel' | 'accel';
+  /** ★格闘のヒットストップの間は踏み込みの器の時計を止める(Date.now・この時刻まで速度0で期限を後ろへずらす)。 */
+  lungeHoldUntil?: number;
+  /** ★サブウェポン「格闘」の状態(research/BRAWLER.md §5)。格闘を持たない時は未設定のまま。 */
+  brawler?: BrawlerState;
   /**
    * ★被弾反撃(research/HIT_RETALIATION.md)で被弾の硬直(しゃがみ・移動停止・銃の停止)を打ち切った時刻(Date.now)。
    * `lastHurtAt` 以降の値だけが効く(`utils/playerHurt.isHurtCancelled`)。被弾の段の記録(lastHurtAt)は消さない。
@@ -758,6 +768,12 @@ export interface Enemy {
   zombieWalkRampAt?: number;
   // Visual-only lift reaction for boss melee finisher-grade hits.
   liftUntil?: number;
+  /** ★格闘の4段目の浮かせ(research/BRAWLER.md §7-10)の始まり(Date.now・絵だけ=判定は地面のまま)。 */
+  brawlerLiftAt?: number;
+  /** ★格闘のヒットストップの間の小刻みな震え(Date.now・絵だけ=判定は動かない・§2-4)。 */
+  brawlerShakeUntil?: number;
+  /** ★格闘の締めで大きく吹き飛ばされた時刻(Date.now・足元に地面を擦る砂埃の尾を描く・§2-4)。 */
+  brawlerBlownAt?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
   // a short grace period before they become eligible for culling so big
   // set-piece hordes aren't deleted the instant they appear.
@@ -2082,7 +2098,7 @@ export type AmmoType = WeaponCategory;
 // melee weapons never spawn projectiles (handled by the counter). enemy_bolt
 // is the hostile seed/bolt enemies spit.
 export type WeaponType = WeaponCategory | 'knife' | 'hatchet' | 'machete' | 'tactical-knife' | 'anti-mutant-knife' | 'enemy_bolt' | 'grenade' | 'trap' | 'decoy' | 'shield' | 'turret' | 'fire-knife-projectile' | 'drone-boomerang-projectile' | 'phill-bullet' | 'homing-missile' | 'skateboard';
-export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone' | 'homing' | 'shadow-clone' | 'molotov' | 'first-aid-kit' | 'sensor-mine' | 'support-sniper' | 'flare-gun' | 'junk-weapon' | 'gold-ring' | 'arrow-rain';
+export type SubWeaponKey = 'heavy-grenade' | 'marksman-trap' | 'striker-quick-mag' | 'striker-hunting' | 'dog' | 'katana' | 'murasame' | 'decoy' | 'shield' | 'whip' | 'alchemy' | 'turret' | 'shijin' | 'fire-knife' | 'drone-boomerang' | 'wire-anchor' | 'sage-stone' | 'homing' | 'shadow-clone' | 'molotov' | 'first-aid-kit' | 'sensor-mine' | 'support-sniper' | 'flare-gun' | 'junk-weapon' | 'gold-ring' | 'arrow-rain' | 'brawler';
 
 // 分身(サブウェポン)の生成インスタンス。生成位置に固定、外見はプレイヤーと同じ(白黒)。
 // その場で一定時間(5秒間・1秒ごと)自動で近接攻撃を繰り返し、時間切れ or 完全に画面外で消滅。最大1体。
@@ -3047,6 +3063,12 @@ export type VisualEffect =
       fadeFrom?: number;   // フェードを始める進捗(未指定=0.7)。素材自身が消えていくシートは遅らせる
       frameEaseOut?: boolean; // コマ送りを ease-out にする(衝撃で速く進み、減速して滞空する)
       tint?: number;       // 0xRRGGBB の tint(未指定=素のまま)
+      // 格闘(research/BRAWLER.md §7-6)向けの拡張。未指定=従来どおり。
+      scaleX?: number;     // 縦横別の拡大(scale に掛ける。絵の向き rot の前の軸)
+      scaleY?: number;
+      moveX?: number;      // 寿命の間に加速→減速で動く量(world px)
+      moveY?: number;
+      alpha?: number;      // 不透明度の上限(既定1)
     }
   | {
       // 倒した時の血の破裂(社長指示2026-10-27・描画専用=判定ゼロ・pixi/bloodBurst.ts)。粒の数は固定、敵の大きさで絵の大きさと距離が伸びる。
@@ -3114,6 +3136,9 @@ export type VisualEffect =
       tint: number;
       createdAt: number;
       duration: number;
+      /** 横の伸ばし(既定1)と向き(ラジアン・既定0)。格闘の掌底の横長の炸裂(research/BRAWLER.md §4)。 */
+      sx?: number;
+      rot?: number;
     }
   | {
       kind: 'flash';

@@ -23,6 +23,9 @@ import {
   CRIT_DAMAGE_MULT,
   BOSS_CRIT_DAMAGE_MULT,
   isKatanaMode,
+  isMeleeOnlyMode,
+  isBrawlerGuarding,
+  drainBrawlerSfx,
   subWeaponBlockedByKatana,
   katanaRange,
   KATANA_SLASH_INTERVAL_MS,
@@ -163,6 +166,7 @@ import {
 // v0.25.2514(GHOST-BUILD-1・§2.11 裁定1): 守護霊は「計測時ビルド」で戦う。ビルドの復元+倍率評価用の
 // 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
 import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
+import { withoutBrawler } from '../utils/playerBuild'; // 守護霊・幻影は格闘を使わない(research/BRAWLER.md §8-2)
 import { recordMapSightings } from '../utils/mapSightings'; // 一時停止の地図に出す「出会った敵」の記録
 import { recordRoutePoint } from '../utils/runRoutes'; // 一時停止の地図に描く「今回歩いた道」の記録
 import { bloodAwakenStep, isBloodAwakening, BLOOD_AWAKEN_SFX_GAIN, BLOOD_AWAKEN_SFX_RATE } from '../utils/bloodAwaken'; // B10 血の覚醒の遷移(満ちたら自動発動・終わりで0へ)
@@ -564,6 +568,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 // 「撃たないだけ」)が使う距離しきい値。
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
+import type { SfxKey } from '../audio/audioManager';
 import { registerKillChainSfxRate, setWraithAudioMix, resetWraithBattleAudio, playSfx, playSfxLayers, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, primeCorridorRadio, setHeroGallop, setCrawlerDrag, setEscapeGhost, playDistantSfx, setCorridorRadioBoost, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT, labRadioIdolDownFade } from '../world/labRadioMix';
@@ -8985,6 +8990,20 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           }
         }
 
+        // --- ★サブウェポン「格闘」(research/BRAWLER.md)の状態機械と気功の弾。持っていない時は即 return(毎フレームは数値計算だけ) ---
+        useGameStore.getState().tickBrawler();
+        {
+          const brSfx = drainBrawlerSfx();
+          for (const b of brSfx) {
+            if (b.delayMs && b.delayMs > 0) {
+              const k = b.key as SfxKey, g0 = b.gain, ms0 = b.ms, r0 = b.rate;
+              playSfxLayers(k, [{ delayMs: b.delayMs, rate: r0, gain: g0, ...(ms0 !== undefined ? { maxMs: ms0 } : {}) }]);
+            } else {
+              playSfx(b.key as SfxKey, b.gain, b.ms, b.rate);
+            }
+          }
+        }
+
         // --- idol(stage-2隠しボス)専用ブロック(PACING_PUZZLE.md §6.28-20・社長指示で配置確定 v0.25.2382) ---
         // campaign.tsのhiddenBoss機構(stage.hiddenBoss)には乗らない専用の独立した状態機械。
         // mimir/jormungand/skadi/thorとはbossRef(単一スロット)を共有しない(idolは「追跡ではなく
@@ -10319,6 +10338,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 刀装備中は銃の自動射撃を完全に止める(弾薬/リロード処理は通常どおり
         // 進むので、刀を外す実装が将来入っても副作用が残らない)。
         const katanaActive = isKatanaMode(postReloadPlayer);
+        // ★近接専用モード(刀・村雨・格闘)は銃の自動射撃を止める(research/BRAWLER.md §1)。刀のオート斬撃は katanaActive のまま。
+        const meleeOnlyActive = isMeleeOnlyMode(postReloadPlayer);
         const activeGun = getActiveGun(postReloadPlayer);
         // MOVEMENT_REWORK.md 仕様2: スケーター乗車中は銃の自動発砲も封印(?skaterlock=0で復帰)。
         const skaterLocked = SKATER_LOCK_ENABLED && postReloadPlayer.skaterRiding;
@@ -10342,7 +10363,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // UNIQUE_WEAPONS.md §16-3b(手動専用銃の掟): シグナルランチャーはPHILLと同じ「自動で撃たない銃」
         // (category='glauncher'なのでcategory!=='phill'だけでは除外できない=isManualOnlyGunKeyで除外)。
         const isManualOnlyGun = isManualOnlyGunKey(activeGun?.key);
-        if (activeGun && !katanaActive && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && !grabbedLocked && !hurtGunLocked && activeGun.category !== 'phill' && !isNonProjectileGun && !isManualOnlyGun) {
+        if (activeGun && !meleeOnlyActive && !skaterLocked && !attackLocked && !seekerLocked && !pvpLocked && !grabbedLocked && !hurtGunLocked && activeGun.category !== 'phill' && !isNonProjectileGun && !isManualOnlyGun) {
           const newProjectiles = fireWeapon(activeGun, postReloadPlayer, enemies);
           if (newProjectiles.length > 0) {
             // 銃種別の発射音。★写像は weaponUtils の gunFireSfxKey が唯一の出どころ
@@ -12674,7 +12695,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 reloadEndsAt: ghostNow.ghostReloadEndsAt ?? 0,
                 reloadingWeaponId: ghostNow.ghostReloadingWeaponId ?? '',
                 quickMagCritUntil: ghostNow.ghostQuickMagCritUntil ?? 0,
-              } : gsPlayer;
+              } : withoutBrawler(gsPlayer); // 守護霊は格闘を使わない(research/BRAWLER.md §8-2)
               let ghostOwner = ghostOwnerWithWeaponState();
               let ghostReloadEndsAt = ghostOwner.reloadEndsAt;
               let ghostReloadingWeaponId = ghostOwner.reloadingWeaponId;
@@ -14867,7 +14888,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             } else {
               // 刀/死亡演出/シーカー半透明/対人拘束/スケーター乗車中は通常オート射撃と同じく進行を止める
               // (タイマーは単に進まないだけ=次に解けたgameTimeから続きが動く)。
-              const elLocked = isKatanaMode(elPlayer) || isAttackLocked()
+              const elLocked = isMeleeOnlyMode(elPlayer) || isAttackLocked() // 刀・格闘(research/BRAWLER.md §1)
                 || (isSeekerActive(elPlayer, gameTime) && skillLevel(elPlayer, 'seeker') < 3)
                 || isPvpIncapacitated(elPlayer.pvpPosture, gameTime)
                 || isHurtGunLocked(elPlayer, Date.now()) // ★被弾の復帰ディレイ(v0.25.4377・オート射撃と同じ扱い)
@@ -15057,7 +15078,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (flGun) {
             const flActiveNow = flPlayer.activeWeaponId === flGun.id;
             const flLocked = !flActiveNow || flPlayer.health <= 0 || flState.gameWon
-              || isKatanaMode(flPlayer) || isAttackLocked()
+              || isMeleeOnlyMode(flPlayer) || isAttackLocked() // 刀・格闘(research/BRAWLER.md §1)
               || (isSeekerActive(flPlayer, gameTime) && skillLevel(flPlayer, 'seeker') < 3)
               || isPvpIncapacitated(flPlayer.pvpPosture, gameTime)
               || isHurtGunLocked(flPlayer, Date.now()) // ★被弾の復帰ディレイ(v0.25.4377・オート射撃と同じ扱い)
@@ -18173,6 +18194,12 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Detect successful-counter edge: gold burst + ring(視覚のみ)。
         // 注: lastCounterSuccessTime は弾反射時のみ更新されるため、インパクト(ストップ/揺れ/寄り)は
         // reflect 経路側で一度だけ入れる(ここで重ねると二重発火になる)。
+        // ★格闘の構えの間は通常のカウンター成立の自動の絵を止め、格闘の受けの絵と音を出す(research/BRAWLER.md §8-5)。
+        if (currentPlayer.lastCounterSuccessTime > prevCounterSuccessRef.current
+          && isBrawlerGuarding(currentPlayer, useGameStore.getState().gameTime)) {
+          useGameStore.getState().brawlerGuardReceive(currentPlayer.x + currentPlayer.width / 2, currentPlayer.y + currentPlayer.height / 2);
+          prevCounterSuccessRef.current = currentPlayer.lastCounterSuccessTime;
+        }
         if (currentPlayer.lastCounterSuccessTime > prevCounterSuccessRef.current) {
           spawnRing(
             currentPlayer.x + currentPlayer.width / 2,

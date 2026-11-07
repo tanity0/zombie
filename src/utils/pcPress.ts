@@ -4,7 +4,7 @@
 // ★タッチのコードは触らない(社長指示「絶対スマホ用の現状が壊れないように分けて作業してね」)。ここは PC の入口だけが呼ぶ。
 // 数値はタッチと同じ(VirtualJoystick の SKATER_* と同値。タッチ側の定数を動かしたらここも揃える)。
 import { playSfx } from '../audio/audioManager';
-import { useGameStore, isAttackLocked, isInputLocked, isWorldFrozen } from '../store/gameStore';
+import { useGameStore, isAttackLocked, isInputLocked, isWorldFrozen, isBrawlerMode } from '../store/gameStore';
 import { mouseSetsAim } from './weaponUtils';
 
 export const PC_SKATER_DOUBLETAP_MS = 300; // 1回目の離し→2回目の押下 までの許容間隔(タッチと同値)
@@ -35,7 +35,7 @@ export const pcPressDown = (src: PressSource): void => {
   gs.setTouchActive(true);
   const now = performance.now();
   // スケボー: 直前が短いタップで、離しから規定時間内の再押下=2度押し=乗車(2回目はそのまま押している=乗っている)。
-  if (lastWasTap && now - lastUpAt <= PC_SKATER_DOUBLETAP_MS) gs.mountSkater();
+  if (lastWasTap && now - lastUpAt <= PC_SKATER_DOUBLETAP_MS && !isBrawlerMode(gs.player)) gs.mountSkater(); // 格闘中は2度押しで乗らない(research/BRAWLER.md §7-2)
   downAt = now;
 };
 
@@ -65,6 +65,9 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
     }
     if (gs.rhythm.active) {
       if (!flickedThisPress) gs.rhythmInput('tap');
+    } else if (isBrawlerMode(gs.player)) {
+      // ★格闘(research/BRAWLER.md §2-1): 今の近接ボタン=通常攻撃(銃・他のサブは使えない)。技は方向+技ボタン(performFlickAction)。
+      gs.beginMeleeSwing();
     } else {
       const gun = gs.player.weapons.find(w => w.id === gs.player.activeWeaponId);
       if (gun?.key === 'phill-revolver') {

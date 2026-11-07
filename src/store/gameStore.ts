@@ -128,6 +128,8 @@ import {
   isRetaliationBlocked, retaliationReady, RETALIATE_DAMAGE_MULT, RETALIATE_LUNGE_MS,
 } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
 import { isEnemyAttacking, meleeHitSfxLayers } from '../utils/combatFeel';
+import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純関数(research/BRAWLER.md)
+import { isBrawlerGuardingAt } from '../utils/brawler';
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
@@ -713,7 +715,43 @@ const SMALL_GLOW_MIN_DURATION_MS = 80;
 // `killed` = how many enemies the swing killed (drives the zombie death grunt).
 // katanaSwing: 刀を持っている時の振り(攻撃はしない=swung は false のまま・振りの音だけ鳴らす。社長報告2026-11-02「刀装備時にナイフ振るとSEが鳴らない」)。
 // hits: この振りで切った敵の数(命中音の重ねに使う・2026-11-06)。返さない経路は「当たったら1」。
-export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number; katanaSwing?: boolean; hits?: number };
+export type CounterTriggerResult = { swung: boolean; hit: boolean; finish: boolean; killed: number; katanaSwing?: boolean; hits?: number; hitAt?: { x: number; y: number; id: string }[] };
+/**
+ * ★指定打撃(research/BRAWLER.md §7-1・§8-1)。`triggerCounter` の第2引数を一般化したもの。
+ * 当たる/当たらないは呼び手(utils/brawler.ts の形と壁)が決めて `targetIds` で渡す=命中ループの距離の門と falloff は使わない。
+ * 被弾反撃の `{ targetId, mult }` は従来どおり(1体の指定打撃と同じ扱い)。
+ */
+export interface BrawlerStrikeOpts {
+  targetIds: string[];
+  mult: number;
+  brawler: true;
+  /** 敵の止め(hitStunUntil に書く ms・再発火ガードは外す)。ボス級は従来どおり0。 */
+  stunMs: number;
+  kb: {
+    kind: 'none' | 'normal' | 'big';
+    /** 押す向き(掌底=帯の向き)。無ければ fromX/fromY(円の中心)から外向き、それも無ければプレイヤーから外向き。 */
+    dirX?: number; dirY?: number;
+    fromX?: number; fromY?: number;
+    /** 雑魚・強個体のノックバックの免疫(と攻撃中の技)を無視する(下の大踏み潰し)。 */
+    ignoreImmune?: boolean;
+    /** ボス級は強さ半分(5段目・飛び蹴り3発目・大踏み潰し)。 */
+    bossHalf?: boolean;
+  };
+  /** 4段目の浮かせ(450ms 足止め・絵だけ浮く)。 */
+  lift?: boolean;
+  /** 体勢値の削りの倍率(=その段のダメージ倍率)。 */
+  postureMult: number;
+  /** 押した時刻(Date.now)。打刻 noteMeleeSwingPressedAt に渡す(当たった時刻にしない)。 */
+  pressedAt: number;
+}
+/** 格闘の気功の弾(store が進める・pixi は描くだけ)。 */
+export interface BrawlerKiko {
+  id: string;
+  x: number; y: number;
+  dirX: number; dirY: number;
+  traveled: number;
+  createdAt: number; // Date.now(描画の時計)
+}
 
 // 制圧イベント(ステージ1メインミッション等のサブクエスト時のみ有効・通常は無効)。
 // 原点中心・半径3200の円周に4か所(90度刻み=東西南北)固定。サークル内10秒で制圧→武器商人がそこへ移動(=安全地帯)。
@@ -2216,10 +2254,28 @@ export const katanaRange = (player: Player): number =>
 export const KATANA_ALLOWED_SUBWEAPONS: SubWeaponKey[] = [];
 // サブウェポンの実行時ブロック。排他サブ(刀/村雨, ダンスフロア=shijin)を装備していると、その仲間以外の
 // サブウェポンは停止する(銃は別系統なので影響なし)。ダンスフロアは刀と同じく他サブと共存不可。
+// ★サブウェポン「格闘」(research/BRAWLER.md §1): 刀と同じく銃と他のサブを止める近接専用の型。
+export const hasBrawler = (player: Pick<Player, 'subWeapons'>): boolean => player.subWeapons?.includes('brawler') ?? false;
+/** 格闘モード = 格闘を持ち、刀モードでない(取得段階で排他だが二重防御=刀優先)。 */
+export const isBrawlerMode = (player: Player): boolean => hasBrawler(player) && !isKatanaMode(player);
+export const brawlerLevel = (player: Player): number =>
+  Math.max(1, Math.min(3, player.subWeaponLevels['brawler'] ?? 1));
+/**
+ * ★「近接専用モード」の判定は1本(research/BRAWLER.md §1): 刀・村雨・格闘のどれか。
+ * 銃を止めている全ての場所(オート射撃・アイレーザー・火炎放射器・新銃3種・手動の銃・ボット)はこれを見る。
+ * 刀に固有の処理(刀の振り・一閃・背中の刀・刀のオート斬撃)は `isKatanaMode` のまま。
+ * **Player を見るだけ**(守護霊・幻影の疑似プレイヤーには格闘を入れない=§8-2)。
+ */
+export const isMeleeOnlyMode = (player: Player): boolean => isKatanaMode(player) || hasBrawler(player);
+/** 格闘の構え(上)の1秒の間か(gameTime)。この間に受けた攻撃は全て無効(§3-2)。 */
+export const isBrawlerGuarding = (player: Player, gameTime: number): boolean =>
+  isBrawlerMode(player) && isBrawlerGuardingAt(player.brawler, gameTime);
 export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boolean => {
   if (isKatanaMode(player)) {
     return key !== 'katana' && key !== 'murasame' && !KATANA_ALLOWED_SUBWEAPONS.includes(key);
   }
+  // 格闘中: 格闘以外のサブは全停止(刀と同じ・§1)。
+  if (hasBrawler(player)) return key !== 'brawler';
   // ダンスフロア(shijin)装備中: shijin 以外のサブを停止。
   if (player.subWeapons.includes('shijin')) {
     return key !== 'shijin';
@@ -2264,7 +2320,7 @@ export const SHOP_SAGE_STONE_COST = 100;                         // 賢者の石
 
 export const hasWhip = (player: Player): boolean => player.subWeapons.includes('whip');
 // 鞭モード = 鞭所持 かつ 刀モードでない(刀優先)。取得段階で排他だが二重防御。
-export const isWhipMode = (player: Player): boolean => hasWhip(player) && !isKatanaMode(player);
+export const isWhipMode = (player: Player): boolean => hasWhip(player) && !isMeleeOnlyMode(player); // 格闘中も鞭は動かない(research/BRAWLER.md §7-2)
 export const whipLevel = (player: Player): number =>
   Math.max(1, Math.min(3, player.subWeaponLevels['whip'] ?? 1));
 export const whipChargeThreshold = (player: Player): number =>
@@ -3623,6 +3679,7 @@ const gatePhantomHit = (
  * ボスの giantDelayedHits 破棄(v0.25.3037)と同型)。呼び出し側は set() で player へ合成するだけ。
  */
 export const playerPvpChipPatch = (p: Player, impact: PvpImpact, gameTime: number): Partial<Player> => {
+  if (isBrawlerGuarding(p, gameTime)) return {}; // 格闘の構え中は対人体勢の崩しは掛からない(research/BRAWLER.md §3-2)
   const { next, broke } = chipPvpPosture(p.pvpPosture, impact, gameTime, postureChipMult());
   return broke
     ? { pvpPosture: next, counterWindowStart: 0, counterWindowEnd: 0, pendingSwingAt: 0, invulnerable: false }
@@ -4115,6 +4172,7 @@ export const subWeaponDisplayName = (key: SubWeaponKey): string => {
     case 'junk-weapon': return 'ジャンクウェポン';
     case 'gold-ring': return '金環';
     case 'arrow-rain': return '矢の雨';
+    case 'brawler': return '格闘';
     default: return 'サブウェポン';
   }
 };
@@ -4153,6 +4211,461 @@ const meleeWallsAround = (get: () => GameState, cx: number, cy: number, range: n
     ];
   }
   return treesInRegion(cx - range - 40, cy - range - 40, cx + range + 40, cy + range + 40).map(trunkRect);
+};
+
+// ---------------------------------------------------------------------------------------------
+// ★サブウェポン「格闘」(research/BRAWLER.md)。判定・時計は utils/brawler.ts の純関数。ここは store へ載せる配線だけ。
+// 音は store から鳴らせないので、積んでおいて useGameLoop が毎フレーム消化する(drainBrawlerSfx)。
+// ---------------------------------------------------------------------------------------------
+export interface BrawlerSfx { key: string; gain: number; rate: number; ms?: number; delayMs?: number }
+let brawlerSfxQueue: BrawlerSfx[] = [];
+const brawlerSfx = (key: string, gain = 1, rate = 1, ms?: number, delayMs?: number): void => {
+  if (brawlerSfxQueue.length < 24) brawlerSfxQueue.push({ key, gain, rate, ...(ms !== undefined ? { ms } : {}), ...(delayMs !== undefined ? { delayMs } : {}) });
+};
+/** 積んだ格闘の音を取り出す(useGameLoop が毎フレーム)。空なら同じ空配列を返す=何もしない。 */
+export const drainBrawlerSfx = (): BrawlerSfx[] => {
+  if (brawlerSfxQueue.length === 0) return BRAWLER_SFX_EMPTY;
+  const q = brawlerSfxQueue;
+  brawlerSfxQueue = [];
+  return q;
+};
+const BRAWLER_SFX_EMPTY: BrawlerSfx[] = [];
+/** 毎発わずかに音程を揺らす(§4)。 */
+const brJitter = (): number => 0.94 + Math.random() * 0.12;
+/** 気功の弾の時計(gameTime の前回値)。 */
+let brawlerKikoLastT = -1;
+
+/** 格闘の入口の関所(§7-2・§8-4)。beginMeleeSwing / triggerCounter の両方の関所を通す意味。 */
+const brawlerGateOk = (get: () => GameState): boolean => {
+  const st = get();
+  const p = st.player;
+  const gt = st.gameTime;
+  if (p.health <= 0) return false;
+  if (isPvpIncapacitated(p.pvpPosture, gt)) return false;          // 対人の紫/気絶
+  if (isPlayerGrabbed(p, gt)) return false;                         // 蝙蝠の掴み
+  if (!st.m0Unlocked.melee) return false;                           // M0 の近接未解禁
+  if (SKATER_LOCK_ENABLED && p.skaterRiding) return false;          // スケボー乗車中
+  if ((p.retaliateStrikeAt ?? 0) > 0) return false;                 // 被弾反撃の飛び込み中
+  if (isSeekerActive(p, gt) && skillLevel(p, 'seeker') < 3) return false; // シーカー(半透明)
+  if (isHurtMoveLocked(p, Date.now())) return false;                // 被弾のしゃがみ中(§7-5)
+  return true;
+};
+const setBrawler = (set: (fn: (s: GameState) => Partial<GameState>) => void, b: BR.BrawlerState, extra: Partial<Player> = {}): void => {
+  set(state => ({ player: { ...state.player, brawler: b, ...extra } }));
+};
+const brawlerCenter = (p: Player): { x: number; y: number } => ({ x: p.x + p.width / 2, y: p.y + p.height / 2 });
+/** 踏み込みの器へ載せる詰め(加速して最大速度のまま当たる=§8-2)。距離0なら器を空ける。 */
+const brawlerLungePatch = (dx: number, dy: number, dist: number, ms: number, now: number): Partial<Player> => {
+  if (!(dist > 0.5) || !(ms > 0)) return { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeMs: undefined, lungeShape: undefined, lungeHoldUntil: 0 };
+  const v = BR.accelLungeSpeed(dist, ms);
+  return { lungeVx: (dx / dist) * v, lungeVy: (dy / dist) * v, lungeUntil: now + ms, lungeMs: ms, lungeShape: 'accel', lungeHoldUntil: 0 };
+};
+/** 当たった後の反動(止めの間は器を止め、明けたら短く減速して止まる)。 */
+const brawlerRecoilPatch = (dirX: number, dirY: number, holdMs: number, now: number): Partial<Player> => {
+  const ms = 90;
+  const v = knockbackSpeedFor(8, ms);
+  return { lungeVx: dirX * v, lungeVy: dirY * v, lungeUntil: now + ms, lungeMs: ms, lungeShape: 'decel', lungeHoldUntil: now + Math.max(0, holdMs) };
+};
+
+/**
+ * 格闘の当たりの敵のパッチ(research/BRAWLER.md §8-1)。止め・ノックバック・浮かせを1本に書く(knockbackEnemy は使わない)。
+ *  none   = 押さない・免疫も張らない(1・2・4段目) / normal = 今の近接の速さ・免疫は張らない(3段目・飛び蹴り1・2発目)
+ *  big    = 今の近接の4倍(5段目・飛び蹴り3発目・大踏み潰し)。ignoreImmune=雑魚・強個体の免疫と攻撃中の技を無視(技は取り消してから押す)。
+ *  ボス級 = 止めない・浮かない。big だけ knockbackShoveUntil も書いて動かす(bossHalf=半分・ボスの減衰を通す)。
+ */
+const brawlerHitPatch = (
+  enemy: Enemy, bs: BrawlerStrikeOpts, now: number, gameTime: number, dmg: number,
+  ecx: number, ecy: number, pcx: number, pcy: number,
+): Partial<Enemy> => {
+  const bossLike = isBossType(enemy.type);
+  const attacking = isEnemyAttacking(enemy, gameTime);
+  const stopMs = bossLike ? 0 : Math.max(0, bs.stunMs);
+  const out: Partial<Enemy> = { lastHitDmg: dmg };
+  if (stopMs > 0) {
+    out.hitStunUntil = now + stopMs;
+    out.brawlerShakeUntil = now + stopMs;
+  }
+  // 向き: 帯の向き > 円の中心から外向き > プレイヤーから外向き。
+  let ux: number, uy: number;
+  if (bs.kb.dirX !== undefined && bs.kb.dirY !== undefined) { ux = bs.kb.dirX; uy = bs.kb.dirY; }
+  else { const ox = bs.kb.fromX ?? pcx, oy = bs.kb.fromY ?? pcy; ux = ecx - ox; uy = ecy - oy; }
+  const un = Math.hypot(ux, uy);
+  if (un > 1e-6) { ux /= un; uy /= un; } else { ux = 0; uy = 1; }
+  const kind = bs.kb.kind;
+  const forced = kind === 'big' && bs.kb.ignoreImmune === true && !bossLike;
+  if (kind === 'none' || (!forced && !knockbackCdReady(enemy, now))) {
+    // 押さない(止めの間だけその場で止める)。
+    if (stopMs > 0) { out.knockbackVx = 0; out.knockbackVy = 0; out.knockbackUntil = now + stopMs; }
+  } else if (bossLike) {
+    if (kind === 'big') {
+      const dr = evaluateBossStopDr(enemy, now);
+      if (dr.allowed) {
+        const spd = KNOCKBACK_SPEED * BR.BRAWLER_BIG_KB_MULT * (bs.kb.bossHalf ? 0.5 : 1);
+        const until = now + KNOCKBACK_DURATION * dr.durationMult;
+        Object.assign(out, { knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: until, knockbackShoveUntil: until, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS, brawlerBlownAt: now });
+      }
+      Object.assign(out, dr.patch);
+    }
+    // normal: ボス級は今の近接と同じく押せない(knockbackShoveUntil を書かない)。
+  } else {
+    const spd = KNOCKBACK_SPEED * (kind === 'big' ? BR.BRAWLER_BIG_KB_MULT : 1);
+    Object.assign(out, {
+      knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: now + stopMs + KNOCKBACK_DURATION,
+      ...(kind === 'big' ? { knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS, brawlerBlownAt: now } : {}),
+    });
+    // 下の大踏み潰しの強制ノックバック: 攻撃中の雑魚・強個体はその技を取り消してから押す(カウンター成立と同じ取り消し=予告も消える)。
+    if (forced && attacking) {
+      const spec = biteSpecFor(enemy.type, enemy.chaffMove, enemy.aiPhase);
+      Object.assign(out, {
+        biteAt: 0, biteReadyAt: gameTime + spec.recoverMs,
+        chaffMove: undefined, chaffBlinkAt: undefined,
+        ...(enemy.chaffMove !== undefined ? { chaffMoveCdUntil: gameTime + spec.recoverMs } : {}),
+        aiPhase: undefined, aiPhaseUntil: undefined, aiStartedAt: undefined,
+        aiTargetX: undefined, aiTargetY: undefined, aiFromX: undefined, aiFromY: undefined,
+        aiReadyAt: gameTime + 1200,
+        lastCounteredAt: now,
+      });
+    }
+  }
+  // 4段目の浮かせ(足止め 450ms・絵だけ浮く)。ボス級・攻撃中の敵は浮かない(§7-10)。止めの後に展開する。
+  if (bs.lift && !bossLike && !attacking) {
+    Object.assign(out, { knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + Math.max(stopMs, BR.BRAWLER_LIFT_MS), brawlerLiftAt: now });
+  }
+  return out;
+};
+
+/** 通常攻撃の段を始める(相手を選び・向きを相手へ・詰めを器へ載せる・振りの音)。 */
+const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState): void => {
+  const st = get();
+  const p = st.player;
+  const t = st.gameTime;
+  const now = Date.now();
+  const stage = BR.brawlerStageForPress(s0, t);
+  const spec = BR.brawlerStageSpec(stage);
+  const c = brawlerCenter(p);
+  const radius = huntingMeleeRadius(p);
+  const walls = meleeWallsAround(get, c.x, c.y, radius);
+  const target = BR.pickBrawlerTarget(st.enemies, c.x, c.y, radius, walls);
+  const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
+  const quick = s0.quickUntil > t;
+  const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now };
+  const ap = quick ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerApproach(c.x, c.y, target, spec.dashPx);
+  setBrawler(set, s, { lastDirection: { x: dir.x, y: dir.y }, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, spec.windupMs, now) });
+  // 振りの音(空振りの連打も無音にしない・1段目→5段目へ少しずつ低く)。
+  brawlerSfx('whip-swing', stage >= 4 ? 0.55 : 0.4, (1.05 - stage * 0.06) * brJitter(), 140);
+  // 詰めの出発点に砂埃(pixi が brawler の状態から描く)。
+};
+
+/** 技を始める(ポイントは払い済み)。 */
+const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState, kind: BR.BrawlerTechKind): void => {
+  const st = get();
+  const p = st.player;
+  const t = st.gameTime;
+  const now = Date.now();
+  const c = brawlerCenter(p);
+  const kickN = kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
+  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN), pressAt: now, points: s0.points - BR.BRAWLER_TECHS[kind].cost };
+  let extra: Partial<Player> = { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0 };
+  if (kind === 'kick' || kind === 'kiko') {
+    const range = kind === 'kick' ? BR.BRAWLER_KICK_RANGE : BR.BRAWLER_KIKO_RANGE;
+    const walls = kind === 'kick' ? meleeWallsAround(get, c.x, c.y, range) : [];
+    const target = BR.pickBrawlerTarget(st.enemies, c.x, c.y, range, walls);
+    const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
+    s = { ...s, targetId: target?.id, dirX: dir.x, dirY: dir.y };
+    extra = { ...extra, lastDirection: { x: dir.x, y: dir.y } };
+    if (kind === 'kick') {
+      const ap = target
+        ? BR.brawlerApproach(c.x, c.y, target, BR.BRAWLER_KICK_RANGE)
+        : { dx: dir.x * BR.BRAWLER_KICK_NO_TARGET_PX, dy: dir.y * BR.BRAWLER_KICK_NO_TARGET_PX, dist: BR.BRAWLER_KICK_NO_TARGET_PX };
+      extra = { ...extra, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, BR.BRAWLER_TECHS.kick.windupMs, now) };
+      brawlerSfx('whip-swing', 0.55, (kickN >= 3 ? 0.78 : 0.92) * brJitter(), 160);
+    } else {
+      brawlerSfx('whip-swing', 0.5, 1.25 * brJitter(), 140);
+    }
+  } else {
+    s = { ...s, targetId: undefined };
+  }
+  if (kind === 'guard') {
+    // 構え=カウンター窓をこの1秒に張る(赤は今のカウンターと同じ処理が走る・§3-2)。
+    extra = { ...extra, counterWindowStart: now, counterWindowEnd: now + BR.BRAWLER_GUARD_MS };
+  }
+  setBrawler(set, s, extra);
+  const g = get();
+  // 5ポイント技の出だし: 0.1秒だけ画面をわずかに暗く+体に閃光+専用の音(§3-1)。
+  if (BR.BRAWLER_TECHS[kind].cost >= 5) {
+    g.spawnFlash('rgba(6,6,10,0.32)', BR.BRAWLER_SUPER_FLASH_MS);
+    g.spawnGlow(c.x, c.y - 6, GLOW_R_M, 'rgba(255,248,230,', 260, true);
+    g.spawnRing(c.x, c.y, 6, 64, BR.BRAWLER_RGBA(0.95), 3, 220, true);
+    brawlerSfx('heavy-impact', 0.45, 1.35, 260);
+    brawlerSfx('homing-fire', 0.4, 0.62, 260);
+    setBrawler(set, { ...get().player.brawler!, flashAt: now });
+  }
+  if (kind === 'guard') {
+    // 体の光は1秒かけて絞っていく(窓の残りが見える)。加算=沈まない(影は落とさない=負荷0)。
+    g.spawnGlow(c.x, c.y - 8, GLOW_R_L, 'rgba(241,230,200,', BR.BRAWLER_GUARD_MS, true);
+    g.spawnRing(c.x, c.y - 4, 58, 16, BR.BRAWLER_RGBA(0.85), 3, BR.BRAWLER_GUARD_MS, true);
+  }
+};
+
+/** 判定の時刻に来た行動を解く(通常攻撃・技)。 */
+const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
+  const st = get();
+  const p = st.player;
+  const s = p.brawler;
+  if (!s) return;
+  const t = st.gameTime;
+  const now = Date.now();
+  const c = brawlerCenter(p);
+  const radius = huntingMeleeRadius(p);
+  const walls = meleeWallsAround(get, c.x, c.y, Math.max(radius, BR.BRAWLER_STOMP_RADIUS));
+  const cap = BR.brawlerPointCap(brawlerLevel(p));
+  let target = s.targetId ? st.enemies.find(e => e.id === s.targetId) ?? null : null;
+  if (target && !BR.isBrawlerTargetable(target)) target = null;
+  const dir = target ? BR.brawlerAimDir(c.x, c.y, target, p.lastDirection) : { x: s.dirX, y: s.dirY };
+  const strike = (ids: string[], o: Omit<BrawlerStrikeOpts, 'targetIds' | 'brawler' | 'pressedAt'>): CounterTriggerResult =>
+    get().triggerCounter(undefined, { ...o, targetIds: ids, brawler: true, pressedAt: s.pressAt ?? now });
+  const g = get();
+
+  if (s.phase === 'attack') {
+    const spec = BR.brawlerStageSpec(s.stage);
+    // 相手が倒れていたら、いま一番近い敵へ(§7-9)。
+    if (!target && (spec.shape === 'single' || spec.shape === 'fist')) target = BR.pickBrawlerTarget(st.enemies, c.x, c.y, radius, walls);
+    let ids: string[] = [];
+    if (spec.shape === 'single') {
+      ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
+    } else if (spec.shape === 'fist') {
+      ids = BR.brawlerFistTargets(st.enemies, c.x, c.y, dir.x, dir.y, target, radius, walls);
+    } else if (spec.shape === 'landing') {
+      ids = BR.brawlerCircleTargets(st.enemies, c.x, c.y + p.height / 2 - 6, BR.BRAWLER_LANDING_RADIUS, walls);
+    } else {
+      ids = BR.brawlerBandTargets(st.enemies, c.x, c.y, dir.x, dir.y, walls);
+    }
+    const r = strike(ids, {
+      mult: spec.mult, stunMs: spec.hitstopMs, postureMult: spec.mult,
+      kb: spec.kb === 'big' ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } : { kind: spec.kb },
+      ...(spec.shape === 'landing' ? { lift: true } : {}),
+    });
+    const hits = r.hits ?? 0;
+    const next = BR.brawlerAfterResolve({ ...s, dirX: dir.x, dirY: dir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs });
+    setBrawler(set, next, {
+      lastDirection: { x: dir.x, y: dir.y },
+      ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, spec.hitstopMs, now) : {}),
+    });
+    brawlerStageFx(get, s.stage, c, dir, r, target);
+    return;
+  }
+
+  // 技
+  if (s.tech === 'guard') {
+    setBrawler(set, { ...s, resolved: true });
+    return;
+  }
+  if (s.tech === 'stomp') {
+    const foot = { x: c.x, y: c.y + p.height / 2 - 6 };
+    const ids = BR.brawlerCircleTargets(st.enemies, foot.x, foot.y, BR.BRAWLER_STOMP_RADIUS, walls);
+    const r = strike(ids, {
+      mult: BR.BRAWLER_STOMP_MULT, stunMs: BR.BRAWLER_STOMP_HITSTOP_MS, postureMult: BR.BRAWLER_STOMP_MULT,
+      kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
+    });
+    const hits = r.hits ?? 0;
+    setBrawler(set, BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: BR.BRAWLER_STOMP_HITSTOP_MS }),
+      hits > 0 ? { lungeHoldUntil: now + BR.BRAWLER_STOMP_HITSTOP_MS } : {});
+    g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
+    g.spawnRing(foot.x, foot.y, 10, BR.BRAWLER_STOMP_RADIUS * 0.8, 'rgba(255,255,255,0.75)', 3, 300, true);
+    g.spawnGlow(foot.x, foot.y, GLOW_R_XL, 'rgba(241,230,200,', 320, true);
+    g.triggerShake(260, 16, 0, 1);
+    for (const h of r.hitAt ?? []) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 240, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+    brawlerSfx('jump-land', 1.0, 0.78);
+    brawlerSfx('heavy-impact', 0.9, 0.7, undefined, 20);
+    if (hits > 0) brawlerSfx('brawler-kick', 0.9, 0.7 * brJitter());
+    return;
+  }
+  if (s.tech === 'kiko') {
+    // 撃った時の方向へまっすぐ(曲がらない)。届く距離の中で一番近い敵へ(§7-9)。
+    const aim = BR.pickBrawlerTarget(st.enemies, c.x, c.y, BR.BRAWLER_KIKO_RANGE);
+    const d = BR.brawlerAimDir(c.x, c.y, aim, { x: s.dirX, y: s.dirY });
+    const sx = c.x + d.x * 18, sy = c.y - 4 + d.y * 18;
+    set(state => ({
+      brawlerKiko: [...state.brawlerKiko.slice(-5), { id: `kiko-${now}`, x: sx, y: sy, dirX: d.x, dirY: d.y, traveled: 0, createdAt: now }],
+      player: { ...state.player, brawler: { ...s, resolved: true, dirX: d.x, dirY: d.y }, lastDirection: { x: d.x, y: d.y } },
+    }));
+    g.spawnEffect({ kind: 'meleeHit', id: `mhit-kiko0-${now}`, x: sx, y: sy, size: 120, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+    g.spawnGlow(sx, sy, GLOW_R_S, 'rgba(255,248,230,', 200, true);
+    brawlerSfx('whip-swing', 0.55, 1.45 * brJitter(), 120);
+    brawlerSfx('homing-fire', 0.55, 0.72, 220);
+    return;
+  }
+  if (s.tech === 'kick') {
+    const big = s.kickN >= BR.BRAWLER_KICK_MAX;
+    const hs = BR.BRAWLER_KICK_HITSTOP_MS[Math.max(1, Math.min(3, s.kickN))];
+    const ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
+    const r = strike(ids, {
+      mult: BR.BRAWLER_KICK_MULT, stunMs: hs, postureMult: BR.BRAWLER_KICK_MULT,
+      kb: big ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } : { kind: 'normal', dirX: dir.x, dirY: dir.y },
+    });
+    const hits = r.hits ?? 0;
+    const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: hs });
+    setBrawler(set, { ...after, kickChainUntil: big ? 0 : t + BR.BRAWLER_KICK_CHAIN_MS, kickCount: big ? 0 : s.kickN }, {
+      lastDirection: { x: dir.x, y: dir.y },
+      ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, hs, now) : {}),
+    });
+    for (const h of r.hitAt ?? []) {
+      g.spawnEffect({ kind: 'meleeHit', id: `mhit-kick-${now}-${h.id}`, x: h.x, y: h.y, size: big ? 280 : 200, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+      if (big) brawlerClosingFx(get, h.x, h.y, dir);
+    }
+    brawlerSfx('brawler-kick', hits > 0 ? 0.95 : 0.5, (big ? 0.72 : 0.9) * brJitter());
+    if (hits > 0) brawlerSfx('whip-hit', 0.55, (big ? 0.7 : 0.85) * brJitter(), 160, 10);
+    if (big && hits > 0) brawlerSfx('heavy-impact', 0.95, 0.85);
+  }
+};
+
+/** 締め(5段目・飛び蹴り3発目・5ポイント技)の追加の揺れ・押し込み(§2-4)。スローは使わない。 */
+const brawlerClosingFx = (get: () => GameState, x: number, y: number, dir: { x: number; y: number }): void => {
+  const g = get();
+  g.triggerShake(220, 14, dir.x, dir.y);
+  g.spawnRing(x, y, 10, 96, BR.BRAWLER_RGBA(0.9), 4, 320, true);
+  const at = Date.now();
+  useGameStore.setState(st => (st.player.brawler ? { player: { ...st.player, brawler: { ...st.player.brawler, flashAt: at } } } : {}));
+};
+
+/** 各段の当たりの絵と音(§4)。判定は持たない。 */
+const brawlerStageFx = (
+  get: () => GameState, stage: number, c: { x: number; y: number }, dir: { x: number; y: number },
+  r: CounterTriggerResult, target: Enemy | null,
+): void => {
+  const g = get();
+  const now = Date.now();
+  const hitAt = r.hitAt ?? [];
+  const hits = hitAt.length;
+  const ang = Math.atan2(dir.y, dir.x);
+  // 拳の残像(アイドルの拳の絵を固有色・加算・低αで突く方向へ伸ばす。ナックルが下端=突く向き)。2段目は逆の手(体の反対側から)。
+  const fistAfterimage = (scale: number, len: number, side: number) => {
+    const ox = -dir.y * side * 10, oy = dir.x * side * 10;
+    g.spawnImageMark(c.x + ox + dir.x * 14, c.y - 6 + oy + dir.y * 14, 'fx/idol-fist', {
+      scale, duration: 220, additive: true, tint: BR.BRAWLER_COLOR_HEX, rot: ang - Math.PI / 2, noPop: true, fadeFrom: 0.25,
+      scaleX: 0.8, scaleY: 1.25, moveX: dir.x * len, moveY: dir.y * len, alpha: 0.55,
+    });
+  };
+  switch (stage) {
+    case 1:
+    case 2: {
+      for (const h of hitAt) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 160, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+      if (hits > 0) {
+        brawlerSfx('brawler-kick', 0.75, (1.12 - stage * 0.04) * brJitter(), 160);
+        brawlerSfx('whip-hit', 0.45, 1.1 * brJitter(), 110, 8);
+      }
+      break;
+    }
+    case 3: {
+      fistAfterimage(0.36, 34, 1);
+      for (const h of hitAt) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 220, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+      if (hits > 0) {
+        brawlerSfx('brawler-kick', 0.9, 0.96 * brJitter());
+        brawlerSfx('whip-hit', 0.5, 0.95 * brJitter(), 140, 8);
+        brawlerSfx('heavy-impact', 0.55, 1.15, undefined, 12);
+      }
+      break;
+    }
+    case 4: {
+      const fx = c.x, fy = c.y + 14;
+      g.spawnRing(fx, fy, 12, BR.BRAWLER_LANDING_RADIUS * 1.35, BR.BRAWLER_RGBA(0.85), 4, 340, true);
+      g.triggerShake(160, 8, 0, 1);
+      for (const h of hitAt) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 190, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+      brawlerSfx('jump-land', 0.85, 0.95);
+      brawlerSfx('heavy-impact', 0.6, 0.72, undefined, 16);
+      if (hits > 0) brawlerSfx('brawler-kick', 0.8, 0.82 * brJitter());
+      break;
+    }
+    case 5: {
+      // 掌底: 赤い衝撃波は使わない。dust-ring を向きへ横長に伸ばした帯 + meleeHit を横長に + 拳の残像を大きく。
+      const bx = c.x + dir.x * BR.BRAWLER_BAND_LEN * 0.45, by = c.y + dir.y * BR.BRAWLER_BAND_LEN * 0.45;
+      g.spawnImageMark(bx, by, 'fx/dust-ring', {
+        scale: 0.62, duration: 320, additive: true, tint: BR.BRAWLER_COLOR_HEX, rot: ang, noPop: true, fadeFrom: 0.3,
+        scaleX: 1.9, scaleY: 0.55, moveX: dir.x * 46, moveY: dir.y * 46, alpha: 0.7,
+      });
+      g.spawnEffect({ kind: 'meleeHit', id: `mhit-palm-${now}`, x: c.x + dir.x * 46, y: c.y + dir.y * 46, size: 260, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR, sx: 1.7, rot: ang });
+      fistAfterimage(0.6, 70, 1);
+      for (const h of hitAt) g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}`, x: h.x, y: h.y, size: 280, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+      if (hits > 0) {
+        brawlerClosingFx(get, hitAt[0].x, hitAt[0].y, dir);
+        brawlerSfx('brawler-kick', 1.0, 0.74 * brJitter());
+        brawlerSfx('heavy-impact', 1.0, 0.8, undefined, 10);
+      } else {
+        brawlerSfx('heavy-impact', 0.35, 1.2);
+      }
+      break;
+    }
+    default: break;
+  }
+  void target;
+};
+
+/** 気功の弾を進める(弾がある時だけ)。最初に当たった敵か届いた所(壁を含む)で爆発。 */
+const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
+  const st = get();
+  const t = st.gameTime;
+  const dtMs = brawlerKikoLastT < 0 ? 16 : Math.max(0, Math.min(50, t - brawlerKikoLastT));
+  brawlerKikoLastT = t;
+  if (dtMs <= 0) return;
+  const step = BR.BRAWLER_KIKO_SPEED * dtMs / 1000;
+  const keep: BrawlerKiko[] = [];
+  const blasts: { x: number; y: number }[] = [];
+  for (const k of st.brawlerKiko) {
+    const nx = k.x + k.dirX * step, ny = k.y + k.dirY * step;
+    const traveled = k.traveled + step;
+    let hitX: number | null = null, hitY = 0;
+    for (const e of st.enemies) {
+      if (!BR.isBrawlerTargetable(e) || e.aiPhase === 'jump') continue;
+      if (BR.brawlerDistTo(nx, ny, e) <= BR.BRAWLER_KIKO_HIT_PAD) { hitX = nx; hitY = ny; break; }
+    }
+    if (hitX === null) {
+      const walls = bulletBlockersAround(st, nx, ny, 24);
+      if (walls.some(w => nx >= w.x && nx <= w.x + w.width && ny >= w.y && ny <= w.y + w.height)) { hitX = k.x; hitY = k.y; }
+    }
+    if (hitX === null && traveled >= BR.BRAWLER_KIKO_RANGE) { hitX = nx; hitY = ny; }
+    if (hitX !== null) blasts.push({ x: hitX, y: hitY });
+    else keep.push({ ...k, x: nx, y: ny, traveled });
+  }
+  set(() => ({ brawlerKiko: keep }));
+  for (const b of blasts) explodeBrawlerKiko(get, b.x, b.y);
+};
+
+/** 気功の爆発(爆発扱い=skillExplosionMult・処刑なし・§7-1)。入った敵を延焼(炎の床は出さない)。 */
+const explodeBrawlerKiko = (get: () => GameState, x: number, y: number): void => {
+  const st = get();
+  const p = st.player;
+  const exMult = skillExplosionMult(p);
+  const radius = BR.BRAWLER_KIKO_RADIUS * exMult * heavyGunnerExplosionMult(p, st.gameTime);
+  const melee = p.weapons.find(w => w.isMelee);
+  const base = meleeSwingBaseDamage(melee, p) * BR.BRAWLER_KIKO_MULT * exMult * skillOutgoingDamageMult(p);
+  const ids = BR.brawlerCircleTargets(st.enemies, x, y, radius);
+  const burn = incendiaryBurnParams(brawlerLevel(p));
+  let dealt = 0;
+  const burnIds: string[] = [];
+  for (const id of ids) {
+    const e = get().enemies.find(en => en.id === id);
+    if (!e) continue;
+    const d = BR.brawlerDistTo(x, y, e);
+    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45)));
+    const killed = get().damageEnemy(id, dmg, true, false, false, 'other');
+    get().spawnDamageNumber(e.x + e.width / 2, e.y, dmg, false, { enemyId: id });
+    dealt += dmg;
+    if (!killed) burnIds.push(id);
+  }
+  if (burnIds.length > 0 && burn.dps > 0) {
+    const bs = new Set(burnIds);
+    useGameStore.setState(state => ({
+      enemies: state.enemies.map(e => bs.has(e.id) ? { ...e, burnUntil: state.gameTime + burn.durationMs, burnDpsTick: burn.dps, burnByGhost: undefined } : e),
+    }));
+  }
+  const g = get();
+  g.spawnExplosionFx(x, y, radius);
+  g.spawnEffect({ kind: 'meleeHit', id: `mhit-kikox-${Date.now()}`, x, y, size: radius * 2.6, tint: BR.BRAWLER_COLOR_HEX, createdAt: Date.now(), duration: MELEE_HIT_DUR });
+  g.spawnRing(x, y, 10, radius * 1.3, BR.BRAWLER_RGBA(0.9), 4, 360, true);
+  g.spawnGlow(x, y, GLOW_R_L, 'rgba(255,240,210,', 320, true);
+  if (ids.length > 0) g.registerMultiHit(ids.length);
+  g.registerImpact({ source: 'explosion', damage: dealt, minMag: IMPACT_MELEE_MIN, flags: { explosion: true, kill: false }, x, y });
+  brawlerSfx('bomb', 0.8, 1.05);
 };
 
 /**
@@ -6065,7 +6578,7 @@ const applySlasherChainStrike = (
 };
 
 // 排他スキルのグループ(同グループ内は共存OK。例: 刀↔村雨)。それ以外のスキルとは共存不可。
-const EXCLUSIVE_SUBWEAPON_GROUPS: SubWeaponKey[][] = [['katana', 'murasame'], ['shijin'], ['alchemy', 'sage-stone']];
+const EXCLUSIVE_SUBWEAPON_GROUPS: SubWeaponKey[][] = [['katana', 'murasame'], ['shijin'], ['alchemy', 'sage-stone'], ['brawler']];
 
 const applySubWeaponCard = (player: Player, key: SubWeaponKey, cardLevel?: number): Player => {
   const known = player.subWeapons.includes(key);
@@ -6231,8 +6744,14 @@ export const knockbackSpeedFor = (distancePx: number, ms: number): number =>
  * research/SHIELD_BLOCK.md: いまある味方の盾(hostile でない)の矩形。無ければ null(=技の判定は1bitも変わらない)。
  * 判定側(store/utils/useGameLoop)は技の当たりの前にこれを1回読む。引数省略=現在の store の projectiles。
  */
-export const currentFriendlyShield = (projectiles?: readonly { weaponType?: string; hostile?: boolean; x: number; y: number; width: number; height: number }[]): Rect | null =>
-  friendlyShieldRect(projectiles ?? useGameStore.getState().projectiles);
+export const currentFriendlyShield = (projectiles?: readonly { weaponType?: string; hostile?: boolean; x: number; y: number; width: number; height: number }[]): Rect | null => {
+  // ★格闘の構え中は「盾の矩形=プレイヤーの体」(紫のレーザーを体の面で止める・research/BRAWLER.md §8-5)。判定と絵の両方がこれを読む。
+  const st = useGameStore.getState();
+  if (isBrawlerGuarding(st.player, st.gameTime)) return brawlerGuardBodyRect(st.player);
+  return friendlyShieldRect(projectiles ?? st.projectiles);
+};
+/** 構えの体の矩形(盾の代わり)。 */
+export const brawlerGuardBodyRect = (p: Player): Rect => ({ x: p.x, y: p.y, width: p.width, height: p.height });
 
 /** 盾が技を防いだ瞬間の演出の積み荷(useGameLoop が消化)。 */
 export interface ShieldGuardFxEntry {
@@ -7154,7 +7673,7 @@ interface GameState {
    * @param retaliate ★被弾反撃(research/HIT_RETALIATION.md §4): 指定時は相手をその1体に絞り、CD/受付の門・カウンター窓/CDの張り・
    *   振った時のサブウェポン入口を通さず、命中の最終ダメージを mult 倍にする。命中した時の処理(KB・体勢・処刑・コンボ・演出)は通常のまま。
    */
-  triggerCounter: (swingStartAt?: number, retaliate?: { targetId: string; mult: number }) => CounterTriggerResult;
+  triggerCounter: (swingStartAt?: number, retaliate?: { targetId: string; mult: number } | BrawlerStrikeOpts) => CounterTriggerResult;
   /** ★前隙の起点。窓/CD/絵だけを打ち、判定は `MELEE_WINDUP_MS` 後に useGameLoop が解決する。 */
   beginMeleeSwing: () => boolean;
   // 縮地(SKILL_BUILD_REDESIGN.md §32): ワープ後の斬撃を解決する(ループが movePlayer の直後に呼ぶ)。待ちが無ければ null。
@@ -7162,6 +7681,16 @@ interface GameState {
   // ★被弾反撃(research/HIT_RETALIATION.md): 入力(フリック/右クリック/パッド)から呼ぶ。窓・向き・相手・状態が揃えば飛び込みを始めて true
   // (揃わなければ何もせず false=呼び出し側は従来の入力経路へ)。dirX/dirY=入力の向き。
   tryHitRetaliation: (dirX: number, dirY: number) => boolean;
+  // ★サブウェポン「格闘」(research/BRAWLER.md)。押した(指離し・近接ボタン)=通常攻撃の5段コンボ。出した/覚えたら true。
+  brawlerPress: () => boolean;
+  // フリック(PC=方向+技ボタン)=技。neutral=方向の入力が無い(PCのK・パッドのニュートラル+B)=技は出さない。出たら true。
+  brawlerTech: (dirX: number, dirY: number, neutral?: boolean) => boolean;
+  // 毎フレーム(useGameLoop)。格闘を持たない時は即 return。
+  tickBrawler: () => void;
+  // 構えで受けた(damagePlayer の入口・弾の弾き返し・カウンター成立)。x/y=受けた所。
+  brawlerGuardReceive: (x: number, y: number, sourceId?: string) => void;
+  // 格闘の気功の弾(描画用・store が進める)。
+  brawlerKiko: BrawlerKiko[];
   // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md)。蹴りの命中で呼ぶ=気絶中の敵をプレイヤーの斜め前へ滑らせる。滑らせたら true。
   tossEnemyToPlayer: (enemyId: string) => boolean;
   // 被弾反撃の着地(命中)を解決する(ループが movePlayer の直後に呼ぶ)。待ちが無い/まだ着地前なら null。
@@ -7694,7 +8223,7 @@ interface GameState {
   spawnCounterShatter: (x: number, y: number) => void;
   // rot(v0.25.4202): 絵の向き(rad)。VisualEffect側は元から rot を持っていたが、この入口が渡していなかった。
   // cols/additive(社長指示2026-09-16・fx/kill-slash): 横並びシートのコマ送り/加算合成。未指定=従来どおり。
-  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number }) => void;
+  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number; scaleX?: number; scaleY?: number; moveX?: number; moveY?: number; alpha?: number }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number, easeOut?: boolean) => void;
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
@@ -8335,6 +8864,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastWeaponGet: null,
   hitstopUntil: 0,
   hitRetaliation: null,
+  brawlerKiko: [],
   lastEscortTossAt: ESCORT_TOSS_NEVER,
   escortKick: null,
   escortKickAbort: null,
@@ -8432,7 +8962,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         || holdNow < (player.lungeUntil ?? 0) || holdNow < player.skaterStopUntil
         || isPvpIncapacitated(player.pvpPosture, state.gameTime) || isPlayerGrabbed(player, state.gameTime)
         || isHurtMoveLocked(player, holdNow)
-        || ((player.meleeSwingAt || 0) > 0 && holdSwingSince >= 0 && holdSwingSince < PLAYER_MELEE_SWING_MS);
+        || ((player.meleeSwingAt || 0) > 0 && holdSwingSince >= 0 && holdSwingSince < PLAYER_MELEE_SWING_MS)
+        || BR.isBrawlerBusy(player.brawler); // 格闘の段・技(動けない)
       const nextSpeedRamp = cruiseHold
         ? { sustainMs: player.speedRampSustainMs, lastDirX: rampMoving ? rampInX : player.speedRampDirX, lastDirY: rampMoving ? rampInY : player.speedRampDirY }
         : stepSpeedRamp(
@@ -8544,6 +9075,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★踏み込み(SAME_ARENA.md §7-4)。**被弾ノックバックの方が強い**(殴られたら自分の踏み込みは
       // 上書きされる)。無敵は付いていないので、踏み込み中に当たれば普通に食らう=避けるのは腕。
       const lungeActive = !kbActive && kbNow < (player.lungeUntil ?? 0);
+      // ★格闘のヒットストップの間は踏み込みの器の時計を止める(research/BRAWLER.md §8-2)。止めた分だけ期限を後ろへずらす。
+      const lungeHeld = lungeActive && kbNow < (player.lungeHoldUntil ?? 0);
       // スケーター急停止中: 入力を無視して残速度を素早く減衰(tau=50ms)=ほんの少し慣性のある急停止。
       const skaterStopping = !kbActive && kbNow < player.skaterStopUntil;
       // ★SAME_ARENA §9(対人体勢): 紫(3秒)+致命後daze(2秒)中は入力を無視して残速度を減衰
@@ -8561,23 +9094,29 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 被弾の吹き飛び・ワイヤー/一閃などの強制移動・四神舞の滑りは対象外(それぞれ上の枝が先)。
       const swingSince = kbNow - (player.meleeSwingAt || 0);
       const swingFrozen = !kbActive && !lungeActive && !dashOv && !sliding
-        && (player.meleeSwingAt || 0) > 0 && swingSince >= 0 && swingSince < PLAYER_MELEE_SWING_MS;
+        && (((player.meleeSwingAt || 0) > 0 && swingSince >= 0 && swingSince < PLAYER_MELEE_SWING_MS)
+          // ★格闘の段・技の間は動けない(戻りの間も・格闘ゲームの硬直=research/BRAWLER.md §2-4・§8-2)。詰め・跳び・蹴りは上の器。
+          || BR.isBrawlerBusy(player.brawler));
       let vx: number, vy: number;
       if (kbActive) {
         // 持続時間は**その吹き飛び自身の値**で割る(技ごとに変わるため。未指定=従来の共通値)。
         const decay = Math.max(0, (player.knockbackUntil! - kbNow) / (player.knockbackMs ?? PLAYER_KNOCKBACK_MS)); // 1→0
         vx = (player.knockbackVx ?? 0) * decay;
         vy = (player.knockbackVy ?? 0) * decay;
+      } else if (lungeHeld) {
+        vx = 0; vy = 0;
       } else if (lungeActive) {
         // 初速最大→線形に0(ノックバックと同じ形)。**回避に使うので出だしが最も速い**
         // ——加速から入ると避け始めが遅れて間に合わない(社長の狙い「早めに着地」)。
         // 尺は欄の値(被弾反撃の飛び込み=約120ms)。未指定=近接の踏み込み(MELEE_LUNGE_MS)=従来どおり。
         const d = Math.max(0, (player.lungeUntil - kbNow) / (player.lungeMs ?? MELEE_LUNGE_MS)); // 1→0
+        // ★格闘の 'accel'(§8-2): 加速して最大速度のまま当たる(拳が止まりかけで当たると軽い=慣性は当たった後の反動で守る)。
+        const shapeF = player.lungeShape === 'accel' ? BR.accelLungeFactor(1 - d) : d;
         // ★踏み込みも「移動」なのでトラップ効果中は7割(上の moveSpeed と同じ理屈・社長指示2026-10-10)。
         // 被弾ノックバック(上の枝)は**掛けられている力**なので対象外=そのまま飛ぶ。
         const lungeCap = trapDebuffed ? TRAP_PVP_MOVE_MULT : 1;
-        vx = (player.lungeVx ?? 0) * d * lungeCap;
-        vy = (player.lungeVy ?? 0) * d * lungeCap;
+        vx = (player.lungeVx ?? 0) * shapeF * lungeCap;
+        vy = (player.lungeVy ?? 0) * shapeF * lungeCap;
       } else if (skaterStopping || pvpFrozen || grabbedFrozen || hurtFrozen || swingFrozen) {
         const d = Math.exp(-deltaTime / 0.05); // 約50msの時定数で素早く0へ
         vx = player.vx * d;
@@ -8836,10 +9375,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           phillReticleDX,
           phillReticleDY,
           phillSnapEnemyId,
-          lastDirection: warpTo ? player.lastDirection : lastDirection, // ワープの回は相手の方を向いたまま
+          lastDirection: warpTo || BR.isBrawlerBusy(player.brawler) ? player.lastDirection : lastDirection, // ワープの回は相手の方を向いたまま / 格闘の段・技の間も相手の方を向いたまま
           aimX,
           aimY,
           shukuchiWarpTo: undefined,
+          ...(lungeHeld ? { lungeUntil: player.lungeUntil + deltaTime * 1000 } : {}),
         }
       };
     });
@@ -8987,8 +9527,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const pcx = p0.x + p0.width / 2, pcy = p0.y + p0.height / 2;
     const reachable = !!target && isRetaliateTargetEligible(target, enemyMeleeDist(pcx, pcy, target), huntingMeleeRadius(p0));
     if (!target || !reachable) {
-      // 空振り: 斬る絵だけ出す(判定なし)。窓・CD・連鎖は何も動かさない。
-      set(state => ({ player: { ...state.player, meleeSwingAt: now } }));
+      // 空振り: 斬る絵だけ出す(判定なし)。窓・CD・連鎖は何も動かさない。格闘はナイフの絵を出さない(§7-6)。
+      if (!isBrawlerMode(p0)) set(state => ({ player: { ...state.player, meleeSwingAt: now } }));
       return { swung: true, hit: false, finish: false, killed: 0 };
     }
     // 相手の方を向き直してから斬る(踏み込み・斬撃の弧・鞭の向きが全部 lastDirection を読む)。
@@ -8996,6 +9536,114 @@ export const useGameStore = create<GameState>((set, get) => ({
     const dl = Math.hypot(ecx - pcx, ecy - pcy) || 1;
     set(state => ({ player: { ...state.player, lastDirection: { x: (ecx - pcx) / dl, y: (ecy - pcy) / dl } } }));
     return get().triggerCounter(undefined, { targetId: target.id, mult: RETALIATE_DAMAGE_MULT });
+  },
+
+  // ★サブウェポン「格闘」(research/BRAWLER.md)。押した=通常攻撃の5段コンボ。クールダウンは無く、各段の戻りの間の押下は先行入力として1つだけ覚える。
+  brawlerPress: () => {
+    const st = get();
+    const p = st.player;
+    if (!isBrawlerMode(p)) return false;
+    if (!brawlerGateOk(get)) return false;
+    const s = p.brawler ?? BR.initialBrawlerState();
+    const d = BR.brawlerPressDecision(s, st.gameTime);
+    if (d === 'drop') return false;
+    if (d === 'buffer') { setBrawler(set, { ...s, buffered: true }); return true; }
+    startBrawlerAttack(get, set, s);
+    return true;
+  },
+  // フリック(PC=方向+技ボタン)=技。フリックの上下左右は技を選ぶだけ(狙いは常に近くの敵=§7-9)。
+  brawlerTech: (dirX, dirY, neutral = false) => {
+    const st = get();
+    const p = st.player;
+    if (!isBrawlerMode(p)) return false;
+    if (!brawlerGateOk(get)) return false;
+    const s = p.brawler ?? BR.initialBrawlerState();
+    const t = st.gameTime;
+    const kind = neutral ? null : BR.classifyBrawlerFlick(dirX, dirY);
+    if (!kind || !BR.brawlerTechAllowed(s, kind, t)) {
+      // 方向の決まらない入力・出せない時は技を出さない(短い空振りの音・§7-5)。
+      if (!isBrawlerGuardingAt(s, t)) { brawlerSfx('whip-swing', 0.22, 1.6, 70); setBrawler(set, { ...s, denyAt: Date.now() }); }
+      return false;
+    }
+    if (!BR.brawlerCanPay(s, kind)) {
+      // ポイント不足: 何も出さない(HUD の数字が震え、体から短い空振りの音=社長決定 #8)。
+      brawlerSfx('whip-swing', 0.25, 1.55, 70);
+      setBrawler(set, { ...s, denyAt: Date.now() });
+      return false;
+    }
+    startBrawlerTech(get, set, s, kind);
+    return true;
+  },
+  tickBrawler: () => {
+    const st0 = get();
+    if (st0.brawlerKiko.length > 0) stepBrawlerKiko(get, set);
+    else brawlerKikoLastT = -1;
+    const p = get().player;
+    const s0 = p.brawler;
+    if (!s0) return;
+    const now = Date.now();
+    const t = get().gameTime;
+    if (!isBrawlerMode(p)) {
+      if (s0.phase !== 'idle') setBrawler(set, BR.brawlerCancel(s0));
+      return;
+    }
+    if (s0.phase === 'idle') return;
+    // 前隙の途中で掴まれた・対人の紫に入った・シーカーに入った=出かかった段/技を取り消し、先行入力も捨てる(§8-4)。
+    if (!s0.resolved && (isPlayerGrabbed(p, t) || isPvpIncapacitated(p.pvpPosture, t) || (isSeekerActive(p, t) && skillLevel(p, 'seeker') < 3))) {
+      setBrawler(set, BR.brawlerCancel(s0), { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeHoldUntil: 0 });
+      return;
+    }
+    // 構えの間はカウンター窓を張り続ける(窓は Date.now 系・構えは gameTime 系=一時停止で窓だけ先に切れないように)。
+    if (s0.phase === 'tech' && s0.tech === 'guard' && s0.guardUntil > t) {
+      const remain = s0.guardUntil - t;
+      if (p.counterWindowEnd < now + remain - 40 || p.counterWindowStart > now) {
+        set(state => ({ player: { ...state.player, counterWindowStart: Math.min(state.player.counterWindowStart, now), counterWindowEnd: now + remain } }));
+      }
+    }
+    for (let i = 0; i < 3; i++) {
+      const s = get().player.brawler;
+      if (!s) return;
+      const ev = BR.brawlerDueEvent(s, get().gameTime);
+      if (ev === null) return;
+      if (ev === 'resolve') { resolveBrawlerAction(get, set); continue; }
+      // 終わり
+      const { state: fin, fire } = BR.brawlerFinish(s, get().gameTime);
+      const close = s.tech === 'guard' ? { counterWindowEnd: Math.min(get().player.counterWindowEnd, Date.now()) } : {};
+      setBrawler(set, fin, close);
+      if (fire && brawlerGateOk(get)) startBrawlerAttack(get, set, fin);
+      return;
+    }
+  },
+  brawlerGuardReceive: (x, y, sourceId) => {
+    const st = get();
+    const p = st.player;
+    if (!isBrawlerGuarding(p, st.gameTime) || !p.brawler) return;
+    const now = Date.now();
+    const s = p.brawler;
+    const c = brawlerCenter(p);
+    // 受けた直後0.5秒は次の通常攻撃が前隙なしで出る(社長決定 #7)。
+    const next: BR.BrawlerState = { ...s, quickUntil: st.gameTime + BR.BRAWLER_GUARD_QUICK_MS };
+    // 近接の届く距離の相手は気絶させる(社長決定 #6・§8-5): 雑魚・強個体=通常の気絶 / ボス級=会心の足止め(減衰込み)。遠い相手は無効だけ。
+    if (sourceId) {
+      const e = st.enemies.find(en => en.id === sourceId);
+      if (e && BR.isBrawlerTargetable(e) && enemyMeleeDist(c.x, c.y, e) <= huntingMeleeRadius(p) + 24) {
+        const patch: Partial<Enemy> | null = isBossType(e.type)
+          ? bossCritStopPatch(e, st.gameTime, p.stunDurationMult ?? 1)
+          : { stunUntil: st.gameTime + STUN_DURATION_MS * (p.stunDurationMult ?? 1) };
+        if (patch) set(state => ({ enemies: state.enemies.map(en => en.id === e.id ? { ...en, ...patch } : en) }));
+      }
+    }
+    if (now - s.guardHitAt < 140) { setBrawler(set, next); return; } // 光線などで毎フレーム来る受けは絵と音を間引く
+    setBrawler(set, { ...next, guardHitAt: now });
+    // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
+    get().triggerHitImpact(Math.max(60, COUNTER_HITSTOP_MS), COUNTER_SHAKE_MS + 60, COUNTER_SHAKE_MAG, 0, x, y);
+    get().spawnFlash(BR.BRAWLER_RGBA(0.24), 140);
+    get().spawnRing(c.x, c.y, 16, 132, BR.BRAWLER_RGBA(0.95), 5, 380, true);
+    get().spawnRing(c.x, c.y, 8, 70, 'rgba(255,255,255,0.9)', 3, 240, true);
+    get().spawnGlow(c.x, c.y - 6, GLOW_R_XL, 'rgba(255,248,230,', 320, true);
+    get().spawnEffect({ kind: 'meleeHit', id: `mhit-guard-${now}`, x: (x + c.x) / 2, y: (y + c.y) / 2, size: 230, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: MELEE_HIT_DUR });
+    brawlerSfx('counter', 0.9, 0.92);
+    brawlerSfx('heavy-impact', 0.7, 0.68, undefined, 14);
   },
 
   // スケボー(新仕様): ダブルタップで乗車。skater 未装備/既に乗車中は無視。
@@ -9213,6 +9861,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const sp = get().player;
     const swingSince = Date.now() - (sp.meleeSwingAt || 0);
     if ((sp.meleeSwingAt || 0) > 0 && swingSince >= 0 && swingSince < PLAYER_MELEE_SWING_MS) return;
+    // 格闘の段・技の間も向きを変えない(向きは相手へ向けてある=§7-4)。
+    if (BR.isBrawlerBusy(sp.brawler)) return;
     set(state => ({
       player: {
         ...state.player,
@@ -9238,6 +9888,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!get().m0Unlocked.melee) return false;
     // ★被弾反撃の飛び込みの最中(着地の斬撃が未解決)は普通の振りを出さない=飛び込みの上書きと二重の命中を防ぐ(検収監査 B-3)。
     if ((p.retaliateStrikeAt ?? 0) > 0) return false;
+    // ★格闘(research/BRAWLER.md §2): 指離し=通常攻撃の5段コンボ。カウンター窓・CD・前隙・踏み込み・鞭のしなりは出さない。
+    // 縮地・スラッシャーは格闘中は効かない(近接の入力を横取りしてコンボと衝突するため・§7-2)=この手前で抜ける。
+    if (isBrawlerMode(p)) return get().brawlerPress();
     // ★縮地(SKILL_BUILD_REDESIGN.md §32): 窓の中の振りはワープ斬撃の予約へ(飛べる相手が居なければ下の通常経路)。
     // スラッシャーの追撃より**先**に見る(ワープを優先し、チェーンは破棄)。
     if (reserveShukuchiWarp(get, now)) return true;
@@ -9313,12 +9966,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     return true;
   },
-  triggerCounter: (swingStartAt?: number, retaliate?: { targetId: string; mult: number }) => {
+  triggerCounter: (swingStartAt?: number, retaliate?: { targetId: string; mult: number } | BrawlerStrikeOpts) => {
     const now = Date.now();
+    // ★指定打撃(research/BRAWLER.md §7-1・§8-1): 格闘の段・技は `bs` を渡す。被弾反撃の `{ targetId, mult }` も同じ形(1体の指定)へ揃える。
+    const bs: BrawlerStrikeOpts | undefined = retaliate && 'brawler' in retaliate ? retaliate : undefined;
+    const retaliateOne = retaliate && !('brawler' in retaliate) ? retaliate : undefined;
     // ★被弾反撃(research/HIT_RETALIATION.md §4): 指定時は「相手を1体に絞る / CD・受付・前隙の門を通さない / カウンター窓とCDを張らない /
     // 振った時のサブウェポン入口(ブーメラン・金環・地雷・フレア・ジャンク・タレット切替・分身)と小物・設置物・盾への当たりを出さない /
     // 命中の最終ダメージを mult 倍にする」。命中した時の処理(KB・ヒットスタン・体勢・処刑・コンボ・キル集計・演出)は通常のまま全部通る。
-    const ret = retaliate;
+    const ret: { targetIds: string[]; mult: number } | undefined = bs
+      ? { targetIds: bs.targetIds, mult: bs.mult }
+      : retaliateOne ? { targetIds: [retaliateOne.targetId], mult: retaliateOne.mult } : undefined;
+    const retIds = ret ? new Set(ret.targetIds) : null;
     const retMult = ret?.mult ?? 1;
     const {
       player, gameTime, realGameTime, enemies, projectiles,
@@ -9340,6 +9999,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 訓練(M0)の封印(社長指示v0.25.2293): **近接チュートリアルで解禁されるまで振れない**。
     // 教わっていない技が先に暴発すると、説明と体験の順序が崩れる(=台本が成立しない)。
     if (!get().m0Unlocked.melee) return { swung: false, hit: false, finish: false, killed: 0 };
+    // ★格闘(research/BRAWLER.md): PC/ボットの直呼び(前隙の解決を含む)は格闘の押下へ回す(縮地・スラッシャーは格闘中は効かない=§7-2)。
+    // 被弾反撃は3段目(強パンチ)の絵・音の指定打撃で出す(中身=相手と倍率は今の反撃のまま・技ポイントに数えない・段は1段目へ=§8-4)。
+    if (!bs && isBrawlerMode(player)) {
+      if (!retaliateOne) {
+        const ok = get().brawlerPress();
+        return { swung: ok, hit: false, finish: false, killed: 0 };
+      }
+      const s3 = BR.brawlerStageSpec(3);
+      const tgt = enemies.find(e => e.id === retaliateOne.targetId) ?? null;
+      const pc0 = brawlerCenter(player);
+      const dir0 = BR.brawlerAimDir(pc0.x, pc0.y, tgt, player.lastDirection);
+      const r0 = get().triggerCounter(undefined, {
+        targetIds: [retaliateOne.targetId], mult: retaliateOne.mult, brawler: true, stunMs: s3.hitstopMs,
+        kb: { kind: 'normal' }, postureMult: 1, pressedAt: now,
+      });
+      const b0 = get().player.brawler ?? BR.initialBrawlerState();
+      setBrawler(set, { ...b0, nextStage: 1, chainUntil: 0, buffered: false });
+      brawlerStageFx(get, 3, pc0, dir0, r0, tgt);
+      return r0;
+    }
     // ★縮地(§32): PC/ボットの直呼び(前隙なし)もタッチと同じくワープ斬撃の予約へ。斬撃と音は
     // useGameLoop の resolveShukuchiStrike が出すので、ここでは振っていない扱いで返す。
     if (!ret && swingStartAt === undefined && reserveShukuchiWarp(get, now)) return { swung: false, hit: false, finish: false, killed: 0 };
@@ -9479,7 +10158,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 紅き夜中は開かない(拠点近接の「やり過ごし」が別途処理)。
     // v0.25.3054(社長指示・監査指摘): ボス戦中(+復帰猶予)は開かない——ボス戦中は指を離し続ける
     // ため、拠点の近くで戦うと必ず踏んでいた(「閉じ込められて何もできず」の最有力経路)。
-    if (!ret && !showShopMenu && !showUpgradeMenu && gameTime >= shopReopenAt && get().redNight?.phase !== 'active'
+    if ((!ret || bs) && !showShopMenu && !showUpgradeMenu && gameTime >= shopReopenAt && get().redNight?.phase !== 'active'
       && !facilitiesLocked(get().bossFightNow, get().bossFightLastTrueAt, gameTime)) {
       // 研究所のアイドル手前の遠隔ショップ(2026-10-11)も、制圧済みの拠点の武器庫と同じ扱い(常に開いている)。
       const la = get().labArmory;
@@ -9495,7 +10174,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           touchActive: false,
           swipeDirection: null,
           swipeStrength: 1,
-          player: {
+          // 格闘(§8-1): 窓は開かずにショップだけ開く。
+          player: bs ? get().player : {
             ...player,
             counterWindowStart: now, // 隻狼型(v0.25.3943)
             counterWindowEnd: now + counterAcceptMsOf(player),
@@ -9505,6 +10185,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnRing(b.x, b.y - 26, 12, 58, 'rgba(251,191,36,0.88)', 3, SHOP_INTERACT_RING_MS);
         get().spawnGlow(b.x, b.y - 28, GLOW_R_S, 'rgba(251,191,36,', SHOP_INTERACT_RING_MS);
         get().spawnCallout(b.x, b.y - 70, 'SHOP', '#fde68a');
+        if (bs) return { swung: true, hit: false, finish: false, killed: 0, hits: 0 };
         return { swung: true, hit: true, finish: false, killed: 0 };
       }
     }
@@ -9521,7 +10202,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★被弾反撃(research/HIT_RETALIATION.md §4): 刀の振りは攻撃しない(刀はオート斬撃)ので、縮地のワープ斬撃と同じく
       // 相手へ刀の一閃を直接出す(一閃の倍率 × retMult)。窓・CDは張らない(上の ret の取り決め)。
       if (ret) {
-        const k = get().performKatanaStrike([ret.targetId], KATANA_DASH_DAMAGE_MULT, true, undefined, retMult * warlordIssenMult(get().player));
+        const k = get().performKatanaStrike(ret.targetIds, KATANA_DASH_DAMAGE_MULT, true, undefined, retMult * warlordIssenMult(get().player));
         return { swung: true, hit: k.hit, finish: k.finish, killed: k.killed };
       }
       // 村雨は打ち返し(カウンター)もクールダウン無しで連発可能。刀は通常CD。
@@ -9552,7 +10233,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (ret) {
         const prevMult = get().player.shukuchiStrikeMult;
         set(state => ({ player: { ...state.player, shukuchiStrikeMult: retMult } }));
-        const res = get().performWhipStrike([ret.targetId]);
+        const res = get().performWhipStrike(ret.targetIds);
         set(state => ({ player: { ...state.player, shukuchiStrikeMult: prevMult } }));
         if (res.hits > 0) set({ whipHitFxAt: Date.now() }); // 鞭命中音SEのトリガ
         return { swung: true, hit: res.hit, finish: res.finish, killed: res.killed };
@@ -9685,6 +10366,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const bossFatalHits: { x: number; y: number; labelY: number; w: number; h: number }[] = []; // w/h=killFx流用(v0.25.3622)
     const critStunAt: { x: number; y: number }[] = []; // 社長指示: 近接クリでも銃/刀と同じくスタン(黄色リング)を掛ける
     const slashAt: { x: number; y: number }[] = [];
+    const brHitAt: { x: number; y: number; id: string }[] = []; // 格闘: 当てた位置(絵は格闘の側が出す)
     const meleeHitEnemyIds: string[] = []; // スキル 救難信号: このスイングでヒットした敵ID(発動判定/対象選定用)
     const bashBloodExcludeIds = new Set<string>(); // B10: シールドバッシュで当てた敵(血を浴びない・THEONE_ROUND2 §3-1)
     // ★スラッシャー実機FB(v0.25.3616「敵を2撃目追いかけてない」): 初撃も追撃と同じ自動追尾を持つ。
@@ -9814,7 +10496,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       hasShieldShove && shieldShoves.some(sh => rectsOverlap({ x: e.x, y: e.y, width: e.width, height: e.height }, sh.swept));
     const isStunnedNow = (e: Enemy): boolean => e.stunUntil !== undefined && gameTime < e.stunUntil;
     const scanTargetId = pickScanMarkTarget(
-      enemies.filter(e => !(ret && e.id !== ret.targetId) && !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e) && !isUntouchable(e)
+      enemies.filter(e => !(retIds && !retIds.has(e.id)) && !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e) && !isUntouchable(e)
         && isScanMarked(e, gameTime)
         // 社長決定2026-10-18: 盾のバッシュと、気絶中の強個体への3倍にも印を掛ける(=ここで「1体だけ」の枠を使う)。
         // 掛けないのは気絶中の即死(処刑)と、ボスの気絶への5倍(紫の報酬を含む)=その敵では枠を使わない。
@@ -9825,7 +10507,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     );
 
     for (const enemy of enemies) {
-      if (ret && enemy.id !== ret.targetId) { survivors.push(enemy); continue; } // ★被弾反撃: 相手はその1体だけ
+      if (retIds && !retIds.has(enemy.id)) { survivors.push(enemy); continue; } // ★被弾反撃: 相手はその1体だけ / 格闘: 形の純関数が選んだ相手だけ
       if (isReaperFamily(enemy.type) && !isTerminalReaper(enemy)) { survivors.push(enemy); continue; } // 深奥チェイサーは近接対象(ボス級)
       if (isCorpse(enemy)) { survivors.push(enemy); continue; } // KILL吹き飛び(死体・§26-2): 近接カウンター対象から除外
       if (isUntouchable(enemy)) { survivors.push(enemy); continue; } // 英雄の昇天中・亡霊のワープ中(research/WRAITH_MUTANT.md §8 A3)は近接も素通り(damageEnemy を通らない経路)
@@ -9840,9 +10522,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const bashShove = hasShieldShove
         ? shieldShoves.find(s => rectsOverlap({ x: enemy.x, y: enemy.y, width: enemy.width, height: enemy.height }, s.swept))
         : undefined;
-      if (dist > meleeRange && !bashShove) { survivors.push(enemy); continue; }
+      // ★格闘(§8-1): 当たる/当たらないは形と壁の純関数が決めて渡す=距離の門と壁の門は通さない。
+      if (!bs && dist > meleeRange && !bashShove) { survivors.push(enemy); continue; }
       // 壁越しには当てない(視線が壁で遮られている敵はスキップ)。
-      if (meleeWalls.length > 0 && segmentBlocked(pcx, pcy, ecx, ecy, meleeWalls)) { survivors.push(enemy); continue; }
+      if (!bs && meleeWalls.length > 0 && segmentBlocked(pcx, pcy, ecx, ecy, meleeWalls)) { survivors.push(enemy); continue; }
 
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統②=バッシュ/気絶フィニッシュ/通常近接の
       // 3枝まとめて)。**この位置**なのが肝: 無効化した打撃は slashAt / meleeHitEnemyIds /
@@ -9911,6 +10594,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // Anything in reach gets cut — show a slash on it.
       slashAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
+      brHitAt.push({ x: ecx, y: ecy - idolAirLift(enemy), id: enemy.id });
       meleeHitEnemyIds.push(enemy.id);
       // 気絶敵へのフィニッシュ裁定は resolveStunnedMeleeHit が唯一の出どころ
       // (v0.25.2525で抽出=**守護霊の近接スイングと共有**・値/条件は不変。ボス5×は
@@ -9988,7 +10672,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height }); // 既存のKill!演出プールを流用(§9 UI最小)
           bossFinishHit = true; // ★社長指示2026-08-27「幻影戦の致命もKILL演出(ズーム)」: 旧実装はこの旗が立たずズームのゲート(finisherHit||bossFinishHit)を通らなかった
         } else {
-          const r = chipPvpPosture(enemy.pvpPosture, 'melee', gameTime, postureChipMult());
+          const r = chipPvpPosture(enemy.pvpPosture, 'melee', gameTime, postureChipMult() * (bs?.postureMult ?? 1)); // 格闘: 段の倍率(§8-1)
           const ps = crit ? markPvpCritSlow(r.next, gameTime) : r.next;
           pvpMeleePatch = r.broke
             ? { pvpPosture: ps, gpPendingSwingAt: undefined, gpParriedAt: undefined } // 紫入り: 前隙・予約を破棄(§9)
@@ -10005,7 +10689,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // GAME_AUDIT #17(社長承認): プレイヤーが直接出したクリはすべて裏ボスの完全気絶カウントに
       // 乗せる(銃と同じbumpBossCrit=挙動統一)。裏ボス以外はnullで素通り。
       // research/NEW_GUNS.md §4: 印付きのボスへの近接の当たりは 'melee' の削りを 0.04→0.09 相当(impactMult)。別の呼び出しにしない。
-      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime, scanMarkMeleePostureMult(enemy, gameTime));
+      const bossBump = applyBossPostureDamage(enemy, 'melee', gameTime, scanMarkMeleePostureMult(enemy, gameTime) * (bs?.postureMult ?? 1)); // 格闘: 1発ごとの削りに段の倍率(§8-1)
       if (bossBump?.triggered) { bossFullStunHits.push({ x: ecx, y: ecy }); recordPostureBroken(); }
       // §6.33(LASER-TRACK): レーザー弱点窓の中断。'melee'体幹パッチを合成してから判定(二重取り防止)。
       const laserBreak = mimirLaserBreakOnMeleeHit({ ...enemy, ...(bossBump?.patch ?? {}) }, gameTime);
@@ -10028,13 +10712,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★社長指示v0.25.3496「スラッシャーではボスはノックバックしないで」: 強制KB(免疫CD無視)は
       // **通常敵限定**にする。ボス級に効いていると、免疫CDを無視して毎撃 knockbackUntil が立ち、
       // ボスの技が永久に中断される(=はめ)。ボスは従来の免疫CD付きルールへ落ちる。
-      const slasherForce = skillLevel(player, 'slasher') > 0 && !resistsChipKnockback(enemy.type);
+      const slasherForce = !bs && skillLevel(player, 'slasher') > 0 && !resistsChipKnockback(enemy.type); // 格闘中はスラッシャーは効かない(§7-2)
       // ★v0.25.3616: 初撃の自動追尾の目標(押した敵のうち最寄り。追撃側の lungeTo と同じ選び方)。
       if (slasherForce && (slasherLungeTo === null || dist < slasherLungeTo.dist)) {
         const dn = Math.max(0.001, Math.hypot(dx, dy));
         slasherLungeTo = { dirX: dx / dn, dirY: dy / dn, dist };
       }
-      if (slasherForce || knockbackCdReady(enemy, now)) {
+      if (bs) {
+        // ★格闘の当たり(research/BRAWLER.md §8-1)。押しの強さは段の種類だけ(falloff なし)・ノックバックはこのループの中で1本に書く。
+        // 止め=段の表の ms をそのまま hitStunUntil へ(格闘では再発火ガードを外す)。ボス級は止めない(区分の仕様)。
+        survivors.push({
+          ...enemy, health: newHealth, lastHit: now, stunUntil,
+          ...brawlerHitPatch(enemy, bs, now, gameTime, dmg, ecx, ecy, pcx, pcy),
+          ...(bossSlow ?? {}),
+          ...(bossBump?.patch ?? {}),
+          ...(laserBreak?.patch ?? {}),
+          ...pvpMeleePatch,
+        });
+      } else if (slasherForce || knockbackCdReady(enemy, now)) {
         // ★v0.25.3959(社長報告「近接当てると飛んでっちゃう」・?kblog=1実測「KB開始 bat 予定281567px」):
         // 方向の正規化は**中心差分の長さ**で割る。dist(enemyMeleeDist)はv0.25.3170から判定矩形の
         // 最近点距離=密着(中心が帯内)で0になり、dx/0.001×speedで数百万px/sのKBが出ていた。
@@ -10133,14 +10828,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 他の攻撃(ドローン/刀/鞭フィニッシュ等)が残した既存ヒットストップも解除する。
       // 既存ヒットストップが生きていると gameTime が凍結されたままリングが始動し、
       // ① 1発目サークルが動かない ② Hitstop 中タップで elapsed=0→JUST 窓外→コンボ消滅 の2バグを招く。
-      hitstopUntil: hasSkill(state.player, 'slasher') && slashAt.length > 0
+      hitstopUntil: !bs && hasSkill(state.player, 'slasher') && slashAt.length > 0
         ? 0  // スラッシャーリング始動: 既存ヒットストップも即解除してリングをすぐ動かす
         : finisherHit
           ? now + HITSTOP_MS
           : state.hitstopUntil,
       player: {
         ...state.player,
-        meleeSwingAt: swingAt, // 近接スイング演出の起点(描画のみ)。★前隙の起点=指を離した時刻に揃える(200ms後に絵を出し直さない)。
+        meleeSwingAt: bs ? state.player.meleeSwingAt : swingAt, // 格闘はナイフの絵を出さない(§7-6)。近接スイング演出の起点(描画のみ)。★前隙の起点=指を離した時刻に揃える(200ms後に絵を出し直さない)。
         // ★SAME_ARENA §9(検収監査 重大②): この振りの最中に紫へ入った(幻影のパリィ等)なら、
         // 破棄した窓をここで開き直さない(旧: 無条件書き=紫入り直後300ms弾パリィが生きていた)。
         // ★被弾反撃(ret)は窓もCDも張らない・開き直さない(近接/カウンターの待ち時間は変えない=CDの影響を受けず、CDも進めない)。
@@ -10199,8 +10894,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         : state.projectiles
     }));
 
-    get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=ナイフ・§1-3)
-    get().noteMeleeSwingPressedAt(swingAt); // §8裁定済み#16(katana分岐と同じ理由)
+    get().commitMeleeSwing(); // ★近接スイング確定の打刻(5経路の1つ=ナイフ・§1-3)。格闘の段・技もここ(§7-1・別に呼んで2重にしない)
+    get().noteMeleeSwingPressedAt(bs ? bs.pressedAt : swingAt); // §8裁定済み#16(katana分岐と同じ理由)。格闘=押した時刻(§8-1)
 
     for (const id of grenadesToDetonate) {
       const grenade = projectiles.find(p => p.id === id);
@@ -10230,9 +10925,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Slash streaks on every enemy that was cut.
     for (const s of slashAt) {
-      get().spawnSlash(s.x, s.y);
+      // 格闘(§8-1): 既定の当たりの絵(斬撃・炸裂)は出さない(格闘の側が固有色で出す)。血は残す。
+      if (!bs) get().spawnSlash(s.x, s.y);
       get().spawnMeleeBlood(s.x, s.y); // 近接の血飛沫(社長指摘v0.25.2060: メイン近接3経路に未配線だった)
-      get().spawnMeleeHit(s.x, s.y);   // v0.25.4334: 近接ヒットの炸裂(社長支給VFXの試し)
+      if (!bs) get().spawnMeleeHit(s.x, s.y);   // v0.25.4334: 近接ヒットの炸裂(社長支給VFXの試し)
     }
 
     // Damage numbers for every non-execute melee hit; crits/boss-stun hits pop gold.
@@ -10360,7 +11056,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // 松明・卵などの小物破壊(共通ヘルパ。半径=メレー範囲の円)。
-    const propHit = ret ? false : get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, swingBaseDamage * 2.5); // 被弾反撃は相手1体だけ(小物は壊さない)
+    const propHit = ret && !bs ? false : get().breakPropsAlong(pcx, pcy, 1, 0, 0, meleeRange, swingBaseDamage * 2.5); // 格闘は小物を壊す(§8-1) // 被弾反撃は相手1体だけ(小物は壊さない)
 
     // 分身(サブウェポン): READY(分身なし＆CD明け)で近接攻撃すると、攻撃位置に分身を1体生成(固定)。
     // 以後は分身が自律的に1秒ごと×5秒の近接攻撃を繰り返す(tickShadowClone)。ここに到達するのは通常
@@ -10385,6 +11081,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       finish: finisherHit || bossFinishHit,
       killed: killed.length,
       hits: slashAt.length,
+      ...(bs ? { hitAt: brHitAt } : {}),
     };
   },
 
@@ -12733,6 +13430,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 二人組クエストv2 §2-8(納品ロック): 納品成立後は被弾を入口で無条件に棄却する。
     // invulnerable(INVULN_MS=1000)は自動失効するため使えない(会話は7〜10秒続く)。
     if (get().deliveryLocked) return false;
+    // ★格闘の構え(上・research/BRAWLER.md §3-2): この1秒に受けた攻撃は全て無効(紫・持続ダメージを含む)。止めた瞬間に受けの光と音。
+    // ダメージを伴わない押し出し・吸い込みはここを通らない=無効にしない(§7-5)。
+    if (isBrawlerGuarding(player, get().gameTime)) {
+      get().brawlerGuardReceive(fromX ?? player.x + player.width / 2, fromY ?? player.y + player.height / 2, sourceId ?? retaliateFromId ?? killerHint?.id);
+      return false;
+    }
 
     // ★被弾無敵(i-frame)。**幻影の近接だけはこれを無視して通る**(社長裁定2026-08-24
     // 「無敵時間については、幻影側にプレイヤーも合わせて。これは幻影とプレイヤー間だけの制約のはず」)。
@@ -12934,6 +13637,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ★被弾リアクションの打刻(描画専用・判定不変)。この間だけ本体の絵がしゃがみへ替わる。
           // 段(軽/中/重)は**実際に減ったHP**(amount=軽減後)と最大HPの割合で決まる。
           lastHurtAt: (amount > 0 && !armored && !dot) ? kbNow : state.player.lastHurtAt,
+          // ★格闘(research/BRAWLER.md §2-4): 被弾したら段は1段目へ戻り、先行入力も捨てる。
+          ...(amount > 0 && !dot && state.player.brawler ? { brawler: BR.brawlerOnHurt(state.player.brawler) } : {}),
           // B3 巡航: 被弾(吹き飛び・しゃがみの付く当たり)で段0へ。スーパーアーマーで耐えた被弾・M0 の踏みとどまり(amount=0)では戻さない。
           ...((amount > 0 && !armored && !dot) ? { speedRampSustainMs: 0 } : {}),
           lastHurtTier: (amount > 0 && !armored && !dot) ? hurtTier : state.player.lastHurtTier,
@@ -13216,6 +13921,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== 'phill-revolver') return;
     if (isPvpIncapacitated(player.pvpPosture, get().gameTime)) return; // ★SAME_ARENA §9(検収監査 重大①): 紫/daze中は撃てない
+    if (isMeleeOnlyMode(player)) return; // ★刀・格闘の間は手動の銃も撃てない(research/BRAWLER.md §1・社長決定 #4=刀の漏れも止める)
     if (isPlayerGrabbed(player, get().gameTime)) return; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は撃てない
     // 社長指示v0.25.3300 シーカー仕様変更: 半透明中は攻撃できない(覚醒Lv3は可)。
     if (isSeekerActive(player, get().gameTime) && skillLevel(player, 'seeker') < 3) return;
@@ -13310,6 +14016,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { player } = get();
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== RAILGUN_WEAPON_KEY) return;
+    if (isMeleeOnlyMode(player)) return; // ★刀・格闘の間は手動の銃も撃てない(research/BRAWLER.md §1・社長決定 #4=刀の漏れも止める)
     if (isPvpIncapacitated(player.pvpPosture, get().gameTime)) return; // ★SAME_ARENA §9: 紫/daze中は撃てない
     if (isPlayerGrabbed(player, get().gameTime)) return; // ★PACING_PUZZLE.md §16-1: bat に掴まれている間は撃てない
     if (isSeekerActive(player, get().gameTime) && skillLevel(player, 'seeker') < 3) return;
@@ -13393,6 +14100,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { player, gameTime } = get();
     const weapon = getActiveGun(player);
     if (!weapon || weapon.key !== SIGNAL_WEAPON_KEY) return;
+    if (isMeleeOnlyMode(player)) return; // ★刀・格闘の間は手動の銃も撃てない(research/BRAWLER.md §1・社長決定 #4=刀の漏れも止める)
     if (isPvpIncapacitated(player.pvpPosture, gameTime)) return; // ★SAME_ARENA §9: 紫/daze中は撃てない
     if (isSeekerActive(player, gameTime) && skillLevel(player, 'seeker') < 3) return;
     const now = Date.now();
@@ -14109,7 +14817,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const unlockedLevel = Math.max(0, Math.min(3, state.unlockedShopSkillCards[key] ?? 0));
       const currentLevel = state.player.subWeaponLevels[key] ?? 0;
       if (unlockedLevel <= 0 || currentLevel >= unlockedLevel || currentLevel >= 3) return {};
-      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : key === 'alchemy' ? SHOP_ALCHEMY_COST : key === 'turret' ? SHOP_TURRET_COST : key === 'shijin' ? SHOP_SHIJIN_COST : key === 'sage-stone' ? SHOP_SAGE_STONE_COST : SHOP_CLASS_SKILL_COST;
+      const cost = key === 'dog' ? SHOP_DOG_COST : key === 'katana' || key === 'brawler' ? SHOP_KATANA_COST : key === 'whip' ? SHOP_WHIP_COST : key === 'alchemy' ? SHOP_ALCHEMY_COST : key === 'turret' ? SHOP_TURRET_COST : key === 'shijin' ? SHOP_SHIJIN_COST : key === 'sage-stone' ? SHOP_SAGE_STONE_COST : SHOP_CLASS_SKILL_COST;
       if (state.player.straps < cost) return {};
       purchased = true;
       purchaseCost = cost;
@@ -24007,6 +24715,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         lastWeaponGet: null,
         hitstopUntil: 0,
         hitRetaliation: null,
+        brawlerKiko: [],
         lastEscortTossAt: ESCORT_TOSS_NEVER,
         escortKick: null,
         escortKickAbort: null,
@@ -24649,6 +25358,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       fadeFrom: opts?.fadeFrom,
       frameEaseOut: opts?.frameEaseOut,
       tint: opts?.tint,
+      ...(opts?.scaleX !== undefined ? { scaleX: opts.scaleX } : {}),
+      ...(opts?.scaleY !== undefined ? { scaleY: opts.scaleY } : {}),
+      ...(opts?.moveX !== undefined ? { moveX: opts.moveX } : {}),
+      ...(opts?.moveY !== undefined ? { moveY: opts.moveY } : {}),
+      ...(opts?.alpha !== undefined ? { alpha: opts.alpha } : {}),
       createdAt: now,
       duration: opts?.duration ?? 900,
     };

@@ -18,6 +18,7 @@ import { LowHpVignette } from './LowHpVignette';
 import { BloodAwakenBanner } from './BloodAwakenBanner'; // ★B10 覚醒に入った瞬間の英字(社長「覚醒時、覚醒の英語を表示」)
 import ScanBeatMeter from './ScanBeatMeter'; // research/NEW_GUNS.md §4: スキャンセンサーの拍
 import { HitRetaliationCue } from './HitRetaliationCue'; // ★被弾反撃の知らせ(research/HIT_RETALIATION.md §5)
+import BrawlerPointsBadge from './BrawlerPointsBadge'; // サブウェポン「格闘」の技ポイント(research/BRAWLER.md §2-5)
 import type { AmmoType } from '../types/game';
 import { isAudioMuted, setAudioMuted, playSfx } from '../audio/audioManager';
 import { comboMilestoneCrossed, comboMilestoneAmp } from '../utils/comboMilestone';
@@ -378,7 +379,8 @@ const GameHUD: React.FC = () => {
           t === 'handgun' ? player.ammoHandgun : t === 'shotgun' ? player.ammoShotgun : t === 'phill' ? player.ammoPhill : t === 'glauncher' ? player.ammoGlauncher : player.ammoRifle; // v0.25.4000: グレラン独立プール
         const murasameEquipped = player.subWeapons.includes('murasame');
         const katanaEquipped = murasameEquipped || player.subWeapons.includes('katana');
-        const whipEquipped = !katanaEquipped && player.subWeapons.includes('whip');
+        const brawlerEquipped = !katanaEquipped && player.subWeapons.includes('brawler'); // 格闘(research/BRAWLER.md §2-5)
+        const whipEquipped = !katanaEquipped && !brawlerEquipped && player.subWeapons.includes('whip'); // 格闘中は鞭にしない(§8-2)
         return (
           <div
             className="absolute flex flex-col items-end gap-1.5 pointer-events-none"
@@ -406,7 +408,7 @@ const GameHUD: React.FC = () => {
                     </div>
                   );
                   // 札(§14): はじく操作で出る物(一閃=刀・小烏丸 / ワイヤー)の行だけ、左の外に。
-                  const flickSkill = key === 'katana' || key === 'murasame' || key === 'wire-anchor';
+                  const flickSkill = key === 'katana' || key === 'murasame' || key === 'wire-anchor' || key === 'brawler'; // 格闘の技もはじく(札は記号だけ・research/BRAWLER.md §8-2)
                   return hint && flickSkill ? (
                     <div key={key} className="relative">
                       {chip}
@@ -422,10 +424,13 @@ const GameHUD: React.FC = () => {
               {/* メレー枠(切替なし=アイコン表示のみ)。刀/鞭装備時はそれを表示。 */}
               {melee && (() => { const meleeSlot = (
                 <div
-                  className={`w-11 h-11 rounded-none flex items-center justify-center text-lg ${weaponSlotClass(melee.tier, false, false)}`}
-                  title={katanaEquipped ? (murasameEquipped ? '小烏丸' : '刀') : whipEquipped ? '鞭' : melee.name}
+                  className={`${brawlerEquipped ? 'relative ' : ''}w-11 h-11 rounded-none flex items-center justify-center text-lg ${weaponSlotClass(melee.tier, false, false)}`}
+                  title={katanaEquipped ? (murasameEquipped ? '小烏丸' : '刀') : brawlerEquipped ? subWeaponDisplayName('brawler') : whipEquipped ? '鞭' : melee.name}
                 >
-                  {katanaEquipped
+                  {brawlerEquipped
+                    // 格闘: 社長支給のアイコン(32×32・ドット)+右下に技ポイント(銃の弾数と同じ位置・書式)。
+                    ? <><img src={spritePath('brawler-item')} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} /><BrawlerPointsBadge /></>
+                    : katanaEquipped
                     // 刀/小烏丸(村雨)とも、背中に背負う鞘入り刀の絵(katana-item)をそのままアイコンへ流用(社長指示)。
                     ? <img src={spritePath('katana-item')} alt="" className="w-9 h-9 object-contain" draggable={false} />
                     // ★社長指示2026-08-24「武器アイコンも鞭にして」: 絵文字(➰)をやめ、実物の鞭の絵

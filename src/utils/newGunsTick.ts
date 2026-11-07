@@ -12,7 +12,7 @@
 import type { Enemy, Player, Projectile } from '../types/game';
 import {
   notifySkillProc, spawnSkillProcFx,
-  useGameStore, isKatanaMode, isAttackLocked, isSeekerActive, skillLevel, SKATER_LOCK_ENABLED,
+  useGameStore, isMeleeOnlyMode, isAttackLocked, isSeekerActive, skillLevel, SKATER_LOCK_ENABLED,
   skillOutgoingDamageMult, skillBloodAwakenDamageMult, resolveShieldWalls, shieldPlayableCtx, PLAYER_MELEE_SWING_MS,
   sniperGunMult, skillComboMasterMult, bossCritStopPatch,
 } from '../store/gameStore';
@@ -24,7 +24,8 @@ import {
   getActiveGun, gunEffectiveRangePx, effectiveFireCooldown, isReloading, weaponAfterGunShot,
   gunShotBaseDamage, gunShotCritChance, gunFireSfxKey,
 } from './weaponUtils';
-import { pickNearestTarget, isCorpse, isReaperFamily, isTerminalReaper, resistsChipKnockback, isBossType, isHangedman } from './enemyUtils';
+import { pickNearestTarget, isCorpse, resistsChipKnockback, isBossType, isHangedman } from './enemyUtils';
+import { isAimableEnemy } from './brawler'; // 狙える敵の式(格闘と共有・research/BRAWLER.md §8-5)
 import { clampRectToPlayableArea } from '../world/playableArea';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
 import { recoilSpecForWeapon } from './combatFeel';
@@ -121,7 +122,7 @@ export const resetNewGunsTick = (): void => {
 
 /** 銃を撃てない状態(火炎放射器の封印と同じ並び。弾倉・リロードは各銃で別に見る)。 */
 const gunLocked = (p: Player, gameTime: number, gameWon: boolean): boolean =>
-  p.health <= 0 || gameWon || isKatanaMode(p) || isAttackLocked()
+  p.health <= 0 || gameWon || isMeleeOnlyMode(p) || isAttackLocked() // 刀・格闘(research/BRAWLER.md §1)
   || (isSeekerActive(p, gameTime) && skillLevel(p, 'seeker') < 3)
   || isPvpIncapacitated(p.pvpPosture, gameTime)
   || isPlayerGrabbed(p, gameTime)
@@ -130,7 +131,7 @@ const gunLocked = (p: Player, gameTime: number, gameWon: boolean): boolean =>
 
 /** 狙える敵(死神の徘徊体・死体を除く)。 */
 const aimableEnemies = (enemies: readonly Enemy[]): Enemy[] =>
-  enemies.filter(e => !(isReaperFamily(e.type) && !isTerminalReaper(e)) && !isCorpse(e));
+  enemies.filter(isAimableEnemy); // 式は utils/brawler.ts へ移して格闘と共有(research/BRAWLER.md §8-5)
 
 /** 塊・回る弾が触れる敵(空中の跳び中は当たらない)。 */
 const touchableEnemies = (enemies: readonly Enemy[]): Enemy[] =>

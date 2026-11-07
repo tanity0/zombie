@@ -164,8 +164,10 @@ export const useGameControls = () => {
         // 共通ゲート isAttackLocked(一時停止・死亡・時間停止・納品ロック・アテンション)で止める。
         if (!e.repeat && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked && !isAttackLocked()) {
           const v = currentMoveVec();
+          // 格闘(research/BRAWLER.md §8-4): 方向キーの無い K は技を出さない=生の入力が無い印を渡す(lastDirection へ落とさない)。
+          const neutral = !(inputState.up || inputState.down || inputState.left || inputState.right);
           // ★被弾反撃を先に試す(マウス右クリック MouseControls / パッド gamepad と同じ順。research/HIT_RETALIATION.md の積み残し=PC のキーボードの K は反撃を通らなかった)。
-          if (!useGameStore.getState().tryHitRetaliation(v.x, v.y)) performFlickAction(v.x, v.y);
+          if (!useGameStore.getState().tryHitRetaliation(v.x, v.y)) performFlickAction(v.x, v.y, { neutral });
         }
         useGameStore.setState({ inputState });
         return;

@@ -271,6 +271,15 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 /* 被弾反撃の知らせ(components/HitRetaliationCue)。縁に貼りついた滲みが、縁へ吸い込まれるように縮み(減速=慣性)、
    窓が閉じる瞬間に消え切る。濃さは瀕死の縁取りと同じ「心拍」の2拍(2拍目は弱い)。1拍目のピークは全画面の被弾フラッシュ
    (200ms)が引く頃(窓の約4割)に置く=フラッシュの赤に沈まず、引いた瞬間に方向が浮き出る(クリエイティブ監査2026-10-09)。 */
+/* 格闘の技ポイント不足(research/BRAWLER.md 社長決定 #8): 数字が横に震えて収まる(大きく出て減衰)。 */
+@keyframes brawler-deny {
+  0% { transform: translateX(0); }
+  18% { transform: translateX(-3px); }
+  38% { transform: translateX(2.5px); }
+  58% { transform: translateX(-1.5px); }
+  78% { transform: translateX(0.8px); }
+  100% { transform: translateX(0); }
+}
 @keyframes hit-retaliate-shrink {
   from { transform: scale(1.15); }
   to   { transform: scale(0.7); }

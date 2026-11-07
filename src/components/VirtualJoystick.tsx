@@ -8,6 +8,7 @@ import {
   KATANA_FLICK_WINDOW_MS,
   KATANA_FLICK_MIN_DIST,
   KATANA_FLICK_MIN_SPEED, // KILL処刑演出中の通常近接SE抑止(FB5/FB7)
+  isBrawlerMode, // ★サブウェポン「格闘」(research/BRAWLER.md)
 } from '../store/gameStore';
 import {
   RHYTHM_FLICK_FIRE_DIST,
@@ -15,6 +16,7 @@ import {
   RHYTHM_FLICK_FIRE_WINDOW_MS
 } from '../config/shijin';
 import { isRetaliationWindowOpen } from '../utils/hitRetaliation'; // ★被弾反撃(research/HIT_RETALIATION.md)
+import { detectFlickFromSamples } from '../utils/brawler'; // フリック判定(格闘と共有)
 
 // Floating thumb-stick. The user can place a finger anywhere inside the
 // activation zone (the left half of the screen, below the HUD), and the
@@ -73,22 +75,10 @@ const VirtualJoystick: React.FC = () => {
 
   // 指離し直前の短い窓だけを見るフリック判定。通常のジョイスティック
   // ドラッグは低速・小移動なのでしきい値に届かず、一閃は暴発しない。
-  const detectFlick = useCallback((): { x: number; y: number; dt: number } | null => {
-    const samples = flickSamplesRef.current;
-    if (samples.length < 2) return null;
-    const last = samples[samples.length - 1];
-    let first = samples[0];
-    for (const s of samples) {
-      if (s.t >= last.t - KATANA_FLICK_WINDOW_MS) { first = s; break; }
-    }
-    const dx = last.x - first.x;
-    const dy = last.y - first.y;
-    const dist = Math.hypot(dx, dy);
-    const dt = Math.max(1, last.t - first.t);
-    if (dist < KATANA_FLICK_MIN_DIST || dist / dt < KATANA_FLICK_MIN_SPEED) return null;
-    // dt = フリックの所要時間(振り始め→振り終わり)。リズム判定の遅延補正に使う。
-    return { x: dx / dist, y: dy / dist, dt };
-  }, []);
+  // 判定の式は utils/brawler.ts へ移して共有(格闘のフリックも同じ1本・research/BRAWLER.md §8-4)。式・しきい値は不変。
+  // dt = フリックの所要時間(振り始め→振り終わり)。リズム判定の遅延補正に使う。
+  const detectFlick = useCallback((): { x: number; y: number; dt: number } | null =>
+    detectFlickFromSamples(flickSamplesRef.current, KATANA_FLICK_WINDOW_MS, KATANA_FLICK_MIN_DIST, KATANA_FLICK_MIN_SPEED), []);
 
   // リズム中: スワイプが閾値を超えた「その瞬間」にフリックを即確定する(離す瞬間に依存しない)。
   // 1接触につき一度だけ。方向は発火時の直近軌跡ベクトルで固定(=取り違えにくい)。
@@ -170,6 +160,12 @@ const VirtualJoystick: React.FC = () => {
         // ★被弾反撃(research/HIT_RETALIATION.md §3): 窓の間の「フリックして指を離す」を**最初に**反撃として判定する。
         // 成立したら、この指離しでは一閃・ワイヤー・近接(カウンター)・各種の発射を出さない(反撃が出た=攻めに転じた)。
         // 不成立(向きが外れた/相手が条件外/フリックでない/窓が無い)なら何も起きず、下の従来どおりの経路へ落ちる。
+      } else if (isBrawlerMode(useGameStore.getState().player)) {
+        // ★格闘(research/BRAWLER.md §2-1・§3-1): フリックが成立した指離しでは通常攻撃を出さない(技だけ出す)。
+        // 刀と同じく銃・他のサブは使えないので、PHILL・シグナル・レールガン・錬金砲・ホーミング・一閃・ワイヤーは通さない。
+        const flick = flickFiredRef.current ? null : detectFlick();
+        if (flick) { flickFiredRef.current = true; useGameStore.getState().brawlerTech(flick.x, flick.y); }
+        else beginMeleeSwing();
       } else {
         // PHILL銃(研究所): 立ち止まってタップ(=移動せず指を離す)で狙いサークル方向へ1発。
         // 移動中(ドラッグ)に離した時は store 側の isMoving ガードで発砲しない。撃てたら発砲SE。
@@ -234,7 +230,7 @@ const VirtualJoystick: React.FC = () => {
     deltaRef.current = { x: 0, y: 0 };
     setTouchActive(false);
     setSwipeDirection(null);
-  }, [setSwipeDirection, setTouchActive, beginMeleeSwing, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, tryFireRetaliation, dismountSkater]);
+  }, [setSwipeDirection, setTouchActive, beginMeleeSwing, rhythmInput, tryFireKatanaDash, tryFireWireAnchor, tryFireRetaliation, dismountSkater, detectFlick]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // 操作不可(ヘリ登場/セリフ/一時停止/死亡)中は移動・向き・攻撃を一切受け付けない(社長指示)。
@@ -248,7 +244,8 @@ const VirtualJoystick: React.FC = () => {
     // ★被弾反撃の窓の中の触れ直しは乗車に数えない(カウンターを外す短いタップ→被弾→はじくために触れ直す、で乗車して
     // 反撃が不発になる穴・検収監査 A-1)。
     if (lastWasTapRef.current && nowT - lastUpAtRef.current <= SKATER_DOUBLETAP_MS
-      && !isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())) mountSkater();
+      && !isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())
+      && !isBrawlerMode(useGameStore.getState().player)) mountSkater(); // 格闘中は連打が乗車に食われるので乗らない(research/BRAWLER.md §7-2)
     pointerDownTimeRef.current = nowT;
     maxDragRef.current = 0;
     flickFiredRef.current = false;

@@ -50,6 +50,12 @@ const WRITE_SITES: readonly WriteSite[] = [
   },
   // ★縮地(SKILL_BUILD_REDESIGN.md §32・2026-10-01): 窓の中の振り=ワープ斬撃の受付。斬撃は直後に
   // triggerCounter(押した時刻)で解決するので、**打刻もそちらで1回だけ**(前隙の起点と同じ形)。
+  // ★格闘(research/BRAWLER.md §8-5): 構え(上)はカウンター窓をこの1秒に張る。窓を張るだけで振りではない
+  // (通常攻撃の段・技の打刻は triggerCounter の指定打撃の側で1回だけ=§7-1)。
+  {
+    field: 'counterWindowEnd', where: '格闘の構えの始まり(startBrawlerTech・guard)', stamped: false,
+    why: '弾・赤の攻撃の受け止め窓を張るだけ(振っていない)。段・技の打刻は triggerCounter の指定打撃側',
+  },
   {
     field: 'meleeSwingAt', where: '縮地のワープ斬撃の予約(reserveShukuchiWarp・タッチ/PC共通)', stamped: false,
     why: '同じ振りを resolveShukuchiStrike→triggerCounter 側で1回打刻する。ここでも打つと1振り2打刻になる',
@@ -59,6 +65,14 @@ const WRITE_SITES: readonly WriteSite[] = [
   {
     field: 'meleeSwingAt', where: '迎撃の飛び込みが空振り(resolveRetaliateStrike)', stamped: false,
     why: '斬る絵だけ出す空振り=判定なし。命中した時は triggerCounter 側で1回打刻する',
+  },
+  {
+    field: 'counterWindowEnd', where: '格闘の構えの間に窓を張り続ける(tickBrawler)', stamped: false,
+    why: '構えの窓の延長(Date.now 系の窓が一時停止で先に切れないように)=振っていない',
+  },
+  {
+    field: 'counterWindowEnd', where: '格闘の構えの終わり(tickBrawler)', stamped: false,
+    why: '構えの窓を閉じる側=振っていない',
   },
   // ★v0.25.3869(社長裁定「近接前隙を200にして」・SAME_ARENA.md §7): 指を離した瞬間の起点。
   // 判定は MELEE_WINDUP_MS 後に triggerCounter が解決するので、**打刻もそちらで1回だけ**打つ。

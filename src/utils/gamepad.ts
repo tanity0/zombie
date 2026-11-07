@@ -225,7 +225,7 @@ export const installGamepad = (): (() => void) => {
       const d = sw?.dir ?? g.player.lastDirection ?? { x: 1, y: 0 };
       if (g.rhythm.active) { g.rhythmInput('flick', d); markPcFlick(); }
       // 窓の間のB・RBも最初に反撃として判定。不成立なら従来のフリック。
-      else if (!g.tryHitRetaliation(d.x, d.y)) performFlickAction(d.x, d.y);
+      else if (!g.tryHitRetaliation(d.x, d.y)) performFlickAction(d.x, d.y, { neutral: !sw }); // 格闘: スティックがニュートラル=技を出さない(research/BRAWLER.md §8-4)
     }
     // Y=次の銃 / LB=前の銃
     if (down(B.Y)) pcCycleGun(1);

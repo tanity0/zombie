@@ -56,6 +56,7 @@ import { EGG_BLAST_RADIUS } from '../world/mines';
 import {
   notifySkillProc,
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
+  isBrawlerGuarding, // ★格闘の構え(research/BRAWLER.md §3-2)
   useGameStore, isSeekerActive, skillLevel, counterReplyDamage, enemyDeathLabel, combatActorPlayer,
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
   COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
@@ -996,8 +997,10 @@ export const applyEnemyProjectileHits = (
     // ★紫の文法(SAME_ARENA O-3): `noCounter` の弾は**打ち返せない**。既定(未設定)は従来どおり反射する
     // ので、この条件は既存の弾を1bitも変えない。
     // ★SAME_ARENA §9(検収監査 重大②): 紫/daze中は弾パリィも成立しない(窓が残っていても)。
-    if (isCounterActive(currentPlayer, now) && !proj.noCounter
-      && !isPvpIncapacitated(currentPlayer.pvpPosture, gameTime)) {
+    // ★格闘の構え(上・research/BRAWLER.md §3-2): 構えの1秒は弾を全て弾き返す(紫=noCounter も含む・社長指示2026-11-07)。
+    const brawlerGuard = isBrawlerGuarding(currentPlayer, gameTime);
+    if (brawlerGuard || (isCounterActive(currentPlayer, now) && !proj.noCounter
+      && !isPvpIncapacitated(currentPlayer.pvpPosture, gameTime))) {
       // 反射1回分は共有関数(主語=プレイヤー。ghostId未指定=従来と1bit同値)。
       applyCounterReflect(proj.id, now, currentPlayer, tunables);
       reflectedAny = true;
@@ -1914,7 +1917,7 @@ export const applyContactDamage = (
     // 書くと、無敵で弾かれても拘束だけ掛かる=連続で掴まれる。`wasVulnerable`(=このダメージが
     // 実際に通った)の枝の中に置くことで、既存の1000msの被弾無敵がそのまま連続掴みを防ぐ
     // (爆風のノックバックが`!invulnerable`の枝の中にあるのと同じ作法)。
-    if (wasVulnerable && !died && h.chaffMove === 'bat-grab') {
+    if (wasVulnerable && !died && h.chaffMove === 'bat-grab' && !isBrawlerGuarding(useGameStore.getState().player, gameTime)) { // 格闘の構え中は掴みは掛からない(research/BRAWLER.md §3-2)
       useGameStore.setState(st => ({ player: { ...st.player, grabbedUntil: gameTime + BAT_GRAB_HOLD_MS } }));
     }
     if (died) fx.triggerPlayerDeath(bcx, bcy);

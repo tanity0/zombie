@@ -159,7 +159,7 @@ const ShopMenu: React.FC = () => {
         // 台帳(subWeaponUpgradeNotes.ts)から出す。上限で買えない時は現在Lv表記(名前側)のまま、
         // 説明欄は短く「これ以上強化できない」。
         description: maxedForStock ? 'これ以上強化できない' : subWeaponUpgradeNoteText(skillKey, currentLevel + 1),
-        cost: skillKey === 'dog' ? SHOP_DOG_COST : skillKey === 'katana' ? SHOP_KATANA_COST : SHOP_CLASS_SKILL_COST,
+        cost: skillKey === 'dog' ? SHOP_DOG_COST : skillKey === 'katana' || skillKey === 'brawler' ? SHOP_KATANA_COST : SHOP_CLASS_SKILL_COST, // 格闘は刀と同じ値段(research/BRAWLER.md §1)
         disabled: maxedForStock
       };
     });

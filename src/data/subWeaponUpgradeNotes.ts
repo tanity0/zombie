@@ -63,6 +63,12 @@ export const SUB_WEAPON_UPGRADE_NOTES: Record<SubWeaponKey, SubWeaponUpgradeNote
   // 常に1で止まる(それ以上の陳列レベルは発行されない)ため、購入後にLv2/Lv3へ上げる動線自体が
   // 存在しない=レベルで変化しない(性能は刀Lv3基準に固定)。
   // 根拠: src/store/gameStore.ts:1327-1334(hasMurasame/katanaLevel), 1393-1396(maybeUnlockMurasame)
+  // 格闘: レベルで技ポイントの上限が増え(5→10→20)、左の気功の延焼が強くなる(Lv3)。
+  // 根拠: src/utils/brawler.ts BRAWLER_POINT_CAP_BY_LEVEL / src/utils/skillEffectsB7.ts incendiaryBurnParams(格闘のLvで引く)
+  brawler: {
+    lv2: '技を溜めておける数が増える',
+    lv3: '技を溜めておける数が増え、気功の炎が強くなる',
+  },
   murasame: {
     lv2: null,
     lv3: null,

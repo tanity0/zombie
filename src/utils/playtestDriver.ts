@@ -18,7 +18,7 @@
 // これらは「今の網に掛からないバグの種類」としてENGINEERING_NOTES.mdに記載する。
 
 import {
-  useGameStore, isKatanaMode, hasSkill, AMMO_MAX,
+  useGameStore, isMeleeOnlyMode, hasSkill, AMMO_MAX,
   skillCritMult, skillOutgoingDamageMult, skillComboMasterMult, sniperGunMult,
   CRIT_DAMAGE_MULT, BOSS_CRIT_DAMAGE_MULT, PUMPKIN_EXPLOSION_RADIUS, HUNTER_VISION_RANGE,
   GIANT_STOMP_RADIUS, GIANT_SWEEP_HALF_WIDTH, BASE_CAPTURE_RADIUS,
@@ -385,7 +385,7 @@ const autoFireGun = (): void => {
   useGameStore.getState().tickReload();
   useGameStore.getState().autoSwitchIfDry();
   const postReloadPlayer = useGameStore.getState().player;
-  const katanaActive = isKatanaMode(postReloadPlayer);
+  const katanaActive = isMeleeOnlyMode(postReloadPlayer); // 刀・格闘は銃を撃たない(research/BRAWLER.md §1)
   // research/NEW_GUNS.md §4: スキャンセンサーはハンドガンT2で撃つ(守護霊・幻影と同じ)。弾を撃たない印で落とす前に差し替える。
   const activeGunRaw = getActiveGun(postReloadPlayer);
   const fbBase = activeGunRaw ? allyFallbackWeapon(activeGunRaw) : activeGunRaw;

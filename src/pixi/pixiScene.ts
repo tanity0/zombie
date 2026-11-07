@@ -103,8 +103,10 @@ import {
   SCREAMER_BUFF_MS,
   PLAYER_KNOCKBACK_MS,
   retaliationReadyTarget, // ★被弾反撃の「いま出せるか」(入力と同じ1本・HIT_RETALIATION.md §7)
+  isBrawlerGuarding, brawlerGuardBodyRect, isBrawlerMode, // ★サブウェポン「格闘」(research/BRAWLER.md)
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
+import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
@@ -2694,6 +2696,8 @@ let shieldDrawCacheKey: unknown = null;
 let shieldDrawCacheRect: Rect | null = null;
 /** いまの味方の盾の矩形(projectiles の配列が変わった時だけ引き直す=光線が何本あっても走査は1回)。 */
 const shieldForDraw = (): Rect | null => {
+  // ★格闘の構え中は「盾の矩形=プレイヤーの体」(判定と同じ currentFriendlyShield の規則・research/BRAWLER.md §8-5)。
+  { const st = useGameStore.getState(); if (isBrawlerGuarding(st.player, st.gameTime)) return brawlerGuardBodyRect(st.player); }
   const pr = useGameStore.getState().projectiles;
   if (pr !== shieldDrawCacheKey) { shieldDrawCacheKey = pr; shieldDrawCacheRect = friendlyShieldRect(pr); }
   return shieldDrawCacheRect;
@@ -20396,7 +20400,9 @@ export class PixiScene {
     const swingWindowMs = juiceSlowUntil > now
       ? Math.max(PLAYER_MELEE_SWING_MS, juiceSlowUntil - (p.meleeSwingAt || 0))
       : PLAYER_MELEE_SWING_MS;
-    const sinceSwing = now - (p.meleeSwingAt || 0);
+    // ★格闘中はナイフの振りの絵(ポーズ・踏み込み・構え武器)を出さない(ナイフを持っていない=research/BRAWLER.md §7-6)。
+    // カウンター成立の演出(markMeleeSwingFx)が meleeSwingAt を書いても、ここで素振りの絵を止める。
+    const sinceSwing = isBrawlerMode(p) ? Infinity : now - (p.meleeSwingAt || 0);
     // ★実機FB3(社長指示v0.25.3609「近接攻撃モーションをキャンセルしてKILL演出だけにしてほしい」):
     // KILL処刑演出中は通常の近接モーション(専用ポーズ差し替え・踏み込み振り抜き)を出さない。
     // 判定・攻撃レートは不変(描画のみ)。斬撃エフェクト(kind='slash')は流し切る(v0.25.3608)。
@@ -20444,6 +20450,15 @@ export class PixiScene {
         if (poseTex) { view.sprite.texture = poseTex; bodyTexName = `${meleePosePrefix}${killSuffix}`; }
       }
     }
+    // ★格闘(research/BRAWLER.md §4・§7-6): しゃがみ(-ready)=弱・掌底の突き / 振り上げ(-swing)=強(アッパー)・跳び・大踏み潰しの振りかぶり。
+    // 連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ)。武将フル装備はポーズ無し(歩き絵のまま)。描画のみ(store には書かない)。
+    const brPose = isBrawlerMode(p) && p.health > 0 && !killFxActiveForPose
+      ? BRW.brawlerPoseAt(p.brawler, useGameStore.getState().gameTime) : null;
+    if (brPose && brPose.tex && meleePosePrefix && !warlordFull) {
+      const brTexName = `${meleePosePrefix}-${brPose.tex}`;
+      const brTex = getTexture(brTexName);
+      if (brTex) { view.sprite.texture = brTex; bodyTexName = brTexName; }
+    }
     // v0.25.2595(社長報告「死にモーション、強制されてないからか、攻撃モーションとかほかの動きが
     // 優先されてて しゃがみ絵になってない」): **死亡中は何より優先してしゃがみ絵(-ready)へ固定**。
     // 上の分岐(近接スイング/救急鞄)や歩き/待機コマの差し替えを**後から上書き**する位置に置くことで、
@@ -20461,6 +20476,17 @@ export class PixiScene {
       actLean += face * PLAYER_MELEE_LEAN_RAD * whip;
       actSqX *= 1 + PLAYER_MELEE_STRETCH * arc;
       actSqY *= 1 - PLAYER_MELEE_STRETCH * 0.6 * arc;
+    }
+    // ★格闘の体の動き(前傾・突く方向への滑り・潰れ・跳び)。向きは段の向き(相手の方)。判定は動かさない。
+    let brawlerJumpPx = 0;
+    if (brPose && PLAYER_MOTION_FX) {
+      const bdx = p.brawler?.dirX ?? aimx, bdy = p.brawler?.dirY ?? aimy;
+      actOffX += bdx * brPose.push * dsc;
+      actOffY += bdy * brPose.push * 0.55 * dsc;
+      actLean += face * brPose.lean;
+      actSqX *= brPose.sqX;
+      actSqY *= brPose.sqY;
+      brawlerJumpPx = brPose.jump * dsc;
     }
     // カウンター成立の決めポーズ: 一瞬ふくらむ膨らみ＋傾き(速い減衰)。
     const sinceCounter = now - (p.lastCounterSuccessTime || 0);
@@ -20636,8 +20662,9 @@ export class PixiScene {
       : 0;
     view.sprite.position.set(
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
-      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY,
+      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY - brawlerJumpPx,
     );
+    this.drawBrawlerFx(p, fb.footX, fb.footY, dsc, view.sprite, now);
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
     const seekerActive = p.seekerUntil > gameTime;
     // 死亡時: 立ち絵を1秒でフェードアウト(現状の死亡演出はそのまま)。health>0 で基準時刻をリセット。
@@ -22067,7 +22094,9 @@ export class PixiScene {
     }
 
     const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
-    const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX;
+    // ★格闘の4段目の浮かせ(research/BRAWLER.md §7-10): 絵だけ 26px 浮いて落ちる(上りは速く・頂点で少し止まり・落ちは加速)。判定は地面のまま。
+    const brLiftPx = e.brawlerLiftAt !== undefined ? BRW.brawlerLiftHeight((Date.now() - e.brawlerLiftAt) / BRW.BRAWLER_LIFT_MS) : 0;
+    const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX + brLiftPx;
     // ★★産卵の震え(社長指示2026-09-22「この人は攻撃が無いので、卵を産むときに震える感じにします」)。
     // 抱卵型(卵体)は攻撃を持たない代わりに、**卵が出る瞬間へ向けて体が痙攣する**。
     // 形と尺は `utils/eggTremble.ts` の1本(縦が主・横が従 / 独立した痙攣 / 放出の一発 / 連射の起伏)。
@@ -22089,7 +22118,10 @@ export class PixiScene {
     // v0.25.3069: 踏み鳴らしの震え(aiShake)もここへ合流させる。liftShake は下の位置決めと
     // ステージ4/5の足元ズレ補正の**両方**で使われる唯一の横オフセットなので、別変数を足すと
     // 雪原/戦場だけ震えが消える(同じ値を2箇所で管理しない)。
-    const liftShake = (liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0) + aiShake;
+    // ★格闘のヒットストップの間、相手の絵を数pxずつ小刻みに震わせる(絵だけ・判定は動かない・§2-4)。実時間で数える(止めの長さは実時間)。
+    const brShakeLeft = e.brawlerShakeUntil !== undefined ? e.brawlerShakeUntil - Date.now() : 0;
+    const brShake = brShakeLeft > 0 ? (((Math.floor(Date.now() / 16) & 1) === 0 ? 1 : -1) * Math.min(3.2, 1.2 + brShakeLeft / 40)) : 0;
+    const liftShake = (liftT > 0 ? Math.sin(now / 24) * 2.2 * liftT : 0) + aiShake + brShake;
     // ノックバック中の小さな跳ね(社長指示): 被弾(lastHit)を起点に sin の1山ぶんポンと跳ねる。
     // バグ修正(社長報告v0.25.1476): ノックバックCD中(knockbackImmuneUntil)は0速度のまま
     // knockbackUntilだけ再利用してその場に凍結させる経路があり(gameStore.ts)、速度チェック無しだと
@@ -39200,7 +39232,8 @@ export class PixiScene {
     if (!tex) { sp.visible = false; return; }
     sp.visible = true;
     sp.texture = tex;
-    sp.scale.set(e.size / Math.max(1, tex.height));
+    sp.scale.set((e.size / Math.max(1, tex.height)) * (e.sx ?? 1), e.size / Math.max(1, tex.height)); // 格闘の掌底は横長(research/BRAWLER.md §4)
+    sp.rotation = e.rot ?? 0;
     sp.position.set(e.x, e.y);
     sp.tint = e.tint;
     sp.alpha = 1;
@@ -39421,6 +39454,122 @@ export class PixiScene {
     }
   }
 
+  // ---- ★サブウェポン「格闘」の絵(research/BRAWLER.md §4)。store の状態を読んで描くだけ(書かない)。----
+  // 砂埃は既存の drawDust(研究所では灰色の帯=dustTintForStage)、残像はプレイヤーの絵の複製、気功の弾は加算の光。
+  private brawlerTrail: { x: number; y: number; t: number }[] = [];
+  private brawlerGhosts: Sprite[] = [];
+  private brawlerKikoViews = new Map<string, { halo: Sprite; core: Sprite; flame: Sprite; tail: Sprite }>();
+  private drawBrawlerFx(p: Player, footX: number, footY: number, dsc: number, body: Sprite, now: number): void {
+    const s = p.brawler;
+    const st = useGameStore.getState();
+    this.drawBrawlerKiko(st.brawlerKiko, now);
+    if (!s || !isBrawlerMode(p)) { this.hideBrawlerGhosts(); return; }
+    const gt = st.gameTime;
+    const el = BRW.brawlerElapsed(s, gt);
+    const tint = this.dustTintForStage();
+    const r0 = Math.max(p.width, p.height);
+    // 詰めの出発点に砂埃1つ(1〜3段・蹴り)。
+    const dashing = (s.phase === 'attack' && s.stage <= 3 && !s.resolved && s.windupMs > 0 && (p.lungeUntil ?? 0) > Date.now())
+      || (s.phase === 'tech' && s.tech === 'kick' && !s.resolved);
+    const dashL = this.latchFx('brawler:dash', dashing, DUST_MS * 0.7, now, () => [footX - s.dirX * 8, footY - s.dirY * 4]);
+    if (dashL) this.drawDust(dashL.d[0], dashL.d[1], r0 * 0.5 * dsc, dashL.t, tint, this.dustAlpha(dashL.t) * 0.75, dashL.t0);
+    // 4段目の着地(6個)・下の大踏み潰し(12個): 判定より大きく(派手さの絵)。
+    const landing = s.phase === 'attack' && s.stage === 4 && s.resolved && el < s.windupMs + 120;
+    const stomping = s.phase === 'tech' && s.tech === 'stomp' && s.resolved && el < s.windupMs + 120;
+    const kickLand = s.phase === 'tech' && s.tech === 'kick' && s.resolved && el < s.windupMs + 100;
+    const ringDust = (key: string, active: boolean, n: number, ringR: number, puffR: number) => {
+      const L = this.latchFx(key, active, DUST_MS, now, () => [footX, footY]);
+      if (!L) return;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + (L.t0 % 7) * 0.3;
+        const spread = ringR * (0.55 + 0.45 * (1 - (1 - L.t) * (1 - L.t))); // 外へ広がって減速
+        this.drawDust(L.d[0] + Math.cos(a) * spread, L.d[1] + Math.sin(a) * spread * 0.5, puffR * (0.8 + ((i * 37) % 5) * 0.08), L.t, tint, this.dustAlpha(L.t), L.t0 + i * 53);
+      }
+    };
+    ringDust('brawler:land', landing, 6, BRW.BRAWLER_LANDING_RADIUS * 0.8 * dsc, r0 * 0.7 * dsc);
+    ringDust('brawler:stomp', stomping, 12, BRW.BRAWLER_STOMP_RADIUS * 0.75 * dsc, r0 * 0.95 * dsc);
+    ringDust('brawler:kick', kickLand, s.kickN >= BRW.BRAWLER_KICK_MAX ? 4 : 2, r0 * 0.35 * dsc, r0 * 0.5 * dsc);
+    // 締めで吹き飛んだ敵の足元に地面を擦る砂埃の尾(締めの直後だけ走査=常時の全走査はしない)。
+    if (Date.now() - s.flashAt < 700) {
+      for (const e of st.enemies) {
+        if (e.brawlerBlownAt === undefined) continue;
+        const age = Date.now() - e.brawlerBlownAt;
+        if (age < 0 || age > 520) continue;
+        for (let k = 0; k < 3; k++) {
+          const on = age >= k * 90 && age < k * 90 + 60;
+          const L = this.latchFx(`brawler:blow:${e.id}:${k}`, on, DUST_MS * 0.8, now, () => [e.x + e.width / 2, e.y + e.height]);
+          if (L) this.drawDust(L.d[0], L.d[1], Math.max(e.width, e.height) * 0.45 * dsc, L.t, tint, this.dustAlpha(L.t) * 0.8, L.t0);
+        }
+      }
+    }
+    // 飛び蹴りの残像(プレイヤーの絵の複製を低αで2〜3枚)。3発目は1枚多い。刀の trail は使わない(斬撃に見える)。
+    this.brawlerTrail.push({ x: body.position.x, y: body.position.y, t: now });
+    while (this.brawlerTrail.length > 0 && now - this.brawlerTrail[0].t > 160) this.brawlerTrail.shift();
+    const kicking = s.phase === 'tech' && s.tech === 'kick' && el < s.windupMs + 90;
+    const nG = kicking ? (s.kickN >= BRW.BRAWLER_KICK_MAX ? 3 : 2) : 0;
+    const fade = kicking && s.resolved ? Math.max(0, 1 - (el - s.windupMs) / 90) : 1;
+    for (let i = 0; i < 3; i++) {
+      let g = this.brawlerGhosts[i];
+      if (i >= nG) { if (g) g.visible = false; continue; }
+      if (!g) {
+        g = new Sprite();
+        g.blendMode = 'add';
+        this.brawlerGhosts[i] = g;
+      }
+      if (g.parent !== body.parent && body.parent) body.parent.addChildAt(g, 0);
+      const want = now - (i + 1) * 34;
+      let pt = this.brawlerTrail[0];
+      for (const q of this.brawlerTrail) { if (q.t <= want) pt = q; else break; }
+      g.texture = body.texture;
+      g.anchor.copyFrom(body.anchor);
+      g.scale.copyFrom(body.scale);
+      g.rotation = body.rotation;
+      g.position.set(pt?.x ?? body.position.x, pt?.y ?? body.position.y);
+      g.tint = BRW.BRAWLER_COLOR_HEX;
+      g.alpha = [0.34, 0.22, 0.13][i] * fade;
+      g.visible = true;
+    }
+  }
+  private hideBrawlerGhosts(): void {
+    for (const g of this.brawlerGhosts) g.visible = false;
+  }
+  /** 気功の弾: 白い芯+固有色の光+炸裂のコマ(紫の blob-shot は使わない=紫はカウンター不可の色)。 */
+  private drawBrawlerKiko(kikos: readonly { id: string; x: number; y: number; dirX: number; dirY: number; createdAt: number }[], now: number): void {
+    const seen = new Set<string>();
+    for (const k of kikos) {
+      seen.add(k.id);
+      let v = this.brawlerKikoViews.get(k.id);
+      if (!v) {
+        const mk = (): Sprite => { const sp = new Sprite(getSoftGlowTexture()); sp.anchor.set(0.5, 0.5); sp.blendMode = 'add'; this.L.effectLayer.addChild(sp); return sp; };
+        v = { tail: mk(), halo: mk(), flame: mk(), core: mk() };
+        this.brawlerKikoViews.set(k.id, v);
+      }
+      const age = Math.max(0, now - k.createdAt);
+      const grow = Math.min(1, age / 70); // 出だしは小さく→膨らむ(慣性)
+      const pulse = 1 + Math.sin(age / 28) * 0.06;
+      const ang = Math.atan2(k.dirY, k.dirX);
+      const setGlow = (sp: Sprite, size: number, tint: number, alpha: number, ox = 0, oy = 0, sx = 1) => {
+        const tex = sp.texture;
+        const base = size / Math.max(1, tex.height);
+        sp.scale.set(base * sx, base);
+        sp.rotation = ang;
+        sp.position.set(k.x + ox, k.y + oy);
+        sp.tint = tint; sp.alpha = alpha; sp.visible = true;
+      };
+      setGlow(v.tail, 70 * grow, BRW.BRAWLER_COLOR_HEX, 0.38, -k.dirX * 26, -k.dirY * 26, 2.4);
+      setGlow(v.halo, 66 * grow * pulse, BRW.BRAWLER_COLOR_HEX, 0.85);
+      const ft = getTexture(meleeHitTexture(meleeHitFrame(((age / 260) % 1) * 0.6 + 0.15)));
+      if (ft) { v.flame.texture = ft; setGlow(v.flame, 52 * grow, BRW.BRAWLER_COLOR_HEX, 0.9); v.flame.rotation = age / 90; }
+      else v.flame.visible = false;
+      setGlow(v.core, 26 * grow * pulse, 0xffffff, 1);
+    }
+    for (const [id, v] of this.brawlerKikoViews) {
+      if (seen.has(id)) continue;
+      for (const sp of [v.tail, v.halo, v.flame, v.core]) sp.destroy();
+      this.brawlerKikoViews.delete(id);
+    }
+  }
+
   private drawImageEffect(e: Extract<VisualEffect, { kind: 'image' }>, now: number) {
     const tex = getTexture(e.texture);
     let sp = this.effects.get(e.id);
@@ -39459,7 +39608,7 @@ export class PixiScene {
       frameTex = frames[idx] ?? tex;
     }
     spr.texture = frameTex;
-    spr.scale.set((targetH / frameTex.height) * pop);
+    spr.scale.set((targetH / frameTex.height) * pop * (e.scaleX ?? 1), (targetH / frameTex.height) * pop * (e.scaleY ?? 1)); // 縦横別(格闘の残像・帯=research/BRAWLER.md §7-6)
     // アルファ無し(黒背景)の実写VFX素材向け: 加算合成で描くと黒が自然に透ける(乗算tintで沈めると
     // 真っ黒な四角が出る=このプロジェクトの既知事故。fx/kill-slash用に追加)。未指定=従来の通常合成。
     spr.blendMode = e.additive ? 'add' : 'normal';
@@ -39467,9 +39616,11 @@ export class PixiScene {
     // v0.25.3078: 向き+外へ流れる動き(未指定なら従来どおり回転0・その場)。
     spr.rotation = e.rot ?? 0;
     const driftSec = (now - e.createdAt) / 1000;
-    spr.position.set(e.x + (e.driftX ?? 0) * driftSec, e.y + (e.driftY ?? 0) * driftSec);
+    // 格闘(§7-6): 寿命の間に加速→減速で動く(慣性)。未指定=0=従来どおり。
+    const mv = t * t * (3 - 2 * t);
+    spr.position.set(e.x + (e.driftX ?? 0) * driftSec + (e.moveX ?? 0) * mv, e.y + (e.driftY ?? 0) * driftSec + (e.moveY ?? 0) * mv);
     const fadeFrom = Math.max(0, Math.min(0.99, e.fadeFrom ?? 0.7));
-    spr.alpha = t < fadeFrom ? 1 : Math.max(0, 1 - (t - fadeFrom) / (1 - fadeFrom)); // 後半でフェード
+    spr.alpha = (e.alpha ?? 1) * (t < fadeFrom ? 1 : Math.max(0, 1 - (t - fadeFrom) / (1 - fadeFrom))); // 後半でフェード
   }
 
   // ---- player FX: counter ring + reload meter (world space) ----------------

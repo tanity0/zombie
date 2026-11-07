@@ -119,7 +119,18 @@ export const buildHasLoadout = (snap: PlayerBuildSnapshot | undefined): boolean 
  * ※x/y/width/height/health は「実体(ゴースト)側の値」で上書きして使う(位置依存のスナイパー倍率・
  *   失HP依存のバーサーカー倍率が実体基準になる)。上書きは ghostBuild.ts の ghostActorPlayer。
  */
-export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: Player): Player => {
+/**
+ * ★守護霊・幻影は格闘を使わない(research/BRAWLER.md §0-1・§8-2「守護霊は格闘のビルドでも従来のナイフで戦う」)。
+ * `isMeleeOnlyMode` は Player を見るだけなので、疑似Player に 'brawler' が残ると守護霊の銃まで止まる=ここで外す。
+ */
+export const withoutBrawler = (p: Player): Player =>
+  p.subWeapons.includes('brawler')
+    ? { ...p, subWeapons: p.subWeapons.filter(k => k !== 'brawler'), brawler: undefined }
+    : p;
+
+export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: Player): Player =>
+  withoutBrawler(buildPseudoPlayerRaw(snap, live));
+const buildPseudoPlayerRaw = (snap: PlayerBuildSnapshot | undefined, live: Player): Player => {
   if (!snap) return live;
   // ★★research/SAME_ARENA.md §4-c(社長方針2026-08-23):
   // 「**持つべき情報はビルドであって、何を持ってるのか?さえ分かれば、あとはゲーム内の規定数値に

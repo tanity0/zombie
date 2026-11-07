@@ -725,6 +725,7 @@ export const SUB_WEAPON_KEYS: SubWeaponKey[] = [
   'junk-weapon',
   'gold-ring',
   'arrow-rain', // research/ARROW_RAIN.md: 解放軍群の旗手を倒すと入手
+  'brawler', // research/BRAWLER.md: 格闘(入手経路は後で決める=開発施設の棚と商人に刀と同じ値段で並べる)
 ];
 
 // 装備スキル(サブウェポンとは別系統のパッシブ能力)。最大2装備。入手はゴールドガチャ、装備は所持から2枠選択。
