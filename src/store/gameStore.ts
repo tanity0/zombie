@@ -4383,7 +4383,9 @@ const brawlerHitPatch = (
     // 下の大踏み潰しの強制ノックバック: 攻撃中の雑魚・強個体はその技を取り消してから押す(カウンター成立と同じ取り消し=予告も消える)。
     // 取り消しの欄はカウンター成立と同じ1本(utils/enemyBite.ts counterInterruptPatch)。凍結系も解く(押しを邪魔させない)。
     if (forced && attacking) {
-      Object.assign(out, counterInterruptPatch(enemy, gameTime), { liftUntil: undefined, rootUntil: undefined, lastCounteredAt: now });
+      // ★取り消しの欄はカウンターと同じだが、カウンターの「その場で2秒の硬直」(biteRecoverUntil)は書かない。
+      // 硬直の間は1pxも動かない(updateEnemies の硬直ブロック)ので、書くと押しが丸ごと飲まれて0pxになっていた(実測・検収 kb-1)。
+      Object.assign(out, counterInterruptPatch(enemy, gameTime), { biteRecoverUntil: undefined, liftUntil: undefined, rootUntil: undefined, lastCounteredAt: now });
     }
   }
   // 4段目の浮かせ(足止め 450ms・絵だけ浮く)。ボス級・攻撃中の敵は浮かない(§7-10)。止めの後に展開する。

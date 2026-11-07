@@ -507,3 +507,27 @@ describe('格闘: 5段目の突き抜けは木の幹を素通りしない(検収
     expect(p.invulnerableTime + INVULN_MS).toBeGreaterThanOrEqual(hurtAt + INVULN_MS);
   });
 });
+
+describe('格闘: 下の大踏み潰しの強制ノックバックは攻撃中の雑魚も実際に動かす(実測 kb-1)', () => {
+  it('噛みつきを構えた雑魚を踏み潰すと、技を取り消してから押し出される(硬直に飲まれて0pxにならない)', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    const z = zombieAt(70, 0, 'z');
+    const gt = useGameStore.getState().gameTime;
+    Object.assign(z, { biteAt: gt + 5000 });
+    useGameStore.setState(st => ({ enemies: [z], player: { ...st.player, invulnerable: true, invulnerableTime: Date.now() + 1e9, brawler: { ...st.player.brawler!, points: 5 } } }));
+    const x0 = z.x;
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
+    for (let i = 0; i < 50; i++) {
+      now += 16;
+      useGameStore.setState(st => ({ gameTime: st.gameTime + 16 }));
+      useGameStore.getState().movePlayer(NO_INPUT, 0.016 * 1.2);
+      useGameStore.getState().tickBrawler();
+      useGameStore.getState().updateEnemies(0.016 * 1.2);
+    }
+    const e = useGameStore.getState().enemies.find(en => en.id === 'z')!;
+    expect(e.biteAt ?? 0).toBe(0); // 技は取り消された
+    expect(e.x - x0).toBeGreaterThan(40); // 実際に押し出された
+  });
+});
+
