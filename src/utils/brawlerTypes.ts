@@ -46,5 +46,7 @@ export interface BrawlerState {
   guardHitAt: number;
   /** この行動を押した時刻(Date.now)。打刻 noteMeleeSwingPressedAt と絵の起点に使う。 */
   pressAt: number;
+  /** 弾を拾って技ポイントが増えた時刻(Date.now・HUD の数字を一瞬明るくする合図)。 */
+  gainAt?: number;
 }
 

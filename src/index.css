@@ -277,6 +277,12 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   78% { transform: translateX(0.8px); filter: brightness(0.85); }
   100% { transform: translateX(0); filter: brightness(1); }
 }
+/* 格闘: 弾を拾って技ポイントが増えた(社長指示2026-11-07)。数字が一瞬明るく跳ねて、減速しながら戻る。 */
+@keyframes brawler-gain {
+  0% { transform: translateY(0) scale(1); filter: brightness(1); }
+  18% { transform: translateY(-2px) scale(1.18); filter: brightness(1.9); }
+  100% { transform: translateY(0) scale(1); filter: brightness(1); }
+}
 /* 被弾反撃の知らせ(components/HitRetaliationCue)。縁に貼りついた滲みが、縁へ吸い込まれるように縮み(減速=慣性)、
    窓が閉じる瞬間に消え切る。濃さは瀕死の縁取りと同じ「心拍」の2拍(2拍目は弱い)。1拍目のピークは全画面の被弾フラッシュ
    (200ms)が引く頃(窓の約4割)に置く=フラッシュの赤に沈まず、引いた瞬間に方向が浮き出る(クリエイティブ監査2026-10-09)。 */

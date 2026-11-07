@@ -4431,8 +4431,9 @@ const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Part
   }
   setBrawler(set, s, extra);
   const g = get();
-  // 5ポイント技の出だし: 0.1秒だけ画面をわずかに暗く+体に閃光+専用の音(§3-1)。
-  if (BR.BRAWLER_TECHS[kind].cost >= 5) {
+  // 大技(上の構え・下の踏み込み)の出だし: 0.1秒だけ画面をわずかに暗く+体に閃光+専用の音(§3-1)。
+  // ★上が3ポイントになっても(社長指示2026-11-07)出だしの演出は大技のまま=値段ではなく技で決める。
+  if (kind === 'guard' || kind === 'stomp') {
     // 暗転は濃く・短く・切れ味よく(スローは使わない・クリエイティブ監査 #10)。体の閃光は白金の加算。
     g.spawnFlash('rgba(0,0,0,0.62)', BR.BRAWLER_SUPER_FLASH_MS * 0.7);
     g.spawnGlow(c.x, c.y - 6, GLOW_R_M, 'rgba(255,248,230,', 220, true);
@@ -21092,6 +21093,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         const fam = pickup.type.slice('ammo-'.length) as AmmoType;
         const amount = get().ammoPickupAmounts[fam];
         get().addAmmo(fam, amount);
+        // ★格闘: 弾を拾っても技ポイントが増える(社長指示2026-11-07・弾の補充は今までどおり)。上限はレベルの上限。
+        {
+          const bp = get().player;
+          if (isBrawlerMode(bp)) {
+            const b0 = bp.brawler ?? BR.initialBrawlerState();
+            const b1 = BR.brawlerAfterAmmoPickup(b0, BR.brawlerPointCap(brawlerLevel(bp)), Date.now());
+            if (b1 !== b0) set(s => ({ player: { ...s.player, brawler: b1 } }));
+          }
+        }
         // キャラ固有 スカベンジャー(necromancer): 弾薬取得で銃ダメージ+10%を3秒arm。
         if (get().player.characterClass === 'necromancer') {
           set(s => ({ player: { ...s.player, scavengerBuffUntil: s.gameTime + 3000 } }));

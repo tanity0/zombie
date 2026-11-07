@@ -167,12 +167,12 @@ describe('格闘: 技(§3)', () => {
     expect(useGameStore.getState().brawlerTech(1, 0, true)).toBe(false);
     expect(br().points).toBe(5);
   });
-  it('構え: 1秒間はあらゆる被害が0・ポイント5消費・紫の弾も弾き返す窓', () => {
+  it('構え: 1秒間はあらゆる被害が0・ポイント3消費(社長指示2026-11-07)・紫の弾も弾き返す窓', () => {
     setup();
     useGameStore.getState().brawlerPress(); advance(250); // 初期化
     useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 6 } } }));
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
-    expect(br().points).toBe(1);
+    expect(br().points).toBe(3);
     expect(isBrawlerGuarding(useGameStore.getState().player, useGameStore.getState().gameTime)).toBe(true);
     const hp0 = useGameStore.getState().player.health;
     expect(useGameStore.getState().damagePlayer(30, 'test')).toBe(false);
@@ -372,5 +372,37 @@ describe('格闘: 検収の(A)', () => {
     useGameStore.getState().tryHitRetaliation(1, 0);
     expect(useGameStore.getState().player.lungeShape).toBe('decel');
     expect(useGameStore.getState().player.lungeHoldUntil).toBe(0);
+  });
+});
+
+describe('格闘: 弾を拾っても技ポイントが増える(社長指示2026-11-07)', () => {
+  const pickAmmo = (id: string) => {
+    const c = center();
+    useGameStore.setState({ pickups: [{ id, x: c.x, y: c.y, type: 'ammo-handgun', value: 0 }] });
+    useGameStore.getState().collectPickup(id);
+  };
+  it('弾1つ=+1。弾の補充は今までどおり。HUD の合図の時刻が打たれる', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(250); // 初期化
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 0 } } }));
+    useGameStore.setState(st => ({ player: { ...st.player, ammoHandgun: 0 } }));
+    pickAmmo('a1');
+    expect(br().points).toBe(1);
+    expect(br().gainAt).toBe(now);
+    expect(useGameStore.getState().player.ammoHandgun).toBeGreaterThan(0); // 補充は今までどおり
+  });
+  it('上限(Lv1=5)で止まる・止まった時は合図を打たない', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(250);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 5, gainAt: 0 } } }));
+    pickAmmo('a2');
+    expect(br().points).toBe(5);
+    expect(br().gainAt ?? 0).toBe(0);
+  });
+  it('格闘を持っていなければ何も起きない', () => {
+    setup();
+    useGameStore.setState(st => ({ player: { ...st.player, subWeapons: [], brawler: undefined } }));
+    pickAmmo('a3');
+    expect(useGameStore.getState().player.brawler).toBeUndefined();
   });
 });

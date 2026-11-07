@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Enemy } from '../types/game';
 import {
-  BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
+  BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
   brawlerStartAttack, brawlerStartTech, brawlerPressDecision, brawlerAfterResolve, brawlerDueEvent, brawlerFinish,
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
@@ -26,10 +26,17 @@ describe('格闘: 表', () => {
     expect(BRAWLER_TECHS.stomp.windupMs + BRAWLER_TECHS.stomp.recoveryMs).toBe(600);
     expect(BRAWLER_TECHS.kiko.windupMs + BRAWLER_TECHS.kiko.recoveryMs).toBe(450);
     expect(BRAWLER_TECHS.kick.windupMs + BRAWLER_TECHS.kick.recoveryMs).toBe(270);
-    expect([BRAWLER_TECHS.guard.cost, BRAWLER_TECHS.stomp.cost, BRAWLER_TECHS.kiko.cost, BRAWLER_TECHS.kick.cost]).toEqual([5, 5, 2, 1]);
+    expect([BRAWLER_TECHS.guard.cost, BRAWLER_TECHS.stomp.cost, BRAWLER_TECHS.kiko.cost, BRAWLER_TECHS.kick.cost]).toEqual([3, 5, 2, 1]);
   });
   it('ポイントの上限はレベルで 5/10/20', () => {
     expect([1, 2, 3].map(brawlerPointCap)).toEqual([5, 10, 20]);
+  });
+  it('弾を拾うと +1(暫定)・上限で止まり、止まった時は同じ状態を返す(合図を打たない)', () => {
+    expect(BRAWLER_AMMO_PICKUP_POINTS).toBe(1);
+    const s0 = { ...initialBrawlerState(), points: 4 };
+    const s1 = brawlerAfterAmmoPickup(s0, 5, 123);
+    expect([s1.points, s1.gainAt]).toEqual([5, 123]);
+    expect(brawlerAfterAmmoPickup(s1, 5, 999)).toBe(s1);
   });
 });
 
@@ -135,7 +142,9 @@ describe('格闘: 技', () => {
     expect(brawlerNextKickN({ ...s, kickCount: 3 }, 200)).toBe(1);
   });
   it('ポイント不足は払えない', () => {
-    expect(brawlerCanPay({ ...initialBrawlerState(), points: 4 }, 'guard')).toBe(false);
+    expect(brawlerCanPay({ ...initialBrawlerState(), points: 2 }, 'guard')).toBe(false);
+    expect(brawlerCanPay({ ...initialBrawlerState(), points: 3 }, 'guard')).toBe(true); // 上=3(社長指示2026-11-07)
+    expect(brawlerCanPay({ ...initialBrawlerState(), points: 4 }, 'stomp')).toBe(false);
     expect(brawlerCanPay({ ...initialBrawlerState(), points: 2 }, 'kiko')).toBe(true);
   });
   it('フリックの4方向: 縦と横の大きい方・同じなら横', () => {

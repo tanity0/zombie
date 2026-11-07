@@ -44,7 +44,7 @@ export interface BrawlerTechSpec {
   recoveryMs: number;
 }
 export const BRAWLER_TECHS: Readonly<Record<BrawlerTechKind, BrawlerTechSpec>> = {
-  guard: { kind: 'guard', cost: 5, windupMs: 0, recoveryMs: 1000 },
+  guard: { kind: 'guard', cost: 3, windupMs: 0, recoveryMs: 1000 }, // 社長指示2026-11-07「カウンターは3ポイントに変更」(旧5)
   stomp: { kind: 'stomp', cost: 5, windupMs: 200, recoveryMs: 400 },
   kiko: { kind: 'kiko', cost: 2, windupMs: 120, recoveryMs: 330 },
   kick: { kind: 'kick', cost: 1, windupMs: 120, recoveryMs: 150 },
@@ -79,6 +79,8 @@ export const BRAWLER_KICK_NO_TARGET_PX = 100;
 export const BRAWLER_KICK_MULT = 0.7;
 export const BRAWLER_KICK_CHAIN_MS = 500;
 export const BRAWLER_KICK_MAX = 3;
+/** 弾を1つ拾った時に増える技ポイント(社長指示2026-11-07「弾を拾っても技ポイントが増える で」。量は暫定=§9-24)。 */
+export const BRAWLER_AMMO_PICKUP_POINTS = 1;
 export const BRAWLER_KICK_HITSTOP_MS = [0, 80, 80, 140] as const; // ★未決(§9-2): 1・2発目=強の止め / 3発目=締めの止め
 export const BRAWLER_GUARD_MS = 1000;        // 上の構え(§3-2)
 export const BRAWLER_GUARD_QUICK_MS = 500;   // 受けた直後は次の通常攻撃が前隙なし(社長決定 #7)
@@ -181,6 +183,12 @@ export const brawlerPressDecision = (s: BrawlerState, t: number): 'start' | 'buf
   if (s.resolved && s.connected) return 'buffer'; // 当たった瞬間(止めの間を含む)から戻りの終わりまで
   if (el >= total - BRAWLER_WHIFF_BUFFER_MS) return 'buffer'; // 空振り(または判定前)の段は戻りの終わり 150ms 前から
   return 'drop';
+};
+
+/** 弾を拾った時の技ポイント(上限で止める)。増えた時だけ gainAt を打つ(上限なら状態は同じ物を返す)。 */
+export const brawlerAfterAmmoPickup = (s: BrawlerState, cap: number, now: number): BrawlerState => {
+  const next = Math.min(cap, s.points + BRAWLER_AMMO_PICKUP_POINTS);
+  return next === s.points ? s : { ...s, points: next, gainAt: now };
 };
 
 /** 判定を解いた後の状態(当たった/外れた)。当たった時はポイントと止めも足す。 */
