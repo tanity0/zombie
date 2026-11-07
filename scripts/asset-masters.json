@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1014 files / 復号後 約716MB",
+ "generatedFor": "1015 files / 復号後 約716MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -913,6 +913,12 @@
    "h": 200,
    "bytes": 36073,
    "sha": "e5d9e30fa908c839"
+  },
+  "sprites/brawler-item.png": {
+   "w": 32,
+   "h": 32,
+   "bytes": 1871,
+   "sha": "73c2169d7b43bf68"
   },
   "sprites/castle-church.png": {
    "w": 962,

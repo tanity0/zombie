@@ -1,5 +1,11 @@
 # Development Log
 
+## v0.25.5382 — 格闘のアイコン素材を受け取り【2026-11-07 23:19 JST】
+- 社長支給の「格闘」アイコン(32×32・PNG透過)を `public/sprites/brawler-item.png` へ。台帳 `scripts/asset-masters.json` を更新(`assets:check` OK)。
+- まだどこからも読んでいない(格闘の実装で装備画面・店・近接枠に配線する)。設計書 §0-1 に追記。
+- ゲーム内容の変更はありません。
+- 変更: `public/sprites/brawler-item.png`(新規) `scripts/asset-masters.json` `research/BRAWLER.md` `src/data/changelog.ts` `package.json`
+
 ## v0.25.5381 — 格闘の設計書: 品質監査の反映(文書のみ)【2026-11-07 23:18 JST】
 - 品質監査(Opus・1巡目): (A) 11件 / (C) 7件 / 漏れ 9件 / (B) 2件。
 - 設計の穴として直した(§7): 命中は `triggerCounter` の「指定打撃」(被弾反撃の `ret` を一般化)を通す=処刑・幻影のパリィ・体勢値・キル集計などを書き写さない / 各段と技で振りの打刻(トールの必中一閃・癖を読む AI) / 入口の関所 / 縮地・スラッシャー・スケボー乗車は格闘中は無効 / 鞭の判定 / 止めは既存の `hitStunUntil`(ボス級は止めない=赤い予告の時刻を守る) / 移動は踏み込みの器 / 相手の除外 / 時計・キャンセル・入力の細部 / ポーズは新しい欄で駆動(ナイフの弧を出さない) / `spawnImageMark` の拡張。
