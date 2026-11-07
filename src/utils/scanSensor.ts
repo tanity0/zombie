@@ -185,6 +185,28 @@ export const scanFanContains = (
   return Math.abs(diff) <= halfAngleRad;
 };
 
+/**
+ * ★自動ターゲティング(社長指示2026-11-07「スキャンセンサーは近くの敵を自動ターゲティングで」)。
+ * 扇が届く敵(地面の上の距離が長さ+足の幅の半分以内)のうち**一番近い1体の足元**へ扇を向ける。届く敵が居なければ null
+ * (呼び手は従来どおり照準→最後の向き)。候補の絞り込み(狙える敵・クリティカル状態を除く)は呼び手が済ませて渡す。
+ * 返す向きは画面上のベクトル(根元→足元)。地面の角度へは `scanFanGroundAngle` がそのまま戻す=判定と絵がずれない。
+ */
+export const pickScanAutoAimDir = <T extends Pick<Enemy, 'x' | 'y' | 'width' | 'height'>>(
+  ox: number, oy: number, enemies: readonly T[],
+): { dirX: number; dirY: number } | null => {
+  let best: { dirX: number; dirY: number } | null = null;
+  let bestD = Infinity;
+  for (const e of enemies) {
+    const dx = e.x + e.width / 2 - ox, dy = e.y + e.height - oy;
+    const d = Math.hypot(dx, dy / SCAN_FAN_GROUND_Y_SCALE); // 地面の上の距離(扇の長さと同じ物差し)
+    if (d > SCAN_FAN_LENGTH_PX + e.width / 2 || d >= bestD) continue;
+    const sl = Math.hypot(dx, dy);
+    if (sl < 1e-6) continue; // 真上に重なった敵は向きが決まらない(どの向きでも扇に入る)
+    bestD = d; best = { dirX: dx / sl, dirY: dy / sl };
+  }
+  return best;
+};
+
 /** 掃き終わりに印を付ける敵: 足元(当たり矩形の下辺の中央)が地面の扇に入っている敵。余裕は足の幅の半分。 */
 export const pickScanFanHits = <T extends Pick<Enemy, 'x' | 'y' | 'width' | 'height'>>(
   ox: number, oy: number, dirX: number, dirY: number, enemies: readonly T[],

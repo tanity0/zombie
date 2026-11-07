@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5377 — スキャンセンサーの自動ターゲティング【2026-11-07 15:18 JST】
+- 社長指示「スキャンセンサーは近くの敵を自動ターゲティングで」。
+- 旧: 拍の扇は「照準の慣性ベクトル → 無ければ最後の向き」へ出ていた=向いていない方の敵には印が付かなかった。
+- 新しい純関数 `pickScanAutoAimDir`(`utils/scanSensor.ts`): 扇が届く敵(地面の上の距離が扇の長さ+足の幅の半分以内=判定と同じ物差し)のうち一番近い1体の足元へ向ける。居なければ従来どおり。候補は掃き終わりの判定と同じ(狙える敵・クリティカル状態=印が入らない敵は除く)。
+- 扇の絵は `scanFan.dirX/Y` を読むので、向きは絵と判定で一致する。
+- 確認: 右を向いたまま左下(背中側)に敵を1体置き、扇がその敵へ向いて印が1つ付くことを撮影で確認(850ms後に印)。`npm run typecheck` / scanSensor・newGunsTick のテスト118件 / eslint / 循環import。
+- 自己点検: 初心者ゾーン・緩の荒らしには触れない(武器1種の向きの決め方のみ)。
+- 変更: `src/utils/scanSensor.ts`(+test) `src/utils/newGunsTick.ts` `src/data/changelog.ts` `package.json`
+
 ## v0.25.5376 — 移動近接のノックバックを1.5倍【2026-11-07 15:00 JST】
 - 社長指示「移動近接の場合、敵のノックバック距離をもう少し伸ばす」。
 - 「移動近接」=走りながら離して**踏み込んだ振り**(判定は踏み込みと同じ `isRunningForMeleeLunge`)。`beginMeleeSwing` で起点時刻を `runningSwingAt` に控え、前隙の解決(`triggerCounter(swingStartAt)`)で一致した振りだけ対象(被弾反撃などの別経路は対象外)。

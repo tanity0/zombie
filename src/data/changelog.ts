@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5377', items: [
+    'スキャンセンサーは、届く範囲で一番近い敵へ自動で向く。向いていない方の敵にも印が付く',
+  ] },
   { version: '0.25.5376', items: [
     '走りながら斬ると、敵がいつもより遠くへ吹き飛ぶ',
   ] },

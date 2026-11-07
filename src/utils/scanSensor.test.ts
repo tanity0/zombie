@@ -5,7 +5,7 @@ import {
   scanBeatIndex, scanBeatPhase, isScanMarked, scanMarkRemainFrac, scanMarkMeleeMult, pickScanMarkTarget,
   scanMarkMeleeCritBonus, scanMarkMeleePostureMult, scanFanSweepFrac, scanMarkUntilFrom,
   SCAN_FAN_GROUND_Y_SCALE, SCAN_FAN_LENGTH_PX, SCAN_FAN_HALF_ANGLE_RAD, scanFanGroundAngle, scanFanScreenPoint,
-  scanFanContains, pickScanFanHits, isEliteHeavyStun,
+  scanFanContains, pickScanFanHits, pickScanAutoAimDir, isEliteHeavyStun,
 } from './scanSensor';
 import type { EnemyType } from '../types/game';
 
@@ -216,5 +216,31 @@ describe('§4-2 5重ねのクリティカル状態と起爆', () => {
     const d = drainScanDetonations();
     expect(d?.size).toBe(2);
     expect(drainScanDetonations()).toBeNull();
+  });
+});
+
+// 社長指示2026-11-07「スキャンセンサーは近くの敵を自動ターゲティングで」。
+describe('スキャンセンサーの自動ターゲティング', () => {
+  const foe = (fx: number, fy: number) => ({ x: fx - 10, y: fy - 30, width: 20, height: 30 }); // 足元=(fx, fy)
+  it('届く敵のうち一番近い1体の足元へ向き、その敵は扇に入る', () => {
+    const near = foe(100, 0), far = foe(-200, 0);
+    const d = pickScanAutoAimDir(0, 0, [far, near])!;
+    expect(d.dirX).toBeCloseTo(1); expect(d.dirY).toBeCloseTo(0);
+    expect(pickScanFanHits(0, 0, d.dirX, d.dirY, [near, far])).toContain(near);
+  });
+  it('縦は地面の距離で測る(画面で近くても奥の敵は遠い)', () => {
+    const up = foe(0, -100);  // 地面では 100/0.36 ≒ 278
+    const side = foe(150, 0); // 地面で 150
+    const d = pickScanAutoAimDir(0, 0, [up, side])!;
+    expect(d.dirX).toBeCloseTo(1);
+  });
+  it('届く敵が居なければ null(呼び手は照準の向きのまま)', () => {
+    expect(pickScanAutoAimDir(0, 0, [foe(SCAN_FAN_LENGTH_PX + 50, 0)])).toBeNull();
+    expect(pickScanAutoAimDir(0, 0, [])).toBeNull();
+  });
+  it('斜めの敵へ向けても、その敵は扇の中に入る(判定と向きの物差しが同じ)', () => {
+    const e = foe(120, 60);
+    const d = pickScanAutoAimDir(0, 0, [e])!;
+    expect(pickScanFanHits(0, 0, d.dirX, d.dirY, [e])).toContain(e);
   });
 });

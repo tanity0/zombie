@@ -40,7 +40,7 @@ import {
   satelliteTouchesRect, satelliteContactReady, assignSatelliteTargets, type SatelliteOrbit, type SatelliteBulletPose,
 } from './satelliteOrbit';
 import {
-  SCAN_WEAPON_KEY, SCAN_SWEEP_MS, pickScanFanHits, scanBeatIndex,
+  SCAN_WEAPON_KEY, SCAN_SWEEP_MS, pickScanFanHits, pickScanAutoAimDir, scanBeatIndex,
   isScanMarked, scanStacksAt, scanMarkAddStack, scanStackReachedFull, SCAN_STACK_MAX, isScanCrit, SCAN_CRIT_MS, SCAN_DETONATED, drainScanDetonations, type ScanFan,
 } from './scanSensor';
 
@@ -455,8 +455,10 @@ const tickScan = (gameTime: number, holding: boolean, locked: boolean): void => 
   if (beat !== scanLastBeat) {
     scanLastBeat = beat;
     if (holding && !locked) {
-      // 向いている方(照準の慣性ベクトル→無ければ最後の向き)。
-      let dx = p.aimX, dy = p.aimY;
+      // ★届く範囲で一番近い敵へ自動で向ける(社長指示2026-11-07)。居なければ向いている方(照準の慣性ベクトル→無ければ最後の向き)。
+      // 候補は掃き終わりの判定と同じ(狙える敵・クリティカル状態は除く=印が入らない敵へ向けない)。
+      const auto = pickScanAutoAimDir(p.x + p.width / 2, p.y + p.height, aimableEnemies(st.enemies).filter(e => !isScanCrit(e, gameTime)));
+      let dx = auto?.dirX ?? p.aimX, dy = auto?.dirY ?? p.aimY;
       if (Math.hypot(dx, dy) < 0.001) { dx = p.lastDirection?.x ?? 1; dy = p.lastDirection?.y ?? 0; }
       const dl = Math.hypot(dx, dy) || 1;
       scanFan = { beat, startAt: gameTime, dirX: dx / dl, dirY: dy / dl, resolved: false, marked: false };
