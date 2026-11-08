@@ -85,5 +85,10 @@ export interface BrawlerState {
   /** ヒット数の表示(§11-4)。同じ流れの当たり数と、流れが切れた時刻(gameTime・0=続いている)。 */
   flowHits?: number;
   flowBrokenAt?: number;
+  /**
+   * 技の先行入力(社長指示2026-11-08「技の先行入力だけ採用」・research/BRAWLER.md §9-60)。技の最中に入れた、今は出せない技を1つだけ覚える。
+   * 新しい入力で上書き。出せるようになった瞬間(当たった技のキャンセル・前の技の終わり)に出す。被弾・掴み・紫・シーカー・死亡で捨てる。
+   */
+  techBuffer?: BrawlerTechKind;
 }
 

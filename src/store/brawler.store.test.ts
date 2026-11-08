@@ -660,13 +660,14 @@ describe('格闘: 構えの延長(社長指示2026-11-07「カウンター中も
     expect(br().guardUntil).toBe(until0);
     expect(br().denyAt).toBe(now);
   });
-  it('構えの間は他の技(下・左・右)は出ない', () => {
+  it('構えの間は他の技(下・左・右)は出ない(先行入力として覚え、構えの後に出す=§9-60)', () => {
     guard();
     advance(200);
-    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false);
-    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(false);
-    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(false);
+    useGameStore.getState().brawlerTech(0, 1);
+    useGameStore.getState().brawlerTech(-1, 0);
+    useGameStore.getState().brawlerTech(1, 0);
     expect(br().tech).toBe('guard');
+    expect(br().techBuffer).toBe('kick'); // 新しい入力で上書き
   });
   it('延長すると、カウンター窓と被害の無効が切れ目なく延長後の終わりまで続く', () => {
     guard();
@@ -965,14 +966,18 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
     expect(br().tech).toBe('kiko');
     expect(br().techChain).toEqual(['stomp', 'kiko']);
-    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false); // 同じ流れの大踏み潰しへは戻れない
+    useGameStore.getState().brawlerTech(0, 1); // 同じ流れの大踏み潰しへは取り消せない(先行入力として覚えて、気功の後に出す=§9-60)
+    expect(br().tech).toBe('kiko');
+    expect(br().techBuffer).toBe('stomp');
     // 空振りの大踏み潰しからは気功へ取り消せない・構えは取り消せる
     setup(3);
     useGameStore.setState(st => ({ enemies: [], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 20 } } }));
     useGameStore.getState().brawlerTech(0, 1);
     for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
     advance(50);
-    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(false);
+    useGameStore.getState().brawlerTech(-1, 0); // 取り消せない=先行入力として覚えるだけ
+    expect(br().tech).toBe('stomp');
+    expect(br().techBuffer).toBe('kiko');
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
     expect(br().tech).toBe('guard');
   });
@@ -1186,5 +1191,92 @@ describe('移動・待ちの相の敵も格闘で固まる(社長実機報告202
     let saw = en('z').aiPhase === 'br-revenge';
     live(200, () => { saw ||= en('z').aiPhase === 'br-revenge'; });
     expect(saw).toBe(true);
+  });
+});
+
+describe('技の先行入力と秘奥義の1手目(社長指示2026-11-08「技の先行入力だけ採用ただし、1発目は敵に当たっていること」・§9-60)', () => {
+  const prep = (enemies: ReturnType<typeof zombieAt>[]) => {
+    setup(3);
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => {
+      const p = st.player;
+      return {
+        enemies, viewZoom: 1, camera: { x: p.x + p.width / 2 - st.gameBounds.width / 2, y: p.y + p.height / 2 - st.gameBounds.height / 2 },
+        player: { ...p, health: 9999, maxHealth: 9999, brawler: { ...p.brawler!, points: 20, nextStage: 1, chainUntil: 0, secretProgress: 0, secretLastEndAt: 0 } },
+      };
+    });
+  };
+  /** →↓←↑ を一定の間隔で入れて、秘奥義が出たか。 */
+  const flickAll = (gap: number) => {
+    for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]] as const) { useGameStore.getState().brawlerTech(dx, dy); advance(gap); }
+    let secret = !!br().secret;
+    for (let i = 0; i < 150 && !secret; i++) { advance(10); secret = !!br().secret; }
+    return secret;
+  };
+  it('技の最中に入れた次の技を覚え、前の技が終わった瞬間に出す', () => {
+    prep([]);
+    useGameStore.getState().brawlerTech(0, 1);          // 大踏み潰し(空振り=取り消せない)
+    advance(50);
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
+    expect(br().tech).toBe('stomp');
+    expect(br().techBuffer).toBe('kiko');
+    const pts = br().points;
+    let endAt = -1;
+    for (let i = 0; i < 100 && br().tech !== 'kiko'; i++) { const before = br().tech; advance(10); if (before === 'stomp' && br().tech === 'kiko') endAt = useGameStore.getState().gameTime; }
+    expect(br().tech).toBe('kiko');
+    expect(br().startAt).toBe(endAt);                     // 終わった瞬間(同じフレーム)に出た
+    expect(br().points).toBe(pts - 2);                    // 値段は出す瞬間に払う
+    expect(br().techBuffer).toBeUndefined();
+  });
+  it('覚えている間の通常攻撃は捨てる(技を優先)・新しい技の入力で上書き', () => {
+    prep([]);
+    useGameStore.getState().brawlerTech(0, 1); advance(50);
+    useGameStore.getState().brawlerTech(-1, 0);
+    expect(useGameStore.getState().brawlerPress()).toBe(false);
+    expect(br().buffered).toBe(false);
+    useGameStore.getState().brawlerTech(1, 0);
+    expect(br().techBuffer).toBe('kick');
+  });
+  it('出す瞬間に技ポイントが足りなければ出さない(拒否の音と数字が沈む表示)', () => {
+    prep([]);
+    useGameStore.getState().brawlerTech(0, 1); advance(50);
+    useGameStore.getState().brawlerTech(-1, 0);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 1 } } }));
+    for (let i = 0; i < 100 && br().phase !== 'idle'; i++) advance(10);
+    advance(20);
+    expect(br().tech).not.toBe('kiko');
+    expect(br().techBuffer).toBeUndefined();
+    expect(br().denyAt).toBeGreaterThan(0);
+  });
+  it('被弾で先行入力は捨てる', () => {
+    prep([]);
+    useGameStore.getState().brawlerTech(0, 1); advance(50);
+    useGameStore.getState().brawlerTech(-1, 0);
+    expect(br().techBuffer).toBe('kiko');
+    useGameStore.setState(st => ({ player: { ...st.player, invulnerable: false } }));
+    useGameStore.getState().damagePlayer(5, 'test');
+    expect(br().techBuffer).toBeUndefined();
+    for (let i = 0; i < 100 && br().phase !== 'idle'; i++) advance(10);
+    advance(50);
+    expect(br().tech).not.toBe('kiko');
+  });
+  it('→↓←↑ を先行入力で素早く入れると秘奥義が成立する(各フリックの間 200ms)', () => {
+    prep([zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')]);
+    expect(flickAll(200)).toBe(true);
+  });
+  it('間をもっと空けても成立する(250〜500ms)', () => {
+    for (const gap of [250, 350, 500]) {
+      prep([zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')]);
+      expect(flickAll(gap), `${gap}ms`).toBe(true);
+    }
+  });
+  it('各フリックの間 150ms では成立しない(大踏み潰しが当たって取り消せるようになる前に←と↑が届き、1つだけの先行入力が↑で上書きされ、構えが先に出る)', () => {
+    prep([zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')]);
+    expect(flickAll(150)).toBe(false);
+  });
+  it('1手目の飛び蹴りが外れると成立しない', () => {
+    prep([zombieAt(-320, 0, 'far')]); // 蹴りの届く距離(220)の外=蹴りは空振り
+    expect(flickAll(400)).toBe(false);
+    expect(br().secret).toBeUndefined();
   });
 });

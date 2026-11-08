@@ -176,6 +176,7 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
     // 通常攻撃を押したら蹴りの連続は切れる(§7-5)。秘奥義の順番も数え直し(通常攻撃が挟まった=§10-1)。
     kickChainUntil: 0, kickCount: 0, secretProgress: 0, secretLastEndAt: 0,
     techChain: undefined, // 通常攻撃で技の流れは切れる(技→通常はキャンセルできない=§11-4)
+    techBuffer: undefined,
   };
 };
 
@@ -188,7 +189,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
   const chain = cancel ? [...(s.techChain ?? (s.tech ? [s.tech] : [])), kind]
     : (kind === 'kick' && kickN > 1 && s.techChain) ? s.techChain : [kind];
   return {
-    ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain,
+    ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined,
     windupMs: spec.windupMs, recoveryMs: spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, buffered: false,
     // 技の後は1段目(§7-5)。
@@ -316,7 +317,9 @@ export const BRAWLER_SECRET_MOVES: readonly BrawlerSecretMove[] = [1, 2, 3, 4, 5
  * 技が実際に出た時の順番の進み(§10-1)。progress = 直前までに揃った数(0..3)、lastEndAt = 直前の技の終わり(0=無し)。
  *  - 順番どおりの次の技が、前の技の終わりから GAP 以内に出れば +1。4つ揃ったら fire(進みは0へ)。
  *  - 飛び蹴りの2・3発目(連続の続き)は数え直さない(進みも時刻もそのまま=最初の→のまま↓を待つ)。
- *  - それ以外(順番違い・間が空いた)は数え直し。→蹴り(1発目)なら1から、ほかは0。
+ *  - それ以外(順番違い・間が空いた)は数え直し=0。
+ *  - ★1手目の→飛び蹴りは**敵に当たった時だけ**数える(社長指示2026-11-08「1発目は敵に当たっていること」)。出た瞬間は0のままで、
+ *    蹴りの判定の結果を `brawlerSecretAfterKick` で足す(先行入力が判定の前に来ても、次の技は蹴りが終わってから=結果が出てから数える)。
  */
 export const brawlerSecretStep = (
   progress: number, lastEndAt: number, kind: BrawlerTechKind, kickN: number, t: number,
@@ -327,8 +330,11 @@ export const brawlerSecretStep = (
     const next = progress + 1;
     return next >= BRAWLER_SECRET_ORDER.length ? { progress: 0, fire: true } : { progress: next, fire: false };
   }
-  return { progress: kind === BRAWLER_SECRET_ORDER[0] ? 1 : 0, fire: false };
+  return { progress: 0, fire: false };
 };
+/** 飛び蹴りの判定の後: 当たったら秘奥義の1手目(進み1)。外れたら数えない(進みはそのまま=0)。2・3発目で当たっても1手目になる。 */
+export const brawlerSecretAfterKick = (progress: number, connected: boolean): number =>
+  connected && progress === 0 ? 1 : progress;
 
 /** 秘奥義を始めた状態(構えを置き換える・構えの窓は張らない)。 */
 export const brawlerSecretStart = (s: BrawlerState, t: number, now: number): BrawlerState => ({
@@ -338,7 +344,7 @@ export const brawlerSecretStart = (s: BrawlerState, t: number, now: number): Bra
 });
 /** 秘奥義を終えた(フィニッシュ後・中断)状態。技ポイントは強制で0、段は1段目へ(§10-2-4・§10-3)。 */
 export const brawlerSecretEnd = (s: BrawlerState): BrawlerState => ({
-  ...s, phase: 'idle', tech: null, stage: 0, buffered: false, points: 0, nextStage: 1, chainUntil: 0,
+  ...s, phase: 'idle', tech: null, stage: 0, buffered: false, techBuffer: undefined, points: 0, nextStage: 1, chainUntil: 0,
   guardUntil: 0, quickUntil: 0, kickChainUntil: 0, kickCount: 0, secret: undefined, secretProgress: 0, secretLastEndAt: 0,
   stopFrom: 0, stopUntil: 0, stopPrevMs: 0,
 });
@@ -374,15 +380,21 @@ export const brawlerSecretMovePose = (s: BrawlerState, move: BrawlerSecretMove, 
 };
 export const isBrawlerSecretActive = (s: BrawlerState | undefined): boolean => !!s?.secret;
 
-/** 出かかった行動を取り消す(掴まれ・紫・シーカー=§8-4)。先行入力も捨てる。 */
+/** 出かかった行動を取り消す(掴まれ・紫・シーカー=§8-4)。先行入力(通常・技)も捨てる。 */
 export const brawlerCancel = (s: BrawlerState): BrawlerState => ({
-  ...s, phase: 'idle', tech: null, buffered: false, nextStage: 1, chainUntil: 0, secret: undefined,
+  ...s, phase: 'idle', tech: null, buffered: false, techBuffer: undefined, nextStage: 1, chainUntil: 0, secret: undefined,
   guardUntil: 0, kickChainUntil: 0, kickCount: 0,
 });
 /** 被弾した(段は1段目へ・先行入力は捨てる=§2-4)。行動そのものは続く(殴り返されて止まるのは敵の止めの側)。 */
 export const brawlerOnHurt = (s: BrawlerState): BrawlerState => ({
-  ...s, buffered: false, nextStage: 1, chainUntil: 0,
+  ...s, buffered: false, techBuffer: undefined, nextStage: 1, chainUntil: 0,
 });
+/**
+ * 技の先行入力として覚えるか(§9-60)。技の最中で、いま出せない技(当たっていない技の後隙・前隙・止めの間・構えの間)。
+ * 構えの間の構え(延長)は今どおり出る。新しい入力は覚えている入力を上書きする。
+ */
+export const brawlerShouldBufferTech = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean =>
+  s.phase === 'tech' && !brawlerTechAllowed(s, kind, t);
 
 /** 技ポイントを払えるか。 */
 /** 技の値段。血の覚醒中は0=技ポイントを無視して使い放題(社長指示2026-11-08「覚醒中は技ポイント無視して使い放題」)。 */

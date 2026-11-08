@@ -10,7 +10,7 @@ import {
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompHeight, BRAWLER_JUMP_VIS_PX, BRAWLER_HIT_PITCH, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
-  brawlerTechCancelOk, brawlerFlowOnHit, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
+  brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
 } from './brawler';
 
 const foe = (id: string, cx: number, cy: number, over: Partial<Enemy> = {}): Enemy => ({
@@ -346,16 +346,28 @@ describe('フリックの距離は全方向20px(社長承認2026-11-07・格闘/
 });
 
 describe('秘奥義(research/BRAWLER.md §10)', () => {
-  // 実際に出た技を順に流す。各要素 [技, 蹴りの何発目, 発動時刻, その技の終わりの時刻]。
-  const run = (seq: [string, number, number, number][]) => {
+  // 実際に出た技を順に流す。各要素 [技, 蹴りの何発目, 発動時刻, その技の終わりの時刻, (蹴りが当たったか=既定は当たった)]。
+  const run = (seq: [string, number, number, number, boolean?][]) => {
     let progress = 0, lastEnd = 0, fired = false;
-    for (const [k, n, at, end] of seq) {
+    for (const [k, n, at, end, hit] of seq) {
       const r = brawlerSecretStep(progress, lastEnd, k as never, n, at);
       progress = r.progress; fired = fired || r.fire;
+      if (k === 'kick') progress = brawlerSecretAfterKick(progress, hit !== false); // 蹴りの判定の結果(1手目は当たった時だけ)
       lastEnd = end;
     }
     return { progress, fired };
   };
+  it('★1手目の→飛び蹴りは敵に当たった時だけ数える(社長指示2026-11-08「1発目は敵に当たっていること」)', () => {
+    expect(run([['kick', 1, 0, 270, false], ['stomp', 0, 500, 1100], ['kiko', 0, 1300, 1750], ['guard', 0, 2100, 3100]]).fired).toBe(false);
+    expect(run([['kick', 1, 0, 270, false]]).progress).toBe(0);
+    expect(run([['kick', 1, 0, 270, true]]).progress).toBe(1);
+    // 1発目が外れても、続きの2発目が当たれば1手目になる
+    expect(run([['kick', 1, 0, 270, false], ['kick', 2, 300, 570, true], ['stomp', 0, 700, 1300], ['kiko', 0, 1400, 1850], ['guard', 0, 2000, 3000]]).fired).toBe(true);
+    // 出た瞬間は数えない(判定の前に次の技が来ても、判定の結果で決まる)
+    expect(brawlerSecretStep(0, 0, 'kick', 1, 0).progress).toBe(0);
+    expect(brawlerSecretAfterKick(0, true)).toBe(1);
+    expect(brawlerSecretAfterKick(2, true)).toBe(2);
+  });
   it('→↓←↑ を、前の技の終わりから400ms以内に続ければ成立', () => {
     expect(run([['kick', 1, 0, 270], ['stomp', 0, 500, 1100], ['kiko', 0, 1300, 1750], ['guard', 0, 2100, 3100]]).fired).toBe(true);
   });
@@ -456,7 +468,7 @@ describe('技→技のキャンセル(research/BRAWLER.md §11-4)', () => {
     let p = 0;
     for (const [k, n, at] of [['kick', 1, 0], ['stomp', 0, 200], ['kiko', 0, 800], ['guard', 0, 1100]] as const) {
       const r = brawlerSecretStep(p, at, k, n, at); // キャンセル=前の技の終わりを「いま」として渡す
-      p = r.progress;
+      p = k === 'kick' ? brawlerSecretAfterKick(r.progress, true) : r.progress;
       if (k === 'guard') expect(r.fire).toBe(true);
     }
   });
@@ -488,5 +500,28 @@ describe('ヒット数の表示(research/BRAWLER.md §11-4)', () => {
     expect(brawlerFlowBreaksNow({ ...base, secret: brawlerSecretStart(base, 0, 0).secret }, 99999)).toBe(false);
     expect(brawlerFlowBreaksNow({ ...base, flowBrokenAt: 10 }, 99999)).toBe(false);
     expect(brawlerFlowBreaksNow({ ...base, flowHits: 0 }, 99999)).toBe(false);
+  });
+});
+
+describe('技の先行入力(社長指示2026-11-08「技の先行入力だけ採用」・§9-60)', () => {
+  it('技の最中で今は出せない技だけ覚える(当たった技の後隙・構えの延長は今どおり即座に出る)', () => {
+    const s = brawlerStartTech(initialBrawlerState(), 'stomp', 0);
+    expect(brawlerShouldBufferTech(s, 'kiko', 50)).toBe(true);            // 前隙
+    const hit = brawlerAfterResolve(s, 200, 1, { pointCap: 20, countPoint: false, hitstopMs: 140 });
+    expect(brawlerShouldBufferTech(hit, 'kiko', 250)).toBe(true);         // 止めの間
+    expect(brawlerShouldBufferTech(hit, 'kiko', 360)).toBe(false);        // 当たった後隙=キャンセルで即座に出る
+    expect(brawlerShouldBufferTech(hit, 'guard', 360)).toBe(false);
+    const g = brawlerStartTech(initialBrawlerState(), 'guard', 0);
+    expect(brawlerShouldBufferTech(g, 'guard', 100)).toBe(false);         // 構えの延長
+    expect(brawlerShouldBufferTech(g, 'kick', 100)).toBe(true);           // 構えの間の他の技は構えの後に出す
+    expect(brawlerShouldBufferTech(initialBrawlerState(), 'kick', 0)).toBe(false); // 待機中は即座に出る
+    expect(brawlerShouldBufferTech(brawlerStartAttack(initialBrawlerState(), 1, 0, false), 'kick', 30)).toBe(false); // 通常攻撃の最中は即座(必殺技キャンセル)
+  });
+  it('被弾・取り消しで捨てる / 技を出したら消える', () => {
+    const s = { ...brawlerStartTech(initialBrawlerState(), 'stomp', 0), techBuffer: 'kiko' as const };
+    expect(brawlerOnHurt(s).techBuffer).toBeUndefined();
+    expect(brawlerCancel(s).techBuffer).toBeUndefined();
+    expect(brawlerStartTech(s, 'kiko', 600).techBuffer).toBeUndefined();
+    expect(brawlerFinish(s, 600).state.techBuffer).toBe('kiko'); // 終わった瞬間に出す(呼び手が出す)
   });
 });

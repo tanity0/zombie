@@ -4505,6 +4505,26 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
 };
 
 /** 技を始める(ポイントは払い済み)。 */
+/**
+ * 覚えている技(技の先行入力・§9-60)を出す。関所(被弾のしゃがみ・掴み・紫・シーカー・死亡など)に掛かれば捨てる。
+ * 値段はこの瞬間に払う。足りなければ今どおり拒否の音と数字が沈む表示で捨てる。cancel=技の後隙を取り消して出す(秘奥義の数えは 0ms 扱い)。
+ */
+const fireBufferedBrawlerTech = (
+  get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState, cancel: boolean,
+): void => {
+  const kind = s.techBuffer;
+  const s1: BR.BrawlerState = { ...s, techBuffer: undefined };
+  if (!kind || !brawlerGateOk(get)) { setBrawler(set, s1); return; }
+  const p = get().player;
+  const awakened = isBloodAwakening(p, get().gameTime);
+  if (!BR.brawlerCanPay(s1, kind, awakened)) {
+    brawlerSfx('ui-deny', 0.55, 0.72, 160);
+    setBrawler(set, { ...s1, denyAt: Date.now() });
+    return;
+  }
+  // 飛び蹴りの連続の続き(蹴り→蹴り)はキャンセルではない(今どおり)。
+  startBrawlerTech(get, set, s1, kind, awakened, cancel && !(kind === 'kick' && s.tech === 'kick'));
+};
 const startBrawlerTech = (
   get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState, kind: BR.BrawlerTechKind, awakened = false,
   /** 技の後隙を取り消して出した(技→技のキャンセル・research/BRAWLER.md §11-4)。 */
@@ -4949,7 +4969,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
     const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: hs });
-    setBrawler(set, { ...after, kickChainUntil: big ? 0 : t + BR.BRAWLER_KICK_CHAIN_MS, kickCount: big ? 0 : s.kickN }, {
+    // 秘奥義の1手目(→)は蹴りが当たった時だけ数える(社長指示2026-11-08「1発目は敵に当たっていること」)。
+    const secretProgress = BR.brawlerSecretAfterKick(s.secretProgress ?? 0, hits > 0);
+    setBrawler(set, { ...after, secretProgress, kickChainUntil: big ? 0 : t + BR.BRAWLER_KICK_CHAIN_MS, kickCount: big ? 0 : s.kickN }, {
       lastDirection: { x: dir.x, y: dir.y },
       ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, hs, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
@@ -10205,6 +10227,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const s = p.brawler ?? BR.initialBrawlerState();
     // 武器庫の円の中で押した=店を開く(段は出さない・検収 A-5)。行動の最中の押下(先行入力)では開かない。
     if (s.phase === 'idle' && openArmoryShopIfInside(get, set, p.x + p.width / 2, p.y + p.height / 2, null)) return true;
+    // 技の先行入力を覚えている間の通常攻撃は捨てる(技を優先・§9-60)。
+    if (s.techBuffer) return false;
     const d = BR.brawlerPressDecision(s, st.gameTime);
     if (d === 'drop') return false;
     if (d === 'buffer') { setBrawler(set, { ...s, buffered: true }); return true; }
@@ -10220,6 +10244,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const s = p.brawler ?? BR.initialBrawlerState();
     const t = st.gameTime;
     const kind = neutral ? null : BR.classifyBrawlerFlick(dirX, dirY);
+    // ★技の先行入力(社長指示2026-11-08「技の先行入力だけ採用」・§9-60): 技の最中で今は出せない技は1つだけ覚え(上書き)、
+    // 出せるようになった瞬間(当たった技のキャンセル・前の技の終わり)に出す。値段は出す瞬間に払う。覚えている間の通常攻撃の先行入力は捨てる(技を優先)。
+    if (kind && BR.brawlerShouldBufferTech(s, kind, t)) {
+      setBrawler(set, { ...s, techBuffer: kind, buffered: false });
+      return true;
+    }
     if (!kind || !BR.brawlerTechAllowed(s, kind, t)) {
       // 方向の決まらない入力・出せない時は技を出さない(短い空振りの音・§7-5)。
       if (!isBrawlerGuardingAt(s, t)) { brawlerSfx('ui-deny', 0.5, 0.72, 160); setBrawler(set, { ...s, denyAt: Date.now() }); }
@@ -10282,6 +10312,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     for (let i = 0; i < 3; i++) {
       const s = get().player.brawler;
       if (!s) return;
+      // 覚えている技が出せるようになった(当たった技の後隙のキャンセル・構え)=いま出す。
+      if (s.techBuffer && s.phase === 'tech' && BR.brawlerTechAllowed(s, s.techBuffer, get().gameTime)) { fireBufferedBrawlerTech(get, set, s, true); return; }
       const ev = BR.brawlerDueEvent(s, get().gameTime);
       if (ev === null) return;
       if (ev === 'resolve') { resolveBrawlerAction(get, set); continue; }
@@ -10289,6 +10321,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const { state: fin, fire } = BR.brawlerFinish(s, get().gameTime);
       const close = s.tech === 'guard' ? { counterWindowEnd: Math.min(get().player.counterWindowEnd, Date.now()) } : {};
       setBrawler(set, fin, close);
+      // 前の技が終わった瞬間に覚えている技を出す(通常攻撃の先行入力より優先)。
+      if (fin.techBuffer) { fireBufferedBrawlerTech(get, set, { ...fin, buffered: false }, false); return; }
       if (fire && brawlerGateOk(get)) startBrawlerAttack(get, set, fin);
       return;
     }
