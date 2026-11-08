@@ -4468,14 +4468,14 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
 };
 
 /** 技を始める(ポイントは払い済み)。 */
-const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState, kind: BR.BrawlerTechKind): void => {
+const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState, kind: BR.BrawlerTechKind, awakened = false): void => {
   const st = get();
   const p = st.player;
   const t = st.gameTime;
   const now = Date.now();
   const c = brawlerCenter(p);
   const kickN = kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
-  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN), pressAt: now, points: s0.points - BR.BRAWLER_TECHS[kind].cost };
+  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN), pressAt: now, points: s0.points - BR.brawlerTechCost(kind, awakened) };
   let extra: Partial<Player> = { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0 };
   if (kind === 'kick' || kind === 'kiko') {
     const range = kind === 'kick' ? BR.BRAWLER_KICK_RANGE : BR.BRAWLER_KIKO_RANGE;
@@ -9866,7 +9866,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!isBrawlerGuardingAt(s, t)) { brawlerSfx('ui-deny', 0.5, 0.72, 160); setBrawler(set, { ...s, denyAt: Date.now() }); }
       return false;
     }
-    if (!BR.brawlerCanPay(s, kind)) {
+    // 血の覚醒中は技ポイントを無視して使い放題(社長指示2026-11-08・値段0=減らさない)。
+    const awakened = isBloodAwakening(p, t);
+    if (!BR.brawlerCanPay(s, kind, awakened)) {
       // ポイント不足: 何も出さない(HUD の数字が震えて一瞬沈み、鈍い音=社長決定 #8・クリエイティブ監査 #18)。
       brawlerSfx('ui-deny', 0.55, 0.72, 160);
       setBrawler(set, { ...s, denyAt: Date.now() });
@@ -9876,13 +9878,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★構えの延長(社長指示2026-11-07・§9-41): 3ポイント払って終わる時刻を「今+1秒」に引き直す。窓・無敵・打ち返し・レーザーの盾も
       // 同じ終わる時刻まで切れ目なく続く(どれも構えの終わり guardUntil を読む)。溜め・暗転は出さない。体の光と影を一度脈打たせ、短い音。
       const now = Date.now();
-      const s1 = { ...BR.brawlerExtendGuard(s, t, now), points: s.points - BR.BRAWLER_TECHS.guard.cost };
+      const s1 = { ...BR.brawlerExtendGuard(s, t, now), points: s.points - BR.brawlerTechCost('guard', awakened) };
       setBrawler(set, s1, { counterWindowStart: Math.min(p.counterWindowStart, now), counterWindowEnd: now + BR.BRAWLER_GUARD_MS });
       brawlerSfx('heavy-impact', 0.22, 1.35, 260);
       brawlerSfx('homing-fire', 0.2, 0.62, 260);
       return true;
     }
-    startBrawlerTech(get, set, s, kind);
+    startBrawlerTech(get, set, s, kind, awakened);
     return true;
   },
   tickBrawler: () => {

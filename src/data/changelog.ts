@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5399', items: [
+    '血の覚醒の間は、格闘の技が技ポイントなしで出し放題',
+  ] },
   { version: '0.25.5398', items: [
     'はじめて遊ぶ時、スマホでも音ありで始まる',
   ] },

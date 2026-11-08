@@ -293,7 +293,9 @@ export const brawlerOnHurt = (s: BrawlerState): BrawlerState => ({
 });
 
 /** 技ポイントを払えるか。 */
-export const brawlerCanPay = (s: BrawlerState, kind: BrawlerTechKind): boolean => s.points >= BRAWLER_TECHS[kind].cost;
+/** 技の値段。血の覚醒中は0=技ポイントを無視して使い放題(社長指示2026-11-08「覚醒中は技ポイント無視して使い放題」)。 */
+export const brawlerTechCost = (kind: BrawlerTechKind, awakened = false): number => (awakened ? 0 : BRAWLER_TECHS[kind].cost);
+export const brawlerCanPay = (s: BrawlerState, kind: BrawlerTechKind, awakened = false): boolean => s.points >= brawlerTechCost(kind, awakened);
 
 /** 技を今出せるか(払える以外の条件)。構えは途中で解除できない・技の最中は出さない(飛び蹴りの連続は着いた後だけ)。 */
 export const brawlerTechAllowed = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { brawlerPointCap, BRAWLER_TECHS } from '../utils/brawler';
+import { isBloodAwakening } from '../utils/bloodAwaken';
 
 // ★サブウェポン「格闘」の技ポイント(research/BRAWLER.md §2-5)。近接枠の右下に `7/10` の形(銃の弾数と同じ位置・同じ書式)。
 // 購読は数値だけ(ポイント・上限・出なかった時刻)=毎フレーム描き直さない(CLAUDE.md の再描画の規律・§8-2)。
@@ -20,9 +21,11 @@ const BrawlerPointsBadge: React.FC = () => {
   const cap = useGameStore(s => brawlerPointCap(s.player.subWeaponLevels['brawler'] ?? 1));
   const denyAt = useGameStore(s => s.player.brawler?.denyAt ?? 0);
   const gainAt = useGameStore(s => s.player.brawler?.gainAt ?? 0);
+  // 血の覚醒中は技ポイントを使わない=数字の代わりに「∞」を最上段の色で出す(社長指示2026-11-08「覚醒中は技ポイント無視して使い放題」)。購読は真偽値だけ。
+  const awakened = useGameStore(s => isBloodAwakening(s.player, s.gameTime));
   const points = Math.min(rawPoints, cap); // 上限を超えて出さない
   const T = BRAWLER_TECHS;
-  const tier = points >= T.stomp.cost ? 4 : points >= T.guard.cost ? 3 : points >= T.kiko.cost ? 2 : points >= T.kick.cost ? 1 : 0;
+  const tier = awakened ? 4 : points >= T.stomp.cost ? 4 : points >= T.guard.cost ? 3 : points >= T.kiko.cost ? 2 : points >= T.kick.cost ? 1 : 0;
   const st = TIER_STYLE[tier];
   // 新しい方の合図だけを流す(key が変わると animation が頭から再生される)。
   const anim = denyAt >= gainAt
@@ -39,7 +42,7 @@ const BrawlerPointsBadge: React.FC = () => {
         animation: anim,
       }}
     >
-      {points}<span className="text-[9px] text-white/50">/{cap}</span>
+      {awakened ? '∞' : <>{points}<span className="text-[9px] text-white/50">/{cap}</span></>}
     </span>
   );
 };

@@ -716,3 +716,19 @@ describe('構えのカウンター成立で技ポイントを全回復(社長指
     expect(p.brawler!.points).toBe(brawlerPointCap(1)); // setup は Lv1
   });
 });
+
+describe('血の覚醒中は技ポイントを無視して使い放題(社長指示2026-11-08)', () => {
+  it('ポイント0でも技が出て、ポイントは減らない', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, bloodAwakenUntil: st.gameTime + 10000, brawler: { ...st.player.brawler!, points: 0 } } }));
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true); // 下=大踏み潰し(本来5ポイント)
+    expect(useGameStore.getState().player.brawler!.points).toBe(0);
+  });
+  it('覚醒していなければ、ポイント0では出ない', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, bloodAwakenUntil: 0, brawler: { ...st.player.brawler!, points: 0 } } }));
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false);
+  });
+});
