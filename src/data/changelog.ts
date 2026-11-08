@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5392', items: [
+    '格闘の構えで受けた時も、ボムカウンターが炸裂する',
+  ] },
   { version: '0.25.5391', items: [
     '警察署でスキルを得た時、頭上に出る文字がスキル名だけに',
   ] },
