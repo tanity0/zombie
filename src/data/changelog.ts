@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5405', items: [
+    '格闘の技を出している最中に次の技をはじいておくと、終わった瞬間に出る',
+    '秘奥義は、最初の飛び蹴りが敵に当たった時だけ数え始める',
+  ] },
   { version: '0.25.5404', items: [
     '格闘で殴っても、寄ってくる敵が止まらなかったのを直した',
     '格闘では強い敵も普通の敵と同じようにひるみ、浮き、吹き飛ぶ',
