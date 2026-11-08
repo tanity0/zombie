@@ -237,6 +237,11 @@ export const brawlerAfterAmmoPickup = (s: BrawlerState, cap: number, now: number
   return next === s.points ? s : { ...s, points: next, gainAt: now };
 };
 
+/** 構えのカウンターが成立した時の技ポイント=上限まで全回復(社長指示2026-11-08「格闘のカウンターが成立すると格闘ポイントを全回復する」)。
+ *  増えた時だけ gainAt を打つ(既に上限なら状態は同じ物を返す)。 */
+export const brawlerAfterGuardCounter = (s: BrawlerState, cap: number, now: number): BrawlerState =>
+  s.points >= cap ? s : { ...s, points: cap, gainAt: now };
+
 /** 判定を解いた後の状態(当たった/外れた)。当たった時はポイントと止めも足す。 */
 export const brawlerAfterResolve = (
   s: BrawlerState, t: number, hits: number, opts: { pointCap: number; countPoint: boolean; hitstopMs: number },

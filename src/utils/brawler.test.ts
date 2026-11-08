@@ -3,7 +3,7 @@ import { RHYTHM_FLICK_FIRE_DIST, RHYTHM_FLICK_FIRE_SPEED, RHYTHM_FLICK_FIRE_WIND
 import { describe, expect, it } from 'vitest';
 import type { Enemy } from '../types/game';
 import {
-  BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS,
+  BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS, brawlerAfterGuardCounter,
   brawlerPalmDashDue, isBrawlerPalmDashing, brawlerKickFlightMs, BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, BRAWLER_STAND_STAGE2_KIND, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
   brawlerStartAttack, brawlerStartTech, brawlerPressDecision, brawlerAfterResolve, brawlerDueEvent, brawlerFinish,
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
@@ -40,6 +40,12 @@ describe('格闘: 表', () => {
     const s1 = brawlerAfterAmmoPickup(s0, 5, 123);
     expect([s1.points, s1.gainAt]).toEqual([5, 123]);
     expect(brawlerAfterAmmoPickup(s1, 5, 999)).toBe(s1);
+  });
+  it('構えのカウンター成立で技ポイントを上限まで全回復(社長指示2026-11-08)・上限なら同じ状態を返す', () => {
+    const s0 = { ...initialBrawlerState(), points: 0 };
+    const s1 = brawlerAfterGuardCounter(s0, 20, 77);
+    expect([s1.points, s1.gainAt]).toEqual([20, 77]);
+    expect(brawlerAfterGuardCounter(s1, 20, 999)).toBe(s1);
   });
 });
 

@@ -1,5 +1,9 @@
 # Development Log
 
+## v0.25.5397 — 格闘: 構えのカウンター成立で技ポイント全回復(社長指示)【2026-11-08 14:52 JST】
+- 社長指示「格闘のカウンターが成立すると格闘ポイントを全回復する」: `brawlerGuardReceive` の成立の回(140ms 間引きの外=lastCounterSuccessTime を書く回)で、技ポイントをレベルの上限へ(`brawlerAfterGuardCounter`)。設計書 §9-45。
+- 検証: typecheck・eslint(エラー0)・格闘のテスト88件通過(純関数1件+ストア1件を追加)。
+
 ## v0.25.5396 — 音の窓口(全音声要素を WebAudio に通す=マナーモードで全部黙る)・どの画面でも押せるミュートボタン【2026-11-08 12:21 JST】
 - (C) 訂正: v0.25.5395 の「ensureBgm より前にオープニングが鳴るので ambient が間に合っていない」は誤りだった。調査担当の洗い出しで、OK のタップ時点で既に ensureBgm(=ambient)が走っていたと判明。真の原因(推測)は「ambient でも WebAudio に通さない音声要素は消音スイッチを無視する」。v0.25.5395 の起動時の ambient 固定は保険として残す。
 - 修正(社長「はい」): `audioManager.ts` に窓口 `createAudioElement(src, {route})`/`releaseAudioElement`(要素→createMediaElementSource→要素ごとのGain→destination。`el.volume` はつまみへ付け替え=値は全部同じ)。オープニング(心拍・パン!・ホラー声・アリーナ・廊下BGM)・エンディング・深層の逆再生版・PEAK重ね・廊下ラジオを置き換え。コンテキスト停止中は素で鳴らし running でつなぐ(無音化を避ける)。OK/はじめるのタップで resume。ESLint `no-restricted-syntax` で窓口以外の `new Audio(` を禁止。`holdPlaybackSession` の 'playback' は亡霊戦の解除で 'ambient' に戻す。

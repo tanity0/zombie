@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5397', items: [
+    '格闘の構えで攻撃を受け止めると、技ポイントが満タンまで戻る',
+  ] },
   { version: '0.25.5396', items: [
     'マナーモードの時は、オープニングもエンディングも含めて全部の音が鳴らない',
     'オープニングから先のどの画面でも、隅のボタンひとつで音を消せる',

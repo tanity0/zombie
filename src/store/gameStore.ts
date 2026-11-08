@@ -9950,7 +9950,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (now - s.guardHitAt < 140) { setBrawler(set, next); return; } // 光線などで毎フレーム来る受けは絵と音を間引く
     // ★成立の記録(lastCounterSuccessTime)も通常のカウンターと同じく書く(社長承認2026-11-07・§9-42)。ループのエッジ検出が
     // 金の輪・ボムカウンター(とボマーの子爆弾)を出し、決めポーズの膨らみ・速度線・守護霊の記録(カウンター直後の窓)も同じ記録を読む。
-    setBrawler(set, { ...next, guardHitAt: now }, { lastCounterSuccessTime: now });
+    // ★カウンター成立で技ポイントを上限まで全回復(社長指示2026-11-08)。HUD の数字は gainAt で一瞬明るく跳ねる。
+    setBrawler(set, { ...BR.brawlerAfterGuardCounter(next, BR.brawlerPointCap(brawlerLevel(p)), now), guardHitAt: now }, { lastCounterSuccessTime: now });
     // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
     // 画面全体は止めない・スローも使わない(カウンターの絵の時間停止は撤回済み+サブウェポンのスロー禁則)。揺れと小さな寄りで受ける。
     get().triggerShake(COUNTER_SHAKE_MS + 80, COUNTER_SHAKE_MAG * 1.4, c.x - x, c.y - y);

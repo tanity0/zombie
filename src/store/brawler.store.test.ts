@@ -6,7 +6,7 @@ import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTi
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
-import { BRAWLER_GUARD_MS } from '../utils/brawler';
+import { BRAWLER_GUARD_MS, brawlerPointCap } from '../utils/brawler';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { treesInRegion, trunkRect } from '../world/trees';
 
@@ -702,3 +702,17 @@ describe('構えで受けた時もカウンター成立の記録を書く(社長
   });
 });
 
+describe('構えのカウンター成立で技ポイントを全回復(社長指示2026-11-08)', () => {
+  it('構え(3ポイント)で受けると、技ポイントがレベルの上限まで戻る', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, brawler: { ...st.player.brawler!, points: 3 } } }));
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    expect(useGameStore.getState().player.brawler!.points).toBe(0);
+    advance(20);
+    const c = center();
+    useGameStore.getState().brawlerGuardReceive(c.x + 30, c.y);
+    const p = useGameStore.getState().player;
+    expect(p.brawler!.points).toBe(brawlerPointCap(1)); // setup は Lv1
+  });
+});
