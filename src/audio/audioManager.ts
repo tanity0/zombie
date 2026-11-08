@@ -1006,26 +1006,36 @@ const resumeSfxContext = () => {
 // - 音を出さない解錠・先読み専用の要素は `{ route: false }`(通さない・つまみも付けない)。本編の曲(bgm)も
 //   ensureBgmRouting が自分で通すので `{ route: false }` で作る。
 // - `?bgmroute=off`(素再生の確認モード)では通さない(今までどおりの素再生)。
-type ManagedAudio = { level: number; source: MediaElementAudioSourceNode | null; gain: GainNode | null; failed: boolean };
+// - ★ミュート(音なし)にも従う(社長指示2026-11-08「ミュートボタンオープニングから押せるようにしといて」): ミュート中はつまみを0にし、
+//   要素も消音にする(呼び手が書く muted は覚えておき、ミュートを解いた時に戻す)。鳴っている位置は止めない=解けば続きから聞こえる。
+type ManagedAudio = { level: number; userMuted: boolean; source: MediaElementAudioSourceNode | null; gain: GainNode | null; failed: boolean };
 const managedAudio = new Map<HTMLAudioElement, ManagedAudio>();
 const mediaVolumeDesc = typeof HTMLMediaElement !== 'undefined'
   ? Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'volume') : undefined;
 const mediaPlay = typeof HTMLMediaElement !== 'undefined' ? HTMLMediaElement.prototype.play : undefined;
+const mediaMutedDesc = typeof HTMLMediaElement !== 'undefined'
+  ? Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'muted') : undefined;
 const setRawVolume = (el: HTMLAudioElement, v: number) => { try { mediaVolumeDesc?.set?.call(el, v); } catch { /* ignore */ } };
+/** 要素の実際の消音・つまみを、呼び手の値とミュート(音なし)から書き直す。 */
+const syncManagedAudio = (el: HTMLAudioElement, st: ManagedAudio) => {
+  try { mediaMutedDesc?.set?.call(el, st.userMuted || muted); } catch { /* ignore */ }
+  if (st.gain) st.gain.gain.value = muted ? 0 : st.level;
+  else setRawVolume(el, st.level); // まだ通していない間は要素の音量(=今までどおり)
+};
 const routeAudioElement = (el: HTMLAudioElement) => {
   const st = managedAudio.get(el);
-  if (!st || st.source || st.failed) return;
+  if (!st || st.source || st.failed || !BGM_USE_WEBAUDIO_ROUTING) return;
   const ctx = ensureSfxContext();
   if (!ctx) return;
   if (!canRouteElementNow(BGM_USE_WEBAUDIO_ROUTING, ctx.state)) { resumeSfxContext(); return; } // 動き出したら statechange で通す
   try {
     const source = ctx.createMediaElementSource(el);
     const gain = ctx.createGain();
-    gain.gain.value = st.level;
     source.connect(gain);
     gain.connect(ctx.destination);
     st.source = source; st.gain = gain;
     setRawVolume(el, 1); // 実際の音量はつまみ(要素の音量は 1 に固定)
+    syncManagedAudio(el, st);
   } catch {
     st.failed = true; // 通せない端末は素のまま(要素の音量で鳴る=今までどおり)
   }
@@ -1036,18 +1046,20 @@ const routePendingAudioElements = () => { for (const el of managedAudio.keys()) 
 export const createAudioElement = (src?: string, opts: { route?: boolean } = {}): HTMLAudioElement => {
   // eslint-disable-next-line no-restricted-syntax -- ここが窓口
   const el = new Audio(src);
-  if (opts.route === false || !BGM_USE_WEBAUDIO_ROUTING || !mediaVolumeDesc?.get || !mediaVolumeDesc.set || !mediaPlay) return el;
-  const st: ManagedAudio = { level: 1, source: null, gain: null, failed: false };
+  if (opts.route === false || !mediaVolumeDesc?.get || !mediaVolumeDesc.set || !mediaMutedDesc?.set || !mediaPlay) return el;
+  const st: ManagedAudio = { level: 1, userMuted: false, source: null, gain: null, failed: false };
   managedAudio.set(el, st);
   Object.defineProperty(el, 'volume', {
     configurable: true,
     get: () => st.level,
-    set: (v: number) => {
-      st.level = clampElementLevel(v, st.level);
-      if (st.gain) st.gain.gain.value = st.level;
-      else setRawVolume(el, st.level); // まだ通していない間は要素の音量(=今までどおり)
-    },
+    set: (v: number) => { st.level = clampElementLevel(v, st.level); syncManagedAudio(el, st); },
   });
+  Object.defineProperty(el, 'muted', {
+    configurable: true,
+    get: () => st.userMuted,
+    set: (v: boolean) => { st.userMuted = !!v; syncManagedAudio(el, st); },
+  });
+  syncManagedAudio(el, st);
   el.play = () => { routeAudioElement(el); return mediaPlay.call(el); };
   routeAudioElement(el);
   return el;
@@ -1066,7 +1078,7 @@ export const getManagedAudioDebug = () => ({
   ctx: sfxContext?.state ?? null,
   els: Array.from(managedAudio.entries()).map(([el, st]) => ({
     src: (el.currentSrc || el.src).split('/').pop() ?? '',
-    paused: el.paused, muted: el.muted, ct: +el.currentTime.toFixed(2), loop: el.loop,
+    paused: el.paused, muted: el.muted, rawMuted: mediaMutedDesc?.get ? !!mediaMutedDesc.get.call(el) : null, ct: +el.currentTime.toFixed(2), loop: el.loop,
     level: +st.level.toFixed(3), routed: !!st.source, gain: st.gain ? +st.gain.gain.value.toFixed(3) : null,
     rawVolume: mediaVolumeDesc?.get ? +(mediaVolumeDesc.get.call(el) as number).toFixed(3) : null, failed: st.failed,
   })),
@@ -1405,14 +1417,24 @@ export const getBgmVolume = () => bgmVolume;
 
 export const getSfxVolume = () => sfxVolume;
 
+/** 「音なし」が変わった時に呼ぶ(ミュートのボタン・オプションの「音なし」が同じ値を見続けるため)。 */
+const mutedListeners = new Set<() => void>();
+export const subscribeAudioMuted = (fn: () => void): (() => void) => {
+  mutedListeners.add(fn);
+  return () => { mutedListeners.delete(fn); };
+};
 export const setAudioMuted = (nextMuted: boolean) => {
+  const changed = muted !== nextMuted;
   muted = nextMuted;
   persistMuted();
+  managedAudio.forEach((st, el) => syncManagedAudio(el, st)); // 窓口で作った要素(オープニング・エンディング等)も即座に黙る/戻る
+  applyEndingAudio();
   if (muted) stopBtKeepAlive();       // ★v0.25.3731: ミュート中はBTキープアライブも停止(車側も停止扱いへ)
   else { warmSfxBuffers(); startBtKeepAlive(); }
   applyBgm();
   applyDanceAudio();
   applyRadioLayerAudio(); // ラジオ層(ステージ2クロスフェード)もmute設定に即追従
+  if (changed) mutedListeners.forEach(fn => { try { fn(); } catch { /* ignore */ } });
 };
 
 // ---- エンディングBGM(社長支給 2026-08-20・public/audio/ending.mp3) --------------------------
@@ -1421,17 +1443,25 @@ export const setAudioMuted = (nextMuted: boolean) => {
 // シーン機構(GAME_BGM)には乗せない。音量はBGMスライダー(bgmVolume)に従う。
 const ENDING_BGM_TRACK = assetUrl('audio/ending.mp3');
 let endingEl: HTMLAudioElement | null = null;
+/** エンディング画面が曲を求めているか(ミュート中に画面へ入っても、エンディング中にミュートを解けば曲が始まる)。 */
+let endingWanted = false;
+const applyEndingAudio = () => {
+  if (!endingWanted || muted) { if (endingEl && !endingEl.paused) { try { endingEl.pause(); } catch { /* ignore */ } } return; }
+  if (!endingEl) {
+    const el = createAudioElement(ENDING_BGM_TRACK);
+    el.loop = true;
+    el.volume = bgmVolume;
+    endingEl = el;
+  }
+  if (endingEl.paused) void endingEl.play().catch(() => { /* 自動再生拒否は無音のまま(エンディングはタップ操作があるので稀) */ });
+};
 export const setEndingBgm = (on: boolean) => {
+  endingWanted = on;
   if (!on) {
     if (endingEl) { try { endingEl.pause(); } catch { /* ignore */ } releaseAudioElement(endingEl); endingEl = null; }
     return;
   }
-  if (endingEl || muted) return;
-  const el = createAudioElement(ENDING_BGM_TRACK);
-  el.loop = true;
-  el.volume = bgmVolume;
-  endingEl = el;
-  void el.play().catch(() => { /* 自動再生拒否は無音のまま(エンディングはタップ操作があるので稀) */ });
+  applyEndingAudio();
 };
 
 export const setBgmVolume = (volume: number) => {

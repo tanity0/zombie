@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { keyIdOf } from '../hooks/useGameControls';
 import { playSfx } from '../audio/audioManager';
 import { Ff7rButton } from './ff7r';
+import MuteButton from './MuteButton';
 import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { CHARACTER_CLASSES, SKILLS, skillDescForLevel } from '../data/campaign';
 import { subWeaponBlurb } from '../data/subWeaponBlurbs';
@@ -124,6 +125,10 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
       onTouchMove={preventTouchEvent}
       onTouchEnd={preventTouchEvent}
     >
+      {/* 音を消す/戻すボタン(社長指示2026-11-08)。ゲーム中の HUD には常駐させず、一時停止の右上の隅に置く。 */}
+      <div className="pointer-events-none absolute z-10" style={{ top: 'max(env(safe-area-inset-top), 6px)', right: 'max(env(safe-area-inset-right), 6px)' }}>
+        <MuteButton />
+      </div>
       {/* PC の横長(research/PC_SUPPORT.md 段3): 全面のまま、左にボタンの帯を寄せ、右の戦況は幅を絞る(全幅に間延びさせない・
           中央のカードの汎用ダイアログにもしない=クリエイティブ監査 #5)。縦持ちは従来どおり。 */}
       <div className="glass-panel command-panel rounded-none w-full h-full overflow-hidden flex flex-col justify-center landscape:pl-16">

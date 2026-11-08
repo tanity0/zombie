@@ -4,7 +4,7 @@ import { COMMAND_UI_ENABLED } from './config/uiDesign';
 import { HudScale, HudScaleProvider } from './components/HudScale';
 import { hudScaleFor } from './utils/viewport';
 import './components/commandTheme.css';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import Game from './components/Game';
 import MissionSelect from './components/MissionSelect';
 import TitleScreen from './components/TitleScreen';
@@ -15,6 +15,7 @@ import ExEndingScreen from './components/ExEndingScreen';
 import LoadingScreen from './components/LoadingScreen';
 import OrientationGuard from './components/OrientationGuard';
 import OpeningScene from './components/OpeningScene';
+import MuteButton from './components/MuteButton';
 import MansionCorridorPreview from './components/MansionCorridorPreview';
 import { getLoadProgressWindow, subscribeLoadProgress, loadProgressResetWindow, getLoadProgress, getLoadInFlight } from './utils/loadProgress';
 import { installTestBridge, reportTestScreen, type TestScreenId } from './utils/testBridge';
@@ -55,6 +56,11 @@ const LOADING_MIN_MS = 650;
  * 判定の実体は utils/gauntletMode.ts の1本(store 側の計測路中立化も同じ述語を読む)。
  */
 const GAUNTLET_MODE = isGauntletRun();
+// 音のボタンの隅(安全域=ノッチの内側)。
+const MUTE_TOP_RIGHT: CSSProperties = { top: 'max(env(safe-area-inset-top), 6px)', right: 'max(env(safe-area-inset-right), 6px)' };
+// タイトルは左下(右上=版数・右下=NEWS)。更新情報の枠の左の縦線に掛からないよう、少し内側へ。
+// 横長(PC)は左下にキー操作の案内が出るので左上へ(縦持ちのスマホは左下のまま)。
+const MUTE_TITLE_CLASS = 'bottom-[max(env(safe-area-inset-bottom),10px)] left-[max(env(safe-area-inset-left),20px)] landscape:bottom-auto landscape:top-[max(env(safe-area-inset-top),6px)] landscape:left-[max(env(safe-area-inset-left),6px)]';
 
 // 出撃ローディングのオーバーレイ(v0.25.1827・社長指示「出撃ローディングにも%表示」)。
 // PixiStage初期化のウィンドウ進捗(loadProgressResetWindow基準)を購読して%を出す。
@@ -637,6 +643,12 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
     setGameState('gameOver');
   }, []);
 
+  // 音のボタンの置き場(画面ごとの空いている隅)。null=この画面では App が置かない。
+  const muteSpot: CSSProperties | null = showOpening ? MUTE_TOP_RIGHT
+    : gameState === 'title' ? {}
+      : gameState === 'ending' || gameState === 'exEnding' || (endingOverlay && gameState === 'playing') || onResultScreen ? MUTE_TOP_RIGHT
+        : null;
+
   return (
     <HudScaleProvider value={menuScale}>
     <div data-screen={appScreenId ?? undefined} className={`relative w-full h-full bg-gray-900 text-white ${COMMAND_UI_ENABLED ? 'command-ui' : ''}`}>
@@ -735,6 +747,10 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       {/* オープニングシーン(?opening=1でプレビュー)。タイトルの上に全画面。暗転し切ったら onDone で外れる。 */}
       {/* BGMはオープニング完全終了(onDone=タイトルフェードイン明け)で開始(社長指示v0.25.2067
           「BGM流れるのは蘇生シーン終わってから」=フェードイン開始と同時のBGM開始を廃止)。 */}
+      {/* 音を消す/戻すボタン(社長指示2026-11-08「ミュートボタンオープニングから押せるようにしといて」)。各画面の空いている隅に置く。
+          作戦室は MissionSelect、ゲーム中は一時停止メニューが自分で置く。 */}
+      {!bare && muteSpot && <div className={`pointer-events-none fixed z-[9995] ${!showOpening && gameState === 'title' ? MUTE_TITLE_CLASS : ''}`} style={muteSpot}><MuteButton /></div>}
+
       {!bare && showOpening && <HudScale z={9990} interactive><OpeningScene onDone={() => { setShowOpening(false); if (gameState !== 'title' || !titleIntroWanted()) setBgmScene('menu'); /* 描き上げが控えていれば、曲はタイトルの色が乗った瞬間に鳴る */ }} startAtShoot={openingParam === '2'} startAtRevival={openingParam === '3'} /></HudScale>}
 
       {/* ステージ6(洋館)通路プレビュー(?corridor=1)。タイトル等の上に全画面。 */}

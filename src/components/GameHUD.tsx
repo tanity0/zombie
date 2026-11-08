@@ -20,7 +20,8 @@ import ScanBeatMeter from './ScanBeatMeter'; // research/NEW_GUNS.md §4: スキ
 import { HitRetaliationCue } from './HitRetaliationCue'; // ★被弾反撃の知らせ(research/HIT_RETALIATION.md §5)
 import BrawlerPointsBadge from './BrawlerPointsBadge'; // サブウェポン「格闘」の技ポイント(research/BRAWLER.md §2-5)
 import type { AmmoType } from '../types/game';
-import { isAudioMuted, setAudioMuted, playSfx } from '../audio/audioManager';
+import { setAudioMuted, playSfx } from '../audio/audioManager';
+import { useAudioMuted } from '../hooks/useAudioMuted';
 import { comboMilestoneCrossed, comboMilestoneAmp } from '../utils/comboMilestone';
 import DirectorLine from './DirectorLine';
 import { getSelectedStageId } from '../data/progress';
@@ -89,7 +90,7 @@ const GameHUD: React.FC = () => {
     document.documentElement.classList.toggle('hudhint-paused', paused);
     return () => { document.documentElement.classList.remove('hudhint-paused'); };
   }, [hint, paused]);
-  const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
+  const audioMuted = useAudioMuted(); // 一時停止メニューの音のボタン・オプションの「音なし」と常に揃う
   // player 全体ではなく HUD が使うフィールドだけを shallow 購読(移動で毎フレーム再描画しないように)。
   const player = useGameStore(s => ({
     weapons: s.player.weapons,
@@ -172,7 +173,6 @@ const GameHUD: React.FC = () => {
     e?.stopPropagation();
     const next = !audioMuted;
     playSfx('ui-move'); // クリエイティブ監査第2回・第2手A-5: トグルは ui-move
-    setAudioMutedState(next);
     setAudioMuted(next);
   };
 

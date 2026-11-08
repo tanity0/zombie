@@ -106,6 +106,8 @@ const PreClearBriefing: React.FC<{ synopsis: string[]; summary: string; resetKey
 // 対応表にない名前(Ghost/Skull/ShoppingBag)は意味が近いドット絵へ読み替え(守護霊=shield、変異体対策室=
 // crosshair、開発施設=bag)——判断の根拠は最終報告に記載。
 import { PixelIcon, type PixelIconName } from './PixelIcon';
+import MuteButton from './MuteButton';
+import { useAudioMuted } from '../hooks/useAudioMuted';
 // 作戦室DS2化(UI_OVERHAUL.md §3 バッチ①): ホームの計器化+作戦地図(v0.25.5096〜 架空列島+ストーリーの軌跡=DsStoryMap。旧=等高線の飾り)。旧ホームは?dshome=0で丸ごと復帰。
 import DsStoryMap from './DsStoryMap'; // 作戦室の地図=架空列島+ストーリーの軌跡(THEONE_ROUND2 §2-5)
 import NoBounceScroller from './NoBounceScroller';
@@ -184,7 +186,7 @@ import {
   type ArchiveRecord, type StoryArchiveState,
 } from '../data/storyArchive';
 import {
-  getBgmVolume, getSfxVolume, isAudioMuted, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene, playSfx
+  getBgmVolume, getSfxVolume, setAudioMuted, setBgmVolume, setSfxVolume, setBgmScene, playSfx
 } from '../audio/audioManager';
 import BossRush from './BossRush'; // BOSS_MAKER.md §20: ボスラッシュ(練習モード)
 // research/GROWTH.md v4(永続育成「強化」): 台帳=data、価格/上限の判定=utils。効果の適用はresetGame。
@@ -877,14 +879,18 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
             </NoBounceScroller>
           </div>
           <div className="ds-foot menu-item-in landscape:!mt-0" style={{ animationDelay: '300ms' }}>
-            <button
-              type="button"
-              className="ds-foot-options"
-              aria-label="オプション"
-              onClick={() => { playSfx('ui-select'); setScreen({ name: 'options' }); }}
-            >
-              オプション
-            </button>
+            {/* 音を消す/戻すボタンはオプションの右隣(社長指示2026-11-08「ミュートボタンオープニングから押せるようにしといて」)。 */}
+            <span className="flex items-center gap-1">
+              <button
+                type="button"
+                className="ds-foot-options"
+                aria-label="オプション"
+                onClick={() => { playSfx('ui-select'); setScreen({ name: 'options' }); }}
+              >
+                オプション
+              </button>
+              <MuteButton variant="ds" />
+            </span>
             <span>SYSTEM v{__APP_VERSION__}</span>
             {/* メニュー操作の案内の置き場(キー/パッドを使っている間だけ場所を取る・components/NavPrompt) */}
             <div data-nav-prompt-slot className="nav-prompt-slot" />
@@ -2024,7 +2030,13 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
 
   // --- ルーティング ----------------------------------------------------
   // キャラ選択は全画面(立ち絵を画面いっぱい)なので Shell(中央パネル)を介さず単独描画。
-  if (screen.name === 'characterSelect') return renderCharacterSelect(screen.stageId, screen.mission ?? 'main');
+  // 音を消す/戻すボタン: ホームは下段(オプションの右隣)、それ以外の画面は右上の隅(見出しの帯の右端=空いている)。
+  const floatingMute = (screen.name === 'home' && !DS_HOME_DISABLED) ? null : (
+    <div className="pointer-events-none fixed z-[60]" style={{ top: 'max(env(safe-area-inset-top), 6px)', right: 'max(env(safe-area-inset-right), 6px)' }}>
+      <MuteButton />
+    </div>
+  );
+  if (screen.name === 'characterSelect') return <>{renderCharacterSelect(screen.stageId, screen.mission ?? 'main')}{floatingMute}</>;
   return (
     <Shell loadout={screen.name === 'loadout'} fill={screen.name === 'missionDetail'} dsHome={(!DS_HOME_DISABLED && screen.name === 'home') || (DS_LOADOUT_PREVIEW && screen.name === 'loadout')} testScreen={testScreenIdFor(screen.name)}
       navScreen={NAV_DECLARED_SCREENS.has(screen.name) ? screen.name : undefined}>
@@ -2038,6 +2050,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
       {screen.name === 'archive' && renderArchive()}
       {screen.name === 'ghost' && renderGhost()}
       {screen.name === 'bossRush' && renderBossRush()}
+      {floatingMute}
     </Shell>
   );
 };
@@ -2109,7 +2122,7 @@ const VolumeSteps: React.FC<{ icon: PixelIconName; label: string; value: number;
 };
 
 const AudioSettings: React.FC = () => {
-  const [audioMuted, setAudioMutedState] = useState(isAudioMuted);
+  const audioMuted = useAudioMuted(); // 音のボタン(右上)と常に揃う
   const [bgmVol, setBgmVol] = useState(getBgmVolume);
   const [sfxVol, setSfxVol] = useState(getSfxVolume);
   return (
@@ -2126,7 +2139,7 @@ const AudioSettings: React.FC = () => {
         <span className="flex gap-1">
           {([true, false] as const).map(v => (
             <button key={String(v)} type="button" aria-pressed={audioMuted === v}
-              onClick={() => { if (v === audioMuted) return; playSfx('ui-move'); setAudioMutedState(v); setAudioMuted(v); }}
+              onClick={() => { if (v === audioMuted) return; playSfx('ui-move'); setAudioMuted(v); }}
               className={`rounded-none px-3 py-1 text-[11px] font-semibold ${audioMuted === v ? 'ui-acc-tag' : 'ui-dim-bg text-white/50'}`}>{v ? 'ON' : 'OFF'}</button>
           ))}
         </span>
