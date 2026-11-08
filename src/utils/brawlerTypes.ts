@@ -90,5 +90,11 @@ export interface BrawlerState {
    * 新しい入力で上書き。出せるようになった瞬間(当たった技のキャンセル・前の技の終わり)に出す。被弾・掴み・紫・シーカー・死亡で捨てる。
    */
   techBuffer?: BrawlerTechKind;
+  /** ジャスト構えで受けた時刻(Date.now・research/BRAWLER.md §12-2)。 */
+  justAt?: number;
+  /** ステップ(§12-3)の終わり(gameTime)。この間は次のステップを出さない。 */
+  stepUntil?: number;
+  /** ステップを出した時刻(Date.now・絵の合図)。 */
+  stepAt?: number;
 }
 

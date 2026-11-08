@@ -206,7 +206,7 @@ export interface Player extends DashLocomotionState {
    * ★踏み込みの器の形(research/BRAWLER.md §8-2)。未指定/'decel'=従来(初速最大→線形に0)。
    * 'accel'=加速して最大速度のまま当たる(格闘のダッシュ・跳び・飛び蹴り)。
    */
-  lungeShape?: 'decel' | 'accel';
+  lungeShape?: 'decel' | 'accel' | 'step'; // step=格闘のステップ(加速→減速・research/BRAWLER.md §12-3)
   /** ★格闘のヒットストップの間は踏み込みの器の時計を止める(Date.now・この時刻まで速度0で期限を後ろへずらす)。 */
   lungeHoldUntil?: number;
   /** ★サブウェポン「格闘」の状態(research/BRAWLER.md §5)。格闘を持たない時は未設定のまま。 */
@@ -800,6 +800,13 @@ export interface Enemy {
   brRevengePending?: boolean;
   brNoHoldUntil?: number;
   brRevengeAt?: number;
+  /** ★格闘の浮かせ追撃(research/BRAWLER.md §12-1・utils/brawlerCombo の BrawlerJuggleFields)。時計は Date.now。絵だけの高さ(判定は地面のまま)。 */
+  brLiftMs?: number;
+  brLiftPeak?: number;
+  brLiftFrom?: number;
+  brLiftN?: number;
+  brLiftUntil?: number;
+  brLiftLand?: boolean;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
   // a short grace period before they become eligible for culling so big
   // set-piece hordes aren't deleted the instant they appear.

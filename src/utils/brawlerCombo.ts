@@ -6,6 +6,7 @@ import type { EnemyType } from '../types/game';
 import { isBossType } from './enemyUtils';
 import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { meteorPhase } from './telegraphStyle';
+import { BRAWLER_LIFT_MS, BRAWLER_LIFT_VIS_PX, brawlerLiftHeight } from './brawler';
 
 /** 当たりが途切れたら流れ(コンボ時計・反撃の数・同じ技の記録)を0へ戻す(ms)。 */
 export const BRAWLER_COMBO_GAP_MS = 600;
@@ -90,12 +91,14 @@ export const BRAWLER_HOLDABLE_PHASES: ReadonlySet<string> = new Set([
 ]);
 /** 本当に技を出している最中か(格闘の固まり・止め・反撃の除外にだけ使う)。会心の気絶中は false(isEnemyAttacking と同じ)。 */
 export const isBrawlerTechBusy = (
-  e: { aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number },
+  e: { aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number; bossState?: string },
   gameTime: number,
 ): boolean => {
   if (e.stunUntil !== undefined && gameTime < e.stunUntil) return false;
   if (e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil) return false;
   if (e.biteAt !== undefined && e.biteAt > 0) return true;
+  // ボス(天使・裏ボス・偶像・賞金首など)は技を bossState で持つ。追いかけている(chase)・帰っている(return)以外は技の最中(§12-1 でボス級も浮くため)。
+  if (e.bossState !== undefined && e.bossState !== 'chase' && e.bossState !== 'return') return true;
   if (e.aiPhase === undefined) return e.chaffMove !== undefined;
   return !BRAWLER_HOLDABLE_PHASES.has(e.aiPhase);
 };
@@ -202,4 +205,87 @@ export const brawlerRevengeTelegraph = (
   const prog = Math.max(0, Math.min(1, (gameTime - startAt) / total));
   const { p, er } = meteorPhase(prog, BRAWLER_REVENGE_DRAW_FRAC);
   return { visible: gameTime >= startAt && gameTime < hitAt, prog, p, er };
+};
+
+// ---------------------------------------------------------------------------------------------
+// 浮かせ追撃(research/BRAWLER.md §12-1・社長指示2026-11-08「浮いてる間は敵は動けない ただし、段々重くなる 雑魚は軽い 強個体は少し重い ボスは重い」)
+// ---------------------------------------------------------------------------------------------
+/** 押し上げるたびに浮く高さと時間に掛ける減り(n 回目は DECAY^n)。 */
+export const BRAWLER_JUGGLE_DECAY = 0.75;
+/** 重さ(区分): 浮く高さ・時間に掛ける。 */
+export const BRAWLER_JUGGLE_WEIGHT: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 1.0, strong: 0.7, boss: 0.4 };
+/**
+ * 当たった段・技ごとの押し上げ量(4段目=1)。1・2段目・気功=小、3段目・飛び蹴り1・2発目=中。
+ * 0 = 押し上げない(5段目・飛び蹴り3発目・大踏み潰し・秘奥義の締め=空中からも吹き飛ばす)。
+ */
+export const BRAWLER_JUGGLE_PUSH: Readonly<Record<BrawlerMoveKey, number>> = {
+  s1: 0.5, s2: 0.5, s3: 0.75, s4: 1, s5: 0,
+  kick1: 0.75, kick2: 0.75, kick3: 0,
+  stomp: 0, kiko: 0.5, secret: 0.75, 'secret-land': 0,
+};
+/** これより軽い押し上げはもう浮かない(=落ちる)。いずれ必ず落ちる=永久には浮かせられない。 */
+export const BRAWLER_JUGGLE_MIN_F = 0.12;
+/** 1回の押し上げの浮く時間の下限(ms・短すぎる跳ねは絵がちらつく)。 */
+export const BRAWLER_JUGGLE_MIN_MS = 140;
+/** 空中から吹き飛ばされた時に地面へ落ちる時間(ms)。 */
+export const BRAWLER_JUGGLE_DROP_MS = 200;
+
+/** 敵の浮きの欄(store の Enemy のうち、ここが読み書きする所だけ)。時計は Date.now。 */
+export interface BrawlerJuggleFields {
+  /** いまの弧の始まり(絵)。 */
+  brawlerLiftAt?: number;
+  /** いまの弧の長さ(ms)・頂点の高さ(基準の高さ BRAWLER_LIFT_VIS_PX に対する倍率)・始まりの高さ(同じ倍率)。 */
+  brLiftMs?: number;
+  brLiftPeak?: number;
+  brLiftFrom?: number;
+  /** この浮きの中で押し上げた回数(0=最初の浮き)。 */
+  brLiftN?: number;
+  /** 浮きの終わり(=動けない間の終わり。liftUntil にも同じ値を書く=全ての敵の制御が「持ち上げ」として止まる)。 */
+  brLiftUntil?: number;
+  /** 着地の砂埃をまだ出していない(絵の弧が終わった瞬間に store が出して消す)。 */
+  brLiftLand?: boolean;
+}
+/** 絵の弧が地面に着いたか(砂埃を出す時刻)。 */
+export const brawlerJuggleLanded = (e: BrawlerJuggleFields, now: number): boolean =>
+  e.brLiftLand === true && e.brawlerLiftAt !== undefined && now >= e.brawlerLiftAt + (e.brLiftMs ?? BRAWLER_LIFT_MS);
+
+/** いま浮いているか。 */
+export const brawlerAirborne = (e: Pick<BrawlerJuggleFields, 'brLiftUntil'>, now: number): boolean =>
+  e.brLiftUntil !== undefined && now < e.brLiftUntil;
+
+/** いまの浮いた高さ(基準の高さに対する倍率・絵だけ)。弧の頭は始まりの高さから続き、頂点を越えて地面(0)で終わる。 */
+export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): number => {
+  if (e.brawlerLiftAt === undefined) return 0;
+  const ms = e.brLiftMs ?? BRAWLER_LIFT_MS;
+  const u = (now - e.brawlerLiftAt) / Math.max(1, ms);
+  if (u <= 0 || u >= 1) return u <= 0 ? (e.brLiftFrom ?? 0) : 0;
+  const from = e.brLiftFrom ?? 0;
+  const peak = e.brLiftPeak ?? 1;
+  const fall = (1 - u) * (1 - u) * (1 + 2 * u); // 始まりの高さは滑らかに引き継いで消える(端で速さ0)
+  return from * fall + peak * (brawlerLiftHeight(u) / BRAWLER_LIFT_VIS_PX);
+};
+
+/**
+ * 格闘の当たり1回ぶんの浮き(§12-1)。cls=区分の重さ。返り値 null=浮きは変わらない。
+ *  - 地上: 4段目だけが浮かせる。空中: 押し上げのある段・技で浮きが続く(n 回目ほど軽く)。
+ *  - 空中で押し上げ0の技(吹き飛ばす技)=浮きを終えて、今の高さから地面へ落ちる(押しは別に効く)。
+ *  - 押し上げが軽すぎたら(MIN_F 未満)もう浮かない=今の弧のまま落ちる。
+ */
+export const brawlerJugglePush = (
+  e: BrawlerJuggleFields, cls: 'mob' | 'strong' | 'boss', move: BrawlerMoveKey, now: number,
+): Partial<BrawlerJuggleFields> & { liftUntil?: number } | null => {
+  const airborne = brawlerAirborne(e, now);
+  const push = BRAWLER_JUGGLE_PUSH[move];
+  if (!airborne) {
+    if (move !== 's4') return null;
+  } else if (push <= 0) {
+    const h = brawlerJuggleHeightRel(e, now);
+    return { brawlerLiftAt: now, brLiftMs: BRAWLER_JUGGLE_DROP_MS, brLiftPeak: 0, brLiftFrom: h, brLiftUntil: now, liftUntil: now, brLiftLand: true };
+  }
+  const n = airborne ? (e.brLiftN ?? 0) + 1 : 0;
+  const f = push * BRAWLER_JUGGLE_WEIGHT[cls] * Math.pow(BRAWLER_JUGGLE_DECAY, n);
+  if (f < BRAWLER_JUGGLE_MIN_F) return null;
+  const ms = Math.max(BRAWLER_JUGGLE_MIN_MS, Math.round(BRAWLER_LIFT_MS * f));
+  const from = airborne ? brawlerJuggleHeightRel(e, now) : 0;
+  return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: from, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true };
 };

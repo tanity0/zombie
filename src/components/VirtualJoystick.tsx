@@ -72,6 +72,24 @@ const VirtualJoystick: React.FC = () => {
   const lastUpAtRef = useRef(0);
   const lastWasTapRef = useRef(false);
   const maxDragRef = useRef(0);
+  // ★格闘のステップ(research/BRAWLER.md §12-3): 格闘中だけ、スティックを押さえたまま**別の指**で叩いた入力を「叩く指」として扱う
+  // (スティックは取り替えない)。叩く指の1回目は通常攻撃(指離しで出る)、素早い2回目(押した瞬間)はステップ=その指離しでは攻撃しない。
+  // 格闘以外は今どおり(2本目の指がスティックを取り替える)=スケボーの2連タップ乗車も今どおり。
+  const tapFingerRef = useRef<{ id: number; downAt: number; stepped: boolean } | null>(null);
+  const tapLastUpRef = useRef(0);
+  const tapLastWasTapRef = useRef(false);
+  const releaseTapFinger = useCallback((pointerId: number, fire: boolean): boolean => {
+    const tf = tapFingerRef.current;
+    if (!tf || tf.id !== pointerId) return false;
+    tapFingerRef.current = null;
+    if (!fire) { tapLastWasTapRef.current = false; return true; }
+    const nowT = performance.now();
+    // 1回目(ステップでない叩き)は通常攻撃を出す。ステップになった2回目の指離しでは何も出さない。
+    if (!tf.stepped && !isAttackLocked() && isBrawlerMode(useGameStore.getState().player)) useGameStore.getState().beginMeleeSwing();
+    tapLastWasTapRef.current = !tf.stepped && nowT - tf.downAt < SKATER_TAP_MAX_MS;
+    tapLastUpRef.current = nowT;
+    return true;
+  }, []);
 
   // 指離し直前の短い窓だけを見るフリック判定。通常のジョイスティック
   // ドラッグは低速・小移動なのでしきい値に届かず、一閃は暴発しない。
@@ -226,6 +244,22 @@ const VirtualJoystick: React.FC = () => {
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // 操作不可(ヘリ登場/セリフ/一時停止/死亡)中は移動・向き・攻撃を一切受け付けない(社長指示)。
     if (isInputLocked()) return;
+    // ★格闘: スティックを押さえている間の2本目の指=叩く指(スティックは取り替えない・§12-3)。
+    if (pointerIdRef.current !== null && pointerIdRef.current !== e.pointerId && tapFingerRef.current === null
+      && isBrawlerMode(useGameStore.getState().player)) {
+      const nowT = performance.now();
+      let stepped = false;
+      if (tapLastWasTapRef.current && nowT - tapLastUpRef.current <= SKATER_DOUBLETAP_MS && !isAttackLocked()) {
+        // 素早い2回目=ステップ。倒している向きへ(デッドゾーンの中なら向いている方=store が lastDirection を使う)。
+        const d = deltaRef.current;
+        const m = Math.hypot(d.x, d.y);
+        const tilted = m >= STICK_RADIUS * DEAD_ZONE;
+        stepped = useGameStore.getState().brawlerStep(tilted ? d.x / m : 0, tilted ? d.y / m : 0);
+      }
+      tapFingerRef.current = { id: e.pointerId, downAt: nowT, stepped };
+      tapLastWasTapRef.current = false;
+      return;
+    }
     if (pointerIdRef.current !== null) release(false);
     pointerIdRef.current = e.pointerId;
     setTouchActive(true);
@@ -299,14 +333,16 @@ const VirtualJoystick: React.FC = () => {
 
   const handlePointerEnd = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (releaseTapFinger(e.pointerId, e.type === 'pointerup')) return;
       if (pointerIdRef.current !== e.pointerId) return;
       release(e.type === 'pointerup');
     },
-    [release]
+    [release, releaseTapFinger]
   );
 
   useEffect(() => {
     const handleGlobalPointerEnd = (e: PointerEvent) => {
+      if (releaseTapFinger(e.pointerId, e.type === 'pointerup')) return;
       if (pointerIdRef.current !== e.pointerId) return;
       release(e.type === 'pointerup');
     };
@@ -321,7 +357,7 @@ const VirtualJoystick: React.FC = () => {
       window.removeEventListener('blur', clearWithoutCounter);
       window.removeEventListener('pagehide', clearWithoutCounter);
     };
-  }, [release]);
+  }, [release, releaseTapFinger]);
 
   // Safety: clear movement state if the component unmounts mid-touch
   useEffect(() => {

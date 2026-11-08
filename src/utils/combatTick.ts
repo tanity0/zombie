@@ -72,6 +72,7 @@ import {
   counterMasterAwakenBuffPatch, // v0.25.3303 カウンターマスター覚醒(成立後3秒+30%)
   playerPvpChipPatch, // ★SAME_ARENA §9(対人体勢): 幻影の弾クリ/弾パリィ返しの被弾でプレイヤー体勢を削る
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
+  brawlerJustStunMult, // 格闘のジャスト構え=カウンターの気絶2倍(research/BRAWLER.md §12-2)
 } from '../store/gameStore';
 import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_ARENA §9: クリ被弾の2/3減速+紫中の弾パリィ停止
 // v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
@@ -704,7 +705,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       recordCritHit('guaranteed', boss); // §7-11c(4): カウンター反撃(確定クリ)
       if (parryKilled) rewardCounterKill(fx, e);
       if (!parryKilled && !boss) {
-        const stunMs = STUN_DURATION_MS * (bp.stunDurationMult ?? 1);
+        const stunMs = STUN_DURATION_MS * (bp.stunDurationMult ?? 1) * brawlerJustStunMult(Date.now()); // ジャスト構えなら2倍(§12-2)
         useGameStore.getState().stunEnemy(hit.id, useGameStore.getState().gameTime + stunMs);
       }
       if (dmg > 0) fx.spawnDamageNumber(ex, e.y, dmg, true); // 0ダメージの「0」は出さない(刃のパリィ)
@@ -2208,7 +2209,7 @@ export const applyContactDamage = (
       if (dashParryKilled) rewardCounterKill(fx, e);
       counterKill = dashParryKilled || counterKill;
       if (!dashParryKilled && !boss) {
-        const stunMs = STUN_DURATION_MS * (collPlayer.stunDurationMult ?? 1);
+        const stunMs = STUN_DURATION_MS * (collPlayer.stunDurationMult ?? 1) * brawlerJustStunMult(Date.now()); // ジャスト構えなら2倍(§12-2)
         useGameStore.getState().stunEnemy(eid, useGameStore.getState().gameTime + stunMs);
       }
       fx.spawnDamageNumber(ex, e.y, dmg, true); // 金色クリ表示

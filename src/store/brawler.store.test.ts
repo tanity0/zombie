@@ -1042,11 +1042,10 @@ describe('格闘の当たりでは強個体を雑魚と同じに扱う(社長指
     }
     return out;
   };
-  it('止め・浮かせ・固まりは雑魚と同じ長さ', () => {
-    const r = pair('none', { lift: true });
+  it('止め・固まりは雑魚と同じ長さ(浮きの高さ・時間は §12-1 の重さで強個体が少し重い=別のテスト)', () => {
+    const r = pair('none');
     for (const t of ['driller', 'pumpkin', 'logger']) {
       expect(r[t].hitStunUntil, t).toBe(r.zombie.hitStunUntil);
-      expect(r[t].brawlerLiftAt, t).toBe(r.zombie.brawlerLiftAt);
       expect(r[t].knockbackUntil, t).toBe(r.zombie.knockbackUntil);
       expect(r[t].brHoldUntil, t).toBe(r.zombie.brHoldUntil);
     }
@@ -1113,12 +1112,11 @@ describe('格闘の当たりでは強個体を雑魚と同じに扱う(社長指
     strike('s', 'none');
     expect(en('s').brRevengePending).toBe(true);
   });
-  it('ボス級(ハンター)は今どおり: 止まらない・浮かない・big は半分で押す・normal は押さない', () => {
+  it('ボス級(ハンター)は今どおり: 止まらない・big は半分で押す・normal は押さない(浮きは §12-1 で重く浮く=別のテスト)', () => {
     setup();
     useGameStore.setState({ enemies: [foeOf('hunter', 'h'), foeOf('zombie', 'z', -60)] });
-    strike('h', 'none', { lift: true });
+    strike('h', 'none');
     expect(en('h').hitStunUntil).toBeUndefined();
-    expect(en('h').brawlerLiftAt).toBeUndefined();
     strike('h', 'normal');
     expect(en('h').knockbackShoveUntil ?? 0).toBeLessThan(now);
     setup();
@@ -1278,5 +1276,141 @@ describe('技の先行入力と秘奥義の1手目(社長指示2026-11-08「技�
     prep([zombieAt(-320, 0, 'far')]); // 蹴りの届く距離(220)の外=蹴りは空振り
     expect(flickAll(400)).toBe(false);
     expect(br().secret).toBeUndefined();
+  });
+});
+
+describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.md §12・社長指示2026-11-08)', () => {
+  const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
+  const hitMove = (id: string, move: 's1' | 's3' | 's4' | 's5', o: { lift?: boolean; big?: boolean } = {}) => useGameStore.getState().triggerCounter(undefined, {
+    targetIds: [id], mult: 0.3, brawler: true, stunMs: 45, postureMult: 0.3, pressedAt: Date.now(),
+    kb: o.big ? { kind: 'big', dirX: 1, dirY: 0, bossHalf: true } : { kind: 'none' }, ...(o.lift ? { lift: true } : {}), combo: { move },
+  });
+  const foeOf = (type: 'zombie' | 'driller' | 'hunter', id: string, dx = 60) => {
+    const z = zombieAt(dx, 0, id); const s = spawnEnemyAt(type, 0, 0, useGameStore.getState().gameTime);
+    s.x = z.x + z.width / 2 - s.width / 2; s.y = z.y + z.height / 2 - s.height / 2; s.id = id; s.health = 99999; s.maxHealth = 99999;
+    return s;
+  };
+  const live = (ms: number) => {
+    const end = now + ms;
+    while (now < end) {
+      now += 10;
+      useGameStore.setState(st => ({ gameTime: st.gameTime + 10 }));
+      useGameStore.getState().movePlayer(NO_INPUT, 0.01);
+      useGameStore.getState().tickBrawler();
+      useGameStore.getState().updateEnemies(0.012);
+    }
+  };
+  it('浮いている間は動けない(実際の AI を回す・寄ってくる zrush のゾンビ)・相の時計も止まる', () => {
+    setup();
+    useGameStore.setState(st => ({ enemies: [zombieAt(120, 0, 'z')], player: { ...st.player, health: 9999, maxHealth: 9999 } }));
+    for (let i = 0; i < 600 && !['zpause', 'zrush'].includes(en('z').aiPhase ?? ''); i++) live(10);
+    const until0 = en('z').aiPhaseUntil ?? 0;
+    hitMove('z', 's4', { lift: true });
+    const e = en('z');
+    expect(e.liftUntil).toBe(now + 450);
+    const x0 = e.x, y0 = e.y;
+    live(430);
+    expect(en('z').x).toBeCloseTo(x0, 5);
+    expect(en('z').y).toBeCloseTo(y0, 5);
+    expect((en('z').aiPhaseUntil ?? 0) - until0).toBeGreaterThanOrEqual(400);
+  });
+  it('浮いている敵を殴ると浮きが続く(n 回目ほど短い)・地上の1段目では浮かない', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(60, 0, 'z')] });
+    hitMove('z', 's1');
+    expect(en('z').brLiftUntil).toBeUndefined();
+    hitMove('z', 's4', { lift: true });
+    advance(200);
+    hitMove('z', 's1');
+    const e1 = en('z');
+    expect(e1.brLiftN).toBe(1);
+    expect(e1.brLiftUntil).toBe(now + Math.max(140, Math.round(450 * 0.5 * 0.75)));
+    advance(100);
+    hitMove('z', 's3');
+    expect(en('z').brLiftN).toBe(2);
+    expect(en('z').brLiftMs!).toBeLessThan(450 * 0.75 * 0.75 + 1);
+  });
+  it('重さ: 雑魚・強個体・ボス級の順に低く短く浮く(ボス級も浮く)', () => {
+    setup();
+    useGameStore.setState({ enemies: [foeOf('zombie', 'm'), foeOf('driller', 's', -60), foeOf('hunter', 'b', 0)] });
+    for (const id of ['m', 's', 'b']) hitMove(id, 's4', { lift: true });
+    expect([en('m').brLiftPeak, en('s').brLiftPeak, en('b').brLiftPeak]).toEqual([1, 0.7, 0.4]);
+    expect(en('b').liftUntil).toBe(now + Math.round(450 * 0.4));
+  });
+  it('技の最中の敵(予告の溜め)は浮かない', () => {
+    setup();
+    const z = zombieAt(60, 0, 'z');
+    Object.assign(z, { aiPhase: 'z-red-pause', aiPhaseUntil: useGameStore.getState().gameTime + 5000 });
+    useGameStore.setState({ enemies: [z] });
+    hitMove('z', 's4', { lift: true });
+    expect(en('z').brLiftUntil).toBeUndefined();
+    expect(en('z').liftUntil).toBeUndefined();
+  });
+  it('空中で5段目(吹き飛ばす技)を当てると浮きを終えて吹き飛ぶ', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(60, 0, 'z')] });
+    hitMove('z', 's4', { lift: true }); advance(150);
+    hitMove('z', 's5', { big: true });
+    const e = en('z');
+    expect(e.liftUntil).toBe(now);
+    expect(Math.abs(e.knockbackVx ?? 0)).toBeGreaterThan(0);
+  });
+  it('浮いている間は反撃を出さない(落ちてから)', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(60, 0, 'z')] });
+    for (let i = 0; i < 6; i++) { hitMove('z', 's1'); advance(80); }
+    hitMove('z', 's4', { lift: true });
+    expect(en('z').brRevengePending).toBe(true);
+    live(200);
+    expect(en('z').aiPhase).not.toBe('br-revenge');
+    let saw = false;
+    for (let i = 0; i < 40 && !saw; i++) { live(10); saw = en('z').aiPhase === 'br-revenge'; }
+    expect(saw).toBe(true);
+    expect(Date.now()).toBeGreaterThanOrEqual(en('z').brLiftUntil ?? 0);
+  });
+  it('ジャスト構え: 構えてから120ms以内の受けは JUST・相手の気絶2倍。121ms は普通の受け', () => {
+    for (const [dt, just] of [[120, true], [130, false]] as const) {
+      setup(2);
+      useGameStore.setState(st => ({ enemies: [zombieAt(40, 0, 'z')], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 5 } } }));
+      expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+      advance(dt);
+      const pl = useGameStore.getState().player;
+      useGameStore.getState().brawlerGuardReceive(pl.x + pl.width / 2 + 30, pl.y + pl.height / 2, 'z');
+      const gt = useGameStore.getState().gameTime;
+      expect((br().justAt ?? 0) === now, `${dt}ms`).toBe(just);
+      expect(en('z').stunUntil! - gt, `${dt}ms`).toBeCloseTo(5000 * (pl.stunDurationMult ?? 1) * (just ? 2 : 1), 0);
+    }
+  });
+  it('ステップ: 向きへ100px(加速→減速)・後隙を取り消せる・木の幹で止まる', () => {
+    setup();
+    useGameStore.setState({ enemies: [] });
+    const x0 = useGameStore.getState().player.x;
+    expect(useGameStore.getState().brawlerStep(1, 0)).toBe(true);
+    advance(250);
+    const moved = useGameStore.getState().player.x - x0;
+    expect(moved).toBeGreaterThan(90);
+    expect(moved).toBeLessThan(110); // 10ms 刻みの積分の誤差の分だけ
+    // 後隙の取り消し: 1段目が当たった後隙から
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });
+    useGameStore.getState().brawlerPress();
+    advance(60 + 50);
+    expect(br().phase).toBe('attack');
+    expect(useGameStore.getState().brawlerStep(-1, 0)).toBe(true);
+    expect(br().phase).toBe('idle');
+    // 構えの最中は出せない
+    setup(2);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 5 } } }));
+    useGameStore.getState().brawlerTech(0, -1);
+    expect(useGameStore.getState().brawlerStep(1, 0)).toBe(false);
+    // 木の幹の手前で止まる
+    setup();
+    const r = trunkRect(treesInRegion(1000, 1000, 6000, 6000)[0]);
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, x: r.x - 30 - st.player.width, y: r.y + r.height - st.player.height } }));
+    expect(useGameStore.getState().brawlerStep(1, 0)).toBe(true);
+    const end = now + 300;
+    while (now < end) { now += 33; useGameStore.setState(st => ({ gameTime: st.gameTime + 33 })); useGameStore.getState().movePlayer(NO_INPUT, 0.033); useGameStore.getState().tickBrawler(); }
+    const p = useGameStore.getState().player;
+    expect(p.x + p.width).toBeLessThanOrEqual(r.x + 0.5);
   });
 });

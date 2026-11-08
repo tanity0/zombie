@@ -7,7 +7,9 @@ import {
   BRAWLER_HOLD_BASE_MS, BRAWLER_COMBO_GAP_MS, BRAWLER_SAME_MOVE_PENALTY_MS, BRAWLER_COMBO_FLOOR,
   BRAWLER_REVENGE_WINDUP_MS, BRAWLER_REVENGE_HITS_MOB, BRAWLER_REVENGE_NO_HOLD_MS, brawlerComboClass,
   type BrawlerComboFields, type BrawlerMoveKey, isBrawlerTechBusy, BRAWLER_HOLDABLE_PHASES,
+  brawlerJugglePush, brawlerAirborne, brawlerJuggleHeightRel, brawlerJuggleLanded, BRAWLER_JUGGLE_DECAY, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_PUSH, type BrawlerJuggleFields,
 } from './brawlerCombo';
+import { BRAWLER_LIFT_MS } from './brawler';
 import { meteorPhase } from './telegraphStyle';
 
 /** 当たりを順に入れて、各当たりの固まりの長さを返す。 */
@@ -208,5 +210,55 @@ describe('「本当に技を出している最中」の仕分け(社長実機報
   });
   it('会心の気絶中は技の最中ではない(isEnemyAttacking と同じ)', () => {
     expect(isBrawlerTechBusy({ aiPhase: 'z-red-pause', stunUntil: gt + 1 }, gt)).toBe(false);
+  });
+});
+
+describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くなる 雑魚は軽い 強個体は少し重い ボスは重い」)', () => {
+  const apply = (e: BrawlerJuggleFields, p: ReturnType<typeof brawlerJugglePush>) => ({ ...e, ...(p ?? {}) });
+  it('地上では4段目だけが浮かせる。雑魚1.0 / 強個体0.7 / ボス級0.4 を高さと時間に掛ける', () => {
+    expect(brawlerJugglePush({}, 'mob', 's1', 0)).toBeNull();
+    expect(brawlerJugglePush({}, 'mob', 'kick1', 0)).toBeNull();
+    const m = brawlerJugglePush({}, 'mob', 's4', 0)!, st = brawlerJugglePush({}, 'strong', 's4', 0)!, b = brawlerJugglePush({}, 'boss', 's4', 0)!;
+    expect(BRAWLER_JUGGLE_WEIGHT).toEqual({ mob: 1.0, strong: 0.7, boss: 0.4 });
+    expect([m.brLiftPeak, st.brLiftPeak, b.brLiftPeak]).toEqual([1, 0.7, 0.4]);
+    expect(m.brLiftMs).toBe(BRAWLER_LIFT_MS);
+    expect(st.brLiftMs).toBe(Math.round(BRAWLER_LIFT_MS * 0.7));
+    expect(b.brLiftMs).toBe(Math.round(BRAWLER_LIFT_MS * 0.4));
+    expect(m.liftUntil).toBe(m.brLiftUntil); // 動けない間=全ての敵の制御が読む liftUntil
+  });
+  it('浮いている間の当たりで浮きが続き、押し上げるたびに 0.75^n 倍に軽くなる・いずれ落ちる', () => {
+    let e: BrawlerJuggleFields = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
+    expect(brawlerAirborne(e, 100)).toBe(true);
+    const peaks: number[] = [];
+    let t = 100;
+    for (let i = 0; i < 10; i++) {
+      const p = brawlerJugglePush(e, 'mob', 's3', t);
+      if (!p) break;
+      e = apply(e, p); peaks.push(p.brLiftPeak!);
+      t += 120;
+    }
+    expect(peaks[0]).toBeCloseTo(BRAWLER_JUGGLE_PUSH.s3 * BRAWLER_JUGGLE_DECAY);
+    expect(peaks[1]).toBeCloseTo(BRAWLER_JUGGLE_PUSH.s3 * BRAWLER_JUGGLE_DECAY ** 2);
+    for (let i = 1; i < peaks.length; i++) expect(peaks[i]).toBeLessThan(peaks[i - 1]);
+    expect(peaks.length).toBeLessThan(10); // 永久には浮かない
+  });
+  it('押し上げは高さを今の高さから引き継ぐ(途切れない)・空中で吹き飛ばす技は浮きを終えて落ちる', () => {
+    const e0 = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
+    const h = brawlerJuggleHeightRel(e0, 200);
+    const e1 = apply(e0, brawlerJugglePush(e0, 'mob', 's1', 200));
+    expect(brawlerJuggleHeightRel(e1, 200)).toBeCloseTo(h, 5);
+    const drop = brawlerJugglePush(e0, 'mob', 's5', 200)!;
+    expect(drop.liftUntil).toBe(200);
+    const e2 = apply(e0, drop);
+    expect(brawlerAirborne(e2, 201)).toBe(false);
+    expect(brawlerJuggleHeightRel(e2, 200)).toBeCloseTo(h, 5);
+    expect(brawlerJuggleHeightRel(e2, 400)).toBe(0);
+    // 着地の砂埃は絵の弧が地面に着いた時
+    expect(brawlerJuggleLanded(e2, 399)).toBe(false);
+    expect(brawlerJuggleLanded(e2, 400)).toBe(true);
+  });
+  it('ボスの技の最中(bossState が追いかけ以外)は技の最中=浮かない', () => {
+    expect(isBrawlerTechBusy({ bossState: 'chase' }, 0)).toBe(false);
+    expect(isBrawlerTechBusy({ bossState: 'issen-windup' }, 0)).toBe(true);
   });
 });

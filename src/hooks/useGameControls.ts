@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
-import { useGameStore, isGameTimeStopped, isAttackLocked } from '../store/gameStore';
+import { useGameStore, isGameTimeStopped, isAttackLocked, isBrawlerMode } from '../store/gameStore';
 import { performFlickAction } from '../utils/inputActions';
 import { keyRetaliationDir } from '../utils/keyRetaliation';
 import { pcPressDown, pcPressUp, markPcFlick } from '../utils/pcPress';
 import { isMenuContext } from '../utils/menuNav';
 import { pcCycleGun, pcSelectGunSlot } from '../utils/weaponCycle';
+import { stepKeyDown, stepKeyUp, type StepKeyState } from '../utils/brawlerStepInput';
 
 // Keyboard fallback — the game is touch-first, but we keep a PC-optimized
 // scheme so a laptop is fully playable.
@@ -71,6 +72,9 @@ const currentMoveVec = (): { x: number; y: number } => {
 
 export const useGameControls = () => {
   useEffect(() => {
+    // ★格闘のステップ(PC・research/BRAWLER.md §12-3): 同じ方向キーの2度押し。格闘以外では何もしない。
+    let stepKey: StepKeyState | null = null;
+    let stepKeyStepped = false;
     const handleKeyDown = (e: KeyboardEvent) => {
       // v0.25.2621(ボスメーカー): **入力欄にフォーカスがある間は移動/攻撃キーを食べない**。
       // 数値を直接打っている最中に自機が走り出すと調整にならない(社長補足「動きながら数字を変える」)。
@@ -148,6 +152,13 @@ export const useGameControls = () => {
         // ★被弾反撃(PC・キーボード): 方向キーの**新しい押下**(押しっぱなしの repeat は除く)を、パッドの「ニュートラルから倒す」と
         //   同じ「相手の方へはじく」入力にする(社長報告2026-10-16「PCで反撃が発動しない」。キーボードには反撃の入口が無かった)。
         //   窓・±45°・相手の有効性は store(tryHitRetaliation)が見る=揃わなければ false で、ただ歩くだけ(従来どおり)。
+        if (!e.repeat && isBrawlerMode(useGameStore.getState().player)) {
+          const md = moveDirFromKey(key)!;
+          const r = stepKeyDown(stepKey, md, performance.now());
+          stepKey = r.state;
+          stepKeyStepped = false;
+          if (r.step && !isGameTimeStopped() && !isAttackLocked()) stepKeyStepped = useGameStore.getState().brawlerStep(DIR_VECTORS[md].x, DIR_VECTORS[md].y);
+        }
         const rd = keyRetaliationDir(inputState, e.repeat);
         if (rd && !isGameTimeStopped() && !useGameStore.getState().deliveryLocked && !isAttackLocked()) {
           useGameStore.getState().tryHitRetaliation(rd.x, rd.y);
@@ -218,6 +229,7 @@ export const useGameControls = () => {
           break;
       }
       if (isWalkKey(key)) inputState.walk = false;
+      { const md = moveDirFromKey(key); if (md) { stepKey = stepKeyUp(stepKey, md, performance.now(), stepKeyStepped); stepKeyStepped = false; } }
 
       useGameStore.setState({ inputState });
     };

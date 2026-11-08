@@ -454,6 +454,44 @@ export const brawlerExtendGuard = (s: BrawlerState, t: number, now: number): Bra
   guardUntil: t + BRAWLER_GUARD_MS, guardSince: t, guardRenewAt: now,
 });
 
+// ---------------------------------------------------------------------------------------------
+// ジャスト構え・ステップ(research/BRAWLER.md §12-2・§12-3・社長指示2026-11-08)
+// ---------------------------------------------------------------------------------------------
+/** 当たる直前この ms 以内に構え(または延長)が出ていた受けは「ジャスト」。 */
+export const BRAWLER_JUST_MS = 120;
+/** ジャストの時、攻撃してきた相手の気絶に掛ける倍率。 */
+export const BRAWLER_JUST_STUN_MULT = 2;
+/** ジャストか(構えの始まり・延長の時刻 guardSince から t まで JUST_MS 以内)。t は gameTime。 */
+export const brawlerIsJustGuard = (s: Pick<BrawlerState, 'guardSince' | 'guardUntil'>, t: number): boolean =>
+  s.guardSince !== undefined && s.guardUntil > t && t >= s.guardSince && t - s.guardSince <= BRAWLER_JUST_MS;
+
+/** ステップの距離(px)と時間(ms)。加速→減速(無敵なし)。 */
+export const BRAWLER_STEP_PX = 100;
+export const BRAWLER_STEP_MS = 180;
+/** ステップの速さの形(経過の割合 p=0..1 → 0..1)。正弦の1山=出だしと終わりが0(慣性)。 */
+export const brawlerStepFactor = (p: number): number => (p <= 0 || p >= 1 ? 0 : Math.sin(Math.PI * p));
+/** 正弦の1山で距離 dist を ms で進む最大の速さ(px/s)。平均は最大の 2/π。 */
+export const brawlerStepSpeed = (dist: number, ms: number): number =>
+  Math.max(0, dist) / Math.max(0.001, (ms / 1000) * (2 / Math.PI));
+/**
+ * ステップを出せるか(§12-3)。待機・通常攻撃と技の後隙(判定の後・止めが明けた後)から出せる=後隙の取り消し。
+ * 技・通常攻撃の前隙、止めの間、構えの最中、秘奥義の間、ステップの最中は出せない。
+ */
+export const brawlerStepAllowed = (s: BrawlerState, t: number): boolean => {
+  if (s.secret) return false;
+  if (isBrawlerGuardingAt(s, t)) return false;
+  if (s.stepUntil !== undefined && t < s.stepUntil) return false;
+  if (s.phase === 'idle') return true;
+  if (s.phase === 'tech' && s.tech === 'guard') return false;
+  if (!s.resolved || brawlerInHitstop(s, t)) return false;
+  return brawlerElapsed(s, t) < brawlerTotalMs(s);
+};
+/** ステップを始めた状態。後隙を取り消す=その行動を終えた扱い(つながり・秘奥義の数えは終わった時と同じ)。先行入力は捨てる。 */
+export const brawlerStepStart = (s: BrawlerState, t: number, now: number): BrawlerState => {
+  const base = s.phase === 'idle' ? s : brawlerFinish(s, t).state;
+  return { ...base, buffered: false, techBuffer: undefined, stepUntil: t + BRAWLER_STEP_MS, stepAt: now };
+};
+
 /** 次の蹴りが何発目か(連続の受付の中なら続き・外なら1発目)。 */
 export const brawlerNextKickN = (s: BrawlerState, t: number): number =>
   (s.kickCount > 0 && s.kickCount < BRAWLER_KICK_MAX && t <= s.kickChainUntil) ? s.kickCount + 1 : 1;

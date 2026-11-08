@@ -4422,17 +4422,33 @@ const brawlerHitPatch = (
       Object.assign(out, counterInterruptPatch(enemy, gameTime), { biteRecoverUntil: undefined, liftUntil: undefined, rootUntil: undefined, lastCounteredAt: now });
     }
   }
-  // 4段目の浮かせ(足止め 450ms・絵だけ浮く)。ボス級・攻撃中の敵は浮かない(§7-10)。止めの後に展開する。
-  if (bs.lift && !bossLike && !busy) {
-    Object.assign(out, { knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + Math.max(stopMs, BR.BRAWLER_LIFT_MS), brawlerLiftAt: now });
+  // ★浮かせ追撃(research/BRAWLER.md §12-1): 4段目で浮かせ、浮いている間の当たりで浮きが続く(n 回目ほど軽く・区分の重さ)。
+  // 浮いている間は動けない(liftUntil=全ての敵の制御が「持ち上げ」として止まる・時計も止まる)。ボス級も浮く(重い)。技の最中の敵は浮かない。
+  // 空中で吹き飛ばす技(5段目・飛び蹴り3発目・大踏み潰し)は浮きを終えて今の高さから落ちる(押しはそのまま効く)。
+  if (bs.combo && !busy) {
+    const jp = brawlerJugglePatch(enemy, cls, bs.lift ? 's4' : bs.combo.move, now); // 浮かせの段(4段目・秘奥義の4段目)は地上からも浮かせる
+    if (jp) Object.assign(out, jp);
   }
   // 強個体は普段 canShoveEnemy が押し(と押しの欄での足止め)を止める=格闘の当たりでは押し道具と同じ旗を立てて雑魚と同じに動かす。
   if (strong && out.knockbackUntil !== undefined) out.knockbackShoveUntil = out.knockbackUntil;
   // 固まりは止め・押し(浮かせ)が明けてから数える(押す段は固まりより押しを優先=§11-1)。吹き飛ばす技は固まり0(今どおり飛ぶ)。
   if (combo && !busy && combo.holdMs > 0) {
-    out.brHoldUntil = brawlerHoldFrom(now, stopMs, out.knockbackUntil) + combo.holdMs;
+    out.brHoldUntil = brawlerHoldFrom(now, stopMs, Math.max(out.knockbackUntil ?? 0, out.liftUntil ?? 0)) + combo.holdMs;
   }
   return out;
+};
+/**
+ * 浮かせ追撃の1回ぶん(§12-1)。ボス級を地上から浮かせる時だけ、ボスの「止める効果」の減衰(evaluateBossStopDr)を通す
+ * (他の止める効果=ノックバック・会心の足止め・罠と同じ1カテゴリ=永久に止められない)。空中の追撃は減衰の数に入れない(重さと n 回目の減りで落ちる)。
+ */
+const brawlerJugglePatch = (enemy: Enemy, cls: 'mob' | 'strong' | 'boss', move: BRC.BrawlerMoveKey, now: number): Partial<Enemy> | null => {
+  const jp = BRC.brawlerJugglePush(enemy, cls, move, now);
+  if (!jp) return null;
+  if (cls !== 'boss' || BRC.brawlerAirborne(enemy, now) || (jp.brLiftUntil ?? 0) <= now) return jp;
+  const dr = evaluateBossStopDr(enemy, now);
+  if (!dr.allowed) return { ...dr.patch };
+  const ms = Math.max(BRC.BRAWLER_JUGGLE_MIN_MS, Math.round((jp.brLiftMs ?? 0) * dr.durationMult));
+  return { ...jp, brLiftMs: ms, brLiftUntil: now + ms, liftUntil: now + ms, ...dr.patch };
 };
 /** 固まりを数え始める時刻(止めの終わりと、押しの終わりの遅い方)。 */
 const brawlerHoldFrom = (now: number, stopMs: number, kbUntil: number | undefined): number =>
@@ -5221,16 +5237,38 @@ const brawlerKikoStrongAsMob = (
     }),
   }));
 };
+/** 浮かせ追撃の着地の砂埃(§12-1・派手さの絵=判定より大きく)。重い区分ほど大きく・ボス級は小さく揺らす。 */
+const brawlerJuggleLandFx = (get: () => GameState, e: Enemy): void => {
+  const g = get();
+  const cls = BRC.brawlerComboClass(e.type);
+  const k = cls === 'boss' ? 1.8 : cls === 'strong' ? 1.35 : 1;
+  const fx = e.x + e.width / 2, fy = e.y + e.height;
+  g.spawnRing(fx, fy - 2, 6, 34 * k * (0.9 + Math.random() * 0.25), 'rgba(214,196,166,0.8)', 4, 360);
+  g.spawnBurst(fx, fy - 4, '#cdb89a', Math.round((10 + Math.random() * 6) * k));
+  g.spawnBurst(fx, fy - 2, '#6b5a48', Math.round((4 + Math.random() * 3) * k));
+  if (cls === 'boss') g.triggerShake(160, 6, 0, 1);
+  brawlerSfx('heavy-impact', cls === 'boss' ? 0.6 : 0.3, cls === 'boss' ? 0.7 : 1.05, 120);
+};
+/** ★ジャスト構え(§12-2)が最後に成立した時刻(Date.now)。同じフレームのカウンターの気絶(combatTick)を2倍にする合図。 */
+let brawlerJustAt = -1;
+/** いまのカウンターがジャスト構えの受けなら気絶の倍率(2)、そうでなければ1。combatTick のカウンターの気絶が読む。 */
+export const brawlerJustStunMult = (now: number): number =>
+  brawlerJustAt >= 0 && now - brawlerJustAt <= 30 ? BR.BRAWLER_JUST_STUN_MULT : 1;
 /** 気功の爆発で当たった敵の流れ(固まり・減衰・反撃の数)。knockbackEnemy の後に呼ぶ(押しの終わりから固まる)。 */
 const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.BrawlerMoveKey, countRevenge: boolean): void => {
   const now = Date.now();
   const gt = get().gameTime;
   useGameStore.setState(state => ({
     enemies: state.enemies.map(e => {
-      if (e.id !== id || !BRC.isBrawlerComboSubject(e.type) || e.aiPhase === 'br-revenge') return e;
+      if (e.id !== id || e.aiPhase === 'br-revenge') return e;
+      const busy = BRC.isBrawlerTechBusy(e, gt);
+      // 浮かせ追撃(§12-1): 浮いている敵に気功の爆発が当たっても浮きが続く(押し上げ小)。ボス級も浮く。
+      const jp = busy ? null : brawlerJugglePatch(e, BRC.brawlerComboClass(e.type), move, now);
+      const e1 = jp ? { ...e, ...jp } : e;
+      if (!BRC.isBrawlerComboSubject(e.type)) return e1;
       const c = BRC.brawlerComboOnHit(e, move, now, countRevenge);
-      const held = c.holdMs > 0 && !BRC.isBrawlerTechBusy(e, gt);
-      return { ...e, ...c.patch, ...(held ? { brHoldUntil: brawlerHoldFrom(now, 0, e.knockbackUntil) + c.holdMs } : {}) };
+      const held = c.holdMs > 0 && !busy;
+      return { ...e1, ...c.patch, ...(held ? { brHoldUntil: brawlerHoldFrom(now, 0, Math.max(e1.knockbackUntil ?? 0, e1.liftUntil ?? 0)) + c.holdMs } : {}) };
     }),
   }));
 };
@@ -8337,6 +8375,8 @@ interface GameState {
   brawlerPress: () => boolean;
   // フリック(PC=方向+技ボタン)=技。neutral=方向の入力が無い(PCのK・パッドのニュートラル+B)=技は出さない。出たら true。
   brawlerTech: (dirX: number, dirY: number, neutral?: boolean) => boolean;
+  /** 格闘のステップ(research/BRAWLER.md §12-3)。向きへ短く踏み込む(加速→減速・無敵なし)。出たら true。 */
+  brawlerStep: (dirX: number, dirY: number) => boolean;
   // 毎フレーム(useGameLoop)。格闘を持たない時は即 return。
   tickBrawler: () => void;
   // 構えで受けた(damagePlayer の入口・弾の弾き返し・カウンター成立)。x/y=受けた所。
@@ -9766,7 +9806,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 尺は欄の値(被弾反撃の飛び込み=約120ms)。未指定=近接の踏み込み(MELEE_LUNGE_MS)=従来どおり。
         const d = Math.max(0, (player.lungeUntil - kbNow) / (player.lungeMs ?? MELEE_LUNGE_MS)); // 1→0
         // ★格闘の 'accel'(§8-2): 加速して最大速度のまま当たる(拳が止まりかけで当たると軽い=慣性は当たった後の反動で守る)。
-        const shapeF = player.lungeShape === 'accel' ? BR.accelLungeFactor(1 - d) : d;
+        const shapeF = player.lungeShape === 'accel' ? BR.accelLungeFactor(1 - d)
+          : player.lungeShape === 'step' ? BR.brawlerStepFactor(1 - d) // 格闘のステップ(§12-3): 加速→減速
+          : d;
         // ★踏み込みも「移動」なのでトラップ効果中は7割(上の moveSpeed と同じ理屈・社長指示2026-10-10)。
         // 被弾ノックバック(上の枝)は**掛けられている力**なので対象外=そのまま飛ぶ。
         const lungeCap = trapDebuffed ? TRAP_PVP_MOVE_MULT : 1;
@@ -9795,7 +9837,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 止められた刻みで移動を打ち切る(残りの速度も0)。刀の一閃は別件(触らない)。
       // ★刀の一閃(katana-dash)も同じく刻む(社長指示2026-11-07「一閃側をむしろ直せるとこ直す」・横向き17msで幹を抜けていた)。
       // 一閃は押し出されても刻みを続ける(壁沿いに滑る=1回で解いた時と同じ動き)。距離・速さ・時間・硬直は何も変えない。
-      const brawlerSweep = !warpTo && lungeActive && player.lungeShape === 'accel';
+      const brawlerSweep = !warpTo && lungeActive && (player.lungeShape === 'accel' || player.lungeShape === 'step');
       const katanaSweep = !warpTo && dashing;
       let brawlerSweepStopped = false;
       let katanaSweepPushed = false;
@@ -10236,6 +10278,35 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
   // フリック(PC=方向+技ボタン)=技。フリックの上下左右は技を選ぶだけ(狙いは常に近くの敵=§7-9)。
+  brawlerStep: (dirX, dirY) => {
+    const st = get();
+    const p = st.player;
+    if (!isBrawlerMode(p) || !brawlerGateOk(get)) return false;
+    const s = p.brawler ?? BR.initialBrawlerState();
+    const t = st.gameTime;
+    if (!BR.brawlerStepAllowed(s, t)) return false;
+    let ux = dirX, uy = dirY;
+    let m = Math.hypot(ux, uy);
+    if (!(m > 1e-3)) { ux = p.lastDirection?.x ?? 1; uy = p.lastDirection?.y ?? 0; m = Math.hypot(ux, uy) || 1; }
+    ux /= m; uy /= m;
+    const now = Date.now();
+    const ms = BR.BRAWLER_STEP_MS;
+    const v = BR.brawlerStepSpeed(BR.BRAWLER_STEP_PX, ms);
+    // 加速→減速(正弦の1山)で踏み込む。壁・木は格闘の速い踏み込みと同じく6px 刻みで解く(movePlayer の 'step')。無敵は付けない。
+    setBrawler(set, BR.brawlerStepStart(s, t, now), {
+      lungeVx: ux * v, lungeVy: uy * v, lungeUntil: now + ms, lungeMs: ms, lungeShape: 'step', lungeHoldUntil: 0,
+      lastDirection: { x: ux, y: uy },
+    });
+    // 絵: 足元に地面を擦る筋(dash-wind を体に付けて後ろへ引く)と、蹴り出した所の土埃。音は短い風切り。
+    const c = brawlerCenter(p);
+    const ang = Math.atan2(uy, ux);
+    brawlerFx(get, -ux * 30, p.height * 0.32, 'fx/dash-wind', {
+      followPlayer: true, scale: 0.13, scaleX: 1.2, rot: ang, duration: ms + 60, fadeFrom: 0.5, moveX: ux * 14, moveY: uy * 14, alpha: 0.85,
+    });
+    get().spawnBurst(c.x - ux * 10, c.y + p.height / 2 - 4, '#cdb89a', 7, -ux, -uy);
+    brawlerSfx('whip-swing', 0.38, 0.78 * brJitter(), 120);
+    return true;
+  },
   brawlerTech: (dirX, dirY, neutral = false) => {
     const st = get();
     const p = st.player;
@@ -10281,6 +10352,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     const st0 = get();
     if (st0.brawlerKiko.length > 0) stepBrawlerKiko(get, set);
     else brawlerKikoLastT = -1;
+    // 浮かせ追撃の着地(§12-1): 絵の弧が地面に着いた敵の足元に砂埃(重い区分ほど大きく)。判定は持たない。
+    {
+      const nowL = Date.now();
+      const landed = get().enemies.filter(e => BRC.brawlerJuggleLanded(e, nowL));
+      if (landed.length > 0) {
+        const ids = new Set(landed.map(e => e.id));
+        set(state => ({ enemies: state.enemies.map(e => (ids.has(e.id) ? { ...e, brLiftLand: false } : e)) }));
+        for (const e of landed) brawlerJuggleLandFx(get, e);
+      }
+    }
     const p = get().player;
     const s0 = p.brawler;
     if (!s0) return;
@@ -10336,14 +10417,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     const c = brawlerCenter(p);
     // 受けた直後0.5秒は次の通常攻撃が前隙なしで出る(社長決定 #7)。構えは1秒固定で途中に動けないので、
     // 0.5秒は「受けた時刻と構えの終わりの遅い方」から数える(★未決 §9-4: 構えの最中に切れて使えない窓にしない)。
+    // ★ジャスト構え(research/BRAWLER.md §12-2): 当たる直前120ms以内に構え(または延長)が出ていた受け。気絶は2倍・演出を一段強く・「JUST」。
+    const just = !(now - (s.guardHitAt ?? 0) < 140) ? BR.brawlerIsJustGuard(s, st.gameTime) : false; // 間引かれる受け(光線など毎フレーム)はジャストにしない
+    if (just) brawlerJustAt = now;
+    const stunMul = just ? BR.BRAWLER_JUST_STUN_MULT : 1;
     const next: BR.BrawlerState = { ...s, quickUntil: Math.max(st.gameTime, s.guardUntil) + BR.BRAWLER_GUARD_QUICK_MS };
     // 近接の届く距離の相手は気絶させる(社長決定 #6・§8-5): 雑魚=通常の気絶 / 強個体・ボス級=会心の足止め(bossCritStopPatch=会心と同じ区分の決まり・減衰込み)。遠い相手は無効だけ。
     if (sourceId) {
       const e = st.enemies.find(en => en.id === sourceId);
       if (e && BR.isBrawlerTargetable(e) && enemyMeleeDist(c.x, c.y, e) <= huntingMeleeRadius(p) + 24) {
         const patch: Partial<Enemy> | null = isBossType(e.type)
-          ? bossCritStopPatch(e, st.gameTime, p.stunDurationMult ?? 1)
-          : { stunUntil: st.gameTime + STUN_DURATION_MS * (p.stunDurationMult ?? 1) };
+          ? bossCritStopPatch(e, st.gameTime, (p.stunDurationMult ?? 1) * stunMul)
+          : { stunUntil: st.gameTime + STUN_DURATION_MS * (p.stunDurationMult ?? 1) * stunMul };
         if (patch) set(state => ({ enemies: state.enemies.map(en => en.id === e.id ? { ...en, ...patch } : en) }));
       }
     }
@@ -10351,7 +10436,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★成立の記録(lastCounterSuccessTime)も通常のカウンターと同じく書く(社長承認2026-11-07・§9-42)。ループのエッジ検出が
     // 金の輪・ボムカウンター(とボマーの子爆弾)を出し、決めポーズの膨らみ・速度線・守護霊の記録(カウンター直後の窓)も同じ記録を読む。
     // ★カウンター成立で技ポイントを上限まで全回復(社長指示2026-11-08)。HUD の数字は gainAt で一瞬明るく跳ねる。
-    setBrawler(set, { ...BR.brawlerAfterGuardCounter(next, BR.brawlerPointCap(brawlerLevel(p)), now), guardHitAt: now }, { lastCounterSuccessTime: now });
+    setBrawler(set, { ...BR.brawlerAfterGuardCounter(next, BR.brawlerPointCap(brawlerLevel(p)), now), guardHitAt: now, ...(just ? { justAt: now } : {}) }, { lastCounterSuccessTime: now });
     // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
     // 画面全体は止めない・スローも使わない(カウンターの絵の時間停止は撤回済み+サブウェポンのスロー禁則)。揺れと小さな寄りで受ける。
     get().triggerShake(COUNTER_SHAKE_MS + 80, COUNTER_SHAKE_MAG * 1.4, c.x - x, c.y - y);
@@ -10388,6 +10473,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       g.spawnCallout(c.x, c.y - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
       // 成立の金の輪はループのエッジ検出(lastCounterSuccessTime)が出す=通常のカウンターと同じ1か所(§9-42)。
       g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0, COUNTER_ZOOM_MAG);
+    }
+    // ★ジャスト構え(§12-2): 一段強い受け。白い閃光を強く・揺れと寄りを強く・高い金属音を重ね・白金の二重の輪・「JUST」を Counter! の上に。
+    if (just) {
+      const g = get();
+      g.spawnFlash('rgba(255,250,236,0.34)', 160);
+      g.triggerShake(COUNTER_SHAKE_MS + 160, COUNTER_SHAKE_MAG * 2.1, c.x - x, c.y - y);
+      g.triggerZoom(0.22, 340, 80, c.x, c.y, 'counter');
+      g.spawnRing(c.x, c.y - 6, 10, 170, BR.BRAWLER_RGBA(0.95), 5, 420, true);
+      g.spawnRing(c.x, c.y - 6, 6, 96, 'rgba(255,255,255,0.9)', 3, 300, true);
+      g.spawnGlow(c.x, c.y - 6, GLOW_R_XL, 'rgba(255,250,236,', 380, true);
+      brawlerFx(get, c.x, c.y - 10, BR_SKILL_BURST_FRAMES[0], { frames: BR_SKILL_BURST_FRAMES, scale: 1.1, duration: 420, frameEaseOut: true, fadeFrom: 0.45 });
+      g.spawnCallout(c.x, c.y - 48, 'JUST', '#fffaf0', { bg: 0x8a6d2f, holdMs: MELEE_FINISH_SLOW_HOLD_MS + 120, duration: MELEE_FINISH_SLOW_MS + 160 });
+      brawlerSfx('counter', 1.0, 1.32, undefined, 10);
+      brawlerSfx('heavy-impact', 0.9, 0.55, undefined, 20);
     }
   },
 

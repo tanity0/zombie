@@ -10,7 +10,8 @@ import {
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompHeight, BRAWLER_JUMP_VIS_PX, BRAWLER_HIT_PITCH, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
-  brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
+  brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech,
+  brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
 } from './brawler';
 
 const foe = (id: string, cx: number, cy: number, over: Partial<Enemy> = {}): Enemy => ({
@@ -523,5 +524,43 @@ describe('技の先行入力(社長指示2026-11-08「技の先行入力だけ�
     expect(brawlerCancel(s).techBuffer).toBeUndefined();
     expect(brawlerStartTech(s, 'kiko', 600).techBuffer).toBeUndefined();
     expect(brawlerFinish(s, 600).state.techBuffer).toBe('kiko'); // 終わった瞬間に出す(呼び手が出す)
+  });
+});
+
+describe('ジャスト構え(research/BRAWLER.md §12-2)', () => {
+  it('構え(または延長)から120ms以内の受けがジャスト(境目を含む)', () => {
+    const g = brawlerStartTech(initialBrawlerState(), 'guard', 1000);
+    expect(brawlerIsJustGuard(g, 1000)).toBe(true);
+    expect(brawlerIsJustGuard(g, 1000 + BRAWLER_JUST_MS)).toBe(true);
+    expect(brawlerIsJustGuard(g, 1000 + BRAWLER_JUST_MS + 1)).toBe(false);
+    expect(brawlerIsJustGuard(initialBrawlerState(), 1000)).toBe(false); // 構えていない
+  });
+});
+
+describe('ステップ(research/BRAWLER.md §12-3)', () => {
+  it('距離100px・180ms・加速→減速(出だしと終わりが0)', () => {
+    expect([BRAWLER_STEP_PX, BRAWLER_STEP_MS]).toEqual([100, 180]);
+    expect(brawlerStepFactor(0)).toBe(0);
+    expect(brawlerStepFactor(1)).toBe(0);
+    expect(brawlerStepFactor(0.5)).toBeCloseTo(1);
+    const v = brawlerStepSpeed(BRAWLER_STEP_PX, BRAWLER_STEP_MS);
+    let d = 0;
+    for (let i = 0; i < 1800; i++) d += v * brawlerStepFactor((i + 0.5) / 1800) * (BRAWLER_STEP_MS / 1000 / 1800);
+    expect(d).toBeCloseTo(BRAWLER_STEP_PX, 0);
+  });
+  it('待機・後隙からは出せる。前隙・止めの間・構え・ステップの最中は出せない', () => {
+    expect(brawlerStepAllowed(initialBrawlerState(), 0)).toBe(true);
+    const a = brawlerStartAttack(initialBrawlerState(), 1, 0, false);
+    expect(brawlerStepAllowed(a, 30)).toBe(false);                       // 前隙
+    const hit = brawlerAfterResolve(a, 60, 1, { pointCap: 5, countPoint: true, hitstopMs: 45 });
+    expect(brawlerStepAllowed(hit, 80)).toBe(false);                     // 止めの間
+    expect(brawlerStepAllowed(hit, 110)).toBe(true);                     // 後隙=取り消せる
+    const g = brawlerStartTech(initialBrawlerState(), 'guard', 0);
+    expect(brawlerStepAllowed(g, 100)).toBe(false);                      // 構え
+    const st = brawlerStepStart(hit, 110, 0);
+    expect(st.phase).toBe('idle');
+    expect(st.nextStage).toBe(2);                                        // 段のつながりは残る
+    expect(brawlerStepAllowed(st, 200)).toBe(false);                     // ステップの最中
+    expect(brawlerStepAllowed(st, 110 + BRAWLER_STEP_MS)).toBe(true);
   });
 });

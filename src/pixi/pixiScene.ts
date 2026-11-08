@@ -107,7 +107,7 @@ import {
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
-import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, isBrawlerTechBusy } from '../utils/brawlerCombo'; // 格闘の反撃の赤い予告(位相は meteorPhase)
+import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, isBrawlerTechBusy, brawlerJuggleHeightRel } from '../utils/brawlerCombo'; // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
@@ -22139,11 +22139,14 @@ export class PixiScene {
     if (e.brHoldUntil !== undefined && now < e.brHoldUntil && !isBrawlerTechBusy(e, gameTime)) {
       aiShake += Math.sin(now / 23 + (e.id.charCodeAt(0) & 7)) * 0.9;
     }
-    const liftT = e.liftUntil !== undefined ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
+    // 格闘の浮かせ追撃(§12-1)の liftUntil は格闘の弧で描く(下の brLiftPx)=近接フィニッシュの跳ね(BOSS_FINISH_LIFT)は重ねない。
+    const brawlerLift = e.brLiftUntil !== undefined && e.brLiftUntil === e.liftUntil;
+    const liftT = e.liftUntil !== undefined && !brawlerLift ? Math.max(0, (e.liftUntil - now) / BOSS_FINISH_LIFT_MS) : 0;
     // ★格闘の4段目の浮かせ(research/BRAWLER.md §7-10): 絵だけ 26px 浮いて落ちる(上りは速く・頂点で少し止まり・落ちは加速)。判定は地面のまま。
     // 高さは敵の絵の高さに比例(大型でも浮いて見える・判定と足止めの時間は変えない=クリエイティブ監査 #13)。基準=絵の高さ110pxで26px。
+    // ★浮かせ追撃(§12-1): 押し上げるたびに今の高さから弧が続く(n 回目ほど低く・重い区分ほど低く)。式は utils/brawlerCombo の1本。
     const brLiftPx = e.brawlerLiftAt !== undefined
-      ? BRW.brawlerLiftHeight((Date.now() - e.brawlerLiftAt) / BRW.BRAWLER_LIFT_MS) * Math.max(0.8, fb.boxH / 110) : 0;
+      ? brawlerJuggleHeightRel(e, Date.now()) * BRW.BRAWLER_LIFT_VIS_PX * Math.max(0.8, fb.boxH / 110) : 0;
     // ★格闘の止めの間の震え: 当てた方向に沿って、止めの残りとともに減衰(#12)。絵だけ。
     const brShakeLeft = e.brawlerShakeUntil !== undefined ? e.brawlerShakeUntil - Date.now() : 0;
     const brShakeAmp = brShakeLeft > 0 ? Math.min(4.5, 1 + brShakeLeft / 28) * (((Math.floor(Date.now() / 16) & 1) === 0) ? 1 : -0.6) : 0;
