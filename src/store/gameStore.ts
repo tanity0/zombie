@@ -4676,7 +4676,23 @@ const startBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Pa
   g.spawnBurst(c.x, c.y, BR.BRAWLER_COLOR, 36);
   g.spawnBurst(c.x, c.y, '#38bdf8', 24);
   g.triggerShake(420, 18, 0, 0);
-  g.triggerZoom(0.16, 520, 160, c.x, c.y, 'counter');
+  // ★本人に少し寄る(社長指示2026-11-08「プレイヤーに少し寄りで」・§10-4)。旧(0.16・520ms・保持160)より強く長く保持し、
+  // 9連撃の頭(600ms)にかけて慣性つきで戻す(ワープで画面中を跳ぶので寄ったままにしない)。
+  g.triggerZoom(0.28, 640, 300, c.x, c.y, 'counter');
+  // ★題字「秘奥義」(社長指示2026-11-08「秘奥義が出た時 一瞬後ろ光らせて表示」・社長支給の題字)。本人の頭上に、
+  // 一瞬だけ後ろを白金と青の横長の閃光で焚き、その光の上に題字を乗せる。ドット絵なので整数倍(画面の幅の約1/3)で拡大する。
+  {
+    const k = Math.max(1, Math.round(st.gameBounds.width / 3 / BR_SECRET_TITLE_W));
+    const ty = c.y - p.height / 2 - (BR_SECRET_TITLE_H * k) / 2 - 18;
+    // 後ろの光は起動の暗転・炸裂が引いた後(約0.2秒)にも残る長さにする=光の上に題字が乗って見える(撮って決めた・§9-64)。
+    g.spawnGlow(c.x, ty, GLOW_R_XL, 'rgba(255,250,236,', 560, true);
+    g.spawnGlow(c.x, ty, GLOW_R_L, 'rgba(56,189,248,', 480, true);
+    brawlerFx(get, c.x, ty, 'vfx/flare_01', { scale: 1.6 * k, scaleX: 3.4, duration: 560, fadeFrom: 0.4, tint: 0x7dd3fc, alpha: 0.9 });
+    brawlerFx(get, c.x, ty, 'vfx/flare_01', { scale: 1.2 * k, scaleX: 2.8, duration: 500, fadeFrom: 0.35, alpha: 1 });
+    g.spawnImageMark(c.x, ty, 'fx/brawler-secret-title', {
+      scale: (BR_SECRET_TITLE_H * k) / 130, duration: 1050, titlePop: true, fadeFrom: 0.75, moveY: -6,
+    });
+  }
   brawlerSfx('heavy-impact', 1.0, 0.6);
   brawlerSfx('bomb', 0.8, 0.75, undefined, 30);
   brawlerSfx('homing-fire', 0.7, 0.5, 300, 60);
@@ -5055,6 +5071,9 @@ type BrawlerFxOpts = NonNullable<Parameters<GameState['spawnImageMark']>[3]>;
 const brawlerFx = (get: () => GameState, x: number, y: number, tex: string, o: BrawlerFxOpts): void => {
   get().spawnImageMark(x, y, tex, { additive: true, tint: BR.BRAWLER_COLOR_HEX, noPop: true, ...o });
 };
+/** 秘奥義の題字の素材の寸法(public/sprites/fx/brawler-secret-title.png・社長支給)。 */
+const BR_SECRET_TITLE_W = 128;
+const BR_SECRET_TITLE_H = 44;
 const BR_SKILL_BURST_FRAMES = Array.from({ length: 13 }, (_, i) => `fx/skill-burst-${String(i).padStart(2, '0')}`);
 const BR_COFFIN_SLAM_FRAMES = Array.from({ length: 5 }, (_, i) => `fx/coffin-slam-${i}`);
 /** 地面の割れ+砕けて跳ねる礫(4段目の着地・下の大踏み潰し)。big=大踏み潰し。 */
@@ -8915,7 +8934,7 @@ interface GameState {
   spawnCounterShatter: (x: number, y: number) => void;
   // rot(v0.25.4202): 絵の向き(rad)。VisualEffect側は元から rot を持っていたが、この入口が渡していなかった。
   // cols/additive(社長指示2026-09-16・fx/kill-slash): 横並びシートのコマ送り/加算合成。未指定=従来どおり。
-  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number; scaleX?: number; scaleY?: number; moveX?: number; moveY?: number; alpha?: number; frames?: string[]; followPlayer?: boolean }) => void;
+  spawnImageMark: (x: number, y: number, texture: string, opts?: { scale?: number; duration?: number; color?: string; rot?: number; cols?: number; additive?: boolean; noPop?: boolean; fadeFrom?: number; frameEaseOut?: boolean; tint?: number; scaleX?: number; scaleY?: number; moveX?: number; moveY?: number; alpha?: number; frames?: string[]; followPlayer?: boolean; titlePop?: boolean }) => void;
   spawnRing: (x: number, y: number, startRadius: number, endRadius: number, color: string, width?: number, duration?: number, easeOut?: boolean) => void;
   // 爆発の6コマflipbook(社長支給ドット素材v0.25.3283「爆発 全部用」)。x/y=爆心、radius=判定半径。
   spawnExplosionFx: (x: number, y: number, radius: number, tint?: number) => void;
@@ -26251,6 +26270,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       ...(opts?.alpha !== undefined ? { alpha: opts.alpha } : {}),
       ...(opts?.frames ? { frames: opts.frames } : {}),
       ...(opts?.followPlayer ? { followPlayer: true } : {}),
+      ...(opts?.titlePop ? { titlePop: true } : {}),
       createdAt: now,
       duration: opts?.duration ?? 900,
     };

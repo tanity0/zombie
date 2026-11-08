@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1023 files / 復号後 約718MB",
+ "generatedFor": "1024 files / 復号後 約718MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -1435,6 +1435,12 @@
    "h": 29,
    "bytes": 3987,
    "sha": "789108c192c24b7a"
+  },
+  "sprites/fx/brawler-secret-title.png": {
+   "w": 128,
+   "h": 44,
+   "bytes": 3663,
+   "sha": "fba1a5914a26ee01"
   },
   "sprites/fx/brawler-stand-guard.png": {
    "w": 227,

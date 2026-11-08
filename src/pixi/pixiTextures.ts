@@ -854,6 +854,8 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'fx/brawler-stand-guard', scaleMode: 'nearest' },
       { name: 'fx/brawler-stand-hadou', scaleMode: 'nearest' },
       { name: 'fx/brawler-stand-kick', scaleMode: 'nearest' },
+      // 秘奥義の題字(社長支給2026-11-08・128×44・黒い筆文字に白い縁)。ドット絵=nearest で整数倍に拡大する。
+      { name: 'fx/brawler-secret-title', scaleMode: 'nearest' },
       // カウンター成立のガラスの砕け(社長支給2026-10-01)。15コマの横並び(4080×149・1コマ272×149)・透過あり。
       // カウンターは全ステージで出るので起動マニフェスト。写実のVFXなので既定linear。
       { name: 'fx/counter-shatter' },

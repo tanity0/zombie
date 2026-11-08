@@ -3107,6 +3107,8 @@ export type VisualEffect =
       // 格闘(社長指示2026-11-07「既存の素材をもっと色々活用して」)向けの拡張。未指定=従来どおり。
       frames?: string[];   // 別ファイルのコマ送り(例 fx/slash-burst-0..4)。進捗で送り、最終コマで止める(frameEaseOut も効く)。texture は1コマ目
       followPlayer?: boolean; // x,y をプレイヤーの中心からのずれとして読む(体と一緒に動く絵=飛び蹴りの筋)
+      // 題字の出方(格闘の秘奥義の題字・research/BRAWLER.md §10-4)。少し大きく出て締まって止まり(ease-out)、一拍置いて少し膨らみながら抜けて消える。
+      titlePop?: boolean;
     }
   | {
       // 倒した時の血の破裂(社長指示2026-10-27・描画専用=判定ゼロ・pixi/bloodBurst.ts)。粒の数は固定、敵の大きさで絵の大きさと距離が伸びる。
