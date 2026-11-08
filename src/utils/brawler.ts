@@ -584,14 +584,20 @@ export const BRAWLER_STAND: Readonly<Record<BrawlerStandKind, BrawlerStandSpec>>
 };
 /** 下の大踏み潰しの影は着地の円に合わせて大きく(全体を小さくした比率はそのまま掛かる)。 */
 export const BRAWLER_STAND_STOMP_MULT = 1.45;
+/**
+ * 2段目の影(社長指示2026-11-08「2段目は強パンチか掌底の絵 使って」)。反転はしない(拳・掌が前を向いたまま)。
+ * 弱攻撃なので小さめ(LIGHT_SCALE)・短め(戻りで早く消える)に出し、3段目・5段目の見せ場を食わない(§9-44)。
+ */
+export const BRAWLER_STAND_STAGE2_KIND: BrawlerStandKind = 'palm';
+export const BRAWLER_STAND_LIGHT_SCALE = 0.82;
 export interface BrawlerStandFrame {
   kind: BrawlerStandKind;
   /** 体の前(0)→当たりの所(1)→その先へ抜ける(>1)。 */
   ext: number;
   /** 不透明度(加算で描く)。 */
   alpha: number;
-  /** 2段目=逆の手(体の反対側へずらして少し小さく)。 */
-  backHand: boolean;
+  /** 2段目(弱攻撃): 3段目・5段目の大技より小さめ・短めに出す(§9-44)。 */
+  light: boolean;
   /** 下の大踏み潰し(影を大きく)。 */
   big: boolean;
 }
@@ -603,13 +609,14 @@ export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerS
   if (!s || s.phase === 'idle') return null;
   let kind: BrawlerStandKind;
   if (s.phase === 'attack') {
-    kind = s.stage <= 2 ? 'punch' : s.stage === 3 ? 'heavy' : s.stage === 4 ? 'slam' : 'palm';
+    kind = s.stage <= 1 ? 'punch' : s.stage === 2 ? BRAWLER_STAND_STAGE2_KIND : s.stage === 3 ? 'heavy' : s.stage === 4 ? 'slam' : 'palm';
   } else {
     if (!s.tech) return null;
     kind = s.tech === 'guard' ? 'guard' : s.tech === 'stomp' ? 'slam' : s.tech === 'kiko' ? 'hadou' : 'kick';
   }
   const el = Math.max(0, brawlerElapsed(s, t));
-  const base = { kind, backHand: s.phase === 'attack' && s.stage === 2, big: s.tech === 'stomp' };
+  const light = s.phase === 'attack' && s.stage === 2;
+  const base = { kind, light, big: s.tech === 'stomp' };
   if (kind === 'guard') {
     const remain = s.guardUntil > t ? (s.guardUntil - t) / BRAWLER_GUARD_MS : 0;
     const appear = easeOut(Math.min(1, el / 90));
@@ -621,8 +628,9 @@ export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerS
     const pre = s.windupMs > 0 ? Math.min(1, el / s.windupMs) : 1;
     return { ...base, ext: 0.55 * easeIn(pre), alpha: 0.3 + 0.55 * easeOut(pre) };
   }
-  const post = Math.min(1, (el - s.windupMs) / Math.max(1, s.recoveryMs));
-  return { ...base, ext: 1 + 0.35 * easeOut(post), alpha: 0.85 * (1 - easeIn(post)) };
+  // 弱攻撃(2段目)は戻りの前半で消し切る(短め)・薄め。
+  const post = Math.min(1, (el - s.windupMs) / Math.max(1, s.recoveryMs) * (light ? 1.6 : 1));
+  return { ...base, ext: 1 + (light ? 0.2 : 0.35) * easeOut(post), alpha: (light ? 0.75 : 0.85) * (1 - easeIn(post)) };
 };
 
 /** いまの体の形。連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ・§4)。 */

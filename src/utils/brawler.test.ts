@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Enemy } from '../types/game';
 import {
   BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS,
-  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerKickFlightMs, BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
+  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerKickFlightMs, BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, BRAWLER_STAND_STAGE2_KIND, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
   brawlerStartAttack, brawlerStartTech, brawlerPressDecision, brawlerAfterResolve, brawlerDueEvent, brawlerFinish,
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
@@ -286,7 +286,12 @@ describe('格闘: 速い踏み込みの刻み(A-1)と動きの影', () => {
   });
   it('影の割り当て: 2段目=逆の手 / 3段=heavy / 4段・下=slam / 5段=palm / 上=guard / 左=hadou / 右=kick', () => {
     const at = (st: number) => brawlerStandAt(brawlerStartAttack(initialBrawlerState(), st, 0, false), 5)!;
-    expect([at(2).kind, at(2).backHand, at(3).kind, at(4).kind, at(5).kind]).toEqual(['punch', true, 'heavy', 'slam', 'palm']);
+    expect([at(1).kind, at(1).light, at(2).kind, at(2).light, at(3).kind, at(4).kind, at(5).kind]).toEqual(['punch', false, BRAWLER_STAND_STAGE2_KIND, true, 'heavy', 'slam', 'palm']);
+    expect(['heavy', 'palm']).toContain(BRAWLER_STAND_STAGE2_KIND); // 社長指示「2段目は強パンチか掌底の絵」
+    // 2段目は3段目・5段目より控えめ(薄く・早く消える)
+    const s2 = brawlerStartAttack(initialBrawlerState(), 2, 0, false), s3 = brawlerStartAttack(initialBrawlerState(), 3, 0, false);
+    expect(brawlerStandAt({ ...s2, resolved: true }, s2.windupMs + 1)!.alpha).toBeLessThan(brawlerStandAt({ ...s3, resolved: true }, s3.windupMs + 1)!.alpha);
+    expect(brawlerStandAt({ ...s2, resolved: true }, s2.windupMs + s2.recoveryMs * 0.7)!.alpha).toBe(0);
     const tk = (k: 'guard' | 'stomp' | 'kiko' | 'kick') => brawlerStandAt(brawlerStartTech(initialBrawlerState(), k, 0), 5)!;
     expect([tk('guard').kind, tk('stomp').kind, tk('stomp').big, tk('kiko').kind, tk('kick').kind]).toEqual(['guard', 'slam', true, 'hadou', 'kick']);
   });

@@ -39489,14 +39489,14 @@ export class PixiScene {
     // ★影の体の中心を本人の体の中心に重ね、手足の先が前へ伸びて当たりの所へ向かう形(社長指示2026-11-07「少し小さく」・§9-34)。
     // 届く所までの距離(体の中心から・向きに沿って)。
     let reach: number;
-    if (f.kind === 'punch' || f.kind === 'heavy') {
+    if (s.phase === 'attack' && s.stage <= 3) { // 1〜3段(2段目は強パンチ/掌底の絵でも相手の縁まで)
       const tgt = s.targetId ? st.enemies.find(e => e.id === s.targetId) ?? null : null;
       const d = tgt ? Math.hypot(tgt.x + tgt.width / 2 - cx, tgt.y + tgt.height / 2 - cy) - tgt.width * 0.33 : 40;
       reach = Math.max(30, Math.min(84, d));
     } else {
       reach = f.kind === 'guard' ? 14 : f.kind === 'palm' ? 46 : f.kind === 'slam' ? 0 : 32;
     }
-    const h = spec.heightPx * (f.big ? BRW.BRAWLER_STAND_STOMP_MULT : 1) * (f.backHand ? 0.9 : 1) * dsc;
+    const h = spec.heightPx * (f.big ? BRW.BRAWLER_STAND_STOMP_MULT : 1) * (f.light ? BRW.BRAWLER_STAND_LIGHT_SCALE : 1) * dsc;
     const k = h / tex.height;
     const w = tex.width * k;
     // 手足の先が体の中心からどれだけ前にあるか(絵の上で)。足りない分だけ体ごと前へずらす(伸びる量)。
@@ -39513,8 +39513,6 @@ export class PixiScene {
       const along = f.ext <= 1 ? shift * f.ext : shift + (f.ext - 1) * 30;
       tx = bx + ux * along; ty = by + uy * along;
     }
-    // 2段目=逆の手: 体の反対側(奥)へずらして少し小さく(左右反転すると拳が後ろを向いて当たりの所へ届かない=§9-29)。
-    if (f.backHand) { tx += -uy * 5; ty += ux * 3 - 2; }
     // 向き: 左なら左右反転。上下は弱い傾き(±0.45rad まで=逆さまにしない)+ごく弱い前のめり。
     const left = ux < -0.05 || (Math.abs(ux) <= 0.05 && (p.lastDirection?.x ?? 1) < 0);
     const lean = f.kind === 'slam' || f.kind === 'guard' ? 0.03 : 0.06;
