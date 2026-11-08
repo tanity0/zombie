@@ -25,6 +25,14 @@ export const bootstrapRuntime = (): void => {
   // CSS の -webkit-touch-callout だけでは Android WebView/デスクトップで漏れるため、保険でJSでも止める。
   window.addEventListener('contextmenu', (e) => e.preventDefault());
 
+  // マナーモード(消音スイッチ)では全部の音を鳴らさない(社長指示2026-10-30・社長報告2026-11-08「オープニングとか」鳴る)。
+  // iOS Safari 17〜 の音の扱いを最初から「周りの音」に固定する。どの音が最初に鳴っても消音スイッチに従う。
+  // 曲を素再生(?bgmroute=off)で鳴らす確認モードでは触らない(audioManager の setAmbientAudioSession と同じ条件)。
+  try {
+    const sess = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (sess && new URLSearchParams(window.location.search).get('bgmroute') !== 'off' && sess.type !== 'ambient') sess.type = 'ambient';
+  } catch { /* 未対応の端末は何もしない */ }
+
   // iOS は touch-action / viewport だけだとピンチ拡大・ダブルタップ拡大・テキスト選択ルーペ(虫眼鏡)を
   // 取りこぼす(特にホーム画面起動のWKWebView)。操作面をゲームが完全に支配するため、JSで明示的に握り潰す。
   // - gesture*：iOS独自のピンチズーム。preventDefault で無効化。

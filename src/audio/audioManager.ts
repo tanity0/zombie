@@ -708,7 +708,10 @@ let bgmSrc = GAME_BGM.default;
  * iOS は音声要素で曲を鳴らすと「音楽の再生」扱いになり、消音スイッチを無視して鳴る(実機確認)。Safari 17〜 の音の扱いを
  * 「周りの音」(ambient=消音スイッチに従う)に固定する。曲を素再生(?bgmroute=off)で鳴らす時は触らない(§12-4 の仮の対応側)。
  */
-const setAmbientAudioSession = () => {
+// ★起動時(bootstrap)とオープニング(独自の音声要素で鳴らす)からも呼ぶ(社長報告2026-11-08「マナーモードにしてるのにBGMなるとこある オープニングとか」):
+// 旧はゲームの曲を初めて作る時(ensureBgm)にだけ設定していたため、それより前に鳴るオープニングの音声要素が
+// 「音楽の再生」扱いのまま消音スイッチを無視していた。
+export const setAmbientAudioSession = () => {
   if (!BGM_USE_WEBAUDIO_ROUTING || typeof navigator === 'undefined') return;
   const sess = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
   if (!sess) return;

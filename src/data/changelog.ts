@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5395', items: [
+    'マナーモードの時、オープニングの音楽や効果音が鳴っていたのを直した',
+  ] },
   { version: '0.25.5394', items: [
     '格闘の二段目は、青い影が掌を立てて突く形に',
   ] },

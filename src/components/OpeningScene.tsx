@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { OPENING_REVIVAL_LINES, OPENING_REVIVAL_TIMING } from '../data/openingRevivalSequence';
-import { rewindBgm } from '../audio/audioManager';
+import { rewindBgm, setAmbientAudioSession } from '../audio/audioManager';
 import { trackLoad } from '../utils/loadProgress';
 import { planRevivalGlitches, type ArenaTimes, type GlitchSegment, type HoldTool } from '../utils/openingGlitch';
 import { urlNum } from '../utils/urlNum';
@@ -537,6 +537,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     const ids: number[] = [];
     if (import.meta.env.DEV) { (window as unknown as { __opAudioDebug?: unknown[] }).__opAudioDebug = [{ t: performance.now(), type: 'mount' }]; }
 
+    // 消音スイッチ(マナーモード)に従わせる=音声要素を作る前に音の扱いを「周りの音」へ(社長報告2026-11-08・audioManager 参照)。
+    setAmbientAudioSession();
     // ── 心拍SE(蘇生パート用)を【マウント時に生成してプライミング】する(v0.25.2054修正) ──
     // 旧実装は鳴らす瞬間に new Audio していたが、OKタップから約27秒後=ユーザー操作の有効期限切れ後の
     // 新規要素はモバイルで再生ブロックされ無音になる(アリーナ音源が鳴るのはタップ数秒以内に再生開始するから)。
