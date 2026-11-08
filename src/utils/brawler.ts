@@ -83,7 +83,12 @@ export const BRAWLER_KIKO_SPEED = 900;       // 左の気功(§3-4)
 export const BRAWLER_KIKO_RANGE = 420;
 export const BRAWLER_KIKO_RADIUS = 70;
 export const BRAWLER_KIKO_MULT = 1.5;
-export const BRAWLER_KIKO_HIT_PAD = 12;      // 弾の当たりの半径(体の帯の縁からの距離)
+export const BRAWLER_KIKO_HIT_PAD = 12;
+/**
+ * 気功の爆発の押し(社長承認2026-11-07・§9-40)。爆発の既存の規約どおり knockbackEnemy で押す(攻撃中の敵は押さない・ボス級は止めの減衰)。
+ * 距離の減衰は処刑と同じ blastKbFalloff(爆心1.6倍〜縁0.35倍)。基準距離 × 倍率 = 爆心で雑魚 約60px・縁で約15px の目安。
+ */
+export const BRAWLER_KIKO_KB_PX = 37;      // 弾の当たりの半径(体の帯の縁からの距離)
 // 右の飛び蹴り(§3-5)。社長指示2026-11-07「飛び蹴りもう少し飛距離伸ばして」で 160→220 / 100→150(約1.4倍)。
 export const BRAWLER_KICK_RANGE = 220;
 export const BRAWLER_KICK_NO_TARGET_PX = 150;

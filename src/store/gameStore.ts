@@ -1987,6 +1987,8 @@ export const COUNTER_EXTEND_PER_HIT = 200;
 // Counter knockback (additional effect on top of the bullet reflect).
 export const KNOCKBACK_SPEED = 133; // melee counter shove。ずらす速さを約2/3に(200→133。社長指示)
 export const KNOCKBACK_DURATION = 280;
+/** 止めの後の押しの速さの補正(社長承認2026-11-07・§9-39)。旧「止めの間も滑っていた」時の距離 v·T²/(2·280)(T=止め+280)に揃える倍率。 */
+export const kbStopBoost = (stopMs: number): number => ((Math.max(0, stopMs) + KNOCKBACK_DURATION) / KNOCKBACK_DURATION) ** 2;
 // 社長指示v0.25.3270: 反射神経の反撃爆発・ボムカウンターのカウンター成立時自機中心爆発、
 // 両方とも被弾した敵への実距離50pxノックバックで揃える(knockbackSpeedFor(50, KNOCKBACK_DURATION)相当)。
 export const SKILL_BLAST_KB_PX = 50;
@@ -2770,9 +2772,11 @@ const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil' | 'maxHeal
   const u = nextHitStunUntil(enemy.type, enemy.hitStunUntil, now, meleeHitStopMul(dmg, enemy.maxHealth));
   if (u === undefined) return { lastHitDmg: dmg };
   const kbUntil = now + KNOCKBACK_DURATION + (u - now);
+  // 止めの長さを押しに覚えさせる(止めの後の速さの補正=updateEnemies・社長承認2026-11-07)。
+  const stopMark = { knockbackStopMs: u - now, knockbackStopFor: kbUntil };
   return shoveToo
-    ? { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil }
-    : { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil };
+    ? { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil, knockbackShoveUntil: kbUntil, ...stopMark }
+    : { lastHitDmg: dmg, hitStunUntil: u, knockbackUntil: kbUntil, ...stopMark };
 };
 let critImpactAt = 0; // spawnCritImpact の光の畳み込み用(Date.now)
 // (MELEE_SWING_SHAKE_* / SHIELD_BASH_SHAKE_* は v0.25.4284 で撤去=近接の揺れも impactShakeFor(ダメージの√・bash ×1.5)へ)
@@ -4378,9 +4382,12 @@ const brawlerHitPatch = (
     // normal: ボス級は今の近接と同じく押せない(knockbackShoveUntil を書かない)。
   } else {
     const spd = KNOCKBACK_SPEED * (kind === 'big' ? BR.BRAWLER_BIG_KB_MULT : 1);
+    const kbUntil = now + stopMs + KNOCKBACK_DURATION;
     Object.assign(out, {
-      knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: now + stopMs + KNOCKBACK_DURATION,
+      knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: kbUntil,
       ...(kind === 'big' ? { knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS, brawlerBlownAt: now } : {}),
+      // 止めの後の速さの補正(updateEnemies)。下の大踏み潰し(強制)は実測で約90px が今の距離なので補正しない(§9-39)。
+      ...(stopMs > 0 && !forced ? { knockbackStopMs: stopMs, knockbackStopFor: kbUntil } : {}),
     });
     // 下の大踏み潰しの強制ノックバック: 攻撃中の雑魚・強個体はその技を取り消してから押す(カウンター成立と同じ取り消し=予告も消える)。
     // 取り消しの欄はカウンター成立と同じ1本(utils/enemyBite.ts counterInterruptPatch)。凍結系も解く(押しを邪魔させない)。
@@ -4884,7 +4891,15 @@ const explodeBrawlerKiko = (get: () => GameState, x: number, y: number): void =>
     const killed = get().damageEnemy(id, dmg, true, false, false, 'other');
     get().spawnDamageNumber(e.x + e.width / 2, e.y, dmg, false, { enemyId: id });
     dealt += dmg;
-    if (!killed) burnIds.push(id);
+    if (!killed) {
+      burnIds.push(id);
+      // 押し(社長承認2026-11-07): 爆心に近いほど遠くへ外向きに。処刑の爆発と同じ減衰・同じ入口(knockbackEnemy)。
+      const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
+      const ddx = ecx - x, ddy = ecy - y, dl = Math.max(0.001, Math.hypot(ddx, ddy));
+      const fall = blastKbFalloff(dl, radius);
+      const str = (knockbackSpeedFor(BR.BRAWLER_KIKO_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * skillExplosionKbMult(p);
+      get().knockbackEnemy(id, ddx / dl, ddy / dl, str * fall, Math.max(3, str) * fall);
+    }
     else {
       // 倒した敵は手榴弾の爆発と同じく経験値を落とし、断末魔を鳴らす(検収 A-2)。
       get().dropEnemyXp(e, e.x + e.width / 2, e.y + e.height / 2, `pickup-xp-kiko-${Date.now()}-${id}`);
@@ -16394,7 +16409,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         const bossShoveOk = canShoveEnemy(enemy, now);
         if (!committed && bossShoveOk && enemy.knockbackUntil && now < enemy.knockbackUntil) {
           const remaining = enemy.knockbackUntil - now;
-          const decay = Math.max(0, remaining / KNOCKBACK_DURATION); // 1 → 0
+          // ★押しの減衰の頭打ち(社長承認2026-11-07・research/BRAWLER.md §9-39)。
+          // 押しの期限には「止めの長さ」が足してある(止めが明けてから満額で飛ぶ)。ところが技の相にいる敵(攻撃中)は止めが効かず、
+          // その間も滑っていた=減衰(残り÷280ms)が1を超えて最初の速さが最大1.5倍になり、止まる敵の約2倍まで飛んでいた。
+          //  ① 止めの間は攻撃中の敵もその場に留める(止まる敵と同じ)。押しの間は技の動きを上書きしているので、技の時計は普通に進む。
+          //  ② 減衰は1で頭打ち。
+          //  ③ 止めの長さを覚えている押しは、止めの後の速さを ((止め+280)/280)² 倍=旧「攻撃中の敵」の距離に全員を揃える。
+          if (attacking && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) return enemy;
+          const stopBoost = enemy.knockbackStopFor === enemy.knockbackUntil && (enemy.knockbackStopMs ?? 0) > 0
+            ? kbStopBoost(enemy.knockbackStopMs!) : 1;
+          const decay = Math.min(1, Math.max(0, remaining / KNOCKBACK_DURATION)) * stopBoost; // 1 → 0(止めの補正つき)
           const kb = resolveMove(
             enemy.x + (enemy.knockbackVx ?? 0) * decay * deltaTime,
             enemy.y + (enemy.knockbackVy ?? 0) * decay * deltaTime,

@@ -1,7 +1,7 @@
 // ★サブウェポン「格闘」(research/BRAWLER.md)をストアで実際に動かして固める。
 // 5段のつながり・ヒットストップ・技ポイント・技(構え/大踏み潰し/気功/飛び蹴り)・近接専用モード・守護霊の疑似プレイヤー。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH, INVULN_MS } from './gameStore';
+import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH, INVULN_MS, kbStopBoost, KNOCKBACK_DURATION } from './gameStore';
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
@@ -564,6 +564,63 @@ describe('格闘: 5段目の飛距離は140(社長指示2026-11-07「飛距離�
     expect(travel).toBeLessThan(148); // 刻み(10ms)の端数ぶんの揺れ
     expect(hpOf('near')).toBeLessThan(99999);
     expect(hpOf('far')).toBe(99999);
+  });
+});
+
+describe('押しの減衰の頭打ち(社長承認2026-11-07・§9-39): 攻撃中の敵と止まる敵で同じ距離', () => {
+  const pushDist = (type: 'skeleton' | 'ghost') => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    const c = center();
+    const e = spawnEnemyAt(type, 0, 0, useGameStore.getState().gameTime);
+    e.x = c.x + 40 - e.width / 2; e.y = c.y - e.height / 2; e.health = 9e6; e.maxHealth = 9e6; e.id = 'k';
+    useGameStore.setState(st => ({ enemies: [e], player: { ...st.player, invulnerable: true, invulnerableTime: Date.now() + 1e9, brawler: { ...st.player.brawler!, nextStage: 3, chainUntil: st.gameTime + 999 } } }));
+    useGameStore.getState().brawlerPress();
+    let x0 = NaN, hitAtFrame = -1;
+    const xs: number[] = [];
+    for (let i = 0; i < 60; i++) {
+      const before = useGameStore.getState().enemies.find(en => en.id === 'k')!;
+      now += 16;
+      useGameStore.setState(st => ({ gameTime: st.gameTime + 16 }));
+      useGameStore.getState().movePlayer(NO_INPUT, 0.016 * 1.2);
+      useGameStore.getState().tickBrawler();
+      useGameStore.getState().updateEnemies(0.016 * 1.2);
+      const en = useGameStore.getState().enemies.find(x => x.id === 'k')!;
+      xs.push(en.x);
+      if (hitAtFrame < 0 && en.health < before.health) { hitAtFrame = i; x0 = before.x; }
+    }
+    return { moved: xs[Math.min(xs.length - 1, hitAtFrame + 26)] - x0 };
+  };
+  it('3段目: 攻撃中(skeleton)と止まる敵(ghost)の押しの距離の差が1割以内(旧: 止まる敵は約6割)', () => {
+    const a = pushDist('skeleton').moved, b = pushDist('ghost').moved;
+    expect(a).toBeGreaterThan(30);
+    expect(Math.abs(a - b) / a).toBeLessThan(0.15);
+  });
+  it('止めの補正の式: 旧「止めの間も滑った」距離 v·T²/(2·280) に揃える倍率', () => {
+    expect(kbStopBoost(0)).toBe(1);
+    expect(kbStopBoost(KNOCKBACK_DURATION)).toBeCloseTo(4);
+    expect(kbStopBoost(140)).toBeCloseTo(2.25);
+  });
+});
+
+describe('気功の爆発に押し(社長承認2026-11-07・§9-40)', () => {
+  it('攻撃していない敵は爆心から外向きに押される', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    const c = center();
+    const e = spawnEnemyAt('ghost', 0, 0, useGameStore.getState().gameTime);
+    e.x = c.x - 150 - e.width / 2; e.y = c.y - e.height / 2; e.health = 9e6; e.maxHealth = 9e6; e.id = 'g';
+    useGameStore.setState(st => ({ enemies: [e], player: { ...st.player, invulnerable: true, invulnerableTime: Date.now() + 1e9, brawler: { ...st.player.brawler!, points: 5 } } }));
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
+    let pushed = false;
+    for (let i = 0; i < 60 && !pushed; i++) {
+      now += 16;
+      useGameStore.setState(st => ({ gameTime: st.gameTime + 16 }));
+      useGameStore.getState().tickBrawler();
+      const g = useGameStore.getState().enemies.find(x => x.id === 'g')!;
+      if ((g.knockbackUntil ?? 0) > Date.now() && (g.knockbackVx ?? 0) < -10) pushed = true;
+    }
+    expect(pushed).toBe(true); // 爆心(敵の手前=プレイヤー側)から外向き=さらに左へ
   });
 });
 

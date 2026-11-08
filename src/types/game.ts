@@ -656,6 +656,13 @@ export interface Enemy {
   // again until this gameless ms timestamp (damage still applies). Prevents
   // infinite knockback-locking.
   knockbackImmuneUntil?: number;
+  /**
+   * 押しの頭の「止め」の長さ(ms)と、それを書いた時の knockbackUntil(社長承認2026-11-07・押しの減衰の頭打ち)。
+   * 止めの後に押しの速さを ((止め+280)/280)² 倍して、旧「止めの間も滑っていた攻撃中の敵」の距離に全員を揃える。
+   * knockbackStopFor が今の knockbackUntil と違えば(=別の押しで上書きされた)使わない。
+   */
+  knockbackStopMs?: number;
+  knockbackStopFor?: number;
   // Stun state (gameTime-based so it survives pauses). While
   // gameTime < stunUntil the enemy stops moving and can be finished with
   // a melee counter for an instant kill.
