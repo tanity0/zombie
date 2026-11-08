@@ -142,7 +142,7 @@ export const RHYTHM_FLICK_KNOCKBACK_MAX = 6;
 // スマホ音ゲー方式のフリック即発火(v0.25.287)。離す瞬間ではなく、スワイプが下記しきい値を超えた
 // 「その瞬間」にフリック確定(1接触1回・方向はその瞬間で固定)。離し方に依存しないので安定する。
 // 距離主体・速度は緩め。直近 FIRE_WINDOW_MS の軌跡で判定。
-export const RHYTHM_FLICK_FIRE_DIST = 30;     // 発火に必要な移動距離(px)
+export const RHYTHM_FLICK_FIRE_DIST = 18;     // 発火に必要な移動距離(px)。2026-11-07 社長承認で他のフリックと同じ比率(20/34)で 30→18
 export const RHYTHM_FLICK_FIRE_SPEED = 0.5;   // 発火に必要な速度(px/ms。katana 0.9 より緩め)
 export const RHYTHM_FLICK_FIRE_WINDOW_MS = 120;// 直近この時間の軌跡で距離/速度を見る
 

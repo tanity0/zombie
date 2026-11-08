@@ -2126,7 +2126,9 @@ export const KATANA_DASH_RECOVERY_MS = 200;
 // TODO(刀): 仮値。フリック判定しきい値(直近サンプル窓・最低距離・最低速度)。
 // 通常のジョイスティックドラッグは低速なのでフリック扱いにならない。
 export const KATANA_FLICK_WINDOW_MS = 120;
-export const KATANA_FLICK_MIN_DIST = 34;
+// ★社長の実機報告2026-11-07「技のフリック入力、左右が反応悪い」→ 34→20(全方向・全フリック=格闘・一閃・ワイヤー・被弾反撃・社長承認)。
+// 縦持ちの画面は幅が約430pxしかなく、横へ倒したスティックから同じ横へはじくと指が画面の端に近くて34pxに届かなかった。
+export const KATANA_FLICK_MIN_DIST = 20;
 export const KATANA_FLICK_MIN_SPEED = 0.9; // px/ms
 export const SHOP_KATANA_COST = 100; // TODO(刀): 仮値。商人での刀カード価格。
 
@@ -4477,7 +4479,10 @@ const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Part
       const ap = target
         ? BR.brawlerApproach(c.x, c.y, target, BR.BRAWLER_KICK_RANGE)
         : { dx: dir.x * BR.BRAWLER_KICK_NO_TARGET_PX, dy: dir.y * BR.BRAWLER_KICK_NO_TARGET_PX, dist: BR.BRAWLER_KICK_NO_TARGET_PX };
-      extra = { ...extra, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, BR.BRAWLER_TECHS.kick.windupMs, now) };
+      // 飛ぶ時間は距離に合わせる(遠い相手ほど少し長く・最高速はほぼ据え置き=§9-33)。判定の時刻(前隙の終わり)も同じ長さ。
+      const flightMs = BR.brawlerKickFlightMs(ap.dist);
+      s = { ...s, windupMs: flightMs };
+      extra = { ...extra, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, flightMs, now) };
       brawlerSfx('whip-swing', 0.55, (kickN >= 3 ? 0.78 : 0.92) * brJitter(), 160);
       // ★蹴りの筋(社長指示2026-11-07「キャラクターの移動に横長の斬撃の絵を被せれば蹴ってるように見える」)。
       // dash-wind(横長の白い羽の筋・尖った先が進む側)を体に付けて(followPlayer)、蹴り脚の高さ=足元寄りに被せる。3発目は大きく長く。
@@ -4489,7 +4494,7 @@ const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Part
         const back = 130 * sc * (233 / 64) * sx / 2 - 12;
         brawlerFx(get, -dir.x * back, p.height * 0.18 - dir.y * back * 0.5, 'fx/dash-wind', {
           followPlayer: true, scale: sc, scaleX: sx, rot: ang,
-          duration: BR.BRAWLER_TECHS.kick.windupMs + (big ? 90 : 50), fadeFrom: 0.6, moveX: dir.x * (big ? 26 : 16), moveY: dir.y * (big ? 26 : 16), alpha: 0.95,
+          duration: s.windupMs + (big ? 90 : 50), fadeFrom: 0.6, moveX: dir.x * (big ? 26 : 16), moveY: dir.y * (big ? 26 : 16), alpha: 0.95,
         });
       }
     } else {
@@ -9390,12 +9395,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★格闘の速い踏み込み(5段目の突き抜け・詰め・飛び蹴り='accel' の器)は1フレームで最大20px超動くため、
       // 幹(高さ約12px)を中心ごと越えて向こう側へ押し出される(検収 A-1)。1回あたり6px以下に刻んで壁・木の解決を通し、
       // 止められた刻みで移動を打ち切る(残りの速度も0)。刀の一閃は別件(触らない)。
+      // ★刀の一閃(katana-dash)も同じく刻む(社長指示2026-11-07「一閃側をむしろ直せるとこ直す」・横向き17msで幹を抜けていた)。
+      // 一閃は押し出されても刻みを続ける(壁沿いに滑る=1回で解いた時と同じ動き)。距離・速さ・時間・硬直は何も変えない。
       const brawlerSweep = !warpTo && lungeActive && player.lungeShape === 'accel';
+      const katanaSweep = !warpTo && dashing;
       let brawlerSweepStopped = false;
+      let katanaSweepPushed = false;
       const sweepSolve = (solve: (r: Rect) => { x: number; y: number }): { x: number; y: number } => {
-        if (!brawlerSweep) return solve(candidate);
-        const r = BR.sweepResolve(player.x, player.y, candidate.x - player.x, candidate.y - player.y, player.width, player.height, BR.BRAWLER_SWEEP_STEP_PX, solve);
-        brawlerSweepStopped = r.stopped;
+        if (!brawlerSweep && !katanaSweep) return solve(candidate);
+        const r = BR.sweepResolve(player.x, player.y, candidate.x - player.x, candidate.y - player.y, player.width, player.height, BR.BRAWLER_SWEEP_STEP_PX, solve, brawlerSweep);
+        if (brawlerSweep) brawlerSweepStopped = r.stopped;
+        // 一閃が押し出された回は、残った速さ(一閃が明けた後の慣性)を持ち越さない=明けた直後に1回で解いて幹を越えない。
+        // 一閃の最中の速さは毎フレーム一閃の式から取り直すので、この0は一閃の動きを変えない。
+        else katanaSweepPushed = r.stopped;
         return r;
       };
       if (state.indoorMode) {
@@ -9647,6 +9659,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...(lungeHeld ? { lungeUntil: player.lungeUntil + deltaTime * 1000 } : {}),
           // 格闘の速い踏み込みが壁・木に止められた: 踏み込みを打ち切り、残りの速度も0(A-1)。
           ...(brawlerSweepStopped ? { lungeUntil: 0, lungeVx: 0, lungeVy: 0, vx: 0, vy: 0 } : {}),
+          ...(katanaSweepPushed ? { vx: 0, vy: 0 } : {}),
         }
       };
     });
@@ -13324,8 +13337,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             : Math.max(state.player.counterCooldownEnd, cooldownEnd),
           // ダッシュ中の無敵は既存の被弾無敵(ループ側のINVULN_MS自動解除)を再利用。
           // 解除タイミングがダッシュ終了とほぼ一致するよう開始時刻を過去にずらす。
+          // 既に長い無敵(被弾の無敵など)が残っていれば縮めない(縮地・格闘の5段目と同じ・社長指示2026-11-07)。
           invulnerable: true,
-          invulnerableTime: now - Math.max(0, INVULN_MS - KATANA_DASH_MS),
+          invulnerableTime: state.player.invulnerable
+            ? Math.max(state.player.invulnerableTime, now - Math.max(0, INVULN_MS - KATANA_DASH_MS))
+            : now - Math.max(0, INVULN_MS - KATANA_DASH_MS),
           lastDirection: { x: ux, y: uy }
         }
       }));

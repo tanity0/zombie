@@ -39470,7 +39470,7 @@ export class PixiScene {
    * 打つ手足の先(BRAWLER_STAND の tip)を、その段の当たりの所(相手の帯の縁・着地の円・帯の先)へ合わせて置く=判定の所まで届いて見える。
    * 加算で描く=紺の中身は本人を暗く潰さず、青い輪郭だけが光る。形と時間は utils/brawler の brawlerStandAt(純関数)が決める。
    */
-  private drawBrawlerStand(p: Player, s: BRW.BrawlerState, gt: number, footY: number, dsc: number, body: Sprite): void {
+  private drawBrawlerStand(p: Player, s: BRW.BrawlerState, gt: number, dsc: number, body: Sprite): void {
     const f = BRW.brawlerStandAt(s, gt);
     const spec = f ? BRW.BRAWLER_STAND[f.kind] : null;
     const tex = spec ? getTexture(spec.tex) : null;
@@ -39486,40 +39486,41 @@ export class PixiScene {
     // 見た目の体の中心(跳びの高さも入る)。
     const bodyH = Math.abs(body.height);
     const bx = body.position.x, by = body.position.y - bodyH * 0.5;
-    // 当たりの所。
-    let hx: number, hy: number;
-    if (f.kind === 'slam') {
-      hx = cx + ux * 8; hy = footY - 2;
-    } else if (f.kind === 'punch' || f.kind === 'heavy') {
-      // 相手の体の手前の縁まで(相手の中心までの距離−体の幅の約1/3)。届く距離(近接の半径の目安 84)で頭打ち。
+    // ★影の体の中心を本人の体の中心に重ね、手足の先が前へ伸びて当たりの所へ向かう形(社長指示2026-11-07「少し小さく」・§9-34)。
+    // 届く所までの距離(体の中心から・向きに沿って)。
+    let reach: number;
+    if (f.kind === 'punch' || f.kind === 'heavy') {
       const tgt = s.targetId ? st.enemies.find(e => e.id === s.targetId) ?? null : null;
       const d = tgt ? Math.hypot(tgt.x + tgt.width / 2 - cx, tgt.y + tgt.height / 2 - cy) - tgt.width * 0.33 : 40;
-      const reach = Math.max(30, Math.min(84, d));
-      hx = cx + ux * reach; hy = cy + uy * reach - 6;
+      reach = Math.max(30, Math.min(84, d));
     } else {
-      const reach = f.kind === 'guard' ? 14 : f.kind === 'palm' ? 46 : 32;
-      hx = cx + ux * reach; hy = cy + uy * reach - 6;
+      reach = f.kind === 'guard' ? 14 : f.kind === 'palm' ? 46 : f.kind === 'slam' ? 0 : 32;
     }
-    // 体の前(0)→当たりの所(1)→その先(>1)。踏み潰しは上から地面へ落とす。
-    let tx: number, ty: number;
-    if (f.kind === 'slam') {
-      const fromY = hy - 56;
-      tx = hx; ty = f.ext <= 1 ? fromY + (hy - fromY) * f.ext : hy + (f.ext - 1) * 8;
-    } else {
-      const fx0 = bx + ux * 6, fy0 = by + uy * 6;
-      tx = f.ext <= 1 ? fx0 + (hx - fx0) * f.ext : hx + ux * (f.ext - 1) * 44;
-      ty = f.ext <= 1 ? fy0 + (hy - fy0) * f.ext : hy + uy * (f.ext - 1) * 44;
-    }
-    // 2段目=逆の手: 体の反対側(奥)へずらして少し小さく(左右反転すると拳が後ろを向いて当たりの所へ届かない=§9-29)。
-    if (f.backHand) { tx += -uy * 7; ty += ux * 4 - 3; }
-    // 向き: 左なら左右反転。上下は傾きで表す(±0.75rad まで=逆さまに見せない)+前のめり。
-    const left = ux < -0.05 || (Math.abs(ux) <= 0.05 && (p.lastDirection?.x ?? 1) < 0);
-    const lean = f.kind === 'slam' || f.kind === 'guard' ? 0.06 : 0.14;
-    const a = Math.max(-0.75, Math.min(0.75, Math.atan2(uy, Math.abs(ux) < 1e-3 ? 1e-3 : Math.abs(ux)))) + lean;
     const h = spec.heightPx * (f.big ? BRW.BRAWLER_STAND_STOMP_MULT : 1) * (f.backHand ? 0.9 : 1) * dsc;
     const k = h / tex.height;
+    const w = tex.width * k;
+    // 手足の先が体の中心からどれだけ前にあるか(絵の上で)。足りない分だけ体ごと前へずらす(伸びる量)。
+    const tipFwd = (spec.tipU - spec.bodyU) * w;
+    const shift = Math.max(0, reach - tipFwd);
+    let tx: number, ty: number;
+    if (f.kind === 'slam') {
+      // 地面叩き: 体に重ねたまま、上から下へ叩きつける(拳が足元=着地の円の中心へ)。
+      const drop = 18 * dsc;
+      tx = bx + ux * 4;
+      ty = (f.ext <= 1 ? by - drop * (1 - f.ext) : by + (f.ext - 1) * 4);
+    } else {
+      // 前隙=体に重なったまま前へにじみ出る → 当たる瞬間に手足の先が当たりの所まで伸び切る → その先へ抜けて消える。
+      const along = f.ext <= 1 ? shift * f.ext : shift + (f.ext - 1) * 30;
+      tx = bx + ux * along; ty = by + uy * along;
+    }
+    // 2段目=逆の手: 体の反対側(奥)へずらして少し小さく(左右反転すると拳が後ろを向いて当たりの所へ届かない=§9-29)。
+    if (f.backHand) { tx += -uy * 5; ty += ux * 3 - 2; }
+    // 向き: 左なら左右反転。上下は弱い傾き(±0.45rad まで=逆さまにしない)+ごく弱い前のめり。
+    const left = ux < -0.05 || (Math.abs(ux) <= 0.05 && (p.lastDirection?.x ?? 1) < 0);
+    const lean = f.kind === 'slam' || f.kind === 'guard' ? 0.03 : 0.06;
+    const a = Math.max(-0.45, Math.min(0.45, Math.atan2(uy, Math.abs(ux) < 1e-3 ? 1e-3 : Math.abs(ux)) * 0.6)) + lean;
     sp.texture = tex;
-    sp.anchor.set(spec.tipU, spec.tipV);
+    sp.anchor.set(spec.bodyU, spec.bodyV);
     sp.scale.set(left ? -k : k, k);
     sp.rotation = f.kind === 'slam' ? (left ? -lean : lean) : (left ? -a : a);
     sp.position.set(tx, ty);
@@ -39535,7 +39536,7 @@ export class PixiScene {
     this.drawBrawlerKiko(st.brawlerKiko, now);
     if (!s || !isBrawlerMode(p)) { this.hideBrawlerGhosts(); if (this.brawlerAura) this.brawlerAura.visible = false; if (this.brawlerStand) this.brawlerStand.visible = false; return; }
     const gt = st.gameTime;
-    this.drawBrawlerStand(p, s, gt, footY, dsc, body);
+    this.drawBrawlerStand(p, s, gt, dsc, body);
     const el = BRW.brawlerElapsed(s, gt);
     const tint = this.dustTintForStage();
     // 構えの体の光(加算=沈まない)。1秒かけて絞っていく=窓の残りが見える(§3-2)。受けた瞬間は一度膨らむ。

@@ -1,8 +1,10 @@
+import { KATANA_FLICK_MIN_DIST, KATANA_FLICK_WINDOW_MS, KATANA_FLICK_MIN_SPEED } from '../store/gameStore';
+import { RHYTHM_FLICK_FIRE_DIST, RHYTHM_FLICK_FIRE_SPEED, RHYTHM_FLICK_FIRE_WINDOW_MS } from '../config/shijin';
 import { describe, expect, it } from 'vitest';
 import type { Enemy } from '../types/game';
 import {
   BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS,
-  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
+  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerKickFlightMs, BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
   brawlerStartAttack, brawlerStartTech, brawlerPressDecision, brawlerAfterResolve, brawlerDueEvent, brawlerFinish,
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
@@ -287,5 +289,38 @@ describe('格闘: 速い踏み込みの刻み(A-1)と動きの影', () => {
     expect([at(2).kind, at(2).backHand, at(3).kind, at(4).kind, at(5).kind]).toEqual(['punch', true, 'heavy', 'slam', 'palm']);
     const tk = (k: 'guard' | 'stomp' | 'kiko' | 'kick') => brawlerStandAt(brawlerStartTech(initialBrawlerState(), k, 0), 5)!;
     expect([tk('guard').kind, tk('stomp').kind, tk('stomp').big, tk('kiko').kind, tk('kick').kind]).toEqual(['guard', 'slam', true, 'hadou', 'kick']);
+  });
+});
+
+describe('格闘: 飛び蹴りの飛距離(社長指示2026-11-07)', () => {
+  it('届く距離220・居ない時150。飛ぶ時間は旧の距離(160)まで120ms、その先は最大150ms(最高速は約1割上まで)', () => {
+    expect([BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX]).toEqual([220, 150]);
+    expect(brawlerKickFlightMs(80)).toBe(120);
+    expect(brawlerKickFlightMs(160)).toBe(120);
+    expect(brawlerKickFlightMs(220)).toBe(150);
+    const vmax = (d: number) => d / brawlerKickFlightMs(d);
+    expect(vmax(220) / vmax(160)).toBeLessThan(1.15);
+    expect(vmax(220) / vmax(160)).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('フリックの距離は全方向20px(社長承認2026-11-07・格闘/一閃/ワイヤー/被弾反撃/リズム)', () => {
+  const swipe = (dx: number, dy: number, ms = 20) => [{ x: 200, y: 200, t: 0 }, { x: 200 + dx, y: 200 + dy, t: ms }];
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  it('格闘・一閃・ワイヤー・被弾反撃(共有の判定と KATANA_FLICK_*): どの向きでも 25px→成立 / 15px→不成立', () => {
+    expect(KATANA_FLICK_MIN_DIST).toBe(20);
+    for (const [x, y] of dirs) {
+      expect(detectFlickFromSamples(swipe(x * 25, y * 25), KATANA_FLICK_WINDOW_MS, KATANA_FLICK_MIN_DIST, KATANA_FLICK_MIN_SPEED)).not.toBeNull();
+      expect(detectFlickFromSamples(swipe(x * 15, y * 15), KATANA_FLICK_WINDOW_MS, KATANA_FLICK_MIN_DIST, KATANA_FLICK_MIN_SPEED)).toBeNull();
+    }
+  });
+  it('四神のリズム(RHYTHM_FLICK_*・同じ判定の式): どの向きでも 25px→成立 / 15px→不成立', () => {
+    for (const [x, y] of dirs) {
+      expect(detectFlickFromSamples(swipe(x * 25, y * 25), RHYTHM_FLICK_FIRE_WINDOW_MS, RHYTHM_FLICK_FIRE_DIST, RHYTHM_FLICK_FIRE_SPEED)).not.toBeNull();
+      expect(detectFlickFromSamples(swipe(x * 15, y * 15), RHYTHM_FLICK_FIRE_WINDOW_MS, RHYTHM_FLICK_FIRE_DIST, RHYTHM_FLICK_FIRE_SPEED)).toBeNull();
+    }
+  });
+  it('速さの条件はそのまま(25px でも遅ければ不成立)', () => {
+    expect(detectFlickFromSamples(swipe(25, 0, 60), KATANA_FLICK_WINDOW_MS, KATANA_FLICK_MIN_DIST, KATANA_FLICK_MIN_SPEED)).toBeNull();
   });
 });

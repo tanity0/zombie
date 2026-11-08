@@ -10,6 +10,8 @@
 //  3. Lv3 かつ近接を振っている間(量を問わず)
 // 蝙蝠の掴み(grabbedUntil)・対人体勢(pvpPosture)はアーマーで防がない(別の状態。呼び手がここを通さない)。
 import { isBloodAwakening, type BloodFields } from './bloodAwaken';
+import { isBrawlerPalmDashing } from './brawler';
+import type { BrawlerState } from './brawlerTypes';
 
 /** Lv1〜3 の「これ以下なら吹き飛ばない」1発の実ダメージ(≤)。 */
 export const SUPER_ARMOR_LIMIT_BY_LEVEL: readonly number[] = [0, 8, 16, 24];
@@ -30,6 +32,8 @@ export interface SuperArmorPlayer extends BloodFields {
   shukuchiStrikeAt?: number;
   /** 被弾反撃の着地(=命中)を解決する時刻(Date.now・0/未設定=待ちなし)。 */
   retaliateStrikeAt?: number;
+  /** 格闘の状態(5段目の突き抜けの最中=一閃と同じく「振り」・社長指示2026-11-07「5段目にスーパーアーマーだけ足して」)。 */
+  brawler?: BrawlerState;
 }
 
 /** スキル `super-armor` のレベル(未所持=0)。 */
@@ -46,6 +50,7 @@ export const isPlayerMeleeSwinging = (p: SuperArmorPlayer, nowMs: number, swingM
   const at = p.meleeSwingAt ?? 0;
   if (at > 0 && nowMs >= at && nowMs - at < swingMs) return true;
   if (nowMs < (p.katanaDashUntil ?? 0)) return true;
+  if (isBrawlerPalmDashing(p.brawler)) return true; // 格闘の5段目の突き抜け(一閃と同じく突進中のみ・溜めは含めない)
   if (p.shukuchiStriking === true || (p.shukuchiStrikeAt ?? 0) > 0) return true;
   if ((p.retaliateStrikeAt ?? 0) > 0) return true;
   return false;

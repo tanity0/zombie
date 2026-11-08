@@ -31,7 +31,8 @@ export const BRAWLER_STAGES: readonly BrawlerStageSpec[] = [
   { stage: 3, windupMs: 120, recoveryMs: 230, mult: 0.8, kb: 'normal', hitstopMs: 80, shape: 'fist', dashPx: 60 },
   { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.0, kb: 'none', hitstopMs: 90, shape: 'landing', dashPx: 50 },
   // 5段目=一閃型の貫通突進(社長指示2026-11-07)。前隙 250 = 溜め 100 + 突き抜け 150。判定は抜け切った瞬間に軌跡の帯で一括(§9-26)。
-  { stage: 5, windupMs: 250, recoveryMs: 250, mult: 1.3, kb: 'big', hitstopMs: 140, shape: 'band', dashPx: 0 }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
+  // 社長指示2026-11-07「飛距離少しだけ短く」で突き抜け 160→140px・150→130ms(最高速は同じ)。総尺 500 は戻り 270 で保つ(§9-35)。
+  { stage: 5, windupMs: 230, recoveryMs: 270, mult: 1.3, kb: 'big', hitstopMs: 140, shape: 'band', dashPx: 0 }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
 ];
 export const brawlerStageSpec = (stage: number): BrawlerStageSpec =>
   BRAWLER_STAGES[Math.max(1, Math.min(5, Math.round(stage))) - 1];
@@ -65,8 +66,8 @@ export const BRAWLER_LANDING_RADIUS = 70;    // 4段目の着地点の円(§2-2)
 export const BRAWLER_BAND_LEN = 160;         // 5段目の帯(§2-2)
 export const BRAWLER_BAND_HALF_W = 22;       // 幅44の半分
 /** 5段目の突き抜け(§2-2・§9-26): 溜め→帯の長さぶん加速して抜ける。溜め = 前隙 − 突き抜け。 */
-export const BRAWLER_PALM_DASH_MS = 150;
-export const BRAWLER_PALM_PASS_PX = BRAWLER_BAND_LEN;
+export const BRAWLER_PALM_DASH_MS = 130;
+export const BRAWLER_PALM_PASS_PX = 140;
 /** 抜けた先の減速(止めが明けた後に滑って止まる距離と尺)。 */
 export const BRAWLER_PALM_SETTLE_PX = 22;
 export const BRAWLER_PALM_SETTLE_MS = 120;
@@ -83,8 +84,13 @@ export const BRAWLER_KIKO_RANGE = 420;
 export const BRAWLER_KIKO_RADIUS = 70;
 export const BRAWLER_KIKO_MULT = 1.5;
 export const BRAWLER_KIKO_HIT_PAD = 12;      // 弾の当たりの半径(体の帯の縁からの距離)
-export const BRAWLER_KICK_RANGE = 160;       // 右の飛び蹴り(§3-5)
-export const BRAWLER_KICK_NO_TARGET_PX = 100;
+// 右の飛び蹴り(§3-5)。社長指示2026-11-07「飛び蹴りもう少し飛距離伸ばして」で 160→220 / 100→150(約1.4倍)。
+export const BRAWLER_KICK_RANGE = 220;
+export const BRAWLER_KICK_NO_TARGET_PX = 150;
+/** 飛ぶ時間: 旧の届く距離(160)までは今までどおり 120ms、その先は距離に合わせて最大 150ms まで伸ばす(最高速は約1割上=速さの感じを落とさない)。 */
+export const BRAWLER_KICK_FLIGHT_MAX_MS = 150;
+export const brawlerKickFlightMs = (dist: number): number =>
+  Math.max(BRAWLER_TECHS.kick.windupMs, Math.min(BRAWLER_KICK_FLIGHT_MAX_MS, BRAWLER_TECHS.kick.windupMs * Math.max(0, dist) / 160));
 export const BRAWLER_KICK_MULT = 0.7;
 export const BRAWLER_KICK_CHAIN_MS = 500;
 export const BRAWLER_KICK_MAX = 3;
@@ -429,16 +435,22 @@ export const BRAWLER_SWEEP_STEP_PX = 6;
 export const sweepResolve = (
   x0: number, y0: number, dx: number, dy: number, w: number, h: number, stepPx: number,
   solve: (r: Rect) => { x: number; y: number },
+  /** false=押し出されても刻みを続ける(壁沿いに滑る=1回で解いた時と同じ・刀の一閃)。既定 true=止まる(格闘)。 */
+  stopOnPush = true,
 ): { x: number; y: number; stopped: boolean } => {
   const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / Math.max(0.5, stepPx)));
   let x = x0, y = y0;
+  let pushed = false;
   for (let i = 0; i < n; i++) {
     const wx = x + dx / n, wy = y + dy / n;
     const r = solve({ x: wx, y: wy, width: w, height: h });
     x = r.x; y = r.y;
-    if (Math.abs(r.x - wx) > 0.01 || Math.abs(r.y - wy) > 0.01) return { x, y, stopped: true };
+    if (Math.abs(r.x - wx) > 0.01 || Math.abs(r.y - wy) > 0.01) {
+      pushed = true;
+      if (stopOnPush) return { x, y, stopped: true };
+    }
   }
-  return { x, y, stopped: false };
+  return { x, y, stopped: pushed };
 };
 
 /** 詰めの行き先(相手の帯の縁から standOff 手前・最大 maxPx)。相手が居なければ動かない。 */
@@ -534,17 +546,26 @@ export const brawlerLiftHeight = (u: number): number => {
 // 絵は右向き。tipU/tipV = 打つ手足の先(絵の中の割合)。ここを当たりの所へ合わせて置く(pixi)。heightPx = 表示の高さ(world px)。
 // ---------------------------------------------------------------------------------------------
 export type BrawlerStandKind = 'punch' | 'heavy' | 'slam' | 'palm' | 'guard' | 'hadou' | 'kick';
-export interface BrawlerStandSpec { tex: string; tipU: number; tipV: number; heightPx: number }
+export interface BrawlerStandSpec {
+  tex: string;
+  /** 打つ手足の先(絵の中の割合)。 */
+  tipU: number; tipV: number;
+  /** 影の体の中心(絵の中の割合)。ここを本人の体の中心へ重ねる。 */
+  bodyU: number; bodyV: number;
+  /** 表示の高さ(world px)。社長指示2026-11-07「全体的に格闘アイコンを少し小さく」で旧値の0.65倍(本人の1.3倍前後)。 */
+  heightPx: number;
+}
+export const BRAWLER_STAND_SCALE = 0.65;
 export const BRAWLER_STAND: Readonly<Record<BrawlerStandKind, BrawlerStandSpec>> = {
-  punch: { tex: 'fx/brawler-stand-punch', tipU: 0.95, tipV: 0.33, heightPx: 80 },
-  heavy: { tex: 'fx/brawler-stand-heavy', tipU: 0.96, tipV: 0.3, heightPx: 92 },
-  slam: { tex: 'fx/brawler-stand-slam', tipU: 0.55, tipV: 0.9, heightPx: 92 },
-  palm: { tex: 'fx/brawler-stand-palm', tipU: 0.88, tipV: 0.22, heightPx: 92 },
-  guard: { tex: 'fx/brawler-stand-guard', tipU: 0.62, tipV: 0.34, heightPx: 84 },
-  hadou: { tex: 'fx/brawler-stand-hadou', tipU: 0.93, tipV: 0.3, heightPx: 88 },
-  kick: { tex: 'fx/brawler-stand-kick', tipU: 0.96, tipV: 0.3, heightPx: 92 },
+  punch: { tex: 'fx/brawler-stand-punch', tipU: 0.95, tipV: 0.33, bodyU: 0.42, bodyV: 0.5, heightPx: 80 * BRAWLER_STAND_SCALE },
+  heavy: { tex: 'fx/brawler-stand-heavy', tipU: 0.96, tipV: 0.3, bodyU: 0.36, bodyV: 0.5, heightPx: 92 * BRAWLER_STAND_SCALE },
+  slam: { tex: 'fx/brawler-stand-slam', tipU: 0.55, tipV: 0.9, bodyU: 0.5, bodyV: 0.5, heightPx: 92 * BRAWLER_STAND_SCALE },
+  palm: { tex: 'fx/brawler-stand-palm', tipU: 0.88, tipV: 0.22, bodyU: 0.42, bodyV: 0.5, heightPx: 92 * BRAWLER_STAND_SCALE },
+  guard: { tex: 'fx/brawler-stand-guard', tipU: 0.62, tipV: 0.34, bodyU: 0.5, bodyV: 0.5, heightPx: 84 * BRAWLER_STAND_SCALE },
+  hadou: { tex: 'fx/brawler-stand-hadou', tipU: 0.93, tipV: 0.3, bodyU: 0.42, bodyV: 0.5, heightPx: 88 * BRAWLER_STAND_SCALE },
+  kick: { tex: 'fx/brawler-stand-kick', tipU: 0.96, tipV: 0.3, bodyU: 0.36, bodyV: 0.45, heightPx: 92 * BRAWLER_STAND_SCALE },
 };
-/** 下の大踏み潰しの影は着地の円に合わせて大きく。 */
+/** 下の大踏み潰しの影は着地の円に合わせて大きく(全体を小さくした比率はそのまま掛かる)。 */
 export const BRAWLER_STAND_STOMP_MULT = 1.45;
 export interface BrawlerStandFrame {
   kind: BrawlerStandKind;

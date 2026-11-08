@@ -5,6 +5,7 @@ import {
   playerSuperArmorActive, isPlayerMeleeSwinging, superArmorSkillLevel, superArmorSquashY, superArmorSquashX, superArmorLeanRad,
   SUPER_ARMOR_POSE_DELAY_MS, SUPER_ARMOR_SINK_MS, SUPER_ARMOR_HOLD_MS, SUPER_ARMOR_RECOVER_MS, SUPER_ARMOR_SQUASH_Y,
 } from './superArmor';
+import { brawlerStartAttack, initialBrawlerState } from './brawler';
 
 const SWING = 368;
 const NOW = 1_000_000;
@@ -136,3 +137,17 @@ describe('踏ん張りの絵(superArmorSquashY / SquashX / LeanRad)', () => {
     expect(superArmorLeanRad(SUPER_ARMOR_SINK_MS, NaN)).toBe(-0);
   });
 });
+
+describe('格闘の5段目の突き抜け(社長指示2026-11-07「5段目にスーパーアーマーだけ足して」)', () => {
+  const s5 = brawlerStartAttack(initialBrawlerState(), 5, 0, false);
+  it('突き抜けの最中は「振り」=Lv3 は量を問わず働く。溜めの間と抜けた後は一閃と同じく含めない', () => {
+    const dashing = { ...s5, palmFromX: 0, palmFromY: 0 };
+    expect(isPlayerMeleeSwinging({ brawler: dashing }, NOW, SWING)).toBe(true);
+    expect(isPlayerMeleeSwinging({ brawler: s5 }, NOW, SWING)).toBe(false); // 溜め
+    expect(isPlayerMeleeSwinging({ brawler: { ...dashing, resolved: true } }, NOW, SWING)).toBe(false); // 抜けた後
+    expect(playerSuperArmorActive({ ...withSkill(3), brawler: dashing }, 999, NOW, GT, SWING)).toBe(true);
+    expect(playerSuperArmorActive({ ...withSkill(2), brawler: dashing }, 999, NOW, GT, SWING)).toBe(false); // 条件は一閃と同じ(Lv3)
+    expect(playerSuperArmorActive({ ...withSkill(3), brawler: s5 }, 999, NOW, GT, SWING)).toBe(false);
+  });
+});
+

@@ -531,3 +531,39 @@ describe('格闘: 下の大踏み潰しの強制ノックバックは攻撃中�
   });
 });
 
+describe('格闘: 飛び蹴りの飛距離は伸びても木の幹を素通りしない', () => {
+  it('幹の手前から横へ蹴り出しても(33ms 刻み)幹の手前で止まる', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    const r = trunkRect(treesInRegion(1000, 1000, 6000, 6000)[0]);
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, x: r.x - 40 - st.player.width, y: r.y + r.height - st.player.height, lastDirection: { x: 1, y: 0 }, brawler: { ...st.player.brawler!, points: 5 } } }));
+    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true);
+    const end = now + 500;
+    while (now < end) {
+      now += 33;
+      useGameStore.setState(st => ({ gameTime: st.gameTime + 33 }));
+      useGameStore.getState().movePlayer(NO_INPUT, 0.033);
+      useGameStore.getState().tickBrawler();
+    }
+    const p = useGameStore.getState().player;
+    expect(p.x + p.width).toBeLessThanOrEqual(r.x + 0.5);
+  });
+});
+
+describe('格闘: 5段目の飛距離は140(社長指示2026-11-07「飛距離少しだけ短く」)', () => {
+  it('抜け切った時に140px進んでいて、当たりの帯も通った道筋(140)に揃う', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState({ enemies: [zombieAt(120, 0, 'near'), zombieAt(230, 0, 'far')] });
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, nextStage: 5, chainUntil: st.gameTime + 1000 } } }));
+    useGameStore.getState().brawlerPress();
+    for (let k = 0; k < 60 && !br().resolved; k++) advance(10);
+    const s = br();
+    const travel = center().x - (s.palmFromX ?? 0);
+    expect(travel).toBeGreaterThan(136);
+    expect(travel).toBeLessThan(148); // 刻み(10ms)の端数ぶんの揺れ
+    expect(hpOf('near')).toBeLessThan(99999);
+    expect(hpOf('far')).toBe(99999);
+  });
+});
+

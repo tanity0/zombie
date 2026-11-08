@@ -84,21 +84,12 @@ const VirtualJoystick: React.FC = () => {
   // 1接触につき一度だけ。方向は発火時の直近軌跡ベクトルで固定(=取り違えにくい)。
   const tryFireRhythmFlick = useCallback(() => {
     if (flickFiredRef.current) return;
-    const samples = flickSamplesRef.current;
-    if (samples.length < 2) return;
-    const last = samples[samples.length - 1];
-    let first = samples[0];
-    for (const s of samples) {
-      if (s.t >= last.t - RHYTHM_FLICK_FIRE_WINDOW_MS) { first = s; break; }
-    }
-    const dx = last.x - first.x;
-    const dy = last.y - first.y;
-    const dist = Math.hypot(dx, dy);
-    const dt = Math.max(1, last.t - first.t);
-    if (dist < RHYTHM_FLICK_FIRE_DIST || dist / dt < RHYTHM_FLICK_FIRE_SPEED) return;
+    // 判定の式は他のフリックと同じ1本(utils/brawler の detectFlickFromSamples)。しきい値だけリズム用(式は従来と同じ)。
+    const f = detectFlickFromSamples(flickSamplesRef.current, RHYTHM_FLICK_FIRE_WINDOW_MS, RHYTHM_FLICK_FIRE_DIST, RHYTHM_FLICK_FIRE_SPEED);
+    if (!f) return;
     flickFiredRef.current = true;
     // 発火の瞬間で判定(contactMs は渡さない=その時刻でジャスト判定)。攻撃実行は useGameLoop 側。
-    rhythmInput('flick', { x: dx / dist, y: dy / dist });
+    rhythmInput('flick', { x: f.x, y: f.y });
   }, [rhythmInput]);
 
   // 刀の一閃ダッシュは「指を離した瞬間」にフリックか判定して発火する(即発火ではない)。
