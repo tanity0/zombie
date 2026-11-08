@@ -4678,12 +4678,14 @@ const startBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Pa
   g.triggerShake(420, 18, 0, 0);
   // ★本人に少し寄る(社長指示2026-11-08「プレイヤーに少し寄りで」・§10-4)。旧(0.16・520ms・保持160)より強く長く保持し、
   // 9連撃の頭(600ms)にかけて慣性つきで戻す(ワープで画面中を跳ぶので寄ったままにしない)。
-  g.triggerZoom(0.28, 640, 300, c.x, c.y, 'counter');
+  g.triggerZoom(BR_SECRET_ZOOM, 640, 300, c.x, c.y, 'counter');
   // ★題字「秘奥義」(社長指示2026-11-08「秘奥義が出た時 一瞬後ろ光らせて表示」・社長支給の題字)。本人の頭上に、
-  // 一瞬だけ後ろを白金と青の横長の閃光で焚き、その光の上に題字を乗せる。ドット絵なので整数倍(画面の幅の約1/3)で拡大する。
+  // 一瞬だけ後ろを白金と青の横長の閃光で焚き、その光の上に題字を乗せる。
+  // ★大きさは画面一杯(社長指示2026-11-08「秘奥義の文字は画面一杯の大きさで」): 同時に掛かる寄り(上の 0.28)の最大でも
+  // 画面の幅の約92%に収まる倍率(整数倍は諦める=画面一杯を優先)。置き場所は本人の体の上に重ねる(後ろの光ごと)。
   {
-    const k = Math.max(1, Math.round(st.gameBounds.width / 3 / BR_SECRET_TITLE_W));
-    const ty = c.y - p.height / 2 - (BR_SECRET_TITLE_H * k) / 2 - 18;
+    const k = Math.max(1, (st.gameBounds.width * 0.92) / (1 + BR_SECRET_ZOOM) / BR_SECRET_TITLE_W);
+    const ty = c.y - p.height * 0.35;
     // 後ろの光は起動の暗転・炸裂が引いた後(約0.2秒)にも残る長さにする=光の上に題字が乗って見える(撮って決めた・§9-64)。
     g.spawnGlow(c.x, ty, GLOW_R_XL, 'rgba(255,250,236,', 560, true);
     g.spawnGlow(c.x, ty, GLOW_R_L, 'rgba(56,189,248,', 480, true);
@@ -5074,6 +5076,8 @@ const brawlerFx = (get: () => GameState, x: number, y: number, tex: string, o: B
 /** 秘奥義の題字の素材の寸法(public/sprites/fx/brawler-secret-title.png・社長支給)。 */
 const BR_SECRET_TITLE_W = 128;
 const BR_SECRET_TITLE_H = 44;
+/** 秘奥義の起動の寄り(§10-4)。題字の大きさもこの寄りの最大で画面に収まるように決める。 */
+const BR_SECRET_ZOOM = 0.28;
 const BR_SKILL_BURST_FRAMES = Array.from({ length: 13 }, (_, i) => `fx/skill-burst-${String(i).padStart(2, '0')}`);
 const BR_COFFIN_SLAM_FRAMES = Array.from({ length: 5 }, (_, i) => `fx/coffin-slam-${i}`);
 /** 地面の割れ+砕けて跳ねる礫(4段目の着地・下の大踏み潰し)。big=大踏み潰し。 */

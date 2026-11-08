@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5409', items: [
+    '秘奥義の文字が画面いっぱいの大きさに',
+  ] },
   { version: '0.25.5408', items: [
     '秘奥義が出た瞬間、背後が光って頭上に「秘奥義」の文字が浮かび、カメラが寄る',
   ] },
