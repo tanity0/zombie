@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5394', items: [
+    '格闘の二段目は、青い影が掌を立てて突く形に',
+  ] },
   { version: '0.25.5393', items: [
     'ゲーム内容の変更はありません',
   ] },
