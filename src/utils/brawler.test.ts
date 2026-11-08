@@ -13,6 +13,9 @@ import {
   brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
 } from './brawler';
+import { setBrawlerTempoAll } from './brawlerCombo';
+// ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
+setBrawlerTempoAll(1.0); // 記述時(describe の中で時刻を組む所)より先に効かせる=モジュールの頭で呼ぶ
 
 const foe = (id: string, cx: number, cy: number, over: Partial<Enemy> = {}): Enemy => ({
   id, type: 'boss', x: cx - 20, y: cy - 20, width: 40, height: 40, health: 100, maxHealth: 100,
@@ -24,7 +27,7 @@ describe('格闘: 表', () => {
     expect(BRAWLER_STAGES.map(s => s.windupMs + s.recoveryMs)).toEqual([200, 200, 350, 450, 500]);
     expect(BRAWLER_STAGES.map(s => s.mult)).toEqual([0.35, 0.35, 0.8, 1.0, 1.3]);
     expect(BRAWLER_STAGES.map(s => s.kb)).toEqual(['none', 'none', 'normal', 'none', 'big']);
-    expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([45, 45, 80, 90, 140]);
+    expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 150, 150, 220]); // 止めは係数を掛けない表(社長承認2026-11-08: 旧 45/45/80/90/140)
   });
   it('技の時間とポイントは §8-3 / §0 どおり', () => {
     expect(BRAWLER_TECHS.guard.windupMs + BRAWLER_TECHS.guard.recoveryMs).toBe(1000);

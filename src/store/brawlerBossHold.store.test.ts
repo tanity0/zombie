@@ -8,6 +8,9 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { runAngelBossTick, createAngelBossState, NOOP_ANGEL_SFX } from '../utils/angelBossTick';
 import { runBountyTick, createBountyTickState, NOOP_BOUNTY_SFX } from '../utils/bountyTick';
 import { brawlerHeldNow } from '../utils/brawlerCombo';
+import { setBrawlerTempoAll } from '../utils/brawlerCombo';
+// ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
+setBrawlerTempoAll(1.0); // 記述時(describe の中で時刻を組む所)より先に効かせる=モジュールの頭で呼ぶ
 
 let now = 9_000_000;
 const DT_MS = 10;

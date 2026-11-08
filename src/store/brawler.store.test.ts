@@ -11,6 +11,9 @@ import { BRAWLER_GUARD_MS, brawlerPointCap } from '../utils/brawler';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { playerSuperArmorActive } from '../utils/superArmor';
 import { treesInRegion, trunkRect } from '../world/trees';
+import { setBrawlerTempoAll } from '../utils/brawlerCombo';
+// ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
+setBrawlerTempoAll(1.0); // 記述時(describe の中で時刻を組む所)より先に効かせる=モジュールの頭で呼ぶ
 
 const NO_INPUT = { up: false, down: false, left: false, right: false } as never;
 let now = 7_000_000;
@@ -127,15 +130,15 @@ describe('格闘: 通常攻撃(§2)', () => {
     }
     expect(seen).toEqual([1, 2, 3, 4, 5, 1]);
   });
-  it('ヒットストップの間は段の時計が止まる(1段目: 戻り140ms+止め45ms)', () => {
+  it('ヒットストップの間は段の時計が止まる(1段目: 戻り140ms+止め90ms・止めは社長承認2026-11-08 で 45→90)', () => {
     setup();
     useGameStore.setState({ enemies: [zombieAt(45, 0, 'z')] });
     useGameStore.getState().brawlerPress();
     advance(60);
     expect(br().resolved).toBe(true);
-    advance(140);
-    expect(br().phase).toBe('attack'); // 止め45msぶんまだ戻りの中
-    advance(50);
+    advance(220);
+    expect(br().phase).toBe('attack'); // 止め90msぶんまだ戻りの中
+    advance(20);
     expect(br().phase).toBe('idle');
   });
   it('段の間は動けない(移動の入力があっても位置が変わらない)', () => {
@@ -269,7 +272,7 @@ describe('格闘: 指定打撃の分岐(§8-1 の止めるもの/残すもの)',
     advance(60);
     const z1 = useGameStore.getState().enemies.find(e => e.id === 'z')!;
     expect(z1.knockbackVx ?? 0).toBe(0);
-    expect((z1.hitStunUntil ?? 0) - now).toBe(45);
+    expect((z1.hitStunUntil ?? 0) - now).toBe(90); // 弱の止め(社長承認2026-11-08 で 45→90)
     useGameStore.getState().brawlerPress(); // 先行入力→2段目
     for (let k = 0; k < 40 && br().stage !== 2; k++) advance(10);
     for (let k = 0; k < 20 && !br().resolved; k++) advance(10);
@@ -860,7 +863,9 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     expect(en('t').hitStunUntil).toBeUndefined();          // ボス級の止めは hitStunUntil(銃と同じ枠)には書かない
     expect(en('tb').brHoldUntil).toBeUndefined();          // 技の最中のボスは止めない
   });
-  it('5段を出し切る頃に固まりが切れる(1〜4段目は次の段が届くまで固まり続け、5段目の後は4割近くまで落ちている)', () => {
+  it('5段を出し切る頃に固まりが切れる(1〜4段目は次の段が届くまで固まり続け、5段目の後は4割近くまで落ちている)・★既定のテンポ係数1.3で測る', () => {
+    // ★止め(社長承認2026-11-08 で長く)と係数1.0の組み合わせは出荷しない形(3段目→4段目の間が流れの切れ 600ms を超える)。既定の1.3で測る。
+    setBrawlerTempoAll(1.3);
     setup(3);
     useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });
     const holds: { at: number; until: number }[] = [];
@@ -877,13 +882,14 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     // 1〜4段目の固まりは、次の段が当たるまで切れない(=5段のつながりの中では敵は動けない)
     for (let i = 0; i < 4; i++) expect(holds[i].until).toBeGreaterThanOrEqual(hitsAt[i + 1]);
     // 基本の長さで割った固まりは段を追うごとに短くなる(減衰)
-    const base = [300, 300, 450, 450], stop = [45, 45, 80 + 280, 585]; // 4段目の止め=浮き(§12-1: 585ms)
+    const base = [390, 390, 585, 585], stop = [90, 90, 150 + 280, 150 + 761]; // 係数1.3の固まり / 止め(弱90・強150)+押し / 4段目=止め+浮き(585×1.3)
     const ratio = holds.map((h, i) => (h.until - hitsAt[i] - stop[i]) / base[i]);
     for (let i = 1; i < 4; i++) expect(ratio[i]).toBeLessThan(ratio[i - 1]);
     // 5段目の後に続けて1段目を当てても、固まりは4割近く(=次の段が届く前に切れる)
-    const next = brawlerComboOnHit(en('z'), 's1', now + 100);
-    expect(next.holdMs).toBeLessThanOrEqual(Math.round(300 * 0.45));
-    expect(next.holdMs).toBeGreaterThanOrEqual(Math.round(300 * BRAWLER_COMBO_FLOOR));
+    const next = brawlerComboOnHit(en('z'), 's1', hitsAt[4] + 100); // 5段目の当たりの直後(止めが長くなった分、ループの終わりの now は流れの外になり得る)
+    expect(next.holdMs).toBeLessThanOrEqual(Math.round(390 * 0.45));
+    expect(next.holdMs).toBeGreaterThanOrEqual(Math.round(390 * BRAWLER_COMBO_FLOOR));
+    setBrawlerTempoAll(1.0);
   });
   it('1段目の連打は5段の順に繋ぐより早く抜けられる(同じ技の罰)', () => {
     setup();
@@ -968,7 +974,7 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
     for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
     expect(br().connected).toBe(true);
-    advance(160); // 止めが明けた
+    advance(230); // 止めが明けた(締めの止め 220ms・社長承認2026-11-08 で 140→220)
     expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
     expect(br().tech).toBe('kiko');
     expect(br().techChain).toEqual(['stomp', 'kiko']);
@@ -1264,9 +1270,9 @@ describe('技の先行入力と秘奥義の1手目(社長指示2026-11-08「技�
     advance(50);
     expect(br().tech).not.toBe('kiko');
   });
-  it('→↓←↑ を先行入力で素早く入れると秘奥義が成立する(各フリックの間 200ms)', () => {
+  it('→↓←↑ を先行入力で素早く入れると秘奥義が成立する(各フリックの間 230ms・締めの止め 220ms の後に取り消せる)', () => {
     prep([zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')]);
-    expect(flickAll(200)).toBe(true);
+    expect(flickAll(230)).toBe(true);
   });
   it('間をもっと空けても成立する(250〜500ms)', () => {
     for (const gap of [250, 350, 500]) {
@@ -1400,7 +1406,7 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     setup();
     useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });
     useGameStore.getState().brawlerPress();
-    advance(60 + 50);
+    advance(60 + 100); // 弱の止め 90ms(社長承認2026-11-08)が明けた後隙
     expect(br().phase).toBe('attack');
     expect(useGameStore.getState().brawlerStep(-1, 0)).toBe(true);
     expect(br().phase).toBe('idle');

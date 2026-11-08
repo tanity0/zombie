@@ -39610,7 +39610,9 @@ export class PixiScene {
     // 構えの体の光(加算=沈まない)。1秒かけて絞っていく=窓の残りが見える(§3-2)。受けた瞬間は一度膨らむ。
     {
       // 秘奥義の最中(§10)は体がずっと強く光る(脈打つ)。
-      const remain = s.secret ? 0.85 + 0.15 * Math.sin(now / 60) : BRW.isBrawlerGuardingAt(s, gt) ? Math.max(0, s.guardUntil - gt) / BRW.BRAWLER_GUARD_MS : 0;
+      // ★飛び蹴りの3発目の溜め(社長承認2026-11-08)も同じ光で体が光る(溜めの間に強まり、飛び出しで速く引く)。
+      const remain = s.secret ? 0.85 + 0.15 * Math.sin(now / 60) : BRW.isBrawlerGuardingAt(s, gt) ? Math.max(0, s.guardUntil - gt) / BRW.BRAWLER_GUARD_MS
+        : BRW.brawlerKickChargeGlow(s, gt);
       if (remain > 0) {
         if (!this.brawlerAura) {
           this.brawlerAura = new Sprite(getSoftGlowTexture());

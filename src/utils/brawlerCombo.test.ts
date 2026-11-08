@@ -11,6 +11,9 @@ import {
 } from './brawlerCombo';
 import { BRAWLER_LIFT_MS, brawlerLiftHeight } from './brawler';
 import { meteorPhase } from './telegraphStyle';
+import { setBrawlerTempoAll } from './brawlerCombo';
+// ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
+setBrawlerTempoAll(1.0); // 記述時(describe の中で時刻を組む所)より先に効かせる=モジュールの頭で呼ぶ
 
 /** 当たりを順に入れて、各当たりの固まりの長さを返す。 */
 const run = (type: BrawlerComboFields['type'], hits: { move: BrawlerMoveKey; at: number }[], countRevenge = true) => {

@@ -4,6 +4,22 @@ import type { Enemy } from '../types/game';
 import type { Rect } from '../world/obstacles';
 import { segmentBlocked } from '../world/obstacles';
 import { enemyRangeRect, isCorpse, isReaperFamily, isTerminalReaper, isUntouchable } from './enemyUtils';
+import { urlNum } from './urlNum';
+
+// ---------------------------------------------------------------------------------------------
+// ★テンポ係数(社長承認2026-11-08「KOFみたいなプレイフィールが欲しいんだけど、少し全体的に早い?」)。
+// 格闘の時間(段・技の出だしと戻り・飛び蹴りの飛ぶ時間と連続の受付・5段目の溜めと突き抜けと戻り・つながりの受付・
+// 先行入力の窓・ステップ・秘奥義の起動/間隔/落下/着地/条件の間・反撃の溜め・固まり・浮き)を**すべてこの係数で伸ばす**。
+// 移動距離・当たり判定・倍率・ポイントは変えない(時間だけ)。当てた瞬間の止め(ヒットストップ)は係数を掛けない別の表。
+// 実機のつまみ: `?brtempo=1.0` 等(既定 1.3)。値は下の `*_BASE`(=係数1.0の今までの値)× 係数を四捨五入。
+// 時間の欄は `export let`(live binding)で、`setBrawlerTempo` が書き直す(テストは明示の係数で書くため)。
+// ---------------------------------------------------------------------------------------------
+export const BRAWLER_TEMPO_DEFAULT = 1.3;
+const BRAWLER_TEMPO_SEARCH = typeof window === 'undefined' ? '' : window.location.search;
+/** いまの係数(`setBrawlerTempo` が書き換える)。 */
+export let BRAWLER_TEMPO = BRAWLER_TEMPO_DEFAULT;
+/** 係数を掛けた時間(ms・四捨五入)。 */
+export const brawlerTempoMs = (ms: number, tempo: number = BRAWLER_TEMPO): number => Math.round(ms * tempo);
 
 // ---------------------------------------------------------------------------------------------
 // 段の表(§2-2・叩き台)と技の表(§8-3)
@@ -25,15 +41,24 @@ export interface BrawlerStageSpec {
   /** 頭の詰め(ダッシュ・跳び)の最大距離(px)。0=その場。 */
   dashPx: number;
 }
-export const BRAWLER_STAGES: readonly BrawlerStageSpec[] = [
-  { stage: 1, windupMs: 60, recoveryMs: 140, mult: 0.35, kb: 'none', hitstopMs: 45, shape: 'single', dashPx: 60 },
-  { stage: 2, windupMs: 60, recoveryMs: 140, mult: 0.35, kb: 'none', hitstopMs: 45, shape: 'single', dashPx: 60 },
-  { stage: 3, windupMs: 120, recoveryMs: 230, mult: 0.8, kb: 'normal', hitstopMs: 80, shape: 'fist', dashPx: 60 },
-  { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.0, kb: 'none', hitstopMs: 90, shape: 'landing', dashPx: 50 },
+/**
+ * ★当てた瞬間の止め(ヒットストップ・ms)。テンポ係数は掛けない(社長承認2026-11-08「当てた瞬間の止めを長く」)。
+ * 弱(1・2段目)/ 強・技(3・4段目・飛び蹴り1・2発目)/ 締め(5段目・飛び蹴り3発目・大踏み潰し・秘奥義の締め)。
+ * 旧: 弱45 / 3段目80 / 4段目90 / 蹴り1・2発目80 / 締め140 / 秘奥義の締め160。
+ */
+export const BRAWLER_HITSTOP = { weak: 90, strong: 150, closer: 220 } as const;
+/** 段の表の係数1.0の値(今までの値)。止めは BRAWLER_HITSTOP。 */
+export const BRAWLER_STAGES_BASE: readonly BrawlerStageSpec[] = [
+  { stage: 1, windupMs: 60, recoveryMs: 140, mult: 0.35, kb: 'none', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
+  { stage: 2, windupMs: 60, recoveryMs: 140, mult: 0.35, kb: 'none', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
+  { stage: 3, windupMs: 120, recoveryMs: 230, mult: 0.8, kb: 'normal', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'fist', dashPx: 60 },
+  { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.0, kb: 'none', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'landing', dashPx: 50 },
   // 5段目=一閃型の貫通突進(社長指示2026-11-07)。前隙 250 = 溜め 100 + 突き抜け 150。判定は抜け切った瞬間に軌跡の帯で一括(§9-26)。
   // 社長指示2026-11-07「飛距離少しだけ短く」で突き抜け 160→140px・150→130ms(最高速は同じ)。総尺 500 は戻り 270 で保つ(§9-35)。
-  { stage: 5, windupMs: 230, recoveryMs: 270, mult: 1.3, kb: 'big', hitstopMs: 140, shape: 'band', dashPx: 0 }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
+  { stage: 5, windupMs: 230, recoveryMs: 270, mult: 1.3, kb: 'big', hitstopMs: BRAWLER_HITSTOP.closer, shape: 'band', dashPx: 0 }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
 ];
+/** 段の表(係数を掛けた出だし・戻り)。 */
+export let BRAWLER_STAGES: readonly BrawlerStageSpec[] = BRAWLER_STAGES_BASE;
 export const brawlerStageSpec = (stage: number): BrawlerStageSpec =>
   BRAWLER_STAGES[Math.max(1, Math.min(5, Math.round(stage))) - 1];
 
@@ -45,12 +70,15 @@ export interface BrawlerTechSpec {
   windupMs: number;
   recoveryMs: number;
 }
-export const BRAWLER_TECHS: Readonly<Record<BrawlerTechKind, BrawlerTechSpec>> = {
+/** 技の表の係数1.0の値(今までの値)。 */
+export const BRAWLER_TECHS_BASE: Readonly<Record<BrawlerTechKind, BrawlerTechSpec>> = {
   guard: { kind: 'guard', cost: 3, windupMs: 0, recoveryMs: 1000 }, // 社長指示2026-11-07「カウンターは3ポイントに変更」(旧5)
   stomp: { kind: 'stomp', cost: 5, windupMs: 200, recoveryMs: 400 },
   kiko: { kind: 'kiko', cost: 2, windupMs: 120, recoveryMs: 330 },
   kick: { kind: 'kick', cost: 1, windupMs: 120, recoveryMs: 150 },
 };
+/** 技の表(係数を掛けた出だし・戻り)。 */
+export let BRAWLER_TECHS: Readonly<Record<BrawlerTechKind, BrawlerTechSpec>> = BRAWLER_TECHS_BASE;
 export const brawlerActionTotalMs = (windupMs: number, recoveryMs: number): number => windupMs + recoveryMs;
 
 /** 技ポイントの上限(§2-5: Lv1=5 / Lv2=10 / Lv3=20)。 */
@@ -59,26 +87,26 @@ export const brawlerPointCap = (level: number): number =>
   BRAWLER_POINT_CAP_BY_LEVEL[Math.max(1, Math.min(3, Math.round(level)))];
 
 // 細かい数値(§2・§3・§7)
-export const BRAWLER_CHAIN_RESET_MS = 400;   // 最後に当ててから押さなければ1段目へ(§2-4)
-export const BRAWLER_WHIFF_BUFFER_MS = 150;  // 空振りの段は戻りの終わり 150ms 前から先行入力を受ける(§2-1)
+export let BRAWLER_CHAIN_RESET_MS = 400; // ×BRAWLER_TEMPO(係数1.0の値)   // 最後に当ててから押さなければ1段目へ(§2-4)
+export let BRAWLER_WHIFF_BUFFER_MS = 150; // ×BRAWLER_TEMPO(係数1.0の値)  // 空振りの段は戻りの終わり 150ms 前から先行入力を受ける(§2-1)
 export const BRAWLER_FIST_RADIUS = 28;       // 3段目の拳の周り(§2-2)
 export const BRAWLER_LANDING_RADIUS = 70;    // 4段目の着地点の円(§2-2)
 export const BRAWLER_BAND_LEN = 160;         // 5段目の帯(§2-2)
 export const BRAWLER_BAND_HALF_W = 22;       // 幅44の半分
 /** 5段目の突き抜け(§2-2・§9-26): 溜め→帯の長さぶん加速して抜ける。溜め = 前隙 − 突き抜け。 */
-export const BRAWLER_PALM_DASH_MS = 130;
+export let BRAWLER_PALM_DASH_MS = 130; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_PALM_PASS_PX = 140;
 /** 抜けた先の減速(止めが明けた後に滑って止まる距離と尺)。 */
 export const BRAWLER_PALM_SETTLE_PX = 22;
-export const BRAWLER_PALM_SETTLE_MS = 120;
+export let BRAWLER_PALM_SETTLE_MS = 120; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 吹き飛ばしの向き: 軌跡から横へ外向き+進む向きへ少し(抜けた後ろで左右へ割れる)。 */
 export const BRAWLER_PALM_KB_FORWARD = 0.4;
 export const BRAWLER_JUMP_VIS_PX = 48;       // 4段目の見た目の跳ぶ高さ(判定は地面のまま・§2-3)
-export const BRAWLER_LIFT_MS = 585;          // 4段目の浮かせの足止め(§7-10)。社長承認2026-11-08: 450→585(1.3倍・落下を緩やかに=§12-1)
+export let BRAWLER_LIFT_MS = 585; // ×BRAWLER_TEMPO(係数1.0の値)          // 4段目の浮かせの足止め(§7-10)。社長承認2026-11-08: 450→585(1.3倍・落下を緩やかに=§12-1)
 export const BRAWLER_LIFT_VIS_PX = 26;       // 浮かせの絵の高さ(§7-10)
 export const BRAWLER_STOMP_RADIUS = 150;     // 下の大踏み潰し(§3-3)
 export const BRAWLER_STOMP_MULT = 2.0;
-export const BRAWLER_STOMP_HITSTOP_MS = 140; // ★未決(§9-2): 大踏み潰しの止めは表に無い=締めの止め(掌底)と同じにした
+export const BRAWLER_STOMP_HITSTOP_MS = BRAWLER_HITSTOP.closer; // 締めの止め(§9-2・社長承認2026-11-08 で 140→220)
 export const BRAWLER_KIKO_SPEED = 900;       // 左の気功(§3-4)
 export const BRAWLER_KIKO_RANGE = 420;
 export const BRAWLER_KIKO_RADIUS = 70;
@@ -93,21 +121,38 @@ export const BRAWLER_KIKO_KB_PX = 37;      // 弾の当たりの半径(体の帯
 export const BRAWLER_KICK_RANGE = 220;
 export const BRAWLER_KICK_NO_TARGET_PX = 150;
 /** 飛ぶ時間: 旧の届く距離(160)までは今までどおり 120ms、その先は距離に合わせて最大 150ms まで伸ばす(最高速は約1割上=速さの感じを落とさない)。 */
-export const BRAWLER_KICK_FLIGHT_MAX_MS = 150;
+export let BRAWLER_KICK_FLIGHT_MAX_MS = 150; // ×BRAWLER_TEMPO(係数1.0の値)
 export const brawlerKickFlightMs = (dist: number): number =>
   Math.max(BRAWLER_TECHS.kick.windupMs, Math.min(BRAWLER_KICK_FLIGHT_MAX_MS, BRAWLER_TECHS.kick.windupMs * Math.max(0, dist) / 160));
 export const BRAWLER_KICK_MULT = 0.7;
-export const BRAWLER_KICK_CHAIN_MS = 500;
+export let BRAWLER_KICK_CHAIN_MS = 500; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_KICK_MAX = 3;
+/**
+ * ★飛び蹴りの3発目の溜め(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」)。蹴りに入る前に空中で体が光って沈む。
+ * 実時間で約150ms(係数を掛けた後の値)=係数1.0の値は 150/1.3 を丸めた 115。前隙(windupMs)はこの溜め+飛ぶ時間。
+ */
+export let BRAWLER_KICK3_CHARGE_MS = 115; // ×BRAWLER_TEMPO(係数1.0の値)
+/** 溜めの見た目: 跳び上がる高さ・沈む量(px・絵だけ)。 */
+export const BRAWLER_KICK3_CHARGE_RISE_PX = 24;
+export const BRAWLER_KICK3_CHARGE_SINK_PX = 7;
+/** 3発目の溜めの光(0..1・絵だけ)。溜めの間に強まり(easeIn)、飛び出しで速く引く。 */
+export const brawlerKickChargeGlow = (s: BrawlerState, t: number): number => {
+  if (s.phase !== 'tech' || s.tech !== 'kick' || !(s.kickChargeMs && s.kickChargeMs > 0) || s.resolved) return 0;
+  const el = brawlerElapsed(s, t);
+  const c = el / s.kickChargeMs;
+  if (c < 0) return 0;
+  if (c < 1) return 0.25 + 0.75 * c * c;
+  return Math.max(0, 1 - (el - s.kickChargeMs) / 90);
+};
 /** 弾を1つ拾った時に増える技ポイント(社長指示2026-11-07「弾を拾っても技ポイントが増える で」。量は暫定=§9-24)。 */
 export const BRAWLER_AMMO_PICKUP_POINTS = 1;
-export const BRAWLER_KICK_HITSTOP_MS = [0, 80, 80, 140] as const; // ★未決(§9-2): 1・2発目=強の止め / 3発目=締めの止め
-export const BRAWLER_GUARD_MS = 1000;        // 上の構え(§3-2)
-export const BRAWLER_GUARD_QUICK_MS = 500;   // 受けた直後は次の通常攻撃が前隙なし(社長決定 #7)
+export const BRAWLER_KICK_HITSTOP_MS = [0, BRAWLER_HITSTOP.strong, BRAWLER_HITSTOP.strong, BRAWLER_HITSTOP.closer] as const; // 1・2発目=強 / 3発目=締め(社長承認2026-11-08 で 80/80/140→150/150/220)
+export let BRAWLER_GUARD_MS = 1000; // ×BRAWLER_TEMPO(係数1.0の値)        // 上の構え(§3-2)
+export let BRAWLER_GUARD_QUICK_MS = 500; // ×BRAWLER_TEMPO(係数1.0の値)   // 受けた直後は次の通常攻撃が前隙なし(社長決定 #7)
 export const BRAWLER_BIG_KB_MULT = 4;        // 掌底=今の近接の4倍(§2-2)
 export const BRAWLER_STANDOFF_PX = 24;       // 詰めの止まる所(相手の帯の縁から)
 /** 5ポイント技の出だしの溜め(画面をわずかに暗くする・§3-1)。 */
-export const BRAWLER_SUPER_FLASH_MS = 100;
+export let BRAWLER_SUPER_FLASH_MS = 100; // ×BRAWLER_TEMPO(係数1.0の値)
 /**
  * 段ごとの音程(1段目→5段目)。等間隔に下げない=段ごとに個別の値(クリエイティブ監査 #7)。
  * swing=振りの風切り / hit=肉を打つ音。0番は使わない。
@@ -127,6 +172,60 @@ export const BRAWLER_SPARK = {
 export const BRAWLER_COLOR = '#f1e6c8';
 export const BRAWLER_COLOR_HEX = 0xf1e6c8;
 export const BRAWLER_RGBA = (a: number): string => `rgba(241,230,200,${a})`;
+
+/** 係数を掛けた時間の一式(純関数)。係数1.0なら今までの値と一致する。 */
+export const brawlerTimesAt = (tempo: number) => ({
+    stages: BRAWLER_STAGES_BASE.map(st => ({ ...st, windupMs: brawlerTempoMs(st.windupMs, tempo), recoveryMs: brawlerTempoMs(st.recoveryMs, tempo) })),
+    techs: Object.fromEntries((Object.keys(BRAWLER_TECHS_BASE) as BrawlerTechKind[]).map(k => [k, {
+      ...BRAWLER_TECHS_BASE[k], windupMs: brawlerTempoMs(BRAWLER_TECHS_BASE[k].windupMs, tempo), recoveryMs: brawlerTempoMs(BRAWLER_TECHS_BASE[k].recoveryMs, tempo),
+    }])) as Record<BrawlerTechKind, BrawlerTechSpec>,
+    BRAWLER_CHAIN_RESET_MS: brawlerTempoMs(400, tempo),
+    BRAWLER_WHIFF_BUFFER_MS: brawlerTempoMs(150, tempo),
+    BRAWLER_PALM_DASH_MS: brawlerTempoMs(130, tempo),
+    BRAWLER_PALM_SETTLE_MS: brawlerTempoMs(120, tempo),
+    BRAWLER_LIFT_MS: brawlerTempoMs(585, tempo),
+    BRAWLER_KICK_FLIGHT_MAX_MS: brawlerTempoMs(150, tempo),
+    BRAWLER_KICK_CHAIN_MS: brawlerTempoMs(500, tempo),
+    BRAWLER_GUARD_MS: brawlerTempoMs(1000, tempo),
+    BRAWLER_GUARD_QUICK_MS: brawlerTempoMs(500, tempo),
+    BRAWLER_SUPER_FLASH_MS: brawlerTempoMs(100, tempo),
+    BRAWLER_SECRET_GAP_MS: brawlerTempoMs(400, tempo),
+    BRAWLER_SECRET_IGNITE_MS: brawlerTempoMs(600, tempo),
+    BRAWLER_SECRET_STRIKE_MS: brawlerTempoMs(170, tempo),
+    BRAWLER_SECRET_FALL_MS: brawlerTempoMs(420, tempo),
+    BRAWLER_SECRET_LAND_MS: brawlerTempoMs(520, tempo),
+    BRAWLER_STEP_MS: brawlerTempoMs(180, tempo),
+    BRAWLER_KICK3_CHARGE_MS: brawlerTempoMs(115, tempo),
+});
+/**
+ * テンポ係数を差し替える(格闘の時間の欄を全部書き直す)。起動時に `?brtempo=`(既定 1.3)で1回呼ぶ。
+ * 固まり・浮き・反撃の溜め(utils/brawlerCombo)も同じ係数で書き直すので、テストは brawlerCombo の `setBrawlerTempoAll` を使う。
+ */
+export const setBrawlerTempo = (tempo: number): void => {
+  const t = Math.max(0.5, Math.min(3, Number.isFinite(tempo) ? tempo : BRAWLER_TEMPO_DEFAULT));
+  const v = brawlerTimesAt(t);
+  BRAWLER_TEMPO = t;
+  BRAWLER_STAGES = v.stages;
+  BRAWLER_TECHS = v.techs;
+  BRAWLER_CHAIN_RESET_MS = v.BRAWLER_CHAIN_RESET_MS;
+  BRAWLER_WHIFF_BUFFER_MS = v.BRAWLER_WHIFF_BUFFER_MS;
+  BRAWLER_PALM_DASH_MS = v.BRAWLER_PALM_DASH_MS;
+  BRAWLER_PALM_SETTLE_MS = v.BRAWLER_PALM_SETTLE_MS;
+  BRAWLER_LIFT_MS = v.BRAWLER_LIFT_MS;
+  BRAWLER_KICK_FLIGHT_MAX_MS = v.BRAWLER_KICK_FLIGHT_MAX_MS;
+  BRAWLER_KICK_CHAIN_MS = v.BRAWLER_KICK_CHAIN_MS;
+  BRAWLER_GUARD_MS = v.BRAWLER_GUARD_MS;
+  BRAWLER_GUARD_QUICK_MS = v.BRAWLER_GUARD_QUICK_MS;
+  BRAWLER_SUPER_FLASH_MS = v.BRAWLER_SUPER_FLASH_MS;
+  BRAWLER_SECRET_GAP_MS = v.BRAWLER_SECRET_GAP_MS;
+  BRAWLER_SECRET_IGNITE_MS = v.BRAWLER_SECRET_IGNITE_MS;
+  BRAWLER_SECRET_STRIKE_MS = v.BRAWLER_SECRET_STRIKE_MS;
+  BRAWLER_SECRET_FALL_MS = v.BRAWLER_SECRET_FALL_MS;
+  BRAWLER_SECRET_LAND_MS = v.BRAWLER_SECRET_LAND_MS;
+  BRAWLER_STEP_MS = v.BRAWLER_STEP_MS;
+  BRAWLER_KICK3_CHARGE_MS = v.BRAWLER_KICK3_CHARGE_MS;
+  BRAWLER_FLOW_GRACE_MS = BRAWLER_CHAIN_RESET_MS;
+};
 
 // ---------------------------------------------------------------------------------------------
 // 状態機械(§2-1・§2-4・§7-5)
@@ -190,7 +289,9 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
     : (kind === 'kick' && kickN > 1 && s.techChain) ? s.techChain : [kind];
   return {
     ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined,
-    windupMs: spec.windupMs, recoveryMs: spec.recoveryMs,
+    // 飛び蹴りの3発目は溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。
+    kickChargeMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0,
+    windupMs: spec.windupMs + (kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0), recoveryMs: spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, buffered: false,
     // 技の後は1段目(§7-5)。
     nextStage: 1, chainUntil: 0,
@@ -297,19 +398,19 @@ export const brawlerFinish = (s: BrawlerState, t: number): { state: BrawlerState
 /** 順番(→蹴り ↓大踏み潰し ←気功 ↑構え)。 */
 export const BRAWLER_SECRET_ORDER: readonly BrawlerTechKind[] = ['kick', 'stomp', 'kiko', 'guard'];
 /** 「間を空けずに」= 前の技の終わりから次の技の発動まで(ms・gameTime)。 */
-export const BRAWLER_SECRET_GAP_MS = 400;
+export let BRAWLER_SECRET_GAP_MS = 400; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 起動(激しく爆発して光る)・1発の間隔・発数・天空からの落下・着地の後の余韻(ms)。 */
-export const BRAWLER_SECRET_IGNITE_MS = 600;
-export const BRAWLER_SECRET_STRIKE_MS = 170;
+export let BRAWLER_SECRET_IGNITE_MS = 600; // ×BRAWLER_TEMPO(係数1.0の値)
+export let BRAWLER_SECRET_STRIKE_MS = 170; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_SECRET_STRIKES = 9;
-export const BRAWLER_SECRET_FALL_MS = 420;
-export const BRAWLER_SECRET_LAND_MS = 520;
+export let BRAWLER_SECRET_FALL_MS = 420; // ×BRAWLER_TEMPO(係数1.0の値)
+export let BRAWLER_SECRET_LAND_MS = 520; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 天空の高さ(見た目・world px)。 */
 export const BRAWLER_SECRET_SKY_PX = 420;
 /** フィニッシュの地面叩き(§10-2-3)。 */
 export const BRAWLER_SECRET_LAND_RADIUS = 260;
 export const BRAWLER_SECRET_LAND_MULT = 3.0;
-export const BRAWLER_SECRET_LAND_HITSTOP_MS = 160;
+export const BRAWLER_SECRET_LAND_HITSTOP_MS = BRAWLER_HITSTOP.closer; // 秘奥義の締め(社長承認2026-11-08 で 160→220)
 /** 9連撃で選ぶ技(通常攻撃1〜5段・飛び蹴り・大踏み潰し・気功)。 */
 export const BRAWLER_SECRET_MOVES: readonly BrawlerSecretMove[] = [1, 2, 3, 4, 5, 'kick', 'stomp', 'kiko'];
 
@@ -375,7 +476,7 @@ export const brawlerSecretMovePose = (s: BrawlerState, move: BrawlerSecretMove, 
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: true, connected: true,
     ...(isStage
       ? { phase: 'attack' as const, stage: move, tech: null, kickN: 0, palmFromX: undefined, palmFromY: undefined }
-      : { phase: 'tech' as const, stage: 0, tech: move, kickN: move === 'kick' ? BRAWLER_KICK_MAX : 0 }),
+      : { phase: 'tech' as const, stage: 0, tech: move, kickN: move === 'kick' ? BRAWLER_KICK_MAX : 0, kickChargeMs: 0 }),
   };
 };
 export const isBrawlerSecretActive = (s: BrawlerState | undefined): boolean => !!s?.secret;
@@ -434,7 +535,7 @@ export const brawlerFlowOnHit = (s: BrawlerState, n: number): BrawlerState => {
   return { ...s, flowHits: (fresh ? 0 : (s.flowHits ?? 0)) + n, flowBrokenAt: 0 };
 };
 /** 流れが続く猶予(技の終わり・つながりの受付から ms)。通常攻撃のつながりの切れ(400ms)と同じ。 */
-export const BRAWLER_FLOW_GRACE_MS = BRAWLER_CHAIN_RESET_MS;
+export let BRAWLER_FLOW_GRACE_MS = BRAWLER_CHAIN_RESET_MS; // ×BRAWLER_TEMPO(つながりの切れと同じ)
 /** ヒット数の表示が消えていく尺(流れが切れてから・ms)。 */
 export const BRAWLER_FLOW_FADE_MS = 800;
 /** いま流れが切れたか(待機に戻り、通常攻撃のつながり・蹴りの連続・技の終わりからの猶予のどれも過ぎた)。秘奥義の間は切れない。 */
@@ -467,7 +568,7 @@ export const brawlerIsJustGuard = (s: Pick<BrawlerState, 'guardSince' | 'guardUn
 
 /** ステップの距離(px)と時間(ms)。加速→減速(無敵なし)。 */
 export const BRAWLER_STEP_PX = 100;
-export const BRAWLER_STEP_MS = 180;
+export let BRAWLER_STEP_MS = 180; // ×BRAWLER_TEMPO(係数1.0の値)
 /** ステップの速さの形(経過の割合 p=0..1 → 0..1)。正弦の1山=出だしと終わりが0(慣性)。 */
 export const brawlerStepFactor = (p: number): number => (p <= 0 || p >= 1 ? 0 : Math.sin(Math.PI * p));
 /** 正弦の1山で距離 dist を ms で進む最大の速さ(px/s)。平均は最大の 2/π。 */
@@ -956,6 +1057,21 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
     case 'kick': {
       // 飛び蹴り: 滞空中はしゃがみ+強い前傾 → 当たった瞬間に振り上げの絵へ変える(#4)。
       const big = s.kickN >= BRAWLER_KICK_MAX;
+      const charge = Math.max(0, Math.min(s.windupMs, s.kickChargeMs ?? 0));
+      if (!hit && charge > 0) {
+        // ★3発目の溜め(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」): 跳び上がって空中で体を縮め、沈みながら光る(慣性つき)。
+        const c = Math.min(1, el / charge);
+        if (c < 1) {
+          const rise = BRAWLER_KICK3_CHARGE_RISE_PX * easeOut(Math.min(1, c / 0.45));
+          const sink = BRAWLER_KICK3_CHARGE_SINK_PX * easeIn(Math.max(0, (c - 0.45) / 0.55));
+          const crouch = easeOut(c);
+          return { ...base, tex: 'ready', jump: rise - sink, lean: 0.15 + 0.2 * crouch, push: -4 * crouch, sqY: 1 - 0.16 * crouch, sqX: 1 + 0.1 * crouch };
+        }
+        // 溜めの後に飛ぶ: 沈んだ高さから飛ぶ弧へつなぐ(つなぎ目で高さが跳ばない)。
+        const f = Math.min(1, (el - charge) / Math.max(1, s.windupMs - charge));
+        const h0 = BRAWLER_KICK3_CHARGE_RISE_PX - BRAWLER_KICK3_CHARGE_SINK_PX;
+        return { ...base, tex: 'ready', jump: h0 * (1 - f) + 30 * Math.sin(Math.PI * f), lean: 0.55, push: 8 };
+      }
       if (!hit) return { ...base, tex: 'ready', jump: (big ? 30 : 18) * Math.sin(Math.PI * Math.min(1, pre)), lean: 0.55, push: 8 };
       const th = 1 - easeOut(post);
       return { ...base, tex: post < 0.45 ? 'swing' : 'ready', lean: 0.25 * th, push: 6 * th, sqY: 1 - 0.12 * th, sqX: 1 + 0.08 * th };
@@ -963,3 +1079,6 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
     default: return { ...base, tex: 'ready' };
   }
 };
+
+// ★起動時のテンポ係数(`?brtempo=`・既定 1.3)。全部の時間の欄が宣言された後(ファイルの末尾)で1回だけ書き直す。
+setBrawlerTempo(urlNum(BRAWLER_TEMPO_SEARCH, 'brtempo', BRAWLER_TEMPO_DEFAULT));

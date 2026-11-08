@@ -4592,8 +4592,11 @@ const startBrawlerTech = (
         : { dx: dir.x * BR.BRAWLER_KICK_NO_TARGET_PX, dy: dir.y * BR.BRAWLER_KICK_NO_TARGET_PX, dist: BR.BRAWLER_KICK_NO_TARGET_PX };
       // 飛ぶ時間は距離に合わせる(遠い相手ほど少し長く・最高速はほぼ据え置き=§9-33)。判定の時刻(前隙の終わり)も同じ長さ。
       const flightMs = BR.brawlerKickFlightMs(ap.dist);
-      s = { ...s, windupMs: flightMs };
-      extra = { ...extra, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, flightMs, now) };
+      // ★3発目は蹴りに入る前に溜める(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」)。前隙=溜め+飛ぶ時間。
+      //   詰めの器は溜めの間止めておく(lungeHoldUntil=止めと同じ仕組み・明けたら飛ぶ時間ぶん飛ぶ)。
+      const chargeMs = kickN >= BR.BRAWLER_KICK_MAX ? BR.BRAWLER_KICK3_CHARGE_MS : 0;
+      s = { ...s, windupMs: chargeMs + flightMs, kickChargeMs: chargeMs };
+      extra = { ...extra, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, flightMs, now), ...(chargeMs > 0 ? { lungeHoldUntil: now + chargeMs } : {}) };
       brawlerSfx('whip-swing', 0.55, (kickN >= 3 ? 0.78 : 0.92) * brJitter(), 160);
       // ★蹴りの筋(社長指示2026-11-07「キャラクターの移動に横長の斬撃の絵を被せれば蹴ってるように見える」)。
       // dash-wind(横長の白い羽の筋・尖った先が進む側)を体に付けて(followPlayer)、蹴り脚の高さ=足元寄りに被せる。3発目は大きく長く。

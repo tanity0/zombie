@@ -6,25 +6,25 @@ import type { EnemyType } from '../types/game';
 import { isBossType } from './enemyUtils';
 import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { meteorPhase } from './telegraphStyle';
-import { BRAWLER_LIFT_MS, brawlerLiftArcRel } from './brawler';
+import { BRAWLER_LIFT_MS, BRAWLER_TEMPO, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo } from './brawler';
 
 /** 当たりが途切れたら流れ(コンボ時計・反撃の数・同じ技の記録)を0へ戻す(ms)。 */
-export const BRAWLER_COMBO_GAP_MS = 600;
+export let BRAWLER_COMBO_GAP_MS = 600; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 固まりの減衰: 長さ = 基本 × max(床, 1 − 時計 / この ms)。 */
-export const BRAWLER_COMBO_DECAY_MS = 3000;
+export let BRAWLER_COMBO_DECAY_MS = 3000; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_COMBO_FLOOR = 0.4;
 /** 同じ段・同じ技を1つの流れで当て直すと、時計に足す ms(1段目の連打・同じ技の擦りだけが早く抜けられる)。 */
-export const BRAWLER_SAME_MOVE_PENALTY_MS = 400;
+export let BRAWLER_SAME_MOVE_PENALTY_MS = 400; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 反撃の数(1つの流れで受けた格闘の当たり)。雑魚・強個体とも7(社長指示2026-11-08「強個体も雑魚と同じにして」)。ボス級は反撃しない。 */
 export const BRAWLER_REVENGE_HITS_MOB = 7;
 /** 振り払い: 溜め(=赤い予告が出てから消え切るまで)・当たりの円の半径・威力(接触/噛みつきの倍率)・押す距離と時間。 */
-export const BRAWLER_REVENGE_WINDUP_MS = 350;
+export let BRAWLER_REVENGE_WINDUP_MS = 350; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_REVENGE_RADIUS = 90;
 export const BRAWLER_REVENGE_DMG_MULT = 1.5;
 export const BRAWLER_REVENGE_PUSH_PX = 60;
 export const BRAWLER_REVENGE_PUSH_MS = 200;
 /** 振り払いの後、その敵が固まらない時間(すぐ固め直せない・ms)。 */
-export const BRAWLER_REVENGE_NO_HOLD_MS = 1200;
+export let BRAWLER_REVENGE_NO_HOLD_MS = 1200; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 振り払いの予告の円の描き切る位置(流星の位相 `meteorPhase` の drawFrac)。前半で円が描かれ、後半で外から内へ流れて消える。 */
 export const BRAWLER_REVENGE_DRAW_FRAC = 0.45;
 
@@ -41,11 +41,13 @@ export type BrawlerMoveKey =
  * 固まりの基本の長さ(ms)。0=固めない(吹き飛ばす技=5段目・飛び蹴り3発目・大踏み潰し・秘奥義の締めは今どおり飛ばす)。
  * 4段目は今の浮かせ(450ms)と同じ長さ。
  */
-export const BRAWLER_HOLD_BASE_MS: Readonly<Record<BrawlerMoveKey, number>> = {
+export const BRAWLER_HOLD_BASE_MS_BASE: Readonly<Record<BrawlerMoveKey, number>> = {
   s1: 300, s2: 300, s3: 450, s4: 450, s5: 0,
   kick1: 350, kick2: 350, kick3: 0,
   stomp: 0, kiko: 300, secret: 300, 'secret-land': 0,
 };
+/** 固まりの基本の長さ(係数を掛けた値・ms)。 */
+export let BRAWLER_HOLD_BASE_MS: Readonly<Record<BrawlerMoveKey, number>> = BRAWLER_HOLD_BASE_MS_BASE;
 
 /** 段の番号(1..5)から名札。 */
 export const brawlerStageMoveKey = (stage: number): BrawlerMoveKey =>
@@ -239,9 +241,9 @@ export const BRAWLER_JUGGLE_PUSH: Readonly<Record<BrawlerMoveKey, number>> = {
 /** これより軽い押し上げはもう浮かない(=落ちる)。いずれ必ず落ちる=永久には浮かせられない。 */
 export const BRAWLER_JUGGLE_MIN_F = 0.12;
 /** 1回の押し上げの浮く時間の下限(ms・短すぎる跳ねは絵がちらつく)。 */
-export const BRAWLER_JUGGLE_MIN_MS = 140;
+export let BRAWLER_JUGGLE_MIN_MS = 140; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 空中から吹き飛ばされた時に地面へ落ちる時間(ms)。 */
-export const BRAWLER_JUGGLE_DROP_MS = 200;
+export let BRAWLER_JUGGLE_DROP_MS = 200; // ×BRAWLER_TEMPO(係数1.0の値)
 
 /** 敵の浮きの欄(store の Enemy のうち、ここが読み書きする所だけ)。時計は Date.now。 */
 export interface BrawlerJuggleFields {
@@ -314,3 +316,36 @@ export const brawlerJugglePush = (
   const from = airborne ? brawlerJuggleHeightRel(e, now) : 0;
   return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: from, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true };
 };
+
+// ---------------------------------------------------------------------------------------------
+// ★テンポ係数(utils/brawler の BRAWLER_TEMPO・社長承認2026-11-08)。固まり・減衰の時計・同じ技の罰・流れの切れ・反撃の溜め・
+// 浮きの下限と叩き落としも同じ係数で伸ばす(格闘の時計が全体に遅くなる分、追撃が届くよう同率)。
+// ---------------------------------------------------------------------------------------------
+/** 係数を掛けた時間の一式(純関数)。係数1.0なら今までの値と一致する。 */
+export const brawlerComboTimesAt = (tempo: number) => ({
+  holdBase: Object.fromEntries((Object.keys(BRAWLER_HOLD_BASE_MS_BASE) as BrawlerMoveKey[]).map(k => [k, brawlerTempoMs(BRAWLER_HOLD_BASE_MS_BASE[k], tempo)])) as Record<BrawlerMoveKey, number>,
+  BRAWLER_COMBO_GAP_MS: brawlerTempoMs(600, tempo),
+  BRAWLER_COMBO_DECAY_MS: brawlerTempoMs(3000, tempo),
+  BRAWLER_SAME_MOVE_PENALTY_MS: brawlerTempoMs(400, tempo),
+  BRAWLER_REVENGE_WINDUP_MS: brawlerTempoMs(350, tempo),
+  BRAWLER_REVENGE_NO_HOLD_MS: brawlerTempoMs(1200, tempo),
+  BRAWLER_JUGGLE_MIN_MS: brawlerTempoMs(140, tempo),
+  BRAWLER_JUGGLE_DROP_MS: brawlerTempoMs(200, tempo),
+});
+const applyBrawlerComboTempo = (tempo: number): void => {
+  const v = brawlerComboTimesAt(tempo);
+  BRAWLER_HOLD_BASE_MS = v.holdBase;
+  BRAWLER_COMBO_GAP_MS = v.BRAWLER_COMBO_GAP_MS;
+  BRAWLER_COMBO_DECAY_MS = v.BRAWLER_COMBO_DECAY_MS;
+  BRAWLER_SAME_MOVE_PENALTY_MS = v.BRAWLER_SAME_MOVE_PENALTY_MS;
+  BRAWLER_REVENGE_WINDUP_MS = v.BRAWLER_REVENGE_WINDUP_MS;
+  BRAWLER_REVENGE_NO_HOLD_MS = v.BRAWLER_REVENGE_NO_HOLD_MS;
+  BRAWLER_JUGGLE_MIN_MS = v.BRAWLER_JUGGLE_MIN_MS;
+  BRAWLER_JUGGLE_DROP_MS = v.BRAWLER_JUGGLE_DROP_MS;
+};
+/** 格闘の全部の時間を係数で書き直す(utils/brawler の段・技・秘奥義 + ここの固まり・反撃)。テストは明示の係数で呼ぶ。 */
+export const setBrawlerTempoAll = (tempo: number): void => {
+  setBrawlerTempo(tempo);
+  applyBrawlerComboTempo(BRAWLER_TEMPO);
+};
+applyBrawlerComboTempo(BRAWLER_TEMPO);
