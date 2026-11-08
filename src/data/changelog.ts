@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5393', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5392', items: [
     '格闘の構えで受けた時も、ボムカウンターが炸裂する',
   ] },
