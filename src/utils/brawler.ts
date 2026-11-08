@@ -712,6 +712,9 @@ export interface BrawlerPose {
   hand: 1 | -1;
   /** 絵を左右反転して逆の手を形で見せる(2段目・クリエイティブ監査 #5)。 */
   flip: boolean;
+  /** 体の震え(px・横/縦)。大踏み潰しの溜め(力を溜める小刻みな震え)。影も体に重ねて描くので一緒に震える。 */
+  shakeX?: number;
+  shakeY?: number;
 }
 const easeOut = (x: number): number => 1 - (1 - x) * (1 - x);
 const easeIn = (x: number): number => x * x;
@@ -722,14 +725,20 @@ export const brawlerJumpHeight = (p: number): number => {
   if (p < 0.6) return BRAWLER_JUMP_VIS_PX * (1 - 0.06 * ((p - 0.4) / 0.2));
   return BRAWLER_JUMP_VIS_PX * 0.94 * (1 - easeIn((p - 0.6) / 0.4));
 };
-/** 大踏み潰しの跳び(溜めの後 0.42〜1)。4段目より高い(#6)。上りは速く・頂点は短く・叩きつけは加速。 */
-export const BRAWLER_STOMP_VIS_PX = 66;
-export const brawlerStompHeight = (p: number): number => {
-  if (p <= 0.42 || p >= 1) return 0;
-  const q = (p - 0.42) / 0.58;
-  if (q < 0.5) return BRAWLER_STOMP_VIS_PX * easeOut(q / 0.5);
-  if (q < 0.62) return BRAWLER_STOMP_VIS_PX;
-  return BRAWLER_STOMP_VIS_PX * (1 - easeIn((q - 0.62) / 0.38));
+/**
+ * ★大踏み潰しの溜めの震え(社長指示2026-11-08「大踏み潰しはジャンプせず、地面を体が震えた後叩く」)。跳ばない。
+ * 力を溜める小刻みな震え: 始めは弱く遅く(振れ幅 easeIn・14Hz)→ 叩く直前が最大で速い(BRAWLER_STOMP_SHAKE_PX・40Hz)。
+ * el=前隙の経過(ms)、windupMs=前隙の長さ。返り値は横の振れ(px)。縦は横の 0.35 倍・位相をずらして使う。
+ */
+export const BRAWLER_STOMP_SHAKE_PX = 3.5;
+const STOMP_SHAKE_F0 = 14, STOMP_SHAKE_F1 = 40;
+export const brawlerStompShake = (el: number, windupMs: number): { x: number; y: number } => {
+  const T = Math.max(1, windupMs) / 1000;
+  const t = Math.max(0, Math.min(T, el / 1000));
+  const p = t / T;
+  const phase = 2 * Math.PI * (STOMP_SHAKE_F0 * t + (STOMP_SHAKE_F1 - STOMP_SHAKE_F0) * t * t / (2 * T)); // 周波数を一定に上げる(チャープ)
+  const a = BRAWLER_STOMP_SHAKE_PX * easeIn(p);
+  return { x: a * Math.sin(phase), y: a * 0.35 * Math.sin(phase * 1.7 + 0.9) };
 };
 /**
  * 浮かせの弧の配分(research/BRAWLER.md §12-1・社長承認2026-11-08「格闘ゲームの空中コンボの手触り」)。
@@ -926,13 +935,17 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
       return { ...base, tex: 'ready', sqY: 0.94 + breath, sqX: 1.04 - breath };
     }
     case 'stomp': {
-      // 大踏み潰し: 長めの溜め(しゃがみで沈む)→ 4段目より高く跳んで → 叩きつけ(#6)。
+      // ★大踏み潰し(社長指示2026-11-08「大踏み潰しはジャンプせず、地面を体が震えた後叩く」): 跳ばない。
+      // 溜め=振りかぶった絵(拳を頭上へ)でその場に構え、少し沈みながら小刻みに震える(始めは弱く・叩く直前が最大)。
+      // 叩く=しゃがみの絵へ切り替え、前へ倒れ込んで拳を地面へ振り下ろす(深く潰れて揺れ戻る)。
       if (!hit) {
-        if (pre < 0.42) { const q = pre / 0.42; return { ...base, tex: 'ready', sqY: 1 - 0.2 * easeOut(q), sqX: 1 + 0.12 * easeOut(q) }; }
-        return { ...base, tex: 'swing', jump: brawlerStompHeight(pre), sqY: 1.06, sqX: 0.96 };
+        const sh = brawlerStompShake(el, s.windupMs);
+        const sink = easeOut(pre);
+        return { ...base, tex: 'swing', lean: -0.05 * sink, sqY: 1 - 0.08 * sink, sqX: 1 + 0.05 * sink, shakeX: sh.x, shakeY: sh.y };
       }
       const land = Math.max(0, 1 - post * 2.5);
-      return { ...base, tex: 'ready', sqY: 1 - 0.28 * land, sqX: 1 + 0.22 * land };
+      const wob = Math.sin(post * Math.PI * 4) * 0.04 * (1 - post);
+      return { ...base, tex: 'ready', lean: 0.22 * land, push: 6 * land, sqY: 1 - 0.3 * land + wob, sqX: 1 + 0.22 * land - wob * 0.6 };
     }
     case 'kiko': {
       // 気功: 溜め=振り上げ(頭上に集める)→ 放つ=しゃがみ+前傾で突き出す(#4)。

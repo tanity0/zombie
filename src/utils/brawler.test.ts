@@ -9,7 +9,7 @@ import {
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
-  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompHeight, BRAWLER_JUMP_VIS_PX, BRAWLER_HIT_PITCH, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
+  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_HIT_PITCH, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
 } from './brawler';
@@ -244,10 +244,25 @@ describe('格闘: 絵(クリエイティブ監査)', () => {
     expect(brawlerPoseAt(f, 60)?.tex).toBe('ready');
     expect(brawlerPoseAt({ ...f, resolved: true }, 125)?.tex).toBe('swing');
   });
-  it('大踏み潰しの跳びは4段目より高い', () => {
-    let top = 0;
-    for (let p = 0; p <= 1; p += 0.01) top = Math.max(top, brawlerStompHeight(p));
-    expect(top).toBeGreaterThan(BRAWLER_JUMP_VIS_PX);
+  it('★大踏み潰しは跳ばない: 溜めの間はその場で震え(始めは弱く・叩く直前が最大)、叩いた瞬間に震えが止まる(社長指示2026-11-08)', () => {
+    const st = brawlerStartTech(initialBrawlerState(), 'stomp', 0);
+    const w = st.windupMs;
+    let early = 0, late = 0;
+    for (let t = 0; t < w; t += 2) {
+      const ps = brawlerPoseAt(st, t)!;
+      expect(ps.jump).toBe(0);
+      expect(ps.tex).toBe('swing');
+      const amp = Math.abs(ps.shakeX ?? 0);
+      if (t < w * 0.3) early = Math.max(early, amp); else if (t > w * 0.8) late = Math.max(late, amp);
+    }
+    expect(early).toBeLessThan(late * 0.25);
+    expect(late).toBeGreaterThan(BRAWLER_STOMP_SHAKE_PX * 0.6);
+    expect(brawlerStompShake(0, w).x).toBe(0); // 震え始めは0(慣性)
+    const after = brawlerPoseAt({ ...st, resolved: true }, w + 10)!;
+    expect(after.tex).toBe('ready');
+    expect(after.jump).toBe(0);
+    expect(after.shakeX ?? 0).toBe(0);
+    expect(after.lean).toBeGreaterThan(0.1); // 前へ倒れ込んで拳を振り下ろす
   });
   it('掌底は抜けた先で伸び切った形のまま一拍止まる(戻りの最初は前傾が最大のまま・§9-26)', () => {
     const s = { ...brawlerStartAttack(initialBrawlerState(), 5, 0, false), resolved: true };

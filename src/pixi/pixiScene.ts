@@ -20531,6 +20531,9 @@ export class PixiScene {
       actSqX *= brPose.sqX;
       actSqY *= brPose.sqY;
       brawlerJumpPx = brPose.jump * dsc;
+      // 大踏み潰しの溜めの震え(体の位置だけ・影は体に重ねて描くので一緒に震える)。
+      if (brPose.shakeX) actOffX += brPose.shakeX * dsc;
+      if (brPose.shakeY) actOffY += brPose.shakeY * dsc;
     }
     // カウンター成立の決めポーズ: 一瞬ふくらむ膨らみ＋傾き(速い減衰)。
     const sinceCounter = now - (p.lastCounterSuccessTime || 0);
