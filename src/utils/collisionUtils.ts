@@ -1,6 +1,6 @@
 import { Player, Enemy, Projectile, Pickup, Summon } from '../types/game';
 import { enemyFootBox, enemyHitStrip } from '../pixi/renderSpec';
-import { isCorpse } from './enemyUtils';
+import { isCorpse, isHangedman } from './enemyUtils';
 
 // 当たり判定=「帯」方式(社長指示)。通常敵は足元の帯(幅=影と同規格=実描画幅×0.55 / 高さ=e.height)で判定。
 // 裏ボスは従来どおり生の帯(AABB=ENEMY_STATS の w×h、BOSS_SPRITE_FIT で絵を追従)。絵は別経路で帯より大きく描く。
@@ -195,8 +195,46 @@ export const checkPlayerEnemyCollisions = (
 ): Enemy[] => {
   const hit = playerHitbox(player);
   // KILL吹き飛び(死体・SKILL_BUILD_REDESIGN.md §26-2): 死体は接触ダメージを与えない(唯一の合流点)。
-  return enemies.filter(enemy => !isCorpse(enemy) && checkCollision(hit, enemyContactBox(enemy)));
+  // ★使者(hangedman)だけは**足元の円**で判定する(PACING_PUZZLE.md §14-4-3b)。他の敵は従来どおり帯の四角。
+  return enemies.filter(enemy => !isCorpse(enemy) && (isHangedman(enemy.type)
+    ? hangedmanContactHit(player, enemy)
+    : checkCollision(hit, enemyContactBox(enemy))));
 };
+
+// ================================================================================================
+// ★使者(hangedman)の接触=足元の紫の円(PACING_PUZZLE.md §14-4-3b・社長指示2026-11-08)
+// 社長「使者の触れるあたり位置が分かりづらいので、足元は常にサークル表示(当たり判定)」「あ、紫の方がいいか」。
+// - 円の中心 = 使者の足元(当たり箱の下辺の中央 = x+w/2, y+h)。描画(pixiScene)も同じ関数を引く=1本。
+// - プレイヤー側の点 = 当たり箱(playerHitbox)の中心 = 体の中心。地面の他の円(爆風・噛み)と同じ点。
+// - 距離 ≤ R で接触(円の縁ちょうども当たり=赤い/紫の縁が見えている所までが当たる)。
+// - R = 帯の幅/2 + プレイヤーの当たり箱の幅/2 の実機値。帯の幅は描画が登録する絵の縦横比で決まり、
+//   使者の絵(31×128)では 36.7px → 18.4 + 9.3 = 27.7 ≒ 28。定数で持つ(絵の登録の有無で判定を変えない)。
+// - 当たった後(神付き・999・KB)は一切変えない=形だけ。召喚/守護霊/軍人への接触は従来の四角のまま。
+// ================================================================================================
+export const HANGEDMAN_CONTACT_R = 28;
+
+/** 使者の接触円の中心(足元)。 */
+export const hangedmanContactCenter = (e: { x: number; y: number; width: number; height: number }): { x: number; y: number } =>
+  ({ x: e.x + e.width / 2, y: e.y + e.height });
+
+/** プレイヤーが使者の接触円に入っているか(プレイヤーの当たり箱の中心で見る)。 */
+export const hangedmanContactHit = (
+  player: { x: number; y: number; width: number; height: number },
+  e: { x: number; y: number; width: number; height: number },
+): boolean => {
+  const c = hangedmanContactCenter(e);
+  const hb = playerHitbox(player);
+  return Math.hypot(hb.x + hb.width / 2 - c.x, hb.y + hb.height / 2 - c.y) <= HANGEDMAN_CONTACT_R;
+};
+
+/**
+ * 使者の円を**いま出すか**(=いま触れたら当たるか)。combatTick.applyContactDamage の forEach が
+ * 使者を素通りさせる条件(死体/HP0/気絶中)と同じ。プレイヤー側の無敵(i-frame・踏み込み)では消さない
+ * (円は「使者のここが危ない」を示すもので、こちらの無敵の表示ではない)。
+ */
+export const hangedmanContactCircleLive = (e: Enemy, gameTime: number): boolean =>
+  isHangedman(e.type) && !isCorpse(e) && e.health > 0
+  && !(e.stunUntil !== undefined && gameTime < e.stunUntil);
 
 // 敵 ↔ 召喚ユニット(通常個体+ghost-ally)の接触。各重なりにつき敵の damage を返す。
 // レア個体はHP制ではない(10秒で消滅)ので接触ダメージの対象外。

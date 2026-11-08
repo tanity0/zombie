@@ -177,7 +177,7 @@ describe('使者のKILL!演出: 死亡遷移で1回だけ(再接触・i-frame明
       player: {
         ...s.player,
         x: e.x + e.width / 2 - s.player.width / 2,
-        y: e.y + e.height / 2 - s.player.height / 2,
+        y: e.y + e.height - s.player.height / 2, // 使者の接触は足元の円(§14-4-3b)
         health: 50, maxHealth: 130, invulnerable: false, invulnerableTime: 0,
         counterWindowEnd: 0,
       },
@@ -226,7 +226,7 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
       player: {
         ...s.player,
         x: e.x + e.width / 2 - s.player.width / 2,
-        y: e.y + e.height / 2 - s.player.height / 2,
+        y: (type === 'hangedman' ? e.y + e.height : e.y + e.height / 2) - s.player.height / 2, // 使者の接触は足元の円(§14-4-3b)
         health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
         counterWindowEnd: 0,
       },
@@ -261,8 +261,8 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
       enemies: [e1, e2], gameTime: START_GT,
       player: {
         ...s.player,
-        x: e1.x + e1.width / 2 - s.player.width / 2,
-        y: e1.y + e1.height / 2 - s.player.height / 2,
+        x: e2.x + e2.width / 2 - s.player.width / 2,
+        y: e2.y + e2.height - s.player.height / 2, // 使者の接触は足元の円(§14-4-3b)
         health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
         counterWindowEnd: 0,
       },
@@ -309,7 +309,7 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
       player: {
         ...s.player,
         x: grabber.x + grabber.width / 2 - s.player.width / 2,
-        y: grabber.y + grabber.height / 2 - s.player.height / 2,
+        y: grabber.y + grabber.height - s.player.height / 2, // 使者の接触は足元の円(§14-4-3b)
         health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
         counterWindowEnd: 0,
       },
@@ -348,7 +348,7 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
       player: {
         ...s.player,
         x: e.x + e.width / 2 - s.player.width / 2,
-        y: e.y + e.height / 2 - s.player.height / 2,
+        y: e.y + e.height - s.player.height / 2, // 使者の接触は足元の円(§14-4-3b)
         health: 0, maxHealth: 130, invulnerable: false, invulnerableTime: 0,
         counterWindowEnd: 0,
       },
@@ -372,7 +372,7 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
       player: {
         ...s.player,
         x: e.x + e.width / 2 - s.player.width / 2,
-        y: e.y + e.height / 2 - s.player.height / 2,
+        y: e.y + e.height - s.player.height / 2, // 使者の接触は足元の円(§14-4-3b)
         health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
         counterWindowStart: 0, counterWindowEnd: 0, pendingSwingAt: 0, meleeSwingAt: 0,
       },
@@ -420,7 +420,7 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
       player: {
         ...s.player,
         x: servant.x + servant.width / 2 - s.player.width / 2,
-        y: servant.y + servant.height / 2 - s.player.height / 2,
+        y: servant.y + servant.height - s.player.height / 2, // 使者の接触は足元の円(§14-4-3b)
         health: 0, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
         counterWindowEnd: 0,
       },
@@ -443,7 +443,7 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
       player: {
         ...s.player,
         x: e.x + e.width / 2 - s.player.width / 2,
-        y: e.y + e.height / 2 - s.player.height / 2,
+        y: e.y + e.height - s.player.height / 2, // 使者の接触は足元の円(§14-4-3b)
         health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
         counterWindowEnd: 0, counterCooldownEnd: cdEnd,
       },
@@ -479,7 +479,7 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
       player: {
         ...s.player,
         x: grabber.x + grabber.width / 2 - s.player.width / 2,
-        y: grabber.y + grabber.height / 2 - s.player.height / 2,
+        y: grabber.y + grabber.height - s.player.height / 2, // 使者の接触は足元の円(§14-4-3b)
         health: 9999, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
         counterWindowEnd: 0,
       },

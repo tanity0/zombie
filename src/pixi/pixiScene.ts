@@ -274,7 +274,7 @@ import { heroFrameFor, heroLiftPx, heroAscendLook, heroZoomEligible, heroFocusEl
 import { biteTelegraphLine, preBiteTelegraphLine, chaffAimPoint, rankMobMeteors, type BiteTelegraphLine } from '../utils/biteTelegraph';
 import { labBaitZoomTarget } from '../world/labBait';
 import { escortAggroCandidates } from '../utils/escortView';
-import { enemyContactBox } from '../utils/collisionUtils'; // 確認用 ?hitbox=1
+import { enemyContactBox, HANGEDMAN_CONTACT_R, hangedmanContactCenter, hangedmanContactCircleLive } from '../utils/collisionUtils'; // 確認用 ?hitbox=1 / 使者の足元の紫の円(§14-4-3b)
 import { biteFxRect, playerArtRect } from '../utils/biteFxHit'; // 確認用 ?hitbox=1
 // ★バットのランタン(社長支給2026-09-18)。振りの角度も炸裂のコマ送りも噛みつきの経過から引く葉。
 import {
@@ -13384,6 +13384,19 @@ export class PixiScene {
         if (bl && usesZombieBiteFx(e)) this.zombieBiteLines.set(e.id, bl);
         if (bl && !bl.mobLine) this.bossBiteTick(g, `${e.id}:bite`, bl, e, gameTime, now);
         else if (bl) mobLines.push({ key: `${e.id}:bite`, l: bl, e, d: Math.hypot(e.x + e.width / 2 - pc.x, e.y + e.height / 2 - pc.y) });
+      }
+      // ★使者(hangedman)の足元の紫の円(PACING_PUZZLE.md §14-4-3b・社長指示2026-11-08「足元は常にサークル表示(当たり判定)」
+      //   「あ、紫の方がいいか」)。**この円が接触の判定そのもの**(collisionUtils.hangedmanContactHit と同じ中心・同じ半径)。
+      //   触れたら神付き=受けられない=色の文法「紫=カウンターできない攻撃」(ミーミルのレーザーと同じ 塗り0x9333ea / 縁0xc084fc)。
+      //   常設の円なので流星にはしない(掟4「当たり得る間ずっと在る」の常設版)。当たらない間(死体・HP0・気絶中)は出さない。
+      //   ★出入りにフェードを付けない: 付けると「紫が薄いのに当たる/紫が残っているのに当たらない」になる(判定と厳密一致を優先)。
+      if (hangedmanContactCircleLive(e, gameTime)) {
+        const c = hangedmanContactCenter(e);
+        const R = HANGEDMAN_CONTACT_R;
+        // 縁だけゆっくり息をする(1.9秒周期・塗りは一定)。濃さは常に高い側=「出ていない」に見える瞬間を作らない。
+        const breath = 0.5 + 0.5 * Math.sin(gameTime / 300);
+        g.circle(c.x, c.y, R).fill({ color: 0x9333ea, alpha: 0.42 * TELEGRAPH_FILL_MULT });
+        g.circle(c.x, c.y, R).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.78 + 0.17 * breath });
       }
       // ★格闘の反撃(research/BRAWLER.md §11-3)の赤い予告円。判定と同じ円(敵の中心・半径90=自機の体が触れたら当たる)。
       // ★★赤い予告の4つの掟: 位相は `meteorPhase` の1本(brawlerRevengeTelegraph)。出る=溜めの開始(aiStartedAt)、
