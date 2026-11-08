@@ -10,6 +10,7 @@ import {
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompHeight, BRAWLER_JUMP_VIS_PX, BRAWLER_HIT_PITCH, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
+  brawlerTechCancelOk, brawlerFlowOnHit, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
 } from './brawler';
 
 const foe = (id: string, cx: number, cy: number, over: Partial<Enemy> = {}): Enemy => ({
@@ -394,3 +395,98 @@ describe('秘奥義(research/BRAWLER.md §10)', () => {
   });
 });
 
+
+describe('技→技のキャンセル(research/BRAWLER.md §11-4)', () => {
+  /** 技を始めて判定まで進め、当たり(hits)を解いた状態。 */
+  const techResolved = (kind: 'stomp' | 'kiko' | 'kick' | 'guard', hits: number, t0 = 0, base = initialBrawlerState(), cancel = false) => {
+    const s = brawlerStartTech(base, kind, t0, kind === 'kick' ? 1 : 0, cancel);
+    const at = t0 + s.windupMs;
+    return { s: brawlerAfterResolve(s, at, hits, { pointCap: 20, countPoint: false, hitstopMs: kind === 'stomp' ? 140 : kind === 'kick' ? 80 : 0 }), at };
+  };
+  it('当たった技の後隙は、止めが明けてから後隙の終わりまで別の技で取り消せる', () => {
+    const { s, at } = techResolved('stomp', 1);
+    expect(brawlerTechAllowed(s, 'kiko', at + 50)).toBe(false); // 止めの間
+    expect(brawlerTechAllowed(s, 'kiko', at + 141)).toBe(true);
+    expect(brawlerTechAllowed(s, 'kick', at + 141)).toBe(true);
+    const end = at + 140 + BRAWLER_TECHS.stomp.recoveryMs;
+    expect(brawlerTechAllowed(s, 'kiko', end - 1)).toBe(true);
+    expect(brawlerTechAllowed(s, 'kiko', end)).toBe(false); // 後隙の終わり
+  });
+  it('当たらなかった技からは取り消せない(構えだけは当たらなくても後隙からいつでも)', () => {
+    const { s, at } = techResolved('stomp', 0);
+    expect(brawlerTechAllowed(s, 'kiko', at + 10)).toBe(false);
+    expect(brawlerTechAllowed(s, 'kick', at + 10)).toBe(false);
+    expect(brawlerTechAllowed(s, 'guard', at + 10)).toBe(true);
+    // 出る前(前隙)は構えでも取り消せない
+    const pre = brawlerStartTech(initialBrawlerState(), 'stomp', 0);
+    expect(brawlerTechAllowed(pre, 'guard', 50)).toBe(false);
+  });
+  it('同じ技へは取り消せない・1回の流れで各技は1回ずつ(飛び蹴りの3連は1つ)', () => {
+    const a = techResolved('stomp', 1);
+    expect(brawlerTechAllowed(a.s, 'stomp', a.at + 200)).toBe(false);
+    // 大踏み潰し → 気功(キャンセル)→ 当たった → 大踏み潰しには戻れない・飛び蹴りへは行ける
+    const b = techResolved('kiko', 1, a.at + 200, a.s, true);
+    expect(b.s.techChain).toEqual(['stomp', 'kiko']);
+    expect(brawlerTechAllowed(b.s, 'stomp', b.at + 10)).toBe(false);
+    expect(brawlerTechAllowed(b.s, 'kick', b.at + 10)).toBe(true);
+    // → 飛び蹴り(キャンセル)→ 当たった → 2発目は飛び蹴りの続き(今どおり)、気功・大踏み潰しには戻れない
+    const k = techResolved('kick', 1, b.at + 10, b.s, true);
+    expect(k.s.techChain).toEqual(['stomp', 'kiko', 'kick']);
+    expect(brawlerTechAllowed({ ...k.s, kickCount: 1 }, 'kick', k.at + 100)).toBe(true);
+    expect(brawlerTechAllowed(k.s, 'kiko', k.at + 100)).toBe(false);
+    expect(brawlerTechAllowed(k.s, 'stomp', k.at + 100)).toBe(false);
+    expect(brawlerTechAllowed(k.s, 'guard', k.at + 100)).toBe(true);
+    // 2発目(続き)でも流れはそのまま
+    expect(brawlerStartTech(k.s, 'kick', k.at + 300, 2).techChain).toEqual(['stomp', 'kiko', 'kick']);
+  });
+  it('キャンセルでない技は流れを始め直す・構えからは取り消せない', () => {
+    const s = brawlerStartTech({ ...initialBrawlerState(), techChain: ['stomp', 'kiko'] }, 'kick', 0, 1);
+    expect(s.techChain).toEqual(['kick']);
+    const g = techResolved('guard', 0);
+    expect(brawlerTechCancelOk(g.s, 'kick', 100)).toBe(false);
+    expect(brawlerTechAllowed(g.s, 'kick', 100)).toBe(false);
+  });
+  it('技→通常は取り消せない(技の最中の押下は先行入力で、技が終わってから1段目)', () => {
+    const { s, at } = techResolved('stomp', 1);
+    expect(brawlerPressDecision(s, at + 200)).toBe('buffer');
+    expect(brawlerStartAttack(s, 1, at + 800, false).techChain).toBeUndefined();
+  });
+  it('秘奥義の条件はキャンセルで繋いでも成立する(キャンセルは0ms扱い=前の技の終わり=いま)', () => {
+    // → (当たった)→ ↓ をキャンセル → ← をキャンセル → ↑ をキャンセル。終わりを待たずに繋ぐ。
+    let p = 0;
+    for (const [k, n, at] of [['kick', 1, 0], ['stomp', 0, 200], ['kiko', 0, 800], ['guard', 0, 1100]] as const) {
+      const r = brawlerSecretStep(p, at, k, n, at); // キャンセル=前の技の終わりを「いま」として渡す
+      p = r.progress;
+      if (k === 'guard') expect(r.fire).toBe(true);
+    }
+  });
+});
+
+describe('ヒット数の表示(research/BRAWLER.md §11-4)', () => {
+  it('当たりを足す・流れが切れていたら数え直す', () => {
+    let s = brawlerFlowOnHit(initialBrawlerState(), 1);
+    expect(s.flowHits).toBe(1);
+    s = brawlerFlowOnHit(s, 2);
+    expect(s.flowHits).toBe(3);
+    s = { ...s, flowBrokenAt: 500 };
+    s = brawlerFlowOnHit(s, 1);
+    expect([s.flowHits, s.flowBrokenAt]).toEqual([1, 0]);
+    expect(brawlerFlowOnHit(s, 0)).toBe(s);
+  });
+  it('流れが切れる: 待機に戻り、つながりの受付・蹴りの連続・技の終わりからの猶予のどれも過ぎた時', () => {
+    const base = { ...initialBrawlerState(), flowHits: 4 };
+    // 通常攻撃が当たって終わった=つながりの受付の間は続く
+    const atk = { ...base, phase: 'idle' as const, chainUntil: 1000 + BRAWLER_CHAIN_RESET_MS };
+    expect(brawlerFlowBreaksNow(atk, 1000 + BRAWLER_CHAIN_RESET_MS)).toBe(false);
+    expect(brawlerFlowBreaksNow(atk, 1000 + BRAWLER_CHAIN_RESET_MS + 1)).toBe(true);
+    // 技の終わりから猶予
+    const tech = { ...base, phase: 'idle' as const, secretLastEndAt: 2000 };
+    expect(brawlerFlowBreaksNow(tech, 2000 + BRAWLER_FLOW_GRACE_MS)).toBe(false);
+    expect(brawlerFlowBreaksNow(tech, 2000 + BRAWLER_FLOW_GRACE_MS + 1)).toBe(true);
+    // 行動の最中・秘奥義の間・もう切れている・当たりなし は切れない
+    expect(brawlerFlowBreaksNow({ ...base, phase: 'attack' }, 99999)).toBe(false);
+    expect(brawlerFlowBreaksNow({ ...base, secret: brawlerSecretStart(base, 0, 0).secret }, 99999)).toBe(false);
+    expect(brawlerFlowBreaksNow({ ...base, flowBrokenAt: 10 }, 99999)).toBe(false);
+    expect(brawlerFlowBreaksNow({ ...base, flowHits: 0 }, 99999)).toBe(false);
+  });
+});

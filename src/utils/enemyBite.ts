@@ -772,7 +772,7 @@ export const isBiteFrozen = (
   || (enemy.liftUntil !== undefined && nowMs < enemy.liftUntil);
 
 export const canStartBite = (
-  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState' | 'brHoldUntil'>,
   gameTime: number,
   /** ★`liftUntil` は Date.now 系(§isBiteFrozen の注記)。時計を混ぜないため呼び手が両方渡す。 */
   nowMs: number,
@@ -806,6 +806,8 @@ export const canStartBite = (
   //   着地パリィ(combatTick)は `biteRecoverUntil` だけ書いて `biteReadyAt` を書かないため、ここで塞ぐ。
   if (enemy.biteRecoverUntil !== undefined && gameTime < enemy.biteRecoverUntil) return false;
   if (isBiteFrozen(enemy, gameTime, nowMs)) return false;
+  // 格闘の食らいの固まり(research/BRAWLER.md §11-1・Date.now系)の間は構え始めない(構えている噛みは止めない=技を出している敵は固めない)。
+  if (enemy.brHoldUntil !== undefined && nowMs < enemy.brHoldUntil) return false;
   return true;
 };
 
@@ -820,7 +822,7 @@ export const canStartBite = (
  * ここを緩めると「黄色く気絶して棒立ちの敵が噛んでくる」が戻る(v0.25.3600台の事故)。
  */
 export const canZombieRushBite = (
-  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState'>,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState' | 'brHoldUntil'>,
   gameTime: number,
   /** ★`liftUntil` は Date.now 系(§isBiteFrozen の注記)。時計を混ぜないため呼び手が両方渡す。 */
   nowMs: number,
@@ -831,6 +833,8 @@ export const canZombieRushBite = (
   if (gameTime < (enemy.biteReadyAt ?? 0)) return false;              // 硬直中
   if (enemy.biteRecoverUntil !== undefined && gameTime < enemy.biteRecoverUntil) return false; // 硬直(凍結)中は構え始めない(v0.25.5066)
   if (isBiteFrozen(enemy, gameTime, nowMs)) return false;
+  // 格闘の食らいの固まり(research/BRAWLER.md §11-1・Date.now系)の間は構え始めない(構えている噛みは止めない=技を出している敵は固めない)。
+  if (enemy.brHoldUntil !== undefined && nowMs < enemy.brHoldUntil) return false;
   return true;
 };
 

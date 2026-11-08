@@ -1,0 +1,170 @@
+// ★サブウェポン「格闘」の敵側の流れ(research/BRAWLER.md §11・社長指示2026-11-08)。
+// 食らいの固まり(当たった雑魚・強個体は食らいの動作だけになる)・減衰(連打では止め切れない)・同じ技の罰・反撃(振り払い)。
+// 純関数だけ(store が読んで敵へ書く・pixi は読むだけ)。時計は Date.now(敵の hitStunUntil / knockbackUntil と同じ)。
+// 反撃の溜めと当たる時刻だけは敵の技の時計(gameTime・aiStartedAt / aiPhaseUntil)で持つ(予告の円が同じ時計を読む)。
+import type { EnemyType } from '../types/game';
+import { isBossType } from './enemyUtils';
+import { POSTURE_ELITE_TYPES } from './bossPosture';
+import { meteorPhase } from './telegraphStyle';
+
+/** 当たりが途切れたら流れ(コンボ時計・反撃の数・同じ技の記録)を0へ戻す(ms)。 */
+export const BRAWLER_COMBO_GAP_MS = 600;
+/** 固まりの減衰: 長さ = 基本 × max(床, 1 − 時計 / この ms)。 */
+export const BRAWLER_COMBO_DECAY_MS = 3000;
+export const BRAWLER_COMBO_FLOOR = 0.4;
+/** 同じ段・同じ技を1つの流れで当て直すと、時計に足す ms(1段目の連打・同じ技の擦りだけが早く抜けられる)。 */
+export const BRAWLER_SAME_MOVE_PENALTY_MS = 400;
+/** 反撃の数(1つの流れで受けた格闘の当たり)。雑魚 / 強個体。ボス級は反撃しない。 */
+export const BRAWLER_REVENGE_HITS_MOB = 7;
+export const BRAWLER_REVENGE_HITS_STRONG = 5;
+/** 振り払い: 溜め(=赤い予告が出てから消え切るまで)・当たりの円の半径・威力(接触/噛みつきの倍率)・押す距離と時間。 */
+export const BRAWLER_REVENGE_WINDUP_MS = 350;
+export const BRAWLER_REVENGE_RADIUS = 90;
+export const BRAWLER_REVENGE_DMG_MULT = 1.5;
+export const BRAWLER_REVENGE_PUSH_PX = 60;
+export const BRAWLER_REVENGE_PUSH_MS = 200;
+/** 振り払いの後、その敵が固まらない時間(すぐ固め直せない・ms)。 */
+export const BRAWLER_REVENGE_NO_HOLD_MS = 1200;
+/** 振り払いの予告の円の描き切る位置(流星の位相 `meteorPhase` の drawFrac)。前半で円が描かれ、後半で外から内へ流れて消える。 */
+export const BRAWLER_REVENGE_DRAW_FRAC = 0.45;
+
+/**
+ * 当たりの名札(同じ技の罰と、固まりの基本の長さの引き先)。段は s1..s5、飛び蹴りは何発目か、秘奥義の9連撃は1本。
+ * 5段の順・飛び蹴りの3連は名札が違う=罰を受けない。
+ */
+export type BrawlerMoveKey =
+  | 's1' | 's2' | 's3' | 's4' | 's5'
+  | 'kick1' | 'kick2' | 'kick3'
+  | 'stomp' | 'kiko' | 'secret' | 'secret-land';
+
+/**
+ * 固まりの基本の長さ(ms)。0=固めない(吹き飛ばす技=5段目・飛び蹴り3発目・大踏み潰し・秘奥義の締めは今どおり飛ばす)。
+ * 4段目は今の浮かせ(450ms)と同じ長さ。
+ */
+export const BRAWLER_HOLD_BASE_MS: Readonly<Record<BrawlerMoveKey, number>> = {
+  s1: 300, s2: 300, s3: 450, s4: 450, s5: 0,
+  kick1: 350, kick2: 350, kick3: 0,
+  stomp: 0, kiko: 300, secret: 300, 'secret-land': 0,
+};
+
+/** 段の番号(1..5)から名札。 */
+export const brawlerStageMoveKey = (stage: number): BrawlerMoveKey =>
+  (['s1', 's2', 's3', 's4', 's5'] as const)[Math.max(1, Math.min(5, Math.round(stage))) - 1];
+/** 飛び蹴りの何発目か(1..3)から名札。 */
+export const brawlerKickMoveKey = (kickN: number): BrawlerMoveKey =>
+  (['kick1', 'kick2', 'kick3'] as const)[Math.max(1, Math.min(3, Math.round(kickN))) - 1];
+
+/**
+ * 区分(CLAUDE.md「敵の仕様は種類で固める」)。強個体=体勢値を持つエリート雑魚(POSTURE_ELITE_TYPES)。
+ * `isBossType` は強個体まで含む別目的の表なので、強個体を先に見る(telegraphStyleFor と同じ順)。
+ */
+export const brawlerComboClass = (type: EnemyType): 'mob' | 'strong' | 'boss' =>
+  POSTURE_ELITE_TYPES.has(type) ? 'strong' : isBossType(type) ? 'boss' : 'mob';
+/** 食らいの固まり・減衰・反撃の対象か(雑魚・強個体。ボス級は区分どおり固めない)。 */
+export const isBrawlerComboSubject = (type: EnemyType): boolean => brawlerComboClass(type) !== 'boss';
+/** 反撃の数(区分で決まる)。ボス級は反撃しない=Infinity。 */
+export const brawlerRevengeHitsFor = (type: EnemyType): number => {
+  const c = brawlerComboClass(type);
+  return c === 'boss' ? Infinity : c === 'strong' ? BRAWLER_REVENGE_HITS_STRONG : BRAWLER_REVENGE_HITS_MOB;
+};
+
+/** 固まりの減衰の倍率(時計 ms から)。 */
+export const brawlerHoldDecay = (clockMs: number): number =>
+  Math.max(BRAWLER_COMBO_FLOOR, 1 - Math.max(0, clockMs) / BRAWLER_COMBO_DECAY_MS);
+
+/** 敵の流れの欄(store の Enemy のうち、ここが読み書きする所だけ)。 */
+export interface BrawlerComboFields {
+  type: EnemyType;
+  brComboStart?: number;
+  brComboAt?: number;
+  brComboPenalty?: number;
+  brComboHits?: number;
+  brComboMoves?: string;
+  brRevengePending?: boolean;
+  brNoHoldUntil?: number;
+}
+
+/** この時刻にまだ流れが続いているか(最後の当たりから GAP 以内)。 */
+export const brawlerComboAlive = (e: Pick<BrawlerComboFields, 'brComboAt'>, now: number): boolean =>
+  e.brComboAt !== undefined && now - e.brComboAt <= BRAWLER_COMBO_GAP_MS;
+
+/** 今の流れの時計(ms)。流れが切れていれば0。罰の分を含む。 */
+export const brawlerComboClock = (e: BrawlerComboFields, now: number): number =>
+  brawlerComboAlive(e, now) ? Math.max(0, now - (e.brComboStart ?? now)) + (e.brComboPenalty ?? 0) : 0;
+
+/**
+ * 格闘の当たり1回ぶんの流れ(§11-1・§11-2・§11-3)。
+ *  - 流れが切れていれば(最後の当たりから 600ms 超)始め直す。
+ *  - 同じ名札を同じ流れで2回目以降に当てたら、時計に +400ms。
+ *  - 固まり = 基本 × max(0.4, 1 − 時計/3000)。振り払いの後(brNoHoldUntil まで)は固めない。
+ *  - countRevenge なら反撃の数を1つ足し、区分の数に達したら反撃を予約する。
+ * ボス級は何もしない(patch 空・固まり0)。
+ */
+export const brawlerComboOnHit = (
+  e: BrawlerComboFields, move: BrawlerMoveKey, now: number, countRevenge = true,
+): { patch: Partial<BrawlerComboFields>; holdMs: number } => {
+  if (!isBrawlerComboSubject(e.type)) return { patch: {}, holdMs: 0 };
+  const alive = brawlerComboAlive(e, now);
+  const start = alive ? (e.brComboStart ?? now) : now;
+  const moves = alive && e.brComboMoves ? e.brComboMoves.split(',') : [];
+  const repeat = moves.includes(move);
+  const penalty = (alive ? (e.brComboPenalty ?? 0) : 0) + (repeat ? BRAWLER_SAME_MOVE_PENALTY_MS : 0);
+  const clock = Math.max(0, now - start) + penalty;
+  const base = BRAWLER_HOLD_BASE_MS[move];
+  const noHold = e.brNoHoldUntil !== undefined && now < e.brNoHoldUntil;
+  const holdMs = base > 0 && !noHold ? Math.round(base * brawlerHoldDecay(clock)) : 0;
+  const hits = (alive ? (e.brComboHits ?? 0) : 0) + (countRevenge ? 1 : 0);
+  const pending = (alive && e.brRevengePending === true) || (countRevenge && hits >= brawlerRevengeHitsFor(e.type));
+  return {
+    patch: {
+      brComboStart: start, brComboAt: now, brComboPenalty: penalty, brComboHits: hits,
+      brComboMoves: repeat ? moves.join(',') : [...moves, move].join(','),
+      brRevengePending: pending,
+    },
+    holdMs,
+  };
+};
+
+/** 振り払いを今始めてよいか(予約済み・技を出していない・ボス級ではない)。止まっている(気絶など)かは呼び手が先に見る。 */
+export const brawlerRevengeShouldStart = (
+  e: { type: EnemyType; brRevengePending?: boolean; aiPhase?: string },
+  attacking: boolean,
+): boolean => e.brRevengePending === true && !attacking && e.aiPhase !== 'br-revenge' && isBrawlerComboSubject(e.type);
+
+/** 振り払いの溜めを始めた時の欄(gameTime 系の技の時計)。 */
+export const brawlerRevengeStartPatch = (gameTime: number) => ({
+  aiPhase: 'br-revenge' as const,
+  aiStartedAt: gameTime,
+  aiPhaseUntil: gameTime + BRAWLER_REVENGE_WINDUP_MS,
+  brRevengePending: false,
+  brHoldUntil: undefined,
+  vx: 0, vy: 0,
+});
+/** 振り払いが当たる(=予告が消え切る)時刻か。 */
+export const brawlerRevengeDue = (e: { aiPhase?: string; aiPhaseUntil?: number }, gameTime: number): boolean =>
+  e.aiPhase === 'br-revenge' && gameTime >= (e.aiPhaseUntil ?? 0);
+/** 振り払いが当たった後の欄。流れは0へ戻し、しばらく固まらない。 */
+export const brawlerRevengeEndPatch = (now: number) => ({
+  aiPhase: undefined, aiPhaseUntil: 0, aiStartedAt: undefined,
+  brComboStart: undefined, brComboAt: undefined, brComboPenalty: 0, brComboHits: 0, brComboMoves: undefined,
+  brRevengePending: false, brHoldUntil: undefined,
+  brNoHoldUntil: now + BRAWLER_REVENGE_NO_HOLD_MS, brRevengeAt: now,
+  vx: 0, vy: 0,
+});
+/** 振り払いの威力(その敵の接触/噛みつきの威力 ×1.5)。 */
+export const brawlerRevengeDamage = (contactDamage: number): number =>
+  Math.max(0, contactDamage) * BRAWLER_REVENGE_DMG_MULT;
+
+/**
+ * 振り払いの赤い予告(★★赤い予告の4つの掟)。位相は `meteorPhase` の1本。
+ *  ②出る時刻 = 溜めの開始(startAt)。③消え切る時刻 = 当たる時刻(hitAt)= `er` が1になる瞬間。
+ *  visible は startAt ≦ t < hitAt の間だけ(当たった瞬間には消え切っている)。
+ */
+export const brawlerRevengeTelegraph = (
+  startAt: number, hitAt: number, gameTime: number,
+): { visible: boolean; prog: number; p: number; er: number } => {
+  const total = Math.max(1, hitAt - startAt);
+  const prog = Math.max(0, Math.min(1, (gameTime - startAt) / total));
+  const { p, er } = meteorPhase(prog, BRAWLER_REVENGE_DRAW_FRAC);
+  return { visible: gameTime >= startAt && gameTime < hitAt, prog, p, er };
+};

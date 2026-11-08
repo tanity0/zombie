@@ -86,6 +86,9 @@ export const isEnemyFrozenForClocks = (e: Enemy, gameTime: number, nowMs: number
   // (c)被弾硬直(攻撃中スーパーアーマー=技を出している個体は止まらない・Date.now系)
   if (!committed && e.hitStunUntil !== undefined && nowMs < e.hitStunUntil
     && !isEnemyAttacking(e, gameTime)) return true;
+  // (c'')格闘の食らいの固まり(research/BRAWLER.md §11-1・Date.now系・updateEnemies と同じ式=技を出している個体は止まらない)
+  if (!committed && e.brHoldUntil !== undefined && nowMs < e.brHoldUntil
+    && !isEnemyAttacking(e, gameTime)) return true;
   // (c')英雄の昇天に見とれて立ち止まっている間(Date.now系・updateEnemies と同じ式)
   if (!committed && e.aweUntil !== undefined && nowMs < e.aweUntil
     && !isEnemyAttacking(e, gameTime)) return true;

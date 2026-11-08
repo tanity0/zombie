@@ -80,5 +80,10 @@ export interface BrawlerState {
   secretLastEndAt?: number;
   /** 秘奥義の最中(undefined=発動していない)。 */
   secret?: BrawlerSecret;
+  /** 技→技のキャンセルの流れで出した技(research/BRAWLER.md §11-4・1回の流れで各技は1回ずつ)。キャンセルでない技で始め直す。 */
+  techChain?: BrawlerTechKind[];
+  /** ヒット数の表示(§11-4)。同じ流れの当たり数と、流れが切れた時刻(gameTime・0=続いている)。 */
+  flowHits?: number;
+  flowBrokenAt?: number;
 }
 

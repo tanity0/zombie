@@ -2,7 +2,8 @@
 // 5段のつながり・ヒットストップ・技ポイント・技(構え/大踏み潰し/気功/飛び蹴り)・近接専用モード・守護霊の疑似プレイヤー。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH, INVULN_MS, kbStopBoost, KNOCKBACK_DURATION } from './gameStore';
-import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
+import { applyEnemyProjectileHits, applyPumpkinBlastDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
+import { brawlerComboOnHit, brawlerRevengeTelegraph, BRAWLER_REVENGE_WINDUP_MS, BRAWLER_REVENGE_RADIUS, BRAWLER_COMBO_FLOOR, BRAWLER_REVENGE_HITS_MOB } from '../utils/brawlerCombo';
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
@@ -800,3 +801,213 @@ describe('秘奥義(research/BRAWLER.md §10・社長指示2026-11-08)', () => {
   });
 });
 
+
+describe('食らいの固まり・減衰・反撃・キャンセル(research/BRAWLER.md §11・社長指示2026-11-08)', () => {
+  const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
+  /** 格闘の指定打撃をそのまま1発(止め・押しは段の表どおり)。 */
+  const hit = (id: string, move: 's1' | 's2' | 's3' | 's4', stage: 1 | 2 | 3 | 4 = 1) => {
+    const spec = [null, { m: 0.35, st: 45, kb: 'none' }, { m: 0.35, st: 45, kb: 'none' }, { m: 0.8, st: 80, kb: 'normal' }, { m: 1, st: 90, kb: 'none' }][stage]!;
+    return useGameStore.getState().triggerCounter(undefined, {
+      targetIds: [id], mult: spec.m, brawler: true, stunMs: spec.st, kb: { kind: spec.kb as 'none' | 'normal' }, postureMult: spec.m, pressedAt: Date.now(),
+      combo: { move },
+    });
+  };
+  /** 移動・格闘・敵の更新を 10ms 刻みで進める(stepEnemies=敵も動かす)。 */
+  const advanceAll = (ms: number, onStep?: () => void) => {
+    const end = now + ms;
+    while (now < end) {
+      now += 10;
+      useGameStore.setState(st => ({ gameTime: st.gameTime + 10 }));
+      useGameStore.getState().movePlayer(NO_INPUT, 0.01);
+      useGameStore.getState().tickBrawler();
+      useGameStore.getState().updateEnemies(0.01);
+      onStep?.();
+    }
+  };
+  const tunables = { thorOrbitDist: 200, thorCounterLeapMs: 300 };
+
+  it('雑魚は格闘の当たりで食らいの動作だけになる(動かない)。明けたら動き出す', () => {
+    setup();
+    const mk = (dx: number, id: string) => { const e = zombieAt(dx, 0, id); e.type = 'skeleton'; return e; };
+    useGameStore.setState({ enemies: [mk(160, 'z'), mk(-160, 'c')] });
+    hit('z', 's1');
+    const e0 = en('z');
+    expect(e0.brHoldUntil).toBe(now + 45 + 300);
+    const x0 = e0.x, c0 = en('c').x;
+    advanceAll(330);
+    expect(en('z').x).toBeCloseTo(x0, 5);
+    expect(Math.abs(en('c').x - c0)).toBeGreaterThan(0.5); // 当てていない方は動いている
+    advanceAll(400);
+    expect(Math.abs(en('z').x - x0)).toBeGreaterThan(0.5);
+  });
+  it('技を出している最中の敵は止めない(体勢値は削る)・ボス級は固めない', () => {
+    setup();
+    const busy = zombieAt(90, 0, 'z');
+    busy.aiPhase = 'z-red-pause'; busy.aiPhaseUntil = 999999;
+    const thor = zombieAt(-90, 0, 't');
+    thor.type = 'thor';
+    useGameStore.setState({ enemies: [busy, thor] });
+    hit('z', 's1'); hit('t', 's1');
+    expect(en('z').brHoldUntil).toBeUndefined();
+    expect(en('z').brComboHits).toBe(1);
+    expect(en('t').brHoldUntil).toBeUndefined();
+    expect(en('t').brComboHits).toBeUndefined();
+  });
+  it('5段を出し切る頃に固まりが切れる(1〜4段目は次の段が届くまで固まり続け、5段目の後は4割近くまで落ちている)', () => {
+    setup(3);
+    useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });
+    const holds: { at: number; until: number }[] = [];
+    const hitsAt: number[] = [];
+    let lastUntil = 0, lastHit = 0;
+    const watch = () => {
+      const e = en('z');
+      if ((e.brHoldUntil ?? 0) !== lastUntil && (e.brHoldUntil ?? 0) > 0) { holds.push({ at: now, until: e.brHoldUntil! }); lastUntil = e.brHoldUntil!; }
+      if (e.lastHit !== lastHit) { hitsAt.push(e.lastHit); lastHit = e.lastHit; }
+    };
+    for (let i = 0; i < 5; i++) { useGameStore.getState().brawlerPress(); for (let k = 0; k < 60 && br().phase !== 'idle'; k++) { advance(10); watch(); } }
+    expect(hitsAt.length).toBe(5);
+    expect(holds.length).toBe(4); // 5段目は吹き飛ばす=固めない
+    // 1〜4段目の固まりは、次の段が当たるまで切れない(=5段のつながりの中では敵は動けない)
+    for (let i = 0; i < 4; i++) expect(holds[i].until).toBeGreaterThanOrEqual(hitsAt[i + 1]);
+    // 基本の長さで割った固まりは段を追うごとに短くなる(減衰)
+    const base = [300, 300, 450, 450], stop = [45, 45, 80 + 280, 450];
+    const ratio = holds.map((h, i) => (h.until - hitsAt[i] - stop[i]) / base[i]);
+    for (let i = 1; i < 4; i++) expect(ratio[i]).toBeLessThan(ratio[i - 1]);
+    // 5段目の後に続けて1段目を当てても、固まりは4割近く(=次の段が届く前に切れる)
+    const next = brawlerComboOnHit(en('z'), 's1', now + 100);
+    expect(next.holdMs).toBeLessThanOrEqual(Math.round(300 * 0.45));
+    expect(next.holdMs).toBeGreaterThanOrEqual(Math.round(300 * BRAWLER_COMBO_FLOOR));
+  });
+  it('1段目の連打は5段の順に繋ぐより早く抜けられる(同じ技の罰)', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(60, 0, 'a'), zombieAt(-60, 0, 'b')] });
+    const holdOf = (id: string) => { const e = en(id); return (e.brHoldUntil ?? 0) - e.lastHit - 45; };
+    for (let i = 0; i < 3; i++) { hit('a', 's1'); hit('b', i % 2 === 0 ? 's1' : 's2', i % 2 === 0 ? 1 : 2); advance(250); }
+    expect(en('a').brComboPenalty).toBe(800);
+    expect(en('b').brComboPenalty).toBe(400); // s1, s2, s1 = 3発目だけ当て直し
+    expect(holdOf('a')).toBeLessThan(holdOf('b'));
+  });
+  it('雑魚に7発当てると振り払い: 赤い流星の円が溜めの頭から出て、消え切った瞬間に半径90で当たる(威力1.5倍・押される)', () => {
+    setup();
+    useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, invulnerable: false, health: 500, maxHealth: 500 } }));
+    for (let i = 0; i < BRAWLER_REVENGE_HITS_MOB; i++) { hit('z', (['s1', 's2', 's3', 's4'] as const)[i % 4], ((i % 4) + 1) as 1 | 2 | 3 | 4); advance(80); }
+    expect(en('z').brRevengePending).toBe(true);
+    let startAt = -1, blastAt = -1, blastR = 0, visAtStart = false, erAtBlast = -1;
+    const hp0 = useGameStore.getState().player.health;
+    const dmg = en('z').damage;
+    advanceAll(900, () => {
+      const st = useGameStore.getState();
+      const e = st.enemies.find(x => x.id === 'z');
+      if (startAt < 0 && e?.aiPhase === 'br-revenge') {
+        startAt = st.gameTime;
+        visAtStart = brawlerRevengeTelegraph(e.aiStartedAt!, e.aiPhaseUntil!, st.gameTime).visible;
+      }
+      const b = st.pumpkinBlasts.find(x => x.moveKey === 'br-revenge');
+      if (b && blastAt < 0) {
+        blastAt = st.gameTime; blastR = b.radius;
+        erAtBlast = brawlerRevengeTelegraph(startAt, startAt + BRAWLER_REVENGE_WINDUP_MS, st.gameTime).er;
+        applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, tunables);
+      }
+    });
+    expect(startAt).toBeGreaterThan(0);
+    expect(visAtStart).toBe(true);                               // ②出る時刻=溜めの開始(その瞬間に出ている)
+    expect(blastAt - startAt).toBe(BRAWLER_REVENGE_WINDUP_MS);   // 当たる=溜め350msの終わり
+    expect(erAtBlast).toBe(1);                                   // ③消え切る時刻=当たる時刻
+    expect(blastR).toBe(BRAWLER_REVENGE_RADIUS);
+    const p = useGameStore.getState().player;
+    expect(hp0 - p.health).toBeCloseTo(dmg * 1.5, 0);
+    expect(Math.hypot(p.knockbackVx ?? 0, p.knockbackVy ?? 0)).toBeGreaterThan(0);
+    // 振り払いの後は流れが0へ戻り、1.2秒は固まらない
+    const e = en('z');
+    expect(e.brComboHits).toBe(0);
+    hit('z', 's1');
+    expect(en('z').brHoldUntil).toBeUndefined();
+  });
+  it('振り払いの溜めの間はスーパーアーマー(押されない・固まらない)', () => {
+    setup();
+    const z = zombieAt(60, 0, 'z');
+    Object.assign(z, { aiPhase: 'br-revenge', aiStartedAt: useGameStore.getState().gameTime, aiPhaseUntil: useGameStore.getState().gameTime + 350 });
+    useGameStore.setState({ enemies: [z] });
+    useGameStore.getState().triggerCounter(undefined, {
+      targetIds: ['z'], mult: 1.3, brawler: true, stunMs: 140, kb: { kind: 'big', dirX: 1, dirY: 0, bossHalf: true }, postureMult: 1.3, pressedAt: Date.now(), combo: { move: 's5' },
+    });
+    const e = en('z');
+    expect(e.aiPhase).toBe('br-revenge');
+    expect(e.knockbackVx ?? 0).toBe(0);
+    expect(e.brHoldUntil).toBeUndefined();
+    expect(e.health).toBeLessThan(e.maxHealth);
+  });
+  it('構えで振り払いを受けるとカウンター成立=技ポイントが全回復', () => {
+    setup(2);
+    useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, health: 500, maxHealth: 500 } }));
+    for (let i = 0; i < BRAWLER_REVENGE_HITS_MOB; i++) { hit('z', (['s1', 's2', 's3', 's4'] as const)[i % 4], ((i % 4) + 1) as 1 | 2 | 3 | 4); advance(80); }
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 3 } } }));
+    let guarded = false, countered = false;
+    const hp0 = useGameStore.getState().player.health;
+    advanceAll(900, () => {
+      const st = useGameStore.getState();
+      const e = st.enemies.find(x => x.id === 'z');
+      if (!guarded && e?.aiPhase === 'br-revenge') { guarded = st.brawlerTech(0, -1); }
+      if (st.pumpkinBlasts.some(b => b.moveKey === 'br-revenge')) { applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, tunables); countered = true; }
+    });
+    expect(guarded).toBe(true);
+    expect(countered).toBe(true);
+    expect(useGameStore.getState().player.health).toBe(hp0);
+    expect(br().points).toBe(brawlerPointCap(2));
+  });
+  it('技→技のキャンセル: 当たった大踏み潰しの後隙を気功で取り消せる・空振りからは取り消せない(構えは別)', () => {
+    setup(3);
+    useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 20 } } }));
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
+    for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
+    expect(br().connected).toBe(true);
+    advance(160); // 止めが明けた
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
+    expect(br().tech).toBe('kiko');
+    expect(br().techChain).toEqual(['stomp', 'kiko']);
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false); // 同じ流れの大踏み潰しへは戻れない
+    // 空振りの大踏み潰しからは気功へ取り消せない・構えは取り消せる
+    setup(3);
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 20 } } }));
+    useGameStore.getState().brawlerTech(0, 1);
+    for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
+    advance(50);
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(false);
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    expect(br().tech).toBe('guard');
+  });
+  it('キャンセルで繋いでも秘奥義が出る(→ 当てて ↓ 当てて ← 当てて ↑)・ヒット数が数えられる', () => {
+    setup(3);
+    useGameStore.setState(st => {
+      const p = st.player;
+      return {
+        enemies: [zombieAt(70, 0, 'z')], viewZoom: 1,
+        camera: { x: p.x + p.width / 2 - st.gameBounds.width / 2, y: p.y + p.height / 2 - st.gameBounds.height / 2 },
+        player: { ...p, health: 9999, maxHealth: 9999, brawler: { ...(p.brawler ?? br()), points: 20 } },
+      };
+    });
+    const waitHit = () => { for (let k = 0; k < 60 && !(br().resolved && br().connected && !(useGameStore.getState().gameTime < br().stopUntil)); k++) advance(10); };
+    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true); waitHit();
+    expect(br().connected).toBe(true);
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true); waitHit();
+    expect(br().tech).toBe('stomp');
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true); waitHit();
+    expect(br().tech).toBe('kiko');
+    expect(br().connected).toBe(true); // 気功の爆発が当たった
+    expect(br().flowHits).toBe(3);
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    expect(br().secret?.phase).toBe('ignite');
+  });
+  it('ヒット数: 流れが切れたら切れた時刻を打つ(表示は 0.8 秒で消える)', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });
+    useGameStore.getState().brawlerPress(); advance(250);
+    useGameStore.getState().brawlerPress(); advance(250);
+    expect(br().flowHits).toBe(2);
+    expect(br().flowBrokenAt ?? 0).toBe(0);
+    advance(600);
+    expect(br().flowBrokenAt ?? 0).toBeGreaterThan(0);
+    useGameStore.getState().brawlerPress(); advance(250);
+    expect(br().flowHits).toBe(1);
+  });
+});

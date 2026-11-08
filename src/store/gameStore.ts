@@ -130,6 +130,7 @@ import {
 import { isEnemyAttacking, meleeHitSfxLayers } from '../utils/combatFeel';
 import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純関数(research/BRAWLER.md)
 import { isBrawlerGuardingAt } from '../utils/brawler';
+import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食らいの固まり・減衰・反撃=research/BRAWLER.md §11)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
@@ -745,6 +746,11 @@ export interface BrawlerStrikeOpts {
   postureMult: number;
   /** 押した時刻(Date.now)。打刻 noteMeleeSwingPressedAt に渡す(当たった時刻にしない)。 */
   pressedAt: number;
+  /**
+   * 食らいの固まり・減衰・反撃の名札(research/BRAWLER.md §11)。無ければ流れに数えない(固めない)。
+   * countRevenge=false で反撃の数に足さない(秘奥義の9連撃・締め)。
+   */
+  combo?: { move: BRC.BrawlerMoveKey; countRevenge?: boolean };
 }
 /** 格闘の気功の弾(store が進める・pixi は描くだけ)。 */
 export interface BrawlerKiko {
@@ -753,6 +759,8 @@ export interface BrawlerKiko {
   dirX: number; dirY: number;
   traveled: number;
   createdAt: number; // Date.now(描画の時計)
+  /** 撃った気功の技の押した時刻(当たった時に、まだその技の最中なら「当たった」にする=技→技のキャンセルの条件・§11-4)。 */
+  pressAt?: number;
 }
 
 // 制圧イベント(ステージ1メインミッション等のサブクエスト時のみ有効・通常は無効)。
@@ -4347,9 +4355,16 @@ const brawlerHitPatch = (
   ecx: number, ecy: number, pcx: number, pcy: number,
 ): Partial<Enemy> => {
   const bossLike = isBossType(enemy.type);
+  // ★食らいの固まり・反撃の対象(雑魚・強個体=research/BRAWLER.md §11)。isBossType は強個体まで含むので区分の述語を別に引く。
+  const comboSubject = BRC.isBrawlerComboSubject(enemy.type);
+  // ★振り払いの溜めの間はスーパーアーマー(§11-3): 押されない・固まらない・浮かない・震えない。ダメージと体勢値(damageEnemy 側)だけ通る。
+  if (comboSubject && enemy.aiPhase === 'br-revenge') return { lastHitDmg: dmg };
   const attacking = isEnemyAttacking(enemy, gameTime);
   const stopMs = bossLike ? 0 : Math.max(0, bs.stunMs);
   const out: Partial<Enemy> = { lastHitDmg: dmg };
+  // ★食らいの固まり・減衰・同じ技の罰・反撃の数(§11-1〜11-3)。技を出している最中の敵は固めない(数と時計は進める)。
+  const combo = comboSubject && bs.combo ? BRC.brawlerComboOnHit(enemy, bs.combo.move, now, bs.combo.countRevenge !== false) : null;
+  if (combo) Object.assign(out, combo.patch);
   if (stopMs > 0) {
     out.hitStunUntil = now + stopMs;
     out.brawlerShakeUntil = now + stopMs;
@@ -4404,7 +4419,19 @@ const brawlerHitPatch = (
   if (bs.lift && !bossLike && !attacking) {
     Object.assign(out, { knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + Math.max(stopMs, BR.BRAWLER_LIFT_MS), brawlerLiftAt: now });
   }
+  // 固まりは止め・押し(浮かせ)が明けてから数える(押す段は固まりより押しを優先=§11-1)。吹き飛ばす技は固まり0(今どおり飛ぶ)。
+  if (combo && !attacking && combo.holdMs > 0) {
+    out.brHoldUntil = brawlerHoldFrom(now, stopMs, out.knockbackUntil) + combo.holdMs;
+  }
   return out;
+};
+/** 固まりを数え始める時刻(止めの終わりと、押しの終わりの遅い方)。 */
+const brawlerHoldFrom = (now: number, stopMs: number, kbUntil: number | undefined): number =>
+  Math.max(now + Math.max(0, stopMs), kbUntil !== undefined && kbUntil > now ? kbUntil : 0);
+/** 格闘の当たりをヒット数の表示へ足す(research/BRAWLER.md §11-4)。 */
+const brawlerNoteFlowHits = (set: (fn: (s: GameState) => Partial<GameState>) => void, n: number): void => {
+  if (!(n > 0)) return;
+  set(state => (state.player.brawler ? { player: { ...state.player, brawler: BR.brawlerFlowOnHit(state.player.brawler, n) } } : {}));
 };
 
 /**
@@ -4469,16 +4496,21 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
 };
 
 /** 技を始める(ポイントは払い済み)。 */
-const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState, kind: BR.BrawlerTechKind, awakened = false): void => {
+const startBrawlerTech = (
+  get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState, kind: BR.BrawlerTechKind, awakened = false,
+  /** 技の後隙を取り消して出した(技→技のキャンセル・research/BRAWLER.md §11-4)。 */
+  cancel = false,
+): void => {
   const st = get();
   const p = st.player;
   const t = st.gameTime;
   const now = Date.now();
   const c = brawlerCenter(p);
   const kickN = kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
-  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN), pressAt: now, points: s0.points - BR.brawlerTechCost(kind, awakened) };
+  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: now, points: s0.points - BR.brawlerTechCost(kind, awakened) };
   // ★秘奥義の順番(research/BRAWLER.md §10-1): 実際に出た技で数える。↑構えで揃ったら、構えを秘奥義に置き換える(ポイントは払った後・窓は張らない)。
-  const secretStep = BR.brawlerSecretStep(s0.secretProgress ?? 0, s0.secretLastEndAt ?? 0, kind, kickN, t);
+  // キャンセルで繋いだ時は前の技の終わり=いま(0ms 扱い・§11-4)。
+  const secretStep = BR.brawlerSecretStep(s0.secretProgress ?? 0, cancel ? t : (s0.secretLastEndAt ?? 0), kind, kickN, t);
   s = { ...s, secretProgress: secretStep.progress };
   if (secretStep.fire) {
     startBrawlerSecret(get, set, s);
@@ -4526,6 +4558,13 @@ const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Part
   }
   setBrawler(set, s, extra);
   const g = get();
+  if (cancel) {
+    // ★キャンセルの閃き(§11-4): 繋がった瞬間に体から白金の閃光と小さな輪が弾ける(格闘ゲームの「繋がった」手応え)。
+    g.spawnGlow(c.x, c.y - 6, GLOW_R_M, 'rgba(255,248,230,', 180, true);
+    g.spawnRing(c.x, c.y - 4, 8, 58, BR.BRAWLER_RGBA(0.95), 3, 200, true);
+    brawlerFx(get, c.x, c.y - 8, 'vfx/flare_01', { scale: 0.9, scaleX: 1.8, rot: Math.atan2(s.dirY, s.dirX) + Math.PI / 2, duration: 160, fadeFrom: 0.2, alpha: 0.95 });
+    brawlerSfx('whip-swing', 0.4, 1.7 * brJitter(), 90);
+  }
   // 大技(上の構え・下の踏み込み)の出だし: 0.1秒だけ画面をわずかに暗く+体に閃光+専用の音(§3-1)。
   // ★上が3ポイントになっても(社長指示2026-11-07)出だしの演出は大技のまま=値段ではなく技で決める。
   if (kind === 'guard' || kind === 'stomp') {
@@ -4661,12 +4700,15 @@ const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => P
       mult: spec.mult, stunMs: spec.hitstopMs, postureMult: spec.mult,
       kb: spec.kb === 'big' ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } : { kind: spec.kb },
       ...(spec.shape === 'landing' ? { lift: true } : {}),
+      combo: { move: 'secret', countRevenge: false },
     });
+    brawlerNoteFlowHits(set, res.hits ?? 0);
     brawlerKillSfx(res);
     brawlerStageFx(get, move, c, dir, res, target, null);
   } else if (move === 'kick') {
     const res = strike([target.id], { mult: BR.BRAWLER_KICK_MULT, stunMs: BR.BRAWLER_KICK_HITSTOP_MS[3], postureMult: BR.BRAWLER_KICK_MULT,
-      kb: { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } });
+      kb: { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true }, combo: { move: 'secret', countRevenge: false } });
+    brawlerNoteFlowHits(set, res.hits ?? 0);
     brawlerKillSfx(res);
     const ang = Math.atan2(dir.y, dir.x);
     const fy = c.y + p.height * 0.18;
@@ -4680,7 +4722,9 @@ const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => P
     const res = strike(ids2.includes(target.id) ? ids2 : [target.id, ...ids2], {
       mult: BR.BRAWLER_STOMP_MULT, stunMs: BR.BRAWLER_STOMP_HITSTOP_MS, postureMult: BR.BRAWLER_STOMP_MULT,
       kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
+      combo: { move: 'secret', countRevenge: false },
     });
+    brawlerNoteFlowHits(set, res.hits ?? 0);
     brawlerKillSfx(res);
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
     brawlerGroundBreakFx(get, foot.x, foot.y, true);
@@ -4691,7 +4735,7 @@ const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => P
     const kx = c.x + dir.x * 18, ky = c.y - 4 + dir.y * 18;
     g.spawnEffect({ kind: 'meleeHit', id: `mhit-skiko-${now}`, x: kx, y: ky, size: 84, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: 240, rot: Math.random() * Math.PI * 2 });
     brawlerSfx('homing-fire', 0.55, 0.72, 220);
-    explodeBrawlerKiko(get, ecx, ecy);
+    explodeBrawlerKiko(get, ecx, ecy, { move: 'secret', countRevenge: false });
   }
 };
 /** 9連撃の後: 天空へ消えて落ちてくる(着地点=画面内の敵の真ん中・立てる所)。 */
@@ -4730,7 +4774,9 @@ const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Par
     targetIds: ids, brawler: true, pressedAt: now,
     mult: BR.BRAWLER_SECRET_LAND_MULT, stunMs: BR.BRAWLER_SECRET_LAND_HITSTOP_MS, postureMult: BR.BRAWLER_SECRET_LAND_MULT,
     kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
+    combo: { move: 'secret-land', countRevenge: false },
   });
+  brawlerNoteFlowHits(set, res.hits ?? 0);
   brawlerKillSfx(res);
   const g = get();
   g.spawnFlash('rgba(255,250,235,0.35)', 160);
@@ -4818,6 +4864,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
         ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true, ...(palm ? { passLine: { x0: palm.x0, y0: palm.y0, ux: palm.ux, uy: palm.uy } } : {}) }
         : { kind: spec.kb },
       ...(spec.shape === 'landing' ? { lift: true } : {}),
+      combo: { move: BRC.brawlerStageMoveKey(s.stage) },
     });
     if (palm) brawlerPalmBreakProps(get, palm, p);
     const hits = r.hits ?? 0;
@@ -4831,6 +4878,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       ...(palm ? brawlerPalmSettlePatch(fdir.x, fdir.y, hits > 0 ? spec.hitstopMs : 0, now)
         : hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, spec.hitstopMs, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
+    brawlerNoteFlowHits(set, hits);
     brawlerStageFx(get, s.stage, c, fdir, r, target, palm);
     return;
   }
@@ -4846,11 +4894,13 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const r = strike(ids, {
       mult: BR.BRAWLER_STOMP_MULT, stunMs: BR.BRAWLER_STOMP_HITSTOP_MS, postureMult: BR.BRAWLER_STOMP_MULT,
       kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
+      combo: { move: 'stomp' },
     });
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
     setBrawler(set, BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: BR.BRAWLER_STOMP_HITSTOP_MS }),
       hits > 0 ? { lungeHoldUntil: now + BR.BRAWLER_STOMP_HITSTOP_MS } : {});
+    brawlerNoteFlowHits(set, hits);
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
     g.spawnRing(foot.x, foot.y, 10, BR.BRAWLER_STOMP_RADIUS * 0.8, 'rgba(255,255,255,0.75)', 3, 300, true);
     g.spawnGlow(foot.x, foot.y, GLOW_R_XL, 'rgba(241,230,200,', 320, true);
@@ -4868,7 +4918,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const d = BR.brawlerAimDir(c.x, c.y, aim, { x: s.dirX, y: s.dirY });
     const sx = c.x + d.x * 18, sy = c.y - 4 + d.y * 18;
     set(state => ({
-      brawlerKiko: [...state.brawlerKiko.slice(-5), { id: `kiko-${now}`, x: sx, y: sy, dirX: d.x, dirY: d.y, traveled: 0, createdAt: now }],
+      brawlerKiko: [...state.brawlerKiko.slice(-5), { id: `kiko-${now}`, x: sx, y: sy, dirX: d.x, dirY: d.y, traveled: 0, createdAt: now, pressAt: s.pressAt }],
       player: { ...state.player, brawler: { ...s, resolved: true, dirX: d.x, dirY: d.y }, lastDirection: { x: d.x, y: d.y } },
     }));
     g.spawnEffect({ kind: 'meleeHit', id: `mhit-kiko0-${now}`, x: sx, y: sy, size: 84, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: 240, rot: Math.random() * Math.PI * 2 });
@@ -4885,6 +4935,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const r = strike(ids, {
       mult: BR.BRAWLER_KICK_MULT, stunMs: hs, postureMult: BR.BRAWLER_KICK_MULT,
       kb: big ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } : { kind: 'normal', dirX: dir.x, dirY: dir.y },
+      combo: { move: BRC.brawlerKickMoveKey(s.kickN) },
     });
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
@@ -4893,6 +4944,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       lastDirection: { x: dir.x, y: dir.y },
       ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, hs, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
+    brawlerNoteFlowHits(set, hits);
     for (const h of r.hitAt ?? []) {
       brawlerSpark(get, h, c, big ? BR.BRAWLER_SPARK.closer : BR.BRAWLER_SPARK.weak);
       if (big) brawlerClosingFx(get, h.x, h.y, dir);
@@ -5085,7 +5137,7 @@ const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Parti
   if (dtMs <= 0) return;
   const step = BR.BRAWLER_KIKO_SPEED * dtMs / 1000;
   const keep: BrawlerKiko[] = [];
-  const blasts: { x: number; y: number }[] = [];
+  const blasts: { x: number; y: number; pressAt?: number }[] = [];
   for (const k of st.brawlerKiko) {
     const nx = k.x + k.dirX * step, ny = k.y + k.dirY * step;
     const traveled = k.traveled + step;
@@ -5099,7 +5151,7 @@ const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Parti
       if (walls.some(w => nx >= w.x && nx <= w.x + w.width && ny >= w.y && ny <= w.y + w.height)) { hitX = k.x; hitY = k.y; }
     }
     if (hitX === null && traveled >= BR.BRAWLER_KIKO_RANGE) { hitX = nx; hitY = ny; }
-    if (hitX !== null) blasts.push({ x: hitX, y: hitY });
+    if (hitX !== null) blasts.push({ x: hitX, y: hitY, pressAt: k.pressAt });
     else {
       keep.push({ ...k, x: nx, y: ny, traveled });
       // 火の気配: 飛んでいる間、後ろへ橙の火の粉をこぼす(間隔は揺らす・クリエイティブ監査 #16)。
@@ -5107,11 +5159,27 @@ const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Parti
     }
   }
   set(() => ({ brawlerKiko: keep }));
-  for (const b of blasts) explodeBrawlerKiko(get, b.x, b.y);
+  for (const b of blasts) explodeBrawlerKiko(get, b.x, b.y, { pressAt: b.pressAt });
 };
 
+/** 気功の爆発で当たった敵の流れ(固まり・減衰・反撃の数)。knockbackEnemy の後に呼ぶ(押しの終わりから固まる)。 */
+const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.BrawlerMoveKey, countRevenge: boolean): void => {
+  const now = Date.now();
+  const gt = get().gameTime;
+  useGameStore.setState(state => ({
+    enemies: state.enemies.map(e => {
+      if (e.id !== id || !BRC.isBrawlerComboSubject(e.type) || e.aiPhase === 'br-revenge') return e;
+      const c = BRC.brawlerComboOnHit(e, move, now, countRevenge);
+      const held = c.holdMs > 0 && !isEnemyAttacking(e, gt);
+      return { ...e, ...c.patch, ...(held ? { brHoldUntil: brawlerHoldFrom(now, 0, e.knockbackUntil) + c.holdMs } : {}) };
+    }),
+  }));
+};
 /** 気功の爆発(爆発扱い=skillExplosionMult・処刑なし・§7-1)。入った敵を延焼(炎の床は出さない)。 */
-const explodeBrawlerKiko = (get: () => GameState, x: number, y: number): void => {
+const explodeBrawlerKiko = (
+  get: () => GameState, x: number, y: number,
+  o: { move?: BRC.BrawlerMoveKey; countRevenge?: boolean; pressAt?: number } = {},
+): void => {
   const st = get();
   const p = st.player;
   const exMult = skillExplosionMult(p);
@@ -5138,12 +5206,24 @@ const explodeBrawlerKiko = (get: () => GameState, x: number, y: number): void =>
       const fall = blastKbFalloff(dl, radius);
       const str = (knockbackSpeedFor(BR.BRAWLER_KIKO_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * skillExplosionKbMult(p);
       get().knockbackEnemy(id, ddx / dl, ddy / dl, str * fall, Math.max(3, str) * fall);
+      // ★食らいの固まり・減衰・反撃の数(research/BRAWLER.md §11)。押し(上)が明けてから固まる。技を出している最中・振り払いの溜めの間は固めない。
+      brawlerKikoComboHit(get, id, o.move ?? 'kiko', o.countRevenge !== false);
     }
     else {
       // 倒した敵は手榴弾の爆発と同じく経験値を落とし、断末魔を鳴らす(検収 A-2)。
       get().dropEnemyXp(e, e.x + e.width / 2, e.y + e.height / 2, `pickup-xp-kiko-${Date.now()}-${id}`);
       brawlerSfx(BRAWLER_SFX_DEATH);
     }
+  }
+  // ヒット数の表示へ足す。撃った気功の技の最中に当たったら「当たった」にする(技→技のキャンセルの条件・§11-4)。
+  if (ids.length > 0) {
+    useGameStore.setState(state => {
+      const b0 = state.player.brawler;
+      if (!b0) return {};
+      let b1 = BR.brawlerFlowOnHit(b0, ids.length);
+      if (o.pressAt !== undefined && b1.phase === 'tech' && b1.tech === 'kiko' && b1.pressAt === o.pressAt) b1 = { ...b1, connected: true };
+      return { player: { ...state.player, brawler: b1 } };
+    });
   }
   if (burnIds.length > 0 && burn.dps > 0) {
     const bs = new Set(burnIds);
@@ -10124,7 +10204,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       brawlerSfx('homing-fire', 0.2, 0.62, 260);
       return true;
     }
-    startBrawlerTech(get, set, s, kind, awakened);
+    // 技の最中から別の技=技→技のキャンセル(§11-4・brawlerTechAllowed が当たった技の後隙だけ通す)。飛び蹴りの連続は今どおり(キャンセルではない)。
+    startBrawlerTech(get, set, s, kind, awakened, s.phase === 'tech' && !(kind === 'kick' && s.tech === 'kick'));
     return true;
   },
   tickBrawler: () => {
@@ -10142,6 +10223,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 秘奥義の最中は秘奥義の時計だけを回す(通常の段・技の状態機械は回さない・§10)。
     if (s0.secret) { tickBrawlerSecret(get, set); return; }
+    // ヒット数の表示: 流れが切れた時刻を打つ(表示は 0.8 秒で消える・§11-4)。
+    if (BR.brawlerFlowBreaksNow(s0, t)) { setBrawler(set, { ...s0, flowBrokenAt: t }); return; }
     if (s0.phase === 'idle') return;
     // 前隙の途中で掴まれた・対人の紫に入った・シーカーに入った=出かかった段/技を取り消し、先行入力も捨てる(§8-4)。
     if (!s0.resolved && (isPlayerGrabbed(p, t) || isPvpIncapacitated(p.pvpPosture, t) || (isSeekerActive(p, t) && skillLevel(p, 'seeker') < 3))) {
@@ -10601,7 +10684,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const dir0 = BR.brawlerAimDir(pc0.x, pc0.y, tgt, player.lastDirection);
       const r0 = get().triggerCounter(undefined, {
         targetIds: [retaliateOne.targetId], mult: retaliateOne.mult, brawler: true, stunMs: s3.hitstopMs,
-        kb: { kind: 'normal' }, postureMult: 1, pressedAt: now,
+        kb: { kind: 'normal' }, postureMult: 1, pressedAt: now, combo: { move: 's3' },
       });
       const b0 = get().player.brawler ?? BR.initialBrawlerState();
       setBrawler(set, { ...b0, nextStage: 1, chainUntil: 0, buffered: false });
@@ -16824,6 +16907,35 @@ export const useGameStore = create<GameState>((set, get) => ({
         // トラップ自体の効果・時間は不変で、**攻撃を出し切ってから効く**ようになるだけ。
         if (enemy.rootUntil !== undefined && gameTime < enemy.rootUntil && !enemy.aiPhase) {
           return { ...enemy, vx: 0, vy: 0 };
+        }
+
+        // ★格闘の反撃と食らいの固まり(research/BRAWLER.md §11)。雑魚・強個体だけ(ボス級は区分で対象外)。
+        // 押し(ノックバック)・気絶・拘束は上が先に効く=押す段は固まりより押しを優先(§11-1)。クリで気絶すれば振り払いも取り消える(上の気絶の分岐)。
+        if (BRC.isBrawlerComboSubject(enemy.type)) {
+          // 振り払いの溜め → 予告が消え切った瞬間に当たる(★★赤い予告の4つの掟③)。溜めの間はその場で動かない。
+          if (enemy.aiPhase === 'br-revenge') {
+            if (BRC.brawlerRevengeDue(enemy, gameTime)) {
+              const rcx = enemy.x + enemy.width / 2, rcy = enemy.y + enemy.height / 2;
+              pumpkinBlasts.push({
+                x: rcx, y: rcy, radius: BRC.BRAWLER_REVENGE_RADIUS,
+                damage: BRC.brawlerRevengeDamage(enemy.damage), enemyId: enemy.id, moveKey: 'br-revenge', retaliate: true, // 近接の振り払い=被弾反撃の対象
+                kbSpeed: knockbackSpeedFor(BRC.BRAWLER_REVENGE_PUSH_PX, BRC.BRAWLER_REVENGE_PUSH_MS), kbMs: BRC.BRAWLER_REVENGE_PUSH_MS,
+              });
+              return { ...enemy, ...BRC.brawlerRevengeEndPatch(now) };
+            }
+            return { ...enemy, vx: 0, vy: 0 };
+          }
+          if (enemy.brRevengePending) {
+            // 当たりが途切れて流れが切れたら予約も消す(気絶・長い技の後に遅れて振り払わない)。
+            if (!BRC.brawlerComboAlive(enemy, now)) return { ...enemy, brRevengePending: false };
+            if (BRC.brawlerRevengeShouldStart(enemy, isEnemyAttacking(enemy, gameTime))) {
+              return { ...enemy, ...BRC.brawlerRevengeStartPatch(gameTime) };
+            }
+          }
+          // 食らいの固まり: 食らいの動作だけ(移動・噛みつき・技の開始をしない)。技を出している最中は止めない。
+          if (enemy.brHoldUntil !== undefined && now < enemy.brHoldUntil && !isEnemyAttacking(enemy, gameTime)) {
+            return { ...enemy, vx: 0, vy: 0 };
+          }
         }
 
         // 屋内: 休眠敵は静止。索敵範囲(aggroRange×2=二倍)内 かつ 壁越しでない 時だけ起床(社長指示)。

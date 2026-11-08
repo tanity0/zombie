@@ -19,6 +19,7 @@ import { BloodAwakenBanner } from './BloodAwakenBanner'; // ★B10 覚醒に入�
 import ScanBeatMeter from './ScanBeatMeter'; // research/NEW_GUNS.md §4: スキャンセンサーの拍
 import { HitRetaliationCue } from './HitRetaliationCue'; // ★被弾反撃の知らせ(research/HIT_RETALIATION.md §5)
 import BrawlerPointsBadge from './BrawlerPointsBadge'; // サブウェポン「格闘」の技ポイント(research/BRAWLER.md §2-5)
+import BrawlerHitCount from './BrawlerHitCount'; // 格闘のヒット数(research/BRAWLER.md §11-4)
 import type { AmmoType } from '../types/game';
 import { setAudioMuted, playSfx } from '../audio/audioManager';
 import { useAudioMuted } from '../hooks/useAudioMuted';
@@ -429,7 +430,7 @@ const GameHUD: React.FC = () => {
                 >
                   {brawlerEquipped
                     // 格闘: 社長支給のアイコン(32×32・ドット)+右下に技ポイント(銃の弾数と同じ位置・書式)。
-                    ? <><img src={spritePath('brawler-item')} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} /><BrawlerPointsBadge /></>
+                    ? <><img src={spritePath('brawler-item')} alt="" className="w-8 h-8 object-contain" style={{ imageRendering: 'pixelated' }} draggable={false} /><BrawlerPointsBadge /><BrawlerHitCount /></>
                     : katanaEquipped
                     // 刀/小烏丸(村雨)とも、背中に背負う鞘入り刀の絵(katana-item)をそのままアイコンへ流用(社長指示)。
                     ? <img src={spritePath('katana-item')} alt="" className="w-9 h-9 object-contain" draggable={false} />

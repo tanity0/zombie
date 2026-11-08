@@ -784,6 +784,22 @@ export interface Enemy {
   brawlerShakeDy?: number;
   /** ★格闘の締めで大きく吹き飛ばされた時刻(Date.now・足元に地面を擦る砂埃の尾を描く・§2-4)。 */
   brawlerBlownAt?: number;
+  /**
+   * ★格闘の食らいの固まり・減衰・反撃(research/BRAWLER.md §11)。時計はすべて Date.now(hitStunUntil と同じ)。
+   * brHoldUntil=この時刻まで食らいの動作だけ(移動・噛みつき・技の開始をしない)。技を出している最中の敵には書かない。
+   * brComboStart/At=その敵への格闘の当たりの流れの始まりと最後の当たり(600ms 当たらなければ流れは切れる)。
+   * brComboPenalty=同じ段・同じ技を当て直した罰(時計に足す ms)。brComboHits=この流れで受けた当たり数。brComboMoves=当たった段・技の名札(カンマ区切り)。
+   * brRevengePending=反撃の数に達した(次の自分の更新で振り払う)。brNoHoldUntil=反撃の後、固まらない時刻。brRevengeAt=振り払いが当たった時刻(絵だけ)。
+   */
+  brHoldUntil?: number;
+  brComboStart?: number;
+  brComboAt?: number;
+  brComboPenalty?: number;
+  brComboHits?: number;
+  brComboMoves?: string;
+  brRevengePending?: boolean;
+  brNoHoldUntil?: number;
+  brRevengeAt?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
   // a short grace period before they become eligible for culling so big
   // set-piece hordes aren't deleted the instant they appear.
@@ -944,7 +960,9 @@ export interface Enemy {
     // 消え切った瞬間に目の前へワープして噛む。windup(0〜800ms)からbite(800〜1000ms)まで
     // 通しでこの1相(`biteAt`基準の経過msで内訳を出す=b-windup/b-lunge/b-grabのような細分けは
     // 持たない・§16-Cは1つの技=1本の予告)。`BITE_OK_PHASES`/`CHAFF_MOVE_PHASES`の両方に入れる。
-    | 'lich-blink';
+    | 'lich-blink'
+    // ★格闘の反撃(research/BRAWLER.md §11-3): 雑魚・強個体が格闘の当たりを受け続けた時のその場の振り払い。溜め(赤い流星の円)→当たる。
+    | 'br-revenge';
   aiPhaseUntil?: number; // 現フェーズの終了 gameTime
   aiReadyAt?: number;    // 次に特殊行動を開始できる gameTime(連発防止)
   aiTargetX?: number;    // 突進/着地の狙い座標(行動開始時のプレイヤー位置スナップ)

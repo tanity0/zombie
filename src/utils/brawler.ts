@@ -175,14 +175,20 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
     quickUntil: quick ? 0 : s.quickUntil,
     // 通常攻撃を押したら蹴りの連続は切れる(§7-5)。秘奥義の順番も数え直し(通常攻撃が挟まった=§10-1)。
     kickChainUntil: 0, kickCount: 0, secretProgress: 0, secretLastEndAt: 0,
+    techChain: undefined, // 通常攻撃で技の流れは切れる(技→通常はキャンセルできない=§11-4)
   };
 };
 
-/** 新しい技を始めた状態(ポイントは呼び手が払う)。 */
-export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: number, kickN = 0): BrawlerState => {
+/**
+ * 新しい技を始めた状態(ポイントは呼び手が払う)。cancel=技の後隙を取り消して出した(§11-4)=技の流れを続ける。
+ * 飛び蹴りの2・3発目は同じ技の続き(流れはそのまま)。それ以外は流れをこの技から始め直す。
+ */
+export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: number, kickN = 0, cancel = false): BrawlerState => {
   const spec = BRAWLER_TECHS[kind];
+  const chain = cancel ? [...(s.techChain ?? (s.tech ? [s.tech] : [])), kind]
+    : (kind === 'kick' && kickN > 1 && s.techChain) ? s.techChain : [kind];
   return {
-    ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t,
+    ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain,
     windupMs: spec.windupMs, recoveryMs: spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, buffered: false,
     // 技の後は1段目(§7-5)。
@@ -383,15 +389,48 @@ export const brawlerOnHurt = (s: BrawlerState): BrawlerState => ({
 export const brawlerTechCost = (kind: BrawlerTechKind, awakened = false): number => (awakened ? 0 : BRAWLER_TECHS[kind].cost);
 export const brawlerCanPay = (s: BrawlerState, kind: BrawlerTechKind, awakened = false): boolean => s.points >= brawlerTechCost(kind, awakened);
 
-/** 技を今出せるか(払える以外の条件)。構えは途中で解除できない・技の最中は出さない(飛び蹴りの連続は着いた後だけ)。 */
+/**
+ * 技→技のキャンセル(research/BRAWLER.md §11-4・格闘ゲームの「繋がる」)。いまの技の後隙を別の技で取り消せるか。
+ *  - 技が**当たった**時だけ(当たりの止めが明けた瞬間から後隙の終わりまで)。構え(↑)は守りなので当たらなくても後隙からいつでも。
+ *  - 同じ技へは取り消せない。1回の流れで各技は1回ずつ(飛び蹴りの3連は1つ)。構えからは取り消せない(構えの間は延長だけ)。
+ */
+export const brawlerTechCancelOk = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
+  if (s.phase !== 'tech' || !s.tech || s.tech === 'guard') return false;
+  if (!s.resolved || kind === s.tech) return false;
+  if (brawlerElapsed(s, t) >= brawlerTotalMs(s)) return false;
+  if ((s.techChain ?? [s.tech]).includes(kind)) return false;
+  if (kind === 'guard') return true;
+  return s.connected && !brawlerInHitstop(s, t);
+};
+/** 技を今出せるか(払える以外の条件)。構えは途中で解除できない・技の最中は出さない(飛び蹴りの連続は着いた後だけ・当たった技からの取り消しは §11-4)。 */
 export const brawlerTechAllowed = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
   // 構えの間は構えの再入力(延長)だけ受け付ける(社長指示2026-11-07「カウンター中もカウンター入力を受け付ける(連続延長発動できる)」)。
   if (isBrawlerGuardingAt(s, t)) return kind === 'guard';
   if (s.phase === 'tech') {
-    if (kind !== 'kick' || s.tech !== 'kick' || !s.resolved) return false;
-    return s.kickCount < BRAWLER_KICK_MAX;
+    if (kind === 'kick' && s.tech === 'kick') return s.resolved && s.kickCount < BRAWLER_KICK_MAX;
+    return brawlerTechCancelOk(s, kind, t);
   }
   return true; // 待機・通常攻撃のどこからでも(必殺技キャンセル)
+};
+
+/**
+ * ヒット数の表示(§11-4)。当たりを n 足す。流れが切れていた(または初めて)なら n から数え直す。
+ */
+export const brawlerFlowOnHit = (s: BrawlerState, n: number): BrawlerState => {
+  if (!(n > 0)) return s;
+  const fresh = (s.flowHits ?? 0) <= 0 || (s.flowBrokenAt ?? 0) > 0;
+  return { ...s, flowHits: (fresh ? 0 : (s.flowHits ?? 0)) + n, flowBrokenAt: 0 };
+};
+/** 流れが続く猶予(技の終わり・つながりの受付から ms)。通常攻撃のつながりの切れ(400ms)と同じ。 */
+export const BRAWLER_FLOW_GRACE_MS = BRAWLER_CHAIN_RESET_MS;
+/** ヒット数の表示が消えていく尺(流れが切れてから・ms)。 */
+export const BRAWLER_FLOW_FADE_MS = 800;
+/** いま流れが切れたか(待機に戻り、通常攻撃のつながり・蹴りの連続・技の終わりからの猶予のどれも過ぎた)。秘奥義の間は切れない。 */
+export const brawlerFlowBreaksNow = (s: BrawlerState, t: number): boolean => {
+  if ((s.flowHits ?? 0) <= 0 || (s.flowBrokenAt ?? 0) > 0) return false;
+  if (s.phase !== 'idle' || s.secret) return false;
+  const until = Math.max(s.chainUntil, s.kickChainUntil, (s.secretLastEndAt ?? 0) > 0 ? (s.secretLastEndAt ?? 0) + BRAWLER_FLOW_GRACE_MS : 0);
+  return t > until;
 };
 /**
  * 構えを延長する(構えの最中の再入力・§9-41)。終わる時刻を「再入力の時刻+1秒」に引き直す(積み上げない)。
