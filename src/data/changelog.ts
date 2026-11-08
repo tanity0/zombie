@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5411', items: [
+    '死神は近づくと一定の距離を保ったまま、時計回りに回り込む。詰め寄ると下がる',
+  ] },
   { version: '0.25.5410', items: [
     '死神の本体に触れても、ダメージを受けなくなった。使者は今までどおり危険',
   ] },

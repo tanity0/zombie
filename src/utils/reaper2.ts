@@ -34,6 +34,8 @@ export interface ChaseOrbitResult extends Point { orbiting: boolean; }
  * 呼び出し側が「本体幅/2+プレイヤー幅/2」を渡すと、判定だけが中心距離からその分を差し引いた
  * 縁距離になる(旋回の半径=中心距離はそのまま保つので軌道は連続)。既定0=旧来どおり中心基準。
  */
+/** 旋回中に目標の半径へ寄せる速さ(直進の歩幅に対する比)。社長指示2026-11-08「一定距離を保ちつつ」。 */
+export const REAPER_ORBIT_RADIAL_RATE = 0.5;
 export const stepReaperBody = (
   bx: number, by: number, px: number, py: number,
   straightStepPx: number, orbitStepPx: number, orbitDistPx: number, edgeOffsetPx = 0,
@@ -46,12 +48,18 @@ export const stepReaperBody = (
     const nx = dx / dist, ny = dy / dist;
     return { x: bx + nx * straightStepPx, y: by + ny * straightStepPx, orbiting: false };
   }
-  // 旋回: プレイヤー中心の相対ベクトル(rx,ry)を弧長/半径ぶんの角度だけ回転する(半径を保存)。
+  // 旋回: プレイヤー中心の相対ベクトル(rx,ry)を弧長/半径ぶんの角度だけ回転する(画面座標=y下向きなので正の角=時計回り)。
+  // ★一定距離を保つ(社長指示2026-11-08「死神はプレイヤーに近づくと一定距離を保ちつつ時計回りに移動」): 旧は入った時の半径を
+  // そのまま保存しただけ=プレイヤーが詰めると近いまま回っていた。目標の半径(縁距離 orbitDistPx の位置)へ、1フレームに
+  // 直進の歩幅の半分までで寄せる(詰められたら外へ下がり、離れかけたら戻る。歩幅で頭打ち=急に飛ばない)。
   const radius = Math.max(1, dist);
-  const rx = bx - px, ry = by - py;
-  const ang = orbitStepPx / radius;
+  const targetR = orbitDistPx + edgeOffsetPx;
+  const maxAdj = Math.max(0, straightStepPx) * REAPER_ORBIT_RADIAL_RATE;
+  const newR = Math.max(1, radius + Math.max(-maxAdj, Math.min(maxAdj, targetR - radius)));
+  const ux = (bx - px) / radius, uy = (by - py) / radius;
+  const ang = orbitStepPx / newR;
   const cos = Math.cos(ang), sin = Math.sin(ang);
-  return { x: px + (rx * cos - ry * sin), y: py + (rx * sin + ry * cos), orbiting: true };
+  return { x: px + newR * (ux * cos - uy * sin), y: py + newR * (ux * sin + uy * cos), orbiting: true };
 };
 
 /**

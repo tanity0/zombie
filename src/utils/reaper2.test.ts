@@ -46,8 +46,25 @@ describe('stepReaperBody — 縁基準(edgeOffsetPx・補修バッチC-1)', () =
     // 中心距離90・縁距離70・offset25(本体/プレイヤーの半径ぶん)→縁距離換算65<70=旋回。
     const r = stepReaperBody(0, 0, 90, 0, 10, 5, 70, 25);
     expect(r.orbiting).toBe(true);
-    // 旋回半径は中心距離(90)のまま保たれる(縁基準はしきい値判定だけに効く)。
-    expect(Math.hypot(r.x - 90, r.y - 0)).toBeCloseTo(90, 6);
+    // 旋回半径は目標(縁距離70+offset25=中心95)へ、直進の歩幅の半分(5)だけ寄る(社長指示2026-11-08「一定距離を保ちつつ」)。
+    expect(Math.hypot(r.x - 90, r.y - 0)).toBeCloseTo(95, 6);
+  });
+});
+
+describe('stepReaperBody — 一定距離を保ちつつ時計回り(社長指示2026-11-08)', () => {
+  it('プレイヤーに詰められて内側に入ったら、回りながら外へ下がる(歩幅の半分ずつ)', () => {
+    const r = stepReaperBody(30, 0, 0, 0, 10, 5, 70);
+    expect(r.orbiting).toBe(true);
+    expect(Math.hypot(r.x, r.y)).toBeCloseTo(35, 6);
+  });
+  it('何フレームか回ると目標の距離に落ち着き、そこを保つ', () => {
+    let x = 30, y = 0;
+    for (let i = 0; i < 40; i++) { const r = stepReaperBody(x, y, 0, 0, 10, 5, 70); x = r.x; y = r.y; }
+    expect(Math.hypot(x, y)).toBeCloseTo(70, 6);
+  });
+  it('回る向きは時計回り(画面座標=y下向き。右(+x)から下(+y)へ進む)', () => {
+    const r = stepReaperBody(70, 0, 0, 0, 10, 5, 70);
+    expect(r.y).toBeGreaterThan(0);
   });
 });
 
