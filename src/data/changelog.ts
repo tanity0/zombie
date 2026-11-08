@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5412', items: [
+    '使者の足元に紫の円。この円に入った時だけ捕まる',
+    '格闘で浮かせた敵が、頂点でふわりと止まってからゆっくり落ちる',
+  ] },
   { version: '0.25.5411', items: [
     '死神は近づくと一定の距離を保ったまま、時計回りに回り込む。詰め寄ると下がる',
   ] },
