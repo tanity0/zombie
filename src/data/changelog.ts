@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5407', items: [
+    '格闘で浮かせた敵は、落ちるまで動けない。追撃するほど早く落ちる。ボスも少しだけ浮く',
+    '攻撃が当たる直前に構えるとJUST。相手が長く気絶する',
+    'スティックを倒しながら別の指で素早く2回叩くと、短く踏み込む',
+  ] },
   { version: '0.25.5406', items: [
     'ゲーム内容の変更はありません',
   ] },
