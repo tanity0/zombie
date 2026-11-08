@@ -659,22 +659,17 @@ const sfxLastPlayedAt = new Map<SfxKey, number>();
 // 長め minInterval の音(ボス/死神出現音など)が、次ランの開始直後の同イベントで誤ってブロックされる。
 export const clearSfxThrottle = (): void => { sfxLastPlayedAt.clear(); };
 
-const isTouchLikeDevice = () => {
-  if (typeof window === 'undefined') return false;
-  return (
-    navigator.maxTouchPoints > 0 ||
-    window.matchMedia?.('(hover: none), (pointer: coarse)').matches === true
-  );
-};
 
 const readInitialMuted = () => {
   try {
     const stored = localStorage.getItem(MUTED_KEY) ?? localStorage.getItem(LEGACY_BGM_MUTED_KEY);
     if (stored === '0' || stored === '1') return stored === '1';
   } catch {
-    // Fall through to the conservative mobile default.
+    // 保存値が読めない時も既定(音あり)へ。
   }
-  return isTouchLikeDevice();
+  // はじめての時は「音あり」(社長指示2026-11-08「ありにする」)。旧はタッチ端末だけ「音なし」で始めていたが、
+  // マナーモードで全部の音が黙るようになり(v0.25.5396)、オープニングもミュートに従うようになったため、初回のオープニングが無音になっていた。
+  return false;
 };
 
 muted = readInitialMuted();
