@@ -4354,12 +4354,19 @@ const brawlerHitPatch = (
   enemy: Enemy, bs: BrawlerStrikeOpts, now: number, gameTime: number, dmg: number,
   ecx: number, ecy: number, pcx: number, pcy: number,
 ): Partial<Enemy> => {
-  const bossLike = isBossType(enemy.type);
-  // ★食らいの固まり・反撃の対象(雑魚・強個体=research/BRAWLER.md §11)。isBossType は強個体まで含むので区分の述語を別に引く。
-  const comboSubject = BRC.isBrawlerComboSubject(enemy.type);
+  // ★格闘の当たりでは強個体を雑魚とまったく同じに扱う(社長指示2026-11-08「強個体も雑魚と同じにして」・research/BRAWLER.md §9-57)。
+  // isBossType は強個体まで含む別目的の表なので、区分の述語(brawlerComboClass=強個体を先に見る)で分ける。
+  // 止め・食らいの固まり・浮かせ・押し(normal/big)・大踏み潰しの強制ノックバックは雑魚と同じ。体勢値(damageEnemy 側)は強個体のまま。
+  // ボス級(本物のボス)は今のまま。範囲は格闘の当たりだけ(ナイフ・銃の強個体の扱いは変えない)。
+  const cls = BRC.brawlerComboClass(enemy.type);
+  const bossLike = cls === 'boss';
+  const strong = cls === 'strong';
+  const comboSubject = !bossLike;
   // ★振り払いの溜めの間はスーパーアーマー(§11-3): 押されない・固まらない・浮かない・震えない。ダメージと体勢値(damageEnemy 側)だけ通る。
   if (comboSubject && enemy.aiPhase === 'br-revenge') return { lastHitDmg: dmg };
   const attacking = isEnemyAttacking(enemy, gameTime);
+  // 固まり・浮かせの除外は「本当に技を出している最中」だけ(移動・待ち・後退の相は固める=brawlerCombo の表)。押しの取り消し(強制)は今どおり isEnemyAttacking。
+  const busy = BRC.isBrawlerTechBusy(enemy, gameTime);
   const stopMs = bossLike ? 0 : Math.max(0, bs.stunMs);
   const out: Partial<Enemy> = { lastHitDmg: dmg };
   // ★食らいの固まり・減衰・同じ技の罰・反撃の数(§11-1〜11-3)。技を出している最中の敵は固めない(数と時計は進める)。
@@ -4416,11 +4423,13 @@ const brawlerHitPatch = (
     }
   }
   // 4段目の浮かせ(足止め 450ms・絵だけ浮く)。ボス級・攻撃中の敵は浮かない(§7-10)。止めの後に展開する。
-  if (bs.lift && !bossLike && !attacking) {
+  if (bs.lift && !bossLike && !busy) {
     Object.assign(out, { knockbackVx: 0, knockbackVy: 0, knockbackUntil: now + Math.max(stopMs, BR.BRAWLER_LIFT_MS), brawlerLiftAt: now });
   }
+  // 強個体は普段 canShoveEnemy が押し(と押しの欄での足止め)を止める=格闘の当たりでは押し道具と同じ旗を立てて雑魚と同じに動かす。
+  if (strong && out.knockbackUntil !== undefined) out.knockbackShoveUntil = out.knockbackUntil;
   // 固まりは止め・押し(浮かせ)が明けてから数える(押す段は固まりより押しを優先=§11-1)。吹き飛ばす技は固まり0(今どおり飛ぶ)。
-  if (combo && !attacking && combo.holdMs > 0) {
+  if (combo && !busy && combo.holdMs > 0) {
     out.brHoldUntil = brawlerHoldFrom(now, stopMs, out.knockbackUntil) + combo.holdMs;
   }
   return out;
@@ -5162,6 +5171,34 @@ const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Parti
   for (const b of blasts) explodeBrawlerKiko(get, b.x, b.y, { pressAt: b.pressAt });
 };
 
+/**
+ * 気功の爆発の止めと押しを、強個体にも雑魚と同じ式で掛ける(社長指示2026-11-08「強個体も雑魚と同じにして」・§9-57)。
+ * damageEnemy の止め(区分で70ms)と knockbackEnemy の押し(強個体はボスの減衰・canShoveEnemy で止まる)を、雑魚の式に書き直す。技の最中は押さない(雑魚と同じ)。
+ */
+const brawlerKikoStrongAsMob = (
+  get: () => GameState, id: string, stunBefore: number | undefined, dmg: number, dirX: number, dirY: number, strength: number,
+): void => {
+  const now = Date.now();
+  const gt = get().gameTime;
+  useGameStore.setState(state => ({
+    enemies: state.enemies.map(e => {
+      if (e.id !== id || isCorpse(e)) return e;
+      const stun = nextHitStunUntil('zombie', stunBefore, now, hitStopMul(hitReactionStrength(dmg, e.maxHealth, FLINCH_FULL_DAMAGE_FRAC)));
+      const withStun = stun !== undefined ? { ...e, hitStunUntil: stun } : e;
+      if (isEnemyAttacking(e, gt)) return withStun;
+      const st = Math.max(0, Math.min(Math.max(3, strength), strength));
+      const r = enemyHitReaction(withStun);
+      const stunShift = withStun.hitStunUntil !== undefined && withStun.hitStunUntil > now ? withStun.hitStunUntil - now : 0;
+      const until = now + KNOCKBACK_DURATION * knockbackDurationMul(r) + stunShift;
+      return {
+        ...withStun,
+        knockbackVx: dirX * BULLET_KNOCKBACK_SPEED * st * knockbackSpeedMul(r),
+        knockbackVy: dirY * BULLET_KNOCKBACK_SPEED * st * knockbackSpeedMul(r),
+        knockbackUntil: until, knockbackShoveUntil: until,
+      };
+    }),
+  }));
+};
 /** 気功の爆発で当たった敵の流れ(固まり・減衰・反撃の数)。knockbackEnemy の後に呼ぶ(押しの終わりから固まる)。 */
 const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.BrawlerMoveKey, countRevenge: boolean): void => {
   const now = Date.now();
@@ -5170,7 +5207,7 @@ const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.Brawler
     enemies: state.enemies.map(e => {
       if (e.id !== id || !BRC.isBrawlerComboSubject(e.type) || e.aiPhase === 'br-revenge') return e;
       const c = BRC.brawlerComboOnHit(e, move, now, countRevenge);
-      const held = c.holdMs > 0 && !isEnemyAttacking(e, gt);
+      const held = c.holdMs > 0 && !BRC.isBrawlerTechBusy(e, gt);
       return { ...e, ...c.patch, ...(held ? { brHoldUntil: brawlerHoldFrom(now, 0, e.knockbackUntil) + c.holdMs } : {}) };
     }),
   }));
@@ -5195,6 +5232,7 @@ const explodeBrawlerKiko = (
     if (!e) continue;
     const d = BR.brawlerDistTo(x, y, e);
     const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45)));
+    const stunBefore = e.hitStunUntil;
     const killed = get().damageEnemy(id, dmg, true, false, false, 'other');
     get().spawnDamageNumber(e.x + e.width / 2, e.y, dmg, false, { enemyId: id });
     dealt += dmg;
@@ -5205,7 +5243,8 @@ const explodeBrawlerKiko = (
       const ddx = ecx - x, ddy = ecy - y, dl = Math.max(0.001, Math.hypot(ddx, ddy));
       const fall = blastKbFalloff(dl, radius);
       const str = (knockbackSpeedFor(BR.BRAWLER_KIKO_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * skillExplosionKbMult(p);
-      get().knockbackEnemy(id, ddx / dl, ddy / dl, str * fall, Math.max(3, str) * fall);
+      if (BRC.brawlerComboClass(e.type) === 'strong') brawlerKikoStrongAsMob(get, id, stunBefore, dmg, ddx / dl, ddy / dl, str * fall);
+      else get().knockbackEnemy(id, ddx / dl, ddy / dl, str * fall, Math.max(3, str) * fall);
       // ★食らいの固まり・減衰・反撃の数(research/BRAWLER.md §11)。押し(上)が明けてから固まる。技を出している最中・振り払いの溜めの間は固めない。
       brawlerKikoComboHit(get, id, o.move ?? 'kiko', o.countRevenge !== false);
     }
@@ -10264,7 +10303,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 受けた直後0.5秒は次の通常攻撃が前隙なしで出る(社長決定 #7)。構えは1秒固定で途中に動けないので、
     // 0.5秒は「受けた時刻と構えの終わりの遅い方」から数える(★未決 §9-4: 構えの最中に切れて使えない窓にしない)。
     const next: BR.BrawlerState = { ...s, quickUntil: Math.max(st.gameTime, s.guardUntil) + BR.BRAWLER_GUARD_QUICK_MS };
-    // 近接の届く距離の相手は気絶させる(社長決定 #6・§8-5): 雑魚・強個体=通常の気絶 / ボス級=会心の足止め(減衰込み)。遠い相手は無効だけ。
+    // 近接の届く距離の相手は気絶させる(社長決定 #6・§8-5): 雑魚=通常の気絶 / 強個体・ボス級=会心の足止め(bossCritStopPatch=会心と同じ区分の決まり・減衰込み)。遠い相手は無効だけ。
     if (sourceId) {
       const e = st.enemies.find(en => en.id === sourceId);
       if (e && BR.isBrawlerTargetable(e) && enemyMeleeDist(c.x, c.y, e) <= huntingMeleeRadius(p) + 24) {
@@ -16928,12 +16967,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (enemy.brRevengePending) {
             // 当たりが途切れて流れが切れたら予約も消す(気絶・長い技の後に遅れて振り払わない)。
             if (!BRC.brawlerComboAlive(enemy, now)) return { ...enemy, brRevengePending: false };
-            if (BRC.brawlerRevengeShouldStart(enemy, isEnemyAttacking(enemy, gameTime))) {
+            if (BRC.brawlerRevengeShouldStart(enemy, BRC.isBrawlerTechBusy(enemy, gameTime))) {
               return { ...enemy, ...BRC.brawlerRevengeStartPatch(gameTime) };
             }
           }
-          // 食らいの固まり: 食らいの動作だけ(移動・噛みつき・技の開始をしない)。技を出している最中は止めない。
-          if (enemy.brHoldUntil !== undefined && now < enemy.brHoldUntil && !isEnemyAttacking(enemy, gameTime)) {
+          // 食らいの固まり: 食らいの動作だけ(移動・噛みつき・技の開始をしない)。本当に技を出している最中は止めない
+          // (移動・待ち・後退の相は止める=相の時計も enemyClocks が止める=明けたら続きから)。
+          if (enemy.brHoldUntil !== undefined && now < enemy.brHoldUntil && !BRC.isBrawlerTechBusy(enemy, gameTime)) {
             return { ...enemy, vx: 0, vy: 0 };
           }
         }

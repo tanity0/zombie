@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PixelIcon } from './PixelIcon';
-import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
+import { useGameStore, subWeaponDisplayName, isBrawlerMode } from '../store/gameStore';
 import { shallow } from 'zustand/shallow';
 import { rafTimeout } from '../utils/rafTimeout';
 import { formatTime } from '../utils/renderUtils';
@@ -123,6 +123,9 @@ const GameHUD: React.FC = () => {
   // スキル/スコア/ダンス段階が読むフィニッシュ回数(meleeFinishComboCount)は中身のまま=ここでは読まない。
   const rhythmCombo = useGameStore(state => state.meleeHitComboCount);
   const rhythmComboUntil = useGameStore(state => state.meleeHitComboUntil);
+  // 格闘を装備している間は左上の COMBO を出さない(近接枠の左の「N HIT」だけにする・社長承認2026-11-08・research/BRAWLER.md §9-58)。
+  // 隠すのは表示だけ(集計・四神などの仕組みはそのまま)。購読は真偽値1つ。
+  const brawlerHudMode = useGameStore(state => isBrawlerMode(state.player));
   // コンボの節目(社長承認2026-09-13): 10を跨いだ瞬間だけ数字が大きく飛び出す(CSS 変数 --combo-pop=ピーク倍率)。
   // 音は store 側の1経路(useGameLoop の購読)=HUD は絵だけ。前値を持って「跨いだか」で判定(9→11 でも出る・監査A)。
   const prevComboRef = React.useRef(rhythmCombo);
@@ -284,7 +287,7 @@ const GameHUD: React.FC = () => {
       )}
 
       {/* コンボ数を左上に表示(近接フィニッシュ/四神舞 共通)。コマンド/入力矢印は Pixi 頭上オーバーレイ側。 */}
-      {rhythmCombo >= 2 && rhythmComboUntil >= gameTime && (
+      {!brawlerHudMode && rhythmCombo >= 2 && rhythmComboUntil >= gameTime && (
         <div
           className="absolute text-left"
           style={{

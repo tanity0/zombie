@@ -14,9 +14,8 @@ export const BRAWLER_COMBO_DECAY_MS = 3000;
 export const BRAWLER_COMBO_FLOOR = 0.4;
 /** 同じ段・同じ技を1つの流れで当て直すと、時計に足す ms(1段目の連打・同じ技の擦りだけが早く抜けられる)。 */
 export const BRAWLER_SAME_MOVE_PENALTY_MS = 400;
-/** 反撃の数(1つの流れで受けた格闘の当たり)。雑魚 / 強個体。ボス級は反撃しない。 */
+/** 反撃の数(1つの流れで受けた格闘の当たり)。雑魚・強個体とも7(社長指示2026-11-08「強個体も雑魚と同じにして」)。ボス級は反撃しない。 */
 export const BRAWLER_REVENGE_HITS_MOB = 7;
-export const BRAWLER_REVENGE_HITS_STRONG = 5;
 /** 振り払い: 溜め(=赤い予告が出てから消え切るまで)・当たりの円の半径・威力(接触/噛みつきの倍率)・押す距離と時間。 */
 export const BRAWLER_REVENGE_WINDUP_MS = 350;
 export const BRAWLER_REVENGE_RADIUS = 90;
@@ -62,10 +61,43 @@ export const brawlerComboClass = (type: EnemyType): 'mob' | 'strong' | 'boss' =>
   POSTURE_ELITE_TYPES.has(type) ? 'strong' : isBossType(type) ? 'boss' : 'mob';
 /** 食らいの固まり・減衰・反撃の対象か(雑魚・強個体。ボス級は区分どおり固めない)。 */
 export const isBrawlerComboSubject = (type: EnemyType): boolean => brawlerComboClass(type) !== 'boss';
-/** 反撃の数(区分で決まる)。ボス級は反撃しない=Infinity。 */
-export const brawlerRevengeHitsFor = (type: EnemyType): number => {
-  const c = brawlerComboClass(type);
-  return c === 'boss' ? Infinity : c === 'strong' ? BRAWLER_REVENGE_HITS_STRONG : BRAWLER_REVENGE_HITS_MOB;
+/** 反撃の数。雑魚・強個体は同じ7(格闘では強個体を雑魚と同じに扱う)。ボス級は反撃しない=Infinity。 */
+export const brawlerRevengeHitsFor = (type: EnemyType): number =>
+  brawlerComboClass(type) === 'boss' ? Infinity : BRAWLER_REVENGE_HITS_MOB;
+
+/**
+ * ★格闘の固まり・止め・反撃が「技を出している最中」として除外する相(社長実機報告2026-11-08「まだ攻撃で敵が止まるのは一切入ってないね?」)。
+ * `combatFeel.isEnemyAttacking` は aiPhase が付いていれば全部「攻撃中」と見る(スーパーアーマー・押しの決まり=そちらは変えない)。
+ * ところが雑魚は、近くに居る間ほぼ常に**移動・待ち・後退・様子見の相**(ゾンビの zpause/zrush など)に居るので、
+ * それを使うと殴っている敵が一度も固まらなかった。格闘はこの表で「本当に技を出している最中」だけを除外する。
+ *
+ * 固める相(=技ではない。固めている間はその相の時計も止まり、明けたら続きから):
+ *  - ゾンビ: zpause(立ち止まり)/ zrush(速足で寄る)/ z-wait(帯で待つ)/ z-recover(2連の後の硬直)/ z-retreat(後退)
+ *  - コウモリ: b-approach(走り寄る)/ b-orbit(回る)/ b-release(離して後ずさる)
+ *  - 骸骨: s-crouch(弧の前のしゃがみ・赤はまだ出ない)/ s-recover(噛みの後の硬直)/ s-retreat(後退)
+ *  - パンプキン型・自転車: crouch(跳ぶ前のしゃがみ・赤はまだ出ない)/ recover(着地の硬直)/ dash-recover(突進の後の硬直)/ w-retreat(走り去る)
+ *  - 削岩型・伐採人: driller-thrust-recover / logger-sweep-recover(技の後の硬直)
+ * 技の最中(固めない): 予告の溜め・攻撃の相(windup / charge / jump / scream / driller-thrust-windup・active / logger-sweep-windup・active /
+ *  b-windup / b-lunge / b-grab / s-arc / s-bite / z-red-pause / z-lunge-in / z-bite1 / z-stagger / z-bite2 / lich-blink / br-revenge / ボスの g-*)、
+ *  噛みつきの構え・振り(biteAt>0)、§16の技の相(chaffMove が立っていて上の固める相に居ない)。**表に無い相は技の最中**(安全側)。
+ */
+export const BRAWLER_HOLDABLE_PHASES: ReadonlySet<string> = new Set([
+  'zpause', 'zrush', 'z-wait', 'z-recover', 'z-retreat',
+  'b-approach', 'b-orbit', 'b-release',
+  's-crouch', 's-recover', 's-retreat',
+  'crouch', 'recover', 'dash-recover', 'w-retreat',
+  'driller-thrust-recover', 'logger-sweep-recover',
+]);
+/** 本当に技を出している最中か(格闘の固まり・止め・反撃の除外にだけ使う)。会心の気絶中は false(isEnemyAttacking と同じ)。 */
+export const isBrawlerTechBusy = (
+  e: { aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number },
+  gameTime: number,
+): boolean => {
+  if (e.stunUntil !== undefined && gameTime < e.stunUntil) return false;
+  if (e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil) return false;
+  if (e.biteAt !== undefined && e.biteAt > 0) return true;
+  if (e.aiPhase === undefined) return e.chaffMove !== undefined;
+  return !BRAWLER_HOLDABLE_PHASES.has(e.aiPhase);
 };
 
 /** 固まりの減衰の倍率(時計 ms から)。 */
@@ -125,11 +157,14 @@ export const brawlerComboOnHit = (
   };
 };
 
-/** 振り払いを今始めてよいか(予約済み・技を出していない・ボス級ではない)。止まっている(気絶など)かは呼び手が先に見る。 */
+/**
+ * 振り払いを今始めてよいか(予約済み・技を出していない・ボス級ではない)。止まっている(気絶など)かは呼び手が先に見る。
+ * busy は `isBrawlerTechBusy`(移動・待ち・後退の相からは振り払える)。§16の技の続き(chaffMove が立っている後退・硬直)は技を壊さないよう終わるまで待つ。
+ */
 export const brawlerRevengeShouldStart = (
-  e: { type: EnemyType; brRevengePending?: boolean; aiPhase?: string },
-  attacking: boolean,
-): boolean => e.brRevengePending === true && !attacking && e.aiPhase !== 'br-revenge' && isBrawlerComboSubject(e.type);
+  e: { type: EnemyType; brRevengePending?: boolean; aiPhase?: string; chaffMove?: string },
+  busy: boolean,
+): boolean => e.brRevengePending === true && !busy && e.chaffMove === undefined && e.aiPhase !== 'br-revenge' && isBrawlerComboSubject(e.type);
 
 /** 振り払いの溜めを始めた時の欄(gameTime 系の技の時計)。 */
 export const brawlerRevengeStartPatch = (gameTime: number) => ({

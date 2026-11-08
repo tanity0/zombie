@@ -17,6 +17,7 @@
 // これが無いと、硬直中に書かれた新しいCDを硬直明けの書き戻しが**消してしまう**。
 import type { Enemy, EnemyClockStash } from '../types/game';
 import { isEnemyAttacking } from './combatFeel';
+import { isBrawlerTechBusy } from './brawlerCombo';
 
 /** 期限型(`*Until`/`*ReadyAt`=残りで測る)か、始点型(`*At`=経過で測る)か。 */
 export type ClockKind = 'deadline' | 'start';
@@ -86,9 +87,10 @@ export const isEnemyFrozenForClocks = (e: Enemy, gameTime: number, nowMs: number
   // (c)被弾硬直(攻撃中スーパーアーマー=技を出している個体は止まらない・Date.now系)
   if (!committed && e.hitStunUntil !== undefined && nowMs < e.hitStunUntil
     && !isEnemyAttacking(e, gameTime)) return true;
-  // (c'')格闘の食らいの固まり(research/BRAWLER.md §11-1・Date.now系・updateEnemies と同じ式=技を出している個体は止まらない)
+  // (c'')格闘の食らいの固まり(research/BRAWLER.md §11-1・Date.now系・updateEnemies と同じ式)。移動・待ち・後退の相も止める
+  //   =その相の時計もここで止まり、明けたら続きから(本当に技を出している個体は止まらない=isBrawlerTechBusy)。
   if (!committed && e.brHoldUntil !== undefined && nowMs < e.brHoldUntil
-    && !isEnemyAttacking(e, gameTime)) return true;
+    && !isBrawlerTechBusy(e, gameTime)) return true;
   // (c')英雄の昇天に見とれて立ち止まっている間(Date.now系・updateEnemies と同じ式)
   if (!committed && e.aweUntil !== undefined && nowMs < e.aweUntil
     && !isEnemyAttacking(e, gameTime)) return true;

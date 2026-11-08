@@ -1011,3 +1011,180 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     expect(br().flowHits).toBe(1);
   });
 });
+
+describe('格闘の当たりでは強個体を雑魚と同じに扱う(社長指示2026-11-08「強個体も雑魚と同じにして」・research/BRAWLER.md §9-57)', () => {
+  const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
+  const foeOf = (type: 'driller' | 'pumpkin' | 'logger' | 'hunter' | 'zombie', id: string, dx = 60) => {
+    const e = zombieAt(dx, 0, id); const w = e.width, h = e.height;
+    const s = spawnEnemyAt(type, 0, 0, useGameStore.getState().gameTime);
+    s.x = e.x + w / 2 - s.width / 2; s.y = e.y + h / 2 - s.height / 2; s.id = id; s.health = 99999; s.maxHealth = 99999;
+    return s;
+  };
+  const strike = (id: string, kb: 'none' | 'normal' | 'big', o: { lift?: boolean; forced?: boolean } = {}) =>
+    useGameStore.getState().triggerCounter(undefined, {
+      targetIds: [id], mult: 1, brawler: true, stunMs: 90, postureMult: 1, pressedAt: Date.now(),
+      kb: kb === 'big' ? { kind: 'big', dirX: 1, dirY: 0, bossHalf: true, ...(o.forced ? { ignoreImmune: true } : {}) } : { kind: kb, dirX: 1, dirY: 0 },
+      ...(o.lift ? { lift: true } : {}), combo: { move: 's3' },
+    });
+  /** 強個体と雑魚に同じ当たりを入れて、止め・押し・浮かせ・固まりの欄を比べる。 */
+  const pair = (kb: 'none' | 'normal' | 'big', o: { lift?: boolean; forced?: boolean } = {}) => {
+    const out: Record<string, ReturnType<typeof en>> = {};
+    for (const t of ['zombie', 'driller', 'pumpkin', 'logger'] as const) {
+      setup();
+      useGameStore.setState({ enemies: [foeOf(t, 'x')] });
+      strike('x', kb, o);
+      out[t] = en('x');
+    }
+    return out;
+  };
+  it('止め・浮かせ・固まりは雑魚と同じ長さ', () => {
+    const r = pair('none', { lift: true });
+    for (const t of ['driller', 'pumpkin', 'logger']) {
+      expect(r[t].hitStunUntil, t).toBe(r.zombie.hitStunUntil);
+      expect(r[t].brawlerLiftAt, t).toBe(r.zombie.brawlerLiftAt);
+      expect(r[t].knockbackUntil, t).toBe(r.zombie.knockbackUntil);
+      expect(r[t].brHoldUntil, t).toBe(r.zombie.brHoldUntil);
+    }
+    expect(r.zombie.hitStunUntil).toBe(now + 90);
+  });
+  it('押し(normal / big)は雑魚と同じ速さ・同じ長さ(押し道具の旗で canShoveEnemy を通す)', () => {
+    for (const kb of ['normal', 'big'] as const) {
+      const r = pair(kb);
+      for (const t of ['driller', 'pumpkin', 'logger']) {
+        expect(r[t].knockbackVx, `${kb} ${t}`).toBeCloseTo(r.zombie.knockbackVx ?? 0, 5);
+        expect(r[t].knockbackUntil, `${kb} ${t}`).toBe(r.zombie.knockbackUntil);
+        expect(r[t].knockbackShoveUntil, `${kb} ${t}`).toBe(r[t].knockbackUntil);
+        expect(r[t].bossStopDrStage, `${kb} ${t}`).toBeUndefined();
+      }
+      expect(Math.abs(r.zombie.knockbackVx ?? 0)).toBeGreaterThan(0);
+    }
+  });
+  it('実際に動く距離も雑魚と同じ(大踏み潰しの強制・締めの吹き飛ばし)', () => {
+    const dist = (t: 'zombie' | 'driller', kb: 'normal' | 'big') => {
+      setup();
+      useGameStore.setState({ enemies: [foeOf(t, 'x')] });
+      // 技を出させない(雑魚と強個体で AI の違いが出ないように)。
+      useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, aiReadyAt: 1e12, biteReadyAt: 1e12 })) }));
+      const x0 = en('x').x;
+      strike('x', kb);
+      for (let i = 0; i < 60; i++) {
+        now += 10;
+        useGameStore.setState(st => ({ gameTime: st.gameTime + 10, enemies: st.enemies.map(e => ({ ...e, aiReadyAt: 1e12, biteReadyAt: 1e12 })) }));
+        useGameStore.getState().updateEnemies(0.01);
+        if (now > (en('x').knockbackUntil ?? 0)) break;
+      }
+      return en('x').x - x0;
+    };
+    for (const kb of ['normal', 'big'] as const) {
+      const z = dist('zombie', kb), d = dist('driller', kb);
+      expect(z, kb).toBeGreaterThan(5);
+      expect(Math.abs(d - z), kb).toBeLessThan(Math.max(2, z * 0.05));
+    }
+  });
+  it('大踏み潰しの強制ノックバックは攻撃中の強個体の技も取り消して押す(雑魚と同じ)', () => {
+    setup();
+    const s = foeOf('driller', 's');
+    Object.assign(s, { aiPhase: 'driller-thrust-windup', aiPhaseUntil: useGameStore.getState().gameTime + 9999 });
+    useGameStore.setState({ enemies: [s] });
+    strike('s', 'big', { forced: true });
+    const e = en('s');
+    expect(e.aiPhase).toBeUndefined();
+    expect(Math.abs(e.knockbackVx ?? 0)).toBeGreaterThan(0);
+    expect(e.knockbackShoveUntil).toBe(e.knockbackUntil);
+  });
+  it('強個体の体勢値は格闘の当たりで今どおり削れる', () => {
+    setup();
+    useGameStore.setState({ enemies: [foeOf('driller', 's')] });
+    const p0 = en('s').bossPosture;
+    strike('s', 'none');
+    const p1 = en('s').bossPosture;
+    expect(p1).not.toEqual(p0);
+  });
+  it('強個体も反撃は7発目(雑魚と同じ)', () => {
+    setup();
+    useGameStore.setState({ enemies: [foeOf('driller', 's')] });
+    for (let i = 0; i < 6; i++) { strike('s', 'none'); advance(80); }
+    expect(en('s').brRevengePending).toBe(false);
+    strike('s', 'none');
+    expect(en('s').brRevengePending).toBe(true);
+  });
+  it('ボス級(ハンター)は今どおり: 止まらない・浮かない・big は半分で押す・normal は押さない', () => {
+    setup();
+    useGameStore.setState({ enemies: [foeOf('hunter', 'h'), foeOf('zombie', 'z', -60)] });
+    strike('h', 'none', { lift: true });
+    expect(en('h').hitStunUntil).toBeUndefined();
+    expect(en('h').brawlerLiftAt).toBeUndefined();
+    strike('h', 'normal');
+    expect(en('h').knockbackShoveUntil ?? 0).toBeLessThan(now);
+    setup();
+    useGameStore.setState({ enemies: [foeOf('hunter', 'h'), foeOf('zombie', 'z', -60)] });
+    strike('h', 'big'); strike('z', 'big');
+    expect(Math.abs(en('h').knockbackVx ?? 0)).toBeCloseTo(Math.abs(en('z').knockbackVx ?? 0) / 2, 5);
+    expect(en('h').knockbackShoveUntil).toBe(en('h').knockbackUntil);
+  });
+});
+
+describe('移動・待ちの相の敵も格闘で固まる(社長実機報告2026-11-08「攻撃で敵が止まるのは一切入ってない」・research/BRAWLER.md §9-59)', () => {
+  const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
+  const s1 = (id: string) => useGameStore.getState().triggerCounter(undefined, {
+    targetIds: [id], mult: 0.35, brawler: true, stunMs: 45, kb: { kind: 'none' }, postureMult: 0.35, pressedAt: Date.now(), combo: { move: 's1' },
+  });
+  /** 実際の AI を回す(移動・格闘・敵の更新)。 */
+  const live = (ms: number, each?: () => void) => {
+    const end = now + ms;
+    while (now < end) {
+      now += 10;
+      useGameStore.setState(st => ({ gameTime: st.gameTime + 10 }));
+      useGameStore.getState().movePlayer(NO_INPUT, 0.01);
+      useGameStore.getState().tickBrawler();
+      useGameStore.getState().updateEnemies(0.012);
+      each?.();
+    }
+  };
+  /** 実際の AI でゾンビを寄らせ、指定の相に入った所で止める。 */
+  const approachUntil = (phases: string[], dx = 120) => {
+    setup();
+    useGameStore.setState(st => ({ enemies: [zombieAt(dx, 0, 'z')], player: { ...st.player, health: 9999, maxHealth: 9999 } }));
+    for (let i = 0; i < 600 && !phases.includes(en('z').aiPhase ?? 'none'); i++) live(10);
+    return en('z').aiPhase;
+  };
+  it('普通に寄ってきたゾンビ(zpause / zrush)を1段目で殴ると、固まって動かない(相の時計も止まり、明けたら続きから)', () => {
+    const ph = approachUntil(['zrush', 'zpause']);
+    expect(['zrush', 'zpause']).toContain(ph);
+    const until0 = en('z').aiPhaseUntil ?? 0;
+    s1('z');
+    const e0 = en('z');
+    expect(e0.brHoldUntil).toBe(now + 45 + 300);
+    const x0 = e0.x, y0 = e0.y;
+    live(320);
+    expect(en('z').x).toBeCloseTo(x0, 5);
+    expect(en('z').y).toBeCloseTo(y0, 5);
+    expect(en('z').aiPhase).toBe(ph);                         // 相はそのまま
+    expect((en('z').aiPhaseUntil ?? 0) - until0).toBeGreaterThanOrEqual(300); // 相の時計が止まった分だけ後ろへ
+    expect(en('z').biteAt ?? 0).toBe(0);                      // 固まっている間は噛みを構えない
+  });
+  it('予告の溜め(z-red-pause)に入ったゾンビは固まらない(体勢値・ダメージは入る)', () => {
+    setup();
+    const z = zombieAt(80, 0, 'z');
+    Object.assign(z, { aiPhase: 'z-red-pause', aiPhaseUntil: useGameStore.getState().gameTime + 5000 });
+    useGameStore.setState({ enemies: [z] });
+    s1('z');
+    expect(en('z').brHoldUntil).toBeUndefined();
+    expect(en('z').health).toBeLessThan(en('z').maxHealth);
+  });
+  it('噛みつきを構えている敵(biteAt>0)は固まらない', () => {
+    setup();
+    const z = zombieAt(80, 0, 'z');
+    Object.assign(z, { aiPhase: 'zrush', aiPhaseUntil: useGameStore.getState().gameTime + 2000, biteAt: useGameStore.getState().gameTime + 1 });
+    useGameStore.setState({ enemies: [z] });
+    s1('z');
+    expect(en('z').brHoldUntil).toBeUndefined();
+  });
+  it('反撃も移動の相の敵で7発目に出る(実際の AI の更新で溜めに入る)', () => {
+    approachUntil(['zrush', 'zpause']);
+    for (let i = 0; i < 7; i++) { s1('z'); live(80); if (en('z').aiPhase === 'br-revenge') break; }
+    let saw = en('z').aiPhase === 'br-revenge';
+    live(200, () => { saw ||= en('z').aiPhase === 'br-revenge'; });
+    expect(saw).toBe(true);
+  });
+});

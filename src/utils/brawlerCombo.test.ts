@@ -5,8 +5,8 @@ import {
   brawlerRevengeStartPatch, brawlerRevengeDue, brawlerRevengeEndPatch, brawlerRevengeTelegraph, brawlerRevengeDamage,
   brawlerStageMoveKey, brawlerKickMoveKey,
   BRAWLER_HOLD_BASE_MS, BRAWLER_COMBO_GAP_MS, BRAWLER_SAME_MOVE_PENALTY_MS, BRAWLER_COMBO_FLOOR,
-  BRAWLER_REVENGE_WINDUP_MS, BRAWLER_REVENGE_HITS_MOB, BRAWLER_REVENGE_HITS_STRONG, BRAWLER_REVENGE_NO_HOLD_MS,
-  type BrawlerComboFields, type BrawlerMoveKey,
+  BRAWLER_REVENGE_WINDUP_MS, BRAWLER_REVENGE_HITS_MOB, BRAWLER_REVENGE_NO_HOLD_MS, brawlerComboClass,
+  type BrawlerComboFields, type BrawlerMoveKey, isBrawlerTechBusy, BRAWLER_HOLDABLE_PHASES,
 } from './brawlerCombo';
 import { meteorPhase } from './telegraphStyle';
 
@@ -100,20 +100,27 @@ describe('同じ技の罰(§11-2)', () => {
 });
 
 describe('反撃(§11-3)', () => {
-  it('反撃の数: 雑魚7・強個体5・ボス級は無し', () => {
+  it('反撃の数: 雑魚・強個体とも7(社長指示「強個体も雑魚と同じにして」)・ボス級は無し', () => {
     expect(brawlerRevengeHitsFor('zombie')).toBe(BRAWLER_REVENGE_HITS_MOB);
     expect(BRAWLER_REVENGE_HITS_MOB).toBe(7);
-    expect(brawlerRevengeHitsFor('pumpkin')).toBe(BRAWLER_REVENGE_HITS_STRONG);
-    expect(BRAWLER_REVENGE_HITS_STRONG).toBe(5);
+    for (const t of ['pumpkin', 'driller', 'logger', 'lab-zombie-3', 'reaper'] as const) {
+      expect(brawlerComboClass(t)).toBe('strong');
+      expect(brawlerRevengeHitsFor(t)).toBe(7);
+    }
+    expect(brawlerComboClass('hunter')).toBe('boss');
     expect(brawlerRevengeHitsFor('thor')).toBe(Infinity);
   });
-  it('雑魚は7発目で予約・6発では予約しない。強個体は5発目', () => {
+  it('雑魚も強個体も7発目で予約・6発では予約しない', () => {
     const six = run('zombie', Array.from({ length: 6 }, (_, i) => ({ move: brawlerStageMoveKey((i % 4) + 1), at: i * 200 })));
     expect(six.e.brRevengePending).toBe(false);
     const seven = run('zombie', Array.from({ length: 7 }, (_, i) => ({ move: brawlerStageMoveKey((i % 4) + 1), at: i * 200 })));
     expect(seven.e.brRevengePending).toBe(true);
-    const strong = run('pumpkin', Array.from({ length: 5 }, (_, i) => ({ move: brawlerStageMoveKey((i % 4) + 1), at: i * 200 })));
-    expect(strong.e.brRevengePending).toBe(true);
+    const strong6 = run('pumpkin', Array.from({ length: 6 }, (_, i) => ({ move: brawlerStageMoveKey((i % 4) + 1), at: i * 200 })));
+    expect(strong6.e.brRevengePending).toBe(false);
+    const strong7 = run('pumpkin', Array.from({ length: 7 }, (_, i) => ({ move: brawlerStageMoveKey((i % 4) + 1), at: i * 200 })));
+    expect(strong7.e.brRevengePending).toBe(true);
+    // 固まりの長さも雑魚と同じ
+    expect(brawlerComboOnHit({ type: 'driller' }, 's3', 0).holdMs).toBe(brawlerComboOnHit({ type: 'zombie' }, 's3', 0).holdMs);
   });
   it('数えない当たり(秘奥義)は反撃の数に足さない', () => {
     const r = run('zombie', Array.from({ length: 9 }, (_, i) => ({ move: 'secret' as const, at: i * 170 })), false);
@@ -176,5 +183,30 @@ describe('★★赤い予告の4つの掟(振り払い)', () => {
       expect(g.p).toBeCloseTo(m.p);
       expect(g.er).toBeCloseTo(m.er);
     }
+  });
+});
+
+describe('「本当に技を出している最中」の仕分け(社長実機報告2026-11-08・§9-59)', () => {
+  const gt = 1000;
+  it('移動・待ち・後退・様子見・硬直の相は技ではない=固める', () => {
+    for (const ph of ['zpause', 'zrush', 'z-wait', 'z-recover', 'z-retreat', 'b-approach', 'b-orbit', 'b-release',
+      's-crouch', 's-recover', 's-retreat', 'crouch', 'recover', 'dash-recover', 'w-retreat', 'driller-thrust-recover', 'logger-sweep-recover']) {
+      expect(BRAWLER_HOLDABLE_PHASES.has(ph), ph).toBe(true);
+      expect(isBrawlerTechBusy({ aiPhase: ph }, gt), ph).toBe(false);
+    }
+    expect(isBrawlerTechBusy({}, gt)).toBe(false);
+    // §16の技の続きの後退・硬直(chaffMove が立ったまま)も固める
+    expect(isBrawlerTechBusy({ aiPhase: 's-retreat', chaffMove: 'skel-bite' }, gt)).toBe(false);
+  });
+  it('予告の溜め・攻撃の相・噛みつきの構え・§16の技は技の最中=固めない。表に無い相も技の最中', () => {
+    for (const ph of ['windup', 'charge', 'jump', 'scream', 'driller-thrust-windup', 'driller-thrust-active', 'logger-sweep-windup', 'logger-sweep-active',
+      'b-windup', 'b-lunge', 'b-grab', 's-arc', 's-bite', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'lich-blink', 'br-revenge', 'g-stomp-windup', 'unknown-phase']) {
+      expect(isBrawlerTechBusy({ aiPhase: ph }, gt), ph).toBe(true);
+    }
+    expect(isBrawlerTechBusy({ aiPhase: 'zrush', biteAt: 900 }, gt)).toBe(true);
+    expect(isBrawlerTechBusy({ chaffMove: 'zombie-double' }, gt)).toBe(true);
+  });
+  it('会心の気絶中は技の最中ではない(isEnemyAttacking と同じ)', () => {
+    expect(isBrawlerTechBusy({ aiPhase: 'z-red-pause', stunUntil: gt + 1 }, gt)).toBe(false);
   });
 });
