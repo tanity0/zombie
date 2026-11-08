@@ -682,3 +682,23 @@ describe('格闘: 構えの延長(社長指示2026-11-07「カウンター中も
   });
 });
 
+describe('構えで受けた時もカウンター成立の記録を書く(社長承認2026-11-07「構えで受けた時もボムカウンターを出す」・§9-42)', () => {
+  it('受けると lastCounterSuccessTime が書かれる=ループのエッジ検出が金の輪・ボムカウンターを出す。光線の毎フレームの受けは140msに1度', () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, lastCounterSuccessTime: 0, brawler: { ...st.player.brawler!, points: 5 } } }));
+    useGameStore.getState().brawlerTech(0, -1);
+    advance(20);
+    const c = center();
+    useGameStore.getState().brawlerGuardReceive(c.x + 30, c.y);
+    expect(useGameStore.getState().player.lastCounterSuccessTime).toBe(now);
+    const t1 = now;
+    advance(50);
+    useGameStore.getState().brawlerGuardReceive(c.x + 30, c.y);
+    expect(useGameStore.getState().player.lastCounterSuccessTime).toBe(t1); // 140ms の中は書かない
+    advance(150);
+    useGameStore.getState().brawlerGuardReceive(c.x + 30, c.y);
+    expect(useGameStore.getState().player.lastCounterSuccessTime).toBe(now);
+  });
+});
+

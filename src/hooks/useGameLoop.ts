@@ -24,7 +24,6 @@ import {
   BOSS_CRIT_DAMAGE_MULT,
   isKatanaMode,
   isMeleeOnlyMode,
-  isBrawlerGuarding,
   drainBrawlerSfx,
   BRAWLER_SFX_DEATH,
   subWeaponBlockedByKatana,
@@ -18203,12 +18202,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Detect successful-counter edge: gold burst + ring(視覚のみ)。
         // 注: lastCounterSuccessTime は弾反射時のみ更新されるため、インパクト(ストップ/揺れ/寄り)は
         // reflect 経路側で一度だけ入れる(ここで重ねると二重発火になる)。
-        // ★格闘の構えの間は通常のカウンター成立の自動の絵を止め、格闘の受けの絵と音を出す(research/BRAWLER.md §8-5)。
-        if (currentPlayer.lastCounterSuccessTime > prevCounterSuccessRef.current
-          && isBrawlerGuarding(currentPlayer, useGameStore.getState().gameTime)) {
-          useGameStore.getState().brawlerGuardReceive(currentPlayer.x + currentPlayer.width / 2, currentPlayer.y + currentPlayer.height / 2);
-          prevCounterSuccessRef.current = currentPlayer.lastCounterSuccessTime;
-        }
+        // ★格闘の構えで受けた時も、通常のカウンター成立と同じくここを通す(金の輪・ボムカウンター等)。成立の記録は brawlerGuardReceive が書く
+        // (社長承認2026-11-07「構えで受けた時もボムカウンターを出す」・research/BRAWLER.md §9-42。旧: 構えの間はここを飛ばしていた)。
         if (currentPlayer.lastCounterSuccessTime > prevCounterSuccessRef.current) {
           spawnRing(
             currentPlayer.x + currentPlayer.width / 2,

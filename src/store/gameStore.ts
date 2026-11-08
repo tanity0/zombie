@@ -9948,7 +9948,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
     if (now - s.guardHitAt < 140) { setBrawler(set, next); return; } // 光線などで毎フレーム来る受けは絵と音を間引く
-    setBrawler(set, { ...next, guardHitAt: now });
+    // ★成立の記録(lastCounterSuccessTime)も通常のカウンターと同じく書く(社長承認2026-11-07・§9-42)。ループのエッジ検出が
+    // 金の輪・ボムカウンター(とボマーの子爆弾)を出し、決めポーズの膨らみ・速度線・守護霊の記録(カウンター直後の窓)も同じ記録を読む。
+    setBrawler(set, { ...next, guardHitAt: now }, { lastCounterSuccessTime: now });
     // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
     // 画面全体は止めない・スローも使わない(カウンターの絵の時間停止は撤回済み+サブウェポンのスロー禁則)。揺れと小さな寄りで受ける。
     get().triggerShake(COUNTER_SHAKE_MS + 80, COUNTER_SHAKE_MAG * 1.4, c.x - x, c.y - y);
@@ -9983,8 +9985,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       g.spawnRing(c.x, c.y, 14, 135, 'rgba(56,189,248,0.9)', 3, COUNTER_REFLECT_FX_MS);
       g.spawnBurst(c.x, c.y, '#38bdf8', 14);
       g.spawnCallout(c.x, c.y - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
-      g.spawnRing(c.x, c.y, 12, 80, 'rgba(252,211,77,0.95)', 4, 420);
-      g.spawnBurst(c.x, c.y, '#fcd34d', 12);
+      // 成立の金の輪はループのエッジ検出(lastCounterSuccessTime)が出す=通常のカウンターと同じ1か所(§9-42)。
       g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0, COUNTER_ZOOM_MAG);
     }
   },
