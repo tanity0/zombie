@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5408', items: [
+    '秘奥義が出た瞬間、背後が光って頭上に「秘奥義」の文字が浮かび、カメラが寄る',
+  ] },
   { version: '0.25.5407', items: [
     '格闘で浮かせた敵は、落ちるまで動けない。追撃するほど早く落ちる。ボスも少しだけ浮く',
     '攻撃が当たる直前に構えるとJUST。相手が長く気絶する',
