@@ -15,6 +15,7 @@
 //
 // 時間の単位(重要・§6.28-1-0): このファイルの天使勢は「壁時計系」。定数はそのまま実効msで書く
 // (giantbatのようにENEMY_ATTACK_SPEED_MULTを掛けも割りもしない)。
+import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { COUNTER_CUT_GAP_MS } from './counterCut';
 import { counterClashPoint } from './counterClash';
 import type { Enemy, EnemyClockStash } from '../types/game';
@@ -3868,6 +3869,9 @@ export const runAngelBossTick = (
   // root明けにツイーンが瞬間完了=テレポートに見えるため)。攻撃が終わればchaseへ戻り凍結する。
   const rooted = angel.rootUntil !== undefined && newGameTime < angel.rootUntil;
   if (rooted && (angel.bossState ?? 'chase') === 'chase') return;
+  // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」): 拘束と同じ止め方
+  //   (追いかけの間だけ・技の最中は完走)。行動の時計は enemyClocks が止める=明けたら続きから。
+  if (brawlerHeldNow(angel, newGameTime, Date.now())) return;
   // ボスメーカー: 単独再生の立ち下がり(1)=**tickの前**。気絶/カウンター/割り込みで技が消された時の
   // 受け皿(これが無いと angelSoloActive が立ちっぱなしになり ⏸ が二度と効かなくなる)。
   settleAngelPlayback(angel.bossState);

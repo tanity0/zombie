@@ -1,5 +1,6 @@
 // 亡霊(変異体)の1フレーム(research/WRAITH_MUTANT.md)。useGameLoop が毎フレーム呼ぶ。
 // 移動は宇宙飛行群と同じく行ける帯(clampRectToPlayableArea)だけを通す(`placeAt`・浮いている=障害物は透き通る・§9)。
+import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import type { Enemy } from '../types/game';
 import { useGameStore, PLAYER_BASE_SPEED, resolveBountyMove, type PumpkinBlast } from '../store/gameStore';
 import { setWraithGraveRects, wraithGraveRects } from '../world/wraithGraves';
@@ -399,8 +400,12 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
     }
   };
 
+  // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」): 技(叫び・召喚・指差し・ワープ)の
+  //   途中でない間だけ。止まって、次の技の時計(nextScreamAt)も止める(明けたら続きから)。
+  const brHeld = !warping && !screaming && !summoning && !s.summonThenFling && !pointing && !collapse && !held && brawlerHeldNow(e, gt, nowMs);
+  if (brHeld && s.nextScreamAt !== null) s.nextScreamAt += dt * 1000;
   // ---- ワープの抽選(見つけて回っている時だけ・被弾ごと600msに1回・3割・§8 A4) ----
-  if (wasAlerted && alerted && !warping && !screaming && !summoning && !s.summonThenFling && !pointing && !collapse && !held && gt - s.lastWarpAt >= WRAITH_WARP_COOLDOWN_MS
+  if (wasAlerted && alerted && !warping && !screaming && !summoning && !s.summonThenFling && !pointing && !collapse && !held && !brHeld && gt - s.lastWarpAt >= WRAITH_WARP_COOLDOWN_MS
     && nowMs - (e.lastHit ?? 0) <= 120 && nowMs - s.lastRollAt >= WRAITH_WARP_ROLL_GAP_MS) {
     s.lastRollAt = nowMs;
     if (Math.random() < WRAITH_WARP_CHANCE) { startWarp(wraithOppositePoint(tgt.x, tgt.y, bx, by)); warping = true; } // 同じフレームで叫びの溜めに入らない(品質監査 A3)
@@ -410,7 +415,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
   const pv = Math.hypot(st.player.vx ?? 0, st.player.vy ?? 0);
   let vmax = alerted ? WRAITH_ORBIT_SPEED + Math.min(pv, PLAYER_BASE_SPEED * GAME_SPEED * 1.5) : WRAITH_PATROL_SPEED;
   let wantH = s.heading, wantS = 0;
-  if (collapse || held || screaming || summoning || pointing || warping) {
+  if (collapse || held || brHeld || screaming || summoning || pointing || warping) {
     wantS = 0;
   } else if (alerted) {
     if (gt >= s.nextReverseAt) { s.orbitDir = s.orbitDir === 1 ? -1 : 1; s.nextReverseAt = gt + rand(WRAITH_REVERSE_MIN_MS, WRAITH_REVERSE_MAX_MS); }
@@ -547,7 +552,7 @@ export const runWraithTick = (e: Enemy, s: WraithTickState, gt: number, dt: numb
       }
     }
   }
-  if (collapse || held) { s.speed = Math.max(0, s.speed - vmax * 3 * dt); vmax = Math.max(vmax, 1); }
+  if (collapse || held || brHeld) { s.speed = Math.max(0, s.speed - vmax * 3 * dt); vmax = Math.max(vmax, 1); }
 
   // ---- 慣性つきの速さ(宇宙飛行群と同じ式 stepAstroVelocity=最高速までおよそ0.9秒・止まるまでおよそ1.2秒) ----
   const v = stepAstroVelocity({ heading: s.heading, speed: s.speed }, { heading: wantH, speed: wantS }, vmax, dt);

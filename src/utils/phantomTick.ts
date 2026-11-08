@@ -24,6 +24,7 @@
 //    `knockbackShoveUntil` / `liftUntil` / decideGhost の内部CD・リロードは `Date.now()`。
 //    **混ぜて比較しない**。このファイルは両方を引数で受け取り、それぞれの世界の中だけで比較する。
 //  - 慣性: 振りの絵(踏み込み→戻り)は描画側(pixiScene)がイーズで出す。判定は即発の1回。
+import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { counterClashPoint } from './counterClash';
 import type { Enemy, EnemyType, Player, Projectile, SubWeaponKey, Weapon, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
@@ -1149,6 +1150,9 @@ export const runPhantomTick = (
 
   // ---- 気絶・拘束・浮き: 何もしない(★ノックバックは含めない=殴っても止まらない) ----------------
   if (isFrozen(phantom, newGameTime, nowMs)) { abortPhantomFlamer(phantom, patch); applyPatch(phantom.id, patch); return; }
+  // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」): 止まるだけ
+  //   (移動も撃ち始めもしない)。幻影には技の最中の概念が無いので、流しっぱなしの火炎放射だけは浮きと同じく打ち切る。
+  if (brawlerHeldNow(phantom, newGameTime, nowMs)) { abortPhantomFlamer(phantom, patch); applyPatch(phantom.id, patch); return; }
 
   // ---- パリィの即反撃(周期を無視した割り込み) ---------------------------------------------------
   const parried = consumePhantomParry(phantom, s, player, bcx, bcy, sfx, patch, newGameTime);

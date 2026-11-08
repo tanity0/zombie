@@ -4348,7 +4348,9 @@ const brawlerRecoilPatch = (dirX: number, dirY: number, holdMs: number, now: num
  * 格闘の当たりの敵のパッチ(research/BRAWLER.md §8-1)。止め・ノックバック・浮かせを1本に書く(knockbackEnemy は使わない)。
  *  none   = 押さない・免疫も張らない(1・2・4段目) / normal = 今の近接の速さ・免疫は張らない(3段目・飛び蹴り1・2発目)
  *  big    = 今の近接の4倍(5段目・飛び蹴り3発目・大踏み潰し)。ignoreImmune=雑魚・強個体の免疫と攻撃中の技を無視(技は取り消してから押す)。
- *  ボス級 = 止めない・浮かない。big だけ knockbackShoveUntil も書いて動かす(bossHalf=半分・ボスの減衰を通す)。
+ *  ボス級 = 押さない(big だけ knockbackShoveUntil も書いて動かす・bossHalf=半分・ボスの減衰を通す)。
+ *  ★止め・食らいの固まりはボス級にも雑魚と同じ値で掛ける(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」)。
+ *   ボス級の止めは hitStunUntil(銃の止めと同じ枠)ではなく brHoldUntil へ書く=専用の制御が brawlerHeldNow で止まる。
  */
 const brawlerHitPatch = (
   enemy: Enemy, bs: BrawlerStrikeOpts, now: number, gameTime: number, dmg: number,
@@ -4357,21 +4359,33 @@ const brawlerHitPatch = (
   // ★格闘の当たりでは強個体を雑魚とまったく同じに扱う(社長指示2026-11-08「強個体も雑魚と同じにして」・research/BRAWLER.md §9-57)。
   // isBossType は強個体まで含む別目的の表なので、区分の述語(brawlerComboClass=強個体を先に見る)で分ける。
   // 止め・食らいの固まり・浮かせ・押し(normal/big)・大踏み潰しの強制ノックバックは雑魚と同じ。体勢値(damageEnemy 側)は強個体のまま。
-  // ボス級(本物のボス)は今のまま。範囲は格闘の当たりだけ(ナイフ・銃の強個体の扱いは変えない)。
+  // 範囲は格闘の当たりだけ(ナイフ・銃の強個体の扱いは変えない)。
+  // ★ボス級も①止め・②食らいの固まりは雑魚と同じ(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」・§11-1)。
+  //   押し(⑤)・浮き(③の重さ)・構え(④)・振り払い無し は今のまま。
   const cls = BRC.brawlerComboClass(enemy.type);
   const bossLike = cls === 'boss';
   const strong = cls === 'strong';
-  const comboSubject = !bossLike;
+  const comboSubject = !bossLike; // 振り払い(反撃)の対象=雑魚・強個体だけ
   // ★振り払いの溜めの間はスーパーアーマー(§11-3): 押されない・固まらない・浮かない・震えない。ダメージと体勢値(damageEnemy 側)だけ通る。
   if (comboSubject && enemy.aiPhase === 'br-revenge') return { lastHitDmg: dmg };
   const attacking = isEnemyAttacking(enemy, gameTime);
   // 固まり・浮かせの除外は「本当に技を出している最中」だけ(移動・待ち・後退の相は固める=brawlerCombo の表)。押しの取り消し(強制)は今どおり isEnemyAttacking。
   const busy = BRC.isBrawlerTechBusy(enemy, gameTime);
-  const stopMs = bossLike ? 0 : Math.max(0, bs.stunMs);
+  // 止め(①)の長さ。ボス級も同じ値。ただしボス級の吹き飛ばし(⑤ big)は今のまま=止めを挟まず飛ぶ。
+  const hitStopMs = Math.max(0, bs.stunMs);
+  const bossStopMs = bossLike && bs.kb.kind !== 'big' && !busy ? hitStopMs : 0;
+  // 押しの計算・hitStunUntil に使う止め(ボス級は0=押しの欄と hitStunUntil には書かない)。
+  const stopMs = bossLike ? 0 : hitStopMs;
   const out: Partial<Enemy> = { lastHitDmg: dmg };
-  // ★食らいの固まり・減衰・同じ技の罰・反撃の数(§11-1〜11-3)。技を出している最中の敵は固めない(数と時計は進める)。
-  const combo = comboSubject && bs.combo ? BRC.brawlerComboOnHit(enemy, bs.combo.move, now, bs.combo.countRevenge !== false) : null;
+  // ★食らいの固まり・減衰・同じ技の罰・反撃の数(§11-1〜11-3)。技を出している最中の敵は固めない(数と時計は進める)。ボス級も同じ(反撃の数は届かない)。
+  const combo = bs.combo ? BRC.brawlerComboOnHit(enemy, bs.combo.move, now, bs.combo.countRevenge !== false) : null;
   if (combo) Object.assign(out, combo.patch);
+  if (bossStopMs > 0) {
+    // ボス級の止めの震え(絵だけ・雑魚と同じ)。止まり自体は下の brHoldUntil。
+    out.brawlerShakeUntil = now + bossStopMs;
+    const sdx = ecx - pcx, sdy = ecy - pcy, sdl = Math.hypot(sdx, sdy) || 1;
+    out.brawlerShakeDx = sdx / sdl; out.brawlerShakeDy = sdy / sdl;
+  }
   if (stopMs > 0) {
     out.hitStunUntil = now + stopMs;
     out.brawlerShakeUntil = now + stopMs;
@@ -4433,7 +4447,10 @@ const brawlerHitPatch = (
   if (strong && out.knockbackUntil !== undefined) out.knockbackShoveUntil = out.knockbackUntil;
   // 固まりは止め・押し(浮かせ)が明けてから数える(押す段は固まりより押しを優先=§11-1)。吹き飛ばす技は固まり0(今どおり飛ぶ)。
   if (combo && !busy && combo.holdMs > 0) {
-    out.brHoldUntil = brawlerHoldFrom(now, stopMs, Math.max(out.knockbackUntil ?? 0, out.liftUntil ?? 0)) + combo.holdMs;
+    out.brHoldUntil = brawlerHoldFrom(now, bossLike ? bossStopMs : stopMs, Math.max(out.knockbackUntil ?? 0, out.liftUntil ?? 0)) + combo.holdMs;
+  } else if (bossStopMs > 0) {
+    // 固まりが0の当たり(固まりの表が0で押しが big でない時)でも、ボス級の止め(①)だけは掛ける。
+    out.brHoldUntil = Math.max(now + bossStopMs, out.liftUntil ?? 0);
   }
   return out;
 };
@@ -5288,7 +5305,7 @@ const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.Brawler
       // 浮かせ追撃(§12-1): 浮いている敵に気功の爆発が当たっても浮きが続く(押し上げ小)。ボス級も浮く。
       const jp = busy ? null : brawlerJugglePatch(e, BRC.brawlerComboClass(e.type), move, now);
       const e1 = jp ? { ...e, ...jp } : e;
-      if (!BRC.isBrawlerComboSubject(e.type)) return e1;
+      // ボス級も同じ固まり(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」・反撃の数は届かない)。
       const c = BRC.brawlerComboOnHit(e, move, now, countRevenge);
       const held = c.holdMs > 0 && !busy;
       return { ...e1, ...c.patch, ...(held ? { brHoldUntil: brawlerHoldFrom(now, 0, Math.max(e1.knockbackUntil ?? 0, e1.liftUntil ?? 0)) + c.holdMs } : {}) };
@@ -17104,7 +17121,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           return { ...enemy, vx: 0, vy: 0 };
         }
 
-        // ★格闘の反撃と食らいの固まり(research/BRAWLER.md §11)。雑魚・強個体だけ(ボス級は区分で対象外)。
+        // ★格闘の反撃(research/BRAWLER.md §11-3)。雑魚・強個体だけ(ボス級は振り払わない)。固まりは下で全区分。
         // 押し(ノックバック)・気絶・拘束は上が先に効く=押す段は固まりより押しを優先(§11-1)。クリで気絶すれば振り払いも取り消える(上の気絶の分岐)。
         if (BRC.isBrawlerComboSubject(enemy.type)) {
           // 振り払いの溜め → 予告が消え切った瞬間に当たる(★★赤い予告の4つの掟③)。溜めの間はその場で動かない。
@@ -17127,11 +17144,13 @@ export const useGameStore = create<GameState>((set, get) => ({
               return { ...enemy, ...BRC.brawlerRevengeStartPatch(gameTime) };
             }
           }
-          // 食らいの固まり: 食らいの動作だけ(移動・噛みつき・技の開始をしない)。本当に技を出している最中は止めない
-          // (移動・待ち・後退の相は止める=相の時計も enemyClocks が止める=明けたら続きから)。
-          if (enemy.brHoldUntil !== undefined && now < enemy.brHoldUntil && !BRC.isBrawlerTechBusy(enemy, gameTime)) {
-            return { ...enemy, vx: 0, vy: 0 };
-          }
+        }
+        // 食らいの固まり: 食らいの動作だけ(移動・噛みつき・技の開始をしない)。本当に技を出している最中は止めない
+        // (移動・待ち・後退の相は止める=相の時計も enemyClocks が止める=明けたら続きから)。
+        // ★ボス級(この関数で動く城ボス・ハンター)も同じ(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」)。
+        //   専用の制御で動くボスは、それぞれの制御が同じ述語(brawlerHeldNow)で止まる。
+        if (BRC.brawlerHeldNow(enemy, gameTime, now)) {
+          return { ...enemy, vx: 0, vy: 0 };
         }
 
         // 屋内: 休眠敵は静止。索敵範囲(aggroRange×2=二倍)内 かつ 壁越しでない 時だけ起床(社長指示)。

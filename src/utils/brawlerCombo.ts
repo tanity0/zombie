@@ -60,7 +60,10 @@ export const brawlerKickMoveKey = (kickN: number): BrawlerMoveKey =>
  */
 export const brawlerComboClass = (type: EnemyType): 'mob' | 'strong' | 'boss' =>
   POSTURE_ELITE_TYPES.has(type) ? 'strong' : isBossType(type) ? 'boss' : 'mob';
-/** 食らいの固まり・減衰・反撃の対象か(雑魚・強個体。ボス級は区分どおり固めない)。 */
+/**
+ * 振り払い(反撃・§11-3)の対象か(雑魚・強個体。ボス級は振り払わない)。
+ * ★食らいの固まり・減衰・同じ技の罰は**ボス級にも掛かる**(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」・§11-1)。
+ */
 export const isBrawlerComboSubject = (type: EnemyType): boolean => brawlerComboClass(type) !== 'boss';
 /** 反撃の数。雑魚・強個体は同じ7(格闘では強個体を雑魚と同じに扱う)。ボス級は反撃しない=Infinity。 */
 export const brawlerRevengeHitsFor = (type: EnemyType): number =>
@@ -103,6 +106,16 @@ export const isBrawlerTechBusy = (
   return !BRAWLER_HOLDABLE_PHASES.has(e.aiPhase);
 };
 
+/**
+ * いま格闘の食らいの固まり(①止め+②固まり)で止まっているか(全区分共通・Date.now 系)。本当に技を出している最中は止めない。
+ * 専用の制御で動くボス(裏ボス・天使・偶像・賞金首・英雄・幻影・群れ)も、この述語で移動と次の技の開始を止める
+ * (行動の時計は enemyClocks.isEnemyFrozenForClocks が同じ式で止める=明けたら続きから)。
+ */
+export const brawlerHeldNow = (
+  e: { brHoldUntil?: number; aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number; bossState?: string },
+  gameTime: number, nowMs: number,
+): boolean => e.brHoldUntil !== undefined && nowMs < e.brHoldUntil && !isBrawlerTechBusy(e, gameTime);
+
 /** 固まりの減衰の倍率(時計 ms から)。 */
 export const brawlerHoldDecay = (clockMs: number): number =>
   Math.max(BRAWLER_COMBO_FLOOR, 1 - Math.max(0, clockMs) / BRAWLER_COMBO_DECAY_MS);
@@ -133,12 +146,12 @@ export const brawlerComboClock = (e: BrawlerComboFields, now: number): number =>
  *  - 同じ名札を同じ流れで2回目以降に当てたら、時計に +400ms。
  *  - 固まり = 基本 × max(0.4, 1 − 時計/3000)。振り払いの後(brNoHoldUntil まで)は固めない。
  *  - countRevenge なら反撃の数を1つ足し、区分の数に達したら反撃を予約する。
- * ボス級は何もしない(patch 空・固まり0)。
+ * ★ボス級も同じ(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」)。反撃の数だけは
+ *  区分の数(ボス級=Infinity)に届かないので、ボス級は振り払わない。
  */
 export const brawlerComboOnHit = (
   e: BrawlerComboFields, move: BrawlerMoveKey, now: number, countRevenge = true,
 ): { patch: Partial<BrawlerComboFields>; holdMs: number } => {
-  if (!isBrawlerComboSubject(e.type)) return { patch: {}, holdMs: 0 };
   const alive = brawlerComboAlive(e, now);
   const start = alive ? (e.brComboStart ?? now) : now;
   const moves = alive && e.brComboMoves ? e.brComboMoves.split(',') : [];

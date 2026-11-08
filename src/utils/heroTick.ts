@@ -6,6 +6,7 @@
 //  - 当たりは全部 pumpkinBlasts へ積む(プレイヤー・守護霊・カウンター・吹き飛ばし・敵への当たりは解決側=combatTick)。
 //  - 赤い予告=heroShape。溜め開始で置き場所を決め、heroHitAt(当たる瞬間)まで動かさない。
 //  - 画面外では技を始めない(始まった技は最後まで出して当てる=赤いのに当たらない、を作らない)。
+import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { bossFaceDeadzonePx } from './bossFacing';
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, knockbackSpeedFor, ENEMY_REMOVE_CAUSE, type PumpkinBlast } from '../store/gameStore';
@@ -374,6 +375,9 @@ export const runHeroTick = (
     sfx.gallop(0, 1);
     return;
   }
+  // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」): 技の最中でない間だけ止まる
+  //   (移動も次の技の開始もしない・時計は enemyClocks が止める)。崩す止め(気絶・拘束・浮き・押し)が重なれば下が先。
+  if (!fullStun && !isFrozen(hero, gt, nowMs) && brawlerHeldNow(hero, gt, nowMs)) return;
   if (fullStun || isFrozen(hero, gt, nowMs)) {
     const kbOnly = !fullStun && hero.knockbackUntil !== undefined && nowMs < hero.knockbackUntil
       && !(hero.stunUntil !== undefined && gt < hero.stunUntil) && !(hero.rootUntil !== undefined && gt < hero.rootUntil)

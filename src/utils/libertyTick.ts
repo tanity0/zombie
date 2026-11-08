@@ -5,6 +5,7 @@
 // 掟:
 //  - 移動は必ず ①障害物(resolveBountyMove)→ ②行ける帯(clampRectToPlayableArea)の順で通す。
 //  - 旗手の攻撃は旗振りだけ(プレイヤーが体の縁から120px以内・§4b)。叫ぶのは画面に入っている時だけ(見つける条件に「画面内」を含む)。
+import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, SCREAMER_WINDUP_MS, SCREAMER_BUFF_MS, screamerWindupFx, screamerCryFx, cancelScreamerWindupFx, type PumpkinBlast } from '../store/gameStore';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
@@ -121,7 +122,8 @@ export const runLibertyTick = (bearer: Enemy, s: LibertyTickState, gt: number, d
   const st = useGameStore.getState();
   const bx = bearer.x + bearer.width / 2, by = bearer.y + bearer.height / 2;
   const patch: Partial<Enemy> = {};
-  const frozen = isFrozen(bearer, gt, nowMs);
+  // 格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」)も同じ止め方(動かない・溜めは消さない)。
+  const frozen = isFrozen(bearer, gt, nowMs) || brawlerHeldNow(bearer, gt, nowMs);
 
   // ---- 足跡(バット男が並ぶ道) ----
   const lastT = s.trail[s.trail.length - 1];

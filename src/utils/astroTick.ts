@@ -6,6 +6,7 @@
 //  - 浮いて見えるのは絵だけ(判定・影・帯の y は地面のまま=上下の5つの副作用に触れない)。
 //  - 投げるのは必ず着地してから・姿が画面に入っている時だけ。投げた物は台帳(store.astroThrows)に置き、
 //    投げ手が倒れても最後まで飛んで当たる。手を離す前に崩されたら、その投げの分を台帳から消す(赤が残って当たらない、を作らない)。
+import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, PLAYER_BASE_SPEED, type PumpkinBlast } from '../store/gameStore';
 import { GAME_SPEED } from '../config/gameSpeed';
@@ -192,8 +193,15 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
   const inInner = (x: number, y: number, m: number) => x >= vb.left + m && x <= vb.right - m && y >= vb.top + m && y <= vb.bottom - m;
   // 投げていない時(巡回・対策室の輪)の定期の着地。見つけている間は投げで降りるので数えない。
   const periodicOn = !throwing && !collapse && !held && !alerted && !s.resting;
+  // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」): 投げの途中でない間だけ。
+  //   その場で止まり(降りない)、次の投げ・定期の着地の時計も止める(明けたら続きから)。
+  const brHeld = !throwing && !collapse && !held && brawlerHeldNow(e, gt, nowMs);
   let periodicLand = false;
-  if (periodicOn) {
+  if (brHeld) {
+    const dms = dt * 1000;
+    if (s.periodic.nextAt !== null) s.periodic = { ...s.periodic, nextAt: s.periodic.nextAt + dms };
+    if (s.periodic.holdUntil !== null) s.periodic = { ...s.periodic, holdUntil: s.periodic.holdUntil + dms };
+  } else if (periodicOn) {
     const r = stepAstroPeriodicLand(s.periodic, gt, anim0.frame, Math.random);
     s.periodic = { nextAt: r.nextAt, holdUntil: r.holdUntil };
     periodicLand = r.land;
@@ -202,6 +210,8 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
   }
   if (throwing || collapse || held) {
     landReq = true;
+  } else if (brHeld) {
+    if (s.nextThrowAt !== null) s.nextThrowAt += dt * 1000;
   } else if (alerted) {
     if (s.nextThrowAt === null && !s.wantThrow && anim0.frame >= ASTRO_HOVER_LOOP_LO) s.nextThrowAt = gt + rand(ASTRO_THROW_GAP_MIN_MS, ASTRO_THROW_GAP_MAX_MS);
     if (!s.wantThrow && s.nextThrowAt !== null && gt >= s.nextThrowAt && onScreen && st.player.health > 0) s.wantThrow = true;
@@ -260,7 +270,7 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
   if (periodicLand) landReq = true;
 
   // ---- 慣性つきの速さ ----
-  const canMove = astroCanMove(anim0.frame) && !throwing && !collapse && !held;
+  const canMove = astroCanMove(anim0.frame) && !throwing && !collapse && !held && !brHeld;
   if (landReq || !canMove) wantS = 0;
   if (collapse || held) s.speed = Math.max(0, s.speed - (vmax / ASTRO_DECEL_S) * 3 * dt); // 崩れて落ちる=止まりも速い
   const v = stepAstroVelocity({ heading: s.heading, speed: s.speed }, { heading: wantH, speed: wantS }, vmax, dt);
@@ -321,7 +331,7 @@ export const runAstroTick = (e: Enemy, s: AstroTickState, gt: number, dt: number
   }
 
   // ---- 投げ始め(着地し切った=0コマ) ----
-  if (s.wantThrow && !throwing && !collapse && !held && anim.frame === 0 && onScreen && alerted) {
+  if (s.wantThrow && !throwing && !collapse && !held && !brHeld && anim.frame === 0 && onScreen && alerted) {
     // 台本(着地したら旗 → 立ったまま破片の雨)。ピンチ(体力半分以下)は破片の雨が2倍(社長指示2026-10-30)。
     const kind = s.chainNext ?? ASTRO_SCRIPT[0];
     s.chainNext = null;

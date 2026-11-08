@@ -841,18 +841,24 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     advanceAll(400);
     expect(Math.abs(en('z').x - x0)).toBeGreaterThan(0.5);
   });
-  it('技を出している最中の敵は止めない(体勢値は削る)・ボス級は固めない', () => {
+  it('技を出している最中の敵は止めない(体勢値は削る)・★ボス級も追いかけの間は雑魚と同じ長さで固まる(社長指示2026-11-08)', () => {
     setup();
     const busy = zombieAt(90, 0, 'z');
     busy.aiPhase = 'z-red-pause'; busy.aiPhaseUntil = 999999;
     const thor = zombieAt(-90, 0, 't');
     thor.type = 'thor';
-    useGameStore.setState({ enemies: [busy, thor] });
-    hit('z', 's1'); hit('t', 's1');
+    const mob = zombieAt(0, 90, 'm');
+    const thorBusy = zombieAt(0, -90, 'tb');
+    thorBusy.type = 'thor'; thorBusy.bossState = 'thor-dash-windup'; thorBusy.bossStateUntil = 999999;
+    useGameStore.setState({ enemies: [busy, thor, mob, thorBusy] });
+    hit('z', 's1'); hit('t', 's1'); hit('m', 's1'); hit('tb', 's1');
     expect(en('z').brHoldUntil).toBeUndefined();
     expect(en('z').brComboHits).toBe(1);
-    expect(en('t').brHoldUntil).toBeUndefined();
-    expect(en('t').brComboHits).toBeUndefined();
+    expect(en('m').brHoldUntil).toBeGreaterThan(now);
+    expect(en('t').brHoldUntil).toBe(en('m').brHoldUntil); // 止め+固まりが雑魚と同じ
+    expect(en('t').brComboHits).toBe(1);
+    expect(en('t').hitStunUntil).toBeUndefined();          // ボス級の止めは hitStunUntil(銃と同じ枠)には書かない
+    expect(en('tb').brHoldUntil).toBeUndefined();          // 技の最中のボスは止めない
   });
   it('5段を出し切る頃に固まりが切れる(1〜4段目は次の段が届くまで固まり続け、5段目の後は4割近くまで落ちている)', () => {
     setup(3);

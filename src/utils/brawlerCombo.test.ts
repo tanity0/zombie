@@ -37,10 +37,20 @@ describe('食らいの固まりの長さ(§11-1)', () => {
     expect([1, 2, 3, 4, 5].map(brawlerStageMoveKey)).toEqual(['s1', 's2', 's3', 's4', 's5']);
     expect([1, 2, 3].map(brawlerKickMoveKey)).toEqual(['kick1', 'kick2', 'kick3']);
   });
-  it('ボス級は固めない・数えない(区分どおり)', () => {
-    const r = brawlerComboOnHit({ type: 'thor' }, 's1', 1000);
-    expect(r.holdMs).toBe(0);
-    expect(r.patch).toEqual({});
+  it('★ボス級も雑魚と同じ固まり・減衰・同じ技の罰(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」)。振り払いだけは無い', () => {
+    let b: Parameters<typeof brawlerComboOnHit>[0] = { type: 'thor' };
+    let m: Parameters<typeof brawlerComboOnHit>[0] = { type: 'zombie' };
+    const moves = ['s1', 's2', 's1', 's3', 's4', 's1', 's2', 's3', 's1', 's2'] as const;
+    let t = 1000;
+    for (const mv of moves) {
+      const rb = brawlerComboOnHit(b, mv, t), rm = brawlerComboOnHit(m, mv, t);
+      expect(rb.holdMs).toBe(rm.holdMs);                  // 同じ長さ・同じ減衰・同じ罰
+      expect(rb.patch.brComboPenalty).toBe(rm.patch.brComboPenalty);
+      expect(rb.patch.brRevengePending).toBe(false);      // ボス級は振り払わない(数は Infinity に届かない)
+      b = { ...b, ...rb.patch }; m = { ...m, ...rm.patch };
+      t += 250;
+    }
+    expect(m.brRevengePending).toBe(true);                // 雑魚は7回で振り払いの予約
   });
 });
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { brawlerHeldNow } from '../utils/brawlerCombo'; // 格闘の食らいの固まり(ボス級も・§11-1)
 import { isUntouchable } from '../utils/enemyUtils';
 import { arrowRainLevel, pickArrowRainCenter, planArrowRain, reaimArrow, arrowRainHits, ARROW_RAIN_ZONE_PX, ARROW_RAIN_COUNT_BY_LEVEL, ARROW_RAIN_CD_MS_BY_LEVEL, ARROW_RAIN_DAMAGE, ARROW_RAIN_STUCK_MS, type RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { latticeBands, latticeStageCount, latticeAxisForStage, latticeHitSource, latticeCenter } from '../utils/skadiLattice';
@@ -6839,7 +6840,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const stunnedNow = boss.stunUntil !== undefined && newGameTime < boss.stunUntil;
               const liftedNow = boss.liftUntil !== undefined && Date.now() < boss.liftUntil;
               const kbStoppedNow = boss.knockbackUntil !== undefined && Date.now() < boss.knockbackUntil;
-              const frozen = warping || bossFullStun || stunnedNow || liftedNow || kbStoppedNow || rootedNow;
+              // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」):
+              //   追いかけ/帰りの間だけ(技の最中は brawlerHeldNow が偽)。止めている間は移動も次の技の開始もしない。
+              //   行動の時計は enemyClocks が止める(明けたら続きから)=ここでは何も書き換えない(下の holdOnly)。
+              const brawlerHeld = brawlerHeldNow(boss, newGameTime, Date.now());
+              const frozen = warping || bossFullStun || stunnedNow || liftedNow || kbStoppedNow || rootedNow || brawlerHeld;
               // v0.25.2895: 気絶中の歩行半減(旧walkMult/BOSS_STUN_SPEED_MULT)は死コードだったため削除。
               // 通常気絶(stunUntil)がボスに入る経路は既にbossSlowUntilへ置き換え済みで、唯一stunUntilを
               // 立てていた紫(完全気絶)はこの上のfrozenで先に全停止する——結果walkMultは常に1で、
@@ -6922,8 +6927,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // 揃えたのを取り消す)。代わりに技の時計を凍結ぶんだけ後ろへずらす=解除後に続きから。
                 // 絶対時刻(bossStateUntil)のままだと解除の瞬間に期限切れ=stale windupが即着弾するため。
                 // 移動は従来どおり止める(押されている間にチェイスで座標を上書きしない)。
-                const kbOnlyStop = kbStoppedNow && !warping && !bossFullStun && !stunnedNow && !liftedNow && !rootedNow;
-                if (kbOnlyStop) {
+                const holdOnly = brawlerHeld && !warping && !bossFullStun && !stunnedNow && !liftedNow && !rootedNow;
+                const kbOnlyStop = kbStoppedNow && !brawlerHeld && !warping && !bossFullStun && !stunnedNow && !liftedNow && !rootedNow;
+                if (holdOnly) {
+                  // 格闘の固まりだけ: 止まるだけ(技は出していない=崩さない・時計は enemyClocks が据え置く)。
+                } else if (kbOnlyStop) {
                   const kbDtMs = deltaTime * 1000;
                   if (boss.bossStateUntil !== undefined) patch.bossStateUntil = boss.bossStateUntil + kbDtMs;
                   patch.bossNextActionAt = (boss.bossNextActionAt ?? newGameTime) + kbDtMs;

@@ -6,6 +6,7 @@
 //
 // 状態文法(監査レポート§3-1): NEUTRAL(主戦帯を維持) → STRING(連段) → REST(休符) → NEUTRAL。
 // 懲罰(PUNISH)は中立中いつでも割り込む。**休符は必ず入る**(プレイヤーのターンを消さない)。
+import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { COUNTER_CUT_GAP_MS } from './counterCut';
 import type { Enemy, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
@@ -281,7 +282,9 @@ export const runIdolTick = (
    * root明けにツイーンが瞬間完了=テレポートに見えるため。他のボスは全員これを見ているのに、
    * アイドルだけ抜けていた(fullStunと同じ経緯・v0.25.2895)。
    */
-  const rooted = idol.rootUntil !== undefined && newGameTime < idol.rootUntil;
+  // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」)も拘束と同じ止め方
+  //   (chase の間だけ凍結・技の最中は完走=brawlerHeldNow は技の最中に偽)。
+  const rooted = (idol.rootUntil !== undefined && newGameTime < idol.rootUntil) || brawlerHeldNow(idol, newGameTime, Date.now());
   /**
    * ★PACING_PUZZLE.md §16-H(社長指示2026-09-19「硬直中はタイマーがゼロのままストップ」)。
    * `Enemy` のフィールドは `updateEnemies` の前処理(`tickEnemyClockFreeze`)が見るが、

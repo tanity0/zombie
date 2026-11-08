@@ -15,6 +15,7 @@
 //    werewolf定数)を複製して使う(=誤学習防止。複製である旨は各定数のコメントに明記)。
 //  - ★v0.25.3558: 数値は bountyScript.ts の可変テーブル(BR_T/BM_T/BB_T/MK_T)へ移した。werewolf/
 //    pumpkin 由来の値は**テーブル側で複製**し、実体との一致を bountyScript.test.ts が機械検査する。
+import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { bossHomingSpeed } from './bossHoming';
 import { counterClashPoint } from './counterClash';
 import type { Enemy, EnemyType, EnemyClockStash } from '../types/game';
@@ -2235,6 +2236,14 @@ export const runBountyTick = (
       bossNextActionAt: newGameTime + BOUNTY_NEUTRAL_MS,
       bountyLastEngagedAt: newGameTime,
     });
+    return;
+  }
+
+  // ---- 格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」) ----
+  // 追いかけの間だけ(技の最中は brawlerHeldNow が偽=技は崩さない)。移動も次の技の開始もしない。
+  // 行動の時計(bossNextActionAt 等)は enemyClocks が止める=明けたら続きから。崩す止め(気絶・拘束・浮き)が重なれば下が先。
+  if (brawlerHeldNow(bounty, newGameTime, nowMs) && !isFrozen(bounty, newGameTime, nowMs)) {
+    applyPatch(bounty.id, { bountyLastEngagedAt: newGameTime });
     return;
   }
 
