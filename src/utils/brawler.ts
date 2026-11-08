@@ -74,7 +74,7 @@ export const BRAWLER_PALM_SETTLE_MS = 120;
 /** 吹き飛ばしの向き: 軌跡から横へ外向き+進む向きへ少し(抜けた後ろで左右へ割れる)。 */
 export const BRAWLER_PALM_KB_FORWARD = 0.4;
 export const BRAWLER_JUMP_VIS_PX = 48;       // 4段目の見た目の跳ぶ高さ(判定は地面のまま・§2-3)
-export const BRAWLER_LIFT_MS = 450;          // 4段目の浮かせの足止め(§7-10)
+export const BRAWLER_LIFT_MS = 585;          // 4段目の浮かせの足止め(§7-10)。社長承認2026-11-08: 450→585(1.3倍・落下を緩やかに=§12-1)
 export const BRAWLER_LIFT_VIS_PX = 26;       // 浮かせの絵の高さ(§7-10)
 export const BRAWLER_STOMP_RADIUS = 150;     // 下の大踏み潰し(§3-3)
 export const BRAWLER_STOMP_MULT = 2.0;
@@ -731,13 +731,34 @@ export const brawlerStompHeight = (p: number): number => {
   if (q < 0.62) return BRAWLER_STOMP_VIS_PX;
   return BRAWLER_STOMP_VIS_PX * (1 - easeIn((q - 0.62) / 0.38));
 };
-/** 浮かせの絵の高さ: 上りは速く・頂点で少し止まり・落ちは加速(§7-10)。u=0..1。 */
-export const brawlerLiftHeight = (u: number): number => {
-  if (u <= 0 || u >= 1) return 0;
-  if (u < 0.3) return BRAWLER_LIFT_VIS_PX * easeOut(u / 0.3);
-  if (u < 0.5) return BRAWLER_LIFT_VIS_PX;
-  return BRAWLER_LIFT_VIS_PX * (1 - easeIn((u - 0.5) / 0.5));
+/**
+ * 浮かせの弧の配分(research/BRAWLER.md §12-1・社長承認2026-11-08「格闘ゲームの空中コンボの手触り」)。
+ * 打ち上がり 25%(速く上がって頂点で速さ0)→ 頂点の漂い 20%(わずかに沈み始める)→ 落下 55%(ゆっくり加速して落ちる)。
+ */
+export const BRAWLER_LIFT_RISE_FRAC = 0.25;
+export const BRAWLER_LIFT_HOVER_FRAC = 0.2;
+/** 漂いの間に沈む量(頂点の高さに対する割合)。0=止まって見える(機械的)。 */
+export const BRAWLER_LIFT_HOVER_SAG = 0.06;
+/**
+ * 浮かせの弧(高さの倍率)。u=0..1。start=始まりの高さ・top=頂点の高さ(同じ単位)。
+ *  - 上り: start→top を ease-out(頂点で速さ0)。
+ *  - 漂い: top から SAG だけ二次で沈む(速さ0から)。
+ *  - 落下: 漂いの終わりの速さを引き継いで、二次で加速して 0 へ(つなぎ目で速さが跳ばない)。
+ * 追撃の浮き直しも同じ形(start=押し上げた瞬間の高さ=つなぎ目で高さが跳ばない)。
+ */
+export const brawlerLiftArcRel = (u: number, start: number, top: number): number => {
+  if (u <= 0) return start;
+  if (u >= 1) return 0;
+  const R = BRAWLER_LIFT_RISE_FRAC, H = BRAWLER_LIFT_HOVER_FRAC, F = 1 - R - H, S = BRAWLER_LIFT_HOVER_SAG;
+  if (u < R) return start + (top - start) * easeOut(u / R);
+  if (u < R + H) { const t = (u - R) / H; return top * (1 - S * t * t); }
+  const t = (u - R - H) / F;
+  const v0 = 2 * S * F / H;           // 漂いの終わりの沈む速さ(落下の区間の単位へ換算)
+  const a = 1 - S - v0;               // 残りを加速で落とす(>0)
+  return top * ((1 - S) - v0 * t - a * t * t);
 };
+/** 浮かせの絵の高さ(地面から・px)。u=0..1。 */
+export const brawlerLiftHeight = (u: number): number => BRAWLER_LIFT_VIS_PX * brawlerLiftArcRel(u, 0, 1);
 
 // ---------------------------------------------------------------------------------------------
 // 動きの影(スタンド)・社長指示2026-11-07「動きの影パーツを用意したので、これをスタンドの様に薄く光らせて重ねて表示するのはどう?」

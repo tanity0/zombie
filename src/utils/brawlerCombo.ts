@@ -6,7 +6,7 @@ import type { EnemyType } from '../types/game';
 import { isBossType } from './enemyUtils';
 import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { meteorPhase } from './telegraphStyle';
-import { BRAWLER_LIFT_MS, BRAWLER_LIFT_VIS_PX, brawlerLiftHeight } from './brawler';
+import { BRAWLER_LIFT_MS, brawlerLiftArcRel } from './brawler';
 
 /** 当たりが途切れたら流れ(コンボ時計・反撃の数・同じ技の記録)を0へ戻す(ms)。 */
 export const BRAWLER_COMBO_GAP_MS = 600;
@@ -253,6 +253,16 @@ export const brawlerJuggleLanded = (e: BrawlerJuggleFields, now: number): boolea
 export const brawlerAirborne = (e: Pick<BrawlerJuggleFields, 'brLiftUntil'>, now: number): boolean =>
   e.brLiftUntil !== undefined && now < e.brLiftUntil;
 
+/**
+ * 追撃で浮き直した弧の頂点(倍率)。押し上げ(peak)ぶん上がり直すが、今の高さはそのまま積まずに少し目減りさせる
+ * (旧の弧の頂点付近 ≒ 0.8×今の高さ+押し上げ と同じ高さ=何度当てても天井へ積み上がらない)。
+ * ただし必ず今より少しは上がる(押し上げの3割以上)=頂点は弧の打ち上がりの終わり(25%)に来る。
+ */
+export const BRAWLER_JUGGLE_CARRY = 0.8;
+export const BRAWLER_JUGGLE_MIN_RISE = 0.3;
+export const brawlerJuggleTop = (from: number, peak: number): number =>
+  Math.max(BRAWLER_JUGGLE_CARRY * from + peak, from + BRAWLER_JUGGLE_MIN_RISE * peak);
+
 /** いまの浮いた高さ(基準の高さに対する倍率・絵だけ)。弧の頭は始まりの高さから続き、頂点を越えて地面(0)で終わる。 */
 export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): number => {
   if (e.brawlerLiftAt === undefined) return 0;
@@ -261,8 +271,10 @@ export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): num
   if (u <= 0 || u >= 1) return u <= 0 ? (e.brLiftFrom ?? 0) : 0;
   const from = e.brLiftFrom ?? 0;
   const peak = e.brLiftPeak ?? 1;
-  const fall = (1 - u) * (1 - u) * (1 + 2 * u); // 始まりの高さは滑らかに引き継いで消える(端で速さ0)
-  return from * fall + peak * (brawlerLiftHeight(u) / BRAWLER_LIFT_VIS_PX);
+  // 空中で吹き飛ばされた(押し上げ0)=今の高さから速く叩き落とす(DROP_MS・端で速さ0の滑らかな落ち)。
+  if (peak <= 0) return from * (1 - u) * (1 - u) * (1 + 2 * u);
+  // 浮き(最初も追撃の浮き直しも同じ形): 打ち上がり25% → 頂点の漂い20% → 落下55%(§12-1)。
+  return brawlerLiftArcRel(u, from, brawlerJuggleTop(from, peak));
 };
 
 /**

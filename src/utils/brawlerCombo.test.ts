@@ -9,7 +9,7 @@ import {
   type BrawlerComboFields, type BrawlerMoveKey, isBrawlerTechBusy, BRAWLER_HOLDABLE_PHASES,
   brawlerJugglePush, brawlerAirborne, brawlerJuggleHeightRel, brawlerJuggleLanded, BRAWLER_JUGGLE_DECAY, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_PUSH, type BrawlerJuggleFields,
 } from './brawlerCombo';
-import { BRAWLER_LIFT_MS } from './brawler';
+import { BRAWLER_LIFT_MS, brawlerLiftHeight } from './brawler';
 import { meteorPhase } from './telegraphStyle';
 
 /** 当たりを順に入れて、各当たりの固まりの長さを返す。 */
@@ -256,6 +256,66 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
     // 着地の砂埃は絵の弧が地面に着いた時
     expect(brawlerJuggleLanded(e2, 399)).toBe(false);
     expect(brawlerJuggleLanded(e2, 400)).toBe(true);
+  });
+  // ★§12-1(社長承認2026-11-08「格闘ゲームの空中コンボの手触り」): 打ち上がり25% → 頂点の漂い20% → 落下55%・基本 585ms。
+  const sample = (f: (u: number) => number, n = 400) => Array.from({ length: n + 1 }, (_, i) => ({ u: i / n, h: f(i / n) }));
+  const apexU = (pts: { u: number; h: number }[]) => pts.reduce((a, b) => (b.h > a.h ? b : a)).u;
+  it('浮きの時間の表: 基本 585ms(旧450の1.3倍)×重さ×0.75^n・下限 140ms・空中で吹き飛ばすと 200ms で落ちる', () => {
+    expect(BRAWLER_LIFT_MS).toBe(585);
+    expect(brawlerJugglePush({}, 'mob', 's4', 0)!.brLiftMs).toBe(585);
+    expect(brawlerJugglePush({}, 'strong', 's4', 0)!.brLiftMs).toBe(410);
+    expect(brawlerJugglePush({}, 'boss', 's4', 0)!.brLiftMs).toBe(234);
+    const e0 = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
+    const p1 = brawlerJugglePush(e0, 'mob', 's1', 100)!;
+    expect(p1.brLiftMs).toBe(Math.round(585 * 0.5 * 0.75));
+    expect(p1.liftUntil).toBe(100 + p1.brLiftMs!); // 動けない間=絵の弧と同じ長さ
+    expect(brawlerJugglePush(e0, 'mob', 's5', 100)!.brLiftMs).toBe(200);
+  });
+  it('高さの曲線: 頂点は25〜45%の区間・落下(頂点→地面)は打ち上がりより長い・上りは速く落ちはゆっくり始まる', () => {
+    const pts = sample(brawlerLiftHeight);
+    const a = apexU(pts);
+    expect(a).toBeGreaterThanOrEqual(0.25 - 1e-9);
+    expect(a).toBeLessThanOrEqual(0.45);
+    expect(1 - a).toBeGreaterThan(a);                                    // 落ちる時間 > 上がる時間
+    const top = brawlerLiftHeight(a);
+    expect(brawlerLiftHeight(0.1)).toBeGreaterThan(top * 0.6);           // 上り: 最初の10%で6割以上
+    expect(brawlerLiftHeight(0.55)).toBeGreaterThan(top * 0.85);         // 落ちの頭(頂点の漂いの直後)はまだ高い=ゆっくり始まる
+    expect(brawlerLiftHeight(0.45)).toBeGreaterThan(top * 0.9);          // 漂いの間はほぼ頂点
+    expect(brawlerLiftHeight(1)).toBe(0);
+    // 落下は加速する(後半ほど1刻みの落ちが大きい)
+    const d1 = brawlerLiftHeight(0.6) - brawlerLiftHeight(0.65), d2 = brawlerLiftHeight(0.9) - brawlerLiftHeight(0.95);
+    expect(d2).toBeGreaterThan(d1);
+    // つなぎ目で高さも速さも跳ばない(隣り合う刻みの差が滑らか)
+    for (let i = 2; i < pts.length; i++) {
+      const v1 = pts[i - 1].h - pts[i - 2].h, v2 = pts[i].h - pts[i - 1].h;
+      expect(Math.abs(v2 - v1)).toBeLessThan(top * 0.01);
+    }
+  });
+  it('追撃で浮き直した弧も同じ形: 頂点は区間の25〜45%・つなぎ目で高さが跳ばない・追撃ごとに短く低くなる', () => {
+    let e: BrawlerJuggleFields = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
+    let t = 0;
+    const rises: number[] = []; const mss: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      t += Math.round((e.brLiftMs ?? 0) * 0.3);                          // 頂点の少し後で殴る
+      const before = brawlerJuggleHeightRel(e, t);
+      const p = brawlerJugglePush(e, 'mob', 's3', t);
+      if (!p) break;
+      e = apply(e, p);
+      expect(brawlerJuggleHeightRel(e, t)).toBeCloseTo(before, 9);     // つなぎ目
+      expect(brawlerJuggleHeightRel(e, t + 1)).toBeCloseTo(before, 1);
+      const ms = e.brLiftMs!, t0 = t;
+      const pts = sample(u => brawlerJuggleHeightRel(e, t0 + u * ms));
+      const a = apexU(pts);
+      expect(a).toBeGreaterThanOrEqual(0.25 - 1e-9);
+      expect(a).toBeLessThanOrEqual(0.45);
+      rises.push(brawlerJuggleHeightRel(e, t0 + ms * 0.25) - before);
+      mss.push(ms);
+    }
+    expect(rises.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < rises.length; i++) {
+      expect(rises[i]).toBeLessThan(rises[i - 1]);                       // 上がり直す量は減る
+      expect(mss[i]).toBeLessThan(mss[i - 1]);                           // 浮きは短くなる
+    }
   });
   it('ボスの技の最中(bossState が追いかけ以外)は技の最中=浮かない', () => {
     expect(isBrawlerTechBusy({ bossState: 'chase' }, 0)).toBe(false);

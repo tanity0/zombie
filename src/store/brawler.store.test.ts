@@ -871,7 +871,7 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     // 1〜4段目の固まりは、次の段が当たるまで切れない(=5段のつながりの中では敵は動けない)
     for (let i = 0; i < 4; i++) expect(holds[i].until).toBeGreaterThanOrEqual(hitsAt[i + 1]);
     // 基本の長さで割った固まりは段を追うごとに短くなる(減衰)
-    const base = [300, 300, 450, 450], stop = [45, 45, 80 + 280, 450];
+    const base = [300, 300, 450, 450], stop = [45, 45, 80 + 280, 585]; // 4段目の止め=浮き(§12-1: 585ms)
     const ratio = holds.map((h, i) => (h.until - hitsAt[i] - stop[i]) / base[i]);
     for (let i = 1; i < 4; i++) expect(ratio[i]).toBeLessThan(ratio[i - 1]);
     // 5段目の後に続けて1段目を当てても、固まりは4割近く(=次の段が届く前に切れる)
@@ -1307,7 +1307,7 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     const until0 = en('z').aiPhaseUntil ?? 0;
     hitMove('z', 's4', { lift: true });
     const e = en('z');
-    expect(e.liftUntil).toBe(now + 450);
+    expect(e.liftUntil).toBe(now + 585); // §12-1: 1回の浮きの基本 585ms(社長承認2026-11-08・旧450)
     const x0 = e.x, y0 = e.y;
     live(430);
     expect(en('z').x).toBeCloseTo(x0, 5);
@@ -1324,18 +1324,18 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     hitMove('z', 's1');
     const e1 = en('z');
     expect(e1.brLiftN).toBe(1);
-    expect(e1.brLiftUntil).toBe(now + Math.max(140, Math.round(450 * 0.5 * 0.75)));
+    expect(e1.brLiftUntil).toBe(now + Math.max(140, Math.round(585 * 0.5 * 0.75)));
     advance(100);
     hitMove('z', 's3');
     expect(en('z').brLiftN).toBe(2);
-    expect(en('z').brLiftMs!).toBeLessThan(450 * 0.75 * 0.75 + 1);
+    expect(en('z').brLiftMs!).toBeLessThan(585 * 0.75 * 0.75 + 1);
   });
   it('重さ: 雑魚・強個体・ボス級の順に低く短く浮く(ボス級も浮く)', () => {
     setup();
     useGameStore.setState({ enemies: [foeOf('zombie', 'm'), foeOf('driller', 's', -60), foeOf('hunter', 'b', 0)] });
     for (const id of ['m', 's', 'b']) hitMove(id, 's4', { lift: true });
     expect([en('m').brLiftPeak, en('s').brLiftPeak, en('b').brLiftPeak]).toEqual([1, 0.7, 0.4]);
-    expect(en('b').liftUntil).toBe(now + Math.round(450 * 0.4));
+    expect(en('b').liftUntil).toBe(now + Math.round(585 * 0.4));
   });
   it('技の最中の敵(予告の溜め)は浮かない', () => {
     setup();
