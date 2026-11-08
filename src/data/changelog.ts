@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5410', items: [
+    '死神の本体に触れても、ダメージを受けなくなった。使者は今までどおり危険',
+  ] },
   { version: '0.25.5409', items: [
     '秘奥義の文字が画面いっぱいの大きさに',
   ] },

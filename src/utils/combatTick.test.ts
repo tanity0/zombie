@@ -234,20 +234,15 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
     return e;
   };
 
-  it('★本体(isTerminalReaper)の接触は即ダメージにならず、kamitsukiFx予約+hitstopが立つ(A-4)。前かがみ(lastContactAttackAt)も打刻しない(A-1)', () => {
-    const e = place('reaper');
+  it('★死神本体(isTerminalReaper)は触れても痛くない=神付きも被弾も起きない(社長指示2026-11-08「死神触れるとダメージ は無くす」)', () => {
+    place('reaper');
     const hp0 = useGameStore.getState().player.health;
     let flashes = 0;
     const fx = { ...NOOP_COMBAT_EFFECTS, spawnFlash: () => { flashes += 1; } };
-    const beforeNow = Date.now();
     applyContactDamage(START_GT, false, 0, fx);
-    expect(useGameStore.getState().player.health).toBe(hp0); // ダメージはまだ入らない
-    expect(flashes).toBe(0); // 被弾FXも解決時まで出ない
-    const kfx = useGameStore.getState().kamitsukiFx;
-    expect(kfx).not.toBeNull();
-    expect(kfx?.enemyId).toBe(e.id);
-    expect(kfx?.isHangedman).toBe(false);
-    expect(useGameStore.getState().hitstopUntil).toBeGreaterThanOrEqual(beforeNow + REAPER2_CONFIG.kamitsukiMs);
+    expect(useGameStore.getState().player.health).toBe(hp0);
+    expect(flashes).toBe(0);
+    expect(useGameStore.getState().kamitsukiFx).toBeNull();
     expect(useGameStore.getState().enemies[0].lastContactAttackAt).toBeUndefined();
   });
 
@@ -275,15 +270,16 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
     // ★{...NOOP_COMBAT_EFFECTS}(spread)を使う=厳密な参照一致(fx===NOOP_COMBAT_EFFECTS)で
     // ヘッドレスと誤判定されない「実演出あり」経路(この節の他のヘッドレステストとは意図的に別)。
     applyContactDamage(START_GT, false, 0, { ...NOOP_COMBAT_EFFECTS });
-    expect(useGameStore.getState().kamitsukiFx?.enemyId).toBe(e1.id);
+    // 死神本体は接触を素通りする(社長指示2026-11-08)ので、予約が立つのは後ろの使者。
+    expect(useGameStore.getState().kamitsukiFx?.enemyId).toBe(e2.id);
   });
 
-  it('★横切りゴースト(reaperChaser=false)は対象外=現行の即77のまま', () => {
+  it('★横切りゴースト(reaperChaser=false)も触れても痛くない(社長指示2026-11-08・旧=即77)', () => {
     place('reaper', { reaperChaser: false });
     const hp0 = useGameStore.getState().player.health;
     applyContactDamage(START_GT, false, 0, NOOP_COMBAT_EFFECTS);
     expect(useGameStore.getState().kamitsukiFx).toBeNull();
-    expect(useGameStore.getState().player.health).toBeLessThan(hp0);
+    expect(useGameStore.getState().player.health).toBe(hp0);
   });
 
   it('★ヘッドレス(NOOP_COMBAT_EFFECTSを直に渡す=playtestDriver経路)は覆いを挟まず即時適用(現行挙動そのまま)', () => {
@@ -415,28 +411,21 @@ describe('神付き(PACING_PUZZLE.md §14-4-8/8b)', () => {
   // 致死(HP0)にしても、そのforEachが回っている間は古い正のhealthを読み続けてしまい、後続の
   // 使者/死神が「HP0でも」kamitsukiFxを登録してしまっていた(死亡演出中に停止+紫の影が入る)。
   // 判定の瞬間にstoreを読み直す(wasAliveBeforeContactと同じ流儀)ことを固定する。
-  it('★同tickで先行の敵が致死(HP0)にした後続の使者は、kamitsukiFxを登録しない(A-1r)', () => {
-    // killer=横切りゴースト(reaperChaser=false)。isReaperFamily=trueでisBiteExemptTypeに乗るため
-    // 噛みつきへ回らず、isTerminalReaper=falseなので神付きでもない=即時damagePlayer経路を通る
-    // (「横切りゴースト(reaperChaser=false)は対象外=現行の即77のまま」テストと同型)。
-    const killer = spawnEnemyAt('reaper', ORIGIN, ORIGIN, START_GT);
-    killer.reaperChaser = false;
-    killer.damage = 99999; // 確実に致死
+  it('★プレイヤーが既に致死(HP0)の時、使者は kamitsukiFx を登録しない(A-1r)', () => {
+    // 旧: 先行の横切りゴースト(即77)で同tickに致死させてから後続の使者を見ていた。死神の接触が無くなった
+    // (社長指示2026-11-08)ため同tickで先に殺す接触役が居ない=致死後の門だけをここで固定する。
     const servant = spawnEnemyAt('hangedman', ORIGIN, ORIGIN, START_GT);
     useGameStore.setState(s => ({
-      // forEachはこの配列順=killerが先に処理される。
-      enemies: [killer, servant], gameTime: START_GT,
+      enemies: [servant], gameTime: START_GT,
       player: {
         ...s.player,
-        x: killer.x + killer.width / 2 - s.player.width / 2,
-        y: killer.y + killer.height / 2 - s.player.height / 2,
-        health: 50, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
+        x: servant.x + servant.width / 2 - s.player.width / 2,
+        y: servant.y + servant.height / 2 - s.player.height / 2,
+        health: 0, maxHealth: 9999, invulnerable: false, invulnerableTime: 0,
         counterWindowEnd: 0,
       },
     }));
     applyContactDamage(START_GT, false, 0, { ...NOOP_COMBAT_EFFECTS });
-    expect(useGameStore.getState().player.health).toBeLessThanOrEqual(0); // killerで致死
-    // 修正前はここでservant(hangedman)がstale collPlayer.health>0を読んで登録していた。
     expect(useGameStore.getState().kamitsukiFx).toBeNull();
   });
 

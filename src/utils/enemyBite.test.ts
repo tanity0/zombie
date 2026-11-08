@@ -915,12 +915,13 @@ describe('★重なっただけで痛い敵(接触ダメージが残っている
   // 「幻影も触れたら痛いの？」で発覚。**述語を1つだけ見て「門」を語らない。
   const restingContact = (t: EnemyType): boolean => {
     if (isGuardianPhantom(t)) return false;                    // 接触ループの先頭で素通り
+    if (t === 'reaper') return false;                          // 死神本体も接触ループで素通り(社長指示2026-11-08)
     if ((ENEMY_STATS[t]?.damage ?? 0) <= 0) return false;      // 0ダメージは痛くない
     return !isBiteSubject({ type: t, damage: ENEMY_STATS[t].damage } as unknown as Enemy, isBiteExemptType, 0);
   };
 
-  it('平時に触れて痛いのは 死神 / 使者 の2型だけ(ここが増えたら社長へ報告)', () => {
-    expect(ALL.filter(restingContact)).toEqual(['reaper', 'hangedman']);
+  it('平時に触れて痛いのは 使者 の1型だけ(ここが増えたら社長へ報告)・死神本体は社長指示2026-11-08で痛くない', () => {
+    expect(ALL.filter(restingContact)).toEqual(['hangedman']);
   });
 
   // ★幻影は `isBiteExemptType`(=噛みつき台本に乗せない)には入っているが、**接触では削らない**。

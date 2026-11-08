@@ -372,7 +372,7 @@ export const isHangedman = (t: EnemyType): boolean => t === 'hangedman';
  * 接触ダメージの門(`combatTick.applyContactDamage`)は `isBiteSubject` の**手前で**
  * `isGuardianPhantom` を明示 return しており、`ENEMY_STATS['guardian-phantom'].damage` も **0**
  * (research/GHOST_BOSS.md「幻影は接触では削らない」)。幻影が削るのは**自前の技だけ**。
- * ⇒ **平時に触れて痛いのは 死神 と 使者 の2型**。v0.25.4643 の報告「3型」は誤りだった
+ * ⇒ **平時に触れて痛いのは 使者 の1型**(★死神本体は社長指示2026-11-08「死神触れるとダメージ は無くす」で痛くない=combatTick の接触ループで素通り)。旧: 死神 と 使者 の2型。v0.25.4643 の報告「3型」は誤りだった
  *   (述語を1つだけ見て「門」を語らない)。
  *
  * ★**再確認された裁定(2026-09-25・社長「推薦で」)**: 死神・使者の接触ダメージは**このまま残す**

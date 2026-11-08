@@ -33,7 +33,7 @@ import { GLOW_R_L, GLOW_R_S } from './glowTiers';
 import type { SfxKey } from '../audio/audioManager';
 import {
   isBossType, isHiddenBoss, isBountyType, resolveEnemyTarget, getEnemyFireProfile, createEnemyProjectile, isCorpse,
-  isGuardianPhantom, isBiteExemptType, isHangedman, isTerminalReaper, isTrueBossType, isMutantHero, isPumpkinTier, isLabCrawlerProxyType,
+  isGuardianPhantom, isBiteExemptType, isHangedman, isTerminalReaper, isReaperFamily, isTrueBossType, isMutantHero, isPumpkinTier, isLabCrawlerProxyType,
 } from './enemyUtils';
 // PACING_PUZZLE.md §14-4-8/8b(神付き): ?rp2kami=/?rp2kamims=(判定側=生URLSearchParams・中12の作法)。
 import { KAMITSUKI_ENABLED, REAPER2_CONFIG } from '../config/reaper';
@@ -1941,6 +1941,9 @@ export const applyContactDamage = (
     // invulnerable を立てる)、重なった毎フレーム被弾SE+赤フラッシュ+赤バーストだけが鳴り続ける
     // (v0.25.3632・成果物監査 重大2)。接触は演出ごと素通りさせる(技のダメージは phantomTick 側)。
     if (isGuardianPhantom(enemy.type)) return;
+    // ★死神本体は触れても痛くない(社長指示2026-11-08「死神触れるとダメージ は無くす」)。幻影と同じく接触は演出ごと素通り
+    // (damage>0 のまま落とすと神付き(§14-4-8)の覆いと被弾が起きるため、ここで返す)。使者(hangedman)は今どおり痛い。
+    if (isReaperFamily(enemy.type)) return;
     // 被弾しない(ダメージ=赤い帯のカプセル爆発+終点二撃目のみ)。カウンターは赤い帯の中でだけ。
     if (enemy.aiPhase === 'jump' || enemy.aiPhase === 'g-jump-air' || enemy.aiPhase === 'g-trijump-air'
       || (enemy.type === 'giantbat' && enemy.aiPhase === 'g-glide-active')
