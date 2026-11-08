@@ -29,6 +29,13 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
+      // 音声要素は audioManager の窓口(createAudioElement)でだけ作る(マナーモード対策・2026-11-08)。
+      // 窓口を通さない音声要素は iOS で「音楽の再生」扱いになり、消音スイッチを無視して鳴る。
+      'no-restricted-syntax': [
+        'error',
+        { selector: "NewExpression[callee.name='Audio']", message: '音声要素は audioManager の createAudioElement で作る(直に new Audio すると iPhone のマナーモードを無視して鳴る)。' },
+        { selector: "CallExpression[callee.property.name='createElement'][arguments.0.value='audio']", message: '音声要素は audioManager の createAudioElement で作る(直に作ると iPhone のマナーモードを無視して鳴る)。' },
+      ],
     },
   }
 );

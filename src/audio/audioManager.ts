@@ -4,6 +4,7 @@
 import { assetUrl, withAssetVersion } from '../config/assetUrl';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 import { wraithBgmMuteNext, isVolumeLockedDevice } from './wraithBgmMute';
+import { canRouteElementNow, clampElementLevel } from './elementLevel';
 
 const MUTED_KEY = 'zombie:audioMuted';
 const LEGACY_BGM_MUTED_KEY = 'zombie:bgmMuted';
@@ -720,7 +721,7 @@ export const setAmbientAudioSession = () => {
 const ensureBgm = () => {
   if (bgm || typeof Audio === 'undefined') return;
   setAmbientAudioSession();
-  bgm = new Audio(bgmSrc);
+  bgm = createAudioElement(bgmSrc, { route: false }); // 経路へは ensureBgmRouting が自分で通す
   bgm.loop = true;
   bgm.preload = 'auto';
   (bgm as HTMLVideoElement).playsInline = true;
@@ -991,6 +992,89 @@ const resumeSfxContext = () => {
   else if (context.state === 'running') startBtKeepAlive();
 };
 
+// --- 音声要素を作る窓口(マナーモード対策・社長報告2026-11-08「マナーモードにしてるのにBGMなるとこある オープニングとか」) ---
+// iOS は音声要素を直接鳴らすと「音楽の再生」扱いになり、消音スイッチ(マナーモード)を無視して鳴る。
+// WebAudio に通した音(本編の曲・効果音)は消音スイッチに従う。そこで**音を出す音声要素は全部ここで作り、
+// WebAudio に通す**(要素 → MediaElementSource → その要素専用のつまみ(GainNode) → 出口)。
+// - 出口は本編の曲(bgmGain)・効果音と同じ ctx.destination。ミュート/音量スライダーの効き方は呼び手が今までどおり持つ
+//   (つまみに書く値=今まで element.volume に書いていた値。窓口は掛け算を足さない=聴こえ方を変えない)。
+// - 呼び手のコードは変えずに済むよう、作った要素の `volume` をつまみへ付け替える(読むとつまみの値・書くとつまみへ)。
+//   要素そのものの音量は 1 に固定する(iOS は要素の音量を無視するので、つまみに移すと iPhone でも音量・フェードが効くようになる)。
+// - コンテキストが止まっている時(suspended/interrupted)に通すと動き出すまで無音になる。その時は**通さず素のまま鳴らし**、
+//   動き出した瞬間(statechange)に通す=オープニングが無音にならないことを最優先。
+// - `createMediaElementSource` は1要素に1回しか呼べない(作り直しは新しい要素で=ここを通す)。捨てる時は releaseAudioElement。
+// - 音を出さない解錠・先読み専用の要素は `{ route: false }`(通さない・つまみも付けない)。本編の曲(bgm)も
+//   ensureBgmRouting が自分で通すので `{ route: false }` で作る。
+// - `?bgmroute=off`(素再生の確認モード)では通さない(今までどおりの素再生)。
+type ManagedAudio = { level: number; source: MediaElementAudioSourceNode | null; gain: GainNode | null; failed: boolean };
+const managedAudio = new Map<HTMLAudioElement, ManagedAudio>();
+const mediaVolumeDesc = typeof HTMLMediaElement !== 'undefined'
+  ? Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'volume') : undefined;
+const mediaPlay = typeof HTMLMediaElement !== 'undefined' ? HTMLMediaElement.prototype.play : undefined;
+const setRawVolume = (el: HTMLAudioElement, v: number) => { try { mediaVolumeDesc?.set?.call(el, v); } catch { /* ignore */ } };
+const routeAudioElement = (el: HTMLAudioElement) => {
+  const st = managedAudio.get(el);
+  if (!st || st.source || st.failed) return;
+  const ctx = ensureSfxContext();
+  if (!ctx) return;
+  if (!canRouteElementNow(BGM_USE_WEBAUDIO_ROUTING, ctx.state)) { resumeSfxContext(); return; } // 動き出したら statechange で通す
+  try {
+    const source = ctx.createMediaElementSource(el);
+    const gain = ctx.createGain();
+    gain.gain.value = st.level;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    st.source = source; st.gain = gain;
+    setRawVolume(el, 1); // 実際の音量はつまみ(要素の音量は 1 に固定)
+  } catch {
+    st.failed = true; // 通せない端末は素のまま(要素の音量で鳴る=今までどおり)
+  }
+};
+/** まだ通していない要素を通す(コンテキストが動き出した時)。 */
+const routePendingAudioElements = () => { for (const el of managedAudio.keys()) routeAudioElement(el); };
+/** 音声要素を作る唯一の窓口(src/ 内の `new Audio(` は ESLint で止めてある)。 */
+export const createAudioElement = (src?: string, opts: { route?: boolean } = {}): HTMLAudioElement => {
+  // eslint-disable-next-line no-restricted-syntax -- ここが窓口
+  const el = new Audio(src);
+  if (opts.route === false || !BGM_USE_WEBAUDIO_ROUTING || !mediaVolumeDesc?.get || !mediaVolumeDesc.set || !mediaPlay) return el;
+  const st: ManagedAudio = { level: 1, source: null, gain: null, failed: false };
+  managedAudio.set(el, st);
+  Object.defineProperty(el, 'volume', {
+    configurable: true,
+    get: () => st.level,
+    set: (v: number) => {
+      st.level = clampElementLevel(v, st.level);
+      if (st.gain) st.gain.gain.value = st.level;
+      else setRawVolume(el, st.level); // まだ通していない間は要素の音量(=今までどおり)
+    },
+  });
+  el.play = () => { routeAudioElement(el); return mediaPlay.call(el); };
+  routeAudioElement(el);
+  return el;
+};
+/** 窓口で作った要素を捨てる時に呼ぶ(つまみを外す・止めるのは呼び手)。 */
+export const releaseAudioElement = (el: HTMLAudioElement | null | undefined) => {
+  if (!el) return;
+  const st = managedAudio.get(el);
+  if (!st) return;
+  managedAudio.delete(el);
+  try { st.source?.disconnect(); } catch { /* ignore */ }
+  try { st.gain?.disconnect(); } catch { /* ignore */ }
+};
+/** 開発用: 窓口で作った要素の今(ヘッドレスの確認用)。 */
+export const getManagedAudioDebug = () => ({
+  ctx: sfxContext?.state ?? null,
+  els: Array.from(managedAudio.entries()).map(([el, st]) => ({
+    src: (el.currentSrc || el.src).split('/').pop() ?? '',
+    paused: el.paused, muted: el.muted, ct: +el.currentTime.toFixed(2), loop: el.loop,
+    level: +st.level.toFixed(3), routed: !!st.source, gain: st.gain ? +st.gain.gain.value.toFixed(3) : null,
+    rawVolume: mediaVolumeDesc?.get ? +(mediaVolumeDesc.get.call(el) as number).toFixed(3) : null, failed: st.failed,
+  })),
+});
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as { __managedAudioDebug?: () => unknown }).__managedAudioDebug = getManagedAudioDebug; // __audioDebug(本編の曲)とは別
+}
+
 // Bluetooth 等の音声ルート変更で AudioContext が中断/suspend されると SFX も BGM も止まる。
 // 可視状態のときに中断を検知したら自動で復帰(resume + BGM再開)。hidden 時は省電力のため触らない。
 const recoverAudioRoute = () => {
@@ -1012,6 +1096,7 @@ const attachAudioRouteRecovery = (context: AudioContext) => {
   context.onstatechange = () => {
     const st = context.state as string; // iOS は 'interrupted' を取り得る(型外)
     if (st === 'suspended' || st === 'interrupted') recoverAudioRoute();
+    else if (st === 'running') routePendingAudioElements(); // 止まっている間に作った音声要素を WebAudio へ通す(マナーモード対策)
   };
   if (audioRouteRecoveryRegistered) return;
   audioRouteRecoveryRegistered = true;
@@ -1262,10 +1347,13 @@ export const unlockDanceAudio = () => {
   // Native app builds should remove this and use the app audio session/engine instead.
   // 一時要素は解錠専用で使い捨て。最後までミュートのままにする(pause直後に un-mute すると
   // pause が効き切る前の一瞬が鳴り、スタート時に複数曲が重なって聞こえる ← v0.25.282の代償)。
+  // このタップ(更新情報の OK・はじめる)の中でコンテキストを起こしておく=直後のオープニングの音声要素を
+  // WebAudio に通して鳴らせる(止まったままだと通さず素で鳴る=消音スイッチを無視する・createAudioElement 参照)。
+  resumeSfxContext();
   const urls = [GAME_BGM.default, ...Object.values(REVERSE_BGM)].filter(Boolean); // ダンス曲は退役で削除済み
   for (const url of urls) {
     if (typeof Audio === 'undefined') continue;
-    const el = new Audio(url);
+    const el = createAudioElement(url, { route: false }); // 解錠専用(音を出さない)
     el.preload = 'auto';
     (el as HTMLVideoElement).playsInline = true;
     el.muted = true;
@@ -1335,11 +1423,11 @@ const ENDING_BGM_TRACK = assetUrl('audio/ending.mp3');
 let endingEl: HTMLAudioElement | null = null;
 export const setEndingBgm = (on: boolean) => {
   if (!on) {
-    if (endingEl) { try { endingEl.pause(); } catch { /* ignore */ } endingEl = null; }
+    if (endingEl) { try { endingEl.pause(); } catch { /* ignore */ } releaseAudioElement(endingEl); endingEl = null; }
     return;
   }
   if (endingEl || muted) return;
-  const el = new Audio(ENDING_BGM_TRACK);
+  const el = createAudioElement(ENDING_BGM_TRACK);
   el.loop = true;
   el.volume = bgmVolume;
   endingEl = el;
@@ -1525,7 +1613,7 @@ export const preloadStageBgm = (variant: string) => {
   if (url === stageBgmPreloadSrc) return; // 同一曲は再先読みしない
   stageBgmPreloadSrc = url;
   if (stageBgmPreloadEl) { try { stageBgmPreloadEl.pause(); } catch { /* ignore */ } } // 前の先読み要素を解放(pauseはフェッチを中断しない)
-  const el = new Audio(url);
+  const el = createAudioElement(url, { route: false }); // 先読み専用(音を出さない)
   el.preload = 'auto';
   (el as HTMLVideoElement).playsInline = true;
   el.muted = true;
@@ -1546,7 +1634,7 @@ export const prepareDeepReverseBgm = () => {
   if (deepBgm && deepBgmSrc === src) return;
   releaseDeepReverseBgm();
   deepBgmSrc = src;
-  deepBgm = new Audio(src);
+  deepBgm = createAudioElement(src);
   deepBgm.loop = true;          // 深層滞在が長い前提=ループ
   deepBgm.preload = 'auto';
   (deepBgm as HTMLVideoElement).playsInline = true;
@@ -1577,6 +1665,7 @@ export const releaseDeepReverseBgm = () => {
   if (deepBgm) {
     try { deepBgm.pause(); } catch { /* ignore */ }
     try { deepBgm.removeAttribute('src'); deepBgm.load(); } catch { /* ignore */ }
+    releaseAudioElement(deepBgm);
     deepBgm = null;
   }
   deepBgmSrc = '';
@@ -1595,7 +1684,7 @@ const PEAK_LAYER_FADE_MS = 700;
 const ensurePeakLayer = (): HTMLAudioElement | null => {
   if (peakLayerEl) return peakLayerEl;
   if (typeof Audio === 'undefined') return null;
-  const el = new Audio(PEAK_LAYER_TRACK);
+  const el = createAudioElement(PEAK_LAYER_TRACK);
   // v0.25.1375(社長指示「ピークは1回転だけ」): ループさせず1周で終える。PEAK窓(通常コマ)が
   // 続いていても打楽器は1回きり。自然終了時はBGMダッキングを滑らかに戻す(戻さないと
   // 打楽器なしのままBGMだけ小さい状態がコマ終端まで続いてしまう)。
@@ -1679,7 +1768,7 @@ let lastAppliedRadioBoost = 1;
 const ensureRadioLayer = (): HTMLAudioElement | null => {
   if (radioLayerEl) return radioLayerEl;
   if (typeof Audio === 'undefined') return null;
-  const el = new Audio(CORRIDOR_RADIO_TRACK);
+  const el = createAudioElement(CORRIDOR_RADIO_TRACK);
   el.loop = true;
   el.preload = 'auto';
   (el as HTMLVideoElement).playsInline = true;
@@ -2305,10 +2394,22 @@ const holdPlaybackSession = (): boolean => {
   if (FORCE_IOS_BGM) return true; // 確認用(PC には音の扱いの切り替えが無い)
   const sess = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
   if (!sess) return false;
-  try { if (sess.type !== 'playback') sess.type = 'playback'; return sess.type === 'playback'; } catch { return false; }
+  try {
+    if (sess.type !== 'playback') { sess.type = 'playback'; playbackSessionHeld = true; }
+    return sess.type === 'playback';
+  } catch { return false; }
+};
+/** holdPlaybackSession で「再生」に固定したか(戻すのはこちらで固定した時だけ)。 */
+let playbackSessionHeld = false;
+/** 亡霊戦で曲を戻した/場面を離れた時、音の扱いを「周りの音」(消音スイッチに従う)へ戻す。`?bgmroute=off` では戻さない(setAmbientAudioSession が何もしない)。 */
+const releasePlaybackSession = () => {
+  if (!playbackSessionHeld) return;
+  playbackSessionHeld = false;
+  setAmbientAudioSession();
 };
 let wraithIosBgmMuted = false;
 const applyWraithIosMute = (on: boolean) => {
+  if (!on) releasePlaybackSession();
   if (on === wraithIosBgmMuted) { if (bgm && on && !bgm.muted) bgm.muted = true; return; }
   wraithIosBgmMuted = on;
   if (bgm) bgm.muted = on;

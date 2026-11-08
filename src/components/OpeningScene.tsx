@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { OPENING_REVIVAL_LINES, OPENING_REVIVAL_TIMING } from '../data/openingRevivalSequence';
-import { rewindBgm, setAmbientAudioSession } from '../audio/audioManager';
+import { createAudioElement, releaseAudioElement, rewindBgm, setAmbientAudioSession } from '../audio/audioManager';
 import { trackLoad } from '../utils/loadProgress';
 import { planRevivalGlitches, type ArenaTimes, type GlitchSegment, type HoldTool } from '../utils/openingGlitch';
 import { urlNum } from '../utils/urlNum';
@@ -8,6 +8,8 @@ import OpeningGlitch from './OpeningGlitch';
 // パン!SEはWebAudio(playSfx)ではなくHTMLAudioで鳴らす(v0.25.2050):
 // 実機でアリーナ音源(HTMLAudio)は鳴るのにplaySfx経路のパン!だけ無音だったため、
 // 確実に鳴る同じ仕組みに統一(コンテキスト解錠・バッファ非同期の罠を回避)。
+// ★2026-11-08(マナーモード対策): 音声要素は audioManager の窓口(createAudioElement)で作り、WebAudio に通して鳴らす
+// (直に鳴らす音声要素は iPhone で消音スイッチを無視する)。コンテキストが止まっている間は窓口が素のまま鳴らす=無音にはならない。
 
 // オープニングシーン(社長支給): 引きのアリーナ→中央ステージの3人にカメラが寄りつつ
 // 正面→斜め→真横とアングルを切替(回り込み)→暗転→【射撃シーン(backstage)】→暗転で終了。
@@ -440,9 +442,10 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
   const ghostRef = useRef<HTMLAudioElement | null>(null); // 射撃シーンのホラーSE(赤背景で鳴らし、暗転と一緒にフェードアウト)
   const ghostFadeRaf = useRef(0);
   const heartRef = useRef<HTMLAudioElement[]>([]);   // 蘇生パート: [0]=会話中の心拍ループ / [1]=最終行後の一発(ループとは別要素)
-  const stopArena = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; }); audioRef.current = []; };
+  // 音声要素は audioManager の窓口(createAudioElement)で作る=WebAudio に通して鳴らす(マナーモードで黙る)。捨てる時は releaseAudioElement。
+  const stopArena = () => { audioRef.current.forEach(a => { a.pause(); a.src = ''; releaseAudioElement(a); }); audioRef.current = []; };
   // 廊下BGMを止める(OPスキップ / アンマウント)。アリーナ2音源と重ねない。
-  const stopWalkBgm = () => { const a = walkAudioRef.current; if (a) { a.pause(); a.src = ''; } walkAudioRef.current = null; };
+  const stopWalkBgm = () => { const a = walkAudioRef.current; if (a) { a.pause(); a.src = ''; releaseAudioElement(a); } walkAudioRef.current = null; };
   // 廊下→アリーナの切替はハードカット(社長指示v0.25.2072)だが、音まで即切るとブツ切りのポップが出る
   // (アリーナ2音源が場面転換前に volume を段階的に落としているのと同じ理由)。ごく短いフェードで消す。
   const walkFadingRef = useRef(false);
@@ -459,9 +462,9 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     };
     step();
   };
-  const stopHearts = () => { heartRef.current.forEach(a => { if (a) { a.pause(); a.src = ''; } }); heartRef.current = []; };
-  const stopGhost = () => { cancelAnimationFrame(ghostFadeRaf.current); const g = ghostRef.current; if (g) { g.pause(); g.src = ''; } ghostRef.current = null; };
-  const stopAudio = () => { stopArena(); stopWalkBgm(); panRef.current.forEach(a => { a.pause(); a.src = ''; }); panRef.current = []; stopHearts(); stopGhost(); };
+  const stopHearts = () => { heartRef.current.forEach(a => { if (a) { a.pause(); a.src = ''; releaseAudioElement(a); } }); heartRef.current = []; };
+  const stopGhost = () => { cancelAnimationFrame(ghostFadeRaf.current); const g = ghostRef.current; if (g) { g.pause(); g.src = ''; releaseAudioElement(g); } ghostRef.current = null; };
+  const stopAudio = () => { stopArena(); stopWalkBgm(); panRef.current.forEach(a => { a.pause(); a.src = ''; releaseAudioElement(a); }); panRef.current = []; stopHearts(); stopGhost(); };
   // rewindBgm: OP明けのタイトルBGMは必ず曲頭から(v0.25.2104)。過去にタイトル曲を再生済みだと
   // onDone側のsetBgmScene('menu')が同srcのため停止位置から途中再開してしまうのを防ぐ。
   // 乱れに合わせて揺らす BGM(鳴っていない要素は乱れ側が飛ばす)。
@@ -544,8 +547,8 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     // 新規要素はモバイルで再生ブロックされ無音になる(アリーナ音源が鳴るのはタップ数秒以内に再生開始するから)。
     // → 要素はここ(タップ直後のマウント)で作り、ミュートで一瞬再生→停止して「操作済み」扱いにしておく。
     {
-      const loop = new Audio(HEARTBEAT_SRC); loop.loop = true; loop.preload = 'auto'; loop.volume = HEARTBEAT_LOOP_VOLUME;
-      const one = new Audio(HEARTBEAT_SRC); one.preload = 'auto'; one.volume = HEARTBEAT_ONESHOT_VOLUME;
+      const loop = createAudioElement(HEARTBEAT_SRC); loop.loop = true; loop.preload = 'auto'; loop.volume = HEARTBEAT_LOOP_VOLUME;
+      const one = createAudioElement(HEARTBEAT_SRC); one.preload = 'auto'; one.volume = HEARTBEAT_ONESHOT_VOLUME;
       heartRef.current = [loop, one];
     }
 
@@ -558,16 +561,16 @@ const OpeningScene: React.FC<{ onDone: () => void; startAtShoot?: boolean; start
     }
 
     // パン!SE(HTMLAudio・2発ぶん事前生成=紙吹雪用と発砲用。currentTime巻き戻しの競合を避ける)。
-    panRef.current = [0, 1].map(() => { const a = new Audio(PAN_SE_SRC); a.preload = 'auto'; a.volume = PAN_SE_VOLUME; return a; });
-    { const g = new Audio(GHOST_VOICE_SRC); g.preload = 'auto'; g.volume = GHOST_VOICE_VOLUME; ghostRef.current = g; } // 射撃シーンのホラーSE(下のプライミングで解錠)
+    panRef.current = [0, 1].map(() => { const a = createAudioElement(PAN_SE_SRC); a.preload = 'auto'; a.volume = PAN_SE_VOLUME; return a; });
+    { const g = createAudioElement(GHOST_VOICE_SRC); g.preload = 'auto'; g.volume = GHOST_VOICE_VOLUME; ghostRef.current = g; } // 射撃シーンのホラーSE(下のプライミングで解錠)
     // アリーナ2音源もここ(タップ直後)で生成+プライミング(v0.25.2114): 歩きシーンがプレイヤー操作で
     // 長さ不定のため、アリーナ開始はジェスチャ有効期限切れ後になる。要素を今作って解錠しておく。
-    if (!startAtShoot) audioRef.current = ARENA_AUDIO.map(src => { const a = new Audio(src); a.loop = true; a.preload = 'auto'; return a; });
+    if (!startAtShoot) audioRef.current = ARENA_AUDIO.map(src => { const a = createAudioElement(src); a.loop = true; a.preload = 'auto'; return a; });
     // 廊下BGMも同じ場所で生成する(v0.25.2386)。歩きシーンの開始はフェードイン後=タップから少し間が
     // 空くので、アリーナ2音源と同様に「今作って下のプライミングで解錠しておく」必要がある。
     // ?opening=2/3(アリーナ/射撃から直行)では廊下を通らないので作らない。
     if (!startAtShoot && !startAtRevival) {
-      const wa = new Audio(WALK_AUDIO); wa.loop = true; wa.preload = 'auto'; walkAudioRef.current = wa;
+      const wa = createAudioElement(WALK_AUDIO); wa.loop = true; wa.preload = 'auto'; walkAudioRef.current = wa;
     }
     // 【プライミング】タップ(更新情報OK)直後のマウント時に、後から鳴らす要素をミュートで一瞬再生→停止して
     // 「ユーザー操作済み」扱いにしておく(v0.25.2054)。発砲パン・心拍・アリーナ音源は操作の有効期限
