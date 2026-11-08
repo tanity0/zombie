@@ -4832,7 +4832,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     },
                     policeTaken: true, policeTakenAt: newGameTime,
                   }));
-                  useGameStore.getState().spawnCallout(ae.x, ae.y - 40, `スキル「${SKILLS[granted].name}」発動！(この出撃のみ)`, '#7dd3fc');
+                  useGameStore.getState().spawnCallout(ae.x, ae.y - 40, SKILLS[granted].name, '#7dd3fc');
                   // §6.24-UX 確定要件2: 現地の浮き文字(上)は残しつつ、**武器取得と同じトースト**でも
                   // 出す(スキル名+効果説明1行+「この出撃のみ」)。説明は既存のSKILLS定義を流用。
                   useGameStore.setState({

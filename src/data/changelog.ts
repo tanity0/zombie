@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5391', items: [
+    '警察署でスキルを得た時、頭上に出る文字がスキル名だけに',
+  ] },
   { version: '0.25.5390', items: [
     '近接で殴った敵が、攻撃中でもそうでなくても同じだけ吹き飛ぶ',
     '格闘の気功の爆発で、周りの敵が外へ押し出される',
