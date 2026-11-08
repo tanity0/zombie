@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5401', items: [
+    '格闘の秘奥義。飛び蹴り、大踏み潰し、気功、構えを間を空けずに繋ぐと発動',
+    '光りながら画面中の敵へ跳び回って九連撃、最後は天から地面を叩き割る',
+  ] },
   { version: '0.25.5400', items: [
     'ゲーム内容の変更はありません',
   ] },
