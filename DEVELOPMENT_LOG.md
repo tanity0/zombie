@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5396 — 音の窓口(全音声要素を WebAudio に通す=マナーモードで全部黙る)・どの画面でも押せるミュートボタン【2026-11-08 12:21 JST】
+- (C) 訂正: v0.25.5395 の「ensureBgm より前にオープニングが鳴るので ambient が間に合っていない」は誤りだった。調査担当の洗い出しで、OK のタップ時点で既に ensureBgm(=ambient)が走っていたと判明。真の原因(推測)は「ambient でも WebAudio に通さない音声要素は消音スイッチを無視する」。v0.25.5395 の起動時の ambient 固定は保険として残す。
+- 修正(社長「はい」): `audioManager.ts` に窓口 `createAudioElement(src, {route})`/`releaseAudioElement`(要素→createMediaElementSource→要素ごとのGain→destination。`el.volume` はつまみへ付け替え=値は全部同じ)。オープニング(心拍・パン!・ホラー声・アリーナ・廊下BGM)・エンディング・深層の逆再生版・PEAK重ね・廊下ラジオを置き換え。コンテキスト停止中は素で鳴らし running でつなぐ(無音化を避ける)。OK/はじめるのタップで resume。ESLint `no-restricted-syntax` で窓口以外の `new Audio(` を禁止。`holdPlaybackSession` の 'playback' は亡霊戦の解除で 'ambient' に戻す。
+  - iPhone で聴こえ方が変わりうる所: 要素の音量は iOS で無視されていたため、オープニングの各音量とフェード・エンディング/深層の BGM 音量・廊下ラジオのクロスフェードが初めて効く。
+- 社長指示「ミュートボタンオープニングから押せるようにしといて」(経緯: Bluetooth 接続中は iOS の仕様でマナーモードでも鳴る): `MuteButton.tsx`(既存の volume-on/off アイコン・当たり44px・押下を stopPropagation)。既存の `setAudioMuted`(オプションの「音なし」と同じ保存値)を `useAudioMuted`/`subscribeAudioMuted` で共有。置き場: オープニング・エンディング・リザルト右上/タイトル左下(横長PCは左上)/作戦室ホーム下段のオプション右隣/他メニュー右上/ゲーム中は一時停止メニュー右上。
+- 検証: typecheck・eslint(エラー0)・循環import新規なし・src/audio 8件+関係79件+storyFlow12件合格。ヘッドレスで窓口の接続・つまみの値・running を数値確認(パン! 0.64/ホラー声 0.85→0/心拍 0.5/BGM0.6時のエンディング・深層 0.6)。ミュートボタンを押しても場面が進まないこと。phone-guard は既存の待ち(タイトルの描き上げ後は START 必須)で落ちるため、担当が START を押す写しで自前の基準と比較=増えたのはボタンだけで既存要素は1pxも動かず。各画面の ON/OFF を撮影し目視。
+- ★社長判断待ち: ①はじめて遊ぶタッチ端末はミュートが既定で「音なし」=今回オープニングもミュートに従わせたので初回のオープニングは無音になる ②ゲーム中の HUD に前から音のボタンが常駐しており、一時停止メニューと合わせて2つになる。
+
 ## v0.25.5395 — マナーモードでオープニングの音が鳴る不具合【2026-11-08 11:16 JST】
 - 社長報告「マナーモードにしてるのにBGMなるとこある オープニングとか」: 音の扱いを「周りの音」(navigator.audioSession.type='ambient'=消音スイッチに従う)へ固定するのが、ゲームの曲を初めて作る時(`ensureBgm`)だけだった。それより前に独自の音声要素で鳴るオープニング(廊下・アリーナ・心拍・パン!・ホラーSE)は「音楽の再生」扱いのまま消音スイッチを無視していた。
 - 修正: `bootstrap.ts` の起動時に ambient へ固定(?bgmroute=off の確認モードは従来どおり触らない)+オープニングのマウント時にも `setAmbientAudioSession`(audioManager から export)を呼ぶ保険。

@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5396', items: [
+    'マナーモードの時は、オープニングもエンディングも含めて全部の音が鳴らない',
+    'オープニングから先のどの画面でも、隅のボタンひとつで音を消せる',
+    'オープニングやエンディングの音量の上げ下げが、iPhoneでも効くように',
+  ] },
   { version: '0.25.5395', items: [
     'マナーモードの時、オープニングの音楽や効果音が鳴っていたのを直した',
   ] },
