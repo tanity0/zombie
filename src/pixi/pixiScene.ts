@@ -39524,7 +39524,7 @@ export class PixiScene {
     sp.position.set(tx, ty);
     // 構えは受けた瞬間だけ強く光る。
     const pop = f.kind === 'guard' ? Math.max(0, 1 - (Date.now() - Math.max(s.guardHitAt, s.guardRenewAt ?? 0)) / 220) : 0;
-    sp.alpha = Math.min(1, f.alpha + 0.5 * pop);
+    sp.alpha = Math.min(1, f.alpha + 0.5 * pop + (s.secret ? 0.25 : 0)); // 秘奥義の間は影も強く光る(§10-2)
     sp.tint = 0xffffff; // 頂いた青のまま
     sp.visible = true;
   }
@@ -39539,7 +39539,8 @@ export class PixiScene {
     const tint = this.dustTintForStage();
     // 構えの体の光(加算=沈まない)。1秒かけて絞っていく=窓の残りが見える(§3-2)。受けた瞬間は一度膨らむ。
     {
-      const remain = BRW.isBrawlerGuardingAt(s, gt) ? Math.max(0, s.guardUntil - gt) / BRW.BRAWLER_GUARD_MS : 0;
+      // 秘奥義の最中(§10)は体がずっと強く光る(脈打つ)。
+      const remain = s.secret ? 0.85 + 0.15 * Math.sin(now / 60) : BRW.isBrawlerGuardingAt(s, gt) ? Math.max(0, s.guardUntil - gt) / BRW.BRAWLER_GUARD_MS : 0;
       if (remain > 0) {
         if (!this.brawlerAura) {
           this.brawlerAura = new Sprite(getSoftGlowTexture());

@@ -4265,6 +4265,7 @@ const brawlerGateOk = (get: () => GameState): boolean => {
   if ((p.retaliateStrikeAt ?? 0) > 0) return false;                 // 被弾反撃の飛び込み中
   if (isSeekerActive(p, gt) && skillLevel(p, 'seeker') < 3) return false; // シーカー(半透明)
   if (isHurtMoveLocked(p, Date.now())) return false;                // 被弾のしゃがみ中(§7-5)
+  if (BR.isBrawlerSecretActive(p.brawler)) return false;            // 秘奥義の最中は入力を受け付けない(§10-3)
   return true;
 };
 const setBrawler = (set: (fn: (s: GameState) => Partial<GameState>) => void, b: BR.BrawlerState, extra: Partial<Player> = {}): void => {
@@ -4476,6 +4477,13 @@ const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Part
   const c = brawlerCenter(p);
   const kickN = kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
   let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN), pressAt: now, points: s0.points - BR.brawlerTechCost(kind, awakened) };
+  // ★秘奥義の順番(research/BRAWLER.md §10-1): 実際に出た技で数える。↑構えで揃ったら、構えを秘奥義に置き換える(ポイントは払った後・窓は張らない)。
+  const secretStep = BR.brawlerSecretStep(s0.secretProgress ?? 0, s0.secretLastEndAt ?? 0, kind, kickN, t);
+  s = { ...s, secretProgress: secretStep.progress };
+  if (secretStep.fire) {
+    startBrawlerSecret(get, set, s);
+    return;
+  }
   let extra: Partial<Player> = { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0 };
   if (kind === 'kick' || kind === 'kiko') {
     const range = kind === 'kick' ? BR.BRAWLER_KICK_RANGE : BR.BRAWLER_KIKO_RANGE;
@@ -4529,6 +4537,235 @@ const startBrawlerTech = (get: () => GameState, set: (fn: (s: GameState) => Part
     setBrawler(set, { ...get().player.brawler!, flashAt: now });
   }
   // 構えの残り時間は体の光だけで見せる(pixi が等速で絞る・輪は出さない=クリエイティブ監査 #9)。
+};
+
+// ---------------------------------------------------------------------------------------------
+// 秘奥義(research/BRAWLER.md §10・社長指示2026-11-08)
+// ---------------------------------------------------------------------------------------------
+/** 画面内(ズームの可視域)で当てられる敵の id。 */
+const brawlerSecretTargets = (st: GameState): string[] =>
+  st.enemies.filter(e => BR.isBrawlerTargetable(e)
+    && isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom, -8)).map(e => e.id);
+/** そこに立てるか(行ける帯へ寄せたうえで、壁・木・建物に押し出されない所)。立てる左上を返す。 */
+const brawlerSecretSpot = (get: () => GameState, cx: number, cy: number): { x: number; y: number } | null => {
+  const st = get();
+  const p = st.player;
+  const labTheme = st.stageTheme === 'lab';
+  const clamped = clampRectToPlayableArea(cx - p.width / 2, cy - p.height / 2, p.width, p.height, {
+    farBackdrop: st.farBackdrop, labTheme, corridorMode: st.corridorMode, m0AdvanceLimitX: st.m0AdvanceLimitX,
+    corridorRunInActive: st.corridorRunInActive, exStage: st.corridorMode && isExStageRun(), exPlayerBarrier: st.exBarrier,
+  });
+  const rect = { x: clamped.x, y: clamped.y, width: p.width, height: p.height };
+  let r: { x: number; y: number };
+  if (st.indoorMode) {
+    const openIds = st.labDoors.filter(d => d.open).map(d => d.id);
+    r = resolveAabb(rect, [...labBlockingWalls(openIds), ...st.labProps.map(lp => lp.rect)]);
+  } else {
+    r = resolveOutOfSolids(rect, {
+      labTheme, farBackdrop: st.farBackdrop, solidProps: st.breakableProps.filter(bp => bp.type !== 'mine' && bp.type !== 'uv-bar'),
+      castleEvent: st.castleEvent, hospital: st.hospital, hospitalTaken: st.hospitalTaken, armory: st.armory, armoryTaken: st.armoryTaken,
+      police: st.police, policeTaken: st.policeTaken, shrines: st.shrines, secretPois: st.secretPois, facilitiesHidden: facilitySolidsOff(st),
+    });
+  }
+  if (Math.abs(r.x - rect.x) > 0.5 || Math.abs(r.y - rect.y) > 0.5) return null; // 壁・木の中
+  return { x: rect.x, y: rect.y };
+};
+/** 秘奥義を始める(↑構えが揃った瞬間)。その場で激しく爆発して光る(判定なし・絵だけ)。 */
+const startBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState): void => {
+  const st = get();
+  const p = st.player;
+  const now = Date.now();
+  const c = brawlerCenter(p);
+  setBrawler(set, { ...BR.brawlerSecretStart(s, st.gameTime, now), flashAt: now },
+    { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, vx: 0, vy: 0 });
+  const g = get();
+  // 画面を一瞬暗く落として本人だけ光らせる → 白金と青の大きな炸裂・輪・揺れ(絵だけ=判定なし・スローは使わない=§10-3)。
+  g.spawnFlash('rgba(0,0,0,0.72)', 260);
+  g.spawnGlow(c.x, c.y - 6, GLOW_R_XL, 'rgba(255,248,230,', 700, true);
+  g.spawnGlow(c.x, c.y - 6, GLOW_R_L, 'rgba(56,189,248,', 700, true);
+  brawlerFx(get, c.x, c.y - 8, BR_SKILL_BURST_FRAMES[0], { frames: BR_SKILL_BURST_FRAMES, scale: 2.2, duration: 640, frameEaseOut: true, fadeFrom: 0.55 });
+  brawlerFx(get, c.x, c.y - 8, BR_SKILL_BURST_FRAMES[0], { frames: BR_SKILL_BURST_FRAMES, scale: 1.4, duration: 520, frameEaseOut: true, fadeFrom: 0.5, tint: 0x7dd3fc, rot: Math.PI / 3 });
+  brawlerFx(get, c.x, c.y - 8, 'vfx/flare_01', { scale: 3.2, scaleX: 2.4, duration: 420, fadeFrom: 0.2 });
+  brawlerFx(get, c.x, c.y - 8, 'vfx/spark_04', { scale: 1.8, duration: 380, fadeFrom: 0.3, rot: Math.random() * Math.PI * 2 });
+  g.spawnRing(c.x, c.y, 16, 260, BR.BRAWLER_RGBA(0.95), 6, 620, true);
+  g.spawnRing(c.x, c.y, 10, 180, 'rgba(56,189,248,0.9)', 4, 520, true);
+  g.spawnBurst(c.x, c.y, BR.BRAWLER_COLOR, 36);
+  g.spawnBurst(c.x, c.y, '#38bdf8', 24);
+  g.triggerShake(420, 18, 0, 0);
+  g.triggerZoom(0.16, 520, 160, c.x, c.y, 'counter');
+  brawlerSfx('heavy-impact', 1.0, 0.6);
+  brawlerSfx('bomb', 0.8, 0.75, undefined, 30);
+  brawlerSfx('homing-fire', 0.7, 0.5, 300, 60);
+};
+/** 秘奥義を終える(フィニッシュの後・中断)。技ポイントは強制で0、段は1段目へ(§10-2-4・§10-3)。 */
+const endBrawlerSecret = (set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState): void => {
+  setBrawler(set, BR.brawlerSecretEnd(s), { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeHoldUntil: 0 });
+};
+/** 9連撃の1発: 画面内の敵へ光りながらワープし、ランダムな技で当てる。当てられる敵が居なければ中断。 */
+const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState): void => {
+  const st = get();
+  const sec = s.secret!;
+  const t = st.gameTime;
+  const now = Date.now();
+  const ids = brawlerSecretTargets(st);
+  const tid = BR.brawlerSecretPickTarget(ids, Math.random());
+  const target = tid ? st.enemies.find(e => e.id === tid) ?? null : null;
+  if (!target) { endBrawlerSecret(set, s); return; } // 画面内に当てられる敵が居ない=中断(フィニッシュは出さない)
+  const p = st.player;
+  const from = brawlerCenter(p);
+  const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
+  // その敵の脇(本人が来た側を基準に、角度を少し散らす)。壁・木の中なら角度を回して空いている所へ。
+  const r = enemyRangeRect(target);
+  const reach = Math.max(r.width, r.height) / 2 + BR.BRAWLER_STANDOFF_PX + p.width / 2;
+  const base = Math.atan2(from.y - ecy, from.x - ecx) + (Math.random() * 2 - 1) * 0.9;
+  let spot: { x: number; y: number } | null = null;
+  for (const da of [0, Math.PI, Math.PI / 2, -Math.PI / 2, Math.PI / 4, -Math.PI / 4]) {
+    spot = brawlerSecretSpot(get, ecx + Math.cos(base + da) * reach, ecy + Math.sin(base + da) * reach);
+    if (spot) break;
+  }
+  if (!spot) spot = { x: p.x, y: p.y }; // どこにも立てない=その場から打つ
+  const to = { x: spot.x + p.width / 2, y: spot.y + p.height / 2 };
+  const dx = ecx - to.x, dy = ecy - to.y, dl = Math.hypot(dx, dy) || 1;
+  const dir = { x: dx / dl, y: dy / dl };
+  const move = BR.brawlerSecretPickMove(Math.random());
+  const s1: BR.BrawlerState = {
+    ...BR.brawlerSecretMovePose(s, move, t, dir.x, dir.y), targetId: target.id,
+    secret: { ...sec, phase: 'strike', phaseAt: t, hits: sec.hits + 1, nextAt: t + BR.BRAWLER_SECRET_STRIKE_MS, move,
+      warpFromX: from.x, warpFromY: from.y, warpToX: to.x, warpToY: to.y, warpAt: now },
+  };
+  setBrawler(set, s1, { x: spot.x, y: spot.y, vx: 0, vy: 0, lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeHoldUntil: 0, lastDirection: { x: dir.x, y: dir.y } });
+  const g = get();
+  // ワープの残光(消える所と現れる所の光+線)。線は加速→減速で縮みながら消える(慣性)。
+  const wdx = to.x - from.x, wdy = to.y - from.y, wl = Math.hypot(wdx, wdy);
+  if (wl > 8) {
+    brawlerFx(get, (from.x + to.x) / 2, (from.y + to.y) / 2 - 6, 'fx/dash-wind', {
+      scale: 0.16, scaleX: wl / (0.16 * 130 * (233 / 64)), rot: Math.atan2(wdy, wdx), duration: 260, fadeFrom: 0.15, tint: 0x9be7ff,
+      moveX: wdx * 0.18, moveY: wdy * 0.18, alpha: 0.95,
+    });
+    g.spawnGlow(from.x, from.y - 6, GLOW_R_S, 'rgba(125,211,252,', 220, true);
+  }
+  g.spawnGlow(to.x, to.y - 6, GLOW_R_M, 'rgba(255,248,230,', 240, true);
+  brawlerSfx('whip-swing', 0.45, 1.5 * brJitter(), 90);
+  // 技で当てる(倍率・ノックバックの種類はその技のもの・ポイントは増えない・減らない)。
+  const c = to;
+  const strike = (hitIds: string[], o: Omit<BrawlerStrikeOpts, 'targetIds' | 'brawler' | 'pressedAt'>): CounterTriggerResult =>
+    get().triggerCounter(undefined, { ...o, targetIds: hitIds, brawler: true, pressedAt: now });
+  const walls = meleeWallsAround(get, c.x, c.y, BR.BRAWLER_STOMP_RADIUS);
+  if (typeof move === 'number') {
+    const spec = BR.brawlerStageSpec(move);
+    const ids2 = spec.shape === 'landing' ? BR.brawlerCircleTargets(get().enemies, c.x, c.y + p.height / 2 - 6, BR.BRAWLER_LANDING_RADIUS, walls)
+      : spec.shape === 'band' ? BR.brawlerBandTargets(get().enemies, c.x, c.y, dir.x, dir.y, walls)
+      : spec.shape === 'fist' ? BR.brawlerFistTargets(get().enemies, c.x, c.y, dir.x, dir.y, target, huntingMeleeRadius(p) + 40, walls)
+      : [target.id];
+    const res = strike(ids2.includes(target.id) ? ids2 : [target.id, ...ids2], {
+      mult: spec.mult, stunMs: spec.hitstopMs, postureMult: spec.mult,
+      kb: spec.kb === 'big' ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } : { kind: spec.kb },
+      ...(spec.shape === 'landing' ? { lift: true } : {}),
+    });
+    brawlerKillSfx(res);
+    brawlerStageFx(get, move, c, dir, res, target, null);
+  } else if (move === 'kick') {
+    const res = strike([target.id], { mult: BR.BRAWLER_KICK_MULT, stunMs: BR.BRAWLER_KICK_HITSTOP_MS[3], postureMult: BR.BRAWLER_KICK_MULT,
+      kb: { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } });
+    brawlerKillSfx(res);
+    const ang = Math.atan2(dir.y, dir.x);
+    const fy = c.y + p.height * 0.18;
+    brawlerFx(get, c.x, fy, 'fx/dash-wind', { scale: 0.22, scaleX: 2.0, rot: ang, duration: 220, fadeFrom: 0.15, moveX: dir.x * 70, moveY: dir.y * 70, alpha: 0.9 });
+    brawlerFx(get, c.x + dir.x * 30, fy - 4 + dir.y * 14, 'vfx/slash_02', { scale: 0.8, scaleY: 0.8, rot: ang - Math.PI / 2, duration: 260, fadeFrom: 0.25, moveX: dir.x * 18, moveY: dir.y * 18 });
+    for (const h of res.hitAt ?? []) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.closer);
+    brawlerSfx('brawler-hit', 1.0, 0.7 * brJitter(), 260);
+  } else if (move === 'stomp') {
+    const foot = { x: c.x, y: c.y + p.height / 2 - 6 };
+    const ids2 = BR.brawlerCircleTargets(get().enemies, foot.x, foot.y, BR.BRAWLER_STOMP_RADIUS, walls);
+    const res = strike(ids2.includes(target.id) ? ids2 : [target.id, ...ids2], {
+      mult: BR.BRAWLER_STOMP_MULT, stunMs: BR.BRAWLER_STOMP_HITSTOP_MS, postureMult: BR.BRAWLER_STOMP_MULT,
+      kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
+    });
+    brawlerKillSfx(res);
+    g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
+    brawlerGroundBreakFx(get, foot.x, foot.y, true);
+    for (const h of res.hitAt ?? []) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.stomp);
+    brawlerSfx('brawler-stomp', 1.0, 0.92);
+  } else {
+    // 気功: 相手の所でそのまま爆発(延焼・押しも通常の気功と同じ)。
+    const kx = c.x + dir.x * 18, ky = c.y - 4 + dir.y * 18;
+    g.spawnEffect({ kind: 'meleeHit', id: `mhit-skiko-${now}`, x: kx, y: ky, size: 84, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: 240, rot: Math.random() * Math.PI * 2 });
+    brawlerSfx('homing-fire', 0.55, 0.72, 220);
+    explodeBrawlerKiko(get, ecx, ecy);
+  }
+};
+/** 9連撃の後: 天空へ消えて落ちてくる(着地点=画面内の敵の真ん中・立てる所)。 */
+const brawlerSecretFall = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState): void => {
+  const st = get();
+  const ids = brawlerSecretTargets(st);
+  if (ids.length === 0) { endBrawlerSecret(set, s); return; } // フィニッシュの前に敵が居なくなった=中断
+  const es = st.enemies.filter(e => ids.includes(e.id));
+  const mx = es.reduce((a, e) => a + e.x + e.width / 2, 0) / es.length;
+  const my = es.reduce((a, e) => a + e.y + e.height / 2, 0) / es.length;
+  const p = st.player;
+  const spot = brawlerSecretSpot(get, mx, my) ?? { x: p.x, y: p.y };
+  const now = Date.now();
+  const from = brawlerCenter(p);
+  setBrawler(set, {
+    ...s, phase: 'idle', tech: null, stage: 0,
+    secret: { ...s.secret!, phase: 'fall', phaseAt: st.gameTime, nextAt: st.gameTime + BR.BRAWLER_SECRET_FALL_MS,
+      warpFromX: from.x, warpFromY: from.y, warpToX: spot.x + p.width / 2, warpToY: spot.y + p.height / 2, warpAt: now },
+  }, { x: spot.x, y: spot.y, vx: 0, vy: 0 });
+  const g = get();
+  g.spawnGlow(from.x, from.y - 6, GLOW_R_M, 'rgba(255,248,230,', 260, true);
+  brawlerFx(get, from.x, from.y - 40, 'fx/dash-wind', { scale: 0.3, scaleX: 1.6, rot: -Math.PI / 2, duration: 300, fadeFrom: 0.2, moveY: -90, tint: 0x9be7ff });
+  brawlerSfx('whip-swing', 0.7, 0.55, 200);
+};
+/** フィニッシュの着地: 大範囲の地面叩き(半径260・3.0倍・big の強制ノックバック・ボス級は半分=§10-2-3)。 */
+const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState): void => {
+  const st = get();
+  const p = st.player;
+  const now = Date.now();
+  const c = brawlerCenter(p);
+  const foot = { x: c.x, y: c.y + p.height / 2 - 6 };
+  setBrawler(set, { ...s, secret: { ...s.secret!, phase: 'land', phaseAt: st.gameTime, nextAt: st.gameTime + BR.BRAWLER_SECRET_LAND_MS }, flashAt: now });
+  const walls = meleeWallsAround(get, foot.x, foot.y, BR.BRAWLER_SECRET_LAND_RADIUS);
+  const ids = BR.brawlerCircleTargets(get().enemies, foot.x, foot.y, BR.BRAWLER_SECRET_LAND_RADIUS, walls);
+  const res = get().triggerCounter(undefined, {
+    targetIds: ids, brawler: true, pressedAt: now,
+    mult: BR.BRAWLER_SECRET_LAND_MULT, stunMs: BR.BRAWLER_SECRET_LAND_HITSTOP_MS, postureMult: BR.BRAWLER_SECRET_LAND_MULT,
+    kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
+  });
+  brawlerKillSfx(res);
+  const g = get();
+  g.spawnFlash('rgba(255,250,235,0.35)', 160);
+  g.spawnRing(foot.x, foot.y, 24, BR.BRAWLER_SECRET_LAND_RADIUS * 1.3, BR.BRAWLER_RGBA(0.95), 7, 620, true);
+  g.spawnRing(foot.x, foot.y, 14, BR.BRAWLER_SECRET_LAND_RADIUS * 0.9, 'rgba(56,189,248,0.85)', 5, 520, true);
+  g.spawnRing(foot.x, foot.y, 8, BR.BRAWLER_SECRET_LAND_RADIUS * 0.55, 'rgba(255,255,255,0.8)', 3, 380, true);
+  g.spawnGlow(foot.x, foot.y, GLOW_R_XL, 'rgba(241,230,200,', 520, true);
+  g.spawnImageMark(foot.x, foot.y, 'fx/ground-crack', { scale: 2.4, scaleY: 0.5, duration: 2200, fadeFrom: 0.6, noPop: true, alpha: 0.95 });
+  g.spawnImageMark(foot.x, foot.y - 50, BR_COFFIN_SLAM_FRAMES[0], { frames: BR_COFFIN_SLAM_FRAMES, scale: 1.7, duration: 640, frameEaseOut: true, noPop: true, fadeFrom: 0.5 });
+  brawlerFx(get, foot.x, foot.y - 20, BR_SKILL_BURST_FRAMES[0], { frames: BR_SKILL_BURST_FRAMES, scale: 2.0, duration: 560, frameEaseOut: true, fadeFrom: 0.5 });
+  g.spawnBurst(foot.x, foot.y, BR.BRAWLER_COLOR, 40);
+  g.spawnBurst(foot.x, foot.y, '#38bdf8', 20);
+  g.triggerShake(520, 26, 0, 1);
+  g.triggerZoom(0.18, 420, 120, foot.x, foot.y, 'counter');
+  for (const h of res.hitAt ?? []) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.closer);
+  brawlerSfx('brawler-stomp', 1.0, 0.7);
+  brawlerSfx('heavy-impact', 1.0, 0.55, undefined, 16);
+  brawlerSfx('bomb', 0.9, 0.7, undefined, 30);
+};
+/** 秘奥義の1フレーム(tickBrawler から)。掴み・紫・死亡で中断。 */
+const tickBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
+  for (let i = 0; i < 3; i++) {
+    const st = get();
+    const p = st.player;
+    const s = p.brawler;
+    if (!s?.secret) return;
+    const t = st.gameTime;
+    if (p.health <= 0 || isPlayerGrabbed(p, t) || isPvpIncapacitated(p.pvpPosture, t)) { endBrawlerSecret(set, s); return; }
+    const ev = BR.brawlerSecretDue(s.secret, t);
+    if (ev === null) return;
+    if (ev === 'strike') brawlerSecretStrike(get, set, s);
+    else if (ev === 'fall') brawlerSecretFall(get, set, s);
+    else if (ev === 'land') brawlerSecretLand(get, set, s);
+    else { endBrawlerSecret(set, s); return; }
+  }
 };
 
 /** 判定の時刻に来た行動を解く(通常攻撃・技)。 */
@@ -6179,6 +6416,9 @@ const startKillFxCinematic = (
   pcx: number, pcy: number,
 ) => {
   if (!JUICE_ENABLED) return;
+  // ★格闘の秘奥義の最中は、跳びつき処刑の絵(本人の位置と形を乗っ取る)を出さない=秘奥義のワープ・落下の絵と取り合わない
+  // (research/BRAWLER.md §9-45)。KILL の文字・ズーム・血は呼び手の側でそのまま出る。
+  if (BR.isBrawlerSecretActive(get().player.brawler)) return;
   useGameStore.setState({
     killFx: {
       ex: prim.cx, ey: prim.cy, ew: prim.w, eh: prim.h,
@@ -9900,6 +10140,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (s0.phase !== 'idle') setBrawler(set, BR.brawlerCancel(s0));
       return;
     }
+    // 秘奥義の最中は秘奥義の時計だけを回す(通常の段・技の状態機械は回さない・§10)。
+    if (s0.secret) { tickBrawlerSecret(get, set); return; }
     if (s0.phase === 'idle') return;
     // 前隙の途中で掴まれた・対人の紫に入った・シーカーに入った=出かかった段/技を取り消し、先行入力も捨てる(§8-4)。
     if (!s0.resolved && (isPlayerGrabbed(p, t) || isPvpIncapacitated(p.pvpPosture, t) || (isSeekerActive(p, t) && skillLevel(p, 'seeker') < 3))) {

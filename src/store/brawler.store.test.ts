@@ -8,6 +8,7 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
 import { BRAWLER_GUARD_MS, brawlerPointCap } from '../utils/brawler';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
+import { playerSuperArmorActive } from '../utils/superArmor';
 import { treesInRegion, trunkRect } from '../world/trees';
 
 const NO_INPUT = { up: false, down: false, left: false, right: false } as never;
@@ -732,3 +733,70 @@ describe('血の覚醒中は技ポイントを無視して使い放題(社長指
     expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false);
   });
 });
+
+describe('秘奥義(research/BRAWLER.md §10・社長指示2026-11-08)', () => {
+  const untilIdle = () => { for (let k = 0; k < 200 && (br().phase !== 'idle'); k++) advance(10); };
+  const centerCam = () => useGameStore.setState(st => {
+    const p = st.player;
+    return { viewZoom: 1, camera: { x: p.x + p.width / 2 - st.gameBounds.width / 2, y: p.y + p.height / 2 - st.gameBounds.height / 2 } };
+  });
+  const fireSecret = () => {
+    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true); untilIdle(); advance(100);
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true); untilIdle(); advance(100);
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true); untilIdle(); advance(100);
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+  };
+  const prep = (enemies: ReturnType<typeof zombieAt>[]) => {
+    setup(3);
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ enemies, player: { ...st.player, health: 9999, maxHealth: 9999, brawler: { ...st.player.brawler!, points: 20 } } }));
+    centerCam();
+  };
+  it('→↓←↑ が実際に出ると、↑で秘奥義に置き換わる(構えの窓は張らない)→ 9発 → 落下 → 着地 → 技ポイント0・段は1段目', () => {
+    prep([zombieAt(120, 0, 'a'), zombieAt(-140, 60, 'b'), zombieAt(60, -110, 'c')]);
+    fireSecret();
+    expect(br().secret?.phase).toBe('ignite');
+    expect(br().guardUntil).toBe(0);
+    expect(isBrawlerGuarding(useGameStore.getState().player, useGameStore.getState().gameTime)).toBe(false);
+    const hp0 = ['a', 'b', 'c'].map(hpOf);
+    let maxHits = 0, sawFall = false, sawLand = false;
+    for (let k = 0; k < 400 && br().secret; k++) {
+      advance(10);
+      const sec = br().secret;
+      if (sec) { maxHits = Math.max(maxHits, sec.hits); sawFall ||= sec.phase === 'fall'; sawLand ||= sec.phase === 'land'; }
+    }
+    expect(maxHits).toBe(9);
+    expect(sawFall && sawLand).toBe(true);
+    expect(br().secret).toBeUndefined();
+    expect(br().points).toBe(0);
+    expect(br().nextStage).toBe(1);
+    expect(['a', 'b', 'c'].map(hpOf).some((h, i) => h < hp0[i])).toBe(true);
+  });
+  it('画面内に当てられる敵が居なくなったら中断(フィニッシュなし)・技ポイントは0', () => {
+    prep([zombieAt(120, 0, 'a')]);
+    fireSecret();
+    useGameStore.setState({ enemies: [] });
+    advance(700);
+    expect(br().secret).toBeUndefined();
+    expect(br().points).toBe(0);
+  });
+  it('発動中はスーパーアーマー(無敵ではない)・入力は受け付けない', () => {
+    prep([zombieAt(120, 0, 'a'), zombieAt(-140, 60, 'b')]);
+    fireSecret();
+    const p = useGameStore.getState().player;
+    expect(playerSuperArmorActive(p, 999, Date.now(), useGameStore.getState().gameTime, 368)).toBe(true);
+    expect(p.invulnerable).toBe(false);
+    expect(useGameStore.getState().brawlerPress()).toBe(false);
+    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(false);
+  });
+  it('間が空いたら発動しない(普通の構えになる)', () => {
+    prep([zombieAt(120, 0, 'a')]);
+    useGameStore.getState().brawlerTech(1, 0); untilIdle(); advance(100);
+    useGameStore.getState().brawlerTech(0, 1); untilIdle(); advance(600); // 400ms を越えた
+    useGameStore.getState().brawlerTech(-1, 0); untilIdle(); advance(100);
+    useGameStore.getState().brawlerTech(0, -1);
+    expect(br().secret).toBeUndefined();
+    expect(br().tech).toBe('guard');
+  });
+});
+

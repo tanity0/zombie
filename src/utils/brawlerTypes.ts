@@ -1,6 +1,24 @@
 // サブウェポン「格闘」の状態の型だけ(research/BRAWLER.md)。依存ゼロの葉モジュール=types/game.ts から読んでも循環しない。
 export type BrawlerTechKind = 'guard' | 'stomp' | 'kiko' | 'kick';
 export type BrawlerPhase = 'idle' | 'attack' | 'tech';
+/** 秘奥義の9連撃で出す技(通常攻撃の段 1..5 か技)。research/BRAWLER.md §10。 */
+export type BrawlerSecretMove = 1 | 2 | 3 | 4 | 5 | 'kick' | 'stomp' | 'kiko';
+/** 秘奥義の状態(research/BRAWLER.md §10)。phase の時刻は gameTime。 */
+export interface BrawlerSecret {
+  phase: 'ignite' | 'strike' | 'fall' | 'land';
+  /** いまの相の始まり(gameTime)。 */
+  phaseAt: number;
+  /** 当てた発数(0..9)。 */
+  hits: number;
+  /** 次の1発を解く時刻(gameTime)。 */
+  nextAt: number;
+  /** 直前の1発の技(絵の駆動)。 */
+  move?: BrawlerSecretMove;
+  /** 直前のワープの出発点と到着点(world・残光の線)と時刻(Date.now)。 */
+  warpFromX?: number; warpFromY?: number; warpToX?: number; warpToY?: number; warpAt?: number;
+  /** 起動の時刻(Date.now・描画の光)。 */
+  igniteAt: number;
+}
 export interface BrawlerState {
   phase: BrawlerPhase;
   /** いま(または直前)の通常攻撃の段 1..5。技の間は 0。 */
@@ -57,5 +75,10 @@ export interface BrawlerState {
   /** 構えを延長した時刻(Date.now・体の光と腕ガードの影を一度強く脈打たせる合図)。 */
   guardRenewAt?: number;
   palmFromY?: number;
+  /** 秘奥義の順番(→↓←↑)の進み 0..3 と、直前の技が終わった時刻(gameTime)。research/BRAWLER.md §10-1。 */
+  secretProgress?: number;
+  secretLastEndAt?: number;
+  /** 秘奥義の最中(undefined=発動していない)。 */
+  secret?: BrawlerSecret;
 }
 

@@ -38,7 +38,7 @@ export const brawlerStageSpec = (stage: number): BrawlerStageSpec =>
   BRAWLER_STAGES[Math.max(1, Math.min(5, Math.round(stage))) - 1];
 
 export type { BrawlerTechKind } from './brawlerTypes';
-import type { BrawlerState, BrawlerTechKind } from './brawlerTypes';
+import type { BrawlerState, BrawlerTechKind, BrawlerSecret, BrawlerSecretMove } from './brawlerTypes';
 export interface BrawlerTechSpec {
   kind: BrawlerTechKind;
   cost: number;
@@ -148,7 +148,7 @@ export const brawlerElapsed = (s: Pick<BrawlerState, 'startAt' | 'stopFrom' | 's
 export const brawlerInHitstop = (s: Pick<BrawlerState, 'stopFrom' | 'stopUntil'>, t: number): boolean =>
   t >= s.stopFrom && t < s.stopUntil;
 export const brawlerTotalMs = (s: Pick<BrawlerState, 'windupMs' | 'recoveryMs'>): number => s.windupMs + s.recoveryMs;
-export const isBrawlerBusy = (s: BrawlerState | undefined): boolean => !!s && s.phase !== 'idle';
+export const isBrawlerBusy = (s: BrawlerState | undefined): boolean => !!s && (s.phase !== 'idle' || !!s.secret);
 export const isBrawlerGuardingAt = (s: BrawlerState | undefined, gameTime: number): boolean =>
   !!s && s.guardUntil > 0 && gameTime < s.guardUntil;
 
@@ -173,8 +173,8 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
     palmFromX: undefined, palmFromY: undefined,
     // 前隙なしは1回きり(受けた直後の最初の1発だけ)。
     quickUntil: quick ? 0 : s.quickUntil,
-    // 通常攻撃を押したら蹴りの連続は切れる(§7-5)。
-    kickChainUntil: 0, kickCount: 0,
+    // 通常攻撃を押したら蹴りの連続は切れる(§7-5)。秘奥義の順番も数え直し(通常攻撃が挟まった=§10-1)。
+    kickChainUntil: 0, kickCount: 0, secretProgress: 0, secretLastEndAt: 0,
   };
 };
 
@@ -277,14 +277,100 @@ export const brawlerFinish = (s: BrawlerState, t: number): { state: BrawlerState
     chainUntil: s.phase === 'attack' && s.connected && s.nextStage > 1 ? t + BRAWLER_CHAIN_RESET_MS : 0,
     nextStage: s.phase === 'attack' && s.connected ? s.nextStage : 1,
     guardUntil: s.tech === 'guard' ? 0 : s.guardUntil,
+    // 秘奥義の順番(§10-1): 技の終わりの時刻を覚える(次の技はここから GAP 以内)。通常攻撃が終わった時は数え直し。
+    ...(s.phase === 'tech' ? { secretLastEndAt: t } : { secretProgress: 0, secretLastEndAt: 0 }),
     // 蹴りの連続の受付(kickChainUntil)は着いた瞬間に呼び手が張る(§8-3)。ここでは触らない。
   };
   return { state, fire };
 };
 
+// ---------------------------------------------------------------------------------------------
+// 秘奥義(research/BRAWLER.md §10・社長指示2026-11-08)
+// ---------------------------------------------------------------------------------------------
+/** 順番(→蹴り ↓大踏み潰し ←気功 ↑構え)。 */
+export const BRAWLER_SECRET_ORDER: readonly BrawlerTechKind[] = ['kick', 'stomp', 'kiko', 'guard'];
+/** 「間を空けずに」= 前の技の終わりから次の技の発動まで(ms・gameTime)。 */
+export const BRAWLER_SECRET_GAP_MS = 400;
+/** 起動(激しく爆発して光る)・1発の間隔・発数・天空からの落下・着地の後の余韻(ms)。 */
+export const BRAWLER_SECRET_IGNITE_MS = 600;
+export const BRAWLER_SECRET_STRIKE_MS = 170;
+export const BRAWLER_SECRET_STRIKES = 9;
+export const BRAWLER_SECRET_FALL_MS = 420;
+export const BRAWLER_SECRET_LAND_MS = 520;
+/** 天空の高さ(見た目・world px)。 */
+export const BRAWLER_SECRET_SKY_PX = 420;
+/** フィニッシュの地面叩き(§10-2-3)。 */
+export const BRAWLER_SECRET_LAND_RADIUS = 260;
+export const BRAWLER_SECRET_LAND_MULT = 3.0;
+export const BRAWLER_SECRET_LAND_HITSTOP_MS = 160;
+/** 9連撃で選ぶ技(通常攻撃1〜5段・飛び蹴り・大踏み潰し・気功)。 */
+export const BRAWLER_SECRET_MOVES: readonly BrawlerSecretMove[] = [1, 2, 3, 4, 5, 'kick', 'stomp', 'kiko'];
+
+/**
+ * 技が実際に出た時の順番の進み(§10-1)。progress = 直前までに揃った数(0..3)、lastEndAt = 直前の技の終わり(0=無し)。
+ *  - 順番どおりの次の技が、前の技の終わりから GAP 以内に出れば +1。4つ揃ったら fire(進みは0へ)。
+ *  - 飛び蹴りの2・3発目(連続の続き)は数え直さない(進みも時刻もそのまま=最初の→のまま↓を待つ)。
+ *  - それ以外(順番違い・間が空いた)は数え直し。→蹴り(1発目)なら1から、ほかは0。
+ */
+export const brawlerSecretStep = (
+  progress: number, lastEndAt: number, kind: BrawlerTechKind, kickN: number, t: number,
+): { progress: number; fire: boolean } => {
+  if (kind === 'kick' && kickN > 1) return { progress, fire: false };
+  const inTime = progress > 0 && lastEndAt > 0 && t - lastEndAt <= BRAWLER_SECRET_GAP_MS;
+  if (inTime && BRAWLER_SECRET_ORDER[progress] === kind) {
+    const next = progress + 1;
+    return next >= BRAWLER_SECRET_ORDER.length ? { progress: 0, fire: true } : { progress: next, fire: false };
+  }
+  return { progress: kind === BRAWLER_SECRET_ORDER[0] ? 1 : 0, fire: false };
+};
+
+/** 秘奥義を始めた状態(構えを置き換える・構えの窓は張らない)。 */
+export const brawlerSecretStart = (s: BrawlerState, t: number, now: number): BrawlerState => ({
+  ...s, phase: 'idle', tech: null, stage: 0, buffered: false, guardUntil: 0, quickUntil: 0, kickChainUntil: 0, kickCount: 0,
+  nextStage: 1, chainUntil: 0, secretProgress: 0, secretLastEndAt: 0,
+  secret: { phase: 'ignite', phaseAt: t, hits: 0, nextAt: t + BRAWLER_SECRET_IGNITE_MS, igniteAt: now },
+});
+/** 秘奥義を終えた(フィニッシュ後・中断)状態。技ポイントは強制で0、段は1段目へ(§10-2-4・§10-3)。 */
+export const brawlerSecretEnd = (s: BrawlerState): BrawlerState => ({
+  ...s, phase: 'idle', tech: null, stage: 0, buffered: false, points: 0, nextStage: 1, chainUntil: 0,
+  guardUntil: 0, quickUntil: 0, kickChainUntil: 0, kickCount: 0, secret: undefined, secretProgress: 0, secretLastEndAt: 0,
+  stopFrom: 0, stopUntil: 0, stopPrevMs: 0,
+});
+export type BrawlerSecretEvent = 'strike' | 'fall' | 'land' | 'end';
+/** 秘奥義の時計で、いま起きること。 */
+export const brawlerSecretDue = (sec: BrawlerSecret, t: number): BrawlerSecretEvent | null => {
+  if (t < sec.nextAt) return null;
+  if (sec.phase === 'ignite') return 'strike';
+  if (sec.phase === 'strike') return sec.hits >= BRAWLER_SECRET_STRIKES ? 'fall' : 'strike';
+  if (sec.phase === 'fall') return 'land';
+  return 'end';
+};
+/** 9連撃の1発で出す技(乱数 r=0..1)。 */
+export const brawlerSecretPickMove = (r: number): BrawlerSecretMove =>
+  BRAWLER_SECRET_MOVES[Math.min(BRAWLER_SECRET_MOVES.length - 1, Math.max(0, Math.floor(r * BRAWLER_SECRET_MOVES.length)))];
+/** 9連撃の相手(画面内で当てられる敵の id から乱数で1体。同じ敵が続いてもよい)。居なければ null=中断。 */
+export const brawlerSecretPickTarget = (ids: readonly string[], r: number): string | null =>
+  ids.length === 0 ? null : ids[Math.min(ids.length - 1, Math.max(0, Math.floor(r * ids.length)))];
+/**
+ * 9連撃の1発の絵を出すために、状態の行動欄をその技の「当たった直後」に見せかける(ポーズと影は状態から描かれる)。
+ * 秘奥義の間は通常の状態機械は回らない(store の tick が秘奥義の側へ分岐する)ので、この欄はただの絵の駆動。
+ */
+export const brawlerSecretMovePose = (s: BrawlerState, move: BrawlerSecretMove, t: number, dirX: number, dirY: number): BrawlerState => {
+  const isStage = typeof move === 'number';
+  const windupMs = isStage ? brawlerStageSpec(move).windupMs : BRAWLER_TECHS[move].windupMs;
+  return {
+    ...s, dirX, dirY, startAt: t - windupMs, windupMs, recoveryMs: BRAWLER_SECRET_STRIKE_MS,
+    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: true, connected: true,
+    ...(isStage
+      ? { phase: 'attack' as const, stage: move, tech: null, kickN: 0, palmFromX: undefined, palmFromY: undefined }
+      : { phase: 'tech' as const, stage: 0, tech: move, kickN: move === 'kick' ? BRAWLER_KICK_MAX : 0 }),
+  };
+};
+export const isBrawlerSecretActive = (s: BrawlerState | undefined): boolean => !!s?.secret;
+
 /** 出かかった行動を取り消す(掴まれ・紫・シーカー=§8-4)。先行入力も捨てる。 */
 export const brawlerCancel = (s: BrawlerState): BrawlerState => ({
-  ...s, phase: 'idle', tech: null, buffered: false, nextStage: 1, chainUntil: 0,
+  ...s, phase: 'idle', tech: null, buffered: false, nextStage: 1, chainUntil: 0, secret: undefined,
   guardUntil: 0, kickChainUntil: 0, kickCount: 0,
 });
 /** 被弾した(段は1段目へ・先行入力は捨てる=§2-4)。行動そのものは続く(殴り返されて止まるのは敵の止めの側)。 */
@@ -613,7 +699,17 @@ export interface BrawlerStandFrame {
  * (止めの間は段の時計が止まる=そこで止まる)→ 戻りで前へ抜けながら減速して消える。構えは出ている間うっすら脈打つ。
  */
 export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerStandFrame | null => {
-  if (!s || s.phase === 'idle') return null;
+  if (!s) return null;
+  // 秘奥義(§10): 影も強く光る。起動=腕ガードが脈打つ / 落下=地面叩きが上から降りる / 着地=大きな地面叩きが伸び切って抜ける。
+  if (s.secret && s.secret.phase !== 'strike') {
+    const sec = s.secret;
+    const q = Math.max(0, t - sec.phaseAt);
+    if (sec.phase === 'ignite') return { kind: 'guard', ext: 1, alpha: Math.min(1, 0.55 + 0.35 * Math.abs(Math.sin(q / 70))), light: false, big: true };
+    if (sec.phase === 'fall') return { kind: 'slam', ext: 0.9 * easeIn(Math.min(1, q / BRAWLER_SECRET_FALL_MS)), alpha: 0.95, light: false, big: true };
+    const p = Math.min(1, q / BRAWLER_SECRET_LAND_MS);
+    return { kind: 'slam', ext: 1 + 0.3 * easeOut(p), alpha: 1 - easeIn(p), light: false, big: true };
+  }
+  if (s.phase === 'idle') return null;
   let kind: BrawlerStandKind;
   if (s.phase === 'attack') {
     kind = s.stage <= 1 ? 'punch' : s.stage === 2 ? BRAWLER_STAND_STAGE2_KIND : s.stage === 3 ? 'heavy' : s.stage === 4 ? 'slam' : 'palm';
@@ -644,6 +740,26 @@ export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerS
 export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPose | null => {
   if (!s) return null;
   const base: BrawlerPose = { tex: null, lean: 0, push: 0, jump: 0, sqX: 1, sqY: 1, hand: 1, flip: false };
+  // 秘奥義(§10): 起動=沈んで溜め→振り上げて爆ぜる / 落下=天空から加速して落ちる / 着地=深く潰れて戻る。9連撃は各技の形(下の通常の分岐)。
+  if (s.secret) {
+    const sec = s.secret;
+    const q = Math.max(0, t - sec.phaseAt);
+    if (sec.phase === 'ignite') {
+      const p = Math.min(1, q / BRAWLER_SECRET_IGNITE_MS);
+      if (p < 0.35) { const k = easeOut(p / 0.35); return { ...base, tex: 'ready', sqY: 1 - 0.18 * k, sqX: 1 + 0.12 * k }; }
+      const k = easeOut(Math.min(1, (p - 0.35) / 0.25));
+      return { ...base, tex: 'swing', sqY: 1 + 0.12 * k - 0.06 * Math.max(0, p - 0.6), sqX: 1 - 0.06 * k, jump: 6 * k * (1 - p) };
+    }
+    if (sec.phase === 'fall') {
+      const p = Math.min(1, q / BRAWLER_SECRET_FALL_MS);
+      return { ...base, tex: 'swing', jump: BRAWLER_SECRET_SKY_PX * (1 - easeIn(p)), sqY: 1.12, sqX: 0.9 };
+    }
+    if (sec.phase === 'land') {
+      const p = Math.min(1, q / BRAWLER_SECRET_LAND_MS);
+      const land = Math.max(0, 1 - p * 2.2);
+      return { ...base, tex: 'ready', sqY: 1 - 0.32 * land, sqX: 1 + 0.26 * land };
+    }
+  }
   if (s.phase === 'idle') {
     // つながりの受付が残っている間はしゃがみ(構え)で待つ。
     if (s.nextStage > 1 && t <= s.chainUntil) return { ...base, tex: 'ready', lean: 0.05 };

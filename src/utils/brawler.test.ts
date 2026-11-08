@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Enemy } from '../types/game';
 import {
   BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS, brawlerAfterGuardCounter, brawlerTechCost,
-  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerKickFlightMs, BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, BRAWLER_STAND_STAGE2_KIND, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
+  brawlerPalmDashDue, isBrawlerPalmDashing, brawlerKickFlightMs, BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, BRAWLER_STAND_STAGE2_KIND, brawlerSecretStep, brawlerSecretDue, brawlerSecretPickMove, brawlerSecretPickTarget, brawlerSecretStart, brawlerSecretEnd, BRAWLER_SECRET_GAP_MS, BRAWLER_SECRET_STRIKES, BRAWLER_SECRET_MOVES, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
   brawlerStartAttack, brawlerStartTech, brawlerPressDecision, brawlerAfterResolve, brawlerDueEvent, brawlerFinish,
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
@@ -343,3 +343,54 @@ describe('フリックの距離は全方向20px(社長承認2026-11-07・格闘/
     expect(detectFlickFromSamples(swipe(25, 0, 60), KATANA_FLICK_WINDOW_MS, KATANA_FLICK_MIN_DIST, KATANA_FLICK_MIN_SPEED)).toBeNull();
   });
 });
+
+describe('秘奥義(research/BRAWLER.md §10)', () => {
+  // 実際に出た技を順に流す。各要素 [技, 蹴りの何発目, 発動時刻, その技の終わりの時刻]。
+  const run = (seq: [string, number, number, number][]) => {
+    let progress = 0, lastEnd = 0, fired = false;
+    for (const [k, n, at, end] of seq) {
+      const r = brawlerSecretStep(progress, lastEnd, k as never, n, at);
+      progress = r.progress; fired = fired || r.fire;
+      lastEnd = end;
+    }
+    return { progress, fired };
+  };
+  it('→↓←↑ を、前の技の終わりから400ms以内に続ければ成立', () => {
+    expect(run([['kick', 1, 0, 270], ['stomp', 0, 500, 1100], ['kiko', 0, 1300, 1750], ['guard', 0, 2100, 3100]]).fired).toBe(true);
+  });
+  it('順番違い・間が空いた・最初が→でない、は成立しない', () => {
+    expect(run([['stomp', 0, 0, 600], ['kick', 1, 700, 970], ['kiko', 0, 1200, 1650], ['guard', 0, 2000, 3000]]).fired).toBe(false);
+    expect(run([['kick', 1, 0, 270], ['stomp', 0, 270 + BRAWLER_SECRET_GAP_MS + 1, 1300], ['kiko', 0, 1400, 1850], ['guard', 0, 2000, 3000]]).fired).toBe(false);
+    expect(run([['kick', 1, 0, 270], ['kiko', 0, 400, 850], ['stomp', 0, 900, 1500], ['guard', 0, 1600, 2600]]).fired).toBe(false);
+  });
+  it('蹴りの2・3発目は数え直さない(最初の→のまま↓を待つ)・間違えたら→から数え直し', () => {
+    expect(run([['kick', 1, 0, 270], ['kick', 2, 300, 570], ['kick', 3, 600, 870], ['stomp', 0, 1000, 1600], ['kiko', 0, 1700, 2150], ['guard', 0, 2300, 3300]]).fired).toBe(true);
+    expect(run([['kick', 1, 0, 270], ['kiko', 0, 400, 850]]).progress).toBe(0);
+    expect(run([['stomp', 0, 0, 600], ['kick', 1, 700, 970]]).progress).toBe(1);
+  });
+  it('通常攻撃が挟まると数え直し(段の始まり・終わりで進みを0へ)', () => {
+    const s0 = { ...initialBrawlerState(), secretProgress: 2, secretLastEndAt: 100 };
+    expect(brawlerStartAttack(s0, 1, 200, false).secretProgress).toBe(0);
+    expect(brawlerFinish({ ...s0, phase: 'attack', stage: 1 }, 300).state.secretProgress).toBe(0);
+    expect(brawlerFinish({ ...s0, phase: 'tech', tech: 'stomp' }, 300).state.secretLastEndAt).toBe(300);
+  });
+  it('流れ: 起動→9発→落下→着地→終わり。終わりは技ポイント0・段は1段目', () => {
+    const s = brawlerSecretStart({ ...initialBrawlerState(), points: 9 }, 0, 0);
+    expect(brawlerSecretDue(s.secret!, 599)).toBeNull();
+    expect(brawlerSecretDue(s.secret!, 600)).toBe('strike');
+    expect(brawlerSecretDue({ ...s.secret!, phase: 'strike', hits: BRAWLER_SECRET_STRIKES - 1, nextAt: 0 }, 1)).toBe('strike');
+    expect(brawlerSecretDue({ ...s.secret!, phase: 'strike', hits: BRAWLER_SECRET_STRIKES, nextAt: 0 }, 1)).toBe('fall');
+    expect(brawlerSecretDue({ ...s.secret!, phase: 'fall', nextAt: 0 }, 1)).toBe('land');
+    expect(brawlerSecretDue({ ...s.secret!, phase: 'land', nextAt: 0 }, 1)).toBe('end');
+    const e = brawlerSecretEnd({ ...s, points: 7, nextStage: 4 });
+    expect([e.points, e.nextStage, e.secret]).toEqual([0, 1, undefined]);
+  });
+  it('9連撃の選び方: 技は8種のどれか・相手は画面内の敵から1体・居なければ null(中断)', () => {
+    const seen = new Set(Array.from({ length: 80 }, (_, i) => brawlerSecretPickMove(i / 80)));
+    expect([...seen].sort()).toEqual([...BRAWLER_SECRET_MOVES].sort());
+    expect(brawlerSecretPickMove(0.9999)).toBe('kiko');
+    expect(brawlerSecretPickTarget(['a', 'b', 'c'], 0.5)).toBe('b');
+    expect(brawlerSecretPickTarget([], 0.5)).toBeNull();
+  });
+});
+

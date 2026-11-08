@@ -67,6 +67,7 @@ export const playerSuperArmorActive = (
   p: SuperArmorPlayer, skilledDmg: number, nowMs: number, gameTime: number, swingMs: number,
 ): boolean => {
   if (isBloodAwakening(p, gameTime)) return true;
+  if (p.brawler?.secret) return true; // 格闘の秘奥義の最中(research/BRAWLER.md §10-3・スキル無しでも)
   const lv = superArmorSkillLevel(p);
   if (lv <= 0) return false;
   const limit = SUPER_ARMOR_LIMIT_BY_LEVEL[Math.min(3, lv)] ?? 0;
