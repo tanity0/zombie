@@ -2808,6 +2808,8 @@ export const INTRO_LAND_SHAKE_MAG = 15;      // 社長指示で倍化(7.5→15)
 // 揺れ(COUNTER_SHAKE_MS)と寄り(COUNTER_ZOOM_MAG)は残す=手触りは維持する。
 export const COUNTER_HITSTOP_MS = 0;  // 旧 HITSTOP_MS(100ms)
 export const COUNTER_SHAKE_MS = 100;           // 80〜120ms
+/** 弾の打ち返しのカウンター成立の青い輪・光の長さ(useGameLoop の COUNTER_REFLECT_SLOW_MS と同じ値=格闘の構えの受けで同じ見え方を出す)。 */
+export const COUNTER_REFLECT_FX_MS = 560;
 export const COUNTER_SHAKE_MAG = 8;            // 社長指示で倍化(4→8)
 // 四神技(ダンス)発動の揺れ。リズムを乱さぬよう描画のみ(stop/slow は入れない)。
 export const SHIJIN_TECH_SHAKE_MS = 160;
@@ -9870,6 +9872,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       setBrawler(set, { ...s, denyAt: Date.now() });
       return false;
     }
+    if (kind === 'guard' && isBrawlerGuardingAt(s, t)) {
+      // ★構えの延長(社長指示2026-11-07・§9-41): 3ポイント払って終わる時刻を「今+1秒」に引き直す。窓・無敵・打ち返し・レーザーの盾も
+      // 同じ終わる時刻まで切れ目なく続く(どれも構えの終わり guardUntil を読む)。溜め・暗転は出さない。体の光と影を一度脈打たせ、短い音。
+      const now = Date.now();
+      const s1 = { ...BR.brawlerExtendGuard(s, t, now), points: s.points - BR.BRAWLER_TECHS.guard.cost };
+      setBrawler(set, s1, { counterWindowStart: Math.min(p.counterWindowStart, now), counterWindowEnd: now + BR.BRAWLER_GUARD_MS });
+      brawlerSfx('heavy-impact', 0.22, 1.35, 260);
+      brawlerSfx('homing-fire', 0.2, 0.62, 260);
+      return true;
+    }
     startBrawlerTech(get, set, s, kind);
     return true;
   },
@@ -9961,6 +9973,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     brawlerSfx('counter', 0.9, 0.92);
     brawlerSfx('heavy-impact', 0.7, 0.68, undefined, 14);
+    // ★通常の近接カウンターの成立演出も重ねる(社長指示2026-11-07「スローやカウンターの演出は入れて」・§9-41)。
+    // 青い光と輪・青い粒・「Counter!」・counter の音・成立の金の輪、停止とスロー(構え1回につき最初の1度=triggerHitImpact 側)。
+    // 格闘の受け(白金の閃光・砕け・稲妻・揺れ・寄り・影の強い光)は消さない。経路(打ち返し・爆風・突進・格闘の受け)を問わずここ1か所で出す。
+    {
+      const g = get();
+      brawlerSfx('counter', 1.0, 1.0, undefined, 6);
+      g.spawnGlow(c.x, c.y, GLOW_R_L, 'rgba(56,189,248,', COUNTER_REFLECT_FX_MS);
+      g.spawnRing(c.x, c.y, 14, 135, 'rgba(56,189,248,0.9)', 3, COUNTER_REFLECT_FX_MS);
+      g.spawnBurst(c.x, c.y, '#38bdf8', 14);
+      g.spawnCallout(c.x, c.y - 12, 'Counter!', '#e0f2ff', { bg: 0x2563eb, holdMs: MELEE_FINISH_SLOW_HOLD_MS, duration: MELEE_FINISH_SLOW_MS });
+      g.spawnRing(c.x, c.y, 12, 80, 'rgba(252,211,77,0.95)', 4, 420);
+      g.spawnBurst(c.x, c.y, '#fcd34d', 12);
+      g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0, COUNTER_ZOOM_MAG);
+    }
   },
 
   // スケボー(新仕様): ダブルタップで乗車。skater 未装備/既に乗車中は無視。
@@ -25256,8 +25282,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ダンス中(四神舞)は gameTime を止めるとリズムが乱れるためストップ抜き=全て即時。
     // v0.25.2585: targetX/Y 指定時はその点へ寄る(守護霊のカウンター=成立位置)。未指定は従来どおり中央。
     // v0.25.4294(CINEMATIC_CAMERA v2): カウンターの寄りは**短く・硬く切る**(320ms/保持240)。スロー(700)とは同期しない=演目の時間構造を変える。
-    // ★格闘の構えの窓の中は停止もスローも寄りも出さない(取りこぼした経路の保険・research/BRAWLER.md §8-5)。
-    if (isBrawlerGuarding(get().player, get().gameTime)) return;
+    // ★格闘の構えで受けた時も通常のカウンターと同じく停止・スロー・寄りを出す(社長指示2026-11-07「スローやカウンターの演出は入れて」)。
+    // 構えの1秒に弾を何発も打ち返すとスローが重なり続けるので、停止とスローは構え1回(延長ごとに数え直す)の最初の1度だけ(§9-41)。
+    {
+      const bp = get().player;
+      const bs = bp.brawler;
+      if (bs && isBrawlerGuarding(bp, get().gameTime)) {
+        if (bs.guardImpactFor !== undefined && bs.guardImpactFor === bs.guardSince) {
+          get().triggerZoom(zoomMag, COUNTER_ZOOM_MS, COUNTER_ZOOM_HOLD_MS, targetX, targetY, 'counter');
+          if (shakeMag > 0) get().triggerShake(shakeMs, shakeMag);
+          return;
+        }
+        set(state => (state.player.brawler ? { player: { ...state.player, brawler: { ...state.player.brawler, guardImpactFor: bs.guardSince } } } : {}));
+      }
+    }
     get().triggerZoom(zoomMag, COUNTER_ZOOM_MS, COUNTER_ZOOM_HOLD_MS, targetX, targetY, 'counter');
     // v0.25.4284: shakeMag<=0 は「揺れは registerImpact 側(ダメージ由来)が出す」=ここでは停止/ズーム/スローだけ。
     if (get().rhythm.active) {

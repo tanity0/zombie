@@ -292,42 +292,50 @@ describe('格闘: 検収の(A)', () => {
     useGameStore.getState().brawlerTech(0, -1);
     advance(20);
   };
-  it('A-1 構えの窓で弾を打ち返す: 打ち返しは残り、青い「Counter!」・カウンターの音・停止/スロー/寄りは出ない', () => {
-    setup();
-    useGameStore.setState({ enemies: [] });
-    guardNow();
+  // ★社長指示2026-11-07「スローやカウンターの演出は入れて」(§9-41): 1巡目の検収 A-1 で止めた通常のカウンター成立の演出を戻した(格闘の受けにも重ねる)。
+  const shootAt = (id: string) => {
     const c = center();
     const proj = {
-      id: 'ep', x: c.x - 5, y: c.y - 5, width: 10, height: 10, speed: 0, damage: 10, noCounter: true,
+      id, x: c.x - 5, y: c.y - 5, width: 10, height: 10, speed: 0, damage: 10, noCounter: true,
       direction: { x: -1, y: 0 }, weaponType: 'handgun', hostile: true, reflected: false, passthrough: false, hitEnemies: [], duration: 5000, createdAt: now, critChance: 0,
     } as unknown as Projectile;
     useGameStore.setState({ projectiles: [proj] });
-    const calls: string[] = [];
-    const fx = { ...NOOP_COMBAT_EFFECTS,
-      spawnCallout: (_x: number, _y: number, t: string) => { calls.push(`callout:${t}`); },
-      playSfx: (k: string) => { calls.push(`sfx:${k}`); },
-      triggerHitImpact: () => { calls.push('impact'); },
-    } as typeof NOOP_COMBAT_EFFECTS;
-    const slow0 = useGameStore.getState().timeSlowUntil, stop0 = useGameStore.getState().hitstopUntil;
-    const hp0 = useGameStore.getState().player.health;
-    applyEnemyProjectileHits(now, useGameStore.getState().player, false, 0, useGameStore.getState().gameTime, fx, { grenadeBlastRadius: 0, grenadeBlastDamageMult: 0, counterReflectSlowMs: 0 });
-    const pr = useGameStore.getState().projectiles.find(x => x.id === 'ep');
-    expect(pr?.hostile).toBe(false); // 紫の弾も打ち返した(効果は残る)
-    expect(useGameStore.getState().player.health).toBe(hp0);
-    expect(calls).not.toContain('callout:Counter!');
-    expect(calls).not.toContain('sfx:counter');
-    expect(calls).not.toContain('impact');
-    expect(useGameStore.getState().timeSlowUntil).toBe(slow0);
-    expect(useGameStore.getState().hitstopUntil).toBe(stop0);
-    expect(useGameStore.getState().player.brawler!.guardHitAt).toBe(now); // 白金の受けは出た
-  });
-  it('A-1 構えの窓の中は triggerHitImpact(停止・スロー・寄り)を出さない(取りこぼし経路の保険)', () => {
+    applyEnemyProjectileHits(now, useGameStore.getState().player, false, 0, useGameStore.getState().gameTime, NOOP_COMBAT_EFFECTS, { grenadeBlastRadius: 0, grenadeBlastDamageMult: 0, counterReflectSlowMs: 0 });
+  };
+  const hasCounterCallout = () => useGameStore.getState().effects.some(e => (e as { text?: string }).text === 'Counter!');
+  it('構えの窓で弾を打ち返す: 打ち返しに加えて、青い「Counter!」・counter の音・スローが出る(格闘の白金の受けも出る)', () => {
     setup();
+    useGameStore.setState({ enemies: [] });
     guardNow();
-    const slow0 = useGameStore.getState().timeSlowUntil, stop0 = useGameStore.getState().hitstopUntil;
-    useGameStore.getState().triggerHitImpact(100, 100, 8, 1);
-    expect(useGameStore.getState().timeSlowUntil).toBe(slow0);
-    expect(useGameStore.getState().hitstopUntil).toBe(stop0);
+    drainBrawlerSfx();
+    const slow0 = useGameStore.getState().timeSlowUntil;
+    const hp0 = useGameStore.getState().player.health;
+    shootAt('ep');
+    const pr = useGameStore.getState().projectiles.find(x => x.id === 'ep');
+    expect(pr?.hostile).toBe(false); // 紫の弾も打ち返した
+    expect(useGameStore.getState().player.health).toBe(hp0);
+    expect(hasCounterCallout()).toBe(true);
+    expect(drainBrawlerSfx().map(b => b.key)).toContain('counter');
+    expect(useGameStore.getState().timeSlowUntil).toBeGreaterThan(slow0);
+    expect(useGameStore.getState().player.brawler!.guardHitAt).toBe(now); // 白金の受けも出た
+  });
+  it('スローと停止は構え1回につき最初の1度だけ(2発目以降は Counter! と音だけ)・延長すると数え直す', () => {
+    setup();
+    useGameStore.setState({ enemies: [] });
+    guardNow();
+    shootAt('e1');
+    const slow1 = useGameStore.getState().timeSlowUntil;
+    advance(200);
+    useGameStore.setState({ effects: [] });
+    shootAt('e2');
+    expect(hasCounterCallout()).toBe(true);
+    expect(useGameStore.getState().timeSlowUntil).toBe(slow1); // 重ねない
+    // 延長(再入力)したら数え直す
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 3 } } }));
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    advance(200);
+    shootAt('e3');
+    expect(useGameStore.getState().timeSlowUntil).toBeGreaterThan(slow1);
   });
   it('A-2 気功で倒した敵は経験値を落とし、断末魔を鳴らす', () => {
     setup();
@@ -621,6 +629,56 @@ describe('気功の爆発に押し(社長承認2026-11-07・§9-40)', () => {
       if ((g.knockbackUntil ?? 0) > Date.now() && (g.knockbackVx ?? 0) < -10) pushed = true;
     }
     expect(pushed).toBe(true); // 爆心(敵の手前=プレイヤー側)から外向き=さらに左へ
+  });
+});
+
+describe('格闘: 構えの延長(社長指示2026-11-07「カウンター中もカウンター入力を受け付ける(連続延長発動できる)」)', () => {
+  const guard = () => {
+    setup();
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, brawler: { ...st.player.brawler!, points: 9 } } }));
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+  };
+  it('構えの最中の再入力で、終わる時刻が「再入力の時刻+1秒」に引き直される(積み上げない)・3ポイント払う', () => {
+    guard();
+    advance(600);
+    const gt = useGameStore.getState().gameTime;
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    expect(br().guardUntil).toBe(gt + BRAWLER_GUARD_MS);
+    expect(br().points).toBe(3); // 9 - 3 - 3
+    expect(br().phase).toBe('tech');
+    expect(br().tech).toBe('guard');
+  });
+  it('足りなければ拒否(数字が沈む)・終わる時刻は変わらない', () => {
+    guard();
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 2 } } }));
+    advance(300);
+    const until0 = br().guardUntil;
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(false);
+    expect(br().guardUntil).toBe(until0);
+    expect(br().denyAt).toBe(now);
+  });
+  it('構えの間は他の技(下・左・右)は出ない', () => {
+    guard();
+    advance(200);
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false);
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(false);
+    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(false);
+    expect(br().tech).toBe('guard');
+  });
+  it('延長すると、カウンター窓と被害の無効が切れ目なく延長後の終わりまで続く', () => {
+    guard();
+    advance(900);
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    advance(500); // 最初の構えなら切れていた時刻を越える
+    const st = useGameStore.getState();
+    expect(isBrawlerGuarding(st.player, st.gameTime)).toBe(true);
+    expect(st.player.counterWindowEnd).toBeGreaterThan(Date.now());
+    const hp0 = st.player.health;
+    expect(useGameStore.getState().damagePlayer(30, 'test')).toBe(false);
+    expect(useGameStore.getState().player.health).toBe(hp0);
+    advance(600); // 延長後の1秒を越えた
+    expect(isBrawlerGuarding(useGameStore.getState().player, useGameStore.getState().gameTime)).toBe(false);
   });
 });
 

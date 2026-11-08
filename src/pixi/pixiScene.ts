@@ -39525,7 +39525,7 @@ export class PixiScene {
     sp.rotation = f.kind === 'slam' ? (left ? -lean : lean) : (left ? -a : a);
     sp.position.set(tx, ty);
     // 構えは受けた瞬間だけ強く光る。
-    const pop = f.kind === 'guard' ? Math.max(0, 1 - (Date.now() - s.guardHitAt) / 220) : 0;
+    const pop = f.kind === 'guard' ? Math.max(0, 1 - (Date.now() - Math.max(s.guardHitAt, s.guardRenewAt ?? 0)) / 220) : 0;
     sp.alpha = Math.min(1, f.alpha + 0.5 * pop);
     sp.tint = 0xffffff; // 頂いた青のまま
     sp.visible = true;
@@ -39551,7 +39551,8 @@ export class PixiScene {
         const aura = this.brawlerAura;
         if (aura.parent !== body.parent && body.parent) body.parent.addChild(aura);
         // 残り時間に比例して等速で絞る(輪は出さない=クリエイティブ監査 #9)。受けた瞬間だけ短く膨らむ。
-        const hitPop = Math.max(0, 1 - (Date.now() - s.guardHitAt) / 160);
+        // 受けた瞬間・構えを延長した瞬間(§9-41)に一度膨らむ。
+        const hitPop = Math.max(0, 1 - (Date.now() - Math.max(s.guardHitAt, s.guardRenewAt ?? 0)) / 160);
         const size = (34 + 76 * remain + 30 * hitPop) * dsc;
         aura.scale.set(size / Math.max(1, aura.texture.height));
         aura.position.set(body.position.x, body.position.y - Math.abs(body.height) * 0.45);

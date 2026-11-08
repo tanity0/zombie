@@ -188,6 +188,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
     // 技の後は1段目(§7-5)。
     nextStage: 1, chainUntil: 0,
     guardUntil: kind === 'guard' ? t + BRAWLER_GUARD_MS : s.guardUntil,
+    ...(kind === 'guard' ? { guardSince: t } : {}),
     ...(kind === 'kick' ? { kickCount: kickN } : { kickChainUntil: 0, kickCount: 0 }),
   };
 };
@@ -291,13 +292,24 @@ export const brawlerCanPay = (s: BrawlerState, kind: BrawlerTechKind): boolean =
 
 /** 技を今出せるか(払える以外の条件)。構えは途中で解除できない・技の最中は出さない(飛び蹴りの連続は着いた後だけ)。 */
 export const brawlerTechAllowed = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
-  if (isBrawlerGuardingAt(s, t)) return false;
+  // 構えの間は構えの再入力(延長)だけ受け付ける(社長指示2026-11-07「カウンター中もカウンター入力を受け付ける(連続延長発動できる)」)。
+  if (isBrawlerGuardingAt(s, t)) return kind === 'guard';
   if (s.phase === 'tech') {
     if (kind !== 'kick' || s.tech !== 'kick' || !s.resolved) return false;
     return s.kickCount < BRAWLER_KICK_MAX;
   }
   return true; // 待機・通常攻撃のどこからでも(必殺技キャンセル)
 };
+/**
+ * 構えを延長する(構えの最中の再入力・§9-41)。終わる時刻を「再入力の時刻+1秒」に引き直す(積み上げない)。
+ * しゃがみの溜めからやり直さない=構えたまま。行動の時計(startAt)は引き直して、構えの終わり=行動の終わりに揃える。
+ */
+export const brawlerExtendGuard = (s: BrawlerState, t: number, now: number): BrawlerState => ({
+  ...s, phase: 'tech', tech: 'guard', startAt: t, windupMs: 0, recoveryMs: BRAWLER_TECHS.guard.recoveryMs,
+  stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: true,
+  guardUntil: t + BRAWLER_GUARD_MS, guardSince: t, guardRenewAt: now,
+});
+
 /** 次の蹴りが何発目か(連続の受付の中なら続き・外なら1発目)。 */
 export const brawlerNextKickN = (s: BrawlerState, t: number): number =>
   (s.kickCount > 0 && s.kickCount < BRAWLER_KICK_MAX && t <= s.kickChainUntil) ? s.kickCount + 1 : 1;
