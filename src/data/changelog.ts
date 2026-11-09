@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5431', items: [
+    '血の覚醒の間は、気功も強くなり、足が速くなった分だけ格闘も強くなる',
+    '気絶した敵を浮かせて格闘でとどめを刺すと、ダメージが上がる',
+  ] },
   { version: '0.25.5430', items: [
     '秘奥義の連撃に混ざる五段目も、吹き飛びが半分になった',
   ] },
