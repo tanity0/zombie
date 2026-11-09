@@ -1,6 +1,7 @@
 // ★格闘×スキルの組み合わせ(research/BRAWLER.md §15・社長承認2026-11-09「はい」)。判定は純関数だけ(store が読んで書く)。
 // 格闘以外(銃・ナイフ・刀・鞭・分身)の経路は、ここの関数を「格闘ではない」として通る=今までと1つも変わらない(テストで固定)。
-import type { BrawlerMoveKey } from './brawlerCombo';
+import { brawlerEnemyClass, brawlerLiftClass, isBrawlerTechBusy, type BrawlerMoveKey } from './brawlerCombo';
+import type { Enemy } from '../types/game';
 import type { BrawlerState, BrawlerTechKind } from './brawlerTypes';
 import { BRAWLER_TECHS, BRAWLER_JUST_MS, BRAWLER_FLOW_GRACE_MS } from './brawler';
 
@@ -65,3 +66,23 @@ export const brawlerComboEnded = (s: BrawlerState, t: number): boolean => {
 // ---- D. 移動速度に比例して格闘の攻撃力が上がる(research/BRAWLER.md §16) ----
 /** 足の速さの能力値の倍率をそのまま格闘のダメージに掛ける。遅くする効果で下がる場合も 1.0 を下限にして下げない。 */
 export const brawlerSpeedDamageMult = (moveStatMult: number): number => (Number.isFinite(moveStatMult) ? Math.max(1, moveStatMult) : 1);
+
+// ---- 秘奥義の間は画面内の敵を止める(社長指示2026-11-09「秘奥義の間は止める」・research/BRAWLER.md §17) ----
+/** 止めの書き足しの長さ(ms)。毎フレーム書き直さず、残りが REFRESH_BELOW を切ったら書き足す。秘奥義が終わる・中断すると解く。 */
+export const SECRET_FREEZE_HOLD_MS = 250;
+export const SECRET_FREEZE_REFRESH_BELOW_MS = 150;
+/**
+ * 秘奥義の間に止める敵の id(inView=画面内かどうか。ズーム込みの可視域は呼び手が渡す)。
+ * 雑魚・強個体は全員 / ボス級は技の最中(溜め含む=isBrawlerTechBusy)でなければ / 終端の死神(浮かない側 brawlerLiftClass=null)は止めない / 画面の外は止めない。
+ */
+export const secretFreezeIds = (
+  enemies: readonly Enemy[], gameTime: number, inView: (e: Enemy) => boolean,
+): string[] => {
+  const out: string[] = [];
+  for (const e of enemies) {
+    if (e.health <= 0 || brawlerLiftClass(e) === null || !inView(e)) continue;
+    if (brawlerEnemyClass(e) === 'boss' && isBrawlerTechBusy(e, gameTime)) continue;
+    out.push(e.id);
+  }
+  return out;
+};

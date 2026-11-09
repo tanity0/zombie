@@ -792,6 +792,8 @@ export interface Enemy {
    * brRevengePending=反撃の数に達した(次の自分の更新で振り払う)。brNoHoldUntil=反撃の後、固まらない時刻。brRevengeAt=振り払いが当たった時刻(絵だけ)。
    */
   brHoldUntil?: number;
+  /** 秘奥義の間の「画面内の敵を止める」が brHoldUntil に書いた値(research/BRAWLER.md §17)。終わりに、その値のまま残っている時だけ解く。 */
+  brSecretHoldUntil?: number;
   brComboStart?: number;
   brComboAt?: number;
   brComboPenalty?: number;

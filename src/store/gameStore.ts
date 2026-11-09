@@ -4817,9 +4817,39 @@ const startBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Pa
   brawlerSfx('heavy-impact', 1.0, 0.6);
   brawlerSfx('bomb', 0.8, 0.75, undefined, 30); // 浮き: 秘奥義の起動の音(当たりは格闘の側)
   brawlerSfx('homing-fire', 0.7, 0.5, 300, 60);
+  applySecretFreeze(get); // 起動の瞬間から画面内の敵を止める(§17)
+};
+/**
+ * ★秘奥義の間は画面内の敵を止める(社長指示2026-11-09・research/BRAWLER.md §17)。格闘の固まりと同じ仕組み(brHoldUntil=行動の時計も止まる)で、
+ * 起動から締めの着地が終わるまで、毎フレーム短く書き足す。新しい止め方は作らない・見た目は足さない。押し(knockbackUntil)は止めの前に進むので締めの吹き飛ばしは消えない。
+ */
+const applySecretFreeze = (get: () => GameState): void => {
+  const st = get();
+  const nowMs = Date.now();
+  const ids = new Set(BRS.secretFreezeIds(st.enemies, st.gameTime,
+    e => isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom, 0)));
+  if (ids.size === 0) return;
+  if (!st.enemies.some(e => ids.has(e.id) && (e.brSecretHoldUntil ?? 0) - nowMs < BRS.SECRET_FREEZE_REFRESH_BELOW_MS)) return;
+  const until = nowMs + BRS.SECRET_FREEZE_HOLD_MS;
+  useGameStore.setState(state => ({
+    enemies: state.enemies.map(e => {
+      if (!ids.has(e.id) || (e.brSecretHoldUntil ?? 0) - nowMs >= BRS.SECRET_FREEZE_REFRESH_BELOW_MS) return e;
+      if ((e.brHoldUntil ?? 0) >= until) return e; // すでにそれ以上止まっている(当たりの固まり)=触らない
+      return { ...e, brHoldUntil: until, brSecretHoldUntil: until };
+    }),
+  }));
+};
+/** 秘奥義の止めを解く(終わり・中断)。固まりの側が書き直していない(値が自分の書いたまま)時だけ止めを消す。 */
+const releaseSecretFreeze = (): void => {
+  if (!useGameStore.getState().enemies.some(e => e.brSecretHoldUntil !== undefined)) return;
+  useGameStore.setState(state => ({
+    enemies: state.enemies.map(e => (e.brSecretHoldUntil === undefined ? e
+      : { ...e, brHoldUntil: e.brHoldUntil === e.brSecretHoldUntil ? undefined : e.brHoldUntil, brSecretHoldUntil: undefined })),
+  }));
 };
 /** 秘奥義を終える(フィニッシュの後・中断)。技ポイントは強制で0、段は1段目へ(§10-2-4・§10-3)。 */
 const endBrawlerSecret = (set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState): void => {
+  releaseSecretFreeze(); // 終わり・中断のその時点で止めを解く(§17)
   setBrawler(set, BR.brawlerSecretEnd(s), { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeHoldUntil: 0 });
 };
 /** 9連撃の1発: 画面内の敵へ光りながらワープし、ランダムな技で当てる。当てられる敵が居なければ中断。 */
@@ -4997,6 +5027,7 @@ const tickBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Par
     if (!s?.secret) return;
     const t = st.gameTime;
     if (p.health <= 0 || isPlayerGrabbed(p, t) || isPvpIncapacitated(p.pvpPosture, t)) { endBrawlerSecret(set, s); return; }
+    applySecretFreeze(get); // 画面内の敵を止め続ける(§17)
     const ev = BR.brawlerSecretDue(s.secret, t);
     if (ev === null) return;
     if (ev === 'strike') brawlerSecretStrike(get, set, s);
@@ -10606,6 +10637,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     const p = get().player;
     const s0 = p.brawler;
+    if (!s0?.secret) releaseSecretFreeze(); // 秘奥義が無いのに止めが残っていたら解く(別の経路の中断の保険・§17)
     if (!s0) return;
     const now = Date.now();
     const t = get().gameTime;
