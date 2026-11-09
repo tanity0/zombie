@@ -4455,8 +4455,12 @@ const brawlerHitPatch = (
   if (combo && phaseKind !== 'active' && !downNow) {
     // 溜めの間は、雑魚の止め(hitStunUntil)が「攻撃中」で効かないので、止めも固まりと1本に書く。
     const stopForHold = bossLike ? bossStopMs : phaseKind === 'windup' && bs.kb.kind !== 'big' ? hitStopMs : stopMs;
+    // ★5段の確定(§9-74・社長実機報告2026-11-09「通常攻撃で敵の硬直解除に間に合ってない。」): 順番どおりの当たりは、固まりが次の段の当たりまで必ず続く。
+    const moveNow = bs.combo?.move;
+    const inOrder = moveNow !== undefined && BRC.brawlerComboInOrder(enemy, moveNow, now);
+    const guardUntil = inOrder && moveNow !== undefined ? now + BRC.brawlerChainGuardMs(moveNow, hitStopMs) : 0;
     let want: number | undefined;
-    if (combo.holdMs > 0) want = brawlerHoldFrom(now, stopForHold, Math.max(out.knockbackUntil ?? 0, out.liftUntil ?? 0)) + combo.holdMs;
+    if (combo.holdMs > 0) want = Math.max(brawlerHoldFrom(now, stopForHold, Math.max(out.knockbackUntil ?? 0, out.liftUntil ?? 0)) + combo.holdMs, guardUntil);
     else if (bossStopMs > 0 || (phaseKind === 'windup' && stopForHold > 0)) {
       // 固まりが0の当たり(固まりの表が0で押しが big でない時)でも、ボス級・溜めの止め(①)だけは掛ける。
       want = Math.max(now + stopForHold, out.liftUntil ?? 0);
@@ -4464,8 +4468,9 @@ const brawlerHitPatch = (
     if (want !== undefined) {
       if (phaseKind === 'windup') {
         // 1回の溜めにつき合計 BRAWLER_TECH_HOLD_BUDGET_MS まで。使い切ったら押し切る(以後その技が終わるまで固まらない)。
+        // ★ただし5段を順番どおりにつないでいる間は確定を優先する(予算は使った分として数える=1周の後は押し切る)。
         const r = BRC.brawlerTechHoldApply(enemy, want, now);
-        out.brHoldUntil = r.until; out.brTechHoldKey = r.key; out.brTechHoldUsed = r.used;
+        out.brHoldUntil = inOrder ? Math.max(r.until ?? 0, guardUntil) : r.until; out.brTechHoldKey = r.key; out.brTechHoldUsed = r.used;
       } else out.brHoldUntil = want;
     }
   }

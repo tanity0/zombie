@@ -884,9 +884,7 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     expect(holds.length).toBe(4); // 5段目は吹き飛ばす=固めない
     // 1〜4段目の固まりは、次の段が当たるまで切れない(=5段のつながりの中では敵は動けない)
     for (let i = 0; i < 4; i++) expect(holds[i].until).toBeGreaterThanOrEqual(hitsAt[i + 1]);
-    // 基本の長さで割った固まりは段を追うごとに短くなる(減衰)。3段目からは浮かせ(§13-2)が入るので、地上の1・2段目で比べる。
-    const ratio = [0, 1].map(i => (holds[i].until - hitsAt[i] - 90) / 390);
-    expect(ratio[1]).toBeLessThan(ratio[0]);
+    // ★§9-74: 5段を順番どおりにつないでいる間は確定(固まりは次の段まで必ず続く=上の検査)。減衰は5段の後の再開に効く(下の検査)。
     // 5段目の後に続けて1段目を当てても、固まりは4割近く(=次の段が届く前に切れる)
     const next = brawlerComboOnHit(en('z'), 's1', hitsAt[4] + 100); // 5段目の当たりの直後(止めが長くなった分、ループの終わりの now は流れの外になり得る)
     expect(next.holdMs).toBeLessThanOrEqual(Math.round(390 * 0.45));

@@ -7,7 +7,7 @@ import { isBossType } from './enemyUtils';
 import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { meteorPhase } from './telegraphStyle';
 import { isRecoverHoldPhase } from './recoverPhase';
-import { BRAWLER_LIFT_MS, BRAWLER_TEMPO, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo } from './brawler';
+import { BRAWLER_LIFT_MS, BRAWLER_TEMPO, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo, brawlerStageSpec } from './brawler';
 
 /**
  * 当たりが途切れたら流れ(コンボ時計・反撃の数・同じ技の記録)を0へ戻す(ms)。
@@ -203,6 +203,28 @@ export const brawlerStopOnlyNow = (
   gameTime: number, nowMs: number,
 ): boolean => brawlerHeldNow(e, gameTime, nowMs) || brawlerLiftHoldNow(e, nowMs);
 
+/**
+ * ★5段の確定(社長実機報告2026-11-09「通常攻撃で敵の硬直解除に間に合ってない。」・§9-74)。格闘ゲームの定石=地上の連続技は確定でつながる。
+ * 5段を**順番どおり**につないでいる当たり(新しい流れの1段目、または直前の当たりが1つ前の段)は、固まりが必ず次の段の当たりまで続く:
+ *   固まりの終わり ≧ 当たり + (止め + 今の段の戻り + 次の段の出だし[詰め・跳びを含む]) + 余裕(60ms×係数)。
+ * 順番どおりでない当たり(1段目の連打・5段の後にまた1段目から・技の後の1段目・技の繰り返し)には効かせない=減衰と同じ技の罰がそのまま効く。
+ * 5段目は締めで吹き飛ぶので確定は1周で終わる(ハメにならない)。
+ */
+export let BRAWLER_CHAIN_GUARD_MARGIN_MS = 60; // ×BRAWLER_TEMPO(係数1.0の値)
+const STAGE_KEYS = ['s1', 's2', 's3', 's4', 's5'] as const;
+export const brawlerComboInOrder = (e: { brComboAt?: number; brComboLast?: string }, move: BrawlerMoveKey, now: number): boolean => {
+  const n = (STAGE_KEYS as readonly string[]).indexOf(move) + 1;
+  if (n <= 0 || n >= 5) return false;            // 5段の1〜4段目だけ(5段目は締め=次が無い)
+  const alive = brawlerComboAlive(e, now);
+  return n === 1 ? !alive : alive && e.brComboLast === STAGE_KEYS[n - 2];
+};
+/** 順番どおりの当たりで、固まりが少なくとも続くべき長さ(当たりの瞬間から・ms)。stopMs=この当たりの止め。 */
+export const brawlerChainGuardMs = (move: BrawlerMoveKey, stopMs: number): number => {
+  const n = (STAGE_KEYS as readonly string[]).indexOf(move) + 1;
+  if (n <= 0 || n >= 5) return 0;
+  return Math.max(0, stopMs) + brawlerStageSpec(n).recoveryMs + brawlerStageSpec(n + 1).windupMs + BRAWLER_CHAIN_GUARD_MARGIN_MS;
+};
+
 /** 固まりの減衰の倍率(時計 ms から)。 */
 export const brawlerHoldDecay = (clockMs: number): number =>
   Math.max(BRAWLER_COMBO_FLOOR, 1 - Math.max(0, clockMs) / BRAWLER_COMBO_DECAY_MS);
@@ -218,6 +240,8 @@ export interface BrawlerComboFields {
   brRevengePending?: boolean;
   brNoHoldUntil?: number;
   brFlowHits?: number;
+  /** この流れで最後に当たった段・技の名札(5段を順番どおりにつないでいるかの判定・§9-74)。 */
+  brComboLast?: string;
 }
 
 /** この時刻にまだ流れが続いているか(最後の当たりから GAP 以内)。 */
@@ -256,6 +280,7 @@ export const brawlerComboOnHit = (
       brComboStart: start, brComboAt: now, brComboPenalty: penalty, brComboHits: hits,
       // ダメージ補正の数(§13-2)。秘奥義(9連撃・締め)は数えない。
       brFlowHits: (alive ? (e.brFlowHits ?? 0) : 0) + (move === 'secret' || move === 'secret-land' ? 0 : 1),
+      brComboLast: move,
       brComboMoves: repeat ? moves.join(',') : [...moves, move].join(','),
       brRevengePending: pending,
     },
@@ -474,6 +499,7 @@ export const brawlerComboTimesAt = (tempo: number) => ({
   BRAWLER_JUGGLE_DROP_MS: brawlerTempoMs(200, tempo),
   BRAWLER_TECH_HOLD_BUDGET_MS: brawlerTempoMs(400, tempo),
   BRAWLER_DOWN_NO_HOLD_MS: brawlerTempoMs(300, tempo),
+  BRAWLER_CHAIN_GUARD_MARGIN_MS: brawlerTempoMs(60, tempo),
 });
 const applyBrawlerComboTempo = (tempo: number): void => {
   const v = brawlerComboTimesAt(tempo);
@@ -487,6 +513,7 @@ const applyBrawlerComboTempo = (tempo: number): void => {
   BRAWLER_JUGGLE_DROP_MS = v.BRAWLER_JUGGLE_DROP_MS;
   BRAWLER_TECH_HOLD_BUDGET_MS = v.BRAWLER_TECH_HOLD_BUDGET_MS;
   BRAWLER_DOWN_NO_HOLD_MS = v.BRAWLER_DOWN_NO_HOLD_MS;
+  BRAWLER_CHAIN_GUARD_MARGIN_MS = v.BRAWLER_CHAIN_GUARD_MARGIN_MS;
 };
 /** 格闘の全部の時間を係数で書き直す(utils/brawler の段・技・秘奥義 + ここの固まり・反撃)。テストは明示の係数で呼ぶ。 */
 export const setBrawlerTempoAll = (tempo: number): void => {
