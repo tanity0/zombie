@@ -868,10 +868,14 @@ export const BRAWLER_LIFT_HOVER_SAG = 0.06;
  *  - 落下: 漂いの終わりの速さを引き継いで、二次で加速して 0 へ(つなぎ目で速さが跳ばない)。
  * 追撃の浮き直しも同じ形(start=押し上げた瞬間の高さ=つなぎ目で高さが跳ばない)。
  */
-export const brawlerLiftArcRel = (u: number, start: number, top: number): number => {
+/** 浮きの弧の配分(上り・漂いの割合)。省略=格闘の弧(25%・20%)。 */
+export interface LiftArcShape { rise: number; hover: number }
+/** ★爆発で浮いた弧(research/BRAWLER.md §14・社長「落ちてくるのを爆発のは少しゆっくりに」): 上り20%・漂い15%・落ち65%。 */
+export const BLAST_LIFT_SHAPE: LiftArcShape = { rise: 0.2, hover: 0.15 };
+export const brawlerLiftArcRel = (u: number, start: number, top: number, shape?: LiftArcShape): number => {
   if (u <= 0) return start;
   if (u >= 1) return 0;
-  const R = BRAWLER_LIFT_RISE_FRAC, H = BRAWLER_LIFT_HOVER_FRAC, F = 1 - R - H, S = BRAWLER_LIFT_HOVER_SAG;
+  const R = shape?.rise ?? BRAWLER_LIFT_RISE_FRAC, H = shape?.hover ?? BRAWLER_LIFT_HOVER_FRAC, F = 1 - R - H, S = BRAWLER_LIFT_HOVER_SAG;
   if (u < R) return start + (top - start) * easeOut(u / R);
   if (u < R + H) { const t = (u - R) / H; return top * (1 - S * t * t); }
   const t = (u - R - H) / F;

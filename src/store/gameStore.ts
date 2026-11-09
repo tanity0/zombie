@@ -283,6 +283,7 @@ import { stampMeleeSwingCommit } from '../utils/thorNihil';
 import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
 import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../utils/cameraZoom';
 import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
+import { blastLiftPatch, slasherLiftMove } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
@@ -4316,6 +4317,8 @@ const startBrawlerPalmDash = (get: () => GameState, set: (fn: (s: GameState) => 
   brawlerSfx('homing-fire', 0.35, 1.5, 160);
 };
 /** 5段目: 軌跡の上の壊せる物(松明など)を壊す(一閃と同じ扱い・§9-26)。 */
+/** ★爆発の浮きの待ち行列(§14・playerBlast が積み、tickBrawler が掛ける)。描画にも保存にも出さない一時の箱。 */
+const pendingBlastLifts: { x: number; y: number; r: number }[] = [];
 /** 卵が割れた時のはじけ(近接で割った時の絵=breakPropsAlong と breakEggsWhere の共通)。 */
 const eggBreakFx = (get: () => GameState, broken: BreakableProp): void => {
   get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
@@ -5434,7 +5437,7 @@ const explodeBrawlerKiko = (
     }));
   }
   const g = get();
-  g.spawnExplosionFx(x, y, radius);
+  g.spawnExplosionFx(x, y, radius); // 浮き: 格闘の気功(浮きは格闘の当たりとして気功の分を掛ける)
   g.breakEggsInBlast(x, y, radius); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
   // 残る煙(vfx/smoke_04・沈んだ灰でゆっくり昇る)=延焼の気配。fx/hitfire は撮って比べた結果やめた(この大きさだと四角い柱に見える=§9-27)。
   g.spawnImageMark(x, y - 10, 'vfx/smoke_04', { scale: 0.9, duration: 1100, noPop: true, fadeFrom: 0.25, tint: 0x6b625a, alpha: 0.5, moveY: -34, rot: Math.random() * Math.PI * 2 });
@@ -6630,7 +6633,7 @@ const applyMeleeFinishSkillSpread = (
     get().spawnBurst(fcx, fcy, '#7f1d1d', 8);
     get().spawnGlow(fcx, fcy, GLOW_R_S, 'rgba(251,146,60,', 440);
     get().spawnExplosionFx(fcx, fcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
-    get().breakEggsInBlast(fcx, fcy, radius); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
+    get().playerBlast(fcx, fcy, radius); // ★卵も割る・浮かせる(§14)(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
     for (const e of get().enemies) {
       if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
       if (isCorpse(e) || isUntouchable(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象外 / 英雄の昇天中
@@ -7299,6 +7302,17 @@ const applySlasherChainStrike = (
       if (!resistsChipKnockback(e.type)) {
         get().knockbackEnemy(e.id, dx / d, dy / d, kbMult, kbMult); // 追撃が当たった敵のみノックバック(Lv3最終段のみ大)。maxStrengthも渡す(既定cap=3で頭打ちになる罠・v0.25.3257)
         if (lungeTo === null || eDist < lungeTo.dist) lungeTo = { dirX: dx / d, dirY: dy / d, dist: eDist };
+      }
+      // ★浮き(research/BRAWLER.md §14・社長「浮き入れよう」): 1回目の追撃=格闘の3段目と同じ打ち上げ。2回目以降は空中の敵を拾う
+      // (Lv3 の最後の大きな押しは空中から叩き落とす)。区分(重さ・ボスの止めの減衰)・予算・技の最中は浮かないは格闘と同じ。
+      {
+        const nowL = Date.now();
+        const live = get().enemies.find(x => x.id === e.id);
+        const mv = live ? slasherLiftMove(step, isFinalBigKbStep, BRC.brawlerAirborne(live, nowL)) : null;
+        if (live && mv && !BRC.isBrawlerTechBusy(live, gameTime)) {
+          const jp = brawlerJugglePatch(live, BRC.brawlerComboClass(live.type), mv, nowL);
+          if (jp) useGameStore.setState(state => ({ enemies: state.enemies.map(x => (x.id === e.id ? { ...x, ...jp } : x)) }));
+        }
       }
     }
   }
@@ -8690,8 +8704,16 @@ interface GameState {
    * 判定の形は world/mines.ts の純関数(eggInCapsule / eggInFan)を渡す。
    */
   breakEggsWhere: (test: (egg: BreakableProp) => boolean) => number;
-  /** 爆発の円(中心・半径)で卵を割る(breakEggsWhere の円の近道)。プレイヤー側の爆発の合流点から呼ぶ。 */
+  /** 爆発の円(中心・半径)で卵を割る(breakEggsWhere の円の近道)。 */
   breakEggsInBlast: (cx: number, cy: number, radius: number) => number;
+  /**
+   * ★プレイヤー側の爆発の合流点(卵: 社長実機報告2026-11-09・浮き: research/BRAWLER.md §14 社長「浮き入れよう。落ちてくるのを爆発のは少しゆっくりに」)。
+   * 卵を割り、爆風の中の雑魚・強個体を浮かせる(浮きは次の格闘の時計 tickBrawler で掛ける=同じフレームの爆発のダメージ・押しの書き込みと混ざらない)。
+   * 敵の爆発・画面全体を消す爆弾の拾い物からは呼ばない。
+   */
+  playerBlast: (cx: number, cy: number, radius: number) => void;
+  /** 爆風の円の中の雑魚・強個体を浮かせる(utils/airLift.blastLiftPatch・壁の向こうは浮かせない)。浮かせた数を返す。 */
+  liftEnemiesInBlast: (cx: number, cy: number, radius: number) => number;
   
   // Game state actions
   setGameTime: (time: number, realTime?: number) => void;
@@ -10463,6 +10485,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
   tickBrawler: () => {
+    // ★爆発の浮き(§14): 前のフレームまでの爆発を、ここでまとめて掛ける(爆発のダメージ・押しの書き込みと混ざらない)。
+    if (pendingBlastLifts.length > 0) {
+      const q = pendingBlastLifts.splice(0, pendingBlastLifts.length);
+      for (const b of q) get().liftEnemiesInBlast(b.x, b.y, b.r);
+    }
     const st0 = get();
     if (st0.brawlerKiko.length > 0) stepBrawlerKiko(get, set);
     else brawlerKikoLastT = -1;
@@ -10709,6 +10736,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().spawnBurst(x, y, '#bef264', 14);
     if (skAwaken) {
       get().spawnExplosionFx(x, y, bashRange); // 覚醒: 爆発flipbook(全爆発共通・v0.25.3283系) // 卵: 上のバッシュの円で割った
+      get().liftEnemiesInBlast(x, y, bashRange); // ★覚醒の爆発は浮かせる(§14・卵は上で割った=二度割りしない)
       get().registerMultiHit(hitAt.length);    // 爆発仕様: ヘビーガンナーの2体以上ヒット計上(M33⑤)
     }
     for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
@@ -14639,7 +14667,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnBurst(pcx, pcy, '#38bdf8', 18);
         get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(56,189,248,', 360);
         get().spawnExplosionFx(pcx, pcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
-        get().breakEggsInBlast(pcx, pcy, radius); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
+        get().playerBlast(pcx, pcy, radius); // ★卵も割る・浮かせる(§14)(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
         // 社長指示v0.25.3270: ノックバックは実距離50px基準に統一(knockbackSpeedFor(50,280)/BULLET_KNOCKBACK_SPEED)。
         // エクスプローダー覚醒(Lv3): 爆発KB距離×1.5(v0.25.3300)。
         const kbMult = knockbackSpeedFor(SKILL_BLAST_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED * skillExplosionKbMult(p);
@@ -15118,7 +15146,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnBurst(ex, ey, '#facc15', 16);
       get().spawnBurst(ex, ey, '#f97316', 8);
       get().spawnExplosionFx(ex, ey, radius, 0xfacc15);
-      get().breakEggsInBlast(ex, ey, radius); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
+      get().playerBlast(ex, ey, radius); // ★卵も割る・浮かせる(§14)(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
       get().spawnGlow(ex, ey, 30, 'rgba(250,204,21,', 420);
       // ★検収2巡目A-新3是正: **壁越しには効かない**。§16-5c は「既定グレネードのsplashと同じ形」で、
       // 既定splash・錬金の破裂・シグナルの空爆は全て segmentBlocked を通している。
@@ -22457,6 +22485,28 @@ export const useGameStore = create<GameState>((set, get) => ({
     return n;
   },
   breakEggsInBlast: (cx, cy, radius) => get().breakEggsWhere(egg => eggInCapsule(egg, cx, cy, 1, 0, 0, radius)),
+  playerBlast: (cx, cy, radius) => {
+    get().breakEggsInBlast(cx, cy, radius);
+    if (pendingBlastLifts.length < 64) pendingBlastLifts.push({ x: cx, y: cy, r: radius });
+  },
+  liftEnemiesInBlast: (cx, cy, radius) => {
+    const st = get();
+    const now = Date.now();
+    const walls = meleeWallsAround(get, cx, cy, radius);
+    const patches = new Map<string, Partial<Enemy>>();
+    for (const e of st.enemies) {
+      if (!BR.isBrawlerTargetable(e) || e.aiPhase === 'jump') continue;
+      const cls = BRC.brawlerComboClass(e.type);
+      if (cls === 'boss') continue;
+      const dist = BR.brawlerDistTo(cx, cy, e);
+      if (dist > radius) continue;
+      if (walls.length > 0) { const q = meleeImpactPoint(cx, cy, e); if (segmentBlocked(cx, cy, q.x, q.y, walls)) continue; }
+      const jp = blastLiftPatch(e, cls, dist, radius, now, st.gameTime);
+      if (jp) patches.set(e.id, jp as Partial<Enemy>);
+    }
+    if (patches.size > 0) set(state => ({ enemies: state.enemies.map(e => { const p = patches.get(e.id); return p ? { ...e, ...p } : e; }) }));
+    return patches.size;
+  },
 
   // Equip a dropped/crate weapon into its slot. Auto-pick: a weapon only
   // replaces the current gun/melee if it is a higher tier (so a

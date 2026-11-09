@@ -7,7 +7,7 @@ import { isBossType } from './enemyUtils';
 import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { meteorPhase } from './telegraphStyle';
 import { isRecoverHoldPhase } from './recoverPhase';
-import { BRAWLER_LIFT_MS, BRAWLER_TEMPO, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo, brawlerStageSpec } from './brawler';
+import { BRAWLER_LIFT_MS, BRAWLER_TEMPO, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo, brawlerStageSpec, BLAST_LIFT_SHAPE } from './brawler';
 
 /**
  * 当たりが途切れたら流れ(コンボ時計・反撃の数・同じ技の記録)を0へ戻す(ms)。
@@ -390,6 +390,8 @@ export interface BrawlerJuggleFields {
   brLiftDown?: boolean;
   brBounceCombo?: number;
   brLiftDropMs?: number;
+  /** 弧の形('blast'=爆発の浮き・§14)。無し=格闘の弧。 */
+  brLiftShape?: 'blast';
   /** 流れの始まり(バウンドは1コンボに1回の区切り)。 */
   brComboStart?: number;
 }
@@ -428,8 +430,8 @@ export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): num
   }
   // 空中で吹き飛ばされた(押し上げ0)=今の高さから速く叩き落とす(DROP_MS・端で速さ0の滑らかな落ち)。
   if (peak <= 0) return from * (1 - u) * (1 - u) * (1 + 2 * u);
-  // 浮き(最初も追撃の浮き直しも同じ形): 打ち上がり25% → 頂点の漂い20% → 落下55%(§12-1)。
-  return brawlerLiftArcRel(u, from, brawlerJuggleTop(from, peak));
+  // 浮き(最初も追撃の浮き直しも同じ形): 打ち上がり25% → 頂点の漂い20% → 落下55%(§12-1)。爆発の浮きは 20%・15%・65%(§14)。
+  return brawlerLiftArcRel(u, from, brawlerJuggleTop(from, peak), e.brLiftShape === 'blast' ? BLAST_LIFT_SHAPE : undefined);
 };
 
 /**
@@ -453,14 +455,14 @@ export const brawlerJugglePush = (
     const f = push * w;
     if (f < BRAWLER_JUGGLE_MIN_F) return null;
     const ms = arc(f);
-    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: 0, brLiftN: 0, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: 0, brLiftN: 0, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined,
       brLiftBudget: BRAWLER_JUGGLE_BUDGET[cls], brLiftDown: false, brLiftDropMs: 0 };
   }
   if (e.brLiftDown) return null; // ダウン中は拾えない
   const h = brawlerJuggleHeightRel(e, now);
   const down = (): Partial<BrawlerJuggleFields> & { liftUntil: number; brNoHoldUntil: number } => {
     const ms = BRAWLER_JUGGLE_DROP_MS;
-    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: 0, brLiftFrom: h, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: 0, brLiftFrom: h, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined,
       brLiftDown: true, brLiftDropMs: 0, brLiftBudget: 0, brNoHoldUntil: now + ms + BRAWLER_DOWN_NO_HOLD_MS };
   };
   const budget = (e.brLiftBudget ?? BRAWLER_JUGGLE_BUDGET[cls]) - BRAWLER_JUGGLE_COST[move];
@@ -472,14 +474,14 @@ export const brawlerJugglePush = (
     const f = BRAWLER_BOUNCE_F * w;
     const dropMs = BRAWLER_JUGGLE_DROP_MS;
     const ms = dropMs + arc(f);
-    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined,
       brLiftBudget: budget, brLiftDown: false, brLiftDropMs: dropMs, brBounceCombo: combo };
   }
   if (push <= 0 || budget < 0) return down();
   const f = push * w;
   if (f < BRAWLER_JUGGLE_MIN_F) return down();
   const ms = arc(f);
-  return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+  return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined,
     brLiftBudget: budget, brLiftDown: false, brLiftDropMs: 0 };
 };
 

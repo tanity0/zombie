@@ -2514,7 +2514,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnBurst(bx, by, '#7f1d1d', 8);
           useGameStore.getState().spawnGlow(bx, by, GLOW_R_S, 'rgba(248,113,113,', fxMs);
           useGameStore.getState().spawnExplosionFx(bx, by, blastR); // v0.25.3283: 爆発flipbook(全爆発共通)
-          useGameStore.getState().breakEggsInBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+          useGameStore.getState().playerBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
           for (const e of useGameStore.getState().enemies) {
             if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
             const ea = blastAnchorOf(e, bx, by); // 変異塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
@@ -13852,13 +13852,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // v0.25.2472: ゴースト発(ownerGhost)の消滅爆発FXは青白系(視覚のみ・判定/ダメージ不変)。
               if (turret.ownerGhost) {
                 useGameStore.getState().spawnExplosionFx(tcx, tcy, tBlastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
-                useGameStore.getState().breakEggsInBlast(tcx, tcy, tBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+                useGameStore.getState().playerBlast(tcx, tcy, tBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 spawnRing(tcx, tcy, 8, tBlastR, 'rgba(159,216,255,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
                 spawnBurst(tcx, tcy, '#9fd8ff', 16);
                 useGameStore.getState().spawnGlow(tcx, tcy, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               } else {
                 useGameStore.getState().spawnExplosionFx(tcx, tcy, tBlastR); // v0.25.3283: 爆発flipbook
-                useGameStore.getState().breakEggsInBlast(tcx, tcy, tBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+                useGameStore.getState().playerBlast(tcx, tcy, tBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 spawnRing(tcx, tcy, 8, tBlastR, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
                 spawnBurst(tcx, tcy, '#f97316', 16);
                 useGameStore.getState().spawnGlow(tcx, tcy, GLOW_R_XS, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
@@ -14028,13 +14028,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // v0.25.2472: ゴースト発(ownerGhost)はシアン→青白へ(視覚のみ・判定/ダメージ不変)。
             if (decoy.ownerGhost) {
               useGameStore.getState().spawnExplosionFx(dcx, dcy, dBlastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
-              useGameStore.getState().breakEggsInBlast(dcx, dcy, dBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+              useGameStore.getState().playerBlast(dcx, dcy, dBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               spawnRing(dcx, dcy, 8, dBlastR, 'rgba(159,216,255,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(dcx, dcy, '#9fd8ff', 16);
               useGameStore.getState().spawnGlow(dcx, dcy, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             } else {
               useGameStore.getState().spawnExplosionFx(dcx, dcy, dBlastR); // v0.25.3283: 爆発flipbook
-              useGameStore.getState().breakEggsInBlast(dcx, dcy, dBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+              useGameStore.getState().playerBlast(dcx, dcy, dBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               spawnRing(dcx, dcy, 8, dBlastR, 'rgba(56,189,248,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(dcx, dcy, '#38bdf8', 16);
               useGameStore.getState().spawnGlow(dcx, dcy, GLOW_R_XS, 'rgba(56,189,248,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
@@ -14160,14 +14160,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(gx, gy, '#1e3a5f', 8);
             useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(159,216,255,', fxMs);
             useGameStore.getState().spawnExplosionFx(gx, gy, blastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
-            useGameStore.getState().breakEggsInBlast(gx, gy, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+            useGameStore.getState().playerBlast(gx, gy, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
           } else {
             spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
             spawnBurst(gx, gy, '#f97316', 20);
             spawnBurst(gx, gy, '#7f1d1d', 8);
             useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(251,146,60,', fxMs);
             useGameStore.getState().spawnExplosionFx(gx, gy, blastR); // v0.25.3283: 爆発flipbook(全爆発共通)
-            useGameStore.getState().breakEggsInBlast(gx, gy, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+            useGameStore.getState().playerBlast(gx, gy, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
           }
           const gWalls = aoeWalls(gx, gy);
           for (const enemy of useGameStore.getState().enemies) {
@@ -14228,7 +14228,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnBurst(sx, sy, '#f97316', 24);
           spawnBurst(sx, sy, '#7f1d1d', 10);
           useGameStore.getState().spawnExplosionFx(sx, sy, exRadius);
-          useGameStore.getState().breakEggsInBlast(sx, sy, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+          useGameStore.getState().playerBlast(sx, sy, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
           useGameStore.getState().spawnGlow(sx, sy, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
           const splashBase = shell.damage * GRENADE_BLAST_DAMAGE_MULT * exMult;
           const glWalls = aoeWalls(sx, sy);
@@ -14317,7 +14317,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(mine.x, mine.y, '#7f1d1d', 8);
               useGameStore.getState().spawnGlow(mine.x, mine.y, GLOW_R_S, 'rgba(251,146,60,', smFxMs);
               useGameStore.getState().spawnExplosionFx(mine.x, mine.y, smBlastR); // v0.25.3283: 爆発flipbook
-              useGameStore.getState().breakEggsInBlast(mine.x, mine.y, smBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+              useGameStore.getState().playerBlast(mine.x, mine.y, smBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               const smWalls = aoeWalls(mine.x, mine.y);
               let smHitCount = 0;
               if (mine.hostile) {
@@ -14421,14 +14421,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // v0.25.2472: ゴースト発(ownerGhost)の爆発FXは青白系(視覚のみ・判定/ダメージ不変)。
               if (knife.ownerGhost) {
                 useGameStore.getState().spawnExplosionFx(bx, by, blastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
-                useGameStore.getState().breakEggsInBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+                useGameStore.getState().playerBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 spawnRing(bx, by, 8, blastR, 'rgba(159,216,255,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
                 spawnBurst(bx, by, '#9fd8ff', 18);
                 spawnBurst(bx, by, '#1e3a5f', 8);
                 useGameStore.getState().spawnGlow(bx, by, snapGlowRadius(blastR * 0.68), 'rgba(159,216,255,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
               } else {
                 useGameStore.getState().spawnExplosionFx(bx, by, blastR); // v0.25.3283: 爆発flipbook
-                useGameStore.getState().breakEggsInBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+                useGameStore.getState().playerBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
                 spawnBurst(bx, by, '#f97316', 18);
                 spawnBurst(bx, by, '#7f1d1d', 8);
@@ -14729,7 +14729,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(rcx, rcy, '#f97316', 24);
               spawnBurst(rcx, rcy, '#7f1d1d', 10);
               useGameStore.getState().spawnExplosionFx(rcx, rcy, exRadius);
-              useGameStore.getState().breakEggsInBlast(rcx, rcy, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+              useGameStore.getState().playerBlast(rcx, rcy, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               useGameStore.getState().spawnGlow(rcx, rcy, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
               const splashBase = rp.damage * GRENADE_BLAST_DAMAGE_MULT * exMult;
               for (const rEnemy of useGameStore.getState().enemies) {
@@ -14836,7 +14836,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   spawnBurst(strike.x, strike.y, '#f97316', 24);
                   spawnBurst(strike.x, strike.y, '#7f1d1d', 10);
                   useGameStore.getState().spawnExplosionFx(strike.x, strike.y, SIGNAL_STRIKE_RADIUS_PX);
-                  useGameStore.getState().breakEggsInBlast(strike.x, strike.y, SIGNAL_STRIKE_RADIUS_PX); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+                  useGameStore.getState().playerBlast(strike.x, strike.y, SIGNAL_STRIKE_RADIUS_PX); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                   useGameStore.getState().spawnGlow(strike.x, strike.y, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
                   const sgWalls = aoeWalls(strike.x, strike.y);
                   for (const sgEnemy of sgAimable) {
@@ -15833,7 +15833,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const acBlastX = hitPt.x;
             const acBlastY = hitPt.y;
             spawnRing(acBlastX, acBlastY, 6, ALCHEMY_BURST_RADIUS_PX, 'rgba(250,204,21,0.75)', 3, 320);
-            useGameStore.getState().breakEggsInBlast(acBlastX, acBlastY, ALCHEMY_BURST_RADIUS_PX); // ★卵も割る(社長実機報告2026-11-09)
+            useGameStore.getState().playerBlast(acBlastX, acBlastY, ALCHEMY_BURST_RADIUS_PX); // ★卵も割る(社長実機報告2026-11-09)
             spawnBurst(acBlastX, acBlastY, '#facc15', 12);
             useGameStore.getState().spawnGlow(acBlastX, acBlastY, 30, 'rgba(250,204,21,', 320);
             const acWalls = aoeWalls(acBlastX, acBlastY);
@@ -15897,7 +15897,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(blastX, blastY, '#f97316', 24);
             spawnBurst(blastX, blastY, '#7f1d1d', 10);
             useGameStore.getState().spawnExplosionFx(blastX, blastY, exRadius); // v0.25.3283: 爆発flipbook
-            useGameStore.getState().breakEggsInBlast(blastX, blastY, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+            useGameStore.getState().playerBlast(blastX, blastY, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
             useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
 
             const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT * exMult;
@@ -15951,7 +15951,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(blastX, blastY, '#9fd8ff', 16);
               spawnBurst(blastX, blastY, '#1e3a5f', 6);
               useGameStore.getState().spawnExplosionFx(blastX, blastY, exRadius, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
-              useGameStore.getState().breakEggsInBlast(blastX, blastY, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+              useGameStore.getState().playerBlast(blastX, blastY, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             } else {
               spawnRing(blastX, blastY, 8, exRadius, 'rgba(251,146,60,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
@@ -15959,7 +15959,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(blastX, blastY, '#7f1d1d', 6);
               useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_XS, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               useGameStore.getState().spawnExplosionFx(blastX, blastY, exRadius); // v0.25.3283: 爆発flipbook
-              useGameStore.getState().breakEggsInBlast(blastX, blastY, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+              useGameStore.getState().playerBlast(blastX, blastY, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
             }
             const splashBase = dmg * (projectile.explodeDamageMult ?? 1) * exMult;
             const exWalls = aoeWalls(blastX, blastY);
@@ -16510,7 +16510,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   return Math.hypot(ox - ecx, oy - ecy) <= WIRE_PASS_BOMB_RADIUS + Math.max(o.width, o.height) / 2;
                 });
                 useGameStore.getState().spawnExplosionFx(ecx, ecy, WIRE_PASS_BOMB_RADIUS); // v0.25.3283: 爆発flipbook
-                useGameStore.getState().breakEggsInBlast(ecx, ecy, WIRE_PASS_BOMB_RADIUS); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+                useGameStore.getState().playerBlast(ecx, ecy, WIRE_PASS_BOMB_RADIUS); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 aoe.forEach(o => {
                   const oxc = o.x + o.width / 2, oyc = o.y + o.height / 2;
                   const killed = useGameStore.getState().damageEnemy(o.id, dmg, true, false, false, wireChannel, wireHate); // 爆発=ボス非致死
@@ -18290,7 +18290,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(bcx, bcy, '#7f1d1d', 8);
             useGameStore.getState().spawnGlow(bcx, bcy, GLOW_R_S, 'rgba(251,146,60,', 380);
             useGameStore.getState().spawnExplosionFx(bcx, bcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
-            useGameStore.getState().breakEggsInBlast(bcx, bcy, radius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+            useGameStore.getState().playerBlast(bcx, bcy, radius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
             playSfx('bomb');
             // 社長指示v0.25.3270: 反射神経と揃えて実距離50pxノックバック(mult/maxStrength両方に同じ値=
             // 既定cap3で頭打ちになる罠を回避。v0.25.3257の教訓)。
