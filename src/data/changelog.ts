@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5421', items: [
+    '爆発に巻き込まれた雑魚や強い個体が宙に舞い、ゆっくり落ちてくる。爆心に近いほど高い',
+    'スラッシャーの一回目の追撃で敵を打ち上げ、二回目で空中の敵を斬る',
+  ] },
   { version: '0.25.5420', items: [
     '格闘で浮かせた敵の足元に金色の光が広がり、影が小さく締まる',
     '打ち上げた瞬間、足元から体へ向かって細い筋が伸びる',
