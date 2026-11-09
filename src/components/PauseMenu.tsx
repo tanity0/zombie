@@ -8,7 +8,7 @@ import { CHARACTER_CLASSES, SKILLS, skillDescForLevel } from '../data/campaign';
 import { subWeaponBlurb } from '../data/subWeaponBlurbs';
 import { formatTime } from '../utils/renderUtils';
 import { PauseMap, type PauseMapData } from './PauseMap'; // ★B2 一時停止の地図(research/THEONE_ROUND2.md §2)
-import { isMapTrackedEnemy, wasSeenThisRun } from '../utils/mapSightings'; // §2-3 出会ったボス級・宿敵
+import { mapThreatPositions } from '../utils/mapSightings'; // §2-3 出会ったボス級・宿敵
 import { currentRoute } from '../utils/runRoutes'; // §2-6 今回歩いた道
 import { getRunPois, isPoiRevealed } from '../world/pois';
 import { getSelectedStageId } from '../data/progress';
@@ -37,11 +37,10 @@ const readPauseMap = (): PauseMapData | null => {
     // 取り終えた寄り道(裏ボスは討伐済み)は地図から消す(社長 2026-10-17「取り終えたら消していいよ」)。
     route: currentRoute(), // §2-6 今回歩いた道(線ごと・開いた時の写し)
     pois: pois.filter(q => !(taken[q.kind] ?? false)).map(q => ({ x: q.x, y: q.y, kind: q.kind })),
-    // §2-3: ボス級(強個体を除く)と宿敵のうち、この出撃で一度画面に映った物の今の位置。
-    // 城ボスの急降下の溜め(g-dive-windup)は場外へ座標を退避しているので出さない(縮尺も跳ぶ・品質監査 A-2)。
-    threats: s.enemies
-      .filter(e => isMapTrackedEnemy(e) && wasSeenThisRun(e) && e.aiPhase !== 'g-dive-windup')
-      .map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 })),
+    // §2-3: ボス級(強個体を除く)と宿敵のうち、この出撃で一度画面に映った物。一覧に居れば今の位置、居なければ最後に見えていた位置
+    // (社長指示2026-11-09「一度1プレイ内で出会ったボスはマップ上に表示し続けて」)。倒した物は出さない。
+    // 城ボスの急降下の溜め(g-dive-windup)は場外へ座標を退避しているので、その間は最後の位置(縮尺も跳ぶ・品質監査 A-2)。
+    threats: mapThreatPositions(s.enemies),
   };
 };
 

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5425', items: [
+    '一時停止の地図に、その出撃で出会ったボスが残り続ける。見失った後は最後に見えた場所に出る',
+  ] },
   { version: '0.25.5424', items: [
     'ゾンビの赤い噛みつきは、噛みつく瞬間に顎が現れる。溜めの間は赤い予告の線だけ',
   ] },
