@@ -18,6 +18,7 @@
 import type { Enemy, EnemyClockStash } from '../types/game';
 import { isEnemyAttacking } from './combatFeel';
 import { isBrawlerTechBusy } from './brawlerCombo';
+import { isRecoverHoldPhase } from './recoverPhase';
 
 /** 期限型(`*Until`/`*ReadyAt`=残りで測る)か、始点型(`*At`=経過で測る)か。 */
 export type ClockKind = 'deadline' | 'start';
@@ -37,22 +38,15 @@ export interface EnemyClockEntry {
    * ★除外2(相依存): **この相の間だけ**、このフィールドは「硬直そのものの期限」なので触らない。
    * 外し忘れると硬直が永久に明けない(=パンプキンが着地したまま二度と立たない)。
    */
-  excludeWhen?: (e: Enemy) => boolean;
+  excludeWhen?: (e: Enemy, nowMs: number) => boolean;
 }
-
 /**
- * ★技後の硬直相か(§16-H H-4(a))。名前の配列ではなく**綴りの規則**で見る——
- * 相は `-recover` で終わるのが全型共通の作法で、例外だけを下の集合に置く。
- * `*-retreat`(後退)は移動であって硬直ではないので**含めない**。
+ * ★格闘の食らいの固まり(research/BRAWLER.md §11-1)で止められている間は、硬直相の自分の期限も止める
+ * (社長指示2026-11-09「技を出し終えた隙に殴って固める=確定反撃」・硬直の残りは止まり、明けたら続きから)。
  */
-const RECOVER_HOLD_EXTRA: ReadonlySet<string> = new Set([
-  'recover',      // パンプキン/ハンター系のジャンプ着地硬直
-  // ※'z-stagger' は160msのよろけ=2発目の溜め(狙い直してすぐ噛む・2026-10-14)。硬直ではないのでここに入れない。
-  //   入れると、よろけの160msが「硬直」と数えられ、その間その敵の行動の時計(技のCD・chaffMoveAt 等)が据え置かれる。
-  'b-release',    // batの掴みを「一拍留まる」
-]);
-export const isRecoverHoldPhase = (phase: string | undefined): boolean =>
-  phase !== undefined && (phase.endsWith('-recover') || RECOVER_HOLD_EXTRA.has(phase));
+const brawlerHeldClock = (e: Enemy, nowMs: number): boolean => e.brHoldUntil !== undefined && nowMs < e.brHoldUntil;
+
+export { isRecoverHoldPhase } from './recoverPhase'; // 規則の本体は utils/recoverPhase(brawlerCombo と共有)
 
 /**
  * ★「凍結か?」の述語(§16-H H-3)。**実装が実際に止めている条件と同じ式**にする——
@@ -134,7 +128,7 @@ export const isEnemyFrozenForClocks = (e: Enemy, gameTime: number, nowMs: number
 export const ENEMY_ACTION_CLOCKS: readonly EnemyClockEntry[] = [
   // ---- 雑魚・共通 ------------------------------------------------------------------------------
   // ★除外2: `recover` 系の相にいる間は、これ自体が硬直(a)の期限。
-  { field: 'aiPhaseUntil', kind: 'deadline', base: 'game', excludeWhen: e => isRecoverHoldPhase(e.aiPhase) },
+  { field: 'aiPhaseUntil', kind: 'deadline', base: 'game', excludeWhen: (e, nowMs) => isRecoverHoldPhase(e.aiPhase) && !brawlerHeldClock(e, nowMs) },
   { field: 'aiReadyAt', kind: 'deadline', base: 'game' },
   { field: 'biteReadyAt', kind: 'deadline', base: 'game' },
   { field: 'chaffMoveCdUntil', kind: 'deadline', base: 'game' },
@@ -160,7 +154,7 @@ export const ENEMY_ACTION_CLOCKS: readonly EnemyClockEntry[] = [
   { field: 'gGlenReadyAt', kind: 'deadline', base: 'game', map: true },
   // ---- ボス共通(裏ボス4体/天使6体/トール/賞金首4体/アイドル) --------------------------------
   // ★除外2: `-recover` の州にいる間は、これ自体が硬直(a)の期限。
-  { field: 'bossStateUntil', kind: 'deadline', base: 'game', excludeWhen: e => isRecoverHoldPhase(e.bossState) },
+  { field: 'bossStateUntil', kind: 'deadline', base: 'game', excludeWhen: (e, nowMs) => isRecoverHoldPhase(e.bossState) && !brawlerHeldClock(e, nowMs) },
   { field: 'bossNextActionAt', kind: 'deadline', base: 'game' },
   { field: 'bossOpeningHoldAt', kind: 'deadline', base: 'game' },
   { field: 'bossWindupStartAt', kind: 'start', base: 'game' },
@@ -216,7 +210,7 @@ export const tickEnemyClockFreeze = (
   const patch: Record<string, unknown> = {};
 
   for (const entry of ENEMY_ACTION_CLOCKS) {
-    if (entry.excludeWhen !== undefined && entry.excludeWhen(e)) continue;
+    if (entry.excludeWhen !== undefined && entry.excludeWhen(e, nowMs)) continue;
     const t = entry.base === 'game' ? gameTime : nowMs;
     const prevT = entry.base === 'game' ? prevG : prevN;
     const raw = (e as unknown as Record<string, unknown>)[entry.field];

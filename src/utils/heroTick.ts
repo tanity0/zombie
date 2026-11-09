@@ -377,7 +377,11 @@ export const runHeroTick = (
   }
   // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」): 技の最中でない間だけ止まる
   //   (移動も次の技の開始もしない・時計は enemyClocks が止める)。崩す止め(気絶・拘束・浮き・押し)が重なれば下が先。
-  if (!fullStun && !isFrozen(hero, gt, nowMs) && brawlerHeldNow(hero, gt, nowMs)) return;
+  if (!fullStun && !isFrozen(hero, gt, nowMs) && brawlerHeldNow(hero, gt, nowMs)) {
+    // 待ち・技の後の硬直の絵の時計(heroStateAt=始点型・台帳の外)も止めた分だけ後ろへ(明けたら続きから・硬直の期限は台帳が据え置く)。
+    if (hero.heroStateAt !== undefined) applyPatch(hero.id, { heroStateAt: hero.heroStateAt + dt * 1000 });
+    return;
+  }
   if (fullStun || isFrozen(hero, gt, nowMs)) {
     const kbOnly = !fullStun && hero.knockbackUntil !== undefined && nowMs < hero.knockbackUntil
       && !(hero.stunUntil !== undefined && gt < hero.stunUntil) && !(hero.rootUntil !== undefined && gt < hero.rootUntil)

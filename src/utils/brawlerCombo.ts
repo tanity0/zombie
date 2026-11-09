@@ -6,10 +6,14 @@ import type { EnemyType } from '../types/game';
 import { isBossType } from './enemyUtils';
 import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { meteorPhase } from './telegraphStyle';
+import { isRecoverHoldPhase } from './recoverPhase';
 import { BRAWLER_LIFT_MS, BRAWLER_TEMPO, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo } from './brawler';
 
-/** 当たりが途切れたら流れ(コンボ時計・反撃の数・同じ技の記録)を0へ戻す(ms)。 */
-export let BRAWLER_COMBO_GAP_MS = 600; // ×BRAWLER_TEMPO(係数1.0の値)
+/**
+ * 当たりが途切れたら流れ(コンボ時計・反撃の数・同じ技の記録)を0へ戻す(ms)。
+ * ★社長承認2026-11-09 で 600→700(係数1.3で910)。止めを長くした分、3段目→4段目の間(係数1.3で約774ms)が切れに接していたため。
+ */
+export let BRAWLER_COMBO_GAP_MS = 700; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 固まりの減衰: 長さ = 基本 × max(床, 1 − 時計 / この ms)。 */
 export let BRAWLER_COMBO_DECAY_MS = 3000; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_COMBO_FLOOR = 0.4;
@@ -83,6 +87,9 @@ export const brawlerRevengeHitsFor = (type: EnemyType): number =>
  *  - 骸骨: s-crouch(弧の前のしゃがみ・赤はまだ出ない)/ s-recover(噛みの後の硬直)/ s-retreat(後退)
  *  - パンプキン型・自転車: crouch(跳ぶ前のしゃがみ・赤はまだ出ない)/ recover(着地の硬直)/ dash-recover(突進の後の硬直)/ w-retreat(走り去る)
  *  - 削岩型・伐採人: driller-thrust-recover / logger-sweep-recover(技の後の硬直)
+ *  - ★**技の後の硬直は全部**(社長指示2026-11-09「技を出し終えた隙に殴って固める=確定反撃」): 綴りの規則 `isRecoverHoldPhase`
+ *    (`*-recover`・`recover`・`b-release`)。城ボスの g-*-recover も入る。止めている間は硬直の残りも止まり、明けたら続きから(utils/enemyClocks)。
+ * ボス(bossState): 追いかけ(chase)・帰り(return)・技の後の硬直(`*-recover`)・休み(BRAWLER_HOLDABLE_BOSS_STATES)は固める。それ以外は技の最中。
  * 技の最中(固めない): 予告の溜め・攻撃の相(windup / charge / jump / scream / driller-thrust-windup・active / logger-sweep-windup・active /
  *  b-windup / b-lunge / b-grab / s-arc / s-bite / z-red-pause / z-lunge-in / z-bite1 / z-stagger / z-bite2 / lich-blink / br-revenge / ボスの g-*)、
  *  噛みつきの構え・振り(biteAt>0)、§16の技の相(chaffMove が立っていて上の固める相に居ない)。**表に無い相は技の最中**(安全側)。
@@ -94,6 +101,8 @@ export const BRAWLER_HOLDABLE_PHASES: ReadonlySet<string> = new Set([
   'crouch', 'recover', 'dash-recover', 'w-retreat',
   'driller-thrust-recover', 'logger-sweep-recover',
 ]);
+/** ボスの「休み」の相(技と技の間の間・社長指示2026-11-09)。偶像の休符・英雄の待ち。 */
+export const BRAWLER_HOLDABLE_BOSS_STATES: ReadonlySet<string> = new Set(['chase', 'return', 'idol-rest', 'hero-idle']);
 /** 本当に技を出している最中か(格闘の固まり・止め・反撃の除外にだけ使う)。会心の気絶中は false(isEnemyAttacking と同じ)。 */
 export const isBrawlerTechBusy = (
   e: { aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number; bossState?: string },
@@ -102,10 +111,10 @@ export const isBrawlerTechBusy = (
   if (e.stunUntil !== undefined && gameTime < e.stunUntil) return false;
   if (e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil) return false;
   if (e.biteAt !== undefined && e.biteAt > 0) return true;
-  // ボス(天使・裏ボス・偶像・賞金首など)は技を bossState で持つ。追いかけている(chase)・帰っている(return)以外は技の最中(§12-1 でボス級も浮くため)。
-  if (e.bossState !== undefined && e.bossState !== 'chase' && e.bossState !== 'return') return true;
+  // ボス(天使・裏ボス・偶像・賞金首など)は技を bossState で持つ。追いかけ・帰り・休み・技の後の硬直以外は技の最中(§12-1 でボス級も浮くため)。
+  if (e.bossState !== undefined && !BRAWLER_HOLDABLE_BOSS_STATES.has(e.bossState) && !isRecoverHoldPhase(e.bossState)) return true;
   if (e.aiPhase === undefined) return e.chaffMove !== undefined;
-  return !BRAWLER_HOLDABLE_PHASES.has(e.aiPhase);
+  return !BRAWLER_HOLDABLE_PHASES.has(e.aiPhase) && !isRecoverHoldPhase(e.aiPhase);
 };
 
 /**
@@ -324,7 +333,7 @@ export const brawlerJugglePush = (
 /** 係数を掛けた時間の一式(純関数)。係数1.0なら今までの値と一致する。 */
 export const brawlerComboTimesAt = (tempo: number) => ({
   holdBase: Object.fromEntries((Object.keys(BRAWLER_HOLD_BASE_MS_BASE) as BrawlerMoveKey[]).map(k => [k, brawlerTempoMs(BRAWLER_HOLD_BASE_MS_BASE[k], tempo)])) as Record<BrawlerMoveKey, number>,
-  BRAWLER_COMBO_GAP_MS: brawlerTempoMs(600, tempo),
+  BRAWLER_COMBO_GAP_MS: brawlerTempoMs(700, tempo),
   BRAWLER_COMBO_DECAY_MS: brawlerTempoMs(3000, tempo),
   BRAWLER_SAME_MOVE_PENALTY_MS: brawlerTempoMs(400, tempo),
   BRAWLER_REVENGE_WINDUP_MS: brawlerTempoMs(350, tempo),

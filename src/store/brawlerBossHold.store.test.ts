@@ -7,7 +7,7 @@ import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { runAngelBossTick, createAngelBossState, NOOP_ANGEL_SFX } from '../utils/angelBossTick';
 import { runBountyTick, createBountyTickState, NOOP_BOUNTY_SFX } from '../utils/bountyTick';
-import { brawlerHeldNow } from '../utils/brawlerCombo';
+import { brawlerHeldNow, isBrawlerTechBusy } from '../utils/brawlerCombo';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
 // ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
 setBrawlerTempoAll(1.0); // 記述時(describe の中で時刻を組む所)より先に効かせる=モジュールの頭で呼ぶ
@@ -166,5 +166,85 @@ describe('ボス級も雑魚と同じ固まり(§11-1)', () => {
     }
     step(200, ctrl);
     expect(Math.abs(en('b').x - xs[xs.length - 1])).toBeGreaterThan(1);
+  });
+});
+
+// ★技の後の硬直・休み・帰りも固める(社長指示2026-11-09「技を出し終えた隙に殴って固める=確定反撃」)。
+describe('硬直・休み・帰りの相も固める(§11-1・§9-69)', () => {
+  it('止める相/止めない相の表(雑魚の aiPhase・ボスの bossState)', () => {
+    const gt = 1000;
+    const busy = (o: Partial<Enemy>) => isBrawlerTechBusy(o as Enemy, gt);
+    // 止める(技ではない)
+    for (const ph of ['z-recover', 's-recover', 'recover', 'dash-recover', 'b-release', 'driller-thrust-recover', 'logger-sweep-recover', 'g-stomp-recover', 'g-jump-recover', 'g-tailslam-recover']) {
+      expect(busy({ aiPhase: ph as Enemy['aiPhase'] }), ph).toBe(false);
+    }
+    for (const st of ['chase', 'return', 'idol-rest', 'hero-idle', 'volley-recover', 'jump-recover', 'thor-dash-recover', 'bm-combo1-recover', 'br-push-recover', 'idol-punch-recover', 'hero-recover', 'phill-dive-recover']) {
+      expect(busy({ bossState: st as Enemy['bossState'] }), st).toBe(false);
+    }
+    // 止めない(予告の溜め・攻撃の最中)
+    for (const ph of ['windup', 'charge', 'jump', 'g-stomp-windup', 'g-jump-air', 'z-red-pause', 'z-stagger', 's-arc']) {
+      expect(busy({ aiPhase: ph as Enemy['aiPhase'] }), ph).toBe(true);
+    }
+    for (const st of ['volley-windup', 'volley', 'jump-windup', 'thor-dash-move', 'bm-combo1-windup', 'laser-fire', 'phill-wingcombo-gap', 'hero-windup', 'hero-flinch']) {
+      expect(busy({ bossState: st as Enemy['bossState'] }), st).toBe(true);
+    }
+  });
+
+  it('天使(ミゲル): 技の後の硬直に殴ると固まり、硬直の残りも止まる→明けたら残りの硬直→次の技の予告は溜めの始まりから', () => {
+    setup();
+    const s = createAngelBossState();
+    const gt0 = useGameStore.getState().gameTime;
+    useGameStore.setState({ enemies: [place('miguel', 160, 0, 'm', { bossState: 'volley-recover', bossStateUntil: gt0 + 300, bossNextActionAt: gt0 + 2000 })] });
+    const ctrl = (gt: number) => runAngelBossTick(s, gt, DT_MS / 1000, 1, NOOP_ANGEL_SFX, () => {});
+    step(50, ctrl);
+    expect(en('m').bossState).toBe('volley-recover');
+    const remain0 = en('m').bossStateUntil! - useGameStore.getState().gameTime; // 250
+    hit('m');
+    const until = en('m').brHoldUntil!;
+    expect(until - now).toBe(45 + 300);
+    step(until - now - 10, ctrl);
+    expect(en('m').bossState).toBe('volley-recover'); // 固まりの間は硬直が明けない
+    const remainHeld = en('m').bossStateUntil! - useGameStore.getState().gameTime;
+    expect(remainHeld).toBeLessThanOrEqual(remain0 + 0.001);
+    expect(remainHeld).toBeGreaterThanOrEqual(remain0 - DT_MS - 0.001); // 残りは止まっている(最大1フレームのずれ)
+    // 明けたら残りの硬直のぶんだけ硬直のまま(短くならない・伸びすぎない)
+    let leftAt = -1;
+    const gHoldEnd = useGameStore.getState().gameTime + 10;
+    step(1500, ctrl, () => { if (leftAt < 0 && en('m').bossState !== 'volley-recover') leftAt = useGameStore.getState().gameTime; });
+    expect(leftAt).toBeGreaterThan(0);
+    expect(leftAt - gHoldEnd).toBeGreaterThanOrEqual(remainHeld - 2 * DT_MS);
+    expect(leftAt - gHoldEnd).toBeLessThanOrEqual(remainHeld + 2 * DT_MS);
+    // 次の技に入ったフレームで、溜めの始まりが今の時刻(=予告がその瞬間から出る)
+    let entered: { gt: number; ws?: number; until?: number } | null = null;
+    step(4000, ctrl, () => {
+      const e = en('m');
+      if (!entered && e.bossState !== 'chase' && e.bossState !== 'volley-recover' && e.bossState !== undefined) {
+        entered = { gt: useGameStore.getState().gameTime, ws: e.bossWindupStartAt, until: e.bossStateUntil };
+      }
+    });
+    expect(entered).not.toBeNull();
+    const ent = entered!;
+    expect(ent.until!).toBeGreaterThan(ent.gt);
+    if (ent.ws !== undefined) expect(ent.ws).toBe(ent.gt);
+  });
+
+  it('雑魚(ゾンビ)の 2連の後の硬直(z-recover)も同じ: 固まりの間は硬直の残りが止まり、明けたら続きから', () => {
+    setup();
+    const gt0 = useGameStore.getState().gameTime;
+    useGameStore.setState({ enemies: [place('zombie', 50, 0, 'z', { health: 99999, maxHealth: 99999, aiPhase: 'z-recover', aiPhaseUntil: gt0 + 400 })] });
+    step(50);
+    const remain0 = en('z').aiPhaseUntil! - useGameStore.getState().gameTime;
+    hit('z');
+    const until = en('z').brHoldUntil!;
+    step(until - now - 10);
+    expect(en('z').aiPhase).toBe('z-recover');
+    const r = en('z').aiPhaseUntil! - useGameStore.getState().gameTime;
+    expect(r).toBeLessThanOrEqual(remain0 + 0.001);
+    expect(r).toBeGreaterThanOrEqual(remain0 - DT_MS - 0.001);
+    let leftAt = -1;
+    const gHoldEnd = useGameStore.getState().gameTime + 10;
+    step(800, undefined, () => { if (leftAt < 0 && en('z').aiPhase !== 'z-recover') leftAt = useGameStore.getState().gameTime; });
+    expect(leftAt - gHoldEnd).toBeGreaterThanOrEqual(r - 2 * DT_MS);
+    expect(leftAt - gHoldEnd).toBeLessThanOrEqual(r + 2 * DT_MS);
   });
 });

@@ -65,7 +65,7 @@ describe('テンポ係数の表(純関数)', () => {
     const c = brawlerComboTimesAt(1.0);
     expect(c.holdBase).toEqual(BRAWLER_HOLD_BASE_MS_BASE);
     expect([c.BRAWLER_COMBO_GAP_MS, c.BRAWLER_COMBO_DECAY_MS, c.BRAWLER_SAME_MOVE_PENALTY_MS, c.BRAWLER_REVENGE_WINDUP_MS, c.BRAWLER_REVENGE_NO_HOLD_MS, c.BRAWLER_JUGGLE_MIN_MS, c.BRAWLER_JUGGLE_DROP_MS])
-      .toEqual([600, 3000, 400, 350, 1200, 140, 200]);
+      .toEqual([700, 3000, 400, 350, 1200, 140, 200]); // 流れの切れは社長承認2026-11-09 で 600→700
   });
   it('係数1.3 = 各時間の1.3倍(四捨五入)。距離・倍率・ポイントは変えない', () => {
     const v = brawlerTimesAt(1.3);

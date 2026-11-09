@@ -49,13 +49,13 @@ export interface BrawlerStageSpec {
 export const BRAWLER_HITSTOP = { weak: 90, strong: 150, closer: 220 } as const;
 /** 段の表の係数1.0の値(今までの値)。止めは BRAWLER_HITSTOP。 */
 export const BRAWLER_STAGES_BASE: readonly BrawlerStageSpec[] = [
-  { stage: 1, windupMs: 60, recoveryMs: 140, mult: 0.35, kb: 'none', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
-  { stage: 2, windupMs: 60, recoveryMs: 140, mult: 0.35, kb: 'none', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
+  { stage: 1, windupMs: 60, recoveryMs: 140, mult: 0.30, kb: 'none', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
+  { stage: 2, windupMs: 60, recoveryMs: 140, mult: 0.40, kb: 'none', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
   { stage: 3, windupMs: 120, recoveryMs: 230, mult: 0.8, kb: 'normal', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'fist', dashPx: 60 },
-  { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.0, kb: 'none', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'landing', dashPx: 50 },
+  { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.10, kb: 'none', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'landing', dashPx: 50 },
   // 5段目=一閃型の貫通突進(社長指示2026-11-07)。前隙 250 = 溜め 100 + 突き抜け 150。判定は抜け切った瞬間に軌跡の帯で一括(§9-26)。
   // 社長指示2026-11-07「飛距離少しだけ短く」で突き抜け 160→140px・150→130ms(最高速は同じ)。総尺 500 は戻り 270 で保つ(§9-35)。
-  { stage: 5, windupMs: 230, recoveryMs: 270, mult: 1.3, kb: 'big', hitstopMs: BRAWLER_HITSTOP.closer, shape: 'band', dashPx: 0 }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
+  { stage: 5, windupMs: 230, recoveryMs: 270, mult: 1.60, kb: 'big', hitstopMs: BRAWLER_HITSTOP.closer, shape: 'band', dashPx: 0 }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
 ];
 /** 段の表(係数を掛けた出だし・戻り)。 */
 export let BRAWLER_STAGES: readonly BrawlerStageSpec[] = BRAWLER_STAGES_BASE;

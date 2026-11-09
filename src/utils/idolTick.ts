@@ -284,7 +284,10 @@ export const runIdolTick = (
    */
   // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」)も拘束と同じ止め方
   //   (chase の間だけ凍結・技の最中は完走=brawlerHeldNow は技の最中に偽)。
-  const rooted = (idol.rootUntil !== undefined && newGameTime < idol.rootUntil) || brawlerHeldNow(idol, newGameTime, Date.now());
+  const rooted = idol.rootUntil !== undefined && newGameTime < idol.rootUntil;
+  //   ★格闘の固まりは追いかけに加えて休符・技の後の硬直でも止める(社長指示2026-11-09「技を出し終えた隙に殴って固める」)。
+  //   止めている間は状態機械を回さない(休符・硬直の期限は enemyClocks が据え置く=明けたら続きから)。
+  const brHeld = brawlerHeldNow(idol, newGameTime, Date.now());
   /**
    * ★PACING_PUZZLE.md §16-H(社長指示2026-09-19「硬直中はタイマーがゼロのままストップ」)。
    * `Enemy` のフィールドは `updateEnemies` の前処理(`tickEnemyClockFreeze`)が見るが、
@@ -738,7 +741,7 @@ export const runIdolTick = (
     s.shotWavesLeft = 0; s.shotSlot = null;
     patch.bossState = IDOL_REST_STATE;
     patch.bossStateUntil = newGameTime + COUNTER_CUT_GAP_MS;
-  } else if (rooted && st === 'chase') {
+  } else if ((rooted && st === 'chase') || brHeld) {
     // トラップ拘束中(chaseのみ凍結): 移動も新規攻撃も出さない。patchには何も積まず、
     // そのまま末尾のクランプ/setStateへ抜ける。fullStunと違い連射持ち越しの暴発経路は無いので
     // (rootは移動と新規攻撃を止めるだけ)、s.seq等のリセットは不要。
