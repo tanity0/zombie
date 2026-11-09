@@ -391,7 +391,7 @@ import {
 import { placeAvatarPart, avatarPartPieces, type AvatarPartPiece } from '../utils/avatarPlacement';
 import { BLOOD_BURST_SHEET_FRAMES, BLOOD_BURST_SHEET_FRAME_MS, BLOOD_BURST_BLAST_PX, getBloodBurstArt, pickDrop, bloodBurstLayout, bloodBurstSeed, BLOOD_GOB_PX, BLOOD_BURST_GRAVITY, BLOOD_BURST_POP_MS, BLOOD_BURST_POOL_MS, BLOOD_BURST_DARKEN_MS, BLOOD_BURST_FADE_MS, BLOOD_BURST_BODY_MS, type BloodBurstPiece } from './bloodBurst';
 import { getAlchemyRockArt, getAlchemyDustTexture, alchemyRockLayout, alchemyRockSeed, alchemyPulse, alchemyTremble, ALCHEMY_ROCK_SIZES, ALCHEMY_ROCK_TARGET, ALCHEMY_FLY_MS, ALCHEMY_SETTLE_MS, ALCHEMY_FRAG_MS, ALCHEMY_PUSH_MS, ALCHEMY_SHATTER_MS, type AlchemyRockSpec } from './alchemyRocks';
-import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getAirPadTexture, getAirStreakTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 // SKILL_BUILD_REDESIGN.md §21(B5)/§24(社長指示2026-08-13): 枠光の判定は純関数のまま(pixiは読むだけ・
 // 判定を書かない)。バーサーカー=HP依存の常時オーラ、オーバークロック=proc起点の800msフラッシュ。
@@ -3526,21 +3526,39 @@ const SHADOW_FLOAT_SHRINK = 0.35;       // 小さく: ×(1-0.35t)
 const SHADOW_FLOAT_FADE = 0.5;          // 薄く: ×(1-0.5t)
 // ★格闘の浮き(research/BRAWLER.md §12-1・§9-76・社長「敵が空中にいるのを分かりやすくしたい。…横に絵を倒すと、ヨルムンガルドみたいな
 //   横長の絵は大変なことになる」→「1.2.4.5 がいいな」)。描画だけ(判定は地面のまま)。高さ k=0..1(4段目の頂点=1)。
-/** ① 影: 頂点で幅 ×0.6・濃さ ×0.5(高さ0で今どおり)。 */
-const BRAWLER_AIR_SHADOW_W = 0.6;
-const BRAWLER_AIR_SHADOW_A = 0.5;
+/** ① 影: 頂点で幅 ×0.5・濃さ ×0.75(高さ0で今どおり)。縮みを強く・薄まりを弱く=芯を残して小さくくっきり(クリエイティブ監査#9)。 */
+const BRAWLER_AIR_SHADOW_W = 0.5;
+const BRAWLER_AIR_SHADOW_A = 0.75;
 /** ⑤ 体: 頂点で ×1.06(縦横同じ・倒さない・回さない・歪ませない)。影は大きくしない。 */
 const BRAWLER_AIR_BODY_SCALE = 1.06;
-/** ② 足元の輪: 濃さ(加算)・にじみ出る/消える尺(ms)・輪の縦横比(地面に寝た円)・幅は影の規格(当たり判定の帯の幅)×これ。 */
-const BRAWLER_AIR_RING_A = 0.42;
+/**
+ * ② 足元の輪(クリエイティブ監査#3〜#6・#8): 柔らかい円形のグロー(外縁だけ少し明るい)を地面に扁平に敷く。金寄り・加算。
+ * 幅は**実際に描かれている影**の幅×1.1(影と一緒に締まる)・上限は見えている画面の幅の4割。
+ * 離陸の瞬間だけ約150msで1.0→1.4倍へ広がる「蹴り出し」(ease-out)→ 約250msで戻る。地面バウンドは小さめ・空中の浮き直しと叩き落としは無し。
+ * 着地へ向けて影へ吸い込まれて(0.85倍へ締まりながら)消える。叩き落とし中は新しく出さない(その時の濃さから減るだけ)。
+ */
+const BRAWLER_AIR_RING_A = 0.65;
+const BRAWLER_AIR_RING_TINT = 0xffd27a;
 const BRAWLER_AIR_RING_IN_MS = 140;
-const BRAWLER_AIR_RING_OUT_MS = 110;
+const BRAWLER_AIR_RING_OUT_MS = 130;
 const BRAWLER_AIR_RING_FLAT = 0.34;
-const BRAWLER_AIR_RING_W_MUL = 1.15;
-/** ④ 上昇の筋: 尺(ms)・打ち上げ(地面から)と追撃の浮き直し(空中から)の大きさ。 */
-const BRAWLER_AIR_STREAK_MS = 300;
-const BRAWLER_AIR_STREAK_SCALE = 0.2;
-const BRAWLER_AIR_STREAK_SCALE_SMALL = 0.12;
+const BRAWLER_AIR_RING_W_MUL = 1.1;
+const BRAWLER_AIR_RING_MAX_VIEW_FRAC = 0.4;
+const BRAWLER_AIR_KICK = 0.4;
+const BRAWLER_AIR_KICK_OUT_MS = 150;
+const BRAWLER_AIR_KICK_BACK_MS = 250;
+const BRAWLER_AIR_KICK_BOUNCE = 0.5;
+/**
+ * ④ 上昇の筋(クリエイティブ監査#1・#2): 体の後ろ(足元より奥)に2〜3本。下端は地面(影)・上端は足に付いて、足と地面の隙間を埋めて伸び、
+ * 頂点で下から抜けて消える。x は体の幅の ±0.2〜0.3・長さは隙間の 1.0/0.7/0.5・出始めは 0/30/60ms ずらし。芯は白・外は青灰(通常合成)。
+ */
+const BRAWLER_AIR_STREAKS: readonly { dx: number; len: number; delay: number }[] = [
+  { dx: -0.24, len: 1.0, delay: 0 }, { dx: 0.27, len: 0.7, delay: 30 }, { dx: -0.02, len: 0.5, delay: 60 },
+];
+const BRAWLER_AIR_STREAK_GROW_MS = 90;
+const BRAWLER_AIR_STREAK_OFF_MS = 140;
+const BRAWLER_AIR_STREAK_A = 0.7;
+const BRAWLER_AIR_STREAK_SMALL_A = 0.45;
 /** 高さ(=論理の足元Yと実際の描画足元Yの差)の不感帯(px)。これ以下は高さ0扱い。 */
 const SHADOW_HEIGHT_DEADZONE_PX = 6;
 // 社長裁定GO(v0.25.3287)「影をオブジェクト中心に食い込ませる」: 静物(木/壁/プロップ/建物=isStatic)の
@@ -4303,10 +4321,17 @@ interface ActorView {
   airScale?: number;
   /** 浮いている間の足元の輪(加算・地面)と、打ち上げた瞬間の上昇の筋(描画だけ・遅延生成)。 */
   airRing?: Sprite;
-  airStreak?: Sprite;
+  airStreaks?: Sprite[];
   airStreakAt?: number;
   airStreakSmall?: boolean;
+  /** 今の弧で頂点を過ぎた時刻(筋が下から抜け始める)・前のフレームの高さ。 */
+  airApexAt?: number;
+  airPrevK?: number;
   airPrevLiftAt?: number;
+  /** 今の弧の始まり: 輪の蹴り出しの強さ(0=無し)・叩き落としか・始まった時の輪の濃さ。 */
+  airKick?: number;
+  airArcDown?: boolean;
+  airArcStartA?: number;
   // ★息を止める(社長指示2026-09-17「攻撃する時や、攻撃後の隙は呼吸を止める」)。
   // 現在の呼吸の振れ幅(1=普通に呼吸 / 0=止めている)と、その最終更新時刻。**瞬間的に切り替えない**
   // (CLAUDE.md「動きの絶対ルール: 慣性」)ので、時定数つきの指数緩和で寄せる=フレームレート非依存。
@@ -5125,6 +5150,8 @@ export class PixiScene {
   // ★柔らかい円の型が**何も描かれなかった**(2026-10-20・画で確認)のは、型の Sprite を影絵の**兄弟**として actorLayer
   // (並べ替えのある層)に置いていたため。型を一様な白の絵に替えると光り、柔らかい絵だと全面が消えた=型の絵の座標の写しがずれていた。
   // **型を影絵の子にする**と正しく描かれる(画で確認)。型の位置・大きさは影絵のローカル座標(拡大・反転を割り戻す)で置く。
+  /** 実際に描いた影(外側の丸影)の幅・敵 id ごと(格闘の浮きの輪の幅に使う・§9-76)。 */
+  private shadowOuterWById = new Map<string, number>();
   private crawlerFlash = new Sprite();
   private crawlerFlashMask = new Sprite(getHitCoreGlowTexture());
   /** 倒れた瞬間の光の柱・魂の x(一度だけ覚える・2巡目#12)。 */
@@ -15936,66 +15963,96 @@ export class PixiScene {
     const liftAt = e.brawlerLiftAt;
     const liftEnd = e.brLiftUntil ?? 0;
     const lifting = liftAt !== undefined && nowMs < liftEnd && e.brLiftUntil === e.liftUntil;
-    // ④ 打ち上げた瞬間(新しい弧が始まった)。ダウン(叩き落とし)は上へ行かないので出さない。
+    const fromAir = (e.brLiftFrom ?? 0) > 0.05;
+    // 新しい弧の始まり: 輪の蹴り出し(離陸=1・地面バウンド=小さめ・空中の浮き直しと叩き落とし=無し)と筋(叩き落とし以外)。
     if (liftAt !== undefined && liftAt !== view.airPrevLiftAt) {
       view.airPrevLiftAt = liftAt;
-      if (lifting && !e.brLiftDown && nowMs - liftAt < 120) {
-        view.airStreakAt = nowMs;
-        view.airStreakSmall = (e.brLiftFrom ?? 0) > 0.05; // 空中からの浮き直し=小さめ
-      }
+      const fresh = lifting && nowMs - liftAt < 120;
+      const bounce = (e.brLiftDropMs ?? 0) > 0;
+      view.airArcDown = e.brLiftDown === true;
+      view.airArcStartA = view.airRing?.visible ? view.airRing.alpha : 0;
+      view.airKick = !fresh || view.airArcDown ? 0 : bounce ? BRAWLER_AIR_KICK_BOUNCE : fromAir ? 0 : 1;
+      view.airApexAt = undefined;
+      if (fresh && !view.airArcDown) { view.airStreakAt = nowMs; view.airStreakSmall = fromAir || bounce; }
+      else view.airStreakAt = undefined;
     }
+    // 頂点を過ぎた(高さが下がり始めた)時刻=筋が下から抜け始める。
+    if (view.airApexAt === undefined && view.airPrevK !== undefined && airK < view.airPrevK - 1e-4 && view.airStreakAt !== undefined) view.airApexAt = nowMs;
+    view.airPrevK = airK;
     const horizon = this.horizonActorAlpha(groundY);
-    const ringW = Math.max(22, (isHiddenBoss(e.type) ? e.width : enemyHitStrip(e).width) * BRAWLER_AIR_RING_W_MUL);
-    // ② 輪
+    const bodyW = Math.max(16, Math.abs(view.sprite.width) / (view.airScale ?? 1));
+    // ② 輪(柔らかい金のグロー)
     if (lifting && horizon > 0) {
       if (!view.airRing) {
-        const r = new Sprite(getRingTexture(64));
-        r.anchor.set(0.5); r.blendMode = 'add'; r.tint = BRW.BRAWLER_COLOR_HEX;
+        const r = new Sprite(getAirPadTexture());
+        r.anchor.set(0.5); r.blendMode = 'add'; r.tint = BRAWLER_AIR_RING_TINT;
         this.L.groundLayer.addChild(r);
         view.airRing = r;
       }
       const r = view.airRing;
       const since = nowMs - (liftAt ?? nowMs), left = liftEnd - nowMs;
-      const inK = 1 - (1 - Math.min(1, since / BRAWLER_AIR_RING_IN_MS)) ** 3; // にじみ出る(減速)
-      const outK = Math.min(1, left / BRAWLER_AIR_RING_OUT_MS);
-      const outE = outK * outK * (3 - 2 * outK); // 着地へ向けて消える
-      const peak = Math.max(0.15, e.brLiftPeak ?? 1);
-      const hRel = Math.min(1, airK / peak); // その弧の中での高さ(0..1)
-      // 高さに合わせて少し広がり、ゆっくり脈打つ(息のように・位相は個体ごとにずらす)。
-      const pulse = 1 + 0.035 * Math.sin(nowMs / 230 + (e.id.charCodeAt(0) & 7));
-      const k = (0.86 + 0.18 * hRel) * pulse * (0.9 + 0.1 * inK);
-      const sx = (ringW * k) / (64 * 2);
+      const st = useGameStore.getState();
+      const viewW = st.gameBounds.width / Math.max(0.05, st.viewZoom || 1);
+      const shadowW = this.shadowOuterWById.get(e.id) ?? bodyW * 0.55;
+      const ringW = Math.min(viewW * BRAWLER_AIR_RING_MAX_VIEW_FRAC, Math.max(20, shadowW * BRAWLER_AIR_RING_W_MUL));
+      // 蹴り出し: 150ms で 1.0→1.4(ease-out)→ 250ms で戻る(減速して止まる)。
+      const kick = view.airKick ?? 0;
+      let kickK = 0;
+      if (kick > 0) {
+        if (since < BRAWLER_AIR_KICK_OUT_MS) kickK = 1 - (1 - since / BRAWLER_AIR_KICK_OUT_MS) ** 3;
+        else if (since < BRAWLER_AIR_KICK_OUT_MS + BRAWLER_AIR_KICK_BACK_MS) { const q = (since - BRAWLER_AIR_KICK_OUT_MS) / BRAWLER_AIR_KICK_BACK_MS; kickK = 1 - q * q * (3 - 2 * q); }
+      }
+      const outK = Math.max(0, Math.min(1, left / BRAWLER_AIR_RING_OUT_MS));
+      const outE = outK * outK * (3 - 2 * outK); // 着地へ向けて影へ吸い込まれて消える
+      const absorb = 0.85 + 0.15 * outE;
+      const sx = (ringW * (1 + BRAWLER_AIR_KICK * kick * kickK) * absorb) / 256;
       r.position.set(groundX, groundY);
       r.scale.set(sx, sx * BRAWLER_AIR_RING_FLAT);
-      r.alpha = BRAWLER_AIR_RING_A * inK * outE * (0.75 + 0.25 * hRel) * horizon;
-      r.visible = r.alpha > 0.01;
-    } else if (view.airRing) view.airRing.visible = false;
-    // ④ 筋
-    const sAt = view.airStreakAt;
-    if (sAt !== undefined && nowMs - sAt < BRAWLER_AIR_STREAK_MS && horizon > 0) {
-      const tex = getTexture('fx/dash-wind');
-      if (tex) {
-        if (!view.airStreak) {
-          const sp = new Sprite(tex);
-          sp.anchor.set(0.5); sp.blendMode = 'add'; sp.tint = BRW.BRAWLER_COLOR_HEX; sp.rotation = -Math.PI / 2;
-          this.L.effectLayer.addChild(sp);
-          view.airStreak = sp;
-        }
-        const sp = view.airStreak;
-        const u = (nowMs - sAt) / BRAWLER_AIR_STREAK_MS;
-        const mv = 1 - (1 - u) ** 3; // 速く出て減速して止まる(慣性)
-        const small = view.airStreakSmall === true;
-        const bodyH = Math.max(30, Math.abs(view.sprite.height));
-        const base = small ? BRAWLER_AIR_STREAK_SCALE_SMALL : BRAWLER_AIR_STREAK_SCALE;
-        const sc = base * Math.max(0.8, Math.min(2.2, bodyH / 110));
-        sp.texture = tex;
-        sp.position.set(groundX, groundY - bodyH * (0.15 + 0.7 * mv));
-        sp.scale.set(sc * (1.4 + 0.6 * mv), sc * 0.9); // 上へ伸びながら抜ける(テクスチャの横=上向き)
-        sp.alpha = (u < 0.15 ? u / 0.15 : (1 - (u - 0.15) / 0.85) ** 2) * (small ? 0.7 : 0.95) * horizon;
-        sp.zIndex = groundY + 1;
-        sp.visible = sp.alpha > 0.01;
+      let a: number;
+      if (view.airArcDown) {
+        // 叩き落とし中は新しく出さない: その時の濃さから減るだけ。
+        const u = Math.min(1, since / Math.max(1, liftEnd - (liftAt ?? nowMs)));
+        a = (view.airArcStartA ?? 0) * (1 - u);
+      } else {
+        const inK = fromAir ? 1 : 1 - (1 - Math.min(1, since / BRAWLER_AIR_RING_IN_MS)) ** 3; // にじみ出る(減速)
+        a = BRAWLER_AIR_RING_A * inK * outE * horizon;
       }
-    } else if (view.airStreak) view.airStreak.visible = false;
+      r.alpha = a;
+      r.visible = a > 0.01;
+    } else if (view.airRing) view.airRing.visible = false;
+    // ④ 上昇の筋(体の後ろ・地面と足の隙間を埋めて伸び、頂点で下から抜けて消える)
+    const sAt = view.airStreakAt;
+    const feetY = groundY - Math.max(0, view.shadowLiftPx ?? 0);
+    const gap = groundY - feetY;
+    if (sAt !== undefined && lifting && horizon > 0) {
+      if (!view.airStreaks) {
+        view.airStreaks = BRAWLER_AIR_STREAKS.map(() => {
+          const sp = new Sprite(getAirStreakTexture());
+          sp.anchor.set(0.5, 0); // 上端=足
+          this.L.actorLayer.addChild(sp);
+          return sp;
+        });
+      }
+      const small = view.airStreakSmall === true;
+      const off = view.airApexAt !== undefined ? Math.min(1, (nowMs - view.airApexAt) / BRAWLER_AIR_STREAK_OFF_MS) : 0;
+      const offE = off * off; // 下から抜ける(加速)
+      const stripW = Math.max(8, Math.min(26, bodyW * 0.12));
+      BRAWLER_AIR_STREAKS.forEach((cfg, i) => {
+        const sp = view.airStreaks![i];
+        if (small && i === 2) { sp.visible = false; return; } // 追撃の浮き直しは2本
+        const grow = Math.max(0, Math.min(1, (nowMs - sAt - cfg.delay) / BRAWLER_AIR_STREAK_GROW_MS));
+        const growE = 1 - (1 - grow) ** 2;
+        const len = gap * cfg.len * growE * (1 - offE);
+        const a = (small ? BRAWLER_AIR_STREAK_SMALL_A : BRAWLER_AIR_STREAK_A) * growE * (1 - off) * horizon;
+        if (len < 2 || a <= 0.01) { sp.visible = false; return; }
+        sp.position.set(groundX + bodyW * cfg.dx, feetY);
+        sp.width = stripW * (i === 0 ? 1 : 0.8);
+        sp.height = len;
+        sp.alpha = a;
+        sp.zIndex = view.container.zIndex - 0.5; // 体の後ろ(足元より奥)
+        sp.visible = true;
+      });
+    } else if (view.airStreaks) for (const sp of view.airStreaks) sp.visible = false;
   }
 
   private actorDisplaySize(view: ActorView | undefined | null): { w: number; h: number; flip: boolean } | null {
@@ -16226,6 +16283,7 @@ export class PixiScene {
     const coreH = coreW * SHADOW_CORE_ASPECT;
     let outerW = coreW * SHADOW_OUTER_SCALE;
     const outerH = coreH * SHADOW_OUTER_SCALE;
+    if (req.airK !== undefined) this.shadowOuterWById.set(req.id, outerW); // 格闘の浮きの輪の幅=実際に描いた影の幅(§9-76)
     // 社長裁定v0.25.3288: 静物は接地丸影を**横にだけ**表示幅いっぱいへ(縦=coreH/outerHはそのまま)。
     // 斜め素材の対角接地線を幅広の平たい丸影で覆う(上の SHADOW_STATIC_BLOB_W_FRAC 参照)。
     if (req.isStatic && SHADOW_STATIC_BLOB_W_FRAC > 0) {
@@ -16593,7 +16651,7 @@ export class PixiScene {
     for (const [id, view] of this.enemies) {
       if (!seen.has(id)) {
         view.light.destroy();
-        view.airRing?.destroy(); view.airStreak?.destroy(); // 格闘の浮きの輪・筋(§9-76)
+        view.airRing?.destroy(); view.airStreaks?.forEach(sp => sp.destroy()); this.shadowOuterWById.delete(id); // 格闘の浮きの輪・筋(§9-76)
         view.container.destroy({ children: true });
         this.clearFxLatches(`${id}:`); // 出し切り待ちのエフェクト記録も片付ける(v0.25.2408)
         this.dashWasOn.delete(id);
@@ -21974,7 +22032,7 @@ export class PixiScene {
     const fb = enemyFootBox(e);
     // 格闘の浮きの輪・筋(§9-76)は、このフレームで drawBrawlerAir を通った時だけ出す(途中で抜ける経路で残らない)。
     if (view.airRing) view.airRing.visible = false;
-    if (view.airStreak) view.airStreak.visible = false;
+    if (view.airStreaks) for (const sp of view.airStreaks) sp.visible = false;
     view.shadowAirK = 0; view.airScale = 1;
     // ステージ3(daylight=farBackdrop'city')は廃都セット、ステージ4(snowStage='snow')は雪原セットに敵絵を
     // 差し替え。次にlab、無ければ既定アトラス。

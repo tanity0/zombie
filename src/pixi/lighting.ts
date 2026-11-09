@@ -54,6 +54,64 @@ export const getSoftGlowTexture = (): Texture => {
   return softGlowTex;
 };
 
+let airPadTex: Texture | null = null;
+/**
+ * ★格闘の浮きの足元の輪(research/BRAWLER.md §9-76・クリエイティブ監査): 細い線ではなく**柔らかい円形のグロー**で、外縁だけ少し明るい。
+ * 白で焼き、使う側で金寄りに tint し、扁平に潰して地面に敷く。
+ */
+export const getAirPadTexture = (): Texture => {
+  if (airPadTex) return airPadTex;
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const r = size / 2;
+  const g = ctx.createRadialGradient(r, r, 0, r, r, r);
+  g.addColorStop(0, 'rgba(255,255,255,0.22)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.30)');
+  g.addColorStop(0.78, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.88, 'rgba(255,255,255,0.62)'); // 外縁だけ少し明るく
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  airPadTex = Texture.from(canvas);
+  return airPadTex;
+};
+
+let airStreakTex: Texture | null = null;
+/**
+ * ★格闘の浮きの上昇の筋(§9-76・クリエイティブ監査): 縦の細い筋。芯は白・外は青灰(色を焼き込む=通常合成で使う。加算の生成り1色はやめた)。
+ * 上端(足)から下へ伸び、下端へ向けて薄れる。斬撃の白い縦線に見えないよう、芯は細く外の青灰を広めに。
+ */
+export const getAirStreakTexture = (): Texture => {
+  if (airStreakTex) return airStreakTex;
+  const w = 32, h = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  const gx = ctx.createLinearGradient(0, 0, w, 0);
+  gx.addColorStop(0, 'rgba(120,138,160,0)');
+  gx.addColorStop(0.22, 'rgba(120,138,160,0.45)');
+  gx.addColorStop(0.42, 'rgba(196,208,222,0.8)');
+  gx.addColorStop(0.5, 'rgba(255,255,255,1)');
+  gx.addColorStop(0.58, 'rgba(196,208,222,0.8)');
+  gx.addColorStop(0.78, 'rgba(120,138,160,0.45)');
+  gx.addColorStop(1, 'rgba(120,138,160,0)');
+  ctx.fillStyle = gx;
+  ctx.fillRect(0, 0, w, h);
+  // 縦の濃さ: 上端(足)は短く立ち上がり、下へ向けて抜ける。
+  ctx.globalCompositeOperation = 'destination-in';
+  const gy = ctx.createLinearGradient(0, 0, 0, h);
+  gy.addColorStop(0, 'rgba(0,0,0,0)');
+  gy.addColorStop(0.08, 'rgba(0,0,0,1)');
+  gy.addColorStop(0.55, 'rgba(0,0,0,0.7)');
+  gy.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gy;
+  ctx.fillRect(0, 0, w, h);
+  airStreakTex = Texture.from(canvas);
+  return airStreakTex;
+};
+
 let hitCoreTex: Texture | null = null;
 /**
  * 当たった一点の光の型(変異塊の被弾の明滅・2026-10-20)。`getSoftGlowTexture` より**芯が小さく、外側が速く抜ける**
