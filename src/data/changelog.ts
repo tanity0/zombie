@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5420', items: [
+    '格闘で浮かせた敵の足元に金色の光が広がり、影が小さく締まる',
+    '打ち上げた瞬間、足元から体へ向かって細い筋が伸びる',
+  ] },
   { version: '0.25.5419', items: [
     '銃の弾、爆発、光線や火炎、格闘の大踏み潰しや気功でも緑の卵が割れる',
     '手榴弾などが卵に触れて、爆発せずに消えてしまう不具合を直した',
