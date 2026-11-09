@@ -17,7 +17,7 @@
 // これが無いと、硬直中に書かれた新しいCDを硬直明けの書き戻しが**消してしまう**。
 import type { Enemy, EnemyClockStash } from '../types/game';
 import { isEnemyAttacking } from './combatFeel';
-import { isBrawlerTechBusy } from './brawlerCombo';
+import { isBrawlerTechBusy, brawlerLiftHoldNow } from './brawlerCombo';
 import { isRecoverHoldPhase } from './recoverPhase';
 
 /** 期限型(`*Until`/`*ReadyAt`=残りで測る)か、始点型(`*At`=経過で測る)か。 */
@@ -44,7 +44,9 @@ export interface EnemyClockEntry {
  * ★格闘の食らいの固まり(research/BRAWLER.md §11-1)で止められている間は、硬直相の自分の期限も止める
  * (社長指示2026-11-09「技を出し終えた隙に殴って固める=確定反撃」・硬直の残りは止まり、明けたら続きから)。
  */
-const brawlerHeldClock = (e: Enemy, nowMs: number): boolean => e.brHoldUntil !== undefined && nowMs < e.brHoldUntil;
+const brawlerHeldClock = (e: Enemy, nowMs: number): boolean => (e.brHoldUntil !== undefined && nowMs < e.brHoldUntil)
+  // ★格闘の浮き(§12-1)も同じ「止めるだけ」(社長承認2026-11-09「硬直中に浮かせても硬直の続きを残す」)。
+  || brawlerLiftHoldNow(e, nowMs);
 
 export { isRecoverHoldPhase } from './recoverPhase'; // 規則の本体は utils/recoverPhase(brawlerCombo と共有)
 

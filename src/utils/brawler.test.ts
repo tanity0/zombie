@@ -11,6 +11,7 @@ import {
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_HIT_PITCH, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech,
+  BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
 } from './brawler';
 import { setBrawlerTempoAll } from './brawlerCombo';
@@ -28,6 +29,12 @@ describe('格闘: 表', () => {
     expect(BRAWLER_STAGES.map(s => s.mult)).toEqual([0.30, 0.40, 0.8, 1.10, 1.60]); // 社長指示2026-11-09「あと通常攻撃は後半ほど高ダメ」(旧 0.35/0.35/0.8/1.0/1.3)
     expect(BRAWLER_STAGES.map(s => s.kb)).toEqual(['none', 'none', 'normal', 'none', 'big']);
     expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 150, 150, 220]); // 止めは係数を掛けない表(社長承認2026-11-08: 旧 45/45/80/90/140)
+  });
+  it('技の倍率(社長承認2026-11-09: 大踏み潰し2.4・気功1.8・飛び蹴り0.7/0.8/1.0・秘奥義の締め3.6)', () => {
+    expect([BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT]).toEqual([2.4, 1.8, 3.6]);
+    expect([1, 2, 3].map(brawlerKickMult)).toEqual([0.7, 0.8, 1.0]);
+    expect(brawlerKickMult(0)).toBe(0.7); // 範囲外は端へ寄せる
+    expect(brawlerKickMult(9)).toBe(1.0);
   });
   it('技の時間とポイントは §8-3 / §0 どおり', () => {
     expect(BRAWLER_TECHS.guard.windupMs + BRAWLER_TECHS.guard.recoveryMs).toBe(1000);

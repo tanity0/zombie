@@ -105,12 +105,12 @@ export const BRAWLER_JUMP_VIS_PX = 48;       // 4段目の見た目の跳ぶ高�
 export let BRAWLER_LIFT_MS = 585; // ×BRAWLER_TEMPO(係数1.0の値)          // 4段目の浮かせの足止め(§7-10)。社長承認2026-11-08: 450→585(1.3倍・落下を緩やかに=§12-1)
 export const BRAWLER_LIFT_VIS_PX = 26;       // 浮かせの絵の高さ(§7-10)
 export const BRAWLER_STOMP_RADIUS = 150;     // 下の大踏み潰し(§3-3)
-export const BRAWLER_STOMP_MULT = 2.0;
+export const BRAWLER_STOMP_MULT = 2.4; // 社長承認2026-11-09 で 2.0→2.4(通常攻撃を後半ほど高ダメにした分の釣り合い)
 export const BRAWLER_STOMP_HITSTOP_MS = BRAWLER_HITSTOP.closer; // 締めの止め(§9-2・社長承認2026-11-08 で 140→220)
 export const BRAWLER_KIKO_SPEED = 900;       // 左の気功(§3-4)
 export const BRAWLER_KIKO_RANGE = 420;
 export const BRAWLER_KIKO_RADIUS = 70;
-export const BRAWLER_KIKO_MULT = 1.5;
+export const BRAWLER_KIKO_MULT = 1.8; // 社長承認2026-11-09 で 1.5→1.8(爆発の規約 skillExplosionMult は今どおりこの上に掛かる)
 export const BRAWLER_KIKO_HIT_PAD = 12;
 /**
  * 気功の爆発の押し(社長承認2026-11-07・§9-40)。爆発の既存の規約どおり knockbackEnemy で押す(攻撃中の敵は押さない・ボス級は止めの減衰)。
@@ -124,7 +124,9 @@ export const BRAWLER_KICK_NO_TARGET_PX = 150;
 export let BRAWLER_KICK_FLIGHT_MAX_MS = 150; // ×BRAWLER_TEMPO(係数1.0の値)
 export const brawlerKickFlightMs = (dist: number): number =>
   Math.max(BRAWLER_TECHS.kick.windupMs, Math.min(BRAWLER_KICK_FLIGHT_MAX_MS, BRAWLER_TECHS.kick.windupMs * Math.max(0, dist) / 160));
-export const BRAWLER_KICK_MULT = 0.7;
+/** 飛び蹴りの倍率(何発目か=1..3)。社長承認2026-11-09 で 0.7/0.7/0.7 → 0.7/0.8/1.0。秘奥義の9連撃の蹴りは3発目扱い(締めの止め・big の押しと同じ)。 */
+export const BRAWLER_KICK_MULTS = [0, 0.7, 0.8, 1.0] as const;
+export const brawlerKickMult = (kickN: number): number => BRAWLER_KICK_MULTS[Math.max(1, Math.min(3, Math.round(kickN)))];
 export let BRAWLER_KICK_CHAIN_MS = 500; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_KICK_MAX = 3;
 /**
@@ -409,7 +411,7 @@ export let BRAWLER_SECRET_LAND_MS = 520; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_SECRET_SKY_PX = 420;
 /** フィニッシュの地面叩き(§10-2-3)。 */
 export const BRAWLER_SECRET_LAND_RADIUS = 260;
-export const BRAWLER_SECRET_LAND_MULT = 3.0;
+export const BRAWLER_SECRET_LAND_MULT = 3.6; // 社長承認2026-11-09 で 3.0→3.6
 export const BRAWLER_SECRET_LAND_HITSTOP_MS = BRAWLER_HITSTOP.closer; // 秘奥義の締め(社長承認2026-11-08 で 160→220)
 /** 9連撃で選ぶ技(通常攻撃1〜5段・飛び蹴り・大踏み潰し・気功)。 */
 export const BRAWLER_SECRET_MOVES: readonly BrawlerSecretMove[] = [1, 2, 3, 4, 5, 'kick', 'stomp', 'kiko'];

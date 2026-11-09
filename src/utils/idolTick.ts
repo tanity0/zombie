@@ -6,7 +6,7 @@
 //
 // 状態文法(監査レポート§3-1): NEUTRAL(主戦帯を維持) → STRING(連段) → REST(休符) → NEUTRAL。
 // 懲罰(PUNISH)は中立中いつでも割り込む。**休符は必ず入る**(プレイヤーのターンを消さない)。
-import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
+import { brawlerStopOnlyNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { COUNTER_CUT_GAP_MS } from './counterCut';
 import type { Enemy, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
@@ -287,7 +287,7 @@ export const runIdolTick = (
   const rooted = idol.rootUntil !== undefined && newGameTime < idol.rootUntil;
   //   ★格闘の固まりは追いかけに加えて休符・技の後の硬直でも止める(社長指示2026-11-09「技を出し終えた隙に殴って固める」)。
   //   止めている間は状態機械を回さない(休符・硬直の期限は enemyClocks が据え置く=明けたら続きから)。
-  const brHeld = brawlerHeldNow(idol, newGameTime, Date.now());
+  const brHeld = brawlerStopOnlyNow(idol, newGameTime, Date.now()); // 格闘の浮き(§12-1)も同じ(社長承認2026-11-09)
   /**
    * ★PACING_PUZZLE.md §16-H(社長指示2026-09-19「硬直中はタイマーがゼロのままストップ」)。
    * `Enemy` のフィールドは `updateEnemies` の前処理(`tickEnemyClockFreeze`)が見るが、

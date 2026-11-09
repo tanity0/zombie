@@ -248,3 +248,67 @@ describe('硬直・休み・帰りの相も固める(§11-1・§9-69)', () => {
     expect(leftAt - gHoldEnd).toBeLessThanOrEqual(r + 2 * DT_MS);
   });
 });
+
+// ★社長承認2026-11-09「硬直中に浮かせても硬直の続きを残す」: 格闘の浮きも固まりと同じ「止めるだけ」。
+describe('格闘の浮きも止めるだけ(§12-1・§9-71)', () => {
+  it('天使(ミゲル)の技の後の硬直に4段目で浮かせる→浮き+固まりの間は硬直の残りが止まる→着地後に残りの硬直→次の技は溜めの始まりから', () => {
+    setup();
+    const s = createAngelBossState();
+    const gt0 = useGameStore.getState().gameTime;
+    useGameStore.setState({ enemies: [place('miguel', 160, 0, 'm', { bossState: 'volley-recover', bossStateUntil: gt0 + 300, bossNextActionAt: gt0 + 2000 })] });
+    const ctrl = (gt: number) => runAngelBossTick(s, gt, DT_MS / 1000, 1, NOOP_ANGEL_SFX, () => {});
+    step(50, ctrl);
+    const remain0 = en('m').bossStateUntil! - useGameStore.getState().gameTime;
+    useGameStore.getState().triggerCounter(undefined, {
+      targetIds: ['m'], mult: 0.01, brawler: true, stunMs: 45, kb: { kind: 'none' }, postureMult: 0.01, pressedAt: Date.now(), lift: true, combo: { move: 's4' },
+    });
+    const liftUntil = en('m').liftUntil!;
+    expect(liftUntil).toBeGreaterThan(now);
+    expect(en('m').brLiftUntil).toBe(liftUntil);
+    const pos0 = { x: en('m').x, y: en('m').y };
+    step(liftUntil - now - 10, ctrl);
+    expect(en('m').bossState).toBe('volley-recover'); // 浮いている間に硬直が飛ばない(崩さない)
+    expect(en('m').x).toBeCloseTo(pos0.x, 6);
+    const rLift = en('m').bossStateUntil! - useGameStore.getState().gameTime;
+    expect(rLift).toBeLessThanOrEqual(remain0 + 0.001);
+    expect(rLift).toBeGreaterThanOrEqual(remain0 - DT_MS - 0.001);
+    // 浮きの後は固まり(4段目の固まりは浮きの終わりから数える)→ 明けたら残りの硬直
+    const holdEnd = en('m').brHoldUntil ?? liftUntil;
+    step(Math.max(0, holdEnd - now - 10), ctrl);
+    expect(en('m').bossState).toBe('volley-recover');
+    const rHold = en('m').bossStateUntil! - useGameStore.getState().gameTime;
+    expect(rHold).toBeGreaterThanOrEqual(remain0 - 2 * DT_MS - 0.001);
+    let leftAt = -1;
+    const gEnd = useGameStore.getState().gameTime + 10;
+    step(1500, ctrl, () => { if (leftAt < 0 && en('m').bossState !== 'volley-recover') leftAt = useGameStore.getState().gameTime; });
+    expect(leftAt - gEnd).toBeGreaterThanOrEqual(rHold - 2 * DT_MS);
+    expect(leftAt - gEnd).toBeLessThanOrEqual(rHold + 2 * DT_MS);
+    let entered: { gt: number; ws?: number; until?: number } | null = null;
+    step(4000, ctrl, () => {
+      const e = en('m');
+      if (!entered && e.bossState !== 'chase' && e.bossState !== 'volley-recover' && e.bossState !== undefined) {
+        entered = { gt: useGameStore.getState().gameTime, ws: e.bossWindupStartAt, until: e.bossStateUntil };
+      }
+    });
+    expect(entered).not.toBeNull();
+    const ent = entered!;
+    expect(ent.until!).toBeGreaterThan(ent.gt);
+    if (ent.ws !== undefined) expect(ent.ws).toBe(ent.gt);
+  });
+
+  it('雑魚(ゾンビ)の z-recover に4段目: 浮きの間も硬直の残りが止まる(旧: 浮きの間に硬直が進んで短くなっていた)', () => {
+    setup();
+    const gt0 = useGameStore.getState().gameTime;
+    useGameStore.setState({ enemies: [place('zombie', 50, 0, 'z', { health: 99999, maxHealth: 99999, aiPhase: 'z-recover', aiPhaseUntil: gt0 + 400 })] });
+    step(50);
+    const remain0 = en('z').aiPhaseUntil! - useGameStore.getState().gameTime;
+    useGameStore.getState().triggerCounter(undefined, {
+      targetIds: ['z'], mult: 0.01, brawler: true, stunMs: 45, kb: { kind: 'none' }, postureMult: 0.01, pressedAt: Date.now(), lift: true, combo: { move: 's4' },
+    });
+    const liftUntil = en('z').liftUntil!;
+    step(liftUntil - now - 10);
+    expect(en('z').aiPhase).toBe('z-recover');
+    const r = en('z').aiPhaseUntil! - useGameStore.getState().gameTime;
+    expect(r).toBeGreaterThanOrEqual(remain0 - DT_MS - 0.001);
+  });
+});

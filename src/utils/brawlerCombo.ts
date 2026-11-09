@@ -127,6 +127,19 @@ export const brawlerHeldNow = (
   gameTime: number, nowMs: number,
 ): boolean => e.brHoldUntil !== undefined && nowMs < e.brHoldUntil && !isBrawlerTechBusy(e, gameTime);
 
+/**
+ * いま格闘の浮かせ(§12-1・4段目と追撃)で浮いているか(Date.now 系)。近接フィニッシュの跳ね(liftUntil だけ)とは
+ * brLiftUntil === liftUntil で見分ける(pixi の絵の見分けと同じ)。
+ * ★社長承認2026-11-09: 格闘の浮きは固まりと同じ「止めるだけ」(相と期限を保ち、明けたら続き)。崩さない。
+ */
+export const brawlerLiftHoldNow = (e: { brLiftUntil?: number; liftUntil?: number }, nowMs: number): boolean =>
+  e.brLiftUntil !== undefined && e.liftUntil !== undefined && e.brLiftUntil === e.liftUntil && nowMs < e.liftUntil;
+/** 格闘の止め(固まり or 浮き)で「止めるだけ」の状態か。専用の制御で動くボスはこれで止まる(相と期限を保つ)。 */
+export const brawlerStopOnlyNow = (
+  e: Parameters<typeof brawlerHeldNow>[0] & { brLiftUntil?: number; liftUntil?: number },
+  gameTime: number, nowMs: number,
+): boolean => brawlerHeldNow(e, gameTime, nowMs) || brawlerLiftHoldNow(e, nowMs);
+
 /** 固まりの減衰の倍率(時計 ms から)。 */
 export const brawlerHoldDecay = (clockMs: number): number =>
   Math.max(BRAWLER_COMBO_FLOOR, 1 - Math.max(0, clockMs) / BRAWLER_COMBO_DECAY_MS);

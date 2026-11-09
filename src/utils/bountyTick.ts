@@ -15,7 +15,7 @@
 //    werewolf定数)を複製して使う(=誤学習防止。複製である旨は各定数のコメントに明記)。
 //  - ★v0.25.3558: 数値は bountyScript.ts の可変テーブル(BR_T/BM_T/BB_T/MK_T)へ移した。werewolf/
 //    pumpkin 由来の値は**テーブル側で複製**し、実体との一致を bountyScript.test.ts が機械検査する。
-import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
+import { brawlerHeldNow, brawlerLiftHoldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { bossHomingSpeed } from './bossHoming';
 import { counterClashPoint } from './counterClash';
 import type { Enemy, EnemyType, EnemyClockStash } from '../types/game';
@@ -384,7 +384,7 @@ const isFrozen = (bounty: Enemy, newGameTime: number, nowMs: number): boolean =>
   (bounty.bossFullStunUntil !== undefined && newGameTime < bounty.bossFullStunUntil)
   || (bounty.stunUntil !== undefined && newGameTime < bounty.stunUntil)
   || (bounty.rootUntil !== undefined && newGameTime < bounty.rootUntil)
-  || (bounty.liftUntil !== undefined && nowMs < bounty.liftUntil)
+  || (bounty.liftUntil !== undefined && nowMs < bounty.liftUntil && !brawlerLiftHoldNow(bounty, nowMs)) // 格闘の浮きは崩さない(下の止めるだけ)
   || (bounty.knockbackUntil !== undefined && nowMs < bounty.knockbackUntil);
 
 // =================================================================================================
@@ -2242,7 +2242,8 @@ export const runBountyTick = (
   // ---- 格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」) ----
   // 追いかけの間だけ(技の最中は brawlerHeldNow が偽=技は崩さない)。移動も次の技の開始もしない。
   // 行動の時計(bossNextActionAt 等)は enemyClocks が止める=明けたら続きから。崩す止め(気絶・拘束・浮き)が重なれば下が先。
-  if (brawlerHeldNow(bounty, newGameTime, nowMs) && !isFrozen(bounty, newGameTime, nowMs)) {
+  // ★格闘の浮き(§12-1)も同じ「止めるだけ」(社長承認2026-11-09「硬直中に浮かせても硬直の続きを残す」)。
+  if ((brawlerHeldNow(bounty, newGameTime, nowMs) || brawlerLiftHoldNow(bounty, nowMs)) && !isFrozen(bounty, newGameTime, nowMs)) {
     applyPatch(bounty.id, { bountyLastEngagedAt: newGameTime });
     return;
   }
@@ -2270,7 +2271,7 @@ export const runBountyTick = (
       && !(bounty.bossFullStunUntil !== undefined && newGameTime < bounty.bossFullStunUntil)
       && !(bounty.stunUntil !== undefined && newGameTime < bounty.stunUntil)
       && !(bounty.rootUntil !== undefined && newGameTime < bounty.rootUntil)
-      && !(bounty.liftUntil !== undefined && nowMs < bounty.liftUntil);
+      && !(bounty.liftUntil !== undefined && nowMs < bounty.liftUntil && !brawlerLiftHoldNow(bounty, nowMs));
     if (kbOnly) {
       const dtMs = deltaTime * 1000;
       applyPatch(bounty.id, {

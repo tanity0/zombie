@@ -6,7 +6,7 @@
 //  - 当たりは全部 pumpkinBlasts へ積む(プレイヤー・守護霊・カウンター・吹き飛ばし・敵への当たりは解決側=combatTick)。
 //  - 赤い予告=heroShape。溜め開始で置き場所を決め、heroHitAt(当たる瞬間)まで動かさない。
 //  - 画面外では技を始めない(始まった技は最後まで出して当てる=赤いのに当たらない、を作らない)。
-import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
+import { brawlerHeldNow, brawlerLiftHoldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { bossFaceDeadzonePx } from './bossFacing';
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, knockbackSpeedFor, ENEMY_REMOVE_CAUSE, type PumpkinBlast } from '../store/gameStore';
@@ -119,7 +119,7 @@ const isFrozen = (e: Enemy, gt: number, nowMs: number): boolean =>
   (e.bossFullStunUntil !== undefined && gt < e.bossFullStunUntil)
   || (e.stunUntil !== undefined && gt < e.stunUntil)
   || (e.rootUntil !== undefined && gt < e.rootUntil)
-  || (e.liftUntil !== undefined && nowMs < e.liftUntil)
+  || (e.liftUntil !== undefined && nowMs < e.liftUntil && !brawlerLiftHoldNow(e, nowMs)) // 格闘の浮きは崩さない(下の止めるだけ)
   || (e.knockbackUntil !== undefined && nowMs < e.knockbackUntil);
 
 const IN_MOVE = new Set(['hero-windup', 'hero-motion', 'hero-strike', 'hero-recover']);
@@ -377,7 +377,7 @@ export const runHeroTick = (
   }
   // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」): 技の最中でない間だけ止まる
   //   (移動も次の技の開始もしない・時計は enemyClocks が止める)。崩す止め(気絶・拘束・浮き・押し)が重なれば下が先。
-  if (!fullStun && !isFrozen(hero, gt, nowMs) && brawlerHeldNow(hero, gt, nowMs)) {
+  if (!fullStun && !isFrozen(hero, gt, nowMs) && (brawlerHeldNow(hero, gt, nowMs) || brawlerLiftHoldNow(hero, nowMs))) {
     // 待ち・技の後の硬直の絵の時計(heroStateAt=始点型・台帳の外)も止めた分だけ後ろへ(明けたら続きから・硬直の期限は台帳が据え置く)。
     if (hero.heroStateAt !== undefined) applyPatch(hero.id, { heroStateAt: hero.heroStateAt + dt * 1000 });
     return;
@@ -385,7 +385,7 @@ export const runHeroTick = (
   if (fullStun || isFrozen(hero, gt, nowMs)) {
     const kbOnly = !fullStun && hero.knockbackUntil !== undefined && nowMs < hero.knockbackUntil
       && !(hero.stunUntil !== undefined && gt < hero.stunUntil) && !(hero.rootUntil !== undefined && gt < hero.rootUntil)
-      && !(hero.liftUntil !== undefined && nowMs < hero.liftUntil);
+      && !(hero.liftUntil !== undefined && nowMs < hero.liftUntil && !brawlerLiftHoldNow(hero, nowMs));
     if (kbOnly) {
       // 押されている間は技の時計を止める(解除の瞬間に古い溜めが即着弾しない)。当たる時刻も同じだけ後ろへ。
       const dms = dt * 1000;

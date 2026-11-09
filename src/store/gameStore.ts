@@ -4789,7 +4789,8 @@ const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => P
     brawlerKillSfx(res);
     brawlerStageFx(get, move, c, dir, res, target, null);
   } else if (move === 'kick') {
-    const res = strike([target.id], { mult: BR.BRAWLER_KICK_MULT, stunMs: BR.BRAWLER_KICK_HITSTOP_MS[3], postureMult: BR.BRAWLER_KICK_MULT,
+    // 9連撃の蹴りは3発目扱い(締めの止め・big の押し・倍率 1.0=社長承認2026-11-09)。
+    const res = strike([target.id], { mult: BR.brawlerKickMult(3), stunMs: BR.BRAWLER_KICK_HITSTOP_MS[3], postureMult: BR.brawlerKickMult(3),
       kb: { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true }, combo: { move: 'secret', countRevenge: false } });
     brawlerNoteFlowHits(set, res.hits ?? 0);
     brawlerKillSfx(res);
@@ -5016,7 +5017,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const hs = BR.BRAWLER_KICK_HITSTOP_MS[Math.max(1, Math.min(3, s.kickN))];
     const ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
     const r = strike(ids, {
-      mult: BR.BRAWLER_KICK_MULT, stunMs: hs, postureMult: BR.BRAWLER_KICK_MULT,
+      mult: BR.brawlerKickMult(s.kickN), stunMs: hs, postureMult: BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.0(社長承認2026-11-09)
       kb: big ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } : { kind: 'normal', dirX: dir.x, dirY: dir.y },
       combo: { move: BRC.brawlerKickMoveKey(s.kickN) },
     });
