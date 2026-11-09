@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { brawlerHeldNow, brawlerLiftHoldNow } from '../utils/brawlerCombo'; // 格闘の食らいの固まり(ボス級も・§11-1)
 import { isUntouchable } from '../utils/enemyUtils';
-import { arrowRainLevel, pickArrowRainCenter, planArrowRain, reaimArrow, arrowRainHits, ARROW_RAIN_ZONE_PX, ARROW_RAIN_COUNT_BY_LEVEL, ARROW_RAIN_CD_MS_BY_LEVEL, ARROW_RAIN_DAMAGE, ARROW_RAIN_STUCK_MS, type RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
+import { arrowRainLevel, pickArrowRainCenter, planArrowRain, reaimArrow, arrowRainHits, ARROW_RAIN_ZONE_PX, ARROW_RAIN_COUNT_BY_LEVEL, ARROW_RAIN_CD_MS_BY_LEVEL, ARROW_RAIN_DAMAGE, ARROW_RAIN_STUCK_MS, ARROW_RAIN_HIT_PX, type RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { latticeBands, latticeStageCount, latticeAxisForStage, latticeHitSource, latticeCenter } from '../utils/skadiLattice';
 import { mimirWheelTheta0, mimirWheelSpokeAngle, mimirWheelShotOffsetMs, MIMIR_WHEEL_EYE_UP } from '../utils/mimirWheel';
 import { snapGlowRadius, GLOW_R_L, GLOW_R_M, GLOW_R_S, GLOW_R_XL, GLOW_R_XS, GLOW_R_XXL } from '../utils/glowTiers';
@@ -259,7 +259,7 @@ import {
   stepHomingLocks, ghostHomingHoldMs, HOMING_MAX_LOCKS_BY_LEVEL, HOMING_LOCK_INTERVAL_MS,
 } from '../utils/homing';
 import { tickSensorMines, SENSOR_MINE_DAMAGE, SENSOR_MINE_RADIUS } from '../utils/sensorMine';
-import { dueArmedEggs, eggsToChainArm, EGG_BLAST_RADIUS } from '../world/mines';
+import { dueArmedEggs, eggsToChainArm, EGG_BLAST_RADIUS, eggShotRect, sweptBoxHitsRect, eggInFan, eggInBeam, eggBodyPoint, circleHitsEgg } from '../world/mines';
 import {
   computeSupportSniperTick, computeSupportSniperEntry, computeSupportSniperFarCorner, pickSupportSniperSoldier,
   SUPPORT_SNIPER_CD_MS_BY_LEVEL, SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_INSET,
@@ -1628,6 +1628,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // 振りの角度と角速度はここ(ref)で持つ=**player.weapons を毎tick書かない**
   // (書くとGameHUDが照射中ずっと再描画される。検収2巡目A-4で潰した穴を作り直さない)。
   const eyeLaserAimRef = useRef<{ angle: number; vel: number; sweeping: boolean }>({ angle: 0, vel: 0, sweeping: false });
+  // ★卵の掃引(社長実機報告2026-11-09): 弾ごとの前のフレームの位置(id→左上)。
+  const projPrevPosRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const goldRingReadyRef = useRef(true); // 金環: CD明け検出(同上・ブーメラン型の一瞬通知・UNIQUE_WEAPONS.md §19-3)
   const bashHitFxRef = useRef(0);    // 盾バッシュ命中SEの既再生タイムスタンプ
   const rescueShootFxRef = useRef(0); // 救助NPC射撃SEの既再生タイムスタンプ
@@ -2512,6 +2514,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnBurst(bx, by, '#7f1d1d', 8);
           useGameStore.getState().spawnGlow(bx, by, GLOW_R_S, 'rgba(248,113,113,', fxMs);
           useGameStore.getState().spawnExplosionFx(bx, by, blastR); // v0.25.3283: 爆発flipbook(全爆発共通)
+          useGameStore.getState().breakEggsInBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
           for (const e of useGameStore.getState().enemies) {
             if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
             const ea = blastAnchorOf(e, bx, by); // 変異塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
@@ -11435,6 +11438,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 spawnBurst(a.x, a.y, '#8a7a62', 4, ddx, ddy);
                 spawnBurst(a.x, a.y, '#6b6a45', 3, ddx, ddy);
                 spawnRing(a.x, a.y, 8, 26, 'rgba(176,156,120,0.45)', 2, 260);
+                useGameStore.getState().breakEggsWhere(egg => circleHitsEgg(egg, a.x, a.y, ARROW_RAIN_HIT_PX)); // ★卵も割る(社長実機報告2026-11-09)
                 const bodies = useGameStore.getState().enemies.filter(arTargetable);
                 for (const id of arrowRainHits(a, bodies)) {
                   const enemy = bodies.find(b => b.id === id);
@@ -13848,11 +13852,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // v0.25.2472: ゴースト発(ownerGhost)の消滅爆発FXは青白系(視覚のみ・判定/ダメージ不変)。
               if (turret.ownerGhost) {
                 useGameStore.getState().spawnExplosionFx(tcx, tcy, tBlastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
+                useGameStore.getState().breakEggsInBlast(tcx, tcy, tBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 spawnRing(tcx, tcy, 8, tBlastR, 'rgba(159,216,255,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
                 spawnBurst(tcx, tcy, '#9fd8ff', 16);
                 useGameStore.getState().spawnGlow(tcx, tcy, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               } else {
                 useGameStore.getState().spawnExplosionFx(tcx, tcy, tBlastR); // v0.25.3283: 爆発flipbook
+                useGameStore.getState().breakEggsInBlast(tcx, tcy, tBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 spawnRing(tcx, tcy, 8, tBlastR, 'rgba(251,146,60,0.8)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
                 spawnBurst(tcx, tcy, '#f97316', 16);
                 useGameStore.getState().spawnGlow(tcx, tcy, GLOW_R_XS, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
@@ -14022,11 +14028,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // v0.25.2472: ゴースト発(ownerGhost)はシアン→青白へ(視覚のみ・判定/ダメージ不変)。
             if (decoy.ownerGhost) {
               useGameStore.getState().spawnExplosionFx(dcx, dcy, dBlastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
+              useGameStore.getState().breakEggsInBlast(dcx, dcy, dBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               spawnRing(dcx, dcy, 8, dBlastR, 'rgba(159,216,255,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(dcx, dcy, '#9fd8ff', 16);
               useGameStore.getState().spawnGlow(dcx, dcy, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             } else {
               useGameStore.getState().spawnExplosionFx(dcx, dcy, dBlastR); // v0.25.3283: 爆発flipbook
+              useGameStore.getState().breakEggsInBlast(dcx, dcy, dBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               spawnRing(dcx, dcy, 8, dBlastR, 'rgba(56,189,248,0.85)', 4, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               spawnBurst(dcx, dcy, '#38bdf8', 16);
               useGameStore.getState().spawnGlow(dcx, dcy, GLOW_R_XS, 'rgba(56,189,248,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
@@ -14080,7 +14088,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(gx, gy, '#f97316', 20);
             spawnBurst(gx, gy, '#7f1d1d', 8);
             useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
-            useGameStore.getState().spawnExplosionFx(gx, gy, HEAVY_GRENADE_RADIUS);
+            useGameStore.getState().spawnExplosionFx(gx, gy, HEAVY_GRENADE_RADIUS); // 卵: 敵の手榴弾(hostile)=割らない(敵の爆発は今どおり)
             const hgPl = useGameStore.getState().player;
             const hgPx = hgPl.x + hgPl.width / 2, hgPy = hgPl.y + hgPl.height / 2;
             const hgDist = Math.hypot(hgPx - gx, hgPy - gy);
@@ -14152,12 +14160,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(gx, gy, '#1e3a5f', 8);
             useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(159,216,255,', fxMs);
             useGameStore.getState().spawnExplosionFx(gx, gy, blastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
+            useGameStore.getState().breakEggsInBlast(gx, gy, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
           } else {
             spawnRing(gx, gy, 8, blastR, 'rgba(251,146,60,0.82)', 5, fxMs);
             spawnBurst(gx, gy, '#f97316', 20);
             spawnBurst(gx, gy, '#7f1d1d', 8);
             useGameStore.getState().spawnGlow(gx, gy, GLOW_R_S, 'rgba(251,146,60,', fxMs);
             useGameStore.getState().spawnExplosionFx(gx, gy, blastR); // v0.25.3283: 爆発flipbook(全爆発共通)
+            useGameStore.getState().breakEggsInBlast(gx, gy, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
           }
           const gWalls = aoeWalls(gx, gy);
           for (const enemy of useGameStore.getState().enemies) {
@@ -14218,6 +14228,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           spawnBurst(sx, sy, '#f97316', 24);
           spawnBurst(sx, sy, '#7f1d1d', 10);
           useGameStore.getState().spawnExplosionFx(sx, sy, exRadius);
+          useGameStore.getState().breakEggsInBlast(sx, sy, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
           useGameStore.getState().spawnGlow(sx, sy, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
           const splashBase = shell.damage * GRENADE_BLAST_DAMAGE_MULT * exMult;
           const glWalls = aoeWalls(sx, sy);
@@ -14306,6 +14317,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(mine.x, mine.y, '#7f1d1d', 8);
               useGameStore.getState().spawnGlow(mine.x, mine.y, GLOW_R_S, 'rgba(251,146,60,', smFxMs);
               useGameStore.getState().spawnExplosionFx(mine.x, mine.y, smBlastR); // v0.25.3283: 爆発flipbook
+              useGameStore.getState().breakEggsInBlast(mine.x, mine.y, smBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               const smWalls = aoeWalls(mine.x, mine.y);
               let smHitCount = 0;
               if (mine.hostile) {
@@ -14409,12 +14421,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // v0.25.2472: ゴースト発(ownerGhost)の爆発FXは青白系(視覚のみ・判定/ダメージ不変)。
               if (knife.ownerGhost) {
                 useGameStore.getState().spawnExplosionFx(bx, by, blastR, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
+                useGameStore.getState().breakEggsInBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 spawnRing(bx, by, 8, blastR, 'rgba(159,216,255,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
                 spawnBurst(bx, by, '#9fd8ff', 18);
                 spawnBurst(bx, by, '#1e3a5f', 8);
                 useGameStore.getState().spawnGlow(bx, by, snapGlowRadius(blastR * 0.68), 'rgba(159,216,255,', FIRE_KNIFE_EXPLOSION_EFFECT_MS);
               } else {
                 useGameStore.getState().spawnExplosionFx(bx, by, blastR); // v0.25.3283: 爆発flipbook
+                useGameStore.getState().breakEggsInBlast(bx, by, blastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 spawnRing(bx, by, 8, blastR, 'rgba(251,146,60,0.85)', 5, FIRE_KNIFE_EXPLOSION_EFFECT_MS);
                 spawnBurst(bx, by, '#f97316', 18);
                 spawnBurst(bx, by, '#7f1d1d', 8);
@@ -14657,6 +14671,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     changed = true;
                     const pulseBeam = pulses[0];
                     const hits = pickBeamHits(pulseBeam.ax, pulseBeam.ay, pulseBeam.bx, pulseBeam.by, pulseBeam.halfWidth, aimableEnemies);
+                    useGameStore.getState().breakEggsWhere(egg => eggInBeam(egg, pulseBeam.ax, pulseBeam.ay, pulseBeam.bx, pulseBeam.by, pulseBeam.halfWidth)); // ★卵も割る(2026-11-09)
                     applyBeamPulse(hits, pulseBeam.damage, ring.ownerGhostId, '#fde68a', 'pickup-xp-gold-ring', { x: pulseBeam.ax, y: pulseBeam.ay });
                   }
                   nextRings.push({ ...ring, beam: survBeams[0] ?? ring.beam });
@@ -14714,6 +14729,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(rcx, rcy, '#f97316', 24);
               spawnBurst(rcx, rcy, '#7f1d1d', 10);
               useGameStore.getState().spawnExplosionFx(rcx, rcy, exRadius);
+              useGameStore.getState().breakEggsInBlast(rcx, rcy, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               useGameStore.getState().spawnGlow(rcx, rcy, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
               const splashBase = rp.damage * GRENADE_BLAST_DAMAGE_MULT * exMult;
               for (const rEnemy of useGameStore.getState().enemies) {
@@ -14820,6 +14836,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   spawnBurst(strike.x, strike.y, '#f97316', 24);
                   spawnBurst(strike.x, strike.y, '#7f1d1d', 10);
                   useGameStore.getState().spawnExplosionFx(strike.x, strike.y, SIGNAL_STRIKE_RADIUS_PX);
+                  useGameStore.getState().breakEggsInBlast(strike.x, strike.y, SIGNAL_STRIKE_RADIUS_PX); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                   useGameStore.getState().spawnGlow(strike.x, strike.y, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
                   const sgWalls = aoeWalls(strike.x, strike.y);
                   for (const sgEnemy of sgAimable) {
@@ -14866,6 +14883,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const { floors: nextFloors, pulses: floorPulses, changed } = tickIceLanceFloors(ilState.iceLanceFloors, ilState.projectiles, gameTime);
               for (const pulseBeam of floorPulses) {
                 const hits = pickBeamHits(pulseBeam.ax, pulseBeam.ay, pulseBeam.bx, pulseBeam.by, pulseBeam.halfWidth, ilEnemies);
+                useGameStore.getState().breakEggsWhere(egg => eggInBeam(egg, pulseBeam.ax, pulseBeam.ay, pulseBeam.bx, pulseBeam.by, pulseBeam.halfWidth)); // ★卵も割る(2026-11-09)
                 applyBeamPulse(hits, pulseBeam.damage, undefined, '#a5e6ff', 'pickup-xp-icelance-floor');
               }
               if (changed) ilState.setIceLanceFloors(nextFloors);
@@ -15044,6 +15062,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const end2 = shortenSegmentAtWalls(elPcx, elPcy, rawEndX2, rawEndY2, beamWalls(elPcx, elPcy, elPad2));
                     if (gameTime >= eyeLaserNextPulseRef.current) {
                       const hits = pickBeamHits(elPcx, elPcy, end2.x, end2.y, EYE_LASER_HALFWIDTH, elAimable);
+                      useGameStore.getState().breakEggsWhere(egg => eggInBeam(egg, elPcx, elPcy, end2.x, end2.y, EYE_LASER_HALFWIDTH)); // ★卵も割る(2026-11-09)
                       applyBeamPulse(hits, elGun.eyeLaserPulseDamage ?? 0, undefined, '#ff8a3d', 'pickup-xp-eyelaser', { x: elPcx, y: elPcy });
                       eyeLaserNextPulseRef.current += EYE_LASER_PULSE_MS;
                     }
@@ -15069,6 +15088,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 変異塊の代理(巨大な箱)は中心ではなくいちばん近い縁で測る(社長報告2026-11-02「塊に向けて銃が撃たれない」と同じ原因)。
           const crawlerNear = (e: Enemy) => (isLabCrawlerProxyType(e.type) ? blastAnchorOf(e, cx, cy) : null);
           const candidates = pickFanHits(cx, cy, dirX, dirY, FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD, pool, crawlerNear);
+          st.breakEggsWhere(egg => { const b = eggBodyPoint(egg); return eggInFan(b, cx, cy, dirX, dirY, FLAMER_RANGE_PX, FLAMER_HALF_ANGLE_RAD) && (w.length === 0 || !segmentBlocked(cx, cy, b.footX, b.footY, w)); }); // ★卵も割る(2026-11-09)
           const hits = w.length === 0
             ? candidates
             : candidates.filter(e => { const a = blastAnchorOf(e, cx, cy); return !segmentBlocked(cx, cy, a.x, a.y, w); });
@@ -15813,6 +15833,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const acBlastX = hitPt.x;
             const acBlastY = hitPt.y;
             spawnRing(acBlastX, acBlastY, 6, ALCHEMY_BURST_RADIUS_PX, 'rgba(250,204,21,0.75)', 3, 320);
+            useGameStore.getState().breakEggsInBlast(acBlastX, acBlastY, ALCHEMY_BURST_RADIUS_PX); // ★卵も割る(社長実機報告2026-11-09)
             spawnBurst(acBlastX, acBlastY, '#facc15', 12);
             useGameStore.getState().spawnGlow(acBlastX, acBlastY, 30, 'rgba(250,204,21,', 320);
             const acWalls = aoeWalls(acBlastX, acBlastY);
@@ -15876,6 +15897,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(blastX, blastY, '#f97316', 24);
             spawnBurst(blastX, blastY, '#7f1d1d', 10);
             useGameStore.getState().spawnExplosionFx(blastX, blastY, exRadius); // v0.25.3283: 爆発flipbook
+            useGameStore.getState().breakEggsInBlast(blastX, blastY, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
             useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
 
             const splashBase = dmg * GRENADE_BLAST_DAMAGE_MULT * exMult;
@@ -15929,6 +15951,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(blastX, blastY, '#9fd8ff', 16);
               spawnBurst(blastX, blastY, '#1e3a5f', 6);
               useGameStore.getState().spawnExplosionFx(blastX, blastY, exRadius, 0x9fd8ff); // v0.25.3283: 爆発flipbook(ゴースト=青白)
+              useGameStore.getState().breakEggsInBlast(blastX, blastY, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_XS, 'rgba(159,216,255,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             } else {
               spawnRing(blastX, blastY, 8, exRadius, 'rgba(251,146,60,0.8)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
@@ -15936,6 +15959,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(blastX, blastY, '#7f1d1d', 6);
               useGameStore.getState().spawnGlow(blastX, blastY, GLOW_R_XS, 'rgba(251,146,60,', HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
               useGameStore.getState().spawnExplosionFx(blastX, blastY, exRadius); // v0.25.3283: 爆発flipbook
+              useGameStore.getState().breakEggsInBlast(blastX, blastY, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
             }
             const splashBase = dmg * (projectile.explodeDamageMult ?? 1) * exMult;
             const exWalls = aoeWalls(blastX, blastY);
@@ -16302,16 +16326,31 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // Projectiles can also break small environmental props such as torches.
         const propProjectiles = useGameStore.getState().projectiles;
         const liveProps = useGameStore.getState().breakableProps;
+        // ★卵(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」):
+        // ①弾と卵の当たりは**描かれた卵の箱**(eggShotRect)で見る(足元の18×12は低すぎて、体の高さを飛ぶ弾が同じ地面の卵の上を素通りしていた)。
+        // ②前のフレームの位置から今の位置まで掃いて見る(速い弾が1フレームで卵を飛び越さない)。
+        // ③置き物・自分で爆ぜる物(手榴弾・転がり弾・罠・デコイ・盾・タレット)は卵で消えない(爆発の側で割る=breakEggsInBlast)。
+        //   着弾で爆ぜる弾(グレネードガン・錬金・爆ぜる弾)は卵を割って飛び続ける(卵で消えると爆発が出ない)。
+        const prevProjPos = projPrevPosRef.current;
         for (const projectile of propProjectiles) {
           if (projectilesRemovedThisFrame.has(projectile.id)) continue;
           if (projectile.hostile || projectile.createdAt > now) continue;
+          const pv = prevProjPos.get(projectile.id);
+          const prevPt = pv && Math.hypot(pv.x - projectile.x, pv.y - projectile.y) <= 240 ? pv : undefined; // 置き直し(瞬間移動)は掃かない
+          const eggProof = projectile.rollDetonatePx !== undefined
+            || projectile.weaponType === 'grenade' || projectile.weaponType === 'trap' || projectile.weaponType === 'decoy'
+            || projectile.weaponType === 'shield' || projectile.weaponType === 'turret';
           // 松明(torch)は弾がすり抜ける(社長指示)=衝突/破壊対象から除外。他の小物(機雷/UVバー/卵等)は従来どおり。
-          const hitProp = liveProps.find(prop => prop.type !== 'torch' && checkCollision(projectile, prop));
+          const hitProp = liveProps.find(prop => prop.type !== 'torch'
+            && (prop.type === 'mine' ? !eggProof && sweptBoxHitsRect(prevPt, projectile, eggShotRect(prop)) : checkCollision(projectile, prop)));
           if (!hitProp) continue;
 
           const broken = damageBreakableProp(hitProp.id, projectile.damage);
-          removeProjectile(projectile.id);
-          projectilesRemovedThisFrame.add(projectile.id);
+          const passThrough = hitProp.type === 'mine' && (isGrenadeGunKey(projectile.weaponKey) || projectile.explodeOnHit === true);
+          if (!passThrough) {
+            removeProjectile(projectile.id);
+            projectilesRemovedThisFrame.add(projectile.id);
+          }
 
           const fxX = hitProp.footX;
           const fxY = hitProp.footY - hitProp.height * 0.9;
@@ -16329,6 +16368,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           } else {
             spawnBurst(fxX, fxY, '#fbbf24', 5);
           }
+        }
+
+        // 弾の今の位置を覚える(次のフレームの卵の掃引の始点)。消えた弾は捨てる。
+        {
+          const nextPos = new Map<string, { x: number; y: number }>();
+          for (const pr of useGameStore.getState().projectiles) if (!pr.hostile) nextPos.set(pr.id, { x: pr.x, y: pr.y });
+          projPrevPosRef.current = nextPos;
         }
 
         // Insect eggs are passable traps: no loot, one hit to burst, but
@@ -16464,6 +16510,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   return Math.hypot(ox - ecx, oy - ecy) <= WIRE_PASS_BOMB_RADIUS + Math.max(o.width, o.height) / 2;
                 });
                 useGameStore.getState().spawnExplosionFx(ecx, ecy, WIRE_PASS_BOMB_RADIUS); // v0.25.3283: 爆発flipbook
+                useGameStore.getState().breakEggsInBlast(ecx, ecy, WIRE_PASS_BOMB_RADIUS); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 aoe.forEach(o => {
                   const oxc = o.x + o.width / 2, oyc = o.y + o.height / 2;
                   const killed = useGameStore.getState().damageEnemy(o.id, dmg, true, false, false, wireChannel, wireHate); // 爆発=ボス非致死
@@ -18243,6 +18290,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             spawnBurst(bcx, bcy, '#7f1d1d', 8);
             useGameStore.getState().spawnGlow(bcx, bcy, GLOW_R_S, 'rgba(251,146,60,', 380);
             useGameStore.getState().spawnExplosionFx(bcx, bcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
+            useGameStore.getState().breakEggsInBlast(bcx, bcy, radius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
             playSfx('bomb');
             // 社長指示v0.25.3270: 反射神経と揃えて実距離50pxノックバック(mult/maxStrength両方に同じ値=
             // 既定cap3で頭打ちになる罠を回避。v0.25.3257の教訓)。

@@ -192,3 +192,87 @@ const MINE_H = 12;
 
 export const mineRect = (m: Pick<MineInstance, 'footX' | 'footY' | 'scale'>): Rect =>
   footRect(m.footX, m.footY, MINE_W * m.scale, MINE_H * m.scale);
+
+// ─── 卵を割る当たり(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」) ───
+// 「敵に当たる攻撃は、その範囲の卵も割る」の判定の形をここに1本で置く(描画にも store にも依存しない純関数)。
+
+/** 卵の描かれた大きさ(pixiScene の卵の絵はこの箱へ収める=見えている卵そのもの)。 */
+export const EGG_DRAW_W = 22;
+export const EGG_DRAW_H = 29;
+
+/**
+ * 弾が卵に当たる箱 = **描かれた卵の箱**(足元から上へ EGG_DRAW_H)。
+ * 足元の当たり(mineRect=18×12・踏む/通る用)は弾には低すぎた: 弾は撃った人の体の高さ(足元から14px以上上)を飛ぶので、
+ * 同じ地面に転がっている卵の上を素通りしていた(撃った画と測った値で確かめた・§報告の表)。
+ */
+export const eggShotRect = (m: Pick<MineInstance, 'footX' | 'footY' | 'scale'>): Rect =>
+  footRect(m.footX, m.footY, EGG_DRAW_W * m.scale, EGG_DRAW_H * m.scale);
+
+/**
+ * 弾(箱)が前のフレームの位置から今の位置へ動く間に、箱 r に触れたか(掃引)。速い弾が1フレームで卵を飛び越すのを防ぐ。
+ * prev が無い(出たばかり)時は今の位置だけで見る。弾の箱の大きさぶん r を広げ、線分と箱の交差(スラブ法)で判定する。
+ */
+export const sweptBoxHitsRect = (
+  prev: { x: number; y: number } | undefined,
+  cur: { x: number; y: number; width: number; height: number },
+  r: Rect,
+): boolean => {
+  const x0 = r.x - cur.width, y0 = r.y - cur.height, x1 = r.x + r.width, y1 = r.y + r.height; // 弾の左上が入れば重なる
+  const bx = cur.x, by = cur.y;
+  const ax = prev?.x ?? bx, ay = prev?.y ?? by;
+  const inside = (x: number, y: number) => x > x0 && x < x1 && y > y0 && y < y1;
+  if (inside(bx, by) || inside(ax, ay)) return true;
+  const dx = bx - ax, dy = by - ay;
+  let t0 = 0, t1 = 1;
+  for (const [p, q] of [[-dx, ax - x0], [dx, x1 - ax], [-dy, ay - y0], [dy, y1 - ay]] as const) {
+    if (p === 0) { if (q <= 0) return false; continue; }
+    const t = q / p;
+    if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
+    else { if (t < t0) return false; if (t < t1) t1 = t; }
+  }
+  return t0 < t1;
+};
+
+/** 卵(足元)が、線分(始点・向き・長さ)から halfWidth 以内か(length=0 で円)。近接の breakPropsAlong と同じカプセル。 */
+export const eggInCapsule = (
+  egg: { footX: number; footY: number }, x0: number, y0: number, ux: number, uy: number, length: number, halfWidth: number,
+): boolean => {
+  const rx = egg.footX - x0, ry = egg.footY - y0;
+  const along = Math.max(0, Math.min(length, rx * ux + ry * uy));
+  return Math.hypot(egg.footX - (x0 + ux * along), egg.footY - (y0 + uy * along)) <= halfWidth;
+};
+
+/** 卵(足元)が扇(中心・向き・届き・半角)の中か(火炎放射器・スキャンの扇)。届きは卵の半分の幅だけ甘く見る。 */
+export const eggInFan = (
+  egg: { footX: number; footY: number }, cx: number, cy: number, dirX: number, dirY: number, range: number, halfAngle: number,
+): boolean => {
+  const dx = egg.footX - cx, dy = egg.footY - cy;
+  const d = Math.hypot(dx, dy);
+  if (d > range + EGG_DRAW_W / 2) return false;
+  if (d < 1) return true;
+  const dl = Math.hypot(dirX, dirY) || 1;
+  const cos = (dx * dirX + dy * dirY) / (d * dl);
+  return cos >= Math.cos(halfAngle);
+};
+
+/** 卵の描かれた体の真ん中(光線・扇は撃った人の体の高さを通るので、足元ではなくここで測る)。 */
+export const eggBodyPoint = (egg: { footX: number; footY: number; scale?: number }): { footX: number; footY: number } =>
+  ({ footX: egg.footX, footY: egg.footY - (EGG_DRAW_H * (egg.scale ?? 1)) / 2 });
+
+/** 光線(根元 a → 先 b・半幅)が卵の描かれた体に触れるか。半幅に卵の半分の幅を足す。 */
+export const eggInBeam = (
+  egg: { footX: number; footY: number; scale?: number }, ax: number, ay: number, bx: number, by: number, halfWidth: number,
+): boolean => {
+  const len = Math.hypot(bx - ax, by - ay);
+  const ux = len > 0 ? (bx - ax) / len : 1, uy = len > 0 ? (by - ay) / len : 0;
+  return eggInCapsule(eggBodyPoint(egg), ax, ay, ux, uy, len, halfWidth + (EGG_DRAW_W * (egg.scale ?? 1)) / 2);
+};
+
+/** 円(中心・半径)が卵の描かれた箱に触れるか(塊弾・回る衛星弾など、円で当てる物)。 */
+export const circleHitsEgg = (
+  egg: { footX: number; footY: number; scale: number }, cx: number, cy: number, radius: number,
+): boolean => {
+  const r = eggShotRect(egg);
+  const qx = Math.max(r.x, Math.min(cx, r.x + r.width)), qy = Math.max(r.y, Math.min(cy, r.y + r.height));
+  return (cx - qx) ** 2 + (cy - qy) ** 2 <= radius * radius;
+};

@@ -366,7 +366,7 @@ import {
   poiUnlockBandText, POI_BAND_MS, POI_VACCINE_NAME, POI_VACCINE_DESC, POI_LABEL, type PoiKind,
 } from '../utils/detourPoiUx';
 import { resolveTorchCollision, torchRect, torchesInRegion, setTorchesDisabled } from '../world/torches';
-import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled, isEggExpired, eggsToArmForCap } from '../world/mines';
+import { mineAmbushAround, mineRect, minesInRegion, pressureMinesNearPlayer, setMinesDisabled, isEggExpired, eggsToArmForCap, eggInCapsule, eggInBeam } from '../world/mines';
 import type { MineAmbushAnchor } from '../world/mines';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { classSubWeaponFor, skillMaxLevel, rollGachaSkill, rollSkillLevel, SKILLS, gachaPullCost, gachaRefundFor, REVISIT_MISSION_ID, POLICE_REWARD_SKILLS, ensureDefaultOwnedSkills, COMPANION_SKILL_KEYS, retiredSkillsRefundTotal } from '../data/campaign';
@@ -4315,6 +4315,13 @@ const startBrawlerPalmDash = (get: () => GameState, set: (fn: (s: GameState) => 
   brawlerSfx('homing-fire', 0.35, 1.5, 160);
 };
 /** 5段目: 軌跡の上の壊せる物(松明など)を壊す(一閃と同じ扱い・§9-26)。 */
+/** 卵が割れた時のはじけ(近接で割った時の絵=breakPropsAlong と breakEggsWhere の共通)。 */
+const eggBreakFx = (get: () => GameState, broken: BreakableProp): void => {
+  get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
+  get().spawnBurst(broken.footX, broken.footY - 8, '#166534', 16);
+  get().spawnRing(broken.footX, broken.footY - 8, 5, 50, 'rgba(132,204,22,0.82)', 4, 320);
+  get().spawnGlow(broken.footX, broken.footY - 8, GLOW_R_S, 'rgba(132,204,22,', 320);
+};
 const brawlerPalmBreakProps = (get: () => GameState, palm: { x0: number; y0: number; ux: number; uy: number; travel: number }, p: Player): void => {
   const melee = p.weapons.find(w => w.isMelee);
   const dmg = meleeSwingBaseDamage(melee, p) * BR.brawlerStageSpec(5).mult * 2.5;
@@ -4807,6 +4814,8 @@ const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => P
       ...(spec.shape === 'landing' ? { lift: true } : {}),
       combo: { move: 'secret', countRevenge: false },
     });
+    if (spec.shape === 'landing') g.breakEggsInBlast(c.x, c.y + p.height / 2 - 6, BR.BRAWLER_LANDING_RADIUS); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
+    else if (spec.shape === 'band') g.breakEggsWhere(egg => eggInBeam(egg, c.x, c.y, c.x + dir.x * BR.BRAWLER_BAND_LEN, c.y + dir.y * BR.BRAWLER_BAND_LEN, BR.BRAWLER_BAND_HALF_W));
     brawlerNoteFlowHits(set, res.hits ?? 0);
     brawlerKillSfx(res);
     brawlerStageFx(get, move, c, dir, res, target, null);
@@ -4832,6 +4841,7 @@ const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => P
     });
     brawlerNoteFlowHits(set, res.hits ?? 0);
     brawlerKillSfx(res);
+    g.breakEggsInBlast(foot.x, foot.y, BR.BRAWLER_STOMP_RADIUS); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
     brawlerGroundBreakFx(get, foot.x, foot.y, true);
     for (const h of res.hitAt ?? []) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.stomp);
@@ -4885,6 +4895,7 @@ const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Par
   brawlerNoteFlowHits(set, res.hits ?? 0);
   brawlerKillSfx(res);
   const g = get();
+  g.breakEggsInBlast(foot.x, foot.y, BR.BRAWLER_SECRET_LAND_RADIUS); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
   g.spawnFlash('rgba(255,250,235,0.35)', 160);
   g.spawnRing(foot.x, foot.y, 24, BR.BRAWLER_SECRET_LAND_RADIUS * 1.3, BR.BRAWLER_RGBA(0.95), 7, 620, true);
   g.spawnRing(foot.x, foot.y, 14, BR.BRAWLER_SECRET_LAND_RADIUS * 0.9, 'rgba(56,189,248,0.85)', 5, 520, true);
@@ -4973,6 +4984,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       combo: { move: BRC.brawlerStageMoveKey(s.stage) },
     });
     if (palm) brawlerPalmBreakProps(get, palm, p);
+    if (spec.shape === 'landing') g.breakEggsInBlast(c.x, c.y + p.height / 2 - 6, BR.BRAWLER_LANDING_RADIUS); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
     const fdir = palm ? { x: palm.ux, y: palm.uy } : dir;
@@ -5007,6 +5019,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     setBrawler(set, BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: BR.BRAWLER_STOMP_HITSTOP_MS }),
       hits > 0 ? { lungeHoldUntil: now + BR.BRAWLER_STOMP_HITSTOP_MS } : {});
     brawlerNoteFlowHits(set, hits);
+    g.breakEggsInBlast(foot.x, foot.y, BR.BRAWLER_STOMP_RADIUS); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
     g.spawnRing(foot.x, foot.y, 10, BR.BRAWLER_STOMP_RADIUS * 0.8, 'rgba(255,255,255,0.75)', 3, 300, true);
     g.spawnGlow(foot.x, foot.y, GLOW_R_XL, 'rgba(241,230,200,', 320, true);
@@ -5254,6 +5267,8 @@ const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Parti
   for (const k of st.brawlerKiko) {
     const nx = k.x + k.dirX * step, ny = k.y + k.dirY * step;
     const traveled = k.traveled + step;
+    // 飛んでいる間に触れた卵は割って飛び続ける(卵で止まって爆ぜない=敵まで届く)。 // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
+    if (st.breakableProps.length > 0) get().breakEggsWhere(egg => eggInBeam(egg, k.x, k.y, nx, ny, BR.BRAWLER_KIKO_HIT_PAD));
     let hitX: number | null = null, hitY = 0;
     for (const e of st.enemies) {
       if (!BR.isBrawlerTargetable(e) || e.aiPhase === 'jump') continue;
@@ -5407,6 +5422,7 @@ const explodeBrawlerKiko = (
   }
   const g = get();
   g.spawnExplosionFx(x, y, radius);
+  g.breakEggsInBlast(x, y, radius); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
   // 残る煙(vfx/smoke_04・沈んだ灰でゆっくり昇る)=延焼の気配。fx/hitfire は撮って比べた結果やめた(この大きさだと四角い柱に見える=§9-27)。
   g.spawnImageMark(x, y - 10, 'vfx/smoke_04', { scale: 0.9, duration: 1100, noPop: true, fadeFrom: 0.25, tint: 0x6b625a, alpha: 0.5, moveY: -34, rot: Math.random() * Math.PI * 2 });
   g.spawnEffect({ kind: 'meleeHit', id: `mhit-kikox-${Date.now()}`, x, y, size: radius * 2.6, tint: BR.BRAWLER_COLOR_HEX, createdAt: Date.now(), duration: MELEE_HIT_DUR });
@@ -6601,6 +6617,7 @@ const applyMeleeFinishSkillSpread = (
     get().spawnBurst(fcx, fcy, '#7f1d1d', 8);
     get().spawnGlow(fcx, fcy, GLOW_R_S, 'rgba(251,146,60,', 440);
     get().spawnExplosionFx(fcx, fcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
+    get().breakEggsInBlast(fcx, fcy, radius); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
     for (const e of get().enemies) {
       if (isReaperFamily(e.type) && !isTerminalReaper(e)) continue;
       if (isCorpse(e) || isUntouchable(e)) continue; // KILL吹き飛び(死体・§26-2): 死体は対象外 / 英雄の昇天中
@@ -8653,6 +8670,15 @@ interface GameState {
     x0: number, y0: number, ux: number, uy: number,
     length: number, halfWidth: number, damage: number
   ) => boolean;
+  /**
+   * ★卵だけを割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)。
+   * 爆発・格闘の技・光線/扇の銃など「敵に当たる攻撃」が、その範囲の卵も割るための口。割れ方は近接で割った時と同じ
+   * (アームしていても無害に消える・連鎖しない・ドロップ無し・同じ緑のはじけ)。松明・UVバーは今どおり触らない。割れた数を返す。
+   * 判定の形は world/mines.ts の純関数(eggInCapsule / eggInFan)を渡す。
+   */
+  breakEggsWhere: (test: (egg: BreakableProp) => boolean) => number;
+  /** 爆発の円(中心・半径)で卵を割る(breakEggsWhere の円の近道)。プレイヤー側の爆発の合流点から呼ぶ。 */
+  breakEggsInBlast: (cx: number, cy: number, radius: number) => number;
   
   // Game state actions
   setGameTime: (time: number, realTime?: number) => void;
@@ -10666,9 +10692,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (hitAt.length > 0) recordDamageDealt('other', dealtSum);
     if (killedList.length > 0) grantMeleeKillRewards(get, killedList, player, getActiveGun(player));
     get().spawnRing(x, y, 8, bashRange, 'rgba(190,242,100,0.62)', 4, 260);
+    get().breakEggsInBlast(x, y, bashRange); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
     get().spawnBurst(x, y, '#bef264', 14);
     if (skAwaken) {
-      get().spawnExplosionFx(x, y, bashRange); // 覚醒: 爆発flipbook(全爆発共通・v0.25.3283系)
+      get().spawnExplosionFx(x, y, bashRange); // 覚醒: 爆発flipbook(全爆発共通・v0.25.3283系) // 卵: 上のバッシュの円で割った
       get().registerMultiHit(hitAt.length);    // 爆発仕様: ヘビーガンナーの2体以上ヒット計上(M33⑤)
     }
     for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
@@ -14589,6 +14616,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().spawnBurst(pcx, pcy, '#38bdf8', 18);
         get().spawnGlow(pcx, pcy, GLOW_R_S, 'rgba(56,189,248,', 360);
         get().spawnExplosionFx(pcx, pcy, radius); // v0.25.3283: 爆発flipbook(全爆発共通)
+        get().breakEggsInBlast(pcx, pcy, radius); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
         // 社長指示v0.25.3270: ノックバックは実距離50px基準に統一(knockbackSpeedFor(50,280)/BULLET_KNOCKBACK_SPEED)。
         // エクスプローダー覚醒(Lv3): 爆発KB距離×1.5(v0.25.3300)。
         const kbMult = knockbackSpeedFor(SKILL_BLAST_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED * skillExplosionKbMult(p);
@@ -15067,6 +15095,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnBurst(ex, ey, '#facc15', 16);
       get().spawnBurst(ex, ey, '#f97316', 8);
       get().spawnExplosionFx(ex, ey, radius, 0xfacc15);
+      get().breakEggsInBlast(ex, ey, radius); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
       get().spawnGlow(ex, ey, 30, 'rgba(250,204,21,', 420);
       // ★検収2巡目A-新3是正: **壁越しには効かない**。§16-5c は「既定グレネードのsplashと同じ形」で、
       // 既定splash・錬金の破裂・シグナルの空爆は全て segmentBlocked を通している。
@@ -22380,10 +22409,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       get().spawnSlash(prop.footX, prop.footY - prop.height * 0.8, 'rgba(255,243,196,0.95)');
       if (!broken) continue;
       if (broken.type === 'mine') {
-        get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
-        get().spawnBurst(broken.footX, broken.footY - 8, '#166534', 16);
-        get().spawnRing(broken.footX, broken.footY - 8, 5, 50, 'rgba(132,204,22,0.82)', 4, 320);
-        get().spawnGlow(broken.footX, broken.footY - 8, GLOW_R_S, 'rgba(132,204,22,', 320);
+        eggBreakFx(get, broken);
       } else {
         get().spawnBurst(broken.footX, broken.footY - 18, '#f97316', 18);
         get().spawnBurst(broken.footX, broken.footY - 18, '#fde68a', 8);
@@ -22394,6 +22420,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     return hitAny;
   },
+
+  breakEggsWhere: (test) => {
+    let n = 0;
+    for (const egg of get().breakableProps) {
+      if (egg.type !== 'mine' || !test(egg)) continue;
+      const broken = get().damageBreakableProp(egg.id, 9999);
+      if (!broken) continue;
+      n += 1;
+      get().spawnSlash(broken.footX, broken.footY - broken.height * 0.8, 'rgba(255,243,196,0.95)');
+      eggBreakFx(get, broken);
+    }
+    return n;
+  },
+  breakEggsInBlast: (cx, cy, radius) => get().breakEggsWhere(egg => eggInCapsule(egg, cx, cy, 1, 0, 0, radius)),
 
   // Equip a dropped/crate weapon into its slot. Auto-pick: a weapon only
   // replaces the current gun/melee if it is a higher tier (so a

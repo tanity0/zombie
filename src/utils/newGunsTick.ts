@@ -27,6 +27,7 @@ import {
 import { pickNearestTarget, isCorpse, resistsChipKnockback, isBossType, isHangedman } from './enemyUtils';
 import { isAimableEnemy } from './brawler'; // 狙える敵の式(格闘と共有・research/BRAWLER.md §8-5)
 import { clampRectToPlayableArea } from '../world/playableArea';
+import { circleHitsEgg } from '../world/mines';
 import { playSfx, playEnemyDeath } from '../audio/audioManager';
 import { recoilSpecForWeapon } from './combatFeel';
 import { dropGunKillLoot, type GunKillDropCtx } from './gunKillDrops';
@@ -38,7 +39,7 @@ import {
 import {
   SATELLITE_WEAPON_KEY, SAT_CONTACT_DAMAGE, SAT_SHOT_DAMAGE, SAT_SHOT_DURATION_MS, SAT_SHOT_SPEED_PX_PER_SEC, SAT_SHOT_TURN_RADIUS_PX,
   SAT_SHOT_RANGE_PX, SAT_ORBIT_RADIUS_PX, emptySatelliteOrbit, stepSatelliteOrbit, satelliteBulletPoses, satelliteReleaseDir,
-  satelliteTouchesRect, satelliteContactReady, assignSatelliteTargets, type SatelliteOrbit, type SatelliteBulletPose,
+  satelliteTouchesRect, satelliteContactReady, assignSatelliteTargets, SAT_BULLET_RADIUS_PX, type SatelliteOrbit, type SatelliteBulletPose,
 } from './satelliteOrbit';
 import {
   SCAN_WEAPON_KEY, SCAN_SWEEP_MS, pickScanFanHits, pickScanAutoAimDir, scanBeatIndex,
@@ -243,6 +244,10 @@ const tickBlob = (gameTime: number, dtSec: number, canFire: boolean): void => {
     }
   }
   blobs = next;
+  // 塊に触れた卵は割れる(塊は止まらない)。 // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
+  if (blobs.length > 0 && st.breakableProps.length > 0) {
+    useGameStore.getState().breakEggsWhere(egg => blobs.some(b => gameTime - b.bornAt < BLOB_LIFE_MS - BLOB_FADE_MS && circleHitsEgg(egg, b.x, b.y, blobHitRadius(b, gameTime))));
+  }
   // 描画用: 触れている敵との接点(火の粉/湯気)と、押された敵の足元(引きずりの土埃)。判定には使わない。
   const contacts: { x: number; y: number }[] = [];
   for (const b of blobs) {
@@ -367,6 +372,8 @@ const tickSatellite = (gameTime: number, dtSec: number, holding: boolean, locked
   // 関係なく当たりを止める(回り続けるのは構わない=品質監査2巡目#1)。
   if (locked || orbit.slots.length === 0) return;
   const poses = satelliteBulletPoses(orbit, pcx, pcy, gameTime);
+  // 回っている弾に触れた卵は割れる(弾は消えない)。 // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
+  if (st.breakableProps.length > 0) useGameStore.getState().breakEggsWhere(egg => poses.some(ps => circleHitsEgg(egg, ps.x, ps.y, SAT_BULLET_RADIUS_PX)));
   const touch = touchableEnemies(st.enemies);
   const contactBase = gunShotBaseDamage({ damage: SAT_CONTACT_DAMAGE, magazine: undefined }, p, gameTime);
   for (const e of touch) {

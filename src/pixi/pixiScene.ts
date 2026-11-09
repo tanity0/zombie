@@ -13,6 +13,7 @@
 // the hero pops). Tilt-shift depth-of-field lands next; ambient fireflies sit
 // outside that filter so they stay crisp.
 
+import { EGG_DRAW_W, EGG_DRAW_H } from '../world/mines';
 import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform } from '../utils/viewTransform';
@@ -3044,10 +3045,10 @@ const TREE_VISUAL_SCALE = 1.65 * 1.5;
 const PICKUP_VISUAL_SIZE = 30;
 const TORCH_VISUAL_W = 42;
 const TORCH_VISUAL_H = 68;
-// 緑卵(mine)のプールスプライト表示サイズ(社長指示で気持ち大きく: 18/24→22/29。当たり判定(mineRect)は
-// world/mines.ts 側で別管理=見た目だけの変更、判定は不変)。
-const EGG_VISUAL_W = 22;
-const EGG_VISUAL_H = 29;
+// 緑卵(mine)のプールスプライト表示サイズ(社長指示で気持ち大きく: 18/24→22/29。踏む当たり(mineRect)は
+// world/mines.ts 側で別管理)。★弾・光線が卵を割る当たりはこの描かれた箱(eggShotRect)なので、数値の出どころは world/mines.ts の1本。
+const EGG_VISUAL_W = EGG_DRAW_W;
+const EGG_VISUAL_H = EGG_DRAW_H;
 // ステージ4の焚き火(松明の置き換え)。横長の焚き火台なので幅広・低め。炎は台の中央(低い位置)。
 const CAMPFIRE_VISUAL_W = 60;
 const CAMPFIRE_VISUAL_H = 34;
