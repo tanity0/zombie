@@ -435,6 +435,21 @@ export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): num
 };
 
 /**
+ * ★空中の合図の強さ(§12-1・社長承認2026-11-09「合図を頂点に対する割合で満額にする」): いまの高さ ÷ その弧の頂点(0..1)。
+ * 重い区分(ボス級0.4・強個体0.7)や爆発の低い浮きでも、頂点では満額の合図(影の縮み・輪・体の拡大)が出る。高さそのものの差は残る。
+ * 叩き落とし(押し上げ0)・地面バウンドの落ちる区間は、落ち始めの高さに対する割合。
+ */
+export const brawlerAirSignal = (e: BrawlerJuggleFields, now: number): number => {
+  if (e.brawlerLiftAt === undefined) return 0;
+  const h = brawlerJuggleHeightRel(e, now);
+  if (h <= 0) return 0;
+  const from = e.brLiftFrom ?? 0, peak = e.brLiftPeak ?? 1;
+  const dropping = peak <= 0 || ((e.brLiftDropMs ?? 0) > 0 && now - e.brawlerLiftAt < (e.brLiftDropMs ?? 0));
+  const top = dropping ? from : (e.brLiftDropMs ?? 0) > 0 ? peak : brawlerJuggleTop(from, peak);
+  return top > 1e-6 ? Math.max(0, Math.min(1, h / top)) : 0;
+};
+
+/**
  * 格闘の当たり1回ぶんの浮き(§12-1・§13-2)。cls=区分の重さ。返り値 null=浮きは変わらない。
  *  - 地上: 3段目(アッパー)・4段目が浮かせる(ランチャー)。拾える回数の予算(雑魚6/強個体5/ボス級4)をここで持たせる。
  *  - 空中: 押し上げのある段・技で浮き直す(高さ・時間=押し上げ量×重さ。回数の減りは予算が受け持つ)。当たるたびに予算を使い、

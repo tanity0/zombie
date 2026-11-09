@@ -108,7 +108,7 @@ import {
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
-import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerPhaseKind, brawlerJuggleHeightRel } from '../utils/brawlerCombo'; // 格闘の反撃の赤い予告(位相は meteorPhase)
+import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerPhaseKind, brawlerJuggleHeightRel, brawlerAirSignal } from '../utils/brawlerCombo'; // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
@@ -3529,8 +3529,10 @@ const SHADOW_FLOAT_FADE = 0.5;          // 薄く: ×(1-0.5t)
 /** ① 影: 頂点で幅 ×0.5・濃さ ×0.75(高さ0で今どおり)。縮みを強く・薄まりを弱く=芯を残して小さくくっきり(クリエイティブ監査#9)。 */
 const BRAWLER_AIR_SHADOW_W = 0.5;
 const BRAWLER_AIR_SHADOW_A = 0.75;
-/** ⑤ 体: 頂点で ×1.06(縦横同じ・倒さない・回さない・歪ませない)。影は大きくしない。 */
-const BRAWLER_AIR_BODY_SCALE = 1.06;
+/** ⑤ 体: 頂点で ×1.10(社長承認2026-11-09・旧1.06。縦横同じ・倒さない・回さない・歪ませない)。影は大きくしない。 */
+const BRAWLER_AIR_BODY_SCALE = 1.10;
+/** ⑤ の膨らみが目標を追う時定数(ms)=上がり切ってから膨らみ、落ち始めで戻る遅れ。 */
+const BRAWLER_AIR_SWELL_TAU_MS = 70;
 /**
  * ② 足元の輪(クリエイティブ監査#3〜#6・#8): 柔らかい円形のグロー(外縁だけ少し明るい)を地面に扁平に敷く。金寄り・加算。
  * 幅は**実際に描かれている影**の幅×1.1(影と一緒に締まる)・上限は見えている画面の幅の4割。
@@ -4319,6 +4321,9 @@ interface ActorView {
   shadowAirK?: number;
   /** 浮いている間だけ体に掛けているわずかな拡大(縦横同じ)。影の寸法はこれで割り戻す(影は大きくしない)。 */
   airScale?: number;
+  /** 体の拡大の今の量(0..1・頂点の近くを時間で遅れて追う)と、その更新時刻。 */
+  airSwell?: number;
+  airSwellAt?: number;
   /** 浮いている間の足元の輪(加算・地面)と、打ち上げた瞬間の上昇の筋(描画だけ・遅延生成)。 */
   airRing?: Sprite;
   airStreaks?: Sprite[];
@@ -22328,12 +22333,28 @@ export class PixiScene {
     // ★格闘の4段目の浮かせ(research/BRAWLER.md §7-10): 絵だけ 26px 浮いて落ちる(上りは速く・頂点で少し止まり・落ちは加速)。判定は地面のまま。
     // 高さは敵の絵の高さに比例(大型でも浮いて見える・判定と足止めの時間は変えない=クリエイティブ監査 #13)。基準=絵の高さ110pxで26px。
     // ★浮かせ追撃(§12-1): 押し上げるたびに今の高さから弧が続く(n 回目ほど低く・重い区分ほど低く)。式は utils/brawlerCombo の1本。
-    const brLiftPx = e.brawlerLiftAt !== undefined
-      ? brawlerJuggleHeightRel(e, Date.now()) * BRW.BRAWLER_LIFT_VIS_PX * Math.max(0.8, fb.boxH / 110) : 0;
+    // ★§12-1(社長承認2026-11-09「浮く絵の高さを、体の高さの約2割から4〜5割へ」): 高さの倍率1 = 絵の箱の高さ×0.45(旧 26px×高さ/110)。
+    //   巨大な敵は見えている画面の縦の2割まで。足元(fb.footY)は動かさない=地平線のフェード・遠近の大きさ・帯の外の減光・可視域は地面の値のまま。
+    let brLiftPx = 0;
+    if (e.brawlerLiftAt !== undefined) {
+      const stZ = useGameStore.getState();
+      const viewH = stZ.gameBounds.height / Math.max(0.05, stZ.viewZoom || 1);
+      brLiftPx = brawlerJuggleHeightRel(e, Date.now()) * Math.min(fb.boxH * BRW.BRAWLER_LIFT_VIS_BODY_K, viewH * BRW.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC);
+    }
     // ★浮いているのを分かりやすく(§12-1・§9-76・社長「敵が空中にいるのを分かりやすくしたい」→「1.2.4.5 がいいな」):
-    // 高さ(0..1)で ①影を小さく薄く ⑤体をわずかに大きく(縦横同じ・倒さない・回さない・歪ませない)。②足元の輪と④上昇の筋は drawBrawlerAir。
-    const brAirK = e.brawlerLiftAt !== undefined ? Math.max(0, Math.min(1, brawlerJuggleHeightRel(e, Date.now()))) : 0;
-    const airScale = 1 + (BRAWLER_AIR_BODY_SCALE - 1) * brAirK;
+    // ①影を小さく薄く ⑤体をわずかに大きく(縦横同じ・倒さない・回さない・歪ませない)。②足元の輪と④上昇の筋は drawBrawlerAir。
+    // ★合図は「その弧の頂点に対する割合」で効かせる(社長承認2026-11-09)=重い区分・爆発の低い浮きでも頂点で満額。
+    const brAirK = e.brawlerLiftAt !== undefined ? brawlerAirSignal(e, Date.now()) : 0;
+    // ⑤ 体の拡大(頂点で ×1.10)は「上がり切ってから膨らみ、落ち始めで戻る」: 頂点の近く(割合0.8→1)だけを目標にし、時間で遅れて追う(慣性)。
+    {
+      const want = brAirK <= 0.8 ? 0 : (() => { const q = (brAirK - 0.8) / 0.2; return q * q * (3 - 2 * q); })();
+      const tNow = Date.now();
+      const dt = view.airSwellAt !== undefined ? Math.max(0, Math.min(100, tNow - view.airSwellAt)) : 0;
+      view.airSwell = (view.airSwell ?? 0) + (want - (view.airSwell ?? 0)) * (1 - Math.exp(-dt / BRAWLER_AIR_SWELL_TAU_MS));
+      view.airSwellAt = tNow;
+      if (e.brawlerLiftAt === undefined && view.airSwell < 0.002) view.airSwell = 0;
+    }
+    const airScale = 1 + (BRAWLER_AIR_BODY_SCALE - 1) * (view.airSwell ?? 0);
     // ★格闘の止めの間の震え: 当てた方向に沿って、止めの残りとともに減衰(#12)。絵だけ。
     const brShakeLeft = e.brawlerShakeUntil !== undefined ? e.brawlerShakeUntil - Date.now() : 0;
     const brShakeAmp = brShakeLeft > 0 ? Math.min(4.5, 1 + brShakeLeft / 28) * (((Math.floor(Date.now() / 16) & 1) === 0) ? 1 : -0.6) : 0;

@@ -106,7 +106,11 @@ export let BRAWLER_PALM_SETTLE_MS = 120; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_PALM_KB_FORWARD = 0.4;
 export const BRAWLER_JUMP_VIS_PX = 48;       // 4段目の見た目の跳ぶ高さ(判定は地面のまま・§2-3)
 export let BRAWLER_LIFT_MS = 585; // ×BRAWLER_TEMPO(係数1.0の値)          // 4段目の浮かせの足止め(§7-10)。社長承認2026-11-08: 450→585(1.3倍・落下を緩やかに=§12-1)
-export const BRAWLER_LIFT_VIS_PX = 26;       // 浮かせの絵の高さ(§7-10)
+export const BRAWLER_LIFT_VIS_PX = 26;       // 浮かせの絵の高さ(§7-10)。★§12-1(社長承認2026-11-09)からは下の体の高さの割合で描く(この値は旧の基準として残す)
+/** ★浮く絵の高さ(research/BRAWLER.md §12-1・社長承認2026-11-09): 高さの倍率1(4段目の頂点)= 敵の絵の箱の高さ×これ(旧 26px×高さ/110 ≒ 0.24)。大きめ・実機で絞る前提。 */
+export const BRAWLER_LIFT_VIS_BODY_K = 0.45;
+/** 巨大な敵の上限: 見えている画面の縦×これ(world px)。 */
+export const BRAWLER_LIFT_VIS_MAX_VIEW_FRAC = 0.2;
 export const BRAWLER_STOMP_RADIUS = 150;     // 下の大踏み潰し(§3-3)
 export const BRAWLER_STOMP_MULT = 2.4; // 社長承認2026-11-09 で 2.0→2.4(通常攻撃を後半ほど高ダメにした分の釣り合い)
 export const BRAWLER_STOMP_HITSTOP_MS = BRAWLER_HITSTOP.closer; // 締めの止め(§9-2・社長承認2026-11-08 で 140→220)

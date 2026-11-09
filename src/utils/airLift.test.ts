@@ -5,7 +5,7 @@ import {
   BLAST_LIFT_HEIGHT_OF_S3, BLAST_LIFT_MS_MULT, BLAST_LIFT_COST,
 } from './airLift';
 import {
-  brawlerJuggleHeightRel, brawlerJugglePush, setBrawlerTempoAll,
+  brawlerJuggleHeightRel, brawlerJugglePush, setBrawlerTempoAll, brawlerAirSignal,
   BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_PUSH, BRAWLER_JUGGLE_MIN_F,
 } from './brawlerCombo';
 import { BRAWLER_LIFT_MS, BRAWLER_TEMPO_DEFAULT } from './brawler';
@@ -81,5 +81,27 @@ describe('スラッシャーの追撃の浮き(slasherLiftMove)', () => {
     expect(slasherLiftMove(1, false, true)).toBe('s2');
     expect(slasherLiftMove(1, false, false)).toBeNull();
     expect(slasherLiftMove(2, true, true)).toBe('s5');
+  });
+});
+
+describe('空中の合図は頂点に対する割合(brawlerAirSignal・社長承認2026-11-09)', () => {
+  it('重い区分・爆発の低い浮きでも頂点で1(満額)・高さそのものの差は残る', () => {
+    const boss = brawlerJugglePush({}, 'boss', 's4', NOW)!;
+    const mob = brawlerJugglePush({}, 'mob', 's4', NOW)!;
+    const blast = blastLiftPatch(zombie, 'mob', 60, 100, NOW, GT)!;
+    for (const a of [boss, mob]) expect(brawlerAirSignal(a, NOW + a.brLiftMs! * 0.25)).toBeCloseTo(1, 3);
+    expect(brawlerAirSignal(blast, NOW + blast.brLiftMs! * 0.2)).toBeCloseTo(1, 3);
+    expect(brawlerJuggleHeightRel(boss, NOW + boss.brLiftMs! * 0.25)).toBeLessThan(brawlerJuggleHeightRel(mob, NOW + mob.brLiftMs! * 0.25));
+  });
+  it('上り途中は1未満・着地で0・叩き落としは落ち始めの高さに対する割合(1から減る)', () => {
+    const mob = brawlerJugglePush({}, 'mob', 's4', NOW)!;
+    const mid = brawlerAirSignal(mob, NOW + mob.brLiftMs! * 0.08);
+    expect(mid).toBeGreaterThan(0); expect(mid).toBeLessThan(0.95);
+    expect(brawlerAirSignal(mob, NOW + mob.brLiftMs!)).toBe(0);
+    const t = NOW + mob.brLiftMs! * 0.3;
+    const down = brawlerJugglePush({ ...mob, brLiftBudget: 0 }, 'mob', 's3', t)!; // 予算切れ=叩き落とし
+    expect(down.brLiftDown).toBe(true);
+    expect(brawlerAirSignal(down, t + 1)).toBeGreaterThan(0.95);
+    expect(brawlerAirSignal(down, t + down.brLiftMs! * 0.7)).toBeLessThan(0.5);
   });
 });
