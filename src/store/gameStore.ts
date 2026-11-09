@@ -4884,7 +4884,8 @@ const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => P
       : [target.id];
     const res = strike(ids2.includes(target.id) ? ids2 : [target.id, ...ids2], {
       mult: spec.mult, stunMs: spec.hitstopMs, postureMult: spec.mult,
-      kb: spec.kb === 'big' ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } : { kind: spec.kb },
+      // ★秘奥義の中の5段目も段の表の吹き飛ばし(2倍)に揃える(社長指示2026-11-09「これも半分」)。
+      kb: spec.kb === 'big' ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true, ...(spec.kbMult !== undefined ? { power: spec.kbMult } : {}) } : { kind: spec.kb },
       ...(spec.shape === 'landing' ? { lift: true } : {}),
       combo: { move: 'secret', countRevenge: false },
     });

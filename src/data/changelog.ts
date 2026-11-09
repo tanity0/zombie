@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5430', items: [
+    '秘奥義の連撃に混ざる五段目も、吹き飛びが半分になった',
+  ] },
   { version: '0.25.5429', items: [
     '宙に浮いた敵へ攻撃を当てるたびにダメージが上がり、最大で二倍。銃や爆発、サブウェポンも',
     '格闘の五段目の吹き飛びが半分になり、追いかけて次の技を当てやすい',
