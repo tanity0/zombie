@@ -169,6 +169,7 @@ import {
 // 疑似Player(既存のプレイヤー用純関数へそのまま渡す=式を複製しないための共通化)。
 import { ghostBuildFor, ghostActorPlayer } from '../utils/ghostBuild';
 import { withoutBrawler } from '../utils/playerBuild'; // 守護霊・幻影は格闘を使わない(research/BRAWLER.md §8-2)
+import { recordBossAppearances, markBossAppeared } from '../utils/bossAppearances'; // 一時停止のボス一覧: この出撃で出現したボス
 import { recordMapSightings } from '../utils/mapSightings'; // 一時停止の地図に出す「出会った敵」の記録
 import { recordRoutePoint } from '../utils/runRoutes'; // 一時停止の地図に描く「今回歩いた道」の記録
 import { bloodAwakenStep, isBloodAwakening, BLOOD_AWAKEN_SFX_GAIN, BLOOD_AWAKEN_SFX_RATE } from '../utils/bloodAwaken'; // B10 血の覚醒の遷移(満ちたら自動発動・終わりで0へ)
@@ -2793,6 +2794,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // アテンション(ボスの紹介でカメラが寄る間)は下で return するので、その前で記録する(品質監査 A-1)
           const ms = useGameStore.getState();
           recordMapSightings(ms.enemies, ms.camera, ms.gameBounds, ms.viewZoom);
+          recordBossAppearances(ms.enemies, getSelectedStageId()); // 一時停止のボス一覧(社長指示2026-11-09): 盤上に出たボス(休眠含む)
           // 今回の出撃で歩いた道(THEONE_ROUND2 §2-6): 1.5秒ごとに自分の中心を記録(間隔・移動量の判定は utils/runRoutes)
           if (!ms.isPaused) recordRoutePoint(ms.gameTime, ms.player.x + ms.player.width / 2, ms.player.y + ms.player.height / 2);
         }
@@ -9673,7 +9675,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               const lAc = bossArtCenter(activeLib);
               useGameStore.getState().triggerAttention(lAc.x, lAc.y, bossCutinPayload('mutant-liberty'));
-              markBossesEncountered(new Set(['mutant-liberty'])); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
+              markBossesEncountered(new Set(['mutant-liberty'])); markBossAppeared('mutant-liberty'); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
               // 遠くで叫んでいる群れの声(英雄の嘶きと同じ場所・距離で減衰)。
               playSfx('screamer-cry', npcSfxDistGain(lAc.x, lAc.y, useGameStore.getState().player.x + useGameStore.getState().player.width / 2,
                 useGameStore.getState().player.y + useGameStore.getState().player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
@@ -9707,7 +9709,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               const aAc = bossArtCenter(activeAstro);
               useGameStore.getState().triggerAttention(aAc.x, aAc.y, bossCutinPayload('mutant-astro'));
-              markBossesEncountered(new Set(['mutant-astro'])); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
+              markBossesEncountered(new Set(['mutant-astro'])); markBossAppeared('mutant-astro'); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
               useGameStore.setState({ eventBannerText: '宇宙飛行群(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
             if (!useGameStore.getState().attention) runAstroTick(activeAstro, astroStateRef.current, newGameTime, deltaTime, Date.now());
@@ -9732,7 +9734,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               }
               const wAc = bossArtCenter(activeWraith);
               useGameStore.getState().triggerAttention(wAc.x, wAc.y, bossCutinPayload('mutant-wraith'));
-              markBossesEncountered(new Set(['mutant-wraith'])); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
+              markBossesEncountered(new Set(['mutant-wraith'])); markBossAppeared('mutant-wraith'); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
               useGameStore.setState({ eventBannerText: '亡霊(変異体)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             }
             // 見失わせる場面(§8 A5): ステージボス戦・ボスに追われている・紅き夜・大きなイベント・屋内・帰還サークル。
@@ -9769,7 +9771,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // (旧: 本編の周回の英雄は出会った時刻の強さで体力を決め直していた。社長指示2026-10-05で体力は固定=決め直さない。)
               const hAc = bossArtCenter(activeHero);
               useGameStore.getState().triggerAttention(hAc.x, hAc.y, bossCutinPayload('mutant-hero'));
-              markBossesEncountered(new Set(['mutant-hero'])); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
+              markBossesEncountered(new Set(['mutant-hero'])); markBossAppeared('mutant-hero'); // 出撃前のボス一覧の「出会った」(社長指示2026-11-02)。対策室・ボステストは記録しない(開発用の ?heronow 等を単独で付けた起動は記録される)
               useGameStore.setState({ eventBannerText: '英雄(変異)が現れた', eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
               HERO_SFX.neigh(npcSfxDistGain(hAc.x, hAc.y, player.x + player.width / 2, player.y + player.height / 2, useGameStore.getState().camera, useGameStore.getState().gameBounds));
             }

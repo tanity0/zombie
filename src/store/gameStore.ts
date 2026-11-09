@@ -114,6 +114,7 @@ import { stepSpeedRamp } from '../utils/speedRamp'; // MOVEMENT_REWORK.md 仕様
 import { cruiseTotalMsFor, cruiseStage, cruiseStageBonus, cruiseOthersRampMs, cruiseDamageMult, cruiseSpeedMult, equipCruiseTier, CRUISE_STAGE_BONUS, CRUISE_STAGE_MAX } from '../utils/cruise'; // B3 巡航+B11(THEONE_ROUND2 §4b)
 import { computeEffectiveMoveSpeed } from '../utils/playerMoveSpeed'; // PACING_PUZZLE.md §14-4-2(新死神・重大4/5)
 import { resetMapSightings } from '../utils/mapSightings';
+import { resetBossAppearances } from '../utils/bossAppearances';
 import { resetRunRoute } from '../utils/runRoutes';
 import { bloodAwakenMult, bloodGainFor, applyBloodGain, bloodSizeMul, isBloodAwakening } from '../utils/bloodAwaken'; // B10 血の覚醒(THEONE_ROUND2 §3)
 import { playerSuperArmorActive } from '../utils/superArmor'; // B12 スーパーアーマー(THEONE_ROUND2 §4)
@@ -24919,6 +24920,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)
     resetMapSightings(); // 一時停止の地図の「出会った敵」は出撃ごと(THEONE_ROUND2 §2-3)
+    resetBossAppearances(); // 一時停止のボス一覧の「出現したボス」も出撃ごと
     resetRunRoute(); // 一時停止の地図の「今回歩いた道」も出撃ごと(THEONE_ROUND2 §2-6)
     resetSpawnWalk(); // 湧く向きの寄せ(PACING_PUZZLE §20)も前ランから持ち越さない
     const state = get();

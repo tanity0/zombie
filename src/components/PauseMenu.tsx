@@ -7,6 +7,7 @@ import { useGameStore, subWeaponDisplayName } from '../store/gameStore';
 import { CHARACTER_CLASSES, SKILLS, skillDescForLevel } from '../data/campaign';
 import { subWeaponBlurb } from '../data/subWeaponBlurbs';
 import { formatTime } from '../utils/renderUtils';
+import { PauseBossRoster } from './PauseBossRoster'; // 出現したボスの一覧(社長指示2026-11-09)
 import { PauseMap, type PauseMapData } from './PauseMap'; // ★B2 一時停止の地図(research/THEONE_ROUND2.md §2)
 import { mapThreatPositions } from '../utils/mapSightings'; // §2-3 出会ったボス級・宿敵
 import { currentRoute } from '../utils/runRoutes'; // §2-6 今回歩いた道
@@ -14,6 +15,10 @@ import { getRunPois, isPoiRevealed } from '../world/pois';
 import { getSelectedStageId } from '../data/progress';
 import { isPracticeRun } from '../utils/bossPractice';
 import { isGauntletRun } from '../utils/gauntletMode';
+import { sortieBossRoster, type SortieBoss } from '../utils/sortieBossRoster';
+import { appearedOnly } from '../utils/bossAppearances';
+import { hasEncounteredBoss } from '../utils/bossEncounter';
+import { loadHeroAscended } from '../utils/heroAscended';
 
 // ★B2: 地図を出すステージ=区域の輪と拠点があるステージだけ(研究所・洋館の通路・訓練・EX・ステージ7は出さない)。ボスメーカー/1対1も出さない。
 const PAUSE_MAP_STAGES = new Set(['stage-1', 'stage-3', 'stage-4', 'stage-5']);
@@ -44,6 +49,15 @@ const readPauseMap = (): PauseMapData | null => {
   };
 };
 
+// 出現したボスの一覧(社長指示2026-11-09「ステージスタート時のボス表示は出さない。一時停止に出す。そのプレイ中に出現してるボスのみ。
+// 一度も出会ってなければ ?表示」)。このステージで出会い得るボスのうち、この出撃で盤上に出た物だけ。端末で出会い済みなら絵と名前、まだなら「?」。
+// 練習・計測路・ボスメーカーは「ステージ」の意味が違うので出さない。開いた時の1回読み。
+const readPauseBosses = (): SortieBoss[] => {
+  const s = useGameStore.getState();
+  if (s.corridorMode || s.bossMaker.active || isPracticeRun() || isGauntletRun()) return [];
+  return appearedOnly(sortieBossRoster(getSelectedStageId(), hasEncounteredBoss, { heroAscended: loadHeroAscended() }));
+};
+
 interface PauseMenuProps {
   onResume: () => void;
   onQuit: () => void;
@@ -65,6 +79,7 @@ const readPauseSnapshot = () => {
   const classInfo = CHARACTER_CLASSES.find(c => c.id === s.player.characterClass);
   return {
     map: readPauseMap(),
+    bosses: readPauseBosses(),
     gameTimeSec: Math.floor(s.gameTime / 1000),
     subquests: s.subquests,
     playerName: classInfo?.name ?? 'プレイヤー',
@@ -163,6 +178,8 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
               <span className="tracking-[0.16em] text-white/35">経過時間</span>
               <span className="text-[20px] font-semibold tabular-nums text-white/90">{formatTime(snap.gameTimeSec)}</span>
             </div>
+
+            <PauseBossRoster roster={snap.bosses} />
 
             {snap.subquests.length > 0 && (
               <div>
