@@ -41,6 +41,8 @@ export interface BrawlerStageSpec {
   shape: BrawlerShape;
   /** 頭の詰め(ダッシュ・跳び)の最大距離(px)。0=その場。 */
   dashPx: number;
+  /** kb が 'big' の時の押しの勢い(今の近接の何倍か)。無ければ BRAWLER_BIG_KB_MULT(4倍)。段ごとに持つ(§16)。 */
+  kbMult?: number;
 }
 /**
  * ★当てた瞬間の止め(ヒットストップ・ms)。テンポ係数は掛けない(社長承認2026-11-08「当てた瞬間の止めを長く」)。
@@ -48,6 +50,8 @@ export interface BrawlerStageSpec {
  * 旧: 弱45 / 3段目80 / 4段目90 / 蹴り1・2発目80 / 締め140 / 秘奥義の締め160。
  */
 export const BRAWLER_HITSTOP = { weak: 90, strong: 150, closer: 220 } as const;
+/** 5段目の掌底の押しの勢い(今の近接の何倍か)。社長指示2026-11-09「流石に敵が吹き飛びすぎ」で 4→2(約150px→約75px・§16)。大踏み潰し・飛び蹴り3発目・秘奥義の締めは BRAWLER_BIG_KB_MULT(4)のまま。 */
+export const BRAWLER_PALM_KB_MULT = 2;
 /** 段の表の係数1.0の値(今までの値)。止めは BRAWLER_HITSTOP。 */
 export const BRAWLER_STAGES_BASE: readonly BrawlerStageSpec[] = [
   { stage: 1, windupMs: 60, recoveryMs: 140, mult: 0.30, kb: 'none', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
@@ -56,7 +60,7 @@ export const BRAWLER_STAGES_BASE: readonly BrawlerStageSpec[] = [
   { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.10, kb: 'none', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'landing', dashPx: 50 },
   // 5段目=一閃型の貫通突進(社長指示2026-11-07)。前隙 250 = 溜め 100 + 突き抜け 150。判定は抜け切った瞬間に軌跡の帯で一括(§9-26)。
   // 社長指示2026-11-07「飛距離少しだけ短く」で突き抜け 160→140px・150→130ms(最高速は同じ)。総尺 500 は戻り 270 で保つ(§9-35)。
-  { stage: 5, windupMs: 230, recoveryMs: 270, mult: 1.60, kb: 'big', hitstopMs: BRAWLER_HITSTOP.closer, shape: 'band', dashPx: 0 }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
+  { stage: 5, windupMs: 230, recoveryMs: 270, mult: 1.60, kb: 'big', hitstopMs: BRAWLER_HITSTOP.closer, shape: 'band', dashPx: 0, kbMult: BRAWLER_PALM_KB_MULT }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
 ];
 /** 段の表(係数を掛けた出だし・戻り)。 */
 export let BRAWLER_STAGES: readonly BrawlerStageSpec[] = BRAWLER_STAGES_BASE;

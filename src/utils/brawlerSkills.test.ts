@@ -3,7 +3,9 @@ import { describe, it, expect } from 'vitest';
 import {
   stunnedFinishDamage, counterMasterBlowFires, BRAWLER_FINISHER_MOVES, brawlerHitHealAllowed, isBrawlerSecretMove,
   brawlerTimeKeeperDiscount, brawlerOverclockRefunds, BRAWLER_OVERCLOCK_REFUND_CHANCE, brawlerJustWindowMs,
+  brawlerSpeedDamageMult, brawlerHuntingComboStart, brawlerComboEnded,
 } from './brawlerSkills';
+import { airHitMult, airHitMultFor, resetAirHits, AIR_HIT_STALE_MS } from './brawlerCombo';
 import { BRAWLER_TECHS, brawlerTechCost, brawlerCanPay, brawlerIsJustGuard, BRAWLER_JUST_MS, initialBrawlerState } from './brawler';
 import { playerSuperArmorActive } from './superArmor';
 import { newSkillCandidates, type RunSkillDraftInput } from './runSkillDraft';
@@ -128,5 +130,43 @@ describe('4/6. ドラフト: 格闘の出撃', () => {
     const c = newSkillCandidates(input({}));
     expect(c).not.toContain('exploder'); expect(c).not.toContain('bomber');
     expect(c).toContain('slasher'); expect(c).toContain('shukuchi');
+  });
+});
+
+describe('B. 空中の敵への倍率(純関数)', () => {
+  it('1発目×1.25・1発ごとに+0.25・上限×2.0・空中でなければ1', () => {
+    expect([0, 1, 2, 3, 4, 5, 9].map(airHitMult)).toEqual([1, 1.25, 1.5, 1.75, 2, 2, 2]);
+  });
+  it('airHitMultFor: 浮いている間は数えが進み、地上の当たりで捨てる(敵ごと)・古い数えは捨てる', () => {
+    resetAirHits();
+    const a = { id: 'a', brLiftUntil: 10_000 }, b = { id: 'b', brLiftUntil: 10_000 };
+    expect(airHitMultFor(a, 1000)).toBe(1.25);
+    expect(airHitMultFor(a, 1100)).toBe(1.5);
+    expect(airHitMultFor(b, 1100)).toBe(1.25); // 敵ごと
+    expect(airHitMultFor({ id: 'a' }, 1200)).toBe(1); // 地上=打ち上げた一撃も 1・数えは捨てる
+    expect(airHitMultFor(a, 1300)).toBe(1.25); // 着地後に浮き直したら1発目から
+    expect(airHitMultFor(a, 1300 + AIR_HIT_STALE_MS + 1)).toBe(1.25); // 古い数えは捨てる
+    expect(airHitMultFor({ id: 'c', brLiftUntil: 500 }, 1000)).toBe(1); // 浮きが明けている
+    resetAirHits();
+  });
+});
+
+describe('C/D. ハンティングの連撃・足の速さ', () => {
+  it('足の速さの倍率はそのまま・1.0 が下限', () => {
+    expect(brawlerSpeedDamageMult(1.3)).toBe(1.3);
+    expect(brawlerSpeedDamageMult(0.7)).toBe(1);
+    expect(brawlerSpeedDamageMult(NaN)).toBe(1);
+  });
+  it('連撃の印は溜まっていれば立ち、立っていれば保つ・立たない時は何も足さない', () => {
+    expect(brawlerHuntingComboStart({}, false)).toEqual({});
+    expect(brawlerHuntingComboStart({}, true)).toEqual({ huntingCombo: true });
+    expect(brawlerHuntingComboStart({ huntingCombo: true }, false)).toEqual({ huntingCombo: true });
+  });
+  it('連撃の終わり: 待機に戻り、つながり・蹴りの連続・秘奥義の後の猶予が過ぎた時', () => {
+    const s = { ...initialBrawlerState(), chainUntil: 500, kickChainUntil: 800 };
+    expect(brawlerComboEnded(s, 700)).toBe(false);
+    expect(brawlerComboEnded(s, 801)).toBe(true);
+    expect(brawlerComboEnded({ ...s, phase: 'attack' }, 9999)).toBe(false);
+    expect(brawlerComboEnded({ ...s, secret: {} as never }, 9999)).toBe(false);
   });
 });

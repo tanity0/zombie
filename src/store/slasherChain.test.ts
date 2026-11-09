@@ -5,6 +5,7 @@
 // (社長報告2026-08-15「振りは出ているのに当たっていなさそう」)。
 import { describe, it, expect, vi } from 'vitest';
 import { useGameStore, SLASHER_CHAIN_CD_MS, MELEE_RADIUS, enemyMeleeDist } from './gameStore';
+import { airHitMult } from '../utils/brawlerCombo';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 
 const setupSlasherRun = () => {
@@ -96,8 +97,9 @@ describe('スラッシャーのチェーン追撃(距離規約)', () => {
     }
     // 減衰: 各段が前段の2/3(SLASHER_MULTS)。値そのものではなく比率で固定(バランス調整耐性)。
     expect(damages[0]).toBeGreaterThan(0);
-    expect(damages[1] / damages[0]).toBeCloseTo(2 / 3, 2);
-    expect(damages[2] / damages[1]).toBeCloseTo(2 / 3, 2);
+    // ★追撃は1回目で打ち上げる(§14-3)ので、2回目以降は「空中の敵への倍率」(§16・1発目×1.25→×1.5…)が乗る。減衰の比率はその倍率を除いて見る。
+    expect(damages[1] / damages[0]).toBeCloseTo((2 / 3) * airHitMult(1), 2);
+    expect(damages[2] / damages[1]).toBeCloseTo((2 / 3) * airHitMult(2) / airHitMult(1), 2);
     spy.mockRestore();
   });
 

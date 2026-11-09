@@ -741,6 +741,8 @@ export interface BrawlerStrikeOpts {
     ignoreImmune?: boolean;
     /** ボス級は強さ半分(5段目・飛び蹴り3発目・大踏み潰し)。 */
     bossHalf?: boolean;
+    /** 'big' の押しの勢い(今の近接の何倍か)。無ければ BR.BRAWLER_BIG_KB_MULT(4倍)。5段目は段の表の kbMult(2倍・§16)。 */
+    power?: number;
     /** 5段目の貫通突進: 軌跡(x0,y0 から ux,uy)の横へ外向きに吹き飛ばす(敵ごとに向きが変わる・dirX/dirY より優先)。 */
     passLine?: { x0: number; y0: number; ux: number; uy: number };
   };
@@ -2654,6 +2656,15 @@ export const consumableAttackMult = (player: Player, gameTime: number): number =
   player.consumableAttackUntil > gameTime ? CONSUMABLE_ATTACK_MULT : 1;
 export const consumableSpeedMult = (player: Player, gameTime: number): number =>
   player.consumableSpeedUntil > gameTime ? CONSUMABLE_SPEED_MULT : 1;
+/**
+ * 足の速さの能力値(スキル・装備・消費カード・クラスで上がった移動速度の、基準に対する倍率)。research/BRAWLER.md §16-D。
+ * 移動速度の合成(movePlayer の othersSum)と同じ足し算+頭打ち(cruiseSpeedMult)から、**走り続けて上がる巡航の段(動的)と立ち上がり・血の覚醒・リロード・トラップ減速は除く**
+ * =今その瞬間に走っている速さではなく、能力値としての倍率。1.0 が下限(足が遅くなる効果では下げない)。
+ */
+export const playerMoveStatMult = (player: Player, gameTime: number): number =>
+  cruiseSpeedMult(0, (skillRunnerSpeedMult(player, false) - 1) + (standardSpeedBonusMult(player) - 1)
+    + (consumableSpeedMult(player, gameTime) - 1) + ((player.equipBonus?.moveSpeedMult ?? 1) - 1)
+    + (skillHeroMult(player) - 1), 1);
 export const consumableXpMult = (player: Player, gameTime: number): number =>
   player.consumableXpUntil > gameTime ? CONSUMABLE_XP_MULT : 1;
 export const consumableProtectionMult = (player: Player, gameTime: number): number =>
@@ -4456,7 +4467,7 @@ const brawlerHitPatch = (
     if (kind === 'big') {
       const dr = evaluateBossStopDr(enemy, now);
       if (dr.allowed) {
-        const spd = KNOCKBACK_SPEED * BR.BRAWLER_BIG_KB_MULT * (bs.kb.bossHalf ? 0.5 : 1);
+        const spd = KNOCKBACK_SPEED * (bs.kb.power ?? BR.BRAWLER_BIG_KB_MULT) * (bs.kb.bossHalf ? 0.5 : 1);
         const until = now + KNOCKBACK_DURATION * dr.durationMult;
         Object.assign(out, { knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: until, knockbackShoveUntil: until, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS, brawlerBlownAt: now });
       }
@@ -4464,7 +4475,7 @@ const brawlerHitPatch = (
     }
     // normal: ボス級は今の近接と同じく押せない(knockbackShoveUntil を書かない)。
   } else {
-    const spd = KNOCKBACK_SPEED * (kind === 'big' ? BR.BRAWLER_BIG_KB_MULT : 1);
+    const spd = KNOCKBACK_SPEED * (kind === 'big' ? (bs.kb.power ?? BR.BRAWLER_BIG_KB_MULT) : 1);
     const kbUntil = now + stopMs + KNOCKBACK_DURATION;
     Object.assign(out, {
       knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: kbUntil,
@@ -4593,7 +4604,7 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const target = BR.pickBrawlerTarget(st.enemies, c.x, c.y, radius, walls);
   const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
   const quick = s0.quickUntil > t;
-  const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now };
+  const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now, ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
   const ap = quick ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerApproach(c.x, c.y, target, spec.dashPx);
   setBrawler(set, s, { lastDirection: { x: dir.x, y: dir.y }, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, spec.windupMs, now) });
   // 振りの音(空振りの連打も無音にしない・段ごとに個別の音程=等間隔に下げない)。
@@ -4601,6 +4612,15 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   // 詰めの出発点に砂埃(pixi が brawler の状態から描く)。
 };
 
+/**
+ * ハンティングの溜まり(striker-hunting・動くほど溜まる)を格闘の届く範囲へ(research/BRAWLER.md §16・社長指示2026-11-09)。
+ * 溜まった状態で連撃を始めると、一連のコンボの間ずっと届く範囲が広がる(通常攻撃は huntingMeleeRadius が huntingCharged を読んで広がる=ナイフと同じ広さ)。
+ * ここは技(大踏み潰しの円・飛び蹴りと気功の狙う距離・気功の飛ぶ距離)へ同じ px を足す。溜まっていなければ 0。
+ */
+const brawlerReachExtra = (p: Pick<Player, 'huntingCharged' | 'subWeaponLevels' | 'subWeapons'>): number =>
+  p.huntingCharged && p.subWeapons.includes('striker-hunting')
+    ? HUNTING_MELEE_RADIUS_BONUS_BY_LEVEL[Math.max(1, Math.min(3, p.subWeaponLevels['striker-hunting'] ?? 1))]
+    : 0;
 /** タイムキーパーの割引(research/BRAWLER.md §15)。技の値段から引く点数。持っていなければ 0。 */
 const brawlerTechDiscount = (p: Player, kind: BR.BrawlerTechKind): number =>
   BRS.brawlerTimeKeeperDiscount(kind, skillLevel(p, 'time-keeper'));
@@ -4640,7 +4660,7 @@ const startBrawlerTech = (
   const techCost = BR.brawlerTechCost(kind, awakened, brawlerTechDiscount(p, kind));
   const techRefund = BRS.brawlerOverclockRefunds(techCost, skillLevel(p, 'overclock'));
   if (techRefund) notifySkillProc('overclock');
-  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: now, points: s0.points - (techRefund ? 0 : techCost) };
+  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: now, points: s0.points - (techRefund ? 0 : techCost), ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
   // ★秘奥義の順番(research/BRAWLER.md §10-1): 実際に出た技で数える。↑構えで揃ったら、構えを秘奥義に置き換える(ポイントは払った後・窓は張らない)。
   // キャンセルで繋いだ時は前の技の終わり=いま(0ms 扱い・§11-4)。
   const secretStep = BR.brawlerSecretStep(s0.secretProgress ?? 0, cancel ? t : (s0.secretLastEndAt ?? 0), kind, kickN, t);
@@ -4651,7 +4671,7 @@ const startBrawlerTech = (
   }
   let extra: Partial<Player> = { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0 };
   if (kind === 'kick' || kind === 'kiko') {
-    const range = kind === 'kick' ? BR.BRAWLER_KICK_RANGE : BR.BRAWLER_KIKO_RANGE;
+    const range = (kind === 'kick' ? BR.BRAWLER_KICK_RANGE : BR.BRAWLER_KIKO_RANGE) + brawlerReachExtra(p); // ハンティングが溜まっていれば広がる(§16)
     const walls = kind === 'kick' ? meleeWallsAround(get, c.x, c.y, range) : [];
     const target = BR.pickBrawlerTarget(st.enemies, c.x, c.y, range, walls);
     const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
@@ -4995,7 +5015,8 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   const now = Date.now();
   const c = brawlerCenter(p);
   const radius = huntingMeleeRadius(p);
-  const walls = meleeWallsAround(get, c.x, c.y, Math.max(radius, BR.BRAWLER_STOMP_RADIUS));
+  const stompR = BR.BRAWLER_STOMP_RADIUS + brawlerReachExtra(p); // 大踏み潰しの円(ハンティングが溜まっていれば広がる・§16)
+  const walls = meleeWallsAround(get, c.x, c.y, Math.max(radius, stompR));
   const cap = BR.brawlerPointCap(brawlerLevel(p));
   let target = s.targetId ? st.enemies.find(e => e.id === s.targetId) ?? null : null;
   if (target && !BR.isBrawlerTargetable(target)) target = null;
@@ -5032,7 +5053,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const r = strike(ids, {
       mult: spec.mult, stunMs: spec.hitstopMs, postureMult: spec.mult,
       kb: spec.kb === 'big'
-        ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true, ...(palm ? { passLine: { x0: palm.x0, y0: palm.y0, ux: palm.ux, uy: palm.uy } } : {}) }
+        ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true, ...(spec.kbMult !== undefined ? { power: spec.kbMult } : {}), ...(palm ? { passLine: { x0: palm.x0, y0: palm.y0, ux: palm.ux, uy: palm.uy } } : {}) }
         : { kind: spec.kb },
       ...(spec.shape === 'landing' ? { lift: true } : {}),
       combo: { move: BRC.brawlerStageMoveKey(s.stage) },
@@ -5062,7 +5083,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   }
   if (s.tech === 'stomp') {
     const foot = { x: c.x, y: c.y + p.height / 2 - 6 };
-    const ids = BR.brawlerCircleTargets(st.enemies, foot.x, foot.y, BR.BRAWLER_STOMP_RADIUS, walls);
+    const ids = BR.brawlerCircleTargets(st.enemies, foot.x, foot.y, stompR, walls);
     const r = strike(ids, {
       mult: BR.BRAWLER_STOMP_MULT, stunMs: BR.BRAWLER_STOMP_HITSTOP_MS, postureMult: BR.BRAWLER_STOMP_MULT,
       kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
@@ -5073,9 +5094,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     setBrawler(set, BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: BR.BRAWLER_STOMP_HITSTOP_MS }),
       hits > 0 ? { lungeHoldUntil: now + BR.BRAWLER_STOMP_HITSTOP_MS } : {});
     brawlerNoteFlowHits(set, hits);
-    g.breakEggsInBlast(foot.x, foot.y, BR.BRAWLER_STOMP_RADIUS); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
-    g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
-    g.spawnRing(foot.x, foot.y, 10, BR.BRAWLER_STOMP_RADIUS * 0.8, 'rgba(255,255,255,0.75)', 3, 300, true);
+    g.breakEggsInBlast(foot.x, foot.y, stompR); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
+    g.spawnRing(foot.x, foot.y, 20, stompR * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
+    g.spawnRing(foot.x, foot.y, 10, stompR * 0.8, 'rgba(255,255,255,0.75)', 3, 300, true);
     g.spawnGlow(foot.x, foot.y, GLOW_R_XL, 'rgba(241,230,200,', 320, true);
     brawlerGroundBreakFx(get, foot.x, foot.y, true);
     g.triggerShake(260, 16, 0, 1);
@@ -5087,7 +5108,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   }
   if (s.tech === 'kiko') {
     // 撃った時の方向へまっすぐ(曲がらない)。届く距離の中で一番近い敵へ(§7-9)。
-    const aim = BR.pickBrawlerTarget(st.enemies, c.x, c.y, BR.BRAWLER_KIKO_RANGE);
+    const aim = BR.pickBrawlerTarget(st.enemies, c.x, c.y, BR.BRAWLER_KIKO_RANGE + brawlerReachExtra(p));
     const d = BR.brawlerAimDir(c.x, c.y, aim, { x: s.dirX, y: s.dirY });
     const sx = c.x + d.x * 18, sy = c.y - 4 + d.y * 18;
     set(state => ({
@@ -5332,7 +5353,7 @@ const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Parti
       const walls = bulletBlockersAround(st, nx, ny, 24);
       if (walls.some(w => nx >= w.x && nx <= w.x + w.width && ny >= w.y && ny <= w.y + w.height)) { hitX = k.x; hitY = k.y; }
     }
-    if (hitX === null && traveled >= BR.BRAWLER_KIKO_RANGE) { hitX = nx; hitY = ny; }
+    if (hitX === null && traveled >= BR.BRAWLER_KIKO_RANGE + brawlerReachExtra(st.player)) { hitX = nx; hitY = ny; }
     if (hitX !== null) blasts.push({ x: hitX, y: hitY, pressAt: k.pressAt });
     else {
       keep.push({ ...k, x: nx, y: ny, traveled });
@@ -5418,6 +5439,13 @@ const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.Brawler
     }),
   }));
 };
+/**
+ * ★気功は銃の攻撃力に依存(社長指示2026-11-09・research/BRAWLER.md §16-E)。銃の弾のダメージに掛かっている倍率のうち、気功に掛かっていなかった「銃ダメージを上げる」ものを同じく掛ける:
+ *  スカベンジャー(弾薬取得後3秒×1.1)・アタックシューター(+10/20/30%)・アタックドーピング(消費カード×1.2)。
+ *  (装備ダメージ倍率・育成の攻撃力・バーサーカー等の全攻撃倍率は気功にも元から掛かっている。スナイパーは敵ごとなので爆発のループで掛ける。)
+ */
+const brawlerKikoGunMult = (p: Player, gameTime: number): number =>
+  scavengerGunMult(p, gameTime) * skillAttackShooterGunMult(p) * consumableAttackMult(p, gameTime);
 /** 気功の爆発(爆発扱い=skillExplosionMult・処刑なし・§7-1)。入った敵を延焼(炎の床は出さない)。 */
 const explodeBrawlerKiko = (
   get: () => GameState, x: number, y: number,
@@ -5428,7 +5456,9 @@ const explodeBrawlerKiko = (
   const exMult = skillExplosionMult(p);
   const radius = BR.BRAWLER_KIKO_RADIUS * exMult * heavyGunnerExplosionMult(p, st.gameTime);
   const melee = p.weapons.find(w => w.isMelee);
-  const base = meleeSwingBaseDamage(melee, p) * BR.BRAWLER_KIKO_MULT * exMult * skillOutgoingDamageMult(p);
+  const base = meleeSwingBaseDamage(melee, p) * BR.BRAWLER_KIKO_MULT * exMult * skillOutgoingDamageMult(p)
+    * BRS.brawlerSpeedDamageMult(playerMoveStatMult(p, st.gameTime)) // 足の速さの能力値(§16-D)
+    * brawlerKikoGunMult(p, st.gameTime); // ★気功は銃の攻撃力に依存(§16-E)
   const ids = BR.brawlerCircleTargets(st.enemies, x, y, radius);
   const burn = incendiaryBurnParams(brawlerLevel(p));
   let dealt = 0;
@@ -5439,7 +5469,7 @@ const explodeBrawlerKiko = (
     const d = BR.brawlerDistTo(x, y, e);
     // ★ダメージ補正(§13-2)。秘奥義の中の気功は補正しない。
     const pr = o.move === 'secret' ? 1 : BRC.brawlerProrationFor(e, Date.now());
-    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * pr));
+    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * pr * sniperGunMult(p, e))); // スナイパー(停止敵・距離)も銃と同じく乗る(§16-E)
     const stunBefore = e.hitStunUntil;
     const killed = get().damageEnemy(id, dmg, true, false, false, 'other'); // 浮き: 気功の爆発(地上は brawlerKikoComboHit が爆発の浮きで打ち上げ・空中は格闘の拾い)
     { const na = meleeNumberPoint(x, y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); } // ★爆心から見た当たった所(§9-75・小さな敵は今までどおり)
@@ -10581,6 +10611,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (s0.phase !== 'idle') setBrawler(set, BR.brawlerCancel(s0));
       return;
     }
+    // ★ハンティングの溜まり(§16): 溜まった状態で始めた連撃が途切れたら、ここで消費する(次はまた動いて溜める)。
+    if (s0.huntingCombo && BRS.brawlerComboEnded(s0, t)) {
+      set(state => ({ player: { ...state.player, huntingCharged: false, huntingChargeStartedAt: 0, brawler: state.player.brawler ? { ...state.player.brawler, huntingCombo: false } : state.player.brawler } }));
+      return;
+    }
     // 秘奥義の最中は秘奥義の時計だけを回す(通常の段・技の状態機械は回さない・§10)。
     if (s0.secret) { tickBrawlerSecret(get, set); return; }
     // ヒット数の表示: 流れが切れた時刻を打つ(表示は 0.8 秒で消える・§11-4)。
@@ -10774,7 +10809,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 覚醒: 爆発の距離減衰(中心1.0〜外周0.55)。非覚醒: 従来どおり等倍。
         const eDmg = (skAwaken
           ? Math.max(1, Math.round(dmg * (0.55 + (1 - Math.sqrt(d2) / bashRange) * 0.45)))
-          : dmg) * gpDmgScale;
+          : dmg) * gpDmgScale * BRC.airHitMultFor(enemy, now); // 空中の敵への倍率(§16)
         dealtSum += eDmg;
         const nh = Math.max(0, enemy.health - eDmg);
         if (nh <= 0) { killedList.push({ enemy, finisher: false }); continue; }
@@ -11134,7 +11169,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 振りの素ダメージ(キャラ固有: ストライカー弾切れ時×1.5 / 装備ダメージ倍率)。振りから出る**他のもの**(ブーメラン・物壊し・
     // 設置物・死神の波及・救難信号)はこちら。敵への斬撃だけ、縮地(§32)の連鎖の上乗せを掛けた meleeDamage を使う。
     const swingBaseDamage = meleeSwingBaseDamage(melee, player);
-    const meleeDamage = swingBaseDamage * (player.shukuchiStrikeMult ?? 1); // ワープ斬撃以外は ×1
+    const meleeDamage = swingBaseDamage * (player.shukuchiStrikeMult ?? 1) * (bs ? BRS.brawlerSpeedDamageMult(playerMoveStatMult(player, gameTime)) : 1); // ワープ斬撃以外は ×1 / 格闘は足の速さの能力値をそのまま掛ける(§16-D)
     // ★処刑(気絶敵フィニッシュ/ボス5×/強個体3×)は skillOutgoingDamageMult を通らない経路なので、
     // 永続育成の攻撃力(research/GROWTH.md v4・社長裁定Q1)は**素ダメージへ前掛け**して渡す。
     // applyBrokenMeleeFatal は `baseDamage×5 + 報酬予算の残量` なので、前掛けにすると育成は
@@ -11597,7 +11632,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const bashScanMult = enemy.id === scanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
         if (bashScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
         const bashBase = meleeDamage * SHIELD_BASH_DAMAGE_MULT * gpDmgScale;
-        let dmg = bashBase * bashScanMult;
+        let dmg = bashBase * bashScanMult * BRC.airHitMultFor(enemy, now); // 空中の敵への倍率(§16)
         let bashScanShown = bashScanMult !== 1;
         // ★SAME_ARENA §9(検収監査 重大③): バッシュも近接=致命+melee削りの対象(site1と同型)。
         let bashPvpPatch: Partial<Enemy> = {};
@@ -11712,7 +11747,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (scanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
       // ★格闘のダメージ補正(research/BRAWLER.md §13-2): 同じ流れの10ヒット目以降 −5%/発(下限50%)。秘奥義は補正しない。
       const brProration = bs?.combo && bs.combo.move !== 'secret' && bs.combo.move !== 'secret-land' ? BRC.brawlerProrationFor(enemy, now) : 1;
-      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration;
+      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration * BRC.airHitMultFor(enemy, now); // 空中の敵への倍率(§16・格闘の長いコンボの補正と同じ並び)
       // ★SAME_ARENA §9(対人体勢): 紫中の幻影への近接=致命の一撃(×5+最大HP25%・裁定②)。
       // 紫でなければ melee(0.04)の削り+クリなら2/3減速。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -11894,8 +11929,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         counterWindowEnd: ret ? state.player.counterWindowEnd : isPvpIncapacitated(state.player.pvpPosture, state.gameTime) ? 0 : swingAt + counterAcceptMsOf(state.player),
         // タイムキーパー覚醒(Lv3・v0.25.3300): 近接CD-10%。
         counterCooldownEnd: ret ? state.player.counterCooldownEnd : swingAt + (counterWindowMs + COUNTER_COOLDOWN) * meleeCooldownMult(state.player),
-        huntingCharged: false,
-        huntingChargeStartedAt: 0,
+        // 格闘の段・技の当たりでは溜まりを消費しない(コンボが途切れた時に tickBrawler が消費する・§16)。ナイフは今までどおり振るたび消費。
+        huntingCharged: bs ? state.player.huntingCharged : false,
+        huntingChargeStartedAt: bs ? state.player.huntingChargeStartedAt : 0,
         // スキル スラッシャー: この近接が命中(slashAt有)したらチェーンを開始(step=0・0.5秒後にチェーンCD明け)。
         // 命中しなければ非アクティブ(チェーン無し)。以後の追撃はチェーンCD明けのタップで出す。
         // ★v0.25.3931(社長指示2026-08-26「スラッシャーを空振りでも2発目以降振れるようにして」):
@@ -12238,7 +12274,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         continue;
       }
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy);
-      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale; // 分身はサブ武器=血の覚醒の×1.5は掛けない(社長裁定: 与ダメ+50%は近接+銃だけ・検収品質監査C)
+      const dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * meleeComboMult * gpDmgScale * (isGhost ? 1 : BRC.airHitMultFor(enemy, now)); // 空中の敵への倍率(§16・守護霊の分身は対象外) // 分身はサブ武器=血の覚醒の×1.5は掛けない(社長裁定: 与ダメ+50%は近接+銃だけ・検収品質監査C)
       damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       cloneDealt.set(enemy.id, (cloneDealt.get(enemy.id) ?? 0) + dmg);
@@ -12993,7 +13029,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const katanaScanMult = enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1;
       if (katanaScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 一閃は手動の近接=起爆
-      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * katanaScanMult;
+      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * katanaScanMult * (isGhost ? 1 : BRC.airHitMultFor(enemy, now)); // 空中の敵への倍率(§16・守護霊は対象外)
       // ★SAME_ARENA §9(検収監査 重大③): 刀にも致命(×5+最大HP25%)とmelee削り(site1と同型)。
       // 本人由来のみ=守護霊の刀(isGhost)は削らない・致命も出さない。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -13344,7 +13380,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy, true);
       const whipScanMult = enemy.id === whipScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'whip') : 1;
       if (whipScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
-      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult;
+      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult * BRC.airHitMultFor(enemy, now); // 空中の敵への倍率(§16)
       // ★SAME_ARENA §9(検収監査 重大③): 鞭にも致命(×5+最大HP25%)とmelee削り(site1と同型・鞭はプレイヤー本人のみの武器)。
       let pvpMeleePatch: Partial<Enemy> = {};
       if (isGuardianPhantom(enemy.type)) {
@@ -16236,7 +16272,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // ★PVP(社長裁定2026-08-20「プレイヤー同士の戦いではダメージ1/10で一旦」): 以降のダメージは
       // ゲートの実効値(gpGate.damage=幻影なら×PVP_DAMAGE_SCALE・幻影以外は素のamountのまま)を使う。
-      const gatedAmount = gpGate.damage;
+      // ★空中の敵への倍率(research/BRAWLER.md §16): プレイヤー本人の攻撃(銃・爆発・サブ・カウンター返し)が浮いている敵に当たるたび上がる。
+      // 守護霊・犬・軍人・継続ダメージ(DoT)・プレイヤー起因でない弾(channel=null)は対象外。地上の当たり(打ち上げた一撃・浮きを起こした爆発)は 1。
+      const airM = hateSourceIn === 'player' && damageChannel !== 'dot' && damageChannel !== null && amount > 0
+        ? BRC.airHitMultFor(enemy, Date.now()) : 1;
+      const gatedAmount = gpGate.damage * airM;
       // 紫中の直接銃撃は通常クリ倍率と重ねず、この中央で×5相当まで報酬領域を消費する。
       const gunReward = damageChannel === 'gun' && hateSource === 'player'
         ? applyBrokenGunReward(enemy, gatedAmount, state.gameTime)
@@ -24965,6 +25005,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   resetGame: (characterClass) => {
     pendingBlastLifts.length = 0; blastHitIds.clear(); // ★爆発の浮きの待ち行列を前ランへ持ち越さない(§14)
+    BRC.resetAirHits(); // 空中の敵への倍率の数え(§16)も前ランへ持ち越さない
     shieldChargedKeys.clear(); // research/SHIELD_BLOCK.md §8: 継続技の「削った」記録を捨てる
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)

@@ -1,8 +1,8 @@
 // ★格闘×スキルの組み合わせ(research/BRAWLER.md §15・社長承認2026-11-09「はい」)。判定は純関数だけ(store が読んで書く)。
 // 格闘以外(銃・ナイフ・刀・鞭・分身)の経路は、ここの関数を「格闘ではない」として通る=今までと1つも変わらない(テストで固定)。
 import type { BrawlerMoveKey } from './brawlerCombo';
-import type { BrawlerTechKind } from './brawlerTypes';
-import { BRAWLER_TECHS, BRAWLER_JUST_MS } from './brawler';
+import type { BrawlerState, BrawlerTechKind } from './brawlerTypes';
+import { BRAWLER_TECHS, BRAWLER_JUST_MS, BRAWLER_FLOW_GRACE_MS } from './brawler';
 
 // ---- 1. 処刑系(紫の致命の一撃・気絶中のボス5倍・強個体3倍) ----
 /**
@@ -50,3 +50,18 @@ export const brawlerOverclockRefunds = (paid: number, overclockLv: number, rng: 
 // ---- 8. 強化「カウンター受付」 ----
 /** ジャスト構えの窓(ms)。強化のカウンター受付はほかの経路(カウンター窓 COUNTER_ACCEPT_MS + 焼き値)と同じく足し算で延ばす。 */
 export const brawlerJustWindowMs = (counterAcceptBonusMs: number): number => BRAWLER_JUST_MS + Math.max(0, counterAcceptBonusMs || 0);
+
+// ---- C. ハンティング(striker-hunting)の溜まりを格闘の範囲へ(research/BRAWLER.md §16) ----
+/** 段・技を始める時の印。溜まっていれば連撃の間ずっと立てる(すでに立っていれば保つ)。立たない時は何も足さない。 */
+export const brawlerHuntingComboStart = (s: Pick<BrawlerState, 'huntingCombo'>, huntingCharged: boolean): { huntingCombo?: true } =>
+  s.huntingCombo || huntingCharged ? { huntingCombo: true } : {};
+/** 連撃が途切れたか(待機に戻り、通常攻撃のつながり・蹴りの連続・秘奥義の後の猶予のどれも過ぎた)。当てたかは問わない=空振りでも途切れる。 */
+export const brawlerComboEnded = (s: BrawlerState, t: number): boolean => {
+  if (s.phase !== 'idle' || s.secret) return false;
+  const until = Math.max(s.chainUntil, s.kickChainUntil, (s.secretLastEndAt ?? 0) > 0 ? (s.secretLastEndAt ?? 0) + BRAWLER_FLOW_GRACE_MS : 0);
+  return t > until;
+};
+
+// ---- D. 移動速度に比例して格闘の攻撃力が上がる(research/BRAWLER.md §16) ----
+/** 足の速さの能力値の倍率をそのまま格闘のダメージに掛ける。遅くする効果で下がる場合も 1.0 を下限にして下げない。 */
+export const brawlerSpeedDamageMult = (moveStatMult: number): number => (Number.isFinite(moveStatMult) ? Math.max(1, moveStatMult) : 1);

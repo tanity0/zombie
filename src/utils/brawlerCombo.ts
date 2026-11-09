@@ -417,6 +417,32 @@ export const brawlerJuggleLanded = (e: BrawlerJuggleFields, now: number): boolea
 export const brawlerAirborne = (e: Pick<BrawlerJuggleFields, 'brLiftUntil'>, now: number): boolean =>
   e.brLiftUntil !== undefined && now < e.brLiftUntil;
 
+// ---- 空中の敵へのダメージ倍率(社長指示2026-11-09「倍率はもっと上げたいのと、格闘以外にも乗せたい」・research/BRAWLER.md §16) ----
+/** 空中の敵に当たるたび上がる: 1発目 ×1.25 / 1発ごとに +0.25 / 上限 ×2.0。着地で数え直し(敵ごと)。 */
+export const AIR_HIT_FIRST_MULT = 1.25;
+export const AIR_HIT_STEP_MULT = 0.25;
+export const AIR_HIT_MAX_MULT = 2.0;
+/** 空中で n 発目(1始まり)の当たりの倍率。0以下(空中でない)は 1。 */
+export const airHitMult = (nth: number): number =>
+  nth >= 1 ? Math.min(AIR_HIT_MAX_MULT, AIR_HIT_FIRST_MULT + AIR_HIT_STEP_MULT * (Math.floor(nth) - 1)) : 1;
+/** 数えの寿命(ms)。最後に数えてからこれを過ぎた敵は数え直し(1回の浮きより十分長い)。 */
+export const AIR_HIT_STALE_MS = 6000;
+const airHitCounts = new Map<string, { n: number; at: number }>();
+/**
+ * 敵に1発当たる瞬間に呼ぶ(1発につき1回)。いま浮いていれば数えを進めて倍率を返し、浮いていなければ(=地上の当たり=打ち上げた一撃も)
+ * 数えを捨てて 1 を返す。着地してから次に当たる時は必ず地上の当たりを挟むので、着地で数え直しになる。
+ * 状態は敵のid別の小さな表(ストア外)=呼ぶ側は敵の欄を書き足さなくてよい。resetAirHits で捨てる(出撃のはじめ)。
+ */
+export const airHitMultFor = (e: { id: string; brLiftUntil?: number }, now: number): number => {
+  if (!brawlerAirborne(e, now)) { airHitCounts.delete(e.id); return 1; }
+  const prev = airHitCounts.get(e.id);
+  const n = (prev && now - prev.at <= AIR_HIT_STALE_MS ? prev.n : 0) + 1;
+  airHitCounts.set(e.id, { n, at: now });
+  if (airHitCounts.size > 256) for (const [k, v] of airHitCounts) if (now - v.at > AIR_HIT_STALE_MS) airHitCounts.delete(k);
+  return airHitMult(n);
+};
+export const resetAirHits = (): void => { airHitCounts.clear(); };
+
 /**
  * 追撃で浮き直した弧の頂点(倍率)。押し上げ(peak)ぶん上がり直すが、今の高さはそのまま積まずに少し目減りさせる
  * (旧の弧の頂点付近 ≒ 0.8×今の高さ+押し上げ と同じ高さ=何度当てても天井へ積み上がらない)。
