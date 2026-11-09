@@ -294,7 +294,7 @@ import {
 // ★ゾンビの噛みつきVFX(社長支給2026-09-18・左向き)。爪と同じ作法。
 import {
   usesZombieBiteFx,
-  zombieBiteFrameWithWindup, zombieBiteAlpha, zombieBiteTexName, zombieBiteIn, zombieBiteClose, zombieBitePulse,
+  zombieBiteFrameWithWindup, zombieBiteAlpha, zombieBiteTexName, zombieBiteIn, zombieBiteClose, zombieBitePulse, zombieBiteFromImpact, zombieBiteFrame,
   ZOMBIE_BITE_REF_W, ZOMBIE_BITE_W_PX,
 } from '../utils/zombieBiteFx';
 // ★ハンターの棺桶(社長支給2026-09-18)。ジャンプと突進の両方で振る。
@@ -23694,14 +23694,16 @@ export class PixiScene {
         const zWin = Math.max(1, zHit - zStart - zbMs); // 溜め(線が出てから噛みに入るまで)
         const zSinceWin = gameTime - zStart;
         const zSince = gameTime - zHit; // 当たる瞬間=0
-        const zf = zombieBiteFrameWithWindup(zSinceWin, zWin, zSince, zbMs);
+        // ★赤(返せる)は噛みつく瞬間から(社長指示2026-11-09・utils/zombieBiteFx の zombieBiteFromImpact)。
+        const fromImpact = zombieBiteFromImpact(zctr === 1);
+        const zf = fromImpact ? zombieBiteFrame(zSince) : zombieBiteFrameWithWindup(zSinceWin, zWin, zSince, zbMs);
         if (zf === null) continue;
         const second = slot === 2;
-        const zin = zombieBiteIn(zSinceWin, zWin, second); // 小さく薄く、ゾンビ側から膨らんで今の位置へ
-        const zcl = zombieBiteClose(zSinceWin, zWin, zSince, zbMs, second); // 溜めでじわじわ→噛みで縦に強く締まる
+        const zin = fromImpact ? { scale: 1, alpha: 1, backPx: 0 } : zombieBiteIn(zSinceWin, zWin, second); // 小さく薄く、ゾンビ側から膨らんで今の位置へ
+        const zcl = fromImpact ? { sx: 1, sy: 1, alpha: 1 } : zombieBiteClose(zSinceWin, zWin, zSince, zbMs, second); // 溜めでじわじわ→噛みで縦に強く締まる
         // 体の点滅に合わせた脈(§12の噛みつき=溜めの中の2回目の点滅/2連の1発目=構えの赤の点滅)。
         let edge: number | null = null;
-        if (zSince < 0) {
+        if (zSince < 0 && !fromImpact) {
           if (e.aiPhase === 'z-red-pause' && e.chaffBlinkAt !== undefined) {
             const t = gameTime - e.chaffBlinkAt, cyc = CHAFF_BLINK_ON_MS + CHAFF_BLINK_OFF_MS;
             if (t >= 0 && t < cyc * CHAFF_BLINK_COUNT) edge = t % cyc;

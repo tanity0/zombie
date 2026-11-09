@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5424', items: [
+    'ゾンビの赤い噛みつきは、噛みつく瞬間に顎が現れる。溜めの間は赤い予告の線だけ',
+  ] },
   { version: '0.25.5423', items: [
     '爆発を撃ち続けても、敵が宙に浮きっぱなしにはならない。着地した後は少しの間、爆発では浮かない',
     '浮くのは爆発が当たった敵だけ。爆風の縁ほど低く短く浮く',

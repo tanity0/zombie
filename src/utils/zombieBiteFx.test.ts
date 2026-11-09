@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   usesZombieBiteFx, zombieBiteCounterable, zombieBiteTotalMs, zombieBiteFrame,
   zombieBiteFrameWithWindup, zombieBiteAlpha, zombieBiteTexName, zombieBiteIn, zombieBiteInMs, ZOMBIE_BITE_IN_SCALE0, zombieBiteClose, zombieBitePulse, ZOMBIE_BITE_CLOSE_SCALE_Y, ZOMBIE_BITE_WINDUP_SCALE, ZOMBIE_BITE_WINDUP_ALPHA,
-  ZOMBIE_BITE_FRAMES, ZOMBIE_BITE_IMPACT_FRAME, ZOMBIE_BITE_HOLD_MS, ZOMBIE_BITE_W_PX,
+  ZOMBIE_BITE_FRAMES, ZOMBIE_BITE_IMPACT_FRAME, ZOMBIE_BITE_HOLD_MS, ZOMBIE_BITE_W_PX, zombieBiteFromImpact,
 } from './zombieBiteFx';
 
 describe('ゾンビの噛みつきVFX: 対象と色', () => {
@@ -194,5 +194,19 @@ describe('ゾンビの噛みつきVFX: 出だし(社長指示2026-10-25「浮い
   });
   it('溜めが短い技でも溜めの中で終わる=当たる瞬間の絵(判定の四角)は元の大きさ・元の位置', () => {
     for (const w of [220, 300, 800]) for (const sec of [false, true]) expect(zombieBiteIn(w, w, sec)).toEqual({ scale: 1, alpha: 1, backPx: 0 });
+  });
+});
+
+describe('赤い噛みつきは顎の絵を噛みつく瞬間から(社長指示2026-11-09)', () => {
+  it('赤(返せる)だけが瞬間から・紫は今のまま', () => {
+    expect(zombieBiteFromImpact(true)).toBe(true);
+    expect(zombieBiteFromImpact(false)).toBe(false);
+  });
+  it('瞬間からの送り: 当たる80msより前は出ない・閉じる2コマ→当たる瞬間に飛沫のコマ', () => {
+    expect(zombieBiteFrame(-500)).toBeNull();
+    expect(zombieBiteFrame(-81)).toBeNull();
+    expect(zombieBiteFrame(-60)).toBe(0);
+    expect(zombieBiteFrame(-20)).toBe(1);
+    expect(zombieBiteFrame(0)).toBe(ZOMBIE_BITE_IMPACT_FRAME);
   });
 });

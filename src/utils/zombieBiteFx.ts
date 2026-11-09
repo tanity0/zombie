@@ -201,6 +201,14 @@ export const zombieBiteAlpha = (sinceImpactMs: number): number => {
 export const zombieBiteTotalMs = (): number =>
   holdTotalMs(ZOMBIE_BITE_HOLD_MS) - holdLeadMs(ZOMBIE_BITE_HOLD_MS, ZOMBIE_BITE_IMPACT_FRAME);
 
+/**
+ * ★赤い噛みつき(返せる技)は、顎の絵を**噛みつく瞬間から**出す(社長指示2026-11-09「ゾンビとかの噛みつき(赤い方)、
+ * 顎の絵が出るタイミングは、もう噛みつく瞬間からにして」)。溜めの間は赤い予告の線だけで読ませ、顎は閉じる一瞬
+ * (`ZOMBIE_BITE_HOLD_MS` の前2コマ=当たる80ms前)から飛沫まで=元の `zombieBiteFrame` の送りそのまま。
+ * 出だしの膨らみ・溜めの締まり・体の点滅の脈は掛けない(溜めの絵を出さないため)。紫(返せない)は今のまま。
+ */
+export const zombieBiteFromImpact = (counterable: boolean): boolean => counterable;
+
 /** テクスチャ名(赤=返せる / 紫=返せない)。 */
 export const zombieBiteTexName = (frame: number, counterable: boolean): string =>
   counterable ? `fx/zombie-bite-${frame}` : `fx/zombie-bite-p-${frame}`;
