@@ -19,6 +19,7 @@ const SUB_ICON: Partial<Record<SubWeaponKey, string>> = {
   'first-aid-kit': 'first-aid-kit',
   'arrow-rain': 'fx/arrow', // 仮(社長の素材待ち)。旗手の矢と同じ矢の絵
   brawler: 'brawler-item', // 社長支給 2026-11-07(research/BRAWLER.md §0-1)
+  'gold-ring': 'suriel-ring', // 社長指示2026-11-09「サブウェポンの絵もこれで」=在世界の金環と同じドット絵
 };
 export const subWeaponIconName = (key: SubWeaponKey): string | null => SUB_ICON[key] ?? null;
 

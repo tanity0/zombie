@@ -1034,7 +1034,7 @@ export const ensureTextures = (): Promise<void> => {
       { name: 'uri', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
       { name: 'uri-sword', scaleMode: 'linear' as const },
       { name: 'suriel', scaleMode: 'nearest' as const } /* v0.25.2924 ドット化 */,
-      { name: 'suriel-ring', scaleMode: 'linear' as const },
+      { name: 'suriel-ring', scaleMode: 'nearest' as const } /* 社長指示2026-11-09「ドット絵に差し替え」(金環・スリィエルの環・フィルの輪投げで共通) */,
       { name: 'acrasiel', scaleMode: 'nearest' as const } /* v0.25.2926 ドット化 */,
       { name: 'acrasiel-spear', scaleMode: 'linear' as const },
       // PACING_PUZZLE.md §10(EXボス「フィル(変異体)」バッチ1): 本体絵phill.png(768×1024・

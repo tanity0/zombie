@@ -17266,7 +17266,8 @@ export class PixiScene {
   private syncGoldRings(rings: GoldRing[], gameTime: number, now: number) {
     const seen = new Set<string>();
     const tex = getTexture('suriel-ring');
-    const RING_VIS_D = 44; // 画面上の直径(px・叩き台=スリィエル本体の環SURIEL_RING_VIS_D=54よりやや小さく)
+    // ★社長指示2026-11-09「ドット絵に差し替え」: 素材の横76ドット=画面76px(1ドット=1px=レンダラの整数倍でくっきり)。旧44(=1ドット0.58px・ぼかし)。
+    const RING_VIS_D = 76;
     const SPIN_TARGET = 1 / 220;
     const SPIN_TAU_MS = 200;
     const BEAM_APPEAR_MS = 100; // §19-4「レーザーの出現にも慣性(80〜120msで幅とαを立ち上げる)」の中央値

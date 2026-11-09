@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5426', items: [
+    '金環がくっきりしたドット絵になり、大きく見えるようになった。スリィエルの環も同じ絵でくっきり',
+    '装備画面のサブウェポンに、金環の絵が付いた',
+  ] },
   { version: '0.25.5425', items: [
     '一時停止の地図に、その出撃で出会ったボスが残り続ける。見失った後は最後に見えた場所に出る',
   ] },
