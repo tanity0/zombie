@@ -3524,6 +3524,23 @@ const SHADOW_FOOT_ALPHA_THRESHOLD = tsNum('footalpha', 128);
 const SHADOW_FLOAT_T_HEIGHT_MULT = 1.2; // t = min(1, h / (絵の高さ×1.2))
 const SHADOW_FLOAT_SHRINK = 0.35;       // 小さく: ×(1-0.35t)
 const SHADOW_FLOAT_FADE = 0.5;          // 薄く: ×(1-0.5t)
+// ★格闘の浮き(research/BRAWLER.md §12-1・§9-76・社長「敵が空中にいるのを分かりやすくしたい。…横に絵を倒すと、ヨルムンガルドみたいな
+//   横長の絵は大変なことになる」→「1.2.4.5 がいいな」)。描画だけ(判定は地面のまま)。高さ k=0..1(4段目の頂点=1)。
+/** ① 影: 頂点で幅 ×0.6・濃さ ×0.5(高さ0で今どおり)。 */
+const BRAWLER_AIR_SHADOW_W = 0.6;
+const BRAWLER_AIR_SHADOW_A = 0.5;
+/** ⑤ 体: 頂点で ×1.06(縦横同じ・倒さない・回さない・歪ませない)。影は大きくしない。 */
+const BRAWLER_AIR_BODY_SCALE = 1.06;
+/** ② 足元の輪: 濃さ(加算)・にじみ出る/消える尺(ms)・輪の縦横比(地面に寝た円)・幅は影の規格(当たり判定の帯の幅)×これ。 */
+const BRAWLER_AIR_RING_A = 0.42;
+const BRAWLER_AIR_RING_IN_MS = 140;
+const BRAWLER_AIR_RING_OUT_MS = 110;
+const BRAWLER_AIR_RING_FLAT = 0.34;
+const BRAWLER_AIR_RING_W_MUL = 1.15;
+/** ④ 上昇の筋: 尺(ms)・打ち上げ(地面から)と追撃の浮き直し(空中から)の大きさ。 */
+const BRAWLER_AIR_STREAK_MS = 300;
+const BRAWLER_AIR_STREAK_SCALE = 0.2;
+const BRAWLER_AIR_STREAK_SCALE_SMALL = 0.12;
 /** 高さ(=論理の足元Yと実際の描画足元Yの差)の不感帯(px)。これ以下は高さ0扱い。 */
 const SHADOW_HEIGHT_DEADZONE_PX = 6;
 // 社長裁定GO(v0.25.3287)「影をオブジェクト中心に食い込ませる」: 静物(木/壁/プロップ/建物=isStatic)の
@@ -4280,6 +4297,16 @@ interface ActorView {
                             // stageEnemyVisualMul等の構造的な倍率のみ。breath/flinch/aiSq/lungeSqは含まない)
   shadowLiftPx?: number;  // 持ち上げ系(liftHop/kbHop/aiHop/lungeOffY)の合計。影の heightPx に使う
   shadowFloatFloor?: number; // 浮いた時の影の縮み・薄まりの下限(ShadowCasterReq.floatFloor へ)
+  /** ★格闘の浮き(§12-1・§9-76)の今の高さ(0=地面・1=4段目の頂点)。影の縮み・薄まりと体のわずかな拡大に使う。 */
+  shadowAirK?: number;
+  /** 浮いている間だけ体に掛けているわずかな拡大(縦横同じ)。影の寸法はこれで割り戻す(影は大きくしない)。 */
+  airScale?: number;
+  /** 浮いている間の足元の輪(加算・地面)と、打ち上げた瞬間の上昇の筋(描画だけ・遅延生成)。 */
+  airRing?: Sprite;
+  airStreak?: Sprite;
+  airStreakAt?: number;
+  airStreakSmall?: boolean;
+  airPrevLiftAt?: number;
   // ★息を止める(社長指示2026-09-17「攻撃する時や、攻撃後の隙は呼吸を止める」)。
   // 現在の呼吸の振れ幅(1=普通に呼吸 / 0=止めている)と、その最終更新時刻。**瞬間的に切り替えない**
   // (CLAUDE.md「動きの絶対ルール: 慣性」)ので、時定数つきの指数緩和で寄せる=フレームレート非依存。
@@ -4354,6 +4381,8 @@ interface ShadowCasterReq {
   isStatic?: boolean;  // 木/壁/プロップ/city props/建物=距離クロスフェード(縮退)の対象
   heightPx?: number;   // 浮遊時の高さ(px, world単位)。省略=0(地上)
   floatFloor?: number; // 浮いた時の縮み・薄まりの下限(0..1・省略=下限なし)。偶像の大ジャンプ=着地点が読める濃さを残す
+  /** ★格闘の浮き(§9-76)の高さ(0..1)。頂点で影の幅 ×BRAWLER_AIR_SHADOW_W・濃さ ×BRAWLER_AIR_SHADOW_A(高さの影の縮みより強ければそちら)。 */
+  airK?: number;
 }
 
 /** ベイク済みシルエットテクスチャ+その幾何メタ(裁定F: pad補正に使う)。 */
@@ -15083,11 +15112,12 @@ export class PixiScene {
       // ★検収差し戻し(F-1の横展開): 非ボス敵の本体alphaは horizonAlpha × foreFade
       // (foregroundActorAlpha。裏ボスは foreFade=1 で対象外=drawEnemyと同じ)。
       const foreFade = bossFixed ? 1 : this.foregroundActorAlpha(footY);
+      const airS = view?.airScale ?? 1; // 浮いている間の体の拡大は影に入れない(影は1の縮みだけ・§9-76)
       place({
         id: e.id, x: cx, y: cy,
-        rawW: disp.w, rawH: disp.h, texture: view?.sprite.texture ?? null,
+        rawW: disp.w / airS, rawH: disp.h / airS, texture: view?.sprite.texture ?? null,
         alpha: horizonAlpha * foreFade, shadowFade: view?.shadowFade ?? 1,
-        flip: disp.flip, skewX: view?.sprite.skew.x ?? 0, heightPx: liftPx, floatFloor: view?.shadowFloatFloor,
+        flip: disp.flip, skewX: view?.sprite.skew.x ?? 0, heightPx: liftPx, floatFloor: view?.shadowFloatFloor, airK: view?.shadowAirK,
       });
     }
     // ---- 裏ボス討伐フェード(★致命4修正: 討伐の瞬間に影だけ消え、2.6秒間「影の無い巨体」が
@@ -15896,6 +15926,78 @@ export class PixiScene {
   }
 
   /** ActorView から表示実寸(幅・高さ・反転)を取る。`getBounds()` は使わない(被弾しなりでAABBが膨らむため)。 */
+  /**
+   * ★格闘の浮き(§12-1・§9-76): ②足元の輪(浮いている間だけ・影の位置の地面・白金の加算・薄め・高さに合わせてゆっくり脈打つ)と
+   * ④上昇の筋(打ち上げた瞬間だけ・体の下から上へ・追撃の浮き直しは小さめ)。描画だけ=store には書かない。
+   * groundX/Y=論理の足元(影の位置)。輪の幅は影の規格(当たり判定の帯の幅)=横長の絵でも箱の幅に合う。
+   */
+  private drawBrawlerAir(view: ActorView, e: Enemy, groundX: number, groundY: number, airK: number): void {
+    const nowMs = Date.now();
+    const liftAt = e.brawlerLiftAt;
+    const liftEnd = e.brLiftUntil ?? 0;
+    const lifting = liftAt !== undefined && nowMs < liftEnd && e.brLiftUntil === e.liftUntil;
+    // ④ 打ち上げた瞬間(新しい弧が始まった)。ダウン(叩き落とし)は上へ行かないので出さない。
+    if (liftAt !== undefined && liftAt !== view.airPrevLiftAt) {
+      view.airPrevLiftAt = liftAt;
+      if (lifting && !e.brLiftDown && nowMs - liftAt < 120) {
+        view.airStreakAt = nowMs;
+        view.airStreakSmall = (e.brLiftFrom ?? 0) > 0.05; // 空中からの浮き直し=小さめ
+      }
+    }
+    const horizon = this.horizonActorAlpha(groundY);
+    const ringW = Math.max(22, (isHiddenBoss(e.type) ? e.width : enemyHitStrip(e).width) * BRAWLER_AIR_RING_W_MUL);
+    // ② 輪
+    if (lifting && horizon > 0) {
+      if (!view.airRing) {
+        const r = new Sprite(getRingTexture(64));
+        r.anchor.set(0.5); r.blendMode = 'add'; r.tint = BRW.BRAWLER_COLOR_HEX;
+        this.L.groundLayer.addChild(r);
+        view.airRing = r;
+      }
+      const r = view.airRing;
+      const since = nowMs - (liftAt ?? nowMs), left = liftEnd - nowMs;
+      const inK = 1 - (1 - Math.min(1, since / BRAWLER_AIR_RING_IN_MS)) ** 3; // にじみ出る(減速)
+      const outK = Math.min(1, left / BRAWLER_AIR_RING_OUT_MS);
+      const outE = outK * outK * (3 - 2 * outK); // 着地へ向けて消える
+      const peak = Math.max(0.15, e.brLiftPeak ?? 1);
+      const hRel = Math.min(1, airK / peak); // その弧の中での高さ(0..1)
+      // 高さに合わせて少し広がり、ゆっくり脈打つ(息のように・位相は個体ごとにずらす)。
+      const pulse = 1 + 0.035 * Math.sin(nowMs / 230 + (e.id.charCodeAt(0) & 7));
+      const k = (0.86 + 0.18 * hRel) * pulse * (0.9 + 0.1 * inK);
+      const sx = (ringW * k) / (64 * 2);
+      r.position.set(groundX, groundY);
+      r.scale.set(sx, sx * BRAWLER_AIR_RING_FLAT);
+      r.alpha = BRAWLER_AIR_RING_A * inK * outE * (0.75 + 0.25 * hRel) * horizon;
+      r.visible = r.alpha > 0.01;
+    } else if (view.airRing) view.airRing.visible = false;
+    // ④ 筋
+    const sAt = view.airStreakAt;
+    if (sAt !== undefined && nowMs - sAt < BRAWLER_AIR_STREAK_MS && horizon > 0) {
+      const tex = getTexture('fx/dash-wind');
+      if (tex) {
+        if (!view.airStreak) {
+          const sp = new Sprite(tex);
+          sp.anchor.set(0.5); sp.blendMode = 'add'; sp.tint = BRW.BRAWLER_COLOR_HEX; sp.rotation = -Math.PI / 2;
+          this.L.effectLayer.addChild(sp);
+          view.airStreak = sp;
+        }
+        const sp = view.airStreak;
+        const u = (nowMs - sAt) / BRAWLER_AIR_STREAK_MS;
+        const mv = 1 - (1 - u) ** 3; // 速く出て減速して止まる(慣性)
+        const small = view.airStreakSmall === true;
+        const bodyH = Math.max(30, Math.abs(view.sprite.height));
+        const base = small ? BRAWLER_AIR_STREAK_SCALE_SMALL : BRAWLER_AIR_STREAK_SCALE;
+        const sc = base * Math.max(0.8, Math.min(2.2, bodyH / 110));
+        sp.texture = tex;
+        sp.position.set(groundX, groundY - bodyH * (0.15 + 0.7 * mv));
+        sp.scale.set(sc * (1.4 + 0.6 * mv), sc * 0.9); // 上へ伸びながら抜ける(テクスチャの横=上向き)
+        sp.alpha = (u < 0.15 ? u / 0.15 : (1 - (u - 0.15) / 0.85) ** 2) * (small ? 0.7 : 0.95) * horizon;
+        sp.zIndex = groundY + 1;
+        sp.visible = sp.alpha > 0.01;
+      }
+    } else if (view.airStreak) view.airStreak.visible = false;
+  }
+
   private actorDisplaySize(view: ActorView | undefined | null): { w: number; h: number; flip: boolean } | null {
     if (!view || view.sprite.visible === false) return null;
     const s = this.shadowAncestorScaleX(view.sprite, this.L.world);
@@ -15950,8 +16052,9 @@ export class PixiScene {
     const rawHeight = Math.max(0, req.heightPx ?? 0);
     const height = rawHeight > SHADOW_HEIGHT_DEADZONE_PX ? rawHeight - SHADOW_HEIGHT_DEADZONE_PX : 0;
     const t = Math.min(1, height / (req.rawH * SHADOW_FLOAT_T_HEIGHT_MULT));
-    const shrink = Math.max(req.floatFloor ?? 0, 1 - SHADOW_FLOAT_SHRINK * t);
-    const floatFade = Math.max(req.floatFloor ?? 0, 1 - SHADOW_FLOAT_FADE * t);
+    const airK = Math.max(0, Math.min(1, req.airK ?? 0));
+    const shrink = Math.min(Math.max(req.floatFloor ?? 0, 1 - SHADOW_FLOAT_SHRINK * t), 1 - (1 - BRAWLER_AIR_SHADOW_W) * airK);
+    const floatFade = Math.min(Math.max(req.floatFloor ?? 0, 1 - SHADOW_FLOAT_FADE * t), 1 - (1 - BRAWLER_AIR_SHADOW_A) * airK);
     // ★D-2b「やること3」(社長指示v0.25.2815「縦横両方ね。絵の、ではなく絵の足元の」):
     // footX を「絵の実体が横に占める中心」へ寄せる。req.x は呼び出し側が渡す幾何中心
     // (アンカー0.5相当)なので、左右に余白のある素材だとそこは絵の実体の中心と一致しない。
@@ -16490,6 +16593,7 @@ export class PixiScene {
     for (const [id, view] of this.enemies) {
       if (!seen.has(id)) {
         view.light.destroy();
+        view.airRing?.destroy(); view.airStreak?.destroy(); // 格闘の浮きの輪・筋(§9-76)
         view.container.destroy({ children: true });
         this.clearFxLatches(`${id}:`); // 出し切り待ちのエフェクト記録も片付ける(v0.25.2408)
         this.dashWasOn.delete(id);
@@ -21868,6 +21972,10 @@ export class PixiScene {
 
   private drawEnemy(view: ActorView, e: Enemy, gameTime: number, now: number) {
     const fb = enemyFootBox(e);
+    // 格闘の浮きの輪・筋(§9-76)は、このフレームで drawBrawlerAir を通った時だけ出す(途中で抜ける経路で残らない)。
+    if (view.airRing) view.airRing.visible = false;
+    if (view.airStreak) view.airStreak.visible = false;
+    view.shadowAirK = 0; view.airScale = 1;
     // ステージ3(daylight=farBackdrop'city')は廃都セット、ステージ4(snowStage='snow')は雪原セットに敵絵を
     // 差し替え。次にlab、無ければ既定アトラス。
     // 解決チェーンの本体は enemyTexKey(生体と死体の唯一の出どころ。v0.25.2383で共有化)。
@@ -22164,6 +22272,10 @@ export class PixiScene {
     // ★浮かせ追撃(§12-1): 押し上げるたびに今の高さから弧が続く(n 回目ほど低く・重い区分ほど低く)。式は utils/brawlerCombo の1本。
     const brLiftPx = e.brawlerLiftAt !== undefined
       ? brawlerJuggleHeightRel(e, Date.now()) * BRW.BRAWLER_LIFT_VIS_PX * Math.max(0.8, fb.boxH / 110) : 0;
+    // ★浮いているのを分かりやすく(§12-1・§9-76・社長「敵が空中にいるのを分かりやすくしたい」→「1.2.4.5 がいいな」):
+    // 高さ(0..1)で ①影を小さく薄く ⑤体をわずかに大きく(縦横同じ・倒さない・回さない・歪ませない)。②足元の輪と④上昇の筋は drawBrawlerAir。
+    const brAirK = e.brawlerLiftAt !== undefined ? Math.max(0, Math.min(1, brawlerJuggleHeightRel(e, Date.now()))) : 0;
+    const airScale = 1 + (BRAWLER_AIR_BODY_SCALE - 1) * brAirK;
     // ★格闘の止めの間の震え: 当てた方向に沿って、止めの残りとともに減衰(#12)。絵だけ。
     const brShakeLeft = e.brawlerShakeUntil !== undefined ? e.brawlerShakeUntil - Date.now() : 0;
     const brShakeAmp = brShakeLeft > 0 ? Math.min(4.5, 1 + brShakeLeft / 28) * (((Math.floor(Date.now() / 16) & 1) === 0) ? 1 : -0.6) : 0;
@@ -22495,7 +22607,11 @@ export class PixiScene {
       // ★手で描いたコマの間は技のスカッシュ(aiSqX/Y=歪み)を掛けない(社長指示「モーション追加により外すのは歪みだけ」・
       //   ラフィの待機/歩きのシート 2026-09-29)。汎用の経路(`aiSqXDraw`)と同じ扱い。被弾のしなり(flinch)はそのまま。
       const bossSqX = phillSheet || bossStopped ? 1 : aiSqX, bossSqY = phillSheet || bossStopped ? 1 : aiSqY;
-      view.sprite.scale.set(bossM * idolMirror * scale * breath.x * lungeSqX * flinchSqX * bossSqX, scale * breath.y * flinchSqY * bossSqY);
+      view.sprite.scale.set(bossM * idolMirror * scale * breath.x * lungeSqX * flinchSqX * bossSqX * airScale, scale * breath.y * flinchSqY * bossSqY * airScale);
+      // 裏ボスは真ん中が支点(0.5,0.5)なので、拡大で足が地面へ沈まないよう、増えた高さの半分だけ上へ(§9-76)。
+      if (airScale !== 1) view.sprite.y -= Math.round((airScale - 1) * tex.height * scale / 2);
+      view.shadowAirK = brAirK; view.airScale = airScale;
+      this.drawBrawlerAir(view, e, spx, view.shadowGroundY ?? spy, brAirK);
       // プレイヤーが帯(当たり判定)より奥=裏に回り込んだら、巨体の絵で自機が隠れないよう薄く透かす(社長指示)。
       // 二値判定ではなく「遠ざかるほど急激」な二乗カーブで透明度を距離に応じて連続変化させる。
       const ply = useGameStore.getState().player;
@@ -22903,7 +23019,9 @@ export class PixiScene {
       const aiSqXDraw = walkTex !== null || bossStopped ? 1 : aiSqX;
       const aiSqYDraw = walkTex !== null || bossStopped ? 1 : aiSqY;
       const scaleX = sc * breath.x * aiSqXDraw * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX * lichWarp.sqX * lichBlinkSq;
-      view.sprite.scale.set(scaleX, sc * breath.y * flinchSqY * aiSqYDraw * motSqY * corpseSq.sqY * lichWarp.sqY * lichBlinkSq);
+      view.sprite.scale.set(scaleX * airScale, sc * breath.y * flinchSqY * aiSqYDraw * motSqY * corpseSq.sqY * lichWarp.sqY * lichBlinkSq * airScale);
+      view.shadowAirK = brAirK; view.airScale = airScale;
+      this.drawBrawlerAir(view, e, fb.footX, fb.footY, brAirK);
       if (corpseSq.alpha < 1) view.container.alpha *= corpseSq.alpha;
       // ★体(胴)基準のずらし(社長指示2026-09-27「フィル、モーションを体基準にして。ガタガタしてる」)。
       // そのコマが表に載っているシートのものなら、胴が揃うだけ描画位置をずらす(ミラー時は scaleX の符号で自動で左右反転)。
