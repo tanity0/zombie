@@ -1,6 +1,6 @@
 // ★格闘の手触り(research/BRAWLER.md §16): 5段目の飛距離・空中の敵への倍率・ハンティングの範囲・足の速さ・気功は銃の攻撃力に依存。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useGameStore } from './gameStore';
+import { useGameStore, playerMoveStatMult } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll, resetAirHits } from '../utils/brawlerCombo';
 import { initialBrawlerState, BRAWLER_STAGES, BRAWLER_PALM_KB_MULT, BRAWLER_BIG_KB_MULT } from '../utils/brawler';
@@ -189,5 +189,26 @@ describe('E. 気功は銃の攻撃力に依存', () => {
     const dope = kikoDealt([], {}, { consumableAttackUntil: 1e9 } as never);
     expect(dope / base).toBeGreaterThan(1.1); expect(dope / base).toBeLessThan(1.3);
     expect(kikoDealt(['sniper'], { sniper: 1 })).toBeGreaterThan(base);
+  });
+});
+
+describe('血の覚醒(社長承認2026-11-09)', () => {
+  const awake = { bloodAwakenUntil: 1e9, bloodAwakening: true } as never;
+  it('足の速さの能力値に覚醒の足(×1.5)が入る・覚醒でなければ1', () => {
+    setup();
+    const p0 = useGameStore.getState().player;
+    expect(playerMoveStatMult(p0, 0)).toBe(1);
+    expect(playerMoveStatMult({ ...p0, ...(awake as object) }, 0)).toBeGreaterThan(1.4);
+  });
+  it('気功に覚醒の攻撃×1.5が乗る', () => {
+    const kiko = (extra: object): number => {
+      setup();
+      useGameStore.setState(st => ({ enemies: [zombieAt(120, 0, 'z', 1_000_000)], player: { ...st.player, ...extra, brawler: { ...initialBrawlerState(), points: 9 } } }));
+      useGameStore.getState().brawlerTech(-1, 0);
+      advance(900);
+      return 1_000_000 - hpOf('z');
+    };
+    const base = kiko({});
+    expect(kiko(awake) / base).toBeGreaterThan(1.4);
   });
 });

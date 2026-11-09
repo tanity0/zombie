@@ -2658,13 +2658,13 @@ export const consumableSpeedMult = (player: Player, gameTime: number): number =>
   player.consumableSpeedUntil > gameTime ? CONSUMABLE_SPEED_MULT : 1;
 /**
  * 足の速さの能力値(スキル・装備・消費カード・クラスで上がった移動速度の、基準に対する倍率)。research/BRAWLER.md §16-D。
- * 移動速度の合成(movePlayer の othersSum)と同じ足し算+頭打ち(cruiseSpeedMult)から、**走り続けて上がる巡航の段(動的)と立ち上がり・血の覚醒・リロード・トラップ減速は除く**
+ * 移動速度の合成(movePlayer の othersSum)と同じ足し算+頭打ち(cruiseSpeedMult)に血の覚醒の移動速度(×1.5・消えていく間は下がる)を掛けたもの。**走り続けて上がる巡航の段(動的)と立ち上がり・リロード・トラップ減速は除く**
  * =今その瞬間に走っている速さではなく、能力値としての倍率。1.0 が下限(足が遅くなる効果では下げない)。
  */
 export const playerMoveStatMult = (player: Player, gameTime: number): number =>
   cruiseSpeedMult(0, (skillRunnerSpeedMult(player, false) - 1) + (standardSpeedBonusMult(player) - 1)
     + (consumableSpeedMult(player, gameTime) - 1) + ((player.equipBonus?.moveSpeedMult ?? 1) - 1)
-    + (skillHeroMult(player) - 1), 1);
+    + (skillHeroMult(player) - 1), 1) * bloodAwakenMult(player, gameTime).boost; // 血の覚醒の足の速さも含む(社長承認2026-11-09・覚醒中の格闘は攻撃×1.5×足で最大約2.25倍)
 export const consumableXpMult = (player: Player, gameTime: number): number =>
   player.consumableXpUntil > gameTime ? CONSUMABLE_XP_MULT : 1;
 export const consumableProtectionMult = (player: Player, gameTime: number): number =>
@@ -5459,7 +5459,8 @@ const explodeBrawlerKiko = (
   const melee = p.weapons.find(w => w.isMelee);
   const base = meleeSwingBaseDamage(melee, p) * BR.BRAWLER_KIKO_MULT * exMult * skillOutgoingDamageMult(p)
     * BRS.brawlerSpeedDamageMult(playerMoveStatMult(p, st.gameTime)) // 足の速さの能力値(§16-D)
-    * brawlerKikoGunMult(p, st.gameTime); // ★気功は銃の攻撃力に依存(§16-E)
+    * brawlerKikoGunMult(p, st.gameTime) // ★気功は銃の攻撃力に依存(§16-E)
+    * skillBloodAwakenDamageMult(p); // 血の覚醒の×1.5も銃と同じく乗る(社長承認2026-11-09)
   const ids = BR.brawlerCircleTargets(st.enemies, x, y, radius);
   const burn = incendiaryBurnParams(brawlerLevel(p));
   let dealt = 0;
@@ -11692,9 +11693,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (heavyScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
         // ★格闘(research/BRAWLER.md §15・社長承認2026-11-09): 段の倍率は5倍(強個体3倍)の部分だけに掛け、紫の報酬予算(最大HPの25%の残り)には掛けない
         // =どの段で決めても紫は満額報われ、締めで決めると少し多い。格闘以外(被弾反撃の×2も)は今までどおり報酬ごと掛ける。
+        const stunAirMult = bs ? BRC.airHitMultFor(enemy, now) : 1;
         const dmg = bs
           ? BRS.stunnedFinishDamage(
-            fatal ? meleeExecBase * gpDmgScale * 5 : stunnedHit.dmg,
+            (fatal ? meleeExecBase * gpDmgScale * 5 : stunnedHit.dmg) * stunAirMult, // 5倍(3倍)の部分だけ空中の倍率。足の速さは meleeExecBase に入っている(§16)
             fatal ? Math.max(0, enemy.bossBreakRewardRemaining ?? 0) : 0,
             retMult, 1, heavyScanMult,
           )

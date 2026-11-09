@@ -65,6 +65,25 @@ describe('1. 紫の致命の一撃: 段の倍率で報酬が縮まない', () =>
   });
 });
 
+describe('1b. 気絶中の処刑系にも空中の倍率(5倍の部分だけ・報酬には掛けない)', () => {
+  const dealt = (reward: number, lifted: boolean): number => {
+    setup([], {}, true);
+    const e = bodyAt('giantbat', 40, 0, 'b', 100000);
+    e.bossFullStunUntil = useGameStore.getState().gameTime + 5000;
+    e.stunUntil = e.bossFullStunUntil;
+    e.bossBreakRewardRemaining = reward;
+    if (lifted) e.brLiftUntil = now + 5000;
+    useGameStore.setState({ enemies: [e] });
+    useGameStore.getState().triggerCounter(undefined, strikeOpts('b', 1, 's1'));
+    return 100000 - hpOf('b');
+  };
+  it('空中なら5倍の部分が×1.25・報酬2500は変わらない', () => {
+    const g0 = dealt(0, false), a0 = dealt(0, true);
+    expect(a0 / g0).toBeCloseTo(1.25, 5);
+    expect(dealt(2500, true) - a0).toBeCloseTo(2500, 5);
+  });
+});
+
 describe('2. カウンターマスターの吹き飛ばしは格闘では締めだけ', () => {
   const pushed = (brawler: boolean, move: 's1' | 's5'): boolean => {
     setup(['counter-master'], { 'counter-master': 1 }, brawler);
