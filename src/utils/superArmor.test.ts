@@ -138,16 +138,18 @@ describe('踏ん張りの絵(superArmorSquashY / SquashX / LeanRad)', () => {
   });
 });
 
-describe('格闘の5段目の突き抜け(社長指示2026-11-07「5段目にスーパーアーマーだけ足して」)', () => {
+describe('格闘の段・技の最中(社長指示2026-11-07「5段目にスーパーアーマーだけ足して」→ 2026-11-09 §15「段・技の当たりから止めの間まで」へ広げた)', () => {
   const s5 = brawlerStartAttack(initialBrawlerState(), 5, 0, false);
-  it('突き抜けの最中は「振り」=Lv3 は量を問わず働く。溜めの間と抜けた後は一閃と同じく含めない', () => {
+  it('段・技の動作中(idle でない間)は「振り」=Lv3 は量を問わず働く。動作の外(idle)と格闘でない時は含めない', () => {
     const dashing = { ...s5, palmFromX: 0, palmFromY: 0 };
     expect(isPlayerMeleeSwinging({ brawler: dashing }, NOW, SWING)).toBe(true);
-    expect(isPlayerMeleeSwinging({ brawler: s5 }, NOW, SWING)).toBe(false); // 溜め
-    expect(isPlayerMeleeSwinging({ brawler: { ...dashing, resolved: true } }, NOW, SWING)).toBe(false); // 抜けた後
+    expect(isPlayerMeleeSwinging({ brawler: s5 }, NOW, SWING)).toBe(true); // 溜め(動作の最中)
+    expect(isPlayerMeleeSwinging({ brawler: { ...dashing, resolved: true } }, NOW, SWING)).toBe(true); // 抜けた後〜止めの間
+    expect(isPlayerMeleeSwinging({ brawler: initialBrawlerState() }, NOW, SWING)).toBe(false);
+    expect(isPlayerMeleeSwinging({}, NOW, SWING)).toBe(false);
     expect(playerSuperArmorActive({ ...withSkill(3), brawler: dashing }, 999, NOW, GT, SWING)).toBe(true);
     expect(playerSuperArmorActive({ ...withSkill(2), brawler: dashing }, 999, NOW, GT, SWING)).toBe(false); // 条件は一閃と同じ(Lv3)
-    expect(playerSuperArmorActive({ ...withSkill(3), brawler: s5 }, 999, NOW, GT, SWING)).toBe(false);
+    expect(playerSuperArmorActive({ ...withSkill(3), brawler: s5 }, 999, NOW, GT, SWING)).toBe(true);
+    expect(playerSuperArmorActive({ ...withSkill(3), brawler: initialBrawlerState() }, 999, NOW, GT, SWING)).toBe(false);
   });
 });
-

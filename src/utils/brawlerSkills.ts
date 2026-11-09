@@ -1,0 +1,52 @@
+// ★格闘×スキルの組み合わせ(research/BRAWLER.md §15・社長承認2026-11-09「はい」)。判定は純関数だけ(store が読んで書く)。
+// 格闘以外(銃・ナイフ・刀・鞭・分身)の経路は、ここの関数を「格闘ではない」として通る=今までと1つも変わらない(テストで固定)。
+import type { BrawlerMoveKey } from './brawlerCombo';
+import type { BrawlerTechKind } from './brawlerTypes';
+import { BRAWLER_TECHS, BRAWLER_JUST_MS } from './brawler';
+
+// ---- 1. 処刑系(紫の致命の一撃・気絶中のボス5倍・強個体3倍) ----
+/**
+ * 気絶中の敵への近接の最終ダメージ。finishPart=5倍(強個体は3倍)の部分・reward=紫の報酬予算(最大HPの25%の残り・紫でなければ0)。
+ * 格闘の段・技: 段の倍率 mult は5倍の部分だけに掛け、報酬には rewardMult(=1)を掛ける=どの段で決めても報酬は満額・締めで決めると少し多い。
+ * 格闘以外: rewardMult=mult(被弾反撃の×2 も報酬ごと=今までどおり)。
+ */
+export const stunnedFinishDamage = (
+  finishPart: number, reward: number, mult: number, rewardMult: number, scanMult = 1,
+): number => (finishPart * mult + Math.max(0, reward) * rewardMult) * scanMult;
+
+// ---- 2. カウンターマスターの吹き飛ばし ----
+/** 格闘の締めの当たり(5段目・蹴りの3発目・大踏み潰し・秘奥義の締め)。秘奥義の9連撃の中の技は 'secret' で、締めに数えない。 */
+export const BRAWLER_FINISHER_MOVES: readonly BrawlerMoveKey[] = ['s5', 'kick3', 'stomp', 'secret-land'];
+/** カウンターマスターの吹き飛ばしを出すか。格闘以外の近接は今どおり毎回・格闘は締めの当たりだけ。 */
+export const counterMasterBlowFires = (brawlerStrike: boolean, move: BrawlerMoveKey | undefined): boolean =>
+  !brawlerStrike || (move !== undefined && BRAWLER_FINISHER_MOVES.includes(move));
+
+// ---- 3. 当たるたびの回復(吸血Lv3・英雄) ----
+export const isBrawlerSecretMove = (move: BrawlerMoveKey | undefined): boolean => move === 'secret' || move === 'secret-land';
+/** 当たった時の回復を出すか。秘奥義(9連撃と締め)の中は1回にまとめる=もう回復した秘奥義では出さない。通常の段・技・格闘以外は今どおり毎回。 */
+export const brawlerHitHealAllowed = (move: BrawlerMoveKey | undefined, secretHealed: boolean): boolean =>
+  !(isBrawlerSecretMove(move) && secretHealed);
+
+// ---- 5. タイムキーパー / オーバークロック(格闘では技ポイントへ読み替え) ----
+/**
+ * タイムキーパー=技の値段の割引。Lv の数だけ、値段の高い技から順に1ポイント安くする(値段は1未満にしない)。
+ *  Lv1: 大踏み潰し 5→4 / Lv2: +構え 3→2 / Lv3: +気功 2→1(飛び蹴りは1のまま)。4つの技の値段の合計 11→10→9→8=約−9%/−18%/−27%
+ *  (サブウェポンのクールダウン −10%/−20%/−30% と同じ刻み)。
+ */
+export const brawlerTimeKeeperDiscount = (kind: BrawlerTechKind, timeKeeperLv: number): number => {
+  const lv = Math.max(0, Math.min(3, Math.floor(timeKeeperLv)));
+  if (lv <= 0) return 0;
+  const order = (Object.keys(BRAWLER_TECHS) as BrawlerTechKind[]).sort((a, b) => BRAWLER_TECHS[b].cost - BRAWLER_TECHS[a].cost);
+  const rank = order.indexOf(kind);
+  return rank >= 0 && rank < lv && BRAWLER_TECHS[kind].cost > 1 ? 1 : 0;
+};
+/** オーバークロック=技を出した時、確率で払った技ポイントを全部返す(Lv1 20% / Lv2 25% / Lv3 30%=サブウェポンのクールダウンがすぐ終わる確率と同じ)。 */
+export const BRAWLER_OVERCLOCK_REFUND_CHANCE: readonly number[] = [0, 0.2, 0.25, 0.3];
+export const brawlerOverclockRefunds = (paid: number, overclockLv: number, rng: () => number = Math.random): boolean => {
+  const lv = Math.max(0, Math.min(3, Math.floor(overclockLv)));
+  return paid > 0 && lv > 0 && rng() < BRAWLER_OVERCLOCK_REFUND_CHANCE[lv];
+};
+
+// ---- 8. 強化「カウンター受付」 ----
+/** ジャスト構えの窓(ms)。強化のカウンター受付はほかの経路(カウンター窓 COUNTER_ACCEPT_MS + 焼き値)と同じく足し算で延ばす。 */
+export const brawlerJustWindowMs = (counterAcceptBonusMs: number): number => BRAWLER_JUST_MS + Math.max(0, counterAcceptBonusMs || 0);

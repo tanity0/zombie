@@ -132,6 +132,7 @@ import { isEnemyAttacking, meleeHitSfxLayers } from '../utils/combatFeel';
 import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純関数(research/BRAWLER.md)
 import { isBrawlerGuardingAt } from '../utils/brawler';
 import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食らいの固まり・減衰・反撃=research/BRAWLER.md §11)
+import * as BRS from '../utils/brawlerSkills'; // 格闘×スキルの純関数(research/BRAWLER.md §15)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
@@ -2388,6 +2389,7 @@ export const strikerMeleeMult = (player: Player): number => {
   if (player.characterClass !== 'rogue') return 1;
   const gun = getActiveGun(player);
   // research/NEW_GUNS.md §4: 弾倉も予備弾も持たない銃(スキャンセンサー・衛星弾)は弾切れとみなさない=×1.5は付かない。
+  if (hasBrawler(player) && !player.pseudoActor) return 1.5; // 格闘中は素手=弾切れ扱い(research/BRAWLER.md §15・社長承認2026-11-09。格闘は銃を撃てない)。ほかの武器は下のまま
   if (gun?.noAmmo) return 1;
   if (!gun || !gun.ammoType) return 1.5; // 銃/弾種なし=弾切れ扱い
   return ((gun.magazine ?? 0) + ammoPoolFor(player, gun.ammoType)) <= 0 ? 1.5 : 1;
@@ -4599,6 +4601,9 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   // 詰めの出発点に砂埃(pixi が brawler の状態から描く)。
 };
 
+/** タイムキーパーの割引(research/BRAWLER.md §15)。技の値段から引く点数。持っていなければ 0。 */
+const brawlerTechDiscount = (p: Player, kind: BR.BrawlerTechKind): number =>
+  BRS.brawlerTimeKeeperDiscount(kind, skillLevel(p, 'time-keeper'));
 /** 技を始める(ポイントは払い済み)。 */
 /**
  * 覚えている技(技の先行入力・§9-60)を出す。関所(被弾のしゃがみ・掴み・紫・シーカー・死亡など)に掛かれば捨てる。
@@ -4612,7 +4617,7 @@ const fireBufferedBrawlerTech = (
   if (!kind || !brawlerGateOk(get)) { setBrawler(set, s1); return; }
   const p = get().player;
   const awakened = isBloodAwakening(p, get().gameTime);
-  if (!BR.brawlerCanPay(s1, kind, awakened)) {
+  if (!BR.brawlerCanPay(s1, kind, awakened, brawlerTechDiscount(p, kind))) {
     brawlerSfx('ui-deny', 0.55, 0.72, 160);
     setBrawler(set, { ...s1, denyAt: Date.now() });
     return;
@@ -4631,7 +4636,11 @@ const startBrawlerTech = (
   const now = Date.now();
   const c = brawlerCenter(p);
   const kickN = kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
-  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: now, points: s0.points - BR.brawlerTechCost(kind, awakened) };
+  // ★タイムキーパー/オーバークロックの読み替え(research/BRAWLER.md §15・社長承認2026-11-09): 値段の割引と、確率で払った技ポイントを返す。
+  const techCost = BR.brawlerTechCost(kind, awakened, brawlerTechDiscount(p, kind));
+  const techRefund = BRS.brawlerOverclockRefunds(techCost, skillLevel(p, 'overclock'));
+  if (techRefund) notifySkillProc('overclock');
+  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: now, points: s0.points - (techRefund ? 0 : techCost) };
   // ★秘奥義の順番(research/BRAWLER.md §10-1): 実際に出た技で数える。↑構えで揃ったら、構えを秘奥義に置き換える(ポイントは払った後・窓は張らない)。
   // キャンセルで繋いだ時は前の技の終わり=いま(0ms 扱い・§11-4)。
   const secretStep = BR.brawlerSecretStep(s0.secretProgress ?? 0, cancel ? t : (s0.secretLastEndAt ?? 0), kind, kickN, t);
@@ -5471,6 +5480,11 @@ const explodeBrawlerKiko = (
   }
   const g = get();
   g.spawnExplosionFx(x, y, radius); // 浮き: 気功の浮きは brawlerKikoComboHit(地上=爆発の浮き・空中=格闘の拾い)
+  // ★ボマー(research/BRAWLER.md §15・社長承認2026-11-09): 気功の爆発でも子グレネードを散布(確率発動は他の爆発と同じ1本)。
+  if (rollBomberScatterAndNotify(p)) {
+    for (const mini of buildBomberMinis(x, y, `kiko-${Date.now()}`, undefined, undefined, bomberMiniCount(p))) g.addProjectile(mini);
+    g.spawnBurst(x, y, '#fbbf24', 8);
+  }
   g.breakEggsInBlast(x, y, radius); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
   // 残る煙(vfx/smoke_04・沈んだ灰でゆっくり昇る)=延焼の気配。fx/hitfire は撮って比べた結果やめた(この大きさだと四角い柱に見える=§9-27)。
   g.spawnImageMark(x, y - 10, 'vfx/smoke_04', { scale: 0.9, duration: 1100, noPop: true, fadeFrom: 0.25, tint: 0x6b625a, alpha: 0.5, moveY: -34, rot: Math.random() * Math.PI * 2 });
@@ -6593,6 +6607,8 @@ const applyHeroMeleeHeal = (get: () => GameState, player: Player, hitEnemyIds: s
   get().spawnCallout(p0.x + p0.width / 2, p0.y - 34, `+${heal}`, '#f5c542');
 };
 /** 近接が当たった時の回復の合流点(英雄 → 吸血の覚醒の順)。近接4経路(素手/分身/刀/ムチ)がここを呼ぶ。 */
+/** 秘奥義(igniteAt で見分ける)の中で、当たった時の回復を出し終えたか(research/BRAWLER.md §15)。 */
+let brawlerSecretHealedKey: number | null = null;
 const applyMeleeHitHeals = (get: () => GameState, player: Player, hitEnemyIds: string[], fallbackX: number, fallbackY: number) => {
   applyHeroMeleeHeal(get, player, hitEnemyIds);
   applyVampireMeleeHeal(get, player, hitEnemyIds, fallbackX, fallbackY);
@@ -10517,7 +10533,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 血の覚醒中は技ポイントを無視して使い放題(社長指示2026-11-08・値段0=減らさない)。
     const awakened = isBloodAwakening(p, t);
-    if (!BR.brawlerCanPay(s, kind, awakened)) {
+    if (!BR.brawlerCanPay(s, kind, awakened, brawlerTechDiscount(p, kind))) {
       // ポイント不足: 何も出さない(HUD の数字が震えて一瞬沈み、鈍い音=社長決定 #8・クリエイティブ監査 #18)。
       brawlerSfx('ui-deny', 0.55, 0.72, 160);
       setBrawler(set, { ...s, denyAt: Date.now() });
@@ -10527,7 +10543,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★構えの延長(社長指示2026-11-07・§9-41): 3ポイント払って終わる時刻を「今+1秒」に引き直す。窓・無敵・打ち返し・レーザーの盾も
       // 同じ終わる時刻まで切れ目なく続く(どれも構えの終わり guardUntil を読む)。溜め・暗転は出さない。体の光と影を一度脈打たせ、短い音。
       const now = Date.now();
-      const s1 = { ...BR.brawlerExtendGuard(s, t, now), points: s.points - BR.brawlerTechCost('guard', awakened) };
+      const guardCost = BR.brawlerTechCost('guard', awakened, brawlerTechDiscount(p, 'guard'));
+      const guardRefund = BRS.brawlerOverclockRefunds(guardCost, skillLevel(p, 'overclock'));
+      if (guardRefund) notifySkillProc('overclock');
+      const s1 = { ...BR.brawlerExtendGuard(s, t, now), points: s.points - (guardRefund ? 0 : guardCost) };
       setBrawler(set, s1, { counterWindowStart: Math.min(p.counterWindowStart, now), counterWindowEnd: now + BR.BRAWLER_GUARD_MS });
       brawlerSfx('heavy-impact', 0.22, 1.35, 260);
       brawlerSfx('homing-fire', 0.2, 0.62, 260);
@@ -10609,7 +10628,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 受けた直後0.5秒は次の通常攻撃が前隙なしで出る(社長決定 #7)。構えは1秒固定で途中に動けないので、
     // 0.5秒は「受けた時刻と構えの終わりの遅い方」から数える(★未決 §9-4: 構えの最中に切れて使えない窓にしない)。
     // ★ジャスト構え(research/BRAWLER.md §12-2): 当たる直前120ms以内に構え(または延長)が出ていた受け。気絶は2倍・演出を一段強く・「JUST」。
-    const just = !(now - (s.guardHitAt ?? 0) < 140) ? BR.brawlerIsJustGuard(s, st.gameTime) : false; // 間引かれる受け(光線など毎フレーム)はジャストにしない
+    const just = !(now - (s.guardHitAt ?? 0) < 140) ? BR.brawlerIsJustGuard(s, st.gameTime, BRS.brawlerJustWindowMs(counterAcceptMsOf(p) - COUNTER_ACCEPT_MS)) : false; // §15: 強化「カウンター受付」の延びぶんだけジャストの窓も延ばす // 間引かれる受け(光線など毎フレーム)はジャストにしない
     if (just) brawlerJustAt = now;
     const stunMul = just ? BR.BRAWLER_JUST_STUN_MULT : 1;
     const next: BR.BrawlerState = { ...s, quickUntil: Math.max(st.gameTime, s.guardUntil) + BR.BRAWLER_GUARD_QUICK_MS };
@@ -10627,7 +10646,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★成立の記録(lastCounterSuccessTime)も通常のカウンターと同じく書く(社長承認2026-11-07・§9-42)。ループのエッジ検出が
     // 金の輪・ボムカウンター(とボマーの子爆弾)を出し、決めポーズの膨らみ・速度線・守護霊の記録(カウンター直後の窓)も同じ記録を読む。
     // ★カウンター成立で技ポイントを上限まで全回復(社長指示2026-11-08)。HUD の数字は gainAt で一瞬明るく跳ねる。
-    setBrawler(set, { ...BR.brawlerAfterGuardCounter(next, BR.brawlerPointCap(brawlerLevel(p)), now), guardHitAt: now, ...(just ? { justAt: now } : {}) }, { lastCounterSuccessTime: now });
+    setBrawler(set, { ...BR.brawlerAfterGuardCounter(next, BR.brawlerPointCap(brawlerLevel(p)), now), guardHitAt: now, ...(just ? { justAt: now } : {}) }, { lastCounterSuccessTime: now, ...counterMasterAwakenBuffPatch(p, st.gameTime) /* §15: カウンターマスター覚醒(成立後3秒+30%)も他のカウンターと揃える */ });
     // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
     // 画面全体は止めない・スローも使わない(カウンターの絵の時間停止は撤回済み+サブウェポンのスロー禁則)。揺れと小さな寄りで受ける。
     get().triggerShake(COUNTER_SHAKE_MS + 80, COUNTER_SHAKE_MAG * 1.4, c.x - x, c.y - y);
@@ -11635,7 +11654,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 社長決定2026-10-18: 気絶中の強個体への3倍にも印の近接倍率(強個体=雑魚の倍率)。ボスの5倍・紫の報酬には掛けない。
         const heavyScanMult = stunnedHit.kind === 'heavy' && enemy.id === scanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
         if (heavyScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
-        const dmg = (fatal?.damage ?? stunnedHit.dmg) * retMult * heavyScanMult; // 被弾反撃は最終ダメージの×2(処刑の分岐も含む)
+        // ★格闘(research/BRAWLER.md §15・社長承認2026-11-09): 段の倍率は5倍(強個体3倍)の部分だけに掛け、紫の報酬予算(最大HPの25%の残り)には掛けない
+        // =どの段で決めても紫は満額報われ、締めで決めると少し多い。格闘以外(被弾反撃の×2も)は今までどおり報酬ごと掛ける。
+        const dmg = bs
+          ? BRS.stunnedFinishDamage(
+            fatal ? meleeExecBase * gpDmgScale * 5 : stunnedHit.dmg,
+            fatal ? Math.max(0, enemy.bossBreakRewardRemaining ?? 0) : 0,
+            retMult, 1, heavyScanMult,
+          )
+          : (fatal?.damage ?? stunnedHit.dmg) * retMult * heavyScanMult; // 被弾反撃は最終ダメージの×2(処刑の分岐も含む)
         // ★v0.25.4153(社長裁定2026-09-05「強個体はボスと同じく致命の一撃でキル演出は入る。でも
         // 黄色クリティカルではならないのが一貫性」): **強個体もボスと同じ線で揃える**——
         // 演出が入るのは**完全気絶(紫)中の一撃だけ**。通常の気絶からの3×(黄色クリ)では入らない。
@@ -12051,9 +12078,18 @@ export const useGameStore = create<GameState>((set, get) => ({
     // スキル: 救難信号(近接ヒット時、一定確率で味方が援護攻撃=必中・倍率1)。
     applyRescueSignalProc(get, player, swingBaseDamage, meleeHitEnemyIds, pcx, pcy);
     // 吸血覚醒(Lv3・v0.25.3300): 近接ヒットでも1%回復(1スイング1回・控えめdrain)。
-    applyMeleeHitHeals(get, player, meleeHitEnemyIds, pcx, pcy);
+    // ★格闘(§15): 秘奥義の9連撃+締めの中は回復を1回にまとめる(最初に当たった1発だけ)。通常の段・技・格闘以外は今までどおり毎回。
+    {
+      const hmove = bs?.combo?.move;
+      const secKey = BRS.isBrawlerSecretMove(hmove) ? get().player.brawler?.secret?.igniteAt ?? null : null;
+      if (secKey === null || BRS.brawlerHitHealAllowed(hmove, brawlerSecretHealedKey === secKey)) {
+        applyMeleeHitHeals(get, player, meleeHitEnemyIds, pcx, pcy);
+        if (secKey !== null && meleeHitEnemyIds.length > 0) brawlerSecretHealedKey = secKey;
+      }
+    }
     get().registerMultiHit(slashAt.length); // キャラ固有 ヘビーガンナー: 近接が2体以上に当たれば爆発範囲バフ
-    if (hasSkill(player, 'counter-master') && slashAt.length > 0) {
+    // ★格闘(§15): カウンターマスターの吹き飛ばしは締めの当たり(5段目・蹴りの3発目・大踏み潰し・秘奥義の締め)だけ。ほかの近接は今までどおり毎回。
+    if (hasSkill(player, 'counter-master') && slashAt.length > 0 && BRS.counterMasterBlowFires(!!bs, bs?.combo?.move)) {
       notifySkillProcFor(player, 'counter-master');
       counterMasterKnockback(get, pcx, pcy, counterMasterKbScale(player));
     }
@@ -14881,6 +14917,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         excluded: state.vanishedSkills,
         dogEquipped: player.subWeapons.includes('dog'),
         grenadeEquipped: player.subWeapons.includes('heavy-grenade'),
+        brawlerEquipped: hasBrawler(player), // §15
         glauncherOwned: player.weapons.some(w => !w.isMelee && w.category === 'glauncher'), // v0.25.3441: bomberの発動源に数える
         activeConsumables: activeConsumableKeys(player, state.gameTime), // §23-2条件1/条件3
       };
@@ -15521,6 +15558,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       excluded: state.vanishedSkills,
       dogEquipped: state.player.subWeapons.includes('dog'),
       grenadeEquipped: state.player.subWeapons.includes('heavy-grenade'),
+      brawlerEquipped: hasBrawler(state.player), // §15
       glauncherOwned: state.player.weapons.some(w => !w.isMelee && w.category === 'glauncher'), // v0.25.3441
       activeConsumables: activeConsumableKeys(state.player, state.gameTime), // §23-2条件1/条件3
     };
@@ -15557,6 +15595,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       excluded: nextVanished,
       dogEquipped: state.player.subWeapons.includes('dog'),
       grenadeEquipped: state.player.subWeapons.includes('heavy-grenade'),
+      brawlerEquipped: hasBrawler(state.player), // §15
       glauncherOwned: state.player.weapons.some(w => !w.isMelee && w.category === 'glauncher'), // v0.25.3441
       activeConsumables: activeConsumableKeys(state.player, state.gameTime), // §23-2条件1/条件3
     };

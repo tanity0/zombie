@@ -81,6 +81,8 @@ export interface RunSkillDraftInput {
   /** グレネードガン(glauncher系)所持か(社長指示v0.25.3441「分裂スキルはグレネードにも効くように」:
    * bomberの発動源としてグレネードガンの爆発も数える。散布側は着弾/転がり爆発の両経路が対応済み)。 */
   glauncherOwned?: boolean;
+  /** 格闘(サブウェポン)装備か(research/BRAWLER.md §15・社長承認2026-11-09): 気功の爆発を爆発源/ボマーの発動源に数え、スラッシャー/縮地(格闘では効かない)を外す。 */
+  brawlerEquipped?: boolean;
   /** §23: 現在アクティブな消費カードのキー(同種は再提示しない・§23-1「同種バフ発動中は提示しない」)。
    * 個数はそのままノーマル枠の占有分(canAcquireRarityのextraNormalOccupied)としても使う。 */
   activeConsumables?: readonly ConsumableKey[];
@@ -93,11 +95,13 @@ const isDraftEligible = (input: RunSkillDraftInput, key: SkillKey): boolean => {
   // §27-2★B(社長裁定「ゲート化して」v0.25.3267): 前提が無いと空振りする爆発系はデッキに乗せない。
   // exploder=爆発源(手榴弾装備 or 爆発を生むスキルをラン中取得済み)がある時のみ。
   // v0.25.3281: execution-shock(処刑の爆発)は爆発要素へ統一されたので爆発源に数える(社長指示の帰結)。
-  if (key === 'exploder' && !(input.grenadeEquipped ||
+  if (key === 'exploder' && !(input.grenadeEquipped || input.brawlerEquipped ||
     (['fire-shooter', 'bomb-counter', 'bomber', 'reflex', 'execution-shock'] as SkillKey[]).some(k => input.runSkills.includes(k)))) return false;
   // bomber=トリガー(手榴弾装備 or グレネードガン所持 or ボムカウンター取得済み)がある時のみ
   // (グレネードガンはv0.25.3441で追加=社長指示「分裂スキルはグレネードにも効くように」)。
-  if (key === 'bomber' && !(input.grenadeEquipped || input.glauncherOwned || input.runSkills.includes('bomb-counter'))) return false;
+  if (key === 'bomber' && !(input.grenadeEquipped || input.glauncherOwned || input.brawlerEquipped || input.runSkills.includes('bomb-counter'))) return false;
+  // 格闘(§15・社長承認2026-11-09): スラッシャー/縮地は格闘中は効かない決め(§7-2)=格闘を持つ出撃では配らない。
+  if (input.brawlerEquipped && (key === 'slasher' || key === 'shukuchi')) return false;
   return true;
 };
 

@@ -508,8 +508,11 @@ export const brawlerShouldBufferTech = (s: BrawlerState, kind: BrawlerTechKind, 
 
 /** 技ポイントを払えるか。 */
 /** 技の値段。血の覚醒中は0=技ポイントを無視して使い放題(社長指示2026-11-08「覚醒中は技ポイント無視して使い放題」)。 */
-export const brawlerTechCost = (kind: BrawlerTechKind, awakened = false): number => (awakened ? 0 : BRAWLER_TECHS[kind].cost);
-export const brawlerCanPay = (s: BrawlerState, kind: BrawlerTechKind, awakened = false): boolean => s.points >= brawlerTechCost(kind, awakened);
+/** discount=タイムキーパーの割引(utils/brawlerSkills.brawlerTimeKeeperDiscount・§15)。値段は1未満にしない(覚醒中は0=今どおり)。 */
+export const brawlerTechCost = (kind: BrawlerTechKind, awakened = false, discount = 0): number =>
+  (awakened ? 0 : Math.max(1, BRAWLER_TECHS[kind].cost - Math.max(0, discount)));
+export const brawlerCanPay = (s: BrawlerState, kind: BrawlerTechKind, awakened = false, discount = 0): boolean =>
+  s.points >= brawlerTechCost(kind, awakened, discount);
 
 /**
  * 技→技のキャンセル(research/BRAWLER.md §11-4・格闘ゲームの「繋がる」)。いまの技の後隙を別の技で取り消せるか。
@@ -572,8 +575,9 @@ export const BRAWLER_JUST_MS = 120;
 /** ジャストの時、攻撃してきた相手の気絶に掛ける倍率。 */
 export const BRAWLER_JUST_STUN_MULT = 2;
 /** ジャストか(構えの始まり・延長の時刻 guardSince から t まで JUST_MS 以内)。t は gameTime。 */
-export const brawlerIsJustGuard = (s: Pick<BrawlerState, 'guardSince' | 'guardUntil'>, t: number): boolean =>
-  s.guardSince !== undefined && s.guardUntil > t && t >= s.guardSince && t - s.guardSince <= BRAWLER_JUST_MS;
+/** windowMs=ジャストの窓(強化「カウンター受付」で延びる=utils/brawlerSkills.brawlerJustWindowMs・§15)。 */
+export const brawlerIsJustGuard = (s: Pick<BrawlerState, 'guardSince' | 'guardUntil'>, t: number, windowMs = BRAWLER_JUST_MS): boolean =>
+  s.guardSince !== undefined && s.guardUntil > t && t >= s.guardSince && t - s.guardSince <= windowMs;
 
 /** ステップの距離(px)と時間(ms)。加速→減速(無敵なし)。 */
 export const BRAWLER_STEP_PX = 100;

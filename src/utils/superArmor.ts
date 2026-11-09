@@ -51,6 +51,8 @@ export const isPlayerMeleeSwinging = (p: SuperArmorPlayer, nowMs: number, swingM
   if (at > 0 && nowMs >= at && nowMs - at < swingMs) return true;
   if (nowMs < (p.katanaDashUntil ?? 0)) return true;
   if (isBrawlerPalmDashing(p.brawler)) return true; // 格闘の5段目の突き抜け(一閃と同じく突進中のみ・溜めは含めない)
+  // ★格闘の段・技(research/BRAWLER.md §15・社長承認2026-11-09): 出だしから当たり・止めまで(phase が idle でない間)は振っている扱い。格闘でない時は brawler が無い=今までどおり。
+  if (p.brawler && p.brawler.phase !== 'idle') return true;
   if (p.shukuchiStriking === true || (p.shukuchiStrikeAt ?? 0) > 0) return true;
   if ((p.retaliateStrikeAt ?? 0) > 0) return true;
   return false;
