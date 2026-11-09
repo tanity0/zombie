@@ -281,7 +281,8 @@ import { choreographyRecoverMs, planBossChoreography } from '../utils/bossChoreo
 import { stampMeleeSwingCommit } from '../utils/thorNihil';
 // research/AI_HUMANIZE.md B1(コマ台帳・記録専用): giantbat系の州満了エッジに1行差す。
 import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
-import { ZOOM_MIN_ABS, isPointInZoomedViewport } from '../utils/cameraZoom';
+import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../utils/cameraZoom';
+import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
@@ -4676,9 +4677,17 @@ const startBrawlerTech = (
 // 秘奥義(research/BRAWLER.md §10・社長指示2026-11-08)
 // ---------------------------------------------------------------------------------------------
 /** 画面内(ズームの可視域)で当てられる敵の id。 */
-const brawlerSecretTargets = (st: GameState): string[] =>
-  st.enemies.filter(e => BR.isBrawlerTargetable(e)
-    && isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom, -8)).map(e => e.id);
+// ★狙える=当たり判定の箱が画面に掛かっている(§9-75・社長「はい」=共通の作りで直す)。画面の真ん中から見た箱の最寄りの点
+// (少し内側=小さな敵は今までどおり中心)が画面の中か、で測る。旧は中心で測っていたので、研究所の塊の正面からは中心が画面外=即中断した。
+const brawlerSecretTargets = (st: GameState): string[] => {
+  const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
+  const vcx = (vb.left + vb.right) / 2, vcy = (vb.top + vb.bottom) / 2;
+  return st.enemies.filter(e => {
+    if (!BR.isBrawlerTargetable(e)) return false;
+    const q = meleeImpactPoint(vcx, vcy, e);
+    return isPointInZoomedViewport(q.x, q.y, st.camera, st.gameBounds, st.viewZoom, -8);
+  }).map(e => e.id);
+};
 /** そこに立てるか(行ける帯へ寄せたうえで、壁・木・建物に押し出されない所)。立てる左上を返す。 */
 const brawlerSecretSpot = (get: () => GameState, cx: number, cy: number): { x: number; y: number } | null => {
   const st = get();
@@ -4764,19 +4773,23 @@ const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => P
   if (!target) { endBrawlerSecret(set, s); return; } // 画面内に当てられる敵が居ない=中断(フィニッシュは出さない)
   const p = st.player;
   const from = brawlerCenter(p);
+  const r = enemyRangeRect(target);
   const ecx = target.x + target.width / 2, ecy = target.y + target.height / 2;
   // その敵の脇(本人が来た側を基準に、角度を少し散らす)。壁・木の中なら角度を回して空いている所へ。
-  const r = enemyRangeRect(target);
-  const reach = Math.max(r.width, r.height) / 2 + BR.BRAWLER_STANDOFF_PX + p.width / 2;
+  // ★ワープ先=箱の縁(その向きで箱から出る点)+間合い(§9-75)。小さな敵は今までとほぼ同じ所、大きな箱(研究所の塊)は面のすぐ外。
+  const gap = BR.BRAWLER_STANDOFF_PX + p.width / 2;
   const base = Math.atan2(from.y - ecy, from.x - ecx) + (Math.random() * 2 - 1) * 0.9;
   let spot: { x: number; y: number } | null = null;
   for (const da of [0, Math.PI, Math.PI / 2, -Math.PI / 2, Math.PI / 4, -Math.PI / 4]) {
-    spot = brawlerSecretSpot(get, ecx + Math.cos(base + da) * reach, ecy + Math.sin(base + da) * reach);
+    const ux = Math.cos(base + da), uy = Math.sin(base + da);
+    const edge = Math.min(Math.abs(ux) > 1e-6 ? r.width / 2 / Math.abs(ux) : Infinity, Math.abs(uy) > 1e-6 ? r.height / 2 / Math.abs(uy) : Infinity);
+    spot = brawlerSecretSpot(get, ecx + ux * (edge + gap), ecy + uy * (edge + gap));
     if (spot) break;
   }
   if (!spot) spot = { x: p.x, y: p.y }; // どこにも立てない=その場から打つ
   const to = { x: spot.x + p.width / 2, y: spot.y + p.height / 2 };
-  const dx = ecx - to.x, dy = ecy - to.y, dl = Math.hypot(dx, dy) || 1;
+  const aimAt = meleeImpactPoint(to.x, to.y, target); // 向き=箱の最寄りの点(小さな敵は中心)
+  const dx = aimAt.x - to.x, dy = aimAt.y - to.y, dl = Math.hypot(dx, dy) || 1;
   const dir = { x: dx / dl, y: dy / dl };
   const move = BR.brawlerSecretPickMove(Math.random());
   const s1: BR.BrawlerState = {
@@ -5384,7 +5397,7 @@ const explodeBrawlerKiko = (
     const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * pr));
     const stunBefore = e.hitStunUntil;
     const killed = get().damageEnemy(id, dmg, true, false, false, 'other');
-    get().spawnDamageNumber(e.x + e.width / 2, e.y, dmg, false, { enemyId: id });
+    { const na = meleeNumberPoint(x, y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); } // ★爆心から見た当たった所(§9-75・小さな敵は今までどおり)
     dealt += dmg;
     if (!killed) {
       burnIds.push(id);
@@ -11239,6 +11252,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         const ex = e.x + e.width / 2 - pcx;
         const ey = e.y + e.height / 2 - pcy;
         const along = ex * ux + ey * uy;
+        // ★箱の縁でも測る(§9-75・OR=今当たっている敵は外れない): 大きな箱(研究所の塊)は中心が遠くて外れていた。
+        if (bandBoxOverlap(pcx, pcy, ux, uy, reach, WHIP_HIT_HALF_WIDTH, e)) { targetIds.push(e.id); continue; }
         if (along < -e.width / 2 || along > reach + e.width / 2) continue;
         const perp = Math.abs(ex * uy - ey * ux);
         if (perp <= WHIP_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);
@@ -11436,6 +11451,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (isUntouchable(enemy)) { survivors.push(enemy); continue; } // 英雄の昇天中・亡霊のワープ中(research/WRAITH_MUTANT.md §8 A3)は近接も素通り(damageEnemy を通らない経路)
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
+      // ★当たった所(§9-75・社長「はい」=共通の作りで直す): 炸裂・火花・ダメージ数字は、殴った側から見た箱の最寄りの点(少し内側)。
+      // 小さな敵は今までどおり箱の中心(数字は箱の上の縁)。大きな箱(研究所の塊)では拳の先に出る(旧は約400px先=画面の端か外)。
+      const imp = meleeImpactPoint(pcx, pcy, enemy);
+      const numAt = meleeNumberPoint(pcx, pcy, enemy);
       // ノックバック方向用の中心差分(距離は enemyMeleeDist を使うが、向きは中心→敵で算出)。
       const dx = ecx - pcx;
       const dy = ecy - pcy;
@@ -11448,7 +11467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★格闘(§8-1): 当たる/当たらないは形と壁の純関数が決めて渡す=距離の門と壁の門は通さない。
       if (!bs && dist > meleeRange && !bashShove) { survivors.push(enemy); continue; }
       // 壁越しには当てない(視線が壁で遮られている敵はスキップ)。
-      if (!bs && meleeWalls.length > 0 && segmentBlocked(pcx, pcy, ecx, ecy, meleeWalls)) { survivors.push(enemy); continue; }
+      if (!bs && meleeWalls.length > 0 && segmentBlocked(pcx, pcy, imp.x, imp.y, meleeWalls)) { survivors.push(enemy); continue; } // ★見通しの先も当たった所(§9-75・小さな敵は中心のまま)
 
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統②=バッシュ/気絶フィニッシュ/通常近接の
       // 3枝まとめて)。**この位置**なのが肝: 無効化した打撃は slashAt / meleeHitEnemyIds /
@@ -11471,7 +11490,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // バッシュ: 近接ダメージ×3 + 押し出し方向への強ノックバック。フィニッシュ無し。
       if (bashShove) {
         bashHitEnemy = true; // 敵にヒット → 後でストップ
-        slashAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
+        slashAt.push({ x: imp.x, y: imp.y - idolAirLift(enemy) });
         meleeHitEnemyIds.push(enemy.id);
         bashBloodExcludeIds.add(enemy.id);
         // 社長決定2026-10-18: バッシュにも印の近接倍率(雑魚×2.75/ボス級×4.7)。この振りの「1体だけ」の枠を使う。
@@ -11498,7 +11517,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         }
         recordShieldBashDamage(dmg); // G4a(§2.9(3)・記録専用): バッシュ与ダメの様式カウンタ
-        meleeDamageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: bashScanShown });
+        meleeDamageNumbers.push({ x: numAt.x, y: numAt.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: bashScanShown });
         const newHealth = Math.max(0, enemy.health - dmg);
         if (newHealth <= 0) { killed.push({ enemy, finisher: false }); continue; }
         survivors.push({
@@ -11516,8 +11535,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
 
       // Anything in reach gets cut — show a slash on it.
-      slashAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
-      brHitAt.push({ x: ecx, y: ecy - idolAirLift(enemy), id: enemy.id });
+      slashAt.push({ x: imp.x, y: imp.y - idolAirLift(enemy) });
+      brHitAt.push({ x: imp.x, y: imp.y - idolAirLift(enemy), id: enemy.id });
       meleeHitEnemyIds.push(enemy.id);
       // 気絶敵へのフィニッシュ裁定は resolveStunnedMeleeHit が唯一の出どころ
       // (v0.25.2525で抽出=**守護霊の近接スイングと共有**・値/条件は不変。ボス5×は
@@ -11546,7 +11565,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         //   極端だった。本裁定は**紫かどうか**で分ける(ボスと同じ物差し)。
         // ※3×のダメージ・黄色のクリ表示・浮きは常にそのまま(変えるのは演出の有無だけ)。
         if (fatal) bossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-        meleeDamageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
+        meleeDamageNumbers.push({ x: numAt.x, y: numAt.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
         recordCritHit('guaranteed', stunnedHit.kind === 'boss'); // §7-11c(4): meleeExecuteの紫中フィニッシュ
         // §5.21-追補4: スタン中ボスへの5×近接(と強個体への3×)はボスにとっての「フィニッシュ」経路
         // そのもの(finisher:trueの即時処刑に相当)。
@@ -11604,7 +11623,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      meleeDamageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: scanMult !== 1 });
+      meleeDamageNumbers.push({ x: numAt.x, y: numAt.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: scanMult !== 1 });
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -11622,7 +11641,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (laserBreak?.postureTriggered) bossFullStunHits.push({ x: ecx, y: ecy });
       // 社長指示: 近接クリでも銃・刀と同じくスタンさせる(倒せなかった時のみ=フィニッシュ受付の入口)。
       // 気絶時間アップ(パッシブ)も銃と同じくstunDurationMultを掛ける。
-      if (crit) critStunAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
+      if (crit) critStunAt.push({ x: imp.x, y: imp.y - idolAirLift(enemy) });
       // ボスはスタンさせず半減(v0.25.2422)。通常敵は従来どおり。
       // v0.25.3491: isBossType(pumpkin/lab-zombie-3含む)はbossCritStopPatch側がDR込みで
       // stunUntil/bossSlowUntilのどちらかを決める。通常敵だけこの場の直書き5秒スタンを使う(不変)。
@@ -12774,6 +12793,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const ecx = enemy.x + enemy.width / 2;
       const ecy = enemy.y + enemy.height / 2;
+      const imp = meleeImpactPoint(pcx, pcy, enemy); // ★当たった所(§9-75・小さな敵は中心のまま)
+      const numAt = meleeNumberPoint(pcx, pcy, enemy);
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統④=刀)。オート斬撃も一閃もパリィ対象。
       let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
@@ -12786,7 +12807,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         gpHitPatch = { id: enemy.id, patch: gp.patch };
         gpDmgScale = gp.damageScale;
       }
-      slashAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
+      slashAt.push({ x: imp.x, y: imp.y - idolAirLift(enemy) });
       katanaHitEnemyIds.push(enemy.id);
       const stunned = enemy.stunUntil !== undefined && gameTime < enemy.stunUntil
         && !(isGhost && isBossPostureBroken(enemy, gameTime));
@@ -12802,7 +12823,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           bossFinishHit = true;
           const dmg = fatal?.damage ?? katanaExecBase * gpDmgScale * BOSS_MELEE_STUN_MULT;
           if (fatal) katanaBossFatalHits.push({ x: ecx, y: ecy, labelY: enemy.y - 6, w: enemy.width, h: enemy.height });
-          damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health });
+          damageNumbers.push({ x: numAt.x, y: numAt.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health });
           if (!isGhost) recordCritHit('guaranteed', true); // §7-11c(4): meleeExecuteの紫中フィニッシュ(プレイヤー起因のみ)
           // §5.21-追補4: スタン中ボスへの5×一閃=ボスのフィニッシュ経路そのものなのでclampしない。
           const newHealth = Math.max(0, enemy.health - dmg);
@@ -12828,7 +12849,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (heavyScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 一閃は手動の近接=起爆
           const dmg = katanaExecBase * gpDmgScale * ELITE_MELEE_STUN_MULT * heavyScanMult;
           // ★v0.25.4154: 紫中の強個体はここへ来ない(即死=execute へ回る)。ここは通常の気絶からの3×だけ。
-          damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
+          damageNumbers.push({ x: numAt.x, y: numAt.y - idolAirLift(enemy), value: dmg, crit: true, hp: enemy.health, scan: heavyScanMult !== 1 });
           if (!isGhost) recordCritHit('guaranteed', false); // §7-11c(4): meleeExecuteの紫中フィニッシュ(強個体=非ボス扱い)
           const newHealth = Math.max(0, enemy.health - dmg);
           if (newHealth <= 0) {
@@ -12873,7 +12894,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             : { pvpPosture: ps };
         }
       }
-      damageNumbers.push({ x: ecx, y: enemy.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: katanaScanMult !== 1 });
+      damageNumbers.push({ x: numAt.x, y: numAt.y - idolAirLift(enemy), value: dmg, crit, hp: enemy.health, scan: katanaScanMult !== 1 });
       if (!isGhost) recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
@@ -12884,7 +12905,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 知らせる。これで刀でも「クリが出た」のが分かり、スタン中の敵を一閃の近接
       // フィニッシュで処刑できる(刀=銃の代替としての一貫挙動)。
       const critStun = crit; // reaper は対象外(上で除外済み)
-      if (critStun) critStunAt.push({ x: ecx, y: ecy - idolAirLift(enemy) });
+      if (critStun) critStunAt.push({ x: imp.x, y: imp.y - idolAirLift(enemy) });
       // GAME_AUDIT #17(社長承認): 刀のクリも銃と同じく裏ボスの完全気絶カウントに乗せる。
       // research/NEW_GUNS.md §4: 印付きのボスへの 'melee' の削りは 0.04→0.09 相当('heavy' の一閃は変えない)。
       const bossBump = !isGhost ? applyBossPostureDamage(enemy, allowFinisher ? 'heavy' : 'melee', gameTime, allowFinisher ? 1 : scanMarkMeleePostureMult(enemy, gameTime)) : null;
@@ -14046,6 +14067,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             const ex = e.x + e.width / 2 - pcx;
             const ey = e.y + e.height / 2 - pcy;
             const along = ex * ux + ey * uy;
+            // ★箱の縁でも測る(§9-75・OR=今当たっている敵は外れない)。
+            if (bandBoxOverlap(pcx, pcy, ux, uy, travel, KATANA_DASH_HIT_HALF_WIDTH, e)) { targetIds.push(e.id); continue; }
             if (along < -e.width / 2 || along > travel + e.width / 2) continue;
             const perp = Math.abs(ex * uy - ey * ux);
             if (perp <= KATANA_DASH_HIT_HALF_WIDTH + e.width / 2) targetIds.push(e.id);

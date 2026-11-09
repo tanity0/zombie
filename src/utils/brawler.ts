@@ -5,6 +5,7 @@ import type { Rect } from '../world/obstacles';
 import { segmentBlocked } from '../world/obstacles';
 import { enemyRangeRect, isCorpse, isReaperFamily, isTerminalReaper, isUntouchable } from './enemyUtils';
 import { urlNum } from './urlNum';
+import { meleeImpactPoint, bandBoxOverlap } from './meleeImpact';
 
 // ---------------------------------------------------------------------------------------------
 // ★テンポ係数(社長承認2026-11-08「KOFみたいなプレイフィールが欲しいんだけど、少し全体的に早い?」)。
@@ -93,6 +94,8 @@ export const BRAWLER_FIST_RADIUS = 28;       // 3段目の拳の周り(§2-2)
 export const BRAWLER_LANDING_RADIUS = 70;    // 4段目の着地点の円(§2-2)
 export const BRAWLER_BAND_LEN = 160;         // 5段目の帯(§2-2)
 export const BRAWLER_BAND_HALF_W = 22;       // 幅44の半分
+/** 5段目の掌の最低の届き(px・§9-75): 突き抜けが壁で止まって通った長さが0でも、体1つ分(自機の当たり判定の幅)は前に出る。箱で測る時だけ使う。 */
+export const BRAWLER_PALM_MIN_REACH_PX = 28;
 /** 5段目の突き抜け(§2-2・§9-26): 溜め→帯の長さぶん加速して抜ける。溜め = 前隙 − 突き抜け。 */
 export let BRAWLER_PALM_DASH_MS = 130; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_PALM_PASS_PX = 140;
@@ -644,10 +647,13 @@ export const brawlerDistTo = (px: number, py: number, e: Enemy): number => {
   const ny = Math.max(r.y, Math.min(py, r.y + r.height));
   return Math.hypot(px - nx, py - ny);
 };
-const centerOf = (e: Pick<Enemy, 'x' | 'y' | 'width' | 'height'>) => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 });
+/**
+ * 起点から敵が壁の向こうか。見通しの先は箱の**最寄りの点(少し内側)**=小さな敵は今までどおり箱の中心、
+ * 大きな箱(研究所の塊)は殴る側の面(§9-75・社長「はい」=共通の作りで直す)。
+ */
 const blocked = (ox: number, oy: number, e: Enemy, walls: readonly Rect[]): boolean => {
   if (walls.length === 0) return false;
-  const c = centerOf(e);
+  const c = meleeImpactPoint(ox, oy, e);
   return segmentBlocked(ox, oy, c.x, c.y, walls as Rect[]);
 };
 
@@ -719,9 +725,12 @@ export const brawlerBandTargets = (
     const ex = r.x + r.width / 2 - px, ey = r.y + r.height / 2 - py;
     const half = Math.max(r.width, r.height) / 2;
     const along = ex * ux + ey * uy;
-    if (along < -half || along > len + half) continue;
     const perp = Math.abs(ex * uy - ey * ux);
-    if (perp > halfW + half) continue;
+    // ★箱でも測る(§9-75): 通った帯(長さは最低でも体1つ分=壁で止まっても掌は前に出る)と当たり判定の箱が重なれば当たり(今当たっている敵は外れない=OR)。
+    // 中心だけで測ると、大きな箱(研究所の塊 743×300)の面に張り付いて突き抜けが壁で止まった時、中心まで届かず必ず外れていた。
+    // 帯の端は平ら(丸めない)=小さな敵では旧式とほぼ同じ所まで(帯の先・元が半幅ぶん伸びない)。
+    const byBox = bandBoxOverlap(px, py, ux, uy, Math.max(len, BRAWLER_PALM_MIN_REACH_PX), halfW, r);
+    if (!byBox && (along < -half || along > len + half || perp > halfW + half)) continue;
     if (blocked(px, py, e, walls)) continue;
     out.push(e.id);
   }
@@ -775,7 +784,8 @@ export const brawlerAimDir = (
   px: number, py: number, target: Enemy | null, facing: { x: number; y: number } | null | undefined,
 ): { x: number; y: number } => {
   if (target) {
-    const c = centerOf(target);
+    // ★箱の最寄りの点(少し内側)へ向く(§9-75): 小さな敵は今までどおり中心。大きな箱は殴る面へまっすぐ。
+    const c = meleeImpactPoint(px, py, target);
     const dx = c.x - px, dy = c.y - py;
     const d = Math.hypot(dx, dy);
     if (d > 0.001) return { x: dx / d, y: dy / d };

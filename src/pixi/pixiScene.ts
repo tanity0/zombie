@@ -2892,15 +2892,13 @@ interface LabObstacleView {
 }
 /** 被弾の白い明滅(第2版): 尺(ms・実時間)と最大の濃さ。体が画面幅ほどあるので薄く・短く(減衰は二乗で抜ける)。 */
 // 第2版の監査で見直し(クリエイティブ監査#11): 薄く毎発ではなく、200msに1回まで・濃く短くパッと光らせる+怯み。
-const LAB_CRAWLER_HIT_FLASH_MS = 120;
-const LAB_CRAWLER_HIT_FLASH_A = 0.62;
+// ★§9-75(社長「塊のは当たりエフェクトが無いとか?」→「はい」): 尺と強さは普通の敵の被弾の光と同じ(旧 120ms・0.62×濃さ)。光る所は当たった点の周りのまま。
+const LAB_CRAWLER_HIT_FLASH_MS = ENEMY_HIT_FLASH_MS;
 /** 光らせる間隔(実時間ms・2巡目#9): 毎回この範囲でばらす(機械的な等間隔にしない)。 */
 const LAB_CRAWLER_HIT_FLASH_GAP_MIN_MS = 160;
 const LAB_CRAWLER_HIT_FLASH_GAP_MAX_MS = 260;
 /** 当たった点の周りだけ光らせる円(2巡目#9): 半径=絵の高さ×これ(濃さが上がるほど少し広がる)。円の縁は柔らかい光の絵でぼかす。 */
 const LAB_CRAWLER_HIT_FLASH_R_K = 0.5;
-/** 当たった一点の芯を強く(芯の小さい型 getHitCoreGlowTexture と組み、外側は速く抜ける)。濃さへ掛ける倍率(上限1)。 */
-const LAB_CRAWLER_HIT_FLASH_CORE_MUL = 1.35;
 /**
  * 当たった一点の置き場所: 面した縁からの内側(px)と、絵の高さに対する上下の範囲(足元から)。芯が小さくなったので、
  * 縁の指先や頭と腕の間の隙間(肉の無い所)に置くと何も光らない(2026-10-20・画で確認)。⇒ 縁から少し内側・胴の中ほどの帯へ収める。
@@ -11175,7 +11173,9 @@ export class PixiScene {
     let foldPx = 0; // 弾の当たりの怯みを押し戻しの最初の衝撃へ組み込む量(px・向きつき)
     if (lastHitAt > hit.lastSeen) {
       hit.lastSeen = lastHitAt;
-      if (realNow - hit.flashAt >= hit.gap) {
+      // ★近接の当たりは毎回光らせる(§9-75・社長「塊のは当たりエフェクトが無いとか?」→「はい」=普通の敵と同じ)。間を空けるのは弾の連射だけ。
+      const shotNow = !!proxy && proxy.shotHitAt === lastHitAt && Math.abs(proxy.shotImpX ?? 0) > 1e-6;
+      if (!shotNow || realNow - hit.flashAt >= hit.gap) {
         const dmg = hit.pend;
         hit.pend = 0;
         hit.flashAt = realNow;
@@ -11423,14 +11423,14 @@ export class PixiScene {
       if (since >= 0 && since < LAB_CRAWLER_HIT_FLASH_MS) {
         const sil = this.whiteSilhouette(tex);
         if (sil) {
-          // パッと光って(最初の1/3は満の濃さのまま)、素早く抜ける。
+          // パッと光って(最初の1/3は満の濃さのまま)、素早く抜ける。尺と強さは普通の敵の被弾の光と同じ(§9-75)。
           const u = Math.max(0, (since / LAB_CRAWLER_HIT_FLASH_MS - 0.33) / 0.67);
           const b = this.crawlerFlash;
           b.texture = sil;
           b.position.set(Math.round(c.x + flinchX + lungeX), Math.round(bf.y + shotRy));
           b.scale.set(baseScale * face, baseScale);
           // 芯を小さく強く(型=芯の小さい光の絵・外側は速く抜ける)。濃さの式(積もったダメージ・下限)は従来どおり。
-          b.alpha = Math.min(1, Math.min(1, LAB_CRAWLER_HIT_FLASH_A * (0.55 + 0.75 * hit.power)) * LAB_CRAWLER_HIT_FLASH_CORE_MUL) * (1 - u) * (1 - u) * alpha;
+          b.alpha = ENEMY_HIT_FLASH_STRENGTH * (1 - u) * (1 - u) * alpha;
           b.zIndex = bf.y + 0.5;
           b.visible = b.alpha > 0.01;
           // 型は影絵の子=影絵のローカル座標で置く(拡大・左右反転を割り戻す)。
