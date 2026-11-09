@@ -807,6 +807,20 @@ export interface Enemy {
   brLiftN?: number;
   brLiftUntil?: number;
   brLiftLand?: boolean;
+  /**
+   * ★§13(社長指示2026-11-09「技も止めたいが…ハメ殺せるのはやめたい」「空中コンボが繋がるような仕組み」)。時計は Date.now。
+   * brTechHoldKey/Used=いまの技(溜め)の止め予算の札と使った量(ms)。札が変われば使った量は0から。
+   * brFlowHits=この流れで受けた格闘の当たり数(ダメージ補正用・秘奥義は数えない)。
+   * brLiftBudget=いまの浮きで残っている拾える回数。brLiftDown=予算切れ・締めでダウン中(着地まで拾えない)。
+   * brBounceCombo=地面バウンドを使った流れ(brComboStart の値)。brLiftDropMs=バウンドの落ちる区間の長さ(弧の頭)。
+   */
+  brTechHoldKey?: string;
+  brTechHoldUsed?: number;
+  brFlowHits?: number;
+  brLiftBudget?: number;
+  brLiftDown?: boolean;
+  brBounceCombo?: number;
+  brLiftDropMs?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
   // a short grace period before they become eligible for culling so big
   // set-piece hordes aren't deleted the instant they appear.

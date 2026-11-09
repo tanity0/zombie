@@ -7,7 +7,7 @@ import {
   BRAWLER_HOLD_BASE_MS, BRAWLER_COMBO_GAP_MS, BRAWLER_SAME_MOVE_PENALTY_MS, BRAWLER_COMBO_FLOOR,
   BRAWLER_REVENGE_WINDUP_MS, BRAWLER_REVENGE_HITS_MOB, BRAWLER_REVENGE_NO_HOLD_MS, brawlerComboClass,
   type BrawlerComboFields, type BrawlerMoveKey, isBrawlerTechBusy, BRAWLER_HOLDABLE_PHASES,
-  brawlerJugglePush, brawlerAirborne, brawlerJuggleHeightRel, brawlerJuggleLanded, BRAWLER_JUGGLE_DECAY, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_PUSH, type BrawlerJuggleFields,
+  brawlerJugglePush, brawlerAirborne, brawlerJuggleHeightRel, brawlerJuggleLanded, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_COST, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS, type BrawlerJuggleFields,
 } from './brawlerCombo';
 import { BRAWLER_LIFT_MS, brawlerLiftHeight } from './brawler';
 import { meteorPhase } from './telegraphStyle';
@@ -78,14 +78,17 @@ describe('減衰(§11-2)', () => {
     expect(after.holdMs).toBe(300);
     expect(after.patch.brComboHits).toBe(1);
   });
-  it('5段を出し切る頃には固まりが4割近くまで落ちる(=次の流れは止め切れない)', () => {
+  it('5段を出し切る頃には固まりが4割近くまで落ち、その先は0へ(★§13-1: 下限0=いずれ必ず固まらなくなる)', () => {
     const { holds } = run('zombie', [
       { move: 's1', at: 0 }, { move: 's2', at: 245 }, { move: 's3', at: 550 }, { move: 's4', at: 1110 }, { move: 's5', at: 1630 },
       { move: 'kick1', at: 1900 }, { move: 'kick2', at: 2250 },
     ]);
     expect(holds[4]).toBe(0); // 5段目は吹き飛ばす
     expect(holds[5]).toBeLessThanOrEqual(Math.round(350 * 0.4) + 1);
-    expect(holds[6]).toBe(Math.round(350 * BRAWLER_COMBO_FLOOR));
+    expect(BRAWLER_COMBO_FLOOR).toBe(0);
+    expect(holds[6]).toBe(Math.round(350 * (1 - 2250 / 3000))); // 下限が無い=時計どおりに減る
+    expect(brawlerHoldDecay(3000)).toBe(0);
+    expect(brawlerHoldDecay(5000)).toBe(0);
   });
 });
 
@@ -228,9 +231,12 @@ describe('「本当に技を出している最中」の仕分け(社長実機報
 
 describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くなる 雑魚は軽い 強個体は少し重い ボスは重い」)', () => {
   const apply = (e: BrawlerJuggleFields, p: ReturnType<typeof brawlerJugglePush>) => ({ ...e, ...(p ?? {}) });
-  it('地上では4段目だけが浮かせる。雑魚1.0 / 強個体0.7 / ボス級0.4 を高さと時間に掛ける', () => {
+  it('地上では3段目(アッパー・§13-2)と4段目が浮かせる。雑魚1.0 / 強個体0.7 / ボス級0.4 を高さと時間に掛ける・予算 6/5/4', () => {
     expect(brawlerJugglePush({}, 'mob', 's1', 0)).toBeNull();
     expect(brawlerJugglePush({}, 'mob', 'kick1', 0)).toBeNull();
+    expect(brawlerJugglePush({}, 'mob', 's3', 0)!.brLiftPeak).toBeCloseTo(0.75);
+    expect(BRAWLER_JUGGLE_BUDGET).toEqual({ mob: 6, strong: 5, boss: 4 });
+    expect([brawlerJugglePush({}, 'mob', 's4', 0)!.brLiftBudget, brawlerJugglePush({}, 'strong', 's3', 0)!.brLiftBudget, brawlerJugglePush({}, 'boss', 's4', 0)!.brLiftBudget]).toEqual([6, 5, 4]);
     const m = brawlerJugglePush({}, 'mob', 's4', 0)!, st = brawlerJugglePush({}, 'strong', 's4', 0)!, b = brawlerJugglePush({}, 'boss', 's4', 0)!;
     expect(BRAWLER_JUGGLE_WEIGHT).toEqual({ mob: 1.0, strong: 0.7, boss: 0.4 });
     expect([m.brLiftPeak, st.brLiftPeak, b.brLiftPeak]).toEqual([1, 0.7, 0.4]);
@@ -239,21 +245,47 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
     expect(b.brLiftMs).toBe(Math.round(BRAWLER_LIFT_MS * 0.4));
     expect(m.liftUntil).toBe(m.brLiftUntil); // 動けない間=全ての敵の制御が読む liftUntil
   });
-  it('浮いている間の当たりで浮きが続き、押し上げるたびに 0.75^n 倍に軽くなる・いずれ落ちる', () => {
+  it('★§13-2 予算: 空中の当たりで浮き直し、弱1・強/技2を使う。足りない当たりで落ちてダウン(拾えない・着地まで動けない・着地の後しばらく固まらない)', () => {
+    expect([BRAWLER_JUGGLE_COST.s1, BRAWLER_JUGGLE_COST.s2, BRAWLER_JUGGLE_COST.kiko]).toEqual([1, 1, 1]);
+    expect([BRAWLER_JUGGLE_COST.s3, BRAWLER_JUGGLE_COST.kick1, BRAWLER_JUGGLE_COST.kick2, BRAWLER_JUGGLE_COST.secret]).toEqual([2, 2, 2, 2]);
+    expect([BRAWLER_JUGGLE_COST.s4, BRAWLER_JUGGLE_COST.stomp]).toEqual([1, 0]); // 実装で決めた所(§9-73)
     let e: BrawlerJuggleFields = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
-    expect(brawlerAirborne(e, 100)).toBe(true);
-    const peaks: number[] = [];
     let t = 100;
-    for (let i = 0; i < 10; i++) {
-      const p = brawlerJugglePush(e, 'mob', 's3', t);
-      if (!p) break;
-      e = apply(e, p); peaks.push(p.brLiftPeak!);
-      t += 120;
-    }
-    expect(peaks[0]).toBeCloseTo(BRAWLER_JUGGLE_PUSH.s3 * BRAWLER_JUGGLE_DECAY);
-    expect(peaks[1]).toBeCloseTo(BRAWLER_JUGGLE_PUSH.s3 * BRAWLER_JUGGLE_DECAY ** 2);
-    for (let i = 1; i < peaks.length; i++) expect(peaks[i]).toBeLessThan(peaks[i - 1]);
-    expect(peaks.length).toBeLessThan(10); // 永久には浮かない
+    const left: number[] = [];
+    for (const mv of ['kick1', 's1', 's2', 'kiko', 's1'] as BrawlerMoveKey[]) { const p = brawlerJugglePush(e, 'mob', mv, t)!; expect(p.brLiftDown, mv).toBe(false); e = apply(e, p); left.push(e.brLiftBudget!); t += 120; }
+    expect(left).toEqual([4, 3, 2, 1, 0]);                          // 0 までは拾える
+    const d = brawlerJugglePush(e, 'mob', 's1', t)!;                // 足りない当たり=ダウン
+    expect(d.brLiftDown).toBe(true);
+    expect(d.liftUntil).toBe(t + BRAWLER_JUGGLE_DROP_MS);           // 着地まで動けない
+    expect(d.brNoHoldUntil).toBe(t + BRAWLER_JUGGLE_DROP_MS + BRAWLER_DOWN_NO_HOLD_MS); // 起き上がり
+    const ed = apply(e, d);
+    expect(brawlerAirborne(ed, t + 10)).toBe(true);
+    expect(brawlerJugglePush(ed, 'mob', 's1', t + 10)).toBeNull();  // ダウン中は拾えない
+    // ボス級は4: 弱い当たりで4回拾えて、5回目で落ちる
+    let b: BrawlerJuggleFields = apply({}, brawlerJugglePush({}, 'boss', 's4', 0));
+    for (let i = 0; i < 4; i++) { const p = brawlerJugglePush(b, 'boss', 's1', 50 + i * 50)!; expect(p.brLiftDown).toBe(false); b = apply(b, p); }
+    expect(brawlerJugglePush(b, 'boss', 's1', 300)!.brLiftDown).toBe(true);
+    // 強個体は5
+    let st: BrawlerJuggleFields = apply({}, brawlerJugglePush({}, 'strong', 's3', 0));
+    for (let i = 0; i < 5; i++) st = apply(st, brawlerJugglePush(st, 'strong', 's2', 50 + i * 40));
+    expect(st.brLiftDown).toBe(false);
+    expect(brawlerJugglePush(st, 'strong', 's2', 400)!.brLiftDown).toBe(true);
+  });
+  it('★§13-2 地面バウンド: 空中の大踏み潰しは1コンボに1回だけ跳ね返る(落ちて小さく浮く=拾える)。2回目は叩き落とし', () => {
+    let e: BrawlerJuggleFields = { ...apply({}, brawlerJugglePush({}, 'mob', 's4', 0)), brComboStart: 7 };
+    const h = brawlerJuggleHeightRel(e, 150);
+    const b1 = brawlerJugglePush(e, 'mob', 'stomp', 150)!;
+    expect(b1.brLiftDown).toBe(false);
+    expect(b1.brBounceCombo).toBe(7);
+    e = apply(e, b1);
+    expect(brawlerJuggleHeightRel(e, 150)).toBeCloseTo(h, 6);                       // つなぎ目
+    expect(brawlerJuggleHeightRel(e, 150 + b1.brLiftDropMs! - 1)).toBeLessThan(h * 0.05); // 地面まで落ちる
+    expect(brawlerJuggleHeightRel(e, 150 + b1.brLiftDropMs! + 60)).toBeGreaterThan(0.05); // 跳ね返る
+    const b2 = brawlerJugglePush(e, 'mob', 'stomp', 150 + b1.brLiftDropMs! + 80)!;
+    expect(b2.brLiftDown).toBe(true);                                               // 同じ流れの2回目は叩き落とし
+    // 流れが変われば(別のコンボ)また跳ねる
+    const e3: BrawlerJuggleFields = { ...apply({}, brawlerJugglePush({}, 'mob', 's4', 1000)), brComboStart: 9, brBounceCombo: 7 };
+    expect(brawlerJugglePush(e3, 'mob', 'stomp', 1100)!.brLiftDown).toBe(false);
   });
   it('押し上げは高さを今の高さから引き継ぐ(途切れない)・空中で吹き飛ばす技は浮きを終えて落ちる', () => {
     const e0 = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
@@ -261,9 +293,10 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
     const e1 = apply(e0, brawlerJugglePush(e0, 'mob', 's1', 200));
     expect(brawlerJuggleHeightRel(e1, 200)).toBeCloseTo(h, 5);
     const drop = brawlerJugglePush(e0, 'mob', 's5', 200)!;
-    expect(drop.liftUntil).toBe(200);
+    expect(drop.liftUntil).toBe(400);                     // §13-2: 締めの叩き落としもダウン=着地まで動けない
     const e2 = apply(e0, drop);
-    expect(brawlerAirborne(e2, 201)).toBe(false);
+    expect(brawlerAirborne(e2, 201)).toBe(true);
+    expect(drop.brLiftDown).toBe(true);
     expect(brawlerJuggleHeightRel(e2, 200)).toBeCloseTo(h, 5);
     expect(brawlerJuggleHeightRel(e2, 400)).toBe(0);
     // 着地の砂埃は絵の弧が地面に着いた時
@@ -273,14 +306,14 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
   // ★§12-1(社長承認2026-11-08「格闘ゲームの空中コンボの手触り」): 打ち上がり25% → 頂点の漂い20% → 落下55%・基本 585ms。
   const sample = (f: (u: number) => number, n = 400) => Array.from({ length: n + 1 }, (_, i) => ({ u: i / n, h: f(i / n) }));
   const apexU = (pts: { u: number; h: number }[]) => pts.reduce((a, b) => (b.h > a.h ? b : a)).u;
-  it('浮きの時間の表: 基本 585ms(旧450の1.3倍)×重さ×0.75^n・下限 140ms・空中で吹き飛ばすと 200ms で落ちる', () => {
+  it('浮きの時間の表: 基本 585ms(旧450の1.3倍)×重さ×押し上げ量(§13-2: 0.75^n は予算に置き換え)・下限 140ms・空中で吹き飛ばすと 200ms で落ちる', () => {
     expect(BRAWLER_LIFT_MS).toBe(585);
     expect(brawlerJugglePush({}, 'mob', 's4', 0)!.brLiftMs).toBe(585);
     expect(brawlerJugglePush({}, 'strong', 's4', 0)!.brLiftMs).toBe(410);
     expect(brawlerJugglePush({}, 'boss', 's4', 0)!.brLiftMs).toBe(234);
     const e0 = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
     const p1 = brawlerJugglePush(e0, 'mob', 's1', 100)!;
-    expect(p1.brLiftMs).toBe(Math.round(585 * 0.5 * 0.75));
+    expect(p1.brLiftMs).toBe(Math.round(585 * 0.5));
     expect(p1.liftUntil).toBe(100 + p1.brLiftMs!); // 動けない間=絵の弧と同じ長さ
     expect(brawlerJugglePush(e0, 'mob', 's5', 100)!.brLiftMs).toBe(200);
   });
@@ -304,7 +337,7 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
       expect(Math.abs(v2 - v1)).toBeLessThan(top * 0.01);
     }
   });
-  it('追撃で浮き直した弧も同じ形: 頂点は区間の25〜45%・つなぎ目で高さが跳ばない・追撃ごとに短く低くなる', () => {
+  it('追撃で浮き直した弧も同じ形: 頂点は区間の25〜45%・つなぎ目で高さが跳ばない(§13-2: 回数の減りは予算が受け持つ)', () => {
     let e: BrawlerJuggleFields = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
     let t = 0;
     const rises: number[] = []; const mss: number[] = [];
@@ -312,7 +345,7 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
       t += Math.round((e.brLiftMs ?? 0) * 0.3);                          // 頂点の少し後で殴る
       const before = brawlerJuggleHeightRel(e, t);
       const p = brawlerJugglePush(e, 'mob', 's3', t);
-      if (!p) break;
+      if (!p || p.brLiftDown) break; // 予算が尽きた当たりはダウン(浮き直さない)
       e = apply(e, p);
       expect(brawlerJuggleHeightRel(e, t)).toBeCloseTo(before, 9);     // つなぎ目
       expect(brawlerJuggleHeightRel(e, t + 1)).toBeCloseTo(before, 1);
@@ -324,11 +357,8 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
       rises.push(brawlerJuggleHeightRel(e, t0 + ms * 0.25) - before);
       mss.push(ms);
     }
-    expect(rises.length).toBeGreaterThanOrEqual(3);
-    for (let i = 1; i < rises.length; i++) {
-      expect(rises[i]).toBeLessThan(rises[i - 1]);                       // 上がり直す量は減る
-      expect(mss[i]).toBeLessThan(mss[i - 1]);                           // 浮きは短くなる
-    }
+    expect(rises.length).toBeGreaterThanOrEqual(2); // 予算6=3段目(2)を3回まで(3回目でダウン)
+    for (let i = 1; i < rises.length; i++) expect(rises[i]).toBeGreaterThan(0); // 必ず少しは上がり直す
   });
   it('ボスの技の最中(bossState が追いかけ以外)は技の最中=浮かない', () => {
     expect(isBrawlerTechBusy({ bossState: 'chase' }, 0)).toBe(false);

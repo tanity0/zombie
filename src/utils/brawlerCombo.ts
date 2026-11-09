@@ -16,7 +16,8 @@ import { BRAWLER_LIFT_MS, BRAWLER_TEMPO, brawlerLiftArcRel, brawlerTempoMs, setB
 export let BRAWLER_COMBO_GAP_MS = 700; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 固まりの減衰: 長さ = 基本 × max(床, 1 − 時計 / この ms)。 */
 export let BRAWLER_COMBO_DECAY_MS = 3000; // ×BRAWLER_TEMPO(係数1.0の値)
-export const BRAWLER_COMBO_FLOOR = 0.4;
+/** 固まりの減衰の下限。★§13-1(社長指示2026-11-09「止めすぎるとハメ殺せるのはやめたい」)で 0.4→0(いずれ必ず固まらなくなる)。 */
+export const BRAWLER_COMBO_FLOOR = 0;
 /** 同じ段・同じ技を1つの流れで当て直すと、時計に足す ms(1段目の連打・同じ技の擦りだけが早く抜けられる)。 */
 export let BRAWLER_SAME_MOVE_PENALTY_MS = 400; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 反撃の数(1つの流れで受けた格闘の当たり)。雑魚・強個体とも7(社長指示2026-11-08「強個体も雑魚と同じにして」)。ボス級は反撃しない。 */
@@ -103,19 +104,81 @@ export const BRAWLER_HOLDABLE_PHASES: ReadonlySet<string> = new Set([
 ]);
 /** ボスの「休み」の相(技と技の間の間・社長指示2026-11-09)。偶像の休符・英雄の待ち。 */
 export const BRAWLER_HOLDABLE_BOSS_STATES: ReadonlySet<string> = new Set(['chase', 'return', 'idol-rest', 'hero-idle']);
-/** 本当に技を出している最中か(格闘の固まり・止め・反撃の除外にだけ使う)。会心の気絶中は false(isEnemyAttacking と同じ)。 */
-export const isBrawlerTechBusy = (
-  e: { aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number; bossState?: string },
+/**
+ * ★§13-1(社長指示2026-11-09「攻撃で技も止めたいが、止めすぎるとハメ殺せるのはやめたい」): 技の**溜め(予告中)**の相。
+ * 予算(BRAWLER_TECH_HOLD_BUDGET_MS)の分だけ固める。予告の時刻は行動の時計の台帳(aiPhaseUntil・aiStartedAt・biteAt・chaffMoveAt)
+ * から引くので、固めている間は流星の位相も止まり、明けたら続きから(出る=溜め開始・消え切る=当たる が崩れない)。
+ * 攻撃の振り(判定が出ている間)は止めない。**ボスの bossState の溜め・城ボスの g-* の溜めは入れていない**(§9-72: 予告の時刻を
+ * 台帳の外の欄=命中の予約・コントローラの時計から引く技があり、全部の一致を確かめ切れていない=予告が嘘になるくらいなら止めない)。
+ */
+export const BRAWLER_WINDUP_PHASES: ReadonlySet<string> = new Set([
+  'windup', 'scream', 'driller-thrust-windup', 'logger-sweep-windup', 'b-windup', 's-arc', 'z-red-pause', 'z-lunge-in', 'z-stagger', 'lich-blink',
+]);
+/** 1回の技(溜め)ごとに固められる合計(ms・×BRAWLER_TEMPO)。使い切ったら押し切る(その技が終わるまで固まらない)。 */
+export let BRAWLER_TECH_HOLD_BUDGET_MS = 400; // ×BRAWLER_TEMPO(係数1.0の値)
+export type BrawlerPhaseKind = 'free' | 'windup' | 'active';
+/**
+ * 格闘の止めから見た、いまの相の種類。free=技ではない(移動・待ち・後退・硬直・休み)=いくらでも固める /
+ * windup=技の溜め(予告中)=予算の分だけ固める / active=攻撃の振り・固めない技=固めない。会心の気絶中は free。
+ */
+export const brawlerPhaseKind = (
+  e: { type?: EnemyType; aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number; bossState?: string },
   gameTime: number,
-): boolean => {
-  if (e.stunUntil !== undefined && gameTime < e.stunUntil) return false;
-  if (e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil) return false;
-  if (e.biteAt !== undefined && e.biteAt > 0) return true;
-  // ボス(天使・裏ボス・偶像・賞金首など)は技を bossState で持つ。追いかけ・帰り・休み・技の後の硬直以外は技の最中(§12-1 でボス級も浮くため)。
-  if (e.bossState !== undefined && !BRAWLER_HOLDABLE_BOSS_STATES.has(e.bossState) && !isRecoverHoldPhase(e.bossState)) return true;
-  if (e.aiPhase === undefined) return e.chaffMove !== undefined;
-  return !BRAWLER_HOLDABLE_PHASES.has(e.aiPhase) && !isRecoverHoldPhase(e.aiPhase);
+): BrawlerPhaseKind => {
+  if (e.stunUntil !== undefined && gameTime < e.stunUntil) return 'free';
+  if (e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil) return 'free';
+  // ボス(天使・裏ボス・偶像・賞金首など)は技を bossState で持つ。追いかけ・帰り・休み・技の後の硬直以外は技の最中(溜めも固めない=§9-72)。
+  if (e.bossState !== undefined && !BRAWLER_HOLDABLE_BOSS_STATES.has(e.bossState) && !isRecoverHoldPhase(e.bossState)) return 'active';
+  if (e.aiPhase === 'br-revenge') return 'active';
+  // 噛みつきの構え(biteAt=噛む瞬間・噛みはその瞬間に判定)=溜め。死神・使者は固めない(神付きの台本)。
+  if (e.biteAt !== undefined && e.biteAt > 0) return e.type === 'reaper' || e.type === 'hangedman' ? 'active' : 'windup';
+  if (e.aiPhase === undefined) return e.chaffMove !== undefined ? 'active' : 'free';
+  if (BRAWLER_HOLDABLE_PHASES.has(e.aiPhase) || isRecoverHoldPhase(e.aiPhase)) return 'free';
+  return BRAWLER_WINDUP_PHASES.has(e.aiPhase) ? 'windup' : 'active';
 };
+/** 本当に技を出している最中か(溜めも含む・浮かせ/振り払い/ボスの止めの判定に使う)。会心の気絶中は false。 */
+export const isBrawlerTechBusy = (
+  e: { type?: EnemyType; aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number; bossState?: string },
+  gameTime: number,
+): boolean => brawlerPhaseKind(e, gameTime) !== 'free';
+/** いまの技(溜め)の札(予算を数え直す区切り)。相の名前+噛みの有無。 */
+export const brawlerTechHoldKey = (e: { aiPhase?: string; chaffMove?: string; biteAt?: number }): string =>
+  `${e.aiPhase ?? ''}|${e.chaffMove ?? ''}|${e.biteAt !== undefined && e.biteAt > 0 ? 'bite' : ''}`;
+/**
+ * 溜めを固める予算の適用(§13-1-A)。いまの止めの終わり(prevUntil)より先へ伸ばす分だけ予算から使う。
+ * 返り値 until=実際に書く止めの終わり(予算で頭打ち)・used=使った後の量・key=札。予算を使い切っていれば until は prevUntil のまま(押し切る)。
+ */
+export const brawlerTechHoldApply = (
+  e: { aiPhase?: string; chaffMove?: string; biteAt?: number; brTechHoldKey?: string; brTechHoldUsed?: number; brHoldUntil?: number },
+  wantUntil: number, now: number,
+): { until: number | undefined; used: number; key: string } => {
+  const key = brawlerTechHoldKey(e);
+  const used0 = e.brTechHoldKey === key ? (e.brTechHoldUsed ?? 0) : 0;
+  const prev = e.brHoldUntil !== undefined && e.brHoldUntil > now ? e.brHoldUntil : now;
+  const room = Math.max(0, BRAWLER_TECH_HOLD_BUDGET_MS - used0);
+  const ext = Math.max(0, Math.min(wantUntil - prev, room));
+  return { until: ext > 0 ? prev + ext : (prev > now ? prev : undefined), used: used0 + ext, key };
+};
+
+/** 溜めを抜けた(または別の溜めに入った)敵の予算の札を捨てるパッチ(毎フレーム・無ければ null)。 */
+export const brawlerTechHoldResetPatch = (
+  e: Parameters<typeof brawlerPhaseKind>[0] & { brTechHoldKey?: string },
+  gameTime: number,
+): { brTechHoldKey: undefined; brTechHoldUsed: undefined } | null =>
+  e.brTechHoldKey !== undefined && (brawlerPhaseKind(e, gameTime) !== 'windup' || brawlerTechHoldKey(e) !== e.brTechHoldKey)
+    ? { brTechHoldKey: undefined, brTechHoldUsed: undefined } : null;
+
+/**
+ * ★§13-2 ダメージ補正: 同じ流れの10ヒット目以降、1発ごとに −5%(下限 50%)。n=この当たりが流れの何発目か(1から)。秘奥義は呼び手が外す。
+ */
+export const BRAWLER_PRORATION_FROM = 10;
+export const BRAWLER_PRORATION_STEP = 0.05;
+export const BRAWLER_PRORATION_MIN = 0.5;
+export const brawlerProration = (n: number): number =>
+  n < BRAWLER_PRORATION_FROM ? 1 : Math.max(BRAWLER_PRORATION_MIN, 1 - BRAWLER_PRORATION_STEP * (n - BRAWLER_PRORATION_FROM + 1));
+/** この敵へのいまの当たりの補正(流れが切れていれば1発目から)。 */
+export const brawlerProrationFor = (e: { brComboAt?: number; brFlowHits?: number }, now: number): number =>
+  brawlerProration((brawlerComboAlive(e, now) ? (e.brFlowHits ?? 0) : 0) + 1);
 
 /**
  * いま格闘の食らいの固まり(①止め+②固まり)で止まっているか(全区分共通・Date.now 系)。本当に技を出している最中は止めない。
@@ -123,9 +186,9 @@ export const isBrawlerTechBusy = (
  * (行動の時計は enemyClocks.isEnemyFrozenForClocks が同じ式で止める=明けたら続きから)。
  */
 export const brawlerHeldNow = (
-  e: { brHoldUntil?: number; aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number; bossState?: string },
+  e: { type?: EnemyType; brHoldUntil?: number; aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number; bossState?: string },
   gameTime: number, nowMs: number,
-): boolean => e.brHoldUntil !== undefined && nowMs < e.brHoldUntil && !isBrawlerTechBusy(e, gameTime);
+): boolean => e.brHoldUntil !== undefined && nowMs < e.brHoldUntil && brawlerPhaseKind(e, gameTime) !== 'active'; // §13-1: 溜めも止める(攻撃の振りは止めない)
 
 /**
  * いま格闘の浮かせ(§12-1・4段目と追撃)で浮いているか(Date.now 系)。近接フィニッシュの跳ね(liftUntil だけ)とは
@@ -154,6 +217,7 @@ export interface BrawlerComboFields {
   brComboMoves?: string;
   brRevengePending?: boolean;
   brNoHoldUntil?: number;
+  brFlowHits?: number;
 }
 
 /** この時刻にまだ流れが続いているか(最後の当たりから GAP 以内)。 */
@@ -190,6 +254,8 @@ export const brawlerComboOnHit = (
   return {
     patch: {
       brComboStart: start, brComboAt: now, brComboPenalty: penalty, brComboHits: hits,
+      // ダメージ補正の数(§13-2)。秘奥義(9連撃・締め)は数えない。
+      brFlowHits: (alive ? (e.brFlowHits ?? 0) : 0) + (move === 'secret' || move === 'secret-land' ? 0 : 1),
       brComboMoves: repeat ? moves.join(',') : [...moves, move].join(','),
       brRevengePending: pending,
     },
@@ -247,8 +313,21 @@ export const brawlerRevengeTelegraph = (
 // ---------------------------------------------------------------------------------------------
 // 浮かせ追撃(research/BRAWLER.md §12-1・社長指示2026-11-08「浮いてる間は敵は動けない ただし、段々重くなる 雑魚は軽い 強個体は少し重い ボスは重い」)
 // ---------------------------------------------------------------------------------------------
-/** 押し上げるたびに浮く高さと時間に掛ける減り(n 回目は DECAY^n)。 */
-export const BRAWLER_JUGGLE_DECAY = 0.75;
+/**
+ * ★§13-2 拾える回数の予算(社長決定2026-11-09「雑魚→ボスの順 6.5.4回にしよう」)。§12-1 の 0.75^n の減衰はこの予算に置き換えた。
+ * 空中で当たるたびに消費(弱い当たり=1・強い当たりと技=2)。予算が足りない当たりで落ちてダウン(拾えない・着地まで動けない)。
+ * =予算は「弱い当たりで拾える回数」(雑魚6回拾えて7回目で落ちる・ボス級は4回拾えて5回目で落ちる)。
+ * ★実装で決めた所(§9-73): 4段目(空中で当てた時)=1(ランチャー=拾い直しの起点は軽く)、大踏み潰し=0(バウンドは1コンボ1回で別に縛る)。
+ *   設計の例のコンボ(1・2・3段→4段→飛び蹴り→1・2段→大踏み潰し→気功→5段)が雑魚で最後まで繋がる値にした。
+ */
+export const BRAWLER_JUGGLE_BUDGET: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 6, strong: 5, boss: 4 };
+export const BRAWLER_JUGGLE_COST: Readonly<Record<BrawlerMoveKey, number>> = {
+  s1: 1, s2: 1, s3: 2, s4: 1, s5: 2, kick1: 2, kick2: 2, kick3: 2, stomp: 0, kiko: 1, secret: 2, 'secret-land': 2,
+};
+/** 地面バウンド(§13-2・1コンボに1回)の跳ね返りの高さ(重さの前の倍率)。 */
+export const BRAWLER_BOUNCE_F = 0.45;
+/** ダウンの着地の後、固まらない時間(ms・×BRAWLER_TEMPO・起き上がり=次のコンボの始まりを区切る)。 */
+export let BRAWLER_DOWN_NO_HOLD_MS = 300; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 重さ(区分): 浮く高さ・時間に掛ける。 */
 export const BRAWLER_JUGGLE_WEIGHT: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 1.0, strong: 0.7, boss: 0.4 };
 /**
@@ -281,6 +360,13 @@ export interface BrawlerJuggleFields {
   brLiftUntil?: number;
   /** 着地の砂埃をまだ出していない(絵の弧が終わった瞬間に store が出して消す)。 */
   brLiftLand?: boolean;
+  /** §13-2: 残りの拾える回数・ダウン中・バウンドを使った流れ・バウンドの落ちる区間。 */
+  brLiftBudget?: number;
+  brLiftDown?: boolean;
+  brBounceCombo?: number;
+  brLiftDropMs?: number;
+  /** 流れの始まり(バウンドは1コンボに1回の区切り)。 */
+  brComboStart?: number;
 }
 /** 絵の弧が地面に着いたか(砂埃を出す時刻)。 */
 export const brawlerJuggleLanded = (e: BrawlerJuggleFields, now: number): boolean =>
@@ -308,6 +394,13 @@ export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): num
   if (u <= 0 || u >= 1) return u <= 0 ? (e.brLiftFrom ?? 0) : 0;
   const from = e.brLiftFrom ?? 0;
   const peak = e.brLiftPeak ?? 1;
+  // 地面バウンド(§13-2): 頭の dropMs で今の高さから地面へ落ち、そこから小さく跳ね返る(拾い直せる)。
+  const drop = e.brLiftDropMs ?? 0;
+  if (drop > 0) {
+    const t = now - e.brawlerLiftAt;
+    if (t < drop) { const q = t / drop; return from * (1 - q) * (1 - q) * (1 + 2 * q); }
+    return brawlerLiftArcRel((t - drop) / Math.max(1, ms - drop), 0, peak);
+  }
   // 空中で吹き飛ばされた(押し上げ0)=今の高さから速く叩き落とす(DROP_MS・端で速さ0の滑らかな落ち)。
   if (peak <= 0) return from * (1 - u) * (1 - u) * (1 + 2 * u);
   // 浮き(最初も追撃の浮き直しも同じ形): 打ち上がり25% → 頂点の漂い20% → 落下55%(§12-1)。
@@ -315,28 +408,54 @@ export const brawlerJuggleHeightRel = (e: BrawlerJuggleFields, now: number): num
 };
 
 /**
- * 格闘の当たり1回ぶんの浮き(§12-1)。cls=区分の重さ。返り値 null=浮きは変わらない。
- *  - 地上: 4段目だけが浮かせる。空中: 押し上げのある段・技で浮きが続く(n 回目ほど軽く)。
- *  - 空中で押し上げ0の技(吹き飛ばす技)=浮きを終えて、今の高さから地面へ落ちる(押しは別に効く)。
- *  - 押し上げが軽すぎたら(MIN_F 未満)もう浮かない=今の弧のまま落ちる。
+ * 格闘の当たり1回ぶんの浮き(§12-1・§13-2)。cls=区分の重さ。返り値 null=浮きは変わらない。
+ *  - 地上: 3段目(アッパー)・4段目が浮かせる(ランチャー)。拾える回数の予算(雑魚6/強個体5/ボス級4)をここで持たせる。
+ *  - 空中: 押し上げのある段・技で浮き直す(高さ・時間=押し上げ量×重さ。回数の減りは予算が受け持つ)。当たるたびに予算を使い、
+ *    足りない当たりでダウン(今の高さから落ちる・着地まで動けない・着地の後 BRAWLER_DOWN_NO_HOLD_MS は固まらない)。
+ *  - 空中の大踏み潰し: 1コンボに1回だけ地面バウンド(落ちて小さく跳ね返る=拾い直せる)。2回目以降は叩き落とし(ダウン)。
+ *  - 空中で押し上げ0の技(5段目・飛び蹴り3発目・秘奥義の締め)=締めの叩き落とし(ダウン)。
+ *  - ダウン中(落ちている間)は拾えない。
  */
 export const brawlerJugglePush = (
   e: BrawlerJuggleFields, cls: 'mob' | 'strong' | 'boss', move: BrawlerMoveKey, now: number,
-): Partial<BrawlerJuggleFields> & { liftUntil?: number } | null => {
+): Partial<BrawlerJuggleFields> & { liftUntil?: number; brNoHoldUntil?: number } | null => {
   const airborne = brawlerAirborne(e, now);
   const push = BRAWLER_JUGGLE_PUSH[move];
+  const w = BRAWLER_JUGGLE_WEIGHT[cls];
+  const arc = (f: number) => Math.max(BRAWLER_JUGGLE_MIN_MS, Math.round(BRAWLER_LIFT_MS * f));
   if (!airborne) {
-    if (move !== 's4') return null;
-  } else if (push <= 0) {
-    const h = brawlerJuggleHeightRel(e, now);
-    return { brawlerLiftAt: now, brLiftMs: BRAWLER_JUGGLE_DROP_MS, brLiftPeak: 0, brLiftFrom: h, brLiftUntil: now, liftUntil: now, brLiftLand: true };
+    if (move !== 's4' && move !== 's3') return null;
+    const f = push * w;
+    if (f < BRAWLER_JUGGLE_MIN_F) return null;
+    const ms = arc(f);
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: 0, brLiftN: 0, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+      brLiftBudget: BRAWLER_JUGGLE_BUDGET[cls], brLiftDown: false, brLiftDropMs: 0 };
   }
-  const n = airborne ? (e.brLiftN ?? 0) + 1 : 0;
-  const f = push * BRAWLER_JUGGLE_WEIGHT[cls] * Math.pow(BRAWLER_JUGGLE_DECAY, n);
-  if (f < BRAWLER_JUGGLE_MIN_F) return null;
-  const ms = Math.max(BRAWLER_JUGGLE_MIN_MS, Math.round(BRAWLER_LIFT_MS * f));
-  const from = airborne ? brawlerJuggleHeightRel(e, now) : 0;
-  return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: from, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true };
+  if (e.brLiftDown) return null; // ダウン中は拾えない
+  const h = brawlerJuggleHeightRel(e, now);
+  const down = (): Partial<BrawlerJuggleFields> & { liftUntil: number; brNoHoldUntil: number } => {
+    const ms = BRAWLER_JUGGLE_DROP_MS;
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: 0, brLiftFrom: h, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+      brLiftDown: true, brLiftDropMs: 0, brLiftBudget: 0, brNoHoldUntil: now + ms + BRAWLER_DOWN_NO_HOLD_MS };
+  };
+  const budget = (e.brLiftBudget ?? BRAWLER_JUGGLE_BUDGET[cls]) - BRAWLER_JUGGLE_COST[move];
+  const n = (e.brLiftN ?? 0) + 1;
+  if (move === 'stomp') {
+    // 地面バウンド: 1コンボに1回・予算が残っている時だけ。
+    const combo = e.brComboStart ?? -1;
+    if (budget < 0 || e.brBounceCombo === combo) return down();
+    const f = BRAWLER_BOUNCE_F * w;
+    const dropMs = BRAWLER_JUGGLE_DROP_MS;
+    const ms = dropMs + arc(f);
+    return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+      brLiftBudget: budget, brLiftDown: false, brLiftDropMs: dropMs, brBounceCombo: combo };
+  }
+  if (push <= 0 || budget < 0) return down();
+  const f = push * w;
+  if (f < BRAWLER_JUGGLE_MIN_F) return down();
+  const ms = arc(f);
+  return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: h, brLiftN: n, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+    brLiftBudget: budget, brLiftDown: false, brLiftDropMs: 0 };
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -353,6 +472,8 @@ export const brawlerComboTimesAt = (tempo: number) => ({
   BRAWLER_REVENGE_NO_HOLD_MS: brawlerTempoMs(1200, tempo),
   BRAWLER_JUGGLE_MIN_MS: brawlerTempoMs(140, tempo),
   BRAWLER_JUGGLE_DROP_MS: brawlerTempoMs(200, tempo),
+  BRAWLER_TECH_HOLD_BUDGET_MS: brawlerTempoMs(400, tempo),
+  BRAWLER_DOWN_NO_HOLD_MS: brawlerTempoMs(300, tempo),
 });
 const applyBrawlerComboTempo = (tempo: number): void => {
   const v = brawlerComboTimesAt(tempo);
@@ -364,6 +485,8 @@ const applyBrawlerComboTempo = (tempo: number): void => {
   BRAWLER_REVENGE_NO_HOLD_MS = v.BRAWLER_REVENGE_NO_HOLD_MS;
   BRAWLER_JUGGLE_MIN_MS = v.BRAWLER_JUGGLE_MIN_MS;
   BRAWLER_JUGGLE_DROP_MS = v.BRAWLER_JUGGLE_DROP_MS;
+  BRAWLER_TECH_HOLD_BUDGET_MS = v.BRAWLER_TECH_HOLD_BUDGET_MS;
+  BRAWLER_DOWN_NO_HOLD_MS = v.BRAWLER_DOWN_NO_HOLD_MS;
 };
 /** 格闘の全部の時間を係数で書き直す(utils/brawler の段・技・秘奥義 + ここの固まり・反撃)。テストは明示の係数で呼ぶ。 */
 export const setBrawlerTempoAll = (tempo: number): void => {

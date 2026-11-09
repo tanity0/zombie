@@ -4371,6 +4371,9 @@ const brawlerHitPatch = (
   const attacking = isEnemyAttacking(enemy, gameTime);
   // 固まり・浮かせの除外は「本当に技を出している最中」だけ(移動・待ち・後退の相は固める=brawlerCombo の表)。押しの取り消し(強制)は今どおり isEnemyAttacking。
   const busy = BRC.isBrawlerTechBusy(enemy, gameTime);
+  // ★§13-1(社長指示2026-11-09「攻撃で技も止めたいが、止めすぎるとハメ殺せるのはやめたい」): 溜め(windup)も予算の分だけ固める。
+  //   攻撃の振り(active)は固めない。free=技ではない(移動・待ち・硬直・休み)。
+  const phaseKind = BRC.brawlerPhaseKind(enemy, gameTime);
   // 止め(①)の長さ。ボス級も同じ値。ただしボス級の吹き飛ばし(⑤ big)は今のまま=止めを挟まず飛ぶ。
   const hitStopMs = Math.max(0, bs.stunMs);
   const bossStopMs = bossLike && bs.kb.kind !== 'big' && !busy ? hitStopMs : 0;
@@ -4439,18 +4442,32 @@ const brawlerHitPatch = (
   // ★浮かせ追撃(research/BRAWLER.md §12-1): 4段目で浮かせ、浮いている間の当たりで浮きが続く(n 回目ほど軽く・区分の重さ)。
   // 浮いている間は動けない(liftUntil=全ての敵の制御が「持ち上げ」として止まる・時計も止まる)。ボス級も浮く(重い)。技の最中の敵は浮かない。
   // 空中で吹き飛ばす技(5段目・飛び蹴り3発目・大踏み潰し)は浮きを終えて今の高さから落ちる(押しはそのまま効く)。
+  let downNow = false;
   if (bs.combo && !busy) {
-    const jp = brawlerJugglePatch(enemy, cls, bs.lift ? 's4' : bs.combo.move, now); // 浮かせの段(4段目・秘奥義の4段目)は地上からも浮かせる
-    if (jp) Object.assign(out, jp);
+    // 浮かせの段(3段目・4段目・秘奥義の4段目)は地上からも浮かせる(§13-2)。バウンドの区切りに流れの始まりを渡す(この当たりの combo を反映)。
+    const jp = brawlerJugglePatch({ ...enemy, ...(combo?.patch ?? {}) }, cls, bs.lift ? 's4' : bs.combo.move, now);
+    if (jp) { Object.assign(out, jp); downNow = (jp as { brLiftDown?: boolean }).brLiftDown === true; }
   }
   // 強個体は普段 canShoveEnemy が押し(と押しの欄での足止め)を止める=格闘の当たりでは押し道具と同じ旗を立てて雑魚と同じに動かす。
   if (strong && out.knockbackUntil !== undefined) out.knockbackShoveUntil = out.knockbackUntil;
   // 固まりは止め・押し(浮かせ)が明けてから数える(押す段は固まりより押しを優先=§11-1)。吹き飛ばす技は固まり0(今どおり飛ぶ)。
-  if (combo && !busy && combo.holdMs > 0) {
-    out.brHoldUntil = brawlerHoldFrom(now, bossLike ? bossStopMs : stopMs, Math.max(out.knockbackUntil ?? 0, out.liftUntil ?? 0)) + combo.holdMs;
-  } else if (bossStopMs > 0) {
-    // 固まりが0の当たり(固まりの表が0で押しが big でない時)でも、ボス級の止め(①)だけは掛ける。
-    out.brHoldUntil = Math.max(now + bossStopMs, out.liftUntil ?? 0);
+  // ★ダウン(§13-2: 予算切れ・締め)の当たりは固めない(着地の後 BRAWLER_DOWN_NO_HOLD_MS は固まらない=起き上がり)。
+  if (combo && phaseKind !== 'active' && !downNow) {
+    // 溜めの間は、雑魚の止め(hitStunUntil)が「攻撃中」で効かないので、止めも固まりと1本に書く。
+    const stopForHold = bossLike ? bossStopMs : phaseKind === 'windup' && bs.kb.kind !== 'big' ? hitStopMs : stopMs;
+    let want: number | undefined;
+    if (combo.holdMs > 0) want = brawlerHoldFrom(now, stopForHold, Math.max(out.knockbackUntil ?? 0, out.liftUntil ?? 0)) + combo.holdMs;
+    else if (bossStopMs > 0 || (phaseKind === 'windup' && stopForHold > 0)) {
+      // 固まりが0の当たり(固まりの表が0で押しが big でない時)でも、ボス級・溜めの止め(①)だけは掛ける。
+      want = Math.max(now + stopForHold, out.liftUntil ?? 0);
+    }
+    if (want !== undefined) {
+      if (phaseKind === 'windup') {
+        // 1回の溜めにつき合計 BRAWLER_TECH_HOLD_BUDGET_MS まで。使い切ったら押し切る(以後その技が終わるまで固まらない)。
+        const r = BRC.brawlerTechHoldApply(enemy, want, now);
+        out.brHoldUntil = r.until; out.brTechHoldKey = r.key; out.brTechHoldUsed = r.used;
+      } else out.brHoldUntil = want;
+    }
   }
   return out;
 };
@@ -5306,13 +5323,20 @@ const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.Brawler
     enemies: state.enemies.map(e => {
       if (e.id !== id || e.aiPhase === 'br-revenge') return e;
       const busy = BRC.isBrawlerTechBusy(e, gt);
-      // 浮かせ追撃(§12-1): 浮いている敵に気功の爆発が当たっても浮きが続く(押し上げ小)。ボス級も浮く。
-      const jp = busy ? null : brawlerJugglePatch(e, BRC.brawlerComboClass(e.type), move, now);
-      const e1 = jp ? { ...e, ...jp } : e;
+      const kind = BRC.brawlerPhaseKind(e, gt);
       // ボス級も同じ固まり(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」・反撃の数は届かない)。
       const c = BRC.brawlerComboOnHit(e, move, now, countRevenge);
-      const held = c.holdMs > 0 && !busy;
-      return { ...e1, ...c.patch, ...(held ? { brHoldUntil: brawlerHoldFrom(now, 0, Math.max(e1.knockbackUntil ?? 0, e1.liftUntil ?? 0)) + c.holdMs } : {}) };
+      // 浮かせ追撃(§12-1・§13-2): 浮いている敵に気功の爆発が当たっても浮き直す(押し上げ小・予算1)。ボス級も浮く。
+      const jp = busy ? null : brawlerJugglePatch({ ...e, ...c.patch }, BRC.brawlerComboClass(e.type), move, now);
+      const e1 = jp ? { ...e, ...jp } : e;
+      const down = (jp as { brLiftDown?: boolean } | null)?.brLiftDown === true;
+      if (!(c.holdMs > 0) || kind === 'active' || down) return { ...e1, ...c.patch };
+      const want = brawlerHoldFrom(now, 0, Math.max(e1.knockbackUntil ?? 0, e1.liftUntil ?? 0)) + c.holdMs;
+      if (kind === 'windup') { // §13-1: 溜めは予算の分だけ
+        const r = BRC.brawlerTechHoldApply(e, want, now);
+        return { ...e1, ...c.patch, brHoldUntil: r.until, brTechHoldKey: r.key, brTechHoldUsed: r.used };
+      }
+      return { ...e1, ...c.patch, brHoldUntil: want };
     }),
   }));
 };
@@ -5335,7 +5359,9 @@ const explodeBrawlerKiko = (
     const e = get().enemies.find(en => en.id === id);
     if (!e) continue;
     const d = BR.brawlerDistTo(x, y, e);
-    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45)));
+    // ★ダメージ補正(§13-2)。秘奥義の中の気功は補正しない。
+    const pr = o.move === 'secret' ? 1 : BRC.brawlerProrationFor(e, Date.now());
+    const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * pr));
     const stunBefore = e.hitStunUntil;
     const killed = get().damageEnemy(id, dmg, true, false, false, 'other');
     get().spawnDamageNumber(e.x + e.width / 2, e.y, dmg, false, { enemyId: id });
@@ -11526,7 +11552,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       const scanHit = enemy.id === scanTargetId;
       const scanMult = scanHit ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
       if (scanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
-      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult;
+      // ★格闘のダメージ補正(research/BRAWLER.md §13-2): 同じ流れの10ヒット目以降 −5%/発(下限50%)。秘奥義は補正しない。
+      const brProration = bs?.combo && bs.combo.move !== 'secret' && bs.combo.move !== 'secret-land' ? BRC.brawlerProrationFor(enemy, now) : 1;
+      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration;
       // ★SAME_ARENA §9(対人体勢): 紫中の幻影への近接=致命の一撃(×5+最大HP25%・裁定②)。
       // 紫でなければ melee(0.04)の削り+クリなら2/3減速。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -16662,7 +16690,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 死体は行動しない=対象外。
         if (isCorpse(base)) return base;
         const clocks = tickEnemyClockFreeze(base, gameTime, now);
-        const ticked = clocks ? { ...base, ...clocks } : base;
+        // ★§13-1: 溜めの止め予算は技(溜め)1回ごと。溜めを抜けたら札を捨てる(次の同じ技は0から)。
+        const thReset = BRC.brawlerTechHoldResetPatch(base, gameTime);
+        const ticked = clocks || thReset ? { ...base, ...(clocks ?? {}), ...(thReset ?? {}) } : base;
         // ★軍人の狙い(§4): 今追う軍人(targetEscortId)をここで1回だけ決め直して敵に持たせる(粘着20%の基準)。下の移動・技の目標点
         //   (apx/apy)・combatTick の射撃は同じ値を読む。救助イベントの攻撃者(escortTarget=生存者を追う)は対象外。
         //   ★技の最中(aiPhase あり=溜め/突進/跳び/硬直)は追う相手を決め直さない(突進の弱ホーミング・技の目標点が途中で別の相手へ跳ばない)。

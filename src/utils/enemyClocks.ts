@@ -17,7 +17,7 @@
 // これが無いと、硬直中に書かれた新しいCDを硬直明けの書き戻しが**消してしまう**。
 import type { Enemy, EnemyClockStash } from '../types/game';
 import { isEnemyAttacking } from './combatFeel';
-import { isBrawlerTechBusy, brawlerLiftHoldNow } from './brawlerCombo';
+import { brawlerPhaseKind, brawlerLiftHoldNow } from './brawlerCombo';
 import { isRecoverHoldPhase } from './recoverPhase';
 
 /** 期限型(`*Until`/`*ReadyAt`=残りで測る)か、始点型(`*At`=経過で測る)か。 */
@@ -85,8 +85,10 @@ export const isEnemyFrozenForClocks = (e: Enemy, gameTime: number, nowMs: number
     && !isEnemyAttacking(e, gameTime)) return true;
   // (c'')格闘の食らいの固まり(research/BRAWLER.md §11-1・Date.now系・updateEnemies と同じ式)。移動・待ち・後退の相も止める
   //   =その相の時計もここで止まり、明けたら続きから(本当に技を出している個体は止まらない=isBrawlerTechBusy)。
+  // ★§13-1(社長指示2026-11-09): 技の溜めも固める=溜めの期限・予告の時刻(aiPhaseUntil・aiStartedAt・biteAt・chaffMoveAt)もここで据え置く
+  //   (流星の位相も止まり、明けたら続きから)。攻撃の振り(active)は止めない。
   if (!committed && e.brHoldUntil !== undefined && nowMs < e.brHoldUntil
-    && !isBrawlerTechBusy(e, gameTime)) return true;
+    && brawlerPhaseKind(e, gameTime) !== 'active') return true;
   // (c')英雄の昇天に見とれて立ち止まっている間(Date.now系・updateEnemies と同じ式)
   if (!committed && e.aweUntil !== undefined && nowMs < e.aweUntil
     && !isEnemyAttacking(e, gameTime)) return true;

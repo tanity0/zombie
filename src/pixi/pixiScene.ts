@@ -107,7 +107,7 @@ import {
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
-import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, isBrawlerTechBusy, brawlerJuggleHeightRel } from '../utils/brawlerCombo'; // 格闘の反撃の赤い予告(位相は meteorPhase)
+import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerPhaseKind, brawlerJuggleHeightRel } from '../utils/brawlerCombo'; // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
@@ -22152,7 +22152,7 @@ export class PixiScene {
       aiSqY *= 1 + 0.22 * pop; aiSqX *= 1 - 0.1 * pop;
     }
     // ★格闘の食らいの固まり(§11-1): 固まっている間は食らいの動作(のけぞり)のまま小刻みに震える(位置だけ・判定は動かない)。
-    if (e.brHoldUntil !== undefined && now < e.brHoldUntil && !isBrawlerTechBusy(e, gameTime)) {
+    if (e.brHoldUntil !== undefined && now < e.brHoldUntil && brawlerPhaseKind(e, gameTime) !== 'active') { // §13-1: 溜めも固まる
       aiShake += Math.sin(now / 23 + (e.id.charCodeAt(0) & 7)) * 0.9;
     }
     // 格闘の浮かせ追撃(§12-1)の liftUntil は格闘の弧で描く(下の brLiftPx)=近接フィニッシュの跳ね(BOSS_FINISH_LIFT)は重ねない。

@@ -30,7 +30,7 @@ const place = (type: EnemyType, dx: number, dy: number, id: string, extra: Parti
 };
 const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
 /** 1段目(止め45ms・押さない)を1発。 */
-const hit = (id: string, move: 's1' | 's2' | 's3' = 's1') => useGameStore.getState().triggerCounter(undefined, {
+const hit = (id: string, move: 's1' | 's2' | 's3' | 'kiko' = 's1') => useGameStore.getState().triggerCounter(undefined, {
   targetIds: [id], mult: 0.01, brawler: true, stunMs: 45, kb: { kind: 'none' }, postureMult: 0.01, pressedAt: Date.now(), combo: { move },
 });
 /** useGameLoop と同じ順: gameTime を進め、敵の更新(行動の時計の凍結を含む)→ ボスの制御。 */
@@ -58,7 +58,7 @@ describe('ボス級も雑魚と同じ固まり(§11-1)', () => {
     setup();
     useGameStore.setState({ enemies: [place('hunter', 80, 0, 'h'), place('zombie', -80, 0, 'z'), place('miguel', 0, 120, 'm', { bossState: 'chase' })] });
     const holds: Record<string, number[]> = { h: [], z: [], m: [] };
-    for (const mv of ['s1', 's2', 's3', 's1'] as const) {
+    for (const mv of ['s1', 's2', 'kiko', 's1'] as const) { // 3段目は浮かせる(§13-2)=重さで長さが変わるので比べない
       for (const id of ['h', 'z', 'm']) { hit(id, mv); holds[id].push(en(id).brHoldUntil! - now); }
       now += 200;
     }

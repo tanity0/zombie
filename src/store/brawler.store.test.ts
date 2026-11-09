@@ -855,17 +855,20 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     thorBusy.type = 'thor'; thorBusy.bossState = 'thor-dash-windup'; thorBusy.bossStateUntil = 999999;
     useGameStore.setState({ enemies: [busy, thor, mob, thorBusy] });
     hit('z', 's1'); hit('t', 's1'); hit('m', 's1'); hit('tb', 's1');
-    expect(en('z').brHoldUntil).toBeUndefined();
+    // ★§13-1(社長指示2026-11-09): 雑魚の溜め(z-red-pause)も固まる(予算の分だけ=1発目は満額)。
+    expect(en('z').brHoldUntil).toBe(en('m').brHoldUntil);
+    expect(en('z').brTechHoldUsed).toBeGreaterThan(0);
     expect(en('z').brComboHits).toBe(1);
     expect(en('m').brHoldUntil).toBeGreaterThan(now);
     expect(en('t').brHoldUntil).toBe(en('m').brHoldUntil); // 止め+固まりが雑魚と同じ
     expect(en('t').brComboHits).toBe(1);
     expect(en('t').hitStunUntil).toBeUndefined();          // ボス級の止めは hitStunUntil(銃と同じ枠)には書かない
-    expect(en('tb').brHoldUntil).toBeUndefined();          // 技の最中のボスは止めない
+    expect(en('tb').brHoldUntil).toBeUndefined();          // ボスの溜めは止めない(§9-72: 予告の時刻の一致を確かめ切れていない経路)
   });
   it('5段を出し切る頃に固まりが切れる(1〜4段目は次の段が届くまで固まり続け、5段目の後は4割近くまで落ちている)・★既定のテンポ係数1.3で測る', () => {
     // ★止め(社長承認2026-11-08 で長く)と係数1.0の組み合わせは出荷しない形(3段目→4段目の間が流れの切れ 600ms を超える)。既定の1.3で測る。
     setBrawlerTempoAll(1.3);
+    try {
     setup(3);
     useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });
     const holds: { at: number; until: number }[] = [];
@@ -881,15 +884,14 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     expect(holds.length).toBe(4); // 5段目は吹き飛ばす=固めない
     // 1〜4段目の固まりは、次の段が当たるまで切れない(=5段のつながりの中では敵は動けない)
     for (let i = 0; i < 4; i++) expect(holds[i].until).toBeGreaterThanOrEqual(hitsAt[i + 1]);
-    // 基本の長さで割った固まりは段を追うごとに短くなる(減衰)
-    const base = [390, 390, 585, 585], stop = [90, 90, 150 + 280, 150 + 761]; // 係数1.3の固まり / 止め(弱90・強150)+押し / 4段目=止め+浮き(585×1.3)
-    const ratio = holds.map((h, i) => (h.until - hitsAt[i] - stop[i]) / base[i]);
-    for (let i = 1; i < 4; i++) expect(ratio[i]).toBeLessThan(ratio[i - 1]);
+    // 基本の長さで割った固まりは段を追うごとに短くなる(減衰)。3段目からは浮かせ(§13-2)が入るので、地上の1・2段目で比べる。
+    const ratio = [0, 1].map(i => (holds[i].until - hitsAt[i] - 90) / 390);
+    expect(ratio[1]).toBeLessThan(ratio[0]);
     // 5段目の後に続けて1段目を当てても、固まりは4割近く(=次の段が届く前に切れる)
     const next = brawlerComboOnHit(en('z'), 's1', hitsAt[4] + 100); // 5段目の当たりの直後(止めが長くなった分、ループの終わりの now は流れの外になり得る)
     expect(next.holdMs).toBeLessThanOrEqual(Math.round(390 * 0.45));
     expect(next.holdMs).toBeGreaterThanOrEqual(Math.round(390 * BRAWLER_COMBO_FLOOR));
-    setBrawlerTempoAll(1.0);
+    } finally { setBrawlerTempoAll(1.0); }
   });
   it('1段目の連打は5段の順に繋ぐより早く抜けられる(同じ技の罰)', () => {
     setup();
@@ -903,7 +905,8 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
   it('雑魚に7発当てると振り払い: 赤い流星の円が溜めの頭から出て、消え切った瞬間に半径90で当たる(威力1.5倍・押される)', () => {
     setup();
     useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, invulnerable: false, health: 500, maxHealth: 500 } }));
-    for (let i = 0; i < BRAWLER_REVENGE_HITS_MOB; i++) { hit('z', (['s1', 's2', 's3', 's4'] as const)[i % 4], ((i % 4) + 1) as 1 | 2 | 3 | 4); advance(80); }
+    // 1・2段目だけで数える(3・4段目は浮かせる=§13-2。浮いている間は反撃を出さない)。
+    for (let i = 0; i < BRAWLER_REVENGE_HITS_MOB; i++) { hit('z', (['s1', 's2'] as const)[i % 2], ((i % 2) + 1) as 1 | 2); advance(80); }
     expect(en('z').brRevengePending).toBe(true);
     let startAt = -1, blastAt = -1, blastR = 0, visAtStart = false, erAtBlast = -1;
     const hp0 = useGameStore.getState().player.health;
@@ -953,7 +956,8 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
   it('構えで振り払いを受けるとカウンター成立=技ポイントが全回復', () => {
     setup(2);
     useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, health: 500, maxHealth: 500 } }));
-    for (let i = 0; i < BRAWLER_REVENGE_HITS_MOB; i++) { hit('z', (['s1', 's2', 's3', 's4'] as const)[i % 4], ((i % 4) + 1) as 1 | 2 | 3 | 4); advance(80); }
+    // 1・2段目だけで数える(3・4段目は浮かせる=§13-2。浮いている間は反撃を出さない)。
+    for (let i = 0; i < BRAWLER_REVENGE_HITS_MOB; i++) { hit('z', (['s1', 's2'] as const)[i % 2], ((i % 2) + 1) as 1 | 2); advance(80); }
     useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 3 } } }));
     let guarded = false, countered = false;
     const hp0 = useGameStore.getState().player.health;
@@ -1041,7 +1045,8 @@ describe('格闘の当たりでは強個体を雑魚と同じに扱う(社長指
     useGameStore.getState().triggerCounter(undefined, {
       targetIds: [id], mult: 1, brawler: true, stunMs: 90, postureMult: 1, pressedAt: Date.now(),
       kb: kb === 'big' ? { kind: 'big', dirX: 1, dirY: 0, bossHalf: true, ...(o.forced ? { ignoreImmune: true } : {}) } : { kind: kb, dirX: 1, dirY: 0 },
-      ...(o.lift ? { lift: true } : {}), combo: { move: 's3' },
+      // 3段目は浮かせる(§13-2)=重さで固まりの始まりが変わるので、比べる当たりは1段目の名札で入れる(浮かせは lift で明示)。
+      ...(o.lift ? { lift: true } : {}), combo: { move: o.lift ? 's4' : 's1' },
     });
   /** 強個体と雑魚に同じ当たりを入れて、止め・押し・浮かせ・固まりの欄を比べる。 */
   const pair = (kb: 'none' | 'normal' | 'big', o: { lift?: boolean; forced?: boolean } = {}) => {
@@ -1178,22 +1183,24 @@ describe('移動・待ちの相の敵も格闘で固まる(社長実機報告202
     expect((en('z').aiPhaseUntil ?? 0) - until0).toBeGreaterThanOrEqual(300); // 相の時計が止まった分だけ後ろへ
     expect(en('z').biteAt ?? 0).toBe(0);                      // 固まっている間は噛みを構えない
   });
-  it('予告の溜め(z-red-pause)に入ったゾンビは固まらない(体勢値・ダメージは入る)', () => {
+  it('★§13-1 予告の溜め(z-red-pause)に入ったゾンビも固まる(予算 400ms まで)・体勢値・ダメージは入る', () => {
     setup();
     const z = zombieAt(80, 0, 'z');
     Object.assign(z, { aiPhase: 'z-red-pause', aiPhaseUntil: useGameStore.getState().gameTime + 5000 });
     useGameStore.setState({ enemies: [z] });
     s1('z');
-    expect(en('z').brHoldUntil).toBeUndefined();
+    expect(en('z').brHoldUntil).toBeGreaterThan(now);
+    expect(en('z').brHoldUntil! - now).toBeLessThanOrEqual(400);
     expect(en('z').health).toBeLessThan(en('z').maxHealth);
   });
-  it('噛みつきを構えている敵(biteAt>0)は固まらない', () => {
+  it('★§13-1 噛みつきを構えている敵(biteAt>0)も固まる(予算の分だけ)', () => {
     setup();
     const z = zombieAt(80, 0, 'z');
     Object.assign(z, { aiPhase: 'zrush', aiPhaseUntil: useGameStore.getState().gameTime + 2000, biteAt: useGameStore.getState().gameTime + 1 });
     useGameStore.setState({ enemies: [z] });
     s1('z');
-    expect(en('z').brHoldUntil).toBeUndefined();
+    expect(en('z').brHoldUntil).toBeGreaterThan(now);
+    expect(en('z').brTechHoldKey).toContain('bite');
   });
   it('反撃も移動の相の敵で7発目に出る(実際の AI の更新で溜めに入る)', () => {
     approachUntil(['zrush', 'zpause']);
@@ -1326,7 +1333,7 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     expect(en('z').y).toBeCloseTo(y0, 5);
     expect((en('z').aiPhaseUntil ?? 0) - until0).toBeGreaterThanOrEqual(400);
   });
-  it('浮いている敵を殴ると浮きが続く(n 回目ほど短い)・地上の1段目では浮かない', () => {
+  it('浮いている敵を殴ると浮きが続く(§13-2: 長さは押し上げ量×重さ・回数は予算)・地上の1段目では浮かない', () => {
     setup();
     useGameStore.setState({ enemies: [zombieAt(60, 0, 'z')] });
     hitMove('z', 's1');
@@ -1336,11 +1343,13 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     hitMove('z', 's1');
     const e1 = en('z');
     expect(e1.brLiftN).toBe(1);
-    expect(e1.brLiftUntil).toBe(now + Math.max(140, Math.round(585 * 0.5 * 0.75)));
+    expect(e1.brLiftUntil).toBe(now + Math.max(140, Math.round(585 * 0.5)));
+    expect(e1.brLiftBudget).toBe(5); // 雑魚6 − 1段目1
     advance(100);
     hitMove('z', 's3');
     expect(en('z').brLiftN).toBe(2);
-    expect(en('z').brLiftMs!).toBeLessThan(585 * 0.75 * 0.75 + 1);
+    expect(en('z').brLiftMs!).toBe(Math.round(585 * 0.75));
+    expect(en('z').brLiftBudget).toBe(3); // − 3段目2
   });
   it('重さ: 雑魚・強個体・ボス級の順に低く短く浮く(ボス級も浮く)', () => {
     setup();
@@ -1364,7 +1373,8 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     hitMove('z', 's4', { lift: true }); advance(150);
     hitMove('z', 's5', { big: true });
     const e = en('z');
-    expect(e.liftUntil).toBe(now);
+    expect(e.liftUntil).toBe(now + 200); // §13-2: 締めの叩き落とし=ダウン(着地まで動けない)
+    expect(e.brLiftDown).toBe(true);
     expect(Math.abs(e.knockbackVx ?? 0)).toBeGreaterThan(0);
   });
   it('浮いている間は反撃を出さない(落ちてから)', () => {
