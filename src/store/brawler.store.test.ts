@@ -57,11 +57,11 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('格闘: 近接専用モード(§1)', () => {
-  it('格闘は近接専用モード=他のサブは止まる・鞭は動かない', () => {
+  it('格闘は近接専用モード=銃は止まる・他のサブは止まらない(社長指示2026-11-09)・鞭は動かない', () => {
     setup();
     const p = useGameStore.getState().player;
     expect(isMeleeOnlyMode(p)).toBe(true);
-    expect(subWeaponBlockedByKatana(p, 'heavy-grenade')).toBe(true);
+    expect(subWeaponBlockedByKatana(p, 'heavy-grenade')).toBe(false);
     expect(subWeaponBlockedByKatana(p, 'brawler')).toBe(false);
     expect(isWhipMode({ ...p, subWeapons: ['brawler', 'whip'] })).toBe(false);
   });

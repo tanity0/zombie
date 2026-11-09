@@ -12,7 +12,7 @@
 import type { Enemy, Player, Projectile } from '../types/game';
 import {
   notifySkillProc, spawnSkillProcFx,
-  useGameStore, isMeleeOnlyMode, isAttackLocked, isSeekerActive, skillLevel, SKATER_LOCK_ENABLED,
+  useGameStore, isMeleeOnlyMode, isKatanaMode, isAttackLocked, isSeekerActive, skillLevel, SKATER_LOCK_ENABLED,
   skillOutgoingDamageMult, skillBloodAwakenDamageMult, resolveShieldWalls, shieldPlayableCtx, PLAYER_MELEE_SWING_MS,
   sniperGunMult, skillComboMasterMult, bossCritStopPatch,
 } from '../store/gameStore';
@@ -122,8 +122,9 @@ export const resetNewGunsTick = (): void => {
 };
 
 /** 銃を撃てない状態(火炎放射器の封印と同じ並び。弾倉・リロードは各銃で別に見る)。 */
-const gunLocked = (p: Player, gameTime: number, gameWon: boolean): boolean =>
-  p.health <= 0 || gameWon || isMeleeOnlyMode(p) || isAttackLocked() // 刀・格闘(research/BRAWLER.md §1)
+// meleeOk=格闘中でも撃てる銃(スキャンセンサーだけ・社長指示2026-11-09「銃、スキャンセンサーだけは動く様にしたい」)。刀の間は今どおり止める。
+export const gunLocked = (p: Player, gameTime: number, gameWon: boolean, meleeOk = false): boolean =>
+  p.health <= 0 || gameWon || (isMeleeOnlyMode(p) && !(meleeOk && !isKatanaMode(p))) || isAttackLocked() // 刀・格闘(research/BRAWLER.md §1)
   || (isSeekerActive(p, gameTime) && skillLevel(p, 'seeker') < 3)
   || isPvpIncapacitated(p.pvpPosture, gameTime)
   || isPlayerGrabbed(p, gameTime)
@@ -207,7 +208,7 @@ export const tickNewGuns = (input: NewGunsTickInput): void => {
   const locked = gunLocked(p0, gameTime, st0.gameWon);
   tickBlob(gameTime, dtSec, active?.key === BLOB_WEAPON_KEY && !locked);
   tickSatellite(gameTime, dtSec, active?.key === SATELLITE_WEAPON_KEY, locked, input.moveInput);
-  tickScan(gameTime, active?.key === SCAN_WEAPON_KEY, locked);
+  tickScan(gameTime, active?.key === SCAN_WEAPON_KEY, gunLocked(p0, gameTime, st0.gameWon, true));
   refreshView();
 };
 

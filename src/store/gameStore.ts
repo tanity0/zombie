@@ -2291,8 +2291,7 @@ export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boo
   if (isKatanaMode(player)) {
     return key !== 'katana' && key !== 'murasame' && !KATANA_ALLOWED_SUBWEAPONS.includes(key);
   }
-  // 格闘中: 格闘以外のサブは全停止(刀と同じ・§1)。
-  if (hasBrawler(player)) return key !== 'brawler';
+  // 格闘中もサブウェポンは止めない(社長指示2026-11-09「銃はとめるけど、サブウェポンは止めないよ」・旧§1の全停止を撤回)。
   // ダンスフロア(shijin)装備中: shijin 以外のサブを停止。
   if (player.subWeapons.includes('shijin')) {
     return key !== 'shijin';
@@ -7413,7 +7412,17 @@ const applySlasherChainStrike = (
 };
 
 // 排他スキルのグループ(同グループ内は共存OK。例: 刀↔村雨)。それ以外のスキルとは共存不可。
-const EXCLUSIVE_SUBWEAPON_GROUPS: SubWeaponKey[][] = [['katana', 'murasame'], ['shijin'], ['alchemy', 'sage-stone'], ['brawler']];
+const EXCLUSIVE_SUBWEAPON_GROUPS: SubWeaponKey[][] = [['katana', 'murasame'], ['shijin'], ['alchemy', 'sage-stone']];
+/**
+ * 格闘と一緒に持てないサブ(近接が別物に置き換わって競合するもの=刀・村雨・鞭)。それ以外のサブは格闘と一緒に持てる
+ * (社長指示2026-11-09「銃はとめるけど、サブウェポンは止めないよ」・旧: 格闘は他のサブを全部外す排他だった)。
+ */
+export const BRAWLER_CONFLICT_SUBS: readonly SubWeaponKey[] = ['katana', 'murasame', 'whip'];
+/** 新しく持ったサブに合わせて、格闘と競合するものを外す(格闘を取ったら刀・村雨・鞭を外す/刀・村雨・鞭を取ったら格闘を外す)。純関数。 */
+export const dropBrawlerConflicts = (subs: readonly SubWeaponKey[], added: SubWeaponKey): SubWeaponKey[] =>
+  added === 'brawler' ? subs.filter(k => !BRAWLER_CONFLICT_SUBS.includes(k))
+    : BRAWLER_CONFLICT_SUBS.includes(added) ? subs.filter(k => k !== 'brawler')
+      : [...subs];
 
 const applySubWeaponCard = (player: Player, key: SubWeaponKey, cardLevel?: number): Player => {
   const known = player.subWeapons.includes(key);
@@ -7426,8 +7435,9 @@ const applySubWeaponCard = (player: Player, key: SubWeaponKey, cardLevel?: numbe
   };
   // 共存不可スキル(刀/村雨/ダンスフロア)を取得したら、同グループ以外の取得済みスキルをリセット(除去)。
   const group = EXCLUSIVE_SUBWEAPON_GROUPS.find(g => g.includes(key));
-  if (group) {
-    subWeapons = subWeapons.filter(k => group.includes(k));
+  if (group) subWeapons = subWeapons.filter(k => group.includes(k));
+  subWeapons = dropBrawlerConflicts(subWeapons, key);
+  if (subWeapons.length !== (known ? player.subWeapons.length : player.subWeapons.length + 1)) {
     const cleaned: Partial<Record<SubWeaponKey, number>> = {};
     for (const k of subWeapons) cleaned[k] = subWeaponLevels[k];
     subWeaponLevels = cleaned;
