@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5432', items: [
+    '秘奥義の間は、画面の中の敵が止まる。ボスは技を溜めている時だけ動く',
+  ] },
   { version: '0.25.5431', items: [
     '血の覚醒の間は、気功も強くなり、足が速くなった分だけ格闘も強くなる',
     '気絶した敵を浮かせて格闘でとどめを刺すと、ダメージが上がる',
