@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5418', items: [
+    '格闘の五段を順番につないでいる間は、敵が途中で動き出さない',
+  ] },
   { version: '0.25.5417', items: [
     '格闘で殴れば、敵の技の溜めも止められる。ただし止め続けると押し切ってくる',
     'アッパーと四段目で浮かせて、技や連打で空中の敵を拾い続けられる',
