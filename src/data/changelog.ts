@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5416', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5415', items: [
     '格闘の大踏み潰し・気功・秘奥義の締めが強くなり、飛び蹴りは三発目ほど重い',
     '技の後の隙に浮かせても、着地後にその隙が残る',
