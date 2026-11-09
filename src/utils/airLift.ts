@@ -12,45 +12,59 @@ export type AirLiftClass = 'mob' | 'strong' | 'boss';
 
 /** 爆心での高さ = 格闘の3段目の打ち上げ × これ(重さの前)。 */
 export const BLAST_LIFT_HEIGHT_OF_S3 = 0.6;
-/** 爆心での浮きの長さ = 格闘の浮きの基準(BRAWLER_LIFT_MS・テンポ係数込み)× これ。大きめに作って実機で絞る前提。 */
+/** 爆心での浮きの長さ = 格闘の浮きの基準(BRAWLER_LIFT_MS・テンポ係数込み)× これ × 重さ。大きめに作って実機で絞る前提。 */
 export const BLAST_LIFT_MS_MULT = 1.3;
-/** 爆風の縁ほど短く: 長さ = 爆心の長さ × (BASE + (1−BASE)×近さ)。 */
-export const BLAST_LIFT_MS_EDGE_BASE = 0.35;
 /** 爆発の浮きが使う拾える回数の予算(格闘と共有の予算から)。 */
 export const BLAST_LIFT_COST = 2;
 
-/** 爆心からの近さ(1=爆心・0=爆風の縁)。dist=爆心から敵の当たり判定の箱までの距離。 */
+/** 爆心からの近さ(1=爆心・0=爆風の縁)。dist=爆発のダメージと同じ物差し(爆心から敵の点=blastAnchorOf まで)。 */
 export const blastLiftCloseness = (dist: number, radius: number): number =>
   radius > 0 ? Math.max(0, Math.min(1, 1 - Math.max(0, dist) / radius)) : 0;
 
+/** 爆発の浮きの高さ(重さ×近さ・格闘の浮きの高さの倍率)。 */
+export const blastLiftPeak = (cls: AirLiftClass, closeness: number): number =>
+  BRAWLER_JUGGLE_PUSH.s3 * BLAST_LIFT_HEIGHT_OF_S3 * BRAWLER_JUGGLE_WEIGHT[cls] * Math.max(0, Math.min(1, closeness));
+
 /**
- * 爆発の浮き(§14)。null=浮かない(今のノックバックだけ)。
- *  - ボス級は浮かない(今の反応のまま)。技を出している最中の敵も浮かない(格闘の浮きと同じ区分の扱い)。
- *  - 高さ = 3段目の打ち上げ×0.6×重さ×近さ。縁ではほぼ浮かない(格闘の浮きの下限 MIN_F 未満は浮かない)。
- *  - 長さ = 格闘の浮きの基準×1.3×(0.35+0.65×近さ)。弧は爆発の形(上り20%・漂い15%・落ち65%)。
- *  - 予算は格闘と共有で2を使う。地上からは区分の予算−2で始まり、空中からは残りから2(足りなければ浮かない)。叩き落とし中は浮かない。
- *  - 地面で跳ね返らない(バウンドは格闘の大踏み潰しだけ)。
+ * 爆発の浮きの長さ(ms)。爆心で 基準×1.3×重さ(格闘と同じく重い敵ほど短い)。爆風の縁=高さが下限(MIN_F)に近いほど0へ寄せる
+ * (高さ−下限 に比例。ほとんど浮かないのに長く止まらない)。短すぎる跳ねの下限は格闘と同じ。
+ */
+export const blastLiftMs = (cls: AirLiftClass, closeness: number): number => {
+  const w = BRAWLER_JUGGLE_WEIGHT[cls];
+  const fMax = blastLiftPeak(cls, 1), f = blastLiftPeak(cls, closeness);
+  const edge = fMax > BRAWLER_JUGGLE_MIN_F ? Math.max(0, Math.min(1, (f - BRAWLER_JUGGLE_MIN_F) / (fMax - BRAWLER_JUGGLE_MIN_F))) : 0;
+  return Math.max(BRAWLER_JUGGLE_MIN_MS, Math.round(BRAWLER_LIFT_MS * BLAST_LIFT_MS_MULT * w * edge));
+};
+
+/**
+ * 爆発の浮き(§14)。null=浮かない(今のノックバックだけ)。closeness=近さ(0..1・その爆発のダメージと同じ物差し)。
+ *  - ボス級・浮かない区分(終端の死神=呼び手が brawlerLiftClass で null)は浮かない。技を出している最中の敵も浮かない(格闘と同じ)。
+ *  - 高さ = 3段目の打ち上げ×0.6×重さ×近さ。下限 MIN_F 未満は浮かない。長さは blastLiftMs。弧は爆発の形(上り20%・漂い15%・落ち65%)。
+ *  - 予算は格闘と共有で2を使う。地上からは区分の予算−2・空中からは残りから2(足りなければ浮かない)。叩き落とし中は浮かない。跳ね返らない。
+ *  - ★止めっぱなしにしない: 爆発の浮きで着地した敵は、浮いていた時間(空中が始まってから着地まで)と同じ長さだけ、爆発では浮かない。
  */
 export const blastLiftPatch = (
   e: BrawlerJuggleFields & Parameters<typeof isBrawlerTechBusy>[0],
-  cls: AirLiftClass, dist: number, radius: number, now: number, gameTime: number,
+  cls: AirLiftClass | null, closeness: number, now: number, gameTime: number,
 ): (Partial<BrawlerJuggleFields> & { liftUntil: number }) | null => {
-  if (cls === 'boss') return null;
+  if (cls === null || cls === 'boss') return null;
   if (isBrawlerTechBusy(e, gameTime)) return null;
-  const k = blastLiftCloseness(dist, radius);
-  const w = BRAWLER_JUGGLE_WEIGHT[cls];
-  const f = BRAWLER_JUGGLE_PUSH.s3 * BLAST_LIFT_HEIGHT_OF_S3 * w * k;
+  const f = blastLiftPeak(cls, closeness);
   if (f < BRAWLER_JUGGLE_MIN_F) return null;
   const airborne = brawlerAirborne(e, now);
   if (airborne && e.brLiftDown) return null;
+  if (!airborne && now < (e.brBlastNoLiftUntil ?? 0)) return null;
   const budget = (airborne ? (e.brLiftBudget ?? BRAWLER_JUGGLE_BUDGET[cls]) : BRAWLER_JUGGLE_BUDGET[cls]) - BLAST_LIFT_COST;
   if (budget < 0) return null;
-  const ms = Math.max(BRAWLER_JUGGLE_MIN_MS, Math.round(BRAWLER_LIFT_MS * BLAST_LIFT_MS_MULT * (BLAST_LIFT_MS_EDGE_BASE + (1 - BLAST_LIFT_MS_EDGE_BASE) * k)));
+  const ms = blastLiftMs(cls, closeness);
   const from = airborne ? brawlerJuggleHeightRel(e, now) : 0;
+  const airSince = airborne ? (e.brBlastAirSince ?? e.brawlerLiftAt ?? now) : now;
+  const end = now + ms;
   return {
     brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: from, brLiftN: airborne ? (e.brLiftN ?? 0) + 1 : 0,
-    brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true,
+    brLiftUntil: end, liftUntil: end, brLiftLand: true,
     brLiftBudget: budget, brLiftDown: false, brLiftDropMs: 0, brLiftShape: 'blast',
+    brBlastAirSince: airSince, brBlastNoLiftUntil: end + (end - airSince),
   };
 };
 
@@ -64,3 +78,11 @@ export const slasherLiftMove = (step: number, finalBig: boolean, airborne: boole
   if (!airborne) return null;
   return finalBig ? 's5' : 's2';
 };
+
+/** ★スラッシャーの1回目の打ち上げの長さの下限の余裕(ms)。 */
+export const SLASHER_LIFT_MARGIN_MS = 150;
+/**
+ * スラッシャーの1回目の打ち上げの長さの下限(§14)= 追撃の窓(チェーンの CD + 前隙 + 余裕)。
+ * 強個体・ボス級(重さ・ボスの止めの減衰で短くなる)でも、2回目の追撃が空中に間に合う。
+ */
+export const slasherLaunchMinMs = (chainCdMs: number, windupMs: number): number => chainCdMs + windupMs + SLASHER_LIFT_MARGIN_MS;

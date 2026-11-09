@@ -823,6 +823,9 @@ export interface Enemy {
   brLiftDropMs?: number;
   /** ★浮きの弧の形(research/BRAWLER.md §14・社長「浮き入れよう。落ちてくるのを爆発のは少しゆっくりに」)。'blast'=爆発で浮いた弧(上り20%・漂い15%・落ち65%)。無し=格闘の弧。 */
   brLiftShape?: 'blast';
+  /** ★爆発の浮き(§14): 今の空中が始まった時刻・爆発では浮かない窓の終わり(着地から、浮いていた時間と同じ長さ)。Date.now。 */
+  brBlastAirSince?: number;
+  brBlastNoLiftUntil?: number;
   // Spawn bookkeeping for the enemy-cap culler. Scripted-wave enemies get
   // a short grace period before they become eligible for culling so big
   // set-piece hordes aren't deleted the instant they appear.

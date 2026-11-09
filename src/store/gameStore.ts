@@ -283,7 +283,7 @@ import { stampMeleeSwingCommit } from '../utils/thorNihil';
 import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
 import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../utils/cameraZoom';
 import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
-import { blastLiftPatch, slasherLiftMove } from '../utils/airLift';
+import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
@@ -4317,8 +4317,36 @@ const startBrawlerPalmDash = (get: () => GameState, set: (fn: (s: GameState) => 
   brawlerSfx('homing-fire', 0.35, 1.5, 160);
 };
 /** 5段目: 軌跡の上の壊せる物(松明など)を壊す(一閃と同じ扱い・§9-26)。 */
-/** ★爆発の浮きの待ち行列(§14・playerBlast が積み、tickBrawler が掛ける)。描画にも保存にも出さない一時の箱。 */
+/** ★爆発の浮きの待ち行列(§14・playerBlast/queueBlastLift が積み、tickBrawler が掛ける)。描画にも保存にも出さない一時の箱。 */
 const pendingBlastLifts: { x: number; y: number; r: number }[] = [];
+/** 爆発のダメージが当たった敵(damageEnemy の blast=true・hitIds)。次の tickBrawler で待ち行列と突き合わせて捨てる。 */
+const blastHitIds = new Set<string>();
+/**
+ * 待ち行列の爆発を掛ける(§14)。浮くのは爆発のダメージが当たった敵だけ。同じフレームに爆発が重なったら、敵ごとに一番近い(強い)1回だけ
+ * (弧と予算を重ねて上書き・消費しない)。近さ=爆発のダメージと同じ物差し(爆心から blastAnchorOf まで ÷ 半径)。
+ */
+const applyPendingBlastLifts = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
+  if (pendingBlastLifts.length === 0) { blastHitIds.clear(); return; }
+  const q = pendingBlastLifts.splice(0, pendingBlastLifts.length);
+  const hit = new Set(blastHitIds);
+  blastHitIds.clear();
+  if (hit.size === 0) return;
+  const st = get();
+  const now = Date.now();
+  const patches = new Map<string, Partial<Enemy>>();
+  for (const e of st.enemies) {
+    if (!hit.has(e.id) || e.aiPhase === 'jump' || isCorpse(e) || isUntouchable(e)) continue;
+    let best = 0;
+    for (const b of q) {
+      const a = blastAnchorOf(e, b.x, b.y);
+      best = Math.max(best, blastLiftCloseness(Math.hypot(a.x - b.x, a.y - b.y), b.r));
+    }
+    if (best <= 0) continue;
+    const jp = blastLiftPatch(e, BRC.brawlerLiftClass(e), best, now, st.gameTime);
+    if (jp) patches.set(e.id, jp as Partial<Enemy>);
+  }
+  if (patches.size > 0) set(state => ({ enemies: state.enemies.map(e => { const p = patches.get(e.id); return p ? { ...e, ...p } : e; }) }));
+};
 /** 卵が割れた時のはじけ(近接で割った時の絵=breakPropsAlong と breakEggsWhere の共通)。 */
 const eggBreakFx = (get: () => GameState, broken: BreakableProp): void => {
   get().spawnBurst(broken.footX, broken.footY - 8, '#84cc16', 30);
@@ -4373,7 +4401,7 @@ const brawlerHitPatch = (
   // 範囲は格闘の当たりだけ(ナイフ・銃の強個体の扱いは変えない)。
   // ★ボス級も①止め・②食らいの固まりは雑魚と同じ(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」・§11-1)。
   //   押し(⑤)・浮き(③の重さ)・構え(④)・振り払い無し は今のまま。
-  const cls = BRC.brawlerComboClass(enemy.type);
+  const cls = BRC.brawlerEnemyClass(enemy);
   const bossLike = cls === 'boss';
   const strong = cls === 'strong';
   const comboSubject = !bossLike; // 振り払い(反撃)の対象=雑魚・強個体だけ
@@ -4492,6 +4520,7 @@ const brawlerHitPatch = (
  * (他の止める効果=ノックバック・会心の足止め・罠と同じ1カテゴリ=永久に止められない)。空中の追撃は減衰の数に入れない(重さと n 回目の減りで落ちる)。
  */
 const brawlerJugglePatch = (enemy: Enemy, cls: 'mob' | 'strong' | 'boss', move: BRC.BrawlerMoveKey, now: number): Partial<Enemy> | null => {
+  if (BRC.brawlerLiftClass(enemy) === null) return null; // ★終端の死神は浮かない(格闘・爆発・スラッシャー共通・§14)
   const jp = BRC.brawlerJugglePush(enemy, cls, move, now);
   if (!jp) return null;
   if (cls !== 'boss' || BRC.brawlerAirborne(enemy, now) || (jp.brLiftUntil ?? 0) <= now) return jp;
@@ -4757,7 +4786,7 @@ const startBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Pa
     });
   }
   brawlerSfx('heavy-impact', 1.0, 0.6);
-  brawlerSfx('bomb', 0.8, 0.75, undefined, 30);
+  brawlerSfx('bomb', 0.8, 0.75, undefined, 30); // 浮き: 秘奥義の起動の音(当たりは格闘の側)
   brawlerSfx('homing-fire', 0.7, 0.5, 300, 60);
 };
 /** 秘奥義を終える(フィニッシュの後・中断)。技ポイントは強制で0、段は1段目へ(§10-2-4・§10-3)。 */
@@ -4927,7 +4956,7 @@ const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Par
   for (const h of res.hitAt ?? []) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.closer);
   brawlerSfx('brawler-stomp', 1.0, 0.7);
   brawlerSfx('heavy-impact', 1.0, 0.55, undefined, 16);
-  brawlerSfx('bomb', 0.9, 0.7, undefined, 30);
+  brawlerSfx('bomb', 0.9, 0.7, undefined, 30); // 浮き: 秘奥義の締めの音(格闘の当たりとして浮く)
 };
 /** 秘奥義の1フレーム(tickBrawler から)。掴み・紫・死亡で中断。 */
 const tickBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
@@ -5337,7 +5366,7 @@ const brawlerKikoStrongAsMob = (
 /** 浮かせ追撃の着地の砂埃(§12-1・派手さの絵=判定より大きく)。重い区分ほど大きく・ボス級は小さく揺らす。 */
 const brawlerJuggleLandFx = (get: () => GameState, e: Enemy): void => {
   const g = get();
-  const cls = BRC.brawlerComboClass(e.type);
+  const cls = BRC.brawlerEnemyClass(e);
   const k = cls === 'boss' ? 1.8 : cls === 'strong' ? 1.35 : 1;
   const fx = e.x + e.width / 2, fy = e.y + e.height;
   g.spawnRing(fx, fy - 2, 6, 34 * k * (0.9 + Math.random() * 0.25), 'rgba(214,196,166,0.8)', 4, 360);
@@ -5352,7 +5381,7 @@ let brawlerJustAt = -1;
 export const brawlerJustStunMult = (now: number): number =>
   brawlerJustAt >= 0 && now - brawlerJustAt <= 30 ? BR.BRAWLER_JUST_STUN_MULT : 1;
 /** 気功の爆発で当たった敵の流れ(固まり・減衰・反撃の数)。knockbackEnemy の後に呼ぶ(押しの終わりから固まる)。 */
-const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.BrawlerMoveKey, countRevenge: boolean): void => {
+const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.BrawlerMoveKey, countRevenge: boolean, closeness?: number): void => {
   const now = Date.now();
   const gt = get().gameTime;
   useGameStore.setState(state => ({
@@ -5363,7 +5392,11 @@ const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.Brawler
       // ボス級も同じ固まり(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」・反撃の数は届かない)。
       const c = BRC.brawlerComboOnHit(e, move, now, countRevenge);
       // 浮かせ追撃(§12-1・§13-2): 浮いている敵に気功の爆発が当たっても浮き直す(押し上げ小・予算1)。ボス級も浮く。
-      const jp = busy ? null : brawlerJugglePatch({ ...e, ...c.patch }, BRC.brawlerComboClass(e.type), move, now);
+      let jp: Partial<Enemy> | null = busy ? null : brawlerJugglePatch({ ...e, ...c.patch }, BRC.brawlerEnemyClass(e), move, now);
+      // ★地上の敵は爆発の浮き(ゆっくり落ちる弧・予算は格闘と共有で2)で打ち上げる(社長承認2026-11-09「はい」・§14)。空中の敵は上の格闘の拾いのまま。
+      if (!jp && !busy && closeness !== undefined && !BRC.brawlerAirborne(e, now)) {
+        jp = blastLiftPatch({ ...e, ...c.patch }, BRC.brawlerLiftClass(e), closeness, now, gt) as Partial<Enemy> | null;
+      }
       const e1 = jp ? { ...e, ...jp } : e;
       const down = (jp as { brLiftDown?: boolean } | null)?.brLiftDown === true;
       if (!(c.holdMs > 0) || kind === 'active' || down) return { ...e1, ...c.patch };
@@ -5399,7 +5432,7 @@ const explodeBrawlerKiko = (
     const pr = o.move === 'secret' ? 1 : BRC.brawlerProrationFor(e, Date.now());
     const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * pr));
     const stunBefore = e.hitStunUntil;
-    const killed = get().damageEnemy(id, dmg, true, false, false, 'other');
+    const killed = get().damageEnemy(id, dmg, true, false, false, 'other'); // 浮き: 気功の爆発(地上は brawlerKikoComboHit が爆発の浮きで打ち上げ・空中は格闘の拾い)
     { const na = meleeNumberPoint(x, y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); } // ★爆心から見た当たった所(§9-75・小さな敵は今までどおり)
     dealt += dmg;
     if (!killed) {
@@ -5409,10 +5442,10 @@ const explodeBrawlerKiko = (
       const ddx = ecx - x, ddy = ecy - y, dl = Math.max(0.001, Math.hypot(ddx, ddy));
       const fall = blastKbFalloff(dl, radius);
       const str = (knockbackSpeedFor(BR.BRAWLER_KIKO_KB_PX, KNOCKBACK_DURATION) / BULLET_KNOCKBACK_SPEED) * skillExplosionKbMult(p);
-      if (BRC.brawlerComboClass(e.type) === 'strong') brawlerKikoStrongAsMob(get, id, stunBefore, dmg, ddx / dl, ddy / dl, str * fall);
+      if (BRC.brawlerEnemyClass(e) === 'strong') brawlerKikoStrongAsMob(get, id, stunBefore, dmg, ddx / dl, ddy / dl, str * fall);
       else get().knockbackEnemy(id, ddx / dl, ddy / dl, str * fall, Math.max(3, str) * fall);
       // ★食らいの固まり・減衰・反撃の数(research/BRAWLER.md §11)。押し(上)が明けてから固まる。技を出している最中・振り払いの溜めの間は固めない。
-      brawlerKikoComboHit(get, id, o.move ?? 'kiko', o.countRevenge !== false);
+      brawlerKikoComboHit(get, id, o.move ?? 'kiko', o.countRevenge !== false, 1 - Math.min(1, d / Math.max(1, radius)));
     }
     else {
       // 倒した敵は手榴弾の爆発と同じく経験値を落とし、断末魔を鳴らす(検収 A-2)。
@@ -5437,7 +5470,7 @@ const explodeBrawlerKiko = (
     }));
   }
   const g = get();
-  g.spawnExplosionFx(x, y, radius); // 浮き: 格闘の気功(浮きは格闘の当たりとして気功の分を掛ける)
+  g.spawnExplosionFx(x, y, radius); // 浮き: 気功の浮きは brawlerKikoComboHit(地上=爆発の浮き・空中=格闘の拾い)
   g.breakEggsInBlast(x, y, radius); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
   // 残る煙(vfx/smoke_04・沈んだ灰でゆっくり昇る)=延焼の気配。fx/hitfire は撮って比べた結果やめた(この大きさだと四角い柱に見える=§9-27)。
   g.spawnImageMark(x, y - 10, 'vfx/smoke_04', { scale: 0.9, duration: 1100, noPop: true, fadeFrom: 0.25, tint: 0x6b625a, alpha: 0.5, moveY: -34, rot: Math.random() * Math.PI * 2 });
@@ -5446,7 +5479,7 @@ const explodeBrawlerKiko = (
   g.spawnGlow(x, y, GLOW_R_L, 'rgba(255,240,210,', 320, true);
   if (ids.length > 0) g.registerMultiHit(ids.length);
   g.registerImpact({ source: 'explosion', damage: dealt, minMag: IMPACT_MELEE_MIN, flags: { explosion: true, kill: false }, x, y });
-  brawlerSfx('bomb', 0.8, 1.05);
+  brawlerSfx('bomb', 0.8, 1.05); // 浮き: 気功の爆発の音(浮きは brawlerKikoComboHit)
 };
 
 /**
@@ -7310,8 +7343,13 @@ const applySlasherChainStrike = (
         const live = get().enemies.find(x => x.id === e.id);
         const mv = live ? slasherLiftMove(step, isFinalBigKbStep, BRC.brawlerAirborne(live, nowL)) : null;
         if (live && mv && !BRC.isBrawlerTechBusy(live, gameTime)) {
-          const jp = brawlerJugglePatch(live, BRC.brawlerComboClass(live.type), mv, nowL);
-          if (jp) useGameStore.setState(state => ({ enemies: state.enemies.map(x => (x.id === e.id ? { ...x, ...jp } : x)) }));
+          let jp = brawlerJugglePatch(live, BRC.brawlerEnemyClass(live), mv, nowL);
+          // ★1回目の打ち上げは追撃の窓(CD+前隙+余裕)より短くしない=強個体・ボス級(重さ・止めの減衰)でも2回目が空中に間に合う(§14)。
+          if (jp && step <= 0 && jp.brLiftUntil !== undefined && jp.brawlerLiftAt !== undefined) {
+            const minMs = slasherLaunchMinMs(SLASHER_CHAIN_CD_MS, MELEE_WINDUP_MS);
+            if ((jp.brLiftMs ?? 0) < minMs) jp = { ...jp, brLiftMs: minMs, brLiftUntil: nowL + minMs, liftUntil: nowL + minMs };
+          }
+          if (jp) { const jpp = jp; useGameStore.setState(state => ({ enemies: state.enemies.map(x => (x.id === e.id ? { ...x, ...jpp } : x)) })); }
         }
       }
     }
@@ -8711,9 +8749,13 @@ interface GameState {
    * 卵を割り、爆風の中の雑魚・強個体を浮かせる(浮きは次の格闘の時計 tickBrawler で掛ける=同じフレームの爆発のダメージ・押しの書き込みと混ざらない)。
    * 敵の爆発・画面全体を消す爆弾の拾い物からは呼ばない。
    */
-  playerBlast: (cx: number, cy: number, radius: number) => void;
-  /** 爆風の円の中の雑魚・強個体を浮かせる(utils/airLift.blastLiftPatch・壁の向こうは浮かせない)。浮かせた数を返す。 */
-  liftEnemiesInBlast: (cx: number, cy: number, radius: number) => number;
+  playerBlast: (cx: number, cy: number, radius: number, hitIds?: readonly string[]) => void;
+  /**
+   * ★爆発の浮きだけ(卵は割らない)を待ち行列へ(§14)。浮くのは**その爆発のダメージが当たった敵だけ**: damageEnemy(…, blast=true) が
+   * 当たった敵を記録し、ダメージを damageEnemy を通さずに書く爆発は hitIds で渡す。近さはダメージと同じ物差し(爆心から blastAnchorOf まで)。
+   * 緑の卵の爆発(卵は割らずに連鎖させる)と、playerBlast の中身。
+   */
+  queueBlastLift: (cx: number, cy: number, radius: number, hitIds?: readonly string[]) => void;
   
   // Game state actions
   setGameTime: (time: number, realTime?: number) => void;
@@ -10486,10 +10528,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   tickBrawler: () => {
     // ★爆発の浮き(§14): 前のフレームまでの爆発を、ここでまとめて掛ける(爆発のダメージ・押しの書き込みと混ざらない)。
-    if (pendingBlastLifts.length > 0) {
-      const q = pendingBlastLifts.splice(0, pendingBlastLifts.length);
-      for (const b of q) get().liftEnemiesInBlast(b.x, b.y, b.r);
-    }
+    applyPendingBlastLifts(get, set);
     const st0 = get();
     if (st0.brawlerKiko.length > 0) stepBrawlerKiko(get, set);
     else brawlerKikoLastT = -1;
@@ -10680,6 +10719,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const r2 = bashRange * bashRange;
     const killedList: { enemy: Enemy; finisher: boolean }[] = [];
     const hitAt: { x: number; y: number }[] = [];
+    const hitIds: string[] = []; // ★覚醒の爆発の浮き(§14)に渡す当たった敵
     let dealtSum = 0; // 覚醒=距離減衰で個別ダメージになるため合計を積む(計測/統計用)
     let gpPatch: Partial<Enemy> | null = null; // research/GHOST_BOSS.md v6: 幻影の i-frame 打刻(同時1体)
     set(s => {
@@ -10700,6 +10740,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           gpDmgScale = gp.damageScale;
         }
         hitAt.push({ x: ecx, y: enemy.y - idolAirLift(enemy) });
+        hitIds.push(enemy.id);
         // 覚醒: 爆発の距離減衰(中心1.0〜外周0.55)。非覚醒: 従来どおり等倍。
         const eDmg = (skAwaken
           ? Math.max(1, Math.round(dmg * (0.55 + (1 - Math.sqrt(d2) / bashRange) * 0.45)))
@@ -10736,7 +10777,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().spawnBurst(x, y, '#bef264', 14);
     if (skAwaken) {
       get().spawnExplosionFx(x, y, bashRange); // 覚醒: 爆発flipbook(全爆発共通・v0.25.3283系) // 卵: 上のバッシュの円で割った
-      get().liftEnemiesInBlast(x, y, bashRange); // ★覚醒の爆発は浮かせる(§14・卵は上で割った=二度割りしない)
+      get().queueBlastLift(x, y, bashRange, hitIds); // ★覚醒の爆発は浮かせる(§14・卵は上で割った)。ダメージを直接書くので当たった敵を渡す
       get().registerMultiHit(hitAt.length);    // 爆発仕様: ヘビーガンナーの2体以上ヒット計上(M33⑤)
     }
     for (const h of hitAt) { get().spawnSlash(h.x, h.y, 'rgba(203,213,225,0.95)'); get().spawnMeleeBlood(h.x, h.y); } // 近接の血飛沫込み(v0.25.2026)
@@ -12731,6 +12772,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       get().spawnRing(cx, cy, 12, radius, 'rgba(255,170,70,0.9)', 5, 400);
       get().spawnBurst(cx, cy, '#ffae46', 22);
+      get().playerBlast(cx, cy, radius); // ★救急鞄(空鞄)の爆発も卵を割り、当たった敵を浮かせる(§14)
       get().spawnGlow(cx, cy, snapGlowRadius(radius * 0.55), 'rgba(255,150,60,', 400); // ★段へ丸める(v0.25.2808)
       // 半径内の敵に falloff ダメージ+押し出し(中心=b.fromX/Yではなく着弾点基準)。
       for (const e of get().enemies) {
@@ -16065,6 +16107,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSourceIn = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
+    if (blast) blastHitIds.add(id); // ★爆発の浮き(§14): 爆発のダメージが当たった敵だけが浮く(次の tickBrawler で待ち行列と突き合わせる)
     // research/ESCORT_TARGETED.md §5: 進軍NPCの弾は起因側 `escort:<id>`。**ヘイトのバケツだけ**軍人ごとに積み(下の hatePatch)、
     // それ以外の判定(揺れ・クリ・撃破カウント・英雄の被弾記録 …)はこれまでどおり 'player' 扱いのまま=軍人の弾の挙動は1bitも変えない。
     const hateEscortId = escortIdOfSide(hateSourceIn === 'neutral' || hateSourceIn === 'dog' ? undefined : hateSourceIn);
@@ -22485,27 +22528,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     return n;
   },
   breakEggsInBlast: (cx, cy, radius) => get().breakEggsWhere(egg => eggInCapsule(egg, cx, cy, 1, 0, 0, radius)),
-  playerBlast: (cx, cy, radius) => {
+  playerBlast: (cx, cy, radius, hitIds) => {
     get().breakEggsInBlast(cx, cy, radius);
-    if (pendingBlastLifts.length < 64) pendingBlastLifts.push({ x: cx, y: cy, r: radius });
+    get().queueBlastLift(cx, cy, radius, hitIds);
   },
-  liftEnemiesInBlast: (cx, cy, radius) => {
-    const st = get();
-    const now = Date.now();
-    const walls = meleeWallsAround(get, cx, cy, radius);
-    const patches = new Map<string, Partial<Enemy>>();
-    for (const e of st.enemies) {
-      if (!BR.isBrawlerTargetable(e) || e.aiPhase === 'jump') continue;
-      const cls = BRC.brawlerComboClass(e.type);
-      if (cls === 'boss') continue;
-      const dist = BR.brawlerDistTo(cx, cy, e);
-      if (dist > radius) continue;
-      if (walls.length > 0) { const q = meleeImpactPoint(cx, cy, e); if (segmentBlocked(cx, cy, q.x, q.y, walls)) continue; }
-      const jp = blastLiftPatch(e, cls, dist, radius, now, st.gameTime);
-      if (jp) patches.set(e.id, jp as Partial<Enemy>);
-    }
-    if (patches.size > 0) set(state => ({ enemies: state.enemies.map(e => { const p = patches.get(e.id); return p ? { ...e, ...p } : e; }) }));
-    return patches.size;
+  queueBlastLift: (cx, cy, radius, hitIds) => {
+    if (pendingBlastLifts.length < 64) pendingBlastLifts.push({ x: cx, y: cy, r: radius });
+    if (hitIds) for (const id of hitIds) blastHitIds.add(id);
   },
 
   // Equip a dropped/crate weapon into its slot. Auto-pick: a weapon only
@@ -24885,6 +24914,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
   
   resetGame: (characterClass) => {
+    pendingBlastLifts.length = 0; blastHitIds.clear(); // ★爆発の浮きの待ち行列を前ランへ持ち越さない(§14)
     shieldChargedKeys.clear(); // research/SHIELD_BLOCK.md §8: 継続技の「削った」記録を捨てる
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)

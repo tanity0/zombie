@@ -1339,7 +1339,7 @@ const spawnBossCrushExplosionFx = (x: number, y: number, primary = true): void =
   st.spawnGlow(x, y, GLOW_R_M, 'rgba(251,146,60,', 420);           // 火光(プール済み=軽い)
   if (primary) {                                                   // 同フレーム複数爆発時は揺れ/SEを1回に間引く
     st.triggerShake(BOSS_CRUSH_SHAKE_MS, BOSS_CRUSH_SHAKE_MAG);
-    playSfx('bomb');
+    playSfx('bomb'); // 浮き: ボスの障害物破壊の絵の音(プレイヤーの爆発ではない)
   }
 };
 const BOSS_SUMMON_AGGRO = 2000;                      // 裏ボスが召喚へ「吸い付く」最大距離(画面内の召喚は基本対象に)
@@ -9838,7 +9838,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const g = npcSfxDistGain(f.x, f.y, espx, espy, escam, esgb);
               if (g > boomGain) boomGain = g;
             }
-            if (boomGain > 0) playSfx('bomb', boomGain);
+            if (boomGain > 0) playSfx('bomb', boomGain); // 浮き: エンディングの兵士の爆撃の音(演出)
           }
         }
         // Move player based on input or swipe direction
@@ -11028,7 +11028,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (hasAmmoPickup) playSfx('ammo-pickup');
                 else if (hasWeaponPickup) playSfx('weapon-pickup');
                 else if (hasHealthPickup) playSfx('eat');
-                else if (hasBombPickup) playSfx('bomb');
+                else if (hasBombPickup) playSfx('bomb'); // 浮き: 爆弾の拾い物の音(対象外)
                 else playSfx('pickup');
 
                 spawnRing(activeFetch.targetX, activeFetch.targetY, 5, activeFetch.radius, 'rgba(203,213,225,0.34)', 2, 240);
@@ -14317,7 +14317,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               spawnBurst(mine.x, mine.y, '#7f1d1d', 8);
               useGameStore.getState().spawnGlow(mine.x, mine.y, GLOW_R_S, 'rgba(251,146,60,', smFxMs);
               useGameStore.getState().spawnExplosionFx(mine.x, mine.y, smBlastR); // v0.25.3283: 爆発flipbook
-              useGameStore.getState().playerBlast(mine.x, mine.y, smBlastR); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
+              // ★卵も割る(社長実機報告2026-11-09)。幻影の地雷(敵の爆発)は卵だけ割り、敵を浮かせない(§14)。
+              if (mine.hostile) useGameStore.getState().breakEggsInBlast(mine.x, mine.y, smBlastR);
+              else useGameStore.getState().playerBlast(mine.x, mine.y, smBlastR);
               const smWalls = aoeWalls(mine.x, mine.y);
               let smHitCount = 0;
               if (mine.hostile) {
@@ -14544,7 +14546,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const { x: ex, y: ey } = blastAnchorOf(e, bx, by); // 変異塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
                   if (Math.hypot(ex - bx, ey - by) > r) continue;
                   if (boomWalls.length > 0 && segmentBlocked(bx, by, ex, ey, boomWalls)) continue; // 壁越し不可
-                  const killed = damageEnemy(e.id, dmg, true); // 爆発=ボス系には非致死
+                  const killed = damageEnemy(e.id, dmg, true); // 爆発=ボス系には非致死 // 浮き: ドローンブーメランの停止中の持続の当たり(爆発の絵ではない・連続で浮かせない)
                   spawnDamageNumber(ex, e.y, dmg, false, { enemyId: e.id });
                   if (killed) {
                     playEnemyDeath();
@@ -16397,6 +16399,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const ex0 = egg.footX, ey0 = egg.footY - egg.height * 0.5;
               useGameStore.getState().damageBreakableProp(egg.id, 999); // 除去+destroyed登録(再生成防止)
               playSfx('bomb');
+              // ★卵の爆発でも周りの敵を浮かせる(社長承認2026-11-09「はい」=卵を撃って群れを打ち上げる・§14)。プレイヤー側の爆発と同じ扱い
+              // (当たった敵だけ・近さ・予算・爆発で浮かない窓)。卵は割らない(周りの卵は今どおり連鎖でアームする)。
+              useGameStore.getState().queueBlastLift(ex0, ey0, EGG_BLAST_RADIUS);
               spawnRing(ex0, ey0, 8, EGG_BLAST_RADIUS, 'rgba(248,113,113,0.85)', 4, 320);
               spawnBurst(ex0, ey0, '#ef4444', 14);
               spawnBurst(ex0, ey0, '#7f1d1d', 8);
@@ -16604,6 +16609,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // Lv3 はさらに範囲ダメージ(ボス系は非致死)。
             // エクスプローダー覚醒(Lv3・v0.25.3300): 爆発KB距離×1.5(爆撃=explode時のみ。Lv1/2の弾きは対象外)。
             const kbSpeed = WIRE_LAND_KNOCKBACK_SPEED * (explode ? 1.5 * skillExplosionKbMult(wp) : 1);
+            if (explode) useGameStore.getState().playerBlast(pcx, pcy, wireBombR); // ★Lv3 の着地の爆撃も卵を割り、当たった敵を浮かせる(§14)
             const hits = useGameStore.getState().enemies.filter(e => {
               if (e.aiPhase === 'jump') return false; // 空中無敵は対象外
               if (isCorpse(e)) return false; // KILL吹き飛び(死体・§26-2): 着地の強制ノックバック対象から除外
@@ -16813,7 +16819,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (hasAmmoPickup) playSfx('ammo-pickup');
           if (hasWeaponPickup) playSfx('weapon-pickup');
           if (hasHealthPickup) playSfx('eat');   // meat / health
-          if (hasBombPickup) playSfx('bomb');
+          if (hasBombPickup) playSfx('bomb'); // 浮き: 爆弾の拾い物の音(対象外)
 
           pickupCollisions.forEach(pickupId => {
             const pk = collPickups.find(p => p.id === pickupId);

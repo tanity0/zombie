@@ -3,7 +3,7 @@
 // 純関数だけ(store が読んで敵へ書く・pixi は読むだけ)。時計は Date.now(敵の hitStunUntil / knockbackUntil と同じ)。
 // 反撃の溜めと当たる時刻だけは敵の技の時計(gameTime・aiStartedAt / aiPhaseUntil)で持つ(予告の円が同じ時計を読む)。
 import type { EnemyType } from '../types/game';
-import { isBossType } from './enemyUtils';
+import { isBossType, isTerminalReaper } from './enemyUtils';
 import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { meteorPhase } from './telegraphStyle';
 import { isRecoverHoldPhase } from './recoverPhase';
@@ -67,6 +67,17 @@ export const brawlerKickMoveKey = (kickN: number): BrawlerMoveKey =>
  */
 export const brawlerComboClass = (type: EnemyType): 'mob' | 'strong' | 'boss' =>
   POSTURE_ELITE_TYPES.has(type) ? 'strong' : isBossType(type) ? 'boss' : 'mob';
+/**
+ * ★敵1体の区分(格闘・爆発・スラッシャーの浮き・固まりが使う1本・research/BRAWLER.md §14)。
+ * 型の区分に加えて、赤い個体(colorTier 'red'=強個体扱いの色階層)は雑魚の型でも強個体(区分仕様への整合)。
+ */
+export const brawlerEnemyClass = (e: { type: EnemyType; colorTier?: string }): 'mob' | 'strong' | 'boss' => {
+  const c = brawlerComboClass(e.type);
+  return c === 'mob' && e.colorTier === 'red' ? 'strong' : c;
+};
+/** ★浮きの区分。null=浮かない(終端の死神=深奥チェイサーは、格闘・爆発・スラッシャーのどれでも浮かない)。 */
+export const brawlerLiftClass = (e: { type: EnemyType; colorTier?: string; reaperChaser?: boolean }): 'mob' | 'strong' | 'boss' | null =>
+  isTerminalReaper(e) ? null : brawlerEnemyClass(e);
 /**
  * 振り払い(反撃・§11-3)の対象か(雑魚・強個体。ボス級は振り払わない)。
  * ★食らいの固まり・減衰・同じ技の罰は**ボス級にも掛かる**(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」・§11-1)。
@@ -392,6 +403,9 @@ export interface BrawlerJuggleFields {
   brLiftDropMs?: number;
   /** 弧の形('blast'=爆発の浮き・§14)。無し=格闘の弧。 */
   brLiftShape?: 'blast';
+  /** ★爆発の浮き(§14): 今の空中が始まった時刻(爆発で浮き直しても続く)・爆発では浮かない窓の終わり(着地から、浮いていた時間と同じ長さ)。Date.now。 */
+  brBlastAirSince?: number;
+  brBlastNoLiftUntil?: number;
   /** 流れの始まり(バウンドは1コンボに1回の区切り)。 */
   brComboStart?: number;
 }
@@ -470,8 +484,9 @@ export const brawlerJugglePush = (
     const f = push * w;
     if (f < BRAWLER_JUGGLE_MIN_F) return null;
     const ms = arc(f);
+    // brBlastAirSince: 空中の始まり(この後に爆発で浮き直した時、爆発で浮かない窓の長さを空中の時間で測る・§14)。
     return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: 0, brLiftN: 0, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined,
-      brLiftBudget: BRAWLER_JUGGLE_BUDGET[cls], brLiftDown: false, brLiftDropMs: 0 };
+      brLiftBudget: BRAWLER_JUGGLE_BUDGET[cls], brLiftDown: false, brLiftDropMs: 0, brBlastAirSince: now };
   }
   if (e.brLiftDown) return null; // ダウン中は拾えない
   const h = brawlerJuggleHeightRel(e, now);
