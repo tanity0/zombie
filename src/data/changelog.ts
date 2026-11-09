@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5427', items: [
+    '出撃前のボス一覧をやめ、STARTを押すとすぐ出撃する',
+    '一時停止画面に、その出撃で現れたボスが並ぶ。一度も出会っていないボスは「?」',
+  ] },
   { version: '0.25.5426', items: [
     '金環がくっきりしたドット絵になり、大きく見えるようになった。スリィエルの環も同じ絵でくっきり',
     '装備画面のサブウェポンに、金環の絵が付いた',
