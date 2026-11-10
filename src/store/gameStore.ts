@@ -10989,13 +10989,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(state => ({ player: {
         ...state.player, lungeVx: dir.x * v, lungeVy: dir.y * v, lungeUntil: startAt + ms, lungeMs: ms, lungeShape: 'push', lungeHoldUntil: 0,
       } }));
-      // 絵(派手さの絵・判定なし): 踏ん張った足が地面を削る筋を相手の側へ引き、足元の土を相手の方へ蹴り上げる。音は低い擦れ。
-      const ang = Math.atan2(dir.y, dir.x);
-      brawlerFx(get, -dir.x * 36, p.height * 0.34, 'fx/dash-wind', {
-        followPlayer: true, scale: 0.17, scaleX: 1.5, rot: ang, duration: ms + 140, fadeFrom: 0.45, moveX: dir.x * 18, moveY: dir.y * 18, alpha: 0.9,
-      });
-      get().spawnBurst(c.x - dir.x * 12, c.y + p.height / 2 - 4, '#cdb89a', 13, -dir.x, -dir.y);
-      get().spawnBurst(c.x + dir.x * 6, c.y + p.height / 2 - 2, '#8f7d68', 6, -dir.x, -dir.y);
+      // 絵(派手さの絵・判定なし): 踏ん張った足が地面を削った砂埃(社長指示2026-11-10「ステップのエフェクトは砂埃にして。白い線やめる」と同じ扱い=
+      // 白い筋 dash-wind と、芯が白く光る粒は使わない)。押され始めの足元に大きめの砂埃を置き、相手の側へ流す。大きさと尺はずらす。音は低い擦れ。
+      {
+        const footY = c.y + p.height / 2 - 12;
+        const qx = -dir.y, qy = dir.x; // 押される向きに直角
+        const puffs: readonly [number, number, number, number, number][] = [ // [沿う位置, 直角の位置, 大きさ, 尺, 濃さ]
+          [-6, 0, 0.3, 640, 0.75], [10, 10, 0.22, 520, 0.65], [4, -9, 0.18, 460, 0.6], [22, 3, 0.14, 400, 0.5],
+        ];
+        for (const [al, sd, sc, dur, a] of puffs) {
+          get().spawnImageMark(c.x + dir.x * al + qx * sd, footY + dir.y * al + qy * sd, 'fx/dust-puff', {
+            scale: sc, duration: dur, tint: 0x9a8b7a, alpha: a, moveX: -dir.x * 34 + qx * sd * 0.6, moveY: -dir.y * 34 + qy * sd * 0.6, fadeFrom: 0.35,
+          });
+        }
+      }
       brawlerSfx('whip-swing', 0.42, 0.58 * brJitter(), 160);
     }
   },
