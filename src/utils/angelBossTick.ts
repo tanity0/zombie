@@ -29,6 +29,7 @@ import {
   MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS, bossSlowMult, bossCritCdMult,
   shieldGuardsPlayerArea, shieldGuardsPlayerLine, currentFriendlyShield, noteShieldBeam, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
+  takeBrawlerBeamCut, // 格闘の構えで受けられた光線の中断(research/BRAWLER.md §12-3d)
 } from '../store/gameStore';
 import { splitBeamAtShield, beamStripsHit, type BeamShieldSplit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: レーザー=壁(光線の幅)
 import { getActiveGun } from './weaponUtils';
@@ -279,7 +280,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
   const pnow = Date.now();
   st.addMeleeFinishCombo(1);
   // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
-  if (!brawlerGuardCounterFx(hitX, hitY)) {
+  if (!brawlerGuardCounterFx(hitX, hitY, [{ id: boss.id, type: boss.type }])) {
     sfx.counter();
     st.spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
     st.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
@@ -2746,7 +2747,8 @@ export const runSurielTick = (
       // research/MUTANT_HERO.md §4-2: 同じ形で守護霊と英雄にも当てる(プレイヤーの判定は不変・プレイヤーの被弾/カウンターに関係なく毎回)。
       hitOthers(countered, { kind: 'test', hits: (hx, hy, hr) => srReaches(srSplit2, f2x, f2y, e2x, e2y, hx, hy, hr), fx: f2x, fy: f2y }, suriel.damage, suriel.id, 'suriel-ring');
     }
-    if (!countered && newGameTime >= (suriel.bossStateUntil ?? 0)) {
+    // ★格闘の構えで受けられた光線はここで中断=満了と同じ処理で技の後の休みへ(research/BRAWLER.md §12-3d・社長指示2026-11-10)。カウンター成立(上)が同じ回にあればそちらが優先(今どおり)。
+    if (!countered && (takeBrawlerBeamCut(suriel.id, newGameTime) || newGameTime >= (suriel.bossStateUntil ?? 0))) {
       patch.bossState = 'ring-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(SR_T.ringshot.recover, (suriel.bossScriptQueue?.length ?? 0) > 0);
     }
   } else if (st === 'ring-recover') {

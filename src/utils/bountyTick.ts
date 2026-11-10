@@ -30,6 +30,7 @@ import {
   bossSlowMult, ENEMY_REMOVE_CAUSE,
   shieldGuardsPlayerArea, currentFriendlyShield, noteShieldGuard, noteShieldBeam, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
+  takeBrawlerBeamCut, // 格闘の構えで受けられた光線の中断(research/BRAWLER.md §12-3d)
 } from '../store/gameStore';
 import { splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: レーザー=壁(光線の幅)
 import { maikoBoomProgress, maikoBounceTotalMs } from './maikoBoom'; // 手毬の位置式(絵と判定が同じ式を読む)
@@ -561,7 +562,7 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
   const pnow = Date.now();
   g.addMeleeFinishCombo(1);
   // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
-  if (!brawlerGuardCounterFx(hx, hy)) {
+  if (!brawlerGuardCounterFx(hx, hy, [{ id: bounty.id, type: bounty.type }])) {
     sfx.counter();
     g.spawnGlow(hx, hy, GLOW_R_L, 'rgba(56,189,248,', 360);
     g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
@@ -1005,7 +1006,8 @@ const tickRanged = (
     if (brReaches(ppx, ppy, pr)) {
       useGameStore.getState().damagePlayer(BR_T.laser.damage, `${enemyDeathLabel(bounty.type)}のレーザー`, ppx, ppy, undefined, undefined, 'br-laser', undefined, undefined, { type: bounty.type, id: bounty.id }); // G4a計測タグ(記録専用)
     }
-    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+    // ★格闘の構えで受けられた光線はここで中断=満了と同じ処理で技の後の休みへ(research/BRAWLER.md §12-3d・社長指示2026-11-10)
+    if (takeBrawlerBeamCut(bounty.id, newGameTime) || newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'laser-recover';
       patch.bossStateUntil = newGameTime + BR_T.laser.recover;
       patch.mimirLaserReadyAt = newGameTime + BR_T.laser.cdMs;
@@ -1386,7 +1388,8 @@ const tickMelee = (
     if (snReaches(ppx, ppy, pr)) {
       useGameStore.getState().damagePlayer(BM_T.snipe.damage, `${enemyDeathLabel(bounty.type)}の狙撃`, ppx, ppy, undefined, undefined, 'bm-snipe', undefined, undefined, { type: bounty.type, id: bounty.id }); // G4a計測タグ(記録専用)
     }
-    if (newGameTime >= (bounty.bossStateUntil ?? 0)) {
+    // ★格闘の構えで受けられた光線はここで中断=満了と同じ処理で技の後の休みへ(research/BRAWLER.md §12-3d・社長指示2026-11-10)
+    if (takeBrawlerBeamCut(bounty.id, newGameTime) || newGameTime >= (bounty.bossStateUntil ?? 0)) {
       patch.bossState = 'bm-snipe-recover';
       patch.bossStateUntil = newGameTime + BM_T.snipe.recover;
     }

@@ -3,7 +3,7 @@ import { RHYTHM_FLICK_FIRE_DIST, RHYTHM_FLICK_FIRE_SPEED, RHYTHM_FLICK_FIRE_WIND
 import { describe, expect, it } from 'vitest';
 import type { Enemy } from '../types/game';
 import {
-  BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS, brawlerAfterGuardCounter, brawlerTechCost,
+  BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS, brawlerEndGuardForStomp, BRAWLER_GUARD_QUICK_MS, brawlerTechCost,
   brawlerPalmDashDue, isBrawlerPalmDashing, brawlerKickFlightMs, BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, BRAWLER_STAND_STAGE2_KIND, brawlerSecretStep, brawlerSecretDue, brawlerSecretPickMove, brawlerSecretPickTarget, brawlerSecretStart, brawlerSecretEnd, BRAWLER_SECRET_GAP_MS, BRAWLER_SECRET_STRIKES, BRAWLER_SECRET_MOVES, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
   brawlerStartAttack, brawlerStartTech, brawlerPressDecision, brawlerAfterResolve, brawlerDueEvent, brawlerFinish,
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
@@ -61,11 +61,15 @@ describe('格闘: 表', () => {
       expect(brawlerCanPay(s0, k, false)).toBe(false);
     }
   });
-  it('構えのカウンター成立で技ポイントを上限まで全回復(社長指示2026-11-08)・上限なら同じ状態を返す', () => {
-    const s0 = { ...initialBrawlerState(), points: 0 };
-    const s1 = brawlerAfterGuardCounter(s0, 20, 77);
-    expect([s1.points, s1.gainAt]).toEqual([20, 77]);
-    expect(brawlerAfterGuardCounter(s1, 20, 999)).toBe(s1);
+  // ★書き換え(社長指示2026-11-10・research/BRAWLER.md §12-3d): 旧「構えのカウンター成立で技ポイントを上限まで全回復(2026-11-08)」は撤去された
+  // (全回復の純関数 brawlerAfterGuardCounter ごと削除)。代わりに、雑魚を受けて大踏み潰しへ移る直前の状態を固める=技ポイントも HUD の跳ねも動かない。
+  it('構えを受けで終える(大踏み潰しへ移る直前): 受けは切れ・前隙なしはいまから数える・技ポイントと HUD の跳ね(gainAt)は動かない', () => {
+    const s0 = { ...brawlerStartTech({ ...initialBrawlerState(), points: 2 }, 'guard', 1000), gainAt: 5 };
+    expect(isBrawlerGuardingAt(s0, 1100)).toBe(true);
+    const s1 = brawlerEndGuardForStomp(s0, 1100);
+    expect(isBrawlerGuardingAt(s1, 1100)).toBe(false);
+    expect(s1.quickUntil).toBe(1100 + BRAWLER_GUARD_QUICK_MS);
+    expect([s1.points, s1.gainAt]).toEqual([2, 5]);
   });
 });
 

@@ -135,6 +135,7 @@ import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純�
 import { isBrawlerGuardingAt } from '../utils/brawler';
 import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食らいの固まり・減衰・反撃=research/BRAWLER.md §11)
 import * as BRS from '../utils/brawlerSkills'; // 格闘×スキルの純関数(research/BRAWLER.md §15)
+import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
 import { noteAirMeleeHit, resetAirMeleeHit } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
@@ -4733,6 +4734,11 @@ const startBrawlerTech = (
   get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState, kind: BR.BrawlerTechKind, awakened = false,
   /** 技の後隙を取り消して出した(技→技のキャンセル・research/BRAWLER.md §11-4)。 */
   cancel = false,
+  /**
+   * ★代金なしで出す(構えで雑魚の攻撃を受けた瞬間の大踏み潰し・research/BRAWLER.md §12-3d)。技ポイントを払わず(返す抽選もしない)、
+   * 秘奥義の順番にも数えない(入力ではないため)。出だしの絵・音・当たりは普通の技と同じ。
+   */
+  free = false,
 ): void => {
   const st = get();
   const p = st.player;
@@ -4741,17 +4747,19 @@ const startBrawlerTech = (
   const c = brawlerCenter(p);
   const kickN = kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
   // ★タイムキーパー/オーバークロックの読み替え(research/BRAWLER.md §15・社長承認2026-11-09): 値段の割引と、確率で払った技ポイントを返す。
-  const techCost = BR.brawlerTechCost(kind, awakened, brawlerTechDiscount(p, kind));
-  const techRefund = BRS.brawlerOverclockRefunds(techCost, skillLevel(p, 'overclock'));
+  const techCost = free ? 0 : BR.brawlerTechCost(kind, awakened, brawlerTechDiscount(p, kind));
+  const techRefund = !free && BRS.brawlerOverclockRefunds(techCost, skillLevel(p, 'overclock'));
   if (techRefund) notifySkillProc('overclock');
   let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: now, points: s0.points - (techRefund ? 0 : techCost), ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
   // ★秘奥義の順番(research/BRAWLER.md §10-1): 実際に出た技で数える。↑構えで揃ったら、構えを秘奥義に置き換える(ポイントは払った後・窓は張らない)。
-  // キャンセルで繋いだ時は前の技の終わり=いま(0ms 扱い・§11-4)。
-  const secretStep = BR.brawlerSecretStep(s0.secretProgress ?? 0, cancel ? t : (s0.secretLastEndAt ?? 0), kind, kickN, t);
-  s = { ...s, secretProgress: secretStep.progress };
-  if (secretStep.fire) {
-    startBrawlerSecret(get, set, s);
-    return;
+  // キャンセルで繋いだ時は前の技の終わり=いま(0ms 扱い・§11-4)。代金なしの技(free)は数えない=順番の進みはそのまま。
+  if (!free) {
+    const secretStep = BR.brawlerSecretStep(s0.secretProgress ?? 0, cancel ? t : (s0.secretLastEndAt ?? 0), kind, kickN, t);
+    s = { ...s, secretProgress: secretStep.progress };
+    if (secretStep.fire) {
+      startBrawlerSecret(get, set, s);
+      return;
+    }
   }
   let extra: Partial<Player> = { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0 };
   if (kind === 'kick' || kind === 'kiko') {
@@ -7809,11 +7817,24 @@ export const currentFriendlyShield = (projectiles?: readonly { weaponType?: stri
  * ★格闘の構えの窓の中でカウンターが成立した時の演出の差し替え(research/BRAWLER.md §8-5)。構え中なら白金の受けを出して true
  * =呼び手は通常カウンターの演出(青い輪・光・「Counter!」・音・停止・スロー・寄り)を出さない。効果(打ち返し・気絶・コンボ)は呼び手が残す。
  */
-export const brawlerGuardCounterFx = (x: number, y: number): boolean => {
+export const brawlerGuardCounterFx = (x: number, y: number, sources?: readonly BRG.BrawlerGuardSource[]): boolean => {
   const st = useGameStore.getState();
   if (!isBrawlerGuarding(st.player, st.gameTime)) return false;
-  st.brawlerGuardReceive(x, y);
+  // sources=返した相手(打ち返した弾の撃ち主・弾いた技の持ち主)。区分で成立の効果が決まる(雑魚=潰し/雑魚より上・分からない=自分がノックバック・§12-3d)。
+  st.brawlerGuardReceive(x, y, undefined, sources ? { sources } : undefined);
   return true;
+};
+// ★構えで受けて中断させた光線(research/BRAWLER.md §12-3d・社長指示2026-11-10)。敵の id → 受けた時刻(gameTime)。resetGame で空にする。
+const brawlerBeamCuts = new Map<string, number>();
+/**
+ * この敵の光線は、格闘の構えで受けられて中断されたか(1度読んだら消える)。光線を撃ち続ける型の更新が、撃っている最中の州の
+ * 「満了」の条件へ足して読む=中断はその型の「普通に終わった時」と同じ処理(技の後の休み)へ進む。対象の一覧は utils/brawlerGuard の BRAWLER_CUT_BEAMS。
+ */
+export const takeBrawlerBeamCut = (enemyId: string, gameTime: number): boolean => {
+  const at = brawlerBeamCuts.get(enemyId);
+  if (at === undefined) return false;
+  brawlerBeamCuts.delete(enemyId);
+  return BRG.brawlerBeamCutValid(at, gameTime);
 };
 /** 構えの体の矩形(盾の代わり)。 */
 export const brawlerGuardBodyRect = (p: Player): Rect => ({ x: p.x, y: p.y, width: p.width, height: p.height });
@@ -7861,6 +7882,8 @@ export interface ShieldGuardInput {
   cost?: number;
   /** 「技の1回」のキーを直接指定(省略=attacker から作る)。 */
   key?: string;
+  /** 攻撃した個体の id(attacker を型だけで渡す呼び手用)。格闘の構えが相手の区分と光線の持ち主を引くのに使う(本物の盾の耐久・演出には使わない)。 */
+  ownerId?: string;
 }
 // research/SHIELD_BLOCK.md §8: 継続技(g-quad/g-nova)が1回の技の中で既に耐久を削ったか(キー→最後に防いだ gameTime)。resetGame で空にする。
 const shieldChargedKeys = new Map<string, number>();
@@ -7880,7 +7903,19 @@ export const noteShieldGuard = (shield: Rect, g: ShieldGuardInput = {}): void =>
   const scx = shield.x + shield.width / 2, scy = shield.y + shield.height / 2;
   // ★格闘の構え中の「盾」はプレイヤーの体(research/BRAWLER.md §8-5)。細いレーザーは体の面で切れて damagePlayer まで届かない
   // ことがあるので、ここで白金の受けを出す。本物の盾(守護霊の盾など)の耐久は削らない。
-  { const st = useGameStore.getState(); if (isBrawlerGuarding(st.player, st.gameTime)) { st.brawlerGuardReceive(g.x ?? scx, g.y ?? scy); return; } }
+  // ★受けた相手(個体・型)と、撃ち続ける光線か(kind 'beam')を渡す=成立の効果と光線の中断が決まる(§12-3d)。
+  {
+    const st = useGameStore.getState();
+    if (isBrawlerGuarding(st.player, st.gameTime)) {
+      const srcId = g.attacker !== undefined && typeof g.attacker !== 'string' ? (g.attacker.id ?? g.ownerId) : g.ownerId;
+      const srcType = attackerTypeOf(g.attacker);
+      st.brawlerGuardReceive(g.x ?? scx, g.y ?? scy, undefined, {
+        sources: srcId !== undefined || srcType !== undefined ? [{ id: srcId, type: srcType }] : [],
+        beam: g.kind === 'beam',
+      });
+      return;
+    }
+  }
   const cost = g.cost ?? shieldGuardCostFor(attackerTypeOf(g.attacker));
   const entry: ShieldGuardFxEntry = {
     x: g.x ?? scx, y: g.y ?? scy, dx: g.dx ?? 0, dy: g.dy ?? 1, kind: g.kind ?? 'hit',
@@ -7946,12 +7981,13 @@ export const noteShieldGuardFrom = (shield: Rect, srcX: number, srcY: number, at
  * 光線が盾に当たっている1フレーム(誰が後ろに居なくても): 毎秒10を dt で削り、接点の演出を積む。
  * 1本につき1フレーム1回だけ呼ぶ(複数本は別々に削る)。split は splitBeamAtShield の結果。
  */
-export const noteShieldBeam = (shield: Rect, split: BeamShieldSplit, dtSec: number, attacker?: ShieldGuardInput['attacker']): void => {
+export const noteShieldBeam = (shield: Rect, split: BeamShieldSplit, dtSec: number, attacker?: ShieldGuardInput['attacker'], ownerId?: string): void => {
   const c = split.contact;
   const t = attackerTypeOf(attacker);
   noteShieldGuard(shield, {
     attacker, kind: 'beam', x: c.x, y: c.y, dx: c.ux, dy: c.uy, sx: c.sx, sy: c.sy,
     cost: t === undefined ? shieldBeamDrainFor('mimir', dtSec) : shieldBeamDrainFor(t, dtSec),
+    ...(ownerId !== undefined ? { ownerId } : {}),
   });
 };
 
@@ -8760,7 +8796,11 @@ interface GameState {
   // 毎フレーム(useGameLoop)。格闘を持たない時は即 return。
   tickBrawler: () => void;
   // 構えで受けた(damagePlayer の入口・弾の弾き返し・カウンター成立)。x/y=受けた所。
-  brawlerGuardReceive: (x: number, y: number, sourceId?: string) => void;
+  /**
+   * 構えで受けた。sourceId=受けた相手(近ければ気絶させる)。opts.sources=区分の判定に使う相手(省略=sourceId だけ・無ければ「分からない」)。
+   * opts.beam=撃ち続ける光線の受け(持ち主が撃っている最中なら中断させる)。opts.dot=持続ダメージ(潰しもノックバックも出さない)。research/BRAWLER.md §12-3d。
+   */
+  brawlerGuardReceive: (x: number, y: number, sourceId?: string, opts?: { sources?: readonly BRG.BrawlerGuardSource[]; beam?: boolean; dot?: boolean }) => void;
   // 格闘の気功の弾(描画用・store が進める)。
   brawlerKiko: BrawlerKiko[];
   // ★兵士の蹴り飛ばし v3.1(research/ESCORT_TOSS.md)。蹴りの命中で呼ぶ=気絶中の敵をプレイヤーの斜め前へ滑らせる。滑らせたら true。
@@ -10189,6 +10229,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const lungeActive = !kbActive && kbNow < (player.lungeUntil ?? 0);
       // ★格闘のヒットストップの間は踏み込みの器の時計を止める(research/BRAWLER.md §8-2)。止めた分だけ期限を後ろへずらす。
       const lungeHeld = lungeActive && kbNow < (player.lungeHoldUntil ?? 0);
+      // ★構えで受けて押されている最中(research/BRAWLER.md §12-3d・器の形 'push')。向きは相手を向いたまま・スロー中はゲーム内の時間で進む。
+      const lungePushed = lungeActive && !lungeHeld && player.lungeShape === 'push';
       // スケーター急停止中: 入力を無視して残速度を素早く減衰(tau=50ms)=ほんの少し慣性のある急停止。
       const skaterStopping = !kbActive && kbNow < player.skaterStopUntil;
       // ★SAME_ARENA §9(対人体勢): 紫(3秒)+致命後daze(2秒)中は入力を無視して残速度を減衰
@@ -10224,7 +10266,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const d = Math.max(0, (player.lungeUntil - kbNow) / (player.lungeMs ?? MELEE_LUNGE_MS)); // 1→0
         // ★格闘の 'accel'(§8-2): 加速して最大速度のまま当たる(拳が止まりかけで当たると軽い=慣性は当たった後の反動で守る)。
         const shapeF = player.lungeShape === 'accel' ? BR.accelLungeFactor(1 - d)
-          : player.lungeShape === 'step' ? BR.brawlerStepFactor(1 - d) // 格闘のステップ(§12-3): 加速→減速
+          : player.lungeShape === 'step' || player.lungeShape === 'push' ? BR.brawlerStepFactor(1 - d) // 格闘のステップ(§12-3)・構えで押される(§12-3d): 加速→減速
           : d;
         // ★踏み込みも「移動」なのでトラップ効果中は7割(上の moveSpeed と同じ理屈・社長指示2026-10-10)。
         // 被弾ノックバック(上の枝)は**掛けられている力**なので対象外=そのまま飛ぶ。
@@ -10254,7 +10296,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 止められた刻みで移動を打ち切る(残りの速度も0)。刀の一閃は別件(触らない)。
       // ★刀の一閃(katana-dash)も同じく刻む(社長指示2026-11-07「一閃側をむしろ直せるとこ直す」・横向き17msで幹を抜けていた)。
       // 一閃は押し出されても刻みを続ける(壁沿いに滑る=1回で解いた時と同じ動き)。距離・速さ・時間・硬直は何も変えない。
-      const brawlerSweep = !warpTo && lungeActive && (player.lungeShape === 'accel' || player.lungeShape === 'step');
+      const brawlerSweep = !warpTo && lungeActive && (player.lungeShape === 'accel' || player.lungeShape === 'step' || player.lungeShape === 'push');
       const katanaSweep = !warpTo && dashing;
       let brawlerSweepStopped = false;
       let katanaSweepPushed = false;
@@ -10391,7 +10433,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const speedNow = Math.hypot(vx, vy);
       let direction: Direction = 'idle';
       let lastDirection = player.lastDirection;
-      if (speedNow > 1 && !swingFrozen) { // 振っている間は向きを変えない(残りの速度で向きが揺れないように)
+      if (speedNow > 1 && !swingFrozen && !lungePushed) { // 振っている間は向きを変えない(残りの速度で向きが揺れないように)。構えで押されている間も相手を向いたまま(§12-3d)
         lastDirection = { x: vx / speedNow, y: vy / speedNow };
         direction = Math.abs(vx) > Math.abs(vy)
           ? (vx > 0 ? 'right' : 'left')
@@ -10514,6 +10556,10 @@ export const useGameStore = create<GameState>((set, get) => ({
           aimY,
           shukuchiWarpTo: undefined,
           ...(lungeHeld ? { lungeUntil: player.lungeUntil + deltaTime * 1000 } : {}),
+          // ★構えで押される('push'): 器の時計は実時間なので、成立のスロー(構え1回の最初の受けで必ず掛かる)の間に進んだ実時間のうち
+          // ゲーム内で進んでいない分だけ期限を後ろへずらす=スロー中も決めた距離を押され切る(ずらさないと 1/5 しか動かない)。
+          // deltaTime はループが「実時間×スローの倍率×ゲームスピード」で渡す(useGameLoop の movePlayer)=ゲームスピードで割ってゲーム内の秒へ戻す。
+          ...(lungePushed ? { lungeUntil: player.lungeUntil + BRG.slowLostMs(deltaTime / GAME_SPEED, computeTimeSlowScale(kbNow, state.timeSlowStart, state.timeSlowUntil, state.timeSlowScale, state.timeSlowHoldMs)) } : {}),
           // 格闘の速い踏み込みが壁・木に止められた: 踏み込みを打ち切り、残りの速度も0(A-1)。
           ...(brawlerSweepStopped ? { lungeUntil: 0, lungeVx: 0, lungeVy: 0, vx: 0, vy: 0 } : {}),
           ...(katanaSweepPushed ? { vx: 0, vy: 0 } : {}),
@@ -10827,17 +10873,27 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
   },
-  brawlerGuardReceive: (x, y, sourceId) => {
+  brawlerGuardReceive: (x, y, sourceId, opts) => {
     const st = get();
     const p = st.player;
     if (!isBrawlerGuarding(p, st.gameTime) || !p.brawler) return;
     const now = Date.now();
     const s = p.brawler;
     const c = brawlerCenter(p);
+    // 光線などで毎フレーム来る受けは絵と音・成立の効果を間引く(同じ受けの続き)。
+    const throttled = now - (s.guardHitAt ?? 0) < BRG.BRAWLER_GUARD_THROTTLE_MS;
+    // ★受けた相手(区分の判定用・research/BRAWLER.md §12-3d)。呼び手が並べた相手、無ければ気絶させる相手(sourceId)。1件も無ければ「分からない」。
+    const sources: readonly BRG.BrawlerGuardSource[] = opts?.sources ?? (sourceId !== undefined ? [{ id: sourceId }] : []);
+    // ★光線を受けた(社長指示2026-11-10「光線防いだら中断させたい」): 撃っている最中の持ち主へ中断の合図を置く。間引きに関係なく切る
+    // (持ち主の更新が takeBrawlerBeamCut で読み、その型の「普通に終わった時」の処理へ進む=予告・絵・判定は状態と一緒に消える)。
+    {
+      const cutId = BRG.brawlerBeamCutTarget(opts?.beam === true, sources, st.enemies);
+      if (cutId !== null) brawlerBeamCuts.set(cutId, st.gameTime);
+    }
     // 受けた直後0.5秒は次の通常攻撃が前隙なしで出る(社長決定 #7)。構えは1秒固定で途中に動けないので、
     // 0.5秒は「受けた時刻と構えの終わりの遅い方」から数える(★未決 §9-4: 構えの最中に切れて使えない窓にしない)。
     // ★ジャスト構え(research/BRAWLER.md §12-2): 当たる直前120ms以内に構え(または延長)が出ていた受け。気絶は2倍・演出を一段強く・「JUST」。
-    const just = !(now - (s.guardHitAt ?? 0) < 140) ? BR.brawlerIsJustGuard(s, st.gameTime, BRS.brawlerJustWindowMs(counterAcceptMsOf(p) - COUNTER_ACCEPT_MS)) : false; // §15: 強化「カウンター受付」の延びぶんだけジャストの窓も延ばす // 間引かれる受け(光線など毎フレーム)はジャストにしない
+    const just = !throttled ? BR.brawlerIsJustGuard(s, st.gameTime, BRS.brawlerJustWindowMs(counterAcceptMsOf(p) - COUNTER_ACCEPT_MS)) : false; // §15: 強化「カウンター受付」の延びぶんだけジャストの窓も延ばす // 間引かれる受け(光線など毎フレーム)はジャストにしない
     if (just) brawlerJustAt = now;
     const stunMul = just ? BR.BRAWLER_JUST_STUN_MULT : 1;
     const next: BR.BrawlerState = { ...s, quickUntil: Math.max(st.gameTime, s.guardUntil) + BR.BRAWLER_GUARD_QUICK_MS };
@@ -10851,11 +10907,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (patch) set(state => ({ enemies: state.enemies.map(en => en.id === e.id ? { ...en, ...patch } : en) }));
       }
     }
-    if (now - s.guardHitAt < 140) { setBrawler(set, next); return; } // 光線などで毎フレーム来る受けは絵と音を間引く
+    if (throttled) { setBrawler(set, next); return; } // 光線などで毎フレーム来る受けは絵と音を間引く(潰しもノックバックも出さない=§12-3d)
+    // ★成立の効果(§12-3d・社長指示2026-11-10): 雑魚=代金なしの大踏み潰し / 雑魚より上・相手が分からない=自分が大きくノックバック / 持続ダメージ=なし。
+    const outcome = BRG.brawlerGuardOutcome({
+      throttled, dot: opts?.dot, classes: sources.map(src => BRG.brawlerGuardSourceClass(src, st.enemies)),
+    });
     // ★成立の記録(lastCounterSuccessTime)も通常のカウンターと同じく書く(社長承認2026-11-07・§9-42)。ループのエッジ検出が
     // 金の輪・ボムカウンター(とボマーの子爆弾)を出し、決めポーズの膨らみ・速度線・守護霊の記録(カウンター直後の窓)も同じ記録を読む。
-    // ★カウンター成立で技ポイントを上限まで全回復(社長指示2026-11-08)。HUD の数字は gainAt で一瞬明るく跳ねる。
-    setBrawler(set, { ...BR.brawlerAfterGuardCounter(next, BR.brawlerPointCap(brawlerLevel(p)), now), guardHitAt: now, ...(just ? { justAt: now } : {}) }, { lastCounterSuccessTime: now, ...counterMasterAwakenBuffPatch(p, st.gameTime) /* §15: カウンターマスター覚醒(成立後3秒+30%)も他のカウンターと揃える */ });
+    // ★技ポイントは増やさない(2026-11-08 の「カウンター成立で全回復」は社長指示2026-11-10 で撤去。HUD の跳ね=gainAt も打たない)。
+    setBrawler(set, { ...next, guardHitAt: now, ...(just ? { justAt: now } : {}) }, { lastCounterSuccessTime: now, ...counterMasterAwakenBuffPatch(p, st.gameTime) /* §15: カウンターマスター覚醒(成立後3秒+30%)も他のカウンターと揃える */ });
     // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
     // 画面全体は止めない・スローも使わない(カウンターの絵の時間停止は撤回済み+サブウェポンのスロー禁則)。揺れと小さな寄りで受ける。
     get().triggerShake(COUNTER_SHAKE_MS + 80, COUNTER_SHAKE_MAG * 1.4, c.x - x, c.y - y);
@@ -10906,6 +10966,37 @@ export const useGameStore = create<GameState>((set, get) => ({
       g.spawnCallout(c.x, c.y - 48, 'JUST', '#fffaf0', { bg: 0x8a6d2f, holdMs: MELEE_FINISH_SLOW_HOLD_MS + 120, duration: MELEE_FINISH_SLOW_MS + 160 });
       brawlerSfx('counter', 1.0, 1.32, undefined, 10);
       brawlerSfx('heavy-impact', 0.9, 0.55, undefined, 20);
+    }
+    // ★成立の効果を出す(§12-3d)。成立の演出・相手の気絶は上で今どおり出し終えている。
+    if (outcome === 'stomp') {
+      // 雑魚を受けた: その瞬間に大踏み潰しを代金なしで出す。構えはここで終わる(受けの窓もカウンター窓も閉じる)。
+      // 潰しの当たり・絵・音・強制ノックバックは普通の技と同じ経路(startBrawlerTech → 判定)。関所(掴み・紫など)に掛かっていれば出さない。
+      const cur = get().player.brawler;
+      if (cur && brawlerGateOk(get)) {
+        const gt = get().gameTime;
+        startBrawlerTech(get, set, BR.brawlerEndGuardForStomp(cur, gt), 'stomp', isBloodAwakening(get().player, gt), false, true);
+        set(state => ({ player: { ...state.player, counterWindowEnd: Math.min(state.player.counterWindowEnd, now) } }));
+      }
+    } else if (outcome === 'knockback') {
+      // 雑魚より上を受けた: 相手から離れる向きへ大きく押される(間合いが切れる=受け続けてのハメを作らない)。構えは時間いっぱい続く。
+      // 踏み込みの器へ載せる('push'=加速→減速の1山・壁と木は6px 刻みで解いて止まる・向きは相手を向いたまま)。
+      const stn = get();
+      const src = sources.map(q => (q.id !== undefined ? stn.enemies.find(en => en.id === q.id) : undefined)).find(en => en !== undefined);
+      const dir = BRG.brawlerGuardKnockDir(c, src ? { x: src.x + src.width / 2, y: src.y + src.height / 2 } : null, { x, y }, p.lastDirection);
+      const ms = BRG.BRAWLER_GUARD_KNOCK_MS;
+      const v = BR.brawlerStepSpeed(BRG.BRAWLER_GUARD_KNOCK_PX, ms);
+      const startAt = Math.max(now, stn.hitstopUntil); // 全体の停止の間は動けないので、明けてから押され始める
+      set(state => ({ player: {
+        ...state.player, lungeVx: dir.x * v, lungeVy: dir.y * v, lungeUntil: startAt + ms, lungeMs: ms, lungeShape: 'push', lungeHoldUntil: 0,
+      } }));
+      // 絵(派手さの絵・判定なし): 踏ん張った足が地面を削る筋を相手の側へ引き、足元の土を相手の方へ蹴り上げる。音は低い擦れ。
+      const ang = Math.atan2(dir.y, dir.x);
+      brawlerFx(get, -dir.x * 36, p.height * 0.34, 'fx/dash-wind', {
+        followPlayer: true, scale: 0.17, scaleX: 1.5, rot: ang, duration: ms + 140, fadeFrom: 0.45, moveX: dir.x * 18, moveY: dir.y * 18, alpha: 0.9,
+      });
+      get().spawnBurst(c.x - dir.x * 12, c.y + p.height / 2 - 4, '#cdb89a', 13, -dir.x, -dir.y);
+      get().spawnBurst(c.x + dir.x * 6, c.y + p.height / 2 - 2, '#8f7d68', 6, -dir.x, -dir.y);
+      brawlerSfx('whip-swing', 0.42, 0.58 * brJitter(), 160);
     }
   },
 
@@ -14714,7 +14805,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★格闘の構え(上・research/BRAWLER.md §3-2): この1秒に受けた攻撃は全て無効(紫・持続ダメージを含む)。止めた瞬間に受けの光と音。
     // ダメージを伴わない押し出し・吸い込みはここを通らない=無効にしない(§7-5)。
     if (isBrawlerGuarding(player, get().gameTime)) {
-      get().brawlerGuardReceive(fromX ?? player.x + player.width / 2, fromY ?? player.y + player.height / 2, sourceId ?? retaliateFromId ?? killerHint?.id);
+      // 受けた相手(個体・型)と、光線か(被弾の技キー)・持続ダメージかを渡す=成立の効果(雑魚=潰し/雑魚より上=ノックバック/光線の中断)が決まる(§12-3d)。
+      const guardSrcId = sourceId ?? retaliateFromId ?? killerHint?.id;
+      const guardSrcType = damagerType ?? killerHint?.type;
+      get().brawlerGuardReceive(fromX ?? player.x + player.width / 2, fromY ?? player.y + player.height / 2, guardSrcId, {
+        sources: guardSrcId !== undefined || guardSrcType !== undefined ? [{ id: guardSrcId, type: guardSrcType }] : [],
+        beam: BRG.isBrawlerBeamMove(damageSourceMove), dot,
+      });
       return false;
     }
 
@@ -17015,7 +17112,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const shieldBlocks: { x: number; y: number; kind: 'jump' | 'dash' }[] = []; // シールドで防いだ瞬間の接触点(FX/SE用)
     // research/SHIELD_BLOCK.md §1-2/§8: 盾が巨人の継続技(g-quad/g-nova/g-sweepbeam)・飛ぶ刃を防いだ記録(set 後に消化。set 内は再入 set 禁止)。
     // once=技の1回ぶんの重複キー(同じ技が毎フレーム防がれても耐久は1回だけ削る) / beam=光線(毎フレーム dt で削る)。
-    const shieldGuardHits: { shield: Rect; type: EnemyType | undefined; srcX: number; srcY: number; once?: string; beam?: BeamShieldSplit; blade?: { x: number; y: number; dx: number; dy: number; color: string } }[] = [];
+    const shieldGuardHits: { shield: Rect; type: EnemyType | undefined; /** 持ち主の id(光線だけ・格闘の構えの中断用) */ id?: string; srcX: number; srcY: number; once?: string; beam?: BeamShieldSplit; blade?: { x: number; y: number; dx: number; dy: number; color: string } }[] = [];
     const punisherHits: string[] = []; // パニッシャー: 巻き込んだ敵の id(set 後に近接半分ダメージを適用)
     const punisherContacts: { x: number; y: number }[] = []; // v0.25.3299: 一拍目(接触)のFX用座標
     let punisherDmg = 0;               // 近接ダメージの半分(set 内で算出)
@@ -19025,6 +19122,9 @@ export const useGameStore = create<GameState>((set, get) => ({
               // 細い帯(半幅30)が120°を900msかけて回転する(継続判定)。懐(回転の中心付近)が安全=
               // 帯の始点を中心からGIANT_SWEEPBEAM_INNER_RADIUSぶん前へ出した通常カプセル(ドーナツの
               // くり抜きではない=ウリの内径修正・v0.25.2376の方式を踏襲。図形と判定が完全一致する)。
+              // ★格闘の構えで受けられた(research/BRAWLER.md §12-3d・社長指示2026-11-10): この回は判定を1つも積まず、下の満了と同じ処理で休みへ
+              // (盾の受けの記録は set の後に消化するので、合図は受けた次のフレームに届く)。
+              const sbCut = takeBrawlerBeamCut(enemy.id, gameTime);
               const sbfx = enemy.aiFromX ?? ecx, sbfy = enemy.aiFromY ?? ecy;
               const sbtx = enemy.aiTargetX ?? ecx, sbty = enemy.aiTargetY ?? ecy;
               const baseAngle = Math.atan2(sbty - sbfy, sbtx - sbfx);
@@ -19040,16 +19140,16 @@ export const useGameStore = create<GameState>((set, get) => ({
               const sbSplit = friendlyShield
                 ? splitBeamAtShield(sbfx, sbfy, farX, farY, GIANT_SWEEPBEAM_HALF_WIDTH, friendlyShield, true, GIANT_SWEEPBEAM_INNER_RADIUS)
                 : null;
-              if (sbSplit && friendlyShield) shieldGuardHits.push({ shield: friendlyShield, type: enemy.type, srcX: sbfx, srcY: sbfy, beam: sbSplit });
+              if (sbSplit && friendlyShield && !sbCut) shieldGuardHits.push({ shield: friendlyShield, type: enemy.type, id: enemy.id, srcX: sbfx, srcY: sbfy, beam: sbSplit });
               const sbStrips: BeamStrip[] = sbSplit
                 ? sbSplit.strips
                 : [{ fx: nearX, fy: nearY, tx: farX, ty: farY, halfWidth: GIANT_SWEEPBEAM_HALF_WIDTH }];
               // 同じ帯で守護霊と英雄にも(giantActiveHit とは独立)。
-              for (const sg of sbStrips) thirdPartyHits.push({ shape: { kind: 'capsule', fx: sg.fx, fy: sg.fy, tx: sg.tx, ty: sg.ty, hw: sg.halfWidth }, dmg: enemy.damage, src: enemy.id, key: 'g-sweepbeam' });
+              if (!sbCut) for (const sg of sbStrips) thirdPartyHits.push({ shape: { kind: 'capsule', fx: sg.fx, fy: sg.fy, tx: sg.tx, ty: sg.ty, hw: sg.halfWidth }, dmg: enemy.damage, src: enemy.id, key: 'g-sweepbeam' });
               const playerR = Math.max(player.width, player.height) / 2;
-              const hitNow = !enemy.giantActiveHit && beamStripsHit(sbStrips, pcx, pcy, playerR, true);
+              const hitNow = !sbCut && !enemy.giantActiveHit && beamStripsHit(sbStrips, pcx, pcy, playerR, true);
               if (hitNow) pumpkinBlasts.push({ x: pcx, y: pcy, radius: playerR + 4, damage: enemy.damage, enemyId: enemy.id, moveKey: 'g-sweepbeam' });
-              if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+              if (sbCut || gameTime >= (enemy.aiPhaseUntil ?? 0)) {
                 return {
                   ...enemy, ...phaseFields, vx: 0, vy: 0,
                   aiPhase: 'g-sweepbeam-recover', aiPhaseUntil: atkUntil(scriptRestMs(GIANT_SWEEPBEAM_RECOVER_MS)),
@@ -20922,7 +21022,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const gameTimeNow = stNow ? stNow.gameTime : 0;
     const pcxNow = stNow ? stNow.player.x + stNow.player.width / 2 : 0, pcyNow = stNow ? stNow.player.y + stNow.player.height / 2 : 0;
     for (const h of shieldGuardHits) {
-      if (h.beam) { noteShieldBeam(h.shield, h.beam, deltaTime, h.type); continue; }
+      if (h.beam) { noteShieldBeam(h.shield, h.beam, deltaTime, h.type, h.id); continue; }
       if (h.blade) { noteShieldGuard(h.shield, { attacker: h.type, kind: 'blade', x: h.blade.x, y: h.blade.y, dx: h.blade.dx, dy: h.blade.dy, color: h.blade.color }); continue; }
       let cost: number | undefined;
       let kind: ShieldGuardFxEntry['kind'] = 'hit';
@@ -25246,6 +25346,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     pendingBlastLifts.length = 0; blastHitIds.clear(); // ★爆発の浮きの待ち行列を前ランへ持ち越さない(§14)
     resetAirMeleeHit(); BRC.resetAirHits(); // 空中の敵への倍率の数え(§16)も前ランへ持ち越さない
     shieldChargedKeys.clear(); // research/SHIELD_BLOCK.md §8: 継続技の「削った」記録を捨てる
+    brawlerBeamCuts.clear(); // 構えで中断させた光線の合図(research/BRAWLER.md §12-3d)も前ランへ持ち越さない
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)
     resetMapSightings(); // 一時停止の地図の「出会った敵」は出撃ごと(THEONE_ROUND2 §2-3)

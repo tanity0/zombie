@@ -206,7 +206,7 @@ export interface Player extends DashLocomotionState {
    * ★踏み込みの器の形(research/BRAWLER.md §8-2)。未指定/'decel'=従来(初速最大→線形に0)。
    * 'accel'=加速して最大速度のまま当たる(格闘のダッシュ・跳び・飛び蹴り)。
    */
-  lungeShape?: 'decel' | 'accel' | 'step'; // step=格闘のステップ(加速→減速・research/BRAWLER.md §12-3)
+  lungeShape?: 'decel' | 'accel' | 'step' | 'push'; // step=格闘のステップ(加速→減速・research/BRAWLER.md §12-3)/ push=構えで受けて押される(§12-3d・step と同じ形・向きは変えない・接触の無敵は付かない・スロー中はゲーム内の時間で進む)
   /** ★格闘のヒットストップの間は踏み込みの器の時計を止める(Date.now・この時刻まで速度0で期限を後ろへずらす)。 */
   lungeHoldUntil?: number;
   /** ★サブウェポン「格闘」の状態(research/BRAWLER.md §5)。格闘を持たない時は未設定のまま。 */

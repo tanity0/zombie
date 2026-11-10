@@ -101,6 +101,7 @@ import {
   currentFriendlyShield, noteShieldGuardFrom, noteShieldBeam, shieldGuardsPlayerLine, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
   baseSoldierName,
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
+  takeBrawlerBeamCut, // 格闘の構えで受けられた光線の中断(research/BRAWLER.md §12-3d)
 } from '../store/gameStore';
 import { shieldBlocksArea, shieldBlocksLine, splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md
 import { METAL_PALETTE, shieldBeamPalette, reflectAlongTravel, takeTechniqueStart, BEAM_HOLD_TICK_MS, beamHoldGain, type GuardPalette, type TechniqueGateState } from '../utils/shieldGuardFx'; // 防いだ演出の色・間引き・曲線(第2回クリエイティブ監査)
@@ -7143,7 +7144,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const pnow = Date.now();
                 addMeleeFinishCombo(1);
                 // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
-                if (!brawlerGuardCounterFx(hitX, hitY)) {
+                if (!brawlerGuardCounterFx(hitX, hitY, [{ id: boss.id, type: boss.type }])) {
                   playSfx('counter');
                   useGameStore.getState().spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
                   useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
@@ -7246,7 +7247,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const pnow = Date.now();
                 addMeleeFinishCombo(1);
                 // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
-                if (!brawlerGuardCounterFx(hitX, hitY)) {
+                if (!brawlerGuardCounterFx(hitX, hitY, [{ id: boss.id, type: boss.type }])) {
                   playSfx('counter');
                   useGameStore.getState().spawnGlow(hitX, hitY, GLOW_R_L, 'rgba(56,189,248,', 360);
                   useGameStore.getState().triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
@@ -8022,7 +8023,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   applyGhostAllyCapsuleHit(sg.fx, sg.fy, sg.tx, sg.ty,
                     sg.halfWidth, HB_MI.laser.damage, (x, y) => spawnBurst(x, y, '#bae6fd', 3), 'capsule:mimir-laser');
                 }
-                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                // ★格闘の構えで受けられた光線はここで中断=満了と同じ処理で技の後の休みへ(research/BRAWLER.md §12-3d・社長指示2026-11-10)
+                if (takeBrawlerBeamCut(boss.id, newGameTime) || newGameTime >= (boss.bossStateUntil ?? 0)) {
                   if (MIMIR_SCRIPT_ENABLED) { patch.bossState = 'laser-recover'; patch.bossStateUntil = newGameTime + choreographyRecoverMs(HB_MI.laser.recover, (boss.bossScriptQueue?.length ?? 0) > 0); }
                   else { patch.bossState = 'chase'; patch.bossNextActionAt = nextActionDelay(); }
                 }
@@ -8144,7 +8146,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   if (shots > 0) playSfx('homing-fire', 0.45, undefined, 0.85);
                   patch.mimirWheelShots = k;
                 }
-                if (newGameTime >= (boss.bossStateUntil ?? 0)) {
+                // ★格闘の構えで受けられた光線はここで中断=満了と同じ処理で技の後の休みへ(research/BRAWLER.md §12-3d・社長指示2026-11-10)
+                if (takeBrawlerBeamCut(boss.id, newGameTime) || newGameTime >= (boss.bossStateUntil ?? 0)) {
                   patch.bossState = 'wheel-recover';
                   patch.bossStateUntil = newGameTime + choreographyRecoverMs(W.recover, (boss.bossScriptQueue?.length ?? 0) > 0);
                 }

@@ -711,18 +711,24 @@ describe('構えで受けた時もカウンター成立の記録を書く(社長
   });
 });
 
-describe('構えのカウンター成立で技ポイントを全回復(社長指示2026-11-08)', () => {
-  it('構え(3ポイント)で受けると、技ポイントがレベルの上限まで戻る', () => {
-    setup();
-    useGameStore.getState().brawlerPress(); advance(400);
-    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, brawler: { ...st.player.brawler!, points: 3 } } }));
-    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
-    expect(useGameStore.getState().player.brawler!.points).toBe(0);
-    advance(20);
-    const c = center();
-    useGameStore.getState().brawlerGuardReceive(c.x + 30, c.y);
-    const p = useGameStore.getState().player;
-    expect(p.brawler!.points).toBe(brawlerPointCap(1)); // setup は Lv1
+// ★書き換え(社長指示2026-11-10・research/BRAWLER.md §12-3d): 旧「構えのカウンター成立で技ポイントを全回復(2026-11-08)」は撤去された。
+// 新しい決め=構えで受けても技ポイントは増えない(HUD の跳ね=gainAt も出ない)。成立の効果は下の「構えの成立の作り直し」で固める。
+describe('構えで受けても技ポイントは増えない(社長指示2026-11-10・全回復の撤去)', () => {
+  it('構え(3ポイント)で受けても、技ポイントは払った後のまま・gainAt も打たれない(相手が分からない受け/雑魚/ボス級のどれでも)', () => {
+    for (const who of ['unknown', 'mob', 'boss'] as const) {
+      setup();
+      useGameStore.getState().brawlerPress(); advance(400);
+      const foe = who === 'mob' ? [zombieAt(60, 0, 'z')] : who === 'boss' ? [{ ...zombieAt(120, 0, 'h'), type: 'hunter' as const }] : [];
+      useGameStore.setState(st => ({ enemies: foe, player: { ...st.player, brawler: { ...st.player.brawler!, points: 3, gainAt: 0 } } }));
+      expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+      expect(br().points, who).toBe(0);
+      advance(20);
+      const c = center();
+      useGameStore.getState().brawlerGuardReceive(c.x + 30, c.y, foe[0]?.id);
+      expect(br().points, who).toBe(0);
+      expect(br().gainAt ?? 0, who).toBe(0);
+      expect(br().points, who).toBeLessThan(brawlerPointCap(1));
+    }
   });
 });
 
@@ -954,24 +960,27 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     expect(e.brHoldUntil).toBeUndefined();
     expect(e.health).toBeLessThan(e.maxHealth);
   });
-  it('構えで振り払いを受けるとカウンター成立=技ポイントが全回復', () => {
+  // ★書き換え(社長指示2026-11-10・§12-3d): 旧「構えで振り払いを受けるとカウンター成立=技ポイントが全回復」。全回復は撤去され、
+  // 雑魚の技を受けた瞬間に大踏み潰しが代金なしで出る(技ポイントは構えの代金を払った後のまま)。
+  it('構えで振り払いを受けるとカウンター成立=技ポイントは増えず、代金なしの大踏み潰しへ移る', () => {
     setup(2);
     useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, health: 500, maxHealth: 500 } }));
     // 1・2段目だけで数える(3・4段目は浮かせる=§13-2。浮いている間は反撃を出さない)。
     for (let i = 0; i < BRAWLER_REVENGE_HITS_MOB; i++) { hit('z', (['s1', 's2'] as const)[i % 2], ((i % 2) + 1) as 1 | 2); advance(80); }
     useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 3 } } }));
-    let guarded = false, countered = false;
+    let guarded = false, countered = false, sawStomp = false;
     const hp0 = useGameStore.getState().player.health;
     advanceAll(900, () => {
       const st = useGameStore.getState();
       const e = st.enemies.find(x => x.id === 'z');
       if (!guarded && e?.aiPhase === 'br-revenge') { guarded = st.brawlerTech(0, -1); }
-      if (st.pumpkinBlasts.some(b => b.moveKey === 'br-revenge')) { applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, tunables); countered = true; }
+      if (st.pumpkinBlasts.some(b => b.moveKey === 'br-revenge')) { applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, tunables); countered = true; sawStomp = useGameStore.getState().player.brawler?.tech === 'stomp'; }
     });
     expect(guarded).toBe(true);
     expect(countered).toBe(true);
     expect(useGameStore.getState().player.health).toBe(hp0);
-    expect(br().points).toBe(brawlerPointCap(2));
+    expect(br().points).toBe(0); // 3ポイント − 構えの3 = 0 のまま(全回復しない・潰しの代金も払わない)
+    expect(sawStomp).toBe(true);  // 受けた瞬間に大踏み潰しへ移った
   });
   it('技→技のキャンセル: 当たった大踏み潰しの後隙を気功で取り消せる・空振りからは取り消せない(構えは別)', () => {
     setup(3);

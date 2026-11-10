@@ -602,7 +602,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     // 通常カウンター(弾反射)と同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
     fx.addMeleeFinishCombo(1);
     // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
-    if (!brawlerGuardCounterFx(bpcx, bpcy)) {
+    if (!brawlerGuardCounterFx(bpcx, bpcy, localParries.length > 0 ? [] : parriedEnemyIds.map(h => ({ id: h.id })))) { // 返した相手の区分で成立の効果が決まる(§12-3d)。持ち主の無い弾き(矢の雨など)が混じれば「分からない」
       fx.playSfx('counter');
       fx.spawnGlow(bpcx, bpcy, GLOW_R_L, 'rgba(56,189,248,', 360);
       fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);
@@ -1006,6 +1006,7 @@ export const applyEnemyProjectileHits = (
   let reflectedAny = false;
   let reflectedAt: { x: number; y: number } | null = null; // 最初に打ち返した弾の位置(カウンターした地点の向き)
   const reflectedOwnerIds = new Set<string | undefined>(); // 打ち返した弾の持ち主(守護霊の記録=G1 の通知用・v0.25.5042)
+  const reflectedSources: { id?: string; type?: Enemy['type'] }[] = []; // 打ち返した弾の撃ち主(格闘の構えの成立の効果を区分で決める・research/BRAWLER.md §12-3d)
   for (const proj of incoming) {
     const currentPlayer = useGameStore.getState().player;
     // ★紫の文法(SAME_ARENA O-3): `noCounter` の弾は**打ち返せない**。既定(未設定)は従来どおり反射する
@@ -1019,6 +1020,7 @@ export const applyEnemyProjectileHits = (
       applyCounterReflect(proj.id, now, currentPlayer, tunables);
       reflectedAny = true;
       reflectedOwnerIds.add(proj.ownerId);
+      reflectedSources.push({ id: proj.ownerId, type: proj.ownerType });
       if (reflectedAt === null) reflectedAt = { x: proj.x + proj.width / 2, y: proj.y + proj.height / 2 };
     } else {
       const wasVulnerable = !useGameStore.getState().player.invulnerable;
@@ -1154,7 +1156,7 @@ export const applyEnemyProjectileHits = (
     for (const id of reflectedOwnerIds) notifyCounterHit(id);
     fx.addMeleeFinishCombo(1);
     // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
-    if (!brawlerGuardCounterFx(reflectedAt?.x ?? player.x + player.width / 2, reflectedAt?.y ?? player.y + player.height / 2)) {
+    if (!brawlerGuardCounterFx(reflectedAt?.x ?? player.x + player.width / 2, reflectedAt?.y ?? player.y + player.height / 2, reflectedSources)) { // 撃ち主の区分で成立の効果が決まる(雑魚の弾=潰し/雑魚より上・撃ち主が分からない=自分がノックバック)
       fx.playSfx('counter');
       const pcx = player.x + player.width / 2;
       const pcy = player.y + player.height / 2;
@@ -1619,7 +1621,8 @@ export const applyContactDamage = (
   // 「判定をすり抜ける」道具ではない(SAME_ARENA.md §7-4)。ここを広げると、今日作った
   // 同条件の土俵(近接/カウンターは無敵を貫通する)が崩れる。
   // 狙い: 前隙の頭で群れへ突っ込んだ瞬間に、避けようのない体当たりで削られるのを防ぐ。
-  const lungeContactImmune = Date.now() < (collPlayer.lungeUntil ?? 0);
+  // ★格闘の構えで受けて押されている間('push'・research/BRAWLER.md §12-3d)は自分の踏み込みではない=この無敵は付けない。
+  const lungeContactImmune = Date.now() < (collPlayer.lungeUntil ?? 0) && collPlayer.lungeShape !== 'push';
   const wireDashingNow = Date.now() < wpImmune.wireDashUntil || Date.now() < wpImmune.wireHopUntil || !!wpImmune.wireStuckEnemyId;
   // 突進(ダッシュ)カウンター: 突進中(aiPhase==='charge')の敵にカウンター窓中で接触すると弾く
   // (無傷＋敵へのダメージ無し＋2倍ノックバックで突進中断)。ジャンプ着地と同じ「弾き」挙動。
@@ -2143,7 +2146,7 @@ export const applyContactDamage = (
     const pp = useGameStore.getState().player;
     const ppx = pp.x + pp.width / 2, ppy = pp.y + pp.height / 2;
     // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
-    if (!brawlerGuardCounterFx(ppx, ppy)) {
+    if (!brawlerGuardCounterFx(ppx, ppy, bossContactParries.map(c => ({ id: c.id })))) { // 弾いた相手の区分で成立の効果が決まる(§12-3d)
       fx.playSfx('counter');
       fx.spawnRing(ppx, ppy, 10, 60, 'rgba(56,189,248,0.85)', 3, 260);
       fx.spawnBurst(ppx, ppy, '#38bdf8', 8);
@@ -2170,7 +2173,7 @@ export const applyContactDamage = (
     // 通常カウンターと同じ演出: 「Counter!」表示＋カウンターSE＋ヒットインパクト＋コンボ。
     fx.addMeleeFinishCombo(1);
     // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
-    if (!brawlerGuardCounterFx(ppx, ppy)) {
+    if (!brawlerGuardCounterFx(ppx, ppy, dashParried.map(id => ({ id })))) { // 弾いた相手の区分で成立の効果が決まる(雑魚の突進・噛み=潰し/雑魚より上=自分がノックバック・§12-3d)
       fx.playSfx('counter');
       fx.spawnGlow(ppx, ppy, GLOW_R_L, 'rgba(56,189,248,', 360);
       fx.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0 /* 揺れは damageEnemy(counter)→registerImpact・v0.25.4286 */, COUNTER_ZOOM_MAG);

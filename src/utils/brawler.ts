@@ -376,10 +376,13 @@ export const brawlerAfterHurtPoints = (s: BrawlerState, cap: number, hurt: boole
   return next === s.points ? s : { ...s, points: next, gainAt: now };
 };
 
-/** 構えのカウンターが成立した時の技ポイント=上限まで全回復(社長指示2026-11-08「格闘のカウンターが成立すると格闘ポイントを全回復する」)。
- *  増えた時だけ gainAt を打つ(既に上限なら状態は同じ物を返す)。 */
-export const brawlerAfterGuardCounter = (s: BrawlerState, cap: number, now: number): BrawlerState =>
-  s.points >= cap ? s : { ...s, points: cap, gainAt: now };
+/**
+ * 構えを受けで終える(雑魚の攻撃を受けて大踏み潰しへ移る直前・research/BRAWLER.md §12-3d・社長指示2026-11-10)。
+ * 受けはここで切れ、受けた直後の前隙なしは「いま」から数える(構えの終わり=いま)。技ポイントは動かさない
+ * (2026-11-08 の「カウンター成立で全回復」は撤去=構えで受けても技ポイントは増えない)。
+ */
+export const brawlerEndGuardForStomp = (s: BrawlerState, t: number): BrawlerState =>
+  ({ ...s, guardUntil: 0, quickUntil: t + BRAWLER_GUARD_QUICK_MS });
 
 /** 判定を解いた後の状態(当たった/外れた)。当たった時はポイントと止めも足す。 */
 export const brawlerAfterResolve = (

@@ -17,6 +17,7 @@ import {
   useGameStore, bossCritCdMult, bossSlowMult, enemyDeathLabel,
   knockbackSpeedFor,
   currentFriendlyShield, noteShieldBeam, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
+  takeBrawlerBeamCut, // 格闘の構えで受けられた光線の中断(research/BRAWLER.md §12-3d)
 } from '../store/gameStore';
 import { splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: レーザー=壁(光線の幅)
 import { createEnemyProjectile } from './enemyUtils';
@@ -937,7 +938,8 @@ export const runIdolTick = (
       const died = useGameStore.getState().damagePlayer(IDOL_TUNING.moveDamage.snipe, `${enemyDeathLabel(idol.type)}の狙撃`, pcx, pcy, undefined, undefined, 'idol-snipe', undefined, undefined, { type: idol.type, id: idol.id }); // G4a計測タグ(記録専用)
       if (died) onPlayerDeath(pcx, pcy);
     }
-    if (newGameTime >= (idol.bossStateUntil ?? 0)) toRecover('snipe');
+    // ★格闘の構えで受けられた光線はここで中断=満了と同じ処理で技の後の休みへ(research/BRAWLER.md §12-3d・社長指示2026-11-10)
+    if (takeBrawlerBeamCut(idol.id, newGameTime) || newGameTime >= (idol.bossStateUntil ?? 0)) toRecover('snipe');
   } else if (st === 'idol-punch-windup') {
     { // ★v0.25.3978: 溜め中は狙い(ヘイト対象)を毎フレーム追従して aiTarget へ(赤い予告が読む)。
       const aimT = hateAim();
