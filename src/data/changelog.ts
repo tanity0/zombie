@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5439', items: [
+    '拳鬼に専用の姿が付いた。上半身裸で赤い触手を背負った拳法家が、一回り大きな体で向かってくる',
+  ] },
   { version: '0.25.5438', items: [
     '格闘を使う幻影「拳鬼」が、ステージ1・3・4・5に徘徊することがある。亡霊・宇宙飛行群と入れ替わりで現れる',
     '拳鬼を初めて倒すと格闘が手に入る。それまでは開発施設に格闘が並ばない',
