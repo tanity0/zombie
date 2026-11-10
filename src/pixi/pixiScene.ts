@@ -109,7 +109,7 @@ import {
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
 import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerPhaseKind, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
-import { getLastAirMeleeHit, stepPlayerAir, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
+import { getLastAirMeleeHit, stepPlayerAir, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
@@ -4327,7 +4327,7 @@ interface ActorView {
   /** ★プレイヤーが空中の敵を殴って浮く高さの状態(px・落下の速さ・前フレームの時刻・着地の時刻・直近の敵の浮く基準px)。プレイヤーの view だけが持つ。描画だけ(§18)。 */
   playerAir?: PlayerAirState & {
     at: number; scalePx?: number; dir?: number; takeoffAt?: number; landAt?: number; landStrength?: number;
-    poseY: number; poseX: number; leanK: number; streakOffAt?: number;
+    poseY: number; poseX: number; leanK: number; streakOffAt?: number; shiftX?: number;
   };
   /** 浮いている間の接地の楕円(地面レイヤー)と、通常の影を消す係数(1=通常の影のまま)・上昇の白い筋。プレイヤーの view だけ。 */
   airGroundShadow?: Sprite;
@@ -5266,6 +5266,7 @@ export class PixiScene {
   private skadiHazardContainer = new Container(); // スカジ氷塊/氷刃のスプライトプール親
   private skadiBlockPool = new Map<string, Sprite>(); // 氷塊スプライト(マーカーid→sprite)
   private skadiBladePool = new Map<string, Sprite>(); // 氷刃スプライト(ブレードid→sprite)
+  private brawlerDustGates = new Map<string, GroundDustGate>(); // 浮いている間に出る番が来た地面の砂埃の保留(§18-3)。浮いている間だけ持つ。
   private playerAirLiftPx = 0; // 空中の敵を殴って浮いているプレイヤーの高さ(px・描画だけ・§18)。頭上マークが読む。
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private skillPickGfx = new Graphics();     // スキル取得の頭上マーク(下敷き・閃光・レベルの粒)
@@ -20764,6 +20765,9 @@ export class PixiScene {
       st0.leanK += ((phase === 'ground' ? 0 : 1) - st0.leanK) * kP;
       actSqY *= st0.poseY; actSqX *= st0.poseX;
       actLean += dirAir * PLAYER_AIR_LEAN_RAD * st0.leanK;
+      // 浮いている間は絵を敵の方へ体幅×0.3まで寄せる(浮いた高さに比例・地上では0・慣性で寄って戻る)。影は真下のまま(下の接地の楕円は footX)。判定とは無関係の絵だけ(社長承認)。
+      st0.shiftX = playerAirShiftStep(st0.shiftX ?? 0, playerAirShiftTarget(st0.h, bodyH, bodyW, dirAir), dtAir);
+      actOffX += st0.shiftX;
       // 空中の姿勢の絵(格闘): 上り=振り上げ(swing)・頂点と落下=しゃがみ(ready)。段・技の絵(brPose)が出ている間はそちらを優先。ナイフ・刀・鞭は絵のまま。
       if (!brPose?.tex && isBrawlerMode(p) && meleePosePrefix && !warlordFull && p.health > 0 && (phase === 'rise' || phase === 'apex' || phase === 'fall')) {
         const airTexName = `${meleePosePrefix}-${phase === 'rise' ? 'swing' : 'ready'}`;
@@ -39933,7 +39937,7 @@ export class PixiScene {
     const s = p.brawler;
     const st = useGameStore.getState();
     this.drawBrawlerKiko(st.brawlerKiko, now);
-    if (!s || !isBrawlerMode(p)) { this.hideBrawlerGhosts(); if (this.brawlerAura) this.brawlerAura.visible = false; if (this.brawlerStand) this.brawlerStand.visible = false; return; }
+    if (!s || !isBrawlerMode(p)) { this.brawlerDustGates.clear(); this.hideBrawlerGhosts(); if (this.brawlerAura) this.brawlerAura.visible = false; if (this.brawlerStand) this.brawlerStand.visible = false; return; }
     const gt = st.gameTime;
     this.drawBrawlerStand(p, s, gt, dsc, body);
     const el = BRW.brawlerElapsed(s, gt);
@@ -39977,7 +39981,10 @@ export class PixiScene {
     // 砂埃は角度・距離・大きさ・数をばらつかせる(焼いた時刻を種にした決定的な乱数=フレーム間では揺れない・クリエイティブ監査 #11)。
     const rnd = (seed: number): number => { const x = Math.sin(seed * 12.9898) * 43758.5453; return x - Math.floor(x); };
     const ringDust = (key: string, active: boolean, n: number, ringR: number, puffR: number) => {
-      const L = this.latchFx(key, active, DUST_MS, now, () => [footX, footY]);
+      // ★浮いている間に出る番が来たら、プレイヤーの絵が着地した瞬間まで保留(元の砂埃を頭から・薄くも短くもしない・§18-3)。浮いていなければ今までと同じ。
+      const gate = groundDustGate(this.brawlerDustGates.get(key) ?? { wasActive: false }, active, this.playerAirLiftPx, Date.now());
+      if (gate.next.wasActive || gate.next.pendingAt !== undefined) this.brawlerDustGates.set(key, gate.next); else this.brawlerDustGates.delete(key);
+      const L = this.latchFx(key, gate.eff, DUST_MS, now, () => [footX, footY]);
       if (!L) return;
       const count = Math.max(2, n - 1 + Math.floor(rnd(L.t0) * 3));
       const a0 = rnd(L.t0 + 1) * Math.PI * 2;

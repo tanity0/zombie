@@ -4,6 +4,7 @@ import {
   playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink,
   noteAirMeleeHit, getLastAirMeleeHit, resetAirMeleeHit,
   PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_FOLLOW_K, PLAYER_AIR_BODY_CAP, PLAYER_AIR_CROUCH_MS, PLAYER_AIR_GRAVITY,
+  playerAirShiftTarget, playerAirShiftStep, groundDustGate, PLAYER_AIR_SHIFT_BODY_W, PLAYER_AIR_DUST_HOLD_PX, PLAYER_AIR_DUST_PENDING_MAX_MS, type GroundDustGate,
   PLAYER_AIR_BUMP_PX, PLAYER_AIR_LAND_SQUASH_MIN, PLAYER_AIR_LAND_SQUASH_MAX, PLAYER_AIR_HOVER_SINK, PLAYER_AIR_POSE, type PlayerAirState,
 } from './playerAirFollow';
 
@@ -138,5 +139,48 @@ describe('最後に空中の敵へ当てた記録', () => {
     expect(getLastAirMeleeHit()?.enemyId).toBe('a');
     expect(getLastAirMeleeHit()?.at).toBe(1000);
     expect(getLastAirMeleeHit()!.rel).toBeGreaterThan(0);
+  });
+});
+
+describe('浮いている間は敵の方へ寄る', () => {
+  it('寄せの目標は浮いた高さに比例・体の高さで体幅×0.3・地上は0・向きの符号つき', () => {
+    expect(playerAirShiftTarget(0, 40, 30, 1)).toBe(0);
+    expect(playerAirShiftTarget(40, 40, 30, 1)).toBeCloseTo(PLAYER_AIR_SHIFT_BODY_W * 30, 9);
+    expect(playerAirShiftTarget(20, 40, 30, -1)).toBeCloseTo(-PLAYER_AIR_SHIFT_BODY_W * 30 * 0.5, 9);
+    expect(playerAirShiftTarget(400, 40, 30, 1)).toBeCloseTo(PLAYER_AIR_SHIFT_BODY_W * 30, 9); // 満額で頭打ち
+  });
+  it('寄せ・戻しは指数で寄る(行き過ぎず跳ばない・増分は減り続ける)', () => {
+    let cur = 0; const hs: number[] = [];
+    for (let i = 0; i < 20; i++) { cur = playerAirShiftStep(cur, 9, 10); hs.push(cur); }
+    expect(Math.max(...hs)).toBeLessThanOrEqual(9);
+    const d = hs.map((v, i) => v - (hs[i - 1] ?? 0));
+    for (let i = 1; i < d.length; i++) expect(d[i]).toBeLessThan(d[i - 1] + 1e-9);
+    let back = 9; for (let i = 0; i < 40; i++) back = playerAirShiftStep(back, 0, 10);
+    expect(back).toBeGreaterThanOrEqual(0); expect(back).toBeLessThan(1);
+  });
+});
+
+describe('地面の砂埃の保留(着地まで)', () => {
+  const fresh: GroundDustGate = { wasActive: false };
+  it('浮いていない時は今までどおり(eff=active・1msも変わらない)', () => {
+    let g = fresh;
+    for (const a of [false, true, true, false, true]) {
+      const r = groundDustGate(g, a, 0, 1000); expect(r.eff).toBe(a); g = r.next;
+    }
+    expect(groundDustGate(fresh, true, PLAYER_AIR_DUST_HOLD_PX, 1000).eff).toBe(true); // しきい値ちょうどは浮いていない扱い
+  });
+  it('浮いている間に出る番が来たら保留し、着地した瞬間に1回だけ出す(窓が終わっていても出す)', () => {
+    let r = groundDustGate(fresh, true, 30, 1000);
+    expect(r.eff).toBe(false); expect(r.next.pendingAt).toBe(1000);
+    r = groundDustGate(r.next, true, 25, 1050); expect(r.eff).toBe(false);
+    r = groundDustGate(r.next, false, 12, 1100); expect(r.eff).toBe(false); // 窓が終わっても保留は残る
+    r = groundDustGate(r.next, false, 0, 1300); // 着地
+    expect(r.eff).toBe(true); expect(r.next.pendingAt).toBeUndefined();
+    r = groundDustGate(r.next, false, 0, 1310); expect(r.eff).toBe(false); // 出すのは1回だけ
+  });
+  it('保留は寿命を過ぎたら出さずに捨てる(出撃の切り替え・リセットで残さない)', () => {
+    let r = groundDustGate(fresh, true, 30, 1000);
+    r = groundDustGate(r.next, false, 0, 1000 + PLAYER_AIR_DUST_PENDING_MAX_MS + 1);
+    expect(r.eff).toBe(false); expect(r.next.pendingAt).toBeUndefined();
   });
 });

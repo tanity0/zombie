@@ -151,6 +151,42 @@ export const playerAirLandSquashY = (sinceLandMs: number, depth: number): number
 export const playerAirShadowShrink = (airK: number): number =>
   1 - (1 - PLAYER_AIR_SHADOW_SHRINK_MIN) * Math.max(0, Math.min(1, airK));
 
+// ---- 浮いている間は敵の方へ寄る(社長承認2026-11-10・§18-3) ----
+/** 寄せる量の最大(体幅に対する割合)。浮いた高さが体の高さに届いた時に満額・地上では0。 */
+export const PLAYER_AIR_SHIFT_BODY_W = 0.3;
+/** 寄せ・戻しの時定数(ms)。跳ばずに寄って跳ばずに戻る(指数で寄せる=慣性)。 */
+export const PLAYER_AIR_SHIFT_TAU_MS = 70;
+/** 寄せの目標(px・向き dir=+1/-1 を掛けた符号つき)。浮いた高さの割合に比例。 */
+export const playerAirShiftTarget = (h: number, bodyH: number, bodyW: number, dir: number): number =>
+  (dir >= 0 ? 1 : -1) * PLAYER_AIR_SHIFT_BODY_W * Math.max(0, bodyW) * Math.max(0, Math.min(1, h / Math.max(1, bodyH)));
+/** 寄せを時間で目標へ寄せる(指数)。 */
+export const playerAirShiftStep = (cur: number, target: number, dtMs: number): number =>
+  cur + (target - cur) * (1 - Math.exp(-Math.max(0, Math.min(100, dtMs)) / PLAYER_AIR_SHIFT_TAU_MS));
+
+// ---- 浮いている間に出る番が来た「地面を叩く砂埃」を、プレイヤーの絵が着地する瞬間まで保留する(社長承認2026-11-10・§18-3) ----
+/** これより高く浮いている間は保留(px)。 */
+export const PLAYER_AIR_DUST_HOLD_PX = 3;
+/** 保留の寿命(ms)。出撃の切り替えやリセットで残さない保険=この時間を過ぎた保留は出さずに捨てる。 */
+export const PLAYER_AIR_DUST_PENDING_MAX_MS = 4000;
+export interface GroundDustGate { wasActive: boolean; pendingAt?: number }
+/**
+ * 砂埃の「出す/出さない」の門。active=今の描画が出す条件(今までどおり)・airPx=プレイヤーの絵の浮いた高さ。
+ *  - 浮いていない時は eff=active のまま(今までと同じ)。
+ *  - 浮いている間に出る番(active の立ち上がり)が来たら保留し、浮いている間は出さない。絵が着地した瞬間に eff=true を1回返す(元の砂埃を頭から・薄くも短くもしない)。
+ *  - 保留は寿命を過ぎたら捨てる(出さない)。
+ */
+export const groundDustGate = (g: GroundDustGate, active: boolean, airPx: number, now: number): { eff: boolean; next: GroundDustGate } => {
+  let pendingAt = g.pendingAt;
+  if (active && !g.wasActive && airPx > PLAYER_AIR_DUST_HOLD_PX) pendingAt = now;
+  let eff = active;
+  if (pendingAt !== undefined) {
+    const age = now - pendingAt;
+    if (airPx > PLAYER_AIR_DUST_HOLD_PX && age <= PLAYER_AIR_DUST_PENDING_MAX_MS) eff = false;
+    else { eff = age <= PLAYER_AIR_DUST_PENDING_MAX_MS ? true : active; pendingAt = undefined; }
+  }
+  return { eff, next: { wasActive: active, pendingAt } };
+};
+
 // ---- 最後に空中の敵へ近接を当てた記録 ----
 export interface AirMeleeHit { at: number; enemyId: string; rel: number }
 let lastAirMeleeHit: AirMeleeHit | null = null;
