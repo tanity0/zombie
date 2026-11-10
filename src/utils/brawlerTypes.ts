@@ -1,6 +1,8 @@
 // サブウェポン「格闘」の状態の型だけ(research/BRAWLER.md)。依存ゼロの葉モジュール=types/game.ts から読んでも循環しない。
 export type BrawlerTechKind = 'guard' | 'stomp' | 'kiko' | 'kick';
 export type BrawlerPhase = 'idle' | 'attack' | 'tech';
+/** 拳鬼の技の予備動作のコマ(research/BRAWLER_PHANTOM.md §16-5): ready=しゃがみ / swing=腕上げ。 */
+export type KenkiPrepTex = 'ready' | 'swing';
 /** 秘奥義の9連撃で出す技(通常攻撃の段 1..5 か技)。research/BRAWLER.md §10。 */
 export type BrawlerSecretMove = 1 | 2 | 3 | 4 | 5 | 'kick' | 'stomp' | 'kiko';
 /** 秘奥義の状態(research/BRAWLER.md §10)。phase の時刻は gameTime。 */

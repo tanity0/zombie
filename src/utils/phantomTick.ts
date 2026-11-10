@@ -106,7 +106,7 @@ import { isTrapDebuffed, trapMoveMult, TRAP_ROOT_CRIT_BONUS } from './trapDebuff
 import { critDecayOnHit } from './critDecay'; // ★§13-3e クリ減衰(SAME_ARENA対称)
 import {
   createPhantomBrawlerRuntime, stepPhantomBrawler, phantomBrawlerCancelled, phantomBrawlerHoldClock, phantomBrawlerBossState,
-  type PhantomBrawlerRuntime,
+  phantomBrawlerCancelPrep, type PhantomBrawlerRuntime,
 } from './phantomBrawlerTick'; // research/BRAWLER_PHANTOM.md: 格闘の幻影(拳鬼)の格闘
 import { phantomBrawlerHolding } from './phantomBrawlerAi';
 import { isBrawlerBusy, brawlerPointCap } from './brawler';
@@ -1157,11 +1157,13 @@ export const tickPlayerFlamerBurn = (): void => {
 };
 
 /** 格闘の幻影の出かかった行動を取り消す(紫・気絶・拘束・浮き)。印の無い幻影には何もしない。 */
-const cancelPhantomBrawler = (phantom: Enemy, patch: Partial<Enemy>, gameTime: number): void => {
+const cancelPhantomBrawler = (phantom: Enemy, patch: Partial<Enemy>, gameTime: number, rt?: PhantomBrawlerRuntime): void => {
   // 跳びかかりの溜め(research/BRAWLER_PHANTOM.md §15)も出かかった行動として取り消す(跳んだ後・着地後は続ける)。
   if (phantom.phantomUnique === 'brawler' && phantom.aiPhase === 'crouch') {
     patch.aiPhase = undefined; patch.aiPhaseUntil = undefined; patch.bossState = 'chase';
   }
+  // 技の予備動作(§16-5)も出かかった行動として取り消す(技は出ない・ポイントは払わない)。
+  if (phantomBrawlerCancelPrep(rt, patch) && !isBrawlerBusy(phantom.phantomBrawler)) patch.bossState = 'chase';
   const b = phantom.phantomBrawler;
   if (!b || !isBrawlerBusy(b)) return;
   const next = phantomBrawlerCancelled(b);
@@ -1211,7 +1213,7 @@ export const runPhantomTick = (
       }
       patch.vx = nvx; patch.vy = nvy;
       abortPhantomFlamer(phantom, patch); // §17-6b P6: 紫(体勢崩れ)で溜めも噴射も打ち切る
-      cancelPhantomBrawler(phantom, patch, newGameTime); // 格闘の幻影: 出かかった行動を取り消す
+      cancelPhantomBrawler(phantom, patch, newGameTime, s.brawler); // 格闘の幻影: 出かかった行動を取り消す
       applyPatch(phantom.id, patch);
       return;
     }
@@ -1227,13 +1229,15 @@ export const runPhantomTick = (
    */
   tickModuleClockFreeze(s, [
     { key: 'nextMeleeAt', kind: 'deadline', base: 'game', get: () => s.nextMeleeAt, set: v => { s.nextMeleeAt = v; } },
+    // 拳鬼の技の予備動作(research/BRAWLER_PHANTOM.md §16-7): 固まり・凍結の間は予備動作の時計も止める(明けたら残りから)。
+    { key: 'brawler.prepUntil', kind: 'deadline', base: 'game', get: () => s.brawler?.prep?.until, set: v => { if (s.brawler?.prep) s.brawler.prep.until = v; } },
     { key: 'reloadEndsAt', kind: 'deadline', base: 'now', get: () => (s.reloadEndsAt > 0 ? s.reloadEndsAt : undefined), set: v => { s.reloadEndsAt = v; } },
     { key: 'ghost.lastShotAt', kind: 'start', base: 'now', get: () => (s.ghost.lastShotAt > 0 ? s.ghost.lastShotAt : undefined), set: v => { s.ghost.lastShotAt = v; } },
     { key: 'ghost.lastMeleeAt', kind: 'start', base: 'now', get: () => (s.ghost.lastMeleeAt > 0 ? s.ghost.lastMeleeAt : undefined), set: v => { s.ghost.lastMeleeAt = v; } },
   ], isEnemyFrozenForClocks(phantom, newGameTime, nowMs), newGameTime, nowMs);
 
   // ---- 気絶・拘束・浮き: 何もしない(★ノックバックは含めない=殴っても止まらない) ----------------
-  if (isFrozen(phantom, newGameTime, nowMs)) { abortPhantomFlamer(phantom, patch); cancelPhantomBrawler(phantom, patch, newGameTime); applyPatch(phantom.id, patch); return; }
+  if (isFrozen(phantom, newGameTime, nowMs)) { abortPhantomFlamer(phantom, patch); cancelPhantomBrawler(phantom, patch, newGameTime, s.brawler); applyPatch(phantom.id, patch); return; }
   // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」): 止まるだけ
   //   (移動も撃ち始めもしない)。幻影には技の最中の概念が無いので、流しっぱなしの火炎放射だけは浮きと同じく打ち切る。
   if (brawlerHeldNow(phantom, newGameTime, nowMs)) {
@@ -1314,7 +1318,9 @@ export const runPhantomTick = (
   const brawlerBusy = isBrawlerPhantom && (isBrawlerBusy(phantom.phantomBrawler) || s.brawler?.move != null
     || (s.brawler != null && phantomBrawlerHolding(s.brawler.mind, newGameTime))
     // 跳びかかり(ハンターの跳びの流用・research/BRAWLER_PHANTOM.md §15)の溜め・跳び・着地後の停止の間も歩かない。
-    || phantom.aiPhase === 'crouch' || phantom.aiPhase === 'jump' || phantom.aiPhase === 'recover');
+    || phantom.aiPhase === 'crouch' || phantom.aiPhase === 'jump' || phantom.aiPhase === 'recover'
+    // 技の予備動作(§16-5)の間も歩かない(動かず・技は出ていない)。
+    || s.brawler?.prep != null);
   if (brawlerBusy) { decision.moveX = 0; decision.moveY = 0; }
   if (!shoved) {
     // ★SAME_ARENA §9: クリ被弾の2/3減速(pvpMoveMult)。ボスのbossSlowUntil無視(D4)はそのまま。

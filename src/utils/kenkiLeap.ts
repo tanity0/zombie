@@ -31,9 +31,14 @@ export const kenkiNoteHit = (hitTimes: number[], t: number): void => {
   if (hitTimes.length > KENKI_LEAP_FIRE_KEEP) hitTimes.splice(0, hitTimes.length - KENKI_LEAP_FIRE_KEEP);
 };
 
-/** 使える場面か(距離・クールダウン・待機・秘奥義の最中でない)。 */
-export const kenkiLeapEligible = (i: { edgeDist: number; t: number; readyAt: number; idle: boolean; secret: boolean }): boolean =>
-  i.idle && !i.secret && i.t >= i.readyAt && i.edgeDist > KENKI_LEAP_MIN_PX && i.edgeDist <= KENKI_LEAP_MAX_PX;
+/**
+ * 使える場面か(距離・クールダウン・待機・秘奥義の最中でない)。
+ * minPx=距離の下限(既定=飛び蹴りの届く距離)。台本6(秘奥義を狙う跳び・research/BRAWLER_PHANTOM.md §16-3)は 0 で呼ぶ=近くても跳ぶ。
+ */
+export const kenkiLeapEligible = (
+  i: { edgeDist: number; t: number; readyAt: number; idle: boolean; secret: boolean }, minPx: number = KENKI_LEAP_MIN_PX,
+): boolean =>
+  i.idle && !i.secret && i.t >= i.readyAt && (minPx <= 0 ? i.edgeDist >= 0 : i.edgeDist > minPx) && i.edgeDist <= KENKI_LEAP_MAX_PX;
 
 /** 拍ごとの確率。 */
 export const kenkiLeapChance = (underFire: boolean): number => (underFire ? KENKI_LEAP_P_UNDER_FIRE : KENKI_LEAP_P);

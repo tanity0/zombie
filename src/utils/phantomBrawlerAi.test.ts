@@ -6,7 +6,7 @@ import {
   PB_KICK_JUMP_MIN_PX, PB_KICK_JUMP_MAX_PX, PB_RECENT_MULT, PB_RECENT_MAX_MS, PB_APPROACH_BEAT_MIN_MS, PB_APPROACH_BEAT_MAX_MS,
   PB_HOLD_MIN_MS, PB_HOLD_MAX_MS, pbKickChance, pbKikoChance, pbRecentMult, pbRollJumpAt, phantomBrawlerHolding,
 } from './phantomBrawlerAi';
-import { initialBrawlerState, BRAWLER_KICK_RANGE, BRAWLER_KIKO_RANGE, brawlerStartTech } from './brawler';
+import { initialBrawlerState, BRAWLER_KICK_RANGE, BRAWLER_KIKO_RANGE } from './brawler';
 import { brawlerTimeKeeperDiscount } from './brawlerSkills';
 import type { BrawlerState } from './brawlerTypes';
 
@@ -137,7 +137,10 @@ describe('守り', () => {
     const m2 = createPhantomBrawlerMind();
     m2.strikeTimes = [T - 1000, T - 500, T - 100];
     expect(decidePhantomBrawler(base({ counterChance: 0 }, { points: 3 }), m2)).toEqual({ kind: 'attack' }); // 外れたら攻める
-    expect(decidePhantomBrawler(base({ counterChance: 1 }, { points: 3 }), m2)).toEqual({ kind: 'attack' }); // 同じ予測では振らない
+    // 同じ予測では振らない。§16 で頭脳が台本(連続の続き)を覚えるようになったので、2回目は台本を外した心で確かめる
+    // (旧: 同じ心で2回目も 'attack' を期待していた=台本の無い頃の「毎回1段目から押す」前提)。
+    m2.script = null;
+    expect(decidePhantomBrawler(base({ counterChance: 1 }, { points: 3 }), m2)).toEqual({ kind: 'attack' });
   });
   it('構えた後は3秒構えない', () => {
     const m = createPhantomBrawlerMind(); m.guardReadyAt = T + 1;
@@ -147,19 +150,20 @@ describe('守り', () => {
 });
 
 describe('秘奥義', () => {
-  it('合計(タイムキーパーLv3で8)以上あり、蹴りの届く距離なら →蹴り から順に出す', () => {
-    const disc = base().discount;
-    expect(secretTotalCost(disc)).toBe(8);
+  // §16-3(社長「HP半分以下から、技ポイントが最大まで貯まると、ジャンプ→秘技を狙ってくる」): 旧の「合計のポイントがあり蹴りの届く距離なら狙う」は撤去。
+  // 旧のテスト(ポイント8・距離100で →蹴り から出す)は古い仕様を守っていたので、新しい狙い方(台本6)のテストへ置き換えた。
+  it('旧の狙い方(ポイントが合計に足りていて蹴りの届く距離)では秘奥義を狙わない', () => {
     const m = createPhantomBrawlerMind();
-    expect(decidePhantomBrawler(base({ edgeDist: 100 }, { points: 8 }), m)).toEqual({ kind: 'tech', tech: 'kick' });
-    expect(m.secretPlan).toBe(true);
-    // 蹴りが当たって(進み1)、技の後隙から取り消せる時は ↓大踏み潰し
-    const s1: BrawlerState = { ...brawlerStartTech({ ...initialBrawlerState(), points: 7 }, 'kick', T - 200, 1), resolved: true, connected: true, secretProgress: 1 };
-    expect(decidePhantomBrawler(base({ edgeDist: 100 }, s1), m)).toEqual({ kind: 'tech', tech: 'stomp' });
+    decidePhantomBrawler(base({ edgeDist: 100, hpFrac: 1, pointCap: 20 }, { points: 20 }), m);
+    expect(m.secretPlan).toBe(false);
+    expect(m.leapForSecret).toBe(false);
   });
   it('秘奥義の最中・構えの最中は何もしない', () => {
     const m = createPhantomBrawlerMind();
     expect(decidePhantomBrawler(base({}, { secret: { phase: 'ignite', phaseAt: T, hits: 0, nextAt: T + 1, igniteAt: 0 } }), m)).toBeNull();
     expect(decidePhantomBrawler(base({}, { guardUntil: T + 500 }), m)).toBeNull();
+  });
+  it('合計(タイムキーパーLv3で8)', () => {
+    expect(secretTotalCost(base().discount)).toBe(8);
   });
 });

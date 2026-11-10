@@ -6,7 +6,7 @@ import type { MolotovCycleState } from '../utils/molotov';
 import type { AcrasielPlan } from '../utils/acrasielScript';
 import type { FirstAidKitState } from '../utils/firstAidKit';
 import type { AvatarId } from '../data/avatars'; // アバターシステム(試験・第1弾)。依存ゼロの純データモジュール(循環しない)。
-import type { BrawlerState } from '../utils/brawlerTypes'; // サブウェポン「格闘」の状態機械(research/BRAWLER.md・型だけ)
+import type { BrawlerState, KenkiPrepTex } from '../utils/brawlerTypes'; // サブウェポン「格闘」の状態機械(research/BRAWLER.md・型だけ)
 import type { SwordLungePlan } from '../utils/swordLunge'; // 剣ボスの踏み込み計画(依存ゼロの純関数モジュール=循環しない)。
 
 // Game state types
@@ -1082,8 +1082,16 @@ export interface Enemy {
   gpGuardUntil?: number;
   /** research/BRAWLER_PHANTOM.md §14: 拳鬼の縮地(at=Date.now・from=元の中心)。描画が元の所の残像と現れるフェードに使う。 */
   gpShukuchi?: { at: number; fromX: number; fromY: number };
+  /**
+   * research/BRAWLER_PHANTOM.md §16-5: 拳鬼の技の予備動作の最中(描画が読む=どのコマ・向き)。正の状態は制御の側(PhantomBrawlerRuntime.prep)。
+   * 未設定=予備動作をしていない。
+   */
+  gpBrawlerPrep?: { tex: KenkiPrepTex; dirX: number };
+  /** research/BRAWLER_PHANTOM.md §16-8: 拳鬼が近接(打撃・技)で食らった最後の時刻(gameTime・gameStore.gatePhantomHit が打つ)。制御が技ポイント+1に使う。 */
+  gpMeleeHurtAt?: number;
   /** 格闘の幻影が撃った気功(1発まで・描画も読む)。x/y=今の位置、traveled=飛んだ距離。 */
-  gpKiko?: { id: string; x: number; y: number; dirX: number; dirY: number; traveled: number; createdAt: number };
+  /** melee=台本(2・3)の締めの気功(近接の打撃と同じ扱いで当てる=プレイヤーの被弾無敵に吸われない・§16-8)。 */
+  gpKiko?: { id: string; x: number; y: number; dirX: number; dirY: number; traveled: number; createdAt: number; melee?: boolean };
   /**
    * research/SAME_ARENA.md O-1: 幻影**自前**のサブウェポンCD帳簿(gameTime基準)。
    * 守護霊の `Summon.ghostSubWeaponCooldowns` と同型=**3者が別財布**(社長裁定2026-08-23)。

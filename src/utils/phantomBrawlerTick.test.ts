@@ -93,15 +93,112 @@ describe('拳鬼が格闘で戦う(結合)', () => {
     expect(h.cur().phantomBrawler?.stage ?? 0).toBeLessThanOrEqual(1); // つながらない(毎回1段目で返される)
   });
 
-  it('ポイントが揃っていれば秘奥義(→↓←↑)まで出し切り、プレイヤーを止めずに当てる', () => {
+  // research/BRAWLER_PHANTOM.md §16-3: 秘奥義は台本6(HP半分以下・ポイント満タン → 跳びかかり → 秘奥義)からだけ。
+  // 旧のテストは「ポイントが揃っていれば(HP満タンでも)近くで狙う」を守っていた=新しい仕様に合わせて HP を半分にし、跳びを挟む。
+  it('台本6: HP半分以下・ポイント満タンなら、近くても跳びかかり→着地後に秘奥義(→↓←↑)まで出し切り、プレイヤーを止めずに当てる・入力の手には予備動作が付く', () => {
     const k = uniquePhantomSpec('brawler');
-    const h = setup(110, { phantomBrawler: { ...initialBrawlerState(), points: 20 }, phantomBuild: k.profile.snapshot });
-    let sawSecret = false;
-    for (let i = 0; i < 400; i++) { h.step(16); if (h.cur().phantomBrawler?.secret) sawSecret = true; }
+    const h = setup(110, { phantomBrawler: { ...initialBrawlerState(), points: 20 }, phantomBuild: k.profile.snapshot, health: 65 });
+    let sawSecret = false, sawLeap = false;
+    const preps = new Set<string>();
+    for (let i = 0; i < 900 && !sawSecret; i++) {
+      h.step(16);
+      const e = h.cur();
+      if (e.aiPhase === 'jump') sawLeap = true;
+      if (e.gpBrawlerPrep) preps.add(e.gpBrawlerPrep.tex);
+      if (e.phantomBrawler?.secret) sawSecret = true;
+    }
+    expect(sawLeap).toBe(true);
     expect(sawSecret).toBe(true);
+    expect(preps.has('ready')).toBe(true); // 1手目の蹴り=しゃがみ
+    expect(preps.has('swing')).toBe(true); // 潰し・気功=腕上げ(予備動作の分で秘奥義の間隔が切れない)
+    for (let i = 0; i < 400; i++) h.step(16);
     expect(h.cur().phantomBrawler?.points ?? 0).toBeLessThan(20);
     // プレイヤーを止める(brHoldUntil 等)仕組みはプレイヤーには無い=動けるまま
     expect(useGameStore.getState().player.health).toBeLessThan(9999);
+  });
+
+  it('HP満タンではポイントが揃っていても秘奥義を狙わない(旧の狙い方では出ない)', () => {
+    const h = setup(110, { phantomBrawler: { ...initialBrawlerState(), points: 20 } });
+    let sawSecret = false;
+    for (let i = 0; i < 400; i++) { h.step(16); if (h.cur().phantomBrawler?.secret) sawSecret = true; }
+    expect(sawSecret).toBe(false);
+  });
+
+  // research/BRAWLER_PHANTOM.md §16-5: 予備動作(初段の蹴り=しゃがみ・2発目以降の蹴りには出ない・間は判定が出ない)。
+  it('予備動作: 台本5(1→飛び蹴り×3)で、初段の蹴りの前だけしゃがみが出る・その間は動かず判定も出ない', () => {
+    const h = setup(40, { phantomBrawler: { ...initialBrawlerState(), points: 20 } }); // 乱数0.999=払える5本の最後=台本5
+    let prepTicks = 0, prepStarts = 0, wasPrep = false, maxKickN = 0, kick1Starts = 0, lastKickStart = -1;
+    let hpDuringPrepChanged = false;
+    for (let i = 0; i < 300; i++) {
+      const hp0 = useGameStore.getState().player.health;
+      const x0 = h.cur().x;
+      // 台本5の後に別の台本(潰し・気功=腕上げ)が始まることがある=数えるのはしゃがみ(蹴りの予備動作)だけ。
+      const prepBefore = h.cur().gpBrawlerPrep?.tex === 'ready';
+      h.step(16);
+      const e = h.cur();
+      const b = e.phantomBrawler;
+      const prepNow = e.gpBrawlerPrep?.tex === 'ready';
+      if (prepNow) {
+        prepTicks++;
+        expect(b?.phase === 'tech' && b.tech === 'kick' && !b.resolved).toBe(false); // 蹴りはまだ出ていない
+        if (prepBefore) {
+          if (useGameStore.getState().player.health !== hp0) hpDuringPrepChanged = true;
+          expect(Math.abs(e.x - x0)).toBeLessThan(1.5); // 踏み込まない(歩きの速さが慣性で落ちる残りだけ=慣性MUST・跳びかかりの溜めと同じ)
+        }
+      }
+      if (prepNow && !wasPrep) prepStarts++;
+      wasPrep = prepNow;
+      if (b?.phase === 'tech' && b.tech === 'kick' && b.startAt !== lastKickStart) {
+        lastKickStart = b.startAt;
+        maxKickN = Math.max(maxKickN, b.kickN);
+        if (b.kickN === 1) kick1Starts++;
+      }
+    }
+    expect(maxKickN).toBe(3);
+    expect(prepStarts).toBeGreaterThan(0);
+    expect(prepStarts).toBe(kick1Starts); // しゃがみは1発目の蹴りの数だけ(2・3発目には出ない)
+    expect(prepTicks).toBeLessThanOrEqual(prepStarts * 6); // 80ms(16msの tick で5〜6回)
+    expect(hpDuringPrepChanged).toBe(false);
+  });
+
+  // research/BRAWLER_PHANTOM.md §16-8(社長「あと格闘は攻撃食らっても技ポイント貯まる にしよう。ただし、ボスは銃弾では貯まらない。」)
+  it('拳鬼は近接で食らうと技ポイント+1・銃弾では貯まらない', () => {
+    const h = setup(400);
+    h.step(16);
+    const p0 = h.cur().phantomBrawler?.points ?? 0;
+    const g = useGameStore.getState();
+    g.damageEnemy(h.id, 5, false, false, false, 'gun', 'player', null, 1, 'bullet');
+    expect(h.cur().gpMeleeHurtAt).toBeUndefined();
+    h.step(16);
+    expect(h.cur().phantomBrawler?.points ?? 0).toBe(p0);
+    // 被弾無敵(1秒)の外で近接の当たり
+    for (let i = 0; i < 70; i++) h.step(16);
+    useGameStore.getState().damageEnemy(h.id, 5, false, false, false, 'other', 'player', null, 1, 'melee');
+    expect(h.cur().gpMeleeHurtAt).toBeDefined();
+    h.step(16);
+    expect(h.cur().phantomBrawler?.points ?? 0).toBe(p0 + 1);
+  });
+
+  // research/BRAWLER_PHANTOM.md §16-8(社長裁定「台本の締めの気功(台本2・3)は当てる」): 近接の打撃と同じ扱い=被弾無敵に吸われない。
+  it('台本3(1-2→気功)の締めの気功は、段の当たりの被弾無敵の中でも当たる', () => {
+    const h = setup(40, { phantomBrawler: { ...initialBrawlerState(), points: 1 } }); // 払えるのは台本1・3=乱数0.999で台本3
+    let kikoSeen = false, hitByKiko = false, invBefore = false;
+    for (let i = 0; i < 200 && !kikoSeen; i++) {
+      const pl = useGameStore.getState().player;
+      const hp0 = pl.health;
+      const inv = pl.invulnerable && Date.now() - pl.invulnerableTime < 1000;
+      h.step(16);
+      const b = h.cur().phantomBrawler;
+      if (b?.phase === 'tech' && b.tech === 'kiko' && b.resolved) {
+        // 近い(縁40px)ので、出たその tick に触れて爆発する。
+        kikoSeen = true;
+        invBefore = inv;
+        hitByKiko = useGameStore.getState().player.health < hp0 && (useGameStore.getState().lastDamageSource ?? '').includes('気功');
+      }
+    }
+    expect(kikoSeen).toBe(true);
+    expect(invBefore).toBe(true); // 直前の2段目の当たりで被弾無敵の中
+    expect(hitByKiko).toBe(true);
   });
 
   it('印の無い幻影は格闘を回さない(今の幻影のまま)', () => {

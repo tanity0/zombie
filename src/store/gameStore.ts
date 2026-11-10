@@ -3695,6 +3695,17 @@ export const INVULN_MS = 1000; // 社長裁定v0.25.3599(700→1000。多段技�
  */
 const gatePhantomHit = (
   enemy: Enemy, amount: number, source: PhantomDamageSource | 'ranged', gameTime: number,
+): PhantomHitGateResult => {
+  const r = phantomHitGateRaw(enemy, amount, source, gameTime);
+  // ★拳鬼(格闘の幻影)は近接(打撃・技)で食らうと技ポイントが貯まる=その打刻(社長指示2026-11-10「ただし、ボスは銃弾では貯まらない」・
+  //   research/BRAWLER_PHANTOM.md §16-8)。銃弾・爆発・その他の遠隔('ranged'/'bullet')・カウンターの返しでは打たない。
+  //   ポイントを足すのは拳鬼の制御(phantomBrawlerTick)。幻影の近接の当たりは全部この橋を source='melee' で通る。
+  return r.effects && source === 'melee' && enemy.phantomUnique === 'brawler'
+    ? { ...r, patch: { ...r.patch, gpMeleeHurtAt: gameTime } }
+    : r;
+};
+const phantomHitGateRaw = (
+  enemy: Enemy, amount: number, source: PhantomDamageSource | 'ranged', gameTime: number,
 ): PhantomHitGateResult => phantomHitGate({
   enemyType: enemy.type,
   amount, gameTime,
@@ -14896,7 +14907,12 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 段(軽/中/重)は**実際に減ったHP**(amount=軽減後)と最大HPの割合で決まる。
           lastHurtAt: (amount > 0 && !armored && !dot) ? kbNow : state.player.lastHurtAt,
           // ★格闘(research/BRAWLER.md §2-4): 被弾したら段は1段目へ戻り、先行入力も捨てる。
-          ...(amount > 0 && !dot && state.player.brawler ? { brawler: BR.brawlerOnHurt(state.player.brawler) } : {}),
+          // ★食らっても技ポイントが貯まる(社長指示2026-11-10「あと格闘は攻撃食らっても技ポイント貯まる にしよう」・research/BRAWLER.md §12-3c):
+          //   格闘を持っていて体力が本当に減った被弾で+1(当てた時と同じ量・上限)。0ダメージ(構え・無敵)・持続ダメージでは貯めない。
+          ...(amount > 0 && !dot && state.player.brawler ? {
+            brawler: BR.brawlerAfterHurtPoints(BR.brawlerOnHurt(state.player.brawler), BR.brawlerPointCap(brawlerLevel(state.player)),
+              hasBrawler(state.player) && newHealth < state.player.health, Date.now()),
+          } : {}),
           // B3 巡航: 被弾(吹き飛び・しゃがみの付く当たり)で段0へ。スーパーアーマーで耐えた被弾・M0 の踏みとどまり(amount=0)では戻さない。
           ...((amount > 0 && !armored && !dot) ? { speedRampSustainMs: 0 } : {}),
           lastHurtTier: (amount > 0 && !armored && !dot) ? hurtTier : state.player.lastHurtTier,

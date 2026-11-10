@@ -13,8 +13,10 @@ import * as BR from './brawler';
 import { brawlerProration } from './brawlerCombo';
 import { brawlerSpeedDamageMult, brawlerTimeKeeperDiscount, brawlerOverclockRefunds } from './brawlerSkills';
 import {
-  createPhantomBrawlerMind, decidePhantomBrawler, notePlayerStrike, phantomBrawlerBreath, type PhantomBrawlerMind,
+  createPhantomBrawlerMind, decidePhantomBrawler, notePlayerStrike, phantomBrawlerBreath, pbInterruptScript, pbSecretAfterLeap,
+  pbScriptFinisherKiko, type PhantomBrawlerMind,
 } from './phantomBrawlerAi';
+import { kenkiPrepDue, kenkiPrepStart, type KenkiPrep } from './kenkiPrep';
 import { bulletEtaMs, bulletPlanRates, phantomBulletLungeDir, pickBulletPlan, type BulletPlan } from './phantomLunge';
 import { BULLET_MOVE_KEYS } from './moveReaction';
 import { isPhantomTargetBullet } from './weaponUtils';
@@ -61,11 +63,23 @@ export interface PhantomBrawlerRuntime {
   /** 跳びかかり(§15): 次に使えるまで(gameTime)と、最近の被弾の時刻(撃たれ続けているか)。 */
   leapReadyAt: number;
   hitTimes: number[];
+  /** 技の予備動作(§16-5・拳鬼だけ)。null=していない。描画には Enemy.gpBrawlerPrep で見せる。 */
+  prep: KenkiPrep | null;
+  /** 最後に見た「近接で食らった」打刻(Enemy.gpMeleeHurtAt・食らっても技ポイントが貯まる=§16-8)。 */
+  lastMeleeHurtSeen: number;
 }
 export const createPhantomBrawlerRuntime = (): PhantomBrawlerRuntime => ({
   mind: createPhantomBrawlerMind(), move: null, bulletPlans: new Map(), reachSince: null, lastHitSeen: 0,
-  lastCounterSeen: 0, shukuchiReadyAt: 0, leapReadyAt: 0, hitTimes: [],
+  lastCounterSeen: 0, shukuchiReadyAt: 0, leapReadyAt: 0, hitTimes: [], prep: null, lastMeleeHurtSeen: 0,
 });
+
+/** 予備動作を取り消す(技は出ない・ポイントは払わない)。気絶・拘束・浮き・紫・殴られた・縮地(§16-5・§16-7)。 */
+export const phantomBrawlerCancelPrep = (rt: PhantomBrawlerRuntime | undefined, patch: Partial<Enemy>): boolean => {
+  if (!rt?.prep) return false;
+  rt.prep = null;
+  patch.gpBrawlerPrep = undefined;
+  return true;
+};
 
 export interface PhantomBrawlerCtx {
   phantom: Enemy;
@@ -236,17 +250,23 @@ const startAttack = (c: PhantomBrawlerCtx, s0: BrawlerState): BrawlerState => {
 };
 
 /** 技を始める(値段を払い・秘奥義の順番を数える)。秘奥義が揃ったら秘奥義へ置き換える。 */
-const startTech = (c: PhantomBrawlerCtx, s0: BrawlerState, kind: BrawlerTechKind): BrawlerState => {
+const startTech = (
+  c: PhantomBrawlerCtx, s0: BrawlerState, kind: BrawlerTechKind,
+  /** 予備動作の後に出す時: 決めた時刻(秘奥義の間隔を予備動作の分で切らさない)・決めた時点の取り消しの扱い・蹴りの何発目。 */
+  o?: { decidedAt: number; cancel: boolean; kickN: number },
+): BrawlerState => {
   const { t, phantom, player } = c;
-  const cancel = s0.phase === 'tech' && !(kind === 'kick' && s0.tech === 'kick');
-  const kickN = kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
+  const cancel = o ? o.cancel : s0.phase === 'tech' && !(kind === 'kick' && s0.tech === 'kick');
+  const kickN = o ? o.kickN : kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
+  const at = o ? o.decidedAt : t;
   const cost = BR.brawlerTechCost(kind, false, discountOf(c.actor)(kind));
   const refund = brawlerOverclockRefunds(cost, skillLevel(c.actor, 'overclock'), c.rand);
   let s: BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: c.nowMs, points: s0.points - (refund ? 0 : cost) };
-  const step = BR.brawlerSecretStep(s0.secretProgress ?? 0, cancel ? t : (s0.secretLastEndAt ?? 0), kind, kickN, t);
+  const step = BR.brawlerSecretStep(s0.secretProgress ?? 0, cancel ? at : (s0.secretLastEndAt ?? 0), kind, kickN, at);
   s = { ...s, secretProgress: step.progress };
   c.rt.move = null;
-  if (step.fire) return startSecret(c, s);
+  // ★秘奥義が起動するのは台本6で狙っている時だけ(§16-7「秘奥義の暴発を止める」=台本2の 蹴り→潰し→気功 で順番が満ちても起動しない)。
+  if (step.fire && c.rt.mind.secretPlan) return startSecret(c, s);
   const cx = phantom.x + phantom.width / 2, cy = phantom.y + phantom.height / 2;
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const dir = unit(pcx - cx, pcy - cy);
@@ -262,6 +282,36 @@ const startTech = (c: PhantomBrawlerCtx, s0: BrawlerState, kind: BrawlerTechKind
   if (kind === 'guard') c.patch.gpGuardUntil = s.guardUntil;
   c.swingSfx();
   return s;
+};
+
+/**
+ * 技を出す(頭脳が決めた時)。予備動作が付く技(気功・大叩き潰し・1発目の飛び蹴り)は予備動作を始めるだけ
+ * (動かない・判定なし・まだ払わない)。予備動作の終わりに startTech が決めた時点の扱いで出す(§16-5)。
+ */
+const beginTech = (c: PhantomBrawlerCtx, s: BrawlerState, kind: BrawlerTechKind): BrawlerState => {
+  const { t, phantom, player } = c;
+  const cancel = s.phase === 'tech' && !(kind === 'kick' && s.tech === 'kick');
+  const kickN = kind === 'kick' ? BR.brawlerNextKickN(s, t) : 0;
+  const cx = phantom.x + phantom.width / 2;
+  const pcx = player.x + player.width / 2;
+  const prep = kenkiPrepStart(kind, kickN, t, cancel, pcx >= cx ? 1 : -1);
+  if (!prep) return startTech(c, s, kind);
+  c.rt.prep = prep;
+  c.rt.move = null;
+  c.patch.gpBrawlerPrep = { tex: prep.tex, dirX: prep.dirX };
+  return s;
+};
+
+/** 予備動作の一歩。終わった瞬間に技を出す(値段もその時に払う)。払えなければ出さない。 */
+const stepPrep = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
+  const p = c.rt.prep;
+  if (!p) return s;
+  c.rt.move = null;
+  if (c.player.health <= 0 || s.secret) { phantomBrawlerCancelPrep(c.rt, c.patch); return s; }
+  if (!kenkiPrepDue(p, c.t)) return s;
+  phantomBrawlerCancelPrep(c.rt, c.patch);
+  if (!BR.brawlerCanPay(s, p.kind, false, discountOf(c.actor)(p.kind))) return s;
+  return startTech(c, s, p.kind, { decidedAt: p.at, cancel: p.cancel, kickN: p.kickN });
 };
 
 /** ステップ(100px・加速→減速・無敵なし)。 */
@@ -288,7 +338,7 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
 
   if (s.phase === 'attack') {
     const spec = BR.brawlerStageSpec(s.stage);
-    let r: { touched: boolean; countered: boolean };
+    let r: { touched: boolean; countered: boolean; landed?: boolean };
     if (spec.shape === 'landing') {
       r = strikePlayer(c, s, edgeDist(foot.x, foot.y, player) <= BR.BRAWLER_LANDING_RADIUS,
         { kind: 'circle', cx: foot.x, cy: foot.y, r: BR.BRAWLER_LANDING_RADIUS }, spec.mult, 'brawler-s4', 'none', foot.x, foot.y);
@@ -307,6 +357,7 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     }
     const cancelled = cancelOnCounter(r);
     if (cancelled) { c.rt.move = null; return cancelled; }
+    if (r.landed) c.rt.mind.landedStartAt = s.startAt; // 台本の「当たった」(§16-7)
     const hits = r.touched ? 1 : 0;
     // 3段目のアッパー・4段目の跳び踏み潰しを食らったプレイヤーは、絵だけ浮く(操作は奪わない・research/BRAWLER_PHANTOM.md §4-9)。
     if (hits > 0 && (spec.stage === 3 || spec.stage === 4)) notePlayerLaunched(c.nowMs, BR.BRAWLER_LIFT_MS);
@@ -324,6 +375,7 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
       kbOf('big', BR.BRAWLER_BIG_KB_MULT, unit(pcx - foot.x, pcy - foot.y)), foot.x, foot.y);
     const cancelled = cancelOnCounter(r);
     if (cancelled) return cancelled;
+    if (r.landed) c.rt.mind.landedStartAt = s.startAt; // 台本の「当たった」(§16-7)
     const g = useGameStore.getState();
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
     g.triggerShake(220, 12, 0, 1);
@@ -333,7 +385,9 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
   }
   if (s.tech === 'kiko') {
     if (!phantom.gpKiko) {
-      c.patch.gpKiko = { id: `gpkiko-${c.nowMs}`, x: cx + dir.x * 18, y: cy - 4 + dir.y * 18, dirX: dir.x, dirY: dir.y, traveled: 0, createdAt: c.nowMs };
+      c.patch.gpKiko = { id: `gpkiko-${c.nowMs}`, x: cx + dir.x * 18, y: cy - 4 + dir.y * 18, dirX: dir.x, dirY: dir.y, traveled: 0, createdAt: c.nowMs,
+        // 台本(2・3)の締めの気功は当てる=近接の打撃と同じ扱い(社長裁定2026-11-10 §16-8)。単発の気功は今どおり(遠隔=被弾無敵を守る)。
+        ...(pbScriptFinisherKiko(c.rt.mind) ? { melee: true } : {}) };
     }
     return { ...s, resolved: true, dirX: dir.x, dirY: dir.y };
   }
@@ -344,6 +398,7 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     kbOf(big ? 'big' : 'builtin', BR.BRAWLER_BIG_KB_MULT, dir), cx, cy);
   const cancelled = cancelOnCounter(r);
   if (cancelled) { c.rt.move = null; return cancelled; }
+  if (r.landed) c.rt.mind.landedStartAt = s.startAt; // 台本の「当たった」(§16-7)
   const hits = r.touched ? 1 : 0;
   const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: hs });
   c.rt.move = null;
@@ -381,8 +436,15 @@ const stepKiko = (c: PhantomBrawlerCtx): void => {
     * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)) * PVP_DAMAGE_SCALE;
   hitThirdParties({ kind: 'circle', cx: nx, cy: ny, r: BR.BRAWLER_KIKO_RADIUS }, dmg, c.phantom.id, 'guardian-phantom');
   if (edgeDist(nx, ny, pl) <= BR.BRAWLER_KIKO_RADIUS) {
-    // 遠隔の行(research/BRAWLER_PHANTOM.md §4-8 の3行目): 型名を渡さない=通常の被弾無敵を守る。死因は末尾の記録で残す。
-    g.damagePlayer(dmg, `${c.label}の気功`, nx, ny, undefined, undefined, 'brawler-kiko', undefined, undefined, { type: 'guardian-phantom', id: c.phantom.id });
+    if (k.melee) {
+      // 台本の締めの気功(§16-8): 近接の打撃と同じ1本(landPhantomMeleeOnPlayer)で当てる=プレイヤーの被弾無敵に吸われない。
+      // 量は単発の気功と同じ式(×0.2 は land の側)。押しは組み込み(単発の気功の damagePlayer と同じ)。
+      c.land(nx, ny, BR.BRAWLER_KIKO_MULT * phantomBrawlerStrikerMult(c.actor.characterClass) * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)),
+        { moveKey: 'brawler-kiko', sourceLabel: `${c.label}の気功`, onCountered: () => {} });
+    } else {
+      // 遠隔の行(research/BRAWLER_PHANTOM.md §4-8 の3行目): 型名を渡さない=通常の被弾無敵を守る。死因は末尾の記録で残す。
+      g.damagePlayer(dmg, `${c.label}の気功`, nx, ny, undefined, undefined, 'brawler-kiko', undefined, undefined, { type: 'guardian-phantom', id: c.phantom.id });
+    }
   }
 };
 
@@ -529,6 +591,8 @@ const kenkiShukuchi = (c: PhantomBrawlerCtx, s: BrawlerState, cx: number, cy: nu
   c.patch.gpShukuchi = { at: c.nowMs, fromX: cx, fromY: cy };
   if (phantom.gpGuardUntil !== undefined) c.patch.gpGuardUntil = undefined;
   c.rt.move = null;
+  phantomBrawlerCancelPrep(c.rt, c.patch);
+  pbInterruptScript(c.rt.mind); // 縮地が入った=台本は打ち切り(§16-7)
   c.rt.shukuchiReadyAt = kenkiShukuchiReadyAt(t);
   // すぐ次の行動へ: 息継ぎ・反応の下限・考える拍・様子見を外す(間合いに入った扱い)。
   const m = c.rt.mind;
@@ -575,7 +639,10 @@ const stepKenkiLeap = (c: PhantomBrawlerCtx, s: BrawlerState): boolean => {
     gameTime: t, aimX: pcx, aimY: pcy, atkUntil: kenkiAtkUntil(t), attackSpeedMult: ENEMY_ATTACK_SPEED_MULT,
     jumpMsRaw: groundJumpAirMsRaw(KENKI_JUMP_STYLE), recoverMsRaw: pumpkinRecoverMs(KENKI_JUMP_STYLE),
   });
-  if (!gj) return false;
+  if (!gj) {
+    c.rt.mind.leapForSecret = false; // 跳びかかりが溜めで取り消された(台本6の跳びも捨てる)
+    return false;
+  }
   Object.assign(c.patch, gj.patch);
   if (gj.landed) {
     // 着地の爆風: ハンターと同じ円(半径・中心=着地した体の中心・プレイヤーの当たり半径を足す式)。
@@ -598,6 +665,7 @@ const stepKenkiLeap = (c: PhantomBrawlerCtx, s: BrawlerState): boolean => {
   }
   if (gj.done) {
     c.rt.mind.nextStringAt = t + phantomBrawlerBreath(c.rand);
+    pbSecretAfterLeap(c.rt.mind); // 台本6: 着地したら(当たり外れに関わらず)秘奥義を狙う(§16-3)
     return false;
   }
   return true;
@@ -618,9 +686,20 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
   }
   // 被弾した=段は1段目へ・先行入力は捨てる(プレイヤーと同じ brawlerOnHurt。行動そのものは続く)。
   if ((phantom.lastHit ?? 0) > c.rt.lastHitSeen) {
-    if (c.rt.lastHitSeen !== 0) s = BR.brawlerOnHurt(s);
+    if (c.rt.lastHitSeen !== 0) {
+      s = BR.brawlerOnHurt(s);
+      // 殴られた=予備動作は取り消し(払わない)・台本は打ち切り(段が1段目へ戻る・§16-7)。
+      phantomBrawlerCancelPrep(c.rt, c.patch);
+      pbInterruptScript(m);
+    }
     c.rt.lastHitSeen = phantom.lastHit ?? 0;
     kenkiNoteHit(c.rt.hitTimes, t); // 跳びかかりの「撃たれ続けている」(§15)
+  }
+  // 近接(打撃・技)で食らった=技ポイント+1(当てた時と同じ量・上限・§16-8)。銃弾・爆発・遠隔では打刻されない(gameStore.gatePhantomHit)。
+  const mh = phantom.gpMeleeHurtAt ?? 0;
+  if (mh > c.rt.lastMeleeHurtSeen) {
+    c.rt.lastMeleeHurtSeen = mh;
+    s = BR.brawlerAfterHurtPoints(s, pointCapOf(phantom), true, c.nowMs);
   }
   // 跳びかかりの最中(ハンターの跳びの流用・§15)は他の行動をしない。
   if (stepKenkiLeap(c, s)) {
@@ -628,6 +707,8 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
     const phaseNow = 'aiPhase' in c.patch ? c.patch.aiPhase : phantom.aiPhase;
     const bs = phaseNow === 'recover' ? 'gp-brawler-recover' : 'gp-brawler';
     if (phantom.bossState !== bs) c.patch.bossState = bs;
+    // 跳びかかりの最中に食らった分(段は1段目へ・技ポイント+1)も書く(書かずに抜けると捨てられていた)。
+    if (s !== before) c.patch.phantomBrawler = s;
     return true;
   }
   // 縮地(§14): カウンターが成立したら、届く距離より遠い時だけ一気に詰める(1回のカウンターで1回・4秒に1回まで)。
@@ -670,11 +751,14 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
     const reach = huntingMeleeRadius(c.actor);
     if (ed <= reach) c.rt.reachSince = c.rt.reachSince ?? t; else c.rt.reachSince = null;
     const reachReady = c.rt.reachSince !== null && t - c.rt.reachSince >= Math.max(HUMAN_REACTION_MS, c.profile.reactionMs);
+    // 予備動作(§16-5): 間は行動中扱い(歩かない・頭脳を呼ばない=先行入力・構え・ステップ・跳びかかりも出さない)。終わった瞬間に技を出す。
+    const inPrep = c.rt.prep !== null;
+    if (inPrep) s = stepPrep(c, s);
     const wasBusy = m.wasBusy;
-    const busyNow = BR.isBrawlerBusy(s);
+    const busyNow = BR.isBrawlerBusy(s) || c.rt.prep !== null;
     if (wasBusy && !busyNow && !(s.nextStage > 1 && t <= s.chainUntil)) m.nextStringAt = t + phantomBrawlerBreath(c.rand);
     m.wasBusy = busyNow;
-    if (player.health > 0) {
+    if (player.health > 0 && !inPrep) {
       const act = decidePhantomBrawler({
         s, t, edgeDist: ed, reach, reachReady, playerReach: huntingMeleeRadius(player),
         kikoClear: true, discount: discountOf(c.actor), counterChance: c.profile.counterChance, meleeBias: c.profile.meleeBias,
@@ -682,14 +766,19 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
         leap: {
           eligible: kenkiLeapEligible({ edgeDist: ed, t, readyAt: c.rt.leapReadyAt, idle: s.phase === 'idle', secret: !!s.secret }),
           underFire: kenkiUnderFire(c.rt.hitTimes, t),
+          // 台本6(§16-3): 距離の下限だけ外す(クールダウン・上限・待機・秘奥義の最中でないことは同じ)。
+          eligibleNear: kenkiLeapEligible({ edgeDist: ed, t, readyAt: c.rt.leapReadyAt, idle: s.phase === 'idle', secret: !!s.secret }, 0),
         },
+        hpFrac: phantom.maxHealth > 0 ? phantom.health / phantom.maxHealth : 1,
+        pointCap: pointCapOf(phantom),
       }, m);
       if (act?.kind === 'attack') s = startAttack(c, s);
       else if (act?.kind === 'buffer') s = { ...s, buffered: true };
-      else if (act?.kind === 'tech') s = startTech(c, s, act.tech);
+      else if (act?.kind === 'drop') s = { ...s, buffered: false };
+      else if (act?.kind === 'tech') s = beginTech(c, s, act.tech);
       else if (act?.kind === 'step') s = startStep(c, s, act.dirX, act.dirY);
       else if (act?.kind === 'leap') startKenkiLeap(c);
-      m.wasBusy = BR.isBrawlerBusy(s);
+      m.wasBusy = BR.isBrawlerBusy(s) || c.rt.prep !== null;
     }
   }
 
@@ -697,7 +786,9 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
   stepKiko(c);
   if (s !== before) c.patch.phantomBrawler = s;
   const leapStarted = c.patch.aiPhase === 'crouch';
-  const bs = leapStarted ? 'gp-brawler' : phantomBrawlerBossState(s, t);
+  const prepping = c.rt.prep !== null;
+  // 予備動作の間は技の出かかり(=技の最中・固まらない・浮かない)と同じ区分。
+  const bs = leapStarted || prepping ? 'gp-brawler' : phantomBrawlerBossState(s, t);
   if (phantom.bossState !== bs) c.patch.bossState = bs;
-  return leapStarted || BR.isBrawlerBusy(s) || c.rt.move !== null;
+  return leapStarted || prepping || BR.isBrawlerBusy(s) || c.rt.move !== null;
 };

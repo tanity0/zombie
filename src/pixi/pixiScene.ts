@@ -23042,7 +23042,9 @@ export class PixiScene {
         const stanceFace = e.type === 'zombie' && (e.aiPhase === 'z-red-pause' || e.aiPhase === 'z-bite1')
           && e.stanceDirX !== undefined ? (e.stanceDirX >= 0 ? toRight : -toRight) : 0;
         // 拳鬼の格闘の行動中(段・技・構え)は、打つ向き(格闘の状態の dirX=判定と同じ値)を向く=拳が相手と逆を向かない。
-        const kenkiBr = kenkiMirror && e.phantomBrawler && e.phantomBrawler.phase !== 'idle' && Math.abs(e.phantomBrawler.dirX) > 0.05
+        // 技の予備動作(§16-5)の間は、出す技の向き(予備動作を始めた時の相手の側)を向く。
+        const kenkiBr = kenkiMirror && e.gpBrawlerPrep ? (e.gpBrawlerPrep.dirX > 0 ? toRight : -toRight)
+          : kenkiMirror && e.phantomBrawler && e.phantomBrawler.phase !== 'idle' && Math.abs(e.phantomBrawler.dirX) > 0.05
           ? (e.phantomBrawler.dirX > 0 ? toRight : -toRight) : 0;
         const want = kbFacingLock ? cur
           : aweFace !== 0 ? aweFace
@@ -38278,6 +38280,9 @@ export class PixiScene {
     // 縮み(スカッシュ)は掛けない(手で描いたコマ=歪みを外す)。跳ぶ高さ・影はハンターと同じ描画の経路(aiHop)。
     if (e.aiPhase === 'crouch' || e.aiPhase === 'recover') name = 'kenki-melee-ready';
     else if (e.aiPhase === 'jump') name = 'kenki-melee-swing';
+    // 技の予備動作(research/BRAWLER_PHANTOM.md §16-5・拳鬼だけ): 気功・大叩き潰し=腕上げ/初段の飛び蹴り=しゃがみ。
+    // 手で描いたコマの差し替えだけ(伸び縮み・回転はしない=手描きのコマなので歪みは外れる)。
+    if (e.gpBrawlerPrep) name = `kenki-melee-${e.gpBrawlerPrep.tex}`;
     const tex = getTexture(name) ?? getTexture('kenki-idle');
     if (tex) this.kenkiTexSet.add(tex);
     return tex;

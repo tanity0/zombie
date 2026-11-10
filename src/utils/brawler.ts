@@ -363,6 +363,19 @@ export const brawlerAfterAmmoPickup = (s: BrawlerState, cap: number, now: number
   return next === s.points ? s : { ...s, points: next, gainAt: now };
 };
 
+/**
+ * 食らった時の技ポイント(社長指示2026-11-10「あと格闘は攻撃食らっても技ポイント貯まる にしよう。ただし、ボスは銃弾では貯まらない。」
+ * research/BRAWLER.md §12-3c・BRAWLER_PHANTOM.md §16-8)。当てた時と同じ +1・同じ上限。
+ * hurt=体力が本当に減った被弾か(0ダメージ=構えで受けた・無敵で弾いた・持続ダメージは呼び手が false を渡す)。
+ * 増えた時だけ gainAt を打つ(上限・hurt=false なら状態は同じ物を返す)。
+ */
+export const BRAWLER_HURT_POINTS = 1;
+export const brawlerAfterHurtPoints = (s: BrawlerState, cap: number, hurt: boolean, now: number): BrawlerState => {
+  if (!hurt) return s;
+  const next = Math.min(cap, s.points + BRAWLER_HURT_POINTS);
+  return next === s.points ? s : { ...s, points: next, gainAt: now };
+};
+
 /** 構えのカウンターが成立した時の技ポイント=上限まで全回復(社長指示2026-11-08「格闘のカウンターが成立すると格闘ポイントを全回復する」)。
  *  増えた時だけ gainAt を打つ(既に上限なら状態は同じ物を返す)。 */
 export const brawlerAfterGuardCounter = (s: BrawlerState, cap: number, now: number): BrawlerState =>

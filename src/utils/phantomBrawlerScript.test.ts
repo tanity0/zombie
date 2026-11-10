@@ -1,0 +1,252 @@
+// research/BRAWLER_PHANTOM.md §16: 拳鬼の攻めの台本(頭脳の純関数)。受け入れ条件 §16-6 の1〜3。
+import { describe, expect, it } from 'vitest';
+import {
+  createPhantomBrawlerMind, decidePhantomBrawler, pbAffordableScripts, pbPickScript, pbScriptCost, pbSecretAfterLeap, pbHpPolicy,
+  pbInterruptScript, pbScriptFinisherKiko, PB_SCRIPT_IDS, type PhantomBrawlerInput, type PhantomBrawlerMind, type PbScriptId,
+} from './phantomBrawlerAi';
+import {
+  initialBrawlerState, brawlerStartAttack, brawlerStartTech, brawlerAfterResolve, brawlerFinish, brawlerStageForPress, brawlerNextKickN,
+  brawlerTechCost,
+} from './brawler';
+import { brawlerTimeKeeperDiscount } from './brawlerSkills';
+import type { BrawlerState, BrawlerTechKind } from './brawlerTypes';
+
+const T = 1_000_000;
+const disc = (k: BrawlerTechKind): number => brawlerTimeKeeperDiscount(k, 3);
+const base = (o: Partial<PhantomBrawlerInput> = {}, s: Partial<BrawlerState> = {}): PhantomBrawlerInput => ({
+  s: { ...initialBrawlerState(), ...s }, t: T, edgeDist: 40, reach: 74, reachReady: true, playerReach: 74, kikoClear: true,
+  discount: disc, counterChance: 0, meleeBias: 0.95, bullet: null, rand: () => 0.999, ...o,
+});
+/** 払える台本が全部(1〜5)の時に、id を引く乱数。 */
+const randFor = (id: PbScriptId): number => (id - 1) / 5 + 0.01;
+
+/**
+ * 頭脳の決めを、プレイヤーと同じ純関数で状態へ当てていく小さな運転手(当たりは全部「体力を削った」)。
+ * 押した順(段='s1'..'s5'・技名)を返す。
+ */
+const drive = (id: PbScriptId, o: { missAt?: number } = {}): { seq: string[]; m: PhantomBrawlerMind } => {
+  const m = createPhantomBrawlerMind();
+  let t = T;
+  let s: BrawlerState = { ...initialBrawlerState(), points: 20 };
+  const seq: string[] = [];
+  const decide = () => decidePhantomBrawler(base({ t, rand: () => randFor(id) }, s), m);
+  const first = decide();
+  expect(first).toEqual({ kind: 'attack' });
+  expect(m.script?.id).toBe(id);
+  s = brawlerStartAttack(s, brawlerStageForPress(s, t), t, false); seq.push(`s${s.stage}`);
+  for (let k = 0; k < 20; k++) {
+    // 判定を解く(o.missAt 手目は外す)。
+    const miss = o.missAt === seq.length;
+    s = brawlerAfterResolve(s, t, miss ? 0 : 1, { pointCap: 20, countPoint: s.phase === 'attack', hitstopMs: 0 });
+    // 蹴りの連続の受付は着いた瞬間に制御が張る(phantomBrawlerTick.resolveAction と同じ)。
+    if (s.phase === 'tech' && s.tech === 'kick') s = { ...s, kickChainUntil: s.kickN >= 3 ? 0 : t + 650, kickCount: s.kickN >= 3 ? 0 : s.kickN };
+    if (!miss) m.landedStartAt = s.startAt;
+    t += 1;
+    const a = decide();
+    if (!a) break;
+    if (a.kind === 'buffer') {
+      s = { ...s, buffered: true };
+      t += 1;
+      expect(decide()).toBeNull(); // 先行入力の後、前の段の終わりを待っている間は何もしない(台本は続く)
+      expect(m.script).not.toBeNull();
+      const f = brawlerFinish(s, t);
+      s = f.state;
+      expect(f.fire).toBe(true);
+      s = brawlerStartAttack(s, brawlerStageForPress(s, t), t, false); seq.push(`s${s.stage}`);
+    } else if (a.kind === 'tech') {
+      const kickN = a.tech === 'kick' ? brawlerNextKickN(s, t) : 0;
+      const cancel = s.phase === 'tech' && !(a.tech === 'kick' && s.tech === 'kick');
+      s = { ...brawlerStartTech(s, a.tech, t, kickN, cancel), points: s.points - brawlerTechCost(a.tech, false, disc(a.tech)) };
+      seq.push(a.tech);
+    } else {
+      throw new Error(`unexpected ${a.kind}`);
+    }
+  }
+  return { seq, m };
+};
+
+describe('台本1〜5は書いた順に押す(§16-1)', () => {
+  it('1: 通常5連', () => expect(drive(1).seq).toEqual(['s1', 's2', 's3', 's4', 's5']));
+  it('2: 1-2-3 → 飛び蹴り → 大叩き潰し → 気功(続けて出す・社長裁定 §16-8)', () => expect(drive(2).seq).toEqual(['s1', 's2', 's3', 'kick', 'stomp', 'kiko']));
+  it('3: 1-2 → 気功', () => expect(drive(3).seq).toEqual(['s1', 's2', 'kiko']));
+  it('4: 1-2-3-4 → 大叩き潰し', () => expect(drive(4).seq).toEqual(['s1', 's2', 's3', 's4', 'stomp']));
+  it('5: 1 → 飛び蹴り×3', () => expect(drive(5).seq).toEqual(['s1', 'kick', 'kick', 'kick']));
+  it('出し切ったら台本は終わる', () => {
+    for (const id of PB_SCRIPT_IDS) expect(drive(id).m.script).toBeNull();
+  });
+});
+
+describe('台本の選び方', () => {
+  it('払えない台本は選ばれない(値段=始める時点で全部・タイムキーパーの割引込み)', () => {
+    expect(pbScriptCost(1, disc)).toBe(0);
+    expect(pbAffordableScripts(0, disc)).toEqual([1]);
+    expect(pbAffordableScripts(1, disc)).toEqual([1, 3]);           // 気功1
+    expect(pbAffordableScripts(3, disc)).toEqual([1, 3, 5]);        // 蹴り×3
+    expect(pbAffordableScripts(4, disc)).toEqual([1, 3, 4, 5]);     // 潰し4
+    expect(pbAffordableScripts(6, disc)).toEqual([1, 2, 3, 4, 5]);  // 蹴り+潰し+気功
+    for (let r = 0; r < 1; r += 0.05) expect([1, 3]).toContain(pbPickScript(1, disc, null, () => r));
+  });
+  it('直前と同じ台本は引かない(払えるのが1本だけなら同じでよい)', () => {
+    for (const last of PB_SCRIPT_IDS) {
+      for (let r = 0; r < 1; r += 0.02) expect(pbPickScript(20, disc, last, () => r)).not.toBe(last);
+    }
+    expect(pbPickScript(0, disc, 1, () => 0.5)).toBe(1);
+    // 頭脳の中でも: 同じ心で続けて始めると、前の台本は引かない
+    const m = createPhantomBrawlerMind();
+    decidePhantomBrawler(base({ rand: () => 0.999 }, { points: 20 }), m);
+    const first = m.script!.id;
+    m.script = null;
+    decidePhantomBrawler(base({ rand: () => 0.999 }, { points: 20 }), m);
+    expect(m.script!.id).not.toBe(first);
+  });
+  it('等しい確率(払える台本の数で割る)', () => {
+    const seen = new Map<number, number>();
+    for (let i = 0; i < 500; i++) { const id = pbPickScript(20, disc, null, () => (i + 0.5) / 500); seen.set(id, (seen.get(id) ?? 0) + 1); }
+    expect([...seen.values()]).toEqual([100, 100, 100, 100, 100]);
+  });
+});
+
+describe('途中で外れたら打ち切る・割り込みも打ち切り(§16-1・§16-7)', () => {
+  it('2段目が外れたら3段目は出ない', () => {
+    const r = drive(1, { missAt: 2 });
+    expect(r.seq).toEqual(['s1', 's2']);
+    expect(r.m.script).toBeNull();
+  });
+  it('台本2の飛び蹴りが外れたら潰し・気功は出ない', () => {
+    expect(drive(2, { missAt: 4 }).seq).toEqual(['s1', 's2', 's3', 'kick']);
+  });
+  it('構えで受けられた・0ダメージ(触れたが体力を削っていない)は外れ扱い', () => {
+    const m = createPhantomBrawlerMind();
+    decidePhantomBrawler(base({ rand: () => randFor(1) }), m);
+    let s = brawlerStartAttack({ ...initialBrawlerState() }, 1, T, false);
+    s = brawlerAfterResolve(s, T, 1, { pointCap: 20, countPoint: true, hitstopMs: 0 }); // connected だが landed を書かない
+    expect(decidePhantomBrawler(base({ t: T + 1 }, s), m)).toBeNull();
+    expect(m.script).toBeNull();
+  });
+  it('次の技が払えない=打ち切り', () => {
+    const m = createPhantomBrawlerMind();
+    decidePhantomBrawler(base({ rand: () => randFor(3) }, { points: 20 }), m);
+    m.script = { id: 3, idx: 2 }; // 1-2 まで出した
+    let s = brawlerStartAttack({ ...initialBrawlerState(), points: 0 }, 2, T, false);
+    s = brawlerAfterResolve(s, T, 1, { pointCap: 20, countPoint: false, hitstopMs: 0 });
+    m.landedStartAt = s.startAt;
+    expect(decidePhantomBrawler(base({ t: T + 1 }, s), m)).toBeNull();
+    expect(m.script).toBeNull();
+  });
+  it('殴られた・縮地(制御が pbInterruptScript を呼ぶ)/構え・ステップが入った=打ち切り', () => {
+    const m = createPhantomBrawlerMind();
+    decidePhantomBrawler(base({ rand: () => randFor(1) }), m);
+    expect(m.script).not.toBeNull();
+    pbInterruptScript(m);
+    expect(m.script).toBeNull();
+    decidePhantomBrawler(base({ rand: () => randFor(1) }), m);
+    const s = brawlerStartAttack({ ...initialBrawlerState(), points: 9 }, 1, T, false);
+    expect(decidePhantomBrawler(base({ bullet: { kind: 'counter' } }, s), m)).toEqual({ kind: 'tech', tech: 'guard' });
+    expect(m.script).toBeNull();
+  });
+});
+
+describe('台本7: 詰めの飛び蹴りが当たったら 1〜5 へ(§16-2・§16-7)', () => {
+  const seq = (...v: number[]) => { let i = 0; return () => v[Math.min(i++, v.length - 1)]; };
+  const kickOut = (m: PhantomBrawlerMind) => {
+    expect(decidePhantomBrawler(base({ edgeDist: 100, rand: seq(0, 0.5, 0) }, { points: 1 }), m)).toEqual({ kind: 'tech', tech: 'kick' });
+    expect(m.approachKick).toBe(true);
+    let s = brawlerStartTech({ ...initialBrawlerState(), points: 0 }, 'kick', T, 1);
+    s = brawlerAfterResolve(s, T + 10, 1, { pointCap: 20, countPoint: false, hitstopMs: 0 });
+    return s;
+  };
+  it('当たったら蹴りの最中に1段目を先行入力する(息継ぎ・反応の下限は掛けない)・台本は蹴りの後の残りで払える物から', () => {
+    const m = createPhantomBrawlerMind();
+    const s = kickOut(m);
+    m.nextStringAt = T + 99_999; // 息継ぎ中でも続ける
+    m.landedStartAt = s.startAt;
+    expect(decidePhantomBrawler(base({ t: T + 11, reachReady: false, rand: () => 0.999 }, s), m)).toEqual({ kind: 'buffer' });
+    expect(m.script?.fromKick).toBe(true);
+    expect(m.script!.id).toBe(1); // 蹴りを払った残り(0)で払える台本=台本1だけ
+    // 先行入力した後は、蹴りの終わりを待つ(台本は続く)
+    expect(decidePhantomBrawler(base({ t: T + 12 }, { ...s, buffered: true }), m)).toBeNull();
+    expect(m.script).not.toBeNull();
+  });
+  it('外れたら続かない', () => {
+    const m = createPhantomBrawlerMind();
+    const s = kickOut(m); // landed を書かない
+    expect(decidePhantomBrawler(base({ t: T + 11 }, s), m)).toBeNull();
+    expect(m.script).toBeNull();
+    expect(m.approachKick).toBe(false);
+  });
+  it('蹴りの押しで届く距離の外へ出たら打ち切り(先行入力も捨てる)', () => {
+    const m = createPhantomBrawlerMind();
+    const s = kickOut(m);
+    m.landedStartAt = s.startAt;
+    decidePhantomBrawler(base({ t: T + 11 }, s), m);
+    expect(decidePhantomBrawler(base({ t: T + 12, edgeDist: 120 }, { ...s, buffered: true }), m)).toEqual({ kind: 'drop' });
+    expect(m.script).toBeNull();
+  });
+});
+
+describe('台本6: HP半分以下・ポイント満タン → 跳びかかり → 秘奥義(§16-3・§16-8)', () => {
+  const full = { hpFrac: 0.5, pointCap: 20, leap: { eligible: false, underFire: false, eligibleNear: true } };
+  it('HP半分超・ポイント不足・間隔の中では狙わない', () => {
+    const m = createPhantomBrawlerMind();
+    expect(decidePhantomBrawler(base({ ...full, hpFrac: 0.51 }, { points: 20 }), m)).not.toEqual({ kind: 'leap' });
+    expect(decidePhantomBrawler(base({ ...full }, { points: 19 }), createPhantomBrawlerMind())).not.toEqual({ kind: 'leap' });
+    const m3 = createPhantomBrawlerMind(); m3.lastSecretAt = T - 1000;
+    expect(decidePhantomBrawler(base({ ...full }, { points: 20 }), m3)).not.toEqual({ kind: 'leap' });
+  });
+  it('条件が揃うと近くても跳ぶ(距離の下限は外す)・着地後に秘奥義を狙う(1手目=蹴り)', () => {
+    const m = createPhantomBrawlerMind();
+    expect(decidePhantomBrawler(base({ ...full, edgeDist: 40 }, { points: 20 }), m)).toEqual({ kind: 'leap' });
+    expect(m.leapForSecret).toBe(true);
+    pbSecretAfterLeap(m);
+    expect(m.secretPlan).toBe(true);
+    expect(decidePhantomBrawler(base({ ...full, edgeDist: 40 }, { points: 20 }), m)).toEqual({ kind: 'tech', tech: 'kick' });
+  });
+  it('蹴りが外れたら秘奥義は出ない(狙いを打ち切る)', () => {
+    const m = createPhantomBrawlerMind();
+    decidePhantomBrawler(base({ ...full }, { points: 20 }), m);
+    pbSecretAfterLeap(m);
+    decidePhantomBrawler(base({ ...full }, { points: 20 }), m);
+    // 蹴りが外れて(順番は0のまま)待機へ戻った
+    decidePhantomBrawler(base({ ...full, t: T + 500 }, { points: 19, secretProgress: 0 }), m);
+    expect(m.secretPlan).toBe(false);
+  });
+  it('跳ばなかった(溜めで取り消された)跳びは秘奥義につながらない', () => {
+    const m = createPhantomBrawlerMind();
+    pbSecretAfterLeap(m);
+    expect(m.secretPlan).toBe(false);
+  });
+});
+
+describe('HP半分以下は溜める(社長裁定 §16-8「技を使う台本を控えて溜める(通常5連=台本1と構えだけ)」)', () => {
+  it('振る舞いは1つの関数で切り替わる', () => {
+    expect(pbHpPolicy(0.51).hold).toBe(false);
+    expect(pbHpPolicy(0.5)).toMatchObject({ hold: true, scripts: [1], approachKick: false, kikoSingle: false, secretLeap: true });
+    expect(pbHpPolicy(undefined).hold).toBe(false);
+  });
+  it('台本は1だけ・詰めの飛び蹴りと気功の単発は出さない', () => {
+    for (let r = 0; r < 1; r += 0.1) {
+      const m = createPhantomBrawlerMind();
+      decidePhantomBrawler(base({ hpFrac: 0.4, pointCap: 20, rand: () => r }, { points: 10 }), m);
+      expect(m.script?.id).toBe(1);
+    }
+    const kick = decidePhantomBrawler(base({ hpFrac: 0.4, pointCap: 20, edgeDist: 100, rand: () => 0 }, { points: 10 }), createPhantomBrawlerMind());
+    expect(kick).toBeNull();
+    const kiko = decidePhantomBrawler(base({ hpFrac: 0.4, pointCap: 20, edgeDist: 400, rand: () => 0 }, { points: 10 }), createPhantomBrawlerMind());
+    expect(kiko).toBeNull();
+  });
+  it('構えは出す', () => {
+    expect(decidePhantomBrawler(base({ hpFrac: 0.4, pointCap: 20, bullet: { kind: 'counter' }, edgeDist: 300 }, { points: 10 }), createPhantomBrawlerMind()))
+      .toEqual({ kind: 'tech', tech: 'guard' });
+  });
+});
+
+describe('台本の締めの気功(§16-8)', () => {
+  it('台本2・3の最後の気功だけ締め扱い(単発・途中の手は違う)', () => {
+    const m = createPhantomBrawlerMind();
+    expect(pbScriptFinisherKiko(m)).toBe(false);
+    m.script = { id: 3, idx: 3 }; expect(pbScriptFinisherKiko(m)).toBe(true);
+    m.script = { id: 2, idx: 6 }; expect(pbScriptFinisherKiko(m)).toBe(true);
+    m.script = { id: 2, idx: 5 }; expect(pbScriptFinisherKiko(m)).toBe(false);
+    m.script = { id: 1, idx: 5 }; expect(pbScriptFinisherKiko(m)).toBe(false);
+  });
+});
