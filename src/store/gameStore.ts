@@ -4710,6 +4710,21 @@ const brawlerJugglePatch = (enemy: Enemy, cls: 'mob' | 'strong' | 'boss', move: 
 const brawlerHoldFrom = (now: number, stopMs: number, kbUntil: number | undefined): number =>
   Math.max(now + Math.max(0, stopMs), kbUntil !== undefined && kbUntil > now ? kbUntil : 0);
 /**
+ * ★気絶中の敵へのフィニッシュ(強個体の3倍・ボスの5倍)が格闘の段・技だった時の、確定の固まり(research/BRAWLER.md §19-3・§19-7)。
+ * フィニッシュの分岐は brawlerHitPatch を通らない(押し・止め・浮かせはフィニッシュの決まりのまま)=固まりの欄だけ、同じ規則(brawlerLockOnHit)で書く。
+ * 秘奥義の当たりは確定の固まりの規則の外(今どおり何も書かない)。
+ */
+const brawlerFinishLockPatch = (enemy: Enemy, bs: BrawlerStrikeOpts, gameTime: number, now: number): Partial<Enemy> => {
+  const move = bs.combo?.move;
+  if (!move || move === 'secret' || move === 'secret-land') return {};
+  const stop = Math.max(0, bs.stunMs);
+  const bossBig = BRC.brawlerEnemyClass(enemy) === 'boss' && bs.kb.kind === 'big';
+  return BRC.brawlerLockOnHit(enemy, move, gameTime, now, {
+    stopMs: stop, enemyStopMs: bossBig ? 0 : stop,
+    canHold: BRC.brawlerPhaseKind(enemy, gameTime) !== 'active', airborneAfter: false,
+  }).patch;
+};
+/**
  * ★確定の固まりを延ばす(research/BRAWLER.md §19-3 ②): 道の上の続きを**出した瞬間**に、その時まだ確定の固まりが生きている敵を
  * 「その続きが当たる時刻+余白」まで固める。hitAt=当たる時刻(gameTime・出した時の実際の値)。道の上の続きかは呼び手が見る。
  */
@@ -12261,6 +12276,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             lastHit: now,
             liftUntil: now + MELEE_STUN_LIFT_MS,
             ...(fatal?.patch ?? {}),
+            // ★格闘の段・技がフィニッシュ(気絶中の3倍・5倍)になった時も、確定の固まり(§19-3)は同じ規則で書く。
+            //   書かないと、コンボの途中の1発が会心→次の1発がこの分岐、の時に固まりが途切れ、道の上でつないでいるのに敵が動く(実ループの検証2026-11-11)。
+            ...(bs ? brawlerFinishLockPatch(enemy, bs, gameTime, now) : {}),
           });
         }
         continue;

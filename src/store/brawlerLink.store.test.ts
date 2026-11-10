@@ -333,6 +333,25 @@ describe('§19-4-4b フレームの幅が揺れてもつながる(コマ落ち�
   });
 });
 
+describe('§19-4-4c 途中の1発が会心(気絶)になっても切れない(実ループの検証2026-11-11)', () => {
+  // 会心→気絶→次の1発は「フィニッシュ」(強個体の3倍・ボスの5倍)の分岐へ回り、brawlerHitPatch を通らない。
+  // 旧: その1発で確定の固まりが書かれず、前の固まりが切れた所でコンボが終わり、固まらない時間へ入った(=道の上なのに敵が動く)。
+  // ほかのテストは乱数を 0.99 に固定している(会心が出ない)ので、ここだけ1段目を会心にする。
+  for (const foe of ['driller-windup', 'hunter-windup', 'hunter-move'] as const) {
+    it(`${foe}: 1段目が会心 → 2→3→4→5 が最後まで固まったままつながる`, () => {
+      setup();
+      spawnFoe(foe);
+      const rnd = vi.mocked(Math.random);
+      rnd.mockReturnValue(0); // 1段目は会心
+      const w = watcher();
+      runRoute([s(1), s(2), s(3), s(4), s(5)], w, 'early', i => { if (i === 1) rnd.mockReturnValue(0.99); });
+      expect(w.hits).toBe(5);
+      expect(w.unheld, 'unheld frames').toBe(0);
+      expect(w.walked).toBeLessThan(0.5);
+    });
+  }
+});
+
 describe('§19-4-3 つながらない物', () => {
   const NOT_ON_ROUTE: { name: string; stages: number; pre?: 'kick'; then: Step }[] = [
     { name: '1段目の後に待機から大踏み潰し', stages: 1, then: t('stomp') },

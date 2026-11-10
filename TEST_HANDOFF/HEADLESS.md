@@ -163,6 +163,17 @@ npm run dev            # http://localhost:5173/zombie/
   `__gameStore.getState().captureFrame()`(同期→描画→dataURL)で撮る。
 - 流れ: 敵1体を `spawnEnemyAt`(`/zombie/src/utils/enemyUtils.ts` を動的 import)で置き、`biteAt = gameTime − 経過ms` を書いて撮る→経過msごとの画を `montage` で並べて見る。
 
+## 10. 実際のループを実時間で回す(2026-11-11・格闘のつながりの検証で実測)
+- ヘッドレスの素のままでは、ゲームのループは**毎秒2フレーム**しか回らない(rAF が絞られる+GPU 無しの描画が1枚0.5秒)。
+  1フレームの幅の上限(50ms)で切られるので、ゲームの中は実時間の約1/10で進む=数秒の出来事を見るのに1分かかる。
+- **絵が要らない検証**(入力→敵の状態を毎フレーム測る類)は、次の2つで実時間(毎秒約50フレーム・幅は自然に揺れる)になる:
+  1. `page.addInitScript` で `requestAnimationFrame` を `setTimeout(cb, 16)` へ差し替える(読み込みの前)。
+  2. 起動後に `__pixiScene.sync = () => {}` と `__pixiScene.renderer.render = () => {}` で描画だけ止める。
+  ループ・store・敵の AI・乱数は本物のまま。`renderer.render` だけ・`sync` だけでは速くならない(両方要る)。
+- 毎フレームの頭に処理を挟むには `__gameStore.subscribe((s, prev) => { if (s.gameTime !== prev.gameTime) … })`。
+  純関数は `await import('/zombie/src/utils/….ts')` で、アプリと同じモジュール(同じ状態)が取れる。
+- 手本: `TEST_HANDOFF/run-brawler-link.mjs`。★ユニットテストは乱数を固定していることが多い(会心が出ない)=**乱数で分かれる分岐はこの形でしか通らない**。
+
 ## ★やってはいけないこと
 - `npx playwright install`(環境のブラウザを壊す/ダウンロードが走る)
 - クリックのループで関門を抜けようとする(**3で `?smoke=1` を使う**)
