@@ -17,6 +17,7 @@
 //     絶対にズレない(「赤いのに当たらない/赤くないのに当たる」の禁止)。
 //  3. **踏み込みは絵で見せ、敵の当たり判定は動かさない。** 判定を動かすと壁・「行ける帯」の
 //     クランプを自前で書くことになり、v0.25.3875 と同型の穴を作る(CLAUDE.md「Visual vs hitbox」)。
+import { brawlerLockAlive } from './brawlerCombo'; // 確定の固まり(§19-3)が生きているか
 import type { Enemy, EnemyType } from '../types/game';
 import { isTrueBossType, isBossType } from './enemyUtils';
 import { isPassThroughPhase, isPassThroughBossState } from './enemyMotion';
@@ -809,7 +810,7 @@ export const canStartBite = (
   // 格闘の食らいの固まり(research/BRAWLER.md §11-1・Date.now系)の間は構え始めない(構えている噛みは止めない=技を出している敵は固めない)。
   if (enemy.brHoldUntil !== undefined && nowMs < enemy.brHoldUntil) return false;
   // ★確定の固まり(§19-3 ⑥・gameTime系)も同じ(どちらかの時計が生きていれば固まり)。
-  if (enemy.brLockUntil !== undefined && gameTime < enemy.brLockUntil) return false;
+  if (brawlerLockAlive(enemy, gameTime)) return false; // 1フレーム遅れて明ける式を同じ所から読む(敵の側とプレイヤーの側で食い違わせない)
   return true;
 };
 
@@ -838,7 +839,7 @@ export const canZombieRushBite = (
   // 格闘の食らいの固まり(research/BRAWLER.md §11-1・Date.now系)の間は構え始めない(構えている噛みは止めない=技を出している敵は固めない)。
   if (enemy.brHoldUntil !== undefined && nowMs < enemy.brHoldUntil) return false;
   // ★確定の固まり(§19-3 ⑥・gameTime系)も同じ(どちらかの時計が生きていれば固まり)。
-  if (enemy.brLockUntil !== undefined && gameTime < enemy.brLockUntil) return false;
+  if (brawlerLockAlive(enemy, gameTime)) return false; // 1フレーム遅れて明ける式を同じ所から読む(敵の側とプレイヤーの側で食い違わせない)
   return true;
 };
 

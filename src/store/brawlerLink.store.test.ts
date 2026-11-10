@@ -46,9 +46,13 @@ const place = (type: EnemyType, dx: number, id: string, extra: Partial<Enemy> = 
 const en = () => useGameStore.getState().enemies.find(x => x.id === 'z')!;
 const br = (): BrawlerState => useGameStore.getState().player.brawler!;
 const gt = () => useGameStore.getState().gameTime;
+/** フレームの幅を揺らす時の出どころ(null=一定)。揺らす時は壁時計と技の時計を同じ幅で進める。 */
+let jitter: (() => number) | null = null;
 const adv = (onStep?: () => void) => {
-  now += dtWall;
-  useGameStore.setState(st => ({ gameTime: st.gameTime + dtGame }));
+  const d = jitter ? jitter() : null;
+  now += d ?? dtWall;
+  // ★実機と同じ入口(setGameTime)で進める=確定の固まりの「1フレーム遅れて明ける」(brawlerLockAlive)がフレームの幅を知る。
+  useGameStore.getState().setGameTime(useGameStore.getState().gameTime + (d ?? dtGame));
   useGameStore.getState().movePlayer(NO, dtWall / 1000);
   useGameStore.getState().tickBrawler();
   useGameStore.getState().updateEnemies(dtGame / 1000);
@@ -294,6 +298,40 @@ const hitStages = (n: number, w: Watch): void => {
     if (i < n) for (let k = 0; k < 400 && br().phase !== 'idle'; k++) adv(() => w.frame());
   }
 };
+
+describe('§19-4-4b フレームの幅が揺れてもつながる(コマ落ち・検収2026-11-10)', () => {
+  // 続きは「後隙が明けた最初のフレーム」で出る。そのフレームが遅れても(幅16〜50ms=ループの上限)、道の上の続きは切れない。
+  // 旧: 余白34msだけで受けていたので、3→4・4→5段目が切れた(ボス級はそこから固まらない時間へ入る)。
+  const lcg = (seed: number) => { let x = seed >>> 0; return () => { x = (Math.imul(x, 1664525) + 1013904223) >>> 0; return x / 4294967296; }; };
+  afterEach(() => { jitter = null; });
+  for (const foe of ['zombie-move', 'hunter-windup'] as const) {
+    it(`${foe}: 1→2→3→4→5 を先行入力で出す(幅16〜50msの揺れ・20本)`, () => {
+      // 種 21〜40: 直す前の作りは種25で切れる(雑魚は4px・ボス級は55px 動いた)=このテストが効いている証拠。
+      for (let seed = 21; seed <= 40; seed++) {
+        setup();
+        spawnFoe(foe);
+        const r = lcg(seed * 7919);
+        jitter = () => 16 + Math.floor(r() * 35);
+        const w = watcher();
+        runRoute([s(1), s(2), s(3), s(4), s(5)], w, 'early');
+        jitter = null;
+        expectLinked(w, 5, `${foe} jitter seed ${seed}`);
+      }
+    });
+  }
+  it('ボス級の溜めの相: ほかの道も、揺れるフレームでつながる(各4本)', () => {
+    for (const rt of ROUTES) for (let seed = 1; seed <= 4; seed++) {
+      setup();
+      spawnFoe('hunter-windup');
+      const r = lcg(seed * 104729 + rt.steps.length);
+      jitter = () => 16 + Math.floor(r() * 35);
+      const w = watcher();
+      runRoute(rt.steps, w, 'early');
+      jitter = null;
+      expectLinked(w, rt.steps.length, `${rt.name} jitter seed ${seed}`);
+    }
+  });
+});
 
 describe('§19-4-3 つながらない物', () => {
   const NOT_ON_ROUTE: { name: string; stages: number; pre?: 'kick'; then: Step }[] = [

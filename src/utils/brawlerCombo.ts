@@ -68,7 +68,7 @@ export const brawlerLiftClass = (e: { type: EnemyType; colorTier?: string; reape
   isTerminalReaper(e) ? null : brawlerEnemyClass(e);
 /**
  * 振り払い(反撃・§11-3)の対象か(雑魚・強個体。ボス級は振り払わない)。
- * ★食らいの固まり・減衰・同じ技の罰は**ボス級にも掛かる**(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」・§11-1)。
+ * ★食らいの固まり(確定の固まり・§19-3)は**ボス級にも掛かる**(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」・§11-1)。
  */
 export const isBrawlerComboSubject = (type: EnemyType): boolean => brawlerComboClass(type) !== 'boss';
 /** 反撃の数。雑魚・強個体は同じ7(格闘では強個体を雑魚と同じに扱う)。ボス級は反撃しない=Infinity。 */
@@ -160,9 +160,25 @@ export const brawlerProration = (n: number): number =>
 export const brawlerProrationFor = (e: { brComboAt?: number; brFlowHits?: number }, now: number): number =>
   brawlerProration((brawlerComboAlive(e, now) ? (e.brFlowHits ?? 0) : 0) + 1);
 
-/** 確定の固まり(§19-3 ①②・gameTime)が生きているか。相は見ない(攻撃の振りの最中かは brawlerHeldNow が見る)。 */
+/**
+ * ★いまのフレームの幅(gameTime・ms)。確定の固まりは「終わりの時刻を過ぎた次のフレーム」で明ける(=1フレーム遅れて明ける)。
+ * 理由(検収2026-11-10): 続きは「後隙が明けた最初のフレーム」で出る。そのフレームが遅れると(コマ落ち・幅の揺れ)、出た瞬間には
+ *   終わりの時刻を過ぎていて延ばせず、3→4・4→5段目が切れた(幅16〜50msの揺れで119本中8本)。ボスの制御はプレイヤーの格闘の時計より
+ *   先に回るので、敵の側とプレイヤーの側が**同じ式**(このフレームの頭の時刻で見る)を使わないと、敵が1フレーム先に動く。
+ * 書くのは store の setGameTime だけ(1フレームに1回)。上限は1フレームの幅の上限(50ms)。
+ */
+let brawlerLockFrameMs = 0;
+export const BRAWLER_LOCK_FRAME_MAX_MS = 50;
+export const setBrawlerLockFrameMs = (dtGameMs: number): void => {
+  brawlerLockFrameMs = Number.isFinite(dtGameMs) ? Math.min(BRAWLER_LOCK_FRAME_MAX_MS, Math.max(0, dtGameMs)) : 0;
+};
+export const getBrawlerLockFrameMs = (): number => brawlerLockFrameMs;
+/**
+ * 確定の固まり(§19-3 ①②・gameTime)が生きているか。相は見ない(攻撃の振りの最中かは brawlerHeldNow が見る)。
+ * ★このフレームの頭の時刻(gameTime − フレームの幅)で見る=終わりの時刻を過ぎた次のフレームで明ける(上の brawlerLockFrameMs)。
+ */
 export const brawlerLockAlive = (e: { brLockUntil?: number }, gameTime: number): boolean =>
-  e.brLockUntil !== undefined && gameTime < e.brLockUntil;
+  e.brLockUntil !== undefined && gameTime - brawlerLockFrameMs < e.brLockUntil;
 /**
  * 固まりの時計のどちらかが生きているか(§19-3 ⑥)。壁時計の欄(brHoldUntil=秘奥義の間の止め・ボス級の当たりの止めなど)か、
  * gameTime の欄(brLockUntil=確定の固まり)。相は見ない。brHoldUntil を直接読んでいた所(行動の時計・噛みつき・描画)はこれを使う。
@@ -171,7 +187,7 @@ export const brawlerHoldClockAlive = (e: { brHoldUntil?: number; brLockUntil?: n
   (e.brHoldUntil !== undefined && nowMs < e.brHoldUntil) || brawlerLockAlive(e, gameTime);
 /** 固まりの残り(ms・2つの時計の長い方。生きていなければ 0)。 */
 export const brawlerHoldRemainMs = (e: { brHoldUntil?: number; brLockUntil?: number }, gameTime: number, nowMs: number): number =>
-  Math.max(0, e.brHoldUntil !== undefined ? e.brHoldUntil - nowMs : 0, e.brLockUntil !== undefined ? e.brLockUntil - gameTime : 0);
+  Math.max(0, e.brHoldUntil !== undefined ? e.brHoldUntil - nowMs : 0, e.brLockUntil !== undefined ? e.brLockUntil - gameTime + brawlerLockFrameMs : 0); // brawlerLockAlive と同じ式(生きている⇔残り>0)
 /**
  * いま格闘の食らいの固まりで止まっているか(全区分共通)。本当に攻撃を振っている最中(active)は止めない。
  * ★時計は2つ(§19-3 ⑥): 壁時計の欄か gameTime の欄のどちらかが生きていれば固まり。
@@ -200,7 +216,7 @@ export const brawlerStopOnlyNow = (
 // ★確定の固まり(research/BRAWLER.md §19-3・社長承認2026-11-10「繋がってる時はちゃんと繋がって敵は一切動けないように」)。
 // 考え方: 固まりは「プレイヤーが次に動けるようになる時」までしか続かない。続きを出した瞬間に、その続きが当たるまで延ばす。
 // ---------------------------------------------------------------------------------------------
-/** ①の余白(2フレーム・係数なし): 続きを出すフレームと敵の更新の順番で1フレーム動けるのを塞ぐ分だけ。長くすると待機から出した技がつながる。 */
+/** ①の余白(係数なし): プレイヤーの行動の時計と gameTime のずれを吸う分。フレームの幅の揺れは brawlerLockAlive(1フレーム遅れて明ける)が受け持つ。長くすると待機から出した技がつながる。 */
 export const BRAWLER_HOLD_FRAME_MARGIN_MS = 34;
 /** ②の余白(続きが当たる時刻の後・×係数)。旧の5段の確定(§9-74)の余裕60msをそのまま使う。 */
 export let BRAWLER_CHAIN_GUARD_MARGIN_MS = 60; // ×BRAWLER_TEMPO(係数1.0の値)
@@ -310,7 +326,7 @@ export const brawlerLockExtendPatch = (
  * 切らないと、3・4段目の固まり(自分の後隙の終わりまで)が残り、ステップで取り消してから待機で出した技がつながってしまう。
  */
 export const brawlerLockCutPatch = (e: Pick<BrawlerLockFields, 'brLockUntil'>, gameTime: number): Pick<BrawlerLockFields, 'brLockUntil'> | null =>
-  (brawlerLockAlive(e, gameTime) ? { brLockUntil: gameTime } : null);
+  (brawlerLockAlive(e, gameTime) ? { brLockUntil: gameTime - brawlerLockFrameMs } : null); // その場で明ける(1フレーム遅れの分を引く)
 /**
  * ④ コンボの区切り(毎フレーム・敵ごと)。その敵が格闘の固まりでも浮きでもなくなった時(当たりの止めは固まりに含む・押されているだけの時は含まない)に
  * コンボは終わり、当てた技の覚えを消す。⑤ ボス級・強個体はそこから固まらない時間が始まる(雑魚は無し)。null=まだ続いている/コンボの外。

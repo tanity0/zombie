@@ -23541,6 +23541,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   // Game state actions
   setGameTime: (time, realTime) => {
+    BRC.setBrawlerLockFrameMs(time - get().gameTime); // 確定の固まりは1フレーム遅れて明ける(コマ落ちで道の上の続きが切れない・research/BRAWLER.md §19-6 ⑨)
     set(realTime === undefined ? { gameTime: time } : { gameTime: time, realGameTime: realTime });
   },
   setBackgrounded: (v) => { if (get().backgrounded !== v) set({ backgrounded: v }); },
