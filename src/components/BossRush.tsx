@@ -18,7 +18,9 @@ import { bossHintsFor } from '../data/bossHints';
 import { loadEncounteredBosses } from '../utils/bossEncounter';
 import { GHOST_DOSSIER_CATEGORY_LABEL, type GhostDossierCategory } from '../utils/ghostDossier';
 import { GHOST_DOSSIER_SLOTS } from '../utils/ghostDossier';
-import { PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, practiceBossHealth, practiceSlotUnlocked, type PracticeSlot } from '../utils/bossPractice';
+import { PRACTICE_CATEGORY_ORDER, PRACTICE_SLOTS, PHANTOM_BRAWLER_SLOT_KEY, practiceBossHealth, practiceSlotUnlocked, type PracticeSlot } from '../utils/bossPractice';
+import { PHANTOM_BRAWLER_ICON_SPRITE } from '../utils/sortieBossRoster';
+import { spritePath } from '../utils/spriteLoader';
 import { isBountyType } from '../utils/enemyUtils';
 import type { CharacterClass } from '../types/game';
 
@@ -42,8 +44,10 @@ const categoryOf = (slot: PracticeSlot): PracticeCategory =>
     : 'story');
 
 const bossName = (slot: PracticeSlot): string => slot.label ?? enemyDeathLabel(slot.bossType);
+// ★拳鬼は汎用の幻影と同じ型(guardian-phantom)なので型では絵が引けない=専用の待機の絵を出す(社長指示2026-11-10「変異体対策室の拳鬼は ?じゃなくていいのでは」)。
 const bossIcon = (slot: PracticeSlot): string | null =>
-  bossIconSrc(slot.bossType, slot.stageId, slot.glenForm2 ? 'phase2' : undefined);
+  slot.slotKey === PHANTOM_BRAWLER_SLOT_KEY ? spritePath(PHANTOM_BRAWLER_ICON_SPRITE)
+    : bossIconSrc(slot.bossType, slot.stageId, slot.glenForm2 ? 'phase2' : undefined);
 
 const Row: React.FC<{ icon: React.ReactNode; label: string; value: string }> = ({ icon, label, value }) => (
   <div className="min-w-0 border border-white/[0.07] bg-black/20 px-2 py-2">

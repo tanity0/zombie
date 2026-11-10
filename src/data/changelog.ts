@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5444', items: [
+    '変異体対策室の拳鬼の枠に、拳鬼の姿が出る',
+  ] },
   { version: '0.25.5443', items: [
     '拳鬼は遠くから撃ってくる相手に、高く跳んで飛びかかってくる。着地する所に赤い円が出る',
     '拳鬼が現れる出撃では、通信で「殺気を感じる…」と告げられる',
