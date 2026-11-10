@@ -152,6 +152,13 @@ export const isBrawlerTechBusy = (
   e: { type?: EnemyType; aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number; bossState?: string },
   gameTime: number,
 ): boolean => brawlerPhaseKind(e, gameTime) !== 'free';
+/**
+ * 技の最中でも、浮く当たりで技を取り消して浮かせてよい相手か(社長承認2026-11-10「技の最中浮く は はい」)。
+ * 雑魚・強個体だけ(ボス級は今どおり技を取り消さない=浮かない)。振り払い(br-revenge=殴られ続けた時の反撃)は取り消さない
+ * (取り消せると 3・4段目で永久に固められる=ハメ防止の技を無効にしない)。取り消せない相(空中の跳び等)の除外は呼び手(store)が見る。
+ */
+export const brawlerLiftBreaksTech = (e: { aiPhase?: string }, cls: 'mob' | 'strong' | 'boss'): boolean =>
+  cls !== 'boss' && e.aiPhase !== 'br-revenge';
 /** いまの技(溜め)の札(予算を数え直す区切り)。相の名前+噛みの有無。 */
 export const brawlerTechHoldKey = (e: { aiPhase?: string; chaffMove?: string; biteAt?: number }): string =>
   `${e.aiPhase ?? ''}|${e.chaffMove ?? ''}|${e.biteAt !== undefined && e.biteAt > 0 ? 'bite' : ''}`;

@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH, INVULN_MS, kbStopBoost, KNOCKBACK_DURATION, KNOCKBACK_SPEED } from './gameStore';
 import { applyEnemyProjectileHits, applyPumpkinBlastDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
-import { brawlerComboOnHit, brawlerRevengeTelegraph, BRAWLER_REVENGE_WINDUP_MS, BRAWLER_REVENGE_RADIUS, BRAWLER_COMBO_FLOOR, BRAWLER_REVENGE_HITS_MOB } from '../utils/brawlerCombo';
+import { brawlerLiftBreaksTech, brawlerComboOnHit, brawlerRevengeTelegraph, BRAWLER_REVENGE_WINDUP_MS, BRAWLER_REVENGE_RADIUS, BRAWLER_COMBO_FLOOR, BRAWLER_REVENGE_HITS_MOB } from '../utils/brawlerCombo';
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
@@ -1378,14 +1378,33 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     expect([en('m').brLiftPeak, en('s').brLiftPeak, en('b').brLiftPeak]).toEqual([1, 0.7, 1]);
     expect(en('b').liftUntil).toBe(en('m').liftUntil);
   });
-  it('技の最中の敵(予告の溜め)は浮かない', () => {
+  // 社長承認2026-11-10「技の最中浮く は はい」: 旧「技の最中の敵(予告の溜め)は浮かない」を新仕様へ。
+  it('技の最中の雑魚・強個体も、浮く当たりで技を取り消されて浮く(予告も消える)。浮かない当たり(1段目)では技は続く', () => {
     setup();
-    const z = zombieAt(60, 0, 'z');
-    Object.assign(z, { aiPhase: 'z-red-pause', aiPhaseUntil: useGameStore.getState().gameTime + 5000 });
-    useGameStore.setState({ enemies: [z] });
+    const mk = (id: string) => { const z = zombieAt(60, 0, id); Object.assign(z, { aiPhase: 'z-red-pause', aiPhaseUntil: useGameStore.getState().gameTime + 5000 }); return z; };
+    useGameStore.setState({ enemies: [mk('z')] });
     hitMove('z', 's4', { lift: true });
-    expect(en('z').brLiftUntil).toBeUndefined();
-    expect(en('z').liftUntil).toBeUndefined();
+    expect(en('z').brLiftUntil ?? 0).toBeGreaterThan(now);
+    expect(en('z').liftUntil ?? 0).toBeGreaterThan(now);
+    expect(en('z').aiPhase).toBeUndefined(); // 技は取り消し(予告の相が消える)
+    setup();
+    useGameStore.setState({ enemies: [mk('y')] });
+    hitMove('y', 's1');
+    expect(en('y').brLiftUntil).toBeUndefined();
+    expect(en('y').aiPhase).toBe('z-red-pause'); // 浮かない当たりでは取り消さない
+  });
+  it('振り払いの最中の雑魚は浮かない(技も取り消さない)・ボス級は技の最中に取り消して浮かせる対象ではない', () => {
+    setup();
+    const z = zombieAt(60, 0, 'r');
+    Object.assign(z, { aiPhase: 'br-revenge', aiPhaseUntil: useGameStore.getState().gameTime + 5000 });
+    useGameStore.setState({ enemies: [z] });
+    hitMove('r', 's4', { lift: true });
+    expect(en('r').brLiftUntil).toBeUndefined();
+    expect(en('r').aiPhase).toBe('br-revenge');
+    expect(brawlerLiftBreaksTech({ aiPhase: 'g-stomp-windup' }, 'boss')).toBe(false);
+    expect(brawlerLiftBreaksTech({ aiPhase: 'z-red-pause' }, 'mob')).toBe(true);
+    expect(brawlerLiftBreaksTech({ aiPhase: 'z-red-pause' }, 'strong')).toBe(true);
+    expect(brawlerLiftBreaksTech({ aiPhase: 'br-revenge' }, 'mob')).toBe(false);
   });
   it('空中で5段目(吹き飛ばす技)を当てると浮きを終えて吹き飛ぶ', () => {
     setup();

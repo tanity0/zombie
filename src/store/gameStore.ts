@@ -404,7 +404,7 @@ import { METAL_PALETTE, shieldBeamPalette } from '../utils/shieldGuardFx'; // �
 import { pushShieldRect } from '../world/shieldPush'; // B6(盾押し・§6): 純関数(src/world/shieldPush.test.ts)
 // ★噛みつき(PACING_PUZZLE §12)。プレイヤーが敵をすり抜けないようにするため、
 // 「噛みつき側の敵か」と「足元の壁の箱」をここでも使う。
-import { counterInterruptPatch, isBiteSubject, isHarmlessFootWallSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS, BAT_WINDUP_STILL_MS, biteLungeDistanceAtFire } from '../utils/enemyBite';
+import { counterInterruptPatch, COUNTER_UNINTERRUPTIBLE_PHASES, isBiteSubject, isHarmlessFootWallSubject, biteWallRect, isBiteWallOpen, bitePhaseOf, biteLungeFrac, biteSpecFor, isBiteInterruptedByMove, canZombieRushBite, ZOMBIE_RUSH_BODY_SLAM_MS, BAT_WINDUP_STILL_MS, biteLungeDistanceAtFire } from '../utils/enemyBite';
 // ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。旧 `deferFrozenClocksBy`(凍結dtの毎フレーム
 // 繰り下げ)は**破棄**して、この「残りを預かって明けた瞬間に書き直す」1本へ置き換えた(H-3)。
 import { tickEnemyClockFreeze } from '../utils/enemyClocks';
@@ -4530,18 +4530,30 @@ const brawlerHitPatch = (
   // 浮いている間は動けない(liftUntil=全ての敵の制御が「持ち上げ」として止まる・時計も止まる)。ボス級も浮く(重い)。技の最中の敵は浮かない。
   // 空中で吹き飛ばす技(5段目・飛び蹴り3発目・大踏み潰し)は浮きを終えて今の高さから落ちる(押しはそのまま効く)。
   let downNow = false;
+  let pk = phaseKind; // 下で技を取り消して浮かせた時は 'free' として固まりを数える
   if (bs.combo && !busy) {
     // 浮かせの段(3段目・4段目・秘奥義の4段目)は地上からも浮かせる(§13-2)。バウンドの区切りに流れの始まりを渡す(この当たりの combo を反映)。
     const jp = brawlerJugglePatch({ ...enemy, ...(combo?.patch ?? {}) }, cls, bs.lift ? 's4' : bs.combo.move, now);
     if (jp) { Object.assign(out, jp); downNow = (jp as { brLiftDown?: boolean }).brLiftDown === true; }
+  } else if (bs.combo && BRC.brawlerLiftBreaksTech(enemy, cls) && !(enemy.aiPhase !== undefined && COUNTER_UNINTERRUPTIBLE_PHASES.includes(enemy.aiPhase))) {
+    // ★技の最中の雑魚・強個体も浮かせる(社長承認2026-11-10「技の最中浮く は はい」・research/BRAWLER.md §12-1b)。
+    // 浮く当たり(地上=3・4段目/空中=押し上げのある当たり)の時だけ、その技を取り消してから浮かせる(カウンター成立・大踏み潰しの強制と同じ
+    // 取り消し=予告も消える。予告を出したまま浮かせない)。ボス級・振り払い(br-revenge)・取り消せない相(空中の跳びなど)は今どおり浮かない。
+    const jp = brawlerJugglePatch({ ...enemy, ...(combo?.patch ?? {}) }, cls, bs.lift ? 's4' : bs.combo.move, now);
+    if (jp && (jp.brLiftUntil ?? 0) > now) {
+      Object.assign(out, counterInterruptPatch(enemy, gameTime), { biteRecoverUntil: undefined, rootUntil: undefined, lastCounteredAt: now });
+      Object.assign(out, jp);
+      downNow = (jp as { brLiftDown?: boolean }).brLiftDown === true;
+      pk = 'free';
+    }
   }
   // 強個体は普段 canShoveEnemy が押し(と押しの欄での足止め)を止める=格闘の当たりでは押し道具と同じ旗を立てて雑魚と同じに動かす。
   if (strong && out.knockbackUntil !== undefined) out.knockbackShoveUntil = out.knockbackUntil;
   // 固まりは止め・押し(浮かせ)が明けてから数える(押す段は固まりより押しを優先=§11-1)。吹き飛ばす技は固まり0(今どおり飛ぶ)。
   // ★ダウン(§13-2: 予算切れ・締め)の当たりは固めない(着地の後 BRAWLER_DOWN_NO_HOLD_MS は固まらない=起き上がり)。
-  if (combo && phaseKind !== 'active' && !downNow) {
+  if (combo && pk !== 'active' && !downNow) {
     // 溜めの間は、雑魚の止め(hitStunUntil)が「攻撃中」で効かないので、止めも固まりと1本に書く。
-    const stopForHold = bossLike ? bossStopMs : phaseKind === 'windup' && bs.kb.kind !== 'big' ? hitStopMs : stopMs;
+    const stopForHold = bossLike ? bossStopMs : pk === 'windup' && bs.kb.kind !== 'big' ? hitStopMs : stopMs;
     // ★5段の確定(§9-74・社長実機報告2026-11-09「通常攻撃で敵の硬直解除に間に合ってない。」): 順番どおりの当たりは、固まりが次の段の当たりまで必ず続く。
     const moveNow = bs.combo?.move;
     const inOrder = moveNow !== undefined && BRC.brawlerComboInOrder(enemy, moveNow, now);
@@ -4550,12 +4562,12 @@ const brawlerHitPatch = (
     // ボス級の小さい押しは固まりの始まりを遅らせない(押しの分だけ長く固まると止めすぎになる)。
     const kbForHold = bossLike && bs.kb.kind !== 'big' ? 0 : (out.knockbackUntil ?? 0);
     if (combo.holdMs > 0) want = Math.max(brawlerHoldFrom(now, stopForHold, Math.max(kbForHold, out.liftUntil ?? 0)) + combo.holdMs, guardUntil);
-    else if (bossStopMs > 0 || (phaseKind === 'windup' && stopForHold > 0)) {
+    else if (bossStopMs > 0 || (pk === 'windup' && stopForHold > 0)) {
       // 固まりが0の当たり(固まりの表が0で押しが big でない時)でも、ボス級・溜めの止め(①)だけは掛ける。
       want = Math.max(now + stopForHold, out.liftUntil ?? 0);
     }
     if (want !== undefined) {
-      if (phaseKind === 'windup') {
+      if (pk === 'windup') {
         // 1回の溜めにつき合計 BRAWLER_TECH_HOLD_BUDGET_MS まで。使い切ったら押し切る(以後その技が終わるまで固まらない)。
         // ★ただし5段を順番どおりにつないでいる間は確定を優先する(予算は使った分として数える=1周の後は押し切る)。
         const r = BRC.brawlerTechHoldApply(enemy, want, now);

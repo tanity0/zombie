@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5459', items: [
+    '格闘の3段目と4段目は、技を出している最中の敵も浮かせる。浮いた敵の技は取り消され、赤い予告も消える(ボスは除く)',
+  ] },
   { version: '0.25.5458', items: [
     '長く歩き回るほど、見えない光の残りが溜まり続けていたのを直した(松明や緑の卵が画面から消えるたびに1つ残っていた)',
   ] },
