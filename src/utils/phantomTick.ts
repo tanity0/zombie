@@ -37,6 +37,7 @@ import {
   // ★research/SAME_ARENA.md O-2: 幻影の攻撃力を**プレイヤーと同じ純関数**で評価する
   // (式を複製しない=「写すな、共通化しろ」)。主語だけ幻影の疑似Playerに差し替える。
   combatActorPlayer, skillCritMult, skillOutgoingDamageMult,
+  playerMoveStatMult, PLAYER_BASE_SPEED, // 幻影の足の速さ=記録の装備・スキル(phantomMoveSpeed・2026-11-10)
   // ★SAME_ARENA.md §7(前隙・社長裁定2026-08-24)
   MELEE_WINDUP_MS,                              // 近接の前隙(プレイヤーと同じ1本を読む)
   KNOCKBACK_SPEED, KNOCKBACK_DURATION,          // カウンターされた側のノックバック=**敵と同じ量**(社長指示)
@@ -542,8 +543,16 @@ const NEUTRAL_GUN_OWNER = {
   reloadEndsAt: 0, reloadingWeaponId: '', quickMagCritUntil: 0,
 } as unknown as Player;
 
-const gunOwner = (s: PhantomTickState, trapDebuffUntil = 0): Player => ({
-  ...NEUTRAL_GUN_OWNER,
+/**
+ * ★幻影の装備・スキルの総点検(社長「なぜ装備のステータス上乗せされてないの?ちゃんとして」2026-11-10・社長承認で幻影全体へ):
+ * 記録(ビルド)がある幻影は、**その人の疑似Player(combatActorPlayer)**を主語にする=装備の連射(fireRateMult)・
+ * リロード(reloadMult・スキル)・弾倉(magBonus・スキル)がプレイヤーと同じ式で効く(playerBuild「装備の効果は100%持ち物から引ける」)。
+ * 旧: 中立の主語(スキル・装備なし)だった=O-2 で幻影が「記録されたその人」になった後も、銃の連射・リロード・弾倉だけ取り残されていた。
+ * 記録が無い旧データだけ中立の主語へ落ちる(従来どおり)。弾・武器・リロードの帳簿は幻影自身の物(s)を重ねる。
+ */
+const gunOwner = (s: PhantomTickState, trapDebuffUntil = 0, phantomId?: string): Player => ({
+  ...((phantomId !== undefined ? combatActorPlayer(phantomId) : null) ?? NEUTRAL_GUN_OWNER),
+  quickMagCritUntil: 0,
   trapDebuffUntil, // 対人トラップ中はリロード1.5倍=プレイヤーと同じ式(weaponUtils.effectiveReloadMs)を通る
   weapons: s.gun ? [s.gun] : [],
   activeWeaponId: s.gun?.id ?? '',
@@ -555,6 +564,22 @@ const gunOwner = (s: PhantomTickState, trapDebuffUntil = 0): Player => ({
  * リロードを1tick進める(プレイヤー/守護霊と同じ純関数・リザーブ∞)。
  * 「リロード中/マガジン0は射程0=撃たない」も守護霊と同じ形にする。
  */
+/**
+ * 幻影の足の速さ(px/s・敵の速さの単位)。記録(ビルド)がある幻影は、プレイヤーと同条件(SAME_ARENA)で
+ * 「素の足(プレイヤー並み=ENEMY_STATS の 130 に敵の係数が掛かった値)× 記録の速さ/プレイヤーの素の速さ × 装備・スキルの足の速さ」。
+ * 足の速さの倍率は格闘の「足の速さの能力値」と同じ playerMoveStatMult(装備の moveSpeedMult・ランナー・英雄・標準装備…の足し算+頭打ち)。
+ * プレイヤーの「走り続けると上がる段(cruise)」は入れない(歩き続ける操作が無い)。記録が無い旧データは従来どおり素の足。
+ * (社長「なぜ装備のステータス上乗せされてないの?ちゃんとして」2026-11-10・幻影全体)
+ */
+export const phantomMoveSpeed = (phantom: Pick<Enemy, 'id' | 'speed'>, gameTime: number): number => {
+  const actor = combatActorPlayer(phantom.id);
+  if (!actor) return phantom.speed;
+  return phantom.speed * phantomSpeedRatio(actor.speed) * playerMoveStatMult(actor, gameTime);
+};
+/** 記録の素の速さとプレイヤーの素の速さの比(記録が無い・壊れた値は1)。 */
+export const phantomSpeedRatio = (recordedSpeed: number | undefined): number =>
+  recordedSpeed !== undefined && Number.isFinite(recordedSpeed) && recordedSpeed > 0 ? recordedSpeed / PLAYER_BASE_SPEED : 1;
+
 const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string, trapDebuffUntil = 0): void => {
   if (!s.gun) {
     // ★社長裁定2026-08-23「**とにかくオンラインにある他人の実データなので、初期か初期じゃないか
@@ -569,7 +594,7 @@ const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string, 
       s.gun = createWeapon(key);
     }
   }
-  const owner = gunOwner(s, trapDebuffUntil);
+  const owner = gunOwner(s, trapDebuffUntil, phantomId);
   const finished = finishWeaponReload(s.gun, owner, Number.POSITIVE_INFINITY, nowMs);
   if (finished) {
     s.gun = finished.weapon;
@@ -577,7 +602,7 @@ const stepPhantomGun = (s: PhantomTickState, nowMs: number, phantomId?: string, 
     s.reloadingWeaponId = finished.reloadingWeaponId;
   }
   if ((s.gun.magazine ?? 0) <= 0 && !s.reloadingWeaponId) {
-    const started = beginWeaponReload(s.gun, gunOwner(s, trapDebuffUntil), Number.POSITIVE_INFINITY, nowMs);
+    const started = beginWeaponReload(s.gun, gunOwner(s, trapDebuffUntil, phantomId), Number.POSITIVE_INFINITY, nowMs);
     if (started) {
       s.reloadEndsAt = started.reloadEndsAt;
       s.reloadingWeaponId = started.reloadingWeaponId;
@@ -727,7 +752,7 @@ export const decidePhantom = (
     profile,
     weapon: {
       gunDamage: s.gun?.damage ?? 0,
-      gunIntervalMs: s.gun ? effectiveFireCooldown(s.gun, gunOwner(s)) : 500,
+      gunIntervalMs: s.gun ? effectiveFireCooldown(s.gun, gunOwner(s, phantom.gpTrapDebuffUntil ?? 0, phantom.id)) : 500,
       gunRangePx: phantomGunRangePx(s),
       meleeDamage: phantomMeleeDamage(s.growthAtkMult, phantom.id), // 初期近接武器の実ダメージ(v0.25.3641裁定)+育成+O-2の倍率
     },
@@ -1281,8 +1306,9 @@ export const runPhantomTick = (
     const dt = deltaTime * moveSpeedMult * phantomSlowMult(phantom, newGameTime) * pvpMoveMult(phantom.pvpPosture, newGameTime);
     // ★AI_HUMANIZE.md B3(§4「慣性」・CLAUDE.md動きの絶対ルール): 速度ベクトル状態(Enemy.vx/vy)を
     // 目標速度へイーズで近づける(旧: 方向が無ければ即vx=vy=0の瞬間停止=CLAUDE.md違反だった)。
-    const targetVx = decision.moveX * phantom.speed;
-    const targetVy = decision.moveY * phantom.speed;
+    const gpSpeed = phantomMoveSpeed(phantom, newGameTime);
+    const targetVx = decision.moveX * gpSpeed;
+    const targetVy = decision.moveY * gpSpeed;
     const rawRamped = rampVelocity({ vx: phantom.vx ?? 0, vy: phantom.vy ?? 0 }, targetVx, targetVy, dt);
     // ★検収是正(中6): 停止判定閾値(4px/s)未満まで減衰したら即0へスナップする(漸近減衰の長い尾を
     // 切る=スナイパー「停止敵」ボーナスの判定が長く尾を引かない。ブール判定自体は既にそのtickで
@@ -1381,7 +1407,7 @@ export const runPhantomTick = (
   // research/LUNGE_DODGE.md §4(段L3): 抜けの踏み込み(弾/詰め)。振りそのものなので届かなくても振る。
   const bulletAct = pickPhantomEscapeLunge(
     phantom, s, player, st0.projectiles, bcx, bcy,
-    phantom.speed * moveSpeedMult * phantomSlowMult(phantom, newGameTime) * pvpMoveMult(phantom.pvpPosture, newGameTime),
+    phantomMoveSpeed(phantom, newGameTime) * moveSpeedMult * phantomSlowMult(phantom, newGameTime) * pvpMoveMult(phantom.pvpPosture, newGameTime),
     newGameTime, nowMs, rand, canSwing,
   );
   const escapeDir = bulletAct?.kind === 'escape' ? bulletAct.dir : null;

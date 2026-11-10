@@ -421,7 +421,9 @@ const secretStrike = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
   if (move === 'kiko') {
     // 秘奥義の中の気功はその場(プレイヤーの所)で爆発(プレイヤー版と同じ)。遠隔の行。
     g.spawnExplosionFx(pcx, pcy, BR.BRAWLER_KIKO_RADIUS);
-    const dmg = c.baseDamage * BR.BRAWLER_KIKO_MULT * phantomBrawlerStrikerMult(c.actor.characterClass) * PVP_DAMAGE_SCALE;
+    // 足の速さの能力値も通常の気功と同じく掛ける(2026-11-10 の総点検で抜けを直した)。
+    const dmg = c.baseDamage * BR.BRAWLER_KIKO_MULT * phantomBrawlerStrikerMult(c.actor.characterClass)
+      * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)) * PVP_DAMAGE_SCALE;
     hitThirdParties({ kind: 'circle', cx: pcx, cy: pcy, r: BR.BRAWLER_KIKO_RADIUS }, dmg, phantom.id, 'guardian-phantom');
     g.damagePlayer(dmg, `${c.label}の気功`, pcx, pcy, undefined, undefined, 'brawler-secret', undefined, undefined, { type: 'guardian-phantom', id: phantom.id });
   } else if (move === 'stomp') {
