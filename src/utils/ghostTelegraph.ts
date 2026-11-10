@@ -24,7 +24,6 @@ import { bandThreat, circleThreat, DODGE_BAND_HALF_WIDTH, type DodgeThreat } fro
 import { IDOL_SHOT_SLOTS } from './idolScript';
 import { MIMIR_BITE_RADIUS } from './bodyCenteredAoe';
 import { HIDDEN_JORMUNGAND_TUNING } from './hiddenBossScript';
-import { BRAWLER_REVENGE_RADIUS } from './brawlerCombo'; // 格闘の反撃(振り払い)の円
 
 /**
  * GHOST-CMD-1B(§2.18-2/-3): この台帳が返す脅威。`shape: 'circle'` = 円形の危険域
@@ -320,12 +319,6 @@ put(LEDGER, ['logger-sweep-windup', 'logger-sweep-active'], {
   coverage: 'ghost', ghostShape: { kind: 'band' },
   note: '伐採人の薙ぎ払い。帯(aiFrom→aiTarget=帯の両端)が危険。activeは1回だけカプセル判定が積まれた'
     + '直後だが、回避は安全側に広くて構わないので windup と同じ帯のまま扱う(driller-thrustと同じ作法)。',
-});
-// research/BRAWLER.md §11-3(格闘の反撃): 雑魚・強個体が格闘の当たりを受け続けた時のその場の振り払い。
-// 本体中心の円(半径90)が溜め350msの終わりに1回だけ当たる(pumpkinBlasts)。守護霊も巻き込まれるので円で避ける。
-put(LEDGER, ['br-revenge'], {
-  coverage: 'ghost', ghostShape: { kind: 'circle-self', radius: BRAWLER_REVENGE_RADIUS },
-  note: '格闘の反撃(振り払い)。本体中心の円が溜めの終わりに1回だけ当たる。',
 });
 put(LEDGER, ['g-dive-windup'], {
   coverage: 'both', sharedShape: 'band',

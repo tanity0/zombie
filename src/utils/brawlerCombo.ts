@@ -1,10 +1,9 @@
 // ★サブウェポン「格闘」の敵側の流れ(research/BRAWLER.md §11・§19・社長指示2026-11-08/2026-11-10)。
-// 確定の固まり(§19-3: つながっている間、敵は一切動けない)・コンボの区切りと固まらない時間・反撃(振り払い)・浮かせ追撃。
+// 確定の固まり(§19-3: つながっている間、敵は一切動けない)・コンボの区切りと固まらない時間・浮かせ追撃。
 // 純関数だけ(store が読んで敵へ書く・pixi は読むだけ)。
 // 時計: 流れの数え・浮き・押しは Date.now(敵の hitStunUntil / knockbackUntil と同じ)。
 //       確定の固まり(brLockUntil)・コンボの後の固まらない時間(brLockNoHoldUntil)は gameTime(プレイヤーの段・技と同じ時計=
 //       全体のスローが途中から掛かっても外れても、続きが当たる時刻とずれない・§19-3 ⑥)。
-//       反撃の溜めと当たる時刻も敵の技の時計(gameTime・aiStartedAt / aiPhaseUntil)で持つ(予告の円が同じ時計を読む)。
 // ★§19 で撤去した物(2026-11-10): 固まりの減衰(brawlerHoldDecay・BRAWLER_COMBO_DECAY_MS)・同じ技の罰(BRAWLER_SAME_MOVE_PENALTY_MS)・
 //   溜めの止め予算(brawlerTechHoldApply・BRAWLER_TECH_HOLD_BUDGET_MS)・5段の確定(brawlerComboInOrder・brawlerChainGuardMs)・
 //   固まりの基本の長さの表(BRAWLER_HOLD_BASE_MS)。置き換え先=下の brawlerLockOnHit / brawlerLockExtendPatch / brawlerComboEndPatch。
@@ -13,28 +12,16 @@ import type { BrawlerMoveKey } from './brawlerTypes';
 export type { BrawlerMoveKey } from './brawlerTypes';
 import { isBossType, isTerminalReaper } from './enemyUtils';
 import { POSTURE_ELITE_TYPES } from './bossPosture';
-import { meteorPhase } from './telegraphStyle';
 import { isRecoverHoldPhase } from './recoverPhase';
 import { BRAWLER_LIFT_MS, BRAWLER_TEMPO, BRAWLER_CANCEL_WINDOW_MS, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo, brawlerStageSpec, BLAST_LIFT_SHAPE } from './brawler';
 
 /**
- * 当たりが途切れたら流れ(反撃の数・ダメージ補正の数・バウンドの区切り)を0へ戻す(ms)。
+ * 当たりが途切れたら流れ(ダメージ補正の数・バウンドの区切り)を0へ戻す(ms)。
  * ★社長承認2026-11-09 で 600→700(係数1.3で910)。止めを長くした分、3段目→4段目の間(係数1.3で約774ms)が切れに接していたため。
  * ※確定の固まりのコンボ(§19-3 ④)はこの時計では区切らない(敵が固まりでも浮きでもなくなった時=brawlerComboEndPatch)。
  */
 export let BRAWLER_COMBO_GAP_MS = 700; // ×BRAWLER_TEMPO(係数1.0の値)
-/** 反撃の数(1つの流れで受けた格闘の当たり)。雑魚・強個体とも7(社長指示2026-11-08「強個体も雑魚と同じにして」)。ボス級は反撃しない。 */
-export const BRAWLER_REVENGE_HITS_MOB = 7;
-/** 振り払い: 溜め(=赤い予告が出てから消え切るまで)・当たりの円の半径・威力(接触/噛みつきの倍率)・押す距離と時間。 */
-export let BRAWLER_REVENGE_WINDUP_MS = 350; // ×BRAWLER_TEMPO(係数1.0の値)
-export const BRAWLER_REVENGE_RADIUS = 90;
-export const BRAWLER_REVENGE_DMG_MULT = 1.5;
-export const BRAWLER_REVENGE_PUSH_PX = 60;
-export const BRAWLER_REVENGE_PUSH_MS = 200;
-/** 振り払いの後、その敵が固まらない時間(すぐ固め直せない・ms)。 */
-export let BRAWLER_REVENGE_NO_HOLD_MS = 1200; // ×BRAWLER_TEMPO(係数1.0の値)
-/** 振り払いの予告の円の描き切る位置(流星の位相 `meteorPhase` の drawFrac)。前半で円が描かれ、後半で外から内へ流れて消える。 */
-export const BRAWLER_REVENGE_DRAW_FRAC = 0.45;
+// ★振り払い(殴られ続けた敵の反撃・§11-3)は撤去した(社長指示2026-11-11「格闘の敵の反撃は外して」)。数え・溜めの相・赤い予告・威力ごと無い。
 
 /**
  * ★秘奥義の9連撃の1発の固まり(ms・壁時計・§11-1 の「9連撃の各発 300ms」を今どおり)。秘奥義の間は画面内の敵を §17 の止めが止めているので、
@@ -66,17 +53,9 @@ export const brawlerEnemyClass = (e: { type: EnemyType; colorTier?: string }): '
 /** ★浮きの区分。null=浮かない(終端の死神=深奥チェイサーは、格闘・爆発・スラッシャーのどれでも浮かない)。 */
 export const brawlerLiftClass = (e: { type: EnemyType; colorTier?: string; reaperChaser?: boolean }): 'mob' | 'strong' | 'boss' | null =>
   isTerminalReaper(e) ? null : brawlerEnemyClass(e);
-/**
- * 振り払い(反撃・§11-3)の対象か(雑魚・強個体。ボス級は振り払わない)。
- * ★食らいの固まり(確定の固まり・§19-3)は**ボス級にも掛かる**(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」・§11-1)。
- */
-export const isBrawlerComboSubject = (type: EnemyType): boolean => brawlerComboClass(type) !== 'boss';
-/** 反撃の数。雑魚・強個体は同じ7(格闘では強個体を雑魚と同じに扱う)。ボス級は反撃しない=Infinity。 */
-export const brawlerRevengeHitsFor = (type: EnemyType): number =>
-  brawlerComboClass(type) === 'boss' ? Infinity : BRAWLER_REVENGE_HITS_MOB;
 
 /**
- * ★格闘の固まり・止め・反撃が「技を出している最中」として除外する相(社長実機報告2026-11-08「まだ攻撃で敵が止まるのは一切入ってないね?」)。
+ * ★格闘の固まり・止めが「技を出している最中」として除外する相(社長実機報告2026-11-08「まだ攻撃で敵が止まるのは一切入ってないね?」)。
  * `combatFeel.isEnemyAttacking` は aiPhase が付いていれば全部「攻撃中」と見る(スーパーアーマー・押しの決まり=そちらは変えない)。
  * ところが雑魚は、近くに居る間ほぼ常に**移動・待ち・後退・様子見の相**(ゾンビの zpause/zrush など)に居るので、
  * それを使うと殴っている敵が一度も固まらなかった。格闘はこの表で「本当に技を出している最中」だけを除外する。
@@ -91,7 +70,7 @@ export const brawlerRevengeHitsFor = (type: EnemyType): number =>
  *    (`*-recover`・`recover`・`b-release`)。城ボスの g-*-recover も入る。止めている間は硬直の残りも止まり、明けたら続きから(utils/enemyClocks)。
  * ボス(bossState): 追いかけ(chase)・帰り(return)・技の後の硬直(`*-recover`)・休み(BRAWLER_HOLDABLE_BOSS_STATES)は固める。それ以外は技の最中。
  * 技の最中(固めない): 予告の溜め・攻撃の相(windup / charge / jump / scream / driller-thrust-windup・active / logger-sweep-windup・active /
- *  b-windup / b-lunge / b-grab / s-arc / s-bite / z-red-pause / z-lunge-in / z-bite1 / z-stagger / z-bite2 / lich-blink / br-revenge / ボスの g-*)、
+ *  b-windup / b-lunge / b-grab / s-arc / s-bite / z-red-pause / z-lunge-in / z-bite1 / z-stagger / z-bite2 / lich-blink / ボスの g-*)、
  *  噛みつきの構え・振り(biteAt>0)、§16の技の相(chaffMove が立っていて上の固める相に居ない)。**表に無い相は技の最中**(安全側)。
  */
 export const BRAWLER_HOLDABLE_PHASES: ReadonlySet<string> = new Set([
@@ -129,25 +108,23 @@ export const brawlerPhaseKind = (
   if (e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil) return 'free';
   // ボス(天使・裏ボス・偶像・賞金首など)は技を bossState で持つ。追いかけ・帰り・休み・技の後の硬直以外は技の最中(溜めも固めない=§9-72)。
   if (e.bossState !== undefined && !BRAWLER_HOLDABLE_BOSS_STATES.has(e.bossState) && !isRecoverHoldPhase(e.bossState)) return 'active';
-  if (e.aiPhase === 'br-revenge') return 'active';
   // 噛みつきの構え(biteAt=噛む瞬間・噛みはその瞬間に判定)=溜め。死神・使者は固めない(神付きの台本)。
   if (e.biteAt !== undefined && e.biteAt > 0) return e.type === 'reaper' || e.type === 'hangedman' ? 'active' : 'windup';
   if (e.aiPhase === undefined) return e.chaffMove !== undefined ? 'active' : 'free';
   if (BRAWLER_HOLDABLE_PHASES.has(e.aiPhase) || isRecoverHoldPhase(e.aiPhase)) return 'free';
   return BRAWLER_WINDUP_PHASES.has(e.aiPhase) ? 'windup' : 'active';
 };
-/** 本当に技を出している最中か(溜めも含む・浮かせ/振り払い/ボスの止めの判定に使う)。会心の気絶中は false。 */
+/** 本当に技を出している最中か(溜めも含む・浮かせ/ボスの止めの判定に使う)。会心の気絶中は false。 */
 export const isBrawlerTechBusy = (
   e: { type?: EnemyType; aiPhase?: string; chaffMove?: string; biteAt?: number; stunUntil?: number; bossFullStunUntil?: number; bossState?: string },
   gameTime: number,
 ): boolean => brawlerPhaseKind(e, gameTime) !== 'free';
 /**
  * 技の最中でも、浮く当たりで技を取り消して浮かせてよい相手か(社長承認2026-11-10「技の最中浮く は はい」)。
- * 雑魚・強個体だけ(ボス級は今どおり技を取り消さない=浮かない)。振り払い(br-revenge=殴られ続けた時の反撃)は取り消さない
- * (取り消せると 3・4段目で永久に固められる=ハメ防止の技を無効にしない)。取り消せない相(空中の跳び等)の除外は呼び手(store)が見る。
+ * 雑魚・強個体だけ(ボス級は今どおり技を取り消さない=浮かない)。取り消せない相(空中の跳び等)の除外は呼び手(store)が見る。
  */
-export const brawlerLiftBreaksTech = (e: { aiPhase?: string }, cls: 'mob' | 'strong' | 'boss'): boolean =>
-  cls !== 'boss' && e.aiPhase !== 'br-revenge';
+export const brawlerLiftBreaksTech = (_e: { aiPhase?: string }, cls: 'mob' | 'strong' | 'boss'): boolean =>
+  cls !== 'boss';
 /**
  * ★§13-2 ダメージ補正: 同じ流れの10ヒット目以降、1発ごとに −5%(下限 50%)。n=この当たりが流れの何発目か(1から)。秘奥義は呼び手が外す。
  */
@@ -220,7 +197,7 @@ export const brawlerStopOnlyNow = (
 export const BRAWLER_HOLD_FRAME_MARGIN_MS = 34;
 /** ②の余白(続きが当たる時刻の後・×係数)。旧の5段の確定(§9-74)の余裕60msをそのまま使う。 */
 export let BRAWLER_CHAIN_GUARD_MARGIN_MS = 60; // ×BRAWLER_TEMPO(係数1.0の値)
-/** ⑤ コンボが終わった後の固まらない時間(ms・gameTime・叩き台・係数なし)。雑魚は無し(振り払いが受け持つ)。 */
+/** ⑤ コンボが終わった後の固まらない時間(ms・gameTime・叩き台・係数なし)。雑魚は無し。 */
 export const BRAWLER_COMBO_END_NO_HOLD_BOSS_MS = 1500;
 export const BRAWLER_COMBO_END_NO_HOLD_STRONG_MS = 800;
 export const brawlerComboEndNoHoldMs = (cls: 'mob' | 'strong' | 'boss'): number =>
@@ -263,14 +240,14 @@ export interface BrawlerLockFields {
   brLiftUntil?: number;
 }
 /**
- * いま固まらない時間か(§19-3 ⑤)。コンボの後(gameTime の欄)か、ダウンの着地/振り払いの後(壁時計の欄)の**どちらかが生きている間**。
+ * いま固まらない時間か(§19-3 ⑤)。コンボの後(gameTime の欄)か、ダウンの着地の後(壁時計の欄)の**どちらかが生きている間**。
  * ★どの固まりの書き込み(①の固まり・②の延ばし・秘奥義の1発の固まり)も、先にこれを見る。
  */
 export const brawlerNoHoldNow = (e: Pick<BrawlerLockFields, 'brLockNoHoldUntil' | 'brNoHoldUntil'>, gameTime: number, nowMs: number): boolean =>
   (e.brLockNoHoldUntil !== undefined && gameTime < e.brLockNoHoldUntil) || (e.brNoHoldUntil !== undefined && nowMs < e.brNoHoldUntil);
 /**
  * コンボの後の固まらない時間の間か(gameTime の欄だけ)。この間は、格闘の当たりの**止めも書かず(震えの絵だけ)・地上から浮かせない**(§19-3 ⑤)。
- * ダウンの着地/振り払いの後(壁時計の欄)は、今どおり固まりだけを止める(止め・浮かせは変えない=雑魚の振り払いの後は今のまま)。
+ * ダウンの着地の後(壁時計の欄)は、今どおり固まりだけを止める(止め・浮かせは変えない)。
  */
 export const brawlerComboEndNoHoldNow = (e: Pick<BrawlerLockFields, 'brLockNoHoldUntil'>, gameTime: number): boolean =>
   e.brLockNoHoldUntil !== undefined && gameTime < e.brLockNoHoldUntil;
@@ -348,8 +325,6 @@ export interface BrawlerComboFields {
   type: EnemyType;
   brComboStart?: number;
   brComboAt?: number;
-  brComboHits?: number;
-  brRevengePending?: boolean;
   brNoHoldUntil?: number;
   brFlowHits?: number;
 }
@@ -359,75 +334,23 @@ export const brawlerComboAlive = (e: Pick<BrawlerComboFields, 'brComboAt'>, now:
   e.brComboAt !== undefined && now - e.brComboAt <= BRAWLER_COMBO_GAP_MS;
 
 /**
- * 格闘の当たり1回ぶんの流れの数え(§11-3・§13-2)。固まりはここでは決めない(§19-3 の brawlerLockOnHit)。
+ * 格闘の当たり1回ぶんの流れの数え(§13-2)。固まりはここでは決めない(§19-3 の brawlerLockOnHit)。
  *  - 流れが切れていれば(最後の当たりから GAP 超)始め直す。
- *  - countRevenge なら反撃の数を1つ足し、区分の数に達したら反撃を予約する(ボス級は Infinity=振り払わない)。
  *  - ダメージ補正の数(brFlowHits)と、バウンドの区切り(brComboStart)を進める。
- * 旧: 減衰(時計)と同じ技の罰はここで数えていた(§19 で撤去)。
+ * 旧: 減衰(時計)と同じ技の罰(§19 で撤去)・反撃の数と予約(振り払い・2026-11-11 撤去)はここで数えていた。
  */
 export const brawlerComboOnHit = (
-  e: BrawlerComboFields, move: BrawlerMoveKey, now: number, countRevenge = true,
+  e: BrawlerComboFields, move: BrawlerMoveKey, now: number,
 ): { patch: Partial<BrawlerComboFields> } => {
   const alive = brawlerComboAlive(e, now);
   const start = alive ? (e.brComboStart ?? now) : now;
-  const hits = (alive ? (e.brComboHits ?? 0) : 0) + (countRevenge ? 1 : 0);
-  const pending = (alive && e.brRevengePending === true) || (countRevenge && hits >= brawlerRevengeHitsFor(e.type));
   return {
     patch: {
-      brComboStart: start, brComboAt: now, brComboHits: hits,
+      brComboStart: start, brComboAt: now,
       // ダメージ補正の数(§13-2)。秘奥義(9連撃・締め)は数えない。
       brFlowHits: (alive ? (e.brFlowHits ?? 0) : 0) + (move === 'secret' || move === 'secret-land' ? 0 : 1),
-      brRevengePending: pending,
     },
   };
-};
-
-/**
- * 振り払いを今始めてよいか(予約済み・技を出していない・ボス級ではない)。止まっている(気絶など)かは呼び手が先に見る。
- * busy は `isBrawlerTechBusy`(移動・待ち・後退の相からは振り払える)。§16の技の続き(chaffMove が立っている後退・硬直)は技を壊さないよう終わるまで待つ。
- * ★locked=確定の固まりの最中(brawlerLockAlive)。その間は始めない=固まりが明けた時に始める(§19-3 ⑦)。数え方は今どおり。
- */
-export const brawlerRevengeShouldStart = (
-  e: { type: EnemyType; brRevengePending?: boolean; aiPhase?: string; chaffMove?: string },
-  busy: boolean, locked = false,
-): boolean => e.brRevengePending === true && !busy && !locked && e.chaffMove === undefined && e.aiPhase !== 'br-revenge' && isBrawlerComboSubject(e.type);
-
-/** 振り払いの溜めを始めた時の欄(gameTime 系の技の時計)。 */
-export const brawlerRevengeStartPatch = (gameTime: number) => ({
-  aiPhase: 'br-revenge' as const,
-  aiStartedAt: gameTime,
-  aiPhaseUntil: gameTime + BRAWLER_REVENGE_WINDUP_MS,
-  brRevengePending: false,
-  brHoldUntil: undefined, brLockUntil: undefined,
-  vx: 0, vy: 0,
-});
-/** 振り払いが当たる(=予告が消え切る)時刻か。 */
-export const brawlerRevengeDue = (e: { aiPhase?: string; aiPhaseUntil?: number }, gameTime: number): boolean =>
-  e.aiPhase === 'br-revenge' && gameTime >= (e.aiPhaseUntil ?? 0);
-/** 振り払いが当たった後の欄。流れは0へ戻し、しばらく固まらない。 */
-export const brawlerRevengeEndPatch = (now: number) => ({
-  aiPhase: undefined, aiPhaseUntil: 0, aiStartedAt: undefined,
-  brComboStart: undefined, brComboAt: undefined, brComboHits: 0,
-  brRevengePending: false, brHoldUntil: undefined, brLockUntil: undefined, brLockMoves: undefined,
-  brNoHoldUntil: now + BRAWLER_REVENGE_NO_HOLD_MS, brRevengeAt: now,
-  vx: 0, vy: 0,
-});
-/** 振り払いの威力(その敵の接触/噛みつきの威力 ×1.5)。 */
-export const brawlerRevengeDamage = (contactDamage: number): number =>
-  Math.max(0, contactDamage) * BRAWLER_REVENGE_DMG_MULT;
-
-/**
- * 振り払いの赤い予告(★★赤い予告の4つの掟)。位相は `meteorPhase` の1本。
- *  ②出る時刻 = 溜めの開始(startAt)。③消え切る時刻 = 当たる時刻(hitAt)= `er` が1になる瞬間。
- *  visible は startAt ≦ t < hitAt の間だけ(当たった瞬間には消え切っている)。
- */
-export const brawlerRevengeTelegraph = (
-  startAt: number, hitAt: number, gameTime: number,
-): { visible: boolean; prog: number; p: number; er: number } => {
-  const total = Math.max(1, hitAt - startAt);
-  const prog = Math.max(0, Math.min(1, (gameTime - startAt) / total));
-  const { p, er } = meteorPhase(prog, BRAWLER_REVENGE_DRAW_FRAC);
-  return { visible: gameTime >= startAt && gameTime < hitAt, prog, p, er };
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -493,7 +416,7 @@ export interface BrawlerJuggleFields {
   brBlastNoLiftUntil?: number;
   /** 流れの始まり(バウンドは1コンボに1回の区切り)。 */
   brComboStart?: number;
-  /** ダウンの着地/振り払いの後の固まらない時間(Date.now)。ダウンで書き直す時は遅い方を残す(§19-3 ⑤)。 */
+  /** ダウンの着地の後の固まらない時間(Date.now)。ダウンで書き直す時は遅い方を残す(§19-3 ⑤)。 */
   brNoHoldUntil?: number;
 }
 /** 絵の弧が地面に着いたか(砂埃を出す時刻)。 */
@@ -630,7 +553,7 @@ export const brawlerJugglePush = (
 };
 
 // ---------------------------------------------------------------------------------------------
-// ★テンポ係数(utils/brawler の BRAWLER_TEMPO・社長承認2026-11-08)。流れの切れ・反撃の溜め・続きの余白・
+// ★テンポ係数(utils/brawler の BRAWLER_TEMPO・社長承認2026-11-08)。流れの切れ・続きの余白・
 // 浮きの下限と叩き落としも同じ係数で伸ばす(格闘の時計が全体に遅くなる分、追撃が届くよう同率)。
 // 確定の固まりの長さ(brawlerLockHitMs)は段・技の時間(utils/brawler)から引くので、係数は自動で掛かる。
 // ---------------------------------------------------------------------------------------------
@@ -638,8 +561,6 @@ export const brawlerJugglePush = (
 export const brawlerComboTimesAt = (tempo: number) => ({
   BRAWLER_SECRET_HOLD_MS: brawlerTempoMs(300, tempo),
   BRAWLER_COMBO_GAP_MS: brawlerTempoMs(700, tempo),
-  BRAWLER_REVENGE_WINDUP_MS: brawlerTempoMs(350, tempo),
-  BRAWLER_REVENGE_NO_HOLD_MS: brawlerTempoMs(1200, tempo),
   BRAWLER_JUGGLE_MIN_MS: brawlerTempoMs(140, tempo),
   BRAWLER_JUGGLE_DROP_MS: brawlerTempoMs(200, tempo),
   BRAWLER_DOWN_NO_HOLD_MS: brawlerTempoMs(300, tempo),
@@ -649,14 +570,12 @@ const applyBrawlerComboTempo = (tempo: number): void => {
   const v = brawlerComboTimesAt(tempo);
   BRAWLER_SECRET_HOLD_MS = v.BRAWLER_SECRET_HOLD_MS;
   BRAWLER_COMBO_GAP_MS = v.BRAWLER_COMBO_GAP_MS;
-  BRAWLER_REVENGE_WINDUP_MS = v.BRAWLER_REVENGE_WINDUP_MS;
-  BRAWLER_REVENGE_NO_HOLD_MS = v.BRAWLER_REVENGE_NO_HOLD_MS;
   BRAWLER_JUGGLE_MIN_MS = v.BRAWLER_JUGGLE_MIN_MS;
   BRAWLER_JUGGLE_DROP_MS = v.BRAWLER_JUGGLE_DROP_MS;
   BRAWLER_DOWN_NO_HOLD_MS = v.BRAWLER_DOWN_NO_HOLD_MS;
   BRAWLER_CHAIN_GUARD_MARGIN_MS = v.BRAWLER_CHAIN_GUARD_MARGIN_MS;
 };
-/** 格闘の全部の時間を係数で書き直す(utils/brawler の段・技・秘奥義 + ここの固まり・反撃)。テストは明示の係数で呼ぶ。 */
+/** 格闘の全部の時間を係数で書き直す(utils/brawler の段・技・秘奥義 + ここの固まり)。テストは明示の係数で呼ぶ。 */
 export const setBrawlerTempoAll = (tempo: number): void => {
   setBrawlerTempo(tempo);
   applyBrawlerComboTempo(BRAWLER_TEMPO);

@@ -3,7 +3,7 @@
 //  2. 道の上の続きは、途中で敵が一度も動かずつながる(雑魚・強個体・ボス級/移動・待ちの相と溜めの相/ボス級は地上のままでも/全体のスロー中でも)
 //  3. 待機から出した表の外の技・ステップで取り消した後の技は、前の当たりの固まりの外で当たる。締めの後・大踏み潰しの後(気功なし)は敵が動ける
 //  4. 境目(一番遅い時刻で出しても1フレームも動かない・止めの間に出した蹴りの連続・途中から掛かる/明けるスロー)
-//  5. 止め続けられない(コンボの後の固まらない時間・ダウンの着地・振り払い)
+//  5. 止め続けられない(コンボの後の固まらない時間・ダウンの着地)
 //  6. 秘奥義 →↓←↑(取り消しで・先行入力で)
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { useGameStore } from './gameStore';
@@ -529,22 +529,6 @@ describe('§19-4-5 止め続けられない', () => {
       expect(brawlerLockAlive(en(), gt())).toBe(false);
     }
     expect(now).toBeGreaterThan(downNoHold); // 壁時計の欄はもう明けている=gameTime の欄が残っている
-  });
-  it('確定の固まりの最中に振り払いが始まらない(明けた時に始まる)', () => {
-    setup();
-    // 技を出していない雑魚(待ちの相)。噛みつきの構えに入っていると、振り払いはその技が終わるまで待つ(今どおり)ので、相を固定して置く。
-    useGameStore.setState({ enemies: [place('zombie', 60, 'z', { aiPhase: 'zpause', aiPhaseUntil: gt() + 5000, aiStartedAt: gt(), brComboHits: 6, brComboAt: now, brComboStart: now - 300 })] });
-    useGameStore.getState().brawlerPress();
-    for (let k = 0; k < 60 && !br().resolved; k++) adv();
-    expect(en().brRevengePending).toBe(true);
-    let startedWhileLocked = false, started = false;
-    for (let k = 0; k < 80; k++) {
-      const lockedBefore = brawlerLockAlive(en(), gt() + dtGame);
-      adv();
-      if (en().aiPhase === 'br-revenge') { started = true; if (lockedBefore) startedWhileLocked = true; break; }
-    }
-    expect(started).toBe(true);
-    expect(startedWhileLocked).toBe(false);
   });
 });
 

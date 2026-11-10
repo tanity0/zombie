@@ -1,6 +1,6 @@
 // ★格闘のテンポ係数(research/BRAWLER.md §9-68・社長承認2026-11-08「KOFみたいなプレイフィールが欲しいんだけど、少し全体的に早い?」)。
 // 係数1.0で今までの値と一致・係数1.3で各時間が1.3倍・当てた瞬間の止めの表・飛び蹴り3発目の溜め・係数1.3でも秘奥義が成立・
-// 反撃の予告と当たりの時刻の一致を、純関数と実際のストアで固める。
+// を、純関数と実際のストアで固める(反撃=振り払いは 2026-11-11 に撤去)。
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
@@ -11,7 +11,7 @@ import {
 } from '../utils/brawler';
 import * as BRW from '../utils/brawler';
 import {
-  brawlerComboTimesAt, brawlerLockHitMs, setBrawlerTempoAll, brawlerRevengeStartPatch, brawlerRevengeTelegraph, brawlerRevengeDue,
+  brawlerComboTimesAt, brawlerLockHitMs, setBrawlerTempoAll,
 } from '../utils/brawlerCombo';
 import * as BRC from '../utils/brawlerCombo';
 
@@ -54,7 +54,7 @@ describe('テンポ係数の表(純関数)', () => {
     expect(BRAWLER_TEMPO_DEFAULT).toBe(1.3);
     expect(BRW.BRAWLER_TEMPO).toBe(1.3);
   });
-  it('係数1.0 = 今までの値(段・技・つながり・先行入力・5段目・蹴り・秘奥義・ステップ・固まり・反撃)', () => {
+  it('係数1.0 = 今までの値(段・技・つながり・先行入力・5段目・蹴り・秘奥義・ステップ・固まり)', () => {
     const v = brawlerTimesAt(1.0);
     expect(v.stages.map(s => [s.windupMs, s.recoveryMs])).toEqual([[60, 140], [60, 140], [120, 230], [250, 200], [230, 270]]);
     expect(Object.values(v.techs).map(t => [t.windupMs, t.recoveryMs])).toEqual([[0, 1000], [200, 400], [120, 330], [120, 150]]);
@@ -65,8 +65,8 @@ describe('テンポ係数の表(純関数)', () => {
     expect(v.BRAWLER_CANCEL_WINDOW_MS).toBe(150); // 取り消しの受付(§19-2)
     const c = brawlerComboTimesAt(1.0);
     // ★§19: 固まりの基本の長さの表・減衰の時計・同じ技の罰は撤去(確定の固まりの長さは段・技の時間から引く=下の brawlerLockHitMs)。
-    expect([c.BRAWLER_COMBO_GAP_MS, c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_CHAIN_GUARD_MARGIN_MS, c.BRAWLER_REVENGE_WINDUP_MS, c.BRAWLER_REVENGE_NO_HOLD_MS, c.BRAWLER_JUGGLE_MIN_MS, c.BRAWLER_JUGGLE_DROP_MS])
-      .toEqual([700, 300, 60, 350, 1200, 140, 200]); // 流れの切れは社長承認2026-11-09 で 600→700
+    expect([c.BRAWLER_COMBO_GAP_MS, c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_CHAIN_GUARD_MARGIN_MS, c.BRAWLER_JUGGLE_MIN_MS, c.BRAWLER_JUGGLE_DROP_MS])
+      .toEqual([700, 300, 60, 140, 200]); // 流れの切れは社長承認2026-11-09 で 600→700
   });
   it('係数1.3 = 各時間の1.3倍(四捨五入)。距離・倍率・ポイントは変えない', () => {
     const v = brawlerTimesAt(1.3);
@@ -85,7 +85,6 @@ describe('テンポ係数の表(純関数)', () => {
     expect(v.BRAWLER_STEP_MS).toBe(234);
     expect(v.BRAWLER_KICK3_CHARGE_MS).toBe(150); // 実時間で約150ms
     const c = brawlerComboTimesAt(1.3);
-    expect(c.BRAWLER_REVENGE_WINDUP_MS).toBe(455);
     expect(v.BRAWLER_CANCEL_WINDOW_MS).toBe(195);
     expect([c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_CHAIN_GUARD_MARGIN_MS]).toEqual([390, 78]);
     expect(brawlerTempoMs(585, 1.3)).toBe(761);
@@ -100,10 +99,10 @@ describe('テンポ係数の表(純関数)', () => {
   it('setBrawlerTempoAll で全部の欄が書き直る(live binding)', () => {
     setBrawlerTempoAll(1.0);
     expect(BRW.BRAWLER_STAGES[0].windupMs).toBe(60);
-    expect(BRC.BRAWLER_REVENGE_WINDUP_MS).toBe(350);
+    expect(BRC.BRAWLER_COMBO_GAP_MS).toBe(700);
     setBrawlerTempoAll(1.3);
     expect(BRW.BRAWLER_STAGES[0].windupMs).toBe(78);
-    expect(BRC.BRAWLER_REVENGE_WINDUP_MS).toBe(455);
+    expect(BRC.BRAWLER_COMBO_GAP_MS).toBe(910);
     // 確定の固まりの長さ(§19-3 ①)は段・技の時間から引く=係数が自動で掛かる(余白34msだけは係数なし)
     expect(brawlerLockHitMs('s3', 150)).toBe(150 + 299 + 34);
     expect(BRW.BRAWLER_CANCEL_WINDOW_MS).toBe(195);
@@ -184,19 +183,5 @@ describe('係数1.3でも秘奥義が成立する(→↓←↑ の先行入力�
     setBrawlerTempoAll(1.3);
     prep();
     expect(flickAll(gap)).toBe(true);
-  });
-});
-
-describe('反撃の予告と当たり(★★赤い予告の4つの掟)は係数1.3でも一致する', () => {
-  it('出る=溜めの開始 / 消え切る=当たる(455ms)', () => {
-    setBrawlerTempoAll(1.3);
-    const start = 10_000;
-    const st = brawlerRevengeStartPatch(start);
-    expect(st.aiPhaseUntil).toBe(start + 455);
-    expect(brawlerRevengeTelegraph(start, st.aiPhaseUntil, start).visible).toBe(true);
-    expect(brawlerRevengeTelegraph(start, st.aiPhaseUntil, st.aiPhaseUntil - 1).visible).toBe(true);
-    expect(brawlerRevengeTelegraph(start, st.aiPhaseUntil, st.aiPhaseUntil).er).toBe(1);
-    expect(brawlerRevengeDue(st, st.aiPhaseUntil)).toBe(true);
-    expect(brawlerRevengeDue(st, st.aiPhaseUntil - 1)).toBe(false);
   });
 });

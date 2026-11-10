@@ -2,8 +2,8 @@
 // 5段のつながり・ヒットストップ・技ポイント・技(構え/大踏み潰し/気功/飛び蹴り)・近接専用モード・守護霊の疑似プレイヤー。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH, INVULN_MS, kbStopBoost, KNOCKBACK_DURATION, KNOCKBACK_SPEED } from './gameStore';
-import { applyEnemyProjectileHits, applyPumpkinBlastDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
-import { brawlerLiftBreaksTech, brawlerLockHitMs, brawlerLockAlive, brawlerRevengeTelegraph, BRAWLER_REVENGE_WINDUP_MS, BRAWLER_REVENGE_RADIUS, BRAWLER_REVENGE_HITS_MOB } from '../utils/brawlerCombo';
+import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
+import { brawlerLiftBreaksTech, brawlerLockHitMs, brawlerLockAlive } from '../utils/brawlerCombo';
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
@@ -818,7 +818,7 @@ describe('秘奥義(research/BRAWLER.md §10・社長指示2026-11-08)', () => {
 });
 
 
-describe('食らいの固まり・減衰・反撃・キャンセル(research/BRAWLER.md §11・社長指示2026-11-08)', () => {
+describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社長指示2026-11-08。反撃=振り払いは 2026-11-11 に撤去)', () => {
   const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
   /** 格闘の指定打撃をそのまま1発(止め・押しは段の表どおり)。 */
   const hit = (id: string, move: 's1' | 's2' | 's3' | 's4', stage: 1 | 2 | 3 | 4 = 1) => {
@@ -840,7 +840,6 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
       onStep?.();
     }
   };
-  const tunables = { thorOrbitDist: 200, thorCounterLeapMs: 300 };
 
   it('雑魚は格闘の当たりで食らいの動作だけになる(動かない)。明けたら動き出す', () => {
     setup();
@@ -872,10 +871,8 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     // ★§13-1(社長指示2026-11-09): 雑魚の溜め(z-red-pause)も固まる。§19-3: 移動の相の雑魚と同じ長さ(旧の「溜めは予算の分だけ」は撤去)。
     const gt0 = useGameStore.getState().gameTime;
     expect(en('z').brLockUntil).toBe(en('m').brLockUntil);
-    expect(en('z').brComboHits).toBe(1);
     expect(en('m').brLockUntil).toBe(gt0 + brawlerLockHitMs('s1', 45));
     expect(en('t').brLockUntil).toBe(en('m').brLockUntil); // 固まりの長さは雑魚と同じ(①は区分を見ない)
-    expect(en('t').brComboHits).toBe(1);
     expect(en('t').hitStunUntil).toBeUndefined();          // ボス級の止めは hitStunUntil(銃と同じ枠)には書かない
     expect(en('tb').brLockUntil).toBeUndefined();          // ボスの溜めは止めない(§9-72: 予告の時刻の一致を確かめ切れていない経路)
     expect(en('tb').brHoldUntil).toBeUndefined();
@@ -918,80 +915,6 @@ describe('食らいの固まり・減衰・反撃・キャンセル(research/BRA
     expect(en('b').brLockUntil).toBe(first + 100);                           // 2段目=新しく当たりの瞬間から
     expect(en('b').brLockMoves).toBe('s1,s2');
     expect(en('a').health).toBeLessThan(en('b').maxHealth);                  // ダメージは入る
-  });
-  it('雑魚に7発当てると振り払い: 赤い流星の円が溜めの頭から出て、消え切った瞬間に半径90で当たる(威力1.5倍・押される)', () => {
-    setup();
-    useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, invulnerable: false, health: 500, maxHealth: 500 } }));
-    // 1・2段目だけで数える(3・4段目は浮かせる=§13-2。浮いている間は反撃を出さない)。
-    for (let i = 0; i < BRAWLER_REVENGE_HITS_MOB; i++) { hit('z', (['s1', 's2'] as const)[i % 2], ((i % 2) + 1) as 1 | 2); advance(80); }
-    expect(en('z').brRevengePending).toBe(true);
-    let startAt = -1, blastAt = -1, blastR = 0, visAtStart = false, erAtBlast = -1;
-    const hp0 = useGameStore.getState().player.health;
-    const dmg = en('z').damage;
-    advanceAll(900, () => {
-      const st = useGameStore.getState();
-      const e = st.enemies.find(x => x.id === 'z');
-      if (startAt < 0 && e?.aiPhase === 'br-revenge') {
-        startAt = st.gameTime;
-        visAtStart = brawlerRevengeTelegraph(e.aiStartedAt!, e.aiPhaseUntil!, st.gameTime).visible;
-      }
-      const b = st.pumpkinBlasts.find(x => x.moveKey === 'br-revenge');
-      if (b && blastAt < 0) {
-        blastAt = st.gameTime; blastR = b.radius;
-        erAtBlast = brawlerRevengeTelegraph(startAt, startAt + BRAWLER_REVENGE_WINDUP_MS, st.gameTime).er;
-        applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, tunables);
-      }
-    });
-    expect(startAt).toBeGreaterThan(0);
-    expect(visAtStart).toBe(true);                               // ②出る時刻=溜めの開始(その瞬間に出ている)
-    expect(blastAt - startAt).toBe(BRAWLER_REVENGE_WINDUP_MS);   // 当たる=溜め350msの終わり
-    expect(erAtBlast).toBe(1);                                   // ③消え切る時刻=当たる時刻
-    expect(blastR).toBe(BRAWLER_REVENGE_RADIUS);
-    const p = useGameStore.getState().player;
-    expect(hp0 - p.health).toBeCloseTo(dmg * 1.5, 0);
-    expect(Math.hypot(p.knockbackVx ?? 0, p.knockbackVy ?? 0)).toBeGreaterThan(0);
-    // 振り払いの後は流れが0へ戻り、1.2秒は固まらない
-    const e = en('z');
-    expect(e.brComboHits).toBe(0);
-    hit('z', 's1');
-    expect(en('z').brHoldUntil).toBeUndefined();
-    expect(brawlerLockAlive(en('z'), useGameStore.getState().gameTime)).toBe(false); // 確定の固まりも書かれない(固まらない時間)
-  });
-  it('振り払いの溜めの間はスーパーアーマー(押されない・固まらない)', () => {
-    setup();
-    const z = zombieAt(60, 0, 'z');
-    Object.assign(z, { aiPhase: 'br-revenge', aiStartedAt: useGameStore.getState().gameTime, aiPhaseUntil: useGameStore.getState().gameTime + 350 });
-    useGameStore.setState({ enemies: [z] });
-    useGameStore.getState().triggerCounter(undefined, {
-      targetIds: ['z'], mult: 1.3, brawler: true, stunMs: 140, kb: { kind: 'big', dirX: 1, dirY: 0, bossHalf: true }, postureMult: 1.3, pressedAt: Date.now(), combo: { move: 's5' },
-    });
-    const e = en('z');
-    expect(e.aiPhase).toBe('br-revenge');
-    expect(e.knockbackVx ?? 0).toBe(0);
-    expect(e.brHoldUntil).toBeUndefined();
-    expect(e.health).toBeLessThan(e.maxHealth);
-  });
-  // ★書き換え(社長指示2026-11-10・§12-3d): 旧「構えで振り払いを受けるとカウンター成立=技ポイントが全回復」。全回復は撤去され、
-  // 雑魚の技を受けた瞬間に大踏み潰しが代金なしで出る(技ポイントは構えの代金を払った後のまま)。
-  it('構えで振り払いを受けるとカウンター成立=技ポイントは増えず、代金なしの大踏み潰しへ移る', () => {
-    setup(2);
-    useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, health: 500, maxHealth: 500 } }));
-    // 1・2段目だけで数える(3・4段目は浮かせる=§13-2。浮いている間は反撃を出さない)。
-    for (let i = 0; i < BRAWLER_REVENGE_HITS_MOB; i++) { hit('z', (['s1', 's2'] as const)[i % 2], ((i % 2) + 1) as 1 | 2); advance(80); }
-    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 3 } } }));
-    let guarded = false, countered = false, sawStomp = false;
-    const hp0 = useGameStore.getState().player.health;
-    advanceAll(900, () => {
-      const st = useGameStore.getState();
-      const e = st.enemies.find(x => x.id === 'z');
-      if (!guarded && e?.aiPhase === 'br-revenge') { guarded = st.brawlerTech(0, -1); }
-      if (st.pumpkinBlasts.some(b => b.moveKey === 'br-revenge')) { applyPumpkinBlastDamage(NOOP_COMBAT_EFFECTS, tunables); countered = true; sawStomp = useGameStore.getState().player.brawler?.tech === 'stomp'; }
-    });
-    expect(guarded).toBe(true);
-    expect(countered).toBe(true);
-    expect(useGameStore.getState().player.health).toBe(hp0);
-    expect(br().points).toBe(0); // 3ポイント − 構えの3 = 0 のまま(全回復しない・潰しの代金も払わない)
-    expect(sawStomp).toBe(true);  // 受けた瞬間に大踏み潰しへ移った
   });
   it('技→技のキャンセル: 当たった大踏み潰しの後隙を気功で取り消せる・空振りからは取り消せない(構えは別)', () => {
     setup(3);
@@ -1151,14 +1074,6 @@ describe('格闘の当たりでは強個体を雑魚と同じに扱う(社長指
     const p1 = en('s').bossPosture;
     expect(p1).not.toEqual(p0);
   });
-  it('強個体も反撃は7発目(雑魚と同じ)', () => {
-    setup();
-    useGameStore.setState({ enemies: [foeOf('driller', 's')] });
-    for (let i = 0; i < 6; i++) { strike('s', 'none'); advance(80); }
-    expect(en('s').brRevengePending).toBe(false);
-    strike('s', 'none');
-    expect(en('s').brRevengePending).toBe(true);
-  });
   // 社長指示2026-11-10「ボスも拳鬼も」: 旧「normal は押さない」を新仕様(ボス級も小さくずれる)へ。
   it('ボス級(ハンター): 止まらない・big は半分で押す・small/normal はごく小さく押す(減衰の段は進めない・免疫なし)(浮きは §12-1 で重く浮く=別のテスト)', () => {
     setup();
@@ -1240,13 +1155,6 @@ describe('移動・待ちの相の敵も格闘で固まる(社長実機報告202
     useGameStore.setState({ enemies: [z] });
     s1('z');
     expect(en('z').brLockUntil).toBe(useGameStore.getState().gameTime + 229);
-  });
-  it('反撃も移動の相の敵で7発目に出る(実際の AI の更新で溜めに入る)', () => {
-    approachUntil(['zrush', 'zpause']);
-    for (let i = 0; i < 7; i++) { s1('z'); live(80); if (en('z').aiPhase === 'br-revenge') break; }
-    let saw = en('z').aiPhase === 'br-revenge';
-    live(200, () => { saw ||= en('z').aiPhase === 'br-revenge'; });
-    expect(saw).toBe(true);
   });
 });
 
@@ -1458,18 +1366,10 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     expect(en('y').brLiftUntil).toBeUndefined();
     expect(en('y').aiPhase).toBe('z-red-pause'); // 浮かない当たりでは取り消さない
   });
-  it('振り払いの最中の雑魚は浮かない(技も取り消さない)・ボス級は技の最中に取り消して浮かせる対象ではない', () => {
-    setup();
-    const z = zombieAt(60, 0, 'r');
-    Object.assign(z, { aiPhase: 'br-revenge', aiPhaseUntil: useGameStore.getState().gameTime + 5000 });
-    useGameStore.setState({ enemies: [z] });
-    hitMove('r', 's4', { lift: true });
-    expect(en('r').brLiftUntil).toBeUndefined();
-    expect(en('r').aiPhase).toBe('br-revenge');
+  it('ボス級は技の最中に取り消して浮かせる対象ではない(雑魚・強個体は対象)', () => {
     expect(brawlerLiftBreaksTech({ aiPhase: 'g-stomp-windup' }, 'boss')).toBe(false);
     expect(brawlerLiftBreaksTech({ aiPhase: 'z-red-pause' }, 'mob')).toBe(true);
     expect(brawlerLiftBreaksTech({ aiPhase: 'z-red-pause' }, 'strong')).toBe(true);
-    expect(brawlerLiftBreaksTech({ aiPhase: 'br-revenge' }, 'mob')).toBe(false);
   });
   it('空中で5段目(吹き飛ばす技)を当てると浮きを終えて吹き飛ぶ', () => {
     setup();
@@ -1480,19 +1380,6 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     expect(e.liftUntil).toBe(now + 200); // §13-2: 締めの叩き落とし=ダウン(着地まで動けない)
     expect(e.brLiftDown).toBe(true);
     expect(Math.abs(e.knockbackVx ?? 0)).toBeGreaterThan(0);
-  });
-  it('浮いている間は反撃を出さない(落ちてから)', () => {
-    setup();
-    useGameStore.setState({ enemies: [zombieAt(60, 0, 'z')] });
-    for (let i = 0; i < 6; i++) { hitMove('z', 's1'); advance(80); }
-    hitMove('z', 's4', { lift: true });
-    expect(en('z').brRevengePending).toBe(true);
-    live(200);
-    expect(en('z').aiPhase).not.toBe('br-revenge');
-    let saw = false;
-    for (let i = 0; i < 40 && !saw; i++) { live(10); saw = en('z').aiPhase === 'br-revenge'; }
-    expect(saw).toBe(true);
-    expect(Date.now()).toBeGreaterThanOrEqual(en('z').brLiftUntil ?? 0);
   });
   it('ジャスト構え: 構えてから120ms以内の受けは JUST・相手の気絶2倍。121ms は普通の受け', () => {
     for (const [dt, just] of [[120, true], [130, false]] as const) {

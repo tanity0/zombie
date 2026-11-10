@@ -39,7 +39,7 @@ const hit = (id: string, move: Mv, o: { lift?: boolean; mult?: number } = {}) =>
   targetIds: [id], mult: o.mult ?? 0.01, brawler: true, stunMs: STOP[move], postureMult: 0.01, pressedAt: Date.now(),
   kb: move === 's5' || move === 'kick3' ? { kind: 'big', dirX: 1, dirY: 0, bossHalf: true }
     : move === 'stomp' ? { kind: 'big', dirX: 1, dirY: 0, bossHalf: true, ignoreImmune: true } : { kind: 'none' },
-  ...(o.lift ? { lift: true } : {}), combo: { move: move === 'secret' ? 'secret' : move, ...(move === 'secret' ? { countRevenge: false } : {}) },
+  ...(o.lift ? { lift: true } : {}), combo: { move },
 });
 const step = (ms: number, onStep?: () => void) => {
   const end = now + ms;
@@ -66,7 +66,7 @@ describe('§13-1 技の溜めも固める(純関数)', () => {
     for (const ph of ['windup', 'scream', 'driller-thrust-windup', 'logger-sweep-windup', 'b-windup', 's-arc', 'z-red-pause', 'z-lunge-in', 'z-stagger', 'lich-blink']) {
       expect(k({ aiPhase: ph as Enemy['aiPhase'] }), ph).toBe('windup');
     }
-    for (const ph of ['charge', 'jump', 'driller-thrust-active', 'logger-sweep-active', 'b-lunge', 'b-grab', 's-bite', 'z-bite1', 'z-bite2', 'br-revenge', 'g-stomp-windup']) {
+    for (const ph of ['charge', 'jump', 'driller-thrust-active', 'logger-sweep-active', 'b-lunge', 'b-grab', 's-bite', 'z-bite1', 'z-bite2', 'g-stomp-windup']) {
       expect(k({ aiPhase: ph as Enemy['aiPhase'] }), ph).toBe('active');
     }
     expect(k({ aiPhase: 'zrush', biteAt: 1500 })).toBe('windup');           // 噛みの構え
@@ -127,7 +127,7 @@ describe('§13-1 技の溜めも固める(ストア・予告の位相)', () => {
   });
   // ★§19-3 ③ で書き換え: 旧「同じ溜めを殴り続けても合計400msで押し切る」(予算)→ 新「同じコンボで2回目の同じ技は固めない」。
   //   固まりの最中に同じ技を重ねても確定の固まりは延びない(当たりの止めだけ)。固まりが明ければコンボは区切られる
-  //   (雑魚は固まらない時間なし=次の当たりから新しいコンボ。雑魚の歯止めは今どおり7発の振り払い)。
+  //   (雑魚は固まらない時間なし=次の当たりから新しいコンボ)。
   it('同じ溜めを同じ技で殴り続けても、固まりは延びない(最初の1回の長さ+当たりの止めだけ=溜めは進む)', () => {
     setup();
     const g0 = gt();
@@ -192,7 +192,7 @@ describe('§13-2 空中コンボ(ストア)', () => {
   });
   it('ダメージ補正: 同じ流れの10ヒット目から減る・秘奥義は減らない', () => {
     setup();
-    // 雑魚は7発で振り払う(流れが切れる)ので、振り払わないボス級(ハンター)で数える。
+    // ボス級(ハンター)で数える(旧: 雑魚は7発で振り払って流れが切れた=振り払いは 2026-11-11 に撤去)。
     useGameStore.setState({ enemies: [place('hunter', 60, 0, 'z'), place('hunter', -60, 0, 's')] });
     const dmgOf = (id: string, mv: Mv) => { const h0 = en(id).health; hit(id, mv, { mult: 20 }); return h0 - en(id).health; };
     const d: number[] = [];

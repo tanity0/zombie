@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5467 — 格闘: 敵の反撃(振り払い)を撤去【2026-11-11 08:45 JST】
+- 社長の言葉: 「格闘の敵の反撃は外して」。殴られ続けた雑魚・強個体が赤い予告の円のあと周りを振り払う反撃(research/BRAWLER.md §11-3・2026-11-08「反撃は入れる」)を、コードごと外した。
+- 外した物: 反撃の数(7発)と予約・溜めの相 `br-revenge`(型からも)・赤い流星の円(pixiScene)・威力と押し(pumpkinBlasts の分岐)・溜めの間のスーパーアーマー・振り払いの後の固まらない時間・振り払った時の土ぼこり(combatTick)と体の伸び縮み(pixiScene)・守護霊の予告台帳の1件(ghostTelegraph)・死因の名前。欄 `brComboHits`/`brRevengePending`/`brRevengeAt`・引数 `countRevenge`・定数 `BRAWLER_REVENGE_*`・純関数 `brawlerRevenge*`/`isBrawlerComboSubject`。反撃のテストは消し、欄を見ていたテストは流れの数え(`brFlowHits`)へ読み替えた。
+- 残した物: 流れの時計(ダメージ補正・バウンドの区切り)・ダウンの着地の後の固まらない時間・コンボの後の固まらない時間(ボス級・強個体)。
+- 事実(社長の判断材料・§19-8): 雑魚の歯止めは振り払いだけだった(コンボの後の固まらない時間は雑魚に無い)=雑魚は道の上のコンボを繰り返せば倒すまで止め続けられる。
+- 監査: 付けない(指示された仕組みの撤去=新しい仕組み・新しい見え方を足していない)。絵は消えるだけなので撮っていない。
+- 検証: typecheck 0/変更ファイルの eslint 0/循環 import 新規なし/vitest 40ファイル中39通過・918件通過(落ちる1件=`ghostTelegraph.test.ts` の台帳の「recover」は変更前の版でも同じく落ちる別件)/実ループのランナー(`TEST_HANDOFF/run-brawler-link.mjs`)=道30本とも固まりが外れず・エラー0。
+- 自己点検: 敵の反撃の撤去だけ=憲法第4条(初心者ゾーン)・第5条(緩を荒らさない)に抵触しない(敵の攻め手が1つ減る側)。
+- 状態変化: 格闘(敵の反撃)→ 撤去済み(残り: 雑魚にも固まらない時間を付けるかの裁定)。
+- 変更ファイル: src/utils/brawlerCombo.ts・src/store/gameStore.ts・src/types/game.ts・src/pixi/pixiScene.ts・src/utils/combatTick.ts・src/utils/ghostTelegraph.ts・格闘のテスト9本・research/BRAWLER.md(§11-3 の注記・§19-8)。
+
 ## v0.25.5466 — 格闘のつながり: 実際のループでの検証と、会心で切れる穴の直し【2026-11-11 08:32 JST】
 - 社長の「テストして」。`TEST_HANDOFF/REQUEST.md` は 2026-08-27 の依頼(v0.25.3991 向けの通し)のままだったので回していない。直前に入れた格闘のつながり(research/BRAWLER.md §19)を、実際のゲームのループで確かめた。
 - やり方: ヘッドレスは素のままだと毎秒2フレームしか回らない(ゲームの中は実時間の約1/10)。rAF をタイマーへ差し替え、描画(scene.sync と renderer.render)だけ止めると実時間で回る(毎秒約50フレーム・幅は平均20ms/最大50msで自然に揺れる・乱数は本物)。毎フレームの頭に store の入口へ入力を流し、敵の状態を測った。ランナー=`TEST_HANDOFF/run-brawler-link.mjs`(目安3分)。やり方は TEST_HANDOFF/HEADLESS.md §10 に書いた。

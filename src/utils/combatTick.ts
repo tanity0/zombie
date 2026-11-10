@@ -432,13 +432,6 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       const dcx = b.capsule ? b.capsule.tx : b.x, dcy = b.capsule ? b.capsule.ty : b.y;
       fx.spawnRing(dcx, dcy, 4, 26, 'rgba(255,190,90,0.9)', 3, 240);
       fx.spawnBurst(dcx, dcy, '#fbbf24', 10);
-    } else if (b.moveKey === 'br-revenge') {
-      // 格闘の反撃=雑魚・強個体のその場の振り払い(research/BRAWLER.md §11-3)。爆発ではない=全画面の明滅は出さない。
-      // 振り払った腕の風圧が足元の土を外へ叩き出す(派手さの絵=判定の円より外まで。輪の太さ・速さ・量はばらす)。
-      fx.spawnRing(b.x, b.y, 10, b.radius * 1.55, 'rgba(232,214,188,0.85)', 7, 460);
-      fx.spawnRing(b.x, b.y, 6, b.radius * 1.05, 'rgba(120,36,28,0.7)', 4, 330);
-      fx.spawnBurst(b.x, b.y + 10, '#d8c4a6', 20 + Math.floor(Math.random() * 8));
-      fx.spawnBurst(b.x, b.y, '#5b4636', 8 + Math.floor(Math.random() * 6));
     } else if (b.moveKey === 'logger-sweep') {
       // PACING_PUZZLE.md §14-2(伐採人の薙ぎ払い): driller-thrustと同じく雑魚の通常攻撃なので
       // 全画面フラッシュは出さない。帯の長軸がプレイヤー方向と直交するため(突きと違い帯の端点は
@@ -494,7 +487,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         // 検収監査#6: 死因の技名はmoveKeyで分ける(削岩型の突きが「落下攻撃」と表示されていた)。
         // 検収監査#6の継承(§14-2): 死因の技名はmoveKeyで分ける(伐採人の薙ぎ払いが「落下攻撃」と
         // 表示される取りこぼしを防ぐ)。
-        const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い' : b.moveKey === 'br-revenge' ? '振り払い'
+        const deathMoveLabel = b.moveKey === 'driller-thrust' ? '突き' : b.moveKey === 'logger-sweep' ? '薙ぎ払い'
           : b.moveKey === 'hero-slash' ? '斬撃' : b.moveKey === 'hero-slam' ? '叩きつけ' : b.moveKey === 'hero-tackle' ? '体当たり'
           : b.moveKey === 'jo-slam' || b.moveKey === 'crawler-slam' ? '叩きつけ' : b.moveKey === 'liberty-flag' ? '旗の一振り' : b.moveKey === 'liberty-arrow' ? '矢の雨'
           : b.moveKey === 'astro-missile' ? 'ミサイル' : b.moveKey === 'astro-flag' ? '国旗' : b.moveKey === 'astro-debris' ? '残骸' : b.moveKey === 'astro-meteor' ? '隕石' : b.moveKey === 'wraith-scream' ? '叫び' : b.moveKey === 'wraith-grave' ? '墓石' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)

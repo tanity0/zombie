@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5467', items: [
+    '格闘で殴り続けた敵が、赤い予告のあと周りを振り払ってくる反撃をなくした',
+  ] },
   { version: '0.25.5466', items: [
     '格闘のコンボの途中で会心が出ると、強い敵が途中から固まらなくなり、つないでいる最中に動き出していたのを直した',
   ] },

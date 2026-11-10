@@ -3,24 +3,21 @@
 //   ここに在った「基本の長さ」「減衰」「同じ技の罰」のテストは、新しい規則(①の長さ・③同じ技は固めない・⑤固まらない時間)の形へ書き換えた。
 import { describe, it, expect } from 'vitest';
 import {
-  brawlerComboOnHit, brawlerLockOnHit, brawlerLockHitMs, brawlerComboEndPatch, brawlerRevengeHitsFor, brawlerRevengeShouldStart,
-  brawlerRevengeStartPatch, brawlerRevengeDue, brawlerRevengeEndPatch, brawlerRevengeTelegraph, brawlerRevengeDamage,
+  brawlerComboOnHit, brawlerLockOnHit, brawlerLockHitMs, brawlerComboEndPatch,
   brawlerStageMoveKey, brawlerKickMoveKey,
   BRAWLER_SECRET_HOLD_MS, BRAWLER_COMBO_GAP_MS, BRAWLER_HOLD_FRAME_MARGIN_MS, type BrawlerLockFields,
-  BRAWLER_REVENGE_WINDUP_MS, BRAWLER_REVENGE_HITS_MOB, BRAWLER_REVENGE_NO_HOLD_MS, brawlerComboClass,
   type BrawlerComboFields, type BrawlerMoveKey, isBrawlerTechBusy, BRAWLER_HOLDABLE_PHASES,
   brawlerJugglePush, brawlerAirborne, brawlerJuggleHeightRel, brawlerJuggleLanded, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_COST, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS, type BrawlerJuggleFields,
 } from './brawlerCombo';
 import { BRAWLER_LIFT_MS, brawlerLiftHeight } from './brawler';
-import { meteorPhase } from './telegraphStyle';
 import { setBrawlerTempoAll } from './brawlerCombo';
 // ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
 setBrawlerTempoAll(1.0); // 記述時(describe の中で時刻を組む所)より先に効かせる=モジュールの頭で呼ぶ
 
-/** 当たりを順に入れて、流れの数え(反撃の数など)を進める。 */
-const run = (type: BrawlerComboFields['type'], hits: { move: BrawlerMoveKey; at: number }[], countRevenge = true) => {
+/** 当たりを順に入れて、流れの数えを進める。 */
+const run = (type: BrawlerComboFields['type'], hits: { move: BrawlerMoveKey; at: number }[]) => {
   let e: BrawlerComboFields = { type };
-  for (const h of hits) e = { ...e, ...brawlerComboOnHit(e, h.move, h.at, countRevenge).patch };
+  for (const h of hits) e = { ...e, ...brawlerComboOnHit(e, h.move, h.at).patch };
   return { e };
 };
 /** 確定の固まり(§19-3)を当たりの順に書く(gameTime=壁時計と同じ進みで見る)。各当たりの「当たりの瞬間からの固まりの長さ」を返す(固めなければ 0)。 */
@@ -55,18 +52,7 @@ describe('固まりの長さ(§19-3 ①・旧 §11-1 の基本の長さの表を
     expect([1, 2, 3, 4, 5].map(brawlerStageMoveKey)).toEqual(['s1', 's2', 's3', 's4', 's5']);
     expect([1, 2, 3].map(brawlerKickMoveKey)).toEqual(['kick1', 'kick2', 'kick3']);
   });
-  it('★ボス級も雑魚と同じ固まりの長さ(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」)。振り払いだけは無い', () => {
-    let b: Parameters<typeof brawlerComboOnHit>[0] = { type: 'thor' };
-    let m: Parameters<typeof brawlerComboOnHit>[0] = { type: 'zombie' };
-    const moves = ['s1', 's2', 's1', 's3', 's4', 's1', 's2', 's3', 's1', 's2'] as const;
-    let t = 1000;
-    for (const mv of moves) {
-      const rb = brawlerComboOnHit(b, mv, t), rm = brawlerComboOnHit(m, mv, t);
-      expect(rb.patch.brRevengePending).toBe(false);      // ボス級は振り払わない(数は Infinity に届かない)
-      b = { ...b, ...rb.patch }; m = { ...m, ...rm.patch };
-      t += 250;
-    }
-    expect(m.brRevengePending).toBe(true);                // 雑魚は7回で振り払いの予約
+  it('★ボス級も雑魚と同じ固まりの長さ(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」)', () => {
     // 固まりの長さは区分に依らない(①は区分を見ない)。違うのはコンボの後の固まらない時間(ボス級1500・強個体800・雑魚なし)。
     const hits = (['s1', 's2', 's3', 's4'] as const).map((move, i) => ({ move, at: i * 250 }));
     expect(lockRun(hits, 'boss').holds).toEqual(lockRun(hits, 'mob').holds);
@@ -78,9 +64,8 @@ describe('止め続けられない(§19-3 ③④⑤・旧 §11-2 の減衰と同
     const { holds } = lockRun([{ move: 's1', at: 0 }, { move: 's2', at: 250 }, { move: 's3', at: 550 }, { move: 's4', at: 1100 }]);
     expect(holds).toEqual([274, 274, 414, 384]);
     const { e } = run('zombie', [{ move: 's1', at: 0 }, { move: 's2', at: 250 }, { move: 's3', at: 550 }, { move: 's4', at: 1100 }]);
-    expect(e.brComboHits).toBe(4);
+    expect(e.brFlowHits).toBe(4);
     const after = brawlerComboOnHit(e, 's1', 1100 + BRAWLER_COMBO_GAP_MS + 1);
-    expect(after.patch.brComboHits).toBe(1);
     expect(after.patch.brFlowHits).toBe(1);
   });
   it('同じコンボで2回目の同じ技は固めない(1段目の連打・同じ技の擦り)。飛び蹴りの3連は1発ごとに名札が違う', () => {
@@ -91,7 +76,7 @@ describe('止め続けられない(§19-3 ③④⑤・旧 §11-2 の減衰と同
     expect(lockRun((['s1', 's2', 's3', 's4', 's5'] as const).map((move, i) => ({ move, at: i * 250 }))).holds).toEqual([274, 274, 414, 384, 0]);
     expect(lockRun([{ move: 'kick1', at: 0 }, { move: 'kick2', at: 250 }, { move: 'kick3', at: 500 }]).holds).toEqual([334, 334, 0]);
   });
-  it('コンボの後: ボス級は1500ms・強個体は800ms 固まらない。雑魚は固まらない時間なし(振り払いが受け持つ)', () => {
+  it('コンボの後: ボス級は1500ms・強個体は800ms 固まらない。雑魚は固まらない時間なし', () => {
     // 1段目(固まり274ms)が明けた後に、また1段目から
     const again = (cls: 'mob' | 'strong' | 'boss', gap: number) => lockRun([{ move: 's1', at: 0 }, { move: 's1', at: 274 + gap }], cls).holds[1];
     expect(again('boss', 100)).toBe(0);
@@ -103,92 +88,7 @@ describe('止め続けられない(§19-3 ③④⑤・旧 §11-2 の減衰と同
   });
 });
 
-describe('反撃(§11-3)', () => {
-  it('反撃の数: 雑魚・強個体とも7(社長指示「強個体も雑魚と同じにして」)・ボス級は無し', () => {
-    expect(brawlerRevengeHitsFor('zombie')).toBe(BRAWLER_REVENGE_HITS_MOB);
-    expect(BRAWLER_REVENGE_HITS_MOB).toBe(7);
-    for (const t of ['pumpkin', 'driller', 'logger', 'lab-zombie-3', 'reaper'] as const) {
-      expect(brawlerComboClass(t)).toBe('strong');
-      expect(brawlerRevengeHitsFor(t)).toBe(7);
-    }
-    expect(brawlerComboClass('hunter')).toBe('boss');
-    expect(brawlerRevengeHitsFor('thor')).toBe(Infinity);
-  });
-  it('雑魚も強個体も7発目で予約・6発では予約しない', () => {
-    const six = run('zombie', Array.from({ length: 6 }, (_, i) => ({ move: brawlerStageMoveKey((i % 4) + 1), at: i * 200 })));
-    expect(six.e.brRevengePending).toBe(false);
-    const seven = run('zombie', Array.from({ length: 7 }, (_, i) => ({ move: brawlerStageMoveKey((i % 4) + 1), at: i * 200 })));
-    expect(seven.e.brRevengePending).toBe(true);
-    const strong6 = run('pumpkin', Array.from({ length: 6 }, (_, i) => ({ move: brawlerStageMoveKey((i % 4) + 1), at: i * 200 })));
-    expect(strong6.e.brRevengePending).toBe(false);
-    const strong7 = run('pumpkin', Array.from({ length: 7 }, (_, i) => ({ move: brawlerStageMoveKey((i % 4) + 1), at: i * 200 })));
-    expect(strong7.e.brRevengePending).toBe(true);
-  });
-  it('数えない当たり(秘奥義)は反撃の数に足さない', () => {
-    const r = run('zombie', Array.from({ length: 9 }, (_, i) => ({ move: 'secret' as const, at: i * 170 })), false);
-    expect(r.e.brComboHits).toBe(0);
-    expect(r.e.brRevengePending).toBe(false);
-  });
-  it('流れが途切れたら反撃の数も0から', () => {
-    const a = run('zombie', Array.from({ length: 6 }, (_, i) => ({ move: brawlerStageMoveKey((i % 4) + 1), at: i * 200 })));
-    const b = brawlerComboOnHit(a.e, 's1', 1000 + BRAWLER_COMBO_GAP_MS + 200);
-    expect(b.patch.brComboHits).toBe(1);
-    expect(b.patch.brRevengePending).toBe(false);
-  });
-  it('発動: 予約済み・技を出していない時だけ。溜め350ms → 当たる。当たった後1.2秒は固まらない', () => {
-    expect(brawlerRevengeShouldStart({ type: 'zombie', brRevengePending: true }, false)).toBe(true);
-    expect(brawlerRevengeShouldStart({ type: 'zombie', brRevengePending: true }, true)).toBe(false);
-    expect(brawlerRevengeShouldStart({ type: 'zombie', brRevengePending: false }, false)).toBe(false);
-    expect(brawlerRevengeShouldStart({ type: 'thor', brRevengePending: true }, false)).toBe(false);
-    const st = brawlerRevengeStartPatch(5000);
-    expect(st).toMatchObject({ aiPhase: 'br-revenge', aiStartedAt: 5000, aiPhaseUntil: 5000 + BRAWLER_REVENGE_WINDUP_MS, brRevengePending: false });
-    expect(brawlerRevengeDue(st, 5349)).toBe(false);
-    expect(brawlerRevengeDue(st, 5350)).toBe(true);
-    const end = brawlerRevengeEndPatch(9000);
-    expect(end.brNoHoldUntil).toBe(9000 + BRAWLER_REVENGE_NO_HOLD_MS);
-    expect(end.brComboHits).toBe(0);
-    expect(end.aiPhase).toBeUndefined();
-    // 振り払いの後は固まらない(壁時計の欄 brNoHoldUntil が生きている間は、確定の固まりを書かない)
-    const hold = (nowMs: number) => brawlerLockOnHit({ ...end }, 's1', 5000, nowMs, { stopMs: 90, enemyStopMs: 90, canHold: true, airborneAfter: false });
-    expect(hold(9500)).toMatchObject({ held: false, noHold: true });
-    expect(hold(9000 + BRAWLER_REVENGE_NO_HOLD_MS + 1).held).toBe(true);
-    // 確定の固まりの最中には始めない(§19-3 ⑦)
-    expect(brawlerRevengeShouldStart({ type: 'zombie', brRevengePending: true }, false, true)).toBe(false);
-  });
-  it('威力は接触/噛みつきの ×1.5', () => {
-    expect(brawlerRevengeDamage(10)).toBe(15);
-  });
-});
-
-describe('★★赤い予告の4つの掟(振り払い)', () => {
-  const start = 10_000, hit = start + BRAWLER_REVENGE_WINDUP_MS;
-  it('②出る時刻 = 溜めの開始(その瞬間から出ていて、1ms前は出ていない)', () => {
-    expect(brawlerRevengeTelegraph(start, hit, start).visible).toBe(true);
-    expect(brawlerRevengeTelegraph(start, hit, start - 1).visible).toBe(false);
-    expect(brawlerRevengeTelegraph(start, hit, start).prog).toBe(0);
-  });
-  it('③消え切る時刻 = 当たる時刻(er が1になるのは当たる瞬間ちょうど・1ms前はまだ残っている)', () => {
-    const atHit = brawlerRevengeTelegraph(start, hit, hit);
-    expect(atHit.er).toBe(1);
-    expect(atHit.visible).toBe(false);
-    const before = brawlerRevengeTelegraph(start, hit, hit - 1);
-    expect(before.visible).toBe(true);
-    expect(before.er).toBeLessThan(1);
-    // 当たる時刻 = 状態機械が判定を積む時刻(aiPhaseUntil)
-    const st = brawlerRevengeStartPatch(start);
-    expect(st.aiPhaseUntil).toBe(hit);
-    expect(brawlerRevengeDue(st, hit)).toBe(true);
-    expect(brawlerRevengeDue(st, hit - 1)).toBe(false);
-  });
-  it('①流星: 位相は meteorPhase(描いてから外→内へ流れて消える)', () => {
-    for (const t of [0, 0.2, 0.45, 0.6, 0.9, 1]) {
-      const g = brawlerRevengeTelegraph(start, hit, start + t * BRAWLER_REVENGE_WINDUP_MS);
-      const m = meteorPhase(t, 0.45);
-      expect(g.p).toBeCloseTo(m.p);
-      expect(g.er).toBeCloseTo(m.er);
-    }
-  });
-});
+// 反撃(振り払い・§11-3)と、その赤い予告のテストは撤去した(社長指示2026-11-11「格闘の敵の反撃は外して」)。
 
 describe('「本当に技を出している最中」の仕分け(社長実機報告2026-11-08・§9-59)', () => {
   const gt = 1000;
@@ -204,7 +104,7 @@ describe('「本当に技を出している最中」の仕分け(社長実機報
   });
   it('予告の溜め・攻撃の相・噛みつきの構え・§16の技は技の最中=固めない。表に無い相も技の最中', () => {
     for (const ph of ['windup', 'charge', 'jump', 'scream', 'driller-thrust-windup', 'driller-thrust-active', 'logger-sweep-windup', 'logger-sweep-active',
-      'b-windup', 'b-lunge', 'b-grab', 's-arc', 's-bite', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'lich-blink', 'br-revenge', 'g-stomp-windup', 'unknown-phase']) {
+      'b-windup', 'b-lunge', 'b-grab', 's-arc', 's-bite', 'z-red-pause', 'z-lunge-in', 'z-bite1', 'z-stagger', 'z-bite2', 'lich-blink', 'g-stomp-windup', 'unknown-phase']) {
       expect(isBrawlerTechBusy({ aiPhase: ph }, gt), ph).toBe(true);
     }
     expect(isBrawlerTechBusy({ aiPhase: 'zrush', biteAt: 900 }, gt)).toBe(true);

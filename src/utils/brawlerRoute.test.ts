@@ -15,7 +15,7 @@ import {
   setBrawlerTempoAll, BRAWLER_HOLD_FRAME_MARGIN_MS, BRAWLER_CHAIN_GUARD_MARGIN_MS, BRAWLER_COMBO_END_NO_HOLD_BOSS_MS, BRAWLER_COMBO_END_NO_HOLD_STRONG_MS,
   brawlerLockHitMs, brawlerLockIsCloser, brawlerLockHolds, brawlerLockOnHit, brawlerLockExtendPatch, brawlerLockCutPatch, brawlerComboEndPatch,
   brawlerLockAlive, brawlerHoldClockAlive, brawlerHoldRemainMs, brawlerHeldNow, brawlerNoHoldNow, brawlerComboEndNoHoldNow, brawlerKikoTravelMs,
-  brawlerRevengeShouldStart, brawlerJugglePush, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS,
+  brawlerJugglePush, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS,
   type BrawlerMoveKey,
 } from './brawlerCombo';
 
@@ -308,7 +308,7 @@ describe('確定の固まりの書き込み(§19-3 ①③⑤・締めの切り�
     expect(brawlerLockOnHit({}, 's1', 5000, 9e9, o(90, { canHold: false }))).toEqual({ patch: {}, held: false, noHold: false });
     expect(brawlerLockOnHit({}, 's1', 5000, 9e9, o(90, { canHold: false, airborneAfter: true })).patch).toEqual({ brLockMoves: 's1' });
   });
-  it('⑤ 固まらない時間(コンボの後=gameTime の欄/ダウンの着地・振り払いの後=壁時計の欄 のどちらかが生きている間)は何も書かない・覚えない', () => {
+  it('⑤ 固まらない時間(コンボの後=gameTime の欄/ダウンの着地の後=壁時計の欄 のどちらかが生きている間)は何も書かない・覚えない', () => {
     expect(brawlerLockOnHit({ brLockNoHoldUntil: 5001 }, 's1', 5000, 100, o(90))).toEqual({ patch: {}, held: false, noHold: true });
     expect(brawlerLockOnHit({ brNoHoldUntil: 101 }, 's1', 5000, 100, o(90))).toEqual({ patch: {}, held: false, noHold: true });
     expect(brawlerLockOnHit({ brLockNoHoldUntil: 5000, brNoHoldUntil: 100 }, 's1', 5000, 100, o(90)).held).toBe(true); // 明けた瞬間から固まる
@@ -358,7 +358,7 @@ describe('② 続きを出した瞬間に延ばす(§19-3)', () => {
   });
 });
 
-describe('④ コンボの区切りと ⑤ 固まらない時間・⑥ 2つの時計・⑦ 振り払い', () => {
+describe('④ コンボの区切りと ⑤ 固まらない時間・⑥ 2つの時計', () => {
   it('固まりでも浮きでもなくなった時にコンボは終わる(当たりの止めは固まりに含む)。ボス級1500ms・強個体800ms・雑魚は無し', () => {
     expect([BRAWLER_COMBO_END_NO_HOLD_BOSS_MS, BRAWLER_COMBO_END_NO_HOLD_STRONG_MS]).toEqual([1500, 800]);
     const e = { brLockMoves: 's1,s2', brLockUntil: 5000 };
@@ -395,11 +395,5 @@ describe('④ コンボの区切りと ⑤ 固まらない時間・⑥ 2つの�
     expect(brawlerHeldNow({ type: 'zombie', brLockUntil: 5001, aiPhase: 'z-bite1' }, 5000, 100)).toBe(false);      // 振りの最中
     expect(brawlerHeldNow({ type: 'zombie', brHoldUntil: 101, aiPhase: 'zrush' }, 5000, 100)).toBe(true);
     expect(brawlerHeldNow({ type: 'zombie', aiPhase: 'zrush' }, 5000, 100)).toBe(false);
-  });
-  it('振り払いは確定の固まりの最中には始めない(明けた時に始める)', () => {
-    const e = { type: 'zombie' as const, brRevengePending: true };
-    expect(brawlerRevengeShouldStart(e, false, true)).toBe(false);
-    expect(brawlerRevengeShouldStart(e, false, false)).toBe(true);
-    expect(brawlerRevengeShouldStart(e, false)).toBe(true);
   });
 });

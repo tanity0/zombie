@@ -30,7 +30,7 @@ const bodyAt = (type: 'zombie' | 'giantbat', dx: number, dy: number, id: string,
 };
 const hpOf = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)?.health ?? 0;
 const strikeOpts = (id: string, mult: number, move: BrawlerStrikeOpts['combo'] extends infer C ? (C extends { move: infer M } ? M : never) : never, extra: Partial<BrawlerStrikeOpts> = {}): BrawlerStrikeOpts => ({
-  targetIds: [id], mult, brawler: true, stunMs: 0, kb: { kind: 'none' }, postureMult: 1, pressedAt: now, combo: { move, countRevenge: false }, ...extra,
+  targetIds: [id], mult, brawler: true, stunMs: 0, kb: { kind: 'none' }, postureMult: 1, pressedAt: now, combo: { move }, ...extra,
 });
 
 beforeEach(() => {

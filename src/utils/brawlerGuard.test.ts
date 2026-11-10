@@ -79,7 +79,7 @@ describe('構えの成立の効果(§12-3d)', () => {
 describe('光線の中断(社長指示2026-11-10「光線防いだら中断させたい」)', () => {
   it('どの受けが光線か: 被弾の技キーが撃ち続ける光線のもの', () => {
     for (const k of ['mimir-laser', 'mimir-wheel', 'br-laser', 'bm-snipe', 'idol-snipe', 'suriel-ring', 'g-sweepbeam']) expect(isBrawlerBeamMove(k), k).toBe(true);
-    for (const k of [undefined, 'g-trishot', 'br-revenge', 'mimir-bite', 'idol-punch']) expect(isBrawlerBeamMove(k), String(k)).toBe(false);
+    for (const k of [undefined, 'g-trishot', 'mimir-bite', 'idol-punch']) expect(isBrawlerBeamMove(k), String(k)).toBe(false);
   });
   it('中断してよい状態: 撃っている最中だけ(溜め・休み・気絶の間は中断しない)', () => {
     expect(isBrawlerBeamFiring({ bossState: 'laser-fire' } as Enemy)).toBe(true);

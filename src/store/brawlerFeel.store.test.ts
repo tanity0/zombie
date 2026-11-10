@@ -43,7 +43,7 @@ const advance = (ms: number) => {
 const enemy = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
 const hpOf = (id: string) => enemy(id)?.health ?? 0;
 const strikeOpts = (id: string, mult: number, move: 's1' | 's5' | 'kiko', extra: Partial<BrawlerStrikeOpts> = {}): BrawlerStrikeOpts => ({
-  targetIds: [id], mult, brawler: true, stunMs: 0, kb: { kind: 'none' }, postureMult: 1, pressedAt: now, combo: { move, countRevenge: false }, ...extra,
+  targetIds: [id], mult, brawler: true, stunMs: 0, kb: { kind: 'none' }, postureMult: 1, pressedAt: now, combo: { move }, ...extra,
 });
 
 beforeEach(() => {

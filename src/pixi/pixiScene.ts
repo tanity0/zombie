@@ -108,7 +108,7 @@ import {
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
-import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
+import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
 import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
@@ -13494,35 +13494,6 @@ export class PixiScene {
         g.circle(c.x, c.y, R).fill({ color: 0x9333ea, alpha: 0.42 * TELEGRAPH_FILL_MULT });
         g.circle(c.x, c.y, R).stroke({ width: 2.5, color: 0xc084fc, alpha: 0.78 + 0.17 * breath });
       }
-      // ★格闘の反撃(research/BRAWLER.md §11-3)の赤い予告円。判定と同じ円(敵の中心・半径90=自機の体が触れたら当たる)。
-      // ★★赤い予告の4つの掟: 位相は `meteorPhase` の1本(brawlerRevengeTelegraph)。出る=溜めの開始(aiStartedAt)、
-      //   前半(p)で縁の線が一周描かれ、後半(er)で赤が外から内へ流れて、**er=1(=当たる瞬間 aiPhaseUntil)で消え切る**。
-      if (e.aiPhase === 'br-revenge' && e.aiStartedAt !== undefined && e.aiPhaseUntil !== undefined) {
-        const tg = brawlerRevengeTelegraph(e.aiStartedAt, e.aiPhaseUntil, gameTime);
-        if (tg.visible) {
-          const tgStyle = telegraphStyleFor(e.type);
-          const pulse = 0.5 + 0.5 * Math.sin((gameTime - e.aiStartedAt) / tgStyle.pulseMs);
-          const R = BRAWLER_REVENGE_RADIUS;
-          const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
-          const fillA = telFillA(tg.prog, pulse) * TELEGRAPH_FILL_MULT;
-          if (tg.er <= 0) {
-            // 描き: 溜めの最初のフレームから薄い円の縁と塗りが出ていて(出る=溜めの開始)、その上を濃い縁の線が
-            // 真上から時計回りに走って一周する(加速→減速)。塗りは満ちていく。
-            const a0 = -Math.PI / 2;
-            const sweep = Math.PI * 2 * (tg.p * tg.p * (3 - 2 * tg.p));
-            g.circle(cx, cy, R).fill({ color: 0xff2a2a, alpha: fillA * (0.7 + 0.3 * tg.p) });
-            g.circle(cx, cy, R).stroke({ width: 2, color: 0xff3b3b, alpha: telStrokeA(tg.prog, pulse) * 0.7 });
-            if (sweep > 0.01) {
-              g.moveTo(cx + Math.cos(a0) * R, cy + Math.sin(a0) * R); // 円の続きから線を引かない(弧だけ)
-              g.arc(cx, cy, R, a0, a0 + sweep).stroke({ width: 3.5, color: 0xff3b3b, alpha: Math.min(1, telStrokeA(tg.prog, pulse) * 1.3) });
-            }
-          } else {
-            // 流れ: 赤が外から内へ吸い込まれる(円の流星=既存の円の掃引と同じ帯)。er=1 で帯は中心の内側へ抜け切る=消え切る。
-            const mask = this.drawSweepCircleFill(g, cx, cy, R, tg.er, 0xff2a2a, fillA, tgStyle);
-            g.circle(cx, cy, R).stroke({ width: 2.5, color: 0xff3b3b, alpha: telStrokeA(tg.prog, pulse) * mask * (1 - tg.er) });
-          }
-        }
-      }
       // ★リッチの技「転移噛み」(§16-C)の赤い予告円。攻撃先(=着地点。`lichBlinkAtX/Y`。
       // C-3-a2/3で発火時に焼いた・以後動かない点)だけに描く——ワープ元には赤を1本も描かない
       // (C-3-c15b「陣は緑のまま。赤は攻撃先だけ」)。緑の陣は`drawEnemy`側(groundLayer)が
@@ -22489,17 +22460,6 @@ export class PixiScene {
       aiSqX = 1 + (1 - ZOMBIE_RECOVER_SINK_SQY) * 0.5 * lean;
     }
 
-    // ★格闘の反撃(research/BRAWLER.md §11-3): 溜めの間は体を沈めて震えが強まり(溜めの終わりへ加速)、振り払った瞬間に伸び上がって戻る(慣性)。
-    if (e.aiPhase === 'br-revenge' && e.aiStartedAt !== undefined && e.aiPhaseUntil !== undefined) {
-      const u = Math.max(0, Math.min(1, (gameTime - e.aiStartedAt) / Math.max(1, e.aiPhaseUntil - e.aiStartedAt)));
-      const k = u * u;
-      aiShake += Math.sin(now / 17) * (0.8 + 3.2 * k);
-      aiSqY *= 1 - 0.16 * k; aiSqX *= 1 + 0.1 * k;
-    } else if (e.brRevengeAt !== undefined && now - e.brRevengeAt < 260) {
-      const v = (now - e.brRevengeAt) / 260;
-      const pop = Math.sin(v * Math.PI) * (1 - v);
-      aiSqY *= 1 + 0.22 * pop; aiSqX *= 1 - 0.1 * pop;
-    }
     // ★格闘の食らいの固まり(§11-1): 固まっている間は食らいの動作(のけぞり)のまま小刻みに震える(位置だけ・判定は動かない)。
     if (brawlerHeldNow(e, gameTime, now)) { // §13-1: 溜めも固まる。固まりの時計は2つ(壁時計・確定の固まり=gameTime・§19-3 ⑥)
       aiShake += Math.sin(now / 23 + (e.id.charCodeAt(0) & 7)) * 0.9;
