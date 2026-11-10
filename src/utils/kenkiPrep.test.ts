@@ -2,6 +2,29 @@
 import { describe, expect, it } from 'vitest';
 import { kenkiPrepFor, kenkiPrepStart, kenkiPrepDue, KENKI_PREP_RAISE_MS, KENKI_PREP_CROUCH_MS } from './kenkiPrep';
 import { brawlerAfterHurtPoints, initialBrawlerState } from './brawler';
+import { kenkiNewGuardReceive, kenkiGuardKbVector, kenkiAccDecAlong, KENKI_GUARD_KB_PX } from './kenkiGuardKb';
+
+// research/BRAWLER_PHANTOM.md §16-9(社長指示2026-11-10「カウンター取ったら自分がノックバックする様にして」)
+describe('構えで受けたら拳鬼が下がる(純関数)', () => {
+  it('1回の受けで1回・向きはプレイヤーから離れる向き・長さは定数', () => {
+    expect(kenkiNewGuardReceive(undefined, 0)).toBe(false);
+    expect(kenkiNewGuardReceive(-Infinity, 0)).toBe(false);
+    expect(kenkiNewGuardReceive(100, 0)).toBe(true);
+    expect(kenkiNewGuardReceive(100, 100)).toBe(false);
+    const v = kenkiGuardKbVector(0, 0, 10, 0);
+    expect(v.dx).toBeCloseTo(-KENKI_GUARD_KB_PX, 6);
+    expect(v.dy).toBeCloseTo(0, 6);
+  });
+  it('加速→減速(出だしと終わりの速さが0・端で0と1)', () => {
+    expect(kenkiAccDecAlong(0)).toBe(0);
+    expect(kenkiAccDecAlong(1)).toBeCloseTo(1, 9);
+    expect(kenkiAccDecAlong(0.5)).toBeCloseTo(0.5, 9);
+    const sp = (p: number) => (kenkiAccDecAlong(p + 1e-4) - kenkiAccDecAlong(p)) / 1e-4;
+    expect(sp(0.001)).toBeLessThan(0.01);
+    expect(sp(0.998)).toBeLessThan(0.01);
+    expect(sp(0.5)).toBeGreaterThan(1.9);
+  });
+});
 
 describe('予備動作の付く技', () => {
   it('気功・大叩き潰し=腕上げ / 初段の飛び蹴り=しゃがみ(長さは社長指示で3つとも80ms)', () => {

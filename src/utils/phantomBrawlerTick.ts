@@ -17,6 +17,7 @@ import {
   pbScriptFinisherKiko, type PhantomBrawlerMind,
 } from './phantomBrawlerAi';
 import { kenkiPrepDue, kenkiPrepStart, type KenkiPrep } from './kenkiPrep';
+import { kenkiAccDecAlong, kenkiGuardKbVector, kenkiNewGuardReceive, KENKI_GUARD_KB_MS } from './kenkiGuardKb';
 import { bulletEtaMs, bulletPlanRates, phantomBulletLungeDir, pickBulletPlan, type BulletPlan } from './phantomLunge';
 import { BULLET_MOVE_KEYS } from './moveReaction';
 import { isPhantomTargetBullet } from './weaponUtils';
@@ -50,7 +51,7 @@ export const phantomBrawlerStrikerMult = (cls: string | undefined): number => (c
 export interface PhantomBrawlerRuntime {
   mind: PhantomBrawlerMind;
   /** 踏み込みの器(詰め・跳び・蹴り・掌底・ステップ)。gameTime 基準。 */
-  move: { dx: number; dy: number; dist: number; startAt: number; ms: number; holdUntil: number; shape: 'accel' | 'decel' } | null;
+  move: { dx: number; dy: number; dist: number; startAt: number; ms: number; holdUntil: number; shape: 'accel' | 'decel' | 'accdec' } | null;
   /** 弾ごとに1回決めた対処。 */
   bulletPlans: Map<string, BulletPlan | 'done'>;
   /** 間合いに入った時刻(gameTime・外なら null)。 */
@@ -67,10 +68,12 @@ export interface PhantomBrawlerRuntime {
   prep: KenkiPrep | null;
   /** 最後に見た「近接で食らった」打刻(Enemy.gpMeleeHurtAt・食らっても技ポイントが貯まる=§16-8)。 */
   lastMeleeHurtSeen: number;
+  /** 最後に見た「構えで近接を受けた」時刻(拳鬼が大きく下がる=§16-9。1回の受けで1回まで)。 */
+  lastGuardKbSeen: number;
 }
 export const createPhantomBrawlerRuntime = (): PhantomBrawlerRuntime => ({
   mind: createPhantomBrawlerMind(), move: null, bulletPlans: new Map(), reachSince: null, lastHitSeen: 0,
-  lastCounterSeen: 0, shukuchiReadyAt: 0, leapReadyAt: 0, hitTimes: [], prep: null, lastMeleeHurtSeen: 0,
+  lastCounterSeen: 0, shukuchiReadyAt: 0, leapReadyAt: 0, hitTimes: [], prep: null, lastMeleeHurtSeen: 0, lastGuardKbSeen: 0,
 });
 
 /** 予備動作を取り消す(技は出ない・ポイントは払わない)。気絶・拘束・浮き・紫・殴られた・縮地(§16-5・§16-7)。 */
@@ -104,10 +107,10 @@ export interface PhantomBrawlerCtx {
   }) => 'shield' | 'countered' | 'hit' | 'nodamage';
   /** 行き先を「立てる所」へ(障害物→行ける帯)。 */
   resolveMove: (nx: number, ny: number) => { x: number; y: number };
-  /** 音(振り/当たり)。 */
-  swingSfx: () => void;
   /** 一番新しいカウンター成立の時刻(gameTime・近接の窓/構えの受け=gpParriedAt・弾の打ち返し=gpBulletParriedAt の新しい方)。縮地のきっかけ(§14)。 */
   counterAt?: number;
+  /** 構えでプレイヤーの近接を受けた時刻(gameTime・gpParriedAt・弾の打ち返しは含めない)。拳鬼が大きく下がる(§16-9)。 */
+  meleeCounterAt?: number;
   /** 縮地の音(呼び手が格闘の音の列へ積む)。 */
   shukuchiSfx?: () => void;
   label: string;
@@ -143,7 +146,7 @@ export const phantomBrawlerHoldClock = (s: BrawlerState, t: number, remainMs: nu
 export const phantomBrawlerCancelled = (s: BrawlerState): BrawlerState =>
   (s.secret ? BR.brawlerSecretEnd(s) : BR.brawlerCancel(s));
 
-const setMove = (rt: PhantomBrawlerRuntime, dx: number, dy: number, ms: number, t: number, shape: 'accel' | 'decel', holdMs = 0): void => {
+const setMove = (rt: PhantomBrawlerRuntime, dx: number, dy: number, ms: number, t: number, shape: 'accel' | 'decel' | 'accdec', holdMs = 0): void => {
   const dist = Math.hypot(dx, dy);
   rt.move = dist > 0.5 && ms > 0 ? { dx, dy, dist, startAt: t + holdMs, ms, holdUntil: t + holdMs, shape } : null;
 };
@@ -156,7 +159,7 @@ const stepMove = (c: PhantomBrawlerCtx): void => {
   if (t < m.holdUntil) return;
   const p0 = Math.max(0, Math.min(1, (t - c.deltaTime * 1000 - m.startAt) / m.ms));
   const p1 = Math.max(0, Math.min(1, (t - m.startAt) / m.ms));
-  const along = (p: number): number => (m.shape === 'decel' ? 1 - (1 - p) * (1 - p) : p <= BR.BRAWLER_ACCEL_FRAC
+  const along = (p: number): number => (m.shape === 'accdec' ? kenkiAccDecAlong(p) : m.shape === 'decel' ? 1 - (1 - p) * (1 - p) : p <= BR.BRAWLER_ACCEL_FRAC
     ? (p * p) / (2 * BR.BRAWLER_ACCEL_FRAC) / (1 - BR.BRAWLER_ACCEL_FRAC / 2)
     : (p - BR.BRAWLER_ACCEL_FRAC / 2) / (1 - BR.BRAWLER_ACCEL_FRAC / 2));
   const k = along(p1) - along(p0);
@@ -180,9 +183,43 @@ const strikeMultOf = (c: PhantomBrawlerCtx, s: BrawlerState, moveMult: number, s
   * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t))
   * (secret ? 1 : brawlerProration((s.flowHits ?? 0) + 1));
 
-/** 押しの差し替え(research/BRAWLER_PHANTOM.md §4-8 の表)。 */
-const kbOf = (kind: 'none' | 'builtin' | 'big', mult: number, dir: { x: number; y: number }): 'none' | { speed: number; dirX: number; dirY: number } | undefined =>
-  kind === 'none' ? 'none' : kind === 'builtin' ? undefined : { speed: PLAYER_KNOCKBACK_SPEED * mult, dirX: dir.x, dirY: dir.y };
+/**
+ * 押しの差し替え(research/BRAWLER_PHANTOM.md §4-8 の表)。small=押さなかった段(1・2・4段目)の小さな押し
+ * (社長指示2026-11-10「どの攻撃も押さない攻撃でも多少押そう。少しずつズレた方が楽しい」→「ボスも拳鬼も」・§16-8)。
+ * 速さ=プレイヤーの普通の押し×BRAWLER_SMALL_KB_MULT・向き=当てた向き。押しの長さは被弾の段の値のまま(damagePlayer)=
+ * 被弾の「動けない」窓(moveLockMs)の内に収まる=動けない時間は増えない。
+ */
+const kbOf = (kind: 'none' | 'small' | 'builtin' | 'big', mult: number, dir: { x: number; y: number }): 'none' | { speed: number; dirX: number; dirY: number } | undefined =>
+  kind === 'none' ? 'none' : kind === 'builtin' ? undefined
+    : { speed: PLAYER_KNOCKBACK_SPEED * (kind === 'small' ? BR.BRAWLER_SMALL_KB_MULT : mult), dirX: dir.x, dirY: dir.y };
+// ---- 音(社長指摘2026-11-10「音の問題なのかな?拳鬼の攻撃間隔がやたら速い気がする」の是正) ----
+// 旧: 振りが刃物の音('melee'=slash.mp3)で、被弾の音('player-damage')と中身が同じファイル=1発ごとに斬撃音が2回鳴っていた。
+// 拳鬼の振り・当たりはプレイヤーの格闘と同じ音・同じ音量の考え方(gameStore の格闘の brawlerSfx の呼び方を写す)。プレイヤーの被弾音は変えない。
+const brJit = (): number => 0.94 + Math.random() * 0.12; // 音程の揺らぎ(gameStore.brJitter と同じ幅・頭脳の乱数は使わない)
+/** 振りの音。段=段ごとの音程 / 飛び蹴り / その他の技 / 秘奥義の1発。 */
+const kenkiSwingSfx = (k: { stage: number } | { kick: number } | 'tech' | 'secret'): void => {
+  if (k === 'tech') { enqueueBrawlerSfx('whip-swing', 0.5, 1.25 * brJit(), 140); return; }
+  if (k === 'secret') { enqueueBrawlerSfx('whip-swing', 0.45, 1.5 * brJit(), 90); return; }
+  if ('kick' in k) { enqueueBrawlerSfx('whip-swing', 0.55, (k.kick >= 3 ? 0.78 : 0.92) * brJit(), 160); return; }
+  const st = Math.max(1, Math.min(5, k.stage));
+  enqueueBrawlerSfx('whip-swing', st >= 4 ? 0.55 : 0.4, BR.BRAWLER_SWING_PITCH[st] * brJit(), 140);
+};
+/** 当たりの音(当たった時だけ)。段の音・蹴り(3発目は重い)・大叩き潰し。 */
+const kenkiHitSfx = (k: { stage: number } | { kick: number } | 'stomp'): void => {
+  if (k === 'stomp') { enqueueBrawlerSfx('brawler-hit', 1.0, 0.62 * brJit(), 260); return; }
+  if ('kick' in k) {
+    const big = k.kick >= BR.BRAWLER_KICK_MAX;
+    enqueueBrawlerSfx('brawler-hit', big ? 1.1 : 0.8, (big ? 0.66 : 1.0) * brJit(), big ? 300 : 200);
+    enqueueBrawlerSfx('whip-hit', 0.55, (big ? 0.7 : 0.85) * brJit(), 160, 10);
+    return;
+  }
+  const st = Math.max(1, Math.min(5, k.stage));
+  enqueueBrawlerSfx('brawler-hit', BR.BRAWLER_HIT_GAIN[st], BR.BRAWLER_HIT_PITCH[st] * brJit(), st <= 2 ? 180 : 280);
+  enqueueBrawlerSfx('whip-hit', 0.4, BR.BRAWLER_HIT_PITCH[st] * 1.1 * brJit(), 110, 8);
+};
+
+/** 段の押し: 普通の押しの段(3段目)=組み込み/それ以外(1・2・4段目=押さなかった段・'small')=小さな押し。 */
+const stageKb = (kb: BR.BrawlerKb): 'small' | 'builtin' => (kb === 'normal' ? 'builtin' : 'small');
 
 /**
  * 1発を当てる(形に掛かっていれば)。第三者(守護霊・英雄)にも同じ形で当てる。
@@ -245,7 +282,7 @@ const startAttack = (c: PhantomBrawlerCtx, s0: BrawlerState): BrawlerState => {
   const go = Math.max(0, Math.min(spec.dashPx, gap));
   if (go > 0.5) setMove(c.rt, dir.x * go, dir.y * go, Math.max(1, spec.windupMs), t, 'accel');
   else c.rt.move = null;
-  c.swingSfx();
+  kenkiSwingSfx({ stage: spec.stage });
   return s;
 };
 
@@ -280,7 +317,7 @@ const startTech = (
     setMove(c.rt, dir.x * go, dir.y * go, flightMs, t, 'accel', chargeMs);
   }
   if (kind === 'guard') c.patch.gpGuardUntil = s.guardUntil;
-  c.swingSfx();
+  kenkiSwingSfx(kind === 'kick' ? { kick: kickN } : 'tech');
   return s;
 };
 
@@ -341,7 +378,8 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     let r: { touched: boolean; countered: boolean; landed?: boolean };
     if (spec.shape === 'landing') {
       r = strikePlayer(c, s, edgeDist(foot.x, foot.y, player) <= BR.BRAWLER_LANDING_RADIUS,
-        { kind: 'circle', cx: foot.x, cy: foot.y, r: BR.BRAWLER_LANDING_RADIUS }, spec.mult, 'brawler-s4', 'none', foot.x, foot.y);
+        { kind: 'circle', cx: foot.x, cy: foot.y, r: BR.BRAWLER_LANDING_RADIUS }, spec.mult, 'brawler-s4',
+        kbOf('small', 1, unit(pcx - foot.x, pcy - foot.y)), foot.x, foot.y);
     } else if (spec.shape === 'band') {
       const x0 = s.palmFromX ?? cx, y0 = s.palmFromY ?? cy;
       const travel = Math.max(BR.BRAWLER_PALM_MIN_REACH_PX, (cx - x0) * s.dirX + (cy - y0) * s.dirY);
@@ -353,12 +391,13 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     } else {
       r = strikePlayer(c, s, edgeDist(cx, cy, player) <= reach, { kind: 'circle', cx, cy, r: reach }, spec.mult,
         spec.stage === 3 ? 'brawler-s3' : spec.stage === 2 ? 'brawler-s2' : 'brawler-s1',
-        kbOf(spec.kb === 'normal' ? 'builtin' : 'none', 1, dir), cx, cy);
+        kbOf(stageKb(spec.kb), 1, dir), cx, cy);
     }
     const cancelled = cancelOnCounter(r);
     if (cancelled) { c.rt.move = null; return cancelled; }
     if (r.landed) c.rt.mind.landedStartAt = s.startAt; // 台本の「当たった」(§16-7)
     const hits = r.touched ? 1 : 0;
+    if (hits > 0) kenkiHitSfx({ stage: spec.stage });
     // 3段目のアッパー・4段目の跳び踏み潰しを食らったプレイヤーは、絵だけ浮く(操作は奪わない・research/BRAWLER_PHANTOM.md §4-9)。
     if (hits > 0 && (spec.stage === 3 || spec.stage === 4)) notePlayerLaunched(c.nowMs, BR.BRAWLER_LIFT_MS);
     let next = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs });
@@ -376,6 +415,7 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     const cancelled = cancelOnCounter(r);
     if (cancelled) return cancelled;
     if (r.landed) c.rt.mind.landedStartAt = s.startAt; // 台本の「当たった」(§16-7)
+    if (r.touched) kenkiHitSfx('stomp');
     const g = useGameStore.getState();
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
     g.triggerShake(220, 12, 0, 1);
@@ -400,6 +440,7 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
   if (cancelled) { c.rt.move = null; return cancelled; }
   if (r.landed) c.rt.mind.landedStartAt = s.startAt; // 台本の「当たった」(§16-7)
   const hits = r.touched ? 1 : 0;
+  if (hits > 0) kenkiHitSfx({ kick: s.kickN });
   const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: hs });
   c.rt.move = null;
   return {
@@ -508,7 +549,7 @@ const secretStrike = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     const spec = BR.brawlerStageSpec(move);
     if (spec.shape === 'landing') {
       r = strikePlayer(c, s1, edgeDist(foot.x, foot.y, player) <= BR.BRAWLER_LANDING_RADIUS, { kind: 'circle', cx: foot.x, cy: foot.y, r: BR.BRAWLER_LANDING_RADIUS },
-        spec.mult, 'brawler-secret', 'none', foot.x, foot.y, true);
+        spec.mult, 'brawler-secret', kbOf('small', 1, unit(pcx - foot.x, pcy - foot.y)), foot.x, foot.y, true);
     } else if (spec.shape === 'band') {
       const x1 = to.x + dir.x * BR.BRAWLER_BAND_LEN, y1 = to.y + dir.y * BR.BRAWLER_BAND_LEN;
       r = strikePlayer(c, s1, distToBandRect({ x: pcx, y: pcy }, to, { x: x1, y: y1 }, BR.BRAWLER_BAND_HALF_W) <= Math.max(player.width, player.height) / 2,
@@ -516,12 +557,13 @@ const secretStrike = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
         kbOf('big', spec.kbMult ?? BR.BRAWLER_BIG_KB_MULT, dir), to.x, to.y, true);
     } else {
       r = strikePlayer(c, s1, edgeDist(to.x, to.y, player) <= reach, { kind: 'circle', cx: to.x, cy: to.y, r: reach },
-        spec.mult, 'brawler-secret', kbOf(spec.kb === 'normal' ? 'builtin' : 'none', 1, dir), to.x, to.y, true);
+        spec.mult, 'brawler-secret', kbOf(stageKb(spec.kb), 1, dir), to.x, to.y, true);
     }
   }
   if (r.countered) return BR.brawlerSecretEnd(s1); // 1発でも返されたら秘奥義ごと打ち切り(技ポイント0)
   if (r.touched) s1 = BR.brawlerFlowOnHit(s1, 1);
-  c.swingSfx();
+  kenkiSwingSfx('secret');
+  if (r.touched) kenkiHitSfx(typeof move === 'number' ? { stage: move } : move === 'kick' ? { kick: BR.BRAWLER_KICK_MAX } : 'stomp');
   return s1;
 };
 
@@ -720,6 +762,16 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
     c.rt.lastCounterSeen = c.counterAt!;
     const r = fire ? kenkiShukuchi(c, s, cx, cy) : null;
     if (r) { s = r.s; cx = r.cx; cy = r.cy; }
+  }
+  // 構えでプレイヤーの近接を受けた=今のカウンター効果に加えて、拳鬼が大きく下がる(プレイヤーから離れる向き・加速→減速・壁で止まる・
+  // 社長指示2026-11-10 §16-9)。構えは時間いっぱい続く(受けは切れない)。弾の打ち返しでは下がらない。縮地が出た受け(遠い所からの近接)は下がらない。
+  if (kenkiNewGuardReceive(c.meleeCounterAt, c.rt.lastGuardKbSeen)) {
+    c.rt.lastGuardKbSeen = c.meleeCounterAt!;
+    if (c.patch.gpShukuchi === undefined) {
+      const v = kenkiGuardKbVector(cx, cy, player.x + player.width / 2, player.y + player.height / 2);
+      phantomBrawlerCancelPrep(c.rt, c.patch);
+      setMove(c.rt, v.dx, v.dy, KENKI_GUARD_KB_MS, t, 'accdec');
+    }
   }
 
   if (s.secret) {

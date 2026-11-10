@@ -2,12 +2,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   createPhantomBrawlerMind, decidePhantomBrawler, pbAffordableScripts, pbPickScript, pbScriptCost, pbSecretAfterLeap, pbHpPolicy,
-  pbInterruptScript, pbScriptFinisherKiko, PB_SCRIPT_IDS, type PhantomBrawlerInput, type PhantomBrawlerMind, type PbScriptId,
+  pbInterruptScript, pbScriptFinisherKiko, phantomBrawlerBreath, PB_BREATH_MIN_MS, PB_SCRIPT_IDS,
+  type PhantomBrawlerInput, type PhantomBrawlerMind, type PbScriptId,
 } from './phantomBrawlerAi';
 import {
   initialBrawlerState, brawlerStartAttack, brawlerStartTech, brawlerAfterResolve, brawlerFinish, brawlerStageForPress, brawlerNextKickN,
-  brawlerTechCost,
+  brawlerTechCost, brawlerDueEvent, brawlerStageSpec, BRAWLER_KICK_HITSTOP_MS, BRAWLER_STOMP_HITSTOP_MS, BRAWLER_KICK_CHAIN_MS,
 } from './brawler';
+import { KENKI_PREP_RAISE_MS } from './kenkiPrep';
 import { brawlerTimeKeeperDiscount } from './brawlerSkills';
 import type { BrawlerState, BrawlerTechKind } from './brawlerTypes';
 
@@ -248,5 +250,90 @@ describe('台本の締めの気功(§16-8)', () => {
     m.script = { id: 2, idx: 6 }; expect(pbScriptFinisherKiko(m)).toBe(true);
     m.script = { id: 2, idx: 5 }; expect(pbScriptFinisherKiko(m)).toBe(false);
     m.script = { id: 1, idx: 5 }; expect(pbScriptFinisherKiko(m)).toBe(false);
+  });
+});
+
+// 社長指摘2026-11-10「音の問題なのかな?拳鬼の攻撃間隔がやたら速い気がする」の是正(頭脳と状態機械だけ・store なし)。
+// 張り付き(縁40px)・全部命中で30秒回す。予備動作(80ms)と、制御の「行動中→待機で息継ぎ」も同じ形で真似る。
+describe('攻撃間隔: 台本と台本の間に必ず息継ぎ・当たりの数が設計の範囲', () => {
+  const run = (seed: number) => {
+    let sd = seed;
+    const rand = () => { sd = (sd * 1664525 + 1013904223) >>> 0; return sd / 4294967296; };
+    const m = createPhantomBrawlerMind();
+    let s: BrawlerState = { ...initialBrawlerState() };
+    let prep: { kind: BrawlerTechKind; kickN: number; at: number; cancel: boolean } | null = null;
+    const T0 = 1_000_000;
+    let hits = 0, wasBusy = false, scriptEndAt = -1, scripts = 0;
+    const gaps: number[] = [];
+    let prevScript: PhantomBrawlerMind['script'] = null;
+    const startTech = (kind: BrawlerTechKind, t: number, kickN: number, cancel: boolean) => {
+      s = { ...brawlerStartTech(s, kind, t, kind === 'kick' ? kickN : 0, cancel), points: s.points - brawlerTechCost(kind, false, disc(kind)) };
+    };
+    for (let t = T0; t < T0 + 30_000; t += 16) {
+      for (let g = 0; g < 3; g++) {
+        const ev = brawlerDueEvent(s, t);
+        if (ev === null) break;
+        if (ev === 'resolve') {
+          if (s.tech === 'guard') { s = { ...s, resolved: true }; continue; }
+          const hs = s.phase === 'attack' ? brawlerStageSpec(s.stage).hitstopMs
+            : s.tech === 'kick' ? BRAWLER_KICK_HITSTOP_MS[Math.max(1, Math.min(3, s.kickN))] : s.tech === 'stomp' ? BRAWLER_STOMP_HITSTOP_MS : 0;
+          s = brawlerAfterResolve(s, t, 1, { pointCap: 20, countPoint: s.phase === 'attack', hitstopMs: hs });
+          if (s.tech === 'kick') s = { ...s, kickChainUntil: s.kickN >= 3 ? 0 : t + BRAWLER_KICK_CHAIN_MS, kickCount: s.kickN >= 3 ? 0 : s.kickN };
+          m.landedStartAt = s.startAt;
+          hits++;
+          continue;
+        }
+        const f = brawlerFinish(s, t);
+        s = f.state;
+        if (f.fire) s = brawlerStartAttack(s, brawlerStageForPress(s, t), t, false);
+        break;
+      }
+      const inPrep = prep !== null;
+      if (prep && t >= prep.at + KENKI_PREP_RAISE_MS) { const p0 = prep; prep = null; startTech(p0.kind, t, p0.kickN, p0.cancel); }
+      const busy = s.phase !== 'idle' || prep !== null;
+      if (wasBusy && !busy && !(s.nextStage > 1 && t <= s.chainUntil)) m.nextStringAt = t + phantomBrawlerBreath(rand);
+      wasBusy = busy;
+      if (inPrep) continue;
+      const a = decidePhantomBrawler(base({ t, rand, hpFrac: 1, pointCap: 20 }, s), m);
+      if (prevScript && !m.script) { scriptEndAt = t; scripts++; }
+      if (!prevScript && m.script && !m.script.fromKick && scriptEndAt > 0) gaps.push(t - scriptEndAt);
+      prevScript = m.script ? { ...m.script } : null;
+      if (!a) continue;
+      if (a.kind === 'attack') s = brawlerStartAttack(s, brawlerStageForPress(s, t), t, false);
+      else if (a.kind === 'buffer') s = { ...s, buffered: true };
+      else if (a.kind === 'drop') s = { ...s, buffered: false };
+      else if (a.kind === 'tech') {
+        const kickN = a.tech === 'kick' ? brawlerNextKickN(s, t) : 0;
+        const cancel = s.phase === 'tech' && !(a.tech === 'kick' && s.tech === 'kick');
+        const needs = a.tech === 'kiko' || a.tech === 'stomp' || (a.tech === 'kick' && kickN === 1);
+        if (needs) prep = { kind: a.tech, kickN, at: t, cancel };
+        else startTech(a.tech, t, kickN, cancel);
+      }
+      wasBusy = s.phase !== 'idle' || prep !== null;
+    }
+    return { hitsPerSec: hits / 30, gaps, scripts };
+  };
+  it('台本と台本の間は息継ぎ(下限)以上空く・30秒の当たりは約1.4〜1.6発/秒から大きく外れない', () => {
+    for (const seed of [1, 7, 42]) {
+      const r = run(seed);
+      expect(r.scripts).toBeGreaterThan(5);
+      expect(r.gaps.length).toBeGreaterThan(4);
+      for (const g of r.gaps) expect(g).toBeGreaterThanOrEqual(PB_BREATH_MIN_MS);
+      console.log(`[攻撃間隔] seed=${seed} 当たり ${r.hitsPerSec.toFixed(2)}発/秒・台本 ${r.scripts}本・台本の間 最短 ${Math.min(...r.gaps)}ms`);
+      expect(r.hitsPerSec).toBeGreaterThan(1.1);
+      expect(r.hitsPerSec).toBeLessThan(1.9);
+    }
+  });
+  it('段から技へ移るかは台本を選んだ時に決まっている(毎フレーム引き直さない): 台本1は何度呼んでも技へ移らない', () => {
+    const m = createPhantomBrawlerMind();
+    decidePhantomBrawler(base({ rand: () => randFor(1) }, { points: 20 }), m);
+    let st = brawlerStartAttack({ ...initialBrawlerState(), points: 20 }, 1, T, false);
+    st = brawlerAfterResolve(st, T, 1, { pointCap: 20, countPoint: true, hitstopMs: 0 });
+    m.landedStartAt = st.startAt;
+    for (let k = 1; k <= 16; k++) {
+      const a = decidePhantomBrawler(base({ t: T + k, rand: () => 0 }, st), m);
+      expect(a?.kind === 'tech').toBe(false);
+      if (a?.kind === 'buffer') st = { ...st, buffered: true };
+    }
   });
 });

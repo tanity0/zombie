@@ -166,12 +166,17 @@ export interface PhantomBrawlerMind {
   landedStartAt: number;
   /** 台本6(§16-3): 秘奥義を狙うための跳びかかりを出した(着地したら秘奥義を狙う)。 */
   leapForSecret: boolean;
+  /**
+   * 台本が終わった(出し切った・打ち切った)=次の待機で息継ぎを引く(社長指摘「拳鬼の攻撃間隔がやたら速い」の是正)。
+   * 待機を通らずに次の連続へ入れるのは台本7(詰めの飛び蹴りの後)だけなので、待機で引けば台本と台本の間に必ず息継ぎが入る。
+   */
+  breathOwed: boolean;
 }
 export const createPhantomBrawlerMind = (): PhantomBrawlerMind => ({
   nextStringAt: 0, guardReadyAt: 0, lastPressureRollAt: -Infinity, strikeTimes: [], rolledForPredictedAt: -1,
   secretPlan: false, lastSecretAt: -Infinity, secretLaunched: false, lastSeenCommitAt: 0, wasBusy: false,
   approachBeatAt: 0, jumpAtPx: null, heldThisTry: false, holdUntil: 0, lastKickAt: -Infinity, lastKikoAt: -Infinity,
-  script: null, lastScriptId: null, approachKick: false, leapForSecret: false, landedStartAt: -1,
+  script: null, lastScriptId: null, approachKick: false, leapForSecret: false, landedStartAt: -1, breathOwed: false,
 });
 
 const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
@@ -266,7 +271,7 @@ const canTech = (i: PhantomBrawlerInput, kind: BrawlerTechKind): boolean =>
 export const decidePhantomBrawler = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBrawlerAction => {
   const act = decideInner(i, m);
   // 台本の途中に構え/ステップが入った=台本は打ち切り(人がやっても崩れたら組み直す・§16-7)。
-  if (act && (act.kind === 'step' || (act.kind === 'tech' && act.tech === 'guard'))) { m.script = null; m.approachKick = false; }
+  if (act && (act.kind === 'step' || (act.kind === 'tech' && act.tech === 'guard'))) pbInterruptScript(m);
   return act;
 };
 const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBrawlerAction => {
@@ -274,6 +279,11 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
   if (s.secret) { m.secretPlan = false; m.secretLaunched = false; return null; }
   if (isBrawlerGuardingAt(s, t)) return null;
   const idle = s.phase === 'idle';
+  // 台本が終わった後の最初の待機で息継ぎを引く(台本と台本の間に必ず入る)。
+  if (idle && m.breathOwed) {
+    m.breathOwed = false;
+    m.nextStringAt = Math.max(m.nextStringAt, t + phantomBrawlerBreath(i.rand));
+  }
 
   // 1 守り(弾): 返す=構え(ポイントがあれば)/避ける=ステップ(待機の時だけ)。
   if (i.bullet?.kind === 'counter' && t >= m.guardReadyAt && canTech(i, 'guard')) return { kind: 'tech', tech: 'guard' };
@@ -397,7 +407,7 @@ export const pbSecretAfterLeap = (m: PhantomBrawlerMind): void => {
   if (!m.leapForSecret) return;
   m.leapForSecret = false;
   m.secretPlan = true; m.secretLaunched = false;
-  m.script = null; m.approachKick = false;
+  pbInterruptScript(m);
 };
 
 /**
@@ -414,7 +424,7 @@ export const pbRunScript = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): Phan
   const lastI = sc.idx - 1;
   const last = steps[lastI];
   const next = steps[sc.idx];
-  const end = (): null => { m.script = null; return null; };
+  const end = (): null => { m.script = null; m.breathOwed = true; return null; };
   if (!last) return end();
   if (pbScriptStepRunning(s, steps, lastI)) {
     if (!s.resolved) return null;
@@ -437,7 +447,7 @@ export const pbRunScript = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): Phan
     if (lastI >= 1 && pbScriptStepRunning(s, steps, lastI - 1)) return null;
     if (lastI === 0 && sc.fromKick && s.phase === 'tech' && s.tech === 'kick') {
       // 台本7の頭: 蹴りの押しで届く距離の外へ出たら打ち切り(先行入力も捨てる・§16-7)。
-      if (i.edgeDist > i.reach) { m.script = null; return { kind: 'drop' }; }
+      if (i.edgeDist > i.reach) { end(); return { kind: 'drop' }; }
       return null;
     }
   }
@@ -461,6 +471,7 @@ export const pbLanded = (s: BrawlerState, m: PhantomBrawlerMind): boolean =>
 
 /** 台本の途中で拳鬼が殴られた・縮地が入った=台本は打ち切り(§16-7)。台本7・台本6の跳びの続きも捨てる。 */
 export const pbInterruptScript = (m: PhantomBrawlerMind): void => {
+  if (m.script) m.breathOwed = true; // 打ち切った台本の後も息継ぎ
   m.script = null; m.approachKick = false;
 };
 

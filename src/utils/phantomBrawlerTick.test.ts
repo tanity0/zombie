@@ -78,6 +78,27 @@ describe('拳鬼が格闘で戦う(結合)', () => {
     expect(useGameStore.getState().projectiles.filter(p => p.hostile).length).toBe(0);
   });
 
+  // research/BRAWLER_PHANTOM.md §16-8(社長「どの攻撃も押さない攻撃でも多少押そう。少しずつズレた方が楽しい」→「ボスも拳鬼も」)
+  it('押さなかった段(1・2・4段目)も小さく押す・押しても台本1(通常5連)は途切れずに5段目まで出る', () => {
+    const h = setup(40); // ポイント0=払えるのは台本1だけ
+    let maxStage = 0, pushedOnStage1 = false;
+    for (let i = 0; i < 260 && maxStage < 5; i++) {
+      const b0 = h.cur().phantomBrawler;
+      const px0 = useGameStore.getState().player.x;
+      h.step(16);
+      const b = h.cur().phantomBrawler;
+      maxStage = Math.max(maxStage, b?.stage ?? 0);
+      // 1段目が当たった tick: プレイヤーに押しが付く(向き=拳鬼から離れる向き=+x)
+      if (b0?.stage === 1 && !b0.resolved && b?.stage === 1 && b.resolved && b.connected) {
+        const pl = useGameStore.getState().player;
+        if ((pl.knockbackVx ?? 0) > 0 && (pl.knockbackUntil ?? 0) > Date.now() - 1) pushedOnStage1 = true;
+        void px0;
+      }
+    }
+    expect(pushedOnStage1).toBe(true);
+    expect(maxStage).toBe(5);
+  });
+
   it('技ポイントが通常の当たりで貯まる', () => {
     const h = setup(40);
     for (let i = 0; i < 200; i++) h.step(16);
@@ -199,6 +220,31 @@ describe('拳鬼が格闘で戦う(結合)', () => {
     expect(kikoSeen).toBe(true);
     expect(invBefore).toBe(true); // 直前の2段目の当たりで被弾無敵の中
     expect(hitByKiko).toBe(true);
+  });
+
+  // research/BRAWLER_PHANTOM.md §16-9(社長「まず格闘のカウンターをすると、ポイント全回復 は削除」「雑魚以上の攻撃をカウンターした場合は通常のカウンター効果と、同時に自分が大きくノックバック」)
+  it('構えで近接を受けても技ポイントは全回復しない・拳鬼が大きく下がる(加速→減速)', () => {
+    const h = setup(40, { phantomBrawler: { ...initialBrawlerState(), points: 3 } });
+    h.step(16);
+    const x0 = h.cur().x;
+    const gt = useGameStore.getState().gameTime;
+    useGameStore.setState(s => ({ enemies: s.enemies.map(x => x.id === h.id ? { ...x, gpParriedAt: gt } : x) }));
+    const xs: number[] = [];
+    for (let i = 0; i < 24; i++) { h.step(16); xs.push(h.cur().x); }
+    expect(h.cur().phantomBrawler?.points ?? 0).toBeLessThan(20); // 旧: 上限(20)まで全回復していた
+    const moved = x0 - Math.min(...xs); // プレイヤーは右=左へ下がる
+    expect(moved).toBeGreaterThan(110);
+    expect(moved).toBeLessThan(190);
+    expect(x0 - xs[0]).toBeLessThan(20); // 加速→減速: 最初の1歩は小さい
+  });
+  it('弾の打ち返し(構えで弾を受けた)では下がらない', () => {
+    const h = setup(40, { phantomBrawler: { ...initialBrawlerState(), points: 3 } });
+    h.step(16);
+    const x0 = h.cur().x;
+    const gt = useGameStore.getState().gameTime;
+    useGameStore.setState(s => ({ enemies: s.enemies.map(x => x.id === h.id ? { ...x, gpBulletParriedAt: gt } : x) }));
+    for (let i = 0; i < 24; i++) h.step(16);
+    expect(x0 - h.cur().x).toBeLessThan(60); // 下がらない
   });
 
   it('印の無い幻影は格闘を回さない(今の幻影のまま)', () => {

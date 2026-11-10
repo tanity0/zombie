@@ -109,7 +109,7 @@ import {
   phantomBrawlerCancelPrep, type PhantomBrawlerRuntime,
 } from './phantomBrawlerTick'; // research/BRAWLER_PHANTOM.md: 格闘の幻影(拳鬼)の格闘
 import { phantomBrawlerHolding } from './phantomBrawlerAi';
-import { isBrawlerBusy, brawlerPointCap } from './brawler';
+import { isBrawlerBusy } from './brawler';
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
 export const GUARDIAN_PHANTOM_TYPE: EnemyType = 'guardian-phantom';
@@ -1257,9 +1257,10 @@ export const runPhantomTick = (
   // ---- パリィの即反撃(周期を無視した割り込み) ---------------------------------------------------
   const parried = consumePhantomParry(phantom, s, player, bcx, bcy, sfx, patch, newGameTime);
   if (parried) abortPhantomFlamer(phantom, patch); // §17-6b P6: パリィされたら打ち切る
-  // 格闘の幻影: 構えで受けたら技ポイント全回復(プレイヤーの構えと同じ・research/BRAWLER.md §10-1)。
+  // 格闘の幻影: 構えで受けた時の絵の合図(guardHitAt)だけ打つ。★技ポイントの全回復は撤去(社長指示2026-11-10「まず格闘のカウンターをすると、
+  // ポイント全回復 は削除」・research/BRAWLER_PHANTOM.md §16-9)。受けた後に拳鬼が大きく下がるのは制御(phantomBrawlerTick)の側。
   if (parried && phantom.phantomUnique === 'brawler' && phantom.phantomBrawler) {
-    patch.phantomBrawler = { ...phantom.phantomBrawler, points: brawlerPointCap(Math.max(1, Math.min(3, phantom.phantomBuild?.subWeaponLevels?.brawler ?? 1))), guardHitAt: Date.now() };
+    patch.phantomBrawler = { ...phantom.phantomBrawler, guardHitAt: Date.now() };
   }
 
   // ---- 銃の状態(リロード)を進める --------------------------------------------------------------
@@ -1389,9 +1390,10 @@ export const runPhantomTick = (
       land: (ox, oy, mult, o) => landPhantomMeleeOnPlayer(ox, oy, useGameStore.getState().player, sfx, patch, phantom.id,
         phantomMeleeDamage(s.growthAtkMult, phantom.id), { mult, moveKey: o.moveKey, sourceLabel: o.sourceLabel, knockback: o.knockback, onCountered: o.onCountered, area: o.area }),
       resolveMove: (nx, ny) => resolveMove(nx, ny, phantom),
-      swingSfx: () => sfx.swing(),
       // 縮地のきっかけ=カウンター成立(近接の窓・構えの受け=gpParriedAt / 弾の打ち返し=gpBulletParriedAt)。research/BRAWLER_PHANTOM.md §14。
       counterAt: Math.max(phantom.gpParriedAt ?? -Infinity, phantom.gpBulletParriedAt ?? -Infinity, patch.gpParriedAt ?? -Infinity, patch.gpBulletParriedAt ?? -Infinity),
+      // 構えでプレイヤーの近接を受けた時刻(弾の打ち返しは含めない)=拳鬼が大きく下がるきっかけ(§16-9)。
+      meleeCounterAt: Math.max(phantom.gpParriedAt ?? -Infinity, patch.gpParriedAt ?? -Infinity),
       shukuchiSfx: () => enqueueBrawlerSfx('whip-swing', 0.5, 1.4, 90),
       label: phantomDisplayLabel(),
     });
