@@ -24,6 +24,7 @@ import { HUMAN_REACTION_MS } from './bossSkeleton';
 import { PVP_DAMAGE_SCALE } from './phantomScript';
 import { useGameStore, huntingMeleeRadius, playerMoveStatMult, skillLevel, PLAYER_KNOCKBACK_SPEED, isCounterActive } from '../store/gameStore';
 import type { PlayerProfile } from './playerTraits';
+import { notePlayerLaunched } from './playerAirFollow';
 
 /** 格闘のレベル(技ポイントの上限の段)。記録のサブのレベル(無ければ1)。 */
 const brawlerLevelOf = (e: Enemy): number => Math.max(1, Math.min(3, e.phantomBuild?.subWeaponLevels?.brawler ?? 1));
@@ -284,6 +285,8 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     const cancelled = cancelOnCounter(r);
     if (cancelled) { c.rt.move = null; return cancelled; }
     const hits = r.touched ? 1 : 0;
+    // 3段目のアッパー・4段目の跳び踏み潰しを食らったプレイヤーは、絵だけ浮く(操作は奪わない・research/BRAWLER_PHANTOM.md §4-9)。
+    if (hits > 0 && (spec.stage === 3 || spec.stage === 4)) notePlayerLaunched(c.nowMs, BR.BRAWLER_LIFT_MS);
     let next = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs });
     if (hits > 0) next = BR.brawlerFlowOnHit(next, 1);
     // 当てた=反動で止める / 5段目=抜けた先で止まる。

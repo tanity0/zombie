@@ -3,6 +3,7 @@
 // ここは高さの曲線(純関数)と「最後に空中の敵へ近接を当てた記録」だけ。store には書かない(記録はこのモジュールの1つの変数・当たりの瞬間にしか書かない)。
 // 時計は Date.now 系(ms)。上向きを正とする高さ h(px)と速さ vy(px/ms)。
 import { brawlerAirborne, brawlerJuggleHeightRel } from './brawlerCombo';
+import { brawlerLiftArcRel } from './brawler';
 
 /** 浮く高さ = 当てた時点での敵の絵の浮いた高さ × この倍率。上限はプレイヤーの体の高さ × CAP。 */
 export const PLAYER_AIR_FOLLOW_K = 0.9;
@@ -197,3 +198,22 @@ export const noteAirMeleeHit = (e: Parameters<typeof brawlerJuggleHeightRel>[0] 
 };
 export const getLastAirMeleeHit = (): AirMeleeHit | null => lastAirMeleeHit;
 export const resetAirMeleeHit = (): void => { lastAirMeleeHit = null; };
+
+// ---------------------------------------------------------------------------------------------
+// research/BRAWLER_PHANTOM.md §4-9: 格闘の幻影のアッパー(3段目)・跳び踏み潰し(4段目)を食らった時、プレイヤーの絵だけ浮く
+// (操作は奪わない・判定・移動・カメラは地面のまま)。上の「追いかけの浮き」とは別の1本(取り合わない)。描画は max で合わせる。
+// ---------------------------------------------------------------------------------------------
+/** 浮く高さ = プレイヤーの体の高さ × この倍率。 */
+export const PLAYER_LAUNCH_BODY_K = 0.6;
+let playerLaunchedAt = Number.NEGATIVE_INFINITY;
+let playerLaunchMs = 585;
+/** 打ち上げられた瞬間(Date.now)と、浮きの長さ(格闘の浮きの尺=BRAWLER_LIFT_MS)。当たりの瞬間にだけ書く。 */
+export const notePlayerLaunched = (now: number, ms: number): void => { playerLaunchedAt = now; playerLaunchMs = Math.max(1, ms); };
+/** いまの見た目の浮きの高さ(px)。弧は格闘の浮きと同じ形(速く上がり・頂点で漂い・ゆっくり落ちる)。 */
+export const playerLaunchHeightPx = (now: number, bodyH: number): number => {
+  const u = (now - playerLaunchedAt) / playerLaunchMs;
+  if (!(u >= 0 && u < 1)) return 0;
+  return Math.max(0, bodyH * PLAYER_LAUNCH_BODY_K * brawlerLiftArcRel(u, 0, 1));
+};
+/** テスト・ラン境界用。 */
+export const resetPlayerLaunch = (): void => { playerLaunchedAt = Number.NEGATIVE_INFINITY; };

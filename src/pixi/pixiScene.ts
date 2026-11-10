@@ -109,7 +109,7 @@ import {
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
 import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerPhaseKind, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
-import { getLastAirMeleeHit, stepPlayerAir, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
+import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
@@ -20758,6 +20758,8 @@ export class PixiScene {
       // 当たりごとの小さな跳ね(浮いている間だけ)。
       const bump = hitAt !== null && phase !== 'ground' && phase !== 'crouch' ? playerAirBumpPx(tAir - hitAt) : 0;
       playerAirPx = st0.h + bump;
+      // research/BRAWLER_PHANTOM.md §4-9: 格闘の幻影に打ち上げられた時の見た目の浮き(操作は奪わない)。追いかけの浮きと max で合わせる。
+      playerAirPx = Math.max(playerAirPx, playerLaunchHeightPx(tAir, bodyH));
       // 姿勢: 上り=縦に伸びる / 頂点=少し縮む / 落下=やや伸びる / 飛び立ち前=沈む。コマ替えで跳ねないよう時間で寄せる。前傾は敵の方へ。
       const pose = playerAirPoseTarget(phase);
       const kP = 1 - Math.exp(-Math.min(100, Math.max(0, dtAir)) / 50);
@@ -38167,7 +38169,13 @@ export class PixiScene {
     // 1フレーム遅れるが、歩き/待機の切り替えに1フレームの遅れは知覚されない。
     const walking = (view.motSpeed ?? 0) > PixiScene.GP_WALK_MIN_SPEED;
     const frame = playerWalkFrame(fake, now, walking, false);
-    const bodyName = playerTextureName(fake, frame, walking, false);
+    let bodyName = playerTextureName(fake, frame, walking, false);
+    // research/BRAWLER_PHANTOM.md §8: 格闘の幻影はプレイヤーの格闘と同じポーズ(しゃがみ=-ready / 振り上げ=-swing)。描画のみ。
+    if (e.phantomBrawler) {
+      const brPose = BRW.brawlerPoseAt(e.phantomBrawler, useGameStore.getState().gameTime);
+      const pre = MELEE_POSE_PREFIX[fake.characterClass];
+      if (brPose?.tex && pre && getTexture(`${pre}-${brPose.tex}`)) bodyName = `${pre}-${brPose.tex}`;
+    }
     const body = getTexture(bodyName);
     // 社長指示2026-10-27「アバターは…幻影にも反映(その当時の記録として)」: 記録した時に着けていたアバター
     // (`phantomBuild.avatarId`)を、本人・守護霊と同じ焼き込みで体の絵へ描き込む。大きさは本人の枠で決める
@@ -38194,6 +38202,8 @@ export class PixiScene {
     fb: { footX: number; footY: number; boxW: number; boxH: number }, cx: number, cy: number,
   ): void {
     const dsc = this.depthScaleEnemy(fb.footY);
+    // research/BRAWLER_PHANTOM.md §8: 格闘の幻影=プレイヤーの格闘と同じ動きの影(青いスタンド)と、構え・秘奥義の体の光。描画のみ。
+    if (e.phantomBrawler) this.drawPhantomBrawlerFx(e, e.phantomBrawler, gameTime, now, dsc, view.sprite);
 
     // ---- 出現(慣性MUST: 「パッと出て止まる」を作らない) -----------------------------------------
     // 足元に簡易魔法陣(holo-mini・既存素材)を1周ぶん。本体は**下からスッと立ち上がる**
@@ -39875,13 +39885,23 @@ export class PixiScene {
    * 打つ手足の先(BRAWLER_STAND の tip)を、その段の当たりの所(相手の帯の縁・着地の円・帯の先)へ合わせて置く=判定の所まで届いて見える。
    * 加算で描く=紺の中身は本人を暗く潰さず、青い輪郭だけが光る。形と時間は utils/brawler の brawlerStandAt(純関数)が決める。
    */
-  private drawBrawlerStand(p: Player, s: BRW.BrawlerState, gt: number, dsc: number, body: Sprite): void {
+  private phantomBrawlerStand: Sprite | null = null;
+  private phantomBrawlerAura: Sprite | null = null;
+  private drawBrawlerStand(
+    p: Pick<Player, 'x' | 'y' | 'width' | 'height'> & { lastDirection?: { x: number; y: number } | null }, s: BRW.BrawlerState, gt: number, dsc: number, body: Sprite,
+    /** research/BRAWLER_PHANTOM.md: 格闘の幻影は自分の影の絵を持つ(プレイヤーの絵と取り合わない)。 */
+    which: 'player' | 'phantom' = 'player',
+  ): void {
     const f = BRW.brawlerStandAt(s, gt);
     const spec = f ? BRW.BRAWLER_STAND[f.kind] : null;
     const tex = spec ? getTexture(spec.tex) : null;
-    if (!f || !spec || !tex || f.alpha <= 0.01) { if (this.brawlerStand) this.brawlerStand.visible = false; return; }
-    if (!this.brawlerStand) { this.brawlerStand = new Sprite(); this.brawlerStand.blendMode = 'add'; }
-    const sp = this.brawlerStand;
+    const cur = which === 'player' ? this.brawlerStand : this.phantomBrawlerStand;
+    if (!f || !spec || !tex || f.alpha <= 0.01) { if (cur) cur.visible = false; return; }
+    let sp = cur;
+    if (!sp) {
+      sp = new Sprite(); sp.blendMode = 'add';
+      if (which === 'player') this.brawlerStand = sp; else this.phantomBrawlerStand = sp;
+    }
     const parent = body.parent;
     if (parent && (sp.parent !== parent || parent.children[parent.children.length - 1] !== sp)) parent.addChild(sp); // 本人の上の層
     const st = useGameStore.getState();
@@ -39933,10 +39953,38 @@ export class PixiScene {
     sp.tint = 0xffffff; // 頂いた青のまま
     sp.visible = true;
   }
+  /** research/BRAWLER_PHANTOM.md §8: 格闘の幻影の動きの影と体の光(構え=1秒かけて絞る・秘奥義=脈打つ)。 */
+  private drawPhantomBrawlerFx(e: Enemy, s: BRW.BrawlerState, gt: number, now: number, dsc: number, body: Sprite): void {
+    this.drawBrawlerStand({ x: e.x, y: e.y, width: e.width, height: e.height, lastDirection: { x: s.dirX, y: s.dirY } }, s, gt, dsc, body, 'phantom');
+    const remain = s.secret ? 0.85 + 0.15 * Math.sin(now / 60) : BRW.isBrawlerGuardingAt(s, gt) ? Math.max(0, s.guardUntil - gt) / BRW.BRAWLER_GUARD_MS
+      : BRW.brawlerKickChargeGlow(s, gt);
+    if (remain <= 0) { if (this.phantomBrawlerAura) this.phantomBrawlerAura.visible = false; return; }
+    if (!this.phantomBrawlerAura) {
+      this.phantomBrawlerAura = new Sprite(getSoftGlowTexture());
+      this.phantomBrawlerAura.anchor.set(0.5, 0.5);
+      this.phantomBrawlerAura.blendMode = 'add';
+    }
+    const aura = this.phantomBrawlerAura;
+    if (aura.parent !== body.parent && body.parent) body.parent.addChild(aura);
+    const hitPop = Math.max(0, 1 - (Date.now() - (s.guardHitAt ?? 0)) / 160);
+    const size = (34 + 76 * remain + 30 * hitPop) * dsc;
+    aura.scale.set(size / Math.max(1, aura.texture.height));
+    aura.position.set(body.position.x, body.position.y - Math.abs(body.height) * 0.45);
+    aura.tint = BRW.BRAWLER_COLOR_HEX;
+    aura.alpha = Math.min(1, 0.15 + 0.7 * remain + 0.4 * hitPop);
+    aura.visible = true;
+  }
   private drawBrawlerFx(p: Player, footX: number, footY: number, dsc: number, body: Sprite, now: number): void {
     const s = p.brawler;
     const st = useGameStore.getState();
-    this.drawBrawlerKiko(st.brawlerKiko, now);
+    // 格闘の幻影が居なくなったら、その影と光を消す(描く経路を通らなくなるため)。
+    if ((this.phantomBrawlerStand?.visible || this.phantomBrawlerAura?.visible) && !st.enemies.some(e => e.phantomBrawler && e.health > 0)) {
+      if (this.phantomBrawlerStand) this.phantomBrawlerStand.visible = false;
+      if (this.phantomBrawlerAura) this.phantomBrawlerAura.visible = false;
+    }
+    // research/BRAWLER_PHANTOM.md: 格闘の幻影の気功も同じ絵(1本の絵の台帳で描く=プレイヤーの気功と取り合わない)。
+    const gpKikos = st.enemies.filter(e => e.gpKiko !== undefined).map(e => e.gpKiko!);
+    this.drawBrawlerKiko(gpKikos.length > 0 ? [...st.brawlerKiko, ...gpKikos] : st.brawlerKiko, now);
     if (!s || !isBrawlerMode(p)) { this.brawlerDustGates.clear(); this.hideBrawlerGhosts(); if (this.brawlerAura) this.brawlerAura.visible = false; if (this.brawlerStand) this.brawlerStand.visible = false; return; }
     const gt = st.gameTime;
     this.drawBrawlerStand(p, s, gt, dsc, body);
