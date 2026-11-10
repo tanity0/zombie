@@ -66,7 +66,7 @@ describe('拳鬼の台帳', () => {
     expect(snap.skillLevels).toEqual({ 'time-keeper': 3, overclock: 3 });
     expect(snap.subWeapons).toEqual(['brawler']);
     expect(snap.subWeaponLevels).toEqual({ brawler: 3 });
-    expect(snap.avatarId).toBe('jiangshi-set');
+    expect(snap.avatarId).toBeUndefined(); // 専用の絵があるので仮のアバターは付けない(社長支給2026-11-10)
   });
   it('固定20人には入れない', () => {
     expect(FIXED_GUARDIANS.some(g => g.profile === k.profile)).toBe(false);

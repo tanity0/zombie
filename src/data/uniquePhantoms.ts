@@ -31,7 +31,7 @@ const KENKI_SKILLS: readonly { key: SkillKey; level: number }[] = [
 ];
 const KENKI_SUBS: SubWeaponKey[] = ['brawler'];
 
-/** 拳鬼(仮名): 格闘の幻影。ストライカー・ファイティングナイフ・3段目の装備・タイムキーパーLv3+オーバークロックLv3・格闘Lv3。 */
+/** 拳鬼(仮名): 格闘の幻影。絵は専用(kenki-*)。ストライカー・ファイティングナイフ・3段目の装備・タイムキーパーLv3+オーバークロックLv3・格闘Lv3。 */
 const KENKI: UniquePhantomSpec = {
   kind: 'brawler',
   name: '拳鬼',
@@ -72,7 +72,7 @@ const KENKI: UniquePhantomSpec = {
       subWeapons: [...KENKI_SUBS],
       subWeaponLevels: Object.fromEntries(KENKI_SUBS.map(k => [k, 3])),
       characterClass: 'rogue',
-      avatarId: 'jiangshi-set', // 仮の見た目(拳法家らしさの仮置き・後で差し替え)
+      // 見た目は拳鬼の専用の絵(社長支給2026-11-10・public/sprites/kenki-*.png)。仮のアバター(キョンシーセット)は外した。
     },
   },
 };

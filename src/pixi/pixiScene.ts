@@ -121,7 +121,7 @@ import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
 import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
-import { warmEnemySheets, prewarmEnemySheetsGpu, loadSpriteGroups } from './pixiTextures';
+import { warmEnemySheets, prewarmEnemySheetsGpu, loadSpriteGroups, KENKI_SPRITES } from './pixiTextures';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 /** 城ボスの絵を出現の最短時刻のこれだけ前から先読み+GPU転送する(メモリを使い始める時刻と、間に合う余裕の釣り合い)。 */
 const CASTLE_BOSS_GPU_PREWARM_MS = 45_000;
@@ -22231,6 +22231,10 @@ export class PixiScene {
       : glenP2
         ? (glenP2Tex ?? getTexture('glen-boss2') ?? getTexture(idleTexKey))
         : (walkTex ?? getTexture(idleTexKey));
+    // 手で描いたコマが出ているか(歪み=歩行の傾ぎ・スカッシュ/疑似呼吸/技のスカッシュを外す目印・CLAUDE.md「外すのは歪みだけ」)。
+    // research/BRAWLER_PHANTOM.md: 拳鬼の歩き・走り・構え・振りの絵(社長支給2026-11-10)も手で描いたコマ。待機は1枚の立ち絵なので呼吸する。
+    const handDrawn = walkTex !== null
+      || (e.type === 'guardian-phantom' && this.isKenkiTex(tex) && tex !== getTexture('kenki-idle'));
     const cx = e.x + e.width / 2;
     const cy = e.y + e.height / 2;
 
@@ -22365,7 +22369,7 @@ export class PixiScene {
     // ここは**位置**だけ(手描きのコマ中も掛かる): 素早く後ろへ引いて(ease-out)固まり、固まっている間は震えが強まり、
     // 発動の直前だけ息を詰めて止まる。1発目は歩いてきた勢いを一瞬前へ受けてから引く(慣性)。
     // 向きは構えに入った瞬間に焼く(固まっている間に裏へ回られても体の向きは変えない)。
-    // シートの無い見た目の時だけ傾け(skew)も掛ける(下の `walkTex === null` の時だけ効く)。
+    // シートの無い見た目の時だけ傾け(skew)も掛ける(下の `!handDrawn` の時だけ効く)。
     if (e.type === 'zombie' && e.aiPhase === 'z-red-pause') {
       const until = e.aiPhaseUntil ?? gameTime;
       let dir = this.zombieStanceDir.get(e.id);
@@ -22755,7 +22759,7 @@ export class PixiScene {
         //  (蜘蛛・自転車・叫喚型・ハンター・搬送体)が**歩きの絵の上から潰されたまま**だった。
         //  歩き/待機の絵が出ている間も「手で描いた形」なので、代用の歪みは掛けない
         //  (他の3つの抑止=歩行の傾ぎ/疑似呼吸/技のスカッシュ もこの同じ `walkTex` で見ている)。
-        if (walkTex === null) {
+        if (!handDrawn) {
           view.sprite.skew.x += -ldir * pose.skew; // 頭がプレイヤー側へ倒れ込む
           flinchSqY *= pose.sqY;
           lungeSqX = pose.sqX;
@@ -22943,7 +22947,7 @@ export class PixiScene {
           // 上下の位置(bob)は絵を歪めないので残す。判定・座標は従来どおり一切不変。
           const pose = undistortForSheet(
             enemyMotionPose(spec, stablePhase(e.id), view.motClock, walk),
-            walkTex !== null,
+            handDrawn,
           );
           motRot = pose.rot; motBob = pose.bob; motSqX = pose.sqX; motSqY = pose.sqY;
         }
@@ -22964,7 +22968,9 @@ export class PixiScene {
       // ★グレン形態2は立ち絵キーが形態1と同じ(`glen-boss`)なので、形態1のシートがあるだけでミラーの対象に
       //   なってしまう。形態2の絵(`glen-boss2`)は手で描いたコマを持たない=**従来どおりミラーしない**。
       const sheetMirror = hasAnimSheet(sheetKey) && !glenP2;
-      const wantFaceMove = spec.faceMove || sheetMirror;
+      // research/BRAWLER_PHANTOM.md: 拳鬼の絵(右向きに描かれた手描きのコマ)も同じ掟でミラーする(汎用の幻影は従来どおり)。
+      const kenkiMirror = e.type === 'guardian-phantom' && this.isKenkiTex(tex);
+      const wantFaceMove = spec.faceMove || sheetMirror || kenkiMirror;
       if (wantFaceMove) {
         const cur = view.motFace ?? 1;
         const vx = view.motVx ?? 0;
@@ -22975,7 +22981,7 @@ export class PixiScene {
         // 素材の素の向き(既定=左向き)。右向き素材(faceRight)はミラーの向きが反転する。
         // 素材の素の向き(既定=左向き)。シートを持つ個体はシート側の向きが正
         // (立ち絵とシートで向きが違う場合があるため。今の bat-female はどちらも左向き)。
-        const toRight = (sheetMirror ? sheetFacesRight(sheetKey) : spec.faceRight) ? 1 : -1;
+        const toRight = (kenkiMirror ? true : sheetMirror ? sheetFacesRight(sheetKey) : spec.faceRight) ? 1 : -1;
         // ★薙ぎの最中は「帯の向き」で決める(社長裁定2026-09-23「薙の向きは推薦で」)。
         // 薙ぎのシートは常に同じ向きに描かれているのに、当たる帯の始点→終点は**プレイヤーの位置で
         // 入れ替わる**。しかも薙ぎ中は本体が動かない(vx≈0)ので、移動方向から決める下の式では
@@ -23007,10 +23013,14 @@ export class PixiScene {
         //   (体の反り・噛みの判定・予告の線と同じ値=絵が判定と逆を向かない・社長「推薦で」2026-10-23)。
         const stanceFace = e.type === 'zombie' && (e.aiPhase === 'z-red-pause' || e.aiPhase === 'z-bite1')
           && e.stanceDirX !== undefined ? (e.stanceDirX >= 0 ? toRight : -toRight) : 0;
+        // 拳鬼の格闘の行動中(段・技・構え)は、打つ向き(格闘の状態の dirX=判定と同じ値)を向く=拳が相手と逆を向かない。
+        const kenkiBr = kenkiMirror && e.phantomBrawler && e.phantomBrawler.phase !== 'idle' && Math.abs(e.phantomBrawler.dirX) > 0.05
+          ? (e.phantomBrawler.dirX > 0 ? toRight : -toRight) : 0;
         const want = kbFacingLock ? cur
           : aweFace !== 0 ? aweFace
           : heroFace !== 0 ? heroFace
           : stanceFace !== 0 ? stanceFace
+          : kenkiBr !== 0 ? kenkiBr
           : bandDir !== 0 ? sweepFaceMulFor(bandDir, sweepSwing, cur)
             : bpSide !== 0 ? (bpSide > 0 ? toRight : -toRight)
               : vx > 25 ? toRight : vx < -25 ? -toRight : cur;
@@ -23120,13 +23130,16 @@ export class PixiScene {
       }
       const sheetFit = fitIdleTex
         ? sheetHeightFix(fb.boxW, fb.boxH, fitIdleTex.width, fitIdleTex.height, tex.width, tex.height, fitBodyH) : 1;
-      const sc = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * this.stageEnemyVisualMul(e.type) * sheetFit;
+      // research/BRAWLER_PHANTOM.md: 拳鬼の絵(65×80)は枠に収めず、1ドット=プレイヤーの絵と同じ倍率で描く(kenkiDotScale)
+      // (社長承認2026-11-10「この大きさのまま入れる」=体はプレイヤーの約1.15倍に見える)。足元は同じ下端(anchor 0.5,1)。
+      const sc = e.type === 'guardian-phantom' && this.isKenkiTex(tex) ? this.kenkiDotScale(fb.footY)
+        : containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY) * this.stageEnemyVisualMul(e.type) * sheetFit;
       // ★★**手で描いたコマが出ているフレームは、疑似呼吸(伸び縮み)を掛けない**
       // (社長指示2026-09-21「絵が入った敵のパターンには歪み入れないで」。歩行二次モーションの
       //  傾ぎ・スカッシュを止めた v0.25.4546 と同じ理由の、呼吸版)。
       // ★**待機シート(`-idle`)が来て必須になった**——あれは「呼吸そのもの」を描いた絵なので、
       //  上から疑似呼吸を掛けると**二重に呼吸する**。立ち絵へ戻っている間は従来どおり呼吸する。
-      const breath = walkTex !== null ? { x: 1, y: 1 } : this.enemyBreath(e, now, view, gameTime);
+      const breath = handDrawn ? { x: 1, y: 1 } : this.enemyBreath(e, now, view, gameTime);
       // 被弾しなり: 撃たれた直後だけ頭(上方)を後ろ(ノックバック方向)へ skew で反らせ、軽く縦縮み。
       // アンカーが足元寄りなので skew だけで頭が大きく振れる。短時間で戻る。新規描画なし=軽い。
       // ★被弾リアクションの強さは**そのヒットのダメージで決まる**(`utils/hitFlinch.ts` が唯一の窓口)。
@@ -23154,7 +23167,7 @@ export class PixiScene {
       // ブロックが上で計算済み。他型・他相は既定0なので無変化)。
       // ★同上(社長報告2026-09-23): よろけ・立ち直りの傾ぎも**スプライトを回す=歪み**なので、
       // 手で描いたコマが出ている間は掛けない(CLAUDE.md の判定基準「伸ばす/縮める/回すなら歪み」)。
-      if (walkTex === null) view.sprite.skew.x += aiSkew;
+      if (!handDrawn) view.sprite.skew.x += aiSkew;
       // V1(3)→v0.25.2478: 接触ダメージを与えた瞬間の「しゃがみ込み→食いつき」2拍(社長指示)。
       // 対象は「接触ダメージを持つ全員」=この汎用経路(通常敵)と上の裏ボス経路の両方に置く。視覚のみ。
       let lungeOffX = 0, lungeOffY = 0, lungeSqX = 1;
@@ -23204,7 +23217,7 @@ export class PixiScene {
         // 攻撃のコマが出ている間は**歪みだけ**外し、**位置の移動(踏み込み・沈み)は残す**。
         // ★**同じ"動作"を持つ全員に付ける**(CLAUDE.md v0.25.2426の教訓): この「しゃがみ込み→
         //  食いつき」は汎用経路とボス経路の2本に分かれて書かれているので、片方だけでは取りこぼす。
-        if (walkTex === null) {
+        if (!handDrawn) {
           view.sprite.skew.x += -ldir * pose.skew; // 頭がプレイヤー側へ倒れ込む
           flinchSqY *= pose.sqY;
           lungeSqX = pose.sqX;
@@ -23232,8 +23245,8 @@ export class PixiScene {
       //  絵は高さを持っていない。**砂埃などのエフェクトも一切触っていない**
       //  (社長指示2026-09-21「元々のエフェクトは消さないで」)。
       // ★ボスが止まっている間(立ち絵で止める)も技のスカッシュは掛けない=溜めのしゃがみの形で固まらない。
-      const aiSqXDraw = walkTex !== null || bossStopped ? 1 : aiSqX;
-      const aiSqYDraw = walkTex !== null || bossStopped ? 1 : aiSqY;
+      const aiSqXDraw = handDrawn || bossStopped ? 1 : aiSqX;
+      const aiSqYDraw = handDrawn || bossStopped ? 1 : aiSqY;
       const scaleX = sc * breath.x * aiSqXDraw * lungeSqX * flinchSqX * motSqX * faceMul * corpseSq.sqX * lichWarp.sqX * lichBlinkSq;
       view.sprite.scale.set(scaleX * airScale, sc * breath.y * flinchSqY * aiSqYDraw * motSqY * corpseSq.sqY * lichWarp.sqY * lichBlinkSq * airScale);
       view.shadowAirK = brAirK; view.airScale = airScale;
@@ -33809,7 +33822,7 @@ export class PixiScene {
 
   // `now` は**実時間(Date.now)を渡すこと**(呼び出し側でrealNow)。崩壊はヒットストップ中に
   // 見せる演出なので、凍結時計を渡すと下の明滅sin/揺れsinが固定値になり「揺れて崩れる」が止まる。
-  private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean } | null, now: number) {
+  private syncBossCorpse(corpse: { type: string; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean; phantomUnique?: string } | null, now: number) {
     const sp = this.bossCorpseSprite;
     if (!corpse) { if (sp.visible) sp.visible = false; return; }
     // 絵の選択は生体と同じチェーン(enemyTexKey)。ここを2段しか見ていなかったのが
@@ -33834,7 +33847,8 @@ export class PixiScene {
     const tex = astroLook?.tex ? astroLook.tex : corpse.glenBoss2
       ? (getTexture('glen-boss2') ?? getTexture(this.enemyTexKey(corpse.type, '')))
       : isPhantomCorpse
-        ? (getTexture(PLAYER_IDLE_SPRITE[GUARDIAN_PHANTOM_CLASS as Player['characterClass']] ?? 'player-scavenger-idle') ?? getTexture('player'))
+        ? ((corpse.phantomUnique === 'brawler' ? getTexture('kenki-idle') : null) // 拳鬼は自分の待機の絵で崩す
+          ?? getTexture(PLAYER_IDLE_SPRITE[GUARDIAN_PHANTOM_CLASS as Player['characterClass']] ?? 'player-scavenger-idle') ?? getTexture('player'))
         : getTexture(this.enemyTexKey(corpse.type, ''));
     if (!tex) { sp.visible = false; return; }
     // 生体と同じダークtint(崩壊の瞬間だけ素の色に戻ると別人が崩れたように見える)。
@@ -33890,7 +33904,9 @@ export class PixiScene {
     } else {
       const fb = enemyFootBox({ x: corpse.x, y: corpse.y, width: corpse.w, height: corpse.h, type: corpse.type } as Enemy);
       // 生体と同じ: containScale で枠に収め、足元の深度スケールとステージ固有倍率を掛ける。
-      scale = containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
+      // 拳鬼の絵は生体と同じく「1ドット=プレイヤーの絵と同じ」で(research/BRAWLER_PHANTOM.md)。
+      const kenkiCorpse = isPhantomCorpse && corpse.phantomUnique === 'brawler' && tex === getTexture('kenki-idle');
+      scale = kenkiCorpse ? this.kenkiDotScale(fb.footY) : containScale(fb.boxW, fb.boxH, tex.width, tex.height) * this.depthScaleEnemy(fb.footY);
     }
     scale *= this.stageEnemyVisualMul(corpse.type); // ステージ4の1.5倍/ステージ3の1.2倍(視覚のみ)
     const spriteW = scale * tex.width, spriteH = scale * tex.height;
@@ -38157,7 +38173,48 @@ export class PixiScene {
     }
   }
 
+  /**
+   * research/BRAWLER_PHANTOM.md: 拳鬼(固有の幻影・`phantomUnique:'brawler'`)の絵(社長支給2026-11-10・65×80)。
+   * 待機/歩き(6)/走り(6)/格闘の構え(-ready)・振り(-swing)。コマの順送りと周期はストライカーの絵と同じ(プレイヤーの関数をそのまま使う)。
+   * 走り=プレイヤーの「レバー全開」と同じ考え方で、ほぼ全速で動いている時(実速度が自分の足の速さの8割以上)。
+   * まだ届いていなければ null(呼び手が今の幻影の絵へ落とす=消えない)。返した絵は `kenkiTexSet` に入れる(大きさの決め方を分ける)。
+   */
+  private kenkiTexSet = new WeakSet<Texture>();
+  private kenkiWarmed = false;
+  private static readonly KENKI_RUN_SPEED_FRAC = 0.8;
+  /**
+   * 拳鬼の絵の大きさ=**1ドットをプレイヤーの絵と同じ倍率**で描く(社長承認2026-11-10「この大きさのまま入れる」)。
+   * プレイヤーと同じ式(クラスの絵の1ドット=PLAYER_ART_BASE_W/78・プレイヤーの遠近 depthScale・ピクセルスナップ)。
+   * 枠に収める(containScale)と縦長の絵が縮み、敵の遠近(depthScaleEnemy)だとプレイヤーより1ドットが大きくなる=どちらも使わない。
+   */
+  private kenkiDotScale(footY: number): number {
+    return this.snapTexelScale((PLAYER_ART_BASE_W / 78) * this.depthScale(footY));
+  }
+  private kenkiTexture(view: ActorView, e: Enemy, now: number): Texture | null {
+    if (!this.kenkiWarmed) { this.kenkiWarmed = true; for (const n of KENKI_SPRITES) getTexture(n); } // 15枚まとめて取りに行く(網)
+    const fake = { ...useGameStore.getState().player, characterClass: 'rogue' as Player['characterClass'], equipment: ALLY_PLAIN_EQUIP, subWeapons: [] };
+    const spd = view.motSpeed ?? 0;
+    const walking = spd > PixiScene.GP_WALK_MIN_SPEED;
+    const running = walking && spd >= (e.speed || 1) * PixiScene.KENKI_RUN_SPEED_FRAC;
+    let name = walking ? `kenki-${running ? 'run' : 'walk'}-${playerWalkFrame(fake, now, true, running)}` : 'kenki-idle';
+    if (e.phantomBrawler) {
+      const brPose = BRW.brawlerPoseAt(e.phantomBrawler, useGameStore.getState().gameTime);
+      if (brPose?.tex) name = `kenki-melee-${brPose.tex}`;
+    }
+    const tex = getTexture(name) ?? getTexture('kenki-idle');
+    if (tex) this.kenkiTexSet.add(tex);
+    return tex;
+  }
+  /** 拳鬼の絵か(大きさを「1ドット=プレイヤーの絵と同じ」で決める)。 */
+  private isKenkiTex(tex: Texture | null | undefined): boolean {
+    return !!tex && this.kenkiTexSet.has(tex);
+  }
+
   private guardianPhantomTexture(view: ActorView, e: Enemy, now: number): ReturnType<typeof getTexture> {
+    if (e.phantomUnique === 'brawler') {
+      const k = this.kenkiTexture(view, e, now);
+      if (k) return k;
+    }
     const player = useGameStore.getState().player;
     const fake = {
       ...player,

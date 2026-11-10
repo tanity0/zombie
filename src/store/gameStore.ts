@@ -35,6 +35,7 @@ import {
   DashLocomotionState, EquipLoadout, EquipSlot, ConsumableKey,
   BloodSpike, GravityWell, // SKILL_BUILD_REDESIGN.md §28(B7): 血の履帯/グラビティショットの状態
   PauseReason, // ★なぜ止まっているか(テストブリッジ用・遊びの仕様には使わない)
+  PhantomUniqueKind, // research/BRAWLER_PHANTOM.md: 討伐の崩壊を拳鬼の絵で(bossCorpse)
 } from '../types/game';
 import {
   MolotovCycleState, MOLOTOV_FIRE_LIFETIME_MS, MOLOTOV_DOT_INTERVAL_MS, MOLOTOV_DOT_DAMAGE, MOLOTOV_FIRE_RADIUS,
@@ -5913,7 +5914,8 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
   const corpseHoldMs = getsDeathAttention(enemy.type) ? ATTENTION_IN_MS + ATTENTION_HOLD_MS : 0;
   useGameStore.setState({
     // glenBoss2(v0.25.3029): 形態2の死体は変身後の絵で崩す(syncBossCorpseが読む)。
-    bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now(), holdMs: corpseHoldMs, glenBoss2: enemy.type === 'giantbat' && enemy.glenForm === 2 },
+    bossCorpse: { type: enemy.type, x, y, w: enemy.width, h: enemy.height, diedAt: Date.now(), holdMs: corpseHoldMs, glenBoss2: enemy.type === 'giantbat' && enemy.glenForm === 2,
+      phantomUnique: enemy.phantomUnique }, // 拳鬼は自分の絵で崩す(research/BRAWLER_PHANTOM.md)
     ...(bossDefeat ? {
       eventBannerText: `${enemyDeathLabel(enemy.type)}を討伐`,
       eventBannerUntil: get().gameTime + DRAMATIC_DEATH_FADE_MS,
@@ -9040,7 +9042,7 @@ interface GameState {
   // 入れない)。裏ボス:全域ok。ゲートボス:そもそもゲート内」): 城ボス(giantbat・非ストーリー)との
   // 交戦フラグ。プレイヤー移動の半径クランプ(clampCastleFightCrossing)と制限ラインの描画が読む。
   castleFightNow: boolean;
-  bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean } | null; // 討伐後のフェードアウト演出(描画のみが参照)。holdMs=無傷で保持する尺(死亡アテンション付きボスのみ>0)。glenBoss2=変身後の絵で崩す(v0.25.3029)
+  bossCorpse: { type: EnemyType; x: number; y: number; w: number; h: number; diedAt: number; holdMs?: number; glenBoss2?: boolean; phantomUnique?: PhantomUniqueKind } | null; // 討伐後のフェードアウト演出(描画のみが参照)。holdMs=無傷で保持する尺(死亡アテンション付きボスのみ>0)。glenBoss2=変身後の絵で崩す(v0.25.3029)
   // v0.25.3029(社長裁定「二体」): グレン形態1討伐後の形態2スポーン予約(at=実時刻・x/y=世界座標の中心)。
   glenForm2SpawnAt: { at: number; x: number; y: number } | null;
   hiddenBossDefeated: boolean;                          // 裏ボスを討伐済みか(方角矢印の表示打ち切り等に使用)

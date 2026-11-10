@@ -13,8 +13,8 @@ import { PRACTICE_SLOTS, PRACTICE_HIDDEN_SLOT_KEYS, type PracticeSlot } from './
 import { HERO_PATROL_STAGES } from './heroScript';
 import { PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_STAGES } from './phantomBrawlerSpawn';
 
-/** 拳鬼の一覧の絵(仮=ストライカーの立ち絵・research/BRAWLER_PHANTOM.md §8)。 */
-export const PHANTOM_BRAWLER_ICON_SPRITE = 'player-scavenger-idle';
+/** 拳鬼の一覧の絵(research/BRAWLER_PHANTOM.md §8)。 */
+export const PHANTOM_BRAWLER_ICON_SPRITE = 'kenki-idle'; // 拳鬼の待機の絵(社長支給2026-11-10)
 import type { EnemyType } from '../types/game';
 
 export type SortieBossKind = 'stage' | 'gate' | 'bounty' | 'mutant' | 'phantom' | 'deep';

@@ -1,6 +1,6 @@
 {
  "note": "原盤台帳(scripts/asset-masters.mjs が読み書きする)。手で編集しない。",
- "generatedFor": "1024 files / 復号後 約718MB",
+ "generatedFor": "1039 files / 復号後 約719MB",
  "files": {
   "app-icon.jpg": {
    "w": 214,
@@ -2677,6 +2677,96 @@
    "h": 211,
    "bytes": 26902,
    "sha": "e4344c132ef9bcba"
+  },
+  "sprites/kenki-idle.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 3310,
+   "sha": "255bc89656134a09"
+  },
+  "sprites/kenki-melee-ready.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2780,
+   "sha": "2b09144d22fc9b14"
+  },
+  "sprites/kenki-melee-swing.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 3471,
+   "sha": "122884f2788ab97f"
+  },
+  "sprites/kenki-run-0.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 3020,
+   "sha": "964ee665c3c84dc7"
+  },
+  "sprites/kenki-run-1.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2838,
+   "sha": "5df550f3da0b1224"
+  },
+  "sprites/kenki-run-2.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2605,
+   "sha": "6500fca944d48e99"
+  },
+  "sprites/kenki-run-3.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2842,
+   "sha": "49631febb9b79830"
+  },
+  "sprites/kenki-run-4.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2684,
+   "sha": "157b0f3fea623e23"
+  },
+  "sprites/kenki-run-5.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2965,
+   "sha": "f53d7e8e92e93e1f"
+  },
+  "sprites/kenki-walk-0.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 3019,
+   "sha": "798b5d5b532f94a4"
+  },
+  "sprites/kenki-walk-1.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2642,
+   "sha": "4bc58dae95eaecae"
+  },
+  "sprites/kenki-walk-2.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2806,
+   "sha": "bdad745e7288cdb2"
+  },
+  "sprites/kenki-walk-3.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2777,
+   "sha": "5f038fb97da4f1f2"
+  },
+  "sprites/kenki-walk-4.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2663,
+   "sha": "28ae045a60f5eee5"
+  },
+  "sprites/kenki-walk-5.png": {
+   "w": 65,
+   "h": 80,
+   "bytes": 2945,
+   "sha": "e2a050887eaf865c"
   },
   "sprites/knife-swing-1.png": {
    "w": 479,

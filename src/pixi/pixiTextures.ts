@@ -64,6 +64,13 @@ const DEFERRED_ENEMY_SHEETS = ENEMY_SHEETS.filter(s => sheetDeferred(s.idle));
 const DEFERRED_SHEETS_BY_IDLE_INIT: [string, string[]][] = [...new Set(DEFERRED_ENEMY_SHEETS.map(s => s.idle))]
   .map(idle => [idle, DEFERRED_ENEMY_SHEETS.filter(s => s.idle === idle).map(s => s.sheet)]);
 
+/** 拳鬼の絵の名前(15枚・`public/sprites/kenki-*.png`)。並び: 待機・構え・振り・歩き0〜5・走り0〜5。 */
+export const KENKI_SPRITES: readonly string[] = [
+  'kenki-idle', 'kenki-melee-ready', 'kenki-melee-swing',
+  ...Array.from({ length: 6 }, (_, i) => `kenki-walk-${i}`),
+  ...Array.from({ length: 6 }, (_, i) => `kenki-run-${i}`),
+];
+
 const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear' | 'nearest' }[]> = {
   // 研究所ステージ(theme='lab')の背景3層と床。実測 約22MB。
   // ★`scaleMode` は起動マニフェストの記述と**1文字も違えない**(違えると見た目が変わる。
@@ -169,6 +176,13 @@ const DEFERRED_SPRITE_GROUPS: Record<string, { name: string; scaleMode?: 'linear
     // 近づくと地面から生えてくる墓石と花(社長支給2026-10-29・392x66=0.10MB・8コマ×49)。§9。
     { name: 'props/wraith-growths', scaleMode: 'nearest' },
   ],
+  /**
+   * 拳鬼(固有の幻影・research/BRAWLER_PHANTOM.md)の絵(社長支給2026-11-10・65×80×15枚=計 約0.3MB)。
+   * 待機・構え・振り・歩き6・走り6。本編は徘徊の枠(ステージ1・3・4・5)で**遠くの POI に出て歩いてくる**=宇宙飛行群・亡霊と
+   * 同じ遅延組・**所属は付けない=網だけで拾う**。描画(`pixiScene.kenkiTexture`)が初めて描く時に15枚まとめて取りに行く。
+   * 外れても今の幻影の絵(クラスの立ち絵)へ落ちる=消えない。
+   */
+  kenki: KENKI_SPRITES.map(name => ({ name, scaleMode: 'nearest' as const })),
   /**
    * ★ボス級の**アニメーションシート**(社長指示2026-09-24「乗せて」)。**所属は付けない=網だけで拾う**
    * (立ち絵の `castle`/`bosses` と同じ理由)。**さらにシートは外れても立ち絵へ落ちる**ので、
