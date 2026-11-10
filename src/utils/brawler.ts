@@ -73,7 +73,8 @@ export const brawlerStageSpec = (stage: number): BrawlerStageSpec =>
   BRAWLER_STAGES[Math.max(1, Math.min(5, Math.round(stage))) - 1];
 
 export type { BrawlerTechKind } from './brawlerTypes';
-import type { BrawlerState, BrawlerTechKind, BrawlerSecret, BrawlerSecretMove } from './brawlerTypes';
+import type { BrawlerState, BrawlerTechKind, BrawlerSecret, BrawlerSecretMove, BrawlerRouteNode } from './brawlerTypes';
+export type { BrawlerRouteNode, BrawlerMoveKey } from './brawlerTypes';
 export interface BrawlerTechSpec {
   kind: BrawlerTechKind;
   cost: number;
@@ -99,6 +100,11 @@ export const brawlerPointCap = (level: number): number =>
 // 細かい数値(§2・§3・§7)
 export let BRAWLER_CHAIN_RESET_MS = 400; // ×BRAWLER_TEMPO(係数1.0の値)   // 最後に当ててから押さなければ1段目へ(§2-4)
 export let BRAWLER_WHIFF_BUFFER_MS = 150; // ×BRAWLER_TEMPO(係数1.0の値)  // 空振りの段は戻りの終わり 150ms 前から先行入力を受ける(§2-1)
+/**
+ * ★取り消しの受付(research/BRAWLER.md §19-2・社長承認2026-11-10「KOFの案は はい」)。当たりの止めが明けた瞬間からこの間だけ、
+ * 道の先(brawlerRouteAllows)の技で後隙を取り消せる。過ぎたら後隙が終わるまで何も出せない。係数1.0で150ms(×1.3=195ms)。
+ */
+export let BRAWLER_CANCEL_WINDOW_MS = 150; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_FIST_RADIUS = 28;       // 3段目の拳の周り(§2-2)
 export const BRAWLER_LANDING_RADIUS = 70;    // 4段目の着地点の円(§2-2)
 export const BRAWLER_BAND_LEN = 160;         // 5段目の帯(§2-2)
@@ -199,6 +205,7 @@ export const brawlerTimesAt = (tempo: number) => ({
     }])) as Record<BrawlerTechKind, BrawlerTechSpec>,
     BRAWLER_CHAIN_RESET_MS: brawlerTempoMs(400, tempo),
     BRAWLER_WHIFF_BUFFER_MS: brawlerTempoMs(150, tempo),
+    BRAWLER_CANCEL_WINDOW_MS: brawlerTempoMs(150, tempo),
     BRAWLER_PALM_DASH_MS: brawlerTempoMs(130, tempo),
     BRAWLER_PALM_SETTLE_MS: brawlerTempoMs(120, tempo),
     BRAWLER_LIFT_MS: brawlerTempoMs(585, tempo),
@@ -227,6 +234,7 @@ export const setBrawlerTempo = (tempo: number): void => {
   BRAWLER_TECHS = v.techs;
   BRAWLER_CHAIN_RESET_MS = v.BRAWLER_CHAIN_RESET_MS;
   BRAWLER_WHIFF_BUFFER_MS = v.BRAWLER_WHIFF_BUFFER_MS;
+  BRAWLER_CANCEL_WINDOW_MS = v.BRAWLER_CANCEL_WINDOW_MS;
   BRAWLER_PALM_DASH_MS = v.BRAWLER_PALM_DASH_MS;
   BRAWLER_PALM_SETTLE_MS = v.BRAWLER_PALM_SETTLE_MS;
   BRAWLER_LIFT_MS = v.BRAWLER_LIFT_MS;
@@ -286,13 +294,13 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
     ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, startAt: t,
     // 前隙なし(受けた直後)でも5段目は突き抜ける時間だけは要る(溜めだけ消える)。
     windupMs: quick ? (spec.stage === 5 ? BRAWLER_PALM_DASH_MS : 0) : spec.windupMs, recoveryMs: spec.recoveryMs,
-    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, buffered: false,
+    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
     palmFromX: undefined, palmFromY: undefined,
     // 前隙なしは1回きり(受けた直後の最初の1発だけ)。
     quickUntil: quick ? 0 : s.quickUntil,
     // 通常攻撃を押したら蹴りの連続は切れる(§7-5)。秘奥義の順番も数え直し(通常攻撃が挟まった=§10-1)。
     kickChainUntil: 0, kickCount: 0, secretProgress: 0, secretLastEndAt: 0,
-    techChain: undefined, // 通常攻撃で技の流れは切れる(技→通常はキャンセルできない=§11-4)
+    techChain: undefined, // 通常攻撃で技の流れは切れる(技→通常は取り消せない=§11-4・§19-1)
     techBuffer: undefined,
     stepBuffer: undefined, // 先行入力は1つだけ(最後の入力を優先・§12-3b)
   };
@@ -311,7 +319,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
     // 飛び蹴りの3発目は溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。
     kickChargeMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0,
     windupMs: spec.windupMs + (kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0), recoveryMs: spec.recoveryMs,
-    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, buffered: false,
+    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
     // 技の後は1段目(§7-5)。
     nextStage: 1, chainUntil: 0,
     guardUntil: kind === 'guard' ? t + BRAWLER_GUARD_MS : s.guardUntil,
@@ -387,10 +395,12 @@ export const brawlerEndGuardForStomp = (s: BrawlerState, t: number): BrawlerStat
 
 /** 判定を解いた後の状態(当たった/外れた)。当たった時はポイントと止めも足す。 */
 export const brawlerAfterResolve = (
-  s: BrawlerState, t: number, hits: number, opts: { pointCap: number; countPoint: boolean; hitstopMs: number },
+  s: BrawlerState, t: number, hits: number,
+  /** landed=「当たった」数(相手の体力を削った当たり・防がれた当たりを除く・§19-1)。未指定=hits と同じ。 */
+  opts: { pointCap: number; countPoint: boolean; hitstopMs: number; landed?: number },
 ): BrawlerState => {
   const connected = hits > 0;
-  let next: BrawlerState = { ...s, resolved: true, connected };
+  let next: BrawlerState = { ...s, resolved: true, connected, landed: connected && (opts.landed ?? hits) > 0 };
   if (s.phase === 'attack') {
     next.nextStage = connected ? (s.stage >= 5 ? 1 : s.stage + 1) : 1;
     if (!connected) next.chainUntil = 0;
@@ -525,12 +535,111 @@ export const brawlerCancel = (s: BrawlerState): BrawlerState => ({
 export const brawlerOnHurt = (s: BrawlerState): BrawlerState => ({
   ...s, buffered: false, techBuffer: undefined, stepBuffer: undefined, nextStage: 1, chainUntil: 0,
 });
+// ---------------------------------------------------------------------------------------------
+// ★つながる道(research/BRAWLER.md §19・社長承認2026-11-10「KOFの案は はい」)。
+// 「技のあと、ちゃんと隙を入れてあげて、繋がるの(少しキャンセル掛かるとか)と繋がらないのを作る」。
+// 道の表は brawlerRouteAllows の1か所。プレイヤー(store)と拳鬼(utils/phantomBrawlerAi)が同じ表を読む。
+// ---------------------------------------------------------------------------------------------
+const BRAWLER_ROUTES: Readonly<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>> = {
+  idle: ['s1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'stomp', 'kiko', 'guard'], // 待機からは何でも(今どおり)
+  s1: ['s2', 'kick1'],
+  s2: ['s3', 'kiko'],
+  s3: ['s4', 'kick1'],
+  s4: ['s5', 'stomp'],
+  s5: [],                 // 締め
+  kick1: ['kick2', 'stomp'],
+  kick2: ['kick3', 'stomp'],
+  kick3: [],              // 締め
+  stomp: ['kiko'],
+  kiko: ['guard'],        // 秘奥義の入力の締めの時だけ(下の secretClose)
+  guard: ['guard'],       // 構えの延長だけ
+};
 /**
- * 技の先行入力として覚えるか(§9-60)。技の最中で、いま出せない技(当たっていない技の後隙・前隙・止めの間・構えの間)。
- * 構えの間の構え(延長)は今どおり出る。新しい入力は覚えている入力を上書きする。
+ * 道の表(§19-1)。from=いまの行動(待機・通常の何段目か・飛び蹴りの何発目か・技)/ to=続けて出す行動。
+ * 気功→構えは secretClose(秘奥義の順番が3つ進んでいる)の時だけ。表に無い組は false。
+ * ★この関数は「道があるか」だけ。当たったか・受付の内かは brawlerTechCancelOk / 段のつなぎの規則が別に見る。
  */
-export const brawlerShouldBufferTech = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean =>
-  s.phase === 'tech' && !brawlerTechAllowed(s, kind, t);
+export const brawlerRouteAllows = (from: BrawlerRouteNode, to: BrawlerRouteNode, o: { secretClose?: boolean } = {}): boolean => {
+  if (from === 'kiko' && to === 'guard') return o.secretClose === true;
+  return BRAWLER_ROUTES[from].includes(to);
+};
+/** 通常の段(1..5)の節。 */
+export const brawlerStageNode = (stage: number): BrawlerRouteNode =>
+  (['s1', 's2', 's3', 's4', 's5'] as const)[Math.max(1, Math.min(5, Math.round(stage))) - 1];
+/** 技の節(飛び蹴りは何発目か)。 */
+export const brawlerTechNode = (kind: BrawlerTechKind, kickN = 1): BrawlerRouteNode =>
+  kind === 'kick' ? (['kick1', 'kick2', 'kick3'] as const)[Math.max(1, Math.min(3, Math.round(kickN))) - 1] : kind;
+/** いまの行動の節(待機なら 'idle')。 */
+export const brawlerRouteNodeOf = (s: Pick<BrawlerState, 'phase' | 'stage' | 'tech' | 'kickN'>): BrawlerRouteNode =>
+  s.phase === 'attack' ? brawlerStageNode(s.stage)
+    : s.phase === 'tech' && s.tech ? brawlerTechNode(s.tech, s.kickN)
+      : 'idle';
+/** 秘奥義の入力の締め(↑構え)を待っている所か(順番が3つ進んでいる=§10-1・§19-1)。 */
+export const brawlerSecretClosing = (s: Pick<BrawlerState, 'secretProgress'>): boolean =>
+  (s.secretProgress ?? 0) >= BRAWLER_SECRET_ORDER.length - 1;
+/**
+ * 「当たった」か(§19-1): 判定を解いて、相手の体力を削った当たり。空振り・構えで受けられた・レバーガードで防がれた当たりは false
+ * (呼び手が判定の結果を brawlerAfterResolve の landed で渡す)。
+ */
+export const brawlerHitLanded = (s: Pick<BrawlerState, 'resolved' | 'connected' | 'landed'>): boolean =>
+  s.resolved && s.connected && s.landed !== false;
+/** 行動(通常の段・技)の最中か。それ以外(待機・欄の欠けた古い状態)は待機として扱う。 */
+const brawlerActing = (s: Pick<BrawlerState, 'phase'>): boolean => s.phase === 'attack' || s.phase === 'tech';
+/**
+ * 取り消しの受付が開いているか(§19-2)。判定を解いてから(当たりの止めの間は時計が止まる=止めが明けた瞬間から)
+ * BRAWLER_CANCEL_WINDOW_MS の間だけ。行動の時計(止めた分を引いた経過)で測る=拳鬼が固められて時計が止まった分も数えない。
+ * 当たったか・道があるかは見ない(呼び手が見る)。
+ */
+export const brawlerCancelWindowOpen = (s: BrawlerState, t: number): boolean => {
+  if (!brawlerActing(s) || !s.resolved || brawlerInHitstop(s, t)) return false;
+  const since = brawlerElapsed(s, t) - s.windupMs;
+  return since >= 0 && since < BRAWLER_CANCEL_WINDOW_MS;
+};
+/**
+ * ★秘奥義の入力の持ち越し(§19-2・§19-4 の6「→↓←↑ が今どおり成立する」のための、実装で決めた所)。
+ * 秘奥義の順番(→↓←↑)が進んでいる最中に、順番どおりの次の技を「いまの技の取り消しの受付の外」(受付を過ぎた後・当たらなかった時)に入れた時は、
+ * 捨てずに覚えておき、いまの技が終わって**待機へ戻った瞬間に出す**(=待機から出し直した扱い: 後隙は丸ごと晒す・つながりの固まりは延ばさない)。
+ * これが無いと、入力の間隔によって2〜4手目が「受付の後・後隙の終わりの前」に落ちて消え、秘奥義が出ない帯ができる
+ * (係数1.3で実測: 間隔 420〜580ms・680〜990ms が不成立。今までは 270ms 以上なら成立)。順番の外の技は今の規則どおり捨てる。
+ */
+export const brawlerSecretCarry = (s: Pick<BrawlerState, 'phase' | 'tech' | 'secretProgress'>, kind: BrawlerTechKind): boolean => {
+  const p = s.secretProgress ?? 0;
+  return s.phase === 'tech' && p >= 1 && p < BRAWLER_SECRET_ORDER.length
+    && s.tech === BRAWLER_SECRET_ORDER[p - 1] && kind === BRAWLER_SECRET_ORDER[p];
+};
+/**
+ * 技の先行入力として覚えるか(§9-60・§19-2)。行動の最中で、いまは出せないが**道の上にあって、まだ出せるようになり得る**技だけ。
+ *  - 入れた時点で道に無い技は覚えない(捨てる)。
+ *  - 出だし(判定の前)と、当たりの止めの間(受付が開く前)だけ覚える。当たらなかった・受付を過ぎた行動では覚えない。
+ *  - 飛び蹴りの連続(蹴り→次の蹴り)は今どおり: 判定の前に入れた次の蹴りを覚える。
+ *  - 例外: 秘奥義の順番どおりの次の技(brawlerSecretCarry)は、受付の外でも覚える(後隙の終わりに待機から出す)。
+ * 構えの間は構えの延長だけ(覚えない)。新しい入力は覚えている入力を上書きする。
+ */
+export const brawlerShouldBufferTech = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
+  if (!brawlerActing(s) || isBrawlerGuardingAt(s, t) || (s.phase === 'tech' && s.tech === 'guard')) return false;
+  if (brawlerTechAllowed(s, kind, t)) return false;
+  const from = brawlerRouteNodeOf(s);
+  if (s.phase === 'tech' && s.tech === 'kick' && kind === 'kick') return !s.resolved && s.kickN < BRAWLER_KICK_MAX;
+  const to = brawlerTechNode(kind, 1);
+  if (brawlerRouteAllows(from, to, { secretClose: brawlerSecretClosing(s) })) {
+    if (!s.resolved) return true; // 出だし: 当たるかはまだ分からない
+    // 当たりの止めの間(受付が開く前)。気功は撃った時点で受付が開く=ここへ来るのは受付を過ぎた後。
+    if (from !== 'kiko' && brawlerHitLanded(s) && brawlerInHitstop(s, t)) return true;
+  }
+  return brawlerSecretCarry(s, kind); // 秘奥義の順番どおりの次の技だけは、受付の外でも覚える(後隙の終わりに待機から出す)
+};
+/**
+ * 覚えた技の先行入力をどうするか(§19-2)。null=覚えていない / 'fire'=いま出す(受付が開いた)/ 'wait'=まだ / 'drop'=捨てる。
+ * 当たらなかった(空振り・防がれた)・受付を過ぎた・待機へ戻った時は捨てる=後隙の終わりに勝手に出さない。
+ * (秘奥義の順番どおりの次の技=brawlerSecretCarry は 'wait' のまま行動の終わりまで残り、呼び手が待機へ戻った瞬間に出す。)
+ */
+export const brawlerTechBufferDecision = (s: BrawlerState, t: number): 'fire' | 'wait' | 'drop' | null => {
+  const k = s.techBuffer;
+  if (!k) return null;
+  if (!brawlerActing(s)) return 'drop';
+  if (brawlerTechAllowed(s, k, t)) return 'fire';
+  return brawlerShouldBufferTech(s, k, t) ? 'wait' : 'drop';
+};
 
 /** 技ポイントを払えるか。 */
 /** 技の値段。血の覚醒中は0=技ポイントを無視して使い放題(社長指示2026-11-08「覚醒中は技ポイント無視して使い放題」)。 */
@@ -541,27 +650,37 @@ export const brawlerCanPay = (s: BrawlerState, kind: BrawlerTechKind, awakened =
   s.points >= brawlerTechCost(kind, awakened, discount);
 
 /**
- * 技→技のキャンセル(research/BRAWLER.md §11-4・格闘ゲームの「繋がる」)。いまの技の後隙を別の技で取り消せるか。
- *  - 技が**当たった**時だけ(当たりの止めが明けた瞬間から後隙の終わりまで)。構え(↑)は守りなので当たらなくても後隙からいつでも。
- *  - 同じ技へは取り消せない。1回の流れで各技は1回ずつ(飛び蹴りの3連は1つ)。構えからは取り消せない(構えの間は延長だけ)。
+ * 取り消し(research/BRAWLER.md §19-1・§19-2)。いまの行動(通常の段・技)の後隙を、技 kind で取り消せるか。
+ *  - 道の表(brawlerRouteAllows)にある組だけ。
+ *  - **当たった時だけ**(brawlerHitLanded)・**取り消しの受付の内だけ**(brawlerCancelWindowOpen)。
+ *  - 気功→構えは秘奥義の入力の締め(順番が3つ進んでいる)の時だけ。気功は弾なので当たりを問わない(撃った時点で受付が開く)。
+ *  - 構えからは取り消せない(構えの間は延長だけ)。飛び蹴りの連続(蹴り→次の蹴り)は取り消しではない(brawlerTechAllowed の連続の受付)。
+ * 旧(§11-4): 「同じ技以外・1回の流れで各技1回・構えは当たらなくても後隙からいつでも」は道の表に置き換えた。
  */
 export const brawlerTechCancelOk = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
-  if (s.phase !== 'tech' || !s.tech || s.tech === 'guard') return false;
-  if (!s.resolved || kind === s.tech) return false;
-  if (brawlerElapsed(s, t) >= brawlerTotalMs(s)) return false;
-  if ((s.techChain ?? [s.tech]).includes(kind)) return false;
-  if (kind === 'guard') return true;
-  return s.connected && !brawlerInHitstop(s, t);
+  if (!brawlerActing(s) || (s.phase === 'tech' && (!s.tech || s.tech === 'guard'))) return false;
+  if (s.phase === 'tech' && s.tech === 'kick' && kind === 'kick') return false;
+  const from = brawlerRouteNodeOf(s);
+  const to = brawlerTechNode(kind, 1); // 段・潰し・気功から出す蹴りは1発目
+  if (!brawlerRouteAllows(from, to, { secretClose: brawlerSecretClosing(s) })) return false;
+  if (!brawlerCancelWindowOpen(s, t)) return false;
+  return from === 'kiko' ? true : brawlerHitLanded(s);
 };
-/** 技を今出せるか(払える以外の条件)。構えは途中で解除できない・技の最中は出さない(飛び蹴りの連続は着いた後だけ・当たった技からの取り消しは §11-4)。 */
+/**
+ * 技を今出せるか(払える以外の条件・§19-1)。
+ *  - 構えの間は構えの再入力(延長)だけ。
+ *  - 待機からは何でも(今どおり)。
+ *  - 飛び蹴りの連続(1・2発目 → 次の蹴り)は今どおり: 判定の後ならいつでも(当たりの止めの間も・当たっていなくても)。3発目(締め)からは出せない。
+ *  - それ以外(通常→技・技→技)は取り消しの規則(brawlerTechCancelOk=道の上・当たった・受付の内)。
+ */
 export const brawlerTechAllowed = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
   // 構えの間は構えの再入力(延長)だけ受け付ける(社長指示2026-11-07「カウンター中もカウンター入力を受け付ける(連続延長発動できる)」)。
   if (isBrawlerGuardingAt(s, t)) return kind === 'guard';
-  if (s.phase === 'tech') {
-    if (kind === 'kick' && s.tech === 'kick') return s.resolved && s.kickCount < BRAWLER_KICK_MAX;
-    return brawlerTechCancelOk(s, kind, t);
+  if (!brawlerActing(s)) return true;
+  if (s.phase === 'tech' && s.tech === 'kick' && kind === 'kick') {
+    return s.resolved && brawlerRouteAllows(brawlerTechNode('kick', s.kickN), brawlerTechNode('kick', s.kickN + 1)) && s.kickN < BRAWLER_KICK_MAX;
   }
-  return true; // 待機・通常攻撃のどこからでも(必殺技キャンセル)
+  return brawlerTechCancelOk(s, kind, t);
 };
 
 /**
@@ -614,16 +733,17 @@ export const brawlerStepFactor = (p: number): number => (p <= 0 || p >= 1 ? 0 : 
 export const brawlerStepSpeed = (dist: number, ms: number): number =>
   Math.max(0, dist) / Math.max(0.001, (ms / 1000) * (2 / Math.PI));
 /**
- * ステップを出せるか(§12-3)。待機・通常攻撃と技の後隙(判定の後・止めが明けた後)から出せる=後隙の取り消し。
- * 技・通常攻撃の前隙、止めの間、構えの最中、秘奥義の間、ステップの最中は出せない。
+ * ステップを出せるか(§12-3・§19-1)。待機からは今どおり。後隙を取り消せるのは**当たった1〜4段目の後隙だけ**(止めが明けた後)。
+ * 技の後隙・5段目・空振り(防がれた当たり)の後隙は取り消せない=「技のあと、ちゃんと隙」(旧: 通常攻撃と技の後隙ならどれでも取り消せた)。
+ * 前隙、止めの間、構えの最中、秘奥義の間、ステップの最中は出せない。
  */
 export const brawlerStepAllowed = (s: BrawlerState, t: number): boolean => {
   if (s.secret) return false;
   if (isBrawlerGuardingAt(s, t)) return false;
   if (s.stepUntil !== undefined && t < s.stepUntil) return false;
   if (s.phase === 'idle') return true;
-  if (s.phase === 'tech' && s.tech === 'guard') return false;
-  if (!s.resolved || brawlerInHitstop(s, t)) return false;
+  if (s.phase !== 'attack' || s.stage < 1 || s.stage > 4) return false;
+  if (!brawlerHitLanded(s) || brawlerInHitstop(s, t)) return false;
   return brawlerElapsed(s, t) < brawlerTotalMs(s);
 };
 /** ステップを始めた状態。後隙を取り消す=その行動を終えた扱い(つながり・秘奥義の数えは終わった時と同じ)。先行入力は捨てる。 */

@@ -37,7 +37,9 @@ const drive = (id: PbScriptId, o: { missAt?: number } = {}): { seq: string[]; m:
   expect(m.script?.id).toBe(id);
   s = brawlerStartAttack(s, brawlerStageForPress(s, t), t, false); seq.push(`s${s.stage}`);
   for (let k = 0; k < 20; k++) {
-    // 判定を解く(o.missAt 手目は外す)。
+    // 判定を解く(o.missAt 手目は外す)。★判定の時刻=出だしの終わり(§19-2: 取り消しの受付は判定を解いた時刻から数える=
+    //   出だしを飛ばして解くと受付が開かない。旧の運転手は出した時刻のまま解いていた)。
+    t = Math.max(t, s.startAt + s.windupMs);
     const miss = o.missAt === seq.length;
     s = brawlerAfterResolve(s, t, miss ? 0 : 1, { pointCap: 20, countPoint: s.phase === 'attack', hitstopMs: 0 });
     // 蹴りの連続の受付は着いた瞬間に制御が張る(phantomBrawlerTick.resolveAction と同じ)。
@@ -141,9 +143,16 @@ describe('途中で外れたら打ち切る・割り込みも打ち切り(§16-1
     expect(m.script).not.toBeNull();
     pbInterruptScript(m);
     expect(m.script).toBeNull();
+    m.breathOwed = false; m.nextStringAt = 0; // 打ち切りの後の息継ぎを飛ばして、次の台本を始める
     decidePhantomBrawler(base({ rand: () => randFor(1) }), m);
+    expect(m.script).not.toBeNull();
+    // ★§19-1(拳鬼も同じ道の表): 構えは待機からだけ。通常攻撃の最中には構えられない(殴っている間は守れない)=台本は続く。
+    //   (旧: 通常攻撃のどこからでも構えを出せたので、段の出だしでも弾を構えで返して台本を打ち切っていた。)
     const s = brawlerStartAttack({ ...initialBrawlerState(), points: 9 }, 1, T, false);
-    expect(decidePhantomBrawler(base({ bullet: { kind: 'counter' } }, s), m)).toEqual({ kind: 'tech', tech: 'guard' });
+    expect(decidePhantomBrawler(base({ bullet: { kind: 'counter' } }, s), m)).toBeNull();
+    expect(m.script).not.toBeNull();
+    // 待機(段のつなぎの間など)で構えが入った=打ち切り
+    expect(decidePhantomBrawler(base({ bullet: { kind: 'counter' } }, { points: 9 }), m)).toEqual({ kind: 'tech', tech: 'guard' });
     expect(m.script).toBeNull();
   });
 });

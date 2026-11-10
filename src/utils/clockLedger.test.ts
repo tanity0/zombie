@@ -28,6 +28,9 @@ const REAL_CLOCK_FIELDS = [
 const GAME_CLOCK_FIELDS = [
   'stunUntil', 'rootUntil', 'bossFullStunUntil', 'aiPhaseUntil', 'aiReadyAt', 'biteReadyAt',
   'biteRecoverUntil', 'chaffMoveCdUntil', 'bossStateUntil', 'bossNextActionAt', 'bossPhaseFlashUntil',
+  // 格闘の確定の固まり・コンボの後の固まらない時間(research/BRAWLER.md §19-3 ⑥: プレイヤーの段・技と同じ時計=gameTime)。
+  // ※隣の brHoldUntil / brNoHoldUntil は壁時計(Date.now)=取り違えやすいので台帳に載せる。
+  'brLockUntil', 'brLockNoHoldUntil',
 ] as const;
 
 // ★素の `now` も数える。**ここを外していたせいで最初の網は素通りした**(自分で戻して確かめた)。

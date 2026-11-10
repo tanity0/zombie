@@ -772,7 +772,7 @@ export const isBiteFrozen = (
   || (enemy.liftUntil !== undefined && nowMs < enemy.liftUntil);
 
 export const canStartBite = (
-  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState' | 'brHoldUntil'>,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState' | 'brHoldUntil' | 'brLockUntil'>,
   gameTime: number,
   /** ★`liftUntil` は Date.now 系(§isBiteFrozen の注記)。時計を混ぜないため呼び手が両方渡す。 */
   nowMs: number,
@@ -808,6 +808,8 @@ export const canStartBite = (
   if (isBiteFrozen(enemy, gameTime, nowMs)) return false;
   // 格闘の食らいの固まり(research/BRAWLER.md §11-1・Date.now系)の間は構え始めない(構えている噛みは止めない=技を出している敵は固めない)。
   if (enemy.brHoldUntil !== undefined && nowMs < enemy.brHoldUntil) return false;
+  // ★確定の固まり(§19-3 ⑥・gameTime系)も同じ(どちらかの時計が生きていれば固まり)。
+  if (enemy.brLockUntil !== undefined && gameTime < enemy.brLockUntil) return false;
   return true;
 };
 
@@ -822,7 +824,7 @@ export const canStartBite = (
  * ここを緩めると「黄色く気絶して棒立ちの敵が噛んでくる」が戻る(v0.25.3600台の事故)。
  */
 export const canZombieRushBite = (
-  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState' | 'brHoldUntil'>,
+  enemy: Pick<Enemy, 'type' | 'biteAt' | 'biteReadyAt' | 'biteRecoverUntil' | 'rootUntil' | 'stunUntil' | 'liftUntil' | 'dormant' | 'aiPhase' | 'bossState' | 'brHoldUntil' | 'brLockUntil'>,
   gameTime: number,
   /** ★`liftUntil` は Date.now 系(§isBiteFrozen の注記)。時計を混ぜないため呼び手が両方渡す。 */
   nowMs: number,
@@ -835,6 +837,8 @@ export const canZombieRushBite = (
   if (isBiteFrozen(enemy, gameTime, nowMs)) return false;
   // 格闘の食らいの固まり(research/BRAWLER.md §11-1・Date.now系)の間は構え始めない(構えている噛みは止めない=技を出している敵は固めない)。
   if (enemy.brHoldUntil !== undefined && nowMs < enemy.brHoldUntil) return false;
+  // ★確定の固まり(§19-3 ⑥・gameTime系)も同じ(どちらかの時計が生きていれば固まり)。
+  if (enemy.brLockUntil !== undefined && gameTime < enemy.brLockUntil) return false;
   return true;
 };
 

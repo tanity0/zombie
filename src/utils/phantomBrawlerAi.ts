@@ -372,7 +372,8 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
     } else {
       const kind = BRAWLER_SECRET_ORDER[Math.max(0, Math.min(BRAWLER_SECRET_ORDER.length - 1, prog))];
       if (!brawlerCanPay(s, kind, false, i.discount(kind))) { m.secretPlan = false; m.secretLaunched = false; return null; }
-      // 1手目(蹴り)は待機からだけ。2手目以降は前の技が当たった後の取り消し・終わりの後のどちらでも。
+      // 1手目(蹴り)は待機からだけ。2手目以降は前の技が当たった後の取り消し(§19: 受付の内・締めの構えは気功を撃った後の受付の内)・
+      // 終わりの後(待機から出し直す=順番は今どおり数える)のどちらでも。
       if ((prog > 0 || idle) && brawlerTechAllowed(s, kind, t) && !(prog === 0 && m.secretLaunched)) {
         if (prog === 0) { m.undo = { secretLaunched: m.secretLaunched }; m.secretLaunched = true; }
         return { kind: 'tech', tech: kind };
@@ -471,7 +472,9 @@ export const pbSecretAfterLeap = (m: PhantomBrawlerMind): void => {
 /**
  * 台本の続き(§16-1)。idx=出した手の数。直前に出した手が当たっていれば次の手を出す。
  *  - 段→段: 当たった後の先行入力(届く距離の内でだけ=台本にする前と同じ)。
- *  - 段→技・技→技: 当たった後の取り消し(プレイヤーと同じ brawlerTechAllowed)。蹴り→蹴りは止めが明けてから。
+ *  - 段→技・技→技: 当たった後の取り消し(プレイヤーと同じ brawlerTechAllowed=道の表の上・当たった時だけ・取り消しの受付の内だけ・
+ *    research/BRAWLER.md §19-1・§19-2)。受付が開く前(止めの間)は待つ。受付を過ぎたら次の手は出ない=待機へ戻って台本は終わる。
+ *    蹴り→蹴りは止めが明けてから。
  *  - 途中で外れたら(当たらずに判定を解いたら)打ち切り。書いた手を出し切ったら終わり。
  *  - 出した手が出ていない(被弾で先行入力が捨てられた・予備動作が取り消された・別の行動が割り込んだ)=打ち切り。
  */

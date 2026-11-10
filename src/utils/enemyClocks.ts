@@ -17,7 +17,7 @@
 // これが無いと、硬直中に書かれた新しいCDを硬直明けの書き戻しが**消してしまう**。
 import type { Enemy, EnemyClockStash } from '../types/game';
 import { isEnemyAttacking } from './combatFeel';
-import { brawlerPhaseKind, brawlerLiftHoldNow } from './brawlerCombo';
+import { brawlerPhaseKind, brawlerLiftHoldNow, brawlerHoldClockAlive } from './brawlerCombo';
 import { isRecoverHoldPhase } from './recoverPhase';
 
 /** 期限型(`*Until`/`*ReadyAt`=残りで測る)か、始点型(`*At`=経過で測る)か。 */
@@ -38,13 +38,14 @@ export interface EnemyClockEntry {
    * ★除外2(相依存): **この相の間だけ**、このフィールドは「硬直そのものの期限」なので触らない。
    * 外し忘れると硬直が永久に明けない(=パンプキンが着地したまま二度と立たない)。
    */
-  excludeWhen?: (e: Enemy, nowMs: number) => boolean;
+  excludeWhen?: (e: Enemy, nowMs: number, gameTime: number) => boolean;
 }
 /**
  * ★格闘の食らいの固まり(research/BRAWLER.md §11-1)で止められている間は、硬直相の自分の期限も止める
  * (社長指示2026-11-09「技を出し終えた隙に殴って固める=確定反撃」・硬直の残りは止まり、明けたら続きから)。
  */
-const brawlerHeldClock = (e: Enemy, nowMs: number): boolean => (e.brHoldUntil !== undefined && nowMs < e.brHoldUntil)
+// ★固まりの時計は2つ(§19-3 ⑥): 壁時計の欄(brHoldUntil)か gameTime の欄(brLockUntil=確定の固まり)のどちらかが生きていれば固まり。
+const brawlerHeldClock = (e: Enemy, nowMs: number, gameTime: number): boolean => brawlerHoldClockAlive(e, gameTime, nowMs)
   // ★格闘の浮き(§12-1)も同じ「止めるだけ」(社長承認2026-11-09「硬直中に浮かせても硬直の続きを残す」)。
   || brawlerLiftHoldNow(e, nowMs);
 
@@ -87,7 +88,8 @@ export const isEnemyFrozenForClocks = (e: Enemy, gameTime: number, nowMs: number
   //   =その相の時計もここで止まり、明けたら続きから(本当に技を出している個体は止まらない=isBrawlerTechBusy)。
   // ★§13-1(社長指示2026-11-09): 技の溜めも固める=溜めの期限・予告の時刻(aiPhaseUntil・aiStartedAt・biteAt・chaffMoveAt)もここで据え置く
   //   (流星の位相も止まり、明けたら続きから)。攻撃の振り(active)は止めない。
-  if (!committed && e.brHoldUntil !== undefined && nowMs < e.brHoldUntil
+  // ★§19-3 ⑥: 確定の固まり(brLockUntil・gameTime)も同じ(どちらかの時計が生きていれば固まり)。
+  if (!committed && brawlerHoldClockAlive(e, gameTime, nowMs)
     && brawlerPhaseKind(e, gameTime) !== 'active') return true;
   // (c')英雄の昇天に見とれて立ち止まっている間(Date.now系・updateEnemies と同じ式)
   if (!committed && e.aweUntil !== undefined && nowMs < e.aweUntil
@@ -132,7 +134,7 @@ export const isEnemyFrozenForClocks = (e: Enemy, gameTime: number, nowMs: number
 export const ENEMY_ACTION_CLOCKS: readonly EnemyClockEntry[] = [
   // ---- 雑魚・共通 ------------------------------------------------------------------------------
   // ★除外2: `recover` 系の相にいる間は、これ自体が硬直(a)の期限。
-  { field: 'aiPhaseUntil', kind: 'deadline', base: 'game', excludeWhen: (e, nowMs) => isRecoverHoldPhase(e.aiPhase) && !brawlerHeldClock(e, nowMs) },
+  { field: 'aiPhaseUntil', kind: 'deadline', base: 'game', excludeWhen: (e, nowMs, gameTime) => isRecoverHoldPhase(e.aiPhase) && !brawlerHeldClock(e, nowMs, gameTime) },
   { field: 'aiReadyAt', kind: 'deadline', base: 'game' },
   { field: 'biteReadyAt', kind: 'deadline', base: 'game' },
   { field: 'chaffMoveCdUntil', kind: 'deadline', base: 'game' },
@@ -158,7 +160,7 @@ export const ENEMY_ACTION_CLOCKS: readonly EnemyClockEntry[] = [
   { field: 'gGlenReadyAt', kind: 'deadline', base: 'game', map: true },
   // ---- ボス共通(裏ボス4体/天使6体/トール/賞金首4体/アイドル) --------------------------------
   // ★除外2: `-recover` の州にいる間は、これ自体が硬直(a)の期限。
-  { field: 'bossStateUntil', kind: 'deadline', base: 'game', excludeWhen: (e, nowMs) => isRecoverHoldPhase(e.bossState) && !brawlerHeldClock(e, nowMs) },
+  { field: 'bossStateUntil', kind: 'deadline', base: 'game', excludeWhen: (e, nowMs, gameTime) => isRecoverHoldPhase(e.bossState) && !brawlerHeldClock(e, nowMs, gameTime) },
   { field: 'bossNextActionAt', kind: 'deadline', base: 'game' },
   { field: 'bossOpeningHoldAt', kind: 'deadline', base: 'game' },
   { field: 'bossWindupStartAt', kind: 'start', base: 'game' },
@@ -214,7 +216,7 @@ export const tickEnemyClockFreeze = (
   const patch: Record<string, unknown> = {};
 
   for (const entry of ENEMY_ACTION_CLOCKS) {
-    if (entry.excludeWhen !== undefined && entry.excludeWhen(e, nowMs)) continue;
+    if (entry.excludeWhen !== undefined && entry.excludeWhen(e, nowMs, gameTime)) continue;
     const t = entry.base === 'game' ? gameTime : nowMs;
     const prevT = entry.base === 'game' ? prevG : prevN;
     const raw = (e as unknown as Record<string, unknown>)[entry.field];

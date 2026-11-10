@@ -1,6 +1,8 @@
 // ★ボス級も雑魚と共通の止まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」)。
 // 実際の AI(updateEnemies と各ボスの制御)を回して、①止め+②食らいの固まりで止まり、明けたら続きから動くこと、
 // 技の最中は止まらないこと、固まりの長さが雑魚と同じこと、止めた後の次の技の予告が溜めの始まりから出ることを固める。
+// ★§19(2026-11-10): 固まりは「確定の固まり」(gameTime の欄 brLockUntil・当たりの瞬間から 止め+受付+余白)になった。
+//   旧の「止め45+基本300(壁時計の brHoldUntil)・減衰・同じ技の罰」の数字は、新しい長さ(止め45+受付150+余白34=229ms・係数1.0)へ書き換えた。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
@@ -29,6 +31,10 @@ const place = (type: EnemyType, dx: number, dy: number, id: string, extra: Parti
   return { ...e, x: c.x + dx - e.width / 2, y: c.y + dy - e.height / 2, health: 999999, maxHealth: 999999, id, dormant: false, ...extra } as Enemy;
 };
 const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
+/** 確定の固まりの終わりを壁時計に直した値(このテストは技の時計と壁時計を同じだけ進める)。 */
+const holdEndOf = (id: string): number => now + (en(id).brLockUntil! - useGameStore.getState().gameTime);
+/** 1段目(止め45ms)の確定の固まりの長さ(係数1.0): 止め45+受付150+余白34。 */
+const S1_LOCK_MS = 45 + 150 + 34;
 /** 1段目(止め45ms・押さない)を1発。 */
 const hit = (id: string, move: 's1' | 's2' | 's3' | 'kiko' = 's1') => useGameStore.getState().triggerCounter(undefined, {
   targetIds: [id], mult: 0.01, brawler: true, stunMs: 45, kb: { kind: 'none' }, postureMult: 0.01, pressedAt: Date.now(), combo: { move },
@@ -54,17 +60,19 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('ボス級も雑魚と同じ固まり(§11-1)', () => {
-  it('固まりの長さ(止め+固まり)と減衰は雑魚と同じ・ボス級の止めは hitStunUntil(銃の止めと同じ枠)に書かない', () => {
+  it('固まりの長さは雑魚と同じ(同じ技の2回目は固めない・気功はそれまでの固まりを切る、も同じ)・ボス級の止めは hitStunUntil(銃の止めと同じ枠)に書かない', () => {
     setup();
     useGameStore.setState({ enemies: [place('hunter', 80, 0, 'h'), place('zombie', -80, 0, 'z'), place('miguel', 0, 120, 'm', { bossState: 'chase' })] });
     const holds: Record<string, number[]> = { h: [], z: [], m: [] };
-    for (const mv of ['s1', 's2', 'kiko', 's1'] as const) { // 3段目は浮かせる(§13-2)=重さで長さが変わるので比べない
-      for (const id of ['h', 'z', 'm']) { hit(id, mv); holds[id].push(en(id).brHoldUntil! - now); }
-      now += 200;
+    const gt = () => useGameStore.getState().gameTime;
+    for (const mv of ['s1', 's2', 's1', 'kiko'] as const) { // 3段目は浮かせる(§13-2)=浮きの長さが混ざるので比べない
+      for (const id of ['h', 'z', 'm']) { hit(id, mv); holds[id].push((en(id).brLockUntil ?? 0) - gt()); }
+      now += 50; useGameStore.setState(st => ({ gameTime: st.gameTime + 50 }));
     }
     expect(holds.h).toEqual(holds.z);
     expect(holds.m).toEqual(holds.z);
-    expect(holds.z[3]).toBeLessThan(holds.z[0]); // 減衰+同じ技の罰
+    // 1段目=229 / 2段目(50ms後)=229 / 同じコンボで2回目の1段目=延びない(2段目の残り179) / 気功=止めの終わり(45)まで切り詰め
+    expect(holds.z).toEqual([S1_LOCK_MS, S1_LOCK_MS, S1_LOCK_MS - 50, 45]);
     expect(en('h').hitStunUntil).toBeUndefined();
     expect(en('m').hitStunUntil).toBeUndefined();
   });
@@ -77,8 +85,8 @@ describe('ボス級も雑魚と同じ固まり(§11-1)', () => {
     step(100);
     expect(Math.abs(en('h').x - x0)).toBeGreaterThan(1); // 動いている
     hit('h');
-    const until = en('h').brHoldUntil!;
-    expect(until - now).toBe(45 + 300);
+    const until = holdEndOf('h');
+    expect(until - now).toBe(S1_LOCK_MS);
     const xs: number[] = [];
     step(until - now - 10, undefined, () => xs.push(en('h').x));
     expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(0.001); // 固まりの間は1pxも動かない
@@ -97,7 +105,7 @@ describe('ボス級も雑魚と同じ固まり(§11-1)', () => {
     const remain0 = en('m').bossNextActionAt! - useGameStore.getState().gameTime;
     hit('m');
     expect(brawlerHeldNow(en('m'), useGameStore.getState().gameTime, now)).toBe(true);
-    const until = en('m').brHoldUntil!;
+    const until = holdEndOf('m');
     const pos0 = { x: en('m').x, y: en('m').y };
     step(until - now - 10, ctrl);
     expect(en('m').x).toBeCloseTo(pos0.x, 6);
@@ -135,6 +143,7 @@ describe('ボス級も雑魚と同じ固まり(§11-1)', () => {
     const stUntil = en('m').bossStateUntil;
     hit('m');
     expect(en('m').brHoldUntil).toBeUndefined();
+    expect(en('m').brLockUntil).toBeUndefined(); // 技の最中のボス級には確定の固まりも書かない
     expect(brawlerHeldNow(en('m'), useGameStore.getState().gameTime, now)).toBe(false);
     step(30, ctrl);
     // 溜めの期限は据え置かれていない(技は止まらない)
@@ -154,8 +163,8 @@ describe('ボス級も雑魚と同じ固まり(§11-1)', () => {
     expect(Math.abs(en('b').x - x1)).toBeGreaterThan(1); // 追いかけている
     const remain0 = en('b').bossNextActionAt! - useGameStore.getState().gameTime;
     hit('b');
-    const until = en('b').brHoldUntil!;
-    expect(until - now).toBe(45 + 300);
+    const until = holdEndOf('b');
+    expect(until - now).toBe(S1_LOCK_MS);
     const xs: number[] = [];
     step(until - now - 10, ctrl, () => xs.push(en('b').x));
     expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(0.001);
@@ -200,8 +209,8 @@ describe('硬直・休み・帰りの相も固める(§11-1・§9-69)', () => {
     expect(en('m').bossState).toBe('volley-recover');
     const remain0 = en('m').bossStateUntil! - useGameStore.getState().gameTime; // 250
     hit('m');
-    const until = en('m').brHoldUntil!;
-    expect(until - now).toBe(45 + 300);
+    const until = holdEndOf('m');
+    expect(until - now).toBe(S1_LOCK_MS);
     step(until - now - 10, ctrl);
     expect(en('m').bossState).toBe('volley-recover'); // 固まりの間は硬直が明けない
     const remainHeld = en('m').bossStateUntil! - useGameStore.getState().gameTime;
@@ -235,7 +244,7 @@ describe('硬直・休み・帰りの相も固める(§11-1・§9-69)', () => {
     step(50);
     const remain0 = en('z').aiPhaseUntil! - useGameStore.getState().gameTime;
     hit('z');
-    const until = en('z').brHoldUntil!;
+    const until = holdEndOf('z');
     step(until - now - 10);
     expect(en('z').aiPhase).toBe('z-recover');
     const r = en('z').aiPhaseUntil! - useGameStore.getState().gameTime;

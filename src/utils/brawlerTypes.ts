@@ -1,6 +1,16 @@
 // サブウェポン「格闘」の状態の型だけ(research/BRAWLER.md)。依存ゼロの葉モジュール=types/game.ts から読んでも循環しない。
 export type BrawlerTechKind = 'guard' | 'stomp' | 'kiko' | 'kick';
 export type BrawlerPhase = 'idle' | 'attack' | 'tech';
+/**
+ * 当たりの名札(固まりの表・浮きの表・道の表の引き先)。段は s1..s5、飛び蹴りは何発目か、秘奥義の9連撃は1本。
+ * (utils/brawlerCombo から移した=道の表 utils/brawler.brawlerRouteAllows と同じ名札を使うため。)
+ */
+export type BrawlerMoveKey =
+  | 's1' | 's2' | 's3' | 's4' | 's5'
+  | 'kick1' | 'kick2' | 'kick3'
+  | 'stomp' | 'kiko' | 'secret' | 'secret-land';
+/** 道の表(research/BRAWLER.md §19-1)の節。待機・通常の段・飛び蹴りの何発目か・技。 */
+export type BrawlerRouteNode = 'idle' | 's1' | 's2' | 's3' | 's4' | 's5' | 'kick1' | 'kick2' | 'kick3' | 'stomp' | 'kiko' | 'guard';
 /** 拳鬼の技の予備動作のコマ(research/BRAWLER_PHANTOM.md §16-5): ready=しゃがみ / swing=腕上げ。 */
 export type KenkiPrepTex = 'ready' | 'swing';
 /** 秘奥義の9連撃で出す技(通常攻撃の段 1..5 か技)。research/BRAWLER.md §10。 */
@@ -42,6 +52,13 @@ export interface BrawlerState {
   /** 判定を解いたか / 当たったか。 */
   resolved: boolean;
   connected: boolean;
+  /**
+   * 「当たった」=相手の体力を削った当たりか(research/BRAWLER.md §19-1)。取り消し(通常→技・技→技)とステップの取り消しはこれを見る。
+   * 触れたが防がれた当たり(相手のレバーガード)は connected=true のまま landed=false。未設定=connected と同じ。
+   */
+  landed?: boolean;
+  /** この技を「道の上の続き」(取り消し・飛び蹴りの連続)として出したか(§19-3 ②)。気功を撃つ瞬間に固まりを延ばし直すかの印。 */
+  linked?: boolean;
   /** 先行入力(1つだけ)。 */
   buffered: boolean;
   /** 次に押した時に出す段(1..5)と、その段のつながりが切れる時刻(gameTime)。 */
@@ -84,7 +101,10 @@ export interface BrawlerState {
   secretLastEndAt?: number;
   /** 秘奥義の最中(undefined=発動していない)。 */
   secret?: BrawlerSecret;
-  /** 技→技のキャンセルの流れで出した技(research/BRAWLER.md §11-4・1回の流れで各技は1回ずつ)。キャンセルでない技で始め直す。 */
+  /**
+   * 技→技の取り消しで続けて出した技(絵と音の「繋がった」合図・ヒット数の流れの記録だけ)。取り消しでない技で始め直す。
+   * ★出せる/出せないの判定には使わない(§19-1 から、道の表 brawlerRouteAllows が決める)。
+   */
   techChain?: BrawlerTechKind[];
   /** ヒット数の表示(§11-4)。同じ流れの当たり数と、流れが切れた時刻(gameTime・0=続いている)。 */
   flowHits?: number;

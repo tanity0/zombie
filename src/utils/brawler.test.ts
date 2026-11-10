@@ -10,7 +10,7 @@ import {
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_HIT_PITCH, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
-  brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech,
+  brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
 } from './brawler';
@@ -438,52 +438,60 @@ describe('秘奥義(research/BRAWLER.md §10)', () => {
 });
 
 
-describe('技→技のキャンセル(research/BRAWLER.md §11-4)', () => {
+// ★§19(2026-11-10)で書き換えた: 旧「技が当たれば後隙の終わりまで別の技で取り消せる(同じ技以外・各技1回・構えは当たらなくてもいつでも)」は
+//   道の表(brawlerRouteAllows)+「当たった時だけ」+取り消しの受付(BRAWLER_CANCEL_WINDOW_MS)に置き換わった。道の表そのものは brawlerRoute.test.ts。
+describe('取り消し(research/BRAWLER.md §19-1・§19-2・旧 §11-4 の技→技のキャンセル)', () => {
   /** 技を始めて判定まで進め、当たり(hits)を解いた状態。 */
   const techResolved = (kind: 'stomp' | 'kiko' | 'kick' | 'guard', hits: number, t0 = 0, base = initialBrawlerState(), cancel = false) => {
     const s = brawlerStartTech(base, kind, t0, kind === 'kick' ? 1 : 0, cancel);
     const at = t0 + s.windupMs;
     return { s: brawlerAfterResolve(s, at, hits, { pointCap: 20, countPoint: false, hitstopMs: kind === 'stomp' ? 140 : kind === 'kick' ? 80 : 0 }), at };
   };
-  it('当たった技の後隙は、止めが明けてから後隙の終わりまで別の技で取り消せる', () => {
+  it('当たった技の後隙は、止めが明けてから受付(150ms)の間だけ、道の先の技で取り消せる', () => {
+    expect(BRAWLER_CANCEL_WINDOW_MS).toBe(150);
     const { s, at } = techResolved('stomp', 1);
     expect(brawlerTechAllowed(s, 'kiko', at + 50)).toBe(false); // 止めの間
     expect(brawlerTechAllowed(s, 'kiko', at + 141)).toBe(true);
-    expect(brawlerTechAllowed(s, 'kick', at + 141)).toBe(true);
-    const end = at + 140 + BRAWLER_TECHS.stomp.recoveryMs;
-    expect(brawlerTechAllowed(s, 'kiko', end - 1)).toBe(true);
-    expect(brawlerTechAllowed(s, 'kiko', end)).toBe(false); // 後隙の終わり
+    expect(brawlerTechAllowed(s, 'kick', at + 141)).toBe(false); // 道に無い(大踏み潰しの先は気功だけ)
+    expect(brawlerTechAllowed(s, 'kiko', at + 140 + BRAWLER_CANCEL_WINDOW_MS - 1)).toBe(true);
+    expect(brawlerTechAllowed(s, 'kiko', at + 140 + BRAWLER_CANCEL_WINDOW_MS)).toBe(false); // 受付の外=後隙が終わるまで何も出せない
+    expect(brawlerTechAllowed(s, 'kiko', at + 140 + BRAWLER_TECHS.stomp.recoveryMs - 1)).toBe(false);
   });
-  it('当たらなかった技からは取り消せない(構えだけは当たらなくても後隙からいつでも)', () => {
+  it('当たらなかった技からは取り消せない(構えも後隙からは出せない=殴っている間は守れない)', () => {
     const { s, at } = techResolved('stomp', 0);
     expect(brawlerTechAllowed(s, 'kiko', at + 10)).toBe(false);
     expect(brawlerTechAllowed(s, 'kick', at + 10)).toBe(false);
-    expect(brawlerTechAllowed(s, 'guard', at + 10)).toBe(true);
-    // 出る前(前隙)は構えでも取り消せない
+    expect(brawlerTechAllowed(s, 'guard', at + 10)).toBe(false);
+    // 触れたが防がれた当たり(相手のレバーガード=landed 0)も「当たっていない」
     const pre = brawlerStartTech(initialBrawlerState(), 'stomp', 0);
+    const guarded = brawlerAfterResolve(pre, pre.windupMs, 1, { pointCap: 20, countPoint: false, hitstopMs: 140, landed: 0 });
+    expect(guarded.connected).toBe(true);
+    expect(brawlerTechAllowed(guarded, 'kiko', pre.windupMs + 141)).toBe(false);
+    // 出る前(前隙)は何も出せない
     expect(brawlerTechAllowed(pre, 'guard', 50)).toBe(false);
+    expect(brawlerTechAllowed(pre, 'kiko', 50)).toBe(false);
   });
-  it('同じ技へは取り消せない・1回の流れで各技は1回ずつ(飛び蹴りの3連は1つ)', () => {
+  it('飛び蹴りの連続は今どおり(判定の後ならいつでも・当たっていなくても)。3発目(締め)からは出せない。蹴り→大踏み潰しは取り消し', () => {
+    const k = techResolved('kick', 1);
+    expect(brawlerTechAllowed(k.s, 'kick', k.at + 10)).toBe(true);  // 止めの間でも次の蹴り
+    expect(brawlerTechAllowed(k.s, 'stomp', k.at + 10)).toBe(false); // 取り消しは止めが明けてから
+    expect(brawlerTechAllowed(k.s, 'stomp', k.at + 81)).toBe(true);
+    expect(brawlerTechAllowed(k.s, 'kiko', k.at + 81)).toBe(false);  // 道に無い
+    expect(brawlerTechAllowed(k.s, 'guard', k.at + 81)).toBe(false);
+    const whiff = techResolved('kick', 0);
+    expect(brawlerTechAllowed(whiff.s, 'kick', whiff.at + 10)).toBe(true);
+    expect(brawlerTechAllowed(whiff.s, 'stomp', whiff.at + 10)).toBe(false);
+    const k3 = brawlerAfterResolve(brawlerStartTech(initialBrawlerState(), 'kick', 0, 3), 400, 1, { pointCap: 20, countPoint: false, hitstopMs: 140 });
+    expect(brawlerTechAllowed(k3, 'kick', 600)).toBe(false);
+    expect(brawlerTechAllowed(k3, 'stomp', 600)).toBe(false);
+  });
+  it('取り消しで続けた技は流れ(techChain)に並ぶ・取り消しでない技は始め直す・構えからは取り消せない', () => {
     const a = techResolved('stomp', 1);
-    expect(brawlerTechAllowed(a.s, 'stomp', a.at + 200)).toBe(false);
-    // 大踏み潰し → 気功(キャンセル)→ 当たった → 大踏み潰しには戻れない・飛び蹴りへは行ける
     const b = techResolved('kiko', 1, a.at + 200, a.s, true);
     expect(b.s.techChain).toEqual(['stomp', 'kiko']);
-    expect(brawlerTechAllowed(b.s, 'stomp', b.at + 10)).toBe(false);
-    expect(brawlerTechAllowed(b.s, 'kick', b.at + 10)).toBe(true);
-    // → 飛び蹴り(キャンセル)→ 当たった → 2発目は飛び蹴りの続き(今どおり)、気功・大踏み潰しには戻れない
-    const k = techResolved('kick', 1, b.at + 10, b.s, true);
-    expect(k.s.techChain).toEqual(['stomp', 'kiko', 'kick']);
-    expect(brawlerTechAllowed({ ...k.s, kickCount: 1 }, 'kick', k.at + 100)).toBe(true);
-    expect(brawlerTechAllowed(k.s, 'kiko', k.at + 100)).toBe(false);
-    expect(brawlerTechAllowed(k.s, 'stomp', k.at + 100)).toBe(false);
-    expect(brawlerTechAllowed(k.s, 'guard', k.at + 100)).toBe(true);
-    // 2発目(続き)でも流れはそのまま
-    expect(brawlerStartTech(k.s, 'kick', k.at + 300, 2).techChain).toEqual(['stomp', 'kiko', 'kick']);
-  });
-  it('キャンセルでない技は流れを始め直す・構えからは取り消せない', () => {
     const s = brawlerStartTech({ ...initialBrawlerState(), techChain: ['stomp', 'kiko'] }, 'kick', 0, 1);
     expect(s.techChain).toEqual(['kick']);
+    expect(brawlerStartTech(s, 'kick', 300, 2).techChain).toEqual(['kick']); // 連続の続きは流れをそのまま
     const g = techResolved('guard', 0);
     expect(brawlerTechCancelOk(g.s, 'kick', 100)).toBe(false);
     expect(brawlerTechAllowed(g.s, 'kick', 100)).toBe(false);
@@ -533,26 +541,53 @@ describe('ヒット数の表示(research/BRAWLER.md §11-4)', () => {
   });
 });
 
-describe('技の先行入力(社長指示2026-11-08「技の先行入力だけ採用」・§9-60)', () => {
-  it('技の最中で今は出せない技だけ覚える(当たった技の後隙・構えの延長は今どおり即座に出る)', () => {
+describe('技の先行入力(社長指示2026-11-08「技の先行入力だけ採用」・§9-60・§19-2)', () => {
+  it('行動の最中で今は出せない「道の上の技」だけ覚える(道に無い技は覚えない・当たらなかったら覚えない)', () => {
     const s = brawlerStartTech(initialBrawlerState(), 'stomp', 0);
-    expect(brawlerShouldBufferTech(s, 'kiko', 50)).toBe(true);            // 前隙
+    expect(brawlerShouldBufferTech(s, 'kiko', 50)).toBe(true);            // 前隙・道の上(大踏み潰し→気功)
+    expect(brawlerShouldBufferTech(s, 'kick', 50)).toBe(false);           // 道に無い
+    expect(brawlerShouldBufferTech(s, 'guard', 50)).toBe(false);
     const hit = brawlerAfterResolve(s, 200, 1, { pointCap: 20, countPoint: false, hitstopMs: 140 });
-    expect(brawlerShouldBufferTech(hit, 'kiko', 250)).toBe(true);         // 止めの間
-    expect(brawlerShouldBufferTech(hit, 'kiko', 360)).toBe(false);        // 当たった後隙=キャンセルで即座に出る
-    expect(brawlerShouldBufferTech(hit, 'guard', 360)).toBe(false);
+    expect(brawlerShouldBufferTech(hit, 'kiko', 250)).toBe(true);         // 止めの間(受付が開く前)
+    expect(brawlerShouldBufferTech(hit, 'kiko', 360)).toBe(false);        // 受付の内=取り消しで即座に出る
+    expect(brawlerShouldBufferTech(hit, 'kiko', 200 + 140 + BRAWLER_CANCEL_WINDOW_MS + 10)).toBe(false); // 受付を過ぎた=覚えない
+    const miss = brawlerAfterResolve(s, 200, 0, { pointCap: 20, countPoint: false, hitstopMs: 140 });
+    expect(brawlerShouldBufferTech(miss, 'kiko', 250)).toBe(false);       // 空振り=覚えない
     const g = brawlerStartTech(initialBrawlerState(), 'guard', 0);
     expect(brawlerShouldBufferTech(g, 'guard', 100)).toBe(false);         // 構えの延長
-    expect(brawlerShouldBufferTech(g, 'kick', 100)).toBe(true);           // 構えの間の他の技は構えの後に出す
+    expect(brawlerShouldBufferTech(g, 'kick', 100)).toBe(false);          // 構えの間の他の技は覚えない(旧: 構えの後に出していた)
     expect(brawlerShouldBufferTech(initialBrawlerState(), 'kick', 0)).toBe(false); // 待機中は即座に出る
-    expect(brawlerShouldBufferTech(brawlerStartAttack(initialBrawlerState(), 1, 0, false), 'kick', 30)).toBe(false); // 通常攻撃の最中は即座(必殺技キャンセル)
+    // 通常攻撃の最中: 道の上の技(1段目→飛び蹴り)は出だしで覚える・道に無い技は覚えない(旧: 通常攻撃のどこからでも即座に出た)
+    const a1 = brawlerStartAttack(initialBrawlerState(), 1, 0, false);
+    expect(brawlerShouldBufferTech(a1, 'kick', 30)).toBe(true);
+    expect(brawlerShouldBufferTech(a1, 'stomp', 30)).toBe(false);
+    expect(brawlerTechAllowed(a1, 'kick', 30)).toBe(false);
+    // 飛び蹴りの連続: 判定の前に入れた次の蹴りは覚える(今どおり)
+    const k1 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);
+    expect(brawlerShouldBufferTech(k1, 'kick', 30)).toBe(true);
+    expect(brawlerShouldBufferTech(k1, 'stomp', 30)).toBe(true);          // 蹴り→大踏み潰しも道の上
+  });
+  it('覚えた技の扱い: 受付が開いたら出す・当たらなかった/待機へ戻ったら捨てる(後隙の終わりに勝手に出さない)', () => {
+    const s = { ...brawlerStartTech(initialBrawlerState(), 'stomp', 0), techBuffer: 'kiko' as const };
+    expect(brawlerTechBufferDecision(initialBrawlerState(), 0)).toBeNull();
+    expect(brawlerTechBufferDecision(s, 50)).toBe('wait');
+    const hit = { ...brawlerAfterResolve(s, 200, 1, { pointCap: 20, countPoint: false, hitstopMs: 140 }), techBuffer: 'kiko' as const };
+    expect(brawlerTechBufferDecision(hit, 250)).toBe('wait');
+    expect(brawlerTechBufferDecision(hit, 341)).toBe('fire');
+    const miss = { ...brawlerAfterResolve(s, 200, 0, { pointCap: 20, countPoint: false, hitstopMs: 140 }), techBuffer: 'kiko' as const };
+    expect(brawlerTechBufferDecision(miss, 201)).toBe('drop');
+    expect(brawlerTechBufferDecision({ ...brawlerFinish(miss, 600).state, techBuffer: 'kiko' }, 600)).toBe('drop');
+    // 飛び蹴りの連続は今どおり: 判定を解いた瞬間に(当たっていなくても)出す
+    const k = { ...brawlerStartTech(initialBrawlerState(), 'kick', 0, 1), techBuffer: 'kick' as const };
+    expect(brawlerTechBufferDecision(k, 30)).toBe('wait');
+    const kw = { ...brawlerAfterResolve(k, 120, 0, { pointCap: 20, countPoint: false, hitstopMs: 80 }), kickCount: 1, techBuffer: 'kick' as const };
+    expect(brawlerTechBufferDecision(kw, 121)).toBe('fire');
   });
   it('被弾・取り消しで捨てる / 技を出したら消える', () => {
     const s = { ...brawlerStartTech(initialBrawlerState(), 'stomp', 0), techBuffer: 'kiko' as const };
     expect(brawlerOnHurt(s).techBuffer).toBeUndefined();
     expect(brawlerCancel(s).techBuffer).toBeUndefined();
     expect(brawlerStartTech(s, 'kiko', 600).techBuffer).toBeUndefined();
-    expect(brawlerFinish(s, 600).state.techBuffer).toBe('kiko'); // 終わった瞬間に出す(呼び手が出す)
   });
 });
 
@@ -577,13 +612,26 @@ describe('ステップ(research/BRAWLER.md §12-3)', () => {
     for (let i = 0; i < 1800; i++) d += v * brawlerStepFactor((i + 0.5) / 1800) * (BRAWLER_STEP_MS / 1000 / 1800);
     expect(d).toBeCloseTo(BRAWLER_STEP_PX, 0);
   });
-  it('待機・後隙からは出せる。前隙・止めの間・構え・ステップの最中は出せない', () => {
+  it('待機と、当たった1〜4段目の後隙からは出せる。前隙・止めの間・構え・ステップの最中・空振り・5段目・技の後隙は出せない(§19-1)', () => {
     expect(brawlerStepAllowed(initialBrawlerState(), 0)).toBe(true);
     const a = brawlerStartAttack(initialBrawlerState(), 1, 0, false);
     expect(brawlerStepAllowed(a, 30)).toBe(false);                       // 前隙
     const hit = brawlerAfterResolve(a, 60, 1, { pointCap: 5, countPoint: true, hitstopMs: 45 });
     expect(brawlerStepAllowed(hit, 80)).toBe(false);                     // 止めの間
     expect(brawlerStepAllowed(hit, 110)).toBe(true);                     // 後隙=取り消せる
+    // ★§19-1: 空振り・防がれた当たり・5段目・技の後隙は取り消せない(旧: 判定の後ならどれでも取り消せた)
+    expect(brawlerStepAllowed(brawlerAfterResolve(a, 60, 0, { pointCap: 5, countPoint: true, hitstopMs: 45 }), 110)).toBe(false);
+    expect(brawlerStepAllowed(brawlerAfterResolve(a, 60, 1, { pointCap: 5, countPoint: true, hitstopMs: 45, landed: 0 }), 110)).toBe(false);
+    for (const st of [2, 3, 4]) {
+      const x = brawlerStartAttack(initialBrawlerState(), st, 0, false);
+      expect(brawlerStepAllowed(brawlerAfterResolve(x, x.windupMs, 1, { pointCap: 5, countPoint: true, hitstopMs: 45 }), x.windupMs + 50)).toBe(true);
+    }
+    const a5 = brawlerStartAttack(initialBrawlerState(), 5, 0, false);
+    expect(brawlerStepAllowed(brawlerAfterResolve(a5, a5.windupMs, 1, { pointCap: 5, countPoint: true, hitstopMs: 45 }), a5.windupMs + 50)).toBe(false);
+    for (const k of ['kick', 'stomp', 'kiko'] as const) {
+      const x = brawlerStartTech(initialBrawlerState(), k, 0, k === 'kick' ? 1 : 0);
+      expect(brawlerStepAllowed(brawlerAfterResolve(x, x.windupMs, 1, { pointCap: 5, countPoint: false, hitstopMs: 45 }), x.windupMs + 50)).toBe(false);
+    }
     const g = brawlerStartTech(initialBrawlerState(), 'guard', 0);
     expect(brawlerStepAllowed(g, 100)).toBe(false);                      // 構え
     const st = brawlerStepStart(hit, 110, 0);

@@ -1,6 +1,9 @@
 // research/BRAWLER_PHANTOM.md §4・§9-1: 格闘の幻影(拳鬼)の格闘を1tick進める(幻影専用に書く部分)。
 //
-// 状態機械はプレイヤーと同じ純関数(utils/brawler.ts)。当たりの相手はプレイヤー(と形に入った守護霊・英雄)で、
+// 状態機械はプレイヤーと同じ純関数(utils/brawler.ts)。★つながる道(research/BRAWLER.md §19: 道の表・当たった時だけ・取り消しの受付)も
+// プレイヤーと同じ純関数(brawlerTechAllowed → brawlerRouteAllows)を読む。台本1〜5の取り消しは表の上・台本7と台本6の1手目は待機から。
+// 予備動作(80ms)は「受付の内に決めた時点で成立」=明けて出す時(stepPrep → startTech)に受付を引き直さない(§19-2)。
+// 当たりの相手はプレイヤー(と形に入った守護霊・英雄)で、
 // 当たった後の解決(盾・カウンター・会心・致命・damagePlayer・体勢)は汎用の幻影の近接と同じ1本
 // (phantomTick.landPhantomMeleeOnPlayer)を呼び手から受け取る(循環 import を作らない)。
 //
@@ -470,7 +473,9 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     // 3段目のアッパー・4段目の跳び踏み潰しを食らったプレイヤーは、絵だけ浮く(操作は奪わない・research/BRAWLER_PHANTOM.md §4-9)。
     // ★レバーガードで受けたプレイヤーは浮かない(社長指示2026-11-10「ダメージ半減、浮かない、少しノックバック」・research/BRAWLER.md §12-1c)。
     if (hits > 0 && (spec.stage === 3 || spec.stage === 4) && !r.guarded) notePlayerLaunched(c.nowMs, BR.BRAWLER_LIFT_MS);
-    let next = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs });
+    // ★「当たった」(§19-1・拳鬼も同じ道の表): 取り消し(通常→技・技→技)は体力を削った当たり(landed)の時だけ。
+    //   構えで受けられた・レバーガードで防がれた・0ダメージの当たりは、段のつながり(touched)は今どおりでも、技へは取り消せない。
+    let next = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs, landed: r.landed ? hits : 0 });
     if (hits > 0) next = BR.brawlerFlowOnHit(next, 1);
     // 当てた=反動で止める / 5段目=抜けた先で止まる。
     if (spec.shape === 'band' || hits > 0) c.rt.move = null;
@@ -490,7 +495,7 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     g.spawnRing(foot.x, foot.y, 20, BR.BRAWLER_STOMP_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
     g.triggerShake(220, 12, 0, 1);
     const hits = r.touched ? 1 : 0;
-    const next = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: BR.BRAWLER_STOMP_HITSTOP_MS });
+    const next = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: BR.BRAWLER_STOMP_HITSTOP_MS, landed: r.landed ? hits : 0 });
     return hits > 0 ? BR.brawlerFlowOnHit(next, 1) : next;
   }
   if (s.tech === 'kiko') {
@@ -512,7 +517,7 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
   if (r.landed) c.rt.mind.landedStartAt = s.startAt; // 台本の「当たった」(§16-7)
   const hits = r.touched ? 1 : 0;
   if (hits > 0) kenkiHitSfx({ kick: s.kickN });
-  const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: hs });
+  const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: hs, landed: r.landed ? hits : 0 });
   c.rt.move = null;
   return {
     ...(hits > 0 ? BR.brawlerFlowOnHit(after, 1) : after),

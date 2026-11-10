@@ -108,7 +108,7 @@ import {
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
-import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerPhaseKind, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
+import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
 import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
@@ -22501,7 +22501,7 @@ export class PixiScene {
       aiSqY *= 1 + 0.22 * pop; aiSqX *= 1 - 0.1 * pop;
     }
     // ★格闘の食らいの固まり(§11-1): 固まっている間は食らいの動作(のけぞり)のまま小刻みに震える(位置だけ・判定は動かない)。
-    if (e.brHoldUntil !== undefined && now < e.brHoldUntil && brawlerPhaseKind(e, gameTime) !== 'active') { // §13-1: 溜めも固まる
+    if (brawlerHeldNow(e, gameTime, now)) { // §13-1: 溜めも固まる。固まりの時計は2つ(壁時計・確定の固まり=gameTime・§19-3 ⑥)
       aiShake += Math.sin(now / 23 + (e.id.charCodeAt(0) & 7)) * 0.9;
     }
     // 格闘の浮かせ追撃(§12-1)の liftUntil は格闘の弧で描く(下の brLiftPx)=近接フィニッシュの跳ね(BOSS_FINISH_LIFT)は重ねない。
@@ -23187,8 +23187,10 @@ export class PixiScene {
       // (旧はしなりだけが量を見ていて、残りは満額で出ていた=「延焼でも常にのけぞって見える」の正体)。
       // ★格闘の食らいの固まり(research/BRAWLER.md §11-1): 固まっている間は、のけぞりの頂点で留める(明けたら今の戻りで起き上がる)。
       const flinchPeakMs = ENEMY_HIT_FLINCH_MS * ENEMY_HIT_FLINCH_RISE;
-      const holdExtra = e.brHoldUntil !== undefined && e.brHoldUntil > e.lastHit
-        ? Math.max(0, e.brHoldUntil - e.lastHit - flinchPeakMs) : 0;
+      // 固まりの終わり(壁時計に直した値): 壁時計の欄と、確定の固まり(§19-3・gameTime の欄=いまの壁時計+残り)の遅い方。絵だけ。
+      const brHoldEnd = Math.max(e.brHoldUntil ?? 0, e.brLockUntil !== undefined ? now + (e.brLockUntil - gameTime) : 0);
+      const holdExtra = brHoldEnd > e.lastHit
+        ? Math.max(0, brHoldEnd - e.lastHit - flinchPeakMs) : 0;
       const sinceHitRaw = now - e.lastHit;
       const sinceHit = holdExtra > 0 && sinceHitRaw > flinchPeakMs
         ? (sinceHitRaw < flinchPeakMs + holdExtra ? flinchPeakMs : sinceHitRaw - holdExtra) : sinceHitRaw;

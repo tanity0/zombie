@@ -11,7 +11,7 @@ import {
 } from '../utils/brawler';
 import * as BRW from '../utils/brawler';
 import {
-  brawlerComboTimesAt, BRAWLER_HOLD_BASE_MS_BASE, setBrawlerTempoAll, brawlerRevengeStartPatch, brawlerRevengeTelegraph, brawlerRevengeDue,
+  brawlerComboTimesAt, brawlerLockHitMs, setBrawlerTempoAll, brawlerRevengeStartPatch, brawlerRevengeTelegraph, brawlerRevengeDue,
 } from '../utils/brawlerCombo';
 import * as BRC from '../utils/brawlerCombo';
 
@@ -62,10 +62,11 @@ describe('テンポ係数の表(純関数)', () => {
       v.BRAWLER_KICK_FLIGHT_MAX_MS, v.BRAWLER_KICK_CHAIN_MS, v.BRAWLER_GUARD_MS, v.BRAWLER_GUARD_QUICK_MS, v.BRAWLER_SUPER_FLASH_MS,
       v.BRAWLER_SECRET_GAP_MS, v.BRAWLER_SECRET_IGNITE_MS, v.BRAWLER_SECRET_STRIKE_MS, v.BRAWLER_SECRET_FALL_MS, v.BRAWLER_SECRET_LAND_MS, v.BRAWLER_STEP_MS])
       .toEqual([400, 150, 130, 120, 585, 150, 500, 1000, 500, 100, 400, 600, 170, 420, 520, 180]);
+    expect(v.BRAWLER_CANCEL_WINDOW_MS).toBe(150); // 取り消しの受付(§19-2)
     const c = brawlerComboTimesAt(1.0);
-    expect(c.holdBase).toEqual(BRAWLER_HOLD_BASE_MS_BASE);
-    expect([c.BRAWLER_COMBO_GAP_MS, c.BRAWLER_COMBO_DECAY_MS, c.BRAWLER_SAME_MOVE_PENALTY_MS, c.BRAWLER_REVENGE_WINDUP_MS, c.BRAWLER_REVENGE_NO_HOLD_MS, c.BRAWLER_JUGGLE_MIN_MS, c.BRAWLER_JUGGLE_DROP_MS])
-      .toEqual([700, 3000, 400, 350, 1200, 140, 200]); // 流れの切れは社長承認2026-11-09 で 600→700
+    // ★§19: 固まりの基本の長さの表・減衰の時計・同じ技の罰は撤去(確定の固まりの長さは段・技の時間から引く=下の brawlerLockHitMs)。
+    expect([c.BRAWLER_COMBO_GAP_MS, c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_CHAIN_GUARD_MARGIN_MS, c.BRAWLER_REVENGE_WINDUP_MS, c.BRAWLER_REVENGE_NO_HOLD_MS, c.BRAWLER_JUGGLE_MIN_MS, c.BRAWLER_JUGGLE_DROP_MS])
+      .toEqual([700, 300, 60, 350, 1200, 140, 200]); // 流れの切れは社長承認2026-11-09 で 600→700
   });
   it('係数1.3 = 各時間の1.3倍(四捨五入)。距離・倍率・ポイントは変えない', () => {
     const v = brawlerTimesAt(1.3);
@@ -85,7 +86,8 @@ describe('テンポ係数の表(純関数)', () => {
     expect(v.BRAWLER_KICK3_CHARGE_MS).toBe(150); // 実時間で約150ms
     const c = brawlerComboTimesAt(1.3);
     expect(c.BRAWLER_REVENGE_WINDUP_MS).toBe(455);
-    expect(c.holdBase.s1).toBe(390);
+    expect(v.BRAWLER_CANCEL_WINDOW_MS).toBe(195);
+    expect([c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_CHAIN_GUARD_MARGIN_MS]).toEqual([390, 78]);
     expect(brawlerTempoMs(585, 1.3)).toBe(761);
   });
   it('当てた瞬間の止めは係数を掛けない別の表: 弱90 / 強・技150 / 締め220', () => {
@@ -102,7 +104,13 @@ describe('テンポ係数の表(純関数)', () => {
     setBrawlerTempoAll(1.3);
     expect(BRW.BRAWLER_STAGES[0].windupMs).toBe(78);
     expect(BRC.BRAWLER_REVENGE_WINDUP_MS).toBe(455);
-    expect(BRC.BRAWLER_HOLD_BASE_MS.s3).toBe(585);
+    // 確定の固まりの長さ(§19-3 ①)は段・技の時間から引く=係数が自動で掛かる(余白34msだけは係数なし)
+    expect(brawlerLockHitMs('s3', 150)).toBe(150 + 299 + 34);
+    expect(BRW.BRAWLER_CANCEL_WINDOW_MS).toBe(195);
+    setBrawlerTempoAll(1.0);
+    expect(brawlerLockHitMs('s3', 150)).toBe(150 + 230 + 34);
+    expect(BRW.BRAWLER_CANCEL_WINDOW_MS).toBe(150);
+    setBrawlerTempoAll(1.3);
     expect(BRW.BRAWLER_FLOW_GRACE_MS).toBe(BRW.BRAWLER_CHAIN_RESET_MS);
   });
 });

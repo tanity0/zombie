@@ -788,20 +788,27 @@ export interface Enemy {
   /** ★格闘の締めで大きく吹き飛ばされた時刻(Date.now・足元に地面を擦る砂埃の尾を描く・§2-4)。 */
   brawlerBlownAt?: number;
   /**
-   * ★格闘の食らいの固まり・減衰・反撃(research/BRAWLER.md §11)。時計はすべて Date.now(hitStunUntil と同じ)。
-   * brHoldUntil=この時刻まで食らいの動作だけ(移動・噛みつき・技の開始をしない)。技を出している最中の敵には書かない。
-   * brComboStart/At=その敵への格闘の当たりの流れの始まりと最後の当たり(600ms 当たらなければ流れは切れる)。
-   * brComboPenalty=同じ段・同じ技を当て直した罰(時計に足す ms)。brComboHits=この流れで受けた当たり数。brComboMoves=当たった段・技の名札(カンマ区切り)。
-   * brRevengePending=反撃の数に達した(次の自分の更新で振り払う)。brNoHoldUntil=反撃の後、固まらない時刻。brRevengeAt=振り払いが当たった時刻(絵だけ)。
+   * ★格闘の食らいの固まり・反撃(research/BRAWLER.md §11・§19)。この塊の時計は Date.now(hitStunUntil と同じ)。
+   * brHoldUntil=この時刻まで食らいの動作だけ(移動・噛みつき・技の開始をしない)。壁時計の固まり=秘奥義の間の止め(§17)・秘奥義の1発・ボス級の当たりの止め。
+   *   ※つながりの確定の固まり(§19-3)は下の brLockUntil(gameTime)。固まっているかは utils/brawlerCombo.brawlerHeldNow が両方の時計を見る。
+   * brComboStart/At=その敵への格闘の当たりの流れの始まりと最後の当たり(700ms×係数 当たらなければ流れは切れる)。brComboHits=この流れで受けた当たり数(反撃の数)。
+   * brRevengePending=反撃の数に達した(次の自分の更新で振り払う)。brNoHoldUntil=反撃の後・ダウンの着地の後、固まらない時刻。brRevengeAt=振り払いが当たった時刻(絵だけ)。
+   * (旧の brComboPenalty・brComboMoves=減衰と同じ技の罰の欄は §19 で撤去。)
    */
   brHoldUntil?: number;
+  /**
+   * ★確定の固まり(research/BRAWLER.md §19-3・utils/brawlerCombo の BrawlerLockFields)。**時計は gameTime**(プレイヤーの段・技と同じ時計)。
+   * brLockUntil=確定の固まりの終わり。brLockMoves=このコンボで当てた技の名札(カンマ区切り・undefined=コンボの外)。
+   * brLockNoHoldUntil=コンボが終わった後の固まらない時間の終わり(ボス級・強個体)。
+   */
+  brLockUntil?: number;
+  brLockMoves?: string;
+  brLockNoHoldUntil?: number;
   /** 秘奥義の間の「画面内の敵を止める」が brHoldUntil に書いた値(research/BRAWLER.md §17)。終わりに、その値のまま残っている時だけ解く。 */
   brSecretHoldUntil?: number;
   brComboStart?: number;
   brComboAt?: number;
-  brComboPenalty?: number;
   brComboHits?: number;
-  brComboMoves?: string;
   brRevengePending?: boolean;
   brNoHoldUntil?: number;
   brRevengeAt?: number;
@@ -814,13 +821,11 @@ export interface Enemy {
   brLiftLand?: boolean;
   /**
    * ★§13(社長指示2026-11-09「技も止めたいが…ハメ殺せるのはやめたい」「空中コンボが繋がるような仕組み」)。時計は Date.now。
-   * brTechHoldKey/Used=いまの技(溜め)の止め予算の札と使った量(ms)。札が変われば使った量は0から。
+   * (旧の brTechHoldKey/Used=溜めの止め予算の欄は §19 で撤去。)
    * brFlowHits=この流れで受けた格闘の当たり数(ダメージ補正用・秘奥義は数えない)。
    * brLiftBudget=いまの浮きで残っている拾える回数。brLiftDown=予算切れ・締めでダウン中(着地まで拾えない)。
    * brBounceCombo=地面バウンドを使った流れ(brComboStart の値)。brLiftDropMs=バウンドの落ちる区間の長さ(弧の頭)。
    */
-  brTechHoldKey?: string;
-  brTechHoldUsed?: number;
   brFlowHits?: number;
   brLiftBudget?: number;
   brLiftDown?: boolean;

@@ -1,14 +1,16 @@
 // ★research/BRAWLER.md §13(社長指示2026-11-09「攻撃で技も止めたいが、止めすぎるとハメ殺せるのはやめたい」
 // 「空中コンボが繋がるような仕組みにしたい」「雑魚→ボスの順 6.5.4回にしよう」)。
-// 技の溜めの止め予算・押し切り・予告の位相の停止(出る=溜め開始/消え切る=当たる)・空中コンボの流れ・ボス級4回・ダメージ補正を
+// 技の溜めも固まること・予告の位相の停止(出る=溜め開始/消え切る=当たる)・空中コンボの流れ・ボス級4回・ダメージ補正を
 // 実際のストア(updateEnemies=行動の時計の凍結を含む)で通す。
+// ★§19(2026-11-10): 溜めの止め予算(1回の溜めにつき合計400ms)は撤去した。溜めの相も移動の相と同じ確定の固まり(§19-3 ①)で固まり、
+//   歯止めは「同じコンボで2回目の同じ技は固めない」「固まりは次に動ける時まで」「コンボの後の固まらない時間」が受け持つ=予算のテストをその形へ書き換えた。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import {
-  setBrawlerTempoAll, brawlerPhaseKind, brawlerTechHoldApply, brawlerTechHoldResetPatch, brawlerProration, brawlerProrationFor,
-  BRAWLER_TECH_HOLD_BUDGET_MS, brawlerAirborne, brawlerJuggleHeightRel,
+  setBrawlerTempoAll, brawlerPhaseKind, brawlerLockOnHit, brawlerLockHitMs, brawlerHeldNow, brawlerProration, brawlerProrationFor,
+  brawlerAirborne, brawlerJuggleHeightRel,
 } from '../utils/brawlerCombo';
 import { preBiteTelegraphLine } from '../utils/biteTelegraph';
 
@@ -73,23 +75,19 @@ describe('§13-1 技の溜めも固める(純関数)', () => {
     expect(k({ bossState: 'chase' })).toBe('free');
     expect(k({ aiPhase: 'z-red-pause', stunUntil: 2000 })).toBe('free');     // 会心の気絶中
   });
-  it('予算: 1回の溜めにつき合計 400ms まで固める。使い切ったら押し切る(止めは伸びない)。別の溜めに入れば0から', () => {
-    expect(BRAWLER_TECH_HOLD_BUDGET_MS).toBe(400);
-    let e: Partial<Enemy> = { aiPhase: 'z-red-pause' };
-    const r1 = brawlerTechHoldApply(e, 1000 + 390, 1000);
-    expect([r1.until, r1.used]).toEqual([1390, 390]);
-    e = { ...e, brHoldUntil: r1.until, brTechHoldKey: r1.key, brTechHoldUsed: r1.used };
-    const r2 = brawlerTechHoldApply(e, 1200 + 390, 1200);                   // 止めの途中で次の当たり: 伸ばせるのは残り10msだけ
-    expect([r2.until, r2.used]).toEqual([1400, 400]);
-    e = { ...e, brHoldUntil: r2.until, brTechHoldUsed: r2.used };
-    const r3 = brawlerTechHoldApply(e, 1500 + 390, 1500);                   // 使い切った=押し切る
-    expect(r3.until).toBeUndefined();
-    expect(r3.used).toBe(400);
-    const other = brawlerTechHoldApply({ ...e, aiPhase: 'z-stagger' }, 1600 + 390, 1600); // 2発目の溜め=別の技
-    expect(other.used).toBe(390);
-    // 溜めを抜けたら札を捨てる
-    expect(brawlerTechHoldResetPatch({ ...e, aiPhase: 'z-recover' } as Enemy, 0)).toEqual({ brTechHoldKey: undefined, brTechHoldUsed: undefined });
-    expect(brawlerTechHoldResetPatch({ ...e } as Enemy, 0)).toBeNull();
+  it('溜めの相も移動の相と同じ長さで固まる(旧の「1回の溜めにつき合計400ms」の予算は撤去)。同じ技の2回目は固めない', () => {
+    const o = { stopMs: 90, enemyStopMs: 90, canHold: true, airborneAfter: false };
+    const r1 = brawlerLockOnHit({}, 's1', 1000, 9e9, o);
+    expect(r1.patch.brLockUntil).toBe(1000 + brawlerLockHitMs('s1', 90));
+    expect(brawlerLockHitMs('s1', 90)).toBe(90 + 150 + 34);
+    // 固まりの最中かどうかは相の種類で決まる: 溜め(windup)は固まる・攻撃の振り(active)は固まらない
+    expect(brawlerHeldNow({ type: 'zombie', aiPhase: 'z-red-pause', ...r1.patch }, 1100, 0)).toBe(true);
+    expect(brawlerHeldNow({ type: 'zombie', aiPhase: 'z-bite1', ...r1.patch }, 1100, 0)).toBe(false);
+    // 同じ溜めを同じ技で殴り続けても、固まりは延びない
+    const r2 = brawlerLockOnHit({ ...r1.patch }, 's1', 1200, 9e9, o);
+    expect(r2).toEqual({ patch: {}, held: false, noHold: false });
+    // 別の技(道の上の続き)は、当たりの瞬間から新しく固める
+    expect(brawlerLockOnHit({ ...r1.patch }, 's2', 1200, 9e9, o).patch.brLockUntil).toBe(1200 + 274);
   });
   it('ダメージ補正: 10ヒット目から −5%/発・下限50%', () => {
     expect([1, 9, 10, 11, 12, 19, 20, 40].map(brawlerProration)).toEqual([1, 1, 0.95, 0.9, 0.85, 0.5, 0.5, 0.5].map(v => v));
@@ -110,8 +108,9 @@ describe('§13-1 技の溜めも固める(ストア・予告の位相)', () => {
     expect(l0).not.toBeNull();
     const span0 = l0.hitAt - l0.startAt;
     hit('z', 's1');
-    const held = en('z').brHoldUntil! - now;
-    expect(held).toBe(390); // 止め90+固まり300(予算400の内)
+    // ★§19-3 ①: 確定の固まり(gameTime の欄)=止め90+受付150+余白34=274ms(係数1.0)。旧: 止め90+固まり300(予算400の内)。
+    const held = en('z').brLockUntil! - gt();
+    expect(held).toBe(274);
     const progs: number[] = [];
     step(held - 10, () => { const l = preBiteTelegraphLine(en('z'), gt(), aim); if (l) progs.push(l.prog); });
     expect(en('z').aiPhase).toBe('z-red-pause');
@@ -126,17 +125,24 @@ describe('§13-1 技の溜めも固める(ストア・予告の位相)', () => {
     step(1000, () => { if (leftAt < 0 && en('z').aiPhase !== 'z-red-pause') leftAt = gt(); });
     expect(leftAt - (gt() - 1000)).toBeGreaterThanOrEqual(remain - 2 * DT);
   });
-  it('同じ溜めを殴り続けても合計400msで押し切る(その後は殴っても止まらず溜めが進む)', () => {
+  // ★§19-3 ③ で書き換え: 旧「同じ溜めを殴り続けても合計400msで押し切る」(予算)→ 新「同じコンボで2回目の同じ技は固めない」。
+  //   固まりの最中に同じ技を重ねても確定の固まりは延びない(当たりの止めだけ)。固まりが明ければコンボは区切られる
+  //   (雑魚は固まらない時間なし=次の当たりから新しいコンボ。雑魚の歯止めは今どおり7発の振り払い)。
+  it('同じ溜めを同じ技で殴り続けても、固まりは延びない(最初の1回の長さ+当たりの止めだけ=溜めは進む)', () => {
     setup();
     const g0 = gt();
     useGameStore.setState({ enemies: [place('zombie', 70, 0, 'z', { aiPhase: 'z-red-pause', aiStartedAt: g0, aiPhaseUntil: g0 + 2000, chaffMove: 'zombie-double', stanceDirX: -1, stanceDirY: 0 } as Partial<Enemy>)] });
     const deadline0 = en('z').aiPhaseUntil!;
-    let totalShift = 0;
-    for (let i = 0; i < 8; i++) { hit('z', 's1'); step(150); }
-    totalShift = (en('z').aiPhaseUntil! - deadline0);
-    expect(en('z').brTechHoldUsed).toBe(400);
-    expect(totalShift).toBeGreaterThanOrEqual(400 - 2 * DT);
-    expect(totalShift).toBeLessThanOrEqual(400 + 2 * DT);                   // 止まったのは予算の分だけ
+    hit('z', 's1');
+    const lock0 = en('z').brLockUntil!;
+    expect(lock0 - gt()).toBe(274);
+    step(100); hit('z', 's1'); expect(en('z').brLockUntil).toBe(lock0);
+    step(100); hit('z', 's1'); expect(en('z').brLockUntil).toBe(lock0);   // 3発目(200ms): 止めは 290ms まで
+    step(500);
+    const totalShift = en('z').aiPhaseUntil! - deadline0;
+    expect(totalShift).toBeGreaterThanOrEqual(274 - 2 * DT);
+    expect(totalShift).toBeLessThanOrEqual(290 + 2 * DT);                 // 3発当てても、止まったのは最初の固まり+最後の止めの残りだけ
+    expect(en('z').brLockMoves).toBeUndefined();                           // 固まりが明けた=コンボは区切られた
   });
 });
 

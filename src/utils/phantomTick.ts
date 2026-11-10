@@ -24,7 +24,7 @@
 //    `knockbackShoveUntil` / `liftUntil` / decideGhost の内部CD・リロードは `Date.now()`。
 //    **混ぜて比較しない**。このファイルは両方を引数で受け取り、それぞれの世界の中だけで比較する。
 //  - 慣性: 振りの絵(踏み込み→戻り)は描画側(pixiScene)がイーズで出す。判定は即発の1回。
-import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
+import { brawlerHeldNow, brawlerHoldRemainMs } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import { counterClashPoint } from './counterClash';
 import type { Enemy, EnemyType, Player, Projectile, SubWeaponKey, Weapon, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
@@ -1252,8 +1252,9 @@ export const runPhantomTick = (
     abortPhantomFlamer(phantom, patch);
     clearKenkiLever(phantom, patch); // 固まっている間はレバーガードを張れない(§16-10)
     // 格闘の幻影の戻り(硬直)を固めている間は、格闘の時計も止める=明けたら戻りの続きから(research/BRAWLER_PHANTOM.md §4-1)。
-    if (phantom.phantomBrawler && phantom.brHoldUntil !== undefined) {
-      patch.phantomBrawler = phantomBrawlerHoldClock(phantom.phantomBrawler, newGameTime, phantom.brHoldUntil - nowMs);
+    // ★固まりの残りは2つの時計の長い方(壁時計の欄・確定の固まり=gameTime の欄・§19-3 ⑥)。
+    if (phantom.phantomBrawler) {
+      patch.phantomBrawler = phantomBrawlerHoldClock(phantom.phantomBrawler, newGameTime, brawlerHoldRemainMs(phantom, newGameTime, nowMs));
     }
     // 跳びかかりの着地後の停止(戻り=固まる区分)を固めている間は、その時計も止める(明けたら残りから)。
     if (phantom.phantomUnique === 'brawler' && phantom.aiPhase === 'recover' && phantom.aiPhaseUntil !== undefined) {
