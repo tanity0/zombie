@@ -363,7 +363,7 @@ import { HOSPITAL_FADE_MS, HOSPITAL_DISPLAY_H, hospitalRect } from '../world/hos
 import { ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryRect, ARMORY_SCRAP_COST } from '../world/armory';
 import { POLICE_FADE_MS, POLICE_DISPLAY_H, policeRect } from '../world/police';
 import { touchesFromBelow, rectsOverlap, TOUCH_SIDE_PAD } from '../world/obstacles';
-import { poiTouchEnvelope } from '../world/poiTouch';
+import { poiTouchFlashAlpha, poiTouchPushPx, poiTouchCamPx } from '../world/poiTouch';
 import {
   SHRINE_TEXTURE, SHRINE_DISPLAY_H, SHRINE_CRUMBLE_MS, SHRINE_CRUMBLE_TREMOR_FRAC, SHRINE_CIRCLE_RADIUS, SHRINE_CIRCLE_REVEAL_DIST, SHRINE_DWELL_MS, shrineCircleCenter, shrineMarkVisible,
 } from '../world/warlordShrine';
@@ -9198,6 +9198,9 @@ export class PixiScene {
       sx += s.kickDirX * koff;
       sy += s.kickDirY * koff;
     }
+    // POIに触れた瞬間のカメラ押し込み(専用の曲線・銃の反動 kick は使わない): 建物の方=画面の上へ 0→3.5px を加速して入り、減速して戻る。横ぶれなし。
+    // 世界の描画位置を下へ寄せる=カメラが上へ寄る。ストップ(hitstop)中は描かない。
+    if (now >= s.hitstopUntil) sy += poiTouchCamPx(this.poiTouchElapsedMs());
     // 戦闘の手触り②: 連続撃破の段が上がった瞬間、画面端(下と左右が重い)がライムに染まって引く。
     // 色は多段ヒット帯(drawMultiHitBanner 0xbef264)と同じ=この作品の「連続」の語彙。赤は危険/カウンター、
     // 紫はカウンター不可の色なので報酬には使わない(色の文法・CLAUDE.md)。段1・2は一拍、段3(10体)は二拍。
@@ -21029,9 +21032,11 @@ export class PixiScene {
     const pKbHop = (p.knockbackUntil !== undefined && now < p.knockbackUntil)
       ? Math.sin(Math.max(0, Math.min(1, 1 - (p.knockbackUntil - now) / KNOCKBACK_HOP_MS)) * Math.PI) * KNOCKBACK_HOP_PX
       : 0;
+    // POIに触れた瞬間、体が建物から数px押し戻され、慣性つきで戻る(見た目だけ・当たり判定は変えない)。画面の下=建物から離れる向き。
+    const poiPushY = poiTouchPushPx(this.poiTouchElapsedMs());
     view.sprite.position.set(
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
-      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY - Math.max(brawlerJumpPx, playerAirPx), // 蹴りの跳びと空中の浮きは足さずに大きい方(空中で一段落ちない)
+      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY + poiPushY - Math.max(brawlerJumpPx, playerAirPx), // 蹴りの跳びと空中の浮きは足さずに大きい方(空中で一段落ちない)
     );
     this.drawBrawlerFx(p, fb.footX, fb.footY, dsc, view.sprite, now);
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
@@ -30630,23 +30635,28 @@ export class PixiScene {
     }
   }
 
-  // 触れた瞬間に建物が受け止める: 絵を奥(画面の上)へ数px沈めて慣性つきで戻し、同時に白(武器庫でスクラップ不足の時は赤寄り)の加算を80〜120msで抜く。
-  // 位置と光だけ(伸び縮み・傾きはしない)。呼び手が本体の texture/scale/position/zIndex/alpha を決め終えた後に呼ぶ。
-  private applyPoiTouchFx(id: string, sprite: Sprite, depth: number) {
+  // 触れた瞬間の建物の光(クリエイティブ監査で作り直し): 建物は動かさない(影から浮くため)。暖色寄りの白を加算で、頂点 0.34 から 110ms で ease-out に抜く。
+  // 平塗りのシルエットではなく、絵の中間調を残して持ち上げる行列(0.6×絵+暖色×α)を、同形の加算オーバーレイに掛ける。スクラップ不足(noFlash)は光らない。
+  // 呼び手が本体の texture/scale/position/zIndex/alpha を決め終えた後に呼ぶ。
+  private applyPoiTouchFx(id: string, sprite: Sprite) {
     let fl = this.poiTouchFlash.get(id);
     const fx = useGameStore.getState().poiTouchFx[id];
-    const env = fx ? poiTouchEnvelope(POI_TOUCH_FREEZE_MS >= 0 ? POI_TOUCH_FREEZE_MS : Date.now() - fx.at) : null; // ?poitouchfreeze=ms: 撮影用に経過を固定
-    if (!env || (env.flash <= 0 && env.sink <= 0) || !sprite.visible) {
+    const a = fx && !fx.noFlash ? poiTouchFlashAlpha(POI_TOUCH_FREEZE_MS >= 0 ? POI_TOUCH_FREEZE_MS : Date.now() - fx.at) : 0; // ?poitouchfreeze=ms: 撮影用に経過を固定
+    if (a <= 0 || !sprite.visible) {
       if (fl) fl.visible = false;
       return;
     }
-    sprite.position.y -= env.sink * depth;
     if (!fl) {
       fl = new Sprite();
       fl.anchor.set(0.5, 1);
       fl.blendMode = 'add';
-      // 暗い建物は自分自身を足しても光って見えない(撮影で確認)ので、形(α)だけ残して色を白一色に塗るフィルタを付ける。光っている110msの間だけ表示=負荷ほぼ無し。
       fl.filters = [new ColorMatrixFilter()];
+      (fl.filters[0] as ColorMatrixFilter).matrix = [
+        0.6, 0, 0, 0.55, 0,
+        0, 0.6, 0, 0.48, 0,
+        0, 0, 0.6, 0.38, 0,
+        0, 0, 0, 1, 0,
+      ];
       this.L.actorLayer.addChild(fl);
       this.poiTouchFlash.set(id, fl);
     }
@@ -30654,13 +30664,16 @@ export class PixiScene {
     fl.scale.copyFrom(sprite.scale);
     fl.position.copyFrom(sprite.position);
     fl.rotation = sprite.rotation;
-    fl.zIndex = sprite.zIndex + 0.01; // 本体の直前面(同じ足元Yの中で本体のすぐ上)
-    const flf = (fl.filters as ColorMatrixFilter[])[0];
-    const gg = fx!.red ? 0.28 : 1, bb = fx!.red ? 0.22 : 1; // 足りない時は赤寄り
-    // 色はα(形)からだけ作る(オフセットで塗ると透明な所まで白く塗れて四角になる=撮影で確認)。
-    flf.matrix = [0, 0, 0, 1, 0, 0, 0, 0, gg, 0, 0, 0, 0, bb, 0, 0, 0, 0, 1, 0];
-    fl.alpha = Math.min(1, env.flash * 0.8) * sprite.alpha;
-    fl.visible = env.flash > 0;
+    fl.zIndex = sprite.zIndex + 0.01; // 本体の直前面
+    fl.alpha = a * sprite.alpha;
+    fl.visible = true;
+  }
+
+  /** 触れた直近の経過(ms)。撮影用ツマミで固定できる。未発火は大きな値。 */
+  private poiTouchElapsedMs(): number {
+    const at = useGameStore.getState().poiTouchLastAt;
+    if (at <= 0) return 1e9;
+    return POI_TOUCH_FREEZE_MS >= 0 ? POI_TOUCH_FREEZE_MS : Date.now() - at;
   }
 
   // 廃病院(社長指示v0.25.2331): 通常ステージに1つ立つ建物。近づくとサークルが出て、3秒とどまると
@@ -30707,7 +30720,7 @@ export class PixiScene {
     // 裏に回り込んだら透ける(木/城/プロップと同じ規格)。入手後のフェードを最後に掛ける。
     this.applyObstacleAlpha(this.hospitalSprite, footY);
     this.hospitalSprite.alpha *= fade;
-    this.applyPoiTouchFx('hospital', this.hospitalSprite, d);
+    this.applyPoiTouchFx('hospital', this.hospitalSprite);
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は存在の法則なので shadowFade へ分離
     // (alpha=位置由来のみ。地平線フェードとの二重掛けを避ける)。
     // ★検収差し戻し(F-1の横展開): hospitalSprite は applyObstacleAlpha(horizon×foreground)で
@@ -30766,7 +30779,7 @@ export class PixiScene {
     this.armorySprite.visible = true;
     this.applyObstacleAlpha(this.armorySprite, footY);
     this.armorySprite.alpha *= fade;
-    this.applyPoiTouchFx('armory', this.armorySprite, d);
+    this.applyPoiTouchFx('armory', this.armorySprite);
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は shadowFade へ分離。
     // ★検収差し戻し(F-1の横展開): armorySprite は applyObstacleAlpha(horizon×foreground)。
     this.armoryShadow = {
@@ -30867,7 +30880,7 @@ export class PixiScene {
     this.policeSprite.visible = true;
     this.applyObstacleAlpha(this.policeSprite, footY);
     this.policeSprite.alpha *= fade;
-    this.applyPoiTouchFx('police', this.policeSprite, d);
+    this.applyPoiTouchFx('police', this.policeSprite);
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は shadowFade へ分離。
     // ★検収差し戻し(F-1の横展開): policeSprite は applyObstacleAlpha(horizon×foreground)。
     this.policeShadow = {
@@ -31031,7 +31044,7 @@ export class PixiScene {
       sp.visible = true;
       this.applyObstacleAlpha(sp, footY);
       sp.alpha *= fade;
-      this.applyPoiTouchFx(`shrine-${sh.slot}`, sp, d);
+      this.applyPoiTouchFx(`shrine-${sh.slot}`, sp);
       this.shrineShadows.push({
         id: `shrine-${sh.slot}`,
         x: sh.x, y: footY,

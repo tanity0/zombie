@@ -246,6 +246,7 @@ setThirdPartySfx((key, gain) => playSfx(key, gain));
 import { LAB_OUTER_BOUNDS, labBlockingWalls } from '../world/labMap';
 import { labWallsInRegion, labPropsInRegion, wallRect, propRect } from '../world/labWalls';
 import { segmentBlocked, type Rect } from '../world/obstacles';
+import { POI_TOUCH_SOUND, poiTouchPitchJitter, type PoiTouchId } from '../world/poiTouch';
 import { treesInRegion, trunkRect } from '../world/trees'; // resolveTreeCollisionはv0.25.2469で不使用に(霊体すり抜け)
 import { cityPropsInRegion, cityPropRect } from '../world/cityProps';
 import { markObstacleDestroyed } from '../world/destructibles';
@@ -1602,9 +1603,15 @@ const abortDogFetchJob = (job: DogFetchJob, nowMs: number): void => {
   Object.assign(job, dogLostReturnPatch(nowMs, DOG_FETCH_DURATION_MS - DOG_FETCH_PICKUP_MS));
 };
 
-// POIに触れた瞬間の音(社長指示2026-11-10): 重い物に手を当てたような短い低い鈍い音。素材は既存の 'hero-tackle-hit'(jump-land.mp3 の体当たりの当たり)を
-// さらに低く・短く。発動の音(weapon-pickup / event-start / anchor-plant)はそのまま後に続く。
-const playPoiTouchSfx = () => playSfx('hero-tackle-hit', 0.9, 260, 0.78);
+// POIに触れた瞬間の音(社長指示2026-11-10・クリエイティブ監査で素材感を当て分け): 武器庫=鉄のガチャン(shield-deploy)/病院=重い扉(heavy-impact)/
+// 警察署=厚い壁を打つ鈍い音(brawler-stomp)/祠=低く遅い長め(anchor-plant・遅いピッチ)。毎回 ±5% のピッチ揺らぎ。スクラップ不足=既存の拒否音 ui-deny。
+// 2回目以降(light)は音を小さく。発動の音(weapon-pickup / event-start / anchor-plant)はそのまま後に続く。
+const playPoiTouchSfx = (id: PoiTouchId, opts?: { deny?: boolean; light?: boolean }) => {
+  const mul = poiTouchPitchJitter(Math.random());
+  if (opts?.deny) { playSfx('ui-deny', opts.light ? 0.5 : 0.9, undefined, mul); return; }
+  const d = POI_TOUCH_SOUND[id];
+  playSfx(d.key, d.gain * (opts?.light ? 0.5 : 1), d.ms, d.rate * mul);
+};
 
 export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: boolean; trackFps?: boolean } = {}) => {
   const [fps, setFps] = useState(0);
@@ -5038,7 +5045,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // (gameStore は playSfx を import できないので、taken の立ち上がりをここで監視する=bossCorpse と同じ流儀)。
         // POIに触れた瞬間の手応え(社長指示2026-11-10): 触れ始めの1回だけ光・沈み・波紋・止め・カメラが出る(store側)。音はここ。
         // 取引で建物が消える前の瞬間も拾うため、下の発動の更新(updateHospital/Armory/Shrines)より**先**に呼ぶ。
-        if (useGameStore.getState().updatePoiTouch() > 0) playPoiTouchSfx();
+        for (const t of useGameStore.getState().updatePoiTouch()) playPoiTouchSfx(t.id, t);
         {
           const hosBefore = useGameStore.getState().hospitalTaken;
           useGameStore.getState().updateHospital(deltaTime);
@@ -5156,7 +5163,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               policeArmedRef.current = false; // 一度離れるまで再発動させない(v0.25.2389)
               // 触れた瞬間の手応え(社長指示2026-11-10): 発動する時にだけ出す=発動の条件に揃う(武装済み・イベント中でない・ボス戦中でない)。
               useGameStore.getState().firePoiTouch('police');
-              playPoiTouchSfx();
+              playPoiTouchSfx('police');
               hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime, total: ARENA_HORDE_COUNT };
               useGameStore.setState({ eventBannerText: '警察署 制圧開始', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               // §6.24-UX 確定要件1: 「ここが何で・何をすれば・何が貰えるか」の通信を1ラン1回。

@@ -365,7 +365,7 @@ import {
   type ShrineState, type ShrineSlot,
 } from '../world/warlordShrine';
 import { policePos as policeSpot, resolvePoliceCollision, policeRect } from '../world/police';
-import { poiTouchStarts, POI_TOUCH_STOP_MS, POI_TOUCH_KICK_PX, POI_TOUCH_KICK_MS, type PoiTouchId } from '../world/poiTouch';
+import { poiTouchStarts, poiTouchMayFire, poiTouchStallMult, POI_TOUCH_STALL_MS, type PoiTouchId } from '../world/poiTouch';
 import { assignDetourSectors } from '../world/detourPoi';
 import { bossSectorIndex, poiSectorIndex } from '../world/pois';
 // PACING_PUZZLE.md §6.24-UX(POI-UX): 寄り道POIの通信/入手トースト/解放帯の文言とゲート(純関数)。
@@ -9083,11 +9083,13 @@ interface GameState {
   shrineIntelShown: Record<ShrineSlot, boolean>;
   updateShrines: (deltaTime: number) => void;
   /** POIに触れた瞬間の手応え(社長指示2026-11-10)。触れ始めの検出→firePoiTouch。発動の判定は一切変えない。呼び出しは updateHospital/Armory/Shrines の**前**(取引で建物が消える前の瞬間も拾うため)。戻り値=今回新しく触れ始めた数。 */
-  updatePoiTouch: () => number;
+  updatePoiTouch: () => { id: PoiTouchId; deny: boolean; light: boolean }[];
   /** 触れた瞬間の4点(光・沈み=poiTouchFx / 波紋+砂埃 / 体の止め+カメラ / ※音は呼び手)を出す。警察署は発動の場所から直接呼ぶ。red=武器庫でスクラップ不足(赤寄りの光)。 */
-  firePoiTouch: (id: PoiTouchId, red?: boolean) => void;
+  firePoiTouch: (id: PoiTouchId, opts?: { noFlash?: boolean; light?: boolean }) => void;
   poiTouching: string[];                                 // 前フレームに触れていたPOI(触れ始め検出用)
-  poiTouchFx: Record<string, { at: number; red: boolean }>; // 描画が読む: 触れた実時刻(Date.now)と赤寄りか
+  poiTouchFx: Record<string, { at: number; noFlash: boolean }>; // 描画が読む: 触れた実時刻(Date.now)と光なし(スクラップ不足=拒否の反応)か
+  poiTouchLast: Record<string, { endAt: number; x: number; count: number }>; // 触れ直しの間隔(離れた時刻・その時のx・これまでの発火数)
+  poiTouchLastAt: number; // 直近の発火の実時刻(歩きのつっかえ用)
   // PACING_PUZZLE.md §6.24 M48: 寄り道POI(病院の一般化)。武器庫=デンジャーゾーンの中間。
   // 拠点を解放するとその方角の矢印が出る(病院と同じ POI 仕組み)。3秒とどまり100スクラップを
   // 払うとTier3装備を確定入手。位置は毎ラン、裏ボス/病院/警察署と被らないセクターへランダムに割り当て。
@@ -9786,6 +9788,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   armoryDwellMs: 0,
   poiTouching: [],
   poiTouchFx: {},
+  poiTouchLast: {},
+  poiTouchLastAt: 0,
   armoryTaken: false,
   armoryTakenAt: 0,
   police: null,
@@ -10009,7 +10013,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // B10 血の覚醒(THEONE_ROUND2 §3-1): 移動速度 ×1.5。ランプの外・dash/スライド/スケーターには掛けない(関数側)。
         awakenSpeedMult: bloodAwakenMult(player, state.gameTime).boost,
       };
-      const moveSpeed = computeEffectiveMoveSpeed({
+      // POIに触れた瞬間の歩きのつっかえ(クリエイティブ監査): 約100ms、歩きの目標速度だけを滑らかに落として戻す(慣性の追従はそのまま)。世界・敵・時間は止めない。
+      const poiStall = (dashOv || sliding || state.poiTouchLastAt <= 0 || nowMs - state.poiTouchLastAt >= POI_TOUCH_STALL_MS) ? 1 : poiTouchStallMult(nowMs - state.poiTouchLastAt);
+      const moveSpeed = poiStall * computeEffectiveMoveSpeed({
         ...moveSpeedInput,
         dashOverrideSpeed: dashOv ? dashOv.speed : null,
         slidingSpeed: sliding ? SHIJIN_SLIDE_DISTANCE / (SHIJIN_SLIDE_MS / 1000) : null,
@@ -23691,24 +23697,44 @@ export const useGameStore = create<GameState>((set, get) => ({
   updatePoiTouch: () => {
     const state = get();
     const now: string[] = [];
-    let armoryRed = false;
+    let armoryShort = false;
     if (!state.gameWon && !state.indoorMode && !facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) {
       if (state.hospital && !state.hospitalTaken && touchesHospital(state.player, state.hospital)) now.push('hospital');
       if (state.armory && !state.armoryTaken && touchesArmory(state.player, state.armory)) {
         now.push('armory');
-        armoryRed = state.player.straps < ARMORY_SCRAP_COST;
+        armoryShort = state.player.straps < ARMORY_SCRAP_COST;
       }
       for (const sh of state.shrines) {
         if (sh.takenAt === undefined && touchesFromBelow(state.player, shrineRect(sh))) now.push(`shrine-${sh.slot}`);
       }
     }
     const { started, next } = poiTouchStarts(state.poiTouching, now);
-    if (next.length !== state.poiTouching.length || next.some((id, i) => id !== state.poiTouching[i])) set({ poiTouching: next });
-    for (const id of started) get().firePoiTouch(id as PoiTouchId, id === 'armory' && armoryRed);
-    return started.length;
+    if (next.length !== state.poiTouching.length || next.some((id, i) => id !== state.poiTouching[i])) {
+      // 離れた印は、時刻とその時のxを覚える(触れ直しの間隔の基準)。
+      const nowMs = Date.now();
+      const px0 = state.player.x + state.player.width / 2;
+      const left = state.poiTouching.filter(id => !next.includes(id));
+      const last = left.length ? { ...state.poiTouchLast } : state.poiTouchLast;
+      for (const id of left) last[id] = { endAt: nowMs, x: px0, count: state.poiTouchLast[id]?.count ?? 0 };
+      set({ poiTouching: next, poiTouchLast: last });
+    }
+    const fired: { id: PoiTouchId; deny: boolean; light: boolean }[] = [];
+    for (const id of started) {
+      const nowMs = Date.now();
+      const px = state.player.x + state.player.width / 2;
+      const memo = get().poiTouchLast[id];
+      if (!poiTouchMayFire(memo, nowMs, px)) continue; // 離れて800ms未満かつ16px未満=触れ直しの震え。出さない
+      const count = memo?.count ?? 0;
+      set(st => ({ poiTouchLast: { ...st.poiTouchLast, [id]: { endAt: memo?.endAt ?? 0, x: memo?.x ?? px, count: count + 1 } } }));
+      const deny = id === 'armory' && armoryShort;
+      get().firePoiTouch(id as PoiTouchId, { noFlash: deny, light: count > 0 });
+      fired.push({ id: id as PoiTouchId, deny, light: count > 0 });
+    }
+    return fired;
   },
 
-  firePoiTouch: (id, red = false) => {
+  firePoiTouch: (id, opts) => {
+    const noFlash = !!opts?.noFlash, light = !!opts?.light;
     const st = get();
     let rect: Rect | null = null;
     if (id === 'hospital' && st.hospital) rect = hospitalRect(st.hospital);
@@ -23720,21 +23746,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (!rect) return;
     const nowMs = Date.now();
-    // ① 建物が受け止める(描画が poiTouchFx を読んで白い加算の光と奥への沈みを出す)。
-    set(state => ({ poiTouchFx: { ...state.poiTouchFx, [id]: { at: nowMs, red } } }));
-    // ② 触れた所(建物の下端・プレイヤーの中心x)から波紋と砂埃。判定の無い派手さの絵=大きめに。
+    // ① 建物の光・プレイヤーの押し戻し・カメラの押し込みは、描画が poiTouchFx の時刻から包絡線(world/poiTouch)で出す。建物は動かさない。
+    set(state => ({ poiTouchFx: { ...state.poiTouchFx, [id]: { at: nowMs, noFlash } }, poiTouchLastAt: nowMs }));
+    // ② 触れた所(建物の下端・プレイヤーの中心x)から小さな波紋2本と、基礎に沿って這う砂埃。判定の無い絵。
+    //    スクラップ不足(拒否の反応)と2回目以降(軽い版)は輪なし。
     const px = st.player.x + st.player.width / 2;
     const fy = rect.y + rect.height;
-    const ringColor = red ? 'rgba(248,113,113,0.85)' : 'rgba(255,248,230,0.85)';
-    get().spawnRing(px, fy, 10, 150, ringColor, 4, 520, true);
-    get().spawnBurst(px - 14, fy - 2, '#a8a29e', 7);
-    get().spawnBurst(px + 14, fy - 2, '#78716c', 7);
-    get().spawnImageMark(px - 26, fy - 3, 'fx/dust-puff', { scale: 0.3, duration: 800 });
-    get().spawnImageMark(px + 28, fy - 2, 'fx/dust-puff', { scale: 0.26, duration: 900 });
-    // ③ 体で受ける止め: 格闘の当たりと同じ全停止(約60ms)+カメラを建物の方(画面の上)へごく小さく押し込む。スローは使わない。
-    // ダンス中は gameTime を止めるとリズムが乱れるので止めは抜く(triggerHitImpact と同じ扱い)。
-    if (!get().rhythm.active) get().triggerHitstop(POI_TOUCH_STOP_MS);
-    get().triggerKick(POI_TOUCH_KICK_PX, POI_TOUCH_KICK_MS, 0, 1);
+    if (!noFlash && !light) {
+      get().spawnRing(px, fy, 6, 60, 'rgba(255,236,205,0.5)', 2.5, 360, true);
+      get().spawnRing(px, fy, 4, 40, 'rgba(255,236,205,0.45)', 2, 280, true);
+    }
+    // 砂埃: 灰褐色・小さく。プレイヤーが来た側(建物の中心から見た左右)へ多く這い、反対側は1つだけ。基礎の線に沿わせる(自機の上には重ねない)。
+    const side = px >= rect.x + rect.width / 2 ? 1 : -1;
+    const puffs = light ? [[side, 1]] : [[side, 1], [side, 1.7], [-side, 0.8]];
+    for (const [sd, mag] of puffs) {
+      get().spawnImageMark(px + sd * 14, fy - 14, 'fx/dust-puff', {
+        scale: 0.12 + 0.03 * Math.random() + (mag > 1.5 ? 0.02 : 0), duration: 700 + Math.round(mag * 100), tint: 0x9a8b7a, alpha: 0.5,
+        moveX: sd * 34 * mag, fadeFrom: 0.4,
+      });
+    }
+    get().spawnBurst(px + side * 10, fy - 2, '#a8a29e', light ? 3 : 6);
   },
 
   // 隠しPOI(research/HIDDEN_POI.md §3): 正面(下)から触れたら発見。初めての場所だけ年表(kind 'cave'=発見済みの正本)に載せ、帯を出す。
@@ -25589,6 +25620,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         armoryDwellMs: 0,
         poiTouching: [],
         poiTouchFx: {},
+        poiTouchLast: {},
+        poiTouchLastAt: 0,
         armoryTaken: false,
         armoryTakenAt: 0,
         police: detourSectors ? policeSpot(detourSectors.police, detourAngleOffset(Math.random())) : null,
