@@ -7,6 +7,7 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5449', items: ['ゲーム内容の変更はありません'] },
   { version: '0.25.5448', items: [
     '格闘のステップの出し方を変更。スティックを一方へ振り、すぐ反対へ切り返して離すと、切り返した向きへ踏み込む',
     '攻撃の出だしや当たった直後に入れたステップは、動けるようになった瞬間に出る',
