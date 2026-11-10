@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5440', items: [
+    '拳鬼は、飛び蹴りを本当に当てた時しか秘奥義を始められない。構えで受け止めれば秘奥義は来ない',
+  ] },
   { version: '0.25.5439', items: [
     '拳鬼に専用の姿が付いた。上半身裸で赤い触手を背負った拳法家が、一回り大きな体で向かってくる',
   ] },

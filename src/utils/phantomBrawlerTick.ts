@@ -156,13 +156,14 @@ const strikePlayer = (
   c: PhantomBrawlerCtx, s: BrawlerState, hit: boolean, shapeForThird: Parameters<typeof hitThirdParties>[0],
   moveMult: number, moveKey: string, kb: 'none' | { speed: number; dirX: number; dirY: number } | undefined,
   originX: number, originY: number, secret = false,
-): { touched: boolean; countered: boolean } => {
+): { touched: boolean; countered: boolean; landed?: boolean } => {
   const mult = strikeMultOf(c, s, moveMult, secret);
   hitThirdParties(shapeForThird, c.baseDamage * mult * PVP_DAMAGE_SCALE, c.phantom.id, 'guardian-phantom');
   if (!hit) return { touched: false, countered: false };
   let countered = false;
   const r = c.land(originX, originY, mult, { moveKey, sourceLabel: `${c.label}の格闘`, knockback: kb, onCountered: () => { countered = true; } });
-  return { touched: r === 'hit' || r === 'nodamage', countered: countered || r === 'countered' };
+  // landed=本当に体力を削った(構え・無敵・神モードで0ダメージだった時は false)。秘奥義の1手目はこれで数える。
+  return { touched: r === 'hit' || r === 'nodamage', countered: countered || r === 'countered', landed: r === 'hit' };
 };
 
 /** 弾への対処(弾ごとに1回だけ決める・人格の割合)。この tick で実行するもの。 */
@@ -326,7 +327,9 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
   c.rt.move = null;
   return {
     ...(hits > 0 ? BR.brawlerFlowOnHit(after, 1) : after),
-    secretProgress: BR.brawlerSecretAfterKick(s.secretProgress ?? 0, hits > 0),
+    // ★秘奥義の1手目は「飛び蹴りが本当に当たった(体力を削った)時」だけ(社長指示2026-11-10「拳鬼も飛び蹴り当てないと秘奥義は打てない様にしないとおかしい」)。
+    // 構えで受けられた・無敵で0ダメージだった蹴りは数えない(プレイヤーの「1発目は敵に当たっていること」と同じ考え)。
+    secretProgress: BR.brawlerSecretAfterKick(s.secretProgress ?? 0, r.landed === true),
     kickChainUntil: big ? 0 : t + BR.BRAWLER_KICK_CHAIN_MS, kickCount: big ? 0 : s.kickN,
   };
 };
