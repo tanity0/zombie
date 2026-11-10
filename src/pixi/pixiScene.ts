@@ -108,7 +108,8 @@ import {
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
-import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerPhaseKind, brawlerJuggleHeightRel, brawlerAirSignal } from '../utils/brawlerCombo'; // 格闘の反撃の赤い予告(位相は meteorPhase)
+import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerPhaseKind, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
+import { getLastAirMeleeHit, stepPlayerAir, playerAirTargetPx, playerAirLandSquashY, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
@@ -4323,6 +4324,8 @@ interface ActorView {
   airScale?: number;
   /** 体の拡大の今の量(0..1・頂点の近くを時間で遅れて追う)と、その更新時刻。 */
   airSwell?: number;
+  /** ★プレイヤーが空中の敵を殴って浮く高さの状態(px・落下の速さ・前フレームの時刻・着地の時刻・直近の敵の浮く基準px)。プレイヤーの view だけが持つ。描画だけ(§18)。 */
+  playerAir?: PlayerAirState & { at: number; landAt?: number; scalePx?: number };
   airSwellAt?: number;
   /** 浮いている間の足元の輪(加算・地面)と、打ち上げた瞬間の上昇の筋(描画だけ・遅延生成)。 */
   airRing?: Sprite;
@@ -15113,11 +15116,14 @@ export class PixiScene {
       const disp = this.actorDisplaySize(this.playerView);
       const rawW = disp?.w ?? pf.boxW * 0.55;
       const rawH = disp?.h ?? pf.boxH;
+      // ★空中の敵を殴って浮いている間(§18): 影は地面に残し、浮いた高さぶん縮めて薄くする(敵の空中の合図と同じ heightPx/airK の経路)。
+      const airLiftPx = this.playerView?.shadowLiftPx ?? 0;
       place({
-        id: '__player__', x: pf.footX, y: pf.footY,
+        id: '__player__', x: pf.footX, y: pf.footY - airLiftPx,
         rawW, rawH, texture: this.playerView?.sprite.texture ?? null,
         alpha: 1, shadowFade: (this.playerView?.shadowFade ?? 1) * this.currentIntroFade(now),
         flip: disp?.flip, scaleMult: PLAYER_SHADOW_SCALE,
+        heightPx: airLiftPx, airK: this.playerView?.shadowAirK,
       });
     }
 
@@ -20704,6 +20710,48 @@ export class PixiScene {
       if (brPose.shakeX) actOffX += brPose.shakeX * dsc;
       if (brPose.shakeY) actOffY += brPose.shakeY * dsc;
     }
+    // ★空中の敵を近接で殴った時、プレイヤーの絵も宙へ浮かせて敵の高さを追う(社長指示2026-11-10・research/BRAWLER.md §18)。
+    // 絵の位置だけ上へずらす=足元(fb.footY=地面の値)・判定・移動・カメラは動かさない。地平線フェード・帯の外の減光・遠近スケール・可視域・移動可能帯は足元のまま。
+    // 高さの曲線(上がり=ease-out・漂い・重力の落下・落下中の再追従)は utils/playerAirFollow の純関数。状態はこの view だけ(store には書かない)。
+    let playerAirPx = 0;
+    if (PLAYER_MOTION_FX) {
+      const tAir = Date.now();
+      const st0 = view.playerAir ?? (view.playerAir = { h: 0, vy: 0, at: tAir });
+      const dtAir = tAir - st0.at;
+      st0.at = tAir;
+      const hit = getLastAirMeleeHit();
+      const sinceHit = hit ? tAir - hit.at : Infinity;
+      const bodyH = fb.boxH * dsc;
+      let target: number | null = null;
+      if (hit && sinceHit <= PLAYER_AIR_HOVER_MS) {
+        const enAir = useGameStore.getState().enemies.find(en => en.id === hit.enemyId);
+        const stAir = useGameStore.getState();
+        if (enAir) {
+          const viewHAir = stAir.gameBounds.height / Math.max(0.05, stAir.viewZoom || 1);
+          st0.scalePx = Math.min(enemyFootBox(enAir).boxH * BRW.BRAWLER_LIFT_VIS_BODY_K, viewHAir * BRW.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC);
+        }
+        const rel = enAir && brawlerAirborne(enAir, tAir) ? brawlerJuggleHeightRel(enAir, tAir) : hit.rel; // 敵が倒れた・着地した後は当てた時の高さ
+        target = playerAirTargetPx(rel, st0.scalePx ?? 0, bodyH);
+      }
+      const stepped = stepPlayerAir(st0, target, sinceHit, dtAir);
+      st0.h = stepped.state.h; st0.vy = stepped.state.vy;
+      if (stepped.landed) st0.landAt = tAir;
+      playerAirPx = st0.h;
+      // 着地: 小さく沈み、足元に砂埃(既存の砂埃)。
+      const sinceLand = st0.landAt !== undefined ? tAir - st0.landAt : -1;
+      if (sinceLand >= 0 && sinceLand < PLAYER_AIR_LAND_MS) {
+        actSqY *= playerAirLandSquashY(sinceLand);
+        actSqX *= 1 + (1 - playerAirLandSquashY(sinceLand)) * 0.6;
+        const landR = Math.max(fb.boxW, 28) * 0.42 * dsc * 0.8;
+        const landOff = Math.max(fb.boxW, 28) * 0.32 * dsc;
+        ([-1, 1] as const).forEach(side => {
+          const puff = this.latchFx(`player:airlanddust:${side}`, sinceLand < 60, DUST_MS * 0.6, tAir, () => [fb.footX + side * landOff, fb.footY]);
+          if (puff) this.drawDust(puff.d[0], puff.d[1], landR * (side === 1 ? 0.9 : 0.7), puff.t, this.dustTintForStage(), this.dustAlpha(puff.t) * 0.7, puff.t0);
+        });
+      }
+      view.shadowLiftPx = playerAirPx;
+      view.shadowAirK = bodyH > 0 ? Math.min(1, playerAirPx / bodyH) : 0;
+    }
     // カウンター成立の決めポーズ: 一瞬ふくらむ膨らみ＋傾き(速い減衰)。
     const sinceCounter = now - (p.lastCounterSuccessTime || 0);
     if (PLAYER_MOTION_FX && p.lastCounterSuccessTime > 0 && sinceCounter >= 0 && sinceCounter < PLAYER_COUNTER_MS) {
@@ -20878,7 +20926,7 @@ export class PixiScene {
       : 0;
     view.sprite.position.set(
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
-      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY - brawlerJumpPx,
+      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY - brawlerJumpPx - playerAirPx,
     );
     this.drawBrawlerFx(p, fb.footX, fb.footY, dsc, view.sprite, now);
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。

@@ -133,6 +133,7 @@ import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純�
 import { isBrawlerGuardingAt } from '../utils/brawler';
 import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食らいの固まり・減衰・反撃=research/BRAWLER.md §11)
 import * as BRS from '../utils/brawlerSkills'; // 格闘×スキルの純関数(research/BRAWLER.md §15)
+import { noteAirMeleeHit, resetAirMeleeHit } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
 import { nextHitStunUntil, stepKillChain, killChainTier, KILL_CHAIN_WINDOW_MS, KILL_CHAIN_SLOW_SCALE, KILL_CHAIN_SLOW_MS, KILL_CHAIN_SLOW_HOLD_MS, casingVelocity, CASING_GRAVITY, CASING_DURATION_MS, CASING_FLOOR_DROP_PX, CASING_SPIN_RAD_S, stepFloorParticle, recoilSpecForWeapon, recoilKickDir } from '../utils/combatFeel';
 // ★被弾リアクションの強さ(ノックバック・停止時間が読む・2026-09-17)
@@ -5471,6 +5472,11 @@ const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.Brawler
     }),
   }));
 };
+/** プレイヤー本人の近接の当たり: 空中の敵への倍率(§16)と、プレイヤーも浮く描画の記録(§18・描画だけ)。 */
+const meleeAirMult = (enemy: Enemy, now: number): number => {
+  noteAirMeleeHit(enemy, now);
+  return BRC.airHitMultFor(enemy, now);
+};
 /**
  * ★気功は銃の攻撃力に依存(社長指示2026-11-09・research/BRAWLER.md §16-E)。銃の弾のダメージに掛かっている倍率のうち、気功に掛かっていなかった「銃ダメージを上げる」ものを同じく掛ける:
  *  スカベンジャー(弾薬取得後3秒×1.1)・アタックシューター(+10/20/30%)・アタックドーピング(消費カード×1.2)。
@@ -5503,6 +5509,7 @@ const explodeBrawlerKiko = (
     // ★ダメージ補正(§13-2)。秘奥義の中の気功は補正しない。
     const pr = o.move === 'secret' ? 1 : BRC.brawlerProrationFor(e, Date.now());
     const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * pr * sniperGunMult(p, e))); // スナイパー(停止敵・距離)も銃と同じく乗る(§16-E)
+    noteAirMeleeHit(e, Date.now()); // 気功の爆発が空中の敵に入る=プレイヤーも浮く描画の記録(§18)
     const stunBefore = e.hitStunUntil;
     const killed = get().damageEnemy(id, dmg, true, false, false, 'other'); // 浮き: 気功の爆発(地上は brawlerKikoComboHit が爆発の浮きで打ち上げ・空中は格闘の拾い)
     { const na = meleeNumberPoint(x, y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); } // ★爆心から見た当たった所(§9-75・小さな敵は今までどおり)
@@ -11666,7 +11673,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const bashScanMult = enemy.id === scanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'melee') : 1;
         if (bashScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
         const bashBase = meleeDamage * SHIELD_BASH_DAMAGE_MULT * gpDmgScale;
-        let dmg = bashBase * bashScanMult * BRC.airHitMultFor(enemy, now); // 空中の敵への倍率(§16)
+        let dmg = bashBase * bashScanMult * meleeAirMult(enemy, now); // 空中の敵への倍率(§16)
         let bashScanShown = bashScanMult !== 1;
         // ★SAME_ARENA §9(検収監査 重大③): バッシュも近接=致命+melee削りの対象(site1と同型)。
         let bashPvpPatch: Partial<Enemy> = {};
@@ -11725,7 +11732,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (heavyScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
         // ★格闘(research/BRAWLER.md §15・社長承認2026-11-09): 段の倍率は5倍(強個体3倍)の部分だけに掛け、紫の報酬予算(最大HPの25%の残り)には掛けない
         // =どの段で決めても紫は満額報われ、締めで決めると少し多い。格闘以外(被弾反撃の×2も)は今までどおり報酬ごと掛ける。
-        const stunAirMult = bs ? BRC.airHitMultFor(enemy, now) : 1;
+        const stunAirMult = bs ? meleeAirMult(enemy, now) : (noteAirMeleeHit(enemy, now), 1);
         const dmg = bs
           ? BRS.stunnedFinishDamage(
             (fatal ? meleeExecBase * gpDmgScale * 5 : stunnedHit.dmg) * stunAirMult, // 5倍(3倍)の部分だけ空中の倍率。足の速さは meleeExecBase に入っている(§16)
@@ -11782,7 +11789,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (scanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
       // ★格闘のダメージ補正(research/BRAWLER.md §13-2): 同じ流れの10ヒット目以降 −5%/発(下限50%)。秘奥義は補正しない。
       const brProration = bs?.combo && bs.combo.move !== 'secret' && bs.combo.move !== 'secret-land' ? BRC.brawlerProrationFor(enemy, now) : 1;
-      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration * BRC.airHitMultFor(enemy, now); // 空中の敵への倍率(§16・格闘の長いコンボの補正と同じ並び)
+      let dmg = meleeDamage * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * retMult * scanMult * brProration * meleeAirMult(enemy, now); // 空中の敵への倍率(§16・格闘の長いコンボの補正と同じ並び)
       // ★SAME_ARENA §9(対人体勢): 紫中の幻影への近接=致命の一撃(×5+最大HP25%・裁定②)。
       // 紫でなければ melee(0.04)の削り+クリなら2/3減速。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -13064,7 +13071,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (既存ダメージ計算: dmg = base * (crit ? CRIT_DAMAGE_MULT : 1) に揃えた)。
       const katanaScanMult = enemy.id === katanaScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'katana') : 1;
       if (katanaScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 一閃は手動の近接=起爆
-      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * katanaScanMult * (isGhost ? 1 : BRC.airHitMultFor(enemy, now)); // 空中の敵への倍率(§16・守護霊は対象外)
+      let dmg = baseDamage * damageMult * strikeMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * katanaScanMult * (isGhost ? 1 : meleeAirMult(enemy, now)); // 空中の敵への倍率(§16・守護霊は対象外)
       // ★SAME_ARENA §9(検収監査 重大③): 刀にも致命(×5+最大HP25%)とmelee削り(site1と同型)。
       // 本人由来のみ=守護霊の刀(isGhost)は削らない・致命も出さない。
       let pvpMeleePatch: Partial<Enemy> = {};
@@ -13415,7 +13422,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const crit = Math.random() < meleeHitCritChance(meleeCritChance, player, gameTime, enemy, true);
       const whipScanMult = enemy.id === whipScanTargetId ? scanMarkMeleeMult(enemy, gameTime, 'whip') : 1;
       if (whipScanMult !== 1) noteScanDetonation(enemy.id, ecx, ecy); // §4-2: 手動の近接=起爆(重ねを使い切る・消すのは次のフレームの頭)。自動の斬り(刀の自動斬り・分身・追撃・波及)は起爆しない。
-      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult * BRC.airHitMultFor(enemy, now); // 空中の敵への倍率(§16)
+      let dmg = strikeBase * whipMult * (crit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1) * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * meleeComboMult * gpDmgScale * whipScanMult * meleeAirMult(enemy, now); // 空中の敵への倍率(§16)
       // ★SAME_ARENA §9(検収監査 重大③): 鞭にも致命(×5+最大HP25%)とmelee削り(site1と同型・鞭はプレイヤー本人のみの武器)。
       let pvpMeleePatch: Partial<Enemy> = {};
       if (isGuardianPhantom(enemy.type)) {
@@ -25040,7 +25047,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   
   resetGame: (characterClass) => {
     pendingBlastLifts.length = 0; blastHitIds.clear(); // ★爆発の浮きの待ち行列を前ランへ持ち越さない(§14)
-    BRC.resetAirHits(); // 空中の敵への倍率の数え(§16)も前ランへ持ち越さない
+    resetAirMeleeHit(); BRC.resetAirHits(); // 空中の敵への倍率の数え(§16)も前ランへ持ち越さない
     shieldChargedKeys.clear(); // research/SHIELD_BLOCK.md §8: 継続技の「削った」記録を捨てる
     impactQueue = []; impactLastFiredAt.clear(); // 揺れの整理: 前ランの未解決の命中・間隔を持ち越さない
     cutinShownThisRun.clear(); // 紹介カットインの既出はランごと(v0.25.4302)

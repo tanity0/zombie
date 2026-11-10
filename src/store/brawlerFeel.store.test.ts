@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useGameStore, playerMoveStatMult } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll, resetAirHits } from '../utils/brawlerCombo';
+import { getLastAirMeleeHit, resetAirMeleeHit } from '../utils/playerAirFollow';
 import { initialBrawlerState, BRAWLER_STAGES, BRAWLER_PALM_KB_MULT, BRAWLER_BIG_KB_MULT } from '../utils/brawler';
 import type { BrawlerStrikeOpts } from './gameStore';
 import type { SkillKey, SubWeaponKey } from '../types/game';
@@ -210,5 +211,21 @@ describe('血の覚醒(社長承認2026-11-09)', () => {
     };
     const base = kiko({});
     expect(kiko(awake) / base).toBeGreaterThan(1.4);
+  });
+});
+
+describe('空中の敵を近接で殴るとプレイヤーも浮く描画の記録(§18)', () => {
+  it('ナイフ・格闘の段は空中の敵への当たりを記録し、地上の敵・銃は記録しない', () => {
+    setup({ subs: [] });
+    resetAirMeleeHit();
+    useGameStore.setState({ enemies: [zombieAt(40, 0, 'z', 99999)] });
+    useGameStore.getState().triggerCounter();
+    expect(getLastAirMeleeHit()).toBeNull(); // 地上
+    useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, brLiftUntil: now + 5000, brawlerLiftAt: now, brLiftMs: 1000, brLiftPeak: 1, knockbackUntil: 0, hitStunUntil: 0 })) }));
+    useGameStore.getState().damageEnemy('z', 5, false, false, false, 'gun');
+    expect(getLastAirMeleeHit()).toBeNull(); // 銃は対象外
+    useGameStore.setState(st => ({ player: { ...st.player, counterCooldownEnd: 0 } }));
+    useGameStore.getState().triggerCounter();
+    expect(getLastAirMeleeHit()?.enemyId).toBe('z');
   });
 });
