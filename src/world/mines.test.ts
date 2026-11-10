@@ -89,3 +89,19 @@ describe('★緑卵の寿命と同時上限(社長指示2026-10-16・A6)', () =>
     expect(MINE_LIVE_CAP).toBeGreaterThan(52);
   });
 });
+
+// 社長実機報告2026-11-10「緑卵に周りを回る手裏剣みたいなスキルが当たると変な挙動になる。普通に卵壊して欲しい」。
+import { isEggPiercingBlade, eggBladeDamage } from './mines';
+describe('回る刃・ブーメランは卵を1発で割って、消えずに進む', () => {
+  it('ドローンブーメラン(投げた物・防衛の周回)は刃=卵で消えない。普通の弾は刃ではない', () => {
+    expect(isEggPiercingBlade({ weaponType: 'drone-boomerang-projectile' })).toBe(true);
+    expect(isEggPiercingBlade({ weaponType: 'rifle' })).toBe(false);
+    expect(isEggPiercingBlade({ weaponType: 'fire-knife-projectile' })).toBe(false);
+    expect(isEggPiercingBlade({})).toBe(false);
+  });
+  it('刃のダメージが0(防衛)でも、卵の残り体力以上を与えて必ず割る', () => {
+    expect(eggBladeDamage(1, 0)).toBeGreaterThanOrEqual(1);
+    expect(eggBladeDamage(30, 0)).toBeGreaterThanOrEqual(30);
+    expect(eggBladeDamage(5, 99)).toBe(99);
+  });
+});

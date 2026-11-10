@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5456', items: [
+    '周りを回るブーメランが緑の卵に触れると消えて位置が飛ぶ不具合が直った。触れた卵は割れ、刃はそのまま回り続ける',
+    '投げたドローンブーメランも、緑の卵を割ってそのまま飛ぶ',
+  ] },
   { version: '0.25.5455', items: [
     '格闘の技に出る白い筋の向きが逆だったのが直った。尖った先が進む側を向く',
   ] },

@@ -265,7 +265,7 @@ import {
   stepHomingLocks, ghostHomingHoldMs, HOMING_MAX_LOCKS_BY_LEVEL, HOMING_LOCK_INTERVAL_MS,
 } from '../utils/homing';
 import { tickSensorMines, SENSOR_MINE_DAMAGE, SENSOR_MINE_RADIUS } from '../utils/sensorMine';
-import { dueArmedEggs, eggsToChainArm, EGG_BLAST_RADIUS, eggShotRect, sweptBoxHitsRect, eggInFan, eggInBeam, eggBodyPoint, circleHitsEgg } from '../world/mines';
+import { dueArmedEggs, eggsToChainArm, EGG_BLAST_RADIUS, eggShotRect, sweptBoxHitsRect, eggInFan, eggInBeam, eggBodyPoint, circleHitsEgg, isEggPiercingBlade, eggBladeDamage } from '../world/mines';
 import {
   computeSupportSniperTick, computeSupportSniperEntry, computeSupportSniperFarCorner, pickSupportSniperSoldier,
   SUPPORT_SNIPER_CD_MS_BY_LEVEL, SUPPORT_SNIPER_SLIDE_IN_MS, SUPPORT_SNIPER_SLIDE_OUT_MS, SUPPORT_SNIPER_INSET,
@@ -16457,8 +16457,15 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             && (prop.type === 'mine' ? !eggProof && sweptBoxHitsRect(prevPt, projectile, eggShotRect(prop)) : checkCollision(projectile, prop)));
           if (!hitProp) continue;
 
-          const broken = damageBreakableProp(hitProp.id, projectile.damage);
-          const passThrough = hitProp.type === 'mine' && (isGrenadeGunKey(projectile.weaponKey) || projectile.explodeOnHit === true);
+          // ★回る刃・ブーメラン(投げたドローンブーメラン・「防衛」の周回)は小物で消えない(社長実機報告2026-11-10・world/mines.isEggPiercingBlade)。
+          // 卵は1発で割って進む。卵以外の小物(UVバー等)は投げた刃だけ・1回の行き/戻りにつき1回当てる(防衛はダメージ0なので触らない=毎フレームの火花を出さない)。
+          const blade = isEggPiercingBlade(projectile);
+          if (blade && hitProp.type !== 'mine') {
+            if (!(projectile.damage > 0) || projectile.hitEnemies.includes(hitProp.id)) continue;
+            projectile.hitEnemies.push(hitProp.id); // 貫通の当たり済みと同じ配列(行き/戻りの切り替えで空になる)
+          }
+          const broken = damageBreakableProp(hitProp.id, blade && hitProp.type === 'mine' ? eggBladeDamage(hitProp.health, projectile.damage) : projectile.damage);
+          const passThrough = blade || (hitProp.type === 'mine' && (isGrenadeGunKey(projectile.weaponKey) || projectile.explodeOnHit === true));
           if (!passThrough) {
             removeProjectile(projectile.id);
             projectilesRemovedThisFrame.add(projectile.id);

@@ -233,6 +233,15 @@ export const sweptBoxHitsRect = (
   return t0 < t1;
 };
 
+/**
+ * 卵(や小物)に当たっても消えない刃か(社長実機報告2026-11-10「緑卵に周りを回る手裏剣みたいなスキルが当たると変な挙動になる。普通に卵壊して欲しい」)。
+ * ドローンブーメラン(投げた物)と「防衛」の周回ブーメランは、当たった卵を1発で割って、そのまま飛び続ける/回り続ける。
+ * 旧: 普通の弾と同じく卵で消されていた=防衛は消えるたびに出し直されて位置が跳び、ダメージ0なので卵も割れなかった。
+ */
+export const isEggPiercingBlade = (p: { weaponType?: string }): boolean => p.weaponType === 'drone-boomerang-projectile';
+/** 刃が卵へ与えるダメージ(卵は必ず1発で割る=卵の残り体力以上)。 */
+export const eggBladeDamage = (eggHealth: number, bladeDamage: number): number => Math.max(1, eggHealth, bladeDamage);
+
 /** 卵(足元)が、線分(始点・向き・長さ)から halfWidth 以内か(length=0 で円)。近接の breakPropsAlong と同じカプセル。 */
 export const eggInCapsule = (
   egg: { footX: number; footY: number }, x0: number, y0: number, ux: number, uy: number, length: number, halfWidth: number,
