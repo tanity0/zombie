@@ -1076,6 +1076,12 @@ export interface Enemy {
    * 報酬・遭遇の記録・格闘の頭脳はこの印で分ける(型は同じ guardian-phantom)。
    */
   phantomUnique?: PhantomUniqueKind;
+  /** research/BRAWLER_PHANTOM.md: 格闘の幻影の格闘の状態(プレイヤーの player.brawler と同じ型・同じ純関数で進める)。 */
+  phantomBrawler?: BrawlerState;
+  /** 格闘の幻影の構えの終わり(gameTime)。この間は窓パリィの窓が開いている(phantomGate の窓モデルのまま)。 */
+  gpGuardUntil?: number;
+  /** 格闘の幻影が撃った気功(1発まで・描画も読む)。x/y=今の位置、traveled=飛んだ距離。 */
+  gpKiko?: { id: string; x: number; y: number; dirX: number; dirY: number; traveled: number; createdAt: number };
   /**
    * research/SAME_ARENA.md O-1: 幻影**自前**のサブウェポンCD帳簿(gameTime基準)。
    * 守護霊の `Summon.ghostSubWeaponCooldowns` と同型=**3者が別財布**(社長裁定2026-08-23)。
@@ -1331,6 +1337,8 @@ export interface Enemy {
     | 'volley-windup' | 'volley-recover' | 'tate-recover' | 'mdash-windup' | 'mdash-move' | 'mdash-recover'
     | 'lantern-windup' | 'lantern-recover' | 'consecrate' | 'consecrate-windup' | 'consecrate-recover' | 'warp-windup'
     | 'bone-windup' | 'bone-recover'
+    // research/BRAWLER_PHANTOM.md: 格闘の幻影(拳鬼)の行動中=技の最中(固まらない)/戻り=硬直(-recover の綴りで固まる)。
+    | 'gp-brawler' | 'gp-brawler-recover'
     | 'lance-windup' | 'lance' | 'lance-recover'
     | 'sweep' | 'sweep-windup' | 'sweep-recover' | 'downslash' | 'downslash-windup' | 'downslash-recover'
     | 'thrust' | 'thrust-windup' | 'thrust-recover' | 'bolt' | 'bolt-windup' | 'bolt-recover'

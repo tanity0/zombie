@@ -102,6 +102,11 @@ import {
 import { BULLET_MOVE_KEYS } from './moveReaction'; // GHOST_BOSS.md v10: 弾への対処の割合=人格の「弾の技」への反応
 import { isTrapDebuffed, trapMoveMult, TRAP_ROOT_CRIT_BONUS } from './trapDebuff';
 import { critDecayOnHit } from './critDecay'; // ★§13-3e クリ減衰(SAME_ARENA対称)
+import {
+  createPhantomBrawlerRuntime, stepPhantomBrawler, phantomBrawlerCancelled, phantomBrawlerHoldClock, phantomBrawlerBossState,
+  type PhantomBrawlerRuntime,
+} from './phantomBrawlerTick'; // research/BRAWLER_PHANTOM.md: 格闘の幻影(拳鬼)の格闘
+import { isBrawlerBusy, brawlerPointCap } from './brawler';
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
 export const GUARDIAN_PHANTOM_TYPE: EnemyType = 'guardian-phantom';
@@ -383,6 +388,8 @@ export interface PhantomTickState {
    * (社長「幻影があり得ない反応速度で近接をカウンターしてる」2026-10-26・`reachSwingReady`)。
    */
   reachEnteredAt?: number | null;
+  /** research/BRAWLER_PHANTOM.md: 格闘の幻影(拳鬼)の頭脳と踏み込みの持ち越し。印の無い幻影では使わない。 */
+  brawler?: PhantomBrawlerRuntime;
 }
 
 export const createPhantomTickState = (): PhantomTickState => ({
@@ -407,6 +414,7 @@ const resetPhantomRunState = (s: PhantomTickState): void => {
   s.growthAtkMult = 1;
   s.lunge = undefined;
   s.reachEnteredAt = null;
+  s.brawler = undefined;
 };
 
 /**
@@ -800,8 +808,34 @@ const swingPhantomMelee = (
   hitThirdParties({ kind: 'capsule', fx: bcx, fy: bcy, tx, ty, hw: GP_T.melee.halfWidth },
     phantomMeleeDamage(growthAtkMult, phantomId) * PVP_DAMAGE_SCALE, phantomId, GUARDIAN_PHANTOM_TYPE);
   if (distToBandRect({ x: pcx, y: pcy }, { x: bcx, y: bcy }, { x: tx, y: ty }, GP_T.melee.halfWidth) > playerRadius) return;
+  landPhantomMeleeOnPlayer(bcx, bcy, player, sfx, patch, phantomId, phantomMeleeDamage(growthAtkMult, phantomId), {});
+};
+
+/** 近接の当たりがプレイヤーに入った結果。 */
+export type PhantomMeleeLanding = 'shield' | 'countered' | 'hit' | 'nodamage';
+export interface PhantomMeleeLandOpts {
+  /** 素ダメージに掛ける倍率(格闘の段・技の倍率)。既定1。 */
+  mult?: number;
+  /** 死因の表示名。既定=幻影の斬撃。 */
+  sourceLabel?: string;
+  /** 技キー(死因の記録)。 */
+  moveKey?: string;
+  /** プレイヤーの押しの差し替え(damagePlayer の opts.knockback)。未指定=組み込みの押し。 */
+  knockback?: 'none' | { speed: number; dirX: number; dirY: number };
+  /** カウンター成立の時に呼ぶ(格闘の幻影は行動を取り消す)。 */
+  onCountered?: () => void;
+}
+/**
+ * 幻影の近接(周期の振り・格闘の段と技)が**プレイヤーの体に掛かった後**の解決(盾 → カウンター → 会心・致命 → damagePlayer → 体勢)。
+ * 汎用の幻影の近接と格闘の幻影が同じ1本を通る(research/BRAWLER_PHANTOM.md・写経しない)。
+ */
+export const landPhantomMeleeOnPlayer = (
+  bcx: number, bcy: number, player: Player, sfx: PhantomSfx, patch: Partial<Enemy>, phantomId: string,
+  baseDamage: number, o: PhantomMeleeLandOpts,
+): PhantomMeleeLanding => {
+  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   // research/SHIELD_BLOCK.md §1-1: 帯の起点=幻影の中心 bcx,bcy。その影に居れば盾が防ぐ(カウンター判定より前・何も起こさない)。守護霊・英雄は上の hitThirdParties で従来どおり。
-  if (shieldGuardsPlayerLine(bcx, bcy, 'guardian-phantom')) return;
+  if (shieldGuardsPlayerLine(bcx, bcy, 'guardian-phantom')) return 'shield';
   // fromX/fromY を渡さないとプレイヤーのノックバックが出ない(GHOST_BOSS.md 監査4周目#1)。
   // ★v0.25.3640(成果物監査Q1-3): damagePlayer の戻り値は「プレイヤーが死んだか」であって
   // 「当たったか」ではない(旧実装はこれを landed と誤読し、被弾SEが一度も鳴らなかった)。
@@ -820,7 +854,8 @@ const swingPhantomMelee = (
   // 新しく開けない、の二重化。ここは三重目の保険=「紫→致命」がカウンターで潰れない)。
   if (!isPvpIncapacitated(gNow.player.pvpPosture, gt) && isCounterActive(gNow.player, Date.now())) {
     counteredByPlayer(bcx, bcy, player, sfx, patch, phantomId);
-    return;
+    o.onCountered?.();
+    return 'countered';
   }
   // ★裁定①(社長2026-08-26): 幻影の近接にもクリを新設(記録どおりの武器クリ率で抽選=プレイヤーと対称)。
   // 旧「クリは近接では未適用(叩き台)」はこの裁定で置き換え。クリ成立=ダメージ×critMult+
@@ -840,17 +875,18 @@ const swingPhantomMelee = (
     : 0;
   const mm = phantomAtkMults(phantomId, meleeW, gt); // critMult(クリ倍率)はここから(倍率の対称化は(B))
   const crit = Math.random() < meleeCritChance;
-  let dmg = phantomMeleeDamage(growthAtkMult, phantomId) * (crit ? mm.critMult : 1) * PVP_DAMAGE_SCALE;
+  let dmg = baseDamage * (o.mult ?? 1) * (crit ? mm.critMult : 1) * PVP_DAMAGE_SCALE;
   // ★SAME_ARENA §9: 紫中のプレイヤーへの近接=致命の一撃(×5+最大HP25%・裁定②)。
   const fatalHit = isPvpFatalTarget(gNow.player.pvpPosture, gt);
   if (fatalHit) dmg = pvpFatalDamage(dmg, gNow.player.maxHealth);
   const hpBefore = gNow.player.health;
   useGameStore.getState().damagePlayer(
     // 対人スケール(社長裁定2026-08-20)は上のdmgで適用済み。
-    dmg, guardianPhantomMeleeSource(), bcx, bcy, GUARDIAN_PHANTOM_TYPE,
+    dmg, o.sourceLabel ?? guardianPhantomMeleeSource(), bcx, bcy, GUARDIAN_PHANTOM_TYPE,
     // ★被弾反撃の相手(社長指示2026-10-10「幻影との戦いの近接後は反撃できない?できるようにして」)。
     // 旧: 対人の体勢と絡むので対象外にしていた。反撃の一撃は普通の近接と同じ関所(phantomGate の窓パリィ・対人体勢)を通る。
-    undefined, undefined, undefined, phantomId,
+    undefined, o.moveKey, undefined, phantomId, undefined,
+    o.knockback !== undefined ? { knockback: o.knockback } : undefined,
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
   const landed = useGameStore.getState().player.health < hpBefore;
@@ -871,6 +907,7 @@ const swingPhantomMelee = (
       return { player: { ...st.player, ...merged } };
     });
   }
+  return landed ? 'hit' : 'nodamage';
 };
 
 /** 弾を1発撃つ(全ボス共通の赤い二重丸=絵替えしない)。飛翔特性はプレイヤーの実弾と同じ共通ヘルパ。 */
@@ -1087,6 +1124,16 @@ export const tickPlayerFlamerBurn = (): void => {
   );
 };
 
+/** 格闘の幻影の出かかった行動を取り消す(紫・気絶・拘束・浮き)。印の無い幻影には何もしない。 */
+const cancelPhantomBrawler = (phantom: Enemy, patch: Partial<Enemy>, gameTime: number): void => {
+  const b = phantom.phantomBrawler;
+  if (!b || !isBrawlerBusy(b)) return;
+  const next = phantomBrawlerCancelled(b);
+  patch.phantomBrawler = next;
+  patch.gpGuardUntil = undefined;
+  patch.bossState = phantomBrawlerBossState(next, gameTime);
+};
+
 export const runPhantomTick = (
   phantom: Enemy,
   s: PhantomTickState,
@@ -1128,6 +1175,7 @@ export const runPhantomTick = (
       }
       patch.vx = nvx; patch.vy = nvy;
       abortPhantomFlamer(phantom, patch); // §17-6b P6: 紫(体勢崩れ)で溜めも噴射も打ち切る
+      cancelPhantomBrawler(phantom, patch, newGameTime); // 格闘の幻影: 出かかった行動を取り消す
       applyPatch(phantom.id, patch);
       return;
     }
@@ -1149,14 +1197,26 @@ export const runPhantomTick = (
   ], isEnemyFrozenForClocks(phantom, newGameTime, nowMs), newGameTime, nowMs);
 
   // ---- 気絶・拘束・浮き: 何もしない(★ノックバックは含めない=殴っても止まらない) ----------------
-  if (isFrozen(phantom, newGameTime, nowMs)) { abortPhantomFlamer(phantom, patch); applyPatch(phantom.id, patch); return; }
+  if (isFrozen(phantom, newGameTime, nowMs)) { abortPhantomFlamer(phantom, patch); cancelPhantomBrawler(phantom, patch, newGameTime); applyPatch(phantom.id, patch); return; }
   // ★格闘の食らいの固まり(research/BRAWLER.md §11-1・社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう」): 止まるだけ
   //   (移動も撃ち始めもしない)。幻影には技の最中の概念が無いので、流しっぱなしの火炎放射だけは浮きと同じく打ち切る。
-  if (brawlerHeldNow(phantom, newGameTime, nowMs)) { abortPhantomFlamer(phantom, patch); applyPatch(phantom.id, patch); return; }
+  if (brawlerHeldNow(phantom, newGameTime, nowMs)) {
+    abortPhantomFlamer(phantom, patch);
+    // 格闘の幻影の戻り(硬直)を固めている間は、格闘の時計も止める=明けたら戻りの続きから(research/BRAWLER_PHANTOM.md §4-1)。
+    if (phantom.phantomBrawler && phantom.brHoldUntil !== undefined) {
+      patch.phantomBrawler = phantomBrawlerHoldClock(phantom.phantomBrawler, newGameTime, phantom.brHoldUntil - nowMs);
+    }
+    applyPatch(phantom.id, patch);
+    return;
+  }
 
   // ---- パリィの即反撃(周期を無視した割り込み) ---------------------------------------------------
   const parried = consumePhantomParry(phantom, s, player, bcx, bcy, sfx, patch, newGameTime);
   if (parried) abortPhantomFlamer(phantom, patch); // §17-6b P6: パリィされたら打ち切る
+  // 格闘の幻影: 構えで受けたら技ポイント全回復(プレイヤーの構えと同じ・research/BRAWLER.md §10-1)。
+  if (parried && phantom.phantomUnique === 'brawler' && phantom.phantomBrawler) {
+    patch.phantomBrawler = { ...phantom.phantomBrawler, points: brawlerPointCap(Math.max(1, Math.min(3, phantom.phantomBuild?.subWeaponLevels?.brawler ?? 1))), guardHitAt: Date.now() };
+  }
 
   // ---- 銃の状態(リロード)を進める --------------------------------------------------------------
   stepPhantomGun(s, nowMs, phantom.id, phantom.gpTrapDebuffUntil ?? 0);
@@ -1207,6 +1267,11 @@ export const runPhantomTick = (
   // 押し道具(鞭・シールドバッシュ)の shove 窓の間は**自分の移動で x/y を上書きしない**
   // =押されるがままになる(プレイヤーも押し合いの対象になる世界=同条件の範囲内)。
   const shoved = nowMs < (phantom.knockbackShoveUntil ?? 0);
+  // research/BRAWLER_PHANTOM.md: 格闘の幻影は行動中(段・技・踏み込み)は歩かない(格闘の硬直=プレイヤーと同じ)。
+  const isBrawlerPhantom = phantom.phantomUnique === 'brawler';
+  if (isBrawlerPhantom && !s.brawler) s.brawler = createPhantomBrawlerRuntime();
+  const brawlerBusy = isBrawlerPhantom && (isBrawlerBusy(phantom.phantomBrawler) || s.brawler?.move != null);
+  if (brawlerBusy) { decision.moveX = 0; decision.moveY = 0; }
   if (!shoved) {
     // ★SAME_ARENA §9: クリ被弾の2/3減速(pvpMoveMult)。ボスのbossSlowUntil無視(D4)はそのまま。
     const dt = deltaTime * moveSpeedMult * phantomSlowMult(phantom, newGameTime) * pvpMoveMult(phantom.pvpPosture, newGameTime);
@@ -1257,6 +1322,25 @@ export const runPhantomTick = (
         }));
       }
     }
+  }
+
+  // ---- 格闘の幻影(拳鬼): 銃と周期の近接の代わりに格闘の状態機械を回す(research/BRAWLER_PHANTOM.md §4) ----
+  if (isBrawlerPhantom && s.brawler) {
+    const actor = combatActorPlayer(phantom.id) ?? player;
+    stepPhantomBrawler({
+      phantom: { ...phantom, ...('x' in patch ? { x: patch.x! } : {}), ...('y' in patch ? { y: patch.y! } : {}) },
+      rt: s.brawler, player, projectiles: st0.projectiles, actor,
+      profile: getPhantomIdentity()?.profile ?? strongestGuardian().profile,
+      t: newGameTime, nowMs, deltaTime, rand, patch,
+      baseDamage: phantomMeleeDamage(s.growthAtkMult, phantom.id),
+      land: (ox, oy, mult, o) => landPhantomMeleeOnPlayer(ox, oy, useGameStore.getState().player, sfx, patch, phantom.id,
+        phantomMeleeDamage(s.growthAtkMult, phantom.id), { mult, moveKey: o.moveKey, sourceLabel: o.sourceLabel, knockback: o.knockback, onCountered: o.onCountered }),
+      resolveMove: (nx, ny) => resolveMove(nx, ny, phantom),
+      swingSfx: () => sfx.swing(),
+      label: phantomDisplayLabel(),
+    });
+    applyPatch(phantom.id, patch);
+    return;
   }
 
   // ---- 銃撃(bossState 機械から独立。プレイヤーが移動しながら撃つのと同じ層) ----------------------

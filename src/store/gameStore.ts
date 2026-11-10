@@ -3695,7 +3695,9 @@ const gatePhantomHit = (
   parryCdMs: GP_T.parryCdMs,
   // 近接パリィの窓: **storeに入った**スイング打刻を起点に、プレイヤーと同じ長さだけ開く
   // (幻影tickのパッチ合成が同フレーム後段なら1フレーム(16ms)の取りこぼしが出るが許容=仕様)。
-  gpSwingAt: enemy.gpSwingAt,
+  // research/BRAWLER_PHANTOM.md: 格闘の幻影は拳では窓を開けず、**構えの間だけ**窓を開ける(プレイヤーの格闘も通常の近接のカウンターは無い・構えだけ)。
+  //   窓モデルそのもの(長さ・パリィのCD)は今の幻影のまま=構え中は毎フレーム「いま振った」扱いで窓の頭を今へ寄せる。
+  gpSwingAt: (enemy.gpGuardUntil ?? 0) > gameTime ? gameTime : enemy.gpSwingAt,
   // ★窓の長さはプレイヤーのカウンター受付(COUNTER_ACCEPT_MS)と同じ。v0.25.3943 で受付を「振り1回の長さ」(COUNTER_WINDOW=400)
   //   から分けた時に、ここだけ400のまま残っていた=幻影だけ受付が3割長かった(社長「あり得ない反応速度でカウンター」2026-10-26)。
   swingWindowMs: isGuardianPhantom(enemy.type) ? counterAcceptMsOf(combatActorPlayer(enemy.id)) : COUNTER_ACCEPT_MS, // 記録の強化で延びる(プレイヤーと同条件)
@@ -8612,7 +8614,7 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean }) => boolean; // opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean; knockback?: 'none' | { speed: number; dirX: number; dirY: number } }) => boolean; // opts.knockback: ★組み込みの被弾の押しの差し替え(research/BRAWLER_PHANTOM.md §4-8・格闘の幻影の段ごとの押し)。'none'=押さない(揺れの向きは残す)/ 速さと向き=その押し。未指定=今どおり / opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -14706,6 +14708,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const kbSpd = PLAYER_KNOCKBACK_SPEED * hurtKb.kbSpeedMult;
       kbVx = dx * kbSpd; kbVy = dy * kbSpd; kbApply = !armored; // アーマー時は押し出さない(向き dirX/dirY は画面シェイクのために残す)
       dirX = dx; dirY = dy;
+      // research/BRAWLER_PHANTOM.md §4-8: 押しの差し替え(格闘の幻影の段ごとの押し)。未指定なら上の組み込みのまま。
+      const kbo = opts?.knockback;
+      if (kbo === 'none') kbApply = false;
+      else if (kbo) { kbVx = kbo.dirX * kbo.speed; kbVy = kbo.dirY * kbo.speed; }
     }
 
     set(state => {
