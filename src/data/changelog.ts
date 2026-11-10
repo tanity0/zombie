@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5455', items: [
+    '格闘の技に出る白い筋の向きが逆だったのが直った。尖った先が進む側を向く',
+  ] },
   { version: '0.25.5454', items: [
     '格闘のステップで出る絵を、白い筋から蹴り出した所の砂埃に変えた',
   ] },

@@ -4782,7 +4782,7 @@ const startBrawlerTech = (
         const sc = big ? 0.2 : 0.14, sx = big ? 1.6 : 1.3;
         const back = 130 * sc * (233 / 64) * sx / 2 - 12;
         brawlerFx(get, -dir.x * back, p.height * 0.18 - dir.y * back * 0.5, 'fx/dash-wind', {
-          followPlayer: true, scale: sc, scaleX: sx, rot: ang,
+          followPlayer: true, scale: sc, scaleX: sx, rot: ang + Math.PI,
           duration: s.windupMs + (big ? 90 : 50), fadeFrom: 0.6, moveX: dir.x * (big ? 26 : 16), moveY: dir.y * (big ? 26 : 16), alpha: 0.95,
         });
       }
@@ -4978,7 +4978,7 @@ const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => P
   const wdx = to.x - from.x, wdy = to.y - from.y, wl = Math.hypot(wdx, wdy);
   if (wl > 8) {
     brawlerFx(get, (from.x + to.x) / 2, (from.y + to.y) / 2 - 6, 'fx/dash-wind', {
-      scale: 0.16, scaleX: wl / (0.16 * 130 * (233 / 64)), rot: Math.atan2(wdy, wdx), duration: 260, fadeFrom: 0.15, tint: 0x9be7ff,
+      scale: 0.16, scaleX: wl / (0.16 * 130 * (233 / 64)), rot: Math.atan2(wdy, wdx) + Math.PI, duration: 260, fadeFrom: 0.15, tint: 0x9be7ff,
       moveX: wdx * 0.18, moveY: wdy * 0.18, alpha: 0.95,
     });
     g.spawnGlow(from.x, from.y - 6, GLOW_R_S, 'rgba(125,211,252,', 220, true);
@@ -5016,7 +5016,7 @@ const brawlerSecretStrike = (get: () => GameState, set: (fn: (s: GameState) => P
     brawlerKillSfx(res);
     const ang = Math.atan2(dir.y, dir.x);
     const fy = c.y + p.height * 0.18;
-    brawlerFx(get, c.x, fy, 'fx/dash-wind', { scale: 0.22, scaleX: 2.0, rot: ang, duration: 220, fadeFrom: 0.15, moveX: dir.x * 70, moveY: dir.y * 70, alpha: 0.9 });
+    brawlerFx(get, c.x, fy, 'fx/dash-wind', { scale: 0.22, scaleX: 2.0, rot: ang + Math.PI, duration: 220, fadeFrom: 0.15, moveX: dir.x * 70, moveY: dir.y * 70, alpha: 0.9 });
     brawlerFx(get, c.x + dir.x * 30, fy - 4 + dir.y * 14, 'vfx/slash_02', { scale: 0.8, scaleY: 0.8, rot: ang - Math.PI / 2, duration: 260, fadeFrom: 0.25, moveX: dir.x * 18, moveY: dir.y * 18 });
     for (const h of res.hitAt ?? []) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.closer);
     brawlerSfx('brawler-hit', 1.0, 0.7 * brJitter(), 260);
@@ -5062,7 +5062,7 @@ const brawlerSecretFall = (get: () => GameState, set: (fn: (s: GameState) => Par
   }, { x: spot.x, y: spot.y, vx: 0, vy: 0 });
   const g = get();
   g.spawnGlow(from.x, from.y - 6, GLOW_R_M, 'rgba(255,248,230,', 260, true);
-  brawlerFx(get, from.x, from.y - 40, 'fx/dash-wind', { scale: 0.3, scaleX: 1.6, rot: -Math.PI / 2, duration: 300, fadeFrom: 0.2, moveY: -90, tint: 0x9be7ff });
+  brawlerFx(get, from.x, from.y - 40, 'fx/dash-wind', { scale: 0.3, scaleX: 1.6, rot: Math.PI / 2, duration: 300, fadeFrom: 0.2, moveY: -90, tint: 0x9be7ff }); // 上へ抜ける=先を上へ(素材の先は -x 側)
   brawlerSfx('whip-swing', 0.7, 0.55, 200);
 };
 /** フィニッシュの着地: 大範囲の地面叩き(半径260・3.0倍・big の強制ノックバック・ボス級は半分=§10-2-3)。 */
@@ -5266,7 +5266,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       const ang = Math.atan2(dir.y, dir.x);
       const fy = c.y + p.height * 0.18;
       brawlerFx(get, c.x, fy, 'fx/dash-wind', {
-        scale: big ? 0.22 : 0.16, scaleX: big ? 2.0 : 1.5, rot: ang, duration: big ? 220 : 160, fadeFrom: 0.15, moveX: dir.x * (big ? 70 : 44), moveY: dir.y * (big ? 70 : 44), alpha: 0.9,
+        scale: big ? 0.22 : 0.16, scaleX: big ? 2.0 : 1.5, rot: ang + Math.PI, duration: big ? 220 : 160, fadeFrom: 0.15, moveX: dir.x * (big ? 70 : 44), moveY: dir.y * (big ? 70 : 44), alpha: 0.9,
       });
       brawlerFx(get, c.x + dir.x * 30, fy - 4 + dir.y * 14, 'vfx/slash_02', {
         scale: big ? 0.8 : 0.55, scaleY: 0.8, rot: ang - Math.PI / 2, duration: big ? 260 : 180, fadeFrom: 0.25, moveX: dir.x * 18, moveY: dir.y * 18, alpha: 1,
@@ -5317,6 +5317,7 @@ const brawlerSpark = (
  * 白い素材は乗算 tint で白金になる(色付き素材は呼び手が tint を外す)。動きは spawnImageMark の加速→減速(慣性)。
  */
 type BrawlerFxOpts = NonNullable<Parameters<GameState['spawnImageMark']>[3]>;
+// ★素材 fx/dash-wind は尖った先が -x 側(pixiScene.drawDashWind / drawThrustWind と同じ規約=進む向き+PI で先を前へ)。社長指摘2026-11-10「白い線の向きが逆」で直した。
 const brawlerFx = (get: () => GameState, x: number, y: number, tex: string, o: BrawlerFxOpts): void => {
   get().spawnImageMark(x, y, tex, { additive: true, tint: BR.BRAWLER_COLOR_HEX, noPop: true, ...o });
 };
@@ -5368,7 +5369,7 @@ const brawlerStageFx = (
       {
         const side = stage === 2 ? -1 : 1;
         brawlerFx(get, c.x + dir.x * 4 - dir.y * side * 6, c.y - 8 + dir.y * 4 + dir.x * side * 3, 'fx/dash-wind', {
-          scale: 0.12, scaleX: 0.85, rot: ang, duration: 150, fadeFrom: 0.25, moveX: dir.x * 22, moveY: dir.y * 22, alpha: 0.85,
+          scale: 0.12, scaleX: 0.85, rot: ang + Math.PI, duration: 150, fadeFrom: 0.25, moveX: dir.x * 22, moveY: dir.y * 22, alpha: 0.85,
         });
       }
       for (const h of hitAt) brawlerSpark(get, h, c, BR.BRAWLER_SPARK.weak);
@@ -5410,7 +5411,7 @@ const brawlerStageFx = (
       const mx = (x0 + c.x) / 2, my = (y0 + c.y) / 2 - 6;
       // 線: dash-wind(白い羽の筋)を軌跡の長さへ伸ばす。尖った先が抜けた側。
       brawlerFx(get, mx, my, 'fx/dash-wind', {
-        scale: 0.15, scaleX: (travel + 50) / (0.15 * 130 * (233 / 64)), rot: ang, duration: 460, fadeFrom: 0.3, moveX: dir.x * 16, moveY: dir.y * 16, alpha: 0.85,
+        scale: 0.15, scaleX: (travel + 50) / (0.15 * 130 * (233 / 64)), rot: ang + Math.PI, duration: 460, fadeFrom: 0.3, moveX: dir.x * 16, moveY: dir.y * 16, alpha: 0.85,
       });
       // 線に沿って残る空気のうねり(trace_04 を軌跡へ寝かせる)。線より長く残る。
       brawlerFx(get, mx, my, 'vfx/trace_04', {

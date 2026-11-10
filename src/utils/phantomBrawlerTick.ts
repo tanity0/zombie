@@ -676,7 +676,7 @@ const kenkiShukuchi = (c: PhantomBrawlerCtx, s: BrawlerState, cx: number, cy: nu
   const wdx = to.x - cx, wdy = to.y - cy, wl = Math.hypot(wdx, wdy);
   if (wl > 8) {
     g.spawnImageMark((cx + to.x) / 2, (cy + to.y) / 2 - 6, 'fx/dash-wind', {
-      additive: true, noPop: true, scale: 0.16, scaleX: wl / (0.16 * 130 * (233 / 64)), rot: Math.atan2(wdy, wdx), duration: 260, fadeFrom: 0.15,
+      additive: true, noPop: true, scale: 0.16, scaleX: wl / (0.16 * 130 * (233 / 64)), rot: Math.atan2(wdy, wdx) + Math.PI, duration: 260, fadeFrom: 0.15, // 素材の先は -x 側=進む向き+PI で先を行き先へ
       tint: 0x9be7ff, moveX: wdx * 0.18, moveY: wdy * 0.18, alpha: 0.95,
     });
     g.spawnGlow(cx, cy - 6, GLOW_R_S, 'rgba(125,211,252,', 220, true);
