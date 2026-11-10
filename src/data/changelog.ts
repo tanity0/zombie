@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5435', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5434', items: [
     '空中で大技を出すと、地面を叩く砂埃は自分が着地した瞬間に舞い上がる',
     '宙で敵を追う間、体が相手の方へ食らいつく',
