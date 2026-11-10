@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5434', items: [
+    '空中で大技を出すと、地面を叩く砂埃は自分が着地した瞬間に舞い上がる',
+    '宙で敵を追う間、体が相手の方へ食らいつく',
+  ] },
   { version: '0.25.5433', items: [
     '宙に浮いた敵を近接で殴ると、自分も跳び上がって追いかける。殴るたびに空中で小さく弾み、高く落ちるほど着地が重い',
   ] },
