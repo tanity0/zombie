@@ -4677,13 +4677,21 @@ const startBrawlerStep = (
     lungeVx: ux * v, lungeVy: uy * v, lungeUntil: now + ms, lungeMs: ms, lungeShape: 'step', lungeHoldUntil: 0,
     lastDirection: { x: ux, y: uy },
   });
-  // 絵: 足元に地面を擦る筋(dash-wind を体に付けて後ろへ引く)と、蹴り出した所の土埃。音は短い風切り。
+  // 絵: 蹴り出した所に砂埃(社長指示2026-11-10「ステップのエフェクトは砂埃にして。白い線やめる」=旧 dash-wind の白い筋を撤去)。
+  // 砂埃は地面に残り、蹴った向きの逆へ流れて薄れる(体には付けない)。判定の無い派手さの絵=大きめ・2つは大きさと尺をずらす。音は短い風切り。
   const c = brawlerCenter(p);
-  const ang = Math.atan2(uy, ux);
-  brawlerFx(get, -ux * 30, p.height * 0.32, 'fx/dash-wind', {
-    followPlayer: true, scale: 0.13, scaleX: 1.2, rot: ang, duration: ms + 60, fadeFrom: 0.5, moveX: ux * 14, moveY: uy * 14, alpha: 0.85,
+  const footY = c.y + p.height / 2 - 12;
+  const px = -uy, py = ux; // 進む向きに直角(左右へ少し散らす)
+  get().spawnImageMark(c.x - ux * 8, footY, 'fx/dust-puff', {
+    scale: 0.24, duration: 560, tint: 0x9a8b7a, alpha: 0.72, moveX: -ux * 30, moveY: -uy * 30, fadeFrom: 0.35,
   });
-  get().spawnBurst(c.x - ux * 10, c.y + p.height / 2 - 4, '#cdb89a', 7, -ux, -uy);
+  get().spawnImageMark(c.x + ux * 6 + px * 9, footY + py * 9 - 2, 'fx/dust-puff', {
+    scale: 0.17, duration: 430, tint: 0xa89a88, alpha: 0.6, moveX: -ux * 18 + px * 8, moveY: -uy * 18 + py * 8, fadeFrom: 0.3,
+  });
+  // ※粒(spawnBurst)は出さない: 粒は芯が白く光って描かれるので、撮影で「白い筋」に見えた(白い線をやめる指示に反する)。小さい砂埃をもう1つ。
+  get().spawnImageMark(c.x - ux * 16 - px * 7, footY - py * 7 + 3, 'fx/dust-puff', {
+    scale: 0.12, duration: 380, tint: 0x8f8170, alpha: 0.55, moveX: -ux * 24 - px * 6, moveY: -uy * 24 - py * 6, fadeFrom: 0.3,
+  });
   brawlerSfx('whip-swing', 0.38, 0.78 * brJitter(), 120);
 };
 /**

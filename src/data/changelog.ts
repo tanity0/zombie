@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5454', items: [
+    '格闘のステップで出る絵を、白い筋から蹴り出した所の砂埃に変えた',
+  ] },
   { version: '0.25.5453', items: [
     'PC版: 洋館の保存槽の投与が、キーボードとパッドでも押せる',
     'PC版: 錬金砲・シグナルランチャー・刀・ワイヤーアンカーの説明が、マウスやパッドの操作の言葉になった',
