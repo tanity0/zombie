@@ -25,6 +25,8 @@ import { subWeaponUpgradeNoteText } from '../data/subWeaponUpgradeNotes';
 import { merchantEquipShelf, equipmentById, equipmentDescription, hasEquipIcon, equipIconName } from '../data/equipment';
 import { spritePath } from '../utils/spriteLoader';
 import { playSfx } from '../audio/audioManager';
+import { NpcLinePill } from './NpcDialogue';
+import { isFollowToggleLineText, followToggleLineMatches } from '../data/npcLines';
 
 type ShopEntry = {
   key: ShopItemKey;
@@ -251,6 +253,17 @@ const ShopMenu: React.FC = () => {
   const showTravel = hasTravelTargets(travel);
   // 「連れて歩く」のオン/オフ(research/ESCORT_FOLLOW.md §9-8・社長指示「商人メニューに入れて」)。軍人の居る出撃だけ出す。
   const followOn = useGameStore(state => state.escortFollowEnabled);
+  // 押した時の軍人の返事は、このパネルの中(行のすぐ下)に出す。HUD の会話(左上/下中央)はショップの暗幕の下で読めないため。
+  // 出すのは、このショップを開いてから押した時だけ(前に押した返事の残りを開いた瞬間に出さない)。返事の行が変わった時だけ再描画。
+  const [askedFollow, setAskedFollow] = React.useState(false);
+  // 今の状態に合う返事だけ(連打の間は返事が黙る=前の逆の返事を残さない)。
+  const followReply = useGameStore(state => (state.npcDialogue && isFollowToggleLineText(state.npcDialogue.text)
+    && followToggleLineMatches(state.npcDialogue.text, state.escortFollowEnabled) ? state.npcDialogue : null));
+  const followReplyRef = React.useRef<HTMLDivElement | null>(null);
+  const followReplyText = askedFollow ? followReply?.text : undefined;
+  React.useEffect(() => {
+    if (followReplyText) followReplyRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [followReplyText]);
   const showFollow = React.useMemo(() => {
     const st = useGameStore.getState();
     return !st.corridorMode && st.stageTheme !== 'lab' && !st.indoorMode && (st.escorts.length > 0 || st.pendingEscorts.length > 0);
@@ -426,7 +439,7 @@ const ShopMenu: React.FC = () => {
             {/* 「連れて歩く」のオン/オフ(research/ESCORT_FOLLOW.md §9-8)。札は今の状態だけ(押すと入れ替わる)。待機も「選んだ姿」として色を持つ。 */}
             <button
               type="button"
-              onClick={() => { playSfx('ui-move'); useGameStore.getState().toggleEscortFollow(); }}
+              onClick={() => { playSfx('ui-move'); setAskedFollow(true); useGameStore.getState().toggleEscortFollow(); }}
               aria-label={followOn ? '軍人の同行: 連れていく。押すと待たせる' : '軍人の同行: 待たせる。押すと連れていく'}
               className="relative flex h-11 w-full items-center gap-3 rounded-none border border-purple-400/[0.15] bg-purple-400/[0.06] px-3 text-left active:scale-[0.99]"
             >
@@ -438,6 +451,12 @@ const ShopMenu: React.FC = () => {
                 {followOn ? '連れていく' : '待たせる'}
               </span>
             </button>
+            {askedFollow && followReply && (
+              // 立ち絵は板の上へはみ出す(会話UI共通)=その分だけ上を空ける。返事が入れ替わるたびに出直す。
+              <div ref={followReplyRef} key={followReply.text} className="follow-reply-in mt-5" aria-live="polite">
+                <NpcLinePill npc={followReply} />
+              </div>
+            )}
           </div>
         )}
         {sellTarget && (

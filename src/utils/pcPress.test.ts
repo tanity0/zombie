@@ -94,4 +94,54 @@ describe('PC の指(pcPress)', () => {
     expect(rhythmInput).toHaveBeenCalledWith('tap');
     useGameStore.setState({ rhythm: { ...useGameStore.getState().rhythm, active: false } } as never);
   });
+  // 被弾反撃の窓(research/HIT_RETALIATION.md)の中の押し直しはスケボーに乗らない(タッチの VirtualJoystick と同じ・検収監査 A-1)。
+  const openWindow = () => { const now = Date.now(); return { fromId: 'e', openedAt: now - 10, closesAt: now + 10_000, stopUntil: now, dirX: 1, dirY: 0 }; };
+  it('反撃の窓が開いている間の押し直しは、2度押しでもスケボーに乗らない', () => {
+    pcPressDown('mouse');
+    pcPressUp('mouse', true);
+    useGameStore.setState({ hitRetaliation: openWindow() } as never);
+    pcPressDown('mouse');
+    expect(mount).not.toHaveBeenCalled();
+    pcPressUp('mouse', true);
+    useGameStore.setState({ hitRetaliation: null } as never);
+  });
+  it('反撃の窓の間の短い押しは、次の押下の2度押しに数えない', () => {
+    useGameStore.setState({ hitRetaliation: openWindow() } as never);
+    pcPressDown('key');
+    pcPressUp('key', true);
+    useGameStore.setState({ hitRetaliation: null } as never);
+    pcPressDown('key');
+    expect(mount).not.toHaveBeenCalled();
+    pcPressUp('key', true);
+  });
+  it('窓が閉じていれば、従来どおり2度押しで乗る', () => {
+    useGameStore.setState({ hitRetaliation: null } as never);
+    pcPressDown('pad');
+    pcPressUp('pad', true);
+    pcPressDown('pad');
+    expect(mount).toHaveBeenCalledTimes(1);
+  });
+  // 洋館の再訪: 保存槽の［投与する］が出ている間、主ボタンの離し=投与(攻撃は出さない)。キー・パッドだけでも秘密任務を終えられる。
+  it('［投与する］が出ている間は、離すと投与して攻撃は出さない(マウス・キー・パッド共通)', () => {
+    for (const src of ['mouse', 'key', 'pad'] as const) {
+      const use = vi.fn();
+      swing.mockClear(); homing.mockClear();
+      useGameStore.setState({ medicinePromptVisible: true, useGlenMedicine: use } as never);
+      pcPressDown(src);
+      expect(use).not.toHaveBeenCalled(); // 押した瞬間ではなく、離した時(ボタンのクリックと同じ)
+      pcPressUp(src, true);
+      expect(use).toHaveBeenCalledTimes(1);
+      expect(swing).not.toHaveBeenCalled();
+      expect(homing).not.toHaveBeenCalled();
+    }
+    useGameStore.setState({ medicinePromptVisible: false } as never);
+  });
+  it('［投与する］が出ていても、撃たずに離す(窓が裏へ行った等)では投与しない', () => {
+    const use = vi.fn();
+    useGameStore.setState({ medicinePromptVisible: true, useGlenMedicine: use } as never);
+    pcPressDown('mouse');
+    pcPressUp('any', false);
+    expect(use).not.toHaveBeenCalled();
+    useGameStore.setState({ medicinePromptVisible: false } as never);
+  });
 });

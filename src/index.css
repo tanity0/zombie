@@ -182,6 +182,13 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
     0%   { transform: scale(1.6); filter: brightness(1.8); }
     100% { transform: scale(1); filter: brightness(1); }
   }
+  /* ショップの中の軍人の返事(ShopMenu・「軍人の同行」の行の下)。下から慣性で浮いて、少し行き過ぎて止まる。 */
+  .follow-reply-in { animation: follow-reply-in 420ms linear both; }
+  @keyframes follow-reply-in {
+    0%   { opacity: 0; transform: translateY(10px); animation-timing-function: cubic-bezier(0.16, 0.85, 0.3, 1); }
+    60%  { opacity: 1; transform: translateY(-2px); animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
   /* 中央寄せのHUD文字(プレイ時間など)用: 両サイドへフェードアウトする黒背景(透明感あり)・枠なし。 */
   .glass-pill-both {
     background: linear-gradient(90deg, transparent 0%, rgba(8,6,14,0.55) 36%, rgba(8,6,14,0.55) 64%, transparent 100%);
@@ -862,6 +869,9 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
 @media (orientation: landscape) {
   .ds-home-rows > .ds-glabel:first-child { margin-top: 0; }
   .ds-home .ds-map { margin-top: 0; }
+  /* 作戦室の地図(DsStoryMap): 横長では箱が原画とほぼ同じ比になり SECTOR の札が絵に重なる → 札の帯(22px)を箱の上に足す。
+     絵(svg)は DsStoryMap 側で帯の下へ置く。高さの式は DsStoryMap の landscape:!h-[…] と同じ+22px(こちらが詳細度で勝つ)。 */
+  .ds-home .ds-map { height: calc(clamp(120px, calc(100svh / var(--hud-s, 1) - 250px), 275px) + 22px) !important; }
   .ds-home .ds-sortie.menu-item-in { animation-delay: 100ms !important; }
 }
 .ds-sortie { transition: filter 160ms cubic-bezier(.2,.7,.3,1), box-shadow 160ms cubic-bezier(.2,.7,.3,1); }

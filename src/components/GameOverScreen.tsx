@@ -677,7 +677,10 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       style={{ background: 'rgba(11, 11, 18, 0.85)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' }}
     >
       {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。リザルトは最長画面) */}
-      <NoBounceScroller nav={{ 'data-nav-scroll': '' }} className="glass-panel command-panel max-h-[calc(100dvh/var(--hud-s,1)-24px)] w-full max-w-lg overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
+      <NoBounceScroller nav={{ 'data-nav-scroll': '' }} className="glass-panel command-panel max-h-[calc(100dvh/var(--hud-s,1)-24px)] w-full max-w-lg landscape:max-w-[880px] overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
+        {/* PC の横長(research/PC_SUPPORT.md): 1列のままだと 720px の高さで「獲得/所持」の行が下のボタンに隠れていた。
+            横長の時だけ2列に組む=左=見出しと到達譜/右=戦績・スコア・詳細・お金・ボタン。縦持ちはこの包みが素通し(今どおりの1列)。 */}
+        <div className="landscape:grid landscape:grid-cols-2 landscape:items-start">
         <div className="px-4 pt-5 pb-2 text-center">
           <h2 className={`text-2xl font-semibold tracking-tight gt-emboss ui-head-serif ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
             {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
@@ -768,7 +771,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </>
           )}
         </div>
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 landscape:pt-5">
           {benchmarkResult && (
             <div className={`mb-3 rounded-none border px-3 py-2 ${
               benchmarkResult.grade === 'PASS'
@@ -1251,6 +1254,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </div>
           )}
           </div>
+        </div>
         </div>
       </NoBounceScroller>
       {/* PACING_PUZZLE.md §6.17 M40 / STORY_UI_SPEC.md 5章: 「回収資料を見る」の一覧→本文モーダル。

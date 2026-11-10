@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hudHintStyle, hudGlyph, hudGunSlotKey } from './hudHints';
+import { hudHintStyle, hudGlyph, hudGunSlotKey, pauseResumeHint } from './hudHints';
 
 describe('hudHintStyle(ゲーム中のボタン札を出す種類・research/PC_SUPPORT.md §14-1)', () => {
   it('縦の画面(スマホ)は、キーやパッドを繋いでも出さない', () => {
@@ -45,5 +45,21 @@ describe('hudGlyph(札の字)', () => {
     expect(hudGunSlotKey('key', 8)).toBe('9');
     expect(hudGunSlotKey('key', 9)).toBeNull();
     expect(hudGunSlotKey('pad', 0)).toBeNull();
+  });
+});
+
+describe('pauseResumeHint(一時停止の「〜でも再開」・今遊んでいる機器の言葉)', () => {
+  it('スマホ(細かいポインタ無し・縦)は出さない。パッドを繋いでいても縦なら出さない(スマホの画面を動かさない)', () => {
+    expect(pauseResumeHint(false, 'xbox', false, false)).toBeNull();
+    expect(pauseResumeHint(true, 'xbox', false, false)).toBeNull();
+  });
+  it('キーボードのある端末は ESC / P(今どおり)', () => {
+    expect(pauseResumeHint(false, 'xbox', true, true)).toBe('ESC / P でも再開');
+  });
+  it('パッドで遊んでいる間は、一時停止を開いたボタンの名前(系統ごと)。ESC / P は出さない', () => {
+    expect(pauseResumeHint(true, 'xbox', true, true)).toBe('メニューボタンでも再開');
+    expect(pauseResumeHint(true, 'ps', true, true)).toBe('OPTIONS でも再開');
+    expect(pauseResumeHint(true, 'nin', true, true)).toBe('+ ボタンでも再開');
+    expect(pauseResumeHint(true, 'xbox', false, true)).toBe('メニューボタンでも再開'); // タブレットの横持ち+パッド
   });
 });

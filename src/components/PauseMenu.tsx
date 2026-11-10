@@ -19,6 +19,8 @@ import { sortieBossRoster, type SortieBoss } from '../utils/sortieBossRoster';
 import { appearedOnly } from '../utils/bossAppearances';
 import { hasEncounteredBoss } from '../utils/bossEncounter';
 import { loadHeroAscended } from '../utils/heroAscended';
+import { currentPlayDevice } from '../utils/inputDevice';
+import { pauseResumeHint, usePadKindActive, useWindowLandscape } from '../utils/hudHints';
 
 // ★B2: 地図を出すステージ=区域の輪と拠点があるステージだけ(研究所・洋館の通路・訓練・EX・ステージ7は出さない)。ボスメーカー/1対1も出さない。
 const PAUSE_MAP_STAGES = new Set(['stage-1', 'stage-3', 'stage-4', 'stage-5']);
@@ -98,7 +100,7 @@ const readPauseSnapshot = () => {
       .map(k => {
         // 一言: 職の固有サブ(例: ヘビーガンナーの手榴弾)は職データの説明、それ以外は棚の台帳。台帳に無い物は説明を出さない
         // (台帳の既定値「未解放」は棚の空き枡用の語で、装備中の物には当たらない)。
-        const b = subWeaponBlurb(k);
+        const b = subWeaponBlurb(k, currentPlayDevice()); // 操作の言葉は今手にある物(開いた時の1回読み・research/PC_SUPPORT.md §11-6)
         const blurb = classInfo?.skillKey === k ? classInfo.skillDesc : (b === '未解放' ? '' : b);
         return { key: k, name: subWeaponDisplayName(k), level: s.player.subWeaponLevels[k] ?? 1, blurb };
       }),
@@ -108,6 +110,10 @@ const readPauseSnapshot = () => {
 const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
   // 開いた時に1回だけ読む(state化はするがsetterは使わない=以後は不変のスナップショット)。
   const [snap] = useState(readPauseSnapshot);
+  // 「〜でも再開」は今遊んでいる機器の言葉で(パッドで遊んでいる人に ESC / P を出さない)。
+  const padKind = usePadKindActive();
+  const landscape = useWindowLandscape();
+  const resumeHint = pauseResumeHint(padKind !== '', padKind || 'xbox', hasFinePointer(), landscape);
 
   // Ensure pause menu handles events correctly
   useEffect(() => {
@@ -161,8 +167,8 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
             <Ff7rButton onClick={() => { playSfx('ui-select'); onQuit(); }} fade="both" paddingY="0.8rem">
               メニューに戻る
             </Ff7rButton>
-            {hasFinePointer() && <p className="mt-1 text-[11px] text-white/50">
-              ESC / P でも再開
+            {resumeHint && <p className="mt-1 text-[11px] text-white/50">
+              {resumeHint}
             </p>}
           </div>
 

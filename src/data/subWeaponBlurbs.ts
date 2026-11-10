@@ -3,6 +3,7 @@
 // 読んで書かれたもの)と、当該サブの実装コメント(useGameLoop/gameStore/goldRing/summonUtils)から
 // 起こした=推測で書かない。数値は書かない。棚に並ぶ全種(SUB_WEAPON_KEYS−クラス固有−退役+金環)を埋める。
 import type { SubWeaponKey } from '../types/game';
+import type { PlayDevice } from '../utils/inputDevice';
 
 const BLURB: Partial<Record<SubWeaponKey, string>> = {
   dog: '近くの落とし物を走って拾ってくる。道中の敵も噛む',
@@ -28,5 +29,22 @@ const BLURB: Partial<Record<SubWeaponKey, string>> = {
   brawler: '素手で殴り込む。銃は使えない。当てても食らっても技ポイントが溜まり、上下左右を入れて技を出す',
 };
 
-/** 未解放の棚に出す一言。台帳に無い物は「未解放」だけを返す(嘘を書かない)。 */
-export const subWeaponBlurb = (key: SubWeaponKey): string => BLURB[key] ?? '未解放';
+// 機器ごとの一言(research/PC_SUPPORT.md §11-6・チュートリアルの pcLines/padLines と同じ考え方)。上の文が「フリック」等の
+// スマホの操作を書いている物だけ、マウス・キー(PC)とパッドの文を持つ。無い物は上の文(スマホの文は変えない)。
+// はじく操作: PC=右クリック(カーソルの方へ)/ パッド=右の面ボタン(スティックを倒した方へ)。
+const BLURB_PC: Partial<Record<SubWeaponKey, string>> = {
+  katana: '刀で自動で斬る。銃と他のサブウェポンは使えない。右クリックで、カーソルの方へ無敵の突進斬り',
+  'wire-anchor': '右クリックでカーソルの方へワイヤーを撃ち、刺さった所へ無敵で飛ぶ',
+};
+const BLURB_PAD: Partial<Record<SubWeaponKey, string>> = {
+  katana: '刀で自動で斬る。銃と他のサブウェポンは使えない。右のボタンで、スティックを倒した方へ無敵の突進斬り',
+  'wire-anchor': '右のボタンでスティックを倒した方へワイヤーを撃ち、刺さった所へ無敵で飛ぶ',
+};
+/** 機器ごとの文の台帳(テスト用。PC とパッドの両方を必ず持つ)。 */
+export const SUB_BLURB_BY_DEVICE = { pc: BLURB_PC, pad: BLURB_PAD } as const;
+
+/** 未解放の棚に出す一言。台帳に無い物は「未解放」だけを返す(嘘を書かない)。device=今遊んでいる機器(省略=スマホの文)。 */
+export const subWeaponBlurb = (key: SubWeaponKey, device: PlayDevice = 'touch'): string => {
+  const byDevice = device === 'pad' ? (BLURB_PAD[key] ?? BLURB_PC[key]) : device === 'mouse' ? BLURB_PC[key] : undefined;
+  return byDevice ?? BLURB[key] ?? '未解放';
+};

@@ -8,6 +8,7 @@ import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
 import { nextSkillProcWake, skillProcAlive, skillProcLeaving } from '../utils/skillProcFeed';
 import type { SkillKey } from '../types/game';
+import { isFollowToggleLineText } from '../data/npcLines';
 
 // 話者名 → 立ち絵のベースパス(spritePathの`${base}-0`)+枠幅。セリフ表示時に上半身(バスト)を出す。
 // 用語(社長決定v0.25.1851): この左上のモデル付き吹き出し=**「会話」**。会話は必ずモデル入り
@@ -204,44 +205,18 @@ const SkillProcRows = ({ align }: { align: number }) => {
   );
 };
 
-// NPCリアルタイムセリフのHUD表示(時間停止なし・軽量)。表示位置はアテンションバナーと同じ左上ゾーンで、
-// 優先度は「コンボ > アテンション > NPCセリフ」。コンボ/バナーの有無に応じて下へずらして重ならないようにする。
-// 毎フレーム再描画しないよう、狭いセレクタ(派生プリミティブ)で購読する。
-export const NpcDialogue = () => {
-  const npc = useGameStore(s => s.npcDialogue);
-  const comboActive = useGameStore(s => s.meleeHitComboCount >= 2 && s.meleeHitComboUntil >= s.gameTime); // HUD の COMBO(近接ヒット表示)と同じ条件
-  const bannerActive = useGameStore(s => !!s.eventBannerText && s.eventBannerUntil >= s.gameTime);
-  const landscape = useHudLandscape();
-  const hasProc = useGameStore(s => s.skillProcFeed.length > 0); // 会話が無くてもスキル発動は同じ位置に出す
-  if (!npc && !hasProc) return null;
-  const topPx = 132 + (comboActive ? 58 : 0) + (bannerActive ? 58 : 0);
+type NpcLine = { name: string; text: string; until: number; portrait?: string; slow?: boolean };
+const portraitOf = (npc: NpcLine | null) => (npc ? NPC_PORTRAIT[npc.portrait ?? npc.name] : undefined);
+
+/** 会話の板1枚(立ち絵+名前+本文)。HUD の会話と、ショップの中の軍人の返事(ShopMenu)が同じ物を使う。 */
+export const NpcLinePill = ({ npc }: { npc: NpcLine }) => {
   // 話者の立ち絵(あれば)。portrait指定があれば名前より優先(例: 変異後グレンの頭部)。
-  const portrait = npc ? NPC_PORTRAIT[npc.portrait ?? npc.name] : undefined;
+  const portrait = portraitOf(npc);
   const portraitBase = portrait?.base;
   const portraitBoxW = portrait?.boxW ?? 40;
-  // スキル発動の行の名前を会話の本文の列に揃える(板の左余白6+立ち絵の幅+隙間6+印2)。
-  const procAlign = 6 + portraitBoxW + 6 + 2;
   return (
-    <div
-      data-phone-guard-skip // 会話は乱数で文言と長さが変わる=スマホの回帰チェック(scripts/phone-guard.mjs)の対象外
-      className="absolute text-left"
-      // PC の横長は画面の下(字幕の位置)へ。視線の落ち着く所・HUD の隙間に浮かせない(クリエイティブ監査 #10)。
-      style={landscape ? {
-        bottom: 28,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        maxWidth: 520,
-      } : {
-        top: `calc(max(env(safe-area-inset-top), 8px) + ${topPx}px)`,
-        left: 'max(env(safe-area-inset-left), 18px)',
-        transition: 'top 0.25s ease',
-        maxWidth: 'min(calc(66vw / var(--hud-s, 1)), 300px)',
-      }}
-    >
-      {/* PC の横長は会話が画面の一番下=下に置く場所が無いので、行は会話の上に積む(下揃えの入れ物の中で上へ伸びる=会話は動かない)。 */}
-      {landscape && <SkillProcRows align={procAlign} />}
-      {/* 枠なし・上半身絵と文字を同一の右フェード背景に。高さは文字に合わせ、上半身絵は上にはみ出してOK。 */}
-      {npc && <div
+      /* 枠なし・上半身絵と文字を同一の右フェード背景に。高さは文字に合わせ、上半身絵は上にはみ出してOK。 */
+      <div
         className="glass-pill flex items-stretch gap-1.5 py-1.5 pl-1.5 text-[13px] leading-snug gt-solid"
         style={{ paddingRight: 44, overflow: 'visible' }}
       >
@@ -276,7 +251,46 @@ export const NpcDialogue = () => {
           <span className="block font-bold text-amber-300/95 gt-outline">{npc.name}</span>
           {npc.slow ? <SlowLine key={npc.until} text={npc.text} /> : <span className="text-white/90">{npc.text}</span>}
         </div>
-      </div>}
+      </div>
+  );
+};
+
+// NPCリアルタイムセリフのHUD表示(時間停止なし・軽量)。表示位置はアテンションバナーと同じ左上ゾーンで、
+// 優先度は「コンボ > アテンション > NPCセリフ」。コンボ/バナーの有無に応じて下へずらして重ならないようにする。
+// 毎フレーム再描画しないよう、狭いセレクタ(派生プリミティブ)で購読する。
+export const NpcDialogue = () => {
+  // ショップが開いている間の「連れて歩く」の返事は、ショップのパネルの中に出す(ShopMenu)。ここでは出さない
+  // (HUD の会話はショップの暗幕の下で読めず、PC の 720px ではパネルの縁と重なっていた)。閉じたら残りの尺だけここに出る。
+  const npc = useGameStore(s => (s.showShopMenu && s.npcDialogue && isFollowToggleLineText(s.npcDialogue.text) ? null : s.npcDialogue));
+  const comboActive = useGameStore(s => s.meleeHitComboCount >= 2 && s.meleeHitComboUntil >= s.gameTime); // HUD の COMBO(近接ヒット表示)と同じ条件
+  const bannerActive = useGameStore(s => !!s.eventBannerText && s.eventBannerUntil >= s.gameTime);
+  const landscape = useHudLandscape();
+  const hasProc = useGameStore(s => s.skillProcFeed.length > 0); // 会話が無くてもスキル発動は同じ位置に出す
+  if (!npc && !hasProc) return null;
+  const topPx = 132 + (comboActive ? 58 : 0) + (bannerActive ? 58 : 0);
+  const portraitBoxW = portraitOf(npc)?.boxW ?? 40;
+  // スキル発動の行の名前を会話の本文の列に揃える(板の左余白6+立ち絵の幅+隙間6+印2)。
+  const procAlign = 6 + portraitBoxW + 6 + 2;
+  return (
+    <div
+      data-phone-guard-skip // 会話は乱数で文言と長さが変わる=スマホの回帰チェック(scripts/phone-guard.mjs)の対象外
+      className="absolute text-left"
+      // PC の横長は画面の下(字幕の位置)へ。視線の落ち着く所・HUD の隙間に浮かせない(クリエイティブ監査 #10)。
+      style={landscape ? {
+        bottom: 28,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        maxWidth: 520,
+      } : {
+        top: `calc(max(env(safe-area-inset-top), 8px) + ${topPx}px)`,
+        left: 'max(env(safe-area-inset-left), 18px)',
+        transition: 'top 0.25s ease',
+        maxWidth: 'min(calc(66vw / var(--hud-s, 1)), 300px)',
+      }}
+    >
+      {/* PC の横長は会話が画面の一番下=下に置く場所が無いので、行は会話の上に積む(下揃えの入れ物の中で上へ伸びる=会話は動かない)。 */}
+      {landscape && <SkillProcRows align={procAlign} />}
+      {npc && <NpcLinePill npc={npc} />}
       {!landscape && <SkillProcRows align={procAlign} />}
     </div>
   );

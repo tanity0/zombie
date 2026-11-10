@@ -192,6 +192,11 @@ export const FOLLOW_TOGGLE_LINES: readonly { on: string; off: string }[] = [
   { on: 'はいはい、ついてくよ。足は引っ張らない。', off: 'はいはい、留守番ね。' },             // ローレン
   { on: '観測を中断するのか。……まあいい、外の変異も見ておこう。', off: '固定点で観測を続ける。' },               // フェイザー
 ];
+const FOLLOW_TOGGLE_TEXTS = new Set(FOLLOW_TOGGLE_LINES.flatMap(l => [l.on, l.off]));
+/** 会話の行が「連れて歩く」の返事か(ショップが開いている間は、返事をショップのパネルの中に出す=ShopMenu / NpcDialogue)。 */
+export const isFollowToggleLineText = (text: string): boolean => FOLLOW_TOGGLE_TEXTS.has(text);
+/** その返事が今の状態(on=連れていく)に合っているか(連打で返事が間に合わなかった時に、逆の返事を残さない)。 */
+export const followToggleLineMatches = (text: string, on: boolean): boolean => FOLLOW_TOGGLE_LINES.some(l => (on ? l.on : l.off) === text);
 
 // ファストトラベルで拠点に着いた時の、その拠点の軍人の迎えの一言(research/FAST_TRAVEL.md・着手前監査CR)。名簿の並び(BASE_SOLDIERS)と同じ index。
 export const FAST_TRAVEL_ARRIVE_LINES: readonly string[] = [

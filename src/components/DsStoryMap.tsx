@@ -43,9 +43,11 @@ const DsStoryMap: React.FC<{ stages: readonly Stage[]; cleared: ReadonlySet<stri
   const right = (x: number) => x > OPS_MAP_W * 0.72;
   const ease = { calcMode: 'spline' as const, keyTimes: '0;0.5;1', keySplines: '0.42 0 0.58 1;0.42 0 0.58 1' };
   return (
+    // PC の横長: 箱が原画とほぼ同じ比になり、縦の余白(=札の帯)が無くなって SECTOR の札が絵に重なっていた。
+    // 横長の時だけ、箱の上に札の帯(22px)を足し(index.css の .ds-home .ds-map)、絵はその下に置く(絵の大きさは今どおり)。縦持ちは今どおり(箱 210px・絵は箱いっぱい)。
     <div className="ds-map landscape:!h-[clamp(120px,calc(100svh/var(--hud-s,1)_-_250px),275px)]" style={{ height: 210, background: '#0d0e13' }}>{/* 原画の縁の色=幅に合わせた時の余白が帯に見えない */}
       {/* 地図は下端に揃える=余白は上の SECTOR の札の帯に寄る(検収クリエイティブ監査 #7)。 */}
-      <svg viewBox={`0 0 ${OPS_MAP_W} ${OPS_MAP_H}`} preserveAspectRatio="xMidYMax meet" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} aria-label="作戦地図">
+      <svg viewBox={`0 0 ${OPS_MAP_W} ${OPS_MAP_H}`} preserveAspectRatio="xMidYMax meet" className="absolute left-0 top-0 w-full h-full landscape:top-[22px] landscape:h-[calc(100%_-_22px)]" aria-label="作戦地図">
         <image href={assetUrl(OPS_MAP_IMAGE)} x={0} y={0} width={OPS_MAP_W} height={OPS_MAP_H} />
         {/* 軌跡=クリアした場所を話の順に結ぶ琥珀の線。古い区間ほど薄い(時間の流れ・検収クリエイティブ監査 #2)。 */}
         {visited.slice(1).map((p, i) => (

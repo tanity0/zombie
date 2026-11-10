@@ -44,6 +44,19 @@ export const hudGlyph = (style: HudHintStyle, action: HudAction, hasMouse: boole
       : { pause: 'menu', press: 'A', flick: 'B', gunPrev: 'LB', gunNext: 'Y' };
   return g[action];
 };
+/**
+ * 一時停止の「〜でも再開」の一行(PauseMenu)。今遊んでいる機器の言葉で。
+ * パッド=一時停止を開いたボタン(Xbox の Menu・PS の OPTIONS・任天堂系の +)/ キーボードのある端末=ESC / P / それ以外(スマホ)=出さない。
+ * パッドでも縦のスマホ(細かいポインタが無く縦長)には出さない=スマホの画面は1pxも動かさない(CLAUDE.md)。
+ */
+export const pauseResumeHint = (padActive: boolean, padKind: PadKind, finePointer: boolean, landscape: boolean): string | null => {
+  if (padActive && (finePointer || landscape)) return padKind === 'ps' ? 'OPTIONS でも再開' : padKind === 'nin' ? '+ ボタンでも再開' : 'メニューボタンでも再開';
+  return finePointer ? 'ESC / P でも再開' : null;
+};
+/** React から読む: パッドを触っているか+系統(切り替わった時だけ再描画)。'' = パッドではない。 */
+export const usePadKindActive = (): PadKind | '' =>
+  useSyncExternalStore(subscribePlayDevice, () => (isPadActive() ? currentPadKind() : ''), () => '');
+
 /** キーボードの銃の枠の番号(1〜9)。10枠目以降と、パッドは無し。 */
 export const hudGunSlotKey = (style: HudHintStyle, index: number): string | null =>
   style === 'key' && index >= 0 && index < 9 ? String(index + 1) : null;

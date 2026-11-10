@@ -6,6 +6,7 @@
 import { playSfx } from '../audio/audioManager';
 import { useGameStore, isAttackLocked, isInputLocked, isWorldFrozen, isBrawlerMode } from '../store/gameStore';
 import { mouseSetsAim } from './weaponUtils';
+import { isRetaliationWindowOpen } from './hitRetaliation';
 
 export const PC_SKATER_DOUBLETAP_MS = 300; // 1回目の離し→2回目の押下 までの許容間隔(タッチと同値)
 export const PC_SKATER_TAP_MAX_MS = 220;   // 「タップ」とみなす最大の押下時間(タッチと同値)
@@ -35,7 +36,10 @@ export const pcPressDown = (src: PressSource): void => {
   gs.setTouchActive(true);
   const now = performance.now();
   // スケボー: 直前が短いタップで、離しから規定時間内の再押下=2度押し=乗車(2回目はそのまま押している=乗っている)。
-  if (lastWasTap && now - lastUpAt <= PC_SKATER_DOUBLETAP_MS && !isBrawlerMode(gs.player)) gs.mountSkater(); // 格闘中は2度押しで乗らない(research/BRAWLER.md §7-2)
+  // ★被弾反撃の窓の中の押し直しは乗車に数えない(タッチの VirtualJoystick と同じ・検収監査 A-1 の PC 版)。
+  if (lastWasTap && now - lastUpAt <= PC_SKATER_DOUBLETAP_MS
+    && !isRetaliationWindowOpen(gs.hitRetaliation, Date.now())
+    && !isBrawlerMode(gs.player)) gs.mountSkater(); // 格闘中は2度押しで乗らない(research/BRAWLER.md §7-2)
   downAt = now;
 };
 
@@ -51,7 +55,14 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
   owner = null;
   const gs = useGameStore.getState();
   const returnPromptOpened = fire ? gs.requestStoryReturnPrompt() : false;
-  if (fire && !returnPromptOpened && !isAttackLocked()) {
+  // 洋館の再訪: 保存槽の［投与する］が出ている間は、主ボタンの離し=そのボタンを押す(攻撃は出さない)。
+  // ゲーム中はメニュー操作が効かないので、これが無いとキーだけ・パッドだけでは押せなかった。スマホはボタンのタップ(Game.tsx)のまま。
+  const medicineTaken = fire && !returnPromptOpened && gs.medicinePromptVisible;
+  if (medicineTaken) {
+    playSfx('ui-select');
+    gs.useGlenMedicine();
+  }
+  if (fire && !returnPromptOpened && !medicineTaken && !isAttackLocked()) {
     // マウスがある時は離した瞬間の向き=カーソルの方向(鞭・ナイフの振りと踏み込みがカーソルへ・§11-2)。キーで振っても同じ
     // (照準サークルはカーソルを向いているので、振りだけ歩いた向き、を作らない=監査 B-5)。世界が止まっている間は書き換えない。
     // ★v0.25.4868(社長指示「マウスのある方向に近接振るのは難しいのでやめたい。マウス方向はフィルガンなどのターゲットある武器のみ」):
@@ -88,7 +99,11 @@ export const pcPressUp = (src: PressSource | 'any', fire = true): void => {
   if (!returnPromptOpened) {
     if (fire) {
       const now = performance.now();
-      lastWasTap = now - downAt < PC_SKATER_TAP_MAX_MS;
+      // 被弾反撃の窓の間の短い押しは「押し直してはじく」ための操作=スケボーの2度押しに数えない(タッチと同じ)。
+      // ［投与する］を押した離しも数えない(ボタンを押しただけ)。
+      lastWasTap = !medicineTaken
+        && !isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())
+        && now - downAt < PC_SKATER_TAP_MAX_MS;
       lastUpAt = now;
     }
     gs.dismountSkater();

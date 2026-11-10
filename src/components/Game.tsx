@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { setGameplayMounted } from '../utils/menuNav';
 import { keyIdOf } from '../hooks/useGameControls';
-import { HudScale, HudScaleProvider, HudLandscapeProvider } from './HudScale';
+import { HudScale, HudScaleProvider, HudLandscapeProvider, useHudLandscape } from './HudScale';
+import { HudKey } from './HudKey'; // ゲーム中のボタン札(research/PC_SUPPORT.md §14)
+import { useHudHintStyle, useHudHasMouse, hudGlyph } from '../utils/hudHints';
 import { hudScaleFor } from '../utils/viewport';
 import { usePointerKind } from '../utils/inputDevice';
 import { useGameStore } from '../store/gameStore';
@@ -48,8 +50,12 @@ import { getSelectedStageId } from '../data/progress';
 
 // the ONE 洋館［SUB］再訪(統合正本9.3): 保存槽(洋館)接近中だけ出す操作表示［投与する］。
 // 購読は boolean 1個(medicinePromptVisible・変化時のみ書かれる)=React再レンダ規律準拠の孤立小コンポーネント。
+// PC(キー・マウス・パッド)は主ボタンの離しでも押せる(utils/pcPress)。その時だけ、ボタンの頭に主ボタンの札(HUD の近接の枠と同じ字)を付ける。
+// スマホ(縦)は札が null=DOM を足さない=今どおりのタップだけ。
 const MedicinePrompt: React.FC = () => {
   const visible = useGameStore(s => s.medicinePromptVisible);
+  const hint = useHudHintStyle(useHudLandscape());
+  const hasMouse = useHudHasMouse();
   if (!visible) return null;
   return (
     <button
@@ -62,6 +68,7 @@ const MedicinePrompt: React.FC = () => {
       className="absolute left-1/2 z-40 -translate-x-1/2 rounded-none border border-amber-300/60 bg-black/70 px-5 py-3 text-[14px] font-bold tracking-wide text-amber-100 shadow-lg backdrop-blur-sm active:bg-black/85"
       style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 132px), 148px)' }}
     >
+      {hint && <HudKey key={hint} hint={hint} act="press" glyph={hudGlyph(hint, 'press', hasMouse)} className="hud-key--static" style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 8, marginTop: -2 }} />}
       ［投与する］
     </button>
   );
