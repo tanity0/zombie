@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5441', items: [
+    '拳鬼はカウンターを決めると、縮地で一気に目の前まで詰めてくる。続けて使うことはない',
+    '拳鬼の飛び蹴りや気功は、間合いを測ったり様子を見たりしながら、ここぞという時に飛んでくる',
+  ] },
   { version: '0.25.5440', items: [
     '拳鬼は、飛び蹴りを本当に当てた時しか秘奥義を始められない。構えで受け止めれば秘奥義は来ない',
   ] },
