@@ -365,7 +365,8 @@ export const BRAWLER_BOUNCE_F = 0.45;
 /** ダウンの着地の後、固まらない時間(ms・×BRAWLER_TEMPO・起き上がり=次のコンボの始まりを区切る)。 */
 export let BRAWLER_DOWN_NO_HOLD_MS = 300; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 重さ(区分): 浮く高さ・時間に掛ける。 */
-export const BRAWLER_JUGGLE_WEIGHT: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 1.0, strong: 0.7, boss: 0.4 };
+// ★社長指示2026-11-10「格闘、一旦ボスの重みやめよう。雑魚と同じ軽さに。」で boss 0.4→1.0(強個体 0.7 はそのまま・拾える回数の予算と押しの半分も変えていない)。
+export const BRAWLER_JUGGLE_WEIGHT: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 1.0, strong: 0.7, boss: 1.0 };
 /**
  * 当たった段・技ごとの押し上げ量(4段目=1)。1・2段目・気功=小、3段目・飛び蹴り1・2発目=中。
  * 0 = 押し上げない(5段目・飛び蹴り3発目・大踏み潰し・秘奥義の締め=空中からも吹き飛ばす)。

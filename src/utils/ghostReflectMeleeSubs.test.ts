@@ -252,6 +252,27 @@ describe('C: 近接スイング相乗り型サブ(台帳§7)', () => {
     expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID).boomerang).toBe(false);
   });
 
+  // 社長指示2026-11-10「ドローンブーメランは戻ってきた瞬間に近接当てると再度飛んでいく」(配線の確認・判定は boomerangBat.test)。
+  it('ドローンブーメランの打ち返し: 戻ってきた1枚が届く距離にあれば、CD中でも同じ1枚が飛び直す(2枚目は出ない)', () => {
+    place(snap(['drone-boomerang']));
+    expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID).boomerang).toBe(true);
+    const id = useGameStore.getState().projectiles.find(p => p.weaponKey === 'sub-drone-boomerang')!.id;
+    // 戻りの最中・ゴーストのすぐそば(中心から 30px)へ置く。
+    useGameStore.setState(st => ({ projectiles: st.projectiles.map(p => p.id === id
+      ? { ...p, boomPhase: 'return' as const, x: GX + 16 + 30 - 9, y: p.y, hitEnemies: ['x'] } : p) }));
+    expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID).boomerang).toBe(true); // CD中だが打ち返せる
+    const booms = useGameStore.getState().projectiles.filter(p => p.weaponKey === 'sub-drone-boomerang');
+    expect(booms.length).toBe(1);
+    expect(booms[0].id).toBe(id);
+    expect(booms[0].boomPhase).toBe('out');
+    expect(booms[0].hitEnemies).toEqual([]);
+    expect(booms[0].boomOriginX).toBe(GX + 16 + 30); // 打った所から飛び直す
+    // 遠くにある戻りのブーメランは打ち返せない(CD中なので何も出ない)。
+    useGameStore.setState(st => ({ projectiles: st.projectiles.map(p => p.id === id
+      ? { ...p, boomPhase: 'return' as const, x: GX + 16 + 400 } : p) }));
+    expect(useGameStore.getState().fireGhostMeleeSwingSubs(GID).boomerang).toBe(false);
+  });
+
   it('フレアガン: ゴースト位置から発射され、CDはゴースト自前の帳簿に入る', () => {
     place(snap(['flare-gun']));
     const r = useGameStore.getState().fireGhostMeleeSwingSubs(GID);

@@ -1684,6 +1684,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const anchorPlantFxRef = useRef(0); // アンカー打ち込みSE(地面)
   const anchorEnemyHitFxRef = useRef(0); // アンカーが敵に当たった時のSE(近接命中音)
   const boomThrowFxRef = useRef(0);  // ブーメラン投擲SE
+  const boomBatFxRef = useRef(0);    // ブーメランの打ち返しSE
   const junkShotFxRef = useRef(0);   // ジャンクウェポン発砲SE(shotgun-fire)
   const summonFxRef = useRef(0);     // 召喚SE
   const screamerBuffFxRef = useRef(0); // 叫喚型の発動(強化窓オープン)検出=叫喚SE
@@ -17192,6 +17193,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (gs.anchorPlantFxAt > anchorPlantFxRef.current) { anchorPlantFxRef.current = gs.anchorPlantFxAt; playSfx('anchor-plant'); }
           if (gs.anchorEnemyHitFxAt > anchorEnemyHitFxRef.current) { anchorEnemyHitFxRef.current = gs.anchorEnemyHitFxAt; playSfx('slash-damage'); } // アンカーが敵に当たった=近接命中音
           if (gs.boomerangThrowFxAt > boomThrowFxRef.current) { boomThrowFxRef.current = gs.boomerangThrowFxAt; playSfx('boomerang-throw'); }
+          // 打ち返し(社長指示2026-11-10): 金属を弾く「キン」+高めの投げる音(普通に投げた時と耳で区別がつく)。
+          if (gs.boomerangBatFxAt > boomBatFxRef.current) { boomBatFxRef.current = gs.boomerangBatFxAt; playSfx('ricochet-ping', 1.25, undefined, 0.9); playSfx('boomerang-throw', 1.1, undefined, 1.22); }
           if (gs.junkShotFxAt > junkShotFxRef.current) { junkShotFxRef.current = gs.junkShotFxAt; playSfx('shotgun-fire'); } // ジャンクウェポン=ショットガン発砲音(§6.7 M30)
           if (gs.summonFxAt > summonFxRef.current) { summonFxRef.current = gs.summonFxAt; playSfx('summon'); }
           // 叫喚型: 強化窓が開いた瞬間(screamerBuffUntil が増加)=溜め完了で叫喚SE。

@@ -146,13 +146,14 @@ describe('スラッシャーの追撃で打ち上げる', () => {
     expect(brawlerAirborne(z2, now)).toBe(true);
     expect(z2.brLiftBudget).toBe(BRAWLER_JUGGLE_BUDGET.mob - 1); // 2段目の拾い=1
   });
-  it('ボス級も格闘と同じく重く浮く(区分の重さ0.4)', () => {
+  // 社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」: 旧「重く浮く(0.4)」を新仕様へ。
+  it('ボス級も格闘と同じ区分の重さで浮く(雑魚と同じ1.0)', () => {
     useGameStore.setState({ enemies: [place('hunter', 50, 0, 'h')] });
     arm(0);
     useGameStore.getState().beginMeleeSwing();
     const h = en('h');
     expect(brawlerAirborne(h, now)).toBe(true);
-    expect(h.brLiftPeak!).toBeCloseTo(0.75 * 0.4, 5);
+    expect(h.brLiftPeak!).toBeCloseTo(0.75 * 1.0, 5);
   });
 });
 

@@ -238,11 +238,11 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
     expect(BRAWLER_JUGGLE_BUDGET).toEqual({ mob: 6, strong: 5, boss: 4 });
     expect([brawlerJugglePush({}, 'mob', 's4', 0)!.brLiftBudget, brawlerJugglePush({}, 'strong', 's3', 0)!.brLiftBudget, brawlerJugglePush({}, 'boss', 's4', 0)!.brLiftBudget]).toEqual([6, 5, 4]);
     const m = brawlerJugglePush({}, 'mob', 's4', 0)!, st = brawlerJugglePush({}, 'strong', 's4', 0)!, b = brawlerJugglePush({}, 'boss', 's4', 0)!;
-    expect(BRAWLER_JUGGLE_WEIGHT).toEqual({ mob: 1.0, strong: 0.7, boss: 0.4 });
-    expect([m.brLiftPeak, st.brLiftPeak, b.brLiftPeak]).toEqual([1, 0.7, 0.4]);
+    expect(BRAWLER_JUGGLE_WEIGHT).toEqual({ mob: 1.0, strong: 0.7, boss: 1.0 }); // 社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」(旧 boss 0.4)
+    expect([m.brLiftPeak, st.brLiftPeak, b.brLiftPeak]).toEqual([1, 0.7, 1]); // 社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」(旧 0.4)
     expect(m.brLiftMs).toBe(BRAWLER_LIFT_MS);
     expect(st.brLiftMs).toBe(Math.round(BRAWLER_LIFT_MS * 0.7));
-    expect(b.brLiftMs).toBe(Math.round(BRAWLER_LIFT_MS * 0.4));
+    expect(b.brLiftMs).toBe(BRAWLER_LIFT_MS); // ボス級も雑魚と同じ(旧 ×0.4)
     expect(m.liftUntil).toBe(m.brLiftUntil); // 動けない間=全ての敵の制御が読む liftUntil
   });
   it('★§13-2 予算: 空中の当たりで浮き直し、弱1・強/技2を使う。足りない当たりで落ちてダウン(拾えない・着地まで動けない・着地の後しばらく固まらない)', () => {
@@ -310,7 +310,7 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
     expect(BRAWLER_LIFT_MS).toBe(585);
     expect(brawlerJugglePush({}, 'mob', 's4', 0)!.brLiftMs).toBe(585);
     expect(brawlerJugglePush({}, 'strong', 's4', 0)!.brLiftMs).toBe(410);
-    expect(brawlerJugglePush({}, 'boss', 's4', 0)!.brLiftMs).toBe(234);
+    expect(brawlerJugglePush({}, 'boss', 's4', 0)!.brLiftMs).toBe(585); // 社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」(旧 234)
     const e0 = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
     const p1 = brawlerJugglePush(e0, 'mob', 's1', 100)!;
     expect(p1.brLiftMs).toBe(Math.round(585 * 0.5));

@@ -1361,12 +1361,13 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     expect(en('z').brLiftMs!).toBe(Math.round(585 * 0.75));
     expect(en('z').brLiftBudget).toBe(3); // − 3段目2
   });
-  it('重さ: 雑魚・強個体・ボス級の順に低く短く浮く(ボス級も浮く)', () => {
+  // 社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」: 旧「雑魚・強個体・ボス級の順に低く」を新仕様へ(強個体だけ重い)。
+  it('重さ: 強個体は低く短く浮く・ボス級は雑魚と同じ高さと長さで浮く', () => {
     setup();
     useGameStore.setState({ enemies: [foeOf('zombie', 'm'), foeOf('driller', 's', -60), foeOf('hunter', 'b', 0)] });
     for (const id of ['m', 's', 'b']) hitMove(id, 's4', { lift: true });
-    expect([en('m').brLiftPeak, en('s').brLiftPeak, en('b').brLiftPeak]).toEqual([1, 0.7, 0.4]);
-    expect(en('b').liftUntil).toBe(now + Math.round(585 * 0.4));
+    expect([en('m').brLiftPeak, en('s').brLiftPeak, en('b').brLiftPeak]).toEqual([1, 0.7, 1]);
+    expect(en('b').liftUntil).toBe(en('m').liftUntil);
   });
   it('技の最中の敵(予告の溜め)は浮かない', () => {
     setup();

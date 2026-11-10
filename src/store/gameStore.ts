@@ -365,6 +365,7 @@ import {
   type ShrineState, type ShrineSlot,
 } from '../world/warlordShrine';
 import { policePos as policeSpot, resolvePoliceCollision, policeRect } from '../world/police';
+import { boomerangBatPick, boomerangBatSpeedMult, DRONE_BOOM_BAT_HITSTOP_MS } from '../utils/boomerangBat';
 import { poiTouchStarts, poiTouchMayFire, poiTouchStallMult, POI_TOUCH_STALL_MS, type PoiTouchId } from '../world/poiTouch';
 import { assignDetourSectors } from '../world/detourPoi';
 import { bossSectorIndex, poiSectorIndex } from '../world/pois';
@@ -6963,8 +6964,7 @@ const fireDroneBoomerangOnSwing = (
 ): boolean => {
   if (
     !actor.subWeapons.includes('drone-boomerang') ||
-    subWeaponBlockedByKatana(actor, 'drone-boomerang') ||
-    gameTime < (actor.subWeaponCooldowns['drone-boomerang'] ?? 0)
+    subWeaponBlockedByKatana(actor, 'drone-boomerang')
   ) return false;
   const ghostOwned = owner.kind === 'ghost-ally';
   const lvl = Math.max(1, Math.min(3, actor.subWeaponLevels['drone-boomerang'] ?? 1));
@@ -6973,6 +6973,41 @@ const fireDroneBoomerangOnSwing = (
   const boomCy = ownerCenterY(owner);
   const dir = owner.facing ?? { x: 1, y: 0 };
   const dmag = Math.max(0.001, Math.hypot(dir.x, dir.y));
+  // ★打ち返し(社長指示2026-11-10「ドローンブーメランは戻ってきた瞬間に近接当てると再度飛んでいく」):
+  // 戻ってきたブーメランが近接の届く距離に入っている時に振ると、その1枚を振った向きへ飛ばし直す(クールダウン中でも可)。
+  // 新しく投げてはいない=同じ振りで2枚目は出さない。クールダウンは飛ばし直した時刻から数え直す(同時に飛ぶのは1枚のまま)。
+  {
+    const batId = boomerangBatPick(get().projectiles, ghostOwned, boomCx, boomCy, huntingMeleeRadius(actor));
+    if (batId) {
+      const nowMs = Date.now();
+      let bx = boomCx, by = boomCy;
+      useGameStore.setState(state => ({
+        projectiles: state.projectiles.map(q => {
+          if (q.id !== batId) return q;
+          bx = q.x + q.width / 2; by = q.y + q.height / 2;
+          return {
+            ...q, boomPhase: 'out' as const, direction: { x: dir.x / dmag, y: dir.y / dmag }, speed: DRONE_BOOM_SPEED,
+            damage: meleeDamage, hitEnemies: [], createdAt: nowMs, boomBatAt: nowMs, // 安全消滅の時計も数え直す・弾かれた勢い(出だしだけ速い)
+            boomOriginX: bx, boomOriginY: by, boomMaxDist: DRONE_BOOM_DIST_BY_LEVEL[lvl], boomStopMs: DRONE_BOOM_STOP_MS_BY_LEVEL[lvl], boomStopUntil: undefined,
+          };
+        }),
+      }));
+      setActorSubWeaponCooldown(ownerGhostId(owner), 'drone-boomerang', gameTime + DRONE_BOOM_COOLDOWN_MS);
+      // 打った手応え(判定の無い派手さの絵・クリエイティブ監査2026-11-10 の反映): 振った向きの弧1本・白い火花(刃の水色に埋もれない色)・
+      // 太く速い輪。プレイヤーが打った時だけ短い止めと小さな揺れ(スローは使わない)。音は金属を弾く音+高めの投げる音(useGameLoop)。
+      const ux = dir.x / dmag, uy = dir.y / dmag;
+      get().spawnSlash(bx, by, 'rgba(226,232,240,0.95)', 1.35, ux >= 0 ? 1 : -1);
+      get().spawnBurst(bx, by, '#f8fafc', 20, ux, uy);
+      get().spawnRing(bx, by, 8, 60, 'rgba(165,243,252,0.85)', 5, 150, true);
+      if (!ghostOwned) {
+        if (!get().rhythm.active) get().triggerHitstop(DRONE_BOOM_BAT_HITSTOP_MS);
+        get().triggerShake(120, 3, ux, uy);
+        useGameStore.setState({ boomerangBatFxAt: nowMs });
+      }
+      return true;
+    }
+  }
+  if (gameTime < (actor.subWeaponCooldowns['drone-boomerang'] ?? 0)) return false;
   get().addProjectile({
     id: `proj-drone-boom-${Date.now()}`,
     x: boomCx - 9, y: boomCy - 9, width: 18, height: 18,
@@ -8147,6 +8182,7 @@ interface GameState {
   anchorPlantFxAt: number;    // ワイヤーアンカーを(地面に)打ち込んだ時刻(Date.now)。打ち込み音SEのトリガ
   anchorEnemyHitFxAt: number; // ワイヤーアンカーが敵に当たった時刻(Date.now)。近接命中音SEのトリガ
   boomerangThrowFxAt: number; // ドローンブーメランを投げた時刻(Date.now)。投擲音SEのトリガ
+  boomerangBatFxAt: number; // ドローンブーメランを近接で打ち返した時刻(Date.now)。打ち返しの音のトリガ
   junkShotFxAt: number;       // ジャンクウェポン(junk-weapon)発砲時刻(Date.now)。shotgun-fire SEのトリガ
   summonFxAt: number;         // 錬金術で召喚した時刻(Date.now)。召喚音SEのトリガ
   projectiles: Projectile[];
@@ -9642,6 +9678,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   anchorPlantFxAt: 0,
   anchorEnemyHitFxAt: 0,
   boomerangThrowFxAt: 0,
+  boomerangBatFxAt: 0,
   junkShotFxAt: 0,
   summonFxAt: 0,
   homingLocks: [],
@@ -21819,8 +21856,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           if (p.weaponType === 'drone-boomerang-projectile') {
             const phase = p.boomPhase ?? 'out';
             if (phase === 'out') {
-              const nx = p.x + p.direction.x * p.speed * deltaTime;
-              const ny = p.y + p.direction.y * p.speed * deltaTime;
+              const bsp = p.speed * (p.boomBatAt !== undefined ? boomerangBatSpeedMult(currentTime - p.boomBatAt) : 1); // 打ち返された直後は弾かれた勢いで速い
+              const nx = p.x + p.direction.x * bsp * deltaTime;
+              const ny = p.y + p.direction.y * bsp * deltaTime;
               const ncx = nx + p.width / 2, ncy = ny + p.height / 2;
               // 壁に当たったらその場で戻り動作へ切替(貫通しない)。
               const bwalls = indoor ? indoorWalls : grenadeWallsFor(p);
@@ -25700,6 +25738,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         anchorPlantFxAt: 0,
         anchorEnemyHitFxAt: 0,
         boomerangThrowFxAt: 0,
+        boomerangBatFxAt: 0,
         junkShotFxAt: 0,
         summonFxAt: 0,
         // v0.25.3082(社長指示「実機テストに、守護霊をソロで出撃させたい(強さをコピーして出撃)」):

@@ -87,7 +87,7 @@ describe('スラッシャーの追撃の浮き(slasherLiftMove)', () => {
 
 describe('空中の合図は頂点に対する割合(brawlerAirSignal・社長承認2026-11-09)', () => {
   it('重い区分・爆発の低い浮きでも頂点で1(満額)・高さそのものの差は残る', () => {
-    const boss = brawlerJugglePush({}, 'boss', 's4', NOW)!;
+    const boss = brawlerJugglePush({}, 'strong', 's4', NOW)!; // 重い区分=強個体(社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」でボス級は雑魚と同じになった)
     const mob = brawlerJugglePush({}, 'mob', 's4', NOW)!;
     const blast = blastLiftPatch(zombie, 'mob', 0.4, NOW, GT)!;
     for (const a of [boss, mob]) expect(brawlerAirSignal(a, NOW + a.brLiftMs! * 0.25)).toBeCloseTo(1, 3);
