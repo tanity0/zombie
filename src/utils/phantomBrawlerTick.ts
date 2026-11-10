@@ -584,8 +584,11 @@ const stepKenkiLeap = (c: PhantomBrawlerCtx, s: BrawlerState): boolean => {
     const hit = groundBlastCircleHits(pcx, pcy, pr, bx, by, PUMPKIN_EXPLOSION_RADIUS);
     // ダメージ=拳鬼の格闘の大踏み潰しの式(記録の近接×装備・スキル×ストライカー×足の速さ×大踏み潰しの倍率)×対人0.2。
     // 押しは外向き・大踏み潰しと同じ強さ。範囲技=プレイヤーの被弾無敵を守る(ハンターの爆風と同じ扱い)。カウンターで返せる。
-    strikePlayer(c, s, hit, { kind: 'circle', cx: bx, cy: by, r: PUMPKIN_EXPLOSION_RADIUS }, BR.BRAWLER_STOMP_MULT, 'kenki-leap',
-      kbOf('big', BR.BRAWLER_BIG_KB_MULT, unit(pcx - bx, pcy - by)), bx, by, false, true);
+    // ★食らっても吹き飛ばさず、浮かせる(社長指示2026-11-10「拳鬼のジャンプ攻撃は食らっても吹き飛ばず、浮かされる」)。
+    //   押しは無し=その場で、3・4段目と同じ「絵だけ浮く」(操作は奪わない・§4-9)。浮く長さは4段目の打ち上げと同じ。
+    const lr = strikePlayer(c, s, hit, { kind: 'circle', cx: bx, cy: by, r: PUMPKIN_EXPLOSION_RADIUS }, BR.BRAWLER_STOMP_MULT, 'kenki-leap',
+      'none', bx, by, false, true);
+    if (lr.landed) notePlayerLaunched(c.nowMs, BR.BRAWLER_LIFT_MS);
     // 地面を叩く絵と音(格闘の大踏み潰しの流用・ハンターの武器の絵は使わない)。
     const g = useGameStore.getState();
     g.spawnRing(bx, by, 20, PUMPKIN_EXPLOSION_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);

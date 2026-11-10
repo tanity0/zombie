@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5446', items: [
+    '拳鬼の跳びかかりを食らうと、吹き飛ばされずにその場で打ち上げられる',
+  ] },
   { version: '0.25.5445', items: [
     '拳鬼が跳びかかる前にしゃがんで溜める間、体が小刻みに震える',
   ] },
