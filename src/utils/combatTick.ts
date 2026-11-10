@@ -73,6 +73,7 @@ import {
   playerPvpChipPatch, // ★SAME_ARENA §9(対人体勢): 幻影の弾クリ/弾パリィ返しの被弾でプレイヤー体勢を削る
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
   brawlerJustStunMult, // 格闘のジャスト構え=カウンターの気絶2倍(research/BRAWLER.md §12-2)
+  leverGuardCount, // 格闘のレバーガードで受けた回数(research/BRAWLER.md §12-1c)
 } from '../store/gameStore';
 import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_ARENA §9: クリ被弾の2/3減速+紫中の弾パリィ停止
 // v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
@@ -499,7 +500,10 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           : b.moveKey === 'astro-missile' ? 'ミサイル' : b.moveKey === 'astro-flag' ? '国旗' : b.moveKey === 'astro-debris' ? '残骸' : b.moveKey === 'astro-meteor' ? '隕石' : b.moveKey === 'wraith-scream' ? '叫び' : b.moveKey === 'wraith-grave' ? '墓石' : '落下攻撃'; // jo-slam=ヨルムンガルドの弾幕の導入(research/JORM_DANMAKU.md・検収監査 B-4)
         const hurtAtBefore = useGameStore.getState().player.lastHurtAt; // この一撃で段が付いたかを見分ける(下の押し出し)
         const armoredAtBefore = useGameStore.getState().player.hurtArmoredAt; // B12: アーマーで受けたかを見分ける(下の押し出し)
-        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastOwnerLabel)}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined, { type: blastEnemyType, id: b.enemyId }); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
+        const leverGuardBefore = leverGuardCount(useGameStore.getState().player); // 格闘のレバーガードで受けたかを見分ける(下の押し出し・research/BRAWLER.md §12-1c)
+        // ★レバーガードの「攻撃の向き」= 爆心(扇の要・帯の根元・塊の中心)から離れる向き(社長2026-11-10「爆発は爆心から離れる向き」)。
+        const guardFrom = b.pushFrom ?? (b.fan ? { x: b.fan.cx, y: b.fan.cy } : b.capsule ? (b.origin ?? { x: b.capsule.fx, y: b.capsule.fy }) : { x: b.x, y: b.y });
+        const died = useGameStore.getState().damagePlayer(b.damage, `${enemyDeathLabel(blastOwnerLabel)}の${deathMoveLabel}`, undefined, undefined, undefined, undefined, b.moveKey, undefined, b.retaliate ? b.enemyId : undefined, { type: blastEnemyType, id: b.enemyId }, { guardFrom }); // 被弾反撃: 近接系の技(retaliate旗つき)だけ窓を開く
         fx.playSfx('player-damage');
         // 弾き出し: 爆心から外向きにプレイヤーをノックバック。
         // v0.25.2653: **技ごとの押し量**(b.kbSpeed/kbMs)があればそれを使う。
@@ -511,7 +515,9 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         // B12 スーパーアーマー(THEONE_ROUND2 §4-3): damagePlayer がアーマーで受けた(hurtArmoredAt が変わった)なら、爆風の押し出しも**書かない**
         // (ここは吹き飛びを書く2箇所のうちの1つ。アーマー時は lastHurtAt を書かない代わりに hurtArmoredAt が変わるので、命中は「どちらかが変わった」で見える)。
         const armoredNow = useGameStore.getState().player.hurtArmoredAt !== armoredAtBefore;
-        if (!armoredNow) useGameStore.setState(st => {
+        // ★レバーガードで受けた(受けた回数が増えた)爆風も押し出しを書かない=damagePlayer が載せた小さい押しだけが残る(大きな吹き飛ばしを置き換える)。
+        const leverGuardedNow = leverGuardCount(useGameStore.getState().player) !== leverGuardBefore;
+        if (!armoredNow && !leverGuardedNow) useGameStore.setState(st => {
           const landed = st.player.lastHurtAt !== hurtAtBefore;
           const { speed: kbSp, ms: kbMs } = blastKnockbackOf(PLAYER_KNOCKBACK_SPEED, landed ? st.player.lastHurtTier : undefined, b.kbSpeed, b.kbMs);
           return { player: {
@@ -528,7 +534,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
           markHeroHit(b.enemyId);
           // 社長指示2026-10-17「プレイヤーに当てても回復」: 実際に当たった(段が付いた/アーマーで受けた)時だけ。倒したら500。
           const pNow = useGameStore.getState().player;
-          if (died || pNow.lastHurtAt !== hurtAtBefore || pNow.hurtArmoredAt !== armoredAtBefore) healHeroForHits(b.enemyId, died ? 0 : 1, died ? 1 : 0);
+          if (died || pNow.lastHurtAt !== hurtAtBefore || pNow.hurtArmoredAt !== armoredAtBefore || leverGuardedNow) healHeroForHits(b.enemyId, died ? 0 : 1, died ? 1 : 0); // レバーガードで受けた当たりも「当たった」(体力は減っている)
         }
       }
     }
@@ -1032,7 +1038,7 @@ export const applyEnemyProjectileHits = (
       // 発射元タイプ推定だったが、弾技を全ボスへ広げたので弾のタグを読むだけにする
       // (giantbat 新スクリプトの咆哮弾は同じ 'g-bolt' が載る=旧挙動と同値)。
       const pvpHpBefore = useGameStore.getState().player.health;
-      const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2, undefined, undefined, proj.srcMoveKey, undefined, undefined, { type: proj.ownerType, id: proj.ownerId }); // 末尾=倒した相手の記録(発射元)
+      const playerDied = useGameStore.getState().damagePlayer(proj.damage * rnMult * scMult, '敵の飛び道具', proj.x + proj.width / 2, proj.y + proj.height / 2, undefined, undefined, proj.srcMoveKey, undefined, undefined, { type: proj.ownerType, id: proj.ownerId }, { guardDir: proj.direction }); // 末尾=倒した相手の記録(発射元)/ guardDir=★格闘のレバーガードは「弾が飛んできた向き」で見る(社長2026-11-10「弾もガード可能」・research/BRAWLER.md §12-1c)
       if (wasVulnerable) {
         fx.playSfx('player-damage');
         fx.spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -1578,6 +1584,7 @@ const resolveKamitsukiFx = (fx: CombatEffects): void => {
   // ④覆い切った瞬間にダメージ適用(§14-4-8③④)。fromX/Y=触れた個体の中心(発火時点・biteHits/通常接触と同型)。
   const playerDied = useGameStore.getState().damagePlayer(
     kfx.damage, kfx.deathLabel, kfx.ex, kfx.ey, undefined, undefined, kfx.moveKey, undefined, kfx.enemyId, // 末尾=被弾反撃の相手(覆いかぶさった死神/使者)
+    undefined, { leverGuard: 'damageOnly' }, // 演出つきの技=格闘のレバーガードは半減だけ(演出・押し・怯みは今どおり・research/BRAWLER.md §12-1c)
   );
   fx.playSfx('player-damage');
   fx.spawnFlash('rgba(239,68,68,0.22)', 200);
@@ -1881,7 +1888,8 @@ export const applyContactDamage = (
     // 演出も「実際に入った時だけ」出す(弾かれた時に赤フラッシュが出ると嘘になる)。
     const wasVulnerable = !useGameStore.getState().player.invulnerable;
     // ★被弾無敵は「敵ごと」(社長裁定2026-09-17): この敵のidを渡す=別の敵からは同じ秒でも食らう。
-    const died = useGameStore.getState().damagePlayer(h.dmg, '噛みつき', h.x, h.y, undefined, undefined, undefined, h.id, h.id); // 末尾=被弾反撃の相手(噛んだ個体)
+    const died = useGameStore.getState().damagePlayer(h.dmg, '噛みつき', h.x, h.y, undefined, undefined, undefined, h.id, h.id, undefined, // 末尾=被弾反撃の相手(噛んだ個体)
+      h.chaffMove === 'bat-grab' ? { leverGuard: 'damageOnly' } : undefined); // 掴み=格闘のレバーガードは半減だけ(掴みは今どおり掛かる・research/BRAWLER.md §12-1c)
     if (wasVulnerable) {
       fx.playSfx('player-damage');
       fx.spawnFlash('rgba(239,68,68,0.22)', 200);

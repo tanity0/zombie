@@ -107,5 +107,14 @@ export interface BrawlerState {
    * x,y=向き(長さ1)・at=成立した時刻(gameTime)。受け付けられるようになった瞬間に出す(成立から BRAWLER_STEP_BUFFER_MS 以内に限る)。
    */
   stepBuffer?: { x: number; y: number; at: number };
+  /**
+   * レバーガード(research/BRAWLER.md §12-1c)で受けた時刻(gameTime・腕で受ける影の起点)。
+   * leverGuardN=受けた回数(呼び手が「この一撃はガードだったか」を前後の差で見分ける=浮かせない・爆風の押しを書かない)。
+   * leverGuardDirX/Y=受けた相手の向き(長さ1・自分→相手。腕で受ける影の向き)。
+   */
+  leverGuardAt?: number;
+  leverGuardN?: number;
+  leverGuardDirX?: number;
+  leverGuardDirY?: number;
 }
 

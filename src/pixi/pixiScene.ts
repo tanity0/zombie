@@ -701,6 +701,7 @@ const tsNum = (key: string, def: number): number => {
   return Number.isFinite(n) ? n : def;
 };
 const POI_TOUCH_FREEZE_MS = tsNum('poitouchfreeze', -1); // 触れた瞬間の絵の撮影用(負=無効)
+const LEVER_GUARD_FREEZE_MS = tsNum('leverguardfreeze', -1); // 格闘のレバーガードの腕で受ける影の撮影用(受けてからの経過msを固定・負=無効)
 const BOOM_CUE_FREEZE_MS = tsNum('boomcuefreeze', -1); // ブーメランの「今打てる」の光の撮影用(負=無効・経過msを固定)
 // PACING_PUZZLE.md §14-4-5(新死神・本体の表示スケール)。社長裁定2026-08-28「死神の大きさを今の
 // 2倍くらいにして。全部ね」=既定2(見た目のみ・当たり判定=hitboxは不変。CLAUDE.md「Visual vs.
@@ -40081,7 +40082,8 @@ export class PixiScene {
     /** research/BRAWLER_PHANTOM.md: 格闘の幻影は自分の影の絵を持つ(プレイヤーの絵と取り合わない)。 */
     which: 'player' | 'phantom' = 'player',
   ): void {
-    const f = BRW.brawlerStandAt(s, gt);
+    // ?leverguardfreeze=ms: 撮影用に、レバーガードの腕で受ける影の経過を固定する(待機の間だけ=段・技の影には効かない)。
+    const f = BRW.brawlerStandAt(s, LEVER_GUARD_FREEZE_MS >= 0 && s.phase === 'idle' && s.leverGuardAt !== undefined ? s.leverGuardAt + LEVER_GUARD_FREEZE_MS : gt);
     const spec = f ? BRW.BRAWLER_STAND[f.kind] : null;
     const tex = spec ? getTexture(spec.tex) : null;
     const cur = which === 'player' ? this.brawlerStand : this.phantomBrawlerStand;
@@ -40095,8 +40097,10 @@ export class PixiScene {
     if (parent && (sp.parent !== parent || parent.children[parent.children.length - 1] !== sp)) parent.addChild(sp); // 本人の上の層
     const st = useGameStore.getState();
     const cx = p.x + p.width / 2, cy = p.y + p.height / 2;
-    const dm = Math.hypot(s.dirX, s.dirY) || 1;
-    const ux = s.dirX / dm, uy = s.dirY / dm;
+    // レバーガード(§12-1c)の腕で受ける影は、受けた相手の方を向く(段・技の向きではない)。
+    const sdx = f.lever ? (s.leverGuardDirX ?? s.dirX) : s.dirX, sdy = f.lever ? (s.leverGuardDirY ?? s.dirY) : s.dirY;
+    const dm = Math.hypot(sdx, sdy) || 1;
+    const ux = sdx / dm, uy = sdy / dm;
     // 見た目の体の中心(跳びの高さも入る)。
     const bodyH = Math.abs(body.height);
     const bx = body.position.x, by = body.position.y - bodyH * 0.5;

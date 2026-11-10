@@ -918,7 +918,8 @@ export const landPhantomMeleeOnPlayer = (
     // ★被弾反撃の相手(社長指示2026-10-10「幻影との戦いの近接後は反撃できない?できるようにして」)。
     // 旧: 対人の体勢と絡むので対象外にしていた。反撃の一撃は普通の近接と同じ関所(phantomGate の窓パリィ・対人体勢)を通る。
     undefined, o.moveKey, undefined, phantomId, o.area ? { type: GUARDIAN_PHANTOM_TYPE, id: phantomId } : undefined,
-    o.knockback !== undefined ? { knockback: o.knockback } : undefined,
+    // guardFrom=★格闘のレバーガードの「攻撃の向き」の基準(research/BRAWLER.md §12-1c)。この一撃の出どころ(近接=幻影の体・気功=爆心・跳びかかり=着地点)。
+    { ...(o.knockback !== undefined ? { knockback: o.knockback } : {}), guardFrom: { x: bcx, y: bcy } },
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
   const landed = useGameStore.getState().player.health < hpBefore;

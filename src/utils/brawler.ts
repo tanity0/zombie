@@ -6,6 +6,7 @@ import { segmentBlocked } from '../world/obstacles';
 import { enemyRangeRect, isCorpse, isReaperFamily, isTerminalReaper, isUntouchable } from './enemyUtils';
 import { urlNum } from './urlNum';
 import { meleeImpactPoint, bandBoxOverlap } from './meleeImpact';
+import { leverGuardStandAlpha } from './brawlerLeverGuard';
 
 // ---------------------------------------------------------------------------------------------
 // ★テンポ係数(社長承認2026-11-08「KOFみたいなプレイフィールが欲しいんだけど、少し全体的に早い?」)。
@@ -981,6 +982,8 @@ export interface BrawlerStandFrame {
   light: boolean;
   /** 下の大踏み潰し(影を大きく)。 */
   big: boolean;
+  /** レバーガード(§12-1c)の腕で受ける影。向きは受けた相手の方(leverGuardDirX/Y)。 */
+  lever?: boolean;
 }
 /**
  * いまの影の形(判定は持たない・pixi が読む)。慣性: 前隙で体から前へにじみ出る(加速)→ 当たる瞬間に当たりの所まで伸び切る
@@ -997,7 +1000,11 @@ export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerS
     const p = Math.min(1, q / BRAWLER_SECRET_LAND_MS);
     return { kind: 'slam', ext: 1 + 0.3 * easeOut(p), alpha: 1 - easeIn(p), light: false, big: true };
   }
-  if (s.phase === 'idle') return null;
+  if (s.phase === 'idle') {
+    // ★レバーガード(§12-1c): 受けた瞬間から短く、構えの腕ガードの影を相手の方へ出す(待機・歩きの間だけ=段・技に入ればその影が勝つ)。
+    const a = s.leverGuardAt !== undefined ? leverGuardStandAlpha(t - s.leverGuardAt) : 0;
+    return a > 0 ? { kind: 'guard', ext: 1, alpha: a, light: false, big: false, lever: true } : null;
+  }
   let kind: BrawlerStandKind;
   if (s.phase === 'attack') {
     kind = s.stage <= 1 ? 'punch' : s.stage === 2 ? BRAWLER_STAND_STAGE2_KIND : s.stage === 3 ? 'heavy' : s.stage === 4 ? 'slam' : 'palm';

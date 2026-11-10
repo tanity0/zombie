@@ -27,7 +27,7 @@ import { HUMAN_REACTION_MS } from './bossSkeleton';
 import { PVP_DAMAGE_SCALE } from './phantomScript';
 import {
   useGameStore, huntingMeleeRadius, playerMoveStatMult, skillLevel, PLAYER_KNOCKBACK_SPEED, isCounterActive, enqueueBrawlerSfx,
-  ENEMY_ATTACK_SPEED_MULT, PUMPKIN_CROUCH_MS, PUMPKIN_EXPLOSION_RADIUS, pumpkinRecoverMs, groundJumpAirMsRaw,
+  ENEMY_ATTACK_SPEED_MULT, PUMPKIN_CROUCH_MS, PUMPKIN_EXPLOSION_RADIUS, pumpkinRecoverMs, groundJumpAirMsRaw, leverGuardCount,
 } from '../store/gameStore';
 import { groundJumpStep, groundJumpStartCrouch, groundBlastCircleHits } from './groundJump';
 import { kenkiLeapEligible, kenkiLeapReadyAt, kenkiNoteHit, kenkiUnderFire } from './kenkiLeap';
@@ -248,14 +248,17 @@ const strikePlayer = (
   c: PhantomBrawlerCtx, s: BrawlerState, hit: boolean, shapeForThird: Parameters<typeof hitThirdParties>[0],
   moveMult: number, moveKey: string, kb: 'none' | { speed: number; dirX: number; dirY: number } | undefined,
   originX: number, originY: number, secret = false, area = false,
-): { touched: boolean; countered: boolean; landed?: boolean } => {
+): { touched: boolean; countered: boolean; landed?: boolean; guarded?: boolean } => {
   const mult = strikeMultOf(c, s, moveMult, secret);
   hitThirdParties(shapeForThird, c.baseDamage * mult * PVP_DAMAGE_SCALE, c.phantom.id, 'guardian-phantom');
   if (!hit) return { touched: false, countered: false };
   let countered = false;
+  const guardsBefore = leverGuardCount(useGameStore.getState().player);
   const r = c.land(originX, originY, mult, { moveKey, sourceLabel: `${c.label}の格闘`, knockback: kb, onCountered: () => { countered = true; }, area });
   // landed=本当に体力を削った(構え・無敵・神モードで0ダメージだった時は false)。秘奥義の1手目はこれで数える。
-  return { touched: r === 'hit' || r === 'nodamage', countered: countered || r === 'countered', landed: r === 'hit' };
+  // guarded=プレイヤーが格闘のレバーガードで受けた(research/BRAWLER.md §12-1c=体力は半分減るが浮かない)。
+  return { touched: r === 'hit' || r === 'nodamage', countered: countered || r === 'countered', landed: r === 'hit',
+    guarded: leverGuardCount(useGameStore.getState().player) !== guardsBefore };
 };
 
 /** 弾への対処(弾ごとに1回だけ決める・人格の割合)。この tick で実行するもの。 */
@@ -401,7 +404,7 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
 
   if (s.phase === 'attack') {
     const spec = BR.brawlerStageSpec(s.stage);
-    let r: { touched: boolean; countered: boolean; landed?: boolean };
+    let r: { touched: boolean; countered: boolean; landed?: boolean; guarded?: boolean };
     if (spec.shape === 'landing') {
       r = strikePlayer(c, s, edgeDist(foot.x, foot.y, player) <= BR.BRAWLER_LANDING_RADIUS,
         { kind: 'circle', cx: foot.x, cy: foot.y, r: BR.BRAWLER_LANDING_RADIUS }, spec.mult, 'brawler-s4',
@@ -425,7 +428,8 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     const hits = r.touched ? 1 : 0;
     if (hits > 0) kenkiHitSfx({ stage: spec.stage });
     // 3段目のアッパー・4段目の跳び踏み潰しを食らったプレイヤーは、絵だけ浮く(操作は奪わない・research/BRAWLER_PHANTOM.md §4-9)。
-    if (hits > 0 && (spec.stage === 3 || spec.stage === 4)) notePlayerLaunched(c.nowMs, BR.BRAWLER_LIFT_MS);
+    // ★レバーガードで受けたプレイヤーは浮かない(社長指示2026-11-10「ダメージ半減、浮かない、少しノックバック」・research/BRAWLER.md §12-1c)。
+    if (hits > 0 && (spec.stage === 3 || spec.stage === 4) && !r.guarded) notePlayerLaunched(c.nowMs, BR.BRAWLER_LIFT_MS);
     let next = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs });
     if (hits > 0) next = BR.brawlerFlowOnHit(next, 1);
     // 当てた=反動で止める / 5段目=抜けた先で止まる。
@@ -734,7 +738,7 @@ const stepKenkiLeap = (c: PhantomBrawlerCtx, s: BrawlerState): boolean => {
     //   押しは無し=その場で、3・4段目と同じ「絵だけ浮く」(操作は奪わない・§4-9)。浮く長さは4段目の打ち上げと同じ。
     const lr = strikePlayer(c, s, hit, { kind: 'circle', cx: bx, cy: by, r: PUMPKIN_EXPLOSION_RADIUS }, BR.BRAWLER_STOMP_MULT, 'kenki-leap',
       'none', bx, by, false, true);
-    if (lr.landed) notePlayerLaunched(c.nowMs, BR.BRAWLER_LIFT_MS);
+    if (lr.landed && !lr.guarded) notePlayerLaunched(c.nowMs, BR.BRAWLER_LIFT_MS); // レバーガードで受けたら浮かない(§12-1c)
     // 地面を叩く絵と音(格闘の大踏み潰しの流用・ハンターの武器の絵は使わない)。
     const g = useGameStore.getState();
     g.spawnRing(bx, by, 20, PUMPKIN_EXPLOSION_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);

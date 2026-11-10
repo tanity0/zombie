@@ -135,6 +135,7 @@ import * as BR from '../utils/brawler'; // サブウェポン「格闘」の純�
 import { isBrawlerGuardingAt } from '../utils/brawler';
 import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食らいの固まり・減衰・反撃=research/BRAWLER.md §11)
 import * as BRS from '../utils/brawlerSkills'; // 格闘×スキルの純関数(research/BRAWLER.md §15)
+import * as BLG from '../utils/brawlerLeverGuard'; // 格闘のレバーガード(成立・半減・小さい押し・research/BRAWLER.md §12-1c)
 import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
 import { noteAirMeleeHit, resetAirMeleeHit } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
@@ -4319,6 +4320,24 @@ const brawlerGateOk = (get: () => GameState): boolean => {
   if (BR.isBrawlerSecretActive(p.brawler)) return false;            // 秘奥義の最中は入力を受け付けない(§10-3)
   return true;
 };
+/**
+ * ★レバーガード(research/BRAWLER.md §12-1c)を張れる体か=待機か歩いている時だけ。
+ * 動作の最中(通常攻撃・技・秘奥義・ステップ)、怯み(しゃがみ)・吹き飛びの最中、掴まれ・対人の紫/気絶、被弾反撃の飛び込み、乗車中は張れない。
+ * ガードの小さい押しの最中(踏み込みの器 'push')は張れる(後ろへ入れ続ければ続けて受けられる)。入力は塞がない(ここは読むだけ)。
+ */
+const leverGuardFree = (p: Player, gameTime: number, wallNow: number): boolean => {
+  if (p.health <= 0) return false;
+  if (BR.isBrawlerBusy(p.brawler)) return false;                                   // 通常攻撃・技・秘奥義
+  if (p.brawler?.stepUntil !== undefined && gameTime < p.brawler.stepUntil) return false; // ステップ
+  if (isPvpIncapacitated(p.pvpPosture, gameTime) || isPlayerGrabbed(p, gameTime)) return false;
+  if (isHurtMoveLocked(p, wallNow)) return false;                                  // 被弾のしゃがみ中
+  if (p.knockbackUntil !== undefined && wallNow < p.knockbackUntil) return false;  // 吹き飛びの最中
+  if ((p.retaliateStrikeAt ?? 0) > 0) return false;                                // 被弾反撃の飛び込み中
+  if (SKATER_LOCK_ENABLED && p.skaterRiding) return false;                         // スケボー乗車中(格闘が出せない体)
+  return true;
+};
+/** レバーガードで受けた回数(呼び手が damagePlayer の前後で比べて「この一撃はガードだったか」を見分ける)。 */
+export const leverGuardCount = (p: Pick<Player, 'brawler'>): number => p.brawler?.leverGuardN ?? 0;
 const setBrawler = (set: (fn: (s: GameState) => Partial<GameState>) => void, b: BR.BrawlerState, extra: Partial<Player> = {}): void => {
   set(state => ({ player: { ...state.player, brawler: b, ...extra } }));
 };
@@ -4773,7 +4792,11 @@ const startBrawlerTech = (
       return;
     }
   }
-  let extra: Partial<Player> = { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0 };
+  // ★レバーガードの小さい押しの最中に構え(カウンター)を出した時は、押しの器を残す(research/BRAWLER.md §12-1c「ガードの小さい押しの間も
+  //   攻撃とカウンターを出せる」。器を0にすると押しが1フレームで止まる=慣性MUST 違反)。構えは自分の踏み込みを持たないので取り合わない。
+  //   通常攻撃・蹴り・気功・潰しは今どおり自分の踏み込み(または停止)で上書きする。
+  const keepPush = kind === 'guard' && p.lungeShape === 'push' && (p.lungeUntil ?? 0) > now;
+  let extra: Partial<Player> = keepPush ? {} : { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0 };
   if (kind === 'kick' || kind === 'kiko') {
     const range = (kind === 'kick' ? BR.BRAWLER_KICK_RANGE : BR.BRAWLER_KIKO_RANGE) + brawlerReachExtra(p); // ハンティングが溜まっていれば広がる(§16)
     const walls = kind === 'kick' ? meleeWallsAround(get, c.x, c.y, range) : [];
@@ -5340,6 +5363,39 @@ type BrawlerFxOpts = NonNullable<Parameters<GameState['spawnImageMark']>[3]>;
 // ★素材 fx/dash-wind は尖った先が -x 側(pixiScene.drawDashWind / drawThrustWind と同じ規約=進む向き+PI で先を前へ)。社長指摘2026-11-10「白い線の向きが逆」で直した。
 const brawlerFx = (get: () => GameState, x: number, y: number, tex: string, o: BrawlerFxOpts): void => {
   get().spawnImageMark(x, y, tex, { additive: true, tint: BR.BRAWLER_COLOR_HEX, noPop: true, ...o });
+};
+/**
+ * ★レバーガードで受けた瞬間の絵と音(research/BRAWLER.md §12-1c・派手さの絵・判定なし)。プレイヤーと拳鬼(格闘の幻影・BRAWLER_PHANTOM.md §16-10)で同じ物。
+ *  c=受けた体の中心 / bodyH=体の高さ / (dirX,dirY)=攻撃の進む向き(相手→自分・長さ1=押される向き)/ push=小さく押される(足元の砂埃を出す)。
+ *  受けた点(体の、相手の側の縁)に白金の小さな火花と短い輪。腕で受ける影は状態(leverGuardAt)から描画が出す。音は鈍い打撃音。
+ *  Counter! の文字・スロー・全体の停止・寄りは出さない(カウンターではない)。足元は砂埃だけ(白い筋 dash-wind と、芯が白く光る粒は足元に使わない)。
+ */
+export const leverGuardFx = (get: () => GameState, c: { x: number; y: number }, bodyH: number, dirX: number, dirY: number, push: boolean): void => {
+  const g = get();
+  // 受けた点: 体の中心から相手の側へ・胴の高さ(当たりの箱は足元にあり、絵はその上へ伸びる=箱の中心より上げる。縦は絵が重なるので控えめに)。
+  const px = c.x - dirX * 17, py = c.y - 13 - dirY * 12;
+  const ra = Math.atan2(-dirY, -dirX); // 相手の方
+  // 火花: 受けた面に走る稲妻を小さく2本(大きさ・尺・向きをずらす)+相手の側へ散る粒。
+  brawlerFx(get, px, py, 'vfx/spark_04', { scale: 0.8, rot: ra + (Math.random() * 2 - 1) * 0.5, duration: 210, fadeFrom: 0.3, alpha: 1 });
+  brawlerFx(get, px, py, 'vfx/spark_04', { scale: 0.5, rot: ra + Math.PI * 0.5 + (Math.random() * 2 - 1) * 0.7, duration: 150, fadeFrom: 0.25, alpha: 0.85 });
+  g.spawnBurst(px, py, BR.BRAWLER_COLOR, 5, -dirX, -dirY);
+  // 短い輪(受け止めた面で小さく開いてすぐ消える)と、芯の小さな光。
+  g.spawnRing(px, py, 5, 38, BR.BRAWLER_RGBA(0.92), 2.5, 190, true);
+  g.spawnGlow(px, py, GLOW_R_S, 'rgba(255,248,230,', 150, true);
+  // 足元: 踏ん張った足が地面を擦った砂埃(小さめ2つ・大きさと尺をずらす・相手の側へ流れて薄れる)。
+  if (push) {
+    const footY = c.y + bodyH / 2 - 12;
+    const qx = -dirY, qy = dirX;
+    g.spawnImageMark(c.x - dirX * 4, footY - dirY * 4, 'fx/dust-puff', {
+      scale: 0.17, duration: 430, tint: 0x9a8b7a, alpha: 0.65, moveX: -dirX * 20, moveY: -dirY * 20, fadeFrom: 0.35,
+    });
+    g.spawnImageMark(c.x + dirX * 7 + qx * 7, footY + dirY * 7 + qy * 7, 'fx/dust-puff', {
+      scale: 0.11, duration: 340, tint: 0x8f8170, alpha: 0.5, moveX: -dirX * 14 + qx * 5, moveY: -dirY * 14 + qy * 5, fadeFrom: 0.3,
+    });
+  }
+  // 音: 鈍い打撃音(重い当たりを低く・短く)+腕に当たった鈍い音。高い金属音(counter)は鳴らさない。
+  brawlerSfx('heavy-impact', 0.5, 0.6 * brJitter(), undefined, 0);
+  brawlerSfx('brawler-hit', 0.42, 0.62 * brJitter());
 };
 /** 秘奥義の題字の素材の寸法(public/sprites/fx/brawler-secret-title.png・社長支給)。 */
 const BR_SECRET_TITLE_W = 128;
@@ -8786,7 +8842,7 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean; knockback?: 'none' | { speed: number; dirX: number; dirY: number } }) => boolean; // opts.knockback: ★組み込みの被弾の押しの差し替え(research/BRAWLER_PHANTOM.md §4-8・格闘の幻影の段ごとの押し)。'none'=押さない(揺れの向きは残す)/ 速さと向き=その押し。未指定=今どおり / opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean; knockback?: 'none' | { speed: number; dirX: number; dirY: number }; guardDir?: { x: number; y: number }; guardFrom?: { x: number; y: number }; leverGuard?: 'damageOnly' }) => boolean; // opts.guardDir/guardFrom/leverGuard: ★格闘のレバーガード(research/BRAWLER.md §12-1c)の「攻撃の向き」の材料。guardDir=弾が飛んできた向き(弾の速度)/ guardFrom=爆発・範囲技の中心(爆心)/ leverGuard:'damageOnly'=掴み・演出つきの技(半減だけ掛け、押し・怯みは今どおり)。どれも未指定=被弾の点(fromX/Y)と攻撃してきた個体の位置から引く // opts.knockback: ★組み込みの被弾の押しの差し替え(research/BRAWLER_PHANTOM.md §4-8・格闘の幻影の段ごとの押し)。'none'=押さない(揺れの向きは残す)/ 速さと向き=その押し。未指定=今どおり / opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -14871,14 +14927,47 @@ export const useGameStore = create<GameState>((set, get) => ({
       return false;
     }
 
+    // ★レバーガード(research/BRAWLER.md §12-1c・社長指示2026-11-10「攻撃の方向と逆にレバー入れてる状態で攻撃を食らうと、ガードになる。
+    //   (ダメージ半減、浮かない、少しノックバック)」)。解決の順は ①今あるカウンター(赤の予告へのカウンターの窓・構え・弾の打ち返し=呼び手と
+    //   上の構えの入口が先に決める。成立した攻撃はここへ来ない)→ ②ここ → ③普通の被弾。被弾無敵・無効化で弾かれた攻撃もここへ来ない。
+    //   成立(純関数 BLG): 格闘の出番・待機か歩いている時・レバー(スティック/移動キー/パッド=store の移動の入力)が、攻撃してきた相手から
+    //   離れる向き(左右60°まで)。相手の向きが取れない被弾・持続ダメージは対象外。入力は塞がない(読むだけ)。
+    const leverGuard = ((): { dirX: number; dirY: number; full: boolean } | null => {
+      if (dot || !(rawAmount > 0) || !isBrawlerMode(player)) return null; // 格闘の状態がまだ無い(1度も殴っていない)のは待機と同じ
+      const stLg = get();
+      const lever = BLG.moveLeverDir(stLg.swipeDirection, stLg.inputState);
+      if (!lever) return null;
+      const pc = brawlerCenter(player);
+      const srcId = sourceId ?? retaliateFromId ?? killerHint?.id;
+      const srcType = damagerType ?? killerHint?.type;
+      const centerOf = (e: Enemy | null | undefined) => (e ? { x: e.x + e.width / 2, y: e.y + e.height / 2 } : null);
+      const srcEnemy = srcId !== undefined || srcType !== undefined
+        ? BRG.brawlerGuardSourceEnemy([{ id: srcId, type: srcType }], stLg.enemies, pc) : null;
+      // 体で殴ってきた個体(体当たり・噛みつき・近接の技=名指しの被弾)と、撃ち続ける光線の撃ち主は、被弾の点より先に見る(光線の被弾の点は軸の上=離れると真横)。
+      const bodyId = sourceId ?? retaliateFromId;
+      const bodyEnemy = BRG.isBrawlerBeamMove(damageSourceMove) ? srcEnemy : bodyId !== undefined ? stLg.enemies.find(e => e.id === bodyId) : null;
+      const attackDir = BLG.leverGuardAttackDir(pc, {
+        travel: opts?.guardDir, center: opts?.guardFrom, body: centerOf(bodyEnemy),
+        hit: fromX !== undefined && fromY !== undefined ? { x: fromX, y: fromY } : null,
+        enemy: centerOf(srcEnemy),
+      });
+      if (!attackDir || !BLG.brawlerLeverGuardHolds({
+        has: true, amount: rawAmount, dot, free: leverGuardFree(player, stLg.gameTime, Date.now()), lever, attackDir,
+      })) return null;
+      // 掴み・演出つきの技(呼び手が 'damageOnly' を渡す)は半減だけ=押し・怯み・掴み・演出は今どおり。
+      return { dirX: attackDir.x, dirY: attackDir.y, full: opts?.leverGuard !== 'damageOnly' && !BLG.leverGuardDamageOnlyMove(damageSourceMove) };
+    })();
+
     // スキル: ナイト(×0.8)/バーサーカー(×1.2)/消費カード「プロテクション」(×0.7・§23) の被ダメ補正。
     // ランナー覚醒(Lv3・v0.25.3300): 加速中は×0.8。amount>0 のみ補正。
     // B10 血の覚醒中は被ダメージ ×2(終わりの1秒で線形に 1 へ戻る・ナイト等と乗算。THEONE_ROUND2 §3-1)。
-    const skilled = rawAmount > 0
+    const skilledBase = rawAmount > 0
       ? rawAmount * skillIncomingDamageMult(player, get().gameTime) * runnerAwakenDamageMult(player)
         // B11(THEONE_ROUND2 §4b-2-6): 巡航の段1以上なら機動系の装備の段階×4%軽く(段を戻す前の段で判定)。スーパーアーマーの判定より前=軽くなった分だけ耐えやすい(相乗りを意図)。
         * cruiseDamageMult(playerCruiseStage(player), equipCruiseTier(player.equipment))
       : rawAmount;
+    // レバーガード: 他の補正を全部掛けた後の量を半減(切り上げ・最低1)。
+    const skilled = leverGuard ? BLG.brawlerLeverGuardDamage(skilledBase) : skilledBase;
     // B12 スーパーアーマー(THEONE_ROUND2 §4): 実ダメージ(skilled=M0 の noDeath 切り詰めの前)で判定。
     // 働いたら吹き飛ばさず、しゃがみ/移動ロック/銃ロックの時計(lastHurtAt/lastHurtTier)を**書かない**(読み手3つが自然に素通りする)。
     // 代わりに hurtArmoredAt を書く(爆風側の「命中した」の旗と、踏ん張りの絵の起点)。無敵・ヒットストップ・被弾反撃の窓・シェイク・被弾演出は従来どおり。
@@ -14913,6 +15002,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★被弾の重さの段(社長裁定2026-09-16「一旦aでやってみよう」)。しゃがみの尺とストップの長さを
     // これで引く。**敵の体勢値とは別系統**(プレイヤーは無敵1秒が頻度を守るので間引かない)。
     const hurtTier = playerHurtTier(amount, player.maxHealth);
+    // レバーガードで受け切った被弾(体力が減った時だけ)。怯み・全体の停止・元の押しを出さず、相手から離れる向きの小さい押しに置き換える。
+    // lgAny=半減が掛かった被弾(掴み・演出つきの技の「半減だけ」も含む)=受けた絵と音・受けた回数の記録に使う。
+    const lgAny = leverGuard !== null && amount > 0;
+    const lgFull = lgAny && leverGuard.full;
 
     // G4a(BOT_AND_GHOST.md §2.9・記録専用): 技キー付きの実被弾を反応表へ通知する(ワクチン発動でも
     // 「その技を食らった」事実は同じなので、分岐より前のここで1回だけ)。挙動には一切影響しない。
@@ -14967,6 +15060,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (kbo === 'none') kbApply = false;
       else if (kbo) { kbVx = kbo.dirX * kbo.speed; kbVy = kbo.dirY * kbo.speed; }
     }
+    // ★レバーガード(§12-1c): 元の押し(段ごとの吹き飛び・技ごとの押し)は出さない。揺れの向きは攻撃の進む向き(=押される向き)。
+    if (lgFull && leverGuard) { kbApply = false; dirX = leverGuard.dirX; dirY = leverGuard.dirY; }
+    // 小さい押し(約40px・160ms・加速→減速)は踏み込みの器 'push' へ載せる(構えで押される時と同じ器=壁と木は6px 刻みで解いて止まる・
+    // 向きは変えない・接触の無敵は付かない・スロー中も押され切る)。操作不能・攻撃の禁止は足さない(押しの間も攻撃とカウンターを出せる)。
+    const lgPushSpeed = BR.brawlerStepSpeed(BLG.BRAWLER_LEVER_GUARD_PUSH_PX, BLG.BRAWLER_LEVER_GUARD_PUSH_MS);
 
     set(state => {
       // v0.25.2630: メーカーの無敵は**HPを減らさない**。amount は満額のまま通してあるので、
@@ -14977,7 +15075,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★HP0(死亡演出中)には張らない(§14-4-8 A-1 の再発防止テストが守っている不変条件)。
       // HP0でも damagePlayer は i-frame を張り直すので amount>0 が立ち続ける=ガードが無いと
       // 死亡演出のあいだ1000msごとに停止が入る。**とどめの一撃には入る**(被弾前のHPで見るため)。
-      const stopUntilNext = (amount > 0 && state.player.health > 0 && !dot)
+      // ★レバーガード(§12-1c)で受け切った被弾は全体の停止を出さない(カウンターではない・受け止めた=軽い)。
+      const stopUntilNext = (amount > 0 && state.player.health > 0 && !dot && !lgFull)
         ? Math.max(state.hitstopUntil, Date.now() + playerHurtReactionOf(hurtTier).stopMs)
         : state.hitstopUntil;
       return {
@@ -15005,7 +15104,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         })() : {}),
         // Real damage kicks off a screen shake.
         shakeUntil: amount > 0 && !dot ? Date.now() + SHAKE_MS : state.shakeUntil,
-        shakeMag: amount > 0 && !dot ? SHAKE_MAG : state.shakeMag,
+        shakeMag: amount > 0 && !dot ? SHAKE_MAG * (lgFull ? BLG.BRAWLER_LEVER_GUARD_SHAKE_MULT : 1) : state.shakeMag, // レバーガードは揺れも軽い
         shakeDur: amount > 0 && !dot ? SHAKE_MS : state.shakeDur,
         // §5.23 M22 C1: 被弾源→プレイヤーのノックバック向きへ揺れを寄せる(?dirfx=0で従来の等方揺れ)。
         shakeDirX: amount > 0 && !dot ? (DIRFX_ENABLED ? dirX : 0) : state.shakeDirX,
@@ -15043,24 +15142,40 @@ export const useGameStore = create<GameState>((set, get) => ({
           // (=バグにしか見えない)状態だった。**窓を閉じる1箇所で全成立経路(7箇所)に効く**
           // ——どの経路も counterWindowEnd を読むため、判定コードには一切触らない。
           // `?lastcounter=1` で旧挙動(被弾していてもカウンター可)へ完全復帰(A/B比較用)。
-          counterWindowEnd: (amount > 0 && !dot && !LATE_COUNTER_ENABLED) ? 0 : state.player.counterWindowEnd,
+          // ★レバーガード(§12-1c・社長指示2026-11-10「ガード中も赤カウンターは狙えるように」)で受け切った被弾は窓を閉じない。
+          counterWindowEnd: (amount > 0 && !dot && !LATE_COUNTER_ENABLED && !lgFull) ? 0 : state.player.counterWindowEnd,
           // ★被弾リアクションの打刻(描画専用・判定不変)。この間だけ本体の絵がしゃがみへ替わる。
           // 段(軽/中/重)は**実際に減ったHP**(amount=軽減後)と最大HPの割合で決まる。
-          lastHurtAt: (amount > 0 && !armored && !dot) ? kbNow : state.player.lastHurtAt,
+          // ★レバーガード(§12-1c)で受け切った被弾は怯まない(しゃがみの絵・移動と銃のロックの時計を書かない=アーマーと同じ作法)。
+          lastHurtAt: (amount > 0 && !armored && !dot && !lgFull) ? kbNow : state.player.lastHurtAt,
           // ★格闘(research/BRAWLER.md §2-4): 被弾したら段は1段目へ戻り、先行入力も捨てる。
           // ★食らっても技ポイントが貯まる(社長指示2026-11-10「あと格闘は攻撃食らっても技ポイント貯まる にしよう」・research/BRAWLER.md §12-3c):
           //   格闘を持っていて体力が本当に減った被弾で+1(当てた時と同じ量・上限)。0ダメージ(構え・無敵)・持続ダメージでは貯めない。
-          ...(amount > 0 && !dot && state.player.brawler ? {
-            brawler: BR.brawlerAfterHurtPoints(BR.brawlerOnHurt(state.player.brawler), BR.brawlerPointCap(brawlerLevel(state.player)),
-              hasBrawler(state.player) && newHealth < state.player.health, Date.now()),
+          //   ★レバーガード(§12-1c)で受けた被弾も同じ(段のつながりは切れ・体力が減るので+1は入る)。受けた時刻・回数・相手の向きを記す(腕で受ける影と、呼び手の見分け)。
+          ...(amount > 0 && !dot && (state.player.brawler || lgAny) ? {
+            brawler: {
+              ...BR.brawlerAfterHurtPoints(BR.brawlerOnHurt(state.player.brawler ?? BR.initialBrawlerState()), BR.brawlerPointCap(brawlerLevel(state.player)),
+                hasBrawler(state.player) && newHealth < state.player.health, Date.now()),
+              ...(lgAny && leverGuard ? {
+                leverGuardAt: state.gameTime, leverGuardN: (state.player.brawler?.leverGuardN ?? 0) + 1,
+                leverGuardDirX: -leverGuard.dirX, leverGuardDirY: -leverGuard.dirY,
+              } : {}),
+            },
+          } : {}),
+          // ★レバーガードの小さい押し(上の lgPushSpeed)。全体の停止が走っていれば明けてから押され始める。
+          ...(lgFull && leverGuard ? {
+            lungeVx: leverGuard.dirX * lgPushSpeed, lungeVy: leverGuard.dirY * lgPushSpeed,
+            lungeUntil: Math.max(kbNow, state.hitstopUntil) + BLG.BRAWLER_LEVER_GUARD_PUSH_MS, lungeMs: BLG.BRAWLER_LEVER_GUARD_PUSH_MS,
+            lungeShape: 'push' as const, lungeHoldUntil: 0,
           } : {}),
           // B3 巡航: 被弾(吹き飛び・しゃがみの付く当たり)で段0へ。スーパーアーマーで耐えた被弾・M0 の踏みとどまり(amount=0)では戻さない。
-          ...((amount > 0 && !armored && !dot) ? { speedRampSustainMs: 0 } : {}),
-          lastHurtTier: (amount > 0 && !armored && !dot) ? hurtTier : state.player.lastHurtTier,
-          hurtArmoredAt: (amount > 0 && armored) ? kbNow : state.player.hurtArmoredAt, // B12: アーマーで受けた被弾の時刻(描画の起点・爆風の旗)
+          // レバーガードで受け切った被弾も戻さない(吹き飛びもしゃがみも付かない)。
+          ...((amount > 0 && !armored && !dot && !lgFull) ? { speedRampSustainMs: 0 } : {}),
+          lastHurtTier: (amount > 0 && !armored && !dot && !lgFull) ? hurtTier : state.player.lastHurtTier,
+          hurtArmoredAt: (amount > 0 && armored && !lgFull) ? kbNow : state.player.hurtArmoredAt, // B12: アーマーで受けた被弾の時刻(描画の起点・爆風の旗)。レバーガードが先(踏ん張りの絵は出さない)
           // B12 見せ方(描画専用・判定には使わない): アーマーで受けた被弾の向き(踏ん張りの傾きの向き)。向きが無い被弾(fromX 未指定)は 0=傾かない。
-          hurtArmoredDirX: (amount > 0 && armored) ? dirX : state.player.hurtArmoredDirX,
-          hurtArmoredDirY: (amount > 0 && armored) ? dirY : state.player.hurtArmoredDirY,
+          hurtArmoredDirX: (amount > 0 && armored && !lgFull) ? dirX : state.player.hurtArmoredDirX,
+          hurtArmoredDirY: (amount > 0 && armored && !lgFull) ? dirY : state.player.hurtArmoredDirY,
           // ★敵ごとの被弾無敵の記録(社長裁定2026-09-17)。INVULN_MS より古い項は同時に掃除する。
           iframeBySource: (amount > 0 && sourceId !== undefined)
             ? (() => {
@@ -15083,6 +15198,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       };
     });
+
+    // ★レバーガードの絵と音(§12-1c・派手さの絵・判定なし)。Counter! の文字・スロー・全体の停止は出さない(カウンターではない)。
+    if (lgAny && leverGuard) leverGuardFx(get, { x: player.x + player.width / 2, y: player.y + player.height / 2 }, player.height, leverGuard.dirX, leverGuard.dirY, lgFull);
 
     // スキル: 反射神経 = 被弾時(amount>0)、CD明けならプレイヤー中心に反撃爆発(ランチャー値)+
     // 近傍敵を 2× ノックバック。CD 1秒。被弾イベント由来なのでスロー無し(CLAUDE.md)。
