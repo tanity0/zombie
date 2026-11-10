@@ -3695,12 +3695,14 @@ export const INVULN_MS = 1000; // 社長裁定v0.25.3599(700→1000。多段技�
  */
 const gatePhantomHit = (
   enemy: Enemy, amount: number, source: PhantomDamageSource | 'ranged', gameTime: number,
+  /** 拳鬼の「近接で食らった」打刻を打つか(既定=打つ)。関所は近接として裁くが体の当たりではない部分(スケボーの覚醒の爆発の広がり)は false。 */
+  countsAsMeleeHurt = true,
 ): PhantomHitGateResult => {
   const r = phantomHitGateRaw(enemy, amount, source, gameTime);
   // ★拳鬼(格闘の幻影)は近接(打撃・技)で食らうと技ポイントが貯まる=その打刻(社長指示2026-11-10「ただし、ボスは銃弾では貯まらない」・
   //   research/BRAWLER_PHANTOM.md §16-8)。銃弾・爆発・その他の遠隔('ranged'/'bullet')・カウンターの返しでは打たない。
   //   ポイントを足すのは拳鬼の制御(phantomBrawlerTick)。幻影の近接の当たりは全部この橋を source='melee' で通る。
-  return r.effects && source === 'melee' && enemy.phantomUnique === 'brawler'
+  return r.effects && source === 'melee' && countsAsMeleeHurt && enemy.phantomUnique === 'brawler'
     ? { ...r, patch: { ...r.patch, gpMeleeHurtAt: gameTime } }
     : r;
 };
@@ -10962,7 +10964,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統⑥=スケボー)。バッシュも近接系=パリィ対象。
         let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
         if (isGuardianPhantom(enemy.type)) {
-          const gp = gatePhantomHit(enemy, 0, 'melee', s.gameTime);
+          // 拳鬼の「近接で食らった」(技ポイント+1・台本の打ち切り)に数えるのは、板のバッシュが直接当たった範囲だけ。
+          // 覚醒の爆発で広がった分(距離で減る部分)は爆発=数えない(社長「ボスは銃弾では貯まらない」・爆発も貯めない=§16-8)。
+          const gp = gatePhantomHit(enemy, 0, 'melee', s.gameTime, !skAwaken || d2 <= SKATEBOARD_BASH_RANGE * SKATEBOARD_BASH_RANGE);
           if (!gp.effects) { out.push({ ...enemy, ...gp.patch }); continue; }
           gpPatch = gp.patch;
           gpDmgScale = gp.damageScale;

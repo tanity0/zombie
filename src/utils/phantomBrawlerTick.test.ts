@@ -47,7 +47,7 @@ describe('拳鬼が格闘で戦う(結合)', () => {
     setPhantomIdentity({ name: k.name, profile: k.profile, source: 'unique' });
   });
 
-  const setup = (offsetX: number, over: Partial<Enemy> = {}) => {
+  const setup = (offsetX: number, over: Partial<Enemy> = {}, rand: () => number = () => 0.999) => {
     const k = uniquePhantomSpec('brawler');
     const e = spawnEnemyAt('guardian-phantom', ORIGIN, ORIGIN, START_GT);
     Object.assign(e, { phantomUnique: 'brawler', phantomBuild: k.profile.snapshot, health: 130, maxHealth: 130, dormant: false, bossState: 'chase' }, over);
@@ -62,9 +62,9 @@ describe('拳鬼が格闘で戦う(結合)', () => {
       gt += ms;
       useGameStore.setState({ gameTime: gt });
       const cur = useGameStore.getState().enemies.find(x => x.id === e.id);
-      if (cur) { runPhantomTick(cur, st, gt, ms / 1000, 1, gt, NOOP_PHANTOM_SFX, () => 0.999); states.add(useGameStore.getState().enemies.find(x => x.id === e.id)?.bossState ?? ''); }
+      if (cur) { runPhantomTick(cur, st, gt, ms / 1000, 1, gt, NOOP_PHANTOM_SFX, rand); states.add(useGameStore.getState().enemies.find(x => x.id === e.id)?.bossState ?? ''); }
     };
-    return { id: e.id, step, states, cur: () => useGameStore.getState().enemies.find(x => x.id === e.id)! };
+    return { id: e.id, step, states, st, cur: () => useGameStore.getState().enemies.find(x => x.id === e.id)! };
   };
 
   it('間合いの内のプレイヤーへ通常の段を当てる(HPが減る・段が進む・相が登録される)・銃は撃たない', () => {
@@ -245,6 +245,228 @@ describe('拳鬼が格闘で戦う(結合)', () => {
     useGameStore.setState(s => ({ enemies: s.enemies.map(x => x.id === h.id ? { ...x, gpBulletParriedAt: gt } : x) }));
     for (let i = 0; i < 24; i++) h.step(16);
     expect(x0 - h.cur().x).toBeLessThan(60); // 下がらない
+  });
+
+  // ---- 検収監査2026-11-10 の是正(出荷されるバグ) -------------------------------------------------
+  const patchKenki = (id: string, patch: Partial<Enemy>) =>
+    useGameStore.setState(s => ({ enemies: s.enemies.map(x => x.id === id ? { ...x, ...patch } : x) }));
+
+  // 1. 「殴られた」は近接だけ。lastHit は銃弾・燃焼・犬・タレットでも書かれる=それで台本・予備動作を崩さない。
+  it('弾・燃焼で毎フレーム被弾していても、台本1(通常5連)は5段目まで出る', () => {
+    const h = setup(40); // ポイント0=台本1
+    let maxStage = 0;
+    for (let i = 0; i < 260 && maxStage < 5; i++) {
+      patchKenki(h.id, { lastHit: Date.now() + i }); // 弾・燃焼の被弾(近接の打刻 gpMeleeHurtAt は打たれない)
+      h.step(16);
+      maxStage = Math.max(maxStage, h.cur().phantomBrawler?.stage ?? 0);
+    }
+    expect(maxStage).toBe(5);
+  });
+  it('弾・燃焼で毎フレーム被弾していても、予備動作は潰れない(台本5の蹴りが3発目まで出る)', () => {
+    const h = setup(40, { phantomBrawler: { ...initialBrawlerState(), points: 20 } }); // 乱数0.999=台本5
+    let maxKickN = 0;
+    for (let i = 0; i < 300 && maxKickN < 3; i++) {
+      patchKenki(h.id, { lastHit: Date.now() + i });
+      h.step(16);
+      const b = h.cur().phantomBrawler;
+      if (b?.phase === 'tech' && b.tech === 'kick') maxKickN = Math.max(maxKickN, b.kickN);
+    }
+    expect(maxKickN).toBe(3);
+  });
+  it('近接で殴られたら、予備動作は取り消し・台本は打ち切り(技は出ない・払わない)', () => {
+    const h = setup(40, { phantomBrawler: { ...initialBrawlerState(), points: 20 } }); // 台本5
+    let cancelled = false;
+    for (let i = 0; i < 300 && !cancelled; i++) {
+      h.step(16);
+      if (h.cur().gpBrawlerPrep) {
+        const pts = h.cur().phantomBrawler?.points ?? 0;
+        patchKenki(h.id, { gpMeleeHurtAt: useGameStore.getState().gameTime });
+        h.step(16);
+        expect(h.cur().gpBrawlerPrep).toBeUndefined();
+        expect(h.st.brawler?.prep ?? null).toBeNull();
+        expect(h.st.brawler?.mind.script ?? null).toBeNull();
+        const b = h.cur().phantomBrawler;
+        expect(b?.phase === 'tech' && b.tech === 'kick').toBe(false);
+        expect(b?.points ?? 0).toBe(Math.min(20, pts + 1)); // 蹴りの代金は払っていない(食らった分の+1だけ・上限)
+        cancelled = true;
+      }
+    }
+    expect(cancelled).toBe(true);
+  });
+
+  // 2. 締めの気功の「近接扱い」は、気功を決めた時点で決めて弾に持たせる(溜めの間に台本が打ち切られても近接扱いのまま)。
+  it('台本3の締めの気功: 溜めの間に弾を食らい、さらに近接で殴られて台本が打ち切られても、近接扱いで当たる', () => {
+    const h = setup(40, { phantomBrawler: { ...initialBrawlerState(), points: 1 } }); // 台本1・3=乱数0.999で台本3
+    let kikoSeen = false, hitByKiko = false, invBefore = false, punched = false;
+    for (let i = 0; i < 200 && !kikoSeen; i++) {
+      patchKenki(h.id, { lastHit: Date.now() + i }); // 弾の被弾
+      const b0 = h.cur().phantomBrawler;
+      // 気功の出だし(判定の前)で近接を食らう=台本は打ち切られる(行動は続く)
+      if (!punched && b0?.phase === 'tech' && b0.tech === 'kiko' && !b0.resolved) {
+        punched = true;
+        patchKenki(h.id, { gpMeleeHurtAt: useGameStore.getState().gameTime });
+      }
+      const pl = useGameStore.getState().player;
+      const hp0 = pl.health;
+      const inv = pl.invulnerable && Date.now() - pl.invulnerableTime < 1000;
+      h.step(16);
+      if (punched && !kikoSeen) expect(h.st.brawler?.mind.script ?? null).toBeNull();
+      const b = h.cur().phantomBrawler;
+      if (b?.phase === 'tech' && b.tech === 'kiko' && b.resolved) {
+        kikoSeen = true;
+        invBefore = inv;
+        hitByKiko = useGameStore.getState().player.health < hp0 && (useGameStore.getState().lastDamageSource ?? '').includes('気功');
+      }
+    }
+    expect(punched).toBe(true);
+    expect(kikoSeen).toBe(true);
+    expect(invBefore).toBe(true);
+    expect(hitByKiko).toBe(true);
+  });
+
+  // 3. 予備動作を取り消されたら「使った」記録を残さない。
+  it('詰めの蹴りの予備動作を近接で取り消されたら、「直前に蹴った」の打刻は残らない', () => {
+    const h = setup(120, { phantomBrawler: { ...initialBrawlerState(), points: 1 } }, () => 0); // 乱数0=拍ごとに蹴りを選ぶ(構えは払えない)
+    let done = false;
+    for (let i = 0; i < 200 && !done; i++) {
+      h.step(16);
+      if (h.cur().gpBrawlerPrep?.tex === 'ready') {
+        expect(h.st.brawler!.mind.lastKickAt).toBeGreaterThan(0); // 決めた時点では書いてある
+        patchKenki(h.id, { gpMeleeHurtAt: useGameStore.getState().gameTime });
+        // 取り消しの直後(次の判断の前)に確かめる: 予備動作の取り消しは判断より先
+        const mind = h.st.brawler!.mind;
+        mind.approachBeatAt = Number.MAX_SAFE_INTEGER; // この後の拍で蹴り直さない(巻き戻った値を見るため)
+        h.step(16);
+        expect(h.cur().gpBrawlerPrep).toBeUndefined();
+        expect(mind.lastKickAt).toBe(-Infinity);
+        done = true;
+      }
+    }
+    expect(done).toBe(true);
+  });
+  it('台本6: 秘奥義の間隔と跳びかかりのクールダウンは実際に跳んだ時に使う・1手目の蹴りの予備動作を近接で取り消されても秘奥義の狙いは残る', () => {
+    const k = uniquePhantomSpec('brawler');
+    const h = setup(110, { phantomBrawler: { ...initialBrawlerState(), points: 20 }, phantomBuild: k.profile.snapshot, health: 65 });
+    let sawCrouch = false, sawJump = false, cancelledOnce = false, sawSecret = false;
+    for (let i = 0; i < 1200 && !sawSecret; i++) {
+      h.step(16);
+      const e = h.cur();
+      const mind = h.st.brawler!.mind;
+      if (e.aiPhase === 'crouch') {
+        sawCrouch = true;
+        expect(mind.lastSecretAt).toBe(-Infinity); // 溜めの間はまだ使っていない
+        expect(h.st.brawler!.leapReadyAt).toBe(0);
+      }
+      if (e.aiPhase === 'jump' && !sawJump) {
+        sawJump = true;
+        expect(mind.lastSecretAt).toBeGreaterThan(0);
+        expect(h.st.brawler!.leapReadyAt).toBeGreaterThan(0);
+      }
+      if (!cancelledOnce && mind.secretPlan && e.gpBrawlerPrep?.tex === 'ready') {
+        cancelledOnce = true;
+        expect(mind.secretLaunched).toBe(true);
+        patchKenki(h.id, { gpMeleeHurtAt: useGameStore.getState().gameTime });
+        h.step(16);
+        expect(h.cur().gpBrawlerPrep === undefined || h.cur().gpBrawlerPrep?.tex === 'ready').toBe(true);
+        expect(mind.secretPlan).toBe(true); // 狙いは残る(蹴りは出ていない=外れた扱いにしない)
+      }
+      if (e.phantomBrawler?.secret) sawSecret = true;
+    }
+    expect(sawCrouch).toBe(true);
+    expect(sawJump).toBe(true);
+    expect(cancelledOnce).toBe(true);
+    expect(sawSecret).toBe(true); // 出し直して秘奥義まで届く
+  });
+
+  // 4. 縮地の直後に息継ぎを入れない。
+  it('縮地: 台本の最中にカウンターが成立して縮地しても、息継ぎは入らない(そのまま次の行動へ)', () => {
+    const h = setup(320);
+    h.step(16);
+    const mind = h.st.brawler!.mind;
+    mind.script = { id: 1, idx: 1 }; mind.wasBusy = true; // 台本の最中・行動中だった
+    const counterAt = useGameStore.getState().gameTime;
+    patchKenki(h.id, { gpBulletParriedAt: counterAt });
+    h.step(16);
+    expect(h.cur().gpShukuchi).toBeDefined();
+    expect(mind.breathOwed).toBe(false);
+    const gt = useGameStore.getState().gameTime;
+    // 息継ぎ(300〜700ms)が入っていれば nextStringAt は今より先。縮地の後は今以前のまま=すぐ次の連続へ。
+    expect(mind.nextStringAt).toBeLessThanOrEqual(gt);
+    let attackedAt = -1;
+    for (let i = 0; i < 12 && attackedAt < 0; i++) { h.step(16); if (h.cur().phantomBrawler?.phase === 'attack') attackedAt = useGameStore.getState().gameTime - gt; }
+    expect(attackedAt).toBeGreaterThan(0);
+    expect(attackedAt).toBeLessThan(200); // 息継ぎの下限(300ms)より前に打ち始める
+  });
+
+  // 5. 構えで受けて下がる動きを、次の行動で途中で止めない。
+  it('構えで受けて下がり切るまで(280ms)は次の行動を始めない・下がり切ったら動き出す', () => {
+    // 下がった後は届く距離の外=詰めの蹴り・気功は拍ごとの抽選なので、このテストは疑似乱数で回す(0.999 固定だと一度も選ばれない)。
+    let seed = 5;
+    const lcg = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const h = setup(40, { phantomBrawler: { ...initialBrawlerState(), points: 20 } }, lcg);
+    h.step(16);
+    const x0 = h.cur().x;
+    const gt0 = useGameStore.getState().gameTime;
+    patchKenki(h.id, { gpParriedAt: gt0 });
+    let minX = x0;
+    for (let i = 0; i < 17; i++) { // 272ms
+      const xPrev = h.cur().x;
+      h.step(16);
+      const e = h.cur();
+      expect(e.phantomBrawler?.phase ?? 'idle').toBe('idle'); // 段・技を始めない
+      expect(e.gpBrawlerPrep).toBeUndefined();               // 予備動作も
+      expect(e.aiPhase).toBeUndefined();                      // 跳びかかりも
+      if (i > 0) expect(e.x).toBeLessThanOrEqual(xPrev + 0.01); // 途中で前へ出ない(下がり続ける。受けた tick だけは歩きの残りがある)
+      minX = Math.min(minX, e.x);
+    }
+    h.step(16); h.step(16);
+    minX = Math.min(minX, h.cur().x);
+    expect(x0 - minX).toBeGreaterThan(130); // 下がり切る(150px・壁なし。受けた tick の歩きの分だけ差が出る)
+    let acted = false;
+    for (let i = 0; i < 400 && !acted; i++) {
+      h.step(16);
+      const e = h.cur();
+      if ((e.phantomBrawler?.phase ?? 'idle') !== 'idle' || e.gpBrawlerPrep || e.aiPhase !== undefined) acted = true;
+    }
+    expect(acted).toBe(true);
+  });
+
+  // 7. 締めの気功(近接扱い)は、返された時は触れた時も爆発の縁でも弾けるだけ(拳鬼は押されない・体勢も削れない)。
+  it('締めの気功が爆発の縁でカウンターされても、弾けるだけ(プレイヤーは無傷・拳鬼の体勢と位置は変わらない)', () => {
+    const h = setup(400);
+    h.step(16);
+    const e = h.cur();
+    const pl = useGameStore.getState().player;
+    // 届く距離いっぱいまで飛んで爆発する弾: 爆発の縁(触れてはいない)にプレイヤーが居るように置く。
+    const cy = pl.y + pl.height / 2;
+    patchKenki(h.id, { gpKiko: { id: 'k1', x: pl.x - 60, y: cy, dirX: 0, dirY: 1, traveled: 419, createdAt: Date.now(), melee: true } });
+    useGameStore.setState(s => ({ player: { ...s.player, counterWindowStart: 0, counterWindowEnd: Date.now() + 1e9 } }));
+    const hp0 = useGameStore.getState().player.health;
+    const post0 = h.cur().pvpPosture;
+    h.step(16);
+    expect(h.cur().gpKiko).toBeUndefined(); // 爆発した(届く距離の終わり)
+    expect(useGameStore.getState().player.health).toBe(hp0);
+    expect(h.cur().pvpPosture).toEqual(post0);
+    expect(h.cur().knockbackUntil ?? 0).toBeLessThan(Date.now()); // 押されていない(旧: 近接の1本へ流れて、遠くの拳鬼が押されて体勢が削れた)
+    void e;
+  });
+
+  // 8. スケボーのバッシュ: 板が直接当たった範囲だけ近接として数える。覚醒の爆発で広がった分は爆発=数えない。
+  it('スケボーの覚醒の爆発の広がりでは「近接で食らった」を打たない・板が直接当たった範囲では打つ', () => {
+    const awaken = () => useGameStore.setState(s => ({ player: { ...s.player, skills: ['skater'], skillLevels: { ...s.player.skillLevels, skater: 3 } } }));
+    // 爆発の広がりの中(板の範囲140pxの外・覚醒の半径の内)
+    const far = setup(400);
+    awaken();
+    const e1 = far.cur();
+    useGameStore.getState().skaterBoardHit(e1.x + e1.width / 2 + 200, e1.y + e1.height / 2, 1, 0);
+    expect(far.cur().health).toBeLessThan(130); // 爆発は当たっている
+    expect(far.cur().gpMeleeHurtAt).toBeUndefined();
+    // 板が直接当たった範囲
+    const near = setup(400);
+    awaken();
+    const e2 = near.cur();
+    useGameStore.getState().skaterBoardHit(e2.x + e2.width / 2 + 60, e2.y + e2.height / 2, 1, 0);
+    expect(near.cur().gpMeleeHurtAt).toBeDefined();
   });
 
   it('印の無い幻影は格闘を回さない(今の幻影のまま)', () => {

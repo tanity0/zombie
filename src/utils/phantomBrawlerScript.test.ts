@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createPhantomBrawlerMind, decidePhantomBrawler, pbAffordableScripts, pbPickScript, pbScriptCost, pbSecretAfterLeap, pbHpPolicy,
-  pbInterruptScript, pbScriptFinisherKiko, phantomBrawlerBreath, PB_BREATH_MIN_MS, PB_SCRIPT_IDS,
+  pbInterruptScript, pbScriptFinisherKiko, phantomBrawlerBreath, pbOnLeapJumped, pbOnShukuchi, pbUndoStamps, PB_BREATH_MIN_MS, PB_SCRIPT_IDS,
   type PhantomBrawlerInput, type PhantomBrawlerMind, type PbScriptId,
 } from './phantomBrawlerAi';
 import {
@@ -217,13 +217,67 @@ describe('台本6: HP半分以下・ポイント満タン → 跳びかかり �
     pbSecretAfterLeap(m);
     expect(m.secretPlan).toBe(false);
   });
+  // 検収監査2026-11-10: 「使った」記録は技が実際に出た時に書く。
+  it('秘奥義の間隔は、跳びかかりを決めた時ではなく実際に跳んだ時に使う', () => {
+    const m = createPhantomBrawlerMind();
+    expect(decidePhantomBrawler(base({ ...full }, { points: 20 }), m)).toEqual({ kind: 'leap' });
+    expect(m.lastSecretAt).toBe(-Infinity); // 決めただけでは使わない(溜めで取り消されたら、また狙える)
+    pbOnLeapJumped(m, T + 2000);
+    expect(m.lastSecretAt).toBe(T + 2000);
+    const m2 = createPhantomBrawlerMind();
+    pbOnLeapJumped(m2, T); // 台本6ではない跳びかかりでは使わない
+    expect(m2.lastSecretAt).toBe(-Infinity);
+  });
+  it('決めた時点の打刻(詰めの蹴り・気功の単発・秘奥義の1手目の印)は巻き戻せる', () => {
+    const seq = (...v: number[]) => { let k = 0; return () => v[Math.min(k++, v.length - 1)]; };
+    const m = createPhantomBrawlerMind();
+    m.lastKickAt = T - 9000;
+    expect(decidePhantomBrawler(base({ edgeDist: 100, rand: seq(0, 0.5, 0) }, { points: 1 }), m)).toEqual({ kind: 'tech', tech: 'kick' });
+    expect(m.lastKickAt).toBe(T);
+    pbUndoStamps(m, m.undo);
+    expect(m.lastKickAt).toBe(T - 9000);
+    const k = createPhantomBrawlerMind();
+    expect(decidePhantomBrawler(base({ edgeDist: 400, rand: () => 0 }, { points: 1 }), k)).toEqual({ kind: 'tech', tech: 'kiko' });
+    expect(k.lastKikoAt).toBe(T);
+    pbUndoStamps(k, k.undo);
+    expect(k.lastKikoAt).toBe(-Infinity);
+    const q = createPhantomBrawlerMind();
+    q.leapForSecret = true; pbSecretAfterLeap(q);
+    expect(decidePhantomBrawler(base({ ...full }, { points: 20 }), q)).toEqual({ kind: 'tech', tech: 'kick' });
+    expect(q.secretLaunched).toBe(true);
+    pbUndoStamps(q, q.undo);
+    expect(q.secretLaunched).toBe(false);
+    expect(decidePhantomBrawler(base({ ...full, t: T + 100 }, { points: 20 }), q)).toEqual({ kind: 'tech', tech: 'kick' }); // 狙いは続く=出し直す
+    // 技を決めなかった判断では巻き戻す物は無い
+    expect(decidePhantomBrawler(base({ reachReady: false }), createPhantomBrawlerMind())).toBeNull();
+  });
+  it('縮地の後は息継ぎを入れない(台本の打ち切りの息継ぎも・行動中→待機の息継ぎも)', () => {
+    const m = createPhantomBrawlerMind();
+    decidePhantomBrawler(base({ rand: () => randFor(1) }), m);
+    m.wasBusy = true; m.nextStringAt = T + 5000;
+    pbOnShukuchi(m, T + 50);
+    expect(m.script).toBeNull();
+    expect(m.breathOwed).toBe(false);
+    expect(m.wasBusy).toBe(false);
+    expect(m.nextStringAt).toBe(T + 50);
+    expect(decidePhantomBrawler(base({ t: T + 50, rand: () => randFor(1) }), m)).toEqual({ kind: 'attack' }); // そのまま次の行動へ
+  });
 });
 
 describe('HP半分以下は溜める(社長裁定 §16-8「技を使う台本を控えて溜める(通常5連=台本1と構えだけ)」)', () => {
   it('振る舞いは1つの関数で切り替わる', () => {
-    expect(pbHpPolicy(0.51).hold).toBe(false);
-    expect(pbHpPolicy(0.5)).toMatchObject({ hold: true, scripts: [1], approachKick: false, kikoSingle: false, secretLeap: true });
-    expect(pbHpPolicy(undefined).hold).toBe(false);
+    expect(pbHpPolicy({ hpFrac: 0.51, pointCap: 20, discount: disc }).hold).toBe(false);
+    expect(pbHpPolicy({ hpFrac: 0.5, pointCap: 20, discount: disc })).toMatchObject({ hold: true, scripts: [1], approachKick: false, kikoSingle: false, secretLeap: true });
+    expect(pbHpPolicy({ discount: disc }).hold).toBe(false);
+  });
+  // 検収監査2026-11-10: 技ポイントの上限が秘奥義の合計(タイムキーパーLv3で8)に届かない記録では絞らない(技なしで永久に溜め続けない)。
+  it('上限が秘奥義の合計に届かない記録では溜めない(技を使う台本・詰めの蹴りも今どおり)', () => {
+    expect(pbHpPolicy({ hpFrac: 0.3, pointCap: 5, discount: disc }).hold).toBe(false);
+    expect(pbHpPolicy({ hpFrac: 0.3, pointCap: 8, discount: disc }).hold).toBe(true);
+    expect(pbHpPolicy({ hpFrac: 0.3, discount: disc }).hold).toBe(false); // 上限が渡されない呼び手も絞らない
+    const m = createPhantomBrawlerMind();
+    decidePhantomBrawler(base({ hpFrac: 0.3, pointCap: 5, rand: () => 0.999 }, { points: 5 }), m);
+    expect(m.script?.id).not.toBe(1); // 払える台本(1・3・4・5)の最後=5
   });
   it('台本は1だけ・詰めの飛び蹴りと気功の単発は出さない', () => {
     for (let r = 0; r < 1; r += 0.1) {

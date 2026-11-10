@@ -56,10 +56,15 @@ export const PB_SECRET_HP_FRAC = 0.5;
  *    構え・ステップ・縮地・跳びかかり(ポイントを使わない)は今どおり。
  *  - secretLeap=台本6を狙う(条件の残り=満タン・間隔は pbSecretLeapReady)。
  */
-export const pbHpPolicy = (hpFrac: number | undefined): {
+export const pbHpPolicy = (i: {
+  hpFrac?: number; pointCap?: number; discount: (kind: BrawlerTechKind) => number;
+}): {
   hold: boolean; scripts: readonly PbScriptId[]; approachKick: boolean; kikoSingle: boolean; secretLeap: boolean;
 } => {
-  const low = hpFrac !== undefined && hpFrac <= PB_SECRET_HP_FRAC;
+  // ★溜めるのは「満タンで秘奥義が払える」記録だけ(検収監査2026-11-10): 技ポイントの上限が秘奥義の合計に届かない記録
+  //   (格闘Lv1・2)で絞ると、台本6が永久に出ないまま技なしで溜め続ける=その時は絞らない。上限が渡されない呼び手も絞らない。
+  const low = i.hpFrac !== undefined && i.hpFrac <= PB_SECRET_HP_FRAC
+    && i.pointCap !== undefined && i.pointCap >= BRAWLER_SECRET_ORDER.reduce((a, k) => a + brawlerTechCost(k, false, i.discount(k)), 0);
   return low
     ? { hold: true, scripts: [1], approachKick: false, kikoSingle: false, secretLeap: true }
     : { hold: false, scripts: PB_SCRIPT_IDS, approachKick: true, kikoSingle: true, secretLeap: false };
@@ -171,12 +176,27 @@ export interface PhantomBrawlerMind {
    * 待機を通らずに次の連続へ入れるのは台本7(詰めの飛び蹴りの後)だけなので、待機で引けば台本と台本の間に必ず息継ぎが入る。
    */
   breathOwed: boolean;
+  /**
+   * この判断で書いた「使った」打刻の、書く前の値(検収監査2026-11-10)。技を決めた時点で書く打刻(詰めの蹴り・気功の単発の
+   * 「直前に出した」・秘奥義の1手目を出した印)は、予備動作を取り消されたら(=技は出ていない)制御が pbUndoStamps で巻き戻す。
+   * 判断のたびに作り直す(技を決めなかった判断では null)。
+   */
+  undo: PbUndo | null;
 }
+/** 巻き戻す打刻(書く前の値)。 */
+export interface PbUndo { lastKickAt?: number; lastKikoAt?: number; secretLaunched?: boolean }
+/** 予備動作を取り消された=技は出ていない: 決めた時点で書いた「使った」打刻を元へ戻す。 */
+export const pbUndoStamps = (m: PhantomBrawlerMind, u: PbUndo | null): void => {
+  if (!u) return;
+  if (u.lastKickAt !== undefined) m.lastKickAt = u.lastKickAt;
+  if (u.lastKikoAt !== undefined) m.lastKikoAt = u.lastKikoAt;
+  if (u.secretLaunched !== undefined) m.secretLaunched = u.secretLaunched;
+};
 export const createPhantomBrawlerMind = (): PhantomBrawlerMind => ({
   nextStringAt: 0, guardReadyAt: 0, lastPressureRollAt: -Infinity, strikeTimes: [], rolledForPredictedAt: -1,
   secretPlan: false, lastSecretAt: -Infinity, secretLaunched: false, lastSeenCommitAt: 0, wasBusy: false,
   approachBeatAt: 0, jumpAtPx: null, heldThisTry: false, holdUntil: 0, lastKickAt: -Infinity, lastKikoAt: -Infinity,
-  script: null, lastScriptId: null, approachKick: false, leapForSecret: false, landedStartAt: -1, breathOwed: false,
+  script: null, lastScriptId: null, approachKick: false, leapForSecret: false, landedStartAt: -1, breathOwed: false, undo: null,
 });
 
 const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
@@ -269,6 +289,7 @@ const canTech = (i: PhantomBrawlerInput, kind: BrawlerTechKind): boolean =>
  * 秘奥義の最中・構えの最中は何もしない(構えの延長はしない=叩き台)。
  */
 export const decidePhantomBrawler = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBrawlerAction => {
+  m.undo = null;
   const act = decideInner(i, m);
   // 台本の途中に構え/ステップが入った=台本は打ち切り(人がやっても崩れたら組み直す・§16-7)。
   if (act && (act.kind === 'step' || (act.kind === 'tech' && act.tech === 'guard'))) pbInterruptScript(m);
@@ -319,7 +340,7 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
       if (!brawlerCanPay(s, kind, false, i.discount(kind))) { m.secretPlan = false; m.secretLaunched = false; return null; }
       // 1手目(蹴り)は待機からだけ。2手目以降は前の技が当たった後の取り消し・終わりの後のどちらでも。
       if ((prog > 0 || idle) && brawlerTechAllowed(s, kind, t) && !(prog === 0 && m.secretLaunched)) {
-        if (prog === 0) m.secretLaunched = true;
+        if (prog === 0) { m.undo = { secretLaunched: m.secretLaunched }; m.secretLaunched = true; }
         return { kind: 'tech', tech: kind };
       }
       return null;
@@ -329,7 +350,8 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
   // 3 台本6(§16-3): HP半分以下・技ポイントが上限ちょうど・秘奥義の間隔が明けている → 跳びかかり(距離の下限は外す・
   //   跳びかかり自身のクールダウンは守る)→ 着地したら秘奥義を狙う。合計のポイントが無ければ狙わない(秘奥義が出ない跳びを出さない)。
   if (!m.script && idle && pbSecretLeapReady(i, m)) {
-    m.lastSecretAt = t; m.leapForSecret = true; m.approachKick = false;
+    // 秘奥義の間隔(lastSecretAt)はここでは使わない=跳びかかりが実際に跳んだ時に使う(pbOnLeapJumped・溜めで取り消されたら使わない)。
+    m.leapForSecret = true; m.approachKick = false;
     return { kind: 'leap' };
   }
   // 4 台本の続き(§16-1)。
@@ -341,7 +363,7 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
       m.approachKick = false;
       if (!pbLanded(s, m)) return null;
       if (i.edgeDist > i.reach) return null; // 蹴りで詰め切れなかった=続けない
-      const id = pbPickScript(s.points, i.discount, m.lastScriptId, i.rand, pbHpPolicy(i.hpFrac).scripts);
+      const id = pbPickScript(s.points, i.discount, m.lastScriptId, i.rand, pbHpPolicy(i).scripts);
       m.lastScriptId = id;
       m.script = { id, idx: 1, fromKick: true };
       return s.buffered ? null : { kind: 'buffer' }; // 蹴りの戻りの終わりで1段目が出る
@@ -354,7 +376,7 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
     const chainLive = s.nextStage > 1 && t <= s.chainUntil;
     if (chainLive || t < m.nextStringAt || !i.reachReady) return null; // 息継ぎ・反応の下限
     if (brawlerPressDecision(s, t) !== 'start') return null;
-    const id = pbPickScript(s.points, i.discount, m.lastScriptId, i.rand, pbHpPolicy(i.hpFrac).scripts);
+    const id = pbPickScript(s.points, i.discount, m.lastScriptId, i.rand, pbHpPolicy(i).scripts);
     m.lastScriptId = id;
     m.script = { id, idx: 1 };
     return { kind: 'attack' };
@@ -371,15 +393,17 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
   // 拍ごとに引く(撃たれ続けている時は上がる)。クールダウン・距離は呼び手が eligible で渡す。
   if (i.leap?.eligible && i.rand() < kenkiLeapChance(i.leap.underFire)) return { kind: 'leap' };
   if (m.jumpAtPx === null) { m.jumpAtPx = Math.min(BRAWLER_KICK_RANGE, pbRollJumpAt(i.rand)); m.heldThisTry = false; }
-  const pol = pbHpPolicy(i.hpFrac);
+  const pol = pbHpPolicy(i);
   if (pol.approachKick && i.edgeDist <= m.jumpAtPx && canTech(i, 'kick')) {
     if (i.rand() < pbKickChance(i.meleeBias, t - m.lastKickAt)) {
+      m.undo = { lastKickAt: m.lastKickAt };
       m.lastKickAt = t; m.jumpAtPx = null;
       m.approachKick = true; // 台本7: 当たったら 1〜5 へ続ける
       return { kind: 'tech', tech: 'kick' };
     }
   } else if (pol.kikoSingle && i.edgeDist <= BRAWLER_KIKO_RANGE && i.kikoClear && canTech(i, 'kiko')) {
     if (i.rand() < pbKikoChance(i.meleeBias, t - m.lastKikoAt)) {
+      m.undo = { lastKikoAt: m.lastKikoAt };
       m.lastKikoAt = t;
       return { kind: 'tech', tech: 'kiko' };
     }
@@ -399,7 +423,7 @@ export const phantomBrawlerBreath = (rand: () => number): number =>
 /** 台本6(§16-3)の条件が揃っているか(待機・台本の外で呼ぶ)。 */
 export const pbSecretLeapReady = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): boolean =>
   !m.secretPlan && !!i.leap?.eligibleNear && i.pointCap !== undefined
-  && pbHpPolicy(i.hpFrac).secretLeap && i.s.points >= i.pointCap && i.s.points >= secretTotalCost(i.discount)
+  && pbHpPolicy(i).secretLeap && i.s.points >= i.pointCap && i.s.points >= secretTotalCost(i.discount)
   && i.t - m.lastSecretAt >= PB_SECRET_COOLDOWN_MS;
 
 /** 跳びかかりが終わった(着地後の停止が明けた)。台本6の跳びなら秘奥義を狙い始める(当たり外れに関わらず)。 */
@@ -481,4 +505,20 @@ export const pbScriptFinisherKiko = (m: PhantomBrawlerMind): boolean => {
   if (!sc) return false;
   const last = PB_SCRIPTS[sc.id][sc.idx - 1];
   return !!last && last.kind === 'tech' && last.tech === 'kiko' && sc.idx === PB_SCRIPTS[sc.id].length;
+};
+
+/** 跳びかかりが実際に跳んだ(溜めが明けた)。台本6の跳びなら、ここで秘奥義の間隔を使う(溜めで取り消された跳びでは使わない)。 */
+export const pbOnLeapJumped = (m: PhantomBrawlerMind, t: number): void => {
+  if (m.leapForSecret) m.lastSecretAt = t;
+};
+
+/**
+ * 縮地が入った(§14・§16-7): 台本は打ち切るが、息継ぎは入れない(一気に詰めてそのまま次の行動へ・検収監査2026-11-10)。
+ * 制御の「行動中→待機で息継ぎ」も拾わないように、行動中の印も下ろす。
+ */
+export const pbOnShukuchi = (m: PhantomBrawlerMind, t: number): void => {
+  pbInterruptScript(m);
+  m.breathOwed = false;
+  m.wasBusy = false;
+  m.nextStringAt = t; m.approachBeatAt = 0; m.holdUntil = 0;
 };

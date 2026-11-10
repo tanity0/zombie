@@ -28,3 +28,6 @@ export const kenkiAccDecAlong = (p: number): number => {
   const q = Math.max(0, Math.min(1, p));
   return q - Math.sin(2 * Math.PI * q) / (2 * Math.PI);
 };
+
+/** 下がっている最中か(下がり切るまで次の行動を始めない=下がる動きを途中で止めない・検収監査2026-11-10)。until=下がり終わる時刻(gameTime)。 */
+export const kenkiGuardKbActive = (until: number, t: number): boolean => t < until;

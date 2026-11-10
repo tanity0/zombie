@@ -13,11 +13,11 @@ import * as BR from './brawler';
 import { brawlerProration } from './brawlerCombo';
 import { brawlerSpeedDamageMult, brawlerTimeKeeperDiscount, brawlerOverclockRefunds } from './brawlerSkills';
 import {
-  createPhantomBrawlerMind, decidePhantomBrawler, notePlayerStrike, phantomBrawlerBreath, pbInterruptScript, pbSecretAfterLeap,
-  pbScriptFinisherKiko, type PhantomBrawlerMind,
+  createPhantomBrawlerMind, decidePhantomBrawler, notePlayerStrike, phantomBrawlerBreath, pbInterruptScript, pbSecretAfterLeap, pbOnLeapJumped, pbOnShukuchi, pbUndoStamps,
+  pbScriptFinisherKiko, type PhantomBrawlerMind, type PbUndo,
 } from './phantomBrawlerAi';
 import { kenkiPrepDue, kenkiPrepStart, type KenkiPrep } from './kenkiPrep';
-import { kenkiAccDecAlong, kenkiGuardKbVector, kenkiNewGuardReceive, KENKI_GUARD_KB_MS } from './kenkiGuardKb';
+import { kenkiAccDecAlong, kenkiGuardKbActive, kenkiGuardKbVector, kenkiNewGuardReceive, KENKI_GUARD_KB_MS } from './kenkiGuardKb';
 import { bulletEtaMs, bulletPlanRates, phantomBulletLungeDir, pickBulletPlan, type BulletPlan } from './phantomLunge';
 import { BULLET_MOVE_KEYS } from './moveReaction';
 import { isPhantomTargetBullet } from './weaponUtils';
@@ -70,17 +70,36 @@ export interface PhantomBrawlerRuntime {
   lastMeleeHurtSeen: number;
   /** 最後に見た「構えで近接を受けた」時刻(拳鬼が大きく下がる=§16-9。1回の受けで1回まで)。 */
   lastGuardKbSeen: number;
+  /** 構えで受けて下がっている締め切り(gameTime)。下がり切るまで次の行動を始めない(途中で止めない=慣性・検収監査2026-11-10)。 */
+  guardKbUntil: number;
+  /** 予備動作を始めた判断が書いた「使った」打刻の、書く前の値(取り消されたら巻き戻す)。 */
+  prepUndo: PbUndo | null;
+  /** 予備動作を始めた気功が、台本(2・3)の締めの気功か(決めた時点で決める=溜めの間に台本が打ち切られても近接扱いのまま)。 */
+  prepFinisherKiko: boolean;
+  /** 締めの気功として出した気功の、行動の始まりの時刻(BrawlerState.startAt)。判定を解く時に弾へ近接扱いの印を持たせる。 */
+  finisherKikoStartAt: number;
+  /** 跳びかかりの溜めを始めた時刻(gameTime)。クールダウンは実際に跳んだ時に、この時刻から数えて使う。 */
+  leapCrouchAt: number | null;
 }
 export const createPhantomBrawlerRuntime = (): PhantomBrawlerRuntime => ({
   mind: createPhantomBrawlerMind(), move: null, bulletPlans: new Map(), reachSince: null, lastHitSeen: 0,
   lastCounterSeen: 0, shukuchiReadyAt: 0, leapReadyAt: 0, hitTimes: [], prep: null, lastMeleeHurtSeen: 0, lastGuardKbSeen: 0,
+  guardKbUntil: 0, prepUndo: null, prepFinisherKiko: false, finisherKikoStartAt: -1, leapCrouchAt: null,
 });
 
-/** 予備動作を取り消す(技は出ない・ポイントは払わない)。気絶・拘束・浮き・紫・殴られた・縮地(§16-5・§16-7)。 */
+/** 予備動作を片付ける(終わった・取り消した の共通)。 */
+const clearPrep = (rt: PhantomBrawlerRuntime, patch: Partial<Enemy>): void => {
+  rt.prep = null; rt.prepUndo = null; rt.prepFinisherKiko = false;
+  patch.gpBrawlerPrep = undefined;
+};
+/**
+ * 予備動作を取り消す(技は出ない・ポイントは払わない)。気絶・拘束・浮き・紫・近接で殴られた・縮地・構えで受けて下がる(§16-5・§16-7)。
+ * 技は出ていないので、決めた時点で書いた「使った」打刻(詰めの蹴り・気功の単発の「直前に出した」・秘奥義の1手目の印)も巻き戻す。
+ */
 export const phantomBrawlerCancelPrep = (rt: PhantomBrawlerRuntime | undefined, patch: Partial<Enemy>): boolean => {
   if (!rt?.prep) return false;
-  rt.prep = null;
-  patch.gpBrawlerPrep = undefined;
+  pbUndoStamps(rt.mind, rt.prepUndo);
+  clearPrep(rt, patch);
   return true;
 };
 
@@ -290,7 +309,7 @@ const startAttack = (c: PhantomBrawlerCtx, s0: BrawlerState): BrawlerState => {
 const startTech = (
   c: PhantomBrawlerCtx, s0: BrawlerState, kind: BrawlerTechKind,
   /** 予備動作の後に出す時: 決めた時刻(秘奥義の間隔を予備動作の分で切らさない)・決めた時点の取り消しの扱い・蹴りの何発目。 */
-  o?: { decidedAt: number; cancel: boolean; kickN: number },
+  o?: { decidedAt: number; cancel: boolean; kickN: number; finisherKiko?: boolean },
 ): BrawlerState => {
   const { t, phantom, player } = c;
   const cancel = o ? o.cancel : s0.phase === 'tech' && !(kind === 'kick' && s0.tech === 'kick');
@@ -317,6 +336,8 @@ const startTech = (
     setMove(c.rt, dir.x * go, dir.y * go, flightMs, t, 'accel', chargeMs);
   }
   if (kind === 'guard') c.patch.gpGuardUntil = s.guardUntil;
+  // 締めの気功の印は、気功を決めた時点の値を行動へ持たせる(判定を解く時に台本の状態を見ない=途中で台本が打ち切られても近接扱いのまま)。
+  if (kind === 'kiko' && o?.finisherKiko) c.rt.finisherKikoStartAt = s.startAt;
   kenkiSwingSfx(kind === 'kick' ? { kick: kickN } : 'tech');
   return s;
 };
@@ -334,6 +355,9 @@ const beginTech = (c: PhantomBrawlerCtx, s: BrawlerState, kind: BrawlerTechKind)
   const prep = kenkiPrepStart(kind, kickN, t, cancel, pcx >= cx ? 1 : -1);
   if (!prep) return startTech(c, s, kind);
   c.rt.prep = prep;
+  c.rt.prepUndo = c.rt.mind.undo;
+  // 台本(2・3)の締めの気功か(§16-8)は、ここ=決めた時点で決める。
+  c.rt.prepFinisherKiko = kind === 'kiko' && pbScriptFinisherKiko(c.rt.mind);
   c.rt.move = null;
   c.patch.gpBrawlerPrep = { tex: prep.tex, dirX: prep.dirX };
   return s;
@@ -346,9 +370,11 @@ const stepPrep = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
   c.rt.move = null;
   if (c.player.health <= 0 || s.secret) { phantomBrawlerCancelPrep(c.rt, c.patch); return s; }
   if (!kenkiPrepDue(p, c.t)) return s;
-  phantomBrawlerCancelPrep(c.rt, c.patch);
-  if (!BR.brawlerCanPay(s, p.kind, false, discountOf(c.actor)(p.kind))) return s;
-  return startTech(c, s, p.kind, { decidedAt: p.at, cancel: p.cancel, kickN: p.kickN });
+  // 払えない=技は出ない(取り消しと同じ=打刻も巻き戻す)。
+  if (!BR.brawlerCanPay(s, p.kind, false, discountOf(c.actor)(p.kind))) { phantomBrawlerCancelPrep(c.rt, c.patch); return s; }
+  const finisherKiko = c.rt.prepFinisherKiko;
+  clearPrep(c.rt, c.patch);
+  return startTech(c, s, p.kind, { decidedAt: p.at, cancel: p.cancel, kickN: p.kickN, finisherKiko });
 };
 
 /** ステップ(100px・加速→減速・無敵なし)。 */
@@ -427,7 +453,8 @@ const resolveAction = (c: PhantomBrawlerCtx, s: BrawlerState): BrawlerState => {
     if (!phantom.gpKiko) {
       c.patch.gpKiko = { id: `gpkiko-${c.nowMs}`, x: cx + dir.x * 18, y: cy - 4 + dir.y * 18, dirX: dir.x, dirY: dir.y, traveled: 0, createdAt: c.nowMs,
         // 台本(2・3)の締めの気功は当てる=近接の打撃と同じ扱い(社長裁定2026-11-10 §16-8)。単発の気功は今どおり(遠隔=被弾無敵を守る)。
-        ...(pbScriptFinisherKiko(c.rt.mind) ? { melee: true } : {}) };
+        // 印は気功を決めた時点で決めてある(finisherKikoStartAt)。判定を解く今の台本の状態は見ない(検収監査2026-11-10)。
+        ...(c.rt.finisherKikoStartAt === s.startAt ? { melee: true } : {}) };
     }
     return { ...s, resolved: true, dirX: dir.x, dirY: dir.y };
   }
@@ -467,7 +494,9 @@ const stepKiko = (c: PhantomBrawlerCtx): void => {
   c.patch.gpKiko = undefined;
   const g = useGameStore.getState();
   // カウンターの窓の中で触れたら弾ける(赤=カウンター可の技・research/BRAWLER.md §4)。ダメージは無い。
-  if (touch && isCounterActive(g.player, c.nowMs)) {
+  // 締めの気功(近接扱い)は、爆発の縁で返された時も同じく弾けるだけ(近接の1本へ流すと、遠くの拳鬼が押されて体勢が削れる=結果を1つに揃える)。
+  const inBlast = edgeDist(nx, ny, pl) <= BR.BRAWLER_KIKO_RADIUS;
+  if ((touch || (k.melee === true && inBlast)) && isCounterActive(g.player, c.nowMs)) {
     g.spawnRing(nx, ny, 10, 80, 'rgba(56,189,248,0.9)', 3, 300);
     g.spawnBurst(nx, ny, '#38bdf8', 10);
     return;
@@ -476,7 +505,7 @@ const stepKiko = (c: PhantomBrawlerCtx): void => {
   const dmg = c.baseDamage * BR.BRAWLER_KIKO_MULT * phantomBrawlerStrikerMult(c.actor.characterClass)
     * brawlerSpeedDamageMult(playerMoveStatMult(c.actor, c.t)) * PVP_DAMAGE_SCALE;
   hitThirdParties({ kind: 'circle', cx: nx, cy: ny, r: BR.BRAWLER_KIKO_RADIUS }, dmg, c.phantom.id, 'guardian-phantom');
-  if (edgeDist(nx, ny, pl) <= BR.BRAWLER_KIKO_RADIUS) {
+  if (inBlast) {
     if (k.melee) {
       // 台本の締めの気功(§16-8): 近接の打撃と同じ1本(landPhantomMeleeOnPlayer)で当てる=プレイヤーの被弾無敵に吸われない。
       // 量は単発の気功と同じ式(×0.2 は land の側)。押しは組み込み(単発の気功の damagePlayer と同じ)。
@@ -634,11 +663,11 @@ const kenkiShukuchi = (c: PhantomBrawlerCtx, s: BrawlerState, cx: number, cy: nu
   if (phantom.gpGuardUntil !== undefined) c.patch.gpGuardUntil = undefined;
   c.rt.move = null;
   phantomBrawlerCancelPrep(c.rt, c.patch);
-  pbInterruptScript(c.rt.mind); // 縮地が入った=台本は打ち切り(§16-7)
+  c.rt.guardKbUntil = 0;
   c.rt.shukuchiReadyAt = kenkiShukuchiReadyAt(t);
-  // すぐ次の行動へ: 息継ぎ・反応の下限・考える拍・様子見を外す(間合いに入った扱い)。
-  const m = c.rt.mind;
-  m.nextStringAt = t; m.approachBeatAt = 0; m.holdUntil = 0;
+  // 縮地が入った=台本は打ち切り(§16-7)。すぐ次の行動へ: 息継ぎ・反応の下限・考える拍・様子見を外す(間合いに入った扱い)。
+  // ★台本の打ち切りの息継ぎ・「行動中→待機」の息継ぎも入れない(一気に詰めてそのまま次の行動へ)。
+  pbOnShukuchi(c.rt.mind, t);
   c.rt.reachSince = t - 10_000;
   const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
   const d = unit(pcx - to.x, pcy - to.y);
@@ -669,7 +698,8 @@ const kenkiAtkUntil = (t: number) => (ms: number): number => t + ms / ENEMY_ATTA
 /** 跳びかかりを始める(ハンターの縮み溜め)。 */
 const startKenkiLeap = (c: PhantomBrawlerCtx): void => {
   Object.assign(c.patch, groundJumpStartCrouch(kenkiAtkUntil(c.t), PUMPKIN_CROUCH_MS));
-  c.rt.leapReadyAt = kenkiLeapReadyAt(c.t, c.rand);
+  // クールダウンは実際に跳んだ時に使う(溜めで取り消された跳びでは使わない・検収監査2026-11-10)。数え始めは今までどおり溜めの始まり。
+  c.rt.leapCrouchAt = c.t;
   c.rt.move = null;
 };
 
@@ -683,9 +713,16 @@ const stepKenkiLeap = (c: PhantomBrawlerCtx, s: BrawlerState): boolean => {
   });
   if (!gj) {
     c.rt.mind.leapForSecret = false; // 跳びかかりが溜めで取り消された(台本6の跳びも捨てる)
+    c.rt.leapCrouchAt = null;
     return false;
   }
   Object.assign(c.patch, gj.patch);
+  if (phantom.aiPhase === 'crouch' && gj.patch.aiPhase === 'jump') {
+    // 実際に跳んだ: 跳びかかりのクールダウン(数え始め=溜めの始まり)と、台本6の秘奥義の間隔をここで使う。
+    c.rt.leapReadyAt = kenkiLeapReadyAt(c.rt.leapCrouchAt ?? t, c.rand);
+    c.rt.leapCrouchAt = null;
+    pbOnLeapJumped(c.rt.mind, t);
+  }
   if (gj.landed) {
     // 着地の爆風: ハンターと同じ円(半径・中心=着地した体の中心・プレイヤーの当たり半径を足す式)。
     const { x: bx, y: by } = gj.landed;
@@ -726,21 +763,23 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
     if (m.lastSeenCommitAt !== 0) notePlayerStrike(m, t);
     m.lastSeenCommitAt = commitAt;
   }
-  // 被弾した=段は1段目へ・先行入力は捨てる(プレイヤーと同じ brawlerOnHurt。行動そのものは続く)。
+  // 被弾(どの攻撃でも・Enemy.lastHit): 跳びかかりの「撃たれ続けている」(§15)の記録だけ。
+  // ★ここで台本・予備動作・段を崩さない(検収監査2026-11-10): lastHit は銃弾・燃焼・犬・タレットでも書かれるので、
+  //   ここで崩すと「燃えている間は台本が完走しない/撃つだけで予備動作が潰れる」になる。崩すのは下の「近接で殴られた」だけ。
   if ((phantom.lastHit ?? 0) > c.rt.lastHitSeen) {
-    if (c.rt.lastHitSeen !== 0) {
-      s = BR.brawlerOnHurt(s);
-      // 殴られた=予備動作は取り消し(払わない)・台本は打ち切り(段が1段目へ戻る・§16-7)。
-      phantomBrawlerCancelPrep(c.rt, c.patch);
-      pbInterruptScript(m);
-    }
     c.rt.lastHitSeen = phantom.lastHit ?? 0;
-    kenkiNoteHit(c.rt.hitTimes, t); // 跳びかかりの「撃たれ続けている」(§15)
+    kenkiNoteHit(c.rt.hitTimes, t);
   }
-  // 近接(打撃・技)で食らった=技ポイント+1(当てた時と同じ量・上限・§16-8)。銃弾・爆発・遠隔では打刻されない(gameStore.gatePhantomHit)。
+  // 近接(打撃・技)で殴られた(gameStore.gatePhantomHit が source='melee' の有効な当たりで打つ・銃弾・爆発・遠隔では打たれない):
+  //  - 段は1段目へ・先行入力は捨てる(プレイヤーと同じ brawlerOnHurt。行動そのものは続く)
+  //  - 予備動作は取り消し(払わない)・台本は打ち切り(§16-7「拳鬼が殴られた」)
+  //  - 技ポイント+1(当てた時と同じ量・上限・§16-8)
   const mh = phantom.gpMeleeHurtAt ?? 0;
   if (mh > c.rt.lastMeleeHurtSeen) {
     c.rt.lastMeleeHurtSeen = mh;
+    s = BR.brawlerOnHurt(s);
+    phantomBrawlerCancelPrep(c.rt, c.patch);
+    pbInterruptScript(m);
     s = BR.brawlerAfterHurtPoints(s, pointCapOf(phantom), true, c.nowMs);
   }
   // 跳びかかりの最中(ハンターの跳びの流用・§15)は他の行動をしない。
@@ -771,8 +810,11 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
       const v = kenkiGuardKbVector(cx, cy, player.x + player.width / 2, player.y + player.height / 2);
       phantomBrawlerCancelPrep(c.rt, c.patch);
       setMove(c.rt, v.dx, v.dy, KENKI_GUARD_KB_MS, t, 'accdec');
+      c.rt.guardKbUntil = t + KENKI_GUARD_KB_MS;
     }
   }
+  // 下がり切るまで(280ms)は次の行動(段・技・予備動作・跳びかかり・ステップ)を始めない=下がる動きを途中で止めない(慣性)。
+  const kbHold = kenkiGuardKbActive(c.rt.guardKbUntil, t);
 
   if (s.secret) {
     s = tickSecret(c, s);
@@ -790,7 +832,7 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
       if (ev === 'resolve') { s = resolveAction(c, s); continue; }
       const { state: fin, fire } = BR.brawlerFinish(s, t);
       s = fin;
-      if (fire) s = startAttack(c, s);
+      if (fire && !kbHold) s = startAttack(c, s);
       break;
     }
     // 構えの窓(gameTime): 構えが終わったら閉じる。
@@ -810,7 +852,7 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
     const busyNow = BR.isBrawlerBusy(s) || c.rt.prep !== null;
     if (wasBusy && !busyNow && !(s.nextStage > 1 && t <= s.chainUntil)) m.nextStringAt = t + phantomBrawlerBreath(c.rand);
     m.wasBusy = busyNow;
-    if (player.health > 0 && !inPrep) {
+    if (player.health > 0 && !inPrep && !kbHold) {
       const act = decidePhantomBrawler({
         s, t, edgeDist: ed, reach, reachReady, playerReach: huntingMeleeRadius(player),
         kikoClear: true, discount: discountOf(c.actor), counterChance: c.profile.counterChance, meleeBias: c.profile.meleeBias,

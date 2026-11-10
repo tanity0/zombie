@@ -1321,7 +1321,9 @@ export const runPhantomTick = (
     // 跳びかかり(ハンターの跳びの流用・research/BRAWLER_PHANTOM.md §15)の溜め・跳び・着地後の停止の間も歩かない。
     || phantom.aiPhase === 'crouch' || phantom.aiPhase === 'jump' || phantom.aiPhase === 'recover'
     // 技の予備動作(§16-5)の間も歩かない(動かず・技は出ていない)。
-    || s.brawler?.prep != null);
+    || s.brawler?.prep != null
+    // 構えで受けて下がっている間(§16-9)も歩かない(壁で早く止まっても、下がり切る時間までは次の行動を始めない)。
+    || (s.brawler != null && newGameTime < s.brawler.guardKbUntil));
   if (brawlerBusy) { decision.moveX = 0; decision.moveY = 0; }
   if (!shoved) {
     // ★SAME_ARENA §9: クリ被弾の2/3減速(pvpMoveMult)。ボスのbossSlowUntil無視(D4)はそのまま。
