@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createPhantomBrawlerMind, decidePhantomBrawler, notePlayerStrike, predictNextStrikeAt, secretTotalCost,
   PB_GUARD_COOLDOWN_MS, type PhantomBrawlerInput,
+  PB_KICK_JUMP_MIN_PX, PB_KICK_JUMP_MAX_PX, PB_RECENT_MULT, PB_RECENT_MAX_MS, PB_APPROACH_BEAT_MIN_MS, PB_APPROACH_BEAT_MAX_MS,
+  PB_HOLD_MIN_MS, PB_HOLD_MAX_MS, pbKickChance, pbKikoChance, pbRecentMult, pbRollJumpAt, phantomBrawlerHolding,
 } from './phantomBrawlerAi';
 import { initialBrawlerState, BRAWLER_KICK_RANGE, BRAWLER_KIKO_RANGE, brawlerStartTech } from './brawler';
 import { brawlerTimeKeeperDiscount } from './brawlerSkills';
@@ -38,12 +40,86 @@ describe('攻め', () => {
     const m = createPhantomBrawlerMind(); m.nextStringAt = T + 100;
     expect(decidePhantomBrawler(base(), m)).toBeNull();
   });
-  it('届く距離の外: 220px 以内は飛び蹴り・420px 以内は気功・払えなければ歩く', () => {
+  it('届く距離の外: 払えなければ歩く・気功の届く距離の外は歩く', () => {
     const m = createPhantomBrawlerMind();
-    expect(decidePhantomBrawler(base({ edgeDist: BRAWLER_KICK_RANGE }, { points: 1 }), m)).toEqual({ kind: 'tech', tech: 'kick' });
-    expect(decidePhantomBrawler(base({ edgeDist: BRAWLER_KIKO_RANGE }, { points: 2 }), m)).toEqual({ kind: 'tech', tech: 'kiko' });
-    expect(decidePhantomBrawler(base({ edgeDist: BRAWLER_KICK_RANGE }, { points: 0 }), m)).toBeNull();
-    expect(decidePhantomBrawler(base({ edgeDist: BRAWLER_KIKO_RANGE + 1 }, { points: 9 }), m)).toBeNull();
+    expect(decidePhantomBrawler(base({ edgeDist: BRAWLER_KICK_RANGE, rand: () => 0 }, { points: 0 }), m)).toBeNull();
+    expect(decidePhantomBrawler(base({ edgeDist: BRAWLER_KIKO_RANGE + 1, rand: () => 0 }, { points: 9 }), createPhantomBrawlerMind())).toBeNull();
+  });
+});
+
+// 社長指示2026-11-10「一定の射程に入ったら飛び蹴りでも詰めてくる(常には使わないこと 人間味を入れること)」
+describe('届く距離の外の詰め方(人間味)', () => {
+  const seq = (...v: number[]) => { let i = 0; return () => v[Math.min(i++, v.length - 1)]; };
+  const lcg = (seed: number) => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const rate = (o: Partial<PhantomBrawlerInput>, prep: (m: ReturnType<typeof createPhantomBrawlerMind>) => void, tech: 'kick' | 'kiko', n = 2000, seed = 3) => {
+    const rand = lcg(seed);
+    let k = 0;
+    for (let i = 0; i < n; i++) {
+      const m = createPhantomBrawlerMind(); prep(m);
+      const a = decidePhantomBrawler(base({ ...o, rand }, { points: tech === 'kick' ? 1 : 2 }), m);
+      if (a?.kind === 'tech' && a.tech === tech) k++;
+    }
+    return k / n;
+  };
+  it('毎回は跳ばない(拍ごとの抽選=人格の確率前後)', () => {
+    const r = rate({ edgeDist: PB_KICK_JUMP_MIN_PX }, () => {}, 'kick');
+    expect(r).toBeGreaterThan(0.35);
+    expect(r).toBeLessThan(0.7);
+    expect(pbKickChance(0.95, Infinity)).toBeCloseTo(0.35 + 0.2 * 0.95, 5);
+    // 乱数が高ければ跳ばない(=必ず出すわけではない)
+    expect(decidePhantomBrawler(base({ edgeDist: PB_KICK_JUMP_MIN_PX, rand: () => 0.999 }, { points: 1 }), createPhantomBrawlerMind())).toBeNull();
+  });
+  it('直前に出したばかり(2〜4秒以内)は跳びにくい・明ければ戻る', () => {
+    const fresh = rate({ edgeDist: PB_KICK_JUMP_MIN_PX }, () => {}, 'kick');
+    const recent = rate({ edgeDist: PB_KICK_JUMP_MIN_PX }, m => { m.lastKickAt = T - 500; }, 'kick');
+    expect(recent).toBeLessThan(fresh * 0.4);
+    expect(pbRecentMult(1000)).toBe(PB_RECENT_MULT);
+    expect(pbRecentMult(3000)).toBeGreaterThan(PB_RECENT_MULT);
+    expect(pbRecentMult(3000)).toBeLessThan(1);
+    expect(pbRecentMult(PB_RECENT_MAX_MS)).toBe(1);
+  });
+  it('跳ぶ距離は試みごとにゆらぐ(140〜220px)', () => {
+    // 拍の乱数 → 跳ぶ距離 → 跳ぶ抽選、の順。縁から200px: 跳ぶ距離が150なら跳ばず、210なら跳ぶ。
+    expect(decidePhantomBrawler(base({ edgeDist: 200, kikoClear: false, rand: seq(0, 0.125, 0, 0.999) }, { points: 1 }), createPhantomBrawlerMind())).toBeNull();
+    expect(decidePhantomBrawler(base({ edgeDist: 200, rand: seq(0, 0.875, 0) }, { points: 1 }), createPhantomBrawlerMind())).toEqual({ kind: 'tech', tech: 'kick' });
+    const rand = lcg(11);
+    const seen = new Set<number>();
+    for (let i = 0; i < 20; i++) {
+      const v = pbRollJumpAt(rand);
+      expect(v).toBeGreaterThanOrEqual(PB_KICK_JUMP_MIN_PX);
+      expect(v).toBeLessThanOrEqual(PB_KICK_JUMP_MAX_PX);
+      seen.add(Math.round(v));
+    }
+    expect(seen.size).toBeGreaterThan(10);
+    // 跳んだら次の試みで引き直す
+    const m = createPhantomBrawlerMind();
+    decidePhantomBrawler(base({ edgeDist: 100, rand: seq(0, 0.5, 0) }, { points: 1 }), m);
+    expect(m.jumpAtPx).toBeNull();
+  });
+  it('考える拍は350〜750msおき(拍の間は何も出さず歩く)', () => {
+    const m = createPhantomBrawlerMind();
+    decidePhantomBrawler(base({ edgeDist: 300, rand: seq(0.5, 0.999) }, { points: 0 }), m);
+    expect(m.approachBeatAt).toBe(T + (PB_APPROACH_BEAT_MIN_MS + PB_APPROACH_BEAT_MAX_MS) / 2);
+    expect(decidePhantomBrawler(base({ t: T + 100, edgeDist: PB_KICK_JUMP_MIN_PX, rand: () => 0 }, { points: 1 }), m)).toBeNull();
+  });
+  it('間合いの端で一瞬止まって様子を見る(0.2〜0.5秒・1回の試みに1回)', () => {
+    const m = createPhantomBrawlerMind();
+    // 拍=0 → 跳ぶ距離220 → 縁230(跳ぶ距離の外・端の帯の内)・気功は見通しなし → 様子見の抽選0 → 尺0.5
+    expect(decidePhantomBrawler(base({ edgeDist: 230, kikoClear: false, rand: seq(0, 0.999, 0, 0.5) }, { points: 1 }), m)).toBeNull();
+    expect(phantomBrawlerHolding(m, T + 100)).toBe(true);
+    expect(m.holdUntil).toBe(T + (PB_HOLD_MIN_MS + PB_HOLD_MAX_MS) / 2);
+    expect(phantomBrawlerHolding(m, m.holdUntil)).toBe(false);
+    m.approachBeatAt = 0; m.holdUntil = 0;
+    decidePhantomBrawler(base({ edgeDist: 230, kikoClear: false, rand: seq(0, 0, 0, 0.5) }, { points: 1 }), m);
+    expect(m.holdUntil).toBe(0); // 同じ試みでは2回止まらない
+  });
+  it('気功も毎回は撃たない(近接寄りの人格ほど撃たない・直後は撃ちにくい)', () => {
+    const r = rate({ edgeDist: 400 }, () => {}, 'kiko');
+    expect(r).toBeGreaterThan(0.1);
+    expect(r).toBeLessThan(0.4);
+    const recent = rate({ edgeDist: 400 }, m => { m.lastKikoAt = T - 500; }, 'kiko');
+    expect(recent).toBeLessThan(r * 0.4);
+    expect(pbKikoChance(0, Infinity)).toBeGreaterThan(pbKikoChance(1, Infinity));
   });
 });
 

@@ -26,6 +26,30 @@ export const PB_SECRET_COOLDOWN_MS = 20_000;
 /** 当たった2・3段目から技へ取り消す確率の基準(人格の meleeBias を掛ける)。 */
 export const PB_CANCEL_BASE = 0.35;
 
+// ---- 届く距離の外の詰め方(社長指示2026-11-10「一定の射程に入ったら飛び蹴りでも詰めてくる(常には使わないこと 人間味を入れること)」) ----
+// 考える拍ごとに「跳ぶか・撃つか・待つか・歩くか」を引く。値は全部ここ(叩き台・実機で絞る)。
+/** 考える拍の間隔(ms)のゆらぎ。 */
+export const PB_APPROACH_BEAT_MIN_MS = 350;
+export const PB_APPROACH_BEAT_MAX_MS = 750;
+/** 「ここなら跳ぶ」距離(プレイヤーの箱の縁から・px)。試みごとに引き直す。上限は飛び蹴りの届く距離。 */
+export const PB_KICK_JUMP_MIN_PX = 140;
+export const PB_KICK_JUMP_MAX_PX = 220;
+/** 跳ぶ確率(拍ごと)。人格の meleeBias(0〜1)で MIN→MAX の間を取る。 */
+export const PB_KICK_P_MIN = 0.35;
+export const PB_KICK_P_MAX = 0.55;
+/** 気功を撃つ確率(拍ごと)。近接寄りの人格ほど撃たない(1−meleeBias で MIN→MAX)。 */
+export const PB_KIKO_P_MIN = 0.2;
+export const PB_KIKO_P_MAX = 0.45;
+/** 同じ詰め方の連発を避ける: 前に出してから RECENT_MIN までは確率×RECENT_MULT、RECENT_MAX にかけて元へ戻す。 */
+export const PB_RECENT_MIN_MS = 2000;
+export const PB_RECENT_MAX_MS = 4000;
+export const PB_RECENT_MULT = 0.2;
+/** 跳ばなかった拍で、間合いの端(跳ぶ距離の外側 BAND の内)なら一瞬止まって様子を見る確率と尺。1回の試みに1回まで。 */
+export const PB_HOLD_P = 0.3;
+export const PB_HOLD_BAND_PX = 60;
+export const PB_HOLD_MIN_MS = 200;
+export const PB_HOLD_MAX_MS = 500;
+
 /** 頭脳の持ち越し(PhantomTickState に置く)。 */
 export interface PhantomBrawlerMind {
   /** 次の連続を始めてよい時刻(息継ぎ)。 */
@@ -48,11 +72,42 @@ export interface PhantomBrawlerMind {
   lastSeenCommitAt: number;
   /** 直前に立っていた「行動中」の印(行動が終わった瞬間を拾う)。 */
   wasBusy: boolean;
+  /** 届く距離の外: 次に考える拍の時刻。 */
+  approachBeatAt: number;
+  /** この試みの「ここなら跳ぶ」距離(null=まだ引いていない)。 */
+  jumpAtPx: number | null;
+  /** この試みで、もう様子見をしたか。 */
+  heldThisTry: boolean;
+  /** 様子見で止まっている締め切り(この時刻まで歩かない)。 */
+  holdUntil: number;
+  /** 詰めの飛び蹴り/気功を最後に出した時刻(連発を避ける)。 */
+  lastKickAt: number;
+  lastKikoAt: number;
 }
 export const createPhantomBrawlerMind = (): PhantomBrawlerMind => ({
   nextStringAt: 0, guardReadyAt: 0, lastPressureRollAt: -Infinity, strikeTimes: [], rolledForPredictedAt: -1,
   secretPlan: false, lastSecretAt: -Infinity, secretLaunched: false, lastSeenCommitAt: 0, wasBusy: false,
+  approachBeatAt: 0, jumpAtPx: null, heldThisTry: false, holdUntil: 0, lastKickAt: -Infinity, lastKikoAt: -Infinity,
 });
+
+const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
+const lerp = (a: number, b: number, k: number): number => a + (b - a) * clamp01(k);
+/** 直前に出したばかりなら確率を下げる係数(RECENT_MIN までは RECENT_MULT、RECENT_MAX にかけて1へ)。 */
+export const pbRecentMult = (sinceMs: number): number => {
+  if (!(sinceMs < PB_RECENT_MAX_MS)) return 1;
+  if (sinceMs <= PB_RECENT_MIN_MS) return PB_RECENT_MULT;
+  return lerp(PB_RECENT_MULT, 1, (sinceMs - PB_RECENT_MIN_MS) / (PB_RECENT_MAX_MS - PB_RECENT_MIN_MS));
+};
+/** 拍ごとに跳ぶ確率(人格+連発の抑え)。 */
+export const pbKickChance = (meleeBias: number, sinceLastKickMs: number): number =>
+  lerp(PB_KICK_P_MIN, PB_KICK_P_MAX, meleeBias) * pbRecentMult(sinceLastKickMs);
+/** 拍ごとに気功を撃つ確率(人格+連発の抑え)。 */
+export const pbKikoChance = (meleeBias: number, sinceLastKikoMs: number): number =>
+  lerp(PB_KIKO_P_MIN, PB_KIKO_P_MAX, 1 - meleeBias) * pbRecentMult(sinceLastKikoMs);
+/** この試みの「ここなら跳ぶ」距離。 */
+export const pbRollJumpAt = (rand: () => number): number => lerp(PB_KICK_JUMP_MIN_PX, PB_KICK_JUMP_MAX_PX, rand());
+/** 様子見で止まっているか(歩かない)。 */
+export const phantomBrawlerHolding = (m: PhantomBrawlerMind, t: number): boolean => t < m.holdUntil;
 
 /** プレイヤーの当たりを解いた時刻を覚える(古い順・上限つき)。 */
 export const notePlayerStrike = (m: PhantomBrawlerMind, gameTime: number): void => {
@@ -180,9 +235,29 @@ export const decidePhantomBrawler = (i: PhantomBrawlerInput, m: PhantomBrawlerMi
   }
   if (!idle) return null;
   if (t < m.nextStringAt) return null;
-  // 届く距離の外: 飛び蹴り(220px以内)→気功(420px以内・見通しあり)。払えなければ歩く(null)。
-  if (i.edgeDist <= BRAWLER_KICK_RANGE && canTech(i, 'kick')) return { kind: 'tech', tech: 'kick' };
-  if (i.edgeDist <= BRAWLER_KIKO_RANGE && i.kikoClear && canTech(i, 'kiko')) return { kind: 'tech', tech: 'kiko' };
+  // 届く距離の外(社長指示2026-11-10「一定の射程に入ったら飛び蹴りでも詰めてくる(常には使わないこと 人間味を入れること)」):
+  // 考える拍(350〜750ms のゆらぎ)ごとに引く。跳ぶ距離は試みごとに引き直す。直前に出したばかりなら出にくい。
+  // 跳ばない拍は歩いて詰める(null)。ときどき間合いの端で一瞬止まって様子を見る(行くか・待つかの迷い)。
+  if (t < m.holdUntil) return null;
+  if (t < m.approachBeatAt) return null;
+  m.approachBeatAt = t + lerp(PB_APPROACH_BEAT_MIN_MS, PB_APPROACH_BEAT_MAX_MS, i.rand());
+  if (m.jumpAtPx === null) { m.jumpAtPx = Math.min(BRAWLER_KICK_RANGE, pbRollJumpAt(i.rand)); m.heldThisTry = false; }
+  if (i.edgeDist <= m.jumpAtPx && canTech(i, 'kick')) {
+    if (i.rand() < pbKickChance(i.meleeBias, t - m.lastKickAt)) {
+      m.lastKickAt = t; m.jumpAtPx = null;
+      return { kind: 'tech', tech: 'kick' };
+    }
+  } else if (i.edgeDist <= BRAWLER_KIKO_RANGE && i.kikoClear && canTech(i, 'kiko')) {
+    if (i.rand() < pbKikoChance(i.meleeBias, t - m.lastKikoAt)) {
+      m.lastKikoAt = t;
+      return { kind: 'tech', tech: 'kiko' };
+    }
+  }
+  // 間合いの端(跳ぶ距離の少し外〜跳ぶ距離の内)で、一瞬止まって様子を見る(1回の試みに1回まで)。
+  if (!m.heldThisTry && i.edgeDist <= m.jumpAtPx + PB_HOLD_BAND_PX && i.rand() < PB_HOLD_P) {
+    m.heldThisTry = true;
+    m.holdUntil = t + lerp(PB_HOLD_MIN_MS, PB_HOLD_MAX_MS, i.rand());
+  }
   return null;
 };
 

@@ -122,6 +122,7 @@ import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
 import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
 import { enemyAttackFrameFor, attackTailFrame, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets, prewarmEnemySheetsGpu, loadSpriteGroups, KENKI_SPRITES } from './pixiTextures';
+import { KENKI_SHUKUCHI_FADE_IN_MS, KENKI_SHUKUCHI_FADE_OUT_MS } from '../utils/kenkiShukuchi';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
 /** 城ボスの絵を出現の最短時刻のこれだけ前から先読み+GPU転送する(メモリを使い始める時刻と、間に合う余裕の釣り合い)。 */
 const CASTLE_BOSS_GPU_PREWARM_MS = 45_000;
@@ -38280,6 +38281,29 @@ export class PixiScene {
       if (lb) lb.alpha = 1;
     }
 
+    // ---- 拳鬼の縮地(research/BRAWLER_PHANTOM.md §14): 元の所の残像が消える+行き先で現れる(慣性=ease) ----
+    if (e.gpShukuchi) {
+      const since = Date.now() - e.gpShukuchi.at;
+      if (since >= 0 && since < KENKI_SHUKUCHI_FADE_IN_MS) {
+        const k = since / KENKI_SHUKUCHI_FADE_IN_MS;
+        view.sprite.alpha *= 0.1 + 0.9 * (1 - Math.pow(1 - k, 3)); // 速く現れてゆっくり濃くなる
+      }
+      let gh = this.kenkiShukuchiGhost;
+      if (since >= 0 && since < KENKI_SHUKUCHI_FADE_OUT_MS && view.sprite.texture) {
+        if (!gh) { gh = new Sprite(); this.kenkiShukuchiGhost = gh; this.L.effectLayer.addChild(gh); }
+        const k = since / KENKI_SHUKUCHI_FADE_OUT_MS;
+        const dx = e.x + e.width / 2 - e.gpShukuchi.fromX, dy = e.y + e.height / 2 - e.gpShukuchi.fromY;
+        const drift = 0.12 * (1 - Math.pow(1 - k, 2)); // 行き先の方へ少し引かれながら(加速→減速)薄れる
+        gh.texture = view.sprite.texture;
+        gh.anchor.set(view.sprite.anchor.x, view.sprite.anchor.y);
+        gh.scale.set(view.sprite.scale.x, view.sprite.scale.y);
+        gh.tint = view.sprite.tint;
+        gh.position.set(e.gpShukuchi.fromX + dx * drift, e.gpShukuchi.fromY + e.height / 2 + dy * drift);
+        gh.alpha = 0.85 * (1 - k * k);
+        gh.visible = true;
+      } else if (gh) gh.visible = false;
+    }
+
     // ---- 赤い目(小glowスプライト・**強glow=投影影は使わない**) -----------------------------------
     // 高さは「実際に描かれた絵の高さ」から取る(box ではない)。box は判定寸法×倍率なので、
     // contain フィットで縮んだ絵の頭より上に浮いてしまう。
@@ -39943,6 +39967,8 @@ export class PixiScene {
    * 加算で描く=紺の中身は本人を暗く潰さず、青い輪郭だけが光る。形と時間は utils/brawler の brawlerStandAt(純関数)が決める。
    */
   private phantomBrawlerStand: Sprite | null = null;
+  /** 拳鬼の縮地の残像(元の所・1枚を使い回す・research/BRAWLER_PHANTOM.md §14)。 */
+  private kenkiShukuchiGhost: Sprite | null = null;
   private phantomBrawlerAura: Sprite | null = null;
   private drawBrawlerStand(
     p: Pick<Player, 'x' | 'y' | 'width' | 'height'> & { lastDirection?: { x: number; y: number } | null }, s: BRW.BrawlerState, gt: number, dsc: number, body: Sprite,
@@ -40035,9 +40061,10 @@ export class PixiScene {
     const s = p.brawler;
     const st = useGameStore.getState();
     // 格闘の幻影が居なくなったら、その影と光を消す(描く経路を通らなくなるため)。
-    if ((this.phantomBrawlerStand?.visible || this.phantomBrawlerAura?.visible) && !st.enemies.some(e => e.phantomBrawler && e.health > 0)) {
+    if ((this.phantomBrawlerStand?.visible || this.phantomBrawlerAura?.visible || this.kenkiShukuchiGhost?.visible) && !st.enemies.some(e => e.phantomBrawler && e.health > 0)) {
       if (this.phantomBrawlerStand) this.phantomBrawlerStand.visible = false;
       if (this.phantomBrawlerAura) this.phantomBrawlerAura.visible = false;
+      if (this.kenkiShukuchiGhost) this.kenkiShukuchiGhost.visible = false;
     }
     // research/BRAWLER_PHANTOM.md: 格闘の幻影の気功も同じ絵(1本の絵の台帳で描く=プレイヤーの気功と取り合わない)。
     const gpKikos = st.enemies.filter(e => e.gpKiko !== undefined).map(e => e.gpKiko!);

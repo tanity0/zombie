@@ -29,6 +29,10 @@ const KENKI_SKILLS: readonly { key: SkillKey; level: number }[] = [
   { key: 'time-keeper', level: 3 },
   { key: 'overclock', level: 3 },
 ];
+// ★拳鬼の「縮地」(research/BRAWLER_PHANTOM.md §14・社長指示2026-11-10「拳鬼はカウンターすると縮地で距離を一気に詰めてくる。
+// (ただし無限にワープはしない)」)は**この表に入れない**。プレイヤーのスキル 'shukuchi'(近接で倒すと次の敵へ跳んで斬る・
+// 連鎖でダメージが重くなる・ワープ後500msの無敵)とは別物の専用の作り(utils/kenkiShukuchi.ts)で、'shukuchi' を記録に積むと
+// 疑似プレイヤーの近接の連鎖の倍率・無敵など、プレイヤー用の効果の読み筋に乗ってしまうため。届く距離だけ Lv1 と同じ400px。
 const KENKI_SUBS: SubWeaponKey[] = ['brawler'];
 
 /** 拳鬼(仮名): 格闘の幻影。絵は専用(kenki-*)。ストライカー・ファイティングナイフ・3段目の装備・タイムキーパーLv3+オーバークロックLv3・格闘Lv3。 */

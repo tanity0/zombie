@@ -25,6 +25,10 @@ import { PVP_DAMAGE_SCALE } from './phantomScript';
 import { useGameStore, huntingMeleeRadius, playerMoveStatMult, skillLevel, PLAYER_KNOCKBACK_SPEED, isCounterActive } from '../store/gameStore';
 import type { PlayerProfile } from './playerTraits';
 import { notePlayerLaunched } from './playerAirFollow';
+import {
+  kenkiNewCounter, kenkiShukuchiShouldFire, kenkiShukuchiReadyAt, kenkiShukuchiCandidates, kenkiShukuchiPick,
+} from './kenkiShukuchi';
+import { GLOW_R_M, GLOW_R_S } from './glowTiers';
 
 /** 格闘のレベル(技ポイントの上限の段)。記録のサブのレベル(無ければ1)。 */
 const brawlerLevelOf = (e: Enemy): number => Math.max(1, Math.min(3, e.phantomBuild?.subWeaponLevels?.brawler ?? 1));
@@ -46,9 +50,13 @@ export interface PhantomBrawlerRuntime {
   reachSince: number | null;
   /** 最後に見た幻影の被弾(Enemy.lastHit)。 */
   lastHitSeen: number;
+  /** 縮地(§14): 前に見たカウンターの時刻(1回のカウンターで1回まで)と、次に縮地してよい時刻(gameTime)。 */
+  lastCounterSeen: number;
+  shukuchiReadyAt: number;
 }
 export const createPhantomBrawlerRuntime = (): PhantomBrawlerRuntime => ({
   mind: createPhantomBrawlerMind(), move: null, bulletPlans: new Map(), reachSince: null, lastHitSeen: 0,
+  lastCounterSeen: 0, shukuchiReadyAt: 0,
 });
 
 export interface PhantomBrawlerCtx {
@@ -74,6 +82,10 @@ export interface PhantomBrawlerCtx {
   resolveMove: (nx: number, ny: number) => { x: number; y: number };
   /** 音(振り/当たり)。 */
   swingSfx: () => void;
+  /** 一番新しいカウンター成立の時刻(gameTime・近接の窓/構えの受け=gpParriedAt・弾の打ち返し=gpBulletParriedAt の新しい方)。縮地のきっかけ(§14)。 */
+  counterAt?: number;
+  /** 縮地の音(呼び手が格闘の音の列へ積む)。 */
+  shukuchiSfx?: () => void;
   label: string;
 }
 
@@ -491,11 +503,47 @@ const tickSecret = (c: PhantomBrawlerCtx, s0: BrawlerState): BrawlerState => {
  * 格闘の幻影の1tick。状態は c.patch.phantomBrawler に書く(値が変わった時だけ)。
  * 戻り値: 行動中か(呼び手は歩かせない)。
  */
+/**
+ * 縮地(research/BRAWLER_PHANTOM.md §14・社長指示2026-11-10「拳鬼はカウンターすると縮地で距離を一気に詰めてくる。
+ * (ただし無限にワープはしない)」)。プレイヤーの正面のすぐ手前(来た側・格闘の詰めの立ち位置)へ瞬間移動する。
+ * 立てる所が無ければしない。ワープ直後の無敵は付けない。行動(構えなど)を解いて、すぐ次の段・技へ移れるようにする。
+ */
+const kenkiShukuchi = (c: PhantomBrawlerCtx, s: BrawlerState, cx: number, cy: number): { s: BrawlerState; cx: number; cy: number } | null => {
+  const { phantom, player, t } = c;
+  const spot = kenkiShukuchiPick(kenkiShukuchiCandidates({ x: cx, y: cy }, player, phantom.width / 2), phantom, (x, y) => c.resolveMove(x, y));
+  if (!spot) return null;
+  const to = { x: spot.x + phantom.width / 2, y: spot.y + phantom.height / 2 };
+  c.patch.x = spot.x; c.patch.y = spot.y; c.patch.vx = 0; c.patch.vy = 0;
+  c.patch.gpShukuchi = { at: c.nowMs, fromX: cx, fromY: cy };
+  if (phantom.gpGuardUntil !== undefined) c.patch.gpGuardUntil = undefined;
+  c.rt.move = null;
+  c.rt.shukuchiReadyAt = kenkiShukuchiReadyAt(t);
+  // すぐ次の行動へ: 息継ぎ・反応の下限・考える拍・様子見を外す(間合いに入った扱い)。
+  const m = c.rt.mind;
+  m.nextStringAt = t; m.approachBeatAt = 0; m.holdUntil = 0;
+  c.rt.reachSince = t - 10_000;
+  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+  const d = unit(pcx - to.x, pcy - to.y);
+  // 見せ方(秘奥義のワープと同じ残光=fx/dash-wind の線+消える所と現れる所の光)。線は縮みながら消える(慣性)。
+  const g = useGameStore.getState();
+  const wdx = to.x - cx, wdy = to.y - cy, wl = Math.hypot(wdx, wdy);
+  if (wl > 8) {
+    g.spawnImageMark((cx + to.x) / 2, (cy + to.y) / 2 - 6, 'fx/dash-wind', {
+      additive: true, noPop: true, scale: 0.16, scaleX: wl / (0.16 * 130 * (233 / 64)), rot: Math.atan2(wdy, wdx), duration: 260, fadeFrom: 0.15,
+      tint: 0x9be7ff, moveX: wdx * 0.18, moveY: wdy * 0.18, alpha: 0.95,
+    });
+    g.spawnGlow(cx, cy - 6, GLOW_R_S, 'rgba(125,211,252,', 220, true);
+  }
+  g.spawnGlow(to.x, to.y - 6, GLOW_R_M, 'rgba(255,248,230,', 240, true);
+  c.shukuchiSfx?.();
+  return { s: { ...BR.brawlerCancel(s), dirX: d.x, dirY: d.y }, cx: to.x, cy: to.y };
+};
+
 export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
   const { phantom, player, t } = c;
   const before = phantom.phantomBrawler;
   let s: BrawlerState = before ?? BR.initialBrawlerState();
-  const cx = phantom.x + phantom.width / 2, cy = phantom.y + phantom.height / 2;
+  let cx = phantom.x + phantom.width / 2, cy = phantom.y + phantom.height / 2;
   const m = c.rt.mind;
 
   // プレイヤーの近接が当たりを解いた(=リズムの記録)。時計は gameTime で記録する(research/BRAWLER_PHANTOM.md §4-2)。
@@ -508,6 +556,16 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
   if ((phantom.lastHit ?? 0) > c.rt.lastHitSeen) {
     if (c.rt.lastHitSeen !== 0) s = BR.brawlerOnHurt(s);
     c.rt.lastHitSeen = phantom.lastHit ?? 0;
+  }
+  // 縮地(§14): カウンターが成立したら、届く距離より遠い時だけ一気に詰める(1回のカウンターで1回・4秒に1回まで)。
+  if (kenkiNewCounter(c.counterAt, c.rt.lastCounterSeen)) {
+    const fire = kenkiShukuchiShouldFire({
+      counterAt: c.counterAt, lastSeenCounterAt: c.rt.lastCounterSeen, t, readyAt: c.rt.shukuchiReadyAt,
+      edgeDist: edgeDist(cx, cy, player), reach: huntingMeleeRadius(c.actor), secretActive: !!s.secret,
+    });
+    c.rt.lastCounterSeen = c.counterAt!;
+    const r = fire ? kenkiShukuchi(c, s, cx, cy) : null;
+    if (r) { s = r.s; cx = r.cx; cy = r.cy; }
   }
 
   if (s.secret) {

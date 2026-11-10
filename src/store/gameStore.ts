@@ -4259,6 +4259,8 @@ let brawlerSfxQueue: BrawlerSfx[] = [];
 const brawlerSfx = (key: string, gain = 1, rate = 1, ms?: number, delayMs?: number): void => {
   if (brawlerSfxQueue.length < 24) brawlerSfxQueue.push({ key, gain, rate, ...(ms !== undefined ? { ms } : {}), ...(delayMs !== undefined ? { delayMs } : {}) });
 };
+/** 格闘の音を列へ積む(幻影の格闘=拳鬼の縮地も同じ音の列で鳴らす・research/BRAWLER_PHANTOM.md §14)。 */
+export const enqueueBrawlerSfx = brawlerSfx;
 /** 積んだ格闘の音を取り出す(useGameLoop が毎フレーム)。空なら同じ空配列を返す=何もしない。 */
 export const drainBrawlerSfx = (): BrawlerSfx[] => {
   if (brawlerSfxQueue.length === 0) return BRAWLER_SFX_EMPTY;

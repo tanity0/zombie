@@ -1080,6 +1080,8 @@ export interface Enemy {
   phantomBrawler?: BrawlerState;
   /** 格闘の幻影の構えの終わり(gameTime)。この間は窓パリィの窓が開いている(phantomGate の窓モデルのまま)。 */
   gpGuardUntil?: number;
+  /** research/BRAWLER_PHANTOM.md §14: 拳鬼の縮地(at=Date.now・from=元の中心)。描画が元の所の残像と現れるフェードに使う。 */
+  gpShukuchi?: { at: number; fromX: number; fromY: number };
   /** 格闘の幻影が撃った気功(1発まで・描画も読む)。x/y=今の位置、traveled=飛んだ距離。 */
   gpKiko?: { id: string; x: number; y: number; dirX: number; dirY: number; traveled: number; createdAt: number };
   /**

@@ -50,6 +50,7 @@ import {
   spawnShadowCloneOnSwing, // ★O-3b-2(SAME_ARENA §3-d-4): 分身の生成入口。player/ghost-allyと同じ1本
   shieldGuardsPlayerLine, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
+  enqueueBrawlerSfx, // research/BRAWLER_PHANTOM.md §14: 拳鬼の縮地の音
 } from '../store/gameStore';
 import { phantomAsOwner } from './subWeaponOwner'; // ★O-3b-2: 分身の生成入口へ渡すオーナー形
 import { softCapCritChance } from './critSoftCap'; // ★§13-3d: 近接クリ式のミラーに同じソフトキャップ
@@ -106,6 +107,7 @@ import {
   createPhantomBrawlerRuntime, stepPhantomBrawler, phantomBrawlerCancelled, phantomBrawlerHoldClock, phantomBrawlerBossState,
   type PhantomBrawlerRuntime,
 } from './phantomBrawlerTick'; // research/BRAWLER_PHANTOM.md: 格闘の幻影(拳鬼)の格闘
+import { phantomBrawlerHolding } from './phantomBrawlerAi';
 import { isBrawlerBusy, brawlerPointCap } from './brawler';
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
@@ -1270,7 +1272,9 @@ export const runPhantomTick = (
   // research/BRAWLER_PHANTOM.md: 格闘の幻影は行動中(段・技・踏み込み)は歩かない(格闘の硬直=プレイヤーと同じ)。
   const isBrawlerPhantom = phantom.phantomUnique === 'brawler';
   if (isBrawlerPhantom && !s.brawler) s.brawler = createPhantomBrawlerRuntime();
-  const brawlerBusy = isBrawlerPhantom && (isBrawlerBusy(phantom.phantomBrawler) || s.brawler?.move != null);
+  // 届く距離の外の「様子見」(phantomBrawlerAi・社長指示2026-11-10「人間味を入れること」)の間も歩かない(速度は慣性で落ちる)。
+  const brawlerBusy = isBrawlerPhantom && (isBrawlerBusy(phantom.phantomBrawler) || s.brawler?.move != null
+    || (s.brawler != null && phantomBrawlerHolding(s.brawler.mind, newGameTime)));
   if (brawlerBusy) { decision.moveX = 0; decision.moveY = 0; }
   if (!shoved) {
     // ★SAME_ARENA §9: クリ被弾の2/3減速(pvpMoveMult)。ボスのbossSlowUntil無視(D4)はそのまま。
@@ -1328,7 +1332,9 @@ export const runPhantomTick = (
   if (isBrawlerPhantom && s.brawler) {
     const actor = combatActorPlayer(phantom.id) ?? player;
     stepPhantomBrawler({
-      phantom: { ...phantom, ...('x' in patch ? { x: patch.x! } : {}), ...('y' in patch ? { y: patch.y! } : {}) },
+      // 同じ tick で上が書いた格闘の状態(構えで受けた時の技ポイントの全回復)も渡す=下で上書きして消さない。
+      phantom: { ...phantom, ...('x' in patch ? { x: patch.x! } : {}), ...('y' in patch ? { y: patch.y! } : {}),
+        ...(patch.phantomBrawler ? { phantomBrawler: patch.phantomBrawler } : {}) },
       rt: s.brawler, player, projectiles: st0.projectiles, actor,
       profile: getPhantomIdentity()?.profile ?? strongestGuardian().profile,
       t: newGameTime, nowMs, deltaTime, rand, patch,
@@ -1337,6 +1343,9 @@ export const runPhantomTick = (
         phantomMeleeDamage(s.growthAtkMult, phantom.id), { mult, moveKey: o.moveKey, sourceLabel: o.sourceLabel, knockback: o.knockback, onCountered: o.onCountered }),
       resolveMove: (nx, ny) => resolveMove(nx, ny, phantom),
       swingSfx: () => sfx.swing(),
+      // 縮地のきっかけ=カウンター成立(近接の窓・構えの受け=gpParriedAt / 弾の打ち返し=gpBulletParriedAt)。research/BRAWLER_PHANTOM.md §14。
+      counterAt: Math.max(phantom.gpParriedAt ?? -Infinity, phantom.gpBulletParriedAt ?? -Infinity, patch.gpParriedAt ?? -Infinity, patch.gpBulletParriedAt ?? -Infinity),
+      shukuchiSfx: () => enqueueBrawlerSfx('whip-swing', 0.5, 1.4, 90),
       label: phantomDisplayLabel(),
     });
     applyPatch(phantom.id, patch);
