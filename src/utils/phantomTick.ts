@@ -109,6 +109,7 @@ import {
   phantomBrawlerCancelPrep, type PhantomBrawlerRuntime,
 } from './phantomBrawlerTick'; // research/BRAWLER_PHANTOM.md: 格闘の幻影(拳鬼)の格闘
 import { phantomBrawlerHolding } from './phantomBrawlerAi';
+import { kenkiRetreating, kenkiRetreatDirNow, kenkiRetreatStop, kenkiLeverOf } from './kenkiRetreat'; // 拳鬼の後ろへ下がる歩きとレバー(§16-10)
 import { isBrawlerBusy } from './brawler';
 
 /** 制御対象の型(判定の出どころを1箇所に)。 */
@@ -1157,8 +1158,14 @@ export const tickPlayerFlamerBurn = (): void => {
   );
 };
 
+/** 拳鬼の「レバー」(§16-10)を下ろす(動けない間はレバーガードを張れない)。書いてある時だけ書く。 */
+const clearKenkiLever = (phantom: Enemy, patch: Partial<Enemy>): void => {
+  if (phantom.gpLeverX !== undefined || phantom.gpLeverY !== undefined) { patch.gpLeverX = undefined; patch.gpLeverY = undefined; }
+};
 /** 格闘の幻影の出かかった行動を取り消す(紫・気絶・拘束・浮き)。印の無い幻影には何もしない。 */
 const cancelPhantomBrawler = (phantom: Enemy, patch: Partial<Enemy>, gameTime: number, rt?: PhantomBrawlerRuntime): void => {
+  clearKenkiLever(phantom, patch); // 動けない=レバーガードも張れない(research/BRAWLER_PHANTOM.md §16-10)
+  if (rt) kenkiRetreatStop(rt.mind); // 下がりも打ち切る
   // 跳びかかりの溜め(research/BRAWLER_PHANTOM.md §15)も出かかった行動として取り消す(跳んだ後・着地後は続ける)。
   if (phantom.phantomUnique === 'brawler' && phantom.aiPhase === 'crouch') {
     patch.aiPhase = undefined; patch.aiPhaseUntil = undefined; patch.bossState = 'chase';
@@ -1243,6 +1250,7 @@ export const runPhantomTick = (
   //   (移動も撃ち始めもしない)。幻影には技の最中の概念が無いので、流しっぱなしの火炎放射だけは浮きと同じく打ち切る。
   if (brawlerHeldNow(phantom, newGameTime, nowMs)) {
     abortPhantomFlamer(phantom, patch);
+    clearKenkiLever(phantom, patch); // 固まっている間はレバーガードを張れない(§16-10)
     // 格闘の幻影の戻り(硬直)を固めている間は、格闘の時計も止める=明けたら戻りの続きから(research/BRAWLER_PHANTOM.md §4-1)。
     if (phantom.phantomBrawler && phantom.brHoldUntil !== undefined) {
       patch.phantomBrawler = phantomBrawlerHoldClock(phantom.phantomBrawler, newGameTime, phantom.brHoldUntil - nowMs);
@@ -1326,6 +1334,12 @@ export const runPhantomTick = (
     // 構えで受けて下がっている間(§16-9)も歩かない(壁で早く止まっても、下がり切る時間までは次の行動を始めない)。
     || (s.brawler != null && newGameTime < s.brawler.guardKbUntil));
   if (brawlerBusy) { decision.moveX = 0; decision.moveY = 0; }
+  // ★後ろへ下がる歩き(レバーガード・research/BRAWLER_PHANTOM.md §16-10): 頭脳(phantomBrawlerAi)が下がると決めた短い間(300〜500ms)は、
+  //   下がる向き(プレイヤーから離れる向き/弾の飛んできた向き)へ歩く。歩きの加減速は下の慣性のまま。動作の最中は下がらない。
+  if (isBrawlerPhantom && s.brawler && !brawlerBusy && kenkiRetreating(s.brawler.mind, newGameTime)) {
+    const rd = kenkiRetreatDirNow(s.brawler.mind, bcx, bcy, player.x + player.width / 2, player.y + player.height / 2);
+    decision.moveX = rd.x; decision.moveY = rd.y;
+  }
   if (!shoved) {
     // ★SAME_ARENA §9: クリ被弾の2/3減速(pvpMoveMult)。ボスのbossSlowUntil無視(D4)はそのまま。
     const dt = deltaTime * moveSpeedMult * phantomSlowMult(phantom, newGameTime) * pvpMoveMult(phantom.pvpPosture, newGameTime);
@@ -1382,7 +1396,7 @@ export const runPhantomTick = (
   // ---- 格闘の幻影(拳鬼): 銃と周期の近接の代わりに格闘の状態機械を回す(research/BRAWLER_PHANTOM.md §4) ----
   if (isBrawlerPhantom && s.brawler) {
     const actor = combatActorPlayer(phantom.id) ?? player;
-    stepPhantomBrawler({
+    const stepBusy = stepPhantomBrawler({
       // 同じ tick で上が書いた格闘の状態(構えで受けた時の技ポイントの全回復)も渡す=下で上書きして消さない。
       phantom: { ...phantom, ...('x' in patch ? { x: patch.x! } : {}), ...('y' in patch ? { y: patch.y! } : {}),
         ...(patch.phantomBrawler ? { phantomBrawler: patch.phantomBrawler } : {}) },
@@ -1400,6 +1414,13 @@ export const runPhantomTick = (
       shukuchiSfx: () => enqueueBrawlerSfx('whip-swing', 0.5, 1.4, 90),
       label: phantomDisplayLabel(),
     });
+    // ★拳鬼の「レバー」(§16-10)= この tick に頭脳が決めた歩く向き。動作の最中(この tick に始めた段・技・予備動作・ステップ・跳びかかり・
+    //   押されている最中も含む)・押し道具で押されている間・歩いていない時は下ろす。被弾の関所(gameStore.gatePhantomHit)がこれを読んで
+    //   プレイヤーと同じ純関数(brawlerLeverGuard)でレバーガードを裁く。変わった時だけ書く。
+    {
+      const lever = kenkiLeverOf(decision.moveX, decision.moveY, brawlerBusy || stepBusy || shoved);
+      if (phantom.gpLeverX !== lever?.x || phantom.gpLeverY !== lever?.y) { patch.gpLeverX = lever?.x; patch.gpLeverY = lever?.y; }
+    }
     applyPatch(phantom.id, patch);
     return;
   }

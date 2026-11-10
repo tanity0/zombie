@@ -134,6 +134,11 @@ export interface PhantomHitGateResult {
    * 幻影=pvpDamageScale(1/10)、幻影以外=常に1(恒等)。
    */
   damageScale: number;
+  /**
+   * 拳鬼(格闘の幻影)がレバーガードで受けた(research/BRAWLER_PHANTOM.md §16-10)。関所の橋(gameStore.gatePhantomHit)だけが立てる。
+   * damage / damageScale は半減済み。呼び手は浮かせ・大きな押し・食らいの固まりを書かない(小さい押しは拳鬼の制御が出す)。
+   */
+  leverGuard?: boolean;
 }
 
 /** 幻影以外(=大多数)のための恒等結果。オブジェクトは毎回作る(呼び出し側が patch を展開するため)。 */

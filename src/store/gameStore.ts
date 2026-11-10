@@ -3695,18 +3695,52 @@ export const INVULN_MS = 1000; // 社長裁定v0.25.3599(700→1000。多段技�
  *  - パリィCD        = `phantomScript` の1箇所
  * **幻影以外の敵に対しては恒等**(通常敵のダメージ・副作用に1bitも影響しない)。
  */
+/**
+ * ★拳鬼への一撃の「出どころ」(レバーガードの向きの材料・research/BRAWLER_PHANTOM.md §16-10)。
+ *  dir=弾の飛んできた向き / from=攻撃してきた相手・爆心の位置。未指定(undefined)=プレイヤーの体から(近接・プレイヤー起因の当たりの既定)。
+ *  null=出どころが分からない(爆発の広がり・持続ダメージ・仲間の当たりなど)=レバーガードは成立しない。
+ */
+export type KenkiAttackFrom = { dir?: { x: number; y: number }; from?: { x: number; y: number } } | null;
+/**
+ * 拳鬼がこの一撃をレバーガードで受けるなら、攻撃の進む向き(長さ1=押される向き)。受けないなら null。
+ * 拳鬼の「レバー」(gpLeverX/Y)は制御(phantomTick)が毎 tick 書く=動作の最中・固まり・歩いていない時は無い。成立はプレイヤーと同じ純関数。
+ */
+const kenkiLeverGuardDir = (enemy: Enemy, attack: KenkiAttackFrom | undefined): { x: number; y: number } | null => {
+  if (attack === null || enemy.phantomUnique !== 'brawler' || enemy.gpLeverX === undefined || enemy.gpLeverY === undefined) return null;
+  const pc = { x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height / 2 };
+  const pl = useGameStore.getState().player;
+  const from = attack?.from ?? (attack?.dir ? null : { x: pl.x + pl.width / 2, y: pl.y + pl.height / 2 });
+  const attackDir = BLG.leverGuardAttackDir(pc, { travel: attack?.dir, center: from });
+  return attackDir && BLG.brawlerLeverGuardHolds({ has: true, amount: 1, free: true, lever: { x: enemy.gpLeverX, y: enemy.gpLeverY }, attackDir })
+    ? attackDir : null;
+};
 const gatePhantomHit = (
   enemy: Enemy, amount: number, source: PhantomDamageSource | 'ranged', gameTime: number,
   /** 拳鬼の「近接で食らった」打刻を打つか(既定=打つ)。関所は近接として裁くが体の当たりではない部分(スケボーの覚醒の爆発の広がり)は false。 */
   countsAsMeleeHurt = true,
+  /** 拳鬼のレバーガード(§16-10)の向きの材料。未指定=プレイヤーの体から / null=出どころが分からない(ガードは成立しない)。 */
+  attack?: KenkiAttackFrom,
 ): PhantomHitGateResult => {
-  const r = phantomHitGateRaw(enemy, amount, source, gameTime);
+  const r0 = phantomHitGateRaw(enemy, amount, source, gameTime);
   // ★拳鬼(格闘の幻影)は近接(打撃・技)で食らうと技ポイントが貯まる=その打刻(社長指示2026-11-10「ただし、ボスは銃弾では貯まらない」・
   //   research/BRAWLER_PHANTOM.md §16-8)。銃弾・爆発・その他の遠隔('ranged'/'bullet')・カウンターの返しでは打たない。
   //   ポイントを足すのは拳鬼の制御(phantomBrawlerTick)。幻影の近接の当たりは全部この橋を source='melee' で通る。
-  return r.effects && source === 'melee' && countsAsMeleeHurt && enemy.phantomUnique === 'brawler'
-    ? { ...r, patch: { ...r.patch, gpMeleeHurtAt: gameTime } }
-    : r;
+  const r = r0.effects && source === 'melee' && countsAsMeleeHurt && enemy.phantomUnique === 'brawler'
+    ? { ...r0, patch: { ...r0.patch, gpMeleeHurtAt: gameTime } }
+    : r0;
+  // ★拳鬼のレバーガード(社長指示2026-11-10「幻影たちにも入れたいので拳鬼にも入れる。弾もガード可能」・research/BRAWLER_PHANTOM.md §16-10)。
+  //   解決の順はプレイヤーと同じ: ①今ある受け(被弾無敵・構えの窓のパリィ=上の関所が先に裁き、成立した攻撃は effects=false で抜ける)→
+  //   ②レバーガード → ③普通の被弾。通った当たり(effects)だけを見る。紫(体勢崩れ)・固まりの間はレバーが下りている=成立しない。
+  //   ダメージ半減(切り上げ・最低1)と、自前の計算に掛ける倍率(damageScale)の半減をここで済ませ、受けた打刻(制御が小さい押し・絵・音に使う)を書く。
+  //   技ポイント+1・台本の打ち切り・予備動作の取り消し(gpMeleeHurtAt)は今の規則のまま(ガードでも近接なら崩れる)。
+  if (!r.effects) return r;
+  const gdir = kenkiLeverGuardDir(enemy, attack);
+  if (!gdir) return r;
+  return {
+    ...r, leverGuard: true,
+    damage: BLG.brawlerLeverGuardDamage(r.damage), damageScale: r.damageScale * BLG.BRAWLER_LEVER_GUARD_DAMAGE_MULT,
+    patch: { ...r.patch, gpLeverGuardAt: gameTime, gpLeverGuardDirX: gdir.x, gpLeverGuardDirY: gdir.y },
+  };
 };
 const phantomHitGateRaw = (
   enemy: Enemy, amount: number, source: PhantomDamageSource | 'ranged', gameTime: number,
@@ -7628,7 +7662,8 @@ const applySlasherChainStrike = (
         const nowL = Date.now();
         const live = get().enemies.find(x => x.id === e.id);
         const mv = live ? slasherLiftMove(step, isFinalBigKbStep, BRC.brawlerAirborne(live, nowL)) : null;
-        if (live && mv && !BRC.isBrawlerTechBusy(live, gameTime)) {
+        // 拳鬼がこの追撃をレバーガードで受けた(§16-10)なら浮かせない。
+        if (live && mv && !BRC.isBrawlerTechBusy(live, gameTime) && !(live.gpLeverGuardAt !== undefined && live.gpLeverGuardAt === get().gameTime)) {
           let jp = brawlerJugglePatch(live, BRC.brawlerEnemyClass(live), mv, nowL);
           // ★1回目の打ち上げは追撃の窓(CD+前隙+余裕)より短くしない=強個体・ボス級(重さ・止めの減衰)でも2回目が空中に間に合う(§14)。
           if (jp && step <= 0 && jp.brLiftUntil !== undefined && jp.brawlerLiftAt !== undefined) {
@@ -8963,7 +8998,7 @@ interface GameState {
   // Enemy actions
   addEnemy: (enemy: Enemy) => void;
   removeEnemy: (id: string) => void;
-  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral' | 'dog', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean) => boolean; // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
+  damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral' | 'dog', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean, gpAttack?: KenkiAttackFrom) => boolean; // gpAttack: ★拳鬼のレバーガード(research/BRAWLER_PHANTOM.md §16-10)の向きの材料(弾=飛んできた向き)。未指定=プレイヤー起因の当たりはプレイヤーの体から・爆発/持続/仲間の当たりは「分からない」 // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
@@ -11959,8 +11994,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // meleeDamageNumbers に1つも積まず、lastHit も打たない(=ヒットストップ・チェーン・吸血・
       // 救難信号・戻り値 hit/finish/killed のどれにも数えない)。
       let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
+      let gpLeverGuarded = false; // 拳鬼がこの一撃をレバーガードで受けた(§16-10=浮かせ・大きな押し・食らいの固まりを書かない)
       if (isGuardianPhantom(enemy.type)) {
-        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
+        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime, true, { from: { x: pcx, y: pcy } }); // 出どころ=振った本人の体
         if (!gp.effects) {
           // ★SAME_ARENA §9(対人体勢): 幻影のパリィ成立=プレイヤーが「カウンターを取られた」
           // =プレイヤーの体勢を counter(0.20)で削る(紫入り時の窓・前隙破棄は playerPvpChipPatch)。
@@ -11970,6 +12006,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         gpHitPatch = { id: enemy.id, patch: gp.patch }; // 有効打=i-frame の起点を set() で合成する
         gpDmgScale = gp.damageScale;
+        gpLeverGuarded = gp.leverGuard === true;
       }
 
       // バッシュ: 近接ダメージ×3 + 押し出し方向への強ノックバック。フィニッシュ無し。
@@ -12156,7 +12193,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         const dn = Math.max(0.001, Math.hypot(dx, dy));
         slasherLungeTo = { dirX: dx / dn, dirY: dy / dn, dist };
       }
-      if (bs) {
+      if (gpLeverGuarded) {
+        // ★拳鬼がレバーガードで受けた(research/BRAWLER_PHANTOM.md §16-10): ダメージは半減済み(gpDmgScale)。浮かせ・押し・食らいの固まり・
+        //   止めは書かない(小さい押しは拳鬼の制御が次の tick に出す)。体勢の削り・クリの足止めは今どおり。
+        survivors.push({
+          ...enemy, health: newHealth, lastHit: now, stunUntil, lastHitDmg: dmg,
+          ...(bossSlow ?? {}),
+          ...(bossBump?.patch ?? {}),
+          ...(laserBreak?.patch ?? {}),
+          ...pvpMeleePatch,
+        });
+      } else if (bs) {
         // ★格闘の当たり(research/BRAWLER.md §8-1)。押しの強さは段の種類だけ(falloff なし)・ノックバックはこのループの中で1本に書く。
         // 止め=段の表の ms をそのまま hitStunUntil へ(格闘では再発火ガードを外す)。ボス級は止めない(区分の仕様)。
         survivors.push({
@@ -12587,7 +12634,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統③=分身)。分身の近接もパリィ対象。
       let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
-        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
+        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime, true, { from: { x: ccx, y: ccy } }); // 拳鬼のレバーガード(§16-10)の出どころ=分身の体
         if (!gp.effects) { survivors.push({ ...enemy, ...gp.patch }); continue; }
         gpHitPatch = { id: enemy.id, patch: gp.patch };
         gpDmgScale = gp.damageScale;
@@ -13303,7 +13350,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ★research/GHOST_BOSS.md v6(幻影の被弾ゲート・7系統④=刀)。オート斬撃も一閃もパリィ対象。
       let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
-        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
+        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime, true, { from: { x: pcx, y: pcy } }); // 拳鬼のレバーガード(§16-10)の出どころ=振った本人の体
         if (!gp.effects) {
           // ★SAME_ARENA §9: 幻影のパリィ成立=**プレイヤー本人**の刀だけ体勢counter削り(守護霊の刀は対象外)。
           if (gp.parried && !isGhost) set(st => ({ player: { ...st.player, ...playerPvpChipPatch(st.player, 'counter', st.gameTime) } }));
@@ -13668,7 +13715,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // hits にも slashAt にも積まない(戻り値 hit/hits がSEを鳴らす条件になっているため)。
       let gpDmgScale = 1; // 対人1/10(社長裁定2026-08-20)。幻影以外は常に1=恒等。
       if (isGuardianPhantom(enemy.type)) {
-        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime);
+        const gp = gatePhantomHit(enemy, 0, 'melee', gameTime, true, { from: { x: pcx, y: pcy } }); // 拳鬼のレバーガード(§16-10)の出どころ=振った本人の体
         if (!gp.effects) {
           // ★SAME_ARENA §9: 幻影のパリィ成立=鞭はプレイヤー本人の武器なので体勢counter削り。
           if (gp.parried) set(st => ({ player: { ...st.player, ...playerPvpChipPatch(st.player, 'counter', st.gameTime) } }));
@@ -16621,7 +16668,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
   },
   
-  damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSourceIn = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk) => {
+  damageEnemy: (id, amount, blast = false, crit = false, viaMeleeFinish = false, damageChannel = 'other', hateSourceIn = 'player', postureImpact = null, postureImpactMult = 1, gpSource = null, killChainSlowOk, gpAttack) => {
     if (blast) blastHitIds.add(id); // ★爆発の浮き(§14): 爆発のダメージが当たった敵だけが浮く(次の tickBrawler で待ち行列と突き合わせる)
     // research/ESCORT_TARGETED.md §5: 進軍NPCの弾は起因側 `escort:<id>`。**ヘイトのバケツだけ**軍人ごとに積み(下の hatePatch)、
     // それ以外の判定(揺れ・クリ・撃破カウント・英雄の被弾記録 …)はこれまでどおり 'player' 扱いのまま=軍人の弾の挙動は1bitも変えない。
@@ -16690,7 +16737,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 無害な弾が i-frame の起点(gpHitAt)を打ってしまう抜け道を塞ぐ。恒等で素通り)。
       const gpGate: PhantomHitGateResult = amount > 0
         ? gatePhantomHit(
-          enemy, amount, postureImpact === 'counter' ? 'counter' : (gpSource ?? 'ranged'), state.gameTime,
+          enemy, amount, postureImpact === 'counter' ? 'counter' : (gpSource ?? 'ranged'), state.gameTime, true,
+          // 拳鬼のレバーガード(§16-10)の出どころ: 呼び手が渡した物(弾=飛んできた向き)。無ければ、プレイヤー起因の直接の当たりはプレイヤーの体から。
+          // 爆発の広がり・持続ダメージ・仲間(守護霊・犬・軍人)の当たりは位置が分からない=成立しない。
+          gpAttack !== undefined ? gpAttack : (blast || damageChannel === 'dot' || hateSourceIn !== 'player') ? null : undefined,
         )
         : { damage: amount, effects: true, blocked: false, parried: false, patch: {}, damageScale: 1 };
       if (!gpGate.effects) {

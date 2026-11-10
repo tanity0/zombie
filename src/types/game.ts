@@ -1089,6 +1089,17 @@ export interface Enemy {
   gpBrawlerPrep?: { tex: KenkiPrepTex; dirX: number };
   /** research/BRAWLER_PHANTOM.md §16-8: 拳鬼が近接(打撃・技)で食らった最後の時刻(gameTime・gameStore.gatePhantomHit が打つ)。制御が技ポイント+1に使う。 */
   gpMeleeHurtAt?: number;
+  /**
+   * research/BRAWLER_PHANTOM.md §16-10(レバーガード): 拳鬼の「レバー」=その tick に頭脳が決めた歩く向き(長さ1)。
+   * 制御(phantomTick)が毎 tick 書く。動作の最中(段・技・予備動作・ステップ・跳びかかり・秘奥義・押されている最中)・固まり・歩いていない時は未設定
+   * =レバーガードは張れない。被弾の関所(gameStore.gatePhantomHit)が読む。
+   */
+  gpLeverX?: number;
+  gpLeverY?: number;
+  /** §16-10: 拳鬼がレバーガードで受けた最後の時刻(gameTime・関所が打つ)と、その攻撃の進む向き(長さ1=押される向き)。制御が小さい押し・絵・音に使う。 */
+  gpLeverGuardAt?: number;
+  gpLeverGuardDirX?: number;
+  gpLeverGuardDirY?: number;
   /** 格闘の幻影が撃った気功(1発まで・描画も読む)。x/y=今の位置、traveled=飛んだ距離。 */
   /** melee=台本(2・3)の締めの気功(近接の打撃と同じ扱いで当てる=プレイヤーの被弾無敵に吸われない・§16-8)。 */
   gpKiko?: { id: string; x: number; y: number; dirX: number; dirY: number; traveled: number; createdAt: number; melee?: boolean };

@@ -12,6 +12,9 @@ import {
 } from './brawler';
 import { HUMAN_REACTION_MS } from './bossSkeleton';
 import { kenkiLeapChance } from './kenkiLeap';
+import {
+  createKenkiRetreatMind, kenkiRetreating, kenkiRetreatReady, kenkiRetreatMeleeDecision, kenkiRetreatStart, kenkiRetreatMs, type KenkiRetreatMind,
+} from './kenkiRetreat';
 
 /** 連続が切れてから次の連続までの息継ぎ(ms・叩き台)。 */
 export const PB_BREATH_MIN_MS = 300;
@@ -126,7 +129,7 @@ export const PB_HOLD_MIN_MS = 200;
 export const PB_HOLD_MAX_MS = 500;
 
 /** 頭脳の持ち越し(PhantomTickState に置く)。 */
-export interface PhantomBrawlerMind {
+export interface PhantomBrawlerMind extends KenkiRetreatMind { // 後ろへ下がる歩き(レバーガード・§16-10)の持ち越しも同じ箱
   /** 次の連続を始めてよい時刻(息継ぎ)。 */
   nextStringAt: number;
   /** 次に構えてよい時刻。 */
@@ -197,6 +200,7 @@ export const createPhantomBrawlerMind = (): PhantomBrawlerMind => ({
   secretPlan: false, lastSecretAt: -Infinity, secretLaunched: false, lastSeenCommitAt: 0, wasBusy: false,
   approachBeatAt: 0, jumpAtPx: null, heldThisTry: false, holdUntil: 0, lastKickAt: -Infinity, lastKikoAt: -Infinity,
   script: null, lastScriptId: null, approachKick: false, leapForSecret: false, landedStartAt: -1, breathOwed: false, undo: null,
+  ...createKenkiRetreatMind(),
 });
 
 const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
@@ -244,6 +248,8 @@ export type PhantomBrawlerAction =
   | { kind: 'step'; dirX: number; dirY: number }
   /** 跳びかかり(ボス技・research/BRAWLER_PHANTOM.md §15)。 */
   | { kind: 'leap' }
+  /** 後ろへ下がる歩きを始めた(レバーガード・§16-10)。歩く向きは制御(phantomTick)が mind から引く=ここは台本の打ち切りの合図だけ。 */
+  | { kind: 'retreat' }
   | null;
 
 export interface PhantomBrawlerInput {
@@ -264,8 +270,8 @@ export interface PhantomBrawlerInput {
   /** 人格の癖。 */
   counterChance: number;
   meleeBias: number;
-  /** 弾への対処(この tick で実行すべきもの)。返す=構え・避ける=ステップ(向き)。 */
-  bullet: { kind: 'counter' } | { kind: 'dodge'; dirX: number; dirY: number } | null;
+  /** 弾への対処(この tick で実行すべきもの)。返す=構え・避ける=ステップ(向き)・下がってガード=弾の飛んできた向きへ下がる(§16-10)。 */
+  bullet: { kind: 'counter' } | { kind: 'dodge'; dirX: number; dirY: number } | { kind: 'retreat'; dirX: number; dirY: number } | null;
   rand: () => number;
   /**
    * 跳びかかり(§15): 使える場面か(距離・クールダウン)と、撃たれ続けているか。未指定=使わない。
@@ -292,13 +298,16 @@ export const decidePhantomBrawler = (i: PhantomBrawlerInput, m: PhantomBrawlerMi
   m.undo = null;
   const act = decideInner(i, m);
   // 台本の途中に構え/ステップが入った=台本は打ち切り(人がやっても崩れたら組み直す・§16-7)。
-  if (act && (act.kind === 'step' || (act.kind === 'tech' && act.tech === 'guard'))) pbInterruptScript(m);
+  // 下がり(レバーガード・§16-10)も同じ(下がっている間は攻めない)。
+  if (act && (act.kind === 'step' || act.kind === 'retreat' || (act.kind === 'tech' && act.tech === 'guard'))) pbInterruptScript(m);
   return act;
 };
 const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBrawlerAction => {
   const { s, t } = i;
   if (s.secret) { m.secretPlan = false; m.secretLaunched = false; return null; }
   if (isBrawlerGuardingAt(s, t)) return null;
+  // 後ろへ下がっている間(レバーガード・§16-10)は攻めない・他の手も出さない(短い=300〜500ms)。
+  if (kenkiRetreating(m, t)) return null;
   const idle = s.phase === 'idle';
   // 台本が終わった後の最初の待機で息継ぎを引く(台本と台本の間に必ず入る)。
   if (idle && m.breathOwed) {
@@ -309,6 +318,11 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
   // 1 守り(弾): 返す=構え(ポイントがあれば)/避ける=ステップ(待機の時だけ)。
   if (i.bullet?.kind === 'counter' && t >= m.guardReadyAt && canTech(i, 'guard')) return { kind: 'tech', tech: 'guard' };
   if (i.bullet?.kind === 'dodge' && idle) return { kind: 'step', dirX: i.bullet.dirX, dirY: i.bullet.dirY };
+  // 3つ目の手(§16-10): 弾の飛んできた向きへ下がってガード(待機の時だけ・間隔が明けている時だけ=亀にしない)。
+  if (i.bullet?.kind === 'retreat' && idle && kenkiRetreatReady(m, t)) {
+    kenkiRetreatStart(m, t, kenkiRetreatMs(i.rand()), { x: i.bullet.dirX, y: i.bullet.dirY });
+    return { kind: 'retreat' };
+  }
 
   // 1 守り(近接の読み): 間合いの内で、予測した当たりが反応の下限の後〜構えの尺の内に来るなら、人格の確率で構える。
   const guardRange = i.reach + i.playerReach + 20;
@@ -324,6 +338,15 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
       m.lastPressureRollAt = t;
       if (i.rand() < i.counterChance * PB_PRESSURE_GUARD_K) return { kind: 'tech', tech: 'guard' };
     }
+  }
+
+  // 1' 守り(下がってガード・§16-10): 上で構えを出さなかった/出せなかった(ポイント不足・クールダウン)時、予測した当たりが
+  //   反応の下限の後〜1回の下がりの内に来るなら、人格の確率で後ろへ下がる(プレイヤーから離れる向き)。待機の時だけ・間隔が明けている時だけ。
+  if (!m.secretPlan) {
+    const ms = kenkiRetreatMeleeDecision(m, {
+      t, idle, inRange: i.edgeDist <= guardRange, predictedAt: predictNextStrikeAt(m.strikeTimes), counterChance: i.counterChance, rand: i.rand,
+    });
+    if (ms !== null) { kenkiRetreatStart(m, t, ms, null); return { kind: 'retreat' }; }
   }
 
   // 2 秘奥義: 台本6(§16-3)の跳びかかりの着地の後だけ狙う(pbSecretAfterLeap が secretPlan を立てる)。
