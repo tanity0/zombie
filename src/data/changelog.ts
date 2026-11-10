@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5433', items: [
+    '宙に浮いた敵を近接で殴ると、自分も跳び上がって追いかける。殴るたびに空中で小さく弾み、高く落ちるほど着地が重い',
+  ] },
   { version: '0.25.5432', items: [
     '秘奥義の間は、画面の中の敵が止まる。ボスは技を溜めている時だけ動く',
   ] },
