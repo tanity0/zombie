@@ -19,9 +19,10 @@ export interface PauseMapData {
 }
 
 const SIZE = 300; // バッキングの高さ(縦持ちは正方形)。CSSで箱いっぱいに伸ばす。
-// PC の横長は右の列の幅いっぱいの横長の箱(research/PC_SUPPORT.md・正方形のままだと 720px で約130px しか無く、見出しの「DEPTH —」も落ちていた)。
-// 縮尺は縦(短い辺)で決める=横に広がった分は外の輪の弧が見えるだけ(作戦室の地図と同じ横長の構図)。
-const LANDSCAPE_ASPECT = 2.5;
+// PC の横長は少し横長の箱(research/PC_SUPPORT.md・正方形のままだと 720px で約130px しか無く、見出しの「DEPTH —」も落ちていた)。
+// 縮尺は縦(短い辺)で決める=横に広がった分は外の輪の弧が見えるだけ。比は 1.6:1(2.5:1 は両側の暗い空き地が広すぎた=見た目の監査)。
+// 高さは窓の 23%(1280×720 で約166px・幅 約265px)=右の列の中身が送らずに収まる高さ。
+const LANDSCAPE_ASPECT = 1.6;
 const AMBER = '#ffb340', AMBER_HI = '#ffd28a';
 const DETOUR = '#9fdcea'; // 寄り道の点(青白=琥珀の脅威・白の自分/拠点と色で分かれる)
 const GROUND = '#07060d'; // 地の色(--ds-bg と同じ)。記号の縁取りに使う
@@ -156,9 +157,9 @@ export const PauseMap: React.FC<{ data: PauseMapData }> = ({ data }) => {
       className="ds-map"
       style={{
         // 高さは画面の 18%(110〜240px)で止める=小さい端末(375×667)で右列が溢れない。幅は高さに合わせた正方形(左寄せ)。
-        // PC の横長は右の列の幅いっぱい・高さは幅に合わせた横長(バッキングと同じ比=輪は真円のまま)。
+        // PC の横長は高さを窓の 23% にして、幅はバッキングと同じ比(輪は真円のまま)。包みの拡大(--hud-s)で割る=二重に効かせない。
         ...(landscape
-          ? { width: '100%', height: 'auto', aspectRatio: `${LANDSCAPE_ASPECT} / 1`, margin: 0, alignSelf: 'stretch' }
+          ? { height: 'calc(23vh / var(--hud-s, 1))', width: 'auto', aspectRatio: `${LANDSCAPE_ASPECT} / 1`, margin: 0, alignSelf: 'flex-start' }
           : { height: 'clamp(110px, 18vh, 240px)', width: 'auto', aspectRatio: '1 / 1', margin: 0,
             // 親が縦並びで子を横いっぱいに伸ばすので、伸ばさない(伸びると aspectRatio が効かず輪が楕円になっていた)。
             alignSelf: 'flex-start' }),

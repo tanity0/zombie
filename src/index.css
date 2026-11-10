@@ -182,11 +182,12 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
     0%   { transform: scale(1.6); filter: brightness(1.8); }
     100% { transform: scale(1); filter: brightness(1); }
   }
-  /* ショップの中の軍人の返事(ShopMenu・「軍人の同行」の行の下)。下から慣性で浮いて、少し行き過ぎて止まる。 */
-  .follow-reply-in { animation: follow-reply-in 420ms linear both; }
+  /* ショップの中の軍人の返事(ShopMenu・「軍人の同行」の行の下)。下から 20px 浮く。動き出しは短く加速し、長く減速して止まる
+     (行き過ぎは付けない=2px の行き過ぎは目に見えなかった)。 */
+  .follow-reply-in { animation: follow-reply-in 440ms cubic-bezier(0.3, 0.05, 0.2, 1) both; }
   @keyframes follow-reply-in {
-    0%   { opacity: 0; transform: translateY(10px); animation-timing-function: cubic-bezier(0.16, 0.85, 0.3, 1); }
-    60%  { opacity: 1; transform: translateY(-2px); animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
+    0%   { opacity: 0; transform: translateY(20px); }
+    45%  { opacity: 1; }
     100% { opacity: 1; transform: translateY(0); }
   }
   /* 中央寄せのHUD文字(プレイ時間など)用: 両サイドへフェードアウトする黒背景(透明感あり)・枠なし。 */
@@ -864,14 +865,17 @@ html .ds-top .ds-top-big { font-family: "Rajdhani", var(--uf-jp), sans-serif !im
   /* PC の拡大(--hud-s=1.25/1.5)の中でも端末px で4px周期を保つ(割らないと 5/6px 周期でモアレ=クリエイティブ監査 #7)。スマホは未定義=1。 */
   background: repeating-linear-gradient(0deg, transparent 0 calc(3px / var(--hud-s, 1)), rgba(255, 255, 255, 0.012) calc(3px / var(--hud-s, 1)) calc(4px / var(--hud-s, 1)));
 }
+/* 作戦室の地図の外の見出し(横長の時だけ出す。縦持ちは地図の中の札が同じことを言う=出さない)。 */
+.ds-glabel.ds-glabel-sector { display: none; }
 /* PC横長のホーム(段3-2): 2列の上辺を揃える(右列の最初の見出しの上余白を消してマップの上端に合わせる)/
    入りの順は左列と右列を並走(出撃が右列の後に来て目が左右を往復しない=クリエイティブ監査 #2/#11)/ マウスの反応(#12)。 */
 @media (orientation: landscape) {
   .ds-home-rows > .ds-glabel:first-child { margin-top: 0; }
   .ds-home .ds-map { margin-top: 0; }
-  /* 作戦室の地図(DsStoryMap): 横長では箱が原画とほぼ同じ比になり SECTOR の札が絵に重なる → 札の帯(22px)を箱の上に足す。
-     絵(svg)は DsStoryMap 側で帯の下へ置く。高さの式は DsStoryMap の landscape:!h-[…] と同じ+22px(こちらが詳細度で勝つ)。 */
-  .ds-home .ds-map { height: calc(clamp(120px, calc(100svh / var(--hud-s, 1) - 250px), 275px) + 22px) !important; }
+  /* 作戦室の地図(DsStoryMap): 横長では箱が原画とほぼ同じ比になり、中の SECTOR の札が絵に重なる。
+     → 中の札は出さず、箱の外の上に右の列の「PREP ── 準備」と同じ書式の見出し(.ds-glabel-sector)を出して高さを揃える。 */
+  .ds-home .ds-map .ds-map-tag { display: none; }
+  .ds-home .ds-glabel.ds-glabel-sector { display: flex; margin-top: 0; }
   .ds-home .ds-sortie.menu-item-in { animation-delay: 100ms !important; }
 }
 .ds-sortie { transition: filter 160ms cubic-bezier(.2,.7,.3,1), box-shadow 160ms cubic-bezier(.2,.7,.3,1); }

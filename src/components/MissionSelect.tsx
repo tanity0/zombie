@@ -114,7 +114,7 @@ import NoBounceScroller from './NoBounceScroller';
 import { nextOperationStage } from '../utils/dsHome';
 import { reportTestScreen, type TestScreenId } from '../utils/testBridge';
 import { getBloomEnabled, setBloomEnabled } from '../config/graphics';
-import { useHudHintsEnabled, setHudHintsEnabled, useWindowLandscape } from '../utils/hudHints'; // ゲーム中のボタン札の表示/非表示(research/PC_SUPPORT.md §14-7)
+import { useHudHintsEnabled, setHudHintsEnabled, useWindowLandscape, usePadKindActive } from '../utils/hudHints'; // ゲーム中のボタン札の表示/非表示(research/PC_SUPPORT.md §14-7)
 import { subWeaponDisplayName, useGameStore, getCarriedEquipId, PLAYER_HITBOX, type GachaPullResult } from '../store/gameStore';
 import { equipmentById, equipIconName, hasEquipIcon } from '../data/equipment';
 import { AVATARS, AVATAR_IDS, type AvatarId } from '../data/avatars';
@@ -544,6 +544,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
   // 小窓のポータル先: PC の拡大の包みの中(包みの外=body)。fixed の基準も包み=ゲームの枠になる(段3-2 品質監査 A-2)。
   const portalRoot = useHudPortalRoot();
   const playDevice = usePlayDevice(); // 資料室の操作記録も PC は今手にある物の言葉で(§11-6)
+  const padKind = usePadKindActive() || 'xbox'; // パッドの説明文に差し込む刻印の系統(系統が変わった時も描き直す)
   const [screen, setScreen] = useState<Screen>(initialScreen === 'bossrush' ? { name: 'bossRush' } : { name: 'home' });
   // 年表の実績(社長指示2026-10-14): 拠点で画面が変わるたびに達成を見る(強化・購入・ガチャの直後を拾う。初回だけ書く=軽い)。
   useEffect(() => { syncFeatChronicle(); }, [screen.name]);
@@ -843,6 +844,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
           </div>
           <div className="contents landscape:my-auto landscape:flex landscape:min-h-0 landscape:items-start landscape:gap-x-14">
             <div className="contents landscape:flex landscape:min-w-0 landscape:flex-[58] landscape:flex-col">
+              {/* 横長の時だけ: 地図の見出しを箱の外へ(右の列の「PREP ── 準備」と同じ書式・同じ高さ)。縦持ちは地図の中の札のまま=これは出ない。 */}
+              <div className="ds-glabel ds-glabel-sector menu-item-in" style={{ animationDelay: '25ms' }}>SECTOR ── {nextStage?.locationTitle ?? '—'}</div>
               {showDay && <div className="ds-deco menu-item-in" style={{ animationDelay: '25ms' }}>
                 <span>DAY {nextStage.day}</span>
               </div>}
@@ -1522,8 +1525,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                                       <span className="block truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span>
                                       {/* 社長指示2026-09-05「装備欄の武器にも説明入れて。スキルとかと同じく」:
                                           開発施設のサブ解放リストと同じ見せ方(名前の下に小さい1行)。 */}
-                                      {weaponDescription(key, playDevice) && (
-                                        <span className="block text-[10px] leading-snug text-white/50">{weaponDescription(key, playDevice)}</span>
+                                      {weaponDescription(key, playDevice, padKind) && (
+                                        <span className="block text-[10px] leading-snug text-white/50">{weaponDescription(key, playDevice, padKind)}</span>
                                       )}
                                     </span>
                                     {/* クリエイティブ監査第2回・第2手 B-8: 「✓ 装備中」を琥珀の枡(PixelIcon 'check'+文字)へ。 */}
@@ -1572,7 +1575,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                             (一時停止の部隊情報と同じ規則)。 */}
                         {(() => {
                           const cls = CHARACTER_CLASSES.find(c => c.skillKey === k);
-                          const b = cls ? cls.skillDesc : subWeaponBlurb(k, playDevice);
+                          const b = cls ? cls.skillDesc : subWeaponBlurb(k, playDevice, padKind);
                           return b && b !== '未解放' ? <span className="block text-[10px] leading-snug text-white/50">{b}</span> : null;
                         })()}
                       </span>
@@ -2835,6 +2838,7 @@ const SUB_BOSS_UNLOCK_KEYS = bossUnlockSubKeys();
 
 const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const playDevice = usePlayDevice(); // 説明文の操作の言葉を今手にある物に合わせる(research/PC_SUPPORT.md §11-6)
+  const padKind = usePadKindActive() || 'xbox'; // パッドの説明文に差し込む刻印の系統
   const [department, setDepartment] = useState<'guns' | 'subs' | 'skills'>('guns');
   const [shelfCategory, setShelfCategory] = useState<SlotCategory>('handgun');
   // v0.25.3187: 陳列解放の正本を purchasedSubLevels(永続)へ。旧 unlockedShopSkillCards は
@@ -2899,7 +2903,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 if (spendGold(cost)) { playSfx('ui-select'); setPurchasedSubLevel(skillKey, Math.min(3, level + 1)); }
               }}
               className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${maxed ? 'is-on' : ''} ${cantPay ? 'opacity-60' : ''}`}>
-              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">{level === 0 ? subWeaponBlurb(skillKey, playDevice) : `商人にLv${Math.min(3, level + 1)}が並ぶようになる`}</span></span>
+              <span className="min-w-0"><span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(skillKey)}</span><span className="block text-[11px] text-white/50">{level === 0 ? subWeaponBlurb(skillKey, playDevice, padKind) : `商人にLv${Math.min(3, level + 1)}が並ぶようになる`}</span></span>
               <span className={`shrink-0 text-[10px] font-semibold tabular-nums ${maxed ? 'text-white/45' : cantPay ? 'text-rose-300' : 'text-amber-200'}`}>{maxed ? 'MAX' : `${cost}G`}</span>
             </button>
           );
@@ -2934,7 +2938,7 @@ const WeaponDev: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   }}
                   className={`ff7r-fade-right flex items-center justify-between gap-2 rounded-none px-3 py-2 text-left text-white transition-[filter] active:brightness-110 ${cantPayGun ? 'opacity-60' : ''}`}>
                   {COMMAND_UI_ENABLED && <span className="development-art"><img src={spritePath(weaponIconName(key))} alt="" draggable={false} loading="lazy" /></span>}
-                  <span className="min-w-0"><span className="block text-[11px] text-amber-200/75 mb-2">{GUN_CATEGORY_LABEL[cat]} · Tier {tier}</span><span className="block truncate text-[13px] font-semibold">{weaponDisplayName(key)}</span><span className="block text-[12px] leading-relaxed text-white/60 mt-2">{weaponDescription(key, playDevice)}</span></span>
+                  <span className="min-w-0"><span className="block text-[11px] text-amber-200/75 mb-2">{GUN_CATEGORY_LABEL[cat]} · Tier {tier}</span><span className="block truncate text-[13px] font-semibold">{weaponDisplayName(key)}</span><span className="block text-[12px] leading-relaxed text-white/60 mt-2">{weaponDescription(key, playDevice, padKind)}</span></span>
                   {/* クリエイティブ監査第2回・第2手 B-8: 「資金不足」小文字は消し、価格の色だけで伝える(B-6と同じ規則)。 */}
                   <span className={`development-price shrink-0 text-[10px] font-semibold tabular-nums ${cantPayGun ? 'ui-danger-text' : 'ui-acc-text'}`}>{GUN_SLOT_PURCHASE_COST}G{COMMAND_UI_ENABLED && !cantPayGun && <small>開発する</small>}</span>
                 </button>

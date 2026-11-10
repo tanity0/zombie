@@ -7,6 +7,8 @@ import { useSyncExternalStore } from 'react';
 import { currentPadKind, currentPointerKind, isKeySeen, isPadActive, subscribePlayDevice, type PadKind, type PointerKind } from './inputDevice';
 
 export type HudHintStyle = 'key' | 'pad' | 'padps' | 'padnin';
+/** パッドの系統 → 札の種類(Xbox 系 / PS 系 / 任天堂系)。 */
+export const padStyleOf = (padKind: PadKind): HudHintStyle => (padKind === 'ps' ? 'padps' : padKind === 'nin' ? 'padnin' : 'pad');
 
 /**
  * 出す札の種類。**横長の時だけ**(CLAUDE.md「PC版の作業はスマホを1pxも動かさない」=縦のスマホにキーボード/パッドを繋いでも出さない。
@@ -15,7 +17,7 @@ export type HudHintStyle = 'key' | 'pad' | 'padps' | 'padnin';
  */
 export const hudHintStyle = (padActive: boolean, padKind: PadKind, pointerKind: PointerKind, keySeen: boolean, landscape: boolean): HudHintStyle | null => {
   if (!landscape) return null;
-  if (padActive) return padKind === 'ps' ? 'padps' : padKind === 'nin' ? 'padnin' : 'pad';
+  if (padActive) return padStyleOf(padKind);
   if (pointerKind === 'mouse' || keySeen) return 'key';
   return null;
 };
@@ -45,14 +47,24 @@ export const hudGlyph = (style: HudHintStyle, action: HudAction, hasMouse: boole
   return g[action];
 };
 /**
- * 一時停止の「〜でも再開」の一行(PauseMenu)。今遊んでいる機器の言葉で。
- * パッド=一時停止を開いたボタン(Xbox の Menu・PS の OPTIONS・任天堂系の +)/ キーボードのある端末=ESC / P / それ以外(スマホ)=出さない。
- * パッドでも縦のスマホ(細かいポインタが無く縦長)には出さない=スマホの画面は1pxも動かさない(CLAUDE.md)。
+ * 説明文の中の {press}(主ボタン=指)・{flick}(はじく)を、そのパッドの系統の札の字に置き換える(武器・サブウェポンの説明)。
+ * 字の出どころは HUD の札と同じ hudGlyph=文の側で系統を分岐しない(Xbox 系 A/B・PS 系 ×/○・任天堂系 B/A)。
  */
-export const pauseResumeHint = (padActive: boolean, padKind: PadKind, finePointer: boolean, landscape: boolean): string | null => {
-  if (padActive && (finePointer || landscape)) return padKind === 'ps' ? 'OPTIONS でも再開' : padKind === 'nin' ? '+ ボタンでも再開' : 'メニューボタンでも再開';
-  return finePointer ? 'ESC / P でも再開' : null;
-};
+export const fillPadGlyphs = (text: string, padKind: PadKind): string =>
+  text.replace(/\{(press|flick)\}/g, (_m, a: 'press' | 'flick') => String(hudGlyph(padStyleOf(padKind), a, false)));
+
+/**
+ * 一時停止の「〜でも再開」の一行(PauseMenu)。キーボードのある端末だけ ESC / P。
+ * パッドで遊んでいる間は出さない(「続ける」の右の札=pauseResumePadStyle が言っている)。スマホも出さない。
+ */
+export const pauseResumeHint = (padActive: boolean, finePointer: boolean): string | null =>
+  (!padActive && finePointer ? 'ESC / P でも再開' : null);
+/**
+ * 一時停止の「続ける」の右に出すパッドの札の種類(一時停止のボタン=三本線・任天堂系は +)。パッドで遊んでいない時は null。
+ * 縦のスマホ(細かいポインタが無く縦長)にはパッドを繋いでも出さない=スマホの画面は1pxも動かさない(CLAUDE.md)。
+ */
+export const pauseResumePadStyle = (padKind: PadKind | '', finePointer: boolean, landscape: boolean): HudHintStyle | null =>
+  (padKind !== '' && (finePointer || landscape) ? padStyleOf(padKind) : null);
 /** React から読む: パッドを触っているか+系統(切り替わった時だけ再描画)。'' = パッドではない。 */
 export const usePadKindActive = (): PadKind | '' =>
   useSyncExternalStore(subscribePlayDevice, () => (isPadActive() ? currentPadKind() : ''), () => '');

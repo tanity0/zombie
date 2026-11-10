@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hudHintStyle, hudGlyph, hudGunSlotKey, pauseResumeHint } from './hudHints';
+import { hudHintStyle, hudGlyph, hudGunSlotKey, pauseResumeHint, pauseResumePadStyle, fillPadGlyphs, padStyleOf } from './hudHints';
 
 describe('hudHintStyle(ゲーム中のボタン札を出す種類・research/PC_SUPPORT.md §14-1)', () => {
   it('縦の画面(スマホ)は、キーやパッドを繋いでも出さない', () => {
@@ -48,18 +48,38 @@ describe('hudGlyph(札の字)', () => {
   });
 });
 
-describe('pauseResumeHint(一時停止の「〜でも再開」・今遊んでいる機器の言葉)', () => {
-  it('スマホ(細かいポインタ無し・縦)は出さない。パッドを繋いでいても縦なら出さない(スマホの画面を動かさない)', () => {
-    expect(pauseResumeHint(false, 'xbox', false, false)).toBeNull();
-    expect(pauseResumeHint(true, 'xbox', false, false)).toBeNull();
+describe('一時停止の再開の案内(今遊んでいる機器で)', () => {
+  it('スマホ(細かいポインタ無し)は下の1行を出さない', () => {
+    expect(pauseResumeHint(false, false)).toBeNull();
+    expect(pauseResumeHint(true, false)).toBeNull();
   });
-  it('キーボードのある端末は ESC / P(今どおり)', () => {
-    expect(pauseResumeHint(false, 'xbox', true, true)).toBe('ESC / P でも再開');
+  it('キーボードのある端末は ESC / P(今どおり)。パッドで遊んでいる間は出さない(札が言っている)', () => {
+    expect(pauseResumeHint(false, true)).toBe('ESC / P でも再開');
+    expect(pauseResumeHint(true, true)).toBeNull();
   });
-  it('パッドで遊んでいる間は、一時停止を開いたボタンの名前(系統ごと)。ESC / P は出さない', () => {
-    expect(pauseResumeHint(true, 'xbox', true, true)).toBe('メニューボタンでも再開');
-    expect(pauseResumeHint(true, 'ps', true, true)).toBe('OPTIONS でも再開');
-    expect(pauseResumeHint(true, 'nin', true, true)).toBe('+ ボタンでも再開');
-    expect(pauseResumeHint(true, 'xbox', false, true)).toBe('メニューボタンでも再開'); // タブレットの横持ち+パッド
+  it('パッドの時は「続ける」の右に系統ごとの札。縦のスマホ(細かいポインタ無し・縦)には繋いでいても出さない', () => {
+    expect(pauseResumePadStyle('', true, true)).toBeNull();
+    expect(pauseResumePadStyle('xbox', true, true)).toBe('pad');
+    expect(pauseResumePadStyle('ps', true, true)).toBe('padps');
+    expect(pauseResumePadStyle('nin', false, true)).toBe('padnin'); // タブレットの横持ち+パッド
+    expect(pauseResumePadStyle('xbox', false, false)).toBeNull();
+    // 札の字=一時停止のボタン(三本線・任天堂系は +)
+    expect(hudGlyph('pad', 'pause', false)).toBe('menu');
+    expect(hudGlyph('padnin', 'pause', false)).toBe('plus');
+  });
+});
+
+describe('fillPadGlyphs(説明文にパッドの刻印を差し込む・字は HUD の札と同じ)', () => {
+  it('{press}/{flick} を系統ごとの字にする(任天堂系は実際に割り当たっている刻印=下が B・右が A)', () => {
+    const t = '{press} を離す。{flick} ではじく';
+    expect(fillPadGlyphs(t, 'xbox')).toBe('A を離す。B ではじく');
+    expect(fillPadGlyphs(t, 'ps')).toBe('× を離す。○ ではじく');
+    expect(fillPadGlyphs(t, 'nin')).toBe('B を離す。A ではじく');
+  });
+  it('字は hudGlyph と同じ(札と食い違わない)', () => {
+    for (const k of ['xbox', 'ps', 'nin'] as const) {
+      expect(fillPadGlyphs('{press}', k)).toBe(hudGlyph(padStyleOf(k), 'press', false));
+      expect(fillPadGlyphs('{flick}', k)).toBe(hudGlyph(padStyleOf(k), 'flick', false));
+    }
   });
 });

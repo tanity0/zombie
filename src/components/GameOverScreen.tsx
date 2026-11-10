@@ -32,7 +32,7 @@ import {
   wallAchievementHeadline, metersToNextWall, rankLabel,
 } from '../utils/wallProgress';
 import DirectorResult from './DirectorResult';
-import ResultReach from './ResultReach';
+import ResultReach, { ResultReachHeadline } from './ResultReach';
 import {
   endGhostOnlineRun, ghostGoldMultiplier, sendGhostFeedback, uploadGhostSlots,
 } from '../utils/ghostOnline';
@@ -667,6 +667,15 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     }
   };
 
+  // 結果の名(縦持ち=左の列の頭/横長=2列の上の通しの行。同じ物を2か所に置き、片方だけ見せる)。
+  const resultTitle = (extra: string) => (
+    <h2 className={`text-2xl font-semibold tracking-tight gt-emboss ui-head-serif ${won || withdraw ? 'text-amber-300' : 'text-white'}${extra}`}>
+      {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
+    </h2>
+  );
+  // 到達譜(と見出し「〜に到達」)を出す回か。
+  const reachShown = !resultClassicMode && !isBenchmark && !hideDepthReview;
+
   return (
     <div
       // ★社長報告2026-08-26「リザルト画面がボタンのところが切れちゃってる。ギリギリ押せるって感じ」:
@@ -679,12 +688,15 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
       {/* 続き下矢印+縁バウンス殺し(UI監査2026-08-29でNoBounceScrollerを展開。リザルトは最長画面) */}
       <NoBounceScroller nav={{ 'data-nav-scroll': '' }} className="glass-panel command-panel max-h-[calc(100dvh/var(--hud-s,1)-24px)] w-full max-w-lg landscape:max-w-[880px] overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y no-scrollbar rounded-none pb-[env(safe-area-inset-bottom)]">
         {/* PC の横長(research/PC_SUPPORT.md): 1列のままだと 720px の高さで「獲得/所持」の行が下のボタンに隠れていた。
-            横長の時だけ2列に組む=左=見出しと到達譜/右=戦績・スコア・詳細・お金・ボタン。縦持ちはこの包みが素通し(今どおりの1列)。 */}
-        <div className="landscape:grid landscape:grid-cols-2 landscape:items-start">
-        <div className="px-4 pt-5 pb-2 text-center">
-          <h2 className={`text-2xl font-semibold tracking-tight gt-emboss ui-head-serif ${won || withdraw ? 'text-amber-300' : 'text-white'}`}>
-            {isBenchmark ? 'ベンチ結果' : won ? '任務達成' : withdraw ? '帰還' : '任務失敗'}
-          </h2>
+            横長の時だけ: 見出し(結果の名+「〜に到達」)を通しの行に置き、その下を2列に組む=左=到達譜/右=戦績・スコア・詳細・お金・ボタン。
+            右のボタンは左の列の下端に揃える(列を同じ高さに伸ばし、ボタンを列の底へ)。縦持ちはこの包みが素通し(今どおりの1列)。 */}
+        <div className="landscape:grid landscape:grid-cols-2">
+        <div className="hidden landscape:block landscape:col-span-2 px-4 pt-5 pb-4 text-center">
+          {resultTitle('')}
+          {reachShown && <div className="mt-2.5"><ResultReachHeadline dist={stats.maxDepthDist} rank={wallHighestRank} zoneIdx={stats.maxAreaReached} zoneNameOverride={labZoneName ?? undefined} /></div>}
+        </div>
+        <div className="px-4 pt-5 pb-2 text-center landscape:pt-0 landscape:pb-4">
+          {resultTitle(' landscape:hidden')}
           {/* PACING_PUZZLE.md §6.19 M42 / STORY_UI_SPEC.md追補1-6: 「任務クリア」の直下に日時/場所名/
               ミッション名を表示(追補1-6の表示順どおり)。勝利時・ステージ情報が引けた時だけ。 */}
           {won && stage && mission && (
@@ -752,8 +764,9 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   左=深さ(5区域)・右=七つの大罪(7段を常に全部並べる)。自己最高を金の⚑で残し、
                   最後に「次の一手」を1行だけ出す=次がやりたくなる理由をここに集約する。
                   昇格度(診断寄りの数字)は前面から外して「詳細▾」へ移した。 */}
-              {!isBenchmark && !hideDepthReview && (
+              {reachShown && (
                 <ResultReach
+                  splitHeadline
                   dist={stats.maxDepthDist}
                   rank={wallHighestRank}
                   bestRank={wallMeta.selfHighestRank}
@@ -771,7 +784,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
             </>
           )}
         </div>
-        <div className="px-4 pb-4 landscape:pt-5">
+        <div className="px-4 pb-4 landscape:flex landscape:flex-col landscape:pb-3">
           {benchmarkResult && (
             <div className={`mb-3 rounded-none border px-3 py-2 ${
               benchmarkResult.grade === 'PASS'
@@ -1219,7 +1232,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
               通常エンディング予約もこの経路に乗っているので変えない)。死亡/撤退/ベンチは従来どおり二択。 */}
           {/* ★アクションは sticky bottom で常時見える(UI監査2026-08-29 #5-A「固定するところは固定」。
               長いリザルトでも最下部まで送らずに押せる。下地グラデで流れてくる内容を沈める)。 */}
-          <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-1" style={{ background: 'linear-gradient(to top, rgba(11,11,18,0.97) 72%, rgba(11,11,18,0))' }}>
+          <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-1 landscape:mt-auto" style={{ background: 'linear-gradient(to top, rgba(11,11,18,0.97) 72%, rgba(11,11,18,0))' }}>
           {won ? (
             <button
               data-nav-default

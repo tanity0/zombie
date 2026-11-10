@@ -39,7 +39,29 @@ interface ResultReachProps {
   zoneNameOverride?: string;
   /** ステージ2(研究所): 「次の深さ」を測れない(社長指示2026-10-20「次の深さ の表示は 解析不可」)。 */
   nextDepthUnknown?: boolean;
+  /** PC の横長のリザルト: 見出し(「〜に到達」)を2列の上の通しの行へ出す(ResultReachHeadline)=ここでは横長の時だけ隠し、上の余白も詰める。縦持ちは今どおり。 */
+  splitHeadline?: boolean;
 }
+
+/** 見出し「◯◯のランクN ◯◯ に到達」+金の細線。到達譜の頭と、PC の横長のリザルトの通しの行が同じ物を使う。 */
+export const ResultReachHeadline: React.FC<Pick<ResultReachProps, 'dist' | 'rank' | 'zoneIdx' | 'zoneNameOverride'>> = ({ dist, rank, zoneIdx, zoneNameOverride }) => {
+  const cur = clampRank(rank);
+  const glow = digProgress(dist, rank);
+  const headline = zoneNameOverride
+    ? wallAchievementHeadline(zoneIdx, cur).replace(AREA_ZONE_NAMES[zoneIdx] ?? '', zoneNameOverride)
+    : wallAchievementHeadline(zoneIdx, cur);
+  return (
+    <>
+      <p className="text-[15px] font-semibold tracking-tight" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
+        <span className="text-white/95">{headline}</span>
+      </p>
+      <div
+        className="mx-auto mt-1 h-[2px] w-28"
+        style={{ background: `linear-gradient(90deg, transparent, rgba(255,215,0,${0.35 + glow * 0.65}), transparent)` }}
+      />
+    </>
+  );
+};
 
 const CUT_H = 244;      // 断面図の高さ(px)。縦持ち360pxで地層名が潰れない下限。
 const GAUGE_W = 38;     // 左の深度計の幅(px)
@@ -69,7 +91,7 @@ const POI_MARK: Record<PoiPin['kind'], { icon: string; color: string }> = {
 };
 
 const ResultReach: React.FC<ResultReachProps> = ({
-  dist, rank, bestRank, zoneIdx, end, at, history, pois = [], namedFoe, zoneNameOverride, nextDepthUnknown,
+  dist, rank, bestRank, zoneIdx, end, at, history, pois = [], namedFoe, zoneNameOverride, nextDepthUnknown, splitHeadline,
 }) => {
   // マウント後に一度だけ「掘り下がる」(0→実値へCSS transition・1回きり)。
   const [dug, setDug] = useState(false);
@@ -94,10 +116,6 @@ const ResultReach: React.FC<ResultReachProps> = ({
   const cores = buildCores(history, { dist, rank, end, at });
   const ranks = rankRungs(rank, bestRank);
   const goal = nextGoal(dist, rank);
-  const glow = digProgress(dist, rank);
-  const headline = zoneNameOverride
-    ? wallAchievementHeadline(zoneIdx, cur).replace(AREA_ZONE_NAMES[zoneIdx] ?? '', zoneNameOverride)
-    : wallAchievementHeadline(zoneIdx, cur);
   const deepest = cores.find(c => c.isDeepest);
   // 壁の幅。竪坑が少ないうちは**画面いっぱい(minWidth:100%)まで地層を伸ばし**、坑は右端から並べる。
   // 「初回は右寄りに立ち、増えるたび左へ押されていく」(社長指示v0.25.2335)= 左側は手つかずの岩のまま。
@@ -106,17 +124,13 @@ const ResultReach: React.FC<ResultReachProps> = ({
   const ticks = Array.from({ length: Math.floor(CUTAWAY_MAX / 2000) + 1 }, (_, i) => i * 2000);
 
   return (
-    <div className="mt-2.5">
-      <p className="text-[15px] font-semibold tracking-tight" style={{ fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }}>
-        <span className="text-white/95">{headline}</span>
-      </p>
-      <div
-        className="mx-auto mt-1 h-[2px] w-28"
-        style={{ background: `linear-gradient(90deg, transparent, rgba(255,215,0,${0.35 + glow * 0.65}), transparent)` }}
-      />
+    <div className={`mt-2.5${splitHeadline ? ' landscape:mt-0' : ''}`}>
+      <div className={splitHeadline ? 'landscape:hidden' : undefined}>
+        <ResultReachHeadline dist={dist} rank={rank} zoneIdx={zoneIdx} zoneNameOverride={zoneNameOverride} />
+      </div>
 
       {/* ================= 地質断面図 ================= */}
-      <div className="mt-3 flex text-left" style={{ height: CUT_H, background: '#050409' }}>
+      <div className={`mt-3 flex text-left${splitHeadline ? ' landscape:mt-0' : ''}`} style={{ height: CUT_H, background: '#050409' }}>
         {/* ---- 左: 固定の深度計(目盛 + 世界の目印) ---- */}
         <div className="relative shrink-0" style={{ width: GAUGE_W, background: '#08070D', borderRight: '1px solid rgba(255,255,255,.09)' }}>
           {ticks.map(t => (

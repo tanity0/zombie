@@ -11,9 +11,18 @@ describe('weaponDescription(機器ごとの説明)', () => {
   it('PC・パッドの文にはスマホの操作の言葉が無く、パッドには「クリック」も無い', () => {
     for (const k of keys) {
       expect(weaponDescription(k, 'mouse')).not.toMatch(/指|フリック|タップ/);
-      expect(weaponDescription(k, 'mouse')).toMatch(/クリック/);
-      expect(weaponDescription(k, 'pad')).not.toMatch(/指|フリック|タップ|クリック/);
+      expect(weaponDescription(k, 'mouse')).toMatch(/ボタンを離すと/);
+      expect(weaponDescription(k, 'pad')).not.toMatch(/指|フリック|タップ|クリック|ボタン|\{/);
     }
+  });
+  it('PC の文(クリックでもスペースでも同じ=「ボタン」)', () => {
+    expect(weaponDescription('glauncher-t2-alchemy', 'mouse')).toBe('命中した相手に金の石を付ける。当て続けるほど石が大きくなり、ボタンを離すと石の付いた敵がまとめて爆発する');
+    expect(weaponDescription('glauncher-t3-signal', 'mouse')).toBe('自動では撃たない。カーソルで狙いを定めてボタンを離すと、少し遅れてその地点へ空爆が落ちる');
+  });
+  it('パッドの文は系統ごとの刻印(HUD の札と同じ字)', () => {
+    expect(weaponDescription('glauncher-t2-alchemy', 'pad', 'xbox')).toContain('A を離すと、石の付いた敵がまとめて爆発する');
+    expect(weaponDescription('glauncher-t2-alchemy', 'pad', 'ps')).toContain('× を離すと、');
+    expect(weaponDescription('glauncher-t3-signal', 'pad', 'nin')).toBe('自動では撃たない。スティックで狙いを定めて B を離すと、少し遅れてその地点へ空爆が落ちる');
   });
   it('PC の文を持つ物は、パッドの文も必ず持つ', () => {
     expect(Object.keys(WEAPON_DESC_BY_DEVICE.pad).sort()).toEqual(Object.keys(WEAPON_DESC_BY_DEVICE.pc).sort());

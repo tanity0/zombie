@@ -50,7 +50,7 @@ import { getSelectedStageId } from '../data/progress';
 
 // the ONE 洋館［SUB］再訪(統合正本9.3): 保存槽(洋館)接近中だけ出す操作表示［投与する］。
 // 購読は boolean 1個(medicinePromptVisible・変化時のみ書かれる)=React再レンダ規律準拠の孤立小コンポーネント。
-// PC(キー・マウス・パッド)は主ボタンの離しでも押せる(utils/pcPress)。その時だけ、ボタンの頭に主ボタンの札(HUD の近接の枠と同じ字)を付ける。
+// PC(キー・マウス・パッド)は主ボタンの離しでも押せる(utils/pcPress)。その時だけ、ボタンの頭に主ボタンの札(HUD の近接の枠と同じ字)を付け、括弧は外す。
 // スマホ(縦)は札が null=DOM を足さない=今どおりのタップだけ。
 const MedicinePrompt: React.FC = () => {
   const visible = useGameStore(s => s.medicinePromptVisible);
@@ -68,8 +68,9 @@ const MedicinePrompt: React.FC = () => {
       className="absolute left-1/2 z-40 -translate-x-1/2 rounded-none border border-amber-300/60 bg-black/70 px-5 py-3 text-[14px] font-bold tracking-wide text-amber-100 shadow-lg backdrop-blur-sm active:bg-black/85"
       style={{ bottom: 'max(calc(env(safe-area-inset-bottom) + 132px), 148px)' }}
     >
+      {/* 札が出ている時(PC・パッド)は札が括弧の役=全角の括弧を外して「(札) 投与する」。スマホ(札なし)は今どおり「［投与する］」。 */}
       {hint && <HudKey key={hint} hint={hint} act="press" glyph={hudGlyph(hint, 'press', hasMouse)} className="hud-key--static" style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 8, marginTop: -2 }} />}
-      ［投与する］
+      {hint ? '投与する' : '［投与する］'}
     </button>
   );
 };

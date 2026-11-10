@@ -19,6 +19,15 @@ html.hudhint-idle .hud-key { opacity: 0.9; transition: opacity 700ms cubic-bezie
 html.hudhint-paused .hud-key { opacity: 0.2; }
 .hud-key[data-style="padps"] { font-family: "Hiragino Sans", system-ui, sans-serif; font-size: 9px; } /* ×/○/△ の字形を揃える */
 .hud-key--static { position: static; }
+/* メニューのボタンの右端に置く札(一時停止の「続ける」・パッドの時)。Enter の札(ff7r.tsx)と同じ置き場所・同じ白の枠。
+   HUD の濃さの切り替え(遊んでいる間は控えめ・一時停止中は沈める)には乗らない=いつも読める。 */
+html .hud-key.hud-key--menu,
+html.hudhint-idle .hud-key.hud-key--menu,
+html.hudhint-paused .hud-key.hud-key--menu {
+  right: 8px; top: 50%; transform: translateY(-50%);
+  opacity: 1; border-color: rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.85); /* 三本線・+ は細い絵=Enter の字より一段明るく(琥珀の面で沈まないように) */
+  text-shadow: none; filter: none;
+}
 .hud-key svg { display: block; }
 @keyframes hud-key-appear { from { opacity: 0; translate: 0 3px; } }
 

@@ -208,8 +208,12 @@ const SkillProcRows = ({ align }: { align: number }) => {
 type NpcLine = { name: string; text: string; until: number; portrait?: string; slow?: boolean };
 const portraitOf = (npc: NpcLine | null) => (npc ? NPC_PORTRAIT[npc.portrait ?? npc.name] : undefined);
 
-/** 会話の板1枚(立ち絵+名前+本文)。HUD の会話と、ショップの中の軍人の返事(ShopMenu)が同じ物を使う。 */
-export const NpcLinePill = ({ npc }: { npc: NpcLine }) => {
+/**
+ * 会話の板1枚(立ち絵+名前+本文)。HUD の会話と、ショップの中の軍人の返事(ShopMenu)が同じ物を使う。
+ * phraseWrap=句読点の所でだけ折る(語の途中「引き返しま/すからね。」で折らない)。幅に入り切らない時だけ途中でも折る。
+ * HUD の会話は今どおり(渡さない)=スマホの HUD は変えない。
+ */
+export const NpcLinePill = ({ npc, phraseWrap }: { npc: NpcLine; phraseWrap?: boolean }) => {
   // 話者の立ち絵(あれば)。portrait指定があれば名前より優先(例: 変異後グレンの頭部)。
   const portrait = portraitOf(npc);
   const portraitBase = portrait?.base;
@@ -246,7 +250,7 @@ export const NpcLinePill = ({ npc }: { npc: NpcLine }) => {
             )}
           </div>
         )}
-        <div className="self-center" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
+        <div className="self-center" style={phraseWrap ? { whiteSpace: 'normal', wordBreak: 'keep-all', overflowWrap: 'anywhere' } : { whiteSpace: 'normal', wordBreak: 'break-word' }}>
           {/* 会話は名前の後に一度改行(社長指示v0.25.2069・会話UI共通=OP射撃シーン側も同じ)。 */}
           <span className="block font-bold text-amber-300/95 gt-outline">{npc.name}</span>
           {npc.slow ? <SlowLine key={npc.until} text={npc.text} /> : <span className="text-white/90">{npc.text}</span>}

@@ -452,9 +452,11 @@ const ShopMenu: React.FC = () => {
               </span>
             </button>
             {askedFollow && followReply && (
-              // 立ち絵は板の上へはみ出す(会話UI共通)=その分だけ上を空ける。返事が入れ替わるたびに出直す。
-              <div ref={followReplyRef} key={followReply.text} className="follow-reply-in mt-5" aria-live="polite">
-                <NpcLinePill npc={followReply} />
+              // 立ち絵は板の上へはみ出す(会話UI共通)=その分だけ上を空け、下にも同じだけ空ける(次の見出しに貼り付かない)。
+              // 板の左端は上の行の金の線に揃える(行の枠1px+左余白12px)。返事が入れ替わるたびに出直す。
+              // 送りは下に 28px 残して止める=スクロールの続きの下矢印(下端から約20px)が板に重ならず、次の見出しも半端に覗かない。
+              <div ref={followReplyRef} key={followReply.text} className="follow-reply-in mt-5 mb-4 ml-[13px]" style={{ scrollMarginBottom: 28 }} aria-live="polite">
+                <NpcLinePill npc={followReply} phraseWrap />
               </div>
             )}
           </div>

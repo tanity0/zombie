@@ -4,7 +4,8 @@ import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 発射間�
 import { projectileHitCritChance } from './critPenalty';
 import { classifyProjectileDamageChannel, recordMeleeFromGun } from './botTelemetry';
 import { DEV_WEAPON_KEY } from './devTestKnobs';
-import type { PlayDevice } from './inputDevice';
+import type { PlayDevice, PadKind } from './inputDevice';
+import { fillPadGlyphs } from './hudHints';
 import { playEnemyDeath, playSfx } from '../audio/audioManager';
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { blastAnchorOf, aimEnemyDist2, pickNearestTarget, isCorpse, isLabCrawlerProxyType } from './enemyUtils';
@@ -578,22 +579,24 @@ const WEAPON_DESC: Record<string, string> = {
 
 // 機器ごとの説明(research/PC_SUPPORT.md §11-6・チュートリアルの pcLines/padLines と同じ考え方)。
 // 上の文が「指を離す」等のスマホの操作を書いている物だけ、マウス・キー(PC)とパッドの文を持つ。無い物は上の文(スマホの文は変えない)。
-// PC=主ボタン(クリック/スペース)を離す・はじく(右クリック)。パッド=下の面ボタン(決定ボタン)を離す・スティック。
+// PC=主ボタン(クリック・スペースのどちらでも=「ボタン」と書く)を離す。パッド=主ボタンの刻印を {press} に差し込む
+// (字は HUD の札と同じ hudHints.fillPadGlyphs=Xbox 系 A・PS 系 ×・任天堂系 B。文の側で系統を分岐しない)。
 const WEAPON_DESC_PC: Record<string, string> = {
-  'glauncher-t2-alchemy': '命中した相手に金の石を付ける。当て続けるほど石が大きくなり、クリックかスペースを離すと石の付いた敵がまとめて爆発する',
-  'glauncher-t3-signal': '自動では撃たない。カーソルで狙いを定め、クリックかスペースを離すと、少し遅れてその地点へ空爆が落ちる',
+  'glauncher-t2-alchemy': '命中した相手に金の石を付ける。当て続けるほど石が大きくなり、ボタンを離すと石の付いた敵がまとめて爆発する',
+  'glauncher-t3-signal': '自動では撃たない。カーソルで狙いを定めてボタンを離すと、少し遅れてその地点へ空爆が落ちる',
 };
 const WEAPON_DESC_PAD: Record<string, string> = {
-  'glauncher-t2-alchemy': '命中した相手に金の石を付ける。当て続けるほど石が大きくなり、決定ボタンを離すと石の付いた敵がまとめて爆発する',
-  'glauncher-t3-signal': '自動では撃たない。スティックで狙いを定め、決定ボタンを離すと、少し遅れてその地点へ空爆が落ちる',
+  'glauncher-t2-alchemy': '命中した相手に金の石を付ける。当て続けるほど石が大きくなり、{press} を離すと、石の付いた敵がまとめて爆発する',
+  'glauncher-t3-signal': '自動では撃たない。スティックで狙いを定めて {press} を離すと、少し遅れてその地点へ空爆が落ちる',
 };
 /** 機器ごとの文の台帳(テスト用。PC とパッドの両方を必ず持つ)。 */
 export const WEAPON_DESC_BY_DEVICE = { pc: WEAPON_DESC_PC, pad: WEAPON_DESC_PAD } as const;
 
-/** 装備欄に出す1行説明(未登録は空文字)。device=今遊んでいる機器(省略=スマホの文)。 */
-export const weaponDescription = (key: string | undefined | null, device: PlayDevice = 'touch'): string => {
+/** 装備欄に出す1行説明(未登録は空文字)。device=今遊んでいる機器(省略=スマホの文)。padKind=パッドの系統(刻印の字)。 */
+export const weaponDescription = (key: string | undefined | null, device: PlayDevice = 'touch', padKind: PadKind = 'xbox'): string => {
   if (!key) return '';
-  const byDevice = device === 'pad' ? (WEAPON_DESC_PAD[key] ?? WEAPON_DESC_PC[key]) : device === 'mouse' ? WEAPON_DESC_PC[key] : undefined;
+  if (device === 'pad' && WEAPON_DESC_PAD[key]) return fillPadGlyphs(WEAPON_DESC_PAD[key], padKind);
+  const byDevice = device === 'touch' ? undefined : WEAPON_DESC_PC[key];
   return byDevice ?? WEAPON_DESC[key] ?? '';
 };
 
