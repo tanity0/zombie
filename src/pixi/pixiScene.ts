@@ -363,6 +363,7 @@ import { HOSPITAL_FADE_MS, HOSPITAL_DISPLAY_H, hospitalRect } from '../world/hos
 import { ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryRect, ARMORY_SCRAP_COST } from '../world/armory';
 import { POLICE_FADE_MS, POLICE_DISPLAY_H, policeRect } from '../world/police';
 import { touchesFromBelow, rectsOverlap, TOUCH_SIDE_PAD } from '../world/obstacles';
+import { poiTouchEnvelope } from '../world/poiTouch';
 import {
   SHRINE_TEXTURE, SHRINE_DISPLAY_H, SHRINE_CRUMBLE_MS, SHRINE_CRUMBLE_TREMOR_FRAC, SHRINE_CIRCLE_RADIUS, SHRINE_CIRCLE_REVEAL_DIST, SHRINE_DWELL_MS, shrineCircleCenter, shrineMarkVisible,
 } from '../world/warlordShrine';
@@ -698,6 +699,7 @@ const tsNum = (key: string, def: number): number => {
   const n = v == null ? NaN : Number(v);
   return Number.isFinite(n) ? n : def;
 };
+const POI_TOUCH_FREEZE_MS = tsNum('poitouchfreeze', -1); // 触れた瞬間の絵の撮影用(負=無効)
 // PACING_PUZZLE.md §14-4-5(新死神・本体の表示スケール)。社長裁定2026-08-28「死神の大きさを今の
 // 2倍くらいにして。全部ね」=既定2(見た目のみ・当たり判定=hitboxは不変。CLAUDE.md「Visual vs.
 // hitbox」)。撃破escalationの追加個体も同じtype='reaper'なので全員に掛かる。使者(hangedman)と
@@ -5134,6 +5136,8 @@ export class PixiScene {
    */
   static rearmDrawErrorFlag(): void { PixiScene.enemyDrawErrLogged = false; }
   private baseSitesGfx = new Graphics(); // 拠点候補地サークル(地面・world座標。滞在で外周が満ちる)
+  // POIに触れた瞬間の手応え(社長指示2026-11-10): 建物の絵と同形の白い加算オーバーレイ(被弾時の hitFlash と同じ型)をPOIごとに1枚。描くだけ(触れ始めの検出・発火は store)。
+  private poiTouchFlash = new Map<string, Sprite>();
   private hospitalSprite = new Sprite(); // 廃病院の本体(足元アンカー・actorLayer で y-sort)
   private hospitalGfx = new Graphics(); // 病院サークル(地面・world座標。滞在で外周が満ちる)
   private hospitalShadow: BuildingShadowReq | null = null;
@@ -30626,6 +30630,39 @@ export class PixiScene {
     }
   }
 
+  // 触れた瞬間に建物が受け止める: 絵を奥(画面の上)へ数px沈めて慣性つきで戻し、同時に白(武器庫でスクラップ不足の時は赤寄り)の加算を80〜120msで抜く。
+  // 位置と光だけ(伸び縮み・傾きはしない)。呼び手が本体の texture/scale/position/zIndex/alpha を決め終えた後に呼ぶ。
+  private applyPoiTouchFx(id: string, sprite: Sprite, depth: number) {
+    let fl = this.poiTouchFlash.get(id);
+    const fx = useGameStore.getState().poiTouchFx[id];
+    const env = fx ? poiTouchEnvelope(POI_TOUCH_FREEZE_MS >= 0 ? POI_TOUCH_FREEZE_MS : Date.now() - fx.at) : null; // ?poitouchfreeze=ms: 撮影用に経過を固定
+    if (!env || (env.flash <= 0 && env.sink <= 0) || !sprite.visible) {
+      if (fl) fl.visible = false;
+      return;
+    }
+    sprite.position.y -= env.sink * depth;
+    if (!fl) {
+      fl = new Sprite();
+      fl.anchor.set(0.5, 1);
+      fl.blendMode = 'add';
+      // 暗い建物は自分自身を足しても光って見えない(撮影で確認)ので、形(α)だけ残して色を白一色に塗るフィルタを付ける。光っている110msの間だけ表示=負荷ほぼ無し。
+      fl.filters = [new ColorMatrixFilter()];
+      this.L.actorLayer.addChild(fl);
+      this.poiTouchFlash.set(id, fl);
+    }
+    fl.texture = sprite.texture;
+    fl.scale.copyFrom(sprite.scale);
+    fl.position.copyFrom(sprite.position);
+    fl.rotation = sprite.rotation;
+    fl.zIndex = sprite.zIndex + 0.01; // 本体の直前面(同じ足元Yの中で本体のすぐ上)
+    const flf = (fl.filters as ColorMatrixFilter[])[0];
+    const gg = fx!.red ? 0.28 : 1, bb = fx!.red ? 0.22 : 1; // 足りない時は赤寄り
+    // 色はα(形)からだけ作る(オフセットで塗ると透明な所まで白く塗れて四角になる=撮影で確認)。
+    flf.matrix = [0, 0, 0, 1, 0, 0, 0, 0, gg, 0, 0, 0, 0, bb, 0, 0, 0, 0, 1, 0];
+    fl.alpha = Math.min(1, env.flash * 0.8) * sprite.alpha;
+    fl.visible = env.flash > 0;
+  }
+
   // 廃病院(社長指示v0.25.2331): 通常ステージに1つ立つ建物。近づくとサークルが出て、3秒とどまると
   // ワクチンを入手し、建物ごとフェードアウトして消える。**描くだけ**(滞在判定/付与は store 側)。
   // 負荷 1/10: スプライト1枚 + サークル用 Graphics 1つ(近接時のみ描画)。強glowは足さない。
@@ -30670,6 +30707,7 @@ export class PixiScene {
     // 裏に回り込んだら透ける(木/城/プロップと同じ規格)。入手後のフェードを最後に掛ける。
     this.applyObstacleAlpha(this.hospitalSprite, footY);
     this.hospitalSprite.alpha *= fade;
+    this.applyPoiTouchFx('hospital', this.hospitalSprite, d);
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は存在の法則なので shadowFade へ分離
     // (alpha=位置由来のみ。地平線フェードとの二重掛けを避ける)。
     // ★検収差し戻し(F-1の横展開): hospitalSprite は applyObstacleAlpha(horizon×foreground)で
@@ -30728,6 +30766,7 @@ export class PixiScene {
     this.armorySprite.visible = true;
     this.applyObstacleAlpha(this.armorySprite, footY);
     this.armorySprite.alpha *= fade;
+    this.applyPoiTouchFx('armory', this.armorySprite, d);
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は shadowFade へ分離。
     // ★検収差し戻し(F-1の横展開): armorySprite は applyObstacleAlpha(horizon×foreground)。
     this.armoryShadow = {
@@ -30828,6 +30867,7 @@ export class PixiScene {
     this.policeSprite.visible = true;
     this.applyObstacleAlpha(this.policeSprite, footY);
     this.policeSprite.alpha *= fade;
+    this.applyPoiTouchFx('police', this.policeSprite, d);
     // §3-9-B v9裁定Q: fade(入手後の退場フェード)は shadowFade へ分離。
     // ★検収差し戻し(F-1の横展開): policeSprite は applyObstacleAlpha(horizon×foreground)。
     this.policeShadow = {
@@ -30991,6 +31031,7 @@ export class PixiScene {
       sp.visible = true;
       this.applyObstacleAlpha(sp, footY);
       sp.alpha *= fade;
+      this.applyPoiTouchFx(`shrine-${sh.slot}`, sp, d);
       this.shrineShadows.push({
         id: `shrine-${sh.slot}`,
         x: sh.x, y: footY,

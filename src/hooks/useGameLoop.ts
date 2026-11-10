@@ -1602,6 +1602,10 @@ const abortDogFetchJob = (job: DogFetchJob, nowMs: number): void => {
   Object.assign(job, dogLostReturnPatch(nowMs, DOG_FETCH_DURATION_MS - DOG_FETCH_PICKUP_MS));
 };
 
+// POIに触れた瞬間の音(社長指示2026-11-10): 重い物に手を当てたような短い低い鈍い音。素材は既存の 'hero-tackle-hit'(jump-land.mp3 の体当たりの当たり)を
+// さらに低く・短く。発動の音(weapon-pickup / event-start / anchor-plant)はそのまま後に続く。
+const playPoiTouchSfx = () => playSfx('hero-tackle-hit', 0.9, 260, 0.78);
+
 export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: boolean; trackFps?: boolean } = {}) => {
   const [fps, setFps] = useState(0);
   const benchmarkModeRef = useRef(Boolean(options.benchmarkMode));
@@ -5032,6 +5036,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
 
         // 病院(社長指示v0.25.2331): サークル内に3秒とどまるとワクチンを入手。入手した瞬間だけSEを鳴らす
         // (gameStore は playSfx を import できないので、taken の立ち上がりをここで監視する=bossCorpse と同じ流儀)。
+        // POIに触れた瞬間の手応え(社長指示2026-11-10): 触れ始めの1回だけ光・沈み・波紋・止め・カメラが出る(store側)。音はここ。
+        // 取引で建物が消える前の瞬間も拾うため、下の発動の更新(updateHospital/Armory/Shrines)より**先**に呼ぶ。
+        if (useGameStore.getState().updatePoiTouch() > 0) playPoiTouchSfx();
         {
           const hosBefore = useGameStore.getState().hospitalTaken;
           useGameStore.getState().updateHospital(deltaTime);
@@ -5147,6 +5154,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               };
               useGameStore.getState().beginArenaEvent(peEvent);
               policeArmedRef.current = false; // 一度離れるまで再発動させない(v0.25.2389)
+              // 触れた瞬間の手応え(社長指示2026-11-10): 発動する時にだけ出す=発動の条件に揃う(武装済み・イベント中でない・ボス戦中でない)。
+              useGameStore.getState().firePoiTouch('police');
+              playPoiTouchSfx();
               hordeSpawnRef.current = { spawned: 0, nextAt: newGameTime, total: ARENA_HORDE_COUNT };
               useGameStore.setState({ eventBannerText: '警察署 制圧開始', eventBannerUntil: newGameTime + EVENT_BANNER_MS });
               // §6.24-UX 確定要件1: 「ここが何で・何をすれば・何が貰えるか」の通信を1ラン1回。

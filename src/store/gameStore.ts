@@ -365,6 +365,7 @@ import {
   type ShrineState, type ShrineSlot,
 } from '../world/warlordShrine';
 import { policePos as policeSpot, resolvePoliceCollision, policeRect } from '../world/police';
+import { poiTouchStarts, POI_TOUCH_STOP_MS, POI_TOUCH_KICK_PX, POI_TOUCH_KICK_MS, type PoiTouchId } from '../world/poiTouch';
 import { assignDetourSectors } from '../world/detourPoi';
 import { bossSectorIndex, poiSectorIndex } from '../world/pois';
 // PACING_PUZZLE.md §6.24-UX(POI-UX): 寄り道POIの通信/入手トースト/解放帯の文言とゲート(純関数)。
@@ -394,7 +395,7 @@ import { secretPoisForStage, resolveSecretPoiCollision, secretPoiTouchedBy, secr
 const facilitySolidsOff = (s: { bossFightNow: boolean; bossFightLastTrueAt: number; gameTime: number; facilityEjectUntil: number }, t = s.gameTime): boolean =>
   facilitiesLocked(s.bossFightNow, s.bossFightLastTrueAt, t) || s.facilityEjectUntil > t;
 import { EQUIPMENT, equipmentById, equipmentDef, EQUIP_LINES_BY_SLOT, EQUIP_TIER_MAX, aggregateEquipBonus, hasFullWarlordSet, specialEquipmentForSlot, equipmentDescription, equipMaxHealthOf, neutralEquipBonus, emptyEquipLoadout, merchantEquipStepForSlot } from '../data/equipment';
-import { footRect, rectsOverlap, resolveAabb, segmentBlocked, segmentIntersectsRect, type Rect } from '../world/obstacles';
+import { footRect, rectsOverlap, resolveAabb, segmentBlocked, segmentIntersectsRect, touchesFromBelow, type Rect } from '../world/obstacles';
 import { friendlyShieldRect, splitBeamAtShield, beamStripsHit, shieldBlocksArea, shieldBlocksLine, shieldContactPoint, type BeamShieldSplit, type BeamStrip } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md: シールドで技を防ぐ
 import { shieldGuardCostFor, shieldBeamDrainFor } from '../utils/shieldGuardCost'; // research/SHIELD_BLOCK.md §8: 盾の代償
 import { METAL_PALETTE, shieldBeamPalette } from '../utils/shieldGuardFx'; // 防いだ光の色(視覚のみ)
@@ -9081,6 +9082,12 @@ interface GameState {
   /** 祠の円に入った時の一言を出したか(祠ごとに1ラン1回)。 */
   shrineIntelShown: Record<ShrineSlot, boolean>;
   updateShrines: (deltaTime: number) => void;
+  /** POIに触れた瞬間の手応え(社長指示2026-11-10)。触れ始めの検出→firePoiTouch。発動の判定は一切変えない。呼び出しは updateHospital/Armory/Shrines の**前**(取引で建物が消える前の瞬間も拾うため)。戻り値=今回新しく触れ始めた数。 */
+  updatePoiTouch: () => number;
+  /** 触れた瞬間の4点(光・沈み=poiTouchFx / 波紋+砂埃 / 体の止め+カメラ / ※音は呼び手)を出す。警察署は発動の場所から直接呼ぶ。red=武器庫でスクラップ不足(赤寄りの光)。 */
+  firePoiTouch: (id: PoiTouchId, red?: boolean) => void;
+  poiTouching: string[];                                 // 前フレームに触れていたPOI(触れ始め検出用)
+  poiTouchFx: Record<string, { at: number; red: boolean }>; // 描画が読む: 触れた実時刻(Date.now)と赤寄りか
   // PACING_PUZZLE.md §6.24 M48: 寄り道POI(病院の一般化)。武器庫=デンジャーゾーンの中間。
   // 拠点を解放するとその方角の矢印が出る(病院と同じ POI 仕組み)。3秒とどまり100スクラップを
   // 払うとTier3装備を確定入手。位置は毎ラン、裏ボス/病院/警察署と被らないセクターへランダムに割り当て。
@@ -9777,6 +9784,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   shrineIntelShown: { body: false, arms: false, accessory: false },
   armory: null,
   armoryDwellMs: 0,
+  poiTouching: [],
+  poiTouchFx: {},
   armoryTaken: false,
   armoryTakenAt: 0,
   police: null,
@@ -23676,6 +23685,58 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
+  // POIに触れた瞬間の手応え(社長指示2026-11-10)。発動の条件(updateHospital/Armory/Shrines の判定)は読むだけで変えない:
+  // 発動する状態(取り終えていない・ボス戦中の施設ロックでない・クリア前)の時だけ「触れている」に数える。
+  // 祠は発動が「手前の円に3秒」なので、触れる=祠の土台に正面から体が当たること(touchesFromBelow・寄り道と同じ帯)。
+  updatePoiTouch: () => {
+    const state = get();
+    const now: string[] = [];
+    let armoryRed = false;
+    if (!state.gameWon && !state.indoorMode && !facilitiesLocked(state.bossFightNow, state.bossFightLastTrueAt, state.gameTime)) {
+      if (state.hospital && !state.hospitalTaken && touchesHospital(state.player, state.hospital)) now.push('hospital');
+      if (state.armory && !state.armoryTaken && touchesArmory(state.player, state.armory)) {
+        now.push('armory');
+        armoryRed = state.player.straps < ARMORY_SCRAP_COST;
+      }
+      for (const sh of state.shrines) {
+        if (sh.takenAt === undefined && touchesFromBelow(state.player, shrineRect(sh))) now.push(`shrine-${sh.slot}`);
+      }
+    }
+    const { started, next } = poiTouchStarts(state.poiTouching, now);
+    if (next.length !== state.poiTouching.length || next.some((id, i) => id !== state.poiTouching[i])) set({ poiTouching: next });
+    for (const id of started) get().firePoiTouch(id as PoiTouchId, id === 'armory' && armoryRed);
+    return started.length;
+  },
+
+  firePoiTouch: (id, red = false) => {
+    const st = get();
+    let rect: Rect | null = null;
+    if (id === 'hospital' && st.hospital) rect = hospitalRect(st.hospital);
+    else if (id === 'armory' && st.armory) rect = armoryRect(st.armory);
+    else if (id === 'police' && st.police) rect = policeRect(st.police);
+    else if (id.startsWith('shrine-')) {
+      const sh = st.shrines.find(q => `shrine-${q.slot}` === id);
+      if (sh) rect = shrineRect(sh);
+    }
+    if (!rect) return;
+    const nowMs = Date.now();
+    // ① 建物が受け止める(描画が poiTouchFx を読んで白い加算の光と奥への沈みを出す)。
+    set(state => ({ poiTouchFx: { ...state.poiTouchFx, [id]: { at: nowMs, red } } }));
+    // ② 触れた所(建物の下端・プレイヤーの中心x)から波紋と砂埃。判定の無い派手さの絵=大きめに。
+    const px = st.player.x + st.player.width / 2;
+    const fy = rect.y + rect.height;
+    const ringColor = red ? 'rgba(248,113,113,0.85)' : 'rgba(255,248,230,0.85)';
+    get().spawnRing(px, fy, 10, 150, ringColor, 4, 520, true);
+    get().spawnBurst(px - 14, fy - 2, '#a8a29e', 7);
+    get().spawnBurst(px + 14, fy - 2, '#78716c', 7);
+    get().spawnImageMark(px - 26, fy - 3, 'fx/dust-puff', { scale: 0.3, duration: 800 });
+    get().spawnImageMark(px + 28, fy - 2, 'fx/dust-puff', { scale: 0.26, duration: 900 });
+    // ③ 体で受ける止め: 格闘の当たりと同じ全停止(約60ms)+カメラを建物の方(画面の上)へごく小さく押し込む。スローは使わない。
+    // ダンス中は gameTime を止めるとリズムが乱れるので止めは抜く(triggerHitImpact と同じ扱い)。
+    if (!get().rhythm.active) get().triggerHitstop(POI_TOUCH_STOP_MS);
+    get().triggerKick(POI_TOUCH_KICK_PX, POI_TOUCH_KICK_MS, 0, 1);
+  },
+
   // 隠しPOI(research/HIDDEN_POI.md §3): 正面(下)から触れたら発見。初めての場所だけ年表(kind 'cave'=発見済みの正本)に載せ、帯を出す。
   // 発見済みの場所に触れても何も起きない(報酬は★未決 #1)。ボス戦中は施設と同じく消えている=触れない。
   updateSecretPois: () => {
@@ -25526,6 +25587,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         hospitalTakenAt: 0,
         armory: detourSectors ? armorySpot(detourSectors.armory, detourAngleOffset(Math.random())) : null,
         armoryDwellMs: 0,
+        poiTouching: [],
+        poiTouchFx: {},
         armoryTaken: false,
         armoryTakenAt: 0,
         police: detourSectors ? policeSpot(detourSectors.police, detourAngleOffset(Math.random())) : null,
