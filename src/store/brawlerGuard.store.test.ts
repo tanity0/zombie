@@ -187,6 +187,18 @@ describe('雑魚より上の攻撃を構えで受けた: 自分が大きくノ�
     advanceSim(BRAWLER_GUARD_KNOCK_MS + 40);
     expect(x1 - pl().x).toBeGreaterThan(KNOCK - 12);
   });
+  it('相手の個体が分からず型だけ届く受け(ミーミルのレーザーの被弾)でも、その型の相手から離れる向きへ押される', () => {
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('mimir', 0, -230, 'm', { bossState: 'laser-fire' } as Partial<Enemy>)] });
+    guardNow(5);
+    const x0 = pl().x, y0 = pl().y;
+    const c = center();
+    // 受けた点=光線の上の一番近い点=ほぼ自分の中心(向きが取れない)。相手は上=下へ押される。
+    useGameStore.getState().damagePlayer(10, 'ミーミルのレーザー', c.x, c.y, undefined, undefined, 'mimir-laser', undefined, undefined, { type: 'mimir' });
+    advanceSim(BRAWLER_GUARD_KNOCK_MS + 40);
+    expect(pl().y - y0).toBeGreaterThan(KNOCK - 12);
+    expect(Math.abs(pl().x - x0)).toBeLessThan(2);
+  });
   it('木の幹で止まる(通り抜けない)', () => {
     setup({ trees: true });
     const p0 = pl();

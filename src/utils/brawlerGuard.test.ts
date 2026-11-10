@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import type { Enemy } from '../types/game';
 import {
   brawlerGuardOutcome, brawlerGuardSourceClass, brawlerGuardKnockDir, isBrawlerBeamMove, isBrawlerBeamFiring, brawlerBeamCutTarget,
-  brawlerBeamCutValid, slowLostMs, BRAWLER_CUT_BEAMS, BRAWLER_BEAM_CUT_GRACE_MS, BRAWLER_GUARD_KNOCK_PX, BRAWLER_GUARD_KNOCK_MS,
+  brawlerBeamCutValid, slowLostMs, brawlerPushUntil, brawlerGuardSourceEnemy, BRAWLER_CUT_BEAMS, BRAWLER_BEAM_CUT_GRACE_MS, BRAWLER_GUARD_KNOCK_PX, BRAWLER_GUARD_KNOCK_MS,
 } from './brawlerGuard';
 import { BRAWLER_STEP_PX } from './brawler';
 
@@ -56,6 +56,23 @@ describe('構えの成立の効果(§12-3d)', () => {
     expect(slowLostMs(0.01, 1)).toBe(0);
     expect(slowLostMs(0.002, 0.2)).toBeCloseTo(8, 6); // ゲーム内 2ms=実時間 10ms → 8ms ぶん進んでいない
     expect(slowLostMs(0.01, 0)).toBe(0);
+  });
+  it('押しの期限: スローの分だけ後ろへずれる。ただし「いまから器の長さ」を超えない(受けた回の刻みのずれで出だしが遅れない)', () => {
+    expect(brawlerPushUntil(1280, 1010, 280, 0.002, 0.2)).toBeCloseTo(1288, 6);      // 実時間 10ms のうち 8ms ぶん後ろへ
+    expect(brawlerPushUntil(1280, 1010, 280, 0.01, 1)).toBe(1280);                    // 等速=ずらさない
+    // 受けた回: 刻みは等速(16.7ms)なのに倍率はもう 0.2=67ms ずらそうとする → いまから 280ms で頭を打つ。
+    expect(brawlerPushUntil(1280, 1000, 280, 0.0167, 0.2)).toBe(1280);
+    expect(brawlerPushUntil(1280, 1017, 280, 0.0167, 0.2)).toBe(1297);
+  });
+  it('押される向きの基準になる相手: 個体が分かればその個体・型だけなら同じ型で一番近い1体・どちらも無ければ無し', () => {
+    const mk = (id: string, type: string, x: number, y: number) => ({ id, type, x, y, width: 0, height: 0 } as unknown as Enemy);
+    const enemies = [mk('m1', 'mimir', 900, 0), mk('m2', 'mimir', 0, -200), mk('z', 'zombie', 50, 0)];
+    const pc = { x: 0, y: 0 };
+    expect(brawlerGuardSourceEnemy([{ id: 'm1' }], enemies, pc)?.id).toBe('m1');
+    expect(brawlerGuardSourceEnemy([{ type: 'mimir' as Enemy['type'] }], enemies, pc)?.id).toBe('m2');
+    expect(brawlerGuardSourceEnemy([{ id: 'gone', type: 'zombie' as Enemy['type'] }], enemies, pc)?.id).toBe('z');
+    expect(brawlerGuardSourceEnemy([{ id: 'gone' }], enemies, pc)).toBeNull();
+    expect(brawlerGuardSourceEnemy([], enemies, pc)).toBeNull();
   });
 });
 

@@ -109,8 +109,40 @@ export const BRAWLER_BEAM_CUT_GRACE_MS = 300;
 export const brawlerBeamCutValid = (at: number, gameTime: number): boolean => Math.abs(gameTime - at) <= BRAWLER_BEAM_CUT_GRACE_MS;
 
 /**
+ * 受けた相手のうち、位置が引ける1体(押される向きの基準)。個体が分かればその個体、型だけなら同じ型で一番近い1体。居なければ null。
+ * (ミーミルのレーザーの被弾などは型だけが届く=型で引かないと「相手から離れる向き」が取れない。)
+ */
+export const brawlerGuardSourceEnemy = <E extends Pick<Enemy, 'id' | 'type' | 'x' | 'y' | 'width' | 'height'>>(
+  sources: readonly BrawlerGuardSource[], enemies: readonly E[], pc: { x: number; y: number },
+): E | null => {
+  for (const s of sources) {
+    if (s.id !== undefined) {
+      const e = enemies.find(en => en.id === s.id);
+      if (e) return e;
+    }
+    if (s.type !== undefined) {
+      let best: E | null = null, bd = Infinity;
+      for (const en of enemies) {
+        if (en.type !== s.type) continue;
+        const d = Math.hypot(en.x + en.width / 2 - pc.x, en.y + en.height / 2 - pc.y);
+        if (d < bd) { bd = d; best = en; }
+      }
+      if (best) return best;
+    }
+  }
+  return null;
+};
+
+/**
  * スローで「進まなかった」実時間(ms)。simDtSec=このフレームにゲーム内で進んだ秒 / scale=スローの倍率(0<scale≤1・1=等速)。
  * 構えで押される動き(器の時計は実時間)が、成立のスローの間も決めた距離を押され切るように、期限をこの分だけ後ろへずらす。
  */
 export const slowLostMs = (simDtSec: number, scale: number): number =>
   scale >= 1 || !(scale > 0) ? 0 : Math.max(0, simDtSec) * 1000 * (1 / scale - 1);
+/**
+ * 押される動きの器の期限(実時間)を、スローで進まなかった分だけ後ろへずらした値。
+ * ずらした後も「いまから器の長さ」を超えない(=押しの始まりが後ろへ逃げない)。受けた回は、ループがスローの掛かる前の刻みで
+ * 移動を呼ぶことがある(その回の刻みは等速・こちらが読む倍率はもうスロー)ので、そのずれで押しの出だしが遅れないように頭を打つ。
+ */
+export const brawlerPushUntil = (until: number, now: number, ms: number, simDtSec: number, scale: number): number =>
+  Math.min(until + slowLostMs(simDtSec, scale), now + Math.max(0, ms));

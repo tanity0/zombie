@@ -10559,7 +10559,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // ★構えで押される('push'): 器の時計は実時間なので、成立のスロー(構え1回の最初の受けで必ず掛かる)の間に進んだ実時間のうち
           // ゲーム内で進んでいない分だけ期限を後ろへずらす=スロー中も決めた距離を押され切る(ずらさないと 1/5 しか動かない)。
           // deltaTime はループが「実時間×スローの倍率×ゲームスピード」で渡す(useGameLoop の movePlayer)=ゲームスピードで割ってゲーム内の秒へ戻す。
-          ...(lungePushed ? { lungeUntil: player.lungeUntil + BRG.slowLostMs(deltaTime / GAME_SPEED, computeTimeSlowScale(kbNow, state.timeSlowStart, state.timeSlowUntil, state.timeSlowScale, state.timeSlowHoldMs)) } : {}),
+          ...(lungePushed ? { lungeUntil: BRG.brawlerPushUntil(player.lungeUntil, kbNow, player.lungeMs ?? BRG.BRAWLER_GUARD_KNOCK_MS, deltaTime / GAME_SPEED, computeTimeSlowScale(kbNow, state.timeSlowStart, state.timeSlowUntil, state.timeSlowScale, state.timeSlowHoldMs)) } : {}),
           // 格闘の速い踏み込みが壁・木に止められた: 踏み込みを打ち切り、残りの速度も0(A-1)。
           ...(brawlerSweepStopped ? { lungeUntil: 0, lungeVx: 0, lungeVy: 0, vx: 0, vy: 0 } : {}),
           ...(katanaSweepPushed ? { vx: 0, vy: 0 } : {}),
@@ -10981,7 +10981,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 雑魚より上を受けた: 相手から離れる向きへ大きく押される(間合いが切れる=受け続けてのハメを作らない)。構えは時間いっぱい続く。
       // 踏み込みの器へ載せる('push'=加速→減速の1山・壁と木は6px 刻みで解いて止まる・向きは相手を向いたまま)。
       const stn = get();
-      const src = sources.map(q => (q.id !== undefined ? stn.enemies.find(en => en.id === q.id) : undefined)).find(en => en !== undefined);
+      const src = BRG.brawlerGuardSourceEnemy(sources, stn.enemies, c); // 個体が分かればその個体・型だけなら同じ型で一番近い1体
       const dir = BRG.brawlerGuardKnockDir(c, src ? { x: src.x + src.width / 2, y: src.y + src.height / 2 } : null, { x, y }, p.lastDirection);
       const ms = BRG.BRAWLER_GUARD_KNOCK_MS;
       const v = BR.brawlerStepSpeed(BRG.BRAWLER_GUARD_KNOCK_PX, ms);
