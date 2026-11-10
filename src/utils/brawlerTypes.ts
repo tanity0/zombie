@@ -100,5 +100,10 @@ export interface BrawlerState {
   stepUntil?: number;
   /** ステップを出した時刻(Date.now・絵の合図)。 */
   stepAt?: number;
+  /**
+   * ステップの先行入力(research/BRAWLER.md §12-3b)。受け付けない時間(攻撃の出だし・当たりの止め等)に成立したステップを1つだけ覚える。
+   * x,y=向き(長さ1)・at=成立した時刻(gameTime)。受け付けられるようになった瞬間に出す(成立から BRAWLER_STEP_BUFFER_MS 以内に限る)。
+   */
+  stepBuffer?: { x: number; y: number; at: number };
 }
 

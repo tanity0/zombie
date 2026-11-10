@@ -5,7 +5,8 @@
 //          ※任天堂系(Pro Controller・Joy-Con)だけ決定/戻るを入れ替える=右の A で押す・下の B で戻る(刻印どおり・2026-10-10)。
 //          LB・RB=タブ(タブのある画面だけ)/ 右スティック=長文のスクロール(標準配置のみ)。
 // 接続中だけ毎フレーム読む。負荷 1/10(ボタン十数個と軸2本の比較だけ)。タッチだけの端末では接続が無いので何も起きない。
-import { useGameStore, isInputLocked, isWorldFrozen } from '../store/gameStore';
+import { useGameStore, isInputLocked, isWorldFrozen, isAttackLocked, isBrawlerMode } from '../store/gameStore';
+import { createPadReversalTracker, stepPadReversal } from './brawlerStepInput'; // ★格闘のステップ(research/BRAWLER.md §12-3b)
 import { performFlickAction } from './inputActions';
 import { pcPressDown, pcPressUp, markPcFlick } from './pcPress';
 import { setPadActive } from './inputDevice';
@@ -97,6 +98,7 @@ export const installGamepad = (): (() => void) => {
   let lastTickAt = 0;
   let walkDir: -1 | 0 | 1 = 0; // オープニングの廊下で送っている矢印
   const padNeutral = createPadNeutralTracker(); // 被弾反撃: スティックが直近150ms以内にニュートラルだったか
+  const padStep = createPadReversalTracker(); // 格闘のステップ: 倒す→すぐ反対へ倒す→中立へ戻す
 
   const releaseGameplay = () => {
     const s = useGameStore.getState();
@@ -218,6 +220,12 @@ export const installGamepad = (): (() => void) => {
       if (push && !isInputLocked() && isRetaliationWindowOpen(useGameStore.getState().hitRetaliation, Date.now())) {
         useGameStore.getState().tryHitRetaliation(push.x, push.y);
       }
+    }
+    // ★格闘のステップ(research/BRAWLER.md §12-3b): 左スティックを一方へ倒す→すぐ反対へ倒す→中立へ戻す。向き=反対へ倒した先。
+    // 追跡は毎フレーム進める(格闘以外では何もしない)。歩きの往復は倒している時間・間の長さで落ちる(utils/brawlerStepInput)。
+    {
+      const st = stepPadReversal(padStep, ax, ay, now, PAD_DEAD_ZONE);
+      if (st && !isInputLocked() && !isAttackLocked() && isBrawlerMode(useGameStore.getState().player)) useGameStore.getState().brawlerStep(st.x, st.y);
     }
     // B・RB=フリック
     if ((down(B.B) || down(B.RB)) && !isInputLocked()) {

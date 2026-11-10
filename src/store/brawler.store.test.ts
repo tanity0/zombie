@@ -7,7 +7,7 @@ import { brawlerComboOnHit, brawlerRevengeTelegraph, BRAWLER_REVENGE_WINDUP_MS, 
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
-import { BRAWLER_GUARD_MS, brawlerPointCap, BRAWLER_SMALL_KB_MULT, BRAWLER_BOSS_SMALL_KB_MULT } from '../utils/brawler';
+import { BRAWLER_GUARD_MS, brawlerPointCap, BRAWLER_SMALL_KB_MULT, BRAWLER_BOSS_SMALL_KB_MULT, brawlerStepAllowed, BRAWLER_STEP_BUFFER_MS } from '../utils/brawler';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { playerSuperArmorActive } from '../utils/superArmor';
 import { treesInRegion, trunkRect } from '../world/trees';
@@ -1430,11 +1430,19 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     expect(br().phase).toBe('attack');
     expect(useGameStore.getState().brawlerStep(-1, 0)).toBe(true);
     expect(br().phase).toBe('idle');
-    // 構えの最中は出せない
+    // 構えの最中は出せない(覚えはするが、構えは200msより長いので期限が切れて出ない・§12-3b)
     setup(2);
     useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 5 } } }));
     useGameStore.getState().brawlerTech(0, -1);
-    expect(useGameStore.getState().brawlerStep(1, 0)).toBe(false);
+    {
+      const gx = useGameStore.getState().player.x;
+      useGameStore.getState().brawlerStep(1, 0);
+      expect(br().tech).toBe('guard');
+      advance(1200);
+      expect(br().stepBuffer).toBeUndefined();
+      expect(br().stepAt).toBeUndefined();
+      expect(Math.abs(useGameStore.getState().player.x - gx)).toBeLessThan(1);
+    }
     // 木の幹の手前で止まる
     setup();
     const r = trunkRect(treesInRegion(1000, 1000, 6000, 6000)[0]);
@@ -1444,5 +1452,32 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     while (now < end) { now += 33; useGameStore.setState(st => ({ gameTime: st.gameTime + 33 })); useGameStore.getState().movePlayer(NO_INPUT, 0.033); useGameStore.getState().tickBrawler(); }
     const p = useGameStore.getState().player;
     expect(p.x + p.width).toBeLessThanOrEqual(r.x + 0.5);
+  });
+  it('ステップの先行の覚え(§12-3b): 当たりの止めの最中に入れたステップは、止めが明けた瞬間に出る。200msを過ぎたら出ない', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });
+    useGameStore.getState().brawlerPress();
+    // 1段目の判定(前隙の終わり)まで進める → 止めの最中に入れる
+    for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
+    expect(br().resolved).toBe(true);
+    const t0 = useGameStore.getState().gameTime;
+    expect(brawlerStepAllowed(br(), t0)).toBe(false); // 止めの最中
+    expect(useGameStore.getState().brawlerStep(-1, 0)).toBe(true);
+    expect(br().stepBuffer).toBeDefined();
+    expect(br().stepAt).toBeUndefined();
+    let firedAt = -1;
+    for (let k = 0; k < 30 && firedAt < 0; k++) { advance(10); if (br().stepAt !== undefined) firedAt = useGameStore.getState().gameTime; }
+    expect(firedAt).toBeGreaterThan(t0);
+    expect(firedAt - t0).toBeLessThanOrEqual(BRAWLER_STEP_BUFFER_MS);
+    expect(br().phase).toBe('idle'); // 後隙を取り消した
+    expect(br().stepBuffer).toBeUndefined();
+    // 期限切れ: 覚えてから200msより後は出さずに捨てる
+    setup();
+    useGameStore.setState(st => ({ enemies: [], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), stepBuffer: { x: 1, y: 0, at: st.gameTime - BRAWLER_STEP_BUFFER_MS - 1 } } } }));
+    const x0 = useGameStore.getState().player.x;
+    advance(20);
+    expect(br().stepBuffer).toBeUndefined();
+    expect(br().stepAt).toBeUndefined();
+    expect(Math.abs(useGameStore.getState().player.x - x0)).toBeLessThan(1);
   });
 });

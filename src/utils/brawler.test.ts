@@ -12,7 +12,7 @@ import {
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_HIT_PITCH, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
-  brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
+  brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
 } from './brawler';
 import { setBrawlerTempoAll } from './brawlerCombo';
 // ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
@@ -587,5 +587,33 @@ describe('ステップ(research/BRAWLER.md §12-3)', () => {
     expect(st.nextStage).toBe(2);                                        // 段のつながりは残る
     expect(brawlerStepAllowed(st, 200)).toBe(false);                     // ステップの最中
     expect(brawlerStepAllowed(st, 110 + BRAWLER_STEP_MS)).toBe(true);
+  });  it('先行の覚え(§12-3b): 受け付けない時間に成立したステップは、受け付けられるようになった瞬間に出す(成立から200ms以内・1つだけ)', () => {
+    expect(BRAWLER_STEP_BUFFER_MS).toBe(200);
+    expect(brawlerStepBufferDecision(initialBrawlerState(), 0)).toBeNull(); // 覚えていない
+    const a = brawlerStartAttack(initialBrawlerState(), 1, 0, false);
+    const hit = brawlerAfterResolve(a, 60, 1, { pointCap: 5, countPoint: true, hitstopMs: 45 });
+    // 止めの間(t=70)に成立 → 止めが明けた t=110 で出す
+    const b = brawlerBufferStep(hit, -1, 0, 70);
+    expect(b.stepBuffer).toEqual({ x: -1, y: 0, at: 70 });
+    expect(brawlerStepBufferDecision(b, 80)).toBe('wait');
+    expect(brawlerStepBufferDecision(b, 110)).toBe('fire');
+    // 前隙の頭(t=0)に成立 → 200ms ちょうどまでは出せる・それを過ぎたら捨てる
+    const late = brawlerBufferStep(brawlerStartTech(initialBrawlerState(), 'guard', 0), 1, 0, 0);
+    expect(brawlerStepBufferDecision(late, BRAWLER_STEP_BUFFER_MS)).toBe('wait');   // 構えの最中はまだ
+    expect(brawlerStepBufferDecision(late, BRAWLER_STEP_BUFFER_MS + 1)).toBe('expire');
+    const idle = brawlerBufferStep(initialBrawlerState(), 1, 0, 0);
+    expect(brawlerStepBufferDecision(idle, BRAWLER_STEP_BUFFER_MS)).toBe('fire');
+    expect(brawlerStepBufferDecision(idle, BRAWLER_STEP_BUFFER_MS + 1)).toBe('expire');
+    expect(brawlerStepBufferDecision(idle, -1)).toBe('expire');                    // 時計が戻った
+    // 1つだけ(上書き)・他の先行入力は捨てる(最後の入力を優先)
+    const two = brawlerBufferStep({ ...b, buffered: true, techBuffer: 'kick' }, 0, 1, 90);
+    expect(two.stepBuffer).toEqual({ x: 0, y: 1, at: 90 });
+    expect(two.buffered).toBe(false);
+    expect(two.techBuffer).toBeUndefined();
+    // 出した・取り消した・通常攻撃/技を始めた時は消える
+    expect(brawlerStepStart(b, 110, 0).stepBuffer).toBeUndefined();
+    expect(brawlerCancel(b).stepBuffer).toBeUndefined();
+    expect(brawlerStartAttack(idle, 1, 10, false).stepBuffer).toBeUndefined();
+    expect(brawlerStartTech(idle, 'kick', 10).stepBuffer).toBeUndefined();
   });
 });

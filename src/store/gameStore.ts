@@ -4646,6 +4646,46 @@ const brawlerReachExtra = (p: Pick<Player, 'huntingCharged' | 'subWeaponLevels' 
 /** タイムキーパーの割引(research/BRAWLER.md §15)。技の値段から引く点数。持っていなければ 0。 */
 const brawlerTechDiscount = (p: Player, kind: BR.BrawlerTechKind): number =>
   BRS.brawlerTimeKeeperDiscount(kind, skillLevel(p, 'time-keeper'));
+/**
+ * ステップを踏み出す(research/BRAWLER.md §12-3・§12-3b)。向き (ux,uy) は長さ1。出せるか(brawlerStepAllowed)と関所は呼び手が確かめる。
+ * 入力の瞬間(brawlerStep)と、覚えたステップを出す瞬間(tickBrawler)の2か所から呼ぶ=どちらも同じ踏み込み・絵・音。
+ */
+const startBrawlerStep = (
+  get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState, ux: number, uy: number,
+): void => {
+  const p = get().player;
+  const t = get().gameTime;
+  const now = Date.now();
+  const ms = BR.BRAWLER_STEP_MS;
+  const v = BR.brawlerStepSpeed(BR.BRAWLER_STEP_PX, ms);
+  // 加速→減速(正弦の1山)で踏み込む。壁・木は格闘の速い踏み込みと同じく6px 刻みで解く(movePlayer の 'step')。無敵は付けない。
+  setBrawler(set, BR.brawlerStepStart(s, t, now), {
+    lungeVx: ux * v, lungeVy: uy * v, lungeUntil: now + ms, lungeMs: ms, lungeShape: 'step', lungeHoldUntil: 0,
+    lastDirection: { x: ux, y: uy },
+  });
+  // 絵: 足元に地面を擦る筋(dash-wind を体に付けて後ろへ引く)と、蹴り出した所の土埃。音は短い風切り。
+  const c = brawlerCenter(p);
+  const ang = Math.atan2(uy, ux);
+  brawlerFx(get, -ux * 30, p.height * 0.32, 'fx/dash-wind', {
+    followPlayer: true, scale: 0.13, scaleX: 1.2, rot: ang, duration: ms + 60, fadeFrom: 0.5, moveX: ux * 14, moveY: uy * 14, alpha: 0.85,
+  });
+  get().spawnBurst(c.x - ux * 10, c.y + p.height / 2 - 4, '#cdb89a', 7, -ux, -uy);
+  brawlerSfx('whip-swing', 0.38, 0.78 * brJitter(), 120);
+};
+/**
+ * 覚えたステップ(§12-3b)を片付ける。'fire'=いま出した / 'expire'=期限切れで捨てた / 'wait'・null=何もしていない。
+ * 関所(死亡・掴み・紫・乗車・攻撃の禁止)に掛かっている間は出さずに待つ(期限が来たら捨てる)。
+ */
+const settleBufferedBrawlerStep = (
+  get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState,
+): 'fire' | 'wait' | 'expire' | null => {
+  const d = BR.brawlerStepBufferDecision(s, get().gameTime);
+  if (d === 'expire') { setBrawler(set, { ...s, stepBuffer: undefined }); return d; }
+  if (d !== 'fire' || !s.stepBuffer) return d;
+  if (!brawlerGateOk(get) || isAttackLocked()) return 'wait';
+  startBrawlerStep(get, set, s, s.stepBuffer.x, s.stepBuffer.y);
+  return 'fire';
+};
 /** 技を始める(ポイントは払い済み)。 */
 /**
  * 覚えている技(技の先行入力・§9-60)を出す。関所(被弾のしゃがみ・掴み・紫・シーカー・死亡など)に掛かれば捨てる。
@@ -8655,7 +8695,7 @@ interface GameState {
   brawlerPress: () => boolean;
   // フリック(PC=方向+技ボタン)=技。neutral=方向の入力が無い(PCのK・パッドのニュートラル+B)=技は出さない。出たら true。
   brawlerTech: (dirX: number, dirY: number, neutral?: boolean) => boolean;
-  /** 格闘のステップ(research/BRAWLER.md §12-3)。向きへ短く踏み込む(加速→減速・無敵なし)。出たら true。 */
+  /** 格闘のステップ(research/BRAWLER.md §12-3・§12-3b)。向きへ短く踏み込む(加速→減速・無敵なし)。出た、または受け付けない時間で覚えた(200ms 以内に出す)ら true。 */
   brawlerStep: (dirX: number, dirY: number) => boolean;
   // 毎フレーム(useGameLoop)。格闘を持たない時は即 return。
   tickBrawler: () => void;
@@ -10588,7 +10628,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (s.techBuffer) return false;
     const d = BR.brawlerPressDecision(s, st.gameTime);
     if (d === 'drop') return false;
-    if (d === 'buffer') { setBrawler(set, { ...s, buffered: true }); return true; }
+    if (d === 'buffer') { setBrawler(set, { ...s, buffered: true, stepBuffer: undefined }); return true; } // 先行入力は1つだけ(最後の入力を優先・§12-3b)
     startBrawlerAttack(get, set, s);
     return true;
   },
@@ -10599,27 +10639,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!isBrawlerMode(p) || !brawlerGateOk(get)) return false;
     const s = p.brawler ?? BR.initialBrawlerState();
     const t = st.gameTime;
-    if (!BR.brawlerStepAllowed(s, t)) return false;
     let ux = dirX, uy = dirY;
     let m = Math.hypot(ux, uy);
     if (!(m > 1e-3)) { ux = p.lastDirection?.x ?? 1; uy = p.lastDirection?.y ?? 0; m = Math.hypot(ux, uy) || 1; }
     ux /= m; uy /= m;
-    const now = Date.now();
-    const ms = BR.BRAWLER_STEP_MS;
-    const v = BR.brawlerStepSpeed(BR.BRAWLER_STEP_PX, ms);
-    // 加速→減速(正弦の1山)で踏み込む。壁・木は格闘の速い踏み込みと同じく6px 刻みで解く(movePlayer の 'step')。無敵は付けない。
-    setBrawler(set, BR.brawlerStepStart(s, t, now), {
-      lungeVx: ux * v, lungeVy: uy * v, lungeUntil: now + ms, lungeMs: ms, lungeShape: 'step', lungeHoldUntil: 0,
-      lastDirection: { x: ux, y: uy },
-    });
-    // 絵: 足元に地面を擦る筋(dash-wind を体に付けて後ろへ引く)と、蹴り出した所の土埃。音は短い風切り。
-    const c = brawlerCenter(p);
-    const ang = Math.atan2(uy, ux);
-    brawlerFx(get, -ux * 30, p.height * 0.32, 'fx/dash-wind', {
-      followPlayer: true, scale: 0.13, scaleX: 1.2, rot: ang, duration: ms + 60, fadeFrom: 0.5, moveX: ux * 14, moveY: uy * 14, alpha: 0.85,
-    });
-    get().spawnBurst(c.x - ux * 10, c.y + p.height / 2 - 4, '#cdb89a', 7, -ux, -uy);
-    brawlerSfx('whip-swing', 0.38, 0.78 * brJitter(), 120);
+    // ★受け付けない時間(攻撃の出だし・当たりの止め等)に成立したステップは捨てずに1つだけ覚え、受け付けられるようになった瞬間に
+    // tickBrawler が出す(成立から BRAWLER_STEP_BUFFER_MS 以内・research/BRAWLER.md §12-3b)。覚えた=入力は受けた(true)。
+    if (!BR.brawlerStepAllowed(s, t)) { setBrawler(set, BR.brawlerBufferStep(s, ux, uy, t)); return true; }
+    startBrawlerStep(get, set, s, ux, uy);
     return true;
   },
   brawlerTech: (dirX, dirY, neutral = false) => {
@@ -10633,7 +10660,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★技の先行入力(社長指示2026-11-08「技の先行入力だけ採用」・§9-60): 技の最中で今は出せない技は1つだけ覚え(上書き)、
     // 出せるようになった瞬間(当たった技のキャンセル・前の技の終わり)に出す。値段は出す瞬間に払う。覚えている間の通常攻撃の先行入力は捨てる(技を優先)。
     if (kind && BR.brawlerShouldBufferTech(s, kind, t)) {
-      setBrawler(set, { ...s, techBuffer: kind, buffered: false });
+      setBrawler(set, { ...s, techBuffer: kind, buffered: false, stepBuffer: undefined }); // 先行入力は1つだけ(最後の入力を優先・§12-3b)
       return true;
     }
     if (!kind || !BR.brawlerTechAllowed(s, kind, t)) {
@@ -10701,6 +10728,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (s0.secret) { tickBrawlerSecret(get, set); return; }
     // ヒット数の表示: 流れが切れた時刻を打つ(表示は 0.8 秒で消える・§11-4)。
     if (BR.brawlerFlowBreaksNow(s0, t)) { setBrawler(set, { ...s0, flowBrokenAt: t }); return; }
+    // ★覚えたステップ(§12-3b): 受け付けられるようになった瞬間に出す(後隙の取り消し・待機・前のステップの終わり)。期限切れは捨てる。
+    if (s0.stepBuffer) { const r = settleBufferedBrawlerStep(get, set, s0); if (r === 'fire' || r === 'expire') return; }
     if (s0.phase === 'idle') return;
     // 前隙の途中で掴まれた・対人の紫に入った・シーカーに入った=出かかった段/技を取り消し、先行入力も捨てる(§8-4)。
     if (!s0.resolved && (isPlayerGrabbed(p, t) || isPvpIncapacitated(p.pvpPosture, t) || (isSeekerActive(p, t) && skillLevel(p, 'seeker') < 3))) {
@@ -10728,6 +10757,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       const { state: fin, fire } = BR.brawlerFinish(s, get().gameTime);
       const close = s.tech === 'guard' ? { counterWindowEnd: Math.min(get().player.counterWindowEnd, Date.now()) } : {};
       setBrawler(set, fin, close);
+      // 行動が終わった瞬間に覚えたステップを出す(§12-3b・先行入力は1つだけなので技・通常攻撃の先行入力とは並ばない)。
+      if (fin.stepBuffer && settleBufferedBrawlerStep(get, set, fin) === 'fire') return;
       // 前の技が終わった瞬間に覚えている技を出す(通常攻撃の先行入力より優先)。
       if (fin.techBuffer) { fireBufferedBrawlerTech(get, set, { ...fin, buffered: false }, false); return; }
       if (fire && brawlerGateOk(get)) startBrawlerAttack(get, set, fin);

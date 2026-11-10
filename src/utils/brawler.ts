@@ -293,6 +293,7 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
     kickChainUntil: 0, kickCount: 0, secretProgress: 0, secretLastEndAt: 0,
     techChain: undefined, // 通常攻撃で技の流れは切れる(技→通常はキャンセルできない=§11-4)
     techBuffer: undefined,
+    stepBuffer: undefined, // 先行入力は1つだけ(最後の入力を優先・§12-3b)
   };
 };
 
@@ -305,7 +306,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
   const chain = cancel ? [...(s.techChain ?? (s.tech ? [s.tech] : [])), kind]
     : (kind === 'kick' && kickN > 1 && s.techChain) ? s.techChain : [kind];
   return {
-    ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined,
+    ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined, stepBuffer: undefined,
     // 飛び蹴りの3発目は溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。
     kickChargeMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0,
     windupMs: spec.windupMs + (kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0), recoveryMs: spec.recoveryMs,
@@ -462,7 +463,7 @@ export const brawlerSecretStart = (s: BrawlerState, t: number, now: number): Bra
 });
 /** 秘奥義を終えた(フィニッシュ後・中断)状態。技ポイントは強制で0、段は1段目へ(§10-2-4・§10-3)。 */
 export const brawlerSecretEnd = (s: BrawlerState): BrawlerState => ({
-  ...s, phase: 'idle', tech: null, stage: 0, buffered: false, techBuffer: undefined, points: 0, nextStage: 1, chainUntil: 0,
+  ...s, phase: 'idle', tech: null, stage: 0, buffered: false, techBuffer: undefined, stepBuffer: undefined, points: 0, nextStage: 1, chainUntil: 0,
   guardUntil: 0, quickUntil: 0, kickChainUntil: 0, kickCount: 0, secret: undefined, secretProgress: 0, secretLastEndAt: 0,
   stopFrom: 0, stopUntil: 0, stopPrevMs: 0,
 });
@@ -500,12 +501,12 @@ export const isBrawlerSecretActive = (s: BrawlerState | undefined): boolean => !
 
 /** 出かかった行動を取り消す(掴まれ・紫・シーカー=§8-4)。先行入力(通常・技)も捨てる。 */
 export const brawlerCancel = (s: BrawlerState): BrawlerState => ({
-  ...s, phase: 'idle', tech: null, buffered: false, techBuffer: undefined, nextStage: 1, chainUntil: 0, secret: undefined,
+  ...s, phase: 'idle', tech: null, buffered: false, techBuffer: undefined, stepBuffer: undefined, nextStage: 1, chainUntil: 0, secret: undefined,
   guardUntil: 0, kickChainUntil: 0, kickCount: 0,
 });
 /** 被弾した(段は1段目へ・先行入力は捨てる=§2-4)。行動そのものは続く(殴り返されて止まるのは敵の止めの側)。 */
 export const brawlerOnHurt = (s: BrawlerState): BrawlerState => ({
-  ...s, buffered: false, techBuffer: undefined, nextStage: 1, chainUntil: 0,
+  ...s, buffered: false, techBuffer: undefined, stepBuffer: undefined, nextStage: 1, chainUntil: 0,
 });
 /**
  * 技の先行入力として覚えるか(§9-60)。技の最中で、いま出せない技(当たっていない技の後隙・前隙・止めの間・構えの間)。
@@ -611,7 +612,26 @@ export const brawlerStepAllowed = (s: BrawlerState, t: number): boolean => {
 /** ステップを始めた状態。後隙を取り消す=その行動を終えた扱い(つながり・秘奥義の数えは終わった時と同じ)。先行入力は捨てる。 */
 export const brawlerStepStart = (s: BrawlerState, t: number, now: number): BrawlerState => {
   const base = s.phase === 'idle' ? s : brawlerFinish(s, t).state;
-  return { ...base, buffered: false, techBuffer: undefined, stepUntil: t + BRAWLER_STEP_MS, stepAt: now };
+  return { ...base, buffered: false, techBuffer: undefined, stepBuffer: undefined, stepUntil: t + BRAWLER_STEP_MS, stepAt: now };
+};
+
+/** ステップの先行入力を覚えておく長さ(ms・gameTime)。成立からこの時間以内に受け付けられるようになれば出す(§12-3b・叩き台)。 */
+export const BRAWLER_STEP_BUFFER_MS = 200;
+/**
+ * 受け付けない時間に成立したステップを覚えた状態(§12-3b)。1つだけ・上書き。
+ * 先行入力は全部で1つ(§12-4 と同じ考え)=覚えていた通常攻撃・技の先行入力は捨てる(最後の入力を優先)。
+ */
+export const brawlerBufferStep = (s: BrawlerState, x: number, y: number, t: number): BrawlerState =>
+  ({ ...s, buffered: false, techBuffer: undefined, stepBuffer: { x, y, at: t } });
+/**
+ * 覚えたステップをどうするか(§12-3b)。null=覚えていない / 'fire'=いま出す / 'wait'=まだ受け付けない / 'expire'=期限切れで捨てる。
+ * 成立から BRAWLER_STEP_BUFFER_MS ちょうどまでは出せる。時計が戻った(新しい出撃など)時も捨てる。
+ */
+export const brawlerStepBufferDecision = (s: BrawlerState, t: number): 'fire' | 'wait' | 'expire' | null => {
+  const b = s.stepBuffer;
+  if (!b) return null;
+  if (t < b.at || t - b.at > BRAWLER_STEP_BUFFER_MS) return 'expire';
+  return brawlerStepAllowed(s, t) ? 'fire' : 'wait';
 };
 
 /** 次の蹴りが何発目か(連続の受付の中なら続き・外なら1発目)。 */
