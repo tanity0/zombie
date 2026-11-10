@@ -2,7 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   BRAWLER_LEVER_GUARD_AWAY, BRAWLER_LEVER_GUARD_COS, BRAWLER_LEVER_GUARD_DAMAGE_MULT, BRAWLER_LEVER_GUARD_PUSH_PX, BRAWLER_LEVER_GUARD_PUSH_MS,
-  BRAWLER_LEVER_GUARD_MIN_DIST, BRAWLER_LEVER_GUARD_STAND_MS,
+  BRAWLER_LEVER_GUARD_MIN_DIST, BRAWLER_LEVER_GUARD_STAND_MS, BRAWLER_LEVER_GUARD_ARM_PUSH_PX, BRAWLER_LEVER_GUARD_STOP_MS, leverGuardArmOffset,
+  BRAWLER_LEVER_GUARD_CARRY_MS, leverGuardCarryHolds,
   moveLeverDir, leverGuardAttackDir, leverGuardDirOk, brawlerLeverGuardHolds, brawlerLeverGuardDamage, leverGuardStandAlpha, leverGuardDamageOnlyMove,
 } from './brawlerLeverGuard';
 
@@ -138,9 +139,59 @@ describe('腕で受ける影の濃さ(短く・出だしは速く・終わりは
   });
 });
 
+describe('腕で受ける影の動き(受けた瞬間に体の方へ押し込まれてから戻る・慣性)', () => {
+  it('尺は150〜200ms・押し込みは3〜5px・止めは40〜60ms', () => {
+    expect(BRAWLER_LEVER_GUARD_STAND_MS).toBeGreaterThanOrEqual(150);
+    expect(BRAWLER_LEVER_GUARD_STAND_MS).toBeLessThanOrEqual(200);
+    expect(BRAWLER_LEVER_GUARD_ARM_PUSH_PX).toBeGreaterThanOrEqual(3);
+    expect(BRAWLER_LEVER_GUARD_ARM_PUSH_PX).toBeLessThanOrEqual(5);
+    expect(BRAWLER_LEVER_GUARD_STOP_MS).toBeGreaterThanOrEqual(40);
+    expect(BRAWLER_LEVER_GUARD_STOP_MS).toBeLessThanOrEqual(60);
+  });
+  it('0 から体の方(負)へ押し込まれ、尺の3割でいちばん深く、尺の終わりで元の位置(0)へ戻る・尺の外は0', () => {
+    const ms = BRAWLER_LEVER_GUARD_STAND_MS, P = BRAWLER_LEVER_GUARD_ARM_PUSH_PX;
+    expect(leverGuardArmOffset(0)).toBeCloseTo(0);
+    expect(leverGuardArmOffset(ms * 0.3)).toBeCloseTo(-P, 5);
+    expect(leverGuardArmOffset(ms - 0.001)).toBeCloseTo(0, 2);
+    expect(leverGuardArmOffset(ms)).toBe(0);
+    expect(leverGuardArmOffset(-1)).toBe(0);
+    for (let el = 0; el < ms; el += 5) { const o = leverGuardArmOffset(el); expect(o).toBeLessThanOrEqual(1e-9); expect(o).toBeGreaterThanOrEqual(-P - 1e-9); }
+  });
+  it('押し込みは出だしが速く止まり際が遅い・戻りは動き出しと止まり際が遅い(等速ではない)', () => {
+    const ms = BRAWLER_LEVER_GUARD_STAND_MS;
+    const v = (a: number, b: number) => Math.abs(leverGuardArmOffset(ms * b) - leverGuardArmOffset(ms * a));
+    expect(v(0, 0.05)).toBeGreaterThan(v(0.25, 0.3));   // 押し込み: 出だし > 止まり際
+    expect(v(0.3, 0.35)).toBeLessThan(v(0.6, 0.65));    // 戻り: 動き出し < 真ん中
+    expect(v(0.95, 1 - 1e-6)).toBeLessThan(v(0.6, 0.65)); // 戻り: 止まり際 < 真ん中
+  });
+});
+
+describe('半減の持ち越し(秘奥義は1発ガードで受けたら残りも半減だけ)', () => {
+  const ok = { moveKey: 'brawler-secret', srcId: 'k', carryUntil: 2000, carryFrom: 'k', gameTime: 1000 };
+  it('同じ相手・演出つきの技・時間の内 → 効く(締めにも)', () => {
+    expect(leverGuardCarryHolds(ok)).toBe(true);
+    expect(leverGuardCarryHolds({ ...ok, moveKey: 'brawler-secret-land' })).toBe(true);
+  });
+  it('別の相手・秘奥義でない技・時間を過ぎた・持ち越しが無い → 効かない', () => {
+    expect(leverGuardCarryHolds({ ...ok, srcId: 'k2' })).toBe(false);
+    expect(leverGuardCarryHolds({ ...ok, srcId: undefined })).toBe(false);
+    expect(leverGuardCarryHolds({ ...ok, moveKey: 'brawler-s3' })).toBe(false);
+    expect(leverGuardCarryHolds({ ...ok, moveKey: undefined })).toBe(false);
+    expect(leverGuardCarryHolds({ ...ok, gameTime: 2000 })).toBe(false);
+    expect(leverGuardCarryHolds({ ...ok, carryUntil: undefined })).toBe(false);
+    expect(leverGuardCarryHolds({ ...ok, carryFrom: undefined })).toBe(false);
+  });
+  it('持ち越しの長さは、秘奥義の当たりの間隔より長く、次の秘奥義(20秒以上後)より短い', () => {
+    expect(BRAWLER_LEVER_GUARD_CARRY_MS).toBeGreaterThanOrEqual(2500);
+    expect(BRAWLER_LEVER_GUARD_CARRY_MS).toBeLessThan(20_000);
+  });
+});
+
 describe('演出つきの技(半減だけ)', () => {
-  it('拳鬼の秘奥義は半減だけ・普通の技は受け切れる', () => {
+  it('拳鬼の秘奥義は半減だけ(連撃も締めも)・普通の技は受け切れる', () => {
     expect(leverGuardDamageOnlyMove('brawler-secret')).toBe(true);
+    expect(leverGuardDamageOnlyMove('brawler-secret-land')).toBe(true); // 締め(検収監査2026-11-10 で漏れを直した)
+    expect(leverGuardDamageOnlyMove('kenki-leap')).toBe(false);
     expect(leverGuardDamageOnlyMove('brawler-s3')).toBe(false);
     expect(leverGuardDamageOnlyMove(undefined)).toBe(false);
   });

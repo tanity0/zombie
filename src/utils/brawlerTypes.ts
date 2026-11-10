@@ -116,5 +116,11 @@ export interface BrawlerState {
   leverGuardN?: number;
   leverGuardDirX?: number;
   leverGuardDirY?: number;
+  /**
+   * 演出つきの技(拳鬼の秘奥義)をガードで受けた後の、半減の持ち越し(§12-1c・検収監査2026-11-10)。
+   * leverGuardCarryUntil=持ち越しが効く締め切り(gameTime)/ leverGuardCarryFrom=その技を出している相手の id。
+   */
+  leverGuardCarryUntil?: number;
+  leverGuardCarryFrom?: string;
 }
 

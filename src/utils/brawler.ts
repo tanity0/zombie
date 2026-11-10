@@ -6,7 +6,7 @@ import { segmentBlocked } from '../world/obstacles';
 import { enemyRangeRect, isCorpse, isReaperFamily, isTerminalReaper, isUntouchable } from './enemyUtils';
 import { urlNum } from './urlNum';
 import { meleeImpactPoint, bandBoxOverlap } from './meleeImpact';
-import { leverGuardStandAlpha } from './brawlerLeverGuard';
+import { leverGuardStandAlpha, leverGuardArmOffset } from './brawlerLeverGuard';
 
 // ---------------------------------------------------------------------------------------------
 // ★テンポ係数(社長承認2026-11-08「KOFみたいなプレイフィールが欲しいんだけど、少し全体的に早い?」)。
@@ -964,6 +964,15 @@ export const BRAWLER_STAND: Readonly<Record<BrawlerStandKind, BrawlerStandSpec>>
   hadou: { tex: 'fx/brawler-stand-hadou', tipU: 0.93, tipV: 0.3, bodyU: 0.42, bodyV: 0.5, heightPx: 88 * BRAWLER_STAND_SCALE },
   kick: { tex: 'fx/brawler-stand-kick', tipU: 0.96, tipV: 0.3, bodyU: 0.36, bodyV: 0.45, heightPx: 92 * BRAWLER_STAND_SCALE },
 };
+/**
+ * 構えの影の絵(fx/brawler-stand-guard・右向き)の中の「腕」の範囲(絵の中の割合)。レバーガード(§12-1c)の腕で受ける影は、この範囲だけを
+ * 白金で出す(全身の構えの影=カウンターと読み違えない)。上げた両の拳と前腕が入る(腕だけの素材は無いので、構えの絵から切り出す)。
+ */
+export const BRAWLER_STAND_GUARD_ARM = { u0: 0.5, v0: 0.07, u1: 1, v1: 0.56 } as const;
+/** レバーガードの腕の影の濃さの倍率(白い線画を白金の加算で重ねる)。 */
+export const BRAWLER_STAND_GUARD_ARM_ALPHA = 1;
+/** レバーガードの腕の影の大きさの倍率(腕だけだと小さくて読めないので、構えの影より少し大きく出す)。 */
+export const BRAWLER_STAND_GUARD_ARM_SCALE = 1.25;
 /** 下の大踏み潰しの影は着地の円に合わせて大きく(全体を小さくした比率はそのまま掛かる)。 */
 export const BRAWLER_STAND_STOMP_MULT = 1.45;
 /**
@@ -982,8 +991,10 @@ export interface BrawlerStandFrame {
   light: boolean;
   /** 下の大踏み潰し(影を大きく)。 */
   big: boolean;
-  /** レバーガード(§12-1c)の腕で受ける影。向きは受けた相手の方(leverGuardDirX/Y)。 */
+  /** レバーガード(§12-1c)の腕で受ける影(腕だけ・白金)。向きは受けた相手の方(leverGuardDirX/Y)。 */
   lever?: boolean;
+  /** レバーガードの腕の位置のずれ(px・相手の方が正)。受けた瞬間に体の方へ押し込まれてから戻る。 */
+  armPush?: number;
 }
 /**
  * いまの影の形(判定は持たない・pixi が読む)。慣性: 前隙で体から前へにじみ出る(加速)→ 当たる瞬間に当たりの所まで伸び切る
@@ -1001,9 +1012,11 @@ export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerS
     return { kind: 'slam', ext: 1 + 0.3 * easeOut(p), alpha: 1 - easeIn(p), light: false, big: true };
   }
   if (s.phase === 'idle') {
-    // ★レバーガード(§12-1c): 受けた瞬間から短く、構えの腕ガードの影を相手の方へ出す(待機・歩きの間だけ=段・技に入ればその影が勝つ)。
-    const a = s.leverGuardAt !== undefined ? leverGuardStandAlpha(t - s.leverGuardAt) : 0;
-    return a > 0 ? { kind: 'guard', ext: 1, alpha: a, light: false, big: false, lever: true } : null;
+    // ★レバーガード(§12-1c): 受けた瞬間から短く、腕で受ける影(構えの絵の腕だけ・白金)を相手の方へ出す。全身の構えの影(カウンター)は出さない。
+    //   受けた瞬間に体の方へ押し込まれてから戻る(慣性)。待機・歩きの間だけ=段・技に入ればその影が勝つ。
+    const el = s.leverGuardAt !== undefined ? t - s.leverGuardAt : -1;
+    const a = leverGuardStandAlpha(el);
+    return a > 0 ? { kind: 'guard', ext: 1, alpha: a, light: false, big: false, lever: true, armPush: leverGuardArmOffset(el) } : null;
   }
   let kind: BrawlerStandKind;
   if (s.phase === 'attack') {

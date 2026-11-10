@@ -13,7 +13,8 @@ import {
 import { HUMAN_REACTION_MS } from './bossSkeleton';
 import { kenkiLeapChance } from './kenkiLeap';
 import {
-  createKenkiRetreatMind, kenkiRetreating, kenkiRetreatReady, kenkiRetreatMeleeDecision, kenkiRetreatStart, kenkiRetreatMs, type KenkiRetreatMind,
+  createKenkiRetreatMind, kenkiRetreating, kenkiRetreatReady, kenkiRetreatMeleeDecision, kenkiRetreatStart, kenkiRetreatMs, kenkiRetreatMsFor,
+  kenkiRetreatExtend, kenkiRetreatStop, type KenkiRetreatMind,
 } from './kenkiRetreat';
 
 /** 連続が切れてから次の連続までの息継ぎ(ms・叩き台)。 */
@@ -271,7 +272,7 @@ export interface PhantomBrawlerInput {
   counterChance: number;
   meleeBias: number;
   /** 弾への対処(この tick で実行すべきもの)。返す=構え・避ける=ステップ(向き)・下がってガード=弾の飛んできた向きへ下がる(§16-10)。 */
-  bullet: { kind: 'counter' } | { kind: 'dodge'; dirX: number; dirY: number } | { kind: 'retreat'; dirX: number; dirY: number } | null;
+  bullet: { kind: 'counter' } | { kind: 'dodge'; dirX: number; dirY: number } | { kind: 'retreat'; dirX: number; dirY: number; etaMs?: number } | null;
   rand: () => number;
   /**
    * 跳びかかり(§15): 使える場面か(距離・クールダウン)と、撃たれ続けているか。未指定=使わない。
@@ -306,9 +307,17 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
   const { s, t } = i;
   if (s.secret) { m.secretPlan = false; m.secretLaunched = false; return null; }
   if (isBrawlerGuardingAt(s, t)) return null;
-  // 後ろへ下がっている間(レバーガード・§16-10)は攻めない・他の手も出さない(短い=300〜500ms)。
-  if (kenkiRetreating(m, t)) return null;
   const idle = s.phase === 'idle';
+  // 後ろへ下がっている間(レバーガード・§16-10)は攻めない(短い=300〜500ms)。ただし弾への対処は捨てない(検収監査2026-11-10):
+  //  - 下がりで受けられる弾(制御が向きと間に合うかを見て 'retreat' で渡す)= 下がりを続け、着弾の少し後まで延ばす(上限つき)。
+  //  - 受けられない弾(向きが合わない・間に合わない)= 下がりをやめて、構えで返す/ステップで避ける。
+  if (kenkiRetreating(m, t)) {
+    const b = i.bullet;
+    if (b?.kind === 'retreat') { kenkiRetreatExtend(m, t, b.etaMs ?? 0); return null; }
+    if (b?.kind === 'counter' && t >= m.guardReadyAt && canTech(i, 'guard')) { kenkiRetreatStop(m); return { kind: 'tech', tech: 'guard' }; }
+    if (b?.kind === 'dodge' && idle) { kenkiRetreatStop(m); return { kind: 'step', dirX: b.dirX, dirY: b.dirY }; }
+    return null;
+  }
   // 台本が終わった後の最初の待機で息継ぎを引く(台本と台本の間に必ず入る)。
   if (idle && m.breathOwed) {
     m.breathOwed = false;
@@ -320,7 +329,9 @@ const decideInner = (i: PhantomBrawlerInput, m: PhantomBrawlerMind): PhantomBraw
   if (i.bullet?.kind === 'dodge' && idle) return { kind: 'step', dirX: i.bullet.dirX, dirY: i.bullet.dirY };
   // 3つ目の手(§16-10): 弾の飛んできた向きへ下がってガード(待機の時だけ・間隔が明けている時だけ=亀にしない)。
   if (i.bullet?.kind === 'retreat' && idle && kenkiRetreatReady(m, t)) {
-    kenkiRetreatStart(m, t, kenkiRetreatMs(i.rand()), { x: i.bullet.dirX, y: i.bullet.dirY });
+    // 着弾(etaMs 後)まで下がり続ける長さにする(下がったのに当たる前に止まって食らう、を作らない)。
+    const ms = i.bullet.etaMs !== undefined ? kenkiRetreatMsFor(i.bullet.etaMs, i.rand()) : kenkiRetreatMs(i.rand());
+    kenkiRetreatStart(m, t, ms, { x: i.bullet.dirX, y: i.bullet.dirY });
     return { kind: 'retreat' };
   }
 

@@ -5,6 +5,7 @@ import {
   KENKI_RETREAT_BULLET_P, KENKI_RETREAT_BULLET_LEAD_MS,
   createKenkiRetreatMind, kenkiRetreating, kenkiRetreatReady, kenkiRetreatMs, kenkiRetreatMsFor, kenkiRetreatMeleeChance, kenkiRetreatMeleeWindow,
   kenkiRetreatMeleeDecision, kenkiBulletRetreatRoll, kenkiBulletRetreatDue, kenkiRetreatStart, kenkiRetreatStop, kenkiRetreatDirNow, kenkiLeverOf,
+  KENKI_RETREAT_HOLD_MAX_MS, kenkiRetreatCanCover, kenkiRetreatExtend, kenkiBulletRepick,
 } from './kenkiRetreat';
 import {
   createPhantomBrawlerMind, decidePhantomBrawler, notePlayerStrike, type PhantomBrawlerInput,
@@ -109,6 +110,76 @@ describe('弾: 下がってガード(3つ目の手)', () => {
     expect(kenkiBulletRetreatDue(KENKI_RETREAT_BULLET_LEAD_MS)).toBe(true);
     expect(kenkiBulletRetreatDue(KENKI_RETREAT_BULLET_LEAD_MS + 1)).toBe(false);
     expect(kenkiBulletRetreatDue(null)).toBe(false);
+  });
+});
+
+describe('下がっている間の弾(検収監査2026-11-10: 何もせず食らう経路を残さない)', () => {
+  it('下がりの間に着く弾・上限の内まで延ばせば着く弾は受けられる・上限を超える弾は受けられない', () => {
+    const m = createKenkiRetreatMind();
+    kenkiRetreatStart(m, T, 300, null);
+    expect(kenkiRetreatCanCover(m, T + 100, 150)).toBe(true);                                   // 下がりの間に着く
+    expect(kenkiRetreatCanCover(m, T + 100, 400)).toBe(true);                                   // 延ばせば着く(下がり始めから 600ms)
+    expect(kenkiRetreatCanCover(m, T + 100, KENKI_RETREAT_HOLD_MAX_MS)).toBe(false);            // 上限を超える
+    expect(kenkiRetreatCanCover(m, T + 100, null)).toBe(false);
+    expect(kenkiRetreatCanCover(m, T + 300, 50)).toBe(false);                                   // もう下がっていない
+  });
+  it('延ばす: 着弾の少し後まで・上限(下がり始めから 800ms)まで。次に下がってよい時刻も後ろへ。縮めはしない', () => {
+    const m = createKenkiRetreatMind();
+    kenkiRetreatStart(m, T, 300, null);
+    kenkiRetreatExtend(m, T + 100, 350);
+    expect(m.retreatUntil).toBe(T + 100 + 350 + 100);
+    expect(m.retreatReadyAt).toBe(m.retreatUntil + KENKI_RETREAT_GAP_MS);
+    kenkiRetreatExtend(m, T + 200, 5000);
+    expect(m.retreatUntil).toBe(T + KENKI_RETREAT_HOLD_MAX_MS); // 上限で頭打ち=撃たれ続けても下がり続けない
+    kenkiRetreatExtend(m, T + 300, 10);
+    expect(m.retreatUntil).toBe(T + KENKI_RETREAT_HOLD_MAX_MS); // 縮めない
+    const m2 = createKenkiRetreatMind();
+    kenkiRetreatExtend(m2, T, 300);                             // 下がっていなければ何もしない
+    expect(kenkiRetreating(m2, T + 1)).toBe(false);
+  });
+  it('引き直し: 構えで返す/ステップで避ける のどちらか(人格の比)。食らうは引かない', () => {
+    expect(kenkiBulletRepick({ counter: 0.2, dodge: 0.6 }, 0.1)).toBe('counter');
+    expect(kenkiBulletRepick({ counter: 0.2, dodge: 0.6 }, 0.3)).toBe('dodge');
+    expect(kenkiBulletRepick({ counter: 0, dodge: 0 }, 0)).toBe('dodge');
+    expect(kenkiBulletRepick({ counter: 1, dodge: 0 }, 0.99)).toBe('counter');
+  });
+  it('頭脳: 下がっている最中の弾 — 受けられる弾は下がりを延ばす / 受けられない弾は下がりをやめて返す・避ける', () => {
+    const base = (o: Partial<PhantomBrawlerInput> = {}, s: Partial<BrawlerState> = {}): PhantomBrawlerInput => ({
+      s: { ...initialBrawlerState(), ...s }, t: T, edgeDist: 300, reach: 74, reachReady: true, playerReach: 74, kikoClear: true,
+      discount: k => brawlerTimeKeeperDiscount(k, 3), counterChance: 0.5, meleeBias: 0.95, bullet: null, rand: () => 0.999, ...o,
+    });
+    const m = createPhantomBrawlerMind();
+    kenkiRetreatStart(m, T, 300, null);
+    const u0 = m.retreatUntil;
+    expect(decidePhantomBrawler(base({ t: T + 200, bullet: { kind: 'retreat', dirX: -1, dirY: 0, etaMs: 300 } }), m)).toBeNull();
+    expect(m.retreatUntil).toBeGreaterThan(u0);          // 下がりを続けて受ける
+    expect(kenkiRetreating(m, T + 450)).toBe(true);
+    // 受けられない弾(構えで返す): 構えを払えるなら、下がりをやめて構える
+    const m2 = createPhantomBrawlerMind();
+    kenkiRetreatStart(m2, T, 300, null);
+    expect(decidePhantomBrawler(base({ t: T + 100, bullet: { kind: 'counter' } }, { points: 9 }), m2)).toEqual({ kind: 'tech', tech: 'guard' });
+    expect(kenkiRetreating(m2, T + 100)).toBe(false);
+    // 受けられない弾(ステップで避ける)
+    const m3 = createPhantomBrawlerMind();
+    kenkiRetreatStart(m3, T, 300, null);
+    expect(decidePhantomBrawler(base({ t: T + 100, bullet: { kind: 'dodge', dirX: 0, dirY: 1 } }), m3)).toEqual({ kind: 'step', dirX: 0, dirY: 1 });
+    expect(kenkiRetreating(m3, T + 100)).toBe(false);
+    // 弾が無ければ下がり続ける(攻めない)
+    const m4 = createPhantomBrawlerMind();
+    kenkiRetreatStart(m4, T, 300, null);
+    expect(decidePhantomBrawler(base({ t: T + 100, edgeDist: 40, rand: () => 0 }), m4)).toBeNull();
+    expect(kenkiRetreating(m4, T + 100)).toBe(true);
+  });
+  it('弾から下がり始める時は、着弾の後まで届く長さにする', () => {
+    const base: PhantomBrawlerInput = {
+      s: initialBrawlerState(), t: T, edgeDist: 300, reach: 74, reachReady: true, playerReach: 74, kikoClear: true,
+      discount: k => brawlerTimeKeeperDiscount(k, 3), counterChance: 0.5, meleeBias: 0.95, rand: () => 0,
+      bullet: { kind: 'retreat', dirX: 0, dirY: 1, etaMs: 340 },
+    };
+    const m = createPhantomBrawlerMind();
+    expect(decidePhantomBrawler(base, m)).toEqual({ kind: 'retreat' });
+    expect(m.retreatUntil - T).toBeGreaterThanOrEqual(340);
+    expect(m.retreatUntil - T).toBeLessThanOrEqual(KENKI_RETREAT_MAX_MS);
   });
 });
 

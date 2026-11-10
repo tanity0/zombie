@@ -18,8 +18,10 @@ import {
 } from './phantomBrawlerAi';
 import { kenkiPrepDue, kenkiPrepStart, type KenkiPrep } from './kenkiPrep';
 import { kenkiAccDecAlong, kenkiGuardKbActive, kenkiGuardKbVector, kenkiNewGuardReceive, KENKI_GUARD_KB_MS } from './kenkiGuardKb';
-import { kenkiBulletRetreatRoll, kenkiBulletRetreatDue, kenkiRetreatReady, kenkiRetreatStop } from './kenkiRetreat';
-import { BRAWLER_LEVER_GUARD_PUSH_PX, BRAWLER_LEVER_GUARD_PUSH_MS } from './brawlerLeverGuard';
+import {
+  kenkiBulletRetreatRoll, kenkiBulletRetreatDue, kenkiRetreatReady, kenkiRetreatStop, kenkiRetreating, kenkiRetreatDirNow, kenkiRetreatCanCover, kenkiBulletRepick,
+} from './kenkiRetreat';
+import { BRAWLER_LEVER_GUARD_PUSH_PX, BRAWLER_LEVER_GUARD_PUSH_MS, BRAWLER_LEVER_GUARD_STOP_MS, leverGuardDirOk } from './brawlerLeverGuard';
 import { bulletEtaMs, bulletPlanRates, phantomBulletLungeDir, pickBulletPlan, type BulletPlan } from './phantomLunge';
 import { BULLET_MOVE_KEYS } from './moveReaction';
 import { isPhantomTargetBullet } from './weaponUtils';
@@ -259,18 +261,27 @@ const strikePlayer = (
   let countered = false;
   const guardsBefore = leverGuardCount(useGameStore.getState().player);
   const r = c.land(originX, originY, mult, { moveKey, sourceLabel: `${c.label}の格闘`, knockback: kb, onCountered: () => { countered = true; }, area });
-  // landed=本当に体力を削った(構え・無敵・神モードで0ダメージだった時は false)。秘奥義の1手目はこれで数える。
   // guarded=プレイヤーが格闘のレバーガードで受けた(research/BRAWLER.md §12-1c=体力は半分減るが浮かない)。
-  return { touched: r === 'hit' || r === 'nodamage', countered: countered || r === 'countered', landed: r === 'hit',
-    guarded: leverGuardCount(useGameStore.getState().player) !== guardsBefore };
+  // landed=本当に体力を削った「当たり」(構え・無敵・神モードで0ダメージだった時は false)。秘奥義の1手目・台本の「当たった」はこれで数える。
+  //   ★レバーガードで防がれた攻撃は「当たっていない」扱い(検収監査2026-11-10・構えで受けられた時と同じ): 台本はそこで打ち切り・
+  //   秘奥義の順番は進まない(1手目の蹴りをガードされたら秘奥義は出ない)。体力は半分減っているので、当たりの音・技ポイントは今どおり(touched)。
+  const guarded = leverGuardCount(useGameStore.getState().player) !== guardsBefore;
+  return { touched: r === 'hit' || r === 'nodamage', countered: countered || r === 'countered', landed: r === 'hit' && !guarded, guarded };
 };
 
 /** 弾への対処(弾ごとに1回だけ決める・人格の割合)。この tick で実行するもの。 */
-const bulletAction = (c: PhantomBrawlerCtx, cx: number, cy: number): { kind: 'counter' } | { kind: 'dodge'; dirX: number; dirY: number } | { kind: 'retreat'; dirX: number; dirY: number } | null => {
+type BulletAct = { kind: 'counter' } | { kind: 'dodge'; dirX: number; dirY: number } | { kind: 'retreat'; dirX: number; dirY: number; etaMs: number } | null;
+const bulletAction = (c: PhantomBrawlerCtx, cx: number, cy: number, s: BrawlerState): BulletAct => {
   const radius = Math.max(c.phantom.width, c.phantom.height) / 2;
   const alive = new Set<string>();
-  let act: { kind: 'counter' } | { kind: 'dodge'; dirX: number; dirY: number } | { kind: 'retreat'; dirX: number; dirY: number } | null = null;
+  let act: BulletAct = null;
   const rates = bulletPlanRates(c.profile.moveReactions, BULLET_MOVE_KEYS);
+  // 下がり(レバーガード・§16-10)の今の状態。下がっている最中は、その向きで受けられる弾かどうかを弾ごとに見る。
+  const m = c.rt.mind;
+  const idleNow = s.phase === 'idle' && !s.secret;
+  const retreating = kenkiRetreating(m, c.t);
+  const retreatDir = retreating
+    ? kenkiRetreatDirNow(m, cx, cy, c.player.x + c.player.width / 2, c.player.y + c.player.height / 2) : null;
   for (const p of c.projectiles) {
     if (!isPhantomTargetBullet(p)) continue;
     alive.add(p.id);
@@ -280,18 +291,34 @@ const bulletAction = (c: PhantomBrawlerCtx, cx: number, cy: number): { kind: 'co
       if (bulletEtaMs(cx, cy, radius, p) === null) continue;
       plan = pickBulletPlan(rates, c.rand());
       // 3つ目の手(§16-10): 下がってガード。下がってよい時(待機・間隔が明けている)だけ引く=下がれない時に弾の対処を捨てない。
-      if (c.phantom.phantomBrawler?.phase !== 'attack' && c.phantom.phantomBrawler?.phase !== 'tech'
-        && kenkiRetreatReady(c.rt.mind, c.t) && kenkiBulletRetreatRoll(c.rand())) plan = 'retreat';
+      if (idleNow && kenkiRetreatReady(m, c.t) && kenkiBulletRetreatRoll(c.rand())) plan = 'retreat';
       c.rt.bulletPlans.set(p.id, plan);
     }
     if (act || plan === 'done' || plan === 'take') continue;
-    if (plan === 'retreat') {
-      // 着弾が近づいたら、弾の飛んできた向き(=撃ち主の側から離れる向き)へ下がり始める。
-      if (kenkiBulletRetreatDue(bulletEtaMs(cx, cy, radius, p))) {
-        const d = unit(p.direction.x, p.direction.y);
-        act = { kind: 'retreat', dirX: d.x, dirY: d.y }; c.rt.bulletPlans.set(p.id, 'done');
+    const etaNow = bulletEtaMs(cx, cy, radius, p);
+    const bd = unit(p.direction.x, p.direction.y);
+    if (retreating) {
+      // ★下がっている最中に来た弾(検収監査2026-11-10): 向きが合い、下がりの間(延ばせる上限の内)に着くなら、下がりを続けてガードで受ける。
+      //   どの手を引いていた弾でも同じ(構え・ステップを挟まず、歩いたまま受ける)。着弾が近づいたら頭脳へ渡して下がりを延ばす。
+      if (leverGuardDirOk(retreatDir, bd) && kenkiRetreatCanCover(m, c.t, etaNow)) {
+        if (etaNow !== null && kenkiBulletRetreatDue(etaNow)) {
+          act = { kind: 'retreat', dirX: bd.x, dirY: bd.y, etaMs: etaNow }; c.rt.bulletPlans.set(p.id, 'done');
+        }
+        continue;
       }
-    } else if (plan === 'counter') {
+      // 受けられない弾(向きが合わない・間に合わない): 「下がってガード」を選んでいたなら他の手を引き直す。頭脳は下がりをやめて返す/避ける。
+      if (plan === 'retreat') { plan = kenkiBulletRepick(rates, c.rand()); c.rt.bulletPlans.set(p.id, plan); }
+    } else if (plan === 'retreat') {
+      // 着弾が近づいたら、弾の飛んできた向き(=撃ち主の側から離れる向き)へ下がり始める。
+      if (etaNow === null || !kenkiBulletRetreatDue(etaNow)) continue;
+      if (idleNow && kenkiRetreatReady(m, c.t)) {
+        act = { kind: 'retreat', dirX: bd.x, dirY: bd.y, etaMs: etaNow }; c.rt.bulletPlans.set(p.id, 'done');
+        continue;
+      }
+      // ★下がれない状態(攻撃中・間隔の中など): 他の手(構えで返す・ステップで避ける)を引き直す=何もせず食らわない。
+      plan = kenkiBulletRepick(rates, c.rand()); c.rt.bulletPlans.set(p.id, plan);
+    }
+    if (plan === 'counter') {
       const eta = bulletEtaMs(cx, cy, radius, p);
       if (eta !== null && eta <= BR.BRAWLER_GUARD_MS) { act = { kind: 'counter' }; c.rt.bulletPlans.set(p.id, 'done'); }
     } else {
@@ -810,12 +837,15 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
     if (dl > 1e-6 && t - lg <= 200) { // 固まり明けなどで遅れて見た古い受けでは押さない
       const dx = (phantom.gpLeverGuardDirX ?? 0) / dl, dy = (phantom.gpLeverGuardDirY ?? 0) / dl;
       kenkiRetreatStop(m);
-      setMove(c.rt, dx * BRAWLER_LEVER_GUARD_PUSH_PX, dy * BRAWLER_LEVER_GUARD_PUSH_PX, BRAWLER_LEVER_GUARD_PUSH_MS, t, 'accdec');
+      // 受けた瞬間の小さな止め(拳鬼の体だけ・世界は止めない): 押しの出だしを BRAWLER_LEVER_GUARD_STOP_MS 遅らせる(器の holdMs)。
+      setMove(c.rt, dx * BRAWLER_LEVER_GUARD_PUSH_PX, dy * BRAWLER_LEVER_GUARD_PUSH_PX, BRAWLER_LEVER_GUARD_PUSH_MS, t, 'accdec', BRAWLER_LEVER_GUARD_STOP_MS);
       // 元の押し(押し道具など)が同じ当たりで付いていたら消す=小さい押しに置き換える。
       if ((phantom.knockbackUntil ?? 0) > c.nowMs) {
         c.patch.knockbackVx = 0; c.patch.knockbackVy = 0; c.patch.knockbackUntil = c.nowMs;
         if ((phantom.knockbackShoveUntil ?? 0) > c.nowMs) c.patch.knockbackShoveUntil = c.nowMs;
       }
+      // 止めの間は歩きの残りの速さでも滑らせない(体がその場で止まる=受け止めた手応え。止め明けに小さい押しが加速→減速で出る)。
+      c.patch.vx = 0; c.patch.vy = 0;
       s = { ...s, leverGuardAt: t, leverGuardN: (s.leverGuardN ?? 0) + 1, leverGuardDirX: -dx, leverGuardDirY: -dy };
       leverGuardFx(useGameStore.getState, { x: cx, y: cy }, phantom.height, dx, dy, true);
     }
@@ -894,7 +924,7 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
       const act = decidePhantomBrawler({
         s, t, edgeDist: ed, reach, reachReady, playerReach: huntingMeleeRadius(player),
         kikoClear: true, discount: discountOf(c.actor), counterChance: c.profile.counterChance, meleeBias: c.profile.meleeBias,
-        bullet: bulletAction(c, cx, cy), rand: c.rand,
+        bullet: bulletAction(c, cx, cy, s), rand: c.rand,
         leap: {
           eligible: kenkiLeapEligible({ edgeDist: ed, t, readyAt: c.rt.leapReadyAt, idle: s.phase === 'idle', secret: !!s.secret }),
           underFire: kenkiUnderFire(c.rt.hitTimes, t),

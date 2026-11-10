@@ -20,8 +20,12 @@ export const BRAWLER_LEVER_GUARD_PUSH_PX = 40;
 export const BRAWLER_LEVER_GUARD_PUSH_MS = 160;
 /** 相手の位置が自分と重なっている(向きが取れない)とみなす距離(px)。構えで押される向き(brawlerGuard)と同じ値。 */
 export const BRAWLER_LEVER_GUARD_MIN_DIST = 8;
-/** 腕で受ける影(構えの腕ガードの影を短く)を出している長さ(ms・ゲーム内の時間)。 */
-export const BRAWLER_LEVER_GUARD_STAND_MS = 260;
+/** 腕で受ける影(腕だけ・白金)を出している長さ(ms・ゲーム内の時間)。構えの全身の影(カウンター)と読み違えない短さ。 */
+export const BRAWLER_LEVER_GUARD_STAND_MS = 180;
+/** 腕で受ける影が、受けた瞬間に体の方へ押し込まれる量(px)。押し込まれてから元の位置へ戻る(慣性)。 */
+export const BRAWLER_LEVER_GUARD_ARM_PUSH_PX = 4;
+/** 受けた瞬間の小さな止め(ms)。止まるのは受けた側の体だけ(小さい押しの出だしを遅らせる)。世界全体は止めない・スローも使わない。 */
+export const BRAWLER_LEVER_GUARD_STOP_MS = 50;
 /** ガードした時の画面の揺れの倍率(普通の被弾の揺れに掛ける。受け止めた=軽い)。 */
 export const BRAWLER_LEVER_GUARD_SHAKE_MULT = 0.5;
 
@@ -29,8 +33,23 @@ export const BRAWLER_LEVER_GUARD_SHAKE_MULT = 0.5;
  * 演出つきの技の被弾の技キー(damagePlayer の damageSourceMove)。ガードが成立しても半減だけ掛け、押し・怯み・演出は今どおり(§12-1c)。
  * 掴み・覆いかぶさりは技キーを持たないので、呼び手が damagePlayer へ leverGuard:'damageOnly' を渡す(combatTick)。
  */
-export const LEVER_GUARD_DAMAGE_ONLY_MOVES: ReadonlySet<string> = new Set(['brawler-secret']); // 拳鬼の秘奥義(ワープの9連撃と締め)
+export const LEVER_GUARD_DAMAGE_ONLY_MOVES: ReadonlySet<string> = new Set([
+  'brawler-secret',      // 拳鬼の秘奥義のワープの9連撃
+  'brawler-secret-land', // 拳鬼の秘奥義の締め(天空からの地面叩き・大きな吹き飛ばし)
+]);
 export const leverGuardDamageOnlyMove = (moveKey: string | undefined): boolean => moveKey !== undefined && LEVER_GUARD_DAMAGE_ONLY_MOVES.has(moveKey);
+/**
+ * ★演出つきの技(秘奥義)は、どこか1発をガードで受けたら、その技の残り(連撃と締め)にも半減だけを持ち越す(検収監査2026-11-10)。
+ * 連撃の間は怯みで動けず、レバーで判定し直せないため。持ち越しは「最後に半減が掛かった当たり」からこの長さ(ms・ゲーム内の時間)の間、
+ * 同じ相手の演出つきの技にだけ効く。秘奥義の当たりの間隔(連撃=約0.2秒・外れが続いた後の締めまで=約2秒)より長く、次の秘奥義(20秒以上後)より短い。
+ */
+export const BRAWLER_LEVER_GUARD_CARRY_MS = 3500;
+/** 半減の持ち越しが効く当たりか(同じ相手・演出つきの技・持ち越しの時間の内)。 */
+export const leverGuardCarryHolds = (o: {
+  moveKey: string | undefined; srcId: string | undefined; carryUntil: number | undefined; carryFrom: string | undefined; gameTime: number;
+}): boolean =>
+  leverGuardDamageOnlyMove(o.moveKey) && o.srcId !== undefined && o.carryFrom === o.srcId
+  && o.carryUntil !== undefined && o.gameTime < o.carryUntil;
 
 export interface Vec2 { x: number; y: number }
 type Keys = { up?: boolean; down?: boolean; left?: boolean; right?: boolean };
@@ -109,13 +128,25 @@ export const brawlerLeverGuardDamage = (amount: number, mult: number = BRAWLER_L
   amount > 0 ? Math.max(1, Math.ceil(amount * mult - 1e-9)) : amount;
 
 /**
- * 腕で受ける影(構えの腕ガードの影を短く)の濃さ 0..1。el=ガードしてからの経過(ms・ゲーム内の時間)。
+ * 腕で受ける影(腕だけ・白金)の濃さ 0..1。el=ガードしてからの経過(ms・ゲーム内の時間)。
  * 出だしは速く立ち上がり(受けた瞬間に在る)、後半でゆっくり引く(慣性)。尺の外は 0。
  */
 export const leverGuardStandAlpha = (el: number, ms: number = BRAWLER_LEVER_GUARD_STAND_MS): number => {
   if (!(el >= 0) || el >= ms) return 0;
   const p = el / ms;
-  const rise = Math.min(1, el / 40);
-  const fall = p < 0.35 ? 1 : 1 - ((p - 0.35) / 0.65) ** 2;
+  const rise = Math.min(1, el / 25);
+  const fall = p < 0.4 ? 1 : 1 - ((p - 0.4) / 0.6) ** 2;
   return 0.85 * rise * fall;
+};
+/**
+ * 腕で受ける影の位置のずれ(px・相手の方が正)。受けた瞬間に体の方へ押し込まれ(負・速く入って減速)、そこから元の位置へ戻る(ゆっくり出て減速)。
+ * 0 → −BRAWLER_LEVER_GUARD_ARM_PUSH_PX(尺の3割)→ 0(尺の終わり)。尺の外は 0。
+ */
+export const leverGuardArmOffset = (el: number, ms: number = BRAWLER_LEVER_GUARD_STAND_MS, pushPx: number = BRAWLER_LEVER_GUARD_ARM_PUSH_PX): number => {
+  if (!(el >= 0) || el >= ms) return 0;
+  const p = el / ms;
+  const IN = 0.3;
+  if (p < IN) { const q = p / IN; return -pushPx * (1 - (1 - q) * (1 - q)); } // 押し込まれる: 出だしが速く、止まり際は遅い
+  const q = (p - IN) / (1 - IN);
+  return -pushPx * (1 - q * q * (3 - 2 * q)); // 戻る: ゆっくり動き出して、ゆっくり止まる
 };

@@ -3698,9 +3698,49 @@ export const INVULN_MS = 1000; // 社長裁定v0.25.3599(700→1000。多段技�
 /**
  * ★拳鬼への一撃の「出どころ」(レバーガードの向きの材料・research/BRAWLER_PHANTOM.md §16-10)。
  *  dir=弾の飛んできた向き / from=攻撃してきた相手・爆心の位置。未指定(undefined)=プレイヤーの体から(近接・プレイヤー起因の当たりの既定)。
- *  null=出どころが分からない(爆発の広がり・持続ダメージ・仲間の当たりなど)=レバーガードは成立しない。
+ *  null=出どころが分からない(持続ダメージ・向きも相手も取れない当たり)=レバーガードは成立しない。
+ *  拳鬼がガードできる相手(§16-10・検収監査2026-11-10): プレイヤー・守護霊・犬・軍人の当たり(相手の位置から離れる向き)、弾(飛んできた向き)、
+ *  爆発(爆心から離れる向き・爆発する弾の広がりも)。damageEnemy の中央経路は kenkiAttackFromDefault が引く。
  */
 export type KenkiAttackFrom = { dir?: { x: number; y: number }; from?: { x: number; y: number } } | null;
+/**
+ * 中央経路(damageEnemy)へ来た一撃の出どころ(呼び手が渡さなかった時)。
+ *  - 持続ダメージ = null(対象外)
+ *  - 爆発(blast)= この敵を巻き込んでいる、いちばん近い爆心(爆発は必ず playerBlast/queueBlastLift で待ち行列へ積んでからダメージを配る=§14 の箱)。
+ *    見つからなければ null(爆心が分からない爆発はガードにならない)。
+ *  - プレイヤー起因 = undefined(プレイヤーの体から)/ 守護霊・犬・軍人 = その仲間の位置 / それ以外(英雄・持ち主なし)= null。
+ */
+const kenkiAttackFromDefault = (
+  enemy: Enemy, blast: boolean, damageChannel: 'gun' | 'other' | 'dot' | null, hateSource: HateSide | 'neutral' | 'dog',
+  state: Pick<GameState, 'summons' | 'escorts'>,
+): KenkiAttackFrom | undefined => {
+  if (damageChannel === 'dot') return null;
+  const ecx = enemy.x + enemy.width / 2, ecy = enemy.y + enemy.height / 2;
+  if (blast) {
+    const pad = Math.max(enemy.width, enemy.height) / 2 + 8;
+    let best: { x: number; y: number } | null = null, bd = Infinity;
+    for (const b of pendingBlastLifts) {
+      const d = Math.hypot(b.x - ecx, b.y - ecy);
+      if (d <= b.r + pad && d < bd) { bd = d; best = { x: b.x, y: b.y }; }
+    }
+    return best ? { from: best } : null;
+  }
+  if (hateSource === 'player') return undefined;
+  const nearest = (list: readonly { x: number; y: number; width?: number; height?: number }[]): KenkiAttackFrom => {
+    let best: { x: number; y: number } | null = null, bd = Infinity;
+    for (const a of list) {
+      const ax = a.x + (a.width ?? 0) / 2, ay = a.y + (a.height ?? 0) / 2;
+      const d = Math.hypot(ax - ecx, ay - ecy);
+      if (d < bd) { bd = d; best = { x: ax, y: ay }; }
+    }
+    return best ? { from: best } : null;
+  };
+  if (hateSource === 'ghost') return nearest(state.summons.filter(s => s.kind === 'ghost-ally'));
+  if (hateSource === 'dog') return nearest(state.summons.filter(s => s.kind === 'hero-dog'));
+  const escortId = escortIdOfSide(hateSource === 'neutral' ? undefined : hateSource);
+  if (escortId !== undefined) return nearest(state.escorts.filter(s => s.id === escortId));
+  return null;
+};
 /**
  * 拳鬼がこの一撃をレバーガードで受けるなら、攻撃の進む向き(長さ1=押される向き)。受けないなら null。
  * 拳鬼の「レバー」(gpLeverX/Y)は制御(phantomTick)が毎 tick 書く=動作の最中・固まり・歩いていない時は無い。成立はプレイヤーと同じ純関数。
@@ -5406,30 +5446,38 @@ const brawlerFx = (get: () => GameState, x: number, y: number, tex: string, o: B
  */
 export const leverGuardFx = (get: () => GameState, c: { x: number; y: number }, bodyH: number, dirX: number, dirY: number, push: boolean): void => {
   const g = get();
-  // 受けた点: 体の中心から相手の側へ・胴の高さ(当たりの箱は足元にあり、絵はその上へ伸びる=箱の中心より上げる。縦は絵が重なるので控えめに)。
-  const px = c.x - dirX * 17, py = c.y - 13 - dirY * 12;
+  // 受けた点: 体の縁(相手の側)・拳と前腕の高さ(当たりの箱は足元にあり、絵はその上へ伸びる=箱の中心よりしっかり上)。
+  // 縦の相手(上下から来た攻撃)は絵が体に重なるので、縦のずらしは控えめにする。
+  // プレイヤーの箱は足元の小さい箱(28)=絵は箱の上へ伸びる → 箱の中心から 21 上。拳鬼の箱は体の丈に近い(56)=箱の中心がもう胴 → 上げ幅は小さく。
+  const up = bodyH <= 32 ? 21 : Math.max(12, 34 - bodyH * 0.3);
+  const px = c.x - dirX * 16, py = c.y - up - dirY * 9;
   const ra = Math.atan2(-dirY, -dirX); // 相手の方
-  // 火花: 受けた面に走る稲妻を小さく2本(大きさ・尺・向きをずらす)+相手の側へ散る粒。
-  brawlerFx(get, px, py, 'vfx/spark_04', { scale: 0.8, rot: ra + (Math.random() * 2 - 1) * 0.5, duration: 210, fadeFrom: 0.3, alpha: 1 });
-  brawlerFx(get, px, py, 'vfx/spark_04', { scale: 0.5, rot: ra + Math.PI * 0.5 + (Math.random() * 2 - 1) * 0.7, duration: 150, fadeFrom: 0.25, alpha: 0.85 });
-  g.spawnBurst(px, py, BR.BRAWLER_COLOR, 5, -dirX, -dirY);
-  // 短い輪(受け止めた面で小さく開いてすぐ消える)と、芯の小さな光。
-  g.spawnRing(px, py, 5, 38, BR.BRAWLER_RGBA(0.92), 2.5, 190, true);
-  g.spawnGlow(px, py, GLOW_R_S, 'rgba(255,248,230,', 150, true);
-  // 足元: 踏ん張った足が地面を擦った砂埃(小さめ2つ・大きさと尺をずらす・相手の側へ流れて薄れる)。
+  // 受けた面の弧(クリエイティブ監査: 全周の輪は「キャンセルの閃き」と同じ絵になる=やめた)。相手の側だけの三日月(約120°・半径は約18px)。
+  // 外へ広げない。受けた面から相手の側へ少しだけ押し返して消える(動きは画像マークの加速→減速)。体をまるごと囲わない。
+  // 素材 fx/slash-arc は膨らみが −x 側=相手の方+PI で膨らみが相手を向く(格闘の3段目・蹴りの弧と同じ規約)。
+  brawlerFx(get, px, py, 'fx/slash-arc', {
+    scale: 0.42, scaleX: 0.55, scaleY: 0.85, rot: ra + Math.PI, duration: 115, fadeFrom: 0.4, alpha: 0.95,
+    moveX: -dirX * 5, moveY: -dirY * 5,
+  });
+  // 稲妻は1本だけ・短く、受けた面に沿って横へ走る。打撃の閃き(細く潰した光)を同じ面に重ねる。散る粒(芯が白く光る=白い筋に見えやすい)は出さない。
+  brawlerFx(get, px, py, 'vfx/spark_04', { scale: 0.6, rot: ra + Math.PI / 2 + (Math.random() * 2 - 1) * 0.25, duration: 95, fadeFrom: 0.3, alpha: 1 });
+  brawlerFx(get, px, py, 'vfx/flare_01', { scale: 0.5, scaleX: 1.5, scaleY: 0.4, rot: ra + Math.PI / 2, duration: 110, fadeFrom: 0.25, alpha: 0.9 });
+  g.spawnGlow(px, py, GLOW_R_S, 'rgba(255,248,230,', 120, true);
+  // 足元: 踏ん張った足が地面を擦った砂埃。足の線(当たりの箱の下の縁)に低く(縦に潰す)、押される向きと直角に左右へ広げ、相手の側へ少し流す。
   if (push) {
-    const footY = c.y + bodyH / 2 - 12;
-    const qx = -dirY, qy = dirX;
-    g.spawnImageMark(c.x - dirX * 4, footY - dirY * 4, 'fx/dust-puff', {
-      scale: 0.17, duration: 430, tint: 0x9a8b7a, alpha: 0.65, moveX: -dirX * 20, moveY: -dirY * 20, fadeFrom: 0.35,
-    });
-    g.spawnImageMark(c.x + dirX * 7 + qx * 7, footY + dirY * 7 + qy * 7, 'fx/dust-puff', {
-      scale: 0.11, duration: 340, tint: 0x8f8170, alpha: 0.5, moveX: -dirX * 14 + qx * 5, moveY: -dirY * 14 + qy * 5, fadeFrom: 0.3,
-    });
+    const footY = c.y + bodyH / 2 - 2;
+    const qx = -dirY, qy = dirX; // 押される向きに直角
+    const side: readonly [number, number, number, number][] = [[1, 0.14, 380, 0.5], [-1, 0.12, 320, 0.42]]; // [左右, 大きさ, 尺, 濃さ]
+    for (const [sg, sc, dur, a] of side) {
+      g.spawnImageMark(c.x + qx * 8 * sg, footY + qy * 4 * sg, 'fx/dust-puff', {
+        scale: sc, scaleY: 0.6, duration: dur, tint: sg > 0 ? 0x9a8b7a : 0x8f8170, alpha: a, fadeFrom: 0.3,
+        moveX: qx * 11 * sg - dirX * 7, moveY: qy * 5 * sg - dirY * 4,
+      });
+    }
   }
-  // 音: 鈍い打撃音(重い当たりを低く・短く)+腕に当たった鈍い音。高い金属音(counter)は鳴らさない。
-  brawlerSfx('heavy-impact', 0.5, 0.6 * brJitter(), undefined, 0);
-  brawlerSfx('brawler-hit', 0.42, 0.62 * brJitter());
+  // 音: 乾いた短い1発(腕に当たった音を少し低く・短く切る)。重い当たりの音はごく薄く添えるだけ。高い金属音(counter)は鳴らさない。
+  brawlerSfx('brawler-hit', 0.62, 0.85 * brJitter(), 110);
+  brawlerSfx('heavy-impact', 0.25, 0.78, 90);
 };
 /** 秘奥義の題字の素材の寸法(public/sprites/fx/brawler-secret-title.png・社長支給)。 */
 const BR_SECRET_TITLE_W = 128;
@@ -8877,7 +8925,7 @@ interface GameState {
   setMouseAim: (screen: { x: number; y: number } | null) => void;
   setTouchActive: (active: boolean) => void;
   setLastDirection: (direction: { x: number; y: number } | null) => void;
-  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean; knockback?: 'none' | { speed: number; dirX: number; dirY: number }; guardDir?: { x: number; y: number }; guardFrom?: { x: number; y: number }; leverGuard?: 'damageOnly' }) => boolean; // opts.guardDir/guardFrom/leverGuard: ★格闘のレバーガード(research/BRAWLER.md §12-1c)の「攻撃の向き」の材料。guardDir=弾が飛んできた向き(弾の速度)/ guardFrom=爆発・範囲技の中心(爆心)/ leverGuard:'damageOnly'=掴み・演出つきの技(半減だけ掛け、押し・怯みは今どおり)。どれも未指定=被弾の点(fromX/Y)と攻撃してきた個体の位置から引く // opts.knockback: ★組み込みの被弾の押しの差し替え(research/BRAWLER_PHANTOM.md §4-8・格闘の幻影の段ごとの押し)。'none'=押さない(揺れの向きは残す)/ 速さと向き=その押し。未指定=今どおり / opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
+  damagePlayer: (amount: number, source?: string, fromX?: number, fromY?: number, damagerType?: EnemyType, damagerWasNamed?: boolean, damageSourceMove?: string, sourceId?: string, retaliateFromId?: string, killerHint?: { type?: EnemyType; id?: string }, opts?: { dot?: boolean; knockback?: 'none' | { speed: number; dirX: number; dirY: number }; guardDir?: { x: number; y: number }; guardFrom?: { x: number; y: number }; leverGuard?: 'damageOnly' | 'none' }) => boolean; // opts.guardDir/guardFrom/leverGuard: ★格闘のレバーガード(research/BRAWLER.md §12-1c)の「攻撃の向き」の材料。guardDir=弾が飛んできた向き(弾の速度)/ guardFrom=爆発・範囲技の中心(爆心)/ leverGuard:'damageOnly'=掴み・演出つきの技(半減だけ掛け、押し・怯みは今どおり)・'none'=床と置かれた火(踏んでいる間ダメージを受け続ける物=「攻撃してきた相手」ではない=ガードにしない)。どれも未指定=被弾の点(fromX/Y)と攻撃してきた個体の位置から引く // opts.knockback: ★組み込みの被弾の押しの差し替え(research/BRAWLER_PHANTOM.md §4-8・格闘の幻影の段ごとの押し)。'none'=押さない(揺れの向きは残す)/ 速さと向き=その押し。未指定=今どおり / opts.dot: ★持続ダメージ(炎・延焼。UNIQUE_WEAPONS.md §17-6b)=HPと記録だけ減らし、怯み・ストップ・揺れ・全体の被弾無敵・反撃の窓・被弾で動くスキルを起こさない(敵ごとの被弾無敵は通常どおり) // killerHint: ★倒した相手の記録専用(リザルトの絵・宿敵昇格)。被弾無敵・被弾反撃には効かない(弾の発射元など、id を渡すと挙動が変わる経路用) // retaliateFromId: ★被弾反撃の相手(近接系の敵の個体id・指名された被弾だけが窓を開く。research/HIT_RETALIATION.md §2。sourceIdは被弾無敵を動かすので流用しない) // sourceId: ★被弾無敵を「敵ごと」に見る(社長裁定2026-09-17) // fromX/Y=被弾源(指定時、そこから離れる方向へプレイヤーをノックバック)。damagerType/damagerWasNamed=宿敵昇格判定用(§5.14 M13)。damageSourceMove=どのボス技の被弾か(G4a計測タグ・記録専用。既定undefined=従来どおり。hateSourceと同じ流儀)
   lastDamageSource: string; // 直近に被弾した原因ラベル(死因表示用)。被弾のたびに更新。
   gainExperience: (amount: number) => void;
   levelUp: () => void;
@@ -14979,13 +15027,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     //   上の構えの入口が先に決める。成立した攻撃はここへ来ない)→ ②ここ → ③普通の被弾。被弾無敵・無効化で弾かれた攻撃もここへ来ない。
     //   成立(純関数 BLG): 格闘の出番・待機か歩いている時・レバー(スティック/移動キー/パッド=store の移動の入力)が、攻撃してきた相手から
     //   離れる向き(左右60°まで)。相手の向きが取れない被弾・持続ダメージは対象外。入力は塞がない(読むだけ)。
+    //   床と置かれた火(呼び手が leverGuard:'none' を渡す)は対象外。演出つきの技(秘奥義)は半減だけ=1発受けたら残りにも持ち越す(下)。
+    const lgSrcId = sourceId ?? retaliateFromId ?? killerHint?.id;
     const leverGuard = ((): { dirX: number; dirY: number; full: boolean } | null => {
-      if (dot || !(rawAmount > 0) || !isBrawlerMode(player)) return null; // 格闘の状態がまだ無い(1度も殴っていない)のは待機と同じ
+      if (dot || !(rawAmount > 0) || !isBrawlerMode(player) || opts?.leverGuard === 'none') return null; // 格闘の状態がまだ無い(1度も殴っていない)のは待機と同じ
       const stLg = get();
       const lever = BLG.moveLeverDir(stLg.swipeDirection, stLg.inputState);
-      if (!lever) return null;
       const pc = brawlerCenter(player);
-      const srcId = sourceId ?? retaliateFromId ?? killerHint?.id;
+      const srcId = lgSrcId;
       const srcType = damagerType ?? killerHint?.type;
       const centerOf = (e: Enemy | null | undefined) => (e ? { x: e.x + e.width / 2, y: e.y + e.height / 2 } : null);
       const srcEnemy = srcId !== undefined || srcType !== undefined
@@ -14998,11 +15047,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         hit: fromX !== undefined && fromY !== undefined ? { x: fromX, y: fromY } : null,
         enemy: centerOf(srcEnemy),
       });
-      if (!attackDir || !BLG.brawlerLeverGuardHolds({
+      if (attackDir && BLG.brawlerLeverGuardHolds({
         has: true, amount: rawAmount, dot, free: leverGuardFree(player, stLg.gameTime, Date.now()), lever, attackDir,
-      })) return null;
-      // 掴み・演出つきの技(呼び手が 'damageOnly' を渡す)は半減だけ=押し・怯み・掴み・演出は今どおり。
-      return { dirX: attackDir.x, dirY: attackDir.y, full: opts?.leverGuard !== 'damageOnly' && !BLG.leverGuardDamageOnlyMove(damageSourceMove) };
+      })) {
+        // 掴み・演出つきの技(呼び手が 'damageOnly' を渡す・技キーの表)は半減だけ=押し・怯み・掴み・演出は今どおり。
+        return { dirX: attackDir.x, dirY: attackDir.y, full: opts?.leverGuard !== 'damageOnly' && !BLG.leverGuardDamageOnlyMove(damageSourceMove) };
+      }
+      // ★半減の持ち越し(検収監査2026-11-10): 拳鬼の秘奥義は、どこか1発をガードで受けたら、その秘奥義の残り(連撃と締め)にも半減だけ掛ける
+      //   (連撃の間は怯みで動けず、レバーで判定し直せない)。演出・吹き飛ばしは今どおり。向きが取れなければ受けた絵は出さない(dir=0)。
+      if (BLG.leverGuardCarryHolds({
+        moveKey: damageSourceMove, srcId, carryUntil: player.brawler?.leverGuardCarryUntil, carryFrom: player.brawler?.leverGuardCarryFrom, gameTime: stLg.gameTime,
+      })) return { dirX: attackDir?.x ?? 0, dirY: attackDir?.y ?? 0, full: false };
+      return null;
     })();
 
     // スキル: ナイト(×0.8)/バーサーカー(×1.2)/消費カード「プロテクション」(×0.7・§23) の被ダメ補正。
@@ -15206,14 +15262,20 @@ export const useGameStore = create<GameState>((set, get) => ({
               ...(lgAny && leverGuard ? {
                 leverGuardAt: state.gameTime, leverGuardN: (state.player.brawler?.leverGuardN ?? 0) + 1,
                 leverGuardDirX: -leverGuard.dirX, leverGuardDirY: -leverGuard.dirY,
+                // 演出つきの技(秘奥義)に半減が掛かった=残りの当たりへ持ち越す(同じ相手・この時間の内)。
+                ...(BLG.leverGuardDamageOnlyMove(damageSourceMove) && lgSrcId !== undefined
+                  ? { leverGuardCarryUntil: state.gameTime + BLG.BRAWLER_LEVER_GUARD_CARRY_MS, leverGuardCarryFrom: lgSrcId } : {}),
               } : {}),
             },
           } : {}),
           // ★レバーガードの小さい押し(上の lgPushSpeed)。全体の停止が走っていれば明けてから押され始める。
           ...(lgFull && leverGuard ? {
             lungeVx: leverGuard.dirX * lgPushSpeed, lungeVy: leverGuard.dirY * lgPushSpeed,
+            // ★受けた瞬間の小さな止め(クリエイティブ監査: 受け止めた手応え): 押しの器を BRAWLER_LEVER_GUARD_STOP_MS だけ止めておく(lungeHoldUntil=
+            //   格闘の当たりの止めが踏み込みを止めるのと同じ型)。止まるのは自分の体だけ=世界・敵・時間は止めない(全体の停止・スローは使わない)。
+            //   止めている間は器の期限が同じだけ後ろへずれる(movePlayer)=押しの距離は変わらない。
             lungeUntil: Math.max(kbNow, state.hitstopUntil) + BLG.BRAWLER_LEVER_GUARD_PUSH_MS, lungeMs: BLG.BRAWLER_LEVER_GUARD_PUSH_MS,
-            lungeShape: 'push' as const, lungeHoldUntil: 0,
+            lungeShape: 'push' as const, lungeHoldUntil: Math.max(kbNow, state.hitstopUntil) + BLG.BRAWLER_LEVER_GUARD_STOP_MS,
           } : {}),
           // B3 巡航: 被弾(吹き飛び・しゃがみの付く当たり)で段0へ。スーパーアーマーで耐えた被弾・M0 の踏みとどまり(amount=0)では戻さない。
           // レバーガードで受け切った被弾も戻さない(吹き飛びもしゃがみも付かない)。
@@ -15247,7 +15309,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
 
     // ★レバーガードの絵と音(§12-1c・派手さの絵・判定なし)。Counter! の文字・スロー・全体の停止は出さない(カウンターではない)。
-    if (lgAny && leverGuard) leverGuardFx(get, { x: player.x + player.width / 2, y: player.y + player.height / 2 }, player.height, leverGuard.dirX, leverGuard.dirY, lgFull);
+    if (lgAny && leverGuard && (leverGuard.dirX !== 0 || leverGuard.dirY !== 0)) leverGuardFx(get, { x: player.x + player.width / 2, y: player.y + player.height / 2 }, player.height, leverGuard.dirX, leverGuard.dirY, lgFull);
 
     // スキル: 反射神経 = 被弾時(amount>0)、CD明けならプレイヤー中心に反撃爆発(ランチャー値)+
     // 近傍敵を 2× ノックバック。CD 1秒。被弾イベント由来なのでスロー無し(CLAUDE.md)。
@@ -16738,9 +16800,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const gpGate: PhantomHitGateResult = amount > 0
         ? gatePhantomHit(
           enemy, amount, postureImpact === 'counter' ? 'counter' : (gpSource ?? 'ranged'), state.gameTime, true,
-          // 拳鬼のレバーガード(§16-10)の出どころ: 呼び手が渡した物(弾=飛んできた向き)。無ければ、プレイヤー起因の直接の当たりはプレイヤーの体から。
-          // 爆発の広がり・持続ダメージ・仲間(守護霊・犬・軍人)の当たりは位置が分からない=成立しない。
-          gpAttack !== undefined ? gpAttack : (blast || damageChannel === 'dot' || hateSourceIn !== 'player') ? null : undefined,
+          // 拳鬼のレバーガード(§16-10)の出どころ: 呼び手が渡した物(弾=飛んできた向き)。無ければ kenkiAttackFromDefault が引く
+          // (爆発=爆心・守護霊/犬/軍人=その仲間の位置・プレイヤー起因=プレイヤーの体)。対象外は持続ダメージと、向きも相手も取れない当たりだけ。
+          gpAttack !== undefined ? gpAttack
+            : enemy.phantomUnique === 'brawler' ? kenkiAttackFromDefault(enemy, blast, damageChannel, hateSourceIn, state) : undefined,
         )
         : { damage: amount, effects: true, blocked: false, parried: false, patch: {}, damageScale: 1 };
       if (!gpGate.effects) {

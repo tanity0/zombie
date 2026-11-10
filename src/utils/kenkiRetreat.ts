@@ -24,6 +24,11 @@ export const KENKI_RETREAT_BULLET_P = 0.25;
 export const KENKI_RETREAT_BULLET_LEAD_MS = 350;
 /** 予測した当たりの後も、これだけ余分に下がり続ける(ms・読みの誤差の分)。 */
 export const KENKI_RETREAT_COVER_MS = 100;
+/**
+ * 下がっている最中に別の弾が来た時、下がりを延ばして受けてよい上限(下がり始めからの長さ・ms・叩き台)。
+ * これを超える弾は下がりでは受けない(構えで返す・ステップで避ける へ回す)=撃たれ続けても下がり続けない(亀にしない)。
+ */
+export const KENKI_RETREAT_HOLD_MAX_MS = 800;
 
 /** 頭脳の持ち越し(PhantomBrawlerMind の一部)。 */
 export interface KenkiRetreatMind {
@@ -35,8 +40,10 @@ export interface KenkiRetreatMind {
   retreatDir: { x: number; y: number } | null;
   /** 下がるかを振った、予測の当たりの時刻(同じ予測で2回振らない)。 */
   retreatRolledFor: number;
+  /** いまの下がりを始めた時刻(gameTime)。延ばせる上限(KENKI_RETREAT_HOLD_MAX_MS)の起点。 */
+  retreatFrom: number;
 }
-export const createKenkiRetreatMind = (): KenkiRetreatMind => ({ retreatUntil: 0, retreatReadyAt: 0, retreatDir: null, retreatRolledFor: -1 });
+export const createKenkiRetreatMind = (): KenkiRetreatMind => ({ retreatUntil: 0, retreatReadyAt: 0, retreatDir: null, retreatRolledFor: -1, retreatFrom: 0 });
 
 const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
 const lerp = (a: number, b: number, k: number): number => a + (b - a) * clamp01(k);
@@ -92,6 +99,7 @@ export const kenkiBulletRetreatDue = (etaMs: number | null): boolean => etaMs !=
 /** 下がり始める(締め切り・次に下がってよい時刻・向きを書く)。dir=null はプレイヤーから離れる向き。 */
 export const kenkiRetreatStart = (m: KenkiRetreatMind, t: number, ms: number, dir: { x: number; y: number } | null): void => {
   const dur = Math.max(0, ms);
+  m.retreatFrom = t;
   m.retreatUntil = t + dur;
   m.retreatReadyAt = t + dur + KENKI_RETREAT_GAP_MS;
   const l = dir ? Math.hypot(dir.x, dir.y) : 0;
@@ -99,6 +107,28 @@ export const kenkiRetreatStart = (m: KenkiRetreatMind, t: number, ms: number, di
 };
 /** 下がりを打ち切る(殴られて押された・固まった など)。次に下がってよい時刻は残す=打ち切った直後にまた下がらない。 */
 export const kenkiRetreatStop = (m: KenkiRetreatMind): void => { m.retreatUntil = 0; m.retreatDir = null; };
+
+/**
+ * 下がっている最中に来た弾(着弾まで eta ms)を、下がりを続けて受けられるか。
+ * いまの下がりの間に着く、または上限(下がり始めから KENKI_RETREAT_HOLD_MAX_MS)の内まで延ばせば着く。向きが合うかは呼び手が見る。
+ */
+export const kenkiRetreatCanCover = (m: Pick<KenkiRetreatMind, 'retreatUntil' | 'retreatFrom'>, t: number, etaMs: number | null): boolean =>
+  etaMs !== null && kenkiRetreating(m, t)
+  && (t + etaMs < m.retreatUntil || t + etaMs + KENKI_RETREAT_COVER_MS <= m.retreatFrom + KENKI_RETREAT_HOLD_MAX_MS);
+/** 下がりを、その弾の着弾の少し後まで延ばす(上限の内だけ)。次に下がってよい時刻も後ろへずらす。下がっていなければ何もしない。 */
+export const kenkiRetreatExtend = (m: KenkiRetreatMind, t: number, etaMs: number): void => {
+  if (!kenkiRetreating(m, t)) return;
+  const want = Math.min(t + Math.max(0, etaMs) + KENKI_RETREAT_COVER_MS, m.retreatFrom + KENKI_RETREAT_HOLD_MAX_MS);
+  if (want > m.retreatUntil) { m.retreatUntil = want; m.retreatReadyAt = want + KENKI_RETREAT_GAP_MS; }
+};
+/**
+ * 「下がってガード」を選んだ弾で下がれない時(攻撃中・間隔の中・向きが合わない)に、他の手を引き直す(構えで返す/ステップで避ける)。
+ * 割合は人格の「返す:避ける」の比。食らう(take)には引き直さない=何もせず食らう経路を作らない。
+ */
+export const kenkiBulletRepick = (rates: { counter: number; dodge: number }, r: number): 'counter' | 'dodge' => {
+  const sum = Math.max(0, rates.counter) + Math.max(0, rates.dodge);
+  return sum > 0 && r < Math.max(0, rates.counter) / sum ? 'counter' : 'dodge';
+};
 
 /** いまの下がる向き(長さ1)。向きが決まっていなければプレイヤーから離れる向き・重なっていれば右。 */
 export const kenkiRetreatDirNow = (m: Pick<KenkiRetreatMind, 'retreatDir'>, cx: number, cy: number, pcx: number, pcy: number): { x: number; y: number } => {

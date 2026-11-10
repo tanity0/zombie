@@ -3922,7 +3922,7 @@ export const tickAngelBossFires = (newGameTime: number, onPlayerDeath: (x: numbe
     if (active) hitThirdParties({ kind: 'circle', cx: f.x, cy: f.y, r: JB_T.fire.radius }, JB_T.fire.damage, undefined, 'jibril-lantern');
     if (active && !pl.invulnerable && !died && !struck && Math.hypot(plcx - f.x, plcy - f.y) <= hitR) {
       struck = true;
-      const d = useGameStore.getState().damagePlayer(JB_T.fire.damage, 'ジブリルのランタン火', f.x, f.y, undefined, undefined, 'jibril-lantern', undefined, undefined, { type: 'jibril' }); // G4a計測タグ(記録専用・置いた火はランタンの技に帰属)
+      const d = useGameStore.getState().damagePlayer(JB_T.fire.damage, 'ジブリルのランタン火', f.x, f.y, undefined, undefined, 'jibril-lantern', undefined, undefined, { type: 'jibril' }, { leverGuard: 'none' }); // 置かれた火は格闘のレバーガードの対象外(research/BRAWLER.md §12-1c) // G4a計測タグ(記録専用・置いた火はランタンの技に帰属)
       if (d) { died = true; onPlayerDeath(plcx, plcy); }
       continue;
     }

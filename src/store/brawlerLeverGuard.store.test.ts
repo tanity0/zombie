@@ -17,7 +17,7 @@ import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
 import { isHurtMoveLocked } from '../utils/playerHurt';
 import {
-  BRAWLER_LEVER_GUARD_PUSH_PX, BRAWLER_LEVER_GUARD_PUSH_MS, brawlerLeverGuardDamage,
+  BRAWLER_LEVER_GUARD_PUSH_PX, BRAWLER_LEVER_GUARD_PUSH_MS, BRAWLER_LEVER_GUARD_STOP_MS, BRAWLER_LEVER_GUARD_STAND_MS, brawlerLeverGuardDamage,
 } from '../utils/brawlerLeverGuard';
 import { brawlerStandAt } from '../utils/brawler';
 import { treesInRegion, trunkRect, setTreesDisabled } from '../world/trees';
@@ -127,21 +127,28 @@ describe('①相手から離れる向きにレバーを入れて食らう: ガ�
     expect(pl().lastDirection).toEqual({ x: -1, y: 0 });
     release(); // 押しだけを測る(離さなければ押しの後に歩き出す)
     const xs: number[] = [];
-    for (let i = 0; i < 16; i++) {
+    const stopG = useGameStore.getState().hitstopUntil;
+    for (let i = 0; i < 26; i++) {
       advance(10); xs.push(pl().x - x0);
-      if (i === 10) expect(pl().lastDirection).toEqual({ x: -1, y: 0 }); // 押されている間は相手を向いたまま
+      if (i === 14) expect(pl().lastDirection).toEqual({ x: -1, y: 0 }); // 押されている間は相手を向いたまま
     }
     expect(Math.abs(pl().y - y0)).toBeLessThan(0.5);
-    // 加速→減速: 出だしと終わりの1刻みは、真ん中の1刻みより小さい
+    // ★受けた瞬間の小さな止め: 最初の約50msは自分の体が動かない(世界全体の停止は張らない)。
+    expect(BRAWLER_LEVER_GUARD_STOP_MS).toBeGreaterThanOrEqual(40);
+    expect(BRAWLER_LEVER_GUARD_STOP_MS).toBeLessThanOrEqual(60);
+    expect(Math.abs(xs[3])).toBeLessThan(0.5);
+    expect(useGameStore.getState().hitstopUntil).toBe(stopG);
+    // 加速→減速: 止め明けの出だしと終わりの1刻みは、一番速い1刻みより小さい
     const step = (i: number) => xs[i] - (i > 0 ? xs[i - 1] : 0);
-    expect(step(0)).toBeLessThan(step(7));
-    expect(step(15)).toBeLessThan(step(7));
-    // 押しの尺(160ms)の後は、歩きの慣性の残りで少し滑って止まる。合計は約40px(ループの移動にはゲームスピードが掛かる)。
+    const peak = Math.max(...xs.map((_, i) => step(i)));
+    expect(step(6)).toBeLessThan(peak * 0.6);
+    expect(step(23)).toBeLessThan(peak * 0.6);
+    // 押しの尺(止め50ms+160ms)の後は、歩きの慣性の残りで少し滑って止まる。合計は約40px のまま(止めても距離は変わらない)。
     advance(600);
     const total = pl().x - x0;
     expect(total).toBeGreaterThan(PUSH * 0.9);
     expect(total).toBeLessThan(PUSH * 1.1);
-    expect(xs[15]).toBeGreaterThan(total * 0.9); // ほとんどは尺の中で押される
+    expect(xs[25]).toBeGreaterThan(total * 0.9); // ほとんどは尺の中で押される
     advance(200);
     expect(Math.abs(pl().x - x0 - total)).toBeLessThan(0.3); // 押しが終われば止まる
   });
@@ -201,8 +208,15 @@ describe('①相手から離れる向きにレバーを入れて食らう: ガ�
     expect(f?.kind).toBe('guard');
     expect(f?.lever).toBe(true);
     expect(br()!.leverGuardDirX).toBeCloseTo(-1); // 相手(左)の方
-    expect(brawlerStandAt(br(), gt + 400)).toBeNull(); // 短い
+    expect(brawlerStandAt(br(), gt + BRAWLER_LEVER_GUARD_STAND_MS)).toBeNull(); // 短い(150〜200ms)
+    expect(BRAWLER_LEVER_GUARD_STAND_MS).toBeLessThanOrEqual(200);
+    expect(f?.armPush ?? 0).toBeLessThan(0); // 受けた瞬間に体の方へ押し込まれている
     const fx = useGameStore.getState().effects;
+    // 受けた面の弧(相手の側だけ)・全周の輪は出さない・散る粒は出さない
+    expect(fx.some(e => JSON.stringify(e).includes('fx/slash-arc'))).toBe(true);
+    expect(fx.some(e => e.kind === 'ring')).toBe(false);
+    expect(fx.some(e => e.kind === 'particle')).toBe(false);
+    expect(fx.filter(e => JSON.stringify(e).includes('vfx/spark_04')).length).toBe(1); // 稲妻は1本
     expect(fx.some(e => (e as { text?: string }).text === 'Counter!')).toBe(false); // カウンターの文字は出さない
     expect(fx.some(e => (e as { tex?: string; texture?: string }).tex === 'vfx/spark_04' || (e as { texture?: string }).texture === 'vfx/spark_04' || JSON.stringify(e).includes('vfx/spark_04'))).toBe(true);
     expect(fx.some(e => JSON.stringify(e).includes('fx/dust-puff'))).toBe(true); // 足元は砂埃
@@ -577,10 +591,18 @@ describe('③打ち上げの技をガードすると浮かない(拳鬼の3・4�
   };
   /** 拳鬼の3段目か4段目が当たるまで回し、その間にプレイヤーの絵が浮いたかを返す。 */
   const runCombo = (lever: boolean) => {
-    const h = kenki(40, lever); // 拳鬼は左・プレイヤーは右=離れる向きは右
+    // ★ガードで防がれた攻撃は「当たっていない」扱い=台本がそこで打ち切られる(検収監査2026-11-10)ので、1・2段目は普通に食らい、
+    //   3段目(か4段目)の溜めに入ってからレバーを入れる(怯みが明けて動ける体になった所でガードする、の再現)。
+    const h = kenki(40, false); // 拳鬼は左・プレイヤーは右=離れる向きは右
     let launched = false, upperLanded = false;
     for (let i = 0; i < 400 && !upperLanded; i++) {
       const b0 = h.cur().phantomBrawler;
+      if (lever && b0 && b0.phase === 'attack' && b0.stage >= 3 && !b0.resolved) {
+        useGameStore.setState(st => ({
+          swipeDirection: { x: 1, y: 0 }, swipeStrength: 1,
+          player: { ...st.player, lastHurtAt: undefined, knockbackUntil: 0 }, // 怯み・吹き飛びは明けている
+        }));
+      }
       h.step(16);
       const b = h.cur().phantomBrawler;
       if (b0 && b && (b.stage === 3 || b.stage === 4) && !b0.resolved && b.resolved && b.connected) upperLanded = true;
@@ -600,7 +622,7 @@ describe('③打ち上げの技をガードすると浮かない(拳鬼の3・4�
     expect(guarded.guards).toBeGreaterThan(0);
     expect(guarded.launched).toBe(false);
     expect(guarded.hp).toBeLessThan(99999);     // 体力は減る(半減)
-    expect(guarded.hp).toBeGreaterThan(plain.hp); // 普通に食らうより軽い
+    expect(guarded.hp).toBeGreaterThan(plain.hp); // 普通に食らうより軽い(3段目が半分)
   });
   /** 跳びかかりを着地まで回す。跳んでいる間にプレイヤーを着地点から右へずらす(=爆心から離れる向きが右になる)。 */
   const runLeap = (lever: boolean) => {

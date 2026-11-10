@@ -40074,6 +40074,38 @@ export class PixiScene {
    * 加算で描く=紺の中身は本人を暗く潰さず、青い輪郭だけが光る。形と時間は utils/brawler の brawlerStandAt(純関数)が決める。
    */
   private phantomBrawlerStand: Sprite | null = null;
+  /**
+   * レバーガード(research/BRAWLER.md §12-1c)の腕で受ける影の絵: 構えの影の絵(青い輪郭線+紺の中身)を「明るさだけ」の白い線画へ1度だけ焼き
+   * (輪郭=白・中身=ごく薄い)、腕の範囲(BRAWLER_STAND_GUARD_ARM)だけを切り出した1枚。白金の tint で加算する=全身の構え(カウンター)と
+   * 読み違えず、体の上でも腕の線が読める(拳鬼でも)。腕だけの素材は無いので、今ある構えの絵から作る。実行時はフィルタ無し(貼るだけ)。
+   * rt=焼いた線画(描画器が無い間は null=元の絵から切り出す)。x,y,w,h=元の絵の中の切り出し位置(px)。
+   */
+  private leverGuardArm: { full: Texture; rt: RenderTexture | null; tex: Texture; x: number; y: number; w: number; h: number } | null = null;
+  private leverGuardArmTexture(full: Texture): { tex: Texture; x: number; y: number; w: number; h: number } {
+    const c = this.leverGuardArm;
+    if (c && c.full === full && (c.rt ? !c.rt.destroyed : !this.renderer)) return c;
+    if (c) { c.tex.destroy(false); if (c.rt) releaseBakedTexture('silhouette', c.rt); }
+    let rt: RenderTexture | null = null;
+    if (this.renderer) {
+      const tmp = new Sprite(full);
+      const wrap = new Container();
+      wrap.addChild(tmp);
+      const f = new ColorMatrixFilter();
+      // RGB を同じ明るさ(青・緑を重く=水色の輪郭が白へ・紺の中身は約2割)に揃える。α は元のまま。
+      f.matrix = [0.25, 0.6, 0.7, 0, 0, 0.25, 0.6, 0.7, 0, 0, 0.25, 0.6, 0.7, 0, 0, 0, 0, 0, 1, 0];
+      wrap.filters = [f];
+      rt = bakeRenderTexture('silhouette', { width: Math.max(1, full.width), height: Math.max(1, full.height) });
+      this.renderBake(wrap, rt, true);
+      wrap.destroy({ children: true });
+    }
+    const base: Texture = rt ?? full;
+    const A = BRW.BRAWLER_STAND_GUARD_ARM;
+    const x = Math.round(full.width * A.u0), y = Math.round(full.height * A.v0);
+    const w = Math.max(1, Math.round(full.width * (A.u1 - A.u0))), h = Math.max(1, Math.round(full.height * (A.v1 - A.v0)));
+    const tex = new Texture({ source: base.source, frame: new Rectangle(base.frame.x + x, base.frame.y + y, w, h) });
+    this.leverGuardArm = { full, rt, tex, x, y, w, h };
+    return this.leverGuardArm;
+  }
   /** 拳鬼の縮地の残像(元の所・1枚を使い回す・research/BRAWLER_PHANTOM.md §14)。 */
   private kenkiShukuchiGhost: Sprite | null = null;
   private phantomBrawlerAura: Sprite | null = null;
@@ -40128,22 +40160,33 @@ export class PixiScene {
       ty = (f.ext <= 1 ? by - drop * (1 - f.ext) : by + (f.ext - 1) * 4);
     } else {
       // 前隙=体に重なったまま前へにじみ出る → 当たる瞬間に手足の先が当たりの所まで伸び切る → その先へ抜けて消える。
-      const along = f.ext <= 1 ? shift * f.ext : shift + (f.ext - 1) * 30;
+      // レバーガードの腕は、受けた瞬間に体の方へ押し込まれてから戻る(armPush=相手の方が正・純関数)。
+      const along = (f.ext <= 1 ? shift * f.ext : shift + (f.ext - 1) * 30) + (f.armPush ?? 0) * dsc;
       tx = bx + ux * along; ty = by + uy * along;
     }
     // 向き: 左なら左右反転。上下は弱い傾き(±0.45rad まで=逆さまにしない)+ごく弱い前のめり。
     const left = ux < -0.05 || (Math.abs(ux) <= 0.05 && (p.lastDirection?.x ?? 1) < 0);
     const lean = f.kind === 'slam' || f.kind === 'guard' ? 0.03 : 0.06;
     const a = Math.max(-0.45, Math.min(0.45, Math.atan2(uy, Math.abs(ux) < 1e-3 ? 1e-3 : Math.abs(ux)) * 0.6)) + lean;
-    sp.texture = tex;
-    sp.anchor.set(spec.bodyU, spec.bodyV);
-    sp.scale.set(left ? -k : k, k);
+    if (f.lever) {
+      // ★レバーガード: 腕だけ・白金(全身の構えの影は出さない)。影の体の中心(anchor)は全身の絵の時と同じ所=腕は元の位置に出る。
+      const arm = this.leverGuardArmTexture(tex);
+      sp.texture = arm.tex;
+      sp.anchor.set((spec.bodyU * tex.width - arm.x) / arm.w, (spec.bodyV * tex.height - arm.y) / arm.h);
+      sp.tint = BRW.BRAWLER_COLOR_HEX;
+      sp.alpha = Math.min(1, f.alpha * BRW.BRAWLER_STAND_GUARD_ARM_ALPHA);
+    } else {
+      sp.texture = tex;
+      sp.anchor.set(spec.bodyU, spec.bodyV);
+      // 構えは受けた瞬間だけ強く光る。
+      const pop = f.kind === 'guard' ? Math.max(0, 1 - (Date.now() - Math.max(s.guardHitAt, s.guardRenewAt ?? 0)) / 220) : 0;
+      sp.alpha = Math.min(1, f.alpha + 0.5 * pop + (s.secret ? 0.25 : 0)); // 秘奥義の間は影も強く光る(§10-2)
+      sp.tint = 0xffffff; // 頂いた青のまま
+    }
+    const kk = f.lever ? k * BRW.BRAWLER_STAND_GUARD_ARM_SCALE : k;
+    sp.scale.set(left ? -kk : kk, kk);
     sp.rotation = f.kind === 'slam' ? (left ? -lean : lean) : (left ? -a : a);
     sp.position.set(tx, ty);
-    // 構えは受けた瞬間だけ強く光る。
-    const pop = f.kind === 'guard' ? Math.max(0, 1 - (Date.now() - Math.max(s.guardHitAt, s.guardRenewAt ?? 0)) / 220) : 0;
-    sp.alpha = Math.min(1, f.alpha + 0.5 * pop + (s.secret ? 0.25 : 0)); // 秘奥義の間は影も強く光る(§10-2)
-    sp.tint = 0xffffff; // 頂いた青のまま
     sp.visible = true;
   }
   /** research/BRAWLER_PHANTOM.md §8: 格闘の幻影の動きの影と体の光(構え=1秒かけて絞る・秘奥義=脈打つ)。 */

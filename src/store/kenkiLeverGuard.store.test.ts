@@ -130,7 +130,7 @@ describe('拳鬼がレバーガードで受ける(関所と当たり)', () => {
     lever(0, 1);
     expect(lost(() => shot({ x: 0, y: 1 }))).toBe(brawlerLeverGuardDamage(full));
   });
-  it('出どころが分からない当たり(爆発の広がり・持続ダメージ・仲間の当たり)はガードにならない', () => {
+  it('出どころが分からない当たり(爆心の分からない爆発・持続ダメージ・位置の取れない仲間の当たり)はガードにならない(取れる時は leverGuardAudit.store.test.ts)', () => {
     setup(300);
     lever(-1, 0);
     const g = useGameStore.getState();
@@ -236,9 +236,9 @@ describe('拳鬼の制御(phantomTick): レバーを書く・受けた後の動�
     shot({ x: -1, y: 0 });
     expect(en().gpLeverGuardAt).toBe(h.gt());
     expect(hp0 - en().health).toBe(brawlerLeverGuardDamage(50 * 0.2)); // 対人倍率の後を半減(切り上げ)
-    const x0 = en().x;
     h.step();
-    // 影(構えの腕ガードの影を短く)・絵と音の印
+    const x0 = en().x; // 制御が受けを見た tick の後(ここから止め→小さい押し)
+    // 影(腕だけ・短く)・絵と音の印
     const b = en().phantomBrawler!;
     expect(b.leverGuardAt).toBe(h.gt());
     expect(b.leverGuardDirX).toBeCloseTo(1); // 相手(右)の方を向く
@@ -250,7 +250,10 @@ describe('拳鬼の制御(phantomTick): レバーを書く・受けた後の動�
     // 押されている間はレバーが下りている(続けては張れない)・下がりはここで打ち切り
     expect(en().gpLeverX).toBeUndefined();
     expect(kenkiRetreating(h.st.brawler!.mind, h.gt())).toBe(false);
-    for (let i = 0; i < 12; i++) h.step(); // 160ms+
+    // 受けた瞬間の小さな止め(拳鬼の体だけ): 最初の約50msは動かない
+    h.step(); h.step();
+    expect(Math.abs(x0 - en().x)).toBeLessThan(0.5);
+    for (let i = 0; i < 16; i++) h.step(); // 止め50ms+押し160ms を過ぎる
     const moved = x0 - en().x;
     expect(moved).toBeGreaterThan(BRAWLER_LEVER_GUARD_PUSH_PX * 0.85);
     expect(moved).toBeLessThan(BRAWLER_LEVER_GUARD_PUSH_PX * 1.25);
