@@ -364,6 +364,7 @@ import { ARMORY_FADE_MS, ARMORY_DISPLAY_H, armoryRect, ARMORY_SCRAP_COST } from 
 import { POLICE_FADE_MS, POLICE_DISPLAY_H, policeRect } from '../world/police';
 import { touchesFromBelow, rectsOverlap, TOUCH_SIDE_PAD } from '../world/obstacles';
 import { poiTouchFlashAlpha, poiTouchPushPx, poiTouchCamPx } from '../world/poiTouch';
+import { boomerangBatCue } from '../utils/boomerangBat';
 import {
   SHRINE_TEXTURE, SHRINE_DISPLAY_H, SHRINE_CRUMBLE_MS, SHRINE_CRUMBLE_TREMOR_FRAC, SHRINE_CIRCLE_RADIUS, SHRINE_CIRCLE_REVEAL_DIST, SHRINE_DWELL_MS, shrineCircleCenter, shrineMarkVisible,
 } from '../world/warlordShrine';
@@ -700,6 +701,7 @@ const tsNum = (key: string, def: number): number => {
   return Number.isFinite(n) ? n : def;
 };
 const POI_TOUCH_FREEZE_MS = tsNum('poitouchfreeze', -1); // 触れた瞬間の絵の撮影用(負=無効)
+const BOOM_CUE_FREEZE_MS = tsNum('boomcuefreeze', -1); // ブーメランの「今打てる」の光の撮影用(負=無効・経過msを固定)
 // PACING_PUZZLE.md §14-4-5(新死神・本体の表示スケール)。社長裁定2026-08-28「死神の大きさを今の
 // 2倍くらいにして。全部ね」=既定2(見た目のみ・当たり判定=hitboxは不変。CLAUDE.md「Visual vs.
 // hitbox」)。撃破escalationの追加個体も同じtype='reaper'なので全員に掛かる。使者(hangedman)と
@@ -4729,6 +4731,7 @@ export class PixiScene {
   private droneBoomerangViews = new Map<string, {
     container: Container; sprite: Sprite;
     spinAng: number; spinVel: number; lastSpinAt: number;
+    cue?: Sprite; // 「今打てる」の光(戻りで近接の届く距離に入った瞬間)
   }>();
   // 火炎瓶(molotov)の地面の火: 松明と同じ炎Graphics(drawFlameShape流用)+ 小さめの暖色ライト。
   // 状態(寿命/DoT)は gameStore.groundFires が持つ。ここは描画のみ(CLAUDE.md「Pixiは描画専門」)。
@@ -30481,7 +30484,7 @@ export class PixiScene {
   }
 
   private drawDroneBoomerangSprite(
-    v: { container: Container; sprite: Sprite; spinAng: number; spinVel: number; lastSpinAt: number },
+    v: { container: Container; sprite: Sprite; spinAng: number; spinVel: number; lastSpinAt: number; cue?: Sprite },
     p: Projectile, now: number, playerCx: number, playerCy: number,
   ) {
     const cx = p.x + p.width / 2;
@@ -30524,7 +30527,25 @@ export class PixiScene {
       // §6.24 M48「防衛」(C: 警察署アリーナ報酬)は常時周回する専用個体。ドローンブーメランの色違い
       // (社長仕様どおり)にするため、tint だけ変える(スプライト自体は共用=新規アセット不要)。
       v.sprite.tint = p.weaponKey === 'poi-guard' ? 0x38bdf8 : 0xffffff;
+      // 「今打てる」の光(社長採用2026-11-10・utils/boomerangBat): 戻りで近接の届く距離に入った瞬間に、刃が一度白く強く光って引く。
+      // 判定の無い派手さの絵=大きめに。光っている200msの間だけ表示(加算の柔らかい光1枚・負荷ほぼ無し)。
+      const cueK = p.boomBatCueAt !== undefined ? boomerangBatCue(BOOM_CUE_FREEZE_MS >= 0 ? BOOM_CUE_FREEZE_MS : now - p.boomBatCueAt) : 0;
+      if (cueK > 0) {
+        if (!v.cue) {
+          v.cue = new Sprite(getSoftGlowTexture());
+          v.cue.anchor.set(0.5);
+          v.cue.blendMode = 'add';
+          v.container.addChildAt(v.cue, 0);
+        }
+        const cs = (targetW * (2.6 + 1.6 * (1 - cueK))) / Math.max(1, v.cue.texture.width); // 光は広がりながら薄れる
+        v.cue.scale.set(cs);
+        v.cue.alpha = 0.95 * cueK;
+        v.cue.tint = 0xe0f7ff;
+        v.cue.visible = true;
+        v.sprite.scale.set(sc * (1 + 0.28 * cueK)); // 刃そのものも一瞬ふくらむ(位置は変えない)
+      } else if (v.cue) v.cue.visible = false;
     } else {
+      if (v.cue) v.cue.visible = false;
       // テクスチャ未読込時は何も表示しない(手描きフォールバックは追加しない)。
       v.sprite.visible = false;
     }

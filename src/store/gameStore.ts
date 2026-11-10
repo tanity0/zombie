@@ -365,7 +365,7 @@ import {
   type ShrineState, type ShrineSlot,
 } from '../world/warlordShrine';
 import { policePos as policeSpot, resolvePoliceCollision, policeRect } from '../world/police';
-import { boomerangBatPick, boomerangBatSpeedMult, DRONE_BOOM_BAT_HITSTOP_MS } from '../utils/boomerangBat';
+import { boomerangBatPick, boomerangBatSpeedMult, boomerangBatSparks, DRONE_BOOM_BAT_HITSTOP_MS, DRONE_BOOM_BAT_PAD_PX } from '../utils/boomerangBat';
 import { poiTouchStarts, poiTouchMayFire, poiTouchStallMult, POI_TOUCH_STALL_MS, type PoiTouchId } from '../world/poiTouch';
 import { assignDetourSectors } from '../world/detourPoi';
 import { bossSectorIndex, poiSectorIndex } from '../world/pois';
@@ -6991,14 +6991,15 @@ const fireDroneBoomerangOnSwing = (
     const batId = boomerangBatPick(get().projectiles, ghostOwned, boomCx, boomCy, huntingMeleeRadius(actor));
     if (batId) {
       const nowMs = Date.now();
-      let bx = boomCx, by = boomCy;
+      let bx = boomCx, by = boomCy, batN = 1;
       useGameStore.setState(state => ({
         projectiles: state.projectiles.map(q => {
           if (q.id !== batId) return q;
           bx = q.x + q.width / 2; by = q.y + q.height / 2;
+          batN = (q.boomBatN ?? 0) + 1; // 続けて打ち返した回数(この1枚が消えるまで)
           return {
             ...q, boomPhase: 'out' as const, direction: { x: dir.x / dmag, y: dir.y / dmag }, speed: DRONE_BOOM_SPEED,
-            damage: meleeDamage, hitEnemies: [], createdAt: nowMs, boomBatAt: nowMs, // 安全消滅の時計も数え直す・弾かれた勢い(出だしだけ速い)
+            damage: meleeDamage, hitEnemies: [], createdAt: nowMs, boomBatAt: nowMs, boomBatN: batN, boomBatCueAt: undefined, // 安全消滅の時計も数え直す・弾かれた勢い(出だしだけ速い)
             boomOriginX: bx, boomOriginY: by, boomMaxDist: DRONE_BOOM_DIST_BY_LEVEL[lvl], boomStopMs: DRONE_BOOM_STOP_MS_BY_LEVEL[lvl], boomStopUntil: undefined,
           };
         }),
@@ -7008,12 +7009,12 @@ const fireDroneBoomerangOnSwing = (
       // 太く速い輪。プレイヤーが打った時だけ短い止めと小さな揺れ(スローは使わない)。音は金属を弾く音+高めの投げる音(useGameLoop)。
       const ux = dir.x / dmag, uy = dir.y / dmag;
       get().spawnSlash(bx, by, 'rgba(226,232,240,0.95)', 1.35, ux >= 0 ? 1 : -1);
-      get().spawnBurst(bx, by, '#f8fafc', 20, ux, uy);
+      get().spawnBurst(bx, by, '#f8fafc', boomerangBatSparks(batN), ux, uy); // 続けて打ち返すほど火花が増える(上限つき)
       get().spawnRing(bx, by, 8, 60, 'rgba(165,243,252,0.85)', 5, 150, true);
       if (!ghostOwned) {
         if (!get().rhythm.active) get().triggerHitstop(DRONE_BOOM_BAT_HITSTOP_MS);
         get().triggerShake(120, 3, ux, uy);
-        useGameStore.setState({ boomerangBatFxAt: nowMs });
+        useGameStore.setState({ boomerangBatFxAt: nowMs, boomerangBatFxN: batN });
       }
       return true;
     }
@@ -8194,6 +8195,7 @@ interface GameState {
   anchorEnemyHitFxAt: number; // ワイヤーアンカーが敵に当たった時刻(Date.now)。近接命中音SEのトリガ
   boomerangThrowFxAt: number; // ドローンブーメランを投げた時刻(Date.now)。投擲音SEのトリガ
   boomerangBatFxAt: number; // ドローンブーメランを近接で打ち返した時刻(Date.now)。打ち返しの音のトリガ
+  boomerangBatFxN: number;  // その打ち返しが続けて何回目か(音の高さ)
   junkShotFxAt: number;       // ジャンクウェポン(junk-weapon)発砲時刻(Date.now)。shotgun-fire SEのトリガ
   summonFxAt: number;         // 錬金術で召喚した時刻(Date.now)。召喚音SEのトリガ
   projectiles: Projectile[];
@@ -9690,6 +9692,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   anchorEnemyHitFxAt: 0,
   boomerangThrowFxAt: 0,
   boomerangBatFxAt: 0,
+  boomerangBatFxN: 0,
   junkShotFxAt: 0,
   summonFxAt: 0,
   homingLocks: [],
@@ -21910,7 +21913,10 @@ export const useGameStore = create<GameState>((set, get) => ({
               const dd = Math.hypot(ddx, ddy);
               if (dd <= 18) return { ...p, boomPhase: 'done' as const }; // 到達 → 消滅(useGameLoop が除去)
               const rsp = DRONE_BOOM_RETURN_SPEED; // 戻りは従来速度
-              return { ...p, x: p.x + (ddx / dd) * rsp * deltaTime, y: p.y + (ddy / dd) * rsp * deltaTime };
+              // 「今打てる」の光(社長採用2026-11-10): プレイヤーの投げた1枚が近接の届く距離に入った瞬間を1回だけ打刻(描くのは pixiScene)。
+              const cue = p.boomBatCueAt === undefined && !p.ownerGhost && p.weaponKey === 'sub-drone-boomerang'
+                && dd <= huntingMeleeRadius(state.player) + DRONE_BOOM_BAT_PAD_PX;
+              return { ...p, x: p.x + (ddx / dd) * rsp * deltaTime, y: p.y + (ddy / dd) * rsp * deltaTime, ...(cue ? { boomBatCueAt: currentTime } : {}) };
             }
             return p; // 'done'
           }

@@ -14,6 +14,25 @@ export const boomerangBatSpeedMult = (sinceMs: number): number => {
   const k = 1 - sinceMs / DRONE_BOOM_BAT_BOOST_MS;
   return 1 + (DRONE_BOOM_BAT_BOOST - 1) * k * k;
 };
+/** 続けて打ち返すほど音が上がる(1回ごとに半音・上限つき)と、火花が増える(上限つき)。n=この打ち返しが何回目か(1〜)。 */
+export const DRONE_BOOM_BAT_PITCH_MAX_STEPS = 7;
+export const DRONE_BOOM_BAT_SPARKS_BASE = 20;
+export const DRONE_BOOM_BAT_SPARKS_STEP = 4;
+export const DRONE_BOOM_BAT_SPARKS_MAX = 44;
+const batStep = (n: number): number => Math.max(0, Math.min(DRONE_BOOM_BAT_PITCH_MAX_STEPS, Math.round(Number.isFinite(n) ? n : 1) - 1));
+/** 打ち返しの音の高さの倍率(1回目=1・以後は半音ずつ上がる)。 */
+export const boomerangBatPitch = (n: number): number => Math.pow(2, batStep(n) / 12);
+/** 打ち返しの火花の数。 */
+export const boomerangBatSparks = (n: number): number =>
+  Math.min(DRONE_BOOM_BAT_SPARKS_MAX, DRONE_BOOM_BAT_SPARKS_BASE + DRONE_BOOM_BAT_SPARKS_STEP * Math.max(0, Math.round(Number.isFinite(n) ? n : 1) - 1));
+/** 「今打てる」の光の長さ(ms)。届く距離に入った瞬間に強く光り、ease-out で引く。 */
+export const DRONE_BOOM_BAT_CUE_MS = 200;
+/** 光の強さ 0..1(sinceMs=届く距離に入ってからの経過)。 */
+export const boomerangBatCue = (sinceMs: number): number => {
+  if (!(sinceMs >= 0) || sinceMs >= DRONE_BOOM_BAT_CUE_MS) return 0;
+  const k = 1 - sinceMs / DRONE_BOOM_BAT_CUE_MS;
+  return k * k;
+};
 /** 打った瞬間の止め(ms・プレイヤーが打った時だけ)と揺れ。 */
 export const DRONE_BOOM_BAT_HITSTOP_MS = 55;
 

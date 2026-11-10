@@ -2794,6 +2794,8 @@ export interface Projectile {
   boomStopMs?: number;   // 停止時間(Lv別)
   boomStopUntil?: number; // 停止終了 Date.now(out→stop時に設定)
   boomBatAt?: number; // 近接で打ち返された時刻 Date.now(弾かれた勢い=出だしだけ速い・utils/boomerangBat)
+  boomBatN?: number; // 続けて打ち返した回数(音が上がり火花が増える・1枚が消えるまで)
+  boomBatCueAt?: number; // 戻りで近接の届く距離に入った時刻 Date.now(「今打てる」の光・1回の戻りに1回)
   // スキル弾フラグ。
   // ricochet: リコシェスキルで生成した跳弾。true の弾はもう跳ねない(二次跳弾を禁止)。
   ricochet?: boolean;

@@ -578,6 +578,7 @@ import { SIGNAL_STRIKE_RADIUS_PX, SIGNAL_POSTURE_MULT } from '../utils/signalLau
 import { GUNBLADE_MELEE_RANGE_PX } from '../utils/gunbladeMelee';
 import { focusSpreadAfterHit } from '../utils/focusSpread'; // UNIQUE_WEAPONS.md §16-2(バッチB・収束型SG)
 import type { SfxKey } from '../audio/audioManager';
+import { boomerangBatPitch } from '../utils/boomerangBat';
 import { registerKillChainSfxRate, setWraithAudioMix, resetWraithBattleAudio, playSfx, playSfxLayers, playEnemyDeath, setHurricaneRumble, setHeartbeatLoop, setPeakLayer, setDanceMode, getDanceBeatAnchorMs, prepareDeepReverseBgm, enterDeepReverseBgm, exitDeepReverseBgm, releaseDeepReverseBgm, scheduleDanceBeatKick, setDanceBeatDuck, setCorridorRadioMix, primeCorridorRadio, setHeroGallop, setCrawlerDrag, setEscapeGhost, playDistantSfx, setCorridorRadioBoost, crossToBossBgm, fadeOutBgmToSilence, startBossBgmNow, holdBgmSilence, resumeBgmAfterFade } from '../audio/audioManager';
 import { nextBeatToSchedule } from '../utils/danceBeat';
 import { labRadioMixT, labRadioIdolDownFade } from '../world/labRadioMix';
@@ -17194,7 +17195,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (gs.anchorEnemyHitFxAt > anchorEnemyHitFxRef.current) { anchorEnemyHitFxRef.current = gs.anchorEnemyHitFxAt; playSfx('slash-damage'); } // アンカーが敵に当たった=近接命中音
           if (gs.boomerangThrowFxAt > boomThrowFxRef.current) { boomThrowFxRef.current = gs.boomerangThrowFxAt; playSfx('boomerang-throw'); }
           // 打ち返し(社長指示2026-11-10): 金属を弾く「キン」+高めの投げる音(普通に投げた時と耳で区別がつく)。
-          if (gs.boomerangBatFxAt > boomBatFxRef.current) { boomBatFxRef.current = gs.boomerangBatFxAt; playSfx('ricochet-ping', 1.25, undefined, 0.9); playSfx('boomerang-throw', 1.1, undefined, 1.22); }
+          if (gs.boomerangBatFxAt > boomBatFxRef.current) { boomBatFxRef.current = gs.boomerangBatFxAt; const bp = boomerangBatPitch(gs.boomerangBatFxN); playSfx('ricochet-ping', 1.25, undefined, 0.9 * bp); playSfx('boomerang-throw', 1.1, undefined, 1.22 * bp); } // 続けて打ち返すほど半音ずつ上がる
           if (gs.junkShotFxAt > junkShotFxRef.current) { junkShotFxRef.current = gs.junkShotFxAt; playSfx('shotgun-fire'); } // ジャンクウェポン=ショットガン発砲音(§6.7 M30)
           if (gs.summonFxAt > summonFxRef.current) { summonFxRef.current = gs.summonFxAt; playSfx('summon'); }
           // 叫喚型: 強化窓が開いた瞬間(screamerBuffUntil が増加)=溜め完了で叫喚SE。

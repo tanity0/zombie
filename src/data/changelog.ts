@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5451', items: [
+    'ドローンブーメランは、戻ってきて打ち返せる距離に入ると刃が白く光る',
+    '続けて打ち返すほど、打つ音が高くなり、火花が増える',
+  ] },
   { version: '0.25.5450', items: [
     '拳鬼の攻めが決まった連続技の組み合わせになった。連続のあとは必ず一息つく',
     '拳鬼は気功と大叩き潰しの前に一瞬腕を上げ、飛び蹴りの前に一瞬しゃがむ',
