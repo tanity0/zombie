@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5438', items: [
+    '格闘を使う幻影「拳鬼」が、ステージ1・3・4・5に徘徊することがある。亡霊・宇宙飛行群と入れ替わりで現れる',
+    '拳鬼を初めて倒すと格闘が手に入る。それまでは開発施設に格闘が並ばない',
+  ] },
   { version: '0.25.5437', items: [
     'ゲーム内容の変更はありません',
   ] },
