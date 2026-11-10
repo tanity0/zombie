@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5458', items: [
+    '長く歩き回るほど、見えない光の残りが溜まり続けていたのを直した(松明や緑の卵が画面から消えるたびに1つ残っていた)',
+  ] },
   { version: '0.25.5457', items: [
     '格闘の構えで攻撃を受けても、技ポイントは全回復しなくなった',
     '雑魚の攻撃を構えで受けると、その場で大踏み潰しが出る。技ポイントは使わない',

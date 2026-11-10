@@ -13851,7 +13851,11 @@ export class PixiScene {
     }
     for (const [id, view] of this.breakableProps) {
       if (!seen.has(id)) {
+        // ★3枚とも壊す(makeProp が groundLayer へ足すのは reflection / lightBokeh / light の3枚)。lightBokeh を壊し忘れていて、
+        //   小物(松明・卵)が消えるたびに1枚ずつ groundLayer に残っていた(社長実機 v0.25.5453 ステージ3 t858s・groundLayer1864。
+        //   実測=ボット871秒で残骸745枚=小物が消えた回数と一致。小物はカメラの周りだけ持つので歩くだけで積もる)。
         view.light.destroy();
+        view.lightBokeh.destroy();
         view.reflection.destroy();
         view.container.destroy({ children: true });
         this.breakableProps.delete(id);
@@ -41855,6 +41859,7 @@ export class PixiScene {
     }
     for (const v of this.breakableProps.values()) {
       v.light.destroy();
+      v.lightBokeh.destroy();
       v.reflection.destroy();
       v.container.destroy({ children: true });
     }
