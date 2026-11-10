@@ -25,7 +25,11 @@ export const brawlerTempoMs = (ms: number, tempo: number = BRAWLER_TEMPO): numbe
 // ---------------------------------------------------------------------------------------------
 // 段の表(§2-2・叩き台)と技の表(§8-3)
 // ---------------------------------------------------------------------------------------------
-export type BrawlerKb = 'none' | 'normal' | 'big';
+export type BrawlerKb = 'none' | 'small' | 'normal' | 'big';
+/** 押さなかった段(1・2・4段目)の小さな押し(今の近接の何倍か)。社長指示2026-11-10「どの攻撃も押さない攻撃でも多少押そう。少しずつズレた方が楽しい」。免疫は張らない(張ると次の段が押せない)。 */
+export const BRAWLER_SMALL_KB_MULT = 0.35;
+/** ボス級は小さい押しのさらに何倍か(3段目の普通の押しも、ボス級にはこの小さい押しで当てる)。 */
+export const BRAWLER_BOSS_SMALL_KB_MULT = 0.5;
 export type BrawlerShape = 'single' | 'fist' | 'landing' | 'band';
 export interface BrawlerStageSpec {
   stage: 1 | 2 | 3 | 4 | 5;
@@ -54,10 +58,10 @@ export const BRAWLER_HITSTOP = { weak: 90, strong: 150, closer: 220 } as const;
 export const BRAWLER_PALM_KB_MULT = 2;
 /** 段の表の係数1.0の値(今までの値)。止めは BRAWLER_HITSTOP。 */
 export const BRAWLER_STAGES_BASE: readonly BrawlerStageSpec[] = [
-  { stage: 1, windupMs: 60, recoveryMs: 140, mult: 0.30, kb: 'none', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
-  { stage: 2, windupMs: 60, recoveryMs: 140, mult: 0.40, kb: 'none', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
+  { stage: 1, windupMs: 60, recoveryMs: 140, mult: 0.30, kb: 'small', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
+  { stage: 2, windupMs: 60, recoveryMs: 140, mult: 0.40, kb: 'small', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
   { stage: 3, windupMs: 120, recoveryMs: 230, mult: 0.8, kb: 'normal', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'fist', dashPx: 60 },
-  { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.10, kb: 'none', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'landing', dashPx: 50 },
+  { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.10, kb: 'small', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'landing', dashPx: 50 },
   // 5段目=一閃型の貫通突進(社長指示2026-11-07)。前隙 250 = 溜め 100 + 突き抜け 150。判定は抜け切った瞬間に軌跡の帯で一括(§9-26)。
   // 社長指示2026-11-07「飛距離少しだけ短く」で突き抜け 160→140px・150→130ms(最高速は同じ)。総尺 500 は戻り 270 で保つ(§9-35)。
   { stage: 5, windupMs: 230, recoveryMs: 270, mult: 1.60, kb: 'big', hitstopMs: BRAWLER_HITSTOP.closer, shape: 'band', dashPx: 0, kbMult: BRAWLER_PALM_KB_MULT }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)

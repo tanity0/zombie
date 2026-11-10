@@ -1,13 +1,13 @@
 // ★サブウェポン「格闘」(research/BRAWLER.md)をストアで実際に動かして固める。
 // 5段のつながり・ヒットストップ・技ポイント・技(構え/大踏み潰し/気功/飛び蹴り)・近接専用モード・守護霊の疑似プレイヤー。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH, INVULN_MS, kbStopBoost, KNOCKBACK_DURATION } from './gameStore';
+import { useGameStore, isMeleeOnlyMode, isBrawlerGuarding, subWeaponBlockedByKatana, isWhipMode, drainBrawlerSfx, BRAWLER_SFX_DEATH, INVULN_MS, kbStopBoost, KNOCKBACK_DURATION, KNOCKBACK_SPEED } from './gameStore';
 import { applyEnemyProjectileHits, applyPumpkinBlastDamage, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { brawlerComboOnHit, brawlerRevengeTelegraph, BRAWLER_REVENGE_WINDUP_MS, BRAWLER_REVENGE_RADIUS, BRAWLER_COMBO_FLOOR, BRAWLER_REVENGE_HITS_MOB } from '../utils/brawlerCombo';
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
-import { BRAWLER_GUARD_MS, brawlerPointCap } from '../utils/brawler';
+import { BRAWLER_GUARD_MS, brawlerPointCap, BRAWLER_SMALL_KB_MULT, BRAWLER_BOSS_SMALL_KB_MULT } from '../utils/brawler';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { playerSuperArmorActive } from '../utils/superArmor';
 import { treesInRegion, trunkRect } from '../world/trees';
@@ -265,13 +265,16 @@ describe('格闘: 指定打撃の分岐(§8-1 の止めるもの/残すもの)',
     expect(s.meleeHitComboCount).toBeGreaterThan(0);
     expect(s.effects.some(e => e.kind === 'slash')).toBe(false);
   });
-  it('1・2段目は押さない(敵の速さ0)・3段目は押す・止めは段の表の ms(再発火ガードなし)', () => {
+  // 社長指示2026-11-10「どの攻撃も押さない攻撃でも多少押そう。少しずつズレた方が楽しい」: 旧「1・2段目は押さない(速さ0)」を新仕様へ。
+  it('1・2段目は小さく押す(3段目の普通の押しより弱い・免疫は張らない)・止めは段の表の ms(再発火ガードなし)', () => {
     setup();
     useGameStore.setState({ enemies: [zombieAt(45, 0, 'z')] });
     useGameStore.getState().brawlerPress();
     advance(60);
     const z1 = useGameStore.getState().enemies.find(e => e.id === 'z')!;
-    expect(z1.knockbackVx ?? 0).toBe(0);
+    expect(Math.hypot(z1.knockbackVx ?? 0, z1.knockbackVy ?? 0)).toBeCloseTo(KNOCKBACK_SPEED * BRAWLER_SMALL_KB_MULT, 5);
+    expect(BRAWLER_SMALL_KB_MULT).toBeLessThan(1);
+    expect(z1.knockbackImmuneUntil ?? 0).toBeLessThanOrEqual(now);
     expect((z1.hitStunUntil ?? 0) - now).toBe(90); // 弱の止め(社長承認2026-11-08 で 45→90)
     useGameStore.getState().brawlerPress(); // 先行入力→2段目
     for (let k = 0; k < 40 && br().stage !== 2; k++) advance(10);
@@ -1039,7 +1042,7 @@ describe('格闘の当たりでは強個体を雑魚と同じに扱う(社長指
     s.x = e.x + w / 2 - s.width / 2; s.y = e.y + h / 2 - s.height / 2; s.id = id; s.health = 99999; s.maxHealth = 99999;
     return s;
   };
-  const strike = (id: string, kb: 'none' | 'normal' | 'big', o: { lift?: boolean; forced?: boolean } = {}) =>
+  const strike = (id: string, kb: 'none' | 'small' | 'normal' | 'big', o: { lift?: boolean; forced?: boolean } = {}) =>
     useGameStore.getState().triggerCounter(undefined, {
       targetIds: [id], mult: 1, brawler: true, stunMs: 90, postureMult: 1, pressedAt: Date.now(),
       kb: kb === 'big' ? { kind: 'big', dirX: 1, dirY: 0, bossHalf: true, ...(o.forced ? { ignoreImmune: true } : {}) } : { kind: kb, dirX: 1, dirY: 0 },
@@ -1127,13 +1130,22 @@ describe('格闘の当たりでは強個体を雑魚と同じに扱う(社長指
     strike('s', 'none');
     expect(en('s').brRevengePending).toBe(true);
   });
-  it('ボス級(ハンター)は今どおり: 止まらない・big は半分で押す・normal は押さない(浮きは §12-1 で重く浮く=別のテスト)', () => {
+  // 社長指示2026-11-10「ボスも拳鬼も」: 旧「normal は押さない」を新仕様(ボス級も小さくずれる)へ。
+  it('ボス級(ハンター): 止まらない・big は半分で押す・small/normal はごく小さく押す(減衰の段は進めない・免疫なし)(浮きは §12-1 で重く浮く=別のテスト)', () => {
     setup();
     useGameStore.setState({ enemies: [foeOf('hunter', 'h'), foeOf('zombie', 'z', -60)] });
     strike('h', 'none');
     expect(en('h').hitStunUntil).toBeUndefined();
-    strike('h', 'normal');
-    expect(en('h').knockbackShoveUntil ?? 0).toBeLessThan(now);
+    expect(en('h').knockbackShoveUntil ?? 0).toBeLessThan(now); // none は今どおり押さない
+    for (const k of ['small', 'normal'] as const) {
+      setup();
+      useGameStore.setState({ enemies: [foeOf('hunter', 'h'), foeOf('zombie', 'z', -60)] });
+      strike('h', k);
+      expect(Math.abs(en('h').knockbackVx ?? 0)).toBeCloseTo(KNOCKBACK_SPEED * BRAWLER_SMALL_KB_MULT * BRAWLER_BOSS_SMALL_KB_MULT, 5);
+      expect(en('h').knockbackShoveUntil).toBe(en('h').knockbackUntil);
+      expect(en('h').bossStopDrStage ?? 0).toBe(0);
+      expect(en('h').knockbackImmuneUntil ?? 0).toBeLessThanOrEqual(now);
+    }
     setup();
     useGameStore.setState({ enemies: [foeOf('hunter', 'h'), foeOf('zombie', 'z', -60)] });
     strike('h', 'big'); strike('z', 'big');

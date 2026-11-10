@@ -737,7 +737,7 @@ export interface BrawlerStrikeOpts {
   /** 敵の止め(hitStunUntil に書く ms・再発火ガードは外す)。ボス級は従来どおり0。 */
   stunMs: number;
   kb: {
-    kind: 'none' | 'normal' | 'big';
+    kind: 'none' | 'small' | 'normal' | 'big';
     /** 押す向き(掌底=帯の向き)。無ければ fromX/fromY(円の中心)から外向き、それも無ければプレイヤーから外向き。 */
     dirX?: number; dirY?: number;
     fromX?: number; fromY?: number;
@@ -4485,10 +4485,17 @@ const brawlerHitPatch = (
         Object.assign(out, { knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: until, knockbackShoveUntil: until, knockbackImmuneUntil: now + KNOCKBACK_IMMUNE_MS, brawlerBlownAt: now });
       }
       Object.assign(out, dr.patch);
+    } else if (!attacking) {
+      // small/normal: ボス級も少しだけずれる(社長指示2026-11-10「どの攻撃も押さない攻撃でも多少押そう。少しずつズレた方が楽しい」→「ボスも拳鬼も」)。
+      // ※v0.25.2607 の裁定は「ボスは通常の殴り/弾では押されない」。格闘の当たりだけ、ごく小さく(雑魚の小さい押しの半分)動かす。
+      // 止める効果ではないので減衰(evaluateBossStopDr)は通さない(通すと3発で完全耐性が立ち、吹き飛ばしが効かなくなる)。免疫も張らない。
+      // 技の最中(予告が出ている間)は動かさない=予告と体の位置をずらさない。固まりの長さは延ばさない(下の kbForHold)。
+      const spd = KNOCKBACK_SPEED * BR.BRAWLER_SMALL_KB_MULT * BR.BRAWLER_BOSS_SMALL_KB_MULT;
+      const until = now + KNOCKBACK_DURATION;
+      Object.assign(out, { knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: until, knockbackShoveUntil: until });
     }
-    // normal: ボス級は今の近接と同じく押せない(knockbackShoveUntil を書かない)。
   } else {
-    const spd = KNOCKBACK_SPEED * (kind === 'big' ? (bs.kb.power ?? BR.BRAWLER_BIG_KB_MULT) : 1);
+    const spd = KNOCKBACK_SPEED * (kind === 'big' ? (bs.kb.power ?? BR.BRAWLER_BIG_KB_MULT) : kind === 'small' ? BR.BRAWLER_SMALL_KB_MULT : 1);
     const kbUntil = now + stopMs + KNOCKBACK_DURATION;
     Object.assign(out, {
       knockbackVx: ux * spd, knockbackVy: uy * spd, knockbackUntil: kbUntil,
@@ -4525,7 +4532,9 @@ const brawlerHitPatch = (
     const inOrder = moveNow !== undefined && BRC.brawlerComboInOrder(enemy, moveNow, now);
     const guardUntil = inOrder && moveNow !== undefined ? now + BRC.brawlerChainGuardMs(moveNow, hitStopMs) : 0;
     let want: number | undefined;
-    if (combo.holdMs > 0) want = Math.max(brawlerHoldFrom(now, stopForHold, Math.max(out.knockbackUntil ?? 0, out.liftUntil ?? 0)) + combo.holdMs, guardUntil);
+    // ボス級の小さい押しは固まりの始まりを遅らせない(押しの分だけ長く固まると止めすぎになる)。
+    const kbForHold = bossLike && bs.kb.kind !== 'big' ? 0 : (out.knockbackUntil ?? 0);
+    if (combo.holdMs > 0) want = Math.max(brawlerHoldFrom(now, stopForHold, Math.max(kbForHold, out.liftUntil ?? 0)) + combo.holdMs, guardUntil);
     else if (bossStopMs > 0 || (phaseKind === 'windup' && stopForHold > 0)) {
       // 固まりが0の当たり(固まりの表が0で押しが big でない時)でも、ボス級・溜めの止め(①)だけは掛ける。
       want = Math.max(now + stopForHold, out.liftUntil ?? 0);
