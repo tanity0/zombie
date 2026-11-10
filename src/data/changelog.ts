@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5445', items: [
+    '拳鬼が跳びかかる前にしゃがんで溜める間、体が小刻みに震える',
+  ] },
   { version: '0.25.5444', items: [
     '変異体対策室の拳鬼の枠に、拳鬼の姿が出る',
   ] },

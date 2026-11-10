@@ -2348,6 +2348,9 @@ const thorFlashTint = (remainingMs: number, now: number): number | null => {
 // トールissen/tsukiのtremor(Math.sin(now/24)×振幅×進行ウェイト)とwerewolf系backstep
 // (DASH_WINDUP_BACKSTEP_MULT)の「型」だけを共有関数にした。**描画オフセットのみ**
 // (実座標=e.x/e.y・判定は一切動かさない。CLAUDE.md「PixiJSは描画のみ」)。
+/** 拳鬼の跳びかかりの溜めの震え(px・描画のみ)。溜めの始め→終わりで強まる。 */
+const KENKI_CROUCH_SHAKE_MIN_PX = 0.5;
+const KENKI_CROUCH_SHAKE_MAX_PX = 1.6;
 const WINDUP_TREMOR_PX = 1.8;      // issen(1.6)/tsuki(2.0)の中間値を既定にする
 const WINDUP_TREMOR_START = 0.65;  // 溜め終盤35%だけ震える(issen0.7/tsuki0.6の中間)
 const windupTremorPx = (prog: number, now: number, ampPx = WINDUP_TREMOR_PX, startFrac = WINDUP_TREMOR_START): number =>
@@ -22259,6 +22262,11 @@ export class PixiScene {
       if (e.aiPhase === 'crouch') {
         const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (PUMPKIN_CROUCH_MS / ENEMY_ATTACK_SPEED_MULT)));
         aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり
+        // ★拳鬼の跳びかかりの溜めは、しゃがみの絵のまま微妙に震える(社長指示2026-11-10「タメの時微妙に絵を振るわせて」)。
+        // 位置の移動だけ(歪みではない=手描きのコマでも残る)。溜めが進むほど少し強く(0.5→1.6px)、2つの周期を混ぜて機械的にしない。
+        if (e.phantomUnique === 'brawler') {
+          aiShake = (Math.sin(now / 23) * 0.6 + Math.sin(now / 13 + 0.9) * 0.4) * (KENKI_CROUCH_SHAKE_MIN_PX + (KENKI_CROUCH_SHAKE_MAX_PX - KENKI_CROUCH_SHAKE_MIN_PX) * p);
+        }
       } else if (e.aiPhase === 'jump') {
         // 滞空時間はストアと同じ実効値(攻撃倍速＋ハンターは更に×2)に合わせて着地と同期させる。
         // v0.25.3086: 滞空時間と高さは**跳ぶ技の台帳**(gameStore.AIR_MOVES)から引く=判定と同じ出どころ。
