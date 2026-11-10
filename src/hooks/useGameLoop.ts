@@ -222,7 +222,7 @@ import { hunterOpenSectors, hunterPatrolSpawnPoint, nextOpenSectorEntryAngle, ri
 import { stepHunterPatrol } from '../utils/hunterPatrolTick';
 import { runAstroTick, createAstroTickState, pickActiveAstro, releaseAstroOwner, runAstroThrows, runAstroScatter, astroRunPois } from '../utils/astroTick'; // research/ASTRONAUT_HORDE.md
 import { runWraithTick, createWraithTickState, pickActiveWraith, releaseWraithOwner, runWraithGrowths, runWraithGraveFx } from '../utils/wraithTick'; // research/WRAITH_MUTANT.md
-import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES, pickRunMutantBoss, wraithAudioMix, mutantOmenLine, pickOmenSpeaker, type RunMutantBoss } from '../utils/wraithScript';
+import { WRAITH_FLOAT_FRAME_MS, WRAITH_FLOAT_FRAMES, wraithAudioMix, mutantOmenLine, pickOmenSpeaker, type RunMutantBoss } from '../utils/wraithScript';
 import { astroSpawnPick, astroMeteorView, astroMeteorCamLead } from '../utils/astroScript';
 import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrphanHorde, makeHordeBat, runOrphanLibertyArrows, resetOrphanLibertyArrows } from '../utils/libertyTick'; // research/LIBERTY_HORDE.md
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
@@ -230,9 +230,8 @@ import { loadHeroAscended } from '../utils/heroAscended';
 import { markBossesEncountered } from '../utils/bossEncounter'; // 出撃前のボス一覧: 変異体の「出会った」(社長指示2026-11-02)
 import { uniquePhantomSpec } from '../data/uniquePhantoms'; // research/BRAWLER_PHANTOM.md: 固有の幻影「拳鬼」
 import {
-  createPhantomBrawlerPlan, rollPhantomBrawlerRun, phantomBrawlerSpawnStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset,
-  PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND, PHANTOM_BRAWLER_RETRY_MS, type PhantomBrawlerScene,
-} from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の乱入
+  rollRunPatrolSlot, kenkiPatrolStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND,
+} from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(徘徊の枠)
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties, heroAsTarget } from '../utils/heroBlast';
 import { hateEscortSource } from '../utils/escortView';
@@ -2048,9 +2047,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const bountyForceRef = useRef(false);
   // research/GHOST_BOSS.md: ?phantomnow=1 / 「決闘」枠のforce-spawnを1回だけにするフラグ。
   const phantomForceRef = useRef(false);
-  // research/BRAWLER_PHANTOM.md: 拳鬼の強制出現(1回だけ)と、本編の乱入の出撃1回ぶんの予定。
+  // research/BRAWLER_PHANTOM.md: 拳鬼の強制出現(1回だけ)/本編の徘徊の枠で出した(1回だけ)/姿が画面に入った時のアテンション(1体につき1回)。
   const phantomBrawlerForceRef = useRef(false);
-  const phantomBrawlerPlanRef = useRef(createPhantomBrawlerPlan());
+  const phantomBrawlerPatrolRef = useRef(false);
+  const kenkiCutinIdRef = useRef<string | null>(null);
   // §21-5: 次の1体を出す時刻(0=まだ予約していない/相手が生きている)。
   const vsNextSpawnRef = useRef(0);
   // 幻影のラン内状態(頭脳の持ち越し/休み/踏み込みの焼き付け)。同時1体なので単一refでよい。
@@ -3516,7 +3516,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
-          phantomBrawlerForceRef.current = false; phantomBrawlerPlanRef.current = createPhantomBrawlerPlan(); // 拳鬼(research/BRAWLER_PHANTOM.md)も新ランで引き直す
+          phantomBrawlerForceRef.current = false; phantomBrawlerPatrolRef.current = false; kenkiCutinIdRef.current = null; // 拳鬼(research/BRAWLER_PHANTOM.md)も新ランで再アーム(抽選は徘徊の枠=runMutantBossRef と一緒に引き直す)
           heroForceRef.current = false; heroStateRef.current = createHeroTickState(); heroCutinIdRef.current = null; setHeroGallop(0); // 英雄(research/MUTANT_HERO.md)
           libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); resetOrphanLibertyArrows(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
           astroForceRef.current = false; astroStateRef.current = createAstroTickState(); astroCutinIdRef.current = null; // 宇宙飛行群(research/ASTRONAUT_HORDE.md)
@@ -9225,12 +9225,16 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               libertyCutinIdRef.current = null;
             }
           }
-          // 変異体が出るランは、最初の通信に隊員の一言を混ぜる(社長指示2026-10-30: 亡霊「寒気がする・・・」/宇宙飛行群「通信が少しおかしい？」)。
+          // 徘徊の枠の抽選(1ランに1回・20%・ステージ1・3・4・5)。research/BRAWLER_PHANTOM.md §6(社長指示2026-11-10「出現は徘徊の枠で、
+          // 亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」): 宇宙飛行群・亡霊・拳鬼から均等に1人。拳鬼はステージ1なら城のボスの後から。
+          const rollPatrolSlot = (): RunMutantBoss => rollRunPatrolSlot(
+            { stageId: getSelectedStageId() ?? '', stage1CastleCleared: getCastleBossCleared('stage-1') }, Math.random);
+          // 変異体が出るランは、最初の通信に隊員の一言を混ぜる(社長指示2026-10-30: 亡霊「寒気がする・・・」/宇宙飛行群「通信が少しおかしい？」)。拳鬼の一言は無い。
           // 抽選は下の2つの出現の枠と同じ所で、それより先に1回だけ引く(抽選の結果・確率は変えない)。確認用の枠(?wraithnow=1 等)も本編の出撃なら言う。
           if (!mutantOmenDoneRef.current && !isPracticeRun() && !isBossMakerRun()) {
             mutantOmenDoneRef.current = true;
             const mutantStage = !HERO_PATROL_BLOCKED && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
-            if (mutantStage && runMutantBossRef.current === null) runMutantBossRef.current = pickRunMutantBoss(Math.random);
+            if (mutantStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
             const omenBoss: RunMutantBoss = (FORCE_WRAITH || practiceForces('wraithnow')) ? 'wraith'
               : (FORCE_ASTRO || practiceForces('astronow')) ? 'astro'
               : mutantStage ? (runMutantBossRef.current ?? 'none') : 'none';
@@ -9251,7 +9255,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const patrolAstroStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
               && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
             // 本編は20%でどちらか1体だけ(社長指示2026-10-29)。確認用の枠(force)はいつでも出す。
-            if (patrolAstroStage && runMutantBossRef.current === null) runMutantBossRef.current = pickRunMutantBoss(Math.random);
+            if (patrolAstroStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
             const patrolAstro = patrolAstroStage && runMutantBossRef.current === 'astro';
             if ((forceAstro || patrolAstro) && !astroForceRef.current && newGameTime >= 3000) {
               astroForceRef.current = true;
@@ -9294,7 +9298,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const forceWraith = FORCE_WRAITH || practiceForces('wraithnow');
             const patrolWraithStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
               && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
-            if (patrolWraithStage && runMutantBossRef.current === null) runMutantBossRef.current = pickRunMutantBoss(Math.random);
+            if (patrolWraithStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
             const patrolWraith = patrolWraithStage && runMutantBossRef.current === 'wraith';
             if ((forceWraith || patrolWraith) && !wraithForceRef.current && newGameTime >= 3000) {
               wraithForceRef.current = true;
@@ -9333,19 +9337,21 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               wraithCutinIdRef.current = null;
             }
           }
-          // research/GHOST_BOSS.md / BRAWLER_PHANTOM.md §6: 幻影を1体出す(汎用の幻影の強制出現と、拳鬼の乱入・強制出現で共用)。
-          const spawnGuardianPhantom = (identity: ReturnType<typeof pickPhantomIdentity>, unique?: typeof PHANTOM_BRAWLER_KIND): void => {
+          // research/GHOST_BOSS.md / BRAWLER_PHANTOM.md §6: 幻影を1体出す(汎用の幻影の強制出現と、拳鬼の徘徊の枠・強制出現で共用)。
+          // opts.at=置く場所(中心・本編の徘徊の枠は遠くの POI)。opts.quiet=出た時の名前の帯・アテンションを出さない(画面に入った時に出す)。
+          const spawnGuardianPhantom = (identity: ReturnType<typeof pickPhantomIdentity>, unique?: typeof PHANTOM_BRAWLER_KIND,
+            opts?: { at?: { x: number; y: number }; quiet?: boolean }): void => {
             // ★research/SAME_ARENA.md O-5: 幻影の「中身」をここで1回だけ決める。
             // ①オンラインの実プレイヤー ②固定20人から抽選、の順。**癖・ビルド・HP・名前を
             // 必ずこの1人から取る**(装備だけ他人にすると「戦い方が同じ1体」のままになる)。
             setPhantomIdentity(identity);
             const gpName = phantomDisplayLabel();
-            useGameStore.setState({ eventBannerText: gpName, eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+            if (!opts?.quiet) useGameStore.setState({ eventBannerText: gpName, eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             const gpPcx = player.x + player.width / 2, gpPcy = player.y + player.height / 2;
             // 距離は叩き台(実機調整前提): 画面内に収まり、出現演出が見える位置で正対させる。
             // research/BRAWLER_PHANTOM.md §6: 拳鬼も同じ距離(380〜500px)・同じ乱数の引き方(phantomBrawlerSpawnOffset)。
             const gpOff = phantomBrawlerSpawnOffset(Math.random);
-            const gpX0 = gpPcx + gpOff.dx, gpY0 = gpPcy + gpOff.dy;
+            const gpX0 = opts?.at ? opts.at.x : gpPcx + gpOff.dx, gpY0 = opts?.at ? opts.at.y : gpPcy + gpOff.dy;
             const gpE = spawnEnemyAt('guardian-phantom', gpX0 - 20, gpY0 - 28, newGameTime);
             // research/GROWTH.md v4(社長裁定Q4「幻影も反映」): 幻影HP=**育成込みの初期プレイヤー**
             // (= player.ddaBaseHp。装備補正は含めない)。ENEMY_STATS の値は import 時評価の
@@ -9382,20 +9388,24 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.type !== 'guardian-phantom') }));
             addEnemy(gpE);
             // 出現エフェクト(城ボス/賞金首と同じ機構を流用。色だけ幻影の暗い赤へ寄せる)。
-            spawnFlash('rgba(60,10,20,0.26)', 420);
-            spawnRing(gpX0, gpY0, 16, 150, 'rgba(239,68,68,0.85)', 6, 720);
-            useGameStore.getState().spawnGlow(gpX0, gpY0, GLOW_R_XXL, 'rgba(239,68,68,', 900);
-            spawnBurst(gpX0, gpY0 + 16, '#7f1d1d', 22);
-            // アテンションは出現演出が落ち着いてから(城ボス/賞金首と同じ並び)。カットイン台帳には
-            // 載せない(専用素材を作らない=設計書の「ではない」条件)ので payload は渡さない。
-            bountyAttnRef.current = { at: newGameTime + 950, x: gpX0, y: gpY0, cutin: undefined };
+            // 遠くに置く時(quiet)は画面の外なので出さない(画面の端を光らせない)。
+            if (!opts?.quiet) {
+              spawnFlash('rgba(60,10,20,0.26)', 420);
+              spawnRing(gpX0, gpY0, 16, 150, 'rgba(239,68,68,0.85)', 6, 720);
+              useGameStore.getState().spawnGlow(gpX0, gpY0, GLOW_R_XXL, 'rgba(239,68,68,', 900);
+              spawnBurst(gpX0, gpY0 + 16, '#7f1d1d', 22);
+              // アテンションは出現演出が落ち着いてから(城ボス/賞金首と同じ並び)。カットイン台帳には
+              // 載せない(専用素材を作らない=設計書の「ではない」条件)ので payload は渡さない。
+              bountyAttnRef.current = { at: newGameTime + 950, x: gpX0, y: gpY0, cutin: undefined };
+            }
           };
           if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
             phantomForceRef.current = true;
             spawnGuardianPhantom(pickPhantomIdentity(getSelectedStageId()));
           }
-          // research/BRAWLER_PHANTOM.md §6: 固有の幻影「拳鬼」。①強制出現(?brawlerphantomnow=1・対策室の枠)②本編の乱入
-          // (ステージ1・3・4・5・1出撃に1回まで・25%・60〜240秒・ステージ1は城のボスを倒した後から・汎用の幻影と重ねない)。
+          // research/BRAWLER_PHANTOM.md §6: 固有の幻影「拳鬼」。①強制出現(?brawlerphantomnow=1・対策室の枠=プレイヤーのそば)
+          // ②本編=徘徊の枠(社長指示2026-11-10「出現は徘徊の枠で、亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」)。
+          // 枠の時刻・場所のまま(出撃3秒・プレイヤーから遠い POI=宇宙飛行群と同じ選び方)。名前の帯とアテンションは姿が画面に入った時。
           {
             const kenki = uniquePhantomSpec(PHANTOM_BRAWLER_KIND);
             const kenkiIdentity = { name: kenki.name, profile: kenki.profile, source: 'unique' as const };
@@ -9405,48 +9415,44 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             };
             if ((FORCE_PHANTOM_BRAWLER || practiceForces('brawlerphantomnow')) && !phantomBrawlerForceRef.current) {
               phantomBrawlerForceRef.current = true;
-              phantomBrawlerPlanRef.current.done = true; // 強制出現した出撃では乱入は引かない
               spawnGuardianPhantom(kenkiIdentity, PHANTOM_BRAWLER_KIND);
               markKenkiSeen();
             }
-            const plan = phantomBrawlerPlanRef.current;
-            if (!plan.rolled) {
-              plan.rolled = true;
-              plan.at = rollPhantomBrawlerRun({
-                stageId: getSelectedStageId() ?? '',
-                stage1CastleCleared: getCastleBossCleared('stage-1'),
-                practiceOrTest: HERO_PATROL_BLOCKED || isPracticeRun() || isBossMakerRun() || BOSS_TEST_RUN,
-              }, Math.random);
-            }
-            if (plan.at !== null && !plan.done) {
-              const ks = useGameStore.getState();
+            const patrolKenkiStage = !HERO_PATROL_BLOCKED && !isPracticeRun() && !isBossMakerRun()
+              && HERO_PATROL_STAGES.includes(getSelectedStageId() ?? '');
+            if (patrolKenkiStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
+            if (patrolKenkiStage && runMutantBossRef.current === 'brawler' && !phantomBrawlerPatrolRef.current && newGameTime >= 3000) {
+              phantomBrawlerPatrolRef.current = true;
               const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
-              const kScene: PhantomBrawlerScene = {
-                otherBossEngaged: bossEngagedNow(ks.enemies.filter(e => e.type !== 'guardian-phantom'), kpcx, kpcy, ks.bossFightNow),
-                bossChasing: ks.bossChasing, redNightActive: ks.redNight?.phase === 'active', activeEvent: !!ks.activeEvent,
-                indoor: ks.indoorMode, returnCircle: ks.returnCircle !== null,
-              };
-              const step = phantomBrawlerSpawnStep(plan, newGameTime, kScene, ks.enemies.some(e => e.type === 'guardian-phantom'), !!ks.attention);
-              if (step === 'retry') plan.nextCheckAt = newGameTime + PHANTOM_BRAWLER_RETRY_MS;
-              else if (step === 'spawn') {
-                plan.done = true;
-                spawnGuardianPhantom(kenkiIdentity, PHANTOM_BRAWLER_KIND);
-                markKenkiSeen();
-              }
+              const at = astroSpawnPick(astroRunPois(), { x: kpcx, y: kpcy }, worldDist(3000), Math.random);
+              spawnGuardianPhantom(kenkiIdentity, PHANTOM_BRAWLER_KIND, { at: { x: at.x, y: at.y }, quiet: true });
+              kenkiCutinIdRef.current = null;
             }
-            // 退散: 本編で出ている拳鬼は、ステージのボス戦などの場面に入ったら消える(報酬なし・その出撃は二度と出ない)。
-            if (!isPracticeRun() && !FORCE_PHANTOM_BRAWLER) {
+            // 本編で遠くに出した拳鬼: 姿が画面に入った最初のフレームで名前の帯+アテンション+「出会った」(亡霊・宇宙飛行群と同じ・1体につき1回)。
+            // 退散: ステージのボス戦などの場面に入ったら消える(報酬なし・その出撃は二度と出ない)。ただし遠くでまだ会っていない間は消さない
+            // (出撃の頭の「ようこそ」の出来事が出撃3秒の出現と重なるため=kenkiPatrolStep)。
+            if (phantomBrawlerPatrolRef.current) {
               const ks = useGameStore.getState();
               const kenkiE = ks.enemies.find(e => e.type === 'guardian-phantom' && e.phantomUnique === PHANTOM_BRAWLER_KIND && e.health > 0 && e.corpseUntil === undefined);
               if (kenkiE) {
+                const kx = kenkiE.x + kenkiE.width / 2, ky = kenkiE.y + kenkiE.height / 2;
                 const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
-                const blocked = phantomBrawlerSceneBlocked({
-                  otherBossEngaged: bossEngagedNow(ks.enemies.filter(e => e.type !== 'guardian-phantom'), kpcx, kpcy, ks.bossFightNow),
-                  bossChasing: ks.bossChasing, redNightActive: ks.redNight?.phase === 'active', activeEvent: !!ks.activeEvent,
-                  indoor: ks.indoorMode, returnCircle: ks.returnCircle !== null,
+                const kStep = kenkiPatrolStep({
+                  onScreen: isPointInZoomedViewport(kx, ky, ks.camera, ks.gameBounds, ks.viewZoom),
+                  introduced: kenkiCutinIdRef.current === kenkiE.id,
+                  attention: !!ks.attention,
+                  blocked: phantomBrawlerSceneBlocked({
+                    otherBossEngaged: bossEngagedNow(ks.enemies.filter(e => e.type !== 'guardian-phantom'), kpcx, kpcy, ks.bossFightNow),
+                    bossChasing: ks.bossChasing, redNightActive: ks.redNight?.phase === 'active', activeEvent: !!ks.activeEvent,
+                    indoor: ks.indoorMode, returnCircle: ks.returnCircle !== null,
+                  }),
                 });
-                if (blocked) {
-                  const kx = kenkiE.x + kenkiE.width / 2, ky = kenkiE.y + kenkiE.height / 2;
+                if (kStep === 'intro') {
+                  kenkiCutinIdRef.current = kenkiE.id;
+                  useGameStore.getState().triggerAttention(kx, ky);
+                  useGameStore.setState({ eventBannerText: phantomDisplayLabel(), eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
+                  markKenkiSeen();
+                } else if (kStep === 'retreat') {
                   // 出現の演出を逆に(外から内へ縮む輪+破片)。
                   spawnRing(kx, ky, 150, 16, 'rgba(239,68,68,0.85)', 6, 720);
                   spawnBurst(kx, ky + 16, '#7f1d1d', 22);

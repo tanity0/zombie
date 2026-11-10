@@ -344,7 +344,7 @@ const MUTANT_WRAITH_SLOT: PracticeSlot = {
   alwaysUnlocked: true,
 };
 // research/BRAWLER_PHANTOM.md §6-3: 固有の幻影「拳鬼(格闘)」の確認用の枠。汎用の幻影と同じ「決闘」の棚・常時解放。
-// 本編ではステージ1・3・4・5に乱入する(useGameLoop・utils/phantomBrawlerSpawn.ts)=並びは sortieBossRoster が別に出す。
+// 本編ではステージ1・3・4・5の徘徊の枠(亡霊・宇宙飛行群と3人から1人)で出る(useGameLoop・utils/phantomBrawlerSpawn.ts)=並びは sortieBossRoster が別に出す。
 export const PHANTOM_BRAWLER_SLOT_KEY = 'phantom-brawler@practice';
 /** 仮名(research/BRAWLER_PHANTOM.md §8)。名前の出どころは data/uniquePhantoms の台帳。 */
 export const PHANTOM_BRAWLER_LABEL = `${uniquePhantomSpec('brawler').name}(幻影)`;

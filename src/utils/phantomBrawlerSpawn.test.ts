@@ -1,11 +1,11 @@
 // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の出現(純関数)。
 import { describe, expect, it } from 'vitest';
 import {
-  PHANTOM_BRAWLER_CHANCE, PHANTOM_BRAWLER_STAGES, PHANTOM_BRAWLER_WINDOW_MAX_MS, PHANTOM_BRAWLER_WINDOW_MIN_MS,
-  PHANTOM_BRAWLER_DIST_MIN_PX, PHANTOM_BRAWLER_DIST_MAX_PX,
-  createPhantomBrawlerPlan, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, phantomBrawlerSpawnStep,
-  phantomBrawlerStageEligible, rollPhantomBrawlerRun, type PhantomBrawlerScene,
+  PHANTOM_BRAWLER_STAGES, PHANTOM_BRAWLER_DIST_MIN_PX, PHANTOM_BRAWLER_DIST_MAX_PX,
+  kenkiPatrolStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset, phantomBrawlerStageEligible, rollRunPatrolSlot,
+  type PhantomBrawlerScene,
 } from './phantomBrawlerSpawn';
+import { HERO_PATROL_STAGES } from './heroScript';
 
 const seq = (...v: number[]) => { let i = 0; return () => v[Math.min(i++, v.length - 1)]; };
 const CLEAR: PhantomBrawlerScene = { otherBossEngaged: false, bossChasing: false, redNightActive: false, activeEvent: false, indoor: false, returnCircle: false };
@@ -22,53 +22,57 @@ describe('拳鬼の出現: ステージ', () => {
   });
 });
 
-describe('拳鬼の出現: 抽選', () => {
-  const base = { stageId: 'stage-3', stage1CastleCleared: false, practiceOrTest: false };
-  it('25%: 1回目の乱数が確率未満なら出る・以上なら出ない', () => {
-    expect(PHANTOM_BRAWLER_CHANCE).toBe(0.25);
-    expect(rollPhantomBrawlerRun(base, seq(0.2499, 0))).not.toBeNull();
-    expect(rollPhantomBrawlerRun(base, seq(0.25, 0))).toBeNull();
+// 社長指示2026-11-10「出現は徘徊の枠で、亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」
+describe('拳鬼の出現: 徘徊の枠の抽選(亡霊・宇宙飛行群・拳鬼から1人)', () => {
+  const PICK = [0, 0.4, 0.7]; // 2回目の乱数: 3人なら astro / wraith / brawler
+  it('拳鬼の出るステージ=徘徊の枠のステージ(ずれが無い)', () => {
+    expect([...PHANTOM_BRAWLER_STAGES]).toEqual([...HERO_PATROL_STAGES]);
   });
-  it('出る時刻は60〜240秒の窓', () => {
-    expect(rollPhantomBrawlerRun(base, seq(0, 0))).toBe(PHANTOM_BRAWLER_WINDOW_MIN_MS);
-    expect(rollPhantomBrawlerRun(base, seq(0, 0.999999999))).toBe(PHANTOM_BRAWLER_WINDOW_MAX_MS);
-    expect(PHANTOM_BRAWLER_WINDOW_MIN_MS).toBe(60_000);
-    expect(PHANTOM_BRAWLER_WINDOW_MAX_MS).toBe(240_000);
+  it('枠の中では3人から1人だけ(ステージ3・4・5/ステージ1は城のボスの後)', () => {
+    for (const stageId of ['stage-3', 'stage-4', 'stage-5']) {
+      expect(PICK.map(r => rollRunPatrolSlot({ stageId, stage1CastleCleared: false }, seq(0, r)))).toEqual(['astro', 'wraith', 'brawler']);
+    }
+    expect(PICK.map(r => rollRunPatrolSlot({ stageId: 'stage-1', stage1CastleCleared: true }, seq(0, r)))).toEqual(['astro', 'wraith', 'brawler']);
   });
-  it('練習ラン・テストでは出ない/対象外のステージでは出ない/ステージ1は城のボスの後', () => {
-    expect(rollPhantomBrawlerRun({ ...base, practiceOrTest: true }, seq(0, 0))).toBeNull();
-    expect(rollPhantomBrawlerRun({ ...base, stageId: 'stage-2' }, seq(0, 0))).toBeNull();
-    expect(rollPhantomBrawlerRun({ ...base, stageId: 'stage-1' }, seq(0, 0))).toBeNull();
-    expect(rollPhantomBrawlerRun({ ...base, stageId: 'stage-1', stage1CastleCleared: true }, seq(0, 0))).not.toBeNull();
+  it('ステージ1で城のボスを倒していない時は拳鬼を抜く(2人から)', () => {
+    for (let r = 0; r < 1; r += 0.01) expect(rollRunPatrolSlot({ stageId: 'stage-1', stage1CastleCleared: false }, seq(0, r))).not.toBe('brawler');
+    expect(rollRunPatrolSlot({ stageId: 'stage-1', stage1CastleCleared: false }, seq(0, 0.7))).toBe('wraith');
   });
-  it('おかしな乱数でも落ちない', () => {
-    expect(() => rollPhantomBrawlerRun(base, () => NaN)).not.toThrow();
+  it('枠の外のステージでは誰も出ない(拳鬼も)', () => {
+    for (const stageId of ['stage-2', 'stage-6', 'stage-7', 'stage-ex1', 'stage-0', '']) {
+      for (const r of PICK) expect(rollRunPatrolSlot({ stageId, stage1CastleCleared: true }, seq(0, r))).toBe('none');
+    }
+  });
+  it('枠が開かない時(20%の外)は誰も出ない', () => {
+    expect(rollRunPatrolSlot({ stageId: 'stage-3', stage1CastleCleared: true }, seq(0.2, 0.7))).toBe('none');
   });
 });
 
-describe('拳鬼の出現: 1出撃に1回・場面', () => {
-  it('時刻前は出ない・時刻が来たら出る・出た後は出ない', () => {
-    const plan = { ...createPhantomBrawlerPlan(), rolled: true, at: 70_000 };
-    expect(phantomBrawlerSpawnStep(plan, 69_999, CLEAR, false, false)).toBe('none');
-    expect(phantomBrawlerSpawnStep(plan, 70_000, CLEAR, false, false)).toBe('spawn');
-    expect(phantomBrawlerSpawnStep({ ...plan, done: true }, 80_000, CLEAR, false, false)).toBe('none');
+describe('拳鬼の出現: 遠くに出した後の名乗りと退散', () => {
+  const base = { onScreen: false, introduced: false, blocked: false, attention: false };
+  it('遠くでまだ会っていない間は、塞がった場面でも消さない(出撃の頭の出来事で消えない)', () => {
+    expect(kenkiPatrolStep({ ...base, blocked: true })).toBe('none');
+    expect(kenkiPatrolStep(base)).toBe('none');
   });
-  it('出ない出撃(at=null)・未抽選は何もしない', () => {
-    expect(phantomBrawlerSpawnStep({ ...createPhantomBrawlerPlan(), rolled: true }, 999_999, CLEAR, false, false)).toBe('none');
-    expect(phantomBrawlerSpawnStep(createPhantomBrawlerPlan(), 999_999, CLEAR, false, false)).toBe('none');
+  it('画面に入った最初のフレームで名乗る(アテンション中は待つ・名乗るのは1回)', () => {
+    expect(kenkiPatrolStep({ ...base, onScreen: true })).toBe('intro');
+    expect(kenkiPatrolStep({ ...base, onScreen: true, attention: true })).toBe('none');
+    expect(kenkiPatrolStep({ ...base, onScreen: true, introduced: true })).toBe('none');
   });
-  it('塞がった場面・幻影が既に居る・アテンション中は見直し(retry)', () => {
-    const plan = { ...createPhantomBrawlerPlan(), rolled: true, at: 0 };
+  it('塞がった場面で、画面に入っている/名乗った後なら退散(名乗らずに消える)', () => {
+    expect(kenkiPatrolStep({ ...base, onScreen: true, blocked: true })).toBe('retreat');
+    expect(kenkiPatrolStep({ ...base, introduced: true, blocked: true })).toBe('retreat');
+  });
+});
+
+describe('拳鬼の出現: 場面・距離', () => {
+  it('塞がった場面(退散する場面)', () => {
     for (const k of Object.keys(CLEAR) as (keyof PhantomBrawlerScene)[]) {
-      expect(phantomBrawlerSpawnStep(plan, 1, { ...CLEAR, [k]: true }, false, false)).toBe('retry');
       expect(phantomBrawlerSceneBlocked({ ...CLEAR, [k]: true })).toBe(true);
     }
     expect(phantomBrawlerSceneBlocked(CLEAR)).toBe(false);
-    expect(phantomBrawlerSpawnStep(plan, 1, CLEAR, true, false)).toBe('retry'); // 汎用の幻影と重ねない
-    expect(phantomBrawlerSpawnStep(plan, 1, CLEAR, false, true)).toBe('retry');
-    expect(phantomBrawlerSpawnStep({ ...plan, nextCheckAt: 10 }, 5, CLEAR, false, false)).toBe('none');
   });
-  it('出る距離は380〜500px', () => {
+  it('確認用の強制出現の距離は380〜500px', () => {
     for (const [a, b] of [[0, 0], [0.5, 0.999999], [0.25, 0.5]] as const) {
       const o = phantomBrawlerSpawnOffset(seq(a, b));
       const d = Math.hypot(o.dx, o.dy);

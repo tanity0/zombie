@@ -232,7 +232,7 @@ export const wraithGraveSolids = (pieces: readonly WraithGrowth[], gt: number): 
   pieces.filter(p => isWraithGrave(p.variant) && p.sinkAt === undefined && (gt - p.bornAt) / WRAITH_GROWTH_GROW_MS >= WRAITH_GROWTH_SOLID_AT).map(wraithGraveFoot);
 
 // ---- 出るかどうか(社長指示2026-10-29「宇宙飛行群と亡霊は必ず出現する訳ではない。それぞれどっちかのみ。20%の確率」) ----
-/** 1ランで本編に変異体のボス級(宇宙飛行群か亡霊)が出る確率。出る時はどちらか1体だけ(半々)。 */
+/** 1ランで本編に徘徊の枠のボス級(宇宙飛行群・亡霊・拳鬼のどれか)が出る確率。出る時は1体だけ(顔ぶれから均等・pickRunMutantBoss)。 */
 export const RUN_MUTANT_BOSS_CHANCE = 0.2;
 
 // ---- 縄張り(§18・社長裁定2026-10-30「縄張りを作る」=逃げ切れない問題) ----
@@ -245,18 +245,36 @@ export const WRAITH_TERRITORY_FORGET_MS = 20000;
 /** プレイヤーが縄張りの中に居るか(縄張りがまだ無ければ中とみなす)。 */
 export const inWraithTerritory = (territory: { x: number; y: number } | null, px: number, py: number): boolean =>
   !territory || Math.hypot(px - territory.x, py - territory.y) <= WRAITH_TERRITORY_PX;
-export type RunMutantBoss = 'astro' | 'wraith' | 'none';
-export const pickRunMutantBoss = (rng: () => number): RunMutantBoss => {
+/**
+ * 徘徊の枠(本編のステージ1・3・4・5で1ランに1体だけ出るボス級)の中身。'brawler'=固有の幻影「拳鬼」
+ * (research/BRAWLER_PHANTOM.md §6・社長指示2026-11-10「出現は徘徊の枠で、亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」)。
+ */
+export type RunMutantBoss = 'astro' | 'wraith' | 'brawler' | 'none';
+export interface RunPatrolPool {
+  /** 拳鬼を抽選に入れるか(拳鬼の出るステージで、ステージ1なら城のボスを一度倒した後=phantomBrawlerStageEligible)。 */
+  brawler?: boolean;
+}
+/** 抽選に入る顔ぶれ(並び順は固定=乱数の割り当てが変わらないように。拳鬼は末尾)。 */
+export const runPatrolPool = (pool: RunPatrolPool = {}): Exclude<RunMutantBoss, 'none'>[] =>
+  pool.brawler ? ['astro', 'wraith', 'brawler'] : ['astro', 'wraith'];
+/**
+ * 1ランに1回だけ引く。RUN_MUTANT_BOSS_CHANCE で枠が開き、開いたら顔ぶれから均等に1人(必ず1人だけ)。
+ * 乱数は2回引く(①枠が開くか ②誰か)。拳鬼が抜けている時は従来どおり宇宙飛行群と亡霊の半々。
+ */
+export const pickRunMutantBoss = (rng: () => number, pool: RunPatrolPool = {}): RunMutantBoss => {
   if (rng() >= RUN_MUTANT_BOSS_CHANCE) return 'none';
-  return rng() < 0.5 ? 'astro' : 'wraith';
+  const who = runPatrolPool(pool);
+  const r = rng();
+  const i = Number.isFinite(r) ? Math.max(0, Math.min(who.length - 1, Math.floor(r * who.length))) : 0;
+  return who[i];
 };
 
-/** 変異体が出るランの「最初の通信」に混ざる一言(社長指示2026-10-30)。出ないランは null。 */
-export const MUTANT_OMEN_LINES: Record<Exclude<RunMutantBoss, 'none'>, string> = {
+/** 変異体が出るランの「最初の通信」に混ざる一言(社長指示2026-10-30)。出ないランは null。拳鬼の一言は無い(=言わない)。 */
+export const MUTANT_OMEN_LINES: Readonly<Partial<Record<Exclude<RunMutantBoss, 'none'>, string>>> = {
   wraith: '寒気がする・・・',
   astro: '通信が少しおかしい？',
 };
-export const mutantOmenLine = (boss: RunMutantBoss): string | null => (boss === 'none' ? null : MUTANT_OMEN_LINES[boss]);
+export const mutantOmenLine = (boss: RunMutantBoss): string | null => (boss === 'none' ? null : MUTANT_OMEN_LINES[boss] ?? null);
 /** 言う人: 出撃の通信を言った人とは別の隊員(居なければ同じ人)。隊員が居ない出撃は null=言わない。 */
 export const pickOmenSpeaker = (names: readonly string[], sortieSpeaker: string | null, rng: () => number): string | null => {
   const uniq = [...new Set(names)];

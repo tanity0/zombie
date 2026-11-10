@@ -134,16 +134,54 @@ describe('亡霊: 近づくと地面から生えてくる物(§9)', () => {
   });
 });
 
-import { pickRunMutantBoss, RUN_MUTANT_BOSS_CHANCE } from './wraithScript';
+import { pickRunMutantBoss, runPatrolPool, RUN_MUTANT_BOSS_CHANCE } from './wraithScript';
 describe('宇宙飛行群と亡霊の出現(1ランにどちらか1体だけ・20%)', () => {
   it('2割のランでどちらか1体・残りは出ない。出る時は半々', () => {
     let seed = 1;
     const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-    const n = { astro: 0, wraith: 0, none: 0 };
+    const n = { astro: 0, wraith: 0, brawler: 0, none: 0 };
     for (let i = 0; i < 20000; i++) n[pickRunMutantBoss(rng)]++;
     expect((n.astro + n.wraith) / 20000).toBeCloseTo(RUN_MUTANT_BOSS_CHANCE, 1);
     expect(n.astro / (n.astro + n.wraith)).toBeGreaterThan(0.45);
     expect(n.astro / (n.astro + n.wraith)).toBeLessThan(0.55);
+    expect(n.brawler).toBe(0); // 拳鬼を入れない時は出ない
+  });
+});
+
+// research/BRAWLER_PHANTOM.md §6(社長指示2026-11-10「出現は徘徊の枠で、亡霊か宇宙飛行が出てる時は出ない。この3人の中で抽選」)
+describe('徘徊の枠の抽選(亡霊・宇宙飛行群・拳鬼の3人から1人)', () => {
+  const seq = (...v: number[]) => { let i = 0; return () => v[i++ % v.length]; };
+  it('枠の確率は変えない(20%)。枠が閉じた時は誰も出ない', () => {
+    expect(RUN_MUTANT_BOSS_CHANCE).toBe(0.2);
+    expect(pickRunMutantBoss(seq(0.2, 0), { brawler: true })).toBe('none');
+    expect(pickRunMutantBoss(seq(0.1999, 0), { brawler: true })).not.toBe('none');
+  });
+  it('拳鬼が入る時は3人から均等に1人(必ず1人だけ=戻り値は1つ)', () => {
+    expect(pickRunMutantBoss(seq(0, 0), { brawler: true })).toBe('astro');
+    expect(pickRunMutantBoss(seq(0, 0.34), { brawler: true })).toBe('wraith');
+    expect(pickRunMutantBoss(seq(0, 0.67), { brawler: true })).toBe('brawler');
+    expect(pickRunMutantBoss(seq(0, 0.999999999), { brawler: true })).toBe('brawler');
+    let seed = 7;
+    const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const n = { astro: 0, wraith: 0, brawler: 0, none: 0 };
+    for (let i = 0; i < 30000; i++) n[pickRunMutantBoss(rng, { brawler: true })]++;
+    const hit = n.astro + n.wraith + n.brawler;
+    expect(hit / 30000).toBeCloseTo(RUN_MUTANT_BOSS_CHANCE, 1);
+    for (const k of ['astro', 'wraith', 'brawler'] as const) {
+      expect(n[k] / hit).toBeGreaterThan(0.29);
+      expect(n[k] / hit).toBeLessThan(0.38);
+    }
+  });
+  it('条件を満たさない時(ステージ外・ステージ1で城のボス未撃破)は拳鬼を抜いて2人から引く=拳鬼は出ない', () => {
+    for (let r = 0; r < 1; r += 0.01) expect(pickRunMutantBoss(seq(0, r), { brawler: false })).not.toBe('brawler');
+    expect(pickRunMutantBoss(seq(0, 0.67))).toBe('wraith'); // 2人の並びの割り当ては従来どおり(0.5未満=宇宙飛行群)
+    expect(pickRunMutantBoss(seq(0, 0.49))).toBe('astro');
+    expect(runPatrolPool({ brawler: false })).toEqual(['astro', 'wraith']);
+    expect(runPatrolPool({ brawler: true })).toEqual(['astro', 'wraith', 'brawler']);
+  });
+  it('乱数が壊れていても落ちない', () => {
+    expect(() => pickRunMutantBoss(seq(0, NaN), { brawler: true })).not.toThrow();
+    expect(pickRunMutantBoss(seq(0, NaN), { brawler: true })).toBe('astro');
   });
 });
 
@@ -153,6 +191,7 @@ describe('変異体が出るランの最初の通信の一言', () => {
     expect(mutantOmenLine('wraith')).toBe('寒気がする・・・');
     expect(mutantOmenLine('astro')).toBe('通信が少しおかしい？');
     expect(mutantOmenLine('none')).toBeNull();
+    expect(mutantOmenLine('brawler')).toBeNull(); // 拳鬼の一言は無い
   });
   it('言う人は出撃の通信とは別の隊員。1人しか居なければその人・隊員ゼロなら言わない', () => {
     for (let i = 0; i < 20; i++) expect(pickOmenSpeaker(['A', 'B', 'C'], 'B', () => i / 20)).not.toBe('B');
