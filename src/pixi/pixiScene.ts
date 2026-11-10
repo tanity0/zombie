@@ -109,7 +109,7 @@ import {
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
 import { brawlerRevengeTelegraph, BRAWLER_REVENGE_RADIUS, brawlerPhaseKind, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
-import { getLastAirMeleeHit, stepPlayerAir, playerAirTargetPx, playerAirLandSquashY, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
+import { getLastAirMeleeHit, stepPlayerAir, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
@@ -4325,7 +4325,14 @@ interface ActorView {
   /** 体の拡大の今の量(0..1・頂点の近くを時間で遅れて追う)と、その更新時刻。 */
   airSwell?: number;
   /** ★プレイヤーが空中の敵を殴って浮く高さの状態(px・落下の速さ・前フレームの時刻・着地の時刻・直近の敵の浮く基準px)。プレイヤーの view だけが持つ。描画だけ(§18)。 */
-  playerAir?: PlayerAirState & { at: number; landAt?: number; scalePx?: number };
+  playerAir?: PlayerAirState & {
+    at: number; scalePx?: number; dir?: number; takeoffAt?: number; landAt?: number; landStrength?: number;
+    poseY: number; poseX: number; leanK: number; streakOffAt?: number;
+  };
+  /** 浮いている間の接地の楕円(地面レイヤー)と、通常の影を消す係数(1=通常の影のまま)・上昇の白い筋。プレイヤーの view だけ。 */
+  airGroundShadow?: Sprite;
+  shadowAirMul?: number;
+  playerAirStreaks?: Sprite[];
   airSwellAt?: number;
   /** 浮いている間の足元の輪(加算・地面)と、打ち上げた瞬間の上昇の筋(描画だけ・遅延生成)。 */
   airRing?: Sprite;
@@ -5259,6 +5266,7 @@ export class PixiScene {
   private skadiHazardContainer = new Container(); // スカジ氷塊/氷刃のスプライトプール親
   private skadiBlockPool = new Map<string, Sprite>(); // 氷塊スプライト(マーカーid→sprite)
   private skadiBladePool = new Map<string, Sprite>(); // 氷刃スプライト(ブレードid→sprite)
+  private playerAirLiftPx = 0; // 空中の敵を殴って浮いているプレイヤーの高さ(px・描画だけ・§18)。頭上マークが読む。
   private boomReadyGfx = new Graphics();     // ドローンブーメランCD明けの頭上マーク(ふわっと出て消える)
   private skillPickGfx = new Graphics();     // スキル取得の頭上マーク(下敷き・閃光・レベルの粒)
   private skillPickSp: Sprite | null = null; // 同・アイコン本体
@@ -13180,7 +13188,7 @@ export class PixiScene {
     const cx = player.x + player.width / 2;
     // ★頭より**上**に置く。プレイヤーの絵の頭頂は足元から約24px上なので、そこへ絵の高さぶんの余白を足す。
     // (初版は絵の下端が胴の真ん中まで下りていて、1.4秒間ずっと顔が隠れていた。)
-    const cy = player.y - 62 + rise;
+    const cy = player.y - 62 + rise - this.playerAirLiftPx;
     const tex = this.skillIconTexture(fx.key);
     if (!tex || tex.width === 0) return;
     if (!this.skillPickSp) {
@@ -13263,7 +13271,7 @@ export class PixiScene {
     const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82; // 立ち上がり速→ふわっと減衰
     const rise = -18 * t;                      // 上へ少し浮く
     const cx = player.x + player.width / 2;
-    const cy = player.y - 46 + rise;           // 頭上(もう少し上)
+    const cy = player.y - 46 + rise - this.playerAirLiftPx;           // 頭上(もう少し上)
     // 「ピカ!」フラッシュ: 出現直後に白く強く光って素早く消える(加算)。従来のまま。
     const flash = Math.max(0, 1 - dt / 170);
     if (flash > 0) {
@@ -13301,7 +13309,7 @@ export class PixiScene {
     const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82;
     const rise = -18 * t;
     const cx = player.x + player.width / 2;
-    const cy = player.y - 46 + rise;
+    const cy = player.y - 46 + rise - this.playerAirLiftPx;
     const flash = Math.max(0, 1 - dt / 170);
     if (flash > 0) {
       g.circle(cx, cy, 11 + 18 * (1 - flash)).fill({ color: 0xfde68a, alpha: 0.5 * flash });
@@ -13337,7 +13345,7 @@ export class PixiScene {
     const alpha = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82;
     const a = Math.max(0, alpha);
     const cx = player.x + player.width / 2;
-    const cy = player.y - 46 - 18 * t;         // 頭上(ブーメランと同じ高さ)＋少し浮上
+    const cy = player.y - 46 - 18 * t - this.playerAirLiftPx;         // 頭上(ブーメランと同じ高さ)＋少し浮上
     const r = 9 * (0.85 + 0.35 * t);           // 少し拡大
     const color = 0x86efac;                    // 移動速度UP=緑
     // 出現フラッシュ。
@@ -15116,14 +15124,12 @@ export class PixiScene {
       const disp = this.actorDisplaySize(this.playerView);
       const rawW = disp?.w ?? pf.boxW * 0.55;
       const rawH = disp?.h ?? pf.boxH;
-      // ★空中の敵を殴って浮いている間(§18): 影は地面に残し、浮いた高さぶん縮めて薄くする(敵の空中の合図と同じ heightPx/airK の経路)。
-      const airLiftPx = this.playerView?.shadowLiftPx ?? 0;
+      // ★空中の敵を殴って浮いている間(§18): 通常の影は消え、代わりに真下の地面の接地の楕円(playerView.airGroundShadow)が出る。
       place({
-        id: '__player__', x: pf.footX, y: pf.footY - airLiftPx,
+        id: '__player__', x: pf.footX, y: pf.footY,
         rawW, rawH, texture: this.playerView?.sprite.texture ?? null,
-        alpha: 1, shadowFade: (this.playerView?.shadowFade ?? 1) * this.currentIntroFade(now),
+        alpha: 1, shadowFade: (this.playerView?.shadowFade ?? 1) * this.currentIntroFade(now) * (this.playerView?.shadowAirMul ?? 1),
         flip: disp?.flip, scaleMult: PLAYER_SHADOW_SCALE,
-        heightPx: airLiftPx, airK: this.playerView?.shadowAirK,
       });
     }
 
@@ -16852,7 +16858,7 @@ export class PixiScene {
     const cx = player.x + player.width / 2;
     // スプライトの見た目はヒットボックス上端(p.y)より上に伸びる(髪)。-22だと髪の中に埋まって
     // 髪飾りに見える(実測)ため、実績ある頭上マーク(ブーメラン=中心p.y-46)と同じ高さ帯へ。
-    const topY = player.y - 42 + rise;
+    const topY = player.y - 42 + rise - this.playerAirLiftPx;
     const a = Math.max(0, alpha);
     const flick = 0.9 + 0.1 * Math.sin(now / 130);   // 炎の背丈ゆらぎ
     const sway = Math.sin(now / 260) * 0.9;          // 先端の左右ゆらぎ
@@ -16913,7 +16919,7 @@ export class PixiScene {
     const BOX = 26;                                             // 表示サイズ(px・頭上マーク相当)
     const sc = (BOX / Math.max(1, Math.max(this.benkeiIconTex.width, this.benkeiIconTex.height))) * pop;
     sp.scale.set(sc);
-    sp.position.set(player.x + player.width / 2, player.y - 46 + rise);
+    sp.position.set(player.x + player.width / 2, player.y - 46 + rise - this.playerAirLiftPx);
     sp.alpha = Math.max(0, alpha);
     sp.visible = sp.alpha > 0.01;
   }
@@ -20710,48 +20716,124 @@ export class PixiScene {
       if (brPose.shakeX) actOffX += brPose.shakeX * dsc;
       if (brPose.shakeY) actOffY += brPose.shakeY * dsc;
     }
-    // ★空中の敵を近接で殴った時、プレイヤーの絵も宙へ浮かせて敵の高さを追う(社長指示2026-11-10・research/BRAWLER.md §18)。
+    // ★空中の敵を近接で殴った時、プレイヤーの絵も宙へ浮かせて敵の高さを追う(社長指示2026-11-10・research/BRAWLER.md §18・クリエイティブ監査反映)。
     // 絵の位置だけ上へずらす=足元(fb.footY=地面の値)・判定・移動・カメラは動かさない。地平線フェード・帯の外の減光・遠近スケール・可視域・移動可能帯は足元のまま。
-    // 高さの曲線(上がり=ease-out・漂い・重力の落下・落下中の再追従)は utils/playerAirFollow の純関数。状態はこの view だけ(store には書かない)。
+    // 高さの曲線(飛び立ちの沈み・初速つきの放物線・漂い・重力の落下・落下中の再追従・当たりごとの跳ね・着地の強さ)は utils/playerAirFollow の純関数。状態はこの view だけ(store には書かない)。
     let playerAirPx = 0;
     if (PLAYER_MOTION_FX) {
       const tAir = Date.now();
-      const st0 = view.playerAir ?? (view.playerAir = { h: 0, vy: 0, at: tAir });
+      const stAir = useGameStore.getState();
+      const st0 = view.playerAir ?? (view.playerAir = { h: 0, vy: 0, at: tAir, poseY: 1, poseX: 1, leanK: 0 });
       const dtAir = tAir - st0.at;
       st0.at = tAir;
       const hit = getLastAirMeleeHit();
-      const sinceHit = hit ? tAir - hit.at : Infinity;
+      // 上がり始めは、ヒットストップが明けた時刻(当たりの記録+そのヒットストップの終わり)。
+      const hitAt = hit ? (stAir.hitstopUntil > hit.at ? stAir.hitstopUntil : hit.at) : null;
       const bodyH = fb.boxH * dsc;
+      const bodyW = Math.max(fb.boxW, 28) * dsc;
       let target: number | null = null;
-      if (hit && sinceHit <= PLAYER_AIR_HOVER_MS) {
-        const enAir = useGameStore.getState().enemies.find(en => en.id === hit.enemyId);
-        const stAir = useGameStore.getState();
+      let dirAir = aimx >= 0 ? 1 : -1; // 敵の方向(前傾)
+      if (hit && hitAt !== null && tAir - hitAt <= PLAYER_AIR_HOVER_MS) {
+        const enAir = stAir.enemies.find(en => en.id === hit.enemyId);
         if (enAir) {
           const viewHAir = stAir.gameBounds.height / Math.max(0.05, stAir.viewZoom || 1);
           st0.scalePx = Math.min(enemyFootBox(enAir).boxH * BRW.BRAWLER_LIFT_VIS_BODY_K, viewHAir * BRW.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC);
+          dirAir = enAir.x + enAir.width / 2 >= fb.footX ? 1 : -1;
+          st0.dir = dirAir;
         }
         const rel = enAir && brawlerAirborne(enAir, tAir) ? brawlerJuggleHeightRel(enAir, tAir) : hit.rel; // 敵が倒れた・着地した後は当てた時の高さ
         target = playerAirTargetPx(rel, st0.scalePx ?? 0, bodyH);
+        // 蹴りの跳びの高さを出発点として引き継ぐ(空中で一段カクンと落ちない)。
+        if (brawlerJumpPx > st0.h && st0.vy <= 0) st0.h = brawlerJumpPx;
+      } else if (st0.dir !== undefined) dirAir = st0.dir;
+      const stepped = stepPlayerAir(st0, { now: tAir, dtMs: dtAir, targetPx: target, hitAt });
+      st0.h = stepped.state.h; st0.vy = stepped.state.vy; st0.crouchUntil = stepped.state.crouchUntil;
+      const phase = playerAirPhase(st0, tAir);
+      if (stepped.takeoff) st0.takeoffAt = tAir;
+      if (stepped.landSpeed !== null) {
+        st0.landAt = tAir;
+        st0.landStrength = playerAirLandStrength(stepped.landSpeed, bodyH);
       }
-      const stepped = stepPlayerAir(st0, target, sinceHit, dtAir);
-      st0.h = stepped.state.h; st0.vy = stepped.state.vy;
-      if (stepped.landed) st0.landAt = tAir;
-      playerAirPx = st0.h;
-      // 着地: 小さく沈み、足元に砂埃(既存の砂埃)。
-      const sinceLand = st0.landAt !== undefined ? tAir - st0.landAt : -1;
-      if (sinceLand >= 0 && sinceLand < PLAYER_AIR_LAND_MS) {
-        actSqY *= playerAirLandSquashY(sinceLand);
-        actSqX *= 1 + (1 - playerAirLandSquashY(sinceLand)) * 0.6;
-        const landR = Math.max(fb.boxW, 28) * 0.42 * dsc * 0.8;
-        const landOff = Math.max(fb.boxW, 28) * 0.32 * dsc;
+      // 当たりごとの小さな跳ね(浮いている間だけ)。
+      const bump = hitAt !== null && phase !== 'ground' && phase !== 'crouch' ? playerAirBumpPx(tAir - hitAt) : 0;
+      playerAirPx = st0.h + bump;
+      // 姿勢: 上り=縦に伸びる / 頂点=少し縮む / 落下=やや伸びる / 飛び立ち前=沈む。コマ替えで跳ねないよう時間で寄せる。前傾は敵の方へ。
+      const pose = playerAirPoseTarget(phase);
+      const kP = 1 - Math.exp(-Math.min(100, Math.max(0, dtAir)) / 50);
+      st0.poseY += (pose.sqY - st0.poseY) * kP; st0.poseX += (pose.sqX - st0.poseX) * kP;
+      st0.leanK += ((phase === 'ground' ? 0 : 1) - st0.leanK) * kP;
+      actSqY *= st0.poseY; actSqX *= st0.poseX;
+      actLean += dirAir * PLAYER_AIR_LEAN_RAD * st0.leanK;
+      // 空中の姿勢の絵(格闘): 上り=振り上げ(swing)・頂点と落下=しゃがみ(ready)。段・技の絵(brPose)が出ている間はそちらを優先。ナイフ・刀・鞭は絵のまま。
+      if (!brPose?.tex && isBrawlerMode(p) && meleePosePrefix && !warlordFull && p.health > 0 && (phase === 'rise' || phase === 'apex' || phase === 'fall')) {
+        const airTexName = `${meleePosePrefix}-${phase === 'rise' ? 'swing' : 'ready'}`;
+        const airTex = getTexture(airTexName);
+        if (airTex) { view.sprite.texture = airTex; bodyTexName = airTexName; }
+      }
+      // 飛び立ち: 足元に離陸の砂埃(後ろ側を大きく)と、白い上昇の筋(短く)。
+      const sinceTake = st0.takeoffAt !== undefined ? tAir - st0.takeoffAt : -1;
+      if (sinceTake >= 0 && sinceTake < 200) {
+        const offT = bodyW * 0.32;
         ([-1, 1] as const).forEach(side => {
-          const puff = this.latchFx(`player:airlanddust:${side}`, sinceLand < 60, DUST_MS * 0.6, tAir, () => [fb.footX + side * landOff, fb.footY]);
-          if (puff) this.drawDust(puff.d[0], puff.d[1], landR * (side === 1 ? 0.9 : 0.7), puff.t, this.dustTintForStage(), this.dustAlpha(puff.t) * 0.7, puff.t0);
+          const behind = side === -dirAir;
+          const puff = this.latchFx(`player:airtakeoffdust:${side}`, sinceTake < 60, DUST_MS * 0.7, tAir, () => [fb.footX + side * offT, fb.footY]);
+          if (puff) this.drawDust(puff.d[0], puff.d[1], bodyW * 0.6 * (behind ? 0.95 : 0.5), puff.t, this.dustTintForStage(), this.dustAlpha(puff.t) * (behind ? 0.85 : 0.55), puff.t0);
         });
       }
-      view.shadowLiftPx = playerAirPx;
-      view.shadowAirK = bodyH > 0 ? Math.min(1, playerAirPx / bodyH) : 0;
+      {
+        const rising = phase === 'rise' ? 1 : 0;
+        if (rising) st0.streakOffAt = undefined; else if (st0.streakOffAt === undefined && st0.h > 0.5) st0.streakOffAt = tAir;
+        const off = st0.streakOffAt !== undefined ? Math.min(1, (tAir - st0.streakOffAt) / 120) : 0;
+        const streakOn = (rising || (st0.streakOffAt !== undefined && off < 1)) && playerAirPx > 2 && this.horizonActorAlpha(fb.footY) > 0;
+        if (streakOn && !view.playerAirStreaks) {
+          view.playerAirStreaks = BRAWLER_AIR_STREAKS.map(() => { const sp = new Sprite(getAirStreakTexture()); sp.anchor.set(0.5, 0); this.L.actorLayer.addChild(sp); return sp; });
+        }
+        view.playerAirStreaks?.forEach((sp, i) => {
+          const cfg = BRAWLER_AIR_STREAKS[i];
+          if (!streakOn) { sp.visible = false; return; }
+          const len = playerAirPx * cfg.len * (1 - off * off);
+          if (len < 2) { sp.visible = false; return; }
+          sp.position.set(fb.footX + bodyW * cfg.dx, fb.footY - playerAirPx); // 上端=足・下端=地面
+          sp.width = Math.max(8, Math.min(22, bodyW * 0.12)) * (i === 0 ? 1 : 0.8);
+          sp.height = len; sp.tint = 0xffffff; sp.alpha = 0.5 * (1 - off);
+          sp.zIndex = view.container.zIndex - 0.5; sp.visible = true;
+        });
+      }
+      // 着地: 落ちてきた速さで強さを振る(体の高さから=沈み0.22・砂埃は体幅×0.6を左右に・α1.0 / 低い落下=沈み0.08・小さく薄く)。左右は大きさと時刻をずらす。揺れは足さない。
+      const sinceLand = st0.landAt !== undefined ? tAir - st0.landAt : -1;
+      if (sinceLand >= 0) {
+        const str = st0.landStrength ?? 0;
+        if (sinceLand < PLAYER_AIR_LAND_MS) {
+          const sq = playerAirLandSquashY(sinceLand, playerAirLandDepth(str));
+          actSqY *= sq;
+          actSqX *= 1 + (1 - sq) * 0.6;
+        }
+        const landOff = bodyW * 0.32;
+        ([[-1, 0, 0.8], [1, 35, 1.0]] as const).forEach(([side, delay, sizeMul]) => {
+          const puff = this.latchFx(`player:airlanddust:${side}`, sinceLand >= delay && sinceLand < delay + 60, DUST_MS * (0.55 + 0.45 * str), tAir, () => [fb.footX + side * landOff, fb.footY]);
+          if (puff) this.drawDust(puff.d[0], puff.d[1], bodyW * 0.6 * (0.45 + 0.55 * str) * sizeMul, puff.t, this.dustTintForStage(), this.dustAlpha(puff.t) * (0.45 + 0.55 * str), puff.t0);
+        });
+      }
+      // 影: 浮いている間は真下の地面に接地の楕円(幅=体の0.6・αは0.5固定・縮みは0.75まで)。通常の影は浮いたぶんだけ消す(入れ替え)。
+      const fAir = Math.min(1, st0.h / 6);
+      const airK = Math.min(1, st0.h / Math.max(1, bodyH * PLAYER_AIR_BODY_CAP));
+      view.shadowAirMul = 1 - fAir;
+      if (fAir > 0.01 && !view.airGroundShadow) {
+        const sp = new Sprite(getAirPadTexture());
+        sp.anchor.set(0.5); sp.tint = 0x000000;
+        this.L.groundLayer.addChild(sp);
+        view.airGroundShadow = sp;
+      }
+      if (view.airGroundShadow) {
+        const sp = view.airGroundShadow;
+        const a = PLAYER_AIR_SHADOW_ALPHA * fAir * this.horizonActorAlpha(fb.footY);
+        sp.position.set(fb.footX, fb.footY - 2);
+        const w = bodyW * PLAYER_AIR_SHADOW_W * playerAirShadowShrink(airK);
+        sp.scale.set(w / 256, (w / 256) * 0.42);
+        sp.alpha = a; sp.visible = a > 0.01;
+      }
     }
+    this.playerAirLiftPx = playerAirPx; // 頭の上に付くもの(体力の線・頭上マーク)も同じだけ上げる
     // カウンター成立の決めポーズ: 一瞬ふくらむ膨らみ＋傾き(速い減衰)。
     const sinceCounter = now - (p.lastCounterSuccessTime || 0);
     if (PLAYER_MOTION_FX && p.lastCounterSuccessTime > 0 && sinceCounter >= 0 && sinceCounter < PLAYER_COUNTER_MS) {
@@ -20926,7 +21008,7 @@ export class PixiScene {
       : 0;
     view.sprite.position.set(
       this.snapToScreenPixel(fb.footX, this.L.world.position.x) + introOffX + actOffX,
-      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY - brawlerJumpPx - playerAirPx,
+      this.snapToScreenPixel(fb.footY - bob - pKbHop, this.L.world.position.y) + introOffY + actOffY + slamOffY + hopOffY - Math.max(brawlerJumpPx, playerAirPx), // 蹴りの跳びと空中の浮きは足さずに大きい方(空中で一段落ちない)
     );
     this.drawBrawlerFx(p, fb.footX, fb.footY, dsc, view.sprite, now);
     // シーカー発動中は半透明(通常敵から狙われない演出)。被弾無敵の点滅より優先。
@@ -21220,7 +21302,7 @@ export class PixiScene {
         const artTopFrac = cc ? cc.top : 0, artWFrac = cc ? Math.max(0.2, cc.right - cc.left) : 1;
         const w = Math.max(10, Math.round(spW * artWFrac * 0.9)), h = 3;
         const x = Math.round(fb.footX - w / 2);
-        const y = Math.round(fb.footY - spH * (1 - artTopFrac) - 6 + (1 - inA) * 2);
+        const y = Math.round(fb.footY - spH * (1 - artTopFrac) - 6 + (1 - inA) * 2 - playerAirPx); // 浮いた分だけ一緒に上げる(§18)
         const pct = Math.max(0, Math.min(1, p.health / p.maxHealth));
         view.overlay.rect(x, y, w, h).fill({ color: 0x000000, alpha: BAR_BG_ALPHA * a });
         view.overlay.rect(x, y, Math.max(1, Math.round(w * pct)), h).fill({ color: pct < 0.3 ? STATUS_RED : STATUS_GREEN, alpha: a });
