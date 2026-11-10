@@ -15,6 +15,7 @@ import { generateEquipmentChoices, generateSkillUpgradeChoices, generateReplacem
 import { canAcquireRunSkill, rerollPrice, MAX_BANISH_PER_RUN, MAX_CARRY_SKILLS, type RunSkillDraftInput } from '../utils/runSkillDraft';
 import { shouldEmitThrottled } from '../utils/emitThrottle';
 import { airHopEase01, airHopEaseD01 } from '../utils/airHop';
+import { groundJumpStep } from '../utils/groundJump'; // ジャンプ着地攻撃の一歩(パンプキン/ハンター等と拳鬼で共通・research/BRAWLER_PHANTOM.md §15)
 import { bladeNativeAngle } from '../utils/bladeArt';
 import { applyGhostBuildToPlayer, soloGhostRequested } from '../utils/soloGhost';
 import { loadPlayerProfile } from '../utils/playerTraits';
@@ -3093,6 +3094,11 @@ export const PUMPKIN_RECOVER_MS = 1000;    // 着地後の停止(汎用: ハン�
 // 他のジャンプ型(ハンター/ラボゾンビ3)は指示の対象外=従来の1秒のまま。描画(pixiScene の
 // 着地スカッシュ起点)も同じ関数を引く=判定と絵の出どころを1本に保つ。
 export const pumpkinRecoverMs = (type: Enemy['type']): number => (type === 'pumpkin' ? 2000 : PUMPKIN_RECOVER_MS);
+/**
+ * ジャンプ着地攻撃の滞空(割る前の ms)。ハンターは ÷HUNTER_JUMP_SPEED_MULT(速く跳ぶ)。判定(utils/groundJump)・予告の円・跳ぶ弧の絵が同じ1本を読む。
+ * research/BRAWLER_PHANTOM.md §15: 拳鬼はハンターの跳びを流用する=ここへ 'hunter' を渡す(拳鬼専用の値は作らない)。
+ */
+export const groundJumpAirMsRaw = (type: Enemy['type']): number => PUMPKIN_JUMP_MS / (type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1);
 export const PUMPKIN_COOLDOWN_MS = 800;    // 復帰後、次の溜めまでの猶予
 /**
  * ★硬直が明けた瞬間に**噛みつきへ与える間**(PACING_PUZZLE.md §16-H #H-4 / #H-6)。
@@ -19381,71 +19387,43 @@ export const useGameStore = create<GameState>((set, get) => ({
           const ecx = enemy.x + enemy.width / 2;
           const ecy = enemy.y + enemy.height / 2;
           const dist = Math.hypot(apx - ecx, apy - ecy);
-          if (enemy.aiPhase === 'crouch') {
-            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
-              // 溜め終了 → ジャンプ開始(この瞬間のプレイヤー位置へ。アークは描画側)。
-              // ハンターは「視界サークルの外には飛ばない」(社長指示): 溜め中にプレイヤーが視界範囲外へ出ても、
-              // 着地は視界サークルの縁までにクランプ(プレイヤーを追って円の外まで飛ばない)。
-              let jtx = apx, jty = apy;
-              if (enemy.type === 'hunter' && dist > HUNTER_VISION_RANGE) {
-                const k = HUNTER_VISION_RANGE / (dist || 1);
-                jtx = ecx + (apx - ecx) * k;
-                jty = ecy + (apy - ecy) * k;
-              } else if (
-                PUMPKIN_JUMP_CAP_ENABLED && (enemy.type === 'pumpkin' || enemy.type === 'lab-zombie-3') &&
-                dist > PUMPKIN_JUMP_MAX_DIST
-              ) {
-                // §5.16 M16: 密着圏で溜めた後に逃げられても、着地は発動位置から最大距離までにクランプ
-                // (ハンターの視界サークルクランプと同じ式)。溜め・爆発・行動パターンは不変。
-                const k = PUMPKIN_JUMP_MAX_DIST / (dist || 1);
-                jtx = ecx + (apx - ecx) * k;
-                jty = ecy + (apy - ecy) * k;
-              }
-              return {
-                ...enemy, aiPhase: 'jump', vx: 0, vy: 0,
-                aiFromX: enemy.x, aiFromY: enemy.y,
-                aiTargetX: jtx - enemy.width / 2, aiTargetY: jty - enemy.height / 2,
-                aiStartedAt: gameTime, aiPhaseUntil: atkUntil(PUMPKIN_JUMP_MS / (enemy.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1)),
-              };
-            }
-            return { ...enemy, vx: 0, vy: 0 }; // 溜め中は静止(縮みは描画側)
-          }
-          if (enemy.aiPhase === 'jump') {
-            // ジャンプ滞空時間も攻撃倍速で短縮(着地=t>=1。set側 aiPhaseUntil と同じ scaled 値で揃える)。
-            const t = Math.max(0, Math.min(1, (gameTime - (enemy.aiStartedAt ?? gameTime)) / (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT / (enemy.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1))));
-            const fx = enemy.aiFromX ?? enemy.x, fy = enemy.aiFromY ?? enemy.y;
-            const tx = enemy.aiTargetX ?? enemy.x, ty = enemy.aiTargetY ?? enemy.y;
-            // v0.25.3076(社長指示「滑空って全てのジャンプね」): 汎用ジャンプ(パンプキン/ハンター/
-            // ラボゾンビ3)も同じ曲線で運ぶ。着地時刻・着地点・爆発判定はすべて不変。
-            const gEs = airHopEase01(t);
-            const nx = fx + (tx - fx) * gEs;
-            const ny = fy + (ty - fy) * gEs;
-            // 盾にぶつかったらジャンプ攻撃をキャンセルして、その場に落ちるだけ(爆発なし)。
-            // 接触点を shieldBlocks に積んで、useGameLoop 側で衝突FX+SE を出す。描画は drawEnemy が
+          // 溜め→跳び→着地→停止の一歩は utils/groundJump.ts の共通の関数(拳鬼もこの同じ一歩を呼ぶ・research/BRAWLER_PHANTOM.md §15)。
+          const gj = groundJumpStep(enemy, {
+            gameTime, aimX: apx, aimY: apy, atkUntil, attackSpeedMult: ENEMY_ATTACK_SPEED_MULT,
+            jumpMsRaw: groundJumpAirMsRaw(enemy.type), recoverMsRaw: pumpkinRecoverMs(enemy.type),
+            // ハンターは「視界サークルの外には飛ばない」(社長指示): 溜め中にプレイヤーが視界範囲外へ出ても、
+            // 着地は視界サークルの縁までにクランプ(プレイヤーを追って円の外まで飛ばない)。
+            // §5.16 M16: パンプキン/Lv3 は密着圏で溜めた後に逃げられても、着地は発動位置から最大距離までにクランプ
+            // (ハンターの視界サークルクランプと同じ式)。溜め・爆発・行動パターンは不変。
+            clampAim: (cx0, cy0, ax, ay, d) => {
+              const cap = enemy.type === 'hunter' ? HUNTER_VISION_RANGE
+                : PUMPKIN_JUMP_CAP_ENABLED && (enemy.type === 'pumpkin' || enemy.type === 'lab-zombie-3') ? PUMPKIN_JUMP_MAX_DIST : Infinity;
+              if (!(d > cap)) return { x: ax, y: ay };
+              const k = cap / (d || 1);
+              return { x: cx0 + (ax - cx0) * k, y: cy0 + (ay - cy0) * k };
+            },
+            shieldHit: shieldRects.length > 0
+              ? (nx, ny) => shieldRects.some(sr => rectsOverlap({ x: nx, y: ny, width: enemy.width, height: enemy.height }, sr))
+              : undefined,
+          });
+          if (gj) {
+            // 盾にぶつかった: 接触点を shieldBlocks に積んで、useGameLoop 側で衝突FX+SE を出す。描画は drawEnemy が
             // 空中→着地のホップ高を滑らかに 0 まで補間して「シームレスに落ちる」よう見せる(描画のみ)。
-            if (shieldRects.length > 0 &&
-                shieldRects.some(s => rectsOverlap({ x: nx, y: ny, width: enemy.width, height: enemy.height }, s))) {
-              shieldBlocks.push({ x: nx + enemy.width / 2, y: ny + enemy.height / 2, kind: 'jump' });
-              return { ...enemy, x: nx, y: ny, vx: 0, vy: 0, aiPhase: 'recover', aiStartedAt: gameTime, aiPhaseUntil: atkUntil(pumpkinRecoverMs(enemy.type)) };
-            }
-            if (t >= 1) {
+            if (gj.blocked) shieldBlocks.push({ x: gj.blocked.x, y: gj.blocked.y, kind: 'jump' });
+            if (gj.landed) {
               pumpkinLanded = true; // 着地 → set 後に画面揺れ
               // 着地爆発(範囲狭め)。被弾判定/FX は useGameLoop が pumpkinBlasts を消化して行う。
-              pumpkinBlasts.push({ x: tx + enemy.width / 2, y: ty + enemy.height / 2, radius: PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage, enemyId: enemy.id });
-              return { ...enemy, x: tx, y: ty, vx: 0, vy: 0, aiPhase: 'recover', aiPhaseUntil: atkUntil(pumpkinRecoverMs(enemy.type)) };
+              pumpkinBlasts.push({ x: gj.landed.x, y: gj.landed.y, radius: PUMPKIN_EXPLOSION_RADIUS, damage: enemy.damage, enemyId: enemy.id });
             }
-            return { ...enemy, x: nx, y: ny, vx: 0, vy: 0 }; // 空中は障害物を飛び越える(衝突無視)
-          }
-          if (enemy.aiPhase === 'recover') {
-            if (gameTime >= (enemy.aiPhaseUntil ?? 0)) {
+            if (gj.done) {
               // ★§16-H #H-4(社長裁定2026-09-19・案A): 着地硬直が明けた瞬間に、噛みつきにも
               // **同じ値**(`PUMPKIN_COOLDOWN_MS`=復帰後の猶予)を書く。凍結だけでは直らない——
               // 着地時点で `biteReadyAt` は過去(または未設定)なので畳む残りが無く、
               // 「明らかに着地直後から噛みついてくる」がそのまま残る。
               const pumpkinCd = atkCdUntil(PUMPKIN_COOLDOWN_MS);
-              return { ...enemy, vx: 0, vy: 0, aiPhase: undefined, aiReadyAt: pumpkinCd, biteReadyAt: pumpkinCd };
+              return { ...enemy, ...gj.patch, aiReadyAt: pumpkinCd, biteReadyAt: pumpkinCd };
             }
-            return { ...enemy, vx: 0, vy: 0 }; // 着地後1秒停止
+            return { ...enemy, ...gj.patch };
           }
           if (enemy.type !== 'giantbat' && enemy.type !== 'hunter' && dist <= PUMPKIN_TRIGGER_RANGE && dist > 12 && gameTime >= (enemy.aiReadyAt ?? 0)
             && !keepBlocksTechnique(enemy.type, enemy.id, enemy.spawnedAt, PUMPKIN_TRIGGER_RANGE, dist)) {

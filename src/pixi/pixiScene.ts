@@ -52,7 +52,7 @@ import {
 import { AREA_THRESHOLDS, AREA_ZONE_NAMES_EN, activeAreaThresholds } from '../utils/enemyUtils';
 import {
   corpseSquashNow, // ★死体の潰れ(描画のみ・尺と形の出どころはsim側の純関数)
-  useGameStore, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, SCREAMER_WINDUP_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_RECOVER_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
+  useGameStore, groundJumpAirMsRaw, LAB_CORRIDOR_Y_LIMIT_PX, TUTORIAL_MOVE_Y_LIMIT_PX, CORRIDOR_RUNIN_DIST, TUTORIAL_MEDIC_INDEX, huntingMeleeRadius, hasMurasame, MERCHANT_TALK_DWELL_MS, SHAKE_MS, SHAKE_GLOBAL_MULT, BOSS_CORPSE_CRUMBLE_MS, CAMERA_IDLE_ZOOM_MAG, CAMERA_IDLE_ZOOM_TAU, CAMERA_MOVE_ZOOM_MAG, CAMERA_MOVE_ZOOM_TAU, CAMERA_INTRO_ZOOM_MAG, COUNTER_ACCEPT_MS, SCREAMER_WINDUP_MS, katanaRange, MELEE_RADIUS, HURRICANE_DURATION_MS_BY_LEVEL, PLAYER_INTRO_MS, PLAYER_INTRO_HELI_FRAC, playerIntroOffset, playerIntroScale, playerIntroDescent, PUMPKIN_CROUCH_MS, pumpkinRecoverMs, PUMPKIN_EXPLOSION_RADIUS, DRILLER_THRUST_WINDUP_MS, DRILLER_THRUST_ACTIVE_MS, DRILLER_THRUST_RECOVER_MS, DRILLER_THRUST_HALF_WIDTH, LOGGER_SWEEP_WINDUP_MS, LOGGER_SWEEP_ACTIVE_MS, LOGGER_SWEEP_RECOVER_MS, LOGGER_SWEEP_HALF_WIDTH, GIANT_JUMP_RADIUS, GLEN_TRIJUMP_RADIUS, GLEN_TRIJUMP_WINDUP_MS, GLEN_TRIJUMP_AIR_MS, GIANT_DASH_WINDUP_MS, GIANT_QUAD_DASH_WINDUP_MS, WEREWOLF_WINDUP_MS, SKADI_ICE_RADIUS, SKADI_BLADE_SPEED, SKADI_BLADE_HIT, SKADI_BLADE_LIFE_MS, RETURN_CIRCLE_HOLD_MS, CORRIDOR_RETURN_HOLD_MS, CORRIDOR_GOAL_FADE_MS, BASE_CAPTURE_HOLD_MS, ENEMY_ATTACK_SPEED_MULT, HUNTER_JUMP_SPEED_MULT, HUNTER_VISION_RANGE, HUNTER_LEAVE_FADE_MS, PLAYER_HITBOX, RESCUE_ALLY_FLYIN_MS, RESCUE_ALLY_ARRIVE_HOLD_MS, RESCUE_ALLY_ATTACK_MS, RESCUE_ALLY_POST_HOLD_MS, RESCUE_ALLY_CROUCH_MS, RESCUE_ALLY_FLYOUT_MS, RESCUE_ALLY_HOP_PX, THROWN_BAG_FLIGHT_MS,
   airMoveFor,
   GIANT_SCRIPT_ENABLED, GIANT_STOMP_RADIUS, GIANT_STOMP_WINDUP_MS,
   GIANT_STOMP_HOP_MS, GIANT_STOMP_HOP_PX, GIANT_STOMP_SHAKE_PX, GIANT_SWEEP_HALF_WIDTH, GIANT_SWEEP_WINDUP_MS, GIANT_SWEEP_ACTIVE_MS, GIANT_JUMP_WINDUP_MS, GIANT_JUMP_AIR_MS, PUMPKIN_JUMP_MS,
@@ -2103,6 +2103,13 @@ const PLAYER_HITBOX_FOR_DUST = 28; // 軍人の体の大きさの代わり(当�
 const PLAYER_MELEE_LUNGE_PX = 6;      // 狙い方向へ踏み込む最大px
 const PLAYER_MELEE_LEAN_RAD = 0.13;   // 振り抜きの傾き(向き依存・約7.5°)
 const PLAYER_MELEE_STRETCH = 0.09;    // 振り抜きピークの横ストレッチ
+/**
+ * ジャンプ着地攻撃(縮み溜め→跳び→着地)を持つ個体の「跳びの型」。判定(utils/groundJump)・予告の円・跳ぶ弧が同じ値を読む。
+ * research/BRAWLER_PHANTOM.md §15: 拳鬼(固有の幻影)はハンターの跳びを流用する='hunter' として扱う。
+ */
+const groundJumpStyleOf = (e: Pick<Enemy, 'type' | 'phantomUnique'>): Enemy['type'] | null =>
+  e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat' || e.type === 'hunter' ? e.type
+    : e.type === 'guardian-phantom' && e.phantomUnique === 'brawler' ? 'hunter' : null;
 // 近接専用ポーズ: 構え(しゃがみ)絵を出すスイング進行の割合(以降は振り抜き絵)。
 // ★数字を直接書かない: 前隙(MELEE_WINDUP_MS)から導く=「しゃがんでいる間は当たらない」が絵で一致する。
 const MELEE_POSE_READY_FRAC = MELEE_WINDUP_MS / PLAYER_MELEE_SWING_MS;
@@ -13535,7 +13542,9 @@ export class PixiScene {
       // ジャンプ着地予告(パンプキン/lab-zombie-3/ジャイアントバット/ハンター)。
       // research/CREATIVE_AUDIT_2026-09-11.md #25(b): この関数は複数の区分(強個体/終端/ボス級)を
       // 同じループで扱うため、pulse/style は**敵ごと**に引く(以前は関数の先頭で1回だけ=全員同じ呼吸)。
-      if (e.aiPhase === 'jump' && (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat' || e.type === 'hunter')) {
+      // research/BRAWLER_PHANTOM.md §15: 拳鬼の跳びかかり=ハンターの跳びの流用(同じ予告・同じ円・同じ時間)。
+      const jStyle = groundJumpStyleOf(e);
+      if (e.aiPhase === 'jump' && jStyle !== null) {
         const tgStyle = telegraphStyleFor(e.type);
         const pulse = 0.5 + 0.5 * Math.sin(now / tgStyle.pulseMs);
         const tx = (e.aiTargetX ?? e.x) + e.width / 2;
@@ -13550,7 +13559,7 @@ export class PixiScene {
         //   旧版は `aiStartedAt` が欠けていると**黙って据え置き円へ落ちる**形で、
         //   「効いていないのか落ちているのか」が実機から判別できなかった(社長報告の切り分けを難しくした)。
         //   `aiPhaseUntil`(=着地時刻)だけで出せるので、落ちる枝そのものを無くす。
-        const jTotal = (PUMPKIN_JUMP_MS / ENEMY_ATTACK_SPEED_MULT) / (e.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1);
+        const jTotal = groundJumpAirMsRaw(jStyle) / ENEMY_ATTACK_SPEED_MULT; // 判定(utils/groundJump)と同じ1本
         const jFillA = telFillA(1, pulse) * TELEGRAPH_FILL_MULT;
         if (CIRCLE_SWEEP_ON && jTotal > 0) {
           const jToLand = Math.max(0, (e.aiPhaseUntil ?? gameTime) - gameTime);
@@ -22245,7 +22254,8 @@ export class PixiScene {
     // ★ゾンビの姿勢(構え §16-3s・硬直)はskew(傾き)+off
     // (前後オフセット)で描く(aiSqX/Yの縦横伸縮は使わない)。
     let aiSkew = 0, aiOffX = 0, aiOffY = 0;
-    if (e.type === 'pumpkin' || e.type === 'lab-zombie-3' || e.type === 'giantbat' || e.type === 'hunter') {
+    const gjStyle = groundJumpStyleOf(e); // research/BRAWLER_PHANTOM.md §15: 拳鬼はハンターの跳びを流用
+    if (gjStyle !== null) {
       if (e.aiPhase === 'crouch') {
         const p = Math.max(0, Math.min(1, 1 - ((e.aiPhaseUntil ?? gameTime) - gameTime) / (PUMPKIN_CROUCH_MS / ENEMY_ATTACK_SPEED_MULT)));
         aiSqY = 1 - 0.42 * p; aiSqX = 1 + 0.14 * p; // しゃがんで縦縮み・横広がり
@@ -22253,7 +22263,7 @@ export class PixiScene {
         // 滞空時間はストアと同じ実効値(攻撃倍速＋ハンターは更に×2)に合わせて着地と同期させる。
         // v0.25.3086: 滞空時間と高さは**跳ぶ技の台帳**(gameStore.AIR_MOVES)から引く=判定と同じ出どころ。
         const spec = airMoveFor('jump')!;
-        const jumpDur = spec.airMsRaw / ENEMY_ATTACK_SPEED_MULT / (e.type === 'hunter' ? HUNTER_JUMP_SPEED_MULT : 1);
+        const jumpDur = (spec.airMsRaw / PUMPKIN_JUMP_MS) * groundJumpAirMsRaw(gjStyle) / ENEMY_ATTACK_SPEED_MULT; // ハンター=÷2(判定と同じ1本)
         const t = Math.max(0, Math.min(1, (gameTime - (e.aiStartedAt ?? gameTime)) / jumpDur));
         // v0.25.3077(社長指示「フワッ……ダン!」): 左右対称のsin山をやめ、早く上がって頂点に留まり
         // 加速して落ちる曲線へ(飛んでいることが読める。着地と同期する点は従来どおり)。
@@ -38202,6 +38212,10 @@ export class PixiScene {
       const brPose = BRW.brawlerPoseAt(e.phantomBrawler, useGameStore.getState().gameTime);
       if (brPose?.tex) name = `kenki-melee-${brPose.tex}`;
     }
+    // 跳びかかり(ハンターの跳びの流用・research/BRAWLER_PHANTOM.md §15): 溜め=しゃがみ(構え)/跳び=振り上げた拳/着地後=しゃがみ。
+    // 縮み(スカッシュ)は掛けない(手で描いたコマ=歪みを外す)。跳ぶ高さ・影はハンターと同じ描画の経路(aiHop)。
+    if (e.aiPhase === 'crouch' || e.aiPhase === 'recover') name = 'kenki-melee-ready';
+    else if (e.aiPhase === 'jump') name = 'kenki-melee-swing';
     const tex = getTexture(name) ?? getTexture('kenki-idle');
     if (tex) this.kenkiTexSet.add(tex);
     return tex;

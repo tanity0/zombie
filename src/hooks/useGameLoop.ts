@@ -9237,6 +9237,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (mutantStage && runMutantBossRef.current === null) runMutantBossRef.current = rollPatrolSlot();
             const omenBoss: RunMutantBoss = (FORCE_WRAITH || practiceForces('wraithnow')) ? 'wraith'
               : (FORCE_ASTRO || practiceForces('astronow')) ? 'astro'
+              : (FORCE_PHANTOM_BRAWLER || practiceForces('brawlerphantomnow')) ? 'brawler' // 拳鬼「殺気を感じる…」(社長指示2026-11-10)
               : mutantStage ? (runMutantBossRef.current ?? 'none') : 'none';
             const omen = mutantOmenLine(omenBoss);
             if (omen) {

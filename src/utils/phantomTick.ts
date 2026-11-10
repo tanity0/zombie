@@ -851,6 +851,11 @@ export interface PhantomMeleeLandOpts {
   knockback?: 'none' | { speed: number; dirX: number; dirY: number };
   /** カウンター成立の時に呼ぶ(格闘の幻影は行動を取り消す)。 */
   onCountered?: () => void;
+  /**
+   * 範囲技(予告ありの着地の爆風=拳鬼の跳びかかり・research/BRAWLER_PHANTOM.md §15)。プレイヤーの被弾無敵を**守る**
+   * (近接扱い=無敵無視にしない=ハンターの着地の爆風と同じ扱い)。型名を渡さず、倒した相手の記録だけ残す。
+   */
+  area?: boolean;
 }
 /**
  * 幻影の近接(周期の振り・格闘の段と技)が**プレイヤーの体に掛かった後**の解決(盾 → カウンター → 会心・致命 → damagePlayer → 体勢)。
@@ -909,10 +914,10 @@ export const landPhantomMeleeOnPlayer = (
   const hpBefore = gNow.player.health;
   useGameStore.getState().damagePlayer(
     // 対人スケール(社長裁定2026-08-20)は上のdmgで適用済み。
-    dmg, o.sourceLabel ?? guardianPhantomMeleeSource(), bcx, bcy, GUARDIAN_PHANTOM_TYPE,
+    dmg, o.sourceLabel ?? guardianPhantomMeleeSource(), bcx, bcy, o.area ? undefined : GUARDIAN_PHANTOM_TYPE,
     // ★被弾反撃の相手(社長指示2026-10-10「幻影との戦いの近接後は反撃できない?できるようにして」)。
     // 旧: 対人の体勢と絡むので対象外にしていた。反撃の一撃は普通の近接と同じ関所(phantomGate の窓パリィ・対人体勢)を通る。
-    undefined, o.moveKey, undefined, phantomId, undefined,
+    undefined, o.moveKey, undefined, phantomId, o.area ? { type: GUARDIAN_PHANTOM_TYPE, id: phantomId } : undefined,
     o.knockback !== undefined ? { knockback: o.knockback } : undefined,
   );
   // 被弾SEはここで鳴らす: damagePlayer 直呼びは「本当に何も出ない」前例がある(gameStore の注記)。
@@ -1153,6 +1158,10 @@ export const tickPlayerFlamerBurn = (): void => {
 
 /** 格闘の幻影の出かかった行動を取り消す(紫・気絶・拘束・浮き)。印の無い幻影には何もしない。 */
 const cancelPhantomBrawler = (phantom: Enemy, patch: Partial<Enemy>, gameTime: number): void => {
+  // 跳びかかりの溜め(research/BRAWLER_PHANTOM.md §15)も出かかった行動として取り消す(跳んだ後・着地後は続ける)。
+  if (phantom.phantomUnique === 'brawler' && phantom.aiPhase === 'crouch') {
+    patch.aiPhase = undefined; patch.aiPhaseUntil = undefined; patch.bossState = 'chase';
+  }
   const b = phantom.phantomBrawler;
   if (!b || !isBrawlerBusy(b)) return;
   const next = phantomBrawlerCancelled(b);
@@ -1233,6 +1242,10 @@ export const runPhantomTick = (
     if (phantom.phantomBrawler && phantom.brHoldUntil !== undefined) {
       patch.phantomBrawler = phantomBrawlerHoldClock(phantom.phantomBrawler, newGameTime, phantom.brHoldUntil - nowMs);
     }
+    // 跳びかかりの着地後の停止(戻り=固まる区分)を固めている間は、その時計も止める(明けたら残りから)。
+    if (phantom.phantomUnique === 'brawler' && phantom.aiPhase === 'recover' && phantom.aiPhaseUntil !== undefined) {
+      patch.aiPhaseUntil = phantom.aiPhaseUntil + deltaTime * 1000;
+    }
     applyPatch(phantom.id, patch);
     return;
   }
@@ -1299,7 +1312,9 @@ export const runPhantomTick = (
   if (isBrawlerPhantom && !s.brawler) s.brawler = createPhantomBrawlerRuntime();
   // 届く距離の外の「様子見」(phantomBrawlerAi・社長指示2026-11-10「人間味を入れること」)の間も歩かない(速度は慣性で落ちる)。
   const brawlerBusy = isBrawlerPhantom && (isBrawlerBusy(phantom.phantomBrawler) || s.brawler?.move != null
-    || (s.brawler != null && phantomBrawlerHolding(s.brawler.mind, newGameTime)));
+    || (s.brawler != null && phantomBrawlerHolding(s.brawler.mind, newGameTime))
+    // 跳びかかり(ハンターの跳びの流用・research/BRAWLER_PHANTOM.md §15)の溜め・跳び・着地後の停止の間も歩かない。
+    || phantom.aiPhase === 'crouch' || phantom.aiPhase === 'jump' || phantom.aiPhase === 'recover');
   if (brawlerBusy) { decision.moveX = 0; decision.moveY = 0; }
   if (!shoved) {
     // ★SAME_ARENA §9: クリ被弾の2/3減速(pvpMoveMult)。ボスのbossSlowUntil無視(D4)はそのまま。
@@ -1366,7 +1381,7 @@ export const runPhantomTick = (
       t: newGameTime, nowMs, deltaTime, rand, patch,
       baseDamage: phantomMeleeDamage(s.growthAtkMult, phantom.id),
       land: (ox, oy, mult, o) => landPhantomMeleeOnPlayer(ox, oy, useGameStore.getState().player, sfx, patch, phantom.id,
-        phantomMeleeDamage(s.growthAtkMult, phantom.id), { mult, moveKey: o.moveKey, sourceLabel: o.sourceLabel, knockback: o.knockback, onCountered: o.onCountered }),
+        phantomMeleeDamage(s.growthAtkMult, phantom.id), { mult, moveKey: o.moveKey, sourceLabel: o.sourceLabel, knockback: o.knockback, onCountered: o.onCountered, area: o.area }),
       resolveMove: (nx, ny) => resolveMove(nx, ny, phantom),
       swingSfx: () => sfx.swing(),
       // 縮地のきっかけ=カウンター成立(近接の窓・構えの受け=gpParriedAt / 弾の打ち返し=gpBulletParriedAt)。research/BRAWLER_PHANTOM.md §14。

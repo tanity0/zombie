@@ -191,7 +191,7 @@ describe('変異体が出るランの最初の通信の一言', () => {
     expect(mutantOmenLine('wraith')).toBe('寒気がする・・・');
     expect(mutantOmenLine('astro')).toBe('通信が少しおかしい？');
     expect(mutantOmenLine('none')).toBeNull();
-    expect(mutantOmenLine('brawler')).toBeNull(); // 拳鬼の一言は無い
+    expect(mutantOmenLine('brawler')).toBe('殺気を感じる…'); // 社長指示2026-11-10(一字一句・三点リーダー1つ)
   });
   it('言う人は出撃の通信とは別の隊員。1人しか居なければその人・隊員ゼロなら言わない', () => {
     for (let i = 0; i < 20; i++) expect(pickOmenSpeaker(['A', 'B', 'C'], 'B', () => i / 20)).not.toBe('B');

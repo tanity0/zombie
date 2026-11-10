@@ -5,7 +5,7 @@ import { phantomBrawlerBossState, phantomBrawlerHoldClock, phantomBrawlerStriker
 import { initialBrawlerState, brawlerStartAttack, brawlerAfterResolve, brawlerElapsed, brawlerTotalMs } from './brawler';
 import { setPhantomIdentity } from './phantomIdentity';
 import { uniquePhantomSpec } from '../data/uniquePhantoms';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, PUMPKIN_CROUCH_MS, ENEMY_ATTACK_SPEED_MULT, groundJumpAirMsRaw } from '../store/gameStore';
 import { spawnEnemyAt } from './enemyUtils';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
@@ -147,6 +147,37 @@ describe('拳鬼が格闘で戦う(結合)', () => {
     useGameStore.setState(s => ({ enemies: s.enemies.map(x => x.id === h.id ? { ...x, gpBulletParriedAt: c3 } : x) }));
     h.step(16);
     expect(edge()).toBeLessThan(70);
+  });
+  // research/BRAWLER_PHANTOM.md §15(社長「一つだけボス技をつけるのは?ジャンプ攻撃。赤予告あり。」→「え、新しい技?ハンターが使ってるよ」)
+  it('跳びかかり=ハンターの跳び: 溜めの間は動かず・溜め明けのプレイヤーの所へ・予告の時間ちょうどで着地して当たる・着地後は固まる区分', () => {
+    const h = setup(400);
+    h.step(16);
+    const gt0 = useGameStore.getState().gameTime;
+    const crouchEnd = gt0 + PUMPKIN_CROUCH_MS / ENEMY_ATTACK_SPEED_MULT;
+    useGameStore.setState(s => ({ enemies: s.enemies.map(x => x.id === h.id ? { ...x, aiPhase: 'crouch', aiPhaseUntil: crouchEnd } : x) }));
+    const x0 = h.cur().x;
+    h.step(16);
+    expect(Math.abs(h.cur().x - x0)).toBeLessThan(1); // 溜めの間は動かない(歩きの慣性の残りだけ)
+    expect(h.cur().bossState).toBe('gp-brawler');
+    while (h.cur().aiPhase === 'crouch') h.step(16);
+    const e1 = h.cur();
+    expect(e1.aiPhase).toBe('jump');
+    const p = useGameStore.getState().player;
+    expect(e1.aiTargetX! + e1.width / 2).toBeCloseTo(p.x + p.width / 2, 5); // 着地点=溜め明けのプレイヤーの所
+    const landAt = e1.aiPhaseUntil!;
+    expect(landAt - e1.aiStartedAt!).toBeCloseTo(groundJumpAirMsRaw('hunter') / ENEMY_ATTACK_SPEED_MULT, 5); // 予告(描画)と同じ1本の時間
+    const hp0 = useGameStore.getState().player.health;
+    let landedAt = -1;
+    while (h.cur().aiPhase === 'jump') {
+      h.step(1);
+      if (h.cur().aiPhase === 'recover' && landedAt < 0) landedAt = useGameStore.getState().gameTime;
+    }
+    expect(landedAt).toBeGreaterThanOrEqual(landAt);
+    expect(landedAt - landAt).toBeLessThan(1.0001); // 当たる=予告が消え切る時刻
+    expect(useGameStore.getState().player.health).toBeLessThan(hp0);
+    expect(h.cur().bossState).toBe('gp-brawler-recover');
+    for (let i = 0; i < 200 && h.cur().aiPhase === 'recover'; i++) h.step(16);
+    expect(h.cur().aiPhase).toBeUndefined();
   });
   it('縮地: 届く距離の内でのカウンター(近接の窓)では詰めない', () => {
     const h = setup(40);

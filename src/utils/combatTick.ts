@@ -98,6 +98,7 @@ import { counterLeapOrigin, counterLeapTarget } from './thorDashPushback';
 // SKILL_BUILD_REDESIGN.md §28(B7/§28-1): 弾幕の王(barrage-king)=反射弾のダメ・体勢削り倍率+貫通1。
 import { barrageKingMult, BARRAGE_KING_PIERCE } from './skillEffectsB7';
 import { PLANT_CLOSE_MS, PLANT_CLOSE_GRACE_MS, usesShotWindup } from './plantShot'; // 社長支給2026-09-21: 花が閉じ切った瞬間に撃つ
+import { groundBlastCircleHits } from './groundJump'; // 円の爆風の当たり(ジャンプ着地と拳鬼の跳びかかりで共通)
 
 // v0.25.2946(社長裁定「体勢値は削ってあげたら?」): 裏ボス系の**追跡中の体当たり**への受け流し。
 // `?bossparry=0` で無効(従来=カウンター窓中でも接触ダメージ素通し)へ完全復帰。
@@ -457,7 +458,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       ? beamStripsHit(bb.strips, bpcx, bpcy, pr, true)
       : bb.capsule
       ? distToBandRect({ x: bpcx, y: bpcy }, { x: bb.capsule.fx, y: bb.capsule.fy }, { x: bb.capsule.tx, y: bb.capsule.ty }, bb.capsule.halfWidth) <= pr
-      : Math.hypot(bpcx - bb.x, bpcy - bb.y) <= bb.radius + pr;
+      : groundBlastCircleHits(bpcx, bpcy, pr, bb.x, bb.y, bb.radius); // 円の式は utils/groundJump の1本(拳鬼の跳びかかりも同じ式)
     let inBlast = playerInBlastOf(b);
     // research/SHIELD_BLOCK.md §2: 防いだ当たりは「範囲に入っていない」扱い(カウンター/パリィの分岐より前)。
     // ダメージ・押し出し・英雄の回復・被弾反撃・体勢削り・マーク・ヒットストップ・中断を一切起こさない。

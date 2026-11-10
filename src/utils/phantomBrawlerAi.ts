@@ -10,6 +10,7 @@ import {
   brawlerCanPay, brawlerPressDecision, brawlerTechAllowed, brawlerTechCost, isBrawlerGuardingAt,
 } from './brawler';
 import { HUMAN_REACTION_MS } from './bossSkeleton';
+import { kenkiLeapChance } from './kenkiLeap';
 
 /** 連続が切れてから次の連続までの息継ぎ(ms・叩き台)。 */
 export const PB_BREATH_MIN_MS = 300;
@@ -131,6 +132,8 @@ export type PhantomBrawlerAction =
   | { kind: 'buffer' }
   | { kind: 'tech'; tech: BrawlerTechKind }
   | { kind: 'step'; dirX: number; dirY: number }
+  /** 跳びかかり(ボス技・research/BRAWLER_PHANTOM.md §15)。 */
+  | { kind: 'leap' }
   | null;
 
 export interface PhantomBrawlerInput {
@@ -154,6 +157,8 @@ export interface PhantomBrawlerInput {
   /** 弾への対処(この tick で実行すべきもの)。返す=構え・避ける=ステップ(向き)。 */
   bullet: { kind: 'counter' } | { kind: 'dodge'; dirX: number; dirY: number } | null;
   rand: () => number;
+  /** 跳びかかり(§15): 使える場面か(距離・クールダウン)と、撃たれ続けているか。未指定=使わない。 */
+  leap?: { eligible: boolean; underFire: boolean };
 }
 
 /** 秘奥義の合計の値段(タイムキーパー込み)。 */
@@ -241,6 +246,9 @@ export const decidePhantomBrawler = (i: PhantomBrawlerInput, m: PhantomBrawlerMi
   if (t < m.holdUntil) return null;
   if (t < m.approachBeatAt) return null;
   m.approachBeatAt = t + lerp(PB_APPROACH_BEAT_MIN_MS, PB_APPROACH_BEAT_MAX_MS, i.rand());
+  // 跳びかかり(§15・社長「一つだけボス技をつけるのは?ジャンプ攻撃。赤予告あり。」): 飛び蹴りの届く距離より遠い時の詰め手。
+  // 拍ごとに引く(撃たれ続けている時は上がる)。クールダウン・距離は呼び手が eligible で渡す。
+  if (i.leap?.eligible && i.rand() < kenkiLeapChance(i.leap.underFire)) return { kind: 'leap' };
   if (m.jumpAtPx === null) { m.jumpAtPx = Math.min(BRAWLER_KICK_RANGE, pbRollJumpAt(i.rand)); m.heldThisTry = false; }
   if (i.edgeDist <= m.jumpAtPx && canTech(i, 'kick')) {
     if (i.rand() < pbKickChance(i.meleeBias, t - m.lastKickAt)) {

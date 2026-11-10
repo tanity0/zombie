@@ -269,10 +269,14 @@ export const pickRunMutantBoss = (rng: () => number, pool: RunPatrolPool = {}): 
   return who[i];
 };
 
-/** 変異体が出るランの「最初の通信」に混ざる一言(社長指示2026-10-30)。出ないランは null。拳鬼の一言は無い(=言わない)。 */
+/**
+ * 変異体が出るランの「最初の通信」に混ざる一言(社長指示2026-10-30)。出ないランは null。
+ * 拳鬼=社長指示2026-11-10「拳鬼が出現した時の通信は『殺気を感じる…』」(徘徊の枠で拳鬼が選ばれたランの最初の通信・同じ仕組み)。
+ */
 export const MUTANT_OMEN_LINES: Readonly<Partial<Record<Exclude<RunMutantBoss, 'none'>, string>>> = {
   wraith: '寒気がする・・・',
   astro: '通信が少しおかしい？',
+  brawler: '殺気を感じる…',
 };
 export const mutantOmenLine = (boss: RunMutantBoss): string | null => (boss === 'none' ? null : MUTANT_OMEN_LINES[boss] ?? null);
 /** 言う人: 出撃の通信を言った人とは別の隊員(居なければ同じ人)。隊員が居ない出撃は null=言わない。 */

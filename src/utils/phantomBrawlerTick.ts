@@ -22,7 +22,12 @@ import { distToBandRect } from './geometry';
 import { hitThirdParties } from './heroBlast';
 import { HUMAN_REACTION_MS } from './bossSkeleton';
 import { PVP_DAMAGE_SCALE } from './phantomScript';
-import { useGameStore, huntingMeleeRadius, playerMoveStatMult, skillLevel, PLAYER_KNOCKBACK_SPEED, isCounterActive } from '../store/gameStore';
+import {
+  useGameStore, huntingMeleeRadius, playerMoveStatMult, skillLevel, PLAYER_KNOCKBACK_SPEED, isCounterActive, enqueueBrawlerSfx,
+  ENEMY_ATTACK_SPEED_MULT, PUMPKIN_CROUCH_MS, PUMPKIN_EXPLOSION_RADIUS, pumpkinRecoverMs, groundJumpAirMsRaw,
+} from '../store/gameStore';
+import { groundJumpStep, groundJumpStartCrouch, groundBlastCircleHits } from './groundJump';
+import { kenkiLeapEligible, kenkiLeapReadyAt, kenkiNoteHit, kenkiUnderFire } from './kenkiLeap';
 import type { PlayerProfile } from './playerTraits';
 import { notePlayerLaunched } from './playerAirFollow';
 import {
@@ -53,10 +58,13 @@ export interface PhantomBrawlerRuntime {
   /** 縮地(§14): 前に見たカウンターの時刻(1回のカウンターで1回まで)と、次に縮地してよい時刻(gameTime)。 */
   lastCounterSeen: number;
   shukuchiReadyAt: number;
+  /** 跳びかかり(§15): 次に使えるまで(gameTime)と、最近の被弾の時刻(撃たれ続けているか)。 */
+  leapReadyAt: number;
+  hitTimes: number[];
 }
 export const createPhantomBrawlerRuntime = (): PhantomBrawlerRuntime => ({
   mind: createPhantomBrawlerMind(), move: null, bulletPlans: new Map(), reachSince: null, lastHitSeen: 0,
-  lastCounterSeen: 0, shukuchiReadyAt: 0,
+  lastCounterSeen: 0, shukuchiReadyAt: 0, leapReadyAt: 0, hitTimes: [],
 });
 
 export interface PhantomBrawlerCtx {
@@ -77,6 +85,8 @@ export interface PhantomBrawlerCtx {
   /** 当たった後の解決(phantomTick.landPhantomMeleeOnPlayer を束ねた物)。 */
   land: (bcx: number, bcy: number, mult: number, o: {
     moveKey: string; sourceLabel: string; knockback?: 'none' | { speed: number; dirX: number; dirY: number }; onCountered: () => void;
+    /** 範囲技(予告ありの着地の爆風)=プレイヤーの被弾無敵を守る。 */
+    area?: boolean;
   }) => 'shield' | 'countered' | 'hit' | 'nodamage';
   /** 行き先を「立てる所」へ(障害物→行ける帯)。 */
   resolveMove: (nx: number, ny: number) => { x: number; y: number };
@@ -167,13 +177,13 @@ const kbOf = (kind: 'none' | 'builtin' | 'big', mult: number, dir: { x: number; 
 const strikePlayer = (
   c: PhantomBrawlerCtx, s: BrawlerState, hit: boolean, shapeForThird: Parameters<typeof hitThirdParties>[0],
   moveMult: number, moveKey: string, kb: 'none' | { speed: number; dirX: number; dirY: number } | undefined,
-  originX: number, originY: number, secret = false,
+  originX: number, originY: number, secret = false, area = false,
 ): { touched: boolean; countered: boolean; landed?: boolean } => {
   const mult = strikeMultOf(c, s, moveMult, secret);
   hitThirdParties(shapeForThird, c.baseDamage * mult * PVP_DAMAGE_SCALE, c.phantom.id, 'guardian-phantom');
   if (!hit) return { touched: false, countered: false };
   let countered = false;
-  const r = c.land(originX, originY, mult, { moveKey, sourceLabel: `${c.label}の格闘`, knockback: kb, onCountered: () => { countered = true; } });
+  const r = c.land(originX, originY, mult, { moveKey, sourceLabel: `${c.label}の格闘`, knockback: kb, onCountered: () => { countered = true; }, area });
   // landed=本当に体力を削った(構え・無敵・神モードで0ダメージだった時は false)。秘奥義の1手目はこれで数える。
   return { touched: r === 'hit' || r === 'nodamage', countered: countered || r === 'countered', landed: r === 'hit' };
 };
@@ -541,6 +551,55 @@ const kenkiShukuchi = (c: PhantomBrawlerCtx, s: BrawlerState, cx: number, cy: nu
   return { s: { ...BR.brawlerCancel(s), dirX: d.x, dirY: d.y }, cx: to.x, cy: to.y };
 };
 
+// ---------------------------------------------------------------------------------------------
+// 跳びかかり(research/BRAWLER_PHANTOM.md §15・社長「一つだけボス技をつけるのは?ジャンプ攻撃。赤予告あり。」
+// →「え、新しい技?ハンターが使ってるよ」=ハンターの跳びを流用)。溜め・跳ぶ弧・着地の円の予告・判定の円・着地後の停止・
+// 時間・範囲はハンターの値と共通の一歩(utils/groundJump.groundJumpStep)のまま。拳鬼の側は使う場面と、当たりの解決(対人の規則)だけ。
+// ---------------------------------------------------------------------------------------------
+/** ハンターの跳びの値(拳鬼専用の値は作らない)。 */
+const KENKI_JUMP_STYLE = 'hunter' as const;
+const kenkiAtkUntil = (t: number) => (ms: number): number => t + ms / ENEMY_ATTACK_SPEED_MULT;
+
+/** 跳びかかりを始める(ハンターの縮み溜め)。 */
+const startKenkiLeap = (c: PhantomBrawlerCtx): void => {
+  Object.assign(c.patch, groundJumpStartCrouch(kenkiAtkUntil(c.t), PUMPKIN_CROUCH_MS));
+  c.rt.leapReadyAt = kenkiLeapReadyAt(c.t, c.rand);
+  c.rt.move = null;
+};
+
+/** 跳びかかりの一歩(溜め・跳び・着地・停止)。跳びかかりの最中なら true(他の行動をしない)。 */
+const stepKenkiLeap = (c: PhantomBrawlerCtx, s: BrawlerState): boolean => {
+  const { phantom, player, t } = c;
+  const pcx = player.x + player.width / 2, pcy = player.y + player.height / 2;
+  const gj = groundJumpStep(phantom, {
+    gameTime: t, aimX: pcx, aimY: pcy, atkUntil: kenkiAtkUntil(t), attackSpeedMult: ENEMY_ATTACK_SPEED_MULT,
+    jumpMsRaw: groundJumpAirMsRaw(KENKI_JUMP_STYLE), recoverMsRaw: pumpkinRecoverMs(KENKI_JUMP_STYLE),
+  });
+  if (!gj) return false;
+  Object.assign(c.patch, gj.patch);
+  if (gj.landed) {
+    // 着地の爆風: ハンターと同じ円(半径・中心=着地した体の中心・プレイヤーの当たり半径を足す式)。
+    const { x: bx, y: by } = gj.landed;
+    const pr = Math.max(player.width, player.height) / 2;
+    const hit = groundBlastCircleHits(pcx, pcy, pr, bx, by, PUMPKIN_EXPLOSION_RADIUS);
+    // ダメージ=拳鬼の格闘の大踏み潰しの式(記録の近接×装備・スキル×ストライカー×足の速さ×大踏み潰しの倍率)×対人0.2。
+    // 押しは外向き・大踏み潰しと同じ強さ。範囲技=プレイヤーの被弾無敵を守る(ハンターの爆風と同じ扱い)。カウンターで返せる。
+    strikePlayer(c, s, hit, { kind: 'circle', cx: bx, cy: by, r: PUMPKIN_EXPLOSION_RADIUS }, BR.BRAWLER_STOMP_MULT, 'kenki-leap',
+      kbOf('big', BR.BRAWLER_BIG_KB_MULT, unit(pcx - bx, pcy - by)), bx, by, false, true);
+    // 地面を叩く絵と音(格闘の大踏み潰しの流用・ハンターの武器の絵は使わない)。
+    const g = useGameStore.getState();
+    g.spawnRing(bx, by, 20, PUMPKIN_EXPLOSION_RADIUS * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
+    g.spawnBurst(bx, by, BR.BRAWLER_COLOR, 24);
+    g.triggerShake(240, 12, 0, 1);
+    enqueueBrawlerSfx('brawler-stomp', 1.0, 0.85);
+  }
+  if (gj.done) {
+    c.rt.mind.nextStringAt = t + phantomBrawlerBreath(c.rand);
+    return false;
+  }
+  return true;
+};
+
 export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
   const { phantom, player, t } = c;
   const before = phantom.phantomBrawler;
@@ -558,6 +617,15 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
   if ((phantom.lastHit ?? 0) > c.rt.lastHitSeen) {
     if (c.rt.lastHitSeen !== 0) s = BR.brawlerOnHurt(s);
     c.rt.lastHitSeen = phantom.lastHit ?? 0;
+    kenkiNoteHit(c.rt.hitTimes, t); // 跳びかかりの「撃たれ続けている」(§15)
+  }
+  // 跳びかかりの最中(ハンターの跳びの流用・§15)は他の行動をしない。
+  if (stepKenkiLeap(c, s)) {
+    // 相の登録(区分どおり): 溜め・跳び=技の最中(固まらない)/着地後の停止=戻り(固まる・確定反撃の隙)。
+    const phaseNow = 'aiPhase' in c.patch ? c.patch.aiPhase : phantom.aiPhase;
+    const bs = phaseNow === 'recover' ? 'gp-brawler-recover' : 'gp-brawler';
+    if (phantom.bossState !== bs) c.patch.bossState = bs;
+    return true;
   }
   // 縮地(§14): カウンターが成立したら、届く距離より遠い時だけ一気に詰める(1回のカウンターで1回・4秒に1回まで)。
   if (kenkiNewCounter(c.counterAt, c.rt.lastCounterSeen)) {
@@ -608,11 +676,16 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
         s, t, edgeDist: ed, reach, reachReady, playerReach: huntingMeleeRadius(player),
         kikoClear: true, discount: discountOf(c.actor), counterChance: c.profile.counterChance, meleeBias: c.profile.meleeBias,
         bullet: bulletAction(c, cx, cy), rand: c.rand,
+        leap: {
+          eligible: kenkiLeapEligible({ edgeDist: ed, t, readyAt: c.rt.leapReadyAt, idle: s.phase === 'idle', secret: !!s.secret }),
+          underFire: kenkiUnderFire(c.rt.hitTimes, t),
+        },
       }, m);
       if (act?.kind === 'attack') s = startAttack(c, s);
       else if (act?.kind === 'buffer') s = { ...s, buffered: true };
       else if (act?.kind === 'tech') s = startTech(c, s, act.tech);
       else if (act?.kind === 'step') s = startStep(c, s, act.dirX, act.dirY);
+      else if (act?.kind === 'leap') startKenkiLeap(c);
       m.wasBusy = BR.isBrawlerBusy(s);
     }
   }
@@ -620,7 +693,8 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
   stepMove(c);
   stepKiko(c);
   if (s !== before) c.patch.phantomBrawler = s;
-  const bs = phantomBrawlerBossState(s, t);
+  const leapStarted = c.patch.aiPhase === 'crouch';
+  const bs = leapStarted ? 'gp-brawler' : phantomBrawlerBossState(s, t);
   if (phantom.bossState !== bs) c.patch.bossState = bs;
-  return BR.isBrawlerBusy(s) || c.rt.move !== null;
+  return leapStarted || BR.isBrawlerBusy(s) || c.rt.move !== null;
 };
