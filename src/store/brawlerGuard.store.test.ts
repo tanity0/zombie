@@ -6,7 +6,7 @@
 //  ・弾の打ち返しは撃ち主の区分で同じ扱い
 //  ・光線を受けた → その光線が中断され、持ち主は技の後の休みへ移る(判定と絵の欄=撃っている最中の状態が消える)
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useGameStore, isBrawlerGuarding, takeBrawlerBeamCut } from './gameStore';
+import { useGameStore, isBrawlerGuarding, takeBrawlerBeamCut, noteShieldGuard, brawlerGuardBodyRect } from './gameStore';
 import { applyEnemyProjectileHits, NOOP_COMBAT_EFFECTS } from '../utils/combatTick';
 import { runIdolTick, createIdolTickState, NOOP_IDOL_SFX } from '../utils/idolTick';
 import { spawnEnemyAt } from '../utils/enemyUtils';
@@ -403,5 +403,36 @@ describe('光線を構えで受けたら中断させる(社長指示2026-11-10�
     useGameStore.getState().damagePlayer(10, 'test', m.x, m.y, undefined, undefined, 'mimir-laser', undefined, undefined, { type: 'mimir' });
     expect(takeBrawlerBeamCut('m', gt)).toBe(true);
     expect(takeBrawlerBeamCut('m', gt)).toBe(false);
+  });
+});
+
+// 検収監査(2026-11-10)の(A)2件の固定。
+describe('検収監査: 押しの最中の潰し・本物の盾が防いだ当たり', () => {
+  it('ボス級を受けて押されている途中に雑魚を受けても、押しは止まらない(押され切りながら潰しが出る)', () => {
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('hunter', 120, 0, 'h'), enemyAt('zombie', -40, 0, 'z')] });
+    guardNow(5);
+    expect(hitBy('h', 'hunter')).toBe(false);
+    expect(pl().lungeShape).toBe('push');
+    advance(BRAWLER_GUARD_THROTTLE_MS + 20); // 間引きが明けてから雑魚を受ける(押しはまだ途中)
+    expect((pl().lungeUntil ?? 0)).toBeGreaterThan(now);
+    const until = pl().lungeUntil; // 押しの終わりは止め・スローで動くので、受ける直前の値と比べる
+    const vx = pl().lungeVx;
+    expect(hitBy('z', 'zombie')).toBe(false);
+    expect(br().tech).toBe('stomp');
+    expect(pl().lungeShape).toBe('push'); // 器はそのまま
+    expect(pl().lungeUntil).toBe(until);
+    expect(pl().lungeVx).toBe(vx);
+  });
+  it('構え中でも、本物の盾(体から離れた矩形)が防いだ当たりは構えの受けにしない / 体の矩形で防いだ時は受けになる', () => {
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('zombie', 60, 0, 'z')] });
+    guardNow(5);
+    const body = brawlerGuardBodyRect(pl());
+    noteShieldGuard({ x: body.x + 80, y: body.y, width: 40, height: 12 }, { attacker: 'zombie', kind: 'hit' });
+    expect(br().tech).toBe('guard'); // 潰しへ移っていない
+    expect(pl().lungeShape === 'push' && (pl().lungeUntil ?? 0) > now).toBe(false); // 押されてもいない
+    noteShieldGuard(body, { attacker: 'zombie', kind: 'hit' });
+    expect(br().tech).toBe('stomp'); // 体で受けた=雑魚なので潰し
   });
 });

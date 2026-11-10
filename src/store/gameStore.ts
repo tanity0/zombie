@@ -7904,9 +7904,13 @@ export const noteShieldGuard = (shield: Rect, g: ShieldGuardInput = {}): void =>
   // ★格闘の構え中の「盾」はプレイヤーの体(research/BRAWLER.md §8-5)。細いレーザーは体の面で切れて damagePlayer まで届かない
   // ことがあるので、ここで白金の受けを出す。本物の盾(守護霊の盾など)の耐久は削らない。
   // ★受けた相手(個体・型)と、撃ち続ける光線か(kind 'beam')を渡す=成立の効果と光線の中断が決まる(§12-3d)。
+  // ★検収監査 #2: 構え中でも、防いだのが**本物の盾**(盾サブ・守護霊の盾=体から離れた矩形)なら構えの受けにしない
+  //   (構えの受けは潰し・押し戻し・光線の中断を起こすので、盾が防いだ当たりで誤って出ると手触りが壊れる)。体の矩形で防いだ時だけ。
   {
     const st = useGameStore.getState();
-    if (isBrawlerGuarding(st.player, st.gameTime)) {
+    const body = brawlerGuardBodyRect(st.player);
+    const viaBody = shield.x === body.x && shield.y === body.y && shield.width === body.width && shield.height === body.height;
+    if (viaBody && isBrawlerGuarding(st.player, st.gameTime)) {
       const srcId = g.attacker !== undefined && typeof g.attacker !== 'string' ? (g.attacker.id ?? g.ownerId) : g.ownerId;
       const srcType = attackerTypeOf(g.attacker);
       st.brawlerGuardReceive(g.x ?? scx, g.y ?? scy, undefined, {
@@ -10974,8 +10978,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       const cur = get().player.brawler;
       if (cur && brawlerGateOk(get)) {
         const gt = get().gameTime;
+        // ★検収監査 #1: ボス級を受けて押されている途中(同じ構えの中)に雑魚を受けた時、潰しの開始が踏み込みの器を0にして
+        //   押しが1フレームで止まっていた(慣性MUST 違反)。押しの器は残したまま潰しを出す=押され切りながら叩く。
+        const pre = get().player;
+        const pushing = pre.lungeShape === 'push' && (pre.lungeUntil ?? 0) > now;
+        const keep = pushing ? { lungeVx: pre.lungeVx, lungeVy: pre.lungeVy, lungeUntil: pre.lungeUntil, lungeMs: pre.lungeMs, lungeShape: pre.lungeShape, lungeHoldUntil: pre.lungeHoldUntil } : null;
         startBrawlerTech(get, set, BR.brawlerEndGuardForStomp(cur, gt), 'stomp', isBloodAwakening(get().player, gt), false, true);
-        set(state => ({ player: { ...state.player, counterWindowEnd: Math.min(state.player.counterWindowEnd, now) } }));
+        set(state => ({ player: { ...state.player, ...(keep ?? {}), counterWindowEnd: Math.min(state.player.counterWindowEnd, now) } }));
       }
     } else if (outcome === 'knockback') {
       // 雑魚より上を受けた: 相手から離れる向きへ大きく押される(間合いが切れる=受け続けてのハメを作らない)。構えは時間いっぱい続く。
