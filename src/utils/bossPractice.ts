@@ -16,6 +16,7 @@ import {
 } from '../config/bossHealth';
 // research/GHOST_BOSS.md(幻影): 表示名の出どころ=守護霊台帳の人物名(名前を写経しない)。
 import { strongestGuardian } from '../data/fixedGuardians';
+import { uniquePhantomSpec } from '../data/uniquePhantoms';
 // ★research/GROWTH.md v4「唯一の例外=ラン外のメニュー表示」: 出撃前は焼き値が存在しないので、
 // 幻影HPの**表示に限り**有効段数を直読みする。読み先は保存を読む純関数だけ(store経由は
 // gameStore → bossPractice の循環importになるので不可)。ゲームプレイの参照は焼き値のみ。
@@ -125,7 +126,7 @@ export const isBossTestOrPracticeRun = (): boolean =>
 // 台帳: 守護霊メニューと同じ基礎台帳(GHOST_DOSSIER_SLOTS)+形態別の派生枠
 // ---------------------------------------------------------------------------------------------
 /** 出撃のさせ方。`param=null` = 強制出現パラメータ不要(ステージへ出撃すれば勝手に出る)。 */
-export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'phillnow' | 'heronow' | 'libertynow' | 'astronow' | 'wraithnow' | null;
+export type PracticeParam = 'castlenow' | 'gateboss' | 'bossnow' | 'idolnow' | 'bountynow' | 'phantomnow' | 'brawlerphantomnow' | 'phillnow' | 'heronow' | 'libertynow' | 'astronow' | 'wraithnow' | null;
 
 export interface PracticeSlot {
   slotKey: string;              // 基本はGHOST_DOSSIER_SLOTS.slotKeyと同一。形態別掲載だけ固有キー。
@@ -342,7 +343,22 @@ const MUTANT_WRAITH_SLOT: PracticeSlot = {
   reachable: false,
   alwaysUnlocked: true,
 };
-export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, MUTANT_HERO_SLOT, MUTANT_LIBERTY_SLOT, MUTANT_ASTRO_SLOT, MUTANT_WRAITH_SLOT, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT];
+// research/BRAWLER_PHANTOM.md §6-3: 固有の幻影「拳鬼(格闘)」の確認用の枠。汎用の幻影と同じ「決闘」の棚・常時解放。
+// 本編ではステージ1・3・4・5に乱入する(useGameLoop・utils/phantomBrawlerSpawn.ts)=並びは sortieBossRoster が別に出す。
+export const PHANTOM_BRAWLER_SLOT_KEY = 'phantom-brawler@practice';
+/** 仮名(research/BRAWLER_PHANTOM.md §8)。名前の出どころは data/uniquePhantoms の台帳。 */
+export const PHANTOM_BRAWLER_LABEL = `${uniquePhantomSpec('brawler').name}(幻影)`;
+const PHANTOM_BRAWLER_SLOT: PracticeSlot = {
+  slotKey: PHANTOM_BRAWLER_SLOT_KEY,
+  encounterSlotKey: 'phantom-brawler',
+  bossType: 'guardian-phantom',
+  stageId: 'stage-1',
+  param: 'brawlerphantomnow',
+  label: PHANTOM_BRAWLER_LABEL,
+  reachable: false,
+  alwaysUnlocked: true,
+};
+export const PRACTICE_SLOTS: readonly PracticeSlot[] = [...BOUNTY_PRACTICE_SLOTS, MUTANT_HERO_SLOT, MUTANT_LIBERTY_SLOT, MUTANT_ASTRO_SLOT, MUTANT_WRAITH_SLOT, ...GHOST_DERIVED_SLOTS, GUARDIAN_PHANTOM_SLOT, PHANTOM_BRAWLER_SLOT];
 
 // ★変異体対策室のカテゴリ表示順の正(社長指示v0.25.3444「小ボスは一番上だろ」)。
 // v3444では上の PRACTICE_SLOTS の並びだけを直したが、画面(BossRush.tsx)は**カテゴリごとに区切って
@@ -389,12 +405,16 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
   //   一致は**全クラスの maxHp が同値(STANDARD_MAX_HP)であること**に依存している。
   //   クラス別HPを導入するとズレる——その前提は bossPractice.test.ts でテスト化してある。
   if (slot.bossType === 'guardian-phantom') {
+    // research/BRAWLER_PHANTOM.md: 拳鬼の枠は拳鬼の記録(汎用の幻影の枠は最強データ)。
+    const recordHp = slot.slotKey === PHANTOM_BRAWLER_SLOT_KEY
+      ? uniquePhantomSpec('brawler').profile.snapshot?.maxHealth
+      : strongestGuardian().profile.snapshot?.maxHealth;
     // ★社長裁定2026-08-23「HPもステータス通りに。」: 実戦と同じく**記録の maxHealth が正本**。
     // 記録が無いときだけ従来の式(台帳クラスの初期HP+育成)へ落ちる=実戦側と同じフォールバック。
     return guardianPhantomHealth(
       PLAYER_PROFILES[strongestGuardian().classId].maxHp
       + growthMaxHpBonus(activeUpgradeLevel(loadPlayerUpgrades(), 'health')),
-      strongestGuardian().profile.snapshot?.maxHealth,
+      recordHp,
     );
   }
   const gate = (GATE_BOSS_HEALTH as Partial<Record<EnemyType, number>>)[slot.bossType];

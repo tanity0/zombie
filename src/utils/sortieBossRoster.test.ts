@@ -10,8 +10,16 @@ describe('sortieBossRoster(出撃前のボス一覧)', () => {
   it('ステージ1: 城のボス → ゲート → 賞金首 → 変異体4体 → 深層の順', () => {
     expect(keys('stage-1')).toEqual([
       'giantbat@stage-1', 'miguel', 'bounty-ranged',
-      'mutant-hero', 'mutant-liberty', 'mutant-astro', 'mutant-wraith', 'mimir',
+      'mutant-hero', 'mutant-liberty', 'mutant-astro', 'mutant-wraith', 'phantom-brawler', 'mimir',
     ]);
+  });
+  it('拳鬼(research/BRAWLER_PHANTOM.md)はステージ1・3・4・5に1行ずつ・変異体の後ろ・絵は上書き', () => {
+    for (const st of ['stage-1', 'stage-3', 'stage-4', 'stage-5']) expect(keys(st)).toContain('phantom-brawler');
+    for (const st of ['stage-2', 'stage-6', 'stage-7', 'stage-tutorial']) expect(keys(st)).not.toContain('phantom-brawler');
+    const b = sortieBossRoster('stage-3', none).find(x => x.encounterKey === 'phantom-brawler')!;
+    expect(b.kind).toBe('phantom');
+    expect(b.label).toBe('拳鬼(幻影)');
+    expect(b.iconSprite).toBeTruthy();
   });
   it('研究所跡(ステージ2)は城のボスを出さず、隠しボスだけ', () => {
     expect(keys('stage-2')).toEqual(['idol']);

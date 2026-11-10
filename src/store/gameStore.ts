@@ -169,7 +169,7 @@ import { resetHandcannonDecay } from '../utils/handcannonDecay'; // UNIQUE_WEAPO
 import { nextCycleMode } from '../utils/cycleShotgun'; // UNIQUE_WEAPONS.md §16-2/§17-7(バッチB・切替式SG)
 import { stepHeavySniperStillMs } from '../utils/heavySniperCharge'; // UNIQUE_WEAPONS.md §16-2(バッチB・大型狙撃銃)
 import { resolveSlotKeyNow, isTestWeaponUnlockAll } from '../utils/weaponSlot'; // UNIQUE_WEAPONS.md §4-1(生成点=grantWeapon入口の安全網/武器庫)/ 武器解放ALL(開発用)
-import { BOSS_UNLOCK, SUB_BOSS_UNLOCK } from '../data/weaponSlots';
+import { BOSS_UNLOCK, SUB_OWNED_ON_GET, bossSubUnlockKeyFor, subBlueprintToastShown } from '../data/weaponSlots';
 import { isNoUpgradeState, noteNoUpgradeBossKill, featBossSlotKey } from '../data/chronicleFeats'; // 年表の実績「無強化」(社長指示2026-10-14) // UNIQUE_WEAPONS.md §11-6(ボス撃破→ユニーク武器の設計図入手)/§19-6(サブウェポン版・別台帳)
 import { pickAmmoDropType } from '../utils/ammoDrop';
 import { ammoDirectorRate } from '../utils/ammoDirector';
@@ -5863,14 +5863,18 @@ const triggerDramaticDeath = (get: () => GameState, enemy: Enemy, x: number, y: 
     // (経路を2本にしない)。台帳は SUB_BOSS_UNLOCK(銃の BOSS_UNLOCK とは別・§19-6項目2)。
     // ルックアップの形は銃と揃えるため `${type}@${stage}` のキーで引くが、SUB_BOSS_UNLOCK は
     // EnemyType キーの Partial<Record> なので、複合キーの参照だけ EnemyType へキャストする。
-    const subUnlockKey = SUB_BOSS_UNLOCK[`${enemy.type}@${getSelectedStageId() ?? ''}` as EnemyType] ?? SUB_BOSS_UNLOCK[enemy.type];
+    // research/BRAWLER_PHANTOM.md §7: 固有の幻影(印 phantomUnique)は印で引く。汎用の幻影は何も出さない(bossSubUnlockKeyFor)。
+    const subUnlockKey = bossSubUnlockKeyFor(enemy, getSelectedStageId() ?? '');
+    const subPurchasedBefore = subUnlockKey ? (get().purchasedSubLevels[subUnlockKey] ?? 0) : 0;
     const subBlueprintNew = subUnlockKey ? markSubBlueprint(subUnlockKey) : false;
     // research/ARROW_RAIN.md §1: 矢の雨は入手と同時に Lv1 を持つ(開発施設で買わなくても装備できる)。トーストも「入手」。
-    const subOwnedOnGet = subUnlockKey === 'arrow-rain';
-    if (subUnlockKey && subBlueprintNew && subOwnedOnGet && (get().purchasedSubLevels[subUnlockKey] ?? 0) < 1) {
+    // research/BRAWLER_PHANTOM.md §7: 格闘(拳鬼の報酬)も同じ(SUB_OWNED_ON_GET)。
+    const subOwnedOnGet = subUnlockKey !== undefined && SUB_OWNED_ON_GET.has(subUnlockKey);
+    if (subUnlockKey && subBlueprintNew && subOwnedOnGet && subPurchasedBefore < 1) {
       get().setPurchasedSubLevel(subUnlockKey, 1);
     }
-    if (subUnlockKey && subBlueprintNew && !isTestWeaponUnlockAll()) { // 同上(サブは購入台帳が無いので解放ALLだけ見る)
+    // 既に買って持っていた人にはトーストを出さない(台帳には書く・銃の設計図の2026-09-14の裁定と同じ考え方)。
+    if (subUnlockKey && subBlueprintToastShown({ blueprintNew: subBlueprintNew, purchasedBefore: subPurchasedBefore, testUnlockAll: isTestWeaponUnlockAll() })) {
       useGameStore.setState({
         lastWeaponGet: {
           // ★トーストの名前はサブ名の表(subWeaponDisplayName)から引く(銃のweaponDisplayNameではない・§19-6項目5)。

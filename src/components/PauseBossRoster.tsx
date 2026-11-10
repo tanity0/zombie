@@ -3,6 +3,7 @@
 import React from 'react';
 import { enemyDeathLabel } from '../store/gameStore';
 import { bossIconSrc } from '../utils/bossIcon';
+import { spritePath } from '../utils/spriteLoader';
 import type { SortieBoss } from '../utils/sortieBossRoster';
 
 /** 一覧の中では「(変異)」「(変異体)」を外す(並べると同じ語の連打になる)。 */
@@ -14,7 +15,8 @@ const SIZE = 44;
 
 // 出会ったことがあれば絵と名前、無ければ「?」(出撃前の札と同じ見せ方)。
 const Tile: React.FC<{ b: SortieBoss }> = ({ b }) => {
-  const icon = b.known ? bossIconSrc(b.bossType, b.iconStageId) : null;
+  // 型から絵を引けない固有の幻影は、台帳の絵の論理名で引く(research/BRAWLER_PHANTOM.md §6-3)。
+  const icon = b.known ? (b.iconSprite ? spritePath(b.iconSprite) : bossIconSrc(b.bossType, b.iconStageId)) : null;
   return (
     <div className="min-w-0 text-center" style={{ width: SIZE + 14 }} data-testid="pause-boss-tile" data-known={b.known ? '1' : '0'}>
       <div

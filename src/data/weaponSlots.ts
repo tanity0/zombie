@@ -1,7 +1,7 @@
 // ユニーク武器システム: カテゴリ×Tierの「スロット」候補キー(UNIQUE_WEAPONS.md §3-2)。
 // 純データのみ(解決ロジックは src/utils/weaponSlot.ts)。各配列の**先頭が既定候補**
 // (未設定/未解放時のフォールバック=UNIQUE_WEAPONS.md §3-1「既存キーの意味を変えない」)。
-import type { AmmoType, EnemyType, SubWeaponKey } from '../types/game';
+import type { AmmoType, EnemyType, PhantomUniqueKind, SubWeaponKey } from '../types/game';
 
 // AmmoTypeはphillを含む5種だが、横の対象は4カテゴリ(UNIQUE_WEAPONS.md §1・§3-2の注記)。
 export type SlotCategory = Exclude<AmmoType, 'phill'>;
@@ -90,6 +90,41 @@ export const SUB_BOSS_UNLOCK: Partial<Record<EnemyType, SubWeaponKey>> = {
   suriel: 'gold-ring', // スリィエル(ゲート2ボス)撃破→金環の設計図(UNIQUE_WEAPONS.md §19)
   'mutant-liberty': 'arrow-rain', // 解放軍群の旗手→矢の雨(research/ARROW_RAIN.md・入手と同時にLv1を持つ)
 };
+
+// research/BRAWLER_PHANTOM.md §7: 固有の幻影を倒した時のサブの設計図。**型ではなく印(Enemy.phantomUnique)で引く**
+// (型 guardian-phantom で引くと、中身が毎回ちがう汎用の幻影でも手に入ってしまう)。
+export const UNIQUE_PHANTOM_REWARD: Readonly<Record<PhantomUniqueKind, SubWeaponKey>> = {
+  brawler: 'brawler', // 拳鬼(格闘の幻影)→格闘
+};
+
+/** 撃破で設計図を得るサブの集合(棚の関所の正本)。SUB_BOSS_UNLOCK の値 ∪ 固有の幻影の報酬。 */
+export const bossUnlockSubKeys = (): Set<SubWeaponKey> =>
+  new Set<SubWeaponKey>([...Object.values(SUB_BOSS_UNLOCK), ...Object.values(UNIQUE_PHANTOM_REWARD)]);
+
+/** 入手と同時に Lv1 を持つサブ(開発施設で買わなくても装備できる)。 */
+export const SUB_OWNED_ON_GET: ReadonlySet<SubWeaponKey> = new Set<SubWeaponKey>(['arrow-rain', 'brawler']);
+
+/** 倒した敵から得るサブの設計図(無ければ undefined)。固有の幻影は印で、それ以外は従来の `type@stage` → `type`。 */
+export const bossSubUnlockKeyFor = (
+  enemy: { type: EnemyType; phantomUnique?: PhantomUniqueKind }, stageId: string,
+): SubWeaponKey | undefined => {
+  if (enemy.phantomUnique) return UNIQUE_PHANTOM_REWARD[enemy.phantomUnique];
+  if (enemy.type === 'guardian-phantom') return undefined; // 汎用の幻影は何も出さない(印が無い=中身が毎回ちがう)
+  return SUB_BOSS_UNLOCK[`${enemy.type}@${stageId}` as EnemyType] ?? SUB_BOSS_UNLOCK[enemy.type];
+};
+
+/**
+ * 開発施設の棚に並べるか。撃破解放のサブは設計図が要る。ただし**既に買って持っている人は並べ続ける**
+ * (BRAWLER_PHANTOM §7: 格闘は棚売りから撃破解放へ移した。移す前に買った人の Lv2・3 を塞がない)。
+ */
+export const subShelfVisible = (
+  key: SubWeaponKey, gated: ReadonlySet<SubWeaponKey>, hasBlueprint: boolean, purchasedLevel: number,
+): boolean => !gated.has(key) || hasBlueprint || purchasedLevel >= 1;
+
+/** 設計図を得た時のトーストを出すか。新しく立った時だけ・既に買っていた人には出さない・開発用の全解放中も出さない。 */
+export const subBlueprintToastShown = (
+  o: { blueprintNew: boolean; purchasedBefore: number; testUnlockAll: boolean },
+): boolean => o.blueprintNew && o.purchasedBefore < 1 && !o.testUnlockAll;
 
 // 「店売り」の明示リスト(UNIQUE_WEAPONS.md §11-6-2・監査A-2の是正)。**「BOSS_UNLOCKに無い=店売り」
 // と実装してはいけない**——CATALOGに対応キーが無い間は空のまま書かない(★未決を片側へ倒さない)。

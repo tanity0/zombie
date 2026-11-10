@@ -228,6 +228,11 @@ import { runLibertyTick, createLibertyTickState, pickActiveLiberty, releaseOrpha
 import { libPatrolRadius, ringPointBehind, LIB_PRACTICE_PATROL_R, LIB_ESCORTS, LIB_SLOT_GAP_PX, LIB_TRAIL_MAX, LIB_TRAIL_STEP_PX } from '../utils/libertyScript'; // research/LIBERTY_HORDE.md
 import { loadHeroAscended } from '../utils/heroAscended';
 import { markBossesEncountered } from '../utils/bossEncounter'; // 出撃前のボス一覧: 変異体の「出会った」(社長指示2026-11-02)
+import { uniquePhantomSpec } from '../data/uniquePhantoms'; // research/BRAWLER_PHANTOM.md: 固有の幻影「拳鬼」
+import {
+  createPhantomBrawlerPlan, rollPhantomBrawlerRun, phantomBrawlerSpawnStep, phantomBrawlerSceneBlocked, phantomBrawlerSpawnOffset,
+  PHANTOM_BRAWLER_ENCOUNTER_KEY, PHANTOM_BRAWLER_KIND, PHANTOM_BRAWLER_RETRY_MS, type PhantomBrawlerScene,
+} from '../utils/phantomBrawlerSpawn'; // research/BRAWLER_PHANTOM.md §6: 拳鬼の本編の乱入
 import { heroZoomEligible, HERO_PATROL_STAGES, heroPatrolRadius, HERO_MAX_HP, HERO_START_HP } from '../utils/heroScript';
 import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties, heroAsTarget } from '../utils/heroBlast';
 import { hateEscortSource } from '../utils/escortView';
@@ -523,7 +528,7 @@ import { setReliefProgramDebug } from '../utils/reliefProgramState';
 import { selectGateProgram, type GateProgram, type GateProgramId } from '../utils/gateProgram';
 import { setGateProgramDebug } from '../utils/gateProgramState';
 import { stageAggroFor, riseTauSForAggro, boredStartMsForAggro, gateMaxRungClampForAggro, STAGE_AGGRO_DEFAULT } from '../utils/stageAggro';
-import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, recordChronicleGlobalFirst, updateStoryFlags } from '../data/progress';
+import { getSelectedStageId, getWallMeta, setWallMeta, emptyGateMeta, recordChronicle, recordChronicleGlobalFirst, updateStoryFlags, getCastleBossCleared } from '../data/progress';
 import { exposeKomaLog, logKomaSummary } from '../utils/komaLog';
 // 二人組の確定会話(統合正本)と遭遇のみ設定。ストーリーボス(M7/EX)の終幕分岐はサブ3本完了を参照。
 // v1の受領(accept)会話まわり(EVENT_QUEST_LINES_FORCED/EVENT_QUEST_ENCOUNTER_LINES)は
@@ -556,6 +561,7 @@ import {
   advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, bossRetreatKeepRadiusPx,
   facilitiesLocked, // v0.25.3054: ボス戦中の施設ロック(発火ゲート)
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
+  bossEngagedNow, // research/BRAWLER_PHANTOM.md: 拳鬼の「他のボスと交戦中」
 } from '../utils/bossEngagement';
 import { isBossPostureBroken } from '../utils/bossPosture';
 import { tickNewGuns } from '../utils/newGunsTick'; // research/NEW_GUNS.md: 新しい銃3挺の進行
@@ -1424,6 +1430,8 @@ const FORCE_BOUNTY = evParam('bountynow') === '1';
 // (=既存のURL経路はそのまま。賞金首と同じ4点セット: ①この定数 ②`||practiceForces` ③forceRef
 //  ④gameTime巻き戻しでの再アーム)。
 const FORCE_PHANTOM = evParam('phantomnow') === '1';
+// research/BRAWLER_PHANTOM.md §6-3: 固有の幻影「拳鬼」のデバッグ出現 `?brawlerphantomnow=1`(対策室の枠は practiceForces('brawlerphantomnow'))。
+const FORCE_PHANTOM_BRAWLER = evParam('brawlerphantomnow') === '1';
 // research/MUTANT_HERO.md(英雄(変異)): デバッグ出現 `?heronow=1`。練習出撃(変異体対策室の枠)は practiceForces('heronow') で相乗り。
 const FORCE_HERO = evParam('heronow') === '1';
 /**
@@ -1444,7 +1452,7 @@ const FORCE_WRAITH = evParam('wraithnow') === '1';
  * ボス戦テスト・ボスメーカー・湧き止め(nospawn)の読込では出さない(テストの相手が増えないように)。
  */
 const HERO_PATROL_BLOCKED = NOSPAWN
-  || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bountynow', 'phantomnow', 'phillnow', 'heronow', 'libertynow', 'astronow', 'wraithnow', 'bossmaker', 'vs'].some(k => evParam(k) !== null);
+  || ['bossnow', 'idolnow', 'gateboss', 'castlenow', 'bountynow', 'phantomnow', 'brawlerphantomnow', 'phillnow', 'heronow', 'libertynow', 'astronow', 'wraithnow', 'bossmaker', 'vs'].some(k => evParam(k) !== null);
 // BOSS_MAKER.md §21(1対1の間合い): `?vs=<相手>` で、選んだ相手だけを1体出す開発用の枠。
 // 他の強制出現フラグと同じくモジュールロード時に1回だけ読む(切替は再読込)。
 const VS_ENTRY = vsEntryOfRun();
@@ -2040,6 +2048,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   const bountyForceRef = useRef(false);
   // research/GHOST_BOSS.md: ?phantomnow=1 / 「決闘」枠のforce-spawnを1回だけにするフラグ。
   const phantomForceRef = useRef(false);
+  // research/BRAWLER_PHANTOM.md: 拳鬼の強制出現(1回だけ)と、本編の乱入の出撃1回ぶんの予定。
+  const phantomBrawlerForceRef = useRef(false);
+  const phantomBrawlerPlanRef = useRef(createPhantomBrawlerPlan());
   // §21-5: 次の1体を出す時刻(0=まだ予約していない/相手が生きている)。
   const vsNextSpawnRef = useRef(0);
   // 幻影のラン内状態(頭脳の持ち越し/休み/踏み込みの焼き付け)。同時1体なので単一refでよい。
@@ -3505,6 +3516,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           idolForceRef.current = false; // ?idolnow=1 の force-spawn も新ランで再アーム
           bountyForceRef.current = false; // ?bountynow=1 の force-spawn も新ランで再アーム(§6.38 B1)
           phantomForceRef.current = false; // ?phantomnow=1 の force-spawn も新ランで再アーム(research/GHOST_BOSS.md)
+          phantomBrawlerForceRef.current = false; phantomBrawlerPlanRef.current = createPhantomBrawlerPlan(); // 拳鬼(research/BRAWLER_PHANTOM.md)も新ランで引き直す
           heroForceRef.current = false; heroStateRef.current = createHeroTickState(); heroCutinIdRef.current = null; setHeroGallop(0); // 英雄(research/MUTANT_HERO.md)
           libertyForceRef.current = false; libertyStateRef.current = createLibertyTickState(); resetOrphanLibertyArrows(); libertyCutinIdRef.current = null; // 解放軍群(research/LIBERTY_HORDE.md)
           astroForceRef.current = false; astroStateRef.current = createAstroTickState(); astroCutinIdRef.current = null; // 宇宙飛行群(research/ASTRONAUT_HORDE.md)
@@ -9321,19 +9333,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               wraithCutinIdRef.current = null;
             }
           }
-          if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
-            phantomForceRef.current = true;
+          // research/GHOST_BOSS.md / BRAWLER_PHANTOM.md §6: 幻影を1体出す(汎用の幻影の強制出現と、拳鬼の乱入・強制出現で共用)。
+          const spawnGuardianPhantom = (identity: ReturnType<typeof pickPhantomIdentity>, unique?: typeof PHANTOM_BRAWLER_KIND): void => {
             // ★research/SAME_ARENA.md O-5: 幻影の「中身」をここで1回だけ決める。
             // ①オンラインの実プレイヤー ②固定20人から抽選、の順。**癖・ビルド・HP・名前を
             // 必ずこの1人から取る**(装備だけ他人にすると「戦い方が同じ1体」のままになる)。
-            setPhantomIdentity(pickPhantomIdentity(getSelectedStageId()));
+            setPhantomIdentity(identity);
             const gpName = phantomDisplayLabel();
             useGameStore.setState({ eventBannerText: gpName, eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
             const gpPcx = player.x + player.width / 2, gpPcy = player.y + player.height / 2;
             // 距離は叩き台(実機調整前提): 画面内に収まり、出現演出が見える位置で正対させる。
-            const gpAng = Math.random() * Math.PI * 2;
-            const gpDist = 380 + Math.random() * 120;
-            const gpX0 = gpPcx + Math.cos(gpAng) * gpDist, gpY0 = gpPcy + Math.sin(gpAng) * gpDist;
+            // research/BRAWLER_PHANTOM.md §6: 拳鬼も同じ距離(380〜500px)・同じ乱数の引き方(phantomBrawlerSpawnOffset)。
+            const gpOff = phantomBrawlerSpawnOffset(Math.random);
+            const gpX0 = gpPcx + gpOff.dx, gpY0 = gpPcy + gpOff.dy;
             const gpE = spawnEnemyAt('guardian-phantom', gpX0 - 20, gpY0 - 28, newGameTime);
             // research/GROWTH.md v4(社長裁定Q4「幻影も反映」): 幻影HP=**育成込みの初期プレイヤー**
             // (= player.ddaBaseHp。装備補正は含めない)。ENEMY_STATS の値は import 時評価の
@@ -9345,6 +9357,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // **同じ人物**に揃える(ビルドだけ別人にすると「誰と戦っているか」が壊れる)。
             // O-5 でここを**オンラインの他人のレコード**へ差し替える(頭脳とビルドを一緒に入れ替える)。
             gpE.phantomBuild = getPhantomIdentity()?.profile.snapshot ?? undefined;
+            // research/BRAWLER_PHANTOM.md: 固有の幻影の印(報酬・記録・格闘の頭脳はこの印で分ける)。
+            if (unique) {
+              gpE.phantomUnique = unique;
+              gpE.fixed = true; // 本編の乱入: 上限の間引き・距離の回収・イベントの一掃で消さない(変異体と同じ)
+            }
             // ★社長裁定2026-08-23「HPもステータス通りに。」: HPも**記録の値**が正本。
             // ビルドを積んだ**後**に決めること(順序を入れ替えると記録が読めない)。
             // 記録が無いときだけ従来どおり player.ddaBaseHp(GROWTH.md v4)へ落ちる。
@@ -9372,6 +9389,71 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // アテンションは出現演出が落ち着いてから(城ボス/賞金首と同じ並び)。カットイン台帳には
             // 載せない(専用素材を作らない=設計書の「ではない」条件)ので payload は渡さない。
             bountyAttnRef.current = { at: newGameTime + 950, x: gpX0, y: gpY0, cutin: undefined };
+          };
+          if ((FORCE_PHANTOM || practiceForces('phantomnow')) && !phantomForceRef.current) {
+            phantomForceRef.current = true;
+            spawnGuardianPhantom(pickPhantomIdentity(getSelectedStageId()));
+          }
+          // research/BRAWLER_PHANTOM.md §6: 固有の幻影「拳鬼」。①強制出現(?brawlerphantomnow=1・対策室の枠)②本編の乱入
+          // (ステージ1・3・4・5・1出撃に1回まで・25%・60〜240秒・ステージ1は城のボスを倒した後から・汎用の幻影と重ねない)。
+          {
+            const kenki = uniquePhantomSpec(PHANTOM_BRAWLER_KIND);
+            const kenkiIdentity = { name: kenki.name, profile: kenki.profile, source: 'unique' as const };
+            const markKenkiSeen = (): void => {
+              markBossesEncountered(new Set([PHANTOM_BRAWLER_ENCOUNTER_KEY])); // 練習ラン・ボス戦テストでは記録しない(関数側)
+              markBossAppeared(PHANTOM_BRAWLER_ENCOUNTER_KEY);
+            };
+            if ((FORCE_PHANTOM_BRAWLER || practiceForces('brawlerphantomnow')) && !phantomBrawlerForceRef.current) {
+              phantomBrawlerForceRef.current = true;
+              phantomBrawlerPlanRef.current.done = true; // 強制出現した出撃では乱入は引かない
+              spawnGuardianPhantom(kenkiIdentity, PHANTOM_BRAWLER_KIND);
+              markKenkiSeen();
+            }
+            const plan = phantomBrawlerPlanRef.current;
+            if (!plan.rolled) {
+              plan.rolled = true;
+              plan.at = rollPhantomBrawlerRun({
+                stageId: getSelectedStageId() ?? '',
+                stage1CastleCleared: getCastleBossCleared('stage-1'),
+                practiceOrTest: HERO_PATROL_BLOCKED || isPracticeRun() || isBossMakerRun() || BOSS_TEST_RUN,
+              }, Math.random);
+            }
+            if (plan.at !== null && !plan.done) {
+              const ks = useGameStore.getState();
+              const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
+              const kScene: PhantomBrawlerScene = {
+                otherBossEngaged: bossEngagedNow(ks.enemies.filter(e => e.type !== 'guardian-phantom'), kpcx, kpcy, ks.bossFightNow),
+                bossChasing: ks.bossChasing, redNightActive: ks.redNight?.phase === 'active', activeEvent: !!ks.activeEvent,
+                indoor: ks.indoorMode, returnCircle: ks.returnCircle !== null,
+              };
+              const step = phantomBrawlerSpawnStep(plan, newGameTime, kScene, ks.enemies.some(e => e.type === 'guardian-phantom'), !!ks.attention);
+              if (step === 'retry') plan.nextCheckAt = newGameTime + PHANTOM_BRAWLER_RETRY_MS;
+              else if (step === 'spawn') {
+                plan.done = true;
+                spawnGuardianPhantom(kenkiIdentity, PHANTOM_BRAWLER_KIND);
+                markKenkiSeen();
+              }
+            }
+            // 退散: 本編で出ている拳鬼は、ステージのボス戦などの場面に入ったら消える(報酬なし・その出撃は二度と出ない)。
+            if (!isPracticeRun() && !FORCE_PHANTOM_BRAWLER) {
+              const ks = useGameStore.getState();
+              const kenkiE = ks.enemies.find(e => e.type === 'guardian-phantom' && e.phantomUnique === PHANTOM_BRAWLER_KIND && e.health > 0 && e.corpseUntil === undefined);
+              if (kenkiE) {
+                const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
+                const blocked = phantomBrawlerSceneBlocked({
+                  otherBossEngaged: bossEngagedNow(ks.enemies.filter(e => e.type !== 'guardian-phantom'), kpcx, kpcy, ks.bossFightNow),
+                  bossChasing: ks.bossChasing, redNightActive: ks.redNight?.phase === 'active', activeEvent: !!ks.activeEvent,
+                  indoor: ks.indoorMode, returnCircle: ks.returnCircle !== null,
+                });
+                if (blocked) {
+                  const kx = kenkiE.x + kenkiE.width / 2, ky = kenkiE.y + kenkiE.height / 2;
+                  // 出現の演出を逆に(外から内へ縮む輪+破片)。
+                  spawnRing(kx, ky, 150, 16, 'rgba(239,68,68,0.85)', 6, 720);
+                  spawnBurst(kx, ky + 16, '#7f1d1d', 22);
+                  useGameStore.setState(stt => ({ enemies: stt.enemies.filter(e => e.id !== kenkiE.id) }));
+                }
+              }
+            }
           }
           // BOSS_MAKER.md §21(1対1の間合い): 選んだ相手を**1体だけ**出す。倒したら少し置いてもう1体。
           // 湧きは `?nospawn=1` と同じ止め方(noSpawnDebug)で止めてあるので、居るのはこの1体だけ。

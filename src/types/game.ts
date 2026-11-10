@@ -460,6 +460,9 @@ export interface Player extends DashLocomotionState {
  * (旧プロファイルには無い=欠損可。欠損時の挙動は src/utils/playerBuild.ts のフォールバック規則)。
  * 純データ(localStorageへJSONで載る)なので関数・クラスは入れない。
  */
+/** research/BRAWLER_PHANTOM.md: 固有の幻影の種類(今は格闘の人=拳鬼だけ)。 */
+export type PhantomUniqueKind = 'brawler';
+
 export interface PlayerBuildSnapshot {
   maxHealth: number;
   speed: number;
@@ -1068,6 +1071,11 @@ export interface Enemy {
    * 未設定=従来どおり(ビルド無し=初期装備の決闘)。
    */
   phantomBuild?: PlayerBuildSnapshot;
+  /**
+   * research/BRAWLER_PHANTOM.md: 固有の幻影(ユニーク人格)の印。汎用の幻影(中身が毎回ちがう人)には付かない。
+   * 報酬・遭遇の記録・格闘の頭脳はこの印で分ける(型は同じ guardian-phantom)。
+   */
+  phantomUnique?: PhantomUniqueKind;
   /**
    * research/SAME_ARENA.md O-1: 幻影**自前**のサブウェポンCD帳簿(gameTime基準)。
    * 守護霊の `Summon.ghostSubWeaponCooldowns` と同型=**3者が別財布**(社長裁定2026-08-23)。

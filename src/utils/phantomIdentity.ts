@@ -25,7 +25,7 @@ export interface PhantomIdentity {
   /** 頭脳(癖)とビルド(snapshot)の出どころ。 */
   profile: PlayerProfile;
   /** どこから来た人か(通信・デバッグ表示用)。 */
-  source: 'remote' | 'fixed';
+  source: 'remote' | 'fixed' | 'unique'; // unique=固有の幻影(data/uniquePhantoms.ts・research/BRAWLER_PHANTOM.md)
 }
 
 /**
