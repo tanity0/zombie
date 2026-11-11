@@ -13,7 +13,7 @@ import {
   BRAWLER_COMBO_END_NO_HOLD_BOSS_MS, BRAWLER_COMBO_END_NO_HOLD_STRONG_MS, brawlerLockHitMs,
 } from '../utils/brawlerCombo';
 import {
-  BRAWLER_TEMPO_DEFAULT, initialBrawlerState, brawlerCancelWindowOpen, brawlerTechAllowed, brawlerPressDecision, brawlerInHitstop,
+  BRAWLER_KICK3_KB_POWER, BRAWLER_TEMPO_DEFAULT, initialBrawlerState, brawlerCancelWindowOpen, brawlerTechAllowed, brawlerPressDecision, brawlerInHitstop,
   brawlerStepAllowed, brawlerStageSpec, BRAWLER_TECHS, BRAWLER_CANCEL_WINDOW_MS, brawlerElapsed, brawlerTotalMs, type BrawlerState,
 } from '../utils/brawler';
 
@@ -373,13 +373,15 @@ describe('飛び蹴りの2発目は少し打ち上げる・3発目は少しの�
     }
     return { kb, air, peak };
   };
-  it('雑魚: 1発目では浮かない → 2発目で地上から少し浮く(高さ0.7) → 3発目は1発目の押しを超えない(吹き飛ばさない)', () => {
+  it('雑魚: 1発目では浮かない → 2発目で地上から少し浮く(高さ0.7) → 3発目は1発目より強く押す(吹き飛ばしほどではない)', () => {
     const r = kicks('zombie-move');
     expect(r.air[0]).toBe(false);
     expect(r.air[1]).toBe(true);
     expect(r.peak[1]).toBeCloseTo(0.7, 5);
     expect(r.kb[0]).toBeGreaterThan(0);
-    expect(r.kb[2]).toBeLessThanOrEqual(r.kb[0] + 1e-6);
+    // 3発目は1発目より強く押す(社長指示2026-11-11「3段目の飛び蹴りはもう少し敵を吹き飛ばして」=普通の押しの BRAWLER_KICK3_KB_POWER 倍)。吹き飛ばし(4倍)ではない。
+    expect(r.kb[2]).toBeCloseTo(r.kb[0] * BRAWLER_KICK3_KB_POWER, 3);
+    expect(BRAWLER_KICK3_KB_POWER).toBeLessThan(4);
   });
   // ★3発目の狙い直し(§19-10): 溜めの間に敵が動いても、溜めが明けた瞬間に飛ぶ先を取り直して当てる。
   //   旧: 溜め始めの敵の位置へ飛んだ(実ループで36本中5本が空振り)。密着から始めた時(踏み込みの器が空)も取り直す(検収の A-2)。

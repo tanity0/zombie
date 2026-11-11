@@ -163,7 +163,11 @@ export let BRAWLER_KICK_FLIGHT_MAX_MS = 150; // ×BRAWLER_TEMPO(係数1.0の値)
 export const brawlerKickFlightMs = (dist: number): number =>
   Math.max(BRAWLER_TECHS.kick.windupMs, Math.min(BRAWLER_KICK_FLIGHT_MAX_MS, BRAWLER_TECHS.kick.windupMs * Math.max(0, dist) / 160));
 /** 飛び蹴りの倍率(何発目か=1..3)。社長承認2026-11-09 で 0.7/0.7/0.7 → 0.7/0.8/1.0。秘奥義の9連撃の蹴りは3発目扱い(締めの止め・big の押しと同じ)。 */
-export const BRAWLER_KICK_MULTS = [0, 0.7, 0.8, 1.0] as const;
+export const BRAWLER_KICK_MULTS = [0, 0.7, 0.8, 1.2] as const; // 3発目 1.0→1.2(社長指示2026-11-11「威力も少し上げて」)
+/** ★飛び蹴りの3発目の押しの強さ(普通のノックバックの何倍か)。社長指示2026-11-11「3段目の飛び蹴りはもう少し敵を吹き飛ばして」で 1→1.8。吹き飛ばし(big=4)ではない=ボス級の扱い・固まりの決まりは普通の押しのまま。 */
+export const BRAWLER_KICK3_KB_POWER = 1.8;
+/** ★飛び蹴りの3発目の後隙の倍率(社長指示2026-11-11「技後の隙も少し伸ばして」)。1・2発目は今どおり。 */
+export const BRAWLER_KICK3_RECOVERY_MULT = 1.4;
 export const brawlerKickMult = (kickN: number): number => BRAWLER_KICK_MULTS[Math.max(1, Math.min(3, Math.round(kickN)))];
 export let BRAWLER_KICK_CHAIN_MS = 500; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_KICK_MAX = 3;
@@ -361,7 +365,8 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
     ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined, stepBuffer: undefined,
     // 飛び蹴りの3発目は溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。
     kickChargeMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0,
-    windupMs: spec.windupMs + (kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0), recoveryMs: spec.recoveryMs,
+    windupMs: spec.windupMs + (kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0),
+    recoveryMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? Math.round(spec.recoveryMs * BRAWLER_KICK3_RECOVERY_MULT) : spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false, kickReaimed: false,
     // 技の後は1段目(§7-5)。
     nextStage: 1, chainUntil: 0,
@@ -1363,7 +1368,10 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
       }
       if (!hit) return { ...base, tex: 'ready', jump: (big ? 30 : 18) * Math.sin(Math.PI * Math.min(1, pre)), lean: 0.55, push: 8 };
       const th = 1 - easeOut(post);
-      return { ...base, tex: post < 0.45 ? 'swing' : 'ready', lean: 0.25 * th, push: 6 * th, sqY: 1 - 0.12 * th, sqX: 1 + 0.08 * th };
+      // ★蹴った後は、すぐしゃがみの絵へ(社長指示2026-11-11「全段、蹴った後、一瞬しゃがみの絵を入れて。隙は変えず。蹴ったまま落ちていくのが変」)。
+      //   当たった瞬間(止めの間)は振り上げの絵のまま → 後隙に入ったらすぐしゃがんで着地する(深く沈んで戻る=慣性)。旧は後隙の前半45%が振り上げの絵だった。
+      const land = Math.sin(Math.PI * Math.min(1, post / 0.6)) * (post < 0.6 ? 1 : 0);
+      return { ...base, tex: post < 0.1 ? 'swing' : 'ready', lean: 0.25 * th, push: 6 * th, sqY: 1 - 0.12 * th - 0.14 * land, sqX: 1 + 0.08 * th + 0.1 * land };
     }
     default: return { ...base, tex: 'ready' };
   }

@@ -9,7 +9,7 @@ import {
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
-  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
+  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_KICK3_RECOVERY_MULT, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
@@ -30,11 +30,15 @@ describe('格闘: 表', () => {
     expect(BRAWLER_STAGES.map(s => s.kb)).toEqual(['small', 'small', 'normal', 'small', 'big']); // 社長指示2026-11-10「どの攻撃も押さない攻撃でも多少押そう」(旧 1・2・4段目は none)
     expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 150, 150, 220]); // 止めは係数を掛けない表(社長承認2026-11-08: 旧 45/45/80/90/140)
   });
-  it('技の倍率(大踏み潰し3.5=社長裁定2026-11-11・気功1.8・飛び蹴り0.7/0.8/1.0・秘奥義の締め3.6)', () => {
+  it('技の倍率(大踏み潰し3.5・気功1.8・飛び蹴り0.7/0.8/1.2=3発目は社長指示2026-11-11・秘奥義の締め3.6)', () => {
     expect([BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT]).toEqual([3.5, 1.8, 3.6]);
-    expect([1, 2, 3].map(brawlerKickMult)).toEqual([0.7, 0.8, 1.0]);
+    expect([1, 2, 3].map(brawlerKickMult)).toEqual([0.7, 0.8, 1.2]);
+    // 3発目だけ後隙が長い(社長指示2026-11-11「技後の隙も少し伸ばして」)。1・2発目は今どおり。
+    const k1 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1), k3 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 3);
+    expect(k3.recoveryMs).toBe(Math.round(k1.recoveryMs * BRAWLER_KICK3_RECOVERY_MULT));
+    expect(k3.recoveryMs).toBeGreaterThan(k1.recoveryMs);
     expect(brawlerKickMult(0)).toBe(0.7); // 範囲外は端へ寄せる
-    expect(brawlerKickMult(9)).toBe(1.0);
+    expect(brawlerKickMult(9)).toBe(1.2);
   });
   it('技の時間とポイントは §8-3 / §0 どおり', () => {
     expect(BRAWLER_TECHS.guard.windupMs + BRAWLER_TECHS.guard.recoveryMs).toBe(1000);

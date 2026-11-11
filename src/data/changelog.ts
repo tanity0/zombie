@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5483', items: [
+    '飛び蹴りの三発目が強くなり、敵をもう少し吹き飛ばす。蹴った後の隙は少し長い',
+    '飛び蹴りは、蹴った後すぐにしゃがんで着地する',
+  ] },
   { version: '0.25.5482', items: [
     '格闘で松明や卵などを叩いた時に、当たりの音が鳴らなかったのが直った',
   ] },
