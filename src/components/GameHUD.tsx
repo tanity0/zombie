@@ -121,8 +121,10 @@ const GameHUD: React.FC = () => {
   // コンボ窓(meleeFinishComboUntil)が有効な間だけ出す(7s窓・gameTimeは秒粒度なので失効後~1sで消える)。
   // 社長裁定2026-09-13「見せる数字をどうするかってだけ」: 左上の COMBO に見せるのは**近接ヒットの連続数**(表示専用・3秒窓)。
   // スキル/スコア/ダンス段階が読むフィニッシュ回数(meleeFinishComboCount)は中身のまま=ここでは読まない。
-  const rhythmCombo = useGameStore(state => state.meleeHitComboCount);
-  const rhythmComboUntil = useGameStore(state => state.meleeHitComboUntil);
+  // ★社長裁定2026-11-11「3;はい」: 左上の COMBO は**スキル・スコア・四神舞が読む回数**(meleeFinishComboCount=フィニッシュの回数。
+  //   ナイフマスター持ちは近接の当たりも足される)を見せる=コンボマスター等の効き具合が数字で読める。旧(2026-09-13)は近接ヒットの連続数。
+  const rhythmCombo = useGameStore(state => state.meleeFinishComboCount);
+  const rhythmComboUntil = useGameStore(state => state.meleeFinishComboUntil);
   // 格闘を装備している間は左上の COMBO を出さない(近接枠の左の「N HIT」だけにする・社長承認2026-11-08・research/BRAWLER.md §9-58)。
   // 隠すのは表示だけ(集計・四神などの仕組みはそのまま)。購読は真偽値1つ。
   const brawlerHudMode = useGameStore(state => isBrawlerMode(state.player));

@@ -1,5 +1,17 @@
 # Development Log
 
+## v0.25.5478 — 左上の COMBO=スキルが読む回数/「N HIT」: 気絶・紫はつながる・振りの最中は数えない【2026-11-11 15:57 JST】
+- 社長裁定(2026-11-11「1;はい 2;はい 3;はい」)。仕様=`research/BRAWLER.md` §23-1。
+  1. 「N HIT」: 攻撃を振っている最中の敵への当たりの止めは、つながりに数えない(`brawlerLinkFree`)。
+  2. 「N HIT」: 気絶・紫の間はつながっている(固まりが明けても切れない)。
+  3. 左上の COMBO が見せる数を、近接ヒットの連続数(`meleeHitComboCount`)から、スキル・スコア・四神舞が読む回数(`meleeFinishComboCount`)へ。節目の音と通信の板の位置のずらしも同じ数へ。
+- 社長の質問「スキル取ったら勝手にそれに切り替わってないっけ?」への事実: 切り替わっていなかった(スキルの有無に関係なく近接ヒットの連続数を出していた)。
+- 変えていない物: スキルの効き方・回数の数え方・窓の長さ・判定・ダメージ。格闘の間は左上の COMBO を出さない点も同じ。
+- 確認: typecheck・lint 0・循環なし。vitest(brawlerCombo・brawler*・store/brawler*)。画は撮っていない(表示の部品は同じ・読む数だけ変えた)。実機は未確認。
+- 監査: 付けない(判断と理由: 社長が選んだ案の実行で、既存の表示が読む数の差し替えと、表示専用の数の見方2点。新しい仕組み・新しい見え方は足していない)。
+- 憲法第4条・第5条: 抵触なし。状態変化: 左上の COMBO の中身 → 裁定済み・実装済み(実機確認待ち)。
+- 変更: `src/components/GameHUD.tsx`・`src/components/NpcDialogue.tsx`・`src/hooks/useGameLoop.ts`・`src/utils/brawlerCombo.ts`・`brawlerCombo.test.ts`・`research/BRAWLER.md`・`src/data/changelog.ts`・`package.json`。
+
 ## v0.25.5477 — 格闘: 「N HIT」=つながっているコンボの数/拳鬼: 撃たれ続けている時は溜めを半分【2026-11-11 15:48 JST】
 - 社長指示①: 「ではその意味のない数字のどっちか使おう」(つながっているコンボの数を新しく足さず、表示専用の数字を差し替える)。仕様=`research/BRAWLER.md` §23。
   - 使ったのは近接枠の左の「N HIT」(格闘の間に出ている方)。左上の COMBO は触っていない。

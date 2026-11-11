@@ -273,6 +273,14 @@ describe('つながっているコンボの数(「N HIT」の表示)', () => {
     expect(brawlerLinkOnHit({ brComboHits: 4, brLockUntil: 4000, hitStunUntil: 50, brLiftUntil: 50, brHoldUntil: 50 }, 5000, 100)).toBe(1); // 全部明けていた
     expect(brawlerLinkOnHit({ brComboHits: 4 }, 5000, 100)).toBe(1);
   });
+  it('気絶・紫の間はつながっている(固まりが明けていても)・攻撃を振っている最中の当たりの止めはつながりに数えない', () => {
+    expect(brawlerLinkOnHit({ brComboHits: 3, stunUntil: 6000 }, 5000, 100)).toBe(4);
+    expect(brawlerLinkOnHit({ brComboHits: 3, bossFullStunUntil: 6000 }, 5000, 100)).toBe(4);
+    expect(brawlerLinkOnHit({ brComboHits: 3, stunUntil: 4000 }, 5000, 100)).toBe(1); // 気絶が明けた
+    expect(brawlerLinkOnHit({ brComboHits: 3, hitStunUntil: 200, aiPhase: 'attack' }, 5000, 100)).toBe(1); // 振りの最中=止まっていない
+    expect(brawlerLinkOnHit({ brComboHits: 3, hitStunUntil: 200, aiPhase: 'windup' }, 5000, 100)).toBe(4); // 溜めは止まる
+    expect(brawlerLinkOnHit({ brComboHits: 3, brLockUntil: 6000, aiPhase: 'attack' }, 5000, 100)).toBe(4); // 固まりが書かれているなら動けない
+  });
   it('画面に出す数=生きている・いま動けない敵のうち、いちばん多くつながっている数', () => {
     const held = { health: 10, brHoldUntil: 200 };
     expect(brawlerLinkMax([], 5000, 100)).toBe(0);

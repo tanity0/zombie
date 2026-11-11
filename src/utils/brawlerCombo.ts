@@ -391,10 +391,28 @@ export interface BrawlerLinkFields {
   brLockUntil?: number;
   hitStunUntil?: number;
   brLiftUntil?: number;
+  // 気絶・紫と、攻撃の振りの最中かを見る欄(brawlerPhaseKind と同じ物)。
+  type?: EnemyType;
+  aiPhase?: string;
+  chaffMove?: string;
+  biteAt?: number;
+  stunUntil?: number;
+  bossFullStunUntil?: number;
+  bossState?: string;
 }
-/** いま動けるか(格闘の固まり・当たりの止め・浮きのどれでもない)。 */
-export const brawlerLinkFree = (e: BrawlerLinkFields, gameTime: number, nowMs: number): boolean =>
-  !brawlerHoldClockAlive(e, gameTime, nowMs) && !(e.hitStunUntil !== undefined && nowMs < e.hitStunUntil) && !brawlerAirborne(e, nowMs);
+/**
+ * いま動けるか。動けない=格闘の固まり・浮き・**気絶/紫(完全気絶)**・当たりの止め。
+ * ★社長裁定2026-11-11(「1;はい」「2;はい」):
+ *  - 気絶・紫の間は、固まりが明けても「動けない」=殴り続ければ数が積み上がる。
+ *  - 攻撃を振っている最中(brawlerPhaseKind='active')の当たりの止めは「動けない」に数えない(雑魚は振りの最中は止まらない=実際は振り続けている)。
+ */
+export const brawlerLinkFree = (e: BrawlerLinkFields, gameTime: number, nowMs: number): boolean => {
+  if (brawlerHoldClockAlive(e, gameTime, nowMs) || brawlerAirborne(e, nowMs)) return false;
+  if (e.stunUntil !== undefined && gameTime < e.stunUntil) return false;
+  if (e.bossFullStunUntil !== undefined && gameTime < e.bossFullStunUntil) return false;
+  if (e.hitStunUntil !== undefined && nowMs < e.hitStunUntil && brawlerPhaseKind(e, gameTime) !== 'active') return false;
+  return true;
+};
 /** いまその敵につながっている数(動けるなら 0)。 */
 export const brawlerLinkNow = (e: BrawlerLinkFields, gameTime: number, nowMs: number): number =>
   (e.brComboHits !== undefined && !brawlerLinkFree(e, gameTime, nowMs) ? e.brComboHits : 0);

@@ -318,7 +318,7 @@ export const NpcDialogue = () => {
   // ショップが開いている間の「連れて歩く」の返事は、ショップのパネルの中に出す(ShopMenu)。ここでは出さない
   // (HUD の会話はショップの暗幕の下で読めず、PC の 720px ではパネルの縁と重なっていた)。閉じたら残りの尺だけここに出る。
   const npc = useGameStore(s => (s.showShopMenu && s.npcDialogue && isFollowToggleLineText(s.npcDialogue.text) ? null : s.npcDialogue));
-  const comboActive = useGameStore(s => s.meleeHitComboCount >= 2 && s.meleeHitComboUntil >= s.gameTime); // HUD の COMBO(近接ヒット表示)と同じ条件
+  const comboActive = useGameStore(s => s.meleeFinishComboCount >= 2 && s.meleeFinishComboUntil >= s.gameTime); // HUD の COMBO(スキルが読むコンボの回数)と同じ条件
   const bannerActive = useGameStore(s => !!s.eventBannerText && s.eventBannerUntil >= s.gameTime);
   const landscape = useHudLandscape();
   const hasProc = useGameStore(s => s.skillProcFeed.length > 0); // 会話が無くてもスキル発動は同じ位置に出す
