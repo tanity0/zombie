@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5492', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5491', items: [
     '格闘に新しい技「踵落とし」。空中蹴りの後に下を入れると、脚を振り上げて相手を真下へ叩きつける',
     '踵落としは技ポイントを一つ多く使う。当てた後は大踏み潰しへつなげる',

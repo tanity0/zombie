@@ -18,7 +18,7 @@ describe('sortieBossRoster(出撃前のボス一覧)', () => {
     for (const st of ['stage-2', 'stage-6', 'stage-7', 'stage-tutorial']) expect(keys(st)).not.toContain('phantom-brawler');
     const b = sortieBossRoster('stage-3', none).find(x => x.encounterKey === 'phantom-brawler')!;
     expect(b.kind).toBe('phantom');
-    expect(b.label).toBe('拳鬼(幻影)');
+    expect(b.label).toBe('孫悟空(幻影)'); // プレイヤー向けの名前は孫悟空(社長指示2026-11-11・コードの呼び名は拳鬼のまま)
     expect(b.iconSprite).toBeTruthy();
   });
   it('研究所跡(ステージ2)は城のボスを出さず、隠しボスだけ', () => {

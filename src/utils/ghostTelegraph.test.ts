@@ -28,7 +28,7 @@ import type { Enemy } from '../types/game';
 //  - mimirLaserTrack.ts: §6.33 LASER-TRACK の遷移パッチ('laser-broken' はここが正本。
 //    v0.25.2938 監査指摘8: 状態名が純関数側に書かれると走査の外に出る=足し忘れると網が破れる)
 const SOURCES = import.meta.glob<string>(
-  ['../store/gameStore.ts', './angelBossTick.ts', '../hooks/useGameLoop.ts', './idolTick.ts', './mimirLaserTrack.ts', './heroTick.ts', './libertyTick.ts'],
+  ['../store/gameStore.ts', './angelBossTick.ts', '../hooks/useGameLoop.ts', './idolTick.ts', './mimirLaserTrack.ts', './heroTick.ts', './libertyTick.ts', './groundJump.ts'], // groundJump=ハンター・拳鬼の跳びの共通の一歩(着地の 'recover' はここで書く)
   { query: '?raw', import: 'default', eager: true },
 );
 

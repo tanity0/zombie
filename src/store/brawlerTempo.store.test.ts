@@ -67,7 +67,7 @@ describe('テンポ係数の表(純関数)', () => {
     // ★§19: 固まりの基本の長さの表・減衰の時計・同じ技の罰は撤去 / ★§20: 余白の定数も撤去(固まりの長さ=止め+技ごとの固まりの表 v.holds)。
     expect([c.BRAWLER_COMBO_GAP_MS, c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_JUGGLE_MIN_MS, c.BRAWLER_JUGGLE_DROP_MS])
       .toEqual([700, 300, 140, 200]); // 流れの切れは社長承認2026-11-09 で 600→700
-    expect(v.holds).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 250, kick2: 310, kick3: 0, stomp: 230, kiko: 0 }); // §20-2(係数1.0の値)
+    expect(v.holds).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 250, kick2: 310, kick3: 0, heel: 300, stomp: 230, kiko: 0 }); // §20-2(係数1.0の値)
   });
   it('係数1.3 = 各時間の1.3倍(四捨五入)。距離・倍率・ポイントは変えない', () => {
     const v = brawlerTimesAt(1.3);
@@ -88,7 +88,7 @@ describe('テンポ係数の表(純関数)', () => {
     const c = brawlerComboTimesAt(1.3);
     expect(v.BRAWLER_CANCEL_WINDOW_MS).toBe(195);
     expect(c.BRAWLER_SECRET_HOLD_MS).toBe(390);
-    expect(v.holds).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 325, kick2: 403, kick3: 0, stomp: 299, kiko: 0 }); // 係数1.3(四捨五入)
+    expect(v.holds).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 325, kick2: 403, kick3: 0, heel: 390, stomp: 299, kiko: 0 }); // 係数1.3(四捨五入)
     expect(brawlerTempoMs(585, 1.3)).toBe(761);
   });
   it('当てた瞬間の止めは係数を掛けない別の表: 弱90 / 強・技150 / 締め220', () => {

@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5492 — テストの直し5件(ゲームの挙動は変えていない)【2026-11-11 19:43 JST】
+- v0.25.5491 を、テストが落ちたまま push した(確認の命令を `;` でつないでいて、失敗で止まらなかった)。直後に気づいて直した。
+- 直した物: ①`brawlerTempo.store.test.ts` 2件(固まりの表に踵落としの行)=v0.25.5491 で壊した。
+  ②`ghostTelegraph.test.ts`(走査の対象に `groundJump.ts` を足す=跳びの着地 'recover' を書く所を共通の一歩へ移した時の漏れ)
+  ③`meleeSwingCommit.test.ts`(構えで雑魚を受けた瞬間に窓を閉じる所を台帳へ) ④`sortieBossRoster.test.ts`(表示名 孫悟空)。②〜④は前の版からの持ち越し。
+- 確認: `npx vitest run --dir src src/utils` 全部通過・格闘の store テスト通過・typecheck・eslint OK。`src/store` 全体は回していない。
+- 教訓: push の前の確認は `&&` でつなぐ(失敗したら commit まで進ませない)。
+- 状態変化: なし。
+
 ## v0.25.5491 — 踵落とし(飛び蹴り2発目の後に下)・浮いている間の絵を 1.25倍に【2026-11-11 19:35 JST】
 - 社長指示2026-11-11「3段目派生(3段目の時に下フリック):踵落とし …」+裁定「2発目の後に下」/「浮いてる時の絵、もう少し敵も味方も分かりやすく大きく」。仕様の正は `research/BRAWLER.md` §29-3・§29-4。
 - 踵落とし: 状態は飛び蹴りの3発目のまま(`kickHeel`)。入力=`brawlerHeelInput`(2発目の続きの下)・値段=飛び蹴り+1(`brawlerHeelCost`)・名札 `heel`・

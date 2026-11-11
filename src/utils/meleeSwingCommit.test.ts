@@ -78,6 +78,10 @@ const WRITE_SITES: readonly WriteSite[] = [
     field: 'counterWindowEnd', where: '格闘の構えの終わり(tickBrawler)', stamped: false,
     why: '構えの窓を閉じる側=振っていない',
   },
+  {
+    field: 'counterWindowEnd', where: '構えで雑魚を受けた瞬間の大踏み潰し(構えを受けで終える)', stamped: false,
+    why: '構えの窓を閉じる側=振っていない(潰しそのものは代金なしの技=入力ではない)',
+  },
   // ★v0.25.3869(社長裁定「近接前隙を200にして」・SAME_ARENA.md §7): 指を離した瞬間の起点。
   // 判定は MELEE_WINDUP_MS 後に triggerCounter が解決するので、**打刻もそちらで1回だけ**打つ。
   // 前隙中にカウンターされた振りは解決されない=打刻も出ない(振りが中断されたのだから正しい)。
