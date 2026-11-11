@@ -4719,18 +4719,6 @@ const brawlerFinishLockPatch = (enemy: Enemy, bs: BrawlerStrikeOpts, gameTime: n
     canHold: BRC.brawlerPhaseKind(enemy, gameTime) !== 'active', airborneAfter: false, countHit: false, // 会心のフィニッシュは減衰の数に入れない(§20-4)
   }).patch;
 };
-/** ★ステップで後隙を取り消した瞬間に、確定の固まりをそこで切る(§19-3: 固まりは次に動けるようになる時まで)。 */
-const brawlerCutLocks = (set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
-  const st = useGameStore.getState();
-  const gameTime = st.gameTime;
-  if (!st.enemies.some(e => BRC.brawlerLockAlive(e, gameTime))) return;
-  set(state => ({
-    enemies: state.enemies.map(e => {
-      const patch = BRC.brawlerLockCutPatch(e, gameTime);
-      return patch ? { ...e, ...patch } : e;
-    }),
-  }));
-};
 /** 格闘の当たりをヒット数の表示へ足す(research/BRAWLER.md §11-4)。 */
 const brawlerNoteFlowHits = (set: (fn: (s: GameState) => Partial<GameState>) => void, n: number): void => {
   if (!(n > 0)) return;
@@ -4822,9 +4810,8 @@ const startBrawlerStep = (
   const now = Date.now();
   const ms = BR.BRAWLER_STEP_MS;
   const v = BR.brawlerStepSpeed(BR.BRAWLER_STEP_PX, ms);
-  // ★後隙を取り消したステップ(当たった1〜4段目から)=ここで次に動けるようになった: 確定の固まりをここで切る(§19-3)。
-  //   切らないと、3・4段目の固まりが残り、ステップの後に待機から出した技(大踏み潰し・気功)がつながってしまう。
-  if (s.phase !== 'idle') brawlerCutLocks(set);
+  // ★固まりは切らない(§20-8・社長承認2026-11-11)。代わりに、ステップの最中は段も技も出せない(BR.brawlerStepping)=
+  //   ステップの長さぶん遅れてから出す。その遅れの後に次の当たりが固まりの内に入るかは、技ごとの数字で決まる。
   // 加速→減速(正弦の1山)で踏み込む。壁・木は格闘の速い踏み込みと同じく6px 刻みで解く(movePlayer の 'step')。無敵は付けない。
   setBrawler(set, BR.brawlerStepStart(s, t, now), {
     lungeVx: ux * v, lungeVy: uy * v, lungeUntil: now + ms, lungeMs: ms, lungeShape: 'step', lungeHoldUntil: 0,
@@ -10973,7 +10960,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (s.techBuffer) return false;
     const d = BR.brawlerPressDecision(s, st.gameTime);
     if (d === 'drop') return false;
-    if (d === 'buffer') { setBrawler(set, { ...s, buffered: true, stepBuffer: undefined }); return true; } // 先行入力は1つだけ(最後の入力を優先・§12-3b)
+    if (d === 'buffer') { setBrawler(set, { ...s, buffered: true, stepBuffer: undefined, stepHeld: BR.brawlerStepping(s, st.gameTime) }); return true; } // 先行入力は1つだけ(最後の入力を優先・§12-3b)。ステップの最中に押した物は、ステップの終わりに出す(§20-8)
     startBrawlerAttack(get, set, s);
     return true;
   },
@@ -11006,7 +10993,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 取り消しの受付が開いた瞬間に出す。道に無い技は覚えない(下で出せない扱い)。当たらなかった時は捨てる(後隙の終わりに勝手に出さない)。
     // 値段は出す瞬間に払う。覚えている間の通常攻撃の先行入力は捨てる(技を優先)。
     if (kind && BR.brawlerShouldBufferTech(s, kind, t)) {
-      setBrawler(set, { ...s, techBuffer: kind, buffered: false, stepBuffer: undefined }); // 先行入力は1つだけ(最後の入力を優先・§12-3b)
+      setBrawler(set, { ...s, techBuffer: kind, buffered: false, stepBuffer: undefined, stepHeld: BR.brawlerStepping(s, t) }); // 先行入力は1つだけ(最後の入力を優先・§12-3b)
       return true;
     }
     if (!kind) {
@@ -11081,7 +11068,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (BR.brawlerFlowBreaksNow(s0, t)) { setBrawler(set, { ...s0, flowBrokenAt: t }); return; }
     // ★覚えたステップ(§12-3b): 受け付けられるようになった瞬間に出す(後隙の取り消し・待機・前のステップの終わり)。期限切れは捨てる。
     if (s0.stepBuffer) { const r = settleBufferedBrawlerStep(get, set, s0); if (r === 'fire' || r === 'expire') return; }
-    if (s0.phase === 'idle') return;
+    if (s0.phase === 'idle') {
+      // ★ステップの最中に覚えた通常攻撃・技(§20-8): ステップが終わった瞬間に、待機から出す。
+      //   出せない状態(掴まれ・シーカー・乗車・対人の紫など=関所が閉じている)なら捨てる(技の覚え・行動の終わりの先行入力と同じ扱い。
+      //   残すと、解放された瞬間に、ずっと前に押した攻撃が勝手に出る・検収監査 A-2)。
+      if (BR.brawlerStepHeldPressFire(s0, t)) {
+        if (brawlerGateOk(get)) startBrawlerAttack(get, set, { ...s0, buffered: false, stepHeld: false });
+        else setBrawler(set, { ...s0, buffered: false, stepHeld: false });
+        return;
+      }
+      const bd = BR.brawlerTechBufferDecision(s0, t);
+      if (bd === 'fire') { fireBufferedBrawlerTech(get, set, { ...s0, stepHeld: false }, false); return; }
+      if (bd === 'drop') setBrawler(set, { ...s0, techBuffer: undefined });
+      return;
+    }
     // ★飛び蹴りの3発目: 溜めが明けて飛び出す瞬間に、狙った敵の今の位置へ飛ぶ先を取り直す(1回だけ・research/BRAWLER.md §19-10)。
     //   当たる時刻(前隙の終わり)は変えない=残りの飛ぶ時間で、取り直した距離を詰める。敵が居ない・狙えない時は取り直さない(今の飛ぶ先のまま)。
     if (BR.brawlerKickReaimDue(s0, p.lungeHoldUntil ?? 0, now)) {

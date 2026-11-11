@@ -361,7 +361,8 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
  *  start = いま出す / buffer = 先行入力として覚える / drop = 受付の外(捨てる)。
  */
 export const brawlerPressDecision = (s: BrawlerState, t: number): 'start' | 'buffer' | 'drop' => {
-  if (s.phase === 'idle') return 'start';
+  // ステップの最中は出せない(§20-8): 押した通常攻撃を1つ覚えて、ステップが終わった瞬間に出す。
+  if (s.phase === 'idle') return brawlerStepping(s, t) ? (s.buffered ? 'drop' : 'buffer') : 'start';
   if (s.buffered) return 'drop'; // 1つだけ
   const el = brawlerElapsed(s, t);
   const total = brawlerTotalMs(s);
@@ -662,6 +663,8 @@ export const brawlerSecretCarry = (s: Pick<BrawlerState, 'phase' | 'tech' | 'sec
  * 構えの間は構えの延長だけ(覚えない)。新しい入力は覚えている入力を上書きする。
  */
 export const brawlerShouldBufferTech = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
+  // ステップの最中に押した技は覚える(§20-8=ステップが終わった瞬間に、待機から出す)。
+  if (!brawlerActing(s) && brawlerStepping(s, t) && !isBrawlerGuardingAt(s, t)) return true;
   if (!brawlerActing(s) || isBrawlerGuardingAt(s, t) || (s.phase === 'tech' && s.tech === 'guard')) return false;
   if (brawlerTechAllowed(s, kind, t)) return false;
   const from = brawlerRouteNodeOf(s);
@@ -677,12 +680,14 @@ export const brawlerShouldBufferTech = (s: BrawlerState, kind: BrawlerTechKind, 
 /**
  * 覚えた技の先行入力をどうするか(§19-2)。null=覚えていない / 'fire'=いま出す(受付が開いた)/ 'wait'=まだ / 'drop'=捨てる。
  * 当たらなかった(空振り・防がれた)・受付を過ぎた・待機へ戻った時は捨てる=後隙の終わりに勝手に出さない。
+ * 例外: ステップの最中に覚えた技(stepHeld)は、待機のままステップが終わるまで 'wait'、終わった瞬間に 'fire'(§20-8)。
  * (秘奥義の順番どおりの次の技=brawlerSecretCarry は 'wait' のまま行動の終わりまで残り、呼び手が待機へ戻った瞬間に出す。)
  */
 export const brawlerTechBufferDecision = (s: BrawlerState, t: number): 'fire' | 'wait' | 'drop' | null => {
   const k = s.techBuffer;
   if (!k) return null;
-  if (!brawlerActing(s)) return 'drop';
+  // 待機: ステップの最中に覚えた技(stepHeld)は、ステップが終わった瞬間に出す(§20-8)。それ以外は捨てる。
+  if (!brawlerActing(s)) return s.stepHeld ? (brawlerStepping(s, t) ? 'wait' : 'fire') : 'drop';
   if (brawlerTechAllowed(s, k, t)) return 'fire';
   return brawlerShouldBufferTech(s, k, t) ? 'wait' : 'drop';
 };
@@ -715,13 +720,15 @@ export const brawlerTechCancelOk = (s: BrawlerState, kind: BrawlerTechKind, t: n
 /**
  * 技を今出せるか(払える以外の条件・§19-1)。
  *  - 構えの間は構えの再入力(延長)だけ。
- *  - 待機からは何でも(今どおり)。
+ *  - 待機からは何でも(今どおり)。**ただしステップの最中は何も出せない**(§20-8=覚えて、ステップの終わりに出す)。
  *  - 飛び蹴りの連続(1・2発目 → 次の蹴り)は今どおり: 判定の後ならいつでも(当たりの止めの間も・当たっていなくても)。3発目(締め)からは出せない。
  *  - それ以外(通常→技・技→技)は取り消しの規則(brawlerTechCancelOk=道の上・当たった・受付の内)。
  */
 export const brawlerTechAllowed = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
   // 構えの間は構えの再入力(延長)だけ受け付ける(社長指示2026-11-07「カウンター中もカウンター入力を受け付ける(連続延長発動できる)」)。
   if (isBrawlerGuardingAt(s, t)) return kind === 'guard';
+  // ステップの最中は段も技も出せない(§20-8・社長承認2026-11-11=ステップでの取り消しに「隙と速さ」の代償を付ける)。
+  if (brawlerStepping(s, t)) return false;
   if (!brawlerActing(s)) return true;
   if (s.phase === 'tech' && s.tech === 'kick' && kind === 'kick') {
     return s.resolved && brawlerRouteAllows(brawlerTechNode('kick', s.kickN), brawlerTechNode('kick', s.kickN + 1)) && s.kickN < BRAWLER_KICK_MAX;
@@ -778,6 +785,12 @@ export const brawlerStepFactor = (p: number): number => (p <= 0 || p >= 1 ? 0 : 
 /** 正弦の1山で距離 dist を ms で進む最大の速さ(px/s)。平均は最大の 2/π。 */
 export const brawlerStepSpeed = (dist: number, ms: number): number =>
   Math.max(0, dist) / Math.max(0.001, (ms / 1000) * (2 / Math.PI));
+/** ステップの最中か(gameTime)。この間は通常攻撃も技も出せない(§20-8)。 */
+export const brawlerStepping = (s: Pick<BrawlerState, 'stepUntil'>, t: number): boolean =>
+  s.stepUntil !== undefined && t < s.stepUntil;
+/** ステップの最中に覚えた通常攻撃を、いま出すか(ステップが終わった・待機・§20-8)。 */
+export const brawlerStepHeldPressFire = (s: BrawlerState, t: number): boolean =>
+  s.phase === 'idle' && s.buffered && s.stepHeld === true && !brawlerStepping(s, t);
 /**
  * ステップを出せるか(§12-3・§19-1)。待機からは今どおり。後隙を取り消せるのは**当たった1〜4段目の後隙だけ**(止めが明けた後)。
  * 技の後隙・5段目・空振り(防がれた当たり)の後隙は取り消せない=「技のあと、ちゃんと隙」(旧: 通常攻撃と技の後隙ならどれでも取り消せた)。
@@ -795,7 +808,7 @@ export const brawlerStepAllowed = (s: BrawlerState, t: number): boolean => {
 /** ステップを始めた状態。後隙を取り消す=その行動を終えた扱い(つながり・秘奥義の数えは終わった時と同じ)。先行入力は捨てる。 */
 export const brawlerStepStart = (s: BrawlerState, t: number, now: number): BrawlerState => {
   const base = s.phase === 'idle' ? s : brawlerFinish(s, t).state;
-  return { ...base, buffered: false, techBuffer: undefined, stepBuffer: undefined, stepUntil: t + BRAWLER_STEP_MS, stepAt: now };
+  return { ...base, buffered: false, techBuffer: undefined, stepBuffer: undefined, stepHeld: false, stepUntil: t + BRAWLER_STEP_MS, stepAt: now };
 };
 
 /** ステップの先行入力を覚えておく長さ(ms・gameTime)。成立からこの時間以内に受け付けられるようになれば出す(§12-3b・叩き台)。 */

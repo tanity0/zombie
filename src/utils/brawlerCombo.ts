@@ -357,13 +357,6 @@ export const brawlerLockOnHit = (
   };
 };
 /**
- * プレイヤーが後隙をステップで取り消した(=次に動けるようになった)瞬間に、確定の固まりをそこで切る(§19-3 の考え方)。
- * 切らないと、当てた技の固まり(止め+技ごとの固まり=§20-2)が残り、ステップで後隙を丸ごと飛ばしてから待機で出した技が、どれでもつながってしまう
- * (§20-6b: ステップの扱いは社長の返事待ち=今はここで切る)。
- */
-export const brawlerLockCutPatch = (e: Pick<BrawlerLockFields, 'brLockUntil'>, gameTime: number): Pick<BrawlerLockFields, 'brLockUntil'> | null =>
-  (brawlerLockAlive(e, gameTime) ? { brLockUntil: gameTime - brawlerLockFrameMs } : null); // その場で明ける(1フレーム遅れの分を引く)
-/**
  * ④ コンボの区切り(毎フレーム・敵ごと)。その敵が格闘の固まりでも浮きでもなくなった時(当たりの止めは固まりに含む・押されているだけの時は含まない)に
  * コンボは終わり、固まりの数えを消す。⑤ ボス級・強個体はそこから固まらない時間が始まる(雑魚は無し)。null=まだ続いている/コンボの外。
  * 会心の気絶・カウンターの足止めは別の仕組みなので数えない。

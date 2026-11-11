@@ -509,30 +509,80 @@ describe('§20-6-4 入らない道・つながらない物', () => {
       expect(brokeAt + 1, `${foe}: not before the 7th hit`).toBeGreaterThanOrEqual(7);
     }
   });
-  for (const stage of [3, 4] as const) for (const tech of ['stomp', 'kiko'] as const) {
-    it(`${stage}段目からステップで取り消して${tech === 'stomp' ? '大踏み潰し' : '気功'}: 固まりはステップの瞬間に切れる=つながらない(ボス級の溜めの相・雑魚)`, () => {
-      for (const foe of ['hunter-windup', 'zombie-move'] as const) {
-        setup();
-        spawnFoe(foe);
-        const w = watcher();
-        hitStages(stage, w);
-        for (let k = 0; k < 100 && !brawlerStepAllowed(br(), gt()); k++) adv(() => w.frame());
-        expect(brawlerLockAlive(en(), gt())).toBe(true);
-        expect(useGameStore.getState().brawlerStep(-1, 0)).toBe(true);
-        expect(br().phase).toBe('idle');
-        expect(brawlerLockAlive(en(), gt()), `${foe}: lock cut at the step`).toBe(false);
-        const before = w.hits;
-        // ステップの後、相手の方を向き直して技(届かなくてもよい=固まりが切れていることを見る)
-        expect(doTech(tech)).toBe(true);
-        // 技が出て当たる(か外れる)までの間、確定の固まりは無い(当たった後は、その当たりの規則で書かれることがある=そこで見るのをやめる)
-        for (let k = 0; k < 120 && w.hits === before; k++) {
-          adv(() => w.frame());
-          if (w.hits === before) expect(brawlerLockAlive(en(), gt()), `${foe}: no lock while the tech comes out`).toBe(false);
-        }
-        if (foe === 'hunter-windup') expect(w.freeBeforeHit[before] ?? 1, 'boss can move before the tech').toBeGreaterThan(0);
+  // ★§20-8(社長承認2026-11-11): ステップで後隙を取り消しても固まりは切らない。代わりに、ステップの最中は段も技も出せない
+  //   (押した物を1つ覚えて、ステップが終わった瞬間に出す)。その遅れの後に入るかは、技ごとの数字で決まる。
+  for (const [stage, connects] of [[3, true], [4, true], [1, false]] as const) {
+    it(`${stage}段目→ステップ→大踏み潰し: 固まりは切れない・ステップの最中は出ない(覚える)・終わった瞬間に出る。${connects ? '入る' : '入らない(固まりが先に明ける)'}(ボス級の溜めの相)`, () => {
+      setup();
+      spawnFoe('hunter-windup');
+      const w = watcher();
+      hitStages(stage, w);
+      for (let k = 0; k < 100 && !brawlerStepAllowed(br(), gt()); k++) adv(() => w.frame());
+      expect(brawlerLockAlive(en(), gt())).toBe(true);
+      expect(useGameStore.getState().brawlerStep(-1, 0)).toBe(true);
+      expect(br().phase).toBe('idle');
+      expect(brawlerLockAlive(en(), gt()), 'the lock is not cut by the step').toBe(true);
+      const stepEnd = br().stepUntil!;
+      const before = w.hits;
+      // ステップの最中に押した大踏み潰し: 出ない・覚える
+      expect(doTech('stomp')).toBe(true);
+      expect(br().phase, 'no tech during the step').toBe('idle');
+      expect(br().techBuffer).toBe('stomp');
+      // ステップが終わるまで待機のまま → 終わった瞬間に出る
+      let startedAt = -1;
+      for (let k = 0; k < 200 && w.hits === before; k++) {
+        adv(() => w.frame());
+        if (startedAt < 0 && br().phase === 'tech') startedAt = gt();
       }
+      expect(startedAt, 'the buffered tech starts when the step ends').toBeGreaterThanOrEqual(stepEnd);
+      expect(startedAt - stepEnd, 'and not later than a couple of frames').toBeLessThanOrEqual(60);
+      expect(w.hits, 'the stomp lands').toBe(before + 1);
+      // 入る=当たる直前まで固まっていた / 入らない=当たる前に動けた
+      if (connects) expect(w.freeBeforeHit[before] ?? 0, 'held until the stomp lands').toBe(0);
+      else expect(w.freeBeforeHit[before] ?? 0, 'the boss can move before the stomp lands').toBeGreaterThan(0);
     });
   }
+  it('1段目→ステップ→次の段(2段目)は入る(固まり390の内・余り約78ms)。ステップで回り込んでも段の続きがつながる', () => {
+    setup();
+    spawnFoe('hunter-windup');
+    const w = watcher();
+    hitStages(1, w);
+    for (let k = 0; k < 100 && !brawlerStepAllowed(br(), gt()); k++) adv(() => w.frame());
+    expect(useGameStore.getState().brawlerStep(0, -1)).toBe(true);
+    const before = w.hits;
+    expect(useGameStore.getState().brawlerPress()).toBe(true); // ステップの最中に押す=覚える
+    expect(br().phase).toBe('idle');
+    for (let k = 0; k < 120 && w.hits === before; k++) adv(() => w.frame());
+    expect(w.hits, 'the next stage lands').toBe(before + 1);
+    expect(br().stage, 'it is the 2nd stage (the string continues)').toBe(2);
+    expect(w.freeBeforeHit[before] ?? 0, 'held until the 2nd stage lands').toBe(0);
+  });
+  it('ステップの最中に押した通常攻撃は、ステップが終わった時に出せない状態(掴まれている)なら捨てる。解放されても勝手に出ない(検収監査 A-2)', () => {
+    setup();
+    spawnFoe('hunter-windup');
+    expect(useGameStore.getState().brawlerStep(1, 0)).toBe(true);
+    expect(useGameStore.getState().brawlerPress()).toBe(true);
+    expect(br().buffered).toBe(true);
+    // 掴まれる(1.5秒)=関所が閉じる
+    useGameStore.setState(st => ({ player: { ...st.player, grabbedUntil: gt() + 1500 } }));
+    for (let k = 0; k < 40; k++) adv(() => {}); // ステップが終わる
+    expect(br().phase).toBe('idle');
+    expect(br().buffered, 'the held press is dropped while the gate is closed').toBe(false);
+    for (let k = 0; k < 150; k++) { adv(() => {}); expect(br().phase, 'nothing fires after the release').toBe('idle'); }
+  });
+  it('ステップの最中に押した通常攻撃は、ステップが終わった瞬間に出る(待機からのステップでも同じ)', () => {
+    setup();
+    spawnFoe('hunter-windup');
+    expect(useGameStore.getState().brawlerStep(1, 0)).toBe(true);
+    const stepEnd = br().stepUntil!;
+    expect(useGameStore.getState().brawlerPress()).toBe(true);
+    expect(br().phase, 'no attack during the step').toBe('idle');
+    expect(br().buffered).toBe(true);
+    let startedAt = -1;
+    for (let k = 0; k < 60 && startedAt < 0; k++) { adv(() => {}); if (br().phase === 'attack') startedAt = gt(); }
+    expect(startedAt).toBeGreaterThanOrEqual(stepEnd);
+    expect(startedAt - stepEnd).toBeLessThanOrEqual(60);
+  });
   it('締め(5段目・飛び蹴り3発目・気功)の後と、大踏み潰しの後に気功を出さなかった時: ボス級・強個体は、プレイヤーの後隙が明ける前に動ける', () => {
     const CLOSERS: { name: string; steps: readonly Step[] }[] = [
       { name: '5段目', steps: ROUTES[0].steps },

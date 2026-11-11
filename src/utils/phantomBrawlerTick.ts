@@ -931,10 +931,10 @@ export const stepPhantomBrawler = (c: PhantomBrawlerCtx): boolean => {
         kikoClear: true, discount: discountOf(c.actor), counterChance: c.profile.counterChance, meleeBias: c.profile.meleeBias,
         bullet: bulletAction(c, cx, cy, s), rand: c.rand,
         leap: {
-          eligible: kenkiLeapEligible({ edgeDist: ed, t, readyAt: c.rt.leapReadyAt, idle: s.phase === 'idle', secret: !!s.secret }),
+          eligible: kenkiLeapEligible({ edgeDist: ed, t, readyAt: c.rt.leapReadyAt, idle: s.phase === 'idle' && !BR.brawlerStepping(s, t), secret: !!s.secret }),
           underFire: kenkiUnderFire(c.rt.hitTimes, t),
           // 台本6(§16-3): 距離の下限だけ外す(クールダウン・上限・待機・秘奥義の最中でないことは同じ)。
-          eligibleNear: kenkiLeapEligible({ edgeDist: ed, t, readyAt: c.rt.leapReadyAt, idle: s.phase === 'idle', secret: !!s.secret }, 0),
+          eligibleNear: kenkiLeapEligible({ edgeDist: ed, t, readyAt: c.rt.leapReadyAt, idle: s.phase === 'idle' && !BR.brawlerStepping(s, t), secret: !!s.secret }, 0),
         },
         hpFrac: phantom.maxHealth > 0 ? phantom.health / phantom.maxHealth : 1,
         pointCap: pointCapOf(phantom),

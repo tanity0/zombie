@@ -130,6 +130,13 @@ export interface BrawlerState {
    */
   stepBuffer?: { x: number; y: number; at: number };
   /**
+   * 覚えている通常攻撃・技の先行入力が「ステップの最中に押した物」か(research/BRAWLER.md §20-8)。
+   * ステップの間は段も技も出せない=押した物を1つ覚えて、ステップが終わった瞬間に待機から出す。
+   * 通常攻撃・技の先行入力を覚える所(store の brawlerPress / brawlerTech)が、覚えるたびに書き直す(ステップの最中=true / それ以外=false)。
+   * 読むのは「覚えた物がある待機」の時だけ=覚えを捨てる所(被弾・取り消し・ステップの先行入力)で印が残っていても効かない。
+   */
+  stepHeld?: boolean;
+  /**
    * レバーガード(research/BRAWLER.md §12-1c)で受けた時刻(gameTime・腕で受ける影の起点)。
    * leverGuardN=受けた回数(呼び手が「この一撃はガードだったか」を前後の差で見分ける=浮かせない・爆風の押しを書かない)。
    * leverGuardDirX/Y=受けた相手の向き(長さ1・自分→相手。腕で受ける影の向き)。

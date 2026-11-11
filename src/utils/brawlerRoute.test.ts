@@ -11,10 +11,11 @@ import {
   brawlerRouteAllows, brawlerRouteNodeOf, brawlerStageNode, brawlerTechNode, brawlerSecretClosing, brawlerHitLanded, brawlerCancelWindowOpen,
   brawlerTechCancelOk, brawlerTechAllowed, brawlerShouldBufferTech, brawlerTechBufferDecision, brawlerStepAllowed, brawlerSecretCarry,
   brawlerStartAttack, brawlerStartTech, brawlerAfterResolve, brawlerFinish, brawlerStageSpec, initialBrawlerState, brawlerKickFlightMs, brawlerKickReaimDue,
+  brawlerStepStart, brawlerStepping, brawlerStepHeldPressFire, brawlerPressDecision,
 } from './brawler';
 import {
   setBrawlerTempoAll, BRAWLER_COMBO_END_NO_HOLD_BOSS_MS, BRAWLER_COMBO_END_NO_HOLD_STRONG_MS,
-  brawlerLockHitMs, brawlerLockIsCloser, brawlerLockHolds, brawlerLockOnHit, brawlerLockCutPatch, brawlerComboEndPatch, brawlerLockHoldMs, brawlerLockDecay,
+  brawlerLockHitMs, brawlerLockIsCloser, brawlerLockHolds, brawlerLockOnHit, brawlerComboEndPatch, brawlerLockHoldMs, brawlerLockDecay,
   brawlerLinkTiming, brawlerMoveStopMs, brawlerKikoTravelForDistMs,
   brawlerLockAlive, brawlerHoldClockAlive, brawlerHoldRemainMs, brawlerHeldNow, brawlerNoHoldNow, brawlerComboEndNoHoldNow,
   brawlerJugglePush, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS,
@@ -332,10 +333,38 @@ describe('確定の固まりの書き込み(§20-4・置き換え・数え・切
     expect(brawlerComboEndNoHoldNow({ brLockNoHoldUntil: 5001 }, 5000)).toBe(true);
     expect(brawlerComboEndNoHoldNow({}, 5000)).toBe(false);
   });
-  it('ステップで後隙を取り消した瞬間に、確定の固まりはそこで切れる(今どおり・§20-6b の返事待ち)', () => {
-    expect(brawlerLockCutPatch({ brLockUntil: 5483 }, 5150)).toEqual({ brLockUntil: 5150 });
-    expect(brawlerLockCutPatch({ brLockUntil: 5100 }, 5150)).toBeNull();
-    expect(brawlerLockCutPatch({}, 5150)).toBeNull();
+});
+
+describe('ステップの最中は段も技も出せない(§20-8・社長承認2026-11-11)', () => {
+  const idle = initialBrawlerState();
+  const stepping = { ...brawlerStepStart(idle, 1000, 0) }; // stepUntil = 1000 + BRAWLER_STEP_MS
+  const end = stepping.stepUntil!;
+  it('通常攻撃: ステップの最中は覚える(1つだけ)。ステップが終わったら今どおりすぐ出せる', () => {
+    expect(brawlerStepping(stepping, 1000)).toBe(true);
+    expect(brawlerStepping(stepping, end - 1)).toBe(true);
+    expect(brawlerStepping(stepping, end)).toBe(false);
+    expect(brawlerPressDecision(stepping, 1050)).toBe('buffer');
+    expect(brawlerPressDecision({ ...stepping, buffered: true }, 1050)).toBe('drop');
+    expect(brawlerPressDecision(stepping, end)).toBe('start');
+    expect(brawlerPressDecision(idle, 1050)).toBe('start');
+    // 覚えた通常攻撃は、ステップが終わった瞬間に出す(ステップの最中に覚えた物だけ)
+    const held = { ...stepping, buffered: true, stepHeld: true };
+    expect(brawlerStepHeldPressFire(held, end - 1)).toBe(false);
+    expect(brawlerStepHeldPressFire(held, end)).toBe(true);
+    expect(brawlerStepHeldPressFire({ ...held, stepHeld: false }, end)).toBe(false);
+  });
+  it('技: ステップの最中は出せない・覚える。ステップが終わった瞬間に出す。ステップの外で残った技の覚えは捨てる(今どおり)', () => {
+    for (const k of ['kick', 'stomp', 'kiko', 'guard'] as const) {
+      expect(brawlerTechAllowed(stepping, k, 1050), k).toBe(false);
+      expect(brawlerShouldBufferTech(stepping, k, 1050), k).toBe(true);
+      expect(brawlerTechAllowed(stepping, k, end), k).toBe(true);
+      expect(brawlerShouldBufferTech(stepping, k, end), k).toBe(false);
+    }
+    const held = { ...stepping, techBuffer: 'stomp' as const, stepHeld: true };
+    expect(brawlerTechBufferDecision(held, 1050)).toBe('wait');
+    expect(brawlerTechBufferDecision(held, end)).toBe('fire');
+    expect(brawlerTechBufferDecision({ ...held, stepHeld: false }, end)).toBe('drop');
+    expect(brawlerStepStart({ ...idle, stepHeld: true }, 0, 0).stepHeld).toBe(false);
   });
 });
 
