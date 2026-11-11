@@ -14,6 +14,31 @@
 import type { EnemyType, EnemyColorTier } from '../types/game';
 import { sideOfDir, type WalkHeading } from './spawnWalkBias';
 import type { KomaKind4 } from './scriptPuzzle';
+import { countsTowardEnemyCap } from './enemyUtils';
+
+/**
+ * 盤面(台本パズル)が管理する型。directorTick.ts から移設(値は元のまま)。
+ * PACING_PUZZLE.md §9-3(削岩型): driller はpumpkin枠の実体化差し替えなので、盤面カウント
+ * (boardCount)にも同じくpumpkin相当として乗る(将棋盤の駒数=見た目に関わらず数える)。
+ * §14-3裁定済み#2: loggerもpumpkin枠の実体化差し替え(driller同様)なので同じく合算する。
+ */
+export const PUZZLE_MANAGED_TYPES: ReadonlySet<EnemyType> = new Set<EnemyType>(['bat', 'skeleton', 'zombie', 'plant', 'werewolf', 'pumpkin', 'driller', 'logger', 'screamer', 'ghost']);
+
+/**
+ * 盤面の数(boardCount)に数えるか。盤面が管理する型 かつ 敵の上限に数える物(countsTowardEnemyCap)。
+ * 解放軍群(変異)の取り巻き=赤いバット男(type 'bat'・hordeLeaderId あり)は遠くの輪を回っていて
+ * プレイヤーの所へは来ない「別カウント」(research/LIBERTY_HORDE.md §6)。型だけで数えると枠を食い、
+ * リラックス(チャフ目標3)で1体も湧かなくなっていた。
+ */
+export const countsOnPuzzleBoard = (e: { type: EnemyType; hordeLeaderId?: string }): boolean =>
+  PUZZLE_MANAGED_TYPES.has(e.type) && countsTowardEnemyCap(e);
+
+/** 盤面の数(boardCount)。 */
+export const puzzleBoardCount = (enemies: readonly { type: EnemyType; hordeLeaderId?: string }[]): number => {
+  let n = 0;
+  for (const e of enemies) if (countsOnPuzzleBoard(e)) n += 1;
+  return n;
+};
 
 /** 見えている範囲の外側この距離(ワールドpx)を越えたら、後ろの敵を回収してよい。 */
 export const BEHIND_RETIRE_MARGIN_PX = 300;

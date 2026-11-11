@@ -53,6 +53,7 @@ import { currentSpawnWalk, walkBiasStrength } from './spawnWalkBias';
 import {
   renderedViewRect, countVisibleBelowHorizon, catchUpSpawnCdMs, enemyVisualBox, isBoxOutsideRect,
   shouldRetireBehind, retireDisposition, frontRespawnPoint, holdMinZoom, newZoomHold, retireGapReady,
+  puzzleBoardCount,
   type ViewRect,
 } from './spawnRefill';
 import { enemyFootBox } from '../pixi/renderSpec';
@@ -113,10 +114,8 @@ export type Ref<T> = { current: T };
 
 // --- 以下、useGameLoop.ts のモジュールスコープ定数のうち、ここへ移した処理だけが使っていたもの。
 // 値は元のまま(重複定義。元ファイル側の宣言はこの移設に伴い削除済み)。
-// PACING_PUZZLE.md §9-3(削岩型): driller はpumpkin枠の実体化差し替えなので、盤面カウント
-// (boardCount)にも同じくpumpkin相当として乗る(将棋盤の駒数=見た目に関わらず数える)。
-// §14-3裁定済み#2: loggerもpumpkin枠の実体化差し替え(driller同様)なので同じく合算する。
-const PUZZLE_MANAGED_TYPES = new Set<EnemyType>(['bat', 'skeleton', 'zombie', 'plant', 'werewolf', 'pumpkin', 'driller', 'logger', 'screamer', 'ghost']);
+// 盤面が管理する型(PUZZLE_MANAGED_TYPES)と盤面の数え方は spawnRefill.ts の puzzleBoardCount へ移した
+// (解放軍群の取り巻きを数えない=countsTowardEnemyCap と同じ判定を通す)。
 const DIRECTOR_NEAR_RADIUS = 240;         // Intensity の"近接敵"を数える半径(接触危険レンジ相当)
 const DIRECTOR_EGG_DANGER_RADIUS = 180;   // 抱卵型(ghost)が撒いた毒卵の"密度"を見る、プレイヤー中心の半径
 const DIRECTOR_EGG_DANGER_FULL = 3;       // この個数(近くに)でdanger最大(=1バーストぶんが足元に集まっている状態)
@@ -498,8 +497,9 @@ export function runKomaBoardMaintenance(refs: KomaMaintenanceRefs, ctx: KomaMain
   };
 
   // 盤面の現況(パズル管理下の型のみ。ボス/裏ボス/ハンター/リーパー等は対象外)。
+  // 解放軍群の取り巻き(type 'bat'・hordeLeaderId あり)は別カウント=数えない(puzzleBoardCount)。
   const puzzleEnemiesNow = useGameStore.getState().enemies;
-  const boardCount = puzzleEnemiesNow.filter(e => PUZZLE_MANAGED_TYPES.has(e.type)).length;
+  const boardCount = puzzleBoardCount(puzzleEnemiesNow);
   const aliveNuisance: NuisanceCounts = {
     plant: puzzleEnemiesNow.filter(e => e.type === 'plant').length,
     werewolf: puzzleEnemiesNow.filter(e => e.type === 'werewolf').length,

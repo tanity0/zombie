@@ -1,5 +1,16 @@
 # Development Log
 
+## v0.25.5519 — リラックスのコマで敵が1体も湧かないバグ(社長報告「全く敵が出ない時間がある。これ無くしたはず」「敵でないのはリラックスモード。ずっと待ってても画面内に敵がいない」)【2026-11-12 01:11 JST】
+
+- **原因**: `runKomaBoardMaintenance` の盤面の数(`boardCount`)が「管理する型なら全部」で数えていた。解放軍群(変異)の取り巻き=赤いバット男5体(`type: 'bat'`・`hordeLeaderId` あり・`fixed`・遠くの輪を回ってこちらへ来ない)が数に入り、リラックスの目標3(2026-10-18「ゼロではなく3体」)に対して常に「足りている」になっていた=1体も湧かない。通常のコマでも雑魚の枠を5つ食っていた。設計は「別カウント」(LIBERTY_HORDE §6)で、上限の側(`countsTowardEnemyCap`)は既に外していた=`boardCount` だけの数え漏れ。出るのは解放軍群が居るステージ(1・3・4・5)。
+- **直し**: `spawnRefill.ts` に `countsOnPuzzleBoard` / `puzzleBoardCount`(管理する型 かつ `countsTowardEnemyCap`)。`PUZZLE_MANAGED_TYPES` もそこへ移した(値は同じ)。`boardCount` を使う3か所(湧くかの判定・目標を下回っている時間・コマ査定の集計)が正しくなる。湧きの数・間隔・顔ぶれは変えていない。
+- 触らなかった所(確認済み): 邪魔者・特別枠の数(取り巻きは `'bat'` だけ)/追い上げ・上限の間引き(既に `countsTowardEnemyCap`)/置き去り・距離の回収(`fixed` で先に抜ける)。旗手が倒れた後の取り巻きはふつうのバット男に戻り、数えられる(従来どおり)。
+- 事実(今回は別物と分かった): 「7分ごろの二人組の通信の10秒前〜終わり」は新規の湧きを止めている(2026-09-14 の社長指示)。そのまま。
+- テスト: `puzzleBoardCount.test.ts` 5件(取り巻き5体だけなら0・ふつうは数える・英雄/旗手は数えない・リラックスの目標3で `decideNextSpawn` が湧きを返す=再発止め)。ENGINEERING_NOTES §0 に症状の行を足した。
+- 実装は Opus のサブエージェント。明確なバグ修正(区分仕様への整合)=監査なし。確認: typecheck / eslint / 循環import / vitest(6ファイル124件)。**実機で要確認**(ステージ1・3・4・5のリラックス)。
+- 状態変化: 敵が全く出ない時間がある → 実機確認待ち
+- ファイル: src/utils/directorTick.ts・spawnRefill.ts・puzzleBoardCount.test.ts(新規)・ENGINEERING_NOTES.md・package.json・src/data/changelog.ts
+
 ## v0.25.5518 — 熟練度: 守護霊に記録時点の熟練度を乗せる(社長裁定「守護霊に載せます」・research/MASTERY.md v2.5)【2026-11-12 01:09 JST】
 
 - 守護霊(味方)の与ダメに、記録を作った時点の熟練度の倍率が掛かる。貯めるキーは `none` のまま(どこにも貯まらない)。幻影(敵)は倍率1のまま。熟練度を無視する出撃の中では守護霊も倍率1。

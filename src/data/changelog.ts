@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5519', items: [
+    '敵がまったく出てこない時間があったのが直った。落ち着いた時間でも、弱い敵が少しずつ出る',
+  ] },
   { version: '0.25.5518', items: [
     '守護霊の攻撃に、その守護霊を記録した時の熟練度が乗る。育てた武器を持つ守護霊ほど強い',
     '守護霊が投げた救急鞄で、自分の熟練度が貯まっていたのが直った',
