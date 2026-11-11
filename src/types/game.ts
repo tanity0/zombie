@@ -1081,6 +1081,12 @@ export interface Enemy {
    * 報酬・遭遇の記録・格闘の頭脳はこの印で分ける(型は同じ guardian-phantom)。
    */
   phantomUnique?: PhantomUniqueKind;
+  /**
+   * 徘徊の枠で遠くに出した固有の幻影(拳鬼)が、まだ画面に入っていない(名前の帯・アテンションを出す前)。
+   * この間はボス戦のカメラ(引き・ボスの方への寄せ)を掛けない(社長実機2026-11-11「拳鬼が出たタイミングかな?変なカメラワークになった」)。
+   * 姿が画面に入った時に外す。
+   */
+  phantomUnmet?: boolean;
   /** research/BRAWLER_PHANTOM.md: 格闘の幻影の格闘の状態(プレイヤーの player.brawler と同じ型・同じ純関数で進める)。 */
   phantomBrawler?: BrawlerState;
   /** 格闘の幻影の構えの終わり(gameTime)。この間は窓パリィの窓が開いている(phantomGate の窓モデルのまま)。 */

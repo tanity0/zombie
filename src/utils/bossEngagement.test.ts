@@ -2,7 +2,7 @@
 // または「ボスが居ないのに常時リラックス=ペーシング設計が丸ごと死ぬ」のどちらかになる。
 import { describe, it, expect } from 'vitest';
 import {
-  bossEngagedNow, isEngageableBoss, BOSS_ENGAGE_EXIT_PX,
+  bossEngagedNow, isEngageableBoss, isBossCameraSubject, BOSS_ENGAGE_EXIT_PX,
   advanceBossDisengageGrace, bossEngagementDistancePx, bossLeashDistancePx,
   facilitiesLocked, FACILITY_REENABLE_MS,
   isLeashableBoss, BOSS_DISENGAGE_GRACE_MS, BOSS_LEASH_PX, BOSS_LEASH_REGEN_PER_SEC,
@@ -196,5 +196,16 @@ describe('bossRelaxWithTail: ボス戦後10秒の余韻(施設ロックと同型
   });
   it('施設ロック(700ms)より長い=ボス後の余韻の方が尾が長い', () => {
     expect(BOSS_RELAX_TAIL_MS).toBeGreaterThan(FACILITY_REENABLE_MS);
+  });
+});
+
+// 社長実機2026-11-11「拳鬼が出たタイミングかな?変なカメラワークになった」
+describe('ボス戦のカメラの対象: まだ出会っていない徘徊の幻影(拳鬼)は外す', () => {
+  it('交戦できるボスは対象・雑魚は対象外・まだ出会っていない幻影は対象外(出会ったら対象)', () => {
+    expect(isBossCameraSubject({ type: 'giantbat' })).toBe(true);
+    expect(isBossCameraSubject({ type: 'zombie' })).toBe(false);
+    expect(isBossCameraSubject({ type: 'guardian-phantom' })).toBe(true);
+    expect(isBossCameraSubject({ type: 'guardian-phantom', phantomUnmet: true })).toBe(false);
+    expect(isBossCameraSubject({ type: 'guardian-phantom', phantomUnmet: false })).toBe(true);
   });
 });

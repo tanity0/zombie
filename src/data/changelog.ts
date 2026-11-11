@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5484', items: [
+    '拳鬼がまだ画面に見えていないうちから、カメラが引いたり寄ったりしていたのが直った。姿が見えてからボス戦の画になる',
+  ] },
   { version: '0.25.5483', items: [
     '飛び蹴りの三発目が強くなり、敵をもう少し吹き飛ばす。蹴った後の隙は少し長い',
     '飛び蹴りは、蹴った後すぐにしゃがんで着地する',

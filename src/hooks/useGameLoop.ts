@@ -559,7 +559,7 @@ import {
 } from '../utils/cameraZoom';
 import { bossFramingFor } from '../utils/bossFraming';
 import {
-  advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, bossRetreatKeepRadiusPx,
+  advanceBossDisengageGrace, bossEngagementDistancePx, isEngageableBoss, isBossCameraSubject, bossRetreatKeepRadiusPx,
   facilitiesLocked, // v0.25.3054: ボス戦中の施設ロック(発火ゲート)
   BOSS_LEASH_PX, // v0.25.3057: 全ボス共通の離脱距離(実距離1500px・社長裁定)
   bossEngagedNow, // research/BRAWLER_PHANTOM.md: 拳鬼の「他のボスと交戦中」
@@ -9449,6 +9449,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const kpcx = player.x + player.width / 2, kpcy = player.y + player.height / 2;
               const at = astroSpawnPick(astroRunPois(), { x: kpcx, y: kpcy }, worldDist(3000), Math.random);
               spawnGuardianPhantom(kenkiIdentity, PHANTOM_BRAWLER_KIND, { at: { x: at.x, y: at.y }, quiet: true });
+              // まだ出会っていない印: 姿が画面に入るまで、ボス戦のカメラ(引き・寄せ)を掛けない(下の 'intro' で外す)。
+              useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => (e.type === 'guardian-phantom' && e.phantomUnique === PHANTOM_BRAWLER_KIND ? { ...e, phantomUnmet: true } : e)) }));
               kenkiCutinIdRef.current = null;
             }
             // 本編で遠くに出した拳鬼: 姿が画面に入った最初のフレームで名前の帯+アテンション+「出会った」(亡霊・宇宙飛行群と同じ・1体につき1回)。
@@ -9472,6 +9474,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 });
                 if (kStep === 'intro') {
                   kenkiCutinIdRef.current = kenkiE.id;
+                  useGameStore.setState(stt => ({ enemies: stt.enemies.map(e => (e.id === kenkiE.id ? { ...e, phantomUnmet: false } : e)) })); // 出会った=ここからボス戦のカメラ
                   useGameStore.getState().triggerAttention(kx, ky);
                   useGameStore.setState({ eventBannerText: phantomDisplayLabel(), eventBannerUntil: newGameTime + BOUNTY_APPEAR_BANNER_MS });
                   markKenkiSeen();
@@ -10284,7 +10287,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           let bossNearHalfW = 0; // ★2026-10-01: 最近接ボスの絵の半幅(横の先読みが絵の端まで収める)
           if (!indoor && !labTheme && !useGameStore.getState().corridorMode) {
             for (const e of enemies) {
-              if (!(isEngageableBoss(e.type) || heroZoomEligible(e)) || e.dormant === true || e.bossState === 'return') continue; // 英雄はプレイヤーを狙う間だけ(MUTANT_HERO)
+              if (!(isBossCameraSubject(e) || heroZoomEligible(e)) || e.dormant === true || e.bossState === 'return') continue; // 英雄はプレイヤーを狙う間だけ(MUTANT_HERO)・まだ出会っていない拳鬼は外す(描画と同じ)
               const limit = bossEngagementDistancePx(e.type, est.engaged, e.isStoryBoss === true);
               const dx = e.x + e.width / 2 - pcCamX, dy = e.y + e.height / 2 - pcCamY;
               const d2 = dx * dx + dy * dy;
@@ -17691,7 +17694,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         // 文脈カメラズームで引いている分だけ、湧き位置を外へ広げる(引いても画面外に湧かせる・社長指示)。
         // ボス交戦域では距離によって最大0.58まで動くため最深値を安全側に採る。通常時は従来の純関数どおり。
         const bossCameraMayPull = allEnemiesNow.some(e => {
-          if (!isEngageableBoss(e.type) || e.dormant === true) return false;
+          if (!isBossCameraSubject(e) || e.dormant === true) return false;
           const dx = e.x + e.width / 2 - zpcx, dy = e.y + e.height / 2 - zpcy;
           const bossCameraRange = bossEngagementDistancePx(e.type, true, e.isStoryBoss === true);
           return dx * dx + dy * dy <= bossCameraRange * bossCameraRange;

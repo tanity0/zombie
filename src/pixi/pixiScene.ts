@@ -357,7 +357,7 @@ import {
 import { isExStageRun } from '../utils/exStage';
 import { EX_HALL_SCALE, EX_HALL_LATERAL_CLAMP, exHallScaleT, exHallTravel, EX_BACK_WORLD_Y } from '../world/exHall';
 import {
-  bossEngagementDistancePx, isEngageableBoss,
+  bossEngagementDistancePx, isEngageableBoss, isBossCameraSubject,
 } from '../utils/bossEngagement';
 import { bossPostureMax, bossPostureNow, isBossPostureBroken, usesPostureSystem } from '../utils/bossPosture';
 import { getRunPois, isPoiRevealed, poiSectorIndex, playerAreaSector, isPoiInPlayerArea, type DetourPoiInput } from '../world/pois';
@@ -9337,7 +9337,7 @@ export class PixiScene {
       // 指摘12: 帰巣中(bossState==='return')のボスは交戦していないので除外する。dormantしか見ていないと
       // 「離脱してるっぽいのにズームが戻らない」(帰巣中も交戦画角を保持し続ける)。視点バイアス
       // (bossBiasD2/最近ボス選定)も同じループなので一緒に外れる。
-      if (bossZoomExcluded || !(isEngageableBoss(e.type) || heroZoomEligible(e)) || e.dormant === true || e.bossState === 'return') continue; // 英雄はプレイヤーを狙う間だけ(MUTANT_HERO)
+      if (bossZoomExcluded || !(isBossCameraSubject(e) || heroZoomEligible(e)) || e.dormant === true || e.bossState === 'return') continue; // 英雄はプレイヤーを狙う間だけ(MUTANT_HERO)・まだ出会っていない拳鬼は外す
       const bossEngageLimit = bossEngagementDistancePx(e.type, this.bossCameraEngaged, e.isStoryBoss === true);
       const dx = e.x + e.width / 2 - zpx, dy = e.y + e.height / 2 - zpy;
       if (dx * dx + dy * dy > bossEngageLimit * bossEngageLimit) continue;
@@ -9707,7 +9707,7 @@ export class PixiScene {
           const scrH = this.screenH * vpScale;
           for (const e of s.enemies) {
             // 亡霊(research/WRAITH_MUTANT.md): 見つけて周りを回っている間はピントを合わせる(すぐ横で叫びの口が開くのが読める)。
-            if (!(isEngageableBoss(e.type) || heroFocusEligible(e) || (e.type === 'mutant-wraith' && e.libAlerted === true)) || e.dormant === true || e.bossState === 'return' || e.health <= 0) continue; // 英雄: 技の溜め〜当たりは狙いが誰でもピントを外さない
+            if (!(isBossCameraSubject(e) || heroFocusEligible(e) || (e.type === 'mutant-wraith' && e.libAlerted === true)) || e.dormant === true || e.bossState === 'return' || e.health <= 0) continue; // 英雄: 技の溜め〜当たりは狙いが誰でもピントを外さない
             const v = this.enemies.get(e.id);
             if (!v || !v.sprite.visible || v.container.alpha <= 0.01 || !v.container.visible) continue;
             const bb = v.sprite.getBounds();

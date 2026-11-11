@@ -42,6 +42,14 @@ export const ENGAGEABLE_BOSS_TYPES = new Set<EnemyType>([
 export const isEngageableBoss = (type: EnemyType): boolean => ENGAGEABLE_BOSS_TYPES.has(type);
 
 /**
+ * ボス戦のカメラ(引き・ボスの方への寄せ)の対象か。交戦できるボスのうち、**まだ出会っていない徘徊の幻影**(Enemy.phantomUnmet=
+ * 遠くに出した拳鬼が画面に入る前)は外す=姿が見えない相手に向かってカメラが引いたり寄ったりしない。
+ * 描画(pixiScene)とカメラの推定(useGameLoop)が同じ物を読む(片方だけ掛けると画角と湧きの可視域が割れる)。
+ */
+export const isBossCameraSubject = (e: { type: EnemyType; phantomUnmet?: boolean }): boolean =>
+  isEngageableBoss(e.type) && e.phantomUnmet !== true;
+
+/**
  * PACING_PUZZLE.md §6.38 v6 B-2(賞金首): 守護霊召喚/bossClock撃破タイム/notifyBossClearソロ台帳/
  * duoRecords/ghostOnlineのpickスロット列——この5系統は賞金首を**乗せない**(倒す義務のない相手を
  * ゴースト週間の対象に混ぜない)。ENGAGEABLE から賞金首だけを絞った専用集合を1箇所に作り、
