@@ -9,7 +9,7 @@ import {
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
-  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_HIT_PITCH, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
+  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
@@ -304,6 +304,13 @@ describe('格闘: 絵(クリエイティブ監査)', () => {
   it('段ごとの音程は等間隔に下げない', () => {
     const steps = [1, 2, 3, 4].map(i => +(BRAWLER_HIT_PITCH[i] - BRAWLER_HIT_PITCH[i + 1]).toFixed(3));
     expect(new Set(steps).size).toBeGreaterThan(1);
+  });
+  it('当たりの音(社長支給2026-11-11): 1・2段目=パンチ/3〜5段目=重い打撃・どの段も少し早回し', () => {
+    expect([1, 2].map(st => brawlerStageHitSfx(st).key)).toEqual(['brawler-punch', 'brawler-punch']);
+    expect([3, 4, 5].map(st => brawlerStageHitSfx(st).key)).toEqual(['brawler-heavy', 'brawler-heavy', 'brawler-heavy']);
+    for (const st of [1, 2, 3, 4, 5]) expect(brawlerStageHitSfx(st).rate).toBeGreaterThan(1);
+    expect(brawlerKickHitSfx(false).key).toBe('brawler-kick');
+    expect(brawlerKickHitSfx(true).gain).toBeGreaterThan(brawlerKickHitSfx(false).gain); // 3発目は大きく
   });
 });
 

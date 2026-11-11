@@ -117,6 +117,10 @@ export type SfxKey =
   | 'dance-kick'
   | 'brawler-hit'   // 格闘の肉を打つ音(素材は shot-damage.mp3 を短く・別キー=間引きを他と共有しない・research/BRAWLER.md §9)
   | 'brawler-stomp' // 格闘の着地・踏み潰しの重い打撃(素材は heavy-impact.mp3 を低く・敵の着地音 jump-land と分ける)
+  | 'brawler-punch' // 格闘の1・2段目の当たり(社長支給2026-11-11)
+  | 'brawler-heavy' // 格闘の3〜5段目(掌底など)の重い当たり(社長支給2026-11-11)
+  | 'brawler-kick'  // 飛び蹴りの当たり(社長支給2026-11-11)
+  | 'brawler-guard' // レバーガードで受けた音(社長支給2026-11-11)
   | 'dance-kick-just' // JUST成功音(dance-kickのピッチ上げ。B方式のメトロノームと聞き分ける)
   | 'heavy-impact'
   | 'boss-intro'
@@ -510,6 +514,12 @@ const SFX_SOURCES: Partial<Record<SfxKey, SfxConfig>> = {
   'dance-kick': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60 },
   'brawler-hit': { src: `${import.meta.env.BASE_URL}audio/sfx/shot-damage.mp3`, volume: 1.4, minIntervalMs: 30, maxDurationMs: 300 },
   'brawler-stomp': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.6, minIntervalMs: 60, playbackRate: 0.6 },
+  // ★格闘の専用の音(社長支給2026-11-11)。早回しの度合いは呼び手(utils/brawler の BRAWLER_HIT_PITCH)が段ごとに決める。
+  // パンチは素材の頭に風切り(約0.17秒)があり、打撃の山がその後に来る=当たりの瞬間に鳴らすと遅れて聞こえるので、頭を飛ばして打撃の直前から鳴らす。
+  'brawler-punch': { src: `${import.meta.env.BASE_URL}audio/sfx/brawler-punch.mp3`, volume: 1.0, startAt: 0.13, minIntervalMs: 30, maxDurationMs: 420, fadeOutMs: 160 },
+  'brawler-heavy': { src: `${import.meta.env.BASE_URL}audio/sfx/brawler-heavy.mp3`, volume: 1.0, minIntervalMs: 30, maxDurationMs: 560, fadeOutMs: 200 },
+  'brawler-kick': { src: `${import.meta.env.BASE_URL}audio/sfx/brawler-kick.mp3`, volume: 1.15, minIntervalMs: 40, maxDurationMs: 520, fadeOutMs: 120 },
+  'brawler-guard': { src: `${import.meta.env.BASE_URL}audio/sfx/brawler-guard.mp3`, volume: 1.1, minIntervalMs: 60 },
   'dance-kick-just': { src: `${import.meta.env.BASE_URL}audio/sfx/kick-drum.mp3`, volume: 0.95, minIntervalMs: 60, playbackRate: 1.3 },
   // 盾バッシュ命中 / ジャンプ攻撃の着地(社長提供SE)。音が小さめなのでゲインで増幅(0.9→1.8)。
   'heavy-impact': { src: `${import.meta.env.BASE_URL}audio/sfx/heavy-impact.mp3`, volume: 1.8, minIntervalMs: 60 },

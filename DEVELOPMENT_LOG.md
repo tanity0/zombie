@@ -1,5 +1,20 @@
 # Development Log
 
+## v0.25.5476 — 格闘: 技を出したら通信の下に行を出す/当たりの音を専用の素材へ【2026-11-11 15:03 JST】
+- 社長指示①: 「技を出したら、通信の下に出す。スキルと同じ線」(プレイヤーの技)。仕様=`research/BRAWLER.md` §21。
+  - 作り: スキル発動の行(`utils/skillProcFeed`)の鍵を技へ広げた(`tech:guard/stomp/kiko/kick/secret`)。store の `notifyTechProc` を、技が実際に出た所(`startBrawlerTech`・構えの延長・`startBrawlerSecret`)で呼ぶ。出なかった入力・拳鬼/幻影の技・通常攻撃の段・ステップは出さない。
+  - 数え方: 一番新しい技の行が同じ技の時だけ ×N(出した順が読める)。技の行は2行まで(`TECH_PROC_MAX_ROWS`)=スキルの行を押し出さない。技ポイントが返った行は技の行の後に足す。
+  - 明るい行の判定を「最後に効いた時刻」(`lastAt`)へ変えた(スキルの行も同じ判定になる=同じ行にまとまった2回目以降も、いま効いた行が明るい)。
+  - 見た目: 絵の列は入れた向きへ進む楔+技ごとの一画(SVG)。秘奥義は四方へ開く楔・青・大きい字・長く残る。名前の表は `src/data/brawlerTechNames.ts`。負荷 1/10(行は技を出した時だけ書き換わる・HUD の購読は増やしていない)。
+- 社長指示②: 音4本の支給(「パンチSE 少し早くして」「掌底とか 重めの打撃音 少し早めに」「飛び蹴り」「ガードSE」)。仕様=`research/BRAWLER.md` §22。
+  - 1・2段目=パンチ(早回し 1.2/1.12・素材の頭の風切りを飛ばして打撃の直前から)/3〜5段目=重い打撃(1.16/1.1/1.04)/飛び蹴りの当たり/レバーガード。旧の2枚重ね(`brawler-hit`+`whip-hit`)と、ガードの「腕に当たった音」を置き換えた。添えている重い音・空振りの音・ほかの技の音はそのまま。拳鬼も同じ音(`brawlerStageHitSfx`・`brawlerKickHitSfx`)。
+  - 原盤は支給のまま `public/audio/sfx/brawler-{punch,heavy,kick,guard}.mp3`。出典は CREDITS.md に「未確認」で4行(社長に確認する)。
+- 確認: typecheck・lint 0・循環なし。vitest(skillProcFeed 19・brawler 純関数・brawler.store・brawlerGuard.store・brawlerLink.store)。画は撮って目で確認(スマホ 430×932・PC 1280×720: 技の行・スキルと混ざった行・秘奥義・会話の板あり)。**音は耳で未確認**(音量は素材の山の大きさで合わせた)。実機は未確認。
+- 監査: 品質(opus)1巡=(A)なし・(B)3件を積んだ。クリエイティブ(opus)2巡=1巡目9件・2巡目7件(うち止めるべき1件=押した技の行が出た瞬間から沈む→`lastAt` で直した)。2巡目を回した理由=1巡目で直すべき指摘が出た。3巡目は回さない(残りは好みの範囲・実機で社長が見る)。詳細は BRAWLER.md §21-1。音は素材の入れ込み=監査は付けない。
+- 直さなかった指摘(理由): 技の行から左端の印を外す案=社長の「同じ線」に含まれうるので残した(色を沈めた)/技の行を1行にして差し替える案=出した順が読めなくなるので社長の判断へ。
+- 憲法第4条・第5条: 抵触なし。状態変化: 格闘の技の行 → 実装済み(実機確認待ち)/格闘の当たりの音 → 実装済み(実機で聴く・出典の確認待ち)。
+- 変更: `src/utils/skillProcFeed.ts`・`skillProcFeed.test.ts`・`src/data/brawlerTechNames.ts`(新)・`src/components/NpcDialogue.tsx`・`src/store/gameStore.ts`・`src/utils/brawler.ts`・`brawler.test.ts`・`src/utils/phantomBrawlerTick.ts`・`src/audio/audioManager.ts`・`src/store/brawler.store.test.ts`・`brawlerGuard.store.test.ts`・`brawlerLink.store.test.ts`・`public/audio/sfx/brawler-*.mp3`(新4)・`CREDITS.md`・`research/BRAWLER.md`・`src/data/changelog.ts`・`package.json`。
+
 ## v0.25.5475 — 格闘: レバーガードで受け切った時は被弾の演出を出さない【2026-11-11 13:55 JST】
 - 社長裁定(2026-11-11「ガードは はい」): ガード成立時は被弾の赤いフラッシュ・被弾音・赤い粒を出さず、ガードの絵と音だけにする(v0.25.5450 のクリエイティブ監査が社長へ戻していた1件=既存の演出を消す話)。
 - 作り: 被弾の演出は damagePlayer の呼び手が約20か所で別々に出しているので、受け切った時刻を1つ打ち(`utils/leverGuardStamp.ts`)、出口3か所が150msだけ止める(`audioManager.playSfx('player-damage')`/store の `spawnFlash` の被弾の赤2色/`spawnBurst` の体から44px以内の赤い粒)。「半減だけ」の技・ガードにならなかった被弾は今どおり(普通の被弾が入った瞬間に止めを解く)。

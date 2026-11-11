@@ -237,13 +237,12 @@ const kenkiHitSfx = (k: { stage: number } | { kick: number } | 'stomp'): void =>
   if (k === 'stomp') { enqueueBrawlerSfx('brawler-hit', 1.0, 0.62 * brJit(), 260); return; }
   if ('kick' in k) {
     const big = k.kick >= BR.BRAWLER_KICK_MAX;
-    enqueueBrawlerSfx('brawler-hit', big ? 1.1 : 0.8, (big ? 0.66 : 1.0) * brJit(), big ? 300 : 200);
-    enqueueBrawlerSfx('whip-hit', 0.55, (big ? 0.7 : 0.85) * brJit(), 160, 10);
+    const cue = BR.brawlerKickHitSfx(big, brJit()); // プレイヤーの飛び蹴りと同じ音(社長支給2026-11-11)
+    enqueueBrawlerSfx(cue.key, cue.gain, cue.rate);
     return;
   }
-  const st = Math.max(1, Math.min(5, k.stage));
-  enqueueBrawlerSfx('brawler-hit', BR.BRAWLER_HIT_GAIN[st], BR.BRAWLER_HIT_PITCH[st] * brJit(), st <= 2 ? 180 : 280);
-  enqueueBrawlerSfx('whip-hit', 0.4, BR.BRAWLER_HIT_PITCH[st] * 1.1 * brJit(), 110, 8);
+  const cue = BR.brawlerStageHitSfx(k.stage, brJit()); // プレイヤーの通常攻撃と同じ音(1・2段目=パンチ/3〜5段目=重い打撃)
+  enqueueBrawlerSfx(cue.key, cue.gain, cue.rate);
 };
 
 /** 段の押し: 普通の押しの段(3段目)=組み込み/それ以外(1・2・4段目=押さなかった段・'small')=小さな押し。 */

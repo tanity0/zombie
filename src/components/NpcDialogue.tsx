@@ -6,7 +6,8 @@ import { slowLineVisibleChars } from '../utils/slowLine';
 import { SKILLS, skillIcon } from '../data/campaign';
 import { useSkillIconSheet } from '../utils/useSkillIconSheet';
 import { skillIconStyle, hasSkillIcon, skillSingleIconName } from '../data/skillIcons';
-import { nextSkillProcWake, skillProcAlive, skillProcLeaving } from '../utils/skillProcFeed';
+import { nextSkillProcWake, skillProcAlive, skillProcLeaving, isTechProcKey, newestSkillProcId } from '../utils/skillProcFeed';
+import { BRAWLER_TECH_NAMES, type BrawlerTechDir } from '../data/brawlerTechNames';
 import type { SkillKey } from '../types/game';
 import { isFollowToggleLineText } from '../data/npcLines';
 
@@ -117,6 +118,45 @@ const SkillProcIcon = ({ k }: { k: SkillKey }) => {
   return st ? <span style={st} aria-hidden /> : <span className="text-[13px] leading-none">{skillIcon(k)}</span>;
 };
 
+/**
+ * 格闘の技の行の絵=入れた向きへ進む楔(打撃の軌跡の形・先が太く、後ろへ細く引く)。上=構え/下=大踏み潰し/左=気功/右=飛び蹴り。
+ * 向きだけでなく、技ごとに一画だけ違う: 構え=楔の根元に受けの横線/大踏み潰し=楔の先に地面の線/気功=楔の先に弾の丸/飛び蹴り=楔だけ。
+ * 秘奥義は4本の楔が中心から四方へ開く(4つを出し切った先)。技ごとの絵の素材は無いので SVG で描く。
+ * 色は格闘の白金(BrawlerHitCount と同じ)、秘奥義だけ炸裂の青白。
+ */
+const TECH_DIR_DEG: Record<Exclude<BrawlerTechDir, 'all'>, number> = { up: 0, right: 90, down: 180, left: 270 };
+// 上向きの楔(先 y=2.5・尾 y=17)。**先の側が太く、後ろへ細く引く**=動いた跡の形(太い側へ進んで見える)。向きは回して作る。
+const TECH_WEDGE = 'M10 2.5 L12.9 6.8 L10 17 L7.1 6.8 Z';
+const TECH_INK = 'rgba(8,10,14,0.9)';
+const TechProcIcon = ({ dir }: { dir: BrawlerTechDir }) => {
+  if (dir === 'all') {
+    return (
+      <svg viewBox="0 0 20 20" className="w-full h-full" aria-hidden style={{ overflow: 'visible', filter: 'drop-shadow(0 0 2.5px rgba(125,211,252,0.95))' }}>
+        {[0, 90, 180, 270].map(d => (
+          <path key={d} d="M10 0.8 L11.7 6.6 L10 8.6 L8.3 6.6 Z" transform={`rotate(${d} 10 10)`} fill="#d8f1ff" stroke="rgba(4,18,30,0.9)" strokeWidth="0.9" strokeLinejoin="round" style={{ paintOrder: 'stroke' }} />
+        ))}
+      </svg>
+    );
+  }
+  const stroke = { stroke: TECH_INK, strokeWidth: 1.1, strokeLinejoin: 'round' as const, style: { paintOrder: 'stroke' as const } };
+  return (
+    <svg viewBox="0 0 20 20" className="w-full h-full" aria-hidden style={{ overflow: 'visible' }}>
+      <g transform={`rotate(${TECH_DIR_DEG[dir]} 10 10)`} fill="#fbf6ea">
+        <path d={TECH_WEDGE} {...stroke} />
+        {/* 構え: 根元に横線(足を据えて受ける)。 */}
+        {dir === 'up' && <path d="M4.5 17.8 H15.5 V19.2 H4.5 Z" {...stroke} />}
+        {/* 大踏み潰し: 先に地面の線(踏み抜く先)。 */}
+        {dir === 'down' && <path d="M3.5 0.6 H16.5 V2 H3.5 Z" {...stroke} />}
+        {/* 気功: 先に弾の丸。 */}
+        {dir === 'left' && <circle cx="10" cy="2.2" r="2.4" {...stroke} />}
+      </g>
+    </svg>
+  );
+};
+/** 技の行の左端の印の色。レア度の段に見えないよう、普通のスキルの印より一段沈める(技は運で起きる物ではない)。秘奥義だけ立てる。 */
+const TECH_MARK_COLOR = 'rgba(241,230,200,0.45)';
+const TECH_SECRET_MARK_COLOR = 'rgba(125,211,252,1)';
+
 /** レア度の色(左端の細い印)。RunHud のスキル欄の縁と同じ色=同じスキルだと結び付く。 */
 const PROC_RARITY_COLOR: Record<'normal' | 'rare' | 'super', string> = {
   normal: 'rgba(148,163,184,0.75)', rare: 'rgba(192,132,252,0.9)', super: 'rgba(252,211,77,0.95)',
@@ -164,14 +204,19 @@ const SkillProcRows = ({ align }: { align: number }) => {
   const now = pausedAtRef.current ?? Date.now();
   const rows = feed.filter(e => skillProcAlive(e, now));
   if (rows.length === 0) return null;
-  const newestId = rows.reduce((a, e) => (e.at >= a.at ? e : a), rows[0]).id;
+  const newestId = newestSkillProcId(rows); // いま効いた行(入った時・数が増えた時)を明るく
   const playState = paused ? 'paused' : 'running';
   return (
     <div ref={boxRef} className="flex flex-col items-start" style={{ margin: '6px 0' }}>
       {rows.map(e => {
         const leaving = skillProcLeaving(e, now);
         const sinceIn = now - e.at - e.delay;
-        const rarity = SKILLS[e.key].rarity;
+        const tech = isTechProcKey(e.key) ? BRAWLER_TECH_NAMES[e.key] : null;
+        const secret = e.key === 'tech:secret';
+        const markColor = tech ? (secret ? TECH_SECRET_MARK_COLOR : TECH_MARK_COLOR) : PROC_RARITY_COLOR[SKILLS[e.key as SkillKey].rarity];
+        // 名前の色はスキルと同じ(技かどうかは絵=向きの楔で分かる)。秘奥義だけ炸裂の青。古い行は沈める(今どおり)。
+        const newest = e.id === newestId;
+        const nameColor = !newest ? 'rgba(186,200,214,0.78)' : secret ? 'rgba(125,211,252,1)' : 'rgba(224,242,254,1)';
         return (
           <div
             key={e.id}
@@ -183,20 +228,27 @@ const SkillProcRows = ({ align }: { align: number }) => {
               paddingLeft: 4,
             }}
           >
-            <span className="skill-proc-mark self-stretch" style={{ background: PROC_RARITY_COLOR[rarity] }} />
+            <span className="skill-proc-mark self-stretch" style={{ background: markColor, ...(secret ? { width: 3 } : null) }} />
             <span className="relative shrink-0 flex items-center justify-center" style={{ width: align - 8, height: 20 }}>
               <span
                 key={e.hits}
-                className={`relative w-5 h-5 flex items-center justify-center overflow-hidden ${e.id === newestId || e.hits > 1 ? 'skill-proc-pop' : ''}`}
+                className={`relative w-5 h-5 flex items-center justify-center ${tech ? '' : 'overflow-hidden'} ${e.id === newestId || e.hits > 1 ? 'skill-proc-pop' : ''}`}
                 style={{ animationPlayState: playState }}
-              ><SkillProcIcon k={e.key} /></span>
+              >{tech
+                // 技の絵は古い行で名前と一緒に沈む(絵だけ浮かせない)。
+                ? <span className="block transition-opacity duration-300" style={{ width: 20, height: 20, opacity: newest ? 1 : 0.6 }}><TechProcIcon dir={tech.dir} /></span>
+                : <SkillProcIcon k={e.key as SkillKey} />}</span>
             </span>
             <span
-              className="text-[11px] font-bold tracking-wide gt-outline whitespace-nowrap transition-colors duration-300"
-              style={{ color: e.id === newestId ? 'rgba(224,242,254,1)' : 'rgba(186,200,214,0.78)' }}
+              // 秘奥義は滅多に出ない見せ場=字を大きく・重く(光らせず、縁を青黒で締める)。他の行は今どおり。
+              className={`${secret ? 'text-[13px] font-extrabold' : 'text-[11px] font-bold tracking-wide'} gt-outline whitespace-nowrap transition-colors duration-300`}
+              style={{ color: nameColor, ...(secret ? { letterSpacing: '0.08em', ['--gt-ink' as string]: 'rgba(4,18,30,0.95)' } : null) }}
             >
-              {SKILLS[e.key].name}
-              {e.hits > 1 && <span key={e.hits} className="skill-proc-pop inline-block ml-1 text-[10px] text-amber-200/95" style={{ animationPlayState: playState }}>×{e.hits}</span>}
+              {tech ? tech.name : SKILLS[e.key as SkillKey].name}
+              {e.hits > 1 && (tech
+                // 技の回数は格闘の数字の系(ヒット数の表示と同じ字・白金)。スキルの ×N(琥珀)と色を混ぜない。
+                ? <span key={e.hits} className="skill-proc-pop inline-block ml-1.5 text-[11px] font-semibold tabular-nums leading-none" style={{ animationPlayState: playState, fontFamily: '"Rajdhani", var(--uf-jp), sans-serif', color: newest ? '#fbf6ea' : nameColor }}>×{e.hits}</span>
+                : <span key={e.hits} className="skill-proc-pop inline-block ml-1 text-[10px] text-amber-200/95" style={{ animationPlayState: playState }}>×{e.hits}</span>)}
             </span>
           </div>
         );

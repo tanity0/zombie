@@ -751,7 +751,11 @@ describe('§20-6-4 秘奥義 →↓←↑(飛び蹴り→大踏み潰し→気�
     }
     return !!br().secret;
   };
-  it('取り消しでつないで成立する(構えは気功を撃った後の受付の内)', () => { expect(secretRun('cancel')).toBe(true); });
+  it('取り消しでつないで成立する(構えは気功を撃った後の受付の内)', () => {
+    expect(secretRun('cancel')).toBe(true);
+    // 通信の下の行(§21): 出した順に並び、締めの構えは秘奥義に置き換わる=構えの行は出ない。
+    expect(useGameStore.getState().skillProcFeed.map(e => e.key).filter(k => k.startsWith('tech:'))).toEqual(['tech:kick', 'tech:stomp', 'tech:kiko', 'tech:secret']);
+  });
   it('先行入力で入れても成立する', () => { expect(secretRun('buffer')).toBe(true); });
   it('取り消さずに待機から出し直しても成立する(§10-1 のまま)', () => { expect(secretRun('idle')).toBe(true); });
   it('受付を過ぎた後に入れても成立する(後隙が終わるまでは何も出ず、待機へ戻った瞬間に出る=今どおりの入力の幅)', () => { expect(secretRun('late')).toBe(true); });

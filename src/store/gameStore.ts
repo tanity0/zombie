@@ -165,7 +165,7 @@ import {
   SHIJIN_SLIDE_DISTANCE, SHIJIN_SLIDE_MS, DANCE_BEAT_MODE
 } from '../config/shijin';
 import type { SkillProcEntry } from '../utils/skillProcFeed';
-import { pushSkillProc, shiftSkillProc, isSkillProcShown } from '../utils/skillProcFeed';
+import { pushSkillProc, shiftSkillProc, isSkillProcShown, type TechProcKey } from '../utils/skillProcFeed';
 import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponRoundsPerAmmo, awakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
 import { alchemyStoneDetonateDamage, alchemyStoneDetonateRadius } from '../utils/alchemyStone';
@@ -4894,7 +4894,7 @@ const startBrawlerTech = (
   // ★タイムキーパー/オーバークロックの読み替え(research/BRAWLER.md §15・社長承認2026-11-09): 値段の割引と、確率で払った技ポイントを返す。
   const techCost = free ? 0 : BR.brawlerTechCost(kind, awakened, brawlerTechDiscount(p, kind));
   const techRefund = !free && BRS.brawlerOverclockRefunds(techCost, skillLevel(p, 'overclock'));
-  if (techRefund) notifySkillProc('overclock');
+  // 技ポイントが返った行は、技の行の後に足す(上から「出した技 → 返ってきた」の順に読める・下の notifyTechProc の後)。
   let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: now, points: s0.points - (techRefund ? 0 : techCost), ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
   // ★秘奥義の順番(research/BRAWLER.md §10-1): 実際に出た技で数える。↑構えで揃ったら、構えを秘奥義に置き換える(ポイントは払った後・窓は張らない)。
   // キャンセルで繋いだ時は前の技の終わり=いま(0ms 扱い・§11-4)。代金なしの技(free)は数えない=順番の進みはそのまま。
@@ -4903,6 +4903,7 @@ const startBrawlerTech = (
     s = { ...s, secretProgress: secretStep.progress };
     if (secretStep.fire) {
       startBrawlerSecret(get, set, s);
+      if (techRefund) notifySkillProc('overclock');
       return;
     }
   }
@@ -4956,6 +4957,8 @@ const startBrawlerTech = (
   // 取り消しで出した技(道の上の続き)の印(状態に残すだけ。§20 で続きを出した瞬間の固まりの延ばしは撤去した=固まりは当たりの瞬間に書く)。
   if (linked) s = { ...s, linked: true };
   setBrawler(set, s, extra);
+  notifyTechProc(kind); // 通信の下に技の行(秘奥義に置き換わった時は上で return 済み=秘奥義の行だけが出る)
+  if (techRefund) notifySkillProc('overclock');
   const g = get();
   if (cancel) {
     // ★キャンセルの閃き(§11-4): 繋がった瞬間に体から白金の閃光と小さな輪が弾ける(格闘ゲームの「繋がった」手応え)。
@@ -5024,6 +5027,7 @@ const startBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const c = brawlerCenter(p);
   setBrawler(set, { ...BR.brawlerSecretStart(s, st.gameTime, now), flashAt: now },
     { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, vx: 0, vy: 0 });
+  notifyTechProc('secret');
   const g = get();
   // 画面を一瞬暗く落として本人だけ光らせる → 白金と青の大きな炸裂・輪・揺れ(絵だけ=判定なし・スローは使わない=§10-3)。
   g.spawnFlash('rgba(0,0,0,0.72)', 260);
@@ -5438,8 +5442,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       });
       if (big) brawlerFx(get, dir.x * 34, fy - 8, 'fx/slash-arc', { followPlayer: true, scale: 0.62, scaleX: 0.5, rot: ang + Math.PI, duration: 240, fadeFrom: 0.3, moveX: dir.x * 26, moveY: dir.y * 26 });
     }
-    brawlerSfx('brawler-hit', hits > 0 ? (big ? 1.1 : 0.8) : 0.35, (big ? 0.66 : 1.0) * brJitter(), big ? 300 : 200);
-    if (hits > 0) brawlerSfx('whip-hit', 0.55, (big ? 0.7 : 0.85) * brJitter(), 160, 10);
+    // 当たった時=飛び蹴りの専用の音(社長支給2026-11-11・旧の2枚重ねを置き換え)。空振りは今までどおり小さい鈍い音だけ。
+    if (hits > 0) { const cue = BR.brawlerKickHitSfx(big, brJitter()); brawlerSfx(cue.key, cue.gain, cue.rate); }
+    else brawlerSfx('brawler-hit', 0.35, (big ? 0.66 : 1.0) * brJitter(), big ? 300 : 200);
     if (big && hits > 0) brawlerSfx('heavy-impact', 0.95, 0.85);
   }
 };
@@ -5524,8 +5529,8 @@ export const leverGuardFx = (get: () => GameState, c: { x: number; y: number }, 
       });
     }
   }
-  // 音: 乾いた短い1発(腕に当たった音を少し低く・短く切る)。重い当たりの音はごく薄く添えるだけ。高い金属音(counter)は鳴らさない。
-  brawlerSfx('brawler-hit', 0.62, 0.85 * brJitter(), 110);
+  // 音: ガードの専用の音(社長支給2026-11-11・旧は腕に当たった音を低く短く切った物)。重い当たりの音はごく薄く添えるだけ。高い金属音(counter)は鳴らさない。
+  brawlerSfx('brawler-guard', 0.95, brJitter());
   brawlerSfx('heavy-impact', 0.25, 0.78, 90);
 };
 /** 秘奥義の題字の素材の寸法(public/sprites/fx/brawler-secret-title.png・社長支給)。 */
@@ -5564,8 +5569,9 @@ const brawlerStageFx = (
     });
   };
   const hitSfx = (extraGain = 1) => {
-    brawlerSfx('brawler-hit', BR.BRAWLER_HIT_GAIN[stage] * extraGain, BR.BRAWLER_HIT_PITCH[stage] * brJitter(), stage <= 2 ? 180 : 280);
-    brawlerSfx('whip-hit', 0.4, BR.BRAWLER_HIT_PITCH[stage] * 1.1 * brJitter(), 110, 8);
+    // 専用の素材(社長支給2026-11-11): 1・2段目=パンチ/3〜5段目=重い打撃。旧の2枚重ね(肉を打つ音+鞭の当たり)はこの1本に置き換えた。
+    const cue = BR.brawlerStageHitSfx(stage, brJitter(), extraGain);
+    brawlerSfx(cue.key, cue.gain, cue.rate);
   };
   switch (stage) {
     case 1:
@@ -6869,6 +6875,15 @@ export const notifySkillProc = (key: SkillKey): void => {
       if (sfx.echoMs) setTimeout(() => m.playSfx(sfx.key, 0.6, undefined, rate * 1.12), sfx.echoMs);
     });
   }
+};
+/**
+ * 格闘の技を出した瞬間の行(社長指示2026-11-11「技を出したら、通信の下に出す。スキルと同じ線」)。スキルと同じ並びに積む。
+ * 呼ぶのはプレイヤー本人の技が**実際に出た**所だけ(入力しただけ・技ポイント不足・道の外は呼ばない)。拳鬼・幻影の技は別の経路=出ない。
+ * 音は足さない(技そのものの音がある)。
+ */
+export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret'): void => {
+  const key = `tech:${kind}` as TechProcKey;
+  useGameStore.setState(s => ({ skillProcFeed: pushSkillProc(s.skillProcFeed, key, Date.now(), ++skillProcSeq) }));
 };
 /**
  * 確率スキルが発動した場所を小さく光らせる(社長指示2026-11-05「発動ポイントを小さく光らせて」)。判定なし=攻撃ヴィジュアルの分類②。
@@ -11020,9 +11035,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const now = Date.now();
       const guardCost = BR.brawlerTechCost('guard', awakened, brawlerTechDiscount(p, 'guard'));
       const guardRefund = BRS.brawlerOverclockRefunds(guardCost, skillLevel(p, 'overclock'));
-      if (guardRefund) notifySkillProc('overclock');
       const s1 = { ...BR.brawlerExtendGuard(s, t, now), points: s.points - (guardRefund ? 0 : guardCost) };
       setBrawler(set, s1, { counterWindowStart: Math.min(p.counterWindowStart, now), counterWindowEnd: now + BR.BRAWLER_GUARD_MS });
+      notifyTechProc('guard'); // 構えの延長も技を出した=行の数が増える
+      if (guardRefund) notifySkillProc('overclock'); // 技の行の後(出した技 → 返ってきた、の順)
       brawlerSfx('heavy-impact', 0.22, 1.35, 260);
       brawlerSfx('homing-fire', 0.2, 0.62, 260);
       return true;

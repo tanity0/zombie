@@ -366,6 +366,17 @@ describe('格闘: 検収の(A)', () => {
     advance(70);
     expect(drainBrawlerSfx().map(b => b.key)).toContain(BRAWLER_SFX_DEATH);
   });
+  it('当たりの音は専用の素材(§22): 1段目が当たるとパンチの音・旧の2枚重ねは鳴らさない', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(45, 0, 'z')] });
+    drainBrawlerSfx();
+    useGameStore.getState().brawlerPress();
+    advance(120);
+    const keys = drainBrawlerSfx().map(b => b.key);
+    expect(keys).toContain('brawler-punch');
+    expect(keys).not.toContain('brawler-hit');
+    expect(keys).not.toContain('whip-hit');
+  });
   it('A-5 武器庫の円の中: 押した瞬間は店を開く(段は出さない)/段の判定の時刻では店を開かない(ポイントを失わない)', () => {
     setup();
     const c = center();

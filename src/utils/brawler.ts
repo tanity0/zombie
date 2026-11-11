@@ -195,11 +195,26 @@ export const BRAWLER_STANDOFF_PX = 24;       // 詰めの止まる所(相手の�
 export let BRAWLER_SUPER_FLASH_MS = 100; // ×BRAWLER_TEMPO(係数1.0の値)
 /**
  * 段ごとの音程(1段目→5段目)。等間隔に下げない=段ごとに個別の値(クリエイティブ監査 #7)。
- * swing=振りの風切り / hit=肉を打つ音。0番は使わない。
+ * swing=振りの風切り / hit=当たりの音(下の注記)。0番は使わない。
  */
 export const BRAWLER_SWING_PITCH = [1, 1.1, 1.02, 0.84, 0.8, 0.68] as const;
-export const BRAWLER_HIT_PITCH = [1, 1.18, 1.08, 0.88, 0.82, 0.64] as const;
+/**
+ * ★当たりの音は専用の素材(社長支給2026-11-11): 1・2段目=パンチ(brawler-punch)/3〜5段目=掌底などの重い打撃(brawler-heavy)。
+ * どちらも**少し早回し**(社長指示「パンチSE 少し早くして」「重めの打撃音 少し早めに」)=全段 1.0 より上。段ごとに少しずつ変える(等間隔にしない)。
+ * 旧は1本の素材(shot-damage)を段ごとに高さを変えて使い分けていた(1.18〜0.64)。
+ */
+export const BRAWLER_HIT_PITCH = [1, 1.2, 1.12, 1.16, 1.1, 1.04] as const;
 export const BRAWLER_HIT_GAIN = [1, 0.7, 0.75, 0.95, 0.85, 1.1] as const;
+/** 格闘の音1つ(store の音の列へ積む形)。 */
+export interface BrawlerSfxCue { key: string; gain: number; rate: number }
+/** 通常攻撃の当たりの音(段 1..5・jitter=音程の揺らぎ)。プレイヤーの格闘と拳鬼が同じ物を鳴らす。 */
+export const brawlerStageHitSfx = (stage: number, jitter = 1, extraGain = 1): BrawlerSfxCue => {
+  const st = Math.max(1, Math.min(5, Math.round(stage)));
+  return { key: st <= 2 ? 'brawler-punch' : 'brawler-heavy', gain: BRAWLER_HIT_GAIN[st] * extraGain, rate: BRAWLER_HIT_PITCH[st] * jitter };
+};
+/** 飛び蹴りが当たった音(社長支給2026-11-11)。3発目(big)は少し低く・大きく。 */
+export const brawlerKickHitSfx = (big: boolean, jitter = 1): BrawlerSfxCue =>
+  ({ key: 'brawler-kick', gain: big ? 1.1 : 0.85, rate: (big ? 0.9 : 1.0) * jitter });
 /** 当たりの白い炸裂の大きさ(world px)と尺(ms)。弱は敵の半分以下・短く。大きいのは強・締めだけ(クリエイティブ監査 #1)。 */
 export const BRAWLER_SPARK = {
   weak: { size: 54, ms: 200, glow: 22 },
