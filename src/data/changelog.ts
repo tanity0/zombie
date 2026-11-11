@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5513', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5512', items: [
     '武器とサブウェポンに熟練度。使い込むほど段階が上がり、その武器が強くなる',
     '熟練度が上がるのは出撃の終わり。強くなるのは次の出撃から',

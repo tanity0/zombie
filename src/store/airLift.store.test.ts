@@ -5,7 +5,8 @@ import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vites
 import { useGameStore } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
-import { setBrawlerTempoAll, brawlerAirborne, brawlerLiftHoldNow, BRAWLER_JUGGLE_BUDGET } from '../utils/brawlerCombo';
+import { setBrawlerTempoAll, brawlerAirborne, brawlerLiftHoldNow, BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_WEIGHT, BRAWLER_GROUND_LAUNCH } from '../utils/brawlerCombo';
+import { slasherLiftMove } from '../utils/airLift';
 import { BRAWLER_TEMPO_DEFAULT } from '../utils/brawler';
 
 let now = 11_000_000;
@@ -146,14 +147,17 @@ describe('スラッシャーの追撃で打ち上げる', () => {
     expect(brawlerAirborne(z2, now)).toBe(true);
     expect(z2.brLiftBudget).toBe(BRAWLER_JUGGLE_BUDGET.mob - 1); // 2段目の拾い=1
   });
-  // 社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」: 旧「重く浮く(0.4)」を新仕様へ。
-  it('ボス級も格闘と同じ区分の重さで浮く(雑魚と同じ1.0)', () => {
+  // 社長裁定2026-11-11「普段は少し重く、気絶中からのコンボは軽く」(v0.25.5480): ボス級は普段 BRAWLER_JUGGLE_WEIGHT.boss
+  // (気絶・紫の間に地上から浮かせた時だけ BRAWLER_JUGGLE_WEIGHT_STUN_BOSS)。期待値は定数から作る(数字が変わっても追従する)。
+  it('ボス級も格闘と同じ区分の重さで浮く(普段=ボス級の重さぶん雑魚より低い)', () => {
     useGameStore.setState({ enemies: [place('hunter', 50, 0, 'h')] });
     arm(0);
     useGameStore.getState().beginMeleeSwing();
     const h = en('h');
     expect(brawlerAirborne(h, now)).toBe(true);
-    expect(h.brLiftPeak!).toBeCloseTo(0.75 * 1.0, 5);
+    const launch = BRAWLER_GROUND_LAUNCH[slasherLiftMove(0, false, false)!]!; // 1回目の追撃=3段目の打ち上げ
+    expect(h.brLiftPeak!).toBeCloseTo(launch * BRAWLER_JUGGLE_WEIGHT.boss, 5);
+    if (BRAWLER_JUGGLE_WEIGHT.boss < BRAWLER_JUGGLE_WEIGHT.mob) expect(h.brLiftPeak!).toBeLessThan(launch * BRAWLER_JUGGLE_WEIGHT.mob);
   });
 });
 

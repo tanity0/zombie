@@ -235,12 +235,22 @@ describe('headless simulation invariants', () => {
     expect(eggs.length).toBeGreaterThan(3);
   });
 
+  // ★叫喚型は画面(ズームの可視域)に見えている時だけ溜めを始める(v0.25.5494・utils/screamerGate)。
+  //   resetGame 直後はカメラ(左上)=プレイヤー(0,0)なので、プレイヤーは画面の左上の角に居る。叫喚型の横ドリフトの向きは
+  //   敵の id(毎回ランダム)で決まり、上へ流れた回だけ画面の外(y<0)へ出て溜めが始まらない=回すたびに通ったり落ちたりしていた。
+  //   カメラと gameBounds・viewZoom を明示し、プレイヤーを画面の真ん中に置く(叫喚型が上下どちらへ流れても可視域に収まる)。
+  const screamerInViewCamera = (px: number, py: number) => {
+    const gameBounds = { width: 800, height: 600 }; // resetGame の既定と同じ寸法(ここでは明示するだけ)
+    return { gameBounds, viewZoom: 1, camera: { x: px - gameBounds.width / 2, y: py - gameBounds.height / 2 } };
+  };
+
   it('screamer winds up after ~5s then opens a ~7s buff window (社長指示: 出現から発動まで計7秒)', () => {
     useGameStore.getState().resetGame('warrior');
     const { x, y } = useGameStore.getState().player;
     useGameStore.setState({
       enemies: [spawnEnemyAt('screamer', x + 260, y, useGameStore.getState().gameTime)],
       screamerBuffUntil: 0,
+      ...screamerInViewCamera(x, y),
     });
     const dt = 1 / 60;
     let t = useGameStore.getState().gameTime;
@@ -259,6 +269,7 @@ describe('headless simulation invariants', () => {
     useGameStore.setState({
       enemies: [spawnEnemyAt('screamer', x + 260, y, useGameStore.getState().gameTime)],
       screamerBuffUntil: 0,
+      ...screamerInViewCamera(x, y),
     });
     const dt = 1 / 60;
     let t = useGameStore.getState().gameTime;
