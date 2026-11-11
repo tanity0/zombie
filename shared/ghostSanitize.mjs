@@ -87,6 +87,27 @@ const MOVE_KEYS = new Set([
   'idol-s1','idol-s2','idol-s3','idol-s4','idol-s5','idol-s6','idol-s7','idol-s8',
 ]);
 
+// 熟練度(他人の守護霊にも記録主の熟練度を乗せる・research/MASTERY.md v2.5)。src/data/mastery.ts の
+// GROWING_MASTERY_KEYS(銃5+melee+サブ21)+ `max` と同じ内容を手で複製している(上の許可リストと同じ作法)。
+// 台帳との一致は src/utils/ghostOnline.test.ts が止める(育つキーを足したらここにも足す=忘れると黙って倍率1に落ちる)。
+export const GHOST_MASTERY_KEYS = Object.freeze([
+  'handgun', 'shotgun', 'rifle', 'glauncher', 'phill',
+  'melee',
+  'heavy-grenade', 'dog', 'katana', 'whip', 'alchemy', 'turret', 'fire-knife', 'drone-boomerang', 'wire-anchor',
+  'homing', 'shadow-clone', 'molotov', 'sensor-mine', 'support-sniper', 'junk-weapon', 'gold-ring', 'arrow-rain',
+  'brawler', 'decoy', 'shield', 'first-aid-kit',
+  'max',
+]);
+const MASTERY_KEY_SET = new Set(GHOST_MASTERY_KEYS);
+/** 熟練度の倍率の上限(= src/utils/mastery.ts の Lv10 の倍率 = MASTERY_MAX_MULT)。一致はテストで縛る。 */
+export const GHOST_MASTERY_MAX_MULT = 1.9;
+/**
+ * 育成(永続強化)の攻撃力の上限(= src/utils/playerUpgrades.ts の growthAttackMult(PLAYER_UPGRADE_MAX_LEVEL))。
+ * research/GROWTH.md §5-5。サーバはビルド無しでこの .mjs を読むので台帳を import できない=値を持ち、
+ * 台帳との一致は src/utils/ghostOnline.test.ts が止める(段数上限や1段の伸びを変えたらここも直す)。
+ */
+export const GHOST_GROWTH_ATK_MAX_MULT = 1.2;
+
 const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -100,6 +121,23 @@ const sanitizeLevelMap = (raw, known, maxLevel = 3) => {
   const out = {};
   for (const [key, value] of Object.entries(raw)) {
     if (known.has(key) && finite(value)) out[key] = int(value, 1, maxLevel);
+  }
+  return out;
+};
+
+// 熟練度の焼き値(キー→倍率)。知らないキー・数でない値は落とす。倍率は 1〜上限に丸め、1 に丸まった物は落とす(無い欄=1)。
+// キーの数は既知のキーの数で頭打ち(同じキーは物の中で1つだけ)。物でなければ欄ごと落とす。
+const sanitizeMasteryMult = (raw) => {
+  if (!isObject(raw)) return undefined;
+  const out = {};
+  let n = 0;
+  for (const [key, value] of Object.entries(raw)) {
+    if (n >= MASTERY_KEY_SET.size) break;
+    if (!MASTERY_KEY_SET.has(key) || !finite(value)) continue;
+    const m = clamp(value, 1, GHOST_MASTERY_MAX_MULT);
+    if (m === 1) continue;
+    out[key] = m;
+    n += 1;
   }
   return out;
 };
@@ -155,6 +193,13 @@ const sanitizeSnapshot = (raw) => {
   // v0.25.3271(守護霊へのアバター記録): 既知アバター以外(改造/旧データ/未来のID)はnull化。
   // isAvatarId(src/data/avatars.ts)相当の検証をこの信頼境界でも独立に行う。
   out.avatarId = (typeof raw.avatarId === 'string' && AVATAR_IDS.has(raw.avatarId)) ? raw.avatarId : null;
+  // 他人の守護霊にも記録主の熟練度と育成の攻撃力を乗せる(社長裁定)。欠損(古い記録)は欄なし=受け取り側で1。
+  // 通信の版(GHOST_SHARE_EPOCH)は上げない: 欄なしを1として読むので、古い記録も新しい記録も同じコードで読める。
+  const masteryMult = sanitizeMasteryMult(raw.masteryMult);
+  if (masteryMult) out.masteryMult = masteryMult;
+  if (finite(raw.masteryLoadoutMult)) out.masteryLoadoutMult = clamp(raw.masteryLoadoutMult, 1, GHOST_MASTERY_MAX_MULT);
+  // research/GROWTH.md §5-5: 上限で頭打ち・1未満は1・非数/欠損は欄なし(=受け取り側で1.0)。
+  if (finite(raw.growthAtkMult)) out.growthAtkMult = clamp(raw.growthAtkMult, 1, GHOST_GROWTH_ATK_MAX_MULT);
   return out;
 };
 

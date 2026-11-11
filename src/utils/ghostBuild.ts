@@ -118,7 +118,11 @@ export const actorBuildFor = (
   id: string | undefined, snap: PlayerBuildSnapshot | undefined, live: Player,
 ): GhostBuild | null => {
   if (id === undefined) return null;
-  return buildForActorId(id, snap, live, false); // 幻影=熟練度を持たない(発注者指示「幻影にはこちらの武器も熟練値を乗せない」)
+  // 幻影の育成(攻撃力)は「戦う本人の今の育成」を呼び出し側で掛ける既存仕様(phantomTick の s.growthAtkMult)。
+  // 記録主の育成は疑似Playerに持たせない(=今までどおり1)。オンラインの記録が growthAtkMult を運ぶようになったので、
+  // ここで落とさないとサブウェポン等の主語(combatActorPlayer)経由で記録主の育成が幻影に乗ってしまう。
+  const phantomSnap = snap && snap.growthAtkMult !== undefined ? { ...snap, growthAtkMult: undefined } : snap;
+  return buildForActorId(id, phantomSnap, live, false); // 幻影=熟練度を持たない(発注者指示「幻影にはこちらの武器も熟練値を乗せない」)
 };
 
 /** ラン境界/テスト用。 */

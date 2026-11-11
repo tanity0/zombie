@@ -8,7 +8,10 @@ import {
   isKatanaMode, hasMurasame, katanaLevel, katanaRange, KATANA_RANGE_BY_LEVEL, subWeaponBlockedByKatana,
 } from '../store/gameStore';
 import { snapshotPlayerBuild, buildPseudoPlayer, buildHasLoadout } from './playerBuild';
-import { resolveGhostBuild, ghostActorPlayer, clearGhostBuildCache, ghostBuildFor } from './ghostBuild';
+import { resolveGhostBuild, ghostActorPlayer, clearGhostBuildCache, ghostBuildFor, actorBuildFor } from './ghostBuild';
+import { sanitizeSharedProfile, GHOST_PROFILE_DEFAULTS } from '../../shared/ghostSanitize.mjs';
+import { effectiveGhostProfile, type PlayerProfile } from './playerTraits';
+import type { PlayerBuildSnapshot } from '../types/game';
 import { createWeapon, gunShotBaseDamage, gunShotCritChance } from './weaponUtils';
 import { ghostCounterDamage } from './ghostCounter';
 import type { Player, Summon, SubWeaponKey, EquipLoadout } from '../types/game';
@@ -224,5 +227,50 @@ describe('刀/ワイヤー(裁定2): ビルドのサブウェポンが守護霊�
     const actor = ghostActorPlayer(build, { x: 500, y: 500, width: 32, height: 32, health: 30, maxHealth: 100 });
     expect(isKatanaMode(actor)).toBe(true);
     expect(katanaRange(actor)).toBe(KATANA_RANGE_BY_LEVEL[3]);
+  });
+});
+
+// 社長裁定: オンラインで来る他人の守護霊にも記録主の熟練度・育成の攻撃力を乗せる。受け取りの道
+// (sanitizeSharedProfile → effectiveGhostProfile → snapshot → resolveGhostBuild(guardian) / actorBuildFor)を1本通す。
+describe('他人の守護霊(オンラインの記録)に熟練度と育成の攻撃力が届く', () => {
+  const remoteSnapshot = (): PlayerBuildSnapshot => ({
+    ...snapshotPlayerBuild(buildRun()),
+    growthAtkMult: 1.16,
+    masteryMult: { melee: 1.7, rifle: 1.4 },
+    masteryLoadoutMult: 1.3,
+  });
+  const received = (snap: PlayerBuildSnapshot): PlayerBuildSnapshot | undefined => {
+    const raw = {
+      v: 1, runs: 1, moveReactions: {}, subStyles: {},
+      bossStyles: { thor: { ...GHOST_PROFILE_DEFAULTS, subStyles: {}, at: 1, snapshot: JSON.parse(JSON.stringify(snap)) } },
+    };
+    const safe = sanitizeSharedProfile(raw, 'thor') as PlayerProfile | null;
+    expect(safe).not.toBeNull();
+    return effectiveGhostProfile(safe!, 'thor').snapshot;
+  };
+
+  it('守護霊の疑似プレイヤーに、記録主の熟練度と育成の攻撃力がそのまま乗る', () => {
+    const snap = received(remoteSnapshot());
+    const b = resolveGhostBuild(snap, freshPlayer(), { guardian: true });
+    expect(b.fromSnapshot).toBe(true);
+    expect(b.player.growthAtkMult).toBe(1.16);
+    expect(b.player.masteryMult).toEqual({ melee: 1.7, rifle: 1.4 });
+    expect(b.player.masteryLoadoutMult).toBe(1.3);
+  });
+
+  it('古い記録(欄なし)は熟練度なし・育成1.0の強さ', () => {
+    const { growthAtkMult: _g, masteryMult: _m, masteryLoadoutMult: _l, ...old } = remoteSnapshot();
+    const b = resolveGhostBuild(received(old as PlayerBuildSnapshot), freshPlayer(), { guardian: true });
+    expect(b.player.growthAtkMult).toBe(1);
+    expect(b.player.masteryMult).toEqual({});
+    expect(b.player.masteryLoadoutMult).toBe(1);
+  });
+
+  it('幻影(敵)は今までどおり: 熟練度 {}/1・記録主の育成は持たない(1)', () => {
+    const snap = received(remoteSnapshot());
+    const b = actorBuildFor('phantom-remote', snap, freshPlayer())!;
+    expect(b.player.masteryMult).toEqual({});
+    expect(b.player.masteryLoadoutMult).toBe(1);
+    expect(b.player.growthAtkMult).toBe(1);
   });
 });

@@ -1,5 +1,18 @@
 # Development Log
 
+## v0.25.5520 — オンラインの他人の守護霊にも、記録主の熟練度と育成の攻撃力を乗せる(社長裁定「守護霊にも載せます」・MASTERY.md v2.6 / GROWTH.md §5-5)【2026-11-12 08:19 JST】
+
+- `shared/ghostSanitize.mjs` の `sanitizeSnapshot` が3欄を通す: `masteryMult`(育つキー27+`max` だけ・1〜1.9・1 に丸まった物と知らないキーは落とす)/`masteryLoadoutMult`(1〜1.9)/`growthAtkMult`(1〜`growthAttackMult(PLAYER_UPGRADE_MAX_LEVEL)`=今は1.2)。数でない値・NaN・Infinity・欠損は欄なし=1。通信の版(`GHOST_SHARE_EPOCH`・`buildVersion`)は上げていない。
+- `shared/` は `src/` を import できない(サーバがビルド無しで直接読む)ので、値は `shared/` に定数で持ち、台帳との一致をテストで固定(`GHOST_MASTERY_KEYS`=育つキー+`max`/`GHOST_MASTERY_MAX_MULT`=Lv10 の倍率/`GHOST_GROWTH_ATK_MAX_MULT`=育成の最大)。
+- 幻影(`actorBuildFor`)は記録の `growthAtkMult` を外して組む=今までと同じ結果(放っておくと、サブウェポンの一部[火炎瓶の床・センサー地雷]に記録主の育成が乗る所だった)。幻影の本体の攻撃は出現時に本人の育成を焼く作りのまま。熟練度は `{}`/1 のまま。
+- 自分の守護霊・固定の先人守護霊20体は変わらない。熟練度を無視する出撃では守護霊の熟練度は倍率1(育成の攻撃力は自分の守護霊と同じく乗る)。
+- **サーバ**: `shared/**` の変更なので、この push で `.github/workflows/server-deploy.yml` が回り自動で配られる(Secrets 未設定ならテストだけ)。**事実**: 既に保存されている記録は欄が落ちたまま=記録主が新しい版で出撃し直して上書き保存されるまで乗らない。古いクライアントの記録も同じ。
+- **品質監査 1巡: (A)なし**(信頼の境界[巨大な数・負・NaN・文字列・`__proto__`・何万個のキー]・途中で欄が落ちる所なし・二重掛けなし・幻影/固定20体/自分の守護霊は不変・後方互換)。2巡目は回さない(理由: (A)がゼロ)。(B)=何万キーの時に既知キーがそろうまで全件なめる(本文64KBで止まる・害なし)。
+- 範囲外の事実(直していない): 強化「カウンター受付」(`growthCounterAcceptMs`)も同じ浄化で落ちていて他人の守護霊に届いていない(社長へ報告済み)/記録にスナップショットが無い他人の守護霊は、見ている本人の育成を借りる(以前から)。
+- 実装は Opus のサブエージェント。確認: typecheck / eslint / 循環import / vitest(mastery・ghostOnline・ghostBuild・masteryGuardian)/サーバのテスト(`node --test`・外へ通信なし)。見た目の変更なし。
+- 状態変化: research/MASTERY.md → 一部実装(残り: 必要量の計測=社長の実機の1出撃を測る案の返事待ち)/research/GROWTH.md §5 → 実機確認待ち
+- ファイル: shared/ghostSanitize.mjs・src/utils/ghostBuild.ts・mastery.ts・ghostOnline.test.ts・ghostBuild.test.ts・server/test/ghost-online.node.js・research/MASTERY.md・package.json・src/data/changelog.ts
+
 ## v0.25.5519 — リラックスのコマで敵が1体も湧かないバグ(社長報告「全く敵が出ない時間がある。これ無くしたはず」「敵でないのはリラックスモード。ずっと待ってても画面内に敵がいない」)【2026-11-12 01:11 JST】
 
 - **原因**: `runKomaBoardMaintenance` の盤面の数(`boardCount`)が「管理する型なら全部」で数えていた。解放軍群(変異)の取り巻き=赤いバット男5体(`type: 'bat'`・`hordeLeaderId` あり・`fixed`・遠くの輪を回ってこちらへ来ない)が数に入り、リラックスの目標3(2026-10-18「ゼロではなく3体」)に対して常に「足りている」になっていた=1体も湧かない。通常のコマでも雑魚の枠を5つ食っていた。設計は「別カウント」(LIBERTY_HORDE §6)で、上限の側(`countsTowardEnemyCap`)は既に外していた=`boardCount` だけの数え漏れ。出るのは解放軍群が居るステージ(1・3・4・5)。

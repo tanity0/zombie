@@ -236,8 +236,10 @@ const clampRecordMult = (v: unknown): number => {
  * 守護霊の記録に写した熟練度の焼き値を復元する(壊れた保存・改ざんへの備えとして正規化する)。
  * 知らないキーは捨てる(育つキーと `max` だけ残す)・倍率は 1〜1.9 に丸める・数でない物は 1(=表から落とす)。
  * 欄が無い(古い記録)は `{}` と `1`(熟練度なしの強さ)。
- * 事実: オンラインで届く他人の記録は、いまは共有の正規化(shared/ghostSanitize.mjs)が `masteryMult`・`masteryLoadoutMult` を
- * 落とすので、この欄は届かない(=他人の守護霊は熟練度なしの強さ)。ここに来るのは自分の記録だけ。
+ * オンラインで届く他人の記録も、共有の正規化(shared/ghostSanitize.mjs の sanitizeSnapshot)が `masteryMult`・
+ * `masteryLoadoutMult` を同じ規則(既知のキーだけ・1〜1.9・数でない物は落とす)で通すので届く(=他人の守護霊にも記録主の熟練度が乗る)。
+ * ここでの正規化は自分の記録にも他人の記録にも掛かる(共有の正規化を通った値は既に範囲内=二度丸めても変わらない)。
+ * ただし共有の正規化が古いサーバで保存された記録は欄が落ちたまま=欄なし(熟練度なし)として読む。
  */
 export const normalizeMasteryRecord = (rawMult: unknown, rawLoadout: unknown): MasteryRecord => {
   const masteryMult: Partial<Record<MasteryKey, number>> = {};

@@ -4,6 +4,8 @@ import { allowedGhostOriginValue } from '../src/ghost-origin.js';
 import {
   GHOST_PROFILE_DEFAULTS,
   GHOST_SHARE_EPOCH,
+  GHOST_GROWTH_ATK_MAX_MULT,
+  GHOST_MASTERY_MAX_MULT,
   sanitizeSharedProfile,
 } from '../../shared/ghostSanitize.mjs';
 import { handleGhostRequest } from '../src/ghost-api.js';
@@ -70,6 +72,37 @@ test('shared profile sanitizer passes known avatarId through and nulls unknown/m
   const safeMissing = sanitizeSharedProfile(withoutAvatar, 'thor');
   assert.ok(safeMissing);
   assert.equal(safeMissing.bossStyles.thor.snapshot.avatarId, null);
+});
+
+// 社長裁定: 他人の守護霊にも記録主の熟練度と育成の攻撃力を乗せる。保存(PUT)と配る(pick)の両方が通る浄化で落ちない事。
+test('shared profile sanitizer passes mastery and growth attack with clamping, old records stay readable', () => {
+  const withBuild = profile();
+  Object.assign(withBuild.bossStyles.thor.snapshot, {
+    masteryMult: { melee: 1.5, handgun: 99, evil: 1.9, loadout: 1.9, rifle: 'x', katana: 1 },
+    masteryLoadoutMult: 7,
+    growthAtkMult: 5,
+  });
+  const safe = sanitizeSharedProfile(withBuild, 'thor');
+  assert.ok(safe);
+  assert.deepEqual(safe.bossStyles.thor.snapshot.masteryMult, { melee: 1.5, handgun: GHOST_MASTERY_MAX_MULT });
+  assert.equal(safe.bossStyles.thor.snapshot.masteryLoadoutMult, GHOST_MASTERY_MAX_MULT);
+  assert.equal(safe.bossStyles.thor.snapshot.growthAtkMult, GHOST_GROWTH_ATK_MAX_MULT);
+  // 保存した物をもう一度浄化しても同じ(配る時の再浄化)。
+  const again = sanitizeSharedProfile(JSON.parse(JSON.stringify(safe)), 'thor');
+  assert.deepEqual(again.bossStyles.thor.snapshot, safe.bossStyles.thor.snapshot);
+
+  const old = sanitizeSharedProfile(profile(), 'thor'); // 欄なし(古い記録)
+  assert.ok(old);
+  assert.equal('masteryMult' in old.bossStyles.thor.snapshot, false);
+  assert.equal('masteryLoadoutMult' in old.bossStyles.thor.snapshot, false);
+  assert.equal('growthAtkMult' in old.bossStyles.thor.snapshot, false);
+
+  const bad = profile();
+  Object.assign(bad.bossStyles.thor.snapshot, { masteryMult: [1.9], masteryLoadoutMult: 'x', growthAtkMult: Number.NaN });
+  const safeBad = sanitizeSharedProfile(bad, 'thor');
+  assert.equal('masteryMult' in safeBad.bossStyles.thor.snapshot, false);
+  assert.equal('masteryLoadoutMult' in safeBad.bossStyles.thor.snapshot, false);
+  assert.equal('growthAtkMult' in safeBad.bossStyles.thor.snapshot, false);
 });
 
 const pickEnv = (realCount) => ({

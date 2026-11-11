@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5520', items: [
+    'ほかのプレイヤーの守護霊にも、その人の熟練度と強化した攻撃力が乗る。新しい版で記録し直された守護霊から順に強くなる',
+  ] },
   { version: '0.25.5519', items: [
     '敵がまったく出てこない時間があったのが直った。落ち着いた時間でも、弱い敵が少しずつ出る',
   ] },
