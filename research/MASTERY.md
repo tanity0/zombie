@@ -286,3 +286,61 @@
 10. `STAGE_HP_MULT`・`STAGE_BOSS_EXTRA_HP_MULT`・`STAGE_SCORE_MULT` が §6 の値。ステージ7の雑魚とスコアは動かない。ボスの体力はステージ7=×1.9。
 11. `masterySites.test.ts`(台帳)が通る=`damageEnemy(` の呼び出しが1件残らず包まれているか印が付いている。
 12. 憲法テスト・既存のテストが通る(§6 の期待値の更新を除く)。typecheck・eslint・循環importの検査が通る。
+
+---
+# v2.1 追補(2026-11-11・品質監査2巡目の反映。**v2 と食い違う所はこの節が勝つ**。実装者は「v2 発注仕様」とこの節の2つを読む)
+
+## A. 決めた事(v2 の穴の埋め)
+1. **火炎瓶は育つ(燃焼に出どころを残す)**: 燃焼を付ける時に、敵へ `burnMasteryKey?: MasteryKey`(付けた側のキー・後から付けた方が勝つ)を書く。燃焼の刻み(`damageEnemy(…,'dot')` の所)はそのキーで包む。
+   付ける側: 火炎瓶=`molotov`/発火ナイフ=`fire-knife`/気功=`brawler`/銃の付ける燃焼=その銃の種類/スキルが付ける燃焼・出どころの分からない物=`loadout`/本人でない物=`none`。v2 §4-2 #1(燃焼は一律 `loadout`)は取り下げ。
+2. **「最初から最大」は本当に最大で効く**(社長の言葉「最初からMAXで」): `marksman-trap` `striker-quick-mag` `striker-hunting` `shield` `sage-stone` `first-aid-kit` `flare-gun` の与ダメ
+   (シールドバッシュ・救急鞄の爆発・トラップの押し出し等)は、キー `max`(特別なキーの3つ目)で扱う=倍率は固定の **×1.9**・貯めない・保存しない。無視する出撃(§3)では1。
+   `loadout` の平均には入れない(平均は育つ物だけで作る)。事実: ステージ1・2 でも、これらの与ダメは今の1.9倍になる(受け入れ条件1の「今と変わらない」から、これらだけ外れる)。
+   退役の四神 `shijin` は `none`(台帳 #1 のまま)。
+3. **無視する出撃**(v2 §3 へ追加): `isNoProgressRun()`(タイトルのボス戦テスト `BOSS_TEST_RUN` 等を含む)・`state.benchmarkRun` も無視。「幻影の練習」は `isPracticeRun()` に含まれる(別の判定は要らない)。
+   判定は `resetGame` の時に1回だけ行い、`beginMasteryRun({ ignored })` で `masteryRun` に旗として持たせる。`noteMasteryDamage`・`commitMasteryRun`・退避はその旗を読む(出撃の途中やリザルトで判定し直さない)。
+   ボットの旗(`BOT_PARAM`)は `useGameLoop.ts` の中の定数で `gameStore` から読めない(循環する)=依存の無い葉(例: `utils/botFlag.ts`)へ出して両方が読む。
+4. **保存の順番(二重に足さない)**:
+   - 退避(`visibilitychange` の hidden・`pagehide`・一時停止): メモリの `pending` を `zombie.progress.masteryPending` へ**上書き**する(足し込まない。空なら消す)。
+   - `commitMasteryRun()`: メモリの `pending` を本体へ足し、メモリの `pending` を空にし、**保存の `masteryPending` も消す**。2回目以降に呼ばれたら何も足さず空を返す。直前の結果は `getLastMasteryCommit()` で読み直せる。
+   - `resetGame`: 焼き込みより**前**に、保存の `masteryPending` に残りがあれば本体へ足して消す(メモリの `pending` は、リザルトを通っていれば空。通っていなければ退避と同じ中身=二重に足さないよう、
+     「保存の `masteryPending` を足す」か「メモリの `pending` を足す」の**どちらか一方**: メモリに残りがあればメモリを、無ければ保存を足す)。その後、メモリの `pending`・報告用の表を空にして `beginMasteryRun`。
+   - `commitMasteryRun()` を呼ぶ場所は **`GameOverScreen` の最初の描画の effect で1回だけ**(既にある `creditedRef` と同じ形)。EX の終わり(`ExEndingScreen` → victory)もここを通る。ベンチの時は呼ばない。
+5. **置き場所**: `utils/masteryRun.ts`(依存の無い葉=出どころの包み `withMastery`・`currentMasterySource()`・`pending`・報告用の表・旗)と、
+   `utils/mastery.ts`(段階・倍率・保存・`commitMasteryRun`・`getLastMasteryCommit`。`data/mastery.ts` と `masteryRun.ts` を読む)に分ける。
+6. **貯める量の言葉を直す**: 貯めるのは「`damageEnemy` の中の `appliedDamage`(=ダメージ数字に出た量。敵の残り体力で切る前の値)」。弱い敵へのやり過ぎの分も数える(今の与ダメの集計と同じ)。
+   `damageEnemy` の中で掛かる増減(紫の報酬・クリ状態・空中の倍率・紅き夜の半減・幻影の関所)は**割り戻さず、そのまま貯める**。割り戻すのは熟練度の倍率だけ。受け入れ条件7は「無効になって早く戻った当たりは貯まらない」と読む。
+7. **弾は「当たる所」で掛ける**: 弾の命中の式(`useGameLoop` の弾の当たり)で `masteryMultOf(player, 弾の masteryKey)` を掛け、弾を作る所では掛けない(跳弾・写し弾・着弾の爆発が二重にならない)。着弾の爆発・小爆発は、同じ弾の `masteryKey` で掛けて包む。
+8. **全部の飛び道具・置き物に `masteryKey` を持たせる**(v2 §4-2 #2・3 を広げる): 弾(Projectile)だけでなく、タレット本体・手榴弾・発火ナイフ・デコイ・ドローンブーメラン・地雷・火の床など
+   「作ってから後で当たる物」は、**作る所で持ち主を見て `masteryKey` を入れ、当たる所はその欄で包む**。`ownerGhost`(視覚専用の印)は読まない。
+   - 本人が作った物=その武器のキー。守護霊・幻影が作った物・護衛の弾(`weaponKey 'escort'`)・`ghost-gun`・`ghost-reflect` = `none`。
+   - 跳弾・写し弾は親の `masteryKey` を写す。
+   - 欄が無い物の既定: **本人の銃の弾と分かる物だけ銃の種類。それ以外は `none`**(v2 の「分からなければ `loadout`」は取り下げ=本人でない弾に平均が乗らない)。
+   - 弾が当たった所の小爆発(v2 #4): 弾の `masteryKey` に従う(ファイアシューターの弾は銃の弾=銃の種類。ボムカウンターの爆発は `loadout`)。
+   - ボマーの子手榴弾: 作る所でも `heavy-grenade` を入れる。
+9. **`triggerCounter` の中**(当たりごとにキーを明示して貯める・関数全体を1つのキーで包まない):
+   - 通常の振り・気絶中のフィニッシュ=格闘の当たり(`bs` あり)なら `brawler`、それ以外は `melee`。シールドバッシュ=`max`(上の2)。
+   - 倍率を掛ける所は「通常の振りの式」と「フィニッシュの素ダメ」だけ。関数の頭の `swingBaseDamage`/`meleeDamage` には掛けない(ドローンブーメラン・死神の波及・救難信号・シールドバッシュが同じ値を借りている)。
+   - ほかの4つ(刀・鞭・分身・スケボー)も、`recordDamageDealt` の隣で**その関数のキーを明示して**貯める(刀=`katana`・鞭=`whip`・分身=`shadow-clone`・スケボー=`loadout`)。守護霊の分(`isGhost`)は貯めない・倍率も掛けない。
+10. **印(`// mastery: <key>`)の決まり**(v2 §4-3): 印だけで済ませてよいのは「その呼び口を呼ぶ側が、もうそのキーで包んでいる」時だけ(例: `applyBeamPulse` の中・共通の当たりの関数の中)。
+    それ以外の呼び口は、`none` や `loadout` でも必ず `withMastery(…)` で包む(外側の包みの値が漏れない)。台帳テストは、数える範囲(`hooks/useGameLoop.ts`・`store/gameStore.ts`・`utils/*.ts`・テストを除く)・
+    コメントの中の `damageEnemy(` は数えない・印はコメントを消す前に拾う・「`withMastery(` の中」は括弧の入れ子で判定、で書く。
+11. **`loadout` の平均の数え方**(v2 §3): `resetGame` の中で、初期の銃と職業の初期サブを入れた**後**に計算する。数える物は重複なしの集合:
+    持っている銃の**種類**(同じ種類が2挺でも1つ)+ 近接(格闘を持っていれば `brawler`、持っていなければ `melee`。近接武器が無い時は入れない)+ 持っているサブのうち育つキー
+    (`murasame` は `katana`・`brawler` は近接の枠と二重に数えない)。集合が空なら1。
+12. **疑似プレイヤーの上書き**: `buildPseudoPlayerRaw` は記録が無い時に本人をそのまま返す道がある=上書きは外側の `buildPseudoPlayer` で行う(どの道でも `masteryMult: {}`・`masteryLoadoutMult: 1`)。
+    守護霊が出すドローンブーメラン(`fireGhostMeleeSwingSubs`)も、作る所で `none` を入れる(上の8)。
+13. **EX の id**: 実在するのは `'stage-ex1'`。`STAGE_BOSS_EXTRA_HP_MULT` = `{ 'stage-7': 1.9, 'stage-ex1': 1.9 }`。上乗せが掛かるのは、ステージ7のグレン(形態1・2)と EX のスリィエル・フィル。
+14. **スコアの倍率**: `stageScoreMult()` を作り(`STAGE_SCORE_MULT` を引く・ボスメーカーとボス連戦では1=今と同じ)、`resetGame` の `bakedStageScoreMult` はそれを読む。練習ランのスコアの扱いは今のまま(変えない)。
+15. **期待値を直すテスト**(受け入れ条件12の「除く」に足す): `stageDifficulty.test.ts`・`utils/bossPractice.test.ts`(練習の体力=係数なし。「練習の値がスポーン値より大きい」は成り立たなくなる=書き直す)・
+    `utils/stageDiffMults.test.ts`・`utils/stageDiffMultsGauntlet.test.ts`。
+16. **ボットの計測**(v2 §7): ボットの銃の当たり(`playtestDriver.ts` の当たり・台帳 #61)は、弾の `masteryKey`(無ければ銃の種類)で包む(台帳の `none` は取り下げ)。報告用の表は `resetGame` で空にし、`__BOT_REPORT__` の組み立てで読む。
+17. **言い換えの固定**: 熟練度は銃の**種類**ごと=出撃の途中で拾った銃も、その種類の段階の倍率で撃てる(初めて使う種類なら Lv1)。受け入れ条件3 のとおり。
+18. 事実(直さない・知っておく): デコイは出撃の中で Lv3 にならないと与ダメが無い=育ちにくい。ボットがサブを使わなければ、サブの必要量は計測では埋まらない(その時は設計チャットが銃・近接の実測から比で置く)。
+
+## B. 受け入れ条件の直し
+- 1: 「保存が空の時、ステージ1・2 の与ダメ・敵の体力は今と変わらない。**ただし『最初から最大』のサブの与ダメだけは ×1.9**」。
+- 5: `loadout` の例からシールドバッシュを外す(`max`)。例は「打ち返した敵の弾・スキルの爆発」。
+- 6: 守護霊のドローンブーメラン・護衛の弾・跳ねた弾も、倍率1・貯まらない。
+- 追加13: 火炎瓶だけで倒す出撃で `molotov` が貯まる(燃焼の刻みが `molotov` に入る)。
+- 追加14: 一時停止→撤退→リザルト→次の出撃、で同じ分が二重に足されない。タイトルのボス戦テスト・ベンチでは貯まらない。
