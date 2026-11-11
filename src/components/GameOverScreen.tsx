@@ -32,7 +32,8 @@ import {
   wallAchievementHeadline, metersToNextWall, rankLabel,
 } from '../utils/wallProgress';
 import DirectorResult from './DirectorResult';
-import { commitMasteryRun } from '../utils/mastery';
+import { commitMasteryRun, getLastMasteryCommit, type MasteryCommitResult } from '../utils/mastery';
+import MasteryResult from './MasteryResult'; // 熟練の棒が貯まる区画(research/MASTERY.md §6-2)
 import ResultReach, { ResultReachHeadline } from './ResultReach';
 import {
   endGhostOnlineRun, ghostGoldMultiplier, sendGhostFeedback, uploadGhostSlots,
@@ -397,10 +398,12 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   // (creditedRef と同じ形)。勝ち・負け・撤退・EXの終わりとも、ここを通る。ベンチの時は呼ばない。
   // 表示(武器ごとの棒・上がった段階)はバッチBで getLastMasteryCommit() を読む。
   const masteryCommittedRef = useRef(false);
+  const [masteryCommit, setMasteryCommit] = useState<MasteryCommitResult | null>(null);
   useEffect(() => {
     if (masteryCommittedRef.current || isBenchmarkRun) return;
     masteryCommittedRef.current = true;
     commitMasteryRun();
+    setMasteryCommit(getLastMasteryCommit()); // 結果の読み口(2回目の確定は空を返すため、置いてある結果を読む)
   }, [isBenchmarkRun]);
 
   // 掘削記録(社長指示v0.25.2333): このランの到達を履歴へ1回だけ追記し、断面図に過去ランの竪坑を並べる。
@@ -972,6 +975,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   </div>
                 </div>
               </div>
+              <MasteryResult commit={masteryCommit} />
               {ghostTimelineSection}
               {duoTimelineSection}
               {ghostAllySection}
@@ -1056,6 +1060,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
                   )}
                 </div>
               </div>
+              <MasteryResult commit={masteryCommit} />
               {ghostTimelineSection}
               {duoTimelineSection}
               {ghostAllySection}

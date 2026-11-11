@@ -22,6 +22,11 @@ import { loadHeroAscended } from '../utils/heroAscended';
 import { currentPlayDevice, currentPadKind } from '../utils/inputDevice';
 import { pauseResumeHint, pauseResumePadStyle, hudGlyph, usePadKindActive, useWindowLandscape } from '../utils/hudHints';
 import { HudKey } from './HudKey'; // ボタン札の部品(research/PC_SUPPORT.md §14)
+// 熟練度の段階の札(research/MASTERY.md §6-3)。保存の値を開いた時に1回だけ読む。
+import { loadMastery } from '../utils/mastery';
+import { masteryBadgeOf } from '../utils/masteryView';
+import { gunMasteryKeyOfCategory } from '../utils/weaponUtils';
+import { MasteryTag } from './MasteryBadge';
 
 // ★B2: 地図を出すステージ=区域の輪と拠点があるステージだけ(研究所・洋館の通路・訓練・EX・ステージ7は出さない)。ボスメーカー/1対1も出さない。
 const PAUSE_MAP_STAGES = new Set(['stage-1', 'stage-3', 'stage-4', 'stage-5']);
@@ -80,6 +85,7 @@ const hasFinePointer = (): boolean => {
 const readPauseSnapshot = () => {
   const s = useGameStore.getState();
   const classInfo = CHARACTER_CLASSES.find(c => c.id === s.player.characterClass);
+  const mastery = loadMastery();
   return {
     map: readPauseMap(),
     bosses: readPauseBosses(),
@@ -89,8 +95,12 @@ const readPauseSnapshot = () => {
     playerHealth: s.player.health,
     playerMaxHealth: Math.max(1, s.player.maxHealth),
     // 装備(社長指示v0.25.4236「護衛はいらない。代わりに装備とスキル一覧とサブウェポン情報」): 値は開いた時の1回読み。
-    guns: s.player.weapons.filter(w => !w.isMelee).map(w => ({ id: w.id, name: w.name, active: w.id === s.player.activeWeaponId })),
+    guns: s.player.weapons.filter(w => !w.isMelee).map(w => ({
+      id: w.id, name: w.name, active: w.id === s.player.activeWeaponId,
+      mastery: masteryBadgeOf(gunMasteryKeyOfCategory(w.category), mastery),
+    })),
     melee: s.player.weapons.find(w => w.isMelee)?.name ?? null,
+    meleeMastery: masteryBadgeOf('melee', mastery),
     classSkillName: classInfo?.name ?? '',
     classSkillDesc: classInfo?.charSkillDesc ?? '',
     // スキル=この出撃で積んだ受動スキル(runBuild)と現在Lv。説明は現在Lvに即した既存の文(skillDescForLevel)。
@@ -222,13 +232,15 @@ const PauseMenu: React.FC<PauseMenuProps> = ({ onResume, onQuit }) => {
                 {snap.guns.map(g => (
                   <div key={g.id} className={`flex items-center gap-1.5 ${g.active ? 'text-white/90' : 'text-white/50'}`}>
                     <span className={`inline-block h-1.5 w-1.5 ${g.active ? 'bg-[var(--menu-accent,#ffb340)]' : 'ui-dim-bg'}`} />
-                    <span className="truncate">{g.name}</span>
+                    <span className="min-w-0 truncate">{g.name}</span>
+                    <MasteryTag badge={g.mastery} className="ml-auto" />
                   </div>
                 ))}
                 {snap.melee && (
                   <div className="flex items-center gap-1.5 text-white/50">
                     <span className="inline-block h-1.5 w-1.5 ui-dim-bg" />
-                    <span className="truncate">{snap.melee}</span>
+                    <span className="min-w-0 truncate">{snap.melee}</span>
+                    <MasteryTag badge={snap.meleeMastery} className="ml-auto" />
                   </div>
                 )}
               </div>

@@ -169,7 +169,11 @@ import {
 // ユニーク武器システム(UNIQUE_WEAPONS.md §11-6): 装備設定画面の「銃スロット」欄+開発施設の棚。
 import { SLOT_CATEGORIES, SLOT_TIERS, SLOT_CANDIDATES, bossUnlockSubKeys, subShelfVisible, type SlotCategory, type SlotTier } from '../data/weaponSlots';
 import { getSlotLoadout, setSlotCandidate, unlockedWeaponKeys, shelfWeaponKeys, isTestWeaponUnlockAll, setTestWeaponUnlockAll } from '../utils/weaponSlot';
-import { weaponDisplayName, weaponDescription, weaponIconName } from '../utils/weaponUtils';
+import { weaponDisplayName, weaponDescription, weaponIconName, gunMasteryKeyOfWeaponKey } from '../utils/weaponUtils';
+// 熟練度の段階の札(research/MASTERY.md §6-3): 値は装備画面を描く時に保存から1回読む。
+import { loadMastery } from '../utils/mastery';
+import { masteryBadgeOf, masteryKeyOfSub } from '../utils/masteryView';
+import { MasteryTag, MasteryMeter } from './MasteryBadge';
 const GUN_CATEGORY_LABEL: Record<SlotCategory, string> = {
   handgun: 'ハンドガン', shotgun: 'ショットガン', rifle: 'ライフル', glauncher: 'グレネードガン',
 };
@@ -1452,6 +1456,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
     // ではなく**載せない**。解放の入口は開発施設に一本化(この画面は「持ち物から選ぶ」だけ)。
     const visibleSubs = SUB_WEAPON_KEYS.filter(
       k => !CHARACTER_SUBWEAPON_KEYS.includes(k) && !RETIRED_SUB_WEAPONS.includes(k) && subOwned(k));
+    // 熟練度の段階(名前の横の札+次までの棒)。描く時に1回だけ読む。
+    const masterySaved = loadMastery();
     const toggleSub = (k: SubWeaponKey) => {
       if (!subOwned(k)) return;
       playSfx('ui-select');
@@ -1510,6 +1516,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                             <div key={tier} className="weapon-tier"><h3 className="weapon-tier-title">Tier {tier}<span>この枠で1挺</span></h3><div className="weapon-candidates grid grid-cols-2 gap-2">
                               {candidates.map(key => {
                                 const on = selected === key;
+                                const mBadge = masteryBadgeOf(gunMasteryKeyOfWeaponKey(key), masterySaved);
                                 return (
                                   <button
                                     key={key}
@@ -1522,7 +1529,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                                   >
                                     {COMMAND_UI_ENABLED && <span className="weapon-art"><img src={spritePath(weaponIconName(key))} alt="" draggable={false} loading="lazy" /></span>}
                                     <span className="weapon-copy min-w-0">
-                                      <span className="block truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span>
+                                      <span className="flex items-baseline gap-2"><span className="min-w-0 truncate text-[12px] font-semibold">{weaponDisplayName(key)}</span><MasteryTag badge={mBadge} /></span>
+                                      <MasteryMeter badge={mBadge} className="my-1 max-w-[9rem]" />
                                       {/* 社長指示2026-09-05「装備欄の武器にも説明入れて。スキルとかと同じく」:
                                           開発施設のサブ解放リストと同じ見せ方(名前の下に小さい1行)。 */}
                                       {weaponDescription(key, playDevice, padKind) && (
@@ -1558,6 +1566,7 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                 {visibleSubs.map(k => {
                   const on = equippedSubs.includes(k);
                   const icon = subWeaponIconName(k);
+                  const mBadge = masteryBadgeOf(masteryKeyOfSub(k), masterySaved);
                   return (
                     <button
                       key={k}
@@ -1570,7 +1579,8 @@ const MissionSelect: React.FC<MissionSelectProps> = ({ onStartGame, onStartBench
                       {/* 銃と同じ絵の枡(社長指示2026-09-12)。在世界スプライトを流用・無い物は空の枡 */}
                       {COMMAND_UI_ENABLED && <span className="weapon-art">{icon && <img src={spritePath(icon)} alt="" draggable={false} loading="lazy" />}</span>}
                       <span className="min-w-0">
-                        <span className="block truncate text-[13px] font-semibold">{subWeaponDisplayName(k)}</span>
+                        <span className="flex items-baseline gap-2"><span className="min-w-0 truncate text-[13px] font-semibold">{subWeaponDisplayName(k)}</span><MasteryTag badge={mBadge} /></span>
+                        <MasteryMeter badge={mBadge} className="my-1 max-w-[9rem]" />
                         {/* 一言(社長指示2026-09-12): 職の固有サブは職データの説明、それ以外は棚の台帳 subWeaponBlurbs。台帳に無い物は出さない
                             (一時停止の部隊情報と同じ規則)。 */}
                         {(() => {
