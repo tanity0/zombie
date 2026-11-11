@@ -5,6 +5,7 @@ import {
   GHOST_PROFILE_DEFAULTS,
   GHOST_SHARE_EPOCH,
   GHOST_GROWTH_ATK_MAX_MULT,
+  GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS,
   GHOST_MASTERY_MAX_MULT,
   sanitizeSharedProfile,
 } from '../../shared/ghostSanitize.mjs';
@@ -103,6 +104,30 @@ test('shared profile sanitizer passes mastery and growth attack with clamping, o
   assert.equal('masteryMult' in safeBad.bossStyles.thor.snapshot, false);
   assert.equal('masteryLoadoutMult' in safeBad.bossStyles.thor.snapshot, false);
   assert.equal('growthAtkMult' in safeBad.bossStyles.thor.snapshot, false);
+});
+
+// 社長裁定「通す必要ありそうなものは通して」: 育成「カウンター受付」も保存(PUT)と配る(pick)の浄化で落ちない事。
+test('shared profile sanitizer passes growth counter accept with clamping, old records stay readable', () => {
+  const ok = profile();
+  ok.bossStyles.thor.snapshot.growthCounterAcceptMs = 60;
+  const safe = sanitizeSharedProfile(ok, 'thor');
+  assert.equal(safe.bossStyles.thor.snapshot.growthCounterAcceptMs, 60);
+  const again = sanitizeSharedProfile(JSON.parse(JSON.stringify(safe)), 'thor');
+  assert.deepEqual(again.bossStyles.thor.snapshot, safe.bossStyles.thor.snapshot);
+
+  const hi = profile();
+  hi.bossStyles.thor.snapshot.growthCounterAcceptMs = 5000;
+  assert.equal(sanitizeSharedProfile(hi, 'thor').bossStyles.thor.snapshot.growthCounterAcceptMs, GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS);
+  const lo = profile();
+  lo.bossStyles.thor.snapshot.growthCounterAcceptMs = -1;
+  assert.equal(sanitizeSharedProfile(lo, 'thor').bossStyles.thor.snapshot.growthCounterAcceptMs, 0);
+
+  assert.equal('growthCounterAcceptMs' in sanitizeSharedProfile(profile(), 'thor').bossStyles.thor.snapshot, false);
+  for (const bad of ['60', Number.NaN, null, [60]]) {
+    const p = profile();
+    p.bossStyles.thor.snapshot.growthCounterAcceptMs = bad;
+    assert.equal('growthCounterAcceptMs' in sanitizeSharedProfile(p, 'thor').bossStyles.thor.snapshot, false);
+  }
 });
 
 const pickEnv = (realCount) => ({

@@ -107,6 +107,12 @@ export const GHOST_MASTERY_MAX_MULT = 1.9;
  * 台帳との一致は src/utils/ghostOnline.test.ts が止める(段数上限や1段の伸びを変えたらここも直す)。
  */
 export const GHOST_GROWTH_ATK_MAX_MULT = 1.2;
+/**
+ * 育成(永続強化)「カウンター受付」の延長(ms)の上限(= src/utils/playerUpgrades.ts の
+ * growthCounterAcceptMs(PLAYER_UPGRADE_MAX_LEVEL))。値を持つ理由と一致の縛りは上の攻撃力と同じ
+ * (src/utils/ghostOnline.test.ts が止める=段数上限や1段の伸びを変えたらここも直す)。
+ */
+export const GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS = 100;
 
 const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -200,6 +206,10 @@ const sanitizeSnapshot = (raw) => {
   if (finite(raw.masteryLoadoutMult)) out.masteryLoadoutMult = clamp(raw.masteryLoadoutMult, 1, GHOST_MASTERY_MAX_MULT);
   // research/GROWTH.md §5-5: 上限で頭打ち・1未満は1・非数/欠損は欄なし(=受け取り側で1.0)。
   if (finite(raw.growthAtkMult)) out.growthAtkMult = clamp(raw.growthAtkMult, 1, GHOST_GROWTH_ATK_MAX_MULT);
+  // 育成「カウンター受付」(ms): 0〜上限で頭打ち・非数/欠損は欄なし(=受け取り側で0段)。
+  if (finite(raw.growthCounterAcceptMs)) {
+    out.growthCounterAcceptMs = clamp(raw.growthCounterAcceptMs, 0, GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS);
+  }
   return out;
 };
 

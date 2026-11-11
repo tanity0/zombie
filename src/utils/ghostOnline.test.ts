@@ -5,11 +5,11 @@ import {
 } from './ghostOnline';
 import {
   sanitizeSharedProfile, GHOST_PROFILE_DEFAULTS, GHOST_KNOB_NAMES,
-  GHOST_MASTERY_KEYS, GHOST_MASTERY_MAX_MULT, GHOST_GROWTH_ATK_MAX_MULT,
+  GHOST_MASTERY_KEYS, GHOST_MASTERY_MAX_MULT, GHOST_GROWTH_ATK_MAX_MULT, GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS,
 } from '../../shared/ghostSanitize.mjs';
 import { GROWING_MASTERY_KEYS, MASTERY_MAX_LEVEL, MASTERY_MAX_MULT } from '../data/mastery';
 import { masteryDamageMult, normalizeMasteryRecord } from './mastery';
-import { growthAttackMult } from './playerUpgrades';
+import { growthAttackMult, growthCounterAcceptMs } from './playerUpgrades';
 import { PLAYER_UPGRADE_MAX_LEVEL } from '../data/playerUpgrades';
 
 describe('G6 online guardian rules', () => {
@@ -180,5 +180,54 @@ describe('他人の守護霊の熟練度・育成の攻撃力(共有の正規化
     expect(normalizeMasteryRecord(s?.masteryMult, s?.masteryLoadoutMult)).toEqual(once);
     // 正規化した物をもう一度共有の正規化へ通しても同じ(サーバ保存→配る時の再浄化)。
     expect(slotSnap({ masteryMult: s?.masteryMult, masteryLoadoutMult: s?.masteryLoadoutMult })?.masteryMult).toEqual(s?.masteryMult);
+  });
+});
+
+// 社長裁定「通す必要ありそうなものは通して」: 育成「カウンター受付」(growthCounterAcceptMs)も他人の守護霊へ届ける。
+// 共有の正規化が欄を通す事・丸め方(0〜最大段の値)・台帳(src/)との一致をここで固定する。
+describe('他人の守護霊の育成「カウンター受付」(共有の正規化)', () => {
+  type Snap = { growthCounterAcceptMs?: number };
+  const withSnap = (snapshot: Record<string, unknown>) => ({
+    v: 1, runs: 1, moveReactions: {}, subStyles: {},
+    snapshot: { maxHealth: 130, speed: 3, level: 5, ...snapshot },
+    bossStyles: { thor: { ...GHOST_PROFILE_DEFAULTS, subStyles: {}, at: 1, snapshot: { maxHealth: 130, speed: 3, level: 5, ...snapshot } } },
+  });
+  type Safe = { snapshot?: Snap; bossStyles: { thor: { snapshot: Snap | null } } } | null;
+  const both = (snapshot: Record<string, unknown>): (Snap | undefined)[] => {
+    const safe = sanitizeSharedProfile(withSnap(snapshot), 'thor') as Safe;
+    expect(safe).not.toBeNull();
+    return [safe?.bossStyles.thor.snapshot ?? undefined, safe?.snapshot];
+  };
+
+  it('台帳と一致: 上限=最大段の延長・0段は0', () => {
+    expect(GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS).toBe(growthCounterAcceptMs(PLAYER_UPGRADE_MAX_LEVEL));
+    expect(growthCounterAcceptMs(0)).toBe(0);
+  });
+
+  it('範囲内の値は全ての段でそのまま通る(枠の記録・共通の記録の両方)', () => {
+    for (let lv = 0; lv <= PLAYER_UPGRADE_MAX_LEVEL; lv++) {
+      const ms = growthCounterAcceptMs(lv);
+      for (const s of both({ growthCounterAcceptMs: ms })) expect(s?.growthCounterAcceptMs).toBe(ms);
+    }
+  });
+
+  it('上限で頭打ち・負は0', () => {
+    for (const s of both({ growthCounterAcceptMs: 99_999 })) expect(s?.growthCounterAcceptMs).toBe(GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS);
+    for (const s of both({ growthCounterAcceptMs: -40 })) expect(s?.growthCounterAcceptMs).toBe(0);
+  });
+
+  it('欠損(古い記録)・型違い・非数は欄なし(=受け取り側で0段)', () => {
+    for (const bad of [undefined, '60', null, true, [60], { ms: 60 }, Number.NaN, Infinity, -Infinity]) {
+      for (const s of both(bad === undefined ? {} : { growthCounterAcceptMs: bad })) {
+        expect(s).toBeTruthy();
+        expect(s).not.toHaveProperty('growthCounterAcceptMs');
+      }
+    }
+  });
+
+  it('正規化した物をもう一度通しても同じ(サーバ保存→配る時の再浄化)', () => {
+    const [once] = both({ growthCounterAcceptMs: 250 });
+    const [again] = both({ growthCounterAcceptMs: once?.growthCounterAcceptMs });
+    expect(again?.growthCounterAcceptMs).toBe(once?.growthCounterAcceptMs);
   });
 });

@@ -4,7 +4,7 @@
 // プレイヤーとゴーストで結果が一致することで確認する。
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  useGameStore, BOSS_CRIT_DAMAGE_MULT, counterReplyDamage,
+  useGameStore, BOSS_CRIT_DAMAGE_MULT, counterReplyDamage, counterAcceptMsOf, COUNTER_ACCEPT_MS,
   isKatanaMode, hasMurasame, katanaLevel, katanaRange, KATANA_RANGE_BY_LEVEL, subWeaponBlockedByKatana,
 } from '../store/gameStore';
 import { snapshotPlayerBuild, buildPseudoPlayer, buildHasLoadout } from './playerBuild';
@@ -272,5 +272,50 @@ describe('他人の守護霊(オンラインの記録)に熟練度と育成の�
     expect(b.player.masteryMult).toEqual({});
     expect(b.player.masteryLoadoutMult).toBe(1);
     expect(b.player.growthAtkMult).toBe(1);
+  });
+});
+
+// 社長裁定「通す必要ありそうなものは通して」: 育成「カウンター受付」も他人の守護霊へ届く。受け取りの道
+// (sanitizeSharedProfile → effectiveGhostProfile → snapshot → ghostBuildFor(守護霊) / actorBuildFor(幻影))を1本通す。
+describe('他人の守護霊(オンラインの記録)に育成「カウンター受付」が届く', () => {
+  beforeEach(() => clearGhostBuildCache());
+  const received = (snap: PlayerBuildSnapshot): PlayerBuildSnapshot | undefined => {
+    const raw = {
+      v: 1, runs: 1, moveReactions: {}, subStyles: {},
+      bossStyles: { thor: { ...GHOST_PROFILE_DEFAULTS, subStyles: {}, at: 1, snapshot: JSON.parse(JSON.stringify(snap)) } },
+    };
+    const safe = sanitizeSharedProfile(raw, 'thor') as PlayerProfile | null;
+    expect(safe).not.toBeNull();
+    return effectiveGhostProfile(safe!, 'thor').snapshot;
+  };
+  const remote = (): PlayerBuildSnapshot => ({ ...snapshotPlayerBuild(buildRun()), growthCounterAcceptMs: 60 });
+
+  it('守護霊の疑似プレイヤーに記録主の段が乗り、受付の窓がその分延びる', () => {
+    const snap = received(remote());
+    expect(snap?.growthCounterAcceptMs).toBe(60);
+    const ghost = { id: 'ghost-remote-counter', kind: 'ghost-ally', ghostBuild: snap } as unknown as Summon;
+    const b = ghostBuildFor(ghost, freshPlayer())!;
+    expect(b.player.growthCounterAcceptMs).toBe(60);
+    expect(counterAcceptMsOf(b.player)).toBe(COUNTER_ACCEPT_MS + 60);
+  });
+
+  it('古い記録(欄なし)は0段=今までどおり', () => {
+    const { growthCounterAcceptMs: _c, ...old } = remote();
+    const snap = received(old as PlayerBuildSnapshot);
+    expect(snap).not.toHaveProperty('growthCounterAcceptMs');
+    const ghost = { id: 'ghost-remote-old', kind: 'ghost-ally', ghostBuild: snap } as unknown as Summon;
+    const b = ghostBuildFor(ghost, freshPlayer())!;
+    expect(b.player.growthCounterAcceptMs).toBe(0);
+    expect(counterAcceptMsOf(b.player)).toBe(COUNTER_ACCEPT_MS);
+  });
+
+  it('幻影(敵)は今までどおり0段: 記録主の段を持たない', () => {
+    const b = actorBuildFor('phantom-remote-counter', received(remote()), freshPlayer())!;
+    expect(b.player.growthCounterAcceptMs).toBe(0);
+    expect(counterAcceptMsOf(b.player)).toBe(COUNTER_ACCEPT_MS);
+    // 育成の攻撃力の手当て(前回)も同時に効いたまま。
+    const both = actorBuildFor('phantom-remote-both', received({ ...remote(), growthAtkMult: 1.2 }), freshPlayer())!;
+    expect(both.player.growthAtkMult).toBe(1);
+    expect(both.player.growthCounterAcceptMs).toBe(0);
   });
 });

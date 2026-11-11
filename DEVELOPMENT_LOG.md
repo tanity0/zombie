@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5521 — 他人の守護霊に強化「カウンター受付」を通す+共有の正規化で落ちている欄の全数突き合わせ(社長指示「通す必要ありそうなものは通して」)【2026-11-12 08:49 JST】
+
+- 通した欄: `growthCounterAcceptMs`(0〜`growthCounterAcceptMs(PLAYER_UPGRADE_MAX_LEVEL)`=100ms で頭打ち・非数/欠損/型違いは欄なし=0段。台帳との一致をテストで固定)。幻影の入口(`actorBuildFor`)では外す=幻影は今までと同じ0。通信の版は上げていない。
+- **突き合わせの結果(事実)**: スナップショットの欄で「自分の守護霊では効いているのに他人では落ちて効いていない」のはこの1欄だけ。通さなかった欄: `magBonus`・`reloadMult`(書き込む経路=パッシブカードが今は無く常に 0/1。欠けると受け取った側の本人の値で埋まる作りは残っている)/`microRhythm`・`habitFamily`(動きに効くが分布の表で、上限を台帳から決められない=設計判断が要る)/`moveHabits`(要約だけ送る既存の設計)/`retaliate` ほか(表示・記録用)。
+- **★見つかった大きい漏れ(このコミットでは直していない・次の版で対応)**: 許可リストの**中身**が古い。銃(`GUNS`)は10挺しか知らず、台帳の19挺(グレネードガン系6・ハンドガン6・ショットガン6・ライフル6のユニーク)が落ちる=そういう銃だけの記録は `gunKeys: []` になり、他人の守護霊が銃を持たずに来る可能性が高い。スキルは `shukuchi`・`hero`・`super-armor`、サブウェポンは `gold-ring`・`brawler` が落ちる。幻影も同じ他人の記録を使うので、直すと幻影の持ち物も変わる。
+- 監査なし(理由: 直前の v0.25.5520 で監査を通した仕組みへ、同じ形で1欄足しただけ)。実装は Opus のサブエージェント。確認: typecheck / eslint / 循環import / vitest 16ファイル324件 / サーバのテスト14件。
+- ファイル: shared/ghostSanitize.mjs・src/utils/ghostBuild.ts・ghostOnline.test.ts・ghostBuild.test.ts・server/test/ghost-online.node.js・package.json・src/data/changelog.ts
+
 ## v0.25.5520 — オンラインの他人の守護霊にも、記録主の熟練度と育成の攻撃力を乗せる(社長裁定「守護霊にも載せます」・MASTERY.md v2.6 / GROWTH.md §5-5)【2026-11-12 08:19 JST】
 
 - `shared/ghostSanitize.mjs` の `sanitizeSnapshot` が3欄を通す: `masteryMult`(育つキー27+`max` だけ・1〜1.9・1 に丸まった物と知らないキーは落とす)/`masteryLoadoutMult`(1〜1.9)/`growthAtkMult`(1〜`growthAttackMult(PLAYER_UPGRADE_MAX_LEVEL)`=今は1.2)。数でない値・NaN・Infinity・欠損は欄なし=1。通信の版(`GHOST_SHARE_EPOCH`・`buildVersion`)は上げていない。

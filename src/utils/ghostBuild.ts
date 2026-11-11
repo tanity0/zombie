@@ -121,7 +121,11 @@ export const actorBuildFor = (
   // 幻影の育成(攻撃力)は「戦う本人の今の育成」を呼び出し側で掛ける既存仕様(phantomTick の s.growthAtkMult)。
   // 記録主の育成は疑似Playerに持たせない(=今までどおり1)。オンラインの記録が growthAtkMult を運ぶようになったので、
   // ここで落とさないとサブウェポン等の主語(combatActorPlayer)経由で記録主の育成が幻影に乗ってしまう。
-  const phantomSnap = snap && snap.growthAtkMult !== undefined ? { ...snap, growthAtkMult: undefined } : snap;
+  // 育成「カウンター受付」(growthCounterAcceptMs)も同じ: 幻影は今までどおり0段(記録主の段を持たせない)。
+  // オンラインの記録が運ぶようになったので、ここで落とさないと幻影の振りの窓・弾返しの時機が延びる。
+  const phantomSnap = snap && (snap.growthAtkMult !== undefined || snap.growthCounterAcceptMs !== undefined)
+    ? { ...snap, growthAtkMult: undefined, growthCounterAcceptMs: undefined }
+    : snap;
   return buildForActorId(id, phantomSnap, live, false); // 幻影=熟練度を持たない(発注者指示「幻影にはこちらの武器も熟練値を乗せない」)
 };
 

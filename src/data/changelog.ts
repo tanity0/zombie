@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5521', items: [
+    'ほかのプレイヤーの守護霊に、その人が強化したカウンターの受付の長さも乗る',
+  ] },
   { version: '0.25.5520', items: [
     'ほかのプレイヤーの守護霊にも、その人の熟練度と強化した攻撃力が乗る。新しい版で記録し直された守護霊から順に強くなる',
   ] },
