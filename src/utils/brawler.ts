@@ -176,6 +176,8 @@ export const brawlerKickFlightMs = (dist: number): number =>
 export const BRAWLER_KICK_MULTS = [0, 0.7, 0.8, 1.2] as const; // 3発目 1.0→1.2(社長指示2026-11-11「威力も少し上げて」)
 /** ★飛び蹴りの3発目の押しの強さ(普通のノックバックの何倍か)。社長指示2026-11-11「3段目の飛び蹴りはもう少し敵を吹き飛ばして」で 1→1.8。吹き飛ばし(big=4)ではない=ボス級の扱い・固まりの決まりは普通の押しのまま。 */
 export const BRAWLER_KICK3_KB_POWER = 1.8;
+/** 飛び蹴りの後隙のうち、体がしゃがみの絵に替わる所(0..1)。蹴りの影もここまでに消し切る(体の絵と影が同じ値を読む)。 */
+export const BRAWLER_KICK_CROUCH_AT = 0.1;
 /** ★飛び蹴りの3発目の後隙の倍率(社長指示2026-11-11「技後の隙も少し伸ばして」)。1・2発目は今どおり。 */
 export const BRAWLER_KICK3_RECOVERY_MULT = 1.4;
 export const brawlerKickMult = (kickN: number): number => BRAWLER_KICK_MULTS[Math.max(1, Math.min(3, Math.round(kickN)))];
@@ -1255,6 +1257,14 @@ export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerS
     const pre = s.windupMs > 0 ? Math.min(1, el / s.windupMs) : 1;
     return { ...base, ext: 0.55 * easeIn(pre), alpha: 0.3 + 0.55 * easeOut(pre) };
   }
+  // ★飛び蹴り: 体がしゃがみの絵に替わる時(後隙の BRAWLER_KICK_CROUCH_AT)までに、蹴りの影を消し切る
+  //   (社長指示2026-11-11「蹴りの後しゃがむ時は蹴りの絵は消して」)。止めの間(当たった瞬間)は伸び切ったまま見せ、後隙に入ったら前へ抜けながら素早く消える。
+  if (kind === 'kick') {
+    const kp = (el - s.windupMs) / Math.max(1, s.recoveryMs);
+    if (kp >= BRAWLER_KICK_CROUCH_AT) return null;
+    const k = Math.max(0, kp / BRAWLER_KICK_CROUCH_AT);
+    return { ...base, ext: 1 + 0.35 * easeOut(k), alpha: 0.85 * (1 - easeIn(k)) };
+  }
   // 弱攻撃(2段目)は戻りの前半で消し切る(短め)・薄め。
   const post = Math.min(1, (el - s.windupMs) / Math.max(1, s.recoveryMs) * (light ? 1.6 : 1));
   return { ...base, ext: 1 + (light ? 0.2 : 0.35) * easeOut(post), alpha: (light ? 0.75 : 0.85) * (1 - easeIn(post)) };
@@ -1381,7 +1391,7 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
       // ★蹴った後は、すぐしゃがみの絵へ(社長指示2026-11-11「全段、蹴った後、一瞬しゃがみの絵を入れて。隙は変えず。蹴ったまま落ちていくのが変」)。
       //   当たった瞬間(止めの間)は振り上げの絵のまま → 後隙に入ったらすぐしゃがんで着地する(深く沈んで戻る=慣性)。旧は後隙の前半45%が振り上げの絵だった。
       const land = Math.sin(Math.PI * Math.min(1, post / 0.6)) * (post < 0.6 ? 1 : 0);
-      return { ...base, tex: post < 0.1 ? 'swing' : 'ready', lean: 0.25 * th, push: 6 * th, sqY: 1 - 0.12 * th - 0.14 * land, sqX: 1 + 0.08 * th + 0.1 * land };
+      return { ...base, tex: post < BRAWLER_KICK_CROUCH_AT ? 'swing' : 'ready', lean: 0.25 * th, push: 6 * th, sqY: 1 - 0.12 * th - 0.14 * land, sqX: 1 + 0.08 * th + 0.1 * land };
     }
     default: return { ...base, tex: 'ready' };
   }

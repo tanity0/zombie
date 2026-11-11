@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5487', items: [
+    '飛び蹴りの後にしゃがむ時、蹴りの絵が残って重なっていたのが直った',
+  ] },
   { version: '0.25.5486', items: [
     'ゲーム内容の変更はありません',
   ] },

@@ -9,7 +9,7 @@ import {
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
-  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_KICK3_RECOVERY_MULT, brawlerGlobalStopApplies, BRAWLER_GLOBAL_STOP_MODE, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
+  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_KICK3_RECOVERY_MULT, BRAWLER_KICK_CROUCH_AT, brawlerGlobalStopApplies, BRAWLER_GLOBAL_STOP_MODE, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
@@ -45,6 +45,15 @@ describe('格闘: 表', () => {
     expect([brawlerGlobalStopApplies(true, 0), brawlerGlobalStopApplies(false, 0)]).toEqual([false, false]);
     expect([brawlerGlobalStopApplies(true, 1), brawlerGlobalStopApplies(false, 1)]).toEqual([true, false]);
     expect([brawlerGlobalStopApplies(true, 2), brawlerGlobalStopApplies(false, 2)]).toEqual([true, true]);
+  });
+  it('飛び蹴り: 体がしゃがみの絵に替わったら、蹴りの影は出ていない(社長指示2026-11-11)', () => {
+    const k = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);
+    const hitAt = k.startAt + k.windupMs;
+    expect(brawlerStandAt(k, hitAt)?.kind).toBe('kick');                       // 当たった瞬間は蹴りの影
+    const crouchAt = hitAt + k.recoveryMs * BRAWLER_KICK_CROUCH_AT;
+    expect(brawlerPoseAt(k, crouchAt + 1)?.tex).toBe('ready');                  // 体はしゃがみ
+    expect(brawlerStandAt(k, crouchAt + 1)).toBeNull();                        // 蹴りの影は消えている
+    expect(brawlerStandAt(k, hitAt + k.recoveryMs * 0.9)).toBeNull();
   });
   it('技の時間とポイントは §8-3 / §0 どおり', () => {
     expect(BRAWLER_TECHS.guard.windupMs + BRAWLER_TECHS.guard.recoveryMs).toBe(1000);

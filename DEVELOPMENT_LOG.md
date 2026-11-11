@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5487 — 格闘: 飛び蹴りの後にしゃがむ時は、蹴りの影を消す【2026-11-11 18:49 JST】
+- 社長指示(2026-11-11): 「飛び蹴り、蹴りの後しゃがむ時は蹴りの絵は消して。」
+- 直し: 蹴りの影(`brawlerStandAt` の kick)を、体がしゃがみの絵に替わる所(`BRAWLER_KICK_CROUCH_AT`=後隙の1割)までに消し切る。当たった瞬間(止めの間)は今どおり見せる。体の絵と影が同じ値を読む。
+- 確認: typecheck・lint 0。vitest `brawler.test.ts`(しゃがみの絵の時に影が出ていない)。画は撮っていない(一瞬の切り替え=実機で見る)。
+- 監査: 付けない(社長の指定どおりの、既にある絵の消える時刻の変更)。
+- 変更: `src/utils/brawler.ts`・`brawler.test.ts`・`research/BRAWLER.md`・`src/data/changelog.ts`・`package.json`。
+
 ## v0.25.5486 — 試し: 格闘の当たりの止めを「画面全体の止め」にする切り替え(`?brstop=1|2`・既定は今のまま)【2026-11-11 18:21 JST】
 - 社長指示(2026-11-11): 「画面全体を止めた方が止まった感でるかもなー」→ URL で試せるように(「はい」)。仕様=`research/BRAWLER.md` §27。
 - `?brstop=1`=締め(5段目・飛び蹴り3発目・大踏み潰し)だけ/`?brstop=2`=全部の当たり/無し=今のまま。全体の止めは既存の `triggerHitstop`。全体を止める時は自分の止めと固まりの式の止めを 0(`BrawlerStrikeOpts.lockStopMs`)=長さもつながりも今と同じ。
