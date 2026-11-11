@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5504', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5503', items: [
     '置き去りにした叫喚型が、進む先に回り込んでくる',
   ] },
