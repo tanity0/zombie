@@ -452,7 +452,9 @@ describe('取り消し(research/BRAWLER.md §19-1・§19-2・旧 §11-4 の技�
     const { s, at } = techResolved('stomp', 1);
     expect(brawlerTechAllowed(s, 'kiko', at + 50)).toBe(false); // 止めの間
     expect(brawlerTechAllowed(s, 'kiko', at + 141)).toBe(true);
-    expect(brawlerTechAllowed(s, 'kick', at + 141)).toBe(false); // 道に無い(大踏み潰しの先は気功だけ)
+    expect(brawlerTechAllowed(s, 'kick', at + 141)).toBe(true);  // §20-3: 取り消せる技の後は 飛び蹴り・気功(自分と同じ大踏み潰しは出せない・構えも出せない)
+    expect(brawlerTechAllowed(s, 'stomp', at + 141)).toBe(false);
+    expect(brawlerTechAllowed(s, 'guard', at + 141)).toBe(false);
     expect(brawlerTechAllowed(s, 'kiko', at + 140 + BRAWLER_CANCEL_WINDOW_MS - 1)).toBe(true);
     expect(brawlerTechAllowed(s, 'kiko', at + 140 + BRAWLER_CANCEL_WINDOW_MS)).toBe(false); // 受付の外=後隙が終わるまで何も出せない
     expect(brawlerTechAllowed(s, 'kiko', at + 140 + BRAWLER_TECHS.stomp.recoveryMs - 1)).toBe(false);
@@ -476,7 +478,7 @@ describe('取り消し(research/BRAWLER.md §19-1・§19-2・旧 §11-4 の技�
     expect(brawlerTechAllowed(k.s, 'kick', k.at + 10)).toBe(true);  // 止めの間でも次の蹴り
     expect(brawlerTechAllowed(k.s, 'stomp', k.at + 10)).toBe(false); // 取り消しは止めが明けてから
     expect(brawlerTechAllowed(k.s, 'stomp', k.at + 81)).toBe(true);
-    expect(brawlerTechAllowed(k.s, 'kiko', k.at + 81)).toBe(false);  // 道に無い
+    expect(brawlerTechAllowed(k.s, 'kiko', k.at + 81)).toBe(true);   // §20-3: 取り消せる技の後は 大踏み潰し・気功
     expect(brawlerTechAllowed(k.s, 'guard', k.at + 81)).toBe(false);
     const whiff = techResolved('kick', 0);
     expect(brawlerTechAllowed(whiff.s, 'kick', whiff.at + 10)).toBe(true);
@@ -545,7 +547,8 @@ describe('技の先行入力(社長指示2026-11-08「技の先行入力だけ�
   it('行動の最中で今は出せない「道の上の技」だけ覚える(道に無い技は覚えない・当たらなかったら覚えない)', () => {
     const s = brawlerStartTech(initialBrawlerState(), 'stomp', 0);
     expect(brawlerShouldBufferTech(s, 'kiko', 50)).toBe(true);            // 前隙・道の上(大踏み潰し→気功)
-    expect(brawlerShouldBufferTech(s, 'kick', 50)).toBe(false);           // 道に無い
+    expect(brawlerShouldBufferTech(s, 'kick', 50)).toBe(true);            // §20-3: 大踏み潰し→飛び蹴りも取り消せる
+    expect(brawlerShouldBufferTech(s, 'stomp', 50)).toBe(false);          // 道に無い(自分と同じ技)
     expect(brawlerShouldBufferTech(s, 'guard', 50)).toBe(false);
     const hit = brawlerAfterResolve(s, 200, 1, { pointCap: 20, countPoint: false, hitstopMs: 140 });
     expect(brawlerShouldBufferTech(hit, 'kiko', 250)).toBe(true);         // 止めの間(受付が開く前)
@@ -560,7 +563,8 @@ describe('技の先行入力(社長指示2026-11-08「技の先行入力だけ�
     // 通常攻撃の最中: 道の上の技(1段目→飛び蹴り)は出だしで覚える・道に無い技は覚えない(旧: 通常攻撃のどこからでも即座に出た)
     const a1 = brawlerStartAttack(initialBrawlerState(), 1, 0, false);
     expect(brawlerShouldBufferTech(a1, 'kick', 30)).toBe(true);
-    expect(brawlerShouldBufferTech(a1, 'stomp', 30)).toBe(false);
+    expect(brawlerShouldBufferTech(a1, 'stomp', 30)).toBe(true);          // §20-3: 通常の段からは 飛び蹴り・大踏み潰し・気功
+    expect(brawlerShouldBufferTech(a1, 'guard', 30)).toBe(false);         // 構えは待機からだけ
     expect(brawlerTechAllowed(a1, 'kick', 30)).toBe(false);
     // 飛び蹴りの連続: 判定の前に入れた次の蹴りは覚える(今どおり)
     const k1 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);

@@ -799,11 +799,11 @@ export interface Enemy {
   brHoldUntil?: number;
   /**
    * ★確定の固まり(research/BRAWLER.md §19-3・utils/brawlerCombo の BrawlerLockFields)。**時計は gameTime**(プレイヤーの段・技と同じ時計)。
-   * brLockUntil=確定の固まりの終わり。brLockMoves=このコンボで当てた技の名札(カンマ区切り・undefined=コンボの外)。
+   * brLockUntil=確定の固まりの終わり。brLockHits=このコンボで固まりを書いた当たりの数(§20・コンボの減衰。undefined=コンボの外)。
    * brLockNoHoldUntil=コンボが終わった後の固まらない時間の終わり(ボス級・強個体)。
    */
   brLockUntil?: number;
-  brLockMoves?: string;
+  brLockHits?: number;
   brLockNoHoldUntil?: number;
   /** 秘奥義の間の「画面内の敵を止める」が brHoldUntil に書いた値(research/BRAWLER.md §17)。終わりに、その値のまま残っている時だけ解く。 */
   brSecretHoldUntil?: number;

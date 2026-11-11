@@ -1,5 +1,6 @@
 // 格闘の「つながり」(research/BRAWLER.md §19)を、実際のゲームのループ(useGameLoop)を回したまま確かめるランナー(2026-11-11)。
 // 使い方: dev サーバを上げて(既定 5201 番・`npx vite --port 5201 --strictPort`)、プロジェクト直下で `node TEST_HANDOFF/run-brawler-link.mjs [port]`。目安3分。
+// ★§20(2026-11-11・フレームで決まるつながり)から: 「大踏み潰し→気功」は、吹き飛んだ距離ぶん弾が遅れるので、強個体では入らないことがある(外れた、に出る=設計どおり)。
 // 読み方: ROUTE の行は「つながる道」1本ぶん。hits=当たった数・unheld=当たりと当たりの間に敵が固まっていなかったフレーム(0が正)・
 //   walked=その間に敵が自分で動いた量(px・0付近が正)・stunSeen=途中で会心(気絶)が出た回・fail="enemy or brawler gone" は雑魚が気絶中の1発で処刑された回(今の決まり)。
 //   「空振り」は固まりの話ではなく当たりの位置の話(例: 飛び蹴りの3発目は溜め始めの敵の位置へ飛ぶ=2発目の押しで滑った強個体に届かない回がある・2026-11-11 時点で16回中2回)。
@@ -126,6 +127,10 @@ const res = await p.evaluate(async () => {
     ['2→気功', [S(1), S(2), T('kiko')]],
     ['3→飛び蹴り→大踏み潰し→気功', [S(1), S(2), S(3), T('kick'), T('stomp'), T('kiko')]],
     ['4→大踏み潰し', [S(1), S(2), S(3), S(4), T('stomp')]],
+    // §20(フレームで決まるつながり): 道の表が無くなって、数字が合えば入るようになった組。
+    ['1→すぐ大踏み潰し', [S(1), T('stomp')]],
+    ['2→飛び蹴り×3', [S(1), S(2), T('kick'), T('kick'), T('kick')]],
+    ['1→気功(近い)', [S(1), T('kiko')]],
   ];
   out.misc.lockFrameMsBefore = BC.getBrawlerLockFrameMs();
   for (const foe of ['zombie', 'driller-windup', 'driller-windup', 'driller-windup', 'hunter-windup', 'hunter-move']) for (const [name, steps] of ROUTES) await runRoute(foe, name, steps);
@@ -161,7 +166,7 @@ const res = await p.evaluate(async () => {
     let freeDuringRecovery = 0, recFrames = 0;
     await until(() => { recFrames++; if (!heldNow()) freeDuringRecovery++; return br().phase === 'idle'; });
     const z = en();
-    pushN({ name: 'N2 5段の締めの後', hitsBy, recFrames, freeDuringRecovery, lockMoves: z.brLockMoves ?? null, noHoldLeft: Math.round((z.brLockNoHoldUntil ?? 0) - st().gameTime) });
+    pushN({ name: 'N2 5段の締めの後', hitsBy, recFrames, freeDuringRecovery, lockHits: z.brLockHits ?? null, noHoldLeft: Math.round((z.brLockNoHoldUntil ?? 0) - st().gameTime) });
   }
   // N3: 止め続けられない。通常を押し続ける(1→2→3→4→5→1→…)。当たるたびに、固まりが書かれたかと固まらない時間の残りを記録する。
   for (const foe of ['hunter-windup', 'driller-windup']) {

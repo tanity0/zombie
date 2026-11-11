@@ -1,10 +1,9 @@
-// ★KOF のようなつながり(research/BRAWLER.md §19・社長承認2026-11-10「繋がってる時はちゃんと繋がって敵は一切動けないように」)。
-// 受け入れ条件 §19-4 の 2〜6 を、実際の AI(updateEnemies)を回して固める。純関数(道の表・①の長さ・②の延ばす先)は utils/brawlerRoute.test.ts。
-//  2. 道の上の続きは、途中で敵が一度も動かずつながる(雑魚・強個体・ボス級/移動・待ちの相と溜めの相/ボス級は地上のままでも/全体のスロー中でも)
-//  3. 待機から出した表の外の技・ステップで取り消した後の技は、前の当たりの固まりの外で当たる。締めの後・大踏み潰しの後(気功なし)は敵が動ける
-//  4. 境目(一番遅い時刻で出しても1フレームも動かない・止めの間に出した蹴りの連続・途中から掛かる/明けるスロー)
-//  5. 止め続けられない(コンボの後の固まらない時間・ダウンの着地)
-//  6. 秘奥義 →↓←↑(取り消しで・先行入力で)
+// ★フレームで決まるつながり(research/BRAWLER.md §20・社長指示2026-11-11「隙とか速さとかのフレーム都合でつながらない、みたいな組み方にしたい」)。
+// 受け入れ条件 §20-6 の4 を、実際の AI(updateEnemies)を実際の刻みで回して固める。純関数(取り消しの規則・固まりの長さ・つながりの計算)は utils/brawlerRoute.test.ts。
+//  - 入る道(1→2→3→4→5 と、すぐ取り消した飛び蹴り・気功・大踏み潰し)は、途中で敵が一度も動かずつながる(雑魚・強個体・ボス級/移動・待ちの相と溜めの相/全体のスロー中でも/フレームの幅が揺れても)
+//  - 入らない道(受付の終わり際に取り消した技・後隙の後の大踏み潰し・気功を遠くへ)は、前の当たりの固まりの外で当たる。5段目・締めの後は敵が動ける
+//  - 止め続けられない(コンボの減衰・コンボの後の固まらない時間・ダウンの着地)
+//  - 秘奥義 →↓←↑(取り消しで・先行入力で)
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { useGameStore } from './gameStore';
 import type { Enemy, EnemyType } from '../types/game';
@@ -204,6 +203,7 @@ const ROUTES: { name: string; steps: readonly Step[] }[] = [
   { name: '2→気功', steps: [s(1), s(2), t('kiko')] },
   { name: '3→飛び蹴り→大踏み潰し→気功', steps: [s(1), s(2), s(3), t('kick'), t('stomp'), t('kiko')] },
   { name: '4→大踏み潰し', steps: [s(1), s(2), s(3), s(4), t('stomp')] },
+  { name: '1→すぐ大踏み潰し', steps: [s(1), t('stomp')] },
 ];
 
 beforeEach(() => {
@@ -215,9 +215,13 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 afterAll(() => { setBrawlerTempoAll(BRAWLER_TEMPO_DEFAULT); });
 
-describe('§19-4-2 道の上の続きは、途中で敵が一度も動かずつながる(実際の AI)', () => {
-  for (const foe of FOES) for (const r of ROUTES) for (const mode of ['early', 'late'] as const) {
-    it(`${foe}・${r.name}・${mode === 'early' ? '一番早く出す' : '一番遅く出す(後隙の終わり・受付の最後のフレーム)'}`, () => {
+describe('§20-6-4 入る道は、途中で敵が一度も動かずつながる(実際の AI)', () => {
+  // 取り消し(止めが明けてすぐ・先行入力)で出した続きは入る。後隙の終わりに待機から出す段のつなぎ(1→2→3→4→5)は、一番遅く出しても入る(余り約50ms)。
+  // 取り消しを受付の終わり際まで遅らせた技は入らない(下の「入らない道」)=旧「一番遅く出す」の全部の道は、この規則では入らない。
+  const CASES = FOES.flatMap(foe => ROUTES.flatMap(r => (['early', 'late'] as const)
+    .filter(mode => mode === 'early' || r.name === '1→2→3→4→5').map(mode => ({ foe, r, mode }))));
+  for (const { foe, r, mode } of CASES) {
+    it(`${foe}・${r.name}・${mode === 'early' ? '一番早く出す' : '一番遅く出す(後隙の終わりに待機から)'}`, () => {
       setup();
       spawnFoe(foe);
       const w = watcher();
@@ -225,7 +229,7 @@ describe('§19-4-2 道の上の続きは、途中で敵が一度も動かずつ�
       expectLinked(w, r.steps.length, `${foe} ${r.name} ${mode}`);
     });
   }
-  it('2→気功(届く端): 当てた後に相手が届く端まで離れていても、弾が届くまで動かない(弾の飛ぶ時間込みで延ばす)', () => {
+  it('2→気功(距離で変わる): 当てた後に相手が届く端(約380px 先)まで離れていると、弾が届く前に固まりが明けて入らない(近ければ入る=上の道)', () => {
     for (const foe of ['driller-windup', 'hunter-windup'] as const) {
       setup();
       spawnFoe(foe);
@@ -237,7 +241,8 @@ describe('§19-4-2 道の上の続きは、途中で敵が一度も動かずつ�
         useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, x: p.x + p.width / 2 + 380 - e.width / 2, knockbackUntil: 0, knockbackVx: 0, knockbackVy: 0 })) }));
         w.reset();
       });
-      expectLinked(w, 3, `${foe} far kiko`);
+      expect(w.hits, `${foe} far kiko: hits`).toBe(3);
+      expect(w.lockedAtHit[2], `${foe} far kiko: the lock is gone before the bullet arrives`).toBe(false);
     }
   });
   for (const foe of ['zombie-move', 'driller-windup', 'hunter-windup'] as const) for (const r of ROUTES) {
@@ -246,15 +251,15 @@ describe('§19-4-2 道の上の続きは、途中で敵が一度も動かずつ�
       spawnFoe(foe);
       dtGame = 5;
       const w = watcher();
-      runRoute(r.steps, w, 'late');
+      runRoute(r.steps, w, 'early');
       expectLinked(w, r.steps.length, `${foe} ${r.name} slow`);
     });
   }
 });
 
-describe('§19-4-4 境目', () => {
-  it('飛び蹴りの連続を先行入力(止めの間)で出してもつながる・受付の最後のフレームで出してもつながる(ボス級の溜めの相=地上のまま)', () => {
-    for (const mode of ['early', 'late'] as const) {
+describe('§20-6-4 境目', () => {
+  it('飛び蹴りの連続を先行入力(止めの間)で出すとつながる(ボス級の溜めの相=地上のまま)', () => {
+    for (const mode of ['early'] as const) {
       setup();
       spawnFoe('hunter-windup');
       const w = watcher();
@@ -269,23 +274,23 @@ describe('§19-4-4 境目', () => {
       dtGame = a;
       const w = watcher();
       // 2手目を出す所から切り替える(前の当たりの固まりが残っている最中)
-      runRoute(r.steps, w, 'late', i => { if (i === 2) dtGame = b; });
+      runRoute(r.steps, w, 'early', i => { if (i === 2) dtGame = b; });
       expectLinked(w, r.steps.length, `${foe} ${r.name} slow ${a}→${b}`);
     }
   });
-  it('固まりは①の長さどおり: 1段目を当てて何も続けなければ、当たりから 319ms(止め90+受付195+余白34)で明ける', () => {
+  it('固まりは §20-4 の長さどおり: 1段目を当てて何も続けなければ、当たりから 480ms(止め90+1段目の固まり390)で明ける', () => {
     setup();
     spawnFoe('hunter-windup');
     useGameStore.getState().brawlerPress();
     for (let k = 0; k < 60 && !br().resolved; k++) adv();
     const hitAt = gt();
     expect(en().brLockUntil).toBe(hitAt + brawlerLockHitMs('s1', 90));
-    expect(en().brLockUntil! - hitAt).toBe(319);
+    expect(en().brLockUntil! - hitAt).toBe(480);
     expect(en().brHoldUntil ?? 0).toBeLessThanOrEqual(now + 90); // 壁時計の欄は当たりの止めまで(確定の固まりは gameTime の欄)
     let heldFrames = 0;
     for (let k = 0; k < 40; k++) { adv(); if (brawlerHeldNow(en(), gt(), now)) heldFrames++; }
-    expect(heldFrames * FRAME).toBeGreaterThanOrEqual(319 - FRAME);
-    expect(heldFrames * FRAME).toBeLessThanOrEqual(319 + FRAME);
+    expect(heldFrames * FRAME).toBeGreaterThanOrEqual(480 - FRAME);
+    expect(heldFrames * FRAME).toBeLessThanOrEqual(480 + FRAME);
   });
 });
 
@@ -299,9 +304,8 @@ const hitStages = (n: number, w: Watch): void => {
   }
 };
 
-describe('§19-4-4b フレームの幅が揺れてもつながる(コマ落ち・検収2026-11-10)', () => {
-  // 続きは「後隙が明けた最初のフレーム」で出る。そのフレームが遅れても(幅16〜50ms=ループの上限)、道の上の続きは切れない。
-  // 旧: 余白34msだけで受けていたので、3→4・4→5段目が切れた(ボス級はそこから固まらない時間へ入る)。
+describe('§20-6-4 フレームの幅が揺れても同じ(コマ落ち・§19-7 と同じ揺らし方)', () => {
+  // 続きは「後隙が明けた最初のフレーム」で出る。そのフレームが遅れても(幅16〜50ms=ループの上限)、入る道は切れない(brawlerLockAlive が1フレーム遅れて明ける)。
   const lcg = (seed: number) => { let x = seed >>> 0; return () => { x = (Math.imul(x, 1664525) + 1013904223) >>> 0; return x / 4294967296; }; };
   afterEach(() => { jitter = null; });
   for (const foe of ['zombie-move', 'hunter-windup'] as const) {
@@ -405,23 +409,18 @@ describe('飛び蹴りの2発目は少し打ち上げる・3発目は少しの�
   });
 });
 
-describe('§19-4-3 つながらない物', () => {
-  const NOT_ON_ROUTE: { name: string; stages: number; pre?: 'kick'; then: Step }[] = [
+describe('§20-6-4 入らない道・つながらない物', () => {
+  // 1段目・2段目の後に、取り消さずに後隙が終わってから大踏み潰し: 当たりは 止め+後隙+260 = 固まり(止め+390)より約50ms後(§20-5)。
+  const NOT_ON_ROUTE: { name: string; stages: number; then: Step }[] = [
     { name: '1段目の後に待機から大踏み潰し', stages: 1, then: t('stomp') },
-    { name: '1段目の後に待機から気功', stages: 1, then: t('kiko') },
-    { name: '2段目の後に待機から飛び蹴り', stages: 2, then: t('kick') },
-    { name: '飛び蹴りの後に待機から1段目', stages: 0, pre: 'kick', then: s(1) },
+    { name: '2段目の後に待機から大踏み潰し', stages: 2, then: t('stomp') },
   ];
   for (const foe of ['zombie-move', 'driller-windup', 'hunter-windup'] as const) for (const c of NOT_ON_ROUTE) {
     it(`${foe}・${c.name}: 前の当たりの固まりの外で当たる(ボス級は当たる前に動ける。雑魚・強個体は押されているだけ=固まってはいない)`, () => {
       setup();
       spawnFoe(foe);
       const w = watcher();
-      if (c.pre === 'kick') {
-        expect(doTech('kick')).toBe(true);
-        for (let k = 0; k < 400 && !(br().phase === 'tech' && br().resolved); k++) adv(() => w.frame());
-        expect(br().connected).toBe(true);
-      } else hitStages(c.stages, w);
+      hitStages(c.stages, w);
       // 後隙が明けて待機へ戻ってから出す
       for (let k = 0; k < 400 && br().phase !== 'idle'; k++) adv(() => w.frame());
       const before = w.hits;
@@ -434,6 +433,82 @@ describe('§19-4-3 つながらない物', () => {
       if (foe === 'hunter-windup') expect(w.freeBeforeHit[before], 'the boss was free before the hit').toBeGreaterThan(0);
     });
   }
+  for (const foe of ['zombie-move', 'driller-windup', 'hunter-windup'] as const) {
+    it(`${foe}: 1段目を当てて、取り消しの受付の終わり際に大踏み潰し: 当たる前に固まりが明けている(早く取り消せば入る=上の道)`, () => {
+      setup();
+      spawnFoe(foe);
+      const w = watcher();
+      hitStages(1, w);
+      // 受付の最後のフレーム(次のフレームには閉じている)まで待って出す
+      const canNow = (): boolean => brawlerTechAllowed(br(), 'stomp', gt());
+      const canNext = (): boolean => brawlerTechAllowed(br(), 'stomp', gt() + dtGame);
+      for (let k = 0; k < 400 && !(canNow() && !canNext()); k++) adv(() => w.frame());
+      expect(canNow(), 'the window is still open').toBe(true);
+      expect(doTech('stomp')).toBe(true);
+      for (let k = 0; k < 600 && w.hits < 2; k++) adv(() => w.frame());
+      expect(w.hits, 'the stomp still hits').toBe(2);
+      expect(w.lockedAtHit[1], 'lock is gone before the late stomp lands').toBe(false);
+      expect(w.heldAtHit[1], 'not held just before the late stomp lands').toBe(false);
+    });
+  }
+  it('1段目→気功: 相手が近ければ入り、届く端(300px)まで離れていると弾が届く前に固まりが明ける(距離で変わる)', () => {
+    for (const foe of ['driller-windup', 'hunter-windup'] as const) {
+      for (const dist of [60, 300] as const) {
+        setup();
+        spawnFoe(foe);
+        const w = watcher();
+        hitStages(1, w);
+        // 当てた後に、固まったままの相手を dist px 先へ置き直す(近い時は今の位置のまま)
+        if (dist > 60) {
+          const p = useGameStore.getState().player;
+          useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, x: p.x + p.width / 2 + dist - e.width / 2, knockbackUntil: 0, knockbackVx: 0, knockbackVy: 0 })) }));
+          w.reset();
+        }
+        for (let k = 0; k < 100 && !brawlerTechAllowed(br(), 'kiko', gt()); k++) adv(() => w.frame());
+        expect(doTech('kiko')).toBe(true);
+        for (let k = 0; k < 600 && w.hits < 2; k++) adv(() => w.frame());
+        expect(w.hits, `${foe} ${dist}px: the bullet hits`).toBe(2);
+        expect(w.lockedAtHit[1], `${foe} ${dist}px`).toBe(dist === 60);
+      }
+    }
+  });
+  it('ボス級への大踏み潰しの固まりは、雑魚・強個体と同じ長さ(止め220+固まり299=519ms)', () => {
+    const lens: number[] = [];
+    for (const foe of ['zombie-move', 'driller-windup', 'hunter-move'] as const) {
+      setup();
+      spawnFoe(foe);
+      expect(doTech('stomp')).toBe(true);
+      for (let k = 0; k < 200 && !br().resolved; k++) adv();
+      expect(br().connected, `${foe} stomp connected`).toBe(true);
+      lens.push(en().brLockUntil! - gt());
+    }
+    expect(lens).toEqual([519, 519, 519]);
+  });
+  it('段と飛び蹴りを回し続けても、強個体・ボス級は8発目までに固まりが切れる(コンボの減衰: 飛び蹴り→1段目→飛び蹴り…)', () => {
+    for (const foe of ['driller-windup', 'hunter-windup'] as const) {
+      setup(20);
+      spawnFoe(foe);
+      const w = watcher();
+      expect(useGameStore.getState().brawlerPress()).toBe(true);
+      for (let k = 0; k < 200 && w.hits < 1; k++) adv(() => w.frame());
+      for (let n = 0; n < 6 && w.hits >= 1 + n * 2; n++) {
+        // 飛び蹴りで取り消す(止めの明けにすぐ)
+        for (let k = 0; k < 200 && !brawlerTechAllowed(br(), 'kick', gt()); k++) adv(() => w.frame());
+        if (!doTech('kick')) break;
+        for (let k = 0; k < 400 && w.hits < 2 + n * 2; k++) adv(() => w.frame());
+        // 後隙が終わってから1段目
+        for (let k = 0; k < 400 && br().phase !== 'idle'; k++) adv(() => w.frame());
+        useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, nextStage: 1, chainUntil: 0 } } }));
+        if (!useGameStore.getState().brawlerPress()) break;
+        for (let k = 0; k < 400 && w.hits < 3 + n * 2; k++) adv(() => w.frame());
+      }
+      const brokeAt = w.lockedAtHit.findIndex((v, i) => i >= 1 && !v);
+      expect(brokeAt, `${foe}: the lock must run out`).toBeGreaterThanOrEqual(1);
+      // 8発目で書いた固まりまでで切れる=切れた後の最初の当たりは9発目以内。7発目は境目(後隙の後の1段目が固まりの終わりより約13ms遅い=1フレーム遅れて明ける分で入る)。
+      expect(brokeAt + 1, `${foe}: the first hit after the lock ran out is hit ${brokeAt + 1}`).toBeLessThanOrEqual(9);
+      expect(brokeAt + 1, `${foe}: not before the 7th hit`).toBeGreaterThanOrEqual(7);
+    }
+  });
   for (const stage of [3, 4] as const) for (const tech of ['stomp', 'kiko'] as const) {
     it(`${stage}段目からステップで取り消して${tech === 'stomp' ? '大踏み潰し' : '気功'}: 固まりはステップの瞬間に切れる=つながらない(ボス級の溜めの相・雑魚)`, () => {
       for (const foe of ['hunter-windup', 'zombie-move'] as const) {
@@ -487,7 +562,7 @@ describe('§19-4-3 つながらない物', () => {
   });
 });
 
-describe('§19-4-5 止め続けられない', () => {
+describe('§20-6-4 止め続けられない', () => {
   /** 固まらない時間の間は、固まらず・浮かず・当たりの止めも掛からない(毎フレーム見る)。固まらない時間の合計(ms)を返す。 */
   const noHoldWatch = () => {
     let total = 0, windows = 0, prev = false;
@@ -500,7 +575,7 @@ describe('§19-4-5 止め続けられない', () => {
         expect(brawlerHoldClockAlive(z, g, now), 'held during the no-hold time').toBe(false);
         expect(brawlerAirborne(z, now), 'airborne during the no-hold time').toBe(false);
         expect(now < (z.hitStunUntil ?? 0), 'hit-stop during the no-hold time').toBe(false);
-        expect(z.brLockMoves, 'no combo memory during the no-hold time').toBeUndefined();
+        expect(z.brLockHits, 'no combo memory during the no-hold time').toBeUndefined();
       }
       prev = inNoHold;
     };
@@ -524,7 +599,7 @@ describe('§19-4-5 止め続けられない', () => {
       expect(nh.windows).toBeGreaterThanOrEqual(1);
       expect(nh.total).toBeGreaterThanOrEqual(ms - dtGame);
       // 殴り続けても、止まっている時間は全体の一部(コンボ1回ぶん+固まらない時間の繰り返し)
-      expect(heldMs).toBeLessThan(elapsed * 0.75);
+      expect(heldMs).toBeLessThan(elapsed * 0.9); // §20 で固まりが長くなった分(旧 0.75 は強個体で 0.80 になる)。コンボの後の固まらない時間が残りを空ける
     });
     it(`${foe}: 飛び蹴りを当て続けても、コンボの後 ${ms}ms は固まらない`, () => {
       setup(20);
@@ -585,7 +660,7 @@ describe('§19-4-5 止め続けられない', () => {
   });
 });
 
-describe('§19-4-6 秘奥義 →↓←↑(飛び蹴り→大踏み潰し→気功→構え)', () => {
+describe('§20-6-4 秘奥義 →↓←↑(飛び蹴り→大踏み潰し→気功→構え)', () => {
   const secretRun = (mode: 'cancel' | 'buffer' | 'idle' | 'late'): boolean => {
     setup(20);
     spawnFoe('hunter-windup');

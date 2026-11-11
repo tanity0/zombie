@@ -64,9 +64,10 @@ describe('テンポ係数の表(純関数)', () => {
       .toEqual([400, 150, 130, 120, 585, 150, 500, 1000, 500, 100, 400, 600, 170, 420, 520, 180]);
     expect(v.BRAWLER_CANCEL_WINDOW_MS).toBe(150); // 取り消しの受付(§19-2)
     const c = brawlerComboTimesAt(1.0);
-    // ★§19: 固まりの基本の長さの表・減衰の時計・同じ技の罰は撤去(確定の固まりの長さは段・技の時間から引く=下の brawlerLockHitMs)。
-    expect([c.BRAWLER_COMBO_GAP_MS, c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_CHAIN_GUARD_MARGIN_MS, c.BRAWLER_JUGGLE_MIN_MS, c.BRAWLER_JUGGLE_DROP_MS])
-      .toEqual([700, 300, 60, 140, 200]); // 流れの切れは社長承認2026-11-09 で 600→700
+    // ★§19: 固まりの基本の長さの表・減衰の時計・同じ技の罰は撤去 / ★§20: 余白の定数も撤去(固まりの長さ=止め+技ごとの固まりの表 v.holds)。
+    expect([c.BRAWLER_COMBO_GAP_MS, c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_JUGGLE_MIN_MS, c.BRAWLER_JUGGLE_DROP_MS])
+      .toEqual([700, 300, 140, 200]); // 流れの切れは社長承認2026-11-09 で 600→700
+    expect(v.holds).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 250, kick2: 310, kick3: 0, stomp: 230, kiko: 0 }); // §20-2(係数1.0の値)
   });
   it('係数1.3 = 各時間の1.3倍(四捨五入)。距離・倍率・ポイントは変えない', () => {
     const v = brawlerTimesAt(1.3);
@@ -86,7 +87,8 @@ describe('テンポ係数の表(純関数)', () => {
     expect(v.BRAWLER_KICK3_CHARGE_MS).toBe(150); // 実時間で約150ms
     const c = brawlerComboTimesAt(1.3);
     expect(v.BRAWLER_CANCEL_WINDOW_MS).toBe(195);
-    expect([c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_CHAIN_GUARD_MARGIN_MS]).toEqual([390, 78]);
+    expect(c.BRAWLER_SECRET_HOLD_MS).toBe(390);
+    expect(v.holds).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 325, kick2: 403, kick3: 0, stomp: 299, kiko: 0 }); // 係数1.3(四捨五入)
     expect(brawlerTempoMs(585, 1.3)).toBe(761);
   });
   it('当てた瞬間の止めは係数を掛けない別の表: 弱90 / 強・技150 / 締め220', () => {
@@ -103,11 +105,11 @@ describe('テンポ係数の表(純関数)', () => {
     setBrawlerTempoAll(1.3);
     expect(BRW.BRAWLER_STAGES[0].windupMs).toBe(78);
     expect(BRC.BRAWLER_COMBO_GAP_MS).toBe(910);
-    // 確定の固まりの長さ(§19-3 ①)は段・技の時間から引く=係数が自動で掛かる(余白34msだけは係数なし)
-    expect(brawlerLockHitMs('s3', 150)).toBe(150 + 299 + 34);
+    // 確定の固まりの長さ(§20-4)=止め(係数なし)+技ごとの固まり(表×係数)
+    expect(brawlerLockHitMs('s3', 150)).toBe(150 + 676);
     expect(BRW.BRAWLER_CANCEL_WINDOW_MS).toBe(195);
     setBrawlerTempoAll(1.0);
-    expect(brawlerLockHitMs('s3', 150)).toBe(150 + 230 + 34);
+    expect(brawlerLockHitMs('s3', 150)).toBe(150 + 520);
     expect(BRW.BRAWLER_CANCEL_WINDOW_MS).toBe(150);
     setBrawlerTempoAll(1.3);
     expect(BRW.BRAWLER_FLOW_GRACE_MS).toBe(BRW.BRAWLER_CHAIN_RESET_MS);

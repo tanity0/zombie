@@ -2,7 +2,8 @@
 // 5段を順番どおりにつないでいる間は、固まりが必ず次の段の当たりまで続く(係数1.0・1.3/雑魚・強個体・ボス級/移動の相・硬直の相・溜めの相)。
 // ★§19(2026-11-10)で書き換えた: 旧の「5段の確定」(§9-74: brawlerComboInOrder / brawlerChainGuardMs=減衰の上に被せる下限)は撤去し、
 //   「①当てた時は次に動ける時まで固める・②続きを出した瞬間に、その続きが当たるまで延ばす」(brawlerLockOnHit / brawlerLockExtendPatch)に置き換えた。
-//   旧の「ハメにならない=減衰と同じ技の罰でいずれ抜ける」は、「同じコンボで2回目の同じ技は固めない」「コンボの後の固まらない時間」で見る。
+// ★§20(2026-11-11)でさらに書き換えた: ②の延ばしは撤去。固まりは当たりの瞬間に「止め+技ごとの固まり」で置き換えて書く(utils/brawler の BRAWLER_HOLD_MS)。
+//   つながるのは、次の当たりが固まりの内に入る数字になっているから(後隙+次の段の出だし < 固まり)。ハメの止めはコンボの減衰と、コンボの後の固まらない時間。
 //   道ぜんぶ(技への取り消し・スロー・境目)は brawlerLink.store.test.ts。ここは5段のつなぎを係数1.0でも固める。
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { useGameStore } from './gameStore';
@@ -10,9 +11,9 @@ import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import {
   setBrawlerTempoAll, brawlerHeldNow, brawlerAirborne, brawlerLockAlive, brawlerLockHitMs, brawlerComboEndNoHoldNow,
-  BRAWLER_CHAIN_GUARD_MARGIN_MS, BRAWLER_HOLD_FRAME_MARGIN_MS, BRAWLER_COMBO_END_NO_HOLD_BOSS_MS,
+  brawlerLinkTiming, BRAWLER_COMBO_END_NO_HOLD_BOSS_MS,
 } from '../utils/brawlerCombo';
-import { BRAWLER_TEMPO_DEFAULT, BRAWLER_CANCEL_WINDOW_MS, brawlerStageSpec } from '../utils/brawler';
+import { BRAWLER_TEMPO_DEFAULT, BRAWLER_HOLD_MS, brawlerStageSpec } from '../utils/brawler';
 
 const NO = { up: false, down: false, left: false, right: false } as never;
 let now = 6_000_000;
@@ -77,18 +78,19 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 afterAll(() => { setBrawlerTempoAll(BRAWLER_TEMPO_DEFAULT); });
 
-describe('5段のつなぎの確定(純関数・§19-3 ①②)', () => {
-  it('①の長さ = 止め + max(受付, 今の段の後隙) + 余白34ms。次の段はその内(後隙の終わり)に出て、②で「出だしの終わり+余白60ms×係数」まで延びる', () => {
+describe('5段のつなぎ(純関数・§20-2 の固まりの数字)', () => {
+  it('固まりの長さ = 止め + 技ごとの固まり。次の段は後隙の終わりに出て、その当たり(後隙+次の段の出だし)は固まりの内に入る(係数1.0 / 1.3)', () => {
     for (const t of [1.0, 1.3]) {
       setBrawlerTempoAll(t);
-      expect(BRAWLER_CHAIN_GUARD_MARGIN_MS).toBe(Math.round(60 * t));
-      expect(BRAWLER_HOLD_FRAME_MARGIN_MS).toBe(34);
       for (const n of [1, 2, 3, 4]) {
         const sp = brawlerStageSpec(n);
-        const lock = brawlerLockHitMs((['s1', 's2', 's3', 's4'] as const)[n - 1], sp.hitstopMs);
-        expect(lock).toBe(sp.hitstopMs + Math.max(BRAWLER_CANCEL_WINDOW_MS, sp.recoveryMs) + 34);
-        // 次の段を出す時刻(後隙の終わり)は①の内
-        expect(sp.hitstopMs + sp.recoveryMs).toBeLessThan(lock);
+        const key = (['s1', 's2', 's3', 's4'] as const)[n - 1];
+        const lock = brawlerLockHitMs(key, sp.hitstopMs);
+        expect(lock).toBe(sp.hitstopMs + BRAWLER_HOLD_MS[key]);
+        // 次の段が当たる時刻(止め+後隙+次の段の出だし)は固まりの内
+        const next = sp.hitstopMs + sp.recoveryMs + brawlerStageSpec(n + 1).windupMs;
+        expect(next, `${n}段目→${n + 1}段目 係数${t}`).toBeLessThan(lock);
+        expect(brawlerLinkTiming(key, (['s2', 's3', 's4', 's5'] as const)[n - 1], 'recovery-end').nextHitAt).toBe(next);
       }
       expect(brawlerLockHitMs('s5', 220)).toBe(0); // 5段目は締め(固めない)
     }
@@ -135,7 +137,8 @@ describe('5段のつなぎの確定(ストア・実際の AI)', () => {
     expect(r.walked).toBeLessThan(0.5);
   });
   // ★書き換え: 旧「1段目の連打は約4秒以内に抜けられる(減衰と同じ技の罰)・5段の後の再開は減衰が効く」。
-  //   新: 1段目を当てて続けなければ、固まりは①の長さで明ける。その後ボス級は1500ms 固まらない=連打では止め続けられない。5段の後の再開も同じ。
+  //   §20-4: 1段目の連打は当たりごとに固まりを置き換えて続くが、コンボの減衰(6発目から×0.8)で7発目あたり(約2.5秒)に当たりの間隔(約350ms)を割って切れる。
+  //   その後ボス級は1500ms 固まらない=連打では止め続けられない。5段の後の再開も同じ。
   it('ハメにならない: 1段目の連打ではボス級を止め続けられない(コンボの後1500msは固まらない)・5段の後の再開も固まらない', () => {
     setBrawlerTempoAll(1.3);
     setup();
@@ -156,9 +159,10 @@ describe('5段のつなぎの確定(ストア・実際の AI)', () => {
       for (let k = 0; k < 60 && br().phase !== 'idle'; k++) adv(watch);
     }
     expect(firstFreeAt).toBeGreaterThan(0);
-    expect(firstFreeAt).toBeLessThan(500);                       // 最初の固まり(319ms)が明けたら動ける
+    expect(firstFreeAt).toBeGreaterThan(1750);                   // 5発目までは満額の固まりが当たりの間隔(約350ms)を超えて続く
+    expect(firstFreeAt).toBeLessThan(3000);                      // 減衰で7発目あたり(約2.5秒)に切れる
     expect(noHoldMs).toBeGreaterThanOrEqual(BRAWLER_COMBO_END_NO_HOLD_BOSS_MS - 10);
-    expect(heldMs).toBeLessThan(t * 0.4);                        // 殴り続けても、止まっているのは一部だけ
+    expect(heldMs).toBeLessThan(t * 0.7);                        // 殴り続けても、止まっているのは一部だけ
     // 5段の後にまた1段目から: 固まらない時間の間なので、確定の固まりは書かれない
     setup();
     useGameStore.setState({ enemies: [place('hunter', 60, 'z', { aiPhase: 'windup', aiPhaseUntil: gt() + 600, aiStartedAt: gt() })] });
@@ -170,6 +174,6 @@ describe('5段のつなぎの確定(ストア・実際の AI)', () => {
     for (let k = 0; k < 60 && !(br().resolved); k++) adv();
     expect(br().connected).toBe(true);
     expect(brawlerLockAlive(en(), gt())).toBe(false);
-    expect(en().brLockMoves).toBeUndefined();
+    expect(en().brLockHits).toBeUndefined();
   });
 });

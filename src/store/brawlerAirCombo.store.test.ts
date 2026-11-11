@@ -79,15 +79,15 @@ describe('§13-1 技の溜めも固める(純関数)', () => {
     const o = { stopMs: 90, enemyStopMs: 90, canHold: true, airborneAfter: false };
     const r1 = brawlerLockOnHit({}, 's1', 1000, 9e9, o);
     expect(r1.patch.brLockUntil).toBe(1000 + brawlerLockHitMs('s1', 90));
-    expect(brawlerLockHitMs('s1', 90)).toBe(90 + 150 + 34);
+    expect(brawlerLockHitMs('s1', 90)).toBe(90 + 300);
     // 固まりの最中かどうかは相の種類で決まる: 溜め(windup)は固まる・攻撃の振り(active)は固まらない
     expect(brawlerHeldNow({ type: 'zombie', aiPhase: 'z-red-pause', ...r1.patch }, 1100, 0)).toBe(true);
     expect(brawlerHeldNow({ type: 'zombie', aiPhase: 'z-bite1', ...r1.patch }, 1100, 0)).toBe(false);
-    // 同じ溜めを同じ技で殴り続けても、固まりは延びない
+    // 同じ溜めを同じ技で殴り続けても、当たりの瞬間から置き換えて固める(§20-4。止めるのは減衰)
     const r2 = brawlerLockOnHit({ ...r1.patch }, 's1', 1200, 9e9, o);
-    expect(r2).toEqual({ patch: {}, held: false, noHold: false });
-    // 別の技(道の上の続き)は、当たりの瞬間から新しく固める
-    expect(brawlerLockOnHit({ ...r1.patch }, 's2', 1200, 9e9, o).patch.brLockUntil).toBe(1200 + 274);
+    expect(r2).toEqual({ patch: { brLockUntil: 1200 + 390, brLockHits: 2 }, held: true, noHold: false });
+    // 別の技も、当たりの瞬間から新しく固める
+    expect(brawlerLockOnHit({ ...r1.patch }, 's2', 1200, 9e9, o).patch.brLockUntil).toBe(1200 + 390);
   });
   it('ダメージ補正: 10ヒット目から −5%/発・下限50%', () => {
     expect([1, 9, 10, 11, 12, 19, 20, 40].map(brawlerProration)).toEqual([1, 1, 0.95, 0.9, 0.85, 0.5, 0.5, 0.5].map(v => v));
@@ -108,9 +108,9 @@ describe('§13-1 技の溜めも固める(ストア・予告の位相)', () => {
     expect(l0).not.toBeNull();
     const span0 = l0.hitAt - l0.startAt;
     hit('z', 's1');
-    // ★§19-3 ①: 確定の固まり(gameTime の欄)=止め90+受付150+余白34=274ms(係数1.0)。旧: 止め90+固まり300(予算400の内)。
+    // ★§20-4: 確定の固まり(gameTime の欄)=止め90+1段目の固まり300=390ms(係数1.0)。
     const held = en('z').brLockUntil! - gt();
-    expect(held).toBe(274);
+    expect(held).toBe(390);
     const progs: number[] = [];
     step(held - 10, () => { const l = preBiteTelegraphLine(en('z'), gt(), aim); if (l) progs.push(l.prog); });
     expect(en('z').aiPhase).toBe('z-red-pause');
@@ -125,24 +125,25 @@ describe('§13-1 技の溜めも固める(ストア・予告の位相)', () => {
     step(1000, () => { if (leftAt < 0 && en('z').aiPhase !== 'z-red-pause') leftAt = gt(); });
     expect(leftAt - (gt() - 1000)).toBeGreaterThanOrEqual(remain - 2 * DT);
   });
-  // ★§19-3 ③ で書き換え: 旧「同じ溜めを殴り続けても合計400msで押し切る」(予算)→ 新「同じコンボで2回目の同じ技は固めない」。
-  //   固まりの最中に同じ技を重ねても確定の固まりは延びない(当たりの止めだけ)。固まりが明ければコンボは区切られる
+  // ★§20-4 で書き換え: 旧「同じ溜めを殴り続けても合計400msで押し切る」(予算)→ §19「2回目の同じ技は固めない」→ 新「当たりごとに置き換えて固める(減衰が止める)」。
+  //   殴るたびに、その当たりの瞬間から止め+固まりで置き換わる(延ばすのではない)。固まりが明ければコンボは区切られる
   //   (雑魚は固まらない時間なし=次の当たりから新しいコンボ)。
-  it('同じ溜めを同じ技で殴り続けても、固まりは延びない(最初の1回の長さ+当たりの止めだけ=溜めは進む)', () => {
+  it('同じ溜めを同じ技で殴り続けると、当たりごとに固まりが置き換わる(溜めは最後の当たりの固まりが明けるまで止まる)', () => {
     setup();
     const g0 = gt();
     useGameStore.setState({ enemies: [place('zombie', 70, 0, 'z', { aiPhase: 'z-red-pause', aiStartedAt: g0, aiPhaseUntil: g0 + 2000, chaffMove: 'zombie-double', stanceDirX: -1, stanceDirY: 0 } as Partial<Enemy>)] });
     const deadline0 = en('z').aiPhaseUntil!;
     hit('z', 's1');
     const lock0 = en('z').brLockUntil!;
-    expect(lock0 - gt()).toBe(274);
-    step(100); hit('z', 's1'); expect(en('z').brLockUntil).toBe(lock0);
-    step(100); hit('z', 's1'); expect(en('z').brLockUntil).toBe(lock0);   // 3発目(200ms): 止めは 290ms まで
+    expect(lock0 - gt()).toBe(390);
+    step(100); hit('z', 's1'); expect(en('z').brLockUntil! - gt()).toBe(390); expect(en('z').brLockUntil!).toBeGreaterThan(lock0);
+    step(100); hit('z', 's1'); expect(en('z').brLockUntil! - gt()).toBe(390);   // 3発目(200ms): 当たりの瞬間から置き換え
+    expect(en('z').brLockHits).toBe(3);
     step(500);
     const totalShift = en('z').aiPhaseUntil! - deadline0;
-    expect(totalShift).toBeGreaterThanOrEqual(274 - 2 * DT);
-    expect(totalShift).toBeLessThanOrEqual(290 + 2 * DT);                 // 3発当てても、止まったのは最初の固まり+最後の止めの残りだけ
-    expect(en('z').brLockMoves).toBeUndefined();                           // 固まりが明けた=コンボは区切られた
+    expect(totalShift).toBeGreaterThanOrEqual(590 - 2 * DT);
+    expect(totalShift).toBeLessThanOrEqual(590 + 2 * DT);                 // 3発当てると、止まったのは 最後の当たりの瞬間(200ms)+最後の固まり(390ms)
+    expect(en('z').brLockHits).toBeUndefined();                            // 固まりが明けた=コンボは区切られた
   });
 });
 

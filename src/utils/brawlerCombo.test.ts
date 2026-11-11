@@ -1,11 +1,11 @@
 // ★格闘の敵側の流れ(research/BRAWLER.md §11): 流れの数え(反撃の数・ダメージ補正の数)・反撃の発動・赤い予告の時刻・浮かせ追撃。
 // ★§19(2026-11-10): 固まりの減衰・同じ技の罰・固まりの基本の長さの表は撤去した(置き換え先=確定の固まり。純関数のテストは brawlerRoute.test.ts)。
-//   ここに在った「基本の長さ」「減衰」「同じ技の罰」のテストは、新しい規則(①の長さ・③同じ技は固めない・⑤固まらない時間)の形へ書き換えた。
+// ★§20(2026-11-11): 固まりは「止め+技ごとの固まり×コンボの減衰」で当たりの瞬間に置き換えて書く。同じ技2回目も固める(減衰が止める)。ここの表は係数1.0の値。
 import { describe, it, expect } from 'vitest';
 import {
   brawlerComboOnHit, brawlerLockOnHit, brawlerLockHitMs, brawlerComboEndPatch,
   brawlerStageMoveKey, brawlerKickMoveKey,
-  BRAWLER_SECRET_HOLD_MS, BRAWLER_COMBO_GAP_MS, BRAWLER_HOLD_FRAME_MARGIN_MS, type BrawlerLockFields,
+  BRAWLER_SECRET_HOLD_MS, BRAWLER_COMBO_GAP_MS, type BrawlerLockFields,
   type BrawlerComboFields, type BrawlerMoveKey, isBrawlerTechBusy, BRAWLER_HOLDABLE_PHASES,
   brawlerJugglePush, brawlerAirborne, brawlerJuggleHeightRel, brawlerJuggleLanded, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_COST, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS, type BrawlerJuggleFields,
 } from './brawlerCombo';
@@ -36,15 +36,15 @@ const lockRun = (hits: { move: BrawlerMoveKey; at: number }[], cls: 'mob' | 'str
   return { e, holds };
 };
 
-describe('固まりの長さ(§19-3 ①・旧 §11-1 の基本の長さの表を置き換えた)', () => {
-  it('当たりの瞬間から「止め+受付(150ms)」と「1〜4段目は止め+後隙」の遅い方+余白34ms。締め・気功は0(係数1.0)', () => {
-    expect(BRAWLER_HOLD_FRAME_MARGIN_MS).toBe(34);
-    expect(brawlerLockHitMs('s1', 90)).toBe(90 + 150 + 34);   // 受付の終わり(240)> 後隙の終わり(230)
-    expect(brawlerLockHitMs('s2', 90)).toBe(90 + 150 + 34);
-    expect(brawlerLockHitMs('s3', 150)).toBe(150 + 230 + 34); // 後隙の終わりの方が遅い
-    expect(brawlerLockHitMs('s4', 150)).toBe(150 + 200 + 34);
-    expect(brawlerLockHitMs('kick1', 150)).toBe(150 + 150 + 34);
-    expect(brawlerLockHitMs('stomp', 220)).toBe(220 + 150 + 34);
+describe('固まりの長さ(§20-4・旧 §11-1 の基本の長さの表を置き換えた)', () => {
+  it('当たりの瞬間から「止め + 技ごとの固まり」。締め・気功は0(係数1.0)', () => {
+    expect(brawlerLockHitMs('s1', 90)).toBe(90 + 300);
+    expect(brawlerLockHitMs('s2', 90)).toBe(90 + 300);
+    expect(brawlerLockHitMs('s3', 150)).toBe(150 + 520);
+    expect(brawlerLockHitMs('s4', 150)).toBe(150 + 470);
+    expect(brawlerLockHitMs('kick1', 150)).toBe(150 + 250);
+    expect(brawlerLockHitMs('kick2', 150)).toBe(150 + 310);
+    expect(brawlerLockHitMs('stomp', 220)).toBe(220 + 230);
     for (const k of ['s5', 'kick3', 'kiko', 'secret', 'secret-land'] as const) expect(brawlerLockHitMs(k, 220)).toBe(0);
     expect(BRAWLER_SECRET_HOLD_MS).toBe(300); // 秘奥義の9連撃の1発(壁時計の固まり・§17 の止めの下で今どおり)
   });
@@ -53,38 +53,42 @@ describe('固まりの長さ(§19-3 ①・旧 §11-1 の基本の長さの表を
     expect([1, 2, 3].map(brawlerKickMoveKey)).toEqual(['kick1', 'kick2', 'kick3']);
   });
   it('★ボス級も雑魚と同じ固まりの長さ(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」)', () => {
-    // 固まりの長さは区分に依らない(①は区分を見ない)。違うのはコンボの後の固まらない時間(ボス級1500・強個体800・雑魚なし)。
+    // 固まりの長さは区分に依らない(式は区分を見ない)。違うのはコンボの後の固まらない時間(ボス級1500・強個体800・雑魚なし)。
     const hits = (['s1', 's2', 's3', 's4'] as const).map((move, i) => ({ move, at: i * 250 }));
     expect(lockRun(hits, 'boss').holds).toEqual(lockRun(hits, 'mob').holds);
   });
 });
 
-describe('止め続けられない(§19-3 ③④⑤・旧 §11-2 の減衰と同じ技の罰を置き換えた)', () => {
-  it('道の上で当て続ける間は固まりは短くならない(減衰なし)。流れの時計は GAP(700ms)当たらなければ始め直す', () => {
+describe('止め続けられない(§20-4 の減衰・⑤固まらない時間・旧 §11-2 の減衰と同じ技の罰を置き換えた)', () => {
+  it('当て続ける間、固まりは当たりごとに置き換わる(5発目までは満額)。流れの時計は GAP(700ms)当たらなければ始め直す', () => {
     const { holds } = lockRun([{ move: 's1', at: 0 }, { move: 's2', at: 250 }, { move: 's3', at: 550 }, { move: 's4', at: 1100 }]);
-    expect(holds).toEqual([274, 274, 414, 384]);
+    expect(holds).toEqual([390, 390, 670, 620]);
     const { e } = run('zombie', [{ move: 's1', at: 0 }, { move: 's2', at: 250 }, { move: 's3', at: 550 }, { move: 's4', at: 1100 }]);
     expect(e.brFlowHits).toBe(4);
     const after = brawlerComboOnHit(e, 's1', 1100 + BRAWLER_COMBO_GAP_MS + 1);
     expect(after.patch.brFlowHits).toBe(1);
   });
-  it('同じコンボで2回目の同じ技は固めない(1段目の連打・同じ技の擦り)。飛び蹴りの3連は1発ごとに名札が違う', () => {
-    // 1段目の固まり(274ms)の内に、もう一度1段目を当てても固まりは延びない(コンボは続いたまま)
-    expect(lockRun([{ move: 's1', at: 0 }, { move: 's1', at: 200 }]).holds).toEqual([274, 0]);
-    expect(lockRun([{ move: 'kick1', at: 0 }, { move: 'kick1', at: 250 }]).holds).toEqual([334, 0]);
-    // 5段の順・飛び蹴りの1・2発目は別の技=どちらも固める。5段目・3発目は締め(固めない)
-    expect(lockRun((['s1', 's2', 's3', 's4', 's5'] as const).map((move, i) => ({ move, at: i * 250 }))).holds).toEqual([274, 274, 414, 384, 0]);
-    expect(lockRun([{ move: 'kick1', at: 0 }, { move: 'kick2', at: 250 }, { move: 'kick3', at: 500 }]).holds).toEqual([334, 334, 0]);
+  it('同じ技の2回目も固める(同じ技の罰は無い)。止めるのは減衰(固まりを書いた当たりの6発目から×0.8ずつ)。締め(5段目・3発目)は固めず数えない', () => {
+    expect(lockRun([{ move: 's1', at: 0 }, { move: 's1', at: 200 }]).holds).toEqual([390, 390]);
+    expect(lockRun([{ move: 'kick1', at: 0 }, { move: 'kick1', at: 250 }]).holds).toEqual([400, 400]);
+    expect(lockRun((['s1', 's2', 's3', 's4', 's5'] as const).map((move, i) => ({ move, at: i * 250 }))).holds).toEqual([390, 390, 670, 620, 0]);
+    expect(lockRun([{ move: 'kick1', at: 0 }, { move: 'kick2', at: 250 }, { move: 'kick3', at: 500 }]).holds).toEqual([400, 460, 0]);
+    // 1段目を8回: 5発目まで 90+300 / 6発目 90+240 / 7発目 90+192 / 8発目 90+154
+    const eight = lockRun(Array.from({ length: 8 }, (_, i) => ({ move: 's1' as const, at: i * 100 })));
+    expect(eight.holds).toEqual([390, 390, 390, 390, 390, 330, 282, 244]);
+    expect(eight.e.brLockHits).toBe(8);
+    // 締め・気功を挟んでも数えない
+    expect(lockRun([{ move: 's1', at: 0 }, { move: 's5', at: 100 }, { move: 'kiko', at: 150 }]).e.brLockHits).toBe(1);
   });
   it('コンボの後: ボス級は1500ms・強個体は800ms 固まらない。雑魚は固まらない時間なし', () => {
-    // 1段目(固まり274ms)が明けた後に、また1段目から
-    const again = (cls: 'mob' | 'strong' | 'boss', gap: number) => lockRun([{ move: 's1', at: 0 }, { move: 's1', at: 274 + gap }], cls).holds[1];
+    // 1段目(固まり390ms)が明けた後に、また1段目から
+    const again = (cls: 'mob' | 'strong' | 'boss', gap: number) => lockRun([{ move: 's1', at: 0 }, { move: 's1', at: 390 + gap }], cls).holds[1];
     expect(again('boss', 100)).toBe(0);
     expect(again('boss', 1499)).toBe(0);
-    expect(again('boss', 1500)).toBe(274);
+    expect(again('boss', 1500)).toBe(390);
     expect(again('strong', 799)).toBe(0);
-    expect(again('strong', 800)).toBe(274);
-    expect(again('mob', 0)).toBe(274);
+    expect(again('strong', 800)).toBe(390);
+    expect(again('mob', 0)).toBe(390);
   });
 });
 

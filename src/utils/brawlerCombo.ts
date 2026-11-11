@@ -5,15 +5,21 @@
 //       確定の固まり(brLockUntil)・コンボの後の固まらない時間(brLockNoHoldUntil)は gameTime(プレイヤーの段・技と同じ時計=
 //       全体のスローが途中から掛かっても外れても、続きが当たる時刻とずれない・§19-3 ⑥)。
 // ★§19 で撤去した物(2026-11-10): 固まりの減衰(brawlerHoldDecay・BRAWLER_COMBO_DECAY_MS)・同じ技の罰(BRAWLER_SAME_MOVE_PENALTY_MS)・
-//   溜めの止め予算(brawlerTechHoldApply・BRAWLER_TECH_HOLD_BUDGET_MS)・5段の確定(brawlerComboInOrder・brawlerChainGuardMs)・
-//   固まりの基本の長さの表(BRAWLER_HOLD_BASE_MS)。置き換え先=下の brawlerLockOnHit / brawlerLockExtendPatch / brawlerComboEndPatch。
+//   溜めの止め予算(brawlerTechHoldApply・BRAWLER_TECH_HOLD_BUDGET_MS)・5段の確定(brawlerComboInOrder・brawlerChainGuardMs)。
+// ★§20 で撤去した物(2026-11-11・フレームで決まるつながり): 続きを出した瞬間の延ばし(brawlerLockExtendPatch)・同じ技2回目は固めない・
+//   当てた技の名札(brLockMoves)・余白の定数(BRAWLER_HOLD_FRAME_MARGIN_MS / BRAWLER_CHAIN_GUARD_MARGIN_MS)。
+//   固まりは「当たりの瞬間に1回書く(置き換え)」だけ=技ごとの数字(utils/brawler の BRAWLER_HOLD_MS)で決まる。
 import type { EnemyType } from '../types/game';
-import type { BrawlerMoveKey } from './brawlerTypes';
+import type { BrawlerMoveKey, BrawlerRouteNode } from './brawlerTypes';
 export type { BrawlerMoveKey } from './brawlerTypes';
 import { isBossType, isTerminalReaper } from './enemyUtils';
 import { POSTURE_ELITE_TYPES } from './bossPosture';
 import { isRecoverHoldPhase } from './recoverPhase';
-import { BRAWLER_LIFT_MS, BRAWLER_TEMPO, BRAWLER_CANCEL_WINDOW_MS, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo, brawlerStageSpec, BLAST_LIFT_SHAPE } from './brawler';
+import {
+  BRAWLER_LIFT_MS, BRAWLER_TEMPO, BRAWLER_CANCEL_WINDOW_MS, brawlerLiftArcRel, brawlerTempoMs, setBrawlerTempo, brawlerStageSpec, BLAST_LIFT_SHAPE,
+  BRAWLER_HOLD_MS, BRAWLER_TECHS, BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_HITSTOP_MS, BRAWLER_STOMP_HITSTOP_MS, BRAWLER_KIKO_SPEED, BRAWLER_KIKO_HIT_PAD,
+  brawlerRouteAllows,
+} from './brawler';
 
 /**
  * 当たりが途切れたら流れ(ダメージ補正の数・バウンドの区切り)を0へ戻す(ms)。
@@ -190,48 +196,113 @@ export const brawlerStopOnlyNow = (
 ): boolean => brawlerHeldNow(e, gameTime, nowMs) || brawlerLiftHoldNow(e, nowMs);
 
 // ---------------------------------------------------------------------------------------------
-// ★確定の固まり(research/BRAWLER.md §19-3・社長承認2026-11-10「繋がってる時はちゃんと繋がって敵は一切動けないように」)。
-// 考え方: 固まりは「プレイヤーが次に動けるようになる時」までしか続かない。続きを出した瞬間に、その続きが当たるまで延ばす。
+// ★確定の固まり(research/BRAWLER.md §19-3 → §20・社長指示2026-11-11「ちゃんとそこも格闘ゲームにしたい フレーム計算で」)。
+// 考え方(§20-1): つながる=「次の当たりが入る瞬間に、相手がまだ固まっているか、浮いている」。固まりは当たりの瞬間に技ごとの数字で1回書く(延ばさない)。
 // ---------------------------------------------------------------------------------------------
-/** ①の余白(係数なし): プレイヤーの行動の時計と gameTime のずれを吸う分。フレームの幅の揺れは brawlerLockAlive(1フレーム遅れて明ける)が受け持つ。長くすると待機から出した技がつながる。 */
-export const BRAWLER_HOLD_FRAME_MARGIN_MS = 34;
-/** ②の余白(続きが当たる時刻の後・×係数)。旧の5段の確定(§9-74)の余裕60msをそのまま使う。 */
-export let BRAWLER_CHAIN_GUARD_MARGIN_MS = 60; // ×BRAWLER_TEMPO(係数1.0の値)
 /** ⑤ コンボが終わった後の固まらない時間(ms・gameTime・叩き台・係数なし)。雑魚は無し。 */
 export const BRAWLER_COMBO_END_NO_HOLD_BOSS_MS = 1500;
 export const BRAWLER_COMBO_END_NO_HOLD_STRONG_MS = 800;
 export const brawlerComboEndNoHoldMs = (cls: 'mob' | 'strong' | 'boss'): number =>
   cls === 'boss' ? BRAWLER_COMBO_END_NO_HOLD_BOSS_MS : cls === 'strong' ? BRAWLER_COMBO_END_NO_HOLD_STRONG_MS : 0;
 
-const STAGE_KEYS = ['s1', 's2', 's3', 's4', 's5'] as const;
-/** 締め(道の先が無い技=5段目・飛び蹴り3発目)と気功: 固めない(止めだけ)。それまでの固まりを止めの終わりまで切り詰める。 */
+/** 締め(取り消せない技=5段目・飛び蹴り3発目)と気功: 固まりの表が0=固めない(止めだけ)。それまでの固まりを止めの終わりまで切り詰める。 */
 export const brawlerLockIsCloser = (move: BrawlerMoveKey): boolean => move === 's5' || move === 'kick3' || move === 'kiko';
-/** ①で固める技(1〜4段目・飛び蹴り1・2発目・大踏み潰し)。秘奥義の9連撃・締めは確定の固まりの規則の外。 */
+/** 固める技(固まりの表が0より長い技=1〜4段目・飛び蹴り1・2発目・大踏み潰し)。秘奥義の9連撃・締め・気功は確定の固まりの規則の外/固めない。 */
 export const brawlerLockHolds = (move: BrawlerMoveKey): boolean =>
-  move === 's1' || move === 's2' || move === 's3' || move === 's4' || move === 'kick1' || move === 'kick2' || move === 'stomp';
+  move !== 'secret' && move !== 'secret-land' && BRAWLER_HOLD_MS[move] > 0;
+/** コンボの減衰(§20-4): 固まりを書いた当たりの何発目か(1始まり)→掛ける倍率。5発目までは1.0、6発目×0.8、7発目×0.64…。 */
+export const BRAWLER_LOCK_DECAY_FREE_HITS = 5;
+export const BRAWLER_LOCK_DECAY_RATE = 0.8;
+export const brawlerLockDecay = (hitNo: number): number =>
+  hitNo <= BRAWLER_LOCK_DECAY_FREE_HITS ? 1 : BRAWLER_LOCK_DECAY_RATE ** (Math.round(hitNo) - BRAWLER_LOCK_DECAY_FREE_HITS);
+/** 技の固まり(実ms・減衰つき・四捨五入)。hitNo=この当たりが固まりを書く当たりの何発目か。固まり0の技は 0。 */
+export const brawlerLockHoldMs = (move: BrawlerMoveKey, hitNo = 1): number =>
+  move === 'secret' || move === 'secret-land' ? 0 : Math.round(BRAWLER_HOLD_MS[move] * brawlerLockDecay(hitNo));
 /**
- * ① 当てた時の固まりの長さ(当たりの瞬間から・ms)。stopMs=この当たりのプレイヤーの止め(行動の時計が止まる長さ)。
- *   「止め+取り消しの受付の終わり」と「(通常の次の段がある技=1〜4段目は)自分の後隙の終わり」の遅い方 + 2フレームの余白。
- * 固めない技(締め・気功・秘奥義)は 0。雑魚・強個体・ボス級とも同じ長さ。減衰・同じ技の罰・溜めの予算は掛けない。
+ * ① 当てた時の固まりの長さ(当たりの瞬間から・ms)(§20-4)= プレイヤーの止め(stopMs)+ 固まり(表)×コンボの減衰。
+ * 固まり0の技(締め・気功・秘奥義)は 0(固まりは書かない)。雑魚・強個体・ボス級とも同じ長さ。
  */
-export const brawlerLockHitMs = (move: BrawlerMoveKey, stopMs: number): number => {
-  if (!brawlerLockHolds(move)) return 0;
-  const stop = Math.max(0, stopMs);
-  const n = (STAGE_KEYS as readonly string[]).indexOf(move) + 1;
-  const byWindow = stop + BRAWLER_CANCEL_WINDOW_MS;
-  const byRecovery = n >= 1 && n <= 4 ? stop + brawlerStageSpec(n).recoveryMs : 0;
-  return Math.max(byWindow, byRecovery) + BRAWLER_HOLD_FRAME_MARGIN_MS;
+export const brawlerLockHitMs = (move: BrawlerMoveKey, stopMs: number, hitNo = 1): number => {
+  const hold = brawlerLockHoldMs(move, hitNo);
+  return hold > 0 ? Math.max(0, stopMs) + hold : 0;
 };
 /** 気功の弾が狙った相手に届くまでの時間(ms)。dist=撃つ所から相手の当たりの縁まで(px)・speed=弾の速さ(px/秒)。 */
 export const brawlerKikoTravelMs = (dist: number, speed: number): number =>
   Math.max(0, dist) / Math.max(1, speed) * 1000;
 
+// ---------------------------------------------------------------------------------------------
+// ★つながりの計算(§20-6 の3・テストと設計の検算のための純関数。★判定には使わない=store は固まりの数字と時計だけで動く)。
+// 「この技を当てた後、この続きをこの出し方で出したら、次の当たりは当たりから何ms後か」「固まりの終わりは当たりから何ms後か」。
+// 時刻は全部「前の技が当たった瞬間」を 0 とした game 時計のms。前の技のプレイヤーの止め S の間は行動の時計が止まる(取り消しの受付は S の明けから)。
+// ---------------------------------------------------------------------------------------------
+/** 当たりの時のプレイヤーの止め(ms・テンポ係数は掛けない別の表=utils/brawler の BRAWLER_HITSTOP)。気功は弾なので 0。 */
+export const brawlerMoveStopMs = (move: BrawlerMoveKey): number =>
+  move === 's1' || move === 's2' || move === 's3' || move === 's4' || move === 's5' ? brawlerStageSpec(Number(move[1])).hitstopMs
+    : move === 'kick1' ? BRAWLER_KICK_HITSTOP_MS[1] : move === 'kick2' ? BRAWLER_KICK_HITSTOP_MS[2] : move === 'kick3' ? BRAWLER_KICK_HITSTOP_MS[3]
+      : move === 'stomp' ? BRAWLER_STOMP_HITSTOP_MS : 0;
+/** 気功が撃った所から相手に届くまでの時間(ms)。distPx=プレイヤーの中心から相手までの距離(気功の弾の出る位置と当たりの余白を引く: −18 −当たりの余白)。 */
+export const brawlerKikoTravelForDistMs = (distPx: number): number => brawlerKikoTravelMs(distPx - 18 - BRAWLER_KIKO_HIT_PAD, BRAWLER_KIKO_SPEED);
+/** 技を出してから当たる(判定を解く)までの時間(ms)。飛び蹴り=出だし(溜め)+飛ぶ時間(flightMs・近いと 156〜遠いと 195)/ 気功=出だし+弾の飛ぶ時間(kikoDistPx から)。 */
+const brawlerMoveWindupMs = (move: BrawlerMoveKey, o: { kickFlightMs?: number; kikoDistPx?: number }): number => {
+  switch (move) {
+    case 's1': case 's2': case 's3': case 's4': case 's5': return brawlerStageSpec(Number(move[1])).windupMs;
+    case 'kick1': case 'kick2': return o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs;
+    case 'kick3': return BRAWLER_KICK3_CHARGE_MS + (o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs);
+    case 'stomp': return BRAWLER_TECHS.stomp.windupMs;
+    case 'kiko': return BRAWLER_TECHS.kiko.windupMs + brawlerKikoTravelForDistMs(o.kikoDistPx ?? 0);
+    default: return 0;
+  }
+};
+/** 当たりの後の後隙(ms)。 */
+const brawlerMoveRecoveryMs = (move: BrawlerMoveKey): number =>
+  move === 's1' || move === 's2' || move === 's3' || move === 's4' || move === 's5' ? brawlerStageSpec(Number(move[1])).recoveryMs
+    : move === 'stomp' ? BRAWLER_TECHS.stomp.recoveryMs : move === 'kiko' ? BRAWLER_TECHS.kiko.recoveryMs : BRAWLER_TECHS.kick.recoveryMs;
+/** 続きの出し方: 'recovery-end'=後隙が終わってから待機で出す / 'cancel-now'=止めが明けてすぐ取り消して出す / 'cancel-late'=受付の終わり際(止めの後 BRAWLER_CANCEL_WINDOW_MS)に取り消して出す。 */
+export type BrawlerLinkHow = 'recovery-end' | 'cancel-now' | 'cancel-late';
+export interface BrawlerLinkTiming {
+  /** 続きを出す(押す)時刻(当たりから・ms)。 */
+  pressAt: number;
+  /** 次の当たりの時刻(当たりから・ms)。 */
+  nextHitAt: number;
+  /** 固まりの終わり(当たりから・ms)。固まり0の技(締め・気功)は止めの終わり。 */
+  lockEndsAt: number;
+  /** 余り(ms)= lockEndsAt − nextHitAt。正=次の当たりが入る(相手がまだ固まっている)/負=不足(入らない)。 */
+  marginMs: number;
+  /** 入るか(余りが正)。 */
+  connects: boolean;
+  /** 取り消しの規則(brawlerRouteAllows)がこの出し方を許すか('recovery-end' は待機からなので常に true)。 */
+  routeOk: boolean;
+}
+/**
+ * 「from を当てた後、to を how で出したら、次の当たりは当たりから何ms後か」と「固まりの終わりは当たりから何ms後か」(§20-6 の3)。
+ *  - from の固まり = 止め S + 固まりの表×減衰(fromHitNo=from が固まりを書く当たりの何発目か=減衰。固まり0なら止めの終わりまで)。
+ *  - 'recovery-end': S + 後隙 に待機から to を出す。気功の後隙は撃った所(当たりより前)から始まるので、後隙の終わり = 後隙 −(弾の飛ぶ時間 fromKikoDistPx)。
+ *  - 'cancel-now': S(止めの明け=受付が開く)に取り消して出す。'cancel-late': S + 受付の長さに取り消して出す。
+ *  - to の当たり = 出した時刻 + 出だし(飛び蹴り・気功は距離で変わる: kickFlightMs / kikoDistPx)。
+ */
+export const brawlerLinkTiming = (
+  from: BrawlerMoveKey, to: BrawlerMoveKey, how: BrawlerLinkHow,
+  o: { fromHitNo?: number; kickFlightMs?: number; kikoDistPx?: number; fromKikoDistPx?: number } = {},
+): BrawlerLinkTiming => {
+  const stop = brawlerMoveStopMs(from);
+  const lockEndsAt = stop + (brawlerLockHolds(from) ? brawlerLockHoldMs(from, o.fromHitNo ?? 1) : 0);
+  const recovery = brawlerMoveRecoveryMs(from);
+  const pressAt = how === 'recovery-end'
+    ? (from === 'kiko' ? Math.max(0, recovery - brawlerKikoTravelForDistMs(o.fromKikoDistPx ?? 0)) : stop + recovery)
+    : how === 'cancel-now' ? stop : stop + BRAWLER_CANCEL_WINDOW_MS;
+  const nextHitAt = pressAt + brawlerMoveWindupMs(to, o);
+  const isNode = (m: BrawlerMoveKey): boolean => m !== 'secret' && m !== 'secret-land';
+  const routeOk = how === 'recovery-end' ? true : isNode(from) && isNode(to) && brawlerRouteAllows(from as BrawlerRouteNode, to as BrawlerRouteNode);
+  const marginMs = lockEndsAt - nextHitAt;
+  return { pressAt, nextHitAt, lockEndsAt, marginMs, connects: marginMs > 0, routeOk };
+};
+
 /** 確定の固まりの欄(store の Enemy のうち、ここが読み書きする所だけ)。brLock* は gameTime・brNoHoldUntil / brHoldUntil / hitStunUntil / brLiftUntil は Date.now。 */
 export interface BrawlerLockFields {
   /** 確定の固まりの終わり(gameTime)。 */
   brLockUntil?: number;
-  /** このコンボで当てた技の名札(カンマ区切り・④)。undefined=コンボの外。 */
-  brLockMoves?: string;
+  /** このコンボで固まりを書いた当たりの数(§20-4・コンボの減衰)。undefined=コンボの外(④)。 */
+  brLockHits?: number;
   /** コンボが終わった後の固まらない時間の終わり(gameTime・⑤)。 */
   brLockNoHoldUntil?: number;
   brNoHoldUntil?: number;
@@ -241,7 +312,7 @@ export interface BrawlerLockFields {
 }
 /**
  * いま固まらない時間か(§19-3 ⑤)。コンボの後(gameTime の欄)か、ダウンの着地の後(壁時計の欄)の**どちらかが生きている間**。
- * ★どの固まりの書き込み(①の固まり・②の延ばし・秘奥義の1発の固まり)も、先にこれを見る。
+ * ★どの固まりの書き込み(当たりの固まり・秘奥義の1発の固まり)も、先にこれを見る。
  */
 export const brawlerNoHoldNow = (e: Pick<BrawlerLockFields, 'brLockNoHoldUntil' | 'brNoHoldUntil'>, gameTime: number, nowMs: number): boolean =>
   (e.brLockNoHoldUntil !== undefined && gameTime < e.brLockNoHoldUntil) || (e.brNoHoldUntil !== undefined && nowMs < e.brNoHoldUntil);
@@ -251,73 +322,61 @@ export const brawlerNoHoldNow = (e: Pick<BrawlerLockFields, 'brLockNoHoldUntil' 
  */
 export const brawlerComboEndNoHoldNow = (e: Pick<BrawlerLockFields, 'brLockNoHoldUntil'>, gameTime: number): boolean =>
   e.brLockNoHoldUntil !== undefined && gameTime < e.brLockNoHoldUntil;
-const lockMoves = (e: Pick<BrawlerLockFields, 'brLockMoves'>): string[] => (e.brLockMoves ? e.brLockMoves.split(',') : []);
 
 /**
- * 格闘の当たり1回ぶんの確定の固まり(§19-3 ①③④⑤)。
- *  - 固まらない時間の間(brawlerNoHoldNow): 何も書かない・当てた技も覚えない(noHold=true)。
- *  - 締め・気功(brawlerLockIsCloser): 固めない。それまでの固まりを「止めの終わり」(gameTime + enemyStopMs)まで切り詰める。
- *  - 同じコンボで2回目の同じ技: 固めない(held=false)。
- *  - それ以外の固める技: 当たりの瞬間から brawlerLockHitMs。canHold=false(攻撃の振りの最中・ダウン)の時は固めない。
- *  - 当てた技は、固めた時か、この当たりで宙に居る(airborneAfter)時か、もうコンボの中の時に覚える(④の区切りまで)。
- * stopMs=プレイヤーの止め(①の長さの式に使う)/ enemyStopMs=その敵に実際に掛かる止め(ボス級の吹き飛ばしは 0)。
+ * 格闘の当たり1回ぶんの確定の固まり(§20-4)。**当たりの瞬間に書く。それ以外では書かない・延ばさない。**
+ *  - 固まらない時間の間(brawlerNoHoldNow): 何も書かない(noHold=true)。
+ *  - 固める技(固まりの表が0より長い)で、固められる当たり(canHold): 長さ = プレイヤーの止め + 固まり×コンボの減衰。**前の固まりを置き換える**
+ *    (短くなっても置き換える)。固まりを書いた当たりを brLockHits で数える(countHit=false の呼び手=会心のフィニッシュは数えない)。
+ *  - 固めない当たり(canHold=false=攻撃の振りの最中・ダウン)と、固まり0の技(締め・気功): 新しい固まりは書かず、
+ *    それまでの固まりを「その敵に掛かる止めの終わり」(gameTime + enemyStopMs)まで切る。数えない。
+ *  - コンボの中の印: 固めた時か、この当たりで宙に居る(airborneAfter)時か、もうコンボの中の時に brLockHits を立てる(④の区切りまで)。
+ * stopMs=プレイヤーの止め(長さの式)/ enemyStopMs=その敵に実際に掛かる止め(ボス級の吹き飛ばしは 0)。
  */
 export const brawlerLockOnHit = (
   e: BrawlerLockFields, move: BrawlerMoveKey, gameTime: number, nowMs: number,
-  o: { stopMs: number; enemyStopMs: number; canHold: boolean; airborneAfter: boolean },
-): { patch: Pick<BrawlerLockFields, 'brLockUntil' | 'brLockMoves'>; held: boolean; noHold: boolean } => {
+  o: { stopMs: number; enemyStopMs: number; canHold: boolean; airborneAfter: boolean; countHit?: boolean },
+): { patch: Pick<BrawlerLockFields, 'brLockUntil' | 'brLockHits'>; held: boolean; noHold: boolean } => {
   if (brawlerNoHoldNow(e, gameTime, nowMs)) return { patch: {}, held: false, noHold: true };
-  const moves = lockMoves(e);
-  const seen = moves.includes(move);
-  const inCombo = e.brLockMoves !== undefined;
-  const remember = (yes: boolean): Pick<BrawlerLockFields, 'brLockMoves'> => (yes && !seen ? { brLockMoves: [...moves, move].join(',') } : {});
-  if (brawlerLockIsCloser(move)) {
+  const inCombo = e.brLockHits !== undefined;
+  const hits = e.brLockHits ?? 0;
+  const mark = (yes: boolean): Pick<BrawlerLockFields, 'brLockHits'> => (yes ? { brLockHits: hits } : {});
+  const hitNo = hits + 1;
+  const len = brawlerLockHitMs(move, o.stopMs, hitNo);
+  if (!(len > 0) || !o.canHold) {
+    // 固めない当たり: それまでの固まりを止めの終わりまで切る(前の当たりの長い固まりを残さない)。
     const cut = gameTime + Math.max(0, o.enemyStopMs);
     return {
-      patch: { ...(e.brLockUntil !== undefined && e.brLockUntil > cut ? { brLockUntil: cut } : {}), ...remember(inCombo || o.airborneAfter) },
+      patch: { ...(e.brLockUntil !== undefined && e.brLockUntil > cut ? { brLockUntil: cut } : {}), ...mark(inCombo || o.airborneAfter) },
       held: false, noHold: false,
     };
   }
-  const len = brawlerLockHitMs(move, o.stopMs);
-  if (!(len > 0) || seen || !o.canHold) return { patch: remember(inCombo || o.airborneAfter), held: false, noHold: false };
   return {
-    patch: { brLockUntil: Math.max(e.brLockUntil ?? 0, gameTime + len), ...remember(true) },
+    patch: { brLockUntil: gameTime + len, brLockHits: o.countHit === false ? hits : hitNo },
     held: true, noHold: false,
   };
 };
 /**
- * ② 道の上の続きを出した瞬間に延ばす(§19-3)。その時まだ確定の固まりが生きている敵だけ・固まらない時間の外だけ・
- * 同じコンボでもう当てた技の続きでは延ばさない(③)。hitAt=その続きが当たる時刻(gameTime・出した時の実際の値)。
- * 返り値 null=延ばさない。道の上の続きかどうかは呼び手(utils/brawler.brawlerRouteAllows)が見る。
- */
-export const brawlerLockExtendPatch = (
-  e: BrawlerLockFields, move: BrawlerMoveKey, hitAt: number, gameTime: number, nowMs: number,
-): Pick<BrawlerLockFields, 'brLockUntil'> | null => {
-  if (!brawlerLockAlive(e, gameTime) || brawlerNoHoldNow(e, gameTime, nowMs)) return null;
-  if (lockMoves(e).includes(move)) return null;
-  const until = hitAt + BRAWLER_CHAIN_GUARD_MARGIN_MS;
-  return until > (e.brLockUntil ?? 0) ? { brLockUntil: until } : null;
-};
-/**
  * プレイヤーが後隙をステップで取り消した(=次に動けるようになった)瞬間に、確定の固まりをそこで切る(§19-3 の考え方)。
- * 切らないと、3・4段目の固まり(自分の後隙の終わりまで)が残り、ステップで取り消してから待機で出した技がつながってしまう。
+ * 切らないと、当てた技の固まり(止め+技ごとの固まり=§20-2)が残り、ステップで後隙を丸ごと飛ばしてから待機で出した技が、どれでもつながってしまう
+ * (§20-6b: ステップの扱いは社長の返事待ち=今はここで切る)。
  */
 export const brawlerLockCutPatch = (e: Pick<BrawlerLockFields, 'brLockUntil'>, gameTime: number): Pick<BrawlerLockFields, 'brLockUntil'> | null =>
   (brawlerLockAlive(e, gameTime) ? { brLockUntil: gameTime - brawlerLockFrameMs } : null); // その場で明ける(1フレーム遅れの分を引く)
 /**
  * ④ コンボの区切り(毎フレーム・敵ごと)。その敵が格闘の固まりでも浮きでもなくなった時(当たりの止めは固まりに含む・押されているだけの時は含まない)に
- * コンボは終わり、当てた技の覚えを消す。⑤ ボス級・強個体はそこから固まらない時間が始まる(雑魚は無し)。null=まだ続いている/コンボの外。
+ * コンボは終わり、固まりの数えを消す。⑤ ボス級・強個体はそこから固まらない時間が始まる(雑魚は無し)。null=まだ続いている/コンボの外。
  * 会心の気絶・カウンターの足止めは別の仕組みなので数えない。
  */
 export const brawlerComboEndPatch = (
   e: BrawlerLockFields, cls: 'mob' | 'strong' | 'boss', gameTime: number, nowMs: number,
-): Pick<BrawlerLockFields, 'brLockMoves' | 'brLockNoHoldUntil'> | null => {
-  if (e.brLockMoves === undefined) return null;
+): Pick<BrawlerLockFields, 'brLockHits' | 'brLockNoHoldUntil'> | null => {
+  if (e.brLockHits === undefined) return null;
   if (brawlerHoldClockAlive(e, gameTime, nowMs)) return null;
   if (e.hitStunUntil !== undefined && nowMs < e.hitStunUntil) return null;
   if (brawlerAirborne(e, nowMs)) return null;
   const ms = brawlerComboEndNoHoldMs(cls);
-  return { brLockMoves: undefined, ...(ms > 0 ? { brLockNoHoldUntil: Math.max(e.brLockNoHoldUntil ?? 0, gameTime + ms) } : {}) };
+  return { brLockHits: undefined, ...(ms > 0 ? { brLockNoHoldUntil: Math.max(e.brLockNoHoldUntil ?? 0, gameTime + ms) } : {}) };
 };
 
 /** 敵の流れの欄(store の Enemy のうち、ここが読み書きする所だけ)。 */
@@ -561,9 +620,9 @@ export const brawlerJugglePush = (
 };
 
 // ---------------------------------------------------------------------------------------------
-// ★テンポ係数(utils/brawler の BRAWLER_TEMPO・社長承認2026-11-08)。流れの切れ・続きの余白・
+// ★テンポ係数(utils/brawler の BRAWLER_TEMPO・社長承認2026-11-08)。流れの切れ・
 // 浮きの下限と叩き落としも同じ係数で伸ばす(格闘の時計が全体に遅くなる分、追撃が届くよう同率)。
-// 確定の固まりの長さ(brawlerLockHitMs)は段・技の時間(utils/brawler)から引くので、係数は自動で掛かる。
+// 確定の固まりの長さ(brawlerLockHitMs)は、技ごとの固まりの表(utils/brawler の BRAWLER_HOLD_MS=係数つき)から作る。
 // ---------------------------------------------------------------------------------------------
 /** 係数を掛けた時間の一式(純関数)。係数1.0なら今までの値と一致する。 */
 export const brawlerComboTimesAt = (tempo: number) => ({
@@ -572,7 +631,6 @@ export const brawlerComboTimesAt = (tempo: number) => ({
   BRAWLER_JUGGLE_MIN_MS: brawlerTempoMs(140, tempo),
   BRAWLER_JUGGLE_DROP_MS: brawlerTempoMs(200, tempo),
   BRAWLER_DOWN_NO_HOLD_MS: brawlerTempoMs(300, tempo),
-  BRAWLER_CHAIN_GUARD_MARGIN_MS: brawlerTempoMs(60, tempo),
 });
 const applyBrawlerComboTempo = (tempo: number): void => {
   const v = brawlerComboTimesAt(tempo);
@@ -581,7 +639,6 @@ const applyBrawlerComboTempo = (tempo: number): void => {
   BRAWLER_JUGGLE_MIN_MS = v.BRAWLER_JUGGLE_MIN_MS;
   BRAWLER_JUGGLE_DROP_MS = v.BRAWLER_JUGGLE_DROP_MS;
   BRAWLER_DOWN_NO_HOLD_MS = v.BRAWLER_DOWN_NO_HOLD_MS;
-  BRAWLER_CHAIN_GUARD_MARGIN_MS = v.BRAWLER_CHAIN_GUARD_MARGIN_MS;
 };
 /** 格闘の全部の時間を係数で書き直す(utils/brawler の段・技・秘奥義 + ここの固まり)。テストは明示の係数で呼ぶ。 */
 export const setBrawlerTempoAll = (tempo: number): void => {

@@ -34,7 +34,7 @@ const en = (id: string) => useGameStore.getState().enemies.find(e => e.id === id
 /** 確定の固まりの終わりを壁時計に直した値(このテストは技の時計と壁時計を同じだけ進める)。 */
 const holdEndOf = (id: string): number => now + (en(id).brLockUntil! - useGameStore.getState().gameTime);
 /** 1段目(止め45ms)の確定の固まりの長さ(係数1.0): 止め45+受付150+余白34。 */
-const S1_LOCK_MS = 45 + 150 + 34;
+const S1_LOCK_MS = 45 + 300; // §20-4: 止め45 + 1段目の固まり300(係数1.0)
 /** 1段目(止め45ms・押さない)を1発。 */
 const hit = (id: string, move: 's1' | 's2' | 's3' | 'kiko' = 's1') => useGameStore.getState().triggerCounter(undefined, {
   targetIds: [id], mult: 0.01, brawler: true, stunMs: 45, kb: { kind: 'none' }, postureMult: 0.01, pressedAt: Date.now(), combo: { move },
@@ -60,7 +60,7 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('ボス級も雑魚と同じ固まり(§11-1)', () => {
-  it('固まりの長さは雑魚と同じ(同じ技の2回目は固めない・気功はそれまでの固まりを切る、も同じ)・ボス級の止めは hitStunUntil(銃の止めと同じ枠)に書かない', () => {
+  it('固まりの長さは雑魚と同じ(同じ技の2回目も置き換えて固める・気功はそれまでの固まりを切る、も同じ)・ボス級の止めは hitStunUntil(銃の止めと同じ枠)に書かない', () => {
     setup();
     useGameStore.setState({ enemies: [place('hunter', 80, 0, 'h'), place('zombie', -80, 0, 'z'), place('miguel', 0, 120, 'm', { bossState: 'chase' })] });
     const holds: Record<string, number[]> = { h: [], z: [], m: [] };
@@ -71,8 +71,8 @@ describe('ボス級も雑魚と同じ固まり(§11-1)', () => {
     }
     expect(holds.h).toEqual(holds.z);
     expect(holds.m).toEqual(holds.z);
-    // 1段目=229 / 2段目(50ms後)=229 / 同じコンボで2回目の1段目=延びない(2段目の残り179) / 気功=止めの終わり(45)まで切り詰め
-    expect(holds.z).toEqual([S1_LOCK_MS, S1_LOCK_MS, S1_LOCK_MS - 50, 45]);
+    // 1段目=345 / 2段目(50ms後)=345(置き換え) / 同じコンボで2回目の1段目も当たりの瞬間から345(置き換え・同じ技の罰は無い) / 気功=止めの終わり(45)まで切り詰め
+    expect(holds.z).toEqual([S1_LOCK_MS, S1_LOCK_MS, S1_LOCK_MS, 45]);
     expect(en('h').hitStunUntil).toBeUndefined();
     expect(en('m').hitStunUntil).toBeUndefined();
   });

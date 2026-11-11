@@ -847,9 +847,9 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     useGameStore.setState({ enemies: [mk(160, 'z'), mk(-160, 'c')] });
     hit('z', 's1');
     const e0 = en('z');
-    // ★§19-3 ①: 確定の固まり(gameTime の欄)=当たりの瞬間から「止め45+受付150」+余白34(係数1.0)。旧: 壁時計で 止め45+基本300。
+    // ★§20-4: 確定の固まり(gameTime の欄)=当たりの瞬間から「止め45 + 1段目の固まり300」(係数1.0)。
     expect(e0.brLockUntil).toBe(useGameStore.getState().gameTime + brawlerLockHitMs('s1', 45));
-    expect(brawlerLockHitMs('s1', 45)).toBe(45 + 150 + 34);
+    expect(brawlerLockHitMs('s1', 45)).toBe(45 + 300);
     const x0 = e0.x, c0 = en('c').x;
     advanceAll(220);
     expect(en('z').x).toBeCloseTo(x0, 5);
@@ -898,11 +898,11 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     for (let i = 1; i < 5; i++) expect(lockBefore[i], `${i + 1}段目の直前`).toBeGreaterThanOrEqual(hitsAt[i]);
     // 5段目(締め)の後: 固まりは止め(220ms)の終わりより先には残っていない
     expect(en('z').brLockUntil ?? 0).toBeLessThanOrEqual(hitsAt[4] + 220);
-    expect(en('z').brLockMoves).toBe('s1,s2,s3,s4,s5');
+    expect(en('z').brLockHits).toBe(4); // 固まりを書いた当たり=1〜4段目(締めの5段目は数えない)
     } finally { setBrawlerTempoAll(1.0); }
   });
-  // ★§19-3 ③ で書き換え: 旧「同じ技の罰(時計に+400ms)で1段目の連打は早く抜けられる」→ 新「同じコンボで2回目の同じ技は固めない」。
-  it('同じコンボで2回目の同じ技は固めない(1段目の連打は固まりが延びない)・5段の順の当たりは固める', () => {
+  // ★§20-4 で書き換え: 旧「同じコンボで2回目の同じ技は固めない」→ 新「同じ技の2回目も当たりの瞬間に置き換えて固める(止めるのは減衰)」。
+  it('1段目の連打も当たりごとに固まりが置き換わる(同じ技の罰は無い)・数えは固まりを書いた当たりの数', () => {
     setup();
     useGameStore.setState({ enemies: [zombieAt(60, 0, 'a'), zombieAt(-60, 0, 'b')] });
     hit('a', 's1'); hit('b', 's1');
@@ -910,10 +910,10 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     expect(en('b').brLockUntil).toBe(first);
     advance(100);
     hit('a', 's1'); hit('b', 's2', 2);
-    expect(en('a').brLockUntil).toBe(first);                                 // 連打=延びない
-    expect(en('a').brLockMoves).toBe('s1');
-    expect(en('b').brLockUntil).toBe(first + 100);                           // 2段目=新しく当たりの瞬間から
-    expect(en('b').brLockMoves).toBe('s1,s2');
+    expect(en('a').brLockUntil).toBe(first + 100);                           // 連打=当たりの瞬間から置き換え(同じ長さ・100ms後ろ)
+    expect(en('a').brLockHits).toBe(2);
+    expect(en('b').brLockUntil).toBe(first + 100);                           // 2段目=当たりの瞬間から
+    expect(en('b').brLockHits).toBe(2);
     expect(en('a').health).toBeLessThan(en('b').maxHealth);                  // ダメージは入る
   });
   it('技→技のキャンセル: 当たった大踏み潰しの後隙を気功で取り消せる・空振りからは取り消せない(構えは別)', () => {
@@ -1128,8 +1128,8 @@ describe('移動・待ちの相の敵も格闘で固まる(社長実機報告202
     const until0 = en('z').aiPhaseUntil ?? 0;
     s1('z');
     const e0 = en('z');
-    // ★§19-3 ①: 確定の固まり(gameTime の欄)=止め45+受付150+余白34=229ms(係数1.0)。旧: 壁時計で 止め45+基本300。
-    expect(e0.brLockUntil).toBe(useGameStore.getState().gameTime + 229);
+    // ★§20-4: 確定の固まり(gameTime の欄)=止め45+1段目の固まり300=345ms(係数1.0)。旧: 壁時計で 止め45+基本300。
+    expect(e0.brLockUntil).toBe(useGameStore.getState().gameTime + 345);
     const x0 = e0.x, y0 = e0.y;
     live(220);
     expect(en('z').x).toBeCloseTo(x0, 5);
@@ -1138,13 +1138,13 @@ describe('移動・待ちの相の敵も格闘で固まる(社長実機報告202
     expect((en('z').aiPhaseUntil ?? 0) - until0).toBeGreaterThanOrEqual(200); // 相の時計が止まった分だけ後ろへ
     expect(en('z').biteAt ?? 0).toBe(0);                      // 固まっている間は噛みを構えない
   });
-  it('★§13-1 予告の溜め(z-red-pause)に入ったゾンビも固まる(§19-3: 移動の相と同じ長さ・旧の予算は撤去)・体勢値・ダメージは入る', () => {
+  it('★§13-1 予告の溜め(z-red-pause)に入ったゾンビも固まる(§20-4: 移動の相と同じ長さ・旧の予算は撤去)・体勢値・ダメージは入る', () => {
     setup();
     const z = zombieAt(80, 0, 'z');
     Object.assign(z, { aiPhase: 'z-red-pause', aiPhaseUntil: useGameStore.getState().gameTime + 5000 });
     useGameStore.setState({ enemies: [z] });
     s1('z');
-    expect(en('z').brLockUntil).toBe(useGameStore.getState().gameTime + 229);
+    expect(en('z').brLockUntil).toBe(useGameStore.getState().gameTime + 345);
     expect(brawlerLockAlive(en('z'), useGameStore.getState().gameTime)).toBe(true);
     expect(en('z').health).toBeLessThan(en('z').maxHealth);
   });
@@ -1154,7 +1154,7 @@ describe('移動・待ちの相の敵も格闘で固まる(社長実機報告202
     Object.assign(z, { aiPhase: 'zrush', aiPhaseUntil: useGameStore.getState().gameTime + 2000, biteAt: useGameStore.getState().gameTime + 1 });
     useGameStore.setState({ enemies: [z] });
     s1('z');
-    expect(en('z').brLockUntil).toBe(useGameStore.getState().gameTime + 229);
+    expect(en('z').brLockUntil).toBe(useGameStore.getState().gameTime + 345);
   });
 });
 
@@ -1214,13 +1214,13 @@ describe('技の先行入力と秘奥義の1手目(社長指示2026-11-08「技�
   it('覚えている間の通常攻撃は捨てる(技を優先)・新しい技の入力で上書き・道に無い技は覚えない', () => {
     prep([]);
     useGameStore.getState().brawlerTech(1, 0); advance(30);                  // 飛び蹴りの出だし
-    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);            // 大踏み潰し=道の上(飛び蹴り→大踏み潰し)
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);            // 大踏み潰し=取り消せる(飛び蹴り→大踏み潰し)
     expect(br().techBuffer).toBe('stomp');
     expect(useGameStore.getState().brawlerPress()).toBe(false);
     expect(br().buffered).toBe(false);
     expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true);            // 次の蹴り(連続)で上書き
     expect(br().techBuffer).toBe('kick');
-    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(false);          // 気功=道に無い(覚えない・上書きもしない)
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(false);         // 構え=道に無い(覚えない・上書きもしない)
     expect(br().techBuffer).toBe('kick');
   });
   it('出す瞬間に技ポイントが足りなければ出さない(拒否の音と数字が沈む表示)', () => {

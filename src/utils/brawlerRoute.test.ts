@@ -1,20 +1,22 @@
-// ★KOF のようなつながり(research/BRAWLER.md §19・社長承認2026-11-10「KOFの案は はい」)の純関数。受け入れ条件 §19-4 の1。
-//   道の表(表のとおりに許す・それ以外は許さない)/当たっていない技・通常からは取り消せない/受付の外は取り消せない/
+// ★フレームで決まるつながり(research/BRAWLER.md §20・社長指示2026-11-11「ちゃんとそこも格闘ゲームにしたい フレーム計算で」)の純関数。受け入れ条件 §20-6 の1〜3。
+//   取り消しの規則(技ごとの印 BRAWLER_CANCELABLE から作った表。§20-3 の名札の一覧どおり)/当たっていない技・通常からは取り消せない/受付の外は取り消せない/
 //   道に無い技の先行入力は覚えない/構えは待機と秘奥義の締めだけ/ステップの取り消しは当たった1〜4段目だけ/
-//   ①の長さと②の延ばす先(段・飛び蹴り・気功の距離・大踏み潰し)。実際の AI を回す側は store/brawlerLink.store.test.ts。
+//   固まりの長さ(止め+技ごとの固まり×減衰・置き換え)と、つながりの計算(brawlerLinkTiming=入る組は余り45ms以上・入らない組は不足45ms以上)。
+//   実際の刻みで回す側は store/brawlerLink.store.test.ts。
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { BrawlerRouteNode, BrawlerState, BrawlerTechKind } from './brawlerTypes';
 import {
-  BRAWLER_TEMPO_DEFAULT, BRAWLER_CANCEL_WINDOW_MS, BRAWLER_HITSTOP, BRAWLER_KICK_HITSTOP_MS, BRAWLER_STOMP_HITSTOP_MS, BRAWLER_TECHS, BRAWLER_KIKO_SPEED,
-  BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_CHAIN_MS,
+  BRAWLER_TEMPO_DEFAULT, BRAWLER_CANCEL_WINDOW_MS, BRAWLER_HITSTOP, BRAWLER_KICK_HITSTOP_MS, BRAWLER_STOMP_HITSTOP_MS, BRAWLER_TECHS,
+  BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_CHAIN_MS, BRAWLER_CANCELABLE, BRAWLER_HOLD_MS, BRAWLER_HOLD_BASE_MS,
   brawlerRouteAllows, brawlerRouteNodeOf, brawlerStageNode, brawlerTechNode, brawlerSecretClosing, brawlerHitLanded, brawlerCancelWindowOpen,
   brawlerTechCancelOk, brawlerTechAllowed, brawlerShouldBufferTech, brawlerTechBufferDecision, brawlerStepAllowed, brawlerSecretCarry,
   brawlerStartAttack, brawlerStartTech, brawlerAfterResolve, brawlerFinish, brawlerStageSpec, initialBrawlerState, brawlerKickFlightMs, brawlerKickReaimDue,
 } from './brawler';
 import {
-  setBrawlerTempoAll, BRAWLER_HOLD_FRAME_MARGIN_MS, BRAWLER_CHAIN_GUARD_MARGIN_MS, BRAWLER_COMBO_END_NO_HOLD_BOSS_MS, BRAWLER_COMBO_END_NO_HOLD_STRONG_MS,
-  brawlerLockHitMs, brawlerLockIsCloser, brawlerLockHolds, brawlerLockOnHit, brawlerLockExtendPatch, brawlerLockCutPatch, brawlerComboEndPatch,
-  brawlerLockAlive, brawlerHoldClockAlive, brawlerHoldRemainMs, brawlerHeldNow, brawlerNoHoldNow, brawlerComboEndNoHoldNow, brawlerKikoTravelMs,
+  setBrawlerTempoAll, BRAWLER_COMBO_END_NO_HOLD_BOSS_MS, BRAWLER_COMBO_END_NO_HOLD_STRONG_MS,
+  brawlerLockHitMs, brawlerLockIsCloser, brawlerLockHolds, brawlerLockOnHit, brawlerLockCutPatch, brawlerComboEndPatch, brawlerLockHoldMs, brawlerLockDecay,
+  brawlerLinkTiming, brawlerMoveStopMs, brawlerKikoTravelForDistMs,
+  brawlerLockAlive, brawlerHoldClockAlive, brawlerHoldRemainMs, brawlerHeldNow, brawlerNoHoldNow, brawlerComboEndNoHoldNow,
   brawlerJugglePush, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS,
   type BrawlerMoveKey,
 } from './brawlerCombo';
@@ -23,12 +25,12 @@ beforeAll(() => { setBrawlerTempoAll(1.3); });
 afterAll(() => { setBrawlerTempoAll(BRAWLER_TEMPO_DEFAULT); });
 
 const NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'stomp', 'kiko', 'guard'];
-/** §19-1 の表(テストの側にも書く=表を書き換えたら必ずここも見ることになる)。 */
+/** §20-3 の名札の一覧(テストの側にも書く=規則を書き換えたら必ずここも見ることになる)。 */
 const TABLE: Readonly<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>> = {
   idle: NODES.filter(n => n !== 'idle'),
-  s1: ['s2', 'kick1'], s2: ['s3', 'kiko'], s3: ['s4', 'kick1'], s4: ['s5', 'stomp'], s5: [],
-  kick1: ['kick2', 'stomp'], kick2: ['kick3', 'stomp'], kick3: [],
-  stomp: ['kiko'], kiko: [], guard: ['guard'],
+  s1: ['s2', 'kick1', 'stomp', 'kiko'], s2: ['s3', 'kick1', 'stomp', 'kiko'], s3: ['s4', 'kick1', 'stomp', 'kiko'], s4: ['s5', 'kick1', 'stomp', 'kiko'], s5: [],
+  kick1: ['kick2', 'stomp', 'kiko'], kick2: ['kick3', 'stomp', 'kiko'], kick3: [],
+  stomp: ['kick1', 'kiko'], kiko: [], guard: ['guard'],
 };
 const HS = { s1: BRAWLER_HITSTOP.weak, s2: BRAWLER_HITSTOP.weak, s3: BRAWLER_HITSTOP.strong, s4: BRAWLER_HITSTOP.strong, s5: BRAWLER_HITSTOP.closer } as const;
 
@@ -47,8 +49,11 @@ const techHit = (kind: BrawlerTechKind, kickN = 1, hits = 1, landed = hits, base
   return { s: kind === 'kick' ? { ...r, kickCount: kickN >= 3 ? 0 : kickN, kickChainUntil: kickN >= 3 ? 0 : at + BRAWLER_KICK_CHAIN_MS } : r, at, hs };
 };
 
-describe('道の表(§19-1)', () => {
-  it('表のとおりに許す・それ以外は許さない(全ての組)', () => {
+describe('取り消しの規則(§20-3)', () => {
+  it('印(BRAWLER_CANCELABLE)は s1〜s4・kick1・kick2・stomp だけ', () => {
+    expect(NODES.filter(n => BRAWLER_CANCELABLE[n])).toEqual(['s1', 's2', 's3', 's4', 'kick1', 'kick2', 'stomp']);
+  });
+  it('一覧のとおりに許す・それ以外は許さない(全ての組)。通常の段へは段のつなぎだけ', () => {
     for (const from of NODES) for (const to of NODES) {
       if (to === 'idle') continue;
       expect(brawlerRouteAllows(from, to), `${from}→${to}`).toBe(TABLE[from].includes(to));
@@ -83,8 +88,8 @@ describe('取り消しの受付と「当たった時だけ」(§19-1・§19-2)',
     expect(brawlerCancelWindowOpen(brawlerStartAttack(initialBrawlerState(), 1, 0, false), 30)).toBe(false); // 判定の前
     expect(brawlerCancelWindowOpen(initialBrawlerState(), 0)).toBe(false);
   });
-  it('通常→技: 道の上・当たった・受付の内 の3つが揃った時だけ(段ごとの道の先)', () => {
-    const want: Record<number, readonly BrawlerTechKind[]> = { 1: ['kick'], 2: ['kiko'], 3: ['kick'], 4: ['stomp'], 5: [] };
+  it('通常→技: 取り消せる印・当たった・受付の内 の3つが揃った時だけ(1〜4段目から kick/stomp/kiko・5段目は無し・構えは出せない)', () => {
+    const want: Record<number, readonly BrawlerTechKind[]> = { 1: ['kick', 'stomp', 'kiko'], 2: ['kick', 'stomp', 'kiko'], 3: ['kick', 'stomp', 'kiko'], 4: ['kick', 'stomp', 'kiko'], 5: [] };
     for (const stage of [1, 2, 3, 4, 5]) {
       const { s, at, hs } = stageHit(stage);
       const mid = at + hs + 20;
@@ -105,11 +110,11 @@ describe('取り消しの受付と「当たった時だけ」(§19-1・§19-2)',
       for (const k of ['kick', 'stomp', 'kiko', 'guard'] as const) expect(brawlerTechAllowed(pre, k, 1010)).toBe(false);
     }
   });
-  it('技→技: 飛び蹴り1・2発目→大踏み潰し / 大踏み潰し→気功 だけ(当たった時・受付の内)', () => {
+  it('技→技: 飛び蹴り1・2発目→大踏み潰し・気功 / 大踏み潰し→飛び蹴り・気功 (当たった時・受付の内。自分と同じ技の種類へは出せない・構えは出せない)', () => {
     for (const n of [1, 2]) {
       const { s, at, hs } = techHit('kick', n);
       expect(brawlerTechAllowed(s, 'stomp', at + hs + 1)).toBe(true);
-      expect(brawlerTechAllowed(s, 'kiko', at + hs + 1)).toBe(false);
+      expect(brawlerTechAllowed(s, 'kiko', at + hs + 1)).toBe(true);
       expect(brawlerTechAllowed(s, 'guard', at + hs + 1)).toBe(false);
       expect(brawlerTechAllowed(techHit('kick', n, 0).s, 'stomp', at + hs + 1)).toBe(false);     // 空振り
       expect(brawlerTechAllowed(techHit('kick', n, 1, 0).s, 'stomp', at + hs + 1)).toBe(false);  // 防がれた
@@ -119,7 +124,10 @@ describe('取り消しの受付と「当たった時だけ」(§19-1・§19-2)',
     for (const k of ['kick', 'stomp', 'kiko', 'guard'] as const) expect(brawlerTechAllowed(k3.s, k, k3.at + k3.hs + 1), `3発目→${k}`).toBe(false);
     const st = techHit('stomp');
     expect(brawlerTechAllowed(st.s, 'kiko', st.at + st.hs + 1)).toBe(true);
-    for (const k of ['kick', 'stomp', 'guard'] as const) expect(brawlerTechAllowed(st.s, k, st.at + st.hs + 1), `大踏み潰し→${k}`).toBe(false);
+    expect(brawlerTechAllowed(st.s, 'kick', st.at + st.hs + 1)).toBe(true);
+    for (const k of ['stomp', 'guard'] as const) expect(brawlerTechAllowed(st.s, k, st.at + st.hs + 1), `大踏み潰し→${k}`).toBe(false);
+    const ki = techHit('kiko');
+    for (const k of ['kick', 'stomp', 'kiko'] as const) expect(brawlerTechCancelOk({ ...ki.s, resolved: true }, k, ki.at + 1), `気功→${k}`).toBe(false);
   });
   it('飛び蹴りの連続の出せる条件は今どおり(判定の後・当たっていなくても・止めの間も)', () => {
     for (const n of [1, 2]) {
@@ -156,8 +164,8 @@ describe('取り消しの受付と「当たった時だけ」(§19-1・§19-2)',
 describe('技の先行入力(§19-2)', () => {
   it('入れた時点で道に無い技は覚えない。道の上の技は出だし・止めの間に覚え、受付が開いた瞬間に出る', () => {
     const pre = brawlerStartAttack(initialBrawlerState(), 3, 1000, false);
-    expect(brawlerShouldBufferTech(pre, 'kick', 1010)).toBe(true);
-    for (const k of ['stomp', 'kiko', 'guard'] as const) expect(brawlerShouldBufferTech(pre, k, 1010), k).toBe(false);
+    for (const k of ['kick', 'stomp', 'kiko'] as const) expect(brawlerShouldBufferTech(pre, k, 1010), k).toBe(true);
+    expect(brawlerShouldBufferTech(pre, 'guard', 1010)).toBe(false);
     const { s, at, hs } = stageHit(3);
     const b = { ...s, techBuffer: 'kick' as const };
     expect(brawlerShouldBufferTech(s, 'kick', at + 10)).toBe(true);                // 止めの間
@@ -226,89 +234,95 @@ describe('ステップの取り消し(§19-1)', () => {
   });
 });
 
-describe('① 当てた時の固まりの長さ・道ごとの時刻表(§19-3・係数1.3)', () => {
-  it('時間の表(係数1.3): 段・技の出だし/後隙/止め・受付・余白', () => {
+describe('固まりの長さ(§20-2・§20-4・係数1.3)', () => {
+  it('時間の表(係数1.3): 段・技の出だし/後隙/止め・受付', () => {
     expect([1, 2, 3, 4, 5].map(n => [brawlerStageSpec(n).windupMs, brawlerStageSpec(n).recoveryMs, brawlerStageSpec(n).hitstopMs])).toEqual(
       [[78, 182, 90], [78, 182, 90], [156, 299, 150], [325, 260, 150], [299, 351, 220]]);
     expect([BRAWLER_TECHS.kick.windupMs, BRAWLER_TECHS.kick.recoveryMs, BRAWLER_TECHS.stomp.windupMs, BRAWLER_TECHS.stomp.recoveryMs, BRAWLER_TECHS.kiko.windupMs, BRAWLER_TECHS.kiko.recoveryMs])
       .toEqual([156, 195, 260, 520, 156, 429]);
     expect([BRAWLER_KICK_HITSTOP_MS[1], BRAWLER_KICK_HITSTOP_MS[2], BRAWLER_KICK_HITSTOP_MS[3], BRAWLER_STOMP_HITSTOP_MS]).toEqual([150, 150, 220, 220]);
-    expect([BRAWLER_CANCEL_WINDOW_MS, BRAWLER_HOLD_FRAME_MARGIN_MS, BRAWLER_CHAIN_GUARD_MARGIN_MS, BRAWLER_KICK3_CHARGE_MS]).toEqual([195, 34, 78, 150]);
+    expect([BRAWLER_CANCEL_WINDOW_MS, BRAWLER_KICK3_CHARGE_MS]).toEqual([195, 150]);
     expect([brawlerKickFlightMs(0), brawlerKickFlightMs(160), brawlerKickFlightMs(220)]).toEqual([156, 156, 195]);
   });
-  it('①の長さ = max(止め+受付, [1〜4段目は]止め+後隙) + 余白34ms。締め(5段目・飛び蹴り3発目)・気功・秘奥義は0', () => {
-    // 当たりの瞬間を0として: 1・2段目=319 / 3段目=483 / 4段目=444 / 飛び蹴り1・2発目=379 / 大踏み潰し=449
-    expect(brawlerLockHitMs('s1', HS.s1)).toBe(Math.max(90 + 195, 90 + 182) + 34);
-    expect(brawlerLockHitMs('s1', HS.s1)).toBe(319);
-    expect(brawlerLockHitMs('s2', HS.s2)).toBe(319);
-    expect(brawlerLockHitMs('s3', HS.s3)).toBe(150 + 299 + 34);
-    expect(brawlerLockHitMs('s4', HS.s4)).toBe(150 + 260 + 34);
-    expect(brawlerLockHitMs('kick1', 150)).toBe(150 + 195 + 34);
-    expect(brawlerLockHitMs('kick2', 150)).toBe(379);
-    expect(brawlerLockHitMs('stomp', 220)).toBe(220 + 195 + 34);
+  it('固まりの表: 係数1.0の値(§20-2)と、テンポ係数を掛けた実ms(live binding)', () => {
+    expect(BRAWLER_HOLD_BASE_MS).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 250, kick2: 310, kick3: 0, stomp: 230, kiko: 0 });
+    expect(BRAWLER_HOLD_MS).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 325, kick2: 403, kick3: 0, stomp: 299, kiko: 0 });
+    setBrawlerTempoAll(1.0);
+    expect(BRAWLER_HOLD_MS).toEqual(BRAWLER_HOLD_BASE_MS);
+    setBrawlerTempoAll(1.3);
+    expect(BRAWLER_HOLD_MS.s3).toBe(676);
+  });
+  it('長さ = プレイヤーの止め + 固まり×減衰。固まり0の技(5段目・飛び蹴り3発目・気功)と秘奥義は 0(固まりは書かない)', () => {
+    expect(brawlerLockHitMs('s1', HS.s1)).toBe(90 + 390);
+    expect(brawlerLockHitMs('s2', HS.s2)).toBe(480);
+    expect(brawlerLockHitMs('s3', HS.s3)).toBe(150 + 676);
+    expect(brawlerLockHitMs('s4', HS.s4)).toBe(150 + 611);
+    expect(brawlerLockHitMs('kick1', 150)).toBe(150 + 325);
+    expect(brawlerLockHitMs('kick2', 150)).toBe(150 + 403);
+    expect(brawlerLockHitMs('stomp', 220)).toBe(220 + 299);
     for (const m of ['s5', 'kick3', 'kiko', 'secret', 'secret-land'] as const) expect(brawlerLockHitMs(m, 220), m).toBe(0);
     expect((['s5', 'kick3', 'kiko'] as const).every(brawlerLockIsCloser)).toBe(true);
     expect((['s1', 's2', 's3', 's4', 'kick1', 'kick2', 'stomp', 'secret'] as const).some(brawlerLockIsCloser)).toBe(false);
     expect((['s1', 's2', 's3', 's4', 'kick1', 'kick2', 'stomp'] as const).every(brawlerLockHolds)).toBe(true);
-    // 係数1.0 でも同じ式
+    // 区分は式に入らない(関数は区分を引数に取らない)。係数1.0でも同じ式
     setBrawlerTempoAll(1.0);
-    expect(brawlerLockHitMs('s1', 90)).toBe(Math.max(90 + 150, 90 + 140) + 34);
-    expect(brawlerLockHitMs('s3', 150)).toBe(150 + 230 + 34);
+    expect(brawlerLockHitMs('s1', 90)).toBe(90 + 300);
+    expect(brawlerLockHitMs('s3', 150)).toBe(150 + 520);
     setBrawlerTempoAll(1.3);
   });
-  it('続きを出せる時刻と当たる時刻(当たりの瞬間を0として): 道の上の続きは①の固まりの内に出せ、待機から出した表の外の技は①の外で当たる', () => {
-    const lock = { s1: 319, s2: 319, s3: 483, s4: 444, kick: 379, stomp: 449 };
-    // 段のつなぎ: 次の段は後隙の終わり(止め+後隙)に出る → ①の内(余白34msの手前)
-    expect([90 + 182, 90 + 182, 150 + 299, 150 + 260]).toEqual([272, 272, 449, 410]);
-    expect(272 < lock.s1 && 449 < lock.s3 && 410 < lock.s4).toBe(true);
-    // 取り消しの受付の最後(止め+受付)も①の内
-    expect(90 + 195 < lock.s1 && 150 + 195 < lock.s3 && 150 + 195 < lock.s4 && 150 + 195 < lock.kick && 220 + 195 < lock.stomp).toBe(true);
-    // 待機から出した表の外の技(§19-5 の計算): 1段目の後の大踏み潰し=272+260=532 / 気功(撃つ時刻)=272+156=428 / 飛び蹴りの後の1段目=345+78=423
-    expect(272 + BRAWLER_TECHS.stomp.windupMs).toBeGreaterThan(lock.s1);
-    expect(272 + BRAWLER_TECHS.kiko.windupMs).toBeGreaterThan(lock.s1);
-    expect(150 + 195 + brawlerStageSpec(1).windupMs).toBe(423);
-    expect(423).toBeGreaterThan(lock.kick);
-    // 2段目の後に待機から飛び蹴り: 272+156=428 > 319 / 3段目の後に待機から大踏み潰し: 449+260 > 483 / 大踏み潰しの後(後隙740)の待機からの技
-    expect(272 + BRAWLER_TECHS.kick.windupMs).toBeGreaterThan(lock.s2);
-    expect(449 + BRAWLER_TECHS.stomp.windupMs).toBeGreaterThan(lock.s3);
-    expect(220 + BRAWLER_TECHS.stomp.recoveryMs).toBeGreaterThan(lock.stomp);
+  it('コンボの減衰: 5発目までは1.0、6発目×0.8、7発目×0.64…(固まりの数字にだけ掛ける・四捨五入。止めは減らさない)', () => {
+    expect([1, 2, 3, 4, 5].map(brawlerLockDecay)).toEqual([1, 1, 1, 1, 1]);
+    expect(brawlerLockDecay(6)).toBeCloseTo(0.8);
+    expect(brawlerLockDecay(7)).toBeCloseTo(0.64);
+    expect(brawlerLockDecay(8)).toBeCloseTo(0.512);
+    expect([5, 6, 7, 8].map(n => brawlerLockHoldMs('s1', n))).toEqual([390, 312, 250, 200]);
+    expect(brawlerLockHitMs('s1', 90, 8)).toBe(90 + 200);
+    expect(brawlerLockHoldMs('s5', 8)).toBe(0);
   });
 });
 
-describe('確定の固まりの書き込み(§19-3 ①③⑤・締めの切り詰め)', () => {
-  const o = (stopMs: number, x: Partial<{ enemyStopMs: number; canHold: boolean; airborneAfter: boolean }> = {}) =>
-    ({ stopMs, enemyStopMs: x.enemyStopMs ?? stopMs, canHold: x.canHold ?? true, airborneAfter: x.airborneAfter ?? false });
-  it('初めて当てた技は当たりの瞬間から①の長さ(gameTime)。当てた技を覚える', () => {
+describe('確定の固まりの書き込み(§20-4・置き換え・数え・切り詰め)', () => {
+  const o = (stopMs: number, x: Partial<{ enemyStopMs: number; canHold: boolean; airborneAfter: boolean; countHit: boolean }> = {}) =>
+    ({ stopMs, enemyStopMs: x.enemyStopMs ?? stopMs, canHold: x.canHold ?? true, airborneAfter: x.airborneAfter ?? false, ...(x.countHit === undefined ? {} : { countHit: x.countHit }) });
+  it('当たりの瞬間から「止め+固まり」(gameTime)。固まりを書いた当たりを数える', () => {
     const r = brawlerLockOnHit({}, 's1', 5000, 9e9, o(90));
-    expect(r).toEqual({ patch: { brLockUntil: 5000 + 319, brLockMoves: 's1' }, held: true, noHold: false });
+    expect(r).toEqual({ patch: { brLockUntil: 5000 + 480, brLockHits: 1 }, held: true, noHold: false });
     const r2 = brawlerLockOnHit({ ...r.patch }, 's2', 5350, 9e9, o(90));
-    expect(r2.patch).toEqual({ brLockUntil: 5350 + 319, brLockMoves: 's1,s2' });
-    // 既に長い固まり(続きで延ばした分)があれば短くしない
-    expect(brawlerLockOnHit({ brLockUntil: 9000, brLockMoves: 's1' }, 's2', 5350, 9e9, o(90)).patch.brLockUntil).toBe(9000);
+    expect(r2.patch).toEqual({ brLockUntil: 5350 + 480, brLockHits: 2 });
   });
-  it('③ 同じコンボで2回目の同じ技は固めない', () => {
-    const r = brawlerLockOnHit({ brLockUntil: 5100, brLockMoves: 's1,kick1' }, 'kick1', 5000, 9e9, o(150));
-    expect(r).toEqual({ patch: {}, held: false, noHold: false });
-    expect(brawlerLockOnHit({ brLockMoves: 's1' }, 's1', 5000, 9e9, o(90)).held).toBe(false);
-    // 飛び蹴りの1・2発目は別の技
-    expect(brawlerLockOnHit({ brLockUntil: 5100, brLockMoves: 's1,kick1' }, 'kick2', 5000, 9e9, o(150)).held).toBe(true);
+  it('置き換え: 前の固まりが長くても短くても、新しい当たりの長さになる(続きを出しても延びない・同じ技でも固める)', () => {
+    expect(brawlerLockOnHit({ brLockUntil: 9000, brLockHits: 1 }, 's2', 5350, 9e9, o(90)).patch.brLockUntil).toBe(5350 + 480);
+    expect(brawlerLockOnHit({ brLockUntil: 5100, brLockHits: 1 }, 's2', 5350, 9e9, o(90)).patch.brLockUntil).toBe(5350 + 480);
+    const again = brawlerLockOnHit({ brLockUntil: 5100, brLockHits: 2 }, 'kick1', 5000, 9e9, o(150));
+    expect(again).toEqual({ patch: { brLockUntil: 5000 + 475, brLockHits: 3 }, held: true, noHold: false });   // 同じ技の2回目も固める
+    expect(brawlerLockOnHit({ brLockHits: 1 }, 's1', 5000, 9e9, o(90)).held).toBe(true);
   });
-  it('締め(5段目・飛び蹴り3発目)と気功は固めず、それまでの固まりを「止めの終わり」まで切り詰める。大踏み潰しは締めではない', () => {
-    const e = { brLockUntil: 6000, brLockMoves: 's1,s2,s3,s4' };
-    expect(brawlerLockOnHit(e, 's5', 5000, 9e9, o(220, { enemyStopMs: 220 })).patch).toEqual({ brLockUntil: 5220, brLockMoves: 's1,s2,s3,s4,s5' });
+  it('減衰: 固まりを書いた当たりの6発目から固まりが短くなる(5発目までは満額)', () => {
+    expect(brawlerLockOnHit({ brLockHits: 4 }, 's1', 5000, 9e9, o(90)).patch).toEqual({ brLockUntil: 5000 + 90 + 390, brLockHits: 5 });
+    expect(brawlerLockOnHit({ brLockHits: 5 }, 's1', 5000, 9e9, o(90)).patch).toEqual({ brLockUntil: 5000 + 90 + 312, brLockHits: 6 });
+    expect(brawlerLockOnHit({ brLockHits: 7 }, 's1', 5000, 9e9, o(90)).patch).toEqual({ brLockUntil: 5000 + 90 + 200, brLockHits: 8 });
+    // 会心のフィニッシュ(countHit=false)は数えない(長さは今の数えで決まる)
+    expect(brawlerLockOnHit({ brLockHits: 5 }, 's1', 5000, 9e9, o(90, { countHit: false })).patch).toEqual({ brLockUntil: 5000 + 90 + 312, brLockHits: 5 });
+    expect(brawlerLockOnHit({}, 's1', 5000, 9e9, o(90, { countHit: false })).patch).toEqual({ brLockUntil: 5000 + 480, brLockHits: 0 }); // 印は立てる(区切りで消える)
+  });
+  it('締め(5段目・飛び蹴り3発目)と気功は固めず・数えず、それまでの固まりを「止めの終わり」まで切る', () => {
+    const e = { brLockUntil: 6000, brLockHits: 4 };
+    expect(brawlerLockOnHit(e, 's5', 5000, 9e9, o(220, { enemyStopMs: 220 })).patch).toEqual({ brLockUntil: 5220, brLockHits: 4 });
     expect(brawlerLockOnHit(e, 's5', 5000, 9e9, o(220, { enemyStopMs: 0 })).patch.brLockUntil).toBe(5000);   // ボス級の吹き飛ばし=止め無し
     expect(brawlerLockOnHit(e, 'kick3', 5000, 9e9, o(220, { enemyStopMs: 220 })).patch.brLockUntil).toBe(5220);
     expect(brawlerLockOnHit(e, 'kiko', 5000, 9e9, o(0)).patch.brLockUntil).toBe(5000);
-    expect(brawlerLockOnHit({ brLockUntil: 5100, brLockMoves: 's1' }, 's5', 5000, 9e9, o(220)).patch.brLockUntil).toBeUndefined(); // もう短い=触らない
+    expect(brawlerLockOnHit({ brLockUntil: 5100, brLockHits: 1 }, 's5', 5000, 9e9, o(220)).patch.brLockUntil).toBeUndefined(); // もう短い=触らない
     expect(brawlerLockOnHit({}, 'kiko', 5000, 9e9, o(0))).toEqual({ patch: {}, held: false, noHold: false });     // コンボの外の気功は何も書かない
-    const st = brawlerLockOnHit({ brLockUntil: 5300, brLockMoves: 's4' }, 'stomp', 5000, 9e9, o(220, { enemyStopMs: 0 }));
-    expect(st).toEqual({ patch: { brLockUntil: 5000 + 449, brLockMoves: 's4,stomp' }, held: true, noHold: false });
+    const st = brawlerLockOnHit({ brLockUntil: 5300, brLockHits: 3 }, 'stomp', 5000, 9e9, o(220, { enemyStopMs: 0 }));
+    expect(st).toEqual({ patch: { brLockUntil: 5000 + 220 + 299, brLockHits: 4 }, held: true, noHold: false });   // 大踏み潰しはボス級の吹き飛ばしでもプレイヤーの止めから作る
   });
-  it('攻撃の振りの最中・ダウンの当たり(canHold=false)は固めない。宙に居る当たりは覚える(コンボは続いている)', () => {
+  it('固めない当たり(攻撃の振りの最中・ダウン=canHold=false)は新しい固まりを書かず、それまでの固まりを止めの終わりまで切る。宙に居る当たりはコンボの印を立てる', () => {
     expect(brawlerLockOnHit({}, 's1', 5000, 9e9, o(90, { canHold: false }))).toEqual({ patch: {}, held: false, noHold: false });
-    expect(brawlerLockOnHit({}, 's1', 5000, 9e9, o(90, { canHold: false, airborneAfter: true })).patch).toEqual({ brLockMoves: 's1' });
+    expect(brawlerLockOnHit({}, 's1', 5000, 9e9, o(90, { canHold: false, airborneAfter: true })).patch).toEqual({ brLockHits: 0 });
+    // 前の当たりの長い固まりを残さない(空中で締めを当てて落とした相手が、着地の後も固まり続けない)
+    expect(brawlerLockOnHit({ brLockUntil: 6000, brLockHits: 2 }, 's4', 5000, 9e9, o(150, { canHold: false, enemyStopMs: 150 })).patch).toEqual({ brLockUntil: 5150, brLockHits: 2 });
   });
-  it('⑤ 固まらない時間(コンボの後=gameTime の欄/ダウンの着地の後=壁時計の欄 のどちらかが生きている間)は何も書かない・覚えない', () => {
+  it('⑤ 固まらない時間(コンボの後=gameTime の欄/ダウンの着地の後=壁時計の欄 のどちらかが生きている間)は何も書かない・数えない', () => {
     expect(brawlerLockOnHit({ brLockNoHoldUntil: 5001 }, 's1', 5000, 100, o(90))).toEqual({ patch: {}, held: false, noHold: true });
     expect(brawlerLockOnHit({ brNoHoldUntil: 101 }, 's1', 5000, 100, o(90))).toEqual({ patch: {}, held: false, noHold: true });
     expect(brawlerLockOnHit({ brLockNoHoldUntil: 5000, brNoHoldUntil: 100 }, 's1', 5000, 100, o(90)).held).toBe(true); // 明けた瞬間から固まる
@@ -318,58 +332,127 @@ describe('確定の固まりの書き込み(§19-3 ①③⑤・締めの切り�
     expect(brawlerComboEndNoHoldNow({ brLockNoHoldUntil: 5001 }, 5000)).toBe(true);
     expect(brawlerComboEndNoHoldNow({}, 5000)).toBe(false);
   });
-});
-
-describe('② 続きを出した瞬間に延ばす(§19-3)', () => {
-  it('まだ固まっている敵だけを「続きが当たる時刻+余白78ms」まで延ばす', () => {
-    const e = { brLockUntil: 5319, brLockMoves: 's1' };
-    expect(brawlerLockExtendPatch(e, 's2', 5272 + 78, 5272, 9e9)).toEqual({ brLockUntil: 5272 + 78 + 78 });
-    expect(brawlerLockExtendPatch(e, 's2', 5400, 5319, 9e9)).toBeNull();          // 固まりが明けた後に出した続き=出せるがつながらない
-    expect(brawlerLockExtendPatch({}, 's2', 5400, 5272, 9e9)).toBeNull();
-    expect(brawlerLockExtendPatch({ brLockUntil: 9000, brLockMoves: 's1' }, 's2', 5400, 5272, 9e9)).toBeNull(); // もう長い=触らない
-  });
-  it('③ 同じコンボでもう当てた技の続きでは延ばさない・⑤ 固まらない時間の間は延ばさない', () => {
-    expect(brawlerLockExtendPatch({ brLockUntil: 5319, brLockMoves: 's1,s2' }, 's2', 5400, 5272, 9e9)).toBeNull();
-    expect(brawlerLockExtendPatch({ brLockUntil: 5319, brLockMoves: 's1', brLockNoHoldUntil: 6000 }, 's2', 5400, 5272, 9e9)).toBeNull();
-    expect(brawlerLockExtendPatch({ brLockUntil: 5319, brLockMoves: 's1', brNoHoldUntil: 200 }, 's2', 5400, 5272, 100)).toBeNull();
-  });
-  it('延ばす先(当たる時刻)= 出した時の実際の値: 段の出だし/飛び蹴りの飛ぶ時間(3発目は溜め込み)/大踏み潰しの出だし/気功は弾の飛ぶ時間込み', () => {
-    const t = 5000;
-    const ext = (move: BrawlerMoveKey, hitAt: number) => brawlerLockExtendPatch({ brLockUntil: t + 50, brLockMoves: 'x' }, move, hitAt, t, 9e9)!.brLockUntil! - t;
-    expect(ext('s2', t + brawlerStageSpec(2).windupMs)).toBe(78 + 78);
-    expect(ext('s4', t + brawlerStageSpec(4).windupMs)).toBe(325 + 78);
-    expect(ext('s5', t + brawlerStageSpec(5).windupMs)).toBe(299 + 78);
-    expect(ext('kick1', t + brawlerKickFlightMs(100))).toBe(156 + 78);
-    expect(ext('kick2', t + brawlerKickFlightMs(220))).toBe(195 + 78);
-    expect(ext('kick3', t + BRAWLER_KICK3_CHARGE_MS + brawlerKickFlightMs(220))).toBe(150 + 195 + 78);
-    expect(ext('stomp', t + BRAWLER_TECHS.stomp.windupMs)).toBe(260 + 78);
-    // 気功: 近い時(弾はすぐ届く)と、届く端の時(420px 先)
-    expect(brawlerKikoTravelMs(0, BRAWLER_KIKO_SPEED)).toBe(0);
-    expect(brawlerKikoTravelMs(-5, BRAWLER_KIKO_SPEED)).toBe(0);
-    expect(Math.round(brawlerKikoTravelMs(90, BRAWLER_KIKO_SPEED))).toBe(100);
-    expect(Math.round(brawlerKikoTravelMs(420, BRAWLER_KIKO_SPEED))).toBe(467);
-    expect(ext('kiko', t + BRAWLER_TECHS.kiko.windupMs + brawlerKikoTravelMs(0, BRAWLER_KIKO_SPEED))).toBe(156 + 78);
-    expect(Math.round(ext('kiko', t + BRAWLER_TECHS.kiko.windupMs + brawlerKikoTravelMs(420, BRAWLER_KIKO_SPEED)))).toBe(156 + 467 + 78);
-  });
-  it('ステップで後隙を取り消した瞬間に、確定の固まりはそこで切れる', () => {
+  it('ステップで後隙を取り消した瞬間に、確定の固まりはそこで切れる(今どおり・§20-6b の返事待ち)', () => {
     expect(brawlerLockCutPatch({ brLockUntil: 5483 }, 5150)).toEqual({ brLockUntil: 5150 });
     expect(brawlerLockCutPatch({ brLockUntil: 5100 }, 5150)).toBeNull();
     expect(brawlerLockCutPatch({}, 5150)).toBeNull();
   });
 });
 
+describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => {
+  const MARGIN = 45;
+  const near = { kickFlightMs: 156 };
+  /** 入る=余り45ms以上 / 入らない=不足45ms以上。 */
+  const connects = (from: BrawlerMoveKey, to: BrawlerMoveKey, how: 'recovery-end' | 'cancel-now' | 'cancel-late', x: Parameters<typeof brawlerLinkTiming>[3] = near) => {
+    const r = brawlerLinkTiming(from, to, how, x);
+    return r;
+  };
+  it('止め・後隙・受付の値(計算の入力)が表どおり', () => {
+    expect((['s1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'stomp', 'kiko'] as const).map(brawlerMoveStopMs)).toEqual([90, 90, 150, 150, 220, 150, 150, 220, 220, 0]);
+    expect(Math.round(brawlerKikoTravelForDistMs(60))).toBe(33);
+    expect(Math.round(brawlerKikoTravelForDistMs(300))).toBe(300);
+  });
+  it('入る: 1→2・2→3・3→4・4→5(後隙の終わりに出す)', () => {
+    const pairs = [['s1', 's2'], ['s2', 's3'], ['s3', 's4'], ['s4', 's5']] as const;
+    for (const [a, b] of pairs) {
+      const r = connects(a, b, 'recovery-end');
+      expect(r.connects, `${a}→${b}`).toBe(true);
+      expect(r.marginMs, `${a}→${b}`).toBeGreaterThanOrEqual(MARGIN);
+    }
+    expect(connects('s1', 's2', 'recovery-end')).toMatchObject({ nextHitAt: 350, lockEndsAt: 480, marginMs: 130 });
+    expect(connects('s2', 's3', 'recovery-end')).toMatchObject({ nextHitAt: 428, lockEndsAt: 480, marginMs: 52 });
+    expect(connects('s3', 's4', 'recovery-end')).toMatchObject({ nextHitAt: 774, lockEndsAt: 826, marginMs: 52 });
+    expect(connects('s4', 's5', 'recovery-end')).toMatchObject({ nextHitAt: 709, lockEndsAt: 761, marginMs: 52 });
+  });
+  it('入る: 1段目→すぐ取り消して 大踏み潰し・飛び蹴り・気功(近い)', () => {
+    for (const to of ['stomp', 'kick1', 'kiko'] as const) {
+      const r = connects('s1', to, 'cancel-now', { kickFlightMs: 156, kikoDistPx: 60 });
+      expect(r.routeOk, to).toBe(true);
+      expect(r.marginMs, to).toBeGreaterThanOrEqual(MARGIN);
+    }
+    expect(connects('s1', 'stomp', 'cancel-now')).toMatchObject({ nextHitAt: 350, marginMs: 130 });
+  });
+  it('入る: 1段目・2段目→後隙の後の飛び蹴り(飛ぶ時間156ms=近い)', () => {
+    for (const a of ['s1', 's2'] as const) expect(connects(a, 'kick1', 'recovery-end')).toMatchObject({ nextHitAt: 428, marginMs: 52, connects: true });
+  });
+  it('入る: 飛び蹴り1発目→すぐ2発目(近い)/ 2発目→すぐ3発目(近い・浮かなかった時)/ 1発目→後隙の後の1段目', () => {
+    expect(connects('kick1', 'kick2', 'cancel-now')).toMatchObject({ nextHitAt: 306, lockEndsAt: 475, marginMs: 169, routeOk: true });
+    expect(connects('kick2', 'kick3', 'cancel-now')).toMatchObject({ nextHitAt: 456, lockEndsAt: 553, marginMs: 97, routeOk: true });
+    expect(connects('kick1', 's1', 'recovery-end')).toMatchObject({ nextHitAt: 423, lockEndsAt: 475, marginMs: 52, connects: true });
+    for (const r of [connects('kick1', 'kick2', 'cancel-now'), connects('kick2', 'kick3', 'cancel-now'), connects('kick1', 's1', 'recovery-end')]) expect(r.marginMs).toBeGreaterThanOrEqual(MARGIN);
+  });
+  it('入らない: 1段目→受付の終わり際(止めの後195ms)に取り消した大踏み潰し', () => {
+    const r = connects('s1', 'stomp', 'cancel-late');
+    expect(r).toMatchObject({ pressAt: 90 + 195, nextHitAt: 545, lockEndsAt: 480, marginMs: -65, connects: false });
+    expect(r.marginMs).toBeLessThanOrEqual(-MARGIN);
+  });
+  it('入らない: 1段目・2段目→後隙の後の大踏み潰し', () => {
+    for (const a of ['s1', 's2'] as const) {
+      const r = connects(a, 'stomp', 'recovery-end');
+      expect(r).toMatchObject({ nextHitAt: 532, marginMs: -52, connects: false });
+      expect(r.marginMs).toBeLessThanOrEqual(-MARGIN);
+    }
+  });
+  it('入らない: 5段目・飛び蹴り3発目・気功の後の何でも(固まりは止めの終わりまで)', () => {
+    const afters = ['s1', 'kick1', 'stomp', 'kiko'] as const;
+    for (const from of ['s5', 'kick3', 'kiko'] as const) {
+      for (const to of afters) {
+        for (const how of ['recovery-end', 'cancel-now'] as const) {
+          const r = connects(from, to, how, { kickFlightMs: 156, kikoDistPx: 60 });
+          expect(r.lockEndsAt, `${from}→${to}`).toBe(brawlerMoveStopMs(from));
+          expect(r.connects, `${from}→${to} ${how}`).toBe(false);
+          expect(r.marginMs, `${from}→${to} ${how}`).toBeLessThanOrEqual(-MARGIN);
+        }
+      }
+    }
+    expect(connects('s5', 's1', 'recovery-end')).toMatchObject({ lockEndsAt: 220, nextHitAt: 220 + 351 + 78 });
+  });
+  it('減衰: 6発目に当てた1段目の後の2段目は入る(固まり390×0.8)/ 8発目の後の2段目は入らない(×0.512・不足約60ms)', () => {
+    const six = connects('s1', 's2', 'recovery-end', { fromHitNo: 6 });
+    expect(six).toMatchObject({ lockEndsAt: 90 + 312, nextHitAt: 350, marginMs: 52, connects: true });
+    const eight = connects('s1', 's2', 'recovery-end', { fromHitNo: 8 });
+    expect(eight).toMatchObject({ lockEndsAt: 90 + 200, nextHitAt: 350, marginMs: -60, connects: false });
+    expect(six.marginMs).toBeGreaterThanOrEqual(MARGIN);
+    expect(eight.marginMs).toBeLessThanOrEqual(-MARGIN);
+    // 7発目は境目(不足約10ms)なので固定しない(数字の確認だけ)
+    expect(Math.abs(connects('s1', 's2', 'recovery-end', { fromHitNo: 7 }).marginMs)).toBeLessThan(MARGIN);
+  });
+  it('距離で変わる: 1段目→すぐ取り消した気功は、相手まで60pxなら入る・300pxなら入らない', () => {
+    const close = connects('s1', 'kiko', 'cancel-now', { kikoDistPx: 60 });
+    const far = connects('s1', 'kiko', 'cancel-now', { kikoDistPx: 300 });
+    expect(close.connects).toBe(true);
+    expect(close.marginMs).toBeGreaterThanOrEqual(MARGIN);
+    expect(far.connects).toBe(false);
+    expect(far.marginMs).toBeLessThanOrEqual(-MARGIN);
+    expect(Math.round(close.nextHitAt)).toBe(Math.round(90 + 156 + 33));
+    expect(Math.round(far.nextHitAt)).toBe(90 + 156 + 300);
+  });
+  it('距離で変わる: 近い飛び蹴り(156ms)は入り、遠い飛び蹴り(195ms)は後隙の後だと入らない(2段目→後隙の後の飛び蹴り)', () => {
+    expect(connects('s2', 'kick1', 'recovery-end', { kickFlightMs: 156 }).connects).toBe(true);
+    expect(connects('s2', 'kick1', 'recovery-end', { kickFlightMs: 195 })).toMatchObject({ nextHitAt: 467, marginMs: 13, connects: true });
+  });
+  it('取り消しの規則(routeOk)は同じ関数を読む: 気功からの取り消しは無し・待機からは常に出せる', () => {
+    expect(connects('s5', 'kick1', 'cancel-now').routeOk).toBe(false);
+    expect(connects('kiko', 'stomp', 'cancel-now').routeOk).toBe(false);
+    expect(connects('s2', 'kiko', 'cancel-now').routeOk).toBe(true);
+    expect(connects('stomp', 'kick1', 'cancel-now').routeOk).toBe(true);
+    expect(connects('stomp', 'stomp', 'cancel-now').routeOk).toBe(false);
+    expect(connects('s5', 's1', 'recovery-end').routeOk).toBe(true);
+  });
+});
+
 describe('④ コンボの区切りと ⑤ 固まらない時間・⑥ 2つの時計', () => {
   it('固まりでも浮きでもなくなった時にコンボは終わる(当たりの止めは固まりに含む)。ボス級1500ms・強個体800ms・雑魚は無し', () => {
     expect([BRAWLER_COMBO_END_NO_HOLD_BOSS_MS, BRAWLER_COMBO_END_NO_HOLD_STRONG_MS]).toEqual([1500, 800]);
-    const e = { brLockMoves: 's1,s2', brLockUntil: 5000 };
+    const e = { brLockHits: 2, brLockUntil: 5000 };
     expect(brawlerComboEndPatch({}, 'boss', 6000, 100)).toBeNull();                                   // コンボの外
     expect(brawlerComboEndPatch(e, 'boss', 4999, 100)).toBeNull();                                    // 確定の固まりの最中
     expect(brawlerComboEndPatch({ ...e, brHoldUntil: 101 }, 'boss', 5000, 100)).toBeNull();           // 壁時計の固まり(止め)
     expect(brawlerComboEndPatch({ ...e, hitStunUntil: 101 }, 'mob', 5000, 100)).toBeNull();           // 当たりの止め
     expect(brawlerComboEndPatch({ ...e, brLiftUntil: 101 }, 'boss', 5000, 100)).toBeNull();           // 浮き
-    expect(brawlerComboEndPatch(e, 'boss', 5000, 100)).toEqual({ brLockMoves: undefined, brLockNoHoldUntil: 6500 });
-    expect(brawlerComboEndPatch(e, 'strong', 5000, 100)).toEqual({ brLockMoves: undefined, brLockNoHoldUntil: 5800 });
-    expect(brawlerComboEndPatch(e, 'mob', 5000, 100)).toEqual({ brLockMoves: undefined });
+    expect(brawlerComboEndPatch(e, 'boss', 5000, 100)).toEqual({ brLockHits: undefined, brLockNoHoldUntil: 6500 });
+    expect(brawlerComboEndPatch(e, 'strong', 5000, 100)).toEqual({ brLockHits: undefined, brLockNoHoldUntil: 5800 });
+    expect(brawlerComboEndPatch(e, 'mob', 5000, 100)).toEqual({ brLockHits: undefined });
     // もう長い固まらない時間があれば短くしない
     expect(brawlerComboEndPatch({ ...e, brLockNoHoldUntil: 9000 }, 'strong', 5000, 100)!.brLockNoHoldUntil).toBe(9000);
   });

@@ -73,7 +73,7 @@ export const brawlerStageSpec = (stage: number): BrawlerStageSpec =>
   BRAWLER_STAGES[Math.max(1, Math.min(5, Math.round(stage))) - 1];
 
 export type { BrawlerTechKind } from './brawlerTypes';
-import type { BrawlerState, BrawlerTechKind, BrawlerSecret, BrawlerSecretMove, BrawlerRouteNode } from './brawlerTypes';
+import type { BrawlerState, BrawlerTechKind, BrawlerSecret, BrawlerSecretMove, BrawlerRouteNode, BrawlerMoveKey } from './brawlerTypes';
 export type { BrawlerRouteNode, BrawlerMoveKey } from './brawlerTypes';
 export interface BrawlerTechSpec {
   kind: BrawlerTechKind;
@@ -91,6 +91,22 @@ export const BRAWLER_TECHS_BASE: Readonly<Record<BrawlerTechKind, BrawlerTechSpe
 /** 技の表(係数を掛けた出だし・戻り)。 */
 export let BRAWLER_TECHS: Readonly<Record<BrawlerTechKind, BrawlerTechSpec>> = BRAWLER_TECHS_BASE;
 export const brawlerActionTotalMs = (windupMs: number, recoveryMs: number): number => windupMs + recoveryMs;
+
+// ---------------------------------------------------------------------------------------------
+// ★技ごとの固まり(research/BRAWLER.md §20-2・社長指示2026-11-11「隙とか速さとかのフレーム都合でつながらない、みたいな組み方にしたい」)。
+// 固まり=当たりの止めが明けてから、相手が動けない長さ。係数1.0の値で持ち、テンポ係数(BRAWLER_TEMPO)を掛けて live binding にする。
+// つながるかどうかはこの数字と、技の出だし・後隙・距離で決まる(「この組はつながる」という手書きの表は持たない)。
+// ---------------------------------------------------------------------------------------------
+/** 固まりを持つ(または持たない=0)技の名札。秘奥義の9連撃は確定の固まりの規則の外。 */
+export type BrawlerHoldKey = Exclude<BrawlerMoveKey, 'secret' | 'secret-land'>;
+/** 固まりの表の係数1.0の値(ms)。0=締め・気功(固めない)。 */
+export const BRAWLER_HOLD_BASE_MS: Readonly<Record<BrawlerHoldKey, number>> = {
+  s1: 300, s2: 300, s3: 520, s4: 470, s5: 0,
+  kick1: 250, kick2: 310, kick3: 0,
+  stomp: 230, kiko: 0,
+};
+/** 固まりの表(係数を掛けた実ms)。setBrawlerTempo が書き直す。 */
+export let BRAWLER_HOLD_MS: Readonly<Record<BrawlerHoldKey, number>> = BRAWLER_HOLD_BASE_MS;
 
 /** 技ポイントの上限(§2-5: Lv1=5 / Lv2=10 / Lv3=20)。 */
 export const BRAWLER_POINT_CAP_BY_LEVEL = [0, 5, 10, 20] as const;
@@ -203,6 +219,7 @@ export const brawlerTimesAt = (tempo: number) => ({
     techs: Object.fromEntries((Object.keys(BRAWLER_TECHS_BASE) as BrawlerTechKind[]).map(k => [k, {
       ...BRAWLER_TECHS_BASE[k], windupMs: brawlerTempoMs(BRAWLER_TECHS_BASE[k].windupMs, tempo), recoveryMs: brawlerTempoMs(BRAWLER_TECHS_BASE[k].recoveryMs, tempo),
     }])) as Record<BrawlerTechKind, BrawlerTechSpec>,
+    holds: Object.fromEntries((Object.keys(BRAWLER_HOLD_BASE_MS) as BrawlerHoldKey[]).map(k => [k, brawlerTempoMs(BRAWLER_HOLD_BASE_MS[k], tempo)])) as Record<BrawlerHoldKey, number>,
     BRAWLER_CHAIN_RESET_MS: brawlerTempoMs(400, tempo),
     BRAWLER_WHIFF_BUFFER_MS: brawlerTempoMs(150, tempo),
     BRAWLER_CANCEL_WINDOW_MS: brawlerTempoMs(150, tempo),
@@ -232,6 +249,7 @@ export const setBrawlerTempo = (tempo: number): void => {
   BRAWLER_TEMPO = t;
   BRAWLER_STAGES = v.stages;
   BRAWLER_TECHS = v.techs;
+  BRAWLER_HOLD_MS = v.holds;
   BRAWLER_CHAIN_RESET_MS = v.BRAWLER_CHAIN_RESET_MS;
   BRAWLER_WHIFF_BUFFER_MS = v.BRAWLER_WHIFF_BUFFER_MS;
   BRAWLER_CANCEL_WINDOW_MS = v.BRAWLER_CANCEL_WINDOW_MS;
@@ -548,22 +566,40 @@ export const brawlerOnHurt = (s: BrawlerState): BrawlerState => ({
 // ---------------------------------------------------------------------------------------------
 // ★つながる道(research/BRAWLER.md §19・社長承認2026-11-10「KOFの案は はい」)。
 // 「技のあと、ちゃんと隙を入れてあげて、繋がるの(少しキャンセル掛かるとか)と繋がらないのを作る」。
-// 道の表は brawlerRouteAllows の1か所。プレイヤー(store)と拳鬼(utils/phantomBrawlerAi)が同じ表を読む。
+// 規則は brawlerRouteAllows の1か所(§20: 技ごとの印 BRAWLER_CANCELABLE から作る)。プレイヤー(store)と拳鬼(utils/phantomBrawlerAi)が同じ関数を読む。
 // ---------------------------------------------------------------------------------------------
-const BRAWLER_ROUTES: Readonly<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>> = {
-  idle: ['s1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'stomp', 'kiko', 'guard'], // 待機からは何でも(今どおり)
-  s1: ['s2', 'kick1'],
-  s2: ['s3', 'kiko'],
-  s3: ['s4', 'kick1'],
-  s4: ['s5', 'stomp'],
-  s5: [],                 // 締め
-  kick1: ['kick2', 'stomp'],
-  kick2: ['kick3', 'stomp'],
-  kick3: [],              // 締め
-  stomp: ['kiko'],
-  kiko: ['guard'],        // 秘奥義の入力の締めの時だけ(下の secretClose)
-  guard: ['guard'],       // 構えの延長だけ
+/**
+ * ★取り消しの印(research/BRAWLER.md §20-3)。当たった「取り消せる技」の後隙は、構え以外のどの技でも取り消せる。
+ * 取り消せない技=5段目・飛び蹴り3発目・気功・構え(後隙を晒す)。
+ */
+export const BRAWLER_CANCELABLE: Readonly<Record<BrawlerRouteNode, boolean>> = {
+  idle: false, guard: false,
+  s1: true, s2: true, s3: true, s4: true, s5: false,
+  kick1: true, kick2: true, kick3: false,
+  stomp: true, kiko: false,
 };
+/** 取り消しで出せる技(通常の段は含めない=段へは段のつなぎだけ)。 */
+const BRAWLER_CANCEL_TARGETS: readonly BrawlerRouteNode[] = ['kick1', 'stomp', 'kiko'];
+/** 同じ技の種類か(kick1/kick2/kick3 は同じ種類)。 */
+const routeKindOf = (n: BrawlerRouteNode): string => (n === 'kick1' || n === 'kick2' || n === 'kick3' ? 'kick' : n);
+/** 段のつなぎ(通常の次の段)と飛び蹴りの連続。 */
+const BRAWLER_NEXT_LINK: Readonly<Partial<Record<BrawlerRouteNode, BrawlerRouteNode>>> = { s1: 's2', s2: 's3', s3: 's4', s4: 's5', kick1: 'kick2', kick2: 'kick3' };
+const BRAWLER_ALL_NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'stomp', 'kiko', 'guard'];
+/** 印から作った表(手書きの組は持たない)。 */
+const buildBrawlerRoutes = (): Readonly<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>> => {
+  const out = {} as Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>;
+  for (const from of BRAWLER_ALL_NODES) {
+    if (from === 'idle') { out[from] = BRAWLER_ALL_NODES.filter(n => n !== 'idle'); continue; } // 待機からは何でも(今どおり)
+    if (from === 'guard') { out[from] = ['guard']; continue; }                                 // 構えの延長だけ
+    const to: BrawlerRouteNode[] = [];
+    if (BRAWLER_CANCELABLE[from]) to.push(...BRAWLER_CANCEL_TARGETS.filter(n => routeKindOf(n) !== routeKindOf(from)));
+    const next = BRAWLER_NEXT_LINK[from];
+    if (next && !to.includes(next)) to.push(next);
+    out[from] = to; // 気功→構えは secretClose の時だけ(brawlerRouteAllows)
+  }
+  return out;
+};
+const BRAWLER_ROUTES = buildBrawlerRoutes();
 /**
  * 道の表(§19-1)。from=いまの行動(待機・通常の何段目か・飛び蹴りの何発目か・技)/ to=続けて出す行動。
  * 気功→構えは secretClose(秘奥義の順番が3つ進んでいる)の時だけ。表に無い組は false。

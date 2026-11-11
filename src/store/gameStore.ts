@@ -4654,11 +4654,10 @@ const brawlerHitPatch = (
   // 強個体は普段 canShoveEnemy が押し(と押しの欄での足止め)を止める=格闘の当たりでは押し道具と同じ旗を立てて雑魚と同じに動かす。
   if (strong && out.knockbackUntil !== undefined) out.knockbackShoveUntil = out.knockbackUntil;
   // ★確定の固まり(research/BRAWLER.md §19-3・社長承認2026-11-10「繋がってる時はちゃんと繋がって敵は一切動けないように」)。
-  //   ① 初めて当てた技: 当たりの瞬間から「止め+受付の終わり」と「次の段がある技は後隙の終わり」の遅い方+2フレーム(gameTime の欄=brLockUntil)。
-  //      締め(5段目・飛び蹴り3発目)は固めず、それまでの固まりを止めの終わりまで切り詰める。大踏み潰しは締めではない(①の長さを書く)。
-  //   ③ 同じコンボで2回目の同じ技は固めない ⑤ 固まらない時間の間は何も書かない(brawlerLockOnHit が先に見る)。
-  //   攻撃の振りの最中(active)とダウン(§13-2: 予算切れ・締めの叩き落とし)の当たりは固めない(今どおり)。
-  //   旧: 「止め・押しが明けてから 基本×減衰」「5段の確定」「溜めは予算の分だけ」(§11-2・§9-74・§13-1-A)は撤去(置き換え先=この塊と brawlerExtendLocks)。
+  //   §20(社長指示2026-11-11「フレーム計算で」): 固まりは**当たりの瞬間に1回だけ書く(置き換え)**。長さ=プレイヤーの止め+技ごとの固まり(utils/brawler の BRAWLER_HOLD_MS)×コンボの減衰
+  //   (固まりを書いた当たりの6発目から×0.8ずつ=敵の brLockHits)。続きを出した瞬間の延ばし・同じ技2回目は固めない・技の名札の覚えは撤去した。
+  //   締め(5段目・飛び蹴り3発目・気功)と固めない当たり(攻撃の振りの最中・ダウン=予算切れ・締めの叩き落とし)は新しい固まりを書かず、
+  //   それまでの固まりを止めの終わりまで切る。⑤ 固まらない時間の間は何も書かない(brawlerLockOnHit が先に見る)。
   if (bs.combo) {
     const move = bs.combo.move;
     const canHold = pk !== 'active' && !downNow;
@@ -4679,7 +4678,7 @@ const brawlerHitPatch = (
       const airborneAfter = (out.brLiftUntil ?? enemy.brLiftUntil ?? 0) > now;
       const lk = BRC.brawlerLockOnHit(enemy, move, gameTime, now, { stopMs: rawStopMs, enemyStopMs: stopForHold, canHold, airborneAfter });
       Object.assign(out, lk.patch);
-      // 固めない当たり(締め・同じコンボで2回目の同じ技・ダウンの着地の後)でも、当たりの止めは入る:
+      // 固めない当たり(締め・敵の攻撃の振りの最中・ダウンの着地の後)でも、当たりの止めは入る:
       // ボス級と溜めの相は止めを壁時計の固まりで掛ける(雑魚は hitStunUntil)。コンボの後の固まらない時間の間は止めが 0 なので書かれない。
       if (canHold && !lk.held && (bossStopMs > 0 || (pk === 'windup' && stopForHold > 0))) {
         out.brHoldUntil = Math.max(enemy.brHoldUntil ?? 0, now + stopForHold);
@@ -4717,24 +4716,8 @@ const brawlerFinishLockPatch = (enemy: Enemy, bs: BrawlerStrikeOpts, gameTime: n
   const bossBig = BRC.brawlerEnemyClass(enemy) === 'boss' && bs.kb.kind === 'big';
   return BRC.brawlerLockOnHit(enemy, move, gameTime, now, {
     stopMs: stop, enemyStopMs: bossBig ? 0 : stop,
-    canHold: BRC.brawlerPhaseKind(enemy, gameTime) !== 'active', airborneAfter: false,
+    canHold: BRC.brawlerPhaseKind(enemy, gameTime) !== 'active', airborneAfter: false, countHit: false, // 会心のフィニッシュは減衰の数に入れない(§20-4)
   }).patch;
-};
-/**
- * ★確定の固まりを延ばす(research/BRAWLER.md §19-3 ②): 道の上の続きを**出した瞬間**に、その時まだ確定の固まりが生きている敵を
- * 「その続きが当たる時刻+余白」まで固める。hitAt=当たる時刻(gameTime・出した時の実際の値)。道の上の続きかは呼び手が見る。
- */
-const brawlerExtendLocks = (set: (fn: (s: GameState) => Partial<GameState>) => void, move: BRC.BrawlerMoveKey, hitAt: number): void => {
-  const st = useGameStore.getState();
-  const gameTime = st.gameTime;
-  const nowMs = Date.now();
-  if (!st.enemies.some(e => BRC.brawlerLockExtendPatch(e, move, hitAt, gameTime, nowMs) !== null)) return;
-  set(state => ({
-    enemies: state.enemies.map(e => {
-      const patch = BRC.brawlerLockExtendPatch(e, move, hitAt, gameTime, nowMs);
-      return patch ? { ...e, ...patch } : e;
-    }),
-  }));
 };
 /** ★ステップで後隙を取り消した瞬間に、確定の固まりをそこで切る(§19-3: 固まりは次に動けるようになる時まで)。 */
 const brawlerCutLocks = (set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
@@ -4748,9 +4731,6 @@ const brawlerCutLocks = (set: (fn: (s: GameState) => Partial<GameState>) => void
     }),
   }));
 };
-/** 気功の弾が相手に届くまでの時間(ms)。撃つ所=体の中心から18px 先・当たり=相手の帯の縁から BRAWLER_KIKO_HIT_PAD の内。 */
-const brawlerKikoTravelTo = (cx: number, cy: number, target: Enemy | null): number =>
-  (target ? BRC.brawlerKikoTravelMs(BR.brawlerDistTo(cx, cy, target) - 18 - BR.BRAWLER_KIKO_HIT_PAD, BR.BRAWLER_KIKO_SPEED) : 0);
 /** 格闘の当たりをヒット数の表示へ足す(research/BRAWLER.md §11-4)。 */
 const brawlerNoteFlowHits = (set: (fn: (s: GameState) => Partial<GameState>) => void, n: number): void => {
   if (!(n > 0)) return;
@@ -4812,10 +4792,6 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const quick = s0.quickUntil > t;
   const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now, ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
   const ap = quick ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerApproach(c.x, c.y, target, spec.dashPx);
-  // ★§19-3 ②: 段のつなぎ(前の段が当たって、つながりの受付の内に出した次の段)は道の上の続き=出した瞬間に、
-  //   まだ固まっている敵をこの段が当たる時刻(出だしの終わり)まで延ばす。先行入力か手押しかは問わない。
-  const linked = stage >= 2 && BR.brawlerRouteAllows(BR.brawlerStageNode(stage - 1), BR.brawlerStageNode(stage));
-  if (linked) brawlerExtendLocks(set, BRC.brawlerStageMoveKey(stage), t + s.windupMs);
   setBrawler(set, s, { lastDirection: { x: dir.x, y: dir.y }, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, spec.windupMs, now) });
   // 振りの音(空振りの連打も無音にしない・段ごとに個別の音程=等間隔に下げない)。
   brawlerSfx('whip-swing', stage >= 4 ? 0.55 : 0.4, BR.BRAWLER_SWING_PITCH[spec.stage] * brJitter(), 140);
@@ -4927,7 +4903,6 @@ const startBrawlerTech = (
   const linkFrom: BR.BrawlerRouteNode = s0.phase !== 'idle' ? BR.brawlerRouteNodeOf(s0)
     : kind === 'kick' && kickN > 1 ? BR.brawlerTechNode('kick', kickN - 1) : 'idle';
   const linked = !free && kind !== 'guard' && linkFrom !== 'idle' && BR.brawlerRouteAllows(linkFrom, BR.brawlerTechNode(kind, Math.max(1, kickN)));
-  let kikoTravelMs = 0;
   // ★タイムキーパー/オーバークロックの読み替え(research/BRAWLER.md §15・社長承認2026-11-09): 値段の割引と、確率で払った技ポイントを返す。
   const techCost = free ? 0 : BR.brawlerTechCost(kind, awakened, brawlerTechDiscount(p, kind));
   const techRefund = !free && BRS.brawlerOverclockRefunds(techCost, skillLevel(p, 'overclock'));
@@ -4955,7 +4930,6 @@ const startBrawlerTech = (
     const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
     s = { ...s, targetId: target?.id, dirX: dir.x, dirY: dir.y };
     extra = { ...extra, lastDirection: { x: dir.x, y: dir.y } };
-    if (kind === 'kiko') kikoTravelMs = brawlerKikoTravelTo(c.x, c.y, target);
     if (kind === 'kick') {
       const ap = target
         ? BR.brawlerApproach(c.x, c.y, target, BR.BRAWLER_KICK_RANGE)
@@ -4991,12 +4965,8 @@ const startBrawlerTech = (
     // 構え=カウンター窓をこの1秒に張る(赤は今のカウンターと同じ処理が走る・§3-2)。
     extra = { ...extra, counterWindowStart: now, counterWindowEnd: now + BR.BRAWLER_GUARD_MS };
   }
-  // ★§19-3 ②: 道の上の続きを出した瞬間に、まだ固まっている敵をこの技が当たる時刻まで延ばす。当たる時刻=出した時の実際の値
-  //   (飛び蹴り=溜め+飛ぶ時間 / 大踏み潰し=出だし / 気功=出だし+狙った相手までの弾の飛ぶ時間)。
-  if (linked) {
-    s = { ...s, linked: true };
-    brawlerExtendLocks(set, kind === 'kick' ? BRC.brawlerKickMoveKey(kickN) : kind === 'stomp' ? 'stomp' : 'kiko', t + s.windupMs + kikoTravelMs);
-  }
+  // 取り消しで出した技(道の上の続き)の印(状態に残すだけ。§20 で続きを出した瞬間の固まりの延ばしは撤去した=固まりは当たりの瞬間に書く)。
+  if (linked) s = { ...s, linked: true };
   setBrawler(set, s, extra);
   const g = get();
   if (cancel) {
@@ -5428,9 +5398,6 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const aim = BR.pickBrawlerTarget(st.enemies, c.x, c.y, BR.BRAWLER_KIKO_RANGE + brawlerReachExtra(p));
     const d = BR.brawlerAimDir(c.x, c.y, aim, { x: s.dirX, y: s.dirY });
     const sx = c.x + d.x * 18, sy = c.y - 4 + d.y * 18;
-    // ★§19-3 ②: 道の上の続きとして出した気功(大踏み潰し→気功・2段目→気功)は、撃った瞬間の実際の相手までの飛ぶ時間で延ばし直す
-    //   (出した時から相手が押されて離れていても、弾が届くまで固まりが切れない)。
-    if (s.linked && aim) brawlerExtendLocks(set, 'kiko', t + brawlerKikoTravelTo(c.x, c.y, aim));
     set(state => ({
       brawlerKiko: [...state.brawlerKiko.slice(-5), { id: `kiko-${now}`, x: sx, y: sy, dirX: d.x, dirY: d.y, traveled: 0, createdAt: now, pressAt: s.pressAt }],
       player: { ...state.player, brawler: { ...s, resolved: true, dirX: d.x, dirY: d.y }, lastDirection: { x: d.x, y: d.y } },
