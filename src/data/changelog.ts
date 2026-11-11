@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5499', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5498', items: [
     '格闘の大踏み潰しは威力が下がり、後の隙が長くなった',
     '蹴り飛ばしと踵落としの後の隙が少し長い',
