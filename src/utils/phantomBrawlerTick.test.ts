@@ -545,6 +545,25 @@ describe('拳鬼が格闘で戦う(結合)', () => {
     for (let i = 0; i < 200 && h.cur().aiPhase === 'recover'; i++) h.step(16);
     expect(h.cur().aiPhase).toBeUndefined();
   });
+  // research/BRAWLER_PHANTOM.md §15-4(社長承認2026-11-11・A2「撃たれ続けている時だけ溜めを半分」)
+  it('跳びかかりの溜め: 撃たれ続けている時に始めた跳びは溜めが半分・跳んでいる時間(避ける時間)は同じ', () => {
+    const h = setup(400, {}, () => 0.5); // 0.5=撃たれ続けている時の確率(0.65)には入り、普段の確率(0.3)には入らない
+    let crouchStart = -1;
+    for (let i = 0; i < 600 && h.cur().aiPhase !== 'crouch'; i++) {
+      // 撃たれ続ける(被弾の時刻を進める)
+      if (i % 20 === 0) useGameStore.setState(s => ({ enemies: s.enemies.map(x => x.id === h.id ? { ...x, lastHit: useGameStore.getState().gameTime } : x) }));
+      h.step(16);
+      if (h.cur().aiPhase === 'crouch') crouchStart = useGameStore.getState().gameTime;
+    }
+    expect(h.cur().aiPhase).toBe('crouch');
+    const crouchLen = h.cur().aiPhaseUntil! - crouchStart;
+    expect(crouchLen).toBeGreaterThan(PUMPKIN_CROUCH_MS * 0.5 / ENEMY_ATTACK_SPEED_MULT - 20);
+    expect(crouchLen).toBeLessThanOrEqual(PUMPKIN_CROUCH_MS * 0.5 / ENEMY_ATTACK_SPEED_MULT + 1);
+    while (h.cur().aiPhase === 'crouch') h.step(16);
+    const e1 = h.cur();
+    expect(e1.aiPhase).toBe('jump');
+    expect(e1.aiPhaseUntil! - e1.aiStartedAt!).toBeCloseTo(groundJumpAirMsRaw('hunter') / ENEMY_ATTACK_SPEED_MULT, 5); // 予告の時間は変えていない
+  });
   // research/BRAWLER_PHANTOM.md §15-3(社長指示2026-11-11「ジャンプで詰めてきたら、すぐに攻撃に転じてくる癖をいれたい」)
   it('跳びかかりで詰めた後: 着地後の停止が明けたら、息継ぎなしですぐ次の連続へ(8割)。外れた時は今までどおり息継ぎ', () => {
     const run = (rand: () => number) => {

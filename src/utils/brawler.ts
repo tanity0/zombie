@@ -752,7 +752,9 @@ export const brawlerTechAllowed = (s: BrawlerState, kind: BrawlerTechKind, t: nu
 };
 
 /**
- * ヒット数の表示(§11-4)。当たりを n 足す。流れが切れていた(または初めて)なら n から数え直す。
+ * 流れの当たりの数を n 足す。流れが切れていた(または初めて)なら n から数え直す。
+ * ★プレイヤーの「N HIT」の表示は、これではなく「つながっているコンボの数」(utils/brawlerCombo の brawlerLinkDisplay・§23)が書く。
+ *   これを使うのは拳鬼(自分の流れの数=ダメージ補正)だけ。
  */
 export const brawlerFlowOnHit = (s: BrawlerState, n: number): BrawlerState => {
   if (!(n > 0)) return s;
@@ -763,13 +765,6 @@ export const brawlerFlowOnHit = (s: BrawlerState, n: number): BrawlerState => {
 export let BRAWLER_FLOW_GRACE_MS = BRAWLER_CHAIN_RESET_MS; // ×BRAWLER_TEMPO(つながりの切れと同じ)
 /** ヒット数の表示が消えていく尺(流れが切れてから・ms)。 */
 export const BRAWLER_FLOW_FADE_MS = 800;
-/** いま流れが切れたか(待機に戻り、通常攻撃のつながり・蹴りの連続・技の終わりからの猶予のどれも過ぎた)。秘奥義の間は切れない。 */
-export const brawlerFlowBreaksNow = (s: BrawlerState, t: number): boolean => {
-  if ((s.flowHits ?? 0) <= 0 || (s.flowBrokenAt ?? 0) > 0) return false;
-  if (s.phase !== 'idle' || s.secret) return false;
-  const until = Math.max(s.chainUntil, s.kickChainUntil, (s.secretLastEndAt ?? 0) > 0 ? (s.secretLastEndAt ?? 0) + BRAWLER_FLOW_GRACE_MS : 0);
-  return t > until;
-};
 /**
  * 構えを延長する(構えの最中の再入力・§9-41)。終わる時刻を「再入力の時刻+1秒」に引き直す(積み上げない)。
  * しゃがみの溜めからやり直さない=構えたまま。行動の時計(startAt)は引き直して、構えの終わり=行動の終わりに揃える。

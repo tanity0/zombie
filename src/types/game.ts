@@ -793,7 +793,7 @@ export interface Enemy {
    *   ※つながりの確定の固まり(§19-3)は下の brLockUntil(gameTime)。固まっているかは utils/brawlerCombo.brawlerHeldNow が両方の時計を見る。
    * brComboStart/At=その敵への格闘の当たりの流れの始まりと最後の当たり(700ms×係数 当たらなければ流れは切れる)。
    * brNoHoldUntil=ダウンの着地の後、固まらない時刻。
-   * (振り払い=殴られ続けた敵の反撃の欄 brComboHits・brRevengePending・brRevengeAt と相 'br-revenge' は撤去・社長指示2026-11-11。)
+   * (振り払い=殴られ続けた敵の反撃の数え・brRevengePending・brRevengeAt と相 'br-revenge' は撤去・社長指示2026-11-11。今の brComboHits は別物=下の「つながっているコンボの数」。)
    * (旧の brComboPenalty・brComboMoves=減衰と同じ技の罰の欄は §19 で撤去。)
    */
   brHoldUntil?: number;
@@ -805,6 +805,8 @@ export interface Enemy {
   brLockUntil?: number;
   brLockHits?: number;
   brLockNoHoldUntil?: number;
+  /** つながっているコンボの数(表示だけ・research/BRAWLER.md §23)。動く間を与えずに当て続けた回数。動けるようになったフレームで消す(当たる時と読む時にも「いま動けるか」を見る)。 */
+  brComboHits?: number;
   /** 秘奥義の間の「画面内の敵を止める」が brHoldUntil に書いた値(research/BRAWLER.md §17)。終わりに、その値のまま残っている時だけ解く。 */
   brSecretHoldUntil?: number;
   brComboStart?: number;

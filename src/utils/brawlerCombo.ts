@@ -372,6 +372,60 @@ export const brawlerComboEndPatch = (
   return { brLockHits: undefined, ...(ms > 0 ? { brLockNoHoldUntil: Math.max(e.brLockNoHoldUntil ?? 0, gameTime + ms) } : {}) };
 };
 
+// ---------------------------------------------------------------------------------------------
+// つながっているコンボの数(表示・research/BRAWLER.md §23・社長指示2026-11-11「その意味のない数字のどっちか使おう」)
+// ---------------------------------------------------------------------------------------------
+// 近接枠の左の「N HIT」は、旧は「殴り続けている間に当てた回数」(何にも関係しない数)だった。これを
+// **その敵に、動く間を与えずに当て続けた回数**に差し替える。敵ごとに数え(brComboHits)、画面にはいちばん多い敵の数を出す。
+//  - 格闘の当たり1回ごとに +1(段・技・気功の爆発・秘奥義の1発・会心のフィニッシュ)。
+//  - 当たる直前にその敵が動けた(固まり・当たりの止め・浮きのどれでもない=④ コンボの区切りと同じ見方)なら、1 から数え直す。
+//    だから、つながっていない当たり(間に敵が動けた)は数が伸びない。秘奥義の間は画面内の敵が止まっている=伸び続ける。
+//  - 画面に出すのも「いま動けない敵」の数だけ(動けるようになった敵の数は出さない)。
+//  - 敵の欄は、動けるようになったフレームで store が消す(④ と同じ場所)。消さないと、後で別の理由(秘奥義の止め・他の武器の止め)で
+//    止まった時に古い数がよみがえる。当たる時と読む時にも「いま動けるか」を見る(消す前のフレームでも正しく読む)。
+//  - 倒した1発は、敵が倒れて数から外れるので、store が当たりの直後にその数を出してから切る。
+// 判定・固まり・ダメージには使わない(表示だけ)。
+export interface BrawlerLinkFields {
+  brComboHits?: number;
+  brHoldUntil?: number;
+  brLockUntil?: number;
+  hitStunUntil?: number;
+  brLiftUntil?: number;
+}
+/** いま動けるか(格闘の固まり・当たりの止め・浮きのどれでもない)。 */
+export const brawlerLinkFree = (e: BrawlerLinkFields, gameTime: number, nowMs: number): boolean =>
+  !brawlerHoldClockAlive(e, gameTime, nowMs) && !(e.hitStunUntil !== undefined && nowMs < e.hitStunUntil) && !brawlerAirborne(e, nowMs);
+/** いまその敵につながっている数(動けるなら 0)。 */
+export const brawlerLinkNow = (e: BrawlerLinkFields, gameTime: number, nowMs: number): number =>
+  (e.brComboHits !== undefined && !brawlerLinkFree(e, gameTime, nowMs) ? e.brComboHits : 0);
+/** この当たりで、その敵のつながっているコンボが何発目になるか(e=当たる直前の敵)。 */
+export const brawlerLinkOnHit = (e: BrawlerLinkFields, gameTime: number, nowMs: number): number => brawlerLinkNow(e, gameTime, nowMs) + 1;
+/** 画面に出す数=生きている敵のうち、いちばん多くつながっている数(誰もつながっていなければ 0)。 */
+export const brawlerLinkMax = (
+  enemies: readonly (BrawlerLinkFields & { health: number; corpseUntil?: number })[], gameTime: number, nowMs: number,
+): number => {
+  let m = 0;
+  for (const e of enemies) {
+    if (e.brComboHits === undefined || e.brComboHits <= m || !(e.health > 0) || e.corpseUntil !== undefined) continue;
+    const n = brawlerLinkNow(e, gameTime, nowMs);
+    if (n > m) m = n;
+  }
+  return m;
+};
+/**
+ * 表示の状態(プレイヤーの格闘の flowHits / flowBrokenAt)を、いまの数 m に合わせる。変わらなければ null。
+ *  - m>0: その数を出す(切れていた表示は出し直す)。
+ *  - m=0: 出ていたなら「切れた」時刻を打つ(表示は最後の数のまま沈んで消える)。
+ */
+export const brawlerLinkDisplay = (
+  s: { flowHits?: number; flowBrokenAt?: number }, m: number, t: number,
+): { flowHits: number; flowBrokenAt: number } | null => {
+  const hits = s.flowHits ?? 0;
+  const broken = (s.flowBrokenAt ?? 0) > 0;
+  if (m > 0) return !broken && hits === m ? null : { flowHits: m, flowBrokenAt: 0 };
+  return hits > 0 && !broken ? { flowHits: hits, flowBrokenAt: Math.max(1, t) } : null;
+};
+
 /** 敵の流れの欄(store の Enemy のうち、ここが読み書きする所だけ)。 */
 export interface BrawlerComboFields {
   type: EnemyType;

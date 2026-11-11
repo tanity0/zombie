@@ -3,7 +3,7 @@
 // ★§20(2026-11-11): 固まりは「止め+技ごとの固まり×コンボの減衰」で当たりの瞬間に置き換えて書く。同じ技2回目も固める(減衰が止める)。ここの表は係数1.0の値。
 import { describe, it, expect } from 'vitest';
 import {
-  brawlerComboOnHit, brawlerLockOnHit, brawlerLockHitMs, brawlerComboEndPatch,
+  brawlerComboOnHit, brawlerLockOnHit, brawlerLockHitMs, brawlerComboEndPatch, brawlerLinkOnHit, brawlerLinkMax, brawlerLinkDisplay,
   brawlerStageMoveKey, brawlerKickMoveKey,
   BRAWLER_SECRET_HOLD_MS, BRAWLER_COMBO_GAP_MS, type BrawlerLockFields,
   type BrawlerComboFields, type BrawlerMoveKey, isBrawlerTechBusy, BRAWLER_HOLDABLE_PHASES,
@@ -259,5 +259,35 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
   it('ボスの技の最中(bossState が追いかけ以外)は技の最中=浮かない', () => {
     expect(isBrawlerTechBusy({ bossState: 'chase' }, 0)).toBe(false);
     expect(isBrawlerTechBusy({ bossState: 'issen-windup' }, 0)).toBe(true);
+  });
+});
+
+// ★つながっているコンボの数(表示・research/BRAWLER.md §23・社長指示2026-11-11「その意味のない数字のどっちか使おう」)
+describe('つながっているコンボの数(「N HIT」の表示)', () => {
+  it('当たるたびに +1・当たる直前に動けた敵は 1 から数え直す(固まり・当たりの止め・浮きの間はつながっている)', () => {
+    expect(brawlerLinkOnHit({}, 5000, 100)).toBe(1);
+    expect(brawlerLinkOnHit({ brComboHits: 4, brLockUntil: 6000 }, 5000, 100)).toBe(5);   // 確定の固まりの最中
+    expect(brawlerLinkOnHit({ brComboHits: 4, brHoldUntil: 200 }, 5000, 100)).toBe(5);    // 壁時計の固まり(秘奥義・ボス級の止め)
+    expect(brawlerLinkOnHit({ brComboHits: 4, hitStunUntil: 200 }, 5000, 100)).toBe(5);   // 当たりの止め
+    expect(brawlerLinkOnHit({ brComboHits: 4, brLiftUntil: 200 }, 5000, 100)).toBe(5);    // 浮いている
+    expect(brawlerLinkOnHit({ brComboHits: 4, brLockUntil: 4000, hitStunUntil: 50, brLiftUntil: 50, brHoldUntil: 50 }, 5000, 100)).toBe(1); // 全部明けていた
+    expect(brawlerLinkOnHit({ brComboHits: 4 }, 5000, 100)).toBe(1);
+  });
+  it('画面に出す数=生きている・いま動けない敵のうち、いちばん多くつながっている数', () => {
+    const held = { health: 10, brHoldUntil: 200 };
+    expect(brawlerLinkMax([], 5000, 100)).toBe(0);
+    expect(brawlerLinkMax([{ health: 10 }, { ...held, brComboHits: 2 }, { ...held, brComboHits: 5 }], 5000, 100)).toBe(5);
+    expect(brawlerLinkMax([{ ...held, health: 0, brComboHits: 9 }, { ...held, brComboHits: 9, corpseUntil: 1 }, { ...held, brComboHits: 3 }], 5000, 100)).toBe(3); // 倒れた敵は数えない
+    expect(brawlerLinkMax([{ health: 10, brComboHits: 9 }, { ...held, brComboHits: 2 }], 5000, 100)).toBe(2); // 動けるようになった敵の数は出さない
+  });
+  it('表示の状態: 数が変わったら出し直す・誰もつながっていなければ切れた時刻を打つ・変わらなければ何もしない', () => {
+    expect(brawlerLinkDisplay({}, 1, 500)).toEqual({ flowHits: 1, flowBrokenAt: 0 });
+    expect(brawlerLinkDisplay({ flowHits: 3, flowBrokenAt: 0 }, 3, 500)).toBeNull();
+    expect(brawlerLinkDisplay({ flowHits: 3, flowBrokenAt: 0 }, 4, 500)).toEqual({ flowHits: 4, flowBrokenAt: 0 });
+    expect(brawlerLinkDisplay({ flowHits: 7, flowBrokenAt: 0 }, 2, 500)).toEqual({ flowHits: 2, flowBrokenAt: 0 }); // 多い方の敵が切れた
+    expect(brawlerLinkDisplay({ flowHits: 4, flowBrokenAt: 0 }, 0, 500)).toEqual({ flowHits: 4, flowBrokenAt: 500 }); // 最後の数のまま沈む
+    expect(brawlerLinkDisplay({ flowHits: 4, flowBrokenAt: 500 }, 0, 900)).toBeNull();
+    expect(brawlerLinkDisplay({ flowHits: 4, flowBrokenAt: 500 }, 4, 900)).toEqual({ flowHits: 4, flowBrokenAt: 0 }); // 切れた後の同じ数は出し直す
+    expect(brawlerLinkDisplay({}, 0, 500)).toBeNull();
   });
 });

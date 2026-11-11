@@ -37,7 +37,7 @@ import {
   ENEMY_ATTACK_SPEED_MULT, PUMPKIN_CROUCH_MS, PUMPKIN_EXPLOSION_RADIUS, pumpkinRecoverMs, groundJumpAirMsRaw, leverGuardCount, leverGuardFx,
 } from '../store/gameStore';
 import { groundJumpStep, groundJumpStartCrouch, groundBlastCircleHits } from './groundJump';
-import { kenkiLeapEligible, kenkiLeapReadyAt, kenkiNoteHit, kenkiUnderFire } from './kenkiLeap';
+import { kenkiLeapEligible, kenkiLeapReadyAt, kenkiNoteHit, kenkiUnderFire, kenkiLeapCrouchMs } from './kenkiLeap';
 import type { PlayerProfile } from './playerTraits';
 import { notePlayerLaunched } from './playerAirFollow';
 import {
@@ -745,7 +745,9 @@ const kenkiAtkUntil = (t: number) => (ms: number): number => t + ms / ENEMY_ATTA
 
 /** 跳びかかりを始める(ハンターの縮み溜め)。 */
 const startKenkiLeap = (c: PhantomBrawlerCtx): void => {
-  Object.assign(c.patch, groundJumpStartCrouch(kenkiAtkUntil(c.t), PUMPKIN_CROUCH_MS));
+  // ★撃たれ続けている時は溜めを半分に(§15-4・A2)。台本6(秘奥義を狙う跳び)は今どおりの長さ。
+  const underFire = !c.rt.mind.leapForSecret && kenkiUnderFire(c.rt.hitTimes, c.t);
+  Object.assign(c.patch, groundJumpStartCrouch(kenkiAtkUntil(c.t), kenkiLeapCrouchMs(PUMPKIN_CROUCH_MS, underFire)));
   // クールダウンは実際に跳んだ時に使う(溜めで取り消された跳びでは使わない・検収監査2026-11-10)。数え始めは今までどおり溜めの始まり。
   c.rt.leapCrouchAt = c.t;
   c.rt.move = null;

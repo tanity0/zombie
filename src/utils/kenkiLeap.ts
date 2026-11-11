@@ -18,6 +18,15 @@ export const KENKI_LEAP_P_UNDER_FIRE = 0.65;
 /** 「撃たれ続けている」=この間(ms)にこの回数以上当たった。 */
 export const KENKI_LEAP_FIRE_WINDOW_MS = 2500;
 export const KENKI_LEAP_FIRE_HITS = 2;
+/**
+ * ★撃たれ続けている時の溜めの長さの倍率(社長承認2026-11-11「ではそれにしよう」=A2・research/BRAWLER_PHANTOM.md §15-4)。
+ * 待ち時間(6〜8秒)と確率はそのまま=跳ぶ回数は増やさない。溜めの間に撃たれ放題になる長さだけを半分にする。
+ * 跳んでいる時間(着地点の赤い円が流れる長さ=避ける時間)・着地後の停止はハンターの値のまま。
+ */
+export const KENKI_LEAP_CROUCH_UNDER_FIRE_MULT = 0.5;
+/** 溜めの長さ(raw ms)。base=ハンターの値。台本6(秘奥義を狙う跳び)は呼び手が underFire=false で呼ぶ=今どおり。 */
+export const kenkiLeapCrouchMs = (base: number, underFire: boolean): number =>
+  Math.round(base * (underFire ? KENKI_LEAP_CROUCH_UNDER_FIRE_MULT : 1));
 /** 覚えておく被弾の数。 */
 export const KENKI_LEAP_FIRE_KEEP = 8;
 

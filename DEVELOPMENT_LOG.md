@@ -1,5 +1,21 @@
 # Development Log
 
+## v0.25.5477 — 格闘: 「N HIT」=つながっているコンボの数/拳鬼: 撃たれ続けている時は溜めを半分【2026-11-11 15:48 JST】
+- 社長指示①: 「ではその意味のない数字のどっちか使おう」(つながっているコンボの数を新しく足さず、表示専用の数字を差し替える)。仕様=`research/BRAWLER.md` §23。
+  - 使ったのは近接枠の左の「N HIT」(格闘の間に出ている方)。左上の COMBO は触っていない。
+  - 数え方: 1体の敵に、動く間を与えずに当て続けた回数(敵ごとの `brComboHits`)。画面にはいちばん多い敵の数。当たる直前に敵が動けたら 1 から。倒した1発(通常・処刑・フィニッシュ・気功の爆発)も入る。
+    敵の欄は動けるようになったフレームで消す(敵の更新の ④ と同じ場所)。数が変わらないフレームは store を書かない。合わせ直しは格闘の状態を読む前に済ませる(処理を飛ばさない)。
+  - 旧の切れ目の関数 `brawlerFlowBreaksNow` は撤去。判定・ダメージ・固まり・技ポイントは変えていない。見た目・位置・2ヒット目から出る点も同じ。負荷 1/10。
+- 社長承認②(A2「ではそれにしよう」): 拳鬼が撃たれ続けている時(2.5秒に2発以上)に始めた跳びかかりは、溜めを半分(`KENKI_LEAP_CROUCH_UNDER_FIRE_MULT`)。弾をわざと食らう1割を 0 に。仕様=`research/BRAWLER_PHANTOM.md` §15-4。
+  - 変えていない: 待ち時間・出る確率・跳んでいる時間(赤い円の長さ)・着地後の停止・台本6の跳び。事実=溜めの長さだけ拳鬼がハンターと別の値を持つ(§15-1 からの外れ)。
+- 確認: typecheck・lint 0・循環なし。vitest(brawler*・phantom*・kenki*・store/brawler*・uniquePhantom)。画は撮っていない(表示の部品は変えていない・数の中身だけ)。実機は未確認。
+- 監査: 品質(opus)2巡。1巡目(A)4件・2巡目(A)2件を全部直した。2巡目を回した理由=1巡目で(A)が出た。3巡目は回さない(2巡目の(A)は処方どおりの1行と置き場所の移動・新しい角度が無い)。
+  クリエイティブ監査は付けない(見え方は変えていない)。拳鬼 A2 は既存の値の調整=監査は付けない。
+- 社長の判断に回したもの: ①攻撃を振っている最中の雑魚に当てても数が伸びる(推薦=数えない)②気絶・紫の間は固まりが明けるたびに 1 へ戻る(推薦=つながっている扱い)③左上の COMBO をスキルが読む回数へ差し替えるか(推薦=はい)。どれも現状維持。
+- 積んだ(B): 処刑・気功で倒した時と、段の最中に数が替わった時の store テスト。
+- 憲法第4条・第5条: 抵触なし。状態変化: 格闘のヒット数の意味 → 実装済み(実機確認待ち)/拳鬼の銃弾への反応 → A2 実装済み(実機確認待ち)。
+- 変更: `src/utils/brawlerCombo.ts`・`brawlerCombo.test.ts`・`src/utils/brawler.ts`・`brawler.test.ts`・`src/store/gameStore.ts`・`src/store/brawler.store.test.ts`・`src/types/game.ts`・`src/components/BrawlerHitCount.tsx`(注記)・`src/utils/kenkiLeap.ts`・`kenkiLeap.test.ts`・`src/utils/phantomBrawlerTick.ts`・`phantomBrawlerTick.test.ts`・`src/data/uniquePhantoms.ts`・`research/BRAWLER.md`・`research/BRAWLER_PHANTOM.md`・`src/data/changelog.ts`・`package.json`。
+
 ## v0.25.5476 — 格闘: 技を出したら通信の下に行を出す/当たりの音を専用の素材へ【2026-11-11 15:03 JST】
 - 社長指示①: 「技を出したら、通信の下に出す。スキルと同じ線」(プレイヤーの技)。仕様=`research/BRAWLER.md` §21。
   - 作り: スキル発動の行(`utils/skillProcFeed`)の鍵を技へ広げた(`tech:guard/stomp/kiko/kick/secret`)。store の `notifyTechProc` を、技が実際に出た所(`startBrawlerTech`・構えの延長・`startBrawlerSecret`)で呼ぶ。出なかった入力・拳鬼/幻影の技・通常攻撃の段・ステップは出さない。

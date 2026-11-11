@@ -12,7 +12,7 @@ import {
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
-  brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS, brawlerFlowBreaksNow, BRAWLER_FLOW_GRACE_MS, BRAWLER_CHAIN_RESET_MS,
+  brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
 } from './brawler';
 import { setBrawlerTempoAll } from './brawlerCombo';
 // ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
@@ -521,7 +521,7 @@ describe('取り消し(research/BRAWLER.md §19-1・§19-2・旧 §11-4 の技�
   });
 });
 
-describe('ヒット数の表示(research/BRAWLER.md §11-4)', () => {
+describe('流れの当たりの数(拳鬼のダメージ補正が読む。プレイヤーの「N HIT」は brawlerCombo の brawlerLinkDisplay=§23)', () => {
   it('当たりを足す・流れが切れていたら数え直す', () => {
     let s = brawlerFlowOnHit(initialBrawlerState(), 1);
     expect(s.flowHits).toBe(1);
@@ -531,22 +531,6 @@ describe('ヒット数の表示(research/BRAWLER.md §11-4)', () => {
     s = brawlerFlowOnHit(s, 1);
     expect([s.flowHits, s.flowBrokenAt]).toEqual([1, 0]);
     expect(brawlerFlowOnHit(s, 0)).toBe(s);
-  });
-  it('流れが切れる: 待機に戻り、つながりの受付・蹴りの連続・技の終わりからの猶予のどれも過ぎた時', () => {
-    const base = { ...initialBrawlerState(), flowHits: 4 };
-    // 通常攻撃が当たって終わった=つながりの受付の間は続く
-    const atk = { ...base, phase: 'idle' as const, chainUntil: 1000 + BRAWLER_CHAIN_RESET_MS };
-    expect(brawlerFlowBreaksNow(atk, 1000 + BRAWLER_CHAIN_RESET_MS)).toBe(false);
-    expect(brawlerFlowBreaksNow(atk, 1000 + BRAWLER_CHAIN_RESET_MS + 1)).toBe(true);
-    // 技の終わりから猶予
-    const tech = { ...base, phase: 'idle' as const, secretLastEndAt: 2000 };
-    expect(brawlerFlowBreaksNow(tech, 2000 + BRAWLER_FLOW_GRACE_MS)).toBe(false);
-    expect(brawlerFlowBreaksNow(tech, 2000 + BRAWLER_FLOW_GRACE_MS + 1)).toBe(true);
-    // 行動の最中・秘奥義の間・もう切れている・当たりなし は切れない
-    expect(brawlerFlowBreaksNow({ ...base, phase: 'attack' }, 99999)).toBe(false);
-    expect(brawlerFlowBreaksNow({ ...base, secret: brawlerSecretStart(base, 0, 0).secret }, 99999)).toBe(false);
-    expect(brawlerFlowBreaksNow({ ...base, flowBrokenAt: 10 }, 99999)).toBe(false);
-    expect(brawlerFlowBreaksNow({ ...base, flowHits: 0 }, 99999)).toBe(false);
   });
 });
 

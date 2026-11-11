@@ -983,6 +983,43 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
     expect(br().secret?.phase).toBe('ignite');
   });
+  it('ヒット数=つながっているコンボの数(§23): 1振りで2体に当たっても 1(敵ごとに数える)・同じ敵に続けて当てると伸びる', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(46, -8, 'a'), zombieAt(-46, 8, 'b')] });
+    useGameStore.getState().brawlerPress(); advance(400); // 技ポイントの器を作る(当たるのは前の1体)
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 20 } } }));
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true); // 大踏み潰し=周りの2体に当たる
+    advance(400);
+    const counts = useGameStore.getState().enemies.map(e => e.brComboHits ?? 0);
+    expect(counts.every(n => n >= 1)).toBe(true);                 // 2体とも当たっている
+    expect(br().flowHits).toBe(Math.max(...counts));              // 出る数は合計ではなく、いちばん多い敵の数
+    expect(br().flowHits).toBeLessThan(counts[0] + counts[1]);
+  });
+  it('ヒット数(§23): 倒した1発も数に入る(2発目で倒したら 2 が出て、その数のまま切れる)', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(45, 0, 'z')] });
+    useGameStore.getState().brawlerPress(); advance(250);
+    expect(br().flowHits).toBe(1);
+    useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, health: 1 })) }));
+    useGameStore.getState().brawlerPress(); advance(250);
+    expect(useGameStore.getState().enemies.some(e => e.id === 'z' && e.health > 0 && e.corpseUntil === undefined)).toBe(false);
+    expect(br().flowHits).toBe(2);
+    expect(br().flowBrokenAt ?? 0).toBeGreaterThan(0);
+  });
+  it('ヒット数(§23): 古い数は、後で別の理由で止まってもよみがえらない(動けるようになった時に数え直す)', () => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(45, 0, 'z')] });
+    useGameStore.getState().brawlerPress(); advance(250);
+    useGameStore.getState().brawlerPress(); advance(250);
+    expect(br().flowHits).toBe(2);
+    advance(1500); // 敵は動けるようになった
+    useGameStore.getState().updateEnemies(0.016); // 敵の更新が、動けるようになった敵の数えを消す(実機では毎フレーム)
+    expect(useGameStore.getState().enemies[0].brComboHits).toBeUndefined();
+    // 別の理由(他の武器の当たりの止め)で止まる
+    useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, hitStunUntil: now + 5000 })) }));
+    useGameStore.getState().brawlerPress(); advance(250);
+    expect(br().flowHits).toBe(1); // 2 から伸びない
+  });
   it('ヒット数: 流れが切れたら切れた時刻を打つ(表示は 0.8 秒で消える)', () => {
     setup();
     useGameStore.setState({ enemies: [zombieAt(50, 0, 'z')] });

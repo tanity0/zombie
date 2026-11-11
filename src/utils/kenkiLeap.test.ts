@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   KENKI_LEAP_MIN_PX, KENKI_LEAP_MAX_PX, KENKI_LEAP_COOLDOWN_MIN_MS, KENKI_LEAP_COOLDOWN_MAX_MS, KENKI_LEAP_P, KENKI_LEAP_P_UNDER_FIRE,
-  kenkiLeapEligible, kenkiLeapChance, kenkiLeapReadyAt, kenkiUnderFire, kenkiNoteHit,
+  kenkiLeapEligible, kenkiLeapChance, kenkiLeapReadyAt, kenkiUnderFire, kenkiNoteHit, kenkiLeapCrouchMs, KENKI_LEAP_CROUCH_UNDER_FIRE_MULT,
 } from './kenkiLeap';
 import { BRAWLER_KICK_RANGE } from './brawler';
 import { decidePhantomBrawler, createPhantomBrawlerMind, type PhantomBrawlerInput } from './phantomBrawlerAi';
@@ -46,5 +46,14 @@ describe('使う場面', () => {
     expect(decidePhantomBrawler(base(() => 0.5, { eligible: true, underFire: false }), createPhantomBrawlerMind())).toBeNull();
     expect(decidePhantomBrawler(base(() => 0.5, { eligible: true, underFire: true }), createPhantomBrawlerMind())).toEqual({ kind: 'leap' });
     expect(decidePhantomBrawler(base(() => 0, { eligible: false, underFire: true }), createPhantomBrawlerMind())).toBeNull();
+  });
+});
+
+// research/BRAWLER_PHANTOM.md §15-4(社長承認2026-11-11・A2)
+describe('撃たれ続けている時は溜めを半分に', () => {
+  it('撃たれ続けている時だけ短い・普段はハンターの値のまま', () => {
+    expect(kenkiLeapCrouchMs(3000, false)).toBe(3000);
+    expect(kenkiLeapCrouchMs(3000, true)).toBe(Math.round(3000 * KENKI_LEAP_CROUCH_UNDER_FIRE_MULT));
+    expect(KENKI_LEAP_CROUCH_UNDER_FIRE_MULT).toBe(0.5);
   });
 });

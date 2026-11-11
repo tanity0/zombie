@@ -4661,6 +4661,7 @@ const brawlerHitPatch = (
   //   それまでの固まりを止めの終わりまで切る。⑤ 固まらない時間の間は何も書かない(brawlerLockOnHit が先に見る)。
   if (bs.combo) {
     const move = bs.combo.move;
+    out.brComboHits = BRC.brawlerLinkOnHit(enemy, gameTime, now); // つながっているコンボの数(表示だけ・§23)
     const canHold = pk !== 'active' && !downNow;
     // 溜めの間は、雑魚の止め(hitStunUntil)が「攻撃中」で効かないので、止めも固まりの側で掛ける。
     const stopForHold = bossLike ? bossStopMs : pk === 'windup' && bs.kb.kind !== 'big' ? hitStopMs : stopMs;
@@ -4708,22 +4709,47 @@ const brawlerHoldFrom = (now: number, stopMs: number, kbUntil: number | undefine
 /**
  * ★気絶中の敵へのフィニッシュ(強個体の3倍・ボスの5倍)が格闘の段・技だった時の、確定の固まり(research/BRAWLER.md §19-3・§19-7)。
  * フィニッシュの分岐は brawlerHitPatch を通らない(押し・止め・浮かせはフィニッシュの決まりのまま)=固まりの欄だけ、同じ規則(brawlerLockOnHit)で書く。
- * 秘奥義の当たりは確定の固まりの規則の外(今どおり何も書かない)。
+ * 秘奥義の当たりは確定の固まりの規則の外(固まりの欄は今どおり書かない。つながっているコンボの数=表示だけは書く)。
  */
 const brawlerFinishLockPatch = (enemy: Enemy, bs: BrawlerStrikeOpts, gameTime: number, now: number): Partial<Enemy> => {
   const move = bs.combo?.move;
-  if (!move || move === 'secret' || move === 'secret-land') return {};
+  if (!move) return {};
+  const link = { brComboHits: BRC.brawlerLinkOnHit(enemy, gameTime, now) }; // つながっているコンボの数(表示だけ・§23)。フィニッシュも1発
+  if (move === 'secret' || move === 'secret-land') return link;
   const stop = Math.max(0, bs.stunMs);
   const bossBig = BRC.brawlerEnemyClass(enemy) === 'boss' && bs.kb.kind === 'big';
-  return BRC.brawlerLockOnHit(enemy, move, gameTime, now, {
+  return { ...link, ...BRC.brawlerLockOnHit(enemy, move, gameTime, now, {
     stopMs: stop, enemyStopMs: bossBig ? 0 : stop,
     canHold: BRC.brawlerPhaseKind(enemy, gameTime) !== 'active', airborneAfter: false, countHit: false, // 会心のフィニッシュは減衰の数に入れない(§20-4)
-  }).patch;
+  }).patch };
 };
-/** 格闘の当たりをヒット数の表示へ足す(research/BRAWLER.md §11-4)。 */
+/** 倒した1発ぶんの数(その当たりで何発目だったか)。倒れた敵は数から外れるので、当たりの直後の合わせ直しでだけ使う。 */
+let brawlerKillLinkPeak = 0;
+const noteBrawlerKillLink = (enemy: Enemy, gameTime: number, now: number): void => {
+  brawlerKillLinkPeak = Math.max(brawlerKillLinkPeak, BRC.brawlerLinkOnHit(enemy, gameTime, now));
+};
+/**
+ * 近接枠の左の「N HIT」を、いまのつながっているコンボの数に合わせる(research/BRAWLER.md §23)。変えたら true。
+ * 数=いま動けない敵の brComboHits のいちばん多い物(utils/brawlerCombo)。当たりの直後と、毎フレーム(出ている間だけ)に呼ぶ。
+ */
+const syncBrawlerLinkCount = (
+  get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void,
+): boolean => {
+  const peak = brawlerKillLinkPeak;
+  brawlerKillLinkPeak = 0;
+  const st = get();
+  const b = st.player.brawler;
+  if (!b) return false;
+  // 倒した1発も数に入れる(その数を出してから、次のフレームで切れて沈む)。何も変わらない時は store を書かない。
+  const next = BRC.brawlerLinkDisplay(b, Math.max(peak, BRC.brawlerLinkMax(st.enemies, st.gameTime, Date.now())), st.gameTime);
+  if (!next) return false;
+  set(state => (state.player.brawler ? { player: { ...state.player, brawler: { ...state.player.brawler, ...next } } } : {}));
+  return true;
+};
+/** 格闘の当たりの後に、ヒット数の表示を合わせ直す(n=当たった数。0 なら何もしない)。 */
 const brawlerNoteFlowHits = (set: (fn: (s: GameState) => Partial<GameState>) => void, n: number): void => {
-  if (!(n > 0)) return;
-  set(state => (state.player.brawler ? { player: { ...state.player, brawler: BR.brawlerFlowOnHit(state.player.brawler, n) } } : {}));
+  if (!(n > 0)) { brawlerKillLinkPeak = 0; return; }
+  syncBrawlerLinkCount(useGameStore.getState, set);
 };
 
 /**
@@ -5745,7 +5771,7 @@ export const brawlerJustStunMult = (now: number): number =>
  * ★気功は固めない(research/BRAWLER.md §19-3 ①: 締めと同じ扱い=止めだけ)。それまでの確定の固まりは、ここ(爆発が当たった瞬間)で切り詰める。
  *   旧: 「基本300ms×減衰の固まり・溜めは予算の分だけ」は撤去。秘奥義の中の気功(move='secret')だけは今どおり壁時計の固まり(§17)。
  */
-const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.BrawlerMoveKey, closeness?: number): void => {
+const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.BrawlerMoveKey, closeness?: number, linkN?: number): void => {
   const now = Date.now();
   const gt = get().gameTime;
   useGameStore.setState(state => ({
@@ -5764,7 +5790,7 @@ const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.Brawler
       if (!jp && !busy && closeness !== undefined && !airborne && groundLiftOk) {
         jp = blastLiftPatch({ ...e, ...c.patch }, BRC.brawlerLiftClass(e), closeness, now, gt) as Partial<Enemy> | null;
       }
-      const e1 = jp ? { ...e, ...jp } : e;
+      const e1: Enemy = { ...e, ...(jp ?? {}), brComboHits: linkN ?? BRC.brawlerLinkOnHit(e, gt, now) }; // つながっているコンボの数(表示だけ・§23。linkN=爆発のダメージの前に見た数)
       const down = (jp as { brLiftDown?: boolean } | null)?.brLiftDown === true;
       const canHold = kind !== 'active' && !down;
       if (move === 'secret' || move === 'secret-land') {
@@ -5816,9 +5842,11 @@ const explodeBrawlerKiko = (
     const dmg = Math.max(1, Math.round(base * (0.55 + (1 - Math.min(1, d / Math.max(1, radius))) * 0.45) * pr * sniperGunMult(p, e))); // スナイパー(停止敵・距離)も銃と同じく乗る(§16-E)
     noteAirMeleeHit(e, Date.now()); // 気功の爆発が空中の敵に入る=プレイヤーも浮く描画の記録(§18)
     const stunBefore = e.hitStunUntil;
+    const linkN = BRC.brawlerLinkOnHit(e, get().gameTime, Date.now()); // つながっているコンボの数(§23): 爆発のダメージが止めを書く前の敵で見る
     const killed = get().damageEnemy(id, dmg, true, false, false, 'other'); // 浮き: 気功の爆発(地上は brawlerKikoComboHit が爆発の浮きで打ち上げ・空中は格闘の拾い)
     { const na = meleeNumberPoint(x, y, e); get().spawnDamageNumber(na.x, na.y, dmg, false, { enemyId: id }); } // ★爆心から見た当たった所(§9-75・小さな敵は今までどおり)
     dealt += dmg;
+    if (killed) brawlerKillLinkPeak = Math.max(brawlerKillLinkPeak, linkN);
     if (!killed) {
       burnIds.push(id);
       // 押し(社長承認2026-11-07): 爆心に近いほど遠くへ外向きに。処刑の爆発と同じ減衰・同じ入口(knockbackEnemy)。
@@ -5829,7 +5857,7 @@ const explodeBrawlerKiko = (
       if (BRC.brawlerEnemyClass(e) === 'strong') brawlerKikoStrongAsMob(get, id, stunBefore, dmg, ddx / dl, ddy / dl, str * fall);
       else get().knockbackEnemy(id, ddx / dl, ddy / dl, str * fall, Math.max(3, str) * fall);
       // ★流れの数え・浮き・確定の固まりの切り詰め(research/BRAWLER.md §11-3・§14・§19-3)。気功は固めない。
-      brawlerKikoComboHit(get, id, o.move ?? 'kiko', 1 - Math.min(1, d / Math.max(1, radius)));
+      brawlerKikoComboHit(get, id, o.move ?? 'kiko', 1 - Math.min(1, d / Math.max(1, radius)), linkN);
     }
     else {
       // 倒した敵は手榴弾の爆発と同じく経験値を落とし、断末魔を鳴らす(検収 A-2)。
@@ -5839,10 +5867,12 @@ const explodeBrawlerKiko = (
   }
   // ヒット数の表示へ足す。撃った気功の技の最中に当たったら「当たった」にする(記録だけ。気功からの道は秘奥義の締めの構えだけで、当たりを問わない・§19-2)。
   if (ids.length > 0) {
+    const killPeak = brawlerKillLinkPeak; // 爆発で倒した1発も数に入れる(§23)
+    brawlerKillLinkPeak = 0;
     useGameStore.setState(state => {
       const b0 = state.player.brawler;
       if (!b0) return {};
-      let b1 = BR.brawlerFlowOnHit(b0, ids.length);
+      let b1: BR.BrawlerState = { ...b0, ...(BRC.brawlerLinkDisplay(b0, Math.max(killPeak, BRC.brawlerLinkMax(state.enemies, state.gameTime, Date.now())), state.gameTime) ?? {}) }; // つながっているコンボの数(§23)
       if (o.pressAt !== undefined && b1.phase === 'tech' && b1.tech === 'kiko' && b1.pressAt === o.pressAt) b1 = { ...b1, connected: true, landed: true };
       return { player: { ...state.player, brawler: b1 } };
     });
@@ -11064,6 +11094,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         for (const e of landed) brawlerJuggleLandFx(get, e);
       }
     }
+    // ヒット数の表示(§23): 出ている間は、いまのつながっているコンボの数に合わせる(敵が動けるようになった・倒れた=切れた時刻を打つ→0.8 秒で消える)。
+    // ★状態を読む前に済ませる(合わせ直したフレームも、下の段・技の処理を飛ばさない=判定の時刻を変えない)。
+    {
+      const b = get().player.brawler;
+      if (b && (b.flowHits ?? 0) > 0 && !((b.flowBrokenAt ?? 0) > 0)) syncBrawlerLinkCount(get, set);
+    }
     const p = get().player;
     const s0 = p.brawler;
     if (!s0?.secret) releaseSecretFreeze(); // 秘奥義が無いのに止めが残っていたら解く(別の経路の中断の保険・§17)
@@ -11081,8 +11117,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 秘奥義の最中は秘奥義の時計だけを回す(通常の段・技の状態機械は回さない・§10)。
     if (s0.secret) { tickBrawlerSecret(get, set); return; }
-    // ヒット数の表示: 流れが切れた時刻を打つ(表示は 0.8 秒で消える・§11-4)。
-    if (BR.brawlerFlowBreaksNow(s0, t)) { setBrawler(set, { ...s0, flowBrokenAt: t }); return; }
     // ★覚えたステップ(§12-3b): 受け付けられるようになった瞬間に出す(後隙の取り消し・待機・前のステップの終わり)。期限切れは捨てる。
     if (s0.stepBuffer) { const r = settleBufferedBrawlerStep(get, set, s0); if (r === 'fire' || r === 'expire') return; }
     if (s0.phase === 'idle') {
@@ -11673,6 +11707,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       setBrawler(set, { ...b0, nextStage: 1, chainUntil: 0, buffered: false });
       brawlerStageFx(get, 3, pc0, dir0, r0, tgt);
       brawlerKillSfx(r0);
+      brawlerNoteFlowHits(set, r0.hits ?? 0); // 被弾反撃の当たりも「N HIT」へ(倒した1発の数を持ち越さない・§23)
       return r0;
     }
     // ★縮地(§32): PC/ボットの直呼び(前隙なし)もタッチと同じくワープ斬撃の予約へ。斬撃と音は
@@ -12243,6 +12278,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const stunnedHit = resolveStunnedMeleeHit(enemy, meleeExecBase * gpDmgScale, gameTime, BOSS_MELEE_STUN_MULT);
       if (stunnedHit) {
         if (stunnedHit.kind === 'execute') {
+          if (bs?.combo) noteBrawlerKillLink(enemy, gameTime, now); // 処刑の1発も「N HIT」に数える(§23)
           killed.push({ enemy, finisher: true }); // normal instant execute
           // ★紫中の強個体の即死=「致命の一撃」。ボスと同じくCDを無視して必ずフル演出にする(v0.25.4389)。
           if (isEliteFatalStun(enemy, gameTime)) eliteFatalKill = true;
@@ -12279,6 +12315,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         // そのもの(finisher:trueの即時処刑に相当)。
         const newHealth = Math.max(0, enemy.health - dmg);
         if (newHealth <= 0) {
+          if (bs?.combo) noteBrawlerKillLink(enemy, gameTime, now); // 倒した1発も「N HIT」に数える(§23)
           killed.push({ enemy, finisher: false });
         } else {
           survivors.push({
@@ -12338,6 +12375,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       recordCritHit(crit ? 'rng' : 'none', isBossType(enemy.type)); // §7-11c(4): 近接クリ計測口
       const newHealth = Math.max(0, enemy.health - dmg);
       if (newHealth <= 0) {
+        if (bs?.combo) noteBrawlerKillLink(enemy, gameTime, now); // 倒した1発も「N HIT」に数える(§23)
         killed.push({ enemy, finisher: false });
         continue;
       }
@@ -17591,7 +17629,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         // ★§19-3 ④⑤: コンボの区切り。格闘の固まりでも浮きでもなくなった敵は、当てた技の覚えを消し、ボス級・強個体は固まらない時間に入る。
         //   (旧: ここで溜めの止め予算の札を捨てていた=§19 で撤去。)
         const comboEnd = BRC.brawlerComboEndPatch(base, BRC.brawlerEnemyClass(base), gameTime, now);
-        const ticked = clocks || comboEnd ? { ...base, ...(clocks ?? {}), ...(comboEnd ?? {}) } : base;
+        // つながっているコンボの数(表示だけ・§23): 動けるようになったフレームで消す(④ と同じ場所・同じ見方)。消さないと、後で別の理由
+        // (秘奥義の止め・他の武器の止め・爆発の浮き)で止まった時に、古い数が「いまつながっている」と読まれる。
+        const linkEnd = base.brComboHits !== undefined && BRC.brawlerLinkFree(base, gameTime, now) ? { brComboHits: undefined } : null;
+        const ticked = clocks || comboEnd || linkEnd ? { ...base, ...(clocks ?? {}), ...(comboEnd ?? {}), ...(linkEnd ?? {}) } : base;
         // ★軍人の狙い(§4): 今追う軍人(targetEscortId)をここで1回だけ決め直して敵に持たせる(粘着20%の基準)。下の移動・技の目標点
         //   (apx/apy)・combatTick の射撃は同じ値を読む。救助イベントの攻撃者(escortTarget=生存者を追う)は対象外。
         //   ★技の最中(aiPhase あり=溜め/突進/跳び/硬直)は追う相手を決め直さない(突進の弱ホーミング・技の目標点が途中で別の相手へ跳ばない)。

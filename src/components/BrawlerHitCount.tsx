@@ -2,8 +2,9 @@ import React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { BRAWLER_FLOW_FADE_MS } from '../utils/brawler';
 
-// ★格闘のヒット数(research/BRAWLER.md §11-4)。同じ流れの当たり数を、2ヒット目から近接枠の左に小さく出す。
-// 流れが切れたら 0.8 秒で消える。購読は数値と真偽値だけ(毎フレーム描き直さない=CLAUDE.md の再描画の規律)。
+// ★格闘のヒット数=つながっているコンボの数(research/BRAWLER.md §23・社長指示2026-11-11「その意味のない数字のどっちか使おう」)。
+// 敵に動く間を与えずに当て続けた回数を、2ヒット目から近接枠の左に小さく出す(数え方は utils/brawlerCombo・store が flowHits へ書く)。
+// 切れたら(敵が動けるようになった・倒れた)0.8 秒で消える。購読は数値と真偽値だけ(毎フレーム描き直さない=CLAUDE.md の再描画の規律)。
 // 見た目は手本(デス・ストランディング2)の HUD の文法: 細い縦の罫・細身の数字・字間を空けた小さな英字・白に近い白金。
 const BrawlerHitCount: React.FC = () => {
   const hits = useGameStore(s => s.player.brawler?.flowHits ?? 0);

@@ -19,9 +19,10 @@ export interface UniquePhantomSpec {
   profile: PlayerProfile;
 }
 
-// 技への反応表(弾の技: 返す0.5 / 食らう0.1 / 残り=避ける0.4。それ以外の技も同じ値=叩き台)。
+// 技への反応表(弾の技: 返す0.5 / 食らう0 / 残り=避ける0.5。それ以外の技も同じ値=叩き台)。
+// ★食らう 0.1 → 0(社長承認2026-11-11・A2「わざと食らう1割をなくす」・research/BRAWLER_PHANTOM.md §15-4)。
 const REACTIONS: MoveReactionTable = Object.fromEntries(
-  [...MOVE_REACTION_KEYS, ...BULLET_MOVE_KEYS].map(key => [key, { n: 20, counterRate: 0.5, hitRate: 0.1 }]),
+  [...MOVE_REACTION_KEYS, ...BULLET_MOVE_KEYS].map(key => [key, { n: 20, counterRate: 0.5, hitRate: 0 }]),
 ) as MoveReactionTable;
 
 const KENKI_EQUIP: EquipLoadout = { body: 'body-mobility-3', arms: 'arms-firepower-3', accessory: 'accessory-crit-3' };
