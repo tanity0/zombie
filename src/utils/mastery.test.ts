@@ -15,13 +15,13 @@ const backing: Record<string, string> = {};
 
 import {
   GROWING_MASTERY_KEYS, MASTERY_BASE, MASTERY_KEY, MASTERY_PENDING_KEY, MASTERY_MAXED_SUBS, SUB_TO_MASTERY_KEY,
-  MASTERY_SUB_KEYS, MASTERY_GUN_KEYS, isGrowingMasteryKey,
+  MASTERY_SUB_KEYS, MASTERY_GUN_KEYS, MASTERY_XP_WEIGHT, isGrowingMasteryKey,
 } from '../data/mastery';
 import type { AmmoType, SubWeaponKey } from '../types/game';
 import {
   masteryNeedFor, masteryLevelFor, masteryProgress, masteryDamageMult, normalizeMastery, loadMastery, saveMastery,
   masteryMultTable, masteryLoadoutMult, masteryMultOf, masteryIgnoredRun, commitMasteryRun, getLastMasteryCommit,
-  recoverMasteryPending, type MasteryRunFlags,
+  recoverMasteryPending, masteryXpWeight, masteryXpAmount, type MasteryRunFlags,
 } from './mastery';
 import {
   withMastery, currentMasterySource, beginMasteryRun, noteMasteryDamage, getPendingMastery, getMasteryReport,
@@ -202,6 +202,28 @@ describe('出どころの包み(withMastery)', () => {
       expect(currentMasterySource()).toBe('melee');
     });
     expect(currentMasterySource()).toBeNull();
+  });
+});
+
+describe('区分の重み(masteryXpWeight / masteryXpAmount)', () => {
+  // 社長裁定2026-11-11: ボス級=2倍・強個体=1.5倍・雑魚=1(区分は brawlerEnemyClass)。
+  it('表の値', () => {
+    expect(MASTERY_XP_WEIGHT).toEqual({ mob: 1, strong: 1.5, boss: 2 });
+  });
+  it('雑魚=1・強個体=1.5(型/赤い個体)・ボス級=2', () => {
+    expect(masteryXpWeight({ type: 'zombie' })).toBe(1);
+    expect(masteryXpWeight({ type: 'logger' })).toBe(1.5);
+    expect(masteryXpWeight({ type: 'zombie', colorTier: 'red' })).toBe(1.5);
+    expect(masteryXpWeight({ type: 'thor' })).toBe(2);
+    expect(masteryXpWeight(null)).toBe(1);
+  });
+  it('貯まる量 = 四捨五入(通った量 ÷ 熟練度の倍率) × 重み', () => {
+    const player = { masteryMult: { katana: 1.3 } } as Parameters<typeof masteryXpAmount>[0];
+    const base = Math.round(100 / 1.3); // 77
+    expect(masteryXpAmount(player, 'katana', 100, { type: 'zombie' })).toBe(base);
+    expect(masteryXpAmount(player, 'katana', 100, { type: 'logger' })).toBe(base * 1.5);
+    expect(masteryXpAmount(player, 'katana', 100, { type: 'thor' })).toBe(base * 2);
+    expect(masteryXpAmount(player, 'loadout', 100, { type: 'thor' })).toBe(0);
   });
 });
 

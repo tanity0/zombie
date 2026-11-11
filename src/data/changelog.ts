@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5514', items: [
+    'ボスや強い敵に与えたダメージは、熟練度が多めに貯まる',
+  ] },
   { version: '0.25.5513', items: [
     'ゲーム内容の変更はありません',
   ] },

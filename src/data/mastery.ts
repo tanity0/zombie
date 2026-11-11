@@ -50,9 +50,10 @@ export const MASTERY_BASE: Record<GrowingMasteryKey, number> = Object.fromEntrie
 
 /**
  * 敵の区分(雑魚/強個体/ボス級)ごとの貯まり方の重み(貯める量 = 割り戻した与ダメ × 重み)。
- * 今は全部1(数字は設計チャットが後で決める=口だけ)。区分の判定は utils/brawlerCombo の brawlerEnemyClass。
+ * 社長裁定2026-11-11『雑魚よりボスの方が熟練度溜まりやすい方がボスに挑む意味が生まれるか?』→『はい』。
+ * ボス級=2倍・強個体=1.5倍(叩き台。ボットで測る時に調整する)。区分の判定は utils/brawlerCombo の brawlerEnemyClass。
  */
-export const MASTERY_XP_WEIGHT: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 1, strong: 1, boss: 1 };
+export const MASTERY_XP_WEIGHT: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 1, strong: 1.5, boss: 2 };
 
 /** サブウェポンのキー → 熟練度のキー(育つ物だけ。`murasame`→`katana`)。 */
 export const SUB_TO_MASTERY_KEY: Readonly<Partial<Record<string, GrowingMasteryKey>>> = {
