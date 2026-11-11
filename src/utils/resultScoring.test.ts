@@ -132,3 +132,15 @@ describe('ステージ難度のスコア補正(stageMult)', () => {
     expect(calculateResultScore(stats, true, false, 1)).toEqual(calculateResultScore(stats, true, false, 1, 1));
   });
 });
+
+describe('残スクラップは実際に持っている数で数える(社長報告2026-11-11)', () => {
+  it('持っている数を渡すと、集計の差ではなくその数がスコアになる(取得量アップ・報酬・売却で増えた分も入る)', () => {
+    const stats = mkStats({ strapsCollected: 10, strapsSpent: 0 });
+    expect(calculateResultScore(stats, false, false, 1, 1, 37).scrapScore).toBe(37 * 20);
+    expect(calculateResultScore(stats, false, false, 1, 1, 0).scrapScore).toBe(0);
+    expect(calculateResultScore(stats, false, false, 1, 1, -5).scrapScore).toBe(0);
+  });
+  it('渡さない時は今までどおり(拾った数−払った数)', () => {
+    expect(calculateResultScore(mkStats({ strapsCollected: 10, strapsSpent: 4 }), false).scrapScore).toBe(6 * 20);
+  });
+});

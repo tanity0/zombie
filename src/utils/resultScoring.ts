@@ -62,8 +62,15 @@ export const calculateResultScore = (
   isLab = false,
   scoreMult = 1,
   stageMult = 1,
+  /**
+   * そのランの終わりに実際に持っているスクラップ(player.straps)。渡された時はこれを「残スクラップ」に使う。
+   * ★社長報告2026-11-11「リザルトでスクラップ所持数が考慮されてない」: 旧は 拾った素の値の合計 − 一部の支払い で数えていて、
+   *   取得量アップ(スキル・装備・消費カード)で増えた分、レベルアップの報酬、売った分、一部の買い物が入っていなかった。
+   * 未指定(古い呼び手・テスト)は今までどおり集計から求める。
+   */
+  heldScrap?: number,
 ): ResultScore => {
-  const netScrap = Math.max(0, stats.strapsCollected - stats.strapsSpent);
+  const netScrap = heldScrap !== undefined ? Math.max(0, heldScrap) : Math.max(0, stats.strapsCollected - stats.strapsSpent);
 
   // すべて整数化(damageTaken/timeAlive は小数なので、丸めないと総スコアに小数が9桁出る=社長報告)。
   const clearBonus = won ? CLEAR_BONUS : 0;                       // won のみ

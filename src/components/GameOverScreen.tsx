@@ -344,6 +344,8 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
   const growthScoreMult = useGameStore(s => s.player.growthScoreMult ?? 1);
   // ステージ難度のスコア補正(同・焼き値)。高難度ステージほどスコア・換金が増える(S6=×1.8)。
   const stageScoreMult = useGameStore(s => s.player.stageScoreMult ?? 1);
+  // そのランの終わりに実際に持っているスクラップ(storeのplayerはこのランの状態のまま)。スコアと換金の「残スクラップ」はこれで数える。
+  const heldStraps = useGameStore(s => s.player.straps);
   const {
     damageScore,
     finisherScore,
@@ -356,7 +358,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     clearBonus,
     totalScore,
     goldEarned: goldEarnedBase,
-  } = calculateResultScore(stats, won, isLab, growthScoreMult, stageScoreMult);
+  } = calculateResultScore(stats, won, isLab, growthScoreMult, stageScoreMult, heldStraps);
   // スキル: ゴールドラッシュ(§6.10 M33⑪) = リザルトのラン獲得ゴールド ×1.2/1.35/1.5(Lv・四捨五入)。
   // そのランで装備していた場合に適用(storeのplayerはこのランの状態のまま)。表示と加算で同じ値を使う。
   const goldRushMult = useGameStore(s => skillGoldRushMult(s.player));
@@ -480,7 +482,7 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     setArchiveListOpen(false);
   };
 
-  const remainingStraps = Math.max(0, stats.strapsCollected - stats.strapsSpent);
+  const remainingStraps = Math.max(0, Math.floor(heldStraps)); // 実際に持っている数(集計の差ではない・社長報告2026-11-11)
   // PACING_PUZZLE.md §5.17 M14: 到達譜(掛け合わせ見出し+深度メーター+惜しさ)。
   const wallHighestRank = clampRank(stats.maxRankReached);
   // ステージ2(研究所)の深さの表示: 区域名は全部「未確認汚染エリア」、次の深さは「解析不可」(社長指示2026-10-20)。
