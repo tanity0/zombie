@@ -9,7 +9,7 @@ import {
   BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerRouteAllows, brawlerRouteNodeOf, brawlerStageNode, brawlerTechNode, brawlerSecretClosing, brawlerHitLanded, brawlerCancelWindowOpen,
   brawlerTechCancelOk, brawlerTechAllowed, brawlerShouldBufferTech, brawlerTechBufferDecision, brawlerStepAllowed, brawlerSecretCarry,
-  brawlerStartAttack, brawlerStartTech, brawlerAfterResolve, brawlerFinish, brawlerStageSpec, initialBrawlerState, brawlerKickFlightMs,
+  brawlerStartAttack, brawlerStartTech, brawlerAfterResolve, brawlerFinish, brawlerStageSpec, initialBrawlerState, brawlerKickFlightMs, brawlerKickReaimDue,
 } from './brawler';
 import {
   setBrawlerTempoAll, BRAWLER_HOLD_FRAME_MARGIN_MS, BRAWLER_CHAIN_GUARD_MARGIN_MS, BRAWLER_COMBO_END_NO_HOLD_BOSS_MS, BRAWLER_COMBO_END_NO_HOLD_STRONG_MS,
@@ -397,3 +397,22 @@ describe('④ コンボの区切りと ⑤ 固まらない時間・⑥ 2つの�
     expect(brawlerHeldNow({ type: 'zombie', aiPhase: 'zrush' }, 5000, 100)).toBe(false);
   });
 });
+
+describe('飛び蹴りの3発目の狙い直し(§19-10・社長指示2026-11-11)', () => {
+  const k3 = () => ({ ...brawlerStartTech(initialBrawlerState(), 'kick', 1000, 3), targetId: 'z' });
+  it('溜めのある蹴り(3発目)だけ・溜めが明けて踏み込みが動き出した最初の更新で・1回だけ', () => {
+    const s = k3();
+    expect(s.kickReaimed).toBe(false);
+    expect(brawlerKickReaimDue(s, 5000, 4999)).toBe(false);  // まだ溜めている(踏み込みは止まっている)
+    expect(brawlerKickReaimDue(s, 5000, 5000)).toBe(true);   // 明けた
+    expect(brawlerKickReaimDue({ ...s, kickReaimed: true }, 5000, 5000)).toBe(false);
+    expect(brawlerKickReaimDue({ ...s, resolved: true }, 5000, 5000)).toBe(false);
+    expect(brawlerKickReaimDue({ ...s, targetId: undefined }, 5000, 5000)).toBe(false);
+    expect(brawlerKickReaimDue(s, 0, 5000)).toBe(false);     // 踏み込みを止めていない
+  });
+  it('1・2発目(溜め無し)は取り直さない・次の技を始めると旗は戻る', () => {
+    for (const n of [1, 2]) expect(brawlerKickReaimDue({ ...brawlerStartTech(initialBrawlerState(), 'kick', 1000, n), targetId: 'z' }, 5000, 5000)).toBe(false);
+    expect(brawlerStartTech({ ...k3(), kickReaimed: true }, 'kick', 2000, 1).kickReaimed).toBe(false);
+  });
+});
+

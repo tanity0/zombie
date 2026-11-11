@@ -369,19 +369,39 @@ describe('飛び蹴りの2発目は少し打ち上げる・3発目は少しの�
     }
     return { kb, air, peak };
   };
-  it('雑魚: 1発目では浮かない → 2発目で地上から少し浮く(高さ0.5=4段目の半分) → 3発目は1発目の押しを超えない(吹き飛ばさない)', () => {
+  it('雑魚: 1発目では浮かない → 2発目で地上から少し浮く(高さ0.7) → 3発目は1発目の押しを超えない(吹き飛ばさない)', () => {
     const r = kicks('zombie-move');
     expect(r.air[0]).toBe(false);
     expect(r.air[1]).toBe(true);
-    expect(r.peak[1]).toBeCloseTo(0.5, 5);
+    expect(r.peak[1]).toBeCloseTo(0.7, 5);
     expect(r.kb[0]).toBeGreaterThan(0);
     expect(r.kb[2]).toBeLessThanOrEqual(r.kb[0] + 1e-6);
   });
-  it('強個体(溜めの相): 2発目で技を取り消して少し浮く(重さ0.7=高さ0.35)', () => {
+  // ★3発目の狙い直し(§19-10): 溜めの間に敵が動いても、溜めが明けた瞬間に飛ぶ先を取り直して当てる。
+  //   旧: 溜め始めの敵の位置へ飛んだ(実ループで36本中5本が空振り)。密着から始めた時(踏み込みの器が空)も取り直す(検収の A-2)。
+  for (const [label, dx0] of [['離れた所から', 60], ['密着から(踏み込みの器が空)', 26]] as const) {
+    it(`3発目: 溜めの間に敵が70px滑っても当たる(${label})`, () => {
+      setup();
+      useGameStore.setState({ enemies: [place('hunter', dx0, 'z', { aiPhase: 'windup', aiPhaseUntil: gt() + 9000, aiStartedAt: gt() })] });
+      for (let n = 1; n <= 3; n++) {
+        expect(doTech('kick'), `kick ${n} issued`).toBe(true);
+        if (n === 3) {
+          // 3発目が始まった所(溜めの頭)で、敵を前へ70px動かす(前の蹴りの押しで滑った分の代わり)。押しの欄は消して、その場に留める。
+          for (let k = 0; k < 60 && !(br().phase === 'tech' && br().kickN === 3); k++) adv();
+          expect(br().kickN).toBe(3);
+          useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, x: e.x + 70, knockbackVx: 0, knockbackVy: 0, knockbackUntil: 0 })) }));
+        }
+        for (let k = 0; k < 400 && !(br().phase === 'tech' && br().kickN === n && br().resolved); k++) adv();
+        expect(br().connected, `kick ${n} connected`).toBe(true);
+      }
+      expect(br().kickReaimed).toBe(true);
+    });
+  }
+  it('強個体(溜めの相): 2発目で技を取り消して少し浮く(重さ0.7=高さ0.49)', () => {
     const r = kicks('driller-windup');
     expect(r.air[0]).toBe(false);
     expect(r.air[1]).toBe(true);
-    expect(r.peak[1]).toBeCloseTo(0.35, 5);
+    expect(r.peak[1]).toBeCloseTo(0.49, 5);
   });
 });
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   stepPlayerAir, playerAirTargetPx, playerAirLaunchSpeed, playerAirPhase, playerAirBumpPx, playerAirPoseTarget,
   playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink,
-  noteAirMeleeHit, getLastAirMeleeHit, resetAirMeleeHit,
+  noteAirMeleeHit, getLastAirMeleeHit, resetAirMeleeHit, playerKickJump, playerKickJumpShape, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerKickLandPx, playerKickLandSpeed, PLAYER_KICK_LAND_FRAC,
   PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_FOLLOW_K, PLAYER_AIR_BODY_CAP, PLAYER_AIR_CROUCH_MS, PLAYER_AIR_GRAVITY,
   playerAirShiftTarget, playerAirShiftStep, groundDustGate, PLAYER_AIR_SHIFT_BODY_W, PLAYER_AIR_DUST_HOLD_PX, PLAYER_AIR_DUST_PENDING_MAX_MS, type GroundDustGate,
   PLAYER_AIR_BUMP_PX, PLAYER_AIR_LAND_SQUASH_MIN, PLAYER_AIR_LAND_SQUASH_MAX, PLAYER_AIR_HOVER_SINK, PLAYER_AIR_POSE, type PlayerAirState,
@@ -83,6 +83,86 @@ describe('漂い・落下・着地', () => {
   it('目標が今より低ければ追って下がらない(漂うだけ)', () => {
     const r = stepPlayerAir({ h: 40, vy: 0 }, { now: 1100, dtMs: 10, targetPx: 10, hitAt: 1000 });
     expect(r.state.vy).toBe(0); expect(r.state.h).toBeGreaterThan(39);
+  });
+});
+
+describe('飛び蹴りが空中の敵を追う時の跳び(§18-3・社長指示2026-11-11)', () => {
+  const CAP = 56;
+  it('どの蹴りも、当たる時刻(f=1)にちょうど敵の高さに居る・始まりは飛び出した高さ', () => {
+    for (const n of [1, 2, 3]) for (const ground of [true, false]) {
+      const sh = playerKickJumpShape(n, ground), h0 = ground ? 0 : 20;
+      expect(playerKickJump(h0, 40, 0, sh, CAP).h).toBe(h0);
+      expect(playerKickJump(h0, 40, 1, sh, CAP).h).toBeCloseTo(40, 5);
+      expect(playerKickJump(h0, 40, 2, sh, CAP).h).toBeCloseTo(40, 5);  // 進みは 0..1 に収める
+    }
+  });
+  it('蹴りごとに形が違う: 1発目は少し行き過ぎて降りながら当てる・2発目は行き過ぎなし・3発目は大きく跳び越えて蹴り下ろす', () => {
+    const peak = (n: number, ground: boolean) => {
+      const sh = playerKickJumpShape(n, ground); let top = 0, dirAtHit = 0;
+      for (let f = 0; f <= 1.0001; f += 0.01) { const r = playerKickJump(ground ? 0 : 20, 40, f, sh, CAP); top = Math.max(top, r.h); dirAtHit = r.dir; }
+      return { top, dirAtHit };
+    };
+    expect(peak(1, true).top).toBeCloseTo(40 * 1.08, 1);
+    expect(peak(1, true).dirAtHit).toBe(-1);            // 降りながら当てる
+    expect(peak(2, false).top).toBeCloseTo(40, 1);      // 行き過ぎなし
+    expect(peak(2, false).dirAtHit).toBe(0);            // 頂点で届く
+    expect(peak(3, true).top).toBeCloseTo(48, 1);       // ×1.2
+    expect(peak(3, true).dirAtHit).toBe(-1);            // 蹴り下ろす
+    // 行き過ぎは上限(体の高さ×1.3)まで。上限が敵の高さより低ければ行き過ぎない。
+    expect(peak(3, true).top).toBeLessThanOrEqual(CAP);
+    let top = 0; for (let f = 0; f <= 1.0001; f += 0.01) top = Math.max(top, playerKickJump(0, 50, f, playerKickJumpShape(3, true), 52).h);
+    expect(top).toBeCloseTo(52, 1);
+  });
+  it('地面から跳ぶ時は、最初の12%は地面で沈む(膝を溜める)。空中から続けて跳ぶ時は沈まない', () => {
+    const g = playerKickJumpShape(1, true), a = playerKickJumpShape(2, false);
+    expect(playerKickJump(0, 40, 0.06, g, CAP)).toEqual({ h: 0, dir: 0, crouch: true });
+    expect(playerKickJump(0, 40, 0.2, g, CAP).crouch).toBe(false);
+    expect(playerKickJump(0, 40, 0.2, g, CAP).h).toBeGreaterThan(0);
+    expect(playerKickJump(20, 40, 0.06, a, CAP).crouch).toBe(false);
+  });
+  it('上りは蹴り出しが一番速い(だんだん遅くなる)・蹴り下ろしは加速する。敵が低ければ同じ形で下りる', () => {
+    const sh = playerKickJumpShape(3, false);
+    const up = [0, 0.175, 0.35, 0.525, 0.7].map(f => playerKickJump(0, 40, f, sh, CAP).h);
+    const du = up.slice(1).map((v, i) => v - up[i]);
+    for (let i = 1; i < du.length; i++) expect(du[i]).toBeLessThan(du[i - 1]);
+    const dn = [0.7, 0.8, 0.9, 1].map(f => playerKickJump(0, 40, f, sh, CAP).h);
+    const dd = dn.slice(1).map((v, i) => dn[i] - v);
+    for (let i = 1; i < dd.length; i++) expect(dd[i]).toBeGreaterThan(dd[i - 1]);
+    expect(playerKickJump(30, 10, 0.5, playerKickJumpShape(2, false), CAP).h).toBeCloseTo(15, 5);
+    expect(playerKickJump(30, 10, 0.5, playerKickJumpShape(3, false), CAP).dir).toBe(-1);
+  });
+  it('当たった後の止めは短い(60ms)・反動の浮きは小さい(6px)', () => {
+    expect(PLAYER_KICK_HOLD_MS).toBe(60);
+    expect(PLAYER_KICK_RECOIL_PX).toBe(6);
+  });
+  it('3発目の溜めの間は、前の蹴りの高さから加速しながら落ちて、溜めの7割で着地する(残りは地面で溜める)', () => {
+    expect(PLAYER_KICK_LAND_FRAC).toBe(0.7);
+    expect(playerKickLandPx(56, 0)).toBe(56);
+    expect(playerKickLandPx(56, 1)).toBe(0);
+    expect(playerKickLandPx(56, 1.4)).toBe(0);
+    const hs = [0, 0.25, 0.5, 0.75, 1].map(u => playerKickLandPx(56, u));
+    const d = hs.slice(1).map((v, i) => hs[i] - v);
+    for (let i = 1; i < d.length; i++) expect(d[i]).toBeGreaterThan(d[i - 1]); // だんだん速く落ちる
+    expect(playerKickLandSpeed(56, 140)).toBeCloseTo(0.8, 5);                   // 着地の瞬間の速さ=2h/T
+  });
+  it('蹴りで当てた後は漂わない: ヒットストップが明けたらすぐ重力で落ちて着地する(追いかけ直さない)', () => {
+    // 同じ条件で: 普通の近接は 250ms 漂う / 蹴り(noHover)はすぐ落ちる。
+    const step = (noHover: boolean) => {
+      let s: PlayerAirState = { h: 40, vy: 0 }; let landAt = -1; const hs: number[] = [];
+      for (let t = 10; t <= 400; t += 10) {
+        const r = stepPlayerAir(s, { now: 1000 + t, dtMs: 10, targetPx: 60, hitAt: 1000, noHover });
+        s = r.state; hs.push(s.h);
+        if (r.landSpeed !== null && landAt < 0) landAt = t;
+      }
+      return { landAt, hs };
+    };
+    const hover = step(false), kick = step(true);
+    expect(hover.hs[5]).toBeGreaterThan(40);          // 追いかけて上がる(目標60)
+    expect(kick.hs[5]).toBeLessThan(40);              // 上がらず落ち始めている
+    expect(kick.landAt).toBeGreaterThan(150); expect(kick.landAt).toBeLessThan(220); // 40px は約180msで着地
+    // ヒットストップ中(now < hitAt)は動かない
+    const held = stepPlayerAir({ h: 40, vy: 0 }, { now: 990, dtMs: 10, targetPx: null, hitAt: 1000, noHover: true });
+    expect(held.state.h).toBe(40);
   });
 });
 

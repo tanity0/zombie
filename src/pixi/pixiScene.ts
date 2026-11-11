@@ -109,7 +109,7 @@ import {
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
-import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
+import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerKickJump, playerKickJumpShape, playerKickLandPx, playerKickLandSpeed, playerAirLaunchSpeed, PLAYER_KICK_LAND_FRAC, PLAYER_KICK_JUMP_MIN_PX, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
   BOSS_RECOVER_TINT,
@@ -4344,6 +4344,10 @@ interface ActorView {
   playerAir?: PlayerAirState & {
     at: number; scalePx?: number; dir?: number; takeoffAt?: number; landAt?: number; landStrength?: number;
     poseY: number; poseX: number; leanK: number; streakOffAt?: number; shiftX?: number;
+    /** 飛び蹴りの跳び(§18-3): いまの蹴りの名札・飛び出した時の高さ・跳びを出すか / 最後に見た空中の当たりと、それが蹴りだったか。 */
+    kickKey?: string; kickH0?: number; kickOn?: boolean; hitSeenAt?: number; hitByKick?: boolean; hitKickN?: number;
+    /** 蹴りが当たった時刻(止めと反動の起点)・反動を出したか / 踏み切りの砂埃の大きさ(跳ぶ高さ÷上限・未設定=普通)。 */
+    kickHitKey?: string; kickHitAt?: number; kickHopDone?: boolean; takeoffK?: number;
   };
   /** 浮いている間の接地の楕円(地面レイヤー)と、通常の影を消す係数(1=通常の影のまま)・上昇の白い筋。プレイヤーの view だけ。 */
   airGroundShadow?: Sprite;
@@ -20744,18 +20748,106 @@ export class PixiScene {
         const rel = enAir && brawlerAirborne(enAir, tAir) ? brawlerJuggleHeightRel(enAir, tAir) : hit.rel; // 敵が倒れた・着地した後は当てた時の高さ
         target = playerAirTargetPx(rel, st0.scalePx ?? 0, bodyH);
         // 蹴りの跳びの高さを出発点として引き継ぐ(空中で一段カクンと落ちない)。
-        if (brawlerJumpPx > st0.h && st0.vy <= 0) st0.h = brawlerJumpPx;
+        // (飛んでいる最中・溜めの最中の蹴りは、下の跳びの塊が高さを持つので引き継がない=着地した後に姿勢の高さへ戻さない。)
+        if (brawlerJumpPx > st0.h && st0.vy <= 0 && !(p.brawler?.phase === 'tech' && p.brawler.tech === 'kick' && !p.brawler.resolved)) st0.h = brawlerJumpPx;
       } else if (st0.dir !== undefined) dirAir = st0.dir;
-      const stepped = stepPlayerAir(st0, { now: tAir, dtMs: dtAir, targetPx: target, hitAt });
-      st0.h = stepped.state.h; st0.vy = stepped.state.vy; st0.crouchUntil = stepped.state.crouchUntil;
+      // ★飛び蹴りが空中の敵を追う時は、跳んでその高さで蹴る(社長指示2026-11-11・research/BRAWLER.md §18-3)。
+      //   飛んでいる間(3発目は溜めの後)、飛び出した時の高さから「当たる時刻の敵の高さ」へ跳ぶ(playerKickJump・形は蹴りごとに違う)。
+      //   当てた後は漂わず、ヒットストップが明けたら落ちて着地する(次の蹴りが出ればその高さからまた跳ぶ)。絵だけ(判定・移動は動かさない)。
+      const bsK = p.brawler;
+      const kicking = !!bsK && bsK.phase === 'tech' && bsK.tech === 'kick';
+      if (hit && hit.at !== st0.hitSeenAt) { st0.hitSeenAt = hit.at; st0.hitByKick = kicking; st0.hitKickN = kicking && bsK ? bsK.kickN : 0; }
+      const capK = bodyH * PLAYER_AIR_BODY_CAP;
+      let kickAir: number | null = null;
+      let kickDir: 1 | 0 | -1 = 0;   // 縦の動きの向き(姿勢と上昇の筋が読む)
+      let kickCrouch = false;        // 踏み切りの沈みの間
+      if (bsK && kicking && !bsK.resolved && bsK.targetId) {
+        const elK = BRW.brawlerElapsed(bsK, gameTime);
+        const chargeK = Math.max(0, Math.min(bsK.windupMs, bsK.kickChargeMs ?? 0));
+        const enK = elK >= chargeK ? stAir.enemies.find(en => en.id === bsK.targetId) : undefined;
+        if (enK) {
+          const tHit = tAir + Math.max(0, bsK.windupMs - elK);
+          const relHit = brawlerAirborne(enK, tHit) ? brawlerJuggleHeightRel(enK, tHit) : 0;
+          const viewHK = stAir.gameBounds.height / Math.max(0.05, stAir.viewZoom || 1);
+          const tgtK = playerAirTargetPx(relHit, Math.min(enemyFootBox(enK).boxH * BRW.BRAWLER_LIFT_VIS_BODY_K, viewHK * BRW.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC), bodyH);
+          const keyK = `${bsK.startAt}:${bsK.kickN}`;
+          if (st0.kickKey !== keyK) {
+            // 溜めの間の高さを蹴りが持っていた(空中から入って着地した)なら、出発点はその高さ(=地面)。姿勢の跳ねは足していないので含めない
+            // (含めると、着地した体が飛び出す瞬間に姿勢の跳ね約17pxへ一瞬で浮き、踏み切りの沈みも砂埃も出ない・検収2巡目)。
+            const chargeDriven = st0.kickKey === `${keyK}:c` && st0.kickOn === true;
+            st0.kickKey = keyK;
+            // 跳びを出すのは、当たる時の敵が浮いているか、自分が本当に宙に居る時だけ(地上の敵への蹴りは、今までどおり姿勢の跳ねのまま)。
+            st0.kickOn = tgtK >= PLAYER_KICK_JUMP_MIN_PX || st0.h >= PLAYER_KICK_JUMP_MIN_PX;
+            // 地面で溜めた3発目(姿勢の跳ねで浮いている)から跳ぶ時は、その高さから途切れずに上がる。
+            st0.kickH0 = chargeDriven ? st0.h : Math.max(st0.h, brawlerJumpPx);
+            if (st0.kickOn && st0.kickH0 < 0.5 && tgtK >= PLAYER_KICK_JUMP_MIN_PX) { // 地面から跳ぶ=離陸の砂埃(跳ぶ高さで大きさを変える)
+              st0.takeoffAt = tAir;
+              st0.takeoffK = Math.max(0, Math.min(1, tgtK / Math.max(1, capK)));
+            }
+          }
+          if (st0.kickOn) {
+            const fK = Math.min(1, (elK - chargeK) / Math.max(1, bsK.windupMs - chargeK));
+            const h0K = st0.kickH0 ?? 0;
+            const jk = playerKickJump(h0K, tgtK, fK, playerKickJumpShape(bsK.kickN, h0K < 0.5), capK);
+            kickAir = jk.h; kickDir = jk.dir; kickCrouch = jk.crouch;
+            dirAir = enK.x + enK.width / 2 >= fb.footX ? 1 : -1;
+            st0.dir = dirAir;
+          }
+        }
+      }
+      // 3発目の溜めの間: 前の蹴りの高さから、溜めの7割までに加速しながら落ちて着地する(残りは地面で溜める→そこから跳ぶ)。
+      let kickLandSpeed: number | null = null;
+      if (bsK && kicking && !bsK.resolved && kickAir === null) {
+        const elC = BRW.brawlerElapsed(bsK, gameTime);
+        const chargeC = Math.max(0, Math.min(bsK.windupMs, bsK.kickChargeMs ?? 0));
+        if (chargeC > 0 && elC < chargeC) {
+          const keyC = `${bsK.startAt}:${bsK.kickN}:c`;
+          if (st0.kickKey !== keyC) { st0.kickKey = keyC; st0.kickH0 = st0.h; st0.kickOn = st0.h >= 0.5; }
+          if (st0.kickOn) {
+            const landMs = chargeC * PLAYER_KICK_LAND_FRAC;
+            const hC = playerKickLandPx(st0.kickH0 ?? 0, elC / landMs);
+            if (hC <= 0 && st0.h > 0) kickLandSpeed = playerKickLandSpeed(st0.kickH0 ?? 0, landMs);
+            kickAir = hC; kickDir = hC > 0 ? -1 : 0;
+          }
+        }
+      }
+      // 高さを蹴りが持っている間(空中から入った溜め・跳び)は、蹴りの姿勢が持つ跳ね(溜めの跳び上がり・飛ぶ弧)は足さない
+      // =溜めで本当に地面へ着く(大きい方で合わせると 17〜24px 浮いたままになり、足元の砂埃と食い違う)。
+      if (kickAir !== null) brawlerJumpPx = 0;
+      // 蹴りが当たった後: 最初の 60ms だけその高さで止まり、蹴った反動で少し浮いてから重力で落ちる
+      // (長い止めの間じゅう止めると、敵は落ちているのに自分だけ宙に吊られて見える)。
+      if (bsK && kicking && bsK.resolved) {
+        const keyH = `${bsK.startAt}:${bsK.kickN}`;
+        if (st0.kickHitKey !== keyH) { st0.kickHitKey = keyH; st0.kickHitAt = tAir; st0.kickHopDone = false; }
+      }
+      const sinceKickHit = bsK && kicking && bsK.resolved && st0.kickHitAt !== undefined ? tAir - st0.kickHitAt : Infinity;
+      const kickStop = sinceKickHit < PLAYER_KICK_HOLD_MS && st0.h > 0.5;
+      if (!kickStop && sinceKickHit !== Infinity && !st0.kickHopDone) {
+        st0.kickHopDone = true;
+        if (st0.h > 0.5) st0.vy = playerAirLaunchSpeed(PLAYER_KICK_RECOIL_PX);
+      }
+      let stepped: ReturnType<typeof stepPlayerAir>;
+      if (kickStop) {
+        st0.vy = 0;
+        stepped = { state: st0, takeoff: false, landSpeed: null };
+      } else if (kickAir !== null) {
+        // 跳びの間は高さを蹴りが持つ(落下の続きは蹴りが終わってから)。速さは向きだけ(姿勢・上昇の筋のため)。
+        st0.h = kickAir; st0.vy = kickDir * 1e-3; st0.crouchUntil = kickCrouch ? tAir + 1 : undefined;
+        stepped = { state: st0, takeoff: false, landSpeed: kickLandSpeed };
+      } else {
+        stepped = stepPlayerAir(st0, { now: tAir, dtMs: dtAir, targetPx: target, hitAt, noHover: st0.hitByKick === true });
+        st0.h = stepped.state.h; st0.vy = stepped.state.vy; st0.crouchUntil = stepped.state.crouchUntil;
+      }
       const phase = playerAirPhase(st0, tAir);
-      if (stepped.takeoff) st0.takeoffAt = tAir;
+      if (stepped.takeoff) { st0.takeoffAt = tAir; st0.takeoffK = undefined; }
       if (stepped.landSpeed !== null) {
         st0.landAt = tAir;
-        st0.landStrength = playerAirLandStrength(stepped.landSpeed, bodyH);
+        // 3発目(締め)の後の着地は、高さに依らず一番深く沈む(決めの一撃の締め)。
+        // (3発目の止めと戻りの間に着地するので、蹴りの最中かは見ない。溜めの間の着地=まだ当てていない蹴り、は普通の強さ。)
+        st0.landStrength = st0.hitByKick && (st0.hitKickN ?? 0) >= 3 && (!kicking || bsK?.resolved === true) ? 1 : playerAirLandStrength(stepped.landSpeed, bodyH);
       }
       // 当たりごとの小さな跳ね(浮いている間だけ)。
-      const bump = hitAt !== null && phase !== 'ground' && phase !== 'crouch' ? playerAirBumpPx(tAir - hitAt) : 0;
+      const bump = hitAt !== null && phase !== 'ground' && phase !== 'crouch' && !kicking ? playerAirBumpPx(tAir - hitAt) : 0; // 蹴りの間は跳ねを足さない(上りがうねる)
       playerAirPx = st0.h + bump;
       // research/BRAWLER_PHANTOM.md §4-9: 格闘の幻影に打ち上げられた時の見た目の浮き(操作は奪わない)。追いかけの浮きと max で合わせる。
       playerAirPx = Math.max(playerAirPx, playerLaunchHeightPx(tAir, bodyH));
@@ -20782,7 +20874,9 @@ export class PixiScene {
         ([-1, 1] as const).forEach(side => {
           const behind = side === -dirAir;
           const puff = this.latchFx(`player:airtakeoffdust:${side}`, sinceTake < 60, DUST_MS * 0.7, tAir, () => [fb.footX + side * offT, fb.footY]);
-          if (puff) this.drawDust(puff.d[0], puff.d[1], bodyW * 0.6 * (behind ? 0.95 : 0.5), puff.t, this.dustTintForStage(), this.dustAlpha(puff.t) * (behind ? 0.85 : 0.55), puff.t0);
+          // 蹴りの踏み切りは、跳ぶ高さで砂埃の大きさを変える(低い跳び0.6倍〜上限まで跳ぶ1.2倍)。
+          const tkK = st0.takeoffK !== undefined ? 0.6 + 0.6 * st0.takeoffK : 1;
+          if (puff) this.drawDust(puff.d[0], puff.d[1], bodyW * 0.6 * tkK * (behind ? 0.95 : 0.5), puff.t, this.dustTintForStage(), this.dustAlpha(puff.t) * (behind ? 0.85 : 0.55), puff.t0);
         });
       }
       {
@@ -40417,7 +40511,8 @@ export class PixiScene {
     const mv = t * t * (3 - 2 * t);
     // followPlayer: x,y はプレイヤーの中心からのずれ(体と一緒に動く絵・格闘の飛び蹴りの筋)。
     let ox = 0, oy = 0;
-    if (e.followPlayer) { const pl = useGameStore.getState().player; ox = pl.x + pl.width / 2; oy = pl.y + pl.height / 2; }
+    // ★体が宙に浮いている時(空中の敵を追う・飛び蹴りの跳び=§18)は、体に付いた絵も同じ高さへ上げる(蹴りの筋だけ地面に残らない)。
+    if (e.followPlayer) { const pl = useGameStore.getState().player; ox = pl.x + pl.width / 2; oy = pl.y + pl.height / 2 - this.playerAirLiftPx; }
     spr.position.set(ox + e.x + (e.driftX ?? 0) * driftSec + (e.moveX ?? 0) * mv, oy + e.y + (e.driftY ?? 0) * driftSec + (e.moveY ?? 0) * mv);
     const fadeFrom = Math.max(0, Math.min(0.99, e.fadeFrom ?? 0.7));
     spr.alpha = (e.alpha ?? 1) * (t < fadeFrom ? 1 : Math.max(0, 1 - (t - fadeFrom) / (1 - fadeFrom))); // 後半でフェード

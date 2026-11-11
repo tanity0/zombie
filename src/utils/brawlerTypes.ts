@@ -40,6 +40,8 @@ export interface BrawlerState {
   kickN: number;
   /** 飛び蹴りの3発目の溜め(ms・gameTime)。前隙(windupMs)の頭のこの長さは空中で光って沈み、その後に飛ぶ。0/無し=溜め無し。 */
   kickChargeMs?: number;
+  /** 飛び蹴りの3発目: 溜めが明けて飛び出す瞬間に、飛ぶ先を取り直したか(1回だけ・research/BRAWLER.md §19-10)。 */
+  kickReaimed?: boolean;
   /** 行動の始まり(gameTime)。 */
   startAt: number;
   /** この行動の前隙と戻り(ms)。前隙は #7 の「前隙なし」で 0 になることがある。 */

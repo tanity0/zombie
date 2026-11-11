@@ -5471,14 +5471,17 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     // 当たった瞬間に筋が伸び切って前へ抜ける+蹴り脚の弧(vfx/slash_02 の三日月・膨らみを前へ)。3発目は弧をもう1枚(fx/slash-arc)。
     {
       const ang = Math.atan2(dir.y, dir.x);
-      const fy = c.y + p.height * 0.18;
-      brawlerFx(get, c.x, fy, 'fx/dash-wind', {
+      // ★体に付けて出す(followPlayer=体の中心からのずれ): 跳んで蹴った時は、体と同じ高さで出る(地面に残らない・§18-3)。地上の蹴りでは今までと同じ位置。
+      const fy = p.height * 0.18;
+      brawlerFx(get, 0, fy, 'fx/dash-wind', {
+        followPlayer: true,
         scale: big ? 0.22 : 0.16, scaleX: big ? 2.0 : 1.5, rot: ang + Math.PI, duration: big ? 220 : 160, fadeFrom: 0.15, moveX: dir.x * (big ? 70 : 44), moveY: dir.y * (big ? 70 : 44), alpha: 0.9,
       });
-      brawlerFx(get, c.x + dir.x * 30, fy - 4 + dir.y * 14, 'vfx/slash_02', {
+      brawlerFx(get, dir.x * 30, fy - 4 + dir.y * 14, 'vfx/slash_02', {
+        followPlayer: true,
         scale: big ? 0.8 : 0.55, scaleY: 0.8, rot: ang - Math.PI / 2, duration: big ? 260 : 180, fadeFrom: 0.25, moveX: dir.x * 18, moveY: dir.y * 18, alpha: 1,
       });
-      if (big) brawlerFx(get, c.x + dir.x * 34, fy - 8, 'fx/slash-arc', { scale: 0.62, scaleX: 0.5, rot: ang + Math.PI, duration: 240, fadeFrom: 0.3, moveX: dir.x * 26, moveY: dir.y * 26 });
+      if (big) brawlerFx(get, dir.x * 34, fy - 8, 'fx/slash-arc', { followPlayer: true, scale: 0.62, scaleX: 0.5, rot: ang + Math.PI, duration: 240, fadeFrom: 0.3, moveX: dir.x * 26, moveY: dir.y * 26 });
     }
     brawlerSfx('brawler-hit', hits > 0 ? (big ? 1.1 : 0.8) : 0.35, (big ? 0.66 : 1.0) * brJitter(), big ? 300 : 200);
     if (hits > 0) brawlerSfx('whip-hit', 0.55, (big ? 0.7 : 0.85) * brJitter(), 160, 10);
@@ -5513,6 +5516,7 @@ const brawlerSpark = (
     // 縁から少しだけ内へ・胴の高さへ(絵は帯より上に伸びる)。
     x = nx + (h.x - nx) * 0.2;
     y = Math.min(ny, h.y) - Math.min(18, e.height * 0.3);
+    // (空中の敵の浮いた高さは、当てた位置 h.y に入っている=idolAirLift が格闘の浮きも足す。)
   }
   const now = Date.now();
   g.spawnEffect({ kind: 'meleeHit', id: `mhit-br-${now}-${h.id}-${(Math.random() * 1e6) | 0}`, x, y, size: k.size, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: k.ms, rot: Math.random() * Math.PI * 2 });
@@ -9859,7 +9863,20 @@ const crawlerFxAt = (x: number, y: number): { x: number; y: number } | null => {
  * 宙にいる偶像(大ジャンプ)に**当たった**絵(血・火花・数字・斬撃の当たり)を持ち上げる量(px)。判定は床の箱のまま。
  * ★当てた敵が分かっている所でだけ呼ぶ(点の位置で推測しない=他の敵・壁・破片の絵を持ち上げない・品質監査2巡目A)。
  */
-const idolAirLift = (e: Enemy | undefined): number => idolAirLiftOf(e, useGameStore.getState().gameTime);
+const idolAirLift = (e: Enemy | undefined): number => idolAirLiftOf(e, useGameStore.getState().gameTime) + brawlerVisLiftPx(e);
+/**
+ * ★格闘の浮きで宙に居る敵の、絵の浮いた高さ(px・敵の描画と同じ式=pixiScene の brLiftPx)。浮いていなければ 0。
+ * 近接の当たりの絵(斬撃の筋・当たりの光・ダメージ数字・会心の印)を、地面ではなく敵の絵の高さで出すために使う(絵の位置だけ・判定は動かさない)。
+ * 旧: 空中の敵に当てても、絵は全部その敵の足元(地面)に出ていた(クリエイティブ監査2026-11-11)。
+ */
+const brawlerVisLiftPx = (e: Enemy | undefined): number => {
+  if (!e) return 0;
+  const t = Date.now();
+  if (!BRC.brawlerAirborne(e, t)) return 0;
+  const g = useGameStore.getState();
+  const viewH = g.gameBounds.height / Math.max(0.05, g.viewZoom || 1);
+  return BRC.brawlerJuggleHeightRel(e, t) * Math.min(enemyFootBox(e).boxH * BR.BRAWLER_LIFT_VIS_BODY_K, viewH * BR.BRAWLER_LIFT_VIS_MAX_VIEW_FRAC);
+};
 
 export const useGameStore = create<GameState>((set, get) => ({
   player: {
@@ -11098,6 +11115,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★覚えたステップ(§12-3b): 受け付けられるようになった瞬間に出す(後隙の取り消し・待機・前のステップの終わり)。期限切れは捨てる。
     if (s0.stepBuffer) { const r = settleBufferedBrawlerStep(get, set, s0); if (r === 'fire' || r === 'expire') return; }
     if (s0.phase === 'idle') return;
+    // ★飛び蹴りの3発目: 溜めが明けて飛び出す瞬間に、狙った敵の今の位置へ飛ぶ先を取り直す(1回だけ・research/BRAWLER.md §19-10)。
+    //   当たる時刻(前隙の終わり)は変えない=残りの飛ぶ時間で、取り直した距離を詰める。敵が居ない・狙えない時は取り直さない(今の飛ぶ先のまま)。
+    if (BR.brawlerKickReaimDue(s0, p.lungeHoldUntil ?? 0, now)) {
+      const tgt = get().enemies.find(e => e.id === s0.targetId) ?? null;
+      // 残りの飛ぶ時間は前隙の残りから取る(踏み込みの器の期限からは取らない: 始めた時に敵が密着していると器は空=期限0で、
+      // 取り直しが走らず、溜めの間に滑った敵に届かなかった・検収2026-11-11)。
+      const remain = s0.windupMs - BR.brawlerElapsed(s0, t);
+      if (tgt && BR.isBrawlerTargetable(tgt) && remain > 0) {
+        const c = brawlerCenter(p);
+        const ap = BR.brawlerApproach(c.x, c.y, tgt, BR.BRAWLER_KICK_RANGE);
+        const dir = BR.brawlerAimDir(c.x, c.y, tgt, p.lastDirection);
+        setBrawler(set, { ...s0, kickReaimed: true, dirX: dir.x, dirY: dir.y }, { ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, remain, now), lastDirection: { x: dir.x, y: dir.y } });
+      } else setBrawler(set, { ...s0, kickReaimed: true });
+      return;
+    }
     // 前隙の途中で掴まれた・対人の紫に入った・シーカーに入った=出かかった段/技を取り消し、先行入力も捨てる(§8-4)。
     if (!s0.resolved && (isPlayerGrabbed(p, t) || isPvpIncapacitated(p.pvpPosture, t) || (isSeekerActive(p, t) && skillLevel(p, 'seeker') < 3))) {
       setBrawler(set, BR.brawlerCancel(s0), { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeHoldUntil: 0 });

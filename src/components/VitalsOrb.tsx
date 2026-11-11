@@ -283,7 +283,8 @@ const drawLiquid = (
     if (elapsedMs >= RIPPLE_DURATION) {
       state.rippleStartTime = null;
     } else {
-      const t = elapsedMs / RIPPLE_DURATION;
+      // 経過が浮動小数の誤差でわずかに負になることがある(半径が負=ellipse が例外を投げて描画が止まる・実ループの検証2026-11-11)。
+      const t = Math.max(0, elapsedMs / RIPPLE_DURATION);
       const r = ORB_R * 0.55 * t;
       ctx.beginPath();
       ctx.ellipse(CX, state.rippleY, r, r * 0.32, 0, 0, Math.PI * 2);

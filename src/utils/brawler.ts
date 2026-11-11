@@ -307,6 +307,16 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
 };
 
 /**
+ * ★飛び蹴りの3発目の狙い直し(社長指示2026-11-11「3段目もジャンプして、そこの高さに追いついて、蹴り飛ばす」・research/BRAWLER.md §19-10)。
+ * 3発目は蹴りに入る前に溜める。飛ぶ先を溜め始めの敵の位置で決めたままだと、溜めの間に前の蹴りの押しで滑った敵に届かない
+ * (実ループで36本中5本が空振り)。溜めが明けて踏み込みの器が動き出す瞬間(lungeHoldUntil を過ぎた最初の更新)に、1回だけ取り直す。
+ * lungeHoldUntil=踏み込みの器を止めている終わり(Date.now・0=止めていない)。
+ */
+export const brawlerKickReaimDue = (
+  s: Pick<BrawlerState, 'phase' | 'tech' | 'kickChargeMs' | 'resolved' | 'kickReaimed' | 'targetId'>, lungeHoldUntil: number, now: number,
+): boolean => s.phase === 'tech' && s.tech === 'kick' && (s.kickChargeMs ?? 0) > 0 && !s.resolved && !s.kickReaimed
+  && !!s.targetId && lungeHoldUntil > 0 && now >= lungeHoldUntil;
+/**
  * 新しい技を始めた状態(ポイントは呼び手が払う)。cancel=技の後隙を取り消して出した(§11-4)=技の流れを続ける。
  * 飛び蹴りの2・3発目は同じ技の続き(流れはそのまま)。それ以外は流れをこの技から始め直す。
  */
@@ -319,7 +329,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
     // 飛び蹴りの3発目は溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。
     kickChargeMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0,
     windupMs: spec.windupMs + (kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0), recoveryMs: spec.recoveryMs,
-    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
+    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false, kickReaimed: false,
     // 技の後は1段目(§7-5)。
     nextStage: 1, chainUntil: 0,
     guardUntil: kind === 'guard' ? t + BRAWLER_GUARD_MS : s.guardUntil,

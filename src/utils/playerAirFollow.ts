@@ -66,6 +66,11 @@ export interface PlayerAirStepInput {
   targetPx: number | null;
   /** 最後の空中の当たりを「効かせる時刻」(Date.now)。ヒットストップが明けた時刻を渡す(その前は動かさない)。null=当たり無し。 */
   hitAt: number | null;
+  /**
+   * 追いかけも漂いもしない(§18-3・飛び蹴りで当てた後): ヒットストップが明けたら、そのまま重力で落ちて着地する
+   * (社長指示2026-11-11「ポンって飛んでって蹴って、着地して」)。ヒットストップ中に動かさないのは同じ。
+   */
+  noHover?: boolean;
 }
 export interface PlayerAirStepResult {
   state: PlayerAirState;
@@ -90,7 +95,7 @@ export const stepPlayerAir = (s: PlayerAirState, inp: PlayerAirStepInput): Playe
   let landSpeed: number | null = null;
   if (inp.hitAt !== null && now < inp.hitAt) return { state: s, takeoff, landSpeed }; // ヒットストップ中
   const since = inp.hitAt === null ? Infinity : now - inp.hitAt;
-  const following = inp.targetPx !== null && since <= PLAYER_AIR_HOVER_MS;
+  const following = !inp.noHover && inp.targetPx !== null && since <= PLAYER_AIR_HOVER_MS;
   // 飛び上がり(目標が今より高い・上っていない時)。
   if (following && inp.targetPx! - h > 1 && vy <= 1e-6) {
     if (h <= 0.5) {
@@ -107,7 +112,7 @@ export const stepPlayerAir = (s: PlayerAirState, inp: PlayerAirStepInput): Playe
     const tUp = vy / PLAYER_AIR_GRAVITY;
     if (tUp <= dt) { h += (vy * tUp) / 2; vy = 0; }
     else { h += vy * dt - 0.5 * PLAYER_AIR_GRAVITY * dt * dt; vy -= PLAYER_AIR_GRAVITY * dt; }
-  } else if (since <= PLAYER_AIR_HOVER_MS && h > 0) { // 漂い
+  } else if (!inp.noHover && since <= PLAYER_AIR_HOVER_MS && h > 0) { // 漂い
     vy = 0;
     h = Math.max(0, h - PLAYER_AIR_HOVER_SINK * dt);
   } else if (h > 0) { // 落下
@@ -118,6 +123,62 @@ export const stepPlayerAir = (s: PlayerAirState, inp: PlayerAirStepInput): Playe
   }
   return { state: { h, vy, crouchUntil }, takeoff, landSpeed };
 };
+
+/**
+ * ★飛び蹴りが空中の敵を追う時の跳び(§18-3・社長指示2026-11-11「ポンって飛んでって蹴って」「3段目もジャンプして、そこの高さに追いついて、蹴り飛ばす」)。
+ * 飛んでいる間(f=飛ぶ時間の進み 0..1)に、飛び出した時の高さ h0 から「当たる時の敵の高さ」target(px)へ。当たる時刻(f=1)に必ず target に居る。
+ * 形は蹴りごとに変える(クリエイティブ監査2026-11-11: 3発とも同じ曲線で「上がり切って止まった所に足を置く」のを避ける):
+ *  - 1発目: 低く速く。target の少し上(×1.08)まで f=0.8 で上がり、少し降りながら当てる。
+ *  - 2発目: 空中からの小跳び(行き過ぎなし・頂点で速さ0の放物線)。
+ *  - 3発目: 大きく跳び越えて(×1.2・f=0.7)、加速しながら蹴り下ろす。
+ * 地面から跳ぶ時は、最初の crouchF の間は地面で沈む(膝を溜めてから伸びる)。敵が h0 より低い時は行き過ぎなしで同じ形で下りる。
+ */
+export interface PlayerKickJumpShape { over: number; peakF: number; crouchF: number }
+export const playerKickJumpShape = (kickN: number, fromGround: boolean): PlayerKickJumpShape => ({
+  over: kickN >= 3 ? 1.2 : kickN <= 1 ? 1.08 : 1,
+  peakF: kickN >= 3 ? 0.7 : kickN <= 1 ? 0.8 : 1,
+  crouchF: fromGround ? 0.12 : 0,
+});
+/**
+ * 跳びの高さ(px)と、縦の動きの向き(dir: 1=上っている / 0=頂点付近 / −1=下りている=姿勢と上昇の筋が読む)・地面で沈んでいる間か(crouch)。
+ * capPx=行き過ぎの上限(体の高さ×1.3)。
+ */
+export const playerKickJump = (
+  h0: number, target: number, f: number, shape: PlayerKickJumpShape, capPx: number,
+): { h: number; dir: 1 | 0 | -1; crouch: boolean } => {
+  const u0 = Math.max(0, Math.min(1, f));
+  if (shape.crouchF > 0 && u0 < shape.crouchF) return { h: Math.max(0, h0), dir: 0, crouch: true };
+  const u = shape.crouchF > 0 ? (u0 - shape.crouchF) / (1 - shape.crouchF) : u0;
+  const rising = target >= h0;
+  const top = Math.max(target, Math.min(Math.max(target, capPx), target * shape.over));
+  if (!rising || shape.peakF >= 1 || top <= target + 0.5) {
+    const h = h0 + (target - h0) * (1 - (1 - u) * (1 - u)); // 頂点で速さ0の放物線(下りも同じ形)
+    return { h: Math.max(0, h), dir: rising ? (u < 0.6 ? 1 : 0) : -1, crouch: false };
+  }
+  if (u <= shape.peakF) {
+    const a = u / shape.peakF;
+    return { h: Math.max(0, h0 + (top - h0) * (1 - (1 - a) * (1 - a))), dir: a < 0.7 ? 1 : 0, crouch: false };
+  }
+  const b = (u - shape.peakF) / (1 - shape.peakF);
+  return { h: Math.max(0, top + (target - top) * b * b), dir: -1, crouch: false }; // 加速しながら蹴り下ろす
+};
+/** 蹴りが当たった後、その高さで止まる長さ(ms)と、蹴った反動の小さな浮き(px)。止めは短く=敵が落ちているのに自分だけ宙で止まらない。 */
+export const PLAYER_KICK_HOLD_MS = 60;
+export const PLAYER_KICK_RECOIL_PX = 6;
+/**
+ * ★3発目の溜めの間の着地(§18-3・社長指示2026-11-11「蹴って、着地して、3段目が出る」)。
+ * 前の蹴りで浮いた高さ h0 から、溜めの PLAYER_KICK_LAND_FRAC までに加速しながら落ちて着地する(u=溜めの進み÷その割合・0..1)。
+ * 残りの溜めは地面で沈んで力を溜め、そこから跳ぶ。重力の落下(約180ms/40px)だと溜め(約195ms)の内に着地し切れないので、溜めの長さに合わせる。
+ */
+export const PLAYER_KICK_LAND_FRAC = 0.7;
+export const playerKickLandPx = (h0: number, u: number): number => {
+  const q = Math.max(0, Math.min(1, u));
+  return Math.max(0, h0) * (1 - q * q);
+};
+/** その着地の瞬間の落下の速さ(px/ms)。landMs=着地までの長さ。着地の沈みの強さ(playerAirLandStrength)へ渡す。 */
+export const playerKickLandSpeed = (h0: number, landMs: number): number => (2 * Math.max(0, h0)) / Math.max(1, landMs);
+/** 跳びを出すしきい値(px)。当たる時の敵がこれより低い(ほぼ地面)・自分も地面なら、今どおりの地上の蹴りの跳ねのまま。 */
+export const PLAYER_KICK_JUMP_MIN_PX = 4;
 
 /** 当たり1発ごとの小さな跳ね(px)。0〜80ms で ease-out に上がり、続く120msで滑らかに戻る。 */
 export const playerAirBumpPx = (sinceHitMs: number): number => {
