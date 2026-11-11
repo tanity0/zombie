@@ -21372,7 +21372,21 @@ export class PixiScene {
         : (p.direction === 'left' || (p.lastDirection != null && p.lastDirection.x < 0));
       const wantFace: -1 | 1 = flip ? -1 : 1;
       const faceMul: number = wantFace * (brPose?.flip ? -1 : 1); // 格闘の2段目は絵を反転して逆の手を形で見せる(クリエイティブ監査 #5)
-      view.sprite.scale.set(sc * faceMul * introSqX * walkSqX * actSqX, sc * introSqY * walkSqY * actSqY);
+      // ★浮いている間は体をわずかに大きく(敵の浮きと同じ割合・最大 ×1.10。社長承認2026-11-11)。高さに合わせて膨らみ、時間で遅れて追う(慣性)。
+      // 縦横同じ=歪ませない。足元(anchor)は動かない・判定は変えない・接地の影は大きくしない。技の影(drawBrawlerStand)も同じ倍率。
+      {
+        const hAir = view.playerAir?.h ?? 0;
+        const kAir = Math.min(1, hAir / Math.max(1, fb.boxH * dsc * PLAYER_AIR_BODY_CAP));
+        const want = kAir * kAir * (3 - 2 * kAir);
+        const tNow = Date.now();
+        const dt = view.airSwellAt !== undefined ? Math.max(0, Math.min(100, tNow - view.airSwellAt)) : 0;
+        view.airSwell = (view.airSwell ?? 0) + (want - (view.airSwell ?? 0)) * (1 - Math.exp(-dt / BRAWLER_AIR_SWELL_TAU_MS));
+        view.airSwellAt = tNow;
+        if (hAir <= 0 && view.airSwell < 0.002) view.airSwell = 0;
+      }
+      const pAirScale = 1 + (BRAWLER_AIR_BODY_SCALE - 1) * (view.airSwell ?? 0);
+      this.playerAirScale = pAirScale;
+      view.sprite.scale.set(sc * pAirScale * faceMul * introSqX * walkSqX * actSqX, sc * pAirScale * introSqY * walkSqY * actSqY);
       view.sprite.rotation = walkLean + actLean;
       // ★アバターの焼き込み: 装備中なら、いま出す体のコマを耳・尻尾入りの絵へ差し替える(寸法・足元は同じ)。
       this.playerAvatarBaked = false;
@@ -22861,12 +22875,14 @@ export class PixiScene {
     const brAirK = e.brawlerLiftAt !== undefined ? brawlerAirSignal(e, Date.now()) : 0;
     // ⑤ 体の拡大(頂点で ×1.10)は「上がり切ってから膨らみ、落ち始めで戻る」: 頂点の近く(割合0.8→1)だけを目標にし、時間で遅れて追う(慣性)。
     {
-      const want = brAirK <= 0.8 ? 0 : (() => { const q = (brAirK - 0.8) / 0.2; return q * q * (3 - 2 * q); })();
+      // 近接フィニッシュ・会心の跳ね(格闘の弧ではない方の浮き)でも同じ決まりで膨らむ(社長指示2026-11-11「これクリティカルもそうかも」)。
+      const airSig = Math.max(brAirK, liftT > 0 ? Math.sin(liftT * Math.PI) : 0);
+      const want = airSig <= 0.8 ? 0 : (() => { const q = (airSig - 0.8) / 0.2; return q * q * (3 - 2 * q); })();
       const tNow = Date.now();
       const dt = view.airSwellAt !== undefined ? Math.max(0, Math.min(100, tNow - view.airSwellAt)) : 0;
       view.airSwell = (view.airSwell ?? 0) + (want - (view.airSwell ?? 0)) * (1 - Math.exp(-dt / BRAWLER_AIR_SWELL_TAU_MS));
       view.airSwellAt = tNow;
-      if (e.brawlerLiftAt === undefined && view.airSwell < 0.002) view.airSwell = 0;
+      if (e.brawlerLiftAt === undefined && liftT <= 0 && view.airSwell < 0.002) view.airSwell = 0;
     }
     const airScale = 1 + (BRAWLER_AIR_BODY_SCALE - 1) * (view.airSwell ?? 0);
     // ★格闘の止めの間の震え: 当てた方向に沿って、止めの残りとともに減衰(#12)。絵だけ。
@@ -40446,6 +40462,8 @@ export class PixiScene {
     return this.leverGuardArm;
   }
   /** 拳鬼の縮地の残像(元の所・1枚を使い回す・research/BRAWLER_PHANTOM.md §14)。 */
+  /** 浮いている間のプレイヤーの体の拡大(1〜1.10)。技の影も同じ倍率で描く。 */
+  private playerAirScale = 1;
   private kenkiShukuchiGhost: Sprite | null = null;
   private phantomBrawlerAura: Sprite | null = null;
   private drawBrawlerStand(
@@ -40485,7 +40503,7 @@ export class PixiScene {
     } else {
       reach = f.kind === 'guard' ? 14 : f.kind === 'palm' ? 46 : f.kind === 'slam' ? 0 : 32;
     }
-    const h = spec.heightPx * (f.big ? BRW.BRAWLER_STAND_STOMP_MULT : 1) * (f.light ? BRW.BRAWLER_STAND_LIGHT_SCALE : 1) * dsc;
+    const h = spec.heightPx * (f.big ? BRW.BRAWLER_STAND_STOMP_MULT : 1) * (f.light ? BRW.BRAWLER_STAND_LIGHT_SCALE : 1) * dsc * (which === 'player' ? this.playerAirScale : 1);
     const k = h / tex.height;
     const w = tex.width * k;
     // 手足の先が体の中心からどれだけ前にあるか(絵の上で)。足りない分だけ体ごと前へずらす(伸びる量)。

@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5489', items: [
+    '格闘で宙に浮いている間、自分の体と技の絵も少し大きく見える',
+    '会心で跳ね上がった敵も、頂点で少し大きく見える',
+  ] },
   { version: '0.25.5488', items: [
     '格闘で殴って固めている間も、種を撃つ変異体が弾を撃ち続けていたのが直った',
   ] },
