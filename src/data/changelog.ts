@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5501', items: [
+    '宙に浮いた敵と自分の絵が、さらに大きく見える',
+  ] },
   { version: '0.25.5500', items: [
     '格闘の大踏み潰しの威力を少し戻した',
   ] },
