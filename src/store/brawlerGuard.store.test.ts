@@ -440,12 +440,12 @@ describe('検収監査: 押しの最中の潰し・本物の盾が防いだ当�
 // ★技を出したら通信の下に行が出る(社長指示2026-11-11「技を出したら、通信の下に出す。スキルと同じ線」・research/BRAWLER.md §21)。
 describe('技を出した瞬間に、通信の下の行が足される(§21)', () => {
   const feed = () => useGameStore.getState().skillProcFeed.map(e => `${e.key}x${e.hits}`);
-  it('構え→行が出る・構えの延長は同じ行の数が増える', () => {
+  it('構え→行が出る・構えの延長は新しい行が1つ増える(まとめない・社長指示2026-11-11)', () => {
     setup();
     guardNow(6); // 6 − 3 = 3(延長1回ぶん残る)
     expect(feed()).toEqual(['tech:guardx1']);
     expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true); // 延長
-    expect(feed()).toEqual(['tech:guardx2']);
+    expect(feed()).toEqual(['tech:guardx1', 'tech:guardx1']);
   });
   it('構えで雑魚を受けた瞬間の大踏み潰し(代金なし)も行が出る', () => {
     setup();

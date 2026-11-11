@@ -4898,17 +4898,20 @@ const fireBufferedBrawlerTech = (
   get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState, cancel: boolean,
 ): void => {
   const kind = s.techBuffer;
-  const s1: BR.BrawlerState = { ...s, techBuffer: undefined };
+  const s1: BR.BrawlerState = { ...s, techBuffer: undefined, heelBuffer: false };
   if (!kind || !brawlerGateOk(get)) { setBrawler(set, s1); return; }
   const p = get().player;
   const awakened = isBloodAwakening(p, get().gameTime);
-  if (!BR.brawlerCanPay(s1, kind, awakened, brawlerTechDiscount(p, kind))) {
+  // 覚えた蹴りが踵落とし(下で入れた・§29): 出す瞬間にも「2発目の続き」であること(連続の受付が切れていたら、何も出さない=1発目の蹴りに化けさせない)。
+  const heel = kind === 'kick' && s.heelBuffer === true;
+  if (heel && !BR.brawlerHeelInput(s1, 'stomp', get().gameTime)) { setBrawler(set, s1); return; }
+  if (heel ? s1.points < BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : !BR.brawlerCanPay(s1, kind, awakened, brawlerTechDiscount(p, kind))) {
     brawlerSfx('ui-deny', 0.55, 0.72, 160);
     setBrawler(set, { ...s1, denyAt: Date.now() });
     return;
   }
   // 飛び蹴りの連続の続き(蹴り→蹴り)はキャンセルではない(今どおり)。
-  startBrawlerTech(get, set, s1, kind, awakened, cancel && !(kind === 'kick' && s.tech === 'kick'));
+  startBrawlerTech(get, set, s1, kind, awakened, cancel && !(kind === 'kick' && s.tech === 'kick'), false, heel);
 };
 const startBrawlerTech = (
   get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState, kind: BR.BrawlerTechKind, awakened = false,
@@ -4919,6 +4922,8 @@ const startBrawlerTech = (
    * 秘奥義の順番にも数えない(入力ではないため)。出だしの絵・音・当たりは普通の技と同じ。
    */
   free = false,
+  /** 踵落とし(§29): 飛び蹴りの3発目を、蹴り飛ばしの代わりに踵落としで出す(呼び手が「2発目の続き」を確かめている)。 */
+  heelReq = false,
 ): void => {
   const st = get();
   const p = st.player;
@@ -4926,16 +4931,17 @@ const startBrawlerTech = (
   const now = Date.now();
   const c = brawlerCenter(p);
   const kickN = kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
+  const heel = heelReq && kind === 'kick' && kickN >= BR.BRAWLER_KICK_MAX;
   // ★§19-3 ②: この技が道の上の続きか(取り消しで出した技=通常→技・技→技、飛び蹴りの連続の続き)。待機から出した技は続きではない
   //   (連続の受付の内に待機から出した次の蹴りだけは続き)。代金なしの潰し(構えで受けた瞬間)は入力ではない=続きではない。
   const linkFrom: BR.BrawlerRouteNode = s0.phase !== 'idle' ? BR.brawlerRouteNodeOf(s0)
     : kind === 'kick' && kickN > 1 ? BR.brawlerTechNode('kick', kickN - 1) : 'idle';
   const linked = !free && kind !== 'guard' && linkFrom !== 'idle' && BR.brawlerRouteAllows(linkFrom, BR.brawlerTechNode(kind, Math.max(1, kickN)));
   // ★タイムキーパー/オーバークロックの読み替え(research/BRAWLER.md §15・社長承認2026-11-09): 値段の割引と、確率で払った技ポイントを返す。
-  const techCost = free ? 0 : BR.brawlerTechCost(kind, awakened, brawlerTechDiscount(p, kind));
+  const techCost = free ? 0 : heel ? BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : BR.brawlerTechCost(kind, awakened, brawlerTechDiscount(p, kind));
   const techRefund = !free && BRS.brawlerOverclockRefunds(techCost, skillLevel(p, 'overclock'));
   // 技ポイントが返った行は、技の行の後に足す(上から「出した技 → 返ってきた」の順に読める・下の notifyTechProc の後)。
-  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel), pressAt: now, points: s0.points - (techRefund ? 0 : techCost), ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
+  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel, heel), pressAt: now, points: s0.points - (techRefund ? 0 : techCost), ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
   // ★秘奥義の順番(research/BRAWLER.md §10-1): 実際に出た技で数える。↑構えで揃ったら、構えを秘奥義に置き換える(ポイントは払った後・窓は張らない)。
   // キャンセルで繋いだ時は前の技の終わり=いま(0ms 扱い・§11-4)。代金なしの技(free)は数えない=順番の進みはそのまま。
   if (!free) {
@@ -4997,7 +5003,7 @@ const startBrawlerTech = (
   // 取り消しで出した技(道の上の続き)の印(状態に残すだけ。§20 で続きを出した瞬間の固まりの延ばしは撤去した=固まりは当たりの瞬間に書く)。
   if (linked) s = { ...s, linked: true };
   setBrawler(set, s, extra);
-  notifyTechProc(kind, kickN); // 通信の下に技の行(秘奥義に置き換わった時は上で return 済み=秘奥義の行だけが出る)
+  notifyTechProc(heel ? 'heel' : kind, kickN); // 通信の下に技の行(秘奥義に置き換わった時は上で return 済み=秘奥義の行だけが出る)
   if (techRefund) notifySkillProc('overclock');
   const g = get();
   if (cancel) {
@@ -5452,17 +5458,20 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   }
   if (s.tech === 'kick') {
     const big = s.kickN >= BR.BRAWLER_KICK_MAX;
+    const heel = big && s.kickHeel === true; // 踵落とし(§29): 押さずに下へ叩きつける(空中の敵は叩き落とす・地上の敵はその場で固まる)
     const hs = BR.BRAWLER_KICK_HITSTOP_MS[Math.max(1, Math.min(3, s.kickN))];
     const ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
     const gstop = brawlerGlobalStopOk(get, big); // ★試し(?brstop=)
     const kickStop = gstop ? 0 : hs;
+    // 踵落とし: 当たる前に浮いていた敵(叩き落とす)と地上の敵(その場で沈む)で、絵を出し分ける。
+    const heelAir = heel ? new Set(st.enemies.filter(e => ids.includes(e.id) && BRC.brawlerAirborne(e, now)).map(e => e.id)) : null;
     const r = strike(ids, {
-      mult: BR.brawlerKickMult(s.kickN), stunMs: hs, ...(gstop ? { lockStopMs: 0 } : {}), postureMult: BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.2
+      mult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), stunMs: hs, ...(gstop ? { lockStopMs: 0 } : {}), postureMult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.2
       // 押し: 1〜3発目とも普通のノックバック。3発目は旧「吹き飛ばし(big)」→ 少しのノックバックへ(社長指示2026-11-11「3段目はノックバック少しさせちゃって良い」)。
       // 2発目は地上の敵を少し打ち上げる(同・utils/brawlerCombo の BRAWLER_GROUND_LAUNCH)。空中の敵への3発目は今どおり締めの叩き落とし。
       // ★3発目はもう少し吹き飛ばす(社長指示2026-11-11・BRAWLER_KICK3_KB_POWER)。押しの種類は普通のまま=強さだけ上げる。
-      kb: { kind: 'normal', dirX: dir.x, dirY: dir.y, ...(big ? { power: BR.BRAWLER_KICK3_KB_POWER } : {}) },
-      combo: { move: BRC.brawlerKickMoveKey(s.kickN) },
+      kb: heel ? { kind: 'none' } : { kind: 'normal', dirX: dir.x, dirY: dir.y, ...(big ? { power: BR.BRAWLER_KICK3_KB_POWER } : {}) },
+      combo: { move: BRC.brawlerKickMoveKey(s.kickN, heel) },
     });
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
@@ -5477,11 +5486,56 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     });
     brawlerNoteFlowHits(set, hits);
     for (const h of r.hitAt ?? []) {
+      if (heel) {
+        // 踵は頭の上から入る=火花は相手の頭の上(横腹ではない)。揺れは縦(下へ叩きつける)。
+        const e = get().enemies.find(en => en.id === h.id);
+        const hx = e ? e.x + e.width / 2 : h.x, hy = e ? Math.min(h.y, e.y) - (e.height * 0.15) : h.y - 24;
+        g.spawnEffect({ kind: 'meleeHit', id: `mhit-heel-${now}-${h.id}`, x: hx, y: hy, size: BR.BRAWLER_SPARK.closer.size, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: BR.BRAWLER_SPARK.closer.ms, rot: Math.random() * Math.PI * 2 });
+        brawlerFx(get, hx, hy + 10, 'vfx/flare_01', { scale: 0.8, scaleY: 1.4, duration: 200, fadeFrom: 0.2, moveY: 22, alpha: 0.95 });
+        brawlerClosingFx(get, h.x, h.y, { x: 0, y: 1 });
+        continue;
+      }
       brawlerSpark(get, h, c, big ? BR.BRAWLER_SPARK.closer : BR.BRAWLER_SPARK.weak);
       if (big) brawlerClosingFx(get, h.x, h.y, dir);
     }
-    // 当たった瞬間に筋が伸び切って前へ抜ける+蹴り脚の弧(vfx/slash_02 の三日月・膨らみを前へ)。3発目は弧をもう1枚(fx/slash-arc)。
-    {
+    // ★踵落とし(§29): 筋は前へ抜けず、上から下へ振り下ろす弧。当たった相手の足元の地面が割れて砂埃(判定なし=派手さの絵)。
+    if (heel) {
+      const side = dir.x >= 0 ? 1 : -1;
+      const fy = p.height * 0.05;
+      // 弧は2枚: 鋭い一閃(速く・短く)→ 一拍遅れて残る弧。向きは左右反転で出す(回して出すと左向きで振り上げの形になる)。
+      brawlerFx(get, dir.x * 26, fy - 34, 'vfx/slash_02', {
+        followPlayer: true, scale: 0.95, scaleX: side, scaleY: 0.74, rot: side * 0.6, duration: 140, fadeFrom: 0.1, moveX: dir.x * 8, moveY: 60, alpha: 1,
+      });
+      brawlerFx(get, dir.x * 30, fy - 22, 'fx/slash-arc', { followPlayer: true, scale: 0.7, scaleX: 0.5 * side, rot: -Math.PI / 2 + side * 0.35, duration: 200, fadeFrom: 0.15, moveX: dir.x * 4, moveY: 34 });
+      // 地面の絵(判定なし=派手さの絵)。4段目の着地より一段大きく・短く鋭く。地上の敵に当たった時だけ、その足元に出す
+      // (浮いていた敵は叩き落とされて着地した時に、浮きの着地の砂埃が出る=地面が先に割れない)。空振りは自分の足元に小さく。
+      const groundAt = (fx: number, footY: number, k: number): void => {
+        g.spawnImageMark(fx, footY, 'fx/ground-crack', { scale: 0.9 * k, scaleY: 0.42, duration: 1300, fadeFrom: 0.55, noPop: true, alpha: 0.9 });
+        g.spawnImageMark(fx, footY - 26 * k, BR_COFFIN_SLAM_FRAMES[0], { frames: BR_COFFIN_SLAM_FRAMES, scale: 0.75 * k, duration: 440, frameEaseOut: true, noPop: true, fadeFrom: 0.5 });
+        g.spawnImageMark(fx + side * 16, footY, 'fx/dust-puff', { scale: 0.4 * k, scaleY: 0.55, duration: 900, tint: 0x9a8b7a, alpha: 0.75, moveX: side * 52, moveY: -8, fadeFrom: 0.35 });
+        g.spawnImageMark(fx - side * 10, footY + 2, 'fx/dust-puff', { scale: 0.2 * k, scaleY: 0.6, duration: 480, tint: 0x7d7062, alpha: 0.7, moveX: -side * 22, moveY: -3, fadeFrom: 0.3 });
+        g.spawnImageMark(fx + side * 3, footY - 8, 'fx/dust-puff', { scale: 0.28 * k, scaleY: 0.9, duration: 700, tint: 0x9a8b7a, alpha: 0.5, moveX: side * 4, moveY: -26, fadeFrom: 0.25 });
+      };
+      const grounded: string[] = [];
+      for (const h of r.hitAt ?? []) {
+        if (heelAir?.has(h.id)) continue;
+        const e = get().enemies.find(en => en.id === h.id);
+        if (!e) continue;
+        grounded.push(e.id);
+        const fx = e.x + e.width / 2, footY = e.y + e.height - 4;
+        groundAt(fx, footY, 1);
+        // 輪は1体への技と読める大きさ(大踏み潰しの範囲の輪と混ざらない)。外=白金・内=白。
+        g.spawnRing(fx, footY, 14, 56, BR.BRAWLER_RGBA(0.85), 5, 260, true);
+        g.spawnRing(fx, footY, 8, 34, 'rgba(255,255,255,0.75)', 3, 180, true);
+      }
+      // 地上で受けた敵は、絵が沈んでから戻る(描画だけ)。
+      if (grounded.length > 0) set(state => ({ enemies: state.enemies.map(e => (grounded.includes(e.id) ? { ...e, brHeelAt: now } : e)) }));
+      if (hits > 0) brawlerSfx('brawler-stomp', 0.75, 1.2, undefined, hs); // 止めが明けた所で地面が鳴る(当てた音→地面の2拍)
+      else if (!r.hit) {
+        groundAt(c.x + dir.x * 22, c.y + p.height / 2 - 6, 0.5);
+        brawlerSfx('brawler-stomp', 0.4, 1.3);
+      }
+    } else {
       const ang = Math.atan2(dir.y, dir.x);
       // ★体に付けて出す(followPlayer=体の中心からのずれ): 跳んで蹴った時は、体と同じ高さで出る(地面に残らない・§18-3)。地上の蹴りでは今までと同じ位置。
       const fy = p.height * 0.18;
@@ -11066,12 +11120,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!brawlerGateOk(get)) return false;
     const s = p.brawler ?? BR.initialBrawlerState();
     const t = st.gameTime;
-    const kind = neutral ? null : BR.classifyBrawlerFlick(dirX, dirY);
+    const kind0 = neutral ? null : BR.classifyBrawlerFlick(dirX, dirY);
+    // ★踵落とし(§29): 飛び蹴りの2発目の続きで入れた下は、3発目の蹴り(踵落とし)として扱う=出せるか・覚えるかは次の蹴りと同じ規則。
+    const heel = !!kind0 && BR.brawlerHeelInput(s, kind0, t);
+    const kind = heel ? 'kick' as const : kind0;
     // ★技の先行入力(社長指示2026-11-08「技の先行入力だけ採用」・§9-60・§19-2): 行動の最中で今は出せない、**道の上の技**は1つだけ覚え(上書き)、
     // 取り消しの受付が開いた瞬間に出す。道に無い技は覚えない(下で出せない扱い)。当たらなかった時は捨てる(後隙の終わりに勝手に出さない)。
     // 値段は出す瞬間に払う。覚えている間の通常攻撃の先行入力は捨てる(技を優先)。
     if (kind && BR.brawlerShouldBufferTech(s, kind, t)) {
-      setBrawler(set, { ...s, techBuffer: kind, buffered: false, stepBuffer: undefined, stepHeld: BR.brawlerStepping(s, t), lateHeld: BR.brawlerLateCarry(s, kind, t) }); // 先行入力は1つだけ(最後の入力を優先・§12-3b)
+      setBrawler(set, { ...s, techBuffer: kind, heelBuffer: heel, buffered: false, stepBuffer: undefined, stepHeld: BR.brawlerStepping(s, t), lateHeld: BR.brawlerLateCarry(s, kind, t) }); // 先行入力は1つだけ(最後の入力を優先・§12-3b)
       return true;
     }
     if (!kind) {
@@ -11085,7 +11142,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!BR.brawlerTechAllowed(s, kind, t)) return false;
     // 血の覚醒中は技ポイントを無視して使い放題(社長指示2026-11-08・値段0=減らさない)。
     const awakened = isBloodAwakening(p, t);
-    if (!BR.brawlerCanPay(s, kind, awakened, brawlerTechDiscount(p, kind))) {
+    if (heel ? s.points < BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : !BR.brawlerCanPay(s, kind, awakened, brawlerTechDiscount(p, kind))) {
       // ポイント不足: 何も出さない(HUD の数字が震えて一瞬沈み、鈍い音=社長決定 #8・クリエイティブ監査 #18)。
       brawlerSfx('ui-deny', 0.55, 0.72, 160);
       setBrawler(set, { ...s, denyAt: Date.now() });
@@ -11107,7 +11164,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 技の最中から別の技=技→技の取り消し(§19-1・brawlerTechAllowed が「道の上・当たった・受付の内」だけ通す)。飛び蹴りの連続は今どおり(取り消しではない)。
     // 通常の段から技への取り消しも同じ規則で通るが、繋がった合図(閃き)と秘奥義の 0ms 扱いは今どおり技→技だけ(見た目・音は足さない)。
-    startBrawlerTech(get, set, s, kind, awakened, s.phase === 'tech' && !(kind === 'kick' && s.tech === 'kick'));
+    startBrawlerTech(get, set, s, kind, awakened, s.phase === 'tech' && !(kind === 'kick' && s.tech === 'kick'), false, heel);
     return true;
   },
   tickBrawler: () => {

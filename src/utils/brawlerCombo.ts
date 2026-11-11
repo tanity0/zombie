@@ -39,8 +39,8 @@ export let BRAWLER_SECRET_HOLD_MS = 300; // ×BRAWLER_TEMPO(係数1.0の値)
 export const brawlerStageMoveKey = (stage: number): BrawlerMoveKey =>
   (['s1', 's2', 's3', 's4', 's5'] as const)[Math.max(1, Math.min(5, Math.round(stage))) - 1];
 /** 飛び蹴りの何発目か(1..3)から名札。 */
-export const brawlerKickMoveKey = (kickN: number): BrawlerMoveKey =>
-  (['kick1', 'kick2', 'kick3'] as const)[Math.max(1, Math.min(3, Math.round(kickN))) - 1];
+export const brawlerKickMoveKey = (kickN: number, heel = false): BrawlerMoveKey =>
+  (heel && kickN >= 3 ? 'heel' : (['kick1', 'kick2', 'kick3'] as const)[Math.max(1, Math.min(3, Math.round(kickN))) - 1]);
 
 /**
  * 区分(CLAUDE.md「敵の仕様は種類で固める」)。強個体=体勢値を持つエリート雑魚(POSTURE_ELITE_TYPES)。
@@ -238,7 +238,7 @@ export const brawlerKikoTravelMs = (dist: number, speed: number): number =>
 /** 当たりの時のプレイヤーの止め(ms・テンポ係数は掛けない別の表=utils/brawler の BRAWLER_HITSTOP)。気功は弾なので 0。 */
 export const brawlerMoveStopMs = (move: BrawlerMoveKey): number =>
   move === 's1' || move === 's2' || move === 's3' || move === 's4' || move === 's5' ? brawlerStageSpec(Number(move[1])).hitstopMs
-    : move === 'kick1' ? BRAWLER_KICK_HITSTOP_MS[1] : move === 'kick2' ? BRAWLER_KICK_HITSTOP_MS[2] : move === 'kick3' ? BRAWLER_KICK_HITSTOP_MS[3]
+    : move === 'kick1' ? BRAWLER_KICK_HITSTOP_MS[1] : move === 'kick2' ? BRAWLER_KICK_HITSTOP_MS[2] : move === 'kick3' || move === 'heel' ? BRAWLER_KICK_HITSTOP_MS[3]
       : move === 'stomp' ? BRAWLER_STOMP_HITSTOP_MS : 0;
 /** 気功が撃った所から相手に届くまでの時間(ms)。distPx=プレイヤーの中心から相手までの距離(気功の弾の出る位置と当たりの余白を引く: −18 −当たりの余白)。 */
 export const brawlerKikoTravelForDistMs = (distPx: number): number => brawlerKikoTravelMs(distPx - 18 - BRAWLER_KIKO_HIT_PAD, BRAWLER_KIKO_SPEED);
@@ -247,7 +247,7 @@ const brawlerMoveWindupMs = (move: BrawlerMoveKey, o: { kickFlightMs?: number; k
   switch (move) {
     case 's1': case 's2': case 's3': case 's4': case 's5': return brawlerStageSpec(Number(move[1])).windupMs;
     case 'kick1': case 'kick2': return o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs;
-    case 'kick3': return BRAWLER_KICK3_CHARGE_MS + (o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs);
+    case 'kick3': case 'heel': return BRAWLER_KICK3_CHARGE_MS + (o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs);
     case 'stomp': return BRAWLER_TECHS.stomp.windupMs;
     case 'kiko': return BRAWLER_TECHS.kiko.windupMs + brawlerKikoTravelForDistMs(o.kikoDistPx ?? 0);
     default: return 0;
@@ -489,7 +489,7 @@ export const brawlerComboOnHit = (
  */
 export const BRAWLER_JUGGLE_BUDGET: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 6, strong: 5, boss: 4 };
 export const BRAWLER_JUGGLE_COST: Readonly<Record<BrawlerMoveKey, number>> = {
-  s1: 1, s2: 1, s3: 2, s4: 1, s5: 2, kick1: 2, kick2: 2, kick3: 2, stomp: 0, kiko: 1, secret: 2, 'secret-land': 2,
+  s1: 1, s2: 1, s3: 2, s4: 1, s5: 2, kick1: 2, kick2: 2, kick3: 2, heel: 2, stomp: 0, kiko: 1, secret: 2, 'secret-land': 2,
 };
 /** 地面バウンド(§13-2・1コンボに1回)の跳ね返りの高さ(重さの前の倍率)。 */
 export const BRAWLER_BOUNCE_F = 0.45;
@@ -507,7 +507,7 @@ export const BRAWLER_JUGGLE_WEIGHT_STUN_BOSS = 1.0;
  */
 export const BRAWLER_JUGGLE_PUSH: Readonly<Record<BrawlerMoveKey, number>> = {
   s1: 0.5, s2: 0.5, s3: 0.75, s4: 1, s5: 0,
-  kick1: 0.75, kick2: 0.75, kick3: 0,
+  kick1: 0.75, kick2: 0.75, kick3: 0, heel: 0, // 踵落とし=押し上げない(空中の敵は叩き落とす)
   stomp: 0, kiko: 0.5, secret: 0.75, 'secret-land': 0,
 };
 /**

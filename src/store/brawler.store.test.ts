@@ -1538,3 +1538,79 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     expect(Math.abs(useGameStore.getState().player.x - x0)).toBeLessThan(1);
   });
 });
+
+// ★踵落とし(社長指示2026-11-11「3段目派生:踵落とし」「2発目の後に下」・research/BRAWLER.md §29)。
+describe('格闘: 踵落とし(飛び蹴りの2発目の続きで下)', () => {
+  const feed = () => useGameStore.getState().skillProcFeed.map(e => e.key);
+  const waitHit = () => { for (let k = 0; k < 120 && !(br().resolved && !(useGameStore.getState().gameTime < br().stopUntil)); k++) advance(10); };
+  const start = (points: number) => {
+    setup(2);
+    useGameStore.setState(st => ({ enemies: [zombieAt(120, 0, 'z')], player: { ...st.player, brawler: undefined } }));
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points } }, skillProcFeed: [] }));
+    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true); waitHit();
+    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true); waitHit();
+    expect(br().kickN).toBe(2);
+  };
+  it('2発目の後の下=踵落とし(3発目・2ポイント)。行の名前は 飛び蹴り→空中蹴り→踵落とし', () => {
+    start(4);
+    expect(br().points).toBe(2);
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
+    expect(br().tech).toBe('kick');
+    expect(br().kickN).toBe(3);
+    expect(br().kickHeel).toBe(true);
+    expect(br().points).toBe(0);
+    expect(feed()).toEqual(['tech:kick', 'tech:kick2', 'tech:heel']);
+  });
+  it('2発目の後の右=蹴り飛ばし(今までどおり1ポイント)', () => {
+    start(4);
+    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true);
+    expect(br().kickHeel).toBe(false);
+    expect(br().points).toBe(1);
+    expect(feed()).toEqual(['tech:kick', 'tech:kick2', 'tech:kick3']);
+  });
+  it('技ポイントが1しか無いと踵落としは出ない(蹴り飛ばしは出る)', () => {
+    start(3);
+    expect(br().points).toBe(1);
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false);
+    expect(br().kickN).toBe(2);
+    expect(br().points).toBe(1);
+    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true);
+    expect(br().kickN).toBe(3);
+  });
+  it('当たった相手は押されない(その場に叩きつける)。蹴り飛ばしは押される', () => {
+    start(4);
+    useGameStore.getState().brawlerTech(0, 1); waitHit();
+    expect(br().connected).toBe(true);
+    const z = useGameStore.getState().enemies.find(e => e.id === 'z')!;
+    expect(Math.hypot(z.knockbackVx ?? 0, z.knockbackVy ?? 0)).toBeLessThan(1);
+    start(4);
+    useGameStore.getState().brawlerTech(1, 0); waitHit();
+    const z2 = useGameStore.getState().enemies.find(e => e.id === 'z')!;
+    expect(Math.hypot(z2.knockbackVx ?? 0, z2.knockbackVy ?? 0)).toBeGreaterThan(1);
+  });
+  it('当たった踵落としは大踏み潰しで取り消せる(着地の隙を待たない)', () => {
+    start(9);
+    useGameStore.getState().brawlerTech(0, 1); waitHit();
+    expect(br().kickHeel).toBe(true);
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
+    expect(br().tech).toBe('stomp');
+    expect(br().kickHeel).toBe(false);
+  });
+  it('2発目が当たる前に入れた下は覚えて、当たった後に踵落としで出る', () => {
+    setup(2);
+    useGameStore.setState(st => ({ enemies: [zombieAt(120, 0, 'z')], player: { ...st.player, brawler: undefined } }));
+    useGameStore.getState().brawlerPress(); advance(400);
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 4 } } }));
+    useGameStore.getState().brawlerTech(1, 0); waitHit();
+    useGameStore.getState().brawlerTech(1, 0); advance(20);
+    expect(br().kickN).toBe(2);
+    expect(br().resolved).toBe(false);
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
+    expect(br().techBuffer).toBe('kick');
+    expect(br().heelBuffer).toBe(true);
+    for (let k = 0; k < 120 && !br().kickHeel; k++) advance(10);
+    expect(br().kickHeel).toBe(true);
+    expect(br().kickN).toBe(3);
+  });
+});

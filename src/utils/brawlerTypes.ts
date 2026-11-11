@@ -7,10 +7,10 @@ export type BrawlerPhase = 'idle' | 'attack' | 'tech';
  */
 export type BrawlerMoveKey =
   | 's1' | 's2' | 's3' | 's4' | 's5'
-  | 'kick1' | 'kick2' | 'kick3'
+  | 'kick1' | 'kick2' | 'kick3' | 'heel'
   | 'stomp' | 'kiko' | 'secret' | 'secret-land';
 /** 道の表(research/BRAWLER.md §19-1)の節。待機・通常の段・飛び蹴りの何発目か・技。 */
-export type BrawlerRouteNode = 'idle' | 's1' | 's2' | 's3' | 's4' | 's5' | 'kick1' | 'kick2' | 'kick3' | 'stomp' | 'kiko' | 'guard';
+export type BrawlerRouteNode = 'idle' | 's1' | 's2' | 's3' | 's4' | 's5' | 'kick1' | 'kick2' | 'kick3' | 'heel' | 'stomp' | 'kiko' | 'guard';
 /** 拳鬼の技の予備動作のコマ(research/BRAWLER_PHANTOM.md §16-5): ready=しゃがみ / swing=腕上げ。 */
 export type KenkiPrepTex = 'ready' | 'swing';
 /** 秘奥義の9連撃で出す技(通常攻撃の段 1..5 か技)。research/BRAWLER.md §10。 */
@@ -38,6 +38,13 @@ export interface BrawlerState {
   tech: BrawlerTechKind | null;
   /** 飛び蹴りの何発目か(1..3)。 */
   kickN: number;
+  /**
+   * 飛び蹴りの3発目が踵落としか(社長指示2026-11-11・research/BRAWLER.md §29)。2発目の後に下を入れると、蹴り飛ばしの代わりにこれが出る。
+   * 状態は飛び蹴りの3発目のまま(溜め・飛ぶ・高さは同じ)。当たり方・値段・取り消し先・絵だけが違う。
+   */
+  kickHeel?: boolean;
+  /** 覚えている次の蹴り(techBuffer='kick')が踵落としか(下で入れた)。 */
+  heelBuffer?: boolean;
   /** 飛び蹴りの3発目の溜め(ms・gameTime)。前隙(windupMs)の頭のこの長さは空中で光って沈み、その後に飛ぶ。0/無し=溜め無し。 */
   kickChargeMs?: number;
   /** 飛び蹴りの3発目: 溜めが明けて飛び出す瞬間に、飛ぶ先を取り直したか(1回だけ・research/BRAWLER.md §19-10)。 */

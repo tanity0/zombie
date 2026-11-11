@@ -807,6 +807,8 @@ export interface Enemy {
   brLockNoHoldUntil?: number;
   /** つながっているコンボの数(表示だけ・research/BRAWLER.md §23)。動く間を与えずに当て続けた回数。動けるようになったフレームで消す(当たる時と読む時にも「いま動けるか」を見る)。 */
   brComboHits?: number;
+  /** 踵落としを地上で受けた時刻(Date.now)。絵が沈んで戻る合図(描画だけ・research/BRAWLER.md §29)。 */
+  brHeelAt?: number;
   /** 秘奥義の間の「画面内の敵を止める」が brHoldUntil に書いた値(research/BRAWLER.md §17)。終わりに、その値のまま残っている時だけ解く。 */
   brSecretHoldUntil?: number;
   brComboStart?: number;

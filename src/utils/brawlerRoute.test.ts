@@ -12,6 +12,7 @@ import {
   brawlerTechCancelOk, brawlerTechAllowed, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, brawlerStepAllowed, brawlerSecretCarry,
   brawlerStartAttack, brawlerStartTech, brawlerAfterResolve, brawlerFinish, brawlerStageSpec, initialBrawlerState, brawlerKickFlightMs, brawlerKickReaimDue, brawlerSlamTrackDue, BRAWLER_SLAM_TRACK_AT,
   brawlerStepStart, brawlerStepping, brawlerStepHeldPressFire, brawlerPressDecision,
+  brawlerHeelInput, brawlerHeelCost, brawlerTechCost, BRAWLER_HEEL_EXTRA_COST, brawlerHeelStandAt, brawlerHeelHitSink, BRAWLER_HEEL_ROT_UP, BRAWLER_HEEL_ROT_DOWN, BRAWLER_HEEL_ROT_PEAK, BRAWLER_HEEL_HIT_SINK_MS,
 } from './brawler';
 import {
   setBrawlerTempoAll, BRAWLER_COMBO_END_NO_HOLD_BOSS_MS, BRAWLER_COMBO_END_NO_HOLD_STRONG_MS,
@@ -25,12 +26,12 @@ import {
 beforeAll(() => { setBrawlerTempoAll(1.3); });
 afterAll(() => { setBrawlerTempoAll(BRAWLER_TEMPO_DEFAULT); });
 
-const NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'stomp', 'kiko', 'guard'];
+const NODES: readonly BrawlerRouteNode[] = ['idle', 's1', 's2', 's3', 's4', 's5', 'kick1', 'kick2', 'kick3', 'heel', 'stomp', 'kiko', 'guard'];
 /** §20-3 の名札の一覧(テストの側にも書く=規則を書き換えたら必ずここも見ることになる)。 */
 const TABLE: Readonly<Record<BrawlerRouteNode, readonly BrawlerRouteNode[]>> = {
-  idle: NODES.filter(n => n !== 'idle'),
+  idle: NODES.filter(n => n !== 'idle' && n !== 'heel'),
   s1: ['s2', 'kick1', 'stomp', 'kiko'], s2: ['s3', 'kick1', 'stomp', 'kiko'], s3: ['s4', 'kick1', 'stomp', 'kiko'], s4: ['s5', 'kick1', 'stomp', 'kiko'], s5: [],
-  kick1: ['kick2', 'stomp', 'kiko'], kick2: ['kick3', 'stomp', 'kiko'], kick3: [],
+  kick1: ['kick2', 'stomp', 'kiko'], kick2: ['kick3', 'heel', 'stomp', 'kiko'], kick3: [], heel: ['stomp'],
   stomp: ['kick1', 'kiko'], kiko: [], guard: ['guard'],
 };
 const HS = { s1: BRAWLER_HITSTOP.weak, s2: BRAWLER_HITSTOP.weak, s3: BRAWLER_HITSTOP.strong, s4: BRAWLER_HITSTOP.strong, s5: BRAWLER_HITSTOP.closer } as const;
@@ -51,8 +52,8 @@ const techHit = (kind: BrawlerTechKind, kickN = 1, hits = 1, landed = hits, base
 };
 
 describe('取り消しの規則(§20-3)', () => {
-  it('印(BRAWLER_CANCELABLE)は s1〜s4・kick1・kick2・stomp だけ', () => {
-    expect(NODES.filter(n => BRAWLER_CANCELABLE[n])).toEqual(['s1', 's2', 's3', 's4', 'kick1', 'kick2', 'stomp']);
+  it('印(BRAWLER_CANCELABLE)は s1〜s4・kick1・kick2・踵落とし・stomp だけ', () => {
+    expect(NODES.filter(n => BRAWLER_CANCELABLE[n])).toEqual(['s1', 's2', 's3', 's4', 'kick1', 'kick2', 'heel', 'stomp']);
   });
   it('一覧のとおりに許す・それ以外は許さない(全ての組)。通常の段へは段のつなぎだけ', () => {
     for (const from of NODES) for (const to of NODES) {
@@ -254,8 +255,8 @@ describe('固まりの長さ(§20-2・§20-4・係数1.3)', () => {
     expect([brawlerKickFlightMs(0), brawlerKickFlightMs(160), brawlerKickFlightMs(220)]).toEqual([156, 156, 195]);
   });
   it('固まりの表: 係数1.0の値(§20-2)と、テンポ係数を掛けた実ms(live binding)', () => {
-    expect(BRAWLER_HOLD_BASE_MS).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 250, kick2: 310, kick3: 0, stomp: 230, kiko: 0 });
-    expect(BRAWLER_HOLD_MS).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 325, kick2: 403, kick3: 0, stomp: 299, kiko: 0 });
+    expect(BRAWLER_HOLD_BASE_MS).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 250, kick2: 310, kick3: 0, heel: 300, stomp: 230, kiko: 0 });
+    expect(BRAWLER_HOLD_MS).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 325, kick2: 403, kick3: 0, heel: 390, stomp: 299, kiko: 0 });
     setBrawlerTempoAll(1.0);
     expect(BRAWLER_HOLD_MS).toEqual(BRAWLER_HOLD_BASE_MS);
     setBrawlerTempoAll(1.3);
@@ -556,5 +557,68 @@ describe('4段目(小ジャンプの叩き潰し)の追尾(社長指示2026-11-1
   it('次の4段目を出し直すと、また取り直せる', () => {
     const s = { ...start(4), slamTracked: true };
     expect(brawlerStartAttack(s, 4, 3000, false).slamTracked).toBe(false);
+  });
+});
+
+describe('踵落とし(飛び蹴りの2発目の続きで下・社長指示2026-11-11・§29)', () => {
+  const kick = (n: number, resolved: boolean): BrawlerState => ({ ...brawlerStartTech({ ...initialBrawlerState(), points: 9, kickCount: n - 1, kickChainUntil: 9e9 }, 'kick', 1000, n), resolved, connected: resolved, landed: resolved });
+  it('下が踵落としになるのは、2発目の最中と、2発目が終わって連続の受付の内だけ', () => {
+    expect(brawlerHeelInput(kick(2, false), 'stomp', 1050)).toBe(true);
+    expect(brawlerHeelInput(kick(2, true), 'stomp', 1300)).toBe(true);
+    expect(brawlerHeelInput(kick(1, true), 'stomp', 1300)).toBe(false);
+    expect(brawlerHeelInput(kick(3, true), 'stomp', 1300)).toBe(false);
+    expect(brawlerHeelInput(kick(2, true), 'kick', 1300)).toBe(false);
+    const idleIn = { ...initialBrawlerState(), kickCount: 2, kickChainUntil: 2000 };
+    expect(brawlerHeelInput(idleIn, 'stomp', 1500)).toBe(true);
+    expect(brawlerHeelInput(idleIn, 'stomp', 2001)).toBe(false);
+    expect(brawlerHeelInput(initialBrawlerState(), 'stomp', 1000)).toBe(false);
+  });
+  it('踵落としの状態は飛び蹴りの3発目のまま(溜め・後隙は蹴り飛ばしと同じ)。名札と道だけ違う', () => {
+    const a = brawlerStartTech(kick(2, true), 'kick', 2000, 3, false, true);
+    const b = brawlerStartTech(kick(2, true), 'kick', 2000, 3, false, false);
+    expect(a.kickHeel).toBe(true);
+    expect(b.kickHeel).toBe(false);
+    expect([a.windupMs, a.recoveryMs, a.kickChargeMs]).toEqual([b.windupMs, b.recoveryMs, b.kickChargeMs]);
+    expect(brawlerRouteNodeOf(a)).toBe('heel');
+    expect(brawlerRouteNodeOf(b)).toBe('kick3');
+    // 1・2発目に踵落としの印は付かない。次の行動で印は消える。
+    expect(brawlerStartTech(initialBrawlerState(), 'kick', 0, 1, false, true).kickHeel).toBe(false);
+    expect(brawlerStartAttack(a, 1, 3000, false).kickHeel).toBe(false);
+    expect(brawlerStartTech(a, 'stomp', 3000, 0, true).kickHeel).toBe(false);
+  });
+  it('踵落としは当たれば大踏み潰しでだけ取り消せる(蹴り飛ばしは取り消せない)', () => {
+    const heel = { ...brawlerStartTech(kick(2, true), 'kick', 2000, 3, false, true), resolved: true, connected: true, landed: true };
+    const tIn = 2000 + heel.windupMs + 10;
+    expect(brawlerTechCancelOk(heel, 'stomp', tIn)).toBe(true);
+    expect(brawlerTechCancelOk(heel, 'kiko', tIn)).toBe(false);
+    expect(brawlerTechCancelOk({ ...heel, kickHeel: false }, 'stomp', tIn)).toBe(false);
+    expect(brawlerTechCancelOk({ ...heel, landed: false, connected: false }, 'stomp', tIn)).toBe(false);
+    expect(brawlerTechAllowed(heel, 'kick', tIn)).toBe(false);
+  });
+  it('値段は飛び蹴り+1(血の覚醒中は0)', () => {
+    expect(brawlerHeelCost()).toBe(brawlerTechCost('kick') + BRAWLER_HEEL_EXTRA_COST);
+    expect(brawlerHeelCost(true)).toBe(0);
+  });
+  it('影: 0 から振り上げ→少し沈んで溜め→飛ぶ間に振り下ろし、当たる瞬間に伸び切る。上から下へ降りる', () => {
+    const s = brawlerStartTech(kick(2, true), 'kick', 2000, 3, false, true);
+    const c = s.kickChargeMs ?? 0;
+    expect(brawlerHeelStandAt(s, 0).rot).toBeCloseTo(0);
+    expect(brawlerHeelStandAt(s, c * 0.6).rot).toBeCloseTo(BRAWLER_HEEL_ROT_PEAK);
+    expect(brawlerHeelStandAt(s, c).rot).toBeCloseTo(BRAWLER_HEEL_ROT_UP);
+    const hit = brawlerHeelStandAt(s, s.windupMs);
+    expect(hit.rot).toBeGreaterThanOrEqual(BRAWLER_HEEL_ROT_DOWN - 1e-9);
+    expect(hit.ext).toBeCloseTo(1);
+    expect(brawlerHeelStandAt(s, c).lift).toBeGreaterThan(0);
+    expect(hit.lift).toBeLessThan(0);
+    // 飛ぶ間は振り下ろす一方(戻らない)・伸びる一方
+    let pr = -Infinity, pe = -Infinity;
+    for (let el = c; el < s.windupMs; el += 5) { const f = brawlerHeelStandAt(s, el); expect(f.rot).toBeGreaterThanOrEqual(pr - 1e-9); expect(f.ext).toBeGreaterThanOrEqual(pe - 1e-9); pr = f.rot; pe = f.ext; }
+  });
+  it('受けた地上の敵の沈み: 0 から沈んで 0 へ戻る(端で途切れない)', () => {
+    expect(brawlerHeelHitSink(0)).toBeCloseTo(0);
+    expect(brawlerHeelHitSink(60)).toBeGreaterThan(5);
+    expect(brawlerHeelHitSink(BRAWLER_HEEL_HIT_SINK_MS - 1)).toBeLessThan(0.1);
+    expect(brawlerHeelHitSink(BRAWLER_HEEL_HIT_SINK_MS)).toBe(0);
+    expect(brawlerHeelHitSink(-5)).toBe(0);
   });
 });

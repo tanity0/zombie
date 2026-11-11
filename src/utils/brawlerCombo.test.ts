@@ -50,7 +50,7 @@ describe('固まりの長さ(§20-4・旧 §11-1 の基本の長さの表を置�
   });
   it('名札: 段 1..5 → s1..s5、飛び蹴り 1..3 → kick1..kick3', () => {
     expect([1, 2, 3, 4, 5].map(brawlerStageMoveKey)).toEqual(['s1', 's2', 's3', 's4', 's5']);
-    expect([1, 2, 3].map(brawlerKickMoveKey)).toEqual(['kick1', 'kick2', 'kick3']);
+    expect([1, 2, 3].map(n => brawlerKickMoveKey(n))).toEqual(['kick1', 'kick2', 'kick3']);
   });
   it('★ボス級も雑魚と同じ固まりの長さ(社長指示2026-11-08「ボスも、雑魚と共通の止まりにしよう 数値だけ今のまま」)', () => {
     // 固まりの長さは区分に依らない(式は区分を見ない)。違うのはコンボの後の固まらない時間(ボス級1500・強個体800・雑魚なし)。

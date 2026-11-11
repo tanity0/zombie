@@ -3576,8 +3576,8 @@ const SHADOW_FLOAT_FADE = 0.5;          // 薄く: ×(1-0.5t)
 /** ① 影: 頂点で幅 ×0.5・濃さ ×0.75(高さ0で今どおり)。縮みを強く・薄まりを弱く=芯を残して小さくくっきり(クリエイティブ監査#9)。 */
 const BRAWLER_AIR_SHADOW_W = 0.5;
 const BRAWLER_AIR_SHADOW_A = 0.75;
-/** ⑤ 体: 頂点で ×1.10(社長承認2026-11-09・旧1.06。縦横同じ・倒さない・回さない・歪ませない)。影は大きくしない。 */
-const BRAWLER_AIR_BODY_SCALE = 1.10;
+/** ⑤ 体: 頂点で ×1.25(社長指示2026-11-11「浮いてる時の絵、もう少し敵も味方も分かりやすく大きく」・旧1.10←1.06。縦横同じ・倒さない・回さない・歪ませない)。影は大きくしない。プレイヤーの体と技の影も同じ値。 */
+const BRAWLER_AIR_BODY_SCALE = 1.25;
 /** ⑤ の膨らみが目標を追う時定数(ms)=上がり切ってから膨らみ、落ち始めで戻る遅れ。 */
 const BRAWLER_AIR_SWELL_TAU_MS = 70;
 /**
@@ -22889,7 +22889,9 @@ export class PixiScene {
     const brShakeLeft = e.brawlerShakeUntil !== undefined ? e.brawlerShakeUntil - Date.now() : 0;
     const brShakeAmp = brShakeLeft > 0 ? Math.min(4.5, 1 + brShakeLeft / 28) * (((Math.floor(Date.now() / 16) & 1) === 0) ? 1 : -0.6) : 0;
     const brShakeX = brShakeAmp * (e.brawlerShakeDx ?? 1), brShakeY = brShakeAmp * (e.brawlerShakeDy ?? 0);
-    const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX + brLiftPx - brShakeY;
+    // 踵落としを受けた地上の敵は、叩きつけられて沈んでから戻る(位置だけ・判定は動かない・§29)。
+    const heelSink = e.brHeelAt !== undefined ? BRW.brawlerHeelHitSink(Date.now() - e.brHeelAt) : 0;
+    const liftHop = Math.sin(liftT * Math.PI) * BOSS_FINISH_LIFT_PX + brLiftPx - brShakeY - heelSink;
     // ★★産卵の震え(社長指示2026-09-22「この人は攻撃が無いので、卵を産むときに震える感じにします」)。
     // 抱卵型(卵体)は攻撃を持たない代わりに、**卵が出る瞬間へ向けて体が痙攣する**。
     // 形と尺は `utils/eggTremble.ts` の1本(縦が主・横が従 / 独立した痙攣 / 放出の一発 / 連射の起伏)。
@@ -40519,7 +40521,7 @@ export class PixiScene {
       // 前隙=体に重なったまま前へにじみ出る → 当たる瞬間に手足の先が当たりの所まで伸び切る → その先へ抜けて消える。
       // レバーガードの腕は、受けた瞬間に体の方へ押し込まれてから戻る(armPush=相手の方が正・純関数)。
       const along = (f.ext <= 1 ? shift * f.ext : shift + (f.ext - 1) * 30) + (f.armPush ?? 0) * dsc;
-      tx = bx + ux * along; ty = by + uy * along;
+      tx = bx + ux * along; ty = by + uy * along - (f.lift ?? 0) * dsc; // 踵落とし(§29): 上から下ろしてくる
     }
     // 向き: 左なら左右反転。上下は弱い傾き(±0.45rad まで=逆さまにしない)+ごく弱い前のめり。
     const left = ux < -0.05 || (Math.abs(ux) <= 0.05 && (p.lastDirection?.x ?? 1) < 0);
@@ -40534,7 +40536,7 @@ export class PixiScene {
       sp.alpha = Math.min(1, f.alpha * BRW.BRAWLER_STAND_GUARD_ARM_ALPHA);
     } else {
       sp.texture = tex;
-      sp.anchor.set(spec.bodyU, spec.bodyV);
+      sp.anchor.set(spec.bodyU, spec.bodyV + (f.rot !== undefined ? 0.12 : 0)); // 踵落としは腰を中心に回す(胴の中心だと体ごと転がって見える)
       // 構えは受けた瞬間だけ強く光る。
       const pop = f.kind === 'guard' ? Math.max(0, 1 - (Date.now() - Math.max(s.guardHitAt, s.guardRenewAt ?? 0)) / 220) : 0;
       sp.alpha = Math.min(1, f.alpha + 0.5 * pop + (s.secret ? 0.25 : 0)); // 秘奥義の間は影も強く光る(§10-2)
@@ -40542,7 +40544,8 @@ export class PixiScene {
     }
     const kk = f.lever ? k * BRW.BRAWLER_STAND_GUARD_ARM_SCALE : k;
     sp.scale.set(left ? -kk : kk, kk);
-    sp.rotation = f.kind === 'slam' ? (left ? -lean : lean) : (left ? -a : a);
+    const ar = a + (f.rot ?? 0); // 踵落とし(§29): 振り上げた向きから振り下ろした向きへ回す
+    sp.rotation = f.kind === 'slam' ? (left ? -lean : lean) : (left ? -ar : ar);
     sp.position.set(tx, ty);
     sp.visible = true;
   }
