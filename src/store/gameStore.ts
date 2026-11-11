@@ -166,6 +166,7 @@ import {
 } from '../config/shijin';
 import type { SkillProcEntry } from '../utils/skillProcFeed';
 import { pushSkillProc, shiftSkillProc, isSkillProcShown, type TechProcKey } from '../utils/skillProcFeed';
+import { noteBrawlerSecret } from '../utils/crashWatch';
 import { getStartingWeapons, createWeapon, ammoBearingGuns, AMMO_FIELD, getActiveGun, getGuns, ammoPoolFor, weaponReloadReserve, weaponAmmoTypeFor, isReloading, RANGE_BY_CATEGORY, buildJunkWeaponPellets, armoryGrantKeys, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponRoundsPerAmmo, awakenFireRateMult, HANDCANNON_WEAPON_KEY, CYCLE_WEAPON_KEY, weaponDisplayName, ALCHEMY_WEAPON_KEY, SIGNAL_WEAPON_KEY, RAILGUN_WEAPON_KEY, hasManualAimGunKey, mouseSetsAim, gunShotBaseDamage } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の純関数/定数。
 import { alchemyStoneDetonateDamage, alchemyStoneDetonateRadius } from '../utils/alchemyStone';
@@ -5057,6 +5058,7 @@ const startBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Pa
   setBrawler(set, { ...BR.brawlerSecretStart(s, st.gameTime, now), flashAt: now },
     { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, vx: 0, vy: 0 });
   notifyTechProc('secret');
+  noteBrawlerSecret(); // 落ちた時の記録(「前回最後」の行)に、秘奥義を出した回数を残す
   const g = get();
   // 画面を一瞬暗く落として本人だけ光らせる → 白金と青の大きな炸裂・輪・揺れ(絵だけ=判定なし・スローは使わない=§10-3)。
   g.spawnFlash('rgba(0,0,0,0.72)', 260);

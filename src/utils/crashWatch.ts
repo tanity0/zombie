@@ -42,6 +42,17 @@ export const startCrashWatch = (sample: () => string): void => {
 let rendererMounts = 0;
 export const noteRendererMount = (): void => { rendererMounts++; };
 export const rendererMountCount = (): number => rendererMounts;
+/**
+ * ★描画器を失った回数(WebGL のコンテキストロスト・2026-11-11・社長実機 v0.25.5480「格闘で通常プレイしてたら落ちた」=1回の出撃で 描画器6代目)。
+ * 「何代目」だけでは、出撃を重ねたのか、遊んでいる最中に端末が描画のメモリを取り上げたのかが見分けられない=回数を別に残す。
+ */
+let contextLosts = 0;
+export const noteContextLost = (): void => { contextLosts++; };
+export const contextLostCount = (): number => contextLosts;
+/** 格闘の秘奥義を出した回数(このタブで)。重い演出の直後に落ちたのかを見分ける手がかり。 */
+let brawlerSecrets = 0;
+export const noteBrawlerSecret = (): void => { brawlerSecrets++; };
+export const brawlerSecretCount = (): number => brawlerSecrets;
 
 export const stopCrashWatch = (): void => {
   if (timer !== null) { clearInterval(timer); timer = null; }

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5481', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5480', items: [
     '格闘で、技の隙の間に押した次の技は一つだけ覚えていて、隙が終わった瞬間に出る。押したのに出ない、が減る',
     'ボス級は少し浮きにくくなった。気絶している間に浮かせた時は、今までどおり高く長く浮く',
