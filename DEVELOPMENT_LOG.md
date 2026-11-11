@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5493 — 赤カウンターが決まった敵を浮かせる【2026-11-11 19:49 JST】
+- 社長指示2026-11-11「赤カウンター、敵を浮かせる」。仕様の正は `research/BRAWLER.md` §29-5。
+- `utils/airLift.ts` に `COUNTER_LIFT_MOVE`('s4')と `counterLiftApplies`。`gameStore.damageEnemy` の `postureImpact === 'counter'` の所で `brawlerJugglePatch` を当てる(1か所)。
+- 確認: typecheck・eslint・循環 OK。`brawlerLink.store.test.ts`(新しい3件を含む96件)通過。`src/utils` 全体+カウンター関係の store テストは、
+  `combatCritParity.test.ts` の1件が同時実行の時だけ落ちた(単独では変更あり・なしとも3回続けて通過=時間に依る揺れ。変更との関係は見つからない)。
+- 画は撮っていない(浮きの絵は既にある物。カウンターを決めた時の見え方は実機待ち)。
+- 監査: 付けない(既にある浮きの入口を1つ足すだけ・新しい見え方ではない)。
+- 自己点検: 憲法第4条・第5条に抵触しない(敵の出方・緩急は変えていない)。
+- 状態変化: なし。
+
 ## v0.25.5492 — テストの直し5件(ゲームの挙動は変えていない)【2026-11-11 19:43 JST】
 - v0.25.5491 を、テストが落ちたまま push した(確認の命令を `;` でつないでいて、失敗で止まらなかった)。直後に気づいて直した。
 - 直した物: ①`brawlerTempo.store.test.ts` 2件(固まりの表に踵落としの行)=v0.25.5491 で壊した。

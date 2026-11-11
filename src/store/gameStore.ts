@@ -292,7 +292,7 @@ import { stampMeleeSwingCommit } from '../utils/thorNihil';
 import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
 import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../utils/cameraZoom';
 import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
-import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs } from '../utils/airLift';
+import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs, COUNTER_LIFT_MOVE, counterLiftApplies } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
   getSelectedStageId, getWallMeta, recordChronicle, recordChronicleGlobalFirst,
@@ -17221,7 +17221,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       // v0.25.3986(描画専用打刻): カウンター成立の瞬間。全カウンター経路(9呼び出し元)がこの中央を
       // postureImpact='counter' で通る。pixiSceneのlatch系が「着弾前に中断された技の絵」の破棄に使う。
-      const counteredPatch = postureImpact === 'counter' ? { lastCounteredAt: Date.now() } : {};
+      // ★赤カウンターの浮き(社長指示2026-11-11「赤カウンター、敵を浮かせる」・utils/airLift): 成立した敵を格闘の4段目と同じ打ち上げで浮かせる。
+      //   呼び手(突進・跳びのパリィ等)は技の中断と弾き飛ばしを先に書いてからここへ来る=浮きはその上に乗る(押されながら浮く)。
+      const counterLiftPatch = postureImpact === 'counter' && counterLiftApplies(enemy, newHealth, state.gameTime)
+        ? (brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), COUNTER_LIFT_MOVE, Date.now()) ?? {}) : {};
+      const counteredPatch = postureImpact === 'counter' ? { lastCounteredAt: Date.now(), ...counterLiftPatch } : {};
       // 戦闘の手触り①(社長指示2026-09-13): プレイヤーの攻撃が実ダメージで入った敵だけ数フレーム止める
       // (雑魚60/強個体40/ボス級0=combatFeel.hitStunMsFor)。DoT(燃焼・血棘・味方弾)は対象外。
       // 再発火ガード(HIT_STUN_REARM_MS)込み。ノックバックの期限ずらしは knockbackEnemy 側(呼び手が直後に呼ぶ)。

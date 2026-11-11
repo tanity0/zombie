@@ -785,3 +785,41 @@ describe('§20-6-4 秘奥義 →↓←↑(飛び蹴り→大踏み潰し→気�
     expect([BRAWLER_CANCEL_WINDOW_MS, BRAWLER_TECHS.kiko.recoveryMs, brawlerStageSpec(1).recoveryMs]).toEqual([195, 429, 182]);
   });
 });
+
+// ★赤カウンターの浮き(社長指示2026-11-11「赤カウンター、敵を浮かせる」・utils/airLift の COUNTER_LIFT_MOVE)。
+describe('赤カウンターが成立した敵は浮く(武器を問わない)', () => {
+  const mk = (type: Parameters<typeof spawnEnemyAt>[0], id: string) => {
+    const e = spawnEnemyAt(type, 0, 0, useGameStore.getState().gameTime);
+    e.id = id; e.health = 99999; e.maxHealth = 99999;
+    return e;
+  };
+  const get = (id: string) => useGameStore.getState().enemies.find(e => e.id === id)!;
+  it('雑魚: カウンターのダメージで浮く(浮いている間は動けない)。その後の気絶でも浮きは消えない', () => {
+    useGameStore.getState().resetGame('warrior');
+    useGameStore.setState({ enemies: [mk('zombie', 'z')] });
+    useGameStore.getState().damageEnemy('z', 10, false, true, false, 'other', 'player', 'counter');
+    const z = get('z');
+    expect(z.brawlerLiftAt).toBeDefined();
+    expect(z.liftUntil).toBe(z.brLiftUntil);
+    expect((z.liftUntil ?? 0)).toBeGreaterThan(Date.now());
+    useGameStore.getState().stunEnemy('z', useGameStore.getState().gameTime + 5000);
+    expect(get('z').brawlerLiftAt).toBe(z.brawlerLiftAt);
+    expect(get('z').liftUntil).toBe(z.liftUntil);
+  });
+  it('カウンターではないダメージでは浮かない・倒した敵は浮かない', () => {
+    useGameStore.getState().resetGame('warrior');
+    const weak = mk('zombie', 'w'); weak.health = 1; weak.maxHealth = 1;
+    useGameStore.setState({ enemies: [mk('zombie', 'z'), weak] });
+    useGameStore.getState().damageEnemy('z', 10, false, true, false, 'other', 'player');
+    expect(get('z').brawlerLiftAt).toBeUndefined();
+    useGameStore.getState().damageEnemy('w', 10, false, true, false, 'other', 'player', 'counter');
+    expect(useGameStore.getState().enemies.find(e => e.id === 'w')?.brawlerLiftAt).toBeUndefined();
+  });
+  it('技の最中のまま残っている敵(呼び手が中断していない)は浮かない', () => {
+    useGameStore.getState().resetGame('warrior');
+    const busy = { ...mk('zombie', 'b'), aiPhase: 'windup' as const, aiPhaseUntil: useGameStore.getState().gameTime + 9999 };
+    useGameStore.setState({ enemies: [busy] });
+    useGameStore.getState().damageEnemy('b', 10, false, true, false, 'other', 'player', 'counter');
+    expect(get('b').brawlerLiftAt).toBeUndefined();
+  });
+});

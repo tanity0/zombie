@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5493', items: [
+    '赤い攻撃へのカウンターが決まると、相手が宙に浮く',
+  ] },
   { version: '0.25.5492', items: [
     'ゲーム内容の変更はありません',
   ] },

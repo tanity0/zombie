@@ -86,3 +86,14 @@ export const SLASHER_LIFT_MARGIN_MS = 150;
  * 強個体・ボス級(重さ・ボスの止めの減衰で短くなる)でも、2回目の追撃が空中に間に合う。
  */
 export const slasherLaunchMinMs = (chainCdMs: number, windupMs: number): number => chainCdMs + windupMs + SLASHER_LIFT_MARGIN_MS;
+
+/**
+ * ★赤カウンターの浮き(社長指示2026-11-11「赤カウンター、敵を浮かせる」)。カウンターが成立した敵を、格闘の4段目(小ジャンプの叩き潰し)と
+ * 同じ打ち上げで浮かせる(高さ・重さの区分・拾える回数の予算・ボス級の止めの減衰は格闘の浮きと同じ1本=store の brawlerJugglePatch)。
+ * 武器は問わない(ナイフ・刀・格闘の構え・突進や跳びのパリィ・守護霊のカウンター)。弾の打ち返しは敵に触れていないので対象外。
+ * 浮かない相手: 倒した敵・終端の死神(区分で浮かない)・技の最中のまま残っているボス級(技を取り消さない決まり=格闘と同じ)。
+ */
+export const COUNTER_LIFT_MOVE: BrawlerMoveKey = 's4';
+export const counterLiftApplies = (
+  e: Parameters<typeof isBrawlerTechBusy>[0], newHealth: number, gameTime: number,
+): boolean => newHealth > 0 && !isBrawlerTechBusy(e, gameTime);
