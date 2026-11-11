@@ -697,6 +697,37 @@ export const getSpotConeTexture = (): Texture => {
   return spotConeTex;
 };
 
+/** 円錐の絵のうち、床の光だまりを含まない上側(筋だけ)。高さの割合。 */
+export const SPOT_BEAM_FRAC = 0.62;
+/** 筋の絵の下端(先端)を 0 へ落とし始める位置(筋の高さの割合)。切り口を直線で残さない。 */
+const SPOT_BEAM_FADE_FROM = 0.5;
+let spotBeamTex: Texture | null = null;
+/**
+ * 円錐の絵の「筋だけ」(上側 SPOT_BEAM_FRAC)を、先端へ向かって 0 へ落として焼いた絵。懐中電灯のように円錐を回して使う時は、こちらを回す
+ * (元の絵は床の光だまり=横長の楕円が焼き込まれているので、丸ごと回すと光だまりが縦に立つ。ただ切り出すだけだと、切り口が光だまりを横切る直線の継ぎ目になる)。
+ * 元の絵(getSpotConeTexture)から作る=新しい絵ではない。
+ */
+export const getSpotBeamTexture = (): Texture => {
+  if (spotBeamTex) return spotBeamTex;
+  const full = getSpotConeTexture();
+  const src = full.source.resource as CanvasImageSource;
+  const W = full.source.pixelWidth, H = Math.round(full.source.pixelHeight * SPOT_BEAM_FRAC);
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(src, 0, 0, W, H, 0, 0, W, H);
+  ctx.globalCompositeOperation = 'destination-in';
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, 'rgba(0,0,0,1)');
+  g.addColorStop(SPOT_BEAM_FADE_FROM, 'rgba(0,0,0,1)');
+  g.addColorStop(0.82, 'rgba(0,0,0,0.45)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  spotBeamTex = Texture.from(canvas);
+  return spotBeamTex;
+};
+
 export const getVisibilityLightTexture = (): Texture => {
   if (visLightTex) return visLightTex;
   const size = 256;

@@ -14,6 +14,7 @@ import {
   crawlerSlamLunge, CRAWLER_SLAM_LUNGE_IN_MS, CRAWLER_SLAM_LUNGE_OUT_MS, CRAWLER_IMPACT_HOLD_MS,
   type LabCrawler, type CrawlerStepInput, type CrawlerTarget,
 } from './labCrawler';
+import { LAB_LAMP_SPACING_PX } from './labLamps';
 import { rectsOverlap, resolveAabb, type Rect } from './obstacles';
 import { clampRectToPlayableArea, isRectInPlayableArea, type PlayableAreaCtx } from './playableArea';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from './labWalls';
@@ -44,9 +45,11 @@ const run = (c0: LabCrawler, player: Rect, totalS: number, dt = 1 / 60, t0 = 0, 
 };
 
 describe('ステージ2の這う塊: 配置と起床', () => {
-  it('スタートからアイドルの方へ600px・廊下の中央・原点の方を向いて待機', () => {
+  it('スタートからアイドルの方へ約900px(いちばん近い非常灯の真下)・廊下の中央・原点の方を向いて待機', () => {
     const c = createLabCrawler({ x: 7000, y: 10 });
     expect(c.x).toBe(CRAWLER_START_DIST_PX);
+    expect(CRAWLER_START_DIST_PX % LAB_LAMP_SPACING_PX).toBe(0); // 灯りの真下(闇の中でも眠っている塊が見える)
+    expect(Math.abs(CRAWLER_START_DIST_PX - 900)).toBeLessThanOrEqual(LAB_LAMP_SPACING_PX / 2);
     expect(crawlerCenter(c).y).toBe(0);
     expect(c.facingLeft).toBe(true);
     expect(c.awake).toBe(false);

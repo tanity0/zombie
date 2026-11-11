@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 // 根を使い回している常設の描き先だけを許可表に書く。
 const ALLOWED = [
   'this.renderer.render({ container: this.labRTScene,', // 研究所の常設シーン(根は1つを使い回し)
+  'this.renderer.render({ container: this.labPitchScene,', // 研究所の闇(research/LAB_DARKNESS.md・根は1つを使い回し)
   'this.renderer.render(clear === undefined ? { container: root,', // renderBake 本体
 ];
 

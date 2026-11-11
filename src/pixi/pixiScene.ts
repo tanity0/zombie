@@ -18,6 +18,8 @@ import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform } from '../utils/viewTransform';
 import { labFlickerLevel, smoothFlicker, easeToward } from '../utils/labFlicker'; // ステージ2の切れかけの蛍光灯
+import { LAB_LAMP_SPACING_PX } from '../world/labLamps'; // 非常灯の並び(塊の置き場所と同じ1本)
+import { labPitchLights, labEaseReveals, stepLabFlash, labFlashLevel, LAB_ALWAYS_REVEAL_TYPES, type LabLight, type LabFlashState } from '../utils/labDarkness'; // ステージ2の闇と懐中電灯(research/LAB_DARKNESS.md)
 import { bossFramingFor } from '../utils/bossFraming';
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
 import type { ColorMatrix } from 'pixi.js';
@@ -395,7 +397,7 @@ import {
 import { placeAvatarPart, avatarPartPieces, type AvatarPartPiece } from '../utils/avatarPlacement';
 import { BLOOD_BURST_SHEET_FRAMES, BLOOD_BURST_SHEET_FRAME_MS, BLOOD_BURST_BLAST_PX, getBloodBurstArt, pickDrop, bloodBurstLayout, bloodBurstSeed, BLOOD_GOB_PX, BLOOD_BURST_GRAVITY, BLOOD_BURST_POP_MS, BLOOD_BURST_POOL_MS, BLOOD_BURST_DARKEN_MS, BLOOD_BURST_FADE_MS, BLOOD_BURST_BODY_MS, type BloodBurstPiece } from './bloodBurst';
 import { getAlchemyRockArt, getAlchemyDustTexture, alchemyRockLayout, alchemyRockSeed, alchemyPulse, alchemyTremble, ALCHEMY_ROCK_SIZES, ALCHEMY_ROCK_TARGET, ALCHEMY_FLY_MS, ALCHEMY_SETTLE_MS, ALCHEMY_FRAG_MS, ALCHEMY_PUSH_MS, ALCHEMY_SHATTER_MS, type AlchemyRockSpec } from './alchemyRocks';
-import { getSpotConeTexture, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getAirPadTexture, getAirStreakTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
+import { getSpotConeTexture, getSpotBeamTexture, SPOT_BEAM_FRAC, getGlowTexture, getSoftGlowTexture, getHitCoreGlowTexture, getBokehGlowTexture, getEggTexture, getEggTextureArmed, getVignetteTexture, getVignetteTextureNarrow, getEdgeGlowTexture, getSoftShadowTexture, getShadowCoreTexture, getShadowOuterTexture, getFogTexture, getVisibilityLightTexture, getCircleTexture, getRingTexture, getRingCoreTexture, getCounterRingTexture, getCineWarmTexture, getCineCoolTexture, getCineSunTexture, getCineMoonTexture, getMoonHaloTexture, getCineCloudTexture, getCineDustTexture, getAirPadTexture, getAirStreakTexture, getCloudShadowTexture, getCloudShadowShapeTexture, getPhillGodrayTexture, RING_TEX_BASES } from './lighting';
 import { getBloomEnabled } from '../config/graphics';
 // SKILL_BUILD_REDESIGN.md §21(B5)/§24(社長指示2026-08-13): 枠光の判定は純関数のまま(pixiは読むだけ・
 // 判定を書かない)。バーサーカー=HP依存の常時オーラ、オーバークロック=proc起点の800msフラッシュ。
@@ -424,7 +426,7 @@ import { getSelectedStageId } from '../data/progress';
 import { labWallsInRegion, LAB_ZONE, WALL_DISPLAY_H, labPropsInRegion, PROP_DISPLAY_H, wallRect, propRect, isLabObstacleBroken, labDebrisInRegion, type LabBrokenObstacle } from '../world/labWalls';
 import { LAB_WALL_CRUMBLE_MS, LAB_PROP_CRUMBLE_MS, LAB_DEBRIS_PALETTE, labDebrisKind } from '../utils/labCrawlerTick'; // 崩れの尺・破片の色(着地の土煙・音と同じ値)
 import {
-  CRAWLER_HIT_W, CRAWLER_ART_W_PER_HIT_W, CRAWLER_WALK_FRAMES, CRAWLER_ATTACK_FRAMES, CRAWLER_WALK_ART_BODY_W, CRAWLER_ATTACK_ART_BODY_W,
+  CRAWLER_HIT_W, CRAWLER_HIT_H, CRAWLER_ART_W_PER_HIT_W, CRAWLER_WALK_FRAMES, CRAWLER_ATTACK_FRAMES, CRAWLER_WALK_ART_BODY_W, CRAWLER_ATTACK_ART_BODY_W,
   CRAWLER_LANTERNS_WALK_ART, CRAWLER_ASCEND_SOULS, CRAWLER_SLAM_RADIUS, crawlerAttackFrame, crawlerTelegraphProg, crawlerAscendLook,
   crawlerAscendSoul, crawlerAbsorbLook, crawlerBodyFoot, crawlerFacingEdgeX, crawlerVanishLook, crawlerSlamLunge, crawlerRect, type LabCrawler,
 } from '../world/labCrawler'; // ステージ2の這う塊(判定は world 側・ここは描くだけ)
@@ -964,18 +966,42 @@ const LAB_OUT_DIM_TOP_SHARE = Math.max(0, Math.min(1, tsNum('labdimshare', 0.8))
 // **描画のみ**=ゲーム挙動(視界/湧き/当たり)には一切触らない。
 // 構成: ①画面全体に黒い幕(labdark) ②その上に等間隔の非常灯グロー(screen合成)を重ねて幕を持ち上げる。
 // 幕とライトは**同じコンテナ**(uiLayer)に入れる。ワールド側に置くと幕(画面空間)を持ち上げられないため、
-// ライトの画面位置は毎フレーム world.toGlobal で求める(ズーム/カメラ/シェイクを自動で含む)。
+// ライトの画面位置は毎フレーム worldToUi(world の点→uiLayer の座標)で求める(ズーム/カメラ/シェイクを自動で含む)。
 // 全体の暗さ。0=無効(復帰フラグ)。?labdark=
 // 0.22(v0.25.2263)→ 0.42(v2265「もっと暗くして」)→ 0.22(v2273「元に戻して」)→ **0**
 // (社長指示v0.25.2275「さらに戻して」= 暗転そのものを無しにして元の明るさへ)。
 // **0でも非常灯は出る**(v0.25.2275で幕とライトのガードを分離済み)。少し暗くしたい時は ?labdark=0.1 等。
 // → 0.15(社長指示2026-10-20「ライトが当たってない全体を少し暗く」=灯りの外だけ沈む・灯りは幕の上で持ち上げる)。
 const LAB_DARK_ALPHA = Math.max(0, Math.min(1, tsNum('labdark', 0.15)));
+// ★研究所の闇(research/LAB_DARKNESS.md・社長指示2026-11-11「ステージ2を基本ほぼ見えないくらいに暗くして、スポット当たってるところは見える。
+//   で、PHILLガンを持つと、ターゲットに付随してフラッシュライトを照らせるようにしたい」「遠景だけは今の不気味に明るい廊下が見えてる状態で」)。
+// 地平より下(歩く所)だけを覆う闇の幕。非常灯の下・自分の周り・懐中電灯・UVバー・光のエフェクト・技を出している敵の周りに穴を開ける。**描画だけ**。
+// 上の薄い幕(LAB_DARK_ALPHA)と明滅は今のまま(遠景は今の見え方)。0=闇なし(今までの見え方へ戻すツマミ)。?labpitch=
+const LAB_PITCH_ALPHA = Math.max(0, Math.min(1, tsNum('labpitch', 0.9)));
+const LAB_PITCH_COLOR = 0x04080a; // 真っ黒ではなく、非常灯の緑へわずかに寄せた黒(この場所の色)
+const LAB_PITCH_CFG = {
+  selfR: Math.max(0, tsNum('labselfr', 75)), selfA: Math.max(0, Math.min(1, tsNum('labselfa', 0.5))),      // 自分の周り。?labselfr= ?labselfa=
+  flashR: Math.max(0, tsNum('labflashr', 85)), flashA: Math.max(0, Math.min(1, tsNum('labflasha', 1))), // 懐中電灯の光だまり。?labflashr= ?labflasha=
+};
+const LAB_FLASH_TINT_A = Math.max(0, Math.min(1, tsNum('labflashtint', 0.22))); // 懐中電灯の光の色の濃さ(地面を染めない程度)。?labflashtint=
+const LAB_FLASH_TINT = 0xfff1d0;                                                // 暖かい白
+const LAB_PITCH_SPOT_A = Math.max(0, Math.min(1, tsNum('labspota', 0.95)));     // 非常灯の下の見え方の強さ。?labspota=
+const LAB_PITCH_RT_SCALE = 0.5;   // 闇の描画先は uiLayer の座標(画面合わせの拡大の前)の半分の解像度。縁が柔らかいので粗くてよい(PC・高精細の端末では実画素の1/3〜1/6)
+const LAB_PITCH_MARGIN = 48;      // 画面の外まで余裕(揺れ・引きで端が割れない)
+const LAB_PITCH_BOSS_TAU_MS = 500; // ボス戦の後に闇が戻るフェード
+const LAB_PITCH_HIDE_TAU_MS = 220; // ボス戦で闇が消えるフェード
+const LAB_PITCH_HIT_GLOW_R = 65;   // ダメージ数字の周り(当てた一瞬、闇が裂けて相手が見える)。光のエフェクトと同じ扱いで半径×2.2
+const LAB_PITCH_FADE_FRAC = 0.13;  // 幕の上端のグラデ帯(画面の高さの割合)。地平際の床は遠景の光を少し受ける
+const LAB_PITCH_POOL_RATIO = 0.6;  // 床に落ちる光だまりの縦横比(非常灯の光だまりと同じ)
+const LAB_PITCH_LANTERN_R = 115;   // 起きた塊のランタンの周り(world px)
+const PHILL_FLASH_GUN_KEY = 'phill-revolver';
+// 懐中電灯の筋の絵の幅: 筋の絵(円錐の上側)は先端で絵の幅の約6割まで広がる=先端の幅が光だまりの直径の9割になる倍率。
+const LAB_FLASH_BEAM_W_K = 0.9 / (2 * (0.055 + (0.46 - 0.055) * SPOT_BEAM_FRAC));
 // 間隔440 / 半径140(=光の直径280、暗がり160)。実測で決めた値:
 //  - 900だと画面(≒390ワールドpx幅)に1個も入らない時間が長く、並んでいるリズムが伝わらない。
 //  - 逆に間隔を詰めて2個以上同時に映そうとすると光が繋がって**暗くした意味が消える**。
 //  → 「光 → 暗がり → 光」を歩いて通過する形(画面あたり約1個)が、この画面幅では最も非常灯らしい。
-const LAB_EMLIGHT_SPACING = Math.max(120, tsNum('labemgap', 440));         // 非常灯の間隔(ワールドpx)。?labemgap=
+const LAB_EMLIGHT_SPACING = Math.max(120, tsNum('labemgap', LAB_LAMP_SPACING_PX));         // 非常灯の間隔(ワールドpx)。?labemgap=
 const LAB_EMLIGHT_RADIUS = Math.max(0, tsNum('labemr', 185));              // 床の光だまりの半径(ワールドpx)。140→185(社長指示v0.25.2271「もっと広範囲」)。0=ライト無し。?labemr=
 // 円錐の縦の伸び(社長指示v0.25.2269「円錐状に照らして」/ v0.25.2271「もっと上から落として」)。
 // 光だまりの直径に対する倍率=上方向へどれだけビームを伸ばすか。1.35→2.2。?labemh=
@@ -997,7 +1023,7 @@ const LAB_EMLIGHT_DOF_ALLOW = tsNum('labemdofallow', 260); // 地平よりこれ
 const LAB_EMLIGHT_DOF_FADE_PX = Math.max(1, tsNum('labemdof', 220)); // 消え切るまでの奥行き(px)。?labemdof=
 // 円錐の高さの上限(画面高に対する割合)。**灯りのYに依存させない**ことで伸縮(=つぶれ)を防ぐ。?labemhmax=
 const LAB_EMLIGHT_H_SCREEN_FRAC = Math.max(0.1, tsNum('labemhmax', 0.62));
-const LAB_EMLIGHT_MAX = 8;
+const LAB_EMLIGHT_MAX = 12; // 8→12: PC の最大引き(見えている幅が約4100)で10灯ぶん入る。闇では、灯りが抜けた所は穴も無い=真っ黒になるので足りる数にする
 // 切れかけの蛍光灯(社長指示2026-10-18「緑のダウンライトと連動して、ステージ全体を切れかけの蛍光灯の演出みたいに
 // たまにチカチカさせる。たまに0.5秒くらい暗いままだったり。恐怖演出」)。時刻表は utils/labFlicker.ts(純関数)。
 // 灯りが消えている度合いに応じて、非常灯を消し、画面全体を暗くする(幕)。?labflick=0 で無効。
@@ -1005,7 +1031,7 @@ const LAB_FLICKER_ON = tsNum('labflick', 1) > 0;
 const LAB_FLICKER_DARK = Math.max(0, Math.min(1, tsNum('labflickdark', 0.88))); // 消灯しきった時の画面の暗さ。0.78→0.88(社長「もう少しだけはっきり暗い時間を」)。?labflickdark=
 // 画面を暗くしてはいけない危険(赤い予告が出うる相手)が場にいるか。赤い予告は暗転でも必ず見えること(CLAUDE.md 色と形の文法)。
 // ボス戦(bossFightNow)に入らない型(ハンター・死神・使者)と、技の溜め/最中(aiPhase)・噛みつき(biteAt)の敵を見る。
-const LAB_DANGER_TYPES = new Set<string>(['hunter', 'reaper', 'hangedman']);
+const LAB_DANGER_TYPES = LAB_ALWAYS_REVEAL_TYPES; // 予告なしで寄ってくる相手(闇の穴と同じ1本=utils/labDarkness)
 const labDangerOnScreen = (enemies: readonly { type: string; aiPhase?: unknown; biteAt?: number; hp?: number }[]): boolean => {
   for (const e of enemies) {
     if ((e.hp ?? 1) <= 0) continue;
@@ -5921,6 +5947,20 @@ export class PixiScene {
   private labFlickerSeed = 0;     // 出撃ごとの種(同じ時刻に同じちらつきが来ないように)
   private labFlickerLastGt = Number.POSITIVE_INFINITY;
   private labDarkAllow = 1;       // 画面を暗くしてよい度合い(危険が画面にある間は0へ・慣性つき)
+  // ★研究所の闇(research/LAB_DARKNESS.md): 半分の解像度の描画先に「黒い板+erase の穴」を描き、その1枚を薄い幕の上・非常灯の光の下に置く。
+  private labPitchRT: RenderTexture | null = null;
+  private labPitchScene = new Container();
+  private labPitchRect = new Sprite(Texture.WHITE);
+  private labPitchFade = new Sprite();
+  private labPitchSprite: Sprite | null = null;
+  private labPitchDiscs: Sprite[] = [];   // 丸い穴(自分・敵・UVバー・光のエフェクト・非常灯の床・懐中電灯の先)
+  private labPitchCones: Sprite[] = [];   // 円錐の穴(非常灯の筋・懐中電灯)
+  private labFlashGlow: Sprite | null = null; // 懐中電灯の薄い光(screen 合成・闇の上)
+  private labFlashPool: Sprite | null = null;      // 懐中電灯の光だまり(床に寝かせた楕円・screen)
+  private labFlashBeamHole: Sprite | null = null;  // 懐中電灯の筋の穴(erase)
+  private labFlash: LabFlashState | null = null;
+  private labReveal = new Map<string, LabLight>();
+  private labPitchAllow = 1;              // ボス戦の間は0へ(慣性つき)
   private labShaftMul = 1;        // 暗転中は月明りの筋も一緒に沈める
   private labOutDim: Container | null = null; // 移動可能帯の外を暗くする幕(4枚: 上ベタ/上グラデ/下グラデ/下ベタ)
   private labOutDimParts: Sprite[] = [];
@@ -12848,7 +12888,7 @@ export class PixiScene {
   // M2: 全体を少し暗くし、等間隔に非常灯のスポットを置く(社長指示v0.25.2263)。
   // 幕(黒・画面全体)の上に screen 合成のグローを重ねる=光の位置だけ暗さが持ち上がる。
   // **ズーム対応(CLAUDE.md必須項目)**: 可視範囲は toLocal で画面端をワールド座標へ逆変換して求めるので、
-  // 文脈ズームで引いても取りこぼさない。光の大きさも world.scale を掛けて追従させる。
+  // 文脈ズームで引いても取りこぼさない。光の大きさも worldUiScale(uiLayer の座標で測った world の倍率)を掛けて追従させる。
   private updateLabDarkLights(show: boolean, now: number, gameTime = 0, noDark = false) {
     // 登場演出(ヘリ降下)中は出さない。帯外減光と同じ理由=カメラが廊下から離れている間に幕を出すと
     // 画面全体が暗転して「読み込み中」に見える(v0.25.2225の事故)。
@@ -12859,9 +12899,10 @@ export class PixiScene {
     if (!show || this.introActive) {
       if (this.labDarkLayer) this.labDarkLayer.visible = false;
       this.labVeilAlphaNow = 0;
+      this.hideLabPitch(); // 闇も出さない(登場の間に暗転しない・ほかのステージには出ない)
       return;
     }
-    if (LAB_DARK_ALPHA <= 0 && !LAB_FLICKER_ON && (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0)) {
+    if (LAB_PITCH_ALPHA <= 0 && LAB_DARK_ALPHA <= 0 && !LAB_FLICKER_ON && (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0)) {
       if (this.labDarkLayer) this.labDarkLayer.visible = false;
       return; // 幕もライトも出さない=完全OFF
     }
@@ -12924,15 +12965,21 @@ export class PixiScene {
       veil.visible = va > 0.001; // 明るさを戻した(0)時・点灯中は幕そのものを描かない
       this.labVeilAlphaNow = veil.visible ? va : 0; // 遠景の非常灯の足し戻しに使う
     }
+    // 闇の穴にする非常灯(uiLayer の座標・灯りの絵と同じ位置と大きさ・その灯りの今の明るさ)。
+    const lampHoles: { x: number; y: number; w: number; h: number; k: number }[] = [];
     if (LAB_EMLIGHT_RADIUS <= 0 || LAB_EMLIGHT_ALPHA <= 0) {
       for (const sp of this.labEmLights) sp.visible = false;
+      this.updateLabPitch(now, dt, ramp, lampHoles);
       return;
     }
     // 可視ワールドX範囲(ズーム込み)。画面端を toLocal でワールドへ戻す。
     const M = LAB_EMLIGHT_RADIUS; // 画面外の光も端に滲むぶんだけ余裕を取る
-    const wl = this.L.world.toLocal({ x: -M, y: 0 }).x;
-    const wr = this.L.world.toLocal({ x: this.screenW + M, y: 0 }).x;
-    const scale = this.L.world.scale.x || 1;
+    const wl = this.L.world.toLocal({ x: -M, y: 0 }, this.L.uiLayer).x;
+    const wr = this.L.world.toLocal({ x: this.screenW + M, y: 0 }, this.L.uiLayer).x;
+    // ★画面上の実際の倍率(ズーム)。ズームは worldGroup に掛かる(world.scale は常に1)ので、2点を uiLayer の座標へ直して測る。
+    // 旧: world.scale.x を読んでいた=引いても灯りの大きさが変わらず、最大引きで隣の灯りと繋がっていた(上のコメントの意図どおりに直した)。
+    // 位置も worldToUi で出す(旧: toGlobal=画面合わせの拡大が二重に掛かり、灯りが床の上を少し滑っていた)。
+    const scale = this.worldUiScale();
     const size = LAB_EMLIGHT_RADIUS * 2 * scale;              // 床の光だまりの直径
     // 円錐の高さ: 望みの倍率と「画面高の割合」の小さい方。**灯りの位置に依存しない**=どの灯りも同じ形。
     const coneH = Math.min(size * LAB_EMLIGHT_HEIGHT_MULT, this.screenH * LAB_EMLIGHT_H_SCREEN_FRAC);
@@ -12947,7 +12994,7 @@ export class PixiScene {
       const lt = LAB_FLICKER_ON ? labFlickerLevel(gameTime - lag, this.labFlickerSeed) : 1;
       const lc = smoothFlicker(this.labFlickerLightCur[li] ?? 1, lt, dt);
       this.labFlickerLightCur[li] = lc;
-      const g = this.L.world.toGlobal({ x: k * LAB_EMLIGHT_SPACING, y: 0 });
+      const g = this.worldToUi(k * LAB_EMLIGHT_SPACING, 0);
       sp.position.set(g.x, g.y);
       sp.width = size;
       // **高さは固定**(画面高基準)。灯りのY・プレイヤーのY・地平との距離で伸縮させない。
@@ -12961,8 +13008,217 @@ export class PixiScene {
       const dofFade = over <= 0 ? 1 : Math.max(0, 1 - over / LAB_EMLIGHT_DOF_FADE_PX);
       sp.alpha = LAB_EMLIGHT_ALPHA * ramp * dofFade * lc; // 蛍光灯と一緒に消える(灯りごとに少しずれる)
       sp.visible = sp.alpha > 0.002;
+      if (sp.visible) lampHoles.push({ x: g.x, y: g.y, w: size, h: coneH, k: dofFade * lc }); // 灯りが切れている間は穴も閉じる
     }
     for (let i = n; i < this.labEmLights.length; i++) this.labEmLights[i].visible = false;
+    this.updateLabPitch(now, dt, ramp, lampHoles);
+  }
+
+  /**
+   * world の点 → uiLayer の座標(カメラ・揺れ・ズーム込み)。uiLayer に置く絵を world の物に合わせる時はこれを使う。
+   * ★`world.toGlobal` をそのまま uiLayer の子の位置に使ってはいけない: stage には画面合わせの拡大(vpScale)が掛かっているので、
+   *   toGlobal の値(=拡大後)を uiLayer の中(=拡大前)に置くと、拡大ぶんだけ二重に掛かってずれる(430幅の端末で約6%)。
+   */
+  private worldToUi(x: number, y: number): { x: number; y: number } {
+    return this.L.uiLayer.toLocal({ x, y }, this.L.world);
+  }
+  /** uiLayer の座標で測った world の倍率(=ズーム。world.scale は常に1なので読んではいけない)。 */
+  private worldUiScale(): number {
+    const a = this.worldToUi(0, 0), b = this.worldToUi(100, 0);
+    return Math.max(0.05, Math.hypot(b.x - a.x, b.y - a.y) / 100);
+  }
+
+  /**
+   * 闇を隠す。懐中電灯の追従と穴の残光は必ず捨てる(隠れている間は進めていない=戻った時に古い位置から滑ってこない・古い位置に残像を出さない)。
+   * resetAllow=ボス戦の出入りのフェードも戻す(登場の間・ほかのステージ)。ボス戦で消えているだけの時は残す(戻りがフェードでつながる)。
+   */
+  private hideLabPitch(resetAllow = true) {
+    if (this.labPitchSprite) this.labPitchSprite.visible = false;
+    if (this.labFlashGlow) this.labFlashGlow.visible = false;
+    if (this.labFlashPool) this.labFlashPool.visible = false;
+    this.labFlash = null;
+    this.labReveal.clear();
+    if (resetAllow) this.labPitchAllow = 1;
+  }
+
+  /**
+   * ★研究所の闇(research/LAB_DARKNESS.md)。地平より下(歩く所)だけを覆う幕に、光の形の穴を開ける。**描画だけ**。
+   *  - 幕は半分の解像度の描画先(RenderTexture)に「黒い板+上端のグラデ帯」を描き、erase のスプライトでアルファを削る。
+   *  - 穴: 非常灯(円錐の筋+床の光だまり)/自分/懐中電灯(PHILLガン)/UVバー/光のエフェクト/技を出している敵・ハンター(純関数 labPitchLights)。
+   *  - 穴(続き): 技の届く形(突進の線・着地の円)/這う塊と叩きつけの円/敵の弾/ダメージ数字の周り。
+   *  - 位置は worldToUi(カメラ・ズーム・揺れ込み)・大きさは画面上の実際の倍率(worldUiScale)を掛ける。
+   *    ※ズームは worldGroup に掛かる(world.scale は常に1)ので、world.scale を読んではいけない。
+   *  - 幕の上端は「床の上端」(worldGroup の変換を通した地平)。引きは支点が地平なので動かないが、寄りは床ごと上がる。
+   *  - ボス戦の間は幕ごと消える(慣性つき)。アテンションの間は闇を保ち、注目点の周りだけ開ける。登場の間・ほかのステージは呼び手が hideLabPitch。
+   * ramp=着地の後の立ち上がり(0..1)。lamps=非常灯の画面上の位置と大きさ(灯りの絵と同じ)と今の明るさ。
+   */
+  private updateLabPitch(now: number, dt: number, ramp: number, lamps: readonly { x: number; y: number; w: number; h: number; k: number }[]) {
+    const s = useGameStore.getState();
+    // ボス戦の間は闇を消す。アテンション(カメラが見せたい物へ寄る)の間は闇を保ち、注目点の周りだけ開ける(下の focus)。
+    const lit = s.bossFightNow;
+    this.labPitchAllow = easeToward(this.labPitchAllow, lit ? 0 : 1, dt, lit ? LAB_PITCH_HIDE_TAU_MS : LAB_PITCH_BOSS_TAU_MS);
+    const rampE = 1 - (1 - ramp) * (1 - ramp); // 着地の後の立ち上がりは、すっと暗くなって最後はゆっくり(直線にしない)
+    const va = LAB_PITCH_ALPHA * rampE * this.labPitchAllow;
+    const cont = this.labDarkLayer;
+    if (va <= 0.004 || !this.renderer || !cont) { this.hideLabPitch(false); return; }
+    const M = LAB_PITCH_MARGIN, S = LAB_PITCH_RT_SCALE;
+    const W = Math.max(1, Math.round(this.screenW)), H = Math.max(1, Math.round(this.screenH));
+    const rw = Math.max(1, Math.ceil((W + M * 2) * S)), rh = Math.max(1, Math.ceil((H + M * 2) * S));
+    if (!this.labPitchRT || this.labPitchRT.width !== rw || this.labPitchRT.height !== rh) {
+      releaseBakedTexture('other', this.labPitchRT);
+      this.labPitchRT = bakeRenderTexture('other', { width: rw, height: rh, antialias: false });
+      if (this.labPitchSprite) this.labPitchSprite.texture = this.labPitchRT;
+    }
+    const scene = this.labPitchScene; // 常設の根(1つを使い回す=bakeRenderGuard の許可表)
+    if (this.labPitchRect.parent !== scene) {
+      this.labPitchRect.tint = LAB_PITCH_COLOR;
+      this.labPitchFade.texture = this.ensureVeilFadeTexture(); // 上=透明 → 下=不透明
+      this.labPitchFade.tint = LAB_PITCH_COLOR;
+      scene.addChild(this.labPitchFade, this.labPitchRect);
+    }
+    // 中身は画面座標で置き、描画先へは半分に縮めて描く(余白ぶんずらす)。
+    scene.scale.set(S);
+    scene.position.set(M * S, M * S);
+    // 幕は地平(遠景の下端)より下だけ。上端は柔らかいグラデ帯(硬い境界線を作らない)。遠景は覆わない。
+    // 床の上端=地平を worldGroup の変換に通した画面Y(引き=支点が地平なので動かない / 寄り=床ごと上がるので幕も上げる)。
+    const wgp = this.L.worldGroup;
+    const veilTop = Math.max(-M, wgp.position.y + (wgp.scale.y || 1) * this.farBackdropHeight());
+    const fadeH = Math.max(8, Math.round(this.screenH * LAB_PITCH_FADE_FRAC));
+    this.labPitchFade.position.set(-M, veilTop);
+    this.labPitchFade.width = W + M * 2; this.labPitchFade.height = fadeH;
+    this.labPitchRect.position.set(-M, veilTop + fadeH);
+    this.labPitchRect.width = W + M * 2; this.labPitchRect.height = Math.max(1, H + M - (veilTop + fadeH));
+    if (!this.labPitchSprite) {
+      const sp = new Sprite(this.labPitchRT);
+      sp.eventMode = 'none';
+      cont.addChildAt(sp, Math.min(1, cont.children.length)); // 薄い幕の上・非常灯の光の下
+      this.labPitchSprite = sp;
+    }
+    const world = this.L.world;
+    // 画面上の実際の倍率(ズームは worldGroup に掛かる=world.scale は常に1なので、2点を uiLayer の座標へ直して測る)。
+    const scale = this.worldUiScale();
+    // 見えているワールドの範囲(余白込み)。
+    const tl = world.toLocal({ x: -260, y: -260 }, this.L.uiLayer), br = world.toLocal({ x: this.screenW + 260, y: this.screenH + 260 }, this.L.uiLayer);
+    const p = s.player;
+    // 自分の穴・懐中電灯の根元は、体の絵の高さ(跳び・空中の浮き)に合わせる。
+    const pcx = p.x + p.width / 2, pcy = p.y + p.height / 2 - this.playerAirLiftPx;
+    // 懐中電灯: PHILLガンを構えている間、狙いサークル(吸い付き込み)を少し遅れて追う。点灯・消灯はフェード。
+    const flashOn = getActiveGun(p)?.key === PHILL_FLASH_GUN_KEY && p.health > 0;
+    // 光だまりの狙い=狙いサークルの絵と同じ点(体の中心+ずれ。浮きは引かない=宙に居ても光だまりはサークルの上)。根元だけ体の絵の高さ。
+    this.labFlash = stepLabFlash(this.labFlash, flashOn, { x: pcx + p.phillReticleDX, y: p.y + p.height / 2 + p.phillReticleDY }, dt);
+    const fl = this.labFlash;
+    const glows: { x: number; y: number; radius: number; life: number }[] = [];
+    for (const e of s.effects) {
+      if (e.kind !== 'glow' && e.kind !== 'damageNumber') continue;
+      const life = 1 - (now - e.createdAt) / Math.max(1, e.duration);
+      if (life <= 0) continue;
+      // 光のエフェクト=その広さ / ダメージ数字=小さく(当てた一瞬だけ、相手とその数字が闇から浮く)。
+      glows.push({ x: e.x, y: e.y, radius: e.kind === 'glow' ? e.radius : LAB_PITCH_HIT_GLOW_R, life });
+    }
+    // 敵の弾(赤い二重丸)。
+    const shots: { x: number; y: number }[] = [];
+    for (const b of s.projectiles) if (b.hostile) shots.push({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+    // 這う塊(起きている間)。体=当たりの箱 / 叩きつけの溜めの間はその円。眠っている間は渡さない(灯りか懐中電灯で照らすまで見えない)。
+    const cr = s.labCrawler;
+    const crawler = cr && cr.awake && cr.state !== 'vanish' ? {
+      x: cr.x, y: cr.y - CRAWLER_HIT_H / 2, halfW: CRAWLER_HIT_W / 2, halfH: CRAWLER_HIT_H / 2,
+      slam: cr.state === 'windup' ? { x: cr.slamX, y: cr.slamY, r: CRAWLER_SLAM_RADIUS } : null,
+    } : null;
+    const uvBars: { x: number; y: number }[] = [];
+    for (const b of s.breakableProps) if (b.type === 'uv-bar' && b.health > 0) uvBars.push({ x: b.footX, y: b.footY - 20 });
+    const eased = labEaseReveals(this.labReveal, labPitchLights({
+      player: { x: pcx, y: pcy },
+      flash: fl.a > 0.001 ? { x: fl.x, y: fl.y, a: labFlashLevel(fl.a, fl.on), dirX: p.lastDirection?.x ?? 1, dirY: p.lastDirection?.y ?? 0 } : null,
+      enemies: s.enemies, gameTime: s.gameTime, uvBars, glows, shots, crawler,
+      focus: s.attention ? { x: s.attention.x, y: s.attention.y } : null,
+      view: { x0: tl.x, y0: tl.y, x1: br.x, y1: br.y },
+    }, LAB_PITCH_CFG), dt);
+    this.labReveal = eased.next;
+    // 穴のスプライト(使い回し)。丸=なだらかな円 / 円錐=非常灯の絵(根元が細く先で広がる・先端に光だまり)。
+    let nd = 0, nc = 0;
+    const disc = (x: number, y: number, w: number, h: number, a: number, rot = 0) => {
+      let sp = this.labPitchDiscs[nd];
+      if (!sp) { sp = new Sprite(getVisibilityLightTexture()); sp.anchor.set(0.5); sp.blendMode = 'erase'; scene.addChild(sp); this.labPitchDiscs.push(sp); }
+      nd++;
+      sp.visible = true; sp.position.set(x, y); sp.width = w; sp.height = h; sp.rotation = rot; sp.alpha = Math.max(0, Math.min(1, a));
+    };
+    const cone = (x: number, y: number, w: number, h: number, a: number) => {
+      let sp = this.labPitchCones[nc];
+      if (!sp) { sp = new Sprite(getSpotConeTexture()); sp.anchor.set(0.5, 0.78); sp.blendMode = 'erase'; scene.addChild(sp); this.labPitchCones.push(sp); }
+      nc++;
+      sp.visible = true; sp.position.set(x, y); sp.width = w; sp.height = h; sp.alpha = Math.max(0, Math.min(1, a));
+    };
+    // 非常灯: 筋(円錐)と、床の光だまり(横長の楕円)。灯りが切れている間は閉じる(k)。
+    for (const l of lamps) {
+      const a = LAB_PITCH_SPOT_A * l.k;
+      if (a <= 0.01) continue;
+      cone(l.x, l.y, l.w, l.h, a * 0.7);
+      disc(l.x, l.y, l.w * 1.05, l.w * LAB_PITCH_POOL_RATIO, a);
+    }
+    let beam: LabLight | null = null;
+    for (const l of eased.lights) {
+      const g = this.worldToUi(l.x, l.y);
+      if (l.shape === 'beam') {
+        beam = l;
+        // 筋(円錐の絵の上側だけ=光だまりを含まない)を、手元→光だまりへ回して置く。光だまりは回さない平たい楕円(床に落ちた光)。
+        const root = this.worldToUi(l.rootX ?? l.x, l.rootY ?? l.y);
+        const bl = Math.hypot(g.x - root.x, g.y - root.y), w = l.r * 2 * scale;
+        let sp = this.labFlashBeamHole;
+        if (!sp) { sp = new Sprite(getSpotBeamTexture()); sp.anchor.set(0.5, 1); sp.blendMode = 'erase'; scene.addChild(sp); this.labFlashBeamHole = sp; }
+        sp.visible = bl > 2; sp.position.set(g.x, g.y);
+        sp.width = w * LAB_FLASH_BEAM_W_K; sp.height = bl;
+        sp.rotation = Math.atan2(g.y - root.y, g.x - root.x) - Math.PI / 2; // 絵の下向き(+y)を、手元→先の向きへ
+        sp.alpha = Math.max(0, Math.min(1, l.a * 0.85));
+        disc(g.x, g.y, w * 1.1, w * 1.1 * LAB_PITCH_POOL_RATIO, l.a);
+      } else {
+        const d = l.r * 2 * scale, dh = l.ry !== undefined ? l.ry * 2 * scale : d;
+        disc(g.x, g.y, d, dh, l.a, l.rot ?? 0);
+        // 危険を伝える絵のための穴は2回削る(縁の近くまで闇を残さない)。2回目の強さは hardK(技の終わりに残光で抜ける)。
+        const hk = l.hardK ?? (l.hard ? 1 : 0);
+        if (hk > 0) disc(g.x, g.y, d, dh, l.a * hk, l.rot ?? 0);
+      }
+    }
+    if (!beam && this.labFlashBeamHole) this.labFlashBeamHole.visible = false;
+    // 起きた塊のランタン(描いてある灯りの位置=1フレーム前の絵)の周りを開ける。体は瓶の周りだけが照らされ、残りは闇に溶ける。
+    for (const lt of this.crawlerLanterns) {
+      if (!lt.visible || !lt.parent) continue;
+      const lp = this.L.uiLayer.toLocal(lt.position, lt.parent);
+      const d = LAB_PITCH_LANTERN_R * 2 * scale;
+      disc(lp.x, lp.y, d, d, 0.85 * Math.min(1, lt.alpha * 1.4));
+    }
+    for (let i = nd; i < this.labPitchDiscs.length; i++) this.labPitchDiscs[i].visible = false;
+    for (let i = nc; i < this.labPitchCones.length; i++) this.labPitchCones[i].visible = false;
+    this.renderer.render({ container: this.labPitchScene, target: this.labPitchRT, clear: true });
+    const vs = this.labPitchSprite;
+    vs.visible = true;
+    vs.position.set(-M, -M);
+    vs.width = W + M * 2; vs.height = H + M * 2;
+    vs.alpha = va;
+    // 懐中電灯の薄い光(闇に開けた穴と同じ形・screen 合成)。光として読めるようにするだけ(地面を染めない濃さ)。筋=回す / 光だまり=床に寝かせた楕円。
+    if (beam && LAB_FLASH_TINT_A > 0) {
+      let gl = this.labFlashGlow, pool = this.labFlashPool;
+      if (!gl || !pool) {
+        gl = new Sprite(getSpotBeamTexture()); gl.eventMode = 'none'; gl.anchor.set(0.5, 1); gl.tint = LAB_FLASH_TINT; gl.blendMode = 'screen';
+        pool = new Sprite(getVisibilityLightTexture()); pool.eventMode = 'none'; pool.anchor.set(0.5); pool.tint = LAB_FLASH_TINT; pool.blendMode = 'screen';
+        cont.addChild(gl, pool); this.labFlashGlow = gl; this.labFlashPool = pool;
+      }
+      const g = this.worldToUi(beam.x, beam.y);
+      const root = this.worldToUi(beam.rootX ?? beam.x, beam.rootY ?? beam.y);
+      const bl = Math.hypot(g.x - root.x, g.y - root.y), w = beam.r * 2 * scale;
+      // 光だまりが地平より上(遠景)へ出た分は薄くする(遠景は今の見え方のまま=懐中電灯の色で染めない)。
+      const overTop = Math.max(0, Math.min(1, (veilTop + fadeH - g.y) / Math.max(1, fadeH * 2)));
+      const ga = LAB_FLASH_TINT_A * (beam.a / Math.max(0.001, LAB_PITCH_CFG.flashA)) * this.labPitchAllow * rampE * (1 - overTop);
+      gl.visible = bl > 2; gl.position.set(g.x, g.y);
+      gl.width = w * LAB_FLASH_BEAM_W_K; gl.height = bl;
+      gl.rotation = Math.atan2(g.y - root.y, g.x - root.x) - Math.PI / 2;
+      gl.alpha = ga;
+      pool.visible = true; pool.position.set(g.x, g.y);
+      pool.width = w * 1.1; pool.height = w * 1.1 * LAB_PITCH_POOL_RATIO;
+      pool.alpha = ga * 0.9;
+    } else {
+      if (this.labFlashGlow) this.labFlashGlow.visible = false;
+      if (this.labFlashPool) this.labFlashPool.visible = false;
+    }
   }
 
   // 移動可能帯(廊下)の外を少し暗くする(社長指示v0.25.2223)。境目はグラデで溶かす。
@@ -40745,9 +41001,7 @@ export class PixiScene {
     g.clear();
     const rg = this.reticleGfx; // 照準サークル専用(環境光の影響を受けない層=uiLayer・screen座標)
     rg.clear();
-    // uiLayer は screen 座標。world.position(=-camera+shake)を足して world→screen 変換する。
-    const rox = this.L.world.position.x;
-    const roy = this.L.world.position.y;
+    // uiLayer は screen 座標。world→screen は worldToUi(カメラ・揺れ・ズーム込み)で出す。
     const cx = player.x + player.width / 2;
     const cy = player.y + player.height / 2;
     const r = huntingMeleeRadius(player);
@@ -40804,8 +41058,11 @@ export class PixiScene {
         // 照準サークルは movePlayer が算出した「吸い付き済み」オフセットに揃える(発砲と完全一致)。
         // PHILL/レールガンは頭にスナップ中は緑＝即ヘッドショット可、未スナップは橙＝通常射撃。
         // シグナルにヘッドショット概念は無いので、スナップ状態に関わらず常に琥珀の1色。
-        const ax = cx + player.phillReticleDX + rox;
-        const ay = cy + player.phillReticleDY + roy;
+        // ★画面上の位置は worldToUi で出す(カメラ・ズーム込み)。旧: world.position を足すだけ=ズーム中は
+        //   絵だけが実際の狙い(発砲・吸い付きの world 座標)からずれていた(最大引きで100px超)。等倍では同じ位置。
+        const aimG = this.worldToUi(cx + player.phillReticleDX, cy + player.phillReticleDY);
+        const ax = aimG.x;
+        const ay = aimG.y;
         // ★v0.25.4283(社長報告「レールガンの吸い付きが実装されていない気がする」の正体): レールガンは
         // オートと手動でCDの時計が別(2026-09-13・manualLastFired)。ここが**オートの lastFired** を読んでいたため、
         // 戦闘中はオートが1.3秒ごとに撃ち続けて常に「CD中」判定=サークルが alpha 0.2 に張り付き、緑の
@@ -41950,6 +42207,9 @@ export class PixiScene {
     this.signalBombSprites.clear();
     try { this.labRT?.destroy(true); } catch { /* ignore */ }
     this.labRT = null;
+    try { releaseBakedTexture('other', this.labPitchRT); } catch { /* ignore */ }
+    this.labPitchRT = null;
+    try { this.labPitchScene.destroy({ children: true }); } catch { /* ignore */ }
     this.zwarpSaved.length = 0;
     try { this.zwarpFilter?.destroy(); } catch { /* ignore */ }
     this.zwarpFilter = null;
