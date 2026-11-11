@@ -377,6 +377,16 @@ describe('格闘: 検収の(A)', () => {
     expect(keys).not.toContain('brawler-hit');
     expect(keys).not.toContain('whip-hit');
   });
+  it('敵には当たらず小物(松明)だけを叩いた時も、当たりの音が鳴る(社長実機2026-11-11「格闘で物壊した時のSEが無い」)', () => {
+    setup();
+    const c = center();
+    useGameStore.setState({ enemies: [], breakableProps: [{ id: 'torch-t', x: c.x + 20, y: c.y - 20, width: 20, height: 40, footX: c.x + 30, footY: c.y + 10, scale: 1, health: 1, maxHealth: 1, type: 'torch', lastHit: 0 }] });
+    drainBrawlerSfx();
+    useGameStore.getState().brawlerPress();
+    advance(120);
+    expect(useGameStore.getState().breakableProps.some(p => p.id === 'torch-t' && p.health > 0)).toBe(false); // 壊れた
+    expect(drainBrawlerSfx().map(b => b.key)).toContain('brawler-punch');
+  });
   it('A-5 武器庫の円の中: 押した瞬間は店を開く(段は出さない)/段の判定の時刻では店を開かない(ポイントを失わない)', () => {
     setup();
     const c = center();

@@ -4493,6 +4493,7 @@ const eggBreakFx = (get: () => GameState, broken: BreakableProp): void => {
 const brawlerPalmBreakProps = (get: () => GameState, palm: { x0: number; y0: number; ux: number; uy: number; travel: number }, p: Player): void => {
   const melee = p.weapons.find(w => w.isMelee);
   const dmg = meleeSwingBaseDamage(melee, p) * BR.brawlerStageSpec(5).mult * 2.5;
+  let palmPropSfx = false;
   for (const prop of get().breakableProps) {
     if (prop.type === 'uv-bar') continue;
     const ex = prop.footX - palm.x0, ey = prop.footY - palm.y0;
@@ -4500,6 +4501,7 @@ const brawlerPalmBreakProps = (get: () => GameState, palm: { x0: number; y0: num
     if (along < -prop.width / 2 || along > palm.travel + prop.width / 2) continue;
     if (Math.abs(ex * palm.uy - ey * palm.ux) > BR.BRAWLER_BAND_HALF_W + prop.width / 2) continue;
     const broken = get().damageBreakableProp(prop.id, dmg);
+    if (!palmPropSfx) { palmPropSfx = true; const cue = BR.brawlerStageHitSfx(5, brJitter(), 0.8); brawlerSfx(cue.key, cue.gain, cue.rate); } // 突き抜けで小物を叩いた音(1回だけ)
     get().spawnEffect({ kind: 'meleeHit', id: `mhit-palmprop-${prop.id}-${Date.now()}`, x: prop.footX, y: prop.footY - prop.height * 0.6, size: 120, tint: BR.BRAWLER_COLOR_HEX, createdAt: Date.now(), duration: 240, rot: Math.random() * Math.PI * 2 });
     if (!broken) continue;
     if (broken.type === 'mine') {
@@ -5475,6 +5477,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     }
     // 当たった時=飛び蹴りの専用の音(社長支給2026-11-11・旧の2枚重ねを置き換え)。空振りは今までどおり小さい鈍い音だけ。
     if (hits > 0) { const cue = BR.brawlerKickHitSfx(big, brJitter()); brawlerSfx(cue.key, cue.gain, cue.rate); }
+    else if (r.hit) { const cue = BR.brawlerKickHitSfx(big, brJitter()); brawlerSfx(cue.key, cue.gain * 0.8, cue.rate); } // 小物だけを蹴った時も当たりの音
     else brawlerSfx('brawler-hit', 0.35, (big ? 0.66 : 1.0) * brJitter(), big ? 300 : 200);
     if (big && hits > 0) brawlerSfx('heavy-impact', 0.95, 0.85);
   }
@@ -5604,6 +5607,9 @@ const brawlerStageFx = (
     const cue = BR.brawlerStageHitSfx(stage, brJitter(), extraGain);
     brawlerSfx(cue.key, cue.gain, cue.rate);
   };
+  // ★敵には当たらず、小物(松明・卵など)だけを叩いた時も当たりの音を鳴らす(社長実機2026-11-11「格闘で物壊した時のSEが無い」)。
+  //   当たりの音は下の段ごとの分岐が「敵に当たった時」にだけ鳴らしていた=小物だけの時は無音だった。少し小さく。
+  if (hits === 0 && r.hit) hitSfx(0.8);
   switch (stage) {
     case 1:
     case 2: {

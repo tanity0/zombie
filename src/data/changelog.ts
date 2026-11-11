@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5482', items: [
+    '格闘で松明や卵などを叩いた時に、当たりの音が鳴らなかったのが直った',
+  ] },
   { version: '0.25.5481', items: [
     'ゲーム内容の変更はありません',
   ] },
