@@ -5072,8 +5072,13 @@ const startBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const p = st.player;
   const now = Date.now();
   const c = brawlerCenter(p);
+  // ★出始め(起動の間)だけ無敵(社長指示2026-11-11「秘奥義は出始めだけ無敵時間有り」)。9連撃・落下・着地は今までどおり無敵なし(被弾する)。
+  //   5段目の突き抜けと同じ作り: 既存の被弾無敵を使い、切れる時刻が起動の終わりと揃うよう開始時刻をずらす。もっと長い無敵が残っていれば縮めない。
+  const igniteMs = BR.BRAWLER_SECRET_IGNITE_MS;
+  const igniteInvAt = now - (INVULN_MS - igniteMs);
   setBrawler(set, { ...BR.brawlerSecretStart(s, st.gameTime, now), flashAt: now },
-    { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, vx: 0, vy: 0 });
+    { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, vx: 0, vy: 0,
+      invulnerable: true, invulnerableTime: p.invulnerable ? Math.max(p.invulnerableTime, igniteInvAt) : igniteInvAt });
   notifyTechProc('secret');
   noteBrawlerSecret(); // 落ちた時の記録(「前回最後」の行)に、秘奥義を出した回数を残す
   const g = get();
@@ -11118,6 +11123,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     const st = get();
     const p = st.player;
     if (!isBrawlerMode(p)) return false;
+    // ★秘奥義は構え(↑)で取り消せる(社長指示2026-11-11)。起動と9連撃の間だけ。秘奥義を終えて(技ポイントは決まりどおり0)、そのまま構えに入る
+    //   =構えの代金は取らない(持っている技ポイントを全部失うのが代金)。ほかの入力は今までどおり受け付けない。
+    if (BR.isBrawlerSecretActive(p.brawler)) {
+      const sec = p.brawler!;
+      if (neutral || BR.classifyBrawlerFlick(dirX, dirY) !== 'guard' || !BR.brawlerSecretCancelable(sec)) return false;
+      endBrawlerSecret(set, sec);
+      const after = get().player.brawler;
+      if (!after || !brawlerGateOk(get)) return true;
+      startBrawlerTech(get, set, after, 'guard', false, false, true);
+      return true;
+    }
     if (!brawlerGateOk(get)) return false;
     const s = p.brawler ?? BR.initialBrawlerState();
     const t = st.gameTime;

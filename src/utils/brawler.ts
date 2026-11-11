@@ -95,7 +95,7 @@ export interface BrawlerTechSpec {
 /** 技の表の係数1.0の値(今までの値)。 */
 export const BRAWLER_TECHS_BASE: Readonly<Record<BrawlerTechKind, BrawlerTechSpec>> = {
   guard: { kind: 'guard', cost: 3, windupMs: 0, recoveryMs: 1000 }, // 社長指示2026-11-07「カウンターは3ポイントに変更」(旧5)
-  stomp: { kind: 'stomp', cost: 5, windupMs: 200, recoveryMs: 400 },
+  stomp: { kind: 'stomp', cost: 5, windupMs: 200, recoveryMs: 462 }, // 社長指示2026-11-11「大踏み潰し2.5倍にして、後隙を600に」=係数1.3で 601ms(旧 400→520ms)
   kiko: { kind: 'kiko', cost: 2, windupMs: 120, recoveryMs: 330 },
   kick: { kind: 'kick', cost: 1, windupMs: 120, recoveryMs: 150 },
 };
@@ -154,7 +154,7 @@ export const BRAWLER_LIFT_VIS_BODY_K = 0.45;
 /** 巨大な敵の上限: 見えている画面の縦×これ(world px)。 */
 export const BRAWLER_LIFT_VIS_MAX_VIEW_FRAC = 0.2;
 export const BRAWLER_STOMP_RADIUS = 150;     // 下の大踏み潰し(§3-3)
-export const BRAWLER_STOMP_MULT = 3.5; // 社長裁定2026-11-11「3;上げる」で 2.4→3.5(技ポイントが一番高い技の見返り)。旧: 2026-11-09 に 2.0→2.4
+export const BRAWLER_STOMP_MULT = 2.5; // 社長指示2026-11-11「大踏み潰し2.5倍にして」(旧3.5)。それ以前: // 社長裁定2026-11-11「3;上げる」で 2.4→3.5(技ポイントが一番高い技の見返り)。旧: 2026-11-09 に 2.0→2.4
 export const BRAWLER_STOMP_HITSTOP_MS = BRAWLER_HITSTOP.closer; // 締めの止め(§9-2・社長承認2026-11-08 で 140→220)
 export const BRAWLER_KIKO_SPEED = 900;       // 左の気功(§3-4)
 export const BRAWLER_KIKO_RANGE = 420;
@@ -180,7 +180,7 @@ export const BRAWLER_KICK3_KB_POWER = 1.8;
 /** 飛び蹴りの後隙のうち、体がしゃがみの絵に替わる所(0..1)。蹴りの影もここまでに消し切る(体の絵と影が同じ値を読む)。 */
 export const BRAWLER_KICK_CROUCH_AT = 0.1;
 /** ★飛び蹴りの3発目の後隙の倍率(社長指示2026-11-11「技後の隙も少し伸ばして」)。1・2発目は今どおり。 */
-export const BRAWLER_KICK3_RECOVERY_MULT = 1.4;
+export const BRAWLER_KICK3_RECOVERY_MULT = 1.7; // 社長指示2026-11-11「蹴り飛ばし、踵落としの隙少しだけ延長」で 1.4→1.7(係数1.3で 273→332ms)
 export const brawlerKickMult = (kickN: number): number => BRAWLER_KICK_MULTS[Math.max(1, Math.min(3, Math.round(kickN)))];
 export let BRAWLER_KICK_CHAIN_MS = 500; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_KICK_MAX = 3;
@@ -563,6 +563,12 @@ export const brawlerSecretStart = (s: BrawlerState, t: number, now: number): Bra
   nextStage: 1, chainUntil: 0, secretProgress: 0, secretLastEndAt: 0,
   secret: { phase: 'ignite', phaseAt: t, hits: 0, nextAt: t + BRAWLER_SECRET_IGNITE_MS, igniteAt: now },
 });
+/**
+ * ★秘奥義を構え(↑)で取り消せるか(社長指示2026-11-11「秘奥義は出始めだけ無敵時間有り。構えでキャンセル可能」)。
+ * 起動と9連撃の間だけ。落下と着地(フィニッシュ)に入ったら取り消せない(天空に居る・締めは出し切る)。
+ */
+export const brawlerSecretCancelable = (s: BrawlerState | undefined): boolean =>
+  !!s?.secret && (s.secret.phase === 'ignite' || s.secret.phase === 'strike');
 /** 秘奥義を終えた(フィニッシュ後・中断)状態。技ポイントは強制で0、段は1段目へ(§10-2-4・§10-3)。 */
 export const brawlerSecretEnd = (s: BrawlerState): BrawlerState => ({
   ...s, phase: 'idle', tech: null, stage: 0, buffered: false, techBuffer: undefined, stepBuffer: undefined, points: 0, nextStage: 1, chainUntil: 0,

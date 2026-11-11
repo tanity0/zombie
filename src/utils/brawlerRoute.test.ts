@@ -249,7 +249,7 @@ describe('固まりの長さ(§20-2・§20-4・係数1.3)', () => {
     expect([1, 2, 3, 4, 5].map(n => [brawlerStageSpec(n).windupMs, brawlerStageSpec(n).recoveryMs, brawlerStageSpec(n).hitstopMs])).toEqual(
       [[78, 182, 90], [78, 182, 90], [156, 299, 150], [325, 260, 150], [299, 416, 220]]);
     expect([BRAWLER_TECHS.kick.windupMs, BRAWLER_TECHS.kick.recoveryMs, BRAWLER_TECHS.stomp.windupMs, BRAWLER_TECHS.stomp.recoveryMs, BRAWLER_TECHS.kiko.windupMs, BRAWLER_TECHS.kiko.recoveryMs])
-      .toEqual([156, 195, 260, 520, 156, 429]);
+      .toEqual([156, 195, 260, 601, 156, 429]);
     expect([BRAWLER_KICK_HITSTOP_MS[1], BRAWLER_KICK_HITSTOP_MS[2], BRAWLER_KICK_HITSTOP_MS[3], BRAWLER_STOMP_HITSTOP_MS]).toEqual([150, 150, 220, 220]);
     expect([BRAWLER_CANCEL_WINDOW_MS, BRAWLER_KICK3_CHARGE_MS]).toEqual([195, 150]);
     expect([brawlerKickFlightMs(0), brawlerKickFlightMs(160), brawlerKickFlightMs(220)]).toEqual([156, 156, 195]);

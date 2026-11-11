@@ -57,7 +57,7 @@ describe('テンポ係数の表(純関数)', () => {
   it('係数1.0 = 今までの値(段・技・つながり・先行入力・5段目・蹴り・秘奥義・ステップ・固まり)', () => {
     const v = brawlerTimesAt(1.0);
     expect(v.stages.map(s => [s.windupMs, s.recoveryMs])).toEqual([[60, 140], [60, 140], [120, 230], [250, 200], [230, 320]]);
-    expect(Object.values(v.techs).map(t => [t.windupMs, t.recoveryMs])).toEqual([[0, 1000], [200, 400], [120, 330], [120, 150]]);
+    expect(Object.values(v.techs).map(t => [t.windupMs, t.recoveryMs])).toEqual([[0, 1000], [200, 462], [120, 330], [120, 150]]);
     expect([v.BRAWLER_CHAIN_RESET_MS, v.BRAWLER_WHIFF_BUFFER_MS, v.BRAWLER_PALM_DASH_MS, v.BRAWLER_PALM_SETTLE_MS, v.BRAWLER_LIFT_MS,
       v.BRAWLER_KICK_FLIGHT_MAX_MS, v.BRAWLER_KICK_CHAIN_MS, v.BRAWLER_GUARD_MS, v.BRAWLER_GUARD_QUICK_MS, v.BRAWLER_SUPER_FLASH_MS,
       v.BRAWLER_SECRET_GAP_MS, v.BRAWLER_SECRET_IGNITE_MS, v.BRAWLER_SECRET_STRIKE_MS, v.BRAWLER_SECRET_FALL_MS, v.BRAWLER_SECRET_LAND_MS, v.BRAWLER_STEP_MS])

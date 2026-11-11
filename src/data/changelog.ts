@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5498', items: [
+    '格闘の大踏み潰しは威力が下がり、後の隙が長くなった',
+    '蹴り飛ばしと踵落としの後の隙が少し長い',
+    '秘奥義は出始めだけ無敵。途中で構えを入れると取り消して構えに移れる',
+  ] },
   { version: '0.25.5497', items: [
     '格闘の五段目の後の隙が少し長くなった',
   ] },

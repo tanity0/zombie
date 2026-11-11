@@ -7,7 +7,7 @@ import { brawlerLiftBreaksTech, brawlerLockHitMs, brawlerLockAlive } from '../ut
 import type { Projectile } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { buildPseudoPlayer } from '../utils/playerBuild';
-import { BRAWLER_GUARD_MS, brawlerPointCap, BRAWLER_SMALL_KB_MULT, BRAWLER_BOSS_SMALL_KB_MULT, brawlerStepAllowed, BRAWLER_STEP_BUFFER_MS } from '../utils/brawler';
+import { BRAWLER_GUARD_MS, brawlerPointCap, BRAWLER_SMALL_KB_MULT, BRAWLER_BOSS_SMALL_KB_MULT, brawlerStepAllowed, BRAWLER_STEP_BUFFER_MS, BRAWLER_SECRET_IGNITE_MS } from '../utils/brawler';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import { playerSuperArmorActive } from '../utils/superArmor';
 import { treesInRegion, trunkRect } from '../world/trees';
@@ -818,14 +818,35 @@ describe('秘奥義(research/BRAWLER.md §10・社長指示2026-11-08)', () => {
     expect(br().secret).toBeUndefined();
     expect(br().points).toBe(0);
   });
-  it('発動中はスーパーアーマー(無敵ではない)・入力は受け付けない', () => {
+  it('発動中はスーパーアーマー・入力は受け付けない(構えの取り消しだけ別)。無敵は出始め(起動の間)だけ(社長指示2026-11-11)', () => {
     prep([zombieAt(120, 0, 'a'), zombieAt(-140, 60, 'b')]);
     fireSecret();
     const p = useGameStore.getState().player;
     expect(playerSuperArmorActive(p, 999, Date.now(), useGameStore.getState().gameTime, 368)).toBe(true);
-    expect(p.invulnerable).toBe(false);
+    expect(br().secret?.phase).toBe('ignite');
+    expect(p.invulnerable).toBe(true);
+    // 無敵が切れる時刻=起動の終わり(それより後は被弾する)。
+    expect(p.invulnerableTime + INVULN_MS).toBe(Date.now() + BRAWLER_SECRET_IGNITE_MS);
     expect(useGameStore.getState().brawlerPress()).toBe(false);
     expect(useGameStore.getState().brawlerTech(1, 0)).toBe(false);
+    expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false);
+    expect(br().secret).toBeDefined();
+  });
+  it('構え(↑)で取り消せる: 秘奥義が終わり(技ポイントは0)、そのまま構えに入る。落下に入ったら取り消せない', () => {
+    prep([zombieAt(120, 0, 'a'), zombieAt(-140, 60, 'b')]);
+    fireSecret();
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    expect(br().secret).toBeUndefined();
+    expect(br().tech).toBe('guard');
+    expect(br().points).toBe(0);
+    // 落下・着地の間は取り消せない
+    prep([zombieAt(120, 0, 'a'), zombieAt(-140, 60, 'b')]);
+    fireSecret();
+    for (let k = 0; k < 800 && br().secret && br().secret?.phase !== 'fall'; k++) advance(10);
+    if (br().secret?.phase === 'fall') {
+      expect(useGameStore.getState().brawlerTech(0, -1)).toBe(false);
+      expect(br().secret?.phase).toBe('fall');
+    }
   });
   it('間が空いたら発動しない(普通の構えになる)', () => {
     prep([zombieAt(120, 0, 'a')]);
