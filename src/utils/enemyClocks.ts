@@ -147,6 +147,10 @@ export const ENEMY_ACTION_CLOCKS: readonly EnemyClockEntry[] = [
   { field: 'chaffBlinkAt', kind: 'start', base: 'game' },
   { field: 'aiStartedAt', kind: 'start', base: 'game' },
   { field: 'zombieWalkRampAt', kind: 'start', base: 'game' },
+  // 発砲(プラントの種・旧経路の城ボスの弾): 前に撃った時刻と、閉じ始めた時刻(Date.now)。止まっている間は進めない
+  // (社長実機2026-11-11「プラントが殴ってても止まらない」=固まりの間も発砲の時計だけ進んでいた)。lastShot=0 は「まだ撃っていない」。
+  { field: 'lastShot', kind: 'start', base: 'now', zeroIsUnset: true },
+  { field: 'shotWindupAt', kind: 'start', base: 'now' },
   // ---- 城ボス(ジャイアント/グレン) ------------------------------------------------------------
   { field: 'gbJumpReadyAt', kind: 'deadline', base: 'game' },
   { field: 'gbDashReadyAt', kind: 'deadline', base: 'game' },

@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5488 — 格闘の止めの間、プラントは弾を撃たない(発砲の時計も止める)【2026-11-11 18:55 JST】
+- 社長実機(2026-11-11): 「プラントが殴ってても止まらない。同じく卵の敵とかも(気)をつけてみてみて」。
+- 原因: 固まった敵は `updateEnemies` の早期 return で移動・技が止まるが、**発砲は別の関数**(`combatTick.applyEnemyFire`)が回していて、気絶と aiPhase しか見ていなかった。発砲の時計(`lastShot`・`shotWindupAt`=Date.now)も行動の時計の台帳に無く、止まっている間も進んでいた。
+- 直し: `applyEnemyFire` に格闘の止め(固まり・浮き=`brawlerStopOnlyNow`)の間は撃たない、を足した。`lastShot`・`shotWindupAt` を台帳(`enemyClocks`)へ=止まっている間は進まず、明けたら続きから。
+- 卵を産む敵(抱卵型): コードで確かめた=産卵は `updateEnemies` の中の分岐で、固まりの早期 return の後ろにあり、`eggLayAt` は台帳にある=固めている間は産まない(実機・ヘッドレスでは見ていない)。
+- 事実: 台帳に載せたので、気絶(会心)の間もプラントの発砲の時計は進まなくなった(旧は気絶が明けた瞬間に撃てた)。
+- 確認: typecheck・lint 0・循環なし。vitest `plantBrawlerHold.test.ts`(新4件)・enemyClocks・combatTick。実機は未確認。
+- 監査: 付けない(不具合の直し)。索引 §0 に1行。憲法第4条・第5条: 抵触なし。
+- 変更: `src/utils/combatTick.ts`・`src/utils/enemyClocks.ts`・`src/utils/plantBrawlerHold.test.ts`(新)・`ENGINEERING_NOTES.md`・`src/data/changelog.ts`・`package.json`。
+
 ## v0.25.5487 — 格闘: 飛び蹴りの後にしゃがむ時は、蹴りの影を消す【2026-11-11 18:49 JST】
 - 社長指示(2026-11-11): 「飛び蹴り、蹴りの後しゃがむ時は蹴りの絵は消して。」
 - 直し: 蹴りの影(`brawlerStandAt` の kick)を、体がしゃがみの絵に替わる所(`BRAWLER_KICK_CROUCH_AT`=後隙の1割)までに消し切る。当たった瞬間(止めの間)は今どおり見せる。体の絵と影が同じ値を読む。

@@ -40,6 +40,7 @@ import { KAMITSUKI_ENABLED, REAPER2_CONFIG } from '../config/reaper';
 import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { PHILL_COUNTER_RECOVER_MS } from './phillScript'; // §10-15#2: フィル後追い分岐の硬直長
 import { activeFlareTargets } from './flareGun';
+import { brawlerStopOnlyNow } from './brawlerCombo'; // 格闘の止めの間は発砲しない
 import { getActiveGun, GHOST_REFLECT_WEAPON_KEY } from './weaponUtils';
 import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkCollision, enemyContactBox } from './collisionUtils';
 import { isHeroDogLeaving } from './heroDog';
@@ -862,6 +863,10 @@ export const applyEnemyFire = (now: number): void => {
     if (enemy.stunUntil !== undefined && liveGameTime < enemy.stunUntil) return;
     // 特殊行動中(ジャンプ/ダッシュの溜め・動作中)は発砲しない(giantbat の弾/ジャンプ/ダッシュを排他に)。
     if (enemy.aiPhase) return;
+    // ★格闘の止め(固まり・浮き)の間は撃たない(社長実機2026-11-11「プラントが殴ってても止まらない」)。
+    //   固まった敵の移動・産卵などは updateEnemies が止めるが、発砲はこの関数が別に回していたので、殴られている最中も弾が出ていた。
+    //   発砲の時計(lastShot・shotWindupAt)は行動の時計の台帳(utils/enemyClocks)に載せた=止まっている間は進まず、明けたら続きから。
+    if (brawlerStopOnlyNow(enemy, liveGameTime, now)) return;
     // 狙っていた軍人が倒れた直後の1秒は撃たない(research/ESCORT_TARGETED.md §13b-1: 立ち止まってから次の相手を探す)。
     if (enemy.escortLostUntil !== undefined && liveGameTime < enemy.escortLostUntil) return;
     const profile = getEnemyFireProfile(enemy);

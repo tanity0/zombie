@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5488', items: [
+    '格闘で殴って固めている間も、種を撃つ変異体が弾を撃ち続けていたのが直った',
+  ] },
   { version: '0.25.5487', items: [
     '飛び蹴りの後にしゃがむ時、蹴りの絵が残って重なっていたのが直った',
   ] },
