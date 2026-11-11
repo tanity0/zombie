@@ -383,6 +383,11 @@ export const BRAWLER_JUGGLE_PUSH: Readonly<Record<BrawlerMoveKey, number>> = {
   kick1: 0.75, kick2: 0.75, kick3: 0,
   stomp: 0, kiko: 0.5, secret: 0.75, 'secret-land': 0,
 };
+/**
+ * ★地上の敵を浮かせる当たり(ランチャー)と、その高さ(4段目=1)。ここに無い当たりは地上からは浮かせない。
+ * 飛び蹴りの2発目は少しだけ打ち上げる(社長指示2026-11-11「飛び蹴り2段目は少し打ち上げられる仕様にして欲しい」)。3・4段目は今どおり(空中の押し上げ量と同じ値)。
+ */
+export const BRAWLER_GROUND_LAUNCH: Readonly<Partial<Record<BrawlerMoveKey, number>>> = { s3: 0.75, s4: 1, kick2: 0.5 };
 /** これより軽い押し上げはもう浮かない(=落ちる)。いずれ必ず落ちる=永久には浮かせられない。 */
 export const BRAWLER_JUGGLE_MIN_F = 0.12;
 /** 1回の押し上げの浮く時間の下限(ms・短すぎる跳ねは絵がちらつく)。 */
@@ -501,7 +506,7 @@ export const brawlerAirSignal = (e: BrawlerJuggleFields, now: number): number =>
 
 /**
  * 格闘の当たり1回ぶんの浮き(§12-1・§13-2)。cls=区分の重さ。返り値 null=浮きは変わらない。
- *  - 地上: 3段目(アッパー)・4段目が浮かせる(ランチャー)。拾える回数の予算(雑魚6/強個体5/ボス級4)をここで持たせる。
+ *  - 地上: 3段目(アッパー)・4段目・飛び蹴りの2発目(少しだけ)が浮かせる(ランチャー=BRAWLER_GROUND_LAUNCH)。拾える回数の予算(雑魚6/強個体5/ボス級4)をここで持たせる。
  *  - 空中: 押し上げのある段・技で浮き直す(高さ・時間=押し上げ量×重さ。回数の減りは予算が受け持つ)。当たるたびに予算を使い、
  *    足りない当たりでダウン(今の高さから落ちる・着地まで動けない・着地の後 BRAWLER_DOWN_NO_HOLD_MS は固まらない)。
  *  - 空中の大踏み潰し: 1コンボに1回だけ地面バウンド(落ちて小さく跳ね返る=拾い直せる)。2回目以降は叩き落とし(ダウン)。
@@ -516,8 +521,9 @@ export const brawlerJugglePush = (
   const w = BRAWLER_JUGGLE_WEIGHT[cls];
   const arc = (f: number) => Math.max(BRAWLER_JUGGLE_MIN_MS, Math.round(BRAWLER_LIFT_MS * f));
   if (!airborne) {
-    if (move !== 's4' && move !== 's3') return null;
-    const f = push * w;
+    const launch = BRAWLER_GROUND_LAUNCH[move];
+    if (launch === undefined) return null;
+    const f = launch * w;
     if (f < BRAWLER_JUGGLE_MIN_F) return null;
     const ms = arc(f);
     // brBlastAirSince: 空中の始まり(この後に爆発で浮き直した時、爆発で浮かない窓の長さを空中の時間で測る・§14)。

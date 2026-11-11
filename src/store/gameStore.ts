@@ -4636,12 +4636,12 @@ const brawlerHitPatch = (
   // ★コンボの後の固まらない時間の間は地上から浮かせない(§19-3 ⑤=浮かせて止め続ける抜け道を塞ぐ)。空中の拾い直しは元から地上に居ないので今どおり。
   const liftOk = !endNoHold || BRC.brawlerAirborne(enemy, now);
   if (bs.combo && !busy) {
-    // 浮かせの段(3段目・4段目・秘奥義の4段目)は地上からも浮かせる(§13-2)。バウンドの区切りに流れの始まりを渡す(この当たりの combo を反映)。
+    // 浮かせの当たり(3段目・4段目・飛び蹴りの2発目・秘奥義の4段目)は地上からも浮かせる(§13-2・BRAWLER_GROUND_LAUNCH)。バウンドの区切りに流れの始まりを渡す(この当たりの combo を反映)。
     const jp = liftOk ? brawlerJugglePatch({ ...enemy, ...(combo?.patch ?? {}) }, cls, bs.lift ? 's4' : bs.combo.move, now) : null;
     if (jp) { Object.assign(out, jp); downNow = (jp as { brLiftDown?: boolean }).brLiftDown === true; }
   } else if (bs.combo && liftOk && BRC.brawlerLiftBreaksTech(enemy, cls) && !(enemy.aiPhase !== undefined && COUNTER_UNINTERRUPTIBLE_PHASES.includes(enemy.aiPhase))) {
     // ★技の最中の雑魚・強個体も浮かせる(社長承認2026-11-10「技の最中浮く は はい」・research/BRAWLER.md §12-1b)。
-    // 浮く当たり(地上=3・4段目/空中=押し上げのある当たり)の時だけ、その技を取り消してから浮かせる(カウンター成立・大踏み潰しの強制と同じ
+    // 浮く当たり(地上=3・4段目・飛び蹴りの2発目/空中=押し上げのある当たり)の時だけ、その技を取り消してから浮かせる(カウンター成立・大踏み潰しの強制と同じ
     // 取り消し=予告も消える。予告を出したまま浮かせない)。ボス級・取り消せない相(空中の跳びなど)は今どおり浮かない。
     const jp = brawlerJugglePatch({ ...enemy, ...(combo?.patch ?? {}) }, cls, bs.lift ? 's4' : bs.combo.move, now);
     if (jp && (jp.brLiftUntil ?? 0) > now) {
@@ -5448,7 +5448,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
     const r = strike(ids, {
       mult: BR.brawlerKickMult(s.kickN), stunMs: hs, postureMult: BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.0(社長承認2026-11-09)
-      kb: big ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true } : { kind: 'normal', dirX: dir.x, dirY: dir.y },
+      // 押し: 1〜3発目とも普通のノックバック。3発目は旧「吹き飛ばし(big)」→ 少しのノックバックへ(社長指示2026-11-11「3段目はノックバック少しさせちゃって良い」)。
+      // 2発目は地上の敵を少し打ち上げる(同・utils/brawlerCombo の BRAWLER_GROUND_LAUNCH)。空中の敵への3発目は今どおり締めの叩き落とし。
+      kb: { kind: 'normal', dirX: dir.x, dirY: dir.y },
       combo: { move: BRC.brawlerKickMoveKey(s.kickN) },
     });
     const hits = r.hits ?? 0;

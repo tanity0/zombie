@@ -120,6 +120,11 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
   it('地上では3段目(アッパー・§13-2)と4段目が浮かせる。雑魚1.0 / 強個体0.7 / ボス級0.4 を高さと時間に掛ける・予算 6/5/4', () => {
     expect(brawlerJugglePush({}, 'mob', 's1', 0)).toBeNull();
     expect(brawlerJugglePush({}, 'mob', 'kick1', 0)).toBeNull();
+    expect(brawlerJugglePush({}, 'mob', 'kick3', 0)).toBeNull();
+    // 飛び蹴りの2発目は地上から少しだけ打ち上げる(社長指示2026-11-11)。高さ0.5(4段目の半分)×重さ・時間も同じ比。
+    expect(brawlerJugglePush({}, 'mob', 'kick2', 0)!.brLiftPeak).toBeCloseTo(0.5);
+    expect(brawlerJugglePush({}, 'strong', 'kick2', 0)!.brLiftPeak).toBeCloseTo(0.35);
+    expect(brawlerJugglePush({}, 'mob', 'kick2', 0)!.brLiftMs).toBe(Math.round(BRAWLER_LIFT_MS * 0.5));
     expect(brawlerJugglePush({}, 'mob', 's3', 0)!.brLiftPeak).toBeCloseTo(0.75);
     expect(BRAWLER_JUGGLE_BUDGET).toEqual({ mob: 6, strong: 5, boss: 4 });
     expect([brawlerJugglePush({}, 'mob', 's4', 0)!.brLiftBudget, brawlerJugglePush({}, 'strong', 's3', 0)!.brLiftBudget, brawlerJugglePush({}, 'boss', 's4', 0)!.brLiftBudget]).toEqual([6, 5, 4]);

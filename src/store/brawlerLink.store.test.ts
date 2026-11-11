@@ -352,6 +352,39 @@ describe('§19-4-4c 途中の1発が会心(気絶)になっても切れない(�
   }
 });
 
+describe('飛び蹴りの2発目は少し打ち上げる・3発目は少しのノックバック(社長指示2026-11-11)', () => {
+  // 旧: 1・2発目=普通の押し(地上からは浮かない)・3発目=吹き飛ばし(big)。
+  const kicks = (foe: Foe) => {
+    setup();
+    spawnFoe(foe);
+    const kb: number[] = [], air: boolean[] = [], peak: number[] = [];
+    for (let n = 1; n <= 3; n++) {
+      expect(doTech('kick'), `kick ${n} issued`).toBe(true);
+      for (let k = 0; k < 400 && !(br().phase === 'tech' && br().kickN === n && br().resolved); k++) adv();
+      expect(br().connected, `kick ${n} connected`).toBe(true);
+      const z = en();
+      kb.push(Math.hypot(z.knockbackVx ?? 0, z.knockbackVy ?? 0));
+      air.push(brawlerAirborne(z, now));
+      peak.push(z.brLiftPeak ?? 0);
+    }
+    return { kb, air, peak };
+  };
+  it('雑魚: 1発目では浮かない → 2発目で地上から少し浮く(高さ0.5=4段目の半分) → 3発目は1発目の押しを超えない(吹き飛ばさない)', () => {
+    const r = kicks('zombie-move');
+    expect(r.air[0]).toBe(false);
+    expect(r.air[1]).toBe(true);
+    expect(r.peak[1]).toBeCloseTo(0.5, 5);
+    expect(r.kb[0]).toBeGreaterThan(0);
+    expect(r.kb[2]).toBeLessThanOrEqual(r.kb[0] + 1e-6);
+  });
+  it('強個体(溜めの相): 2発目で技を取り消して少し浮く(重さ0.7=高さ0.35)', () => {
+    const r = kicks('driller-windup');
+    expect(r.air[0]).toBe(false);
+    expect(r.air[1]).toBe(true);
+    expect(r.peak[1]).toBeCloseTo(0.35, 5);
+  });
+});
+
 describe('§19-4-3 つながらない物', () => {
   const NOT_ON_ROUTE: { name: string; stages: number; pre?: 'kick'; then: Step }[] = [
     { name: '1段目の後に待機から大踏み潰し', stages: 1, then: t('stomp') },

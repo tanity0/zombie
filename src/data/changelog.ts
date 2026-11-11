@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5468', items: [
+    '格闘の飛び蹴りは、二発目で敵を少し打ち上げる',
+    '三発目は吹き飛ばしをやめて、少し押し下げるだけにした',
+  ] },
   { version: '0.25.5467', items: [
     '格闘で殴り続けた敵が、赤い予告のあと周りを振り払ってくる反撃をなくした',
   ] },
