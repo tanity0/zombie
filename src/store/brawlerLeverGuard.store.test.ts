@@ -225,6 +225,63 @@ describe('①相手から離れる向きにレバーを入れて食らう: ガ�
   });
 });
 
+describe('ガードで受け切った直後は、被弾の演出を出さない(社長裁定2026-11-11「ガードは はい」)', () => {
+  const flashes = () => useGameStore.getState().effects.filter(e => e.kind === 'flash').length;
+  const particles = () => useGameStore.getState().effects.filter(e => e.kind === 'particle').length;
+  // 呼び手(接触・弾・爆風など)が damagePlayer の直後に出す被弾の演出
+  const callerHurtFx = () => {
+    const p = pl();
+    useGameStore.getState().spawnFlash('rgba(239,68,68,0.22)', 200);
+    useGameStore.getState().spawnFlash('rgba(220, 38, 38, 0.18)', 220);
+    useGameStore.getState().spawnBurst(p.x + p.width / 2, p.y + p.height / 2, '#dc2626', 5);
+  };
+  it('ガード成立: 赤いフラッシュと赤い粒は出ない(ほかの色は出る)。150ms 過ぎたら、また出る', () => {
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('zombie', -60, 0, 'z')] });
+    stick(1, 0); // 相手(左)から離れる向き
+    hitBy('z');
+    expect(leverGuardCount(pl())).toBe(1);
+    const f0 = flashes(), q0 = particles();
+    callerHurtFx();
+    expect(flashes()).toBe(f0);
+    expect(particles()).toBe(q0);
+    useGameStore.getState().spawnFlash('rgba(34, 197, 94, 0.34)', 320); // 被弾の赤ではないフラッシュは止めない
+    expect(flashes()).toBe(f0 + 1);
+    const far = pl();
+    useGameStore.getState().spawnBurst(far.x + 300, far.y, '#dc2626', 5); // 体から離れた所の赤い粒(敵の血)は止めない
+    expect(particles()).toBeGreaterThan(q0);
+    now += 160;
+    const f1 = flashes();
+    callerHurtFx();
+    expect(flashes()).toBe(f1 + 2);
+  });
+  it('ガードにならなかった被弾: 今どおり出る。ガードの直後でも、次の普通の被弾の演出は出る', () => {
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('zombie', -60, 0, 'z'), enemyAt('zombie', 60, 0, 'y')] });
+    hitBy('z'); // レバーなし=普通に食らう
+    expect(leverGuardCount(pl())).toBe(0);
+    const f0 = flashes(), q0 = particles();
+    callerHurtFx();
+    expect(flashes()).toBe(f0 + 2);
+    expect(particles()).toBeGreaterThan(q0);
+    // ガード → すぐ後に、別の敵から普通の被弾(敵ごとの被弾無敵なので入る)
+    setup();
+    useGameStore.setState({ enemies: [enemyAt('zombie', -60, 0, 'z'), enemyAt('zombie', -60, 0, 'y')] });
+    stick(1, 0);
+    hitBy('z');
+    expect(leverGuardCount(pl())).toBe(1);
+    release();
+    now += 20;
+    const hp = pl().health;
+    hitBy('y');
+    if (pl().health < hp && leverGuardCount(pl()) === 1) { // 2発目が普通に入った時だけ見る
+      const f1 = flashes();
+      callerHurtFx();
+      expect(flashes()).toBe(f1 + 2);
+    }
+  });
+});
+
 describe('②成立しない場面: 普通に食らう', () => {
   const expectPlain = (dmg = 30) => {
     expect(leverGuardCount(pl())).toBe(0);

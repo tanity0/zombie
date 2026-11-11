@@ -1,6 +1,7 @@
 // Central audio controls. BGM uses HTMLAudioElement so mobile browsers keep
 // their normal media route; short SFX use Web Audio to avoid frame hitches.
 
+import { leverGuardHurtMuted } from '../utils/leverGuardStamp';
 import { assetUrl, withAssetVersion } from '../config/assetUrl';
 import { loadProgressBegin, loadProgressDone } from '../utils/loadProgress';
 import { wraithBgmMuteNext, isVolumeLockedDevice } from './wraithBgmMute';
@@ -1890,6 +1891,8 @@ export const registerKillChainSfxRate = (fn: () => number) => { killChainSfxRate
 export const playSfx = (key: SfxKey, gainMult = 1, durationMsOverride?: number, rateMult = 1) => {
   if (muted) return;
   if (gainMult <= 0) return;
+  // 格闘のレバーガードで受け切った直後は、被弾音を鳴らさない(ガードの音だけ・utils/leverGuardStamp)。
+  if (key === 'player-damage' && leverGuardHurtMuted(Date.now())) return;
   if (danceActive && DANCE_MUTED_SFX.has(key)) return;
   const config = SFX_SOURCES[key];
   if (!config) return;

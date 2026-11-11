@@ -136,6 +136,7 @@ import { isBrawlerGuardingAt } from '../utils/brawler';
 import * as BRC from '../utils/brawlerCombo'; // 格闘の敵側の流れ(食らいの固まり・減衰・反撃=research/BRAWLER.md §11)
 import * as BRS from '../utils/brawlerSkills'; // 格闘×スキルの純関数(research/BRAWLER.md §15)
 import * as BLG from '../utils/brawlerLeverGuard'; // 格闘のレバーガード(成立・半減・小さい押し・research/BRAWLER.md §12-1c)
+import { noteLeverGuardFull, clearLeverGuardFull, leverGuardHurtMuted, isPlayerHurtFlashColor, isPlayerHurtBurstColor, LEVER_GUARD_BURST_NEAR_PX } from '../utils/leverGuardStamp'; // 受け切った直後は被弾の演出を出さない
 import * as BRG from '../utils/brawlerGuard'; // 格闘の構えの成立の効果(雑魚=潰し/雑魚より上=自分がノックバック/光線の中断・research/BRAWLER.md §12-3d)
 import { noteAirMeleeHit, resetAirMeleeHit } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18)
 import { bloodDripSpec, BLOOD_DRIP_DOT_MS, type DripBody } from '../utils/bloodDrip';
@@ -15226,6 +15227,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     // lgAny=半減が掛かった被弾(掴み・演出つきの技の「半減だけ」も含む)=受けた絵と音・受けた回数の記録に使う。
     const lgAny = leverGuard !== null && amount > 0;
     const lgFull = lgAny && leverGuard.full;
+    // ★受け切った(lgFull)直後は被弾の演出(被弾音・赤いフラッシュ・赤い粒)を出さない=ガードの絵と音だけ(社長裁定2026-11-11)。
+    //   演出は呼び手が damagePlayer の直後に別々に出す(約20か所)ので、時刻を1つ打って出口で止める(utils/leverGuardStamp)。
+    //   「半減だけ」の技(掴み・演出つき)と、ガードではない被弾は今どおり出す(時刻を消す)。
+    if (amount > 0 && !dot) { if (lgFull) noteLeverGuardFull(Date.now()); else clearLeverGuardFull(); }
 
     // G4a(BOT_AND_GHOST.md §2.9・記録専用): 技キー付きの実被弾を反応表へ通知する(ワクチン発動でも
     // 「その技を食らった」事実は同じなので、分岐より前のここで1回だけ)。挙動には一切影響しない。
@@ -27214,6 +27219,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   spawnBurst: (x, y, color, count = 6, dirX, dirY) => {
+    // 格闘のレバーガードで受け切った直後は、プレイヤーの体に出す被弾の赤い粒を出さない(utils/leverGuardStamp)。
+    if (isPlayerHurtBurstColor(color) && leverGuardHurtMuted(Date.now())) {
+      const pl = get().player;
+      if (Math.hypot(x - (pl.x + pl.width / 2), y - (pl.y + pl.height / 2)) <= LEVER_GUARD_BURST_NEAR_PX) return;
+    }
     { const q = crawlerFxAt(x, y); if (q) { x = q.x; y = q.y; } } // 変異塊の代理の中心→縁(LAB_CRAWLER §4)
     const now = Date.now();
     // §5.23 M22 C1: 方向指定(かつ有効長)なら円錐(spawnSprayと同じ角度)へ絞る。無指定/{0,0}は
@@ -27449,6 +27459,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   spawnFlash: (color, duration = 220) => {
     const now = Date.now();
+    // 格闘のレバーガードで受け切った直後は、被弾の赤いフラッシュを出さない(utils/leverGuardStamp)。
+    if (isPlayerHurtFlashColor(color) && leverGuardHurtMuted(now)) return;
     set(state => ({
       effects: [
         ...state.effects,

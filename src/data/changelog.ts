@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5475', items: [
+    '格闘のガードが決まった時は、食らった時の赤い光と音を出さなくなった。ガードの手応えだけが出る',
+  ] },
   { version: '0.25.5474', items: [
     '拳鬼は、跳びかかりで詰めてきた後、間を置かずに殴りかかってくることが多くなった。着地してすぐの硬直は今までどおり',
   ] },
