@@ -25,7 +25,7 @@ const foe = (id: string, cx: number, cy: number, over: Partial<Enemy> = {}): Ene
 
 describe('格闘: 表', () => {
   it('段の表は §2-2 の全体の尺どおり', () => {
-    expect(BRAWLER_STAGES.map(s => s.windupMs + s.recoveryMs)).toEqual([200, 200, 350, 450, 500]);
+    expect(BRAWLER_STAGES.map(s => s.windupMs + s.recoveryMs)).toEqual([200, 200, 350, 450, 550]); // 5段目の戻り 270→320(社長指示2026-11-11)
     expect(BRAWLER_STAGES.map(s => s.mult)).toEqual([0.30, 0.40, 0.8, 1.10, 1.60]); // 社長指示2026-11-09「あと通常攻撃は後半ほど高ダメ」(旧 0.35/0.35/0.8/1.0/1.3)
     expect(BRAWLER_STAGES.map(s => s.kb)).toEqual(['small', 'small', 'normal', 'small', 'big']); // 社長指示2026-11-10「どの攻撃も押さない攻撃でも多少押そう」(旧 1・2・4段目は none)
     expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 150, 150, 220]); // 止めは係数を掛けない表(社長承認2026-11-08: 旧 45/45/80/90/140)

@@ -247,7 +247,7 @@ describe('ステップの取り消し(§19-1)', () => {
 describe('固まりの長さ(§20-2・§20-4・係数1.3)', () => {
   it('時間の表(係数1.3): 段・技の出だし/後隙/止め・受付', () => {
     expect([1, 2, 3, 4, 5].map(n => [brawlerStageSpec(n).windupMs, brawlerStageSpec(n).recoveryMs, brawlerStageSpec(n).hitstopMs])).toEqual(
-      [[78, 182, 90], [78, 182, 90], [156, 299, 150], [325, 260, 150], [299, 351, 220]]);
+      [[78, 182, 90], [78, 182, 90], [156, 299, 150], [325, 260, 150], [299, 416, 220]]);
     expect([BRAWLER_TECHS.kick.windupMs, BRAWLER_TECHS.kick.recoveryMs, BRAWLER_TECHS.stomp.windupMs, BRAWLER_TECHS.stomp.recoveryMs, BRAWLER_TECHS.kiko.windupMs, BRAWLER_TECHS.kiko.recoveryMs])
       .toEqual([156, 195, 260, 520, 156, 429]);
     expect([BRAWLER_KICK_HITSTOP_MS[1], BRAWLER_KICK_HITSTOP_MS[2], BRAWLER_KICK_HITSTOP_MS[3], BRAWLER_STOMP_HITSTOP_MS]).toEqual([150, 150, 220, 220]);
@@ -443,7 +443,7 @@ describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => 
         }
       }
     }
-    expect(connects('s5', 's1', 'recovery-end')).toMatchObject({ lockEndsAt: 220, nextHitAt: 220 + 351 + 78 });
+    expect(connects('s5', 's1', 'recovery-end')).toMatchObject({ lockEndsAt: 220, nextHitAt: 220 + 416 + 78 });
   });
   it('減衰: 6発目に当てた1段目の後の2段目は入る(固まり390×0.8)/ 8発目の後の2段目は入らない(×0.512・不足約60ms)', () => {
     const six = connects('s1', 's2', 'recovery-end', { fromHitNo: 6 });

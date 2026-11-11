@@ -75,7 +75,8 @@ export const BRAWLER_STAGES_BASE: readonly BrawlerStageSpec[] = [
   { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.10, kb: 'small', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'landing', dashPx: 50 },
   // 5段目=一閃型の貫通突進(社長指示2026-11-07)。前隙 250 = 溜め 100 + 突き抜け 150。判定は抜け切った瞬間に軌跡の帯で一括(§9-26)。
   // 社長指示2026-11-07「飛距離少しだけ短く」で突き抜け 160→140px・150→130ms(最高速は同じ)。総尺 500 は戻り 270 で保つ(§9-35)。
-  { stage: 5, windupMs: 230, recoveryMs: 270, mult: 1.60, kb: 'big', hitstopMs: BRAWLER_HITSTOP.closer, shape: 'band', dashPx: 0, kbMult: BRAWLER_PALM_KB_MULT }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
+  // 社長指示2026-11-11「5段目の隙を少しだけ伸ばして」で戻り 270→320(係数1.3で 351→416ms)。前隙・威力・飛距離は変えていない。
+  { stage: 5, windupMs: 230, recoveryMs: 320, mult: 1.60, kb: 'big', hitstopMs: BRAWLER_HITSTOP.closer, shape: 'band', dashPx: 0, kbMult: BRAWLER_PALM_KB_MULT }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
 ];
 /** 段の表(係数を掛けた出だし・戻り)。 */
 export let BRAWLER_STAGES: readonly BrawlerStageSpec[] = BRAWLER_STAGES_BASE;

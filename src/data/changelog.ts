@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5497', items: [
+    '格闘の五段目の後の隙が少し長くなった',
+  ] },
   { version: '0.25.5496', items: [
     '叫喚型が遠くへ離れると、画面の縁の方角の印が消える',
   ] },
