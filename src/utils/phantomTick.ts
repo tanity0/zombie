@@ -25,6 +25,7 @@
 //    **混ぜて比較しない**。このファイルは両方を引数で受け取り、それぞれの世界の中だけで比較する。
 //  - 慣性: 振りの絵(踏み込み→戻り)は描画側(pixiScene)がイーズで出す。判定は即発の1回。
 import { brawlerHeldNow, brawlerHoldRemainMs } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
+import { withMastery } from './masteryRun';
 import { counterClashPoint } from './counterClash';
 import type { Enemy, EnemyType, Player, Projectile, SubWeaponKey, Weapon, EnemyClockStash } from '../types/game';
 // ★§16-H: 硬直中は行動の時計を止める(述語と預かりの仕組みは全敵で1本を共有する)。
@@ -805,7 +806,7 @@ const counteredByPlayer = (
   // amount=0 でも damageEnemy 中央の pvp chip は resolvedImpact==='counter' で削る(newHealth>0ゲートのみ)。
   // crit=false(確定クリ廃止に伴い、クリ付随の移動半減=bossCritSlowPatchも発生させない)。
   // gpSource='counter' は維持=幻影ゲートで「近接カウンター」(パリィ不可・i-frame貫通)のまま。
-  g.damageEnemy(phantomId, 0, false, false, false, 'other', 'player', 'counter', 1, 'counter');
+  withMastery('none', () => g.damageEnemy(phantomId, 0, false, false, false, 'other', 'player', 'counter', 1, 'counter')); // 熟練度: 量0(体勢だけ)=none
   // ★格闘の構えの窓の中は通常カウンターの演出(青・スロー・全停止・音)を出さず、白金の受けだけ出す(research/BRAWLER.md §8-5)。効果は残す。
   if (!brawlerGuardCounterFx(bcx, bcy)) {
     sfx.parry();

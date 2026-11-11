@@ -11,14 +11,15 @@
 //  3. リザルト: commitMasteryRun() を1回(GameOverScreen の最初の描画)。
 import {
   GROWING_MASTERY_KEYS, MASTERY_BASE, MASTERY_GROWTH, MASTERY_KEY, MASTERY_MAX_LEVEL, MASTERY_MAX_MULT,
-  MASTERY_PENDING_KEY, SUB_TO_MASTERY_KEY, isGrowingMasteryKey,
+  MASTERY_PENDING_KEY, MASTERY_XP_WEIGHT, SUB_TO_MASTERY_KEY, isGrowingMasteryKey,
   type GrowingMasteryKey, type MasteryKey,
 } from '../data/mastery';
 import {
   clearMasteryReport, clearPendingMastery, getPendingMastery, hasPendingMastery, isMasteryRunCommitted,
   isMasteryRunIgnored, markMasteryRunCommitted, type MasteryXpTable,
 } from './masteryRun';
-import type { Player, SubWeaponKey } from '../types/game';
+import { brawlerEnemyClass } from './brawlerCombo';
+import type { EnemyType, Player, SubWeaponKey } from '../types/game';
 
 // ── 段階と倍率 ─────────────────────────────────────────────────────────────
 
@@ -193,6 +194,32 @@ export const masteryMultOf = (
   if (key === 'none' || !player) return 1;
   if (key === 'loadout') return player.masteryLoadoutMult ?? 1;
   return player.masteryMult?.[key] ?? 1;
+};
+
+/**
+ * 敵の区分(雑魚/強個体/ボス級)ごとの貯まり方の重み(v2 §4-1 の貯める量に掛ける)。
+ * 区分は既にある brawlerEnemyClass(赤い個体=強個体を含む)。表は data/mastery.ts の MASTERY_XP_WEIGHT。
+ */
+export const masteryXpWeight = (enemy: { type: EnemyType; colorTier?: string } | null | undefined): number => {
+  if (!enemy) return 1;
+  const w = MASTERY_XP_WEIGHT[brawlerEnemyClass(enemy)];
+  return typeof w === 'number' && Number.isFinite(w) ? Math.max(0, w) : 1;
+};
+
+/**
+ * 貯める量(v2 §4-1): 実際に通った量を熟練度の倍率で割り戻して四捨五入し、区分の重みを掛ける。
+ * 育たないキー(`none`・`loadout`・`max`)・出どころ無しは0。
+ */
+export const masteryXpAmount = (
+  player: Pick<Player, 'masteryMult' | 'masteryLoadoutMult'> | null | undefined,
+  key: MasteryKey | null | undefined,
+  appliedDamage: number,
+  enemy: { type: EnemyType; colorTier?: string } | null | undefined,
+): number => {
+  if (!isGrowingMasteryKey(key)) return 0;
+  if (!Number.isFinite(appliedDamage) || appliedDamage <= 0) return 0;
+  const m = masteryMultOf(player, key);
+  return Math.max(0, Math.round(appliedDamage / (m > 0 ? m : 1))) * masteryXpWeight(enemy);
 };
 
 /**

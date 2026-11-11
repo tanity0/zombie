@@ -41,7 +41,9 @@ import { ALCHEMY_AGGRO_RANGE } from './summonUtils';
 import { PHILL_COUNTER_RECOVER_MS } from './phillScript'; // §10-15#2: フィル後追い分岐の硬直長
 import { activeFlareTargets } from './flareGun';
 import { brawlerStopOnlyNow } from './brawlerCombo'; // 格闘の止めの間は発砲しない
-import { getActiveGun, GHOST_REFLECT_WEAPON_KEY } from './weaponUtils';
+import { getActiveGun, GHOST_REFLECT_WEAPON_KEY, counterMasteryKeyOf } from './weaponUtils';
+import { masteryMultOf } from './mastery';
+import { withMastery } from './masteryRun';
 import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkCollision, enemyContactBox } from './collisionUtils';
 import { isHeroDogLeaving } from './heroDog';
 // ★全敵共通の噛みつき(PACING_PUZZLE.md §12・社長発案2026-08-25)。
@@ -692,17 +694,18 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     }));
     // クリティカル反撃(ヘッドショット): 弾いたジャンプ敵へ。aiPhase 解除済みでダメージが通る。
     const cBase = getActiveGun(bp)?.damage ?? 12;
+    const cMk = counterMasteryKeyOf(getActiveGun(bp)); // 熟練度: カウンターの反撃=構えている銃の種類(銃なし=loadout)
     for (const hit of parriedEnemyIds) {
       const e = useGameStore.getState().enemies.find(en => en.id === hit.id);
       if (!e) continue;
       const boss = isBossType(e.type);
       // ★v0.25.3591(社長指示): 刃を弾いたパリィは**HP 0・体勢は通常どおり**。damageEnemy は体勢
       // (applyBossPostureDamage)を**ダメージ量とは無関係に**適用するので、量だけ0にすればよい。
-      const dmg = hit.noDamage ? 0 : counterReplyDamage(cBase, bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
+      const dmg = hit.noDamage ? 0 : counterReplyDamage(cBase, bp, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) * masteryMultOf(bp, cMk);
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       // CRIT-UNIFY §9.3(社長裁定F): パリィ反撃は確定クリ。ボスは①の効果(半減+CD2倍+紫蓄積)が
       // damageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
-      const parryKilled = useGameStore.getState().damageEnemy(hit.id, dmg, false, true, false, 'other', 'player', 'counter');
+      const parryKilled = withMastery(cMk, () => useGameStore.getState().damageEnemy(hit.id, dmg, false, true, false, 'other', 'player', 'counter'));
       recordCritHit('guaranteed', boss); // §7-11c(4): カウンター反撃(確定クリ)
       if (parryKilled) rewardCounterKill(fx, e);
       if (!parryKilled && !boss) {
@@ -2209,16 +2212,17 @@ export const applyContactDamage = (
     // クリティカル反撃(ヘッドショット): aiPhase を解除済みなのでダメージが通る(ジャンプ中無敵を回避)。
     // 威力は装備中の銃ダメージ基準 × クリ倍率(通常×1.5 / ボス×5)× スキル/装備補正。
     const counterBase = getActiveGun(collPlayer)?.damage ?? 12;
+    const counterMk = counterMasteryKeyOf(getActiveGun(collPlayer)); // 熟練度: カウンターの反撃=構えている銃の種類(銃なし=loadout)
     let counterKill = false;
     for (const eid of dashParried) {
       const e = useGameStore.getState().enemies.find(en => en.id === eid);
       if (!e) continue;
       const boss = isBossType(e.type);
-      const dmg = counterReplyDamage(counterBase, collPlayer, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT);
+      const dmg = counterReplyDamage(counterBase, collPlayer, boss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) * masteryMultOf(collPlayer, counterMk);
       const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
       // CRIT-UNIFY §9.3(社長裁定F): 突進/気絶パリィの反撃も確定クリ。ボスは①の効果(半減+CD2倍+
       // 紫蓄積)がdamageEnemy側で中央適用される。通常敵は現行クリ規則どおり5秒スタン(ノックバックと併存)。
-      const dashParryKilled = useGameStore.getState().damageEnemy(eid, dmg, false, true, false, 'other', 'player', 'counter');
+      const dashParryKilled = withMastery(counterMk, () => useGameStore.getState().damageEnemy(eid, dmg, false, true, false, 'other', 'player', 'counter'));
       recordCritHit('guaranteed', boss); // §7-11c(4): カウンター反撃(確定クリ)
       if (dashParryKilled) rewardCounterKill(fx, e);
       counterKill = dashParryKilled || counterKill;

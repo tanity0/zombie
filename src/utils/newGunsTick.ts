@@ -10,6 +10,9 @@
 // ★3挺を持たない時: 塊が場に無く、回る弾も扇も無いので、このモジュールは store へ1度も書かない
 // (既存の銃・近接・サブの挙動は1bitも変わらない)。
 import type { Enemy, Player, Projectile } from '../types/game';
+import type { MasteryKey } from '../data/mastery';
+import { masteryMultOf } from './mastery';
+import { withMastery } from './masteryRun';
 import {
   notifySkillProc, spawnSkillProcFx,
   useGameStore, isMeleeOnlyMode, isKatanaMode, isAttackLocked, isSeekerActive, skillLevel, SKATER_LOCK_ENABLED,
@@ -157,10 +160,11 @@ let killCtx: NewGunsKillCtx | null = null;
  * 1回のダメージを当てる。倒したら、弾で倒した時と同じ撃破演出とドロップ(dropGunKillLoot=品質監査#4)。
  * killChainSlowOk=false で連続撃破10体スローを出さない(塊弾の一定間隔の当たり=品質監査#12)。戻り値=数字に出す量。
  */
-const hitEnemy = (e: Enemy, dmg: number, killChainSlowOk: boolean | undefined, dirX?: number, dirY?: number, stream = false): { killed: boolean; shown: number } => {
+// mk = 熟練度のキー(呼び口が持つ=塊弾=glauncher・衛星の接触=shotgun。倍率は呼び口の式で掛け済み=ここでは包むだけ)。
+const hitEnemy = (e: Enemy, dmg: number, killChainSlowOk: boolean | undefined, mk: MasteryKey, dirX?: number, dirY?: number, stream = false): { killed: boolean; shown: number } => {
   const st = useGameStore.getState();
   const shotSince = Date.now(); // この当たりで書かれる lastHit はこれ以降
-  const killed = st.damageEnemy(e.id, dmg, false, false, false, 'gun', 'player', null, 1, null, killChainSlowOk);
+  const killed = withMastery(mk, () => st.damageEnemy(e.id, dmg, false, false, false, 'gun', 'player', null, 1, null, killChainSlowOk));
   // 撃たれた時の押し戻し(utils/shotRecoil.ts・アイドルと変異塊の代理だけ)。向きが渡されない当たりはプレイヤー→敵の向き。
   // stream=継続して当たるもの(塊弾の200msごとの脈)=押し続ける力として渡す(1発ごとのしゃっくりにしない)。回る弾の接触は1発の弾扱い。
   if (hasShotRecoil(e.type)) {
@@ -286,8 +290,8 @@ const tickBlob = (gameTime: number, dtSec: number, canFire: boolean): void => {
       for (const id of h.ids) {
         const e = useGameStore.getState().enemies.find(x => x.id === id);
         if (!e || isCorpse(e)) continue;
-        const dmg = Math.max(1, h.blob.tickDamage * outgoingGunMult(p, e, gameTime)); // 小数のまま(9.5)。数字はまとめで丸める
-        const { shown } = hitEnemy(e, dmg, false, h.blob.dirX, h.blob.dirY, true);
+        const dmg = Math.max(1, h.blob.tickDamage * outgoingGunMult(p, e, gameTime) * masteryMultOf(p, 'glauncher')); // 小数のまま(9.5)。数字はまとめで丸める。熟練度: 塊弾=glauncher
+        const { shown } = hitEnemy(e, dmg, false, 'glauncher', h.blob.dirX, h.blob.dirY, true);
         const v = accumulateBlobNumber(blobNumbers, id, shown, gameTime);
         if (v !== null) {
           const marked = isScanMarked(e, gameTime);
@@ -387,8 +391,8 @@ const tickSatellite = (gameTime: number, dtSec: number, holding: boolean, locked
     satContactAt.set(e.id, gameTime);
     const live = useGameStore.getState().enemies.find(x => x.id === e.id);
     if (!live || isCorpse(live)) continue;
-    const dmg = Math.max(1, Math.round(contactBase * outgoingGunMult(p, live, gameTime)));
-    hitEnemy(live, dmg, undefined, touching.tx, touching.ty);
+    const dmg = Math.max(1, Math.round(contactBase * outgoingGunMult(p, live, gameTime) * masteryMultOf(p, 'shotgun'))); // 熟練度: 衛星の接触=shotgun
+    hitEnemy(live, dmg, undefined, 'shotgun', touching.tx, touching.ty);
     useGameStore.getState().spawnDamageNumber(ecx, live.y, dmg, false, { enemyId: live.id });
     useGameStore.getState().spawnBurst(touching.x, touching.y, '#e8b25a', 4, touching.tx, touching.ty);
   }
@@ -422,6 +426,7 @@ const releaseSatellites = (poses: SatelliteBulletPose[], angVel: number, gameTim
       x: ps.x - size / 2, y: ps.y - size / 2, width: size, height: size,
       speed: SAT_SHOT_SPEED_PX_PER_SEC, damage, direction: dir,
       weaponType: 'shotgun', weaponKey: SATELLITE_WEAPON_KEY,
+      masteryKey: 'shotgun', // 熟練度: 呪銃の放たれた弾=shotgun(倍率は当たる所で掛ける)
       duration: SAT_SHOT_DURATION_MS, createdAt: now,
       passthrough: false, hitEnemies: [], hostile: false, reflected: false,
       critChance,

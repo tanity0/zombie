@@ -1,5 +1,8 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, notifySkillProcFor, spawnSkillProcFx, bulletBlockersAround, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
+import { MASTERY_GUN_KEYS, type MasteryKey, type MasteryGunKey } from '../data/mastery';
+import { masteryMultOf } from './mastery';
+import { withMastery } from './masteryRun';
 import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 発射間隔を ×1.5 速く(awakenFireRateMult)
 import { projectileHitCritChance } from './critPenalty';
 import { classifyProjectileDamageChannel, recordMeleeFromGun } from './botTelemetry';
@@ -407,6 +410,28 @@ const DIRECT_GUN_WEAPON_KEYS = new Set<string>([
 ]);
 export const isDirectGunWeaponKey = (weaponKey: string | undefined): boolean =>
   weaponKey !== undefined && DIRECT_GUN_WEAPON_KEYS.has(weaponKey);
+
+// ── 熟練度(research/MASTERY.md v2 §1・v2.1 A-7/A-8) ─────────────────────────
+const MASTERY_GUN_SET: ReadonlySet<string> = new Set<string>(MASTERY_GUN_KEYS);
+/** 銃の種類(category)→ 銃の熟練度のキー。種類の無い/銃でない物は undefined。 */
+export const gunMasteryKeyOfCategory = (category: string | undefined): MasteryGunKey | undefined =>
+  category !== undefined && MASTERY_GUN_SET.has(category) ? category as MasteryGunKey : undefined;
+/** 弾の weaponKey → 銃の熟練度のキー(CATALOG の category)。 */
+export const gunMasteryKeyOfWeaponKey = (weaponKey: string | undefined): MasteryGunKey | undefined =>
+  weaponKey === undefined ? undefined : gunMasteryKeyOfCategory(catalogCategoryTier(weaponKey).category);
+/** 構えている銃の熟練度のキー(カウンターの反撃=v2 §4-2 #6)。銃を持たない時は `loadout`。 */
+export const counterMasteryKeyOf = (gun: Pick<Weapon, 'category'> | null | undefined): MasteryKey =>
+  gunMasteryKeyOfCategory(gun?.category) ?? 'loadout';
+/**
+ * 弾/置き物の当たりのキー(v2.1 A-8): 作る所で入れた `masteryKey` を使う。欄が無い時は、
+ * 本人の銃の弾と分かる物(打ち返しでも敵弾でもない・直接銃の weaponKey)だけ銃の種類、それ以外は `none`。
+ * `ownerGhost`(視覚専用の印)は読まない。
+ */
+export const projectileMasteryKey = (p: Pick<Projectile, 'masteryKey' | 'weaponKey' | 'hostile' | 'reflected'>): MasteryKey => {
+  if (p.masteryKey !== undefined) return p.masteryKey;
+  if (p.hostile || p.reflected || p.weaponKey === GHOST_GUN_WEAPON_KEY || !isDirectGunWeaponKey(p.weaponKey)) return 'none';
+  return gunMasteryKeyOfWeaponKey(p.weaponKey) ?? 'none';
+};
 /**
  * 幻影が「プレイヤー本人の直接銃の弾」として扱う弾(research/GHOST_BOSS.md v10)。
  * **弾パリィ(useGameLoop→phantomGate)と、弾にどう対処するかの判断(phantomTick)が同じ1本を読む**
@@ -1250,14 +1275,16 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       const critChanceEff = projectileHitCritChance(critChanceBase, meleeTarget);
       const isCrit = Math.random() < critChanceEff;
       const critMult = isCrit ? skillCritMult(player, CRIT_DAMAGE_MULT) : 1;
-      const dmg = gunShotBaseDamage(shotWeapon, player, meleeGt) * critMult * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player);
+      const gbKey: MasteryKey = gunMasteryKeyOfCategory(weapon.category) ?? 'none'; // 熟練度: ガンブレードの種類(handgun)
+      const dmg = gunShotBaseDamage(shotWeapon, player, meleeGt) * critMult * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player)
+        * masteryMultOf(player, gbKey);
       const dmgChannel = classifyProjectileDamageChannel('handgun', weapon.key);
       // postureImpact='heavy'(比率0.10・パイルドライバーと同じ「新しい打撃種別は作らない」枠組み・
       // §17-5)。gpSource='melee'(弾ではなく近接として幻影ゲートへ渡す=幻影の弾専用パリィの
       // 対象にならない。近接窓パリィ/近接i-frame免除は通常の近接攻撃と同じ扱いになる)。
-      const killed = useGameStore.getState().damageEnemy(
+      const killed = withMastery(gbKey, () => useGameStore.getState().damageEnemy(
         meleeTarget.id, dmg, false, isCrit, false, dmgChannel, 'player', 'heavy', 1, 'melee',
-      );
+      ));
       useGameStore.getState().spawnDamageNumber(mtcx, meleeTarget.y, dmg, isCrit, { enemyId: meleeTarget.id });
       // 命中点に斬撃の絵(spawnSlash=既存の汎用近接斬撃エフェクト)+血飛沫+SEを出す「口」
       // (専用アートは後日支給=UNIQUE_WEAPONS.md §16-5b「口が無いと素材が来ても出せない」)。
@@ -1369,6 +1396,7 @@ export const fireWeapon = (weapon: Weapon, player: Player, enemies: Enemy[], opt
       direction: pd,
       weaponType: weapon.category as WeaponType, // 'handgun' | 'shotgun' | 'rifle'
       weaponKey: weapon.key,
+      masteryKey: gunMasteryKeyOfCategory(weapon.category) ?? 'none', // 熟練度: 本人の銃の弾=銃の種類(倍率は当たる所で掛ける=v2.1 A-7)
       duration: 1400,
       createdAt: now,
       passthrough: weapon.passthrough || false,
@@ -1511,6 +1539,7 @@ export const buildSupportSniperShot = (
     direction,
     weaponType: def.category as WeaponType, // 'rifle'
     weaponKey: def.key,                     // 'rifle-t2'
+    masteryKey: 'support-sniper',           // 熟練度: 援護射撃(守護霊・幻影が呼んだ分は呼び出し側で `none` に上書き)
     duration: 1400,
     createdAt: Date.now(),
     passthrough: def.passthrough || false,  // rifle-t2=貫通
@@ -1555,6 +1584,7 @@ export const buildJunkWeaponPellets = (
       direction: rotate(direction, angle),
       weaponType: 'shotgun',
       weaponKey: 'sub-junk-weapon',
+      masteryKey: 'junk-weapon', // 熟練度(守護霊の分は呼び出し側で `none` に上書き)
       duration: 1400,
       createdAt: now,
       passthrough: false,
@@ -1612,6 +1642,7 @@ export const buildGhostGunShots = (
     direction,
     weaponType: effGun.category as WeaponType,
     weaponKey: 'ghost-gun',
+    masteryKey: 'none', // 熟練度: 守護霊の弾
     duration: 1400,
     createdAt: now,
     passthrough: effGun.passthrough || false,

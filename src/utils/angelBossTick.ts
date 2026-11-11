@@ -32,7 +32,9 @@ import {
   takeBrawlerBeamCut, // 格闘の構えで受けられた光線の中断(research/BRAWLER.md §12-3d)
 } from '../store/gameStore';
 import { splitBeamAtShield, beamStripsHit, type BeamShieldSplit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: レーザー=壁(光線の幅)
-import { getActiveGun } from './weaponUtils';
+import { getActiveGun, counterMasteryKeyOf } from './weaponUtils';
+import { masteryMultOf } from './mastery';
+import { withMastery } from './masteryRun';
 import { createEnemyProjectile, isGate2AngelBoss, spawnEnemyAt } from './enemyUtils';
 import { rectsOverlap } from '../world/obstacles';
 import { airHopEase01 } from './airHop';
@@ -298,8 +300,9 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
     ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
   } }));
   const counterBase = getActiveGun(cp)?.damage ?? 12;
-  const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT);
-  useGameStore.getState().damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter');
+  const counterMk = counterMasteryKeyOf(getActiveGun(cp)); // 熟練度: カウンターの反撃=構えている銃の種類(銃なし=loadout)
+  const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
+  withMastery(counterMk, () => useGameStore.getState().damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter'));
   recordCritHit('guaranteed', true); // §7-11c(4): カウンター反撃(確定クリ・天使6体は常にボス)
   useGameStore.getState().spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
   sfx.reward();

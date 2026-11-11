@@ -121,7 +121,9 @@ import { consumeGhostCounterClaim, applyGhostCounterEffect } from './ghostCounte
 import { resolveBossHateAim, resolveBossLockedHateAim } from './bossHate'; // ★v0.25.3971: 賞金首もヘイト制で守護霊を狙う
 import { npcSfxDistGain } from './npcSfx';
 import { hitThirdParties } from './heroBlast'; // research/MUTANT_HERO.md §4-2: 守護霊と英雄にも同じ形で当てる
-import { getActiveGun } from './weaponUtils';
+import { getActiveGun, counterMasteryKeyOf } from './weaponUtils';
+import { masteryMultOf } from './mastery';
+import { withMastery } from './masteryRun';
 import { GLOW_R_L } from './glowTiers';
 // §4②輸入=ミーミル型レーザー: mimirLaserTrack.tsの純関数をそのまま使う(複製しない=誤学習防止)。
 import {
@@ -577,9 +579,10 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
     counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
     ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
   } }));
-  const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT);
+  const counterMk = counterMasteryKeyOf(getActiveGun(cp)); // 熟練度: カウンターの反撃=構えている銃の種類(銃なし=loadout)
+  const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
   const g2 = useGameStore.getState();
-  g2.damageEnemy(bounty.id, dmg, false, true, false, 'other', 'player', 'counter');
+  withMastery(counterMk, () => g2.damageEnemy(bounty.id, dmg, false, true, false, 'other', 'player', 'counter'));
   // §7-11c(4): カウンター反撃(確定クリ)。賞金首は isBossType 非登録(§6.38裁定)=対雑魚扱いで計上。
   recordCritHit('guaranteed', false);
   g2.spawnDamageNumber(bounty.x + bounty.width / 2, bounty.y, dmg, true, { enemyId: bounty.id });

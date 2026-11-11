@@ -5,6 +5,7 @@
 import { heroHealAfterHits } from './heroScript';
 import type { Enemy } from '../types/game';
 import { useGameStore, knockbackSpeedFor, setThirdPartyHook, type PumpkinBlast } from '../store/gameStore';
+import { withMastery } from './masteryRun';
 import { isCorpse, isMutantHero, resistsChipKnockback } from './enemyUtils';
 import { isPointInZoomedViewport } from './cameraZoom';
 import { distToBandRect } from './geometry';
@@ -42,7 +43,7 @@ export const damageHeroByEnemy = (heroId: string, amount: number, srcEnemyId: st
   const st = useGameStore.getState();
   const hero = st.enemies.find(e => e.id === heroId);
   if (!hero || hero.id === srcEnemyId) return false;
-  return st.damageEnemy(heroId, Math.round(amount * HERO_INCOMING_MULT), false, false, false, null, 'neutral');
+  return withMastery('none', () => st.damageEnemy(heroId, Math.round(amount * HERO_INCOMING_MULT), false, false, false, null, 'neutral')); // 熟練度: 敵どうし=none
 };
 
 /** 円の攻撃(中心・半径)が英雄に触れたら当てる。 */
@@ -111,7 +112,7 @@ export const applyHeroBlastToEnemies = (b: PumpkinBlast, fx: HeroBlastFx): numbe
   let kills = 0;
   for (const e of victims) {
     const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-    const killed = useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, null, 'neutral');
+    const killed = withMastery('none', () => useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, null, 'neutral')); // 熟練度: 英雄の爆発=none
     if (killed) kills++;
     fx.spawnDamageNumber(ex, e.y, dmg, false, { enemyId: e.id });
     // 派手さの絵(判定ゼロ): 英雄から外へ向かう大きい血しぶき=ボスの命中と同じ大きさ。

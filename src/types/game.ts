@@ -1795,6 +1795,8 @@ export interface Enemy {
   lastBurnTickAt?: number;
   // UNIQUE_WEAPONS.md §17-6b G5: 直近に燃やしたのが守護霊の炎か(刻みのヘイト・撃破を守護霊へ帰属させる)。プレイヤー側の付与で外れる。
   burnByGhost?: boolean;
+  /** 熟練度(research/MASTERY.md v2.1 A-1): 燃焼を付けた側のキー(後から付けた方が勝つ)。燃焼の刻みはこのキーで包む。未指定=`none`。 */
+  burnMasteryKey?: MasteryKey;
   // B7: 血の履帯(blood-treads)の棘(tickBloodSpikes)のDoTスロットル打刻(250ms・molotovのlastFireHitAtと同じ流儀)。
   lastSpikeHitAt?: number;
   // UNIQUE_WEAPONS.md §16-2(バッチD・錬金砲 glauncher-t2-alchemy限定): 金の石の段階(1-3・
@@ -2278,6 +2280,8 @@ export interface GroundFire {
   // GHOST-SUBS-FINAL(v0.25.2563): 置いた主語(守護霊のsummon.id)。undefined=プレイヤー。
   // 世界に置かれる物の配列は1本のまま(センサー地雷と同じ流儀)で、ダメージ倍率の評価だけ主語ごとに行う。
   ownerGhostId?: string;
+  /** 熟練度(research/MASTERY.md v2.1 A-8): 火の床の燃焼の出どころ(火炎瓶=`molotov`・延焼弾=`loadout`・守護霊=`none`)。未指定=`none`。 */
+  masteryKey?: MasteryKey;
   // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)Lv2/3の炎床は「小・モロトフ資産流用」
   // (§16-5)なので、molotovの火と**同じ配列/同じ描画/同じ寿命・DoT定数**に相乗りする。
   // 未指定=モロトフの半径(MOLOTOV_FIRE_RADIUS)のまま。指定時(Lv3の「炎床(大)」)だけ個体ごとに
@@ -2867,6 +2871,11 @@ export interface Projectile {
   // ゴースト(守護霊)がオーナーとして発動したサブウェポンの生成物マーカー。**視覚専用**
   // (レンダラが青白tint/霊体αに使うだけ。判定・ダメージ・CD・挙動には一切使わない)。
   ownerGhost?: boolean;
+  /**
+   * 熟練度(research/MASTERY.md v2.1 A-7・A-8): この弾/置き物の当たりのキー。作る所で持ち主を見て入れ、当たる所で掛けて包む。
+   * 跳弾・写し弾は親の値を写す。未指定=本人の銃の弾と分かる物だけ銃の種類・それ以外 `none`(utils/masteryKeys.ts)。
+   */
+  masteryKey?: MasteryKey;
   // UNIQUE_WEAPONS.md §16-2(バッチD・ロケットランチャー glauncher-t1-rocket限定): 「溜め(500ms)」を
   // 「弾を速度0のままその場に置く」ことで表現する(fireWeaponが発射直後の1回だけ設定する)。
   // rocketChargeUntil(gameTime)まではspeedが0=通常の敵衝突判定がそのまま拾うので

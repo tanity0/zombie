@@ -43,6 +43,7 @@ export const buildBomberMinis = (
       damage: BOMBER_MINI_DAMAGE,
       direction: { x: Math.cos(ang), y: Math.sin(ang) },
       weaponType: 'grenade', weaponKey: 'sub-heavy-grenade',
+      masteryKey: 'heavy-grenade', // 熟練度: ボマーの子手榴弾も手榴弾(research/MASTERY.md v2.1 A-8)
       duration: BOMBER_MINI_FUSE_MS, createdAt: now,
       passthrough: false, hitEnemies: [], hostile: false, reflected: false,
       bomberSpawned: true, // 子はこれ以上散布しない

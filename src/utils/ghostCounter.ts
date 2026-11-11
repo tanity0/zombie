@@ -17,6 +17,7 @@
 //     lastCounterSuccessTime/計測notify)は1bitも触らない=per-bossハンドラのghost分岐でスキップする。
 //   - 成立演出(青Counter!+金クリ層)はハンドラ側=成立が確定した時だけ出す(嘘のCounter!を出さない)。
 import { counterClashPoint } from './counterClash';
+import { withMastery } from './masteryRun';
 import type { Player } from '../types/game';
 import {
   useGameStore, BOSS_CRIT_DAMAGE_MULT, INVULN_MS, counterReplyDamage, COUNTER_ACCEPT_MS,
@@ -291,7 +292,7 @@ export const applyGhostCounterEffect = (
     }));
   }
   // 確定クリ(crit=true → bumpBossCrit)+金クリ層
-  st.damageEnemy(boss.id, fire.claim.dmg, false, true, false, null, 'ghost', 'counter');
+  withMastery('none', () => st.damageEnemy(boss.id, fire.claim.dmg, false, true, false, null, 'ghost', 'counter')); // 熟練度: 守護霊の反撃=none
   st.spawnDamageNumber(bcx, boss.y, fire.claim.dmg, true, { enemyId: boss.id });
   if (playSfxGain && fire.sfxGain > 0) playSfxGain('headshot', fire.sfxGain);
   st.spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);

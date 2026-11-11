@@ -27,7 +27,9 @@ import {
 } from '../store/gameStore';
 // SKILL_BUILD_REDESIGN.md §13-2(B0発注文): ボットの商人購買ポリシー(乱数なし・決定的な純関数)。
 import { decideBotShopPurchase } from './botShopPolicy';
-import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey, isManualOnlyGunKey, manualOnlyFallbackWeapon, allyFallbackWeapon, effectiveReloadMs } from './weaponUtils';
+import { getActiveGun, getGuns, fireWeapon, ammoPoolFor, RANGE_BY_CATEGORY, isDirectGunWeaponKey, isManualOnlyGunKey, manualOnlyFallbackWeapon, allyFallbackWeapon, effectiveReloadMs, projectileMasteryKey } from './weaponUtils';
+import { masteryMultOf } from './mastery';
+import { withMastery } from './masteryRun';
 import { DEV_WEAPON_KEY } from './devTestKnobs';
 import { pickAmmoDropType } from './ammoDrop';
 import { ammoDirectorRate } from './ammoDirector';
@@ -212,10 +214,12 @@ const applyBotProjectileHits = (gameTime: number): void => {
     const player = st.player;
     const critMult = hitCrit ? skillCritMult(player, isBoss ? BOSS_CRIT_DAMAGE_MULT : CRIT_DAMAGE_MULT) : 1;
     const comboMasterMult = skillComboMasterMult(player, gameTime, st.meleeFinishComboCount, st.meleeFinishComboUntil);
-    const dmg = damage * critMult * skillOutgoingDamageMult(player) * sniperGunMult(player, enemy) * comboMasterMult;
+    // 熟練度(research/MASTERY.md v2.1 A-16): 弾の masteryKey(無ければ銃の種類)。ボットの出撃は倍率1(焼き込みで空)=報告用の表にだけ貯まる。
+    const botMk = projectileMasteryKey(projectile);
+    const dmg = damage * critMult * skillOutgoingDamageMult(player) * sniperGunMult(player, enemy) * comboMasterMult * masteryMultOf(player, botMk);
     // §6.21 M46: gun/otherチャネル分類(useGameLoop.tsの実装と同じ純関数=classifyProjectileDamageChannel)。
     const dmgChannel = classifyProjectileDamageChannel(projectile.weaponType, projectile.weaponKey);
-    const killed = st.damageEnemy(enemyId, dmg, false, hitCrit, false, dmgChannel);
+    const killed = withMastery(botMk, () => st.damageEnemy(enemyId, dmg, false, hitCrit, false, dmgChannel));
     // despawn則(useGameLoop.ts:6507-6523と同じ): pierce=N発貫通 / passthrough=キルで停止 / それ以外=1発で消滅。
     const removeIt = projectile.pierce !== undefined
       ? projectile.hitEnemies.length > projectile.pierce

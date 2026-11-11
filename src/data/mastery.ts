@@ -48,6 +48,12 @@ export const MASTERY_BASE: Record<GrowingMasteryKey, number> = Object.fromEntrie
   GROWING_MASTERY_KEYS.map(k => [k, 3000]),
 ) as Record<GrowingMasteryKey, number>;
 
+/**
+ * 敵の区分(雑魚/強個体/ボス級)ごとの貯まり方の重み(貯める量 = 割り戻した与ダメ × 重み)。
+ * 今は全部1(数字は設計チャットが後で決める=口だけ)。区分の判定は utils/brawlerCombo の brawlerEnemyClass。
+ */
+export const MASTERY_XP_WEIGHT: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 1, strong: 1, boss: 1 };
+
 /** サブウェポンのキー → 熟練度のキー(育つ物だけ。`murasame`→`katana`)。 */
 export const SUB_TO_MASTERY_KEY: Readonly<Partial<Record<string, GrowingMasteryKey>>> = {
   ...Object.fromEntries(MASTERY_SUB_KEYS.map(k => [k, k])),

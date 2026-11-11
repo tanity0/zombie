@@ -9,6 +9,7 @@
 import { brawlerHeldNow } from './brawlerCombo'; // 格闘の食らいの固まり(ボス級も・research/BRAWLER.md §11-1)
 import type { Enemy } from '../types/game';
 import { useGameStore, resolveBountyMove, PLAYER_BASE_SPEED, type PumpkinBlast } from '../store/gameStore';
+import { withMastery } from './masteryRun';
 import { GAME_SPEED } from '../config/gameSpeed';
 import { worldDist } from '../config/worldScale';
 import { clampRectToPlayableArea, type PlayableAreaCtx } from '../world/playableArea';
@@ -387,7 +388,7 @@ const meteorCollateral = (t: AstroThrowEntry): void => {
     && Math.hypot(e.x + e.width / 2 - t.x, e.y + e.height / 2 - t.y) <= t.radius + Math.max(e.width, e.height) / 2);
   for (const e of victims) {
     const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
-    const killed = useGameStore.getState().damageEnemy(e.id, t.damage, false, false, false, null, 'neutral');
+    const killed = withMastery('none', () => useGameStore.getState().damageEnemy(e.id, t.damage, false, false, false, null, 'neutral')); // 熟練度: 隕石の巻き添え=none
     useGameStore.getState().spawnDamageNumber(ex, e.y, t.damage, false, { enemyId: e.id });
     if (killed) {
       const g = useGameStore.getState();
