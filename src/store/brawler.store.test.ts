@@ -238,7 +238,7 @@ describe('格闘: 技(§3)', () => {
     for (let i = 0; i < 3; i++) {
       expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true);
       ns.push(br().kickN);
-      advance(130);
+      advance(143); // 飛ぶ時間 132(係数1.0)の直後。2026-11-11 に ×1.1(旧130=旧の飛ぶ時間120の直後)
     }
     expect(ns).toEqual([1, 2, 3]);
     expect(br().points).toBe(0);
@@ -1333,9 +1333,9 @@ describe('技の先行入力と秘奥義の1手目(社長指示2026-11-08「技�
     advance(50);
     expect(br().tech).not.toBe('kiko');
   });
-  it('→↓←↑ を先行入力で素早く入れると秘奥義が成立する(各フリックの間 230ms・締めの止め 220ms の後に取り消せる)', () => {
+  it('→↓←↑ を先行入力で素早く入れると秘奥義が成立する(各フリックの間 240ms・締めの止め 220ms の後に取り消せる)', () => {
     prep([zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')]);
-    expect(flickAll(230)).toBe(true);
+    expect(flickAll(240)).toBe(true); // 2026-11-11 に 230→240(飛び蹴りを ×1.1 で遅くし、いちばん速い入力が 240ms になった)
   });
   // ★§19-2: 取り消しの受付(係数1.0で150ms)を過ぎた入力は、後隙が終わるまで出ない。ただし秘奥義の順番どおりの次の技は覚えておき、
   //   後隙が終わって待機へ戻った瞬間に出す(brawlerSecretCarry)=今までどおり 250〜500ms のどの間隔でも成立する

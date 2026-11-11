@@ -42,7 +42,7 @@ describe('固まりの長さ(§20-4・旧 §11-1 の基本の長さの表を置�
     expect(brawlerLockHitMs('s2', 90)).toBe(90 + 300);
     expect(brawlerLockHitMs('s3', 150)).toBe(150 + 520);
     expect(brawlerLockHitMs('s4', 150)).toBe(150 + 470);
-    expect(brawlerLockHitMs('kick1', 150)).toBe(150 + 250);
+    expect(brawlerLockHitMs('kick1', 150)).toBe(150 + 265); // 2026-11-11 飛び蹴り1発目の固まり 250→265(飛び蹴りを遅くした分つながりを保つ)
     expect(brawlerLockHitMs('kick2', 150)).toBe(150 + 310);
     expect(brawlerLockHitMs('stomp', 220)).toBe(220 + 230);
     for (const k of ['s5', 'kick3', 'kiko', 'secret', 'secret-land'] as const) expect(brawlerLockHitMs(k, 220)).toBe(0);
@@ -70,9 +70,9 @@ describe('止め続けられない(§20-4 の減衰・⑤固まらない時間�
   });
   it('同じ技の2回目も固める(同じ技の罰は無い)。止めるのは減衰(固まりを書いた当たりの6発目から×0.8ずつ)。締め(5段目・3発目)は固めず数えない', () => {
     expect(lockRun([{ move: 's1', at: 0 }, { move: 's1', at: 200 }]).holds).toEqual([390, 390]);
-    expect(lockRun([{ move: 'kick1', at: 0 }, { move: 'kick1', at: 250 }]).holds).toEqual([400, 400]);
+    expect(lockRun([{ move: 'kick1', at: 0 }, { move: 'kick1', at: 250 }]).holds).toEqual([415, 415]); // 2026-11-11 飛び蹴り1発目の固まり 250→265(飛び蹴りを遅くした分つながりを保つ)
     expect(lockRun((['s1', 's2', 's3', 's4', 's5'] as const).map((move, i) => ({ move, at: i * 250 }))).holds).toEqual([390, 390, 670, 620, 0]);
-    expect(lockRun([{ move: 'kick1', at: 0 }, { move: 'kick2', at: 250 }, { move: 'kick3', at: 500 }]).holds).toEqual([400, 460, 0]);
+    expect(lockRun([{ move: 'kick1', at: 0 }, { move: 'kick2', at: 250 }, { move: 'kick3', at: 500 }]).holds).toEqual([415, 460, 0]);
     // 1段目を8回: 5発目まで 90+300 / 6発目 90+240 / 7発目 90+192 / 8発目 90+154
     const eight = lockRun(Array.from({ length: 8 }, (_, i) => ({ move: 's1' as const, at: i * 100 })));
     expect(eight.holds).toEqual([390, 390, 390, 390, 390, 330, 282, 244]);

@@ -53,7 +53,7 @@ describe('格闘: 表', () => {
     expect(BRAWLER_TECHS.guard.windupMs + BRAWLER_TECHS.guard.recoveryMs).toBe(1000);
     expect(BRAWLER_TECHS.stomp.windupMs + BRAWLER_TECHS.stomp.recoveryMs).toBe(662); // 後隙 400→462(係数1.3で約600ms・社長指示2026-11-11)
     expect(BRAWLER_TECHS.kiko.windupMs + BRAWLER_TECHS.kiko.recoveryMs).toBe(450);
-    expect(BRAWLER_TECHS.kick.windupMs + BRAWLER_TECHS.kick.recoveryMs).toBe(270);
+    expect(BRAWLER_TECHS.kick.windupMs + BRAWLER_TECHS.kick.recoveryMs).toBe(297); // 270→297(×1.1・社長指示2026-11-11「飛び蹴りからの3段、ほんの少しだけゆっくりに」)
     expect([BRAWLER_TECHS.guard.cost, BRAWLER_TECHS.stomp.cost, BRAWLER_TECHS.kiko.cost, BRAWLER_TECHS.kick.cost]).toEqual([3, 5, 2, 1]);
   });
   it('ポイントの上限はレベルで 5/10/20', () => {
@@ -269,7 +269,7 @@ describe('格闘: 絵(クリエイティブ監査)', () => {
     expect(brawlerPoseAt({ ...k, resolved: true }, 140)?.tex).toBe('ready');
     const f = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);
     expect(brawlerPoseAt(f, 60)?.tex).toBe('ready');
-    expect(brawlerPoseAt({ ...f, resolved: true }, 125)?.tex).toBe('swing');
+    expect(brawlerPoseAt({ ...f, resolved: true }, 137)?.tex).toBe('swing'); // 前隙 132 の直後(旧 120 の直後=125)
   });
   it('★大踏み潰しは跳ばない: 溜めの間はその場で震え(始めは弱く・叩く直前が最大)、叩いた瞬間に震えが止まる(社長指示2026-11-08)', () => {
     const st = brawlerStartTech(initialBrawlerState(), 'stomp', 0);
@@ -363,11 +363,11 @@ describe('格闘: 速い踏み込みの刻み(A-1)と動きの影', () => {
 });
 
 describe('格闘: 飛び蹴りの飛距離(社長指示2026-11-07)', () => {
-  it('届く距離220・居ない時150。飛ぶ時間は旧の距離(160)まで120ms、その先は最大150ms(最高速は約1割上まで)', () => {
+  it('届く距離220・居ない時150。飛ぶ時間は旧の距離(160)まで132ms、その先は最大165ms(最高速は約1割上まで・2026-11-11 に旧 120/150 を ×1.1)', () => {
     expect([BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX]).toEqual([220, 150]);
-    expect(brawlerKickFlightMs(80)).toBe(120);
-    expect(brawlerKickFlightMs(160)).toBe(120);
-    expect(brawlerKickFlightMs(220)).toBe(150);
+    expect(brawlerKickFlightMs(80)).toBe(132);
+    expect(brawlerKickFlightMs(160)).toBe(132);
+    expect(brawlerKickFlightMs(220)).toBe(165);
     const vmax = (d: number) => d / brawlerKickFlightMs(d);
     expect(vmax(220) / vmax(160)).toBeLessThan(1.15);
     expect(vmax(220) / vmax(160)).toBeGreaterThanOrEqual(1);

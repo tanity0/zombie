@@ -249,14 +249,15 @@ describe('固まりの長さ(§20-2・§20-4・係数1.3)', () => {
     expect([1, 2, 3, 4, 5].map(n => [brawlerStageSpec(n).windupMs, brawlerStageSpec(n).recoveryMs, brawlerStageSpec(n).hitstopMs])).toEqual(
       [[78, 182, 90], [78, 182, 90], [156, 299, 150], [325, 260, 150], [299, 416, 220]]);
     expect([BRAWLER_TECHS.kick.windupMs, BRAWLER_TECHS.kick.recoveryMs, BRAWLER_TECHS.stomp.windupMs, BRAWLER_TECHS.stomp.recoveryMs, BRAWLER_TECHS.kiko.windupMs, BRAWLER_TECHS.kiko.recoveryMs])
-      .toEqual([156, 195, 260, 601, 156, 429]);
+      .toEqual([172, 215, 260, 601, 156, 429]); // 飛び蹴り 156/195→172/215(社長指示2026-11-11「飛び蹴りからの3段、ほんの少しだけゆっくりに」で ×1.1)
     expect([BRAWLER_KICK_HITSTOP_MS[1], BRAWLER_KICK_HITSTOP_MS[2], BRAWLER_KICK_HITSTOP_MS[3], BRAWLER_STOMP_HITSTOP_MS]).toEqual([150, 150, 220, 220]);
-    expect([BRAWLER_CANCEL_WINDOW_MS, BRAWLER_KICK3_CHARGE_MS]).toEqual([195, 150]);
-    expect([brawlerKickFlightMs(0), brawlerKickFlightMs(160), brawlerKickFlightMs(220)]).toEqual([156, 156, 195]);
+    expect([BRAWLER_CANCEL_WINDOW_MS, BRAWLER_KICK3_CHARGE_MS]).toEqual([195, 165]); // 3発目の溜め 150→165(×1.1)
+    expect([brawlerKickFlightMs(0), brawlerKickFlightMs(160), brawlerKickFlightMs(220)]).toEqual([172, 172, 215]); // 156/195→172/215(×1.1)
   });
   it('固まりの表: 係数1.0の値(§20-2)と、テンポ係数を掛けた実ms(live binding)', () => {
-    expect(BRAWLER_HOLD_BASE_MS).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 250, kick2: 310, kick3: 0, heel: 300, stomp: 230, kiko: 0 });
-    expect(BRAWLER_HOLD_MS).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 325, kick2: 403, kick3: 0, heel: 390, stomp: 299, kiko: 0 });
+    expect(BRAWLER_HOLD_BASE_MS).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 265, kick2: 310, kick3: 0, heel: 300, stomp: 230, kiko: 0 });
+    expect(BRAWLER_HOLD_MS).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 345, // 2026-11-11 飛び蹴り1発目の固まり 325→345(250→265)
+      kick2: 403, kick3: 0, heel: 390, stomp: 299, kiko: 0 });
     setBrawlerTempoAll(1.0);
     expect(BRAWLER_HOLD_MS).toEqual(BRAWLER_HOLD_BASE_MS);
     setBrawlerTempoAll(1.3);
@@ -267,7 +268,7 @@ describe('固まりの長さ(§20-2・§20-4・係数1.3)', () => {
     expect(brawlerLockHitMs('s2', HS.s2)).toBe(480);
     expect(brawlerLockHitMs('s3', HS.s3)).toBe(150 + 676);
     expect(brawlerLockHitMs('s4', HS.s4)).toBe(150 + 611);
-    expect(brawlerLockHitMs('kick1', 150)).toBe(150 + 325);
+    expect(brawlerLockHitMs('kick1', 150)).toBe(150 + 345); // 2026-11-11 飛び蹴り1発目の固まり 325→345(250→265)
     expect(brawlerLockHitMs('kick2', 150)).toBe(150 + 403);
     expect(brawlerLockHitMs('stomp', 220)).toBe(220 + 299);
     for (const m of ['s5', 'kick3', 'kiko', 'secret', 'secret-land'] as const) expect(brawlerLockHitMs(m, 220), m).toBe(0);
@@ -304,7 +305,7 @@ describe('確定の固まりの書き込み(§20-4・置き換え・数え・切
     expect(brawlerLockOnHit({ brLockUntil: 9000, brLockHits: 1 }, 's2', 5350, 9e9, o(90)).patch.brLockUntil).toBe(5350 + 480);
     expect(brawlerLockOnHit({ brLockUntil: 5100, brLockHits: 1 }, 's2', 5350, 9e9, o(90)).patch.brLockUntil).toBe(5350 + 480);
     const again = brawlerLockOnHit({ brLockUntil: 5100, brLockHits: 2 }, 'kick1', 5000, 9e9, o(150));
-    expect(again).toEqual({ patch: { brLockUntil: 5000 + 475, brLockHits: 3 }, held: true, noHold: false });   // 同じ技の2回目も固める
+    expect(again).toEqual({ patch: { brLockUntil: 5000 + 495, brLockHits: 3 }, held: true, noHold: false }); // kick1 の固まり 325→345   // 同じ技の2回目も固める
     expect(brawlerLockOnHit({ brLockHits: 1 }, 's1', 5000, 9e9, o(90)).held).toBe(true);
   });
   it('減衰: 固まりを書いた当たりの6発目から固まりが短くなる(5発目までは満額)', () => {
@@ -379,7 +380,7 @@ describe('ステップの最中は段も技も出せない(§20-8・社長承認
 
 describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => {
   const MARGIN = 45;
-  const near = { kickFlightMs: 156 };
+  const near = { kickFlightMs: 172 }; // 近い飛び蹴りの飛ぶ時間(係数1.3)。2026-11-11 に ×1.1(旧156)
   /** 入る=余り45ms以上 / 入らない=不足45ms以上。 */
   const connects = (from: BrawlerMoveKey, to: BrawlerMoveKey, how: 'recovery-end' | 'cancel-now' | 'cancel-late', x: Parameters<typeof brawlerLinkTiming>[3] = near) => {
     const r = brawlerLinkTiming(from, to, how, x);
@@ -404,19 +405,19 @@ describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => 
   });
   it('入る: 1段目→すぐ取り消して 大踏み潰し・飛び蹴り・気功(近い)', () => {
     for (const to of ['stomp', 'kick1', 'kiko'] as const) {
-      const r = connects('s1', to, 'cancel-now', { kickFlightMs: 156, kikoDistPx: 60 });
+      const r = connects('s1', to, 'cancel-now', { kickFlightMs: 172, kikoDistPx: 60 });
       expect(r.routeOk, to).toBe(true);
       expect(r.marginMs, to).toBeGreaterThanOrEqual(MARGIN);
     }
     expect(connects('s1', 'stomp', 'cancel-now')).toMatchObject({ nextHitAt: 350, marginMs: 130 });
   });
-  it('入る: 1段目・2段目→後隙の後の飛び蹴り(飛ぶ時間156ms=近い)', () => {
-    for (const a of ['s1', 's2'] as const) expect(connects(a, 'kick1', 'recovery-end')).toMatchObject({ nextHitAt: 428, marginMs: 52, connects: true });
+  it('入る: 1段目・2段目→後隙の後の飛び蹴り(飛ぶ時間172ms=近い)', () => {
+    for (const a of ['s1', 's2'] as const) expect(connects(a, 'kick1', 'recovery-end')).toMatchObject({ nextHitAt: 444, marginMs: 36, connects: true }); // 蹴りを遅くした分だけ余りが減った(52→36・基準45を下回るがつながる=発注者裁定2026-11-11で受け入れ)
   });
   it('入る: 飛び蹴り1発目→すぐ2発目(近い)/ 2発目→すぐ3発目(近い・浮かなかった時)/ 1発目→後隙の後の1段目', () => {
-    expect(connects('kick1', 'kick2', 'cancel-now')).toMatchObject({ nextHitAt: 306, lockEndsAt: 475, marginMs: 169, routeOk: true });
-    expect(connects('kick2', 'kick3', 'cancel-now')).toMatchObject({ nextHitAt: 456, lockEndsAt: 553, marginMs: 97, routeOk: true });
-    expect(connects('kick1', 's1', 'recovery-end')).toMatchObject({ nextHitAt: 423, lockEndsAt: 475, marginMs: 52, connects: true });
+    expect(connects('kick1', 'kick2', 'cancel-now')).toMatchObject({ nextHitAt: 322, lockEndsAt: 495, marginMs: 173, routeOk: true }); // 2026-11-11 ×1.1+kick1 の固まり 325→345 で 306/475/169→322/495/173
+    expect(connects('kick2', 'kick3', 'cancel-now')).toMatchObject({ nextHitAt: 487, lockEndsAt: 553, marginMs: 66, routeOk: true }); // 2026-11-11 ×1.1 で 456/97→487/66
+    expect(connects('kick1', 's1', 'recovery-end')).toMatchObject({ nextHitAt: 443, lockEndsAt: 495, marginMs: 52, connects: true }); // 後隙 195→215 の分を kick1 の固まり 325→345 で埋めた(余り52のまま)
     for (const r of [connects('kick1', 'kick2', 'cancel-now'), connects('kick2', 'kick3', 'cancel-now'), connects('kick1', 's1', 'recovery-end')]) expect(r.marginMs).toBeGreaterThanOrEqual(MARGIN);
   });
   it('入らない: 1段目→受付の終わり際(止めの後195ms)に取り消した大踏み潰し', () => {
@@ -436,7 +437,7 @@ describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => 
     for (const from of ['s5', 'kick3', 'kiko'] as const) {
       for (const to of afters) {
         for (const how of ['recovery-end', 'cancel-now'] as const) {
-          const r = connects(from, to, how, { kickFlightMs: 156, kikoDistPx: 60 });
+          const r = connects(from, to, how, { kickFlightMs: 172, kikoDistPx: 60 });
           expect(r.lockEndsAt, `${from}→${to}`).toBe(brawlerMoveStopMs(from));
           expect(r.connects, `${from}→${to} ${how}`).toBe(false);
           expect(r.marginMs, `${from}→${to} ${how}`).toBeLessThanOrEqual(-MARGIN);
@@ -465,9 +466,9 @@ describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => 
     expect(Math.round(close.nextHitAt)).toBe(Math.round(90 + 156 + 33));
     expect(Math.round(far.nextHitAt)).toBe(90 + 156 + 300);
   });
-  it('距離で変わる: 近い飛び蹴り(156ms)は入り、遠い飛び蹴り(195ms)は後隙の後だと入らない(2段目→後隙の後の飛び蹴り)', () => {
-    expect(connects('s2', 'kick1', 'recovery-end', { kickFlightMs: 156 }).connects).toBe(true);
-    expect(connects('s2', 'kick1', 'recovery-end', { kickFlightMs: 195 })).toMatchObject({ nextHitAt: 467, marginMs: 13, connects: true });
+  it('距離で変わる: 近い飛び蹴り(172ms)はつながり、遠い飛び蹴り(215ms)は後隙の後だとつながらない(2段目→後隙の後の飛び蹴り)', () => {
+    expect(connects('s2', 'kick1', 'recovery-end', { kickFlightMs: 172 }).connects).toBe(true);
+    expect(connects('s2', 'kick1', 'recovery-end', { kickFlightMs: 215 })).toMatchObject({ nextHitAt: 487, marginMs: -7, connects: false }); // 2026-11-11 ×1.1 で 467/13/つながる→487/-7/つながらない(発注者裁定で受け入れ)
   });
   it('取り消しの規則(routeOk)は同じ関数を読む: 気功からの取り消しは無し・待機からは常に出せる', () => {
     expect(connects('s5', 'kick1', 'cancel-now').routeOk).toBe(false);

@@ -87,7 +87,7 @@ export const BRAWLER_TECHS_BASE: Readonly<Record<BrawlerTechKind, BrawlerTechSpe
   guard: { kind: 'guard', cost: 3, windupMs: 0, recoveryMs: 1000 }, // 社長指示2026-11-07「カウンターは3ポイントに変更」(旧5)
   stomp: { kind: 'stomp', cost: 5, windupMs: 200, recoveryMs: 462 }, // 社長指示2026-11-11「大踏み潰し2.5倍にして、後隙を600に」=係数1.3で 601ms(旧 400→520ms)
   kiko: { kind: 'kiko', cost: 2, windupMs: 120, recoveryMs: 330 },
-  kick: { kind: 'kick', cost: 1, windupMs: 120, recoveryMs: 150 },
+  kick: { kind: 'kick', cost: 1, windupMs: 132, recoveryMs: 165 }, // 社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で ×1.1(旧 windupMs 120 / recoveryMs 150)
 };
 /** 技の表(係数を掛けた出だし・戻り)。 */
 export let BRAWLER_TECHS: Readonly<Record<BrawlerTechKind, BrawlerTechSpec>> = BRAWLER_TECHS_BASE;
@@ -103,7 +103,8 @@ export type BrawlerHoldKey = Exclude<BrawlerMoveKey, 'secret' | 'secret-land'>;
 /** 固まりの表の係数1.0の値(ms)。0=締め・気功(固めない)。 */
 export const BRAWLER_HOLD_BASE_MS: Readonly<Record<BrawlerHoldKey, number>> = {
   s1: 300, s2: 300, s3: 520, s4: 470, s5: 0,
-  kick1: 250, kick2: 310, kick3: 0, heel: 300, // 踵落とし(§29): 叩きつけた相手は少し固まる=大踏み潰しへの取り消しが届く(叩き台)
+  kick1: 265, kick2: 310, // kick1: 社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で蹴りを遅くした分、1発目→後隙の後の1段目のつながりを保つため 250→265
+  kick3: 0, heel: 300, // 踵落とし(§29): 叩きつけた相手は少し固まる=大踏み潰しへの取り消しが届く(叩き台)
   stomp: 230, kiko: 0,
 };
 /** 固まりの表(係数を掛けた実ms)。setBrawlerTempo が書き直す。 */
@@ -159,8 +160,8 @@ export const BRAWLER_KIKO_KB_PX = 37;      // 弾の当たりの半径(体の帯
 // 右の飛び蹴り(§3-5)。社長指示2026-11-07「飛び蹴りもう少し飛距離伸ばして」で 160→220 / 100→150(約1.4倍)。
 export const BRAWLER_KICK_RANGE = 220;
 export const BRAWLER_KICK_NO_TARGET_PX = 150;
-/** 飛ぶ時間: 旧の届く距離(160)までは今までどおり 120ms、その先は距離に合わせて最大 150ms まで伸ばす(最高速は約1割上=速さの感じを落とさない)。 */
-export let BRAWLER_KICK_FLIGHT_MAX_MS = 150; // ×BRAWLER_TEMPO(係数1.0の値)
+/** 飛ぶ時間: 旧の届く距離(160)までは前隙どおり 132ms、その先は距離に合わせて最大 165ms まで伸ばす(係数1.0の値。2026-11-11 に ×1.1=旧 120/150。距離の 160 は変えない)。 */
+export let BRAWLER_KICK_FLIGHT_MAX_MS = 165; // ×BRAWLER_TEMPO(係数1.0の値)・社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で ×1.1(旧150)
 export const brawlerKickFlightMs = (dist: number): number =>
   Math.max(BRAWLER_TECHS.kick.windupMs, Math.min(BRAWLER_KICK_FLIGHT_MAX_MS, BRAWLER_TECHS.kick.windupMs * Math.max(0, dist) / 160));
 /** 飛び蹴りの倍率(何発目か=1..3)。社長承認2026-11-09 で 0.7/0.7/0.7 → 0.7/0.8/1.0。秘奥義の9連撃の蹴りは3発目扱い(締めの止め・big の押しと同じ)。 */
@@ -178,7 +179,7 @@ export const BRAWLER_KICK_MAX = 3;
  * ★飛び蹴りの3発目の溜め(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」)。蹴りに入る前に空中で体が光って沈む。
  * 実時間で約150ms(係数を掛けた後の値)=係数1.0の値は 150/1.3 を丸めた 115。前隙(windupMs)はこの溜め+飛ぶ時間。
  */
-export let BRAWLER_KICK3_CHARGE_MS = 115; // ×BRAWLER_TEMPO(係数1.0の値)
+export let BRAWLER_KICK3_CHARGE_MS = 127; // ×BRAWLER_TEMPO(係数1.0の値)・社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で ×1.1(旧115)
 /** 溜めの見た目: 跳び上がる高さ・沈む量(px・絵だけ)。 */
 export const BRAWLER_KICK3_CHARGE_RISE_PX = 24;
 export const BRAWLER_KICK3_CHARGE_SINK_PX = 7;
@@ -248,7 +249,7 @@ export const brawlerTimesAt = (tempo: number) => ({
     BRAWLER_PALM_DASH_MS: brawlerTempoMs(130, tempo),
     BRAWLER_PALM_SETTLE_MS: brawlerTempoMs(120, tempo),
     BRAWLER_LIFT_MS: brawlerTempoMs(585, tempo),
-    BRAWLER_KICK_FLIGHT_MAX_MS: brawlerTempoMs(150, tempo),
+    BRAWLER_KICK_FLIGHT_MAX_MS: brawlerTempoMs(165, tempo), // 社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で ×1.1(旧150)
     BRAWLER_KICK_CHAIN_MS: brawlerTempoMs(500, tempo),
     BRAWLER_GUARD_MS: brawlerTempoMs(1000, tempo),
     BRAWLER_GUARD_QUICK_MS: brawlerTempoMs(500, tempo),
@@ -259,7 +260,7 @@ export const brawlerTimesAt = (tempo: number) => ({
     BRAWLER_SECRET_FALL_MS: brawlerTempoMs(420, tempo),
     BRAWLER_SECRET_LAND_MS: brawlerTempoMs(520, tempo),
     BRAWLER_STEP_MS: brawlerTempoMs(180, tempo),
-    BRAWLER_KICK3_CHARGE_MS: brawlerTempoMs(115, tempo),
+    BRAWLER_KICK3_CHARGE_MS: brawlerTempoMs(127, tempo), // 社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で ×1.1(旧115)
 });
 /**
  * テンポ係数を差し替える(格闘の時間の欄を全部書き直す)。起動時に `?brtempo=`(既定 1.3)で1回呼ぶ。

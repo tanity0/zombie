@@ -57,17 +57,17 @@ describe('テンポ係数の表(純関数)', () => {
   it('係数1.0 = 今までの値(段・技・つながり・先行入力・5段目・蹴り・秘奥義・ステップ・固まり)', () => {
     const v = brawlerTimesAt(1.0);
     expect(v.stages.map(s => [s.windupMs, s.recoveryMs])).toEqual([[60, 140], [60, 140], [120, 230], [250, 200], [230, 320]]);
-    expect(Object.values(v.techs).map(t => [t.windupMs, t.recoveryMs])).toEqual([[0, 1000], [200, 462], [120, 330], [120, 150]]);
+    expect(Object.values(v.techs).map(t => [t.windupMs, t.recoveryMs])).toEqual([[0, 1000], [200, 462], [120, 330], [132, 165]]); // 飛び蹴り 120/150→132/165(社長指示2026-11-11「飛び蹴りからの3段、ほんの少しだけゆっくりに」で ×1.1)
     expect([v.BRAWLER_CHAIN_RESET_MS, v.BRAWLER_WHIFF_BUFFER_MS, v.BRAWLER_PALM_DASH_MS, v.BRAWLER_PALM_SETTLE_MS, v.BRAWLER_LIFT_MS,
       v.BRAWLER_KICK_FLIGHT_MAX_MS, v.BRAWLER_KICK_CHAIN_MS, v.BRAWLER_GUARD_MS, v.BRAWLER_GUARD_QUICK_MS, v.BRAWLER_SUPER_FLASH_MS,
       v.BRAWLER_SECRET_GAP_MS, v.BRAWLER_SECRET_IGNITE_MS, v.BRAWLER_SECRET_STRIKE_MS, v.BRAWLER_SECRET_FALL_MS, v.BRAWLER_SECRET_LAND_MS, v.BRAWLER_STEP_MS])
-      .toEqual([400, 150, 130, 120, 585, 150, 500, 1000, 500, 100, 400, 600, 170, 420, 520, 180]);
+      .toEqual([400, 150, 130, 120, 585, 165, 500, 1000, 500, 100, 400, 600, 170, 420, 520, 180]); // 飛ぶ時間の上限 150→165(社長指示2026-11-11「飛び蹴りからの3段、ほんの少しだけゆっくりに」で ×1.1)
     expect(v.BRAWLER_CANCEL_WINDOW_MS).toBe(150); // 取り消しの受付(§19-2)
     const c = brawlerComboTimesAt(1.0);
     // ★§19: 固まりの基本の長さの表・減衰の時計・同じ技の罰は撤去 / ★§20: 余白の定数も撤去(固まりの長さ=止め+技ごとの固まりの表 v.holds)。
     expect([c.BRAWLER_COMBO_GAP_MS, c.BRAWLER_SECRET_HOLD_MS, c.BRAWLER_JUGGLE_MIN_MS, c.BRAWLER_JUGGLE_DROP_MS])
       .toEqual([700, 300, 140, 200]); // 流れの切れは社長承認2026-11-09 で 600→700
-    expect(v.holds).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 250, kick2: 310, kick3: 0, heel: 300, stomp: 230, kiko: 0 }); // §20-2(係数1.0の値)
+    expect(v.holds).toEqual({ s1: 300, s2: 300, s3: 520, s4: 470, s5: 0, kick1: 265, kick2: 310, kick3: 0, heel: 300, stomp: 230, kiko: 0 }); // §20-2(係数1.0の値)
   });
   it('係数1.3 = 各時間の1.3倍(四捨五入)。距離・倍率・ポイントは変えない', () => {
     const v = brawlerTimesAt(1.3);
@@ -84,11 +84,11 @@ describe('テンポ係数の表(純関数)', () => {
     expect(v.BRAWLER_CHAIN_RESET_MS).toBe(520);
     expect(v.BRAWLER_SECRET_GAP_MS).toBe(520);
     expect(v.BRAWLER_STEP_MS).toBe(234);
-    expect(v.BRAWLER_KICK3_CHARGE_MS).toBe(150); // 実時間で約150ms
+    expect(v.BRAWLER_KICK3_CHARGE_MS).toBe(165); // 実時間で約165ms(旧150・社長指示2026-11-11「飛び蹴りからの3段、ほんの少しだけゆっくりに」で ×1.1)
     const c = brawlerComboTimesAt(1.3);
     expect(v.BRAWLER_CANCEL_WINDOW_MS).toBe(195);
     expect(c.BRAWLER_SECRET_HOLD_MS).toBe(390);
-    expect(v.holds).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 325, kick2: 403, kick3: 0, heel: 390, stomp: 299, kiko: 0 }); // 係数1.3(四捨五入)
+    expect(v.holds).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 345, kick2: 403, kick3: 0, heel: 390, stomp: 299, kiko: 0 }); // 係数1.3(四捨五入)
     expect(brawlerTempoMs(585, 1.3)).toBe(761);
   });
   it('当てた瞬間の止めは係数を掛けない別の表: 弱90 / 強・技150 / 締め220', () => {
@@ -117,21 +117,21 @@ describe('テンポ係数の表(純関数)', () => {
 });
 
 describe('飛び蹴りの3発目の溜め(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」)', () => {
-  it('3発目だけ前隙の頭に溜め(係数1.3で150ms)。溜めの間は空中で沈みながら光り、明けたら飛ぶ', () => {
+  it('3発目だけ前隙の頭に溜め(係数1.3で165ms)。溜めの間は空中で沈みながら光り、明けたら飛ぶ', () => {
     setBrawlerTempoAll(1.3);
     const s1 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);
     expect(s1.kickChargeMs).toBe(0);
     const s3 = brawlerStartTech(initialBrawlerState(), 'kick', 0, BRAWLER_KICK_MAX);
-    expect(s3.kickChargeMs).toBe(150);
-    expect(s3.windupMs).toBe(150 + BRAWLER_TECHS.kick.windupMs);
+    expect(s3.kickChargeMs).toBe(165); // 旧150(×1.1)
+    expect(s3.windupMs).toBe(165 + BRAWLER_TECHS.kick.windupMs);
     // 溜めの間: 空中(跳び上がって沈む)・光が強まる
-    const hMid = brawlerPoseAt(s3, 60)!.jump, hEnd = brawlerPoseAt(s3, 149)!.jump;
+    const hMid = brawlerPoseAt(s3, 66)!.jump, hEnd = brawlerPoseAt(s3, 164)!.jump; // 溜め165の中ほど・明け直前(旧 60/149 を ×1.1)
     expect(brawlerPoseAt(s3, 0)!.jump).toBe(0);
     expect(hMid).toBeGreaterThan(15);
     expect(hEnd).toBeLessThan(hMid); // 沈む
-    expect(brawlerKickChargeGlow(s3, 140)).toBeGreaterThan(brawlerKickChargeGlow(s3, 20));
+    expect(brawlerKickChargeGlow(s3, 154)).toBeGreaterThan(brawlerKickChargeGlow(s3, 20));
     // つなぎ目で高さが跳ばない
-    expect(Math.abs(brawlerPoseAt(s3, 151)!.jump - brawlerPoseAt(s3, 149)!.jump)).toBeLessThan(2);
+    expect(Math.abs(brawlerPoseAt(s3, 166)!.jump - brawlerPoseAt(s3, 164)!.jump)).toBeLessThan(2);
     expect(brawlerKickChargeGlow(s1, 50)).toBe(0);
   });
   it('ストア: 3発目は溜めの間その場に留まり、明けてから飛ぶ(判定は溜め+飛ぶ時間の後)', () => {
@@ -146,13 +146,13 @@ describe('飛び蹴りの3発目の溜め(社長承認2026-11-08「飛び蹴り�
     const x0 = useGameStore.getState().player.x;
     expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true);
     expect(br().kickN).toBe(3);
-    expect(br().kickChargeMs).toBe(150);
-    advance(140);
+    expect(br().kickChargeMs).toBe(165); // 旧150(×1.1)
+    advance(154);
     expect(Math.abs(useGameStore.getState().player.x - x0)).toBeLessThan(1); // 溜めの間は飛ばない
     expect(br().resolved).toBe(false);
     for (let k = 0; k < 60 && !br().resolved; k++) advance(10);
     expect(useGameStore.getState().player.x - x0).toBeGreaterThan(60); // 明けてから飛んだ
-    expect(br().windupMs).toBeGreaterThanOrEqual(150 + brawlerKickFlightMs(0)); // 前隙=溜め+飛ぶ時間(飛ぶ時間は距離で 156〜195)
+    expect(br().windupMs).toBeGreaterThanOrEqual(165 + brawlerKickFlightMs(0)); // 前隙=溜め+飛ぶ時間(飛ぶ時間は距離で 172〜215)
   });
 });
 
