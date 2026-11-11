@@ -1288,6 +1288,8 @@ export interface Enemy {
   eggBurstCount?: number;
   // 叫喚型(screamer): 次に叫喚(溜め開始)する gameTime(ms)。初回=出現3秒後、以降10秒間隔。
   screamNextAt?: number;
+  // 叫喚型(screamer): 置き去りから進む先の辺の外へ動かした gameTime(ms)。続けて動かさないための印(screamerGate.screamerWarpDue)。
+  screamerWarpAt?: number;
   // ボス共通の体勢値。未設定時はボス種別ごとの最大値として扱う。
   bossPosture?: number;
   /** ★対人の体勢(SAME_ARENA.md §9)。幻影専用(プレイヤー側は Player.pvpPosture)。 */

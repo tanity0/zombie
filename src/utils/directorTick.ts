@@ -56,6 +56,7 @@ import {
   type ViewRect,
 } from './spawnRefill';
 import { enemyFootBox } from '../pixi/renderSpec';
+import { screamerWarpDue } from './screamerGate';
 import { isPracticeRun } from './bossPractice';
 import { isExStageRun } from './exStage';
 import { bossEngagedNow, bossEngagementDistancePx, bossRelaxWithTail, engagedBossSlotKeys, isEngageableBoss, isGhostEligibleBoss, BOSS_OPENING_HOLD_MS } from './bossEngagement';
@@ -1299,6 +1300,49 @@ export function runOffscreenRecycleAndCull(ctx: RecycleCullCtx): void {
     // ステージ2の逃走経路の雑魚は画面外の置き直し・回収をしない(置いた場所で待つ=1画面1体の間隔を崩さない)。
     if (enemy.escapeRoute) return enemy;
     if (enemy.fixed) {
+      // ★叫喚型の置き去り(社長指示2026-11-11「進行方向にワープさせる」): プレイヤーから遠く離れた叫喚型を、
+      // 同じ個体のまま(体力・id・次に叫ぶ予定はそのまま)**進む先の辺の外**へ動かす。置き先の決め方は雑魚の
+      // 置き去りの回収と同じ(frontRespawnPoint → 歩ける帯へ寄せる → 見えている範囲の外の時だけ)。
+      // 雑魚の回収の予算(retireBudget / lastBehindRetireAt)は使わない。続けて動かさない間は screamerWarpAt で見る。
+      // 気絶中・ノックバック中・技(jump/charge)の最中は、この上の早期 return で既に弾かれている。
+      if (
+        enemy.type === 'screamer' && retireEnabled && retireViews.length > 0
+        && !(enemy.liftUntil !== undefined && enemy.liftUntil > Date.now())
+        && screamerWarpDue(playerCenterX, playerCenterY, enemyCenterX, enemyCenterY, enemy.aiPhase, enemy.screamerWarpAt, gameTime)
+      ) {
+        const fb = enemyFootBox(enemy);
+        const vis = enemyVisualBox(enemy, fb.boxW, fb.boxH);
+        const cs = useGameStore.getState();
+        const pt = frontRespawnPoint({
+          view: retireViews[0], heading: retireWalk, playerCx: playerCenterX, playerCy: playerCenterY,
+          width: enemy.width, height: enemy.height, artWidth: vis.width, artHeight: vis.height,
+          corridor: cs.corridorMode, roll1: directorRng(), roll2: directorRng(),
+        });
+        const placed = clampRectToPlayableArea(pt.x, pt.y, enemy.width, enemy.height, {
+          farBackdrop: cs.farBackdrop,
+          labTheme: false,
+          corridorMode: cs.corridorMode,
+          m0AdvanceLimitX: null,
+          corridorRunInActive: cs.corridorRunInActive,
+        });
+        const placedVis = enemyVisualBox({ x: placed.x, y: placed.y, width: enemy.width, height: enemy.height }, fb.boxW, fb.boxH);
+        // 見えている範囲に入ってしまうなら今回は動かさない(次のフレーム以降にまた試す)。
+        if (retireViews.every(v => isBoxOutsideRect(placedVis, v, 0))) {
+          recycledAnyEnemy = true;
+          return {
+            ...enemy,
+            x: placed.x,
+            y: placed.y,
+            vx: undefined,
+            vy: undefined,
+            knockbackUntil: undefined,
+            knockbackVx: undefined,
+            knockbackVy: undefined,
+            frozenClocks: undefined,
+            screamerWarpAt: gameTime,
+          };
+        }
+      }
       if (
         indoor && !enemy.dormant &&
         enemy.homeX !== undefined && enemy.homeY !== undefined &&

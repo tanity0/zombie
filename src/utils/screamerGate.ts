@@ -25,3 +25,22 @@ export const SCREAMER_MARK_MAX_DIST_PX = 1200;
 export const screamerMarkVisible = (px: number, py: number, sx: number, sy: number): boolean =>
   Math.hypot(sx - px, sy - py) <= SCREAMER_MARK_MAX_DIST_PX;
 
+
+/** 叫喚型を進む先へ動かしてから、次に動かしてよくなるまでの間(ms・gameTime)。同じ個体を続けて動かさない。 */
+export const SCREAMER_WARP_GAP_MS = 3000;
+
+/**
+ * 置き去りの叫喚型を「進む先の辺の外」へ動かす時か(社長指示2026-11-11「進行方向にワープさせる」)。
+ *  - プレイヤーの中心から叫喚型の中心までが SCREAMER_MARK_MAX_DIST_PX を超えている時だけ(方角の印が消える距離と同じ)。
+ *  - 叫びの溜めの最中(aiPhase === 'scream')は動かさない。
+ *  - 前に動かしてから(lastWarpAt)SCREAMER_WARP_GAP_MS 経っていなければ動かさない(未設定=まだ動かしていない)。
+ * 置き先が見えている範囲に入るかどうかは呼ぶ側(directorTick)で見る。
+ */
+export const screamerWarpDue = (
+  px: number, py: number, sx: number, sy: number,
+  aiPhase: string | undefined, lastWarpAt: number | undefined, gameTime: number,
+): boolean => {
+  if (aiPhase === 'scream') return false;
+  if (lastWarpAt !== undefined && gameTime - lastWarpAt < SCREAMER_WARP_GAP_MS) return false;
+  return Math.hypot(sx - px, sy - py) > SCREAMER_MARK_MAX_DIST_PX;
+};
