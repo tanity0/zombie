@@ -26,7 +26,7 @@ export const isSkillProcShown = (key: SkillKey): boolean => SKILL_PROC_CHANCE_KE
  * 格闘の技の行(社長指示2026-11-11「技を出したら、通信の下に出す。スキルと同じ線」)。スキルと同じ並びに積む。
  * 鍵は 'tech:' で始まる=スキルの鍵と混ざらない。名前と入力の向きは data/brawlerTechNames。
  */
-export type TechProcKey = 'tech:guard' | 'tech:stomp' | 'tech:kiko' | 'tech:kick' | 'tech:secret';
+export type TechProcKey = 'tech:guard' | 'tech:stomp' | 'tech:kiko' | 'tech:kick' | 'tech:kick2' | 'tech:kick3' | 'tech:heel' | 'tech:secret';
 export type SkillProcKey = SkillKey | TechProcKey;
 export const isTechProcKey = (key: SkillProcKey): key is TechProcKey => key.startsWith('tech:');
 /** 秘奥義の行が出ている長さ(ms)。滅多に出ない物なので、他の行より長く残す。 */
@@ -59,7 +59,7 @@ export const skillProcLeaving = (e: SkillProcEntry, now: number): boolean => now
 /**
  * 発動を1つ足した後の並び(古い→新しい=上→下)。
  * - 同じスキルの行がまだ出ていれば、行は増やさずに数を+1して出ている長さを延ばす(効くたびに見える)。
- *   技(TechProcKey)は「一番新しい技の行が同じ技」の時だけまとめる(出した順が読める・techProcMergeRow)。
+ *   技(TechProcKey)はまとめない=出すたびに1行(社長指示2026-11-11「スキル名×数字で出てるけど、これやめて。全て独立して出して」)。
  * - 新しい行を足して上限を超えたら、一番古い(まだ消え始めていない)行を今から消える動きへ回す。
  * - 消え終わった行は落とす。
  */
@@ -67,7 +67,7 @@ export const pushSkillProc = (
   feed: readonly SkillProcEntry[], key: SkillProcKey, now: number, id: number,
 ): SkillProcEntry[] => {
   const alive = feed.filter(e => skillProcAlive(e, now));
-  const same = isTechProcKey(key) ? techProcMergeRow(alive, key, now) : alive.find(e => e.key === key && !skillProcLeaving(e, now));
+  const same = isTechProcKey(key) ? undefined : alive.find(e => e.key === key && !skillProcLeaving(e, now));
   if (same) return alive.map(e => (e === same ? { ...e, hits: e.hits + 1, until: now + showMsOf(key), lastAt: now } : e));
   const last = alive[alive.length - 1];
   const delay = last && now - last.at < SKILL_PROC_STAGGER_MS ? last.delay + SKILL_PROC_STAGGER_MS : 0;
@@ -77,20 +77,6 @@ export const pushSkillProc = (
   // (社長裁定2026-11-11。旧は技の行だけ2行までにして、スキルの行を押し出さないようにしていた)。
   const evict = staying.length > SKILL_PROC_MAX_ROWS ? staying[0] : undefined;
   return evict ? next.map(e => (e === evict ? { ...e, until: now + SKILL_PROC_EXIT_MS } : e)) : next;
-};
-
-/**
- * 技の行をまとめる相手。技は出した順に読めるよう、**一番新しい技の行**が同じ技の時だけ数を増やす
- * (飛び蹴り→飛び蹴り→飛び蹴り=1行で ×3。飛び蹴り→大踏み潰し→飛び蹴り=3行)。
- * 間にスキルの行が挟まっていても(技ポイントが返ってきた時など)、技どうしの順番だけを見る。
- */
-const techProcMergeRow = (alive: readonly SkillProcEntry[], key: TechProcKey, now: number): SkillProcEntry | undefined => {
-  for (let i = alive.length - 1; i >= 0; i--) {
-    const e = alive[i];
-    if (!isTechProcKey(e.key)) continue;
-    return e.key === key && !skillProcLeaving(e, now) ? e : undefined;
-  }
-  return undefined;
 };
 
 /** 一時停止していた分(ms)だけ、全部の行の時刻を先送りする(止めている間に流れて消えない)。 */

@@ -4997,7 +4997,7 @@ const startBrawlerTech = (
   // 取り消しで出した技(道の上の続き)の印(状態に残すだけ。§20 で続きを出した瞬間の固まりの延ばしは撤去した=固まりは当たりの瞬間に書く)。
   if (linked) s = { ...s, linked: true };
   setBrawler(set, s, extra);
-  notifyTechProc(kind); // 通信の下に技の行(秘奥義に置き換わった時は上で return 済み=秘奥義の行だけが出る)
+  notifyTechProc(kind, kickN); // 通信の下に技の行(秘奥義に置き換わった時は上で return 済み=秘奥義の行だけが出る)
   if (techRefund) notifySkillProc('overclock');
   const g = get();
   if (cancel) {
@@ -6942,8 +6942,9 @@ export const notifySkillProc = (key: SkillKey): void => {
  * 呼ぶのはプレイヤー本人の技が**実際に出た**所だけ(入力しただけ・技ポイント不足・道の外は呼ばない)。拳鬼・幻影の技は別の経路=出ない。
  * 音は足さない(技そのものの音がある)。
  */
-export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret'): void => {
-  const key = `tech:${kind}` as TechProcKey;
+export const notifyTechProc = (kind: BR.BrawlerTechKind | 'secret' | 'heel', kickN = 0): void => {
+  // 飛び蹴りは何発目かで名前が違う(飛び蹴り→空中蹴り→蹴り飛ばし・社長指示2026-11-11)。
+  const key = (kind === 'kick' && kickN >= 2 ? `tech:kick${Math.min(3, kickN)}` : `tech:${kind}`) as TechProcKey;
   useGameStore.setState(s => ({ skillProcFeed: pushSkillProc(s.skillProcFeed, key, Date.now(), ++skillProcSeq) }));
 };
 /**
@@ -11098,7 +11099,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const guardRefund = BRS.brawlerOverclockRefunds(guardCost, skillLevel(p, 'overclock'));
       const s1 = { ...BR.brawlerExtendGuard(s, t, now), points: s.points - (guardRefund ? 0 : guardCost) };
       setBrawler(set, s1, { counterWindowStart: Math.min(p.counterWindowStart, now), counterWindowEnd: now + BR.BRAWLER_GUARD_MS });
-      notifyTechProc('guard'); // 構えの延長も技を出した=行の数が増える
+      notifyTechProc('guard'); // 構えの延長も技を出した=行が1つ増える
       if (guardRefund) notifySkillProc('overclock'); // 技の行の後(出した技 → 返ってきた、の順)
       brawlerSfx('heavy-impact', 0.22, 1.35, 260);
       brawlerSfx('homing-fire', 0.2, 0.62, 260);
@@ -11177,6 +11178,21 @@ export const useGameStore = create<GameState>((set, get) => ({
         const dir = BR.brawlerAimDir(c.x, c.y, tgt, p.lastDirection);
         setBrawler(set, { ...s0, kickReaimed: true, dirX: dir.x, dirY: dir.y }, { ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, remain, now), lastDirection: { x: dir.x, y: dir.y } });
       } else setBrawler(set, { ...s0, kickReaimed: true });
+      return;
+    }
+    // ★4段目(小ジャンプの叩き潰し): 跳んでいる途中に1回だけ、狙った敵の今の位置へ降りる先を取り直す(BR.brawlerSlamTrackDue)。
+    //   残りの跳ぶ時間で、上限 BRAWLER_SLAM_TRACK_PX まで詰める。敵が居ない・狙えない時は取り直さない(今の降りる先のまま)。
+    if (BR.brawlerSlamTrackDue(s0, t)) {
+      const tgt = get().enemies.find(e => e.id === s0.targetId) ?? null;
+      const remain = s0.windupMs - BR.brawlerElapsed(s0, t);
+      if (tgt && BR.isBrawlerTargetable(tgt) && remain > 0) {
+        const c = brawlerCenter(p);
+        const ap = BR.brawlerApproach(c.x, c.y, tgt, BR.BRAWLER_SLAM_TRACK_PX);
+        const dir = BR.brawlerAimDir(c.x, c.y, tgt, p.lastDirection);
+        // 詰める先が無い(もう届いている)時は、今の踏み込みの器をそのまま残す(止めると跳びの途中で体が急に止まる)。
+        setBrawler(set, { ...s0, slamTracked: true, dirX: dir.x, dirY: dir.y },
+          { ...(ap.dist > 0.5 ? brawlerLungePatch(ap.dx, ap.dy, ap.dist, remain, now) : {}), lastDirection: { x: dir.x, y: dir.y } });
+      } else setBrawler(set, { ...s0, slamTracked: true });
       return;
     }
     // 前隙の途中で掴まれた・対人の紫に入った・シーカーに入った=出かかった段/技を取り消し、先行入力も捨てる(§8-4)。

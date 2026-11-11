@@ -343,7 +343,7 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
     ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, startAt: t,
     // 前隙なし(受けた直後)でも5段目は突き抜ける時間だけは要る(溜めだけ消える)。
     windupMs: quick ? (spec.stage === 5 ? BRAWLER_PALM_DASH_MS : 0) : spec.windupMs, recoveryMs: spec.recoveryMs,
-    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
+    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false, slamTracked: false,
     palmFromX: undefined, palmFromY: undefined,
     // 前隙なしは1回きり(受けた直後の最初の1発だけ)。
     quickUntil: quick ? 0 : s.quickUntil,
@@ -365,6 +365,18 @@ export const brawlerKickReaimDue = (
   s: Pick<BrawlerState, 'phase' | 'tech' | 'kickChargeMs' | 'resolved' | 'kickReaimed' | 'targetId'>, lungeHoldUntil: number, now: number,
 ): boolean => s.phase === 'tech' && s.tech === 'kick' && (s.kickChargeMs ?? 0) > 0 && !s.resolved && !s.kickReaimed
   && !!s.targetId && lungeHoldUntil > 0 && now >= lungeHoldUntil;
+/**
+ * ★4段目(小ジャンプの叩き潰し)の追尾(社長指示2026-11-11「通常技の叩き潰しは、少しの距離だけ敵を追尾(普通に叩けば全段の浮かし飛ばした敵に
+ * 届くくらいの距離)」「ジャンプのタイミングのことね」)。降りる先を押した瞬間の敵の位置で決めたままだと、前の段の押しで滑った敵に届かない。
+ * 跳んでいる途中(前隙のこの割合を過ぎた最初の更新)に1回だけ、狙った敵の今の位置へ取り直す。当たる時刻(前隙の終わり)は変えない。
+ */
+export const BRAWLER_SLAM_TRACK_AT = 0.35;
+/** 取り直しで詰められる距離の上限(px・叩き台)。押した瞬間の詰め(段の表の dashPx)とは別に、跳んでいる残りの時間で詰める。 */
+export const BRAWLER_SLAM_TRACK_PX = 90;
+export const brawlerSlamTrackDue = (
+  s: Pick<BrawlerState, 'phase' | 'stage' | 'resolved' | 'slamTracked' | 'targetId' | 'windupMs' | 'startAt' | 'stopFrom' | 'stopUntil' | 'stopPrevMs'>, t: number,
+): boolean => s.phase === 'attack' && s.stage === 4 && !s.resolved && !s.slamTracked && !!s.targetId && s.windupMs > 0
+  && brawlerElapsed(s, t) >= s.windupMs * BRAWLER_SLAM_TRACK_AT && brawlerElapsed(s, t) < s.windupMs;
 /**
  * 新しい技を始めた状態(ポイントは呼び手が払う)。cancel=技の後隙を取り消して出した(§11-4)=技の流れを続ける。
  * 飛び蹴りの2・3発目は同じ技の続き(流れはそのまま)。それ以外は流れをこの技から始め直す。

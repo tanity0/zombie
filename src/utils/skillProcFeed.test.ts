@@ -54,13 +54,12 @@ describe('表示するのは確率で起きるスキルだけ(社長指示2026-1
 });
 
 describe('格闘の技の行(スキルと同じ並びに積む)', () => {
-  it('同じ技を続けて出すと、1行のまま数が増える(飛び蹴りの連続)', () => {
-    let f = pushSkillProc([], 'tech:kick', 1000, 1);
-    f = pushSkillProc(f, 'tech:kick', 1300, 2);
-    f = pushSkillProc(f, 'tech:kick', 1700, 3);
-    expect(f.length).toBe(1);
-    expect(f[0].hits).toBe(3);
-    expect(f[0].until).toBe(1700 + SKILL_PROC_SHOW_MS);
+  it('同じ技を続けて出しても、まとめずに1行ずつ出る(社長指示2026-11-11「全て独立して出して」)', () => {
+    let f = pushSkillProc([], 'tech:guard', 1000, 1);
+    f = pushSkillProc(f, 'tech:guard', 1300, 2);
+    f = pushSkillProc(f, 'tech:guard', 1700, 3);
+    expect(f.length).toBe(3);
+    expect(f.every(e => e.hits === 1)).toBe(true);
   });
   it('別の技を挟むと、同じ技でも新しい行になる(出した順が読める)', () => {
     let f = pushSkillProc([], 'tech:kick', 1000, 1);
@@ -79,19 +78,12 @@ describe('格闘の技の行(スキルと同じ並びに積む)', () => {
     expect(skillProcLeaving(f[0], 1800)).toBe(true); // 一番古い行(スキルでも)が消える動きへ
     expect(f.filter(e => !skillProcLeaving(e, 1800)).map(e => e.key)).toEqual(['tech:kick', 'tech:stomp', 'tech:kiko', 'tech:guard']);
   });
-  it('間にスキルの行が挟まっても、技どうしの順番だけを見てまとめる', () => {
+  it('間にスキルの行が挟まっても、技は新しい行になる', () => {
     let f = pushSkillProc([], 'tech:kick', 1000, 1);
     f = pushSkillProc(f, 'overclock', 1300, 2);
     f = pushSkillProc(f, 'tech:kick', 1300, 3);
-    expect(f.map(e => e.key)).toEqual(['tech:kick', 'overclock']);
-    expect(f[0].hits).toBe(2);
-  });
-  it('消え始めた技の行にはまとめない(新しい行を足す)', () => {
-    let f = pushSkillProc([], 'tech:kiko', 1000, 1);
-    const late = 1000 + SKILL_PROC_SHOW_MS - SKILL_PROC_EXIT_MS + 1;
-    f = pushSkillProc(f, 'tech:kiko', late, 2);
-    expect(f.length).toBe(2);
-    expect(f[1].hits).toBe(1);
+    expect(f.map(e => e.key)).toEqual(['tech:kick', 'overclock', 'tech:kick']);
+    expect(f.every(e => e.hits === 1)).toBe(true);
   });
   it('スキルの行のまとめ方は今までどおり(間に別の行があっても同じスキルは1行)', () => {
     let f = pushSkillProc([], 'ricochet', 1000, 1);
@@ -100,13 +92,13 @@ describe('格闘の技の行(スキルと同じ並びに積む)', () => {
     expect(f.map(e => e.key)).toEqual(['ricochet', 'tech:kick']);
     expect(f[0].hits).toBe(2);
   });
-  it('いま出した技の行が「一番新しい行」: 後からスキルの行が足されても、同じ技をもう一度出せばその行が新しい', () => {
+  it('いま出した技の行が「一番新しい行」: 同じ技をもう一度出すと、新しく足した行が一番新しい', () => {
     let f = pushSkillProc([], 'tech:kick', 1000, 1);
     f = pushSkillProc(f, 'overclock', 1000, 2); // 技の行の後に、返ってきた行
     expect(newestSkillProcId(f)).toBe(2);
-    f = pushSkillProc(f, 'tech:kick', 1400, 3); // 同じ行にまとまる(行は増えない)
-    expect(f.length).toBe(2);
-    expect(newestSkillProcId(f)).toBe(1);
+    f = pushSkillProc(f, 'tech:kick', 1400, 3);
+    expect(f.length).toBe(3);
+    expect(newestSkillProcId(f)).toBe(3);
     expect(newestSkillProcId([])).toBeNull();
   });
   it('一時停止の先送りは「最後に効いた時刻」も一緒に送る', () => {

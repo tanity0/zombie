@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5490', items: [
+    '格闘の四段目の叩き潰しが、跳んでいる途中で狙った敵を少し追う',
+    '格闘の技の表示は、出すたびに一行ずつ。飛び蹴りは二発目が「空中蹴り」、三発目が「蹴り飛ばし」',
+  ] },
   { version: '0.25.5489', items: [
     '格闘で宙に浮いている間、自分の体と技の絵も少し大きく見える',
     '会心で跳ね上がった敵も、頂点で少し大きく見える',
