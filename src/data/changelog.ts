@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5485', items: [
+    '格闘を使う幻影「拳鬼」の名前が「孫悟空」に変わった',
+  ] },
   { version: '0.25.5484', items: [
     '拳鬼がまだ画面に見えていないうちから、カメラが引いたり寄ったりしていたのが直った。姿が見えてからボス戦の画になる',
   ] },

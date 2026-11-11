@@ -1,5 +1,13 @@
 # Development Log
 
+## v0.25.5485 — 拳鬼を「孫悟空」に改名(プレイヤーに見える名前)【2026-11-11 18:07 JST】
+- 社長指示(2026-11-11): 「拳鬼は 孫悟空 に改名」。
+- 変えた物: `src/data/uniquePhantoms.ts` の `name` と `srcName`(名前の帯・HPバー・対策室・ボス一覧・倒された時の表示はここを引く)。
+- 変えていない物: コード・設計書・テストの中の呼び名(拳鬼・kenki・`PHANTOM_BRAWLER_*`)と、過去の更新情報の文(当時の名前のまま)。遭遇の記録のキー(`phantom-brawler`)も同じ=記録は引き継ぐ。
+- 確認: typecheck・lint 0。vitest(uniquePhantom*・phantom*)。画は撮っていない。
+- 監査: 付けない(名前の差し替え)。
+- 変更: `src/data/uniquePhantoms.ts`・`src/data/changelog.ts`・`package.json`。
+
 ## v0.25.5484 — 拳鬼: 出会うまではボス戦のカメラを掛けない【2026-11-11 18:05 JST】
 - 社長実機(v0.25.5481・stage-1・出撃32秒): 「拳鬼が出たタイミングかな?変なカメラワークになった。」。仕様=`research/BRAWLER_PHANTOM.md` §15-5。
 - 原因: 拳鬼は交戦できるボスの扱いで、徘徊の枠では遠くに出す。姿が画面に入る前でも、交戦の距離に入るとボス戦のカメラ(引き+寄せ)が掛かっていた。

@@ -39,7 +39,7 @@ const KENKI_SUBS: SubWeaponKey[] = ['brawler'];
 /** 拳鬼(仮名): 格闘の幻影。絵は専用(kenki-*)。ストライカー・ファイティングナイフ・3段目の装備・タイムキーパーLv3+オーバークロックLv3・格闘Lv3。 */
 const KENKI: UniquePhantomSpec = {
   kind: 'brawler',
-  name: '拳鬼',
+  name: '孫悟空', // 社長指示2026-11-11「拳鬼は 孫悟空 に改名」。コード・設計書の中の呼び名(拳鬼・kenki)はそのまま
   profile: {
     v: 1,
     runs: 10,
@@ -59,7 +59,7 @@ const KENKI: UniquePhantomSpec = {
       homing: { n: 0, holdMsAvg: 0 },
     },
     srcClass: 'rogue',
-    srcName: '拳鬼',
+    srcName: '孫悟空',
     snapshot: {
       maxHealth: PLAYER_PROFILES.rogue.maxHp + equipMaxHealthOf(KENKI_EQUIP),
       speed: 87,
