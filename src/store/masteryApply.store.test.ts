@@ -190,7 +190,7 @@ describe('受け入れ条件6: 守護霊・幻影・護衛の与ダメは倍率1
     expect(hpOf('z')).toBeLessThan(99999);
     expect(getPendingMastery()).toEqual({});
   });
-  it('疑似プレイヤー(守護霊・幻影の主語)は倍率1', () => {
+  it('熟練度の欄が空の主語(幻影の疑似プレイヤー・古い記録の守護霊)は倍率1(守護霊の記録の値は masteryGuardian.store.test.ts)', () => {
     saveMastery({ xp: { melee: xpForLevel('melee', 10) } });
     sortie();
     const live = st().player;

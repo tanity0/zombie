@@ -1,5 +1,6 @@
 // 熟練度の**配線**テスト(research/MASTERY.md v2 §3 / v2.1 A-3・A-4・A-11・A-12)。純関数側は utils/mastery.test.ts。
-// 見るのは resetGame の焼き込み(回収→焼き込み→無視する出撃の旗)と、守護霊・幻影の疑似プレイヤーの上書きだけ。
+// 見るのは resetGame の焼き込み(回収→焼き込み→無視する出撃の旗)と、守護霊・幻影の疑似プレイヤーの上書きだけ
+// (守護霊=記録の値・幻影={}/1。守護霊の当たりは masteryGuardian.store.test.ts)。
 import { describe, it, expect, beforeEach } from 'vitest';
 
 const mem = new Map<string, string>();
@@ -94,7 +95,7 @@ describe('resetGame の焼き込み', () => {
 });
 
 describe('守護霊・幻影の疑似プレイヤー', () => {
-  it('記録が無い道でも masteryMult={}・masteryLoadoutMult=1 で上書きする(本人の値を引き継がない)', () => {
+  it('幻影(既定=guardian 省略): 記録の有無にかかわらず masteryMult={}・masteryLoadoutMult=1(本人の値を引き継がない)', () => {
     saveMastery({ xp: { handgun: 999999, melee: 999999 } });
     sortie();
     const live = useGameStore.getState().player;
@@ -102,5 +103,21 @@ describe('守護霊・幻影の疑似プレイヤー', () => {
     const pseudo = buildPseudoPlayer(undefined, live);
     expect(pseudo.masteryMult).toEqual({});
     expect(pseudo.masteryLoadoutMult).toBe(1);
+    const withRecord = buildPseudoPlayer({ maxHealth: 100, speed: 200, level: 1, masteryMult: { handgun: 1.5 }, masteryLoadoutMult: 1.3 }, live);
+    expect(withRecord.masteryMult).toEqual({});
+    expect(withRecord.masteryLoadoutMult).toBe(1);
+  });
+  it('守護霊(guardian): 記録の値を持つ。記録が無い/欄が無い時は {}/1(本人の値を引き継がない)', () => {
+    saveMastery({ xp: { handgun: 999999, melee: 999999 } });
+    sortie();
+    const live = useGameStore.getState().player;
+    const g = buildPseudoPlayer({ maxHealth: 100, speed: 200, level: 1, masteryMult: { handgun: 1.5 }, masteryLoadoutMult: 1.3 }, live, { guardian: true });
+    expect(g.masteryMult).toEqual({ handgun: 1.5 });
+    expect(g.masteryLoadoutMult).toBeCloseTo(1.3, 10);
+    for (const snap of [undefined, { maxHealth: 100, speed: 200, level: 1 }]) {
+      const old = buildPseudoPlayer(snap, live, { guardian: true });
+      expect(old.masteryMult).toEqual({});
+      expect(old.masteryLoadoutMult).toBe(1);
+    }
   });
 });

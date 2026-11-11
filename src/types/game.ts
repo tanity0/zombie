@@ -245,11 +245,19 @@ export interface Player extends DashLocomotionState {
   /**
    * 熟練度の焼き値(research/MASTERY.md v2 §3)。resetGame が保存の段階から1回だけ焼く(出撃の間は変えない)。
    * 育つキーの倍率と `max`(固定 ×1.9)。無い欄=1。読み口は utils/mastery.ts の masteryMultOf。
-   * 守護霊/幻影の疑似プレイヤーでは `{}`(buildPseudoPlayer が上書き)。
+   * 幻影の疑似プレイヤーでは `{}`。守護霊の疑似プレイヤーは記録した時点の値(記録に欄が無ければ `{}`)(buildPseudoPlayer が上書き)。
    */
   masteryMult?: Partial<Record<MasteryKey, number>>;
   /** 熟練度 `loadout` の倍率(出撃開始時に持っている物の平均・既定1)。 */
   masteryLoadoutMult?: number;
+  /**
+   * 守護霊の記録へ写す熟練度(本人がその時点で持っていた段階)。熟練度を無視する出撃のうち、ボットとベンチ以外
+   * (練習・幻影の練習・ボスメーカー・ガントレット・チュートリアル等)でだけ resetGame が保存の段階から焼く
+   * (焼き値 masteryMult は `{}` のまま=この出撃の与ダメは倍率1)。未設定=焼き値 masteryMult をそのまま写す。
+   */
+  masteryRecordMult?: Partial<Record<MasteryKey, number>>;
+  /** 上と対の `loadout` の倍率(出撃開始時の持ち物の平均)。 */
+  masteryRecordLoadoutMult?: number;
   /**
    * ラン内の「攻撃力 +6%」カード(UpgradeOption type='stat'・LEVEL_GROWTH.md §11 代替a)の累積倍率(既定1.0)。
    * 読むのは skillOutgoingDamageMult(合流点)だけ。記録スナップショットには写さない(ラン限り)。
@@ -505,6 +513,13 @@ export interface PlayerBuildSnapshot {
   growthAtkMult?: number;
   /** 計測時の強化「カウンター受付」(ms)。欠損(旧データ)=0。 */
   growthCounterAcceptMs?: number;
+  /**
+   * 記録した時点の熟練度の焼き値(player.masteryMult の写し)。守護霊の与ダメに掛ける(growthAtkMult と同じ扱い)。
+   * 欠損(旧データ)=`{}`。復元は utils/mastery.ts の normalizeMasteryRecord。幻影には掛けない。
+   */
+  masteryMult?: Partial<Record<MasteryKey, number>>;
+  /** 記録した時点の熟練度 `loadout` の倍率(player.masteryLoadoutMult の写し)。欠損(旧データ)=1。 */
+  masteryLoadoutMult?: number;
   // ---- 裁定4(PHILL): 撃破ラン中の発射数とヘッドショット数(率はrateへ丸めて保存) ----
   phillShots?: number;
   phillHeadshots?: number;
@@ -1797,6 +1812,8 @@ export interface Enemy {
   burnByGhost?: boolean;
   /** 熟練度(research/MASTERY.md v2.1 A-1): 燃焼を付けた側のキー(後から付けた方が勝つ)。燃焼の刻みはこのキーで包む。未指定=`none`。 */
   burnMasteryKey?: MasteryKey;
+  /** 守護霊の燃焼の強さに掛けた熟練度の倍率(相手が幻影の時に刻みで打ち消す)。本人の燃焼では消える。 */
+  burnMasteryMult?: number;
   // B7: 血の履帯(blood-treads)の棘(tickBloodSpikes)のDoTスロットル打刻(250ms・molotovのlastFireHitAtと同じ流儀)。
   lastSpikeHitAt?: number;
   // UNIQUE_WEAPONS.md §16-2(バッチD・錬金砲 glauncher-t2-alchemy限定): 金の石の段階(1-3・
@@ -2251,6 +2268,8 @@ export interface RescueAlly {
   damage: number;          // 発生時点のプレイヤー近接ダメージそのまま(倍率1・crit/コンボ/装備アウトゴーイング倍率なし)
   spawnedAt: number;       // gameTime(ms)。フェーズ(飛来→打撃→離脱)の起点
   struck: boolean;         // 着弾ダメージを適用済みか(tickRescueAlliesが二重適用を防ぐためのフラグ)
+  /** 守護霊が呼んだ援軍の熟練度の倍率(呼んだ時点の守護霊の `loadout`)。あれば貯めない(`none`)。本人の援軍は省く。 */
+  masteryMult?: number;
 }
 
 // 救急鞄(first-aid-kit)サブウェポンの空鞄投擲。中身を払い出し切った後、鞄本体をプレイヤーから
@@ -2267,6 +2286,8 @@ export interface ThrownBag {
   damage: number;          // FIRST_AID_KIT_THROW_DAMAGE そのまま
   spawnedAt: number;       // gameTime(ms)。飛行の起点
   struck: boolean;         // 着弾ダメージを適用済みか(tickThrownBagsが二重適用を防ぐためのフラグ)
+  /** 守護霊が投げた鞄の熟練度の倍率(投げた時点の守護霊の `first-aid-kit`)。あれば貯めない(`none`)。本人の鞄は省く。 */
+  masteryMult?: number;
 }
 
 // 火炎瓶(molotov)サブウェポンが足元に設置する地面の火だまり。MOLOTOV_FIRE_LIFETIME_MS(3秒)で消滅。
@@ -2282,6 +2303,8 @@ export interface GroundFire {
   ownerGhostId?: string;
   /** 熟練度(research/MASTERY.md v2.1 A-8): 火の床の燃焼の出どころ(火炎瓶=`molotov`・延焼弾=`loadout`・守護霊=`none`)。未指定=`none`。 */
   masteryKey?: MasteryKey;
+  /** 守護霊が置いた火の熟練度の倍率(置いた時点の守護霊の記録の値)。本人の火は省く。 */
+  masteryMult?: number;
   // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)Lv2/3の炎床は「小・モロトフ資産流用」
   // (§16-5)なので、molotovの火と**同じ配列/同じ描画/同じ寿命・DoT定数**に相乗りする。
   // 未指定=モロトフの半径(MOLOTOV_FIRE_RADIUS)のまま。指定時(Lv3の「炎床(大)」)だけ個体ごとに
@@ -2876,6 +2899,13 @@ export interface Projectile {
    * 跳弾・写し弾は親の値を写す。未指定=本人の銃の弾と分かる物だけ銃の種類・それ以外 `none`(utils/weaponUtils.ts の projectileMasteryKey)。
    */
   masteryKey?: MasteryKey;
+  /**
+   * 守護霊が作った弾/置き物の熟練度の倍率(作る所で守護霊の記録の値から確定する)。当たる所はあればこれを掛け(utils/mastery.ts の
+   * objectMasteryMult)、貯めるキーは `masteryKey`(=`none`)のまま。守護霊の物から出た子(ボマーの子・跳弾・氷片等)は親の値を写す。
+   * 本人の物は省く。幻影の銃の弾は守護霊と同じ作り口(weaponUtils の buildGhostGunShots)を通るので 1 が入る
+   * (幻影の疑似プレイヤーは焼き値が空=倍率1)。それ以外の幻影の物は省く。
+   */
+  masteryMult?: number;
   // UNIQUE_WEAPONS.md §16-2(バッチD・ロケットランチャー glauncher-t1-rocket限定): 「溜め(500ms)」を
   // 「弾を速度0のままその場に置く」ことで表現する(fireWeaponが発射直後の1回だけ設定する)。
   // rocketChargeUntil(gameTime)まではspeedが0=通常の敵衝突判定がそのまま拾うので

@@ -200,7 +200,7 @@ import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
 import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { BOT_PARAM } from '../utils/botFlag';
 import { getMasteryReport, withMastery } from '../utils/masteryRun';
-import { masteryMultOf, burnRefreshMastery } from '../utils/mastery';
+import { masteryMultOf, burnRefreshMastery, objectMasteryMult, guardianMasteryMult } from '../utils/mastery';
 import type { MasteryKey } from '../data/mastery';
 import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
@@ -10787,7 +10787,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               direction: { x: baseDir.x * ca - baseDir.y * sa, y: baseDir.x * sa + baseDir.y * ca },
               weaponType: 'grenade',
               weaponKey: 'sub-heavy-grenade',
-              masteryKey: (ghostOwned || hostileOwned ? 'none' : 'heavy-grenade') as MasteryKey, // 熟練度: 本人の手榴弾のみ(守護霊・幻影=none)
+              masteryKey: (ghostOwned || hostileOwned ? 'none' : 'heavy-grenade') as MasteryKey, // 熟練度: 本人の手榴弾のみ貯まる(守護霊・幻影=none)
+              ...(ghostOwned ? { masteryMult: guardianMasteryMult(hgActor, 'heavy-grenade') } : {}), // 守護霊の倍率=記録の値(作る所で確定)
               duration: HEAVY_GRENADE_FUSE_MS,
               createdAt: Date.now(),
               passthrough: false,
@@ -11316,7 +11317,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             placedHp: PLACED_DURABILITY.decoy,      // ★耐久(社長指示2026-08-24)
             placedMaxHp: PLACED_DURABILITY.decoy,
             weaponKey: 'sub-decoy',
-            masteryKey: (ghostOwned || dcHostile ? 'none' : 'decoy') as MasteryKey, // 熟練度: 本人のデコイのみ
+            masteryKey: (ghostOwned || dcHostile ? 'none' : 'decoy') as MasteryKey, // 熟練度: 本人のデコイのみ貯まる
+            ...(ghostOwned ? { masteryMult: guardianMasteryMult(dcActor, 'decoy') } : {}), // 守護霊の倍率=記録の値(作る所で確定)
             duration: DECOY_THROW_MS + DECOY_DURATION_BY_LEVEL[level],
             createdAt: nowMs,
             passthrough: false,
@@ -11462,7 +11464,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             placedHp: PLACED_DURABILITY.turret,     // ★耐久(社長指示2026-08-24)
             placedMaxHp: PLACED_DURABILITY.turret,
             weaponKey: 'sub-turret',
-            masteryKey: (ghostOwned || isHostileOwner(trOwner) ? 'none' : 'turret') as MasteryKey, // 熟練度: 本人のタレットのみ
+            masteryKey: (ghostOwned || isHostileOwner(trOwner) ? 'none' : 'turret') as MasteryKey, // 熟練度: 本人のタレットのみ貯まる
+            ...(ghostOwned ? { masteryMult: guardianMasteryMult(trActor, 'turret') } : {}), // 守護霊の倍率=記録の値(作る所で確定)
             duration: TURRET_DURATION_BY_LEVEL[level],
             createdAt: nowMs,
             passthrough: false,
@@ -11734,7 +11737,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               // 1バイトも変えず、宛先マーカーだけ上書きする。
               addProjectile(ssNpc.hostile
                 ? { ...ssShot, hostile: true, noCounter: true, ownerPhantom: true, masteryKey: 'none' }
-                : ssNpc.ownerGhostId !== undefined ? { ...ssShot, masteryKey: 'none' } : ssShot); // 熟練度: 守護霊が呼んだ援護射撃=none
+                : ssNpc.ownerGhostId !== undefined ? { ...ssShot, masteryKey: 'none', masteryMult: guardianMasteryMult(ssSubject, 'support-sniper') } : ssShot); // 熟練度: 守護霊が呼んだ援護射撃=貯めない(none)・倍率は守護霊の記録の値
               // SE: プレイヤーのスナイパー発砲音(rifle-fire)を護衛NPCと同じ npcSfxDistGain で距離減衰。
               const ssPl = stNow.player;
               const g = npcSfxDistGain(
@@ -11892,7 +11895,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               direction: { x: aimX / mag, y: aimY / mag },
               weaponType: 'fire-knife-projectile',
               weaponKey: 'sub-fire-knife',
-              masteryKey: (ghostOwned || fkHostile ? 'none' : 'fire-knife') as MasteryKey, // 熟練度: 本人の発火ナイフのみ
+              masteryKey: (ghostOwned || fkHostile ? 'none' : 'fire-knife') as MasteryKey, // 熟練度: 本人の発火ナイフのみ貯まる
+              ...(ghostOwned ? { masteryMult: guardianMasteryMult(fkActor, 'fire-knife') } : {}), // 守護霊の倍率=記録の値(作る所で確定)
               duration: FIRE_KNIFE_FLIGHT_MS, // 未命中ならこの寿命で消滅(外れ→消える)
               createdAt: Date.now(),
               passthrough: false,
@@ -12004,7 +12008,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             });
             if (r.cycle !== cycleNow) patchGhost({ ghostMolotovCycle: r.cycle });
             if (r.cooldownAt !== null) setActorSubWeaponCooldown(gSub.id, 'molotov', r.cooldownAt);
-            if (r.drop) useGameStore.getState().spawnGroundFire(gcx, ownerFootY(gOwner), gSub.id);
+            if (r.drop) useGameStore.getState().spawnGroundFire(gcx, ownerFootY(gOwner), gSub.id, undefined, undefined, guardianMasteryMult(gActor, 'molotov')); // 熟練度: 守護霊の火=記録の molotov の倍率
           }
 
           // ---- 援護射撃(support-sniper): 「移動中のみ進むタイマー」を主語ごとに ----
@@ -12103,6 +12107,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     gcx, gcy,
                     { id: bagTarget.id, x: bagTarget.x + bagTarget.width / 2, y: bagTarget.y + bagTarget.height / 2 },
                     FIRST_AID_KIT_THROW_DAMAGE,
+                    guardianMasteryMult(gActor, 'first-aid-kit'), // 熟練度: 守護霊の鞄=記録の値・貯めない
                   );
                   patchGhost({ ghostFirstAidKit: { ...after, thrown: true } });
                 }
@@ -13316,7 +13321,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const gscx = ghostNow.x + ghostNow.width / 2, gscy = ghostNow.y + ghostNow.height / 2;
                     setGhostCounterClaim({
                       bossId: boundBoss.id, ghostX: gscx, ghostY: gscy,
-                      dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs, windowMs: counterAcceptMsOf(ghostOwner),
+                      // 熟練度(守護霊の熟練度の発注): 本人のカウンターと同じキー(構えている銃の種類)で、守護霊の記録の倍率を掛ける。
+                      dmg: ghostCounterDamage(gun?.damage, ghostOwner) * guardianMasteryMult(ghostOwner, counterMasteryKeyOf(gun)),
+                      masteryMult: guardianMasteryMult(ghostOwner, counterMasteryKeyOf(gun)),
+                      atMs: nowMs, windowMs: counterAcceptMsOf(ghostOwner),
                     });
                     // v0.25.3981(実測用・?ghostlog=1): 構え=請求を積んだ瞬間(通常近接)。記録専用。
                     if (GHOST_DMG_LOG_ENABLED) {
@@ -13455,7 +13463,10 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // カウンター成立の請求は通常近接と同じ扱い(一閃も「近接スイング」なので窓を拾う)。
                     setGhostCounterClaim({
                       bossId: boundBoss.id, ghostX: gmcx, ghostY: gmcy,
-                      dmg: ghostCounterDamage(gun?.damage, ghostOwner), atMs: nowMs, windowMs: counterAcceptMsOf(ghostOwner),
+                      // 熟練度(守護霊の熟練度の発注): 本人のカウンターと同じキー(構えている銃の種類)で、守護霊の記録の倍率を掛ける。
+                      dmg: ghostCounterDamage(gun?.damage, ghostOwner) * guardianMasteryMult(ghostOwner, counterMasteryKeyOf(gun)),
+                      masteryMult: guardianMasteryMult(ghostOwner, counterMasteryKeyOf(gun)),
+                      atMs: nowMs, windowMs: counterAcceptMsOf(ghostOwner),
                     });
                     // v0.25.3981(実測用・?ghostlog=1): 構え=請求を積んだ瞬間(刀の一閃)。記録専用。
                     if (GHOST_DMG_LOG_ENABLED) {
@@ -13499,10 +13510,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ghostFinish = useGameStore.getState().applyGhostMeleeFinisher(ghostNow.id, boundBoss.id);
                 const ghostMeleeCrit = ghostFinish === null
                   && Math.random() < meleeHitCritChance(meleeWeapon?.critChance ?? 0, ghostOwner, gameTime, boundBoss);
+                // 熟練度(守護霊の熟練度の発注): 本人の近接と同じキー melee(守護霊は格闘を使わない)で、守護霊の記録の倍率。貯めない(none)。
+                const ghostMeleeMm = guardianMasteryMult(ghostOwner, 'melee');
                 const dmg = Math.max(1, Math.round(
                   meleeSwingBaseDamage(meleeWeapon, ghostOwner)
                   * (ghostMeleeCrit ? skillCritMult(ghostOwner, CRIT_DAMAGE_MULT) : 1)
-                  * skillOutgoingDamageMult(ghostOwner),
+                  * skillOutgoingDamageMult(ghostOwner)
+                  * ghostMeleeMm,
                 ));
                 // このスイングがカウンター試行だったか(**演出の出し分け+請求を積むか、の両方に使用**)。
                 // GHOST-COUNTER-PARITY(社長指示3): ボス状態の近似を独立に再計算するのをやめ、
@@ -13516,7 +13530,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // フィニッシュ成立時はダメージ/数字を共有アクションが既に出しているので二重に出さない。
                 const ghostMeleeKilled = ghostFinish
                   ? ghostFinish.killed
-                  : withMastery('none', () => damageEnemy(boundBoss.id, dmg, false, ghostMeleeCrit, false, null, 'ghost')); // 熟練度: 守護霊=none
+                  : withMastery('none', () => damageEnemy(boundBoss.id, dmg, false, ghostMeleeCrit, false, null, 'ghost'), { mult: ghostMeleeMm }); // 熟練度: 守護霊=貯めない(none)
                 if (!ghostFinish) spawnDamageNumber(btcx, btcy, dmg, ghostMeleeCrit, { enemyId: boundBoss.id });
                 spawnBurst(btcx, bccy, (ghostMeleeCrit || ghostFinish !== null) ? '#fde047' : '#9fd8ff', 6);
                 // v0.25.2479(プレイヤー近接ヒットとのパリティ=triggerCounterのslashAt処理と同型):
@@ -14025,8 +14039,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (tWalls.length > 0 && segmentBlocked(tcx, tcy, ex, ey, tWalls)) continue; // 壁越し不可
                 const falloff = 1 - dist / tBlastR;
                 const tMk: MasteryKey = turret.masteryKey ?? 'none'; // 熟練度: 本人のタレット=turret・守護霊=none(v2 §4-2)
-                const dmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * tExMult * (0.55 + falloff * 0.45) * masteryMultOf(useGameStore.getState().player, tMk)));
-                const killed = withMastery(tMk, () => damageEnemy(enemy.id, dmg, true, false, false, 'dot')); // 召喚(タレット)の爆風=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
+                const tMm = objectMasteryMult(turret, useGameStore.getState().player, tMk); // 守護霊のタレット=作る所で確定した倍率
+                const dmg = Math.max(1, Math.round(TURRET_EXPLOSION_DAMAGE * tExMult * (0.55 + falloff * 0.45) * tMm));
+                const killed = withMastery(tMk, () => damageEnemy(enemy.id, dmg, true, false, false, 'dot'), { mult: tMm }); // 召喚(タレット)の爆風=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
                 spawnDamageNumber(ex, enemy.y, dmg, false, { enemyId: enemy.id });
                 if (killed) {
                   playEnemyDeath();
@@ -14114,6 +14129,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 passthrough: true, hitEnemies: [], hostile: tHostile, reflected: false, // ★幻影のタレットの弾は敵対
                 ownerGhost: turret.ownerGhost, // 視覚専用: ゴースト設置タレットの弾も青白
                 masteryKey: tHostile ? 'none' : (turret.masteryKey ?? 'none'), // 熟練度: 本体の持ち主のキー(本人=turret・守護霊=none)
+                ...(!tHostile && turret.masteryMult !== undefined ? { masteryMult: turret.masteryMult } : {}), // 守護霊のタレットの倍率を弾へ写す
               });
               { const g = npcSfxDistGain(tcx, tcy, tgPx, tgPy, tgCam, tgGb); if (g > 0) playSfx('rifle-fire', g); }
             } else {
@@ -14129,6 +14145,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 passthrough: false, hitEnemies: [], hostile: tHostile, reflected: false, // ★幻影のタレットの弾は敵対
                 ownerGhost: turret.ownerGhost, // 視覚専用: ゴースト設置タレットの弾も青白
                 masteryKey: tHostile ? 'none' : (turret.masteryKey ?? 'none'), // 熟練度: 本体の持ち主のキー(本人=turret・守護霊=none)
+                ...(!tHostile && turret.masteryMult !== undefined ? { masteryMult: turret.masteryMult } : {}), // 守護霊のタレットの倍率を弾へ写す
               });
               { const g = npcSfxDistGain(tcx, tcy, tgPx, tgPy, tgCam, tgGb); if (g > 0) playSfx('handgun-fire', g); }
             }
@@ -14186,8 +14203,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (dWalls.length > 0 && segmentBlocked(dcx, dcy, ex, ey, dWalls)) continue; // 壁越し不可
               const falloff = 1 - dist / dBlastR;
               const dMk: MasteryKey = decoy.masteryKey ?? 'none'; // 熟練度: 本人のデコイ=decoy・守護霊=none
-              const dmg = Math.max(1, Math.round(decoy.damage * dExMult * (0.55 + falloff * 0.45) * masteryMultOf(useGameStore.getState().player, dMk)));
-              const killed = withMastery(dMk, () => damageEnemy(enemy.id, dmg, true)); // 爆発=ボス系には非致死
+              const dMm = objectMasteryMult(decoy, useGameStore.getState().player, dMk); // 守護霊のデコイ=作る所で確定した倍率
+              const dmg = Math.max(1, Math.round(decoy.damage * dExMult * (0.55 + falloff * 0.45) * dMm));
+              const killed = withMastery(dMk, () => damageEnemy(enemy.id, dmg, true), { mult: dMm }); // 爆発=ボス系には非致死
               spawnDamageNumber(ex, enemy.y, dmg, false, { enemyId: enemy.id });
               if (!killed && !resistsChipKnockback(enemy.type)) { // v0.25.3494(案A): 旧リストを一本化
                 const norm = Math.max(0.001, dist);
@@ -14273,6 +14291,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 explodeRadius: HEAVY_GRENADE_RADIUS * 0.6, // 小ブラスト(下の爆発が blastR を参照)
                 ownerGhost: grenade.ownerGhost, // 視覚専用: 親がゴースト発ならば子も青白
                 masteryKey: grenade.masteryKey ?? 'none', // 熟練度: ボマーの子手榴弾=親の手榴弾のキー(本人=heavy-grenade・守護霊=none)
+                ...(grenade.masteryMult !== undefined ? { masteryMult: grenade.masteryMult } : {}), // 守護霊の手榴弾の倍率を子へ写す
               });
             }
             spawnBurst(gx, gy, grenade.ownerGhost ? '#9fd8ff' : '#fbbf24', 8);
@@ -14290,7 +14309,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const grenadeOutMult = skillOutgoingDamageMult(useGameStore.getState().player);
           // 熟練度(v2 §4-2 #5・v2.1 A-8): 手榴弾(ボマーの子も)=heavy-grenade。守護霊・幻影の物は作る所で none。
           const grenadeMk: MasteryKey = grenade.masteryKey ?? 'none';
-          const grenadeMm = masteryMultOf(useGameStore.getState().player, grenadeMk);
+          const grenadeMm = objectMasteryMult(grenade, useGameStore.getState().player, grenadeMk); // 守護霊の手榴弾=作る所で確定した倍率
           // 子グレネード(ボマー)は固有の半径/ダメージを持つ。未指定は通常の手榴弾値。
           const blastR = (grenade.explodeRadius ?? HEAVY_GRENADE_RADIUS) * grenadeExMult * hgExMult;
           let hgHitCount = 0;
@@ -14321,7 +14340,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (gWalls.length > 0 && segmentBlocked(gx, gy, ex, ey, gWalls)) continue; // 壁越しには効かない
             const falloff = 1 - dist / blastR;
             const splashDamage = Math.max(1, Math.round(grenadeBaseDamage * grenadeExMult * grenadeOutMult * (0.55 + falloff * 0.45) * grenadeMm));
-            const killed = withMastery(grenadeMk, () => damageEnemy(enemy.id, splashDamage, true)); // 爆発=ボス系には非致死(社長指示)
+            const killed = withMastery(grenadeMk, () => damageEnemy(enemy.id, splashDamage, true), { mult: grenadeMm }); // 爆発=ボス系には非致死(社長指示)
             hgHitCount += 1;
             spawnDamageNumber(ex, enemy.y, splashDamage, false, { enemyId: enemy.id });
             spawnBurst(ex, ey, '#b91c1c', 4);
@@ -14374,7 +14393,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().playerBlast(sx, sy, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
           useGameStore.getState().spawnGlow(sx, sy, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
           const shellMk = projectileMasteryKey(shell); // 熟練度: グレネードランチャーの転がり弾=glauncher(倍率は爆発の式で1回)
-          const splashBase = shell.damage * GRENADE_BLAST_DAMAGE_MULT * exMult * masteryMultOf(rsPlayer, shellMk);
+          const shellMm = objectMasteryMult(shell, rsPlayer, shellMk);
+          const splashBase = shell.damage * GRENADE_BLAST_DAMAGE_MULT * exMult * shellMm;
           const glWalls = aoeWalls(sx, sy);
           for (const splashEnemy of useGameStore.getState().enemies) {
             if (isReaperFamily(splashEnemy.type) && !isTerminalReaper(splashEnemy)) continue;
@@ -14384,7 +14404,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             if (glWalls.length > 0 && segmentBlocked(sx, sy, ex, ey, glWalls)) continue; // 壁越し不可
             const falloff = 1 - dist / exRadius;
             const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
-            const splashKilled = withMastery(shellMk, () => damageEnemy(splashEnemy.id, splashDamage, true)); // 爆発=ボス系には非致死
+            const splashKilled = withMastery(shellMk, () => damageEnemy(splashEnemy.id, splashDamage, true), { mult: shellMm }); // 爆発=ボス系には非致死
             glHitCount += 1;
             spawnDamageNumber(ex, splashEnemy.y, splashDamage, false, { enemyId: splashEnemy.id });
             spawnBurst(ex, ey, '#b91c1c', 4);
@@ -14437,6 +14457,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   addProjectile({
                     id: `proj-bomber-mini-${mine.id}-${nowB}-${k}`,
                     masteryKey: (smMk === 'none' ? 'none' : 'heavy-grenade') as MasteryKey, // 熟練度: ボマーの子=heavy-grenade(守護霊の地雷から=none)
+                    ...(mine.masteryMult !== undefined ? { masteryMult: mine.masteryMult } : {}), // 守護霊の地雷から出た子は親の倍率を写す
                     x: mine.x - 5, y: mine.y - 5, width: 10, height: 10,
                     speed: HEAVY_GRENADE_SPEED * 0.8,
                     damage: HEAVY_GRENADE_DAMAGE / 3,
@@ -14495,12 +14516,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (dist > smBlastR) continue;
                 if (smWalls.length > 0 && segmentBlocked(mine.x, mine.y, ex, ey, smWalls)) continue; // 壁越しには効かない
                 const falloff = 1 - dist / smBlastR;
-                const splashDamage = Math.max(1, Math.round(SENSOR_MINE_DAMAGE * smExMult * smOutMult * (0.55 + falloff * 0.45) * masteryMultOf(smActor, smMk)));
+                const smMm = objectMasteryMult(mine, smActor, smMk); // 守護霊の地雷=置いた時点で確定した倍率
+                const splashDamage = Math.max(1, Math.round(SENSOR_MINE_DAMAGE * smExMult * smOutMult * (0.55 + falloff * 0.45) * smMm));
                 // 爆発=ボス系には非致死(手榴弾と同じ)。守護霊の地雷は帰属も守護霊
                 // (damageChannel=null=除外4の計測分離 / hateSource='ghost')。プレイヤーは従来の既定と同値。
                 const smKilled = withMastery(smMk, () => (smIsGhost
                   ? damageEnemy(enemy.id, splashDamage, true, false, false, null, 'ghost')
-                  : damageEnemy(enemy.id, splashDamage, true)));
+                  : damageEnemy(enemy.id, splashDamage, true)), { mult: smMm });
                 smHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false, { enemyId: enemy.id });
                 spawnBurst(ex, ey, '#b91c1c', 4);
@@ -14563,7 +14585,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (rollBomberScatterAndNotify(useGameStore.getState().player, !knife.ownerGhost)) { // v0.25.3306: 確率発動(30/40/50%)
                 // ボマー覚醒(Lv3・v0.25.3300)=4つ
                 for (const mini of buildBomberMinis(bx, by, `fk-${knife.id}`, undefined, undefined, bomberMiniCount(useGameStore.getState().player))) {
-                  addProjectile({ ...mini, ownerGhost: knife.ownerGhost, ...((knife.masteryKey ?? 'none') === 'none' ? { masteryKey: 'none' as MasteryKey } : {}) }); // 視覚専用: ゴースト発は子も青白。熟練度: 守護霊の物から出た子=none
+                  addProjectile({ ...mini, ownerGhost: knife.ownerGhost, ...((knife.masteryKey ?? 'none') === 'none' ? { masteryKey: 'none' as MasteryKey } : {}), ...(knife.masteryMult !== undefined ? { masteryMult: knife.masteryMult } : {}) }); // 視覚専用: ゴースト発は子も青白。熟練度: 守護霊の物から出た子=none
                 }
                 spawnBurst(bx, by, knife.ownerGhost ? '#9fd8ff' : '#fbbf24', 8);
               }
@@ -14592,8 +14614,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (fkWalls.length > 0 && segmentBlocked(bx, by, ex, ey, fkWalls)) continue; // 壁越し不可
                 const falloff = 1 - dist / blastR;
                 const fkMk: MasteryKey = knife.masteryKey ?? 'none'; // 熟練度: 本人の発火ナイフ=fire-knife・守護霊=none
-                const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * fkExMult * fkOutMult * (0.55 + falloff * 0.45) * masteryMultOf(useGameStore.getState().player, fkMk)));
-                const killed = withMastery(fkMk, () => damageEnemy(enemy.id, splashDamage, true, false, false, knife.ownerGhost ? 'dot' : 'other')); // 爆風。守護霊の火ナイフは揺らさない(v0.25.4286)
+                const fkMm = objectMasteryMult(knife, useGameStore.getState().player, fkMk); // 守護霊の発火ナイフ=作る所で確定した倍率
+                const splashDamage = Math.max(1, Math.round(FIRE_KNIFE_EXPLOSION_DAMAGE * fkExMult * fkOutMult * (0.55 + falloff * 0.45) * fkMm));
+                const killed = withMastery(fkMk, () => damageEnemy(enemy.id, splashDamage, true, false, false, knife.ownerGhost ? 'dot' : 'other'), { mult: fkMm }); // 爆風。守護霊の火ナイフは揺らさない(v0.25.4286)
                 fkHitCount += 1;
                 spawnDamageNumber(ex, enemy.y, splashDamage, false, { enemyId: enemy.id });
                 spawnBurst(ex, ey, '#b91c1c', 4);
@@ -14623,8 +14646,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const hx = hit.x + hit.width / 2;
               const hy = hit.y + hit.height / 2;
               const fkHitMk: MasteryKey = knife.masteryKey ?? 'none'; // 熟練度: 本人の発火ナイフ=fire-knife・守護霊=none
-              const fkHitDmg = knife.damage * masteryMultOf(useGameStore.getState().player, fkHitMk);
-              const killed = withMastery(fkHitMk, () => damageEnemy(hit.id, fkHitDmg, false, false, false, knife.ownerGhost ? 'dot' : 'other')); // 守護霊の投げナイフは揺らさない(v0.25.4286)
+              const fkHitMm = objectMasteryMult(knife, useGameStore.getState().player, fkHitMk);
+              const fkHitDmg = knife.damage * fkHitMm;
+              const killed = withMastery(fkHitMk, () => damageEnemy(hit.id, fkHitDmg, false, false, false, knife.ownerGhost ? 'dot' : 'other'), { mult: fkHitMm }); // 守護霊の投げナイフは揺らさない(v0.25.4286)
               spawnDamageNumber(hx, hit.y, fkHitDmg, false, { enemyId: hit.id });
               spawnBurst(hx, hy, knife.ownerGhost ? '#9fd8ff' : '#fb923c', 5); // 刺さった火花(軽量。ゴースト発は青白)
               playSfx('shot-damage');
@@ -14654,7 +14678,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const phase = boom.boomPhase ?? 'out';
             // 熟練度(v2 §4-2 #11・v2.1 A-8): 作る所で入れたキー(本人=drone-boomerang・スキル防衛=loadout・守護霊=none)。
             const boomMk: MasteryKey = boom.masteryKey ?? 'none';
-            const boomMm = masteryMultOf(useGameStore.getState().player, boomMk);
+            const boomMm = objectMasteryMult(boom, useGameStore.getState().player, boomMk); // 守護霊のブーメラン=作る所で確定した倍率
             if (phase === 'out' || phase === 'return') {
               // 貫通接触: 同一敵はこのフェーズで1回(hitEnemies)。行き/戻りで配列はリセット済み。
               for (const e of bs.enemies) {
@@ -14665,7 +14689,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
                 // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)をドローン往復の接触ダメージにも乗算。
                 const boomDmg = Math.max(1, Math.round(boom.damage * skillOutgoingDamageMult(useGameStore.getState().player) * boomMm));
-                const killed = withMastery(boomMk, () => damageEnemy(e.id, boomDmg, false)); // 接触(爆風ではない・v0.25.4284: blast旗は揺れの爆発倍率になった)
+                const killed = withMastery(boomMk, () => damageEnemy(e.id, boomDmg, false), { mult: boomMm }); // 接触(爆風ではない・v0.25.4284: blast旗は揺れの爆発倍率になった)
                 spawnDamageNumber(ex, e.y, boomDmg, false, { enemyId: e.id });
                 spawnBurst(ex, ey, '#a5f3fc', 4);
                 if (killed) {
@@ -14699,7 +14723,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const { x: ex, y: ey } = blastAnchorOf(e, bx, by); // 変異塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
                   if (Math.hypot(ex - bx, ey - by) > r) continue;
                   if (boomWalls.length > 0 && segmentBlocked(bx, by, ex, ey, boomWalls)) continue; // 壁越し不可
-                  const killed = withMastery(boomMk, () => damageEnemy(e.id, dmg, true)); // 爆発=ボス系には非致死 // 浮き: ドローンブーメランの停止中の持続の当たり(爆発の絵ではない・連続で浮かせない)
+                  const killed = withMastery(boomMk, () => damageEnemy(e.id, dmg, true), { mult: boomMm }); // 爆発=ボス系には非致死 // 浮き: ドローンブーメランの停止中の持続の当たり(爆発の絵ではない・連続で浮かせない)
                   spawnDamageNumber(ex, e.y, dmg, false, { enemyId: e.id });
                   if (killed) {
                     playEnemyDeath();
@@ -14749,13 +14773,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const outMult = skillOutgoingDamageMult(hitActor); // 内部でgrowthAtkMultも掛かる(二重掛け禁止)
           const hateSource: 'player' | 'ghost' = ownerGhostId !== undefined ? 'ghost' : 'player';
           const beamMk: MasteryKey = ownerGhostId !== undefined ? 'none' : mk;
-          const beamMm = masteryMultOf(hitActor, beamMk);
+          // 倍率: 守護霊=主語(疑似Player)の記録の値を mk で引く(主語が消えて本人へ落ちたら1)・本人=焼き値。貯めるのは beamMk。
+          const beamMm = ownerGhostId !== undefined ? guardianMasteryMult(hitActor, mk) : masteryMultOf(hitActor, beamMk);
           for (const e of hits) {
             const ex = e.x + e.width / 2, ey = e.y + e.height / 2;
             const dmg = Math.max(1, Math.round(pulseDamage * outMult * beamMm));
             // nonLethalBoss は v0.25.1571 で廃止済み(引数は互換のため残置・実際は爆発以外も
             // ボスを倒せる)なので値は無関係。damageChannel='other'・クリなし(§19-2b)。
-            const killed = withMastery(beamMk, () => damageEnemy(e.id, dmg, false, false, false, 'dot', hateSource)); // 連続源(光線の脈)=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
+            const killed = withMastery(beamMk, () => damageEnemy(e.id, dmg, false, false, false, 'dot', hateSource), { mult: beamMm }); // 連続源(光線の脈)=揺らさない(SHAKE_UNIFY §2-0・v0.25.4284)
             if (recoilFrom && hasShotRecoil(e.type)) {
               // 脈は継続扱い=押し続ける力(stampShotHits の stream)。向き=起点→当たった敵(光線/扇の進む向き)。
               const cur = useGameStore.getState().enemies.find(x => x.id === e.id);
@@ -14891,7 +14916,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               useGameStore.getState().playerBlast(rcx, rcy, exRadius); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
               useGameStore.getState().spawnGlow(rcx, rcy, GLOW_R_S, 'rgba(251,146,60,', GRENADE_LAUNCHER_EXPLOSION_EFFECT_MS);
               const rMk = projectileMasteryKey(rp); // 熟練度: ロケットランチャー=glauncher
-              const splashBase = rp.damage * GRENADE_BLAST_DAMAGE_MULT * exMult * masteryMultOf(rkPlayer, rMk);
+              const rMm = objectMasteryMult(rp, rkPlayer, rMk);
+              const splashBase = rp.damage * GRENADE_BLAST_DAMAGE_MULT * exMult * rMm;
               for (const rEnemy of useGameStore.getState().enemies) {
                 if (isReaperFamily(rEnemy.type) && !isTerminalReaper(rEnemy)) continue;
                 const { x: rex, y: rey } = blastAnchorOf(rEnemy, rcx, rcy); // 変異塊の代理は箱の中で爆心に一番近い点(LAB_CRAWLER §4)
@@ -14900,7 +14926,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 if (rWalls.length > 0 && segmentBlocked(rcx, rcy, rex, rey, rWalls)) continue;
                 const rFalloff = 1 - rDist / exRadius;
                 const rDmg = Math.max(1, Math.round(splashBase * (0.55 + rFalloff * 0.45)));
-                const rKilled = withMastery(rMk, () => damageEnemy(rEnemy.id, rDmg, true));
+                const rKilled = withMastery(rMk, () => damageEnemy(rEnemy.id, rDmg, true), { mult: rMm });
                 spawnDamageNumber(rex, rEnemy.y, rDmg, false, { enemyId: rEnemy.id });
                 spawnBurst(rex, rey, '#b91c1c', 4);
                 if (rKilled) {
@@ -15252,8 +15278,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const hits = w.length === 0
             ? candidates
             : candidates.filter(e => { const a = blastAnchorOf(e, cx, cy); return !segmentBlocked(cx, cy, a.x, a.y, w); });
-          const flMk: MasteryKey = ownerGhostId !== undefined ? 'none' : (gunMasteryKeyOfWeaponKey(FLAMER_WEAPON_KEY) ?? 'none'); // 熟練度: 火炎放射器=その銃の種類
-          applyBeamPulse(hits, pulseDamage, ownerGhostId, flMk, '#ff9d4d', ownerGhostId ? 'pickup-xp-flamer-ghost' : 'pickup-xp-flamer', { x: cx, y: cy });
+          // 熟練度: 火炎放射器=その銃の種類。守護霊の炎は貯めない(none)・倍率は守護霊の記録の値(守護霊の熟練度の発注)。
+          const flGunMk: MasteryKey = gunMasteryKeyOfWeaponKey(FLAMER_WEAPON_KEY) ?? 'none';
+          const flMk: MasteryKey = ownerGhostId !== undefined ? 'none' : flGunMk;
+          const flGhostMm = ownerGhostId !== undefined ? guardianMasteryMult(combatActorPlayer(ownerGhostId), flGunMk) : undefined;
+          applyBeamPulse(hits, pulseDamage, ownerGhostId, flGunMk, '#ff9d4d', ownerGhostId ? 'pickup-xp-flamer-ghost' : 'pickup-xp-flamer', { x: cx, y: cy });
           // ★延焼(社長指示2026-10-28「延焼効果も付ける」): 炎に触れた敵を燃やす。刻むのは既存の tickBurningEnemies。
           if (hits.length > 0) {
             const burnIds = new Set(hits.map(h => h.id));
@@ -15261,9 +15290,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState(st2 => {
               // 熟練度(v2.1 A-1): 銃の付ける燃焼=その銃の種類(倍率は燃焼の強さに掛ける)。守護霊の炎=none。
               // キーは強さが勝った方の付け手(強さは flamerBurnPatch の高い方と同じ物差し)。
-              const flTick = FLAMER_BURN_TICK_DAMAGE * masteryMultOf(st2.player, flMk);
+              const flTick = FLAMER_BURN_TICK_DAMAGE * (flGhostMm ?? masteryMultOf(st2.player, flMk));
               return {
-                enemies: st2.enemies.map(e => (burnIds.has(e.id) && !isCorpse(e) ? { ...e, ...flamerBurnPatch(e, burnAt, ownerGhostId !== undefined, flTick), burnMasteryKey: burnRefreshMastery(e, flTick, flMk).burnMasteryKey } : e)),
+                enemies: st2.enemies.map(e => {
+                  if (!(burnIds.has(e.id) && !isCorpse(e))) return e;
+                  const flRef = burnRefreshMastery(e, flTick, flMk, flGhostMm);
+                  return { ...e, ...flamerBurnPatch(e, burnAt, ownerGhostId !== undefined, flTick), burnMasteryKey: flRef.burnMasteryKey, burnMasteryMult: flRef.burnMasteryMult };
+                }),
               };
             });
           }
@@ -15787,9 +15820,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             ? skillBloodAwakenDamageMult(shotOwner)
             : 1;
           // 熟練度(research/MASTERY.md v2.1 A-7・A-8): 弾は「当たる所」で掛ける。キーは作る所で入れた masteryKey
-          // (無い弾=本人の銃の弾と分かる物だけ銃の種類・それ以外 none)。守護霊・護衛の弾は none=倍率1。
+          // (無い弾=本人の銃の弾と分かる物だけ銃の種類・それ以外 none)。守護霊・護衛の弾は貯めるキーが none。
+          // 倍率は、守護霊の弾=作る所で確定した masteryMult(守護霊の記録の値)・護衛の弾=1。
           const shotMk: MasteryKey = projectile ? projectileMasteryKey(projectile) : 'none';
-          const shotMm = masteryMultOf(shotOwner, shotMk);
+          // 守護霊の弾(作る所で守護霊の記録の値を確定=masteryMult)はそれを掛ける。貯めるキーは shotMk(=none)のまま。
+          const shotMm = objectMasteryMult(projectile, shotOwner, shotMk);
           const dmg = plantCounterKill
             ? (enemyForFx?.maxHealth ?? 1) + 1
             : isAllyOwnedShot
@@ -15833,7 +15868,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             directPlayerGun,
             // ★拳鬼のレバーガード(research/BRAWLER_PHANTOM.md §16-10「弾もガード可能」): 弾は「飛んできた向き」で見る(撃ち主の今の位置ではない)。
             projectile ? { dir: projectile.direction } : undefined,
-          ));
+          ), { mult: shotMm }); // 熟練度: 掛けた倍率(相手が幻影なら入口で打ち消す。守護霊の弾は守護霊の記録の値)
           // UNIQUE_WEAPONS.md §13-1/§9(#U9是正): パイルドライバーの弾だけにノックバックを付ける
           // (全銃には入れない=別案件・社長裁定)。knockbackEnemyは既存の共通API(反射神経/爆発/
           // シールド等と同じ)。ボスへの効きはknockbackEnemy内部のcanShoveEnemy相当ガードに従う
@@ -16024,7 +16059,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               acStonedIds.push(acEnemy.id);
               if (acEnemy.id === enemyId) continue; // 直撃対象は既にダメージ済み
               const acDmg = Math.max(1, Math.round(dmg));
-              const acKilled = withMastery(shotMk, () => damageEnemy(acEnemy.id, acDmg, true)); // 熟練度: 直撃と同じ弾のキー(倍率は dmg に掛け済み)
+              const acKilled = withMastery(shotMk, () => damageEnemy(acEnemy.id, acDmg, true), { mult: shotMm }); // 熟練度: 直撃と同じ弾のキー(倍率は dmg に掛け済み)
               spawnDamageNumber(ax, acEnemy.y, acDmg, false, { enemyId: acEnemy.id });
               spawnBurst(ax, ay, '#b91c1c', 4);
               if (acKilled) {
@@ -16082,7 +16117,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (glWalls.length > 0 && segmentBlocked(blastX, blastY, sx, sy, glWalls)) continue; // 壁越し不可
               const falloff = 1 - dist / exRadius;
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
-              const splashKilled = withMastery(shotMk, () => damageEnemy(splashEnemy.id, splashDamage, true)); // 爆発=ボス系には非致死。熟練度: 同じ弾のキー(倍率は dmg に掛け済み)
+              const splashKilled = withMastery(shotMk, () => damageEnemy(splashEnemy.id, splashDamage, true), { mult: shotMm }); // 爆発=ボス系には非致死。熟練度: 同じ弾のキー(倍率は dmg に掛け済み)
               glHitCount += 1;
               spawnDamageNumber(sx, splashEnemy.y, splashDamage, hitCrit, { enemyId: splashEnemy.id });
               spawnBurst(sx, sy, '#b91c1c', hitCrit ? 7 : 4);
@@ -16098,7 +16133,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
             if (rollBomberScatterAndNotify(skillPlayer, !isGhostShot && !isEscortShot)) { // v0.25.3306: 確率発動(30/40/50%)
               // ボマー覚醒(Lv3・v0.25.3300)=4つ
-              for (const mini of buildBomberMinis(blastX, blastY, `gl-${projectileId}`, undefined, undefined, bomberMiniCount(skillPlayer))) addProjectile(shotMk === 'none' ? { ...mini, masteryKey: 'none' } : mini); // 熟練度: 本人でない弾から出た子=none
+              for (const mini of buildBomberMinis(blastX, blastY, `gl-${projectileId}`, undefined, undefined, bomberMiniCount(skillPlayer))) addProjectile(shotMk === 'none' ? { ...mini, masteryKey: 'none', ...(projectile?.masteryMult !== undefined ? { masteryMult: projectile.masteryMult } : {}) } : mini); // 熟練度: 本人でない弾から出た子=none(守護霊の物から出た子は親の倍率を写す)
               spawnBurst(blastX, blastY, '#fbbf24', 8);
             }
           }
@@ -16143,7 +16178,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               if (exWalls.length > 0 && segmentBlocked(blastX, blastY, sx, sy, exWalls)) continue;
               const falloff = 1 - dist / exRadius;
               const splashDamage = Math.max(1, Math.round(splashBase * (0.55 + falloff * 0.45)));
-              const splashKilled = withMastery(shotMk, () => damageEnemy(splashEnemy.id, splashDamage, true)); // 爆発=ボス系には非致死。熟練度: 同じ弾のキー(倍率は dmg に掛け済み)
+              const splashKilled = withMastery(shotMk, () => damageEnemy(splashEnemy.id, splashDamage, true), { mult: shotMm }); // 爆発=ボス系には非致死。熟練度: 同じ弾のキー(倍率は dmg に掛け済み)
               exHitCount += 1;
               spawnDamageNumber(sx, splashEnemy.y, splashDamage, false, { enemyId: splashEnemy.id });
               if (splashKilled) {
@@ -16194,6 +16229,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 addProjectile({
                   id: `proj-bomber-mini-${projectileId}-${nowB}-${k}`,
                   masteryKey: (shotMk === 'none' ? 'none' : 'heavy-grenade') as MasteryKey, // 熟練度(v2.1 A-8): ボマーの子=heavy-grenade(本人でない弾から=none)
+                  ...(shotMk === 'none' && projectile.masteryMult !== undefined ? { masteryMult: projectile.masteryMult } : {}), // 守護霊の物から出た子は親の倍率を写す
                   x: blastX - 5, y: blastY - 5, width: 10, height: 10,
                   speed: HEAVY_GRENADE_SPEED * 0.8,
                   damage: HEAVY_GRENADE_DAMAGE / 3,
@@ -16241,6 +16277,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 weaponType: projectile.weaponType,
                 weaponKey: projectile.weaponKey,
                 masteryKey: projectileMasteryKey(projectile), // 熟練度: 跳弾は親のキーを写す(v2.1 A-8)
+                ...(projectile.masteryMult !== undefined ? { masteryMult: projectile.masteryMult } : {}), // 守護霊の弾の倍率も写す
                 duration: 900, createdAt: Date.now(),
                 passthrough: false, hitEnemies: [], hostile: false, reflected: false,
                 ricochet: true,
@@ -16318,6 +16355,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 direction: { x: Math.cos(ang), y: Math.sin(ang) },
                 weaponType: 'handgun', weaponKey: 'skill-ice-shot',
                 masteryKey: (shotMk === 'none' ? 'none' : 'loadout') as MasteryKey, // 熟練度: スキル「アイスショット」の氷片=loadout
+                ...(shotMk === 'none' && projectile?.masteryMult !== undefined ? { masteryMult: projectile.masteryMult } : {}), // 守護霊の弾から出た氷片は親の倍率を写す(貯めるキーは none)
                 duration: 700, createdAt: Date.now(),
                 passthrough: false, hitEnemies: [], hostile: false, reflected: false,
               });
@@ -16340,16 +16378,18 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             // 熟練度(v2.1 A-1): 延焼弾(スキル)の燃焼=loadout・銃の付ける燃焼(ラストマガジン/エコーの延焼付き弾)=その弾のキー。
             // 本人でない弾=none。倍率は燃焼の強さに掛ける(刻みでは掛けない)。
             const burnMk: MasteryKey = shotMk === 'none' ? 'none' : incLv > 0 ? 'loadout' : shotMk;
-            const burnDps = burn.dps * masteryMultOf(skillPlayer, burnMk);
+            // 守護霊の弾から付いた燃焼・炎床は親の弾の倍率を写す(貯めるキーは none・相手が幻影なら刻みで打ち消す)。
+            const burnGhostMm = shotMk === 'none' ? projectile?.masteryMult : undefined;
+            const burnDps = burn.dps * (burnGhostMm ?? masteryMultOf(skillPlayer, burnMk));
             useGameStore.setState(state => ({
               enemies: state.enemies.map(e =>
-                e.id === enemyId ? { ...e, burnUntil: incGameTime + burn.durationMs, burnDpsTick: burnDps, burnByGhost: undefined, burnMasteryKey: burnMk } : e),
+                e.id === enemyId ? { ...e, burnUntil: incGameTime + burn.durationMs, burnDpsTick: burnDps, burnByGhost: undefined, burnMasteryKey: burnMk, burnMasteryMult: burnGhostMm } : e),
             }));
             if (burn.floorRadius !== null && incGameTime >= incendiaryFloorNextAtRef.current) {
               incendiaryFloorNextAtRef.current = incGameTime + INCENDIARY_FLOOR_CD_MS;
               useGameStore.getState().spawnGroundFire(
                 hitPt.x, hitPt.y,
-                undefined, burn.floorRadius, shotMk === 'none' ? 'none' : 'loadout', // 熟練度: 延焼弾の炎床=loadout
+                undefined, burn.floorRadius, shotMk === 'none' ? 'none' : 'loadout', burnGhostMm, // 熟練度: 延焼弾の炎床=loadout(守護霊の弾から=none・親の倍率)
               );
             }
           }
@@ -16671,9 +16711,11 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // (他の近接派生=刀/鞭/分身/ドローンと同じ基準)。
           // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)もワイヤー(すり抜け/Lv3爆撃/大技)に乗算。
           // 熟練度(research/MASTERY.md v2 §4-2): ワイヤーアンカー=wire-anchor(近接の素ダメを借りるが melee は掛けない)。守護霊=none。
+          // 倍率は本人=焼き値・守護霊=記録の値(主語が本人へ落ちたら1)。貯めるのは wireMk(守護霊=none)。守護霊の熟練度の発注。
           const wireMk: MasteryKey = ghostId === undefined ? 'wire-anchor' : 'none';
+          const wireMm = ghostId === undefined ? masteryMultOf(wp, wireMk) : guardianMasteryMult(wp, 'wire-anchor');
           const meleeDmg = (wp.weapons.find(w => w.isMelee)?.damage ?? 6) * strikerMeleeMult(wp) * (wp.equipBonus?.damageMult ?? 1) * skillOutgoingDamageMult(wp)
-            * masteryMultOf(wp, wireMk);
+            * wireMm;
           // 刺し待ち(1秒)が明けたら、その地点へ自動で高速移動を開始する。
           if (wp.wireAnchored && nowW >= wp.wirePlantUntil) {
             useGameStore.getState().startWireDash(ghostId);
@@ -16706,7 +16748,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 useGameStore.getState().playerBlast(ecx, ecy, WIRE_PASS_BOMB_RADIUS); // ★卵も割る(社長実機報告2026-11-09・近接で割った時と同じ割れ方)
                 aoe.forEach(o => {
                   const oxc = o.x + o.width / 2, oyc = o.y + o.height / 2;
-                  const killed = withMastery(wireMk, () => useGameStore.getState().damageEnemy(o.id, dmg, true, false, false, wireChannel, wireHate)); // 爆発=ボス非致死
+                  const killed = withMastery(wireMk, () => useGameStore.getState().damageEnemy(o.id, dmg, true, false, false, wireChannel, wireHate), { mult: wireMm }); // 爆発=ボス非致死
                   spawnDamageNumber(oxc, o.y, dmg, true, { enemyId: o.id });
                   if (!killed && knockbackCdReady(o, nowW)) {
                     const kdx = oxc - ecx, kdy = oyc - ecy;
@@ -16727,7 +16769,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 wireSfx('bomb', ecx, ecy);
                 continue;
               }
-              const killed = withMastery(wireMk, () => useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, wireChannel, wireHate));
+              const killed = withMastery(wireMk, () => useGameStore.getState().damageEnemy(e.id, dmg, false, false, false, wireChannel, wireHate), { mult: wireMm });
               spawnDamageNumber(ecx, e.y, dmg, false, { enemyId: e.id });
               useGameStore.getState().spawnSlash(ecx, ecy, 'rgba(186,230,253,0.95)');
               useGameStore.getState().spawnMeleeBlood(ecx, ecy - idolAirLiftOf(e, newGameTime), e.width, { flash: HIT_BLINK_TYPES.has(e.type) }); // 近接の血飛沫(v0.25.2026)・点滅(ゾンビの試し)
@@ -16770,7 +16812,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   const wireScanMult = postureFatal || wireHate !== 'player' ? 1 : scanMarkMeleeMult(tgt, gameTime, 'melee');
                   const wireHitDamage = postureFatal ? meleeDmg : bdmg * wireScanMult;
                   if (wireHate === 'player' && wireScanMult !== 1) noteScanDetonation(tgt.id, tcx, tgt.y + tgt.height / 2); // §4-2: ワイヤーの斬り下ろしは手動の近接=起爆
-                  withMastery(wireMk, () => useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, false, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null)); // 打撃(爆風ではない・v0.25.4284)
+                  withMastery(wireMk, () => useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, false, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null), { mult: wireMm }); // 打撃(爆風ではない・v0.25.4284)
                   spawnDamageNumber(tcx, tgt.y, wireHitDamage, true, { scanMarked: wireScanMult !== 1 });
                 } else {
                   withMastery(wireMk, () => useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1, false, false, true, wireChannel, wireHate), { execute: true }); // 即死フィニッシュ(熟練度: 処刑=残り体力を割り戻さずに貯める)
@@ -16808,7 +16850,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               const ecx = e.x + e.width / 2, ecy = e.y + e.height / 2;
               const dx = ecx - pcx, dy = ecy - pcy;
               const dist = Math.hypot(dx, dy) || 1;
-              const killed = explode ? withMastery(wireMk, () => useGameStore.getState().damageEnemy(e.id, dmg, true, false, false, wireChannel, wireHate)) : false;
+              const killed = explode ? withMastery(wireMk, () => useGameStore.getState().damageEnemy(e.id, dmg, true, false, false, wireChannel, wireHate), { mult: wireMm }) : false;
               if (explode) spawnDamageNumber(ecx, e.y, dmg, true, { enemyId: e.id });
               if (!killed) {
                 useGameStore.setState({

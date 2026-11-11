@@ -12,6 +12,7 @@ import type { Player, PlayerBuildSnapshot, Summon, Weapon } from '../types/game'
 import { createWeapon, allyFallbackWeapon } from './weaponUtils';
 import { buildHasLoadout, buildPseudoPlayer } from './playerBuild';
 import { withoutBlood } from './bloodAwaken';
+import { isMasteryRunIgnored } from './masteryRun'; // 熟練度: 無視する出撃では守護霊の倍率も1(依存の無い葉)
 
 export interface GhostBuild {
   /** スナップショットに武器ロードアウトが入っていたか(false=旧プロファイル→今の装備借用のフォールバック)。 */
@@ -26,11 +27,16 @@ export interface GhostBuild {
   player: Player;
 }
 
-/** スナップショット(欠損可)+召喚時の本人から、ゴーストのビルドを1組組み立てる(純関数)。 */
-export const resolveGhostBuild = (snap: PlayerBuildSnapshot | undefined, live: Player): GhostBuild => {
+/**
+ * スナップショット(欠損可)+召喚時の本人から、ゴーストのビルドを1組組み立てる(純関数)。
+ * `opts.guardian`: 守護霊(味方)なら true=記録した時点の熟練度を疑似Playerに持たせる。幻影(敵)は省く=熟練度なし。
+ */
+export const resolveGhostBuild = (
+  snap: PlayerBuildSnapshot | undefined, live: Player, opts?: { guardian?: boolean },
+): GhostBuild => {
   // B10 血の覚醒: 本人の血・覚醒を守護霊の疑似Playerに乗せない(旧プロファイル=snap無しは live をそのまま返すので、ここでも落とす)。
   // pseudoActor: 本人ではない主語の印(スキル発動の表示を本人の分だけに出す・gameStore.notifySkillProcFor)。
-  const pseudo: Player = { ...withoutBlood(buildPseudoPlayer(snap, live)), pseudoActor: true };
+  const pseudo: Player = { ...withoutBlood(buildPseudoPlayer(snap, live, { guardian: opts?.guardian === true })), pseudoActor: true };
   if (!buildHasLoadout(snap) || snap === undefined) {
     // 旧プロファイル(ロードアウト未記録)=従来どおり召喚時のプレイヤーの現在装備を借用する。
     const guns = live.weapons.filter(w => !w.isMelee);
@@ -77,10 +83,10 @@ const buildCache = new Map<string, GhostBuild>();
 let lastResolvedId: string | null = null;
 
 /** id をキーにビルドを1件だけ組み立てて使い回す(内部)。 */
-const buildForActorId = (id: string, snap: PlayerBuildSnapshot | undefined, live: Player): GhostBuild => {
+const buildForActorId = (id: string, snap: PlayerBuildSnapshot | undefined, live: Player, guardian: boolean): GhostBuild => {
   const hit = buildCache.get(id);
   if (hit) { lastResolvedId = id; return hit; }
-  const built = resolveGhostBuild(snap, live);
+  const built = resolveGhostBuild(snap, live, { guardian });
   buildCache.set(id, built);
   lastResolvedId = id;
   if (buildCache.size > BUILD_CACHE_MAX) {
@@ -95,7 +101,9 @@ const buildForActorId = (id: string, snap: PlayerBuildSnapshot | undefined, live
  * どちらも無ければ null。
  */
 export const ghostBuildFor = (ghost: Summon | undefined, live: Player): GhostBuild | null => {
-  if (ghost) return buildForActorId(ghost.id, ghost.ghostBuild, live);
+  // 守護霊=記録の熟練度を持つ。ただし熟練度を無視する出撃(練習・ボスメーカー・ボット等)では本人と同じく1(=持たせない)。
+  // 旗は resetGame で1回だけ立つ(beginMasteryRun)。メモ化はラン境界で捨てる(clearGhostBuildCache)ので出撃をまたがない。
+  if (ghost) return buildForActorId(ghost.id, ghost.ghostBuild, live, !isMasteryRunIgnored());
   return (lastResolvedId !== null ? buildCache.get(lastResolvedId) : undefined) ?? null;
 };
 
@@ -110,7 +118,7 @@ export const actorBuildFor = (
   id: string | undefined, snap: PlayerBuildSnapshot | undefined, live: Player,
 ): GhostBuild | null => {
   if (id === undefined) return null;
-  return buildForActorId(id, snap, live);
+  return buildForActorId(id, snap, live, false); // 幻影=熟練度を持たない(発注者指示「幻影にはこちらの武器も熟練値を乗せない」)
 };
 
 /** ラン境界/テスト用。 */

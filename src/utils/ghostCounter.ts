@@ -47,6 +47,7 @@ export interface GhostCounterClaim {
   dmg: number;      // 確定クリのダメージ(ghostCounterDamage・借用装備基準/スキル倍率なし)
   atMs: number;     // ★判定時置換ミラー(2026-08-27): **振り始め**の時刻(Date.now)。旧: 前隙解決時。
   windowMs?: number; // 受付の長さ(記録の装備で延びる=store.counterAcceptMsOf)。省略時=GHOST_COUNTER_CLAIM_MAX_AGE_MS。
+  masteryMult?: number; // dmg に掛けた守護霊の熟練度の倍率(相手が幻影の時に打ち消す)。省略=1。
 }
 
 /** 請求を覗く/消費する時の位置ゲートの切り替え(peek/consume 共通)。 */
@@ -292,7 +293,7 @@ export const applyGhostCounterEffect = (
     }));
   }
   // 確定クリ(crit=true → bumpBossCrit)+金クリ層
-  withMastery('none', () => st.damageEnemy(boss.id, fire.claim.dmg, false, true, false, null, 'ghost', 'counter')); // 熟練度: 守護霊の反撃=none
+  withMastery('none', () => st.damageEnemy(boss.id, fire.claim.dmg, false, true, false, null, 'ghost', 'counter'), { mult: fire.claim.masteryMult }); // 熟練度: 守護霊の反撃=貯めない(none)・倍率は請求に掛け済み
   st.spawnDamageNumber(bcx, boss.y, fire.claim.dmg, true, { enemyId: boss.id });
   if (playSfxGain && fire.sfxGain > 0) playSfxGain('headshot', fire.sfxGain);
   st.spawnRing(hitX, hitY, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);

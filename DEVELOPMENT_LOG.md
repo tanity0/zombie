@@ -1,5 +1,19 @@
 # Development Log
 
+## v0.25.5518 — 熟練度: 守護霊に記録時点の熟練度を乗せる(社長裁定「守護霊に載せます」・research/MASTERY.md v2.5)【2026-11-12 01:09 JST】
+
+- 守護霊(味方)の与ダメに、記録を作った時点の熟練度の倍率が掛かる。貯めるキーは `none` のまま(どこにも貯まらない)。幻影(敵)は倍率1のまま。熟練度を無視する出撃の中では守護霊も倍率1。
+- 記録: `PlayerBuildSnapshot.masteryMult` / `masteryLoadoutMult`。読む時は `normalizeMasteryRecord`(1〜1.9・知らないキーは捨てる・古い記録は `{}`/1)。記録へ写す値=本人がその時点で持っていた段階(無視する出撃では `resetGame` が保存の段階から焼く `Player.masteryRecordMult` を写す。ボットとベンチだけ `{}`/1)。
+- 復元: `buildPseudoPlayer(snap, live, { guardian })`。守護霊の入口(`ghostBuildFor`)だけ記録の値・幻影の入口(`actorBuildFor`)は `{}`/1。
+- 掛け方: 弾・置き物は作る所で倍率を確定して物に持たせる(`masteryMult` の欄・燃焼は `burnMasteryMult`)。守護霊が作った物から出た子(子手榴弾・氷片・延焼・炎床・跳弾・タレットの弾・地雷の子)は親の倍率を写す。相手が幻影なら `withMastery(…, { mult })` で渡した倍率を `damageEnemy` の入口が割る。
+- 一緒に直った以前からの漏れ: 守護霊が投げた救急鞄(本人の倍率で当たり本人に貯まっていた)/守護霊が呼んだ救難信号の援軍(本人の `loadout` が乗っていた)。
+- **品質監査 2巡**: 1巡目 (A)4件=①オンラインの他人の守護霊には届かない(`shared/ghostSanitize.mjs` が欄を落とす)→**社長へ戻した**(乗せるかの裁定待ち・今回は触らない) ②練習で記録すると熟練度が1で上書き→直した ③守護霊の鞄の子手榴弾が本人の倍率・本人に貯まる→直した ④子の倍率の扱いがばらばら→「親の倍率を写す」に揃えた。2巡目を回した理由=1巡目で(A)が出た。2巡目 (A)1件=センサー地雷の子に倍率を写していない→直した。本人の与ダメ・記録・幻影の打ち消しは問題なしの判定。**3巡目は回さない**(理由: 2巡目の(A)は同じ規則の1か所の抜けで、子を作る9か所を監査が全部見た後。新しい角度は残っていない)。
+- (B)積み: 各経路が `{mult}` を渡しているかを固定するテスト/共有の正規化を通った後に欄が残るかのテスト/`useGameLoop` の中の子のテスト/本人が燃やした幻影を守護霊の火炎放射器が炙り直した時の打ち消し(前からの隙間・未確認)/包まれていない内側の `damageEnemy` が外側の `mult` を引き継ぐ件(未確認)。
+- 実装は Opus のサブエージェント。確認: typecheck / eslint / 循環import / vitest(masteryGuardian 15・mastery.store・masteryApply・mastery・masterySites ほか)。
+- 見た目の変更なし(数値の裏側)。
+- 状態変化: research/MASTERY.md → 一部実装(残り: 必要量の計測 / ★未決=オンラインの他人の守護霊)
+- ファイル: src/utils/masteryRun.ts・mastery.ts・playerBuild.ts・ghostBuild.ts・ghostCounter.ts・sensorMine.ts・combatTick.ts・weaponUtils.ts・src/types/game.ts・src/data/mastery.ts・src/store/gameStore.ts・src/hooks/useGameLoop.ts・テスト(masteryGuardian.store 新規・mastery.store・masteryApply.store・mastery)・research/MASTERY.md・package.json・src/data/changelog.ts
+
 ## v0.25.5517 — 熟練度の表示(バッチB): リザルトの貯まる演出・装備メニュー・一時停止(社長指示「リザルトは溜まる演出にしてほしい」)【2026-11-12 00:58 JST】
 
 - **リザルト**(`src/components/MasteryResult.tsx`・差し込みは `GameOverScreen.tsx` の RESULT/SCORE のすぐ下・表示モード2つとも): 見出し `MASTERY`。この出撃で伸びた武器・サブウェポンを「段階が上がらない行→上がる行」(それぞれ伸びた量の多い順)に並べ、**1行ずつ順に**棒を貯める。出撃前までは暗い金・今回伸びた分は明るい金で残る。段階をまたぐ時は、行を光の帯がなめる+棒が白く光る+数字が上へ押し出されて下から入る。続けて上がる時は間を詰め(300→240ms)最後だけ460ms。最大は棒が満ちたまま字間の広い `MAX`。音は既存の `level-up`(0.35/最大0.6)と伸び始めの `ui-move`(0.2)。区画が画面に入った時に始まる(IntersectionObserver)。動きは部品の中だけの rAF(store の購読なし)。数字(倍率・量)は出さない。

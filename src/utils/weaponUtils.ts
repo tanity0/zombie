@@ -1,7 +1,7 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, notifySkillProcFor, spawnSkillProcFx, bulletBlockersAround, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
 import { MASTERY_GUN_KEYS, type MasteryKey, type MasteryGunKey } from '../data/mastery';
-import { masteryMultOf } from './mastery';
+import { masteryMultOf, guardianMasteryMult } from './mastery';
 import { withMastery } from './masteryRun';
 import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 発射間隔を ×1.5 速く(awakenFireRateMult)
 import { projectileHitCritChance } from './critPenalty';
@@ -1642,7 +1642,9 @@ export const buildGhostGunShots = (
     direction,
     weaponType: effGun.category as WeaponType,
     weaponKey: 'ghost-gun',
-    masteryKey: 'none', // 熟練度: 守護霊の弾
+    masteryKey: 'none', // 熟練度: 守護霊の弾=貯めない
+    // 熟練度(守護霊の熟練度の発注): 倍率は本人の弾と同じキー(銃の種類)で、撃った主語の記録の値を作る所で確定する(幻影=1)。
+    ...(build ? { masteryMult: guardianMasteryMult(build.player, gunMasteryKeyOfCategory(effGun.category) ?? 'none') } : {}),
     duration: 1400,
     createdAt: now,
     passthrough: effGun.passthrough || false,

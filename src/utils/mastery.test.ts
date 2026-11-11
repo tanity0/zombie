@@ -22,10 +22,11 @@ import {
   masteryNeedFor, masteryLevelFor, masteryProgress, masteryDamageMult, normalizeMastery, loadMastery, saveMastery,
   masteryMultTable, masteryLoadoutMult, masteryMultOf, masteryIgnoredRun, commitMasteryRun, getLastMasteryCommit,
   recoverMasteryPending, masteryXpWeight, masteryXpAmount, burnRefreshMastery, type MasteryRunFlags,
+  normalizeMasteryRecord, objectMasteryMult, guardianMasteryMult,
 } from './mastery';
 import {
   withMastery, currentMasterySource, currentMasteryExecute, beginMasteryRun, noteMasteryDamage, getPendingMastery, getMasteryReport,
-  stashMasteryPending, isMasteryRunIgnored,
+  stashMasteryPending, isMasteryRunIgnored, currentMasteryAppliedMult,
 } from './masteryRun';
 
 const xpOfLevel = (key: Parameters<typeof masteryNeedFor>[0], level: number): number => {
@@ -248,6 +249,64 @@ describe('燃焼の付け直し(burnRefreshMastery)', () => {
     expect(burnRefreshMastery({ burnDpsTick: 3, burnMasteryKey: 'molotov' }, 5, 'shotgun')).toEqual({ burnDpsTick: 5, burnMasteryKey: 'shotgun' });
     expect(burnRefreshMastery({ burnDpsTick: 4, burnMasteryKey: 'molotov' }, 4, 'shotgun')).toEqual({ burnDpsTick: 4, burnMasteryKey: 'shotgun' });
     expect(burnRefreshMastery({}, 2, 'loadout')).toEqual({ burnDpsTick: 2, burnMasteryKey: 'loadout' });
+  });
+  it('守護霊の燃焼の倍率(burnMasteryMult)もキーと同じ付け手に揃う(本人が勝てば消える)', () => {
+    expect(burnRefreshMastery({ burnDpsTick: 3 }, 5, 'none', 1.4).burnMasteryMult).toBe(1.4);
+    expect(burnRefreshMastery({ burnDpsTick: 9, burnMasteryKey: 'none', burnMasteryMult: 1.4 }, 5, 'molotov').burnMasteryMult).toBe(1.4);
+    expect(burnRefreshMastery({ burnDpsTick: 3, burnMasteryKey: 'none', burnMasteryMult: 1.4 }, 5, 'molotov').burnMasteryMult).toBeUndefined();
+  });
+});
+
+describe('守護霊の熟練度(記録の復元・倍率の引き方)', () => {
+  it('normalizeMasteryRecord: 欄が無い(古い記録)は {} と 1', () => {
+    expect(normalizeMasteryRecord(undefined, undefined)).toEqual({ masteryMult: {}, masteryLoadoutMult: 1 });
+    expect(normalizeMasteryRecord(null, null)).toEqual({ masteryMult: {}, masteryLoadoutMult: 1 });
+  });
+  it('normalizeMasteryRecord: 知らないキーは捨てる(育つキーと max は残す)', () => {
+    const r = normalizeMasteryRecord({ handgun: 1.3, max: 1.9, loadout: 1.5, none: 1.5, bogus: 1.5, __proto__x: 1.5 }, 1.2);
+    expect(r.masteryMult).toEqual({ handgun: 1.3, max: 1.9 });
+    expect(r.masteryLoadoutMult).toBeCloseTo(1.2, 10);
+  });
+  it('normalizeMasteryRecord: 倍率は 1〜1.9 に丸める', () => {
+    const r = normalizeMasteryRecord({ handgun: 5, rifle: 0.2, melee: -3 }, 99);
+    expect(r.masteryMult).toEqual({ handgun: 1.9 }); // 1 に丸まった物は表から落とす(無い欄=1)
+    expect(r.masteryLoadoutMult).toBe(1.9);
+    expect(normalizeMasteryRecord({}, 0.5).masteryLoadoutMult).toBe(1);
+  });
+  it('normalizeMasteryRecord: 数でない物は 1(表が配列・文字列でも壊れない)', () => {
+    const r = normalizeMasteryRecord({ handgun: '1.5', rifle: NaN, melee: Infinity, shotgun: null }, '1.5');
+    expect(r.masteryMult).toEqual({});
+    expect(r.masteryLoadoutMult).toBe(1);
+    expect(normalizeMasteryRecord([1.5, 1.5], 1).masteryMult).toEqual({});
+    expect(normalizeMasteryRecord('x', 1).masteryMult).toEqual({});
+    for (const k of GROWING_MASTERY_KEYS) {
+      expect(masteryMultOf(normalizeMasteryRecord({ [k]: 'bad' }, undefined), k)).toBe(1);
+    }
+  });
+  it('guardianMasteryMult: 疑似プレイヤーなら記録の値・本人(主語が落ちた)なら1', () => {
+    const rec = { masteryMult: { melee: 1.5 }, masteryLoadoutMult: 1.2 };
+    expect(guardianMasteryMult({ ...rec, pseudoActor: true }, 'melee')).toBe(1.5);
+    expect(guardianMasteryMult({ ...rec, pseudoActor: true }, 'loadout')).toBe(1.2);
+    expect(guardianMasteryMult({ ...rec, pseudoActor: true }, 'none')).toBe(1);
+    expect(guardianMasteryMult(rec, 'melee')).toBe(1);
+    expect(guardianMasteryMult(null, 'melee')).toBe(1);
+  });
+  it('objectMasteryMult: 作る所で確定した欄があればそれ・無ければ本人の焼き値', () => {
+    const player = { masteryMult: { turret: 1.3 }, masteryLoadoutMult: 1 };
+    expect(objectMasteryMult({}, player, 'turret')).toBe(1.3);
+    expect(objectMasteryMult({ masteryMult: 1.6 }, player, 'none')).toBe(1.6);
+    expect(objectMasteryMult({}, player, 'none')).toBe(1);
+    expect(objectMasteryMult({ masteryMult: NaN }, player, 'turret')).toBe(1.3);
+  });
+  it('withMastery の mult は包んでいる間だけ見える(入れ子は内側・外へ漏れない)', () => {
+    expect(currentMasteryAppliedMult()).toBeNull();
+    withMastery('none', () => {
+      expect(currentMasteryAppliedMult()).toBe(1.5);
+      withMastery('handgun', () => expect(currentMasteryAppliedMult()).toBeNull());
+      expect(currentMasteryAppliedMult()).toBe(1.5);
+    }, { mult: 1.5 });
+    expect(currentMasteryAppliedMult()).toBeNull();
+    withMastery('none', () => expect(currentMasteryAppliedMult()).toBeNull(), { mult: 0 });
   });
 });
 

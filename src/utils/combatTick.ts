@@ -42,7 +42,7 @@ import { PHILL_COUNTER_RECOVER_MS } from './phillScript'; // §10-15#2: フィ�
 import { activeFlareTargets } from './flareGun';
 import { brawlerStopOnlyNow } from './brawlerCombo'; // 格闘の止めの間は発砲しない
 import { getActiveGun, GHOST_REFLECT_WEAPON_KEY, counterMasteryKeyOf } from './weaponUtils';
-import { masteryMultOf } from './mastery';
+import { masteryMultOf, guardianMasteryMult } from './mastery';
 import { withMastery } from './masteryRun';
 import { checkPlayerEnemyCollisions, checkProjectilePlayerCollisions, checkCollision, enemyContactBox } from './collisionUtils';
 import { isHeroDogLeaving } from './heroDog';
@@ -940,7 +940,9 @@ const applyCounterReflect = (
   // ×1.5/1.75/2.0(全Lv)。既存の反射倍率(REFLECT_DAMAGE_MULTIPLIER)に加算(乗算)する。
   const bkLv = skillLevel(subject, 'barrage-king');
   const reflectMult = bkLv ? REFLECT_DAMAGE_MULTIPLIER * barrageKingMult(bkLv) : undefined;
-  useGameStore.getState().reflectProjectile(projId, reflectMult, ghostId !== undefined ? GHOST_REFLECT_WEAPON_KEY : undefined);
+  // 熟練度(守護霊の熟練度の発注): 守護霊の反射弾は、本人の打ち返し(loadout)と同じキーで守護霊の記録の倍率を作る所で確定する。
+  useGameStore.getState().reflectProjectile(projId, reflectMult, ghostId !== undefined ? GHOST_REFLECT_WEAPON_KEY : undefined, false,
+    ghostId !== undefined ? guardianMasteryMult(subject, 'loadout') : undefined);
   // §28-1追加: 弾幕の王は反射弾に貫通1を持たせ(全Lv共通)、体勢削り倍率も弾へ載せて命中時に運ぶ
   // (postureMult。damageEnemyの呼び出し側=useGameLoopの命中処理がprojectile.postureMultを読む)。
   if (bkLv) {

@@ -197,6 +197,61 @@ export const masteryMultOf = (
 };
 
 /**
+ * 弾・置き物の当たりの倍率(守護霊の熟練度の発注): 作る所で確定させた `masteryMult`(守護霊が作った物)があればそれ、
+ * 無ければ当たる所で `player`(本人の焼き値)から `key` で引く(=今までどおり)。
+ */
+export const objectMasteryMult = (
+  obj: { masteryMult?: number } | null | undefined,
+  player: Pick<Player, 'masteryMult' | 'masteryLoadoutMult'> | null | undefined,
+  key: MasteryKey,
+): number => {
+  const m = obj?.masteryMult;
+  if (typeof m === 'number' && Number.isFinite(m) && m > 0) return m;
+  return masteryMultOf(player, key);
+};
+
+/**
+ * 守護霊の当たりの倍率(守護霊の熟練度の発注): 主語が疑似プレイヤー(`pseudoActor`)なら、その記録の焼き値から `key` で引く。
+ * 主語が解決できず本人へ落ちた時(守護霊が消えた後に残った物など)は 1(本人の今の値を守護霊に乗せない)。
+ * 幻影の疑似プレイヤーは焼き値が空なので 1。
+ */
+export const guardianMasteryMult = (
+  actor: Pick<Player, 'masteryMult' | 'masteryLoadoutMult' | 'pseudoActor'> | null | undefined,
+  key: MasteryKey,
+): number => (actor?.pseudoActor ? masteryMultOf(actor, key) : 1);
+
+/** 熟練度の焼き値(記録から復元した物)。 */
+export interface MasteryRecord {
+  masteryMult: Partial<Record<MasteryKey, number>>;
+  masteryLoadoutMult: number;
+}
+
+const MASTERY_RECORD_KEYS: ReadonlySet<string> = new Set<string>([...GROWING_MASTERY_KEYS, 'max']);
+const clampRecordMult = (v: unknown): number => {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return 1;
+  return Math.max(1, Math.min(MASTERY_MAX_MULT, v));
+};
+
+/**
+ * 守護霊の記録に写した熟練度の焼き値を復元する(壊れた保存・改ざんへの備えとして正規化する)。
+ * 知らないキーは捨てる(育つキーと `max` だけ残す)・倍率は 1〜1.9 に丸める・数でない物は 1(=表から落とす)。
+ * 欄が無い(古い記録)は `{}` と `1`(熟練度なしの強さ)。
+ * 事実: オンラインで届く他人の記録は、いまは共有の正規化(shared/ghostSanitize.mjs)が `masteryMult`・`masteryLoadoutMult` を
+ * 落とすので、この欄は届かない(=他人の守護霊は熟練度なしの強さ)。ここに来るのは自分の記録だけ。
+ */
+export const normalizeMasteryRecord = (rawMult: unknown, rawLoadout: unknown): MasteryRecord => {
+  const masteryMult: Partial<Record<MasteryKey, number>> = {};
+  if (rawMult && typeof rawMult === 'object' && !Array.isArray(rawMult)) {
+    for (const [k, v] of Object.entries(rawMult as Record<string, unknown>)) {
+      if (!MASTERY_RECORD_KEYS.has(k)) continue;
+      const m = clampRecordMult(v);
+      if (m !== 1) masteryMult[k as MasteryKey] = m;
+    }
+  }
+  return { masteryMult, masteryLoadoutMult: clampRecordMult(rawLoadout) };
+};
+
+/**
  * 敵の区分(雑魚/強個体/ボス級)ごとの貯まり方の重み(v2 §4-1 の貯める量に掛ける)。
  * 区分は既にある brawlerEnemyClass(赤い個体=強個体を含む)。表は data/mastery.ts の MASTERY_XP_WEIGHT。
  */
@@ -230,14 +285,18 @@ export const masteryXpAmount = (
  * 強さは今までどおり `Math.max(今, 新)`(期限切れの燃焼の強さも今までどおり比べる=与ダメは変えない)。
  */
 export const burnRefreshMastery = (
-  cur: { burnDpsTick?: number; burnMasteryKey?: MasteryKey },
+  cur: { burnDpsTick?: number; burnMasteryKey?: MasteryKey; burnMasteryMult?: number },
   newDps: number,
   newKey: MasteryKey,
-): { burnDpsTick: number; burnMasteryKey: MasteryKey | undefined } => {
+  /** 守護霊の燃焼の強さに掛けた倍率(守護霊の熟練度の発注)。本人の燃焼は省く(=欄を消す)。 */
+  newMult?: number,
+): { burnDpsTick: number; burnMasteryKey: MasteryKey | undefined; burnMasteryMult: number | undefined } => {
   const old = cur.burnDpsTick ?? 0;
+  const newWins = newDps >= old;
   return {
     burnDpsTick: Math.max(old, newDps),
-    burnMasteryKey: newDps >= old ? newKey : cur.burnMasteryKey,
+    burnMasteryKey: newWins ? newKey : cur.burnMasteryKey,
+    burnMasteryMult: newWins ? newMult : cur.burnMasteryMult,
   };
 };
 

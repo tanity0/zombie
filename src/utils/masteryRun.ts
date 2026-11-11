@@ -14,6 +14,7 @@ export type MasteryXpTable = Partial<Record<GrowingMasteryKey, number>>;
 
 let source: MasteryKey | null = null;
 let sourceExecute = false;
+let sourceMult: number | null = null;
 let pending: MasteryXpTable = {};
 let report: MasteryXpTable = {};
 let ignored = false;
@@ -32,17 +33,24 @@ export const getLastMasteryCommit = (): MasteryCommitResult => ({ ...lastCommit 
 /**
  * `fn` を呼んでいる間だけ「いまの出どころ」を `key` にする。入れ子は内側が勝つ。
  * 例外が出ても必ず元へ戻す。戻り値は `fn` の戻り値。
+ * `opts.mult`: この当たりに掛けた熟練度の倍率(相手が幻影の時に damageEnemy の入口が打ち消す値)。
+ * 守護霊の当たりは貯めるキーが `none` でも倍率は守護霊の記録の値なので、ここで渡す(渡さなければ
+ * 入口は従来どおり「本人の焼き値 × いまの出どころのキー」で打ち消す)。
  */
-export const withMastery = <T>(key: MasteryKey, fn: () => T, opts?: { execute?: boolean }): T => {
+export const withMastery = <T>(key: MasteryKey, fn: () => T, opts?: { execute?: boolean; mult?: number }): T => {
   const prev = source;
   const prevExecute = sourceExecute;
+  const prevMult = sourceMult;
   source = key;
   sourceExecute = opts?.execute === true;
+  const m = opts?.mult;
+  sourceMult = typeof m === 'number' && Number.isFinite(m) && m > 0 ? m : null;
   try {
     return fn();
   } finally {
     source = prev;
     sourceExecute = prevExecute;
+    sourceMult = prevMult;
   }
 };
 
@@ -53,6 +61,11 @@ export const currentMasterySource = (): MasteryKey | null => source;
  * 処刑は熟練度の倍率が掛かっていない=中央の口は割り戻さず、残り体力までを量にする。
  */
 export const currentMasteryExecute = (): boolean => sourceExecute;
+/**
+ * いまの当たりに掛けた熟練度の倍率(`withMastery(key, fn, { mult })` で包んだ間だけ値・それ以外は null)。
+ * null の時、中央の口は「本人の焼き値 × いまの出どころのキー」で打ち消す(従来どおり)。
+ */
+export const currentMasteryAppliedMult = (): number | null => sourceMult;
 
 /**
  * 出撃の始まり(resetGame から1回)。貯めた分・報告用の表を空にし、無視する出撃の旗を立てる/降ろす。

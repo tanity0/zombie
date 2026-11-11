@@ -15,6 +15,8 @@ import type { AvatarId } from '../data/avatars';
 // 引く**ために、今の数値表(クラス表・装備表)をここで参照する。どちらも data の葉=循環なし。
 import { PLAYER_PROFILES } from '../data/playerProfiles';
 import { aggregateEquipBonus, equipMaxHealthOf } from '../data/equipment';
+// 熟練度(守護霊の熟練度の発注): 記録した時点の焼き値を守護霊に戻す時の正規化(store を読まない純関数)。
+import { normalizeMasteryRecord } from './mastery';
 
 /**
  * 同行守護霊の写し(BOT_AND_GHOST.md §2.15「討伐に付き合ってくれた人のビルドとステータス」/
@@ -88,6 +90,11 @@ export const snapshotPlayerBuild = (
     // 記録側と消費側(buildPseudoPlayer)は同じ1枚の変換=片側だけ足すと永久にundefinedになる。
     growthAtkMult: p.growthAtkMult,
     growthCounterAcceptMs: p.growthCounterAcceptMs, // 強化「カウンター受付」も計測時のビルドの一部(2026-10-28)
+    // 熟練度(守護霊の熟練度の発注「守護霊に載せます」): 記録した時点の焼き値。growthAtkMult と同じく記録と復元で対
+    // (復元=buildPseudoPlayer の guardian)。「記録した時点の熟練度」=本人がその時点で持っていた段階。
+    // 無視する出撃のうち練習等は resetGame が保存の段階から焼いた masteryRecordMult を写す。ボット・ベンチは `{}`/`1`。
+    masteryMult: { ...(p.masteryRecordMult ?? p.masteryMult ?? {}) },
+    masteryLoadoutMult: p.masteryRecordLoadoutMult ?? p.masteryLoadoutMult ?? 1,
     avatarId: avatarId ?? null,
     ...(phill && phill.shots > 0
       ? { phillShots: phill.shots, phillHeadshots: phill.headshots, phillHeadshotRate: phill.headshots / phill.shots }
@@ -128,13 +135,28 @@ export const withoutBrawler = (p: Player): Player =>
     ? { ...p, subWeapons: p.subWeapons.filter(k => k !== 'brawler'), brawler: undefined }
     : p;
 
-export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: Player): Player => ({
-  ...withoutBrawler(buildPseudoPlayerRaw(snap, live)),
-  // research/MASTERY.md v2 §3 / v2.1 A-12: 守護霊・幻影は熟練度を持たない(本人の焼き値を引き継がせない)。
-  // 記録が無い時に本人をそのまま返す道もあるので、上書きは外側のここで行う(どの道でも同じ値)。
-  masteryMult: {},
-  masteryLoadoutMult: 1,
-});
+/**
+ * @param opts.guardian 守護霊(味方として呼ぶ記録)の疑似プレイヤーか。true の時だけ、記録した時点の熟練度
+ *   (`snap.masteryMult`・`snap.masteryLoadoutMult`)を正規化して持たせる(守護霊の熟練度の発注「守護霊に載せます」)。
+ *   省略/false(幻影=敵として出る記録・その他)は `{}`/`1`(幻影の攻撃に熟練度を乗せない)。
+ */
+export const buildPseudoPlayer = (
+  snap: PlayerBuildSnapshot | undefined, live: Player, opts?: { guardian?: boolean },
+): Player => {
+  // research/MASTERY.md v2 §3 / v2.1 A-12: 本人の今の焼き値は引き継がせない。記録が無い時に本人をそのまま返す道もあるので、
+  // 上書きは外側のここで行う(どの道でも、守護霊=記録の値・記録に欄が無ければ `{}`/`1`、それ以外=`{}`/`1`)。
+  const mastery = opts?.guardian
+    ? normalizeMasteryRecord(snap?.masteryMult, snap?.masteryLoadoutMult)
+    : { masteryMult: {}, masteryLoadoutMult: 1 };
+  return {
+    ...withoutBrawler(buildPseudoPlayerRaw(snap, live)),
+    masteryMult: mastery.masteryMult,
+    masteryLoadoutMult: mastery.masteryLoadoutMult,
+    // 記録へ写す値も本人の物は持たせない(疑似プレイヤーから記録を作る道=守護霊ソロ出撃でも本人の段階が混ざらない)。
+    masteryRecordMult: undefined,
+    masteryRecordLoadoutMult: undefined,
+  };
+};
 const buildPseudoPlayerRaw = (snap: PlayerBuildSnapshot | undefined, live: Player): Player => {
   if (!snap) return live;
   // ★★research/SAME_ARENA.md §4-c(社長方針2026-08-23):

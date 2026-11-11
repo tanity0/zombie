@@ -226,8 +226,8 @@ export {
 import { rescueSpawnCandidates } from '../utils/rescueQuestSpawn';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段。係数の判断(計測路なら1.0)はこのヘルパ1本。
 import { stageMobDiffMults, stageScoreMult } from '../utils/stageDiffMults';
-import { recoverMasteryPending, masteryIgnoredRun, masteryMultTable, masteryLoadoutMult, loadMastery, masteryMultOf, masteryXpAmount, burnRefreshMastery } from '../utils/mastery';
-import { beginMasteryRun, withMastery, currentMasterySource, currentMasteryExecute, noteMasteryDamage } from '../utils/masteryRun';
+import { recoverMasteryPending, masteryIgnoredRun, masteryMultTable, masteryLoadoutMult, loadMastery, masteryMultOf, masteryXpAmount, burnRefreshMastery, objectMasteryMult, guardianMasteryMult } from '../utils/mastery';
+import { beginMasteryRun, withMastery, currentMasterySource, currentMasteryExecute, currentMasteryAppliedMult, noteMasteryDamage } from '../utils/masteryRun';
 import { isGrowingMasteryKey, type MasteryKey } from '../data/mastery';
 import { isBotRun } from '../utils/botFlag';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存ゼロに近い葉。詳細はファイル冒頭の
@@ -5957,7 +5957,7 @@ const explodeBrawlerKiko = (
   if (burnIds.length > 0 && burn.dps > 0) {
     const bs = new Set(burnIds);
     useGameStore.setState(state => ({
-      enemies: state.enemies.map(e => bs.has(e.id) ? { ...e, burnUntil: state.gameTime + burn.durationMs, burnDpsTick: burn.dps * masteryMultOf(p, 'brawler'), burnByGhost: undefined, burnMasteryKey: 'brawler' } : e), // 熟練度: 気功の燃焼=格闘
+      enemies: state.enemies.map(e => bs.has(e.id) ? { ...e, burnUntil: state.gameTime + burn.durationMs, burnDpsTick: burn.dps * masteryMultOf(p, 'brawler'), burnByGhost: undefined, burnMasteryKey: 'brawler', burnMasteryMult: undefined } : e), // 熟練度: 気功の燃焼=格闘
     }));
   }
   const g = get();
@@ -6415,9 +6415,6 @@ const phantomActorPlayerById = (actorId: string, st: GameState): Player | null =
 };
 
 /**
- * 熟練度(research/MASTERY.md v2 §1): 守護霊・幻影と共用の関数で、主語が疑似Player(`pseudoActor`)なら `none`、本人なら `key`。
- */
-/**
  * 熟練度(発注者指示「幻影にはこちらの武器も熟練値を乗せない」): 相手が幻影の時に打ち消す倍率(=そのキーの倍率)。
  * 出どころ無し・`none` は1。damageEnemy の入口だけが使う。
  */
@@ -6428,6 +6425,10 @@ const phantomMasteryMult = (player: Pick<Player, 'masteryMult' | 'masteryLoadout
 };
 /** 直接減らす5関数の、相手ごとの熟練度の倍率。相手が幻影なら1(熟練度を乗せない)、それ以外は `m`。 */
 const masteryMultVs = (enemy: Pick<Enemy, 'type'>, m: number): number => (isGuardianPhantom(enemy.type) ? 1 : m);
+/**
+ * 熟練度(research/MASTERY.md v2 §1): **貯める**キー。守護霊・幻影と共用の関数で、主語が疑似Player(`pseudoActor`)なら `none`、本人なら `key`。
+ * **倍率**は別に `masteryMultOf(主語, key)` で引く(守護霊=記録の値・幻影=1・本人=焼き値)。守護霊の熟練度の発注。
+ */
 const ownMasteryKey = (actor: Pick<Player, 'pseudoActor'> | null | undefined, key: MasteryKey): MasteryKey =>
   actor?.pseudoActor ? 'none' : key;
 /**
@@ -6983,6 +6984,8 @@ export const applyRescueSignalProc = (
     klass, fromX, fromY,
     { id: target.id, x: target.x + target.width / 2, y: target.y + target.height / 2, footY: target.y + target.height },
     baseMeleeDamage,
+    // 熟練度(守護霊の熟練度の発注): 守護霊・幻影(疑似Player)が呼んだ援軍は、呼んだ主語の loadout で確定(本人の今の値を乗せない)。
+    player.pseudoActor ? masteryMultOf(player, 'loadout') : undefined,
   );
 };
 
@@ -7164,9 +7167,10 @@ const applyMeleeFinishSkillSpread = (
   finishAt?: { x: number; y: number } | null,
 ) => {
   if (!finisherOccurred) return;
-  // 熟練度(research/MASTERY.md v2 §4-2): リーパーの波及・処刑の衝撃波はスキル=`loadout`。守護霊・幻影(疑似Player)の分は `none`。
+  // 熟練度(research/MASTERY.md v2 §4-2): リーパーの波及・処刑の衝撃波はスキル=`loadout`。守護霊・幻影(疑似Player)の分は貯めない(`none`)。
+  // 倍率は主語の `loadout`(本人=焼き値・守護霊=記録の値・幻影=1)。守護霊の熟練度の発注。
   const spreadMk = ownMasteryKey(player, 'loadout');
-  const spreadMm = masteryMultOf(player, spreadMk);
+  const spreadMm = masteryMultOf(player, 'loadout');
   if (hasSkill(player, 'reaper')) {
     let reaped = 0;
     const r2 = range * range;
@@ -7182,7 +7186,7 @@ const applyMeleeFinishSkillSpread = (
         // ボスは即死しない=近接フィニッシュ相当ダメージ(×5)。フィニッシュ波及なのでviaMeleeFinish=true
         // research/NEW_GUNS.md §4-2: フィニッシュの波及は自動で斬る系=スキャンの倍率は乗らない。
         const dmg = Math.max(1, Math.round(baseMeleeDamage * BOSS_MELEE_STUN_MULT * spreadMm));
-        withMastery(spreadMk, () => get().damageEnemy(e.id, dmg, false, false, true));
+        withMastery(spreadMk, () => get().damageEnemy(e.id, dmg, false, false, true), { mult: spreadMm });
         get().spawnDamageNumber(ecx, e.y, dmg, true);
         get().spawnBurst(ecx, ecy, '#a855f7', 10);
       } else {
@@ -7223,7 +7227,7 @@ const applyMeleeFinishSkillSpread = (
       const dx = ecx - fcx, dy = ecy - fcy;
       const d2 = dx * dx + dy * dy;
       if (d2 > r2) continue;
-      const killedE = withMastery(spreadMk, () => get().damageEnemy(e.id, dmg, true)); // 爆風系と同じくボス系には非致死
+      const killedE = withMastery(spreadMk, () => get().damageEnemy(e.id, dmg, true), { mult: spreadMm }); // 爆風系と同じくボス系には非致死
       get().spawnDamageNumber(ecx, e.y, dmg, false, { enemyId: e.id });
       if (!killedE) {
         const dist = Math.max(0.001, Math.sqrt(d2));
@@ -7413,7 +7417,8 @@ const fireDroneBoomerangOnSwing = (
     direction: { x: dir.x / dmag, y: dir.y / dmag },
     weaponType: 'drone-boomerang-projectile',
     weaponKey: 'sub-drone-boomerang',
-    masteryKey: ghostOwned ? 'none' : 'drone-boomerang', // 熟練度(v2.1 A-8・A-12): 守護霊のブーメラン=none
+    masteryKey: ghostOwned ? 'none' : 'drone-boomerang', // 熟練度(v2.1 A-8・A-12): 守護霊のブーメラン=貯めない(none)
+    ...(ghostOwned ? { masteryMult: guardianMasteryMult(actor, 'drone-boomerang') } : {}), // 倍率は守護霊の記録の値(作る所で確定)
     duration: DRONE_BOOM_SAFETY_MS, // 安全消滅の上限
     createdAt: Date.now(),
     passthrough: true,
@@ -7555,7 +7560,8 @@ const fireJunkWeaponOnSwing = (
     jwShot.pelletDamage,
     JUNK_WEAPON_PELLETS
   );
-  for (const p of pellets) get().addProjectile(ghostOwned ? { ...p, ownerGhost: true, masteryKey: 'none' } : p); // 熟練度: 守護霊の分=none
+  const jwGhostMm = ghostOwned ? guardianMasteryMult(actor, 'junk-weapon') : 1; // 熟練度: 守護霊の分=倍率は記録の値(作る所で確定)
+  for (const p of pellets) get().addProjectile(ghostOwned ? { ...p, ownerGhost: true, masteryKey: 'none', masteryMult: jwGhostMm } : p); // 熟練度: 守護霊の分=貯めない(none)
   if (!ghostOwned) {
     useGameStore.setState(state => ({
       player: { ...state.player, straps: Math.max(0, state.player.straps - jwShot.cost) },
@@ -7680,6 +7686,8 @@ const placeSensorMineOnSwing = (
   const mine: SensorMineState = {
     id: `smine-${sensorMineSeq++}`, x: smFootX, y: smFootY, placedAt: gameTime, triggeredAt: 0,
     ...(ghostId !== undefined ? { ownerGhostId: ghostId } : {}),
+    // 熟練度(守護霊の熟練度の発注): 守護霊の地雷は置いた時点の守護霊の記録の値で確定(貯めない=当たる所で none)。
+    ...(owner.kind === 'ghost-ally' ? { masteryMult: guardianMasteryMult(actor, 'sensor-mine') } : {}),
   };
   useGameStore.setState(state => {
     const nextMines = placeSensorMine(state.sensorMines, mine, smCap);
@@ -9101,7 +9109,7 @@ interface GameState {
   /** research/WRAITH_MUTANT.md §9: 亡霊の近くに生えた墓石と花(見た目+墓石は伸び切ったら壁=world/wraithGraves)。 */
   wraithGrowths: WraithGrowth[];
   setSignalStrikes: (strikes: readonly SignalStrike[]) => void;
-  spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number, masteryKey?: MasteryKey) => void; // masteryKey: 熟練度の出どころ(火炎瓶=molotov・延焼弾=loadout。守護霊=none は ghostId から) // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
+  spawnGroundFire: (x: number, y: number, ghostId?: string, radius?: number, masteryKey?: MasteryKey, masteryMult?: number) => void; // masteryMult: 守護霊が置いた火の熟練度の倍率(守護霊の熟練度の発注・本人は省く) // masteryKey: 熟練度の出どころ(火炎瓶=molotov・延焼弾=loadout。守護霊=none は ghostId から) // 足元に火を1つ設置(molotovの投下。useGameLoopから呼ぶ。ghostId=置いた守護霊の主語・未指定=プレイヤー。radius=B7延焼弾Lv3の炎床(大)専用の半径上書き・未指定=molotov既定)
   tickGroundFires: () => void;                                 // 毎フレーム: 火の寿命切れ回収 + 敵への接触ダメージ(0.5秒スロットル)
   // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)の燃焼DoT。命中した敵個体が持つ
   // burnUntil/burnDpsTickを毎フレーム消化する(groundFiresとは別チャンネル=床ではなく敵に付く状態異常)。
@@ -9124,12 +9132,12 @@ interface GameState {
 
   // スキル「救難信号」。近接ヒット時(triggerCounter)に発動判定した結果をここで一体生成する。
   // rescueAllies の state 宣言自体は上(groundFires近く)にまとめてある。
-  spawnRescueAlly: (klass: CharacterClass, fromX: number, fromY: number, target: { id: string; x: number; y: number; footY: number }, damage: number) => void;
+  spawnRescueAlly: (klass: CharacterClass, fromX: number, fromY: number, target: { id: string; x: number; y: number; footY: number }, damage: number, masteryMult?: number) => void; // masteryMult: 守護霊・幻影が呼んだ援軍の熟練度の倍率(本人は省く)
   tickRescueAllies: () => void; // 毎フレーム: 着弾フレームでダメージ適用(必中) + 寿命切れ回収
 
   // 救急鞄(first-aid-kit)の空鞄投擲。判定(誰に投げるか/ダメージ量)は useGameLoop の
   // isFirstAidKitEmpty ブロックが決め、ここは飛行中のエンティティの生成・着弾処理のみ担う。
-  spawnThrownBag: (fromX: number, fromY: number, target: { id: string; x: number; y: number }, damage: number) => void;
+  spawnThrownBag: (fromX: number, fromY: number, target: { id: string; x: number; y: number }, damage: number, masteryMult?: number) => void; // masteryMult: 守護霊が投げた鞄の熟練度の倍率(本人は省く)
   tickThrownBags: () => void; // 毎フレーム: 飛行完了フレームでダメージ+ノックバック+FX適用(必中) + 寿命切れ回収
 
   // Player actions
@@ -9349,7 +9357,7 @@ interface GameState {
   // weaponKey: 反射弾の帰属を差し替える(既定=元の弾のまま=プレイヤーの反射と1bit同値)。
   // v0.25.2525: 守護霊の反射だけ GHOST_REFLECT_WEAPON_KEY を渡す=計測除外/ヘイト='ghost'/
   // 倍率の主語=疑似Player(着弾側の解決は useGameLoop の弾ヒット処理)。
-  reflectProjectile: (id: string, multiplier?: number, weaponKey?: string, asHostile?: boolean) => void;
+  reflectProjectile: (id: string, multiplier?: number, weaponKey?: string, asHostile?: boolean, masteryMult?: number) => void; // masteryMult: 守護霊の反射弾の熟練度の倍率(守護霊の loadout・本人は省く)
   
   // Pickup actions
   addPickup: (pickup: Pickup) => void;
@@ -12982,9 +12990,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeDamage = meleeSwingBaseDamage(melee, player);
     // 処刑(ボス5×/強個体3×)は skillOutgoingDamageMult を通らないので、育成の攻撃力は素ダメージへ
     // 前掛けする(research/GROWTH.md v4・ナイフ/刀/鞭/守護霊と同じ扱い)。主語=分身の持ち主。
-    // 熟練度(research/MASTERY.md v2.1 A-9): 分身=shadow-clone(近接の素ダメを借りるが melee は掛けない)。守護霊の分身=倍率1・貯めない。
+    // 熟練度(research/MASTERY.md v2.1 A-9): 分身=shadow-clone(近接の素ダメを借りるが melee は掛けない)。守護霊の分身=貯めない。
+    // 倍率は主語の shadow-clone(本人=焼き値・守護霊=記録の値・幻影=1)。守護霊の熟練度の発注。
     const cloneMk: MasteryKey = isGhost ? 'none' : 'shadow-clone';
-    const cloneMm = isGhost ? 1 : masteryMultOf(player, cloneMk);
+    const cloneMm = masteryMultOf(player, 'shadow-clone');
     const cloneMasteryHits: MasteryDirectHit[] = [];
     const meleeExecBase = meleeDamage * (player.growthAtkMult ?? 1) * cloneMm;
     const meleeCritChance = melee?.critChance ?? 0;
@@ -13293,11 +13302,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   // computeFirstAidKitTick / isFirstAidKitEmpty(純関数)で決め、ここは結果を state へ書き込むだけ。
   setFirstAidKitState: (state) => set({ firstAidKitState: state }),
 
-  spawnGroundFire: (x, y, ghostId, radius, masteryKey) => {
+  spawnGroundFire: (x, y, ghostId, radius, masteryKey, masteryMult) => {
     set(state => ({
       groundFires: [...state.groundFires, {
         id: `gfire-${groundFireSeq++}`, x, y, createdAt: state.gameTime,
-        masteryKey: ghostId !== undefined ? 'none' : (masteryKey ?? 'none'), // 熟練度(v2.1 A-8): 守護霊の火=none
+        masteryKey: ghostId !== undefined ? 'none' : (masteryKey ?? 'none'), // 熟練度(v2.1 A-8): 守護霊の火=貯めない(none)
+        ...(masteryMult !== undefined ? { masteryMult } : {}), // 守護霊の火・守護霊の弾から出た炎床の倍率(置いた時点で確定)
         // v0.25.2563: 置いた主語(未指定=プレイヤー=従来と1bit同じ)。
         ...(ghostId !== undefined ? { ownerGhostId: ghostId } : {}),
         // SKILL_BUILD_REDESIGN.md §28(B7): 延焼弾(incendiary-round)Lv3の炎床(大)専用の半径上書き。
@@ -13330,7 +13340,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { groundFires, gameTime, enemies } = get();
     if (groundFires.length === 0) return;
     const aliveFires = groundFires.filter(f => gameTime < f.createdAt + MOLOTOV_FIRE_LIFETIME_MS);
-    const hits: { id: string; x: number; y: number; dmg: number; mk: MasteryKey }[] = [];
+    const hits: { id: string; x: number; y: number; dmg: number; mk: MasteryKey; mm?: number }[] = [];
     // v0.25.2563(§2.11追補): 倍率の主語は**置いた本人**(プレイヤー / 守護霊=計測時ビルドの疑似Player)。
     // 世界に置かれた火の配列は1本のまま(センサー地雷と同じ流儀)で、主語ごとに1パスずつ判定する。
     // 守護霊の火が1つも無い通常時は ownerIds=[undefined] の1パス=従来と完全に同じ計算。
@@ -13357,7 +13367,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 重なった火が複数なら、配列の先(先に置いた方)の火の持ち主。
           const gf = ownerFires.find(f => (isLabCrawlerProxyType(e.type) ? isBoxInGroundFire(e, [f], MOLOTOV_FIRE_RADIUS, gfExMult) : isEnemyInGroundFire(ecx, ecy, [f], MOLOTOV_FIRE_RADIUS, gfExMult)));
           const mk: MasteryKey = ownerId !== undefined ? 'none' : (gf?.masteryKey ?? 'none');
-          hits.push({ id: e.id, x: ecx, y: ecy, dmg: Math.max(1, Math.round(gfDotBase * masteryMultOf(subject, mk))), mk });
+          // 守護霊の火は置いた時点の守護霊の倍率(gf.masteryMult)。燃焼の強さに掛け、刻みで打ち消せるよう燃焼にも持たせる。
+          // 守護霊の弾から出た炎床(ownerId なし・masteryKey=none)も gf.masteryMult を持つ=同じく倍率を写す。
+          const gfGhostMm = gf?.masteryMult ?? (ownerId !== undefined ? 1 : undefined);
+          const gfMm = gfGhostMm ?? masteryMultOf(subject, mk);
+          hits.push({ id: e.id, x: ecx, y: ecy, dmg: Math.max(1, Math.round(gfDotBase * gfMm)), mk, ...(gfGhostMm !== undefined ? { mm: gfMm } : {}) });
         }
       }
     }
@@ -13376,7 +13390,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 ...e,
                 lastFireHitAt: gameTime,
                 burnUntil: Math.max(e.burnUntil ?? 0, gameTime + MOLOTOV_IGNITE_BURN_MS),
-                ...burnRefreshMastery(e, h.dmg, h.mk), // 強さは高い方・熟練度のキーは強さが勝った方の付け手(v2.1 A-1)
+                ...burnRefreshMastery(e, h.dmg, h.mk, h.mm), // 強さは高い方・熟練度のキーは強さが勝った方の付け手(v2.1 A-1)・守護霊の火は倍率も
               };
             })
           : state.enemies,
@@ -13415,19 +13429,20 @@ export const useGameStore = create<GameState>((set, get) => ({
           const iSet = new Set(infected);
           set(state => ({
             // 熟練度: 延焼弾(スキル)の感染=loadout(倍率は燃焼の強さに掛ける・v2.1 A-1)。
-            enemies: state.enemies.map(e => iSet.has(e.id) ? { ...e, burnUntil: gameTime + burn.durationMs, burnDpsTick: burn.dps * masteryMultOf(state.player, 'loadout'), burnByGhost: undefined, burnMasteryKey: 'loadout' } : e),
+            enemies: state.enemies.map(e => iSet.has(e.id) ? { ...e, burnUntil: gameTime + burn.durationMs, burnDpsTick: burn.dps * masteryMultOf(state.player, 'loadout'), burnByGhost: undefined, burnMasteryKey: 'loadout', burnMasteryMult: undefined } : e),
           }));
         }
       }
     }
-    const hits: { id: string; x: number; y: number; dmg: number; byGhost: boolean; mk: MasteryKey }[] = [];
+    const hits: { id: string; x: number; y: number; dmg: number; byGhost: boolean; mk: MasteryKey; mm?: number }[] = [];
     for (const e of enemies) {
       if (e.burnUntil === undefined || gameTime >= e.burnUntil) continue;
       if (gameTime - (e.lastBurnTickAt ?? -Infinity) < INCENDIARY_BURN_TICK_MS) continue;
       const dps = e.burnDpsTick ?? 0;
       if (dps <= 0) continue;
       // 熟練度(v2.1 A-1): 刻みは付けた側のキーで包む(倍率は付けた時に燃焼の強さへ掛け済み)。守護霊の炎は none。
-      hits.push({ id: e.id, x: e.x + e.width / 2, y: e.y, dmg: dps, byGhost: e.burnByGhost === true, mk: e.burnByGhost ? 'none' : (e.burnMasteryKey ?? 'none') });
+      // 守護霊の燃焼は強さに守護霊の倍率を掛け済み(burnMasteryMult)=相手が幻影の時はそれで打ち消す(守護霊の熟練度の発注)。
+      hits.push({ id: e.id, x: e.x + e.width / 2, y: e.y, dmg: dps, byGhost: e.burnByGhost === true, mk: e.burnByGhost ? 'none' : (e.burnMasteryKey ?? 'none'), mm: e.burnMasteryMult });
     }
     if (hits.length === 0) return;
     set(state => ({
@@ -13435,7 +13450,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }));
     for (const h of hits) {
       // 守護霊の炎で燃えている分はヘイト・撃破を守護霊へ(UNIQUE_WEAPONS.md §17-6b G5)。
-      withMastery(h.mk, () => get().damageEnemy(h.id, h.dmg, false, false, false, 'dot', h.byGhost ? 'ghost' : undefined)); // 持続ダメージ=シェイク対象外(社長指示2026-09-13)
+      withMastery(h.mk, () => get().damageEnemy(h.id, h.dmg, false, false, false, 'dot', h.byGhost ? 'ghost' : undefined), h.mm !== undefined ? { mult: h.mm } : undefined); // 持続ダメージ=シェイク対象外(社長指示2026-09-13)
       get().spawnDamageNumber(h.x, h.y, h.dmg, false, { enemyId: h.id });
     }
   },
@@ -13543,7 +13558,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // スキル 救難信号: applyRescueSignalProc の発動判定を受けて一過性アライを1体積む。
   // 描画(飛来→打撃→離脱)は pixiScene 側が rescueAllies を直読みして行う。
-  spawnRescueAlly: (klass, fromX, fromY, target, damage) => {
+  spawnRescueAlly: (klass, fromX, fromY, target, damage, masteryMult) => {
     set(state => ({
       rescueAllies: [...state.rescueAllies, {
         id: `rescue-ally-${rescueAllySeq++}`,
@@ -13553,6 +13568,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         damage,
         spawnedAt: state.gameTime,
         struck: false,
+        ...(masteryMult !== undefined ? { masteryMult } : {}),
       }],
     }));
   },
@@ -13578,8 +13594,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (!target) continue; // 着弾前に対象が消えていた=何もしない(演出はそのまま最後まで流れる)
       const tcx = target.x + target.width / 2;
       const tcy = target.y + target.height / 2;
-      const aDmg = a.damage * masteryMultOf(get().player, 'loadout'); // 熟練度: 救難信号の援軍(スキル)=loadout(v2 §4-2 #8)
-      const killed = withMastery('loadout', () => get().damageEnemy(a.targetEnemyId, aDmg, false, false, false, 'dot')); // 味方の援護=本人の攻撃ではない(揺らさない・v0.25.4284)
+      // 熟練度: 救難信号の援軍(スキル)=loadout(v2 §4-2 #8)。守護霊が呼んだ援軍は呼んだ時点の守護霊の loadout・貯めない(none)。
+      const aMm = objectMasteryMult(a, get().player, 'loadout');
+      const aMk: MasteryKey = a.masteryMult !== undefined ? 'none' : 'loadout';
+      const aDmg = a.damage * aMm;
+      const killed = withMastery(aMk, () => get().damageEnemy(a.targetEnemyId, aDmg, false, false, false, 'dot'), { mult: aMm }); // 味方の援護=本人の攻撃ではない(揺らさない・v0.25.4284)
       get().spawnDamageNumber(tcx, target.y, aDmg, false, { enemyId: target.id });
       get().spawnSlash(tcx, tcy, 'rgba(226,232,240,0.95)');
       get().spawnRing(tcx, tcy, 6, 34, 'rgba(56,189,248,0.75)', 2, 260);
@@ -13615,7 +13634,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // 救急鞄(first-aid-kit): 中身を払い出し切った後、鞄本体を最寄りの敵へ投げる一過性演出
   // (rescueAllyと同じ構造)。生成のみ(発動判定/対象選定はuseGameLoop側)。描画はpixiScene側が
   // thrownBagsを直読みして飛翔位置を補間する。
-  spawnThrownBag: (fromX, fromY, target, damage) => {
+  spawnThrownBag: (fromX, fromY, target, damage, masteryMult) => {
     set(state => ({
       thrownBags: [...state.thrownBags, {
         id: `thrown-bag-${thrownBagSeq++}`,
@@ -13625,6 +13644,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         damage,
         spawnedAt: state.gameTime,
         struck: false,
+        ...(masteryMult !== undefined ? { masteryMult } : {}),
       }],
     }));
   },
@@ -13654,12 +13674,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       // §6.10 M33⑤: ヘビーガンナー固有(爆発範囲倍率)を他の爆発と同じく半径へ適用。
       const radius = FIRST_AID_BAG_EXPLODE_RADIUS * exMult * heavyGunnerExplosionMult(get().player, gameTime);
       // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)を爆発ダメージにも乗算。
+      // 熟練度: 救急鞄の爆発=first-aid-kit(research/MASTERY.md v2.2)。守護霊が投げた鞄は投げた時点の守護霊の値・貯めない(none)。
+      const bagMm = objectMasteryMult(b, get().player, 'first-aid-kit');
+      const bagMk: MasteryKey = b.masteryMult !== undefined ? 'none' : 'first-aid-kit';
       const baseDmg = b.damage * exMult * skillOutgoingDamageMult(get().player) // b.damage=FIRST_AID_KIT_THROW_DAMAGE(爆発中心の基準)
-        * masteryMultOf(get().player, 'first-aid-kit'); // 熟練度: 救急鞄の爆発=first-aid-kit(research/MASTERY.md v2.2)
+        * bagMm;
       // §6.10 M33③: ボマー = 救急鞄の爆発でも子グレネード3個を散布(手榴弾と同一仕様・再散布なし)。
       if (rollBomberScatterAndNotify(get().player)) { // v0.25.3306: 確率発動(30/40/50%)
         // ボマー覚醒(Lv3・v0.25.3300): ミニ手榴弾4つ(通常3つ)。
-        for (const mini of buildBomberMinis(cx, cy, `bag-${b.id}`, undefined, undefined, bomberMiniCount(get().player))) get().addProjectile(mini);
+        // 熟練度: 守護霊の鞄から出た子は親の倍率を写し、貯めるキーは none(本人の鞄の子は今までどおり heavy-grenade)。
+        for (const mini of buildBomberMinis(cx, cy, `bag-${b.id}`, undefined, undefined, bomberMiniCount(get().player))) get().addProjectile(b.masteryMult !== undefined ? { ...mini, masteryKey: 'none', masteryMult: b.masteryMult } : mini);
         get().spawnBurst(cx, cy, '#fbbf24', 8);
       }
       get().spawnRing(cx, cy, 12, radius, 'rgba(255,170,70,0.9)', 5, 400);
@@ -13676,7 +13700,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (dist > radius) continue;
         const falloff = 1 - dist / radius;
         const dmg = Math.max(1, Math.round(baseDmg * (0.55 + falloff * 0.45)));
-        const killed = withMastery('first-aid-kit', () => get().damageEnemy(e.id, dmg, true)); // 爆風の束(v0.25.4284: blast=揺れの爆発倍率)
+        const killed = withMastery(bagMk, () => get().damageEnemy(e.id, dmg, true), { mult: bagMm }); // 爆風の束(v0.25.4284: blast=揺れの爆発倍率)
         get().spawnDamageNumber(ecx, e.y, dmg, false, { enemyId: e.id });
         // 重い敵/ボス/すり抜け勢はノックバック無効(既存のシールド等と同じ慣例)。
         // PACING_PUZZLE.md §9-7#1(ノックバック免除): driller はpumpkinと同格=isPumpkinTier経由で共有。
@@ -13711,8 +13735,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const baseDamage = KATANA_DAMAGE_BY_LEVEL[katanaLevel(player)];
     // 処刑(ボス5×/強個体3×/致命の一撃)は skillOutgoingDamageMult を通らないので、育成の攻撃力は
     // 素ダメージへ前掛けする(research/GROWTH.md v4・ナイフ/分身/鞭/守護霊と同じ扱い)。
-    // 熟練度(research/MASTERY.md v2.1 A-9): 刀(小烏丸も)=katana。守護霊の刀=倍率1・貯めない。
-    const katanaMm = isGhost ? 1 : masteryMultOf(player, 'katana');
+    // 熟練度(research/MASTERY.md v2.1 A-9): 刀(小烏丸も)=katana。守護霊の刀=貯めない(下の noteMasteryDirectHits は本人だけ)。
+    // 倍率は主語の katana(本人=焼き値・守護霊=記録の値・幻影=1)。守護霊の熟練度の発注。
+    const katanaMm = masteryMultOf(player, 'katana');
     const katanaMasteryHits: MasteryDirectHit[] = [];
     const katanaExecBase = baseDamage * damageMult * strikeMult * (player.growthAtkMult ?? 1) * katanaMm;
     const pcx = player.x + player.width / 2;
@@ -15283,8 +15308,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 裁定はプレイヤーのナイフスイングと同じ1本(値・条件・優先順はそのまま)。
     // 育成の攻撃力(research/GROWTH.md v4)はナイフと同じく**素ダメージへ前掛け**する。主語は疑似Player
     // =スナップショットに写した計測時の育成倍率(欠損=旧データは1.0)。
+    // 熟練度(守護霊の熟練度の発注): フィニッシュの素ダメに守護霊の記録の melee を掛ける(本人の triggerCounter の meleeExecBase と同じ所)。
+    // 処刑(execute)は倍率の掛からない当たり(本人と同じ)。貯めない=包みは none のまま。
+    const finishMm = masteryMultOf(actor, 'melee');
     const hit = resolveStunnedMeleeHit(
-      enemy, meleeSwingBaseDamage(melee, actor) * (actor.growthAtkMult ?? 1), st.gameTime, BOSS_MELEE_STUN_MULT,
+      enemy, meleeSwingBaseDamage(melee, actor) * (actor.growthAtkMult ?? 1) * finishMm, st.gameTime, BOSS_MELEE_STUN_MULT,
     );
     if (!hit) return null;
     const now = Date.now();
@@ -15311,7 +15339,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { kind: hit.kind, dmg: 0, killed };
     }
     const dmg = Math.max(1, Math.round(hit.dmg));
-    const killed = withMastery('none', () => get().damageEnemy(enemyId, dmg, false, false, true, null, 'ghost')); // 熟練度: 守護霊=none
+    const killed = withMastery('none', () => get().damageEnemy(enemyId, dmg, false, false, true, null, 'ghost'), { mult: finishMm }); // 熟練度: 守護霊=貯めない(none)・倍率は素ダメに掛け済み
     get().spawnDamageNumber(enemy.x + enemy.width / 2, enemy.y, dmg, true, { enemyId: enemy.id }); // 金の数字=プレイヤーのフィニッシュ打と同じ
     if (killed) {
       spawnKillSlashFx(get, actor.x + actor.width / 2, actor.y + actor.height / 2, enemy); // KILL時の首元斬撃(社長指示2026-09-16)
@@ -16653,7 +16681,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           direction: { x: (tx - pcx) / dist, y: (ty - pcy) / dist },
           weaponType: 'homing-missile' as const,
           weaponKey: 'sub-homing',
-          masteryKey: (ghost ? 'none' : 'homing') as MasteryKey, // 熟練度: 守護霊のホーミング=none
+          masteryKey: (ghost ? 'none' : 'homing') as MasteryKey, // 熟練度: 守護霊のホーミング=貯めない(none)
+          ...(ghost ? { masteryMult: guardianMasteryMult(player, 'homing') } : {}), // 倍率は守護霊の記録の値(作る所で確定)
           duration: HOMING_MISSILE_DURATION_MS,
           createdAt: now,
           passthrough: false,
@@ -17198,8 +17227,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 無害な弾が i-frame の起点(gpHitAt)を打ってしまう抜け道を塞ぐ。恒等で素通り)。
       // 熟練度(発注者指示「幻影にはこちらの武器も熟練値を乗せない」): 相手が幻影なら、呼び手が掛けた熟練度の倍率を
       // いまの出どころの倍率で打ち消してから関所へ(倍率1なら amount/1=今と同じ値)。処刑(execute)は倍率が掛かっていないので打ち消さない。
+      // 守護霊の当たりは出どころが `none` でも守護霊の倍率を掛けている=包みが渡した「掛けた倍率」で打ち消す(無ければ従来どおり)。
       const gpAmount = amount > 0 && isGuardianPhantom(enemy.type) && !currentMasteryExecute()
-        ? amount / phantomMasteryMult(state.player, currentMasterySource())
+        ? amount / (currentMasteryAppliedMult() ?? phantomMasteryMult(state.player, currentMasterySource()))
         : amount;
       const gpGate: PhantomHitGateResult = amount > 0
         ? gatePhantomHit(
@@ -22496,7 +22526,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // asHostile=true は幻影の弾パリィ用(v0.25.3665): プレイヤーの弾を**敵対弾として**打ち返す
   // (プレイヤーのカウンター打ち返しの鏡。倍率・速度・非貫通は同じ規則=同条件)。既定は従来どおり。
-  reflectProjectile: (id, multiplier = REFLECT_DAMAGE_MULTIPLIER, weaponKey, asHostile = false) => {
+  reflectProjectile: (id, multiplier = REFLECT_DAMAGE_MULTIPLIER, weaponKey, asHostile = false, masteryMult) => {
     set(state => ({
       projectiles: state.projectiles.map(p => {
         if (p.id !== id) return p;
@@ -22556,6 +22586,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 熟練度(research/MASTERY.md v2 §4-2・v2.1 B-5): 本人が打ち返した敵の弾=loadout。守護霊の反射('ghost-reflect')・
           // 敵へ返る弾(asHostile)=none。倍率は当たる所で掛ける。
           masteryKey: (asHostile || weaponKey !== undefined ? 'none' : 'loadout') as MasteryKey,
+          // 守護霊の反射('ghost-reflect')だけ、打ち返した守護霊の loadout を作る所で確定する(守護霊の熟練度の発注)。それ以外は元の弾の欄を消す。
+          masteryMult: !asHostile && weaponKey !== undefined ? masteryMult : undefined,
         };
       })
     }));
@@ -26164,6 +26196,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       benchmark: state.benchmarkRun,
     });
     const bakedMasteryMult = masteryMultTable(loadMastery(), masteryIgnored);
+    // 守護霊の記録へ写す熟練度: 無視する出撃のうちボット・ベンチ以外は、本人が持っている段階(保存)を同じ計算で焼いて
+    // 記録用の欄にだけ置く(この出撃の与ダメは焼き値 {}=倍率1のまま)。ボット・ベンチは記録を汚さない=写さない({}/1)。
+    const recordMasteryMult = masteryIgnored && !isBotRun() && !state.benchmarkRun
+      ? masteryMultTable(loadMastery(), false)
+      : null;
     beginMasteryRun({ ignored: masteryIgnored });
     // ── 永続育成「強化」の焼き込み(research/GROWTH.md v4「★焼き込みの原則」) ──────────────────
     // 有効段数(store)を読むのは**ここだけ**。以降ラン中・リザルトは Player の焼き値だけを読むので、
@@ -26222,11 +26259,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup, ...(DEV_SUB_KEY ? [DEV_SUB_KEY] : [])]));
       // 熟練度 loadout の倍率(research/MASTERY.md v2.1 A-11): 初期の銃と所持サブが決まった後に1回だけ作る
       // (出撃の途中で拾った銃・買ったサブでは作り直さない)。無視する出撃では bakedMasteryMult が空=1。
-      const bakedMasteryLoadoutMult = masteryLoadoutMult(bakedMasteryMult, {
+      const masteryLoadoutInput = {
         gunCategories: startingWeapons.filter(w => !w.isMelee).map(w => w.category),
         hasMelee: startingWeapons.some(w => w.isMelee),
         subs: runSubs,
-      });
+      };
+      const bakedMasteryLoadoutMult = masteryLoadoutMult(bakedMasteryMult, masteryLoadoutInput);
       // 装備スキル(出撃時に player.skills へ反映)。
       // SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止・確定=MAX_CARRY_SKILLS=0): 通常出撃は
       // ラン内ドラフトのみでruntime skillsを組む=開始0件。同行者(companionSkill/selectedCompanionSkill)
@@ -26618,6 +26656,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 熟練度の焼き値(research/MASTERY.md v2 §3)。出撃の間は変えない。
           masteryMult: bakedMasteryMult,
           masteryLoadoutMult: bakedMasteryLoadoutMult,
+          // 守護霊の記録へ写す値(無視する出撃のうちボット・ベンチ以外だけ。それ以外は未設定=焼き値を写す)。
+          masteryRecordMult: recordMasteryMult ?? undefined,
+          masteryRecordLoadoutMult: recordMasteryMult ? masteryLoadoutMult(recordMasteryMult, masteryLoadoutInput) : undefined,
           growthScoreMult: bakedGrowthScoreMult,
           stageScoreMult: bakedStageScoreMult,
           growthAmmoMax: bakedGrowthAmmoMax,
