@@ -154,7 +154,7 @@ export const BRAWLER_LIFT_VIS_BODY_K = 0.45;
 /** 巨大な敵の上限: 見えている画面の縦×これ(world px)。 */
 export const BRAWLER_LIFT_VIS_MAX_VIEW_FRAC = 0.2;
 export const BRAWLER_STOMP_RADIUS = 150;     // 下の大踏み潰し(§3-3)
-export const BRAWLER_STOMP_MULT = 2.5; // 社長指示2026-11-11「大踏み潰し2.5倍にして」(旧3.5)。それ以前: // 社長裁定2026-11-11「3;上げる」で 2.4→3.5(技ポイントが一番高い技の見返り)。旧: 2026-11-09 に 2.0→2.4
+export const BRAWLER_STOMP_MULT = 2.8; // 社長指示2026-11-11「ごめん、大叩き潰しは2.8倍で。」(同日 3.5→2.5→2.8)。それ以前: // 社長裁定2026-11-11「3;上げる」で 2.4→3.5(技ポイントが一番高い技の見返り)。旧: 2026-11-09 に 2.0→2.4
 export const BRAWLER_STOMP_HITSTOP_MS = BRAWLER_HITSTOP.closer; // 締めの止め(§9-2・社長承認2026-11-08 で 140→220)
 export const BRAWLER_KIKO_SPEED = 900;       // 左の気功(§3-4)
 export const BRAWLER_KIKO_RANGE = 420;

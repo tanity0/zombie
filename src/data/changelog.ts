@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5500', items: [
+    '格闘の大踏み潰しの威力を少し戻した',
+  ] },
   { version: '0.25.5499', items: [
     'ゲーム内容の変更はありません',
   ] },
