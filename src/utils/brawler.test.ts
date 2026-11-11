@@ -9,7 +9,7 @@ import {
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
-  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_KICK3_RECOVERY_MULT, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
+  brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_KICK3_RECOVERY_MULT, brawlerGlobalStopApplies, BRAWLER_GLOBAL_STOP_MODE, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
   brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
@@ -39,6 +39,12 @@ describe('格闘: 表', () => {
     expect(k3.recoveryMs).toBeGreaterThan(k1.recoveryMs);
     expect(brawlerKickMult(0)).toBe(0.7); // 範囲外は端へ寄せる
     expect(brawlerKickMult(9)).toBe(1.2);
+  });
+  it('試し(?brstop=): 既定は全体を止めない・1=締めだけ・2=全部の当たり', () => {
+    expect(BRAWLER_GLOBAL_STOP_MODE).toBe(0);
+    expect([brawlerGlobalStopApplies(true, 0), brawlerGlobalStopApplies(false, 0)]).toEqual([false, false]);
+    expect([brawlerGlobalStopApplies(true, 1), brawlerGlobalStopApplies(false, 1)]).toEqual([true, false]);
+    expect([brawlerGlobalStopApplies(true, 2), brawlerGlobalStopApplies(false, 2)]).toEqual([true, true]);
   });
   it('技の時間とポイントは §8-3 / §0 どおり', () => {
     expect(BRAWLER_TECHS.guard.windupMs + BRAWLER_TECHS.guard.recoveryMs).toBe(1000);

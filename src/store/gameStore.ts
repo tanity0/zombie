@@ -742,6 +742,11 @@ export interface BrawlerStrikeOpts {
   brawler: true;
   /** 敵の止め(hitStunUntil に書く ms・再発火ガードは外す)。ボス級は従来どおり0。 */
   stunMs: number;
+  /**
+   * ★試し(?brstop=): 確定の固まりの長さの式に使う「止め」(未指定=stunMs)。全体を止める時は 0 を渡す=全体の止めの間は技の時計(gameTime)も
+   * 止まるので、固まりに止めの分を足さない(足すと、自分だけ先に動けて、つながりが止めの長さぶん甘くなる)。
+   */
+  lockStopMs?: number;
   kb: {
     kind: 'none' | 'small' | 'normal' | 'big';
     /** 押す向き(掌底=帯の向き)。無ければ fromX/fromY(円の中心)から外向き、それも無ければプレイヤーから外向き。 */
@@ -4681,7 +4686,7 @@ const brawlerHitPatch = (
       }
     } else {
       const airborneAfter = (out.brLiftUntil ?? enemy.brLiftUntil ?? 0) > now;
-      const lk = BRC.brawlerLockOnHit(enemy, move, gameTime, now, { stopMs: rawStopMs, enemyStopMs: stopForHold, canHold, airborneAfter });
+      const lk = BRC.brawlerLockOnHit(enemy, move, gameTime, now, { stopMs: bs.lockStopMs ?? rawStopMs, enemyStopMs: bs.lockStopMs !== undefined ? Math.min(stopForHold, bs.lockStopMs) : stopForHold, canHold, airborneAfter });
       Object.assign(out, lk.patch);
       // 固めない当たり(締め・敵の攻撃の振りの最中・ダウンの着地の後)でも、当たりの止めは入る:
       // ボス級と溜めの相は止めを壁時計の固まりで掛ける(雑魚は hitStunUntil)。コンボの後の固まらない時間の間は止めが 0 なので書かれない。
@@ -4722,7 +4727,7 @@ const brawlerFinishLockPatch = (enemy: Enemy, bs: BrawlerStrikeOpts, gameTime: n
   if (!move) return {};
   const link = { brComboHits: BRC.brawlerLinkOnHit(enemy, gameTime, now) }; // つながっているコンボの数(表示だけ・§23)。フィニッシュも1発
   if (move === 'secret' || move === 'secret-land') return link;
-  const stop = Math.max(0, bs.stunMs);
+  const stop = Math.max(0, bs.lockStopMs ?? bs.stunMs);
   const bossBig = BRC.brawlerEnemyClass(enemy) === 'boss' && bs.kb.kind === 'big';
   return { ...link, ...BRC.brawlerLockOnHit(enemy, move, gameTime, now, {
     stopMs: stop, enemyStopMs: bossBig ? 0 : stop,
@@ -4734,6 +4739,9 @@ let brawlerKillLinkPeak = 0;
 const noteBrawlerKillLink = (enemy: Enemy, gameTime: number, now: number): void => {
   brawlerKillLinkPeak = Math.max(brawlerKillLinkPeak, BRC.brawlerLinkOnHit(enemy, gameTime, now));
 };
+/** ★試し(?brstop=): この当たりで全体を止めるか。四神舞の最中は止めない(拍がずれる)。 */
+const brawlerGlobalStopOk = (get: () => GameState, closer: boolean): boolean =>
+  BR.brawlerGlobalStopApplies(closer) && !get().rhythm.active;
 /**
  * 近接枠の左の「N HIT」を、いまのつながっているコンボの数に合わせる(research/BRAWLER.md §23)。変えたら true。
  * 数=いま動けない敵の brComboHits のいちばん多い物(utils/brawlerCombo)。当たりの直後と、毎フレーム(出ている間だけ)に呼ぶ。
@@ -5362,8 +5370,12 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       const pw = meleeWallsAround(get, palm.x0, palm.y0, palm.travel + 60);
       ids = BR.brawlerBandTargets(st.enemies, palm.x0, palm.y0, palm.ux, palm.uy, pw, palm.travel);
     }
+    // ★試し(?brstop=): 全体を止める時は、同じ長さだけ全体を止め(triggerHitstop)、自分の止めと固まりの式の止めを 0 にする(utils/brawler の BRAWLER_GLOBAL_STOP_MODE)。
+    //   敵に書く止め・押しの始まり(壁時計)は今どおりの長さ=全体の止めと同じ窓に重なる。
+    const gstop = brawlerGlobalStopOk(get, s.stage >= 5);
+    const stageStop = gstop ? 0 : spec.hitstopMs;
     const r = strike(ids, {
-      mult: spec.mult, stunMs: spec.hitstopMs, postureMult: spec.mult,
+      mult: spec.mult, stunMs: spec.hitstopMs, ...(gstop ? { lockStopMs: 0 } : {}), postureMult: spec.mult,
       kb: spec.kb === 'big'
         ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true, ...(spec.kbMult !== undefined ? { power: spec.kbMult } : {}), ...(palm ? { passLine: { x0: palm.x0, y0: palm.y0, ux: palm.ux, uy: palm.uy } } : {}) }
         : { kind: spec.kb },
@@ -5375,7 +5387,8 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
     const fdir = palm ? { x: palm.ux, y: palm.uy } : dir;
-    const next = BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs, landed: r.landed ?? hits });
+    if (gstop && hits > 0) get().triggerHitstop(spec.hitstopMs);
+    const next = BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: stageStop, landed: r.landed ?? hits });
     setBrawler(set, next, {
       lastDirection: { x: fdir.x, y: fdir.y },
       // 5段目: 抜けた先で(当てたら一拍止まってから)減速して止まる。
@@ -5396,14 +5409,17 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   if (s.tech === 'stomp') {
     const foot = { x: c.x, y: c.y + p.height / 2 - 6 };
     const ids = BR.brawlerCircleTargets(st.enemies, foot.x, foot.y, stompR, walls);
+    const gstop = brawlerGlobalStopOk(get, true); // ★試し(?brstop=)
+    const stompStop = gstop ? 0 : BR.BRAWLER_STOMP_HITSTOP_MS;
     const r = strike(ids, {
-      mult: BR.BRAWLER_STOMP_MULT, stunMs: BR.BRAWLER_STOMP_HITSTOP_MS, postureMult: BR.BRAWLER_STOMP_MULT,
+      mult: BR.BRAWLER_STOMP_MULT, stunMs: BR.BRAWLER_STOMP_HITSTOP_MS, ...(gstop ? { lockStopMs: 0 } : {}), postureMult: BR.BRAWLER_STOMP_MULT,
       kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
       combo: { move: 'stomp' },
     });
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
-    setBrawler(set, BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: BR.BRAWLER_STOMP_HITSTOP_MS, landed: r.landed ?? hits }),
+    if (gstop && hits > 0) get().triggerHitstop(BR.BRAWLER_STOMP_HITSTOP_MS);
+    setBrawler(set, BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: stompStop, landed: r.landed ?? hits }),
       hits > 0 ? { lungeHoldUntil: now + BR.BRAWLER_STOMP_HITSTOP_MS } : {});
     brawlerNoteFlowHits(set, hits);
     g.breakEggsInBlast(foot.x, foot.y, stompR); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
@@ -5438,8 +5454,10 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const big = s.kickN >= BR.BRAWLER_KICK_MAX;
     const hs = BR.BRAWLER_KICK_HITSTOP_MS[Math.max(1, Math.min(3, s.kickN))];
     const ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
+    const gstop = brawlerGlobalStopOk(get, big); // ★試し(?brstop=)
+    const kickStop = gstop ? 0 : hs;
     const r = strike(ids, {
-      mult: BR.brawlerKickMult(s.kickN), stunMs: hs, postureMult: BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.0(社長承認2026-11-09)
+      mult: BR.brawlerKickMult(s.kickN), stunMs: hs, ...(gstop ? { lockStopMs: 0 } : {}), postureMult: BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.2
       // 押し: 1〜3発目とも普通のノックバック。3発目は旧「吹き飛ばし(big)」→ 少しのノックバックへ(社長指示2026-11-11「3段目はノックバック少しさせちゃって良い」)。
       // 2発目は地上の敵を少し打ち上げる(同・utils/brawlerCombo の BRAWLER_GROUND_LAUNCH)。空中の敵への3発目は今どおり締めの叩き落とし。
       // ★3発目はもう少し吹き飛ばす(社長指示2026-11-11・BRAWLER_KICK3_KB_POWER)。押しの種類は普通のまま=強さだけ上げる。
@@ -5448,7 +5466,8 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     });
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
-    const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: hs, landed: r.landed ?? hits });
+    if (gstop && hits > 0) get().triggerHitstop(hs);
+    const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: kickStop, landed: r.landed ?? hits });
     // 秘奥義の1手目(→)は蹴りが当たった時だけ数える(社長指示2026-11-08「1発目は敵に当たっていること」)。
     // ★「当たった」=体力を削った当たり(§19-1): 拳鬼にレバーガードで防がれた蹴りは数えない(拳鬼の側の規則と同じ)。
     const secretProgress = BR.brawlerSecretAfterKick(s.secretProgress ?? 0, (r.landed ?? hits) > 0);

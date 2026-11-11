@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5486', items: [
+    'ゲーム内容の変更はありません',
+  ] },
   { version: '0.25.5485', items: [
     '格闘を使う幻影「拳鬼」の名前が「孫悟空」に変わった',
   ] },
