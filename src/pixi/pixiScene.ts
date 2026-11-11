@@ -18,7 +18,7 @@ import type { RainArrow } from '../utils/arrowRain'; // research/ARROW_RAIN.md
 import { VIEW_CORE_W } from '../utils/viewport';
 import { setViewTransform } from '../utils/viewTransform';
 import { labFlickerLevel, smoothFlicker, easeToward } from '../utils/labFlicker'; // ステージ2の切れかけの蛍光灯
-import { LAB_LAMP_SPACING_PX } from '../world/labLamps'; // 非常灯の並び(塊の置き場所と同じ1本)
+import { LAB_LAMP_SPACING_PX, labLampLevel, labLampScale } from '../world/labLamps'; // 非常灯の並び(塊の置き場所と同じ1本)
 import { labPitchLights, labEaseReveals, stepLabFlash, labFlashLevel, LAB_ALWAYS_REVEAL_TYPES, type LabLight, type LabFlashState } from '../utils/labDarkness'; // ステージ2の闇と懐中電灯(research/LAB_DARKNESS.md)
 import { bossFramingFor } from '../utils/bossFraming';
 import { BlurFilter, ColorMatrixFilter, Container, Graphics, PerspectiveMesh, Sprite, Text, BitmapText, BitmapFont, Texture, Rectangle, Filter, GlProgram, UniformGroup, TilingSprite, RenderTexture, MeshRope, Point, Matrix } from 'pixi.js';
@@ -994,6 +994,10 @@ const LAB_PITCH_HIT_GLOW_R = 65;   // ダメージ数字の周り(当てた一�
 const LAB_PITCH_FADE_FRAC = 0.13;  // 幕の上端のグラデ帯(画面の高さの割合)。地平際の床は遠景の光を少し受ける
 const LAB_PITCH_POOL_RATIO = 0.6;  // 床に落ちる光だまりの縦横比(非常灯の光だまりと同じ)
 const LAB_PITCH_LANTERN_R = 115;   // 起きた塊のランタンの周り(world px)
+// 月明りの筋の形で、闇を少し削る(社長承認2026-11-11。筋が床を照らす=敵が縞を横切る時だけうっすら見える)。0=削らない。?labshaft=
+const LAB_PITCH_SHAFT_A = Math.max(0, Math.min(1, tsNum('labshaft', 0.22)));
+// 非常灯の個体差(切れている・ちらつく・暗い=world/labLamps)。0=全部健康(今までの見え方)。?lablampmix=
+const LAB_LAMP_MIX_ON = tsNum('lablampmix', 1) > 0;
 const PHILL_FLASH_GUN_KEY = 'phill-revolver';
 // 懐中電灯の筋の絵の幅: 筋の絵(円錐の上側)は先端で絵の幅の約6割まで広がる=先端の幅が光だまりの直径の9割になる倍率。
 const LAB_FLASH_BEAM_W_K = 0.9 / (2 * (0.055 + (0.46 - 0.055) * SPOT_BEAM_FRAC));
@@ -5943,7 +5947,7 @@ export class PixiScene {
   private labEmLights: Sprite[] = [];
   private labFlickerCur = 1;      // 蛍光灯の表示の明るさ(残光込み)。utils/labFlicker の目標へ寄せる
   private labFlickerLastNow = 0;
-  private labFlickerLightCur: number[] = []; // 非常灯ごとの明るさ(点き直しを灯りごとにずらす)
+  private labLampCur = new Map<number, number>(); // 非常灯ごとの明るさ(灯りの番号 k ごと。点き直しを灯りごとにずらす・個体差の寄せ)
   private labFlickerSeed = 0;     // 出撃ごとの種(同じ時刻に同じちらつきが来ないように)
   private labFlickerLastGt = Number.POSITIVE_INFINITY;
   private labDarkAllow = 1;       // 画面を暗くしてよい度合い(危険が画面にある間は0へ・慣性つき)
@@ -5956,6 +5960,7 @@ export class PixiScene {
   private labPitchDiscs: Sprite[] = [];   // 丸い穴(自分・敵・UVバー・光のエフェクト・非常灯の床・懐中電灯の先)
   private labPitchCones: Sprite[] = [];   // 円錐の穴(非常灯の筋・懐中電灯)
   private labFlashGlow: Sprite | null = null; // 懐中電灯の薄い光(screen 合成・闇の上)
+  private labPitchShaftGfx = new Graphics();        // 月明りの筋の形で闇を削る絵(erase・updateStageLightShafts が筋と同じ形を描く)
   private labFlashPool: Sprite | null = null;      // 懐中電灯の光だまり(床に寝かせた楕円・screen)
   private labFlashBeamHole: Sprite | null = null;  // 懐中電灯の筋の穴(erase)
   private labFlash: LabFlashState | null = null;
@@ -7112,6 +7117,7 @@ export class PixiScene {
   private updateStageLightShafts(w: number, h: number) {
     const g = this.stageLightShaftGfx;
     g.clear();
+    this.labPitchShaftGfx.clear(); // 研究所の闇を筋の形で削る絵(同じ形・下で一緒に描く)
     const lp = this.lighting();
     const night = !this.daylight;
     // 明るさは preset の shaftAlpha 連動(夜=月明りで弱く)。?shaft= は昼基準のマスター倍率として効かせる。
@@ -7153,6 +7159,14 @@ export class PixiScene {
           x2 - b.width * 0.68,
           y2,
         ]).fill({ color, alpha: alpha * b.alpha });
+        // 闇を削る絵: 同じ形を、幅を変えて5枚重ねる(縁を柔らかく=ぼかしのフィルタは使わない)。芯ほど濃く(外は薄く広く)。
+        // 濃さは筋どうしの比だけ持つ(強い筋=1)。
+        for (const [k, a] of [[1.55, 0.08], [1.28, 0.13], [1.0, 0.2], [0.72, 0.26], [0.42, 0.33]] as const) {
+          const cx1 = x1 + b.width / 2, hw1 = b.width * k / 2;
+          const cx2 = x2 - b.width * 0.18, hw2 = b.width * k / 2;
+          this.labPitchShaftGfx.poly([cx1 - hw1, y1, cx1 + hw1, y1, cx2 + hw2, y2, cx2 - hw2, y2])
+            .fill({ color: 0xffffff, alpha: a * (b.alpha / 0.30) });
+        }
       }
     }
   }
@@ -7165,6 +7179,7 @@ export class PixiScene {
       if (px > 0) px -= this.shaftPeriod; // [-period, 0] に正規化
     }
     this.stageLightShaftGfx.position.set(px, 0);
+    this.labPitchShaftGfx.position.set(px, 0); // 研究所の闇を削る絵も同じ横の流れ(同じフレームの値)
     this.stageLightShaftGfx.alpha =
       (1 + Math.sin(now / STAGE_LIGHT_SHAFT_PULSE_MS * Math.PI * 2) * STAGE_LIGHT_SHAFT_PULSE_AMOUNT) * this.labShaftMul;
   }
@@ -12980,22 +12995,24 @@ export class PixiScene {
     // 旧: world.scale.x を読んでいた=引いても灯りの大きさが変わらず、最大引きで隣の灯りと繋がっていた(上のコメントの意図どおりに直した)。
     // 位置も worldToUi で出す(旧: toGlobal=画面合わせの拡大が二重に掛かり、灯りが床の上を少し滑っていた)。
     const scale = this.worldUiScale();
-    const size = LAB_EMLIGHT_RADIUS * 2 * scale;              // 床の光だまりの直径
+    const size0 = LAB_EMLIGHT_RADIUS * 2 * scale;             // 床の光だまりの直径(健康な灯り)
     // 円錐の高さ: 望みの倍率と「画面高の割合」の小さい方。**灯りの位置に依存しない**=どの灯りも同じ形。
-    const coneH = Math.min(size * LAB_EMLIGHT_HEIGHT_MULT, this.screenH * LAB_EMLIGHT_H_SCREEN_FRAC);
+    const coneH = Math.min(size0 * LAB_EMLIGHT_HEIGHT_MULT, this.screenH * LAB_EMLIGHT_H_SCREEN_FRAC);
     let n = 0;
     const kFrom = Math.ceil(wl / LAB_EMLIGHT_SPACING);
     const kTo = Math.floor(wr / LAB_EMLIGHT_SPACING);
     for (let k = kFrom; k <= kTo && n < LAB_EMLIGHT_MAX; k++) {
-      const li = n;
       const sp = this.labEmLights[n++];
       // 灯りごとの明るさ: 全体と同じ時刻表を、灯りの番号ごとに数十msずらして読む(点き直しが手前から順に走る)。
       const lag = (((k % 5) + 5) % 5) * 35;
-      const lt = LAB_FLICKER_ON ? labFlickerLevel(gameTime - lag, this.labFlickerSeed) : 1;
-      const lc = smoothFlicker(this.labFlickerLightCur[li] ?? 1, lt, dt);
-      this.labFlickerLightCur[li] = lc;
+      // × 灯りの個体差(切れている=0・暗い・ちらつく)。明るさの寄せは灯りの番号ごとに持つ(画面の何番目か、で持つと、スクロールで隣の灯りの値が混ざる)。
+      const lt = (LAB_FLICKER_ON ? labFlickerLevel(gameTime - lag, this.labFlickerSeed) : 1) * (LAB_LAMP_MIX_ON ? labLampLevel(k, gameTime) : 1);
+      const lc = smoothFlicker(this.labLampCur.get(k) ?? lt, lt, dt);
+      this.labLampCur.set(k, lc);
       const g = this.worldToUi(k * LAB_EMLIGHT_SPACING, 0);
       sp.position.set(g.x, g.y);
+      // 暗い灯りは光の届く広さも狭い(world/labLamps.labLampScale=「薄い灯り」ではなく「届かない灯り」)。
+      const size = size0 * (LAB_LAMP_MIX_ON ? labLampScale(k) : 1);
       sp.width = size;
       // **高さは固定**(画面高基準)。灯りのY・プレイヤーのY・地平との距離で伸縮させない。
       // v0.25.2275は地平までの距離で高さを縮めていたため、プレイヤーが帯の下側へ動くほど
@@ -13011,6 +13028,7 @@ export class PixiScene {
       if (sp.visible) lampHoles.push({ x: g.x, y: g.y, w: size, h: coneH, k: dofFade * lc }); // 灯りが切れている間は穴も閉じる
     }
     for (let i = n; i < this.labEmLights.length; i++) this.labEmLights[i].visible = false;
+    if (this.labLampCur.size > 64) for (const key of this.labLampCur.keys()) if (key < kFrom - 4 || key > kTo + 4) this.labLampCur.delete(key);
     this.updateLabPitch(now, dt, ramp, lampHoles);
   }
 
@@ -13179,6 +13197,15 @@ export class PixiScene {
       }
     }
     if (!beam && this.labFlashBeamHole) this.labFlashBeamHole.visible = false;
+    // 月明りの筋の形で闇を少し削る(筋が床を照らす)。横の流れは筋と同じ(位置は syncStageLightShaftDrift が筋と一緒に置く)。
+    // 濃さは一定: 筋の脈(一定の周期の呼吸)は受けない。蛍光灯が切れても月は消えない=暗転の間も床の月明りは残る
+    // (灰色の筋そのものは今どおり沈む。灯りが全部落ちた時、月明りの縞だけが残る)。
+    {
+      const sg = this.labPitchShaftGfx, src = this.stageLightShaftGfx;
+      if (sg.parent !== scene) { sg.blendMode = 'erase'; scene.addChild(sg); }
+      sg.visible = LAB_PITCH_SHAFT_A > 0 && src.visible && this.shaftPeriod > 0;
+      sg.alpha = LAB_PITCH_SHAFT_A;
+    }
     // 起きた塊のランタン(描いてある灯りの位置=1フレーム前の絵)の周りを開ける。体は瓶の周りだけが照らされ、残りは闇に溶ける。
     for (const lt of this.crawlerLanterns) {
       if (!lt.visible || !lt.parent) continue;
@@ -42210,6 +42237,7 @@ export class PixiScene {
     try { releaseBakedTexture('other', this.labPitchRT); } catch { /* ignore */ }
     this.labPitchRT = null;
     try { this.labPitchScene.destroy({ children: true }); } catch { /* ignore */ }
+    try { if (!this.labPitchShaftGfx.destroyed) this.labPitchShaftGfx.destroy(); } catch { /* ignore */ } // 研究所に1度も入らなかった時は、どこにも付いていない
     this.zwarpSaved.length = 0;
     try { this.zwarpFilter?.destroy(); } catch { /* ignore */ }
     this.zwarpFilter = null;

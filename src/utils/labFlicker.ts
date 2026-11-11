@@ -69,13 +69,19 @@ const jitter = (r: () => number, segs: readonly FlickerSegment[]): FlickerSegmen
 export const isBadSeason = (slot: number, seed = 0): boolean =>
   hash(Math.floor(slot / SEASON_SLOTS) * 31337 + Math.imul(seed | 0, 2654435761)) < 0.45;
 
+/**
+ * 時刻表の刻みの差し替え(省略=全体の明滅の値)。灯り1つずつの癖(world/labLamps)が、同じ手書きの明滅の並びを別の間隔で引くために使う。
+ * slotMs=枠の長さ / startJitterMs=枠の頭からのずれの最大 / quietFirstSlots=出撃直後に何も起きない枠の数。
+ */
+export interface FlickerTiming { slotMs?: number; startJitterMs?: number; quietFirstSlots?: number }
+
 /** 枠 slot のちらつき(無ければ null)。開始時刻と区間の並びを返す。 */
-export const flickerEpisode = (slot: number, seed = 0): { start: number; kind: FlickerKind; segs: FlickerSegment[] } | null => {
-  if (slot < QUIET_FIRST_SLOTS) return null;
+export const flickerEpisode = (slot: number, seed = 0, o: FlickerTiming = {}): { start: number; kind: FlickerKind; segs: FlickerSegment[] } | null => {
+  if (slot < (o.quietFirstSlots ?? QUIET_FIRST_SLOTS)) return null;
   const r = rng(Math.imul(slot, 7919) + Math.imul(seed | 0, 2654435761));
   const bad = isBadSeason(slot, seed);
   if (r() < (bad ? SKIP_BAD : SKIP_CALM)) return null;
-  const start = slot * LAB_FLICKER_SLOT_MS + Math.round(r() * START_JITTER_MS);
+  const start = slot * (o.slotMs ?? LAB_FLICKER_SLOT_MS) + Math.round(r() * (o.startJitterMs ?? START_JITTER_MS));
   const p = r();
   // 長い暗転は稀(調子が悪い時期の中でだけ・その中でも3割=社長「もう少しだけはっきり暗い時間を」で2割→3割)。主は細かい点滅。
   const kind: FlickerKind = bad && p < 0.3 ? 'blackout' : p < 0.75 ? 'stutter' : 'sag';
@@ -95,12 +101,12 @@ export const flickerEpisode = (slot: number, seed = 0): { start: number; kind: F
 export const episodeLength = (segs: readonly FlickerSegment[]): number => segs.reduce((a, s) => a + s[0], 0);
 
 /** 時刻 t(ms)の灯りの明るさ(目標値・0..1)。ちらつきの外は 1。seed=出撃ごとの種。 */
-export const labFlickerLevel = (t: number, seed = 0): number => {
+export const labFlickerLevel = (t: number, seed = 0, o: FlickerTiming = {}): number => {
   if (!Number.isFinite(t) || t < 0) return 1;
-  const slot = Math.floor(t / LAB_FLICKER_SLOT_MS);
+  const slot = Math.floor(t / (o.slotMs ?? LAB_FLICKER_SLOT_MS));
   for (const sl of [slot, slot - 1]) {
     if (sl < 0) continue;
-    const ep = flickerEpisode(sl, seed);
+    const ep = flickerEpisode(sl, seed, o);
     if (!ep) continue;
     let at = t - ep.start;
     if (at < 0) continue;
