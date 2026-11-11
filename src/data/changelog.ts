@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5496', items: [
+    '叫喚型が遠くへ離れると、画面の縁の方角の印が消える',
+  ] },
   { version: '0.25.5495', items: [
     'リザルトのスクラップ残とスクラップスコアが、実際に持っている数と合っていなかったのが直った',
   ] },

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { screamerStartGate, SCREAMER_OFFSCREEN_HOLD_MS } from './screamerGate';
+import { screamerStartGate, SCREAMER_OFFSCREEN_HOLD_MS, screamerMarkVisible, SCREAMER_MARK_MAX_DIST_PX } from './screamerGate';
 
 describe('叫喚型の叫びの関所(社長報告2026-11-11「遠くに居てもずっと叫んでる」)', () => {
   it('予定の時刻より前は始めない(画面の中でも外でも・予定は動かさない)', () => {
@@ -18,3 +18,13 @@ describe('叫喚型の叫びの関所(社長報告2026-11-11「遠くに居て�
     expect(screamerStartGate(next, next, true).start).toBe(true);
   });
 });
+
+describe('叫喚型の方角の印(社長指示2026-11-11「遠くに離れたらマーク消えて良い」)', () => {
+  it('決めた距離までは出す・それより遠いと出さない(向きは問わない)', () => {
+    expect(screamerMarkVisible(0, 0, SCREAMER_MARK_MAX_DIST_PX, 0)).toBe(true);
+    expect(screamerMarkVisible(0, 0, 0, -SCREAMER_MARK_MAX_DIST_PX)).toBe(true);
+    expect(screamerMarkVisible(0, 0, SCREAMER_MARK_MAX_DIST_PX + 1, 0)).toBe(false);
+    expect(screamerMarkVisible(100, 100, 100 + 900, 100 + 900)).toBe(false);
+  });
+});
+

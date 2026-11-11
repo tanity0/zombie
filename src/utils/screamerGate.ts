@@ -16,3 +16,12 @@ export const screamerStartGate = (nextScream: number, gameTime: number, inView: 
   if (inView) return { start: true, next: nextScream };
   return { start: false, next: gameTime + SCREAMER_OFFSCREEN_HOLD_MS };
 };
+
+/**
+ * 画面の縁の方角の印を出す距離(px・プレイヤーの中心から叫喚型の中心まで)。これより遠い個体には印を出さない
+ * (社長指示2026-11-11「叫喚型、遠くに離れたらマップ表示からマーク消えて良い気がする」)。賞金首の印の有効距離(BOUNTY_MARK_MAX_DIST_PX)と同じ値。
+ */
+export const SCREAMER_MARK_MAX_DIST_PX = 1200;
+export const screamerMarkVisible = (px: number, py: number, sx: number, sy: number): boolean =>
+  Math.hypot(sx - px, sy - py) <= SCREAMER_MARK_MAX_DIST_PX;
+

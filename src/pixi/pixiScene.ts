@@ -111,6 +111,7 @@ import {
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
+import { screamerMarkVisible } from '../utils/screamerGate';
 import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerKickJump, playerKickJumpShape, playerKickLandPx, playerKickLandSpeed, playerAirLaunchSpeed, PLAYER_KICK_LAND_FRAC, PLAYER_KICK_JUMP_MIN_PX, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
 import { ESCORT_KICK_CROUCH_MS, ESCORT_KICK_JUMP_MS, ESCORT_KICK_WINDUP_MS, ESCORT_KICK_RECOVER_MS, type EscortKick } from '../utils/escortToss'; // 兵士の蹴り飛ばし v3.1
 import {
@@ -10555,8 +10556,9 @@ export class PixiScene {
     const alertedHunters = s.enemies.filter(e => e.type === 'hunter' && e.hunterAlerted && !e.hunterFleeing).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
     // 二人組クエストの強制目標(同時1体)。近く+画面外の時だけ縁矢印(syncArrows)。
     const questTargets = s.enemies.filter(e => e.questTarget).map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
-    // 叫喚型(screamer)は同時1体だけ(ディレクター管理)なので検知条件なしで常に方角を示す(優先処理対象)。
-    const liveScreamers = s.enemies.filter(e => e.type === 'screamer').map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }));
+    // 叫喚型(screamer)は同時1体だけ(ディレクター管理)なので検知条件なしで方角を示す(優先処理対象)。遠く離れた個体には出さない(utils/screamerGate)。
+    const liveScreamers = s.enemies.filter(e => e.type === 'screamer').map(e => ({ x: e.x + e.width / 2, y: e.y + e.height / 2 }))
+      .filter(q => screamerMarkVisible(markPcx, markPcy, q.x, q.y));
     // 二人組クエストv2(EVENT_QUEST_DESIGN.md §2-9・B4): レスキュー未完了(status==='rescue')の間だけ渡す。
     // 完了(accepted以降)/hidden/gone/warping等は空(=矢印を消す。§2-9「完了になったら空を渡す」)。
     const rescuePoints = s.eventQuestNpc.status === 'rescue' ? [{ x: s.eventQuestNpc.x, y: s.eventQuestNpc.y }] : [];
