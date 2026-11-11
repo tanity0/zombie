@@ -829,6 +829,8 @@ export interface Enemy {
   brFlowHits?: number;
   brLiftBudget?: number;
   brLiftDown?: boolean;
+  /** ボス級: 気絶・紫の間に地上から浮かせたコンボ=軽い重さのまま着地まで(社長裁定2026-11-11・research/BRAWLER.md §25)。 */
+  brLiftLight?: boolean;
   brBounceCombo?: number;
   brLiftDropMs?: number;
   /** ★浮きの弧の形(research/BRAWLER.md §14・社長「浮き入れよう。落ちてくるのを爆発のは少しゆっくりに」)。'blast'=爆発で浮いた弧(上り20%・漂い15%・落ち65%)。無し=格闘の弧。 */

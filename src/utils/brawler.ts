@@ -677,7 +677,18 @@ export const brawlerSecretCarry = (s: Pick<BrawlerState, 'phase' | 'tech' | 'sec
  *  - 例外: 秘奥義の順番どおりの次の技(brawlerSecretCarry)は、受付の外でも覚える(後隙の終わりに待機から出す)。
  * 構えの間は構えの延長だけ(覚えない)。新しい入力は覚えている入力を上書きする。
  */
-export const brawlerShouldBufferTech = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
+export const brawlerShouldBufferTech = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean =>
+  brawlerShouldBufferTechEarly(s, kind, t) || brawlerLateCarry(s, kind, t);
+/**
+ * ★判定の後に押した技は、1つだけ覚えて、行動が終わって待機へ戻った瞬間に出す(社長裁定2026-11-11「2:A」「5:1つまで保持。上と同じく」・§25)。
+ * 取り消しの受付を過ぎた後・当たらなかった後の後隙で押した技が対象(受付の内なら、その場で取り消して出る)。
+ * 待機から出し直した扱い=後隙は丸ごと晒す・固まりは延ばさない・値段は出す瞬間に払う。構えの間は延長だけ(覚えない)。
+ * 判定の前(出だし)に押して当たらなかった技は、今どおり捨てる(下の brawlerTechBufferDecision)。
+ */
+export const brawlerLateCarry = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean =>
+  brawlerActing(s) && s.resolved && !isBrawlerGuardingAt(s, t) && !(s.phase === 'tech' && s.tech === 'guard') && !brawlerTechAllowed(s, kind, t);
+/** 出だし・当たりの止めの間の先行入力(旧来の規則)。 */
+const brawlerShouldBufferTechEarly = (s: BrawlerState, kind: BrawlerTechKind, t: number): boolean => {
   // ステップの最中に押した技は覚える(§20-8=ステップが終わった瞬間に、待機から出す)。
   if (!brawlerActing(s) && brawlerStepping(s, t) && !isBrawlerGuardingAt(s, t)) return true;
   if (!brawlerActing(s) || isBrawlerGuardingAt(s, t) || (s.phase === 'tech' && s.tech === 'guard')) return false;
@@ -704,7 +715,8 @@ export const brawlerTechBufferDecision = (s: BrawlerState, t: number): 'fire' | 
   // 待機: ステップの最中に覚えた技(stepHeld)は、ステップが終わった瞬間に出す(§20-8)。それ以外は捨てる。
   if (!brawlerActing(s)) return s.stepHeld ? (brawlerStepping(s, t) ? 'wait' : 'fire') : 'drop';
   if (brawlerTechAllowed(s, k, t)) return 'fire';
-  return brawlerShouldBufferTech(s, k, t) ? 'wait' : 'drop';
+  if (s.lateHeld) return 'wait'; // 判定の後に押した技(§25): 行動の終わりまで残り、呼び手が待機へ戻った瞬間に出す
+  return brawlerShouldBufferTechEarly(s, k, t) ? 'wait' : 'drop';
 };
 
 /** 技ポイントを払えるか。 */

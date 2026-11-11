@@ -67,6 +67,8 @@ for (const [dev, vp] of DEVICES) {
   await p.mouse.click(vp.width / 2, vp.height * 0.5); await p.waitForTimeout(8000);
   for (let i = 0; i < 3; i++) { const sk = p.getByText(/スキップ/).first(); if (await sk.count()) { await sk.click({ timeout: 3000 }).catch(() => {}); await p.waitForTimeout(5000); } }
   await shot(p, dev, 'home');
+  // オープニングの後にもう1度「画面を押して進む」場面が挟まる版では、ホームがまだ出ていない(出撃の札が無い)=もう1度押して待つ(2026-11-11)。
+  if (!(await p.getByTestId('ops-sortie').count())) { await p.mouse.click(vp.width / 2, vp.height * 0.5); await p.waitForTimeout(8000); await shot(p, dev, 'home'); }
   await p.getByTestId('ops-sortie').click(); await p.waitForTimeout(3000);
   await shot(p, dev, 'stages');
   await p.locator('.command-stage-card').nth(1).click(); await p.waitForTimeout(3000);

@@ -282,8 +282,9 @@ describe('格闘の浮きも止めるだけ(§12-1・§9-71)', () => {
     expect(rLift).toBeLessThanOrEqual(remain0 + 0.001);
     expect(rLift).toBeGreaterThanOrEqual(remain0 - DT_MS - 0.001);
     // 浮きの後は固まり(4段目の固まりは浮きの終わりから数える)→ 明けたら残りの硬直
-    const holdEnd = en('m').brHoldUntil ?? liftUntil;
-    step(Math.max(0, holdEnd - now - 10), ctrl);
+    // 固まりの欄は brLockUntil(浮きの終わりより後ろへ延びる。ボス級は強個体と同じ重さ0.7で浮きが短いぶん、固まりが浮きの終わりを越える)。
+    step(20, ctrl); // 着地(固まりの欄は着地で決まる)
+    step(Math.max(0, (en('m').brLockUntil ?? 0) - useGameStore.getState().gameTime - 10), ctrl); // brLockUntil はゲーム時計(liftUntil は now 軸)
     expect(en('m').bossState).toBe('volley-recover');
     const rHold = en('m').bossStateUntil! - useGameStore.getState().gameTime;
     expect(rHold).toBeGreaterThanOrEqual(remain0 - 2 * DT_MS - 0.001);

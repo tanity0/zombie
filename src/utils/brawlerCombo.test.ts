@@ -7,7 +7,7 @@ import {
   brawlerStageMoveKey, brawlerKickMoveKey,
   BRAWLER_SECRET_HOLD_MS, BRAWLER_COMBO_GAP_MS, type BrawlerLockFields,
   type BrawlerComboFields, type BrawlerMoveKey, isBrawlerTechBusy, BRAWLER_HOLDABLE_PHASES,
-  brawlerJugglePush, brawlerAirborne, brawlerJuggleHeightRel, brawlerJuggleLanded, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_COST, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS, type BrawlerJuggleFields,
+  brawlerJugglePush, brawlerAirborne, brawlerJuggleHeightRel, brawlerJuggleLanded, BRAWLER_JUGGLE_WEIGHT, BRAWLER_JUGGLE_WEIGHT_STUN_BOSS, BRAWLER_JUGGLE_BUDGET, BRAWLER_JUGGLE_COST, BRAWLER_JUGGLE_DROP_MS, BRAWLER_DOWN_NO_HOLD_MS, type BrawlerJuggleFields,
 } from './brawlerCombo';
 import { BRAWLER_LIFT_MS, brawlerLiftHeight } from './brawler';
 import { setBrawlerTempoAll } from './brawlerCombo';
@@ -121,7 +121,7 @@ describe('「本当に技を出している最中」の仕分け(社長実機報
 
 describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くなる 雑魚は軽い 強個体は少し重い ボスは重い」)', () => {
   const apply = (e: BrawlerJuggleFields, p: ReturnType<typeof brawlerJugglePush>) => ({ ...e, ...(p ?? {}) });
-  it('地上では3段目(アッパー・§13-2)と4段目が浮かせる。雑魚1.0 / 強個体0.7 / ボス級0.4 を高さと時間に掛ける・予算 6/5/4', () => {
+  it('地上では3段目(アッパー・§13-2)と4段目が浮かせる。雑魚1.0 / 強個体0.7 / ボス級0.7(気絶・紫の間に浮かせた時だけ1.0) を高さと時間に掛ける・予算 6/5/4', () => {
     expect(brawlerJugglePush({}, 'mob', 's1', 0)).toBeNull();
     expect(brawlerJugglePush({}, 'mob', 'kick1', 0)).toBeNull();
     expect(brawlerJugglePush({}, 'mob', 'kick3', 0)).toBeNull();
@@ -134,11 +134,22 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
     expect(BRAWLER_JUGGLE_BUDGET).toEqual({ mob: 6, strong: 5, boss: 4 });
     expect([brawlerJugglePush({}, 'mob', 's4', 0)!.brLiftBudget, brawlerJugglePush({}, 'strong', 's3', 0)!.brLiftBudget, brawlerJugglePush({}, 'boss', 's4', 0)!.brLiftBudget]).toEqual([6, 5, 4]);
     const m = brawlerJugglePush({}, 'mob', 's4', 0)!, st = brawlerJugglePush({}, 'strong', 's4', 0)!, b = brawlerJugglePush({}, 'boss', 's4', 0)!;
-    expect(BRAWLER_JUGGLE_WEIGHT).toEqual({ mob: 1.0, strong: 0.7, boss: 1.0 }); // 社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」(旧 boss 0.4)
-    expect([m.brLiftPeak, st.brLiftPeak, b.brLiftPeak]).toEqual([1, 0.7, 1]); // 社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」(旧 0.4)
+    expect(BRAWLER_JUGGLE_WEIGHT).toEqual({ mob: 1.0, strong: 0.7, boss: 0.7 }); // ボス級は強個体と同じ(2026-11-10 は雑魚と同じ 1.0 だった)
+    expect(BRAWLER_JUGGLE_WEIGHT_STUN_BOSS).toBe(1.0);                           // 気絶・紫の間に地上から浮かせた時だけ軽い
+    expect([m.brLiftPeak, st.brLiftPeak, b.brLiftPeak]).toEqual([1, 0.7, 0.7]);
+    expect([m.brLiftLight, st.brLiftLight, b.brLiftLight]).toEqual([false, false, false]);
     expect(m.brLiftMs).toBe(BRAWLER_LIFT_MS);
     expect(st.brLiftMs).toBe(Math.round(BRAWLER_LIFT_MS * 0.7));
-    expect(b.brLiftMs).toBe(BRAWLER_LIFT_MS); // ボス級も雑魚と同じ(旧 ×0.4)
+    expect(b.brLiftMs).toBe(Math.round(BRAWLER_LIFT_MS * 0.7)); // ボス級も強個体と同じ長さ
+    // 気絶・紫の間に地上から浮かせたボス級は軽い(雑魚と同じ高さと長さ・brLiftLight)。雑魚・強個体は気絶を見ない。
+    const bl = brawlerJugglePush({}, 'boss', 's4', 0, true)!;
+    expect([bl.brLiftPeak, bl.brLiftMs, bl.brLiftLight]).toEqual([1, BRAWLER_LIFT_MS, true]);
+    expect(brawlerJugglePush({}, 'mob', 's4', 0, true)!.brLiftPeak).toBe(1);
+    expect(brawlerJugglePush({}, 'strong', 's4', 0, true)!.brLiftPeak).toBe(0.7);
+    // 空中の押し上げ: 軽く浮かせたコンボ(brLiftLight)は1.0のまま、そうでなければ0.7
+    const pl = brawlerJugglePush(apply({}, bl), 'boss', 's1', 100)!, ph = brawlerJugglePush(apply({}, b), 'boss', 's1', 100)!;
+    expect(pl.brLiftMs).toBe(Math.round(BRAWLER_LIFT_MS * 0.5));
+    expect(ph.brLiftMs).toBe(Math.round(BRAWLER_LIFT_MS * 0.5 * 0.7));
     expect(m.liftUntil).toBe(m.brLiftUntil); // 動けない間=全ての敵の制御が読む liftUntil
   });
   it('★§13-2 予算: 空中の当たりで浮き直し、弱1・強/技2を使う。足りない当たりで落ちてダウン(拾えない・着地まで動けない・着地の後しばらく固まらない)', () => {
@@ -206,7 +217,8 @@ describe('浮かせ追撃(research/BRAWLER.md §12-1・社長「段々重くな�
     expect(BRAWLER_LIFT_MS).toBe(585);
     expect(brawlerJugglePush({}, 'mob', 's4', 0)!.brLiftMs).toBe(585);
     expect(brawlerJugglePush({}, 'strong', 's4', 0)!.brLiftMs).toBe(410);
-    expect(brawlerJugglePush({}, 'boss', 's4', 0)!.brLiftMs).toBe(585); // 社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」(旧 234)
+    expect(brawlerJugglePush({}, 'boss', 's4', 0)!.brLiftMs).toBe(410); // ボス級は強個体と同じ 0.7
+    expect(brawlerJugglePush({}, 'boss', 's4', 0, true)!.brLiftMs).toBe(585); // 気絶・紫の間に浮かせた時だけ雑魚と同じ
     const e0 = apply({}, brawlerJugglePush({}, 'mob', 's4', 0));
     const p1 = brawlerJugglePush(e0, 'mob', 's1', 100)!;
     expect(p1.brLiftMs).toBe(Math.round(585 * 0.5));

@@ -927,7 +927,7 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     expect(en('b').brLockHits).toBe(2);
     expect(en('a').health).toBeLessThan(en('b').maxHealth);                  // ダメージは入る
   });
-  it('技→技のキャンセル: 当たった大踏み潰しの後隙を気功で取り消せる・空振りからは取り消せない(構えは別)', () => {
+  it('技→技のキャンセル: 当たった大踏み潰しの後隙を気功で取り消せる・空振りからは取り消せない(§25: 後隙で押した技は1つ覚え、後隙の終わりに待機から出る)', () => {
     setup(3);
     useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 20 } } }));
     expect(useGameStore.getState().brawlerTech(0, 1)).toBe(true);
@@ -941,25 +941,32 @@ describe('食らいの固まり・キャンセル(research/BRAWLER.md §11・社
     expect(useGameStore.getState().brawlerTech(0, 1)).toBe(false);
     expect(br().tech).toBe('kiko');
     expect(br().techBuffer).toBeUndefined();
-    // 空振りの大踏み潰しからは気功へ取り消せない(覚えもしない)・構えも出せない(旧: 構えは当たらなくても後隙から出せた)
+    // 空振りの大踏み潰しからは気功へ取り消せない(その場では出ない)。§25: 判定の後に押した技は、取り消しではなく1つ覚えて、後隙の終わりに待機から出る
     setup(3);
     useGameStore.setState(st => ({ enemies: [], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 20 } } }));
     useGameStore.getState().brawlerTech(0, 1);
     for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
     advance(50);
-    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(false);
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);           // 覚える(その場では出ない)
     expect(br().tech).toBe('stomp');
-    expect(br().techBuffer).toBeUndefined();
-    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(false);
+    expect(br().techBuffer).toBe('kiko');
+    expect(br().lateHeld).toBe(true);
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);           // 覚えられるのは1つだけ: 構えが気功を上書きする
     expect(br().tech).toBe('stomp');
-    // 当たった大踏み潰しでも、受付(150ms)を過ぎたら後隙が終わるまで何も出せない
+    expect(br().techBuffer).toBe('guard');
+    // 当たった大踏み潰しでも、受付(150ms)を過ぎたら後隙が終わるまで出ない。押した技は覚え、後隙の終わりに待機から出る
     setup(3);
     useGameStore.setState(st => ({ enemies: [zombieAt(60, 0, 'z')], player: { ...st.player, brawler: { ...(st.player.brawler ?? br()), points: 20 } } }));
     useGameStore.getState().brawlerTech(0, 1);
     for (let k = 0; k < 40 && !br().resolved; k++) advance(10);
     advance(220 + 160);
-    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(false);
-    expect(br().tech).toBe('stomp');
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
+    expect(br().tech).toBe('stomp');                                         // その場では出ない
+    expect(br().techBuffer).toBe('kiko');
+    let fired = false;
+    for (let k = 0; k < 100 && !fired; k++) { advance(10); fired = br().tech === 'kiko' && br().phase === 'tech'; }
+    expect(fired).toBe(true);                                                // 後隙が終わって待機へ戻った瞬間に出た
+    expect(br().techBuffer).toBeUndefined();
   });
   it('キャンセルで繋いでも秘奥義が出る(→ 当てて ↓ 当てて ← 当てて ↑)・ヒット数が数えられる', () => {
     setup(3);
@@ -1321,11 +1328,14 @@ describe('技の先行入力と秘奥義の1手目(社長指示2026-11-08「技�
     for (let i = 0; i < 100 && !br().secret; i++) { const wasKiko = br().phase === 'tech' && br().tech === 'kiko'; advance(10); if (wasKiko && br().secret) endAt = useGameStore.getState().gameTime; }
     expect(br().secret?.phase).toBe('ignite');
     expect(endAt).toBeGreaterThan(0);                                   // 気功の後隙が終わった瞬間に出た
-    // 順番の外の技(気功の後の飛び蹴り)は覚えない
+    // §25: 順番の外の技(気功の後の飛び蹴り)も、判定の後に押したなら1つ覚える。ただし秘奥義の順番ではないので秘奥義は出ず、後隙の終わりに通常の飛び蹴りとして出る
     prep([zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')]);
     for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0]] as const) { useGameStore.getState().brawlerTech(dx, dy); advance(350); }
-    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(false);
-    expect(br().techBuffer).toBeUndefined();
+    expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true);
+    expect(br().tech).toBe('kiko');
+    expect(br().techBuffer).toBe('kick');
+    for (let i = 0; i < 100 && br().tech === 'kiko'; i++) advance(10);
+    expect(br().secret).toBeUndefined();
   });
   it('各フリックの間 150ms では成立しない(大踏み潰しが当たって取り消せるようになる前に←と↑が届き、1つだけの先行入力が↑で上書きされ、構えが先に出る)', () => {
     prep([zombieAt(120, 0, 'a'), zombieAt(-90, 30, 'b')]);
@@ -1391,12 +1401,20 @@ describe('浮かせ追撃・ジャスト構え・ステップ(research/BRAWLER.m
     expect(en('z').brLiftMs!).toBe(Math.round(585 * 0.75));
     expect(en('z').brLiftBudget).toBe(3); // − 3段目2
   });
-  // 社長指示2026-11-10「一旦ボスの重みやめよう。雑魚と同じ軽さに。」: 旧「雑魚・強個体・ボス級の順に低く」を新仕様へ(強個体だけ重い)。
-  it('重さ: 強個体は低く短く浮く・ボス級は雑魚と同じ高さと長さで浮く', () => {
+  // §25(社長裁定2026-11-11): ボス級の重さは強個体と同じ 0.7。気絶・紫の間に地上から浮かせた時だけ軽い(1.0・brLiftLight)。
+  it('重さ: 強個体とボス級は低く短く浮く(0.7)・気絶中に浮かせたボス級だけ雑魚と同じ高さと長さで浮く', () => {
     setup();
     useGameStore.setState({ enemies: [foeOf('zombie', 'm'), foeOf('driller', 's', -60), foeOf('hunter', 'b', 0)] });
     for (const id of ['m', 's', 'b']) hitMove(id, 's4', { lift: true });
-    expect([en('m').brLiftPeak, en('s').brLiftPeak, en('b').brLiftPeak]).toEqual([1, 0.7, 1]);
+    expect([en('m').brLiftPeak, en('s').brLiftPeak, en('b').brLiftPeak]).toEqual([1, 0.7, 0.7]);
+    expect(en('b').liftUntil).toBe(en('s').liftUntil);
+    expect(en('b').brLiftLight).toBe(false);
+    // 気絶・紫の間のボス級を地上から浮かせる=軽い(雑魚と同じ)
+    setup();
+    useGameStore.setState(st => ({ enemies: [foeOf('zombie', 'm'), { ...foeOf('hunter', 'b', 0), bossFullStunUntil: st.gameTime + 5000 }] }));
+    for (const id of ['m', 'b']) hitMove(id, 's4', { lift: true });
+    expect([en('m').brLiftPeak, en('b').brLiftPeak]).toEqual([1, 1]);
+    expect(en('b').brLiftLight).toBe(true);
     expect(en('b').liftUntil).toBe(en('m').liftUntil);
   });
   // 社長承認2026-11-10「技の最中浮く は はい」: 旧「技の最中の敵(予告の溜め)は浮かない」を新仕様へ。

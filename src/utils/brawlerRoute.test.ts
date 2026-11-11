@@ -9,7 +9,7 @@ import {
   BRAWLER_TEMPO_DEFAULT, BRAWLER_CANCEL_WINDOW_MS, BRAWLER_HITSTOP, BRAWLER_KICK_HITSTOP_MS, BRAWLER_STOMP_HITSTOP_MS, BRAWLER_TECHS,
   BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_CHAIN_MS, BRAWLER_CANCELABLE, BRAWLER_HOLD_MS, BRAWLER_HOLD_BASE_MS,
   brawlerRouteAllows, brawlerRouteNodeOf, brawlerStageNode, brawlerTechNode, brawlerSecretClosing, brawlerHitLanded, brawlerCancelWindowOpen,
-  brawlerTechCancelOk, brawlerTechAllowed, brawlerShouldBufferTech, brawlerTechBufferDecision, brawlerStepAllowed, brawlerSecretCarry,
+  brawlerTechCancelOk, brawlerTechAllowed, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, brawlerStepAllowed, brawlerSecretCarry,
   brawlerStartAttack, brawlerStartTech, brawlerAfterResolve, brawlerFinish, brawlerStageSpec, initialBrawlerState, brawlerKickFlightMs, brawlerKickReaimDue,
   brawlerStepStart, brawlerStepping, brawlerStepHeldPressFire, brawlerPressDecision,
 } from './brawler';
@@ -163,7 +163,7 @@ describe('取り消しの受付と「当たった時だけ」(§19-1・§19-2)',
 });
 
 describe('技の先行入力(§19-2)', () => {
-  it('入れた時点で道に無い技は覚えない。道の上の技は出だし・止めの間に覚え、受付が開いた瞬間に出る', () => {
+  it('判定の前: 道に無い技は覚えない。道の上の技は出だし・止めの間に覚え、受付が開いた瞬間に出る。判定の後(受付を過ぎた後隙)に押した技は1つ覚えて行動の終わりまで残る(§25)', () => {
     const pre = brawlerStartAttack(initialBrawlerState(), 3, 1000, false);
     for (const k of ['kick', 'stomp', 'kiko'] as const) expect(brawlerShouldBufferTech(pre, k, 1010), k).toBe(true);
     expect(brawlerShouldBufferTech(pre, 'guard', 1010)).toBe(false);
@@ -172,14 +172,21 @@ describe('技の先行入力(§19-2)', () => {
     expect(brawlerShouldBufferTech(s, 'kick', at + 10)).toBe(true);                // 止めの間
     expect(brawlerTechBufferDecision(b, at + 10)).toBe('wait');
     expect(brawlerTechBufferDecision(b, at + hs)).toBe('fire');                    // 受付が開いた瞬間
-    expect(brawlerShouldBufferTech(s, 'kick', at + hs + BRAWLER_CANCEL_WINDOW_MS + 5)).toBe(false); // 受付を過ぎたら覚えない
+    const afterWin = at + hs + BRAWLER_CANCEL_WINDOW_MS + 5;
+    expect(brawlerTechAllowed(s, 'kick', afterWin)).toBe(false);                   // 受付を過ぎた=その場では出ない(取り消しではない)
+    expect(brawlerShouldBufferTech(s, 'kick', afterWin)).toBe(true);               // §25: 後隙で押した技は覚える
+    expect(brawlerLateCarry(s, 'kick', afterWin)).toBe(true);
+    expect(brawlerLateCarry(s, 'kick', at + hs + 5)).toBe(false);                  // 受付の内は取り消しで即座に出る
+    expect(brawlerTechBufferDecision({ ...b, lateHeld: true }, afterWin)).toBe('wait'); // 行動の終わりまで残る(待機へ戻った瞬間に呼び手が出す)
+    expect(brawlerTechBufferDecision({ ...b, lateHeld: true }, afterWin)).not.toBe('drop');
   });
-  it('当たらなかった(空振り・防がれた)時は捨てる・待機へ戻っても出さない', () => {
+  it('判定の前に押して当たらなかった(空振り・防がれた)技は捨てる。判定の後(後隙)に押した技は、空振りでも覚えて行動の終わりまで残る。覚えていない/捨てた技は待機へ戻っても出ない', () => {
     for (const landed of [0]) for (const hits of [0, 1]) {
       const { s, at } = stageHit(3, hits, landed);
       const b = { ...s, techBuffer: 'kick' as const };
       expect(brawlerTechBufferDecision(b, at + 1)).toBe('drop');
-      expect(brawlerShouldBufferTech(s, 'kick', at + 1)).toBe(false);
+      expect(brawlerShouldBufferTech(s, 'kick', at + 1)).toBe(true);               // §25: 判定の後に押した技は当たりを問わず覚える
+      expect(brawlerTechBufferDecision({ ...b, lateHeld: true }, at + 1)).toBe('wait'); // 後隙の終わりまで残る
     }
     const fin = brawlerFinish({ ...stageHit(3).s, techBuffer: 'kick' as const }, 3000).state;
     expect(brawlerTechBufferDecision({ ...fin, techBuffer: 'kick' }, 3000)).toBe('drop');
@@ -193,10 +200,11 @@ describe('技の先行入力(§19-2)', () => {
     expect(brawlerSecretCarry(stomp, 'kiko')).toBe(true);
     expect(brawlerShouldBufferTech(stomp, 'kiko', after)).toBe(true);       // 覚える
     expect(brawlerTechBufferDecision({ ...stomp, techBuffer: 'kiko' }, after)).toBe('wait'); // 後隙の間は出ない(呼び手が待機へ戻った瞬間に出す)
-    expect(brawlerShouldBufferTech(stomp, 'kick', after)).toBe(false);      // 順番の外は覚えない
-    expect(brawlerShouldBufferTech(stomp, 'guard', after)).toBe(false);
-    // 順番が進んでいない大踏み潰し(秘奥義を狙っていない)では覚えない
-    expect(brawlerShouldBufferTech({ ...stomp, secretProgress: 0 }, 'kiko', after)).toBe(false);
+    expect(brawlerSecretCarry(stomp, 'kick')).toBe(false);                  // 順番の外は秘奥義の持ち越しではない
+    expect(brawlerSecretCarry(stomp, 'guard')).toBe(false);
+    // §25: 順番の外の技も、判定の後に押したものは1つ覚える(秘奥義の持ち越しと別の経路=lateHeld)。判定の前なら従来どおり捨てる
+    expect(brawlerShouldBufferTech(stomp, 'kick', after)).toBe(true);
+    expect(brawlerShouldBufferTech({ ...stomp, secretProgress: 0 }, 'kiko', after)).toBe(true);
     expect(brawlerSecretCarry({ ...stomp, secretProgress: 0 }, 'kiko')).toBe(false);
     // 当たらなかった大踏み潰し(順番は進んでいる=1手目の蹴りは当たっている)でも、次の気功は覚える(今どおり)
     const miss = { ...techHit('stomp', 0, 0, 0, { ...initialBrawlerState(), secretProgress: 1 }).s, secretProgress: 2 };

@@ -497,7 +497,10 @@ export const BRAWLER_BOUNCE_F = 0.45;
 export let BRAWLER_DOWN_NO_HOLD_MS = 300; // ×BRAWLER_TEMPO(係数1.0の値)
 /** 重さ(区分): 浮く高さ・時間に掛ける。 */
 // ★社長指示2026-11-10「格闘、一旦ボスの重みやめよう。雑魚と同じ軽さに。」で boss 0.4→1.0(強個体 0.7 はそのまま・拾える回数の予算と押しの半分も変えていない)。
-export const BRAWLER_JUGGLE_WEIGHT: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 1.0, strong: 0.7, boss: 1.0 };
+// ★社長裁定2026-11-11「6:普段は少し重く、気絶中からのコンボは軽く」: boss 1.0→0.7(強個体と同じ)。気絶・紫の間に地上から浮かせたコンボは
+//   軽い(BRAWLER_JUGGLE_WEIGHT_STUN_BOSS=1.0=雑魚と同じ)まま、着地まで続く(brLiftLight)。
+export const BRAWLER_JUGGLE_WEIGHT: Readonly<Record<'mob' | 'strong' | 'boss', number>> = { mob: 1.0, strong: 0.7, boss: 0.7 };
+export const BRAWLER_JUGGLE_WEIGHT_STUN_BOSS = 1.0;
 /**
  * 当たった段・技ごとの押し上げ量(4段目=1)。1・2段目・気功=小、3段目・飛び蹴り1・2発目=中。
  * 0 = 押し上げない(5段目・飛び蹴り3発目・大踏み潰し・秘奥義の締め=空中からも吹き飛ばす)。
@@ -540,6 +543,8 @@ export interface BrawlerJuggleFields {
   /** §13-2: 残りの拾える回数・ダウン中・バウンドを使った流れ・バウンドの落ちる区間。 */
   brLiftBudget?: number;
   brLiftDown?: boolean;
+  /** ボス級: 気絶・紫の間に地上から浮かせたコンボ=軽い重さのまま着地まで(社長裁定2026-11-11・research/BRAWLER.md §25)。 */
+  brLiftLight?: boolean;
   brBounceCombo?: number;
   brLiftDropMs?: number;
   /** 弧の形('blast'=爆発の浮き・§14)。無し=格闘の弧。 */
@@ -643,10 +648,14 @@ export const brawlerAirSignal = (e: BrawlerJuggleFields, now: number): number =>
  */
 export const brawlerJugglePush = (
   e: BrawlerJuggleFields, cls: 'mob' | 'strong' | 'boss', move: BrawlerMoveKey, now: number,
+  /** stunned=当たる時にその敵が気絶・紫か(ボス級を地上から浮かせる時だけ見る=気絶中からのコンボは軽い)。 */
+  stunned = false,
 ): Partial<BrawlerJuggleFields> & { liftUntil?: number; brNoHoldUntil?: number } | null => {
   const airborne = brawlerAirborne(e, now);
   const push = BRAWLER_JUGGLE_PUSH[move];
-  const w = BRAWLER_JUGGLE_WEIGHT[cls];
+  // ボス級: 気絶中に浮かせたコンボ(brLiftLight)は軽い重さのまま着地まで。地上から浮かせる時は、いま気絶中かで決める。
+  const light = cls === 'boss' && (airborne ? e.brLiftLight === true : stunned);
+  const w = light ? BRAWLER_JUGGLE_WEIGHT_STUN_BOSS : BRAWLER_JUGGLE_WEIGHT[cls];
   const arc = (f: number) => Math.max(BRAWLER_JUGGLE_MIN_MS, Math.round(BRAWLER_LIFT_MS * f));
   if (!airborne) {
     const launch = BRAWLER_GROUND_LAUNCH[move];
@@ -656,7 +665,7 @@ export const brawlerJugglePush = (
     const ms = arc(f);
     // brBlastAirSince: 空中の始まり(この後に爆発で浮き直した時、爆発で浮かない窓の長さを空中の時間で測る・§14)。
     return { brawlerLiftAt: now, brLiftMs: ms, brLiftPeak: f, brLiftFrom: 0, brLiftN: 0, brLiftUntil: now + ms, liftUntil: now + ms, brLiftLand: true, brLiftShape: undefined,
-      brLiftBudget: BRAWLER_JUGGLE_BUDGET[cls], brLiftDown: false, brLiftDropMs: 0, brBlastAirSince: now };
+      brLiftBudget: BRAWLER_JUGGLE_BUDGET[cls], brLiftDown: false, brLiftDropMs: 0, brBlastAirSince: now, brLiftLight: light };
   }
   if (e.brLiftDown) return null; // ダウン中は拾えない
   const h = brawlerJuggleHeightRel(e, now);

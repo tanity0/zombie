@@ -4695,7 +4695,10 @@ const brawlerHitPatch = (
  */
 const brawlerJugglePatch = (enemy: Enemy, cls: 'mob' | 'strong' | 'boss', move: BRC.BrawlerMoveKey, now: number): Partial<Enemy> | null => {
   if (BRC.brawlerLiftClass(enemy) === null) return null; // ★終端の死神は浮かない(格闘・爆発・スラッシャー共通・§14)
-  const jp = BRC.brawlerJugglePush(enemy, cls, move, now);
+  // ボス級: 気絶・紫の間に浮かせたコンボは軽い(§25)。
+  const gtJ = useGameStore.getState().gameTime;
+  const stunnedJ = (enemy.stunUntil !== undefined && gtJ < enemy.stunUntil) || (enemy.bossFullStunUntil !== undefined && gtJ < enemy.bossFullStunUntil);
+  const jp = BRC.brawlerJugglePush(enemy, cls, move, now, stunnedJ);
   if (!jp) return null;
   if (cls !== 'boss' || BRC.brawlerAirborne(enemy, now) || (jp.brLiftUntil ?? 0) <= now) return jp;
   const dr = evaluateBossStopDr(enemy, now);
@@ -11039,7 +11042,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 取り消しの受付が開いた瞬間に出す。道に無い技は覚えない(下で出せない扱い)。当たらなかった時は捨てる(後隙の終わりに勝手に出さない)。
     // 値段は出す瞬間に払う。覚えている間の通常攻撃の先行入力は捨てる(技を優先)。
     if (kind && BR.brawlerShouldBufferTech(s, kind, t)) {
-      setBrawler(set, { ...s, techBuffer: kind, buffered: false, stepBuffer: undefined, stepHeld: BR.brawlerStepping(s, t) }); // 先行入力は1つだけ(最後の入力を優先・§12-3b)
+      setBrawler(set, { ...s, techBuffer: kind, buffered: false, stepBuffer: undefined, stepHeld: BR.brawlerStepping(s, t), lateHeld: BR.brawlerLateCarry(s, kind, t) }); // 先行入力は1つだけ(最後の入力を優先・§12-3b)
       return true;
     }
     if (!kind) {
@@ -11176,7 +11179,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (ev === 'resolve') { resolveBrawlerAction(get, set); continue; }
       // 終わり
       // ★秘奥義の順番どおりの次の技を、受付の外で覚えていたか(§19-2 の持ち越し=待機へ戻った瞬間に出す)。終える前の状態で見る。
-      const secretCarry = !!s.techBuffer && BR.brawlerSecretCarry(s, s.techBuffer);
+      // ★判定の後に押した技(§25・社長裁定2026-11-11「2:A」)も同じ=1つだけ覚えて、待機へ戻った瞬間に出す。
+      const secretCarry = !!s.techBuffer && (s.lateHeld === true || BR.brawlerSecretCarry(s, s.techBuffer));
       const { state: fin, fire } = BR.brawlerFinish(s, get().gameTime);
       const close = s.tech === 'guard' ? { counterWindowEnd: Math.min(get().player.counterWindowEnd, Date.now()) } : {};
       setBrawler(set, fin, close);

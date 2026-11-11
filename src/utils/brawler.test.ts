@@ -10,7 +10,7 @@ import {
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
   brawlerFistTargets, brawlerApproach, accelLungeSpeed, accelLungeFactor, BRAWLER_ACCEL_FRAC, brawlerJumpHeight,
   brawlerLiftHeight, brawlerPoseAt, isBrawlerGuardingAt, brawlerStompShake, BRAWLER_STOMP_SHAKE_PX, BRAWLER_HIT_PITCH, brawlerStageHitSfx, brawlerKickHitSfx, BRAWLER_GUARD_MS, BRAWLER_KICK_CHAIN_MS,
-  brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
+  brawlerTechCancelOk, brawlerFlowOnHit, brawlerSecretAfterKick, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, BRAWLER_CANCEL_WINDOW_MS,
   BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT, brawlerKickMult,
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
 } from './brawler';
@@ -535,7 +535,7 @@ describe('流れの当たりの数(拳鬼のダメージ補正が読む。プレ
 });
 
 describe('技の先行入力(社長指示2026-11-08「技の先行入力だけ採用」・§9-60・§19-2)', () => {
-  it('行動の最中で今は出せない「道の上の技」だけ覚える(道に無い技は覚えない・当たらなかったら覚えない)', () => {
+  it('行動の最中で今は出せない技を覚える: 判定の前は「道の上の技」だけ(道に無い技・自分と同じ技は覚えない)/ 判定の後(後隙)に押した技は道の外・空振りでも1つ覚える(§25)', () => {
     const s = brawlerStartTech(initialBrawlerState(), 'stomp', 0);
     expect(brawlerShouldBufferTech(s, 'kiko', 50)).toBe(true);            // 前隙・道の上(大踏み潰し→気功)
     expect(brawlerShouldBufferTech(s, 'kick', 50)).toBe(true);            // §20-3: 大踏み潰し→飛び蹴りも取り消せる
@@ -544,9 +544,13 @@ describe('技の先行入力(社長指示2026-11-08「技の先行入力だけ�
     const hit = brawlerAfterResolve(s, 200, 1, { pointCap: 20, countPoint: false, hitstopMs: 140 });
     expect(brawlerShouldBufferTech(hit, 'kiko', 250)).toBe(true);         // 止めの間(受付が開く前)
     expect(brawlerShouldBufferTech(hit, 'kiko', 360)).toBe(false);        // 受付の内=取り消しで即座に出る
-    expect(brawlerShouldBufferTech(hit, 'kiko', 200 + 140 + BRAWLER_CANCEL_WINDOW_MS + 10)).toBe(false); // 受付を過ぎた=覚えない
+    expect(brawlerShouldBufferTech(hit, 'kiko', 200 + 140 + BRAWLER_CANCEL_WINDOW_MS + 10)).toBe(true);  // 受付を過ぎた後隙=§25 で覚える(後隙の終わりに待機から出す)
+    expect(brawlerLateCarry(hit, 'kiko', 200 + 140 + BRAWLER_CANCEL_WINDOW_MS + 10)).toBe(true);
+    expect(brawlerLateCarry(hit, 'kiko', 360)).toBe(false);               // 受付の内は出せる=覚えるのではなく即座に出る
+    expect(brawlerLateCarry(s, 'kiko', 50)).toBe(false);                  // 判定の前(出だし)は後隙ではない
     const miss = brawlerAfterResolve(s, 200, 0, { pointCap: 20, countPoint: false, hitstopMs: 140 });
-    expect(brawlerShouldBufferTech(miss, 'kiko', 250)).toBe(false);       // 空振り=覚えない
+    expect(brawlerShouldBufferTech(miss, 'kiko', 250)).toBe(true);        // 空振りの後隙=§25 で覚える(当たりを問わない)
+    expect(brawlerShouldBufferTech(miss, 'stomp', 250)).toBe(true);       // 道の外の技(自分と同じ技)でも後隙なら覚える
     const g = brawlerStartTech(initialBrawlerState(), 'guard', 0);
     expect(brawlerShouldBufferTech(g, 'guard', 100)).toBe(false);         // 構えの延長
     expect(brawlerShouldBufferTech(g, 'kick', 100)).toBe(false);          // 構えの間の他の技は覚えない(旧: 構えの後に出していた)

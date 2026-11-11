@@ -766,13 +766,19 @@ describe('§20-6-4 秘奥義 →↓←↑(飛び蹴り→大踏み潰し→気�
     for (const k of ['stomp', 'kiko', 'guard'] as const) { for (let i = 0; i < 400 && br().phase !== 'idle'; i++) adv(); doTech(k); }
     expect(br().secret).toBeUndefined();
   });
-  it('気功からの構えは秘奥義の締めの時だけ: 順番が揃っていない気功の後隙からは構えは出ない', () => {
+  it('気功からの構えへの取り消しは秘奥義の締めの時だけ: 順番が揃っていない気功の後隙では取り消されず、押した構えは覚えて後隙の終わりに通常の構えとして出る(§25)', () => {
     setup(20);
     spawnFoe('hunter-windup');
     expect(doTech('kiko')).toBe(true);
     for (let k = 0; k < 100 && !br().resolved; k++) adv();
-    expect(doTech('guard')).toBe(false);
+    // 気功の後隙から構えへ取り消しはできない(その場では出ない・tech は気功のまま)。§25: 判定の後に押した技は1つ覚え、後隙の終わりに待機から出す(取り消しではない)
+    expect(doTech('guard')).toBe(true);
     expect(br().tech).toBe('kiko');
+    expect(br().techBuffer).toBe('guard');
+    expect(br().secret).toBeUndefined();
+    for (let k = 0; k < 400 && br().phase !== 'idle' && br().tech === 'kiko'; k++) adv();
+    expect(br().tech).toBe('guard');                                          // 待機へ戻った瞬間に通常の構えとして出る(秘奥義ではない)
+    expect(br().secret).toBeUndefined();
     // 取り消しの受付の値(定数)も合わせて見る
     expect([BRAWLER_CANCEL_WINDOW_MS, BRAWLER_TECHS.kiko.recoveryMs, brawlerStageSpec(1).recoveryMs]).toEqual([195, 429, 182]);
   });
