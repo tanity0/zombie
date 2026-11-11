@@ -461,6 +461,20 @@ export const pbSecretLeapReady = (i: PhantomBrawlerInput, m: PhantomBrawlerMind)
   && pbHpPolicy(i).secretLeap && i.s.points >= i.pointCap && i.s.points >= secretTotalCost(i.discount)
   && i.t - m.lastSecretAt >= PB_SECRET_COOLDOWN_MS;
 
+/**
+ * ★跳びかかりで詰めた後、すぐ攻撃に転じる癖(社長指示2026-11-11「ジャンプで詰めてきたら、すぐに攻撃に転じてくる癖をいれたい」)。
+ * 着地後の停止が明けた瞬間に、この確率で息継ぎ・考える拍・様子見を外す=そのまま次の連続(届く距離なら台本・遠ければ詰めの手)へ。
+ * 外れた時は今までどおり息継ぎを入れる(常には使わない=人間味)。着地後の停止(ハンターと同じ長さ)は変えない。
+ */
+export const PB_LEAP_FOLLOW_P = 0.8;
+/** 跳びかかりの着地後の停止が明けた。follow=すぐ攻撃に転じる(息継ぎなし)/ そうでなければ息継ぎを入れる。 */
+export const pbOnLeapDone = (m: PhantomBrawlerMind, t: number, follow: boolean, breathMs: number): void => {
+  if (!follow) { m.nextStringAt = t + breathMs; return; }
+  m.breathOwed = false;
+  m.wasBusy = false;
+  m.nextStringAt = t; m.approachBeatAt = 0; m.holdUntil = 0;
+};
+
 /** 跳びかかりが終わった(着地後の停止が明けた)。台本6の跳びなら秘奥義を狙い始める(当たり外れに関わらず)。 */
 export const pbSecretAfterLeap = (m: PhantomBrawlerMind): void => {
   if (!m.leapForSecret) return;

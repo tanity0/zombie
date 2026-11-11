@@ -16,7 +16,7 @@ import * as BR from './brawler';
 import { brawlerProration } from './brawlerCombo';
 import { brawlerSpeedDamageMult, brawlerTimeKeeperDiscount, brawlerOverclockRefunds } from './brawlerSkills';
 import {
-  createPhantomBrawlerMind, decidePhantomBrawler, notePlayerStrike, phantomBrawlerBreath, pbInterruptScript, pbSecretAfterLeap, pbOnLeapJumped, pbOnShukuchi, pbUndoStamps,
+  createPhantomBrawlerMind, decidePhantomBrawler, notePlayerStrike, phantomBrawlerBreath, pbInterruptScript, pbSecretAfterLeap, pbOnLeapJumped, pbOnLeapDone, PB_LEAP_FOLLOW_P, pbOnShukuchi, pbUndoStamps,
   pbScriptFinisherKiko, type PhantomBrawlerMind, type PbUndo,
 } from './phantomBrawlerAi';
 import { kenkiPrepDue, kenkiPrepStart, type KenkiPrep } from './kenkiPrep';
@@ -792,7 +792,11 @@ const stepKenkiLeap = (c: PhantomBrawlerCtx, s: BrawlerState): boolean => {
     enqueueBrawlerSfx('brawler-stomp', 1.0, 0.85);
   }
   if (gj.done) {
-    c.rt.mind.nextStringAt = t + phantomBrawlerBreath(c.rand);
+    // ★すぐ攻撃に転じる癖(§15-3): 着地後の停止が明けた瞬間、8割で息継ぎ・反応の下限・考える拍を外す(そのまま次の連続へ)。
+    //   外れた時は今までどおり息継ぎ。台本6の跳び(秘奥義を狙う)は今までどおり(癖の抽選をしない・下の pbSecretAfterLeap が受け持つ)。
+    const follow = !c.rt.mind.leapForSecret && c.rand() < PB_LEAP_FOLLOW_P;
+    pbOnLeapDone(c.rt.mind, t, follow, phantomBrawlerBreath(c.rand));
+    if (follow) c.rt.reachSince = t - 10_000;
     pbSecretAfterLeap(c.rt.mind); // 台本6: 着地したら(当たり外れに関わらず)秘奥義を狙う(§16-3)
     return false;
   }

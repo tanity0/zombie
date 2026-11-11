@@ -14,6 +14,7 @@ import type { Enemy } from '../types/game';
 const START_GT = 10_000_000;
 const ORIGIN = 50_000;
 
+import { PB_BREATH_MIN_MS } from './phantomBrawlerAi';
 describe('相の登録(区分どおり)', () => {
   it('待機=追いかけ・前隙=技の最中・戻り=硬直', () => {
     expect(phantomBrawlerBossState(undefined, 0)).toBe('chase');
@@ -543,6 +544,35 @@ describe('拳鬼が格闘で戦う(結合)', () => {
     expect(h.cur().bossState).toBe('gp-brawler-recover');
     for (let i = 0; i < 200 && h.cur().aiPhase === 'recover'; i++) h.step(16);
     expect(h.cur().aiPhase).toBeUndefined();
+  });
+  // research/BRAWLER_PHANTOM.md §15-3(社長指示2026-11-11「ジャンプで詰めてきたら、すぐに攻撃に転じてくる癖をいれたい」)
+  it('跳びかかりで詰めた後: 着地後の停止が明けたら、息継ぎなしですぐ次の連続へ(8割)。外れた時は今までどおり息継ぎ', () => {
+    const run = (rand: () => number) => {
+      const h = setup(400, {}, rand);
+      h.step(16);
+      const gt0 = useGameStore.getState().gameTime;
+      useGameStore.setState(s => ({ enemies: s.enemies.map(x => x.id === h.id ? { ...x, aiPhase: 'crouch', aiPhaseUntil: gt0 + PUMPKIN_CROUCH_MS / ENEMY_ATTACK_SPEED_MULT } : x) }));
+      for (let i = 0; i < 2000 && h.cur().aiPhase !== 'recover'; i++) h.step(16);
+      expect(h.cur().aiPhase).toBe('recover');
+      const recoverFrom = useGameStore.getState().gameTime;
+      for (let i = 0; i < 400 && h.cur().aiPhase === 'recover'; i++) h.step(16);
+      expect(h.cur().aiPhase).toBeUndefined();
+      const doneAt = useGameStore.getState().gameTime;
+      const mind = h.st.brawler!.mind;
+      const nextStringAt = mind.nextStringAt;
+      let attackedAfter = -1;
+      for (let i = 0; i < 80 && attackedAfter < 0; i++) { h.step(16); if (h.cur().phantomBrawler?.phase === 'attack') attackedAfter = useGameStore.getState().gameTime - doneAt; }
+      return { stopMs: doneAt - recoverFrom, breath: nextStringAt - doneAt, attackedAfter };
+    };
+    const follow = run(() => 0.5);   // 0.5 < 0.8 = 癖が出る
+    const rest = run(() => 0.999);   // 外れ = 今までどおり
+    // 着地後の停止(ハンターと同じ長さ)は変えていない
+    expect(Math.abs(follow.stopMs - rest.stopMs)).toBeLessThanOrEqual(16);
+    expect(follow.breath).toBeLessThanOrEqual(0);        // 息継ぎなし
+    expect(rest.breath).toBeGreaterThanOrEqual(PB_BREATH_MIN_MS - 16); // 息継ぎあり(300〜700ms)
+    expect(follow.attackedAfter).toBeGreaterThanOrEqual(0);
+    expect(follow.attackedAfter).toBeLessThanOrEqual(120); // 停止が明けて数フレームで殴り始める
+    expect(rest.attackedAfter === -1 || rest.attackedAfter > follow.attackedAfter + 150).toBe(true);
   });
   it('縮地: 届く距離の内でのカウンター(近接の窓)では詰めない', () => {
     const h = setup(40);
