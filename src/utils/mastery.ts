@@ -16,7 +16,7 @@ import {
 } from '../data/mastery';
 import {
   clearMasteryReport, clearPendingMastery, getPendingMastery, hasPendingMastery, isMasteryRunCommitted,
-  isMasteryRunIgnored, markMasteryRunCommitted, type MasteryXpTable,
+  isMasteryRunIgnored, markMasteryRunCommitted, setLastMasteryCommit, type MasteryCommitResult, type MasteryXpTable,
 } from './masteryRun';
 import { brawlerEnemyClass } from './brawlerCombo';
 import type { EnemyType, Player, SubWeaponKey } from '../types/game';
@@ -209,17 +209,36 @@ export const masteryXpWeight = (enemy: { type: EnemyType; colorTier?: string } |
 /**
  * 貯める量(v2 §4-1): 実際に通った量を熟練度の倍率で割り戻して四捨五入し、区分の重みを掛ける。
  * 育たないキー(`none`・`loadout`・`max`)・出どころ無しは0。
+ * `opts.noDivide`: 熟練度の倍率が掛かっていない当たり(処刑=残り体力をそのまま取る)。割り戻さず、区分の重みだけ掛ける。
  */
 export const masteryXpAmount = (
   player: Pick<Player, 'masteryMult' | 'masteryLoadoutMult'> | null | undefined,
   key: MasteryKey | null | undefined,
   appliedDamage: number,
   enemy: { type: EnemyType; colorTier?: string } | null | undefined,
+  opts?: { noDivide?: boolean },
 ): number => {
   if (!isGrowingMasteryKey(key)) return 0;
   if (!Number.isFinite(appliedDamage) || appliedDamage <= 0) return 0;
-  const m = masteryMultOf(player, key);
+  const m = opts?.noDivide ? 1 : masteryMultOf(player, key);
   return Math.max(0, Math.round(appliedDamage / (m > 0 ? m : 1))) * masteryXpWeight(enemy);
+};
+
+/**
+ * 燃焼の付け直し(強さは高い方を残す所)で、強さとキーを同じ付け手に揃える。
+ * 新しい強さが今の強さ以上なら新しい方のキー、そうでなければ今のキーを残す(=強さが勝った方のキーが残る)。
+ * 強さは今までどおり `Math.max(今, 新)`(期限切れの燃焼の強さも今までどおり比べる=与ダメは変えない)。
+ */
+export const burnRefreshMastery = (
+  cur: { burnDpsTick?: number; burnMasteryKey?: MasteryKey },
+  newDps: number,
+  newKey: MasteryKey,
+): { burnDpsTick: number; burnMasteryKey: MasteryKey | undefined } => {
+  const old = cur.burnDpsTick ?? 0;
+  return {
+    burnDpsTick: Math.max(old, newDps),
+    burnMasteryKey: newDps >= old ? newKey : cur.burnMasteryKey,
+  };
 };
 
 /**
@@ -237,10 +256,8 @@ export const recoverMasteryPending = (): void => {
 
 // ── リザルトでの確定 ──────────────────────────────────────────────────────
 
-export interface MasteryCommitEntry { before: number; after: number; levelBefore: number; levelAfter: number }
-export type MasteryCommitResult = Partial<Record<GrowingMasteryKey, MasteryCommitEntry>>;
-
-let lastCommit: MasteryCommitResult = {};
+export type { MasteryCommitEntry, MasteryCommitResult } from './masteryRun';
+export { getLastMasteryCommit } from './masteryRun';
 
 /**
  * リザルトへ入る時に1回。メモリの pending を本体へ足し、pending を空にし、退避も消す。
@@ -249,7 +266,7 @@ let lastCommit: MasteryCommitResult = {};
 export const commitMasteryRun = (): MasteryCommitResult => {
   if (isMasteryRunCommitted()) return {};
   markMasteryRunCommitted();
-  if (isMasteryRunIgnored()) { lastCommit = {}; return {}; }
+  if (isMasteryRunIgnored()) { setLastMasteryCommit({}); return {}; }
   const add = getPendingMastery();
   const cur = loadMastery();
   const result: MasteryCommitResult = {};
@@ -263,9 +280,6 @@ export const commitMasteryRun = (): MasteryCommitResult => {
   if (Object.keys(result).length > 0) saveMastery(addXp(cur, add));
   clearPendingMastery();
   removeStash();
-  lastCommit = result;
+  setLastMasteryCommit(result);
   return { ...result };
 };
-
-/** 直前の commitMasteryRun の結果(リザルトの表示が読み直す)。 */
-export const getLastMasteryCommit = (): MasteryCommitResult => ({ ...lastCommit });

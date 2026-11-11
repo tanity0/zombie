@@ -26,6 +26,7 @@ export type GrowingMasteryKey = typeof GROWING_MASTERY_KEYS[number];
  *  - `loadout` = どの武器にも入らない本人の与ダメ。倍率は出撃開始時に持っている物の平均。貯めない。
  *  - `none`    = 本人ではない与ダメ(守護霊・幻影・護衛・英雄の犬・敵どうし・環境)。倍率1・貯めない。
  *  - `max`     = 「最初から最大」の物の与ダメ。倍率は固定の MASTERY_MAX_MULT・貯めない(無視する出撃では1)。
+ *                今は使う与ダメが実物に無い(残った5つのサブは与ダメを出さない)。口だけ残してある。
  */
 export type MasteryKey = GrowingMasteryKey | 'loadout' | 'none' | 'max';
 

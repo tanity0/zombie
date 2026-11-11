@@ -21,10 +21,10 @@ import type { AmmoType, SubWeaponKey } from '../types/game';
 import {
   masteryNeedFor, masteryLevelFor, masteryProgress, masteryDamageMult, normalizeMastery, loadMastery, saveMastery,
   masteryMultTable, masteryLoadoutMult, masteryMultOf, masteryIgnoredRun, commitMasteryRun, getLastMasteryCommit,
-  recoverMasteryPending, masteryXpWeight, masteryXpAmount, type MasteryRunFlags,
+  recoverMasteryPending, masteryXpWeight, masteryXpAmount, burnRefreshMastery, type MasteryRunFlags,
 } from './mastery';
 import {
-  withMastery, currentMasterySource, beginMasteryRun, noteMasteryDamage, getPendingMastery, getMasteryReport,
+  withMastery, currentMasterySource, currentMasteryExecute, beginMasteryRun, noteMasteryDamage, getPendingMastery, getMasteryReport,
   stashMasteryPending, isMasteryRunIgnored,
 } from './masteryRun';
 
@@ -203,6 +203,15 @@ describe('出どころの包み(withMastery)', () => {
     });
     expect(currentMasterySource()).toBeNull();
   });
+  it('処刑の印(execute)は包んだ間だけ立ち、入れ子では内側の物・抜けると元へ戻る', () => {
+    expect(currentMasteryExecute()).toBe(false);
+    withMastery('melee', () => {
+      expect(currentMasteryExecute()).toBe(true);
+      withMastery('none', () => { expect(currentMasteryExecute()).toBe(false); });
+      expect(currentMasteryExecute()).toBe(true);
+    }, { execute: true });
+    expect(currentMasteryExecute()).toBe(false);
+  });
 });
 
 describe('区分の重み(masteryXpWeight / masteryXpAmount)', () => {
@@ -224,6 +233,21 @@ describe('区分の重み(masteryXpWeight / masteryXpAmount)', () => {
     expect(masteryXpAmount(player, 'katana', 100, { type: 'logger' })).toBe(base * 1.5);
     expect(masteryXpAmount(player, 'katana', 100, { type: 'thor' })).toBe(base * 2);
     expect(masteryXpAmount(player, 'loadout', 100, { type: 'thor' })).toBe(0);
+  });
+  it('処刑(noDivide)は割り戻さず、重みだけ掛ける', () => {
+    const player = { masteryMult: { katana: 1.3 } } as Parameters<typeof masteryXpAmount>[0];
+    expect(masteryXpAmount(player, 'katana', 100, { type: 'zombie' }, { noDivide: true })).toBe(100);
+    expect(masteryXpAmount(player, 'katana', 100, { type: 'thor' }, { noDivide: true })).toBe(200);
+    expect(masteryXpAmount(player, 'none', 100, { type: 'thor' }, { noDivide: true })).toBe(0);
+  });
+});
+
+describe('燃焼の付け直し(burnRefreshMastery)', () => {
+  it('強さは高い方・キーは強さが勝った方の付け手(同じ強さなら新しい方)', () => {
+    expect(burnRefreshMastery({ burnDpsTick: 5, burnMasteryKey: 'molotov' }, 3, 'shotgun')).toEqual({ burnDpsTick: 5, burnMasteryKey: 'molotov' });
+    expect(burnRefreshMastery({ burnDpsTick: 3, burnMasteryKey: 'molotov' }, 5, 'shotgun')).toEqual({ burnDpsTick: 5, burnMasteryKey: 'shotgun' });
+    expect(burnRefreshMastery({ burnDpsTick: 4, burnMasteryKey: 'molotov' }, 4, 'shotgun')).toEqual({ burnDpsTick: 4, burnMasteryKey: 'shotgun' });
+    expect(burnRefreshMastery({}, 2, 'loadout')).toEqual({ burnDpsTick: 2, burnMasteryKey: 'loadout' });
   });
 });
 
@@ -267,6 +291,14 @@ describe('リザルトでの確定(commitMasteryRun)', () => {
     expect(commitMasteryRun()).toEqual({});
     expect(loadMastery().xp).toEqual({ handgun: 3100, katana: 50 });
     expect(getLastMasteryCommit()).toEqual(r);
+  });
+  it('直前の確定結果は出撃の開始(beginMasteryRun)で空になる', () => {
+    startRun(false);
+    noteMasteryDamage('handgun', 200);
+    commitMasteryRun();
+    expect(getLastMasteryCommit()).not.toEqual({});
+    startRun(false); // リザルトを通らずに次の出撃
+    expect(getLastMasteryCommit()).toEqual({});
   });
   it('出撃の間に段階は変わらない。確定の後、次の出撃で倍率が上がる', () => {
     saveMastery({ xp: { rifle: 2990 } });

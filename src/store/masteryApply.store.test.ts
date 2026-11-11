@@ -247,3 +247,63 @@ describe('追加13: 火炎瓶だけで倒す出撃で molotov が貯まる', () 
     expect(Object.keys(getPendingMastery())).toEqual(['molotov']);
   });
 });
+
+describe('幻影には熟練度を乗せない(発注者指示「幻影にはこちらの武器も熟練値を乗せない」)', () => {
+  /** プレイヤーの目の前に幻影(または雑魚)を1体だけ置く。 */
+  const spawnTarget = (type: 'guardian-phantom' | 'zombie', dx = 4) => {
+    const p = st().player;
+    const e = spawnEnemyAt(type, p.x + p.width / 2 + dx, p.y + p.height / 2, st().gameTime);
+    e.health = 99999; e.maxHealth = 99999; e.id = 'z';
+    useGameStore.setState({ enemies: [e] });
+    return e;
+  };
+  /** 弾の当たり(ハンドガンのキーで包む・倍率は呼び手が掛ける=useGameLoop と同じ掛け方)。 */
+  const gunHit = (type: 'guardian-phantom' | 'zombie') => {
+    spawnTarget(type, 60);
+    const dmg = 100 * masteryMultOf(st().player, 'handgun');
+    withMastery('handgun', () => st().damageEnemy('z', dmg, false, false, false, 'gun'));
+    return 99999 - hpOf('z');
+  };
+  /** 近接の振り1回(ナイフ・クリなし)。 */
+  const swingAt = (type: 'guardian-phantom' | 'zombie') => {
+    spawnTarget(type);
+    useGameStore.setState(s => ({ player: { ...s.player, counterCooldownEnd: 0, pendingSwingAt: 0 } }));
+    st().triggerCounter();
+    return 99999 - hpOf('z');
+  };
+
+  it('(a) 段階を上げた保存でも、幻影への与ダメは熟練度なしの時と同じ(弾・近接)', () => {
+    const gunBase = gunHit('guardian-phantom');
+    sortie(); prepareMelee();
+    const swingBase = swingAt('guardian-phantom');
+    expect(gunBase).toBeGreaterThan(0);
+    expect(swingBase).toBeGreaterThan(0);
+    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), melee: xpForLevel('melee', 6) } }); // ×1.3 / ×1.5
+    sortie(); prepareMelee();
+    expect(masteryMultOf(st().player, 'handgun')).toBeCloseTo(1.3, 10);
+    expect(gunHit('guardian-phantom')).toBeCloseTo(gunBase, 6);
+    sortie(); prepareMelee();
+    expect(swingAt('guardian-phantom')).toBeCloseTo(swingBase, 6);
+  });
+
+  it('(b) 同じ当たりを幻影でない敵に当てると倍率どおり増える', () => {
+    const gunBase = gunHit('zombie');
+    sortie(); prepareMelee();
+    const swingBase = swingAt('zombie');
+    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), melee: xpForLevel('melee', 6) } });
+    sortie(); prepareMelee();
+    expect(gunHit('zombie')).toBeCloseTo(gunBase * 1.3, 6);
+    sortie(); prepareMelee();
+    expect(swingAt('zombie')).toBeCloseTo(swingBase * 1.5, 6);
+  });
+
+  it('(c) 幻影に与えた分は、実際に通った量のまま貯まる(割りすぎない)', () => {
+    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), melee: xpForLevel('melee', 6) } });
+    sortie(); prepareMelee();
+    const gunDealt = gunHit('guardian-phantom');
+    expect(getPendingMastery().handgun).toBe(Math.round(gunDealt) * 2); // 幻影=ボス級の重み(×2)
+    sortie(); prepareMelee();
+    const swingDealt = swingAt('guardian-phantom');
+    expect(getPendingMastery().melee).toBe(Math.round(swingDealt) * 2);
+  });
+});

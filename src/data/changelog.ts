@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5515', items: [
+    '気絶した敵を近接でとどめを刺した時も、熟練度が貯まる',
+    '幻影が相手の時は、熟練度の強さが掛からない。今までどおりの強さで戦う',
+    '燃やした敵の熟練度が、別の武器に貯まることがあったのが直った',
+  ] },
   { version: '0.25.5514', items: [
     'ボスや強い敵に与えたダメージは、熟練度が多めに貯まる',
   ] },

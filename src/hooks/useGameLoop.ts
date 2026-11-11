@@ -200,7 +200,7 @@ import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
 import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { BOT_PARAM } from '../utils/botFlag';
 import { getMasteryReport, withMastery } from '../utils/masteryRun';
-import { masteryMultOf } from '../utils/mastery';
+import { masteryMultOf, burnRefreshMastery } from '../utils/mastery';
 import type { MasteryKey } from '../data/mastery';
 import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
@@ -2273,6 +2273,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           cycleMode: w.cycleMode, dualRangeMode: w.dualRangeMode, gunbladeMeleeMode: w.gunbladeMeleeMode,
           spreadRadOverride: w.spreadRadOverride, focusSpreadRad: w.focusSpreadRad,
         })),
+        // mastery: 弾の組み立てではない(観測用の写し)
         projectiles: s.projectiles.map(p => ({
           id: p.id, x: Math.round(p.x), y: Math.round(p.y),
           weaponKey: p.weaponKey, weaponType: p.weaponType, hostile: p.hostile,
@@ -6623,7 +6624,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const gby = gcy + Math.sin(-Math.PI / 2) * GATE_ARENA_RADIUS * 0.5;
             const gboss = spawnEnemyAt(gbType, gbx - 24, gby - 24, newGameTime);
             // research/STAGE_DIFFICULTY.md: 天使のスポーン2箇所目(練習/デバッグ)。実ゲート2と同じ係数を掛ける
-            // (練習ランは枠のstageIdが getSelectedStageId から返る=実戦と同じ値になる)。
+            // (練習ランは research/MASTERY.md v2 §6 から係数 1.0=台帳の値。stageBossDiffMults が練習ランで {hp:1, dmg:1} を返す)。
             {
               const gbMult = stageBossDiffMults();
               gboss.health = gboss.maxHealth = Math.round(gboss.health * gbMult.hp);
@@ -10818,6 +10819,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           const pcx = ownerCenterX(mtOwner);
           const pcy = ownerCenterY(mtOwner);
           const ghostOwned = mtOwner.kind === 'ghost-ally';
+          // mastery: 与ダメを出さない置き物(罠=縛るだけ・無い弾は none に解決)
           addProjectile({
             id: `proj-marksman-trap-${Date.now()}`,
             x: pcx - 8,
@@ -11384,6 +11386,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // 是正後の足元座標(演出=着地ダスト/SE距離減衰をここに揃える)。
           const placedFootX = placedClamped.x + shieldW / 2;
           const placedFootY = placedClamped.y + shieldH;
+          // mastery: 与ダメを出さない置き物(設置シールド=敵を減らさない・無い弾は none に解決)
           addProjectile({
             id: `proj-shield-${nowMs}`,
             x: placedClamped.x,
@@ -14395,7 +14398,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           useGameStore.getState().registerMultiHit(glHitCount); // ヘビーガンナー: 2体以上で爆発範囲バフ
           // §6.10 M33③: ボマー = 転がり弾の爆発でも子グレネードを散布(着弾爆発と同じ扱い・再散布なし)。
           if (rollBomberScatterAndNotify(rsPlayer)) {
-            for (const mini of buildBomberMinis(sx, sy, `glroll-${shell.id}`, undefined, undefined, bomberMiniCount(rsPlayer))) addProjectile(mini);
+            for (const mini of buildBomberMinis(sx, sy, `glroll-${shell.id}`, undefined, undefined, bomberMiniCount(rsPlayer))) addProjectile(shellMk === 'none' ? { ...mini, masteryKey: 'none' } : mini); // 熟練度: 本人でない転がり弾から出た子=none(着弾爆発の子と同じ形)
             spawnBurst(sx, sy, '#fbbf24', 8);
           }
         }
@@ -15255,10 +15258,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           if (hits.length > 0) {
             const burnIds = new Set(hits.map(h => h.id));
             const burnAt = gameTime;
-            useGameStore.setState(st2 => ({
+            useGameStore.setState(st2 => {
               // 熟練度(v2.1 A-1): 銃の付ける燃焼=その銃の種類(倍率は燃焼の強さに掛ける)。守護霊の炎=none。
-              enemies: st2.enemies.map(e => (burnIds.has(e.id) && !isCorpse(e) ? { ...e, ...flamerBurnPatch(e, burnAt, ownerGhostId !== undefined, FLAMER_BURN_TICK_DAMAGE * masteryMultOf(st2.player, flMk)), burnMasteryKey: flMk } : e)),
-            }));
+              // キーは強さが勝った方の付け手(強さは flamerBurnPatch の高い方と同じ物差し)。
+              const flTick = FLAMER_BURN_TICK_DAMAGE * masteryMultOf(st2.player, flMk);
+              return {
+                enemies: st2.enemies.map(e => (burnIds.has(e.id) && !isCorpse(e) ? { ...e, ...flamerBurnPatch(e, burnAt, ownerGhostId !== undefined, flTick), burnMasteryKey: burnRefreshMastery(e, flTick, flMk).burnMasteryKey } : e)),
+              };
+            });
           }
         };
 
@@ -16186,6 +16193,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ang = (Math.PI * 2 * k) / homingMiniN + Math.random() * 0.5;
                 addProjectile({
                   id: `proj-bomber-mini-${projectileId}-${nowB}-${k}`,
+                  masteryKey: (shotMk === 'none' ? 'none' : 'heavy-grenade') as MasteryKey, // 熟練度(v2.1 A-8): ボマーの子=heavy-grenade(本人でない弾から=none)
                   x: blastX - 5, y: blastY - 5, width: 10, height: 10,
                   speed: HEAVY_GRENADE_SPEED * 0.8,
                   damage: HEAVY_GRENADE_DAMAGE / 3,
@@ -16765,7 +16773,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   withMastery(wireMk, () => useGameStore.getState().damageEnemy(tgt.id, wireHitDamage, false, false, true, wireChannel, wireHate, wireHate === 'player' ? 'heavy' : null)); // 打撃(爆風ではない・v0.25.4284)
                   spawnDamageNumber(tcx, tgt.y, wireHitDamage, true, { scanMarked: wireScanMult !== 1 });
                 } else {
-                  withMastery(wireMk, () => useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1, false, false, true, wireChannel, wireHate)); // 即死フィニッシュ
+                  withMastery(wireMk, () => useGameStore.getState().damageEnemy(tgt.id, tgt.health + 1, false, false, true, wireChannel, wireHate), { execute: true }); // 即死フィニッシュ(熟練度: 処刑=残り体力を割り戻さずに貯める)
                 }
                 useGameStore.getState().spawnSlash(tcx, tcy - 12, 'rgba(186,230,253,0.98)'); // 縦の斬り下ろし
                 useGameStore.getState().spawnSlash(tcx, tcy + 12, 'rgba(147,197,253,0.9)');

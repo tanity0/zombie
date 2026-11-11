@@ -236,7 +236,8 @@ const GHOST_DERIVED_SLOTS: readonly PracticeSlot[] = GHOST_DOSSIER_SLOTS.filter(
 // 入ってない」への修正)。旧v6 B-5では stage-1 固定(裁定理由は「lab/corridorではない野外」で、
 // 生息ステージも全て野外=理由は満たしたまま)。難度階段(v3676)で賞金首がステージ固有になった後も
 // 練習だけ stage-1=係数×1.0 で出ており、実戦(S3:1.2/S4:1.4/S5:1.6)と強さが食い違っていた。
-// 出撃先を生息地にすれば係数・背景・HP一覧(stageHpMult(slot.stageId))が全て台帳1本で一致する。
+// 出撃先を生息地にすれば背景・出る場所が実戦と一致する。※体力の係数は research/MASTERY.md v2 §6 から練習ランでは
+// 掛けない(1.0=台帳の値)。HP一覧も係数なし(下の practiceBossHealth)。
 // デバッグ強制出現は`?bountynow=1`相乗り(useGameLoop.tsのFORCE_BOUNTY判定がpracticeForces('bountynow')を見る)。
 const BOUNTY_PRACTICE_LABEL: Record<'bounty-ranged' | 'bounty-melee' | 'bounty-balance' | 'bounty-maiko', string> = {
   'bounty-ranged': 'バス停(変異)',

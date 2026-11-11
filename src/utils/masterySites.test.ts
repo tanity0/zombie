@@ -145,6 +145,61 @@ const scan = (): CallSite[] => {
   return sites;
 };
 
+/** `open` の位置の `{` に対応する `}` の位置。 */
+const matchBrace = (s: string, open: number): number => {
+  let depth = 0;
+  for (let k = open; k < s.length; k++) {
+    if (s[k] === '{') depth++;
+    else if (s[k] === '}') { depth--; if (depth === 0) return k; }
+  }
+  return -1;
+};
+
+/** `idx` を囲む一番内側の `{` の位置(無ければ -1)。 */
+const enclosingBrace = (s: string, idx: number): number => {
+  let depth = 0;
+  for (let k = idx - 1; k >= 0; k--) {
+    if (s[k] === '}') depth++;
+    else if (s[k] === '{') { if (depth === 0) return k; depth--; }
+  }
+  return -1;
+};
+
+interface ProjectileBuild { file: string; line: number; hasMasteryKey: boolean; marker: boolean }
+
+/**
+ * 弾(Projectile)の組み立て=`weaponKey:` を持つオブジェクトのうち、弾の形の欄(`weaponType:`・`hitEnemies:`・`direction:` のどれか)も持つ物。
+ * 型の宣言・関数の引数・弾でない記録(解放の記録など)は、この欄が無いので数えない。
+ */
+const scanProjectileBuilds = (): ProjectileBuild[] => {
+  const out: ProjectileBuild[] = [];
+  for (const [path, raw] of Object.entries(SOURCES)) {
+    const file = path.replace(/^\.\.\//, '').replace(/^\.\//, 'utils/');
+    const code = blankCommentsAndStrings(raw);
+    const rawLines = raw.split('\n');
+    const seen = new Set<number>();
+    const wk = /\bweaponKey\??:/g;
+    let m: RegExpExecArray | null;
+    while ((m = wk.exec(code))) {
+      const open = enclosingBrace(code, m.index);
+      if (open < 0 || seen.has(open)) continue;
+      const close = matchBrace(code, open);
+      if (close < 0) continue;
+      const body = code.slice(open, close + 1);
+      if (!/\bweaponType\??:|\bhitEnemies\??:|\bdirection\??:/.test(body)) continue;
+      // 型の宣言(interface/type)は除く: `{` の直前が `interface X` / `type X =` / `:` の型注釈
+      const before = code.slice(Math.max(0, open - 200), open);
+      if (/\binterface\s+\w+(\s+extends\s+[\w<>, ]+)?\s*$|\btype\s+\w+\s*=\s*$/.test(before)) continue;
+      seen.add(open);
+      const line = lineOf(code, open);
+      const markRe = /\/\/\s*mastery:/;
+      const marker = markRe.test(rawLines[line] ?? '') || markRe.test(rawLines[line - 1] ?? '');
+      out.push({ file, line: line + 1, hasMasteryKey: /\bmasteryKey\??:/.test(body), marker });
+    }
+  }
+  return out;
+};
+
 /** damageEnemy を通らず体力を直接減らす5関数(v2 §4-1)。本体で貯める口を呼ぶこと。 */
 const DIRECT_FUNCTIONS = ['triggerCounter', 'performKatanaStrike', 'performWhipStrike', 'shadowCloneStrike', 'skaterBoardHit'] as const;
 
@@ -163,6 +218,13 @@ describe('熟練度の台帳(masterySites)', () => {
 
   it(`呼び出しの総数は ${EXPECTED_CALLS}(増えたら、キーを決めて包んでから数を直す)`, () => {
     expect(sites.length).toBe(EXPECTED_CALLS);
+  });
+
+  it('弾の組み立て(weaponKey: を持つ物)は masteryKey を入れるか、直前の行に // mastery: <理由> の印がある', () => {
+    const builds = scanProjectileBuilds();
+    expect(builds.length).toBeGreaterThan(0);
+    const bad = builds.filter(b => !b.hasMasteryKey && !b.marker).map(b => `${b.file}:${b.line}`);
+    expect(bad).toEqual([]);
   });
 
   it('直接減らす5関数は本体で貯める口を呼ぶ', () => {

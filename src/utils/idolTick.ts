@@ -891,6 +891,7 @@ export const runIdolTick = (
       const aim = hateAim();
       const ndx = aim.x - icx, ndy = aim.y - icy;
       const ndl = Math.hypot(ndx, ndy) || 1;
+      // mastery: none(敵の弾=hostile・無い弾は none に解決)
       useGameStore.getState().addProjectile({
         id: `proj-idol-nade-${idol.id}-${Math.floor(newGameTime)}`,
         x: icx - 7, y: icy - 7, width: 14, height: 14,

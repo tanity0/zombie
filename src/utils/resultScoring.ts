@@ -54,7 +54,7 @@ const GOLD_CAP_SCRAP = 8000;
 //   二重取りだった。育成は自然には下がらないので倍率で払う)。守護霊の引数は引き続き足さない。
 // ★ステージ難度のスコア補正(社長指示2026-08-20「難易度補正の分、スコアにも補正を。換金にも。
 // つまりステージ1より6の方が稼げる(しんどいが)」): stageMult = そのランの焼き値
-// player.stageScoreMult(=難度階段のHP係数をそのまま流用: S1/S2/S7=1.0・S3=1.2・S4=1.4・
+// player.stageScoreMult(=体力の係数とは別の表 STAGE_SCORE_MULT(config/stageDifficulty.ts): S1/S2/S7=1.0・S3=1.2・S4=1.4・
 // S5=1.6・S6=1.8)。growthScoreMult と同じく totalScore と goldScore の両方に1回掛ける。
 export const calculateResultScore = (
   stats: GameStats,
