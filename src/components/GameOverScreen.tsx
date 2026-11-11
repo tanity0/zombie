@@ -32,6 +32,7 @@ import {
   wallAchievementHeadline, metersToNextWall, rankLabel,
 } from '../utils/wallProgress';
 import DirectorResult from './DirectorResult';
+import { commitMasteryRun } from '../utils/mastery';
 import ResultReach, { ResultReachHeadline } from './ResultReach';
 import {
   endGhostOnlineRun, ghostGoldMultiplier, sendGhostFeedback, uploadGhostSlots,
@@ -391,6 +392,16 @@ const GameOverScreen: React.FC<GameOverScreenProps> = ({
     creditedRef.current = true;
     addGold(total);
   }, [isBenchmarkRun, goldEarned, equipmentGold, addGold]);
+
+  // 熟練度(research/MASTERY.md v2 §5 / v2.1 A-4): この出撃で貯めた分を保存へ足すのはリザルトへ入る時の1回だけ
+  // (creditedRef と同じ形)。勝ち・負け・撤退・EXの終わりとも、ここを通る。ベンチの時は呼ばない。
+  // 表示(武器ごとの棒・上がった段階)はバッチBで getLastMasteryCommit() を読む。
+  const masteryCommittedRef = useRef(false);
+  useEffect(() => {
+    if (masteryCommittedRef.current || isBenchmarkRun) return;
+    masteryCommittedRef.current = true;
+    commitMasteryRun();
+  }, [isBenchmarkRun]);
 
   // 掘削記録(社長指示v0.25.2333): このランの到達を履歴へ1回だけ追記し、断面図に過去ランの竪坑を並べる。
   // **追記の前の履歴**を state に持つ(そうしないと「今回」が過去側にも重複して立つ)。

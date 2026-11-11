@@ -198,6 +198,8 @@ import { stageBossHealthFor, STAGE_BOSS_HEALTH_BY_STAGE, guardianPhantomHealth }
 // research/STAGE_DIFFICULTY.md(ステージ難度の階段): 小ボスのステージ固定割当と、ボス個別適用の係数。
 import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
 import { stageBossDiffMults } from '../utils/stageDiffMults';
+import { BOT_PARAM } from '../utils/botFlag';
+import { getMasteryReport } from '../utils/masteryRun';
 import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
 import { idolAirLiftOf } from '../utils/idolScript'; // 宙の偶像に当たった手応えの絵を体の高さへ(見せ方のみ)
@@ -1019,7 +1021,7 @@ const CINE_TESTBED = evParam('cine') === '1'; // cine映像の実験台。stage-
 // M26-L(PACING_PUZZLE.md §6.3): 実機オートパイロット。?bot=<persona> でヘッドレスボットの判断
 // (decideBotInput)を実プレイの入力へ注入する。null(無指定)=完全無効・通常プレイは1バイトも挙動を変えない。
 // 不正値は 'standard' へフォールバック。'rusher'(M19深層ラッシュ専用ペルソナ)も指定可。
-const BOT_PARAM = evParam('bot');
+// v2.1 A-3(research/MASTERY.md): 旗の本体は依存の無い葉 utils/botFlag.ts(gameStore からも読むため)。
 // ★近接ヒットVFXの切り分け(v0.25.4339・開発専用): `?mhit=demo` で近接と無関係に一定間隔で出す。
 const MHIT_DEMO = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mhit') === 'demo';
 const BOT_PERSONA: BotPersona | null = BOT_PARAM === null ? null
@@ -2388,6 +2390,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
       },
       // SKILL_BUILD_REDESIGN.md §15-1(B0発注文): B0計測器の10出力(§12-2#6+§13-4)を丸ごと同梱。
       runTelemetry: getRunTelemetrySnapshot(),
+      // research/MASTERY.md v2 §7: 熟練度の計測用(キーごとの、この出撃で貯めた量)。ボットの出撃は保存へ流さないが、
+      // 報告用の表には数える(resetGame で空にする)。
+      masteryXp: getMasteryReport(),
     };
     console.log('[BOT_REPORT]', JSON.stringify(report));
     (window as unknown as Record<string, unknown>).__BOT_REPORT__ = report;

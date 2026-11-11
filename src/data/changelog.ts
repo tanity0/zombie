@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5511', items: [
+    'ステージ三以降の敵とボスの体力が増えた。最後のステージのボスも硬くなった',
+    '練習では、ステージごとの敵の強さの上乗せが掛からない',
+    '武器を使い込むと強くなる仕組みの準備。効き始めるのは次の更新から',
+  ] },
   { version: '0.25.5510', items: [
     'ゲーム内容の変更はありません',
   ] },

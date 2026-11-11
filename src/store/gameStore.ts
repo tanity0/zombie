@@ -225,7 +225,10 @@ export {
 };
 import { rescueSpawnCandidates } from '../utils/rescueQuestSpawn';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段。係数の判断(計測路なら1.0)はこのヘルパ1本。
-import { stageBossDiffMults } from '../utils/stageDiffMults';
+import { stageMobDiffMults, stageScoreMult } from '../utils/stageDiffMults';
+import { recoverMasteryPending, masteryIgnoredRun, masteryMultTable, masteryLoadoutMult, loadMastery } from '../utils/mastery';
+import { beginMasteryRun } from '../utils/masteryRun';
+import { isBotRun } from '../utils/botFlag';
 // §6.38 B4(クリーンアップ): 実効難易度倍率の式はbountyValue.ts(依存ゼロに近い葉。詳細はファイル冒頭の
 // コメント参照)へ一本化した。bountyTick.tsもここから同じ関数をimportする(=もう複製ではなく本物の
 // 共有import。旧B3コメントの「bountyTick.tsを直接importすると循環」は解消していない=それは今も避け、
@@ -350,7 +353,7 @@ import {
   recordSlotFilled,
   type RunTelemetryEquipSnapshot, type RunTelemetryEquipSlotSnapshot,
 } from '../utils/runTelemetry';
-import { isPracticeRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice';
+import { isPracticeRun, isNoProgressRun, practiceBossType, GUARDIAN_PHANTOM_LABEL } from '../utils/bossPractice';
 import { phantomDisplayLabel } from '../utils/phantomIdentity'; // SAME_ARENA O-5: 幻影の表示名はその回の人格 // BOSS_MAKER.md §20-7-c / research/GHOST_BOSS.md
 // research/GHOST_BOSS.md v6: 幻影が受ける打撃の関所(被弾無敵+パリィ)。**7系統の全てがここを通る**。
 import { phantomHitGate, playerIframeApplies, type PhantomDamageSource, type PhantomHitGateResult } from '../utils/phantomGate';
@@ -26005,6 +26008,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (=途中離脱や死亡では失う。死亡時は damagePlayer でも明示クリア)。
     saveCarriedEquip(null);
     const runEquipBonus = aggregateEquipBonus(runLoadout);
+    // ── 熟練度の焼き込み(research/MASTERY.md v2 §3 / v2.1 A-3・A-4・A-11) ─────────────────────
+    // ①リザルトを通らずに終わった出撃の分を本体へ足す(メモリか退避のどちらか一方)→ ②保存の段階を倍率にして焼く
+    // → ③この出撃の「無視する出撃」の旗を masteryRun へ渡す(判定はここで1回だけ。貯める側・確定・退避はこの旗を読む)。
+    // loadout の平均(A-11)は初期の銃と所持サブが決まった後=下の set() の中で作る。
+    recoverMasteryPending();
+    const masteryIgnored = masteryIgnoredRun({
+      practice: isPracticeRun(),
+      noProgress: isNoProgressRun(),
+      bossMaker: isBossMakerRun(),
+      gauntlet: isGauntletRun(),
+      bot: isBotRun(),
+      tutorial: state.pendingFarBackdrop === 'tutorial',
+      benchmark: state.benchmarkRun,
+    });
+    const bakedMasteryMult = masteryMultTable(loadMastery(), masteryIgnored);
+    beginMasteryRun({ ignored: masteryIgnored });
     // ── 永続育成「強化」の焼き込み(research/GROWTH.md v4「★焼き込みの原則」) ──────────────────
     // 有効段数(store)を読むのは**ここだけ**。以降ラン中・リザルトは Player の焼き値だけを読むので、
     // 「メーター変更は次の出撃から」が機械的に保証される(守護霊の疑似Playerも同じ焼き値を通る)。
@@ -26024,8 +26043,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // スコア倍率(社長裁定2026-08-20): メーター1本フルで−0.2・ゴールド系統は数えない。計測路は上と同じく0段=1.0。
     const bakedGrowthScoreMult = growthScoreMult(growthMeters);
     // ステージ難度のスコア倍率(社長指示2026-08-20「難易度補正の分、スコアにも。換金にも」):
-    // 難度階段のHP係数をそのまま流用(S3=1.2〜S6=1.8・他/計測路は1.0=ヘルパが返す)。
-    const bakedStageScoreMult = stageBossDiffMults().hp;
+    // research/MASTERY.md v2 §6: 体力の表とは分けた STAGE_SCORE_MULT(S3=1.2〜S6=1.8・他/計測路は1.0=ヘルパが返す)。
+    const bakedStageScoreMult = stageScoreMult();
     // DDAの参照HP(社長裁定Q3=A案): profile.maxHp+育成HP加算。**装備HPは含めない**
     // (含めると現行PPに乗っている装備HP寄与が消える=裁定外の挙動変更になる)。
     const bakedDdaBaseHp = profile.maxHp + growthHpBonus;
@@ -26060,6 +26079,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         // 6挺と同じ「購入経路を経ていないと持てない」罠の、サブウェポン版の回避)。ツマミが無ければ
         // DEV_SUB_KEYはnullなのでArray.from(new Set([...,undefined以外]))は従来と1バイトも変わらない。
         : Array.from(new Set<SubWeaponKey>([innateSub, ...loDedup, ...(DEV_SUB_KEY ? [DEV_SUB_KEY] : [])]));
+      // 熟練度 loadout の倍率(research/MASTERY.md v2.1 A-11): 初期の銃と所持サブが決まった後に1回だけ作る
+      // (出撃の途中で拾った銃・買ったサブでは作り直さない)。無視する出撃では bakedMasteryMult が空=1。
+      const bakedMasteryLoadoutMult = masteryLoadoutMult(bakedMasteryMult, {
+        gunCategories: startingWeapons.filter(w => !w.isMelee).map(w => w.category),
+        hasMelee: startingWeapons.some(w => w.isMelee),
+        subs: runSubs,
+      });
       // 装備スキル(出撃時に player.skills へ反映)。
       // SKILL_BUILD_REDESIGN.md §16-10 ★A(持ち込み廃止・確定=MAX_CARRY_SKILLS=0): 通常出撃は
       // ラン内ドラフトのみでruntime skillsを組む=開始0件。同行者(companionSkill/selectedCompanionSkill)
@@ -26136,7 +26162,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // ボスメーカー)がここを通るのでセット点はこの1箇所で足りる。計測路(ボスメーカー/ガントレット)は
       // ヘルパが1.0を返す=ボス側の個別適用と同じ判断を1本で共有する。
       {
-        const stageDiff = stageBossDiffMults();
+        // research/MASTERY.md v2 §6: 雑魚用(ボスだけの上乗せを入れない・練習ランでも1.0)。
+        const stageDiff = stageMobDiffMults();
         setStageDifficultyMults(stageDiff.hp, stageDiff.dmg);
       }
       // 遠景森2(手前の帯)は forest/lab どちらでも有効(ダンステストのみ無効)。lab は機材シルエット帯。
@@ -26447,6 +26474,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 育成の焼き値(上の「★焼き込みの原則」)。ラン中の参照先はここ。
           growthAtkMult: bakedGrowthAtkMult,
           levelAtkMult: 1, // ラン内の攻撃力カード(stat)の累積は出撃ごとに1へ
+          // 熟練度の焼き値(research/MASTERY.md v2 §3)。出撃の間は変えない。
+          masteryMult: bakedMasteryMult,
+          masteryLoadoutMult: bakedMasteryLoadoutMult,
           growthScoreMult: bakedGrowthScoreMult,
           stageScoreMult: bakedStageScoreMult,
           growthAmmoMax: bakedGrowthAmmoMax,

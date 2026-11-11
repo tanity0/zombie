@@ -30,7 +30,7 @@ import { GLEN_FORM1_HP_MULT } from './glenChain';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段(HP係数)。**生の台帳を直接読む**——表示は常に
 // 「プレイヤーが見る実戦の値」で、計測路の中立化(utils/stageDiffMults)は一覧を出さない場面の話なので
 // ここでは通さない。config/stageDifficulty.ts は依存ゼロの葉=循環importにならない。
-import { stageHpMult, BOUNTY_HOME_STAGE } from '../config/stageDifficulty';
+import { BOUNTY_HOME_STAGE } from '../config/stageDifficulty';
 
 // ---------------------------------------------------------------------------------------------
 // 出撃の種類(ランのフラグ)
@@ -431,13 +431,10 @@ const practiceBossBaseHealth = (slot: PracticeSlot): number | null => {
  *   (当時のコメントは「base(500)のまま/12倍の嘘」と書いていたが、**×ENEMY_HP_MULT(5)を見落とした
  *    誤り**。正しくは2500で2.4倍のズレだった)。
  * ★**stage-ex1 は台帳に行が無い**ので従来どおり実効2500=表示できない(null)。
- * ★research/STAGE_DIFFICULTY.md: 実戦のスポーンは台帳HPに**ステージ係数**を掛けるので、表示も同じ式で出す
- *   (掛けないと一覧が実戦と食い違う)。賞金首枠は生息ステージへ出撃(2026-08-20修正)=実戦と同係数。
- *   幻影枠は stage-1 固定のまま(実戦側も係数を通さないので×1.0が正)。
- *   計測路(ボスメーカー/ガントレット)は実戦側が1.0だが、その場面ではこの一覧を出さないので生の係数でよい。
+ * ★research/MASTERY.md v2 §6: 練習ランではステージ係数を掛けない(実戦側も1.0)ので、表示も係数なし
+ *   (旧: 通常出撃と同じく台帳HP×ステージ係数を出していた)。
  */
-export const practiceBossHealth = (slot: PracticeSlot): number | null => {
-  const base = practiceBossBaseHealth(slot);
-  if (slot.bossType === 'mutant-hero') return base; // 英雄は固定(ステージ係数を通さない=実戦と同じ)
-  return base === null ? null : Math.round(base * stageHpMult(slot.stageId));
-};
+export const practiceBossHealth = (slot: PracticeSlot): number | null =>
+  // research/MASTERY.md v2 §6: 練習ランではステージの係数を無視する(実戦側の stageBossDiffMults も1.0)ので、
+  // 練習の一覧も係数なしの台帳の値を出す(=練習で戦う値と一致)。
+  practiceBossBaseHealth(slot);

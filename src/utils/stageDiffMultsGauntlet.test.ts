@@ -15,10 +15,12 @@ const backing: Record<string, string> = { 'zombie.progress.selectedStage': 'stag
   get length() { return Object.keys(backing).length; },
 } as Storage;
 
-import { stageBossDiffMults } from './stageDiffMults';
+import { stageBossDiffMults, stageMobDiffMults, stageScoreMult } from './stageDiffMults';
 
 describe('stageBossDiffMults — ガントレット(計測路)', () => {
   it('階段の最上段(stage-6)を選んでいても 1.0 を返す', () => {
     expect(stageBossDiffMults()).toEqual({ hp: 1, dmg: 1 });
+    expect(stageMobDiffMults()).toEqual({ hp: 1, dmg: 1 });
+    expect(stageScoreMult()).toBe(1);
   });
 });

@@ -160,9 +160,10 @@ describe('賞金首の掲載枠', () => {
     expect(labels).toEqual(['バス停(変異)', '舞妓(変異)', '鋏(変異)', '馬乗り(変異)'].sort());
   });
 
-  it('HP表示は基準値(BOUNTY_BASE_HP)×生息ステージ係数を出す(実戦と同じ式)', () => {
+  // research/MASTERY.md v2 §6: 練習ランではステージ係数を無視する=一覧も係数なし。
+  it('HP表示は基準値(BOUNTY_BASE_HP)そのまま(練習ではステージ係数を掛けない)', () => {
     for (const slot of bountySlots()) {
-      expect(practiceBossHealth(slot), slot.slotKey).toBe(Math.round(BOUNTY_BASE_HP * stageHpMult(slot.stageId)));
+      expect(practiceBossHealth(slot), slot.slotKey).toBe(BOUNTY_BASE_HP);
     }
   });
 });
@@ -191,7 +192,7 @@ describe('練習画面のHP表示', () => {
   // research/STAGE_DIFFICULTY.md(ステージ難度の階段): 表示は常に「プレイヤーが見る実戦の値」。
   // ★通常経路(非計測路)に限定した一致——ボスメーカー/ガントレット中は実戦が1.0/表示は係数込みで
   // 一致しないのが仕様(その場面ではこの一覧を出さない)。
-  it('天使/裏ボスの表示 = 実戦スポーン値(台帳HP×ステージ係数)', () => {
+  it('天使/裏ボスの表示 = 練習のスポーン値(台帳HP・練習ではステージ係数なし)', () => {
     for (const slot of PRACTICE_SLOTS) {
       if (!isHiddenBoss(slot.bossType)) continue; // 天使6体+裏ボス5体(idol含む)
       // PACING_PUZZLE.md §10-14#3(フィル): phillbossはisHiddenBoss編入だが、実効HPは
@@ -200,32 +201,34 @@ describe('練習画面のHP表示', () => {
       if (slot.bossType === 'phillboss') continue;
       // 実戦は spawnEnemyAt が書く台帳HP(倍率を通さない固定型)へ、スポーン地点でステージ係数を掛ける。
       const spawned = spawnEnemyAt(slot.bossType, 0, 0, 0);
-      expect(practiceBossHealth(slot), slot.slotKey).toBe(Math.round(spawned.health * stageHpMult(slot.stageId)));
+      expect(practiceBossHealth(slot), slot.slotKey).toBe(spawned.health);
     }
   });
 
-  it('フィル(phillboss)の表示 = STAGE_BOSS_HEALTH_BY_STAGE[stage-ex1]×ステージ係数', () => {
+  it('フィル(phillboss)の表示 = STAGE_BOSS_HEALTH_BY_STAGE[stage-ex1](練習では係数・上乗せなし)', () => {
     const slot = practiceSlotByKey('phillboss@stage-ex1')!;
     expect(slot).toBeDefined();
     const ledger = STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId];
-    expect(practiceBossHealth(slot)).toBe(Math.round(ledger * stageHpMult(slot.stageId)));
+    expect(practiceBossHealth(slot)).toBe(ledger);
   });
 
-  it('城ボス(giantbat)の表示 = 台帳HP×ステージ係数(stage-7形態1枠は×1.5・社長裁定v0.25.3700)', () => {
+  it('城ボス(giantbat)の表示 = 台帳HP(stage-7形態1枠は×1.5・社長裁定v0.25.3700。練習では係数なし)', () => {
     for (const slot of PRACTICE_SLOTS.filter(s => s.bossType === 'giantbat')) {
       const ledger = STAGE_BOSS_HEALTH_BY_STAGE[slot.stageId];
       if (ledger === undefined) continue; // stage-ex1 は「—」
       // グレン形態1は最大HP1.5倍で戦う(残り1/3で第二形態へ移行)ので、表示も1.5倍で一致させる。
       const f1 = slot.stageId === 'stage-7' && slot.glenForm2 !== true ? GLEN_FORM1_HP_MULT : 1;
-      expect(practiceBossHealth(slot), slot.slotKey).toBe(Math.round(ledger * f1 * stageHpMult(slot.stageId)));
+      expect(practiceBossHealth(slot), slot.slotKey).toBe(Math.round(ledger * f1));
     }
   });
 
-  it('階段に乗るステージの枠は、係数のぶんだけ台帳より大きく表示される', () => {
+  // research/MASTERY.md v2 §6 / v2.1 A-15: 旧「係数のぶんだけ台帳より大きく表示される」は成り立たなくなった
+  // (練習では係数を掛けない)。階段に乗るステージの枠でも、表示 = 台帳の値であることを確かめる。
+  it('階段に乗るステージの枠でも、表示は台帳の値のまま(係数で大きくしない)', () => {
     const laddered = PRACTICE_SLOTS.filter(s => stageHpMult(s.stageId) > 1 && isHiddenBoss(s.bossType));
     expect(laddered.length).toBeGreaterThan(0); // 台帳の割当が消えたら気付けるようにする
     for (const slot of laddered) {
-      expect(practiceBossHealth(slot)!, slot.slotKey).toBeGreaterThan(spawnEnemyAt(slot.bossType, 0, 0, 0).health);
+      expect(practiceBossHealth(slot)!, slot.slotKey).toBe(spawnEnemyAt(slot.bossType, 0, 0, 0).health);
     }
   });
 });

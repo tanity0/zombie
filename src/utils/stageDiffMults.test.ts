@@ -16,8 +16,9 @@ const backing: Record<string, string> = {};
   get length() { return Object.keys(backing).length; },
 } as Storage;
 
-import { stageBossDiffMults } from './stageDiffMults';
-import { stageHpMult, stageDmgMult } from '../config/stageDifficulty';
+import { stageBossDiffMults, stageMobDiffMults, stageScoreMult } from './stageDiffMults';
+import { stageHpMult, stageDmgMult, STAGE_SCORE_MULT } from '../config/stageDifficulty';
+import { beginPracticeRun, endPracticeRun, PRACTICE_SLOTS } from './bossPractice';
 
 const SELECTED_KEY = 'zombie.progress.selectedStage';
 const setStage = (id: string) => { backing[SELECTED_KEY] = id; };
@@ -31,10 +32,59 @@ describe('stageBossDiffMults — 通常出撃は選択ステージの係数', ()
     expect(stageBossDiffMults()).toEqual({ hp: stageHpMult('stage-4'), dmg: stageDmgMult('stage-4') });
   });
 
-  it('階段に乗らないステージ(stage-1/2/7)と未選択は 1.0', () => {
-    for (const s of ['stage-1', 'stage-2', 'stage-7', '']) {
+  it('階段に乗らないステージ(stage-1/2)と未選択は 1.0', () => {
+    for (const s of ['stage-1', 'stage-2', '']) {
       setStage(s);
       expect(stageBossDiffMults(), s).toEqual({ hp: 1, dmg: 1 });
+    }
+  });
+
+  // research/MASTERY.md v2 §6 / v2.1 A-13: ボスだけの上乗せ(stage-7 / stage-ex1 は体力×1.9・攻撃は据え置き)。
+  it('stage-7 / stage-ex1 のボスは体力×1.9(攻撃は1.0)', () => {
+    for (const s of ['stage-7', 'stage-ex1']) {
+      setStage(s);
+      expect(stageBossDiffMults(), s).toEqual({ hp: 1.9, dmg: 1 });
+    }
+  });
+});
+
+describe('stageMobDiffMults — 雑魚にはボスだけの上乗せを入れない', () => {
+  it('stage-4 は台帳どおり・stage-7 / stage-ex1 は 1.0', () => {
+    setStage('stage-4');
+    expect(stageMobDiffMults()).toEqual({ hp: stageHpMult('stage-4'), dmg: stageDmgMult('stage-4') });
+    for (const s of ['stage-7', 'stage-ex1', 'stage-1', '']) {
+      setStage(s);
+      expect(stageMobDiffMults(), s).toEqual({ hp: 1, dmg: 1 });
+    }
+  });
+});
+
+describe('stageScoreMult — スコアは体力とは別の表', () => {
+  it('stage-3〜6 は STAGE_SCORE_MULT(1.2〜1.8)、stage-7 は 1.0', () => {
+    for (const s of ['stage-3', 'stage-4', 'stage-5', 'stage-6']) {
+      setStage(s);
+      expect(stageScoreMult(), s).toBe(STAGE_SCORE_MULT[s]);
+    }
+    setStage('stage-7');
+    expect(stageScoreMult()).toBe(1);
+  });
+  it('ボスメーカーでは 1.0', () => {
+    setStage('stage-6');
+    (globalThis as unknown as { window: unknown }).window = { location: { search: '?bossmaker=1' } };
+    expect(stageScoreMult()).toBe(1);
+  });
+});
+
+describe('練習ランは体力・攻撃の係数を無視する(research/MASTERY.md v2 §6)', () => {
+  it('練習ラン中はボス用・雑魚用とも 1.0。スコアは従来どおり(枠のステージの値)', () => {
+    const slot = PRACTICE_SLOTS.find(s => s.stageId === 'stage-6') ?? PRACTICE_SLOTS.find(s => s.stageId === 'stage-5')!;
+    beginPracticeRun(slot, { stageId: '', mission: 'main', free: false });
+    try {
+      expect(stageBossDiffMults()).toEqual({ hp: 1, dmg: 1 });
+      expect(stageMobDiffMults()).toEqual({ hp: 1, dmg: 1 });
+      expect(stageScoreMult()).toBe(STAGE_SCORE_MULT[slot.stageId]);
+    } finally {
+      endPracticeRun();
     }
   });
 });
@@ -46,5 +96,6 @@ describe('stageBossDiffMults — 計測路は 1.0', () => {
     // isBossMakerRun() は呼び出しのたびに window.location.search を読む(モジュール定数ではない)。
     (globalThis as unknown as { window: unknown }).window = { location: { search: '?bossmaker=1' } };
     expect(stageBossDiffMults()).toEqual({ hp: 1, dmg: 1 });
+    expect(stageMobDiffMults()).toEqual({ hp: 1, dmg: 1 });
   });
 });

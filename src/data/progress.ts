@@ -3,6 +3,7 @@
 // メインミッションをクリアすると次ステージが解放される。EX は前提ステージのクリアで解放。
 
 import { clearNoUpgradeLedger } from './chronicleFeats';
+import { MASTERY_KEY, MASTERY_PENDING_KEY } from './mastery';
 import { STAGES, getStage, type Stage } from './campaign';
 import { getEventQuestConfig } from '../utils/eventQuest';
 import { clearWelcomeStreaks } from '../utils/welcomeStreak';
@@ -705,6 +706,8 @@ export const resetProgress = (): void => {
   clearWelcomeStreaks(); // ウェルカムの連続クリア(3連続で卒業)も進行リセットで消す(開発用)
   writeRunCores({}); // 掘削記録(リザルト断面の過去ラン)も進行リセットで消す(開発用)
   try { localStorage.removeItem(CHRONICLE_START_KEY); } catch { /* ignore */ } // 初ミッション日付も消す(開発用)
+  try { localStorage.removeItem(MASTERY_KEY); } catch { /* ignore */ } // 熟練度の本体も進行リセットで消す(開発用・research/MASTERY.md v2 §5)
+  try { localStorage.removeItem(MASTERY_PENDING_KEY); } catch { /* ignore */ } // 熟練度の退避も同じく消す
   setStoryFlags(emptyStoryFlags()); // the ONE ストーリー分岐フラグも進行リセットで消す(開発用)
   clearBossEncounters(); // ボスラッシュの遭遇記録も進行リセットで消す(開発用・BOSS_MAKER.md §20-5)
   setSelectedMission('main');

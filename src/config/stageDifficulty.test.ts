@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   STAGE_HP_MULT, STAGE_DMG_MULT, stageHpMult, stageDmgMult, BOUNTY_TYPE_BY_STAGE,
+  STAGE_BOSS_EXTRA_HP_MULT, STAGE_SCORE_MULT, stageBossExtraHpMult, stageScoreMultFor,
 } from './stageDifficulty';
 import { isBountyType } from '../utils/enemyUtils';
 import { bountySpawnBlocked } from '../utils/bountyTick';
@@ -39,6 +40,26 @@ describe('ステージ係数の台帳(HP/攻撃)', () => {
   it('台帳に載っているのは階段の4ステージだけ(S2/S7を階段に載せない)', () => {
     expect(Object.keys(STAGE_HP_MULT).sort()).toEqual([...LADDER].sort());
     expect(Object.keys(STAGE_DMG_MULT).sort()).toEqual([...LADDER].sort());
+  });
+});
+
+// research/MASTERY.md v2 §6 / v2.1 A-13・A-14: 熟練度に合わせた体力の階段・ボスだけの上乗せ・スコアの表。
+describe('熟練度に合わせた台帳(体力・ボスの上乗せ・スコア)', () => {
+  it('STAGE_HP_MULT = S3 1.56 / S4 2.10 / S5 2.72 / S6 3.42', () => {
+    expect(STAGE_HP_MULT).toEqual({ 'stage-3': 1.56, 'stage-4': 2.10, 'stage-5': 2.72, 'stage-6': 3.42 });
+  });
+  it('STAGE_DMG_MULT は据え置き(S3 1.1 〜 S6 1.4)', () => {
+    expect(STAGE_DMG_MULT).toEqual({ 'stage-3': 1.1, 'stage-4': 1.2, 'stage-5': 1.3, 'stage-6': 1.4 });
+  });
+  it('ボスだけの上乗せは stage-7 と stage-ex1 に ×1.9。それ以外は 1.0', () => {
+    expect(STAGE_BOSS_EXTRA_HP_MULT).toEqual({ 'stage-7': 1.9, 'stage-ex1': 1.9 });
+    for (const s of ['stage-1', 'stage-2', ...LADDER, '']) expect(stageBossExtraHpMult(s), s).toBe(1);
+    expect(stageBossExtraHpMult(null)).toBe(1);
+  });
+  it('STAGE_SCORE_MULT = S3 1.2 / S4 1.4 / S5 1.6 / S6 1.8(旧の体力の値で据え置き)・他は 1.0', () => {
+    expect(STAGE_SCORE_MULT).toEqual({ 'stage-3': 1.2, 'stage-4': 1.4, 'stage-5': 1.6, 'stage-6': 1.8 });
+    for (const s of FLAT) expect(stageScoreMultFor(s), s).toBe(1);
+    expect(stageScoreMultFor(undefined)).toBe(1);
   });
 });
 

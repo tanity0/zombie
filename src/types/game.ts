@@ -5,6 +5,7 @@
 import type { MolotovCycleState } from '../utils/molotov';
 import type { AcrasielPlan } from '../utils/acrasielScript';
 import type { FirstAidKitState } from '../utils/firstAidKit';
+import type { MasteryKey } from '../data/mastery'; // 熟練度のキー(依存ゼロの純データモジュール・型だけ)
 import type { AvatarId } from '../data/avatars'; // アバターシステム(試験・第1弾)。依存ゼロの純データモジュール(循環しない)。
 import type { BrawlerState, KenkiPrepTex } from '../utils/brawlerTypes'; // サブウェポン「格闘」の状態機械(research/BRAWLER.md・型だけ)
 import type { SwordLungePlan } from '../utils/swordLunge'; // 剣ボスの踏み込み計画(依存ゼロの純関数モジュール=循環しない)。
@@ -241,6 +242,14 @@ export interface Player extends DashLocomotionState {
   // 焼き値を読む(store の有効段数の直読みは禁止=「メーター変更は次の出撃から」を機械的に保証する)。
   /** 攻撃力の育成倍率(既定1.0)。skillOutgoingDamageMult と処刑の前掛けが読む。 */
   growthAtkMult: number;
+  /**
+   * 熟練度の焼き値(research/MASTERY.md v2 §3)。resetGame が保存の段階から1回だけ焼く(出撃の間は変えない)。
+   * 育つキーの倍率と `max`(固定 ×1.9)。無い欄=1。読み口は utils/mastery.ts の masteryMultOf。
+   * 守護霊/幻影の疑似プレイヤーでは `{}`(buildPseudoPlayer が上書き)。
+   */
+  masteryMult?: Partial<Record<MasteryKey, number>>;
+  /** 熟練度 `loadout` の倍率(出撃開始時に持っている物の平均・既定1)。 */
+  masteryLoadoutMult?: number;
   /**
    * ラン内の「攻撃力 +6%」カード(UpgradeOption type='stat'・LEVEL_GROWTH.md §11 代替a)の累積倍率(既定1.0)。
    * 読むのは skillOutgoingDamageMult(合流点)だけ。記録スナップショットには写さない(ラン限り)。

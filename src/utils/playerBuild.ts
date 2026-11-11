@@ -128,8 +128,13 @@ export const withoutBrawler = (p: Player): Player =>
     ? { ...p, subWeapons: p.subWeapons.filter(k => k !== 'brawler'), brawler: undefined }
     : p;
 
-export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: Player): Player =>
-  withoutBrawler(buildPseudoPlayerRaw(snap, live));
+export const buildPseudoPlayer = (snap: PlayerBuildSnapshot | undefined, live: Player): Player => ({
+  ...withoutBrawler(buildPseudoPlayerRaw(snap, live)),
+  // research/MASTERY.md v2 §3 / v2.1 A-12: 守護霊・幻影は熟練度を持たない(本人の焼き値を引き継がせない)。
+  // 記録が無い時に本人をそのまま返す道もあるので、上書きは外側のここで行う(どの道でも同じ値)。
+  masteryMult: {},
+  masteryLoadoutMult: 1,
+});
 const buildPseudoPlayerRaw = (snap: PlayerBuildSnapshot | undefined, live: Player): Player => {
   if (!snap) return live;
   // ★★research/SAME_ARENA.md §4-c(社長方針2026-08-23):

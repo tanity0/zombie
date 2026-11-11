@@ -22,6 +22,7 @@ import { installTestBridge, reportTestScreen, type TestScreenId } from './utils/
 import type { BenchmarkResult } from './components/BenchmarkOverlay';
 import { CharacterClass, GameState } from './types/game';
 import { useGameStore, BOSS_TEST_RUN } from './store/gameStore';
+import { stashMasteryPending } from './utils/masteryRun';
 import { setBgmScene, preloadAllAudio, unlockDanceAudio, primeMenuBgm, preloadStageBgm, setAudioSuspended, clearSfxThrottle, attachAudioGestureRecovery, setOpeningBgmHold } from './audio/audioManager';
 import { ensureTextures, preloadBackgrounds } from './pixi/pixiTextures';
 import { preloadOpeningWalk } from './data/openingWalkAssets';
@@ -276,10 +277,15 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       useGameStore.getState().setBackgrounded(bg); // ゲームシム(useGameLoop)を凍結/解凍
       setAudioSuspended(bg);                       // BGMを一時停止/再開(タイトル曲も対象)
     };
-    const onVisibility = () => applyBackground(document.hidden);
+    // 熟練度(research/MASTERY.md v2 §5 / v2.1 A-4): 裏へ回った・閉じた時に、この出撃で貯めた分を退避へ書く
+    // (本体には足さない。次の resetGame が回収する)。無視する出撃では masteryRun 側が何もしない。
+    const onVisibility = () => {
+      if (document.hidden) stashMasteryPending();
+      applyBackground(document.hidden);
+    };
     document.addEventListener('visibilitychange', onVisibility);
     // pagehide/pageshow も拾う(iOS Safariで visibilitychange が来ないケースの保険)。
-    const onPageHide = () => applyBackground(true);
+    const onPageHide = () => { stashMasteryPending(); applyBackground(true); };
     const onPageShow = () => applyBackground(false);
     window.addEventListener('pagehide', onPageHide);
     window.addEventListener('pageshow', onPageShow);
@@ -289,6 +295,12 @@ function App({ playingOverlay, bare = false }: AppProps = {}) {
       window.removeEventListener('pageshow', onPageShow);
     };
   }, []);
+
+  // 熟練度(research/MASTERY.md v2 §5 / v2.1 A-4): 一時停止に入った瞬間にも退避へ書く(一時停止→撤退→アプリを閉じる、
+  // でも貯めた分を失わない)。React の購読ではなく store の subscribe=再描画は起きない(比較1回だけ)。
+  useEffect(() => useGameStore.subscribe((s, prev) => {
+    if (s.isPaused && !prev.isPaused) stashMasteryPending();
+  }), []);
 
   useEffect(() => {
     // menu=タイトル曲 / playing=ステージ曲 / その他(loading・gameOver・victory)=停止。
