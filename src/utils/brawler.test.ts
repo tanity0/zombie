@@ -30,8 +30,8 @@ describe('格闘: 表', () => {
     expect(BRAWLER_STAGES.map(s => s.kb)).toEqual(['small', 'small', 'normal', 'small', 'big']); // 社長指示2026-11-10「どの攻撃も押さない攻撃でも多少押そう」(旧 1・2・4段目は none)
     expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 150, 150, 220]); // 止めは係数を掛けない表(社長承認2026-11-08: 旧 45/45/80/90/140)
   });
-  it('技の倍率(社長承認2026-11-09: 大踏み潰し2.4・気功1.8・飛び蹴り0.7/0.8/1.0・秘奥義の締め3.6)', () => {
-    expect([BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT]).toEqual([2.4, 1.8, 3.6]);
+  it('技の倍率(大踏み潰し3.5=社長裁定2026-11-11・気功1.8・飛び蹴り0.7/0.8/1.0・秘奥義の締め3.6)', () => {
+    expect([BRAWLER_STOMP_MULT, BRAWLER_KIKO_MULT, BRAWLER_SECRET_LAND_MULT]).toEqual([3.5, 1.8, 3.6]);
     expect([1, 2, 3].map(brawlerKickMult)).toEqual([0.7, 0.8, 1.0]);
     expect(brawlerKickMult(0)).toBe(0.7); // 範囲外は端へ寄せる
     expect(brawlerKickMult(9)).toBe(1.0);

@@ -512,8 +512,10 @@ export const BRAWLER_JUGGLE_PUSH: Readonly<Record<BrawlerMoveKey, number>> = {
  * 飛び蹴りの2発目は少しだけ打ち上げる(社長指示2026-11-11「飛び蹴り2段目は少し打ち上げられる仕様にして欲しい」)。3・4段目は今どおり(空中の押し上げ量と同じ値)。
  * ★0.7 の理由(同日「3段目もジャンプして、そこの高さに追いついて、蹴り飛ばす」): 3発目は2発目が当たってから約330ms後に当たる。
  *   0.5(滞空約380ms)だと、その時の雑魚はほぼ着地している(高さ1割)=跳んで追いつく絵にならない。0.7(約530ms)なら落ち始めの高さ(頂点の約7割)で当たる。叩き台。
+ * ★大踏み潰しも地上から浮かせる(社長裁定2026-11-11「浮かせながら吹き飛ばす(つまり浮きだけ追加)」)。吹き飛ばし(大きい押し)は今どおり=浮きだけを足した。
+ *   高さは3段目と同じ 0.75(叩き台)。空中の敵への大踏み潰し(地面バウンド・1コンボ1回)は今どおり。
  */
-export const BRAWLER_GROUND_LAUNCH: Readonly<Partial<Record<BrawlerMoveKey, number>>> = { s3: 0.75, s4: 1, kick2: 0.7 };
+export const BRAWLER_GROUND_LAUNCH: Readonly<Partial<Record<BrawlerMoveKey, number>>> = { s3: 0.75, s4: 1, kick2: 0.7, stomp: 0.75 };
 /** これより軽い押し上げはもう浮かない(=落ちる)。いずれ必ず落ちる=永久には浮かせられない。 */
 export const BRAWLER_JUGGLE_MIN_F = 0.12;
 /** 1回の押し上げの浮く時間の下限(ms・短すぎる跳ねは絵がちらつく)。 */

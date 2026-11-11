@@ -8,12 +8,7 @@ export const SKILL_PROC_SHOW_MS = 2400;
 /** 消える動き(左へ引っ込みながら行の高さを畳む)の尺。出ている長さの最後のこの部分。 */
 export const SKILL_PROC_EXIT_MS = 320;
 /** 同時に出す行の上限。超えたら一番古い行を消える動きへ回す(パッとは消さない)。 */
-export const SKILL_PROC_MAX_ROWS = 3;
-/**
- * 技の行の上限(スキルの行と同じ並びの中で)。格闘は技を続けて出すので、上限いっぱいまで技で埋めると、
- * 運で効いたスキルの行(この並びの元々の役目)がすぐ押し出されて読めなくなる。技の行どうしで入れ替える。
- */
-export const TECH_PROC_MAX_ROWS = 2;
+export const SKILL_PROC_MAX_ROWS = 4; // 社長裁定2026-11-11「スキルと合わせて最大表示数を決めて、時間と、押出し形式に」=スキルと技で合わせて4行(旧3)
 /** 同じ瞬間(この間隔以内)に効いた行どうしは、入ってくる時刻をこれだけずらす。 */
 export const SKILL_PROC_STAGGER_MS = 80;
 
@@ -66,7 +61,6 @@ export const skillProcLeaving = (e: SkillProcEntry, now: number): boolean => now
  * - 同じスキルの行がまだ出ていれば、行は増やさずに数を+1して出ている長さを延ばす(効くたびに見える)。
  *   技(TechProcKey)は「一番新しい技の行が同じ技」の時だけまとめる(出した順が読める・techProcMergeRow)。
  * - 新しい行を足して上限を超えたら、一番古い(まだ消え始めていない)行を今から消える動きへ回す。
- *   技の行は TECH_PROC_MAX_ROWS まで(超えたら一番古い技の行を回す=スキルの行を押し出さない)。
  * - 消え終わった行は落とす。
  */
 export const pushSkillProc = (
@@ -79,16 +73,9 @@ export const pushSkillProc = (
   const delay = last && now - last.at < SKILL_PROC_STAGGER_MS ? last.delay + SKILL_PROC_STAGGER_MS : 0;
   const next = [...alive, { id, key, at: now, until: now + delay + showMsOf(key), delay, hits: 1, lastAt: now }];
   const staying = next.filter(e => !skillProcLeaving(e, now));
-  // 押し出す行(パッとは消さず、今から消える動きへ)。
-  // - 技を足した時: 技の行が上限(TECH_PROC_MAX_ROWS)を超える、または全体が上限を超えるなら、**一番古い技の行**を押し出す
-  //   (スキルの行は押し出さない)。他に技の行が無い時だけ、今までどおり一番古い行。
-  // - スキルを足した時: 今までどおり、全体が上限を超えたら一番古い行。
-  let evict: SkillProcEntry | undefined;
-  if (isTechProcKey(key)) {
-    const techs = staying.filter(e => isTechProcKey(e.key));
-    if (techs.length > TECH_PROC_MAX_ROWS || (staying.length > SKILL_PROC_MAX_ROWS && techs.length > 1)) evict = techs[0];
-    else if (staying.length > SKILL_PROC_MAX_ROWS) evict = staying[0];
-  } else if (staying.length > SKILL_PROC_MAX_ROWS) evict = staying[0];
+  // 押し出す行(パッとは消さず、今から消える動きへ)。スキルも技も同じ扱い=合わせて上限を超えたら、一番古い行を押し出す
+  // (社長裁定2026-11-11。旧は技の行だけ2行までにして、スキルの行を押し出さないようにしていた)。
+  const evict = staying.length > SKILL_PROC_MAX_ROWS ? staying[0] : undefined;
   return evict ? next.map(e => (e === evict ? { ...e, until: now + SKILL_PROC_EXIT_MS } : e)) : next;
 };
 

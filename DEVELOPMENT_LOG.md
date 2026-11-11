@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5479 — 格闘: 大踏み潰しを強く・浮かせながら吹き飛ばす/通信の下の行はスキルと技で合わせて4行・押し出し式【2026-11-11 16:16 JST】
+- 社長裁定(2026-11-11): 「1;はい」(ステップ経由のつながりは今のまま)「3;上げる 浮かせながら吹き飛ばす(つまり浮きだけ追加)」「4;推薦」(雑魚に固まらない時間は付けない)「7;スキルと合わせて最大表示数を決めて、時間と、押出し形式にすれば?」。仕様=`research/BRAWLER.md` §24。
+- 大踏み潰し: `BRAWLER_STOMP_MULT` 2.4→3.5。`BRAWLER_GROUND_LAUNCH.stomp`=0.75(地上から浮かせる・吹き飛ばしは今どおり)。事実=代金なしの大踏み潰し・拳鬼の大踏み潰しと跳びかかりのダメージも同じ倍率を読む。
+- 通信の下の行: `SKILL_PROC_MAX_ROWS` 3→4(スキルと技で合わせて)。技の行だけ2行までの作りを撤去=上限を超えたら一番古い行を押し出す。
+- 確認: typecheck・lint 0・循環なし。vitest(skillProcFeed・brawler*・phantom*・kenki*・store/brawler*)793件。画は撮っていない(浮きも行も既存の見え方の流用)。実機は未確認。
+- 監査: 付けない(判断と理由: 社長が決めた数値と数え方の変更で、既存の仕組みの中の値を動かしただけ)。
+- 憲法第4条・第5条: 抵触なし。状態変化: §20-9 の1・雑魚の固まらない時間 → 決着(今のまま)/大踏み潰し・技の行の上限 → 実装済み(実機確認待ち)。
+- 変更: `src/utils/brawler.ts`・`brawler.test.ts`・`src/utils/brawlerCombo.ts`・`src/utils/skillProcFeed.ts`・`skillProcFeed.test.ts`・`research/BRAWLER.md`・`src/data/changelog.ts`・`package.json`。
+
 ## v0.25.5478 — 左上の COMBO=スキルが読む回数/「N HIT」: 気絶・紫はつながる・振りの最中は数えない【2026-11-11 15:57 JST】
 - 社長裁定(2026-11-11「1;はい 2;はい 3;はい」)。仕様=`research/BRAWLER.md` §23-1。
   1. 「N HIT」: 攻撃を振っている最中の敵への当たりの止めは、つながりに数えない(`brawlerLinkFree`)。
