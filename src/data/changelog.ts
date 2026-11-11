@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5494', items: [
+    '叫喚型が、画面に見えていない遠くでも叫び続けていたのが直った。叫ぶのは画面に見えている時だけ',
+  ] },
   { version: '0.25.5493', items: [
     '赤い攻撃へのカウンターが決まると、相手が宙に浮く',
   ] },

@@ -1,5 +1,15 @@
 # Development Log
 
+## v0.25.5494 — 叫喚型は画面に見えている時だけ叫ぶ【2026-11-11 20:24 JST】
+- 社長報告2026-11-11「叫喚型が遠くに居てもずっと叫んでる。」
+- 原因(コードの事実): 叫びの溜めは「出現5秒後に初回・以降10秒おき」で、距離も画面も見ずに始まっていた。発動の絵(画面全体の緑の明滅・揺れ・「叫喚!」)と強化も、どこに居ても出ていた。
+- 直し: `utils/screamerGate.ts` の `screamerStartGate`(純関数)。予定を過ぎていても、体の中心が画面(ズームの可視域)の外なら溜めを始めない。
+  画面に入ってから `SCREAMER_OFFSCREEN_HOLD_MS`(1.5秒)待って始める。もう始まっている溜めは最後まで続く。間隔・溜めの長さ・強化の中身は変えていない。
+- 変更: `src/utils/screamerGate.ts`(新)・`screamerGate.test.ts`(新)・`src/store/gameStore.ts`(叫喚型の制御の2行)。
+- 確認: typecheck・eslint・循環 OK・新しいテスト3件通過。実機は未確認。解放群の旗手の叫び(別の制御)は触っていない。
+- 監査: 付けない(不具合の直し)。
+- 状態変化: なし。
+
 ## v0.25.5493 — 赤カウンターが決まった敵を浮かせる【2026-11-11 19:49 JST】
 - 社長指示2026-11-11「赤カウンター、敵を浮かせる」。仕様の正は `research/BRAWLER.md` §29-5。
 - `utils/airLift.ts` に `COUNTER_LIFT_MOVE`('s4')と `counterLiftApplies`。`gameStore.damageEnemy` の `postureImpact === 'counter'` の所で `brawlerJugglePatch` を当てる(1か所)。

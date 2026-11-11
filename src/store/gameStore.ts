@@ -292,6 +292,7 @@ import { stampMeleeSwingCommit } from '../utils/thorNihil';
 import { settleEpisode, type CounterReachShape } from '../utils/habitEpisode';
 import { ZOOM_MIN_ABS, isPointInZoomedViewport, zoomedViewportBounds } from '../utils/cameraZoom';
 import { meleeImpactPoint, meleeNumberPoint, bandBoxOverlap } from '../utils/meleeImpact';
+import { screamerStartGate } from '../utils/screamerGate';
 import { blastLiftPatch, slasherLiftMove, blastLiftCloseness, slasherLaunchMinMs, COUNTER_LIFT_MOVE, counterLiftApplies } from '../utils/airLift';
 import { hunterWanderStep } from '../utils/hunterWander';
 import {
@@ -21018,7 +21019,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
             return { ...enemy, vx: 0, vy: 0 }; // 溜め中は静止(予兆演出は描画/FX側)
           }
-          if (gameTime >= nextScream) {
+          // ★叫びは画面に見えている時だけ始める(社長報告2026-11-11「遠くに居てもずっと叫んでる」・utils/screamerGate)。
+          //   画面の外で時刻を過ぎた個体は溜めに入らず、今までどおり距離を保って動く。もう始まっている溜めは最後まで続く。
+          const scrGate = screamerStartGate(nextScream, gameTime, isPointInZoomedViewport(ecx, ecy, state.camera, state.gameBounds, state.viewZoom));
+          if (scrGate.start) {
             screamerWindupAt.push({ x: ecx, y: ecy }); // set 後に予兆FX(2秒かけて広がるリング)
             return { ...enemy, vx: 0, vy: 0, aiPhase: 'scream', aiPhaseUntil: gameTime + SCREAMER_WINDUP_MS, screamNextAt: nextScream };
           }
@@ -21036,7 +21040,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           const svx = (enemy.vx ?? stvx) + (stvx - (enemy.vx ?? stvx)) * sa;
           const svy = (enemy.vy ?? stvy) + (stvy - (enemy.vy ?? stvy)) * sa;
           const smoved = resolveMove(enemy.x + svx * deltaTime, enemy.y + svy * deltaTime);
-          return { ...enemy, vx: svx, vy: svy, x: smoved.x, y: smoved.y, screamNextAt: nextScream };
+          return { ...enemy, vx: svx, vy: svy, x: smoved.x, y: smoved.y, screamNextAt: scrGate.next };
         }
 
         // PACING_PUZZLE.md §9-4(削岩型・driller): カイト(接近/後退/構え)+突き(ヤリ攻撃)+近接被弾での離脱。
