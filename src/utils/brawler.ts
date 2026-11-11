@@ -55,16 +55,6 @@ export interface BrawlerStageSpec {
  * 旧: 弱45 / 3段目80 / 4段目90 / 蹴り1・2発目80 / 締め140 / 秘奥義の締め160。
  */
 export const BRAWLER_HITSTOP = { weak: 90, strong: 150, closer: 220 } as const;
-/**
- * ★試し: 当たりの止めを「画面全体の止め」にする切り替え(社長指示2026-11-11「画面全体を止めた方が止まった感でるかも」→「はい」=URLで試せるように)。
- *  `?brstop=1` 締めの一撃(5段目・飛び蹴りの3発目・大踏み潰し)だけ全体を止める / `?brstop=2` 全部の当たりで全体を止める / 無し=今のまま(自分と相手だけ)。
- * 全体を止める時は、同じ長さの「自分と相手だけの止め」を 0 にする=止まる長さもつながりの数字も今と同じ(止まる範囲だけが全体になる)。
- * 既定は 0(今のまま)。気に入った方を標準にする時は、ここの既定を変える。
- */
-export const BRAWLER_GLOBAL_STOP_MODE = urlNum(typeof window === 'undefined' ? '' : window.location.search, 'brstop', 0);
-/** この当たりは全体を止めるか(closer=締めの一撃)。 */
-export const brawlerGlobalStopApplies = (closer: boolean, mode: number = BRAWLER_GLOBAL_STOP_MODE): boolean =>
-  mode >= 2 || (mode >= 1 && closer);
 /** 5段目の掌底の押しの勢い(今の近接の何倍か)。社長指示2026-11-09「流石に敵が吹き飛びすぎ」で 4→2(約150px→約75px・§16)。大踏み潰し・飛び蹴り3発目・秘奥義の締めは BRAWLER_BIG_KB_MULT(4)のまま。 */
 export const BRAWLER_PALM_KB_MULT = 2;
 /** 段の表の係数1.0の値(今までの値)。止めは BRAWLER_HITSTOP。 */
