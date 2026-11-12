@@ -1383,19 +1383,25 @@ export const BRAWLER_HEEL_ROT_BACK = 0.12;
 export const BRAWLER_HEEL_LIFT_PX = 20;
 export const BRAWLER_HEEL_SINK_PX = 6;
 /**
- * ★踵落としの後、後隙の間は少しだけ浮いている(社長指示2026-11-12「踵落とし後はプレイヤーは少しだけ浮いてる状態にして」)。絵だけ(体の高さ=姿勢の jump)。
- * 高さ=飛び蹴り3発目の跳び(30px)の約3割。振り下ろしの終わり(前隙の後半)で加速→減速しながらこの高さへ上がり、後隙の前半は留まり、
- * 後半で加速→減速しながら沈んで後隙の終わりに着地する。判定・無敵・移動は変えない(空中の扱いにもしない)。
+ * ★踵落としは空中で浮いたまま振り下ろし、直後も自分は空中に残る(社長指示2026-11-12「あくまで、空中で浮いたまま踵落としして、
+ * 直後は自分は空中に残るイメージ。敵だけ下に叩きつけられる」)。絵だけ(体の高さ=姿勢の jump)。判定・無敵・移動は変えない(空中の扱いにもしない)。
+ * 溜めの終わりの高さから飛ぶ間にこの高さへ加速→減速で移り、振り下ろしの瞬間もこの高さ。後隙の前半は留まり、後半で加速→減速しながら降りて後隙の終わりに着地する。
+ * 高さ=30px の根拠: 飛び蹴り3発目の弧の頂点(30)と同じ。敵の浮いた絵の高さは rel×min(敵の体高×BRAWLER_LIFT_VIS_BODY_K(0.45), 画面高×0.2)で、
+ * 描画の空中追従(playerAirTargetPx=0.9×それ)は、雑魚(ゾンビの体高 ≈ 126)が2発目の蹴りの浮き(rel ≈ 0.7)に居る時 ≈ 0.9×0.7×57 ≈ 36px
+ * =蹴る瞬間に敵とほぼ同じ高さ(重い区分は浮きが低い=敵より少し上で踏みつける形になる)。
+ * (旧 BRAWLER_HEEL_HOVER_PX=10: 弧で地面近くへ下がってから10pxで浮いていた=自分も一緒に落ちて見えた。)
  */
-export const BRAWLER_HEEL_HOVER_PX = 10;
+export const BRAWLER_HEEL_AIR_PX = 30;
+/** 踵落としの飛ぶ間のうち、溜めの終わりの高さから踵落としの高さへ移る割合(残りはその高さのまま振り下ろす)。 */
+export const BRAWLER_HEEL_AIR_RISE_F = 0.6;
 /** 後隙のうち浮いたまま留まる割合(残りで沈んで着地)。 */
 export const BRAWLER_HEEL_HOVER_HOLD = 0.5;
 /** 踵落としの後隙の進み(0..1)→ 浮いた高さ(px)。 */
 export const brawlerHeelHoverPx = (post: number): number => {
   const q = Math.max(0, Math.min(1, post));
-  if (q <= BRAWLER_HEEL_HOVER_HOLD) return BRAWLER_HEEL_HOVER_PX;
+  if (q <= BRAWLER_HEEL_HOVER_HOLD) return BRAWLER_HEEL_AIR_PX;
   const k = (q - BRAWLER_HEEL_HOVER_HOLD) / (1 - BRAWLER_HEEL_HOVER_HOLD);
-  return BRAWLER_HEEL_HOVER_PX * (1 - k * k * (3 - 2 * k));
+  return BRAWLER_HEEL_AIR_PX * (1 - k * k * (3 - 2 * k));
 };
 /** 踵落としから取り消した大踏み潰しの、浮いた高さからの落下(溜めのこの割合で着地・加速して落ちる)。 */
 export const BRAWLER_STOMP_FROM_AIR_FALL = 0.45;
@@ -1437,6 +1443,15 @@ export const brawlerHeelHitSink = (el: number): number => {
   const k = (el - down) / (BRAWLER_HEEL_HIT_SINK_MS - down);
   return BRAWLER_HEEL_HIT_SINK_PX * (1 - k * k * (3 - 2 * k));
 };
+/** 飛び蹴りの後傾(社長裁定2026-11-12・足が前・頭が後ろ)。描画で face を掛ける=左向きでも頭が後ろ。 */
+const KICK_BACK_LEAN = 0.55;
+/** 溜め無しの飛び蹴り: 踏み切りから後傾へ入れる時間(ms・飛ぶ時間のこの割合を超えない)。 */
+const KICK_LEAN_IN_MS = 96;
+const KICK_LEAN_IN_FRAC = 0.75;
+/** 3発目: 溜めのこの割合から前傾→後傾へ移り始め、飛びの頭(ms・飛ぶ時間のこの割合まで)で後傾に着く。 */
+const KICK3_LEAN_TURN_AT = 0.25;
+const KICK3_LEAN_TAIL_MS = 100;
+const KICK_LEAN_TAIL_FRAC = 0.6;
 /** いまの体の形。連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ・§4)。 */
 export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPose | null => {
   if (!s) return null;
@@ -1477,10 +1492,12 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
     switch (s.stage) {
       case 1:
       case 2: {
-        // 弱: しゃがみの絵のまま体を前へ大きく滑らせ、前へ傾ける。2段目は逆の手(残像と傾きの向き)。
+        // 弱: しゃがみの絵のまま体を前へ大きく滑らせ、前へ傾ける。2段目は逆の手(残像は逆側)。
+        // ★社長裁定2026-11-12: 2段目の絵の左右反転は後ろ向きに見える→やめて、前傾を浅くして「体をひねった」形にする(1段目の約半分)。
         const hand: 1 | -1 = s.stage === 2 ? -1 : 1;
         const thrust = hit ? 1 - easeOut(post) : easeIn(pre);
-        return { ...base, tex: 'ready', lean: 0.12 + 0.16 * thrust, push: 14 * thrust, sqX: 1 + 0.08 * thrust, sqY: 1 - 0.06 * thrust, hand, flip: s.stage === 2 };
+        const lean = s.stage === 2 ? 0.05 + 0.08 * thrust : 0.12 + 0.16 * thrust;
+        return { ...base, tex: 'ready', lean, push: 14 * thrust, sqX: 1 + 0.08 * thrust, sqY: 1 - 0.06 * thrust, hand, flip: false };
       }
       case 3: {
         // 強(アッパー): しゃがみで溜め → 振り上げの絵で突き上げる。
@@ -1541,6 +1558,11 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
       // 飛び蹴り: 滞空中はしゃがみ+強い前傾 → 当たった瞬間に振り上げの絵へ変える(#4)。
       const big = s.kickN >= BRAWLER_KICK_MAX;
       const charge = Math.max(0, Math.min(s.windupMs, s.kickChargeMs ?? 0));
+      // ★社長裁定2026-11-12: 蹴りは足が前・頭が後ろ=飛んでいる間と当たった後は後ろへ傾ける(lean 負)。踵落としは今までどおり(前傾)。
+      //   傾きは瞬間で切り替えず加減速つきで入れる(慣性): 溜めの後半〜飛びの頭で前傾→後傾へ、溜め無しは踏み切りから後傾へ立ち上げる。
+      const heel = !!s.kickHeel;
+      const flightMs = Math.max(1, s.windupMs - charge);
+      const smooth = (x: number): number => { const k = Math.max(0, Math.min(1, x)); return k * k * (3 - 2 * k); };
       if (!hit && charge > 0) {
         // ★3発目の溜め(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」): 跳び上がって空中で体を縮め、沈みながら光る(慣性つき)。
         const c = Math.min(1, el / charge);
@@ -1548,23 +1570,33 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
           const rise = BRAWLER_KICK3_CHARGE_RISE_PX * easeOut(Math.min(1, c / 0.45));
           const sink = BRAWLER_KICK3_CHARGE_SINK_PX * easeIn(Math.max(0, (c - 0.45) / 0.55));
           const crouch = easeOut(c);
-          return { ...base, tex: 'ready', jump: rise - sink, lean: 0.15 + 0.2 * crouch, push: -4 * crouch, sqY: 1 - 0.16 * crouch, sqX: 1 + 0.1 * crouch };
+          const fwd = 0.15 + 0.2 * crouch;
+          const b = heel ? 0 : smooth((el - charge * KICK3_LEAN_TURN_AT) / (charge * (1 - KICK3_LEAN_TURN_AT) + Math.min(KICK3_LEAN_TAIL_MS, KICK_LEAN_TAIL_FRAC * flightMs)));
+          return { ...base, tex: 'ready', jump: rise - sink, lean: fwd * (1 - b) - KICK_BACK_LEAN * b, push: -4 * crouch, sqY: 1 - 0.16 * crouch, sqX: 1 + 0.1 * crouch };
         }
         // 溜めの後に飛ぶ: 沈んだ高さから飛ぶ弧へつなぐ(つなぎ目で高さが跳ばない)。
         const f = Math.min(1, (el - charge) / Math.max(1, s.windupMs - charge));
         const h0 = BRAWLER_KICK3_CHARGE_RISE_PX - BRAWLER_KICK3_CHARGE_SINK_PX;
-        // 踵落とし: 振り下ろしの終わりに、地面へは戻らず浮いた高さへ(加速→減速)=後隙の浮きへ途切れずにつなぐ。
-        const hover = s.kickHeel ? BRAWLER_HEEL_HOVER_PX * f * f * (3 - 2 * f) : 0;
-        return { ...base, tex: 'ready', jump: h0 * (1 - f) + 30 * Math.sin(Math.PI * f) + hover, lean: 0.55, push: 8 };
+        // 踵落とし: 弧を描いて下がらず、溜めの終わりの高さから踵落としの高さへ加速→減速で移り、振り下ろしの瞬間もその高さ
+        //   =後隙の浮き(同じ高さ)へ途切れずにつなぐ(社長指示2026-11-12「空中で浮いたまま踵落とし」)。
+        const heelJump = h0 + (BRAWLER_HEEL_AIR_PX - h0) * smooth(f / BRAWLER_HEEL_AIR_RISE_F);
+        // 前傾→後傾のつなぎは溜めの後半から飛びの頭まで続く(つなぎ目で傾きが跳ばない)。溜め明けの前傾は溜めの最後の値(0.35)。
+        const tail = Math.min(KICK3_LEAN_TAIL_MS, KICK_LEAN_TAIL_FRAC * flightMs);
+        const b = smooth((el - charge * KICK3_LEAN_TURN_AT) / (charge * (1 - KICK3_LEAN_TURN_AT) + tail));
+        const lean = heel ? 0.55 : 0.35 * (1 - b) - KICK_BACK_LEAN * b;
+        return { ...base, tex: 'ready', jump: heel ? heelJump : h0 * (1 - f) + 30 * Math.sin(Math.PI * f), lean, push: 8 };
       }
-      if (!hit) return { ...base, tex: 'ready', jump: (big ? 30 : 18) * Math.sin(Math.PI * Math.min(1, pre)), lean: 0.55, push: 8 };
+      if (!hit) {
+        const lean = heel ? 0.55 : -KICK_BACK_LEAN * smooth(el / Math.min(KICK_LEAN_IN_MS, KICK_LEAN_IN_FRAC * flightMs));
+        return { ...base, tex: 'ready', jump: (big ? 30 : 18) * Math.sin(Math.PI * Math.min(1, pre)), lean, push: 8 };
+      }
       const th = 1 - easeOut(post);
       // ★蹴った後は、すぐしゃがみの絵へ(社長指示2026-11-11「全段、蹴った後、一瞬しゃがみの絵を入れて。隙は変えず。蹴ったまま落ちていくのが変」)。
       //   当たった瞬間(止めの間)は振り上げの絵のまま → 後隙に入ったらすぐしゃがんで着地する(深く沈んで戻る=慣性)。旧は後隙の前半45%が振り上げの絵だった。
       const land = Math.sin(Math.PI * Math.min(1, post / 0.6)) * (post < 0.6 ? 1 : 0);
       return {
-        ...base, tex: post < BRAWLER_KICK_CROUCH_AT ? 'swing' : 'ready', lean: 0.25 * th, push: 6 * th, sqY: 1 - 0.12 * th - 0.14 * land, sqX: 1 + 0.08 * th + 0.1 * land,
-        ...(s.kickHeel ? { jump: brawlerHeelHoverPx(post) } : {}), // 踵落としの後は少し浮いたまま→沈んで着地
+        ...base, tex: post < BRAWLER_KICK_CROUCH_AT ? 'swing' : 'ready', lean: (heel ? 0.25 : -0.25) * th, push: 6 * th, sqY: 1 - 0.12 * th - 0.14 * land, sqX: 1 + 0.08 * th + 0.1 * land,
+        ...(s.kickHeel ? { jump: brawlerHeelHoverPx(post) } : {}), // 踵落としの後は空中に残る→後隙の後半で降りて着地
       };
     }
     default: return { ...base, tex: 'ready' };

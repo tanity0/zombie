@@ -15,7 +15,7 @@ import {
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
 } from './brawler';
 import {
-  pickBrawlerComboTarget, brawlerComboLockId, brawlerComboTargetAfterHit, BRAWLER_HEEL_HOVER_PX, BRAWLER_STOMP_FROM_AIR_FALL, BRAWLER_KICK_MAX,
+  pickBrawlerComboTarget, brawlerComboLockId, brawlerComboTargetAfterHit, BRAWLER_HEEL_AIR_PX, BRAWLER_STOMP_FROM_AIR_FALL, BRAWLER_KICK3_CHARGE_RISE_PX, BRAWLER_KICK3_CHARGE_SINK_PX, BRAWLER_KICK_MAX,
 } from './brawler';
 import { setBrawlerTempoAll } from './brawlerCombo';
 // ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
@@ -262,9 +262,43 @@ describe('格闘: 絵', () => {
 });
 
 describe('格闘: 絵(クリエイティブ監査)', () => {
-  it('2段目は絵を反転して逆の手を形で見せる・1段目は反転しない', () => {
-    expect(brawlerPoseAt(brawlerStartAttack(initialBrawlerState(), 2, 0, false), 30)?.flip).toBe(true);
-    expect(brawlerPoseAt(brawlerStartAttack(initialBrawlerState(), 1, 0, false), 30)?.flip).toBe(false);
+  it('2段目は絵を反転しない(社長裁定2026-11-12)・前傾を浅くして体をひねる・逆の手は残す', () => {
+    for (const t of [30, 60, 120, 200]) {
+      const p2 = brawlerPoseAt(brawlerStartAttack(initialBrawlerState(), 2, 0, false), t)!;
+      const p1 = brawlerPoseAt(brawlerStartAttack(initialBrawlerState(), 1, 0, false), t)!;
+      expect(p2.flip).toBe(false);
+      expect(p1.flip).toBe(false);
+      expect(p2.lean).toBeGreaterThan(0);
+      expect(p2.lean).toBeLessThan(p1.lean);
+      expect(p2.hand).toBe(-1);
+      expect(p2.push).toBe(p1.push);
+    }
+  });
+  it('飛び蹴り: 飛んでいる間と当たった後は後ろへ傾く(頭が後ろ)・傾きは1フレームで跳ばない・踵落としは前傾のまま', () => {
+    const f = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);
+    expect(brawlerPoseAt(f, f.windupMs - 10)!.lean).toBeLessThan(-0.5);
+    expect(brawlerPoseAt({ ...f, resolved: true }, f.windupMs + 5)!.lean).toBeLessThan(0);
+    const maxStep = (s: typeof f, to: number) => {
+      let m = 0, prev = 0; // 蹴りの前は立ち(傾き0)
+      for (let t = 0; t <= to; t += 16) { const l = brawlerPoseAt(s, t)!.lean; m = Math.max(m, Math.abs(l - prev)); prev = l; }
+      return m;
+    };
+    expect(maxStep(f, f.windupMs - 1)).toBeLessThan(0.15);
+    const k3 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 3);
+    expect(k3.kickChargeMs).toBeGreaterThan(0);
+    expect(brawlerPoseAt(k3, 10)!.lean).toBeGreaterThan(0);            // 溜めの頭は前傾(縮める)
+    expect(brawlerPoseAt(k3, k3.windupMs - 10)!.lean).toBeLessThan(-0.5);
+    let prev = brawlerPoseAt(k3, 0)!.lean;
+    for (let t = 1; t < k3.windupMs; t += 1) {
+      const l = brawlerPoseAt(k3, t)!.lean;
+      expect(Math.abs(l - prev)).toBeLessThan(0.15 / 16 * 1.5); // 1msあたり=16msで0.15未満相当
+      prev = l;
+    }
+    // 踵落とし: 今までどおり(飛び=0.55・当たった後=+0.25×th)
+    const h = brawlerStartTech(initialBrawlerState(), 'kick', 0, 3, false, true);
+    expect(brawlerPoseAt(h, h.windupMs - 10)!.lean).toBe(0.55);
+    expect(brawlerPoseAt(h, 10)!.lean).toBeCloseTo(0.15 + 0.2 * (1 - (1 - 10 / h.kickChargeMs!) ** 2), 6);
+    expect(brawlerPoseAt({ ...h, resolved: true }, h.windupMs)!.lean).toBeCloseTo(0.25, 6);
   });
   it('気功: 溜め=振り上げ / 放つ=しゃがみ。飛び蹴り: 滞空=しゃがみ / 当たった瞬間=振り上げ', () => {
     const k = brawlerStartTech(initialBrawlerState(), 'kiko', 0);
@@ -714,7 +748,7 @@ describe('格闘: コンボの狙い(社長指示2026-11-12「コンボ中は最
   });
 });
 
-describe('格闘: 踵落としの後は少しだけ浮いている(社長指示2026-11-12)', () => {
+describe('格闘: 踵落としは空中で浮いたまま振り下ろし、直後も空中に残る(社長指示2026-11-12)', () => {
   const heelState = () => {
     const s0 = { ...initialBrawlerState(), kickN: 2 };
     return brawlerStartTech(s0, 'kick', 0, BRAWLER_KICK_MAX, false, true);
@@ -725,11 +759,14 @@ describe('格闘: 踵落としの後は少しだけ浮いている(社長指示2
     for (let el = s.windupMs + 1; el < end - 1; el += 5) {
       const j = brawlerPoseAt(s, el)!.jump;
       expect(j, `el ${el}`).toBeGreaterThan(0);
-      expect(j).toBeLessThanOrEqual(BRAWLER_HEEL_HOVER_PX + 1e-9);
+      expect(j).toBeLessThanOrEqual(BRAWLER_HEEL_AIR_PX + 1e-9);
     }
+    // 後隙の前半は踵落としの高さのまま(空中に残る)
+    expect(brawlerPoseAt(s, s.windupMs + Math.floor(s.recoveryMs * 0.45))!.jump).toBeCloseTo(BRAWLER_HEEL_AIR_PX, 6);
     expect(brawlerPoseAt(s, end)!.jump).toBeCloseTo(0, 6);
-    expect(BRAWLER_HEEL_HOVER_PX).toBeGreaterThanOrEqual(30 * 0.3 - 0.5);
-    expect(BRAWLER_HEEL_HOVER_PX).toBeLessThanOrEqual(30 * 0.4);
+    // 高さ=飛び蹴り3発目の弧の頂点と同じくらい
+    expect(BRAWLER_HEEL_AIR_PX).toBeGreaterThanOrEqual(25);
+    expect(BRAWLER_HEEL_AIR_PX).toBeLessThanOrEqual(36);
   });
   it('入り(振り下ろしの終わり→浮き)と着地は途切れず滑らか(1ms で大きく変わらない)・着地は単調に沈む', () => {
     const s = heelState();
@@ -737,7 +774,16 @@ describe('格闘: 踵落としの後は少しだけ浮いている(社長指示2
     const end = s.windupMs + s.recoveryMs;
     const jAt = (el: number) => brawlerPoseAt(el < s.windupMs ? s : r, el)!.jump;
     expect(Math.abs(jAt(s.windupMs) - jAt(s.windupMs - 1))).toBeLessThan(1);
-    expect(jAt(s.windupMs)).toBeCloseTo(BRAWLER_HEEL_HOVER_PX, 6);
+    expect(jAt(s.windupMs)).toBeCloseTo(BRAWLER_HEEL_AIR_PX, 6);
+    expect(jAt(s.windupMs - 1)).toBeCloseTo(BRAWLER_HEEL_AIR_PX, 6); // 振り下ろしの瞬間も同じ高さ(弧で下がらない)
+    // 溜め→飛び→当たり→後隙→着地: 1フレーム(16ms)でも高さが跳ばない・飛ぶ間は溜めの終わりの高さより下がらない
+    const h0 = BRAWLER_KICK3_CHARGE_RISE_PX - BRAWLER_KICK3_CHARGE_SINK_PX;
+    const charge = s.kickChargeMs ?? 0;
+    expect(charge).toBeGreaterThan(0);
+    for (let el = 0; el < end; el += 1) expect(Math.abs(jAt(el + 1) - jAt(el)), `el ${el}`).toBeLessThan(1);
+    for (let el = charge * 0.45; el + 16 <= end; el += 4) expect(Math.abs(jAt(el + 16) - jAt(el)), `16ms el ${el}`).toBeLessThan(8); // 溜めの跳び上がり(頭)は既存の形
+    expect(Math.abs(jAt(charge) - h0)).toBeLessThan(0.5);
+    for (let el = charge; el < s.windupMs; el += 2) expect(jAt(el), `飛び el ${el}`).toBeGreaterThanOrEqual(h0 - 1e-9);
     for (let el = s.windupMs; el < end; el += 1) expect(Math.abs(jAt(el + 1) - jAt(el)), `el ${el}`).toBeLessThan(1);
     let prev = Infinity;
     for (let el = s.windupMs; el <= end; el += 4) { const j = jAt(el); expect(j).toBeLessThanOrEqual(prev + 1e-9); prev = j; }

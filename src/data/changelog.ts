@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5536', items: [
+    '格闘の踵落としは、宙に浮いたまま振り下ろす。当てた後も自分は宙に残り、相手だけが地面へ叩きつけられる',
+    '飛び蹴りの体の傾きを、足が前に出る向きへ直した',
+    '格闘の二発目で体が後ろを向いて見えたのが直った',
+  ] },
   { version: '0.25.5535', items: [
     '訓練では、味方が敵を蹴り飛ばさない',
   ] },
