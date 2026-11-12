@@ -416,7 +416,7 @@ describe('つながりの計算(§20-6 の3・係数1.3・近い相手)', () => 
   });
   it('入る: 飛び蹴り1発目→すぐ2発目(近い)/ 2発目→すぐ3発目(近い・浮かなかった時)/ 1発目→後隙の後の1段目', () => {
     expect(connects('kick1', 'kick2', 'cancel-now')).toMatchObject({ nextHitAt: 322, lockEndsAt: 495, marginMs: 173, routeOk: true }); // 2026-11-11 ×1.1+kick1 の固まり 325→345 で 306/475/169→322/495/173
-    expect(connects('kick2', 'kick3', 'cancel-now')).toMatchObject({ nextHitAt: 487, lockEndsAt: 553, marginMs: 66, routeOk: true }); // 2026-11-11 ×1.1 で 456/97→487/66
+    expect(connects('kick2', 'kick3', 'cancel-now')).toMatchObject({ nextHitAt: 322, lockEndsAt: 553, marginMs: 231, routeOk: true }); // 蹴り飛ばしの溜め(165)をなくした(research/BRAWLER.md §33-2)で 487/66→322/231
     expect(connects('kick1', 's1', 'recovery-end')).toMatchObject({ nextHitAt: 443, lockEndsAt: 495, marginMs: 52, connects: true }); // 後隙 195→215 の分を kick1 の固まり 325→345 で埋めた(余り52のまま)
     for (const r of [connects('kick1', 'kick2', 'cancel-now'), connects('kick2', 'kick3', 'cancel-now'), connects('kick1', 's1', 'recovery-end')]) expect(r.marginMs).toBeGreaterThanOrEqual(MARGIN);
   });
@@ -543,12 +543,15 @@ describe('踵落とし(飛び蹴りの2発目の続きで下・社長指示2026-
     expect(brawlerHeelInput(idleIn, 'stomp', 2001)).toBe(false);
     expect(brawlerHeelInput(initialBrawlerState(), 'stomp', 1000)).toBe(false);
   });
-  it('踵落としの状態は飛び蹴りの3発目のまま(溜め・後隙は蹴り飛ばしと同じ)。名札と道だけ違う', () => {
+  it('踵落としの状態は飛び蹴りの3発目のまま(後隙は蹴り飛ばしと同じ)。溜めは踵落としだけ(§33-2)。名札と道だけ違う', () => {
     const a = brawlerStartTech(kick(2, true), 'kick', 2000, 3, false, true);
     const b = brawlerStartTech(kick(2, true), 'kick', 2000, 3, false, false);
     expect(a.kickHeel).toBe(true);
     expect(b.kickHeel).toBe(false);
-    expect([a.windupMs, a.recoveryMs, a.kickChargeMs]).toEqual([b.windupMs, b.recoveryMs, b.kickChargeMs]);
+    expect(a.recoveryMs).toBe(b.recoveryMs);
+    expect(b.kickChargeMs).toBe(0); // 蹴り飛ばしは溜め無し
+    expect(a.kickChargeMs).toBe(BRAWLER_KICK3_CHARGE_MS); // 踵落としは今のまま溜める
+    expect(a.windupMs).toBe(b.windupMs + BRAWLER_KICK3_CHARGE_MS);
     expect(brawlerRouteNodeOf(a)).toBe('heel');
     expect(brawlerRouteNodeOf(b)).toBe('kick3');
     // 1・2発目に踵落としの印は付かない。次の行動で印は消える。

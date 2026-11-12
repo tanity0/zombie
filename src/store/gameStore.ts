@@ -786,6 +786,8 @@ export interface BrawlerKiko {
   createdAt: number; // Date.now(描画の時計)
   /** 撃った気功の技の押した時刻(当たった時に、まだその技の最中なら「当たった」にする=技→技のキャンセルの条件・§11-4)。 */
   pressAt?: number;
+  /** ★構えの反撃の気功(research/BRAWLER.md §32)。爆発の威力に BRAWLER_GUARD_COUNTER_KIKO_MULT を掛ける。見た目・速さ・届く距離は同じ。 */
+  counter?: boolean;
 }
 
 // 制圧イベント(ステージ1メインミッション等のサブクエスト時のみ有効・通常は無効)。
@@ -4777,9 +4779,10 @@ const brawlerFinishLockPatch = (enemy: Enemy, bs: BrawlerStrikeOpts, gameTime: n
  */
 const brawlerWorldStopOn = (get: () => GameState): boolean => !get().rhythm.active;
 /** 当たりの止めの組(自分の止め・敵に書く止め・固まりの式の止め・全体の止め)。 */
-const brawlerStopPlan = (get: () => GameState, hitstopMs: number): { self: number; stun: number; lock: { lockStopMs?: number }; world: number } => {
+/** worldMs=画面全体の止めの長さを技ごとに指定する時(未指定=hitstopMs の強さから BR.brawlerWorldStopMs)。蹴り飛ばしだけが使う(§33-2)。 */
+const brawlerStopPlan = (get: () => GameState, hitstopMs: number, worldMs?: number): { self: number; stun: number; lock: { lockStopMs?: number }; world: number } => {
   if (!brawlerWorldStopOn(get) || hitstopMs <= 0) return { self: hitstopMs, stun: hitstopMs, lock: {}, world: 0 };
-  const world = BR.brawlerWorldStopMs(hitstopMs);
+  const world = worldMs ?? BR.brawlerWorldStopMs(hitstopMs);
   // 自分の止めは 1ms だけ残す: 全体が止まっている間は gameTime が進まないので、この 1ms の止めが「全体の止めの最中に押した入力は今どおり
   // 覚えて、止めが明けた最初のフレームで出す」を保つ(0 にすると、止めの最中の入力がその場で出て、次の技の出だしが全体の止めの中で始まる)。
   // 固まりの式の止めは BR.BRAWLER_WORLD_STOP_LOCK_MS(半フレーム): 覚えた技は止めが明けた最初のフレームで出る(gameTime が1フレーム進んだ所)。
@@ -5048,10 +5051,14 @@ const startBrawlerTech = (
         : { dx: dir.x * BR.BRAWLER_KICK_NO_TARGET_PX, dy: dir.y * BR.BRAWLER_KICK_NO_TARGET_PX, dist: BR.BRAWLER_KICK_NO_TARGET_PX };
       // 飛ぶ時間は距離に合わせる(遠い相手ほど少し長く・最高速はほぼ据え置き=§9-33)。判定の時刻(前隙の終わり)も同じ長さ。
       const flightMs = BR.brawlerKickFlightMs(ap.dist);
-      // ★3発目は蹴りに入る前に溜める(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」)。前隙=溜め+飛ぶ時間。
+      // ★踵落としは蹴りに入る前に溜める(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」)。前隙=溜め+飛ぶ時間。
       //   詰めの器は溜めの間止めておく(lungeHoldUntil=止めと同じ仕組み・明けたら飛ぶ時間ぶん飛ぶ)。
-      const chargeMs = kickN >= BR.BRAWLER_KICK_MAX ? BR.BRAWLER_KICK3_CHARGE_MS : 0;
-      s = { ...s, windupMs: chargeMs + flightMs, kickChargeMs: chargeMs };
+      //   ★蹴り飛ばし(踵落としでない3発目)は溜め無し(research/BRAWLER.md §33-2「ポン・ポン・ドン」・社長裁定2026-11-12)。
+      const chargeMs = heel ? BR.BRAWLER_KICK3_CHARGE_MS : 0;
+      // ★当たった蹴りの画面全体の止めの最中に出した次の蹴りは、止めが明けるまで体と影を当たった蹴りの絵のまま描く(§33-2・絵だけ)。
+      //   判定の時刻・固まりは今どおり(gameTime は止めの間進まない=始めた時刻 t のまま)。印=始めた gameTime。
+      const heldInStop = s0.phase === 'tech' && s0.tech === 'kick' && s0.resolved && s0.connected && get().hitstopUntil > now;
+      s = { ...s, windupMs: chargeMs + flightMs, kickChargeMs: chargeMs, kickHoldAt: heldInStop ? t : undefined };
       // ★画面全体の止め(格闘の当たり・BR.BRAWLER_WORLD_STOP)の最中に出した蹴り(蹴りの連続は止めの最中でもその場で出る)は、踏み込み(壁時計)を
       //   止めが明けた時刻から始める=飛ぶ距離と判定の時刻(gameTime=止めの間は進まない)が今どおり揃う。止めの外では now のまま。
       const lungeAt = Math.max(now, get().hitstopUntil);
@@ -5533,11 +5540,7 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       brawlerKiko: [...state.brawlerKiko.slice(-5), { id: `kiko-${now}`, x: sx, y: sy, dirX: d.x, dirY: d.y, traveled: 0, createdAt: now, pressAt: s.pressAt }],
       player: { ...state.player, brawler: { ...s, resolved: true, dirX: d.x, dirY: d.y }, lastDirection: { x: d.x, y: d.y } },
     }));
-    g.spawnEffect({ kind: 'meleeHit', id: `mhit-kiko0-${now}`, x: sx, y: sy, size: 84, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: 240, rot: Math.random() * Math.PI * 2 });
-    g.spawnGlow(sx, sy, GLOW_R_S, 'rgba(255,248,230,', 200, true);
-    g.spawnBurst(sx, sy, '#fb923c', 6, d.x, d.y); // 火の気配(橙の火の粉・クリエイティブ監査 #16)
-    brawlerSfx('whip-swing', 0.55, 1.45 * brJitter(), 120);
-    brawlerSfx('homing-fire', 0.55, 0.72, 220);
+    brawlerKikoMuzzle(get, sx, sy, d, now);
     return;
   }
   if (s.tech === 'kick') {
@@ -5547,7 +5550,8 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
     // 踵落とし: 当たる前に浮いていた敵(叩き落とす)と地上の敵(その場で沈む)で、絵を出し分ける。
     const heelAir = heel ? new Set(st.enemies.filter(e => ids.includes(e.id) && BRC.brawlerAirborne(e, now)).map(e => e.id)) : null;
-    const plan = brawlerStopPlan(get, hs); // ★当たりの止め=画面全体(踵落としも)
+    // ★当たりの止め=画面全体(踵落としも)。蹴り飛ばし(踵落としでない3発目)は専用の長さ(BR.BRAWLER_WORLD_STOP_KICK3・§33-2「締めの重さは止めで出す」)。
+    const plan = brawlerStopPlan(get, hs, big && !heel ? BR.BRAWLER_WORLD_STOP_KICK3 : undefined);
     const r = strike(ids, {
       mult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), stunMs: plan.stun, ...plan.lock, postureMult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.2
       // 押し: 1〜3発目とも普通のノックバック。3発目は旧「吹き飛ばし(big)」→ 少しのノックバックへ(社長指示2026-11-11「3段目はノックバック少しさせちゃって良い」)。
@@ -5853,6 +5857,36 @@ const brawlerStageFx = (
   void target;
 };
 
+/** 気功を撃った瞬間の絵と音(撃ち出しの火花・光・火の粉・振りの音)。通常の気功と構えの反撃の気功(§32)で同じもの。 */
+const brawlerKikoMuzzle = (get: () => GameState, sx: number, sy: number, d: { x: number; y: number }, now: number): void => {
+  const g = get();
+  g.spawnEffect({ kind: 'meleeHit', id: `mhit-kiko0-${now}`, x: sx, y: sy, size: 84, tint: BR.BRAWLER_COLOR_HEX, createdAt: now, duration: 240, rot: Math.random() * Math.PI * 2 });
+  g.spawnGlow(sx, sy, GLOW_R_S, 'rgba(255,248,230,', 200, true);
+  g.spawnBurst(sx, sy, '#fb923c', 6, d.x, d.y); // 火の気配(橙の火の粉・クリエイティブ監査 #16)
+  brawlerSfx('whip-swing', 0.55, 1.45 * brJitter(), 120);
+  brawlerSfx('homing-fire', 0.55, 0.72, 220);
+};
+/**
+ * ★構えの反撃の気功を撃つ(research/BRAWLER.md §32)。代金なし・構えの状態機械は触らない(構えは時間いっぱい続く)。
+ * 狙い=予約した相手がまだ狙えればその相手(通常の気功と同じく箱の最寄りの点へ)、狙えなければ受けた点の方向。弾の見た目・速さ・届く距離は通常の気功のまま。
+ */
+const fireBrawlerGuardCounterKiko = (
+  get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, r: NonNullable<BR.BrawlerState['guardKiko']>,
+): void => {
+  const p = get().player;
+  const now = Date.now();
+  const c = brawlerCenter(p);
+  const tgt = r.targetId !== undefined ? get().enemies.find(e => e.id === r.targetId) : undefined;
+  const d = tgt && BR.isBrawlerTargetable(tgt)
+    ? BR.brawlerAimDir(c.x, c.y, tgt, p.lastDirection)
+    : BRG.brawlerGuardCounterDir(c, { x: r.hitX, y: r.hitY }, p.lastDirection);
+  const sx = c.x + d.x * 18, sy = c.y - 4 + d.y * 18;
+  set(state => ({
+    brawlerKiko: [...state.brawlerKiko.slice(-5), { id: `kiko-ctr-${now}`, x: sx, y: sy, dirX: d.x, dirY: d.y, traveled: 0, createdAt: now, counter: true }],
+  }));
+  brawlerKikoMuzzle(get, sx, sy, d, now);
+};
+
 /** 気功の弾を進める(弾がある時だけ)。最初に当たった敵か届いた所(壁を含む)で爆発。 */
 const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void): void => {
   const st = get();
@@ -5862,7 +5896,7 @@ const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Parti
   if (dtMs <= 0) return;
   const step = BR.BRAWLER_KIKO_SPEED * dtMs / 1000;
   const keep: BrawlerKiko[] = [];
-  const blasts: { x: number; y: number; pressAt?: number }[] = [];
+  const blasts: { x: number; y: number; pressAt?: number; counter?: boolean }[] = [];
   for (const k of st.brawlerKiko) {
     const nx = k.x + k.dirX * step, ny = k.y + k.dirY * step;
     const traveled = k.traveled + step;
@@ -5878,7 +5912,7 @@ const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Parti
       if (walls.some(w => nx >= w.x && nx <= w.x + w.width && ny >= w.y && ny <= w.y + w.height)) { hitX = k.x; hitY = k.y; }
     }
     if (hitX === null && traveled >= BR.BRAWLER_KIKO_RANGE + brawlerReachExtra(st.player)) { hitX = nx; hitY = ny; }
-    if (hitX !== null) blasts.push({ x: hitX, y: hitY, pressAt: k.pressAt });
+    if (hitX !== null) blasts.push({ x: hitX, y: hitY, pressAt: k.pressAt, counter: k.counter });
     else {
       keep.push({ ...k, x: nx, y: ny, traveled });
       // 火の気配: 飛んでいる間、後ろへ橙の火の粉をこぼす(間隔は揺らす・クリエイティブ監査 #16)。
@@ -5886,7 +5920,7 @@ const stepBrawlerKiko = (get: () => GameState, set: (fn: (s: GameState) => Parti
     }
   }
   set(() => ({ brawlerKiko: keep }));
-  for (const b of blasts) explodeBrawlerKiko(get, b.x, b.y, { pressAt: b.pressAt });
+  for (const b of blasts) explodeBrawlerKiko(get, b.x, b.y, { pressAt: b.pressAt, ...(b.counter ? { mult: BRG.BRAWLER_GUARD_COUNTER_KIKO_MULT } : {}) });
 };
 
 /**
@@ -5986,7 +6020,8 @@ const brawlerKikoGunMult = (p: Player, gameTime: number): number =>
 /** 気功の爆発(爆発扱い=skillExplosionMult・処刑なし・§7-1)。入った敵を延焼(炎の床は出さない)。 */
 const explodeBrawlerKiko = (
   get: () => GameState, x: number, y: number,
-  o: { move?: BRC.BrawlerMoveKey; pressAt?: number } = {},
+  /** mult=威力の上乗せ(構えの反撃の気功=BRAWLER_GUARD_COUNTER_KIKO_MULT・§32)。未指定=1。 */
+  o: { move?: BRC.BrawlerMoveKey; pressAt?: number; mult?: number } = {},
 ): void => {
   const st = get();
   const p = st.player;
@@ -5997,7 +6032,8 @@ const explodeBrawlerKiko = (
     * BRS.brawlerSpeedDamageMult(playerMoveStatMult(p, st.gameTime)) // 足の速さの能力値(§16-D)
     * brawlerKikoGunMult(p, st.gameTime) // ★気功は銃の攻撃力に依存(§16-E)
     * skillBloodAwakenDamageMult(p) // 血の覚醒の×1.5も銃と同じく乗る(社長承認2026-11-09)
-    * masteryMultOf(p, 'brawler'); // 熟練度: 気功=格闘(research/MASTERY.md v2 §4-2)
+    * masteryMultOf(p, 'brawler') // 熟練度: 気功=格闘(research/MASTERY.md v2 §4-2)
+    * (o.mult ?? 1); // ★構えの反撃の気功(§32)
   const ids = BR.brawlerCircleTargets(st.enemies, x, y, radius);
   const burn = incendiaryBurnParams(brawlerLevel(p));
   let dealt = 0;
@@ -11330,6 +11366,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       const b = get().player.brawler;
       if (b && (b.flowHits ?? 0) > 0 && !((b.flowBrokenAt ?? 0) > 0)) syncBrawlerLinkCount(get, set);
     }
+    // ★構えの反撃の気功(§32): 受けた瞬間の止めが明けたら撃つ(全体の止めの間はこの時計が回らない)。格闘でなくなった・関所(掴み・紫など)に
+    //   掛かっていれば撃たずに捨てる(代金なしの潰しと同じ)。構えの状態機械は触らない(下の段・技の処理はこの後に今どおり回る)。
+    {
+      const pk = get().player;
+      const rk = pk.brawler?.guardKiko;
+      if (pk.brawler && rk && Date.now() >= rk.at) {
+        setBrawler(set, { ...pk.brawler, guardKiko: undefined });
+        if (isBrawlerMode(pk) && brawlerGateOk(get)) fireBrawlerGuardCounterKiko(get, set, rk);
+      }
+    }
     const p = get().player;
     const s0 = p.brawler;
     if (!s0?.secret) releaseSecretFreeze(); // 秘奥義が無いのに止めが残っていたら解く(別の経路の中断の保険・§17)
@@ -11527,6 +11573,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       set(state => ({ player: {
         ...state.player, lungeVx: dir.x * v, lungeVy: dir.y * v, lungeUntil: startAt + ms, lungeMs: ms, lungeShape: 'push', lungeHoldUntil: 0,
       } }));
+      // ★反撃の気功(社長裁定2026-11-12・research/BRAWLER.md §32): 構え1回(guardSince ごと)に1発だけ、代金なしの気功を予約する。
+      //   撃つのは受けた瞬間の止めが明けた時刻(=押され始めと同時・tickBrawler が撃つ)。狙い=受けた相手のうち雑魚より上で狙える一番近い相手。
+      {
+        const b = get().player.brawler;
+        if (b && BRG.brawlerGuardCounterDue({ outcome, guardSince: b.guardSince, firedFor: b.guardKikoFor })) {
+          const tgt = BRG.brawlerGuardCounterTarget(sources, stn.enemies, c, BR.isBrawlerTargetable);
+          setBrawler(set, { ...b, guardKikoFor: b.guardSince, guardKiko: { at: startAt, targetId: tgt?.id, hitX: x, hitY: y } });
+        }
+      }
       // 絵(派手さの絵・判定なし): 踏ん張った足が地面を削った砂埃(社長指示2026-11-10「ステップのエフェクトは砂埃にして。白い線やめる」と同じ扱い=
       // 白い筋 dash-wind と、芯が白く光る粒は使わない)。押され始めの足元に大きめの砂埃を置き、相手の側へ流す。大きさと尺はずらす。音は低い擦れ。
       {

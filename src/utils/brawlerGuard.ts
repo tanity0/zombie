@@ -9,8 +9,11 @@ import { brawlerComboClass, brawlerLiftClass } from './brawlerCombo';
 
 /** 同じ受けとして間引く間隔(ms・実時間)。光線など毎フレーム来る受けの絵・音・効果はこの間隔に1度。 */
 export const BRAWLER_GUARD_THROTTLE_MS = 140;
-/** 雑魚より上を受けた時に自分が押される距離(px)。格闘のステップ(100px)より大きく=間合いが切れる。 */
-export const BRAWLER_GUARD_KNOCK_PX = 150;
+/**
+ * 雑魚より上を受けた時に自分が押される距離(px)。★150→90(社長裁定2026-11-12・research/BRAWLER.md §32-1 の叩き台)=
+ * ステップ(100px)より少し短い。押されながら反撃の気功を撃つ(下の BRAWLER_GUARD_COUNTER_KIKO_MULT)。
+ */
+export const BRAWLER_GUARD_KNOCK_PX = 90;
 /** 押される長さ(ms・ゲーム内の時間)。加速→減速の1山(格闘のステップと同じ形)。 */
 export const BRAWLER_GUARD_KNOCK_MS = 280;
 /** 相手の位置が自分と重なっている(向きが取れない)とみなす距離(px)。 */
@@ -146,3 +149,48 @@ export const slowLostMs = (simDtSec: number, scale: number): number =>
  */
 export const brawlerPushUntil = (until: number, now: number, ms: number, simDtSec: number, scale: number): number =>
   Math.min(until + slowLostMs(simDtSec, scale), now + Math.max(0, ms));
+
+// ---------------------------------------------------------------------------------------------
+// ★構えでボス級の技を受けたら、気功で反撃する(社長裁定2026-11-12・research/BRAWLER.md §32)
+// ---------------------------------------------------------------------------------------------
+/** 反撃の気功の威力の倍率(通常の気功の倍率の上に掛ける・叩き台)。ジャスト構えの上乗せは掛けない(§32-1)。 */
+export const BRAWLER_GUARD_COUNTER_KIKO_MULT = 1.5;
+
+/**
+ * 反撃の気功を予約するか。成立の効果が「ノックバック」(間引き・持続ダメージは brawlerGuardOutcome が 'none' にする)で、
+ * この構え(guardSince ごと・延長は新しい構えとして数え直す)でまだ撃っていない時だけ。firedFor=撃った(予約した)構えの guardSince。
+ */
+export const brawlerGuardCounterDue = (o: {
+  outcome: BrawlerGuardOutcome; guardSince: number | undefined; firedFor: number | undefined;
+}): boolean => o.outcome === 'knockback' && o.guardSince !== undefined && o.firedFor !== o.guardSince;
+
+/**
+ * 反撃の気功の狙い。受けた相手のうち、雑魚より上(強個体・ボス級・浮かない区分)で狙える(aimable)相手の、自分(pc)から一番近い1体。
+ * 個体が分かればその個体、型だけならその型の全員が候補。居なければ null(=受けた点の方向へ撃つ・brawlerGuardCounterDir)。
+ */
+export const brawlerGuardCounterTarget = <E extends ClassEnemy & Pick<Enemy, 'x' | 'y' | 'width' | 'height'>>(
+  sources: readonly BrawlerGuardSource[], enemies: readonly E[], pc: { x: number; y: number }, aimable: (e: E) => boolean,
+): E | null => {
+  let best: E | null = null, bd = Infinity;
+  const consider = (e: E): void => {
+    if (brawlerLiftClass(e) === 'mob' || !aimable(e)) return;
+    const d = Math.hypot(e.x + e.width / 2 - pc.x, e.y + e.height / 2 - pc.y);
+    if (d < bd) { bd = d; best = e; }
+  };
+  for (const s of sources) {
+    const byId = s.id !== undefined ? enemies.find(en => en.id === s.id) : undefined;
+    if (byId) { consider(byId); continue; }
+    if (s.type !== undefined) for (const en of enemies) if (en.type === s.type) consider(en);
+  }
+  return best;
+};
+
+/** 狙う相手が居ない時の撃つ向き(長さ1)。受けた点の方向 → 重なっていれば向いている方 → それも無ければ右。 */
+export const brawlerGuardCounterDir = (
+  pc: { x: number; y: number }, hit: { x: number; y: number }, facing: { x: number; y: number } | null | undefined,
+): { x: number; y: number } => {
+  const dx = hit.x - pc.x, dy = hit.y - pc.y, d = Math.hypot(dx, dy);
+  if (d >= BRAWLER_GUARD_KNOCK_MIN_DIST) return { x: dx / d, y: dy / d };
+  const fl = facing ? Math.hypot(facing.x, facing.y) : 0;
+  return facing && fl > 1e-6 ? { x: facing.x / fl, y: facing.y / fl } : { x: 1, y: 0 };
+};

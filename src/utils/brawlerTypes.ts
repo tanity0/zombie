@@ -45,8 +45,13 @@ export interface BrawlerState {
   kickHeel?: boolean;
   /** 覚えている次の蹴り(techBuffer='kick')が踵落としか(下で入れた)。 */
   heelBuffer?: boolean;
-  /** 飛び蹴りの3発目の溜め(ms・gameTime)。前隙(windupMs)の頭のこの長さは空中で光って沈み、その後に飛ぶ。0/無し=溜め無し。 */
+  /** 踵落としの溜め(ms・gameTime)。前隙(windupMs)の頭のこの長さは空中で光って沈み、その後に飛ぶ。0/無し=溜め無し(蹴り飛ばしは溜め無し=§33)。 */
   kickChargeMs?: number;
+  /**
+   * ★画面全体の止めの最中に始めた次の蹴り(research/BRAWLER.md §33-2「当たった蹴りの絵で止まる」)。始めた gameTime。
+   * gameTime は止めの間進まないので、gameTime がこの値のままの間(=止めが明けるまで)は、体と影を前の蹴りの当たった絵のまま描く(絵だけ)。
+   */
+  kickHoldAt?: number;
   /** 行動の始まり(gameTime)。 */
   startAt: number;
   /** この行動の前隙と戻り(ms)。前隙は #7 の「前隙なし」で 0 になることがある。 */
@@ -100,6 +105,10 @@ export interface BrawlerState {
   guardSince?: number;
   /** スロー・停止を出した構え(guardSince の値)。 */
   guardImpactFor?: number;
+  /** ★反撃の気功(research/BRAWLER.md §32)を予約した構え(guardSince の値)。構え1回につき1発。 */
+  guardKikoFor?: number;
+  /** ★予約中の反撃の気功。at=撃つ時刻(Date.now・受けた瞬間の止めが明ける時刻)/ targetId=狙う相手 / hitX,hitY=受けた点(狙えない時の向き)。 */
+  guardKiko?: { at: number; targetId?: string; hitX: number; hitY: number };
   /** 構えを延長した時刻(Date.now・体の光と腕ガードの影を一度強く脈打たせる合図)。 */
   guardRenewAt?: number;
   palmFromY?: number;

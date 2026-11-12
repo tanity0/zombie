@@ -21379,7 +21379,9 @@ export class PixiScene {
       let kickAir: number | null = null;
       let kickDir: 1 | 0 | -1 = 0;   // 縦の動きの向き(姿勢と上昇の筋が読む)
       let kickCrouch = false;        // 踏み切りの沈みの間
-      if (bsK && kicking && !bsK.resolved && bsK.targetId) {
+      // 画面全体の止めの最中に始めた次の蹴り(§33-2)は、止めが明けるまで前の蹴りの当たった絵のまま=跳びもまだ始めない。
+      const kickHeldK = !!bsK && BRW.brawlerKickHeldInStop(bsK, gameTime);
+      if (bsK && kicking && !bsK.resolved && bsK.targetId && !kickHeldK) {
         const elK = BRW.brawlerElapsed(bsK, gameTime);
         const chargeK = Math.max(0, Math.min(bsK.windupMs, bsK.kickChargeMs ?? 0));
         const enK = elK >= chargeK ? stAir.enemies.find(en => en.id === bsK.targetId) : undefined;
@@ -21415,7 +21417,7 @@ export class PixiScene {
       }
       // 3発目の溜めの間: 前の蹴りの高さから、溜めの7割までに加速しながら落ちて着地する(残りは地面で溜める→そこから跳ぶ)。
       let kickLandSpeed: number | null = null;
-      if (bsK && kicking && !bsK.resolved && kickAir === null) {
+      if (bsK && kicking && !bsK.resolved && kickAir === null && !kickHeldK) {
         const elC = BRW.brawlerElapsed(bsK, gameTime);
         const chargeC = Math.max(0, Math.min(bsK.windupMs, bsK.kickChargeMs ?? 0));
         if (chargeC > 0 && elC < chargeC) {
@@ -41006,7 +41008,7 @@ export class PixiScene {
     const r0 = Math.max(p.width, p.height);
     // 詰めの出発点に砂埃1つ(1〜3段・蹴り)。
     const dashing = (s.phase === 'attack' && s.stage <= 3 && !s.resolved && s.windupMs > 0 && (p.lungeUntil ?? 0) > Date.now())
-      || (s.phase === 'tech' && s.tech === 'kick' && !s.resolved)
+      || (s.phase === 'tech' && s.tech === 'kick' && !s.resolved && !BRW.brawlerKickHeldInStop(s, gt)) // 止めの最中に始めた蹴りは明けてから(§33-2)
       || BRW.isBrawlerPalmDashing(s); // 5段目の突き抜けの踏み出し
     const dashL = this.latchFx('brawler:dash', dashing, DUST_MS * 0.7, now, () => [footX - s.dirX * 8, footY - s.dirY * 4]);
     if (dashL) this.drawDust(dashL.d[0], dashL.d[1], r0 * 0.5 * dsc, dashL.t, tint, this.dustAlpha(dashL.t) * 0.75, dashL.t0);

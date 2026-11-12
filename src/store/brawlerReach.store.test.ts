@@ -1,7 +1,7 @@
 // ★基本技の前進は「決まった距離を、出した瞬間の向きへ」(research/BRAWLER.md §31・社長裁定2026-11-12)を、実際の AI(updateEnemies)を実際の刻みで回して固める。
 //  - 押しの表(utils/brawlerReach の BRAWLER_PUSH_ZOMBIE_PX)が、雑魚に当てた実際の押しと合っている
 //  - 代表の道(弱→弱→強→4段目→5段目 / 弱→飛び蹴り1→2→3 / 飛び蹴り2→踵落とし / 強→気功)は、相手の手前から始めて、続きを一番早く出しても一番遅く出しても当たる
-//  - 外れる: 踏み込み+届く範囲より遠い相手には空振りする / 3発目の溜めの間に相手が動くと外れる(取り直さない)
+//  - 外れる: 踏み込み+届く範囲より遠い相手には空振りする / 3発目の飛ぶ間に相手が動くと外れる(取り直さない・蹴り飛ばしは溜め無し=§33-2)
 // 全部のつなぎの距離の計算は utils/brawlerReach.test.ts。
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { useGameStore } from './gameStore';
@@ -9,7 +9,7 @@ import type { Enemy, EnemyType } from '../types/game';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll, brawlerHeldNow } from '../utils/brawlerCombo';
 import {
-  BRAWLER_TEMPO_DEFAULT, BRAWLER_STANDOFF_PX, BRAWLER_LUNGE_PX, initialBrawlerState, brawlerDistTo, brawlerTechAllowed, brawlerStageForPress, brawlerNextKickN,
+  BRAWLER_TEMPO_DEFAULT, BRAWLER_STANDOFF_PX, BRAWLER_LUNGE_PX, initialBrawlerState, brawlerDistTo, brawlerElapsed, brawlerTechAllowed, brawlerStageForPress, brawlerNextKickN,
   type BrawlerState, type BrawlerRouteNode,
 } from '../utils/brawler';
 import { BRAWLER_PUSH_ZOMBIE_PX } from '../utils/brawlerReach';
@@ -196,7 +196,7 @@ describe('§31-1 外れる(外れやすさはそのまま)', () => {
     expect(dist()).toBeGreaterThan(BRAWLER_STANDOFF_PX + 10);
   });
   for (const [label, move] of [['奥へ70px', { x: 70, y: 0 }], ['横へ150px', { x: 0, y: 150 }]] as const) {
-    it(`飛び蹴りの3発目: 溜めの間に相手が${label}動くと外れる(溜め明けに取り直さない)`, () => {
+    it(`飛び蹴りの3発目: 飛ぶ間に相手が${label}動くと外れる(出した瞬間の行き先のまま・取り直さない)`, () => {
       setup('hunter', 60, { aiPhase: 'windup', aiPhaseUntil: 9e9, aiStartedAt: 0 });
       for (let n = 1; n <= 3; n++) {
         const before = en().lastHit;
@@ -204,6 +204,10 @@ describe('§31-1 外れる(外れやすさはそのまま)', () => {
         if (n === 3) {
           for (let f = 0; f < 60 && !(br().phase === 'tech' && br().kickN === 3); f++) adv();
           expect(br().kickN).toBe(3);
+          expect(br().kickChargeMs ?? 0).toBe(0); // 蹴り飛ばしは溜め無し=出した後は飛ぶだけ(§33-2)
+          // 画面全体の止めが明けて、実際に飛び始めてから相手を動かす(飛ぶ間に動く)
+          for (let f = 0; f < 60 && (now < useGameStore.getState().hitstopUntil || brawlerElapsed(br(), gt()) <= 0); f++) adv();
+          expect(br().resolved, '飛んでいる間').toBe(false);
           useGameStore.setState(st => ({ enemies: st.enemies.map(e => ({ ...e, x: e.x + move.x, y: e.y + move.y, knockbackVx: 0, knockbackVy: 0, knockbackUntil: 0 })) }));
         }
         for (let f = 0; f < 400 && !(br().phase === 'tech' && br().kickN === n && br().resolved); f++) adv();

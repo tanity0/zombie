@@ -16,7 +16,7 @@ import {
   brawlerIsJustGuard, BRAWLER_JUST_MS, brawlerStepAllowed, brawlerStepStart, brawlerBufferStep, brawlerStepBufferDecision, BRAWLER_STEP_BUFFER_MS, brawlerStepFactor, brawlerStepSpeed, BRAWLER_STEP_PX, BRAWLER_STEP_MS,
 } from './brawler';
 import {
-  pickBrawlerComboTarget, brawlerComboLockId, brawlerComboTargetAfterHit, BRAWLER_HEEL_AIR_PX, BRAWLER_STOMP_FROM_AIR_FALL, BRAWLER_KICK3_CHARGE_RISE_PX, BRAWLER_KICK3_CHARGE_SINK_PX, BRAWLER_KICK_MAX,
+  pickBrawlerComboTarget, brawlerComboLockId, brawlerComboTargetAfterHit, BRAWLER_HEEL_AIR_PX, BRAWLER_STOMP_FROM_AIR_FALL, BRAWLER_KICK3_CHARGE_RISE_PX, BRAWLER_KICK3_CHARGE_SINK_PX, BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_MAX,
 } from './brawler';
 import { setBrawlerTempoAll } from './brawlerCombo';
 // ★テンポ係数(§9-68): この表の時刻は係数1.0(今までの値)で書いてある。係数1.3の挙動は brawlerTempo.store.test.ts で固める。
@@ -285,13 +285,18 @@ describe('格闘: 絵(クリエイティブ監査)', () => {
       return m;
     };
     expect(maxStep(f, f.windupMs - 1)).toBeLessThan(0.15);
+    // 蹴り飛ばし(3発目)は溜め無し(research/BRAWLER.md §33-2)=1・2発目と同じく踏み切りから後傾へ立ち上げる。
     const k3 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 3);
-    expect(k3.kickChargeMs).toBeGreaterThan(0);
-    expect(brawlerPoseAt(k3, 10)!.lean).toBeGreaterThan(0);            // 溜めの頭は前傾(縮める)
+    expect(k3.kickChargeMs).toBe(0);
     expect(brawlerPoseAt(k3, k3.windupMs - 10)!.lean).toBeLessThan(-0.5);
-    let prev = brawlerPoseAt(k3, 0)!.lean;
-    for (let t = 1; t < k3.windupMs; t += 1) {
-      const l = brawlerPoseAt(k3, t)!.lean;
+    expect(maxStep(k3, k3.windupMs - 1)).toBeLessThan(0.15);
+    // 幻影(孫悟空)の3発目は今どおり溜める(utils/phantomBrawlerTick が溜めを前隙の頭に足す)=溜めの絵の傾き。
+    const g3 = { ...k3, kickChargeMs: BRAWLER_KICK3_CHARGE_MS, windupMs: k3.windupMs + BRAWLER_KICK3_CHARGE_MS };
+    expect(brawlerPoseAt(g3, 10)!.lean).toBeGreaterThan(0);            // 溜めの頭は前傾(縮める)
+    expect(brawlerPoseAt(g3, g3.windupMs - 10)!.lean).toBeLessThan(-0.5);
+    let prev = brawlerPoseAt(g3, 0)!.lean;
+    for (let t = 1; t < g3.windupMs; t += 1) {
+      const l = brawlerPoseAt(g3, t)!.lean;
       expect(Math.abs(l - prev)).toBeLessThan(0.15 / 16 * 1.5); // 1msあたり=16msで0.15未満相当
       prev = l;
     }

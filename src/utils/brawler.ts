@@ -73,6 +73,11 @@ export const BRAWLER_HITSTOP = { weak: 90, strong: 150, closer: 220 } as const;
  */
 export const BRAWLER_WORLD_STOP = { weak: 110, strong: 180, closer: 260 } as const;
 /**
+ * ★飛び蹴りの3発目(蹴り飛ばし)の当たりの画面全体の止め(ms・壁時計・テンポ係数は掛けない)。research/BRAWLER.md §33-2「締めの重さは止めで出す」
+ * (社長裁定2026-11-12・叩き台)。溜めをなくした代わりに、締めの重さを止めで出す。踵落とし・ほかの締めの止めは BRAWLER_WORLD_STOP.closer のまま。
+ */
+export const BRAWLER_WORLD_STOP_KICK3 = 340;
+/**
  * 画面全体を止める当たりで残す、自分の止め(1ms)と固まりの式の止め(8ms=半フレーム)。gameTime(全体の止めの間は進まない)。
  * 自分の止め 1ms=全体の止めの最中に押した入力を今どおり覚えて、止めが明けた最初のフレームで出すため(0 だとその場で出てしまう)。
  * 固まりの 8ms=その「最初のフレーム」までの遅れ(1フレーム)と、今の止めの明けの遅れ(フレームの境目まで平均で半フレーム)の差を埋める。
@@ -216,16 +221,29 @@ export const brawlerKickMult = (kickN: number): number => BRAWLER_KICK_MULTS[Mat
 export let BRAWLER_KICK_CHAIN_MS = 500; // ×BRAWLER_TEMPO(係数1.0の値)
 export const BRAWLER_KICK_MAX = 3;
 /**
- * ★飛び蹴りの3発目の溜め(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」)。蹴りに入る前に空中で体が光って沈む。
+ * ★踵落とし(3発目の派生)の溜め(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」)。蹴りに入る前に空中で体が光って沈む。
  * 実時間で約150ms(係数を掛けた後の値)=係数1.0の値は 150/1.3 を丸めた 115。前隙(windupMs)はこの溜め+飛ぶ時間。
+ * ★蹴り飛ばし(踵落としでない3発目)は溜め無し(research/BRAWLER.md §33-2・社長裁定2026-11-12「ポン・ポン・ドン」)。
+ *  幻影(孫悟空)の3発目は今どおりこの溜めを使う(utils/phantomBrawlerTick・敵の側は変えない)。
  */
 export let BRAWLER_KICK3_CHARGE_MS = 127; // ×BRAWLER_TEMPO(係数1.0の値)・社長指示2026-11-11『飛び蹴りからの3段、ほんの少しだけゆっくりに』で ×1.1(旧115)
 /** 溜めの見た目: 跳び上がる高さ・沈む量(px・絵だけ)。 */
 export const BRAWLER_KICK3_CHARGE_RISE_PX = 24;
 export const BRAWLER_KICK3_CHARGE_SINK_PX = 7;
-/** 3発目の溜めの光(0..1・絵だけ)。溜めの間に強まり(easeIn)、飛び出しで速く引く。 */
+/**
+ * ★当たった蹴りの絵で止まる(research/BRAWLER.md §33-2・社長裁定2026-11-12)。画面全体の止めの最中に始めた次の蹴り(store が kickHoldAt を付ける)は、
+ * gameTime が始めた時刻のまま(=止めが明けるまで)は、前の蹴りの「当たった瞬間」の絵(脚を伸ばした絵)で描く。絵だけ=判定の時刻・固まりは変えない。
+ */
+export const brawlerKickHeldInStop = (s: Pick<BrawlerState, 'phase' | 'tech' | 'kickHoldAt' | 'resolved'>, t: number): boolean =>
+  s.phase === 'tech' && s.tech === 'kick' && s.kickHoldAt !== undefined && !s.resolved && t <= s.kickHoldAt;
+/** 止めの間に描く「前の蹴りの当たった瞬間」の状態(体と影の絵の駆動だけ)。前の蹴り=1つ前の何発目(1・2発目=踵落としではない)。 */
+const brawlerKickHoldView = (s: BrawlerState, t: number): BrawlerState => ({
+  ...s, kickN: Math.max(1, s.kickN - 1), kickHeel: false, kickChargeMs: 0, kickHoldAt: undefined,
+  startAt: t - s.windupMs, stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: true, connected: true,
+});
+/** 3発目の溜めの光(0..1・絵だけ)。溜めの間に強まり(easeIn)、飛び出しで速く引く。止めの最中に始めた蹴り(§33-2)は止めが明けるまで光らない。 */
 export const brawlerKickChargeGlow = (s: BrawlerState, t: number): number => {
-  if (s.phase !== 'tech' || s.tech !== 'kick' || !(s.kickChargeMs && s.kickChargeMs > 0) || s.resolved) return 0;
+  if (s.phase !== 'tech' || s.tech !== 'kick' || !(s.kickChargeMs && s.kickChargeMs > 0) || s.resolved || brawlerKickHeldInStop(s, t)) return 0;
   const el = brawlerElapsed(s, t);
   const c = el / s.kickChargeMs;
   if (c < 0) return 0;
@@ -401,9 +419,10 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
     ...s, phase: 'tech', stage: 0, tech: kind, kickN, startAt: t, techChain: chain, techBuffer: undefined, stepBuffer: undefined,
     kickHeel: kind === 'kick' && kickN >= BRAWLER_KICK_MAX && heel, heelBuffer: false,
     stompFromPx: stompFromPx > 0.5 ? stompFromPx : undefined,
-    // 飛び蹴りの3発目は溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。
-    kickChargeMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0,
-    windupMs: spec.windupMs + (kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0),
+    // 踵落としは溜め(BRAWLER_KICK3_CHARGE_MS)を前隙の頭に足す(store は飛ぶ時間を距離で引き直して同じく足す)。蹴り飛ばしは溜め無し(§33-2)。
+    kickChargeMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX && heel ? BRAWLER_KICK3_CHARGE_MS : 0,
+    windupMs: spec.windupMs + (kind === 'kick' && kickN >= BRAWLER_KICK_MAX && heel ? BRAWLER_KICK3_CHARGE_MS : 0),
+    kickHoldAt: undefined, // 止めの最中に始めた印は store が付ける(§33-2)
     recoveryMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? Math.round(spec.recoveryMs * BRAWLER_KICK3_RECOVERY_MULT) : spec.recoveryMs,
     stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
     // 技の後は1段目(§7-5)。
@@ -1310,6 +1329,7 @@ export interface BrawlerStandFrame {
  */
 export const brawlerStandAt = (s: BrawlerState | undefined, t: number): BrawlerStandFrame | null => {
   if (!s) return null;
+  if (brawlerKickHeldInStop(s, t)) return brawlerStandAt(brawlerKickHoldView(s, t), t); // 止めの間は当たった蹴りの影のまま(§33-2)
   // 秘奥義(§10): 影も強く光る。起動=腕ガードが脈打つ / 落下=地面叩きが上から降りる / 着地=大きな地面叩きが伸び切って抜ける。
   if (s.secret && s.secret.phase !== 'strike') {
     const sec = s.secret;
@@ -1460,6 +1480,7 @@ const KICK_LEAN_TAIL_FRAC = 0.6;
 /** いまの体の形。連続中は立ち絵へ戻さない(コンボが切れた時だけ立ちへ・§4)。 */
 export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPose | null => {
   if (!s) return null;
+  if (brawlerKickHeldInStop(s, t)) return brawlerPoseAt(brawlerKickHoldView(s, t), t); // 止めの間は当たった蹴りの絵のまま(§33-2)
   const base: BrawlerPose = { tex: null, lean: 0, push: 0, jump: 0, sqX: 1, sqY: 1, hand: 1, flip: false };
   // 秘奥義(§10): 起動=沈んで溜め→振り上げて爆ぜる / 落下=天空から加速して落ちる / 着地=深く潰れて戻る。9連撃は各技の形(下の通常の分岐)。
   if (s.secret) {
@@ -1572,6 +1593,7 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
       const heelLean = (): number => BRAWLER_HEEL_BODY_ROT_K * brawlerHeelStandAt(s, el).rot;
       if (!hit && charge > 0) {
         // ★3発目の溜め(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」): 跳び上がって空中で体を縮め、沈みながら光る(慣性つき)。
+        //   いま溜めるのは踵落としと幻影(孫悟空)の3発目だけ(プレイヤーの蹴り飛ばしは溜め無し=§33-2)。
         const c = Math.min(1, el / charge);
         if (c < 1) {
           const rise = BRAWLER_KICK3_CHARGE_RISE_PX * easeOut(Math.min(1, c / 0.45));

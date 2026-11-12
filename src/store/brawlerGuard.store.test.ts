@@ -136,7 +136,7 @@ describe('雑魚の攻撃を構えで受けた: 代金なしの大踏み潰し(�
 });
 
 describe('雑魚より上の攻撃を構えで受けた: 自分が大きくノックバック(§12-3d)', () => {
-  it('ボス級: 相手と反対へ約150px押される(加速→減速)・押されている間も構えは続く・向きは相手を向いたまま・技ポイントはそのまま', () => {
+  it('ボス級: 相手と反対へ約90px押される(加速→減速)・押されている間も構えは続く・向きは相手を向いたまま・技ポイントはそのまま', () => {
     setup();
     useGameStore.setState({ enemies: [enemyAt('hunter', 120, 0, 'h')] });
     const left = guardNow(5);
@@ -166,7 +166,7 @@ describe('雑魚より上の攻撃を構えで受けた: 自分が大きくノ�
     expect(br().points).toBe(left);
     expect(useGameStore.getState().gameTime - g0).toBeLessThan(600);
     expect(guarding()).toBe(true); // 押され終わった後も、構えは時間いっぱい(ゲーム内の1000ms)続く
-    expect(en('h').health).toBe(99999); // 潰しは出ていない
+    expect(br().tech).toBe('guard'); // 潰しは出ていない(体力は反撃の気功=§32 で減る)
   });
   it('強個体でも同じ・相手が分からない受けも「雑魚より上」として押される(受けた点と反対へ)', () => {
     setup();

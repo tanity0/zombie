@@ -5,6 +5,7 @@ import type { Enemy } from '../types/game';
 import {
   brawlerGuardOutcome, brawlerGuardSourceClass, brawlerGuardKnockDir, isBrawlerBeamMove, isBrawlerBeamFiring, brawlerBeamCutTarget,
   brawlerBeamCutValid, slowLostMs, brawlerPushUntil, brawlerGuardSourceEnemy, BRAWLER_CUT_BEAMS, BRAWLER_BEAM_CUT_GRACE_MS, BRAWLER_GUARD_KNOCK_PX, BRAWLER_GUARD_KNOCK_MS,
+  brawlerGuardCounterDue, brawlerGuardCounterTarget, brawlerGuardCounterDir, BRAWLER_GUARD_COUNTER_KIKO_MULT,
 } from './brawlerGuard';
 import { BRAWLER_STEP_PX } from './brawler';
 
@@ -48,8 +49,9 @@ describe('構えの成立の効果(§12-3d)', () => {
     expect(brawlerGuardKnockDir(pc, null, { x: 101, y: 100 }, { x: 0, y: 1 })).toEqual({ x: -0, y: -1 });
     expect(brawlerGuardKnockDir(pc, null, pc, null)).toEqual({ x: -1, y: 0 });
   });
-  it('押しの大きさ: ステップ(間合いの調整)より大きい・加速→減速の1山の長さは0より大きい', () => {
-    expect(BRAWLER_GUARD_KNOCK_PX).toBeGreaterThan(BRAWLER_STEP_PX);
+  it('押しの大きさ: ステップ(間合いの調整)より短い・0より大きい(§32-1: 150→90)・加速→減速の1山の長さは0より大きい', () => {
+    expect(BRAWLER_GUARD_KNOCK_PX).toBeLessThan(BRAWLER_STEP_PX);
+    expect(BRAWLER_GUARD_KNOCK_PX).toBeGreaterThan(0);
     expect(BRAWLER_GUARD_KNOCK_MS).toBeGreaterThan(0);
   });
   it('スローで進まなかった実時間: 等速は0・倍率0.2なら進んだ分の4倍', () => {
@@ -136,5 +138,37 @@ describe('光線の中断の配線の漏れ止め', () => {
   it('表の状態名は、撃っている最中の州としてソースに実在する', () => {
     const all = entries.map(([, src]) => src).join('\n');
     for (const b of BRAWLER_CUT_BEAMS) expect(all.includes(`'${b.state}'`), b.state).toBe(true);
+  });
+});
+
+describe('構えの反撃の気功(§32)', () => {
+  it('予約するのは成立の効果がノックバックの時だけ・構え1回(guardSince ごと)に1発・延長は数え直す', () => {
+    expect(brawlerGuardCounterDue({ outcome: 'knockback', guardSince: 1000, firedFor: undefined })).toBe(true);
+    expect(brawlerGuardCounterDue({ outcome: 'knockback', guardSince: 1000, firedFor: 1000 })).toBe(false); // 同じ構えの2発目以降
+    expect(brawlerGuardCounterDue({ outcome: 'knockback', guardSince: 1800, firedFor: 1000 })).toBe(true);  // 延長=新しい構え
+    expect(brawlerGuardCounterDue({ outcome: 'stomp', guardSince: 1000, firedFor: undefined })).toBe(false); // 雑魚=潰しのまま
+    expect(brawlerGuardCounterDue({ outcome: 'none', guardSince: 1000, firedFor: undefined })).toBe(false);  // 間引き・持続ダメージ
+    expect(brawlerGuardCounterDue({ outcome: 'knockback', guardSince: undefined, firedFor: undefined })).toBe(false);
+  });
+  it('威力の倍率は1.5(叩き台)', () => {
+    expect(BRAWLER_GUARD_COUNTER_KIKO_MULT).toBe(1.5);
+  });
+  const box = (id: string, type: string, x: number, extra: Partial<Enemy> = {}): Enemy =>
+    e(id, type, { x, y: 0, width: 20, height: 20, ...extra });
+  const pc = { x: 10, y: 10 };
+  const all = (): boolean => true;
+  it('狙い: 受けた相手のうち雑魚より上で狙える一番近い相手(雑魚・狙えない相手は飛ばす)', () => {
+    const enemies = [box('z', 'zombie', 30), box('h1', 'hunter', 300), box('h2', 'hunter', 120), box('p', 'pumpkin', 200)];
+    expect(brawlerGuardCounterTarget([{ id: 'z' }, { id: 'p' }, { id: 'h1' }], enemies, pc, all)?.id).toBe('p');
+    expect(brawlerGuardCounterTarget([{ id: 'z' }], enemies, pc, all)).toBeNull();
+    expect(brawlerGuardCounterTarget([{ id: 'p' }, { id: 'h1' }], enemies, pc, en => en.id !== 'p')?.id).toBe('h1');
+    // 型だけ届いた受け(レーザーなど)=その型の一番近い1体
+    expect(brawlerGuardCounterTarget([{ type: 'hunter' as Enemy['type'] }], enemies, pc, all)?.id).toBe('h2');
+    expect(brawlerGuardCounterTarget([], enemies, pc, all)).toBeNull(); // 相手が分からない
+  });
+  it('狙えない時の向き: 受けた点の方向 → 重なっていれば向いている方 → 右', () => {
+    expect(brawlerGuardCounterDir({ x: 0, y: 0 }, { x: 0, y: -50 }, { x: 1, y: 0 })).toEqual({ x: 0, y: -1 });
+    expect(brawlerGuardCounterDir({ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 2 })).toEqual({ x: 0, y: 1 });
+    expect(brawlerGuardCounterDir({ x: 0, y: 0 }, { x: 0, y: 0 }, null)).toEqual({ x: 1, y: 0 });
   });
 });

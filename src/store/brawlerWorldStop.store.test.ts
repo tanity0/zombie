@@ -8,7 +8,7 @@ import { useGameStore } from './gameStore';
 import { spawnEnemyAt } from '../utils/enemyUtils';
 import { setBrawlerTempoAll } from '../utils/brawlerCombo';
 import {
-  BRAWLER_WORLD_STOP, BRAWLER_WORLD_STOP_SELF_MS, BRAWLER_HITSTOP, brawlerWorldStopMs, initialBrawlerState, brawlerInHitstop,
+  BRAWLER_WORLD_STOP, BRAWLER_WORLD_STOP_KICK3, BRAWLER_WORLD_STOP_SELF_MS, BRAWLER_HITSTOP, brawlerWorldStopMs, initialBrawlerState, brawlerInHitstop,
 } from '../utils/brawler';
 import { runPhantomTick, createPhantomTickState, NOOP_PHANTOM_SFX } from '../utils/phantomTick';
 import { setPhantomIdentity } from '../utils/phantomIdentity';
@@ -85,7 +85,7 @@ describe('格闘の当たりで画面全体が止まる(社長指示2026-11-12)'
       expect(r.selfStop, `stage ${stage} self stop`).toBe(BRAWLER_WORLD_STOP_SELF_MS);
     }
   });
-  it('飛び蹴り3連(1・2発目=強・3発目=締め)と踵落とし(締め)', () => {
+  it('飛び蹴り3連(1・2発目=強・3発目=蹴り飛ばし専用の長さ=§33-2)と踵落とし(締め)', () => {
     setup();
     useGameStore.setState({ enemies: [zombieAt(120, 0, 'z')] });
     const got: number[] = [];
@@ -98,7 +98,8 @@ describe('格闘の当たりで画面全体が止まる(社長指示2026-11-12)'
       expect(r.selfStop).toBe(BRAWLER_WORLD_STOP_SELF_MS);
       advance(10);
     }
-    expect(got).toEqual([BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP.closer]);
+    expect(got).toEqual([BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP.strong, BRAWLER_WORLD_STOP_KICK3]);
+    expect(BRAWLER_WORLD_STOP_KICK3).toBe(340);
     // 踵落とし(2発目の後の下)
     setup();
     useGameStore.setState({ enemies: [zombieAt(120, 0, 'z')] });

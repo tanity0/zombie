@@ -118,25 +118,30 @@ describe('テンポ係数の表(純関数)', () => {
   });
 });
 
-describe('飛び蹴りの3発目の溜め(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」)', () => {
-  it('3発目だけ前隙の頭に溜め(係数1.3で165ms)。溜めの間は空中で沈みながら光り、明けたら飛ぶ', () => {
+describe('3発目の溜め: 蹴り飛ばしは溜め無し・踵落としだけ溜める(research/BRAWLER.md §33-2「ポン・ポン・ドン」・社長裁定2026-11-12)', () => {
+  it('蹴り飛ばしは溜め無し(前隙=飛ぶ時間だけ・光らない)。踵落としは前隙の頭に溜め(係数1.3で165ms)。溜めの間は空中で沈みながら光り、明けたら飛ぶ', () => {
     setBrawlerTempoAll(1.3);
     const s1 = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);
     expect(s1.kickChargeMs).toBe(0);
     const s3 = brawlerStartTech(initialBrawlerState(), 'kick', 0, BRAWLER_KICK_MAX);
-    expect(s3.kickChargeMs).toBe(165); // 旧150(×1.1)
-    expect(s3.windupMs).toBe(165 + BRAWLER_TECHS.kick.windupMs);
+    expect(s3.kickChargeMs).toBe(0);
+    expect(s3.windupMs).toBe(BRAWLER_TECHS.kick.windupMs);
+    expect(brawlerKickChargeGlow(s3, 50)).toBe(0);
+    const h = brawlerStartTech(initialBrawlerState(), 'kick', 0, BRAWLER_KICK_MAX, false, true);
+    expect(h.kickHeel).toBe(true);
+    expect(h.kickChargeMs).toBe(165); // 旧150(×1.1)
+    expect(h.windupMs).toBe(165 + BRAWLER_TECHS.kick.windupMs);
     // 溜めの間: 空中(跳び上がって沈む)・光が強まる
-    const hMid = brawlerPoseAt(s3, 66)!.jump, hEnd = brawlerPoseAt(s3, 164)!.jump; // 溜め165の中ほど・明け直前(旧 60/149 を ×1.1)
-    expect(brawlerPoseAt(s3, 0)!.jump).toBe(0);
+    const hMid = brawlerPoseAt(h, 66)!.jump, hEnd = brawlerPoseAt(h, 164)!.jump; // 溜め165の中ほど・明け直前
+    expect(brawlerPoseAt(h, 0)!.jump).toBe(0);
     expect(hMid).toBeGreaterThan(15);
     expect(hEnd).toBeLessThan(hMid); // 沈む
-    expect(brawlerKickChargeGlow(s3, 154)).toBeGreaterThan(brawlerKickChargeGlow(s3, 20));
+    expect(brawlerKickChargeGlow(h, 154)).toBeGreaterThan(brawlerKickChargeGlow(h, 20));
     // つなぎ目で高さが跳ばない
-    expect(Math.abs(brawlerPoseAt(s3, 166)!.jump - brawlerPoseAt(s3, 164)!.jump)).toBeLessThan(2);
+    expect(Math.abs(brawlerPoseAt(h, 166)!.jump - brawlerPoseAt(h, 164)!.jump)).toBeLessThan(2);
     expect(brawlerKickChargeGlow(s1, 50)).toBe(0);
   });
-  it('ストア: 3発目は溜めの間その場に留まり、明けてから飛ぶ(判定は溜め+飛ぶ時間の後)', () => {
+  it('ストア: 蹴り飛ばしは押した直後から飛ぶ(溜めで留まらない)。判定は飛ぶ時間の後', () => {
     setBrawlerTempoAll(1.3);
     setup();
     useGameStore.setState(st => ({ enemies: [zombieAt(200, 0, 'z')], player: { ...st.player, brawler: { ...br(), points: 20 } } }));
@@ -148,13 +153,15 @@ describe('飛び蹴りの3発目の溜め(社長承認2026-11-08「飛び蹴り�
     const x0 = useGameStore.getState().player.x;
     expect(useGameStore.getState().brawlerTech(1, 0)).toBe(true);
     expect(br().kickN).toBe(3);
-    expect(br().kickChargeMs).toBe(165); // 旧150(×1.1)
-    advance(154);
-    expect(Math.abs(useGameStore.getState().player.x - x0)).toBeLessThan(1); // 溜めの間は飛ばない
+    expect(br().kickHeel).toBe(false);
+    expect(br().kickChargeMs).toBe(0);
+    advance(80);
+    expect(useGameStore.getState().player.x - x0).toBeGreaterThan(10); // 押した直後から飛んでいる
     expect(br().resolved).toBe(false);
     for (let k = 0; k < 60 && !br().resolved; k++) advance(10);
-    expect(useGameStore.getState().player.x - x0).toBeGreaterThan(60); // 明けてから飛んだ
-    expect(br().windupMs).toBeGreaterThanOrEqual(165 + brawlerKickFlightMs(0)); // 前隙=溜め+飛ぶ時間(飛ぶ時間は距離で 172〜215)
+    expect(useGameStore.getState().player.x - x0).toBeGreaterThan(60);
+    expect(br().windupMs).toBeGreaterThanOrEqual(brawlerKickFlightMs(0)); // 前隙=飛ぶ時間だけ(距離で 172〜215)
+    expect(br().windupMs).toBeLessThan(165 + brawlerKickFlightMs(0)); // 溜めが乗っていない
   });
 });
 

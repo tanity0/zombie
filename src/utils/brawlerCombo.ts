@@ -246,8 +246,8 @@ export const brawlerKikoTravelForDistMs = (distPx: number): number => brawlerKik
 const brawlerMoveWindupMs = (move: BrawlerMoveKey, o: { kickFlightMs?: number; kikoDistPx?: number }): number => {
   switch (move) {
     case 's1': case 's2': case 's3': case 's4': case 's5': return brawlerStageSpec(Number(move[1])).windupMs;
-    case 'kick1': case 'kick2': return o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs;
-    case 'kick3': case 'heel': return BRAWLER_KICK3_CHARGE_MS + (o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs);
+    case 'kick1': case 'kick2': case 'kick3': return o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs; // 蹴り飛ばしは溜め無し(research/BRAWLER.md §33-2)
+    case 'heel': return BRAWLER_KICK3_CHARGE_MS + (o.kickFlightMs ?? BRAWLER_TECHS.kick.windupMs);
     case 'stomp': return BRAWLER_TECHS.stomp.windupMs;
     case 'kiko': return BRAWLER_TECHS.kiko.windupMs + brawlerKikoTravelForDistMs(o.kikoDistPx ?? 0);
     default: return 0;
