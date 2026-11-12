@@ -11,6 +11,7 @@
 // 構えは長く持ち、振り上げは速く、**振り下ろしは一番短い**(=速い)。現実の振りの形。
 import { biteSpecFor, BAT_WINDUP_STILL_MS } from './enemyBite';
 import { BAT_LANTERN_SETTLE_MS } from './batLanternSwing';
+import { counterRewindFrame } from './counterRewind';
 export { ENEMY_ATTACK_SHEETS, attackSheetName, attackSheetFrames } from './enemySheets';
 import type { Enemy } from '../types/game';
 
@@ -134,6 +135,13 @@ export interface AttackTailMemo {
   windupMs: number;
   biteMs: number;
   lungeMs?: number;
+  /** 生きていた最後のフレームで出していたコマ(中断の巻き戻しの起点)。 */
+  lastFrame?: number;
+  /** 生きていた最後のフレームの壁時計(`Date.now()`)。カウンター成立(`lastCounteredAt`)との前後を比べる。 */
+  liveWall?: number;
+  /** 中断と分かった時刻(gameTime)と、その時のコマ。立っていれば巻き戻し中。 */
+  cutAt?: number;
+  cutFrom?: number;
 }
 
 export const attackTailFrame = (
@@ -147,4 +155,35 @@ export const attackTailFrame = (
   if (since > hit + settleMs) return null;       // 余韻も過ぎた=技は終わっている
   return enemyAttackFrame(frames, since, memo.windupMs, memo.biteMs, settleMs, impact,
     attackStillMs(memo.windupMs, memo.lungeMs));
+};
+
+// ---------------------------------------------------------------------------------------------
+// ★カウンター以外の中断も巻き戻して戻す(社長裁定2026-11-12「はい」)
+// ---------------------------------------------------------------------------------------------
+/**
+ * 判定の噛みが消えた後に出すコマ。**当たった後**なら余韻(`attackTailFrame`)、**当たる前に消えた**(中断)なら
+ * 止まったコマからカウンターと同じ時計・同じイージング(`counterRewindFrame`)で0コマ目へ戻してから立ち絵へ渡す。
+ * 中断の判定は `utils/biteFxClock`(ランタン・爪)と同じ「当たる時刻の前に判定が消えた」。
+ * - `countered`: カウンターで消えた=従来どおり `enemyCounterRewindTexture`(壁時計)に任せる=ここでは出さない(二重に戻さない)。
+ * - `corpse`: 死亡は出さない(死体は同じ絵を潰して飛ばす既存の流れ=攻撃のコマを混ぜない)。巻き戻しの途中で死んでもそこで止める。
+ * 時計は gameTime(`biteAt` と同じ)。返す `memo` を次のフレームへ持ち越す(undefined=捨てる)。
+ */
+export const attackFrameAfterLive = (
+  memo: AttackTailMemo | undefined, frames: number, gameTime: number, impact: number,
+  opts: { countered: boolean; corpse: boolean }, settleMs: number = ATTACK_SETTLE_MS,
+): { frame: number | null; memo: AttackTailMemo | undefined; rewinding: boolean } => {
+  const drop = { frame: null, memo: undefined, rewinding: false };
+  if (!memo || !(memo.at > 0) || frames <= 1) return drop;
+  let m = memo;
+  if (m.cutAt === undefined) {
+    if (gameTime - m.at >= m.windupMs + m.biteMs) {
+      const f = attackTailFrame(m, frames, gameTime, impact, settleMs);
+      return f === null ? drop : { frame: f, memo: m, rewinding: false };
+    }
+    if (opts.countered || opts.corpse || m.lastFrame === undefined) return drop;
+    m = { ...m, cutAt: gameTime, cutFrom: m.lastFrame };
+  }
+  if (opts.corpse) return drop;
+  const f = counterRewindFrame(m.cutFrom ?? 0, gameTime - (m.cutAt ?? gameTime));
+  return f === null ? drop : { frame: Math.min(frames - 1, f), memo: m, rewinding: true };
 };

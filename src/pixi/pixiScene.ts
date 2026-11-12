@@ -128,7 +128,7 @@ import { enemyWalkFrame, enemyWalkPlaybackFor } from '../utils/enemyWalkSheet';
 import { isBackingAway, backpedalFaceSide } from '../utils/backpedal';
 import { ENEMY_VOLLEY_SHEETS, volleySheetName, volleyFrameAt, walkSheetFrames, walkSheetName, screamSheetName, screamSheetFrames, sweepSwingDir, walkSheetBodyH, walkStopsToIdle, ENEMY_WALK_STOP_HOLD_MS } from '../utils/enemySheets';
 import { stepBiteFxClock, zombieBiteFxInterrupted, type BiteFxClock } from '../utils/biteFxClock';
-import { enemyAttackFrameFor, attackTailFrame, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
+import { enemyAttackFrameFor, attackFrameAfterLive, zombieStanceFrame, ZOMBIE_STANCE_HOLD_FRAME, type AttackTailMemo } from '../utils/enemyAttackSheet';
 import { warmEnemySheets, prewarmEnemySheetsGpu, loadSpriteGroups, KENKI_SPRITES } from './pixiTextures';
 import { KENKI_SHUKUCHI_FADE_IN_MS, KENKI_SHUKUCHI_FADE_OUT_MS } from '../utils/kenkiShukuchi';
 import { CASTLE_BOSS_MIN_TIME_MS } from '../config/castleBoss';
@@ -38774,9 +38774,6 @@ export class PixiScene {
       const spec = biteSpecFor(e.type, e.chaffMove, e.aiPhase);
       // 記憶は**その場限り**(余韻220ms)。画面外へ消えた個体のぶんが積もらないよう上限で捨てる。
       if (this.biteTailMemo.size > 128) this.biteTailMemo.clear();
-      this.biteTailMemo.set(e.id, {
-        at: e.biteAt, windupMs: spec.windupMs, biteMs: spec.biteMs, lungeMs: spec.lungeMs,
-      });
       i = enemyAttackFrameFor(e, frames, gameTime, impact);
       // ★構えの続きなので、噛みの溜めでは0コマ目へ戻さない(2重に伸び上がらない)。1発目=踏み込みで伸び切っている/
       //   2発目=反りのコマから伸び切りを通って噛む。
@@ -38784,11 +38781,25 @@ export class PixiScene {
         // 1発目・2発目とも、反りのコマから伸び切り(腕を広げる)へ溜めの前半で移り、そのまま1歩で噛む(止め絵にしない)。
         i = zombieStanceFrame(gameTime - e.biteAt, spec.windupMs * 0.6, holdFrame, impact - 1);
       }
+      // 出したコマと壁時計も覚える(中断の巻き戻しの起点/カウンターとの前後の比較)。
+      this.biteTailMemo.set(e.id, {
+        at: e.biteAt, windupMs: spec.windupMs, biteMs: spec.biteMs, lungeMs: spec.lungeMs,
+        ...(i !== null ? { lastFrame: i } : {}), liveWall: Date.now(),
+      });
     } else {
-      // 技が消えた後: **当たった後**なら余韻のコマを出す(中断は当たる前に消えるので混ざらない)。
+      // 技が消えた後: **当たった後**なら余韻のコマ。**当たる前に消えた**(気絶・拘束・浮き・技への切り替え)なら、
+      // 止まったコマからカウンターと同じ時計・イージングで戻す(社長裁定2026-11-12「はい」・`attackFrameAfterLive`)。
+      // カウンターは従来どおり `enemyCounterRewindTexture`、死亡は戻さない(死体は同じ絵を潰して飛ばす既存の流れ)。
       const memo = this.biteTailMemo.get(e.id);
-      i = attackTailFrame(memo, frames, gameTime, impact);
-      if (i === null && memo) this.biteTailMemo.delete(e.id);
+      const countered = memo?.liveWall !== undefined && e.lastCounteredAt !== undefined && e.lastCounteredAt >= memo.liveWall;
+      const r = attackFrameAfterLive(memo, frames, gameTime, impact, { countered, corpse: isCorpse(e) });
+      if (r.memo) this.biteTailMemo.set(e.id, r.memo); else if (memo) this.biteTailMemo.delete(e.id);
+      if (r.rewinding) {
+        // 巻き戻しのコマはカウンターの記憶(atkFrameMemo)に書かない=次のカウンターが戻りのコマを掴まない。
+        if (r.frame === null) return null;
+        return this.sheetSlices(attackSheetName(idleTexKey), frames)?.[r.frame] ?? null;
+      }
+      i = r.frame;
     }
     if (i === null) return null;
     const slices = this.sheetSlices(attackSheetName(idleTexKey), frames);

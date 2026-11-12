@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5557', items: [
+    '攻撃の途中で気絶させたり浮かせたりした敵は、振りかけた体を引き戻してから立ち姿に戻る',
+  ] },
   { version: '0.25.5556', items: [
     'コウモリのランタンの振り下ろしや骸骨の爪、ゾンビの噛みつきの輪が、技を止めた後も最後まで出ていたのを直した',
   ] },
