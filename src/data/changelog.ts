@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5526', items: [
+    '金環とアイレーザーの光線の先端を描き直した。ドットの段で細り、ほどけた粒がちぎれて先へ流れて消える',
+  ] },
   { version: '0.25.5525', items: [
     '火炎放射器の炎を描き直した。白い芯を持つ橙のドットの粒が筒先から噴き出し、膨らんで、火の粉と煤になって消える。振り向くと炎がしなる',
   ] },

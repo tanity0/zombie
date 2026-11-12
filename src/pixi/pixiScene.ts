@@ -225,6 +225,16 @@ import type { FlareGunFlare } from '../utils/flareGun';
 // UNIQUE_WEAPONS.md §19: 金環(gold-ring)。位置/ease/レーザー方向は純関数(goldRing.ts)を読むだけ
 // (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
 import { type GoldRing, goldRingCurrentPos } from '../utils/goldRing';
+import {
+  beamTipLayout, beamTipCells, beamTipParticles, beamTipSeed, BEAM_TIP_PARTICLE_MAX, BEAM_TIP_HALO_CELL_MAX, BEAM_TIP_CORE_CELL_MAX,
+  BEAM_TIP_LIFE_MAX_MS, type BeamTipInput, type BeamTipLayout, type BeamTipOrigin,
+} from '../utils/beamTip'; // レーザーの先端(ドットの段+ちぎれた粒)
+/** レーザーの先端のプール(帯の段・芯の段・粒)と、粒が生まれた時の射線の姿の履歴。 */
+interface BeamTipPool {
+  halo: Sprite[]; core: Sprite[]; parts: Sprite[];
+  hist: { t: number[]; ax: number[]; ay: number[]; ux: number[]; uy: number[]; len: number[] };
+}
+const newBeamTipPool = (): BeamTipPool => ({ halo: [], core: [], parts: [], hist: { t: [], ax: [], ay: [], ux: [], uy: [], len: [] } });
 // UNIQUE_WEAPONS.md §16-2(バッチC-1): 持続線分/扇の3挺。数値/型は純関数モジュールから読むだけ
 // (状態そのものはuseGameLoopが書く。CLAUDE.md「PixiJSは描くだけ」)。
 import type { PersistentBeam } from '../utils/persistentBeam';
@@ -4977,6 +4987,7 @@ export class PixiScene {
   private goldRingViews = new Map<string, {
     ring: Sprite; beamCore: Sprite; beamHalo: Sprite;
     spinAng: number; spinVel: number; lastSpinAt: number;
+    tip: BeamTipPool; // レーザーの先端(ドットの段+ちぎれた粒・drawBeamTip)
   }>();
   // UNIQUE_WEAPONS.md §16-2(バッチC-1): 氷槍ライフルの床。金環のbeamCore/beamHaloと同型
   // (pooled sprite・強glowなし)。追尾しない固定線分なので位置は生成時のまま。
@@ -4985,6 +4996,7 @@ export class PixiScene {
   // アイレーザー(プレイヤー1人ぶんなので単一インスタンス。ghost-gunでは撃たない=§17-6)。
   private eyeLaserCore: Sprite | null = null;
   private eyeLaserHalo: Sprite | null = null;
+  private eyeLaserTip: BeamTipPool = newBeamTipPool(); // アイレーザーの先端(drawBeamTip)
   // 火炎放射器の扇(固定本数のstreak sprite。pooled・毎フレーム再生成しない)。
   private flamerStreaks: Sprite[] = [];
   private ghostFlamerStreaks: Sprite[] = [];
@@ -17582,7 +17594,7 @@ export class PixiScene {
         const beamHalo = new Sprite(Texture.WHITE); beamHalo.anchor.set(0, 0.5);
         beamHalo.blendMode = 'add'; // 派手さの絵(判定より大きく見せてよい層)。光源登録はしない=強glowではない
         this.L.effectLayer.addChild(beamHalo, beamCore, ringSp); // 地面のエフェクト層(アクター系の減光を掛けない・§19-4)
-        v = { ring: ringSp, beamCore, beamHalo, spinAng: 0, spinVel: 0, lastSpinAt: now };
+        v = { ring: ringSp, beamCore, beamHalo, spinAng: 0, spinVel: 0, lastSpinAt: now, tip: newBeamTipPool() };
         this.goldRingViews.set(ring.id, v);
       }
       // スピン(慣性つき・スリィエル本体の環=syncSurielRingと同型)。
@@ -17625,29 +17637,42 @@ export class PixiScene {
           ? Math.max(0, Math.min(1, (gameTime - beam.createdAt) / BEAM_APPEAR_MS))
           : 1; // フェード側では出現ランプは既に済んでいる(ringEaseだけで減衰させる)
         const alphaMul = appearT * (ring.phase === 'fading' ? ringEase.alphaMul : 1);
+        const coreH = Math.max(0.5, beam.halfWidth * 0.7 * appearT); // 幅も0→1で立ち上げる(§19-4)
+        const haloH = Math.max(0.5, beam.halfWidth * 2.6 * appearT); // 派手さの絵=判定より大きくはみ出してよい
+        const visible = len > 0.5 && alphaMul > 0.01;
+        // 先端(社長 2026-11-12「先端のちぎれ方が雑」): 本体は細る区間の手前で終え、先はドットの段で細らせて粒にちぎる。
+        // プレイヤー側の光線なので細りは判定の端の内側で終える('inside'=見た目の長さは変わらない)。係数は本体と同じ。
+        const tipIn: BeamTipInput = {
+          len, haloW: haloH, coreW: coreH, haloAlpha: 0.5 * alphaMul, coreAlpha: 0.95 * alphaMul,
+          dot: PixiScene.BEAM_TIP_DOT_PX, time: gameTime, seed: beamTipSeed(ring.id), placement: 'inside',
+        };
+        const tip = beamTipLayout(tipIn);
         v.beamCore.position.set(beam.ax, beam.ay);
         v.beamHalo.position.set(beam.ax, beam.ay);
         v.beamCore.rotation = ang;
         v.beamHalo.rotation = ang;
-        v.beamCore.width = len;
-        v.beamHalo.width = len;
-        v.beamCore.height = Math.max(0.5, beam.halfWidth * 0.7 * appearT); // 幅も0→1で立ち上げる(§19-4)
-        v.beamHalo.height = Math.max(0.5, beam.halfWidth * 2.6 * appearT); // 派手さの絵=判定より大きくはみ出してよい
+        v.beamCore.width = Math.max(0.5, tip.coreBodyLen);
+        v.beamHalo.width = Math.max(0.5, tip.haloBodyLen);
+        v.beamCore.height = coreH;
+        v.beamHalo.height = haloH;
         v.beamCore.tint = 0xfff7cc;
         v.beamHalo.tint = 0xfacc15; // 金色(§19-4)
         v.beamCore.alpha = 0.95 * alphaMul;
         v.beamHalo.alpha = 0.5 * alphaMul;
-        const visible = len > 0.5 && alphaMul > 0.01;
         v.beamCore.visible = visible;
         v.beamHalo.visible = visible;
+        // 芯の色の粒は帯の外へ出るので、帯寄りの淡い金にする(白い紙片に見せない)。
+        this.drawBeamTip(v.tip, visible ? { input: tipIn, layout: tip } : null, beam.ax, beam.ay, ang, v.beamCore, 0xfacc15, 0xfff7cc, 0xfff2a8);
       } else {
         v.beamCore.visible = false;
         v.beamHalo.visible = false;
+        this.drawBeamTip(v.tip, null, 0, 0, 0, v.beamCore, 0, 0, 0);
       }
     }
     for (const [id, v] of this.goldRingViews) {
       if (seen.has(id)) continue;
       v.ring.destroy(); v.beamCore.destroy(); v.beamHalo.destroy();
+      for (const sp of [...v.tip.halo, ...v.tip.core, ...v.tip.parts]) sp.destroy();
       this.goldRingViews.delete(id);
     }
   }
@@ -17792,6 +17817,7 @@ export class PixiScene {
     const gun = player.weapons.find(w => w.key === EYE_LASER_WEAPON_KEY);
     if (!gun || !beam) {
       if (this.eyeLaserCore) { this.eyeLaserCore.visible = false; this.eyeLaserHalo!.visible = false; }
+      this.hideBeamTip(this.eyeLaserTip);
       return;
     }
     const firing = gun.eyeLaserPhase === 'firing';
@@ -17803,6 +17829,7 @@ export class PixiScene {
     const fadeMul = firing ? 1 : 1 - fadeOutEased;
     if (!firing && fadeMul <= 0.001) {
       if (this.eyeLaserCore) { this.eyeLaserCore.visible = false; this.eyeLaserHalo!.visible = false; }
+      this.hideBeamTip(this.eyeLaserTip);
       return;
     }
     if (!this.eyeLaserCore) {
@@ -17818,17 +17845,98 @@ export class PixiScene {
     const BEAM_APPEAR_MS = 100; // §19-4と同じ中央値(80〜120msレンジ)
     const appearT = Math.max(0, Math.min(1, (gameTime - (gun.eyeLaserPhaseAt ?? gameTime)) / BEAM_APPEAR_MS));
     const core = this.eyeLaserCore, halo = this.eyeLaserHalo!;
+    const coreH = Math.max(0.5, 7 * 0.7 * appearT);
+    const haloH = Math.max(0.5, 7 * 2.6 * appearT);
+    // 先端(金環と同じ部品・プレイヤー側の光線なので細りは判定の端の内側)。追尾で終点が動くので毎フレーム今の端に付く。
+    const tipIn: BeamTipInput = {
+      len, haloW: haloH, coreW: coreH, haloAlpha: 0.5 * appearT * fadeMul, coreAlpha: 0.95 * appearT * fadeMul,
+      dot: PixiScene.BEAM_TIP_DOT_PX, time: gameTime, seed: 7, placement: 'inside',
+    };
+    const tip = beamTipLayout(tipIn);
     core.position.set(ax, ay); halo.position.set(ax, ay);
     core.rotation = ang; halo.rotation = ang;
-    core.width = len; halo.width = len;
-    core.height = Math.max(0.5, 7 * 0.7 * appearT);
-    halo.height = Math.max(0.5, 7 * 2.6 * appearT);
+    core.width = Math.max(0.5, tip.coreBodyLen); halo.width = Math.max(0.5, tip.haloBodyLen);
+    core.height = coreH;
+    halo.height = haloH;
     core.tint = 0xfff0e6;
     halo.tint = 0xff5a1f; // 橙〜赤(アイレーザー=眼の光線。金環の金/氷槍の水色と衝突しない)
     core.alpha = 0.95 * appearT * fadeMul;
     halo.alpha = 0.5 * appearT * fadeMul;
     const visible = len > 0.5 && fadeMul > 0.001;
     core.visible = visible; halo.visible = visible;
+    // 芯の色の粒は帯寄りの淡い橙(帯の外で白い紙片に見せない)。
+    this.drawBeamTip(this.eyeLaserTip, visible ? { input: tipIn, layout: tip } : null, ax, ay, ang, core, 0xff5a1f, 0xfff0e6, 0xffc49a);
+  }
+
+  // レーザーの先端(社長 2026-11-12「先端のちぎれ方が雑」)。段・粒の寸法と動きは utils/beamTip.ts の純関数。
+  // 段も粒も世界の原点基準の1ドット格子の四角(pooled sprite)。重ね順は本体と同じ: 帯の段=本体の帯と芯の間(加算)/
+  // 芯の段と粒=本体の芯の上。粒は生まれた時の射線の姿で飛ぶ(履歴=火炎放射器の粒と同じ作り)。強glow・光源登録・フィルタなし。
+  // 1本あたりの上限: 帯の段48+芯の段32+粒20=100枚。
+  private static readonly BEAM_TIP_DOT_PX = 3; // 1ドット=world 3px(火炎放射器の粒と同じ粗さ)
+  private hideBeamTip(pool: BeamTipPool): void {
+    for (const sp of pool.halo) sp.visible = false;
+    for (const sp of pool.core) sp.visible = false;
+    for (const sp of pool.parts) sp.visible = false;
+    pool.hist.t.length = 0;
+  }
+  private drawBeamTip(
+    pool: BeamTipPool, tip: { input: BeamTipInput; layout: BeamTipLayout } | null, ax: number, ay: number, ang: number,
+    coreBody: Sprite, haloTint: number, coreTint: number, partCoreTint: number,
+  ): void {
+    if (!tip) { this.hideBeamTip(pool); return; }
+    const parent = coreBody.parent;
+    if (!parent) { this.hideBeamTip(pool); return; }
+    if (pool.halo.length === 0) {
+      const mk = (blend: 'add' | 'normal') => { const sp = new Sprite(Texture.WHITE); sp.anchor.set(0, 0); sp.blendMode = blend; sp.visible = false; return sp; };
+      // 帯の段は本体の帯と芯の間へ、芯の段と粒は本体の芯の直上へ差し込む(作る時に1度だけ)。
+      for (let i = 0; i < BEAM_TIP_HALO_CELL_MAX; i++) { const sp = mk('add'); parent.addChildAt(sp, parent.getChildIndex(coreBody)); pool.halo.push(sp); }
+      let at = parent.getChildIndex(coreBody) + 1;
+      for (let i = 0; i < BEAM_TIP_CORE_CELL_MAX; i++) { const sp = mk('normal'); parent.addChildAt(sp, at++); pool.core.push(sp); }
+      for (let i = 0; i < BEAM_TIP_PARTICLE_MAX; i++) { const sp = mk('normal'); parent.addChildAt(sp, at++); pool.parts.push(sp); }
+    }
+    const { input, layout } = tip;
+    const ux = Math.cos(ang), uy = Math.sin(ang);
+    const k = input.dot;
+    const place = (list: Sprite[], cells: ReturnType<typeof beamTipCells>, tint: number) => {
+      for (let i = 0; i < list.length; i++) {
+        const sp = list[i];
+        const c = cells[i];
+        if (!c) { sp.visible = false; continue; }
+        sp.position.set(c.x, c.y);
+        sp.width = c.w; sp.height = c.h;
+        sp.tint = tint;
+        sp.alpha = c.alpha;
+        sp.visible = c.alpha > 0.01;
+      }
+    };
+    place(pool.halo, beamTipCells(ax, ay, ux, uy, layout.halo, k, BEAM_TIP_HALO_CELL_MAX), haloTint);
+    place(pool.core, beamTipCells(ax, ay, ux, uy, layout.core, k, BEAM_TIP_CORE_CELL_MAX), coreTint);
+    // 粒: 生まれた時の姿を履歴から引く。
+    const h = pool.hist;
+    const last = h.t.length ? h.t[h.t.length - 1] : -Infinity;
+    if (input.time < last) h.t.length = 0;
+    if (input.time !== last) {
+      if (h.t.length === 0) { h.ax.length = 0; h.ay.length = 0; h.ux.length = 0; h.uy.length = 0; h.len.length = 0; }
+      h.t.push(input.time); h.ax.push(ax); h.ay.push(ay); h.ux.push(ux); h.uy.push(uy); h.len.push(input.len);
+      while (h.t.length > 1 && input.time - h.t[1] > BEAM_TIP_LIFE_MAX_MS + 200) { h.t.shift(); h.ax.shift(); h.ay.shift(); h.ux.shift(); h.uy.shift(); h.len.shift(); }
+    }
+    const originAt = (t: number): BeamTipOrigin => {
+      for (let q = h.t.length - 1; q >= 0; q--) if (h.t[q] <= t) return { ax: h.ax[q], ay: h.ay[q], ux: h.ux[q], uy: h.uy[q], len: h.len[q] };
+      return { ax: h.ax[0], ay: h.ay[0], ux: h.ux[0], uy: h.uy[0], len: h.len[0] }; // 履歴より前=出始め=いちばん古い姿
+    };
+    const parts = beamTipParticles(input, originAt, BEAM_TIP_PARTICLE_MAX, h.t[0]); // 照射が始まる前の回は出さない
+    for (let i = 0; i < pool.parts.length; i++) {
+      const sp = pool.parts[i];
+      const p = parts[i];
+      if (!p) { sp.visible = false; continue; }
+      sp.position.set(p.x, p.y);
+      sp.width = p.size; sp.height = p.size;
+      const bm = p.core ? 'normal' : 'add';
+      if (sp.blendMode !== bm) sp.blendMode = bm;
+      sp.tint = p.core ? partCoreTint : haloTint;
+      sp.alpha = p.alpha;
+      sp.visible = true;
+    }
   }
 
   // UNIQUE_WEAPONS.md §16-2(バッチC-1): 火炎放射器。前方の扇を炎のドットの粒(pooled sprite・
