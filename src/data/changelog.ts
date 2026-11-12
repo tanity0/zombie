@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5542', items: [
+    '飛び蹴りの二発目は相手をあまり飛ばさずに打ち上げる。続けて踵落としや三発目が届きやすい',
+  ] },
   { version: '0.25.5541', items: [
     '出撃した直後に、選ぶものが何も無いレベルアップの画面が出て止まることがあったのを直した',
   ] },

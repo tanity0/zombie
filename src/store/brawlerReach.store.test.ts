@@ -1,6 +1,6 @@
 // ★基本技の前進は「決まった距離を、出した瞬間の向きへ」(research/BRAWLER.md §31・社長裁定2026-11-12)を、実際の AI(updateEnemies)を実際の刻みで回して固める。
 //  - 押しの表(utils/brawlerReach の BRAWLER_PUSH_ZOMBIE_PX)が、雑魚に当てた実際の押しと合っている
-//  - 代表の道(弱→弱→強→4段目→5段目 / 弱→飛び蹴り1→2→3 / 飛び蹴り2→踵落とし / 強→気功)は、相手の手前から始めて、続きを一番早く出しても一番遅く出しても当たる
+//  - 代表の道(弱→弱→強→4段目→5段目 / 弱→飛び蹴り1→2→3 / 飛び蹴り1→2→3 / 飛び蹴り2→踵落とし / 強→気功)は、相手の手前から始めて、続きを一番早く出しても一番遅く出しても当たる
 //  - 外れる: 踏み込み+届く範囲より遠い相手には空振りする / 3発目の飛ぶ間に相手が動くと外れる(取り直さない・蹴り飛ばしは溜め無し=§33-2)
 // 全部のつなぎの距離の計算は utils/brawlerReach.test.ts。
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
@@ -155,11 +155,33 @@ describe('§31-2 押しの表は、雑魚に当てた実際の押しと合って
   }
 });
 
+describe('飛び蹴り2発目は、あまり飛ばさず少し打ち上げる(社長指示2026-11-12「じゃないと踵落としが届かない」)', () => {
+  it('雑魚・地上: 2発目の押しは 10px 以下で、地上から浮く', () => {
+    setup();
+    placeAt(60);
+    expect(issue('kick1')).toBe(true);
+    for (let f = 0; f < 400 && !(nodeNow() === 'kick1' && br().resolved); f++) adv();
+    expect(br().connected, 'kick1 connected').toBe(true);
+    for (let f = 0; f < 400 && !validNow('kick1', 'kick2'); f++) adv();
+    placeAt(BRAWLER_STANDOFF_PX); // 地上の雑魚に2発目を当てる(1発目は地上からは浮かせない)
+    expect((en().brLiftUntil ?? 0) > now, '2発目の前は地上').toBe(false);
+    expect(issue('kick2')).toBe(true);
+    for (let f = 0; f < 400 && !(nodeNow() === 'kick2' && br().resolved); f++) adv();
+    expect(br().connected, 'kick2 connected').toBe(true);
+    expect((en().brLiftUntil ?? 0) > now, '2発目で浮く(打ち上げは今どおり)').toBe(true);
+    const d0 = dist();
+    let dmax = d0;
+    for (let f = 0; f < 90; f++) { adv(); dmax = Math.max(dmax, dist()); }
+    expect(dmax - d0, 'kick2 の押し').toBeLessThanOrEqual(10);
+  });
+});
+
 describe('§31-2 代表の道は、手前から始めて、続きを一番早く出しても一番遅く出しても雑魚に当たる', () => {
   const ROUTES: readonly (readonly BrawlerRouteNode[])[] = [
     ['s1', 's2', 's3', 's4', 's5'],
     ['s1', 'kick1', 'kick2', 'kick3'],
-    ['kick1', 'kick2', 'heel'],
+    ['kick1', 'kick2', 'kick3'], // 2発目→3発目(2発目は小さい押し+少し打ち上げ・社長指示2026-11-12)
+    ['kick1', 'kick2', 'heel'], // 2発目→踵落とし(同)
     ['s1', 's2', 's3', 'kiko'], // 強→気功(気功は §31 の対象外=今まで繋がっていたものが切れない)
   ];
   for (const steps of ROUTES) for (const mode of ['early', 'late'] as const) {

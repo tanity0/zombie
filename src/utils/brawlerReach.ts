@@ -12,10 +12,11 @@ export const BRAWLER_CHAIN_MARGIN_PX = 8;
 
 /**
  * 雑魚に当てた時の押しで下がる距離(px・実測を切り上げた値)。続きを持つ技(道の表の from)だけ。
- * 弱=小さい押し(BRAWLER_SMALL_KB_MULT)・強/飛び蹴り1・2発目=普通の押し・4段目=浮いた相手への小さい押し・踵落とし=押さない・大踏み潰し=吹き飛ばし(強制)。
+ * 弱=小さい押し(BRAWLER_SMALL_KB_MULT)・強/飛び蹴り1発目=普通の押し・4段目と飛び蹴り2発目=浮いた相手への小さい押し・踵落とし=押さない・大踏み潰し=吹き飛ばし(強制)。
+ * 飛び蹴り2発目は小さい押し+少し打ち上げ(社長指示2026-11-12「飛び蹴り二段目は相手をあまり飛ばさず少し打ち上げて、じゃないと踵落としが届かない」・実測 約9.2px)。
  */
 export const BRAWLER_PUSH_ZOMBIE_PX: Readonly<Partial<Record<BrawlerRouteNode, number>>> = {
-  s1: 5, s2: 5, s3: 38, s4: 10, kick1: 38, kick2: 38, heel: 0, stomp: 64,
+  s1: 5, s2: 5, s3: 38, s4: 10, kick1: 38, kick2: 10, heel: 0, stomp: 64,
 };
 
 /** 続きの技 B の届き方。lungePx=体が進む最大(相手の手前で止まる)・targetPx=狙える距離(この外なら進まない)・hitPx=当たる距離。どれも相手の帯の縁までの距離。 */

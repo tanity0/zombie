@@ -5554,10 +5554,12 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const plan = brawlerStopPlan(get, hs, big && !heel ? BR.BRAWLER_WORLD_STOP_KICK3 : undefined);
     const r = strike(ids, {
       mult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), stunMs: plan.stun, ...plan.lock, postureMult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.2
-      // 押し: 1〜3発目とも普通のノックバック。3発目は旧「吹き飛ばし(big)」→ 少しのノックバックへ(社長指示2026-11-11「3段目はノックバック少しさせちゃって良い」)。
+      // 押し: 1・3発目は普通のノックバック(2発目は下の小さい押し)。3発目は旧「吹き飛ばし(big)」→ 少しのノックバックへ(社長指示2026-11-11「3段目はノックバック少しさせちゃって良い」)。
       // 2発目は地上の敵を少し打ち上げる(同・utils/brawlerCombo の BRAWLER_GROUND_LAUNCH)。空中の敵への3発目は今どおり締めの叩き落とし。
       // ★3発目はもう少し吹き飛ばす(社長指示2026-11-11・BRAWLER_KICK3_KB_POWER)。押しの種類は普通のまま=強さだけ上げる。
-      kb: heel ? { kind: 'none' } : { kind: 'normal', dirX: dir.x, dirY: dir.y, ...(big ? { power: BR.BRAWLER_KICK3_KB_POWER } : {}) },
+      // ★2発目は小さい押し(段の弱と同じ)=あまり飛ばさず少し打ち上げる(社長指示2026-11-12「飛び蹴り二段目は相手をあまり飛ばさず少し打ち上げて、じゃないと踵落としが届かない」)。
+      //   打ち上げ(BRAWLER_GROUND_LAUNCH / BRAWLER_JUGGLE_PUSH の kick2)は押しの種類に連動しない=今どおり。
+      kb: heel ? { kind: 'none' } : s.kickN === 2 ? { kind: 'small', dirX: dir.x, dirY: dir.y } : { kind: 'normal', dirX: dir.x, dirY: dir.y, ...(big ? { power: BR.BRAWLER_KICK3_KB_POWER } : {}) },
       combo: { move: BRC.brawlerKickMoveKey(s.kickN, heel) },
     });
     const hits = r.hits ?? 0;
