@@ -61,6 +61,7 @@ import {
   notifySkillProc,
   isCounterActive, // ★カウンター成立の唯一の判定(v0.25.3926・刃が出ている間だけ)
   isBrawlerGuarding, // ★格闘の構え(research/BRAWLER.md §3-2)
+  isBrawlerWeakGuarding, // ★弱い構え(払えずに出た構え=打ち返さない)
   useGameStore, isSeekerActive, skillLevel, counterReplyDamage, enemyDeathLabel, combatActorPlayer,
   ENEMY_ATTACK_SPEED_MULT, SCREAMER_BUFF_MULT,
   COUNTER_EXTEND_PER_HIT, COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, COUNTER_SHAKE_MAG, COUNTER_ZOOM_MAG, MELEE_FINISH_SLOW_MS, MELEE_FINISH_SLOW_HOLD_MS,
@@ -1025,7 +1026,9 @@ export const applyEnemyProjectileHits = (
     // ので、この条件は既存の弾を1bitも変えない。
     // ★SAME_ARENA §9(検収監査 重大②): 紫/daze中は弾パリィも成立しない(窓が残っていても)。
     // ★格闘の構え(上・research/BRAWLER.md §3-2): 構えの1秒は弾を全て弾き返す(紫=noCounter も含む・社長指示2026-11-07)。
-    const brawlerGuard = isBrawlerGuarding(currentPlayer, gameTime);
+    // ★弱い構え(払えずに出た構え・社長指示2026-11-12)は打ち返さない(打ち返し=カウンターの成立)。下の被弾の入口(damagePlayer)で構えが防ぎ、押されるだけ。
+    const brawlerGuardAny = isBrawlerGuarding(currentPlayer, gameTime);
+    const brawlerGuard = brawlerGuardAny && !isBrawlerWeakGuarding(currentPlayer, gameTime);
     if (brawlerGuard || (isCounterActive(currentPlayer, now) && !proj.noCounter
       && !isPvpIncapacitated(currentPlayer.pvpPosture, gameTime))) {
       // 反射1回分は共有関数(主語=プレイヤー。ghostId未指定=従来と1bit同値)。
@@ -1035,7 +1038,7 @@ export const applyEnemyProjectileHits = (
       reflectedSources.push({ id: proj.ownerId, type: proj.ownerType });
       if (reflectedAt === null) reflectedAt = { x: proj.x + proj.width / 2, y: proj.y + proj.height / 2 };
     } else {
-      const wasVulnerable = !useGameStore.getState().player.invulnerable;
+      const wasVulnerable = !useGameStore.getState().player.invulnerable && !brawlerGuardAny; // 弱い構えで防いだ弾は被弾の音・赤い閃光を出さない
       const rnMult = redNightActive ? 2 : 1;
       // 叫喚型の強化窓中は通常敵(ボス/screamer以外)の飛び道具ダメージも×SCREAMER_BUFF_MULT。
       const scMult = (screamerBuffUntil > gameTime && proj.ownerType && proj.ownerType !== 'screamer' && !isBossType(proj.ownerType)) ? SCREAMER_BUFF_MULT : 1;
@@ -1064,7 +1067,7 @@ export const applyEnemyProjectileHits = (
         }
       }
       useGameStore.getState().removeProjectile(proj.id);
-      fx.spawnBurst(
+      if (!brawlerGuardAny) fx.spawnBurst( // 弱い構えで防いだ弾は赤い粒を出さない(受けの白金の絵は構えの受けが出す)
         player.x + player.width / 2,
         player.y + player.height / 2,
         '#ef4444',

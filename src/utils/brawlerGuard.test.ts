@@ -6,8 +6,9 @@ import {
   brawlerGuardOutcome, brawlerGuardSourceClass, brawlerGuardKnockDir, isBrawlerBeamMove, isBrawlerBeamFiring, brawlerBeamCutTarget,
   brawlerBeamCutValid, slowLostMs, brawlerPushUntil, brawlerGuardSourceEnemy, BRAWLER_CUT_BEAMS, BRAWLER_BEAM_CUT_GRACE_MS, BRAWLER_GUARD_KNOCK_PX, BRAWLER_GUARD_KNOCK_MS,
   brawlerGuardCounterDue, brawlerGuardCounterTarget, brawlerGuardCounterDir, BRAWLER_GUARD_COUNTER_KIKO_MULT,
+  brawlerGuardModeFor, brawlerGuardEffects,
 } from './brawlerGuard';
-import { BRAWLER_STEP_PX } from './brawler';
+import { BRAWLER_STEP_PX, brawlerFlickStepInstead, initialBrawlerState } from './brawler';
 
 const e = (id: string, type: string, extra: Partial<Enemy> = {}): Enemy => ({ id, type, ...extra } as unknown as Enemy);
 
@@ -170,5 +171,29 @@ describe('構えの反撃の気功(§32)', () => {
     expect(brawlerGuardCounterDir({ x: 0, y: 0 }, { x: 0, y: -50 }, { x: 1, y: 0 })).toEqual({ x: 0, y: -1 });
     expect(brawlerGuardCounterDir({ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 2 })).toEqual({ x: 0, y: 1 });
     expect(brawlerGuardCounterDir({ x: 0, y: 0 }, { x: 0, y: 0 }, null)).toEqual({ x: 1, y: 0 });
+  });
+});
+
+describe('弱い構え(社長指示2026-11-12「カウンターはポイントが無くても発動。ただし、3未満の時はダメージ防いで弾き飛ばされるのみ」)', () => {
+  it('払えるか→通常/弱い', () => {
+    expect(brawlerGuardModeFor(true)).toBe('normal');
+    expect(brawlerGuardModeFor(false)).toBe('weak');
+  });
+  it('弱い構えの受けは区分を問わず押されるだけ(雑魚でも潰しにしない)・間引き/持続ダメージは何もしない', () => {
+    expect(brawlerGuardOutcome({ throttled: false, weak: true, classes: ['mob'] })).toBe('knockback');
+    expect(brawlerGuardOutcome({ throttled: false, weak: true, classes: ['boss'] })).toBe('knockback');
+    expect(brawlerGuardOutcome({ throttled: true, weak: true, classes: ['mob'] })).toBe('none');
+    expect(brawlerGuardOutcome({ throttled: false, dot: true, weak: true, classes: ['mob'] })).toBe('none');
+    expect(brawlerGuardOutcome({ throttled: false, classes: ['mob'] })).toBe('stomp'); // 通常は今どおり
+  });
+  it('弱い構えで外れる効果・残る効果(ジャストの +5 と JUST の表示だけ残る)', () => {
+    expect(brawlerGuardEffects(true)).toEqual({ counter: false, window: false, stun: false, beamCut: false, kiko: false, quick: false, justPoints: true, justFx: true });
+    expect(Object.values(brawlerGuardEffects(false)).every(v => v)).toBe(true);
+    expect(brawlerGuardEffects(undefined)).toEqual(brawlerGuardEffects(false));
+  });
+  it('構えのフリックは払えなくてもステップに変えない', () => {
+    const idle = initialBrawlerState();
+    expect(brawlerFlickStepInstead(idle, 1000, false, 'guard')).toBe(false);
+    expect(brawlerFlickStepInstead(idle, 1000, false, 'kick')).toBe(true);
   });
 });

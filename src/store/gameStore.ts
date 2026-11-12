@@ -2315,6 +2315,9 @@ export const isMeleeOnlyMode = (player: Player): boolean => isKatanaMode(player)
 /** 格闘の構え(上)の1秒の間か(gameTime)。この間に受けた攻撃は全て無効(§3-2)。 */
 export const isBrawlerGuarding = (player: Player, gameTime: number): boolean =>
   isBrawlerMode(player) && isBrawlerGuardingAt(player.brawler, gameTime);
+/** ★弱い構え(払えずに出た構え・社長指示2026-11-12)の間か。受けても防いで押されるだけ=弾は打ち返さない(打ち返しはカウンターの成立)。 */
+export const isBrawlerWeakGuarding = (player: Player, gameTime: number): boolean =>
+  isBrawlerGuarding(player, gameTime) && player.brawler?.guardWeak === true;
 export const subWeaponBlockedByKatana = (player: Player, key: SubWeaponKey): boolean => {
   if (isKatanaMode(player)) {
     return key !== 'katana' && key !== 'murasame' && !KATANA_ALLOWED_SUBWEAPONS.includes(key);
@@ -5007,9 +5010,11 @@ const fireBufferedBrawlerTech = (
   // 覚えた蹴りが踵落とし(下で入れた・§29): 出す瞬間にも「2発目の続き」であること(連続の受付が切れていたら、何も出さない=1発目の蹴りに化けさせない)。
   const heel = kind === 'kick' && s.heelBuffer === true;
   if (heel && !BR.brawlerHeelInput(s1, 'stomp', get().gameTime)) { setBrawler(set, s1); return; }
-  if (heel ? s1.points < BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : !BR.brawlerCanPay(s1, kind, awakened, brawlerTechDiscount(p, kind))) {
+  // ★覚えた構えも、払えなければ弱い構えで出す(社長指示2026-11-12・入力の瞬間と同じ決まり=ステップに変えない)。
+  const weakGuard = kind === 'guard' && BRG.brawlerGuardModeFor(BR.brawlerCanPay(s1, 'guard', awakened, brawlerTechDiscount(p, 'guard'))) === 'weak';
+  if (kind !== 'guard' && (heel ? s1.points < BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : !BR.brawlerCanPay(s1, kind, awakened, brawlerTechDiscount(p, kind)))) {
     // ★出す瞬間にまだ払えず、ステップを出せるなら、そのフリックの向きへのステップ(社長裁定2026-11-12・案A=入力の瞬間のフリックと同じ扱い)。
-    if (BR.brawlerFlickStepInstead(s1, get().gameTime, false)) {
+    if (BR.brawlerFlickStepInstead(s1, get().gameTime, false, kind)) {
       const d = BR.brawlerFlickDirOf(kind, heel);
       startBrawlerStep(get, set, s1, d.x, d.y);
       return;
@@ -5019,7 +5024,7 @@ const fireBufferedBrawlerTech = (
     return;
   }
   // 飛び蹴りの連続の続き(蹴り→蹴り)はキャンセルではない(今どおり)。
-  startBrawlerTech(get, set, s1, kind, awakened, cancel && !(kind === 'kick' && s.tech === 'kick'), false, heel);
+  startBrawlerTech(get, set, s1, kind, awakened, cancel && !(kind === 'kick' && s.tech === 'kick'), false, heel, weakGuard);
 };
 const startBrawlerTech = (
   get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s0: BR.BrawlerState, kind: BR.BrawlerTechKind, awakened = false,
@@ -5032,6 +5037,11 @@ const startBrawlerTech = (
   free = false,
   /** 踵落とし(§29): 飛び蹴りの3発目を、蹴り飛ばしの代わりに踵落としで出す(呼び手が「2発目の続き」を確かめている)。 */
   heelReq = false,
+  /**
+   * ★弱い構え(社長指示2026-11-12): 値段を払えずに出す構え。払わない(返す抽選もしない)・カウンター窓は張らない・秘奥義の順番にも数えない
+   * (払わずに出た構えで秘奥義を出させない)。構えの長さ・動けない事・ジャストの窓・出だしの絵と音は通常と同じ。kind='guard' の時だけ効く。
+   */
+  weakGuardReq = false,
 ): void => {
   const st = get();
   const p = st.player;
@@ -5040,19 +5050,20 @@ const startBrawlerTech = (
   const c = brawlerCenter(p);
   const kickN = kind === 'kick' ? BR.brawlerNextKickN(s0, t) : 0;
   const heel = heelReq && kind === 'kick' && kickN >= BR.BRAWLER_KICK_MAX;
+  const weakGuard = weakGuardReq && kind === 'guard';
   // ★§19-3 ②: この技が道の上の続きか(取り消しで出した技=通常→技・技→技、飛び蹴りの連続の続き)。待機から出した技は続きではない
   //   (連続の受付の内に待機から出した次の蹴りだけは続き)。代金なしの潰し(構えで受けた瞬間)は入力ではない=続きではない。
   const linkFrom: BR.BrawlerRouteNode = s0.phase !== 'idle' ? BR.brawlerRouteNodeOf(s0)
     : kind === 'kick' && kickN > 1 ? BR.brawlerTechNode('kick', kickN - 1) : 'idle';
   const linked = !free && kind !== 'guard' && linkFrom !== 'idle' && BR.brawlerRouteAllows(linkFrom, BR.brawlerTechNode(kind, Math.max(1, kickN)));
   // ★タイムキーパー/オーバークロックの読み替え(research/BRAWLER.md §15・社長承認2026-11-09): 値段の割引と、確率で払った技ポイントを返す。
-  const techCost = free ? 0 : heel ? BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : BR.brawlerTechCost(kind, awakened, brawlerTechDiscount(p, kind));
-  const techRefund = !free && BRS.brawlerOverclockRefunds(techCost, skillLevel(p, 'overclock'));
+  const techCost = free || weakGuard ? 0 : heel ? BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : BR.brawlerTechCost(kind, awakened, brawlerTechDiscount(p, kind));
+  const techRefund = !free && !weakGuard && BRS.brawlerOverclockRefunds(techCost, skillLevel(p, 'overclock'));
   // 技ポイントが返った行は、技の行の後に足す(上から「出した技 → 返ってきた」の順に読める・下の notifyTechProc の後)。
-  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel, heel), pressAt: now, points: s0.points - (techRefund ? 0 : techCost), ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
+  let s: BR.BrawlerState = { ...BR.brawlerStartTech(s0, kind, t, kickN, cancel, heel), ...(kind === 'guard' ? { guardWeak: weakGuard } : {}), pressAt: now, points: s0.points - (techRefund ? 0 : techCost), ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
   // ★秘奥義の順番(research/BRAWLER.md §10-1): 実際に出た技で数える。↑構えで揃ったら、構えを秘奥義に置き換える(ポイントは払った後・窓は張らない)。
   // キャンセルで繋いだ時は前の技の終わり=いま(0ms 扱い・§11-4)。代金なしの技(free)は数えない=順番の進みはそのまま。
-  if (!free) {
+  if (!free && !weakGuard) {
     const secretStep = BR.brawlerSecretStep(s0.secretProgress ?? 0, cancel ? t : (s0.secretLastEndAt ?? 0), kind, kickN, t);
     s = { ...s, secretProgress: secretStep.progress };
     if (secretStep.fire) {
@@ -5111,8 +5122,8 @@ const startBrawlerTech = (
   } else {
     s = { ...s, targetId: undefined };
   }
-  if (kind === 'guard') {
-    // 構え=カウンター窓をこの1秒に張る(赤は今のカウンターと同じ処理が走る・§3-2)。
+  if (kind === 'guard' && !weakGuard) {
+    // 構え=カウンター窓をこの1秒に張る(赤は今のカウンターと同じ処理が走る・§3-2)。弱い構えは張らない(打ち返し・カウンターの成立を起こさない)。
     extra = { ...extra, counterWindowStart: now, counterWindowEnd: now + BR.BRAWLER_GUARD_MS };
   }
   // 取り消しで出した技(道の上の続き)の印(状態に残すだけ。§20 で続きを出した瞬間の固まりの延ばしは撤去した=固まりは当たりの瞬間に書く)。
@@ -11351,9 +11362,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!BR.brawlerTechAllowed(s, kind, t)) return false;
     // 血の覚醒中は技ポイントを無視して使い放題(社長指示2026-11-08・値段0=減らさない)。
     const awakened = isBloodAwakening(p, t);
-    if (heel ? s.points < BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : !BR.brawlerCanPay(s, kind, awakened, brawlerTechDiscount(p, kind))) {
+    // ★構えは払えなくても出る(社長指示2026-11-12「カウンターはポイントが無くても発動。ただし、3未満の時はダメージ防いで弾き飛ばされるのみ」)=
+    //   払える時は今どおり払って通常の構え、払えない時は払わずに弱い構え(延長も同じ決まり)。ステップには変えない。
+    const guardMode = kind === 'guard' ? BRG.brawlerGuardModeFor(BR.brawlerCanPay(s, 'guard', awakened, brawlerTechDiscount(p, 'guard'))) : null;
+    if (kind !== 'guard' && (heel ? s.points < BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : !BR.brawlerCanPay(s, kind, awakened, brawlerTechDiscount(p, kind)))) {
       // ★ポイント不足のフリックは、ステップを出せる時はその向きへのステップ(社長指示2026-11-12)=ステップの入口と同じ踏み込み・出始めの無敵・砂埃・音。
-      if (BR.brawlerFlickStepInstead(s, t, false)) {
+      if (BR.brawlerFlickStepInstead(s, t, false, kind)) {
         const m = Math.hypot(dirX, dirY) || 1;
         startBrawlerStep(get, set, s, dirX / m, dirY / m);
         return true;
@@ -11366,11 +11380,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (kind === 'guard' && isBrawlerGuardingAt(s, t)) {
       // ★構えの延長(社長指示2026-11-07・§9-41): 3ポイント払って終わる時刻を「今+1秒」に引き直す。窓・無敵・打ち返し・レーザーの盾も
       // 同じ終わる時刻まで切れ目なく続く(どれも構えの終わり guardUntil を読む)。溜め・暗転は出さない。体の光と影を一度脈打たせ、短い音。
+      // ★払えない時は弱い構えとして延長(払わない・カウンター窓は張らない=張っていたら閉じる・社長指示2026-11-12)。
       const now = Date.now();
-      const guardCost = BR.brawlerTechCost('guard', awakened, brawlerTechDiscount(p, 'guard'));
-      const guardRefund = BRS.brawlerOverclockRefunds(guardCost, skillLevel(p, 'overclock'));
-      const s1 = { ...BR.brawlerExtendGuard(s, t, now), points: s.points - (guardRefund ? 0 : guardCost) };
-      setBrawler(set, s1, { counterWindowStart: Math.min(p.counterWindowStart, now), counterWindowEnd: now + BR.BRAWLER_GUARD_MS });
+      const weak = guardMode === 'weak';
+      const guardCost = weak ? 0 : BR.brawlerTechCost('guard', awakened, brawlerTechDiscount(p, 'guard'));
+      const guardRefund = !weak && BRS.brawlerOverclockRefunds(guardCost, skillLevel(p, 'overclock'));
+      const s1 = { ...BR.brawlerExtendGuard(s, t, now, weak), points: s.points - (guardRefund ? 0 : guardCost) };
+      setBrawler(set, s1, weak
+        ? { counterWindowEnd: Math.min(p.counterWindowEnd, now) }
+        : { counterWindowStart: Math.min(p.counterWindowStart, now), counterWindowEnd: now + BR.BRAWLER_GUARD_MS });
       notifyTechProc('guard'); // 構えの延長も技を出した=行が1つ増える
       if (guardRefund) notifySkillProc('overclock'); // 技の行の後(出した技 → 返ってきた、の順)
       brawlerSfx('heavy-impact', 0.22, 1.35, 260);
@@ -11379,7 +11397,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     // 技の最中から別の技=技→技の取り消し(§19-1・brawlerTechAllowed が「道の上・当たった・受付の内」だけ通す)。飛び蹴りの連続は今どおり(取り消しではない)。
     // 通常の段から技への取り消しも同じ規則で通るが、繋がった合図(閃き)と秘奥義の 0ms 扱いは今どおり技→技だけ(見た目・音は足さない)。
-    startBrawlerTech(get, set, s, kind, awakened, s.phase === 'tech' && !(kind === 'kick' && s.tech === 'kick'), false, heel);
+    startBrawlerTech(get, set, s, kind, awakened, s.phase === 'tech' && !(kind === 'kick' && s.tech === 'kick'), false, heel, guardMode === 'weak');
     return true;
   },
   tickBrawler: () => {
@@ -11453,7 +11471,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
     // 構えの間はカウンター窓を張り続ける(窓は Date.now 系・構えは gameTime 系=一時停止で窓だけ先に切れないように)。
-    if (s0.phase === 'tech' && s0.tech === 'guard' && s0.guardUntil > t) {
+    if (s0.phase === 'tech' && s0.tech === 'guard' && s0.guardUntil > t && !s0.guardWeak) { // 弱い構えは窓を張らない
       const remain = s0.guardUntil - t;
       if (p.counterWindowEnd < now + remain - 40 || p.counterWindowStart > now) {
         set(state => ({ player: { ...state.player, counterWindowStart: Math.min(state.player.counterWindowStart, now), counterWindowEnd: now + remain } }));
@@ -11499,23 +11517,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     const c = brawlerCenter(p);
     // 光線などで毎フレーム来る受けは絵と音・成立の効果を間引く(同じ受けの続き)。
     const throttled = now - (s.guardHitAt ?? 0) < BRG.BRAWLER_GUARD_THROTTLE_MS;
+    // ★弱い構え(払えずに出た構え・社長指示2026-11-12): ダメージを防いで押されるだけ。外れる効果は brawlerGuardEffects の表
+    //   (潰し・反撃の気功・足止め/気絶・光線の中断・Counter!/停止/スロー・成立の記録・受けた直後の前隙なし)。ジャストの +5 と JUST の表示は付く。
+    const fxOn = BRG.brawlerGuardEffects(s.guardWeak);
     // ★受けた相手(区分の判定用・research/BRAWLER.md §12-3d)。呼び手が並べた相手、無ければ気絶させる相手(sourceId)。1件も無ければ「分からない」。
     const sources: readonly BRG.BrawlerGuardSource[] = opts?.sources ?? (sourceId !== undefined ? [{ id: sourceId }] : []);
     // ★光線を受けた(社長指示2026-11-10「光線防いだら中断させたい」): 撃っている最中の持ち主へ中断の合図を置く。間引きに関係なく切る
     // (持ち主の更新が takeBrawlerBeamCut で読み、その型の「普通に終わった時」の処理へ進む=予告・絵・判定は状態と一緒に消える)。
     {
-      const cutId = BRG.brawlerBeamCutTarget(opts?.beam === true, sources, st.enemies);
+      const cutId = fxOn.beamCut ? BRG.brawlerBeamCutTarget(opts?.beam === true, sources, st.enemies) : null;
       if (cutId !== null) brawlerBeamCuts.set(cutId, st.gameTime);
     }
     // 受けた直後0.5秒は次の通常攻撃が前隙なしで出る(社長決定 #7)。構えは1秒固定で途中に動けないので、
     // 0.5秒は「受けた時刻と構えの終わりの遅い方」から数える(★未決 §9-4: 構えの最中に切れて使えない窓にしない)。
     // ★ジャスト構え(research/BRAWLER.md §12-2): 当たる直前120ms以内に構え(または延長)が出ていた受け。気絶は2倍・演出を一段強く・「JUST」。
     const just = !throttled ? BR.brawlerIsJustGuard(s, st.gameTime, BRS.brawlerJustWindowMs(counterAcceptMsOf(p) - COUNTER_ACCEPT_MS)) : false; // §15: 強化「カウンター受付」の延びぶんだけジャストの窓も延ばす // 間引かれる受け(光線など毎フレーム)はジャストにしない
-    if (just) brawlerJustAt = now;
+    if (just && fxOn.stun) brawlerJustAt = now; // 気絶2倍の合図(弱い構えは気絶させない)
     const stunMul = just ? BR.BRAWLER_JUST_STUN_MULT : 1;
-    const next: BR.BrawlerState = { ...s, quickUntil: Math.max(st.gameTime, s.guardUntil) + BR.BRAWLER_GUARD_QUICK_MS };
+    const next: BR.BrawlerState = fxOn.quick ? { ...s, quickUntil: Math.max(st.gameTime, s.guardUntil) + BR.BRAWLER_GUARD_QUICK_MS } : s;
     // 近接の届く距離の相手は気絶させる(社長決定 #6・§8-5): 雑魚=通常の気絶 / 強個体・ボス級=会心の足止め(bossCritStopPatch=会心と同じ区分の決まり・減衰込み)。遠い相手は無効だけ。
-    if (sourceId) {
+    if (sourceId && fxOn.stun) {
       const e = st.enemies.find(en => en.id === sourceId);
       if (e && BR.isBrawlerTargetable(e) && enemyMeleeDist(c.x, c.y, e) <= huntingMeleeRadius(p) + 24) {
         const patch: Partial<Enemy> | null = isBossType(e.type)
@@ -11527,15 +11548,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (throttled) { setBrawler(set, next); return; } // 光線などで毎フレーム来る受けは絵と音を間引く(潰しもノックバックも出さない=§12-3d)
     // ★成立の効果(§12-3d・社長指示2026-11-10): 雑魚=代金なしの大踏み潰し / 雑魚より上・相手が分からない=自分が大きくノックバック / 持続ダメージ=なし。
     const outcome = BRG.brawlerGuardOutcome({
-      throttled, dot: opts?.dot, classes: sources.map(src => BRG.brawlerGuardSourceClass(src, st.enemies)),
+      throttled, dot: opts?.dot, weak: s.guardWeak === true, classes: sources.map(src => BRG.brawlerGuardSourceClass(src, st.enemies)),
     });
     // ★成立の記録(lastCounterSuccessTime)も通常のカウンターと同じく書く(社長承認2026-11-07・§9-42)。ループのエッジ検出が
     // 金の輪・ボムカウンター(とボマーの子爆弾)を出し、決めポーズの膨らみ・速度線・守護霊の記録(カウンター直後の窓)も同じ記録を読む。
     // ★技ポイント: 普通の受けでは増やさない(2026-11-08 の「カウンター成立で全回復」は社長指示2026-11-10 で撤去。HUD の跳ね=gainAt も打たない)。
     //   例外=ジャストの受け(社長指示2026-11-12「ジャストカウンターになったら技ポイントが5溜まる」): +5(上限で止める)・構え1回(延長ごと)に1度だけ・
     //   増えた時は他の増え方と同じく gainAt を打つ(HUD の数字が跳ねる)。
-    const nextPts = BR.brawlerAfterJustGuardPoints(next, BR.brawlerPointCap(brawlerLevel(p)), just, now);
-    setBrawler(set, { ...nextPts, guardHitAt: now, ...(just ? { justAt: now } : {}) }, { lastCounterSuccessTime: now, ...counterMasterAwakenBuffPatch(p, st.gameTime) /* §15: カウンターマスター覚醒(成立後3秒+30%)も他のカウンターと揃える */ });
+    //   ★弱い構えでもジャストなら +5(社長指示2026-11-12「それでもジャストカウンターはポイント付与有り」)。成立の記録は弱い構えでは書かない。
+    const nextPts = BR.brawlerAfterJustGuardPoints(next, BR.brawlerPointCap(brawlerLevel(p)), just && fxOn.justPoints, now);
+    setBrawler(set, { ...nextPts, guardHitAt: now, ...(just ? { justAt: now } : {}) }, fxOn.counter ? { lastCounterSuccessTime: now, ...counterMasterAwakenBuffPatch(p, st.gameTime) /* §15: カウンターマスター覚醒(成立後3秒+30%)も他のカウンターと揃える */ } : undefined);
     // 受けた瞬間: 大きめの止め・閃光・揺れ(固有色の白金)。
     // 画面全体は止めない・スローも使わない(カウンターの絵の時間停止は撤回済み+サブウェポンのスロー禁則)。揺れと小さな寄りで受ける。
     get().triggerShake(COUNTER_SHAKE_MS + 80, COUNTER_SHAKE_MAG * 1.4, c.x - x, c.y - y);
@@ -11563,7 +11585,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ★通常の近接カウンターの成立演出も重ねる(社長指示2026-11-07「スローやカウンターの演出は入れて」・§9-41)。
     // 青い光と輪・青い粒・「Counter!」・counter の音・成立の金の輪、停止とスロー(構え1回につき最初の1度=triggerHitImpact 側)。
     // 格闘の受け(白金の閃光・砕け・稲妻・揺れ・寄り・影の強い光)は消さない。経路(打ち返し・爆風・突進・格闘の受け)を問わずここ1か所で出す。
-    {
+    // ★弱い構えは出さない(受けた所の白金の砕け・閃光・揺れ・受けの音=上の塊だけ)。
+    if (fxOn.counter) {
       const g = get();
       brawlerSfx('counter', 1.0, 1.0, undefined, 6);
       g.spawnGlow(c.x, c.y, GLOW_R_L, 'rgba(56,189,248,', COUNTER_REFLECT_FX_MS);
@@ -11574,7 +11597,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       g.triggerHitImpact(COUNTER_HITSTOP_MS, COUNTER_SHAKE_MS, 0, COUNTER_ZOOM_MAG);
     }
     // ★ジャスト構え(§12-2): 一段強い受け。白い閃光を強く・揺れと寄りを強く・高い金属音を重ね・白金の二重の輪・「JUST」を Counter! の上に。
-    if (just) {
+    if (just && fxOn.justFx) { // 弱い構えでも出す(+5 が入った合図・社長指示2026-11-12)
       const g = get();
       g.spawnFlash('rgba(255,250,236,0.34)', 160);
       g.triggerShake(COUNTER_SHAKE_MS + 160, COUNTER_SHAKE_MAG * 2.1, c.x - x, c.y - y);
@@ -11618,7 +11641,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       //   撃つのは受けた瞬間の止めが明けた時刻(=押され始めと同時・tickBrawler が撃つ)。狙い=受けた相手のうち雑魚より上で狙える一番近い相手。
       {
         const b = get().player.brawler;
-        if (b && BRG.brawlerGuardCounterDue({ outcome, guardSince: b.guardSince, firedFor: b.guardKikoFor })) {
+        if (b && fxOn.kiko && BRG.brawlerGuardCounterDue({ outcome, guardSince: b.guardSince, firedFor: b.guardKikoFor })) {
           const tgt = BRG.brawlerGuardCounterTarget(sources, stn.enemies, c, BR.isBrawlerTargetable);
           setBrawler(set, { ...b, guardKikoFor: b.guardSince, guardKiko: { at: startAt, targetId: tgt?.id, hitX: x, hitY: y } });
         }

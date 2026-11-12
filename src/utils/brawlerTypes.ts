@@ -109,6 +109,11 @@ export interface BrawlerState {
   guardKikoFor?: number;
   /** ★予約中の反撃の気功。at=撃つ時刻(Date.now・受けた瞬間の止めが明ける時刻)/ targetId=狙う相手 / hitX,hitY=受けた点(狙えない時の向き)。 */
   guardKiko?: { at: number; targetId?: string; hitX: number; hitY: number };
+  /**
+   * ★弱い構え(社長指示2026-11-12): 値段を払えずに出た(延長した)構え。受けてもダメージを防いで押されるだけ(utils/brawlerGuard.brawlerGuardEffects)。
+   * 構えの光は不透明度を落とす(BRAWLER_WEAK_GUARD_ALPHA)。構えを始める・延長するたびに引き直す。構えの間だけ意味を持つ。
+   */
+  guardWeak?: boolean;
   /** 構えを延長した時刻(Date.now・体の光と腕ガードの影を一度強く脈打たせる合図)。 */
   guardRenewAt?: number;
   palmFromY?: number;

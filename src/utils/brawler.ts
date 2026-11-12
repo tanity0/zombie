@@ -855,10 +855,10 @@ export const BRAWLER_FLOW_FADE_MS = 800;
  * 構えを延長する(構えの最中の再入力・§9-41)。終わる時刻を「再入力の時刻+1秒」に引き直す(積み上げない)。
  * しゃがみの溜めからやり直さない=構えたまま。行動の時計(startAt)は引き直して、構えの終わり=行動の終わりに揃える。
  */
-export const brawlerExtendGuard = (s: BrawlerState, t: number, now: number): BrawlerState => ({
+export const brawlerExtendGuard = (s: BrawlerState, t: number, now: number, weak = false): BrawlerState => ({
   ...s, phase: 'tech', tech: 'guard', startAt: t, windupMs: 0, recoveryMs: BRAWLER_TECHS.guard.recoveryMs,
   stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: true,
-  guardUntil: t + BRAWLER_GUARD_MS, guardSince: t, guardRenewAt: now,
+  guardUntil: t + BRAWLER_GUARD_MS, guardSince: t, guardRenewAt: now, guardWeak: weak, // 払えずに延長した=弱い構えとして延長(払えれば通常)
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -924,9 +924,10 @@ export const brawlerStepAllowed = (s: BrawlerState, t: number): boolean => {
  * 変えるのは「その技を今出せる(道・受付・構えの延長などポイント以外の条件は通った)のに、値段だけ払えない」時で、しかもステップを今出せる時だけ
  * (brawlerStepAllowed=ステップの入口と同じ)。ステップを出せない時(技の最中・構えの最中など)は今どおり拒否。
  * 呼び手は、秘奥義の最中・方向の決まらない入力・道の外の技・技の先行入力として覚える入力をここへ渡さない(それらは今どおり)。
+ * kind='guard'(構え)は変えない(払えない時は弱い構え・utils/brawlerGuard.brawlerGuardModeFor)。
  */
-export const brawlerFlickStepInstead = (s: BrawlerState, t: number, canPay: boolean): boolean =>
-  !canPay && brawlerStepAllowed(s, t);
+export const brawlerFlickStepInstead = (s: BrawlerState, t: number, canPay: boolean, kind?: BrawlerTechKind): boolean =>
+  kind !== 'guard' && !canPay && brawlerStepAllowed(s, t); // ★構えは払えなくても弱い構えとして出る=ステップに変えない(社長指示2026-11-12)
 /**
  * 覚えた技(技の先行入力)の、フリックの向き(長さ1)。覚えた入力は技の種類しか持たないので、classifyBrawlerFlick の逆=上下左右の向きに戻す
  * (飛び蹴り=右・気功=左・構え=上・大踏み潰し=下。踵落としは下で入れた入力=下)。斜めに入れた入力も上下左右のどれかになる。

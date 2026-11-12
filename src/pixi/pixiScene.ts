@@ -113,6 +113,7 @@ import {
   type SkadiBlade, type SkadiBladeVisual, // 氷刃の列を共用する飛ぶ物(亡霊の呪いの墓石=visual:'grave'・WRAITH_MUTANT.md §11)
 } from '../store/gameStore';
 import * as BRW from '../utils/brawler'; // 格闘の絵(状態から描くだけ・判定は持たない)
+import { BRAWLER_WEAK_GUARD_ALPHA } from '../utils/brawlerGuard'; // 弱い構え(払えずに出た構え)の光の薄さ
 import { brawlerHeldNow, brawlerJuggleHeightRel, brawlerAirSignal, brawlerAirborne } from '../utils/brawlerCombo';
 import { screamerMarkVisible } from '../utils/screamerGate';
 import { getLastAirMeleeHit, playerLaunchHeightPx, stepPlayerAir, playerKickJump, playerKickJumpShape, playerKickLandPx, playerKickLandSpeed, playerAirLaunchSpeed, PLAYER_KICK_LAND_FRAC, PLAYER_KICK_JUMP_MIN_PX, PLAYER_KICK_HOLD_MS, PLAYER_KICK_RECOIL_PX, playerAirTargetPx, playerAirPhase, playerAirPoseTarget, playerAirBumpPx, playerAirLandStrength, playerAirLandDepth, playerAirLandSquashY, playerAirShadowShrink, playerAirShiftTarget, playerAirShiftStep, groundDustGate, type GroundDustGate, PLAYER_AIR_HOVER_MS, PLAYER_AIR_LAND_MS, PLAYER_AIR_LEAN_RAD, PLAYER_AIR_BODY_CAP, PLAYER_AIR_SHADOW_W, PLAYER_AIR_SHADOW_ALPHA, type PlayerAirState } from '../utils/playerAirFollow'; // 空中の敵を殴る時にプレイヤーも浮く(描画だけ・§18) // 格闘の反撃の赤い予告(位相は meteorPhase)
@@ -40932,7 +40933,8 @@ export class PixiScene {
       sp.anchor.set(spec.bodyU, spec.bodyV + (f.rot !== undefined ? 0.12 : 0)); // 踵落としは腰を中心に回す(胴の中心だと体ごと転がって見える)
       // 構えは受けた瞬間だけ強く光る。
       const pop = f.kind === 'guard' ? Math.max(0, 1 - (Date.now() - Math.max(s.guardHitAt, s.guardRenewAt ?? 0)) / 220) : 0;
-      sp.alpha = Math.min(1, f.alpha + 0.5 * pop + (s.secret ? 0.25 : 0)); // 秘奥義の間は影も強く光る(§10-2)
+      sp.alpha = Math.min(1, f.alpha + 0.5 * pop + (s.secret ? 0.25 : 0)) // 秘奥義の間は影も強く光る(§10-2)
+        * (f.kind === 'guard' && s.guardWeak ? BRAWLER_WEAK_GUARD_ALPHA : 1); // ★弱い構え(払えずに出た構え)は構えの影を薄く
       sp.tint = 0xffffff; // 頂いた青のまま
     }
     const kk = f.lever ? k * BRW.BRAWLER_STAND_GUARD_ARM_SCALE : k;
@@ -41001,7 +41003,8 @@ export class PixiScene {
         aura.scale.set(size / Math.max(1, aura.texture.height));
         aura.position.set(body.position.x, body.position.y - Math.abs(body.height) * 0.45);
         aura.tint = BRW.BRAWLER_COLOR_HEX;
-        aura.alpha = Math.min(1, 0.15 + 0.7 * remain + 0.4 * hitPop);
+        aura.alpha = Math.min(1, 0.15 + 0.7 * remain + 0.4 * hitPop)
+          * (!s.secret && s.guardWeak && BRW.isBrawlerGuardingAt(s, gt) ? BRAWLER_WEAK_GUARD_ALPHA : 1); // ★弱い構えは体の光を薄く
         aura.visible = true;
       } else if (this.brawlerAura) this.brawlerAura.visible = false;
     }

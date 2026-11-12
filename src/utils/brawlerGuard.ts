@@ -40,8 +40,9 @@ export const brawlerGuardSourceClass = (src: BrawlerGuardSource, enemies: readon
  *  - 受けた相手が全員雑魚 = 'stomp'。
  *  - それ以外(強個体・ボス級・浮かない区分・不明が1件でも混じる/相手が1件も無い)= 'knockback'(ハメを残さない側)。
  */
-export const brawlerGuardOutcome = (o: { throttled: boolean; dot?: boolean; classes: readonly BrawlerGuardClass[] }): BrawlerGuardOutcome => {
+export const brawlerGuardOutcome = (o: { throttled: boolean; dot?: boolean; weak?: boolean; classes: readonly BrawlerGuardClass[] }): BrawlerGuardOutcome => {
   if (o.throttled || o.dot) return 'none';
+  if (o.weak) return 'knockback'; // 弱い構え: 区分を問わず押されるだけ(雑魚でも潰しは出さない・反撃の気功は brawlerGuardEffects が止める)
   return o.classes.length > 0 && o.classes.every(c => c === 'mob') ? 'stomp' : 'knockback';
 };
 
@@ -194,3 +195,27 @@ export const brawlerGuardCounterDir = (
   const fl = facing ? Math.hypot(facing.x, facing.y) : 0;
   return facing && fl > 1e-6 ? { x: facing.x / fl, y: facing.y / fl } : { x: 1, y: 0 };
 };
+
+// ---------------------------------------------------------------------------------------------
+// ★弱い構え(社長指示2026-11-12「カウンターはポイントが無くても発動。ただし、3未満の時はダメージ防いで弾き飛ばされるのみ」)
+// ---------------------------------------------------------------------------------------------
+/** 構えの種類。normal=値段を払った構え / weak=払えずに出た構え(払わない・ポイントはそのまま)。 */
+export type BrawlerGuardMode = 'normal' | 'weak';
+/** 値段を払えるか(canPay)で構えの種類を決める。払える時は今どおり払って通常の構え。延長も同じ決まり。 */
+export const brawlerGuardModeFor = (canPay: boolean): BrawlerGuardMode => (canPay ? 'normal' : 'weak');
+/** 弱い構えの間、構えの光(体の光・構えの影)に掛ける不透明度。 */
+export const BRAWLER_WEAK_GUARD_ALPHA = 0.5;
+/**
+ * 受けた時に付く効果(弱い構えで外れるもの)。弱い構えは「ダメージを防ぐ+押される(成立の効果は brawlerGuardOutcome)+受けた所の砕け・閃光・揺れ・受けの音」だけ。
+ * ジャストの技ポイント(+5)と JUST の表示だけは弱い構えでも付く(社長指示2026-11-12「それでもジャストカウンターはポイント付与有り」)。
+ *  - counter: Counter!・停止・スロー・青い輪と光・成立の記録(lastCounterSuccessTime=金の輪・熟練度・覚醒・守護霊の記録・成立の無敵)・カウンターマスター覚醒
+ *  - window: カウンター窓を張る(=弾の打ち返し・通常のカウンターの成立経路)
+ *  - stun: 相手の気絶・足止め / beamCut: 光線の中断 / kiko: 反撃の気功 / quick: 受けた直後の通常攻撃の前隙なし
+ *  - justPoints: ジャストで +5 / justFx: JUST の表示
+ */
+export interface BrawlerGuardEffects {
+  counter: boolean; window: boolean; stun: boolean; beamCut: boolean; kiko: boolean; quick: boolean; justPoints: boolean; justFx: boolean;
+}
+const NORMAL_EFFECTS: BrawlerGuardEffects = { counter: true, window: true, stun: true, beamCut: true, kiko: true, quick: true, justPoints: true, justFx: true };
+const WEAK_EFFECTS: BrawlerGuardEffects = { counter: false, window: false, stun: false, beamCut: false, kiko: false, quick: false, justPoints: true, justFx: true };
+export const brawlerGuardEffects = (weak: boolean | undefined): BrawlerGuardEffects => (weak ? WEAK_EFFECTS : NORMAL_EFFECTS);

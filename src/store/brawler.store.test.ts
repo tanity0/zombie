@@ -683,14 +683,27 @@ describe('格闘: 構えの延長(社長指示2026-11-07「カウンター中も
     expect(br().phase).toBe('tech');
     expect(br().tech).toBe('guard');
   });
-  it('足りなければ拒否(数字が沈む)・終わる時刻は変わらない', () => {
+  // ★社長指示2026-11-12「カウンターはポイントが無くても発動」で書き換え(旧: 足りなければ拒否・終わる時刻は変わらない)。
+  it('足りなければ弱い構えとして延長(払わない・終わる時刻は引き直す・拒否の印は出さない・カウンター窓は閉じる)。払えれば通常に戻る', () => {
     guard();
-    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 2 } } }));
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 2, denyAt: 0 } } }));
     advance(300);
-    const until0 = br().guardUntil;
-    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(false);
-    expect(br().guardUntil).toBe(until0);
-    expect(br().denyAt).toBe(now);
+    const gt = useGameStore.getState().gameTime;
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    expect(br().guardUntil).toBe(gt + BRAWLER_GUARD_MS);
+    expect(br().points).toBe(2);
+    expect(br().guardWeak).toBe(true);
+    expect(br().denyAt).toBe(0);
+    expect(br().stepAt ?? 0).toBe(0); // ステップには変わらない
+    expect(useGameStore.getState().player.counterWindowEnd).toBeLessThanOrEqual(now);
+    advance(300);
+    expect(br().tech).toBe('guard');
+    expect(useGameStore.getState().player.counterWindowEnd).toBeLessThanOrEqual(now); // 弱い構えの間は窓を張り直さない
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points: 3 } } }));
+    expect(useGameStore.getState().brawlerTech(0, -1)).toBe(true);
+    expect(br().guardWeak).toBe(false);
+    expect(br().points).toBe(0);
+    expect(useGameStore.getState().player.counterWindowEnd).toBe(now + BRAWLER_GUARD_MS);
   });
   // ★§19-1・§19-2 で書き換え: 構えからの道は構えの延長だけ=他の技は出ない・**覚えもしない**(旧: 先行入力として覚え、構えの後に出していた)。
   it('構えの間は他の技(下・左・右)は出ない・先行入力としても覚えない(道の表に無い=§19-2)', () => {
