@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5529', items: [
+    'カウンターの反撃は、装備している近接の熟練度に貯まる。格闘を装備していれば格闘に貯まり、使っていない銃は上がらない',
+  ] },
   { version: '0.25.5528', items: [
     '格闘の大踏み潰しの威力を下げた',
   ] },

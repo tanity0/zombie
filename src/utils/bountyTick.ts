@@ -579,7 +579,7 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
     counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
     ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
   } }));
-  const counterMk = counterMasteryKeyOf(getActiveGun(cp)); // 熟練度: カウンターの反撃=構えている銃の種類(銃なし=loadout)
+  const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=melee)
   const dmg = counterReplyDamage(getActiveGun(cp)?.damage ?? 12, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
   const g2 = useGameStore.getState();
   withMastery(counterMk, () => g2.damageEnemy(bounty.id, dmg, false, true, false, 'other', 'player', 'counter'));

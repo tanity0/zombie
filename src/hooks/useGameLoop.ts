@@ -7172,7 +7172,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
                 } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
-                const counterMk = counterMasteryKeyOf(getActiveGun(cp)); // 熟練度: カウンターの反撃=構えている銃の種類(銃なし=loadout)
+                const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=melee)
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
                 // 社長指示: トールのカウンターは必ずクリティカル扱いにする(裏ボス完全気絶=bumpBossCritの
                 // カウントに乗せる。他の裏ボス共通のパリィ演出は非crit踏襲のままここだけ変更)。
@@ -7276,7 +7276,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
                 } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
-                const counterMk = counterMasteryKeyOf(getActiveGun(cp)); // 熟練度: カウンターの反撃=構えている銃の種類(銃なし=loadout)
+                const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=melee)
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
                 withMastery(counterMk, () => damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter'));
                 spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
@@ -13321,9 +13321,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const gscx = ghostNow.x + ghostNow.width / 2, gscy = ghostNow.y + ghostNow.height / 2;
                     setGhostCounterClaim({
                       bossId: boundBoss.id, ghostX: gscx, ghostY: gscy,
-                      // 熟練度(守護霊の熟練度の発注): 本人のカウンターと同じキー(構えている銃の種類)で、守護霊の記録の倍率を掛ける。
-                      dmg: ghostCounterDamage(gun?.damage, ghostOwner) * guardianMasteryMult(ghostOwner, counterMasteryKeyOf(gun)),
-                      masteryMult: guardianMasteryMult(ghostOwner, counterMasteryKeyOf(gun)),
+                      // 熟練度(守護霊の熟練度の発注): 本人のカウンターと同じ決め方(装備している近接の手段)。守護霊は格闘を使わない(疑似プレイヤーから brawler が外れる)=melee。倍率は守護霊の記録の melee。貯めない(請求の消費側=none)。
+                      dmg: ghostCounterDamage(gun?.damage, ghostOwner) * guardianMasteryMult(ghostOwner, counterMasteryKeyOf(ghostOwner)),
+                      masteryMult: guardianMasteryMult(ghostOwner, counterMasteryKeyOf(ghostOwner)),
                       atMs: nowMs, windowMs: counterAcceptMsOf(ghostOwner),
                     });
                     // v0.25.3981(実測用・?ghostlog=1): 構え=請求を積んだ瞬間(通常近接)。記録専用。
@@ -13463,9 +13463,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // カウンター成立の請求は通常近接と同じ扱い(一閃も「近接スイング」なので窓を拾う)。
                     setGhostCounterClaim({
                       bossId: boundBoss.id, ghostX: gmcx, ghostY: gmcy,
-                      // 熟練度(守護霊の熟練度の発注): 本人のカウンターと同じキー(構えている銃の種類)で、守護霊の記録の倍率を掛ける。
-                      dmg: ghostCounterDamage(gun?.damage, ghostOwner) * guardianMasteryMult(ghostOwner, counterMasteryKeyOf(gun)),
-                      masteryMult: guardianMasteryMult(ghostOwner, counterMasteryKeyOf(gun)),
+                      // 熟練度(守護霊の熟練度の発注): 本人のカウンターと同じ決め方(装備している近接の手段)。守護霊は格闘を使わない(疑似プレイヤーから brawler が外れる)=melee。倍率は守護霊の記録の melee。貯めない(請求の消費側=none)。
+                      dmg: ghostCounterDamage(gun?.damage, ghostOwner) * guardianMasteryMult(ghostOwner, counterMasteryKeyOf(ghostOwner)),
+                      masteryMult: guardianMasteryMult(ghostOwner, counterMasteryKeyOf(ghostOwner)),
                       atMs: nowMs, windowMs: counterAcceptMsOf(ghostOwner),
                     });
                     // v0.25.3981(実測用・?ghostlog=1): 構え=請求を積んだ瞬間(刀の一閃)。記録専用。

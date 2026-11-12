@@ -694,7 +694,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
     }));
     // クリティカル反撃(ヘッドショット): 弾いたジャンプ敵へ。aiPhase 解除済みでダメージが通る。
     const cBase = getActiveGun(bp)?.damage ?? 12;
-    const cMk = counterMasteryKeyOf(getActiveGun(bp)); // 熟練度: カウンターの反撃=構えている銃の種類(銃なし=loadout)
+    const cMk = counterMasteryKeyOf(bp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=melee)
     for (const hit of parriedEnemyIds) {
       const e = useGameStore.getState().enemies.find(en => en.id === hit.id);
       if (!e) continue;
@@ -2214,7 +2214,7 @@ export const applyContactDamage = (
     // クリティカル反撃(ヘッドショット): aiPhase を解除済みなのでダメージが通る(ジャンプ中無敵を回避)。
     // 威力は装備中の銃ダメージ基準 × クリ倍率(通常×1.5 / ボス×5)× スキル/装備補正。
     const counterBase = getActiveGun(collPlayer)?.damage ?? 12;
-    const counterMk = counterMasteryKeyOf(getActiveGun(collPlayer)); // 熟練度: カウンターの反撃=構えている銃の種類(銃なし=loadout)
+    const counterMk = counterMasteryKeyOf(collPlayer); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=melee)
     let counterKill = false;
     for (const eid of dashParried) {
       const e = useGameStore.getState().enemies.find(en => en.id === eid);

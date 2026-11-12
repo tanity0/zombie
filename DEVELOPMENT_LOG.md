@@ -1,5 +1,14 @@
 # Development Log
 
+## v0.25.5529 — 熟練度: カウンターの反撃は「装備している近接の手段」に貯める(社長裁定「カウンターは格闘に溜めて。というか装備してる近接武器に溜まるようにすればブレないのでは?」・MASTERY.md v2.7)【2026-11-12 10:52 JST】
+
+- `counterMasteryKeyOf` の引数を「構えている銃」から「反撃をした者」へ: 格闘(`brawler`)を装備していれば `brawler`、それ以外は `melee`。銃の種類・`loadout` は返さなくなった(v2 §4-2 #6「カウンター=構えている銃の種類」を差し替え)。掛ける倍率も同じキーから引く(貯め先と強さの出どころを揃えた)。カウンターのダメージの式は不変。
+- 呼び手(全件): useGameLoop の本人2か所・守護霊の反撃の請求2か所/angelBossTick/bountyTick/combatTick 2か所。守護霊は疑似プレイヤーから `brawler` が外れるので `melee`(倍率は記録の `melee`・貯めるキーは `none` のまま)。
+- 事実: 近接の熟練度は近接武器ごとではなく `melee` の1つ(格闘だけ別)。社長へ報告済み。
+- テスト: キーの関数・格闘ありは `brawler` だけに貯まる・格闘なしは `melee`・守護霊は `melee` の記録の倍率で貯まらない。**通せなかった所**: 本人のカウンターの呼び口(useGameLoop ほか)は store のテストから起こせず、同じ3行をテストでなぞる+grep で全件確認まで。
+- 既存の仕組みの貯め先の差し替え(社長の裁定そのまま)=監査なし。実装は Opus のサブエージェント。確認: typecheck / eslint / 循環import / vitest 5ファイル87件。
+- ファイル: src/utils/weaponUtils.ts・src/hooks/useGameLoop.ts・src/utils/angelBossTick.ts・bountyTick.ts・combatTick.ts・src/store/masteryApply.store.test.ts・masteryGuardian.store.test.ts・research/MASTERY.md・package.json・src/data/changelog.ts
+
 ## v0.25.5528 — 格闘: 大踏み潰し 2.8倍→2.3倍(社長指示「格闘の叩き潰しが強すぎる。0.5倍落として」)【2026-11-12 10:48 JST】
 
 - `BRAWLER_STOMP_MULT` 2.8→2.3(`src/utils/brawler.ts`)。後隙・ほかの段は不変。「叩き潰し」が4段目(1.1倍)か大踏み潰し(2.8倍)か、「0.5倍」が差か比かが読めなかったので1問確認→「大踏み潰し 2.8→2.3」。値の経緯: 2.5(v0.25.5498)→2.8(v0.25.5500)→2.3。

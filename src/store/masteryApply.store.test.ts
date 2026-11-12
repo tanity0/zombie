@@ -18,7 +18,7 @@ const { GROWING_MASTERY_KEYS } = await import('../data/mastery');
 const { saveMastery, masteryNeedFor, masteryMultOf } = await import('../utils/mastery');
 const { withMastery, getPendingMastery, getMasteryReport, isMasteryRunIgnored } = await import('../utils/masteryRun');
 const { spawnEnemyAt } = await import('../utils/enemyUtils');
-const { fireWeapon, createWeapon, projectileMasteryKey } = await import('../utils/weaponUtils');
+const { fireWeapon, createWeapon, projectileMasteryKey, counterMasteryKeyOf } = await import('../utils/weaponUtils');
 const { setBrawlerTempoAll } = await import('../utils/brawlerCombo');
 import type { GrowingMasteryKey } from '../data/mastery';
 
@@ -305,5 +305,57 @@ describe('幻影には熟練度を乗せない(発注者指示「幻影にはこ
     sortie(); prepareMelee();
     const swingDealt = swingAt('guardian-phantom');
     expect(getPendingMastery().melee).toBe(Math.round(swingDealt) * 2);
+  });
+});
+
+// カウンターの反撃は「装備している近接の手段」に貯める(社長裁定2026-11-12「装備してる近接武器に溜まるようにすればブレないのでは?」)。
+// 本人のカウンターの呼び口(useGameLoop・combatTick・angelBossTick・bountyTick)は store から通せないので、
+// 呼び口と同じ3行(キーを決める→その倍率を掛ける→そのキーで包む)をここで踏む。
+describe('カウンターの反撃: 装備している近接の手段に貯まる', () => {
+  /** 呼び口と同じ形でカウンターの反撃を1発入れる。返り値=掛けた倍率。 */
+  const counterReply = (base: number): { key: string; mult: number } => {
+    const cp = st().player;
+    const counterMk = counterMasteryKeyOf(cp);
+    const mult = masteryMultOf(cp, counterMk);
+    withMastery(counterMk, () => st().damageEnemy('z', base * mult, false, true, false, 'other', 'player', 'counter'));
+    return { key: counterMk, mult };
+  };
+
+  it('格闘を装備していれば brawler(構えている銃の種類・loadout は返さない)', () => {
+    expect(counterMasteryKeyOf({ subWeapons: ['brawler'] })).toBe('brawler');
+    expect(counterMasteryKeyOf({ subWeapons: ['drone-boomerang', 'brawler'] })).toBe('brawler');
+    expect(counterMasteryKeyOf({ subWeapons: [] })).toBe('melee');
+    expect(counterMasteryKeyOf({ subWeapons: ['drone-boomerang'] })).toBe('melee');
+    expect(counterMasteryKeyOf({} as never)).toBe('melee');
+  });
+
+  it('格闘を装備してカウンター → brawler に貯まり、構えている銃のキー・melee には貯まらない。倍率は brawler の倍率', () => {
+    saveMastery({ xp: { brawler: xpForLevel('brawler', 10), handgun: xpForLevel('handgun', 5), melee: xpForLevel('melee', 3) } });
+    sortie();
+    useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['brawler'], subWeaponLevels: { brawler: 1 } } }));
+    spawnInFront(99999);
+    const { key, mult } = counterReply(40);
+    expect(key).toBe('brawler');
+    expect(mult).toBeCloseTo(masteryMultOf(st().player, 'brawler'), 10);
+    expect(mult).not.toBeCloseTo(masteryMultOf(st().player, 'handgun'), 3);
+    expect(hpOf('z')).toBeLessThan(99999);
+    const pending = getPendingMastery();
+    expect(pending.brawler ?? 0).toBeGreaterThan(0);
+    expect(pending.handgun).toBeUndefined();
+    expect(pending.melee).toBeUndefined();
+  });
+
+  it('格闘なしでカウンター → melee に貯まり、構えている銃のキーには貯まらない。倍率は melee の倍率', () => {
+    saveMastery({ xp: { melee: xpForLevel('melee', 6), handgun: xpForLevel('handgun', 2) } });
+    sortie();
+    expect(st().player.subWeapons ?? []).not.toContain('brawler');
+    spawnInFront(99999);
+    const { key, mult } = counterReply(40);
+    expect(key).toBe('melee');
+    expect(mult).toBeCloseTo(masteryMultOf(st().player, 'melee'), 10);
+    const pending = getPendingMastery();
+    expect(pending.melee ?? 0).toBeGreaterThan(0);
+    expect(pending.handgun).toBeUndefined();
+    expect(pending.brawler).toBeUndefined();
   });
 });

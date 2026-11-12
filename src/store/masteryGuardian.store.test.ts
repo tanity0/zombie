@@ -23,6 +23,8 @@ const { withMastery, getPendingMastery, getMasteryReport } = await import('../ut
 const { spawnEnemyAt } = await import('../utils/enemyUtils');
 const { clearGhostBuildCache, actorBuildFor, ghostBuildFor } = await import('../utils/ghostBuild');
 const { buildPseudoPlayer, snapshotPlayerBuild } = await import('../utils/playerBuild');
+const { counterMasteryKeyOf } = await import('../utils/weaponUtils');
+const { guardianMasteryMult } = await import('../utils/mastery');
 import type { GrowingMasteryKey, MasteryKey } from '../data/mastery';
 import type { PlayerBuildSnapshot, Summon } from '../types/game';
 
@@ -278,5 +280,24 @@ describe('幻影(敵として出る記録)', () => {
     sortie();
     expect(hit(150, 'none', 1.5)).toBeCloseTo(base, 6);
     expect(getPendingMastery()).toEqual({});
+  });
+});
+
+// 守護霊の反撃の請求(useGameLoop の setGhostCounterClaim 2か所)と同じ決め方: 主語=守護霊の疑似プレイヤー。
+// 守護霊は格闘を使わない(疑似プレイヤーから 'brawler' が外れる)=melee。倍率は記録の melee、貯めるキーは none(ghostCounter.applyGhostCounterEffect)。
+describe('守護霊の反撃(カウンター)', () => {
+  it('格闘を記録した守護霊でもキーは melee・倍率は記録の melee・どこにも貯まらない', () => {
+    place(snap({ subWeapons: ['brawler'], subWeaponLevels: { brawler: 1 }, masteryMult: { melee: 1.5, brawler: 1.8, handgun: 1.3 }, masteryLoadoutMult: 1.2 }));
+    const ghostOwner = combatActorPlayer(GID)!;
+    expect(ghostOwner.subWeapons ?? []).not.toContain('brawler');
+    const key = counterMasteryKeyOf(ghostOwner);
+    expect(key).toBe('melee');
+    const mm = guardianMasteryMult(ghostOwner, key);
+    expect(mm).toBeCloseTo(1.5, 10);
+    putStunnedBoss();
+    withMastery('none', () => st().damageEnemy('e1', 30 * mm, false, true, false, null, 'ghost', 'counter'), { mult: mm });
+    expect(hpOf('e1')).toBeLessThan(99999);
+    expect(getPendingMastery()).toEqual({});
+    expect(getMasteryReport()).toEqual({});
   });
 });

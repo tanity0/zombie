@@ -423,9 +423,15 @@ export const gunMasteryKeyOfCategory = (category: string | undefined): MasteryGu
 /** 弾の weaponKey → 銃の熟練度のキー(CATALOG の category)。 */
 export const gunMasteryKeyOfWeaponKey = (weaponKey: string | undefined): MasteryGunKey | undefined =>
   weaponKey === undefined ? undefined : gunMasteryKeyOfCategory(catalogCategoryTier(weaponKey).category);
-/** 構えている銃の熟練度のキー(カウンターの反撃=v2 §4-2 #6)。銃を持たない時は `loadout`。 */
-export const counterMasteryKeyOf = (gun: Pick<Weapon, 'category'> | null | undefined): MasteryKey =>
-  gunMasteryKeyOfCategory(gun?.category) ?? 'loadout';
+/**
+ * カウンターの反撃の熟練度のキー=**その反撃をした者が装備している近接の手段**(社長裁定2026-11-12
+ * 「装備してる近接武器に溜まるようにすればブレないのでは?」)。格闘(サブウェポン `brawler`)を装備して
+ * いれば `brawler`、そうでなければ `melee`。判定は gameStore の `hasBrawler` と同じ(サブに 'brawler' が在る)。
+ * 構えている銃の種類・`loadout` は返さない。守護霊の疑似プレイヤーは withoutBrawler で 'brawler' が外れる=`melee`。
+ * 掛ける倍率(masteryMultOf/guardianMasteryMult)と貯めるキー(withMastery)は必ずこの1本の戻り値で揃える。
+ */
+export const counterMasteryKeyOf = (actor: Pick<Player, 'subWeapons'>): MasteryKey =>
+  actor.subWeapons?.includes('brawler') ? 'brawler' : 'melee';
 /**
  * 弾/置き物の当たりのキー(v2.1 A-8): 作る所で入れた `masteryKey` を使う。欄が無い時は、
  * 本人の銃の弾と分かる物(打ち返しでも敵弾でもない・直接銃の weaponKey)だけ銃の種類、それ以外は `none`。
