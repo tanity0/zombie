@@ -31,6 +31,7 @@ import {
   shieldGuardsPlayerArea, currentFriendlyShield, noteShieldGuard, noteShieldBeam, // research/SHIELD_BLOCK.md: シールドで技を防ぐ
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
   takeBrawlerBeamCut, // 格闘の構えで受けられた光線の中断(research/BRAWLER.md §12-3d)
+  abilityInvulnPatch, INVULN_MS, // 技の無敵(sourceId 付きの攻撃も弾く)
 } from '../store/gameStore';
 import { splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md §2/§8: レーザー=壁(光線の幅)
 import { maikoBoomProgress, maikoBounceTotalMs } from './maikoBoom'; // 手毬の位置式(絵と判定が同じ式を読む)
@@ -576,6 +577,7 @@ const bountyCounterHit = (bounty: Enemy, hx: number, hy: number, sfx: BountySfx)
   }
   useGameStore.setState(stt => ({ player: {
     ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+    ...abilityInvulnPatch(stt.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
     counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
     ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
   } }));

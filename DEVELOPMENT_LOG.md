@@ -1,5 +1,12 @@
 # Development Log
 
+## v0.25.5545 — 残りの技の無敵の穴(秘奥義の出始め・カウンター成立・パリィ・リズム)【2026-11-12 19:31 JST】
+- **社長裁定**: 洗い出した残りの無敵も直す「はい」。
+- 秘奥義の出始め(igniteMs)・リズムの開始(INVULN_MS)と終了での解除・ジャストタップの1拍・カウンター成立(useGameLoop 2か所・angelBossTick・bountyTick・combatTick 2か所)・ボスの接触の受け流し(parryNow)に `abilityInvulnPatch`(長さは今の無敵と同じ)。`invulnerableTime`/`lastCounterSuccessTime` は不変=カウンターの点滅の例外はそのまま。守護霊・幻影・ワクチンの復活・被弾の無敵は対象外。
+- **検証**: typecheck・循環import・新規 `abilityInvulnMisc.store.test`(カウンター成立・リズム・秘奥義の出始め)。実装者の実行で関係するテスト1777本通過。parryNow の経路のテストは無い。
+- **自己点検**: 憲法4条・5条に抵触しない。
+- 状態変化: なし
+
 ## v0.25.5544 — 覚えた技を出す瞬間に払えなければステップ(案A)/ワイヤーの空中の無敵の穴【2026-11-12 18:37 JST】
 - **社長裁定**: 「案A」「残りの穴も直す」。
 - **案A**: `fireBufferedBrawlerTech` で、払えず `brawlerFlickStepInstead` が通ればステップ(向きは `brawlerFlickDirOf`=飛び蹴り右・気功左・構え上・大踏み潰し/踵落とし下。覚えた入力は種類しか持たないので斜めは上下左右に丸まる)。払えれば今どおり技。技の最中から出す時はステップを出せないので今どおり拒否。

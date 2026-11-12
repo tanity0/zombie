@@ -5192,7 +5192,8 @@ const startBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const igniteInvAt = now - (INVULN_MS - igniteMs);
   setBrawler(set, { ...BR.brawlerSecretStart(s, st.gameTime, now), flashAt: now },
     { lungeVx: 0, lungeVy: 0, lungeUntil: 0, lungeShape: undefined, lungeHoldUntil: 0, vx: 0, vy: 0,
-      invulnerable: true, invulnerableTime: p.invulnerable ? Math.max(p.invulnerableTime, igniteInvAt) : igniteInvAt });
+      invulnerable: true, invulnerableTime: p.invulnerable ? Math.max(p.invulnerableTime, igniteInvAt) : igniteInvAt,
+      ...abilityInvulnPatch(p, now, igniteMs) }); // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
   notifyTechProc('secret');
   noteBrawlerSecret(); // 落ちた時の記録(「前回最後」の行)に、秘奥義を出した回数を残す
   const g = get();
@@ -25963,13 +25964,13 @@ export const useGameStore = create<GameState>((set, get) => ({
         },
         danceTapLog: [], // 計測ログは開始ごとにクリア
         // 立ち上がり無敵: 既存の invulnerable を流用(INVULN_MS で自動解除)。TODO: 専用秒数。
-        player: { ...state.player, invulnerable: true, invulnerableTime: Date.now() },
+        player: { ...state.player, invulnerable: true, invulnerableTime: Date.now(), ...abilityInvulnPatch(state.player, Date.now(), INVULN_MS) }, // 技の無敵(同じ長さ)=sourceId 付きの攻撃も受けない
       }));
     } else {
       // 終了: UIは消え、白虎も止め、残っていれば無敵を解除する。
       set(state => ({
         rhythm: { ...state.rhythm, active: false, byakkoUntil: 0, pending: [] },
-        player: { ...state.player, invulnerable: false },
+        player: { ...state.player, invulnerable: false, abilityInvulnUntil: 0 }, // 技の無敵も一緒に外す(開始の無敵と同じ扱い)
       }));
       // ダンス中に溜めたEXPで一気にレベルアップ(以降は selectUpgrade が連鎖)。
       const { player: p, enemies } = get();
@@ -26121,7 +26122,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : (!arrow
           // ジャストタップ成功で「1ビート分」無敵。invulnerableTime をずらしてループの INVULN_MS 自動解除を
           // interval(=1ビート)に縮める。ビート毎にタップすれば無敵が途切れない。
-          ? { ...s.player, invulnerable: true, invulnerableTime: Date.now() - Math.max(0, INVULN_MS - r.interval) }
+          ? { ...s.player, invulnerable: true, invulnerableTime: Date.now() - Math.max(0, INVULN_MS - r.interval), ...abilityInvulnPatch(s.player, Date.now(), r.interval) } // 技の無敵(1拍)も
           : s.player),
     }));
     // JUST 表示(技発動時は四神名の callout が別に出るので JUST は出さない)。

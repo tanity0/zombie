@@ -103,6 +103,7 @@ import {
   baseSoldierName,
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
   takeBrawlerBeamCut, // 格闘の構えで受けられた光線の中断(research/BRAWLER.md §12-3d)
+  abilityInvulnPatch, // 技の無敵(sourceId 付きの攻撃も弾く)
 } from '../store/gameStore';
 import { shieldBlocksArea, shieldBlocksLine, splitBeamAtShield, beamStripsHit } from '../world/shieldBlock'; // research/SHIELD_BLOCK.md
 import { METAL_PALETTE, shieldBeamPalette, reflectAlongTravel, takeTechniqueStart, BEAM_HOLD_TICK_MS, beamHoldGain, type GuardPalette, type TechniqueGateState } from '../utils/shieldGuardFx'; // 防いだ演出の色・間引き・曲線(第2回クリエイティブ監査)
@@ -7182,6 +7183,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
                 useGameStore.setState(stt => ({ player: {
                   ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+                  ...abilityInvulnPatch(stt.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
                   counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
                   // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
                   ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
@@ -7286,6 +7288,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 // counter-master v2(CD_REWORK.md 確定2): カウンター成立時のみCDリファンド(未所持は無変換)。
                 useGameStore.setState(stt => ({ player: {
                   ...stt.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+                  ...abilityInvulnPatch(stt.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
                   counterCooldownEnd: refundCounterCooldown(stt.player.counterCooldownEnd, pnow, skillLevel(stt.player, 'counter-master')),
                   // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
                   ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),

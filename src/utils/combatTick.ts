@@ -77,6 +77,7 @@ import {
   brawlerGuardCounterFx, // 格闘の構えの受け(research/BRAWLER.md §8-5)
   brawlerJustStunMult, // 格闘のジャスト構え=カウンターの気絶2倍(research/BRAWLER.md §12-2)
   leverGuardCount, // 格闘のレバーガードで受けた回数(research/BRAWLER.md §12-1c)
+  abilityInvulnPatch, // 技の無敵(sourceId 付きの攻撃も弾く)
 } from '../store/gameStore';
 import { markPvpCritSlow, isPvpIncapacitated } from './pvpPosture'; // ★SAME_ARENA §9: クリ被弾の2/3減速+紫中の弾パリィ停止
 // v0.25.3496(社長指示「四角の帯に当たりも戻して」): 帯の判定は描いてある四角そのもの。
@@ -620,6 +621,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
       // counter-master v2: カウンター成立(ジャンプパリィ)時のみCDリファンド(未所持は無変換)。
       player: {
         ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+        ...abilityInvulnPatch(st.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
         counterCooldownEnd: refundCounterCooldown(st.player.counterCooldownEnd, pnow, skillLevel(st.player, 'counter-master')),
         // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
         ...counterMasterAwakenBuffPatch(st.player, st.gameTime),
@@ -2157,7 +2159,7 @@ export const applyContactDamage = (
           knockbackShoveUntil: parryNow + KNOCKBACK_DURATION,
         };
       }),
-      player: { ...st.player, invulnerable: true, invulnerableTime: parryNow },
+      player: { ...st.player, invulnerable: true, invulnerableTime: parryNow, ...abilityInvulnPatch(st.player, parryNow, INVULN_MS) }, // 技の無敵(被弾の無敵と同じ INVULN_MS)=sourceId 付きの攻撃も受けない
     }));
     const pp = useGameStore.getState().player;
     const ppx = pp.x + pp.width / 2, ppy = pp.y + pp.height / 2;
@@ -2208,6 +2210,7 @@ export const applyContactDamage = (
       // counter-master v2: カウンター成立(突進パリィ)時のみCDリファンド(未所持は無変換)。
       player: {
         ...st.player, invulnerable: true, invulnerableTime: pnow, lastCounterSuccessTime: pnow,
+        ...abilityInvulnPatch(st.player, pnow, INVULN_MS), // 技の無敵(カウンター成立の1秒=INVULN_MS で外れる被弾の無敵と同じ長さ)=sourceId 付きの攻撃(噛みつき・掴み)も受けない
         counterCooldownEnd: refundCounterCooldown(st.player.counterCooldownEnd, pnow, skillLevel(st.player, 'counter-master')),
         // 覚醒(Lv3・v0.25.3303): 成立後3秒間 全攻撃+30%(成立7箇所共通のパッチ)。
         ...counterMasterAwakenBuffPatch(st.player, st.gameTime),
