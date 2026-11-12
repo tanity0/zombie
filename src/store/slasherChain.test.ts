@@ -97,9 +97,10 @@ describe('スラッシャーのチェーン追撃(距離規約)', () => {
     }
     // 減衰: 各段が前段の2/3(SLASHER_MULTS)。値そのものではなく比率で固定(バランス調整耐性)。
     expect(damages[0]).toBeGreaterThan(0);
-    // ★追撃は1回目で打ち上げる(§14-3)ので、2回目以降は「空中の敵への倍率」(§16・1発目×1.25→×1.5…)が乗る。減衰の比率はその倍率を除いて見る。
-    expect(damages[1] / damages[0]).toBeCloseTo((2 / 3) * airHitMult(1), 2);
-    expect(damages[2] / damages[1]).toBeCloseTo((2 / 3) * airHitMult(2) / airHitMult(1), 2);
+    // ★スラッシャー持ちでも振りの1撃目で浮く(社長指示2026-11-12「スラッシャーは1撃目から浮かせてほしい」)ので、追撃は1回目から
+    // 「空中の敵への倍率」(§16・1発目×1.25→×1.5→×1.75)が乗る。減衰の比率はその倍率を除いて見る。
+    expect(damages[1] / damages[0]).toBeCloseTo((2 / 3) * airHitMult(2) / airHitMult(1), 2);
+    expect(damages[2] / damages[1]).toBeCloseTo((2 / 3) * airHitMult(3) / airHitMult(2), 2);
     spy.mockRestore();
   });
 

@@ -114,15 +114,18 @@ export const knifeLiftMove = (airborne: boolean): BrawlerMoveKey => (airborne ? 
  *  - ★止めっぱなしにしない: 着地の後、浮いていた時間と同じ長さは地上から浮かない(爆発の浮きと同じ窓 brBlastNoLiftUntil を共有)。
  *  - この振りで既にカウンターの浮きが掛かった敵(lastCounteredAt が振りの押下以降)は浮かせ直さない=予算を2回使わない。
  * swingAt=この振りを押した時刻(Date.now)。
+ * slasher=スラッシャーを持っている振り(社長指示2026-11-12「スラッシャーは1撃目から浮かせてほしい。空中コンボできるように」):
+ *   振りの1撃目は毎回浮かせる=止めっぱなしにしない窓(brBlastNoLiftUntil)を見ない(追撃が空中を拾えるように)。ほかの条件は同じ。
  */
 export const knifeLiftApplies = (
   e: Parameters<typeof isBrawlerTechBusy>[0] & BrawlerJuggleFields & { lastCounteredAt?: number; brLockNoHoldUntil?: number },
-  now: number, gameTime: number, swingAt: number,
+  now: number, gameTime: number, swingAt: number, slasher = false,
 ): boolean => {
   if (isBrawlerTechBusy(e, gameTime)) return false;
   if (e.lastCounteredAt !== undefined && e.lastCounteredAt >= swingAt) return false;
   if (brawlerAirborne(e, now)) return true;
   if (brawlerComboEndNoHoldNow(e, gameTime)) return false;
+  if (slasher) return true;
   return now >= (e.brBlastNoLiftUntil ?? 0);
 };
 /**

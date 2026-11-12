@@ -177,6 +177,8 @@ describe('ナイフの浮き(knifeLiftMove / knifeLiftApplies / knifeNoLiftUntil
   });
   it('爆発の窓(着地の後、浮いていた時間と同じ長さ)の中では地上から浮かない・空中の拾いは窓に関係なく浮く', () => {
     expect(knifeLiftApplies({ ...zombie, brBlastNoLiftUntil: NOW + 1 }, NOW, GT, NOW)).toBe(false);
+    expect(knifeLiftApplies({ ...zombie, brBlastNoLiftUntil: NOW + 1 }, NOW, GT, NOW, true)).toBe(true); // スラッシャー所持=1撃目は毎回浮く
+    expect(knifeLiftApplies({ ...zombie, aiPhase: 'z-bite1', brBlastNoLiftUntil: NOW + 1 }, NOW, GT, NOW, true)).toBe(false); // 技の最中は今どおり浮かない
     expect(knifeLiftApplies({ ...zombie, brBlastNoLiftUntil: NOW }, NOW, GT, NOW)).toBe(true);
     expect(knifeLiftApplies({ ...zombie, brBlastNoLiftUntil: NOW + 500, brLiftUntil: NOW + 100 }, NOW, GT, NOW)).toBe(true);
   });

@@ -96,6 +96,29 @@ describe('B. 空中の敵へのダメージ倍率(格闘以外にも)', () => {
     expect(d(() => useGameStore.getState().damageEnemy('z', 10, false, false, false, null))).toBe(10);
     expect(d(() => useGameStore.getState().damageEnemy('z', 10, false, false, false, 'gun'))).toBe(12.5); // ここで初めて1発目
   });
+  // 社長指示2026-11-12「空中に浮いてる敵に銃弾が入ると、そのダメージにも倍率がかかってほしい」: プレイヤーの銃の弾が敵に当たる道は
+  // 全部 damageEnemy を通る。ここでは各道が渡す引数のまま当てる(弾の当たり=useGameLoop の弾の衝突・新しい銃=newGunsTick の hitEnemy・
+  // ガンブレードの至近=weaponUtils)。浮いている雑魚には ×1.25 以上・地上は今どおり。
+  it('プレイヤーの銃の弾(各道の引数のまま): 浮いている雑魚は地上より大きく減る(×1.25 以上)・地上は今どおり', () => {
+    const shots: Array<[string, (id: string) => void]> = [
+      ['弾の当たり(拳銃・散弾・小銃・PHILL)', id => { useGameStore.getState().damageEnemy(id, 10, false, false, false, 'gun', 'player', null, 1, 'bullet', true, { dir: { x: 1, y: 0 } }); }],
+      ['弾の当たり(銃以外の型の弾=other)', id => { useGameStore.getState().damageEnemy(id, 10, false, false, false, 'other', 'player', null, 1, undefined, false, { dir: { x: 1, y: 0 } }); }],
+      ['弾の当たり(パイルドライバー=heavy)', id => { useGameStore.getState().damageEnemy(id, 10, false, false, false, 'gun', 'player', 'heavy', 1, 'bullet', true, { dir: { x: 1, y: 0 } }); }],
+      ['新しい銃(newGunsTick)', id => { useGameStore.getState().damageEnemy(id, 10, false, false, false, 'gun', 'player', null, 1, null, true); }],
+      ['ガンブレードの至近', id => { useGameStore.getState().damageEnemy(id, 10, false, false, false, 'gun', 'player', 'heavy', 1, 'melee'); }],
+    ];
+    for (const [name, shoot] of shots) {
+      setup({ subs: [] });
+      useGameStore.setState({ enemies: [zombieAt(300, 0, 'g', 1000), zombieAt(300, 60, 'a', 1000)] });
+      lift('a');
+      const d = (id: string): number => { const h0 = hpOf(id); shoot(id); return h0 - hpOf(id); };
+      const ground = d('g');
+      expect(ground, name).toBe(10);
+      expect(d('a'), name).toBeGreaterThanOrEqual(ground * 1.25 - 1e-9);
+      expect(d('a'), name).toBeGreaterThanOrEqual(ground * 1.5 - 1e-9); // 1発ごとに空中の数えが進む
+      expect(d('g'), name).toBe(10);
+    }
+  });
   it('ナイフ(triggerCounter)にも乗る', () => {
     setup({ subs: [] });
     useGameStore.setState({ enemies: [zombieAt(40, 0, 'z', 99999)] });

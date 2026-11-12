@@ -2835,12 +2835,12 @@ const meleeHitStunPatch = (enemy: Pick<Enemy, 'type' | 'hitStunUntil' | 'maxHeal
  *  - 固まり=1段目の長さ(止め=ナイフの止めの長さ=meleeHitStunPatch と同じ式)。溜めは時計ごと止めて続きから・攻撃の振りの最中は止めない。
  *    強個体を除くボス級(ハンター等)は止め0・強個体は短い止め(hitStunMsFor)+1段目の固まり。bossState の技の最中は止めない(brawlerPhaseKind)。ハメ防止は格闘の仕組み(減衰・固まらない時間)。
  *  - 浮き=地上は3段目の打ち上げ・空中は2段目の拾い(utils/airLift knifeLiftApplies の条件)。浮かせた後は浮いていた時間と同じ長さ地上から浮かない。
- * swingAt=この振りを押した時刻(Date.now)。
+ * swingAt=この振りを押した時刻(Date.now)。slasher=スラッシャー所持の振り(1撃目は毎回浮かせる=knifeLiftApplies の slasher)。
  */
-const knifeHoldLiftPatch = (enemy: Enemy, now: number, gameTime: number, dmg: number, swingAt: number): Partial<Enemy> => {
+const knifeHoldLiftPatch = (enemy: Enemy, now: number, gameTime: number, dmg: number, swingAt: number, slasher = false): Partial<Enemy> => {
   const out: Partial<Enemy> = {};
   let down = false;
-  if (knifeLiftApplies(enemy, now, gameTime, swingAt)) {
+  if (knifeLiftApplies(enemy, now, gameTime, swingAt, slasher)) {
     const jp = brawlerJugglePatch(enemy, BRC.brawlerEnemyClass(enemy), knifeLiftMove(BRC.brawlerAirborne(enemy, now)), now);
     if (jp) {
       Object.assign(out, jp);
@@ -12793,8 +12793,9 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...pvpMeleePatch,
         });
       } else if (slasherForce || knockbackCdReady(enemy, now)) {
-        // ★ナイフの固まりと浮き(knifeHoldLiftPatch・社長指示2026-11-12)。スラッシャー所持中の振りは今どおり(追撃の浮かせ方を崩さない)。
-        const knifeHL = skillLevel(player, 'slasher') > 0 ? {} : knifeHoldLiftPatch(enemy, now, gameTime, dmg, swingAt);
+        // ★ナイフの固まりと浮き(knifeHoldLiftPatch・社長指示2026-11-12)。スラッシャー所持中も振りの1撃目から浮かせる
+        // (社長指示同日「スラッシャーは1撃目から浮かせてほしい。空中コンボできるように」=追撃は空中の敵を拾う・slasherLiftMove)。
+        const knifeHL = knifeHoldLiftPatch(enemy, now, gameTime, dmg, swingAt, skillLevel(player, 'slasher') > 0);
         // ★v0.25.3959(社長報告「近接当てると飛んでっちゃう」・?kblog=1実測「KB開始 bat 予定281567px」):
         // 方向の正規化は**中心差分の長さ**で割る。dist(enemyMeleeDist)はv0.25.3170から判定矩形の
         // 最近点距離=密着(中心が帯内)で0になり、dx/0.001×speedで数百万px/sのKBが出ていた。
@@ -12833,7 +12834,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           knockbackVy: 0,
           knockbackUntil: now + 100,
           lastHitDmg: dmg, // 2026-11-06: のけぞりの強さをこのヒットの重さで(meleeHitStunPatch と同じ)
-          ...(skillLevel(player, 'slasher') > 0 ? {} : knifeHoldLiftPatch(enemy, now, gameTime, dmg, swingAt)), // ★ナイフの固まりと浮き(上の枝と同じ)
+          ...knifeHoldLiftPatch(enemy, now, gameTime, dmg, swingAt, skillLevel(player, 'slasher') > 0), // ★ナイフの固まりと浮き(上の枝と同じ)
           ...(bossSlow ?? {}), // CRIT-UNIFY §9.2バグ修正: 同上
           ...(bossBump?.patch ?? {}), // GAME_AUDIT #17
           ...(laserBreak?.patch ?? {}), // §6.33: レーザー中断
