@@ -19,3 +19,11 @@ export const slowLineVisibleChars = (chars: readonly string[], elapsedMs: number
   }
   return n;
 };
+
+/** `chars` を送り終わる時刻(表示開始から最後の1文字が出るまでの実時間ms・slowLineVisibleChars と同じ計算)。空なら0。 */
+export const slowLineTypedMs = (chars: readonly string[]): number => {
+  if (chars.length === 0) return 0;
+  let at = SLOW_CHAR_MS;
+  for (let n = 1; n < chars.length; n++) at += chars[n] === '…' ? SLOW_ELLIPSIS_PAUSE_MS : SLOW_CHAR_MS;
+  return at;
+};

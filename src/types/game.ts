@@ -2411,6 +2411,8 @@ export interface JunDeparture {
   collapseStartReal?: number;
   /** 地面に着いた瞬間の砂埃を出し済みか。 */
   landedFx?: boolean;
+  /** 変異の場面の通信で出し済みの段(utils/junEscort junSceneLineAt の 0..2・段ごとに1回)。 */
+  sceneLine?: 0 | 1 | 2;
   /** 変身した実時間(Date.now)。 */
   vanishStartReal?: number;
 }

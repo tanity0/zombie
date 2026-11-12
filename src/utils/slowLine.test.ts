@@ -40,3 +40,15 @@ describe('ゆっくり送る会話の行(描画の周期で文字数を出す)',
     expect(slowLineVisibleChars(chars, 60_000)).toBe(chars.length);
   });
 });
+
+describe('slowLineTypedMs(送り終わりの時刻)', () => {
+  it('最後の1文字が出る時刻と一致する(その1ms前はまだ出ていない)', async () => {
+    const { slowLineTypedMs } = await import('./slowLine');
+    for (const text of ['…あれ…あつい、です…', 'い、意識が…', '…見ないで…ください…', 'あ', '']) {
+      const chars = Array.from(text);
+      const t = slowLineTypedMs(chars);
+      expect(slowLineVisibleChars(chars, t)).toBe(chars.length);
+      if (chars.length > 0) expect(slowLineVisibleChars(chars, t - 1)).toBe(chars.length - 1);
+    }
+  });
+});

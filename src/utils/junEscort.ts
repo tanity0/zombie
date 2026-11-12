@@ -11,7 +11,8 @@
 //   ③ 変身: 城ボスが出る瞬間、カメラがジュンへ向き(素のアテンション=時間停止)、ゆっくり倒れ、城ボスが城の位置に現れる。
 //      そのまま通常のボスのアテンション(カットイン)へ。置き直しは画面に見えている所では起こさない。
 //   ジュンが居ない(隊に居ない・名簿に無い)時は、城ボスは従来どおり出る。
-import { JUN_ESCORT_INDEX, JUN_NAME, JUN_COLLAPSE_LINE } from '../data/junEscortLines';
+import { JUN_ESCORT_INDEX, JUN_NAME, JUN_COLLAPSE_LINE, JUN_TREMBLE_LINE_CUT_AFTER, JUN_NO_PORTRAIT } from '../data/junEscortLines';
+import { slowLineTypedMs } from './slowLine';
 import type { JunDeparture } from '../types/game';
 import type { EscortFollowState } from './escortFollow';
 
@@ -142,7 +143,7 @@ export const stepJunWalk = (i: JunWalkInput): JunWalkOutput => {
  */
 export const JUN_DEPART_LEAD_MIN_MS = 40_000;
 export const JUN_DEPART_LEAD_MAX_MS = 120_000;
-/** 一言を言ってから、その場で止まり、向きを変えて歩き出すまで(一言の文字送りぶん+0.8秒の間)。 */
+/** 隊を外れてから、その場で止まり、向きを変えて歩き出すまで(離脱の時は通信しない=社長指示2026-11-12。間の長さは旧「一言の文字送り+0.8秒」のまま)。 */
 export const JUN_DEPART_WALK_DELAY_MS = 1_500;
 /** 逆算の余白(障害物で回り込む・加速のぶん)。 */
 const JUN_DEPART_LEAD_MARGIN_MS = 5_000;
@@ -158,7 +159,7 @@ export const junDepartLeadMs = (distPx: number, vmaxPxPerS: number): number => {
   const lead = walkMs + accelMs + JUN_DEPART_WALK_DELAY_MS + JUN_DEPART_LEAD_MARGIN_MS;
   return Math.max(JUN_DEPART_LEAD_MIN_MS, Math.min(JUN_DEPART_LEAD_MAX_MS, lead));
 };
-/** 道中の「変な感じがする…」(一緒にいる)を止める時刻に入ったか(離脱の一言で初めて聞かせる)。 */
+/** 道中の「変な感じがする…」(一緒にいる)を止める時刻に入ったか(離脱の前の数十秒は道中の一言を止める。離脱そのものは通信しない=社長指示2026-11-12)。 */
 export const junCompanionQuiet = (directorTimeMs: number, castleMinMs: number, leadMs: number): boolean =>
   directorTimeMs >= castleMinMs - leadMs - JUN_COMPANION_QUIET_BEFORE_MS;
 
@@ -199,7 +200,7 @@ export const junDepartReady = (i: JunDepartReadyInput): boolean =>
 
 /**
  * ピントの合う帯(描画の被写界深度=tilt-shift のくっきりした帯・pixiScene の TILT_SHIFT_BAND と同じ中心)。
- * 離脱の一言と歩き出しは、ぼけていない所で見せる(画面下のぼけの帯では少し待つ)。
+ * 離脱(隊を外れて歩き出す所)は、ぼけていない所で見せる(画面下のぼけの帯では少し待つ)。
  */
 export const JUN_FOCUS_BAND_CENTER = 0.54;
 export const JUN_FOCUS_BAND_HALF = 0.2;
@@ -277,12 +278,23 @@ export const junRelocatePoint = (
 };
 
 // ---- ③ 倒れる→変身の時間割(アテンションの開始=実時間 0) ---------------------------------------------------
-/** カメラが寄り切ってから倒れ始めるまでの間(立ったまま、こちらに見られている一拍)。 */
-export const JUN_COLLAPSE_BEAT_MS = 500;
+// 行の時刻は「文字送りが終わる時刻」から決める(utils/slowLine slowLineTypedMs)。段の後の間は段ごとに変える(拍を揃えない)。
+/** 1行目を送り終わってから倒れ始めるまで。 */
+export const JUN_FALL_AFTER_LINE1_MS = 200;
+/** 3行目の頭(JUN_TREMBLE_LINE_CUT_AFTER)を送り終わってから変身するまで(「ください…」の途中で断ち切る)。 */
+export const JUN_TRANSFORM_CUT_AFTER_MS = 130;
+/**
+ * 寄りのパン(ATTENTION_IN_MS)が終わってから倒れ始めるまでの間(立ったまま、こちらに見られている一拍)。
+ * 倒れ始め=1行目「あれ…あつい、です」(アテンション開始と同時に出る)を送り終わって JUN_FALL_AFTER_LINE1_MS 後
+ * (1行目の送り 1480ms+200 − ATTENTION_IN_MS 360)。ATTENTION_IN_MS は store にあるので定数で持ち、文言を変えたらテストが落ちる(junEscort.test)。
+ */
+export const JUN_COLLAPSE_BEAT_MS = 1_320;
 /** ゆっくり倒れる尺(倒れの3コマを長く)。 */
 export const JUN_FALL_MS = 1_800;
-/** 倒れ切ってから変身するまでの間(動かない体を見せる)。 */
-export const JUN_LIE_MS = 600;
+/** 3行目「…見ないで…ください…」を着地からこれだけ後に出す(着地の跳ね JUN_FALL_BOUNCE_MS の直後)。 */
+export const JUN_TREMBLE_LINE_AFTER_LAND_MS = 200;
+/** 倒れ切ってから変身するまで(3行目の「…見ないで…」を送り終わった少し後に変身で断ち切る・その間に地面で痙攣する=junTremble)。 */
+export const JUN_LIE_MS = JUN_TREMBLE_LINE_AFTER_LAND_MS + slowLineTypedMs(Array.from(JUN_TREMBLE_LINE_CUT_AFTER)) + JUN_TRANSFORM_CUT_AFTER_MS;
 /** 変身の瞬間に体が消える尺(城ボスの出現の閃光の中でフェードアウト)。 */
 export const JUN_VANISH_MS = 320;
 /** アテンションのホールドが変身より先に明けないための余白。 */
@@ -335,27 +347,95 @@ export const JUN_FALL_SWAY_PX = 2.2;
 export const JUN_FALL_LEAN_PX = 2;
 export const JUN_FALL_BOUNCE_PX = 1.5;
 export const JUN_FALL_BOUNCE_MS = 200;
+/**
+ * 立ったままの一拍のよろめき(research/JUN_ESCORT.md §5・クリエイティブ監査2巡目): 寄り切った直後から倒れ始めまで。
+ * 不揃いな小さい左右のふらつき2回(片側へ崩れて戻り切らない)→最後に半歩ぶん前へ(JUN_STAGGER_FORWARD_PX)。位置だけ・各区間は加速→減速。
+ * 前へ出た分は倒れ始めてからもそのまま残す(倒れ始めの瞬間に足元が戻って跳ばない)。倒れの0コマ目の対称の揺れ(JUN_FALL_SWAY)とは別の形。
+ */
+export const JUN_STAGGER_FORWARD_PX = 3;
+/** よろめきの節(進み 0..1, 向いている側への位置 px)。区間の長さを不揃いにし、揺れは戻り切らない。 */
+const JUN_STAGGER_KEYS: readonly (readonly [number, number])[] = [
+  [0, 0], [0.2, 1.4], [0.33, 0.5], [0.52, -1.1], [0.66, -0.4], [1, JUN_STAGGER_FORWARD_PX],
+];
+/** よろめきの位置(u=寄り切りから倒れ始めまでの進み 0..1)。 */
+const junStaggerAt = (u: number): number => {
+  const c = Math.max(0, Math.min(1, u));
+  for (let i = 1; i < JUN_STAGGER_KEYS.length; i++) {
+    const [u1, v1] = JUN_STAGGER_KEYS[i];
+    if (c > u1) continue;
+    const [u0, v0] = JUN_STAGGER_KEYS[i - 1];
+    const k = (c - u0) / Math.max(1e-6, u1 - u0);
+    return v0 + (v1 - v0) * k * k * (3 - 2 * k);
+  }
+  return JUN_STAGGER_FORWARD_PX;
+};
 export const junCollapseMotion = (elapsedMs: number, attnInMs: number): { forward: number; down: number } => {
-  const t = (elapsedMs - attnInMs - JUN_COLLAPSE_BEAT_MS) / JUN_FALL_MS;
-  if (t < 0) return { forward: 0, down: 0 };
+  const sinceFall = elapsedMs - attnInMs - JUN_COLLAPSE_BEAT_MS;
+  const t = sinceFall / JUN_FALL_MS;
+  const fallAt = attnInMs + JUN_COLLAPSE_BEAT_MS;
+  const st = junStaggerAt((elapsedMs - JUN_CLOSEUP_IN_MS) / Math.max(1, fallAt - JUN_CLOSEUP_IN_MS));
+  if (t < 0) return { forward: st, down: 0 };
   if (t >= 1) {
     const e = (t - 1) * JUN_FALL_MS;
     const b = e < JUN_FALL_BOUNCE_MS ? Math.sin(Math.PI * e / JUN_FALL_BOUNCE_MS) * (1 - e / JUN_FALL_BOUNCE_MS) : 0;
-    return { forward: 0, down: b > 0 ? -JUN_FALL_BOUNCE_PX * b : 0 };
+    return { forward: st, down: b > 0 ? -JUN_FALL_BOUNCE_PX * b : 0 };
   }
   const k = t * t;
   if (k < JUN_FALL_FRAME1_AT) {
     const u = k / JUN_FALL_FRAME1_AT; // 0コマ目の中の進み 0..1
     const sink = JUN_FALL_SINK_PX * u * u * (3 - 2 * u);
     const sway = JUN_FALL_SWAY_PX * Math.sin(2 * Math.PI * u) * Math.sin(Math.PI * u);
-    return { forward: sway, down: sink };
+    return { forward: st + sway, down: sink };
   }
   if (k >= JUN_FALL_FRAME2_AT - 0.15 && k < JUN_FALL_FRAME2_AT) {
     const u = (k - (JUN_FALL_FRAME2_AT - 0.15)) / 0.15;
-    return { forward: JUN_FALL_LEAN_PX * u * u, down: 0 };
+    return { forward: st + JUN_FALL_LEAN_PX * u * u, down: 0 };
   }
-  return { forward: 0, down: 0 };
+  return { forward: st, down: 0 };
 };
+
+/**
+ * ③地面で痙攣する(research/JUN_ESCORT.md §5・クリエイティブ監査2巡目)。位置だけ=絵は伸び縮み・回転させない。
+ * 小刻み→止まる→横の鋭いビクッ(跳ね上がりは速く・戻りは遅く)を重ね、1回ごとに強く。2回目のビクッは横の向きが逆。
+ * 縦(体が浮く向き)は最大1pxに抑える。最後の一番大きいビクッの山を変身の時刻(f=1)に合わせる=引きつった頂点で光と引きが来る
+ * (戻りは変身の後、体が消えていく間に続く)。時刻は震えの尺(durMs=着地から変身まで=JUN_LIE_MS)に対する割合
+ * (下の ms は尺1450msの時)。乱数は使わない。整数px(ドットの列が揺らがない)。単位は倒れの絵のテクスチャpx。x=向いている側へ+/y=下へ+。
+ */
+interface JunSpasm { at: number; peak: number; end: number; kind: 'shiver' | 'jerk'; x: number; y: number }
+const JUN_SPASM_REF_MS = 1450;
+const junSpasmAt = (ms: number) => ms / JUN_SPASM_REF_MS;
+/** 痙攣の時刻表(割合)。小刻み=細かい横揺れ(膨らんで消える)/ビクッ=横への鋭い1発(peak で頂点)。 */
+export const JUN_SPASMS: readonly JunSpasm[] = [
+  { at: junSpasmAt(230), peak: junSpasmAt(305), end: junSpasmAt(380), kind: 'shiver', x: 1, y: 0 },   // 小刻み →止まる 230ms
+  { at: junSpasmAt(610), peak: junSpasmAt(655), end: junSpasmAt(820), kind: 'jerk', x: 2, y: -1 },    // ビクッ →止まる 240ms
+  { at: junSpasmAt(1060), peak: junSpasmAt(1105), end: junSpasmAt(1180), kind: 'jerk', x: -3, y: -1 }, // 逆向きのビクッ →止まる 200ms
+  { at: junSpasmAt(1380), peak: junSpasmAt(1450), end: junSpasmAt(1730), kind: 'jerk', x: 4, y: -1 },  // 一番大きい1回(山=変身の瞬間)
+];
+/** 小刻みの周期(ms)。 */
+const JUN_SHIVER_PERIOD_MS = 46;
+export const JUN_TREMBLE_MAX_PX = 4;
+export const junTremble = (sinceLandMs: number, durMs: number): { x: number; y: number } => {
+  if (!(sinceLandMs > 0) || !(durMs > 0)) return { x: 0, y: 0 };
+  const f = sinceLandMs / durMs;
+  for (const sp of JUN_SPASMS) {
+    if (f < sp.at || f >= sp.end) continue;
+    if (sp.kind === 'shiver') {
+      const u = (f - sp.at) / (sp.end - sp.at);
+      const env = Math.sin(Math.PI * u) ** 2;
+      const w = (f - sp.at) * durMs;
+      return { x: Math.round(sp.x * env * Math.sin(2 * Math.PI * w / JUN_SHIVER_PERIOD_MS)) + 0, y: 0 };
+    }
+    // ビクッ: at→peak を速く上り(smoothstep)、peak→end をゆっくり戻る(smoothstep)。両端・頂点で速さ0=瞬間で跳ばない。
+    const p = f < sp.peak
+      ? (() => { const k = (f - sp.at) / (sp.peak - sp.at); return k * k * (3 - 2 * k); })()
+      : (() => { const k = (f - sp.peak) / (sp.end - sp.peak); return 1 - k * k * (3 - 2 * k); })();
+    return { x: Math.round(sp.x * p) + 0, y: Math.round(sp.y * p) + 0 };
+  }
+  return { x: 0, y: 0 };
+};
+/** アテンション開始からの実時間から、着地からの実時間(倒れ切る前は負)。 */
+export const junSinceLandMs = (elapsedMs: number, attnInMs: number): number =>
+  elapsedMs - attnInMs - JUN_COLLAPSE_BEAT_MS - JUN_FALL_MS;
 
 /**
  * 倒れの絵の足元合わせ(テクスチャpx・向いている側へ+)を、倒れの度合い k に沿って**連続で**補間する(コマの段差で跳ばない)。
@@ -473,13 +553,75 @@ export const JUN_ARRIVE_TOUCH_DIST = 32;
 
 // ---- 倒れる時の通信 -------------------------------------------------------------------------------------
 /**
- * 倒れ始めの瞬間に通信の箱へ出す行(社長指示2026-10-20「通信でジュンが い、意識が… と言いながら倒れる」)。
- * 待ち行列に積まず、その場で差し替える(アテンション中は通信の時計が凍る=倒れる間ずっと出ていて、明けてから尺が張り直される)。
+ * 変異の場面で通信の箱へ出す行(既定=倒れ始めの「い、意識が…」・社長指示2026-10-20/§5 の3行はどれもこの仕組み)。
+ * 待ち行列に積まず、その場で差し替える(アテンション中は通信の時計が凍る=次の行に差し替わるまで出ていて、明けてから尺が張り直される)。
  * 待ち行列に残っていたジュンの行は捨てる(倒れた後に普段の台詞が出ないように)。
  */
 export const junCollapseDialogue = <Q extends { name: string }>(
-  gameTime: number, queue: readonly Q[], lineMs: number, slowExtraMs: number,
-): { npcDialogue: { name: string; text: string; until: number; slow: true }; npcDialogueQueue: Q[] } => ({
-  npcDialogue: { name: JUN_NAME, text: JUN_COLLAPSE_LINE, until: gameTime + lineMs + slowExtraMs, slow: true },
+  gameTime: number, queue: readonly Q[], lineMs: number, slowExtraMs: number, text: string = JUN_COLLAPSE_LINE,
+): { npcDialogue: { name: string; text: string; until: number; slow: true; portrait: string }; npcDialogueQueue: Q[] } => ({
+  // 立ち絵は出さない(銃を構えて立つ顔は変異の場面に合わない・名前と文だけ=クリエイティブ監査2巡目)。
+  npcDialogue: { name: JUN_NAME, text, until: gameTime + lineMs + slowExtraMs, slow: true, portrait: JUN_NO_PORTRAIT },
   npcDialogueQueue: queue.filter(l => l.name !== JUN_NAME),
 });
+/**
+ * 変異の場面のどの行の段に居るか(research/JUN_ESCORT.md §5-1・アテンション開始からの実時間)。
+ * 0=寄り始め(あれ…あつい、です)/1=倒れ始め(い、意識が…)/2=着地の跳ねの直後(…見ないで…ください… 変身で途中で断ち切る)。
+ * 呼び出し側は「前に出した段より大きくなった時だけ」行を出す(段ごとに1回)。
+ */
+export const junSceneLineAt = (elapsedMs: number, attnInMs: number): 0 | 1 | 2 => {
+  if (junSinceLandMs(elapsedMs, attnInMs) >= JUN_TREMBLE_LINE_AFTER_LAND_MS) return 2;
+  if (elapsedMs >= attnInMs + JUN_COLLAPSE_BEAT_MS) return 1;
+  return 0;
+};
+/**
+ * 変身の瞬間に通信の箱を閉じる(クリエイティブ監査: ボスの登場に人間の顔と台詞を重ねない)。
+ * ジュンの行が出ていれば消し、待ち行列のジュンの行も捨てる。ほかの人の行はそのまま。
+ */
+export const junCloseDialogue = <C extends { name: string } | null, Q extends { name: string }>(
+  current: C, queue: readonly Q[],
+): { npcDialogue: C | null; npcDialogueQueue: Q[] } => ({
+  npcDialogue: current && current.name === JUN_NAME ? null : current,
+  npcDialogueQueue: queue.filter(l => l.name !== JUN_NAME),
+});
+
+// ---- 変異の場面のカメラ(research/JUN_ESCORT.md §5・クリエイティブ監査で指数の近づきから尺つきの曲線へ) ------------------
+/** 寄りの倍率(等倍に対して)。 */
+export const JUN_CLOSEUP_ZOOM = 2.2;
+/** 寄りの尺(等倍→JUN_CLOSEUP_ZOOM・加速→減速)。 */
+export const JUN_CLOSEUP_IN_MS = 700;
+/** 寄った後、倒れ〜震えの間にゆっくり押し込む量(変身の溜めの直前で ×1.15・ease-in)。 */
+export const JUN_PUSH_IN_MUL = 1.15;
+/** 変身の直前の溜め(さらに3%寄る)の尺。 */
+export const JUN_WINDUP_MS = 90;
+export const JUN_WINDUP_MUL = 1.03;
+/** 変身でボスの距離感まで引く尺と行き先(等倍に対して)。 */
+export const JUN_PULL_MS = 400;
+export const JUN_PULL_ZOOM = 0.8;
+const smooth01 = (u: number): number => { const c = Math.max(0, Math.min(1, u)); return c * c * (3 - 2 * c); };
+/**
+ * 変異の場面のカメラの倍率。stage='collapse' は ms=アテンション開始からの実時間、'transform' は ms=変身からの実時間。
+ * mul=等倍に対する倍率。cancel=ボス戦の文脈ズーム(引き)を打ち消す重み 0..1(描画は 文脈の引きの逆数^cancel を mul に掛ける)。
+ * 寄り→押し込み→溜め→引きのつなぎ目で倍率は連続(瞬間で跳ばない)。引きの終わり(mul=0.8・cancel=0)は描画の既存の変身の引き(0.8)と一致。
+ */
+export const junCameraZoomAt = (ms: number, stage: 'collapse' | 'transform', attnInMs: number): { mul: number; cancel: number } => {
+  const peak = JUN_CLOSEUP_ZOOM * JUN_PUSH_IN_MUL * JUN_WINDUP_MUL;
+  if (stage === 'transform') {
+    const u = Math.max(0, Math.min(1, ms / JUN_PULL_MS));
+    // 前半に加速を寄せた ease-in-out(u^0.7 を smoothstep に通す=出だしの速さ0・山は前寄り)。倍率は対数で補間(見た目の縮みが等速に近い)。
+    const e = smooth01(Math.pow(u, 0.7));
+    return { mul: Math.exp(Math.log(peak) + (Math.log(JUN_PULL_ZOOM) - Math.log(peak)) * e), cancel: 1 - e };
+  }
+  if (ms < JUN_CLOSEUP_IN_MS) {
+    const e = smooth01(ms / JUN_CLOSEUP_IN_MS);
+    return { mul: 1 + (JUN_CLOSEUP_ZOOM - 1) * e, cancel: e };
+  }
+  const transformAt = junTransformAtMs(attnInMs);
+  const windupAt = transformAt - JUN_WINDUP_MS;
+  const pushed = JUN_CLOSEUP_ZOOM * JUN_PUSH_IN_MUL;
+  if (ms < windupAt) {
+    const v = (ms - JUN_CLOSEUP_IN_MS) / Math.max(1, windupAt - JUN_CLOSEUP_IN_MS);
+    return { mul: JUN_CLOSEUP_ZOOM * (1 + (JUN_PUSH_IN_MUL - 1) * v * v), cancel: 1 };
+  }
+  return { mul: pushed * (1 + (JUN_WINDUP_MUL - 1) * smooth01((ms - windupAt) / JUN_WINDUP_MS)), cancel: 1 };
+};

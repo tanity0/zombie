@@ -248,7 +248,7 @@ import {
   ESCORT_BODY_SIZE, ESCORT_DOWN_SLIDE_MS, ESCORT_FALL_IMPACT_FRAC, ESCORT_LOST_SIGHT_MS, ESCORT_RETREAT_SPEED_MULT,
 } from '../utils/escortHealth';
 import { escortAggroCandidates, escortBossHaters, escortInMotionView, hateEscortSource } from '../utils/escortView';
-import { JUN_ESCORT_INDEX, JUN_NAME, JUN_DEPART_LINE } from '../data/junEscortLines';
+import { JUN_ESCORT_INDEX, JUN_NAME } from '../data/junEscortLines';
 import { isJunEscort, JUN_ESCORT_ID, junJoinsRun, stepJunWalk, JUN_DEPART_WALK_DELAY_MS, junNextWaypoint, junReachableGoal, junTouchesRect, JUN_ARRIVE_TOUCH_DIST, junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, JUN_LEFT_BEHIND_CD_MS, JUN_BASE_ID, junPseudoBase } from '../utils/junEscort';
 // research/ESCORT_FOLLOW.md: 拠点を開けた軍人が、その担当区域の中だけついてくる(判定は utils の純関数)。
 import {
@@ -8700,7 +8700,7 @@ interface GameState {
   // NPCリアルタイムセリフ(時間停止なし・HUDの軽量表示)。current=表示中、queue=順番待ち、nextAt=次を出せる最短gameTime。
   // portrait=会話の立ち絵を話者名と別に指定するオーバーライド(例: 変異後グレン)。省略時は name で引く。
   npcDialogue: { name: string; text: string; until: number; portrait?: string; slow?: boolean } | null;
-  /** slow=文字をゆっくり送り、三点リーダで一度止めてから消す(ステージ4のジュンの離脱の一言・NpcDialogue が見る)。 */
+  /** slow=文字をゆっくり送り、三点リーダで一度止めてから消す(ステージ4のジュンの変異の場面の通信・NpcDialogue が見る)。 */
   npcDialogueQueue: { name: string; text: string; portrait?: string; slow?: boolean }[];
   npcDialogueNextAt: number;
   npcSpokeAt: Record<string, number>;   // NPC名→最後に喋ったgameTime(同一NPCのCD用)
@@ -8870,7 +8870,7 @@ interface GameState {
   pendingEscorts: EscortSoldier[];
   /** ステージ4: 隊を離れて城へ向かうジュン(research/JUN_ESCORT.md §1・utils/junEscort.ts)。離脱前/居ない出撃は null。 */
   junDeparture: JunDeparture | null;
-  /** ステージ4: 道中のジュンの「一緒にいる」を止めている(離脱の一言で初めて聞かせる・useGameLoop が変化時だけ書く)。 */
+  /** ステージ4: 道中のジュンの「一緒にいる」を止めている(離脱の前の数十秒・useGameLoop が変化時だけ書く)。 */
   junCompanionQuiet: boolean;
   /** ステージ4: ジュンが城ボスへ変身した実時間(Date.now)。0=無し。描画(聖堂を暗く・カメラの引き・雪)とバナーの遅らせが読む。 */
   junTransformRealAt: number;
@@ -17825,7 +17825,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   tryNpcLine: (name, category, text, categoryCdMs, escortId) => {
     if (!text) return false; // 文言の無い場面=無言(ステージ4のジュンは表に無い場面の文言を持たない)
     const s = get();
-    // ステージ4: 離脱の一言(「一緒にいる」と同じ文言)の前の数十秒は、道中の同じ一言を出さない(離脱で初めて聞かせる)。
+    // ステージ4: 離脱の前の数十秒は、道中の「一緒にいる」の一言を出さない。
     if (category === 'companion' && name === JUN_NAME && s.junCompanionQuiet) return false;
     const gt = s.gameTime;
     // 倒れている軍人は台詞(囲まれた/苦戦/並走/称賛 …)を出さない・苦戦の通信で stallUntil も付けない(research/ESCORT_TARGETED.md §3)。
@@ -22150,30 +22150,24 @@ export const useGameStore = create<GameState>((set, get) => ({
     const s = get();
     const jun = s.escorts.find(isJunEscort);
     if (!jun || s.junDeparture) return false;
+    // 離れる時は通信しない(社長指示2026-11-12「ここではジュンは通信しない」)。待ち行列に残っていたジュンの行も捨てる
+    // (隊を外れた後に台詞が出ない=research/JUN_ESCORT.md §1)。その場で一拍止まってから向きを変えて歩き出す(歩き出しの時刻は今までの一言の間と同じ)。
     set(st => ({
       escorts: st.escorts.filter(e => !isJunEscort(e)),
       junDeparture: {
         phase: 'leaving', x: jun.x, y: jun.y, face: jun.face, speed: 0,
-        targetX, targetY, startedAt: st.gameTime,
+        targetX, targetY, startedAt: st.gameTime, walkAt: st.gameTime + JUN_DEPART_WALK_DELAY_MS,
       },
+      npcDialogueQueue: st.npcDialogueQueue.filter(l => l.name !== JUN_NAME),
     }));
-    // 会話の箱の列へ直接(間隔の制限を通さない=離れる理由の一言を取りこぼさない)。
-    get().enqueueNpcDialogue([{ name: JUN_NAME, text: JUN_DEPART_LINE, slow: true }]);
     return true;
   },
   stepJunDeparture: (dtSec) => {
     const s = get();
     const jd = s.junDeparture;
     if (!jd || jd.phase !== 'leaving') return;
-    // 一言を言ってから、その場で一拍止まり、向きを変えて歩き出す(台詞と同時に歩き出さない)。
-    // 歩き出しの時刻は、一言が画面に出た瞬間から JUN_DEPART_WALK_DELAY_MS(列で待たされても一言の後に歩く)。
-    if (jd.walkAt === undefined) {
-      const shown = s.npcDialogue?.name === JUN_NAME && s.npcDialogue?.text === JUN_DEPART_LINE;
-      const pending = s.npcDialogueQueue.some(l => l.name === JUN_NAME && l.text === JUN_DEPART_LINE);
-      // 一言が出た/列から落ちた/待ちすぎ(6秒)=歩き出しの時刻を決める。
-      if (shown || !pending || s.gameTime - jd.startedAt > 6000) set({ junDeparture: { ...jd, walkAt: s.gameTime + (shown ? JUN_DEPART_WALK_DELAY_MS : 600) } });
-      return;
-    }
+    // その場で一拍止まり、向きを変えて歩き出す(歩き出しの時刻は beginJunDeparture が決める)。
+    if (jd.walkAt === undefined) { set({ junDeparture: { ...jd, walkAt: s.gameTime + JUN_DEPART_WALK_DELAY_MS } }); return; }
     if (s.gameTime < jd.walkAt) return;
     // 道筋: 行き先への直線が城・木・散布物の当たり箱を横切る時は、箱の角を回り込む(utils/junEscort junNextWaypoint)。
     // 行き先(城ボスの足元)は城の箱のすぐ下=体の頭が城に掛かるので、数px下の「着ける足元」を目指す(junReachableGoal)。

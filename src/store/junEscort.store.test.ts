@@ -16,7 +16,7 @@ const backing: Record<string, string> = {};
 const SELECTED_KEY = 'zombie.progress.selectedStage';
 const setStage = (id: string) => { backing[SELECTED_KEY] = id; };
 
-import { useGameStore, baseSoldierName, NPC_DIALOGUE_MS } from './gameStore';
+import { useGameStore, baseSoldierName } from './gameStore';
 import { JUN_ESCORT_INDEX } from '../data/junEscortLines';
 import { isJunEscort, JUN_ESCORT_ID, JUN_DEPART_WALK_DELAY_MS, JUN_BASE_ID, JUN_LEFT_BEHIND_PX } from '../utils/junEscort';
 import { setTreesDisabled } from '../world/trees';
@@ -72,11 +72,12 @@ describe('ジュンの同行(ステージ4だけ)', () => {
 });
 
 describe('ジュンの離脱(隊を外れて城へ歩く)', () => {
-  it('一言(文字送りの行)を言い、一拍止まってから向きを変えて歩き出す', () => {
+  it('通信はせず(待ち行列のジュンの行も捨てる)、一拍止まってから向きを変えて歩き出す', () => {
     setStage('stage-4');
     useGameStore.getState().resetGame('warrior');
     deploy();
-    useGameStore.setState({ npcDialogue: null, npcDialogueQueue: [], npcDialogueNextAt: 0 });
+    // 離脱の前に積まれていたジュンの行(とほかの軍人の行)
+    useGameStore.setState({ npcDialogue: null, npcDialogueQueue: [{ name: 'ジュン', text: '医師団はどこに…' }, { name: '武蔵', text: 'y' }], npcDialogueNextAt: 0 });
     const before = useGameStore.getState().escorts.find(isJunEscort)!;
     // 進行方向と逆を向いていた所から
     useGameStore.setState(s => ({ escorts: s.escorts.map(e => (isJunEscort(e) ? { ...e, face: -1 } : e)) }));
@@ -86,17 +87,19 @@ describe('ジュンの離脱(隊を外れて城へ歩く)', () => {
     expect(s.escorts.length).toBe(4);
     expect(s.junDeparture?.phase).toBe('leaving');
     expect(useGameStore.getState().beginJunDeparture(0, 0)).toBe(false);
-    // 一言が出る
+    // 離脱の時に通信は出ない(社長指示2026-11-12「ここではジュンは通信しない」)。待ち行列のジュンの行も捨てる(隊を外れた後に台詞が出ない)。
+    expect(useGameStore.getState().npcDialogueQueue).toEqual([{ name: '武蔵', text: 'y' }]);
     tick(16);
     s = useGameStore.getState();
-    expect(s.npcDialogue?.text).toBe('変な感じがする…');
-    expect(s.npcDialogue?.slow).toBe(true);
-    expect(s.npcDialogue!.until - s.gameTime).toBeGreaterThan(NPC_DIALOGUE_MS);
+    expect(s.npcDialogue?.name).not.toBe('ジュン');
     // 一拍の間は動かない
     const x0 = s.junDeparture!.x;
     for (let t = 0; t < JUN_DEPART_WALK_DELAY_MS - 100; t += 16) tick(16);
     expect(useGameStore.getState().junDeparture!.x).toBe(x0);
     expect(useGameStore.getState().junDeparture!.face).toBe(-1);
+    // 歩いて行く間もジュンの行は出ない
+    expect(useGameStore.getState().npcDialogue?.name).not.toBe('ジュン');
+    expect(useGameStore.getState().npcDialogueQueue.some(l => l.name === 'ジュン')).toBe(false);
     // 歩き出す: 最初はゆっくり、向きは行き先へ
     for (let t = 0; t < 300; t += 16) tick(16);
     const j1 = useGameStore.getState().junDeparture!;

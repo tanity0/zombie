@@ -43,6 +43,9 @@ import type { EndingSoldier, EndingPhillState, EndingBomb } from '../utils/endin
 import { endingBombFallY, isEndingSoldierTumbling, ENDING_BLOWN_MS } from '../utils/endingScene';
 import { SIGNAL_STRIKE_DELAY_MS, type SignalStrike } from '../utils/signalLauncher';
 import { playerHurtReactionOf, isHurtCancelled } from '../utils/playerHurt';
+import { playerCrouchStunPose } from '../utils/playerCrouchStun';
+import { phantomStunGrayK } from '../utils/phantomStunGray';
+import { isPvpIncapacitated } from '../utils/pvpPosture';
 // ★被弾リアクションの強さ(しなり/跳ね/フラッシュ/光/ノックバック/停止時間が読む唯一の窓口・2026-09-17)
 import { enemyHitReaction, hopMul, flashMul } from '../utils/hitFlinch';
 import { hasShotRecoil, newRecoilBody, kickRecoil, pushRecoilForce, advanceRecoil, recoilOffset, recoilParts, SHOT_RECOIL_IDOL, SHOT_RECOIL_CRAWLER, SHOT_TREMBLE_IDOL_GUN, type RecoilBody } from '../utils/shotRecoil'; // 撃たれた時の押し戻し(アイドル・変異塊)
@@ -266,7 +269,7 @@ import { SATELLITE_WEAPON_KEY } from '../utils/satelliteOrbit';
 import { biasedShakeOffset, speedLineRemainingMs, speedLineAlpha } from '../utils/dirFx';
 import { escortPose, escortBarWant, escortDownDotAlpha, escortReviveLitTarget, ESCORT_SINK_FRAC, type EscortPose } from './escortVisual'; // 軍人の倒れる/起きる/体力の線の曲線(research/ESCORT_TARGETED.md §6・§7)
 import { JUN_ESCORT_INDEX } from '../data/junEscortLines'; // ステージ4のジュン(名簿外の印・research/JUN_ESCORT.md)
-import { JUN_ESCORT_ID, junCollapseView, junVanishAlpha, junCollapseMotion, medicFallShiftPx, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT } from '../utils/junEscort';
+import { JUN_ESCORT_ID, junCollapseView, junVanishAlpha, junCollapseMotion, medicFallShiftPx, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT, junTremble, junSinceLandMs, JUN_LIE_MS, junCameraZoomAt, JUN_PULL_MS } from '../utils/junEscort';
 import { escortReviveProgress, isEscortDowned, isEscortSliding, ESCORT_REVIVE_HEAL_RATIO } from '../utils/escortHealth';
 import {
   SWORD_VISIBILITY_FADE_MS, swordAttackAngle, swordCompletionFrame, swordFadeInAlpha, swordFadeOutAlpha,
@@ -1665,7 +1668,8 @@ const MEDIC_DOWN_FRAME1_AT = 0.34;
 const JUN_TRANSFORM_PULL_ZOOM = 0.8;
 const JUN_TRANSFORM_PULL_TAU_S = 0.45;
 const JUN_TRANSFORM_PULL_BACK_TAU_S = 0.8;
-const JUN_COLLAPSE_FOCUS_TAU_S = 0.5; // ジュンが倒れる間、ボス戦の引きを打ち消して寄る速さ(実時間)
+const JUN_COLLAPSE_FOCUS_TAU_S = 0.5; // (場面の曲線が無い時の)ボス戦の引きを打ち消して寄る速さ(実時間)
+// 倒れる→変身の寄り・押し込み・溜め・引きは utils/junEscort junCameraZoomAt の尺つきの曲線(research/JUN_ESCORT.md §5)。
 const JUN_CASTLE_DARK_TINT_MIN = 0.42;
 const JUN_SNOW_TIME_SCALE = 0.4;
 const JUN_POST_TRANSFORM_MAX_MS = 8000;
@@ -9531,6 +9535,28 @@ export class PixiScene {
         ? 1 / Math.max(0.05, Math.min(1, this.contextZoom * this.runZoom)) : 1;
       const focusTau = focusWant > this.junFocus ? JUN_COLLAPSE_FOCUS_TAU_S : JUN_TRANSFORM_PULL_TAU_S;
       this.junFocus += (focusWant - this.junFocus) * (1 - Math.exp(-rdt / focusTau));
+      // §5(社長指示2026-11-12「もっとジュンに寄りのカメラワークに移動してから倒れる…いっきにカメラワークをボスの距離感にして変身」):
+      //   倒れる間〜変身の引きの間は、尺を決めた曲線(加速→減速)で上の2つを上書きする(指数の近づき=1フレーム目が最高速、をやめる)。
+      //   曲線の倍率=等倍に対して。ボス戦の引き(文脈ズーム×走りの引き)は cancel の重みで打ち消す(寄り始めは0=今の画角から連続)。
+      //   引きの終わり(倍率0.8・打ち消し0)で既存の変身の引き(junPull=0.8・junFocus=1)へ渡す=つなぎ目で跳ばない。紹介明けの戻りは既存のまま。
+      const jdz = s.junDeparture;
+      const scene = jdz?.phase === 'collapsing' && jdz.collapseStartReal !== undefined
+        ? junCameraZoomAt(rn - jdz.collapseStartReal, 'collapse', ATTENTION_IN_MS)
+        : s.junTransformRealAt > 0 && rn - s.junTransformRealAt < JUN_PULL_MS
+          ? junCameraZoomAt(rn - s.junTransformRealAt, 'transform', ATTENTION_IN_MS) : null;
+      if (scene) {
+        const undo = 1 / Math.max(0.05, Math.min(1, this.contextZoom * this.runZoom));
+        this.junFocus = scene.mul * Math.pow(undo, scene.cancel);
+        this.junPull = 1;
+        this.junSceneCam = true;
+        this.junPivotW = scene.cancel;
+      } else if (this.junSceneCam) {
+        this.junPivotW = 0;
+        // 曲線の終わり=引き切った所(0.8)。既存の変身の引きへ同じ倍率で渡す。
+        this.junSceneCam = false;
+        this.junPull *= this.junFocus;
+        this.junFocus = 1;
+      }
     }
     const zoom = this.idleZoom * this.contextZoom * this.runZoom * this.junPull * this.junFocus * punch;
     this.zwarpZoomNow = this.idleZoom * this.contextZoom; // KILL/カウンターの寄りパンチ(punch・瞬間ジャンプ)は歪みの入力から除く(監査B#7)
@@ -9630,8 +9656,18 @@ export class PixiScene {
       // 「引き連動のカメラ下げ」(useGameLoop・プレイヤーを地平線と下端の中間へ)が増やす(社長指示
       // 「上下の幅を揃える」)。寄り(zoom>=1・待機/パンチ)は従来どおり画面中央支点(v0.25.2586不変)。
       // 下方向の可視超過(最深で回収マージン240pxに対し+75px)は前景霧の裏に収まり許容(v2991のDEVLOG)。
-      const pivotY = zoom < 1 ? this.farBackdropHeight() : centerY;
-      this.L.worldGroup.position.set(centerX * (1 - zoom) - totalPanX, pivotY * (1 - zoom) - totalPanY);
+      let pivotX = centerX;
+      let pivotY = zoom < 1 ? this.farBackdropHeight() : centerY;
+      // ステージ4のジュンの変異の場面(research/JUN_ESCORT.md §5): 寄りの支点を寄り先(アテンションの注目点=胸→体の中心)にする。
+      // アテンションは注目点を画面の高さ60%に置く(ATTENTION_FOCUS_Y_FRAC)ので、画面中央を支点に2倍以上寄ると
+      // 注目点が中央から外へ押し出されていた(倍率2.6で約76%=寄り切ると体が画面の下へ逃げた)。支点が注目点なら、注目点は画面上で動かない。
+      // 重み(寄り始め0→寄り切り1→引きで0)で今の支点から移す=つなぎ目で跳ばない。支点は画面の中なので、寄り(>1)で見える範囲は等倍の画面の内側。
+      if (this.junPivotW > 0 && s.attention) {
+        const w = this.junPivotW;
+        pivotX += (this.L.world.position.x + s.attention.x - pivotX) * w;
+        pivotY += (this.L.world.position.y + s.attention.y - pivotY) * w;
+      }
+      this.L.worldGroup.position.set(pivotX * (1 - zoom) - totalPanX, pivotY * (1 - zoom) - totalPanY);
       this.zoomApplied = true;
     } else if (this.zoomApplied) {
       this.L.worldGroup.scale.set(1);
@@ -21257,11 +21293,28 @@ export class PixiScene {
     // 優先されてて しゃがみ絵になってない」): **死亡中は何より優先してしゃがみ絵(-ready)へ固定**。
     // 上の分岐(近接スイング/救急鞄)や歩き/待機コマの差し替えを**後から上書き**する位置に置くことで、
     // 直前に振っていた/歩いていた絵のまま倒れるのを防ぐ(死んだと分かる絵を寄りズームの間ずっと出す)。
+    // ★対人の体勢が崩れて動けない間(紫3秒・致命の後の2秒)はしゃがみ絵(-ready)にする(社長指示2026-11-12
+    // 「硬直して動けないならプレイヤーをしゃがませて」)。絵と「上への持ち上げ量」は utils/playerCrouchStun の純関数
+    // (入り=上から重力で落ちて小さく跳ねる/窓の間=肩で息/明けの0.5秒前=予備動作/明け=立ち絵で伸び上がり)。
+    // しゃがみの絵は足元=下端で焼いてあるので下へは沈めない(足が埋まる)。しゃがみの絵が無い装い(武将フル装備)は何もしない。
+    // 描画のみ=動けない窓・判定は pvpPosture のまま。格闘の段の絵より後に置いて上書きする(死亡の固定は下でさらに上書き)。
+    const pvpStunGt = useGameStore.getState().gameTime;
+    // 動けない間は、近接の振り・格闘の姿勢の傾き/伸び縮み/滑りをしゃがみの絵に掛けない(下の2つの分岐の条件で止める)。
+    const pvpStunned = p.health > 0 && isPvpIncapacitated(p.pvpPosture, pvpStunGt);
+    const pvpStunHasArt = !!meleePosePrefix && !warlordFull && !!getTexture(`${meleePosePrefix}-ready`);
+    const pvpStunPose = pvpStunned
+      ? playerCrouchStunPose(p.pvpPosture, pvpStunGt, fb.boxH * dsc, pvpStunHasArt)
+      : { crouchTex: false, liftPx: 0 };
+    if (pvpStunPose.crouchTex && meleePosePrefix) {
+      const stunTex = getTexture(`${meleePosePrefix}-ready`);
+      if (stunTex) { view.sprite.texture = stunTex; bodyTexName = `${meleePosePrefix}-ready`; }
+    }
+    if (PLAYER_MOTION_FX && pvpStunPose.liftPx > 0) actOffY -= pvpStunPose.liftPx;
     if (p.health <= 0 && meleePosePrefix) {
       const downTex = getTexture(`${meleePosePrefix}-ready`);
       if (downTex) { view.sprite.texture = downTex; bodyTexName = `${meleePosePrefix}-ready`; }
     }
-    if (PLAYER_MOTION_FX && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
+    if (PLAYER_MOTION_FX && !pvpStunned && !killFxSwallowsSwing && p.meleeSwingAt > 0 && sinceSwing >= 0 && sinceSwing < swingWindowMs) {
       const t = sinceSwing / swingWindowMs;
       const arc = Math.sin(t * Math.PI); // 0→1→0(踏み込みのピークは中盤)
       const whip = 1 - t;                // 開始が一番強い→復帰
@@ -21273,7 +21326,7 @@ export class PixiScene {
     }
     // ★格闘の体の動き(前傾・突く方向への滑り・潰れ・跳び)。向きは段の向き(相手の方)。判定は動かさない。
     let brawlerJumpPx = 0;
-    if (brPose && PLAYER_MOTION_FX) {
+    if (brPose && PLAYER_MOTION_FX && !pvpStunned) {
       const bdx = p.brawler?.dirX ?? aimx, bdy = p.brawler?.dirY ?? aimy;
       actOffX += bdx * brPose.push * dsc;
       actOffY += bdy * brPose.push * 0.55 * dsc;
@@ -31917,6 +31970,10 @@ export class PixiScene {
   private junPull = 1;
   /** ジュンが倒れている間だけボス戦の引きを打ち消す係数(>=1)。変身で1へ戻る。 */
   private junFocus = 1;
+  /** 変異の場面の曲線(junCameraZoomAt)がカメラを持っている間。 */
+  private junSceneCam = false;
+  /** 変異の場面の寄りの支点を注目点へ移す重み(0..1・junCameraZoomAt の cancel)。 */
+  private junPivotW = 0;
   private junPullLastNow = 0;
   private junCastleDark = 0;
   private junCastleDarkLastNow = 0;
@@ -32166,6 +32223,16 @@ export class PixiScene {
           ? junCollapseMotion(wallNow - junMine.collapseStartReal, ATTENTION_IN_MS) : { forward: 0, down: 0 };
         fallShiftX = Math.round(faceSign * (shiftTex + mot.forward) * escScale);
         fallShiftY = Math.round(mot.down * escScale);
+        // ③地面で痙攣する(research/JUN_ESCORT.md §5・位置だけ=歪みではない・整数px=ドットの列が揺らがない)。
+        if (junMine && junMine.collapseStartReal !== undefined && (junMine.phase === 'collapsing' || junMine.phase === 'vanishing')) {
+          const tr = junTremble(junSinceLandMs(wallNow - junMine.collapseStartReal, ATTENTION_IN_MS), JUN_LIE_MS);
+          fallShiftX += Math.round(faceSign * tr.x * escScale);
+          fallShiftY += Math.round(tr.y * escScale);
+        }
+      } else if (junMine?.phase === 'collapsing' && junMine.collapseStartReal !== undefined && escScale > 0) {
+        // 立ったままの一拍の後半のよろめき(歩きシートの立ちコマのまま・位置だけ)。倒れ始めてからは上の倒れの位置が同じ量を引き継ぐ。
+        const mot = junCollapseMotion(wallNow - junMine.collapseStartReal, ATTENTION_IN_MS);
+        fallShiftX = Math.round(faceSign * mot.forward * escScale);
       }
       sp.position.set(px + fallShiftX, py + fallShiftY);
       // ジュンが地面に着いた瞬間の雪煙(既存の地面沿いの砂埃・ステージの色)。横に低く大きく=足元から頭の側へ3つ並べる。
@@ -38944,6 +39011,7 @@ export class PixiScene {
    * まだ届いていなければ null(呼び手が今の幻影の絵へ落とす=消えない)。返した絵は `kenkiTexSet` に入れる(大きさの決め方を分ける)。
    */
   private kenkiTexSet = new WeakSet<Texture>();
+  private phantomStunGrayFilters = new WeakMap<Sprite, ColorMatrixFilter>(); // 孫悟空が倒れている間の白黒(1体ぶん・使い回し)
   private kenkiWarmed = false;
   private static readonly KENKI_RUN_SPEED_FRAC = 0.8;
   /**
@@ -39032,6 +39100,23 @@ export class PixiScene {
     const dsc = this.depthScaleEnemy(fb.footY);
     // research/BRAWLER_PHANTOM.md §8: 格闘の幻影=プレイヤーの格闘と同じ動きの影(青いスタンド)と、構え・秘奥義の体の光。描画のみ。
     if (e.phantomBrawler) this.drawPhantomBrawlerFx(e, e.phantomBrawler, gameTime, now, dsc, view.sprite);
+    // ★孫悟空(拳鬼)が倒れて動けない間(紫3秒・致命の後の2秒)は白黒(社長指示2026-11-12「孫悟空は白黒にしよう。倒れてる時は」)。
+    // 彩度を落とす ColorMatrixFilter(desaturate)を動けない間だけこの1体に付け、filter.alpha で元の色と混ぜて慣性つきで出入り
+    // (入り約200ms・明けの約300ms前から戻る=utils/phantomStunGray)。乗算tintは使わない(暗くなるだけ)。明けたら外す。描画のみ。
+    // ※いまは孫悟空(phantomUnique:'brawler')だけ。ほかの幻影・守護霊も同じ道を通るが、効かせていない。
+    if (e.phantomUnique === 'brawler') {
+      const grayK = phantomStunGrayK(e.pvpPosture, useGameStore.getState().gameTime);
+      const sp = view.sprite;
+      if (grayK > 0.001) {
+        let gf = this.phantomStunGrayFilters.get(sp);
+        if (!gf) { gf = new ColorMatrixFilter(); gf.desaturate(); this.phantomStunGrayFilters.set(sp, gf); }
+        gf.alpha = grayK;
+        if (!sp.filters || (sp.filters as Filter[])[0] !== gf) sp.filters = [gf];
+      } else if (sp.filters && (sp.filters as Filter[]).length) {
+        const gf = this.phantomStunGrayFilters.get(sp);
+        if (gf && (sp.filters as Filter[])[0] === gf) sp.filters = null;
+      }
+    }
 
     // ---- 出現(慣性MUST: 「パッと出て止まる」を作らない) -----------------------------------------
     // 足元に簡易魔法陣(holo-mini・既存素材)を1周ぶん。本体は**下からスッと立ち上がる**

@@ -14,6 +14,7 @@ import { shouldShowMoveTutorial, M0_MOVE_TUTORIAL_AT_MS, nextM0Beat, m0AdvanceLi
 import { GLEN_FINAL_LINE, GLEN_ROAR_LINE, isGlenBossSpawnReady } from '../utils/glenIntro';
 import { loadSeenForGate, markTutorialSeen } from '../utils/tutorialArchive';
 import { getTutorial, type TutorialId } from '../data/tutorials';
+import { JUN_TRANSFORM_SCENE_LINES } from '../data/junEscortLines';
 import { LAB_VISION_RANGE } from '../utils/labStealth';
 import { LAB_CORRIDOR_Y_LIMIT_PX } from '../world/labWalls';
 import {
@@ -242,7 +243,7 @@ import { heroOnScreen, applyContactToHero, setThirdPartySfx, hitThirdParties, he
 import { hateEscortSource } from '../utils/escortView';
 import { isEscortDowned } from '../utils/escortHealth';
 import {
-  isJunEscort, junDepartDue, junDepartReady, junCastleRoute, junCollapseView, junAttentionExtraHoldMs, junCollapseDialogue,
+  isJunEscort, junDepartDue, junDepartReady, junCastleRoute, junCollapseView, junAttentionExtraHoldMs, junCollapseDialogue, junSceneLineAt, junCloseDialogue,
   castleBossFootPoint, JUN_VANISH_MS, JUN_LIE_MS, junDepartLeadMs, junCompanionQuiet, junFocusOk, worldToScreenYFrac, junRelocatePoint,
 } from '../utils/junEscort';
 import { applyContactToEscorts } from '../utils/escortHit'; // research/ESCORT_TARGETED.md §3: 進軍NPCの接触被弾
@@ -2750,6 +2751,17 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
         const jd = useGameStore.getState().junDeparture;
         if (jd?.phase === 'collapsing' && jd.collapseStartReal !== undefined) {
           const v = junCollapseView(nowMs - jd.collapseStartReal, ATTENTION_IN_MS);
+          // 通信(research/JUN_ESCORT.md §5): 段(寄り始め/倒れ始め/着地の跳ねの直後)が進んだフレームだけ、その段の行へその場で差し替える
+          // (段ごとに1回=sceneLine。寄り始めの行は collapse へ入る所で出し済み=0)。変身の後(vanishing)は出さない。
+          if (!v.transformDue) {
+            const line = junSceneLineAt(nowMs - jd.collapseStartReal, ATTENTION_IN_MS);
+            if (line > (jd.sceneLine ?? -1)) {
+              useGameStore.setState(s2 => (s2.junDeparture ? {
+                junDeparture: { ...s2.junDeparture, sceneLine: line },
+                ...junCollapseDialogue(s2.gameTime, s2.npcDialogueQueue, NPC_DIALOGUE_MS, NPC_DIALOGUE_SLOW_EXTRA_MS, JUN_TRANSFORM_SCENE_LINES[line]),
+              } : {}));
+            }
+          }
           // 寄り先は彼女の胸の高さ→倒れていくにつれて体の中心(地面寄り)へ追う(画面の中央やや下に居続ける)。
           {
             const att = useGameStore.getState().attention;
@@ -2773,6 +2785,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             useGameStore.setState(s2 => ({
               junTransformRealAt: nowMs,
               ...(s2.junDeparture ? { junDeparture: { ...s2.junDeparture, phase: 'vanishing' as const, vanishStartReal: nowMs } } : {}),
+              // 通信の箱を閉じる(ボスの登場に人間の顔と台詞を重ねない・research/JUN_ESCORT.md §5)。
+              ...junCloseDialogue(s2.npcDialogue, s2.npcDialogueQueue),
             }));
             junBannerPendingRef.current = true;
             resumeBgmAfterFade();
@@ -3709,8 +3723,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           return isPointInZoomedViewport(x, y, vs.camera, vs.gameBounds, vs.viewZoom, JUN_VIEW_MARGIN_PX);
         };
         {
-          // 離脱: 城ボスの時刻に城の足元へ着くよう逆算して(距離÷歩く速さ)、「変な感じがする…」と言って隊を離れる。
-          // 倒れていたら起き上がってから・画面下のぼけの帯では少し待つ。道中の同じ一言は離脱の数十秒前から止める。
+          // 離脱: 城ボスの時刻に城の足元へ着くよう逆算して(距離÷歩く速さ)、黙って隊を離れる(離脱では通信しない=社長指示2026-11-12)。
+          // 倒れていたら起き上がってから・画面下のぼけの帯では少し待つ。道中の「変な感じがする…」は離脱の数十秒前から止める。
           const js = useGameStore.getState();
           const jun = js.escorts.find(isJunEscort);
           if (jun) {
@@ -3772,9 +3786,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
             const atX = jd.phase === 'waiting' ? jd.x : castleBossFoot.x;
             const atY = jd.phase === 'waiting' ? jd.y : castleBossFoot.y;
             useGameStore.setState(st => ({
-              junDeparture: { ...jd, x: atX, y: atY, speed: 0, phase: 'collapsing', collapseStartReal: Date.now(), landedFx: false },
-              // 通信で「い、意識が…」と言いながら倒れる(社長指示2026-10-20)。
-              ...junCollapseDialogue(newGameTime, st.npcDialogueQueue, NPC_DIALOGUE_MS, NPC_DIALOGUE_SLOW_EXTRA_MS),
+              junDeparture: { ...jd, x: atX, y: atY, speed: 0, phase: 'collapsing', collapseStartReal: Date.now(), landedFx: false, sceneLine: 0 },
+              // 寄り始めと同時に1行目(research/JUN_ESCORT.md §5)。倒れ始め・震えの行は上の実時間の段が差し替える。
+              ...junCollapseDialogue(newGameTime, st.npcDialogueQueue, NPC_DIALOGUE_MS, NPC_DIALOGUE_SLOW_EXTRA_MS, JUN_TRANSFORM_SCENE_LINES[0]),
             }));
             rs.triggerAttention(atX, atY - JUN_ATTENTION_CHEST_UP_PX, undefined, junAttentionExtraHoldMs(ATTENTION_IN_MS, ATTENTION_HOLD_MS));
             fadeOutBgmToSilence(1200);

@@ -8,9 +8,13 @@ import {
   JUN_HOLD_LONG_CAP_MS, JUN_FOCUS_WAIT_MAX_MS, JUN_COMPANION_QUIET_BEFORE_MS, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT, MEDIC_FALL_SHIFT_PX,
   junFollowsPlayer, junFollowMachine, countsForBaseCapture, junNearOpenBase, junLeftBehindStep, junPseudoBase, JUN_BASE_ID,
   JUN_LEFT_BEHIND_PX, JUN_LEFT_BEHIND_REARM_PX,
+  JUN_LIE_MS, JUN_FALL_BOUNCE_MS, junTremble, junSinceLandMs, junSceneLineAt, junCollapseDialogue, JUN_TREMBLE_LINE_AFTER_LAND_MS,
+  JUN_FALL_AFTER_LINE1_MS, JUN_TRANSFORM_CUT_AFTER_MS, junCloseDialogue, junCameraZoomAt, JUN_CLOSEUP_ZOOM, JUN_CLOSEUP_IN_MS, JUN_PUSH_IN_MUL, JUN_WINDUP_MUL,
+  JUN_WINDUP_MS, JUN_PULL_MS, JUN_PULL_ZOOM, JUN_STAGGER_FORWARD_PX,
 } from './junEscort';
-import { JUN_ESCORT_INDEX, JUN_NPC_LINES, JUN_SCENE_LINES, pickJunLine, JUN_DEPART_LINE } from '../data/junEscortLines';
+import { JUN_ESCORT_INDEX, JUN_NPC_LINES, JUN_SCENE_LINES, pickJunLine, JUN_TRANSFORM_SCENE_LINES, JUN_TREMBLE_LINE_CUT_AFTER, JUN_NO_PORTRAIT } from '../data/junEscortLines';
 import { pickNpcLine } from '../data/npcLines';
+import { slowLineTypedMs } from './slowLine';
 import { escortSceneLine } from '../data/escortSceneLines';
 import { ATTENTION_IN_MS, ATTENTION_HOLD_MS } from '../store/gameStore';
 
@@ -45,7 +49,7 @@ describe('junEscort: 台詞(設計書§2の表そのまま・表に無い場面�
     expect(JUN_NPC_LINES.neglectFar).toEqual(['待って…置いていかないで…']);
     expect(JUN_SCENE_LINES.revived).toBe('…もう、塞がってます');
     expect(JUN_SCENE_LINES.targeted).toBe('私を…見てる…？');
-    expect(JUN_DEPART_LINE).toBe('変な感じがする…');
+    expect(JUN_TRANSFORM_SCENE_LINES).toEqual(['あれ…あつい、です', 'い、意識が…', '…見ないで…ください…']);
   });
   it('表に無い場面は空文字(無言)・既存の台帳の引き口からも同じ答え', () => {
     for (const cat of ['pushback', 'npcKill', 'praise', 'opPrep', 'rescueReturned', 'capture', 'retreat']) {
@@ -236,8 +240,11 @@ describe('junEscort: 倒れる→変身の時間割(時間停止の中)', () => 
     expect(junVanishAlpha(JUN_VANISH_MS)).toBe(0);
   });
   it('倒れの位置の動き: かがみの間に沈み・ふらつき、着地で跳ねて止まる(量は数px)', () => {
-    const at = (ms: number) => junCollapseMotion(ATTENTION_IN_MS + JUN_COLLAPSE_BEAT_MS + ms, ATTENTION_IN_MS);
-    expect(at(-10)).toEqual({ forward: 0, down: 0 });
+    const at0 = (ms: number) => junCollapseMotion(ATTENTION_IN_MS + JUN_COLLAPSE_BEAT_MS + ms, ATTENTION_IN_MS);
+    // 立ったままのよろめきで前へ出た分(JUN_STAGGER_FORWARD_PX)は倒れの間も残る=ここではそれを除いて見る
+    const at = (ms: number) => { const m = at0(ms); return { forward: m.forward - JUN_STAGGER_FORWARD_PX, down: m.down }; };
+    expect(junCollapseMotion(0, ATTENTION_IN_MS)).toEqual({ forward: 0, down: 0 });
+    expect(at(0).forward).toBeCloseTo(0);
     let maxDown = 0, sawL = false, sawR = false;
     for (let t = 0; t < JUN_FALL_MS * Math.sqrt(JUN_FALL_FRAME1_AT); t += 10) {
       const m = at(t);
@@ -249,7 +256,8 @@ describe('junEscort: 倒れる→変身の時間割(時間停止の中)', () => 
     expect(maxDown).toBeLessThanOrEqual(3.01);
     expect(sawL && sawR).toBe(true); // 左右に一度ふらつく
     expect(at(JUN_FALL_MS + 80).down).toBeLessThan(0); // 着地で跳ねる(上へ)
-    expect(at(JUN_FALL_MS + 400)).toEqual({ forward: 0, down: 0 }); // 止まる
+    expect(at(JUN_FALL_MS + 400).forward).toBeCloseTo(0); // 止まる
+    expect(at(JUN_FALL_MS + 400).down).toBe(0);
   });
   it('倒れの絵の足元合わせは連続(コマの切り替えで段差が無い)', () => {
     expect(medicFallShiftPx(0, JUN_FALL_FRAME1_AT, JUN_FALL_FRAME2_AT)).toBe(MEDIC_FALL_SHIFT_PX[0]);
@@ -368,7 +376,136 @@ describe('倒れる時の通信(社長指示2026-10-20)', () => {
   it('「い、意識が…」をその場で出し、待ち行列のジュンの行だけ捨てる', async () => {
     const { junCollapseDialogue } = await import('./junEscort');
     const r = junCollapseDialogue(1000, [{ name: 'ジュン', text: 'x' }, { name: '武蔵', text: 'y' }], 2800, 1200);
-    expect(r.npcDialogue).toEqual({ name: 'ジュン', text: 'い、意識が…', until: 1000 + 2800 + 1200, slow: true });
+    expect(r.npcDialogue).toEqual({ name: 'ジュン', text: 'い、意識が…', until: 1000 + 2800 + 1200, slow: true, portrait: JUN_NO_PORTRAIT });
     expect(r.npcDialogueQueue).toEqual([{ name: '武蔵', text: 'y' }]);
+  });
+});
+
+describe('変異の場面のカメラと通信(research/JUN_ESCORT.md §5)', () => {
+  const IN = ATTENTION_IN_MS;
+  const typed = (t: string) => slowLineTypedMs(Array.from(t));
+  const fallAt = IN + JUN_COLLAPSE_BEAT_MS;
+  const landAt = fallAt + JUN_FALL_MS;
+  it('行の時刻: 1行目を送り終わって200ms後に倒れ始め・3行目は着地の跳ねの直後・「…見ないで…」を送り終わって130ms後に変身で断ち切る', () => {
+    // 1行目はアテンション開始と同時に出る。文言を変えたら JUN_COLLAPSE_BEAT_MS を直す(このテストが落ちる)。
+    expect(JUN_FALL_AFTER_LINE1_MS).toBe(200);
+    expect(typed(JUN_TRANSFORM_SCENE_LINES[0]) + JUN_FALL_AFTER_LINE1_MS).toBe(fallAt);
+    expect(fallAt).toBeGreaterThanOrEqual(JUN_CLOSEUP_IN_MS); // 寄り切ってから倒れる
+    expect(typed(JUN_TRANSFORM_SCENE_LINES[1])).toBeLessThan(JUN_FALL_MS); // 2行目は倒れている間に送り切る
+    expect(JUN_TREMBLE_LINE_AFTER_LAND_MS).toBe(JUN_FALL_BOUNCE_MS);
+    // 3行目は最後まで言わせない: 頭の「…見ないで…」を送り終わった少し後=「ください…」の途中で変身
+    expect(JUN_TRANSFORM_SCENE_LINES[2].startsWith(JUN_TREMBLE_LINE_CUT_AFTER)).toBe(true);
+    expect(JUN_LIE_MS).toBe(JUN_TREMBLE_LINE_AFTER_LAND_MS + typed(JUN_TREMBLE_LINE_CUT_AFTER) + JUN_TRANSFORM_CUT_AFTER_MS);
+    const cutAt = JUN_LIE_MS - JUN_TREMBLE_LINE_AFTER_LAND_MS; // 3行目が出てから変身まで
+    expect(cutAt).toBeLessThan(typed(JUN_TRANSFORM_SCENE_LINES[2]));
+    expect(cutAt).toBeGreaterThan(typed(JUN_TREMBLE_LINE_CUT_AFTER));
+    // 拍を揃えない(段の後の間が同じ値の連打にならない)
+    expect(JUN_TRANSFORM_CUT_AFTER_MS).not.toBe(JUN_FALL_AFTER_LINE1_MS);
+    expect(junTransformAtMs(IN)).toBe(IN + JUN_COLLAPSE_BEAT_MS + JUN_FALL_MS + JUN_LIE_MS);
+    expect(junSinceLandMs(junTransformAtMs(IN), IN)).toBe(JUN_LIE_MS);
+    expect(JUN_FALL_MS).toBe(1800);
+  });
+  it('通信の段: 寄り始め→倒れ始め→着地の跳ねの直後(段は戻らない)', () => {
+    expect(junSceneLineAt(0, IN)).toBe(0);
+    expect(junSceneLineAt(fallAt - 1, IN)).toBe(0);
+    expect(junSceneLineAt(fallAt, IN)).toBe(1);
+    expect(junCollapseView(fallAt, IN).frame).toBe(0); // 倒れ始め=倒れの0コマ目へ入る瞬間
+    expect(junSceneLineAt(landAt + JUN_TREMBLE_LINE_AFTER_LAND_MS - 1, IN)).toBe(1);
+    expect(junSceneLineAt(landAt + JUN_TREMBLE_LINE_AFTER_LAND_MS, IN)).toBe(2);
+    let prev = 0;
+    for (let t = 0; t <= junTransformAtMs(IN) + 500; t += 10) { const l = junSceneLineAt(t, IN); expect(l).toBeGreaterThanOrEqual(prev); prev = l; }
+  });
+  it('各段の行は、その場で差し替え・ジュンの待ち行列は捨てる', () => {
+    for (const text of JUN_TRANSFORM_SCENE_LINES) {
+      const r = junCollapseDialogue(500, [{ name: 'ジュン', text: 'x' }, { name: '武蔵', text: 'y' }], 2800, 1200, text);
+      expect(r.npcDialogue).toEqual({ name: 'ジュン', text, until: 500 + 2800 + 1200, slow: true, portrait: JUN_NO_PORTRAIT });
+      expect(r.npcDialogueQueue).toEqual([{ name: '武蔵', text: 'y' }]);
+    }
+  });
+  it('変身の瞬間に通信の箱を閉じる(ジュンの行だけ・ほかの人の行は残す)', () => {
+    const q = [{ name: 'ジュン', text: 'x' }, { name: '武蔵', text: 'y' }];
+    expect(junCloseDialogue({ name: 'ジュン', text: 'a' }, q)).toEqual({ npcDialogue: null, npcDialogueQueue: [{ name: '武蔵', text: 'y' }] });
+    expect(junCloseDialogue({ name: '武蔵', text: 'b' }, q).npcDialogue).toEqual({ name: '武蔵', text: 'b' });
+    expect(junCloseDialogue(null, []).npcDialogue).toBeNull();
+  });
+  it('痙攣: 0から始まる・横は4px以下・縦は1px以下・1フレームで2px以下・ビクッは強くなり2回目は逆向き・最後の山が変身の瞬間', () => {
+    for (let t = -500; t <= JUN_FALL_BOUNCE_MS; t += 5) expect(junTremble(t, JUN_LIE_MS)).toEqual({ x: 0, y: 0 });
+    let prev = { x: 0, y: 0 };
+    const jerks: number[] = []; let cur = 0; let still = 0; let sawShiver = false;
+    for (let t = 0; t <= JUN_LIE_MS + 400; t += 16) {
+      const v = junTremble(t, JUN_LIE_MS);
+      expect(Number.isInteger(v.x) && Number.isInteger(v.y)).toBe(true);
+      expect(Math.abs(v.x)).toBeLessThanOrEqual(4);
+      expect(v.y).toBeGreaterThanOrEqual(-1);
+      expect(v.y).toBeLessThanOrEqual(0);
+      expect(Math.abs(v.x - prev.x)).toBeLessThanOrEqual(2);
+      expect(Math.abs(v.y - prev.y)).toBeLessThanOrEqual(1);
+      if (v.y === 0 && v.x !== 0) sawShiver = true;
+      // ビクッ(縦が出ている間)の横の頂点を符号つきで拾う
+      if (v.y !== 0) { if (Math.abs(v.x) > Math.abs(cur)) cur = v.x; still = 0; } else if (cur !== 0 && ++still > 3) { jerks.push(cur); cur = 0; }
+      prev = v;
+    }
+    if (cur !== 0) jerks.push(cur);
+    expect(sawShiver).toBe(true);
+    expect(jerks.length).toBe(3);
+    for (let i = 1; i < jerks.length; i++) expect(Math.abs(jerks[i])).toBeGreaterThan(Math.abs(jerks[i - 1]));
+    expect(Math.sign(jerks[1])).toBe(-Math.sign(jerks[0])); // 2回目は逆向き
+    expect(Math.abs(jerks[2])).toBe(4);
+    // 最後の山=変身の瞬間(f=1)
+    expect(junTremble(JUN_LIE_MS, JUN_LIE_MS)).toEqual({ x: 4, y: -1 });
+    // 跳ね上がりは速く、戻りは遅い(頂点の前後で、半分の高さまでの時間)
+    const half = (dir: 1 | -1) => { let t = JUN_LIE_MS; while (Math.abs(junTremble(t, JUN_LIE_MS).x) >= 2) t += dir; return Math.abs(t - JUN_LIE_MS); };
+    expect(half(1)).toBeGreaterThan(half(-1) * 2);
+    expect(junTremble(JUN_LIE_MS + 400, JUN_LIE_MS)).toEqual({ x: 0, y: 0 }); // 体が消えるまでに収まる
+    expect(junTremble(1234, JUN_LIE_MS)).toEqual(junTremble(1234, JUN_LIE_MS)); // 乱数なし
+  });
+  it('よろめき: 寄り切りの直後から・不揃いな左右2回(戻り切らない)→最後に半歩前へ・倒れ始めで跳ばない', () => {
+    const m = (ms: number) => junCollapseMotion(ms, IN).forward;
+    expect(m(JUN_CLOSEUP_IN_MS)).toBe(0);
+    expect(m(JUN_CLOSEUP_IN_MS + 30)).toBeGreaterThan(0); // 寄り切りの直後から動く
+    let prev = 0; let turns = 0; let dir = 0; let minV = 0;
+    for (let t = JUN_CLOSEUP_IN_MS; t <= fallAt + 100; t += 16) {
+      const f = m(t);
+      expect(Math.abs(f - prev)).toBeLessThan(0.6); // 加減速つき=跳ばない
+      const d = Math.sign(f - prev);
+      if (d !== 0 && dir !== 0 && d !== dir) turns++;
+      if (d !== 0) dir = d;
+      minV = Math.min(minV, f);
+      prev = f;
+    }
+    expect(turns).toBeGreaterThanOrEqual(2); // 片側→逆側へ振れてから前へ
+    // 1回目の揺れは戻り切らずに一度止まる(中ほどで正の側に残る)
+    const u = (k: number) => JUN_CLOSEUP_IN_MS + (fallAt - JUN_CLOSEUP_IN_MS) * k;
+    expect(m(u(0.33))).toBeGreaterThan(0.3);
+    expect(Math.abs(m(u(0.33) + 16) - m(u(0.33)))).toBeLessThan(0.1);
+    expect(minV).toBeLessThan(-0.5); // 逆側へも崩れる
+    expect(m(fallAt - 1)).toBeCloseTo(JUN_STAGGER_FORWARD_PX, 1);
+    expect(m(fallAt)).toBeCloseTo(JUN_STAGGER_FORWARD_PX, 1);
+  });
+  it('カメラ: 等倍から寄り(約700ms)→押し込み→溜め→一気に引く(約400ms)・つなぎ目で跳ばない', () => {
+    const T = junTransformAtMs(IN);
+    const c = (ms: number) => junCameraZoomAt(ms, 'collapse', IN);
+    const p = (ms: number) => junCameraZoomAt(ms, 'transform', IN);
+    expect(c(0)).toEqual({ mul: 1, cancel: 0 });
+    expect(c(JUN_CLOSEUP_IN_MS).mul).toBeCloseTo(JUN_CLOSEUP_ZOOM);
+    expect(c(JUN_CLOSEUP_IN_MS).cancel).toBe(1);
+    expect(c(T - JUN_WINDUP_MS).mul).toBeCloseTo(JUN_CLOSEUP_ZOOM * JUN_PUSH_IN_MUL);
+    const peak = JUN_CLOSEUP_ZOOM * JUN_PUSH_IN_MUL * JUN_WINDUP_MUL;
+    expect(c(T).mul).toBeCloseTo(peak);
+    expect(c(T + 50).mul).toBeCloseTo(peak); // 変身が1フレーム遅れても溜めの頂点で待つ
+    expect(p(0).mul).toBeCloseTo(peak);
+    expect(p(0).cancel).toBe(1);
+    expect(p(JUN_PULL_MS).mul).toBeCloseTo(JUN_PULL_ZOOM);
+    expect(p(JUN_PULL_MS).cancel).toBeCloseTo(0);
+    // 加速→減速: 出だしの1フレームは遅い(指数の近づきではない)
+    expect(c(16).mul - 1).toBeLessThan((JUN_CLOSEUP_ZOOM - 1) * 0.01);
+    expect(peak - p(16).mul).toBeLessThan((peak - JUN_PULL_ZOOM) * 0.1);
+    // 連続(1msごとに跳ばない)・押し込みの間は単調に寄る
+    let prev = c(0).mul;
+    for (let t = 1; t <= T + 20; t++) { const z = c(t).mul; expect(Math.abs(z - prev)).toBeLessThan(0.01); if (t > JUN_CLOSEUP_IN_MS) expect(z).toBeGreaterThanOrEqual(prev - 1e-9); prev = z; }
+    prev = p(0).mul;
+    for (let t = 1; t <= JUN_PULL_MS + 20; t++) { const z = p(t).mul; expect(Math.abs(z - prev)).toBeLessThan(0.03); expect(z).toBeLessThanOrEqual(prev + 1e-9); prev = z; }
+    // 引きの前半に縮みが寄る
+    expect(peak - p(JUN_PULL_MS / 2).mul).toBeGreaterThan((peak - JUN_PULL_ZOOM) * 0.5);
   });
 });
