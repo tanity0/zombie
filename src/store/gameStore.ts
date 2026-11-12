@@ -4896,7 +4896,7 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const dir = BR.brawlerAimDir(c.x, c.y, target, p.lastDirection);
   const quick = s0.quickUntil > t;
   const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now, ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
-  const ap = quick ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerApproach(c.x, c.y, target, spec.dashPx);
+  const ap = quick ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerApproach(c.x, c.y, target, spec.lungePx); // ★§31: 出した瞬間の相手へ、決まった距離まで(途中で取り直さない)
   // 画面全体の止めの最中に出した段の詰め(壁時計)は、止めが明けた時刻から始める(上の蹴りと同じ・出だしの gameTime と揃える)。
   setBrawler(set, s, { lastDirection: { x: dir.x, y: dir.y }, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, spec.windupMs, Math.max(now, get().hitstopUntil)) });
   // 振りの音(空振りの連打も無音にしない・段ごとに個別の音程=等間隔に下げない)。
@@ -11361,36 +11361,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       const bd = BR.brawlerTechBufferDecision(s0, t);
       if (bd === 'fire') { fireBufferedBrawlerTech(get, set, { ...s0, stepHeld: false }, false); return; }
       if (bd === 'drop') setBrawler(set, { ...s0, techBuffer: undefined });
-      return;
-    }
-    // ★飛び蹴りの3発目: 溜めが明けて飛び出す瞬間に、狙った敵の今の位置へ飛ぶ先を取り直す(1回だけ・research/BRAWLER.md §19-10)。
-    //   当たる時刻(前隙の終わり)は変えない=残りの飛ぶ時間で、取り直した距離を詰める。敵が居ない・狙えない時は取り直さない(今の飛ぶ先のまま)。
-    if (BR.brawlerKickReaimDue(s0, p.lungeHoldUntil ?? 0, now)) {
-      const tgt = get().enemies.find(e => e.id === s0.targetId) ?? null;
-      // 残りの飛ぶ時間は前隙の残りから取る(踏み込みの器の期限からは取らない: 始めた時に敵が密着していると器は空=期限0で、
-      // 取り直しが走らず、溜めの間に滑った敵に届かなかった・検収2026-11-11)。
-      const remain = s0.windupMs - BR.brawlerElapsed(s0, t);
-      if (tgt && BR.isBrawlerTargetable(tgt) && remain > 0) {
-        const c = brawlerCenter(p);
-        const ap = BR.brawlerApproach(c.x, c.y, tgt, BR.BRAWLER_KICK_RANGE);
-        const dir = BR.brawlerAimDir(c.x, c.y, tgt, p.lastDirection);
-        setBrawler(set, { ...s0, kickReaimed: true, dirX: dir.x, dirY: dir.y }, { ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, remain, now), lastDirection: { x: dir.x, y: dir.y } });
-      } else setBrawler(set, { ...s0, kickReaimed: true });
-      return;
-    }
-    // ★4段目(小ジャンプの叩き潰し): 跳んでいる途中に1回だけ、狙った敵の今の位置へ降りる先を取り直す(BR.brawlerSlamTrackDue)。
-    //   残りの跳ぶ時間で、上限 BRAWLER_SLAM_TRACK_PX まで詰める。敵が居ない・狙えない時は取り直さない(今の降りる先のまま)。
-    if (BR.brawlerSlamTrackDue(s0, t)) {
-      const tgt = get().enemies.find(e => e.id === s0.targetId) ?? null;
-      const remain = s0.windupMs - BR.brawlerElapsed(s0, t);
-      if (tgt && BR.isBrawlerTargetable(tgt) && remain > 0) {
-        const c = brawlerCenter(p);
-        const ap = BR.brawlerApproach(c.x, c.y, tgt, BR.BRAWLER_SLAM_TRACK_PX);
-        const dir = BR.brawlerAimDir(c.x, c.y, tgt, p.lastDirection);
-        // 詰める先が無い(もう届いている)時は、今の踏み込みの器をそのまま残す(止めると跳びの途中で体が急に止まる)。
-        setBrawler(set, { ...s0, slamTracked: true, dirX: dir.x, dirY: dir.y },
-          { ...(ap.dist > 0.5 ? brawlerLungePatch(ap.dx, ap.dy, ap.dist, remain, now) : {}), lastDirection: { x: dir.x, y: dir.y } });
-      } else setBrawler(set, { ...s0, slamTracked: true });
       return;
     }
     // 前隙の途中で掴まれた・対人の紫に入った・シーカーに入った=出かかった段/技を取り消し、先行入力も捨てる(§8-4)。

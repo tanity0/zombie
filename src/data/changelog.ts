@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5538', items: [
+    '格闘の基本の技は、出した瞬間の向きへ決まった距離だけ踏み込む。相手が離れていたり、技の途中で動かれたりすると外れる',
+    '踵落としで、体も蹴りに合わせて回る',
+  ] },
   { version: '0.25.5537', items: [
     '格闘の踵落としの蹴りの影は、斜め上から少しだけ振り下ろす形になった',
   ] },

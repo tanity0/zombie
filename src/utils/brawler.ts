@@ -44,8 +44,16 @@ export interface BrawlerStageSpec {
   /** 当てた時のプレイヤー側の止め(ms)=止めが効く敵の止め・震えの長さ(§2-4・§7-3)。 */
   hitstopMs: number;
   shape: BrawlerShape;
-  /** 頭の詰め(ダッシュ・跳び)の最大距離(px)。0=その場。 */
+  /**
+   * 拳鬼(敵側・utils/phantomBrawlerTick)の頭の詰めの最大距離(px)。0=その場。★プレイヤーは読まない(プレイヤーは下の lungePx)。
+   * research/BRAWLER.md §31(社長裁定2026-11-12)でプレイヤーの踏み込みだけを作り直した=敵側の挙動は変えないため、旧の値をここに残す。
+   */
   dashPx: number;
+  /**
+   * ★プレイヤーの踏み込み(px・research/BRAWLER.md §31)。出した瞬間の相手へ向かって、この距離まで(相手の縁の手前 BRAWLER_STANDOFF_PX で止まる)
+   * 前隙の間に進む。相手が遠ければこの距離だけ進んで空振りする。途中で取り直さない。0=その場。
+   */
+  lungePx: number;
   /** kb が 'big' の時の押しの勢い(今の近接の何倍か)。無ければ BRAWLER_BIG_KB_MULT(4倍)。段ごとに持つ(§16)。 */
   kbMult?: number;
 }
@@ -80,16 +88,25 @@ export const brawlerWorldStopMs = (hitstopMs: number): number =>
         : BRAWLER_WORLD_STOP.weak;
 /** 5段目の掌底の押しの勢い(今の近接の何倍か)。社長指示2026-11-09「流石に敵が吹き飛びすぎ」で 4→2(約150px→約75px・§16)。大踏み潰し・飛び蹴り3発目・秘奥義の締めは BRAWLER_BIG_KB_MULT(4)のまま。 */
 export const BRAWLER_PALM_KB_MULT = 2;
+/**
+ * ★プレイヤーの基本技の踏み込み(px・research/BRAWLER.md §31「決まった距離を、出した瞬間の向きへ」・社長裁定2026-11-12)。
+ * 旧: 弱60(1・2段目)・強60(3段目)・4段目50(+跳んでいる途中の取り直し最大90)。上限の目安: 弱45・強60・4段目70(§31-2)。
+ * 決め方: 押しの距離は今のまま。上限以下で、前の技の押しを詰め切る値(弱≥5・強≥5・4段目≥38)以上。値は設計側の決定(2026-11-12・一番短い 5/5/5/38 では前に出ないため)。
+ * 道の表の全部のつなぎが雑魚に「しっかりやれば繋がる」(余裕8px以上)ことはテストで確かめる。
+ * 固定するテスト= utils/brawlerReach.test.ts(全部のつなぎ)・store/brawlerReach.store.test.ts(実際に回す)。
+ * 飛び蹴り(1〜3発目・踵落とし)の飛ぶ距離は今のまま(出した瞬間の相手の手前まで・最大 BRAWLER_KICK_RANGE)。5段目の突き抜けは対象外(0)。
+ */
+export const BRAWLER_LUNGE_PX = { s1: 22, s2: 22, s3: 32, s4: 50 } as const;
 /** 段の表の係数1.0の値(今までの値)。止めは BRAWLER_HITSTOP。 */
 export const BRAWLER_STAGES_BASE: readonly BrawlerStageSpec[] = [
-  { stage: 1, windupMs: 60, recoveryMs: 140, mult: 0.30, kb: 'small', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
-  { stage: 2, windupMs: 60, recoveryMs: 140, mult: 0.40, kb: 'small', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60 },
-  { stage: 3, windupMs: 120, recoveryMs: 230, mult: 0.8, kb: 'normal', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'fist', dashPx: 60 },
-  { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.10, kb: 'small', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'landing', dashPx: 50 },
+  { stage: 1, windupMs: 60, recoveryMs: 140, mult: 0.30, kb: 'small', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60, lungePx: BRAWLER_LUNGE_PX.s1 },
+  { stage: 2, windupMs: 60, recoveryMs: 140, mult: 0.40, kb: 'small', hitstopMs: BRAWLER_HITSTOP.weak, shape: 'single', dashPx: 60, lungePx: BRAWLER_LUNGE_PX.s2 },
+  { stage: 3, windupMs: 120, recoveryMs: 230, mult: 0.8, kb: 'normal', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'fist', dashPx: 60, lungePx: BRAWLER_LUNGE_PX.s3 },
+  { stage: 4, windupMs: 250, recoveryMs: 200, mult: 1.10, kb: 'small', hitstopMs: BRAWLER_HITSTOP.strong, shape: 'landing', dashPx: 50, lungePx: BRAWLER_LUNGE_PX.s4 },
   // 5段目=一閃型の貫通突進(社長指示2026-11-07)。前隙 250 = 溜め 100 + 突き抜け 150。判定は抜け切った瞬間に軌跡の帯で一括(§9-26)。
   // 社長指示2026-11-07「飛距離少しだけ短く」で突き抜け 160→140px・150→130ms(最高速は同じ)。総尺 500 は戻り 270 で保つ(§9-35)。
   // 社長指示2026-11-11「5段目の隙を少しだけ伸ばして」で戻り 270→320(係数1.3で 351→416ms)。前隙・威力・飛距離は変えていない。
-  { stage: 5, windupMs: 230, recoveryMs: 320, mult: 1.60, kb: 'big', hitstopMs: BRAWLER_HITSTOP.closer, shape: 'band', dashPx: 0, kbMult: BRAWLER_PALM_KB_MULT }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
+  { stage: 5, windupMs: 230, recoveryMs: 320, mult: 1.60, kb: 'big', hitstopMs: BRAWLER_HITSTOP.closer, shape: 'band', dashPx: 0, lungePx: 0, kbMult: BRAWLER_PALM_KB_MULT }, // 押した瞬間の詰めは無し(溜めの後に突き抜ける)
 ];
 /** 段の表(係数を掛けた出だし・戻り)。 */
 export let BRAWLER_STAGES: readonly BrawlerStageSpec[] = BRAWLER_STAGES_BASE;
@@ -358,7 +375,7 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
     ...s, phase: 'attack', stage: spec.stage, tech: null, kickN: 0, kickHeel: false, heelBuffer: false, startAt: t,
     // 前隙なし(受けた直後)でも5段目は突き抜ける時間だけは要る(溜めだけ消える)。
     windupMs: quick ? (spec.stage === 5 ? BRAWLER_PALM_DASH_MS : 0) : spec.windupMs, recoveryMs: spec.recoveryMs,
-    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false, slamTracked: false,
+    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
     palmFromX: undefined, palmFromY: undefined,
     // 前隙なしは1回きり(受けた直後の最初の1発だけ)。
     quickUntil: quick ? 0 : s.quickUntil,
@@ -370,28 +387,6 @@ export const brawlerStartAttack = (s: BrawlerState, stage: number, t: number, qu
   };
 };
 
-/**
- * ★飛び蹴りの3発目の狙い直し(社長指示2026-11-11「3段目もジャンプして、そこの高さに追いついて、蹴り飛ばす」・research/BRAWLER.md §19-10)。
- * 3発目は蹴りに入る前に溜める。飛ぶ先を溜め始めの敵の位置で決めたままだと、溜めの間に前の蹴りの押しで滑った敵に届かない
- * (実ループで36本中5本が空振り)。溜めが明けて踏み込みの器が動き出す瞬間(lungeHoldUntil を過ぎた最初の更新)に、1回だけ取り直す。
- * lungeHoldUntil=踏み込みの器を止めている終わり(Date.now・0=止めていない)。
- */
-export const brawlerKickReaimDue = (
-  s: Pick<BrawlerState, 'phase' | 'tech' | 'kickChargeMs' | 'resolved' | 'kickReaimed' | 'targetId'>, lungeHoldUntil: number, now: number,
-): boolean => s.phase === 'tech' && s.tech === 'kick' && (s.kickChargeMs ?? 0) > 0 && !s.resolved && !s.kickReaimed
-  && !!s.targetId && lungeHoldUntil > 0 && now >= lungeHoldUntil;
-/**
- * ★4段目(小ジャンプの叩き潰し)の追尾(社長指示2026-11-11「通常技の叩き潰しは、少しの距離だけ敵を追尾(普通に叩けば全段の浮かし飛ばした敵に
- * 届くくらいの距離)」「ジャンプのタイミングのことね」)。降りる先を押した瞬間の敵の位置で決めたままだと、前の段の押しで滑った敵に届かない。
- * 跳んでいる途中(前隙のこの割合を過ぎた最初の更新)に1回だけ、狙った敵の今の位置へ取り直す。当たる時刻(前隙の終わり)は変えない。
- */
-export const BRAWLER_SLAM_TRACK_AT = 0.35;
-/** 取り直しで詰められる距離の上限(px・叩き台)。押した瞬間の詰め(段の表の dashPx)とは別に、跳んでいる残りの時間で詰める。 */
-export const BRAWLER_SLAM_TRACK_PX = 90;
-export const brawlerSlamTrackDue = (
-  s: Pick<BrawlerState, 'phase' | 'stage' | 'resolved' | 'slamTracked' | 'targetId' | 'windupMs' | 'startAt' | 'stopFrom' | 'stopUntil' | 'stopPrevMs'>, t: number,
-): boolean => s.phase === 'attack' && s.stage === 4 && !s.resolved && !s.slamTracked && !!s.targetId && s.windupMs > 0
-  && brawlerElapsed(s, t) >= s.windupMs * BRAWLER_SLAM_TRACK_AT && brawlerElapsed(s, t) < s.windupMs;
 /**
  * 新しい技を始めた状態(ポイントは呼び手が払う)。cancel=技の後隙を取り消して出した(§11-4)=技の流れを続ける。
  * 飛び蹴りの2・3発目は同じ技の続き(流れはそのまま)。それ以外は流れをこの技から始め直す。
@@ -410,7 +405,7 @@ export const brawlerStartTech = (s: BrawlerState, kind: BrawlerTechKind, t: numb
     kickChargeMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0,
     windupMs: spec.windupMs + (kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? BRAWLER_KICK3_CHARGE_MS : 0),
     recoveryMs: kind === 'kick' && kickN >= BRAWLER_KICK_MAX ? Math.round(spec.recoveryMs * BRAWLER_KICK3_RECOVERY_MULT) : spec.recoveryMs,
-    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false, kickReaimed: false,
+    stopFrom: 0, stopUntil: 0, stopPrevMs: 0, resolved: false, connected: false, landed: false, linked: false, buffered: false,
     // 技の後は1段目(§7-5)。
     nextStage: 1, chainUntil: 0,
     guardUntil: kind === 'guard' ? t + BRAWLER_GUARD_MS : s.guardUntil,
@@ -1384,6 +1379,12 @@ export const BRAWLER_HEEL_ROT_UP = -0.5;
 export const BRAWLER_HEEL_ROT_DOWN = -0.1;
 export const BRAWLER_HEEL_ROT_FOLLOW = 0.08;
 export const BRAWLER_HEEL_ROT_BACK = 0.04;
+/**
+ * ★踵落としの体の傾き=蹴りの影の回し(brawlerHeelStandAt の rot)×この係数(社長裁定2026-11-12「まわして」)。同じ時刻・同じ向きで、量は影より小さく:
+ * 溜めで後ろへ反り(lean 負・最大 0.62×0.55≈0.34rad)、振り下ろしで時計回りに戻り、当たる瞬間は少し反りが残る(≈−0.055)。当たった後は後隙の進みで0へ戻して着地へつなぐ。
+ * 体ごと大きく回すと側転に見える(以前の指摘)ので最大0.4rad 未満。0.55=テンポ係数1.0(溜め127ms)でも1フレーム(16ms)の跳びが0.15未満に収まる上限側。
+ */
+export const BRAWLER_HEEL_BODY_ROT_K = 0.55;
 export const BRAWLER_HEEL_LIFT_PX = 8;
 export const BRAWLER_HEEL_SINK_PX = 0;
 /**
@@ -1562,11 +1563,13 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
       // 飛び蹴り: 滞空中はしゃがみ+強い前傾 → 当たった瞬間に振り上げの絵へ変える(#4)。
       const big = s.kickN >= BRAWLER_KICK_MAX;
       const charge = Math.max(0, Math.min(s.windupMs, s.kickChargeMs ?? 0));
-      // ★社長裁定2026-11-12: 蹴りは足が前・頭が後ろ=飛んでいる間と当たった後は後ろへ傾ける(lean 負)。踵落としは今までどおり(前傾)。
+      // ★社長裁定2026-11-12: 蹴りは足が前・頭が後ろ=飛んでいる間と当たった後は後ろへ傾ける(lean 負)。踵落としは蹴りの影の回しに合わせて回す(heelLean)。
       //   傾きは瞬間で切り替えず加減速つきで入れる(慣性): 溜めの後半〜飛びの頭で前傾→後傾へ、溜め無しは踏み切りから後傾へ立ち上げる。
       const heel = !!s.kickHeel;
       const flightMs = Math.max(1, s.windupMs - charge);
       const smooth = (x: number): number => { const k = Math.max(0, Math.min(1, x)); return k * k * (3 - 2 * k); };
+      // 踵落としの体の傾き=蹴りの影の回しと同じ時刻の曲線×係数(BRAWLER_HEEL_BODY_ROT_K)。lean 負=後ろへ反る・増える=時計回り(右向き)。
+      const heelLean = (): number => BRAWLER_HEEL_BODY_ROT_K * brawlerHeelStandAt(s, el).rot;
       if (!hit && charge > 0) {
         // ★3発目の溜め(社長承認2026-11-08「飛び蹴りの3発目も少し溜めてから蹴る」): 跳び上がって空中で体を縮め、沈みながら光る(慣性つき)。
         const c = Math.min(1, el / charge);
@@ -1576,7 +1579,8 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
           const crouch = easeOut(c);
           const fwd = 0.15 + 0.2 * crouch;
           const b = heel ? 0 : smooth((el - charge * KICK3_LEAN_TURN_AT) / (charge * (1 - KICK3_LEAN_TURN_AT) + Math.min(KICK3_LEAN_TAIL_MS, KICK_LEAN_TAIL_FRAC * flightMs)));
-          return { ...base, tex: 'ready', jump: rise - sink, lean: fwd * (1 - b) - KICK_BACK_LEAN * b, push: -4 * crouch, sqY: 1 - 0.16 * crouch, sqX: 1 + 0.1 * crouch };
+          const lean = heel ? heelLean() : fwd * (1 - b) - KICK_BACK_LEAN * b;
+          return { ...base, tex: 'ready', jump: rise - sink, lean, push: -4 * crouch, sqY: 1 - 0.16 * crouch, sqX: 1 + 0.1 * crouch };
         }
         // 溜めの後に飛ぶ: 沈んだ高さから飛ぶ弧へつなぐ(つなぎ目で高さが跳ばない)。
         const f = Math.min(1, (el - charge) / Math.max(1, s.windupMs - charge));
@@ -1587,11 +1591,11 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
         // 前傾→後傾のつなぎは溜めの後半から飛びの頭まで続く(つなぎ目で傾きが跳ばない)。溜め明けの前傾は溜めの最後の値(0.35)。
         const tail = Math.min(KICK3_LEAN_TAIL_MS, KICK_LEAN_TAIL_FRAC * flightMs);
         const b = smooth((el - charge * KICK3_LEAN_TURN_AT) / (charge * (1 - KICK3_LEAN_TURN_AT) + tail));
-        const lean = heel ? 0.55 : 0.35 * (1 - b) - KICK_BACK_LEAN * b;
+        const lean = heel ? heelLean() : 0.35 * (1 - b) - KICK_BACK_LEAN * b;
         return { ...base, tex: 'ready', jump: heel ? heelJump : h0 * (1 - f) + 30 * Math.sin(Math.PI * f), lean, push: 8 };
       }
       if (!hit) {
-        const lean = heel ? 0.55 : -KICK_BACK_LEAN * smooth(el / Math.min(KICK_LEAN_IN_MS, KICK_LEAN_IN_FRAC * flightMs));
+        const lean = heel ? heelLean() : -KICK_BACK_LEAN * smooth(el / Math.min(KICK_LEAN_IN_MS, KICK_LEAN_IN_FRAC * flightMs));
         return { ...base, tex: 'ready', jump: (big ? 30 : 18) * Math.sin(Math.PI * Math.min(1, pre)), lean, push: 8 };
       }
       const th = 1 - easeOut(post);
@@ -1599,7 +1603,7 @@ export const brawlerPoseAt = (s: BrawlerState | undefined, t: number): BrawlerPo
       //   当たった瞬間(止めの間)は振り上げの絵のまま → 後隙に入ったらすぐしゃがんで着地する(深く沈んで戻る=慣性)。旧は後隙の前半45%が振り上げの絵だった。
       const land = Math.sin(Math.PI * Math.min(1, post / 0.6)) * (post < 0.6 ? 1 : 0);
       return {
-        ...base, tex: post < BRAWLER_KICK_CROUCH_AT ? 'swing' : 'ready', lean: (heel ? 0.25 : -0.25) * th, push: 6 * th, sqY: 1 - 0.12 * th - 0.14 * land, sqX: 1 + 0.08 * th + 0.1 * land,
+        ...base, tex: post < BRAWLER_KICK_CROUCH_AT ? 'swing' : 'ready', lean: (heel ? heelLean() : -0.25) * th, push: 6 * th, sqY: 1 - 0.12 * th - 0.14 * land, sqX: 1 + 0.08 * th + 0.1 * land,
         ...(s.kickHeel ? { jump: brawlerHeelHoverPx(post) } : {}), // 踵落としの後は空中に残る→後隙の後半で降りて着地
       };
     }

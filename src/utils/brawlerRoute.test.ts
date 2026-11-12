@@ -10,7 +10,7 @@ import {
   BRAWLER_KICK3_CHARGE_MS, BRAWLER_KICK_CHAIN_MS, BRAWLER_CANCELABLE, BRAWLER_HOLD_MS, BRAWLER_HOLD_BASE_MS,
   brawlerRouteAllows, brawlerRouteNodeOf, brawlerStageNode, brawlerTechNode, brawlerSecretClosing, brawlerHitLanded, brawlerCancelWindowOpen,
   brawlerTechCancelOk, brawlerTechAllowed, brawlerShouldBufferTech, brawlerLateCarry, brawlerTechBufferDecision, brawlerStepAllowed, brawlerSecretCarry,
-  brawlerStartAttack, brawlerStartTech, brawlerAfterResolve, brawlerFinish, brawlerStageSpec, initialBrawlerState, brawlerKickFlightMs, brawlerKickReaimDue, brawlerSlamTrackDue, BRAWLER_SLAM_TRACK_AT,
+  brawlerStartAttack, brawlerStartTech, brawlerAfterResolve, brawlerFinish, brawlerStageSpec, initialBrawlerState, brawlerKickFlightMs,
   brawlerStepStart, brawlerStepping, brawlerStepHeldPressFire, brawlerPressDecision,
   brawlerHeelInput, brawlerHeelCost, brawlerTechCost, BRAWLER_HEEL_EXTRA_COST, brawlerHeelStandAt, brawlerHeelHitSink, BRAWLER_HEEL_ROT_UP, BRAWLER_HEEL_ROT_DOWN, BRAWLER_HEEL_ROT_PEAK, BRAWLER_HEEL_HIT_SINK_MS,
 } from './brawler';
@@ -520,44 +520,13 @@ describe('④ コンボの区切りと ⑤ 固まらない時間・⑥ 2つの�
   });
 });
 
-describe('飛び蹴りの3発目の狙い直し(§19-10・社長指示2026-11-11)', () => {
-  const k3 = () => ({ ...brawlerStartTech(initialBrawlerState(), 'kick', 1000, 3), targetId: 'z' });
-  it('溜めのある蹴り(3発目)だけ・溜めが明けて踏み込みが動き出した最初の更新で・1回だけ', () => {
-    const s = k3();
-    expect(s.kickReaimed).toBe(false);
-    expect(brawlerKickReaimDue(s, 5000, 4999)).toBe(false);  // まだ溜めている(踏み込みは止まっている)
-    expect(brawlerKickReaimDue(s, 5000, 5000)).toBe(true);   // 明けた
-    expect(brawlerKickReaimDue({ ...s, kickReaimed: true }, 5000, 5000)).toBe(false);
-    expect(brawlerKickReaimDue({ ...s, resolved: true }, 5000, 5000)).toBe(false);
-    expect(brawlerKickReaimDue({ ...s, targetId: undefined }, 5000, 5000)).toBe(false);
-    expect(brawlerKickReaimDue(s, 0, 5000)).toBe(false);     // 踏み込みを止めていない
-  });
-  it('1・2発目(溜め無し)は取り直さない・次の技を始めると旗は戻る', () => {
-    for (const n of [1, 2]) expect(brawlerKickReaimDue({ ...brawlerStartTech(initialBrawlerState(), 'kick', 1000, n), targetId: 'z' }, 5000, 5000)).toBe(false);
-    expect(brawlerStartTech({ ...k3(), kickReaimed: true }, 'kick', 2000, 1).kickReaimed).toBe(false);
-  });
-});
-
-describe('4段目(小ジャンプの叩き潰し)の追尾(社長指示2026-11-11)', () => {
-  const start = (stage: number, quick = false) => ({ ...brawlerStartAttack(initialBrawlerState(), stage, 1000, quick), targetId: 'e1' });
-  it('跳んでいる途中に1回だけ取り直す(跳び始めと判定の後は取り直さない)', () => {
-    const s = start(4);
-    const at = 1000 + s.windupMs * BRAWLER_SLAM_TRACK_AT;
-    expect(brawlerSlamTrackDue(s, at - 1)).toBe(false);
-    expect(brawlerSlamTrackDue(s, at)).toBe(true);
-    expect(brawlerSlamTrackDue({ ...s, slamTracked: true }, at)).toBe(false);
-    expect(brawlerSlamTrackDue(s, 1000 + s.windupMs)).toBe(false);
-    expect(brawlerSlamTrackDue({ ...s, resolved: true }, at)).toBe(false);
-  });
-  it('4段目だけ・狙った敵が居る時だけ・前隙なしでは取り直さない', () => {
-    for (const st of [1, 2, 3, 5]) { const s = start(st); expect(brawlerSlamTrackDue(s, 1000 + s.windupMs * 0.6), `stage ${st}`).toBe(false); }
-    const s4 = start(4);
-    expect(brawlerSlamTrackDue({ ...s4, targetId: undefined }, 1000 + s4.windupMs * 0.6)).toBe(false);
-    expect(brawlerSlamTrackDue(start(4, true), 1000)).toBe(false);
-  });
-  it('次の4段目を出し直すと、また取り直せる', () => {
-    const s = { ...start(4), slamTracked: true };
-    expect(brawlerStartAttack(s, 4, 3000, false).slamTracked).toBe(false);
+describe('§31 途中の取り直しをやめた(社長裁定2026-11-12「位置取り次第ではハズレることもある」)', () => {
+  // 旧: 飛び蹴りの3発目の溜め明けの取り直し(§19-10)と、4段目の跳んでいる途中の取り直し(§29)。行動の状態に取り直しの旗は残っていない。
+  it('3発目の蹴り・4段目を始めた状態に、取り直しの旗が無い', () => {
+    const k3 = brawlerStartTech(initialBrawlerState(), 'kick', 1000, 3) as unknown as Record<string, unknown>;
+    const s4 = brawlerStartAttack(initialBrawlerState(), 4, 1000, false) as unknown as Record<string, unknown>;
+    expect('kickReaimed' in k3).toBe(false);
+    expect('slamTracked' in s4).toBe(false);
   });
 });
 

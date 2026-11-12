@@ -5,6 +5,7 @@ import type { Enemy } from '../types/game';
 import {
   BRAWLER_STAGES, BRAWLER_TECHS, brawlerPointCap, brawlerAfterAmmoPickup, BRAWLER_AMMO_PICKUP_POINTS, brawlerEndGuardForStomp, BRAWLER_GUARD_QUICK_MS, brawlerTechCost,
   brawlerPalmDashDue, isBrawlerPalmDashing, brawlerKickFlightMs, BRAWLER_KICK_RANGE, BRAWLER_KICK_NO_TARGET_PX, brawlerPassKbDir, BRAWLER_PALM_DASH_MS, sweepResolve, brawlerStandAt, BRAWLER_STAND_STAGE2_KIND, brawlerSecretStep, brawlerSecretDue, brawlerSecretPickMove, brawlerSecretPickTarget, brawlerSecretStart, brawlerSecretEnd, BRAWLER_SECRET_GAP_MS, BRAWLER_SECRET_STRIKES, BRAWLER_SECRET_MOVES, initialBrawlerState, brawlerElapsed, brawlerApplyHitstop,
+  BRAWLER_TEMPO, BRAWLER_TEMPO_DEFAULT, setBrawlerTempo, BRAWLER_HEEL_BODY_ROT_K, brawlerHeelStandAt,
   brawlerStartAttack, brawlerStartTech, brawlerPressDecision, brawlerAfterResolve, brawlerDueEvent, brawlerFinish,
   brawlerStageForPress, brawlerOnHurt, brawlerCancel, brawlerTechAllowed, brawlerNextKickN, brawlerCanPay,
   classifyBrawlerFlick, detectFlickFromSamples, pickBrawlerTarget, brawlerCircleTargets, brawlerBandTargets,
@@ -274,7 +275,7 @@ describe('格闘: 絵(クリエイティブ監査)', () => {
       expect(p2.push).toBe(p1.push);
     }
   });
-  it('飛び蹴り: 飛んでいる間と当たった後は後ろへ傾く(頭が後ろ)・傾きは1フレームで跳ばない・踵落としは前傾のまま', () => {
+  it('飛び蹴り: 飛んでいる間と当たった後は後ろへ傾く(頭が後ろ)・傾きは1フレームで跳ばない', () => {
     const f = brawlerStartTech(initialBrawlerState(), 'kick', 0, 1);
     expect(brawlerPoseAt(f, f.windupMs - 10)!.lean).toBeLessThan(-0.5);
     expect(brawlerPoseAt({ ...f, resolved: true }, f.windupMs + 5)!.lean).toBeLessThan(0);
@@ -294,11 +295,43 @@ describe('格闘: 絵(クリエイティブ監査)', () => {
       expect(Math.abs(l - prev)).toBeLessThan(0.15 / 16 * 1.5); // 1msあたり=16msで0.15未満相当
       prev = l;
     }
-    // 踵落とし: 今までどおり(飛び=0.55・当たった後=+0.25×th)
-    const h = brawlerStartTech(initialBrawlerState(), 'kick', 0, 3, false, true);
-    expect(brawlerPoseAt(h, h.windupMs - 10)!.lean).toBe(0.55);
-    expect(brawlerPoseAt(h, 10)!.lean).toBeCloseTo(0.15 + 0.2 * (1 - (1 - 10 / h.kickChargeMs!) ** 2), 6);
-    expect(brawlerPoseAt({ ...h, resolved: true }, h.windupMs)!.lean).toBeCloseTo(0.25, 6);
+  });
+  it('★踵落とし: 体も蹴りの影と同じ時刻・同じ向きで回す(溜めで後ろへ反り・振り下ろしで時計回り・当たった後は0へ戻る・社長裁定2026-11-12「まわして」)', () => {
+    const was = BRAWLER_TEMPO;
+    for (const tempo of [BRAWLER_TEMPO_DEFAULT, 1]) {
+      setBrawlerTempo(tempo);
+      const h = brawlerStartTech(initialBrawlerState(), 'kick', 0, 3, false, true);
+      const charge = h.kickChargeMs!;
+      const lean = (t: number, resolved = false) => brawlerPoseAt({ ...h, resolved }, t)!.lean;
+      // 影の回しと同じ曲線×係数(量は影より小さい)
+      for (const t of [10, charge * 0.5, charge - 1, (charge + h.windupMs) / 2, h.windupMs - 1]) {
+        expect(lean(t), `tempo ${tempo} t=${t}`).toBeCloseTo(BRAWLER_HEEL_BODY_ROT_K * brawlerHeelStandAt(h, t).rot, 9);
+      }
+      expect(BRAWLER_HEEL_BODY_ROT_K).toBeLessThan(1);
+      // ① 溜めの終わりは後ろへ反っている
+      expect(lean(charge - 1), `tempo ${tempo}`).toBeLessThan(-0.15);
+      // ② 振り下ろしで lean が増える(時計回り)
+      expect(lean(h.windupMs - 1)).toBeGreaterThan(lean(charge + 1) + 0.1);
+      // 当たる瞬間は少し反りが残る〜ほぼ0
+      expect(lean(h.windupMs, true)).toBeLessThanOrEqual(0);
+      expect(lean(h.windupMs, true)).toBeGreaterThan(-0.1);
+      // 当たった後は後隙の終わりで0(着地へつなぐ)
+      expect(lean(h.windupMs + h.recoveryMs - 1, true)).toBeCloseTo(0, 3);
+      // ③ 最大の絶対値 0.45 未満(側転に見えない)・④ 16ms ごとの跳び 0.15 未満(溜めの開始=立ちの0から・溜め→飛び・当たる瞬間・後隙→着地)
+      let prev = 0, maxAbs = 0, maxStep = 0;
+      for (let t = 0; t <= h.windupMs + h.recoveryMs + 16; t += 16) {
+        const l = t < h.windupMs ? lean(t) : (t <= h.windupMs + h.recoveryMs ? lean(t, true) : 0);
+        maxAbs = Math.max(maxAbs, Math.abs(l));
+        maxStep = Math.max(maxStep, Math.abs(l - prev));
+        prev = l;
+      }
+      expect(maxAbs, `tempo ${tempo}`).toBeLessThan(0.45);
+      expect(maxStep, `tempo ${tempo}`).toBeLessThan(0.15);
+      // つなぎ目(溜め→飛び・当たる瞬間)は前後1msで跳ばない
+      expect(Math.abs(lean(charge + 0.5) - lean(charge - 0.5))).toBeLessThan(0.02);
+      expect(Math.abs(lean(h.windupMs, true) - lean(h.windupMs - 0.5))).toBeLessThan(0.02);
+    }
+    setBrawlerTempo(was);
   });
   it('気功: 溜め=振り上げ / 放つ=しゃがみ。飛び蹴り: 滞空=しゃがみ / 当たった瞬間=振り上げ', () => {
     const k = brawlerStartTech(initialBrawlerState(), 'kiko', 0);
