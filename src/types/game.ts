@@ -815,6 +815,13 @@ export interface Enemy {
   brawlerLiftAt?: number;
   /** ★格闘のヒットストップの間の小刻みな震え(Date.now・絵だけ=判定は動かない・§2-4)。 */
   brawlerShakeUntil?: number;
+  /**
+   * ★空中の敵に弾が当たった時の、その敵だけの止め(社長指示2026-11-12・utils/airShotStop)。Date.now。
+   * 止めの間は位置・AI が止まり、浮き・押しの時計が経過ぶん後ろへずれる(airShotStopShifted=この止めで既にずらした ms)。
+   */
+  airShotStopAt?: number;
+  airShotStopUntil?: number;
+  airShotStopShifted?: number;
   /** 震える向き(単位・当てた方向)。 */
   brawlerShakeDx?: number;
   brawlerShakeDy?: number;

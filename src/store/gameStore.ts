@@ -416,6 +416,7 @@ import { counterInterruptPatch, COUNTER_UNINTERRUPTIBLE_PHASES, isBiteSubject, i
 // ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。旧 `deferFrozenClocksBy`(凍結dtの毎フレーム
 // 繰り下げ)は**破棄**して、この「残りを預かって明けた瞬間に書き直す」1本へ置き換えた(H-3)。
 import { tickEnemyClockFreeze } from '../utils/enemyClocks';
+import { airShotStopPatch, airShotStopTick, airShotStopped } from '../utils/airShotStop';
 // ★ゾンビ赤(PACING_PUZZLE.md §16-3・§16-8b手順5)。枠の導出/技の終わり/待ちの尺/帯の定数の正本。
 import {
   deriveChaffMoveGrants, endChaffMove, zombieRedWaitMs, zombieWantsChaffRedSlot,
@@ -9467,6 +9468,8 @@ interface GameState {
   removeEnemy: (id: string) => void;
   damageEnemy: (id: string, amount: number, blast?: boolean, crit?: boolean, viaMeleeFinish?: boolean, damageChannel?: 'gun' | 'other' | 'dot' | null, hateSource?: HateSide | 'neutral' | 'dog', postureImpact?: BossPostureImpact | null, postureImpactMult?: number, gpSource?: PhantomDamageSource | null, killChainSlowOk?: boolean, gpAttack?: KenkiAttackFrom) => boolean; // gpAttack: ★拳鬼のレバーガード(research/BRAWLER_PHANTOM.md §16-10)の向きの材料(弾=飛んできた向き)。未指定=プレイヤー起因の当たりはプレイヤーの体から・爆発/持続/仲間の当たりは「分からない」 // killChainSlowOk: 連続撃破10体スローの許可(呼び手が weaponKey で判定。未指定=銃チャネルなら許可)/ postureImpactMult: SKILL_BUILD_REDESIGN.md §28(B7/§28-1)弾幕の王の体勢削り倍率(既定1) / gpSource: 幻影ゲートの打撃種別の明示上書き(スラッシャー追撃=近接、銃弾='bullet'=振りの窓で裁く(GHOST_BOSS.md v10)。null=従来の導出・v0.25.3640監査A)
   updateEnemies: (deltaTime: number) => void;
+  /** ★空中の敵に弾が当たった時の、その敵だけの止め(utils/airShotStop・社長指示2026-11-12)。speed=CATALOG の物差しの弾速。止めたら true。 */
+  airShotStopHit: (id: string, speed: number, dirX: number, dirY: number) => boolean;
   // スカジ氷ハザードの設置(裏ボスコントローラから呼ぶ)。判定/移動は updateEnemies が回す。
   spawnSkadiIce: (x: number, y: number, bornAt: number, fireAt: number, enemyId: string) => void;
   spawnSkadiBlade: (x: number, y: number, angle: number, launchAt: number, enemyId: string, visual?: SkadiBladeVisual, grave?: SkadiBlade['grave']) => void; // visual='bone'=ラフィの骨刃(見た目のみ差し替え・判定/挙動はスカジ刃と同じ)
@@ -18003,6 +18006,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     return true;
   },
 
+  airShotStopHit: (id, speed, dirX, dirY) => {
+    const now = Date.now();
+    const e = get().enemies.find(x => x.id === id);
+    if (!e || isCorpse(e) || e.health <= 0) return false;
+    const patch = airShotStopPatch(e, speed, now, dirX, dirY);
+    if (!patch) return false;
+    set(state => ({ enemies: state.enemies.map(x => (x.id === id ? { ...x, ...patch } : x)) }));
+    return true;
+  },
   updateEnemies: (deltaTime) => {
     let pumpkinLanded = false; // パンプキン着地を検出して set 後に画面揺れを出す(set内でのネスト発火回避)
     // v0.25.3122(社長指示「三唱のエフェクト変更…その度に画面大きく揺れる」): 唱が1つ進んだ瞬間を
@@ -18108,7 +18120,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 体勢回復/紫窓終了は専用AIから除外される裏ボスも含め、全ボスへ毎フレーム適用する。
       const postureUpdatedEnemies = enemies.map(enemy => {
         const patch = tickBossPosture(enemy, gameTime, deltaTime);
-        const base = patch ? { ...enemy, ...patch } : enemy;
+        // ★空中の弾の止め(utils/airShotStop): 止めの間に過ぎた壁時計の分だけ、浮き・押しの時計を後ろへずらす(弧の形はそのまま)。
+        const airStop = airShotStopTick(enemy, now);
+        const base = patch || airStop ? { ...enemy, ...(patch ?? {}), ...(airStop ?? {}) } : enemy;
         // ★PACING_PUZZLE.md §16-H(硬直中は全ての時計が止まる)。**全ての敵**に毎フレーム1回。
         // ここに置く理由: ①専用コントローラで動く型(裏ボス/天使/賞金首/幻影)は下の写像で
         // 早期returnするので、あの中に置くと届かない ②体勢(tickBossPosture)が紫窓を閉じた
@@ -18336,6 +18350,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (!committed && !attacking && enemy.hitStunUntil !== undefined && now < enemy.hitStunUntil) {
           return enemy;
         }
+        // ★空中の弾の止め(utils/airShotStop): 止めの間は位置も止める(押しの時計は前処理で後ろへずれている=明けたら続きから)。
+        // AI の時計は浮いている間ずっと tickEnemyClockFreeze の(e)持ち上げ(liftUntil)で止まっている。
+        if (!committed && airShotStopped(enemy, now)) return enemy;
         // ★英雄の昇天に見とれる(社長裁定2026-10-05「3は代案がおもろい」): 周りの雑魚は英雄の方を向いたまま立ち止まる。
         // 技を出している最中の個体はやり切ってから止まる(予告した攻撃は必ず実行=掟W4)。時計は硬直と同じく据え置く(enemyClocks)。
         if (!committed && !attacking && enemy.aweUntil !== undefined && now < enemy.aweUntil) {

@@ -307,6 +307,11 @@ const CATALOG: Record<string, WeaponDef> = {
 CATALOG[BLOB_WEAPON_KEY].damage = CATALOG['glauncher-t2'].damage;
 CATALOG[SATELLITE_WEAPON_KEY].damage = CATALOG['shotgun-t2'].damage;
 /** 台帳の銃(近接でない物)の key 全数。共有の正規化の許可リスト(shared/ghostSanitize.mjs の GHOST_GUN_KEYS)との一致をテストが縛る。 */
+/** CATALOG の弾速(px/s・弾に入る speed はこれ×PROJECTILE_SPEED_MULT)。無い key は undefined。空中の弾の止め(utils/airShotStop)の物差し。 */
+export const catalogProjectileSpeed = (key: string | undefined): number | undefined =>
+  key !== undefined ? CATALOG[key]?.projectileSpeed : undefined;
+/** 弾に入っている speed を CATALOG の物差しへ戻す(CATALOG に無い弾の代わり)。 */
+export const projectileSpeedToCatalog = (speed: number): number => speed / PROJECTILE_SPEED_MULT;
 export const CATALOG_GUN_KEYS: readonly string[] = Object.keys(CATALOG).filter(k => !CATALOG[k].isMelee);
 /** 台帳の近接の key 全数(MELEE_KEYS との一致もテストが縛る)。 */
 export const CATALOG_MELEE_KEYS: readonly string[] = Object.keys(CATALOG).filter(k => CATALOG[k].isMelee === true);

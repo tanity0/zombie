@@ -575,7 +575,7 @@ import { isBossPostureBroken } from '../utils/bossPosture';
 import { tickNewGuns } from '../utils/newGunsTick'; // research/NEW_GUNS.md: 新しい銃3挺の進行
 import { dropGunKillLoot } from '../utils/gunKillDrops'; // 弾で倒した時の撃破演出とドロップ(品質監査#4)
 import { scanMarkMeleeMult, noteScanDetonation } from '../utils/scanSensor';
-import { ammoBearingGuns } from '../utils/weaponUtils'; // 弾倉の無い銃を除いた所持銃(research/NEW_GUNS.md 品質監査#5)
+import { ammoBearingGuns, catalogProjectileSpeed, projectileSpeedToCatalog } from '../utils/weaponUtils'; // 弾倉の無い銃を除いた所持銃(research/NEW_GUNS.md 品質監査#5)
 import { gunFireSfxKey, gunReloadSfxKey, fireWeapon, buildSupportSniperShot, buildGhostGunShots, getActiveGun, getGuns, ammoPoolFor, effectiveMagSize, effectiveReloadMs, effectiveFireCooldown, beginWeaponReload, finishWeaponReload, refillWeaponMagazine, weaponAfterGunShot, RANGE_BY_CATEGORY, gunEffectiveRangePx, isDirectGunWeaponKey, isPhantomTargetBullet, isGrenadeGunKey, isManualOnlyGunKey, GHOST_REFLECT_WEAPON_KEY, HANDCANNON_WEAPON_KEY, PILEDRIVER_WEAPON_KEY, FOCUS_WEAPON_KEY, EYE_LASER_WEAPON_KEY, ICE_LANCE_WEAPON_KEY, FLAMER_WEAPON_KEY, GUNBLADE_WEAPON_KEY, ROCKET_WEAPON_KEY, ALCHEMY_WEAPON_KEY, CROSSBOW_WEAPON_KEY, isReloading, gunShotBaseDamage, projectileMasteryKey, counterMasteryKeyOf, gunMasteryKeyOfWeaponKey } from '../utils/weaponUtils';
 // UNIQUE_WEAPONS.md §16-2(バッチD): ランチャー3挺の定数の単一の出どころ。
 import { ROCKET_BLAST_RADIUS_MULT, ROCKET_LAUNCH_EASE_MS, rocketLaunchSpeedMult } from '../utils/rocketLauncher';
@@ -16414,6 +16414,13 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
               hitIsCrawler ? hitPt.y : enemyForFx.y, // 変異塊は当たった高さ(数字の置き場所は store が縁の内側へ寄せる)
               dmg,
               !!projectile?.reflected || hitCrit, { enemyId: enemyForFx.id });
+          }
+          // ★空中の敵に弾が当たったら、その敵だけ一瞬止める(utils/airShotStop・社長指示2026-11-12)。プレイヤー本人の直撃の銃の弾だけ
+          // (守護霊・護衛・味方の弾・反射弾は directPlayerGun で外れる)。爆発する弾(グレネードガン系・ロケット・錬金砲・シグナル=glauncher)は対象外。
+          // 長さは弾速(CATALOG の物差し)で決まる。地上の敵・止めの最中・間の中は airShotStopPatch が止めない。
+          if (projectile && enemyForFx && directPlayerGun && dmg > 0 && !gpDeflectedShot && !enemyKilled && !isGrenadeGunKey(projectile.weaponKey)) {
+            const sp = catalogProjectileSpeed(projectile.weaponKey) ?? projectileSpeedToCatalog(projectile.speed);
+            useGameStore.getState().airShotStopHit(enemyId, sp, projectile.direction.x, projectile.direction.y);
           }
 
           // Light knockback on every connecting bullet — staggers normal

@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5553', items: [
+    '浮いている敵に弾が当たると、その敵が空中で一瞬止まって震える。速い弾ほど短く止まる',
+  ] },
   { version: '0.25.5552', items: [
     '浮いている敵に弾や爆発を当てた時のダメージの数字が、空中で上がった分を含めた値になった',
   ] },
