@@ -46,6 +46,15 @@ beforeEach(() => { now = 13_000_000; vi.spyOn(Date, 'now').mockImplementation(()
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('秘奥義の間は画面内の敵を止める', () => {
+  it('止まる範囲は狙う範囲と同じ: 画面の端から外へ100pxの敵は止まり、300pxの敵は止まらない(社長裁定2026-11-12「A」)', () => {
+    setup(); view();
+    const w = useGameStore.getState().gameBounds.width;
+    useGameStore.setState({ enemies: [place('zombie', w / 2 + 100, 0, 'out100'), place('zombie', w / 2 + 300, 0, 'out300')] });
+    startSecret();
+    step(20);
+    expect(held('out100')).toBe(true);
+    expect(held('out300')).toBe(false);
+  });
   it('画面内の雑魚・強個体は止まり、画面の外は止まらない・動き続ける間は切れない', () => {
     setup(); view();
     useGameStore.setState({ enemies: [place('zombie', 150, 0, 'near'), place('pumpkin', -150, 40, 'strong'), place('zombie', 9000, 0, 'far')] });

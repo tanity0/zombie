@@ -5158,14 +5158,18 @@ const startBrawlerTech = (
 /** 画面内(ズームの可視域)+画面の端から外へ BRAWLER_SECRET_REACH_OUT_PX で当てられる敵の id(9連撃・締めの着地点・中断の判定が共用)。 */
 // ★狙える=当たり判定の箱が画面に掛かっている(§9-75・社長「はい」=共通の作りで直す)。画面の真ん中から見た箱の最寄りの点
 // (少し内側=小さな敵は今までどおり中心)が画面の中か、で測る。旧は中心で測っていたので、研究所の塊の正面からは中心が画面外=即中断した。
-const brawlerSecretTargets = (st: GameState): string[] => {
+/** 秘奥義の届く範囲か(狙う=brawlerSecretTargets と止める=applySecretFreeze が共用する1本・社長裁定2026-11-12「A」=狙える敵と止まる敵を同じ集合にする)。 */
+const brawlerSecretReachTest = (st: GameState): ((e: Enemy) => boolean) => {
   const vb = zoomedViewportBounds(st.camera, st.gameBounds, st.viewZoom);
   const vcx = (vb.left + vb.right) / 2, vcy = (vb.top + vb.bottom) / 2;
-  return st.enemies.filter(e => {
-    if (!BR.isBrawlerTargetable(e)) return false;
+  return e => {
     const q = meleeImpactPoint(vcx, vcy, e);
     return isPointInZoomedViewport(q.x, q.y, st.camera, st.gameBounds, st.viewZoom, BR.BRAWLER_SECRET_REACH_OUT_PX); // 正の余白=外へ広げる(社長指示2026-11-12 案A・旧は -8=8px内側)
-  }).map(e => e.id);
+  };
+};
+const brawlerSecretTargets = (st: GameState): string[] => {
+  const inReach = brawlerSecretReachTest(st);
+  return st.enemies.filter(e => BR.isBrawlerTargetable(e) && inReach(e)).map(e => e.id);
 };
 /** そこに立てるか(行ける帯へ寄せたうえで、壁・木・建物に押し出されない所)。立てる左上を返す。 */
 const brawlerSecretSpot = (get: () => GameState, cx: number, cy: number): { x: number; y: number } | null => {
@@ -5246,14 +5250,13 @@ const startBrawlerSecret = (get: () => GameState, set: (fn: (s: GameState) => Pa
   applySecretFreeze(get); // 起動の瞬間から画面内の敵を止める(§17)
 };
 /**
- * ★秘奥義の間は画面内の敵を止める(社長指示2026-11-09・research/BRAWLER.md §17)。格闘の固まりと同じ仕組み(brHoldUntil=行動の時計も止まる)で、
+ * ★秘奥義の間は画面内の敵を止める(社長指示2026-11-09・research/BRAWLER.md §17)。範囲は狙う範囲と同じ=画面の端から外へ BRAWLER_SECRET_REACH_OUT_PX(社長裁定2026-11-12「A」)。格闘の固まりと同じ仕組み(brHoldUntil=行動の時計も止まる)で、
  * 起動から締めの着地が終わるまで、毎フレーム短く書き足す。新しい止め方は作らない・見た目は足さない。押し(knockbackUntil)は止めの前に進むので締めの吹き飛ばしは消えない。
  */
 const applySecretFreeze = (get: () => GameState): void => {
   const st = get();
   const nowMs = Date.now();
-  const ids = new Set(BRS.secretFreezeIds(st.enemies, st.gameTime,
-    e => isPointInZoomedViewport(e.x + e.width / 2, e.y + e.height / 2, st.camera, st.gameBounds, st.viewZoom, 0)));
+  const ids = new Set(BRS.secretFreezeIds(st.enemies, st.gameTime, brawlerSecretReachTest(st))); // 狙う範囲と同じ(社長裁定2026-11-12「A」・旧は敵の中心が画面内=余白0)
   if (ids.size === 0) return;
   if (!st.enemies.some(e => ids.has(e.id) && (e.brSecretHoldUntil ?? 0) - nowMs < BRS.SECRET_FREEZE_REFRESH_BELOW_MS)) return;
   const until = nowMs + BRS.SECRET_FREEZE_HOLD_MS;

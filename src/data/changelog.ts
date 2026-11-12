@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5550', items: [
+    '格闘の秘奥義の間は、画面の少し外にいる敵も止まる',
+  ] },
   { version: '0.25.5549', items: [
     '格闘の秘奥義が、画面の少し外にいる敵まで狙う',
   ] },
