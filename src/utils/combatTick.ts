@@ -125,7 +125,7 @@ export interface CombatEffects {
   spawnBurst: (x: number, y: number, color: string, count?: number) => void;
   spawnGlow: (x: number, y: number, radius: number, color: string, duration?: number) => void;
   spawnCallout: (x: number, y: number, text: string, color: string, opts?: { scale?: number; serif?: boolean; bg?: number; holdMs?: number; duration?: number }) => void;
-  spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean) => void;
+  spawnDamageNumber: (x: number, y: number, value: number, crit?: boolean, opts?: { enemyId?: string }) => void;
   spawnEggFluidSplash: (x: number, y: number, intensity?: number) => void;
   triggerHitImpact: (stopMs: number, shakeMs: number, shakeMag: number, zoomMag: number) => void;
   addMeleeFinishCombo: (amount?: number) => void;
@@ -715,7 +715,7 @@ export const applyPumpkinBlastDamage = (fx: CombatEffects, tunables: Pick<Combat
         const stunMs = STUN_DURATION_MS * (bp.stunDurationMult ?? 1) * brawlerJustStunMult(Date.now()); // ジャスト構えなら2倍(§12-2)
         useGameStore.getState().stunEnemy(hit.id, useGameStore.getState().gameTime + stunMs);
       }
-      if (dmg > 0) fx.spawnDamageNumber(ex, e.y, dmg, true); // 0ダメージの「0」は出さない(刃のパリィ)
+      if (dmg > 0) fx.spawnDamageNumber(ex, e.y, dmg, true, { enemyId: hit.id }); // 0ダメージの「0」は出さない(刃のパリィ)。名指し=空中の倍率も数字へ(案A)
       fx.spawnRing(ex, ey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
       fx.spawnBurst(ex, ey, '#fde047', 10);
       fx.spawnGlow(ex, ey, 34, 'rgba(253,224,71,', 240);
@@ -2242,7 +2242,7 @@ export const applyContactDamage = (
         const stunMs = STUN_DURATION_MS * (collPlayer.stunDurationMult ?? 1) * brawlerJustStunMult(Date.now()); // ジャスト構えなら2倍(§12-2)
         useGameStore.getState().stunEnemy(eid, useGameStore.getState().gameTime + stunMs);
       }
-      fx.spawnDamageNumber(ex, e.y, dmg, true); // 金色クリ表示
+      fx.spawnDamageNumber(ex, e.y, dmg, true, { enemyId: eid }); // 金色クリ表示。名指し=空中の倍率も数字へ(案A)
       fx.spawnRing(ex, ey, 8, 46, 'rgba(253,224,71,0.95)', 3, 300);
       fx.spawnBurst(ex, ey, '#fde047', 10);
       fx.spawnGlow(ex, ey, 34, 'rgba(253,224,71,', 240);

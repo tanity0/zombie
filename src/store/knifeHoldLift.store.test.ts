@@ -200,6 +200,9 @@ describe('ナイフの当たり: 固まりと浮き', () => {
       useGameStore.getState().triggerCounter();
       const z = en('z');
       expect(z.health).toBeLessThan(hp); // 追撃が当たった
+      // 追撃の数字は空中の倍率の後の値(=実際に減った量・案A)
+      const nums = useGameStore.getState().effects.filter(x => x.kind === 'damageNumber');
+      expect(nums[nums.length - 1].value).toBe(Math.max(1, Math.ceil(hp - z.health)));
       expect(brawlerAirborne(z, now)).toBe(true); // 空中のまま(拾い・最後は叩き落としで落ちている途中)
       if (k < 2) expect(z.brLiftDown).toBe(false); // 最後の大きな押し(5段目)の前にダウンしない
       budgets.push(z.brLiftBudget!);

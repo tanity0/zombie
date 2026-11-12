@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5552', items: [
+    '浮いている敵に弾や爆発を当てた時のダメージの数字が、空中で上がった分を含めた値になった',
+  ] },
   { version: '0.25.5551', items: [
     'スラッシャーを持っている時も、ナイフの最初の一撃から敵が浮く。続く追撃で空中の敵を拾っていける',
   ] },

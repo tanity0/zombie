@@ -6050,6 +6050,25 @@ const brawlerKikoComboHit = (get: () => GameState, id: string, move: BRC.Brawler
     }),
   }));
 };
+/**
+ * ★空中の倍率をダメージの数字へ渡す(社長裁定 案A・2026-11-12)。damageEnemy の中で掛かった空中の倍率(§16)を敵ごとに1回ぶん覚え、
+ * その敵を名指しした数字(spawnDamageNumber の opts.enemyId)が1回だけ読んで掛ける(読んだら捨てる=数えは damageEnemy の1回だけ進む)。
+ * 近接(ナイフ・刀・鞭・格闘の段)は数字の値に倍率を掛け済みで、damageEnemy を通らない=ここに書かない。
+ * 古い記録を後の数字が拾わないよう、当たりから AIR_NUMBER_MULT_WINDOW_MS を過ぎた記録は使わない。
+ */
+const airNumberMults = new Map<string, { m: number; at: number }>();
+const AIR_NUMBER_MULT_WINDOW_MS = 50;
+const noteAirNumberMult = (id: string, m: number, now: number): void => {
+  if (m !== 1) airNumberMults.set(id, { m, at: now }); else airNumberMults.delete(id);
+  if (airNumberMults.size > 256) for (const [k, v] of airNumberMults) if (now - v.at > AIR_NUMBER_MULT_WINDOW_MS) airNumberMults.delete(k);
+};
+/** 名指しの数字を出さない呼び手(塊弾の数字のまとめ等)が自分で読む口。読んだら捨てる。 */
+export const takeAirNumberMult = (id: string, now: number = Date.now()): number => {
+  const r = airNumberMults.get(id);
+  if (!r) return 1;
+  airNumberMults.delete(id);
+  return now - r.at <= AIR_NUMBER_MULT_WINDOW_MS ? r.m : 1;
+};
 /** プレイヤー本人の近接の当たり: 空中の敵への倍率(§16)と、プレイヤーも浮く描画の記録(§18・描画だけ)。 */
 const meleeAirMult = (enemy: Enemy, now: number): number => {
   noteAirMeleeHit(enemy, now);
@@ -8088,7 +8107,7 @@ const applySlasherChainStrike = (
     if (gpDeflected) continue; // hit/hitIds は積み済み=チェーンの進行は従来どおり(空振り扱いにしない)
     // PACING_PUZZLE.md §9-4/§9-7#6(削岩型・近接被弾での離脱): スラッシャー追撃も近接武器の打撃。
     if (!k) get().applyDrillerRetreat(e.id);
-    get().spawnDamageNumber(ecx, e.y, eDmg, false);
+    get().spawnDamageNumber(ecx, e.y, eDmg, false, { enemyId: e.id }); // 名指し=damageEnemy の中の空中の倍率を数字にも(案A)
     get().spawnSlash(ecx, ecy, 'rgba(190,242,100,0.95)');
     get().spawnMeleeBlood(ecx, ecy - idolAirLift(e), e.width); // 近接の血飛沫(v0.25.2026)
     if (k) {
@@ -17448,6 +17467,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // 守護霊・犬・軍人・継続ダメージ(DoT)・プレイヤー起因でない弾(channel=null)は対象外。地上の当たり(打ち上げた一撃・浮きを起こした爆発)は 1。
       const airM = hateSourceIn === 'player' && damageChannel !== 'dot' && damageChannel !== null && amount > 0
         ? BRC.airHitMultFor(enemy, Date.now()) : 1;
+      noteAirNumberMult(enemy.id, airM, Date.now()); // 数字にも同じ倍率(名指しの数字が1回だけ読む・案A)
       const gatedAmount = gpGate.damage * airM;
       // 紫中の直接銃撃は通常クリ倍率と重ねず、この中央で×5相当まで報酬領域を消費する。
       const gunReward = damageChannel === 'gun' && hateSource === 'player'
@@ -27867,6 +27887,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 当てた敵を名指しされた数字だけ、宙の偶像なら体の高さへ(品質/クリエイティブ監査#13・名指しの無い数字は動かさない)。
     if (opts?.enemyId !== undefined) y -= idolAirLift(get().enemies.find(e => e.id === opts.enemyId));
     const now = Date.now();
+    // 空中の敵への倍率(§16): 直前の damageEnemy がその敵に掛けた倍率を、名指しの数字にも掛ける(1回だけ・案A)。
+    if (opts?.enemyId !== undefined) value *= takeAirNumberMult(opts.enemyId, now);
     // ステージ2の変異塊(幅約740の箱)に当たった数字は、プレイヤーに面した縁の内側へ寄せる(箱の中心=画面の外になりやすい)。
     // 代理に当たった数字だけ(enemyId か、代理の箱の中心に出された数字)。
     { const st0 = get(); if (st0.labCrawler && isCrawlerDamageNumber(x, y, st0.labCrawler, opts?.enemyId)) { const pl = st0.player; const q = crawlerDamageNumberAt(x, y, st0.labCrawler, pl.x + pl.width / 2, pl.y + pl.height / 2, Math.random(), crawlerDmgNumberViewX(st0.camera, st0.gameBounds, st0.viewZoom)); x = q.x; y = q.y; } }

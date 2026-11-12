@@ -17,7 +17,7 @@ import {
   notifySkillProc, spawnSkillProcFx,
   useGameStore, isMeleeOnlyMode, isKatanaMode, isAttackLocked, isSeekerActive, skillLevel, SKATER_LOCK_ENABLED,
   skillOutgoingDamageMult, skillBloodAwakenDamageMult, resolveShieldWalls, shieldPlayableCtx, PLAYER_MELEE_SWING_MS,
-  sniperGunMult, skillComboMasterMult, bossCritStopPatch,
+  sniperGunMult, skillComboMasterMult, bossCritStopPatch, takeAirNumberMult,
 } from '../store/gameStore';
 import { isPvpIncapacitated } from './pvpPosture';
 import { isHurtGunLocked } from './playerHurt';
@@ -292,7 +292,8 @@ const tickBlob = (gameTime: number, dtSec: number, canFire: boolean): void => {
         if (!e || isCorpse(e)) continue;
         const dmg = Math.max(1, h.blob.tickDamage * outgoingGunMult(p, e, gameTime) * masteryMultOf(p, 'glauncher')); // 小数のまま(9.5)。数字はまとめで丸める。熟練度: 塊弾=glauncher
         const { shown } = hitEnemy(e, dmg, false, 'glauncher', h.blob.dirX, h.blob.dirY, true);
-        const v = accumulateBlobNumber(blobNumbers, id, shown, gameTime);
+        // 空中の敵への倍率(§16): この数字は敵を名指ししないので、damageEnemy が掛けた倍率をここで読んでまとめに足す(案A)。
+        const v = accumulateBlobNumber(blobNumbers, id, shown * takeAirNumberMult(id), gameTime);
         if (v !== null) {
           const marked = isScanMarked(e, gameTime);
           useGameStore.getState().spawnDamageNumber(e.x + e.width / 2, e.y, v, false, { scanMarked: marked });

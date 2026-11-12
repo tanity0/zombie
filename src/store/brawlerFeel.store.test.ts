@@ -119,6 +119,27 @@ describe('B. 空中の敵へのダメージ倍率(格闘以外にも)', () => {
       expect(d('g'), name).toBe(10);
     }
   });
+  // 社長裁定 案A(2026-11-12): 浮いている敵に当てた時の数字は、damageEnemy の中で掛かった空中の倍率の後の値で出す。
+  it('数字: 浮いている雑魚に銃の弾を当てた数字は 素の値×倍率・地上は今どおり・1回の当たりの倍率は1つの数字だけが読む', () => {
+    setup({ subs: [] });
+    useGameStore.setState({ enemies: [zombieAt(300, 0, 'g', 1000), zombieAt(300, 60, 'a', 1000)], effects: [] });
+    lift('a');
+    const shotNumber = (id: string): number => {
+      const st = useGameStore.getState();
+      st.damageEnemy(id, 10, false, false, false, 'gun', 'player', null, 1, 'bullet', true, { dir: { x: 1, y: 0 } });
+      st.spawnDamageNumber(300, 0, 10, false, { enemyId: id }); // 弾の当たりの道と同じ(素の値+名指し)
+      const nums = useGameStore.getState().effects.filter(e => e.kind === 'damageNumber');
+      return nums[nums.length - 1].value as number;
+    };
+    expect(shotNumber('g')).toBe(10); // 地上
+    expect(shotNumber('a')).toBe(Math.ceil(10 * 1.25)); // 1発目×1.25(表示は切り上げ)
+    expect(shotNumber('a')).toBe(15); // 2発目×1.5(数えは damageEnemy の1回だけ進む)
+    // 当たりの無い数字(読み済み)は素の値のまま
+    useGameStore.getState().spawnDamageNumber(300, 0, 10, false, { enemyId: 'a' });
+    const nums = useGameStore.getState().effects.filter(e => e.kind === 'damageNumber');
+    expect(nums[nums.length - 1].value).toBe(10);
+    expect(shotNumber('g')).toBe(10); // 地上は今どおり
+  });
   it('ナイフ(triggerCounter)にも乗る', () => {
     setup({ subs: [] });
     useGameStore.setState({ enemies: [zombieAt(40, 0, 'z', 99999)] });
