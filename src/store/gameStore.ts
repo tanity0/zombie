@@ -4994,7 +4994,7 @@ const settleBufferedBrawlerStep = (
 /** 技を始める(ポイントは払い済み)。 */
 /**
  * 覚えている技(技の先行入力・§9-60・§19-2)を出す(道の上の技の受付が開いた瞬間)。関所(被弾のしゃがみ・掴み・紫・シーカー・死亡など)に掛かれば捨てる。
- * 値段はこの瞬間に払う。足りなければ今どおり拒否の音と数字が沈む表示で捨てる。cancel=技の後隙を取り消して出す(秘奥義の数えは 0ms 扱い)。
+ * 値段はこの瞬間に払う。足りなければ、ステップを出せる時はそのフリックの向きへのステップ(案A)、出せなければ拒否の音と数字が沈む表示で捨てる。cancel=技の後隙を取り消して出す(秘奥義の数えは 0ms 扱い)。
  */
 const fireBufferedBrawlerTech = (
   get: () => GameState, set: (fn: (s: GameState) => Partial<GameState>) => void, s: BR.BrawlerState, cancel: boolean,
@@ -5008,6 +5008,12 @@ const fireBufferedBrawlerTech = (
   const heel = kind === 'kick' && s.heelBuffer === true;
   if (heel && !BR.brawlerHeelInput(s1, 'stomp', get().gameTime)) { setBrawler(set, s1); return; }
   if (heel ? s1.points < BR.brawlerHeelCost(awakened, brawlerTechDiscount(p, 'kick')) : !BR.brawlerCanPay(s1, kind, awakened, brawlerTechDiscount(p, kind))) {
+    // ★出す瞬間にまだ払えず、ステップを出せるなら、そのフリックの向きへのステップ(社長裁定2026-11-12・案A=入力の瞬間のフリックと同じ扱い)。
+    if (BR.brawlerFlickStepInstead(s1, get().gameTime, false)) {
+      const d = BR.brawlerFlickDirOf(kind, heel);
+      startBrawlerStep(get, set, s1, d.x, d.y);
+      return;
+    }
     brawlerSfx('ui-deny', 0.55, 0.72, 160);
     setBrawler(set, { ...s1, denyAt: Date.now() });
     return;
@@ -15355,6 +15361,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             ...slamPatch,
             invulnerable: true,                        // 空中は無敵(既存被弾無敵を流用)
             invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_SLAM_MS),
+            ...abilityInvulnPatch(s.player, now, WIRE_SLAM_MS), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
           },
           anchorEnemyHitFxAt: now,                     // 命中SEのトリガ
         }));
@@ -15413,6 +15420,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           // 移動中は無敵(既存の被弾無敵を流用。INVULN_MS の自動解除が移動終了とほぼ一致するよう開始時刻をずらす)。
           invulnerable: true,
           invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_DASH_MS),
+          ...abilityInvulnPatch(s.player, now, WIRE_DASH_MS), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
         }
       }));
     } else {
@@ -15446,6 +15454,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           ...hopPatch,
           invulnerable: true,
           invulnerableTime: now - Math.max(0, INVULN_MS - WIRE_HOP_MS),
+          ...abilityInvulnPatch(s.player, now, WIRE_HOP_MS), // 技の無敵=sourceId 付きの攻撃(噛みつき・掴み)も受けない
         }
       }));
     } else {

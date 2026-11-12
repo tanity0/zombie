@@ -208,3 +208,36 @@ describe('技ポイントが足りないフリックは、その向きへのス�
     expect(br().stepAt).toBe(now);
   });
 });
+
+describe('覚えた技を出す瞬間にまだ払えなければ、そのフリックの向きへのステップ(社長裁定2026-11-12・案A)', () => {
+  const br = () => useGameStore.getState().player.brawler!;
+  const zombieAt = (dx: number, id: string) => {
+    const p = useGameStore.getState().player;
+    const e = spawnEnemyAt('zombie', 0, 0, useGameStore.getState().gameTime);
+    e.x = p.x + p.width / 2 + dx - e.width / 2; e.y = p.y + p.height / 2 - e.height / 2; e.health = 99999; e.maxHealth = 99999; e.id = id;
+    return e;
+  };
+  /** 段の出だしに気功(値段2)を入れ、当たって+1された後の出る瞬間まで進める。 */
+  const pressThenKiko = (points: number) => {
+    setup();
+    useGameStore.setState({ enemies: [zombieAt(50, 'z')] });
+    useGameStore.getState().brawlerPress();
+    useGameStore.setState(st => ({ player: { ...st.player, brawler: { ...st.player.brawler!, points } } }));
+    expect(useGameStore.getState().brawlerTech(-1, 0)).toBe(true);
+    expect(br().techBuffer).toBe('kiko');
+    for (let k = 0; k < 80 && br().techBuffer; k++) advance(10);
+    expect(br().techBuffer).toBeUndefined();
+  };
+  it('段が当たって+1でも払えない(0→1<2)時は、左(気功のフリック)へステップ', () => {
+    pressThenKiko(0);
+    expect(br().tech).not.toBe('kiko');
+    expect(br().stepAt).toBeDefined();
+    expect(useGameStore.getState().player.lastDirection).toEqual({ x: -1, y: 0 });
+    expect(useGameStore.getState().player.abilityInvulnUntil).toBeGreaterThan(0);
+  });
+  it('段が当たって+1で払える(1→2)時は、今どおり気功が出る', () => {
+    pressThenKiko(1);
+    expect(br().tech).toBe('kiko');
+    expect(br().stepAt).toBeUndefined();
+  });
+});

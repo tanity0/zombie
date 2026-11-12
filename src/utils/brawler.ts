@@ -927,6 +927,13 @@ export const brawlerStepAllowed = (s: BrawlerState, t: number): boolean => {
  */
 export const brawlerFlickStepInstead = (s: BrawlerState, t: number, canPay: boolean): boolean =>
   !canPay && brawlerStepAllowed(s, t);
+/**
+ * 覚えた技(技の先行入力)の、フリックの向き(長さ1)。覚えた入力は技の種類しか持たないので、classifyBrawlerFlick の逆=上下左右の向きに戻す
+ * (飛び蹴り=右・気功=左・構え=上・大踏み潰し=下。踵落としは下で入れた入力=下)。斜めに入れた入力も上下左右のどれかになる。
+ * 出す瞬間に値段が払えずステップに変える時(社長裁定2026-11-12・案A)の向きに使う。
+ */
+export const brawlerFlickDirOf = (kind: BrawlerTechKind, heel = false): { x: number; y: number } =>
+  heel || kind === 'stomp' ? { x: 0, y: 1 } : kind === 'guard' ? { x: 0, y: -1 } : kind === 'kiko' ? { x: -1, y: 0 } : { x: 1, y: 0 };
 /** ステップを始めた状態。後隙を取り消す=その行動を終えた扱い(つながり・秘奥義の数えは終わった時と同じ)。先行入力は捨てる。 */
 export const brawlerStepStart = (s: BrawlerState, t: number, now: number): BrawlerState => {
   const base = s.phase === 'idle' ? s : brawlerFinish(s, t).state;
