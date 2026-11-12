@@ -1652,7 +1652,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
   // ★社長指示2026-09-07「敵が死んだら時間までは次の標的に少しゆっくり合わせにいく」。
   // 振りの角度と角速度はここ(ref)で持つ=**player.weapons を毎tick書かない**
   // (書くとGameHUDが照射中ずっと再描画される。検収2巡目A-4で潰した穴を作り直さない)。
-  const eyeLaserAimRef = useRef<{ angle: number; vel: number; sweeping: boolean }>({ angle: 0, vel: 0, sweeping: false });
+  const eyeLaserAimRef = useRef<{ angle: number; vel: number }>({ angle: 0, vel: 0 });
   // ★卵の掃引(社長実機報告2026-11-09): 弾ごとの前のフレームの位置(id→左上)。
   const projPrevPosRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const goldRingReadyRef = useRef(true); // 金環: CD明け検出(同上・ブーメラン型の一瞬通知・UNIQUE_WEAPONS.md §19-3)
@@ -15173,8 +15173,9 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                         },
                       });
                       eyeLaserNextPulseRef.current = gameTime; // ★A-4: パルス周期はrefで持つ(HUDを起こさない)
-                      // ★2026-09-07: 振りの起点をここで仕込む(次の標的へ振る時はこの角度から始まる)。
-                      eyeLaserAimRef.current = { angle: Math.atan2(dirY, dirX), vel: 0, sweeping: false };
+                      // ★社長裁定2026-11-12: 照射は「溜め明けの標的の方向・角速度0」から始まり、以後は毎フレーム
+                      // stepEyeLaserAim(慣性つきの振り)だけで向きが動く。
+                      eyeLaserAimRef.current = { angle: Math.atan2(dirY, dirX), vel: 0 };
                       useGameStore.getState().setEyeLaserBeam({ ax: elPcx, ay: elPcy, bx: end.x, by: end.y });
                       playSfx('rifle-fire');
                     }
@@ -15186,15 +15187,14 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   // ★社長指示2026-09-07(#U15の裁定を差し替え):「敵が死んだら**時間までは**次の標的に
                   // **少しゆっくり**合わせにいく」。⇒ 対象が消えても**照射は打ち切らない**。
                   // 次の標的を取り直し、振りは等速ではなく加速→減速で合わせる(慣性MUST・eyeLaserGun.ts)。
-                  // **次の標的が居なければ、今の向きのまま残り時間を撃ち切る**(空へ撃ち続けるのは
-                  // 「時間までは」という指示のとおり=途中で消さない)。
+                  // **次の標的が居なければ、同じ慣性で減速して止まり、その向きのまま残り時間を撃ち切る**
+                  // (空へ撃ち続けるのは「時間までは」という指示のとおり=途中で消さない)。
                   let elTarget = target;
                   if (targetGone && !fireDone) {
                     const elRangeR = gunEffectiveRangePx(elGun);
                     const next = pickNearestTarget(elPcx, elPcy, elAimable, gameTime, elRangeR * elRangeR);
                     if (next) {
-                      elTarget = next;
-                      eyeLaserAimRef.current.sweeping = true; // ここから「振り」に入る
+                      elTarget = next; // 振りは特別扱いしない(下の同じ1本の慣性で向きを変える)
                       useGameStore.setState(st => ({
                         player: {
                           ...st.player,
@@ -15217,31 +15217,19 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     }));
                     useGameStore.getState().startReload(elGun.id);
                   } else {
-                    // 追尾: 毎パルス終点を更新するだけ(落としやすい点5・stepLaserAimは使わない)。
+                    // 追尾: 毎フレーム光線の向きを動かし、終点を更新する(stepLaserAimは使わない)。
                     // ★A-4是正: ここも固定長(elRange2)まで延ばしてから壁短縮する(発射開始と同じ形)。
-                    // ★2026-09-07: 標的が居る間は今までどおり**直接**狙う。標的を取り直した直後だけ
-                    // `sweeping` が立ち、**加速→減速で振って**合わせる(合ったら直接追尾へ戻る)。
+                    // ★社長裁定2026-11-12「慣性を持たせて速度を落とす」: 照射中は**ずっと**stepEyeLaserAim
+                    // (角速度を持ち加速→減速・最大≈69°/s)で向きを動かす。標的に張り付く(直接狙う)経路は無い。
+                    // 合った後も標的が動けば同じ慣性で追い直し、横切る標的には光線が遅れる(外れたパルスは当たらない)。
+                    // 標的が居ない時は null を渡す=同じ慣性で減速して止まり、その向きのまま撃ち切る。
                     const elRange2 = gunEffectiveRangePx(elGun);
-                    const prevAngle = eyeLaserAimRef.current.angle;
-                    let aimAngle: number;
-                    if (elTarget) {
-                      const tcx2 = elTarget.x + elTarget.width / 2, tcy2 = elTarget.y + elTarget.height / 2;
-                      const wantAngle = Math.atan2(tcy2 - elPcy, tcx2 - elPcx);
-                      if (eyeLaserAimRef.current.sweeping) {
-                        const stepped = stepEyeLaserAim(
-                          { angle: prevAngle, vel: eyeLaserAimRef.current.vel }, wantAngle, deltaTime,
-                        );
-                        eyeLaserAimRef.current = { angle: stepped.angle, vel: stepped.vel, sweeping: !stepped.settled };
-                        aimAngle = stepped.angle;
-                      } else {
-                        eyeLaserAimRef.current = { angle: wantAngle, vel: 0, sweeping: false };
-                        aimAngle = wantAngle;
-                      }
-                    } else {
-                      // 次の標的が居ない: 今の向きのまま残り時間を撃ち切る(角速度は0へ落とす)。
-                      eyeLaserAimRef.current = { angle: prevAngle, vel: 0, sweeping: false };
-                      aimAngle = prevAngle;
-                    }
+                    const wantAngle = elTarget
+                      ? Math.atan2(elTarget.y + elTarget.height / 2 - elPcy, elTarget.x + elTarget.width / 2 - elPcx)
+                      : null;
+                    const stepped = stepEyeLaserAim(eyeLaserAimRef.current, wantAngle, deltaTime);
+                    eyeLaserAimRef.current = { angle: stepped.angle, vel: stepped.vel };
+                    const aimAngle = stepped.angle;
                     const dirX2 = Math.cos(aimAngle), dirY2 = Math.sin(aimAngle);
                     const rawEndX2 = elPcx + dirX2 * elRange2, rawEndY2 = elPcy + dirY2 * elRange2;
                     const elPad2 = elRange2 + 40;

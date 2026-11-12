@@ -236,10 +236,11 @@ const CATALOG: Record<string, WeaponDef> = {
   'rifle-t2-icelance': { key: 'rifle-t2-icelance', name: '氷槍ライフル', type: 'rifle', category: 'rifle', tier: 2, damage: 58, cooldown: 1200, projectileSpeed: 900, projectileSize: 9, count: 1, passthrough: true, magSize: 5, reloadMs: 2000 },
 
   // UNIQUE_WEAPONS.md §16-2/§17-2(バッチC-1)。アイレーザー(T3): 溜め700ms→照射3000ms(100msごとに
-  // 14ダメージ・貫通・対象を追尾)→リロード。damageは1パルスの値(状態機械はuseGameLoop.ts・
+  // 20ダメージ・貫通・慣性つきの振りで対象を追う)→リロード。damageは1パルスの値(状態機械はuseGameLoop.ts・
   // 定数はeyeLaserGun.ts)。cooldownは未使用(この武器はfireWeaponの自動射撃を通らない=
   // 状態機械が直接gameTimeで回す・100msはパルス間隔と同じ値を仮に置いているだけ)。
-  // サイクル実効DPS=48.28(既定rifle-t3比+5.3%・§5-2)。critChanceは導出のまま(§17-2)。
+  // サイクル実効DPS=全弾当たった時の上限68.97(社長裁定2026-11-12「慣性を持たせて速度を落とす」
+  // 「その分ダメージ量はあげて」で1パルス14→20。旧48.28=既定rifle-t3比+5.3%)。critChanceは導出のまま(§17-2)。
   'rifle-t3-eyelaser': { key: 'rifle-t3-eyelaser', name: 'アイレーザー', type: 'rifle', category: 'rifle', tier: 3, damage: EYE_LASER_PULSE_DAMAGE, cooldown: 100, count: 1, passthrough: true, magSize: EYE_LASER_MAG_SIZE, reloadMs: EYE_LASER_RELOAD_MS_RAW, nonProjectile: true },
 
   // UNIQUE_WEAPONS.md §16-1/§16-2/§17-10(#U16裁定・バッチC漏れの是正)。レールガン(T3): 通常の

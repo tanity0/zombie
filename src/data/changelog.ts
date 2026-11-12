@@ -7,6 +7,9 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5530', items: [
+    'アイレーザーの光線が、重みを持って相手を追うようになった。近くを横切る相手には追いつけない。そのぶん一撃が重い',
+  ] },
   { version: '0.25.5529', items: [
     'カウンターの反撃は、装備している近接の熟練度に貯まる。格闘を装備していれば格闘に貯まり、使っていない銃は上がらない',
   ] },
