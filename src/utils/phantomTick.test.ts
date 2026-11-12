@@ -25,7 +25,9 @@ import { HUMAN_REACTION_MS } from './bossSkeleton';
 import { spawnEnemyAt } from './enemyUtils';
 import { setTreesDisabled } from '../world/trees';
 import { setTorchesDisabled } from '../world/torches';
-import type { Enemy } from '../types/game';
+import type { Enemy, Projectile } from '../types/game';
+import { CATALOG_GUN_KEYS, EYE_LASER_WEAPON_KEY, FLAMER_WEAPON_KEY, SIGNAL_WEAPON_KEY } from './weaponUtils';
+import { clearGhostBuildCache } from './ghostBuild';
 
 // gameTimeの起点を0にしない(gpHitAt などの既定0と、tick開始直後の時刻が偶然近づくのを避ける)。
 const START_GT = 10_000_000;
@@ -736,5 +738,76 @@ describe('★間合いに入ってから人の反応の下限が経つまで振�
     const t = START_GT + 16 + phantomProfile().reactionMs;
     runPhantomTick(cur(), s, t, 0.016, 1, t, NOOP_PHANTOM_SFX, () => 0.999);
     expect(cur().gpSwingAt).toBe(t);
+  });
+});
+
+// 社長裁定「幻影にも新しい銃・スキル・サブウェポンを持たせる」: 他人の記録の幻影は台帳の銃のどれでも持って来る。
+// どの銃でも、幻影の銃撃は「1発の赤い二重丸の敵弾」か「火炎放射器の専用の道(紫の予告)」か「撃たない(アイレーザー)」の
+// どれかに収まる=爆発・誘導・床・散弾の欄が付いた新しい形の攻撃が生まれない事を、全銃で固定する。
+describe('★幻影の銃: 台帳の全銃(CATALOG_GUN_KEYS)を1挺ずつ持たせて撃たせる', () => {
+  const snapWith = (key: string) => ({ ...strongestGuardian().profile.snapshot!, gunKeys: [key], activeGunKey: key });
+  // 撃つ距離(プレイヤーの左端=幻影の中心+offset)。射程の短い銃だけ寄せる(火炎放射器90px・パイルドライバー108px)。
+  const offsetFor = (key: string): number => (key === FLAMER_WEAPON_KEY ? 40 : key === 'handgun-t3-piledriver' ? 60 : 100);
+  const fireOnce = (key: string) => {
+    clearGhostBuildCache();
+    const { id, step, cur, state } = setup(offsetFor(key), { phantomBuild: snapWith(key) });
+    useGameStore.setState({ projectiles: [] });
+    const mine = () => useGameStore.getState().projectiles.filter(p => p.ownerId === id);
+    let first: Projectile[] = [];
+    let flamer = false;
+    for (let i = 0; i < 160 && first.length === 0; i++) {
+      step(50);
+      if (cur().gpFlamerWindupAt !== undefined) flamer = true;
+      first = mine();
+    }
+    return { bolts: first, flamer, heldKey: state.gun?.key };
+  };
+  const FALLBACK: Record<string, string> = {
+    'handgun-t2-scan': 'handgun-t2', 'shotgun-t2-satellite': 'shotgun-t2', 'glauncher-t2-blob': 'glauncher-t2', [SIGNAL_WEAPON_KEY]: 'glauncher-t3',
+  };
+
+  it.each([...CATALOG_GUN_KEYS])('%s', key => {
+    const r = fireOnce(key);
+    if (key === EYE_LASER_WEAPON_KEY) {
+      // UNIQUE_WEAPONS.md §17-6: アイレーザーは幻影も撃たない(弾も炎も出ない)。
+      expect(r.heldKey).toBe(key); // 持ってはいる(他の銃へ持ち替えない)
+      expect(r.bolts).toHaveLength(0);
+      expect(r.flamer).toBe(false);
+      return;
+    }
+    if (key === FLAMER_WEAPON_KEY) {
+      // §17-6b: 専用の道(溜めの紫の扇)に入り、弾は作らない。
+      expect(r.flamer).toBe(true);
+      expect(r.bolts).toHaveLength(0);
+      return;
+    }
+    expect(r.flamer).toBe(false);
+    expect(r.bolts).toHaveLength(1); // 1回の発射で1発(散弾も1発に潰れる=今の幻影の撃ち方)
+    const b = r.bolts[0];
+    expect(b.hostile).toBe(true);
+    expect(b.weaponType).toBe('enemy_bolt');
+    expect(b.ownerType).toBe(GUARDIAN_PHANTOM_TYPE);
+    expect(Number.isFinite(b.damage)).toBe(true);
+    expect(b.damage).toBeGreaterThanOrEqual(1);
+    expect(b.passthrough).toBe(false);
+    for (const f of ['weaponKey', 'area', 'count', 'gravity', 'homingPellet', 'targetEnemyId', 'coilAmplitudePx', 'explodeAt', 'boomPhase', 'ricochet'] as const) {
+      expect(b[f], `${key}: ${f}`).toBeUndefined();
+    }
+    // 代わりの銃に替わる4挺は、替わった先の銃と同じ数値の弾を撃つ(ダメージ・弾速・大きさ)。
+    const fb = FALLBACK[key];
+    if (fb) {
+      const twin = fireOnce(fb).bolts[0];
+      expect(twin).toBeDefined();
+      expect(b.damage).toBe(twin.damage);
+      expect(b.speed).toBe(twin.speed);
+      expect(b.width).toBe(twin.width);
+    }
+  });
+
+  it('代わりの銃: scan/satellite/blob は記録の組み立てで替わり、signal は持ったまま1発ごとに替わる', () => {
+    expect(fireOnce('handgun-t2-scan').heldKey).toBe('handgun-t2');
+    expect(fireOnce('shotgun-t2-satellite').heldKey).toBe('shotgun-t2');
+    expect(fireOnce('glauncher-t2-blob').heldKey).toBe('glauncher-t2');
+    expect(fireOnce(SIGNAL_WEAPON_KEY).heldKey).toBe(SIGNAL_WEAPON_KEY);
   });
 });

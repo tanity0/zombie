@@ -17,7 +17,6 @@ import { FIXED_GUARDIANS, strongestGuardian } from '../data/fixedGuardians';
 import { resolveRemoteGhost } from './ghostOnline';
 import { ENGAGEABLE_BOSS_TYPES, isGhostEligibleBoss } from './bossEngagement';
 import { bossStyleSlotKey } from './ghostSlot';
-import { phantomLegacyProfile } from './phantomLegacyBuild'; // 幻影の持ち物は共有の正規化を広げる前のまま(社長の裁定待ち)
 
 /** 幻影の「中身」= 1人ぶんの人格。癖(profile)・ビルド(profile.snapshot)・名前を必ずここから取る。 */
 export interface PhantomIdentity {
@@ -70,8 +69,9 @@ export const pickPhantomIdentity = (
     const name = typeof (remote as { srcName?: unknown }).srcName === 'string'
       ? (remote as { srcName: string }).srcName
       : '???';
-    // 他人の守護霊(味方)は記録主の持ち物をそのまま持つが、幻影は広げる前の集合に絞った持ち物で戦う(phantomLegacyBuild.ts)。
-    return { name, profile: phantomLegacyProfile(remote), source: 'remote' };
+    // 幻影も他人の守護霊(味方)と同じく、記録主の持ち物をそのまま持つ(社長裁定「幻影にも新しい銃・スキル・サブウェポンを持たせる」)。
+    // 元の記録は書き換えない(同じ候補を守護霊も使う)。
+    return { name, profile: remote, source: 'remote' };
   }
   return pickFixedPhantom(random);
 };

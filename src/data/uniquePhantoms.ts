@@ -4,8 +4,9 @@
 // ここに1行ずつ持つ。固定の先人守護霊20人(fixedGuardians.FIXED_GUARDIANS)には**入れない**——入れると守護霊の抽選に
 // 混ざってしまう。
 //
-// 「格闘」はビルドに持たせ、幻影の上で格闘の状態機械を回して戦う(utils/phantomBrawlerAi.ts)。疑似プレイヤーは
-// 印(Enemy.phantomUnique)のある幻影だけ 'brawler' を残す(playerBuild.buildPseudoPlayer の keepBrawler)。
+// 「格闘」はビルドに持たせ、幻影の上で格闘の状態機械を回して戦う(utils/phantomBrawlerAi.ts)。格闘が動くかは
+// 印(Enemy.phantomUnique==='brawler')だけで決まる(utils/phantomTick.ts の isBrawlerPhantom)。疑似プレイヤーからは
+// 'brawler' を常に外す(playerBuild.buildPseudoPlayer → withoutBrawler)=記録に 'brawler' を持つだけの幻影は格闘しない。
 import type { EquipLoadout, PhantomUniqueKind, SkillKey, SubWeaponKey } from '../types/game';
 import { aggregateEquipBonus, equipMaxHealthOf } from './equipment';
 import { PLAYER_PROFILES } from './playerProfiles';

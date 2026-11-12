@@ -52,7 +52,7 @@ export const GHOST_KNOB_NAMES = Object.freeze(Object.keys(KNOB_RANGES));
 // ★許可リスト(信頼境界)。server 側はビルド無しでこの .mjs を直接 import するため src/ の台帳を import できない=
 // 値を手で複製している。**台帳との一致は src/utils/ghostOnline.test.ts が止める**(台帳に足したのにここへ
 // 足し忘れると、他人の守護霊からその値が黙って落ちる=社長裁定「通す必要ありそうなものは通して」の再発防止)。
-// 幻影(敵)は、ここを広げる前の集合のまま戦う(src/utils/phantomLegacyBuild.ts=持ち物を広げるかは社長の裁定待ち)。
+// 他人の記録から作る幻影(敵・src/utils/phantomIdentity.ts の remote)も、ここを通った持ち物をそのまま持つ。
 /** 職業(= src/types/game.ts の CharacterClass)。 */
 export const GHOST_CLASS_IDS = Object.freeze(['warrior', 'mage', 'rogue', 'necromancer']);
 /** アバター(= src/data/avatars.ts の AVATAR_IDS・見た目のみ)。 */
