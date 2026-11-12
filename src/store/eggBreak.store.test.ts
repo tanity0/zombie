@@ -44,6 +44,8 @@ const advance = (ms: number) => {
   const end = now + ms;
   while (now < end) {
     now += 10;
+    // ★画面全体の止め(triggerHitstop・格闘の当たり=社長指示2026-11-12): 実機のループと同じく、止まっている間は壁時計だけ進める。
+    if (now - 10 < useGameStore.getState().hitstopUntil) continue;
     useGameStore.setState(st => ({ gameTime: st.gameTime + 10 }));
     useGameStore.getState().movePlayer(NO, 0.01);
     useGameStore.getState().tickBrawler();

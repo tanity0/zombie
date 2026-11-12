@@ -7,6 +7,10 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { version: '0.25.5533', items: [
+    '格闘の技が当たった瞬間、画面全体が一瞬止まる。軽い技は短く、締めの技は長く止まる',
+    '近接の熟練度はナイフごとに育つ。これまでに貯めた分は、いま装備しているナイフへ移る',
+  ] },
   { version: '0.25.5532', items: [
     '敵の光線の先端も、ドットの粒にほどけて消える表現にそろえた。当たる範囲は変わらない',
   ] },

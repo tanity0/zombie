@@ -34,6 +34,8 @@ const br = () => useGameStore.getState().player.brawler!;
 const gt = () => useGameStore.getState().gameTime;
 const adv = (onStep?: () => void) => {
   now += 10;
+  // ★画面全体の止め(triggerHitstop・格闘の当たり): 実機のループと同じく、止まっている間は壁時計だけ進める(gameTime もシミュレーションも止まる)。
+  if (now - 10 < useGameStore.getState().hitstopUntil) return;
   useGameStore.setState(st => ({ gameTime: st.gameTime + 10 }));
   useGameStore.getState().movePlayer(NO, 0.01);
   useGameStore.getState().tickBrawler();
@@ -152,7 +154,9 @@ describe('5段のつなぎの確定(ストア・実際の AI)', () => {
       if (brawlerComboEndNoHoldNow(z, gt())) { noHoldMs += 10; expect(held).toBe(false); }
       if (z.lastHit > 0 && !held && firstFreeAt < 0) firstFreeAt = t;
     };
-    for (let i = 0; i < 12 && t < 4000; i++) {
+    // 2026-11-12: 当たりの止めが画面全体の止めになり、止めの間のフレームはシミュレーションが進まない(adv が壁時計だけ進める)=1回の押しで進む
+    //   技の時計が短くなったので、固まらない時間(1500ms)を測り切れるよう窓を 12回/4000ms→16回/5000ms に広げた(中身の基準は同じ)。
+    for (let i = 0; i < 16 && t < 5000; i++) {
       // 1段目だけを連打する(つながりの受付を切って毎回1段目)
       useGameStore.setState(st => (st.player.brawler ? { player: { ...st.player, brawler: { ...st.player.brawler, nextStage: 1, chainUntil: 0 } } } : {}));
       useGameStore.getState().brawlerPress();

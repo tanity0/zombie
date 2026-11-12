@@ -10,9 +10,9 @@
 //  2. 出撃の間: masteryRun の pending に貯めるだけ(段階は変えない)。
 //  3. リザルト: commitMasteryRun() を1回(GameOverScreen の最初の描画)。
 import {
-  GROWING_MASTERY_KEYS, MASTERY_BASE, MASTERY_GROWTH, MASTERY_KEY, MASTERY_MAX_LEVEL, MASTERY_MAX_MULT,
-  MASTERY_PENDING_KEY, MASTERY_XP_WEIGHT, SUB_TO_MASTERY_KEY, isGrowingMasteryKey,
-  type GrowingMasteryKey, type MasteryKey,
+  DEFAULT_MELEE_MASTERY_KEY, GROWING_MASTERY_KEYS, LEGACY_MELEE_MASTERY_KEY, MASTERY_BASE, MASTERY_GROWTH, MASTERY_KEY,
+  MASTERY_MAX_LEVEL, MASTERY_MAX_MULT, MASTERY_PENDING_KEY, MASTERY_XP_WEIGHT, SUB_TO_MASTERY_KEY, isGrowingMasteryKey,
+  meleeMasteryKeyOfWeaponKey, type GrowingMasteryKey, type MasteryKey, type MasteryMeleeKey,
 } from '../data/mastery';
 import {
   clearMasteryReport, clearPendingMastery, getPendingMastery, hasPendingMastery, isMasteryRunCommitted,
@@ -70,10 +70,34 @@ export interface MasteryState {
 
 export const emptyMastery = (): MasteryState => ({ xp: {} });
 
-/** 壊れた保存・旧データ・特別なキー・未知のキーを捨て、xp を 0 以上の有限値へ畳む。 */
-export const normalizeMastery = (raw: unknown): MasteryState => {
+/** 旧 `melee`(ナイフごとに分ける前の1本)の移し先 = 装備している近接武器のキー。分からなければ基本のナイフ。 */
+export const legacyMeleeTarget = (equippedMeleeKey?: string | null): MasteryMeleeKey =>
+  meleeMasteryKeyOfWeaponKey(equippedMeleeKey) ?? DEFAULT_MELEE_MASTERY_KEY;
+
+/** xp の表に旧 `melee` の欄が在るか(値が壊れていても欄が在れば true=消すために移行を通す)。 */
+export const hasLegacyMeleeXp = (table: unknown): boolean =>
+  !!table && typeof table === 'object' && Object.prototype.hasOwnProperty.call(table, LEGACY_MELEE_MASTERY_KEY);
+
+/**
+ * 旧 `melee` の量を、装備している近接武器のキーへ足して移し、旧 `melee` の欄を消す(純関数・元の表は変えない)。
+ * 移し先に量が在れば足す。旧 `melee` が無ければ同じ表をそのまま返す(=2度通しても二重に足さない)。
+ */
+export const migrateLegacyMeleeXp = (table: Record<string, unknown>, equippedMeleeKey?: string | null): Record<string, unknown> => {
+  if (!hasLegacyMeleeXp(table)) return table;
+  const { [LEGACY_MELEE_MASTERY_KEY]: legacy, ...rest } = table;
+  const add = cleanXp(legacy);
+  if (add <= 0) return rest;
+  const to = legacyMeleeTarget(equippedMeleeKey);
+  return { ...rest, [to]: cleanXp(rest[to]) + add };
+};
+
+/**
+ * 壊れた保存・旧データ・特別なキー・未知のキーを捨て、xp を 0 以上の有限値へ畳む。
+ * 旧 `melee` は `equippedMeleeKey`(分からなければ基本のナイフ)のキーへ移してから畳む(捨てない)。
+ */
+export const normalizeMastery = (raw: unknown, equippedMeleeKey?: string | null): MasteryState => {
   const src = (raw && typeof raw === 'object' ? (raw as { xp?: unknown }).xp : undefined);
-  const table = (src && typeof src === 'object' ? src : {}) as Record<string, unknown>;
+  const table = migrateLegacyMeleeXp((src && typeof src === 'object' ? src : {}) as Record<string, unknown>, equippedMeleeKey);
   const xp: Partial<Record<GrowingMasteryKey, number>> = {};
   for (const k of GROWING_MASTERY_KEYS) {
     const v = cleanXp(table[k]);
@@ -87,9 +111,21 @@ const readJson = (key: string): unknown => {
   return raw ? JSON.parse(raw) : {};
 };
 
-export const loadMastery = (): MasteryState => {
+/**
+ * 保存の読み出し。旧 `melee` が残っていれば `equippedMeleeKey` のキーへ移す(社長裁定2026-11-12「ナイフ毎の括り」の移行)。
+ * 装備が分かる時(=`equippedMeleeKey` を渡した時: 出撃の頭の resetGame)は移した結果を書き戻す=移行は1度だけ・
+ * 2度読んでも二重に足さない(書き戻した後は旧 `melee` が無い)。装備が分からない読み(作戦室の表示など)は
+ * 基本のナイフへ移した形で返すだけで書き戻さない(=次の出撃の頭で、その時の装備へ移す)。
+ */
+export const loadMastery = (equippedMeleeKey?: string | null): MasteryState => {
   if (typeof localStorage === 'undefined') return emptyMastery();
-  try { return normalizeMastery(readJson(MASTERY_KEY)); }
+  try {
+    const raw = readJson(MASTERY_KEY);
+    const legacy = hasLegacyMeleeXp((raw as { xp?: unknown } | null)?.xp);
+    const s = normalizeMastery(raw, equippedMeleeKey);
+    if (legacy && equippedMeleeKey != null) saveMastery(s);
+    return s;
+  }
   catch { return emptyMastery(); }
 };
 
@@ -99,10 +135,10 @@ export const saveMastery = (s: MasteryState): void => {
   catch { /* ignore (quota / private mode) */ }
 };
 
-/** 退避(masteryPending)の読み出し。壊れていれば空。 */
-export const loadStashedMasteryPending = (): MasteryXpTable => {
+/** 退避(masteryPending)の読み出し。壊れていれば空。旧 `melee` は `equippedMeleeKey`(分からなければ基本のナイフ)へ移して読む。 */
+export const loadStashedMasteryPending = (equippedMeleeKey?: string | null): MasteryXpTable => {
   if (typeof localStorage === 'undefined') return {};
-  try { return normalizeMastery(readJson(MASTERY_PENDING_KEY)).xp; }
+  try { return normalizeMastery(readJson(MASTERY_PENDING_KEY), equippedMeleeKey).xp; }
   catch { return {}; }
 };
 
@@ -160,22 +196,25 @@ export const masteryMultTable = (s: MasteryState, ignoredRun: boolean): Partial<
 export interface MasteryLoadoutInput {
   /** 持っている銃の種類(重複してよい=1つに数える)。 */
   gunCategories: readonly (string | undefined)[];
-  /** 近接武器を持っているか。 */
-  hasMelee: boolean;
+  /** 持っている近接武器のキー(無ければ undefined)。台帳に無い近接は数えない。 */
+  meleeKey: string | undefined;
   /** 持っているサブウェポン。 */
   subs: readonly SubWeaponKey[];
 }
 
 /**
  * `loadout` の倍率(v2.1 A-11)= 重複なしの集合の平均:
- * 銃の種類 + 近接(格闘を持っていれば `brawler`、無ければ `melee`。近接武器が無ければ入れない)
+ * 銃の種類 + 近接(格闘を持っていれば `brawler`、無ければ持っている近接武器のキー。近接武器が無い/台帳に無ければ入れない)
  * + 持っているサブのうち育つキー(`murasame`→`katana`・`brawler` は近接の枠と二重に数えない)。空なら1。
  */
 export const masteryLoadoutMult = (mults: Partial<Record<MasteryKey, number>>, input: MasteryLoadoutInput): number => {
   const set = new Set<GrowingMasteryKey>();
   for (const c of input.gunCategories) if (isGrowingMasteryKey(c)) set.add(c);
   const hasBrawler = input.subs.includes('brawler');
-  if (input.hasMelee) set.add(hasBrawler ? 'brawler' : 'melee');
+  if (input.meleeKey !== undefined) {
+    const meleeMk = hasBrawler ? 'brawler' : meleeMasteryKeyOfWeaponKey(input.meleeKey);
+    if (meleeMk) set.add(meleeMk);
+  }
   for (const s of input.subs) {
     const k = SUB_TO_MASTERY_KEY[s];
     if (k) set.add(k);
@@ -185,6 +224,13 @@ export const masteryLoadoutMult = (mults: Partial<Record<MasteryKey, number>>, i
   for (const k of set) sum += mults[k] ?? 1;
   return sum / set.size;
 };
+
+/**
+ * 近接の当たりの熟練度のキー=当たりを出した者が**装備している近接武器**のキー(社長裁定2026-11-12「ナイフ毎の括り」)。
+ * 本人=player の近接武器・守護霊=疑似プレイヤーの近接武器。近接武器を持っていない/台帳に無い時は `loadout`。
+ */
+export const meleeMasteryKeyOf = (actor: Pick<Player, 'weapons'> | null | undefined): MasteryKey =>
+  meleeMasteryKeyOfWeaponKey(actor?.weapons?.find(w => w.isMelee)?.key) ?? 'loadout';
 
 /** 読み口: `none`→1 / `loadout`→焼いた平均 / それ以外→焼いた倍率(無い欄=1)。 */
 export const masteryMultOf = (
@@ -236,18 +282,26 @@ const clampRecordMult = (v: unknown): number => {
  * 守護霊の記録に写した熟練度の焼き値を復元する(壊れた保存・改ざんへの備えとして正規化する)。
  * 知らないキーは捨てる(育つキーと `max` だけ残す)・倍率は 1〜1.9 に丸める・数でない物は 1(=表から落とす)。
  * 欄が無い(古い記録)は `{}` と `1`(熟練度なしの強さ)。
+ * 旧 `melee`(ナイフごとに分ける前の記録・古いクライアントの記録)は、その記録の近接武器 `recordMeleeKey`
+ * (無い/台帳に無ければ基本のナイフ)のキーとして読む。同じ記録に新しいキーが在ればそちらを残す。
  * オンラインで届く他人の記録も、共有の正規化(shared/ghostSanitize.mjs の sanitizeSnapshot)が `masteryMult`・
  * `masteryLoadoutMult` を同じ規則(既知のキーだけ・1〜1.9・数でない物は落とす)で通すので届く(=他人の守護霊にも記録主の熟練度が乗る)。
  * ここでの正規化は自分の記録にも他人の記録にも掛かる(共有の正規化を通った値は既に範囲内=二度丸めても変わらない)。
  * ただし共有の正規化が古いサーバで保存された記録は欄が落ちたまま=欄なし(熟練度なし)として読む。
  */
-export const normalizeMasteryRecord = (rawMult: unknown, rawLoadout: unknown): MasteryRecord => {
+export const normalizeMasteryRecord = (rawMult: unknown, rawLoadout: unknown, recordMeleeKey?: string | null): MasteryRecord => {
   const masteryMult: Partial<Record<MasteryKey, number>> = {};
   if (rawMult && typeof rawMult === 'object' && !Array.isArray(rawMult)) {
-    for (const [k, v] of Object.entries(rawMult as Record<string, unknown>)) {
+    const table = rawMult as Record<string, unknown>;
+    for (const [k, v] of Object.entries(table)) {
       if (!MASTERY_RECORD_KEYS.has(k)) continue;
       const m = clampRecordMult(v);
       if (m !== 1) masteryMult[k as MasteryKey] = m;
+    }
+    if (hasLegacyMeleeXp(table)) {
+      const to = legacyMeleeTarget(recordMeleeKey);
+      const m = clampRecordMult(table[LEGACY_MELEE_MASTERY_KEY]);
+      if (m !== 1 && masteryMult[to] === undefined) masteryMult[to] = m;
     }
   }
   return { masteryMult, masteryLoadoutMult: clampRecordMult(rawLoadout) };
@@ -303,13 +357,13 @@ export const burnRefreshMastery = (
 };
 
 /**
- * resetGame の頭(焼き込みより前)。リザルトを通らずに終わった出撃の分を本体へ足す(v2.1 A-4):
+ * resetGame の頭(焼き込みより前)。`equippedMeleeKey`=この出撃の近接武器(旧 `melee` の移し先)。リザルトを通らずに終わった出撃の分を本体へ足す(v2.1 A-4):
  * メモリの pending に残りがあればメモリを、無ければ退避(masteryPending)を足す=どちらか一方だけ。
  * その後、退避を消し、メモリの pending・報告用の表を空にする(beginMasteryRun は呼び出し側)。
  */
-export const recoverMasteryPending = (): void => {
-  const add = hasPendingMastery() ? getPendingMastery() : loadStashedMasteryPending();
-  if (Object.values(add).some(v => (v ?? 0) > 0)) saveMastery(addXp(loadMastery(), add));
+export const recoverMasteryPending = (equippedMeleeKey?: string | null): void => {
+  const add = hasPendingMastery() ? getPendingMastery() : loadStashedMasteryPending(equippedMeleeKey);
+  if (Object.values(add).some(v => (v ?? 0) > 0)) saveMastery(addXp(loadMastery(equippedMeleeKey), add));
   removeStash();
   clearPendingMastery();
   clearMasteryReport();

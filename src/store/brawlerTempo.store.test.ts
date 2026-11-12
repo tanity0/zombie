@@ -21,6 +21,8 @@ const advance = (ms: number) => {
   const end = now + ms;
   while (now < end) {
     now += 10;
+    // ★画面全体の止め(triggerHitstop・格闘の当たり): 実機のループと同じく、止まっている間は壁時計だけ進める(gameTime もシミュレーションも止まる)。
+    if (now - 10 < useGameStore.getState().hitstopUntil) continue;
     useGameStore.setState(st => ({ gameTime: st.gameTime + 10 }));
     useGameStore.getState().movePlayer(NO_INPUT, 0.01);
     useGameStore.getState().tickBrawler();
@@ -91,11 +93,11 @@ describe('テンポ係数の表(純関数)', () => {
     expect(v.holds).toEqual({ s1: 390, s2: 390, s3: 676, s4: 611, s5: 0, kick1: 345, kick2: 403, kick3: 0, heel: 390, stomp: 299, kiko: 0 }); // 係数1.3(四捨五入)
     expect(brawlerTempoMs(585, 1.3)).toBe(761);
   });
-  it('当てた瞬間の止めは係数を掛けない別の表: 弱90 / 強・技167 / 締め253', () => {
-    expect(BRAWLER_HITSTOP).toEqual({ weak: 90, strong: 167, closer: 253 }); // 社長指示2026-11-12 で 90/150/220→90/167/253(フレームの倍数で 0/+1/+2 フレーム)
-    expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 167, 167, 253]);
-    expect([...BRAWLER_KICK_HITSTOP_MS]).toEqual([0, 167, 167, 253]);
-    expect([BRAWLER_STOMP_HITSTOP_MS, BRAWLER_SECRET_LAND_HITSTOP_MS]).toEqual([253, 253]);
+  it('当てた瞬間の止めは係数を掛けない別の表: 弱90 / 強・技150 / 締め220', () => {
+    expect(BRAWLER_HITSTOP).toEqual({ weak: 90, strong: 150, closer: 220 });
+    expect(BRAWLER_STAGES.map(s => s.hitstopMs)).toEqual([90, 90, 150, 150, 220]);
+    expect([...BRAWLER_KICK_HITSTOP_MS]).toEqual([0, 150, 150, 220]);
+    expect([BRAWLER_STOMP_HITSTOP_MS, BRAWLER_SECRET_LAND_HITSTOP_MS]).toEqual([220, 220]);
     expect(brawlerTimesAt(1.0).stages.map(s => s.hitstopMs)).toEqual(brawlerTimesAt(1.3).stages.map(s => s.hitstopMs));
   });
   it('setBrawlerTempoAll で全部の欄が書き直る(live binding)', () => {
@@ -175,13 +177,13 @@ describe('係数1.3でも秘奥義が成立する(→↓←↑ の先行入力�
     for (let i = 0; i < 200 && !secret; i++) { advance(10); secret = !!br().secret; }
     return secret;
   };
-  // 実測の境目: 280ms では成立せず 290ms から成立(2026-11-12 に止めを 90/150/220→90/167/253 へ伸ばして 270→290。旧: 260 不成立・270 から成立)。
-  it('間 280ms では成立しない(境目の記録)', () => {
+  // 実測の境目: 290ms では成立せず 295ms から成立(2026-11-12 に 260/270→290/295: 画面全体の止め(110/180/260)の間もプレイヤーの時間は流れるため、壁時計の間隔が延びた(技の時計の上では同じ))。
+  it('間 290ms では成立しない(境目の記録)', () => {
     setBrawlerTempoAll(1.3);
     prep();
-    expect(flickAll(280)).toBe(false);
+    expect(flickAll(290)).toBe(false);
   });
-  it.each([290, 300, 400, 600])('間 %ims で成立', (gap) => {
+  it.each([295, 300, 400, 600])('間 %ims で成立', (gap) => {
     setBrawlerTempoAll(1.3);
     prep();
     expect(flickAll(gap)).toBe(true);

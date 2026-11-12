@@ -14,7 +14,7 @@ import {
 } from '../utils/brawlerCombo';
 import {
   BRAWLER_KICK3_KB_POWER, BRAWLER_TEMPO_DEFAULT, initialBrawlerState, brawlerCancelWindowOpen, brawlerTechAllowed, brawlerPressDecision, brawlerInHitstop,
-  brawlerStepAllowed, brawlerStageSpec, BRAWLER_TECHS, BRAWLER_CANCEL_WINDOW_MS, brawlerElapsed, brawlerTotalMs, BRAWLER_HITSTOP, type BrawlerState,
+  brawlerStepAllowed, brawlerStageSpec, BRAWLER_TECHS, BRAWLER_CANCEL_WINDOW_MS, brawlerElapsed, brawlerTotalMs, BRAWLER_WORLD_STOP, BRAWLER_WORLD_STOP_LOCK_MS, type BrawlerState,
 } from '../utils/brawler';
 
 const NO = { up: false, down: false, left: false, right: false } as never;
@@ -49,7 +49,10 @@ const gt = () => useGameStore.getState().gameTime;
 let jitter: (() => number) | null = null;
 const adv = (onStep?: () => void) => {
   const d = jitter ? jitter() : null;
+  const frozen = now < useGameStore.getState().hitstopUntil;
   now += d ?? dtWall;
+  // ★画面全体の止め(triggerHitstop・格闘の当たり): 実機のループと同じく、止まっている間は壁時計だけ進める(gameTime もシミュレーションも見張りも止まる)。
+  if (frozen) return;
   // ★実機と同じ入口(setGameTime)で進める=確定の固まりの「1フレーム遅れて明ける」(brawlerLockAlive)がフレームの幅を知る。
   useGameStore.getState().setGameTime(useGameStore.getState().gameTime + (d ?? dtGame));
   useGameStore.getState().movePlayer(NO, dtWall / 1000);
@@ -278,19 +281,23 @@ describe('§20-6-4 境目', () => {
       expectLinked(w, r.steps.length, `${foe} ${r.name} slow ${a}→${b}`);
     }
   });
-  it('固まりは §20-4 の長さどおり: 1段目を当てて何も続けなければ、当たりから 480ms(止め90+1段目の固まり390)で明ける', () => {
+  it('固まりは §20-4 の長さどおり: 1段目を当てて何も続けなければ、画面全体の止めの後、当たりから(固まりの式の止め+1段目の固まり390)で明ける', () => {
     setup();
     spawnFoe('hunter-windup');
     useGameStore.getState().brawlerPress();
     for (let k = 0; k < 60 && !br().resolved; k++) adv();
     const hitAt = gt();
-    expect(en().brLockUntil).toBe(hitAt + brawlerLockHitMs('s1', BRAWLER_HITSTOP.weak));
-    expect(en().brLockUntil! - hitAt).toBe(BRAWLER_HITSTOP.weak + 390);
-    expect(en().brHoldUntil ?? 0).toBeLessThanOrEqual(now + BRAWLER_HITSTOP.weak); // 壁時計の欄は当たりの止めまで(確定の固まりは gameTime の欄)
+    // ★社長指示2026-11-12: 当たりの止めは画面全体の止め(BRAWLER_WORLD_STOP・壁時計・gameTime は進まない)。固まりの式の止めは BRAWLER_WORLD_STOP_LOCK_MS。
+    expect(en().brLockUntil).toBe(hitAt + brawlerLockHitMs('s1', BRAWLER_WORLD_STOP_LOCK_MS));
+    expect(en().brLockUntil! - hitAt).toBe(BRAWLER_WORLD_STOP_LOCK_MS + 390);
+    expect(useGameStore.getState().hitstopUntil).toBe(now + BRAWLER_WORLD_STOP.weak); // 画面全体の止め(弱)
+    expect(en().brHoldUntil ?? 0).toBeLessThanOrEqual(now + BRAWLER_WORLD_STOP.weak); // 壁時計の欄は当たりの止めまで(確定の固まりは gameTime の欄)
+    // 止まっている長さ(壁時計)=画面全体の止め+固まり(gameTime)
     let heldFrames = 0;
-    for (let k = 0; k < 40; k++) { adv(); if (brawlerHeldNow(en(), gt(), now)) heldFrames++; }
-    expect(heldFrames * FRAME).toBeGreaterThanOrEqual(BRAWLER_HITSTOP.weak + 390 - FRAME);
-    expect(heldFrames * FRAME).toBeLessThanOrEqual(BRAWLER_HITSTOP.weak + 390 + FRAME);
+    for (let k = 0; k < 50; k++) { adv(); if (brawlerHeldNow(en(), gt(), now)) heldFrames++; }
+    const heldWall = BRAWLER_WORLD_STOP.weak + BRAWLER_WORLD_STOP_LOCK_MS + 390;
+    expect(heldFrames * FRAME).toBeGreaterThanOrEqual(heldWall - FRAME);
+    expect(heldFrames * FRAME).toBeLessThanOrEqual(heldWall + FRAME);
   });
 });
 
@@ -474,7 +481,7 @@ describe('§20-6-4 入らない道・つながらない物', () => {
       }
     }
   });
-  it('ボス級への大踏み潰しの固まりは、雑魚・強個体と同じ長さ(止め253+固まり299=552ms)', () => {
+  it('ボス級への大踏み潰しの固まりは、雑魚・強個体と同じ長さ(画面全体の止めの後、固まりの式の止め+固まり299)', () => {
     const lens: number[] = [];
     for (const foe of ['zombie-move', 'driller-windup', 'hunter-move'] as const) {
       setup();
@@ -484,7 +491,7 @@ describe('§20-6-4 入らない道・つながらない物', () => {
       expect(br().connected, `${foe} stomp connected`).toBe(true);
       lens.push(en().brLockUntil! - gt());
     }
-    expect(lens).toEqual([552, 552, 552]); // 止め 220→253(社長指示2026-11-12)で 519→552
+    expect(lens).toEqual([0, 1, 2].map(() => BRAWLER_WORLD_STOP_LOCK_MS + 299)); // gameTime(画面全体の止めの間は進まない)
   });
   it('段と飛び蹴りを回し続けても、強個体・ボス級は8発目までに固まりが切れる(コンボの減衰: 飛び蹴り→1段目→飛び蹴り…)', () => {
     for (const foe of ['driller-windup', 'hunter-windup'] as const) {

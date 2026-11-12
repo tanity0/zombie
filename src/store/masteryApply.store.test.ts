@@ -18,7 +18,8 @@ const { GROWING_MASTERY_KEYS } = await import('../data/mastery');
 const { saveMastery, masteryNeedFor, masteryMultOf } = await import('../utils/mastery');
 const { withMastery, getPendingMastery, getMasteryReport, isMasteryRunIgnored } = await import('../utils/masteryRun');
 const { spawnEnemyAt } = await import('../utils/enemyUtils');
-const { fireWeapon, createWeapon, projectileMasteryKey, counterMasteryKeyOf } = await import('../utils/weaponUtils');
+const { fireWeapon, createWeapon, projectileMasteryKey, counterMasteryKeyOf, weaponDisplayName } = await import('../utils/weaponUtils');
+const { isMeleeMasteryKey } = await import('../utils/masteryView');
 const { setBrawlerTempoAll } = await import('../utils/brawlerCombo');
 import type { GrowingMasteryKey } from '../data/mastery';
 
@@ -26,6 +27,8 @@ setBrawlerTempoAll(1.0);
 
 const st = () => useGameStore.getState();
 const sortie = () => st().resetGame('warrior');
+/** 戦士の初期の近接武器(=近接の当たりの熟練度のキー・ナイフ毎)。下の「近接はナイフ毎」で実物と一致を確かめる。 */
+const MK = 'hatchet-t2' as const;
 /** Lv n までの xp(Lv1→n の必要量の合計)。 */
 const xpForLevel = (k: GrowingMasteryKey, lv: number): number => {
   let sum = 0;
@@ -123,21 +126,21 @@ describe('受け入れ条件3: 銃の段階は種類ごと', () => {
 });
 
 describe('受け入れ条件4: 近接の当たりは近接(格闘は格闘)だけに貯まる', () => {
-  it('近接の段階を上げると、近接の振りは倍率どおり増え、貯まるのは割り戻した量(melee)', () => {
+  it('近接の段階を上げると、近接の振りは倍率どおり増え、貯まるのは割り戻した量(装備している近接武器のキー)', () => {
     const base = knifeSwingDamage();
     sortie();
     prepareMelee();
     expect(getPendingMastery()).toEqual({});
-    saveMastery({ xp: { melee: xpForLevel('melee', 6) } }); // Lv6 = ×1.5
+    saveMastery({ xp: { [MK]: xpForLevel(MK, 6) } }); // Lv6 = ×1.5
     sortie();
     prepareMelee();
     const leveled = knifeSwingDamage();
     expect(leveled).toBeCloseTo(base * 1.5, 6);
-    expect(getPendingMastery().melee).toBe(Math.round(leveled / 1.5));
+    expect(getPendingMastery()[MK]).toBe(Math.round(leveled / 1.5));
     expect(getPendingMastery().brawler).toBeUndefined();
   });
 
-  it('格闘を装備中の近接(段)は brawler に貯まり melee には貯まらない', () => {
+  it('格闘を装備中の近接(段)は brawler に貯まり近接武器のキーには貯まらない', () => {
     let now = 7_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
     useGameStore.setState(s => ({
@@ -159,7 +162,7 @@ describe('受け入れ条件4: 近接の当たりは近接(格闘は格闘)だ�
     expect(hpOf('z')).toBeLessThan(99999);
     const pending = getPendingMastery();
     expect(pending.brawler ?? 0).toBeGreaterThan(0);
-    expect(pending.melee).toBeUndefined();
+    expect(pending[MK]).toBeUndefined();
   });
 });
 
@@ -191,11 +194,11 @@ describe('受け入れ条件6: 守護霊・幻影・護衛の与ダメは倍率1
     expect(getPendingMastery()).toEqual({});
   });
   it('熟練度の欄が空の主語(幻影の疑似プレイヤー・古い記録の守護霊)は倍率1(守護霊の記録の値は masteryGuardian.store.test.ts)', () => {
-    saveMastery({ xp: { melee: xpForLevel('melee', 10) } });
+    saveMastery({ xp: { [MK]: xpForLevel(MK, 10) } });
     sortie();
     const live = st().player;
-    expect(masteryMultOf(live, 'melee')).toBeCloseTo(1.9, 10);
-    expect(masteryMultOf({ ...live, masteryMult: {}, masteryLoadoutMult: 1 }, 'melee')).toBe(1);
+    expect(masteryMultOf(live, MK)).toBeCloseTo(1.9, 10);
+    expect(masteryMultOf({ ...live, masteryMult: {}, masteryLoadoutMult: 1 }, MK)).toBe(1);
   });
 });
 
@@ -278,7 +281,7 @@ describe('幻影には熟練度を乗せない(発注者指示「幻影にはこ
     const swingBase = swingAt('guardian-phantom');
     expect(gunBase).toBeGreaterThan(0);
     expect(swingBase).toBeGreaterThan(0);
-    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), melee: xpForLevel('melee', 6) } }); // ×1.3 / ×1.5
+    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), [MK]: xpForLevel(MK, 6) } }); // ×1.3 / ×1.5
     sortie(); prepareMelee();
     expect(masteryMultOf(st().player, 'handgun')).toBeCloseTo(1.3, 10);
     expect(gunHit('guardian-phantom')).toBeCloseTo(gunBase, 6);
@@ -290,7 +293,7 @@ describe('幻影には熟練度を乗せない(発注者指示「幻影にはこ
     const gunBase = gunHit('zombie');
     sortie(); prepareMelee();
     const swingBase = swingAt('zombie');
-    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), melee: xpForLevel('melee', 6) } });
+    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), [MK]: xpForLevel(MK, 6) } });
     sortie(); prepareMelee();
     expect(gunHit('zombie')).toBeCloseTo(gunBase * 1.3, 6);
     sortie(); prepareMelee();
@@ -298,19 +301,19 @@ describe('幻影には熟練度を乗せない(発注者指示「幻影にはこ
   });
 
   it('(c) 幻影に与えた分は、実際に通った量のまま貯まる(割りすぎない)', () => {
-    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), melee: xpForLevel('melee', 6) } });
+    saveMastery({ xp: { handgun: xpForLevel('handgun', 4), [MK]: xpForLevel(MK, 6) } });
     sortie(); prepareMelee();
     const gunDealt = gunHit('guardian-phantom');
     expect(getPendingMastery().handgun).toBe(Math.round(gunDealt) * 2); // 幻影=ボス級の重み(×2)
     sortie(); prepareMelee();
     const swingDealt = swingAt('guardian-phantom');
-    expect(getPendingMastery().melee).toBe(Math.round(swingDealt) * 2);
+    expect(getPendingMastery()[MK]).toBe(Math.round(swingDealt) * 2);
   });
 });
 
-// カウンターの反撃は「装備している近接の手段」に貯める(社長裁定2026-11-12「装備してる近接武器に溜まるようにすればブレないのでは?」)。
-// 本人のカウンターの呼び口(useGameLoop・combatTick・angelBossTick・bountyTick)は store から通せないので、
-// 呼び口と同じ3行(キーを決める→その倍率を掛ける→そのキーで包む)をここで踏む。
+// カウンターの反撃は「装備している近接の手段」に貯める(社長裁定2026-11-12「装備してる近接武器に溜まるようにすればブレないのでは?」
+// +「近接の括りではない。ナイフ毎の括り」)。本人のカウンターの呼び口(useGameLoop・combatTick・angelBossTick・bountyTick)は
+// store から通せないので、呼び口と同じ3行(キーを決める→その倍率を掛ける→そのキーで包む)をここで踏む。
 describe('カウンターの反撃: 装備している近接の手段に貯まる', () => {
   /** 呼び口と同じ形でカウンターの反撃を1発入れる。返り値=掛けた倍率。 */
   const counterReply = (base: number): { key: string; mult: number } => {
@@ -320,17 +323,18 @@ describe('カウンターの反撃: 装備している近接の手段に貯ま�
     withMastery(counterMk, () => st().damageEnemy('z', base * mult, false, true, false, 'other', 'player', 'counter'));
     return { key: counterMk, mult };
   };
+  const knife = (key: string) => [createWeapon(key)];
 
-  it('格闘を装備していれば brawler(構えている銃の種類・loadout は返さない)', () => {
-    expect(counterMasteryKeyOf({ subWeapons: ['brawler'] })).toBe('brawler');
-    expect(counterMasteryKeyOf({ subWeapons: ['drone-boomerang', 'brawler'] })).toBe('brawler');
-    expect(counterMasteryKeyOf({ subWeapons: [] })).toBe('melee');
-    expect(counterMasteryKeyOf({ subWeapons: ['drone-boomerang'] })).toBe('melee');
-    expect(counterMasteryKeyOf({} as never)).toBe('melee');
+  it('格闘を装備していれば brawler・それ以外は装備している近接武器・近接武器が無ければ loadout(銃の種類は返さない)', () => {
+    expect(counterMasteryKeyOf({ subWeapons: ['brawler'], weapons: knife('knife-t1') })).toBe('brawler');
+    expect(counterMasteryKeyOf({ subWeapons: ['drone-boomerang', 'brawler'], weapons: [] })).toBe('brawler');
+    expect(counterMasteryKeyOf({ subWeapons: [], weapons: [createWeapon('rifle-t1'), ...knife('machete-t3')] })).toBe('machete-t3');
+    expect(counterMasteryKeyOf({ subWeapons: ['drone-boomerang'], weapons: knife('anti-mutant-knife-t5') })).toBe('anti-mutant-knife-t5');
+    expect(counterMasteryKeyOf({ subWeapons: [], weapons: [createWeapon('rifle-t1')] })).toBe('loadout');
   });
 
-  it('格闘を装備してカウンター → brawler に貯まり、構えている銃のキー・melee には貯まらない。倍率は brawler の倍率', () => {
-    saveMastery({ xp: { brawler: xpForLevel('brawler', 10), handgun: xpForLevel('handgun', 5), melee: xpForLevel('melee', 3) } });
+  it('格闘を装備してカウンター → brawler に貯まり、構えている銃のキー・近接武器のキーには貯まらない。倍率は brawler の倍率', () => {
+    saveMastery({ xp: { brawler: xpForLevel('brawler', 10), handgun: xpForLevel('handgun', 5), [MK]: xpForLevel(MK, 3) } });
     sortie();
     useGameStore.setState(s => ({ player: { ...s.player, subWeapons: ['brawler'], subWeaponLevels: { brawler: 1 } } }));
     spawnInFront(99999);
@@ -342,20 +346,62 @@ describe('カウンターの反撃: 装備している近接の手段に貯ま�
     const pending = getPendingMastery();
     expect(pending.brawler ?? 0).toBeGreaterThan(0);
     expect(pending.handgun).toBeUndefined();
-    expect(pending.melee).toBeUndefined();
+    expect(pending[MK]).toBeUndefined();
   });
 
-  it('格闘なしでカウンター → melee に貯まり、構えている銃のキーには貯まらない。倍率は melee の倍率', () => {
-    saveMastery({ xp: { melee: xpForLevel('melee', 6), handgun: xpForLevel('handgun', 2) } });
+  it('格闘なしでカウンター → 装備している近接武器に貯まり、銃・別のナイフには貯まらない。倍率はそのナイフの倍率', () => {
+    saveMastery({ xp: { [MK]: xpForLevel(MK, 6), 'knife-t1': xpForLevel('knife-t1', 9), handgun: xpForLevel('handgun', 2) } });
     sortie();
     expect(st().player.subWeapons ?? []).not.toContain('brawler');
     spawnInFront(99999);
     const { key, mult } = counterReply(40);
-    expect(key).toBe('melee');
-    expect(mult).toBeCloseTo(masteryMultOf(st().player, 'melee'), 10);
+    expect(key).toBe(MK);
+    expect(mult).toBeCloseTo(masteryMultOf(st().player, MK), 10);
+    expect(mult).toBeCloseTo(1.5, 10);
     const pending = getPendingMastery();
-    expect(pending.melee ?? 0).toBeGreaterThan(0);
+    expect(pending[MK] ?? 0).toBeGreaterThan(0);
+    expect(pending['knife-t1']).toBeUndefined();
     expect(pending.handgun).toBeUndefined();
     expect(pending.brawler).toBeUndefined();
+  });
+});
+
+// 社長裁定2026-11-12「近接の括りではない。ナイフ毎の括り」: 近接の当たりは装備しているナイフにだけ貯まる。
+describe('近接はナイフ毎', () => {
+  it('戦士の初期の近接武器は MK(このファイルの前提)', () => {
+    expect(st().player.weapons.find(w => w.isMelee)?.key).toBe(MK);
+  });
+  it('近接の振りは装備しているナイフにだけ貯まる(別のナイフ・銃には貯まらない)', () => {
+    knifeSwingDamage();
+    const pending = getPendingMastery();
+    expect(pending[MK] ?? 0).toBeGreaterThan(0);
+    for (const k of ['knife-t1', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5', 'handgun', 'shotgun'] as const) {
+      expect(pending[k], k).toBeUndefined();
+    }
+  });
+  it('ナイフを持ち替えると貯め先と掛かる倍率が変わる', () => {
+    saveMastery({ xp: { 'tactical-knife-t4': xpForLevel('tactical-knife-t4', 6) } }); // ×1.5
+    sortie(); prepareMelee();
+    const base = knifeSwingDamage(); // 戦士の MK(Lv1)
+    expect(getPendingMastery()[MK] ?? 0).toBeGreaterThan(0);
+    sortie(); prepareMelee();
+    useGameStore.setState(s => ({ player: { ...s.player, weapons: s.player.weapons.map(w => (w.isMelee ? createWeapon('tactical-knife-t4') : w)) } }));
+    const swapped = knifeSwingDamage();
+    const pending = getPendingMastery();
+    expect(pending['tactical-knife-t4'] ?? 0).toBeGreaterThan(0);
+    expect(pending[MK]).toBeUndefined();
+    // タクティカルナイフの素ダメ × 1.5(素ダメの比は武器のダメージの比)
+    expect(swapped).toBeGreaterThan(base);
+    expect(masteryMultOf(st().player, 'tactical-knife-t4')).toBeCloseTo(1.5, 10);
+  });
+  it('リザルトの名前は武器の名前(近接はナイフ毎)', () => {
+    for (const k of ['knife-t1', 'hatchet-t2', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5']) {
+      expect(isMeleeMasteryKey(k), k).toBe(true);
+      expect(weaponDisplayName(k), k).not.toBe('—');
+    }
+    expect(weaponDisplayName('knife-t1')).toBe('ナイフ');
+    expect(weaponDisplayName('hatchet-t2')).toBe('ダガー');
+    expect(isMeleeMasteryKey('handgun')).toBe(false);
+    expect(isMeleeMasteryKey('melee')).toBe(false);
   });
 });

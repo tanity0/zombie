@@ -300,7 +300,7 @@ const angelCounterHit = (boss: Enemy, bcx: number, hitX: number, hitY: number, s
     ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
   } }));
   const counterBase = getActiveGun(cp)?.damage ?? 12;
-  const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=melee)
+  const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
   const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
   withMastery(counterMk, () => useGameStore.getState().damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter'));
   recordCritHit('guaranteed', true); // §7-11c(4): カウンター反撃(確定クリ・天使6体は常にボス)

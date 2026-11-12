@@ -226,7 +226,7 @@ export {
 import { rescueSpawnCandidates } from '../utils/rescueQuestSpawn';
 // research/STAGE_DIFFICULTY.md: ステージ難度の階段。係数の判断(計測路なら1.0)はこのヘルパ1本。
 import { stageMobDiffMults, stageScoreMult } from '../utils/stageDiffMults';
-import { recoverMasteryPending, masteryIgnoredRun, masteryMultTable, masteryLoadoutMult, loadMastery, masteryMultOf, masteryXpAmount, burnRefreshMastery, objectMasteryMult, guardianMasteryMult } from '../utils/mastery';
+import { recoverMasteryPending, masteryIgnoredRun, masteryMultTable, masteryLoadoutMult, loadMastery, masteryMultOf, masteryXpAmount, burnRefreshMastery, objectMasteryMult, guardianMasteryMult, meleeMasteryKeyOf } from '../utils/mastery';
 import { beginMasteryRun, withMastery, currentMasterySource, currentMasteryExecute, currentMasteryAppliedMult, noteMasteryDamage } from '../utils/masteryRun';
 import { isGrowingMasteryKey, type MasteryKey } from '../data/mastery';
 import { isBotRun } from '../utils/botFlag';
@@ -747,6 +747,11 @@ export interface BrawlerStrikeOpts {
   brawler: true;
   /** 敵の止め(hitStunUntil に書く ms・再発火ガードは外す)。ボス級は従来どおり0。 */
   stunMs: number;
+  /**
+   * 確定の固まりの長さの式に使う「止め」(未指定=stunMs)。★画面全体を止める当たり(BR.BRAWLER_WORLD_STOP)は 0 を渡す=全体の止めの間は
+   * 技の時計(gameTime)も止まるので、固まりに止めの分を足さない(足すと、自分だけ先に動けて、つながりが止めの長さぶん甘くなる)。
+   */
+  lockStopMs?: number;
   kb: {
     kind: 'none' | 'small' | 'normal' | 'big';
     /** 押す向き(掌底=帯の向き)。無ければ fromX/fromY(円の中心)から外向き、それも無ければプレイヤーから外向き。 */
@@ -4686,7 +4691,9 @@ const brawlerHitPatch = (
       }
     } else {
       const airborneAfter = (out.brLiftUntil ?? enemy.brLiftUntil ?? 0) > now;
-      const lk = BRC.brawlerLockOnHit(enemy, move, gameTime, now, { stopMs: rawStopMs, enemyStopMs: stopForHold, canHold, airborneAfter });
+      const lk = BRC.brawlerLockOnHit(enemy, move, gameTime, now, {
+        stopMs: bs.lockStopMs ?? rawStopMs, enemyStopMs: bs.lockStopMs !== undefined ? Math.min(stopForHold, bs.lockStopMs) : stopForHold, canHold, airborneAfter,
+      });
       Object.assign(out, lk.patch);
       // 固めない当たり(締め・敵の攻撃の振りの最中・ダウンの着地の後)でも、当たりの止めは入る:
       // ボス級と溜めの相は止めを壁時計の固まりで掛ける(雑魚は hitStunUntil)。コンボの後の固まらない時間の間は止めが 0 なので書かれない。
@@ -4727,12 +4734,38 @@ const brawlerFinishLockPatch = (enemy: Enemy, bs: BrawlerStrikeOpts, gameTime: n
   if (!move) return {};
   const link = { brComboHits: BRC.brawlerLinkOnHit(enemy, gameTime, now) }; // つながっているコンボの数(表示だけ・§23)。フィニッシュも1発
   if (move === 'secret' || move === 'secret-land') return link;
-  const stop = Math.max(0, bs.stunMs);
+  const stop = Math.max(0, bs.lockStopMs ?? bs.stunMs);
   const bossBig = BRC.brawlerEnemyClass(enemy) === 'boss' && bs.kb.kind === 'big';
   return { ...link, ...BRC.brawlerLockOnHit(enemy, move, gameTime, now, {
     stopMs: stop, enemyStopMs: bossBig ? 0 : stop,
     canHold: BRC.brawlerPhaseKind(enemy, gameTime) !== 'active', airborneAfter: false, countHit: false, // 会心のフィニッシュは減衰の数に入れない(§20-4)
   }).patch };
+};
+/**
+ * ★格闘の当たりで画面全体を止めるか(社長指示2026-11-12・utils/brawler の BRAWLER_WORLD_STOP)。四神舞の最中は止めない(拍がずれる=ほかの
+ * triggerHitstop の呼び手と同じ)。止める時は、自分の止め・固まりの式の止めを 0、敵に書く止め(壁時計)を全体の止めと同じ長さにする
+ * (敵の止めと押しの始まりが、全体の止めの明けと揃う)。幻影(孫悟空)の当たりはこの道を通らない。
+ */
+const brawlerWorldStopOn = (get: () => GameState): boolean => !get().rhythm.active;
+/** 当たりの止めの組(自分の止め・敵に書く止め・固まりの式の止め・全体の止め)。 */
+const brawlerStopPlan = (get: () => GameState, hitstopMs: number): { self: number; stun: number; lock: { lockStopMs?: number }; world: number } => {
+  if (!brawlerWorldStopOn(get) || hitstopMs <= 0) return { self: hitstopMs, stun: hitstopMs, lock: {}, world: 0 };
+  const world = BR.brawlerWorldStopMs(hitstopMs);
+  // 自分の止めは 1ms だけ残す: 全体が止まっている間は gameTime が進まないので、この 1ms の止めが「全体の止めの最中に押した入力は今どおり
+  // 覚えて、止めが明けた最初のフレームで出す」を保つ(0 にすると、止めの最中の入力がその場で出て、次の技の出だしが全体の止めの中で始まる)。
+  // 固まりの式の止めは BR.BRAWLER_WORLD_STOP_LOCK_MS(半フレーム): 覚えた技は止めが明けた最初のフレームで出る(gameTime が1フレーム進んだ所)。
+  // 今の自分の止めでも、止めの明けはフレームの境目まで平均で半フレーム遅れていたので、固まりも半フレームぶん後ろへずらして今の手触りに揃える。
+  return { self: BR.BRAWLER_WORLD_STOP_SELF_MS, stun: world, lock: { lockStopMs: BR.BRAWLER_WORLD_STOP_LOCK_MS }, world };
+};
+/**
+ * 当たった後の反動。自分と相手だけの止めの時は今どおり(止めの間は器を止める=movePlayer が器の時計を延ばす)。画面全体の止めの時は、止めの間
+ * movePlayer が走らず器の時計が延びないので、反動を止めが明けた時刻から始める(=今と同じ「止めが明けたら短く減速して止まる」)。
+ */
+const brawlerRecoilAt = (dirX: number, dirY: number, plan: { stun: number; world: number }, now: number): Partial<Player> =>
+  plan.world > 0 ? brawlerRecoilPatch(dirX, dirY, 0, now + plan.world) : brawlerRecoilPatch(dirX, dirY, plan.stun, now);
+/** 当たった時だけ画面全体を止める(1回の技で何体に当たっても1回=長い方を採る triggerHitstop)。 */
+const brawlerApplyWorldStop = (get: () => GameState, plan: { world: number }, hits: number): void => {
+  if (plan.world > 0 && hits > 0) get().triggerHitstop(plan.world);
 };
 /** 倒した1発ぶんの数(その当たりで何発目だったか)。倒れた敵は数から外れるので、当たりの直後の合わせ直しでだけ使う。 */
 let brawlerKillLinkPeak = 0;
@@ -4818,7 +4851,8 @@ const startBrawlerAttack = (get: () => GameState, set: (fn: (s: GameState) => Pa
   const quick = s0.quickUntil > t;
   const s = { ...BR.brawlerStartAttack(s0, stage, t, quick), targetId: target?.id, dirX: dir.x, dirY: dir.y, pressAt: now, ...BRS.brawlerHuntingComboStart(s0, p.huntingCharged) };
   const ap = quick ? { dx: 0, dy: 0, dist: 0 } : BR.brawlerApproach(c.x, c.y, target, spec.dashPx);
-  setBrawler(set, s, { lastDirection: { x: dir.x, y: dir.y }, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, spec.windupMs, now) });
+  // 画面全体の止めの最中に出した段の詰め(壁時計)は、止めが明けた時刻から始める(上の蹴りと同じ・出だしの gameTime と揃える)。
+  setBrawler(set, s, { lastDirection: { x: dir.x, y: dir.y }, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, spec.windupMs, Math.max(now, get().hitstopUntil)) });
   // 振りの音(空振りの連打も無音にしない・段ごとに個別の音程=等間隔に下げない)。
   brawlerSfx('whip-swing', stage >= 4 ? 0.55 : 0.4, BR.BRAWLER_SWING_PITCH[spec.stage] * brJitter(), 140);
   // 詰めの出発点に砂埃(pixi が brawler の状態から描く)。
@@ -4972,7 +5006,10 @@ const startBrawlerTech = (
       //   詰めの器は溜めの間止めておく(lungeHoldUntil=止めと同じ仕組み・明けたら飛ぶ時間ぶん飛ぶ)。
       const chargeMs = kickN >= BR.BRAWLER_KICK_MAX ? BR.BRAWLER_KICK3_CHARGE_MS : 0;
       s = { ...s, windupMs: chargeMs + flightMs, kickChargeMs: chargeMs };
-      extra = { ...extra, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, flightMs, now), ...(chargeMs > 0 ? { lungeHoldUntil: now + chargeMs } : {}) };
+      // ★画面全体の止め(格闘の当たり・BR.BRAWLER_WORLD_STOP)の最中に出した蹴り(蹴りの連続は止めの最中でもその場で出る)は、踏み込み(壁時計)を
+      //   止めが明けた時刻から始める=飛ぶ距離と判定の時刻(gameTime=止めの間は進まない)が今どおり揃う。止めの外では now のまま。
+      const lungeAt = Math.max(now, get().hitstopUntil);
+      extra = { ...extra, ...brawlerLungePatch(ap.dx, ap.dy, ap.dist, flightMs, lungeAt), ...(chargeMs > 0 ? { lungeHoldUntil: lungeAt + chargeMs } : {}) };
       brawlerSfx('whip-swing', 0.55, (kickN >= 3 ? 0.78 : 0.92) * brJitter(), 160);
       // ★蹴りの筋(社長指示2026-11-07「キャラクターの移動に横長の斬撃の絵を被せれば蹴ってるように見える」)。
       // dash-wind(横長の白い羽の筋・尖った先が進む側)を体に付けて(followPlayer)、蹴り脚の高さ=足元寄りに被せる。3発目は大きく長く。
@@ -5287,12 +5324,14 @@ const brawlerSecretLand = (get: () => GameState, set: (fn: (s: GameState) => Par
   setBrawler(set, { ...s, secret: { ...s.secret!, phase: 'land', phaseAt: st.gameTime, nextAt: st.gameTime + BR.BRAWLER_SECRET_LAND_MS }, flashAt: now });
   const walls = meleeWallsAround(get, foot.x, foot.y, BR.BRAWLER_SECRET_LAND_RADIUS);
   const ids = BR.brawlerCircleTargets(get().enemies, foot.x, foot.y, BR.BRAWLER_SECRET_LAND_RADIUS, walls);
+  const plan = brawlerStopPlan(get, BR.BRAWLER_SECRET_LAND_HITSTOP_MS); // ★秘奥義の締めの当たり=画面全体の止め
   const res = get().triggerCounter(undefined, {
     targetIds: ids, brawler: true, pressedAt: now,
-    mult: BR.BRAWLER_SECRET_LAND_MULT, stunMs: BR.BRAWLER_SECRET_LAND_HITSTOP_MS, postureMult: BR.BRAWLER_SECRET_LAND_MULT,
+    mult: BR.BRAWLER_SECRET_LAND_MULT, stunMs: plan.stun, ...plan.lock, postureMult: BR.BRAWLER_SECRET_LAND_MULT,
     kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
     combo: { move: 'secret-land' },
   });
+  brawlerApplyWorldStop(get, plan, res.hits ?? 0);
   brawlerNoteFlowHits(set, res.hits ?? 0);
   brawlerKillSfx(res);
   const g = get();
@@ -5378,8 +5417,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
       const pw = meleeWallsAround(get, palm.x0, palm.y0, palm.travel + 60);
       ids = BR.brawlerBandTargets(st.enemies, palm.x0, palm.y0, palm.ux, palm.uy, pw, palm.travel);
     }
+    const plan = brawlerStopPlan(get, spec.hitstopMs); // ★当たりの止め=画面全体(四神舞の最中は自分と相手だけ)
     const r = strike(ids, {
-      mult: spec.mult, stunMs: spec.hitstopMs, postureMult: spec.mult,
+      mult: spec.mult, stunMs: plan.stun, ...plan.lock, postureMult: spec.mult,
       kb: spec.kb === 'big'
         ? { kind: 'big', dirX: dir.x, dirY: dir.y, bossHalf: true, ...(spec.kbMult !== undefined ? { power: spec.kbMult } : {}), ...(palm ? { passLine: { x0: palm.x0, y0: palm.y0, ux: palm.ux, uy: palm.uy } } : {}) }
         : { kind: spec.kb },
@@ -5391,13 +5431,15 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
     const fdir = palm ? { x: palm.ux, y: palm.uy } : dir;
-    const next = BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: spec.hitstopMs, landed: r.landed ?? hits });
+    brawlerApplyWorldStop(get, plan, hits);
+    const next = BR.brawlerAfterResolve({ ...s, dirX: fdir.x, dirY: fdir.y }, t, hits, { pointCap: cap, countPoint: true, hitstopMs: plan.self, landed: r.landed ?? hits });
     setBrawler(set, next, {
       lastDirection: { x: fdir.x, y: fdir.y },
       // 5段目: 抜けた先で(当てたら一拍止まってから)減速して止まる。
       // ほか: 当てた=反動の減速 / 空振り=詰めの 'accel' を 'decel' に戻す(古い形を残さない・検収 A-6)。
-      ...(palm ? brawlerPalmSettlePatch(fdir.x, fdir.y, hits > 0 ? spec.hitstopMs : 0, now)
-        : hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, spec.hitstopMs, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
+      // 画面全体の止めの間は器の延長(movePlayer)が走らないので、反動・抜けた先の減速は止めが明けた時刻から始める(brawlerRecoilAt)。
+      ...(palm ? (hits > 0 ? brawlerPalmSettlePatch(fdir.x, fdir.y, plan.world > 0 ? 0 : plan.stun, now + plan.world) : brawlerPalmSettlePatch(fdir.x, fdir.y, 0, now))
+        : hits > 0 ? brawlerRecoilAt(dir.x, dir.y, plan, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
     brawlerNoteFlowHits(set, hits);
     brawlerStageFx(get, s.stage, c, fdir, r, target, palm);
@@ -5412,15 +5454,17 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
   if (s.tech === 'stomp') {
     const foot = { x: c.x, y: c.y + p.height / 2 - 6 };
     const ids = BR.brawlerCircleTargets(st.enemies, foot.x, foot.y, stompR, walls);
+    const plan = brawlerStopPlan(get, BR.BRAWLER_STOMP_HITSTOP_MS); // ★当たりの止め=画面全体
     const r = strike(ids, {
-      mult: BR.BRAWLER_STOMP_MULT, stunMs: BR.BRAWLER_STOMP_HITSTOP_MS, postureMult: BR.BRAWLER_STOMP_MULT,
+      mult: BR.BRAWLER_STOMP_MULT, stunMs: plan.stun, ...plan.lock, postureMult: BR.BRAWLER_STOMP_MULT,
       kb: { kind: 'big', fromX: foot.x, fromY: foot.y, ignoreImmune: true, bossHalf: true },
       combo: { move: 'stomp' },
     });
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
-    setBrawler(set, BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: BR.BRAWLER_STOMP_HITSTOP_MS, landed: r.landed ?? hits }),
-      hits > 0 ? { lungeHoldUntil: now + BR.BRAWLER_STOMP_HITSTOP_MS } : {});
+    brawlerApplyWorldStop(get, plan, hits);
+    setBrawler(set, BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: plan.self, landed: r.landed ?? hits }),
+      hits > 0 ? { lungeHoldUntil: now + plan.stun } : {});
     brawlerNoteFlowHits(set, hits);
     g.breakEggsInBlast(foot.x, foot.y, stompR); // ★卵も割る(社長実機報告2026-11-09「銃の弾や爆発、一部格闘の技などで緑の卵が割れない。」)
     g.spawnRing(foot.x, foot.y, 20, stompR * 1.25, BR.BRAWLER_RGBA(0.9), 5, 420, true);
@@ -5457,8 +5501,9 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     const ids = target && BR.brawlerDistTo(c.x, c.y, target) <= radius ? [target.id] : [];
     // 踵落とし: 当たる前に浮いていた敵(叩き落とす)と地上の敵(その場で沈む)で、絵を出し分ける。
     const heelAir = heel ? new Set(st.enemies.filter(e => ids.includes(e.id) && BRC.brawlerAirborne(e, now)).map(e => e.id)) : null;
+    const plan = brawlerStopPlan(get, hs); // ★当たりの止め=画面全体(踵落としも)
     const r = strike(ids, {
-      mult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), stunMs: hs, postureMult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.2
+      mult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), stunMs: plan.stun, ...plan.lock, postureMult: heel ? BR.BRAWLER_HEEL_MULT : BR.brawlerKickMult(s.kickN), // 何発目かで 0.7/0.8/1.2
       // 押し: 1〜3発目とも普通のノックバック。3発目は旧「吹き飛ばし(big)」→ 少しのノックバックへ(社長指示2026-11-11「3段目はノックバック少しさせちゃって良い」)。
       // 2発目は地上の敵を少し打ち上げる(同・utils/brawlerCombo の BRAWLER_GROUND_LAUNCH)。空中の敵への3発目は今どおり締めの叩き落とし。
       // ★3発目はもう少し吹き飛ばす(社長指示2026-11-11・BRAWLER_KICK3_KB_POWER)。押しの種類は普通のまま=強さだけ上げる。
@@ -5467,13 +5512,14 @@ const resolveBrawlerAction = (get: () => GameState, set: (fn: (s: GameState) => 
     });
     const hits = r.hits ?? 0;
     brawlerKillSfx(r);
-    const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: hs, landed: r.landed ?? hits });
+    brawlerApplyWorldStop(get, plan, hits);
+    const after = BR.brawlerAfterResolve(s, t, hits, { pointCap: cap, countPoint: false, hitstopMs: plan.self, landed: r.landed ?? hits });
     // 秘奥義の1手目(→)は蹴りが当たった時だけ数える(社長指示2026-11-08「1発目は敵に当たっていること」)。
     // ★「当たった」=体力を削った当たり(§19-1): 拳鬼にレバーガードで防がれた蹴りは数えない(拳鬼の側の規則と同じ)。
     const secretProgress = BR.brawlerSecretAfterKick(s.secretProgress ?? 0, (r.landed ?? hits) > 0);
     setBrawler(set, { ...after, secretProgress, kickChainUntil: big ? 0 : t + BR.BRAWLER_KICK_CHAIN_MS, kickCount: big ? 0 : s.kickN }, {
       lastDirection: { x: dir.x, y: dir.y },
-      ...(hits > 0 ? brawlerRecoilPatch(dir.x, dir.y, hs, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
+      ...(hits > 0 ? brawlerRecoilAt(dir.x, dir.y, plan, now) : { lungeShape: 'decel', lungeHoldUntil: 0 }),
     });
     brawlerNoteFlowHits(set, hits);
     for (const h of r.hitAt ?? []) {
@@ -7862,7 +7908,7 @@ const applySlasherChainStrike = (
   const meleeDamage = meleeSwingBaseDamage(melee, player);
   const comboMult = skillMeleeComboMult(player, gameTime, get().meleeFinishComboCount, get().meleeFinishComboUntil);
   const dmg = meleeDamage * SLASHER_MULTS[step] * skillOutgoingDamageMult(player) * skillBloodAwakenDamageMult(player) * comboMult
-    * masteryMultOf(player, 'melee'); // 熟練度: スラッシャーの追撃=近接(research/MASTERY.md v2 §4-2 #10)
+    * masteryMultOf(player, meleeMasteryKeyOf(player)); // 熟練度: スラッシャーの追撃=装備している近接武器(research/MASTERY.md v2 §4-2 #10・ナイフ毎の括り)
   const nextStep = step + 1;
   // Lv3(maxHits=3)の最終段(nextStep===maxHits=この一撃で使い切る)のみノックバック大。
   const isFinalBigKbStep = slLv === 3 && nextStep === maxHits;
@@ -7907,7 +7953,7 @@ const applySlasherChainStrike = (
     // (パリィ抽選の対象になる)。無効化(無敵/パリィ)されたら数字・斬撃・血飛沫・KBを出さない
     // (「数字は出るのにHPが減らない」偽演出の禁止=監査Q1-1と同型)。幻影以外には従来と1bitも変わらない。
     const eDmg = dmg;
-    const k = withMastery('melee', () => get().damageEnemy(e.id, eDmg, false, false, false, 'other', 'player', null, 1, 'melee'));
+    const k = withMastery(meleeMasteryKeyOf(player), () => get().damageEnemy(e.id, eDmg, false, false, false, 'other', 'player', null, 1, 'melee')); // 熟練度: 装備している近接武器
     const eAfter = get().enemies.find(x => x.id === e.id);
     const gpDeflected = isGuardianPhantom(e.type)
       && !!eAfter && (eAfter.gpBlockedAt === gameTime || eAfter.gpParriedAt === gameTime);
@@ -11932,9 +11978,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 永続育成の攻撃力(research/GROWTH.md v4・社長裁定Q1)は**素ダメージへ前掛け**して渡す。
     // applyBrokenMeleeFatal は `baseDamage×5 + 報酬予算の残量` なので、前掛けにすると育成は
     // baseDamage 側にだけ乗る(報酬予算の残量は固定の設計値=育成で増やさない)。
-    // 熟練度(research/MASTERY.md v2.1 A-9): 当たりごとにキーを明示。通常の振り・フィニッシュ=格闘の当たり(bs)なら brawler・それ以外 melee、
+    // 熟練度(research/MASTERY.md v2.1 A-9): 当たりごとにキーを明示。通常の振り・フィニッシュ=格闘の当たり(bs)なら brawler・それ以外 装備している近接武器(ナイフ毎)、
     // シールドバッシュ=shield(v2.2)。頭の swingBaseDamage / meleeDamage には掛けない(ブーメラン・波及・救難信号が借りる)。
-    const swingMk: MasteryKey = bs ? 'brawler' : 'melee';
+    const swingMk: MasteryKey = bs ? 'brawler' : meleeMasteryKeyOf(player);
     const swingMm = masteryMultOf(player, swingMk);
     const meleeExecBase = meleeDamage * (player.growthAtkMult ?? 1) * swingMm; // フィニッシュの素ダメ(熟練度はここだけ)
     const swingMasteryHits: (MasteryDirectHit & { key: MasteryKey })[] = []; // 熟練度: 実際に減らした当たり(recordDamageDealt の隣で貯める)
@@ -12990,7 +13036,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeDamage = meleeSwingBaseDamage(melee, player);
     // 処刑(ボス5×/強個体3×)は skillOutgoingDamageMult を通らないので、育成の攻撃力は素ダメージへ
     // 前掛けする(research/GROWTH.md v4・ナイフ/刀/鞭/守護霊と同じ扱い)。主語=分身の持ち主。
-    // 熟練度(research/MASTERY.md v2.1 A-9): 分身=shadow-clone(近接の素ダメを借りるが melee は掛けない)。守護霊の分身=貯めない。
+    // 熟練度(research/MASTERY.md v2.1 A-9): 分身=shadow-clone(近接の素ダメを借りるが近接武器の熟練度は掛けない)。守護霊の分身=貯めない。
     // 倍率は主語の shadow-clone(本人=焼き値・守護霊=記録の値・幻影=1)。守護霊の熟練度の発注。
     const cloneMk: MasteryKey = isGhost ? 'none' : 'shadow-clone';
     const cloneMm = masteryMultOf(player, 'shadow-clone');
@@ -14113,7 +14159,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const meleeBase = meleeWeapon?.damage ?? 6;     // 近接の素ダメージ。鞭は通常0.25倍
     // 敵への打撃だけ縮地(§32)の連鎖の上乗せを掛ける(ワープ斬撃以外は ×1)。救難信号・死神の波及は meleeBase のまま。
     const strikeBase = meleeBase * (player.shukuchiStrikeMult ?? 1);
-    // 熟練度(research/MASTERY.md v2.1 A-9): 鞭=whip(近接の素ダメを借りるが melee は掛けない)。strikeBase には掛けない(式の側で1回)。
+    // 熟練度(research/MASTERY.md v2.1 A-9): 鞭=whip(近接の素ダメを借りるが近接武器の熟練度は掛けない)。strikeBase には掛けない(式の側で1回)。
     const whipMm = masteryMultOf(player, 'whip');
     const whipMasteryHits: MasteryDirectHit[] = [];
     const meleeCritChance = meleeWeapon?.critChance ?? 0;
@@ -15308,9 +15354,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // 裁定はプレイヤーのナイフスイングと同じ1本(値・条件・優先順はそのまま)。
     // 育成の攻撃力(research/GROWTH.md v4)はナイフと同じく**素ダメージへ前掛け**する。主語は疑似Player
     // =スナップショットに写した計測時の育成倍率(欠損=旧データは1.0)。
-    // 熟練度(守護霊の熟練度の発注): フィニッシュの素ダメに守護霊の記録の melee を掛ける(本人の triggerCounter の meleeExecBase と同じ所)。
+    // 熟練度(守護霊の熟練度の発注): フィニッシュの素ダメに守護霊の記録の「疑似プレイヤーの近接武器」の倍率を掛ける(本人の triggerCounter の meleeExecBase と同じ所)。
     // 処刑(execute)は倍率の掛からない当たり(本人と同じ)。貯めない=包みは none のまま。
-    const finishMm = masteryMultOf(actor, 'melee');
+    const finishMm = masteryMultOf(actor, meleeMasteryKeyOf(actor));
     const hit = resolveStunnedMeleeHit(
       enemy, meleeSwingBaseDamage(melee, actor) * (actor.growthAtkMult ?? 1) * finishMm, st.gameTime, BOSS_MELEE_STUN_MULT,
     );
@@ -26185,7 +26231,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     // ①リザルトを通らずに終わった出撃の分を本体へ足す(メモリか退避のどちらか一方)→ ②保存の段階を倍率にして焼く
     // → ③この出撃の「無視する出撃」の旗を masteryRun へ渡す(判定はここで1回だけ。貯める側・確定・退避はこの旗を読む)。
     // loadout の平均(A-11)は初期の銃と所持サブが決まった後=下の set() の中で作る。
-    recoverMasteryPending();
+    // 旧 `melee`(ナイフ毎に分ける前の1本)の量は、この出撃の近接武器のキーへ移す(読み込みの時に1度だけ・書き戻し)。
+    const masteryMeleeKey = startingWeapons.find(w => w.isMelee)?.key ?? null;
+    recoverMasteryPending(masteryMeleeKey);
     const masteryIgnored = masteryIgnoredRun({
       practice: isPracticeRun(),
       noProgress: isNoProgressRun(),
@@ -26195,7 +26243,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       tutorial: state.pendingFarBackdrop === 'tutorial',
       benchmark: state.benchmarkRun,
     });
-    const bakedMasteryMult = masteryMultTable(loadMastery(), masteryIgnored);
+    const bakedMasteryMult = masteryMultTable(loadMastery(masteryMeleeKey), masteryIgnored);
     // 守護霊の記録へ写す熟練度: 無視する出撃のうちボット・ベンチ以外は、本人が持っている段階(保存)を同じ計算で焼いて
     // 記録用の欄にだけ置く(この出撃の与ダメは焼き値 {}=倍率1のまま)。ボット・ベンチは記録を汚さない=写さない({}/1)。
     const recordMasteryMult = masteryIgnored && !isBotRun() && !state.benchmarkRun
@@ -26261,7 +26309,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // (出撃の途中で拾った銃・買ったサブでは作り直さない)。無視する出撃では bakedMasteryMult が空=1。
       const masteryLoadoutInput = {
         gunCategories: startingWeapons.filter(w => !w.isMelee).map(w => w.category),
-        hasMelee: startingWeapons.some(w => w.isMelee),
+        meleeKey: startingWeapons.find(w => w.isMelee)?.key,
         subs: runSubs,
       };
       const bakedMasteryLoadoutMult = masteryLoadoutMult(bakedMasteryMult, masteryLoadoutInput);

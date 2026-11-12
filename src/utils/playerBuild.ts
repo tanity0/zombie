@@ -146,7 +146,7 @@ export const buildPseudoPlayer = (
   // research/MASTERY.md v2 §3 / v2.1 A-12: 本人の今の焼き値は引き継がせない。記録が無い時に本人をそのまま返す道もあるので、
   // 上書きは外側のここで行う(どの道でも、守護霊=記録の値・記録に欄が無ければ `{}`/`1`、それ以外=`{}`/`1`)。
   const mastery = opts?.guardian
-    ? normalizeMasteryRecord(snap?.masteryMult, snap?.masteryLoadoutMult)
+    ? normalizeMasteryRecord(snap?.masteryMult, snap?.masteryLoadoutMult, snap?.meleeKey) // 古い記録の旧 `melee`=記録の近接武器のキーとして読む
     : { masteryMult: {}, masteryLoadoutMult: 1 };
   return {
     ...withoutBrawler(buildPseudoPlayerRaw(snap, live)),

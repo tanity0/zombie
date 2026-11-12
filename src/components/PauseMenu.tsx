@@ -24,7 +24,7 @@ import { pauseResumeHint, pauseResumePadStyle, hudGlyph, usePadKindActive, useWi
 import { HudKey } from './HudKey'; // ボタン札の部品(research/PC_SUPPORT.md §14)
 // 熟練度の段階の札(research/MASTERY.md §6-3)。保存の値を開いた時に1回だけ読む。
 import { loadMastery } from '../utils/mastery';
-import { masteryBadgeOf } from '../utils/masteryView';
+import { masteryBadgeOf, masteryKeyOfMelee } from '../utils/masteryView';
 import { gunMasteryKeyOfCategory } from '../utils/weaponUtils';
 import { MasteryTag } from './MasteryBadge';
 
@@ -85,7 +85,8 @@ const hasFinePointer = (): boolean => {
 const readPauseSnapshot = () => {
   const s = useGameStore.getState();
   const classInfo = CHARACTER_CLASSES.find(c => c.id === s.player.characterClass);
-  const mastery = loadMastery();
+  const meleeWeapon = s.player.weapons.find(w => w.isMelee);
+  const mastery = loadMastery(meleeWeapon?.key ?? null);
   return {
     map: readPauseMap(),
     bosses: readPauseBosses(),
@@ -99,8 +100,8 @@ const readPauseSnapshot = () => {
       id: w.id, name: w.name, active: w.id === s.player.activeWeaponId,
       mastery: masteryBadgeOf(gunMasteryKeyOfCategory(w.category), mastery),
     })),
-    melee: s.player.weapons.find(w => w.isMelee)?.name ?? null,
-    meleeMastery: masteryBadgeOf('melee', mastery),
+    melee: meleeWeapon?.name ?? null,
+    meleeMastery: masteryBadgeOf(masteryKeyOfMelee(meleeWeapon?.key), mastery), // 熟練度: 装備している近接武器(ナイフ毎)
     classSkillName: classInfo?.name ?? '',
     classSkillDesc: classInfo?.charSkillDesc ?? '',
     // スキル=この出撃で積んだ受動スキル(runBuild)と現在Lv。説明は現在Lvに即した既存の文(skillDescForLevel)。

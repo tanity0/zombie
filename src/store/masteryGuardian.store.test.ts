@@ -29,6 +29,9 @@ import type { GrowingMasteryKey, MasteryKey } from '../data/mastery';
 import type { PlayerBuildSnapshot, Summon } from '../types/game';
 
 const st = () => useGameStore.getState();
+/** 本人(戦士)の初期の近接武器・守護霊の記録の近接武器(snap の meleeKey)=近接の熟練度のキー(ナイフ毎)。 */
+const PK = 'hatchet-t2' as const;
+const GK = 'knife-t1' as const;
 const sortie = () => st().resetGame('warrior');
 const xpForLevel = (k: GrowingMasteryKey, lv: number): number => {
   let sum = 0;
@@ -79,32 +82,32 @@ afterEach(() => { vi.restoreAllMocks(); st().setBenchmarkRun(false); st().setPen
 
 describe('記録(snapshotPlayerBuild)', () => {
   it('記録する時点の本人の焼き値を写す(写し=生きた参照ではない)', () => {
-    saveMastery({ xp: { melee: xpForLevel('melee', 6) } }); // ×1.5
+    saveMastery({ xp: { [PK]: xpForLevel(PK, 6) } }); // ×1.5
     sortie();
     const p = st().player;
     const rec = snapshotPlayerBuild(p);
-    expect(rec.masteryMult?.melee).toBeCloseTo(1.5, 10);
+    expect(rec.masteryMult?.[PK]).toBeCloseTo(1.5, 10);
     expect(rec.masteryLoadoutMult).toBe(p.masteryLoadoutMult);
     expect(rec.masteryMult).not.toBe(p.masteryMult);
   });
   it('無視する出撃(チュートリアル=練習と同じ扱い)で作った記録は、保存の段階の値(与ダメの焼き値は {}=倍率1のまま)', () => {
-    saveMastery({ xp: { melee: xpForLevel('melee', 6) } }); // ×1.5
+    saveMastery({ xp: { [PK]: xpForLevel(PK, 6) } }); // ×1.5
     st().setPendingFarBackdrop('tutorial');
     sortie();
     const p = st().player;
     expect(p.masteryMult).toEqual({});
     expect(p.masteryLoadoutMult).toBe(1);
     const rec = snapshotPlayerBuild(p);
-    expect(rec.masteryMult?.melee).toBeCloseTo(1.5, 10);
+    expect(rec.masteryMult?.[PK]).toBeCloseTo(1.5, 10);
     expect(rec.masteryMult?.max).toBeCloseTo(1.9, 10);
     expect(rec.masteryLoadoutMult).toBeGreaterThan(1);
     expect(rec.masteryLoadoutMult).toBeLessThanOrEqual(1.5);
     // その出撃の中の守護霊は今までどおり倍率1(変えるのは記録へ写す値だけ)。
-    place(snap({ masteryMult: { melee: 1.5 } }));
-    expect(masteryMultOf(combatActorPlayer(GID)!, 'melee')).toBe(1);
+    place(snap({ masteryMult: { [GK]: 1.5 } }));
+    expect(masteryMultOf(combatActorPlayer(GID)!, GK)).toBe(1);
   });
   it('ボットの出撃で作った記録は {}/1(記録を汚さない)', () => {
-    saveMastery({ xp: { melee: xpForLevel('melee', 10) } });
+    saveMastery({ xp: { [PK]: xpForLevel(PK, 10) } });
     botFlag.on = true;
     sortie();
     const rec = snapshotPlayerBuild(st().player);
@@ -112,7 +115,7 @@ describe('記録(snapshotPlayerBuild)', () => {
     expect(rec.masteryLoadoutMult).toBe(1);
   });
   it('無視する出撃(ベンチ)で作った記録は {}/1', () => {
-    saveMastery({ xp: { melee: xpForLevel('melee', 10) } });
+    saveMastery({ xp: { [PK]: xpForLevel(PK, 10) } });
     st().setBenchmarkRun(true);
     sortie();
     const rec = snapshotPlayerBuild(st().player);
@@ -123,8 +126,8 @@ describe('記録(snapshotPlayerBuild)', () => {
 
 describe('守護霊の当たり', () => {
   it('(a) 記録に熟練度がある守護霊のフィニッシュは、記録の倍率どおり増える', () => {
-    place(snap({ masteryMult: { melee: 1.5 }, masteryLoadoutMult: 1.2 }));
-    expect(masteryMultOf(combatActorPlayer(GID)!, 'melee')).toBeCloseTo(1.5, 10);
+    place(snap({ masteryMult: { [GK]: 1.5 }, masteryLoadoutMult: 1.2 }));
+    expect(masteryMultOf(combatActorPlayer(GID)!, GK)).toBeCloseTo(1.5, 10);
     expect(masteryMultOf(combatActorPlayer(GID)!, 'loadout')).toBeCloseTo(1.2, 10);
     putStunnedBoss();
     const expected = Math.max(1, Math.round(ghostBossFinishBase() * 1.5));
@@ -145,7 +148,7 @@ describe('守護霊の当たり', () => {
   });
 
   it('(c) 守護霊の与ダメはどの熟練度にも貯まらない(報告用の表にも入らない)', () => {
-    place(snap({ masteryMult: { melee: 1.9, 'drone-boomerang': 1.9 }, masteryLoadoutMult: 1.9 }));
+    place(snap({ masteryMult: { [GK]: 1.9, 'drone-boomerang': 1.9 }, masteryLoadoutMult: 1.9 }));
     putStunnedBoss();
     st().applyGhostMeleeFinisher(GID, 'e1');
     expect(hpOf('e1')).toBeLessThan(99999);
@@ -154,11 +157,11 @@ describe('守護霊の当たり', () => {
   });
 
   it('(f) 本人の今の熟練度は守護霊に乗らない(記録が空なら、本人が Lv10 でも倍率1)', () => {
-    saveMastery({ xp: { melee: xpForLevel('melee', 10) } });
+    saveMastery({ xp: { [PK]: xpForLevel(PK, 10) } });
     sortie();
-    expect(masteryMultOf(st().player, 'melee')).toBeCloseTo(1.9, 10);
+    expect(masteryMultOf(st().player, PK)).toBeCloseTo(1.9, 10);
     place(snap());
-    expect(masteryMultOf(combatActorPlayer(GID)!, 'melee')).toBe(1);
+    expect(masteryMultOf(combatActorPlayer(GID)!, GK)).toBe(1);
     putStunnedBoss();
     const expected = Math.max(1, Math.round(ghostBossFinishBase()));
     expect(st().applyGhostMeleeFinisher(GID, 'e1')?.dmg).toBe(expected);
@@ -175,8 +178,8 @@ describe('守護霊の当たり', () => {
   it('無視する出撃(ベンチ)では、守護霊の倍率も1', () => {
     st().setBenchmarkRun(true);
     sortie();
-    place(snap({ masteryMult: { melee: 1.5 }, masteryLoadoutMult: 1.5 }));
-    expect(masteryMultOf(combatActorPlayer(GID)!, 'melee')).toBe(1);
+    place(snap({ masteryMult: { [GK]: 1.5 }, masteryLoadoutMult: 1.5 }));
+    expect(masteryMultOf(combatActorPlayer(GID)!, GK)).toBe(1);
     expect(masteryMultOf(combatActorPlayer(GID)!, 'loadout')).toBe(1);
   });
 
@@ -251,7 +254,7 @@ describe('守護霊の物から出た子は、親の倍率を写し貯めるキ�
 describe('幻影(敵として出る記録)', () => {
   it('(d) 幻影の疑似プレイヤーは、記録に熟練度があっても倍率1({}/1)', () => {
     const live = st().player;
-    const rec = snap({ masteryMult: { melee: 1.9, handgun: 1.9 }, masteryLoadoutMult: 1.9 });
+    const rec = snap({ masteryMult: { [GK]: 1.9, handgun: 1.9 }, masteryLoadoutMult: 1.9 });
     const b = actorBuildFor('phantom-x', rec, live)!;
     expect(b.player.masteryMult).toEqual({});
     expect(b.player.masteryLoadoutMult).toBe(1);
@@ -259,7 +262,7 @@ describe('幻影(敵として出る記録)', () => {
     // 同じ記録を守護霊として呼べば記録の値。
     place(rec);
     const g = ghostBuildFor(st().summons[0], live)!;
-    expect(g.player.masteryMult?.melee).toBeCloseTo(1.9, 10);
+    expect(g.player.masteryMult?.[GK]).toBeCloseTo(1.9, 10);
     expect(g.player.masteryLoadoutMult).toBeCloseTo(1.9, 10);
   });
 
@@ -284,14 +287,14 @@ describe('幻影(敵として出る記録)', () => {
 });
 
 // 守護霊の反撃の請求(useGameLoop の setGhostCounterClaim 2か所)と同じ決め方: 主語=守護霊の疑似プレイヤー。
-// 守護霊は格闘を使わない(疑似プレイヤーから 'brawler' が外れる)=melee。倍率は記録の melee、貯めるキーは none(ghostCounter.applyGhostCounterEffect)。
+// 守護霊は格闘を使わない(疑似プレイヤーから 'brawler' が外れる)=疑似プレイヤーの近接武器(記録の meleeKey)。倍率は記録のそのキー、貯めるキーは none(ghostCounter.applyGhostCounterEffect)。
 describe('守護霊の反撃(カウンター)', () => {
-  it('格闘を記録した守護霊でもキーは melee・倍率は記録の melee・どこにも貯まらない', () => {
-    place(snap({ subWeapons: ['brawler'], subWeaponLevels: { brawler: 1 }, masteryMult: { melee: 1.5, brawler: 1.8, handgun: 1.3 }, masteryLoadoutMult: 1.2 }));
+  it('格闘を記録した守護霊でもキーは記録の近接武器・倍率は記録のそのキー・どこにも貯まらない', () => {
+    place(snap({ subWeapons: ['brawler'], subWeaponLevels: { brawler: 1 }, masteryMult: { [GK]: 1.5, brawler: 1.8, handgun: 1.3 }, masteryLoadoutMult: 1.2 }));
     const ghostOwner = combatActorPlayer(GID)!;
     expect(ghostOwner.subWeapons ?? []).not.toContain('brawler');
     const key = counterMasteryKeyOf(ghostOwner);
-    expect(key).toBe('melee');
+    expect(key).toBe(GK);
     const mm = guardianMasteryMult(ghostOwner, key);
     expect(mm).toBeCloseTo(1.5, 10);
     putStunnedBoss();
@@ -299,5 +302,26 @@ describe('守護霊の反撃(カウンター)', () => {
     expect(hpOf('e1')).toBeLessThan(99999);
     expect(getPendingMastery()).toEqual({});
     expect(getMasteryReport()).toEqual({});
+  });
+});
+
+// 社長裁定2026-11-12「ナイフ毎の括り」: 古い記録(旧 `melee` の1本)は、その記録の近接武器のキーとして読む。
+describe('守護霊の古い記録(旧 melee)の読み替え', () => {
+  it('記録の meleeKey のキーとして読む(新しいキーが在ればそちら)・meleeKey が無ければ基本のナイフ', () => {
+    place(snap({ meleeKey: 'machete-t3', masteryMult: { melee: 1.6, handgun: 1.2 } as never }));
+    const a = combatActorPlayer(GID)!;
+    expect(a.masteryMult).toEqual({ 'machete-t3': 1.6, handgun: 1.2 });
+    expect(guardianMasteryMult(a, counterMasteryKeyOf(a))).toBeCloseTo(1.6, 10);
+    place(snap({ meleeKey: 'machete-t3', masteryMult: { melee: 1.6, 'machete-t3': 1.3 } as never }));
+    expect(combatActorPlayer(GID)!.masteryMult).toEqual({ 'machete-t3': 1.3 });
+    place(snap({ meleeKey: undefined, masteryMult: { melee: 1.4 } as never }));
+    expect(combatActorPlayer(GID)!.masteryMult).toEqual({ 'knife-t1': 1.4 });
+  });
+  it('新しく作る記録は新しいキーで書く(旧 melee は書かない)', () => {
+    saveMastery({ xp: { [PK]: xpForLevel(PK, 6) } });
+    sortie();
+    const rec = snapshotPlayerBuild(st().player);
+    expect(rec.masteryMult?.[PK]).toBeCloseTo(1.5, 10);
+    expect(Object.keys(rec.masteryMult ?? {})).not.toContain('melee');
   });
 });

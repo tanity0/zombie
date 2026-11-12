@@ -22,7 +22,7 @@ const { buildPseudoPlayer } = await import('../utils/playerBuild');
 const sortie = () => useGameStore.getState().resetGame('warrior');
 
 /** Lv10 に届く量(必要量の値から導く=値を動かしても落ちない)。 */
-const MAX_XP = Math.max(...(['handgun', 'melee'] as const).map(k => {
+const MAX_XP = Math.max(...(['handgun', 'hatchet-t2'] as const).map(k => {
   let t = 0;
   for (let l = 1; l < 10; l++) t += masteryNeedFor(k, l);
   return t;
@@ -34,7 +34,8 @@ const loadoutKeys = (): Set<string> => {
   const set = new Set<string>();
   for (const w of p.weapons) if (!w.isMelee && w.category) set.add(w.category);
   const subs = p.subWeapons ?? [];
-  if (p.weapons.some(w => w.isMelee)) set.add(subs.includes('brawler') ? 'brawler' : 'melee');
+  const melee = p.weapons.find(w => w.isMelee);
+  if (melee) set.add(subs.includes('brawler') ? 'brawler' : String(melee.key)); // 近接はナイフ毎=装備している近接武器のキー
   for (const s of subs) { const k = SUB_TO_MASTERY_KEY[s]; if (k) set.add(k); }
   return set;
 };
@@ -103,7 +104,7 @@ describe('resetGame の焼き込み', () => {
 
 describe('守護霊・幻影の疑似プレイヤー', () => {
   it('幻影(既定=guardian 省略): 記録の有無にかかわらず masteryMult={}・masteryLoadoutMult=1(本人の値を引き継がない)', () => {
-    saveMastery({ xp: { handgun: MAX_XP, melee: MAX_XP } });
+    saveMastery({ xp: { handgun: MAX_XP, 'hatchet-t2': MAX_XP } });
     sortie();
     const live = useGameStore.getState().player;
     expect(live.masteryMult?.handgun).toBe(1.9);
@@ -115,7 +116,7 @@ describe('守護霊・幻影の疑似プレイヤー', () => {
     expect(withRecord.masteryLoadoutMult).toBe(1);
   });
   it('守護霊(guardian): 記録の値を持つ。記録が無い/欄が無い時は {}/1(本人の値を引き継がない)', () => {
-    saveMastery({ xp: { handgun: MAX_XP, melee: MAX_XP } });
+    saveMastery({ xp: { handgun: MAX_XP, 'hatchet-t2': MAX_XP } });
     sortie();
     const live = useGameStore.getState().player;
     const g = buildPseudoPlayer({ maxHealth: 100, speed: 200, level: 1, masteryMult: { handgun: 1.5 }, masteryLoadoutMult: 1.3 }, live, { guardian: true });

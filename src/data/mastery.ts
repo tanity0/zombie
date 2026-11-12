@@ -9,6 +9,26 @@
 export const MASTERY_GUN_KEYS = ['handgun', 'shotgun', 'rifle', 'glauncher', 'phill'] as const;
 export type MasteryGunKey = typeof MASTERY_GUN_KEYS[number];
 
+/**
+ * 近接武器の熟練度のキー(ナイフごと・5)。値は近接武器のキー(CATALOG の key)そのもの
+ * (社長裁定2026-11-12「近接の括りではない。ナイフ毎の括り」)。
+ * ★このファイルは何も import しない(葉)ので、台帳(src/utils/weaponUtils.ts の CATALOG_MELEE_KEYS)から作れない=
+ *   同じ並びを手で持ち、一致は mastery.test.ts が止める(台帳に近接を足したらここにも足す=忘れるとテストで落ちる)。
+ */
+export const MASTERY_MELEE_KEYS = ['knife-t1', 'hatchet-t2', 'machete-t3', 'tactical-knife-t4', 'anti-mutant-knife-t5'] as const;
+export type MasteryMeleeKey = typeof MASTERY_MELEE_KEYS[number];
+const MELEE_SET: ReadonlySet<string> = new Set<string>(MASTERY_MELEE_KEYS);
+/** 近接武器のキー(装備している近接武器の key)→ 熟練度のキー。台帳に無い/近接武器が無いは undefined。 */
+export const meleeMasteryKeyOfWeaponKey = (weaponKey: string | null | undefined): MasteryMeleeKey | undefined =>
+  typeof weaponKey === 'string' && MELEE_SET.has(weaponKey) ? weaponKey as MasteryMeleeKey : undefined;
+/**
+ * 旧い近接の熟練度のキー(ナイフごとに分ける前の1本)。保存・退避・守護霊の記録に残っている時だけ読み、
+ * 装備している近接武器(分からなければ MASTERY_MELEE_KEYS の先頭=基本のナイフ)のキーへ読み替える。新しくは書かない。
+ */
+export const LEGACY_MELEE_MASTERY_KEY = 'melee';
+/** 旧 `melee` の移し先が分からない時の近接武器(= CATALOG の近接の先頭=基本のナイフ)。 */
+export const DEFAULT_MELEE_MASTERY_KEY: MasteryMeleeKey = MASTERY_MELEE_KEYS[0];
+
 /** サブウェポンの熟練度のキー(21)。`murasame`(小烏丸)は `katana` を使う。`shield`・`first-aid-kit` は育つ(発注者の指示で v2.1 A-2 を上書き)。 */
 export const MASTERY_SUB_KEYS = [
   'heavy-grenade', 'dog', 'katana', 'whip', 'alchemy', 'turret', 'fire-knife', 'drone-boomerang', 'wire-anchor',
@@ -17,12 +37,12 @@ export const MASTERY_SUB_KEYS = [
 ] as const;
 export type MasterySubKey = typeof MASTERY_SUB_KEYS[number];
 
-/** 段階を持つ(=育つ・保存する)キー。銃5+`melee`+サブ21。 */
-export const GROWING_MASTERY_KEYS = [...MASTERY_GUN_KEYS, 'melee', ...MASTERY_SUB_KEYS] as const;
+/** 段階を持つ(=育つ・保存する)キー。銃5+近接武器5+サブ21。 */
+export const GROWING_MASTERY_KEYS = [...MASTERY_GUN_KEYS, ...MASTERY_MELEE_KEYS, ...MASTERY_SUB_KEYS] as const;
 export type GrowingMasteryKey = typeof GROWING_MASTERY_KEYS[number];
 
 /**
- * 熟練度のキー。育つ27に、段階を持たない特別な3つを足したもの。
+ * 熟練度のキー。育つ31に、段階を持たない特別な3つを足したもの。
  *  - `loadout` = どの武器にも入らない本人の与ダメ。倍率は出撃開始時に持っている物の平均。貯めない。
  *  - `none`    = 本人ではない与ダメ(守護霊・幻影・護衛・英雄の犬・敵どうし・環境)。貯めない。倍率はキーからは1
  *                (守護霊の当たりだけは、守護霊の記録の倍率を別に掛ける=弾・置き物の masteryMult / withMastery の mult)。
@@ -58,10 +78,13 @@ export const MASTERY_BASE_BY_TIER: Readonly<Record<MasteryBaseTier, number>> = {
   sub: 20_000,
 };
 
-/** 育つキー → 区分。キーが足りない/余ると型で落ちる(Record の網羅)。 */
+/**
+ * 育つキー → 区分。キーが足りない/余ると型で落ちる(Record の網羅)。
+ * 近接武器のキーは MASTERY_MELEE_KEYS から全部 `gunMelee` で入る(近接を足しても書き足さなくてよい)。
+ */
 const MASTERY_TIER_OF: Readonly<Record<GrowingMasteryKey, MasteryBaseTier>> = {
   handgun: 'gunMelee', shotgun: 'gunMelee', rifle: 'gunMelee', glauncher: 'gunMelee', phill: 'gunMelee',
-  melee: 'gunMelee',
+  ...Object.fromEntries(MASTERY_MELEE_KEYS.map(k => [k, 'gunMelee'])) as Record<MasteryMeleeKey, 'gunMelee'>,
   brawler: 'brawler',
   'heavy-grenade': 'sub', dog: 'sub', katana: 'sub', whip: 'sub', alchemy: 'sub', turret: 'sub', 'fire-knife': 'sub',
   'drone-boomerang': 'sub', 'wire-anchor': 'sub', homing: 'sub', 'shadow-clone': 'sub', molotov: 'sub',

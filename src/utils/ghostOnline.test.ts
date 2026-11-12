@@ -5,9 +5,9 @@ import {
 } from './ghostOnline';
 import {
   sanitizeSharedProfile, GHOST_PROFILE_DEFAULTS, GHOST_KNOB_NAMES,
-  GHOST_MASTERY_KEYS, GHOST_MASTERY_MAX_MULT, GHOST_GROWTH_ATK_MAX_MULT, GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS,
+  GHOST_MASTERY_KEYS, GHOST_LEGACY_MASTERY_KEYS, GHOST_MASTERY_MAX_MULT, GHOST_GROWTH_ATK_MAX_MULT, GHOST_GROWTH_COUNTER_ACCEPT_MAX_MS,
 } from '../../shared/ghostSanitize.mjs';
-import { GROWING_MASTERY_KEYS, MASTERY_MAX_LEVEL, MASTERY_MAX_MULT } from '../data/mastery';
+import { GROWING_MASTERY_KEYS, LEGACY_MELEE_MASTERY_KEY, MASTERY_MAX_LEVEL, MASTERY_MAX_MULT, MASTERY_MELEE_KEYS } from '../data/mastery';
 import { masteryDamageMult, normalizeMasteryRecord } from './mastery';
 import { growthAttackMult, growthCounterAcceptMs } from './playerUpgrades';
 import { PLAYER_UPGRADE_MAX_LEVEL } from '../data/playerUpgrades';
@@ -123,17 +123,23 @@ describe('他人の守護霊の熟練度・育成の攻撃力(共有の正規化
     (sanitizeSharedProfile(withSnap(snapshot), 'thor') as { snapshot?: Snap } | null)?.snapshot;
 
   it('台帳と一致: 熟練度のキー(育つキー+max)・上限(Lv10の倍率)・育成の攻撃力の上限', () => {
-    expect(new Set(GHOST_MASTERY_KEYS)).toEqual(new Set([...GROWING_MASTERY_KEYS, 'max']));
-    expect(GHOST_MASTERY_KEYS).toHaveLength(GROWING_MASTERY_KEYS.length + 1);
+    // 新しいキー(育つキー=銃5・近接武器5・サブ)+ max + 旧い近接の1本 melee(古いクライアントの記録を読むため受け取りは通す)。
+    expect(new Set(GHOST_MASTERY_KEYS)).toEqual(new Set([...GROWING_MASTERY_KEYS, 'max', LEGACY_MELEE_MASTERY_KEY]));
+    expect(GHOST_MASTERY_KEYS).toHaveLength(GROWING_MASTERY_KEYS.length + 2);
+    expect([...GHOST_LEGACY_MASTERY_KEYS]).toEqual([LEGACY_MELEE_MASTERY_KEY]);
+    // 近接武器のキーは台帳(CATALOG の近接)と一致(台帳に近接を足したら熟練度のキーにも足す=忘れるとここで落ちる)。
+    expect(new Set(MASTERY_MELEE_KEYS)).toEqual(new Set(CATALOG_MELEE_KEYS));
+    expect(MASTERY_MELEE_KEYS).toHaveLength(CATALOG_MELEE_KEYS.length);
+    expect([...MASTERY_MELEE_KEYS]).toEqual([...MELEE_KEYS]); // 先頭=基本のナイフ(旧 melee の移し先の既定)
     expect(GHOST_MASTERY_MAX_MULT).toBe(MASTERY_MAX_MULT);
     expect(GHOST_MASTERY_MAX_MULT).toBe(masteryDamageMult(MASTERY_MAX_LEVEL));
     expect(GHOST_GROWTH_ATK_MAX_MULT).toBe(growthAttackMult(PLAYER_UPGRADE_MAX_LEVEL));
   });
 
   it('範囲内の値はそのまま通る(枠の記録・共通の記録の両方)', () => {
-    const raw = { masteryMult: { melee: 1.5, handgun: 1.2, max: 1.9 }, masteryLoadoutMult: 1.3, growthAtkMult: 1.12 };
+    const raw = { masteryMult: { 'knife-t1': 1.5, 'anti-mutant-knife-t5': 1.7, melee: 1.4, handgun: 1.2, max: 1.9 }, masteryLoadoutMult: 1.3, growthAtkMult: 1.12 };
     for (const s of [slotSnap(raw), topSnap(raw)]) {
-      expect(s?.masteryMult).toEqual({ melee: 1.5, handgun: 1.2, max: 1.9 });
+      expect(s?.masteryMult).toEqual({ 'knife-t1': 1.5, 'anti-mutant-knife-t5': 1.7, melee: 1.4, handgun: 1.2, max: 1.9 }); // 新旧のキーを通す
       expect(s?.masteryLoadoutMult).toBe(1.3);
       expect(s?.growthAtkMult).toBe(1.12);
     }
@@ -184,7 +190,8 @@ describe('他人の守護霊の熟練度・育成の攻撃力(共有の正規化
   });
 
   it('受け取り側の normalizeMasteryRecord を重ねても値は変わらない(二重の丸めで害が無い)', () => {
-    const s = slotSnap({ masteryMult: { melee: 99, handgun: 1.35, evil: 1.9 }, masteryLoadoutMult: 1.25 });
+    // 新しいキーで見る(旧 melee は受け取り側で記録の近接武器へ読み替える=形が変わるのが正しい。読み替えは mastery.test.ts)。
+    const s = slotSnap({ masteryMult: { 'knife-t1': 99, handgun: 1.35, evil: 1.9 }, masteryLoadoutMult: 1.25 });
     const once = { masteryMult: s?.masteryMult ?? {}, masteryLoadoutMult: s?.masteryLoadoutMult ?? 1 };
     expect(normalizeMasteryRecord(s?.masteryMult, s?.masteryLoadoutMult)).toEqual(once);
     // 正規化した物をもう一度共有の正規化へ通しても同じ(サーバ保存→配る時の再浄化)。

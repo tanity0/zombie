@@ -15,14 +15,14 @@ const backing: Record<string, string> = {};
 
 import {
   GROWING_MASTERY_KEYS, MASTERY_BASE, MASTERY_BASE_BY_TIER, masteryBaseTierOf, MASTERY_KEY, MASTERY_PENDING_KEY, MASTERY_MAXED_SUBS, SUB_TO_MASTERY_KEY,
-  MASTERY_SUB_KEYS, MASTERY_GUN_KEYS, MASTERY_XP_WEIGHT, isGrowingMasteryKey,
+  MASTERY_SUB_KEYS, MASTERY_GUN_KEYS, MASTERY_MELEE_KEYS, MASTERY_XP_WEIGHT, isGrowingMasteryKey,
 } from '../data/mastery';
 import type { AmmoType, SubWeaponKey } from '../types/game';
 import {
   masteryNeedFor, masteryLevelFor, masteryProgress, masteryDamageMult, normalizeMastery, loadMastery, saveMastery,
   masteryMultTable, masteryLoadoutMult, masteryMultOf, masteryIgnoredRun, commitMasteryRun, getLastMasteryCommit,
   recoverMasteryPending, masteryXpWeight, masteryXpAmount, burnRefreshMastery, type MasteryRunFlags,
-  normalizeMasteryRecord, objectMasteryMult, guardianMasteryMult,
+  normalizeMasteryRecord, objectMasteryMult, guardianMasteryMult, migrateLegacyMeleeXp, meleeMasteryKeyOf, loadStashedMasteryPending,
 } from './mastery';
 import {
   withMastery, currentMasterySource, currentMasteryExecute, beginMasteryRun, noteMasteryDamage, getPendingMastery, getMasteryReport,
@@ -65,8 +65,11 @@ describe('台帳(data/mastery)', () => {
     expect(maxed.length).toBe(5);
     expect(Object.keys(toMastery).length).toBe(22);
   });
-  it('育つキーは銃5+melee+サブ21=27。murasame は katana・最初から最大のサブは育たない', () => {
-    expect(GROWING_MASTERY_KEYS.length).toBe(27);
+  it('育つキーは銃5+近接武器5+サブ21=31。murasame は katana・最初から最大のサブは育たない・旧 melee は育たない', () => {
+    expect(GROWING_MASTERY_KEYS.length).toBe(31);
+    expect(new Set(GROWING_MASTERY_KEYS)).toEqual(new Set([...MASTERY_GUN_KEYS, ...MASTERY_MELEE_KEYS, ...MASTERY_SUB_KEYS]));
+    expect(isGrowingMasteryKey('melee')).toBe(false);
+    for (const k of MASTERY_MELEE_KEYS) expect(isGrowingMasteryKey(k), k).toBe(true);
     expect(MASTERY_SUB_KEYS.length).toBe(21);
     expect(SUB_TO_MASTERY_KEY.shield).toBe('shield');
     expect(SUB_TO_MASTERY_KEY['first-aid-kit']).toBe('first-aid-kit');
@@ -79,7 +82,7 @@ describe('台帳(data/mastery)', () => {
   it('MASTERY_BASE は区分の値: 格闘 120,000 / 銃5種・近接 60,000 / サブウェポン 20,000(値そのものを固定するのはこの1本だけ)', () => {
     expect(MASTERY_BASE_BY_TIER).toEqual({ brawler: 120_000, gunMelee: 60_000, sub: 20_000 });
     expect(masteryBaseTierOf('brawler')).toBe('brawler');
-    for (const k of [...MASTERY_GUN_KEYS, 'melee'] as const) expect(masteryBaseTierOf(k), k).toBe('gunMelee');
+    for (const k of [...MASTERY_GUN_KEYS, ...MASTERY_MELEE_KEYS]) expect(masteryBaseTierOf(k), k).toBe('gunMelee');
     for (const k of MASTERY_SUB_KEYS) if (k !== 'brawler') expect(masteryBaseTierOf(k), k).toBe('sub');
     for (const k of GROWING_MASTERY_KEYS) expect(MASTERY_BASE[k], k).toBe(MASTERY_BASE_BY_TIER[masteryBaseTierOf(k)]);
     expect(Object.keys(MASTERY_BASE).sort()).toEqual([...GROWING_MASTERY_KEYS].sort());
@@ -120,12 +123,12 @@ describe('段階と倍率', () => {
     }
   });
   it('masteryProgress: 今の段階と次までの割合・上限では frac=1', () => {
-    const meleeBase = MASTERY_BASE.melee;
-    expect(masteryProgress('melee', meleeBase / 2)).toEqual({ level: 1, into: meleeBase / 2, need: meleeBase, frac: 0.5 });
-    const p2 = masteryProgress('melee', meleeBase + 411);
+    const meleeBase = MASTERY_BASE['knife-t1'];
+    expect(masteryProgress('knife-t1', meleeBase / 2)).toEqual({ level: 1, into: meleeBase / 2, need: meleeBase, frac: 0.5 });
+    const p2 = masteryProgress('knife-t1', meleeBase + 411);
     expect(p2.level).toBe(2);
-    expect(p2.frac).toBeCloseTo(411 / masteryNeedFor('melee', 2), 10);
-    const top = masteryProgress('melee', xpOfLevel('melee', 10) + 7);
+    expect(p2.frac).toBeCloseTo(411 / masteryNeedFor('knife-t1', 2), 10);
+    const top = masteryProgress('knife-t1', xpOfLevel('knife-t1', 10) + 7);
     expect(top).toEqual({ level: 10, into: 7, need: 0, frac: 1 });
   });
 });
@@ -156,21 +159,24 @@ describe('焼き込み', () => {
     expect(masteryMultTable({ xp: {} }, false)).toEqual({ max: 1.9 });
   });
   it('masteryLoadoutMult: 重複なしの集合の平均(v2.1 A-11)', () => {
-    const m = { handgun: 1.5, shotgun: 1.1, melee: 1.2, brawler: 1.9, katana: 1.4, max: 1.9 };
-    // 銃の種類は2挺でも1つ。近接は melee。
-    expect(masteryLoadoutMult(m, { gunCategories: ['handgun', 'handgun'], hasMelee: true, subs: [] })).toBeCloseTo((1.5 + 1.2) / 2, 10);
+    const m = { handgun: 1.5, shotgun: 1.1, 'knife-t1': 1.2, 'machete-t3': 1.7, brawler: 1.9, katana: 1.4, max: 1.9 };
+    // 銃の種類は2挺でも1つ。近接は持っている近接武器のキー(ナイフ毎)。
+    expect(masteryLoadoutMult(m, { gunCategories: ['handgun', 'handgun'], meleeKey: 'knife-t1', subs: [] })).toBeCloseTo((1.5 + 1.2) / 2, 10);
+    expect(masteryLoadoutMult(m, { gunCategories: ['handgun'], meleeKey: 'machete-t3', subs: [] })).toBeCloseTo((1.5 + 1.7) / 2, 10);
+    // 台帳に無い近接は数えない。
+    expect(masteryLoadoutMult(m, { gunCategories: ['handgun'], meleeKey: 'bogus-knife', subs: [] })).toBeCloseTo(1.5, 10);
     // 格闘を持っていれば近接の枠は brawler・サブの brawler と二重に数えない。
-    expect(masteryLoadoutMult(m, { gunCategories: ['handgun'], hasMelee: true, subs: ['brawler'] })).toBeCloseTo((1.5 + 1.9) / 2, 10);
+    expect(masteryLoadoutMult(m, { gunCategories: ['handgun'], meleeKey: 'knife-t1', subs: ['brawler'] })).toBeCloseTo((1.5 + 1.9) / 2, 10);
     // murasame → katana・katana と二重に数えない。最初から最大のサブ・shijin は入れない。
-    expect(masteryLoadoutMult(m, { gunCategories: ['shotgun'], hasMelee: false, subs: ['murasame', 'katana', 'sage-stone', 'shijin'] }))
+    expect(masteryLoadoutMult(m, { gunCategories: ['shotgun'], meleeKey: undefined, subs: ['murasame', 'katana', 'sage-stone', 'shijin'] }))
       .toBeCloseTo((1.1 + 1.4) / 2, 10);
     // 無い欄は1。集合が空なら1。
-    expect(masteryLoadoutMult(m, { gunCategories: ['rifle'], hasMelee: false, subs: [] })).toBe(1);
-    expect(masteryLoadoutMult(m, { gunCategories: [undefined], hasMelee: false, subs: ['flare-gun'] })).toBe(1);
+    expect(masteryLoadoutMult(m, { gunCategories: ['rifle'], meleeKey: undefined, subs: [] })).toBe(1);
+    expect(masteryLoadoutMult(m, { gunCategories: [undefined], meleeKey: undefined, subs: ['flare-gun'] })).toBe(1);
     // shield・first-aid-kit は育つキー=持っていれば数える。
-    expect(masteryLoadoutMult({ shield: 1.5, 'first-aid-kit': 1.3 }, { gunCategories: [], hasMelee: false, subs: ['shield', 'first-aid-kit'] }))
+    expect(masteryLoadoutMult({ shield: 1.5, 'first-aid-kit': 1.3 }, { gunCategories: [], meleeKey: undefined, subs: ['shield', 'first-aid-kit'] }))
       .toBeCloseTo(1.4, 10);
-    expect(masteryLoadoutMult({}, { gunCategories: ['handgun'], hasMelee: true, subs: ['dog'] })).toBe(1);
+    expect(masteryLoadoutMult({}, { gunCategories: ['handgun'], meleeKey: 'knife-t1', subs: ['dog'] })).toBe(1);
   });
   it('masteryMultOf: none→1 / loadout→焼いた平均 / それ以外→焼いた倍率(無い欄=1)', () => {
     const p = { masteryMult: { handgun: 1.3, max: 1.9 }, masteryLoadoutMult: 1.15 };
@@ -207,15 +213,15 @@ describe('出どころの包み(withMastery)', () => {
     expect(currentMasterySource()).toBeNull();
   });
   it('例外が出ても元へ戻る', () => {
-    withMastery('melee', () => {
+    withMastery('knife-t1', () => {
       expect(() => withMastery('katana', () => { throw new Error('x'); })).toThrow('x');
-      expect(currentMasterySource()).toBe('melee');
+      expect(currentMasterySource()).toBe('knife-t1');
     });
     expect(currentMasterySource()).toBeNull();
   });
   it('処刑の印(execute)は包んだ間だけ立ち、入れ子では内側の物・抜けると元へ戻る', () => {
     expect(currentMasteryExecute()).toBe(false);
-    withMastery('melee', () => {
+    withMastery('knife-t1', () => {
       expect(currentMasteryExecute()).toBe(true);
       withMastery('none', () => { expect(currentMasteryExecute()).toBe(false); });
       expect(currentMasteryExecute()).toBe(true);
@@ -277,7 +283,7 @@ describe('守護霊の熟練度(記録の復元・倍率の引き方)', () => {
     expect(r.masteryLoadoutMult).toBeCloseTo(1.2, 10);
   });
   it('normalizeMasteryRecord: 倍率は 1〜1.9 に丸める', () => {
-    const r = normalizeMasteryRecord({ handgun: 5, rifle: 0.2, melee: -3 }, 99);
+    const r = normalizeMasteryRecord({ handgun: 5, rifle: 0.2, 'knife-t1': -3, melee: -3 }, 99);
     expect(r.masteryMult).toEqual({ handgun: 1.9 }); // 1 に丸まった物は表から落とす(無い欄=1)
     expect(r.masteryLoadoutMult).toBe(1.9);
     expect(normalizeMasteryRecord({}, 0.5).masteryLoadoutMult).toBe(1);
@@ -293,12 +299,12 @@ describe('守護霊の熟練度(記録の復元・倍率の引き方)', () => {
     }
   });
   it('guardianMasteryMult: 疑似プレイヤーなら記録の値・本人(主語が落ちた)なら1', () => {
-    const rec = { masteryMult: { melee: 1.5 }, masteryLoadoutMult: 1.2 };
-    expect(guardianMasteryMult({ ...rec, pseudoActor: true }, 'melee')).toBe(1.5);
+    const rec = { masteryMult: { 'knife-t1': 1.5 }, masteryLoadoutMult: 1.2 };
+    expect(guardianMasteryMult({ ...rec, pseudoActor: true }, 'knife-t1')).toBe(1.5);
     expect(guardianMasteryMult({ ...rec, pseudoActor: true }, 'loadout')).toBe(1.2);
     expect(guardianMasteryMult({ ...rec, pseudoActor: true }, 'none')).toBe(1);
-    expect(guardianMasteryMult(rec, 'melee')).toBe(1);
-    expect(guardianMasteryMult(null, 'melee')).toBe(1);
+    expect(guardianMasteryMult(rec, 'knife-t1')).toBe(1);
+    expect(guardianMasteryMult(null, 'knife-t1')).toBe(1);
   });
   it('objectMasteryMult: 作る所で確定した欄があればそれ・無ければ本人の焼き値', () => {
     const player = { masteryMult: { turret: 1.3 }, masteryLoadoutMult: 1 };
@@ -442,5 +448,66 @@ describe('退避と回収の順番(v2.1 A-4・受け入れ条件 追加14)', () 
     expect(getMasteryReport()).toEqual({ rifle: 9 });
     startRun(false);
     expect(getMasteryReport()).toEqual({});
+  });
+});
+
+// 社長裁定2026-11-12「近接の括りではない。ナイフ毎の括り」: 近接の熟練度はナイフ毎。旧 `melee` は移す。
+describe('近接はナイフ毎(キー・移行・古い記録)', () => {
+  beforeEach(() => { for (const k of Object.keys(backing)) delete backing[k]; });
+  const knife = (key: string) => ({ isMelee: true, key }) as never;
+
+  it('meleeMasteryKeyOf: 装備している近接武器のキー・近接武器が無い/台帳に無ければ loadout', () => {
+    for (const k of MASTERY_MELEE_KEYS) expect(meleeMasteryKeyOf({ weapons: [knife(k)] }), k).toBe(k);
+    expect(meleeMasteryKeyOf({ weapons: [{ isMelee: false, key: 'handgun-t1' } as never] })).toBe('loadout');
+    expect(meleeMasteryKeyOf({ weapons: [knife('bogus')] })).toBe('loadout');
+    expect(meleeMasteryKeyOf({ weapons: [] })).toBe('loadout');
+    expect(meleeMasteryKeyOf(null)).toBe('loadout');
+  });
+
+  it('migrateLegacyMeleeXp: 旧 melee を装備しているナイフへ足して消す・装備が分からなければ基本のナイフ・2度通しても同じ', () => {
+    const once = migrateLegacyMeleeXp({ melee: 500, 'machete-t3': 20, handgun: 7 }, 'machete-t3');
+    expect(once).toEqual({ 'machete-t3': 520, handgun: 7 });
+    expect(migrateLegacyMeleeXp(once, 'machete-t3')).toEqual(once);
+    expect(migrateLegacyMeleeXp({ melee: 300 })).toEqual({ 'knife-t1': 300 });
+    expect(migrateLegacyMeleeXp({ melee: 300 }, 'bogus')).toEqual({ 'knife-t1': 300 });
+    expect(migrateLegacyMeleeXp({ melee: 'x', rifle: 3 }, 'hatchet-t2')).toEqual({ rifle: 3 });
+    const src = { melee: 10 };
+    migrateLegacyMeleeXp(src, 'hatchet-t2');
+    expect(src).toEqual({ melee: 10 }); // 元の表は変えない
+  });
+
+  it('loadMastery(装備を渡す): 保存の旧 melee をそのナイフへ移して書き戻す・2度読んでも二重に足さない', () => {
+    backing[MASTERY_KEY] = JSON.stringify({ xp: { melee: 1000, 'hatchet-t2': 5, rifle: 9 } });
+    expect(loadMastery('hatchet-t2').xp).toEqual({ 'hatchet-t2': 1005, rifle: 9 });
+    expect(JSON.parse(backing[MASTERY_KEY]).xp).toEqual({ 'hatchet-t2': 1005, rifle: 9 });
+    expect(loadMastery('hatchet-t2').xp).toEqual({ 'hatchet-t2': 1005, rifle: 9 });
+    expect(loadMastery('machete-t3').xp).toEqual({ 'hatchet-t2': 1005, rifle: 9 }); // 移した後は持ち替えても動かない
+  });
+
+  it('loadMastery(装備が分からない): 基本のナイフへ移した形で返すが書き戻さない(次の出撃の頭でその時の装備へ移す)', () => {
+    backing[MASTERY_KEY] = JSON.stringify({ xp: { melee: 1000 } });
+    expect(loadMastery().xp).toEqual({ 'knife-t1': 1000 });
+    expect(JSON.parse(backing[MASTERY_KEY]).xp).toEqual({ melee: 1000 });
+    expect(loadMastery('tactical-knife-t4').xp).toEqual({ 'tactical-knife-t4': 1000 });
+    expect(loadMastery().xp).toEqual({ 'tactical-knife-t4': 1000 });
+  });
+
+  it('退避の旧 melee も装備しているナイフへ移して本体へ足す(recoverMasteryPending)', () => {
+    backing[MASTERY_KEY] = JSON.stringify({ xp: { melee: 100 } });
+    backing[MASTERY_PENDING_KEY] = JSON.stringify({ xp: { melee: 40, handgun: 3 } });
+    expect(loadStashedMasteryPending('anti-mutant-knife-t5')).toEqual({ 'anti-mutant-knife-t5': 40, handgun: 3 });
+    beginMasteryRun({ ignored: false });
+    recoverMasteryPending('anti-mutant-knife-t5');
+    expect(loadMastery().xp).toEqual({ 'anti-mutant-knife-t5': 140, handgun: 3 });
+    expect(MASTERY_PENDING_KEY in backing).toBe(false);
+    recoverMasteryPending('anti-mutant-knife-t5');
+    expect(loadMastery().xp).toEqual({ 'anti-mutant-knife-t5': 140, handgun: 3 });
+  });
+
+  it('normalizeMasteryRecord: 古い記録の旧 melee は記録の近接武器のキー(無ければ基本のナイフ)・新しいキーが在ればそちら', () => {
+    expect(normalizeMasteryRecord({ melee: 1.6, handgun: 1.2 }, 1, 'machete-t3').masteryMult).toEqual({ 'machete-t3': 1.6, handgun: 1.2 });
+    expect(normalizeMasteryRecord({ melee: 1.6 }, 1).masteryMult).toEqual({ 'knife-t1': 1.6 });
+    expect(normalizeMasteryRecord({ melee: 1.6, 'machete-t3': 1.3 }, 1, 'machete-t3').masteryMult).toEqual({ 'machete-t3': 1.3 });
+    expect(normalizeMasteryRecord({ melee: 99 }, 1, 'hatchet-t2').masteryMult).toEqual({ 'hatchet-t2': 1.9 });
   });
 });

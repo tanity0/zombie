@@ -1,7 +1,7 @@
 import { Weapon, CharacterClass, WeaponType, Projectile, Player, Enemy, AmmoType } from '../types/game';
 import { useGameStore, notifySkillProcFor, spawnSkillProcFx, bulletBlockersAround, skillLevel, skillBenkeiCritBonus, scavengerGunMult, skillAttackShooterGunMult, skillLastMagazineMult, consumableAttackMult, MELEE_RADIUS, skillOutgoingDamageMult, skillBloodAwakenDamageMult, skillCritMult, CRIT_DAMAGE_MULT } from '../store/gameStore';
 import { MASTERY_GUN_KEYS, type MasteryKey, type MasteryGunKey } from '../data/mastery';
-import { masteryMultOf, guardianMasteryMult } from './mastery';
+import { masteryMultOf, guardianMasteryMult, meleeMasteryKeyOf } from './mastery';
 import { withMastery } from './masteryRun';
 import { bloodAwakenMult } from './bloodAwaken'; // B10 血の覚醒: 発射間隔を ×1.5 速く(awakenFireRateMult)
 import { projectileHitCritChance } from './critPenalty';
@@ -426,13 +426,14 @@ export const gunMasteryKeyOfWeaponKey = (weaponKey: string | undefined): Mastery
   weaponKey === undefined ? undefined : gunMasteryKeyOfCategory(catalogCategoryTier(weaponKey).category);
 /**
  * カウンターの反撃の熟練度のキー=**その反撃をした者が装備している近接の手段**(社長裁定2026-11-12
- * 「装備してる近接武器に溜まるようにすればブレないのでは?」)。格闘(サブウェポン `brawler`)を装備して
- * いれば `brawler`、そうでなければ `melee`。判定は gameStore の `hasBrawler` と同じ(サブに 'brawler' が在る)。
- * 構えている銃の種類・`loadout` は返さない。守護霊の疑似プレイヤーは withoutBrawler で 'brawler' が外れる=`melee`。
+ * 「装備してる近接武器に溜まるようにすればブレないのでは?」+「近接の括りではない。ナイフ毎の括り」)。
+ * 格闘(サブウェポン `brawler`)を装備していれば `brawler`、そうでなければ装備している近接武器のキー
+ * (meleeMasteryKeyOf: 近接武器が無い/台帳に無ければ `loadout`)。格闘の判定は gameStore の `hasBrawler` と同じ。
+ * 守護霊の疑似プレイヤーは withoutBrawler で 'brawler' が外れる=疑似プレイヤーの近接武器のキー。
  * 掛ける倍率(masteryMultOf/guardianMasteryMult)と貯めるキー(withMastery)は必ずこの1本の戻り値で揃える。
  */
-export const counterMasteryKeyOf = (actor: Pick<Player, 'subWeapons'>): MasteryKey =>
-  actor.subWeapons?.includes('brawler') ? 'brawler' : 'melee';
+export const counterMasteryKeyOf = (actor: Pick<Player, 'subWeapons' | 'weapons'>): MasteryKey =>
+  actor.subWeapons?.includes('brawler') ? 'brawler' : meleeMasteryKeyOf(actor);
 /**
  * 弾/置き物の当たりのキー(v2.1 A-8): 作る所で入れた `masteryKey` を使う。欄が無い時は、
  * 本人の銃の弾と分かる物(打ち返しでも敵弾でもない・直接銃の weaponKey)だけ銃の種類、それ以外は `none`。

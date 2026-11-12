@@ -79,13 +79,14 @@ test('shared profile sanitizer passes known avatarId through and nulls unknown/m
 test('shared profile sanitizer passes mastery and growth attack with clamping, old records stay readable', () => {
   const withBuild = profile();
   Object.assign(withBuild.bossStyles.thor.snapshot, {
-    masteryMult: { melee: 1.5, handgun: 99, evil: 1.9, loadout: 1.9, rifle: 'x', katana: 1 },
+    // 近接はナイフ毎のキー(knife-t1 等)。旧 melee も古いクライアントの記録を読むため受け取りは通す。
+    masteryMult: { melee: 1.5, 'knife-t1': 1.6, handgun: 99, evil: 1.9, loadout: 1.9, rifle: 'x', katana: 1 },
     masteryLoadoutMult: 7,
     growthAtkMult: 5,
   });
   const safe = sanitizeSharedProfile(withBuild, 'thor');
   assert.ok(safe);
-  assert.deepEqual(safe.bossStyles.thor.snapshot.masteryMult, { melee: 1.5, handgun: GHOST_MASTERY_MAX_MULT });
+  assert.deepEqual(safe.bossStyles.thor.snapshot.masteryMult, { melee: 1.5, 'knife-t1': 1.6, handgun: GHOST_MASTERY_MAX_MULT });
   assert.equal(safe.bossStyles.thor.snapshot.masteryLoadoutMult, GHOST_MASTERY_MAX_MULT);
   assert.equal(safe.bossStyles.thor.snapshot.growthAtkMult, GHOST_GROWTH_ATK_MAX_MULT);
   // 保存した物をもう一度浄化しても同じ(配る時の再浄化)。

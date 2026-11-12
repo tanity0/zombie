@@ -200,7 +200,7 @@ import { BOUNTY_TYPE_BY_STAGE } from '../config/stageDifficulty';
 import { stageBossDiffMults } from '../utils/stageDiffMults';
 import { BOT_PARAM } from '../utils/botFlag';
 import { getMasteryReport, withMastery } from '../utils/masteryRun';
-import { masteryMultOf, burnRefreshMastery, objectMasteryMult, guardianMasteryMult } from '../utils/mastery';
+import { masteryMultOf, burnRefreshMastery, objectMasteryMult, guardianMasteryMult, meleeMasteryKeyOf } from '../utils/mastery';
 import type { MasteryKey } from '../data/mastery';
 import { canForceGateBossNow, bossMakerBossType, parseBossMakerGlenForm2 } from '../utils/bossTest';
 import { runIdolTick, createIdolTickState, pickActiveIdol, idolPlaybackActive, clearIdolPlayback, type IdolSfx } from '../utils/idolTick';
@@ -7172,7 +7172,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
                 } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
-                const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=melee)
+                const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
                 // 社長指示: トールのカウンターは必ずクリティカル扱いにする(裏ボス完全気絶=bumpBossCritの
                 // カウントに乗せる。他の裏ボス共通のパリィ演出は非crit踏襲のままここだけ変更)。
@@ -7276,7 +7276,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                   ...counterMasterAwakenBuffPatch(stt.player, stt.gameTime),
                 } }));
                 const counterBase = getActiveGun(cp)?.damage ?? 12;
-                const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=melee)
+                const counterMk = counterMasteryKeyOf(cp); // 熟練度: カウンターの反撃=装備している近接の手段(格闘=brawler/それ以外=装備している近接武器)
                 const dmg = counterReplyDamage(counterBase, cp, BOSS_CRIT_DAMAGE_MULT) * masteryMultOf(cp, counterMk);
                 withMastery(counterMk, () => damageEnemy(boss.id, dmg, false, true, false, 'other', 'player', 'counter'));
                 spawnDamageNumber(bcx, boss.y, dmg, true, { enemyId: boss.id });
@@ -13321,7 +13321,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     const gscx = ghostNow.x + ghostNow.width / 2, gscy = ghostNow.y + ghostNow.height / 2;
                     setGhostCounterClaim({
                       bossId: boundBoss.id, ghostX: gscx, ghostY: gscy,
-                      // 熟練度(守護霊の熟練度の発注): 本人のカウンターと同じ決め方(装備している近接の手段)。守護霊は格闘を使わない(疑似プレイヤーから brawler が外れる)=melee。倍率は守護霊の記録の melee。貯めない(請求の消費側=none)。
+                      // 熟練度(守護霊の熟練度の発注): 本人のカウンターと同じ決め方(装備している近接の手段)。守護霊は格闘を使わない(疑似プレイヤーから brawler が外れる)=疑似プレイヤーの近接武器のキー。倍率は守護霊の記録のそのキー。貯めない(請求の消費側=none)。
                       dmg: ghostCounterDamage(gun?.damage, ghostOwner) * guardianMasteryMult(ghostOwner, counterMasteryKeyOf(ghostOwner)),
                       masteryMult: guardianMasteryMult(ghostOwner, counterMasteryKeyOf(ghostOwner)),
                       atMs: nowMs, windowMs: counterAcceptMsOf(ghostOwner),
@@ -13463,7 +13463,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                     // カウンター成立の請求は通常近接と同じ扱い(一閃も「近接スイング」なので窓を拾う)。
                     setGhostCounterClaim({
                       bossId: boundBoss.id, ghostX: gmcx, ghostY: gmcy,
-                      // 熟練度(守護霊の熟練度の発注): 本人のカウンターと同じ決め方(装備している近接の手段)。守護霊は格闘を使わない(疑似プレイヤーから brawler が外れる)=melee。倍率は守護霊の記録の melee。貯めない(請求の消費側=none)。
+                      // 熟練度(守護霊の熟練度の発注): 本人のカウンターと同じ決め方(装備している近接の手段)。守護霊は格闘を使わない(疑似プレイヤーから brawler が外れる)=疑似プレイヤーの近接武器のキー。倍率は守護霊の記録のそのキー。貯めない(請求の消費側=none)。
                       dmg: ghostCounterDamage(gun?.damage, ghostOwner) * guardianMasteryMult(ghostOwner, counterMasteryKeyOf(ghostOwner)),
                       masteryMult: guardianMasteryMult(ghostOwner, counterMasteryKeyOf(ghostOwner)),
                       atMs: nowMs, windowMs: counterAcceptMsOf(ghostOwner),
@@ -13510,8 +13510,8 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
                 const ghostFinish = useGameStore.getState().applyGhostMeleeFinisher(ghostNow.id, boundBoss.id);
                 const ghostMeleeCrit = ghostFinish === null
                   && Math.random() < meleeHitCritChance(meleeWeapon?.critChance ?? 0, ghostOwner, gameTime, boundBoss);
-                // 熟練度(守護霊の熟練度の発注): 本人の近接と同じキー melee(守護霊は格闘を使わない)で、守護霊の記録の倍率。貯めない(none)。
-                const ghostMeleeMm = guardianMasteryMult(ghostOwner, 'melee');
+                // 熟練度(守護霊の熟練度の発注): 本人の近接と同じ決め方=疑似プレイヤーの近接武器のキー(守護霊は格闘を使わない)で、守護霊の記録の倍率。貯めない(none)。
+                const ghostMeleeMm = guardianMasteryMult(ghostOwner, meleeMasteryKeyOf(ghostOwner));
                 const dmg = Math.max(1, Math.round(
                   meleeSwingBaseDamage(meleeWeapon, ghostOwner)
                   * (ghostMeleeCrit ? skillCritMult(ghostOwner, CRIT_DAMAGE_MULT) : 1)
@@ -14240,7 +14240,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // ボマー散布はプレイヤー側の道具なので通さない。判定=中心が赤円の内側(描画の赤円と厳密一致)。
           if (grenade.hostile) {
             removeProjectile(grenade.id);
-            playSfx('bomb');
+            playSfx('bomb'); // 卵: 敵の手榴弾(hostile)の音=割らない・浮かせない(下の spawnExplosionFx と同じ)
             spawnRing(gx, gy, 8, HEAVY_GRENADE_RADIUS, 'rgba(251,146,60,0.82)', 5, HEAVY_GRENADE_EXPLOSION_EFFECT_MS);
             spawnBurst(gx, gy, '#f97316', 20);
             spawnBurst(gx, gy, '#7f1d1d', 8);
@@ -16698,7 +16698,7 @@ export const useGameLoop = (onGameOver: () => void, options: { benchmarkMode?: b
           // §6.10 M33⑨: ダメージ基準を素のmelee.damageから meleeDamage(strikerMeleeMult×装備damageMult込み)へ
           // (他の近接派生=刀/鞭/分身/ドローンと同じ基準)。
           // §6.10 M33②: skillOutgoingDamageMult(バーサーカー等)もワイヤー(すり抜け/Lv3爆撃/大技)に乗算。
-          // 熟練度(research/MASTERY.md v2 §4-2): ワイヤーアンカー=wire-anchor(近接の素ダメを借りるが melee は掛けない)。守護霊=none。
+          // 熟練度(research/MASTERY.md v2 §4-2): ワイヤーアンカー=wire-anchor(近接の素ダメを借りるが近接武器の熟練度は掛けない)。守護霊=none。
           // 倍率は本人=焼き値・守護霊=記録の値(主語が本人へ落ちたら1)。貯めるのは wireMk(守護霊=none)。守護霊の熟練度の発注。
           const wireMk: MasteryKey = ghostId === undefined ? 'wire-anchor' : 'none';
           const wireMm = ghostId === undefined ? masteryMultOf(wp, wireMk) : guardianMasteryMult(wp, 'wire-anchor');

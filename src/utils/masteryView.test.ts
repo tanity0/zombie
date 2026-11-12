@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { MASTERY_MAX_LEVEL } from '../data/mastery';
 import { masteryLevelFor, masteryNeedFor } from './mastery';
 import {
-  masteryBadgeOf, masteryDebugLine, masteryDebugRunLine, masteryFillSteps, masteryKeyOfSub, masteryLevelLabel, masteryResultRows,
+  isMeleeMasteryKey, masteryBadgeOf, masteryDebugLine, masteryDebugRunLine, masteryFillSteps, masteryKeyOfMelee, masteryKeyOfSub, masteryLevelLabel,
+  masteryResultRows,
 } from './masteryView';
 
 const KEY = 'handgun' as const;
@@ -139,5 +140,30 @@ describe('masteryDebugLine(開発用の数字)', () => {
   it('出撃の行: mm:ss とステージ', () => {
     expect(masteryDebugRunLine(754.9, 'stage-2 避難回廊')).toBe('出撃 12:34・stage-2 避難回廊');
     expect(masteryDebugRunLine(5, '')).toBe('出撃 00:05・(ステージ不明)');
+  });
+});
+
+// 社長裁定2026-11-12「ナイフ毎の括り」: 一時停止の近接の行は、装備している近接武器のキーで札を出す。
+describe('近接の札(ナイフ毎)', () => {
+  it('masteryKeyOfMelee: 近接武器のキーそのもの・台帳に無い/無しは null', () => {
+    expect(masteryKeyOfMelee('machete-t3')).toBe('machete-t3');
+    expect(masteryKeyOfMelee('knife-t1')).toBe('knife-t1');
+    expect(masteryKeyOfMelee('handgun-t1')).toBeNull();
+    expect(masteryKeyOfMelee(undefined)).toBeNull();
+    expect(masteryKeyOfMelee('melee')).toBeNull();
+  });
+  it('札は装備しているナイフの量で決まる(別のナイフの量は見ない)', () => {
+    const state = { xp: { 'machete-t3': masteryNeedFor('machete-t3', 1) * 1.5, 'knife-t1': 999_999_999 } };
+    expect(masteryBadgeOf(masteryKeyOfMelee('machete-t3'), state)?.level).toBe(2);
+    expect(masteryBadgeOf(masteryKeyOfMelee('hatchet-t2'), state)?.level).toBe(1);
+    expect(masteryBadgeOf(masteryKeyOfMelee('knife-t1'), state)?.max).toBe(true);
+  });
+  it('isMeleeMasteryKey: 近接武器のキーだけ true', () => {
+    expect(isMeleeMasteryKey('anti-mutant-knife-t5')).toBe(true);
+    for (const k of ['handgun', 'katana', 'brawler', 'melee', 'fire-knife']) expect(isMeleeMasteryKey(k), k).toBe(false);
+  });
+  it('リザルトの並びにナイフ毎のキーが出る', () => {
+    const rows = masteryResultRows({ 'machete-t3': { before: 0, after: 10, levelBefore: 1, levelAfter: 1 } });
+    expect(rows.map(r => r.key)).toEqual(['machete-t3']);
   });
 });

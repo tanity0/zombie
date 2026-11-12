@@ -54,7 +54,30 @@ export interface BrawlerStageSpec {
  * 弱(1・2段目)/ 強・技(3・4段目・飛び蹴り1・2発目)/ 締め(5段目・飛び蹴り3発目・大踏み潰し・秘奥義の締め)。
  * 旧: 弱45 / 3段目80 / 4段目90 / 蹴り1・2発目80 / 締め140 / 秘奥義の締め160。
  */
-export const BRAWLER_HITSTOP = { weak: 90, strong: 167, closer: 253 } as const; // 社長指示2026-11-12『格闘の技が当たった時のストップ時間を少し長く』(旧 90/150/220)。フレームの倍数で伸ばした(境目をずらさないため・60fps で 0/+1/+2 フレーム)。弱は1フレームでも伸ばすと「1段目→届く端の気功」が入るようになり、強は2フレームで「3→飛び蹴り→大踏み潰し→気功」が切れるため、判定を保てる最長にした
+export const BRAWLER_HITSTOP = { weak: 90, strong: 150, closer: 220 } as const;
+// ↑2026-11-12 に 167/253 へ伸ばしたが、社長の意図は画面全体の止めだったので戻した(つながりの計算に使う値=90/150/220 のまま)。
+/**
+ * ★当たった瞬間の「画面全体の止め」の長さ(ms・壁時計・テンポ係数は掛けない)。社長指示2026-11-12「格闘の技が当たった時のストップ時間を少し長く」
+ * (=画面全体が止まる方)。格闘の当たった技すべて(1〜5段・飛び蹴り3連・踵落とし・大踏み潰し・秘奥義の締め)で、自分と相手だけの止め
+ * (BRAWLER_HITSTOP)の代わりに画面全体を止める(triggerHitstop)。全体が止まっている間は gameTime も進まないので、つながり・固まり・
+ * 入力の間隔はこの長さに影響されない(自分の止めと固まりの式の止めは 0 にする)。四神舞の最中は今どおり自分と相手だけの止め。
+ * 気功は弾なので止めなし(今どおり)。
+ */
+export const BRAWLER_WORLD_STOP = { weak: 110, strong: 180, closer: 260 } as const;
+/**
+ * 画面全体を止める当たりで残す、自分の止め(1ms)と固まりの式の止め(8ms=半フレーム)。gameTime(全体の止めの間は進まない)。
+ * 自分の止め 1ms=全体の止めの最中に押した入力を今どおり覚えて、止めが明けた最初のフレームで出すため(0 だとその場で出てしまう)。
+ * 固まりの 8ms=その「最初のフレーム」までの遅れ(1フレーム)と、今の止めの明けの遅れ(フレームの境目まで平均で半フレーム)の差を埋める。
+ * 実際の AI で動かすつながりのテスト(brawlerLink.store.test.ts)で 6〜10ms の間なら判定が全部今どおり(2〜5 は1つ切れる・16 は入らない物が1つ入る)。
+ */
+export const BRAWLER_WORLD_STOP_SELF_MS = 1;
+export const BRAWLER_WORLD_STOP_LOCK_MS = 8;
+/** 自分と相手だけの止め(BRAWLER_HITSTOP の値)から、同じ強さの画面全体の止めの長さを引く。0 は 0。 */
+export const brawlerWorldStopMs = (hitstopMs: number): number =>
+  hitstopMs <= 0 ? 0
+    : hitstopMs >= BRAWLER_HITSTOP.closer ? BRAWLER_WORLD_STOP.closer
+      : hitstopMs >= BRAWLER_HITSTOP.strong ? BRAWLER_WORLD_STOP.strong
+        : BRAWLER_WORLD_STOP.weak;
 /** 5段目の掌底の押しの勢い(今の近接の何倍か)。社長指示2026-11-09「流石に敵が吹き飛びすぎ」で 4→2(約150px→約75px・§16)。大踏み潰し・飛び蹴り3発目・秘奥義の締めは BRAWLER_BIG_KB_MULT(4)のまま。 */
 export const BRAWLER_PALM_KB_MULT = 2;
 /** 段の表の係数1.0の値(今までの値)。止めは BRAWLER_HITSTOP。 */
